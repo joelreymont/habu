@@ -16,39 +16,15 @@
 \ or the field record's own name-gate code, and the whole provisional
 \ declaration rolls back to a byte-identical registry.
 \
-\ ---------------------------------------------------------------------------
-\ COMMIT / ROLLBACK COMPOSITION (settled empirically; see the report note).
-\ ---------------------------------------------------------------------------
-\ A top-level composite declaration runs at interpret time and persists UNFRAMED,
-\ exactly like the shipped SUMTYPE/PRODUCT definers: the checker candidate frame
-\ (CHECK-CANDIDATE-START/DONE) ALWAYS rolls back on close (a rejected scope AND a
-\ successful candidate probe both restore — docs/type-families.md §21.1), so it
-\ can never COMMIT a successful family, and wrapping the transaction in it would
-\ retire the very family + field rows this front end must publish for the
-\ downstream generate-field / generate-make / prove-generic lanes to read. The
-\ front end therefore commits by simply persisting and rolls back only on reject:
-\   - The event stream + provisional field rows are committed by DECL-EVENT:PUBLISH
-\     and retired by DECL-EVENT:ROLLBACK (the event module owns that boundary,
-\     including the field record's own PF transaction and the field-name interns).
-\   - The family row, its schema roots, its layout descriptor, and the family-name
-\     intern are NOT owned by the event module. They are snapshotted at open
-\     (SD-MARK) and restored on reject (SD-RESTORE) — the same mark/restore idiom
-\     the shipped sumtype.f TDECL-MARK/RESTORE uses, reached here through named
-\     trusted forwarders because these registry cursors are REG-PROTECT name-sealed
-\     against post-hook interpret-mode writes (compiled references from a TRUSTED:
-\     body are the sanctioned boundary, exactly as decl-event.f forwards PF-*).
-\ SD-RESTORE runs AFTER DECL-EVENT:ROLLBACK so the earlier (pre-family) string-pool
-\ high-water wins over the event module's (post-family-name) one.
+\ GENERATED-DECL owns the declaration savepoint. The checker, metadata, event,
+\ and constructor-protection participants keep their snapshots live until the
+\ complete declaration body has validated and every reversible commit succeeds.
+\ A reject therefore retires the family, schema, layout, field, event, generated
+\ dictionary, and staged protection state together.
 \
-\ ---------------------------------------------------------------------------
-\ CONSTRUCTOR GENERATION (the ;STRUCTURE -> STRUCTURE-MAKE seam).
-\ ---------------------------------------------------------------------------
-\ Once SD-CLOSE has bound the family field range + width and DECL-EVENT:PUBLISH
-\ has committed the field rows, ;STRUCTURE hands the fully published family id to
-\ STRUCTURE-MAKE:GENERATE (src/core/structure-make.f), which defines the sealed
-\ FAMILY:MAKE / FAMILY:UNMAKE constructor package from the committed field
-\ schemas. Two spec conditions gate the call (SD-MAKEABLE?), so GENERATE is only
-\ invoked when its own contract already holds:
+\ Once SD-CLOSE has bound the family field range and width, it asks
+\ STRUCTURE-MAKE:GENERATE to define the FAMILY:MAKE / FAMILY:UNMAKE constructor
+\ package from the still-provisional field schemas. Two conditions gate the call:
 \   - PUBLIC only. GENERATE requires a public family. A private structure gets no
 \     construction surface, matching the shipped product precedent: sumtype.f's
 \     TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS simply exit for a non-public family,
@@ -59,18 +35,9 @@
 \     publishes no constructor (docs/type-families.md §2.2 — the authority-safe
 \     TYPEFAMILY replacement); only a declaration WITH fields is a product with a
 \     MAKE/UNMAKE pair, so GENERATE is skipped when NFLD is zero.
-\ Under that gate GENERATE composes INFALLIBLY after PUBLISH: every reject it can
-\ raise is structurally impossible for a just-published structure. The family is
-\ live (SD-RESTORE only retires it on a reject, and this is the success path) and
-\ product-kind (SD-REGISTER registered it TK-PROD), so E-SM-FAM cannot fire; the
-\ gate guarantees at least one field, so E-SM-EMPTY cannot fire; DECL-EVENT:PUBLISH
-\ committed every field row in [FLDBASE, FLDBASE+NFLD), so the committed-field
-\ reader never throws E-PF-ID; and a duplicate family name already rejected at
-\ TFAM-DECL inside SD-REGISTER, so this is the family's first and only generation
-\ and E-SM-DUP cannot fire. The call therefore owns no rollback path: it runs
-\ inside SD-RUN's catch only because SD-CLOSE does, and it cannot throw for a
-\ well-formed declaration — exactly how the product ctor path relies on generation
-\ being infallible once its declaration validated.
+\ Generation remains inside the shared transaction. If evaluation or checker
+\ certification rejects either constructor, the coordinator restores every
+\ participant before the error returns to the caller.
 \
 \ Loaded AFTER the checker hook, AFTER decl-event.f (it drives DECL-EVENT:*), and
 \ AFTER structure-make.f (its ;STRUCTURE calls STRUCTURE-MAKE:GENERATE, so the
@@ -145,20 +112,6 @@ TRUSTED: SCH-APP? ( n -- bool ) SCHEMA-APP? ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;   \ field-record layout flag: none
 TRUSTED: TK-PROD ( -- n ) TK-PRODUCT ;         \ single-shape record family kind
-
-\ --- registry rollback snapshot. The seven cursors a declaration can grow that
-\ the event module does not own (family, string pool, param pool, variant pool,
-\ layout pool, schema node pool, schema-root pool). Straight cell reads/writes:
-\ no locals, no control, so the trusted boundary stays minimal (docs/forth.md
-\ "Keep TRUSTED: bodies syntax-simple").
-variable M-TFAM   variable M-STR   variable M-PK   variable M-SUMV
-variable M-LAY    variable M-SCH   variable M-ROOT
-TRUSTED: SD-MARK ( -- )
-   TFAM-N @ M-TFAM !   TF-STR-U @ M-STR !   TF-PK-N @ M-PK !
-   SUMV-N @ M-SUMV !   LAY-N @ M-LAY !   SCH-N @ M-SCH !   SCH-ROOT-N @ M-ROOT ! ;
-TRUSTED: SD-RESTORE ( -- )
-   M-TFAM @ TFAM-N !   M-STR @ TF-STR-U !   M-PK @ TF-PK-N !
-   M-SUMV @ SUMV-N !   M-LAY @ LAY-N !   M-SCH @ SCH-N !   M-ROOT @ SCH-ROOT-N ! ;
 
 \ --- one-token pushback. The token bytes stay valid across a line refill (the
 \ engine buffers the input source), so the pushback holds the raw span; storing a
@@ -332,17 +285,16 @@ SD-RESET
    ar TK-PROD FAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
    0 NFLD !   0 SD-CELLS !
-   DECL-EVENT:OPEN TOK !
+   DECL-EVENT:CURRENT TOK !
    TOK @ FAM @ DECL-EVENT:DECL TOK !
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 
 : SD-MAKEABLE? ( -- bool )                 \ a public structure WITH fields owns a MAKE/UNMAKE package
    FAM @ FAM-PUBLIC? NFLD @ 0 > and ;
-: SD-CLOSE ( -- )                          \ bind field range + width, publish, then generate the ctors
+: SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
    FAM @ SD-CELLS @ FAM-SLOTS!
-   TOK @ DECL-EVENT:PUBLISH
-   SD-MAKEABLE? IF FAM @ STRUCTURE-MAKE:GENERATE THEN ;   \ infallible here (see header seam note)
+   SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN ;
 
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE
    SD-NEXT dup 0= IF 2drop E-SYNTAX throw THEN
@@ -364,13 +316,7 @@ public
 \ One provisional transaction: commit by persisting, roll the family + schema +
 \ layout + event stream back to a byte-identical registry on any reject.
 : SD-RUN ( -- )
-   SD-RESET
-   SD-MARK
-   [: DRIVE ;] catch {: rc:n :}
-   rc 0= IF EXIT THEN
-   TOK @ 0 <> IF TOK @ DECL-EVENT:ROLLBACK THEN
-   SD-RESTORE
-   rc throw ;
+   [: SD-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
 ;package
 

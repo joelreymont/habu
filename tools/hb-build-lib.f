@@ -519,6 +519,8 @@ HBB-INSTALL-CHILD-LINTS
    s" src/core/check-hook.f" HBB-KEY-FILE+
    s" src/core/cell-effects.f" HBB-KEY-FILE+
    s" src/core/pointer-storage-effects.f" HBB-KEY-FILE+
+   s" src/core/declaration-transaction.f" HBB-KEY-FILE+
+   s" src/core/generated-declaration.f" HBB-KEY-FILE+
    s" src/core/structures.f" HBB-KEY-FILE+
    s" src/core/roles.f" HBB-KEY-FILE+
    s" src/core/bytes.f" HBB-KEY-FILE+
@@ -544,6 +546,8 @@ HBB-INSTALL-CHILD-LINTS
    s" src/habu/engine-size.f" HBB-KEY-FILE+
    s" src/habu/habu2.f" HBB-KEY-FILE+
    s" src/habu/xref.f" HBB-KEY-FILE+
+   s" src/core/generated-declaration-dictionary.f" HBB-KEY-FILE+
+   s" src/core/generated-declaration-protection.f" HBB-KEY-FILE+
    s" src/habu/owner-wid-emit-seal.f" HBB-KEY-FILE+
    s" src/core/layout-buffer-seal.f" HBB-KEY-FILE+
    s" src/core/lower-cert-seal.f" HBB-KEY-FILE+

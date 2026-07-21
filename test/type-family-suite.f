@@ -182,13 +182,12 @@ SUMV-REC-PTR-MASK 0 T=
 PF-REC 11 cells T=
 PF-REC-ALIGN CELL T=
 PF-REC-PTR-MASK 0 T=
-PF-TX-REC 3 cells T=
+PF-TX-REC 5 cells T=
 PF-TX-REC-ALIGN CELL T=
 PF-TX-REC-PTR-MASK 0 T=
 LAY-REC 5 cells T=
 LAY-REC-ALIGN CELL T=
 LAY-REC-PTR-MASK 0 T=
-
 \ Declaration parameters use one reserved-safe positional alphabet.  These
 \ direct whitebox checks pin both directions and every ordered character;
 \ f/n/r are concrete scalar tokens and therefore never map to a parameter.
@@ -225,7 +224,7 @@ $6E TFAM-DECL-CHAR>PARAM nip 0 T=   \ n is int
 $72 TFAM-DECL-CHAR>PARAM nip 0 T=   \ r is real
 $41 TFAM-DECL-CHAR>PARAM nip 0 T=   \ uppercase is never positional
 $30 TFAM-DECL-CHAR>PARAM nip 0 T=   \ non-letter is never positional
-TF-RBF-REC 6 cells T=
+TF-RBF-REC 8 cells T=
 TF-RBF-REC-ALIGN CELL T=
 TF-RBF-REC-PTR-MASK 0 T=
 

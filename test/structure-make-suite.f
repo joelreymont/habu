@@ -7,10 +7,9 @@
 \
 \ This is the whitebox generator suite: every structure is declared by hand
 \ exactly the way the parse front end does — register the family (TFAM-DECL),
-\ drive its fields through a DECL-EVENT OPEN…FIELD…PUBLISH transaction (which
-\ commits the field rows through the shared field record), record the family's
-\ layout width (TFAM-SLOTS!) and field range (TFAM-FLD-RANGE!), then call
-\ STRUCTURE-MAKE:GENERATE. That hand-built path stays the right level here, and
+\ drive its fields through a DECL-EVENT transaction, record the family's layout
+\ width and field range, call STRUCTURE-MAKE:GENERATE with the live token, then
+\ publish the transaction. That hand-built path stays the right level here, and
 \ keeps the field-kind and rollback matrix independent of the grammar: the
 \ reconciliation has now wired that same seam into the front end's ;STRUCTURE
 \ (proven end-to-end from STRUCTURE syntax in test/structure-decl-suite.f), and
@@ -103,10 +102,18 @@ variable FRS variable FEN variable FEM variable FRB variable FD1 variable FD2
    SLOTC @ 1 + SLOTC !
    NF @ 1 + NF ! ;
 
-: S-CLOSE ( n -- ) {: fam:n :}   \ publish the fields + record layout width and field range
-   TOK @ DECL-EVENT:PUBLISH
+: S-BIND ( n -- ) {: fam:n :}   \ record layout width and field range while rows remain provisional
    fam BASE @ NF @ TWX-TFAM-FLD-RANGE!
    fam NF @ TWX-TFAM-SLOTS! ;
+
+: S-CLOSE ( n -- )
+   S-BIND
+   TOK @ DECL-EVENT:PUBLISH ;
+
+: S-GENERATE ( n -- ) {: fam:n :}
+   fam S-BIND
+   TOK @ fam STRUCTURE-MAKE:GENERATE
+   TOK @ DECL-EVENT:PUBLISH ;
 
 \ schema-root builders (each field needs its own root).
 : SR-CELL  ( -- n ) CON-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ ;
@@ -136,8 +143,7 @@ NE @ 0 TWX-TFAM-SLOTS!
 s" c1" 0 S-DECL FC1 !
 FC1 @ S-OPEN
 FC1 @ s" x" SR-CELL S-FIELD
-FC1 @ S-CLOSE
-FC1 @ STRUCTURE-MAKE:GENERATE
+FC1 @ S-GENERATE
 s" C1RT ( n -- n ) SM-C1:MAKE SM-C1:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------
@@ -149,8 +155,7 @@ FP3 @ S-OPEN
 FP3 @ s" a" SR-CELL S-FIELD
 FP3 @ s" b" SR-CELL S-FIELD
 FP3 @ s" c" SR-CELL S-FIELD
-FP3 @ S-CLOSE
-FP3 @ STRUCTURE-MAKE:GENERATE
+FP3 @ S-GENERATE
 : P3RT ( n n n -- n n n ) SM-P3:MAKE SM-P3:UNMAKE ;
 10 20 30 P3RT 30 T= 20 T= 10 T=            \ order + values preserved
 
@@ -160,8 +165,7 @@ FP3 @ STRUCTURE-MAKE:GENERATE
 s" bf" 0 S-DECL FBF !
 FBF @ S-OPEN
 FBF @ s" x" SR-CHAR S-FIELD
-FBF @ S-CLOSE
-FBF @ STRUCTURE-MAKE:GENERATE
+FBF @ S-GENERATE
 s" BFRT ( char -- char ) SM-BF:MAKE SM-BF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------
@@ -170,8 +174,7 @@ s" BFRT ( char -- char ) SM-BF:MAKE SM-BF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" pp" 0 S-DECL FPP !
 FPP @ S-OPEN
 FPP @ s" p" SR-PTR S-FIELD
-FPP @ S-CLOSE
-FPP @ STRUCTURE-MAKE:GENERATE
+FPP @ S-GENERATE
 s" PPRT ( ptr n -- ptr n ) SM-PP:MAKE SM-PP:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------
@@ -180,8 +183,7 @@ s" PPRT ( ptr n -- ptr n ) SM-PP:MAKE SM-PP:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" nf" 0 S-DECL FNF !
 FNF @ S-OPEN
 FNF @ s" e" NE @ SR-APP S-FIELD
-FNF @ S-CLOSE
-FNF @ STRUCTURE-MAKE:GENERATE
+FNF @ S-GENERATE
 s" NFRT ( sm:ne -- sm:ne ) SM-NF:MAKE SM-NF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ ---------------------------------------------------------------------------
@@ -192,8 +194,7 @@ s" NFRT ( sm:ne -- sm:ne ) SM-NF:MAKE SM-NF:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" gp" 1 S-DECL FGP !
 FGP @ S-OPEN
 FGP @ s" v" 0 SR-PARAM S-FIELD
-FGP @ S-CLOSE
-FGP @ STRUCTURE-MAKE:GENERATE
+FGP @ S-GENERATE
 s" GPCERT ( n -- n ) SM-GP:MAKE SM-GP:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 : GPRT ( n -- n ) SM-GP:MAKE SM-GP:UNMAKE ;
 42 GPRT 42 T=
@@ -207,8 +208,7 @@ s" rs" 0 S-DECL FRS !
 FRS @ S-OPEN
 FRS @ s" e" NE @ SR-APP S-FIELD
 FRS @ s" k" SR-CELL S-FIELD
-FRS @ S-CLOSE
-FRS @ STRUCTURE-MAKE:GENERATE
+FRS @ S-GENERATE
 s" RSOK ( sm:ne n -- sm:ne n ) SM-RS:MAKE SM-RS:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
 s" RSSWAP ( n sm:ne -- sm:rs ) SM-RS:MAKE" CHECK-QUIET-CANDIDATE! 0 T=   \ roles swapped
 s" RSAR ( sm:ne -- sm:rs ) SM-RS:MAKE" CHECK-QUIET-CANDIDATE! 0 T=       \ one arg, needs two
@@ -255,21 +255,21 @@ NE @ 0 TWX-TFAM-SLOTS!
 \ ---------------------------------------------------------------------------
 \ 9. Non-product / non-live family rejects (E-SM-FAM 7190), before any write.
 \ ---------------------------------------------------------------------------
-NE @ ' STRUCTURE-MAKE:GENERATE catch TC ! drop         \ an enum is not a product
+0 NE @ ' STRUCTURE-MAKE:GENERATE catch TC ! 2drop         \ an enum is not a product
 TC @ 7190 T=
-TFAM-N@ 100 + ' STRUCTURE-MAKE:GENERATE catch TC ! drop \ an out-of-range id is not live
+0 TFAM-N@ 100 + ' STRUCTURE-MAKE:GENERATE catch TC ! 2drop \ an out-of-range id is not live
 TC @ 7190 T=
 
 \ ---------------------------------------------------------------------------
 \ 10. A live public product with no fields rejects (E-SM-EMPTY 7191).
 \ ---------------------------------------------------------------------------
 s" en" 0 S-DECL FEN !
-FEN @ ' STRUCTURE-MAKE:GENERATE catch TC ! drop
+0 FEN @ ' STRUCTURE-MAKE:GENERATE catch TC ! 2drop
 TC @ 7191 T=
 
 \ ---------------------------------------------------------------------------
-\ 11. A rolled-back / unpublished field row rejects through the field record's
-\     committed-reader (E-PF-ID 7122), and the rejected generation writes NO
+\ 11. A rolled-back / unpublished field row rejects because its stale event
+\     token cannot authorize a provisional read, and rejected generation writes NO
 \     registry: SUMV / schema-root / product-field / string-pool watermarks are
 \     byte-identical before and after (the canonical-zero invariant).
 \ ---------------------------------------------------------------------------
@@ -282,8 +282,8 @@ TOK @ DECL-EVENT:ROLLBACK                               \ retire the field: its 
 FRB @ BASE @ 1 TWX-TFAM-FLD-RANGE!                      \ front-end field range points at the retired id
 FRB @ 1 TWX-TFAM-SLOTS!
 SUMV-N@ SUMV0 !   SCHEMA-ROOT-N@ SCHR0 !   TYPE-FIELD:COUNT PF0 !   TF-STR-U@ STRU0 !
-FRB @ ' STRUCTURE-MAKE:GENERATE catch TC ! drop
-TC @ 7122 T=                                            \ E-PF-ID from the committed field reader
+TOK @ FRB @ ' STRUCTURE-MAKE:GENERATE catch TC ! 2drop
+TC @ 7161 T=                                            \ stale event token cannot authorize a provisional read
 SUMV-N@ SUMV0 @ T=                                      \ no variant rows written
 SCHEMA-ROOT-N@ SCHR0 @ T=                               \ no schema roots appended
 TYPE-FIELD:COUNT PF0 @ T=                               \ no field rows committed
@@ -296,10 +296,9 @@ TF-STR-U@ STRU0 @ T=                                    \ no names interned
 s" em" 0 S-DECL FEM !
 FEM @ S-OPEN
 FEM @ s" x" SR-CELL S-FIELD
-FEM @ S-CLOSE
-FEM @ STRUCTURE-MAKE:GENERATE                           \ first generation succeeds
+FEM @ S-GENERATE                                        \ first generation succeeds
 SUMV-N@ SUMV0 !   SCHEMA-ROOT-N@ SCHR0 !   TYPE-FIELD:COUNT PF0 !   TF-STR-U@ STRU0 !
-FEM @ ' STRUCTURE-MAKE:GENERATE catch TC ! drop         \ second generation rejects
+TOK @ FEM @ ' STRUCTURE-MAKE:GENERATE catch TC ! 2drop  \ second generation rejects before any provisional read
 TC @ 7102 T=
 SUMV-N@ SUMV0 @ T=
 SCHEMA-ROOT-N@ SCHR0 @ T=

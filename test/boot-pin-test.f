@@ -34,7 +34,7 @@ public
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-38 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 37 calls)
+46 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 45 calls)
                                     \ 22->26: +src/core/type-family.f +type-schema.f +sumtype.f
                                     \ +type-family-sha.f (TFAM growth; user sign-off dot
                                     \ habu-boot-pin-sign-be74cfd3). 26->31: +src/core/
@@ -53,6 +53,9 @@ public
                                     \ 36->37: +src/core/top-row.f (typed root-row API).
                                     \ 37->39: +engine-error source and checked effects.
                                     \ 39->38: retire pre-hook structures effect rows.
+                                    \ Later declaration/front-end rows brought the base to 42;
+                                    \ 42->46: +generic declaration transaction,
+                                    \ native dictionary owner, and protection owner.
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex

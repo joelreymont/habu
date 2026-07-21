@@ -771,7 +771,9 @@ public
    out outu s" src/core/layout-valid.f" BF-APPEND-SOURCE
    out outu s" src/core/check-hook.f" BF-APPEND-SOURCE
    out outu s" src/core/cell-effects.f" BF-APPEND-SOURCE
-   out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE ;
+   out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE
+   out outu s" src/core/declaration-transaction.f" BF-APPEND-SOURCE
+   out outu s" src/core/generated-declaration.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DECL-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}
    \ The shared declaration-event transaction, then the STRUCTURE constructor
@@ -838,6 +840,8 @@ public
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
+   out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
    out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
@@ -901,6 +905,8 @@ public
    out outu s" src/core/type-family-sha.f" BF-APPEND-SOURCE
    out outu BF-APPEND-COMBINATORS
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
+   out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
+   out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-SCRIPT-ARGV

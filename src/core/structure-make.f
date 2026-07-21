@@ -1,8 +1,9 @@
 \ structure-make.f — STRUCTURE constructor generator (package STRUCTURE-MAKE).
 \
-\ ONE concern: given an already-published product-kind family id, generate the
+\ ONE concern: given a validated product-kind family id in the current
+\ declaration transaction, generate the
 \ sealed FAMILY:MAKE and FAMILY:UNMAKE checked words from that family's
-\ declaration-order committed field schemas. A STRUCTURE is a single-shape
+\ declaration-order provisional field schemas. A STRUCTURE is a single-shape
 \ record (docs/type-families.md §9.4, §18) — exactly the PRODUCT kind — so this
 \ reuses the shared sum/product constructor-seal machinery (sumtype.f
 \ TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS, the CTOR-PEND! pending window, the one
@@ -11,13 +12,13 @@
 \ the security-critical publication discipline a second time. The only new
 \ logic here is the STRUCTURE adapter: validate the family the shared
 \ DECL-EVENT/TYPE-FIELD transaction produced (src/core/decl-event.f,
-\ src/core/type-family.f) and drive the shared generator over its committed
+\ src/core/type-family.f) and drive the shared generator over its provisional
 \ field rows.
 \
-\ SEAM the parse front end calls (reconciled at merge): after a STRUCTURE
-\ declaration's DECL-EVENT transaction PUBLISHes — the family registered
+\ SEAM the parse front end calls (reconciled at merge): after a STRUCTURE body
+\ has registered its family
 \ (TFAM-DECL), its layout width recorded (TFAM-SLOTS!), its field range recorded
-\ (TFAM-FLD-RANGE!), and its fields committed (TYPE-FIELD) — the front end's
+\ (TFAM-FLD-RANGE!), and its fields staged (TYPE-FIELD) — the front end's
 \ ;STRUCTURE calls STRUCTURE-MAKE:GENERATE with the family id. This file adds NO
 \ front end, NO parser state, and NO grammar: it owns MAKE/UNMAKE generation
 \ only. The reconciliation (dot habu-structure-generate-make-872a6e75) wired that
@@ -31,7 +32,7 @@
 \ matrix.
 \
 \ Generation reads layout truth (field schemas, generic parameter slots, the
-\ product width, hidden-field expansion) straight from the shared committed
+\ product width, hidden-field expansion) straight from the shared transaction
 \ metadata; nothing is recomputed here. The generated MAKE effect is
 \ (declaration-order field values -- family value); UNMAKE is (family value --
 \ declaration-order field values). A product bundle IS its field cells in slot
@@ -39,30 +40,29 @@
 \ certifies against the field-derived metadata row; the generated text never
 \ contains TRUST, TRUSTED:, or set-check.
 \
-\ Atomic publication after validation. GENERATE decides everything that can
-\ reject in CHECKED code first — family liveness, product kind, public
-\ visibility, at least one field, every field row committed and readable (the
-\ field record's committed reader throws E-PF-ID on a rolled-back or unpublished
-\ id), and MAKE/UNMAKE not already generated — and only then runs the single
-\ infallible mutation SM-EMIT. So a rejected generation writes NO registry and
-\ leaves the variant / product-field / schema arenas byte-identical (the
-\ canonical-zero invariant), and publication is all-or-nothing: either both
-\ words publish or none does. This is exactly how the PRODUCT ctor path relies
-\ on generation being infallible after its declaration validated.
+\ Atomic publication after validation. GENERATE decides every local condition
+\ in CHECKED code first — family liveness, product kind, public visibility, at
+\ least one field, every field row present in the current transaction, and
+\ MAKE/UNMAKE not already generated — and only then runs SM-EMIT. Evaluation and
+\ checker certification may still reject while SM-EMIT generates the words; the
+\ enclosing GENERATED-DECL transaction retains every registry and dictionary
+\ savepoint until that work succeeds, so either all metadata and both words
+\ publish or every participant rolls back.
 \
 \ TRUSTED boundary. The checkable DECISIONS stay checked; the trusted set is the
 \ decl-event.f idiom (sealed pre-hook colon words the checker cannot type from a
 \ post-hook checked body, reached through named forwarders): six thin read
-\ forwarders the validation reads, plus one SM-EMIT that performs the whole
-\ infallible mutation — build the field schema run, add the two variant rows,
+\ forwarders the validation reads, plus one SM-EMIT that performs the sealed
+\ mutation — build the field schema run, add the two variant rows,
 \ set the variant range, derive the constructor package, generate both words.
-\ The committed field-schema read uses the CHECKED TYPE-FIELD:SCHEMA@ directly,
-\ so it needs no forwarder. When the type-DSL cutover factors the shared
+\ Provisional field-schema reads go through DECL-EVENT with the exact live
+\ declaration token and family, so no uncommitted field row is globally readable.
+\ When the type-DSL cutover factors the shared
 \ generator into its own module, SM-EMIT re-points there; nothing else changes.
 
 \ --- named reject codes (7101-7128 = tfam/schema/pf; 7161-7164 = decl-event;
-\ 7122 = E-PF-ID, propagated unchanged for a rolled-back/uncommitted field id
-\ via the field record's own committed-reader reject). E-SM-DUP re-declares the
+\ 7161/7172/7173 are the event token, field-range, and family-scope rejects for
+\ provisional reads). E-SM-DUP re-declares the
 \ field record's duplicate code (E-TFAM-DUP 7102) by value: that pre-hook global
 \ is not visible from a post-hook checked body, so it is re-stated here rather
 \ than referenced — the src/core/decl-event.f idiom for E-DEV-ARITY. 7190-7191
@@ -82,20 +82,23 @@ TRUSTED: SM-FLD-START ( n -- n ) TFAM-FLD-START@ ;
 TRUSTED: SM-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
 TRUSTED: SM-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 
-\ SM-EMIT: the whole infallible mutation for a validated published product.
-\ Rebuilds the committed field schema nodes into one contiguous declaration-order
+: SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
+   tok fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
+
+\ SM-EMIT: the sealed mutation for a validated provisional product.
+\ Rebuilds the current transaction's field schema nodes into one contiguous declaration-order
 \ root run (the payload-schema range the two generated variant rows carry —
 \ exactly the run shape the PRODUCT ctor path builds while parsing its fields),
 \ adds the make(0)/unmake(1) variant rows over it at the family's product width,
 \ sets the variant range, derives the constructor package, and drives the shared
 \ generator. TRUSTED: because every word it calls is a sealed pre-hook registry /
-\ generation word; it makes no decision (GENERATE already validated) so it cannot
-\ reject for well-formed input.
+\ generation word. GENERATE has already validated its local preconditions; any
+\ evaluator or checker rejection propagates to GENERATED-DECL for full rollback.
 variable SM-RSTART   variable SM-VSTART
-TRUSTED: SM-EMIT ( n n n -- ) {: fam:n fs:n fc:n :}
+TRUSTED: SM-EMIT ( n n n n -- ) {: tok:n fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ SM-RSTART !
    0 BEGIN dup fc < WHILE
-      fs over + TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
+      dup tok fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
       1 +
    REPEAT drop
    SUMV-N@ SM-VSTART !
@@ -112,9 +115,9 @@ TRUSTED: SM-EMIT ( n n n -- ) {: fam:n fs:n fc:n :}
    fam SM-PRODUCT? 0= IF E-SM-FAM throw THEN
    fam SM-PUBLIC? 0= IF E-SM-FAM throw THEN ;
 
-: SM-REQUIRE-READABLE ( n n -- ) {: fam:n fc:n :}   \ every field row committed + readable
+: SM-REQUIRE-READABLE ( n n n -- ) {: tok:n fam:n fc:n :}   \ every field row is live in this transaction
    0 BEGIN dup fc < WHILE
-      fam SM-FLD-START over + TYPE-FIELD:SCHEMA@ drop   \ E-PF-ID if this field id is uncommitted
+      dup tok fam fam SM-FLD-START SM-FIELD-SCHEMA@ drop
       1 +
    REPEAT drop ;
 
@@ -125,18 +128,18 @@ TRUSTED: SM-EMIT ( n n n -- ) {: fam:n fs:n fc:n :}
 public
 
 \ GENERATE ( fam -- ) : define the sealed FAMILY:MAKE ( fields -- family ) and
-\ FAMILY:UNMAKE ( family -- fields ) checked words for a published, public,
-\ product-kind family, from its declaration-order committed field schemas.
+\ FAMILY:UNMAKE ( family -- fields ) checked words for a public product family,
+\ from its declaration-order schemas in the current field transaction.
 \ Throws E-SM-FAM (not a live/public/product family), E-SM-EMPTY (no fields),
-\ E-PF-ID (a field row is uncommitted — a rolled-back or unpublished
-\ declaration), or E-SM-DUP (MAKE/UNMAKE already generated) — every reject
+\ a DECL-EVENT scope error (the token does not own that family/field), or E-SM-DUP
+\ (MAKE/UNMAKE already generated) — every reject
 \ before any registry write, so a rejected call publishes nothing.
-: GENERATE ( n -- ) {: fam:n :}
+: GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY
    fam SM-FLD-COUNT {: fc:n :}
    fc 1 < IF E-SM-EMPTY throw THEN
-   fam fc SM-REQUIRE-READABLE
    fam SM-REQUIRE-UNGENERATED
-   fam  fam SM-FLD-START  fc  SM-EMIT ;
+   tok fam fc SM-REQUIRE-READABLE
+   tok fam  fam SM-FLD-START  fc  SM-EMIT ;
 
 ;package

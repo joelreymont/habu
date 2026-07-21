@@ -1072,6 +1072,12 @@ previous definitions
    14 15 STLR,
    done LBL, ;
 
+: BPROTWIDROOM ( -- )
+   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
+   14 15 LDAR,
+   9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
+   9 G-PUSH ;
+
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
 : BSWL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: wl wend wnext wcmp wmatch wf1 wf2 winl :}
@@ -1175,6 +1181,7 @@ previous definitions
    s" SEAL-FRIEND" ['] BSEALFRIEND FPRIM-L
    s" wide-mark" ['] BWIDEMARK FPRIM
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
+   s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" die"  ['] BDIE   FPRIM-L ;
 
 : EMIT-FS-PRIMS ( -- )
@@ -1652,9 +1659,11 @@ variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable
 variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
-variable LPDECLEVENT    variable LPSTRUCTMAKE   variable LPSTRUCTDECL   variable LPENUMDECL
+variable LPDECLTXN     variable LPGENDECL     variable LPDECLEVENT    variable LPSTRUCTMAKE
+variable LPSTRUCTDECL  variable LPENUMDECL
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
-variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL
+variable LPCOMBINATORS  variable LPXREF  variable LPGENDECLDICT
+variable LPGENDECLPROT  variable LPLAYOUTSEAL
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
 create ZBYTE 0 c,
 
@@ -1828,7 +1837,9 @@ create ZBYTE 0 c,
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-LOAD-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-LOAD-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-LOAD-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW ;
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW
+   PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-LOAD-ROW
+   PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-DECL-FILES ( -- )
    \ The shared declaration-event transaction loads first, then the STRUCTURE
@@ -1856,6 +1867,8 @@ create ZBYTE 0 c,
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
+   PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-LOAD-ROW
+   PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-LOAD-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-BASE-FILES ( -- )
@@ -1911,7 +1924,9 @@ create ZBYTE 0 c,
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PATH-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PATH-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PATH-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW ;
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW
+   PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PATH-ROW
+   PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PATH-ROW ;
 
 : PFX-PATH-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PATH-ROW
@@ -1935,6 +1950,8 @@ create ZBYTE 0 c,
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
+   PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PATH-ROW
+   PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PATH-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PATH-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PATH-ROW ;
 
@@ -2150,7 +2167,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPLAYOUTVALID  s" src/core/layout-valid.f" PFX-PROVIDE-ROW
    PFX-COMMON LPHOOK         s" src/core/check-hook.f"  PFX-PROVIDE-ROW
    PFX-COMMON LPCELLEFF      s" src/core/cell-effects.f" PFX-PROVIDE-ROW
-   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW ;
+   PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PROVIDE-ROW
@@ -2174,6 +2193,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
+   PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PROVIDE-ROW
+   PFX-COMMON LPGENDECLPROT  s" src/core/generated-declaration-protection.f" PFX-PROVIDE-ROW
    PFX-COMMON LPLAYOUTSEAL   s" src/core/layout-buffer-seal.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSCRIPTARGV   s" src/os/script-argv.f"   PFX-PROVIDE-ROW
    EMIT-SEAL-CAPTURE-TOKEN               \ watermark token at the true engine-prefix end
@@ -6163,13 +6184,14 @@ variable P2SK
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
-   LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !
+   LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
-   LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL ! ;
+   LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !
+   LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL ! ;
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !

@@ -2279,6 +2279,12 @@ SOURCE-INIT
    14 15 STLR,
    done LBL, ;
 
+: BPROTWIDROOM ( -- )
+   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
+   14 15 LDAR,
+   9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
+   9 G-PUSH ;
+
 : BSWL ( -- )
    LBL SWL-LOOP !
    LBL SWL-END !
@@ -2407,6 +2413,7 @@ SOURCE-INIT
    s" int-mark" ['] BINTMARK 1 GDEREF-F
    s" min-in-mark" ['] BMININMARK 2 GDEREF-F
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
+   s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;

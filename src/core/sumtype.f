@@ -956,8 +956,10 @@ variable TDP-TX
 \ cannot be probed for its binding, so the flag carries that fact).
 defer TDECL-EVAL-XT ( ptr u8 n -- )
 defer TDECL-PROT-WID-XT ( ptr u8 n -- )
+defer TDECL-TXN-XT ( [ -- ] -- )
 variable TDECL-EVAL-ARMED
 variable TDECL-PROT-WID-ARMED
+variable TDECL-TXN-ARMED
 
 $1000 constant TDGEN-CAP   \ derived-eq diagonal text is O(V^2); the C, guard still dies at the cap
 create TDGEN-BUF TDGEN-CAP allot
@@ -1403,8 +1405,10 @@ variable TDECL-I
    SUMTYPE-COLLECT 0= IF
       na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM-NOEND EXIT
    THEN
-   na nu TDECL-BUF TDECL-U @ CHECKER-DEFSUM
-   TDECL-CTOR-WORDS ;
+   na TDN-A !  nu TDN-U !
+   TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
+   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ CHECKER-DEFSUM TDECL-CTOR-WORDS ;]
+      TDECL-TXN-XT ;
 
 \ ENUM buffers the bare variant names up to ;ENUM (SUMTYPE's shape without an
 \ arity token or VARIANT keywords), then registers the whole block.
@@ -1426,8 +1430,10 @@ variable TDECL-I
       s" enum" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
       [: TDECL-ENUM-NOEND-BODY ;] TDECL-RUN EXIT
    THEN
-   na nu TDECL-BUF TDECL-U @ CHECKER-DEFENUM
-   TDECL-CTOR-WORDS ;
+   na TDN-A !  nu TDN-U !
+   TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
+   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ CHECKER-DEFENUM TDECL-CTOR-WORDS ;]
+      TDECL-TXN-XT ;
 
 \ PRODUCT buffers the `arity FIELD f t ..` body up to ;PRODUCT (SUMTYPE's shape),
 \ then registers the whole block and generates the PKG:MAKE/PKG:UNMAKE words
@@ -1450,8 +1456,10 @@ variable TDECL-I
       s" product" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
       [: TDECL-PRODUCT-NOEND-BODY ;] TDECL-RUN EXIT
    THEN
-   na nu TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT
-   TDECL-CTOR-WORDS ;
+   na TDN-A !  nu TDN-U !
+   TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
+   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ CHECKER-DEFPRODUCT TDECL-CTOR-WORDS ;]
+      TDECL-TXN-XT ;
 
 \ Public top-level surface of the type-family DSL: the block openers parse
 \ their own body tokens up to the ;NAME closer, so their cell effect is ( -- ).
@@ -1466,4 +1474,3 @@ PRIM: TYPEFAMILY PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: ENUM PRIM;
 PRIM: PRODUCT PRIM;
-

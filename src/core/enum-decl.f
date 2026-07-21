@@ -1,10 +1,7 @@
 \ enum-decl.f — the ENUM typed-declaration front end (package ENUM-DECL). This is
 \ the SECOND consumer of the shared declaration-event transaction
-\ (src/core/decl-event.f, package DECL-EVENT), binding to the SAME proven pattern
-\ the STRUCTURE front end proved (src/core/structure-decl.f): persist-unframed
-\ with an ED-MARK/ED-RESTORE registry snapshot around DECL-EVENT OPEN..PUBLISH/
-\ ROLLBACK, package-local ED-* names that never shadow globals, and the pre-hook
-\ registry reached only through named TRUSTED: forwarders. It owns ONLY the ENUM
+\ (src/core/decl-event.f, package DECL-EVENT), binding to the same atomic
+\ GENERATED-DECL coordinator used by STRUCTURE. It owns only the ENUM
 \ grammar loop and its reject dispatch; it holds NO declaration state (the events,
 \ the field rows, the variant registration, and the current-variant selector all
 \ live in the event module).
@@ -43,16 +40,13 @@
 \ variant-id), per the settled seam, until the sumvfields rename lands.
 \
 \ ---------------------------------------------------------------------------
-\ COMMIT / ROLLBACK and PARSE-ONLY SCOPE.
+\ TRANSACTION and PARSE-ONLY SCOPE.
 \ ---------------------------------------------------------------------------
-\ Composition is identical to structure-decl.f: a top-level ENUM runs at interpret
-\ time and persists UNFRAMED. The event stream + provisional field rows commit by
-\ DECL-EVENT:PUBLISH and retire by DECL-EVENT:ROLLBACK; the family row, its schema
-\ roots, its layout descriptor, the family/variant-name interns, and the variant
-\ rows are snapshotted at open (ED-MARK) and restored on reject (ED-RESTORE) —
-\ ED-RESTORE runs AFTER DECL-EVENT:ROLLBACK so the earlier (pre-family) string-pool
-\ high-water wins. This dot is PARSE only: it publishes the family + variant +
-\ field metadata and drives no constructor generation. The per-variant checked
+\ The checker, metadata, event, and constructor-protection participants retain
+\ one shared savepoint until the complete declaration has validated. A reject
+\ restores every owned registry in reverse participant order. This front end is
+\ parse only: it publishes family, variant, and field metadata and drives no
+\ constructor generation. The per-variant checked
 \ constructor package (MESSAGE:QUIT, docs §2.3) is enum-generate-named's later
 \ stage; the compact ENUM's constructor words the legacy sumtype.f definer emits
 \ today are NOT reproduced here, because this front end is registration-only.
@@ -143,20 +137,6 @@ TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;   \ field-record layout flag: none
 TRUSTED: TK-SUM-K ( -- n ) TK-SUM ;            \ full-mode named-variant sum kind
 TRUSTED: TK-ENUM-K ( -- n ) TK-ENUM ;          \ compact-mode payloadless enum kind
-
-\ --- registry rollback snapshot. The seven cursors a declaration can grow that
-\ the event module does not own (family, string pool, param pool, variant pool,
-\ layout pool, schema node pool, schema-root pool). Straight cell reads/writes:
-\ no locals, no control, so the trusted boundary stays minimal (docs/forth.md
-\ "Keep TRUSTED: bodies syntax-simple").
-variable M-TFAM   variable M-STR   variable M-PK   variable M-SUMV
-variable M-LAY    variable M-SCH   variable M-ROOT
-TRUSTED: ED-MARK ( -- )
-   TFAM-N @ M-TFAM !   TF-STR-U @ M-STR !   TF-PK-N @ M-PK !
-   SUMV-N @ M-SUMV !   LAY-N @ M-LAY !   SCH-N @ M-SCH !   SCH-ROOT-N @ M-ROOT ! ;
-TRUSTED: ED-RESTORE ( -- )
-   M-TFAM @ TFAM-N !   M-STR @ TF-STR-U !   M-PK @ TF-PK-N !
-   M-SUMV @ SUMV-N !   M-LAY @ LAY-N !   M-SCH @ SCH-N !   M-ROOT @ SCH-ROOT-N ! ;
 
 \ --- one-token pushback. The token bytes stay valid across a line refill (the
 \ engine buffers the input source), so the pushback holds the raw span; storing a
@@ -377,7 +357,7 @@ ED-RESET
    SUMV-N@ VBASE !
    TYPE-FIELD:COUNT FLDBASE !
    0 NVAR !   0 NFLD !   0 MAXSLOTS !
-   DECL-EVENT:OPEN TOK !
+   DECL-EVENT:CURRENT TOK !
    TOK @ FAM @ DECL-EVENT:DECL TOK ! ;
 : REGISTER-FULL ( ptr u8 n n -- )          \ ( na nu arity -- ) TK-SUM family, arity header event
    {: na:ptr nu:n ar:n :}
@@ -393,12 +373,11 @@ ED-RESET
    0 TK-ENUM-K FAM-DECL FAM !
    OPEN-TX ;
 
-: ED-CLOSE ( -- )                          \ bind variant + field ranges + width, then publish
+: ED-CLOSE ( -- )                          \ bind variant + field ranges + width
    NVAR @ 0= IF E-SYNTAX throw THEN         \ an enum needs at least one variant
    FAM @ VBASE @ NVAR @ FAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
-   FAM @ MAXSLOTS @ FAM-SLOTS!
-   TOK @ DECL-EVENT:PUBLISH ;
+   FAM @ MAXSLOTS @ FAM-SLOTS! ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
    ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN
@@ -436,12 +415,6 @@ public
 \ One provisional transaction: commit by persisting, roll the family + schema +
 \ layout + variant + event stream back to a byte-identical registry on any reject.
 : ED-RUN ( -- )
-   ED-RESET
-   ED-MARK
-   [: DRIVE ;] catch {: rc:n :}
-   rc 0= IF EXIT THEN
-   TOK @ 0 <> IF TOK @ DECL-EVENT:ROLLBACK THEN
-   ED-RESTORE
-   rc throw ;
+   [: ED-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
 ;package

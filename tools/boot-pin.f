@@ -139,6 +139,8 @@ variable BP-SET
    s" src/core/check-hook.f" q execute
    s" src/core/cell-effects.f" q execute
    s" src/core/pointer-storage-effects.f" q execute
+   s" src/core/declaration-transaction.f" q execute
+   s" src/core/generated-declaration.f" q execute
    s" src/core/structures.f" q execute
    s" src/core/roles.f" q execute
    s" src/core/bytes.f" q execute
@@ -152,6 +154,8 @@ variable BP-SET
    s" src/core/type-family-sha.f" q execute
    s" src/core/combinators.f" q execute
    s" src/habu/xref.f" q execute
+   s" src/core/generated-declaration-dictionary.f" q execute
+   s" src/core/generated-declaration-protection.f" q execute
    s" src/core/layout-buffer-seal.f" q execute
    s" src/core/lower-cert-seal.f" q execute
    s" src/os/script-argv.f" q execute

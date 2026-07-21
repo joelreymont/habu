@@ -26,21 +26,17 @@
 \  - Field name-gate (duplicate / reserved / case) is NOT here: the field record
 \    raises those and this module surfaces the throw unchanged — no second gate.
 \
-\ Transaction shape mirrors the field record's strict-LIFO frames: nested OPEN
-\ keeps events + field rows provisional; only the OUTER PUBLISH advances the
-\ published high-water and outer-commits the field record. Rollback (nested or
-\ outer) retires every watermark THIS module owns — event-arena high-water,
-\ field ordinal, variant ordinal, current-variant selector — and delegates the
-\ field-registry cursor to the field record's own PF-ROLLBACK. The family /
-\ variant / schema / layout registry cursors are REG-PROTECT-sealed against
-\ post-hook writes (type-family.f), so their rollback rides the enclosing
-\ checker scope/candidate frame (TFAM-ROLLBACK-SAVE/RESTORE), exactly as the
-\ current declaration path does (sumtype.f TDECL-MARK/RESTORE): the parse driver
-\ opens that frame around OPEN…PUBLISH/ROLLBACK. See the report/contract note.
+\ Transaction shape mirrors the field record's strict last-in, first-out frames.
+\ GENERATED-DECL opens this participant at every coordinator snapshot, keeps
+\ events and field rows provisional through body validation, preflights
+\ their contiguity, then publishes both reversible watermarks. Rollback restores
+\ the event arena, published event high-water, field ordinal, variant ordinal,
+\ current-variant selector, and the field registry. The checker participant owns
+\ the enclosing family, variant, schema, and layout registry savepoint.
 \
 \ Loaded AFTER the checker hook (the sole STRUCTURE/ENUM parser loads later
 \ still); state is process-local and re-seeded at load, like top-row.f, so
-\ snapshot re-arm rides the later snapshot/AOT dot.
+\ snapshot re-arm rides the later snapshot and ahead-of-time compilation work.
 \
 \ ---------------------------------------------------------------------------
 \ FIELD-RECORD / VARIANT-REGISTRY INTEGRATION SEAM (reconcile at merge).
@@ -57,7 +53,8 @@
 \ contract (named exactly as the field record's dot implies):
 \   PF-BEGIN         ( -- tok )                             begin a field transaction
 \   PF-ADD           ( tok fam var na nu sch slot cells boff bytes al flags -- tok )
-\   PF-COMMIT        ( tok -- )                             commit (outer commit publishes)
+\   PF-PUBLISH       ( tok -- )                             publish while retaining rollback frame
+\   PF-FINALIZE      ( tok -- )                             release a published frame
 \   PF-ROLLBACK      ( tok -- )                             retire provisional field rows
 \   TYPE-FIELD:COUNT ( -- n )                               committed field high-water
 \   SUMV-ADD         ( fam na nu tag ss sc pc -- vid )      register one variant (dup/canon gate)
@@ -93,6 +90,8 @@ package DECL-EVENT
 7162 constant E-DEV-STATE       \ field-record publication broke the field-id contiguity invariant
 7163 constant E-DEV-DUP-POLICY  \ a second POLICY clause in one declaration
 7164 constant E-DEV-DUP-DERIVE  \ the same DERIVE feature recorded twice in one declaration
+7172 constant E-DEV-FIELD-SCOPE \ provisional field is outside the token's declaration/family
+7173 constant E-DEV-FAMILY-SCOPE \ token does not own the requested declaration family
 
 \ The shared malformed-arity code mirrors sumtype.f.  The bound itself comes
 \ from type-family.f's canonical declaration alphabet through the normal
@@ -107,9 +106,12 @@ package DECL-EVENT
 \ ---------------------------------------------------------------------------
 TRUSTED: DEV-FLD-BEGIN ( -- n ) PF-BEGIN ;
 TRUSTED: DEV-FLD-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
-TRUSTED: DEV-FLD-COMMIT ( n -- ) PF-COMMIT ;
+TRUSTED: DEV-FLD-PUBLISH ( n -- ) PF-PUBLISH ;
+TRUSTED: DEV-FLD-FINALIZE ( n -- ) PF-FINALIZE ;
 TRUSTED: DEV-FLD-ROLLBACK ( n -- ) PF-ROLLBACK ;
 TRUSTED: DEV-FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
+TRUSTED: DEV-FLD-PROVISIONAL-COUNT ( -- n ) PF-N @ ;
+TRUSTED: DEV-FLD-TX-SCHEMA-FOR ( n n n -- n ) TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
 TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
 
 \ ---------------------------------------------------------------------------
@@ -183,7 +185,10 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
 3 cells constant DEVTX.CURVAR-OFF   \ DEV-CUR-VAR at open (current-variant watermark)
 4 cells constant DEVTX.FLDTOK-OFF   \ field-record transaction token
 5 cells constant DEVTX.TOK-OFF      \ this frame's serial token
-6 cells constant DEV-TX-REC
+6 cells constant DEVTX.PUBN-OFF     \ published event high-water at open
+7 cells constant DEVTX.STATE-OFF    \ open / reversibly published
+8 cells constant DEVTX.FAM-OFF      \ family owned by this declaration frame
+9 cells constant DEV-TX-REC
 
 : DEVTX.EVN ( ptr a -- ptr a ) DEVTX.EVN-OFF + ;
 : DEVTX.FLDORD ( ptr a -- ptr a ) DEVTX.FLDORD-OFF + ;
@@ -191,6 +196,9 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
 : DEVTX.CURVAR ( ptr a -- ptr a ) DEVTX.CURVAR-OFF + ;
 : DEVTX.FLDTOK ( ptr a -- ptr a ) DEVTX.FLDTOK-OFF + ;
 : DEVTX.TOK ( ptr a -- ptr a ) DEVTX.TOK-OFF + ;
+: DEVTX.PUBN ( ptr a -- ptr a ) DEVTX.PUBN-OFF + ;
+: DEVTX.STATE ( ptr a -- ptr a ) DEVTX.STATE-OFF + ;
+: DEVTX.FAM ( ptr a -- ptr a ) DEVTX.FAM-OFF + ;
 
 4 constant DEV-TX-CAP-INIT
 variable DEV-TX-CAP-V   DEV-TX-CAP-INIT DEV-TX-CAP-V !
@@ -198,6 +206,9 @@ create DEV-TX-BOOT   DEV-TX-CAP-INIT DEV-TX-REC * allot
 variable DEV-TX-P    DEV-TX-BOOT DEV-TX-P !
 variable DEV-TX-DEPTH
 variable DEV-TX-SERIAL
+
+0 constant DEV-TX-OPEN
+1 constant DEV-TX-PUBLISHED
 
 : DEV-TX-BASE ( -- ptr a ) DEV-TX-P @ ;
 : DEV-TX-GROW ( -- )
@@ -231,6 +242,9 @@ variable DEV-TX-SERIAL
    DEV-CUR-VAR @ r DEVTX.CURVAR !
    fldtok r DEVTX.FLDTOK !
    tok r DEVTX.TOK !
+   DEV-PUB-N @ r DEVTX.PUBN !
+   DEV-TX-OPEN r DEVTX.STATE !
+   DEV-NO-VARIANT r DEVTX.FAM !
    DEV-TX-DEPTH @ 1 + DEV-TX-DEPTH !
    tok ;
 
@@ -238,7 +252,9 @@ variable DEV-TX-SERIAL
 \ (this frame's [start, DEV-N) range; one declaration per transaction frame).
 : DEV-CUR-START ( -- n ) DEV-TX-TOP DEVTX.EVN @ ;
 : DEV-PROV-KIND@ ( n -- n ) DEV-ROW DEV.KIND @ ;
+: DEV-PROV-FAM@ ( n -- n ) DEV-ROW DEV.FAM @ ;
 : DEV-PROV-VAR@ ( n -- n ) DEV-ROW DEV.VAR @ ;
+: DEV-PROV-FLD@ ( n -- n ) DEV-ROW DEV.FLD @ ;
 : DEV-CUR-HAS-KIND? ( n -- bool ) {: k:n :}
    0 DEV-FOUND !
    DEV-CUR-START DEV-I !
@@ -259,8 +275,29 @@ variable DEV-TX-SERIAL
 \ --- declaration open + header clauses.
 : DEV-DECL ( n n -- n ) {: tok:n fam:n :}          \ open one declaration
    tok DEV-TX-REQUIRE
+   DEV-TX-TOP DEVTX.FAM @ DEV-NO-VARIANT <> IF E-DEV-STATE throw THEN
+   fam DEV-TX-TOP DEVTX.FAM !
    DEV-K-DECL fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT
    tok ;
+
+: DEV-FIELD-MATCH? ( n n n -- bool ) {: idx:n fam:n fld:n :}
+   idx DEV-PROV-KIND@ DEV-K-FIELD =
+   idx DEV-PROV-FAM@ fam = and
+   idx DEV-PROV-FLD@ fld = and ;
+
+: DEV-CUR-FIELD? ( n n -- bool ) {: fam:n fld:n :}
+   DEV-CUR-START
+   BEGIN dup DEV-N @ < WHILE
+      dup fam fld DEV-FIELD-MATCH? IF drop 0 0= EXIT THEN
+      1 +
+   REPEAT
+   drop 0 0= 0= ;
+
+: DEV-FIELD-SCHEMA@ ( n n n -- n ) {: tok:n fam:n fld:n :}
+   tok DEV-TX-REQUIRE
+   DEV-TX-TOP DEVTX.FAM @ fam <> IF E-DEV-FAMILY-SCOPE throw THEN
+   fam fld DEV-CUR-FIELD? 0= IF E-DEV-FIELD-SCOPE throw THEN
+   DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-SCHEMA-FOR ;
 
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}   \ header: arity value (shared bound)
    tok DEV-TX-REQUIRE
@@ -313,19 +350,36 @@ variable DEV-TX-SERIAL
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD !
    tok ;
 
-\ atomic publication boundary. Nested PUBLISH just closes its field-tx frame and
-\ leaves events provisional; the OUTER PUBLISH outer-commits the field record and,
-\ ONLY THEN, advances the published high-water — publishing every event of the
-\ whole nested tree in one step. The contiguity assertion turns "field rows commit
-\ as [base, base+ordinal)" from an assumption into a checked invariant.
-: DEV-PUBLISH ( n -- ) {: tok:n :}
+\ PREPARE proves the field rows are exactly the contiguous provisional range the
+\ event stream names.  PUBLISH then has no remaining rejecting condition: nested
+\ publication closes one field frame, while the outer publication advances both
+\ published high-water marks at the global transaction finalization point.
+: DEV-PREPARE ( n -- ) {: tok:n :}
    tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.FLDTOK @ DEV-FLD-COMMIT
-   DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
-   DEV-TX-DEPTH @ 0= IF
-      DEV-FLD-COUNT DEV-BASE-FLD @ DEV-FLD-ORD @ + <> IF E-DEV-STATE throw THEN
+   DEV-TX-TOP DEVTX.STATE @ DEV-TX-OPEN <> IF E-DEV-TX throw THEN
+   DEV-N @ DEV-TX-TOP DEVTX.EVN @ = IF EXIT THEN
+   DEV-FLD-PROVISIONAL-COUNT DEV-BASE-FLD @ DEV-FLD-ORD @ + <>
+      IF E-DEV-STATE throw THEN ;
+
+: DEV-COMMIT ( n -- ) {: tok:n :}
+   tok DEV-TX-REQUIRE
+   DEV-TX-TOP DEVTX.STATE @ DEV-TX-OPEN <> IF E-DEV-TX throw THEN
+   DEV-N @ DEV-TX-TOP DEVTX.EVN @ <> {: changed:bool :}
+   DEV-TX-TOP DEVTX.FLDTOK @ DEV-FLD-PUBLISH
+   DEV-TX-DEPTH @ 1 = changed and IF
       DEV-N @ DEV-PUB-N !
-   THEN ;
+   THEN
+   DEV-TX-PUBLISHED DEV-TX-TOP DEVTX.STATE ! ;
+
+: DEV-FINALIZE ( n -- ) {: tok:n :}
+   tok DEV-TX-REQUIRE
+   DEV-TX-TOP DEVTX.STATE @ DEV-TX-PUBLISHED <> IF E-DEV-TX throw THEN
+   DEV-TX-TOP DEVTX.FLDTOK @ DEV-FLD-FINALIZE
+   DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH ! ;
+
+: DEV-PUBLISH ( n -- ) {: tok:n :}
+   tok DEV-COMMIT
+   tok DEV-FINALIZE ;
 
 \ roll back every watermark this frame owns and delegate the field-registry
 \ cursor to the field record. DEV-PUB-N is never touched: nothing is published
@@ -340,6 +394,7 @@ variable DEV-TX-SERIAL
    r DEVTX.FLDORD @ DEV-FLD-ORD !
    r DEVTX.VARORD @ DEV-VAR-ORD !
    r DEVTX.CURVAR @ DEV-CUR-VAR !
+   r DEVTX.PUBN @ DEV-PUB-N !
    DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH ! ;
 
 : DEV-RESET ( -- )                \ base state; re-seeded at load (process-local)
@@ -387,11 +442,70 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
       DEV-I @ 1 + DEV-I !
    REPEAT ;
 
+\ GENERATED-DECL adapter.  The baseline stack is indexed by the coordinator's
+\ growable nesting depth.  Saving the baseline before DEV-OPEN makes rollback
+\ safe both when OPEN throws before mutation and when it completes a frame.
+4 constant DEV-PART-CAP-INIT
+create DEV-PART-BASE-BOOT DEV-PART-CAP-INIT cells allot
+PTR-VARIABLE DEV-PART-BASE-P   DEV-PART-BASE-BOOT DEV-PART-BASE-P !
+variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
+
+: DEV-PART-BASE ( -- ptr a ) DEV-PART-BASE-P @ ;
+
+: DEV-PART-GROW ( -- )
+   DEV-PART-CAP @ 2 * {: nc:n :}
+   DEV-PART-BASE-P DEV-PART-CAP @ cells nc cells DEV-REG-GROW1
+   nc DEV-PART-CAP ! ;
+
+: DEV-PART-ENSURE ( -- )
+   GENERATED-DECL:DEPTH DEV-PART-CAP @ <= IF EXIT THEN
+   DEV-PART-GROW ;
+
+: DEV-PART-SLOT ( -- ptr a )
+   GENERATED-DECL:DEPTH 1 - cells DEV-PART-BASE + ;
+
+: DEV-PART-SNAPSHOT ( n -- n )
+   DEV-PART-ENSURE
+   DEV-TX-DEPTH @ DEV-PART-SLOT !
+   DEV-OPEN drop ;
+
+: DEV-PART-OPEN? ( -- bool )
+   GENERATED-DECL:DEPTH 0= IF 0 0= 0= EXIT THEN
+   DEV-TX-DEPTH @ DEV-PART-SLOT @ > ;
+
+: DEV-PART-TOKEN ( -- n )
+   DEV-TX-TOP DEVTX.TOK @ ;
+
+: DEV-PART-PREPARE ( n -- n )
+   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-PREPARE THEN ;
+
+: DEV-PART-COMMIT ( n -- n )
+   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-COMMIT THEN ;
+
+: DEV-PART-ROLLBACK ( n -- n )
+   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-ROLLBACK THEN ;
+
+: DEV-PART-FINALIZE ( n -- n )
+   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-FINALIZE THEN ;
+
+2 constant DEV-PARTICIPANT
+
+: DEV-PART-INSTALL ( -- )
+   DEV-PARTICIPANT GENERATED-DECL:ORDER-EVENT
+   [: DEV-PART-SNAPSHOT ;]
+   [: DEV-PART-PREPARE ;]
+   [: DEV-PART-COMMIT ;]
+   [: DEV-PART-ROLLBACK ;]
+   [: DEV-PART-FINALIZE ;]
+   GENERATED-DECL-OWNER:REGISTER ;
+
 \ ---------------------------------------------------------------------------
 \ public API: the transaction both front ends drive + read-only reflection.
-\ Phase constraints: OPEN starts a frame and returns its token; DECL/ARITY/
+\ Phase constraints: CURRENT returns the frame opened by the coordinator
+\ snapshot and rejects outside an active coordinator; OPEN remains the explicit
+\ standalone interface. DECL/ARITY/
 \ POLICY/DERIVE/VARIANT/END-VARIANT/FIELD are legal only between OPEN and its
-\ PUBLISH or ROLLBACK, each takes and returns the SAME token, and each throws
+\ PUBLISH or ROLLBACK, each takes and returns the same token, and each throws
 \ E-DEV-TX if the token is not the innermost open frame. PUBLISH / ROLLBACK
 \ consume the token and close the frame. Reflection + IDENTITY read only
 \ PUBLISHED events and are legal any time.
@@ -399,6 +513,7 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
 public
 
 : OPEN ( -- n ) DEV-OPEN ;
+: CURRENT ( -- n ) DEV-PART-OPEN? 0= IF E-DEV-TX throw THEN DEV-PART-TOKEN ;
 : DECL ( n n -- n ) DEV-DECL ;
 : ARITY ( n n n -- n ) DEV-ARITY ;
 : POLICY ( n n n -- n ) DEV-POLICY ;
@@ -406,7 +521,9 @@ public
 : VARIANT ( n n ptr u8 n -- n ) DEV-VARIANT ;
 : END-VARIANT ( n n -- n ) DEV-END-VARIANT ;
 : FIELD ( n n ptr u8 n n n n n n n n -- n ) DEV-FIELD ;
+: FIELD-SCHEMA@ ( n n n -- n ) DEV-FIELD-SCHEMA@ ;
 : PUBLISH ( n -- ) DEV-PUBLISH ;
+: PREPARE ( n -- ) DEV-PREPARE ;
 : ROLLBACK ( n -- ) DEV-ROLLBACK ;
 : RESET ( -- ) DEV-RESET ;
 
@@ -414,6 +531,7 @@ public
 : NO-VARIANT ( -- n ) DEV-NO-VARIANT ;
 
 : COUNT ( -- n ) DEV-PUB-N@ ;
+: DEPTH ( -- n ) DEV-TX-DEPTH @ ;
 : KIND@ ( n -- n ) DEV-KIND@ ;
 : FAMILY@ ( n -- n ) DEV-FAM@ ;
 : VAR@ ( n -- n ) DEV-VAR@ ;
@@ -426,5 +544,8 @@ public
 : VARIANT-END? ( n -- bool ) DEV-VARIANT-END? ;
 : FIELD? ( n -- bool ) DEV-FIELD? ;
 : IDENTITY ( -- n ) DEV-IDENTITY ;
+
+private
+DEV-PART-INSTALL
 
 ;package

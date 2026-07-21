@@ -74,6 +74,9 @@ TOK @ FP1 @ DECL-EVENT:DECL TOK !
 TOK @ FP1 @ 2 DECL-EVENT:ARITY TOK !
 TOK @ FP1 @ s" x" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
 DECL-EVENT:COUNT 0 T=                                  \ nothing published yet
+TOK @ FP1 @ P-PF @ DECL-EVENT:FIELD-SCHEMA@ SCHROOT @ T= \ exact live token/family/row may read provisional schema
+TOK @ FE2 @ P-PF @ ' DECL-EVENT:FIELD-SCHEMA@ catch TC ! drop drop drop
+TC @ 7173 T=                                            \ foreign family cannot use the token
 TOK @ DECL-EVENT:PUBLISH
 DECL-EVENT:COUNT 3 T=                                  \ DECL, ARITY, FIELD published atomically
 0 DECL-EVENT:DECL? T-TRUE
@@ -82,6 +85,10 @@ DECL-EVENT:COUNT 3 T=                                  \ DECL, ARITY, FIELD publ
 2 DECL-EVENT:FAMILY@ FP1 @ T=
 2 DECL-EVENT:VAR@ DECL-EVENT:NO-VARIANT T=            \ structure field: no variant
 TYPE-FIELD:COUNT P-PF @ 1 + T=                         \ exactly one field committed
+TOK @ FP1 @ P-PF @ ' DECL-EVENT:FIELD-SCHEMA@ catch TC ! drop drop drop
+TC @ 7161 T=                                            \ consumed token cannot read the now-committed row
+' DECL-EVENT:CURRENT catch TC !
+TC @ 7161 T=                                            \ CURRENT is coordinator-owned, never a lazy opener
 
 \ ---------------------------------------------------------------------------
 \ 2. Rollback restores EVERY watermark. Inside a checker candidate, open a sum

@@ -269,6 +269,8 @@ variable SCH-RBF-DEPTH   0 SCH-RBF-DEPTH !
    SCH-RBF-CUR {: r:ptr :}
    r SCHRB.N @ SCH-N !
    r SCHRB.ROOTN @ SCH-ROOT-N ! ;
+: SCHEMA-ROLLBACK-FINALIZE ( -- )
+   SCH-RBF-DEPTH @ 1 - SCH-RBF-DEPTH ! ;
 
 \ SCHEMA-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.

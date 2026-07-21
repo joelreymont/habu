@@ -860,6 +860,7 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
 : PF-NAME$ ( n -- ptr u8 n ) {: id:n :}
    id PF-REC@ {: r:ptr :}  r PF.NAME-OFF @ r PF.NAME-U @ TF-OFF$ ;
 : PF-SCH@ ( n -- n ) PF-REC@ PF.SCH @ ;
+: PF-PENDING-SCH@ ( n -- n ) PF-ROW PF.SCH @ ;
 : PF-SLOT@ ( n -- n ) PF-REC@ PF.SLOT @ ;
 : PF-CELLS@ ( n -- n ) PF-REC@ PF.CELLS @ ;
 : PF-BYTE-OFF@ ( n -- n ) PF-REC@ PF.BYTE-OFF @ ;
@@ -1003,7 +1004,7 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    fam TFAM-FLD-START@ {: fs:n :}
    0
    0 BEGIN dup fam TFAM-FLD-COUNT@ < WHILE
-      fs over + PF-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH
+      fs over + PF-PENDING-SCH@ SCHEMA-ROOT@ term SCH-NODE-IWIDTH
       rot + swap
       1 +
    REPEAT drop ;
@@ -1042,24 +1043,32 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
 0 cells constant PFTX.PFN-OFF
 1 cells constant PFTX.STRU-OFF
 2 cells constant PFTX.TOK-OFF
-3 cells constant PF-TX-REC
+3 cells constant PFTX.COMMITN-OFF
+4 cells constant PFTX.STATE-OFF
+5 cells constant PF-TX-REC
 CELL constant PF-TX-REC-ALIGN
 0 constant PF-TX-REC-PTR-MASK
 
 : PFTX.PFN ( ptr a -- ptr a ) PFTX.PFN-OFF + ;
 : PFTX.STRU ( ptr a -- ptr a ) PFTX.STRU-OFF + ;
 : PFTX.TOK ( ptr a -- ptr a ) PFTX.TOK-OFF + ;
+: PFTX.COMMITN ( ptr a -- ptr a ) PFTX.COMMITN-OFF + ;
+: PFTX.STATE ( ptr a -- ptr a ) PFTX.STATE-OFF + ;
 
 PFTX.PFN-OFF 0 cells TF-LAYOUT=
 PFTX.STRU-OFF 1 cells TF-LAYOUT=
 PFTX.TOK-OFF 2 cells TF-LAYOUT=
-PF-TX-REC 3 cells TF-LAYOUT=
+PFTX.COMMITN-OFF 3 cells TF-LAYOUT=
+PFTX.STATE-OFF 4 cells TF-LAYOUT=
+PF-TX-REC 5 cells TF-LAYOUT=
 PF-TX-REC-ALIGN CELL TF-LAYOUT=
 PF-TX-REC PF-TX-REC-ALIGN mod 0 TF-LAYOUT=
 PF-TX-REC-PTR-MASK 0 TF-LAYOUT=
 0 PFTX.PFN PFTX.PFN-OFF TF-LAYOUT=
 0 PFTX.STRU PFTX.STRU-OFF TF-LAYOUT=
 0 PFTX.TOK PFTX.TOK-OFF TF-LAYOUT=
+0 PFTX.COMMITN PFTX.COMMITN-OFF TF-LAYOUT=
+0 PFTX.STATE PFTX.STATE-OFF TF-LAYOUT=
 
 4 constant PF-TX-CAP-INIT
 variable PF-TX-CAP-V   PF-TX-CAP-INIT PF-TX-CAP-V !   REG-PROTECT
@@ -1067,6 +1076,9 @@ create PF-TX-BOOT   PF-TX-CAP-INIT PF-TX-REC * allot   REG-PROTECT
 variable PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
 variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
 variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
+
+0 constant PF-TX-OPEN
+1 constant PF-TX-PUBLISHED
 
 : PF-TX-BASE ( -- ptr a ) PF-TX-P @ ;
 : PF-TX-GROW ( -- )
@@ -1089,13 +1101,25 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
    PF-TX-DEPTH @ PF-TX-AT {: r:ptr :}
    PF-N @ r PFTX.PFN !
    TF-STR-U @ r PFTX.STRU !
+   PF-COMMIT-N @ r PFTX.COMMITN !
+   PF-TX-OPEN r PFTX.STATE !
    tok r PFTX.TOK !
    PF-TX-DEPTH @ 1 + PF-TX-DEPTH !
    tok ;
-: PF-COMMIT ( n -- ) {: tx:n :}
+: PF-PUBLISH ( n -- ) {: tx:n :}
    tx PF-TX-REQUIRE
-   PF-TX-DEPTH @ 1 - PF-TX-DEPTH !
-   PF-TX-DEPTH @ 0= IF PF-N @ PF-COMMIT-N ! THEN ;
+   PF-TX-TOP PFTX.STATE @ PF-TX-OPEN <> IF E-PF-TX throw THEN
+   PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N ! THEN
+   PF-TX-PUBLISHED PF-TX-TOP PFTX.STATE ! ;
+: PF-RELEASE ( -- )
+   PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
+: PF-FINALIZE ( n -- ) {: tx:n :}
+   tx PF-TX-REQUIRE
+   PF-TX-TOP PFTX.STATE @ PF-TX-PUBLISHED <> IF E-PF-TX throw THEN
+   PF-RELEASE ;
+: PF-COMMIT ( n -- ) {: tx:n :}
+   tx PF-PUBLISH
+   tx PF-FINALIZE ;
 : PF-ROLLBACK ( n -- ) {: tx:n :}
    tx PF-TX-REQUIRE
    PF-TX-TOP {: r:ptr :}
@@ -1103,7 +1127,20 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
    keep PF-N @ PF-SCRUB              \ scrub the provisional rows this rollback retires
    keep PF-N !
    r PFTX.STRU @ TF-STR-U !
+   r PFTX.COMMITN @ PF-COMMIT-N !
    PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
+
+\ The field owner is the only authority that can read a provisional row.  The
+\ caller must present the exact live top transaction token, the row must have
+\ been added by that frame, and its family must match.  DECL-EVENT wraps this
+\ sealed owner seam with its own declaration token and event-range proof.
+: PF-TX-SCHEMA-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
+   tx PF-TX-REQUIRE
+   id PF-TX-TOP PFTX.PFN @ < IF E-PF-ID throw THEN
+   id PF-N @ >= IF E-PF-ID throw THEN
+   id PF-ROW {: r:ptr :}
+   r PF.FAM @ fam <> IF E-PF-OWNER throw THEN
+   r PF.SCH @ ;
 
 \ ADD validation. Field rows carry explicit logical-cell and memory-layout
 \ metadata under every registered family policy; no policy implies CELL-sized
@@ -1385,11 +1422,23 @@ TFAM-SCH-ROW-ARITY-INSTALL
    id 1 + PF-N !
    tx ;
 
+package TYPE-FIELD-OWNER
+
+public
+
+: TX-SCHEMA-FOR ( n n n -- n ) PF-TX-SCHEMA-FOR ;
+
+private
+get-current prot-wid-add
+
+;package
+
 package TYPE-FIELD
 
 public
 
 : COUNT ( -- n ) PF-N@ ;
+: TX-DEPTH ( -- n ) PF-TX-DEPTH @ ;
 : NO-VARIANT ( -- n ) PF-NO-VARIANT ;
 : FIND ( n n ptr u8 n -- n bool ) PF-FIND ;
 : EACH ( n n n -- n bool ) PF-EACH ;
@@ -1604,7 +1653,9 @@ TFAM-RESET
 3 cells constant TFRB.SUMVN-OFF
 4 cells constant TFRB.PFN-OFF
 5 cells constant TFRB.LAYN-OFF
-6 cells constant TF-RBF-REC
+6 cells constant TFRB.PFCOMMITN-OFF
+7 cells constant TFRB.PFTXDEPTH-OFF
+8 cells constant TF-RBF-REC
 CELL constant TF-RBF-REC-ALIGN
 0 constant TF-RBF-REC-PTR-MASK
 
@@ -1614,6 +1665,8 @@ CELL constant TF-RBF-REC-ALIGN
 : TFRB.SUMVN ( ptr a -- ptr a ) TFRB.SUMVN-OFF + ;
 : TFRB.PFN ( ptr a -- ptr a ) TFRB.PFN-OFF + ;
 : TFRB.LAYN ( ptr a -- ptr a ) TFRB.LAYN-OFF + ;
+: TFRB.PFCOMMITN ( ptr a -- ptr a ) TFRB.PFCOMMITN-OFF + ;
+: TFRB.PFTXDEPTH ( ptr a -- ptr a ) TFRB.PFTXDEPTH-OFF + ;
 
 TFRB.TFAMN-OFF 0 cells TF-LAYOUT=
 TFRB.STRU-OFF 1 cells TF-LAYOUT=
@@ -1621,7 +1674,9 @@ TFRB.PKN-OFF 2 cells TF-LAYOUT=
 TFRB.SUMVN-OFF 3 cells TF-LAYOUT=
 TFRB.PFN-OFF 4 cells TF-LAYOUT=
 TFRB.LAYN-OFF 5 cells TF-LAYOUT=
-TF-RBF-REC 6 cells TF-LAYOUT=
+TFRB.PFCOMMITN-OFF 6 cells TF-LAYOUT=
+TFRB.PFTXDEPTH-OFF 7 cells TF-LAYOUT=
+TF-RBF-REC 8 cells TF-LAYOUT=
 TF-RBF-REC-ALIGN CELL TF-LAYOUT=
 TF-RBF-REC TF-RBF-REC-ALIGN mod 0 TF-LAYOUT=
 TF-RBF-REC-PTR-MASK 0 TF-LAYOUT=
@@ -1631,6 +1686,8 @@ TF-RBF-REC-PTR-MASK 0 TF-LAYOUT=
 0 TFRB.SUMVN TFRB.SUMVN-OFF TF-LAYOUT=
 0 TFRB.PFN TFRB.PFN-OFF TF-LAYOUT=
 0 TFRB.LAYN TFRB.LAYN-OFF TF-LAYOUT=
+0 TFRB.PFCOMMITN TFRB.PFCOMMITN-OFF TF-LAYOUT=
+0 TFRB.PFTXDEPTH TFRB.PFTXDEPTH-OFF TF-LAYOUT=
 
 16 constant TF-RBF-CAP-INIT
 variable TF-RBF-CAP-V   TF-RBF-CAP-INIT TF-RBF-CAP-V !
@@ -1647,9 +1704,14 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    TF-RBF-DEPTH @ TF-RBF-CAP-V @ < IF exit THEN
    TF-RBF-GROW ;
 : TF-RBF-CUR ( -- ptr a ) TF-RBF-DEPTH @ TF-RBF-REC * TF-RBF-BASE + ;
+: TF-RBF-TOP ( -- ptr a )
+   TF-RBF-DEPTH @ 0= IF E-PF-TX throw THEN
+   TF-RBF-DEPTH @ 1 - TF-RBF-REC * TF-RBF-BASE + ;
+
+: TF-RBF-REQUIRE-PF-DEPTH ( ptr a -- )
+   TFRB.PFTXDEPTH @ PF-TX-DEPTH @ <> IF E-PF-TX throw THEN ;
 
 : TFAM-ROLLBACK-SAVE ( -- )
-   PF-TX-DEPTH @ IF s" tfam: rollback frame inside field transaction" 76 die THEN
    TF-RBF-ENSURE
    TF-RBF-CUR {: r:ptr :}
    TFAM-N @ r TFRB.TFAMN !
@@ -1658,17 +1720,24 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    SUMV-N @ r TFRB.SUMVN !
    PF-N @ r TFRB.PFN !
    LAY-N @ r TFRB.LAYN !
+   PF-COMMIT-N @ r TFRB.PFCOMMITN !
+   PF-TX-DEPTH @ r TFRB.PFTXDEPTH !
    TF-RBF-DEPTH @ 1 + TF-RBF-DEPTH ! ;
 : TFAM-ROLLBACK-RESTORE ( -- )
+   TF-RBF-TOP dup TF-RBF-REQUIRE-PF-DEPTH
    TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH !
-   TF-RBF-CUR {: r:ptr :}
+   {: r:ptr :}
    r TFRB.TFAMN @ TFAM-N !
    r TFRB.STRU @ TF-STR-U !
    r TFRB.PKN @ TF-PK-N !
    r TFRB.SUMVN @ SUMV-N !
    r TFRB.PFN @ PF-N @ PF-SCRUB       \ scrub product-field rows this rejected declaration retires
-   r TFRB.PFN @ dup PF-N ! PF-COMMIT-N !
+   r TFRB.PFN @ PF-N !
+   r TFRB.PFCOMMITN @ PF-COMMIT-N !
    r TFRB.LAYN @ LAY-N ! ;
+: TFAM-ROLLBACK-FINALIZE ( -- )
+   TF-RBF-TOP TF-RBF-REQUIRE-PF-DEPTH
+   TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH ! ;
 
 \ TFAM-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
@@ -1691,8 +1760,12 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 : REG-EXT-ROLLBACK-RESTORE ( -- )
    SCHEMA-ROLLBACK-RESTORE
    TFAM-ROLLBACK-RESTORE ;
+: REG-EXT-ROLLBACK-FINALIZE ( -- )
+   SCHEMA-ROLLBACK-FINALIZE
+   TFAM-ROLLBACK-FINALIZE ;
 : REG-EXT-RB-INSTALL ( -- )
    [: REG-EXT-ROLLBACK-SAVE ;] is REG-EXT-RB-SAVE-XT
+   [: REG-EXT-ROLLBACK-FINALIZE ;] is REG-EXT-RB-FINALIZE-XT
    [: REG-EXT-ROLLBACK-RESTORE ;] is REG-EXT-RB-RESTORE-XT ;
 REG-EXT-RB-INSTALL
 

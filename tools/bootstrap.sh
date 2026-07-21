@@ -96,6 +96,8 @@ SRC_COMMON=(
   src/habu/engine-size.f
   src/habu/habu2.f
   src/habu/xref.f
+  src/core/generated-declaration-dictionary.f
+  src/core/generated-declaration-protection.f
   src/habu/owner-wid-emit-seal.f
   src/core/layout-buffer-seal.f
   src/core/lower-cert-seal.f
@@ -227,6 +229,10 @@ emit_src() {
   cat src/core/cell-effects.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/pointer-storage-effects.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/declaration-transaction.f >> "$out"
+  printf '\n' >> "$out"
+  cat src/core/generated-declaration.f >> "$out"
   printf '\n' >> "$out"
   emit_decl_src "$out"
   cat src/core/structures.f >> "$out"

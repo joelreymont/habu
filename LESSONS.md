@@ -1906,7 +1906,34 @@ fits.
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,
   publish once, and roll all participants back in reverse order on failure.
-- **Transaction finalization releases proof state; it is not a late publication phase.** Forward commit may change visible high-water marks only while every owner snapshot remains rollbackable, and an exactly preflighted irreversible owner commits last. Reverse finalization then only discards snapshots. Publishing an earlier owner during reverse cleanup can protect later state first and makes a cleanup throw impossible to unwind safely.
+- **Qualified lifecycle operations have two spellings for one identity.** The
+  checker owns `PACKAGE:TAIL`, while the dictionary record stores bare `TAIL` in
+  the package wordlist; resolve once, mutate checker state with the qualified
+  token, and mutate runtime state with the resolved record's tail and wordlist.
+- **Transaction finalization releases proof state; it is not a late publication
+  phase.** Forward commit may change visible high-water marks only while every
+  owner snapshot remains rollbackable, and an exactly preflighted irreversible
+  owner commits last. Reverse finalization then only discards snapshots.
+  Publishing an earlier owner during reverse cleanup can protect later state
+  first and makes a cleanup throw impossible to unwind safely.
+- **Make participant registration failure-atomic as one allocation.** Grow one
+  aggregate row table before shifting or publishing any row, so allocation
+  failure preserves table identity, capacity, count, and allocator high-water.
+- **Seal production extension points and isolate test controls.** Production
+  coordinators should expose only their runner and read-only telemetry; inject
+  allocators, diagnostics, and fake participants into a separate test instance.
+- **Nested savepoints must distinguish provisional and published watermarks.**
+  Save both values and the owning transaction depth, so nested success cannot
+  accidentally publish an outer transaction's still-provisional rows.
+- **Dictionary publication spans records, code, and data.** Retain all three
+  high-waters until global finalization; restoring only one leaves a generated
+  declaration partly visible after rollback.
+- **Keep declaration grammar checked.** Store source spans in typed locals and
+  express byte grammar directly, so parsing needs neither trusted character
+  predicates nor return-stack hiding.
+- **Target-aware sandbox copies must create every selectable target directory.**
+  A hard-coded macOS directory made the boot-pin fixture fail opening its first
+  Linux source on the GB10.
 - **Device snapshots need pins, leases, and completion acknowledgement.** A host
   page reference cannot keep device-visible bytes stable until use completes.
 - **Measurement needs structural ownership.** One evidence lane owns timing and
