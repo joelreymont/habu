@@ -5,11 +5,18 @@ priority: 1
 issue-type: task
 created-at: "\"2026-07-13T17:13:59.138732+02:00\""
 blocks:
-  - habu-type-dsl-unify-b65d46c1
   - habu-type-dsl-implement-50f8dc15
   - habu-type-declarations-shared-14ab0e48
   - habu-fields-add-shared-6b063c62
 ---
+
+Graph repair 2026-07-21: dropped the vestigial habu-type-dsl-unify-b65d46c1
+blocker for the same reason recorded in habu-structure-parse-typed-c5a01e1f -
+the event transaction the front ends consume landed as decl-event, and the
+remaining unify work sits downstream of the front ends, so the old edge was
+circular. Kept the STRUCTURE implement epic edge: the STRUCTURE front end lands
+first to prove the decl-event consumer seam, then this ENUM front end binds to
+the proven pattern.
 
 Own src/core/enum-decl.f and declaration tests. Consume shared syntax events for
 numeric-arity full mode with optional headers and VARIANT/FIELD/;VARIANT, plus
