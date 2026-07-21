@@ -1623,8 +1623,8 @@ variable BF-CLI-RAN
 
 : BF-CLI ( -- )
    BF-CLI-RAN @ if exit then          \ run the CLI at most once per process: the
-   BF-TRUE BF-CLI-RAN !                \ tail self-dispatch and the -main companion
-   [: BF-MAIN ;] catch {: rc:n :}      \ must not both drive a build
+   BF-TRUE BF-CLI-RAN !                \ tail self-dispatch and either explicit
+   [: BF-MAIN ;] catch {: rc:n :}      \ entry wrapper must not both drive a build
    rc 0 <> if rc BF-FAIL-DIE then ;
 
 \ Compiled callers retain direct xts; erase the mutable extension authority so
@@ -1643,16 +1643,17 @@ undefine KEEP-U
 undefine OWNER-WID-ACT
 ;package
 
-\ Fail-closed CLI self-dispatch. tools/build-fixpoint-main.f is the only caller
-\ of BF-CLI; omitting it from the recovery command left an explicit build verb
-\ unclaimed, so the loaded stdin engine read its program from the closed stdin,
-\ hit EOF, and exited 0 having built nothing. Run the CLI here when this file is
-\ the top-level `--load` entry (INCLUDE-DEPTH 0; a `require`d dependency sits at
-\ depth > 0 and stays inert) AND a build verb was passed after `--`. The verb
-\ gate keeps a co-loaded tool that consumes its own `--`-flag args (e.g.
-\ tools/hb-build.f under tools/hb-build-test.f, loaded at depth 0 alongside this
-\ file) from being hijacked, and BF-CLI is idempotent so the -main companion's
-\ call cannot double-build.
+\ Fail-closed CLI self-dispatch. tools/build-fixpoint-main.f and
+\ tools/build-fixpoint-refresh.f are explicit wrappers that call BF-CLI. Before
+\ self-dispatch, omitting an entry wrapper from the recovery command left an
+\ explicit build verb unclaimed, so the loaded stdin engine read its program
+\ from the closed stdin, hit EOF, and exited 0 having built nothing. Run the CLI
+\ here when this file is the top-level `--load` entry (INCLUDE-DEPTH 0; a
+\ `require`d dependency sits at depth > 0 and stays inert) AND a build verb was
+\ passed after `--`. The verb gate keeps a co-loaded tool that consumes its own
+\ `--`-flag args (e.g. tools/hb-build.f under tools/hb-build-test.f, loaded at
+\ depth 0 alongside this file) from being hijacked, and BF-CLI is idempotent so
+\ calls from either explicit entry wrapper cannot double-build.
 : BF-CLI-VERB-ARG0? ( -- bool )
    SCRIPT-ARGC 0 <= if BF-FALSE exit then
    s" all"     BF-ARG0= if BF-TRUE exit then
