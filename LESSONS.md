@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-19
+Last updated: 2026-07-21
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -9,6 +9,13 @@ narrative ("X landed on date D") is not a lesson; the full dated campaign log
 with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
 and in git history. One tight bullet per lesson; add a section only if none
 fits.
+
+- **Schedule shared types and ownership primitives before their consumers.** If
+  a consumer lane discovers that it needs a common record, lifetime token, or
+  checked capability, park the consumer at that seam, record the dependency,
+  land the common definition, and rebase the consumer onto it. A temporary
+  consumer-local replica creates duplicate authority and is not parallel
+  progress.
 
 ## Checker Soundness
 
