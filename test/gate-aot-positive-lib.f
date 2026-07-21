@@ -248,7 +248,7 @@ variable GAP-BLR-CNT
 \ Layout-bundle store: a program whose MAIN stores a wide (multi-cell) layout
 \ value through `!`. The pass-2 wide-store lowering (LP2STORE) emits a runtime
 \ call to the engine-resident (PROT-SPAN) span guard before the mutation. In a
-\ stripped AOT image that runtime call is an absolute movz/movk+blr whose target
+\ stripped AOT image that runtime call is a direct BL whose target
 \ is the (PROT-SPAN) helper; unless the linker rewrites it to a PC-relative
 \ branch into the copied helper, the built-time engine address ships and the
 \ store SIGSEGVs at load (dot habu-relocate-absolute-helper-dbb53aef). Because
@@ -285,7 +285,7 @@ variable GAP-BLR-CNT
 \ with MATCH, printing the recovered payload. The pass-2 wide-fetch lowering
 \ (LP2VEMIT) emits a runtime call to the engine-resident LP2VEXEC tag validator
 \ before the value is used. In a stripped AOT image that call is an absolute
-\ movz/movk+blr whose target is LP2VEXEC; unless the linker rewrites it to a
+\ direct BL whose target is LP2VEXEC; unless the linker rewrites it to a
 \ PC-relative branch into the copied helper, the build-time engine address ships
 \ and the fetch SIGSEGVs at load (dot habu-relocate-lp2vexec-fetch-b5472dc1).
 \ Because LP2VEXEC is now a registered engine helper the closure walk resolves the

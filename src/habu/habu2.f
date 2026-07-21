@@ -4997,9 +4997,9 @@ s" em-compile-ret" s" --" TRUST
 \ LR+4. Every active CHECK validates an unsigned declaration-order tag domain;
 \ guard mismatches skip that nested CHECK while still consuming its rows.
 \ Registered as the sealed (LP2VEXEC) engine helper, exactly like (PROT-SPAN):
-\ the absolute movz/movk+blr that LP2VEMIT plants in a compiled fetch then
-\ resolves by record address in an ahead-of-time image (aot-closure.f FINDADDR)
-\ and collapses to an in-image branch, instead of shipping the build-time engine
+\ the direct BL that LP2VEMIT plants in a compiled fetch is resolved by exact
+\ record code-entry in an ahead-of-time image (aot-closure.f FINDADDR-PTR) and
+\ relocated as an in-image branch, instead of shipping the build-time engine
 \ address and crashing a stripped image. The invalid-tag diagnostic is inlined
 \ inside the record so its ADR stays record-relative and is relocated with the
 \ body when the closure copies it (no reference to engine message data that a
