@@ -24,6 +24,7 @@ variable BW-BPE
 variable BW-FPE
 variable BW-DEV                     \ CUDA device handle, used only to read the L2 attribute
 variable BW-L2                      \ 8-byte scratch cell the 4-byte L2 attribute read writes into
+variable BW-NS-TMP                  \ BW-RUN result held across the owning scope's frame exit
 
 public
 
@@ -84,13 +85,13 @@ private
    BW-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    BW-READ-L2 BW-N-FROM-L2 BW-N ! ;
 
-: BW-SETUP ( -- )
-   PTXBENCH:OPEN
-   PTXBENCH:LOAD ;
+: BW-SETUP ( -- )                   \ acquire ctx + module, transferring each into the active scope
+   PTXBENCH:OPEN  PTXBENCH:OWN-CTX
+   PTXBENCH:LOAD  PTXBENCH:OWN-MOD ;
 
 : BW-ALLOC ( -- )
-   BW-N @ 4 * BW-DX PTXBENCH:DEVICE-ALLOC
-   BW-N @ 4 * BW-DY PTXBENCH:DEVICE-ALLOC
+   BW-N @ 4 * BW-DX PTXBENCH:DEVICE-ALLOC  BW-DX PTXBENCH:OWN-DEV
+   BW-N @ 4 * BW-DY PTXBENCH:DEVICE-ALLOC  BW-DY PTXBENCH:OWN-DEV
    BW-DX @ 0 BW-N @ PTXBENCH:DEVICE-MEMSET32
    BW-DY @ 0 BW-N @ PTXBENCH:DEVICE-MEMSET32 ;
 
@@ -114,24 +115,16 @@ private
 : BW-RUN ( -- n )
    PTXBENCH:BENCH-GPU-NS ;
 
-: BW-FREE ( -- )
-   BW-DX @ 0 <> if BW-DX @ PTXBENCH:DEVICE-FREE then
-   BW-DY @ 0 <> if BW-DY @ PTXBENCH:DEVICE-FREE then
-   0 BW-DX ! 0 BW-DY ! ;
-
-: BW-RELEASE ( -- )
-   BW-FREE
-   PTXBENCH:UNLOAD
-   PTXBENCH:CLOSE ;
-
 public
 
+\ One owning frame around the whole probe: the scope owns ctx + module + the two device
+\ buffers (transferred as acquired) and unwinds them on return OR throw - a fault in derive/
+\ setup/alloc/bench no longer leaks the context (or bin/hb hangs at exit). BW-RUN's ns is held
+\ across the frame exit in BW-NS-TMP.
 : MEASURE ( -- n )
    BW-DERIVE-N BW-N @ PTXBENCH:WORK!
-   BW-SETUP BW-ALLOC BW-PARAMS
-   BW-RUN {: ns:n :}
-   BW-RELEASE
-   ns ;
+   [: BW-SETUP  BW-ALLOC  BW-PARAMS  BW-RUN BW-NS-TMP ! ;] CUDA-SCOPE:SCOPE
+   BW-NS-TMP @ ;
 
 : REPORT-NS ( n -- )
    {: ns:n :}

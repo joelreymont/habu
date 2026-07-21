@@ -25,6 +25,7 @@ require lib/ptx/cg.f
 require lib/ptx/cg-matmul.f
 require lib/ptx/cg-mma.f
 require lib/ptx/toolchain.f
+require maki/eval/active-target.f
 require tools/ptx/bench.f
 
 package MMAABLATE
@@ -33,19 +34,22 @@ $3F800000 constant MA-ONE                \ 1.0f bit pattern (A/B fill)
 create MA-QO $1000 allot  create MA-QE $1000 allot
 variable MA-DA  variable MA-DB  variable MA-DC
 variable MA-NV                           \ M=N=K (square) kernel param
+variable MA-S                            \ square edge held for the owning scope body (local lifted to var)
+variable MA-NS-TMP                       \ BENCH-GPU-NS result held across the owning scope's frame exit
 
 : MA-INT. ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 
 : MA-ASSEMBLE ( -- )                     \ captured PTX -> ptxas cubin (die on rc<>0)
+   ATGT:LABEL$ PTXTC:TC-ARCH!            \ assembler arch from the probed active target (else PTXTC:ASSEMBLE fails closed on the GB10)
    PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL
    MA-QO $1000 >LEN MA-QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT {: rc:n :}
    rc 0= 0= if s" mma-ablate: ptxas failed" 1 die then ;
 
 : MA-ALLOC ( n -- ) {: s:n :}            \ A=B=1.0, C=0 for an s x s GEMM
    s s * {: e:n :}
-   e 4 * MA-DA PTXBENCH:DEVICE-ALLOC
-   e 4 * MA-DB PTXBENCH:DEVICE-ALLOC
-   e 4 * MA-DC PTXBENCH:DEVICE-ALLOC
+   e 4 * MA-DA PTXBENCH:DEVICE-ALLOC  MA-DA PTXBENCH:OWN-DEV
+   e 4 * MA-DB PTXBENCH:DEVICE-ALLOC  MA-DB PTXBENCH:OWN-DEV
+   e 4 * MA-DC PTXBENCH:DEVICE-ALLOC  MA-DC PTXBENCH:OWN-DEV
    MA-DA @ MA-ONE e PTXBENCH:DEVICE-MEMSET32
    MA-DB @ MA-ONE e PTXBENCH:DEVICE-MEMSET32
    MA-DC @ 0     e PTXBENCH:DEVICE-MEMSET32 ;
@@ -61,12 +65,6 @@ variable MA-NV                           \ M=N=K (square) kernel param
    8  MA-DB PTXBENCH:PARAM-PTR!
    16 MA-DC PTXBENCH:PARAM-PTR!
    24 MA-NV PTXBENCH:PARAM-U32!  28 MA-NV PTXBENCH:PARAM-U32!  32 MA-NV PTXBENCH:PARAM-U32! ;
-
-: MA-FREE ( -- )
-   MA-DA @ 0 <> if MA-DA @ PTXBENCH:DEVICE-FREE then
-   MA-DB @ 0 <> if MA-DB @ PTXBENCH:DEVICE-FREE then
-   MA-DC @ 0 <> if MA-DC @ PTXBENCH:DEVICE-FREE then
-   0 MA-DA !  0 MA-DB !  0 MA-DC ! ;
 
 \ the wide config under study (MFRAGS/stages/dyn selectable; dot habu-mma-wave-2 adds the MFRAGS=4 leg;
 \ dot habu-mma-wave-3 adds the B-side ldmatrix knobs BLDM/BPAD to re-attribute the residual B-feed).
@@ -100,16 +98,15 @@ variable MA-CFG-BLDM    variable MA-CFG-BPAD
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" MMM" PTXBENCH:KERNEL!  s" MMM" PTXBENCH:LABEL!
-   PTXBENCH:OPEN  PTXBENCH:LOAD
    it PTXBENCH:ITERS!
-   s MA-ALLOC  s MA-PARAMS
-   PTXBENCH:BENCH-GPU-NS {: ns:n :}
-   MA-FREE
-   PTXBENCH:UNLOAD  PTXBENCH:CLOSE
+   s MA-S !
+   [: PTXBENCH:OPEN  PTXBENCH:OWN-CTX  PTXBENCH:LOAD  PTXBENCH:OWN-MOD   \ scope owns ctx+module+buffers; unwinds on return or throw
+      MA-S @ MA-ALLOC  MA-S @ MA-PARAMS
+      PTXBENCH:BENCH-GPU-NS MA-NS-TMP ! ;] CUDA-SCOPE:SCOPE
    PTXTC:CLEAN
-   s" ablate=" type mode MA-LABEL  s"  " type s MA-INT. s" ^3  gpu_ns=" type ns MA-INT.
-   s"  proxy_GFLOP/s_x1000=" type  s s * s * 2 * it *  1000 * ns /  MA-INT. cr
-   ns ;
+   s" ablate=" type mode MA-LABEL  s"  " type s MA-INT. s" ^3  gpu_ns=" type MA-NS-TMP @ MA-INT.
+   s"  proxy_GFLOP/s_x1000=" type  s s * s * 2 * it *  1000 * MA-NS-TMP @ /  MA-INT. cr
+   MA-NS-TMP @ ;
 
 : MA-SHAPE ( n -- ) {: s:n :}            \ full/quarter/half/single at shape s; print the decomposition
    s 2048 = if 30 else 80 then {: it:n :}

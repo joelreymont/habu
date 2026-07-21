@@ -63,15 +63,14 @@ package MMAGEMMCHECK
 variable MGC-SA  variable MGC-SB            \ the two square edges each config is checked at (default 64/128)
 64 MGC-SA !  128 MGC-SB !
 
-: MGC-LAUNCH ( -- )                        \ alloc + pack + htod + launch (grid (n/BN)x(n/BROWS)) + dtoh + free
+: MGC-LAUNCH ( -- )                        \ alloc + own + pack + htod + launch (grid (n/BN)x(n/BROWS)) + dtoh
    MMA-EXACT:MX-N @ dup * {: e:n :}
-   MMA-EXACT:MX-DEV-ALLOC
+   MMA-EXACT:MX-DEV-ALLOC  MMA-EXACT:MX-OWN   \ buffers owned by MGC-MODE's frame (freed at UNWIND, replaces MX-DEV-FREE)
    e MMA-EXACT:MX-PACK-AB
    e MMA-EXACT:MX-HTOD-AB
    MMA-EXACT:MX-PARAMS
    PTXBENCH:LAUNCH  PTXBENCH:SYNC
-   e MMA-EXACT:MX-DTOH-C
-   MMA-EXACT:MX-DEV-FREE ;
+   e MMA-EXACT:MX-DTOH-C ;
 
 : MGC-ONE ( n -- ) {: n:n :}               \ one square GEMM correctness run
    n MMA-EXACT:MX-N !
@@ -144,10 +143,9 @@ variable MGC-TN
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" MMM" PTXBENCH:KERNEL!  s" MMM" PTXBENCH:LABEL!
-   PTXBENCH:OPEN  PTXBENCH:LOAD
-   MGC-SA @ MGC-ONE
-   MGC-SB @ MGC-ONE
-   PTXBENCH:UNLOAD  PTXBENCH:CLOSE
+   [: PTXBENCH:OPEN  PTXBENCH:OWN-CTX  PTXBENCH:LOAD  PTXBENCH:OWN-MOD   \ one owning frame around both edges: ctx+module load-once, both shapes' buffers unwind together
+      MGC-SA @ MGC-ONE
+      MGC-SB @ MGC-ONE ;] CUDA-SCOPE:SCOPE
    PTXTC:CLEAN ;
 
 \ one larger-BK / swizzled tile config (dot habu-mma-larger-bk): set the tile knobs, run one

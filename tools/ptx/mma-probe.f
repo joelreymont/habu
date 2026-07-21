@@ -31,6 +31,7 @@ require lib/fs-mutate.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/toolchain.f
+require maki/eval/active-target.f
 require tools/ptx/bench.f
 
 package MMAPROBE
@@ -296,36 +297,35 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
    loop ;
 
 : MP-ASSEMBLE ( -- )
+   ATGT:LABEL$ PTXTC:TC-ARCH!             \ assembler arch from the probed active target (else PTXTC:ASSEMBLE fails closed on the GB10)
    PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL
    MP-QO $1000 >LEN MP-QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT {: rc:n :}
    rc 0= 0= if s" mma-probe: ptxas failed" 1 die then ;
 
+\ One owning frame around the probe: the scope owns ctx + module + the three device buffers
+\ (transferred as acquired) and unwinds them on return OR throw - no open-coded FREE/UNLOAD/CLOSE.
 : MP-RUN-DEVICE ( ptr u8 n -- ) {: ka:ptr ku:n :}
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    ka ku PTXBENCH:KERNEL!  ka ku PTXBENCH:LABEL!
-   PTXBENCH:OPEN  PTXBENCH:LOAD
-   MP-AE 4 * MP-DA PTXBENCH:DEVICE-ALLOC
-   MP-BE 4 * MP-DB PTXBENCH:DEVICE-ALLOC
-   MP-CE 4 * MP-DC PTXBENCH:DEVICE-ALLOC
-   MP-HA MP-AE MP-PA F32-PACK
-   MP-HB MP-BE MP-PB F32-PACK
-   MP-DA @ MP-PA MP-AE 4 * PTXBENCH:HTOD
-   MP-DB @ MP-PB MP-BE 4 * PTXBENCH:HTOD
-   32 PTXBENCH:BLOCK!  1 PTXBENCH:BLOCKY!
-   1  PTXBENCH:GRID!   1 PTXBENCH:GRIDY!
-   24 PTXBENCH:PARAM-BYTES!
-   PTXBENCH:PREPARE-LAUNCH
-   0  MP-DA PTXBENCH:PARAM-PTR!
-   8  MP-DB PTXBENCH:PARAM-PTR!
-   16 MP-DC PTXBENCH:PARAM-PTR!
-   PTXBENCH:LAUNCH  PTXBENCH:SYNC
-   MP-PC MP-DC @ MP-CE 4 * PTXBENCH:DTOH
-   MP-PC MP-CE MP-HC F32-UNPACK
-   MP-DA @ PTXBENCH:DEVICE-FREE
-   MP-DB @ PTXBENCH:DEVICE-FREE
-   MP-DC @ PTXBENCH:DEVICE-FREE
-   PTXBENCH:UNLOAD  PTXBENCH:CLOSE ;
+   [: PTXBENCH:OPEN  PTXBENCH:OWN-CTX   PTXBENCH:LOAD  PTXBENCH:OWN-MOD
+      MP-AE 4 * MP-DA PTXBENCH:DEVICE-ALLOC  MP-DA PTXBENCH:OWN-DEV
+      MP-BE 4 * MP-DB PTXBENCH:DEVICE-ALLOC  MP-DB PTXBENCH:OWN-DEV
+      MP-CE 4 * MP-DC PTXBENCH:DEVICE-ALLOC  MP-DC PTXBENCH:OWN-DEV
+      MP-HA MP-AE MP-PA F32-PACK
+      MP-HB MP-BE MP-PB F32-PACK
+      MP-DA @ MP-PA MP-AE 4 * PTXBENCH:HTOD
+      MP-DB @ MP-PB MP-BE 4 * PTXBENCH:HTOD
+      32 PTXBENCH:BLOCK!  1 PTXBENCH:BLOCKY!
+      1  PTXBENCH:GRID!   1 PTXBENCH:GRIDY!
+      24 PTXBENCH:PARAM-BYTES!
+      PTXBENCH:PREPARE-LAUNCH
+      0  MP-DA PTXBENCH:PARAM-PTR!
+      8  MP-DB PTXBENCH:PARAM-PTR!
+      16 MP-DC PTXBENCH:PARAM-PTR!
+      PTXBENCH:LAUNCH  PTXBENCH:SYNC
+      MP-PC MP-DC @ MP-CE 4 * PTXBENCH:DTOH
+      MP-PC MP-CE MP-HC F32-UNPACK ;] CUDA-SCOPE:SCOPE ;
 
 : MP-COMPARE ( -- n )               \ mismatch count; sets MP-BADI, MP-MAXERR
    -1 MP-BADI !  0.0 MP-MAXERR !  0

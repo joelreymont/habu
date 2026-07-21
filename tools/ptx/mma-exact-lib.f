@@ -165,6 +165,8 @@ variable MX-DA  variable MX-DB  variable MX-DC
    MX-DB @ 0 <> if MX-DB @ PTXBENCH:DEVICE-FREE then
    MX-DC @ 0 <> if MX-DC @ PTXBENCH:DEVICE-FREE then
    0 MX-DA !  0 MX-DB !  0 MX-DC ! ;
+: MX-OWN ( -- )                            \ transfer the three device buffers to the active CUDA-SCOPE frame (freed on unwind, replaces MX-DEV-FREE)
+   MX-DA PTXBENCH:OWN-DEV  MX-DB PTXBENCH:OWN-DEV  MX-DC PTXBENCH:OWN-DEV ;
 : MX-HTOD-AB ( e -- )  MX-CHECK-E {: e:n :}   \ upload the packed A,B to the device buffers
    MX-DA @ MX-PA e MMA-ESZ * PTXBENCH:HTOD
    MX-DB @ MX-PB e MMA-ESZ * PTXBENCH:HTOD ;

@@ -23,6 +23,7 @@ require lib/ptx/cg.f
 require lib/ptx/cg-matmul.f
 require lib/ptx/cg-mma.f
 require lib/ptx/toolchain.f
+require maki/eval/active-target.f
 require tools/ptx/bench.f
 
 package MMAPROFILE
@@ -31,6 +32,7 @@ $3F800000 constant MP-ONE               \ 1.0f bit pattern (A/B fill)
 create MP-QO $1000 allot  create MP-QE $1000 allot
 variable MP-DA  variable MP-DB  variable MP-DC
 variable MP-NV                          \ M=N=K (square) as the u32 kernel param
+variable MP-SHAPE                       \ square edge held for the owning scope body (local lifted to var)
 
 : MP-INT. ( n -- )  SB-RESET FMT:SB-INT SB$ type ;
 
@@ -43,15 +45,16 @@ variable MP-NV                          \ M=N=K (square) as the u32 kernel param
    ;MATCH ;
 
 : MP-ASSEMBLE ( -- )                    \ captured PTX -> kernel.ptx -> ptxas cubin (die on rc<>0)
+   ATGT:LABEL$ PTXTC:TC-ARCH!           \ assembler arch from the probed active target (else PTXTC:ASSEMBLE fails closed on the GB10)
    PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL
    MP-QO $1000 >LEN MP-QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT {: rc:n :}
    rc 0= 0= if s" mma-profile: ptxas failed" 1 die then ;
 
 : MP-ALLOC ( n -- ) {: s:n :}           \ alloc + fill A=B=1.0, C=0 for an s x s GEMM
    s s * {: e:n :}
-   e 4 * MP-DA PTXBENCH:DEVICE-ALLOC
-   e 4 * MP-DB PTXBENCH:DEVICE-ALLOC
-   e 4 * MP-DC PTXBENCH:DEVICE-ALLOC
+   e 4 * MP-DA PTXBENCH:DEVICE-ALLOC  MP-DA PTXBENCH:OWN-DEV
+   e 4 * MP-DB PTXBENCH:DEVICE-ALLOC  MP-DB PTXBENCH:OWN-DEV
+   e 4 * MP-DC PTXBENCH:DEVICE-ALLOC  MP-DC PTXBENCH:OWN-DEV
    MP-DA @ MP-ONE e PTXBENCH:DEVICE-MEMSET32
    MP-DB @ MP-ONE e PTXBENCH:DEVICE-MEMSET32
    MP-DC @ 0     e PTXBENCH:DEVICE-MEMSET32 ;
@@ -68,20 +71,14 @@ variable MP-NV                          \ M=N=K (square) as the u32 kernel param
    16 MP-DC PTXBENCH:PARAM-PTR!
    24 MP-NV PTXBENCH:PARAM-U32!  28 MP-NV PTXBENCH:PARAM-U32!  32 MP-NV PTXBENCH:PARAM-U32! ;
 
-: MP-FREE ( -- )
-   MP-DA @ 0 <> if MP-DA @ PTXBENCH:DEVICE-FREE then
-   MP-DB @ 0 <> if MP-DB @ PTXBENCH:DEVICE-FREE then
-   MP-DC @ 0 <> if MP-DC @ PTXBENCH:DEVICE-FREE then
-   0 MP-DA !  0 MP-DB !  0 MP-DC ! ;
-
-: MP-EMIT-LOAD ( -- )                   \ emit MMM at the active knobs, assemble, module-load
+: MP-EMIT-LOAD ( -- )                   \ emit MMM at the active knobs, assemble, module-load; own ctx+module
    s" habu-mma-profile" PTXTC:PREPARE
    PTX-CAPTURE-ON  EMIT-MATMUL-MMA  PTX-CAPTURE-OFF
    MP-ASSEMBLE
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" MMM" PTXBENCH:KERNEL!  s" MMM" PTXBENCH:LABEL!
-   PTXBENCH:OPEN  PTXBENCH:LOAD ;
+   PTXBENCH:OPEN  PTXBENCH:OWN-CTX  PTXBENCH:LOAD  PTXBENCH:OWN-MOD ;
 
 : MP-CFG. ( n n n n n n -- )            \ echo the resolved config (does not consume)
    {: bk:n pad:n stages:n dyn:n mode:n shape:n :}
@@ -99,11 +96,10 @@ public
    bk pad stages dyn mode shape MP-CFG.
    CUDA:OPEN? 0= if s" mma-profile: libcuda unavailable -> SKIPPED (off-device)" type cr
       32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE !  exit then
-   MP-EMIT-LOAD
-   shape MP-ALLOC  shape MP-PARAMS
-   PTXBENCH:LAUNCH  PTXBENCH:SYNC       \ EXACTLY ONE MMM launch (profiler target)
-   MP-FREE
-   PTXBENCH:UNLOAD  PTXBENCH:CLOSE
+   shape MP-SHAPE !
+   [: MP-EMIT-LOAD                       \ scope owns ctx+module+buffers; unwinds on return or throw
+      MP-SHAPE @ MP-ALLOC  MP-SHAPE @ MP-PARAMS
+      PTXBENCH:LAUNCH  PTXBENCH:SYNC ;] CUDA-SCOPE:SCOPE   \ EXACTLY ONE MMM launch (profiler target)
    PTXTC:CLEAN
    s" mma-profile: 1 MMM launch complete" type cr
    32 MMA-BK !  0 MMA-PAD !  2 MMA-STAGES !  0 MMA-DYNSMEM !  0 MMA-LMODE ! ;

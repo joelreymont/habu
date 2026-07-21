@@ -21,6 +21,7 @@
 
 require lib/errors.f
 require lib/string.f
+require maki/eval/active-target.f
 require tools/ptx/fusion-emit.f
 require tools/ptx/bench.f
 
@@ -58,10 +59,10 @@ variable AB-DP                         \ D as the u32 kernel param (pD)
 : AB-ALLOC ( n -- ) {: n:n :}                 \ alloc Q/K/V/O (n x D f32) + stage non-uniform Q/K/V inputs
    n AB-D * {: e:n :}
    e 4 * {: by:n :}
-   by AB-DQ PTXBENCH:DEVICE-ALLOC
-   by AB-DK PTXBENCH:DEVICE-ALLOC
-   by AB-DV PTXBENCH:DEVICE-ALLOC
-   by AB-DO PTXBENCH:DEVICE-ALLOC
+   by AB-DQ PTXBENCH:DEVICE-ALLOC  AB-DQ PTXBENCH:OWN-DEV
+   by AB-DK PTXBENCH:DEVICE-ALLOC  AB-DK PTXBENCH:OWN-DEV
+   by AB-DV PTXBENCH:DEVICE-ALLOC  AB-DV PTXBENCH:OWN-DEV
+   by AB-DO PTXBENCH:DEVICE-ALLOC  AB-DO PTXBENCH:OWN-DEV
    0 e AB-STAGE  AB-DQ @ AB-HOST by PTXBENCH:HTOD
    3 e AB-STAGE  AB-DK @ AB-HOST by PTXBENCH:HTOD
    5 e AB-STAGE  AB-DV @ AB-HOST by PTXBENCH:HTOD ;
@@ -79,13 +80,6 @@ variable AB-DP                         \ D as the u32 kernel param (pD)
    32 AB-NV PTXBENCH:PARAM-U32!                \ pN
    36 AB-DP PTXBENCH:PARAM-U32! ;              \ pD
 
-: AB-FREE ( -- )
-   AB-DQ @ 0 <> if AB-DQ @ PTXBENCH:DEVICE-FREE then
-   AB-DK @ 0 <> if AB-DK @ PTXBENCH:DEVICE-FREE then
-   AB-DV @ 0 <> if AB-DV @ PTXBENCH:DEVICE-FREE then
-   AB-DO @ 0 <> if AB-DO @ PTXBENCH:DEVICE-FREE then
-   0 AB-DQ !  0 AB-DK !  0 AB-DV !  0 AB-DO ! ;
-
 : AB-FLOPS ( n n -- n ) {: n:n it:n :}         \ (4*N*N*D + 5*N*N) per launch, x iters
    n n * {: nn:n :}
    nn AB-D * 4 *  nn 5 *  +  it * ;
@@ -99,8 +93,7 @@ variable AB-DP                         \ D as the u32 kernel param (pD)
    PTXBENCH:BENCH-GPU-NS {: ns:n :}
    s" ATTENTION N=" type n AB-INT. s"  D=" type AB-D AB-INT. s"  iters=" type it AB-INT. cr
    n AB-D * PTXBENCH:WORK!
-   n it AB-BYTES  n it AB-FLOPS  ns PTXBENCH:REPORT-GPU
-   AB-FREE ;
+   n it AB-BYTES  n it AB-FLOPS  ns PTXBENCH:REPORT-GPU ;   \ per-shape buffers owned by the run's scope (freed at UNWIND, not here)
 
 : AB-SHAPES ( -- )
    64  AB-ITERS AB-SHAPE
@@ -110,12 +103,12 @@ variable AB-DP                         \ D as the u32 kernel param (pD)
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    s" ATTN" PTXBENCH:KERNEL!  s" ATTENTION" PTXBENCH:LABEL!
-   PTXBENCH:OPEN  PTXBENCH:LOAD
-   AB-SHAPES
-   PTXBENCH:UNLOAD  PTXBENCH:CLOSE ;
+   [: PTXBENCH:OPEN  PTXBENCH:OWN-CTX  PTXBENCH:LOAD  PTXBENCH:OWN-MOD   \ one owning frame around the whole run: ctx+module load-once, per-shape buffers accumulate + unwind together
+      AB-SHAPES ;] CUDA-SCOPE:SCOPE ;
 
 : AB-RUN ( -- )                                \ device leg: self-emit+assemble, bench, drop the private root
    s" == ATTENTION fused (one query/block, serial softmax; correctness baseline) ==" type cr
+   ATGT:LABEL$ PTXTC:TC-ARCH!                  \ assembler arch from the probed active target (BUILD-KERNEL's ptxas fails closed on the GB10 otherwise)
    s" habu-attention-bench" s" tools/ptx/attention-cg.f" PTXFE:BUILD-KERNEL
    AB-KERNEL
    PTXTC:CLEAN ;

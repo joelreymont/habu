@@ -115,6 +115,81 @@ variable FAIL?                                     \ armed true at runtime; cond
    2 RLOG@ 20 T=  3 RLOG@ 10 T=                    \ outer frame next: module then ctx
    CUDA-SCOPE:DEPTH 0 T= ;
 
+\ ============ LOAD-ONCE BENCH shape (one frame owns ctx+module+per-shape buffers) ===========
+\ Migrated load-once bench consumer (gemm-bench / attention-bench / mma-gemm-check): ONE frame
+\ owns ctx + module (loaded once), and each shape's device buffers are transferred into that SAME
+\ frame, so they accumulate (no per-shape free) and unwind together on the whole-run's return or
+\ throw. Two shapes x two buffers model the ladder; a throw mid-second-shape unwinds all six rows
+\ in reverse. Handles: ctx=10, module=20, shape-1 buffers 30/40, shape-2 buffers 50/60.
+: MIG-LOADBENCH-BODY ( -- )
+   10 >CUDA-DEV    CUDA-SCOPE:OWN-PRIMARY-CTX      \ ctx retained + owned (load-once)
+   20 >CUDA-MOD    CUDA-SCOPE:OWN-MODULE           \ module loaded + owned (load-once)
+   30 >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR           \ shape 1: buffer A owned
+   40 >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR           \ shape 1: buffer B owned
+   50 >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR           \ shape 2: buffer A owned (accumulates - no per-shape free)
+   60 >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR           \ shape 2: buffer B owned
+   FAIL-STEP ;                                     \ a launch/readback in the ladder fails mid-second-shape
+: MIG-LOADBENCH ( -- )  [: MIG-LOADBENCH-BODY ;] CUDA-SCOPE:SCOPE ;
+
+\ Unfixed base: a throw mid-ladder skips the trailing per-shape FREE list and the UNLOAD/CLOSE,
+\ leaking every buffer + module + context.
+: BASE-LOADBENCH ( -- )
+   FAIL-STEP
+   60 FREL drop  50 FREL drop  40 FREL drop  30 FREL drop      \ per-shape DEVICE-FREE never runs
+   20 FREL drop  10 FREL drop ;                                 \ UNLOAD/CLOSE never run
+
+: T-LOADBENCH-BASE-LEAKS ( -- )
+   HARNESS-RESET
+   [: BASE-LOADBENCH ;] E-PRIMARY TTHROWSQ
+   RLOG-N@ 0 T=                                    \ nothing released = buffers/module/ctx all leaked
+   CUDA-SCOPE:DEPTH 0 T= ;
+: T-LOADBENCH-MIG-UNWINDS ( -- )
+   HARNESS-RESET
+   [: MIG-LOADBENCH ;] E-PRIMARY TTHROWSQ
+   RLOG-N@ 6 T=                                    \ all six released, exactly once each
+   0 RLOG@ 60 T=  1 RLOG@ 50 T=  2 RLOG@ 40 T=  3 RLOG@ 30 T=   \ buffers reverse (shape2 then shape1)
+   4 RLOG@ 20 T=  5 RLOG@ 10 T=                    \ then module, then ctx
+   CUDA-SCOPE:DEPTH 0 T= ;
+
+\ ============ SWEEP shape (outer ctx frame, per-candidate inner module+buffers) =============
+\ Migrated autotune-sweep: the OUTER frame owns the one shared context; each candidate opens a
+\ NESTED frame owning the per-candidate module + its three device buffers, unwound on that
+\ candidate's return or throw. A throw mid-candidate unwinds the candidate's buffers (reverse)
+\ then its module (inner), then the outer frame unwinds the context. Handles: ctx=10, module=20,
+\ buffers 30/40/50.
+: MIG-SWEEP-CAND-BODY ( -- )
+   20 >CUDA-MOD    CUDA-SCOPE:OWN-MODULE           \ per-candidate module (loaded per candidate)
+   30 >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR           \ MX A owned
+   40 >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR           \ MX B owned
+   50 >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR           \ MX C owned
+   FAIL-STEP ;                                     \ the element-exact launch faults mid-candidate
+: MIG-SWEEP-BODY ( -- )
+   10 >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX         \ outer frame: the one shared context
+   [: MIG-SWEEP-CAND-BODY ;] CUDA-SCOPE:SCOPE ;    \ nested per-candidate frame (throws, unwinds module+buffers, re-throws)
+: MIG-SWEEP ( -- )  [: MIG-SWEEP-BODY ;] CUDA-SCOPE:SCOPE ;
+
+\ Unfixed base sweep: a throw mid-candidate skips MX-DEV-FREE + the per-candidate UNLOAD and the
+\ outer CLOSE, leaking the buffers + module + context.
+: BASE-SWEEP ( -- )
+   FAIL-STEP
+   50 FREL drop  40 FREL drop  30 FREL drop       \ MX-DEV-FREE never runs
+   20 FREL drop                                    \ per-candidate UNLOAD never runs
+   10 FREL drop ;                                   \ outer CLOSE never runs
+
+: T-SWEEP-BASE-LEAKS ( -- )
+   HARNESS-RESET
+   [: BASE-SWEEP ;] E-PRIMARY TTHROWSQ
+   RLOG-N@ 0 T=                                    \ nothing released = buffers/module/ctx all leaked
+   CUDA-SCOPE:DEPTH 0 T= ;
+: T-SWEEP-MIG-UNWINDS ( -- )
+   HARNESS-RESET
+   [: MIG-SWEEP ;] E-PRIMARY TTHROWSQ
+   RLOG-N@ 5 T=                                    \ buffers+module (nested) then ctx (outer), all released
+   0 RLOG@ 50 T=  1 RLOG@ 40 T=  2 RLOG@ 30 T=     \ nested candidate frame: C,B,A reverse
+   3 RLOG@ 20 T=                                    \ then the candidate module
+   4 RLOG@ 10 T=                                    \ outer frame: the context
+   CUDA-SCOPE:DEPTH 0 T= ;
+
 : RUN ( -- )
    T-RESET
    INSTALL-FAKES
@@ -122,6 +197,10 @@ variable FAIL?                                     \ armed true at runtime; cond
    T-LAUNCH-MIG-UNWINDS
    T-BENCH-BASE-LEAKS
    T-BENCH-MIG-UNWINDS
+   T-LOADBENCH-BASE-LEAKS
+   T-LOADBENCH-MIG-UNWINDS
+   T-SWEEP-BASE-LEAKS
+   T-SWEEP-MIG-UNWINDS
    CUDA-SCOPE:USE-REAL-DRIVER                      \ restore the real release table for any later loader
    T-REPORT ;
 

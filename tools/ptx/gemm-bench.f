@@ -57,9 +57,9 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
 : GB-ALLOC ( n -- ) {: s:n :}          \ alloc + fill A=B=1.0, C=0 for an s x s GEMM
    s s * {: e:n :}
    MMA-ESZ {: esz:n :}                  \ A/B element bytes: 4 tf32 / 2 fp16 (C stays f32)
-   e esz * GB-DA PTXBENCH:DEVICE-ALLOC
-   e esz * GB-DB PTXBENCH:DEVICE-ALLOC
-   e 4 * GB-DC PTXBENCH:DEVICE-ALLOC
+   e esz * GB-DA PTXBENCH:DEVICE-ALLOC  GB-DA PTXBENCH:OWN-DEV
+   e esz * GB-DB PTXBENCH:DEVICE-ALLOC  GB-DB PTXBENCH:OWN-DEV
+   e 4 * GB-DC PTXBENCH:DEVICE-ALLOC    GB-DC PTXBENCH:OWN-DEV
    MMA-HALF? if                         \ fp16/bf16: fill halves via a packed-pair 32-bit memset (e/2 words = e halves)
       GB-DA @ GB-HALF-PAT e 2 / PTXBENCH:DEVICE-MEMSET32
       GB-DB @ GB-HALF-PAT e 2 / PTXBENCH:DEVICE-MEMSET32
@@ -83,12 +83,6 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    28 GB-NV PTXBENCH:PARAM-U32!         \ N
    32 GB-NV PTXBENCH:PARAM-U32! ;       \ K
 
-: GB-FREE ( -- )
-   GB-DA @ 0 <> if GB-DA @ PTXBENCH:DEVICE-FREE then
-   GB-DB @ 0 <> if GB-DB @ PTXBENCH:DEVICE-FREE then
-   GB-DC @ 0 <> if GB-DC @ PTXBENCH:DEVICE-FREE then
-   0 GB-DA !  0 GB-DB !  0 GB-DC ! ;
-
 : GB-FLOPS ( n n -- n ) {: s:n it:n :}  s s * s * 2 * it * ;   \ 2 s^3 per matmul
 : GB-BYTES ( n n -- n ) {: s:n it:n :}  s s * MMA-ESZ 2 * 4 + * it * ;   \ A+B read (esz B each) + C write (4 B); 12 tf32 / 8 fp16
 
@@ -99,8 +93,7 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    s" GEMM " type s GB-INT. s" x" type s GB-INT. s" x" type s GB-INT.
    s"  iters=" type it GB-INT. cr
    s s * PTXBENCH:WORK!
-   s it GB-BYTES  s it GB-FLOPS  ns PTXBENCH:REPORT-GPU
-   GB-FREE ;
+   s it GB-BYTES  s it GB-FLOPS  ns PTXBENCH:REPORT-GPU ;   \ per-shape buffers owned by the run's scope (freed at UNWIND, not here)
 
 : GB-SHAPES ( -- )
    512  400 GB-SHAPE
@@ -112,9 +105,8 @@ variable GB-BLKY                       \ block Y dim: 16 (256 thr, 8-warp) / 8 (
    PTXBENCH:RESET
    PTXTC:CUBIN$ PTXBENCH:CUBIN!
    ka ku PTXBENCH:KERNEL!  ka ku PTXBENCH:LABEL!
-   PTXBENCH:OPEN  PTXBENCH:LOAD
-   GB-SHAPES
-   PTXBENCH:UNLOAD  PTXBENCH:CLOSE ;
+   [: PTXBENCH:OPEN  PTXBENCH:OWN-CTX  PTXBENCH:LOAD  PTXBENCH:OWN-MOD   \ one owning frame around the whole run: ctx+module load-once, per-shape buffers accumulate + unwind together
+      GB-SHAPES ;] CUDA-SCOPE:SCOPE ;
 
 : GB-MMN ( -- )                        \ naive baseline column
    s" == MMN naive (1 elem/thread, global K-loop) ==" type cr

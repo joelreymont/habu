@@ -423,6 +423,30 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
 \ Exclusivity is proven per burst INSIDE SW-BEST3 (a PID census immediately before and
 \ after each timed burst, requiring the device's compute-PID set to be exactly {our PID}),
 \ so no separate pre-timing solo-wait is needed - a foreign PID aborts the sweep fail-closed.
+\ ---- sweep-orchestration state lifted from locals so the run/candidate bodies wrap in a SCOPE
+variable AT-SW-COUNT  variable AT-SW-N    \ sweep candidate count + square shape (AT-SWEEP locals -> vars)
+variable SW-CAND-ID                       \ current candidate id (SW-CANDIDATE local -> var, read by the inner-scope body)
+
+\ per-candidate inner-scope body: own the loaded module + the three device buffers, run the
+\ element-exact precondition, and (if exact) time best-of-3. The frame unwinds module+buffers on
+\ return OR throw - a census abort or launch fault no longer leaks them. id/shape read from vars.
+: SW-CAND-BODY ( -- )
+   PTXBENCH:LOAD  PTXBENCH:OWN-MOD
+   MMA-EXACT:MX-DEV-ALLOC  MMA-EXACT:MX-OWN  MMA-EXACT:MX-PARAMS
+   SW-EXACT-LAUNCH  MMA-EXACT:MX-COMPARE {: bad:n :}
+   bad 0 > if
+      SW-CAND-ID @ AT-XR-INEXACT AT-XCL-ADD
+      s" -- cfg " type SW-CAND-ID @ FMT:.U  s"  EXCLUDED inexact (mismatches=" type bad FMT:.U  s" ) - NOT timed" type cr
+   else
+      SW-ITERS PTXBENCH:ITERS!
+      SW-BEST3 if
+         SW-CAND-ID @ MMA-EXACT:MX-N @ SW-EMIT-ROW
+      else
+         SW-CAND-ID @ AT-XR-UNSTABLE AT-XCL-ADD
+         s" -- cfg " type SW-CAND-ID @ FMT:.U  s"  EXCLUDED clock-unstable (no " type SW-NEED FMT:.U  s"  stable reps) - NOT reported" type cr
+      then
+   then ;
+
 : SW-CANDIDATE ( ptr a n n -- ) {: c:ptr id:n n:n :}
    c AT-APPLY
    n MMA-EXACT:MX-SHAPE-OK? 0= if
@@ -431,24 +455,10 @@ variable SW-BEST-NS  variable SW-CLK-MIN  variable SW-CLK-MAX  variable SW-VALID
       exit
    then
    n MMA-EXACT:MX-N !
+   id SW-CAND-ID !
    SW-EMIT-LOAD
-   PTXBENCH:LOAD
-   MMA-EXACT:MX-DEV-ALLOC  MMA-EXACT:MX-PARAMS
-   SW-EXACT-LAUNCH  MMA-EXACT:MX-COMPARE {: bad:n :}
-   bad 0 > if
-      id AT-XR-INEXACT AT-XCL-ADD
-      s" -- cfg " type id FMT:.U  s"  EXCLUDED inexact (mismatches=" type bad FMT:.U  s" ) - NOT timed" type cr
-   else
-      SW-ITERS PTXBENCH:ITERS!
-      SW-BEST3 if
-         id n SW-EMIT-ROW
-      else
-         id AT-XR-UNSTABLE AT-XCL-ADD
-         s" -- cfg " type id FMT:.U  s"  EXCLUDED clock-unstable (no " type SW-NEED FMT:.U  s"  stable reps) - NOT reported" type cr
-      then
-   then
-   MMA-EXACT:MX-DEV-FREE
-   PTXBENCH:UNLOAD  PTXTC:CLEAN ;
+   [: SW-CAND-BODY ;] CUDA-SCOPE:SCOPE       \ per-candidate frame owns module+buffers; unwinds on return or throw
+   PTXTC:CLEAN ;
 
 \ ---- the sweep + its exclusion listing ---------------------------------------
 : SW-XCL-REPORT ( -- )
@@ -502,6 +512,15 @@ public
    count SW-COUNT-OK? 0= if E-SW-COUNT throw then
    n MMA-EXACT:MX-EDGE-OK? 0= if MMA-EXACT:MX-E-CAP throw then ;
 
+: AT-SWEEP-ONE ( n -- ) {: i:n :}              \ one candidate slot: legal -> sweep it at AT-SW-N, else prune-list it
+   i SW-CAND-ROW {: c:ptr :}
+   c AT-LEGAL? if
+      c i AT-SW-N @ SW-CANDIDATE
+   else
+      i AT-XR-PRUNED AT-XCL-ADD
+      s" -- cfg " type i FMT:.U  s"  EXCLUDED pruned (AT-LEGAL? false) - NOT emitted" type cr
+   then ;
+
 : AT-SWEEP ( n n -- ) {: count:n n:n :}
    count n AT-SWEEP-VALIDATE                   \ validate count + edge before any side effect
    MMA-EXACT:MX-BUF-INIT
@@ -510,18 +529,10 @@ public
    S\" # kernel\tgrid\tgridy\tblock\tblocky\titers\twork\tmetric\tvalue_x1000\tdevice\tdate\tnote" type cr
    SW-DEV-BIND                                 \ bind device 0 identity + record compute mode (no CUDA yet)
    SW-WAIT-IDLE                                \ start idle: an EMPTY PID census (no foreign compute app) before we open a context
-   PTXBENCH:OPEN
-   getpid SW-OWN-PID !                         \ our PID: the SOLE compute PID every timed burst's census must show
-   count 0 ?do
-      i SW-CAND-ROW {: c:ptr :}
-      c AT-LEGAL? if
-         c i n SW-CANDIDATE
-      else
-         i AT-XR-PRUNED AT-XCL-ADD
-         s" -- cfg " type i FMT:.U  s"  EXCLUDED pruned (AT-LEGAL? false) - NOT emitted" type cr
-      then
-   loop
-   PTXBENCH:CLOSE
+   count AT-SW-COUNT !  n AT-SW-N !            \ lift the loop bound + shape to vars for the owning scope body
+   [: PTXBENCH:OPEN  PTXBENCH:OWN-CTX          \ outer frame owns the one shared context; unwinds on return or throw
+      getpid SW-OWN-PID !                      \ our PID: the SOLE compute PID every timed burst's census must show
+      AT-SW-COUNT @ 0 ?do  i AT-SWEEP-ONE  loop ;] CUDA-SCOPE:SCOPE
    SW-XCL-REPORT ;
 
 \ ---- smoke: 3 configs at 512 (2 legal+timed, 1 illegal+pruned) ---------------
