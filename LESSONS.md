@@ -2029,3 +2029,18 @@ fits.
   `ENGINE-CANDIDATE:PATH$`: it preserves the explicit `HABU_UNDER_TEST` override,
   otherwise resolves the running engine itself, and validates the executable
   before spawn.
+- **A diff hunk cannot prove surrounding lexical scope.** An exact-diff policy
+  must verify its new-side lines against the post-change file and derive
+  ownership from the complete lexical source. Package boundaries outside hunk
+  context and balanced boundary insertions otherwise become false negatives or
+  file-wide false positives.
+- **A definition lint needs a publication inventory, not a punctuation guess.**
+  Audit native definers, every executable `create` owner, and every generated
+  definition boundary, then pin each form in one fixture. Keep registry-only
+  grammars separate: a suite or primitive-axiom label is data, not a callable
+  dictionary word.
+- **Deleted syntax needs its complete old lexical context.** Lexing deleted
+  lines independently lets a token inside a multiline comment or definition
+  impersonate a package boundary and cancel a real owner change. Reconstruct
+  the old source from the validated new file and canonical diff events, lex the
+  whole old source, then align only genuine top-level transitions to new lines.

@@ -97,6 +97,10 @@ SUITE namespace-lint-fixtures
    tools/namespace-lint-test.f
 ;SUITE
 
+SUITE package-diff-lint-fixtures
+   tools/package-diff-lint-test.f
+;SUITE
+
 SUITE error-code-lint
    tools/error-code-lint.f
 ;SUITE

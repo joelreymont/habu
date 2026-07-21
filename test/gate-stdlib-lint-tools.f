@@ -2,11 +2,14 @@
 \
 \ Load after GSI-LINT-TOOLS-SETUP.
 
-: GSI-REPL-LINT ( -- )
+package GATE-LINT-TOOLS
+private
+
+: REPL ( -- )
    s" ." REPL-ROOT!
    REPL-LINT ;
 
-: GSI-TRUST-LINT ( -- )
+: TRUST-SCAN ( -- )
    GSI-TL-STR-BUF GSI-TL-STR-CAP
    GSI-TL-FILE-BUF GSI-TL-FILE-CAP
    TRUST-LINT-BUFFERS!
@@ -15,16 +18,16 @@
    TRUST-LINT-TODAY-NOW
    TRUST-LINT ;
 
-: GSI-STALE-STATUS-LINT ( -- )
+: STALE-STATUS ( -- )
    s" ." SS-ROOT!
    epoch-seconds DATE:SECONDS-DAY / SS-TODAY-DAYS !
    STALE-STATUS-LINT ;
 
-: GSI-LINT-TOOLS-CLOBBER ( -- )
+: CLOBBER ( -- )
    s" tools/lint/clobber-lint.f" GSI-REQUIRE
    s" tools/lint/clobber-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-REPO ( -- )
+: REPOSITORY ( -- )
    s" tools/lint/shadow-lint.f" GSI-INCLUDE
    s" tools/lint/ptx-emitter-lint.f" GSI-INCLUDE
    s" tools/host-lint.f" GSI-REQUIRE
@@ -35,10 +38,10 @@
    s" tools/filemap-lint-test.f" GSI-INCLUDE
    s" tools/stdin-closure-lint.f" GSI-REQUIRE ;
 
-: GSI-LINT-TOOLS-STATUS ( -- )
-   s" repl-lint" [: GSI-REPL-LINT ;] GSI-RUN
-   s" trust-lint" [: GSI-TRUST-LINT ;] GSI-RUN
-   s" stale-status-lint" [: GSI-STALE-STATUS-LINT ;] GSI-RUN
+: STATUS ( -- )
+   s" repl-lint" [: REPL ;] GSI-RUN
+   s" trust-lint" [: TRUST-SCAN ;] GSI-RUN
+   s" stale-status-lint" [: STALE-STATUS ;] GSI-RUN
    s" test/gate-stats-test.f" GSI-INCLUDE ;
 
 \ One fork per sub-suite so GT-POOL-FAIL's `FAIL: <label>` line names the
@@ -48,66 +51,72 @@
 \ so a trusted-inventory ratchet failure surfaced only under the misleading
 \ dot-maki label. Setup is loaded once in the parent and inherited copy-on-
 \ write by every fork, so the split adds no setup cost.
-: GSI-LINT-TOOLS-DOT ( -- )
+: DOT ( -- )
    s" dot-dep-lint" [: DOT-DEP-LINT ;] GSI-RUN
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-NANOGPT ( -- )
+: NANOGPT ( -- )
    s" nanogpt-inventory-lint" [: NANOGPT-INVENTORY-LINT ;] GSI-RUN
    s" tools/nanogpt-inventory-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-MAKI ( -- )
+: MAKI ( -- )
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-REFINE ( -- )
+: REFINE ( -- )
    s" refine-lint" [: REFINE-LINT ;] GSI-RUN
    s" tools/refine-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-SUITE-COVERAGE ( -- )
+: SUITE-COVERAGE ( -- )
    s" suite-coverage-lint" [: SUITE-COVERAGE-LINT ;] GSI-RUN
    s" tools/suite-coverage-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-NAMESPACE ( -- )
+: NAMESPACE ( -- )
    s" namespace-lint" [: NAMESPACE-LINT-STRICT ;] GSI-RUN
    s" tools/namespace-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-ERROR-CODE ( -- )
+: PACKAGE-OWNERSHIP ( -- )
+   s" tools/package-diff-lint-test.f" GSI-INCLUDE ;
+
+: ERROR-CODE ( -- )
    s" error-code-lint" [: ERROR-CODE-LINT-STRICT ;] GSI-RUN
    s" tools/error-code-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-HOST ( -- )
+: HOST ( -- )
    s" tools/host-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-TRUSTED-INVENTORY ( -- )
+: TRUSTED-INVENTORY ( -- )
    s" tools/trusted-inventory-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-PRIMITIVE-EFFECT-INVENTORY ( -- )
+: PRIMITIVE-EFFECT-INVENTORY ( -- )
    s" tools/primitive-effect-inventory-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ( -- )
+: BOOTSTRAP-MIRROR ( -- )
    s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-BOOTSTRAP-REFRESH ( -- )
+: BOOTSTRAP-REFRESH ( -- )
    s" tools/bootstrap-refresh-doc-test.f" GSI-INCLUDE ;
 
-: GSI-LINT-TOOLS-BODY ( -- )
+: RUN ( -- )
    GSI-FORK-RESET
-   s" lint-tools/clobber" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-CLOBBER ;] GT-POOL-START-FORK
-   s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-REPO ;] GT-POOL-START-FORK
-   s" lint-tools/status" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-STATUS ;] GT-POOL-START-FORK
-   s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-DOT ;] GT-POOL-START-FORK
-   s" lint-tools/nanogpt" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-NANOGPT ;] GT-POOL-START-FORK
-   s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-MAKI ;] GT-POOL-START-FORK
-   s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-REFINE ;] GT-POOL-START-FORK
-   s" lint-tools/suite-coverage" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-SUITE-COVERAGE ;] GT-POOL-START-FORK
-   s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-NAMESPACE ;] GT-POOL-START-FORK
-   s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-ERROR-CODE ;] GT-POOL-START-FORK
-   s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-HOST ;] GT-POOL-START-FORK
-   s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-TRUSTED-INVENTORY ;] GT-POOL-START-FORK
-   s" lint-tools/primitive-effect-inventory" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-PRIMITIVE-EFFECT-INVENTORY ;] GT-POOL-START-FORK
-   s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
-   s" lint-tools/bootstrap-refresh" GSI-FORK-TIMEOUT-MS [: GSI-LINT-TOOLS-BOOTSTRAP-REFRESH ;] GT-POOL-START-FORK
+   s" lint-tools/clobber" GSI-FORK-TIMEOUT-MS [: CLOBBER ;] GT-POOL-START-FORK
+   s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: REPOSITORY ;] GT-POOL-START-FORK
+   s" lint-tools/status" GSI-FORK-TIMEOUT-MS [: STATUS ;] GT-POOL-START-FORK
+   s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
+   s" lint-tools/nanogpt" GSI-FORK-TIMEOUT-MS [: NANOGPT ;] GT-POOL-START-FORK
+   s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
+   s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: REFINE ;] GT-POOL-START-FORK
+   s" lint-tools/suite-coverage" GSI-FORK-TIMEOUT-MS [: SUITE-COVERAGE ;] GT-POOL-START-FORK
+   s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
+   s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK
+   s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: ERROR-CODE ;] GT-POOL-START-FORK
+   s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: HOST ;] GT-POOL-START-FORK
+   s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: TRUSTED-INVENTORY ;] GT-POOL-START-FORK
+   s" lint-tools/primitive-effect-inventory" GSI-FORK-TIMEOUT-MS [: PRIMITIVE-EFFECT-INVENTORY ;] GT-POOL-START-FORK
+   s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
+   s" lint-tools/bootstrap-refresh" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-REFRESH ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;
 
-GSI-LINT-TOOLS-BODY
+RUN
+
+;package

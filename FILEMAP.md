@@ -1784,6 +1784,9 @@ points stay listed.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
+- `tools/package-diff-lint-core.f` — exact-diff package ownership scanner: validates new-side lines against the post-change file, derives scope from the complete lexical source, and rejects changed global module definitions or redundant package/file owner prefixes.
+- `tools/package-diff-lint.f` — CLI wrapper for the package ownership diff gate.
+- `tools/package-diff-lint-test.f` — hostile checked fixtures for global library/tool/test definitions, package boundary changes, exact scope outside hunks, prefix policy, lexical forgeries, and core/prelude exemptions.
 - `tools/kernel-perf-lint-core.f` — reusable diff scanner requiring kernel codegen changes to carry a profile/waiver row in `tools/ptx/perf-rows.tsv`.
 - `tools/kernel-perf-lint.f` — CLI wrapper for the kernel profile-row diff lint.
 - `tools/kernel-perf-lint-test.f` — checked fixture coverage for the kernel profile-row diff lint.

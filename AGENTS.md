@@ -85,9 +85,9 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   them bare inside that package and use `NAME:WORD` only across package
   boundaries. Raw global stems such as `LRD-*`, `TASK-*`, or `FOO-*` MUST NOT
   substitute for package scope. Any new or changed module definition without a
-  package owner fails the commit gate. Inspect the exact diff until the checked
-  package-diff gate tracked by `habu-enforce-pkg-first-c28d1dec` lands. See
-  `docs/forth.md` § Packages.
+  package owner fails the commit gate. Run the checked exact-diff package gate
+  described in `docs/forth.md` § Packages on the same artifact used by the
+  typed-local gate.
 
 ## Habu Only (BLOCKING)
 
@@ -174,7 +174,10 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   possible. Generate a `jj diff --git` artifact and run the Habu-native
   `tools/typed-local-diff-lint.f` on it; every new or changed locals group needs
   typed locals unless it documents a role-preserving exception from
-  `docs/forth.md`. Also scan the diff for new/changed `:`, `+:`, `CHECKED:`,
+  `docs/forth.md`. Run `tools/package-diff-lint.f` on that same artifact from
+  the repository root; every new or changed module definition must retain a
+  real package owner and a short package-local tail. Also scan the diff for
+  new/changed `:`, `+:`, `CHECKED:`,
   `TRUSTED:`, `0 set-check`, and `TRUST` sites; every new or changed definition
   needs a real typed stack effect unless it is an explicitly documented
   boundary. Multiline words must stay factored; split multi-pass work into named

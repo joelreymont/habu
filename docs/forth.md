@@ -127,6 +127,47 @@ intentionally belongs to a lowercase vocabulary. Define implementation helpers
 before `public` or after `private`; define the public interface only in the
 `public` section.
 
+The commit gate checks this policy against the exact Jujutsu diff and the
+post-change files. From the repository root, generate one artifact and pass it
+to both checked diff linters:
+
+```sh
+jj diff --git > "$HB_TMP/change.diff"
+bin/hb --load tools/typed-local-diff-lint.f -- "$HB_TMP/change.diff"
+bin/hb --load tools/package-diff-lint.f -- "$HB_TMP/change.diff"
+```
+
+`package-diff-lint` validates each hunk against the current file, then derives
+scope from the complete lexical source, so a package opener outside the hunk is
+still authoritative and comment, string, or diff-header text cannot forge one.
+Its publication inventory is derived from the native dictionary definers, the
+checker-owned type and storage declarers, every repository defining word that
+executes `create`, and every repository declarer that generates definitions
+through the audited `evaluate` boundaries. The focused fixture names every form
+in that inventory. Parser grammars that only add rows to an owning registry are
+not word definitions: `PRIM:` and `PPRIM:` add checker axioms; `SUITE`, `GROUP`,
+and `SUITE-STDIN` add test-runner rows; `VJP:` adds an automatic-differentiation
+row; and `GRID:` and `WHERE` consume kernel-header metadata. Their labels do not
+become callable dictionary words, so the package-definition lint deliberately
+does not classify them as definers.
+
+The complete-file global exceptions are exact paths, not directory rules:
+
+- `lib/prelude.f` owns the deliberately global prelude helpers.
+- `src/core/sumtype.f` owns the pre-hook type-declaration implementation and its
+  global `TYPEFAMILY`, `SUMTYPE`, `ENUM`, and `PRODUCT` language words.
+- `src/core/roles.f` owns the pre-hook nominal role conversions and declaration
+  words that must be available before application packages load.
+- `src/core/structures.f` owns the legacy global structure and field defining
+  language.
+- `src/core/enums.f` owns the legacy global numeric enum defining language.
+
+Two packaged implementation files each receive one narrower name exception:
+only `DEFTYPE` may be global in `lib/type/deftype.f`, and only `STRUCTURE` may be
+global in `src/core/structure-decl.f`. Any unrelated global definition in those
+files still fails. The hostile fixtures pin every exception and also prove that
+a nearby core path is not implicitly exempt.
+
 ```forth
 package HB
 
