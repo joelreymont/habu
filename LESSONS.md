@@ -558,6 +558,13 @@ fits.
 
 ## Tool & Infra
 
+- **Do not overlap a top-level gate with a second invocation of one of its own
+  suites.** `test/run.f` already launches the Maki core suite; running
+  `maki/test.f` beside it made both `maki/cad-test.f` processes contend through
+  their repository-local replay/store fixtures even with separate `HB_TMP`
+  roots, while the same focused test passed immediately once isolated. Run the
+  required top-level/owning gates sequentially unless their resource ownership
+  is explicitly disjoint.
 - **Repo lints, the lint tokenizer, and whole-source readers all carry a
   largest-file capacity watermark, and an uncaught positive throw dies SILENT.**
   Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint, trust-lint, trusted-inventory,
