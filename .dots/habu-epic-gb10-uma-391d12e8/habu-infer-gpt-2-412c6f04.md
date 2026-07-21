@@ -1,6 +1,6 @@
 ---
 title: "Infer: GPT-2 124M real-weights forward"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-21T15:57:56.745951+02:00\""
@@ -14,3 +14,5 @@ Destruction review 2026-07-21: released the stale `gpt2fwd` claim. The preserved
 workspace is rejected evidence: it uses monolithic global state, can retain two
 checkpoint copies, has incomplete validation and ownership cleanup, and lacks
 the required focused regressions. It must not merge.
+
+Claim: agent=publication_integrator workspace=.jj-ws/habu-infer-gpt-2-412c6f04 machine=spark

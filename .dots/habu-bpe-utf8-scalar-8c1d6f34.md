@@ -1,6 +1,6 @@
 ---
 title: "BPE: strict reentrant UTF-8 scalars"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-21T19:22:10+02:00"
@@ -32,3 +32,5 @@ owning native test gate.
 Dependencies: none. Ownership: UTF-8 byte-to-scalar/fallback decoding and
 reentrant scanner state only. Unicode categories and BPE chunk grammar remain
 with their exact dots.
+
+Claim: agent=enumcert_impl workspace=.jj-ws/habu-bpe-utf8-scalar-8c1d6f34 machine=spark
