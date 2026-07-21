@@ -210,12 +210,20 @@ variable GE-EVAL-SRC-U
       s" unmapped" type
    endcase ;
 
+\ Fail-closed gate entry. Re-throwing the escaped code sent the exit through the
+\ engine's BTHROW no-handler path, where a pre-hardening or candidate engine
+\ masks it to 8 bits - a multiple of 256 exits 0 SILENTLY (the fail-open that
+\ cost a multi-step diagnosis). Route the exit through die instead: BDIE's own
+\ range guard maps any out-of-range code to UNCAUGHT-RC and never masks to 0, so
+\ the gate is loud and nonzero under every engine - it no longer depends on the
+\ no-handler hardening (mirrors tools/build-fixpoint.f BF-FAIL-DIE). The throw
+\ code and name are still named on stdout above.
 : GE-THROW-REPORT ( n ptr u8 n -- ) {: rc:n label:ptr labelu:n :}
    rc 0= if exit then
    s" FAIL: " type label labelu type cr
    s" throw: " type rc .
    s" name: " type rc GE-RC-NAME. cr
-   rc throw ;
+   s" gate entry: uncaught throw" rc die ;
 
 : GE-PRINT-OUTCOME ( -- )
    s" outcome: " type GT-OUTCOME@ GE-OUTCOME.

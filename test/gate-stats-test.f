@@ -633,6 +633,8 @@ public
    [: GST-MAIN-BODY ;] catch {: rc:n :}
    GST-GS-RESTORE
    GST-GEN-RESTORE
-   rc 0 <> if rc throw then ;
+   \ Fail-closed like GE-THROW-REPORT: die (BDIE range-guard, never masks to 0)
+   \ instead of re-throwing to the maskable BTHROW no-handler path.
+   rc 0 <> if s" gate-stats-test: uncaught throw" rc die then ;
 
 GST-MAIN
