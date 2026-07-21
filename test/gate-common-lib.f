@@ -103,15 +103,6 @@ variable GE-EVAL-SRC-U
       s" spawn errno: " type pid PID>N negate . cr
    then ;
 
-: GE-SPAWN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
-   pathz argv envp -1 >FD PROC-OUT-W @ PROC-ERR-W @
-   PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
-   PROC-ARGV-ENV-RESET
-   pid PID>N 0 < if pid GE-SPAWN-FAIL. E-PROC-SPAWN PROC-THROW-CAPTURE then
-   pid PROC-PID !
-   PROC-OUT-W PROC-CLOSE-CELL
-   PROC-ERR-W PROC-CLOSE-CELL ;
-
 : GE-SPAWN-STDIN-CAPTURE ( ptr u8 ptr a ptr a -- ) {: pathz:ptr argv:ptr envp:ptr :}
    pathz argv envp PROC-IN-R @ PROC-OUT-W @ PROC-ERR-W @
    PROC-SPAWN-ARGV-ENV-RAW {: pid:pid :}
@@ -126,11 +117,11 @@ variable GE-EVAL-SRC-U
    PROC-ENV-INHERIT-MISSING
    path pathu >LEN PROC-ARGV-PREPARE {: pathz:ptr argv:ptr :}
    PROC-ENV-PREPARE {: envp:ptr :}
-   timeout >MS PROC-CAPTURE-BEGIN
+   timeout >MS PROC-STDIN-CAPTURE-BEGIN
    path pathu GS-HELPER-EVENT
-   pathz argv envp GE-SPAWN-CAPTURE
-   GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
-   PROC-RUN-CAPTURE-OUTCOME-LOOP
+   pathz argv envp GE-SPAWN-STDIN-CAPTURE
+   GT-OUT-BUF 0 >LEN GT-OUT-BUF GT-OUT-CAP >LEN GT-ERR-BUF GT-ERR-CAP >LEN
+   PROC-RUN-STDIN-CAPTURE-OUTCOME-LOOP
    PROC-CAPTURE-FINISH-OUTCOME GE-STORE-OUTCOME ;
 
 : GE-RUN-STDIN ( ptr u8 n ptr u8 n n -- ) {: path:ptr pathu:n in:ptr inu:n timeout:n :}

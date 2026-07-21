@@ -2323,9 +2323,14 @@ points stay listed.
   validation reproducer.
 - `test/nested-validation-rca-test.f` — focused two-level fork and durable
   process-step evidence coverage for the nested validation reproducer.
+- `test/gate-env-stdin-tty-test.f` — Linux controlling-terminal regression
+  proving that a background `GE-RUN-ENV` child receives explicit empty standard
+  input and cannot be stopped by terminal job control.
 - `test/run-files.f` — file sets that key native test suite caches.
 - `test/gate-common.f` — thin entry wrapper for native gate helper definitions.
-- `test/gate-common-lib.f` — side-effect-free native test-suite helper definitions.
+- `test/gate-common-lib.f` — side-effect-free native test-suite helper
+  definitions, including the explicit standard-input contracts for captured
+  children.
 - `test/candidate-runtime.f` — exact-candidate resident runtime source probes.
 - `test/runtime-subject.f` — fork-isolated exact-candidate source capture adapter.
 - `test/candidate-validation.f` — digest-exact resident candidate validation worker.

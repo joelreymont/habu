@@ -541,6 +541,10 @@ SUITE stdlib-process-fixtures
    lib/process-pty-handle-test.f
 ;SUITE
 
+SUITE gate-environment-empty-stdin
+   test/gate-env-stdin-tty-test.f
+;SUITE
+
 SUITE friend-arena-seal
    test/seal.f
 ;SUITE

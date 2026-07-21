@@ -474,6 +474,7 @@ variable GSI-TL-FILE-A
    s" lib/process-test.f" GSI-FORK-INCLUDE
    s" lib/process-command-test.f" GSI-FORK-INCLUDE
    s" lib/process-pty-handle-test.f" GSI-FORK-INCLUDE
+   s" test/gate-env-stdin-tty-test.f" GSI-FORK-INCLUDE
    \ engine-gate negative regressions: these lived only in gate-stdlib-cases.f
    \ suites whose labels no slice selects, so the full runner never executed
    \ them (gaps audit 2026-07-14). Forked includes isolate their hook installs
