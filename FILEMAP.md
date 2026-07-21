@@ -1435,6 +1435,21 @@ points stay listed.
   distinct flags distinct id), the wire round-trip, fail-closed decode (wrong-width +
   unresolved raw), cross-role rejection, and the private-mint unforgeability
   negatives.
+- `maki/infer/kv-cache.f` — the UMA-simplified paged KV cache allocator (phase 1 of the
+  GB10 UMA inference engine, dot habu-infer-paged-kv-53b72853). Fixed-size KV pages over
+  ONE `MEM:ALLOC-BYTES` pool sized from a `kvcfg` model-dims record (page = KV-P=16
+  tokens * n_kv_heads * head_dim * 2 * dtype-bytes); a per-page free stack, per-page
+  refcounts for prefix sharing, and per-sequence block tables on the lib/vector.f
+  discipline. `KV:INIT`/`DISPOSE` (two leak-free mappings, capacity-as-ownership),
+  `KV:ALLOC-SEQ`/`APPEND-TOKEN`/`FORK-SEQ`/`FREE-SEQ`, `KV:WATERMARK`, and `KV:CHECK`
+  (the refcount / free-list invariant). Fork shares pages byte-identically; append COWs
+  only a shared tail page. Host-side only - the device decode kernel reads pages via the
+  block table later. Owns -5622..-5628.
+- `maki/infer/kv-cache-test.f` — page geometry from the config, one-page-per-boundary
+  append, page recycling, byte-identical fork then tail-page copy-on-write divergence,
+  the named rejects (E-KV-CONFIG/POOL/SEQS/SEQ/STATE/BOUNDS), and a random
+  alloc/append/fork/free churn holding the watermark exact (== distinct referenced
+  pages) with `KV:CHECK` intact every round.
 - `maki/journal.f` — the append-only audit journal + audit-event-id wire codec (the
   audit-event-id leg of MODEL-CAD-V2-PLAN.md § 23.9): `JOURNAL:APPEND` records an event
   descriptor and mints the NEXT monotonic sequence id - OCCURRENCE-identified, so an

@@ -161,6 +161,8 @@ SUITE maki/onnx/deploy-test.f
 ;SUITE
 SUITE maki/onnx/ort-ref-test.f
 ;SUITE
+SUITE maki/infer/kv-cache-test.f
+;SUITE
 SUITE maki/fusion-test.f
 ;SUITE
 SUITE maki/ablate-fusion-test.f
