@@ -59,7 +59,17 @@
 \ tail-branching LVBINIPREP into the single LVBINPREP base; the shave stays inside
 \ the same 4 KiB text page, so the page-rounded whole-file total is unchanged. See
 \ the exact CODE-TEXT/floor rows in test/gate-size-attribution-test.f.
-165367 constant GB-SIZE-BASELINE-MACOS
+\ 2026-07-21 macOS 165367 -> 148855: three shared-engine landings that spark
+\ re-measured on linux-arm64 only were owed a macOS re-measure - the direct-BL call
+\ emitter (bc19e56e, linux -3344), the checked munmap primitive (541b691f, linux
+\ +136), and the shared declaration-event transaction (8763905f, linux +44). Their
+\ macOS __text delta sums byte-for-byte to linux (CODELEN 129888 -> 126724 = -3164),
+\ which crosses the 16 KiB __TEXT page floor: the file drops one 16 KiB page and the
+\ code signature loses four code-directory hash slots (-128), 165367 -> 148855. The
+\ interleaved rigid-domains (ac5901a3) and LOAD-CORPUS rename (2afcc679) touch only
+\ runtime source, not baked __text. Exact CODE-TEXT/signature/floor rows in
+\ test/gate-size-attribution-test.f.
+148855 constant GB-SIZE-BASELINE-MACOS
 143552 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-20 (DGX Spark linux-arm64): the
                                          \ direct-BL conversion (habu-aot-repl-bl) took CODELEN to 135072
                                          \ (139456 whole-file), then the checked munmap primitive

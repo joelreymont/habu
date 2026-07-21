@@ -100,10 +100,31 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ pad absorbs the delta). The deterministic-AOT-region-baking fix in this commit is
 \ host build-time only (src/habu/aot-capture.f is not baked into bin/hb), so it does
 \ not move CODELEN; this row reflects only the region-move's owed macOS re-measure.
-129888 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
-1423 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-2912 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
-165367 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
+\ 2026-07-21 re-measured live at the macOS-aarch64 byte fixpoint (bin/hb rebuilt to
+\ the byte-for-byte install --force fixpoint, then HABU_ENGINE_SIZE_MAP=1 captured and
+\ reconciled with zero residue). Three shared-engine landings that spark re-measured
+\ on linux-arm64 only - it cannot build or measure macOS - had left this macOS row
+\ stale: the direct-BL call emitter (dot habu-aot-repl-bl, commit bc19e56e; it folds
+\ the absolute movz/movk/movk x16 + blr x16 call sequence into the shared LCEMITBL
+\ primitive and shrinks the captured AOT-REPL blob, linux -3344), the checked munmap
+\ primitive (dot habu-expose-checked-mmap-06c1d522, commit 541b691f; native BMUNMAP
+\ body, linux +136), and the shared declaration-event transaction (src/core/decl-event.f,
+\ dot habu-type-declarations-shared-14ab0e48, commit 8763905f; habu2.f wiring, linux
+\ +44). All three are src/habu baked-engine changes, and their macOS __text delta sums
+\ byte-for-byte to the linux measurement: CODELEN 129888 -> 126724 (-3164 = -3344 +136
+\ +44). The interleaved rigid host-allocation identity domains (commit ac5901a3) and the
+\ data-loader LOAD -> LOAD-CORPUS rename (commit 2afcc679) touch only runtime
+\ checker/render/maki source loaded at boot, not baked __text, so they contribute 0
+\ bytes here. The -3164 __text shrink crosses the 16 KiB __TEXT page floor: the text
+\ segment falls from nine to eight 16 KiB pages (floor-dist 2912 -> 16132) and the
+\ ad-hoc code signature loses four 4 KiB code-directory hash slots (1423 -> 1295 =
+\ -128). Whole file 165367 -> 148855 (-16384 page - 128 signature = -16512).
+\ MACOS-DATA-CONST and MACOS-LINKEDIT are unchanged. Keep MACOS-TOTAL equal to
+\ GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+126724 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
+16132 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
 \ Spark, linux-arm64) after the shared PROT-GUARD:CALL span-guard fold (CODELEN
