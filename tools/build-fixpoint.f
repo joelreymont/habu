@@ -774,9 +774,11 @@ public
    out outu s" src/core/pointer-storage-effects.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-DECL-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}
-   \ The shared declaration-event transaction, then the unified STRUCTURE
-   \ declarer (ENUM is a later dot) — all after the checker hook.
+   \ The shared declaration-event transaction, then the STRUCTURE constructor
+   \ generator, then the STRUCTURE declarer (which calls the generator, so it must
+   \ come after it; ENUM is a later dot) — all after the checker hook.
    out outu s" src/core/decl-event.f"     BF-APPEND-SOURCE
+   out outu s" src/core/structure-make.f" BF-APPEND-SOURCE
    out outu s" src/core/structure-decl.f" BF-APPEND-SOURCE ;
 
 : BF-APPEND-CORE-FILES ( ptr u8 n -- ) {: out:ptr outu:n :}

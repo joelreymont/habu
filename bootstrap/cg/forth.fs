@@ -1633,7 +1633,7 @@ variable LPTYPESCHEMA   variable LPTYPEFAM      variable LPSUMTYPE      variable
 variable LPHOOK         variable LPCELLEFF      variable LPPTRSTORAGEEFF
 variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPROLES
-variable LPDECLEVENT    variable LPSTRUCTDECL
+variable LPDECLEVENT    variable LPSTRUCTMAKE   variable LPSTRUCTDECL
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPLAYOUTSEAL
 create BPH-KW 104 c, 97 c, 98 c, 117 c, 45 c, 98 c, 112 c, 58 c, 10 c,   \ habu-bp:\n
@@ -1812,9 +1812,12 @@ create ZBYTE 0 c,
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-DECL-FILES ( -- )
-   \ The shared declaration-event transaction loads first; the unified STRUCTURE
-   \ declarer loads after it (ENUM is a later dot), still after the checker hook.
+   \ The shared declaration-event transaction loads first, then the STRUCTURE
+   \ constructor generator, then the STRUCTURE declarer (which calls the
+   \ generator, so it must load after it; ENUM is a later dot) — all after the
+   \ checker hook.
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-LOAD-ROW
+   PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-LOAD-ROW
    PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-LOAD-ROW ;
 
 : PFX-LOAD-CORE-FILES ( -- )
@@ -1892,6 +1895,7 @@ create ZBYTE 0 c,
 
 : PFX-PATH-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PATH-ROW
+   PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-PATH-ROW
    PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PATH-ROW ;
 
 : PFX-PATH-CORE-FILES ( -- )
@@ -2129,6 +2133,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 : PFX-PROVIDE-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PROVIDE-ROW
+   PFX-COMMON LPSTRUCTMAKE   s" src/core/structure-make.f" PFX-PROVIDE-ROW
    PFX-COMMON LPSTRUCTDECL   s" src/core/structure-decl.f" PFX-PROVIDE-ROW ;
 
 : PFX-PROVIDE-CORE-FILES ( -- )
@@ -6140,7 +6145,7 @@ variable P2SK
    LBL LPTYPESCHEMA !  LBL LPTYPEFAM !  LBL LPSUMTYPE !  LBL LPLAYOUTBUF !  LBL LPLAYOUTVALID !
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPROLES !
-   LBL LPDECLEVENT !  LBL LPSTRUCTDECL !
+   LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPLAYOUTSEAL ! ;
 

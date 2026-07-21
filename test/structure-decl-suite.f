@@ -9,9 +9,15 @@
 \ byte offsets; POLICY and DERIVE reach both the event stream and the family
 \ record; every reject anchor (E-TDECL-* family + the field record's own name
 \ gate) fires at the offending token; a mid-declaration reject leaves every
-\ registry cursor byte-identical to the pre-declaration baseline; and the
+\ registry cursor byte-identical to the pre-declaration baseline; the
 \ deterministic snapshot identity is reproducible for an identical declaration
-\ against a fresh registry. A failure prints F<index> + detail; REPORT exits 1.
+\ against a fresh registry; and — the reconciliation seam — a public STRUCTURE
+\ with fields generates a working sealed FAMILY:MAKE/UNMAKE ctor package that
+\ round-trips bit-identically in declaration order, while a rejected, an opaque
+\ zero-field, and a private declaration each generate no ctor words.
+\ A failure prints F<index> + detail; REPORT exits 1.
+
+require test/checker-assert.f
 
 variable #FAIL
 variable #CASE
@@ -64,6 +70,7 @@ TRUSTED: SCHN@ ( -- n ) SCH-N @ ;
 TRUSTED: SUMVN@ ( -- n ) SUMV-N @ ;
 
 variable RC   variable FID   variable B   variable NODE   variable PFB   variable DEVB
+variable SV0   \ variant-cursor watermark for the ctor-generation gating checks
 
 \ ---------------------------------------------------------------------------
 \ 1. A product declaration persists its family and both field rows, reachable
@@ -159,8 +166,15 @@ s" STRUCTURE twice 0 FIELD x n ;STRUCTURE" TRY 7102 T=
 \ ---------------------------------------------------------------------------
 \ 9. Deterministic snapshot identity: an identical declaration against a fresh
 \    registry (family id restored, event log reset) folds to the same identity;
-\    a different declaration folds to a different one.
+\    a different declaration folds to a different one. These declarations are
+\    PRIVATE so the in-process registry-restore trick can re-declare the same
+\    family id without regenerating (and colliding on) its sealed ctor words —
+\    the snapshot identity is a DECL-EVENT property (family id + events, not
+\    visibility), so private and public declarations fold identically. The
+\    public ctor-generation seam is proven separately in cases 10-13.
 \ ---------------------------------------------------------------------------
+package IDENTTEST
+private
 REG-MARK
 DECL-EVENT:RESET
 s" STRUCTURE ident 0 FIELD x n ;STRUCTURE" EV
@@ -173,6 +187,59 @@ REG-RESTORE
 DECL-EVENT:RESET
 s" STRUCTURE ident 0 FIELD x n FIELD y n ;STRUCTURE" EV
 DECL-EVENT:IDENTITY RC @ <> T-TRUE                    \ different declaration -> different identity
+public
+;package
+
+\ ---------------------------------------------------------------------------
+\ 10. End-to-end wiring (the ;STRUCTURE -> STRUCTURE-MAKE:GENERATE seam): a public
+\     STRUCTURE with fields, declared from real syntax, generates a working sealed
+\     MAKE/UNMAKE ctor package (two variant rows: make + unmake). MAKE then UNMAKE
+\     is a bit-identical physical no-op that preserves declaration order.
+\ ---------------------------------------------------------------------------
+SUMVN@ SV0 !
+s" STRUCTURE tri 0 FIELD a n FIELD b n FIELD c n ;STRUCTURE" EV
+SUMVN@ SV0 @ 2 + T=                                   \ exactly two ctor variant rows generated
+: TRIRT ( n n n -- n n n ) TRI:MAKE TRI:UNMAKE ;      \ callable sealed ctor words
+11 22 33 TRIRT 33 T= 22 T= 11 T=                      \ declaration order + values round-trip bit-identically
+
+\ ---------------------------------------------------------------------------
+\ 11. The generated MAKE/UNMAKE are exact type inverses across a cell + byte +
+\     generic field mix (the make-suite candidate whitebox check, driven here from
+\     real STRUCTURE syntax): `abc` has a generic parameter field, a cell field,
+\     and a byte field, and at a concrete instantiation (parameter a = n) the
+\     round-trip certifies with its declaration-order field types.
+\ ---------------------------------------------------------------------------
+s" STRUCTURE abc 1 FIELD p a FIELD k n FIELD c char ;STRUCTURE" EV
+s" ABCRT ( n n char -- n n char ) ABC:MAKE ABC:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+\ a generic-only structure round-trips its parameter at a concrete instantiation.
+s" STRUCTURE gp 1 FIELD v a ;STRUCTURE" EV
+: GPRT ( n -- n ) GP:MAKE GP:UNMAKE ;
+42 GPRT 42 T=
+
+\ ---------------------------------------------------------------------------
+\ 12. Constructor generation is gated (SD-MAKEABLE?): only a PUBLIC structure WITH
+\     fields owns a ctor package. A rejected declaration and an opaque zero-field
+\     declaration each generate NO ctor words (the variant cursor is unchanged).
+\ ---------------------------------------------------------------------------
+SUMVN@ SV0 !
+s" STRUCTURE badf 0 FIELD z n FIELD z n ;STRUCTURE" TRY 7102 T=   \ duplicate field rejects
+SUMVN@ SV0 @ T=                                       \ no ctor words from a rejected declaration
+SUMVN@ SV0 !
+s" STRUCTURE opaque 0 ;STRUCTURE" EV                  \ zero-field opaque one-cell family (docs/type-families.md §2.2)
+SUMVN@ SV0 @ T=                                       \ an opaque family owns no MAKE/UNMAKE
+
+\ ---------------------------------------------------------------------------
+\ 13. A PRIVATE structure with fields owns no construction surface either:
+\     SD-MAKEABLE? requires a public family, matching the shipped product
+\     precedent (private products publish no MAKE/UNMAKE, fail-closed).
+\ ---------------------------------------------------------------------------
+SUMVN@ SV0 !
+package SDPRIVTEST
+private
+STRUCTURE hidden 0 FIELD x n ;STRUCTURE
+public
+;package
+SUMVN@ SV0 @ T=                                       \ private structure generates no ctor words
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

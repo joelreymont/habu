@@ -5,13 +5,17 @@
 \ resolve only at top-level interpret, never inside a checked ':' body):
 \     bin/hb < test/structure-make-suite.f
 \
-\ STRUCTURE syntax does not exist yet, so every structure is declared exactly
-\ the way the parse front end will: register the family (TFAM-DECL), drive its
-\ fields through a DECL-EVENT OPEN…FIELD…PUBLISH transaction (which commits the
-\ field rows through the shared field record), record the family's layout width
-\ (TFAM-SLOTS!) and field range (TFAM-FLD-RANGE!), then call
-\ STRUCTURE-MAKE:GENERATE. That is the one seam the front end's ;STRUCTURE wires
-\ in the reconciliation.
+\ This is the whitebox generator suite: every structure is declared by hand
+\ exactly the way the parse front end does — register the family (TFAM-DECL),
+\ drive its fields through a DECL-EVENT OPEN…FIELD…PUBLISH transaction (which
+\ commits the field rows through the shared field record), record the family's
+\ layout width (TFAM-SLOTS!) and field range (TFAM-FLD-RANGE!), then call
+\ STRUCTURE-MAKE:GENERATE. That hand-built path stays the right level here, and
+\ keeps the field-kind and rollback matrix independent of the grammar: the
+\ reconciliation has now wired that same seam into the front end's ;STRUCTURE
+\ (proven end-to-end from STRUCTURE syntax in test/structure-decl-suite.f), and
+\ structure-make.f is baked, so this suite uses the baked STRUCTURE-MAKE:GENERATE
+\ directly (no require).
 \
 \ Proves: MAKE→UNMAKE round-trips bit-identically and preserves declaration
 \ order (a physical no-op over the field cells); each field kind — plain cell,
@@ -27,7 +31,6 @@
 \ A failure prints F<index> + detail; REPORT exits 1 on any fail.
 
 require test/checker-assert.f
-require src/core/structure-make.f
 
 variable #FAIL
 variable #CASE

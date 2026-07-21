@@ -40,8 +40,42 @@
 \ SD-RESTORE runs AFTER DECL-EVENT:ROLLBACK so the earlier (pre-family) string-pool
 \ high-water wins over the event module's (post-family-name) one.
 \
-\ Loaded AFTER the checker hook and AFTER decl-event.f (it drives DECL-EVENT:*);
-\ the STRUCTURE opener is the only executable STRUCTURE declaration surface.
+\ ---------------------------------------------------------------------------
+\ CONSTRUCTOR GENERATION (the ;STRUCTURE -> STRUCTURE-MAKE seam).
+\ ---------------------------------------------------------------------------
+\ Once SD-CLOSE has bound the family field range + width and DECL-EVENT:PUBLISH
+\ has committed the field rows, ;STRUCTURE hands the fully published family id to
+\ STRUCTURE-MAKE:GENERATE (src/core/structure-make.f), which defines the sealed
+\ FAMILY:MAKE / FAMILY:UNMAKE constructor package from the committed field
+\ schemas. Two spec conditions gate the call (SD-MAKEABLE?), so GENERATE is only
+\ invoked when its own contract already holds:
+\   - PUBLIC only. GENERATE requires a public family. A private structure gets no
+\     construction surface, matching the shipped product precedent: sumtype.f's
+\     TDECL-CTOR-PUBLISH / TDECL-PROD-WORDS simply exit for a non-public family,
+\     so private products publish no MAKE/UNMAKE (fail-closed, sumtype.f note
+\     "private products have no construction surface"). Package-scoped private
+\     generation is deferred type-DSL work, not invented here.
+\   - FIELDS only. A zero-field structure is an opaque one-cell family that
+\     publishes no constructor (docs/type-families.md §2.2 — the authority-safe
+\     TYPEFAMILY replacement); only a declaration WITH fields is a product with a
+\     MAKE/UNMAKE pair, so GENERATE is skipped when NFLD is zero.
+\ Under that gate GENERATE composes INFALLIBLY after PUBLISH: every reject it can
+\ raise is structurally impossible for a just-published structure. The family is
+\ live (SD-RESTORE only retires it on a reject, and this is the success path) and
+\ product-kind (SD-REGISTER registered it TK-PROD), so E-SM-FAM cannot fire; the
+\ gate guarantees at least one field, so E-SM-EMPTY cannot fire; DECL-EVENT:PUBLISH
+\ committed every field row in [FLDBASE, FLDBASE+NFLD), so the committed-field
+\ reader never throws E-PF-ID; and a duplicate family name already rejected at
+\ TFAM-DECL inside SD-REGISTER, so this is the family's first and only generation
+\ and E-SM-DUP cannot fire. The call therefore owns no rollback path: it runs
+\ inside SD-RUN's catch only because SD-CLOSE does, and it cannot throw for a
+\ well-formed declaration — exactly how the product ctor path relies on generation
+\ being infallible once its declaration validated.
+\
+\ Loaded AFTER the checker hook, AFTER decl-event.f (it drives DECL-EVENT:*), and
+\ AFTER structure-make.f (its ;STRUCTURE calls STRUCTURE-MAKE:GENERATE, so the
+\ generator must be defined first); the STRUCTURE opener is the only executable
+\ STRUCTURE declaration surface.
 
 package STRUCTURE-DECL
 
@@ -301,10 +335,13 @@ SD-RESET
    TOK @ FAM @ DECL-EVENT:DECL TOK !
    TOK @ FAM @ ar DECL-EVENT:ARITY TOK ! ;
 
-: SD-CLOSE ( -- )                          \ bind field range + width, publish atomically
+: SD-MAKEABLE? ( -- bool )                 \ a public structure WITH fields owns a MAKE/UNMAKE package
+   FAM @ FAM-PUBLIC? NFLD @ 0 > and ;
+: SD-CLOSE ( -- )                          \ bind field range + width, publish, then generate the ctors
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
    FAM @ SD-CELLS @ FAM-SLOTS!
-   TOK @ DECL-EVENT:PUBLISH ;
+   TOK @ DECL-EVENT:PUBLISH
+   SD-MAKEABLE? IF FAM @ STRUCTURE-MAKE:GENERATE THEN ;   \ infallible here (see header seam note)
 
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE
    SD-NEXT dup 0= IF 2drop E-SYNTAX throw THEN

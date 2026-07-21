@@ -20,8 +20,15 @@
 \ (TFAM-FLD-RANGE!), and its fields committed (TYPE-FIELD) — the front end's
 \ ;STRUCTURE calls STRUCTURE-MAKE:GENERATE with the family id. This file adds NO
 \ front end, NO parser state, and NO grammar: it owns MAKE/UNMAKE generation
-\ only. Until the reconciliation wires ;STRUCTURE, this module is loaded and
-\ exercised only by test/structure-make-suite.f.
+\ only. The reconciliation (dot habu-structure-generate-make-872a6e75) wired that
+\ ;STRUCTURE call; the front end gates it on a PUBLIC family WITH fields, so
+\ GENERATE is only reached when its whole contract already holds (see
+\ src/core/structure-decl.f's constructor-generation seam note). This module now
+\ loads baked in the post-hook DECL group immediately BEFORE
+\ src/core/structure-decl.f — the front end references STRUCTURE-MAKE:GENERATE, so
+\ the generator must be defined first. test/structure-make-suite.f still drives
+\ GENERATE directly over hand-built declarations for the field-kind and rollback
+\ matrix.
 \
 \ Generation reads layout truth (field schemas, generic parameter slots, the
 \ product width, hidden-field expansion) straight from the shared committed
