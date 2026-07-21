@@ -1,9 +1,36 @@
 ---
-title: Make kernel example reproducible
-status: open
+title: Remove obsolete Zig kernel consumer
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-19T20:45:54.361662+02:00"
+created-at: "\"2026-07-19T20:45:54.361662+02:00\""
 ---
 
-examples/kernel-consumer/build.zig:22-25 says that without HABU_ROOT the build uses committed SAXPY.ptx and SAXPY.manifest.json, but an exact rg --files examples/kernel-consumer census contains only build.zig and main.zig. main.zig:32-33 therefore @embedFile references files absent from the repository. The example is explicitly excluded from repository builds, so this broken fallback and Zig API drift can rot indefinitely while docs/ptx-sketch.md points to it as the canonical external consumer. Do not commit regenerable PTX artifacts. Give the example one truthful deterministic artifact-input contract: either require explicit PTX/manifest paths for a genuinely external consumer or invoke the repository exporter from a resolved repository root for the in-tree sample; fail at configure time with a precise message when inputs are absent. Add a host-only build/compile gate that generates the pair in a private temporary directory with bin/hb, supplies those exact paths, and compile-checks the consumer without requiring a CUDA device; separately prove missing inputs fail with the documented diagnostic and no stale artifact is consumed. Update the comments and docs to match the actual flow. Files: examples/kernel-consumer/build.zig, examples/kernel-consumer/main.zig embed wiring if needed, Habu-native owning test/gate, docs/ptx-sketch.md. Depends: none. Ownership: artifact discovery/generation and example build coverage only; no manifest semantic validation or CUDA runtime behavior.
+The only Zig source in this repository is the two-file
+`examples/kernel-consumer/` demonstration. It is excluded from repository
+builds, references generated artifacts that are not present, leaves required
+manifest and device validation unfinished, and is not part of the native GB10
+inference engine. Keeping it creates an untested second-language maintenance
+surface and three follow-up tasks with no product value.
+
+Delete `examples/kernel-consumer/` completely. Remove live claims and links to
+that example from `FILEMAP.md` and `docs/ptx-sketch.md`, while preserving the
+language-neutral kernel-export and manifest contract. Do not delete or weaken
+the checked Habu exporter, manifest renderer, CUDA launcher, or their tests.
+After the deletion lands, close `habu-enforce-kernel-manifest-df5a4f0c` and
+`habu-harden-cuda-consumer-f0ffe671` as superseded because their sole code owner
+no longer exists. Historical review evidence may remain clearly historical.
+
+Acceptance: `rg --files -g '*.zig'` and an exact live-reference search are
+empty; the kernel-export focused suite remains green; `host-lint`,
+`filemap-lint`, and the native dot dependency gate report zero findings. No
+replacement host-language example, generated PTX artifact, compatibility shim,
+or documentation workaround is added.
+
+Files: delete `examples/kernel-consumer/build.zig` and
+`examples/kernel-consumer/main.zig`; update `FILEMAP.md`,
+`docs/ptx-sketch.md`, and the three obsolete Zig-consumer dots only.
+Dependencies: none. Ownership: removal of the obsolete Zig consumer and its
+live repository references only.
+
+Claim: agent=enumcert_impl workspace=.jj-ws/habu-remove-zig-kernel-consumer-d6434bd6 machine=spark
