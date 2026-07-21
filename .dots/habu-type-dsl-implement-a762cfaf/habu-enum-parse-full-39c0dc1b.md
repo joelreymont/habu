@@ -1,9 +1,11 @@
 ---
 title: "ENUM: parse full and compact forms"
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-13T17:13:59.138732+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-13T17:13:59.138732+02:00\\\\\\\"\\\"\""
+closed-at: "2026-07-21T17:18:31.141362+02:00"
+close-reason: "Landed 1e21e496: src/core/enum-decl.f (package ENUM-DECL) - the second decl-event consumer, mirroring the proven structure-decl pattern. Mode selected irrevocably by the first body token (decimal = FULL block mode registering TK-SUM with arity/POLICY/DERIVE headers and VARIANT name (FIELD n t)* ;VARIANT blocks; else COMPACT registering TK-ENUM, implicit arity 0, payloadless bare variants). Every reject at the exact token, transactionally byte-identical (ED-MARK/RESTORE around DECL-EVENT ROLLBACK). Variant fields committed keyed (family, variant-id) with SV.SCH-COUNT=0 per the settled seam. DELIBERATE: the global ENUM token is NOT rebound - live gates depend on the legacy sumtype ENUM; the front end is ENUM-DECL:ED-RUN and the token cutover is the delete-legacy stage's. Load rows in all four assembly paths; single-commit landing installed cleanly (no reference from existing prelude). 13 case groups; census 3775, CODELEN 114484/floor 3892 measured at the merge; fixpoint x2 (engine b00783a0); correctness fully green, perf under waiver 0922330e."
 blocks:
   - habu-type-declarations-shared-14ab0e48
   - habu-fields-add-shared-6b063c62
