@@ -1873,6 +1873,10 @@ fits.
   and leave their working copies stale. Create a fresh workspace at the verified
   base, duplicate reviewed commits onto it, and verify the live workspace graph
   before changing ancestry.
+- **Splitting a singleton across modules does not create ownership.** A model is
+  instance-owned only when its mapping, validated tensor view, generation, and
+  workspace binding are explicit values threaded into every forward and kernel
+  call; package-global registries still clobber interleaved models.
 - **GPT-2 byte vocabulary makes the classification domain all Unicode scalars.**
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,
