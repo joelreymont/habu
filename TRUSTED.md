@@ -96,8 +96,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | c-emit-drop-x12 | `--` | Control-flow local-scope restore emits a raw `add sp, sp, #bytes` teardown from generated register state. | `test/engine-suite.f`, `test/run.f` | src/habu/habu2.f | 2026-06-29 |  |  |
 | c-dup-def-fail | `--` | Duplicate-definition failure emitter writes the fixed diagnostic and pending definition token, then exits with the duplicate-definition code. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
 | c-reject-dup-def | `--` | Definition-publish guard scans the active target wordlist case-insensitively before dictionary mutation and branches to the duplicate-definition failure emitter. | `test/gate-dictionary.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
-| c-qualify-def | `--` | Definition-time namespace qualifier emitter: rewrites the pending token to the qualified tail, creates namespace wordlist records, and exits on malformed qualification through raw runtime code. | `test/gate-dictionary.f`, `tools/xref-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
-| c-store-def-name | `--` | Stores the pending dictionary name and qualified wordlist after `c-qualify-def`, then restores the full captured token for checker publication. | `test/gate-dictionary.f`, `tools/xref-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-27 |  |  |
+| emit-qualify-def | `--` | Emits the one shared LQUALIFYDEF qualifier helper (formerly inlined at every definer): rewrites the pending token to the qualified tail, creates namespace wordlist records, walks the duplicate/capacity/seal guards, and exits on malformed qualification through raw runtime code. Saves the link register across its internal hash-index branch-with-link. | `test/gate-dictionary.f`, `tools/xref-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-21 |  |  |
+| c-qualify-def | `--` | Emits a branch-with-link to the shared `emit-qualify-def` (LQUALIFYDEF) qualifier helper at each definer site. | `test/gate-dictionary.f`, `tools/xref-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-21 |  |  |
+| emit-store-def-name | `--` | Emits the one shared LSTOREDEFNAME guarded-name-publication helper (formerly inlined at every definer plus export): stores the pending dictionary name and qualified wordlist, guards publication into a protected sealed wordlist, and restores the full captured token for checker publication. x9 (record pointer) is preserved in and out; saves the link register across its internal protected-wid branch-with-link. | `test/gate-dictionary.f`, `tools/xref-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-21 |  |  |
+| c-store-def-name | `--` | Emits a branch-with-link to the shared `emit-store-def-name` (LSTOREDEFNAME) publication helper at each definer site. | `test/gate-dictionary.f`, `tools/xref-test.f`, `test/run.f` | src/habu/habu2.f | 2026-07-21 |  |  |
 | c-defer-die-token | `n --` | Deferred-word failure emitter writes the current token and exits with the supplied execution-vector code from generated compiler/runtime paths. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |  |  |
 | c-defer-find-unset | `--` | Deferred-word creation resolves the shared `DEFER-UNSET` sentinel xt through the raw target dictionary. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |  |  |
 | c-defer-cell | `--` | Deferred-word creation allocates the vector cell and seeds it with the unset sentinel xt in raw target data space. | `test/gate-dictionary.f`, `tools/hb-build-test.f`, `test/run.f` | src/habu/habu2.f | 2026-06-28 |  |  |
@@ -1032,7 +1034,7 @@ cap:wide-memory-lowering TRUSTED.md#cap-wide-memory-lowering
 <!-- trusted-inventory-classes
 fold-baseline 2
 src/habu/build.f builder-emit habu-builder-trust-rows-c5d41af6 1
-src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 138
+src/habu/habu2.f builder-emit habu-builder-trust-rows-c5d41af6 140
 src/habu/hide.f builder-emit habu-builder-trust-rows-c5d41af6 1
 src/habu/maker.f builder-emit habu-builder-trust-rows-c5d41af6 1
 src/habu/verify-source.f:TRUST builder-emit habu-builder-trust-rows-c5d41af6

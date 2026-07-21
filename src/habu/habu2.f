@@ -2115,7 +2115,27 @@ s" c-seal-match" s" --" TRUST
    ok LBL, ;
 s" c-qualify-seal-guard" s" --" TRUST
 
-: C-QUALIFY-DEF ( -- )
+variable LQUALIFYDEF      \ shared qualification helper entry (dot habu-emit-one-shared)
+variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
+
+\ One shared qualification/publication helper (dot habu-emit-one-shared).
+\ Formerly this whole body was inlined at every definer (CREATE/CONSTANT/TRUSTED:/
+\ DEFER/colon), copying the qualification scan, package lookup/create path,
+\ duplicate wall, capacity guard, name storage, and state restoration into each
+\ handler. It is now emitted once at LQUALIFYDEF and reached by branch-with-link.
+\ Register ABI: pure DATA-cell (memory) in/out — it reads TKA/TKL/CUR, writes the
+\ DEF-* mirror + TKA/TKL. It clobbers the general scratch set (x3-x17); every
+\ caller already recomputes those from memory after the call, so nothing is live
+\ across it. The one internal branch-with-link (LHIDXADD) clobbers the link
+\ register, so the body saves x30 across itself. Fail exits (seal/dup/qualified-
+\ name misuse/dict-full) either exit_group or B LCOMPILEDIE, whose recovery
+\ restores SP from the eval-frame / REPL snapshot, so the unbalanced frame on a
+\ die path is harmless. W^X: emitted into the RW code region like every other
+\ primitive, flushed RX with the rest of the image; it takes no data-region
+\ store outside the DATA cells its callers already touch.
+: EMIT-QUALIFY-DEF ( -- )
+   LQUALIFYDEF LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qnone qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
    C-QUALIFY-SEAL-GUARD
@@ -2184,17 +2204,31 @@ s" c-qualify-seal-guard" s" --" TRUST
       done B,
    qbad LBL,
       $4B C-QUALIFY-FAIL
-   done LBL, ;
+   done LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;              \ restore link register + return
+s" emit-qualify-def" s" --" TRUST
+
+: C-QUALIFY-DEF ( -- )  LQUALIFYDEF LABEL@ BL, ;      \ call the one shared helper
 s" c-qualify-def" s" --" TRUST
 
+\ One shared guarded-name-publication helper (dot habu-emit-one-shared).
+\ Formerly inlined at every definer plus EXPORT; now emitted once at
+\ LSTOREDEFNAME and reached by branch-with-link.
 \ Publish guard (TFAM 2b-v): a new record's WID is DEF-WL-CELL (from CUR-CELL, which
 \ a user can redirect with `set-current`, or a resolved package WID). Reject
 \ publishing into a protected WID once the friend latch is sealed -- so user source
 \ cannot `<protected-wid> set-current : FOO ;` or `: RESULT:BOGUS ;` into a sealed
 \ system / generated constructor package. Friend/cold-load (latch 0) is exempt.
-\ x9 (the record pointer, live for the [40] store below) is preserved across the
-\ LPROTWIDQ call; x30 is already caller-saved on this publish path.
-: C-STORE-DEF-NAME ( -- )
+\ Register ABI: x9 = record pointer, live in AND out — the body saves it across
+\ the internal LPROTWIDQ call (SP-relative) and restores it, then uses it for the
+\ [40] wid store; every caller reads x9 after the call, so the save/restore is the
+\ preservation contract. The body also saves x30 across the LPROTWIDQ
+\ branch-with-link; the protected-publish exit is exit_group, so its unbalanced
+\ frame never returns. W^X: no data-region store outside the DATA cells its
+\ callers already touch; emitted RW, flushed RX with the image.
+: EMIT-STORE-DEF-NAME ( -- )
+   LSTOREDEFNAME LABEL@ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,                          \ save link register across the internal LPROTWIDQ BL
    LBL {: pgok:label :}
    14 DATA FRIEND-LATCH-CELL LDR,  14 pgok CBZ,          \ open -> no guard
    SP SP 16 SUBI,  9 SP 0 STR,                           \ save record ptr
@@ -2209,7 +2243,11 @@ s" c-qualify-def" s" --" TRUST
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
-   12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR, ;
+   12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;                 \ restore link register + return
+s" emit-store-def-name" s" --" TRUST
+
+: C-STORE-DEF-NAME ( -- )  LSTOREDEFNAME LABEL@ BL, ;    \ call the one shared helper
 s" c-store-def-name" s" --" TRUST
 
 : EMIT-CREATE ( -- )
@@ -6731,6 +6769,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LPROTWIDQ !  OWNER-WID-EMIT:LABELS
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
+   LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !
    LBL LAOTWIDGATE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
@@ -7024,6 +7063,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-FIND                  s" primitives/find" ENGINE-SIZE:MARK
    EMIT-FIND-USED             s" primitives/find-used" ENGINE-SIZE:MARK
    EMIT-HIDX                  s" primitives/hash-index" ENGINE-SIZE:MARK
+   EMIT-QUALIFY-DEF           s" primitives/qualify-def" ENGINE-SIZE:MARK
+   EMIT-STORE-DEF-NAME        s" primitives/store-def-name" ENGINE-SIZE:MARK
    EMIT-NUM                   s" primitives/number" ENGINE-SIZE:MARK
    EMIT-TOPHOOK               s" primitives/top-hook" ENGINE-SIZE:MARK ;
 

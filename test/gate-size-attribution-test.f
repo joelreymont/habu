@@ -247,10 +247,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ scalars now emit minimal MOVZ/MOVN+MOVK into x16, addresses keep the fixed x9
 \ relocation chain. Region attribution: interpret/define -136, compile/keywords -760,
 \ aot-seed -468.
-133592 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 re-measured at the merged fixpoint: the shared definer publication
+\ path (dot habu-emit-one-shared-dae6cd61) emits the qualify/store bodies ONCE as
+\ native BL routines instead of inlining them at 5/6 definers - on top of the
+\ literal split, CODELEN 133592 -> 122124, floor 2520 -> 3340, whole file
+\ 139456 -> 127168 (drops two 4 KiB pages). Region attribution in the rows.
+122124 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-2520 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+3340 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
 \ The whole-file (GB-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
@@ -274,8 +279,8 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 : LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
    s" main/startup"            5672 q execute
    s" main/comment"             380 q execute
-   s" interpret/colon"         3540 q execute
-   s" interpret/define"       19192 q execute
+   s" interpret/colon"         752 q execute
+   s" interpret/define"       10464 q execute
    s" interpret/string"        1148 q execute
    s" interpret/number"          48 q execute
    s" interpret/find"           132 q execute
@@ -310,10 +315,12 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" primitives/hash-index"    852 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         7324 q execute
+   s" dictionary-code"         4536 q execute
    s" runtime"                 9508 q execute
    s" seed-dictionary"         8652 q execute
    s" aot-seed"               22412 q execute
+   s" primitives/qualify-def"  2448 q execute
+   s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;
 
 variable RB-ACC
