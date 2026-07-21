@@ -1723,6 +1723,7 @@ points stay listed.
 - `tools/stdin-closure-lib.f` — canonical stdin driver closure manifest (single source of truth for gate 17e).
 - `tools/stdin-closure-lint.f` — fail-closed drift gate proving stdin-closure consumers stay reconciled with the manifest.
 - `tools/build-fixpoint.f` — checked self-rebuild fixpoint orchestration definitions.
+- `tools/build-fixpoint-refresh.f` — self-contained checked entry for the documented native refresh command.
 - `tools/build-fixpoint-main.f` — CLI entrypoint for the self-rebuild fixpoint driver.
 - `tools/build-fixpoint-test.f` — checked fixture coverage for the self-rebuild fixpoint driver, including warm-snapshot execution of the persisted compile-immediate preflight hook.
 - `tools/boot-pin.f` — boot-prefix content-pin tool: print/verify the digest of the checker/core source the engine re-reads at boot.
@@ -1806,6 +1807,8 @@ points stay listed.
   allowlist coverage for process primitive confinement.
 - `tools/bootstrap-mirror-lint.f` — tripwire: ADT declarations must not enter the gforth-compiled recovery corpus (src/) before the stage-0 pass-2 mirror lands.
 - `tools/bootstrap-mirror-lint-test.f` — focused coverage for the recovery-corpus tripwire (clean src walk + planted overlay).
+- `tools/bootstrap-refresh-doc.f` — checked validator for the fenced native refresh command in docs/bootstrap.md.
+- `tools/bootstrap-refresh-doc-test.f` — in-memory drift fixtures and live-tree coverage for the documented native refresh command.
 - `tools/check-all-errors-core.f` — reusable all-errors checker core; keeps
   per-definition checker runs as the diagnostic isolation boundary.
 - `tools/check-all-errors.f` — CLI wrapper for all-errors checking.

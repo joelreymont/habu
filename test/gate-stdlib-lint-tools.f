@@ -86,7 +86,8 @@
    s" tools/primitive-effect-inventory-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-TOOLS-BOOTSTRAP-MIRROR ( -- )
-   s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
+   s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE
+   s" tools/bootstrap-refresh-doc-test.f" GSI-INCLUDE ;
 
 : GSI-LINT-TOOLS-BODY ( -- )
    GSI-FORK-RESET
