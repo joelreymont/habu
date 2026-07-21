@@ -1,9 +1,21 @@
 ---
 title: Enforce kernel manifest ABI
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-19T20:45:41.401621+02:00"
+closed-at: "2026-07-21T21:37:08+02:00"
+close-reason: "Superseded: the unbuilt Zig kernel consumer was deleted, so this consumer-only validation work has no remaining code owner. The checked Habu exporter and language-neutral manifest contract remain covered by their existing tests; no replacement consumer work was created."
 ---
 
-examples/kernel-consumer/main.zig:13-26 claims every launch argument is derived from and preflighted against the v1 manifest, and docs/ptx-sketch.md:392-431 makes target, PTX ISA, address_size, block, grid derivation, logical params, and complete offset-ordered param_slots part of the external launch contract. The example instead prints target/ptx_version without querying device compute capability or driver PTX support; never checks address_size; validates only four slot names while ignoring offset, size, ptx_type, role, param_bytes, and params[].lowering; does not prove block dimensions are nonzero/within device limits or that ceil-n-B agrees with block.x; and computes (extent+b-1)/b without rejecting b=0 or preventing u32 overflow. This turns an authenticated but incompatible or malformed manifest into a driver call and makes the canonical consumer example teach an unsafe partial ABI. Implement a typed manifest validator before any CUDA allocation/load: query the selected device and driver for launchable target/PTX capability, validate 64-bit addressing, exact SAXPY logical lowering and every slot field/range/alignment/non-overlap/total byte count, block limits, derivation-to-block consistency, and safe ceil division. Reject unknown or inconsistent fields with precise errors before cuModuleLoadData. Add table-driven negative tests for each invalid field and boundary values including b=0, u32 max extent, mismatched B/block.x, overlap, gap/param_bytes mismatch, wrong role/type/size/offset, unsupported target/PTX, and zero/oversize block; add a valid manifest test and compile the consumer against the generated v1 artifact. Files: examples/kernel-consumer/main.zig, examples/kernel-consumer contract tests, docs/ptx-sketch.md only if the proved contract changes. Depends: none. Ownership: consumer-side manifest and launch-geometry validation only; artifact production/build reproducibility and CUDA cleanup/result verification are separate dots.
+This task described validation work for the former unbuilt Zig demonstration.
+That consumer has been removed, so the task is superseded rather than carried
+into a replacement host-language example. The checked Habu exporter and the
+language-neutral `habu-kernel-manifest` contract remain in place.
+
+Historical finding retained as evidence: `examples/kernel-consumer/main.zig`
+claimed every launch argument was derived from and preflighted against the v1
+manifest, but it did not validate device and driver capability, address size,
+the complete ordered slot layout, launch bounds, or overflow-safe grid
+derivation. The task would have required a typed consumer validator and focused
+negative coverage if that example had remained an owned repository surface.

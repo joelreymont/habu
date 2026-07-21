@@ -381,8 +381,7 @@ from the same `package KABI` record that renders the kernel's entry and param
 loads, so the manifest can never drift from the PTX by construction. The
 export is deterministic — the same source tree writes byte-identical
 artifacts — and host-only, so it runs as a build step with no CUDA present.
-Renderer: `lib/ptx/kernel-manifest.f`; consumer wiring example:
-`examples/kernel-consumer/`.
+Renderer: `lib/ptx/kernel-manifest.f`.
 
 **Versioning.** `schema` is always `"habu-kernel-manifest"`; `version` is an
 integer, currently `1`. Any change to field meaning, lowering, or hashing
@@ -428,7 +427,7 @@ the launch geometry), `dense-derived` (implied by the dense layout), and
 `static` (reserved: compile-time immediates baked into the PTX). Only
 `param`-tagged fields appear in `param_slots`.
 
-**Launch recipe** (matches `examples/kernel-consumer/`): verify both hashes →
+**Launch recipe:** verify both hashes →
 `cuModuleLoadData(ptx)` → `cuModuleGetFunction(name)` → allocate/copy device
 buffers → pack `kernelParams` from `param_slots` in order → gridDim.x from
 `grid_derivation` + the runtime extent, blockDim from `block` →

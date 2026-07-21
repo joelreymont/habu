@@ -34,3 +34,9 @@ Dependencies: none. Ownership: removal of the obsolete Zig consumer and its
 live repository references only.
 
 Claim: agent=enumcert_impl workspace=.jj-ws/habu-remove-zig-kernel-consumer-d6434bd6 machine=spark
+
+Implementation result awaiting integration: the two Zig source files and all
+live documentation links to that example are removed. The checked Habu kernel
+exporter, versioned manifest contract, CUDA launcher, and their tests remain
+unchanged. The two consumer-only follow-up dots are superseded in this same
+change. Keep this implementation dot active until the merged tree is verified.

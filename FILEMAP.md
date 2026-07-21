@@ -407,16 +407,10 @@ points stay listed.
   `tools/ptx/kernel-export-test.f` — `hb kernel-export` CLI and library
   (`package KEXPORT`): captures a registered producer's PTX in-process and
   writes the versioned `<NAME>.ptx` + `<NAME>.manifest.json` artifact pair an
-  external build embeds (see `examples/kernel-consumer/`). Host-only and
-  deterministic; named `E-KEXPORT-*` errors. Tests spawn the CLI twice and
-  byte-compare both artifact pairs, pin manifest/PTX fragments, and cover the
-  unknown-kernel and bad-out-dir negatives in-process.
-- `examples/kernel-consumer/build.zig` / `examples/kernel-consumer/main.zig` —
-  descriptive external Zig consumer of the exported artifact pair: embeds
-  PTX + manifest, verifies both hashes, and maps every manifest field to its
-  CUDA Driver API argument (`cuModuleLoadData`/`cuModuleGetFunction`/
-  `kernelParams` from `param_slots` order/`cuLaunchKernel` geometry). Not
-  built by this repo.
+  external build embeds. Host-only and deterministic; named `E-KEXPORT-*`
+  errors. Tests spawn the CLI twice and byte-compare both artifact pairs, pin
+  manifest/PTX fragments, and cover the unknown-kernel and bad-out-dir
+  negatives in-process.
 - `tools/ptx/saxpy-cg.f` — checked SAXPY kernel body run through the PTX codegen
   vocabulary.
 - `tools/ptx/saxpy-v4-tail-device-test.f` — Orin device proof that checked v4
