@@ -20,7 +20,7 @@ $4000 constant SMT-ERR-CAP
 $80000 constant SMT-STR-CAP
 1536 constant SMT-WORD-MAX
 128 constant SMT-MOD-MAX
-64 constant SMT-LIB-MAX
+128 constant SMT-LIB-MAX  \ flat lib corpus is 105 files; keep a loud bounded wall
 11 constant SMT-FIELDS
 $7530 constant SMT-TIMEOUT-MS
 

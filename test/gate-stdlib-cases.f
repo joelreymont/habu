@@ -276,6 +276,11 @@ SUITE float-parse
    lib/fmath-test.f
 ;SUITE
 
+SUITE ieee-float32
+   lib/ieee754-test.f
+   lib/float32-test.f
+;SUITE
+
 SUITE fmt-numbers
    lib/fmt-test.f
 ;SUITE

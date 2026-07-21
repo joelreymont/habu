@@ -496,6 +496,8 @@ variable GSI-TL-FILE-A
    s" lib/string-test.f" GSI-FORK-INCLUDE
    s" lib/utf8-scalar-test.f" GSI-FORK-INCLUDE
    s" lib/ffi-abi-test.f" GSI-FORK-INCLUDE
+   s" lib/ieee754-test.f" GSI-FORK-INCLUDE
+   s" lib/float32-test.f" GSI-FORK-INCLUDE
    s" lib/array-test.f" GSI-FORK-INCLUDE
    s" lib/table-test.f" GSI-FORK-INCLUDE
    s" lib/codegen-test.f" GSI-FORK-INCLUDE

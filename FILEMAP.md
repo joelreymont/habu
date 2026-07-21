@@ -1483,8 +1483,17 @@ points stay listed.
 - `maki/infer/safetensors-test.f` — hermetic red-first coverage: builds a synthetic
   file in Forth and parses it back through mmap, rejects every malformed input
   (truncated header, bad JSON, out-of-range / overlapping / misaligned / mismatched
-  offsets, unknown dtype, missing field) with its named code, and a presence-gated
-  real leg asserting the HF GPT-2 tensor census (160 tensors, wte [50257,768]).
+  offsets, shape-product and element-byte overflow, unknown dtype, missing field)
+  with its named code, and a presence-gated real leg asserting the HF GPT-2 tensor
+  census (160 tensors, wte [50257,768]).
+- `maki/infer/gpt2-reference-data.f` /
+  `maki/infer/gpt2-reference-data-test.f` — pinned independent GPT-2 correctness data
+  from PyTorch 2.11.0 and Transformers 5.14.1 over the exact F32 checkpoint:
+  first/sum/sum-of-squares probes at embedding, every block, and final norm;
+  sampled logits and full-logit aggregates; and 64 exact greedy token ids. Its
+  lexical-scratch verifier gates the checkpoint on the pinned SHA-256 digest;
+  focused tests cover scalar access, bounds, and distinct artifact failures.
+  Owns -7632..-7634.
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer
@@ -1941,6 +1950,13 @@ points stay listed.
   progress, mutex-protected increments, and cooperative halt/join cleanup.
 - `lib/float.f` — checked decimal string to IEEE-double parsing (STR>FLOAT) with power-of-ten scaling.
 - `lib/float-test.f` — focused coverage for STR>FLOAT sign, fraction, exponent, and rejection cases.
+- `lib/ieee754.f` / `lib/ieee754-test.f` — shared IEEE-754 f64 bit
+  reinterpretation and width-independent round-to-nearest-even shifting, with
+  direct boundary, invalid-domain, tie, and sticky-bit coverage. Owns -7661.
+- `lib/float32.f` / `lib/float32-test.f` — package-owned scalar IEEE-754 F32
+  conversion: round-to-nearest-even f64 narrowing and exact widening including
+  subnormals, with deterministic round-trip property rows. Bounded byte
+  marshalling remains with the common MEM span chain.
 - `lib/fmath.f` — shared transcendental exp core (FEXP) by in-Habu range reduction; used by maki/fmath.f and lib/ptx/ad-dag-eval.f.
 - `lib/fmath-test.f` — known-value FEXP coverage across the range-reduction domain + central-difference check.
 - `lib/fmt.f` — checked number formatting into the string builder: unsigned/signed ints and fixed-decimal floats.

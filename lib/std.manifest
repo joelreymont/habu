@@ -1170,6 +1170,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	fmath	lib/fmath.f	module			lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	active	shared transcendental exp core by in-Habu range reduction
 1	fmath	lib/fmath.f	word	FMATH:FROUND	(r -- n)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	published	round a float to the nearest signed integer
 1	fmath	lib/fmath.f	word	FMATH:FEXP	(r -- r)	lib/fmath-test.f	docs/stdlib.md	stdlib-fmath	published	exponential of a float by range reduction
+1	ieee754	lib/ieee754.f	module			lib/ieee754-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	active	shared IEEE-754 f64 bit reinterpretation and width-independent round-to-nearest-even shifting
+1	ieee754	lib/ieee754.f	word	IEEE754:ROUND-SHIFT-EVEN	(n n -- n)	lib/ieee754-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	published	round a nonnegative significand right by a nonnegative bit count using ties-to-even; negative inputs throw E-ROUND-DOMAIN
+1	float32	lib/float32.f	module			lib/float32-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	active	state-free exact scalar F32 conversion with no pointer surface
+1	float32	lib/float32.f	word	F32:NARROW	(r -- n)	lib/float32-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	published	round one Habu f64 value to its IEEE-754 F32 bit pattern using ties-to-even
+1	float32	lib/float32.f	word	F32:WIDEN	(n -- r)	lib/float32-test.f	docs/stdlib.md	habu-infer-gpt-2-412c6f04	published	widen one IEEE-754 F32 bit pattern exactly to a Habu f64 value
 1	float	lib/float.f	module			lib/float-test.f	docs/stdlib.md	stdlib-float	active	checked decimal string to IEEE-double parsing
 1	float	lib/float.f	word	POW10+	(n -- r)	lib/float-test.f	docs/stdlib.md	stdlib-float	published	ten raised to a nonnegative integer power
 1	float	lib/float.f	word	FL-CLAMP-EXP	(n -- n)	lib/float-test.f	docs/stdlib.md	stdlib-float	active	clamp an exponent to the representable range

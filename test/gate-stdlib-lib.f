@@ -218,6 +218,7 @@ variable SUITE-TIMINGS
    s" regex-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" map-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" ffi-abi" SUITE-LABEL= if SUITE-TRUE exit then
+   s" ieee-float32" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-stdlib" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-rep-neg" SUITE-LABEL= if SUITE-TRUE exit then
    s" ptx-tile-loop-neg" SUITE-LABEL= if SUITE-TRUE exit then

@@ -99,6 +99,7 @@ private
 2048 constant ST-CAP           \ max tensors (GPT-2: 160; LLaMA-70B: ~700)
 $40000 constant ST-NAME-CAP    \ name arena bytes (256 KiB)
 1024 constant ST-SCRATCH-CAP   \ per-name unescape scratch
+$7FFFFFFFFFFFFFFF constant ST-MAX-N
 
 \ ---- mapping + header geometry ---------------------------------------------
 variable ST-BASE-P             \ mapping base as a byte pointer (ptr-field holder)
@@ -191,8 +192,14 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    1 ST-OFF-SEEN ! ;
 
 \ ---- validation: fill nothing new, just check the accumulators --------------
+: ST-SHAPE-MUL ( n n -- n ) {: a:n b:n :}
+   a 0 < b 0 < or if E-ST-SHAPE throw then
+   a 0= b 0= or if 0 exit then
+   a ST-MAX-N b / > if E-ST-SHAPE throw then
+   a b * ;
+
 : ST-NELEMS ( -- n )
-   1 ST-CUR-RK @ 0 ?do ST-CUR-DIMS i cells + @ * loop ;
+   1 ST-CUR-RK @ 0 ?do ST-CUR-DIMS i cells + @ ST-SHAPE-MUL loop ;
 
 : ST-OVERLAPS? ( n n -- bool )
    {: b e :}
@@ -204,7 +211,7 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    ST-OVL @ 0 <> ;
 
 : ST-VALIDATE ( -- )
-   ST-NELEMS ST-CUR-ES @ * {: expect :}
+   ST-NELEMS ST-CUR-ES @ ST-SHAPE-MUL {: expect:n :}
    ST-CUR-BEG @ 0 < if E-ST-OFFSETS throw then
    ST-CUR-END @ ST-CUR-BEG @ < if E-ST-OFFSETS throw then
    ST-CUR-END @ ST-DATA-LEN @ > if E-ST-OFFSETS throw then

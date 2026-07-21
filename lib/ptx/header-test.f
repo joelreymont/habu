@@ -50,38 +50,42 @@ PTX-GRID$ s" extent-r" T$=              \ rejected store leaves the recorded tok
 ' PTX-BAD-WHERE-RHS E-PTX-SYNTAX TTHROWS
 ' PTX-BAD-WHERE-BLOCK E-PTX-BLOCK TTHROWS
 
-\ f64 -> f32 marshalling (lib/ptx/cg.f): exact for normal values
-3.0 F64>F32 1077936128 T=     \ 0x40400000
-2.0 F64>F32 1073741824 T=     \ 0x40000000
-6.0 F64>F32 1086324736 T=     \ 0x40C00000
-0.0 F64>F32          0 T=
+\ The legacy PTX spellings remain exact wrappers over the package-owned codec.
+1.7 F64>F32 $3FD9999A T=
+$00000001 F32>F64 F64>F32 $00000001 T=
 
-\ F64>F32 round-to-nearest-even + IEEE specials
-1.0 F64>F32 $3F800000 T=                          \ exact
-1.7 F64>F32 $3FD9999A T=                          \ 1.7 has no exact f32: rounds up
-1 63 lshift BITS>R F64>F32 $80000000 T=           \ -0.0 keeps its sign
-$3FF0000010000000 BITS>R F64>F32 $3F800000 T=     \ 1 + 2^-24: exact tie -> even (down)
-$3FF0000030000000 BITS>R F64>F32 $3F800002 T=     \ 1 + 3*2^-24: exact tie -> odd (up)
-$47F0000000000000 BITS>R F64>F32 $7F800000 T=     \ 2^128: overflow -> +inf
-1 63 lshift $47F0000000000000 or BITS>R F64>F32 $FF800000 T=   \ -2^128: overflow -> -inf
-$7FF8000000000000 BITS>R F64>F32 $7FC00000 T=     \ quiet NaN preserved quiet
-$7FF0000000000001 BITS>R F64>F32 $7FC00000 T=     \ signaling NaN quieted
-
-\ f32 array pack / unpack (device-upload marshalling)
+\ Existing PTX-owned raw marshalling remains covered at its compatibility boundary.
 create PK-SRC  4 cells allot
 create PK-DST  16 allot
 create PK-BACK 4 cells allot
 1.0 PK-SRC 0 cells + !   1.7 PK-SRC 1 cells + !
 2.0 PK-SRC 2 cells + !   0.5 PK-SRC 3 cells + !
 PK-SRC 4 PK-DST F32-PACK
-PK-DST      SF-LD $3F800000 T=                    \ 1.0
-PK-DST 4  + SF-LD $3FD9999A T=                    \ 1.7 (rounded)
-PK-DST 8  + SF-LD $40000000 T=                    \ 2.0
-PK-DST 12 + SF-LD $3F000000 T=                    \ 0.5
-PK-DST 4 PK-BACK F32-UNPACK                       \ widen back; re-narrow == original
+PK-DST      SF-LD $3F800000 T=
+PK-DST 4  + SF-LD $3FD9999A T=
+PK-DST 8  + SF-LD $40000000 T=
+PK-DST 12 + SF-LD $3F000000 T=
+PK-DST 4 PK-BACK F32-UNPACK
 PK-BACK 0 cells + @ F64>F32 $3F800000 T=
 PK-BACK 1 cells + @ F64>F32 $3FD9999A T=
 PK-BACK 2 cells + @ F64>F32 $40000000 T=
 PK-BACK 3 cells + @ F64>F32 $3F000000 T=
+
+\ The PTX F16 and BF16 packers are real consumers of the shared IEEE-754
+\ round-to-nearest-even shift. Pin exact ties and gradual-underflow boundaries
+\ here so changing the generic helper cannot silently alter device operands.
+1.0 F64>F16 $3C00 T=
+$3FF0020000000000 IEEE754:BITS>F64 F64>F16 $3C00 T=
+$3FF0060000000000 IEEE754:BITS>F64 F64>F16 $3C02 T=
+$3E70000000000000 IEEE754:BITS>F64 F64>F16 $0001 T=
+$3E60000000000000 IEEE754:BITS>F64 F64>F16 $0000 T=
+$3E78000000000000 IEEE754:BITS>F64 F64>F16 $0002 T=
+
+1.0 F64>BF16 $3F80 T=
+$3FF0100000000000 IEEE754:BITS>F64 F64>BF16 $3F80 T=
+$3FF0300000000000 IEEE754:BITS>F64 F64>BF16 $3F82 T=
+$37A0000000000000 IEEE754:BITS>F64 F64>BF16 $0001 T=
+$3790000000000000 IEEE754:BITS>F64 F64>BF16 $0000 T=
+$37A8000000000000 IEEE754:BITS>F64 F64>BF16 $0002 T=
 
 T-REPORT

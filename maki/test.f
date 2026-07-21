@@ -302,6 +302,8 @@ SUITE maki/config-test.f
 ;SUITE
 SUITE maki/infer/safetensors-test.f
 ;SUITE
+SUITE maki/infer/gpt2-reference-data-test.f
+;SUITE
 SUITE maki/journal-test.f
 ;SUITE
 SUITE maki/rev-test.f

@@ -69,6 +69,12 @@ variable IMG-LEN
 : R-BADDTYPE ( -- )   s" {`a`:{`dtype`:`F99`,`shape`:[1],`data_offsets`:[0,4]}}" 4 BUILD-J PARSE-IMG ;
 : R-MISSING ( -- )    s" {`a`:{`dtype`:`F32`,`data_offsets`:[0,4]}}" 4 BUILD-J PARSE-IMG ;
 : R-NEGDIM ( -- )     s" {`a`:{`dtype`:`F32`,`shape`:[-1],`data_offsets`:[0,4]}}" 4 BUILD-J PARSE-IMG ;
+: R-SHAPE-OVERFLOW ( -- )
+   s" {`a`:{`dtype`:`F32`,`shape`:[4294967296,2147483648],`data_offsets`:[0,0]}}"
+   0 BUILD-J PARSE-IMG ;
+: R-BYTES-OVERFLOW ( -- )
+   s" {`a`:{`dtype`:`F32`,`shape`:[2305843009213693952],`data_offsets`:[0,0]}}"
+   0 BUILD-J PARSE-IMG ;
 
 : CLEANUP ( -- )  SYNTH-PATH FS-PATHZ unlink drop ;
 
@@ -133,6 +139,8 @@ variable IMG-LEN
    [: R-BADDTYPE ;]  E-ST-DTYPE   TTHROWSQ
    [: R-MISSING ;]   E-ST-FIELD   TTHROWSQ
    [: R-NEGDIM ;]    E-ST-SHAPE   TTHROWSQ
+   [: R-SHAPE-OVERFLOW ;] E-ST-SHAPE TTHROWSQ
+   [: R-BYTES-OVERFLOW ;] E-ST-SHAPE TTHROWSQ
    SAFET:COUNT 0 T=                             \ no partial registration after a reject
    CENSUS
    REAL-RUN

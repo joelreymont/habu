@@ -9,6 +9,7 @@
 \ lib/fmt.f, and src/arch/ptx/emit.f (reuses PTX-L). Checked Habu.
 
 require lib/ptx/kernel-abi.f
+require lib/float32.f
 
 \ Default kernel-ABI record: the SAXPY shape this scaffolding historically
 \ hardcoded. The relu/exp/acc/... producers reuse the same entry name and
@@ -107,68 +108,13 @@ TRUSTED: DATA-SPAN-REG ( n -- span<space-global,f32,extent-d> ) ;
 TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
 TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> ) ;
 
-\ --- f64 -> f32 IEEE-754 marshalling (host side: kernel params/arrays are f32,
-\ Habu floats are 64-bit cells). R>BITS reinterprets a float as its 64-bit pattern
-\ (the one thin trusted cast). F64>F32 narrows to the 32-bit pattern with correct
-\ round-to-nearest-even and every IEEE special: signed zero, gradual underflow
-\ (f32 subnormals), overflow -> +/-inf, and NaN preserved as a quiet NaN (payload
-\ kept). Normal values within f32 range are exact when representable. ---
-TRUSTED: R>BITS ( r -- n ) ;
+\ --- legacy global spelling over the package-owned scalar F32 codec --------
+: F64>F32 ( r -- n )  F32:NARROW ;
+: F32>F64 ( n -- r )  F32:WIDEN ;
 
-\ round a 53-bit significand right by sh bits (sh>=30) into a subnormal / min-normal
-\ f32 magnitude, round-to-nearest-even, then OR the pre-shifted sign s. sh>53 is
-\ below half a ULP of the smallest subnormal -> signed zero. A round-up that carries
-\ out of 23 bits lands on 0x00800000, the smallest normal, which is correct.
-: SUBN>F32 ( n n n -- n ) {: sig:n sh:n s:n :}
-   sh 53 > if s exit then                            \ too small -> signed zero
-   sig sh rshift {: kept:n :}
-   sig sh 1 - rshift 1 and {: g:n :}                 \ round (guard) bit
-   1 sh 1 - lshift 1 - sig and {: sticky:n :}        \ bits below the guard
-   g 0= if s kept or exit then                       \ guard 0 -> round down
-   sticky 0= 0= if s kept 1 + or exit then           \ guard 1 + sticky -> round up
-   kept 1 and 0= if s kept or exit then              \ exact tie, even -> down
-   s kept 1 + or ;                                   \ exact tie, odd -> up
-
-: F64>F32 ( r -- n ) {: fr:r :}
-   fr R>BITS {: b:n :}
-   b 63 rshift 1 and 31 lshift {: s:n :}             \ sign, already at bit 31
-   b 52 rshift $7FF and {: e:n :}                     \ f64 biased exponent
-   b $FFFFFFFFFFFFF and {: m:n :}                     \ 52-bit mantissa
-   e 896 - {: x:n :}                                  \ target f32 biased exponent
-   e $7FF = if                                        \ inf / NaN
-      m 0= if s $7F800000 or exit then                \ +/-inf
-      s $7F800000 or  m 29 rshift or  $400000 or exit \ quiet NaN (payload kept)
-   then
-   e 0= if s exit then                                \ +/-0 / f64-subnormal -> signed 0
-   x 1 < if  1 52 lshift m or  30 x -  s  SUBN>F32  exit  then   \ f32 subnormal
-   x 254 > if s $7F800000 or exit then                \ overflow -> +/-inf
-   m 29 rshift {: mt:n :}                             \ top 23 mantissa bits
-   m $1FFFFFFF and {: rem:n :}                        \ the 29 dropped bits
-   rem $10000000 > if 1 else
-      rem $10000000 = if mt 1 and else 0 then
-   then {: inc:n :}                                   \ round-to-nearest-even increment
-   x 23 lshift mt or inc + {: v:n :}                  \ carry from mantissa bumps exponent
-   v $7F7FFFFF > if s $7F800000 or exit then          \ carry overflowed to inf
-   s v or ;
-
-\ inverse: read a device-returned f32 bit pattern back into a Habu f64 float (the
-\ readback marshalling; BITS>R is the one thin trusted reinterpret). +/-0 and inf
-\ are handled; f32 normals widen exactly, NaN is a documented boundary.
-TRUSTED: BITS>R ( n -- r ) ;
-
-: F32>F64 ( n -- r ) {: b :}
-   b 31 rshift 1 and {: sgn :}
-   b 23 rshift $FF and {: e32 :}
-   b $7FFFFF and {: m32 :}                          \ 23 mantissa bits
-   sgn 63 lshift {: hi :}                           \ sign in f64 bit 63
-   e32 0= if hi BITS>R exit then                    \ +/-0 (denormals flush to 0)
-   e32 $FF = if hi $7FF 52 lshift or BITS>R exit then   \ +/-inf
-   hi  e32 896 + 52 lshift or  m32 29 lshift or  BITS>R ;
-
-\ --- f32 array (de)packing: marshal a contiguous f64-cell buffer to/from a packed
-\ little-endian f32 array for device upload/readback. SF-ST/SF-LD are the raw
-\ 4-byte little-endian store/load; F32-PACK narrows each cell (F64>F32), F32-UNPACK
-\ widens each word (F32>F64). ---
+\ PTX marshalling remains under its existing owner until the common bounded
+\ MEM span and subspan chain can replace this raw compatibility boundary
+\ (`habu-add-unique-bounded-527e05ca`, then `habu-add-checked-mem-ebd95492`).
 : SF-ST ( n ptr u8 -- ) {: v:n p:ptr :}            \ store low 32 bits of v LE at p
    v           $FF and  p     c!
    v 8 rshift  $FF and  p 1 + c!
@@ -186,13 +132,13 @@ TRUSTED: BITS>R ( n -- r ) ;
 
 \ --- f16 (IEEE half) narrowing for the fp16 mma tile (dot habu-fp16-mma-tile). F64>F16 mirrors
 \ F64>F32 (round-to-nearest-even; +/-0, subnormal, overflow->inf, NaN handled); the subnormal
-\ rounding reuses the generic RNE-shift SUBN>F32 (it rounds the 53-bit f64 significand right by an
+\ rounding reuses IEEE754:ROUND-SHIFT-EVEN (it rounds the 53-bit f64 significand right by an
 \ arbitrary shift and applies the sign, independent of the target width). f16 fields: sign bit15,
 \ 5-bit exp (bias 15), 10-bit mantissa. SF-ST16 stores the low 16 bits little-endian; F16-PACK
 \ narrows each f64 host cell to a packed f16 device buffer. Device C stays f32 (F32-UNPACK reads it
 \ back), so no F16-UNPACK is needed. ---
 : F64>F16 ( r -- n ) {: fr:r :}
-   fr R>BITS {: b :}
+   fr IEEE754:F64>BITS {: b:n :}
    b 63 rshift 1 and 15 lshift {: s :}               \ sign in f16 bit 15
    b 52 rshift $7FF and {: e :}                       \ f64 biased exponent
    b $FFFFFFFFFFFFF and {: m :}                        \ 52-bit mantissa
@@ -202,7 +148,9 @@ TRUSTED: BITS>R ( n -- r ) ;
       s $7C00 or  m 42 rshift or  $200 or exit         \ quiet NaN (payload kept)
    then
    e 0= if s exit then                                 \ +/-0 / f64-subnormal -> signed 0
-   x 1 < if  1 52 lshift m or  43 x -  s  SUBN>F32  exit  then   \ f16 subnormal (sig>>(43-x) RNE)
+   x 1 < if
+      s 1 52 lshift m or 43 x - IEEE754:ROUND-SHIFT-EVEN or exit
+   then
    x 30 > if s $7C00 or exit then                      \ overflow -> +/-inf
    m 42 rshift {: mt :}                                \ top 10 mantissa bits
    m $3FFFFFFFFFF and {: rem :}                         \ the 42 dropped bits
@@ -230,12 +178,12 @@ TRUSTED: BITS>R ( n -- r ) ;
 \ It is deliberately NOT f64->f32->bf16 (drop 29 then 16 bits): that double rounding can mis-round a
 \ value sitting exactly on an f32 rounding boundary, so a single rounding to the final 7-bit width is
 \ the correct pack. Truncation is NOT used. The subnormal shift 46-x = 53-7-x reuses the width-agnostic
-\ RNE-shift SUBN>F32 (a carry out of the 7 mantissa bits lands on 0x0080, the smallest bf16 normal).
+\ RNE shift (a carry out of the 7 mantissa bits lands on 0x0080, the smallest bf16 normal).
 \ SF-ST16 stores the low 16 bits little-endian; device C stays f32 (F32-UNPACK on readback), so no
 \ BF16-UNPACK is needed. For the mma-gemm-check integer fills (<=256, exact in bf16's 8-bit
 \ significand) no rounding fires and the pack returns the exact integer. ---
 : F64>BF16 ( r -- n ) {: fr:r :}
-   fr R>BITS {: b:n :}
+   fr IEEE754:F64>BITS {: b:n :}
    b 63 rshift 1 and 15 lshift {: s:n :}               \ sign in bf16 bit 15
    b 52 rshift $7FF and {: e:n :}                        \ f64 biased exponent
    b $FFFFFFFFFFFFF and {: m:n :}                         \ 52-bit mantissa
@@ -245,7 +193,9 @@ TRUSTED: BITS>R ( n -- r ) ;
       s $7F80 or  m 45 rshift or  $40 or exit             \ quiet NaN (payload kept)
    then
    e 0= if s exit then                                    \ +/-0 / f64-subnormal -> signed 0
-   x 1 < if  1 52 lshift m or  46 x -  s  SUBN>F32  exit  then   \ bf16 subnormal (sig>>(46-x) RNE)
+   x 1 < if
+      s 1 52 lshift m or 46 x - IEEE754:ROUND-SHIFT-EVEN or exit
+   then
    x 254 > if s $7F80 or exit then                        \ overflow -> +/-inf
    m 45 rshift {: mt:n :}                                 \ top 7 mantissa bits
    m $1FFFFFFFFFFF and {: rem:n :}                         \ the 45 dropped bits

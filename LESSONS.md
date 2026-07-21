@@ -576,6 +576,10 @@ fits.
   cap in one pass when a named file trips one; route lint CLIs through `LINT-MAIN` (catch,
   print `tool: threw <code> (<name>)`, re-throw); the shared `LINT-READ-DIE` prints the
   offending path; never read `$?` after a pipeline.
+- **`stdlib-manifest-test` counts every distinct flat library file in the public-signature
+  closure, not only manifest module rows.** A new shared dependency can therefore trip
+  `SMT-LIB-MAX` even when the number of modules stays below the old limit; size that loud
+  wall from the complete flat `lib/*.f` corpus and keep the capacity failure.
 - **A capacity exit must ATTRIBUTE itself everywhere — a lone token byte or a bare rc
   is unattributable.** Engine dict-full = `hb: dictionary full at: <token>` (77), code
   space (76), and each store labels its own die. Distinguish the two engine arms:
@@ -1328,6 +1332,10 @@ fits.
 
 ## FFI, GPU & PTX
 
+- **Build IEEE subnormal tie fixtures from the mathematical value, then verify the
+  binary64 bits independently.** `3 * 2^-25` normalizes to `1.5 * 2^-24`, so its
+  binary64 exponent is the same as `2^-24`; hand-placing it under the `2^-25`
+  exponent tests the wrong value and can falsely blame correct ties-to-even code.
 - **FFI needs almost no new ABI machinery: an AAPCS64 C-call is a non-leaf `FPRIM`.** It `G-POP`s
   fn + arg buffer, loads x0..x7, `BLR,`, `G-PUSH`es x0; `XDS`=x19 (callee-saved) so the C callee
   preserves the data stack. The CUDA Driver surface (except `cuLaunchKernel`'s 9th–11th stack args) is
@@ -1900,6 +1908,16 @@ fits.
   page reference cannot keep device-visible bytes stable until use completes.
 - **Measurement needs structural ownership.** One evidence lane owns timing and
   size artifacts so concurrent work cannot perturb or duplicate the proof.
+- **Share scalar conversion without widening an unsafe pointer boundary.** Moving
+  exact F32 narrowing and widening into a package-owned library removes duplicate
+  numeric logic, but raw load/store/pack operations must stay with their existing
+  owner until the common bounded MEM span and subspan types can express capacity.
+- **Long decimal reference literals can overflow the fractional scale.** The native
+  float-literal path currently accepts a 19-digit fractional denominator that overflows
+  its signed cell and silently changes the value. Keep committed f64 references within
+  the parser's exact 18-fractional-digit boundary until the compiler rejects or correctly
+  scales longer decimals. The compiler work remains recorded in
+  `habu-reject-overflowing-decimal-2f3b3a29`.
 - **Subagents inherit model and reasoning effort unless explicitly overridden.**
   Dispatch should not silently select a weaker model or effort level.
 - **Repair dependency cycles by re-deriving the architecture, not by deleting a
