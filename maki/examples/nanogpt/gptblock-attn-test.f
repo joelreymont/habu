@@ -596,12 +596,157 @@ create GBN-BUF 16384 allot   variable GBN-U
    s" gfin bfin LAYERNORM LINEAR ; " GBN+ ;
 : GBN$ ( -- ptr u8 n )  GBN-BUF GBN-U @ ;
 
+\ ---- generic any-size TIED train harness over the generated GBLKN --------------------
+\ The 4- and 12-block stacks above only CAPTURE + gradcheck + build the backward; this
+\ harness actually TRAINS them with Adam and softmax cross-entropy, the same end-to-end
+\ loop the 1- and 2-block cases run, generalised to any block count L.
+\
+\ TIED, not untied (the honest GPT-2 shape). The token embedding wte (slot 0, V x C) and
+\ the LM head wlm (slot 3+9L, C x V) are ONE stored parameter: wlm is wte's transpose
+\ mirror, and the shared storage takes BOTH gradient paths summed (dL/dP = Gwte + Gwlm^T),
+\ exactly the section-(F) GB-TIE-STEP machinery - here composed per-block-count against the
+\ runtime slot table (the wlm slot moves with L, so the fixed-slot GB-TIE-* words cannot be
+\ called directly; the mirror/summed-grad/one-Adam-update logic is reproduced over GBNT-WP).
+\ Tied trains strictly better than untied here because the embedding receives the head-path
+\ gradient too - measured final mean CE at the committed 16 Adam steps (milli-CE, 4-block /
+\ 12-block): tied 9 / 10 vs untied honest-init 14 / 494 vs untied uniform-init 156 / 335. The
+\ gap widens with depth: at 12 blocks the untied embedding trains far more weakly (494).
+\
+\ Init is the honest GPT-2-style init (temperature sc = 1/sqrt(d), every LayerNorm gamma=1
+\ and beta=0, all other weights small uniform) so a deep stack is well-conditioned; uniform
+\ init of the LN affines (mean-zero gamma) barely trains past 2 blocks. Every parameter and
+\ moment lives in a flat (slot x element) host table indexed by model-input slot, so one set
+\ of words covers L=1..12 with no per-block buffers.
+\
+\ MEASURED wall-clock per tied Adam step (fwd + backward EX-RUN + all slot Adam updates),
+\ one host thread, tiny toy extents T=4 C=6 V=6 (composition proof, not GPT-2-small at
+\ scale). Uniform methodology: the SAME GBNT-STEP timed over 100 steps at each L. Data only,
+\ no perf assertion - the box carried an external build (load average ~2.9 on 20 cores).
+\   measured 2026-07-21 on spark (GB10, aarch64), median of 3 runs (spread < 0.3%):
+\     L= 1 :  0.28 ms/step   (18 fwd nodes,  74 total)
+\     L= 2 :  0.52 ms/step   (32 fwd nodes, 133 total)
+\     L= 4 :  1.01 ms/step   (60 fwd nodes)
+\     L=12 :  2.94 ms/step   (172 fwd + 551 adjoint = 723 total)
+\   ~0.24 ms marginal per added block - linear in depth, no capacity or time wall at L=12.
+12 constant GBNT-CAP                                  \ largest block count this harness sizes for
+GBNT-CAP 13 * 8 + constant GBNT-NINX                  \ 164 = 8 + 13*12 model inputs at the cap
+48 constant GBNT-MAX                                  \ max elements in any param slot (w1/w2 are 6x8=48)
+1 constant GBNT-IDS                                   \ integer-id slot (never a gradient); fixed at 1
+create GBNT-W GBNT-NINX GBNT-MAX * cells allot        \ per-slot weights (slot x element, flat)
+create GBNT-M GBNT-NINX GBNT-MAX * cells allot        \ per-slot Adam first moment
+create GBNT-V GBNT-NINX GBNT-MAX * cells allot        \ per-slot Adam second moment
+create GBNT-SEED GBON cells allot   create GBNT-TGT GBT cells allot
+create GBNT-TIEG GBV GBC * cells allot                \ summed tied grad (V,C) = Gwte + Gwlm^T
+variable GBNT-L  variable GBNT-NIN  variable GBNT-WLM  variable GBNT-MASK
+: GBNT-DIMS ( n -- ) {: L:n :}                        \ derive every size/slot from the block count
+   L GBNT-L !  8 13 L * + GBNT-NIN !  3 9 L * + GBNT-WLM !  9 L * 5 + GBNT-MASK ! ;
+: GBNT-WP ( n -- ptr a )  GBNT-MAX * cells GBNT-W + ;
+: GBNT-MP ( n -- ptr a )  GBNT-MAX * cells GBNT-M + ;
+: GBNT-VP ( n -- ptr a )  GBNT-MAX * cells GBNT-V + ;
+: GBNT-SEL ( n -- n )  dup MIR-SLOT-ID MIR-SLOT-ROWS@ ROWS-RAW swap MIR-SLOT-ID MIR-SLOT-COLS@ COLS-RAW * ;
+: GBNT-TRAINABLE? ( n -- bool )  dup GBNT-IDS <> swap GBNT-MASK @ <> and ;   \ gets random init (all but ids,mask)
+: GBNT-PARAM? ( n -- bool )                           \ gets an independent Adam step (all but ids,mask,wte,wlm)
+   dup GBNT-IDS = if drop false exit then
+   dup GBNT-MASK @ = if drop false exit then
+   dup 0 = if drop false exit then
+   GBNT-WLM @ = if false else true then ;
+\ honest overwrite: sc = 1/sqrt(d) at each block's temperature slot, LN gamma=1 / beta=0
+: GBNT-HONEST ( -- )
+   GBNT-L @ {: L:n :}
+   L 0 ?do  1.0 GBD s>f fsqrt f/  5 9 i * +  GBNT-WP 0 T-SET  loop
+   L 0 ?do
+      6 9 L * + 4 i * +  {: b:n :}
+      GBC 0 ?do  1.0 b     GBNT-WP i T-SET  0.0 b 1+  GBNT-WP i T-SET
+                 1.0 b 2 + GBNT-WP i T-SET  0.0 b 3 + GBNT-WP i T-SET  loop
+   loop
+   6 13 L * +  {: gf:n :}
+   GBC 0 ?do  1.0 gf GBNT-WP i T-SET  0.0 gf 1+ GBNT-WP i T-SET  loop ;
+: GBNT-INIT ( -- )                                    \ deterministic init: same $C0FFEE LCG, honest affines
+   $C0FFEE GB-RNG !
+   GBNT-NIN @ 0 ?do
+      i GBNT-TRAINABLE? if  i GBNT-SEL 0 ?do  GB-UNIT 0.1 f*  j GBNT-WP i T-SET  loop  then
+      0.0 i GBNT-MP GBNT-MAX T-FILL  0.0 i GBNT-VP GBNT-MAX T-FILL
+   loop
+   GBNT-HONEST
+   GBT 0 ?do  i GBV mod s>f  GBNT-IDS GBNT-WP i T-SET  i GBV mod s>f  GBNT-TGT i T-SET  loop
+   GBNT-MASK @ GBNT-WP A-MASK-FILL ;
+: GBNT-MIRROR ( -- )                                  \ head mirror wlm(C,V)[c][v] = wte(V,C)[v][c]
+   0 GBNT-WP {: src:ptr :}  GBNT-WLM @ GBNT-WP {: dst:ptr :}
+   GBC 0 ?do  GBV 0 ?do  src i GBC * j + T-GET  dst j GBV * i + T-SET  loop loop ;
+: GBNT-BIND ( -- )  EX-RESET  GBNT-NIN @ 0 ?do  i GBNT-WP  i MIR-SLOT-ID EX-BIND  loop  GBNT-SEED BW-SEED-SLOT@ EX-BIND ;
+: GBNT-ARESET ( -- )  0 GB-T !  1.0 GB-B1T !  1.0 GB-B2T ! ;   \ moments are zeroed in GBNT-INIT
+: GBNT-LOSS-SEED ( -- r )
+   GB-OUT {: ob:ptr :}
+   ob GBNT-TGT GBNT-SEED GBT GBV GBT LOSS:TT-XENT-SEED
+   GBON 0 ?do  GBNT-SEED i T-GET GB-INVR f*  GBNT-SEED i T-SET  loop
+   ob GBT GBV GBNT-TGT GBT LOSS:TT-XENT  GB-INVR f* ;
+: GBNT-TIE-ACCUM ( -- )                               \ GBNT-TIEG[v][c] = Gwte[v][c] + Gwlm[c][v]
+   GBNT-WLM @ {: w:n :}
+   GBV 0 ?do  GBC 0 ?do
+      0 GB-GRAD  j GBC * i + T-GET   w GB-GRAD  i GBV * j + T-GET  f+
+      GBNT-TIEG j GBC * i + T-SET
+   loop loop ;
+: GBNT-STEP ( -- r )                                  \ one tied Adam step; returns the mean CE before it
+   BW-FWD-N@ EX-RUN-N  GBNT-LOSS-SEED {: loss:r :}  EX-RUN  GB-TICK
+   GBNT-NIN @ 0 ?do
+      i GBNT-PARAM? if
+         GB-LR GB-BET1 GB-BET2 GB-EPS GB-C1 GB-C2  i GBNT-WP  i GB-GRAD  i GBNT-MP i GBNT-VP  i GBNT-SEL  OPTIM:TT-ADAM!
+      then
+   loop
+   GBNT-TIE-ACCUM
+   GB-LR GB-BET1 GB-BET2 GB-EPS GB-C1 GB-C2  0 GBNT-WP GBNT-TIEG  0 GBNT-MP 0 GBNT-VP  GBV GBC *  OPTIM:TT-ADAM!
+   GBNT-MIRROR  loss ;
+: GBNT-SETUP ( n -- )  GBNT-DIMS GBNT-INIT GBNT-MIRROR BW-BUILD GBNT-BIND GBNT-ARESET ;
+\ run n steps: record initial+final loss and count any non-strict-decrease step (0 = monotone)
+variable GBNT-IL  variable GBNT-FL  variable GBNT-FL1  variable GBNT-MONO  variable GBNT-PREV
+: GBNT-RUN ( n -- ) {: ns:n :}
+   0 GBNT-MONO !  1000000.0 GBNT-PREV !
+   ns 0 ?do
+      GBNT-STEP {: l:r :}
+      i 0= if l GBNT-IL ! then
+      l GBNT-PREV @ f< 0= if 1 GBNT-MONO +! then
+      l GBNT-PREV !
+      i ns 1- = if l GBNT-FL ! then
+   loop ;
+\ exhaustive has-grad audit: only the integer ids slot lacks a gradient; every other slot has one
+: GBNT-NOGRAD ( -- n )  0  GBNT-NIN @ 0 ?do  i MIR-SLOT-ID BW-HAS-GRAD? 0= if 1+ then  loop ;
+: GBNT-GRAD-BAD ( -- n )                              \ slots whose has-grad disagrees with its role
+   0  GBNT-NIN @ 0 ?do
+      i GBNT-IDS = if  i MIR-SLOT-ID BW-HAS-GRAD? if 1+ then
+      else            i MIR-SLOT-ID BW-HAS-GRAD? 0= if 1+ then  then
+   loop ;
+
 \ (Nx-slot-A) the 4-block repro that DIES at the 65th local on base (72 locals) now LOADS and is
 \ differentiable - proof the slot-indexed capture mints no per-input local.
 4 GBN-BUILD  GBN$ evaluate
 MODEL-K 60 T=                                        \ 4 + 14*4 forward nodes
 SLOT-COUNT@ CAD-NUM:CAD-IC>N 60 T=                    \ 8 + 13*4 model inputs (past the old block-4 local wall)
 GC-RUN V-PASS T=                                     \ every trained input gradchecks (self-restores IR)
+
+\ (Nx-slot-A2) EXHAUSTIVE per-slot gradient enumeration at 4 blocks (60 slots), the section-(B')
+\ check generalised: build the tied backward, then verify EVERY slot's has-grad against its role.
+\ GBNT-GRAD-BAD walks all 60 slots and counts any disagreement, so 0 means every one is correct;
+\ exactly one slot (the integer ids) carries no gradient, like the 1-block case.
+4 GBN-BUILD  GBN$ evaluate
+4 GBNT-SETUP                                         \ tied init + one backward build over the 60-node fwd IR
+GBNT-NIN @ 60 T=                                     \ all 60 model-input slots enumerated (not a sample)
+GBNT-NOGRAD 1 T=                                     \ exactly one slot lacks a gradient
+GBNT-GRAD-BAD 0 T=                                   \ and every slot's has-grad matches its role
+1  MIR-SLOT-ID BW-HAS-GRAD? TFALSE                   \ that one no-grad slot IS ids (integer index operand)
+0  MIR-SLOT-ID BW-HAS-GRAD? TTRUE                    \ wte trains (tied embedding, via gather scatter-add)
+GBNT-WLM @ MIR-SLOT-ID BW-HAS-GRAD? TTRUE            \ the LM-head slot trains (tied summed grad)
+GBNT-MASK @ MIR-SLOT-ID BW-HAS-GRAD? TTRUE           \ mask has a grad (ADD copy adjoint) but is FROZEN
+
+\ (Nx-slot-A3) 4-block TIED training: 16 Adam steps, loss strictly falls, run-twice bit-identical.
+16 GBNT-RUN
+GBNT-MONO @ 0 T=                                     \ every step strictly decreased the loss
+GBNT-FL @ GBNT-IL @ f< TTRUE                         \ 4-block stack trains: loss decreased
+GBNT-IL @ GB-MILLI 1784 T=                           \ committed initial mean CE (determinism lock)
+GBNT-FL @ GB-MILLI 9 T=                              \ committed final mean CE (determinism lock)
+GBNT-FL @ GBNT-FL1 !
+GBNT-INIT GBNT-MIRROR GBNT-ARESET  16 GBNT-RUN       \ re-init params/moments, retrain the built graph
+GBNT-FL @ GBNT-FL1 @ f= TTRUE                        \ run-twice bit-identical final (raw float)
+GBNT-FL @ GB-MILLI 9 T=                              \ run-twice final mean CE lock
 
 \ (Nx-slot-B) THE 12-BLOCK GPT-2-SHAPED ACCEPTANCE (164 inputs): captures, gradchecks a sample of
 \ every input slot, backward-builds. Old scheme = 164 inputs + 36 >V names = 200 locals, impossible
@@ -614,6 +759,26 @@ GC-RE$ s" input(s) gradchecked" CONTAINS? TTRUE
 BW-BUILD                                             \ backward builds over the 172-node forward IR
 BW-FWD-N@ 172 T=                                     \ forward slice exact
 MIR-N@ 723 T=                                        \ 172 fwd + 551 adjoint (measured; predicted ~723 total)
+
+\ (Nx-slot-B2) 12-block TIED training actually RUNS the 723-node graph: 16 Adam steps, loss
+\ strictly falls, run-twice bit-identical. Re-captured fresh here because BW-BUILD is
+\ non-idempotent (see section (F)): the accounting build above must not be differentiated a
+\ second time, so GBNT-SETUP starts from a clean capture and builds the backward exactly once.
+\ No capacity was raised for training - the 723-node backward EX-RUN fits the landed EX-NCAP
+\ 1024 (coordinated MIR-CAP/EX-NCAP raise, dot habu-coordinated-capacity-raise), the per-slot
+\ optimizer state is plain host buffers, and the 164-slot binding rides the existing capture.
+12 GBN-BUILD  GBN$ evaluate
+12 GBNT-SETUP                                        \ tied init + one backward build over the 172-node fwd IR
+BW-FWD-N@ 172 T=                                     \ same forward slice, now with a bound tied optimizer
+16 GBNT-RUN
+GBNT-MONO @ 0 T=                                     \ every step strictly decreased the loss
+GBNT-FL @ GBNT-IL @ f< TTRUE                         \ 12-block GPT-2-shaped stack trains: loss decreased
+GBNT-IL @ GB-MILLI 1839 T=                           \ committed initial mean CE (determinism lock)
+GBNT-FL @ GB-MILLI 10 T=                             \ committed final mean CE (determinism lock)
+GBNT-FL @ GBNT-FL1 !
+GBNT-INIT GBNT-MIRROR GBNT-ARESET  16 GBNT-RUN       \ re-init params/moments, retrain the built graph
+GBNT-FL @ GBNT-FL1 @ f= TTRUE                        \ run-twice bit-identical final (raw float)
+GBNT-FL @ GB-MILLI 10 T=                             \ run-twice final mean CE lock
 
 \ ================= (F) tied wte/LM head INSIDE the block: one storage, summed grads =====
 \ Same GBLK composition as (A); wte(slot 0) and the LM head(slot 12) are now ONE storage:
