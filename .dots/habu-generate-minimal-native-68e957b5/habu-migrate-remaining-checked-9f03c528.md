@@ -4,6 +4,8 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-21T22:39:28.883590+02:00"
+blocks:
+  - habu-cast-v2-family-741e7bae
 ---
 
 Invariant: an empty same-cell conversion that only changes a checker-known nominal role uses CAST, not TRUSTED; TRUSTED remains only where the operation mints authority, changes representation class, moves linear ownership, or crosses another proved unexpressible boundary. The checked CAST primitive is landed and the refinement-lint coupling blocker is closed, yet the frozen Maki census still contains 68 eligible empty TRUSTED converters. A repository-wide syntax census finds 161 empty one-cell TRUSTED declarations that still require semantic classification.

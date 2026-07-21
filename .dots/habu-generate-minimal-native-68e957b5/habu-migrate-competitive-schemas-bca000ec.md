@@ -4,6 +4,8 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-21T22:38:30.918440+02:00"
+blocks:
+  - habu-type-dsl-prove-93da83c4
 ---
 
 Invariant: payload cases use named-field ENUM, fixed records use STRUCTURE, and payloadless identity vocabularies remain compact ENUM. The competitive reporting and evidence modules landed after the original unified-type migration census, so their payload SUMTYPE readings and PRODUCT comparison and evidence rows have no exact migration owner. PRODUCT and payload ENUM are semantically different: one is a fixed set of named fields present together; the other selects one named variant whose payload fields depend on the case.

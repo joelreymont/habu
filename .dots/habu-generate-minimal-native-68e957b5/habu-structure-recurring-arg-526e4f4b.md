@@ -4,6 +4,8 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-21T22:41:45.061490+02:00"
+blocks:
+  - habu-type-dsl-prove-93da83c4
 ---
 
 Invariant: a recurring group of same-width values with stable semantic roles is one typed value; its correctness does not depend on stack position or a handwritten arity threshold. A repository-wide signature census finds many seven-to-twelve-cell interfaces. Some are legitimate short-lived independent inputs, but confirmed repeated aggregates include binary segment and section metadata, multi-tensor forward and backward state, repeated path components, report-capture configuration, object source identity, and PTY resources. Same-cell permutations currently certify and deep local binders repeat at every call.

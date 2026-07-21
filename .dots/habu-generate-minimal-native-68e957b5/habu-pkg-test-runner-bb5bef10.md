@@ -4,6 +4,8 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-21T22:38:05.823668+02:00"
+blocks:
+  - habu-pkg-process-core-2a6d3748
 ---
 
 Invariant: reusable test execution is a library subsystem with one package owner; its focused tests own their fixture state separately. The current runner publishes the complete GT-prefixed implementation globally, and its focused test publishes GTT-prefixed buffers and helpers globally. Prefixes prevent some spelling collisions but provide no privacy and add dictionary bytes to every load.

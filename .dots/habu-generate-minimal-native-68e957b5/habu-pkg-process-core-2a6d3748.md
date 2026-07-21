@@ -4,6 +4,8 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-21T22:37:50.378913+02:00"
+blocks:
+  - habu-libs-migrate-process-6bfe40be
 ---
 
 Invariant: process lifecycle, polling, capture, cleanup state, and implementation helpers belong to one real package; callers see only a small checked process API. The current core exposes PROC-prefixed constants and helpers, RUN-CAPTURE, polling tables, capture buffers, and cleanup machinery globally. Separate trace and captured-result record owners exist, but no package owns the process engine itself, so prefixes provide naming without privacy.
