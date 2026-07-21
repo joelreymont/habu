@@ -185,7 +185,13 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   needs a focused test plus a dot for the missing typed capability.
   Treat a failed or skipped commit gate as unfinished work, not as something to
   commit first and clean up later.
-- Commit after each significant change or feature; include new files.
+- **Clean workspace checkpoint (BLOCKING):** do not leave a completed feature or
+  substantial fix sitting in a dirty workspace. As soon as its coherent diff
+  passes the required focused validation, inspect it, commit it with all new
+  files, and verify `jj st` is clean before starting the next concern. Keep a
+  workspace dirty only while its current change is genuinely unfinished; never
+  mix later work into an already validated change or use a checkpoint commit to
+  hide a known failure.
 - RCA is blocking for generated checked fixtures: if a generated checked fixture
   stalls, times out, or exits without diagnostics, immediately isolate the
   checker/harness phase and root cause. Do not call the fixture "too expensive",
