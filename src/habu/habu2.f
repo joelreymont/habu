@@ -2606,7 +2606,7 @@ s" bdrainpretrust" s" --" TRUST
    done LBL, ;
 
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
-variable LSNAPRBD  variable LSNAPRBC
+variable LSNAPRBD
 variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
 
 \ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
@@ -3888,7 +3888,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
 \ Region walks are BL-callable and parameterized so the loader (live
 \ region) and the snapshot writer (scratch copy) share ONE implementation:
-\ x8 = region base, x15 = record count, x16 = region code end,
+\ x8 = region base, x15 = record count,
 \ x21 = detect base, x22 = detect len, x25 = rebase target base (value - x21 + x25).
 : EM-SNAPSHOT-REBASE-DICT ( -- )
    LBL LBL LBL LBL {: sdl2 sdn2 sds2 srn :}
@@ -3933,34 +3933,6 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
-: EM-SNAPSHOT-REBASE-CALLS ( -- )
-   LBL LBL LBL {: srl srn srx :}
-   LSNAPRBC LABEL@ LBL,
-   9 8 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,
-   srl LBL,  9 16 CMP,  C-GE srx BCOND,
-      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-      5 $D2800010 LIT64,  10 5 CMP,  C-NE srn BCOND,
-      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-      5 $F2A00010 LIT64,  10 5 CMP,  C-NE srn BCOND,
-      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-      5 $F2C00010 LIT64,  10 5 CMP,  C-NE srn BCOND,
-      10 9 12 LDRW,  5 $D63F0200 LIT64,  10 5 CMP,  C-NE srn BCOND,
-      10 9 0 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  13 10 0 ADDI,
-      10 9 4 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 16 LSLI,  13 13 10 ORR,
-      10 9 8 LDRW,  10 10 5 LSRI,  5 $FFFF LIT64,  10 10 5 AND,  10 10 32 LSLI,  13 13 10 ORR,
-      13 21 CMP,  C-LT srn BCOND,
-      14 21 22 ADD,  13 14 CMP,  C-GE srn BCOND,
-      13 13 21 SUB,  13 13 25 ADD,
-      10 9 0 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-        14 13 0 ADDI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 0 STRW,
-      10 9 4 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-        14 13 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
-      10 9 8 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,
-        14 13 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
-      9 9 12 ADDI,
-   srn LBL,  9 9 4 ADDI,  srl B,
-   srx LBL,  RET, ;
-
 \ snap-rebase ( base end count dbase dlen newbase -- ): canonicalize a region copy
 \ [base,end) in TWO passes so the image is byte-identical whatever VAs this run got.
 \ Pass 1 uses the caller's (dbase,dlen,newbase) to fold engine-text pointers to their
@@ -3980,10 +3952,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 PROT-GUARD:CALL
    LSNAPRBD LABEL@ BL,
-   LSNAPRBC LABEL@ BL,
    21 DBASE 0 ADDI,  22 16 8 SUB,  25 RBASE-VA LIT64,   \ pass 2: live region -> RBASE-VA sentinel
-   LSNAPRBD LABEL@ BL,
-   LSNAPRBC LABEL@ BL, ;
+   LSNAPRBD LABEL@ BL, ;
 
 : EM-SNAPSHOT-RX-FLUSH ( -- )
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -4195,18 +4165,16 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    9 DATA ARGC-CELL STR,  10 DATA ARGV-CELL STR,  0 DATA ENVP-CELL STR,
    NDICT 15 0 ADDI,
    CP DBASE 6 ADD,
-   8 DBASE 0 ADDI,  16 CP 0 ADDI,
+   8 DBASE 0 ADDI,
    \ region pass FIRST: the RBASE-VA sentinel -> live region base (DBASE). Running it
    \ before the text pass keeps each pass's live output out of the other's canonical
    \ detection band, correct on both non-PIE (Linux) and PIE (macOS, where the region
    \ slides with __text). x6 = region payload len.
    21 RBASE-VA LIT64,  22 6 0 ADDI,  25 DBASE 0 ADDI,
    LSNAPRBD LABEL@ BL,
-   LSNAPRBC LABEL@ BL,
    \ text pass: canonical base 0 -> live text base. x22 = engine text len; x25 reloaded.
    21 0 MOVZ,  22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,  25 DATA RBASE-CELL LDR,
    LSNAPRBD LABEL@ BL,
-   LSNAPRBC LABEL@ BL,
    EM-SNAPSHOT-RX-FLUSH
    24 1 MOVZ,
    24 DATA SNAP-CELL STR,
@@ -6736,7 +6704,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LAOTBOOTRUN !
    LBL LAOTNPWID !  LBL LAOTPWID !  LBL LPROTWIDQ !  OWNER-WID-EMIT:LABELS
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
-   LBL LSNAPRBD !  LBL LSNAPRBC !  LBL LHIDXADD !  LBL LHIDXBUILD !
+   LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL LAOTWIDGATE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
@@ -7037,7 +7005,7 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    EMIT-CREATE
    EMIT-DOESPATCH
    EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
-   EM-SNAPSHOT-REBASE-DICT  EM-SNAPSHOT-REBASE-CALLS  EM-AOTWIDGATE
+   EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE
    EMIT-LOC-FIND
    EMIT-KWDATA
    EMIT-FOLDKW

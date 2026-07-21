@@ -69,14 +69,17 @@
 \ interleaved rigid-domains (ac5901a3) and LOAD-CORPUS rename (2afcc679) touch only
 \ runtime source, not baked __text. Exact CODE-TEXT/signature/floor rows in
 \ test/gate-size-attribution-test.f.
+\ 2026-07-21 Linux 143552 -> 139456: retiring the vestigial EM-SNAPSHOT-REBASE-CALLS
+\ snapshot scan (dot habu-retire-vestigial-snapshot-e4187b76) nets -392 bytes of engine
+\ text (CODELEN 135252 -> 134860). The direct-BL landing had left the scan a no-op; the
+\ shave crosses back under the 4 KiB floor the munmap primitive had pushed the file over,
+\ so the whole-file total drops one page. Exact rows in test/gate-size-attribution-test.f.
 148855 constant GB-SIZE-BASELINE-MACOS
-143552 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-20 (DGX Spark linux-arm64): the
-                                         \ direct-BL conversion (habu-aot-repl-bl) took CODELEN to 135072
-                                         \ (139456 whole-file), then the checked munmap primitive
-                                         \ (habu-expose-checked-mmap) added +136 (CODELEN 135208), crossing
-                                         \ back over the 4 KiB floor the BL landing had recovered - the
-                                         \ whole-file total returns to 143552. Exact rows in
-                                         \ test/gate-size-attribution-test.f.
+139456 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-21 (DGX Spark linux-arm64):
+                                         \ retiring the vestigial snapshot rebase-calls scan
+                                         \ (habu-retire-vestigial-snapshot) shaves CODELEN to 134860,
+                                         \ dropping the whole file back under the 4 KiB floor to 139456.
+                                         \ Exact rows in test/gate-size-attribution-test.f.
 
 0 constant GB-SIZE-OK
 1 constant GB-SIZE-GROWN

@@ -205,10 +205,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ transaction landed (src/core/decl-event.f, dot habu-type-declarations-shared-14ab0e48):
 \ +44 of engine text on the direct-BL+munmap base, CODELEN 135208 -> 135252 (floor
 \ 40 -> 84); the whole file stays inside the same 4 KiB page (LINUX-TOTAL unchanged).
-135252 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-21 re-measured at the linux-arm64 fixpoint (spark) after retiring the
+\ vestigial EM-SNAPSHOT-REBASE-CALLS snapshot scan (dot
+\ habu-retire-vestigial-snapshot-e4187b76): the direct-BL landing left it a no-op (no
+\ absolute movz/movk call chain survives to rebase), so deleting the routine, its four
+\ BL call sites, and the restore-path dead x16 setup shaves -392 of engine text, CODELEN
+\ 135252 -> 134860 (floor 84 -> 3788); the shave crosses the 4 KiB floor so the whole
+\ file drops one page (LINUX-TOTAL 143552 -> 139456).
+134860 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-84 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-143552 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+3788 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+139456 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 : PAGE-UP ( n n -- n ) {: v:n page:n :}
    v page 1- + page 1- invert and ;

@@ -76,7 +76,7 @@ s" SDB@" s" -- ptr u8" TRUST
 \ Snapshot images must be byte-identical across ASLR runs, so the dict/code
 \ region is COPIED to scratch and the copy is rebased to canonical base 0
 \ with the same engine relocation walks the startup loader uses
-\ (snap-rebase primitive -> LSNAPRBD/LSNAPRBC, src/habu/habu2.f). The live
+\ (snap-rebase primitive -> LSNAPRBD, src/habu/habu2.f). The live
 \ region is never touched: rewriting it in place would break the very call
 \ chains this writer executes. The trailer records base 0; the loader's
 \ delta and membership math are base-agnostic, so restore needs no change.
