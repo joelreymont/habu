@@ -17,11 +17,11 @@
 \ that pattern, reproducing its leftmost-alternative + greedy + whitespace-backtracking
 \ semantics (verified in maki/bpe-test.f against Python `re`/`regex` - see the bpe-data.f
 \ and bpe-real-data.f provenance). BPE-CP@ decodes each UTF-8 codepoint (soft byte-fallback
-\ on invalid sequences), so \p{L}/\p{N} classify by real unicode Letter/Number category via
-\ the BPE-ULET/BPE-UNUM tables below (\s stays ASCII [ \t\n\v\f\r]). This closes the former
-\ ASCII-only divergence (a multi-byte L/N codepoint abutting an ASCII letter/digit: "naïve"
-\ now folds to one \p{L}+ run). The table is BOUNDED to the unicode blocks the GPT-2 vocab
-\ exercises - its provenance, cost, and the residual boundary are documented at BPE-ULET.
+\ on invalid sequences), so \p{L}/\p{N}/\s classify by real unicode Letter/Number/White_Space
+\ via the BPE-ULET/BPE-UNUM/BPE-UWS tables below. This closes the former ASCII-only divergences
+\ (a multi-byte L/N codepoint abutting an ASCII letter/digit - "naïve" folds to one \p{L}+ run;
+\ a non-ASCII space e.g. U+00A0 now splits as \s not "other"). L/N are BOUNDED to the vocab's
+\ blocks, White_Space is COMPLETE; provenance/cost/residual documented at BPE-ULET / BPE-UWS.
 \ The round-trip property is independent of the split: the matcher is a total partition
 \ (every byte lands in exactly one chunk, decoder fallback included), so decode reconstructs
 \ all bytes for ARBITRARY input including invalid UTF-8.
@@ -133,7 +133,7 @@ variable BPE-KI variable BPE-STOP              \ training loop control
 \ differently from tiktoken at an ASCII boundary, but GPT-2 has no learned merge crossing
 \ such a boundary, so the emitted token ids still coincide (scratchpad scan2.py: 0
 \ id-level residuals across all 65408 BMP L/N codepoints in ascii-adjacency probes).
-\ Unicode whitespace (\s beyond ASCII, e.g. U+00A0) is a separate class, left ASCII-only.
+\ Unicode White_Space (\s beyond ASCII, e.g. U+00A0) is the separate BPE-UWS table below.
 create BPE-ULET
    170 , 170 , 181 , 181 , 186 , 186 , 192 , 214 , 216 , 246 , 248 , 383 ,
    688 , 705 , 710 , 721 , 736 , 740 , 748 , 748 , 750 , 750 , 880 , 884 ,
@@ -147,6 +147,29 @@ create BPE-ULET
 create BPE-UNUM
    178 , 179 , 185 , 185 , 188 , 190 , 1632 , 1641 , 1776 , 1785 , 2406 , 2415 ,
 6 constant BPE-UNUM-N         \ number [lo,hi] range pairs
+
+\ ---- unicode White_Space table (GENERATED - regenerate, do not hand-edit) ----------
+\ PROVENANCE. The GPT-2 regex \s (tiktoken 0.13.0 gpt2 _pat_str: \s++$|\s+(?!\S)|\s)
+\ classifies Unicode White_Space; the ASCII-only \s put a non-ASCII space (U+00A0 nbsp,
+\ U+2000-200A, U+3000, ...) in the "other" class, so text with them chunked unlike tiktoken.
+\ RECIPE (scratchpad gen_ws.py, ~/Work/ml venv, python unicodedata). White_Space is a
+\ BINARY property, NOT a unicodedata category, so derive it as category in {Zs,Zl,Zp}
+\ UNION the documented White_Space controls {U+0009..U+000D, U+0085} (PropList.txt).
+\ That is the COMPLETE Unicode White_Space set (25 codepoints) - small enough to hold in
+\ FULL, so unlike the bounded L/N tables there is NO block-bounding and NO ws residual.
+\ ASCII White_Space {U+0009..U+000D, U+0020} stays the BPE-WS? fast path; this table
+\ holds the >= 0x80 ranges only. COST: 8 ranges = 16 cells (128 bytes @ 8).
+\ BOUNDARY (honest, measured - scratchpad scan_ws.py). New BPE-WS? reproduces tiktoken's
+\ split for every White_Space codepoint: 0 id-level residuals across all 63456 BMP
+\ codepoints in ascii-adjacency probes + whitespace-run mixes. The former ASCII matcher
+\ had REAL id divergences (" \xC2\xA0x": ASCII [5624,87] vs tiktoken [220,1849,87]); closed.
+\ No vocab-subset flip fixture: a SPLITTING change's closed fired-merge subset omits the
+\ base's over-fold merges, so the base reproduces tiktoken through the subset - the honest
+\ proof is the matcher-parity byte vectors (bpe-test.f BPT-U10..U13, red-first) + this scan.
+create BPE-UWS
+   133 , 133 , 160 , 160 , 5760 , 5760 , 8192 , 8202 , 8232 , 8233 , 8239 , 8239 ,
+   8287 , 8287 , 12288 , 12288 ,
+8 constant BPE-UWS-N          \ non-ASCII White_Space [lo,hi] range pairs
 
 \ codepoint c in the sorted [lo,hi] range table at a (rn pairs)? O(log rn) binary search
 variable BPE-BS-LO  variable BPE-BS-HI  variable BPE-BS-M
@@ -162,9 +185,10 @@ variable BPE-BS-LO  variable BPE-BS-HI  variable BPE-BS-M
    repeat  BPE-FALSE ;
 
 \ ---- character classes over a CODEPOINT: \p{L}=ASCII[A-Za-z]|BPE-ULET, \p{N}=
-\ ASCII[0-9]|BPE-UNUM, \s=ASCII whitespace; "other" is everything else --------------
+\ ASCII[0-9]|BPE-UNUM, \s=ASCII[ \t\n\v\f\r]|BPE-UWS; "other" is everything else -----
 : BPE-WS?  ( n -- bool )  {: c:n :}
-   c 32 =  c 9 =  or  c 10 =  or  c 11 =  or  c 12 =  or  c 13 =  or ;
+   c 32 =  c 9 =  or  c 10 =  or  c 11 =  or  c 12 =  or  c 13 =  or
+   c 128 >= if  c BPE-UWS BPE-UWS-N BPE-URANGE?  or  then ;
 : BPE-LET? ( n -- bool )  {: c:n :}
    c 65 >= c 90 <= and  c 97 >= c 122 <= and  or
    c 128 >= if  c BPE-ULET BPE-ULET-N BPE-URANGE?  or  then ;
@@ -204,7 +228,8 @@ variable BPE-BS-LO  variable BPE-BS-HI  variable BPE-BS-M
 \ ---- maximal class runs from p by CODEPOINT (len>=0; caller guarantees class at p) -
 \ BPE-RO accumulates the byte offset; each step decodes the codepoint at p+off and
 \ advances by its width while the class holds (runs never nest, so one var is safe).
-variable BPE-RO
+\ BPE-RP (whitespace tail only) tracks the start offset of the LAST ws codepoint.
+variable BPE-RO  variable BPE-RP
 : BPE-LET-RUN ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
    0 BPE-RO !
    begin  p BPE-RO @ + n < if a n p BPE-RO @ + BPE-CP@ swap BPE-LET?
@@ -220,11 +245,17 @@ variable BPE-RO
    begin  p BPE-RO @ + n < if a n p BPE-RO @ + BPE-CP@ swap BPE-OTHER?
                           else 0 BPE-FALSE then
    while  BPE-RO @ + BPE-RO !  repeat  drop  BPE-RO @ ;
-: BPE-WS-RUN ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
-   0 BPE-RO !
+\ whitespace tail: the maximal ws run from p, but when a non-ws follows, the LAST ws
+\ codepoint is left for the next chunk (regex \s+(?!\S)|\s - the following ` ?` prefix or
+\ a lone \s takes it) by CODEPOINT width, never mid-sequence. A single-codepoint run and
+\ a run reaching EOS are taken WHOLE (>=1). BPE-RP holds the last codepoint's start offset.
+: BPE-WS-TAIL ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
+   0 BPE-RO !  0 BPE-RP !
    begin  p BPE-RO @ + n < if a n p BPE-RO @ + BPE-CP@ swap BPE-WS?
                           else 0 BPE-FALSE then
-   while  BPE-RO @ + BPE-RO !  repeat  drop  BPE-RO @ ;
+   while  BPE-RO @ BPE-RP !  BPE-RO @ + BPE-RO !  repeat  drop
+   p BPE-RO @ + n >= if BPE-RO @ exit then            \ run reaches EOS -> whole run
+   BPE-RP @ dup 0= if drop BPE-RO @ then ;            \ else leave last ws cp (single -> whole)
 
 \ contraction at p (a[p] is '): length (2 or 3) for 's 't 're 've 'm 'll 'd, else 0.
 : BPE-CONTRACT ( ptr u8 n n -- n )  {: a:ptr n:n p:n :}
@@ -260,10 +291,7 @@ public
       then
    then
    b BPE-OTHER? if a n p BPE-OTHER-RUN exit then
-   a n p BPE-WS-RUN {: wl:n :}                \ b is whitespace here; wl>=1
-   p wl + n >= if wl exit then                \ run reaches EOS -> whole run
-   wl 2 >= if wl 1- exit then                 \ leave the final ws char for the next chunk
-   1 ;
+   a n p BPE-WS-TAIL ;                         \ b is whitespace; leave the last ws codepoint
 
 private
 

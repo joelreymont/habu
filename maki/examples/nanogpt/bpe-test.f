@@ -99,7 +99,9 @@ create BPT-L6  3 , 1 , 2 ,                    \ "end.  "         -> end|.|'  '
 \ BPE-CHUNK-LEN's codepoint classification directly (no vocab). \x escapes pin exact
 \ NFC/NFD bytes where accented Latin is otherwise ambiguous. Covers the closed classes
 \ (Latin/CJK/arabic-indic/superscript adjacency), a pure-script regression, a combining
-\ mark (stays "other"), and the honest RESIDUAL (fullwidth, an uncovered block).
+\ mark (stays "other"), the honest RESIDUAL (fullwidth, an uncovered block), and the
+\ non-ASCII White_Space closure (U10..U13: nbsp/NEL break an "other" run, and the ws tail
+\ leaves the last WHOLE ws codepoint - red-first against the ASCII-only \s + byte tail).
 create BPT-U1  6 ,          \ "naïve"       one \p{L}+ run (was na|ï|ve) - the FLIP
 create BPT-U2  5 ,          \ "café"        one \p{L}+ run (precomposed U+00E9)
 create BPT-U3  10 ,         \ "test日本"     latin+CJK folded into one \p{L}+ run
@@ -110,6 +112,10 @@ create BPT-U7  4 , 2 ,      \ "cafe"+U+0301 combining mark stays "other": cafe|m
 create BPT-U8  6 ,          \ " café"       space-prefixed \p{L}+ (space peeks a codepoint)
 create BPT-U9  3 , 4 ,      \ "ｎtest"       RESIDUAL: fullwidth (uncovered block) NOT folded;
                             \               tiktoken folds to one [7] chunk - ids still coincide
+create BPT-U10 1 , 2 , 1 ,  \ "!\xC2\xA0!"   U+00A0 nbsp breaks the "other" run: !|nbsp|! (was [4])
+create BPT-U11 1 , 2 , 1 ,  \ " \xC2\xA0x"   space|nbsp|letter: ws tail leaves the whole nbsp (was [3,1])
+create BPT-U12 3 , 3 , 1 ,  \ U+3000 U+3000 x  two ideographic spaces (3-byte ws) | letter (was [6,1])
+create BPT-U13 1 , 2 , 1 ,  \ "!\xC2\x85!"   U+0085 NEL (White_Space Cc control) breaks the "other" run
 : BPT-USPLITS? ( -- bool )
    BPT-U1 1 s\" na\xC3\xAFve"        BPT-SPLIT?
    BPT-U2 1 s\" caf\xC3\xA9"         BPT-SPLIT? and
@@ -119,7 +125,11 @@ create BPT-U9  3 , 4 ,      \ "ｎtest"       RESIDUAL: fullwidth (uncovered blo
    BPT-U6 1 s" привет"              BPT-SPLIT? and
    BPT-U7 2 s\" cafe\xCC\x81"        BPT-SPLIT? and
    BPT-U8 1 s\"  caf\xC3\xA9"        BPT-SPLIT? and
-   BPT-U9 2 s" ｎtest"               BPT-SPLIT? and ;
+   BPT-U9 2 s" ｎtest"               BPT-SPLIT? and
+   BPT-U10 3 s\" !\xC2\xA0!"                 BPT-SPLIT? and
+   BPT-U11 3 s\"  \xC2\xA0x"                 BPT-SPLIT? and
+   BPT-U12 3 s\" \xE3\x80\x80\xE3\x80\x80x"  BPT-SPLIT? and
+   BPT-U13 3 s\" !\xC2\x85!"                 BPT-SPLIT? and ;
 
 \ ---- red-first guards -------------------------------------------------------------
 \ pre-ready: every operational/query word rejects before any table is built
