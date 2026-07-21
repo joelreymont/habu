@@ -11,6 +11,7 @@ require test/checker-assert.f
 create VECT-VEC VEC-HEADER-CELLS cells allot
 create VECT-PTR-VEC VEC-HEADER-CELLS cells allot
 create VECT-BIG-VEC VEC-HEADER-CELLS cells allot
+create VECT-REL-VEC VEC-HEADER-CELLS cells allot   \ dedicated header for release/dispose lifecycle tests
 
 141000 constant VECT-BIG-N
 
@@ -65,6 +66,66 @@ variable VECT-IDX-SUM
    41 VECT-VEC VEC-PUSH-N drop
    42 VECT-VEC VEC-PUSH-N drop
    VECT-VEC 1 VEC-CAP-COUNT VEC-RESIZE ;
+
+\ ---- release / dispose lifecycle (raw surface) --------------------------------
+\ Release is proved by ADDRESS REUSE: a mapping freed to the OS leaves a hole that
+\ the very next same-size mmap refills, so a fresh allocation lands on the freed
+\ address. On the unreleased base the old mapping is retained, so the fresh
+\ allocation lands elsewhere and the equality assertion fails.
+: VECT-REL-INIT ( n -- )                               \ free any prior mapping, then init fresh
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC swap VEC-CAP-COUNT VEC-INIT ;
+
+: VECT-RESIZE-RELEASES ( -- )                          \ resize frees the prior mapping (address reuse)
+   2 VECT-REL-INIT
+   VECT-REL-VEC VEC-DATA@ {: old:ptr :}
+   VECT-REL-VEC 4 VEC-CAP-COUNT VEC-RESIZE              \ prior 2-cell mapping released after copy/install
+   2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}             \ a fresh same-size mapping refills the freed hole
+   reuse old = TTRUE ;
+
+: VECT-DISPOSE-RELEASES ( -- )                         \ dispose frees the owned mapping (address reuse)
+   2 VECT-REL-INIT
+   VECT-REL-VEC VEC-DATA@ {: old:ptr :}
+   VECT-REL-VEC VEC-DISPOSE
+   2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}
+   reuse old = TTRUE ;
+
+: VECT-DISPOSE-DOUBLE ( -- )                           \ a second dispose is a proved no-op (no throw)
+   2 VECT-REL-INIT
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC VEC-CAP-FIELD @ 0 T= ;                  \ stays dead; reaching here proves no throw
+
+: VECT-DISPOSE-CYCLE-BOUNDED ( -- )                    \ init/dispose cycles keep ONE resident mapping
+   2 VECT-REL-INIT
+   VECT-REL-VEC VEC-DATA@ {: base:ptr :}
+   VECT-REL-VEC VEC-DISPOSE
+   8 0 ?do
+      VECT-REL-VEC 2 VEC-CAP-COUNT VEC-INIT
+      VECT-REL-VEC VEC-DATA@ base = TTRUE               \ every cycle refills the same freed hole
+      VECT-REL-VEC VEC-DISPOSE
+   loop ;
+
+: VECT-DISPOSE-USE-GET ( -- )                          \ read after dispose
+   2 VECT-REL-INIT  VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC 0 VEC-IDX VEC-N@ drop ;
+: VECT-DISPOSE-USE-PUSH ( -- )                         \ push after dispose
+   2 VECT-REL-INIT  VECT-REL-VEC VEC-DISPOSE
+   9 VECT-REL-VEC VEC-PUSH-N drop ;
+: VECT-DISPOSE-USE-RESIZE ( -- )                       \ resize after dispose
+   2 VECT-REL-INIT  VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC 5 VEC-CAP-COUNT VEC-RESIZE ;
+
+: VECT-RESIZE-FAIL-ATOMIC ( -- )                       \ a failed grow leaves the old vector valid
+   2 VECT-REL-INIT
+   41 VECT-REL-VEC VEC-PUSH-N drop  42 VECT-REL-VEC VEC-PUSH-N drop
+   VECT-REL-VEC VEC-DATA@ {: before:ptr :}
+   [: VECT-REL-VEC VEC-MAX-CELLS VEC-COUNT VEC-RESIZE ;] E-MEM-MAP TTHROWSQ  \ mmap of the whole space fails
+   VECT-REL-VEC VEC-DATA@ before = TTRUE                \ mapping not swapped out
+   VECT-REL-VEC VEC-LEN@ LEN>N 2 T=
+   VECT-REL-VEC VEC-CAP@ COUNT>N 2 T=
+   VECT-REL-VEC 0 VEC-IDX VEC-N@ 41 T=
+   VECT-REL-VEC 1 VEC-IDX VEC-N@ 42 T= ;
 
 : VECT-CLEAR ( -- )
    VECT-RESET
@@ -238,6 +299,23 @@ variable VECT-TSUM   variable VECT-TIXSUM
    VECT-VEC 2 VECT-N>ITEM VEC:INIT  1 VECT-VEC VEC:PUSH drop
    VECT-VEC 1 VECT-TAT drop ;                                             \ index at length rejects
 
+: VECT-T-DISPOSE-RELEASES ( -- )                       \ typed dispose frees the owned mapping
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT
+   VECT-REL-VEC VEC-DATA@ {: old:ptr :}
+   VECT-REL-VEC VEC:DISPOSE
+   2 >COUNT MEM-ALLOC-CELLS {: reuse:ptr :}
+   reuse old = TTRUE ;
+: VECT-T-DISPOSE-DOUBLE ( -- )                         \ typed double dispose is a proved no-op
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT
+   VECT-REL-VEC VEC:DISPOSE  VECT-REL-VEC VEC:DISPOSE
+   VECT-REL-VEC VEC-CAP-FIELD @ 0 T= ;
+: VECT-T-DISPOSE-USE ( -- )                            \ typed access after dispose rejects
+   VECT-REL-VEC VEC-DISPOSE
+   VECT-REL-VEC 2 VECT-N>ITEM VEC:INIT  VECT-REL-VEC VEC:DISPOSE
+   VECT-REL-VEC 0 VECT-TAT drop ;
+
 : VECT-RUN ( -- )
    T-RESET
    VECT-GROW
@@ -258,6 +336,15 @@ variable VECT-TSUM   variable VECT-TIXSUM
    [: VECT-SET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
    s" BAD-VEC-FETCH ( ptr a len -- a ) VEC@" VECT-CHECK-REJECTS
    s" BAD-VEC-LEN! ( count ptr a -- ) VEC-LEN!" VECT-CHECK-REJECTS
+   \ ---- release / dispose lifecycle (raw) -------------------------------------
+   VECT-RESIZE-RELEASES
+   VECT-DISPOSE-RELEASES
+   VECT-DISPOSE-DOUBLE
+   VECT-DISPOSE-CYCLE-BOUNDED
+   VECT-RESIZE-FAIL-ATOMIC
+   [: VECT-DISPOSE-USE-GET ;] E-VEC-STATE TTHROWSQ
+   [: VECT-DISPOSE-USE-PUSH ;] E-VEC-STATE TTHROWSQ
+   [: VECT-DISPOSE-USE-RESIZE ;] E-VEC-STATE TTHROWSQ
    \ ---- typed VEC surface: positive behavior ----------------------------------
    VECT-T-INIT
    VECT-T-PUSH
@@ -272,6 +359,10 @@ variable VECT-TSUM   variable VECT-TIXSUM
    [: VECT-T-RESIZE-ZERO ;] E-VEC-CAPACITY TTHROWSQ
    [: VECT-T-RESIZE-SHRINK ;] E-VEC-BOUNDS TTHROWSQ
    [: VECT-T-GET-HIGH ;] E-VEC-BOUNDS TTHROWSQ
+   \ ---- typed release / dispose lifecycle -------------------------------------
+   VECT-T-DISPOSE-RELEASES
+   VECT-T-DISPOSE-DOUBLE
+   [: VECT-T-DISPOSE-USE ;] E-VEC-STATE TTHROWSQ
    \ ---- typed VEC surface: static role-swap rejections (0) + resolving positives (-1)
    s" VOK-INIT ( ptr a CAD-NUM:item-count -- ) VEC:INIT" CHECK-QUIET-CANDIDATE! -1 T=
    s" VOK-AT ( ptr a CAD-NUM:index -- a ) VEC:@"        CHECK-QUIET-CANDIDATE! -1 T=

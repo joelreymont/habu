@@ -109,6 +109,7 @@
 -3399 constant E-VEC-LAST
 -3300 constant E-VEC-BOUNDS
 -3301 constant E-VEC-CAPACITY
+-3302 constant E-VEC-STATE
 
 \ PTX DSL: -3400..-3499
 -3400 constant E-PTX-FIRST

@@ -64,6 +64,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-LEN@	(ptr a -- len)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector active length
 1	vector	lib/vector.f	word	VEC-CAP@	(ptr a -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	read a vector capacity
 1	vector	lib/vector.f	word	VEC-CAP!	(count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector capacity
+1	vector	lib/vector.f	word	VEC-CHECK-LIVE	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reject a disposed or uninitialized vector before a storage-touching use
 1	vector	lib/vector.f	word	VEC-LEN!	(len ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	write a checked vector active length
 1	vector	lib/vector.f	word	VEC-INIT	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	initialize a vector header with OS-backed cell storage
 1	vector	lib/vector.f	word	VEC-CLEAR	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reset active length without changing capacity
@@ -75,9 +76,11 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-A@	(ptr a idx -- ptr u8)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	fetch a byte-pointer vector cell
 1	vector	lib/vector.f	word	VEC-A!	(ptr u8 ptr a idx --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	store a byte-pointer vector cell
 1	vector	lib/vector.f	word	VEC-COPY-CELLS	(ptr a ptr a len --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	copy checked vector cells between typed cell spans
+1	vector	lib/vector.f	word	VEC-RELEASE-STORAGE	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	release an owned vector mapping to the OS by its cell capacity
 1	vector	lib/vector.f	word	VEC-INSTALL-RESIZE	(ptr a count ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	install a freshly allocated resized vector span
 1	vector	lib/vector.f	word	VEC-CHECK-RESIZE-CAP	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	validate that a requested resize capacity can hold the active length
 1	vector	lib/vector.f	word	VEC-RESIZE	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	reallocate vector storage to a checked capacity
+1	vector	lib/vector.f	word	VEC-DISPOSE	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	release vector storage and void ownership; a second dispose is a no-op
 1	vector	lib/vector.f	word	VEC-GROW-CAP	(ptr a count -- count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	compute a doubled vector capacity for a requested need
 1	vector	lib/vector.f	word	VEC-ENSURE	(ptr a count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	ensure a vector has capacity for a requested active count
 1	vector	lib/vector.f	word	VEC-PUSH-AT	(a ptr a n -- idx)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	push a cell using a known old active length
@@ -87,6 +90,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	vector	lib/vector.f	word	VEC-EACH	(R ptr a [ R idx a -- R ] -- R)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	published	visit active vector cells in index order
 1	vector	lib/vector.f	word	VEC:INIT	(ptr a CAD-NUM:item-count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	initialize a typed vector; the one-cell-per-item adapter rejects zero or overflowing capacity
 1	vector	lib/vector.f	word	VEC:CLEAR	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	reset a typed vector active length to zero, preserving capacity
+1	vector	lib/vector.f	word	VEC:DISPOSE	(ptr a --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	release a typed vector's storage; a second dispose is a proved no-op
 1	vector	lib/vector.f	word	VEC:LEN@	(ptr a -- CAD-NUM:item-count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	read a typed vector active length as an item-count
 1	vector	lib/vector.f	word	VEC:CAP@	(ptr a -- CAD-NUM:item-count)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	read a typed vector capacity as an item-count
 1	vector	lib/vector.f	word	VEC:RESIZE	(ptr a CAD-NUM:item-count --)	lib/vector-test.f	docs/stdlib.md	stdlib-vector	active	reallocate a typed vector to a checked item-count capacity

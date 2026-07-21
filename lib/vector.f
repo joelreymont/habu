@@ -81,6 +81,15 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    cap VEC-CHECK-CAP
    cap COUNT>N vec VEC-CAP-FIELD ! ;
 
+\ Ownership / liveness token. A positive VEC.CAP means the header owns a live
+\ mapping of that many cells at VEC.DATA; a zero VEC.CAP means no mapping is owned
+\ (a fresh all-zero header or a disposed one). VEC-DISPOSE clears the capacity to
+\ void ownership, so this single cell is the liveness marker every storage-touching
+\ use consults: touching a dead vector throws E-VEC-STATE instead of dereferencing
+\ freed storage. Reads the raw cell (VEC-CAP@ would refuse a zero elsewhere).
+: VEC-CHECK-LIVE ( ptr a -- ) {: vec:ptr :}
+   vec VEC-CAP-FIELD @ 0= if E-VEC-STATE throw then ;
+
 : VEC-LEN! ( len ptr a -- ) {: len vec:ptr :}
    len VEC-CHECK-LEN
    len LEN>N vec VEC-CAP@ COUNT>N > if E-VEC-BOUNDS throw then
@@ -95,6 +104,7 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    0 VEC-LEN swap VEC-LEN! ;
 
 : VEC-CHECK-INDEX ( ptr a idx -- ) {: vec:ptr ix :}
+   vec VEC-CHECK-LIVE
    ix IDX>N 0 < if E-VEC-BOUNDS throw then
    ix IDX>N vec VEC-LEN@ LEN>N >= if E-VEC-BOUNDS throw then ;
 
@@ -124,12 +134,26 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
       src i VEC-CELL-FIELD @ dst i VEC-CELL-FIELD !
    loop ;
 
+\ Return a mapping the vector owns (data pointer + its cell capacity) to the OS via
+\ the typed munmap inverse: the capacity IS the mapping's cell length, so
+\ MEM-CELLS>BYTES projects it to the exact byte extent MEM-ALLOC-CELLS minted and
+\ MEM:BYTES-ALLOC-LEN narrows that to the alloc-byte-len MEM:RELEASE-BYTES demands.
+: VEC-RELEASE-STORAGE ( ptr a count -- ) {: data:ptr cap :}
+   data  cap MEM-CELLS>BYTES MEM:BYTES-ALLOC-LEN  MEM:RELEASE-BYTES ;
+
+\ Copy into the new mapping, install it, then release the prior one. The release is
+\ LAST and the caller allocates BEFORE this word runs, so a failed grow (the alloc
+\ throws upstream) never reaches here and leaves the old storage owned and intact.
 : VEC-INSTALL-RESIZE ( ptr a count ptr a -- ) {: vec:ptr cap data:ptr :}
-   vec VEC-DATA@ data vec VEC-LEN@ VEC-COPY-CELLS
+   vec VEC-DATA@ {: old:ptr :}
+   vec VEC-CAP@ {: oldcap :}
+   old data vec VEC-LEN@ VEC-COPY-CELLS
    data vec VEC-DATA!
-   cap vec VEC-CAP! ;
+   cap vec VEC-CAP!
+   old oldcap VEC-RELEASE-STORAGE ;
 
 : VEC-CHECK-RESIZE-CAP ( ptr a count -- ) {: vec:ptr cap :}
+   vec VEC-CHECK-LIVE
    cap VEC-CHECK-CAP
    cap COUNT>N vec VEC-LEN@ LEN>N < if E-VEC-BOUNDS throw then ;
 
@@ -137,7 +161,22 @@ MEM-MAX-CELLS constant VEC-MAX-CELLS
    vec cap VEC-CHECK-RESIZE-CAP
    vec cap cap VEC-ALLOC-CELLS VEC-INSTALL-RESIZE ;
 
+\ Release the owned mapping and void ownership. Following the cuda-scope
+\ consume-on-release discipline (a ledger row is zeroed before its release, so a
+\ repeated unwind is a proved no-op), DISPOSE clears the capacity-ownership cell
+\ BEFORE the munmap: a second DISPOSE observes cap==0 and returns without a second
+\ release, and a release that throws cannot double-free on retry. A dead header
+\ (cap==0, fresh or already disposed) is the proved no-op.
+: VEC-DISPOSE ( ptr a -- ) {: vec:ptr :}
+   vec VEC-CAP-FIELD @ {: cap :}
+   cap 0= if exit then
+   vec VEC-DATA@ {: data:ptr :}
+   0 vec VEC-CAP-FIELD !
+   0 vec VEC-LEN-FIELD !
+   data cap >COUNT VEC-RELEASE-STORAGE ;
+
 : VEC-GROW-CAP ( ptr a count -- count ) {: vec:ptr need :}
+   vec VEC-CHECK-LIVE
    need VEC-CHECK-NEED
    vec VEC-CAP@ COUNT>N
    begin dup need COUNT>N < while
@@ -260,6 +299,7 @@ public
    cap ITEM>RC vec VEC-CAP!
    0 VEC-LEN vec VEC-LEN! ;
 : CLEAR ( ptr a -- )  VEC-CLEAR ;
+: DISPOSE ( ptr a -- )  VEC-DISPOSE ;
 
 \ ---- length / capacity readers (raw cell -> item-count role) ------------------
 : LEN@ ( ptr a -- CAD-NUM:item-count )  VEC-LEN@ LEN>N N>ITEM ;
