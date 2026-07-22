@@ -1,6 +1,6 @@
 ---
 title: "Infer KV: declared maximum admission"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:38:16.924879+02:00"
@@ -21,4 +21,5 @@ Expected touch points: maki/infer/kv-cache.f, maki/infer/kv-cache-test.f.
 Smallest check: bin/hb --load maki/infer/kv-cache-test.f.
 Prerequisites: fixed block-table geometry.
 Owned result: sequence admission and reservation ledger only.
-Claim: unassigned.
+Claim: agent=kvdecl workspace=.jj-ws/habu-infer-kv-declared-a0319bef
+machine=spark.

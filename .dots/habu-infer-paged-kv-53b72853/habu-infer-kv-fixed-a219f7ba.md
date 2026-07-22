@@ -1,9 +1,11 @@
 ---
 title: "Infer KV: fixed block-table geometry"
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T09:38:16.909035+02:00\""
+created-at: "2026-07-22T09:38:16.909035+02:00"
+closed-at: "2026-07-22T13:28:17.090569+02:00"
+close-reason: Merged fe107b5d on green master; fresh destruction review accepted fixed geometry and exact KV/Maki gates passed.
 ---
 
 Why this exists:
