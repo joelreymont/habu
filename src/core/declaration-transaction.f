@@ -37,12 +37,12 @@ ROW-CELLS cells constant ROW-BYTES
 $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
 
 : ROWS>BYTES ( n -- n )
-   dup 0 < over MAX-ROWS > or IF E-PARTICIPANT-CAPACITY throw THEN
+   dup 0 < over MAX-ROWS > or if E-PARTICIPANT-CAPACITY throw then
    ROW-BYTES * ;
 
 : NEXT-CAP ( n -- n )
-   dup MAX-ROWS >= IF E-PARTICIPANT-CAPACITY throw THEN
-   dup MAX-ROWS 2 / <= IF 2 * EXIT THEN
+   dup MAX-ROWS >= if E-PARTICIPANT-CAPACITY throw then
+   dup MAX-ROWS 2 / <= if 2 * exit then
    drop MAX-ROWS ;
 
 0 cells constant ROW.ID-OFF
@@ -129,7 +129,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 
 : INIT-STATE ( ptr a ptr a n [ ptr a n n -- ptr a ] [ n n -- ] -- )
    {: state:ptr table:ptr cap:n allocator diagnostic :} \ typed-local-lint: allow-bare-local
-   cap 1 < cap MAX-ROWS > or IF E-PARTICIPANT-CAPACITY throw THEN
+   cap 1 < cap MAX-ROWS > or if E-PARTICIPANT-CAPACITY throw then
    table state ST.TABLE !
    cap state ST.CAP !
    0 state ST.N !
@@ -155,7 +155,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 : REQUIRE-REGISTRATION ( ptr a n -- ) {: state:ptr id:n :}
    state DEPTH@ 0 <> IF E-REGISTRATION-ACTIVE throw THEN
    state SEALED@ 0 <> IF E-REGISTRATION-SEALED throw THEN
-   state N@ MAX-ROWS >= IF E-PARTICIPANT-CAPACITY throw THEN
+   state N@ MAX-ROWS >= if E-PARTICIPANT-CAPACITY throw then
    state id DUPLICATE? IF E-PARTICIPANT-DUP throw THEN ;
 
 : INSERT-AT ( ptr a n -- n ) {: state:ptr order:n :}
