@@ -5,12 +5,7 @@ priority: 2
 issue-type: task
 created-at: "\"2026-07-21T16:44:32.519588+02:00\""
 blocks:
-  - habu-infer-safetensors-loader-0b58e06a
+  - habu-infer-pack-pack-9f077a03
 ---
 
-Plan-of-record sect 5.1: no launch rediscovers or repacks the model. Define the pack: manifest, normalized config, tokenizer assets, packed weights (packer owns transposition/swizzle/block-scaling/alignment/naming), layouts, quantization record, kernel/schedule keys, quality + benchmark records, checksums. Runtime loading becomes deliberately boring: map, verify checksums, go. Pack creation is the habu pack command's core; never both full models resident during packing (bounded chunks). Red-first: checksum mismatch, version skew, truncated member each fail closed named before any registration.
-
-Destruction review 2026-07-21: released the stale `fable-modelpack` claim. Its
-workspace contains no live implementation, while the modelpack namespace, safe
-file-system contract, and immutable publication acceptance still require graph
-reconciliation before honest redispatch.
+This is the compiled model-pack campaign record. Do not dispatch it as implementation work. Its leaves own the manifest, normalized configuration, binary member table and checksums, tensor-layout catalog, bounded writer, runtime loader, and pack command. The campaign closes when the command creates a pack that a fresh process maps and validates without rediscovering model layout.

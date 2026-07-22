@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-07-21T16:44:54.221678+02:00"
 blocks:
-  - habu-infer-modern-dense-b4d4aea1
+  - habu-infer-launch-implement-f88881d3
 ---
 
-Plan-of-record M6: reduce per-token host launch overhead without making model state opaque - measure and implement ONE of: CUDA Graphs keyed by bounded batch+shape, a graph-style driver replay, or a persistent decode loop if graphs cannot express the dynamism. Gate: measured launch overhead before/after; inter-token latency improves; the chosen mechanism documented with its dynamism limits. Blocked on the dense model (real shapes) - frontmatter.
+This is the launch-amortization campaign record. Do not dispatch it as implementation work. Its leaves measure host launch overhead, select one mechanism from that evidence, and integrate only the selected mechanism. The campaign closes when the integrated path preserves correctness and records the measured launch reduction.

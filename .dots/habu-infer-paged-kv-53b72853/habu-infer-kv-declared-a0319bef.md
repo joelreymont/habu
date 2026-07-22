@@ -1,0 +1,24 @@
+---
+title: "Infer KV: declared maximum admission"
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-07-22T09:38:16.924879+02:00"
+blocks:
+  - habu-infer-kv-fixed-a219f7ba
+---
+
+Why this exists:
+maki/infer/kv-cache.f can allocate a sequence without reserving its declared future KV growth, so an admitted request can become impossible to complete.
+
+Required result:
+require maximum context at admission, reserve its exact remaining page count, and bind the reservation to the generation-bearing sequence handle.
+
+Done when:
+exactly fitting admission succeeds, one-page-over rejects before slot publication, append consumes one reserved page at each boundary, cancellation returns the unused reservation, and stale handles cannot spend it.
+
+Expected touch points: maki/infer/kv-cache.f, maki/infer/kv-cache-test.f.
+Smallest check: bin/hb --load maki/infer/kv-cache-test.f.
+Prerequisites: fixed block-table geometry.
+Owned result: sequence admission and reservation ledger only.
+Claim: unassigned.

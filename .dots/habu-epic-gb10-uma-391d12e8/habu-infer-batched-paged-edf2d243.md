@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-07-21T16:44:54.214923+02:00"
 blocks:
-  - habu-infer-fused-decode-77f72ca7
+  - habu-infer-batch-decode-4a35fb22
 ---
 
-Plan-of-record M3 stage C: bounded small-batch decode over per-sequence block tables - different sequence lengths, different table lengths, completed-sequence masking, NO host-side per-head launch loop. Contiguous-vs-paged agreement and real-model greedy parity extend to the batched case; context-regime benchmarks per the kernel-family contract.
+This is the batched paged-decode campaign record. Do not dispatch it as implementation work. Its leaves own the immutable ragged descriptor, batched kernel, completion masking, real-model parity, and regime benchmark. The campaign closes when the benchmark records the supported ragged batch regimes.
