@@ -14,19 +14,15 @@ variable FOUND
 variable TOKEN-START
 variable TOKEN-A
 variable TOKEN-U
-variable STRING-DONE
 variable BODY-U
 variable LINE-N
 variable LINE-START
 variable TOKEN-LINE
 variable TOKEN-COL
 variable TOKEN-BYTE
-variable STR-POS
 variable BASE-LINE
 variable BASE-COL
 variable BASE-BYTE
-variable BACKSLASHES
-variable ESCAPED-STRING
 variable STR-PREV-A
 variable STR-PREV-U
 variable STR-LAST-A
@@ -215,51 +211,22 @@ create BODY-BUF BODYBUF-CAP allot
    FOUND @ 0= IF s" verify-source: unterminated signature" 74 die THEN
    SOURCE@ TOKEN-START @ + SCAN-I @ TOKEN-START @ - 1 - ;
 
-: ENDS-QUOTE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0 > IF a u + 1 - c@ 34 = ELSE 0 0= 0= THEN ;
-
-: ENDS-ESCAPED-QUOTE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= IF 0 0= 0= EXIT THEN
-   a u + 1 - c@ 34 <> IF 0 0= 0= EXIT THEN
-   0 BACKSLASHES !
-   u 1 - STR-POS !
-   BEGIN STR-POS @ 0 > WHILE
-      a STR-POS @ 1 - + c@ 92 = IF
-         BACKSLASHES @ 1 + BACKSLASHES !
-         STR-POS @ 1 - STR-POS !
-      ELSE
-         BACKSLASHES @ 1 and 0= EXIT
-      THEN
-   REPEAT
-   BACKSLASHES @ 1 and 0= ;
+: STRING-REST ( ptr u8 n -- ptr u8 n ) {: opener:ptr openeru:n :}
+   SCAN-I @ {: start:n :}
+   opener openeru ESCAPED-STRING-OPENER? IF
+      SKIP-ESCAPED-QUOTE
+   ELSE
+      34 SKIP-PAST
+   THEN
+   FOUND @ 0= IF s" verify-source: unterminated string" 74 die THEN
+   SOURCE@ start + SCAN-I @ start - ;
 
 : APPEND-STRING ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u ESCAPED-STRING-OPENER? ESCAPED-STRING !
    a u BODY-APPEND
-   BEGIN
-      RAW!
-      TOKEN-U @ 0= IF s" verify-source: unterminated string" 74 die THEN
-      ESCAPED-STRING @ IF
-         TOKEN-A @ TOKEN-U @ ENDS-ESCAPED-QUOTE?
-      ELSE
-         TOKEN-A @ TOKEN-U @ ENDS-QUOTE?
-      THEN STRING-DONE !
-      TOKEN-A @ TOKEN-U @ BODY-APPEND
-      STRING-DONE @ IF EXIT THEN
-   AGAIN ;
+   a u STRING-REST BODY-APPEND ;
 
-: SKIP-STRING-REST ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u ESCAPED-STRING-OPENER? ESCAPED-STRING !
-   ESCAPED-STRING @ IF a u ENDS-ESCAPED-QUOTE? ELSE a u ENDS-QUOTE? THEN IF exit THEN
-   BEGIN
-      RAW!
-      TOKEN-U @ 0= IF s" verify-source: unterminated string" 74 die THEN
-      ESCAPED-STRING @ IF
-         TOKEN-A @ TOKEN-U @ ENDS-ESCAPED-QUOTE?
-      ELSE
-         TOKEN-A @ TOKEN-U @ ENDS-QUOTE?
-      THEN IF EXIT THEN
-   AGAIN ;
+: SKIP-STRING-REST ( ptr u8 n -- )
+   STRING-REST 2drop ;
 
 : PARSE-NEXT? ( ptr u8 n -- bool )
    2dup s" char" CORE-STR= IF 2drop 0 0= exit THEN
@@ -615,20 +582,25 @@ variable STG-START
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
    CHECKER-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
-: PRIM-END? ( ptr u8 n -- bool )
-   s" PRIM;" STR=CI ;
-
-\ A PRIM: block declares a native primitive whose checker effect is baked into
-\ the live prim table; verify only needs to consume name..PRIM; so the effect
-\ tokens are not scanned as ordinary words.
-: RECORD-PRIM ( -- )
+\ PRIM:/PPRIM: bodies use the canonical body scanner so parsing words consume
+\ their comments, strings, and raw operands before a live closer is considered.
+: RECORD-PRIM-ROW ( ptr u8 n -- ) {: end:ptr endu:n :}
    NEXT-RAW dup 0= IF s" verify-source: missing primitive name" 74 die THEN
    2drop
    BEGIN
-      NEXT-RAW dup 0= IF s" verify-source: missing PRIM;" 74 die THEN
-      2dup PRIM-END? IF 2drop EXIT THEN
-      2drop
+      BODY!
+      TOKEN-U @ 0= IF s" verify-source: missing primitive row closer" 74 die THEN
+      TOKEN-A @ TOKEN-U @ end endu STR=CI IF EXIT THEN
+      SKIP-BODY-TOKEN
    AGAIN ;
+
+: RECORD-PRIM ( -- )
+   s" PRIM;" RECORD-PRIM-ROW ;
+
+: RECORD-PPRIM ( -- )
+   NEXT-RAW dup 0= IF s" verify-source: missing primitive package" 74 die THEN
+   2drop
+   s" PPRIM;" RECORD-PRIM-ROW ;
 
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;
@@ -697,6 +669,7 @@ variable STG-START
    a u s" PTR-VARIABLE" STR=CI IF s" -- ptr ptr a" RAW-TRUST-NEXT 0 0= EXIT THEN
    a u s" defer" STR=CI IF TRUST-DEFER 0 0= EXIT THEN
    a u s" PRIM:" STR=CI IF RECORD-PRIM 0 0= EXIT THEN
+   a u s" PPRIM:" STR=CI IF RECORD-PPRIM 0 0= EXIT THEN
    a u s" trusted:" STR=CI IF TRUSTED-DEFINITION 0 0= EXIT THEN
    a u s" undefine" STR=CI IF UNDEFINE-WORD 0 0= EXIT THEN
    a u s" trust" STR=CI IF RECORD-TRUST 0 0= EXIT THEN

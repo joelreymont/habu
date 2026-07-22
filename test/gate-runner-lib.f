@@ -195,7 +195,7 @@ variable ARG-I
       ID-TAIL-PURE of GSI-TAIL-PURE endof
       ID-TAIL-RUNNER of GSI-TAIL-RUNNER endof
       ID-TAIL-BUILD of GSI-TAIL-BUILD endof
-      ID-TAIL-PROCESS of GSI-TAIL-PROCESS endof
+      ID-TAIL-PROCESS of TAIL-PROCESS:RUN endof
       USAGE
    endcase ;
 

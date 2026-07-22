@@ -2184,6 +2184,16 @@ points stay listed.
   asserts that a global prim resolves one immutable row while wrong-package,
   duplicate-spelling, unknown, and stale-fingerprint links reject, with pinned
   identity fingerprints as the axiom-mutation ratchet.
+- `test/verify-prim-test.f` — verify-source PRIM:/PPRIM: row-closer parity with
+  execution (dot habu-close-verify-src): drives the production entry point
+  `VERIFY:SOURCE-BUF` across PRIM: and PPRIM: strings, comments, lowercase
+  closers, wrong closers, and raw attached `PRIM;X`/`PPRIM;X` body tokens; spawned
+  `bin/hb` children assert rc 74 for missing closers and missing PPRIM package or
+  name headers. A byte-identical row corpus runs through the generated native
+  compiler prefix before `SEAL-FRIEND` and through `VERIFY:SOURCE-BUF`, including
+  an attached `s" x"2drop` suffix and normal/escaped strings whose row closer
+  begins at the first post-quote byte; a TRUSTED: string pins the shared
+  string-scanner owner fix.
 - `test/seal.f` — friend-arena seal regressions: one negative forge per guarded
   PROT-GUARD sink (`!`/`c!`/`+!`/`atomic!`/`atomic-add`/`atomic-cas` plus the
   `read`/`ioctl`/`poll`/`readlink`/`stat64`/`lstat64`/`getdirentries64`/`mmap`
@@ -2318,7 +2328,7 @@ points stay listed.
 - `test/run-resident.f` — late-loaded resident scheduler that forks phase workers without loading every phase library.
 - `test/run-shared-stdlib.f` — parent-loaded stdlib setup inherited by forked stdlib workers.
 - `test/run-worker.f` — fork-worker dispatcher that routes a resident phase to its owned support file.
-- `test/run-worker-stdlib.f` — resident stdlib/check-cli/lint/tail phase support and dispatch.
+- `test/run-worker-stdlib.f` — resident stdlib/check-cli/lint/tail phase support and dispatch, including resident identifier 36 routing to `TAIL-PROCESS:RUN`.
 - `test/run-worker-engine.f` — resident engine repair/fixture/runtime/validation phase support and dispatch.
 - `test/run-worker-diag.f` — resident checker-diagnostics phase support and dispatch.
 - `test/run-worker-diag-all-strict.f` — resident SARIF-backed diagnostics phase.
@@ -2350,8 +2360,8 @@ points stay listed.
 - `test/gate-validation-worker.f` — candidate/baseline validation evidence runner.
 - `test/gate-process-child.f` — fresh-process exec/fork telemetry inheritance fixture.
 - `test/gate-stdlib.f` — thin entry wrapper for lint/stdlib gate slices.
-- `test/gate-tail-process.f` — focused resident-fork runner and load-scaled
-  nominal 10-second ratchet for the stdlib process-boundary tail.
+- `test/gate-tail-process.f` — focused `TAIL-PROCESS:RUN` resident-fork runner
+  and load-scaled nominal 10-second ratchet for the stdlib process-boundary tail.
 - `test/tail-ratchet.f` — exact per-member direct/subject process-count,
   elapsed-time ratchet, and shared load-scaled tail budget policy.
 - `test/gate-stdlib-lib.f` — side-effect-free lint/stdlib gate harness helpers.
@@ -2380,12 +2390,12 @@ points stay listed.
 - `test/gate-aot-positive-lib.f` — side-effect-free AOT positive gate definitions.
 - `test/gate-aot-negative.f` — thin entry wrapper for AOT rejection checks.
 - `test/gate-aot-negative-lib.f` — side-effect-free AOT rejection gate definitions.
-- `test/gate-runner-lib.f` — side-effect-free phase dispatch definitions for native test runners.
+- `test/gate-runner-lib.f` — side-effect-free phase dispatch definitions for native test runners, including the `tail-process` token route to `TAIL-PROCESS:RUN`.
 - `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.
 - `test/gate-runner-entry-test.f` — standalone-load regression: spawns the documented `gate-runner-support`+`gate-runner-entry` closure and asserts it reaches GR-USAGE (rc 64), proving the whole require chain loads under the raised dictionary cap.
 - `test/load-reject-diag-test.f` — spawn regression: rejecting `--load` paths must exit 70 with named stderr; signature-bearing and signatureless compile-time immediates reject before side effects with one structured repair packet, while top-level loaders, runtime `included`/`required`/`provided`, modeled immediates, and audited trusted immediate bodies stay live.
-- `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
+- `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks; package `TAIL-PROCESS` owns the isolated process-group schedule and exports only `RUN`.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.
 - `test/gate-lint-tools-package-child.f` — resident lint-tools fork regression proving package-owning children inherit global package scope.
@@ -2404,7 +2414,7 @@ points stay listed.
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
 - `test/type-match-suite.f` — checked MATCH eliminator suite (exhaustiveness, payload refinement, branch joins, linear consumption, depth fail-closure, scope, CASE-interleave pins).
 - `test/rigid-region-suite.f` — checker fixtures for the rigid host-allocation identity domains (dot habu-define-rigid-host): fresh region/extent/generation identities certify two accesses to one allocation and reject cross-region, extent, generation, cross-domain, recreated-owner, and exhaustion cases with named reasons; routed positive case, run over stdin.
-- `test/match-factor-pin.f` — persistent pin for the factored native MATCH/construct compiler stencils (dot habu-pin-factored-match-08a85f14): pins exact emitted-user bytes for representative construct/match/wide/enum programs, asserts every factored failure diagnostic (unknown family/variant, expected-of, bad-tag, underdepth) in disposable SUBJECT forks, proves package wordlist restoration and W^X discipline, and ratchets ADT compile throughput; a GSI-TAIL-PROCESS fork include.
+- `test/match-factor-pin.f` — persistent pin for the factored native MATCH/construct compiler stencils (dot habu-pin-factored-match-08a85f14): pins exact emitted-user bytes for representative construct/match/wide/enum programs, asserts every factored failure diagnostic (unknown family/variant, expected-of, bad-tag, underdepth) in disposable SUBJECT forks, proves package wordlist restoration and W^X discipline, and ratchets ADT compile throughput; a `TAIL-PROCESS:RUN` fork include.
 - `test/lower-cert.f` — package-scoped canonical lowering-certificate producer regressions covering source binding, width rows, fetch descriptors, and guard-domain evidence.
 - `test/type-layout-lower-pending.f` — width-aware lowering fixtures retained for negative and boundary coverage after the immutable transaction switchover.
 - `test/layout-buffer.f` — generative closed-layout storage, pointer-provenance rejection, bounds, stride, zero-image, and rollback regressions.

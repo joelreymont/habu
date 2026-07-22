@@ -597,6 +597,10 @@ SUITE prim-link
    test/prim-link-test.f
 ;SUITE
 
+SUITE verify-prim
+   test/verify-prim-test.f
+;SUITE
+
 SUITE owner-wid-internal
    test/owner-wid-internal.f
 ;SUITE

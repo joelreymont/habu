@@ -40,7 +40,7 @@ TRW-LOAD-DONE
       33 of GSI-LINT-LIBS-PTX-NEG endof
       34 of GSI-LINT-LIBS-PTX-TOOL endof
       35 of GSI-LINT-ARTIFACTS-FAST endof
-      36 of GSI-TAIL-PROCESS endof
+      36 of TAIL-PROCESS:RUN endof
       37 of GSI-TOOL-LINT-REPL-PHASE endof
       38 of GSI-TOOL-LINT-AOT endof
       39 of GSI-TOOL-LINT-NAMES endof

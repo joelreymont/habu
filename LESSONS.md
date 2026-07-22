@@ -2137,3 +2137,15 @@ fits.
   creates published dangling identities even when both local state machines
   pass. Exercise the real outer scope, compare every related high-water mark,
   and resolve every surviving event after success and failure.
+- **Friend-only grammar needs the generated compiler-prefix seam.** Raw
+  `--load` and `--build` inputs still see the baked dictionary's internal-word
+  marks, so an isolated `PRIM:` corpus correctly rejects. Use the existing
+  compiler payload builder: hide and reload the compiler prefix, append the
+  exact fixture before its `SEAL-FRIEND`, then run that payload through
+  `--build`. Compare the same unmodified fixture bytes through the public
+  verifier; never weaken the user boundary or invent a test-only primitive.
+- **A cursor regression must prevent later delimiters from rescuing it.** An
+  attached primitive closer followed by another same-kind row can be swallowed
+  while the scanner falsely closes on the later row. Put the attached closer
+  last for its delimiter family, then mutate the cursor owner to consume the
+  suffix token; the production verifier must fail on the missing closer.

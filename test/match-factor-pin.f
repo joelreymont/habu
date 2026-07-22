@@ -48,7 +48,7 @@
 \                               ~1% run-to-run band. The committed BENCH is the
 \                               forward throughput ratchet.
 \
-\ Runs as an isolated fork (test/gate-stdlib-inline-lib.f GSI-TAIL-PROCESS
+\ Runs as an isolated fork (test/gate-stdlib-inline-lib.f TAIL-PROCESS:RUN
 \ GSI-FORK-INCLUDE). Negatives/positives run in disposable SUBJECT forks so a
 \ die never touches the runner.
 \

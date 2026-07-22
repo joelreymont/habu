@@ -36,7 +36,7 @@ public
 : RUN ( -- )
    GSI-TIMINGS!
    mono-ns START-NS !
-   GSI-TAIL-PROCESS
+   TAIL-PROCESS:RUN
    ELAPSED-MS {: elapsed:n :}
    elapsed TAIL-BUDGET:PROCESS-MS > if elapsed FAIL then ;
 

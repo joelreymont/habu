@@ -451,7 +451,11 @@ variable GSI-TL-FILE-A
    GSI-TEST-SETUP
    s" lib/build-test.f" GSI-INCLUDE ;
 
-: GSI-TAIL-PROCESS ( -- )
+package TAIL-PROCESS
+
+public
+
+: RUN ( -- )
    s" stdlib/tail-process" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-TEST-SETUP
    GSI-SETUP!
@@ -488,7 +492,10 @@ variable GSI-TL-FILE-A
    s" test/xt-cell-test.f" GSI-FORK-INCLUDE
    s" test/effect-read-api-test.f" GSI-FORK-INCLUDE
    s" test/prim-link-test.f" GSI-FORK-INCLUDE
+   s" test/verify-prim-test.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
+
+;package
 
 : GSI-LINT-LIBS-CORE ( -- )
    s" stdlib/lint-libs/core" GSI-GROUP-PAR GSI-GROUP-HEADER
