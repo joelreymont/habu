@@ -2066,5 +2066,6 @@ fits.
 - **A linear wrapper is not opaque when its generated representation API is
   public.** A public product can preserve its linear owner while replacing raw
   state fields through `UNMAKE` and `MAKE`. Use an opaque linear token and keep
-  mint, state access, and consume leaves private; test the exact rehoming attack,
-  not only duplicate and drop.
+  mint, state access, and consume leaves private in a sealed package; otherwise
+  a caller can reopen the package and publish them. Test both the exact rehoming
+  attack and package reopening, not only duplicate and drop.

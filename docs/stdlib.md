@@ -573,9 +573,12 @@ that storage and the borrowed source live and exclusive until `JR:CLOSE`, and
 does not reuse either as mutable reader backing while the token is live. `INIT`
 rejects null or misaligned storage, insufficient capacity, a negative source
 length, and a null source paired with a positive length before minting the
-token. The current type system cannot prove the backing extent, lifetime, or
-exclusivity from raw host storage; those promises remain the one audited private
-representation boundary owned by `habu-add-bounded-host-b40b048f`.
+token, using `JR:E-STORAGE`, `JR:E-CAPACITY`, and `JR:E-SOURCE`. The package is
+sealed after assembly so callers cannot reopen it to reach the private mint or
+projection leaves. The current type system cannot prove the backing extent,
+lifetime, or exclusivity from raw host storage; those promises remain the one
+audited private representation boundary owned by
+`habu-add-bounded-host-b40b048f`.
 
 ```forth
 JR:INIT       ( ptr a n ptr u8 n -- JR:reader )
@@ -592,8 +595,10 @@ JR:FIND-KEY   ( JR:reader ptr u8 n -- JR:reader bool )
 
 Every operation returns the same reader token except `CLOSE`, which consumes
 it. `SPAN$` borrows the raw source span and leaves escapes encoded; `STR`
-decodes the current string into caller storage. Token kinds remain the public
-`JR:T-*` constants.
+decodes the current string into non-null caller storage and rejects negative or
+insufficient capacity with `E-JR-STATE`. `NEXT` accepts a string token only
+after validating every escape, UTF-16 surrogate pair, and raw UTF-8 scalar.
+Token kinds remain the public `JR:T-*` constants.
 
 ## Regex
 
