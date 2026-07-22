@@ -2083,3 +2083,20 @@ fits.
   token scans cannot bound string sink dispatch or object-key traversal. Use
   long repeated raw, escape-heavy, hit, and miss workloads; median repeated
   samples; and leave measured headroom above timing noise.
+- **A lint claiming grammar parity must be differentially probed, not read.**
+  A whole-file trust scanner that mirrored the engine's tokenizer passed a
+  hunk-by-hunk review and still diverged four ways: compiled TRUST inside
+  definition bodies invisible, unterminated string/PRIM/definition constructs
+  ending the scan with zero findings (fail-open at end of input), defining
+  words like `create` not consuming their raw name (false positive), and
+  non-short-circuit `and` reading past the end of the source buffer. Review
+  method for any parser that claims to match another: run the SAME fixture
+  through both implementations (engine load and lint) and compare verdicts,
+  including malformed and truncated inputs; reading the two sources
+  side-by-side is not evidence. The structural fix is one shared lexer both
+  consumers import — a clone starts diverging the day it is written.
+- **An existence gate is not an accounting of generated behavior.** Exempting
+  a build-time emission from manifest checks because its generator FILE exists
+  lets a comment-only stub arm the exemption and lets the real emission drift
+  invisibly. Parse the actual emission from the generator source and enforce
+  the ordinary manifest/effect/test discipline against the parsed facts.
