@@ -1,22 +1,23 @@
 ---
 title: "Infer serve: HTTP framing"
-status: active
+status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T10:07:43.797006+02:00\""
+created-at: "2026-07-22T10:07:43.797006+02:00"
 ---
 
 Why this exists:
 The HTTP boundary needs bounded, fail-closed request and response framing before OpenAI field mapping or engine calls.
 
 Required result:
-Parse the supported HTTP request line, headers, content length, and body into one bounded request frame and render status, headers, and streamed chunks from response events.
+Coordinate the syntax, bounded request, response typestate, and streaming writer
+leaves. This record is not implementation work.
 
 Done when:
-Fragmented reads pass; conflicting or overflowing lengths, unsupported transfer modes, malformed headers, premature end, and write failure reject without publishing a request.
+all child leaves land and the integrated HTTP boundary passes fragmented,
+malformed, aliasing, header-framing, and writer-failure coverage.
 
-Expected touch points: HTTP framing module and focused byte-stream fixtures.
-Smallest check: the focused fragmented and malformed framing test.
-Prerequisites: none.
-Owned result: bounded HTTP byte framing only.
-Claim: agent=httpframe workspace=.jj-ws/habu-infer-serve-http-7f1f6959 machine=spark.
+Expected touch points: child metadata only.
+Smallest check: native dot dependency lint.
+Prerequisites: child leaves.
+Owned result: bounded HTTP byte-framing campaign only.
