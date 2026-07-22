@@ -2100,3 +2100,9 @@ fits.
   lets a comment-only stub arm the exemption and lets the real emission drift
   invisibly. Parse the actual emission from the generator source and enforce
   the ordinary manifest/effect/test discipline against the parsed facts.
+- **Before reviewing an orphan workspace, prove whether its outcome already
+  landed.** A stale claimed workspace was destruction-reviewed against its own
+  old tip and produced three findings — every one already fixed on master by a
+  later, already-accepted commit chain. Search current master for the claimed
+  outcome and compare the exact candidate ancestry first; findings issued from
+  a superseded tree are false alarms that can spawn duplicate lanes.
