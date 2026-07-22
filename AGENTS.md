@@ -45,6 +45,28 @@ current verification state lives in `STATUS.md`.
   exposes a caller migration or public interface absent from the dot, stop and
   redesign the dependency before implementation.
 
+## Inference Engine Critical Path (BLOCKING)
+
+- Until the target model runs end to end on DGX Spark, admit implementation,
+  review, and integration work only in this order: package correction, atomic
+  declaration closure, unified type cutover, shared model types, normalized
+  configuration and tensor intake, then GPT-2 forward execution and decode.
+  Preserve timing, floating-point exponential, syscall, memory hardening, and
+  other non-critical work in dots, but do not spend critical-path capacity on it.
+- Freeze each leaf before implementation. Its contract must name the exact
+  interface, owner, dependencies, forbidden designs, real production-path
+  failure before the change, and acceptance proof. Keep a leaf below 30 minutes
+  of implementation. If work reveals an unplanned dependency or interface,
+  stop the lane immediately and redesign or split the leaf before more code.
+- Keep model computation independent from final pack publication. Forward and
+  decode work and pack work may consume the same validated configuration,
+  tensor, and identity contracts; neither may define or duplicate the other's
+  authority.
+- Keep every ready implementation lane coding while the orchestrator handles
+  architecture, metadata, review, and integration. Do not count workers,
+  rejected submissions, edited dots, or unpublished changes as progress.
+  Measure throughput as reviewed critical-path commits landed per hour.
+
 ## Human English (BLOCKING)
 
 - Write updates, reports, dot descriptions, and docs in plain English:
