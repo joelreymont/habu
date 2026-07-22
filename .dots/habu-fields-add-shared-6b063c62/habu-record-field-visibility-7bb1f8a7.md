@@ -16,6 +16,12 @@ provenance. `src/core/sumtype.f` declaration parsing and later STRUCTURE/ENUM
 lowering therefore cannot use one authoritative field row for private/public
 access control or precise diagnostics.
 
+This is a campaign controller; do not dispatch it directly. Its owned result is
+split into committed package visibility, token-authorized provisional field
+descriptors, provisional field-projection authorization, and stable source
+origin attachment. The controller closes only after those four reviewed
+results land and the shared PF row remains the sole field authority.
+
 Acceptance: after the field-schema and reserved-name leaves land, extend the
 shared PF schema with package identity, public/private visibility, and a stable
 source-origin identifier supplied by `habu-stable-source-origin-frame-9d4b2a61`.

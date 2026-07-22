@@ -11,7 +11,14 @@ identity and nesting protocol. Ambient input cells, parser pointers, and ad hoc
 save/restore sequences cannot prove that a parser is bounded by the current
 authenticated source or that child return restores the exact parent state.
 
-Acceptance: add one checked package-owned source-frame substrate. A provider
+This is a campaign controller; do not dispatch it directly. Its owned result is
+split into authenticate-owned-bytes, parser-bounds, nested-parent restoration,
+failure unwind, and image-parity leaves. The controller closes only after those
+five reviewed results land together as the sole source-frame substrate.
+
+Acceptance: add one package-owned source-frame substrate. Its pre-checker
+storage follows the private named-offset implementation-layout exception below;
+all APIs exposed after checker startup are checked and typed. A provider
 opens a frame with canonical logical source identity, a required authenticated
 content digest, exact bytes, immutable byte extent, and optional live parent
 identity. Before push, the substrate copies and authenticates those bytes into
@@ -40,13 +47,13 @@ injection at every allocation/copy/digest/push/release boundary proves no leak
 or double release. Canonical identity is independent of address,
 handle, allocation order, checkout root, and diagnostic coordinates.
 
-Files: one narrow checked source-frame identity/lifecycle module, focused tests,
+Files: one narrow source-frame identity/lifecycle module, focused tests,
 required assembly/bootstrap mirror rows, manifests, and public frame API docs.
-Because this is a pre-M1 prerequisite, use a bootstrap-safe typed
-representation such as opaque or linear `DEFTYPE` handles with named outcomes.
-Do not consume unified ENUM/STRUCTURE or add legacy PRODUCT/SUMTYPE
-declarations. Prove the representation on the exact prefix and recovery load
-paths.
+Because this is a pre-M1 prerequisite, its private pre-checker state uses the
+explicit named-offset implementation-layout exception in
+`MODEL-CAD-V2-PLAN.md`; it publishes no raw handle and adds no legacy or
+parallel type declaration. Prove the representation on the exact prefix and
+recovery load paths.
 It does not read or resolve files, own the provider's frozen-source table,
 capture persistent declaration provenance, own field
 metadata, compose source text, or render diagnostics.

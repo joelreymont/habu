@@ -14,8 +14,15 @@ This dot consumes the sole authenticated frame identity and lifecycle API owned
 by `habu-authenticated-source-frame-7c4e1a90`; it must not build a second input
 stack or frozen-source provider.
 
-Acceptance: add a checked immutable `SOURCE-ORIGIN` arena and capture/reflection
-API over that frame owner. The exact provenance identity key is canonical
+This is a campaign controller; do not dispatch it directly. Its owned result is
+split into canonical-span interning, diagnostic reflection, rollback and stale
+record retirement, and image re-interning leaves. The controller closes only
+after those four reviewed results land.
+
+Acceptance: add an immutable `SOURCE-ORIGIN` arena over that frame owner. Its
+pre-checker storage follows the private named-offset implementation-layout
+exception below; its post-startup capture and reflection APIs are checked and
+typed. The exact provenance identity key is canonical
 logical source identity, required content digest, exact byte start and length,
 and the canonical bounded parent-origin chain. Diagnostic path, include chain,
 line, and column are reflected separately. Popped live frames become unusable, while
@@ -39,10 +46,10 @@ origin/declaration/diagnostic tests, and public origin documentation. Do not
 read files, resolve loaders, push/pop evaluator frames, compose/remap source, or
 own field rows.
 
-Because this is a pre-M1 prerequisite, use a bootstrap-safe typed
-representation such as opaque or linear `DEFTYPE` handles with named outcomes.
-Do not consume unified ENUM/STRUCTURE or add legacy PRODUCT/SUMTYPE
-declarations. Verify the exact prefix and recovery load paths.
+Because this is a pre-M1 prerequisite, internal origin rows use the same
+private named-offset implementation-layout exception as their source-frame
+owner. They publish no raw handle and add no legacy or parallel type
+declaration. Verify the exact prefix and recovery load paths.
 
 Verify: direct and nested source-origin fixtures, checker candidate rollback,
 include/evaluate recovery, diagnostic JSON/text spans, snapshot, ahead-of-time,
