@@ -112,6 +112,8 @@ public
       dropout         OF false ENDOF
       dropout-bwd     OF false ENDOF
       swiglu          OF false ENDOF
+      mha             OF false ENDOF   \ fused token-mixer; its internal GEMMs are a separate precision concern
+      mha-bwd         OF false ENDOF
    ;MATCH ;
 
 : CPREC-GEMM-CK ( opkind -- )  CPREC-GEMM? 0= if E-CPREC-OP throw then ;

@@ -87,7 +87,17 @@ public
 \ MODEL:-typed, CLASS-EW. Reference is SWIGLU-F (maki/swiglu.f); the VJP decomposes into
 \ OP-SILU/OP-MUL/OP-SILU-BWD (no dedicated *-BWD op-kind, the bcast-mul precedent).
 38 constant OP-SWIGLU           \ silu(gate) * up  (fused gated activation)   (ref: SWIGLU-F)
-39 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
+\ ---- fused multi-head causal self-attention (dot habu-op-mha-fused) -----------
+\ The whole GPT-2 c_attn sublayer as ONE author-facing MODEL: op: a fused Q/K/V
+\ projection, per-head batched scaled-dot-product attention with causal masking, the
+\ output projection, and the residual add - MHA-FWD threaded through the op surface as a
+\ seg-attn-style fused node (reference maki/mha.f MHA-FWD). Unlike seg-attn it IS
+\ MODEL:-parseable (the maki/cad.f token map names it); its backward is a synthesized
+\ fused node, like OP-SEG-ATTN-BWD. HOST-ONLY: the device leg is dot
+\ habu-gb10-batched-attention-3055d565, so lowering fails closed (maki/lower/*.f).
+39 constant OP-MHA              \ fused multi-head causal self-attention        (ref: MHA-FWD)
+40 constant OP-MHA-BWD          \ its fused VJP -> combined dX,dWqkv,dbqkv,dWo,dbo (ref: MHA-BWD)
+41 constant OP-N               \ op-kind range bound (private op-registry / adjoint table dimension + wire code range)
 
 \ ---- the op-kind family (dot habu-cad-adt-swap, corrected plan) -------------
 \ `opkind` is the semantic type carried from construction (MIR-OP-BEGIN /
@@ -111,6 +121,7 @@ ENUM opkind DERIVE eq
   bcast-mul
   dropout dropout-bwd
   swiglu
+  mha mha-bwd
 ;ENUM
 
 \ named render boundary: opkind -> wire/table code (exhaustive MATCH; a bad tag
@@ -157,6 +168,8 @@ ENUM opkind DERIVE eq
       dropout         OF OP-DROPOUT         ENDOF
       dropout-bwd     OF OP-DROPOUT-BWD     ENDOF
       swiglu          OF OP-SWIGLU          ENDOF
+      mha             OF OP-MHA             ENDOF
+      mha-bwd         OF OP-MHA-BWD         ENDOF
    ;MATCH ;
 
 ;package

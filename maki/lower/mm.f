@@ -147,6 +147,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
       equation OF false ENDOF  bcast-mul OF false ENDOF
       dropout OF false ENDOF  dropout-bwd OF false ENDOF
       swiglu OF false ENDOF
+      mha OF false ENDOF  mha-bwd OF false ENDOF   \ host-only; device batched attention is dot habu-gb10-batched-attention
    ;MATCH ;
 : LMM-EPI-OP? ( opkind -- bool )                 \ v1 unary EW epilogue
    MATCH opkind
@@ -164,6 +165,7 @@ variable LMM-BLK                               \ 1 = shape fits the register-blo
       equation OF false ENDOF  bcast-mul OF false ENDOF
       dropout OF false ENDOF  dropout-bwd OF false ENDOF
       swiglu OF false ENDOF
+      mha OF false ENDOF  mha-bwd OF false ENDOF   \ host-only; device batched attention is dot habu-gb10-batched-attention
    ;MATCH ;
 
 : LMM-MM-COUNT ( CAD-KIND:region -- n ) {: rid:CAD-KIND:region :}   \ contraction nodes in the region
@@ -347,6 +349,7 @@ private
       equation OF E-LMM-OP throw ENDOF  bcast-mul OF E-LMM-OP throw ENDOF
       dropout OF E-LMM-OP throw ENDOF  dropout-bwd OF E-LMM-OP throw ENDOF
       swiglu OF E-LMM-OP throw ENDOF
+      mha OF E-LMM-OP throw ENDOF  mha-bwd OF E-LMM-OP throw ENDOF
    ;MATCH
    nd LMM-NR! ;
 : LMM-EPI-CHAIN ( -- )                           \ epilogue nodes in topo order (skip folded movement)

@@ -69,7 +69,8 @@ public
 22 constant ADJ-BCAST-MUL     \ dx = ct*g (1xC bcast) ; d-g = OP-ROWSUM-BWD(ct*x) -> 1xC
 23 constant ADJ-DROPOUT       \ dx = mask*scale*ct (OP-DROPOUT-BWD, same mask as forward)
 24 constant ADJ-SWIGLU        \ d_gate = OP-SILU-BWD(ct*up,gate) ; d_up = OP-MUL(ct,OP-SILU(gate))
-25 constant ADJ-N             \ range bound
+25 constant ADJ-MHA           \ fused dX,dWqkv,dbqkv,dWo,dbo via OP-MHA-BWD + slices
+26 constant ADJ-N             \ range bound
 
 \ ---- what the adjoint must read from the forward pass ------------------------
 0 constant SAVE-NONE          \ needs only static shape / operand refs (add/reshape/rope)
@@ -187,6 +188,8 @@ public
       dropout         OF E-ADJ-UNSUP throw ENDOF
       dropout-bwd     OF E-ADJ-UNSUP throw ENDOF
       swiglu          OF E-ADJ-UNSUP throw ENDOF
+      mha             OF E-ADJ-UNSUP throw ENDOF
+      mha-bwd         OF E-ADJ-UNSUP throw ENDOF
    ;MATCH ;
 
 private
@@ -265,7 +268,14 @@ private
    \ ct*silu(gate) = OP-MUL(ct, OP-SILU(gate)) - all three ops already registry-complete,
    \ so a dedicated emitter (BW-STEP-SWIGLU) builds it and bop = -1 (no new *-BWD op, the
    \ bcast-mul precedent). It reads the forward inputs gate and up -> SAVE-INPUT. ---
-   ADJ-SWIGLU SAVE-INPUT 3 1 -1 OP-SWIGLU ADJ! ;
+   ADJ-SWIGLU SAVE-INPUT 3 1 -1 OP-SWIGLU ADJ!
+   \ ---- fused multi-head causal self-attention (dot habu-op-mha-fused): a dedicated
+   \ emitter (like matmul / seg-attn) builds the fused OP-MHA-BWD node + slices, so bop = -1.
+   \ All five inputs X,Wqkv,bqkv,Wo,bo receive a gradient (mask $1F); the mha-bwd node carries
+   \ all five forward inputs so EX-MHA-BWD re-runs MHA-FWD to rebuild its own tape before
+   \ MHA-BWD (self-contained) -> SAVE-INPUT. mha-bwd itself stays ADJ-NONE (second order is
+   \ fail-closed E-BW-NOADJ). ---
+   ADJ-MHA SAVE-INPUT $1F 1 -1 OP-MHA ADJ! ;
 
 \ ---- wire the op-registry vjp field to the adjoint id (cad-9 requirement) ----
 \ pure private-table wiring over the code index space: copy A-ID[i] -> registry

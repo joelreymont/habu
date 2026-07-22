@@ -51,6 +51,7 @@ require maki/move.f
 require maki/reduce-bwd.f
 require maki/scatter.f
 require maki/segment.f
+require maki/mha-op.f                 \ the MHA op-surface bridge: MHA-FWD/MHA-BWD + attr codec / geometry / recompute
 require maki/spec.f
 require maki/prec-attr.f              \ CPREC-PAYLOAD@: read the equation slot past the precision field
 require maki/dropout.f                \ DO-APPLY / DO-PFIX / DO-ATTR-EVAL? / DO-NODE-SEED
@@ -184,6 +185,7 @@ private
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
       dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
       swiglu OF E-EX-UNSUP throw ENDOF                 \ arity 2, not a unary scalar
+      mha OF E-EX-UNSUP throw ENDOF  mha-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-U ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -219,6 +221,7 @@ private
       seg-attn OF E-EX-UNSUP throw ENDOF  seg-attn-bwd OF E-EX-UNSUP throw ENDOF
       equation OF E-EX-UNSUP throw ENDOF
       dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
+      mha OF E-EX-UNSUP throw ENDOF  mha-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 : EX-EW2 ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -253,6 +256,7 @@ private
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
       dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
       swiglu OF E-EX-UNSUP throw ENDOF                 \ not a row op (elementwise)
+      mha OF E-EX-UNSUP throw ENDOF  mha-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ affine LayerNorm (arity 3): y = gamma*xhat + beta with gamma/beta (1xC) shared per row.
@@ -293,6 +297,7 @@ private
       equation OF E-EX-UNSUP throw ENDOF  bcast-mul OF E-EX-UNSUP throw ENDOF
       dropout OF E-EX-UNSUP throw ENDOF  dropout-bwd OF E-EX-UNSUP throw ENDOF
       swiglu OF E-EX-UNSUP throw ENDOF                 \ not a row op (elementwise)
+      mha OF E-EX-UNSUP throw ENDOF  mha-bwd OF E-EX-UNSUP throw ENDOF
    ;MATCH ;
 
 \ p0 = cotangent row ; p1 = saved input (norms) or saved output (softmax) row.
@@ -433,6 +438,53 @@ private
    qr EX-REF-PTR  kr EX-REF-PTR  vr EX-REF-PTR  dor EX-REF-PTR  nd EX-NODE-PTR
    qr EX-REF-NROWS  attr SEG-T@  qr EX-REF-NCOLS  attr SEG-CAUSAL@  SEG-ATTN-BWD ;
 
+\ ---- fused multi-head causal self-attention (dot habu-op-mha-fused) ---------
+\ Forward reads X,Wqkv,bqkv,Wo,bo (operands 0..4) and the head count / sequence length /
+\ causal flag from the attr, validates the whole (B,T,C,H,hd) geometry against the host
+\ reference's fixed toy shape (fail closed E-MHA-GEOM - MHA-FWD reads module scratch sized
+\ to those SPEC: constants), then writes Y (B*T x C). Extents come from the BIND (operand
+\ shapes + attr), checked against - never sourced from - mha.f's constants.
+: EX-MHA ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: xr:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: wqr:MIR:operand-ref :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ {: bqr:MIR:operand-ref :}
+   nd 3 MIR-INPUT-IDX MIR-IN@ {: wor:MIR:operand-ref :}
+   nd 4 MIR-INPUT-IDX MIR-IN@ {: bor:MIR:operand-ref :}
+   nd MIR-ATTR@ {: attr:n :}
+   xr EX-REF-NCOLS {: c:n :}
+   xr EX-REF-NROWS c  attr MHA-H@  attr MHA-T@  attr MHA-CAUSAL@  MHA-GEOM-CK
+   c  wqr EX-REF-NROWS wqr EX-REF-NCOLS  bqr EX-REF-NROWS bqr EX-REF-NCOLS
+      wor EX-REF-NROWS wor EX-REF-NCOLS  bor EX-REF-NROWS bor EX-REF-NCOLS  MHA-PARAMS-CK
+   xr EX-REF-PTR  wqr EX-REF-PTR  bqr EX-REF-PTR  wor EX-REF-PTR  bor EX-REF-PTR
+   nd EX-NODE-PTR  MHA-FWD ;
+
+\ Backward is SELF-CONTAINED: it reads all five forward inputs X,Wqkv,bqkv,Wo,bo (operands
+\ 0..4) and the cotangent dY (operand 5), validates the whole geometry, RE-RUNS MHA-FWD from
+\ THIS node's own inputs to rebuild the module-private tape (so a two-MHA model differentiates
+\ each node from its OWN forward, not whichever ran last), then writes the combined
+\ [dX|dWqkv|dbqkv|dWo|dbo] gradient buffer (TOTAL x 1) by handing MHA-BWD five sub-pointers at
+\ the mha-op.f cumulative offsets. The reverse transform (maki/backward.f) slices the same
+\ offsets back into one gradient per input.
+: EX-MHA-BWD ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ {: xr:MIR:operand-ref :}
+   nd 1 MIR-INPUT-IDX MIR-IN@ {: wqr:MIR:operand-ref :}
+   nd 2 MIR-INPUT-IDX MIR-IN@ {: bqr:MIR:operand-ref :}
+   nd 3 MIR-INPUT-IDX MIR-IN@ {: wor:MIR:operand-ref :}
+   nd 4 MIR-INPUT-IDX MIR-IN@ {: bor:MIR:operand-ref :}
+   nd 5 MIR-INPUT-IDX MIR-IN@ {: dor:MIR:operand-ref :}
+   nd MIR-ATTR@ {: attr:n :}
+   xr EX-REF-NROWS {: bt:n :}  xr EX-REF-NCOLS {: c:n :}
+   bt c  attr MHA-H@  attr MHA-T@  attr MHA-CAUSAL@  MHA-GEOM-CK
+   c  wqr EX-REF-NROWS wqr EX-REF-NCOLS  bqr EX-REF-NROWS bqr EX-REF-NCOLS
+      wor EX-REF-NROWS wor EX-REF-NCOLS  bor EX-REF-NROWS bor EX-REF-NCOLS  MHA-PARAMS-CK
+   dor EX-REF-NROWS dor EX-REF-NCOLS  bt c MHA-DY-CK          \ dY (B*T, C)
+   xr EX-REF-PTR  wqr EX-REF-PTR  bqr EX-REF-PTR  wor EX-REF-PTR  bor EX-REF-PTR  MHA-BWD-RECOMPUTE
+   nd EX-NODE-PTR {: gb:ptr :}
+   xr EX-REF-PTR  wqr EX-REF-PTR  wor EX-REF-PTR  dor EX-REF-PTR
+   gb bt c 0 MHA-BWD-OFF T-AT   gb bt c 1 MHA-BWD-OFF T-AT   gb bt c 2 MHA-BWD-OFF T-AT
+   gb bt c 3 MHA-BWD-OFF T-AT   gb bt c 4 MHA-BWD-OFF T-AT
+   MHA-BWD ;
+
 \ ---- equation (docs/model-unified.md stage 1) ------------------------------
 \ A SPEC:-declared einsum node: its attrs cell's LOW payload is the equation's spec-
 \ registry slot (maki/spec.f), the HIGH field its compute precision (maki/prec-attr.f);
@@ -506,6 +558,8 @@ private
       rope-bwd        OF nd EX-ROPE-BWD     ENDOF
       seg-attn        OF nd EX-SEG-ATTN     ENDOF
       seg-attn-bwd    OF nd EX-SEG-ATTN-BWD ENDOF
+      mha             OF nd EX-MHA          ENDOF
+      mha-bwd         OF nd EX-MHA-BWD      ENDOF
       cast            OF E-EX-UNSUP throw   ENDOF
       equation        OF nd EX-EQUATION     ENDOF
       dropout         OF nd EX-DROPOUT      ENDOF
@@ -562,6 +616,7 @@ public
       seg-attn OF true ENDOF  seg-attn-bwd OF true ENDOF
       dropout OF true ENDOF  dropout-bwd OF true ENDOF
       swiglu OF true ENDOF
+      mha OF true ENDOF  mha-bwd OF true ENDOF
    ;MATCH ;
 
 \ ---- input binding + lifecycle ---------------------------------------------

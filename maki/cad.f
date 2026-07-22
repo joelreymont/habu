@@ -282,6 +282,7 @@ public
    2dup s" BCAST-MUL"    STR= if 2drop MAKI-OPKIND:BCAST-MUL    true exit then
    2dup s" DROPOUT"      STR= if 2drop MAKI-OPKIND:DROPOUT      true exit then
    2dup s" SWIGLU"       STR= if 2drop MAKI-OPKIND:SWIGLU       true exit then
+   2dup s" MHA"          STR= if 2drop MAKI-OPKIND:MHA          true exit then
    2drop MAKI-OPKIND:ADD false ;                       \ placeholder value (bool false; callers ignore it)
 
 : OP-KIND ( ptr u8 n -- opkind )
@@ -533,6 +534,8 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
       dropout         OF 2drop 2drop true ENDOF   \ arity 1 (mode/p are attrs); no param operand
       dropout-bwd     OF 2drop 2drop true ENDOF
       swiglu          OF SHP-SAME-OK?  ENDOF       \ gate and up must be the SAME shape (like mul)
+      mha             OF 2drop 2drop true ENDOF    \ operand geometry is re-checked by RB-MHA-CK, not a broadcast class
+      mha-bwd         OF 2drop 2drop true ENDOF
    ;MATCH ;
 : SHP-CHECK ( CAD-KIND:rows CAD-KIND:cols CAD-KIND:rows CAD-KIND:cols opkind -- )
    SHP-LEGAL? 0= if E-CAD-PARAM-SHAPE throw then ;
@@ -550,8 +553,20 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ layers here, exactly as the old per-op capture did. After the compiled body runs and
 \ populates the plan store, each elementwise/linear node's parameter operand is re-checked
 \ against its data operand's shape. An unbound (0) extent defers to BIND-SHAPES reprop.
+: PLAN-RAW-SHAPE ( n n -- n n ) {: j:n i:n :}
+   j i TENSOR:PLAN-IN@ {: t:tensor :}
+   t TENSOR:TV-ROWS@ ROWS-RAW  t TENSOR:TV-COLS@ COLS-RAW ;
+: PLAN-MHA-SHAPE-CHECK ( n -- ) {: j:n :}
+   j 0 PLAN-RAW-SHAPE
+   j TENSOR:PLAN-ATTR@ dup MHA-H@ swap MHA-T@
+   j 1 PLAN-RAW-SHAPE
+   j 2 PLAN-RAW-SHAPE
+   j 3 PLAN-RAW-SHAPE
+   j 4 PLAN-RAW-SHAPE
+   MHA-SHAPE-OK? 0= if E-CAD-PARAM-SHAPE throw then ;
 : PLAN-SHP-NODE ( n -- ) {: j:n :}
    j TENSOR:PLAN-OP@ MAKI-OPKIND:EQUATION MAKI-OPKIND:EQ if exit then  \ equation (CLASS-MATMUL) operand extents are checked by EQ-OPERAND-CK, not a broadcast/linear-bias class
+   j TENSOR:PLAN-OP@ MAKI-OPKIND:MHA MAKI-OPKIND:EQ if j PLAN-MHA-SHAPE-CHECK exit then
    j TENSOR:PLAN-OP@ OPR-CLASS {: cls:n :}   \ op is a family; refetch it for the check below
    cls CLASS-EW = if
       j TENSOR:PLAN-IN-COUNT@ 2 < if exit then                       \ unary elementwise: no param operand
@@ -948,6 +963,8 @@ private
       dropout         OF E-CAD-BIND-SHAPE throw ENDOF
       dropout-bwd     OF E-CAD-BIND-SHAPE throw ENDOF
       swiglu          OF E-CAD-BIND-SHAPE throw ENDOF
+      mha             OF E-CAD-BIND-SHAPE throw ENDOF
+      mha-bwd         OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 \ movement dissolution verdict re-derived from the new extents (slice re-checks its
@@ -1000,6 +1017,8 @@ private
       dropout         OF E-CAD-BIND-SHAPE throw ENDOF
       dropout-bwd     OF E-CAD-BIND-SHAPE throw ENDOF
       swiglu          OF E-CAD-BIND-SHAPE throw ENDOF
+      mha             OF E-CAD-BIND-SHAPE throw ENDOF
+      mha-bwd         OF E-CAD-BIND-SHAPE throw ENDOF
    ;MATCH ;
 
 : REPROP-MOVE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
@@ -1030,7 +1049,24 @@ private
    nd 2 MIR-INPUT-IDX MIR-IN@ {: b:MIR:operand-ref :}
    x RB-REF-ROWS w RB-REF-COLS  b RB-REF-ROWS b RB-REF-COLS  MAKI-OPKIND:BIAS  SHP-CHECK ;
 
+\ Fused MHA re-check: BIND-SHAPES reads the same operand-geometry authority as
+\ initial MODEL: capture, translating its false verdict to the bind-specific error.
+\ MHA is CLASS-MATMUL but its output is the DATA shape (B*T, C), not a contraction shape, so
+\ REPROP-NODE routes it here (not through RB-MM, which would set the fused 3C width) and
+\ re-propagates op0's shape.
+: RB-RAW-SHAPE ( MIR:operand-ref -- n n ) {: r:MIR:operand-ref :}
+   r RB-REF-ROWS ROWS-RAW  r RB-REF-COLS COLS-RAW ;
+: RB-MHA-CK ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd 0 MIR-INPUT-IDX MIR-IN@ RB-RAW-SHAPE
+   nd MIR-ATTR@ dup MHA-H@ swap MHA-T@
+   nd 1 MIR-INPUT-IDX MIR-IN@ RB-RAW-SHAPE
+   nd 2 MIR-INPUT-IDX MIR-IN@ RB-RAW-SHAPE
+   nd 3 MIR-INPUT-IDX MIR-IN@ RB-RAW-SHAPE
+   nd 4 MIR-INPUT-IDX MIR-IN@ RB-RAW-SHAPE
+   MHA-SHAPE-OK? 0= if E-CAD-BIND-SHAPE throw then ;
+
 : REPROP-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
+   nd MIR-OP@ MAKI-OPKIND:MHA MAKI-OPKIND:EQ if  nd RB-MHA-CK  nd RB-DATA nd MIR-SHAPE!  exit  then
    nd MIR-OP@ OPR-CLASS {: cls:n :}
    cls CLASS-MOVEMENT = if nd REPROP-MOVE exit then
    cls CLASS-MATMUL   = if nd RB-MM-BIAS nd RB-MM nd MIR-SHAPE! exit then

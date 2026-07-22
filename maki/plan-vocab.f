@@ -26,6 +26,7 @@ require maki/op-kind.f
 require maki/plan-ops.f
 require maki/model-ir.f              \ MAKI:LN-FORM>ATTR + MAKI-LNFORM:AFFINE (explicit affine payload)
 require maki/dropout.f               \ MAKI:DO-CFG>ATTR: the workload dropout mode/p resolved into the attr
+require maki/mha-op.f                 \ MAKI:MHA-CFG>ATTR: the workload heads / seq length resolved into the attr
 
 package PLAN
 public
@@ -86,6 +87,19 @@ public
 : SLICE     ( tensor CAD-KIND:rows CAD-KIND:rows -- tensor ) MAKI:PLAN-SLICE ;
 : CONCAT    ( tensor tensor -- tensor )   MAKI:PLAN-CONCAT ;
 : GATHER    ( tensor tensor -- tensor )   MAKI:PLAN-GATHER ;
+
+\ ---- fused multi-head causal self-attention (dot habu-op-mha-fused) ----------
+\ The whole GPT-2 c_attn sublayer as one op: X (B*T,C), the fused Q/K/V projection weight
+\ Wqkv (C,3C) + combined bias bqkv (1,3C), the output projection Wo (C,C) + bias bo (1,C).
+\ Output is the data shape (B*T,C) like a residual sublayer. Head count and sequence length
+\ are model-level config resolved into the node attr (the DROPOUT config-attr precedent);
+\ the executor validates the full geometry against the host reference. Arity 5, data first.
+: MHA ( tensor tensor tensor tensor tensor -- tensor )
+   MAKI-OPKIND:MHA TENSOR:PLAN-OP-BEGIN {: x:tensor wqkv:tensor bqkv:tensor wo:tensor bo:tensor :}
+   x MAKI:PLAN-LIKE {: y:tensor :}
+   x TENSOR:PLAN-IN+  wqkv TENSOR:PLAN-IN+  bqkv TENSOR:PLAN-IN+  wo TENSOR:PLAN-IN+  bo TENSOR:PLAN-IN+
+   MAKI:MHA-CFG>ATTR TENSOR:PLAN-ATTR!
+   y TENSOR:PLAN-OP+  y ;
 
 \ ---- equation op (docs/model-unified.md stage 1) ----------------------------
 \ A SPEC:-declared einsum referenced in a composition. MODEL: emits the registry slot

@@ -122,6 +122,7 @@ variable LEW-NIN                            \ region input count
       equation OF false ENDOF
       dropout OF false ENDOF  dropout-bwd OF false ENDOF   \ host-only (device dropout is a later capability)
       swiglu OF false ENDOF   \ host-only; the device kernel is the standalone tools/ptx/swiglu-cg.f
+      mha OF false ENDOF  mha-bwd OF false ENDOF   \ host-only; device batched attention is dot habu-gb10-batched-attention
    ;MATCH ;
 \ compute members must be v1 EW ops; movement members must be EW-foldable dissolved
 \ movements (MVW-CHECK-EW folds a FREE offset OR a STAGED transpose, and fails closed on a
@@ -326,6 +327,7 @@ private
       equation OF E-LEW-OP throw ENDOF
       dropout OF E-LEW-OP throw ENDOF  dropout-bwd OF E-LEW-OP throw ENDOF
       swiglu OF E-LEW-OP throw ENDOF
+      mha OF E-LEW-OP throw ENDOF  mha-bwd OF E-LEW-OP throw ENDOF
    ;MATCH
    nd LEW-NR! ;
 : LEW-CHAIN ( -- )                               \ movement members emit no compute (folded)

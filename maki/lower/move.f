@@ -100,6 +100,7 @@ variable LMV-BUILT?
       equation OF false ENDOF  bcast-mul OF false ENDOF
       dropout OF false ENDOF  dropout-bwd OF false ENDOF
       swiglu OF false ENDOF
+      mha OF false ENDOF  mha-bwd OF false ENDOF   \ host-only; device batched attention is dot habu-gb10-batched-attention
    ;MATCH ;
 
 \ ---- operand-ref shape: a model input slot, or a MATERIALIZED producer node in another region
@@ -182,6 +183,7 @@ variable LMV-BUILT?
       equation OF E-LMV-OP throw ENDOF  bcast-mul OF E-LMV-OP throw ENDOF
       dropout OF E-LMV-OP throw ENDOF  dropout-bwd OF E-LMV-OP throw ENDOF
       swiglu OF E-LMV-OP throw ENDOF
+      mha OF E-LMV-OP throw ENDOF  mha-bwd OF E-LMV-OP throw ENDOF
    ;MATCH ;
 
 : LMV-CHECK-DIMS ( -- )
@@ -320,6 +322,7 @@ private
       equation OF E-LMV-OP throw ENDOF  bcast-mul OF E-LMV-OP throw ENDOF
       dropout OF E-LMV-OP throw ENDOF  dropout-bwd OF E-LMV-OP throw ENDOF
       swiglu OF E-LMV-OP throw ENDOF
+      mha OF E-LMV-OP throw ENDOF  mha-bwd OF E-LMV-OP throw ENDOF
    ;MATCH
    LMV-STORE ;
 

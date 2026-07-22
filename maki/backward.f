@@ -45,6 +45,7 @@ require maki/op-registry.f
 require maki/move-facts.f
 require maki/model-ir.f
 require maki/adjoint.f
+require maki/mha-op.f                 \ fused-attention geometry and combined-gradient contract
 require maki/spec.f                   \ the equation registry (EQ-DIFF?/EQ-ADJ@): pre-derived adjoints
 require maki/prec-attr.f              \ CPREC-PAYLOAD@/CPREC@/CPREC-PACK: the equation node's attrs cell
 require maki/report.f
@@ -448,6 +449,39 @@ variable BW-BUILT?
    g bt  bt2       k BW-SL  k BW-ACCUM        \ dK = combined rows [B*T, 2*B*T)
    g bt2 bt3       v BW-SL  v BW-ACCUM ;      \ dV = combined rows [2*B*T,3*B*T)
 
+\ fused multi-head causal self-attention adjoint (dot habu-op-mha-fused): one fused
+\ OP-MHA-BWD node emits the combined [dX|dWqkv|dbqkv|dWo|dbo] as one (TOTAL x 1) buffer (the
+\ head count / seq length / causal flag ride through the attrs cell unchanged, like seg-attn).
+\ Five slices at the mha-op.f cumulative CELL boundaries split it back into one gradient per
+\ forward input, each shaped by that input's own descriptor - the seg-attn combined-buffer
+\ slice pattern, generalized to five differently-shaped gradients. SELF-CONTAINED: the node
+\ carries ALL FIVE forward inputs plus the cotangent dY (forward inputs first, cotangent last -
+\ the seg-attn operand order), so EX-MHA-BWD re-runs MHA-FWD from this node's own inputs before
+\ MHA-BWD - a two-MHA model never differentiates one node from another's tape.
+: BW-ELEM-ROWS ( MIR:operand-ref -- CAD-KIND:rows ) {: r:MIR:operand-ref :}
+   r REF-ROWS r REF-COLS SHAPE-ELEMS DIM>ROWS ;
+: BW-STEP-MHA ( CAD-KIND:node-id MIR:operand-ref -- )
+   {: fn:CAD-KIND:node-id ct:MIR:operand-ref :}
+   fn 0 MIR-INPUT-IDX MIR-IN@ {: x:MIR:operand-ref :}
+   fn 1 MIR-INPUT-IDX MIR-IN@ {: wqkv:MIR:operand-ref :}
+   fn 2 MIR-INPUT-IDX MIR-IN@ {: bqkv:MIR:operand-ref :}
+   fn 3 MIR-INPUT-IDX MIR-IN@ {: wo:MIR:operand-ref :}
+   fn 4 MIR-INPUT-IDX MIR-IN@ {: bo:MIR:operand-ref :}
+   fn MIR-ATTR@ {: attr:n :}
+   x BW-ELEM-ROWS {: xend:CAD-KIND:rows :}
+   xend wqkv BW-ELEM-ROWS ROWS+ {: wqend:CAD-KIND:rows :}
+   wqend bqkv BW-ELEM-ROWS ROWS+ {: bqend:CAD-KIND:rows :}
+   bqend wo BW-ELEM-ROWS ROWS+ {: woend:CAD-KIND:rows :}
+   woend bo BW-ELEM-ROWS ROWS+ {: total:CAD-KIND:rows :}
+   MAKI-OPKIND:MHA-BWD MIR-OP-BEGIN
+   x MIR-IN+  wqkv MIR-IN+  bqkv MIR-IN+  wo MIR-IN+  bo MIR-IN+  ct MIR-IN+  \ five forward inputs, then dY
+   total UNIT-COLS  x REF-DT x REF-LAY  attr  1  MIR-OP+ MIR-NODE-REF {: g:MIR:operand-ref :}
+   g ZERO-ROWS xend  x    BW-SL  x    BW-ACCUM \ dX
+   g xend wqend      wqkv BW-SL  wqkv BW-ACCUM \ dWqkv
+   g wqend bqend     bqkv BW-SL  bqkv BW-ACCUM \ dbqkv
+   g bqend woend     wo   BW-SL  wo   BW-ACCUM \ dWo
+   g woend total     bo   BW-SL  bo   BW-ACCUM ; \ dbo
+
 \ equation adjoint (docs/model-unified.md stage 2): the forward node's attrs cell carries
 \ the equation's spec-registry slot; each factor's gradient is a PRE-DERIVED adjoint equation
 \ (maki/spec.f EQ-ADJ@) run as an ordinary `equation` node whose operands are dO (the
@@ -521,6 +555,8 @@ variable BW-BUILT?
       dropout         OF BW-STEP-DROPOUT   ENDOF
       dropout-bwd     OF E-BW-UNSUP throw  ENDOF
       swiglu          OF BW-STEP-SWIGLU    ENDOF
+      mha             OF BW-STEP-MHA       ENDOF
+      mha-bwd         OF E-BW-UNSUP throw  ENDOF
    ;MATCH ;
 
 \ ---- supported-op gate (usable BEFORE build to classify not-run) -------------

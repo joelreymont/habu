@@ -32,6 +32,7 @@ require maki/linear.f
 require maki/segment.f
 require maki/dropout.f                \ DO-APPLY: the dropout forward/VJP buffer reference
 require maki/swiglu.f                 \ SWIGLU-F: the fused silu(gate)*up forward reference
+require maki/mha.f                    \ MHA-FWD / MHA-BWD: the fused multi-head attention forward + VJP references
 
 -5050 constant E-OPR-KIND        \ op-kind out of range
 -5051 constant E-OPR-INCOMPLETE  \ reference requested from an op with no scalar oracle
@@ -175,6 +176,8 @@ public
       dropout         OF s" dropout"         ENDOF
       dropout-bwd     OF s" dropout-bwd"     ENDOF
       swiglu          OF s" swiglu"          ENDOF
+      mha             OF s" mha"             ENDOF
+      mha-bwd         OF s" mha-bwd"         ENDOF
    ;MATCH ;
 
 : OPR-CLASS-NAME ( n -- ptr u8 n )
@@ -272,7 +275,16 @@ private
    \ SwiGLU (dot habu-infer-swiglu-op): CLASS-EW, arity 2 (gate, up - both data, same
    \ shape). silu carries a sigmoid, so NUM-RELTOL (transcendental) like OP-SILU; flops
    \ per element ~ silu (5) + one multiply. Reference: SWIGLU-F.
-   CLASS-EW         6 ACC-SAME NUM-RELTOL 2 OP-SWIGLU          OPR! ;
+   CLASS-EW         6 ACC-SAME NUM-RELTOL 2 OP-SWIGLU          OPR!
+   \ fused multi-head causal self-attention (dot habu-op-mha-fused): a fused contraction
+   \ token-mixer, so CLASS-MATMUL / f32 accumulate / rel-tol like seg-attn. Forward arity 5
+   \ (X, Wqkv, bqkv, Wo, bo); the backward is SELF-CONTAINED - it carries all five forward
+   \ inputs PLUS the cotangent dY (6) so EX-MHA-BWD can re-run MHA-FWD and rebuild its own
+   \ tape (no cross-node tape hazard). flops-per-element are nominal (never lowered in v1 -
+   \ the device dot owns the GB10 tiling); the class drives the bytes model. HOST-ONLY:
+   \ lowering fails closed (maki/lower/*.f).
+   CLASS-MATMUL     8 ACC-F32  NUM-RELTOL 5 OP-MHA             OPR!
+   CLASS-MATMUL    12 ACC-F32  NUM-RELTOL 6 OP-MHA-BWD         OPR! ;
 
 OPR-BUILD
 
@@ -337,5 +349,10 @@ OPR-BUILD
 \ elements like OP-MUL reuses MUL-F. Binding completes the op row. The VJP needs no
 \ reference here - it decomposes into OP-SILU/OP-MUL/OP-SILU-BWD (maki/backward.f).
 ' SWIGLU-F       OP-SWIGLU           cells R-REF + !
+\ fused multi-head attention buffer references (maki/mha.f): the fused forward and its VJP -
+\ the golden oracle the device batched-attention path must reproduce. Binding completes their
+\ op rows so cast stays the only incomplete op.
+' MHA-FWD        OP-MHA              cells R-REF + !
+' MHA-BWD        OP-MHA-BWD          cells R-REF + !
 
 ;package
