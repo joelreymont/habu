@@ -1908,6 +1908,12 @@ fits.
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,
   publish once, and roll all participants back in reverse order on failure.
+- **Capacity regressions must assert the reversible preflight owner, not the
+  irreversible sink.** Once generated declarations check `prot-wid-room` in
+  `PLAN-PREFLIGHT`, one family past capacity correctly throws
+  `E-PROTECTION-CAP` (7169), which the uncaught boundary reports with exit 67;
+  expecting the engine's `prot-wid-add` exit 84 would require crossing the
+  atomic publication boundary and is obsolete.
 - **Rollback is not an atomic publication boundary when a generator yields
   between words.** Render the complete declaration plan, check every name,
   effect, body, visibility rule, and plan-determined capacity in one discardable

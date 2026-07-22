@@ -427,11 +427,13 @@ public
 \ family scopes its own 'foo' variant, so the variant name may repeat). The
 \ protected system packages occupy rows before user source loads. Probe that
 \ clean-process baseline so the test fills every remaining row exactly.
-\ Red-first: at
-\ the old cap of 16 the 17th family exits ENGINE-ERROR:SEAL-PACKAGE (84) with NO diagnostic, so
-\ both the "succeed past 16" (rc 0) and the "labeled overflow" (stderr names the
-\ table) assertions fail. Driven via SLV-RUN-LOAD (a file), not stdin: 257 families
-\ exceed the 2 KB SLV-IN buffer.
+\ The generated-declaration protection owner preflights prot-wid-room before the
+\ transactional evaluator crosses its publication boundary.  One family past
+\ capacity therefore throws E-PROTECTION-CAP (7169), which the top-level engine
+\ boundary reports and maps to UNCAUGHT-RC; reaching the irreversible
+\ prot-wid-add overflow (exit 84) would violate the atomic publication design.
+\ Driven via SLV-RUN-LOAD (a file), not stdin: 257 families exceed the 2 KB
+\ SLV-IN buffer.
 16384 constant PWG-CAP                       \ room for 256+ families at ~46 bytes each
 create PWG-BUF PWG-CAP allot
 variable PWG-U
@@ -457,12 +459,12 @@ variable PWG-U
    0 begin dup k < while dup PWG-FAMILY 1+ repeat drop
    PWG$ ;
 
-ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
+UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
 : SLV-ERR$ ( -- ptr u8 n )  SLV-ERR SLV-ERR-U @ ;
-: SLV-ASSERT-PWID-FULL ( -- )                \ child died with the LABELED protected-WID-full exit
+: SLV-ASSERT-PWID-PREFLIGHT ( -- )
    SLV-EXITED @ TTRUE
-   SLV-RC @ SLV-PWID-RC T=
-   SLV-ERR$ s" hb: protected-WID table full" CONTAINS? TTRUE ;
+   SLV-RC @ SLV-PWID-PREFLIGHT-RC T=
+   SLV-ERR$ s" hb: uncaught throw code 7169" CONTAINS? TTRUE ;
 
 : PWG-BASE-FORGE$ ( -- ptr u8 n )
    s" data-base PROT-WID-N-CELL + @ ." ;
@@ -481,8 +483,8 @@ ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
    17 PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
    s" public families fill every non-system protected-WID row" T-LABEL
    cap PWG-GEN SLV-RUN-LOAD SLV-ASSERT-OK
-   s" one family past user capacity overflows with a labeled exit 84" T-LABEL
-   cap 1+ PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-FULL ;
+   s" one family past capacity is rejected before protected-WID publication" T-LABEL
+   cap 1+ PWG-GEN SLV-RUN-LOAD SLV-ASSERT-PWID-PREFLIGHT ;
 
 \ --- publish-into-protected-word guard (dot habu-label-two-silent-bd8e5d09) -----------
 \ Once the friend latch is sealed, publishing a definition into a protected WID (a public
@@ -499,7 +501,7 @@ ENGINE-ERROR:SEAL-PACKAGE constant SLV-PWID-RC       \ protected-WID table full
 
 : SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died ENGINE-ERROR:SEAL-PACKAGE naming the publish guard
    SLV-EXITED @ TTRUE
-   SLV-RC @ SLV-PWID-RC T=
+   SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
    SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
 
 : SLV-PROT-PUBLISH ( -- )
