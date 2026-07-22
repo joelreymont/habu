@@ -5,6 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-07-22T17:33:12.806999+02:00"
 blocks:
+  - habu-reset-all-errors-bb250f7c
   - habu-pkg-all-errors-d32d59f8
   - habu-pkg-all-errors-042245b9
   - habu-pkg-repair-hint-1b98c230
