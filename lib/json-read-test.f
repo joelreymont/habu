@@ -56,6 +56,7 @@ create JRT-SUBJECT-ERR $400 allot
 32 constant JRT-SP
 58 constant JRT-COLON
 44 constant JRT-COMMA
+48 constant JRT-ZERO
 123 constant JRT-LBRACE
 125 constant JRT-RBRACE
 91 constant JRT-LBRACK
@@ -554,6 +555,82 @@ create JRT-NAME 65 c, 34 c, 66 c,
    s" reader cannot be closed twice" T-LABEL
    s" JRT-BAD-CLOSE ( JR:reader -- ) JR:CLOSE JR:CLOSE" JRT-REJECTED ;
 
+\ ---- throughput ratchets -------------------------------------------------
+20000 constant JRT-PERF-SMALL-N
+13 constant JRT-PERF-SMALL-TOKENS
+10000 constant JRT-PERF-LONG-N
+JRT-PERF-LONG-N 2 * 1+ constant JRT-PERF-LONG-U
+\ Five-run medians on parent aa2a169469ad with these exact workloads.
+67793408 constant JRT-PERF-SMALL-PARENT-NS
+2984112 constant JRT-PERF-LONG-PARENT-NS
+create JRT-PERF-LONG JRT-PERF-LONG-U allot
+
+: JRT-PERF-DOC$ ( -- ptr u8 n )
+   s" [1,2,3,4,5,6,7,8,9,10]" ;
+
+: JRT-PERF-DRAIN ( JR:reader n -- JR:reader ) {: count:n :}
+   count 0 ?do JR:NEXT drop loop ;
+
+: JRT-PERF-SMALL-ONE ( -- )
+   JRT-PERF-DOC$ JRT-OPEN-A
+   JRT-PERF-SMALL-TOKENS JRT-PERF-DRAIN
+   JR:CLOSE ;
+
+: JRT-PERF-SMALL ( -- n )
+   mono-ns {: start:n :}
+   JRT-PERF-SMALL-N 0 ?do JRT-PERF-SMALL-ONE loop
+   mono-ns start - ;
+
+: JRT-PERF-BUILD-LONG ( -- )
+   JRT-LBRACK JRT-PERF-LONG c!
+   JRT-PERF-LONG-N 0 ?do
+      JRT-ZERO JRT-PERF-LONG 1 i 2 * + + c!
+      i JRT-PERF-LONG-N 1- < if
+         JRT-COMMA JRT-PERF-LONG 2 i 2 * + + c!
+      then
+   loop
+   JRT-RBRACK JRT-PERF-LONG JRT-PERF-LONG-U 1- + c! ;
+
+: JRT-PERF-LONG-ONE ( -- )
+   JRT-PERF-LONG JRT-PERF-LONG-U JRT-OPEN-A
+   JRT-PERF-LONG-N 3 + JRT-PERF-DRAIN
+   JR:CLOSE ;
+
+: JRT-PERF-LONG-STREAM ( -- n )
+   JRT-PERF-BUILD-LONG
+   mono-ns {: start:n :}
+   JRT-PERF-LONG-ONE
+   mono-ns start - ;
+
+: JRT-PERF-MIN2 ( n n -- n )
+   2dup > if swap then drop ;
+
+: JRT-PERF-MAX2 ( n n -- n )
+   2dup < if swap then drop ;
+
+: JRT-PERF-MEDIAN3 ( n n n -- n ) {: a:n b:n c:n :}
+   a b + c +
+   a b JRT-PERF-MIN2 c JRT-PERF-MIN2 -
+   a b JRT-PERF-MAX2 c JRT-PERF-MAX2 - ;
+
+: JRT-PERF-SMALL-MEDIAN ( -- n )
+   JRT-PERF-SMALL JRT-PERF-SMALL JRT-PERF-SMALL JRT-PERF-MEDIAN3 ;
+
+: JRT-PERF-LONG-MEDIAN ( -- n )
+   JRT-PERF-LONG-STREAM JRT-PERF-LONG-STREAM JRT-PERF-LONG-STREAM
+   JRT-PERF-MEDIAN3 ;
+
+: JRT-PERF-BUDGET ( n -- n )
+   100 TEST-BUDGET:PERF-MS * 100 / ;
+
+: JRT-TEST-PERF ( -- )
+   s" 20,000 small documents stay at or below the parent median" T-LABEL
+   JRT-PERF-SMALL-MEDIAN
+   JRT-PERF-SMALL-PARENT-NS JRT-PERF-BUDGET <= TTRUE
+   s" one 10,000-value stream stays at or below the parent median" T-LABEL
+   JRT-PERF-LONG-MEDIAN
+   JRT-PERF-LONG-PARENT-NS JRT-PERF-BUDGET <= TTRUE ;
+
 \ ---- negative fixtures (each forces one named throw) ----------------------
 : JRT-BAD-TRAILING ( -- )
    s" 1 2" JRT-OPEN-A JR:NEXT drop JR:NEXT drop JR:CLOSE ;
@@ -681,7 +758,8 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JRT-TEST-INTERLEAVE
    JRT-TEST-CATCH-ISOLATION
    JRT-TEST-OWNERSHIP
-   JRT-TEST-NEGATIVE ;
+   JRT-TEST-NEGATIVE
+   JRT-TEST-PERF ;
 
 public
 

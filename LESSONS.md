@@ -2069,3 +2069,8 @@ fits.
   mint, state access, and consume leaves private in a sealed package; otherwise
   a caller can reopen the package and publish them. Test both the exact rehoming
   attack and package reopening, not only duplicate and drop.
+- **Explicit parser state must not add a threaded call per field access.** Derive
+  one private state view at the public operation boundary, use named direct
+  offsets internally, and publish numeric kind during the existing grammar pass
+  instead of rescanning the token. Ratchet both repeated small documents and one
+  long stream against the pre-refactor medians.
