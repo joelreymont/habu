@@ -22,82 +22,84 @@ require tools/check-all-errors-core.f
 require tools/json.f
 require tools/gate-json-assert-core.f
 
-$40000 constant RSD-DOC-CAP
-$10000 constant RSD-EMIT-CAP
-8192 constant RSD-BUF-CAP
+package REPAIR-SCHEMA-TEST
 
-variable RSD-ROOT-U
-variable RSD-SRC-U
-variable RSD-DIAG-U
-variable RSD-DOC-U
-variable RSD-LLM-U
-variable RSD-ERR-U
-variable RSD-REND-U
-variable RSD-CHK-U
-variable RSD-DOC-BUF-A
-variable RSD-LLM-BUF-A
-variable RSD-OUT-A
-variable RSD-ERR-A
+$40000 constant DOC-CAP
+$10000 constant EMIT-CAP
+8192 constant BUF-CAP
 
-create RSD-ROOT-BUF FS-PATH-CAP allot
-create RSD-SRC-BUF FS-PATH-CAP allot
-create RSD-DIAG-BUF FS-PATH-CAP allot
-create RSD-REND-BUF RSD-EMIT-CAP allot
-create RSD-CHK-BUF RSD-EMIT-CAP allot
+variable ROOT-U
+variable SRC-U
+variable DIAG-U
+variable DOC-U
+variable LLM-U
+variable ERR-U
+variable REND-U
+variable CHK-U
+variable DOC-BUF-A
+variable LLM-BUF-A
+variable OUT-A
+variable ERR-A
 
-: RSD-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
+create ROOT-BUF FS-PATH-CAP allot
+create SRC-BUF FS-PATH-CAP allot
+create DIAG-BUF FS-PATH-CAP allot
+create REND-BUF EMIT-CAP allot
+create CHK-BUF EMIT-CAP allot
+
+: PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
 
-: RSD-PTR-U8@ ( ptr a -- ptr u8 )
-   RSD-PTR-U8-FIELD @ ;
+: PTR-U8@ ( ptr a -- ptr u8 )
+   PTR-U8-FIELD @ ;
 
-: RSD-PTR-U8! ( ptr u8 ptr a -- )
-   RSD-PTR-U8-FIELD ! ;
+: PTR-U8! ( ptr u8 ptr a -- )
+   PTR-U8-FIELD ! ;
 
-: RSD-ALLOC-BUF ( n -- ptr u8 )
+: ALLOC-BUF ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
-: RSD-BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap :}
-   slot @ 0= if cap RSD-ALLOC-BUF slot RSD-PTR-U8! then
-   slot RSD-PTR-U8@ ;
+: BUF ( ptr a n -- ptr u8 ) {: slot:ptr cap:n :}
+   slot @ 0= if cap ALLOC-BUF slot PTR-U8! then
+   slot PTR-U8@ ;
 
-: RSD-DOC-BUF ( -- ptr u8 )
-   RSD-DOC-BUF-A RSD-DOC-CAP RSD-BUF ;
+: DOC-BUF ( -- ptr u8 )
+   DOC-BUF-A DOC-CAP BUF ;
 
-: RSD-LLM-BUF ( -- ptr u8 )
-   RSD-LLM-BUF-A RSD-DOC-CAP RSD-BUF ;
+: LLM-BUF ( -- ptr u8 )
+   LLM-BUF-A DOC-CAP BUF ;
 
-: RSD-OUT ( -- ptr u8 )
-   RSD-OUT-A RSD-BUF-CAP RSD-BUF ;
+: OUT ( -- ptr u8 )
+   OUT-A BUF-CAP BUF ;
 
-: RSD-ERR ( -- ptr u8 )
-   RSD-ERR-A RSD-BUF-CAP RSD-BUF ;
+: ERR ( -- ptr u8 )
+   ERR-A BUF-CAP BUF ;
 
-: RSD-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u dst:ptr lenp:ptr :}
+: COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-PATH throw then
    a dst u BYTE-COPY
    u lenp ! ;
 
-: RSD-PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu na:ptr nu dst:ptr lenp:ptr :}
+: PATH! ( ptr u8 n ptr u8 n ptr u8 ptr n -- ) {: pa:ptr pu:n na:ptr nu:n dst:ptr lenp:ptr :}
    pa pu na nu dst JOIN-PATH lenp ! ;
 
-: RSD-ROOT ( -- ptr u8 n )
-   RSD-ROOT-BUF RSD-ROOT-U @ ;
+: ROOT ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
 
-: RSD-SRC ( -- ptr u8 n )
-   RSD-SRC-BUF RSD-SRC-U @ ;
+: SRC ( -- ptr u8 n )
+   SRC-BUF SRC-U @ ;
 
-: RSD-DIAG ( -- ptr u8 n )
-   RSD-DIAG-BUF RSD-DIAG-U @ ;
+: DIAG ( -- ptr u8 n )
+   DIAG-BUF DIAG-U @ ;
 
-: RSD-EMPTY$ ( -- ptr u8 n )
+: EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
 
-: RSD-LF ( -- )
+: LF ( -- )
    10 SB-APPEND-C ;
 
-: RSD-DQ ( -- )
+: DQ ( -- )
    34 SB-APPEND-C ;
 
 \ JBAD drives the scalar data-mismatch fields (expected/actual/declared_effect).
@@ -110,105 +112,105 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
 \ (--all-errors re-drive emits an extra spurious E-BAD-DECLARATION duplicate-family
 \ line for zrc; that is a separate registry-rollback gap, dotted, and does not
 \ affect field-presence/schema parity here.)
-: RSD-SRC$ ( -- ptr u8 n )
+: SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : JBAD ( i64 -- i64 ) dup ;" SB-APPEND RSD-LF
-   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND RSD-LF
-   s" : ZBAD ( n -- zrc ) ;" SB-APPEND RSD-LF
-   s" : CBAD ( ptr u8 -- zrc ) construct zrc keep ;" SB-APPEND RSD-LF
-   s" : ABAD ( zrc<n> -- ) drop ;" SB-APPEND RSD-LF
+   s" : JBAD ( i64 -- i64 ) dup ;" SB-APPEND LF
+   s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND LF
+   s" : ZBAD ( n -- zrc ) ;" SB-APPEND LF
+   s" : CBAD ( ptr u8 -- zrc ) construct zrc keep ;" SB-APPEND LF
+   s" : ABAD ( zrc<n> -- ) drop ;" SB-APPEND LF
    SB$ ;
 
-: RSD-LOAD-DOCS ( -- )
-   s" docs/repair-diagnostics.md" RSD-DOC-BUF RSD-DOC-CAP READ-ALL RSD-DOC-U !
-   s" LLM.md" RSD-LLM-BUF RSD-DOC-CAP READ-ALL RSD-LLM-U ! ;
+: LOAD-DOCS ( -- )
+   s" docs/repair-diagnostics.md" DOC-BUF DOC-CAP READ-ALL DOC-U !
+   s" LLM.md" LLM-BUF DOC-CAP READ-ALL LLM-U ! ;
 
 \ Emitter sources: render.f owns REPAIR-CLASS (data-stack/return/signature/dead
 \ classes), check-core.f owns CHK-TYPE-JSON (fix_nominal_type, the nominal: path).
-: RSD-LOAD-EMITTERS ( -- )
-   s" src/core/render.f" RSD-REND-BUF RSD-EMIT-CAP READ-ALL RSD-REND-U !
-   s" tools/check-core.f" RSD-CHK-BUF RSD-EMIT-CAP READ-ALL RSD-CHK-U ! ;
+: LOAD-EMITTERS ( -- )
+   s" src/core/render.f" REND-BUF EMIT-CAP READ-ALL REND-U !
+   s" tools/check-core.f" CHK-BUF EMIT-CAP READ-ALL CHK-U ! ;
 
-: RSD-NEED-DOC ( ptr u8 n -- )
-   RSD-DOC-BUF RSD-DOC-U @ 2swap CONTAINS? TTRUE ;
+: NEED-DOC ( ptr u8 n -- )
+   DOC-BUF DOC-U @ 2swap CONTAINS? TTRUE ;
 
-: RSD-NEED-LLM ( ptr u8 n -- )
-   RSD-LLM-BUF RSD-LLM-U @ 2swap CONTAINS? TTRUE ;
+: NEED-LLM ( ptr u8 n -- )
+   LLM-BUF LLM-U @ 2swap CONTAINS? TTRUE ;
 
-: RSD-DOC-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: DOC-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    s" | `" SB-APPEND
    a u SB-APPEND
    s" ` |" SB-APPEND
    SB$ ;
 
-: RSD-DOC-CLASS$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: DOC-CLASS$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    s" `" SB-APPEND
    a u SB-APPEND
    s" `" SB-APPEND
    SB$ ;
 
-: RSD-NEED-DOC-FIELD ( ptr u8 n -- )
-   RSD-DOC-FIELD$ RSD-NEED-DOC ;
+: NEED-DOC-FIELD ( ptr u8 n -- )
+   DOC-FIELD$ NEED-DOC ;
 
-: RSD-NEED-DOC-CLASS ( ptr u8 n -- )
-   RSD-DOC-CLASS$ RSD-NEED-DOC ;
+: NEED-DOC-CLASS ( ptr u8 n -- )
+   DOC-CLASS$ NEED-DOC ;
 
-: RSD-TEST-DOC-ANCHORS ( -- )
-   s" # Repair Diagnostics Schema" RSD-NEED-DOC
-   s" ## Checker Diagnostic JSON" RSD-NEED-DOC
-   s" ## Repair Packet JSON" RSD-NEED-DOC
-   s" ## Benchmark Result Fields" RSD-NEED-DOC ;
+: TEST-DOC-ANCHORS ( -- )
+   s" # Repair Diagnostics Schema" NEED-DOC
+   s" ## Checker Diagnostic JSON" NEED-DOC
+   s" ## Repair Packet JSON" NEED-DOC
+   s" ## Benchmark Result Fields" NEED-DOC ;
 
-: RSD-TEST-DOC-FIELDS ( -- )
-   s" schema_version" RSD-NEED-DOC-FIELD
-   s" code" RSD-NEED-DOC-FIELD
-   s" repair_class" RSD-NEED-DOC-FIELD
-   s" verdict" RSD-NEED-DOC-FIELD
-   s" word" RSD-NEED-DOC-FIELD
-   s" token" RSD-NEED-DOC-FIELD
-   s" token_index" RSD-NEED-DOC-FIELD
-   s" file" RSD-NEED-DOC-FIELD
-   s" line" RSD-NEED-DOC-FIELD
-   s" column" RSD-NEED-DOC-FIELD
-   s" byte_start" RSD-NEED-DOC-FIELD
-   s" byte_end" RSD-NEED-DOC-FIELD
-   s" definition_source" RSD-NEED-DOC-FIELD
-   s" declared_effect" RSD-NEED-DOC-FIELD
-   s" declared_effect_source" RSD-NEED-DOC-FIELD
-   s" inferred_effect" RSD-NEED-DOC-FIELD
-   s" return_stack" RSD-NEED-DOC-FIELD
-   s" expected" RSD-NEED-DOC-FIELD
-   s" actual" RSD-NEED-DOC-FIELD
-   s" family" RSD-NEED-DOC-FIELD
-   s" variant" RSD-NEED-DOC-FIELD
-   s" tag" RSD-NEED-DOC-FIELD
-   s" payload_pos" RSD-NEED-DOC-FIELD
-   s" arity_expected" RSD-NEED-DOC-FIELD
-   s" arity_actual" RSD-NEED-DOC-FIELD
-   s" suggestion" RSD-NEED-DOC-FIELD
-   s" source_excerpt" RSD-NEED-DOC-FIELD
-   s" reason" RSD-NEED-DOC-FIELD
-   s" instruction" RSD-NEED-DOC-FIELD ;
+: TEST-DOC-FIELDS ( -- )
+   s" schema_version" NEED-DOC-FIELD
+   s" code" NEED-DOC-FIELD
+   s" repair_class" NEED-DOC-FIELD
+   s" verdict" NEED-DOC-FIELD
+   s" word" NEED-DOC-FIELD
+   s" token" NEED-DOC-FIELD
+   s" token_index" NEED-DOC-FIELD
+   s" file" NEED-DOC-FIELD
+   s" line" NEED-DOC-FIELD
+   s" column" NEED-DOC-FIELD
+   s" byte_start" NEED-DOC-FIELD
+   s" byte_end" NEED-DOC-FIELD
+   s" definition_source" NEED-DOC-FIELD
+   s" declared_effect" NEED-DOC-FIELD
+   s" declared_effect_source" NEED-DOC-FIELD
+   s" inferred_effect" NEED-DOC-FIELD
+   s" return_stack" NEED-DOC-FIELD
+   s" expected" NEED-DOC-FIELD
+   s" actual" NEED-DOC-FIELD
+   s" family" NEED-DOC-FIELD
+   s" variant" NEED-DOC-FIELD
+   s" tag" NEED-DOC-FIELD
+   s" payload_pos" NEED-DOC-FIELD
+   s" arity_expected" NEED-DOC-FIELD
+   s" arity_actual" NEED-DOC-FIELD
+   s" suggestion" NEED-DOC-FIELD
+   s" source_excerpt" NEED-DOC-FIELD
+   s" reason" NEED-DOC-FIELD
+   s" instruction" NEED-DOC-FIELD ;
 
 \ Needle for an emitter site: the verbatim `s" class"` literal the emitters
 \ write, so `s" fix_type"` cannot match `s" fix_signature_type"`.
-: RSD-EMIT-NEEDLE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: EMIT-NEEDLE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
    115 SB-APPEND-C                             \ s
-   RSD-DQ                                       \ "
+   DQ                                           \ "
    32 SB-APPEND-C                               \ space
    a u SB-APPEND
-   RSD-DQ                                        \ "
+   DQ                                            \ "
    SB$ ;
 
-: RSD-EMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   RSD-REND-BUF RSD-REND-U @ a u CONTAINS?
-   RSD-CHK-BUF RSD-CHK-U @ a u CONTAINS? or ;
+: EMITTED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   REND-BUF REND-U @ a u CONTAINS?
+   CHK-BUF CHK-U @ a u CONTAINS? or ;
 
-: RSD-NEED-EMITTER ( ptr u8 n -- )
-   RSD-EMIT-NEEDLE$ RSD-EMITTED? TTRUE ;
+: NEED-EMITTER ( ptr u8 n -- )
+   EMIT-NEEDLE$ EMITTED? TTRUE ;
 
 \ Completeness gate for one repair class across all four drift sites:
 \   site 1 (emitters render.f/check-core.f) emit `s" class"`,
@@ -216,128 +218,130 @@ create RSD-CHK-BUF RSD-EMIT-CAP allot
 \           that suggestion text appears verbatim in the doc table (ties GJA<->doc),
 \   site 3 (docs Repair Classes list) names `class`,
 \   site 4 is this canonical list itself.
-: RSD-NEED-CLASS ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u RSD-NEED-DOC-CLASS
-   a u RSD-NEED-EMITTER
-   a u GJA-SUGGEST-FOR RSD-NEED-DOC ;
+: NEED-CLASS ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u NEED-DOC-CLASS
+   a u NEED-EMITTER
+   a u GJA-SUGGEST-FOR NEED-DOC ;
 
 \ Canonical repair-class enumeration (18). This is the single source of truth;
 \ RSD-NEED-CLASS proves every downstream site carries each one. Reverse drift (a
 \ class an emitter grows but this list omits) is caught at commit time by the
 \ Forth gate, which re-runs this fixture after any emitter edit; a source-parsing
 \ enumerator is deliberately out of scope (ADT/parser work, dot territory).
-: RSD-TEST-DOC-CLASSES ( -- )
-   s" remove_producer" RSD-NEED-CLASS
-   s" add_producer" RSD-NEED-CLASS
-   s" fix_type" RSD-NEED-CLASS
-   s" fix_return_stack" RSD-NEED-CLASS
-   s" trusted_boundary_required" RSD-NEED-CLASS
-   s" model_compile_immediate" RSD-NEED-CLASS
-   s" factor_local_shape" RSD-NEED-CLASS
-   s" factor_linear_local" RSD-NEED-CLASS
-   s" remove_dead_code" RSD-NEED-CLASS
-   s" fix_qualified_name" RSD-NEED-CLASS
-   s" fix_signature_syntax" RSD-NEED-CLASS
-   s" fix_signature_type" RSD-NEED-CLASS
-   s" fix_signature_arity" RSD-NEED-CLASS
-   s" fix_bare_ptr_element" RSD-NEED-CLASS
-   s" fix_nominal_type" RSD-NEED-CLASS
-   s" fix_family_declaration" RSD-NEED-CLASS
-   s" rewrite_uncheckable" RSD-NEED-CLASS
-   s" unknown_rejection" RSD-NEED-CLASS ;
+: TEST-DOC-CLASSES ( -- )
+   s" remove_producer" NEED-CLASS
+   s" add_producer" NEED-CLASS
+   s" fix_type" NEED-CLASS
+   s" fix_return_stack" NEED-CLASS
+   s" trusted_boundary_required" NEED-CLASS
+   s" model_compile_immediate" NEED-CLASS
+   s" factor_local_shape" NEED-CLASS
+   s" factor_linear_local" NEED-CLASS
+   s" remove_dead_code" NEED-CLASS
+   s" fix_qualified_name" NEED-CLASS
+   s" fix_signature_syntax" NEED-CLASS
+   s" fix_signature_type" NEED-CLASS
+   s" fix_signature_arity" NEED-CLASS
+   s" fix_bare_ptr_element" NEED-CLASS
+   s" fix_nominal_type" NEED-CLASS
+   s" fix_family_declaration" NEED-CLASS
+   s" rewrite_uncheckable" NEED-CLASS
+   s" unknown_rejection" NEED-CLASS ;
 
-: RSD-TEST-LLM-LINKS ( -- )
-   s" docs/repair-diagnostics.md" RSD-NEED-LLM
-   s" Repair diagnostic schema" RSD-NEED-LLM ;
+: TEST-LLM-LINKS ( -- )
+   s" docs/repair-diagnostics.md" NEED-LLM
+   s" Repair diagnostic schema" NEED-LLM ;
 
-: RSD-PREPARE ( -- )
+: PREPARE ( -- )
    CLEANUP-RESET
    s" hb-repair-schema" TMPDIR-MKDIR {: a:ptr u :}
-   a u RSD-ROOT-BUF RSD-ROOT-U RSD-COPY!
-   RSD-ROOT CLEANUP-TREE+
-   RSD-ROOT s" bad.f" RSD-SRC-BUF RSD-SRC-U RSD-PATH!
-   RSD-ROOT s" bad.err" RSD-DIAG-BUF RSD-DIAG-U RSD-PATH!
-   RSD-SRC RSD-SRC$ WRITE-ALL
-   RSD-LOAD-DOCS
-   RSD-LOAD-EMITTERS ;
+   a u ROOT-BUF ROOT-U COPY!
+   ROOT CLEANUP-TREE+
+   ROOT s" bad.f" SRC-BUF SRC-U PATH!
+   ROOT s" bad.err" DIAG-BUF DIAG-U PATH!
+   SRC SRC$ WRITE-ALL
+   LOAD-DOCS
+   LOAD-EMITTERS ;
 
-: RSD-RUN-CHECK-ACT ( -- )
-   RSD-SRC RSD-SRC CHECK-ALL-ERRORS-FILE ;
+: RUN-CHECK-ACT ( -- )
+   SRC SRC CHECK-ALL-ERRORS-FILE ;
 
-: RSD-RUN-CHECK ( -- n n n )
-   RSD-ERR RSD-BUF-CAP RSD-OUT RSD-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+: RUN-CHECK ( -- n n n )
+   ERR BUF-CAP OUT BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
-   [: RSD-RUN-CHECK-ACT ;] catch {: rc:n :}
+   [: RUN-CHECK-ACT ;] catch {: rc:n :}
    0 CHECK-ALL-ERRORS-OUT$ nip rc ;
 
-: RSD-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
+: EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 
-: RSD-DIAG-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u :}
+: DIAG-FIELD$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    SB-RESET
-   RSD-DQ a u SB-APPEND RSD-DQ
+   DQ a u SB-APPEND DQ
    58 SB-APPEND-C
    SB$ ;
 
-: RSD-REPAIR-CLASS$ ( -- ptr u8 n )
+: REPAIR-CLASS$ ( -- ptr u8 n )
    SB-RESET
-   RSD-DQ s" repair_class" SB-APPEND RSD-DQ
+   DQ s" repair_class" SB-APPEND DQ
    58 SB-APPEND-C
-   RSD-DQ s" remove_producer" SB-APPEND RSD-DQ
+   DQ s" remove_producer" SB-APPEND DQ
    SB$ ;
 
-: RSD-NEED-DIAG-FIELD ( ptr u8 n -- )
-   RSD-DIAG-FIELD$ RSD-ERR RSD-ERR-U @ 2swap CONTAINS? TTRUE ;
+: NEED-DIAG-FIELD ( ptr u8 n -- )
+   DIAG-FIELD$ ERR ERR-U @ 2swap CONTAINS? TTRUE ;
 
-: RSD-TEST-DIAG-FIELDS ( -- )
-   s" schema_version" RSD-NEED-DIAG-FIELD
-   s" code" RSD-NEED-DIAG-FIELD
-   s" repair_class" RSD-NEED-DIAG-FIELD
-   s" verdict" RSD-NEED-DIAG-FIELD
-   s" word" RSD-NEED-DIAG-FIELD
-   s" token" RSD-NEED-DIAG-FIELD
-   s" token_index" RSD-NEED-DIAG-FIELD
-   s" file" RSD-NEED-DIAG-FIELD
-   s" line" RSD-NEED-DIAG-FIELD
-   s" column" RSD-NEED-DIAG-FIELD
-   s" byte_start" RSD-NEED-DIAG-FIELD
-   s" byte_end" RSD-NEED-DIAG-FIELD
-   s" definition_source" RSD-NEED-DIAG-FIELD
-   s" declared_effect" RSD-NEED-DIAG-FIELD
-   s" declared_effect_source" RSD-NEED-DIAG-FIELD
-   s" inferred_effect" RSD-NEED-DIAG-FIELD
-   s" return_stack" RSD-NEED-DIAG-FIELD
-   s" expected" RSD-NEED-DIAG-FIELD
-   s" actual" RSD-NEED-DIAG-FIELD
-   s" family" RSD-NEED-DIAG-FIELD
-   s" variant" RSD-NEED-DIAG-FIELD
-   s" tag" RSD-NEED-DIAG-FIELD
-   s" payload_pos" RSD-NEED-DIAG-FIELD
-   s" arity_expected" RSD-NEED-DIAG-FIELD
-   s" arity_actual" RSD-NEED-DIAG-FIELD
-   s" suggestion" RSD-NEED-DIAG-FIELD ;
+: TEST-DIAG-FIELDS ( -- )
+   s" schema_version" NEED-DIAG-FIELD
+   s" code" NEED-DIAG-FIELD
+   s" repair_class" NEED-DIAG-FIELD
+   s" verdict" NEED-DIAG-FIELD
+   s" word" NEED-DIAG-FIELD
+   s" token" NEED-DIAG-FIELD
+   s" token_index" NEED-DIAG-FIELD
+   s" file" NEED-DIAG-FIELD
+   s" line" NEED-DIAG-FIELD
+   s" column" NEED-DIAG-FIELD
+   s" byte_start" NEED-DIAG-FIELD
+   s" byte_end" NEED-DIAG-FIELD
+   s" definition_source" NEED-DIAG-FIELD
+   s" declared_effect" NEED-DIAG-FIELD
+   s" declared_effect_source" NEED-DIAG-FIELD
+   s" inferred_effect" NEED-DIAG-FIELD
+   s" return_stack" NEED-DIAG-FIELD
+   s" expected" NEED-DIAG-FIELD
+   s" actual" NEED-DIAG-FIELD
+   s" family" NEED-DIAG-FIELD
+   s" variant" NEED-DIAG-FIELD
+   s" tag" NEED-DIAG-FIELD
+   s" payload_pos" NEED-DIAG-FIELD
+   s" arity_expected" NEED-DIAG-FIELD
+   s" arity_actual" NEED-DIAG-FIELD
+   s" suggestion" NEED-DIAG-FIELD ;
 
-: RSD-TEST-DIAG ( -- )
-   RSD-RUN-CHECK 70 RSD-EXPECT-EXIT {: outu erru :}
+: TEST-DIAG ( -- )
+   RUN-CHECK 70 EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
-   erru RSD-ERR-U !
-   RSD-DIAG RSD-ERR erru WRITE-ALL
-   RSD-ERR RSD-ERR-U @ RSD-REPAIR-CLASS$ CONTAINS? TTRUE
-   RSD-TEST-DIAG-FIELDS
-   RSD-DIAG GJA-JSON-LINES-SCHEMA ;
+   erru ERR-U !
+   DIAG ERR erru WRITE-ALL
+   ERR ERR-U @ REPAIR-CLASS$ CONTAINS? TTRUE
+   TEST-DIAG-FIELDS
+   DIAG GJA-JSON-LINES-SCHEMA ;
 
-: RSD-MAIN ( -- )
+: RUN ( -- )
    T-RESET
-   RSD-PREPARE
-   RSD-TEST-DOC-ANCHORS
-   RSD-TEST-DOC-FIELDS
-   RSD-TEST-DOC-CLASSES
-   RSD-TEST-LLM-LINKS
-   RSD-TEST-DIAG
+   PREPARE
+   TEST-DOC-ANCHORS
+   TEST-DOC-FIELDS
+   TEST-DOC-CLASSES
+   TEST-LLM-LINKS
+   TEST-DIAG
    CLEANUP-RUN
-   RSD-ROOT EXISTS? TFALSE
+   ROOT EXISTS? TFALSE
    T-REPORT
    s" repair-schema-doc-test: ok" type cr ;
 
-RSD-MAIN
+RUN
+
+;package
