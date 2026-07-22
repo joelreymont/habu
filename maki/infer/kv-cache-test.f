@@ -156,6 +156,9 @@ variable KVT-ID-SAVE
 : KVT-SLOT-GEN-LIMIT! ( -- )
    KV-ID-MAX KVT-CACHE 0 SEQGEN! ;
 
+: KVT-SLOT-GEN-LIMIT-ALL! ( -- )
+   KVT-CACHE NSEQ-OFF H@ 0 ?do KV-ID-MAX KVT-CACHE i SEQGEN! loop ;
+
 : KVT-INIT-AT-ID-LIMIT ( -- )
    2 4 2 8 1 CONFIG KVT-CACHE swap INIT ;
 
@@ -171,11 +174,38 @@ variable KVT-ID-SAVE
    KVT-CACHE ALLOC-SEQ 8 KVT-H! ;
 
 : KVT-SLOT-GEN-EXHAUST ( -- )
-   2 4 2 8 1 KVT-INIT
-   KVT-SLOT-GEN-LIMIT!
+   2 4 2 8 2 KVT-INIT
+   KVT-SLOT-GEN-LIMIT-ALL!
    [: KVT-SLOT-GEN-EXHAUST-CALL ;] catch E-KV-ID T=
    KVT-CACHE WATERMARK 0 T=
+   KVT-CACHE FREE-PAGES 8 T=
    KVT-CACHE RESERVED-PAGES 0 T=
+   KVT-CACHE 0 SEQLIVE@ 0 T=
+   KVT-CACHE 1 SEQLIVE@ 0 T=
+   KVT-CACHE 0 SEQGEN@ KV-ID-MAX T=
+   KVT-CACHE 1 SEQGEN@ KV-ID-MAX T=
+   KVT-CACHE 0 SEQBLK VEC-CAP-FIELD @ 0 T=
+   KVT-CACHE 1 SEQBLK VEC-CAP-FIELD @ 0 T=
+   KVT-CACHE CHECK ;
+
+: KVT-SLOT-GEN-SKIP-FIRST ( -- )
+   2 4 2 8 2 KVT-INIT
+   KVT-SLOT-GEN-LIMIT!
+   KVT-CACHE ALLOC-SEQ 8 KVT-H!
+   8 KVT-H@ KV-KVSEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
+   cid KV-CACHE-ID>N 0 > TTRUE
+   slot KV-SEQ-SLOT>N 1 T=
+   gen KV-SEQ-GEN>N 1 T=
+   KVT-CACHE CHECK ;
+
+: KVT-SLOT-GEN-SKIP-LAST ( -- )
+   2 4 2 8 2 KVT-INIT
+   KV-ID-MAX KVT-CACHE 1 SEQGEN!
+   KVT-CACHE ALLOC-SEQ 8 KVT-H!
+   8 KVT-H@ KV-KVSEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
+   cid KV-CACHE-ID>N 0 > TTRUE
+   slot KV-SEQ-SLOT>N 0 T=
+   gen KV-SEQ-GEN>N 1 T=
    KVT-CACHE CHECK ;
 
 \ ---- boundary append, recycling, and failure atomicity -----------------------------
@@ -218,6 +248,10 @@ variable KVT-ID-SAVE
 
 : KVT-SEQS-FAIL-ATOMIC ( -- )
    [: KVT-SEQS-FULL ;] catch E-KV-SEQS T=
+   KVT-CACHE 0 SEQLIVE@ 1 T=
+   KVT-CACHE 0 SEQGEN@ 1 T=
+   KVT-CACHE FREE-PAGES 8 T=
+   KVT-CACHE RESERVED-PAGES 0 T=
    KVT-CACHE 0 KVT-H@ APPEND-TOKEN
    KVT-CACHE 0 KVT-H@ SEQ-LEN 1 T=
    KVT-CACHE CHECK ;
@@ -533,6 +567,8 @@ s" cache rebuild setup" T-LABEL ' KVT-REBUILD-CACHE 0 TTHROWS
 ' KVT-OLD-CACHE-USE E-KV-SEQ TTHROWS
 s" cache identity exhaustion" T-LABEL ' KVT-CACHE-ID-EXHAUST 0 TTHROWS
 s" slot generation exhaustion" T-LABEL ' KVT-SLOT-GEN-EXHAUST 0 TTHROWS
+s" skip first exhausted slot" T-LABEL ' KVT-SLOT-GEN-SKIP-FIRST 0 TTHROWS
+s" skip last exhausted slot" T-LABEL ' KVT-SLOT-GEN-SKIP-LAST 0 TTHROWS
 
 s" page boundary" T-LABEL ' KVT-BOUNDARY 0 TTHROWS
 s" append failure atomic" T-LABEL ' KVT-APPEND-FAIL-ATOMIC 0 TTHROWS

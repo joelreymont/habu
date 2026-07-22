@@ -421,10 +421,14 @@ variable KV-NEXT-CACHE-ID
 
 \ ---- sequence allocation and fork transaction -------------------------------------
 : KV-FIND-SLOT ( ptr a -- n ) {: h:ptr :}
+   false
    h NSEQ-OFF H@ 0 ?do
-      h i SEQLIVE@ 0= if i unloop exit then
+      h i SEQLIVE@ 0= if
+         h i SEQGEN@ KV-ID-MAX < if drop i unloop exit then
+         drop true
+      then
    loop
-   E-KV-SEQS throw ;
+   if E-KV-ID else E-KV-SEQS then throw ;
 
 : KV-NEXT-SLOT-GEN ( ptr a n -- n ) {: h:ptr s:n :}
    h s SEQGEN@ dup KV-ID-MAX >= if drop E-KV-ID throw then 1+ ;
