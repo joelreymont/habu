@@ -318,6 +318,14 @@ variable KVT-ID-SAVE
    KVT-CACHE WATERMARK 2 T=
    KVT-CACHE CHECK ;
 
+: KVT-OWNED-POP ( -- )
+   2 4 2 2 1 KVT-INIT
+   KVT-CACHE 1 ALLOC-SEQ 0 KVT-H!
+   0 KVT-CACHE FREETOP-OFF H!                 \ inject impossible physical state
+   KVT-SNAPSHOT
+   [: KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;] catch E-KV-INVARIANT T=
+   KVT-SNAPSHOT= TTRUE ;
+
 : KVT-RECYCLE ( -- )
    KVT-CACHE 0 KVT-H@ CANCEL-SEQ
    KVT-CACHE WATERMARK 0 T=
@@ -479,13 +487,24 @@ variable KVT-ID-SAVE
    KVT-CACHE 65 ALLOC-SEQ 8 KVT-H! ;
 
 : KVT-OVER-MAX-ATOMIC ( -- )
-   2 4 2 4 2 KVT-INIT
+   2 4 2 8 2 64 16 KVT-INIT/MAX/P
    KVT-SNAPSHOT
    [: KVT-OVER-MAX-CALL ;] catch E-KV-ADMIT T=
    KVT-SNAPSHOT= TTRUE
    KVT-CACHE RESERVED-PAGES 0 T=
    KVT-CACHE 0 SEQLIVE@ 0 T=
    KVT-CACHE 0 SEQGEN@ 0 T=
+   KVT-CACHE CHECK ;
+
+: KVT-SEQ-CEILING ( -- )
+   2 4 2 8 1 64 16 KVT-INIT/MAX/P
+   KVT-CACHE 17 ALLOC-SEQ 0 KVT-H!
+   17 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
+   KVT-SNAPSHOT
+   [: KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;] catch E-KV-ADMIT T=
+   KVT-SNAPSHOT= TTRUE
+   KVT-CACHE 0 KVT-H@ SEQ-LEN 17 T=
+   KVT-CACHE 0 KVT-H@ SEQ-RESERVED 0 T=
    KVT-CACHE CHECK ;
 
 : KVT-ZERO-MAX ( -- )
@@ -709,6 +728,7 @@ s" skip last exhausted slot" T-LABEL ' KVT-SLOT-GEN-SKIP-LAST 0 TTHROWS
 
 s" page boundary" T-LABEL ' KVT-BOUNDARY 0 TTHROWS
 s" page recycling" T-LABEL ' KVT-RECYCLE 0 TTHROWS
+s" owned physical exhaustion" T-LABEL ' KVT-OWNED-POP 0 TTHROWS
 s" sequence failure atomic" T-LABEL ' KVT-SEQS-FAIL-ATOMIC 0 TTHROWS
 s" invalid config" T-LABEL ' KVT-BAD-CONFIG E-KV-CONFIG TTHROWS
 s" double cancel" T-LABEL ' KVT-DOUBLE-CANCEL E-KV-SEQ TTHROWS
@@ -725,6 +745,7 @@ s" every reservation boundary" T-LABEL ' KVT-EVERY-BOUNDARY 0 TTHROWS
 s" exact-fit admission" T-LABEL ' KVT-EXACT-FIT 0 TTHROWS
 s" capacity oversubscription atomicity" T-LABEL ' KVT-ONE-OVER-ATOMIC 0 TTHROWS
 s" one-page-over maximum atomicity" T-LABEL ' KVT-OVER-MAX-ATOMIC 0 TTHROWS
+s" per-sequence append ceiling" T-LABEL ' KVT-SEQ-CEILING 0 TTHROWS
 s" positive declared maximum" T-LABEL ' KVT-ZERO-MAX 0 TTHROWS
 s" multiple reservations" T-LABEL ' KVT-MULTI-RESERVATION 0 TTHROWS
 s" cancel reservation" T-LABEL ' KVT-CANCEL-RESERVATION 0 TTHROWS

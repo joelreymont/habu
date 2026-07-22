@@ -34,7 +34,6 @@ require lib/type/deftype.f
 
 -5622 constant E-KV-CONFIG      \ invalid or overflowing configuration
 -5623 constant E-KV-STATE       \ uninitialized/disposed cache or live re-init
--5624 constant E-KV-POOL        \ no physical page is free
 -5625 constant E-KV-SEQS        \ no sequence slot is free
 -5626 constant E-KV-SEQ         \ stale, dead, reused, or cross-cache handle
 -5627 constant E-KV-BOUNDS      \ token/page/index outside the owned range
@@ -268,17 +267,13 @@ variable KV-NEXT-CACHE-ID
    np h FREETOP-OFF H! ;
 
 : KV-POP-PREFLIGHT ( ptr a -- ) {: h:ptr :}
-   h FREETOP-OFF H@ 0 <= if E-KV-POOL throw then ;
+   h FREETOP-OFF H@ 0 <= if E-KV-INVARIANT throw then ;
 
 : KV-POP-COMMIT ( ptr a -- n ) {: h:ptr :}
    h FREETOP-OFF H@ 1- {: top:n :}
    top h FREETOP-OFF H!
    h NPAGES-OFF H@ top - h HIWATER-OFF H@ max h HIWATER-OFF H!
    h top FREE@ ;
-
-: KV-POP-FREE ( ptr a -- n ) {: h:ptr :}
-   h KV-POP-PREFLIGHT
-   h KV-POP-COMMIT ;
 
 : KV-PUSH-FREE ( n ptr a -- ) {: pid:n h:ptr :}
    h FREETOP-OFF H@ {: top:n :}
@@ -311,8 +306,8 @@ variable KV-NEXT-CACHE-ID
    h 1 KV-GLOBAL-RESERVE- ;
 
 : KV-GROW-PREFLIGHT ( ptr a n -- ) {: h:ptr s:n :}
-   h KV-POP-PREFLIGHT
-   h s SEQRES@ 0 <= if E-KV-INVARIANT throw then ;
+   h s SEQRES@ 0 <= if E-KV-INVARIANT throw then
+   h KV-POP-PREFLIGHT ;
 
 : KV-TAKE-GROW-COMMIT ( ptr a n -- n ) {: h:ptr s:n :}
    h KV-POP-COMMIT {: pid:n :}
@@ -323,12 +318,14 @@ variable KV-NEXT-CACHE-ID
    h s SEQMAX@ h s SEQLEN@ > ;
 
 : KV-TAKE-RESERVED-COW ( ptr a n -- n ) {: h:ptr old:n :}
-   h KV-POP-FREE
-   h old KV-COW-RESERVE-ONE ;
+   h old COWRES@ 0 <= if E-KV-INVARIANT throw then
+   h KV-POP-PREFLIGHT
+   h KV-POP-COMMIT {: pid:n :}
+   h old KV-COW-RESERVE-ONE
+   pid ;
 
 : KV-TAKE-COW ( ptr a n n -- n ) {: h:ptr s:n old:n :}
    h s KV-COW-GUARANTEED? 0= if E-KV-INVARIANT throw then
-   h old COWRES@ 0 <= if E-KV-INVARIANT throw then
    h old KV-TAKE-RESERVED-COW ;
 
 \ ---- page references and physical copy-on-write reservation -----------------------

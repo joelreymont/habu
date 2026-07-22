@@ -21,6 +21,9 @@ fits.
   page count before publishing a generation-bearing handle, and make every
   boundary append consume that handle's ledger. An unreserved append fallback
   hides admission bugs and lets unrelated sequences steal promised capacity.
+  Check sequence or copy-on-write ownership before physical availability; an
+  owned reservation with no free page is an internal invariant failure, while
+  ordinary capacity exhaustion belongs only to admission.
 
 ## Checker Soundness
 
