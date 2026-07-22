@@ -27,9 +27,11 @@ require test/gate-diagnostics-all-strict-lib.f
 
 TRW-LOAD-DONE
 
-variable TRWD-FORK-ID
+package TEST-RUN
 
-: TRWD-RUN-ID ( idx -- ) {: idx:idx :}
+variable FORK-ID
+
+: RUN-ID ( idx -- ) {: idx:idx :}
    idx IDX>N TR-RESIDENT-ID !
    idx IDX>N case
       10 of GDX-REPAIR-SLICE endof
@@ -39,10 +41,10 @@ variable TRWD-FORK-ID
       E-TBL-BOUNDS throw
    endcase ;
 
-: TRWD-FORK-RUN ( -- )
-   TRWD-FORK-ID @ >IDX TRWD-RUN-ID ;
+: FORK-RUN ( -- )
+   FORK-ID @ >IDX RUN-ID ;
 
-: TRWD-CHILD-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
+: CHILD-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N case
       10 of s" native checker diagnostics repair slice" endof
       11 of s" native checker diagnostics undef-primary slice" endof
@@ -51,17 +53,21 @@ variable TRWD-FORK-ID
       E-TBL-BOUNDS throw
    endcase ;
 
-: TRWD-START-FORK ( idx -- ) {: idx:idx :}
-   idx IDX>N TRWD-FORK-ID !
-   idx TRWD-CHILD-LABEL idx TRW-CHILD-TEST
-   idx TRWD-CHILD-LABEL TR-TIMEOUT-MS [: TRWD-FORK-RUN ;] GT-POOL-START-FORK ;
+: START-FORK ( idx -- ) {: idx:idx :}
+   idx IDX>N FORK-ID !
+   idx CHILD-LABEL idx TRW-CHILD-TEST
+   idx CHILD-LABEL TR-TIMEOUT-MS [: FORK-RUN ;] GT-POOL-START-FORK ;
 
-: TRWD-ALL ( -- )
+: DIAG-ALL ( -- )
    GT-POOL-RESET
-   12 >IDX TRWD-START-FORK
-   11 >IDX TRWD-START-FORK
-   10 >IDX TRWD-START-FORK
-   13 >IDX TRWD-START-FORK
+   12 >IDX START-FORK
+   11 >IDX START-FORK
+   10 >IDX START-FORK
+   13 >IDX START-FORK
    GT-POOL-DRAIN ;
 
-TRWD-ALL
+' DIAG-ALL
+
+;package
+
+execute

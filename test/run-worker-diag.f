@@ -26,7 +26,9 @@ require test/gate-diagnostics-lib.f
 
 TRW-LOAD-DONE
 
-: TRWD-RUN ( -- )
+package TEST-RUN
+
+: DIAG ( -- )
    TR-RESIDENT-ID @ case
       10 of GDX-REPAIR-SLICE endof
       11 of GDX-UNDEF-PRIMARY-SLICE endof
@@ -34,4 +36,8 @@ TRW-LOAD-DONE
       E-TBL-BOUNDS throw
    endcase ;
 
-TRWD-RUN
+' DIAG
+
+;package
+
+execute
