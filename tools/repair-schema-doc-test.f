@@ -92,10 +92,6 @@ create CHK-BUF EMIT-CAP allot
 : DIAG ( -- ptr u8 n )
    DIAG-BUF DIAG-U @ ;
 
-: EMPTY$ ( -- ptr u8 n )
-   SB-RESET
-   SB$ ;
-
 : LF ( -- )
    10 SB-APPEND-C ;
 
