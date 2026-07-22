@@ -1,196 +1,199 @@
-\ signature-lint-test.f - checked fixtures for tools/signature-lint.f.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
-\ tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f
-\ tools/lint/source-lex.f tools/signature-lint-core.f
-\ tools/signature-lint-test.f
+\ signature-lint-test-lib.f - checked fixtures for tools/signature-lint.f.
+\ Load-only fixture library; the thin entry tools/signature-lint-test.f
+\ requires this file and its dependencies, then calls SIGNATURE-LINT-TEST:RUN.
 
-4096 constant SLT-BUF-CAP
+package SIGNATURE-LINT-TEST
 
-variable SLT-ROOT-U
-variable SLT-GOOD-U
-variable SLT-MISSING-U
-variable SLT-OPTOUT-U
-variable SLT-NAME-U
+4096 constant BUF-CAP
 
-create SLT-ROOT-BUF FS-PATH-CAP allot
-create SLT-GOOD-BUF FS-PATH-CAP allot
-create SLT-MISSING-BUF FS-PATH-CAP allot
-create SLT-OPTOUT-BUF FS-PATH-CAP allot
-create SLT-NAME-BUF FS-PATH-CAP allot
-create SLT-OUT SLT-BUF-CAP allot
+variable ROOT-U
+variable GOOD-U
+variable MISSING-U
+variable OPTOUT-U
+variable NAME-U
 
-: SLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+create ROOT-BUF FS-PATH-CAP allot
+create GOOD-BUF FS-PATH-CAP allot
+create MISSING-BUF FS-PATH-CAP allot
+create OPTOUT-BUF FS-PATH-CAP allot
+create NAME-BUF FS-PATH-CAP allot
+create OUT BUF-CAP allot
+
+: COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: SLT-ROOT ( -- ptr u8 n )
-   SLT-ROOT-BUF SLT-ROOT-U @ ;
+: ROOT ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
 
-: SLT-GOOD ( -- ptr u8 n )
-   SLT-GOOD-BUF SLT-GOOD-U @ ;
+: GOOD ( -- ptr u8 n )
+   GOOD-BUF GOOD-U @ ;
 
-: SLT-MISSING ( -- ptr u8 n )
-   SLT-MISSING-BUF SLT-MISSING-U @ ;
+: MISSING ( -- ptr u8 n )
+   MISSING-BUF MISSING-U @ ;
 
-: SLT-OPTOUT ( -- ptr u8 n )
-   SLT-OPTOUT-BUF SLT-OPTOUT-U @ ;
+: OPTOUT ( -- ptr u8 n )
+   OPTOUT-BUF OPTOUT-U @ ;
 
-: SLT-NAME ( -- ptr u8 n )
-   SLT-NAME-BUF SLT-NAME-U @ ;
+: NAME ( -- ptr u8 n )
+   NAME-BUF NAME-U @ ;
 
-: SLT-LF ( -- )
+: LF ( -- )
    10 SB-APPEND-C ;
 
-: SLT-DQ ( -- )
+: DQ ( -- )
    34 SB-APPEND-C ;
 
-: SLT-GOOD$ ( -- ptr u8 n )
+: GOOD$ ( -- ptr u8 n )
    SB-RESET
-   s" : OK ( n -- n ) dup ;" SB-APPEND SLT-LF
-   s" \\ : COMMENTED dup ;" SB-APPEND SLT-LF
-   115 SB-APPEND-C SLT-DQ s"  : STRING ;" SB-APPEND SLT-DQ SLT-LF
-   s" ( : PAREN dup ; )" SB-APPEND SLT-LF
+   s" : OK ( n -- n ) dup ;" SB-APPEND LF
+   s" \\ : COMMENTED dup ;" SB-APPEND LF
+   115 SB-APPEND-C DQ s"  : STRING ;" SB-APPEND DQ LF
+   s" ( : PAREN dup ; )" SB-APPEND LF
    SB$ ;
 
-: SLT-MISSING$ ( -- ptr u8 n )
+: MISSING$ ( -- ptr u8 n )
    SB-RESET
-   s" : NOSIG dup ;" SB-APPEND SLT-LF
+   s" : NOSIG dup ;" SB-APPEND LF
    SB$ ;
 
-: SLT-OPTOUT$ ( -- ptr u8 n )
+: OPTOUT$ ( -- ptr u8 n )
    SB-RESET
-   s" : X ( infer ) dup ;" SB-APPEND SLT-LF
+   s" : X ( infer ) dup ;" SB-APPEND LF
    SB$ ;
 
-: SLT-NAME$ ( -- ptr u8 n )
+: NAME$ ( -- ptr u8 n )
    SB-RESET
-   s" : ( n -- n ) dup ;" SB-APPEND SLT-LF
+   s" : ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
-: SLT-EMPTY$ ( -- ptr u8 n )
+: EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
 
-: SLT-MISSING-CODE$ ( -- ptr u8 n )
+: MISSING-CODE$ ( -- ptr u8 n )
    s" E-MISSING-SIGNATURE" ;
 
-: SLT-UNVERIFIED-CODE$ ( -- ptr u8 n )
+: UNVERIFIED-CODE$ ( -- ptr u8 n )
    s" E-UNVERIFIED-SIGNATURE" ;
 
-: SLT-NAME-CODE$ ( -- ptr u8 n )
+: NAME-CODE$ ( -- ptr u8 n )
    s" E-MISSING-NAME" ;
 
-: SLT-JSON-MISSING$ ( -- ptr u8 n )
+: JSON-MISSING$ ( -- ptr u8 n )
    SB-RESET
-   SLT-DQ s" code" SB-APPEND SLT-DQ
+   DQ s" code" SB-APPEND DQ
    58 SB-APPEND-C
-   SLT-DQ SLT-MISSING-CODE$ SB-APPEND SLT-DQ
+   DQ MISSING-CODE$ SB-APPEND DQ
    SB$ ;
 
-: SLT-JSON-UNVERIFIED$ ( -- ptr u8 n )
+: JSON-UNVERIFIED$ ( -- ptr u8 n )
    SB-RESET
-   SLT-DQ s" code" SB-APPEND SLT-DQ
+   DQ s" code" SB-APPEND DQ
    58 SB-APPEND-C
-   SLT-DQ SLT-UNVERIFIED-CODE$ SB-APPEND SLT-DQ
+   DQ UNVERIFIED-CODE$ SB-APPEND DQ
    SB$ ;
 
-: SLT-JSON-LABEL$ ( -- ptr u8 n )
+: JSON-LABEL$ ( -- ptr u8 n )
    SB-RESET
-   SLT-DQ s" file" SB-APPEND SLT-DQ
+   DQ s" file" SB-APPEND DQ
    58 SB-APPEND-C
-   SLT-DQ s" <stdin>" SB-APPEND SLT-DQ
+   DQ s" <stdin>" SB-APPEND DQ
    SB$ ;
 
-: SLT-PREPARE ( -- )
+: PREPARE ( -- )
    CLEANUP-RESET
    s" habu-signature-lint" TMPDIR-MKDIR {: a:ptr u:n :}
-   a u SLT-ROOT-BUF SLT-ROOT-U SLT-COPY!
-   SLT-ROOT CLEANUP-DIR+
-   SLT-ROOT s" good.f" SLT-GOOD-BUF JOIN-PATH SLT-GOOD-U !
-   SLT-ROOT s" missing.f" SLT-MISSING-BUF JOIN-PATH SLT-MISSING-U !
-   SLT-ROOT s" optout.f" SLT-OPTOUT-BUF JOIN-PATH SLT-OPTOUT-U !
-   SLT-ROOT s" missing-name.f" SLT-NAME-BUF JOIN-PATH SLT-NAME-U !
-   SLT-GOOD CLEANUP+
-   SLT-MISSING CLEANUP+
-   SLT-OPTOUT CLEANUP+
-   SLT-NAME CLEANUP+
-   SLT-GOOD SLT-GOOD$ WRITE-ALL
-   SLT-MISSING SLT-MISSING$ WRITE-ALL
-   SLT-OPTOUT SLT-OPTOUT$ WRITE-ALL
-   SLT-NAME SLT-NAME$ WRITE-ALL ;
+   a u ROOT-BUF ROOT-U COPY!
+   ROOT CLEANUP-DIR+
+   ROOT s" good.f" GOOD-BUF JOIN-PATH GOOD-U !
+   ROOT s" missing.f" MISSING-BUF JOIN-PATH MISSING-U !
+   ROOT s" optout.f" OPTOUT-BUF JOIN-PATH OPTOUT-U !
+   ROOT s" missing-name.f" NAME-BUF JOIN-PATH NAME-U !
+   GOOD CLEANUP+
+   MISSING CLEANUP+
+   OPTOUT CLEANUP+
+   NAME CLEANUP+
+   GOOD GOOD$ WRITE-ALL
+   MISSING MISSING$ WRITE-ALL
+   OPTOUT OPTOUT$ WRITE-ALL
+   NAME NAME$ WRITE-ALL ;
 
-: SLT-CORE-SETUP ( bool -- ) {: json:bool :}
+: CORE-SETUP ( bool -- ) {: json:bool :}
    SIGNATURE-LINT-RESET
-   SLT-OUT SLT-BUF-CAP LINT-OUT-BUFFER!
+   OUT BUF-CAP LINT-OUT-BUFFER!
    json SL-JSON! ;
 
-: SLT-CORE-FINISH ( -- n n n )
+: CORE-FINISH ( -- n n n )
    [: SIGNATURE-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 rc ;
 
-: SLT-RUN-CORE ( ptr u8 n -- n n n )
-   LINT-FALSE SLT-CORE-SETUP
+: RUN-CORE ( ptr u8 n -- n n n )
+   LINT-FALSE CORE-SETUP
    SIGNATURE-LINT-FILE
-   SLT-CORE-FINISH ;
+   CORE-FINISH ;
 
-: SLT-RUN-CORE-JSON ( ptr u8 n -- n n n )
-   LINT-TRUE SLT-CORE-SETUP
+: RUN-CORE-JSON ( ptr u8 n -- n n n )
+   LINT-TRUE CORE-SETUP
    SIGNATURE-LINT-FILE
-   SLT-CORE-FINISH ;
+   CORE-FINISH ;
 
-: SLT-RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n )
+: RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n )
    {: a:ptr u:n :}
-   LINT-TRUE SLT-CORE-SETUP
+   LINT-TRUE CORE-SETUP
    a u s" <stdin>" SIGNATURE-LINT-FILE-AS
-   SLT-CORE-FINISH ;
+   CORE-FINISH ;
 
-: SLT-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
+: EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
    outu erru ;
 
-: SLT-TEST-GOOD ( -- )
-   SLT-GOOD SLT-RUN-CORE 0 SLT-EXPECT-EXIT {: outu:n erru:n :}
-   SLT-OUT outu SLT-EMPTY$ T$=
+: TEST-GOOD ( -- )
+   GOOD RUN-CORE 0 EXPECT-EXIT {: outu:n erru:n :}
+   OUT outu EMPTY$ T$=
    erru 0 T= ;
 
-: SLT-TEST-MISSING ( -- )
-   SLT-MISSING SLT-RUN-CORE 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-MISSING ( -- )
+   MISSING RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   SLT-OUT outu SLT-MISSING-CODE$ CONTAINS? TTRUE ;
+   OUT outu MISSING-CODE$ CONTAINS? TTRUE ;
 
-: SLT-TEST-MISSING-JSON ( -- )
-   SLT-MISSING SLT-RUN-CORE-JSON-LABEL 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-MISSING-JSON ( -- )
+   MISSING RUN-CORE-JSON-LABEL 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   SLT-OUT outu SLT-JSON-MISSING$ CONTAINS? TTRUE
-   SLT-OUT outu SLT-JSON-LABEL$ CONTAINS? TTRUE ;
+   OUT outu JSON-MISSING$ CONTAINS? TTRUE
+   OUT outu JSON-LABEL$ CONTAINS? TTRUE ;
 
-: SLT-TEST-GOOD-JSON-LABEL ( -- )
-   SLT-GOOD SLT-RUN-CORE-JSON-LABEL 0 SLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-GOOD-JSON-LABEL ( -- )
+   GOOD RUN-CORE-JSON-LABEL 0 EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: SLT-TEST-OPTOUT-JSON ( -- )
-   SLT-OPTOUT SLT-RUN-CORE-JSON 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-OPTOUT-JSON ( -- )
+   OPTOUT RUN-CORE-JSON 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   SLT-OUT outu SLT-JSON-UNVERIFIED$ CONTAINS? TTRUE ;
+   OUT outu JSON-UNVERIFIED$ CONTAINS? TTRUE ;
 
-: SLT-TEST-MISSING-NAME ( -- )
-   SLT-NAME SLT-RUN-CORE 1 SLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-MISSING-NAME ( -- )
+   NAME RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   SLT-OUT outu SLT-NAME-CODE$ CONTAINS? TTRUE ;
+   OUT outu NAME-CODE$ CONTAINS? TTRUE ;
 
-: SLT-MAIN ( -- )
+public
+
+: RUN ( -- )
    T-RESET
-   SLT-PREPARE
-   SLT-TEST-GOOD
-   SLT-TEST-MISSING
-   SLT-TEST-MISSING-JSON
-   SLT-TEST-GOOD-JSON-LABEL
-   SLT-TEST-OPTOUT-JSON
-   SLT-TEST-MISSING-NAME
+   PREPARE
+   TEST-GOOD
+   TEST-MISSING
+   TEST-MISSING-JSON
+   TEST-GOOD-JSON-LABEL
+   TEST-OPTOUT-JSON
+   TEST-MISSING-NAME
    CLEANUP-RUN
-   SLT-ROOT EXISTS? TFALSE
+   ROOT EXISTS? TFALSE
    T-REPORT
    s" signature-lint-test: ok" type cr ;
+
+;package

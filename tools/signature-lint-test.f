@@ -17,4 +17,4 @@ require tools/signature-lint-core.f
 
 require tools/signature-lint-test-lib.f
 
-SLT-MAIN
+SIGNATURE-LINT-TEST:RUN

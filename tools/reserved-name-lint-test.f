@@ -20,4 +20,4 @@ require tools/reserved-name-lint-core.f
 
 require tools/reserved-name-lint-test-lib.f
 
-RNLT-MAIN
+RESERVED-NAME-LINT-TEST:RUN

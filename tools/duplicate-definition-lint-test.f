@@ -16,4 +16,4 @@ require tools/duplicate-definition-lint-core.f
 
 require tools/duplicate-definition-lint-test-lib.f
 
-DDLT-MAIN
+DUPLICATE-DEFINITION-LINT-TEST:RUN

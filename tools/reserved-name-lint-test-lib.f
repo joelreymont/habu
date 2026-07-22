@@ -1,178 +1,177 @@
-\ reserved-name-lint-test.f - checked fixtures for reserved-name-lint.
-\ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
-\ tools/lint/text.f tools/lint/token.f tools/lint/lib.f
-\ tools/lint/json-writer.f tools/lint/source-lex.f tools/argv.f tools/cli-run.f
-\ tools/reserved-name-lint-core.f tools/reserved-name-lint-test.f
+\ reserved-name-lint-test-lib.f - checked fixtures for tools/reserved-name-lint.f.
+\ Load-only fixture library; the thin entry tools/reserved-name-lint-test.f
+\ requires this file and its dependencies, then calls RESERVED-NAME-LINT-TEST:RUN.
 
-$1000 constant RNLT-BUF-CAP
+package RESERVED-NAME-LINT-TEST
 
-create RNLT-ROOT FS-PATH-CAP allot
-create RNLT-GOOD FS-PATH-CAP allot
-create RNLT-BAD FS-PATH-CAP allot
-create RNLT-CASE FS-PATH-CAP allot
-create RNLT-LOADER FS-PATH-CAP allot
-create RNLT-TFAM FS-PATH-CAP allot
-create RNLT-CONTROL FS-PATH-CAP allot
-create RNLT-NUM FS-PATH-CAP allot
-create RNLT-OUT RNLT-BUF-CAP allot
+$1000 constant BUF-CAP
 
-variable RNLT-ROOT-U
-variable RNLT-GOOD-U
-variable RNLT-BAD-U
-variable RNLT-CASE-U
-variable RNLT-LOADER-U
-variable RNLT-TFAM-U
-variable RNLT-CONTROL-U
-variable RNLT-NUM-U
+create ROOT FS-PATH-CAP allot
+create GOOD FS-PATH-CAP allot
+create BAD FS-PATH-CAP allot
+create CASEFOLD FS-PATH-CAP allot
+create LOADER FS-PATH-CAP allot
+create TFAM FS-PATH-CAP allot
+create CONTROL FS-PATH-CAP allot
+create NUM FS-PATH-CAP allot
+create OUT BUF-CAP allot
 
-: RNLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+variable ROOT-U
+variable GOOD-U
+variable BAD-U
+variable CASEFOLD-U
+variable LOADER-U
+variable TFAM-U
+variable CONTROL-U
+variable NUM-U
+
+: COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: RNLT-ROOT$ ( -- ptr u8 n )
-   RNLT-ROOT RNLT-ROOT-U @ ;
+: ROOT$ ( -- ptr u8 n )
+   ROOT ROOT-U @ ;
 
-: RNLT-GOOD$ ( -- ptr u8 n )
-   RNLT-GOOD RNLT-GOOD-U @ ;
+: GOOD$ ( -- ptr u8 n )
+   GOOD GOOD-U @ ;
 
-: RNLT-BAD$ ( -- ptr u8 n )
-   RNLT-BAD RNLT-BAD-U @ ;
+: BAD$ ( -- ptr u8 n )
+   BAD BAD-U @ ;
 
-: RNLT-CASE$ ( -- ptr u8 n )
-   RNLT-CASE RNLT-CASE-U @ ;
+: CASEFOLD$ ( -- ptr u8 n )
+   CASEFOLD CASEFOLD-U @ ;
 
-: RNLT-LOADER$ ( -- ptr u8 n )
-   RNLT-LOADER RNLT-LOADER-U @ ;
+: LOADER$ ( -- ptr u8 n )
+   LOADER LOADER-U @ ;
 
-: RNLT-TFAM$ ( -- ptr u8 n )
-   RNLT-TFAM RNLT-TFAM-U @ ;
+: TFAM$ ( -- ptr u8 n )
+   TFAM TFAM-U @ ;
 
-: RNLT-CONTROL$ ( -- ptr u8 n )
-   RNLT-CONTROL RNLT-CONTROL-U @ ;
+: CONTROL$ ( -- ptr u8 n )
+   CONTROL CONTROL-U @ ;
 
-: RNLT-NUM$ ( -- ptr u8 n )
-   RNLT-NUM RNLT-NUM-U @ ;
+: NUM$ ( -- ptr u8 n )
+   NUM NUM-U @ ;
 
-: RNLT-LF ( -- )
+: LF ( -- )
    $0A SB-APPEND-C ;
 
-: RNLT-GOOD-SRC$ ( -- ptr u8 n )
+: GOOD-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : OK ( -- n ) 1 ;" SB-APPEND RNLT-LF
-   s" : LOCAL-IJ ( n n -- n ) {: i:n j:n :} i j + ;" SB-APPEND RNLT-LF
-   s" variable IX" SB-APPEND RNLT-LF
-   s" variable JX" SB-APPEND RNLT-LF
-   s" : .U ( n -- ) drop ;" SB-APPEND RNLT-LF        \ dot-letter: not a number
-   s" : .INT ( n -- ) drop ;" SB-APPEND RNLT-LF
-   s" : F.N ( r n -- ) drop fdrop ;" SB-APPEND RNLT-LF
-   s" : 1STNZ ( -- n ) 1 ;" SB-APPEND RNLT-LF        \ digit-leading, not number-shaped
-   s" : 0<> ( n -- bool ) 0 <> ;" SB-APPEND RNLT-LF
-   s" : 2UNIFY-OR ( -- ) ;" SB-APPEND RNLT-LF
+   s" : OK ( -- n ) 1 ;" SB-APPEND LF
+   s" : LOCAL-IJ ( n n -- n ) {: i:n j:n :} i j + ;" SB-APPEND LF
+   s" variable IX" SB-APPEND LF
+   s" variable JX" SB-APPEND LF
+   s" : .U ( n -- ) drop ;" SB-APPEND LF        \ dot-letter: not a number
+   s" : .INT ( n -- ) drop ;" SB-APPEND LF
+   s" : F.N ( r n -- ) drop fdrop ;" SB-APPEND LF
+   s" : 1STNZ ( -- n ) 1 ;" SB-APPEND LF        \ digit-leading, not number-shaped
+   s" : 0<> ( n -- bool ) 0 <> ;" SB-APPEND LF
+   s" : 2UNIFY-OR ( -- ) ;" SB-APPEND LF
    SB$ ;
 
-: RNLT-BAD-SRC$ ( -- ptr u8 n )
+: BAD-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" variable I" SB-APPEND RNLT-LF
-   s" 1 constant j" SB-APPEND RNLT-LF
-   s" : LOOP ( -- ) ;" SB-APPEND RNLT-LF
-   s" : CASE ( -- ) ;" SB-APPEND RNLT-LF
-   s" : undefine ( -- ) ;" SB-APPEND RNLT-LF
-   s" 2 LAYOUT-BUFFER IF sample" SB-APPEND RNLT-LF
+   s" variable I" SB-APPEND LF
+   s" 1 constant j" SB-APPEND LF
+   s" : LOOP ( -- ) ;" SB-APPEND LF
+   s" : CASE ( -- ) ;" SB-APPEND LF
+   s" : undefine ( -- ) ;" SB-APPEND LF
+   s" 2 LAYOUT-BUFFER IF sample" SB-APPEND LF
    SB$ ;
 
-: RNLT-CASE-SRC$ ( -- ptr u8 n )
+: CASEFOLD-SRC$ ( -- ptr u8 n )
    s" : i ( -- n ) 1 ;" ;
 
-: RNLT-TFAM-SRC$ ( -- ptr u8 n )
+: TFAM-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : typefamily ( -- ) ;" SB-APPEND RNLT-LF
-   s" : SUMTYPE ( -- ) ;" SB-APPEND RNLT-LF
-   s" : variant ( -- ) ;" SB-APPEND RNLT-LF
-   s" : ;VARIANT ( -- ) ;" SB-APPEND RNLT-LF
-   s" : ;sumtype ( -- ) ;" SB-APPEND RNLT-LF
-   s" : ;package ( -- ) ;" SB-APPEND RNLT-LF
-   s" : Export ( -- ) ;" SB-APPEND RNLT-LF
-   s" : LAYOUT-BUFFER ( -- ) ;" SB-APPEND RNLT-LF
+   s" : typefamily ( -- ) ;" SB-APPEND LF
+   s" : SUMTYPE ( -- ) ;" SB-APPEND LF
+   s" : variant ( -- ) ;" SB-APPEND LF
+   s" : ;VARIANT ( -- ) ;" SB-APPEND LF
+   s" : ;sumtype ( -- ) ;" SB-APPEND LF
+   s" : ;package ( -- ) ;" SB-APPEND LF
+   s" : Export ( -- ) ;" SB-APPEND LF
+   s" : LAYOUT-BUFFER ( -- ) ;" SB-APPEND LF
    SB$ ;
 
 \ TFAM 9: construct/MATCH/;MATCH are reserved control forms — a definition may
 \ not take those names (case-folded), exactly like case/of/endof.
-: RNLT-CONTROL-SRC$ ( -- ptr u8 n )
+: CONTROL-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : match ( -- ) ;" SB-APPEND RNLT-LF
-   s" : ;match ( -- ) ;" SB-APPEND RNLT-LF
-   s" : CONSTRUCT ( -- ) ;" SB-APPEND RNLT-LF
+   s" : match ( -- ) ;" SB-APPEND LF
+   s" : ;match ( -- ) ;" SB-APPEND LF
+   s" : CONSTRUCT ( -- ) ;" SB-APPEND LF
    SB$ ;
 
 \ Number-shaped names: the numeric parser wins over the dictionary
 \ (test/gate-dictionary-lib.f GD-LITERAL-FIRST), so these definitions are
 \ unreachable or float-confusable and must be rejected (the lib/fmt.f .0/U.0
 \ incident: a generator read `60 .0` as a float spelling).
-: RNLT-NUM-SRC$ ( -- ptr u8 n )
+: NUM-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : .0 ( n -- ) drop ;" SB-APPEND RNLT-LF
-   s" : U.0 ( n -- ) drop ;" SB-APPEND RNLT-LF
-   s" : 42 ( -- ) ;" SB-APPEND RNLT-LF
-   s" : -7 ( -- ) ;" SB-APPEND RNLT-LF
-   s" variable 1.5" SB-APPEND RNLT-LF
-   s" 1 constant $FF" SB-APPEND RNLT-LF
+   s" : .0 ( n -- ) drop ;" SB-APPEND LF
+   s" : U.0 ( n -- ) drop ;" SB-APPEND LF
+   s" : 42 ( -- ) ;" SB-APPEND LF
+   s" : -7 ( -- ) ;" SB-APPEND LF
+   s" variable 1.5" SB-APPEND LF
+   s" 1 constant $FF" SB-APPEND LF
    SB$ ;
 
-: RNLT-LOADER-SRC$ ( -- ptr u8 n )
+: LOADER-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : include ( -- ) ;" SB-APPEND RNLT-LF
-   s" : included ( ptr u8 n -- ) ;" SB-APPEND RNLT-LF
-   s" : require ( -- ) ;" SB-APPEND RNLT-LF
-   s" : required ( ptr u8 n -- ) ;" SB-APPEND RNLT-LF
-   s" : provided ( ptr u8 n -- ) ;" SB-APPEND RNLT-LF
+   s" : include ( -- ) ;" SB-APPEND LF
+   s" : included ( ptr u8 n -- ) ;" SB-APPEND LF
+   s" : require ( -- ) ;" SB-APPEND LF
+   s" : required ( ptr u8 n -- ) ;" SB-APPEND LF
+   s" : provided ( ptr u8 n -- ) ;" SB-APPEND LF
    SB$ ;
 
-: RNLT-PREPARE ( -- )
+: PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-reserved-name-lint" TMPDIR-MKDIR RNLT-ROOT RNLT-ROOT-U RNLT-COPY!
-   RNLT-ROOT$ CLEANUP-TREE+
-   RNLT-ROOT$ s" good.f" RNLT-GOOD JOIN-PATH RNLT-GOOD-U !
-   RNLT-ROOT$ s" bad.f" RNLT-BAD JOIN-PATH RNLT-BAD-U !
-   RNLT-ROOT$ s" case.f" RNLT-CASE JOIN-PATH RNLT-CASE-U !
-   RNLT-ROOT$ s" loader.f" RNLT-LOADER JOIN-PATH RNLT-LOADER-U !
-   RNLT-ROOT$ s" tfam.f" RNLT-TFAM JOIN-PATH RNLT-TFAM-U !
-   RNLT-ROOT$ s" control.f" RNLT-CONTROL JOIN-PATH RNLT-CONTROL-U !
-   RNLT-ROOT$ s" numeric.f" RNLT-NUM JOIN-PATH RNLT-NUM-U !
-   RNLT-GOOD$ RNLT-GOOD-SRC$ WRITE-ALL
-   RNLT-BAD$ RNLT-BAD-SRC$ WRITE-ALL
-   RNLT-CASE$ RNLT-CASE-SRC$ WRITE-ALL
-   RNLT-LOADER$ RNLT-LOADER-SRC$ WRITE-ALL
-   RNLT-TFAM$ RNLT-TFAM-SRC$ WRITE-ALL
-   RNLT-CONTROL$ RNLT-CONTROL-SRC$ WRITE-ALL
-   RNLT-NUM$ RNLT-NUM-SRC$ WRITE-ALL ;
+   s" habu-reserved-name-lint" TMPDIR-MKDIR ROOT ROOT-U COPY!
+   ROOT$ CLEANUP-TREE+
+   ROOT$ s" good.f" GOOD JOIN-PATH GOOD-U !
+   ROOT$ s" bad.f" BAD JOIN-PATH BAD-U !
+   ROOT$ s" case.f" CASEFOLD JOIN-PATH CASEFOLD-U !
+   ROOT$ s" loader.f" LOADER JOIN-PATH LOADER-U !
+   ROOT$ s" tfam.f" TFAM JOIN-PATH TFAM-U !
+   ROOT$ s" control.f" CONTROL JOIN-PATH CONTROL-U !
+   ROOT$ s" numeric.f" NUM JOIN-PATH NUM-U !
+   GOOD$ GOOD-SRC$ WRITE-ALL
+   BAD$ BAD-SRC$ WRITE-ALL
+   CASEFOLD$ CASEFOLD-SRC$ WRITE-ALL
+   LOADER$ LOADER-SRC$ WRITE-ALL
+   TFAM$ TFAM-SRC$ WRITE-ALL
+   CONTROL$ CONTROL-SRC$ WRITE-ALL
+   NUM$ NUM-SRC$ WRITE-ALL ;
 
-: RNLT-CORE-SETUP ( bool -- ) {: json:bool :}
+: CORE-SETUP ( bool -- ) {: json:bool :}
    RESERVED-NAME-LINT-RESET
-   RNLT-OUT RNLT-BUF-CAP LINT-OUT-BUFFER!
+   OUT BUF-CAP LINT-OUT-BUFFER!
    json RNL-JSON! ;
 
-: RNLT-CORE-FINISH ( -- n n n )
+: CORE-FINISH ( -- n n n )
    [: RESERVED-NAME-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 rc ;
 
-: RNLT-RUN-CORE ( ptr u8 n -- n n n )
-   LINT-FALSE RNLT-CORE-SETUP
+: RUN-CORE ( ptr u8 n -- n n n )
+   LINT-FALSE CORE-SETUP
    RESERVED-NAME-LINT-FILE
-   RNLT-CORE-FINISH ;
+   CORE-FINISH ;
 
-: RNLT-RUN-CORE-JSON ( -- n n n )
-   LINT-TRUE RNLT-CORE-SETUP
-   RNLT-CASE$ s" <converted>" RESERVED-NAME-LINT-FILE-AS
-   RNLT-CORE-FINISH ;
+: RUN-CORE-JSON ( -- n n n )
+   LINT-TRUE CORE-SETUP
+   CASEFOLD$ s" <converted>" RESERVED-NAME-LINT-FILE-AS
+   CORE-FINISH ;
 
-: RNLT-RUN-NUM-JSON ( -- n n n )
-   LINT-TRUE RNLT-CORE-SETUP
-   RNLT-NUM$ RESERVED-NAME-LINT-FILE
-   RNLT-CORE-FINISH ;
+: RUN-NUM-JSON ( -- n n n )
+   LINT-TRUE CORE-SETUP
+   NUM$ RESERVED-NAME-LINT-FILE
+   CORE-FINISH ;
 
-: RNLT-JSON-WORD-I$ ( -- ptr u8 n )
+: JSON-WORD-I$ ( -- ptr u8 n )
    SB-RESET
    $22 SB-APPEND-C
    s" word" SB-APPEND
@@ -183,95 +182,99 @@ variable RNLT-NUM-U
    $22 SB-APPEND-C
    SB$ ;
 
-: RNLT-EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n want:n :}
+: EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n want:n :}
    code want T=
    outu erru ;
 
-: RNLT-TEST-GOOD ( -- )
-   RNLT-GOOD$ RNLT-RUN-CORE 0 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-GOOD ( -- )
+   GOOD$ RUN-CORE 0 EXPECT-EXIT {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: RNLT-TEST-BAD ( -- )
-   RNLT-BAD$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-BAD ( -- )
+   BAD$ RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   RNLT-OUT outu s" `I`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `j`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `LOOP`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `CASE`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `undefine`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `IF`" CONTAINS? TTRUE ;
+   OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   OUT outu s" `I`" CONTAINS? TTRUE
+   OUT outu s" `j`" CONTAINS? TTRUE
+   OUT outu s" `LOOP`" CONTAINS? TTRUE
+   OUT outu s" `CASE`" CONTAINS? TTRUE
+   OUT outu s" `undefine`" CONTAINS? TTRUE
+   OUT outu s" `IF`" CONTAINS? TTRUE ;
 
-: RNLT-TEST-JSON ( -- )
-   RNLT-RUN-CORE-JSON 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-JSON ( -- )
+   RUN-CORE-JSON 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   RNLT-OUT outu s" schema_version" CONTAINS? TTRUE
-   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   RNLT-OUT outu s" <converted>" CONTAINS? TTRUE
-   RNLT-OUT outu RNLT-JSON-WORD-I$ CONTAINS? TTRUE ;
+   OUT outu s" schema_version" CONTAINS? TTRUE
+   OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   OUT outu s" <converted>" CONTAINS? TTRUE
+   OUT outu JSON-WORD-I$ CONTAINS? TTRUE ;
 
-: RNLT-TEST-TFAM ( -- )
-   RNLT-TFAM$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-TFAM ( -- )
+   TFAM$ RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   RNLT-OUT outu s" `typefamily`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `SUMTYPE`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `variant`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `;VARIANT`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `;sumtype`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `;package`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `Export`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `LAYOUT-BUFFER`" CONTAINS? TTRUE ;
+   OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   OUT outu s" `typefamily`" CONTAINS? TTRUE
+   OUT outu s" `SUMTYPE`" CONTAINS? TTRUE
+   OUT outu s" `variant`" CONTAINS? TTRUE
+   OUT outu s" `;VARIANT`" CONTAINS? TTRUE
+   OUT outu s" `;sumtype`" CONTAINS? TTRUE
+   OUT outu s" `;package`" CONTAINS? TTRUE
+   OUT outu s" `Export`" CONTAINS? TTRUE
+   OUT outu s" `LAYOUT-BUFFER`" CONTAINS? TTRUE ;
 
-: RNLT-TEST-LOADER ( -- )
-   RNLT-LOADER$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-LOADER ( -- )
+   LOADER$ RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   RNLT-OUT outu s" `include`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `included`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `require`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `required`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `provided`" CONTAINS? TTRUE ;
+   OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   OUT outu s" `include`" CONTAINS? TTRUE
+   OUT outu s" `included`" CONTAINS? TTRUE
+   OUT outu s" `require`" CONTAINS? TTRUE
+   OUT outu s" `required`" CONTAINS? TTRUE
+   OUT outu s" `provided`" CONTAINS? TTRUE ;
 
-: RNLT-TEST-CONTROL ( -- )
-   RNLT-CONTROL$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-CONTROL ( -- )
+   CONTROL$ RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   RNLT-OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   RNLT-OUT outu s" `match`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `;match`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `CONSTRUCT`" CONTAINS? TTRUE ;
+   OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   OUT outu s" `match`" CONTAINS? TTRUE
+   OUT outu s" `;match`" CONTAINS? TTRUE
+   OUT outu s" `CONSTRUCT`" CONTAINS? TTRUE ;
 
-: RNLT-TEST-NUMERIC ( -- )
-   RNLT-NUM$ RNLT-RUN-CORE 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-NUMERIC ( -- )
+   NUM$ RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   RNLT-OUT outu s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
-   RNLT-OUT outu s" `.0`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `U.0`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `42`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `-7`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `1.5`" CONTAINS? TTRUE
-   RNLT-OUT outu s" `$FF`" CONTAINS? TTRUE ;
+   OUT outu s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
+   OUT outu s" `.0`" CONTAINS? TTRUE
+   OUT outu s" `U.0`" CONTAINS? TTRUE
+   OUT outu s" `42`" CONTAINS? TTRUE
+   OUT outu s" `-7`" CONTAINS? TTRUE
+   OUT outu s" `1.5`" CONTAINS? TTRUE
+   OUT outu s" `$FF`" CONTAINS? TTRUE ;
 
-: RNLT-TEST-NUMERIC-JSON ( -- )
-   RNLT-RUN-NUM-JSON 1 RNLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-NUMERIC-JSON ( -- )
+   RUN-NUM-JSON 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   RNLT-OUT outu s" schema_version" CONTAINS? TTRUE
-   RNLT-OUT outu s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
-   RNLT-OUT outu s" U.0" CONTAINS? TTRUE ;
+   OUT outu s" schema_version" CONTAINS? TTRUE
+   OUT outu s" E-NUMERIC-DEFINITION" CONTAINS? TTRUE
+   OUT outu s" U.0" CONTAINS? TTRUE ;
 
-: RNLT-MAIN ( -- )
+public
+
+: RUN ( -- )
    T-RESET
-   RNLT-PREPARE
-   RNLT-TEST-GOOD
-   RNLT-TEST-BAD
-   RNLT-TEST-JSON
-   RNLT-TEST-LOADER
-   RNLT-TEST-TFAM
-   RNLT-TEST-CONTROL
-   RNLT-TEST-NUMERIC
-   RNLT-TEST-NUMERIC-JSON
+   PREPARE
+   TEST-GOOD
+   TEST-BAD
+   TEST-JSON
+   TEST-LOADER
+   TEST-TFAM
+   TEST-CONTROL
+   TEST-NUMERIC
+   TEST-NUMERIC-JSON
    CLEANUP-RUN
-   RNLT-ROOT$ EXISTS? TFALSE
+   ROOT$ EXISTS? TFALSE
    T-REPORT
    s" reserved-name-lint-test: ok" type cr ;
+
+;package
