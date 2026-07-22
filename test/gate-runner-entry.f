@@ -2,4 +2,4 @@
 
 require test/gate-runner-lib.f
 
-GR-MAIN
+GATE-RUNNER:RUN
