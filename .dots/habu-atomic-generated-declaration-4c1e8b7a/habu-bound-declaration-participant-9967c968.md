@@ -1,9 +1,11 @@
 ---
 title: Bound declaration participant arena
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T22:24:41.125880+02:00\""
+created-at: "2026-07-22T22:24:41.125880+02:00"
+closed-at: "2026-07-22T23:31:14.993468+02:00"
+close-reason: landed as fb001e54, 72aa06e0, e77d6ef8; fresh destruction READY; focused suites, candidate validation, exact diff lints, Maki, PTX stdlib, host-lint, filemap-lint, and dot gate green on master e446a273
 ---
 
 Destruction review found that DECLARATION-TRANSACTION:GROW-TABLE doubles signed capacity and multiplies row and cell sizes without a ceiling, so wrapped byte counts can reach the allocator and corrupt the logical capacity. Ownership: package DECLARATION-TRANSACTION only. Add named E-PARTICIPANT-CAPACITY using the free transaction error code 7168, a maximum row count derived from the maximum positive byte count divided by the exact row stride, and checked count-to-byte and next-capacity helpers. INIT must reject capacities outside 1 through the maximum before changing state. Registration at the maximum must reject before calling the allocator or changing table, capacity, count, or row bytes. Normal growth retains sorted registration and exact allocator old and new byte counts. No raw state setter, magic range, saturating arithmetic, alternate allocator contract, or test-only production mutation API. Red proof: the real public INIT or REGISTER path accepts a one-over capacity today; a counting allocator proves rejection makes zero calls. Acceptance: exact-limit and one-over boundaries, normal growth, allocator failure byte identity, duplicate and sealed behavior unchanged, generated declaration transaction suite, typed-local and package diff lints, exact owning load, native fixpoint. Files: src/core/declaration-transaction.f and test/generated-declaration-transaction-suite.f only.

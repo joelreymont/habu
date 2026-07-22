@@ -1,9 +1,11 @@
 ---
 title: Make event snapshot failure atomic
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T22:24:41.185704+02:00\""
+created-at: "2026-07-22T22:24:41.185704+02:00"
+closed-at: "2026-07-22T23:31:15.008623+02:00"
+close-reason: landed as d68787a8; fresh destruction READY; focused suites, candidate validation, exact diff lints, Maki, PTX stdlib, host-lint, filemap-lint, and dot gate green on master e446a273
 ---
 
 Destruction review found that DECL-EVENT:DEV-OPEN changes the serial, field base, field and variant ordinals, and current selector before the fallible PF-BEGIN call. When the field owner rejects snapshot creation, no declaration-event frame exists and coordinator rollback cannot restore those cells. On base `674e2d49b891`, the real `GENERATED-DECL:RUN` path with `PF-TX-SERIAL` at the maximum signed value returns `E-PF-TX` 7123 but changes the event serial, field base, field and variant ordinals, and current selector. Existing focused suites remain green.
