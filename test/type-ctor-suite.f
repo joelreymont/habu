@@ -584,6 +584,70 @@ s" : CN-OPEN ( clfres<n,a> -- clopt<clfres<n,a>> ) CLOPT:SOME ;" TCE-CATCH 70 T=
 s" LOWER-WIDTH-AWARE-ROUNDTRIP" type cr
 
 \ ---------------------------------------------------------------------------
+\ dot habu-fail-closed-on-0ab1e401: ASYMMETRIC growth. The widest-DECLARED variant
+\ is not the widest-INSTANTIATED one, so the widest-instantiated variant needs FEWER
+\ pad cells than the declared family width reserves (extra pads < 0). Pass-1 lowering
+\ keys pads off the DECLARED width, and the add-only pass-2 fact (whose native
+\ width-fact certificate requires w >= 1) cannot REMOVE the surplus declared pad, so
+\ the certified instantiated width and the only possible lowering permanently DISAGREE.
+\ A width contradiction is never a sound value, so it is rejected UNCONDITIONALLY —
+\ a real construct/MATCH fails closed (rc 70) AND a CHECK-CANDIDATE probe rejects (0),
+\ rather than certify a native bundle wider than its type. This is stronger than the
+\ open-var CONSTRUCT-WIDE-STAGED-REJECT (which keeps an unknown-width type nameable):
+\ here the width IS known and contradictory. The positive-extra variant of the SAME
+\ family + instantiation constructs, and a non-asymmetric instantiation matches — so
+\ the reject isolates to the negative extra, not the machinery. (Signed pad
+\ corrections would make these lowerable; a separately-tracked deferred capability.)
+\ ---------------------------------------------------------------------------
+package XPAD-ASYM
+public
+PRODUCT clx2 0 FIELD x n FIELD y n ;PRODUCT
+SUMTYPE clxg 1
+  VARIANT wtwo a a ;VARIANT
+  VARIANT wthree n n n ;VARIANT
+;SUMTYPE
+private   \ clx2/clxg stay public (constructed/matched by qualified name); every probe, helper, and the trusted drop leaf are private members of XPAD-ASYM
+\ clxg<clx2> (a = width 2): W = 1 + max(wtwo=4, wthree=3) = 5. wtwo extra = -1, wthree = +1.
+s" CLXP ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo" CHECK-QUIET-CANDIDATE! 0 T=            \ width contradiction never certifies, even as a candidate probe
+s" : CLXG-BADTWO ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo ;" TCE-CATCH 70 T=            \ negative-extra construct fails closed
+\ The positive-extra variant certifies AND lowers, but the value it makes is
+\ PRODUCE-ONLY: no exhaustive MATCH can consume it, because any total MATCH must
+\ include the wtwo arm, whose negative-extra unpack fails closed (see CLXG-GET). This
+\ is current behavior, documented here; the produce-only policy question is tracked
+\ separately by the orchestrator.
+s" : CLXG-THREE ( n n n -- clxg<clx2> ) construct clxg wthree ;" TCE-CATCH 0 T=               \ same family + instantiation, positive-extra variant compiles (produce-only, see above)
+\ wtwo arm body uses only always-defined words (2drop 0), so the reject can ONLY come
+\ from the checker's negative-extra arm reject at 'OF' — not an E-UNDEFINED accessor:
+\ inside package XPAD-ASYM the derived ctor package is XPAD-ASYM-CLX2, so a bare
+\ CLX2:UNMAKE would itself throw rc 70 and mask the fix (dead probe). This shape flips
+\ pre-fix 0 -> post-fix 70 structurally.
+s" : CLXG-GET ( clxg<clx2> -- n ) MATCH clxg wtwo OF 2drop 0 ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ MATCH's negative-extra arm fails closed at 'OF'
+s" : CLXN-GET ( clxg<n> -- n ) MATCH clxg wtwo OF + ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 0 T=   \ non-asymmetric clxg<n>: same machinery matches clean
+\ Runtime depth parity for POSITIVE extra. Negative extra never certifies (the
+\ certify-time reject above discharges its runtime obligation); positive-extra
+\ clxg<clx2> cannot be consumed by any checked exhaustive MATCH, so pass-2 magnitude
+\ is verified by measuring the native cell footprint of the certified CLXG-THREE
+\ bundle. XPAD-WTHREE-W snapshots the stack depth, builds the bundle through the
+\ checked CLXG-THREE, and reads the depth delta; it MUST equal the certified width 5
+\ (pass-1 declared-width lowering emits 4 cells, pass-2 WF-XPAD-FLAG adds the one
+\ extra pad). Any wrong pass-2 magnitude (4 or 6) flips this assert. It MUST build
+\ through the checked-compiled CLXG-THREE — an unchecked in-word `construct` skips
+\ pass-2 and reads 4. Everything here is checked except TWX-XPAD-DROP-BUNDLE, whose
+\ only job is to drop the measured multi-cell layout value — the one operation the
+\ checker cannot express — with a straight-line 2drop 2drop drop over the certified
+\ width; its declared ( clxg<clx2> n -- n ) effect keeps the whole call site checked.
+variable XPAD-D0                                              \ data-stack depth snapshot taken before the build
+: XPAD-MARK ( -- ) depth XPAD-D0 ! ;                         \ checked: snapshot the baseline depth
+: XPAD-DELTA ( -- n ) depth XPAD-D0 @ - ;                    \ checked: cells the build added to the stack
+TRUSTED: TWX-XPAD-DROP-BUNDLE ( clxg<clx2> n -- n )          \ trusted leaf: drop the measured layout value, keep the count
+   >r 2drop 2drop drop r> ;
+: XPAD-WTHREE-W ( -- n )                                     \ native cell footprint of the certified clxg<clx2> wthree bundle
+   XPAD-MARK 1 2 3 CLXG-THREE XPAD-DELTA TWX-XPAD-DROP-BUNDLE ;
+XPAD-WTHREE-W 5 T=
+s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
+;package
+
+\ ---------------------------------------------------------------------------
 \ dot habu-universal-enum-parametric-ad011c21: a parametric family APPLICATION
 \ and a single-effect QUOTATION as variant payloads construct and MATCH. The
 \ nested application rides the landed width-aware construct/MATCH lowering; the

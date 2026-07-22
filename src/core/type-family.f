@@ -2191,21 +2191,42 @@ TFC-QUOT-ROW-INSTALL
       TFC-J @ 1 + TFC-J !
    REPEAT ;
 
-: TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}   \ record the wide construct's extra-pad fact
+\ Extra pads = instantiated pads - declared pads. A POSITIVE extra means the wide
+\ instantiation needs MORE zero cells than the declared family width reserves, and
+\ add-only pass 2 supplies them (WF-XPAD-FLAG fact). A NEGATIVE extra means the
+\ instantiated variant is NARROWER than the declared reservation: this happens when
+\ the widest-DECLARED variant is not the widest-INSTANTIATED one (sum two<a a> /
+\ three<n n n> at a = width 2 — declared-widest is three, instantiated-widest is two).
+\ Pass-1 lowering keys pads off the DECLARED width, so it emits MORE pad cells than
+\ the certified instantiated width has, and the add-only pass-2 fact (whose native
+\ width-fact certificate requires w >= 1) cannot REMOVE cells to correct it. The
+\ certified width and the only possible lowering permanently DISAGREE, so no sound
+\ construct/MATCH of this variant exists on the current engine — unlike the open-var
+\ case (width genuinely unknown until instantiation), which CONSTRUCT-WIDE-STAGED-REJECT
+\ leaves nameable as a type probe. A width contradiction must NEVER certify, so reject
+\ it unconditionally here, including a CHECK-CANDIDATE probe, rather than hand back a
+\ bundle wider than its certified type. (Signed pad corrections through pass 2, which
+\ would make these instantiations lowerable, are a separately-tracked deferred capability.)
+: TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
+   0 OK ! -1 FAILSET ! ;
+
+: TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}   \ record the wide construct's extra-pad fact, or fail closed on a narrower-than-declared instantiation
    famterm T-WIDTH 1 -                          \ instantiated slots
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -        \ - declared pads = extra pads
    {: extra:n :}
-   extra 0 > IF 0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL THEN ;
+   extra 0 > IF 0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ narrower-than-declared: add-only lowering cannot remove the surplus declared pads
 
-: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact
+: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact, or fail closed on a narrower-than-declared arm
    term T-RES {: rt:n :}
    rt TFC-CON-CLOSED? 0= IF EXIT THEN           \ open-arg (unstable width): leave declared width, stay fail-closed
    rt T-WIDTH 1 -                                \ instantiated slots
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
    {: extra:n :}
-   extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL THEN ;
+   extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ narrower-than-declared arm: declared-width unpack would skip a pad the bundle lacks
 
 : TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ active checker package ("" at top level)
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ EXIT THEN
