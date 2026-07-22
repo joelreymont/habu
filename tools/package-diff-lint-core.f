@@ -1,10 +1,10 @@
 \ package-diff-lint-core.f - enforce package ownership on changed Forth definitions.
 \
-\ The unified-diff grammar belongs to tools/lint/diff.f.  This client records
-\ added new-side lines, verifies every added/context line against the current
-\ post-change file, then lexes that complete file.  Reading the complete source
-\ is essential: a hunk may start inside a package opened hundreds of lines
-\ earlier, and hunk context cannot prove that scope.
+\ The unified-diff grammar belongs to tools/lint/diff.f.  Each canonical section
+\ is parsed once to verify the new side and reconstruct the complete old source,
+\ then replayed to align genuine old-side package transitions with new lines.
+\ Both complete sources are lexed: hunk context and isolated deleted lines cannot
+\ prove package scope across multiline comments, strings, or definitions.
 \
 \ Load after the lint lexer, memory, filesystem, and DIFF packages.
 
@@ -49,15 +49,25 @@ variable PACKAGE-U
 variable SOURCE-A
 variable SOURCE-U
 variable SOURCE-CAP
+variable OLD-A
+variable OLD-U
+variable OLD-CAP
 variable MARK-A
 variable MARK-CAP
+variable MARK-U
+variable NEW-SLOTS
+variable OLD-SLOTS
 variable MAPPING-PEAK
 variable FAIL-NEXT-MARK-ALLOC
+variable FAIL-NEXT-OLD-ALLOC
 variable BAD
 variable SECTION-ACTIVE
+variable SECTION-SEEN
+variable WHOLE-CHANGED
 variable SOURCE-LINE
 variable SOURCE-OFF
 variable NEW-LINE
+variable OLD-LINE
 variable LEX-I
 variable PACKAGE-OPEN
 variable SCOPE-DELTA
@@ -74,6 +84,11 @@ variable STEM-START
 variable STEM-END
 variable INPUT-A
 variable INPUT-U
+variable SECTION-START
+variable ARTIFACT-LINE-START
+variable ARTIFACT-I
+variable REPLAY-SECTION-SEEN
+variable FILE-USED
 
 : PTR-SLOT ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -84,6 +99,9 @@ variable INPUT-U
 : MARK-PTR ( -- ptr ptr u8 )
    MARK-A PTR-SLOT ;
 
+: OLD-PTR ( -- ptr ptr u8 )
+   OLD-A PTR-SLOT ;
+
 : INPUT-PTR ( -- ptr ptr u8 )
    INPUT-A PTR-SLOT ;
 
@@ -92,6 +110,9 @@ variable INPUT-U
 
 : MARK-A@ ( -- ptr u8 )
    MARK-PTR @ ;
+
+: OLD-A@ ( -- ptr u8 )
+   OLD-PTR @ ;
 
 : ROOT$ ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
@@ -108,13 +129,17 @@ variable INPUT-U
 : SOURCE$ ( -- ptr u8 n )
    SOURCE-A@ SOURCE-U @ ;
 
+: OLD$ ( -- ptr u8 n )
+   OLD-A@ OLD-U @ ;
+
 : INPUT$ ( -- ptr u8 n )
    INPUT-PTR @ INPUT-U @ ;
 
 : LIVE-MAPPING# ( -- n )
    0
    SOURCE-CAP @ 0<> if 1+ then
-   MARK-CAP @ 0<> if 1+ then ;
+   MARK-CAP @ 0<> if 1+ then
+   OLD-CAP @ 0<> if 1+ then ;
 
 : NOTE-MAPPING-PEAK ( -- )
    LIVE-MAPPING# MAPPING-PEAK @ max MAPPING-PEAK ! ;
@@ -179,6 +204,14 @@ variable INPUT-U
    SOURCE-ALLOC-NEED MEM-ALLOC-64K-SPAN MARK-CAP ! MARK-PTR !
    NOTE-MAPPING-PEAK ;
 
+: OLD-ALLOC ( n -- )
+   FAIL-NEXT-OLD-ALLOC @ if
+      false FAIL-NEXT-OLD-ALLOC !
+      drop E-MEM-SIZE throw
+   then
+   SOURCE-ALLOC-NEED MEM-ALLOC-64K-SPAN OLD-CAP ! OLD-PTR !
+   NOTE-MAPPING-PEAK ;
+
 : SOURCE-RELEASE ( -- )
    SOURCE-CAP @ 0= if exit then
    SOURCE-A@ {: a:ptr :}
@@ -193,13 +226,21 @@ variable INPUT-U
    0 MARK-CAP !
    a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
+: OLD-RELEASE ( -- )
+   OLD-CAP @ 0= if exit then
+   OLD-A@ {: a:ptr :}
+   OLD-CAP @ {: cap:n :}
+   0 OLD-CAP !
+   a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
 : CLEANUP-COMBINE ( n n -- n )
    over 0 <> if drop exit then nip ;
 
-\ Release both mappings even if one munmap fails; an existing primary error wins.
+\ Release every mapping even if one munmap fails; an existing primary error wins.
 : RELEASE-BUFFERS ( n -- )
    [: SOURCE-RELEASE ;] catch CLEANUP-COMBINE
    [: MARK-RELEASE ;] catch CLEANUP-COMBINE
+   [: OLD-RELEASE ;] catch CLEANUP-COMBINE
    dup 0 <> if throw then drop ;
 
 : MARK-CLEAR ( n -- ) {: need:n :}
@@ -208,6 +249,16 @@ variable INPUT-U
       1+
    repeat drop ;
 
+: ADD-SIZE ( n n -- n ) {: a:n b:n :}
+   a 0 < b 0 < or if E-MEM-SIZE throw then
+   a MEM-MAX-N b - > if E-MEM-SIZE throw then
+   a b + ;
+
+: DOUBLE-SIZE ( n -- n )
+   dup 0 < if drop E-MEM-SIZE throw then
+   dup MEM-MAX-N 2 / > if drop E-MEM-SIZE throw then
+   2 * ;
+
 : BUILD-FULL-PATH ( -- )
    ROOT$ FILE$ FULL-BUF JOIN-PATH FULL-U ! ;
 
@@ -215,18 +266,25 @@ variable INPUT-U
    BUILD-FULL-PATH
    FULL$ FILE-SIZE {: size:n :}
    size 0 < if E-MEM-SIZE throw then
-   size MEM-MAX-N 2 - > if E-MEM-SIZE throw then
-   size 2 + MEM-MAX-N 2 / > if E-MEM-SIZE throw then
+   size 2 ADD-SIZE NEW-SLOTS !
+   size INPUT-U @ ADD-SIZE 2 ADD-SIZE OLD-SLOTS !
+   NEW-SLOTS @ DOUBLE-SIZE OLD-SLOTS @ ADD-SIZE MARK-U !
    size SOURCE-ALLOC
    FULL$ SOURCE-A@ SOURCE-CAP @ READ-ALL SOURCE-U !
    SOURCE-U @ size <> if E-DIFF-SYNTAX throw then
-   size 2 + 2 * dup MARK-ALLOC MARK-CLEAR ;
+   MARK-U @ dup MARK-ALLOC MARK-CLEAR
+   OLD-SLOTS @ 2 - OLD-ALLOC
+   0 OLD-U ! ;
 
 : LINE-OFF ( n -- n ) {: line:n :}
    line 0 <= if E-DIFF-SYNTAX throw then
-   line MARK-CAP @ 2 / >= if E-DIFF-SYNTAX throw then
-   line 2 *
-   dup 1+ MARK-CAP @ >= if E-DIFF-SYNTAX throw then ;
+   line NEW-SLOTS @ >= if E-DIFF-SYNTAX throw then
+   line 2 * ;
+
+: OLD-LINE-OFF ( n -- n ) {: line:n :}
+   line 0 <= if E-DIFF-SYNTAX throw then
+   line OLD-SLOTS @ >= if E-DIFF-SYNTAX throw then
+   NEW-SLOTS @ 2 * line + ;
 
 : MARK-LINE ( n -- ) {: line:n :}
    1 MARK-A@ line LINE-OFF + c! ;
@@ -244,6 +302,27 @@ variable INPUT-U
    next -127 < next 127 > or if E-DIFF-SYNTAX throw then
    next 0 < if next 256 + else next then
    MARK-A@ line LINE-OFF + 1+ c! ;
+
+: OLD-DELTA@ ( n -- n )
+   OLD-LINE-OFF MARK-A@ + c@
+   dup 127 > if 256 - then ;
+
+: OLD-DELTA+ ( n n -- ) {: line:n amount:n :}
+   line OLD-DELTA@ amount + {: next:n :}
+   next -1 < next 1 > or if E-DIFF-SYNTAX throw then
+   next 0 < if next 256 + else next then
+   MARK-A@ line OLD-LINE-OFF + c! ;
+
+: OLD+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-MEM-SIZE throw then
+   OLD-U @ u ADD-SIZE OLD-SLOTS @ 2 - > if E-MEM-SIZE throw then
+   a OLD-A@ OLD-U @ + u BYTE-COPY
+   OLD-U @ u + OLD-U ! ;
+
+: OLD-LINE+ ( ptr u8 n -- )
+   OLD+
+   LF-C ONE c!
+   ONE 1 OLD+ ;
 
 : SOURCE-END? ( -- bool )
    SOURCE-OFF @ SOURCE-U @ >= ;
@@ -272,16 +351,31 @@ variable INPUT-U
 
 : SOURCE-SEEK ( n -- ) {: target:n :}
    target SOURCE-LINE @ < if E-DIFF-SYNTAX throw then
-   begin SOURCE-LINE @ target < while SOURCE-LINE+ repeat ;
+   begin SOURCE-LINE @ target < while
+      SOURCE-OFF @ {: start:n :}
+      SOURCE-LINE+
+      SOURCE-A@ start + SOURCE-OFF @ start - OLD+
+   repeat ;
 
 : LINE-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
    SOURCE-LINE$ a u LINT-STR= 0= if E-DIFF-SYNTAX throw then ;
 
 : CONTENT-LINE ( bool -- ) {: added:bool :}
    DIFF:CONTENT$ LINE-CHECK
-   added if NEW-LINE @ MARK-LINE then
-   SOURCE-LINE+
+   added if
+      NEW-LINE @ MARK-LINE
+      SOURCE-LINE+
+   else
+      SOURCE-OFF @ {: start:n :}
+      SOURCE-LINE+
+      SOURCE-A@ start + SOURCE-OFF @ start - OLD+
+   then
    NEW-LINE @ 1+ NEW-LINE ! ;
+
+: COPY-SOURCE-REST ( -- )
+   SOURCE-OFF @ SOURCE-U @ > if E-DIFF-SYNTAX throw then
+   SOURCE-A@ SOURCE-OFF @ + SOURCE-U @ SOURCE-OFF @ - OLD+
+   SOURCE-U @ SOURCE-OFF ! ;
 
 : CI-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n p:ptr pu:n :}
    u pu < if false exit then
@@ -464,7 +558,7 @@ variable INPUT-U
       CHECK-PREFIX
    else
       DEF-START-LINE @ last-line ADDED-RANGE?
-      SCOPE-DELTA @ 0<> or if
+      SCOPE-DELTA @ 0<> or WHOLE-CHANGED @ or if
          GLOBAL-SURFACE? 0= if REPORT-GLOBAL then
       then
    then
@@ -542,47 +636,91 @@ variable INPUT-U
    repeat
    DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;
 
-: FINALIZE-WORK ( -- )
-   SECTION-ACTIVE @ if SCAN-DEFINITIONS then
-   false SECTION-ACTIVE ! ;
+: OLD-PACKAGE-TOKEN ( n -- bool ) {: k:n :}
+   k s" package" TOK=CI if
+      k 1+ WORD? 0= if E-DIFF-SYNTAX throw then
+      PACKAGE-OPEN @ if E-DIFF-SYNTAX throw then
+      k LL@ 1 OLD-DELTA+
+      true PACKAGE-OPEN !
+      k 2 + LEX-I !
+      true exit
+   then
+   k s" ;package" TOK=CI if
+      PACKAGE-OPEN @ 0= if E-DIFF-SYNTAX throw then
+      k LL@ -1 OLD-DELTA+
+      false PACKAGE-OPEN !
+      k 1+ LEX-I !
+      true exit
+   then
+   false ;
 
-: FINALIZE-SECTION ( -- )
-   [: FINALIZE-WORK ;] catch {: rc:n :}
-   false SECTION-ACTIVE !
-   rc RELEASE-BUFFERS ;
+: OLD-START-DEFINITION ( n n -- ) {: k:n kind:n :}
+   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
+   kind DATA-DEFINITION = if
+      namei 1+ LEX-I ! exit
+   then
+   kind DEF-KIND !
+   true DEF-OPEN !
+   namei 1+ LEX-I ! ;
+
+: OLD-SCAN-TOKEN ( n -- ) {: k:n :}
+   DEF-OPEN @ if
+      k DEF-KIND @ CLOSE? if false DEF-OPEN ! then
+      k 1+ LEX-I ! exit
+   then
+   k OLD-PACKAGE-TOKEN if exit then
+   k DEFINER-KIND dup 0= if drop k 1+ LEX-I ! exit then
+   k swap OLD-START-DEFINITION ;
+
+: SCAN-OLD-BOUNDARIES ( -- )
+   OLD$ LEX-SOURCE
+   LEX-UNTERM-QUOTE? if E-DIFF-SYNTAX throw then
+   0 LEX-I !
+   false PACKAGE-OPEN !
+   false DEF-OPEN !
+   begin LEX-I @ L# @ < while
+      LEX-I @ OLD-SCAN-TOKEN
+   repeat
+   DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;
+
+: WHOLE-CHANGE? ( DIFF:form -- bool )
+   MATCH DIFF:form
+      modify OF false ENDOF
+      add-file OF false ENDOF
+      delete-file OF false ENDOF
+      rename OF true ENDOF
+      copy OF true ENDOF
+      mode OF false ENDOF
+      binary OF false ENDOF
+   ;MATCH ;
 
 : BEGIN-SECTION ( ptr u8 n ptr u8 n DIFF:form bool -- )
    {: old:ptr oldu:n new:ptr newu:n kind:DIFF:form body:bool :}
-   old oldu 2drop kind drop
-   FINALIZE-SECTION
+   old oldu 2drop
+   SECTION-SEEN @ if E-DIFF-SYNTAX throw then
+   true SECTION-SEEN !
    new newu FILE-BUF FILE-U COPY!
    false SECTION-ACTIVE !
-   body 0= if exit then
+   kind WHOLE-CHANGE? WHOLE-CHANGED !
    newu 0= if exit then
    FORTH? 0= if exit then
+   body 0= WHOLE-CHANGED @ 0= and if exit then
    LOAD-SOURCE
    1 SOURCE-LINE !
    0 SOURCE-OFF !
-   0 NEW-LINE !
+   1 NEW-LINE !
    true SECTION-ACTIVE ! ;
 
 : HUNK ( n -- ) {: line:n :}
    line NEW-LINE !
    SECTION-ACTIVE @ if line SOURCE-SEEK then ;
 
-\ Deleted package boundaries contribute the inverse new-vs-old depth change at
-\ the next new-side line.  The shared source lexer keeps comments and quoted
-\ text from forging a boundary; no independent token grammar lives here.
-: DELETE-DELTA ( -- )
-   DIFF:CONTENT$ LEX-SOURCE
-   0 begin dup L# @ < while
-      dup s" package" TOK=CI if
-         NEW-LINE @ -1 DELTA+
-      else
-         dup s" ;package" TOK=CI if NEW-LINE @ 1 DELTA+ then
-      then
-      1+
-   repeat drop ;
+: HUNK-NEW-LINE ( -- n )
+   DIFF:HUNK-NEW-START
+   DIFF:HUNK-NEW-COUNT 0= if 1 ADD-SIZE then ;
+
+: DELETE-CONTENT ( -- )
+   DIFF:CONTENT$ OLD-LINE+ ;
 
 : EVENT ( DIFF:event -- )
    MATCH DIFF:event
@@ -591,10 +729,10 @@ variable INPUT-U
          DIFF:SECTION-OLD$ DIFF:SECTION-NEW$
          DIFF:SECTION-FORM DIFF:SECTION-BODY? BEGIN-SECTION
       ENDOF
-      hunk OF DIFF:HUNK-NEW-START HUNK ENDOF
+      hunk OF HUNK-NEW-LINE HUNK ENDOF
       add OF SECTION-ACTIVE @ if true CONTENT-LINE then ENDOF
       context OF SECTION-ACTIVE @ if false CONTENT-LINE then ENDOF
-      delete OF SECTION-ACTIVE @ if DELETE-DELTA then ENDOF
+      delete OF SECTION-ACTIVE @ if DELETE-CONTENT then ENDOF
    ;MATCH ;
 
 : LINE ( ptr u8 n -- )
@@ -611,27 +749,118 @@ variable INPUT-U
       1+
    repeat drop ;
 
-: END-ARTIFACT-WORK ( -- )
+: REPLAY-BEGIN ( -- )
+   REPLAY-SECTION-SEEN @ if E-DIFF-SYNTAX throw then
+   true REPLAY-SECTION-SEEN !
+   1 OLD-LINE !
+   1 NEW-LINE ! ;
+
+: REPLAY-HUNK ( n -- ) {: line:n :}
+   line NEW-LINE @ < if E-DIFF-SYNTAX throw then
+   line NEW-LINE @ - {: gap:n :}
+   OLD-LINE @ gap ADD-SIZE OLD-LINE !
+   line NEW-LINE ! ;
+
+: REPLAY-DELETE ( -- )
+   OLD-LINE @ OLD-DELTA@ negate {: amount:n :}
+   amount 0<> if NEW-LINE @ amount DELTA+ then
+   OLD-LINE @ 1 ADD-SIZE OLD-LINE ! ;
+
+: REPLAY-EVENT ( DIFF:event -- )
+   MATCH DIFF:event
+      none OF ENDOF
+      section OF REPLAY-BEGIN ENDOF
+      hunk OF HUNK-NEW-LINE REPLAY-HUNK ENDOF
+      add OF NEW-LINE @ 1 ADD-SIZE NEW-LINE ! ENDOF
+      context OF
+         OLD-LINE @ 1 ADD-SIZE OLD-LINE !
+         NEW-LINE @ 1 ADD-SIZE NEW-LINE !
+      ENDOF
+      delete OF REPLAY-DELETE ENDOF
+   ;MATCH ;
+
+: REPLAY-LINE ( ptr u8 n -- )
+   DIFF:LINE REPLAY-EVENT ;
+
+: REPLAY-SOURCE-LINES ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 SCAN-START !
+   0 begin dup u < while
+      dup a + c@ LF-C = if
+         a SCAN-START @ + over SCAN-START @ - REPLAY-LINE
+         dup 1+ SCAN-START !
+      then
+      1+
+   repeat drop ;
+
+: REPLAY-DELETED-BOUNDARIES ( -- )
+   DIFF:RESET
+   false REPLAY-SECTION-SEEN !
+   INPUT$ REPLAY-SOURCE-LINES
+   DIFF:FINISH REPLAY-EVENT
+   REPLAY-SECTION-SEEN @ 0= if E-DIFF-SYNTAX throw then ;
+
+: FINISH-SECTION-WORK ( -- )
    DIFF:FINISH EVENT
-   FINALIZE-SECTION
+   SECTION-SEEN @ 0= if E-DIFF-SYNTAX throw then
+   SECTION-ACTIVE @ if
+      COPY-SOURCE-REST
+      SCAN-OLD-BOUNDARIES
+      REPLAY-DELETED-BOUNDARIES
+      SCAN-DEFINITIONS
+   then
    DIFF:RESET ;
+
+: PROCESS-SECTION-WORK ( -- )
+   DIFF:RESET
+   false SECTION-SEEN !
+   false SECTION-ACTIVE !
+   INPUT$ SOURCE-LINES
+   FINISH-SECTION-WORK ;
+
+: PROCESS-SECTION ( ptr u8 n -- )
+   INPUT-U ! INPUT-PTR !
+   [: PROCESS-SECTION-WORK ;] catch {: rc:n :}
+   false SECTION-ACTIVE !
+   rc RELEASE-BUFFERS ;
 
 : ABORT-PARSE ( n -- ) {: rc:n :}
    false SECTION-ACTIVE !
    false FAIL-NEXT-MARK-ALLOC !
+   false FAIL-NEXT-OLD-ALLOC !
    DIFF:RESET
    rc RELEASE-BUFFERS ;
 
+: SECTION-HEAD? ( ptr u8 n -- bool )
+   s" diff --git " LINT-PREFIX? ;
+
+: PROCESS-PRIOR-SECTION ( ptr u8 n -- ) {: a:ptr end:n :}
+   SECTION-START @ -1 = if
+      ARTIFACT-LINE-START @ 0<> if E-DIFF-SYNTAX throw then
+      ARTIFACT-LINE-START @ SECTION-START ! exit
+   then
+   a SECTION-START @ + end SECTION-START @ - PROCESS-SECTION
+   ARTIFACT-LINE-START @ SECTION-START ! ;
+
+: PROCESS-ARTIFACT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DIFF:SOURCE-VALIDATE
+   -1 SECTION-START !
+   0 ARTIFACT-LINE-START !
+   0 ARTIFACT-I !
+   begin ARTIFACT-I @ u < while
+      a ARTIFACT-I @ + c@ LF-C = if
+         a ARTIFACT-LINE-START @ +
+         ARTIFACT-I @ ARTIFACT-LINE-START @ - SECTION-HEAD? if
+            a ARTIFACT-LINE-START @ PROCESS-PRIOR-SECTION
+         then
+         ARTIFACT-I @ 1+ ARTIFACT-LINE-START !
+      then
+      ARTIFACT-I @ 1+ ARTIFACT-I !
+   repeat
+   SECTION-START @ -1 = if E-DIFF-SYNTAX throw then
+   a SECTION-START @ + u SECTION-START @ - PROCESS-SECTION ;
+
 : SOURCE-WORK ( -- )
-   INPUT$ SOURCE-LINES ;
-
-: END-ARTIFACT ( -- )
-   [: END-ARTIFACT-WORK ;] catch {: rc:n :}
-   rc 0<> if rc ABORT-PARSE then ;
-
-: FINISH-WORK ( -- )
-   DIFF:FINISH EVENT
-   FINALIZE-SECTION ;
+   INPUT$ PROCESS-ARTIFACT ;
 
 public
 
@@ -645,7 +874,9 @@ public
    0 BAD !
    0 MAPPING-PEAK !
    false FAIL-NEXT-MARK-ALLOC !
+   false FAIL-NEXT-OLD-ALLOC !
    0 FILE-U !
+   false FILE-USED !
    false SECTION-ACTIVE ! ;
 
 : SOURCE ( ptr u8 n -- )
@@ -654,29 +885,17 @@ public
    rc 0<> if rc ABORT-PARSE then ;
 
 : FILE ( ptr u8 n -- )
+   FILE-USED @ if 2drop E-DIFF-SYNTAX throw then
+   true FILE-USED !
    LINT-SOURCE:LOAD
-   LINT-SOURCE:TEXT SOURCE
-   END-ARTIFACT ;
+   LINT-SOURCE:TEXT SOURCE ;
 
+\ Embedders use FINDINGS to distinguish policy findings from parser failures
+\ while routing diagnostics through their own LINT-OUT sink.
 : FINDINGS ( -- n )
    BAD @ ;
 
-\ Diagnostic ownership state used by leak and parser-reuse regressions.  The
-\ count is derived from the two authoritative capacities, never shadow state.
-: LIVE-MAPPINGS ( -- n )
-   LIVE-MAPPING# ;
-
-: PEAK-MAPPINGS ( -- n )
-   MAPPING-PEAK @ ;
-
-\ Portable, one-shot fault seam for proving cleanup between the two owned
-\ allocations.  It clears itself before throwing the allocator error.
-: FAIL-NEXT-MARK-ALLOCATION ( -- )
-   true FAIL-NEXT-MARK-ALLOC ! ;
-
 : FINISH ( -- )
-   [: FINISH-WORK ;] catch {: rc:n :}
-   rc 0<> if rc ABORT-PARSE then
    BAD @ 0 > if 1 throw then ;
 
 ;package

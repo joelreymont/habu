@@ -1,5 +1,5 @@
 \ package-diff-lint.f - CLI for exact-diff package ownership enforcement.
-\ Run: bin/hb --load tools/package-diff-lint.f -- diff.patch ...
+\ Run: bin/hb --load tools/package-diff-lint.f -- diff.patch
 
 require lib/errors.f
 require lib/string.f
@@ -18,16 +18,13 @@ private
 
 : RUN-CHECK ( -- )
    PACKAGE-DIFF:RESET
-   0 begin dup ARGV:POS# < while
-      dup ARGV:POS$ PACKAGE-DIFF:FILE
-      1+
-   repeat drop
+   0 ARGV:POS$ PACKAGE-DIFF:FILE
    PACKAGE-DIFF:FINISH ;
 
 : RUN ( -- )
-   s" tools/package-diff-lint.f diff.patch ..." ARGV:USAGE!
+   s" tools/package-diff-lint.f diff.patch" ARGV:USAGE!
    ARGV:PARSE
-   1 -1 ARGV:EXPECT-POS
+   1 1 ARGV:EXPECT-POS
    [: RUN-CHECK ;] catch {: code:n :}
    s" package-diff-lint" code LINT-MAIN ;
 

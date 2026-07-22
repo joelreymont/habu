@@ -137,9 +137,11 @@ bin/hb --load tools/typed-local-diff-lint.f -- "$HB_TMP/change.diff"
 bin/hb --load tools/package-diff-lint.f -- "$HB_TMP/change.diff"
 ```
 
-`package-diff-lint` validates each hunk against the current file, then derives
-scope from the complete lexical source, so a package opener outside the hunk is
-still authoritative and comment, string, or diff-header text cannot forge one.
+`package-diff-lint` accepts exactly one diff artifact. It validates every
+new-side hunk line against the current file, reconstructs the complete old side
+from those canonical diff events, and lexes both complete sources. A package
+opener outside the hunk is therefore authoritative, while comment, string,
+definition-body, or diff-header text on either side cannot forge a boundary.
 Its publication inventory is derived from the native dictionary definers, the
 checker-owned type and storage declarers, every repository defining word that
 executes `create`, and every repository declarer that generates definitions
