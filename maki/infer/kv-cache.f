@@ -1,7 +1,7 @@
 \ maki/infer/kv-cache.f - host paged KV cache allocator for the GB10 engine.
 \
 \ This module owns the mutable HOST allocator: one coherent byte pool, page
-\ refcounts, per-sequence block tables, generation-bearing sequence handles,
+\ refcounts, cache-owned fixed block-table slices, generation-bearing handles,
 \ copy-on-write prefix forks, physical allocator metrics, and max-context page
 \ reservations. The device never reads these mutable tables. Immutable device
 \ publication is the separate habu-lease-kv-snapshot-9ef40f19 child.
@@ -23,14 +23,13 @@
 \ All configuration, metadata, page, and ceiling calculations use pre-multiply /
 \ pre-add checks against KV-MAX-N. Ceiling division is quotient-plus-remainder and
 \ never forms n+d-1. Allocation, fork and append perform every fallible preflight
-\ before ownership mutation. Cancellation commits logical death first, then uses
-\ consume-before-release vector disposal; a release failure cannot make a stale
-\ handle live again or double-release pages on retry.
+\ before ownership mutation. Cancellation commits logical death first, returns
+\ page ownership, then clears its fixed table slice; cleanup cannot revive a stale
+\ handle.
 
 require lib/prelude.f
 require lib/string.f
 require lib/memory.f
-require lib/vector.f
 require lib/type/deftype.f
 
 -5622 constant E-KV-CONFIG      \ invalid or overflowing configuration
@@ -68,6 +67,7 @@ PRODUCT kvcfg 0
    FIELD dbytes n
    FIELD npages n
    FIELD nseq n
+   FIELD maxctx n
    FIELD ptok n
 ;PRODUCT
 
@@ -76,7 +76,6 @@ private
 $7FFFFFFFFFFFFFFF constant KV-MAX-N
 KV-MAX-N constant KV-ID-MAX
 16 constant KV-P
-8 constant KV-BLK-CAP0
 
 \ Header: pointer fields occupy one cell. POOLCAP is the single ownership token
 \ for the complete cache and is written last after both mappings and the cache id.
@@ -93,10 +92,12 @@ KV-MAX-N constant KV-ID-MAX
 10 cells constant HDIM-OFF
 11 cells constant DBYTES-OFF
 12 cells constant PTOK-OFF
-13 cells constant HIWATER-OFF
-14 cells constant CACHEID-OFF
-15 cells constant RESERVED-OFF
-16 cells constant HDR-SIZE
+13 cells constant MAXCTX-OFF
+14 cells constant BLKCAP-OFF
+15 cells constant HIWATER-OFF
+16 cells constant CACHEID-OFF
+17 cells constant RESERVED-OFF
+18 cells constant HDR-SIZE
 
 variable KV-NEXT-CACHE-ID
 
@@ -139,10 +140,10 @@ variable KV-NEXT-CACHE-ID
    npages ptok KV-MUL0 drop
    pageb tokb ;
 
-: KV-META-CELLS ( n n -- n ) {: np:n ns:n :}
+: META-CELLS ( n n n -- n ) {: np:n ns:n blkcap:n :}
    np 3 KV-MUL0
-   ns 5 KV-MUL0 KV-ADD0
-   ns VEC-HEADER-CELLS KV-MUL0 KV-ADD0
+   ns 6 KV-MUL0 KV-ADD0
+   ns blkcap KV-MUL0 KV-ADD0
    dup 1 cells KV-MUL0 drop ;
 
 : KV-PAGES-FOR-RAW ( n n -- n ) {: toks:n ptok:n :}
@@ -152,28 +153,10 @@ variable KV-NEXT-CACHE-ID
 : KV-POOL-BYTES ( ptr a -- n ) {: h:ptr :}
    h NPAGES-OFF H@ h PAGEB-OFF H@ KV-MUL0 ;
 
-\ ---- typed vector count/index adapters ---------------------------------------------
-: KV>ITEM ( n -- CAD-NUM:item-count )
-   CAD-NUM:ITEM-COUNT
-   MATCH CAD-NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-CAPACITY throw ENDOF
-      zero OF E-VEC-CAPACITY throw ENDOF        overflow OF E-VEC-CAPACITY throw ENDOF
-      underflow OF E-VEC-CAPACITY throw ENDOF   bad-alignment OF E-VEC-CAPACITY throw ENDOF
-      misaligned OF E-VEC-CAPACITY throw ENDOF
-   ;MATCH ;
-
-: KV>INDEX ( n -- CAD-NUM:index )
-   CAD-NUM:INDEX
-   MATCH CAD-NUM:numeric-result
-      ok OF ENDOF                             negative OF E-VEC-BOUNDS throw ENDOF
-      zero OF E-VEC-BOUNDS throw ENDOF          overflow OF E-VEC-BOUNDS throw ENDOF
-      underflow OF E-VEC-BOUNDS throw ENDOF     bad-alignment OF E-VEC-BOUNDS throw ENDOF
-      misaligned OF E-VEC-BOUNDS throw ENDOF
-   ;MATCH ;
-
 \ ---- metadata partition ------------------------------------------------------------
 \ [free np][refcount np][COW reservation np][len ns][live ns]
-\ [generation ns][future-page reservation ns][maximum tokens ns][VEC headers ns].
+\ [generation ns][future-page reservation ns][maximum tokens ns][block len ns]
+\ [nseq * block-cap fixed page ids].
 : FREE-BASE ( ptr a -- ptr a )  META@ ;
 
 : REFC-BASE ( ptr a -- ptr a ) {: h:ptr :}
@@ -197,8 +180,11 @@ variable KV-NEXT-CACHE-ID
 : SEQMAX-BASE ( ptr a -- ptr a ) {: h:ptr :}
    h SEQRES-BASE h NSEQ-OFF H@ cells + ;
 
-: SEQBLK-BASE ( ptr a -- ptr a ) {: h:ptr :}
+: SEQBLEN-BASE ( ptr a -- ptr a ) {: h:ptr :}
    h SEQMAX-BASE h NSEQ-OFF H@ cells + ;
+
+: SEQBLK-BASE ( ptr a -- ptr a ) {: h:ptr :}
+   h SEQBLEN-BASE h NSEQ-OFF H@ cells + ;
 
 : FREE@ ( ptr a n -- n ) {: h:ptr i:n :}  h FREE-BASE i cells + @ ;
 : FREE! ( n ptr a n -- ) {: v:n h:ptr i:n :}  v h FREE-BASE i cells + ! ;
@@ -216,25 +202,34 @@ variable KV-NEXT-CACHE-ID
 : SEQRES! ( n ptr a n -- ) {: v:n h:ptr i:n :}  v h SEQRES-BASE i cells + ! ;
 : SEQMAX@ ( ptr a n -- n ) {: h:ptr i:n :}  h SEQMAX-BASE i cells + @ ;
 : SEQMAX! ( n ptr a n -- ) {: v:n h:ptr i:n :}  v h SEQMAX-BASE i cells + ! ;
+: SEQBLEN@ ( ptr a n -- n ) {: h:ptr i:n :}  h SEQBLEN-BASE i cells + @ ;
+: SEQBLEN! ( n ptr a n -- ) {: v:n h:ptr i:n :}  v h SEQBLEN-BASE i cells + ! ;
 
 : SEQBLK ( ptr a n -- ptr a ) {: h:ptr i:n :}
-   h SEQBLK-BASE i VEC-HEADER-CELLS KV-MUL0 cells + ;
+   h SEQBLK-BASE i h BLKCAP-OFF H@ KV-MUL0 cells + ;
 
 \ ---- block-table operations --------------------------------------------------------
 : KV-BLK-LEN ( ptr a n -- n ) {: h:ptr s:n :}
-   h s SEQBLK VEC-LEN@ LEN>N ;
+   h s SEQBLEN@ ;
 
 : KV-BLK@ ( ptr a n n -- n ) {: h:ptr s:n i:n :}
-   h s SEQBLK i KV>INDEX VEC:@ ;
+   h s SEQBLK i cells + @ ;
 
 : KV-BLK! ( n ptr a n n -- ) {: v:n h:ptr s:n i:n :}
-   v h s SEQBLK i KV>INDEX VEC:! ;
+   v h s SEQBLK i cells + ! ;
+
+: BLK-ROOM ( ptr a n -- ) {: h:ptr s:n :}
+   h s KV-BLK-LEN h BLKCAP-OFF H@ >= if E-KV-ADMIT throw then ;
 
 : KV-BLK-PUSH ( n ptr a n -- ) {: v:n h:ptr s:n :}
-   v h s SEQBLK VEC:PUSH drop ;
+   h s BLK-ROOM
+   h s KV-BLK-LEN {: len:n :}
+   v h s len KV-BLK!
+   len 1 KV-ADD0 h s SEQBLEN! ;
 
-: KV-BLK-ENSURE+ ( ptr a n -- ) {: h:ptr s:n :}
-   h s KV-BLK-LEN 1 KV-ADD0 KV>ITEM h s SEQBLK swap VEC:ENSURE ;
+: BLK-CLEAR ( ptr a n -- ) {: h:ptr s:n :}
+   h BLKCAP-OFF H@ 0 ?do 0 h s i KV-BLK! loop
+   0 h s SEQBLEN! ;
 
 \ ---- cache and structured-handle validation ---------------------------------------
 : KV-LIVE-CK ( ptr a -- ) {: h:ptr :}
@@ -394,7 +389,7 @@ variable KV-NEXT-CACHE-ID
 
 : KV-GROW-PAGE ( ptr a n -- ) {: h:ptr s:n :}
    h s KV-GROW-PREFLIGHT
-   h s KV-BLK-ENSURE+
+   h s BLK-ROOM
    h s KV-TAKE-GROW-COMMIT {: pid:n :}
    1 h pid REFC!
    pid h s KV-BLK-PUSH ;
@@ -415,6 +410,7 @@ variable KV-NEXT-CACHE-ID
 : KV-APPEND-TOKEN ( ptr a kvseq -- )
    KV-SEQ-CK {: h:ptr s:n :}
    h s SEQLEN@ {: len:n :}
+   len h MAXCTX-OFF H@ KV-APPEND-LIMIT-CK
    len h s SEQMAX@ KV-APPEND-LIMIT-CK
    len h PTOK-OFF H@ mod 0= if h s KV-GROW-PAGE else h s KV-COW-TAIL then
    len 1 KV-ADD0 h s SEQLEN! ;
@@ -433,10 +429,10 @@ variable KV-NEXT-CACHE-ID
 : KV-NEXT-SLOT-GEN ( ptr a n -- n ) {: h:ptr s:n :}
    h s SEQGEN@ dup KV-ID-MAX >= if drop E-KV-ID throw then 1+ ;
 
-: KV-PREP-SLOT ( ptr a n -- n n ) {: h:ptr cap:n :}
+: PREP-SLOT ( ptr a -- n n ) {: h:ptr :}
    h KV-FIND-SLOT {: s:n :}
    h s KV-NEXT-SLOT-GEN {: gen:n :}
-   h s SEQBLK cap KV>ITEM VEC:INIT
+   h s BLK-CLEAR
    s gen ;
 
 : KV-COMMIT-SLOT ( ptr a n n n n -- kvseq ) {: h:ptr s:n gen:n pages:n maxtoks:n :}
@@ -451,7 +447,7 @@ variable KV-NEXT-CACHE-ID
 : KV-ALLOC-SEQ/RES ( ptr a n n -- kvseq ) {: h:ptr pages:n maxtoks:n :}
    h KV-LIVE-CK
    h pages KV-RESERVE-PREFLIGHT
-   h KV-BLK-CAP0 KV-PREP-SLOT {: s:n gen:n :}
+   h PREP-SLOT {: s:n gen:n :}
    h s gen pages maxtoks KV-COMMIT-SLOT ;
 
 : KV-ALLOC-SEQ ( ptr a -- kvseq )
@@ -459,6 +455,7 @@ variable KV-NEXT-CACHE-ID
 
 : KV-ALLOC-SEQ/MAX ( ptr a n -- kvseq ) {: h:ptr toks:n :}
    toks 0 <= if E-KV-ADMIT throw then
+   toks h MAXCTX-OFF H@ > if E-KV-ADMIT throw then
    toks h PTOK-OFF H@ KV-PAGES-FOR-RAW h swap toks KV-ALLOC-SEQ/RES ;
 
 : KV-FORK-COW-EXTRA ( ptr a n -- n ) {: h:ptr p:n :}
@@ -481,8 +478,8 @@ variable KV-NEXT-CACHE-ID
    h p KV-FORK-COW-EXTRA {: cowextra:n :}
    h p KV-FORK-EXTRA {: extra:n :}
    h extra KV-RESERVE-PREFLIGHT
-   h p KV-BLK-LEN KV-BLK-CAP0 max {: cap:n :}
-   h cap KV-PREP-SLOT {: c:n gen:n :}        \ only fallible allocation
+   h p KV-BLK-LEN h BLKCAP-OFF H@ > if E-KV-INVARIANT throw then
+   h PREP-SLOT {: c:n gen:n :}
    h c p KV-COPY-BLK
    h p SEQLEN@ h c SEQLEN!
    h p SEQRES@ {: childres:n :}
@@ -496,7 +493,7 @@ variable KV-NEXT-CACHE-ID
    1 h c SEQLIVE!                            \ child commit last
    h c KV-MAKE-HANDLE ;
 
-\ ---- cancellation: logical ownership is consumed before vector release ------------
+\ ---- cancellation: logical ownership is consumed before fixed-table clear ----------
 : KV-CANCEL-RESERVATION ( ptr a n -- ) {: h:ptr s:n :}
    h s SEQRES@ {: pages:n :}
    h pages KV-GLOBAL-RESERVE-
@@ -511,7 +508,7 @@ variable KV-NEXT-CACHE-ID
    h s KV-CANCEL-RESERVATION
    h s KV-CANCEL-PAGES
    0 h s SEQLEN!
-   h s SEQBLK VEC:DISPOSE ;                   \ consume-before-release owner
+   h s BLK-CLEAR ;
 
 : KV-CANCEL-SEQ ( ptr a kvseq -- )
    KV-SEQ-CK KV-CANCEL-SLOT ;
@@ -602,11 +599,17 @@ variable KV-NEXT-CACHE-ID
 
 : KV-CHECK-SEQ ( ptr a n -- n ) {: h:ptr s:n :}
    h s SEQLIVE@ 0= if
-      h s SEQRES@ 0<> h s SEQMAX@ 0<> or if E-KV-INVARIANT throw then
+      h s SEQLEN@ 0<> h s SEQRES@ 0<> or
+      h s SEQMAX@ 0<> or h s SEQBLEN@ 0<> or if E-KV-INVARIANT throw then
+      h BLKCAP-OFF H@ 0 ?do
+         h s i KV-BLK@ 0<> if E-KV-INVARIANT throw then
+      loop
       0 exit
    then
    h s SEQGEN@ 0 <= if E-KV-INVARIANT throw then
+   h s KV-BLK-LEN h BLKCAP-OFF H@ > if E-KV-INVARIANT throw then
    h s SEQLEN@ h s KV-BLK-LEN h PTOK-OFF H@ KV-MUL0 > if E-KV-INVARIANT throw then
+   h s SEQLEN@ h MAXCTX-OFF H@ > if E-KV-INVARIANT throw then
    h s SEQMAX@ {: maxtoks:n :}
    maxtoks 0 > if
       h s SEQLEN@ maxtoks > if E-KV-INVARIANT throw then
@@ -682,29 +685,33 @@ variable KV-CLEAN-RC
 : KV-ID-COMMIT ( ptr a -- ) {: h:ptr :}
    KV-NEXT-CACHE-ID @ 1+ dup KV-NEXT-CACHE-ID ! h CACHEID-OFF H! ;
 
-: KV-STORE-DIMS ( ptr a n n n n n n n n n -- )
-   {: h:ptr nkv:n hdim:n dbytes:n npages:n nseq:n ptok:n pageb:n tokb:n metac:n :}
+: STORE-DIMS ( ptr a n n n n n n n n n n n -- )
+   {: h:ptr nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n pageb:n tokb:n blkcap:n metac:n :}
    nkv h NKV-OFF H!  hdim h HDIM-OFF H!  dbytes h DBYTES-OFF H!
    npages h NPAGES-OFF H!  nseq h NSEQ-OFF H!  ptok h PTOK-OFF H!
+   maxctx h MAXCTX-OFF H!  blkcap h BLKCAP-OFF H!
    pageb h PAGEB-OFF H!  tokb h TOKB-OFF H!  metac h METAC-OFF H!
    0 h HIWATER-OFF H!  0 h RESERVED-OFF H! ;
 
-: KV-CONFIG-VALUES ( n n n n n n -- n n n )
-   {: nkv:n hdim:n dbytes:n npages:n nseq:n ptok:n :}
+: CONFIG-VALUES ( n n n n n n n -- n n n n )
+   {: nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
    nkv KV-POS drop  hdim KV-POS drop  dbytes KV-POS drop
-   npages KV-POS drop  nseq KV-POS drop  ptok KV-POS drop
+   npages KV-POS drop  nseq KV-POS drop  maxctx KV-POS drop  ptok KV-POS drop
    nkv hdim dbytes npages ptok KV-SIZE {: pageb:n tokb:n :}
-   npages nseq KV-META-CELLS {: metac:n :}
-   pageb tokb metac ;
+   maxctx ptok KV-PAGES-FOR-RAW {: blkcap:n :}
+   blkcap npages > if E-KV-CONFIG throw then
+   npages nseq blkcap META-CELLS {: metac:n :}
+   pageb tokb blkcap metac ;
 
 \ typed-local-lint: allow-bare-local - cfg is the multi-cell KV:kvcfg product.
 : KV-INIT ( ptr a KV:kvcfg -- ) {: h:ptr cfg :}
    h POOLCAP-OFF H@ 0<> if E-KV-STATE throw then
-   cfg KV-KVCFG:UNMAKE {: nkv:n hdim:n dbytes:n npages:n nseq:n ptok:n :}
-   nkv hdim dbytes npages nseq ptok KV-CONFIG-VALUES {: pageb:n tokb:n metac:n :}
+   cfg KV-KVCFG:UNMAKE {: nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
+   nkv hdim dbytes npages nseq maxctx ptok CONFIG-VALUES
+   {: pageb:n tokb:n blkcap:n metac:n :}
    KV-ID-PREFLIGHT
    h KV-CLEAR-POINTERS
-   h nkv hdim dbytes npages nseq ptok pageb tokb metac KV-STORE-DIMS
+   h nkv hdim dbytes npages nseq maxctx ptok pageb tokb blkcap metac STORE-DIMS
    h KV-IH !
    [: KV-INSTALL-BODY ;] catch {: code:n :}
    code 0<> if KV-INIT-CLEANUP drop code throw then
@@ -753,17 +760,17 @@ variable KV-DISPOSE-RC
    [: KV-DISPOSE-META-CUR ;] catch KV-RECORD-DISPOSE
    KV-DISPOSE-RC @ dup 0<> if throw then drop ;
 
-: KV-CONFIG ( n n n n n n -- KV:kvcfg )
-   {: nkv:n hdim:n dbytes:n npages:n nseq:n ptok:n :}
-   nkv hdim dbytes npages nseq ptok KV-CONFIG-VALUES drop drop drop
-   nkv hdim dbytes npages nseq ptok KV-KVCFG:MAKE ;
+: CONFIG-INNER ( n n n n n n n -- KV:kvcfg )
+   {: nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
+   nkv hdim dbytes npages nseq maxctx ptok CONFIG-VALUES 2drop 2drop
+   nkv hdim dbytes npages nseq maxctx ptok KV-KVCFG:MAKE ;
 
 public
 
 : PAGE-TOKENS ( -- n )  KV-P ;
 : HDR-BYTES ( -- n )  HDR-SIZE ;
-: CONFIG ( n n n n n -- KV:kvcfg )  KV-P KV-CONFIG ;
-: CONFIG/P ( n n n n n n -- KV:kvcfg )  KV-CONFIG ;
+: CONFIG ( n n n n n n -- KV:kvcfg )  KV-P CONFIG-INNER ;
+: CONFIG/P ( n n n n n n n -- KV:kvcfg )  CONFIG-INNER ;
 
 : INIT ( ptr a KV:kvcfg -- )  KV-INIT ;
 : DISPOSE ( ptr a -- )  KV-DISPOSE ;
@@ -789,6 +796,8 @@ public
 : PAGE-SIZE ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h PTOK-OFF H@ ;
 : PAGE-BYTES ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h PAGEB-OFF H@ ;
 : TOK-BYTES ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h TOKB-OFF H@ ;
+: MAX-CONTEXT ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h MAXCTX-OFF H@ ;
+: BLOCK-CAPACITY ( ptr a -- n ) {: h:ptr :}  h KV-LIVE-CK h BLKCAP-OFF H@ ;
 : PAGES-FOR ( ptr a n -- n ) {: h:ptr toks:n :}
    h KV-LIVE-CK toks h PTOK-OFF H@ KV-PAGES-FOR-RAW ;
 

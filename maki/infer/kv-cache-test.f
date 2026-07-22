@@ -14,18 +14,31 @@ private
 create KVT-CACHE HDR-BYTES allot
 create KVT-OTHER HDR-BYTES allot
 
-: KVT-INIT/P ( n n n n n n -- )             \ nkv hdim dbytes npages nseq ptok
+: KVT-INIT/P ( n n n n n n -- )
+   {: nkv:n hdim:n dbytes:n npages:n nseq:n ptok:n :}
+   KVT-CACHE DISPOSE
+   nkv hdim dbytes npages nseq npages ptok KV-MUL0 ptok CONFIG/P
+   KVT-CACHE swap INIT ;
+
+: KVT-INIT ( n n n n n -- )
+   {: nkv:n hdim:n dbytes:n npages:n nseq:n :}
+   KVT-CACHE DISPOSE
+   nkv hdim dbytes npages nseq npages PAGE-TOKENS KV-MUL0 CONFIG
+   KVT-CACHE swap INIT ;
+
+: KVT-INIT/MAX/P ( n n n n n n n -- )
    KVT-CACHE DISPOSE
    CONFIG/P KVT-CACHE swap INIT ;
-
-: KVT-INIT ( n n n n n -- )                 \ default page-token count
-   KVT-CACHE DISPOSE
-   CONFIG KVT-CACHE swap INIT ;
 
 \ ---- structured sequence-handle storage for caught calls and churn ----------------
 create KVT-H-CACHE 9 cells allot
 create KVT-H-SLOT  9 cells allot
 create KVT-H-GEN   9 cells allot
+
+256 constant KVT-SNAP-CELLS
+create KVT-SNAP KVT-SNAP-CELLS cells allot
+variable KVT-SNAP-N
+PTR-VARIABLE KVT-META-SAVE
 
 : KVT-H! ( kvseq n -- ) {: i:n :}
    KV-KVSEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
@@ -39,10 +52,35 @@ create KVT-H-GEN   9 cells allot
    i cells KVT-H-GEN + @ >KV-SEQ-GEN
    KV-KVSEQ:MAKE ;
 
+: KVT-SNAPSHOT ( -- )
+   HDR-BYTES 1 cells / {: hdrcells:n :}
+   KVT-CACHE METAC-OFF H@ {: metacells:n :}
+   hdrcells metacells KV-ADD0 dup KVT-SNAP-CELLS > if E-KV-BOUNDS throw then
+   KVT-SNAP-N !
+   hdrcells 0 ?do KVT-CACHE i cells + @ KVT-SNAP i cells + ! loop
+   metacells 0 ?do
+      KVT-CACHE META@ i cells + @
+      KVT-SNAP hdrcells i + cells + !
+   loop ;
+
+: KVT-SNAPSHOT= ( -- bool )
+   HDR-BYTES 1 cells / KVT-CACHE METAC-OFF H@ +
+   KVT-SNAP-N @ <> if false exit then
+   true
+   HDR-BYTES 1 cells / 0 ?do
+      KVT-CACHE i cells + @ KVT-SNAP i cells + @ = and
+   loop
+   KVT-CACHE METAC-OFF H@ 0 ?do
+      KVT-CACHE META@ i cells + @
+      KVT-SNAP HDR-BYTES 1 cells / i + cells + @ = and
+   loop ;
+
 \ ---- geometry and checked arithmetic ----------------------------------------------
 : KVT-GEOMETRY ( -- )
-   2 4 2 8 4 16 KVT-INIT/P
+   2 4 2 8 4 65 16 KVT-INIT/MAX/P
    KVT-CACHE PAGE-SIZE 16 T=
+   KVT-CACHE MAX-CONTEXT 65 T=
+   KVT-CACHE BLOCK-CAPACITY 5 T=
    KVT-CACHE TOK-BYTES 32 T=
    KVT-CACHE PAGE-BYTES 512 T=
    KVT-CACHE NUM-PAGES 8 T=
@@ -53,16 +91,22 @@ create KVT-H-GEN   9 cells allot
    KVT-CACHE CHECK ;
 
 : KVT-OVERFLOW-TOK ( -- )
-   KV-MAX-N 2 2 8 4 16 CONFIG/P drop ;
+   KV-MAX-N 2 2 8 4 16 16 CONFIG/P drop ;
 
 : KVT-OVERFLOW-META ( -- )
-   1 1 1 1 KV-MAX-N 16 CONFIG/P drop ;
+   1 1 1 1 KV-MAX-N 1 16 CONFIG/P drop ;
 
 : KVT-OVERFLOW-META-BYTES ( -- )
-   1 1 1 1 KV-MAX-N 8 / 16 CONFIG/P drop ;
+   1 1 KV-MAX-N 1 cells / 1+ META-CELLS drop ;
+
+: KVT-OVERFLOW-TABLE-META ( -- )
+   1 2 KV-MAX-N 2 / 1+ META-CELLS drop ;
+
+: KVT-BAD-BLOCK-CAPACITY ( -- )
+   1 1 1 1 1 2 1 CONFIG/P drop ;
 
 : KVT-BAD-PAGE ( -- )
-   1 1 1 8 4 0 CONFIG/P drop ;
+   1 1 1 8 4 1 0 CONFIG/P drop ;
 
 : KVT-CEIL-SAFE ( -- )
    1 1 1 8 4 64 KVT-INIT/P
@@ -72,8 +116,33 @@ create KVT-H-GEN   9 cells allot
    KVT-CACHE KV-MAX-N PAGES-FOR
    KV-MAX-N 64 / KV-MAX-N 64 mod 0<> if 1+ then T= ;
 
+: KVT-META-ACCOUNT ( -- )
+   2 3 5 META-CELLS 39 T= ;
+
+: KVT-FIXED-TABLES ( -- )
+   2 4 2 6 1 65 16 KVT-INIT/MAX/P
+   KVT-CACHE META@ KVT-META-SAVE !
+   KVT-CACHE METAC-OFF H@ 29 T=
+   KVT-CACHE ALLOC-SEQ 0 KVT-H!
+   65 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
+   KVT-CACHE 0 KVT-H@ SEQ-LEN 65 T=
+   KVT-CACHE 0 KVT-H@ SEQ-PAGES 5 T=
+   KVT-CACHE 0 4 KV-BLK@ KVT-CACHE 0 KVT-H@ 4 SEQ-PAGE T=
+   KVT-SNAPSHOT
+   [: KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;] catch E-KV-ADMIT T=
+   KVT-SNAPSHOT= TTRUE
+   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
+   KVT-CACHE 0 SEQBLEN@ 0 T=
+   KVT-CACHE BLOCK-CAPACITY 0 ?do KVT-CACHE 0 i KV-BLK@ 0 T= loop
+   KVT-CACHE ALLOC-SEQ 1 KVT-H!
+   KVT-CACHE META@ KVT-META-SAVE @ = TTRUE
+   KVT-CACHE METAC-OFF H@ 29 T=
+   KVT-CACHE BLOCK-CAPACITY 0 ?do KVT-CACHE 0 i KV-BLK@ 0 T= loop
+   KVT-CACHE 1 KVT-H@ CANCEL-SEQ
+   KVT-CACHE CHECK ;
+
 : KVT-HUGE-POOL-INIT ( -- )
-   KV-MAX-N 2 / 1 1 1 1 1 CONFIG/P KVT-CACHE swap INIT ;
+   KV-MAX-N 2 / 1 1 1 1 1 1 CONFIG/P KVT-CACHE swap INIT ;
 
 : KVT-INIT-FAIL-CLEANUP ( -- )
    KVT-CACHE DISPOSE
@@ -129,7 +198,7 @@ create KVT-H-GEN   9 cells allot
 
 : KVT-CROSS-CACHE ( -- )
    KVT-OTHER DISPOSE
-   2 4 2 8 1 CONFIG KVT-OTHER swap INIT
+   2 4 2 8 1 128 CONFIG KVT-OTHER swap INIT
    KVT-OTHER 1 KVT-H@ SEQ-LEN drop ;
 
 : KVT-REBUILD-CACHE ( -- )
@@ -160,7 +229,7 @@ variable KVT-ID-SAVE
    KVT-CACHE NSEQ-OFF H@ 0 ?do KV-ID-MAX KVT-CACHE i SEQGEN! loop ;
 
 : KVT-INIT-AT-ID-LIMIT ( -- )
-   2 4 2 8 1 CONFIG KVT-CACHE swap INIT ;
+   2 4 2 8 1 128 CONFIG KVT-CACHE swap INIT ;
 
 : KVT-CACHE-ID-EXHAUST ( -- )
    KVT-CACHE DISPOSE
@@ -184,8 +253,12 @@ variable KVT-ID-SAVE
    KVT-CACHE 1 SEQLIVE@ 0 T=
    KVT-CACHE 0 SEQGEN@ KV-ID-MAX T=
    KVT-CACHE 1 SEQGEN@ KV-ID-MAX T=
-   KVT-CACHE 0 SEQBLK VEC-CAP-FIELD @ 0 T=
-   KVT-CACHE 1 SEQBLK VEC-CAP-FIELD @ 0 T=
+   KVT-CACHE 0 SEQBLEN@ 0 T=
+   KVT-CACHE 1 SEQBLEN@ 0 T=
+   KVT-CACHE BLOCK-CAPACITY 0 ?do
+      KVT-CACHE 0 i KV-BLK@ 0 T=
+      KVT-CACHE 1 i KV-BLK@ 0 T=
+   loop
    KVT-CACHE CHECK ;
 
 : KVT-SLOT-GEN-SKIP-FIRST ( -- )
@@ -221,17 +294,20 @@ variable KVT-ID-SAVE
    KVT-CACHE CHECK ;
 
 : KVT-POOL-FAIL ( -- )
-   2 4 2 1 2 KVT-INIT
+   2 4 2 2 2 KVT-INIT
    KVT-CACHE ALLOC-SEQ 0 KVT-H!
    PAGE-TOKENS 0 ?do KVT-CACHE 0 KVT-H@ APPEND-TOKEN loop
+   KVT-CACHE ALLOC-SEQ 8 KVT-H!
+   KVT-CACHE 8 KVT-H@ APPEND-TOKEN
    KVT-CACHE 0 KVT-H@ APPEND-TOKEN ;
 
 : KVT-APPEND-FAIL-ATOMIC ( -- )
    [: KVT-POOL-FAIL ;] catch E-KV-POOL T=
    KVT-CACHE 0 KVT-H@ SEQ-LEN PAGE-TOKENS T=
    KVT-CACHE 0 KVT-H@ SEQ-PAGES 1 T=
-   KVT-CACHE WATERMARK 1 T=
-   KVT-CACHE CHECK ;
+   KVT-CACHE WATERMARK 2 T=
+   KVT-CACHE CHECK
+   KVT-CACHE 8 KVT-H@ CANCEL-SEQ ;
 
 : KVT-RECYCLE ( -- )
    KVT-CACHE 0 KVT-H@ CANCEL-SEQ
@@ -258,7 +334,7 @@ variable KVT-ID-SAVE
 
 \ ---- lifecycle and bounds reject by their owning error -----------------------------
 : KVT-BAD-CONFIG ( -- )
-   0 4 2 8 4 CONFIG drop ;
+   0 4 2 8 4 128 CONFIG drop ;
 
 : KVT-DOUBLE-CANCEL ( -- )
    2 4 2 8 4 KVT-INIT
@@ -280,7 +356,7 @@ variable KVT-ID-SAVE
 
 : KVT-REINIT ( -- )
    2 4 2 8 4 KVT-INIT
-   2 4 2 8 4 CONFIG KVT-CACHE swap INIT ;
+   2 4 2 8 4 128 CONFIG KVT-CACHE swap INIT ;
 
 : KVT-BAD-TOKEN ( -- )
    2 4 2 8 4 KVT-INIT
@@ -526,13 +602,16 @@ variable KVT-FAILURES
 
 : KVT-INJECT-EXHAUSTION ( -- )
    KVT-CACHE ALLOC-SEQ 8 KVT-H!
-   KVT-CACHE NUM-PAGES PAGE-TOKENS * 0 ?do
+   KVT-CACHE NUM-PAGES 1- PAGE-TOKENS * 0 ?do
       KVT-CACHE 8 KVT-H@ APPEND-TOKEN
    loop
+   KVT-CACHE ALLOC-SEQ 7 KVT-H!
+   KVT-CACHE 7 KVT-H@ APPEND-TOKEN
    [: KVT-CACHE 8 KVT-H@ APPEND-TOKEN ;] catch {: code:n :}
    code E-KV-POOL <> if code throw then
    1 KVT-FAILURES +!
    KVT-CACHE CHECK
+   KVT-CACHE 7 KVT-H@ CANCEL-SEQ
    KVT-CACHE 8 KVT-H@ CANCEL-SEQ ;
 
 : KVT-CHURN ( -- )
@@ -554,8 +633,12 @@ s" geometry" T-LABEL ' KVT-GEOMETRY 0 TTHROWS
 ' KVT-OVERFLOW-TOK E-KV-CONFIG TTHROWS
 ' KVT-OVERFLOW-META E-KV-CONFIG TTHROWS
 ' KVT-OVERFLOW-META-BYTES E-KV-CONFIG TTHROWS
+' KVT-OVERFLOW-TABLE-META E-KV-CONFIG TTHROWS
+' KVT-BAD-BLOCK-CAPACITY E-KV-CONFIG TTHROWS
 ' KVT-BAD-PAGE E-KV-CONFIG TTHROWS
 s" overflow-free ceiling" T-LABEL ' KVT-CEIL-SAFE 0 TTHROWS
+s" exact metadata accounting" T-LABEL ' KVT-META-ACCOUNT 0 TTHROWS
+s" fixed block tables" T-LABEL ' KVT-FIXED-TABLES 0 TTHROWS
 s" failed install cleanup" T-LABEL ' KVT-INIT-FAIL-CLEANUP 0 TTHROWS
 s" page-token parameterization" T-LABEL ' KVT-PAGE-TOKENS 0 TTHROWS
 

@@ -1466,10 +1466,12 @@ points stay listed.
 - `maki/infer/kv-cache.f` — the host paged key/value cache allocator for the GB10
   inference engine (dot habu-infer-paged-kv-53b72853). An overflow-checked `kvcfg`
   selects page size and model geometry for one owned byte pool. Generation-bearing
-  sequence handles prevent stale slot and rebuilt-cache reuse; per-sequence vectors,
-  page reference counts, tail copy-on-write, cancellation, and maximum-context
-  reservations update transactionally. The scheduler API owns allocation, append,
-  fork, cancellation, admission, and physical capacity metrics. Raw token addresses,
+  sequence handles prevent stale slot and rebuilt-cache reuse. One preallocated
+  metadata mapping owns fixed per-sequence block-table slices sized by the checked
+  maximum context; page reference counts, tail copy-on-write, cancellation, and
+  maximum-context reservations update transactionally. The scheduler API owns
+  allocation, append, fork, cancellation, admission, and physical capacity metrics.
+  Raw token addresses,
   page identifiers, reference counts, and the invariant checker stay private; the
   later immutable device-publication module reopens package KV under its own lease.
   Owns -5622..-5630.
