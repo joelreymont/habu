@@ -17,6 +17,9 @@ public
 : TFT-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
 ;package
 
+package LINT-TEXT-TEST
+private
+
 variable TEST-N
 : ASSERT  ( bool -- )
    IF
@@ -293,7 +296,7 @@ variable BIG-LEX-U
    largesourceu largesize ASSERT=
    largesource largesourceu s" LABEL@" LINT-CONTAINS? ASSERT ;
 
-: TEXT-FOUNDATION-TEST  ( -- )
+: RUN  ( -- )
    1 TEST-N !
    INIT-FIXTURES
    TEST-STRINGS
@@ -306,4 +309,6 @@ variable BIG-LEX-U
    TEST-LINT-SOURCE
    s" text-foundation-test: ok (" type TEST-N @ 1- . s"  assertions)" type cr ;
 
-TEXT-FOUNDATION-TEST
+RUN
+
+;package
