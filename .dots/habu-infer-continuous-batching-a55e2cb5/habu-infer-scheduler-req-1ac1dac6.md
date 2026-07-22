@@ -1,9 +1,11 @@
 ---
 title: "Infer scheduler: request state machine"
-status: active
+status: open
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T09:43:30.801548+02:00\""
+created-at: "2026-07-22T09:43:30.801548+02:00"
+blocks:
+  - habu-add-bounded-host-b40b048f
 ---
 
 Why this exists:
@@ -17,6 +19,7 @@ every allowed transition succeeds once; skipped, stale, terminal, and duplicate 
 
 Expected touch points: new maki/infer/request-state.f, focused test, FILEMAP.md.
 Smallest check: focused transition matrix.
-Prerequisites: none.
+Prerequisite: `habu-add-bounded-host-b40b048f` must provide the owned, aligned
+storage and unique mutable borrow consumed by the state machine. A copyable raw
+caller pointer cannot be refined into unique linear request authority.
 Owned result: request identity and state machine only.
-Claim: agent=reqstate workspace=.jj-ws/habu-infer-scheduler-req-1ac1dac6 machine=spark.
