@@ -394,32 +394,41 @@ variable TFAM-N   0 TFAM-N !   REG-PROTECT
    REPEAT
    0 RES-FALSE ;
 
-\ PUBLIC family with this tail across packages. A (package,tail) pair is unique
-\ (TFAM-DECL rejects DUP), so two public matches are always different packages:
-\ that is a genuine unqualified ambiguity and throws E-TFAM-AMBIG rather than
-\ silently picking the lowest id. Exactly one public match resolves; none is false.
+\ PUBLIC package family with this tail. Global rows are lexical and are resolved
+\ separately by TFAM-RESOLVE, so they never enter this fallback set. A
+\ (package,tail) pair is unique (TFAM-DECL rejects DUP), so two matches are always
+\ different packages: that is a genuine unqualified ambiguity and throws
+\ E-TFAM-AMBIG rather than silently picking the lowest id. Exactly one package
+\ public match resolves; none is false.
 : TFAM-FIND-PUBLIC ( ptr u8 n -- n bool ) {: na:ptr nu:n :}
    -1 TF-PUB !
    0 TF-I !
    BEGIN TF-I @ TFAM-N @ < WHILE
       TF-I @ TFAM-PUBLIC? IF
-         na nu TF-I @ TFAM-NAME-MATCH? IF
-            TF-PUB @ 0< IF TF-I @ TF-PUB !
-            ELSE E-TFAM-AMBIG throw THEN
+         TF-I @ TFAM-PKG$ nip 0 <> IF
+            na nu TF-I @ TFAM-NAME-MATCH? IF
+               TF-PUB @ 0< IF TF-I @ TF-PUB !
+               ELSE E-TFAM-AMBIG throw THEN
+            THEN
          THEN
       THEN
       TF-I @ 1 + TF-I !
    REPEAT
    TF-PUB @ 0< IF 0 RES-FALSE ELSE TF-PUB @ RES-TRUE THEN ;
 
-\ unqualified resolution from the active package: own package (private+public)
-\ first, else the unique public family (E-TFAM-AMBIG if two other packages tie).
-\ Compaction-hidden `@name` tokens never resolve.
+\ Unqualified lexical order is the active package's exact row (private or
+\ public), the exact global row, then the unique package-public fallback
+\ (E-TFAM-AMBIG if two non-lexical packages tie). At top level the first exact
+\ lookup is already global. Compaction-hidden `@name` tokens never resolve.
 : TFAM-RESOLVE ( ptr u8 n ptr u8 n -- n bool )
    {: pa:ptr pu:n na:ptr nu:n :}
    na nu TF-HIDDEN? IF 0 RES-FALSE EXIT THEN
    pa pu na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
    drop
+   pu 0 <> IF
+      s" " na nu TFAM-FIND-IN IF RES-TRUE EXIT THEN
+      drop
+   THEN
    na nu TFAM-FIND-PUBLIC ;
 
 \ --- declaration. Storage only ever sees canonical lowercase tails.

@@ -195,18 +195,16 @@ variable TDECL-NI
    THEN
    a u TDECL-RESERVED? IF a u s" reserved name" E-TDECL-NAME TDECL-THROW THEN ;
 
-\ A FAMILY name may not shadow a family from another scope; the same-scope
-\ collision (incl. a global tail redeclared at top level, where the declaring
-\ scope IS the global scope) falls through to TFAM-DECL's E-TFAM-DUP so the
-\ diagnostic says "duplicate family". Both scopes consult the registry.
+\ A FAMILY name must remain valid grammar and must not collide with an in-scope
+\ sum variant. Exact same-package collisions fall through to TFAM-DECL's
+\ E-TFAM-DUP so the diagnostic says "duplicate family". A package family may
+\ share a tail with a global or another package family; TFAM-RESOLVE preserves
+\ those exact identities with lexical lookup rather than rejecting the declaration.
 : TDECL-REQUIRE-FAMILY-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TDECL-REQUIRE-NAME
    a u TDECL-VAR-TAKEN? IF
       a u s" collides with a sum variant" E-TDECL-NAME TDECL-THROW
-   THEN
-   CHECKER-PACKAGE-ACTIVE? 0= IF EXIT THEN
-   s" " a u TFAM-FIND-IN nip 0= IF EXIT THEN
-   a u s" shadows a global family" E-TDECL-NAME TDECL-THROW ;
+   THEN ;
 
 \ A VARIANT name lives in no scope of its own: any collision with a family
 \ the declaring scope resolves is a reserved name, in every scope.

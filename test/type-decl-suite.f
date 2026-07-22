@@ -1107,6 +1107,73 @@ s" TQBAD-COLONS ( tdpa:tres:x<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---------------------------------------------------------------------------
+\ A package-owned family may share a tail with a global family. The exact
+\ identities keep separate arities: the owner gets its own row for a bare tail,
+\ while top level and unrelated packages keep the global row for that bare tail.
+\ ---------------------------------------------------------------------------
+package MEM
+public
+TYPEFAMILY span 6
+private
+TYPEFAMILY tier 1
+
+s" TPC-OWNER ( span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-OWN-PRIVATE ( tier<n> -- MEM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TYPEFAMILY span 6" E-TFAM-DUP TDT-NEG
+\ This failure creates a family and one variant before the duplicate variant
+\ rejects; the declaration transaction must retire every provisional row.
+s" SUMTYPE rolled-span 6 VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
+s" mem" s" rolled-span" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=
+;package
+
+package OTHER
+public
+TYPEFAMILY tier 2
+;package
+
+\ The existing global span remains the bare top-level identity.
+s" TPC-GLOBAL ( span<n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-MEM-QUAL ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-GLOBAL-ARITY ( span<n,n,n,n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-MEM-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-A ( span<n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-CROSS-B ( MEM:span<n,n,n,n,n,n> -- span<n,n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
+\ A foreign private row is invisible; with no lexical global, the one public
+\ family of the same tail is the outside-package bare fallback.
+s" TPC-PRIVATE-HIDDEN ( MEM:tier<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TPC-PUBLIC-BARE ( tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ Stored effects retain exact qualified identity and arity when replayed.
+: TPC-MEM-STORED ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> ) ;
+s" TPC-MEM-REPLAY ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! -1 T=
+s" TPC-MEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ Prose row rendering and JSON arity diagnostics keep the package qualifier.
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TPC-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+s" TPC-JSON-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TPC-JSON-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"arity_expected\":6" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"arity_actual\":3" TDT-CONTAINS? -1 T=
+0 DIAG-JSON!
+TDIAG-BUF 8192 DIAG-BUFFER!
+
+\ The failed declaration above did not disturb either exact span row.
+s" " s" span" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-ARITY@ 3 T=
+s" mem" s" span" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TFAM-ARITY@ 6 T=
+
+\ ---------------------------------------------------------------------------
 \ negative declarations: named throw code + full registry rollback each time.
 \ ---------------------------------------------------------------------------
 \ uppercase/mixed-case family names reject before storage.
@@ -1139,10 +1206,8 @@ s" SUMTYPE tdcn3 1 VARIANT ;match a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 \ duplicate — E-TFAM-DUP, not a reserved-name shadow; both classes reject)...
 s" TYPEFAMILY ptr 0" E-TFAM-DUP TDT-NEG
 s" TYPEFAMILY span 3" E-TFAM-DUP TDT-NEG
-\ ...while shadowing a global family from inside a package is reserved.
-package tshad
-s" TYPEFAMILY span 3" E-TDECL-NAME TDT-NEG
-;package
+\ The global/package same-tail case above is legal; only an exact same-package
+\ duplicate remains E-TFAM-DUP.
 \ variant names may not collide with any family the declaring scope resolves,
 \ in ANY scope: builtin tails, prior user families, and (inside a package)
 \ the package's own tails all reject; the verdict matches across scopes.

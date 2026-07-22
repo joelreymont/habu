@@ -428,6 +428,15 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
 - `TYPEFAMILY name arity` registers a nominal cell family (`TK-CELL`) with no
   closer: arity `0` is an opaque scalar newtype (see `lib/cad-num-types.f`),
   arity `N` binds positional params.
+- Type-family identity is the exact `(package, tail)` pair. A package-owned
+  family may share a tail with a global family or a family in another package,
+  even when their arities differ. A qualified token resolves only that exact
+  package row. A bare token resolves the open package's own row first (private
+  or public), then the global row, then the sole eligible public row from other
+  packages. Two eligible non-lexical package-public rows remain an error. This
+  ordering means adding `MEM:span` cannot change what an existing top-level
+  `span` means. Exact same-package duplicates, reserved grammar names, and
+  foreign private rows still reject.
 - `SUMTYPE name arity [ DERIVE … ] VARIANT v payload… ;VARIANT … ;SUMTYPE`
   registers a tagged union (`TK-SUM`, tag = declaration order). **Variant
   payloads are positional type tokens** — letter params, concrete cell types,

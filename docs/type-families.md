@@ -53,11 +53,12 @@ registration (`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family").
 So `TYPEFAMILY n 0` reports reserved-name while `TYPEFAMILY ptr 0` reports
 duplicate-family, and both are correct: `ptr` genuinely *is* a registered family,
 so redeclaring it is a real same-scope duplicate, not a reserved-name shadow.
-(`test/type-decl-suite.f` pins both codes.) The one case where a live family tail
-still reports `E-TDECL-NAME` is a family declared *inside a package* whose tail
-shadows a *global* family — the in-package scope does not own the global row, so
-the diagnostic is "shadows a global family"; only a top-level redeclaration of a
-global tail is the same-scope duplicate.
+(`test/type-decl-suite.f` pins both codes.) A package family may share a tail
+with a global or foreign package family. A bare tail resolves the active package's
+exact family first, the global exact family second, then one foreign public legacy
+fallback; multiple eligible foreign public families reject `E-TFAM-AMBIG`.
+A qualified name resolves only its exact package family. Global behavior is
+unchanged: a top-level redeclaration of a global tail is a same-scope duplicate.
 
 Use the generic term internally and the specific terms externally:
 

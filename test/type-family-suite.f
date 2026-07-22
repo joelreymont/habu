@@ -942,6 +942,43 @@ s" pkgx" CHECKER-PACKAGE-PUBLIC s" solo" 0 TK-ENUM TWX-TFAM-DECL drop
 s" solo" TWX-TFAM-FIND-PUBLIC FOUNDF ! drop  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
+\ 16. A global family and package-owned families may share a tail. Resolution
+\     is lexical: exact owner, exact global, then one non-global public family.
+\     The exact rows keep their independent arities through snapshot persist.
+\ ---------------------------------------------------------------------------
+variable GSPAN  variable MSPAN  variable MLOCAL  variable OPUBLIC
+s" "      CHECKER-PACKAGE-PUBLIC  s" span" 3 TK-CELL TWX-TFAM-DECL GSPAN !
+s" mem"   CHECKER-PACKAGE-PUBLIC  s" span" 6 TK-CELL TWX-TFAM-DECL MSPAN !
+s" mem"   CHECKER-PACKAGE-PRIVATE s" tier" 1 TK-CELL TWX-TFAM-DECL MLOCAL !
+s" other" CHECKER-PACKAGE-PUBLIC  s" tier" 2 TK-CELL TWX-TFAM-DECL OPUBLIC !
+
+\ Exact owner wins, including its private row.
+s" mem" s" span" TWX-TFAM-RESOLVE FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
+s" mem" s" tier" TWX-TFAM-RESOLVE FOUNDF ! MLOCAL @ T= FOUNDF @ -1 T=
+\ Global is the lexical row at top level and in packages without an own row.
+s" "      s" span" TWX-TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" caller" s" span" TWX-TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+\ With no own or global row, the unique package-public family is the fallback.
+s" caller" s" tier" TWX-TFAM-RESOLVE FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
+s" tier" TWX-TFAM-FIND-PUBLIC FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
+\ Exact identities and arities never alias.
+s" " s" span" TWX-TFAM-FIND-IN FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" mem" s" span" TWX-TFAM-FIND-IN FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
+GSPAN @ MSPAN @ <> -1 T=
+GSPAN @ TFAM-ARITY@ 3 T=
+MSPAN @ TFAM-ARITY@ 6 T=
+MLOCAL @ TFAM-ARITY@ 1 T=
+OPUBLIC @ TFAM-ARITY@ 2 T=
+
+TWX-TFAM-SNAPSHOT-PERSIST
+s" " s" span" TWX-TFAM-FIND-IN FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" mem" s" span" TWX-TFAM-FIND-IN FOUNDF ! MSPAN @ T= FOUNDF @ -1 T=
+s" caller" s" span" TWX-TFAM-RESOLVE FOUNDF ! GSPAN @ T= FOUNDF @ -1 T=
+s" caller" s" tier" TWX-TFAM-RESOLVE FOUNDF ! OPUBLIC @ T= FOUNDF @ -1 T=
+GSPAN @ TFAM-ARITY@ 3 T=
+MSPAN @ TFAM-ARITY@ 6 T=
+
+\ ---------------------------------------------------------------------------
 \ item 10 slice 1: TFL-* compiler-facing lowering surface (dot
 \ habu-tfam-10-native design A) — pure folded resolution + tag/pad metadata
 \ the native construct/MATCH emitters call by name at token positions. Same

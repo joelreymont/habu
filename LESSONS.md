@@ -385,6 +385,14 @@ fits.
 
 ## Types, ADTs & Signatures
 
+- **Type-family tail reuse needs lexical tiers, not a declaration ban.** Family
+  identity is already the exact `(package, tail)` registry key, so resolution
+  must preserve that structure: the open package's exact row first, the exact
+  global row second, then one non-global package-public fallback. Folding the
+  global row into the public fallback made `span` and `MEM:span` spuriously
+  ambiguous and led to rejecting the sound declaration. Keep duplicate checks
+  on the exact key and keep multi-package fallback ambiguity fail-closed.
+
 - **Declarable nominals: the mechanism already exists; the gap is package-scoping.**
   `DEFTYPE NAME` (roles.f) mints a CT-ROLE past CC-MAX via CT-SET, auto-derives
   `>NAME`/`NAME>N`, persists via CT-SNAPSHOT-PERSIST, and rolls back through the RBF
