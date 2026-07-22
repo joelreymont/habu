@@ -265,9 +265,17 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 2026-07-21 re-measured at the handoff fixpoint (the Mac's final ENUM front-end
 \ landing 9340f6a3; spark now owns all rows): CODELEN 122164, floor 3380,
 \ file 127168. Region deltas in the rows.
-122164 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-22 re-measured at the atomic generated-declaration fixpoint.  The
+\ declaration transaction's startup wiring, native registry primitives, and
+\ dictionary, seed, and ahead-of-time publication paths add 380 bytes of
+\ measured engine text:
+\ CODELEN 122164 -> 122544 and floor 3380 -> 3760.  The same-page text pad
+\ shrinks 716 -> 336, so the whole file remains exactly 127168.  Attribution:
+\ main/startup +64, primitives/base +48, dictionary-code +172,
+\ seed-dictionary +48, and aot-seed +48.
+122544 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3380 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3760 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -290,7 +298,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ and dictionary-code +32 (the generator's baked entry) - exactly the
 \ attribution this ratchet exists to give.
 : LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
-   s" main/startup"            5688 q execute
+   s" main/startup"            5752 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         752 q execute
    s" interpret/define"       10464 q execute
@@ -310,7 +318,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" compile/exit"            1724 q execute
    s" compile/eval-recover"     724 q execute
    s" main/underflow"           192 q execute
-   s" primitives/base"        17772 q execute
+   s" primitives/base"        17820 q execute
    s" primitives/arity"         856 q execute
    s" primitives/extra"         572 q execute
    s" primitives/prof"          220 q execute
@@ -328,10 +336,10 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" primitives/hash-index"    852 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         4560 q execute
+   s" dictionary-code"         4732 q execute
    s" runtime"                 9508 q execute
-   s" seed-dictionary"         8652 q execute
-   s" aot-seed"               22412 q execute
+   s" seed-dictionary"         8700 q execute
+   s" aot-seed"               22460 q execute
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;
