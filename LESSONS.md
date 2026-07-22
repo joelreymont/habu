@@ -16,6 +16,11 @@ fits.
   land the common definition, and rebase the consumer onto it. A temporary
   consumer-local replica creates duplicate authority and is not parallel
   progress.
+- **Declared growth makes reservation ownership unconditional.** Expose one
+  admission path that requires a positive maximum, reserve its exact ceiling
+  page count before publishing a generation-bearing handle, and make every
+  boundary append consume that handle's ledger. An unreserved append fallback
+  hides admission bugs and lets unrelated sequences steal promised capacity.
 
 ## Checker Soundness
 

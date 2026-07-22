@@ -11,10 +11,10 @@
 \ reject at their ceiling instead of wrapping. Reusing a slot, rebuilding a cache
 \ in the same header, or passing a handle to another cache therefore fails closed.
 \
-\ Reservation is owned state, not a fit predicate. ALLOC-SEQ/MAX reserves the
-\ physical pages needed by the declared maximum context. Ordinary appends may use
-\ only free pages not reserved by another sequence. A reserved append consumes its
-\ own reservation when it takes a page; cancellation releases every unused page.
+\ Reservation is owned state, not a fit predicate. ALLOC-SEQ requires a declared
+\ maximum token count and reserves its exact ceiling page count before admission.
+\ Every page-boundary append consumes one page from that sequence's reservation;
+\ cancellation releases every unused page.
 \ Forking a partially occupied reserved tail first reserves the possible copy-on-
 \ write page, so the parent's maximum-context guarantee survives sharing.
 \ The scheduler is the sole mutation owner; it serializes allocator calls while
@@ -310,22 +310,13 @@ variable KV-NEXT-CACHE-ID
    h pid COWRES@ 1- h pid COWRES!
    h 1 KV-GLOBAL-RESERVE- ;
 
-: KV-TAKE-UNRESERVED ( ptr a -- n ) {: h:ptr :}
-   h KV-POP-PREFLIGHT
-   h KV-UNRESERVED 0 <= if E-KV-ADMIT throw then
-   h KV-POP-FREE ;
-
 : KV-GROW-PREFLIGHT ( ptr a n -- ) {: h:ptr s:n :}
    h KV-POP-PREFLIGHT
-   h s SEQMAX@ 0 > if
-      h s SEQRES@ 0 <= if E-KV-INVARIANT throw then
-   else
-      h KV-UNRESERVED 0 <= if E-KV-ADMIT throw then
-   then ;
+   h s SEQRES@ 0 <= if E-KV-INVARIANT throw then ;
 
 : KV-TAKE-GROW-COMMIT ( ptr a n -- n ) {: h:ptr s:n :}
    h KV-POP-COMMIT {: pid:n :}
-   h s SEQMAX@ 0 > if h s KV-SEQ-RESERVE-ONE then
+   h s KV-SEQ-RESERVE-ONE
    pid ;
 
 : KV-COW-GUARANTEED? ( ptr a n -- bool ) {: h:ptr s:n :}
@@ -336,12 +327,9 @@ variable KV-NEXT-CACHE-ID
    h old KV-COW-RESERVE-ONE ;
 
 : KV-TAKE-COW ( ptr a n n -- n ) {: h:ptr s:n old:n :}
-   h s KV-COW-GUARANTEED? h old COWRES@ 0 > and if
-      h old KV-TAKE-RESERVED-COW
-   else
-      h KV-TAKE-UNRESERVED
-   then
-   ;
+   h s KV-COW-GUARANTEED? 0= if E-KV-INVARIANT throw then
+   h old COWRES@ 0 <= if E-KV-INVARIANT throw then
+   h old KV-TAKE-RESERVED-COW ;
 
 \ ---- page references and physical copy-on-write reservation -----------------------
 : KV-REF+ ( ptr a n -- ) {: h:ptr pid:n :}
@@ -429,10 +417,17 @@ variable KV-NEXT-CACHE-ID
 : KV-NEXT-SLOT-GEN ( ptr a n -- n ) {: h:ptr s:n :}
    h s SEQGEN@ dup KV-ID-MAX >= if drop E-KV-ID throw then 1+ ;
 
+: DEAD-SLOT-CK ( ptr a n -- ) {: h:ptr s:n :}
+   h s SEQLEN@ 0<> h s SEQRES@ 0<> or
+   h s SEQMAX@ 0<> or h s SEQBLEN@ 0<> or if E-KV-INVARIANT throw then
+   h BLKCAP-OFF H@ 0 ?do
+      h s i KV-BLK@ 0<> if E-KV-INVARIANT throw then
+   loop ;
+
 : PREP-SLOT ( ptr a -- n n ) {: h:ptr :}
    h KV-FIND-SLOT {: s:n :}
+   h s DEAD-SLOT-CK
    h s KV-NEXT-SLOT-GEN {: gen:n :}
-   h s BLK-CLEAR
    s gen ;
 
 : KV-COMMIT-SLOT ( ptr a n n n n -- kvseq ) {: h:ptr s:n gen:n pages:n maxtoks:n :}
@@ -444,19 +439,17 @@ variable KV-NEXT-CACHE-ID
    1 h s SEQLIVE!                           \ commit last
    h s KV-MAKE-HANDLE ;
 
-: KV-ALLOC-SEQ/RES ( ptr a n n -- kvseq ) {: h:ptr pages:n maxtoks:n :}
+: ADMIT-PAGES ( ptr a n -- n ) {: h:ptr toks:n :}
    h KV-LIVE-CK
-   h pages KV-RESERVE-PREFLIGHT
-   h PREP-SLOT {: s:n gen:n :}
-   h s gen pages maxtoks KV-COMMIT-SLOT ;
-
-: KV-ALLOC-SEQ ( ptr a -- kvseq )
-   0 0 KV-ALLOC-SEQ/RES ;
-
-: KV-ALLOC-SEQ/MAX ( ptr a n -- kvseq ) {: h:ptr toks:n :}
    toks 0 <= if E-KV-ADMIT throw then
    toks h MAXCTX-OFF H@ > if E-KV-ADMIT throw then
-   toks h PTOK-OFF H@ KV-PAGES-FOR-RAW h swap toks KV-ALLOC-SEQ/RES ;
+   toks h PTOK-OFF H@ KV-PAGES-FOR-RAW ;
+
+: ADMIT-SEQ ( ptr a n -- kvseq ) {: h:ptr toks:n :}
+   h toks ADMIT-PAGES {: pages:n :}
+   h pages KV-RESERVE-PREFLIGHT
+   h PREP-SLOT {: s:n gen:n :}
+   h s gen pages toks KV-COMMIT-SLOT ;
 
 : KV-FORK-COW-EXTRA ( ptr a n -- n ) {: h:ptr p:n :}
    h p KV-COW-GUARANTEED? 0= if 0 exit then
@@ -599,11 +592,7 @@ variable KV-NEXT-CACHE-ID
 
 : KV-CHECK-SEQ ( ptr a n -- n ) {: h:ptr s:n :}
    h s SEQLIVE@ 0= if
-      h s SEQLEN@ 0<> h s SEQRES@ 0<> or
-      h s SEQMAX@ 0<> or h s SEQBLEN@ 0<> or if E-KV-INVARIANT throw then
-      h BLKCAP-OFF H@ 0 ?do
-         h s i KV-BLK@ 0<> if E-KV-INVARIANT throw then
-      loop
+      h s DEAD-SLOT-CK
       0 exit
    then
    h s SEQGEN@ 0 <= if E-KV-INVARIANT throw then
@@ -611,11 +600,10 @@ variable KV-NEXT-CACHE-ID
    h s SEQLEN@ h s KV-BLK-LEN h PTOK-OFF H@ KV-MUL0 > if E-KV-INVARIANT throw then
    h s SEQLEN@ h MAXCTX-OFF H@ > if E-KV-INVARIANT throw then
    h s SEQMAX@ {: maxtoks:n :}
-   maxtoks 0 > if
-      h s SEQLEN@ maxtoks > if E-KV-INVARIANT throw then
-      maxtoks h PTOK-OFF H@ KV-PAGES-FOR-RAW h s KV-BLK-LEN -
-      h s SEQRES@ <> if E-KV-INVARIANT throw then
-   then
+   maxtoks 0 <= maxtoks h MAXCTX-OFF H@ > or if E-KV-INVARIANT throw then
+   h s SEQLEN@ maxtoks > if E-KV-INVARIANT throw then
+   maxtoks h PTOK-OFF H@ KV-PAGES-FOR-RAW h s KV-BLK-LEN -
+   h s SEQRES@ <> if E-KV-INVARIANT throw then
    h s SEQRES@ ;
 
 : KV-CHECK-COW ( ptr a -- n ) {: h:ptr :}
@@ -775,8 +763,7 @@ public
 : INIT ( ptr a KV:kvcfg -- )  KV-INIT ;
 : DISPOSE ( ptr a -- )  KV-DISPOSE ;
 
-: ALLOC-SEQ ( ptr a -- kvseq )  KV-ALLOC-SEQ ;
-: ALLOC-SEQ/MAX ( ptr a n -- kvseq )  KV-ALLOC-SEQ/MAX ;
+: ALLOC-SEQ ( ptr a n -- kvseq )  ADMIT-SEQ ;
 : APPEND-TOKEN ( ptr a kvseq -- )  KV-APPEND-TOKEN ;
 : FORK-SEQ ( ptr a kvseq -- kvseq )  KV-FORK-SEQ ;
 : CANCEL-SEQ ( ptr a kvseq -- )  KV-CANCEL-SEQ ;
