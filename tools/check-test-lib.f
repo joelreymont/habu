@@ -38,145 +38,138 @@ require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f
 
-7121 constant CKT-LBUF-RC
+package CHECK
 
-$4000 constant CKT-BUF-CAP
+private
 
-create CKT-ROOT FS-PATH-CAP allot
-create CKT-BAD-PATH FS-PATH-CAP allot
-create CKT-LIST-PATH FS-PATH-CAP allot
-create CKT-INC-DEP-PATH FS-PATH-CAP allot
-create CKT-INC-ENTRY-PATH FS-PATH-CAP allot
-create CKT-SUP-PATH FS-PATH-CAP allot
-create CKT-USE-PATH FS-PATH-CAP allot
-create CKT-HB-BUF FS-PATH-CAP allot
+7121 constant LBUF-RC
 
-variable CKT-OUT-A
-variable CKT-ERR-A
-variable CKT-ROOT-U
-variable CKT-BAD-U
-variable CKT-LIST-U
-variable CKT-INC-DEP-U
-variable CKT-INC-ENTRY-U
-variable CKT-SUP-U
-variable CKT-USE-U
-variable CKT-HB-U
-variable CKT-START-NS
-variable CKT-PAR-U
+$4000 constant BUF-CAP
 
-: CKT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+create TMP-ROOT FS-PATH-CAP allot
+create BAD-PATH FS-PATH-CAP allot
+create LIST-PATH FS-PATH-CAP allot
+create INC-DEP-PATH FS-PATH-CAP allot
+create INC-ENTRY-PATH FS-PATH-CAP allot
+create SUP-PATH FS-PATH-CAP allot
+create USE-PATH FS-PATH-CAP allot
+
+variable OUT-A
+variable ERR-A
+variable TMP-ROOT-U
+variable BAD-U
+variable LIST-U
+variable INC-DEP-U
+variable INC-ENTRY-U
+variable SUP-U
+variable USE-U
+variable START-NS
+variable PAR-U
+
+: PATH-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CKT-ROOT$ ( -- ptr u8 n )
-   CKT-ROOT CKT-ROOT-U @ ;
+: ROOT$ ( -- ptr u8 n )
+   TMP-ROOT TMP-ROOT-U @ ;
 
-: CKT-BAD$ ( -- ptr u8 n )
-   CKT-BAD-PATH CKT-BAD-U @ ;
+: BAD$ ( -- ptr u8 n )
+   BAD-PATH BAD-U @ ;
 
-: CKT-LIST$ ( -- ptr u8 n )
-   CKT-LIST-PATH CKT-LIST-U @ ;
+: LIST$ ( -- ptr u8 n )
+   LIST-PATH LIST-U @ ;
 
-: CKT-INC-DEP$ ( -- ptr u8 n )
-   CKT-INC-DEP-PATH CKT-INC-DEP-U @ ;
+: INC-DEP$ ( -- ptr u8 n )
+   INC-DEP-PATH INC-DEP-U @ ;
 
-: CKT-INC-ENTRY$ ( -- ptr u8 n )
-   CKT-INC-ENTRY-PATH CKT-INC-ENTRY-U @ ;
+: INC-ENTRY$ ( -- ptr u8 n )
+   INC-ENTRY-PATH INC-ENTRY-U @ ;
 
-: CKT-SUP$ ( -- ptr u8 n )
-   CKT-SUP-PATH CKT-SUP-U @ ;
+: SUP$ ( -- ptr u8 n )
+   SUP-PATH SUP-U @ ;
 
-: CKT-USE$ ( -- ptr u8 n )
-   CKT-USE-PATH CKT-USE-U @ ;
+: USE$ ( -- ptr u8 n )
+   USE-PATH USE-U @ ;
 
-: CKT-HB! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 0 < if E-FS-PATH throw then
-   u FS-PATH-CAP > if E-FS-PATH throw then
-   a CKT-HB-BUF u BYTE-COPY
-   u CKT-HB-U ! ;
+: OUT-A-FIELD ( -- ptr ptr u8 )
+   OUT-A 0 ptr-field ;
 
-: CKT-HB-SET? ( -- bool )
-   CKT-HB-U @ 0 > ;
+: ERR-A-FIELD ( -- ptr ptr u8 )
+   ERR-A 0 ptr-field ;
 
-: CKT-OUT-A-FIELD ( -- ptr ptr u8 )
-   CKT-OUT-A 0 ptr-field ;
+: OUT-A@ ( -- ptr u8 )
+   OUT-A-FIELD @ ;
 
-: CKT-ERR-A-FIELD ( -- ptr ptr u8 )
-   CKT-ERR-A 0 ptr-field ;
+: ERR-A@ ( -- ptr u8 )
+   ERR-A-FIELD @ ;
 
-: CKT-OUT-A@ ( -- ptr u8 )
-   CKT-OUT-A-FIELD @ ;
+: OUT-A! ( ptr u8 -- )
+   OUT-A-FIELD ! ;
 
-: CKT-ERR-A@ ( -- ptr u8 )
-   CKT-ERR-A-FIELD @ ;
+: ERR-A! ( ptr u8 -- )
+   ERR-A-FIELD ! ;
 
-: CKT-OUT-A! ( ptr u8 -- )
-   CKT-OUT-A-FIELD ! ;
+: CAP-ALLOC ( -- ptr u8 )
+   BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
 
-: CKT-ERR-A! ( ptr u8 -- )
-   CKT-ERR-A-FIELD ! ;
+: CAP-OUT ( -- ptr u8 )
+   OUT-A @ 0= if CAP-ALLOC OUT-A! then
+   OUT-A@ ;
 
-: CKT-ALLOC-BUF ( -- ptr u8 )
-   CKT-BUF-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
+: CAP-ERR ( -- ptr u8 )
+   ERR-A @ 0= if CAP-ALLOC ERR-A! then
+   ERR-A@ ;
 
-: CKT-OUT ( -- ptr u8 )
-   CKT-OUT-A @ 0= if CKT-ALLOC-BUF CKT-OUT-A! then
-   CKT-OUT-A@ ;
+: CORE-ACT ( -- )
+   BAD$ BAD$ CHECK-ALL-ERRORS-FILE ;
 
-: CKT-ERR ( -- ptr u8 )
-   CKT-ERR-A @ 0= if CKT-ALLOC-BUF CKT-ERR-A! then
-   CKT-ERR-A@ ;
-
-: CKT-CORE-ACT ( -- )
-   CKT-BAD$ CKT-BAD$ CHECK-ALL-ERRORS-FILE ;
-
-: CKT-CORE-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
-   CKT-BAD$ src srcu WRITE-ALL
-   CKT-ERR CKT-BUF-CAP CKT-OUT CKT-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
+: CORE-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   BAD$ src srcu WRITE-ALL
+   CAP-ERR BUF-CAP CAP-OUT BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
    0 0= CHECK-ALL-ERRORS-JSON!
-   [: CKT-CORE-ACT ;] catch {: rc:n :}
+   [: CORE-ACT ;] catch {: rc:n :}
    0 CHECK-ALL-ERRORS-OUT$ nip rc ;
 
-: CKT-DIRECT-START ( -- )
+: DIRECT-START ( -- )
    CHK-RESET-CFG
-   CKT-OUT CKT-BUF-CAP CKT-ERR CKT-BUF-CAP CHK-CAPTURE-BUFFERS! ;
+   CAP-OUT BUF-CAP CAP-ERR BUF-CAP CHK-CAPTURE-BUFFERS! ;
 
-: CKT-DIRECT-END ( n -- n n n ) {: rc:n :}
+: DIRECT-END ( n -- n n n ) {: rc:n :}
    CHK-CAPTURE-OUT$ nip
    CHK-CAPTURE-ERR$ nip
    rc ;
 
-: CKT-DIRECT-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
-   CKT-DIRECT-START
+: DIRECT-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   DIRECT-START
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
-   CHK-DIRECT-RUN CKT-DIRECT-END ;
+   CHK-DIRECT-RUN DIRECT-END ;
 
-: CKT-DIRECT-ALL-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
-   CKT-DIRECT-START
+: DIRECT-ALL-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   DIRECT-START
    -1 CHK-ALL !
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
-   CHK-DIRECT-RUN CKT-DIRECT-END ;
+   CHK-DIRECT-RUN DIRECT-END ;
 
-: CKT-DIRECT-ALL-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
-   CKT-DIRECT-START
+: ALL-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   DIRECT-START
    -1 CHK-ALL !
    -1 CHK-JSON !
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
-   CHK-DIRECT-RUN CKT-DIRECT-END ;
+   CHK-DIRECT-RUN DIRECT-END ;
 
-: CKT-DIRECT-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
-   CKT-DIRECT-START
+: DIRECT-JSON-STDIN ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
+   DIRECT-START
    -1 CHK-JSON !
    src srcu s" <stdin>" CHK-MATERIALIZE-BUF-AS
-   CHK-DIRECT-RUN CKT-DIRECT-END ;
+   CHK-DIRECT-RUN DIRECT-END ;
 
-: CKT-DIRECT-SOURCE-LIST-PATH ( ptr u8 n -- n n n )
-   CKT-DIRECT-START
+: LIST-RUN ( ptr u8 n -- n n n )
+   DIRECT-START
    CHK-MATERIALIZE-LIST-PATH
-   CHK-DIRECT-RUN CKT-DIRECT-END ;
+   CHK-DIRECT-RUN DIRECT-END ;
 
-: CKT-DIRECT-ALL-LIST ( ptr u8 n ptr u8 n -- n n n ) {: aa:ptr au:n ba:ptr bu:n :}
-   CKT-DIRECT-START
+: DIRECT-ALL-LIST ( ptr u8 n ptr u8 n -- n n n ) {: aa:ptr au:n ba:ptr bu:n :}
+   DIRECT-START
    -1 CHK-JSON !
    -1 CHK-ALL !
    -1 CHK-SOURCE-LIST !
@@ -184,75 +177,68 @@ variable CKT-PAR-U
    ba bu CHK-ADD-POS
    CHK-MAKE-TEMP
    CHK-MATERIALIZE-LIST
-   CHK-DIRECT-RUN CKT-DIRECT-END ;
+   CHK-DIRECT-RUN DIRECT-END ;
 
-: CKT-DIRECT-PREVERIFY-LIST-PATH ( ptr u8 n -- n n n )
-   CKT-DIRECT-START
+: LIST-PREVERIFY ( ptr u8 n -- n n n )
+   DIRECT-START
    CHK-MATERIALIZE-LIST-PATH
-   [: CHK-RUN-PREVERIFY ;] catch CKT-DIRECT-END ;
+   [: CHK-RUN-PREVERIFY ;] catch DIRECT-END ;
 
-: CKT-DIRECT-PREVERIFY-PATH ( ptr u8 n -- n n n )
-   CKT-DIRECT-START
+: DIRECT-PREVERIFY-PATH ( ptr u8 n -- n n n )
+   DIRECT-START
    CHK-ADD-POS
    CHK-MATERIALIZE
-   [: CHK-RUN-PREVERIFY ;] catch CKT-DIRECT-END ;
+   [: CHK-RUN-PREVERIFY ;] catch DIRECT-END ;
 
-: CKT-DIRECT-PATH ( ptr u8 n -- n n n )
-   CKT-DIRECT-START
-   CHK-ADD-POS
-   CHK-MATERIALIZE
-   CHK-DIRECT-RUN CKT-DIRECT-END ;
+: DIRECT-BAD-FLAG ( -- n n n )
+   DIRECT-START
+   [: s" --bad-flag" CHK-PARSE-ONE ;] catch DIRECT-END ;
 
-: CKT-DIRECT-BAD-FLAG ( -- n n n )
-   CKT-DIRECT-START
-   [: s" --bad-flag" CHK-PARSE-ONE ;] catch CKT-DIRECT-END ;
-
-: CKT-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
+: CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )   \ outn errn code (0 on clean exit)
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} o LEN>N e LEN>N 0 ENDOF
      err OF PCAP-FAILED:UNMAKE  {: o:len e:len c:rc :} o LEN>N e LEN>N c RC>N ENDOF
    ;MATCH ;
 
-: CKT-GOOD$ ( -- ptr u8 n )
+: GOOD$ ( -- ptr u8 n )
    s" : CKT-OK ( i64 -- i64 ) dup * ;" ;
 
-: CKT-BAD$SRC ( -- ptr u8 n )
+: BAD$SRC ( -- ptr u8 n )
    s" : CKT-BAD-WORD ( i64 -- i64 ) dup ;" ;
 
-: CKT-FWDREF$ ( -- ptr u8 n )
+: FWDREF$ ( -- ptr u8 n )
    s" : CKT-FWDREF ( -- ) CKT-MISSING ;" ;
 
-: CKT-HB$ ( -- ptr u8 n )
-   CKT-HB-SET? if CKT-HB-BUF CKT-HB-U @ exit then
+: HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
    2drop
    s" HABU_UNDER_TEST" GETENV dup 0= if
       2drop s" bin/hb" exit
    then ;
 
-: CKT-HB-LOAD-FWDREF ( -- n n n )
-   CKT-BAD$ CKT-FWDREF$ WRITE-ALL
+: HB-LOAD-FWDREF ( -- n n n )
+   BAD$ FWDREF$ WRITE-ALL
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
-   CKT-BAD$ >LEN PROC-ARGV+
-   CKT-HB$ >LEN CKT-OUT CKT-BUF-CAP >LEN
-   CKT-ERR CKT-BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
-   CKT-CAPTURE>N ;
+   BAD$ >LEN PROC-ARGV+
+   HB$ >LEN CAP-OUT BUF-CAP >LEN
+   CAP-ERR BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   CAPTURE>N ;
 
-: CKT-DUP$SRC ( -- ptr u8 n )
+: DUP$SRC ( -- ptr u8 n )
    SB-RESET
    s" : CKT-DUP ( i64 -- i64 ) 1 + ;" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-DUP ( i64 -- i64 ) 2 + ;" SB-APPEND
    SB$ ;
 
-: CKT-RESERVED$ ( -- ptr u8 n )
+: RESERVED$ ( -- ptr u8 n )
    s" variable I" ;
 
-: CKT-UNDEFINED$SRC ( -- ptr u8 n )
+: UNDEFINED$SRC ( -- ptr u8 n )
    s" : CKT-MISS ( i64 -- i64 ) dup NOPE ;" ;
 
-: CKT-VREC-GOOD$ ( -- ptr u8 n )
+: VREC-GOOD$ ( -- ptr u8 n )
    SB-RESET
    s" DEFLINEAR own" SB-APPEND
    $0a SB-APPEND-C
@@ -285,14 +271,14 @@ variable CKT-PAR-U
    s" : CKT-HDL-PASS ( hdl -- hdl ) ;" SB-APPEND
    SB$ ;
 
-: CKT-LINEAR-BAD$ ( -- ptr u8 n )
+: LINEAR-BAD$ ( -- ptr u8 n )
    SB-RESET
    s" DEFLINEAR own" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-BAD-OWN-DUP ( own -- own own ) dup ;" SB-APPEND
    SB$ ;
 
-: CKT-TFAM-GOOD$ ( -- ptr u8 n )   \ declarations + signature use, multi-line
+: TFAM-GOOD$ ( -- ptr u8 n )   \ declarations + signature use, multi-line
    SB-RESET
    s" TYPEFAMILY tfck 1" SB-APPEND
    $0a SB-APPEND-C
@@ -309,7 +295,7 @@ variable CKT-PAR-U
    s" : CKT-RS-PASS ( rsck<n,f> -- rsck<n,f> ) ;" SB-APPEND
    SB$ ;
 
-: CKT-TFAM-BAD$ ( -- ptr u8 n )    \ duplicate variant rejects fail-closed
+: TFAM-BAD$ ( -- ptr u8 n )    \ duplicate variant rejects fail-closed
    SB-RESET
    s" SUMTYPE rsbad 1 VARIANT ok a ;VARIANT VARIANT ok a ;VARIANT ;SUMTYPE" SB-APPEND
    $0a SB-APPEND-C
@@ -318,31 +304,31 @@ variable CKT-PAR-U
 
 \ S2: a declaration PRE-CHECK reject (missing arity / unterminated) must report
 \ the same E-BAD-DECLARATION packet the native path emits, not a raw die.
-: CKT-TFAM-NOARITY$ ( -- ptr u8 n )   \ TYPEFAMILY missing its arity token
+: TFAM-NOARITY$ ( -- ptr u8 n )   \ TYPEFAMILY missing its arity token
    SB-RESET
    s" TYPEFAMILY ckfnoar" SB-APPEND
    SB$ ;
 
-: CKT-SUM-NOEND$ ( -- ptr u8 n )      \ SUMTYPE body never reaches ;SUMTYPE
+: SUM-NOEND$ ( -- ptr u8 n )      \ SUMTYPE body never reaches ;SUMTYPE
    SB-RESET
    s" SUMTYPE cksnoend 1 VARIANT ok a ;VARIANT" SB-APPEND
    SB$ ;
 
-: CKT-ENUM-GOOD$ ( -- ptr u8 n )   \ item 14 gap: enum declaration + signature use
+: ENUM-GOOD$ ( -- ptr u8 n )   \ item 14 gap: enum declaration + signature use
    SB-RESET
    s" ENUM eck red green ;ENUM" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-EN-PASS ( eck -- eck ) ;" SB-APPEND
    SB$ ;
 
-: CKT-ENUM-BAD$ ( -- ptr u8 n )    \ duplicate enum variant rejects fail-closed
+: ENUM-BAD$ ( -- ptr u8 n )    \ duplicate enum variant rejects fail-closed
    SB-RESET
    s" ENUM ebad red red ;ENUM" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-AFTER-EBAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
-: CKT-PROD-GOOD$ ( -- ptr u8 n )   \ item 15: product declaration + signature use
+: PROD-GOOD$ ( -- ptr u8 n )   \ item 15: product declaration + signature use
    SB-RESET
    s" PRODUCT pck 0" SB-APPEND
    $0a SB-APPEND-C
@@ -355,21 +341,21 @@ variable CKT-PAR-U
    s" : CKT-PD-PASS ( pck -- pck ) ;" SB-APPEND
    SB$ ;
 
-: CKT-PROD-BAD$ ( -- ptr u8 n )    \ duplicate product field rejects fail-closed
+: PROD-BAD$ ( -- ptr u8 n )    \ duplicate product field rejects fail-closed
    SB-RESET
    s" PRODUCT pbad 1 FIELD x a FIELD x a ;PRODUCT" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-AFTER-PBAD ( n -- n ) ;" SB-APPEND
    SB$ ;
 
-: CKT-PROD-ALL$SRC ( -- ptr u8 n ) \ all-errors support replay registers products
+: PROD-ALL$SRC ( -- ptr u8 n ) \ all-errors support replay registers products
    SB-RESET
    s" PRODUCT pae 0 FIELD v n ;PRODUCT" SB-APPEND
    $0a SB-APPEND-C
    s" : CKT-PAE-USE ( pae -- pae ) ;" SB-APPEND
    SB$ ;
 
-: CKT-VREC-BAD$ ( -- ptr u8 n )
+: VREC-BAD$ ( -- ptr u8 n )
    SB-RESET
    s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
    $0a SB-APPEND-C
@@ -378,7 +364,7 @@ variable CKT-PAR-U
    s" : CKT-BAD-REC ( point -- rect ) ;" SB-APPEND
    SB$ ;
 
-: CKT-VREC-PARTIAL$ ( -- ptr u8 n )
+: VREC-PARTIAL$ ( -- ptr u8 n )
    SB-RESET
    s" VALUE-RECORD point x n y n END-VALUE-RECORD" SB-APPEND
    $0a SB-APPEND-C
@@ -387,16 +373,16 @@ variable CKT-PAR-U
 
 \ Unterminated block declarations must print their check.f diagnostic before
 \ the rc-70 throw; the CHK-THROW message shape dropped the text silently.
-: CKT-ENUM-NOEND$ ( -- ptr u8 n )
+: ENUM-NOEND$ ( -- ptr u8 n )
    s" ENUM enoend red green" ;
 
-: CKT-PROD-NOEND$ ( -- ptr u8 n )
+: PROD-NOEND$ ( -- ptr u8 n )
    s" PRODUCT pnoend 0 FIELD x n" ;
 
-: CKT-VREC-NOEND$ ( -- ptr u8 n )
+: VREC-NOEND$ ( -- ptr u8 n )
    s" VALUE-RECORD vnoend x n" ;
 
-: CKT-NOM-SCAN-BODY$ ( -- ptr u8 n )
+: NOM-SCAN-BODY$ ( -- ptr u8 n )
    SB-RESET
    s" : DEFTYPE ( -- ) ;" SB-APPEND
    $0a SB-APPEND-C
@@ -412,7 +398,7 @@ variable CKT-PAR-U
 \ trusts the converter pair, so every definition resolves without loading
 \ lib/type/deftype.f. This is the static-scan capability stage B moved
 \ off the retired CHECKER-DEFTYPE path onto the family surface.
-: CKT-NOM-PREVERIFY$ ( -- ptr u8 n )
+: NOM-PREVERIFY$ ( -- ptr u8 n )
    SB-RESET
    s" DEFTYPE CKT-WIDGET" SB-APPEND $0a SB-APPEND-C
    s" : CKT-WIDGET-RT ( ckt-widget -- ckt-widget ) ;" SB-APPEND $0a SB-APPEND-C
@@ -429,9 +415,11 @@ variable CKT-PAR-U
 \ (since stage B) the DEFTYPE family surface. A DEFLINEAR type is one linear
 \ cell whose value moves exactly once, so bodies pass it through by identity
 \ rather than dropping or binding it.
+;package
+
 package CKT-PKG-LINEAR
 
-private
+public
 
 : GOOD$ ( -- ptr u8 n )
    SB-RESET
@@ -493,7 +481,7 @@ private
 \ reach the foreign qualified pkg:tail contract end to end.
 package CKT-PKG-FAM
 
-private
+public
 
 : GOOD$ ( -- ptr u8 n )        \ foreign public family, qualified good use
    SB-RESET
@@ -542,23 +530,27 @@ private
 
 ;package
 
-: CKT-SCAN-NOMINAL ( -- n )
+package CHECK
+
+private
+
+: SCAN-NOMINAL ( -- n )
    CHECKER-SCOPE-START
-   [: CKT-LIST$ CHK-RUN-NOMINAL-FILE ;] catch {: rc:n :}
+   [: LIST$ CHK-RUN-NOMINAL-FILE ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc ;
 
-: CKT-RUN-SOURCE-LIST-RESERVED-CORE ( -- n n n )
-   CKT-LIST$ CKT-RESERVED$ WRITE-ALL
+: RESERVED-LIST-RUN ( -- n n n )
+   LIST$ RESERVED$ WRITE-ALL
    RESERVED-NAME-LINT-RESET
-   CKT-ERR CKT-BUF-CAP LINT-OUT-BUFFER!
-   CKT-LIST$ s" <source-list>" RESERVED-NAME-LINT-FILE-AS
+   CAP-ERR BUF-CAP LINT-OUT-BUFFER!
+   LIST$ s" <source-list>" RESERVED-NAME-LINT-FILE-AS
    [: RESERVED-NAME-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip
    LINT-OUT-BUFFER-OFF
    0 swap rc ;
 
-: CKT-DIE$ ( -- ptr u8 n )
+: DIE$ ( -- ptr u8 n )
    SB-RESET
    s" : CKT-BYE ( -- ) s" SB-APPEND
    $22 SB-APPEND-C
@@ -569,73 +561,75 @@ private
    s" CKT-BYE" SB-APPEND
    SB$ ;
 
-: CKT-UNTERM-SDQ$ ( -- ptr u8 n )
+: UNTERM-SDQ$ ( -- ptr u8 n )
    SB-RESET
    s" : CKT-UNTERM-SDQ ( -- ptr u8 n ) s" SB-APPEND
    $22 SB-APPEND-C
    s"  nope ;" SB-APPEND
    SB$ ;
 
-: CKT-PREPARE ( -- )
+: PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-check-test" TMPDIR-MKDIR CKT-ROOT CKT-ROOT-U CKT-COPY!
-   CKT-ROOT$ CLEANUP-TREE+
-   CKT-ROOT$ s" bad.f" CKT-BAD-PATH JOIN-PATH CKT-BAD-U !
-   CKT-ROOT$ s" local-test.f" CKT-LIST-PATH JOIN-PATH CKT-LIST-U !
-   CKT-ROOT$ s" inc-dep.f" CKT-INC-DEP-PATH JOIN-PATH CKT-INC-DEP-U !
-   CKT-ROOT$ s" inc-entry.f" CKT-INC-ENTRY-PATH JOIN-PATH CKT-INC-ENTRY-U !
-   CKT-ROOT$ s" list-sup.f" CKT-SUP-PATH JOIN-PATH CKT-SUP-U !
-   CKT-ROOT$ s" list-use.f" CKT-USE-PATH JOIN-PATH CKT-USE-U !
-   CKT-BAD$ CKT-BAD$SRC WRITE-ALL ;
+   s" habu-check-test" TMPDIR-MKDIR TMP-ROOT TMP-ROOT-U PATH-COPY!
+   ROOT$ CLEANUP-TREE+
+   ROOT$ s" bad.f" BAD-PATH JOIN-PATH BAD-U !
+   ROOT$ s" local-test.f" LIST-PATH JOIN-PATH LIST-U !
+   ROOT$ s" inc-dep.f" INC-DEP-PATH JOIN-PATH INC-DEP-U !
+   ROOT$ s" inc-entry.f" INC-ENTRY-PATH JOIN-PATH INC-ENTRY-U !
+   ROOT$ s" list-sup.f" SUP-PATH JOIN-PATH SUP-U !
+   ROOT$ s" list-use.f" USE-PATH JOIN-PATH USE-U !
+   BAD$ BAD$SRC WRITE-ALL ;
 
-: CKT-TEST-GOOD ( -- )
-   [: CKT-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
+: TEST-GOOD ( -- )
+   [: GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T= ;
 
-: CKT-LBUF-GOOD$ ( -- ptr u8 n )
+: LBUF-GOOD$ ( -- ptr u8 n )
    s" SUMTYPE cklb 1 VARIANT value a ;VARIANT ;SUMTYPE 2 LAYOUT-BUFFER CKLB-BUF cklb<n>" ;
 
-: CKT-LBUF-OLD$ ( -- ptr u8 n )
+: LBUF-OLD$ ( -- ptr u8 n )
    s" LAYOUT-BUFFER CKLB-OLD cklb<n>" ;
 
-: CKT-TEST-LAYOUT-BUFFER ( -- )
-   [: CKT-LBUF-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T=
-   [: CKT-LBUF-OLD$ VERIFY:SOURCE-BUF ;] catch CKT-LBUF-RC T= ;
+: TEST-LAYOUT-BUFFER ( -- )
+   [: LBUF-GOOD$ VERIFY:SOURCE-BUF ;] catch 0 T=
+   [: LBUF-OLD$ VERIFY:SOURCE-BUF ;] catch LBUF-RC T= ;
 
-: CKT-TEST-FILE-LABEL ( -- )
-   CKT-BAD$SRC CKT-CORE-JSON 70 T=
+: TEST-FILE-LABEL ( -- )
+   BAD$SRC CORE-JSON 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru CKT-BAD$ CONTAINS? TTRUE ;
+   CAP-ERR erru BAD$ CONTAINS? TTRUE ;
 
-: CKT-TEST-USAGE ( -- )
-   CKT-DIRECT-BAD-FLAG 64 T=
+: TEST-USAGE ( -- )
+   DIRECT-BAD-FLAG 64 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
+   CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
 
-: CKT-TEST-DIE ( -- )
-   CKT-DIE$ CKT-DIRECT-STDIN 5 T=
+: TEST-DIE ( -- )
+   DIE$ DIRECT-STDIN 5 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" bye" CONTAINS? TTRUE ;
+   CAP-ERR erru s" bye" CONTAINS? TTRUE ;
 
-: CKT-TEST-FWDREF-DIRECT ( -- )
-   CKT-FWDREF$ CKT-DIRECT-STDIN 70 T=
+: TEST-FWDREF-DIRECT ( -- )
+   FWDREF$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   CKT-ERR erru s" CKT-MISSING" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru s" CKT-MISSING" CONTAINS? TTRUE ;
 
-: CKT-TEST-FWDREF-JSON ( -- )
-   CKT-FWDREF$ CKT-DIRECT-JSON-STDIN 70 T=
+: TEST-FWDREF-JSON ( -- )
+   FWDREF$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   CKT-ERR erru s" CKT-MISSING" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru s" CKT-MISSING" CONTAINS? TTRUE ;
+
+;package
 
 package CKT-ORIGIN
 
-private
+public
 
 : SCAN$ ( -- ptr u8 n )
    SB-RESET
@@ -660,6 +654,8 @@ private
    $0d SB-APPEND-C  $0a SB-APPEND-C
    SB$ ;
 
+private
+
 : BASE$ ( -- ptr u8 n )
    s" : CKT-ORIGIN-BASE ( n -- n ) dup ;" ;
 
@@ -668,6 +664,8 @@ private
    $5c SB-APPEND-C  s"  base" SB-APPEND  $0a SB-APPEND-C
    s" : CKT-ORIGIN-NEXT ( n -- n ) dup ;" SB-APPEND
    SB$ ;
+
+public
 
 : VERIFY-BASE ( -- n )
    CHECKER-CANDIDATE-SCOPE-START
@@ -681,113 +679,115 @@ private
    CHECKER-CANDIDATE-SCOPE-DONE
    rc ;
 
-public
+;package
 
-: SCAN ( -- )
-   SCAN$ CKT-DIRECT-JSON-STDIN 70 T=
+package CHECK
+
+private
+
+: TEST-ORIGIN-SCAN ( -- )
+   CKT-ORIGIN:SCAN$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s\" \"word\":\"ckt-origin-scan\"" CONTAINS? TTRUE
-   CKT-ERR erru s\" \"line\":8,\"column\":30,\"byte_start\":219,\"byte_end\":222" CONTAINS? TTRUE ;
+   CAP-ERR erru s\" \"word\":\"ckt-origin-scan\"" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"line\":8,\"column\":30,\"byte_start\":219,\"byte_end\":222" CONTAINS? TTRUE ;
 
-: BASE ( -- )
-   CKT-ERR CKT-BUF-CAP DIAG-BUFFER!
+: TEST-ORIGIN-BASE ( -- )
+   CAP-ERR BUF-CAP DIAG-BUFFER!
    0 0= DIAG-JSON!
-   VERIFY-BASE 70 T=
+   CKT-ORIGIN:VERIFY-BASE 70 T=
    DIAG-BUFFER$ s\" \"line\":7,\"column\":38,\"byte_start\":129,\"byte_end\":132" CONTAINS? TTRUE
-   CKT-ERR CKT-BUF-CAP DIAG-BUFFER!
-   VERIFY-NEXT 70 T=
+   CAP-ERR BUF-CAP DIAG-BUFFER!
+   CKT-ORIGIN:VERIFY-NEXT 70 T=
    DIAG-BUFFER$ s\" \"line\":8,\"column\":30,\"byte_start\":136,\"byte_end\":139" CONTAINS? TTRUE
    DIAG-BUFFER-OFF
    0 0= 0= DIAG-JSON! ;
 
-;package
-
-: CKT-TEST-FWDREF-RAW-LOAD ( -- )
-   CKT-HB-LOAD-FWDREF 70 T=
+: RAW-FWDREF-TEST ( -- )
+   HB-LOAD-FWDREF 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-UNDEFINED: CKT-MISSING" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-UNDEFINED: CKT-MISSING" CONTAINS? TTRUE ;
 
-: CKT-EXPECT-UNTERM-STRING ( ptr u8 n -- ) {: src:ptr srcu:n :}
-   src srcu CKT-CORE-JSON 70 T=
+: EXPECT-UNTERM-STRING ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu CORE-JSON 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-" CONTAINS? TTRUE ;
 
-: CKT-TEST-UNTERM-STRING ( -- )
-   CKT-UNTERM-SDQ$ CKT-EXPECT-UNTERM-STRING ;
+: TEST-UNTERM-STRING ( -- )
+   UNTERM-SDQ$ EXPECT-UNTERM-STRING ;
 
-: CKT-TEST-DUP-ALL ( -- )
-   CKT-DUP$SRC CKT-CORE-JSON $4E T=
+: TEST-DUP-ALL ( -- )
+   DUP$SRC CORE-JSON $4E T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
-   CKT-ERR erru s" duplicate-definition" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TTRUE
+   CAP-ERR erru s" duplicate-definition" CONTAINS? TTRUE ;
 
-: CKT-TEST-SOURCE-LIST-RESERVED ( -- )
-   CKT-RUN-SOURCE-LIST-RESERVED-CORE 1 T=
+: RESERVED-LIST-TEST ( -- )
+   RESERVED-LIST-RUN 1 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   CKT-ERR erru s" <source-list>" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
+   CAP-ERR erru s" <source-list>" CONTAINS? TTRUE ;
 
-: CKT-TEST-SOURCE-LIST-AUDITED-LIB ( -- )
-   s" lib/test.f" CKT-DIRECT-PREVERIFY-LIST-PATH 0 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   erru 0 T= ;
-
-: CKT-TEST-SOURCE-LIST-PREVERIFY-DIAG ( -- )
-   CKT-LIST$ CKT-UNDEFINED$SRC WRITE-ALL
-   CKT-LIST$ CKT-DIRECT-SOURCE-LIST-PATH 70 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CKT-ERR erru s" check.f: source preverify failed before run" CONTAINS? TTRUE
-   CKT-ERR erru CKT-LIST$ CONTAINS? TTRUE
-   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   CKT-ERR erru s" NOPE" CONTAINS? TTRUE ;
-
-: CKT-TEST-VALUE-RECORD-GOOD ( -- )
-   CKT-VREC-GOOD$ CKT-DIRECT-STDIN 0 T=
+: AUDITED-LIB-TEST ( -- )
+   s" lib/test.f" LIST-PREVERIFY 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CKT-TEST-LINEAR-BAD ( -- )
-   CKT-LINEAR-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+: PREVERIFY-DIAG-TEST ( -- )
+   LIST$ UNDEFINED$SRC WRITE-ALL
+   LIST$ LIST-RUN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-REJECTED" CONTAINS? TTRUE
-   CKT-ERR erru s" dup" CONTAINS? TTRUE ;
+   CAP-ERR erru s" check.f: source preverify failed before run" CONTAINS? TTRUE
+   CAP-ERR erru LIST$ CONTAINS? TTRUE
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru s" NOPE" CONTAINS? TTRUE ;
 
-: CKT-TEST-VALUE-RECORD-BAD ( -- )
-   CKT-VREC-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
-   CKT-ERR erru s" field<rect,w,n>" CONTAINS? TTRUE ;
-
-: CKT-TEST-TYPEFAMILY-GOOD ( -- )
-   CKT-TFAM-GOOD$ CKT-DIRECT-STDIN 0 T=
+: VREC-GOOD-TEST ( -- )
+   VREC-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CKT-TEST-TYPEFAMILY-ALL ( -- )
-   CKT-TFAM-GOOD$ CKT-DIRECT-ALL-STDIN 0 T=
+: TEST-LINEAR-BAD ( -- )
+   LINEAR-BAD$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-REJECTED" CONTAINS? TTRUE
+   CAP-ERR erru s" dup" CONTAINS? TTRUE ;
+
+: VREC-BAD-TEST ( -- )
+   VREC-BAD$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR erru s" field<rect,w,n>" CONTAINS? TTRUE ;
+
+: TEST-TYPEFAMILY-GOOD ( -- )
+   TFAM-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CKT-TEST-SUMTYPE-BAD ( -- )
-   CKT-TFAM-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+: TEST-TYPEFAMILY-ALL ( -- )
+   TFAM-GOOD$ DIRECT-ALL-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+   erru 0 T= ;
 
-: CKT-TFAM-REDRIVE$ ( -- ptr u8 n )   \ good SUMTYPE + one real mismatch after it
+: TEST-SUMTYPE-BAD ( -- )
+   TFAM-BAD$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+
+: TFAM-REDRIVE$ ( -- ptr u8 n )   \ good SUMTYPE + one real mismatch after it
    SB-RESET
    s" SUMTYPE zrc 0 VARIANT keep n ;VARIANT ;SUMTYPE" SB-APPEND
    $0a SB-APPEND-C
@@ -799,14 +799,14 @@ public
 \ the redrive used to re-evaluate the SUMTYPE inside the nominal pass's
 \ still-registered scope and emit a SPURIOUS E-BAD-DECLARATION duplicate-family
 \ line beside the real mismatch. Pin: exactly ONE diagnostic, the mismatch.
-: CKT-TEST-SUMTYPE-ALL-REDRIVE ( -- )
-   CKT-TFAM-REDRIVE$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+: SUM-REDRIVE-TEST ( -- )
+   TFAM-REDRIVE$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TFALSE
-   CKT-ERR erru s" duplicate family" CONTAINS? TFALSE
-   CKT-ERR erru 10 COUNT-CHAR 1 T= ;
+   CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TFALSE
+   CAP-ERR erru s" duplicate family" CONTAINS? TFALSE
+   CAP-ERR erru 10 COUNT-CHAR 1 T= ;
 
 \ Regression habu-fix-all-errors-67f4bdf9: the full check CLI --all-errors path
 \ let a DEFTYPE family registration leak out of preverify into the redrive.
@@ -821,7 +821,7 @@ public
 \ reaches the JSON redrive re-run. SUMTYPE/TYPEFAMILY/DEFLINEAR declarers are
 \ baked into the engine, so their child loads succeed, the redrive re-run never
 \ fires, and they were never affected (probed: all report 0 through --all-errors).
-: CKT-NOM-ALL-BARE$ ( -- ptr u8 n )   \ statically clean; bare child load is E-UNDEFINED
+: NOM-ALL-BARE$ ( -- ptr u8 n )   \ statically clean; bare child load is E-UNDEFINED
    SB-RESET
    s" DEFTYPE CKT-AEW" SB-APPEND $0a SB-APPEND-C
    s" : CKT-AEW-RT ( ckt-aew -- ckt-aew ) ;" SB-APPEND
@@ -829,13 +829,13 @@ public
 
 \ Pin: the JSON redrive re-run reports the honest child E-UNDEFINED (70), never
 \ a spurious E-DUPLICATE-DEFINITION from re-registering the preverified family.
-: CKT-TEST-NOMINAL-ALL-REDRIVE ( -- )
-   CKT-NOM-ALL-BARE$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+: NOM-REDRIVE-TEST ( -- )
+   NOM-ALL-BARE$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TFALSE ;
+   CAP-ERR erru s" E-DUPLICATE-DEFINITION" CONTAINS? TFALSE ;
 
-: CKT-NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define DEFTYPE; zero errors
+: NOM-ALL-CLEAN$ ( -- ptr u8 n )   \ require lets the child define DEFTYPE; zero errors
    SB-RESET
    s" require lib/type/deftype.f" SB-APPEND $0a SB-APPEND-C
    s" DEFTYPE CKT-AEOK" SB-APPEND $0a SB-APPEND-C
@@ -844,243 +844,231 @@ public
 
 \ Green coverage: a DEFTYPE declaration through --all-errors reports zero errors
 \ end to end when the child can load the declarer.
-: CKT-TEST-NOMINAL-ALL-CLEAN ( -- )
-   CKT-NOM-ALL-CLEAN$ CKT-DIRECT-ALL-JSON-STDIN 0 T=
+: NOM-CLEAN-TEST ( -- )
+   NOM-ALL-CLEAN$ ALL-JSON-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CKT-TEST-TFAM-NOARITY ( -- )   \ S2 parity: missing arity -> declaration packet
-   CKT-TFAM-NOARITY$ CKT-DIRECT-JSON-STDIN 70 T=
+: TEST-TFAM-NOARITY ( -- )   \ S2 parity: missing arity -> declaration packet
+   TFAM-NOARITY$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" missing arity" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" missing arity" CONTAINS? TTRUE ;
 
-: CKT-TEST-SUM-NOEND ( -- )      \ S2 parity: unterminated sum -> declaration packet
-   CKT-SUM-NOEND$ CKT-DIRECT-JSON-STDIN 70 T=
+: TEST-SUM-NOEND ( -- )      \ S2 parity: unterminated sum -> declaration packet
+   SUM-NOEND$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
 
 \ S3 (dot habu-tfam-13-s3-truncate): the ALL-ERRORS collector path must report a
 \ truncated declaration with the same packet, fail-closed — never a silent skip.
-: CKT-TEST-SUM-NOEND-ALL ( -- )
-   CKT-SUM-NOEND$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+: SUM-NOEND-ALL ( -- )
+   SUM-NOEND$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" missing ;SUMTYPE" CONTAINS? TTRUE ;
 
-: CKT-TEST-TFAM-NOARITY-ALL ( -- )
-   CKT-TFAM-NOARITY$ CKT-DIRECT-ALL-JSON-STDIN 70 T=
+: TFAM-NOARITY-ALL ( -- )
+   TFAM-NOARITY$ ALL-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" missing arity" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" missing arity" CONTAINS? TTRUE ;
 
 \ C2 follow-up (dot habu-tfam-13-c2-checkcore-cap): a source larger than
 \ CHK-SRC-CAP must fail closed with a clean check diagnostic (exit-class
 \ NOINPUT), never an uncaught E-FS-CAPACITY. The length check fires before any
 \ content read, so the oversize buffer stays unfilled.
-: CKT-OVERCAP$ ( -- ptr u8 n )
+: OVERCAP$ ( -- ptr u8 n )
    CHK-SRC-CAP 1 + MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop CHK-SRC-CAP 1 + ;
 
-: CKT-TEST-OVERCAP-SOURCE ( -- )
-   CKT-DIRECT-START
-   [: CKT-OVERCAP$ s" <stdin>" CHK-MATERIALIZE-BUF-AS CHK-DIRECT-RUN drop ;] catch
-   CKT-DIRECT-END CHK-E-NOINPUT T=
+: TEST-OVERCAP-SOURCE ( -- )
+   DIRECT-START
+   [: OVERCAP$ s" <stdin>" CHK-MATERIALIZE-BUF-AS CHK-DIRECT-RUN drop ;] catch
+   DIRECT-END CHK-E-NOINPUT T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" source exceeds capacity" CONTAINS? TTRUE ;
+   CAP-ERR erru s" source exceeds capacity" CONTAINS? TTRUE ;
 
 
 \ C2: a declaration body over TDECL-CAP ($1000) must report the same
 \ E-BAD-DECLARATION packet (the length check fires ahead of variant parsing, so
 \ the repeated variant names never matter).
-create CKT-BIG $2000 allot   variable CKT-BIG-U
-: CKT-BIG-C, ( n -- ) CKT-BIG CKT-BIG-U @ + c!  CKT-BIG-U @ 1+ CKT-BIG-U ! ;
-: CKT-BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ CKT-BIG-C, loop ;
-: CKT-OVERSIZE$ ( -- ptr u8 n )
-   0 CKT-BIG-U !
-   s" SUMTYPE ckbig 1 " CKT-BIG-APP
-   200 0 ?do s" VARIANT vvvvvvvvvvvvvvvvvvvv n ;VARIANT " CKT-BIG-APP loop
-   s" ;SUMTYPE" CKT-BIG-APP
-   CKT-BIG CKT-BIG-U @ ;
-: CKT-TEST-OVERSIZE ( -- )
-   CKT-OVERSIZE$ CKT-DIRECT-JSON-STDIN 70 T=
+create BIG $2000 allot   variable BIG-U
+: BIG-C, ( n -- ) BIG BIG-U @ + c!  BIG-U @ 1+ BIG-U ! ;
+: BIG-APP ( ptr u8 n -- ) {: a:ptr u:n :}  u 0 ?do a i + c@ BIG-C, loop ;
+: OVERSIZE$ ( -- ptr u8 n )
+   0 BIG-U !
+   s" SUMTYPE ckbig 1 " BIG-APP
+   200 0 ?do s" VARIANT vvvvvvvvvvvvvvvvvvvv n ;VARIANT " BIG-APP loop
+   s" ;SUMTYPE" BIG-APP
+   BIG BIG-U @ ;
+: TEST-OVERSIZE ( -- )
+   OVERSIZE$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" declaration too long" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" declaration too long" CONTAINS? TTRUE ;
 
-: CKT-TEST-ENUM-GOOD ( -- )
-   CKT-ENUM-GOOD$ CKT-DIRECT-STDIN 0 T=
+: TEST-ENUM-GOOD ( -- )
+   ENUM-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CKT-TEST-ENUM-BAD ( -- )
-   CKT-ENUM-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+: TEST-ENUM-BAD ( -- )
+   ENUM-BAD$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
 
-: CKT-TEST-PRODUCT-GOOD ( -- )
-   CKT-PROD-GOOD$ CKT-DIRECT-STDIN 0 T=
+: TEST-PRODUCT-GOOD ( -- )
+   PROD-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CKT-TEST-PRODUCT-BAD ( -- )
-   CKT-PROD-BAD$ CKT-DIRECT-JSON-STDIN 70 T=
+: TEST-PRODUCT-BAD ( -- )
+   PROD-BAD$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
-   CKT-ERR erru s" duplicate field" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" duplicate field" CONTAINS? TTRUE ;
 
-: CKT-TEST-PRODUCT-ALL-ERRORS ( -- )   \ verify-source support replay (RECORD-PRODUCT)
-   CKT-PROD-ALL$SRC CKT-CORE-JSON 0 T=
+: PROD-ALL-TEST ( -- )   \ verify-source support replay (RECORD-PRODUCT)
+   PROD-ALL$SRC CORE-JSON 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CKT-TEST-ENUM-NOEND ( -- )
-   CKT-ENUM-NOEND$ CKT-DIRECT-STDIN 70 T=
+: TEST-ENUM-NOEND ( -- )
+   ENUM-NOEND$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
+   CAP-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
 
-: CKT-TEST-PROD-NOEND ( -- )
-   CKT-PROD-NOEND$ CKT-DIRECT-STDIN 70 T=
+: TEST-PROD-NOEND ( -- )
+   PROD-NOEND$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" check.f: missing ;PRODUCT" CONTAINS? TTRUE ;
+   CAP-ERR erru s" check.f: missing ;PRODUCT" CONTAINS? TTRUE ;
 
-: CKT-TEST-VREC-NOEND ( -- )
-   CKT-VREC-NOEND$ CKT-DIRECT-STDIN 70 T=
+: TEST-VREC-NOEND ( -- )
+   VREC-NOEND$ DIRECT-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" check.f: missing END-VALUE-RECORD" CONTAINS? TTRUE ;
+   CAP-ERR erru s" check.f: missing END-VALUE-RECORD" CONTAINS? TTRUE ;
 
 \ Same arm through the real CLI entry: `bin/hb tools/check.f fixture` must
 \ carry the diagnostic on stderr with the rc unchanged.
-: CKT-HB-CHECK-ENUM-NOEND ( -- n n n )
-   CKT-BAD$ CKT-ENUM-NOEND$ WRITE-ALL
+: ENUM-CLI-RUN ( -- n n n )
+   BAD$ ENUM-NOEND$ WRITE-ALL
    PROC-ARGV-RESET
    s" tools/check.f" >LEN PROC-ARGV+
-   CKT-BAD$ >LEN PROC-ARGV+
-   CKT-HB$ >LEN CKT-OUT CKT-BUF-CAP >LEN
-   CKT-ERR CKT-BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
-   CKT-CAPTURE>N ;
+   BAD$ >LEN PROC-ARGV+
+   HB$ >LEN CAP-OUT BUF-CAP >LEN
+   CAP-ERR BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   CAPTURE>N ;
 
-: CKT-TEST-ENUM-NOEND-CLI ( -- )
-   CKT-HB-CHECK-ENUM-NOEND 70 T=
+: ENUM-CLI-TEST ( -- )
+   ENUM-CLI-RUN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
+   CAP-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
 
-: CKT-TEST-VALUE-RECORD-PARTIAL ( -- )
-   CKT-VREC-PARTIAL$ CKT-DIRECT-JSON-STDIN 70 T=
+: VREC-PARTIAL-TEST ( -- )
+   VREC-PARTIAL$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
-   CKT-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
 
-: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ( -- )
-   CKT-LIST$ CKT-NOM-SCAN-BODY$ WRITE-ALL
-   CKT-SCAN-NOMINAL 0 T= ;
+: NOM-SCAN-TEST ( -- )
+   LIST$ NOM-SCAN-BODY$ WRITE-ALL
+   SCAN-NOMINAL 0 T= ;
 
-: CKT-TEST-NOMINAL-PREVERIFY ( -- )
-   CKT-BAD$ CKT-NOM-PREVERIFY$ WRITE-ALL
-   CKT-BAD$ CKT-DIRECT-PREVERIFY-PATH 0 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   erru 0 T= ;
-
-package CKT-PKG-LINEAR
-
-public
-
-: GOOD ( -- )
-   GOOD$ CKT-DIRECT-STDIN 0 T=
+: TEST-NOMINAL-PREVERIFY ( -- )
+   BAD$ NOM-PREVERIFY$ WRITE-ALL
+   BAD$ DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: CROSS ( -- )
-   CROSS$ CKT-DIRECT-JSON-STDIN 70 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   CKT-ERR erru s" CKL-A-PRIV" CONTAINS? TTRUE ;
-
-: GLOBAL ( -- )
-   GLOBAL$ CKT-DIRECT-JSON-STDIN 70 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
-   CKT-ERR erru s" CKL-HIDDEN-PRIV" CONTAINS? TTRUE ;
-
-: DISTINCT ( -- )
-   DISTINCT$ CKT-DIRECT-JSON-STDIN 70 T=
-   {: outu:n erru:n :}
-   outu 0 T=
-   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
-   CKT-ERR erru s" ckl-right-id" CONTAINS? TTRUE
-   CKT-ERR erru s" ckl-left-id" CONTAINS? TTRUE ;
-
-;package
-
-package CKT-PKG-FAM
-
-public
-
-: GOOD ( -- )
-   GOOD$ CKT-DIRECT-STDIN 0 T=
+: LINEAR-GOOD-TEST ( -- )
+   CKT-PKG-LINEAR:GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: TWO ( -- )
-   TWO$ CKT-DIRECT-STDIN 0 T=
+: LINEAR-CROSS-TEST ( -- )
+   CKT-PKG-LINEAR:CROSS$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru s" CKL-A-PRIV" CONTAINS? TTRUE ;
+
+: LINEAR-GLOBAL-TEST ( -- )
+   CKT-PKG-LINEAR:GLOBAL$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TTRUE
+   CAP-ERR erru s" CKL-HIDDEN-PRIV" CONTAINS? TTRUE ;
+
+: LINEAR-DISTINCT-TEST ( -- )
+   CKT-PKG-LINEAR:DISTINCT$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR erru s" ckl-right-id" CONTAINS? TTRUE
+   CAP-ERR erru s" ckl-left-id" CONTAINS? TTRUE ;
+
+: FAM-GOOD-TEST ( -- )
+   CKT-PKG-FAM:GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: BOGUS ( -- )
-   BOGUS$ CKT-DIRECT-JSON-STDIN 70 T=
+: FAM-TWO-TEST ( -- )
+   CKT-PKG-FAM:TWO$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-UNKNOWN-SIGNATURE-TYPE" CONTAINS? TTRUE
-   CKT-ERR erru s" ckfno:ckffam" CONTAINS? TTRUE ;
+   erru 0 T= ;
 
-: JSON-PIN ( -- )
-   JSON$ CKT-DIRECT-JSON-STDIN 70 T=
+: FAM-BOGUS-TEST ( -- )
+   CKT-PKG-FAM:BOGUS$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
-   CKT-ERR erru s\" \"family\":\"ckfj:ckfjfam\"" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-UNKNOWN-SIGNATURE-TYPE" CONTAINS? TTRUE
+   CAP-ERR erru s" ckfno:ckffam" CONTAINS? TTRUE ;
 
-: PRIV ( -- )
-   PRIV$ CKT-DIRECT-JSON-STDIN 70 T=
+: FAM-JSON-PIN ( -- )
+   CKT-PKG-FAM:JSON$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" E-UNKNOWN-SIGNATURE-TYPE" CONTAINS? TTRUE
-   CKT-ERR erru s" ckfp:ckfpfam" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
+   CAP-ERR erru s\" \"family\":\"ckfj:ckfjfam\"" CONTAINS? TTRUE ;
 
-: NONAME ( -- )
-   NONAME$ CKT-DIRECT-STDIN 70 T=
+: FAM-PRIV-TEST ( -- )
+   CKT-PKG-FAM:PRIV$ DIRECT-JSON-STDIN 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru s" check.f: missing package name" CONTAINS? TTRUE ;
+   CAP-ERR erru s" E-UNKNOWN-SIGNATURE-TYPE" CONTAINS? TTRUE
+   CAP-ERR erru s" ckfp:ckfpfam" CONTAINS? TTRUE ;
 
-;package
+: FAM-NONAME-TEST ( -- )
+   CKT-PKG-FAM:NONAME$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" check.f: missing package name" CONTAINS? TTRUE ;
 
-: CKT-TEST-REQUIRE-FACADE ( -- )
-   s" lib/test/suite-test.f" CKT-DIRECT-PREVERIFY-PATH 0 T=
+: TEST-REQUIRE-FACADE ( -- )
+   s" lib/test/suite-test.f" DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
    erru 0 T=
    outu 0 T= ;
@@ -1088,19 +1076,19 @@ public
 \ A dep loaded through a literal `s" path" included` is part of the closure:
 \ the entry's use of the dep's word preverifies (the pre-producer scan captured
 \ require/required only and rejected this good program).
-: CKT-INC-ENTRY-SRC$ ( -- ptr u8 n )
+: INC-ENTRY-SRC$ ( -- ptr u8 n )
    SB-RESET
    $73 SB-APPEND-C $22 SB-APPEND-C $20 SB-APPEND-C
-   CKT-INC-DEP$ SB-APPEND
+   INC-DEP$ SB-APPEND
    $22 SB-APPEND-C
    s"  included" SB-APPEND $0a SB-APPEND-C
    s" : CKT-USE-EIGHT ( -- n ) CKT-EIGHT ;" SB-APPEND $0a SB-APPEND-C
    SB$ ;
 
-: CKT-TEST-INCLUDED-DEP ( -- )
-   CKT-INC-DEP$ s\" : CKT-EIGHT ( -- n ) 8 ;\n" WRITE-ALL
-   CKT-INC-ENTRY$ CKT-INC-ENTRY-SRC$ WRITE-ALL
-   CKT-INC-ENTRY$ CKT-DIRECT-PREVERIFY-PATH 0 T=
+: TEST-INCLUDED-DEP ( -- )
+   INC-DEP$ s\" : CKT-EIGHT ( -- n ) 8 ;\n" WRITE-ALL
+   INC-ENTRY$ INC-ENTRY-SRC$ WRITE-ALL
+   INC-ENTRY$ DIRECT-PREVERIFY-PATH 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
@@ -1109,99 +1097,99 @@ public
 \ prior entries replayed as support: both bad defs in b report against b's
 \ path (the pre-redrive materialized temp had zero defs, so all-errors was a
 \ no-op and only preverify's first error surfaced).
-: CKT-TEST-SOURCE-LIST-ALL-ERRORS ( -- )
-   CKT-SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
-   CKT-USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
-   CKT-SUP$ CKT-USE$ CKT-DIRECT-ALL-LIST 70 T=
+: LIST-ALL-TEST ( -- )
+   SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
+   USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
+   SUP$ USE$ DIRECT-ALL-LIST 70 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CKT-ERR erru CKT-USE$ CONTAINS? TTRUE
-   CKT-ERR erru s" ckt-bad-one" CONTAINS? TTRUE
-   CKT-ERR erru s" ckt-bad-two" CONTAINS? TTRUE
-   CKT-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE
-   CKT-ERR erru s" ckt-good-use" CONTAINS? TFALSE
-   CKT-ERR erru s" preverify" CONTAINS? TFALSE ;
+   CAP-ERR erru USE$ CONTAINS? TTRUE
+   CAP-ERR erru s" ckt-bad-one" CONTAINS? TTRUE
+   CAP-ERR erru s" ckt-bad-two" CONTAINS? TTRUE
+   CAP-ERR erru s" E-UNDEFINED" CONTAINS? TFALSE
+   CAP-ERR erru s" ckt-good-use" CONTAINS? TFALSE
+   CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
 \ Closure parity oracle: the retired token-level require/required scan
 \ (the pre-producer CHK-SCAN-DEPS semantics) re-expressed here as an
 \ independent check that the producer-backed closure is a superset of the old
 \ closure on every entry file the gate exercises.
-: CKT-PAR-WORD? ( n -- bool ) {: k:n :}
+: PAR-WORD? ( n -- bool ) {: k:n :}
    k 0 < if LINT-FALSE exit then
    k L# @ >= if LINT-FALSE exit then
    k LK@ L-WORD = ;
 
-: CKT-PAR=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k CKT-PAR-WORD? 0= if LINT-FALSE exit then
+: PAR=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k PAR-WORD? 0= if LINT-FALSE exit then
    k LEX-TOK a u LINT-STR=CI ;
 
-: CKT-PAR-SQUOTE? ( n -- bool ) {: k:n :}
-   k CKT-PAR-WORD? 0= if LINT-FALSE exit then
+: PAR-SQUOTE? ( n -- bool ) {: k:n :}
+   k PAR-WORD? 0= if LINT-FALSE exit then
    k LEX-TOK {: a:ptr u:n :}
    u 2 <> if LINT-FALSE exit then
    a c@ LINT-FOLD $73 <> if LINT-FALSE exit then
    a 1 + c@ $22 = ;
 
-: CKT-PAR-WS? ( n -- bool )
+: PAR-WS? ( n -- bool )
    dup $20 = over 9 = or over $0A = or swap $0D = or ;
 
-: CKT-PAR-SQ-SKIP ( n -- n )
-   begin dup CKT-PAR-U @ < while
-      CHK-EXP-BUF over + c@ CKT-PAR-WS? if 1+ else exit then
+: PAR-SQ-SKIP ( n -- n )
+   begin dup PAR-U @ < while
+      CHK-EXP-BUF over + c@ PAR-WS? if 1+ else exit then
    repeat ;
 
-: CKT-PAR-SQ-END ( n -- n )
-   begin dup CKT-PAR-U @ < while
+: PAR-SQ-END ( n -- n )
+   begin dup PAR-U @ < while
       CHK-EXP-BUF over + c@ $22 = if exit then
       1+
    repeat ;
 
-: CKT-PAR-SQ-PATH$ ( n -- ptr u8 n bool ) {: k:n :}
-   k CKT-PAR-SQUOTE? 0= if CHK-EXP-BUF 0 LINT-FALSE exit then
-   k LB@ k LEX-TOK nip + CKT-PAR-SQ-SKIP {: start:n :}
-   start CKT-PAR-SQ-END {: end:n :}
-   end CKT-PAR-U @ >= if CHK-EXP-BUF 0 LINT-FALSE exit then
+: PAR-SQ-PATH$ ( n -- ptr u8 n bool ) {: k:n :}
+   k PAR-SQUOTE? 0= if CHK-EXP-BUF 0 LINT-FALSE exit then
+   k LB@ k LEX-TOK nip + PAR-SQ-SKIP {: start:n :}
+   start PAR-SQ-END {: end:n :}
+   end PAR-U @ >= if CHK-EXP-BUF 0 LINT-FALSE exit then
    CHK-EXP-BUF start + end start - LINT-TRUE ;
 
-: CKT-PAR-IN-CLOSURE ( ptr u8 n -- )
+: PAR-IN-CLOSURE ( ptr u8 n -- )
    CHK-DEP-FIND 0 >= TTRUE ;
 
-: CKT-PAR-REQUIRE ( n -- ) {: k:n :}
-   k 1+ CKT-PAR-WORD? 0= if exit then
-   k 1+ LEX-TOK CKT-PAR-IN-CLOSURE ;
+: PAR-REQUIRE ( n -- ) {: k:n :}
+   k 1+ PAR-WORD? 0= if exit then
+   k 1+ LEX-TOK PAR-IN-CLOSURE ;
 
-: CKT-PAR-REQUIRED ( n -- ) {: k:n :}
+: PAR-REQUIRED ( n -- ) {: k:n :}
    k 0 <= if exit then
-   k 1- CKT-PAR-SQ-PATH$ if CKT-PAR-IN-CLOSURE else 2drop then ;
+   k 1- PAR-SQ-PATH$ if PAR-IN-CLOSURE else 2drop then ;
 
-: CKT-PAR-ORACLE-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u CHK-EXP-BUF CHK-SRC-CAP READ-ALL CKT-PAR-U !
-   CHK-EXP-BUF CKT-PAR-U @ LEX-SOURCE
+: PAR-ORACLE-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u CHK-EXP-BUF CHK-SRC-CAP READ-ALL PAR-U !
+   CHK-EXP-BUF PAR-U @ LEX-SOURCE
    0 begin dup L# @ < while
-      dup s" require" CKT-PAR=CI if dup CKT-PAR-REQUIRE then
-      dup s" required" CKT-PAR=CI if dup CKT-PAR-REQUIRED then
+      dup s" require" PAR=CI if dup PAR-REQUIRE then
+      dup s" required" PAR=CI if dup PAR-REQUIRED then
       1+
    repeat drop ;
 
-: CKT-PAR-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
+: PAR-ENTRY ( ptr u8 n -- ) {: a:ptr u:n :}
    CHK-EXPAND-RESET
    a u CHK-EXPAND-PATH
    0 begin dup CHK-DEP-ORDER-N @ < while
-      dup cells CHK-DEP-ORDER + @ CHK-DEP$ CKT-PAR-ORACLE-FILE
+      dup cells CHK-DEP-ORDER + @ CHK-DEP$ PAR-ORACLE-FILE
       1+
    repeat drop ;
 
-: CKT-TEST-CLOSURE-PARITY ( -- )
-   s" lib/errors.f" CKT-PAR-ENTRY
-   s" lib/string.f" CKT-PAR-ENTRY
-   s" lib/memory.f" CKT-PAR-ENTRY
-   s" lib/fs.f" CKT-PAR-ENTRY
-   s" lib/fs-mutate.f" CKT-PAR-ENTRY
-   s" lib/process.f" CKT-PAR-ENTRY
-   s" lib/process-argv.f" CKT-PAR-ENTRY
-   s" lib/process-env.f" CKT-PAR-ENTRY
-   s" lib/process-cwd.f" CKT-PAR-ENTRY
-   s" lib/test/suite-test.f" CKT-PAR-ENTRY ;
+: TEST-CLOSURE-PARITY ( -- )
+   s" lib/errors.f" PAR-ENTRY
+   s" lib/string.f" PAR-ENTRY
+   s" lib/memory.f" PAR-ENTRY
+   s" lib/fs.f" PAR-ENTRY
+   s" lib/fs-mutate.f" PAR-ENTRY
+   s" lib/process.f" PAR-ENTRY
+   s" lib/process-argv.f" PAR-ENTRY
+   s" lib/process-env.f" PAR-ENTRY
+   s" lib/process-cwd.f" PAR-ENTRY
+   s" lib/test/suite-test.f" PAR-ENTRY ;
 
 \ Source-shape pin for the GENERATED check-runner prelude (dot
 \ habu-enumerate-generated-check-4109899a): CHK-BUILD-PREFIX emits a
@@ -1214,139 +1202,146 @@ public
 \ shapes, with exactly one preflight rearm and one hook install. The doctored
 \ legs prove the scanner has teeth - a rogue install name or a missing install
 \ rejects.
-1024 constant CKTP-DOC-CAP
-create CKTP-DOC CKTP-DOC-CAP allot
-variable CKTP-I  variable CKTP-START
-variable CKTP-BAD  variable CKTP-INSTALLS  variable CKTP-REARMS
-variable CKTP-DOC-U
+1024 constant DOC-CAP
+create DOC DOC-CAP allot
+variable LINE-IDX  variable LINE-START
+variable SHAPE-BAD  variable INSTALL-N  variable REARM-N
+variable DOC-U
 
-: CKTP-LINE-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: LINE-OK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" 0 set-check" LINT-STR= if LINT-TRUE exit then
    a u s" ' CHECK-F-HOOK set-check" LINT-STR= ;
 
-: CKTP-NOTE-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+: NOTE-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u s" LOWER-CERT-HOOK:INSTALL" LINT-STR= if
-      CKTP-REARMS @ 1+ CKTP-REARMS !
+      REARM-N @ 1+ REARM-N !
       exit
    then
    a u s" set-check" CONTAINS? 0= if exit then
-   a u s" ' CHECK-F-HOOK set-check" LINT-STR= if CKTP-INSTALLS @ 1+ CKTP-INSTALLS ! then
-   a u CKTP-LINE-OK? 0= if -1 CKTP-BAD ! then ;
+   a u s" ' CHECK-F-HOOK set-check" LINT-STR= if INSTALL-N @ 1+ INSTALL-N ! then
+   a u LINE-OK? 0= if -1 SHAPE-BAD ! then ;
 
-: CKTP-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 CKTP-BAD !  0 CKTP-INSTALLS !  0 CKTP-REARMS !
-   0 CKTP-START !  0 CKTP-I !
-   begin CKTP-I @ u < while
-      a CKTP-I @ + c@ 10 = if
-         a CKTP-START @ + CKTP-I @ CKTP-START @ - CKTP-NOTE-LINE
-         CKTP-I @ 1+ CKTP-START !
+: SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 SHAPE-BAD !  0 INSTALL-N !  0 REARM-N !
+   0 LINE-START !  0 LINE-IDX !
+   begin LINE-IDX @ u < while
+      a LINE-IDX @ + c@ 10 = if
+         a LINE-START @ + LINE-IDX @ LINE-START @ - NOTE-LINE
+         LINE-IDX @ 1+ LINE-START !
       then
-      CKTP-I @ 1+ CKTP-I !
+      LINE-IDX @ 1+ LINE-IDX !
    repeat
-   CKTP-START @ u < if
-      a CKTP-START @ + u CKTP-START @ - CKTP-NOTE-LINE
+   LINE-START @ u < if
+      a LINE-START @ + u LINE-START @ - NOTE-LINE
    then ;
 
-: CKTP-SHAPE-OK? ( ptr u8 n -- bool )
-   CKTP-SCAN
-   CKTP-BAD @ 0=
-   CKTP-INSTALLS @ 1 = and
-   CKTP-REARMS @ 1 = and ;
+: SHAPE-OK? ( ptr u8 n -- bool )
+   SCAN
+   SHAPE-BAD @ 0=
+   INSTALL-N @ 1 = and
+   REARM-N @ 1 = and ;
 
-: CKTP-PRELUDE ( -- ptr u8 n )
+: PRELUDE ( -- ptr u8 n )
    s" prelude-shape.f" CHK-LABEL!
    0 CHK-JSON !
    CHK-RUN-RESET
    CHK-BUILD-PREFIX
    CHK-RUN-BUF CHK-RUN-U @ ;
 
-: CKTP-DOC+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CKTP-DOC-U @ u + CKTP-DOC-CAP > if E-STR-CAPACITY throw then
-   a CKTP-DOC CKTP-DOC-U @ + u BYTE-COPY
-   CKTP-DOC-U @ u + CKTP-DOC-U ! ;
+: DOC+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   DOC-U @ u + DOC-CAP > if E-STR-CAPACITY throw then
+   a DOC DOC-U @ + u BYTE-COPY
+   DOC-U @ u + DOC-U ! ;
 
-: CKTP-DOCTORED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   0 CKTP-DOC-U !
-   a u CKTP-DOC+
-   S\" ' EVIL-HOOK set-check\n" CKTP-DOC+
-   CKTP-DOC CKTP-DOC-U @ ;
+: DOCTORED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   0 DOC-U !
+   a u DOC+
+   S\" ' EVIL-HOOK set-check\n" DOC+
+   DOC DOC-U @ ;
 
-: CKT-TEST-PRELUDE-HOOK ( -- )
-   CKTP-PRELUDE {: pa:ptr pu:n :}
-   pa pu CKTP-SHAPE-OK? TTRUE
+: TEST-PRELUDE-HOOK ( -- )
+   PRELUDE {: pa:ptr pu:n :}
+   pa pu SHAPE-OK? TTRUE
    pa pu s" LOWER-CERT-HOOK:HOOK ;" CONTAINS? TTRUE
    pa pu s" LOWER-CERT-HOOK:INSTALL" CONTAINS? TTRUE
    pa pu s" 0 set-check" CONTAINS? TTRUE
-   pa pu CKTP-DOCTORED$ CKTP-SHAPE-OK? TFALSE
-   pa 0 CKTP-SHAPE-OK? TFALSE ;
+   pa pu DOCTORED$ SHAPE-OK? TFALSE
+   pa 0 SHAPE-OK? TFALSE ;
 
-\ typed-local-lint: allow-bare-local - q is the test action quotation.
-: CKT-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
-   mono-ns CKT-START-NS !
+\ typed-local-lint: allow-bare-local - CASE-RUN q preserves its quotation effect.
+: CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
+   mono-ns START-NS !
    q execute
    s" PASS: " type label labelu type
-   s"  (" type mono-ns CKT-START-NS @ - PROC-NS-PER-MS / . s" ms)" type cr ;
+   s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / . s" ms)" type cr ;
 
-: CKT-MAIN ( -- )
+: TEST-MAIN ( -- )
    T-RESET
-   CKT-PREPARE
-   s" check/good" [: CKT-TEST-GOOD ;] CKT-RUN
-   s" check/layout-buffer" [: CKT-TEST-LAYOUT-BUFFER ;] CKT-RUN
-   s" check/file-label" [: CKT-TEST-FILE-LABEL ;] CKT-RUN
-   s" check/usage-direct" [: CKT-TEST-USAGE ;] CKT-RUN
-   s" check/die" [: CKT-TEST-DIE ;] CKT-RUN
-   s" check/forward-ref-direct" [: CKT-TEST-FWDREF-DIRECT ;] CKT-RUN
-   s" check/forward-ref-json" [: CKT-TEST-FWDREF-JSON ;] CKT-RUN
-   s" check/origin-scan" [: CKT-ORIGIN:SCAN ;] CKT-RUN
-   s" check/origin-base" [: CKT-ORIGIN:BASE ;] CKT-RUN
-   s" check/forward-ref-raw-load" [: CKT-TEST-FWDREF-RAW-LOAD ;] CKT-RUN
-   s" check/unterminated-string" [: CKT-TEST-UNTERM-STRING ;] CKT-RUN
-   s" check/duplicate-all-errors" [: CKT-TEST-DUP-ALL ;] CKT-RUN
-   s" check/source-list-reserved" [: CKT-TEST-SOURCE-LIST-RESERVED ;] CKT-RUN
-   s" check/source-list-audited-lib" [: CKT-TEST-SOURCE-LIST-AUDITED-LIB ;] CKT-RUN
-   s" check/source-list-preverify-diag" [: CKT-TEST-SOURCE-LIST-PREVERIFY-DIAG ;] CKT-RUN
-   s" check/value-record-good" [: CKT-TEST-VALUE-RECORD-GOOD ;] CKT-RUN
-   s" check/linear-bad" [: CKT-TEST-LINEAR-BAD ;] CKT-RUN
-   s" check/value-record-bad" [: CKT-TEST-VALUE-RECORD-BAD ;] CKT-RUN
-   s" check/value-record-partial" [: CKT-TEST-VALUE-RECORD-PARTIAL ;] CKT-RUN
-   s" check/typefamily-good" [: CKT-TEST-TYPEFAMILY-GOOD ;] CKT-RUN
-   s" check/typefamily-all-errors" [: CKT-TEST-TYPEFAMILY-ALL ;] CKT-RUN
-   s" check/sumtype-bad" [: CKT-TEST-SUMTYPE-BAD ;] CKT-RUN
-   s" check/sumtype-all-redrive" [: CKT-TEST-SUMTYPE-ALL-REDRIVE ;] CKT-RUN
-   s" check/nominal-all-redrive" [: CKT-TEST-NOMINAL-ALL-REDRIVE ;] CKT-RUN
-   s" check/nominal-all-clean" [: CKT-TEST-NOMINAL-ALL-CLEAN ;] CKT-RUN
-   s" check/tfam-noarity" [: CKT-TEST-TFAM-NOARITY ;] CKT-RUN
-   s" check/sum-noend" [: CKT-TEST-SUM-NOEND ;] CKT-RUN
-   s" check/sum-noend-all" [: CKT-TEST-SUM-NOEND-ALL ;] CKT-RUN
-   s" check/tfam-noarity-all" [: CKT-TEST-TFAM-NOARITY-ALL ;] CKT-RUN
-   s" check/overcap-source" [: CKT-TEST-OVERCAP-SOURCE ;] CKT-RUN
-   s" check/oversize" [: CKT-TEST-OVERSIZE ;] CKT-RUN
-   s" check/enum-good" [: CKT-TEST-ENUM-GOOD ;] CKT-RUN
-   s" check/enum-bad" [: CKT-TEST-ENUM-BAD ;] CKT-RUN
-   s" check/product-good" [: CKT-TEST-PRODUCT-GOOD ;] CKT-RUN
-   s" check/product-bad" [: CKT-TEST-PRODUCT-BAD ;] CKT-RUN
-   s" check/product-all-errors" [: CKT-TEST-PRODUCT-ALL-ERRORS ;] CKT-RUN
-   s" check/enum-noend" [: CKT-TEST-ENUM-NOEND ;] CKT-RUN
-   s" check/product-noend" [: CKT-TEST-PROD-NOEND ;] CKT-RUN
-   s" check/value-record-noend" [: CKT-TEST-VREC-NOEND ;] CKT-RUN
-   s" check/enum-noend-cli" [: CKT-TEST-ENUM-NOEND-CLI ;] CKT-RUN
-   s" check/nominal-scan-top-level" [: CKT-TEST-NOMINAL-SCAN-TOP-LEVEL ;] CKT-RUN
-   s" check/nominal-preverify" [: CKT-TEST-NOMINAL-PREVERIFY ;] CKT-RUN
-   s" check/package-linear-good" [: CKT-PKG-LINEAR:GOOD ;] CKT-RUN
-   s" check/package-linear-cross" [: CKT-PKG-LINEAR:CROSS ;] CKT-RUN
-   s" check/package-linear-global" [: CKT-PKG-LINEAR:GLOBAL ;] CKT-RUN
-   s" check/package-linear-distinct" [: CKT-PKG-LINEAR:DISTINCT ;] CKT-RUN
-   s" check/package-family-good" [: CKT-PKG-FAM:GOOD ;] CKT-RUN
-   s" check/package-family-two" [: CKT-PKG-FAM:TWO ;] CKT-RUN
-   s" check/package-family-bogus" [: CKT-PKG-FAM:BOGUS ;] CKT-RUN
-   s" check/package-family-json-pin" [: CKT-PKG-FAM:JSON-PIN ;] CKT-RUN
-   s" check/package-family-private" [: CKT-PKG-FAM:PRIV ;] CKT-RUN
-   s" check/package-missing-name" [: CKT-PKG-FAM:NONAME ;] CKT-RUN
-   s" check/require-facade" [: CKT-TEST-REQUIRE-FACADE ;] CKT-RUN
-   s" check/included-dep" [: CKT-TEST-INCLUDED-DEP ;] CKT-RUN
-   s" check/closure-parity" [: CKT-TEST-CLOSURE-PARITY ;] CKT-RUN
-   s" check/source-list-all-errors" [: CKT-TEST-SOURCE-LIST-ALL-ERRORS ;] CKT-RUN
-   s" check/prelude-hook-shape" [: CKT-TEST-PRELUDE-HOOK ;] CKT-RUN
+   PREPARE
+   s" check/good" [: TEST-GOOD ;] CASE-RUN
+   s" check/layout-buffer" [: TEST-LAYOUT-BUFFER ;] CASE-RUN
+   s" check/file-label" [: TEST-FILE-LABEL ;] CASE-RUN
+   s" check/usage-direct" [: TEST-USAGE ;] CASE-RUN
+   s" check/die" [: TEST-DIE ;] CASE-RUN
+   s" check/forward-ref-direct" [: TEST-FWDREF-DIRECT ;] CASE-RUN
+   s" check/forward-ref-json" [: TEST-FWDREF-JSON ;] CASE-RUN
+   s" check/origin-scan" [: TEST-ORIGIN-SCAN ;] CASE-RUN
+   s" check/origin-base" [: TEST-ORIGIN-BASE ;] CASE-RUN
+   s" check/forward-ref-raw-load" [: RAW-FWDREF-TEST ;] CASE-RUN
+   s" check/unterminated-string" [: TEST-UNTERM-STRING ;] CASE-RUN
+   s" check/duplicate-all-errors" [: TEST-DUP-ALL ;] CASE-RUN
+   s" check/source-list-reserved" [: RESERVED-LIST-TEST ;] CASE-RUN
+   s" check/source-list-audited-lib" [: AUDITED-LIB-TEST ;] CASE-RUN
+   s" check/source-list-preverify-diag" [: PREVERIFY-DIAG-TEST ;] CASE-RUN
+   s" check/value-record-good" [: VREC-GOOD-TEST ;] CASE-RUN
+   s" check/linear-bad" [: TEST-LINEAR-BAD ;] CASE-RUN
+   s" check/value-record-bad" [: VREC-BAD-TEST ;] CASE-RUN
+   s" check/value-record-partial" [: VREC-PARTIAL-TEST ;] CASE-RUN
+   s" check/typefamily-good" [: TEST-TYPEFAMILY-GOOD ;] CASE-RUN
+   s" check/typefamily-all-errors" [: TEST-TYPEFAMILY-ALL ;] CASE-RUN
+   s" check/sumtype-bad" [: TEST-SUMTYPE-BAD ;] CASE-RUN
+   s" check/sumtype-all-redrive" [: SUM-REDRIVE-TEST ;] CASE-RUN
+   s" check/nominal-all-redrive" [: NOM-REDRIVE-TEST ;] CASE-RUN
+   s" check/nominal-all-clean" [: NOM-CLEAN-TEST ;] CASE-RUN
+   s" check/tfam-noarity" [: TEST-TFAM-NOARITY ;] CASE-RUN
+   s" check/sum-noend" [: TEST-SUM-NOEND ;] CASE-RUN
+   s" check/sum-noend-all" [: SUM-NOEND-ALL ;] CASE-RUN
+   s" check/tfam-noarity-all" [: TFAM-NOARITY-ALL ;] CASE-RUN
+   s" check/overcap-source" [: TEST-OVERCAP-SOURCE ;] CASE-RUN
+   s" check/oversize" [: TEST-OVERSIZE ;] CASE-RUN
+   s" check/enum-good" [: TEST-ENUM-GOOD ;] CASE-RUN
+   s" check/enum-bad" [: TEST-ENUM-BAD ;] CASE-RUN
+   s" check/product-good" [: TEST-PRODUCT-GOOD ;] CASE-RUN
+   s" check/product-bad" [: TEST-PRODUCT-BAD ;] CASE-RUN
+   s" check/product-all-errors" [: PROD-ALL-TEST ;] CASE-RUN
+   s" check/enum-noend" [: TEST-ENUM-NOEND ;] CASE-RUN
+   s" check/product-noend" [: TEST-PROD-NOEND ;] CASE-RUN
+   s" check/value-record-noend" [: TEST-VREC-NOEND ;] CASE-RUN
+   s" check/enum-noend-cli" [: ENUM-CLI-TEST ;] CASE-RUN
+   s" check/nominal-scan-top-level" [: NOM-SCAN-TEST ;] CASE-RUN
+   s" check/nominal-preverify" [: TEST-NOMINAL-PREVERIFY ;] CASE-RUN
+   s" check/package-linear-good" [: LINEAR-GOOD-TEST ;] CASE-RUN
+   s" check/package-linear-cross" [: LINEAR-CROSS-TEST ;] CASE-RUN
+   s" check/package-linear-global" [: LINEAR-GLOBAL-TEST ;] CASE-RUN
+   s" check/package-linear-distinct" [: LINEAR-DISTINCT-TEST ;] CASE-RUN
+   s" check/package-family-good" [: FAM-GOOD-TEST ;] CASE-RUN
+   s" check/package-family-two" [: FAM-TWO-TEST ;] CASE-RUN
+   s" check/package-family-bogus" [: FAM-BOGUS-TEST ;] CASE-RUN
+   s" check/package-family-json-pin" [: FAM-JSON-PIN ;] CASE-RUN
+   s" check/package-family-private" [: FAM-PRIV-TEST ;] CASE-RUN
+   s" check/package-missing-name" [: FAM-NONAME-TEST ;] CASE-RUN
+   s" check/require-facade" [: TEST-REQUIRE-FACADE ;] CASE-RUN
+   s" check/included-dep" [: TEST-INCLUDED-DEP ;] CASE-RUN
+   s" check/closure-parity" [: TEST-CLOSURE-PARITY ;] CASE-RUN
+   s" check/source-list-all-errors" [: LIST-ALL-TEST ;] CASE-RUN
+   s" check/prelude-hook-shape" [: TEST-PRELUDE-HOOK ;] CASE-RUN
    CLEANUP-RUN
    T-REPORT
    s" check-test: ok" type cr ;
+
+public
+
+: TEST ( -- )
+   TEST-MAIN ;
+
+;package

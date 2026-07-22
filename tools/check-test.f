@@ -3,4 +3,4 @@
 
 require tools/check-test-lib.f
 
-CKT-MAIN
+CHECK:TEST
