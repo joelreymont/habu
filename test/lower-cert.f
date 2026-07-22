@@ -65,6 +65,44 @@ ENUM-DECL:ED-RUN lcnamed 0
    VARIANT shade FIELD value color ;VARIANT
 ;ENUM
 
+\ ENUM front-end twin of LAYOUT-VALID-GUARD:lvg-outer (dot habu-migrate-linearity
+\ -layout). Same nested shape — an outer sum whose first variant carries the
+\ shared inner enum (LAYOUT-VALID-GUARD:lvg-inner) and whose second variant is a
+\ scalar — but declared through the unified ENUM front end, so the payload lives
+\ in TYPE-FIELD rows with SV.SCH-COUNT=0 instead of positional SUMV slots. A fetch
+\ of it must lower to the SAME certificate descriptor as the legacy twin.
+ENUM-DECL:ED-RUN fe-outer 0
+   VARIANT left FIELD v LAYOUT-VALID-GUARD:lvg-inner ;VARIANT
+   VARIANT right FIELD w n ;VARIANT
+;ENUM
+
+\ A fetch descriptor for a single-fetch, single-width-fact subject occupies one
+\ fetch-index row {key, abs-offset, len} at cells 14..16; cell 15 is the absolute
+\ descriptor offset and FETCH-DATA-CELLS-CELL is its length. DESC-SNAP records the
+\ legacy descriptor; DESC-EQ pins the front-end descriptor against it cell by cell.
+64 constant DESC-CAP
+create LEG-DESC DESC-CAP cells allot
+variable LEG-DN
+variable DPOS
+: DESC-BASE ( -- n ) 15 BLOB@ ;
+: DESC-LEN  ( -- n ) LOWER-CERT:FETCH-DATA-CELLS-CELL BLOB@ ;
+: DESC-SNAP ( -- )
+   DESC-LEN LEG-DN !
+   DESC-LEN DESC-CAP <= YES                       \ loud: an inflated descriptor must fail here, not overrun LEG-DESC
+   DESC-BASE DESC-LEN DESC-CAP min {: base:n lim:n :}  \ clamp so the copy cannot exceed LEG-DESC after a recorded failure
+   0 DPOS ! begin DPOS @ lim < while
+      base DPOS @ + BLOB@  DPOS @ cells LEG-DESC + !
+      DPOS @ 1 + DPOS !
+   repeat ;
+: DESC-EQ ( -- )
+   DESC-LEN LEG-DN @ EQ                          \ length parity — flags a fail-open short descriptor
+   DESC-BASE {: base:n :}
+   DESC-LEN LEG-DN @ min {: lim:n :}             \ compare only the safe overlap; the length EQ owns size mismatch
+   0 DPOS ! begin DPOS @ lim < while
+      base DPOS @ + BLOB@  DPOS @ cells LEG-DESC + @ EQ
+      DPOS @ 1 + DPOS !
+   repeat ;
+
 : CLEARED-CERT ( -- )
    SNAPSHOT
    CERT-N @ 10 EQ
@@ -154,6 +192,18 @@ LOWER-CERT:FETCH-DATA-CELLS-CELL BLOB@ 10 EQ
 24 BLOB@ 1 EQ
 25 BLOB@ 0 EQ
 26 BLOB@ 2 EQ
+
+\ Guard-row parity: the ENUM front-end twin's fetch lowers to a byte-identical
+\ descriptor — same 2 checks (outer tag domain 2, inner tag domain 2) and the
+\ same guard triple {offset 1, tag 0, limit 2} gating the inner check on the
+\ `left` variant. Before the fix the front-end variant queued no payload walk, so
+\ the inner-tag CHECK and its guard were absent (a shorter, fail-open descriptor).
+s" LCP-LEG ( ptr LAYOUT-VALID-GUARD:lvg-outer -- LAYOUT-VALID-GUARD:lvg-outer ) @"
+   2dup SOURCE! CHECK! -1 EQ
+DESC-SNAP
+LEG-DN @ 10 EQ
+s" LCP-FE ( ptr fe-outer -- fe-outer ) @" 2dup SOURCE! CHECK! -1 EQ
+DESC-EQ
 
 s" LC-STORE ( color ptr color -- ) !" 2dup SOURCE! CHECK! -1 EQ
 SNAPSHOT
