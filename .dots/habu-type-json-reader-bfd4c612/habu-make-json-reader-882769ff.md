@@ -1,9 +1,11 @@
 ---
 title: Make JSON reader state explicit and reentrant
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-22T02:36:57.097359+02:00"
+created-at: "\"2026-07-22T02:36:57.097359+02:00\""
+closed-at: "2026-07-22T15:45:46.373183+02:00"
+close-reason: "Landed on master: implementation chain 82fa49c1..6489ce5a (reentrant JSON reader; FIND-KEY streams unescaped comparison with object depth/phase anchoring; JR:STORAGE-BYTES manifested) is on verified master@origin through 3c563f1d with exact-tree full gates green. Stale claim json_reader_reentrant_impl reconciled by codex; its orphan workspace tip 2496bd51 contains no novel outcome and is not merged."
 ---
 
 Claim: agent=json_reader_reentrant_impl workspace=.jj-ws/habu-make-json-reader-882769ff machine=spark (owns the explicit reentrant JSON reader state API and migration of its direct consumers)
