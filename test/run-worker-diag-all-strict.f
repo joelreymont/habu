@@ -34,10 +34,10 @@ variable FORK-ID
 : RUN-ID ( idx -- ) {: idx:idx :}
    idx IDX>N TR-RESIDENT-ID !
    idx IDX>N case
-      10 of GDX-REPAIR-SLICE endof
-      11 of GDX-UNDEF-PRIMARY-SLICE endof
-      12 of GDX-ALL-STRICT-SLICE endof
-      13 of GDX-FILE-UNSAFE-SLICE endof
+      10 of GATE-DIAGNOSTICS:REPAIR endof
+      11 of GATE-DIAGNOSTICS:UNDEFINED-PRIMARY endof
+      12 of GATE-DIAGNOSTICS:ALL-STRICT endof
+      13 of GATE-DIAGNOSTICS:FILE-UNSAFE endof
       E-TBL-BOUNDS throw
    endcase ;
 

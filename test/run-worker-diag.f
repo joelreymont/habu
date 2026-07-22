@@ -30,9 +30,9 @@ package TEST-RUN
 
 : DIAG ( -- )
    TR-RESIDENT-ID @ case
-      10 of GDX-REPAIR-SLICE endof
-      11 of GDX-UNDEF-PRIMARY-SLICE endof
-      13 of GDX-FILE-UNSAFE-SLICE endof
+      10 of GATE-DIAGNOSTICS:REPAIR endof
+      11 of GATE-DIAGNOSTICS:UNDEFINED-PRIMARY endof
+      13 of GATE-DIAGNOSTICS:FILE-UNSAFE endof
       E-TBL-BOUNDS throw
    endcase ;
 

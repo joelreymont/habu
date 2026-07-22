@@ -4,23 +4,29 @@
 
 require tools/diag-to-sarif-core.f
 
-: GDX-SARIF ( -- )
-   GE-HB-RESET
-   s" habu-all-errors.err" GDX-PATH!
-   [: GDX-PATH$ SARIF-FILE ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC
-   s" diag-to-sarif" GE-EXPECT-OK
-   s" habu-all-errors.sarif" GDX-WRITE-OUT
-   s" diag-all-errors.sarif" s" sarif golden" GDX-EXPECT-OUT-GOLDEN-R
-   s" sarif" s" habu-all-errors.sarif" s" sarif output" GDX-GJA1 ;
+package GATE-DIAGNOSTICS
 
-: GDX-ALL-STRICT-SLICE ( -- )
+: SARIF ( -- )
+   GE-HB-RESET
+   s" habu-all-errors.err" PATH!
+   [: PATH$ SARIF-FILE ;] GE-CAPTURE-ACTION GE-EVAL-STORE-RC
+   s" diag-to-sarif" GE-EXPECT-OK
+   s" habu-all-errors.sarif" WRITE-OUT
+   s" diag-all-errors.sarif" s" sarif golden" OUT-GOLDEN-R
+   s" sarif" s" habu-all-errors.sarif" s" sarif output" GJA1 ;
+
+public
+
+: ALL-STRICT ( -- )
    s" hb-gate-diagnostics-all-strict" GT-START
-   GDX-ALL-ERRORS
-   GDX-SARIF
-   GDX-STRICT-SIGNATURES
-   GDX-BARE-PTR-SIGNATURE
-   GDX-BAD-NOMINAL-DECL
-   GDX-SOURCE-LOCAL-NOMINAL
-   GDX-LOAD-FAIL-CLOSED
+   ALL-ERRORS
+   SARIF
+   STRICT-SIGNATURES
+   BARE-PTR-SIGNATURE
+   BAD-NOMINAL-DECL
+   SOURCE-LOCAL-NOMINAL
+   LOAD-CLOSED
    GT-CLEANUP
    s" PASS: native checker diagnostics all-strict slice" type cr ;
+
+;package
