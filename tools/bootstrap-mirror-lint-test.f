@@ -14,29 +14,32 @@ require tools/lint/lib.f
 require tools/lint/source-lex.f
 require tools/bootstrap-mirror-lint.f
 
-256 constant BMT-PATH-CAP
-create BMT-ROOT-BUF BMT-PATH-CAP allot
-create BMT-FIX-BUF BMT-PATH-CAP allot
-variable BMT-ROOT-U
-variable BMT-FIX-U
+package BOOTSTRAP-MIRROR-LINT
+private
 
-: BMT-ROOT ( -- ptr u8 n )
-   BMT-ROOT-BUF BMT-ROOT-U @ ;
+256 constant PATH-CAP
+create ROOT-BUF PATH-CAP allot
+create FIX-BUF PATH-CAP allot
+variable ROOT-U
+variable FIX-U
 
-: BMT-FIX ( -- ptr u8 n )
-   BMT-FIX-BUF BMT-FIX-U @ ;
+: ROOT ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
 
-: BMT-PREPARE ( -- )
+: FIX ( -- ptr u8 n )
+   FIX-BUF FIX-U @ ;
+
+: PREPARE ( -- )
    CLEANUP-RESET
    s" habu-bml" TMPDIR-MKDIR {: a:ptr u:n :}
-   u BMT-PATH-CAP > if E-FS-PATH throw then
-   a BMT-ROOT-BUF u BYTE-COPY  u BMT-ROOT-U !
-   BMT-ROOT CLEANUP-TREE+
-   BMT-ROOT s" overlay.f" BMT-FIX-BUF JOIN-PATH BMT-FIX-U ! ;
+   u PATH-CAP > if E-FS-PATH throw then
+   a ROOT-BUF u BYTE-COPY  u ROOT-U !
+   ROOT CLEANUP-TREE+
+   ROOT s" overlay.f" FIX-BUF JOIN-PATH FIX-U ! ;
 
 \ 1. the REAL recovery corpus is clean: src/ carries no ADT declaration, so
 \    the tripwire walk reports zero findings (the dot's contract holds).
-: BMT-TEST-SRC-CLEAN ( -- )
+: TEST-SRC-CLEAN ( -- )
    BOOTSTRAP-MIRROR-LINT-RESET
    s" src" [: BML-WALK-FILE ;] WALK-FILES
    BML-FILES @ 0 > TTRUE
@@ -45,7 +48,7 @@ variable BMT-FIX-U
 \ 2. red fixture: a planted declaration under a src-like label fires once per
 \    keyword, with live tokens only (definition names and escaped references
 \    stay silent - the grammar's own `: SUMTYPE` definers must not fire).
-: BMT-DIRTY$ ( -- ptr u8 n )
+: DIRTY$ ( -- ptr u8 n )
    SB-RESET
    s" \ overlay fixture" SB-APPEND $0A SB-APPEND-C
    s" SUMTYPE zzbml 0 VARIANT one n ;VARIANT ;SUMTYPE" SB-APPEND $0A SB-APPEND-C
@@ -55,30 +58,34 @@ variable BMT-FIX-U
    s" PRIM: SUMTYPE PRIM;" SB-APPEND $0A SB-APPEND-C
    SB$ ;
 
-: BMT-TEST-OVERLAY-FIRES ( -- )
-   BMT-FIX BMT-DIRTY$ WRITE-ALL
+: TEST-OVERLAY-FIRES ( -- )
+   FIX DIRTY$ WRITE-ALL
    BOOTSTRAP-MIRROR-LINT-RESET
-   BMT-FIX s" src/zz-overlay.f" BOOTSTRAP-MIRROR-LINT-FILE-AS
+   FIX s" src/zz-overlay.f" BOOTSTRAP-MIRROR-LINT-FILE-AS
    BML-BAD @ 1 T=
    [: BOOTSTRAP-MIRROR-LINT-FINISH ;] catch 1 T= ;
 
 \ 3. a keyword-free src-like file reports nothing and FINISH stays quiet.
-: BMT-CLEAN$ ( -- ptr u8 n )
+: CLEAN$ ( -- ptr u8 n )
    SB-RESET
    s" : BMT-OK ( n -- n ) 1 + ;" SB-APPEND $0A SB-APPEND-C
    SB$ ;
 
-: BMT-TEST-OVERLAY-CLEAN ( -- )
-   BMT-FIX BMT-CLEAN$ WRITE-ALL
+: TEST-OVERLAY-CLEAN ( -- )
+   FIX CLEAN$ WRITE-ALL
    BOOTSTRAP-MIRROR-LINT-RESET
-   BMT-FIX s" src/zz-overlay.f" BOOTSTRAP-MIRROR-LINT-FILE-AS
+   FIX s" src/zz-overlay.f" BOOTSTRAP-MIRROR-LINT-FILE-AS
    BML-BAD @ 0 T=
    [: BOOTSTRAP-MIRROR-LINT-FINISH ;] catch 0 T= ;
 
-T-RESET
-BMT-PREPARE
-BMT-TEST-SRC-CLEAN
-BMT-TEST-OVERLAY-FIRES
-BMT-TEST-OVERLAY-CLEAN
-CLEANUP-RUN
-T-REPORT
+: RUN ( -- )
+   T-RESET
+   PREPARE
+   TEST-SRC-CLEAN
+   TEST-OVERLAY-FIRES
+   TEST-OVERLAY-CLEAN
+   CLEANUP-RUN
+   T-REPORT ;
+
+RUN
+;package
