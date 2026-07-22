@@ -9,9 +9,38 @@ require lib/memory.f
 require lib/test.f
 require lib/json-read.f
 require lib/json-write.f
+require test/checker-assert.f
+
+package JSON-READ-TEST
+private
 
 256 constant JRT-CAP
 create JRT-BUF JRT-CAP allot
+here CELL 1- and CELL swap - CELL 1- and allot
+create JRT-STATE-A JR:STORAGE-BYTES allot
+create JRT-STATE-B JR:STORAGE-BYTES allot
+create JRT-ZERO-PTR-CELL 0 ,
+
+: JRT-OPEN-A ( ptr u8 n -- JR:reader )
+   JRT-STATE-A JR:STORAGE-BYTES 2swap JR:INIT ;
+
+: JRT-OPEN-B ( ptr u8 n -- JR:reader )
+   JRT-STATE-B JR:STORAGE-BYTES 2swap JR:INIT ;
+
+: JRT-ZERO-PTR ( -- ptr a )
+   JRT-ZERO-PTR-CELL 0 ptr-field @ ;
+
+: JRT-ZERO-U8 ( -- ptr u8 )
+   JRT-ZERO-PTR-CELL 0 ptr-field @ ;
+
+: JRT-REJECTED ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! -1 = TFALSE ;
+
+: JRT-PRIVATE-CONSTANT ( ptr u8 n -- )
+   SB-RESET
+   s" JRT-BAD-PRIVATE-CONSTANT ( -- n ) " SB-APPEND
+   SB-APPEND
+   SB$ JRT-REJECTED ;
 
 \ Test-local byte constants for building JSON fixtures. json-read's own byte
 \ constants are package-private, so the test spells the ASCII codes itself.
@@ -72,7 +101,7 @@ create JRT-NAME 65 c, 34 c, 66 c,
 : JRT-NAME$ ( -- ptr u8 n ) JRT-NAME 3 ;
 
 \ ---- assertion helpers ----------------------------------------------------
-: JRT-STR= ( ptr u8 n -- ) {: ea:ptr eu:n :}     \ current string/key decodes to bytes
+: JRT-STR= ( JR:reader ptr u8 n -- JR:reader ) {: ea:ptr eu:n :}
    JRT-BUF JRT-CAP JR:STR {: got:n :}
    JRT-BUF got ea eu T$= ;
 
@@ -131,16 +160,18 @@ create JRT-NAME 65 c, 34 c, 66 c,
 
 \ ---- positive: scalars ----------------------------------------------------
 : JRT-SCALAR-INT ( ptr u8 n n -- ) {: want:n :}
-   JR:INIT
+   JRT-OPEN-A
    JR:NEXT JR:T-INT T=
    JR:INT want T=
-   JR:NEXT JR:T-END T= ;
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
 
 : JRT-SCALAR-FLOAT ( ptr u8 n r -- ) {: want:r :}
-   JR:INIT
+   JRT-OPEN-A
    JR:NEXT JR:T-FLOAT T=
    JR:FLOAT want JRT-NEAR TTRUE
-   JR:NEXT JR:T-END T= ;
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
 
 : JRT-TEST-INTS ( -- )
    s" 0" 0 JRT-SCALAR-INT
@@ -155,43 +186,47 @@ create JRT-NAME 65 c, 34 c, 66 c,
    s" 0.5" 0.5 JRT-SCALAR-FLOAT ;
 
 : JRT-TEST-LITERALS ( -- )
-   s" true" JR:INIT JR:NEXT JR:T-TRUE T= JR:NEXT JR:T-END T=
-   s" false" JR:INIT JR:NEXT JR:T-FALSE T= JR:NEXT JR:T-END T=
-   s" null" JR:INIT JR:NEXT JR:T-NULL T= JR:NEXT JR:T-END T= ;
+   s" true" JRT-OPEN-A JR:NEXT JR:T-TRUE T= JR:NEXT JR:T-END T= JR:CLOSE
+   s" false" JRT-OPEN-A JR:NEXT JR:T-FALSE T= JR:NEXT JR:T-END T= JR:CLOSE
+   s" null" JRT-OPEN-A JR:NEXT JR:T-NULL T= JR:NEXT JR:T-END T= JR:CLOSE ;
 
 \ ---- positive: strings / escapes ------------------------------------------
 : JRT-TEST-STRING ( -- )
-   JRT-HI-SRC$ JR:INIT
+   JRT-HI-SRC$ JRT-OPEN-A
    JR:NEXT JR:T-STR T=
    JR:SPAN$ s" hi" T$=                              \ raw span excludes quotes
    s" hi" JRT-STR=
-   JR:NEXT JR:T-END T= ;
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
 
 : JRT-TEST-ESCAPES ( -- )
-   JRT-ESC-SRC$ JR:INIT
+   JRT-ESC-SRC$ JRT-OPEN-A
    JR:NEXT JR:T-STR T=
    JRT-ESC-WANT$ JRT-STR=
-   JR:NEXT JR:T-END T= ;
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
 
 : JRT-TEST-UESCAPE ( -- )
-   JRT-U-SRC$ JR:INIT
+   JRT-U-SRC$ JRT-OPEN-A
    JR:NEXT JR:T-STR T=
-   JRT-U-WANT$ JRT-STR= ;
+   JRT-U-WANT$ JRT-STR=
+   JR:CLOSE ;
 
 : JRT-TEST-SURROGATE ( -- )
-   JRT-SUR-SRC$ JR:INIT
+   JRT-SUR-SRC$ JRT-OPEN-A
    JR:NEXT JR:T-STR T=
-   JRT-SUR-WANT$ JRT-STR= ;
+   JRT-SUR-WANT$ JRT-STR=
+   JR:CLOSE ;
 
 \ ---- positive: structure --------------------------------------------------
 : JRT-TEST-EMPTY ( -- )
-   s" {}" JR:INIT
-   JR:NEXT JR:T-OBJ T= JR:NEXT JR:T-OBJ-END T= JR:NEXT JR:T-END T=
-   s" []" JR:INIT
-   JR:NEXT JR:T-ARR T= JR:NEXT JR:T-ARR-END T= JR:NEXT JR:T-END T= ;
+   s" {}" JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T= JR:NEXT JR:T-OBJ-END T= JR:NEXT JR:T-END T= JR:CLOSE
+   s" []" JRT-OPEN-A
+   JR:NEXT JR:T-ARR T= JR:NEXT JR:T-ARR-END T= JR:NEXT JR:T-END T= JR:CLOSE ;
 
 : JRT-TEST-NESTED ( -- )
-   JRT-NESTED$ JR:INIT
+   JRT-NESTED$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
    JR:NEXT JR:T-KEY T= s" a" JRT-STR=
    JR:NEXT JR:T-ARR T=
@@ -205,24 +240,27 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JR:NEXT JR:T-KEY T= s" c" JRT-STR=
    JR:NEXT JR:T-STR T= s" x" JRT-STR=
    JR:NEXT JR:T-OBJ-END T=
-   JR:NEXT JR:T-END T= ;
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
 
 : JRT-TEST-WS ( -- )
-   JRT-WS$ JR:INIT
+   JRT-WS$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
    JR:NEXT JR:T-KEY T= s" a" JRT-STR=
    JR:NEXT JR:T-INT T= JR:INT 1 T=
    JR:NEXT JR:T-OBJ-END T=
-   JR:NEXT JR:T-END T= ;
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
 
-: JRT-DRAIN-ARR ( n -- ) {: depth:n :}
+: JRT-DRAIN-ARR ( JR:reader n -- JR:reader ) {: depth:n :}
    depth 0 ?do JR:NEXT JR:T-ARR T= loop
    depth 0 ?do JR:NEXT JR:T-ARR-END T= loop
    JR:NEXT JR:T-END T= ;
 
 : JRT-TEST-DEEP ( -- )
-   60 JRT-DEEP$ JR:INIT
-   60 JRT-DRAIN-ARR ;
+   60 JRT-DEEP$ JRT-OPEN-A
+   60 JRT-DRAIN-ARR
+   JR:CLOSE ;
 
 \ ---- round-trip against lib/json-write.f ----------------------------------
 : JRT-RT-BUILD ( -- ptr u8 n )
@@ -239,7 +277,7 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JSON-WRITE:$ ;
 
 : JRT-TEST-ROUNDTRIP ( -- )
-   JRT-RT-BUILD JR:INIT
+   JRT-RT-BUILD JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
    JR:NEXT JR:T-KEY T= s" name" JRT-STR=
    JR:NEXT JR:T-STR T= JRT-NAME$ JRT-STR=
@@ -250,71 +288,234 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JR:NEXT JR:T-KEY T= s" none" JRT-STR=
    JR:NEXT JR:T-NULL T=
    JR:NEXT JR:T-OBJ-END T=
-   JR:NEXT JR:T-END T= ;
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
 
 \ ---- JR:FIND-KEY ----------------------------------------------------------
 : JRT-TEST-FIND-HIT ( -- )
-   JRT-FIND$ JR:INIT
+   JRT-FIND$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
    s" a" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-INT T=
-   JR:INT 1 T= ;
+   JR:INT 1 T=
+   JR:CLOSE ;
 
 : JRT-TEST-FIND-SKIP ( -- )
-   JRT-FIND$ JR:INIT
+   JRT-FIND$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
    s" b" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-OBJ T=
    JR:SKIP-VALUE
    s" c" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-INT T=
-   JR:INT 3 T= ;
+   JR:INT 3 T=
+   JR:CLOSE ;
 
 : JRT-TEST-FIND-MISS ( -- )
-   JRT-FIND$ JR:INIT
+   JRT-FIND$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
-   s" zzz" JR:FIND-KEY TFALSE ;
+   s" zzz" JR:FIND-KEY TFALSE
+   JR:CLOSE ;
 
 : JRT-TEST-FIND-NOLEAK ( -- )                     \ "x" only inside nested "b"
-   JRT-FIND$ JR:INIT
+   JRT-FIND$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
-   s" x" JR:FIND-KEY TFALSE ;
+   s" x" JR:FIND-KEY TFALSE
+   JR:CLOSE ;
+
+\ ---- explicit reader ownership and isolation -----------------------------
+: JRT-TEST-INTERLEAVE ( -- )
+   s" [1,3]" JRT-OPEN-A
+   S\" {\qx\q:\qtwo\q}" JRT-OPEN-B
+   JR:NEXT JR:T-OBJ T=
+   >r JR:NEXT JR:T-ARR T= r>
+   JR:NEXT JR:T-KEY T=
+   JR:SPAN$ s" x" T$=
+   JR:NEXT JR:T-STR T=
+   s" two" JRT-STR=
+   >r JR:NEXT JR:T-INT T= JR:INT 1 T= r>
+   JR:NEXT JR:T-OBJ-END T=
+   JR:NEXT JR:T-END T=
+   JR:CLOSE
+   JR:NEXT JR:T-INT T= JR:INT 3 T=
+   JR:NEXT JR:T-ARR-END T=
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
+
+: JRT-BAD-ADVANCE ( JR:reader -- JR:reader )
+   JR:NEXT drop ;
+
+: JRT-CATCH-BAD ( JR:reader -- JR:reader )
+   [: JRT-BAD-ADVANCE ;] catch E-JR-MALFORMED T= ;
+
+: JRT-NESTED-CATCH-BAD ( JR:reader -- JR:reader )
+   [: JRT-CATCH-BAD ;] catch 0 T= ;
+
+: JRT-TEST-CATCH-ISOLATION ( -- )
+   s" [7,8]" JRT-OPEN-A
+   s" [1,]" JRT-OPEN-B
+   JR:NEXT JR:T-ARR T=
+   JR:NEXT JR:T-INT T=
+   JRT-NESTED-CATCH-BAD
+   JR:CLOSE
+   JR:NEXT JR:T-ARR T=
+   JR:NEXT JR:T-INT T= JR:INT 7 T=
+   JR:NEXT JR:T-INT T= JR:INT 8 T=
+   JR:NEXT JR:T-ARR-END T=
+   JR:NEXT JR:T-END T=
+   JR:CLOSE ;
+
+: JRT-BAD-CAPACITY ( -- )
+   JRT-STATE-A JR:STORAGE-BYTES 1- s" 0" JR:INIT JR:CLOSE ;
+
+: JRT-BAD-NULL-STORAGE ( -- )
+   JRT-ZERO-PTR JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE ;
+
+: JRT-BAD-MISALIGNED-STORAGE ( -- )
+   JRT-STATE-A 1+ JR:STORAGE-BYTES s" 0" JR:INIT JR:CLOSE ;
+
+: JRT-BAD-NEGATIVE-SOURCE ( -- )
+   JRT-STATE-A JR:STORAGE-BYTES s" 0" drop -1 JR:INIT JR:CLOSE ;
+
+: JRT-BAD-NULL-SOURCE ( -- )
+   JRT-STATE-A JR:STORAGE-BYTES JRT-ZERO-U8 1 JR:INIT JR:CLOSE ;
+
+: JRT-TEST-PRIVATE-BYTE-CONSTANTS ( -- )
+   s" JR:JR-BS" JRT-PRIVATE-CONSTANT
+   s" JR:JR-TAB" JRT-PRIVATE-CONSTANT
+   s" JR:JR-LF" JRT-PRIVATE-CONSTANT
+   s" JR:JR-FF" JRT-PRIVATE-CONSTANT
+   s" JR:JR-CR" JRT-PRIVATE-CONSTANT
+   s" JR:JR-SP" JRT-PRIVATE-CONSTANT
+   s" JR:JR-DQ" JRT-PRIVATE-CONSTANT
+   s" JR:JR-PLUS" JRT-PRIVATE-CONSTANT
+   s" JR:JR-COMMA" JRT-PRIVATE-CONSTANT
+   s" JR:JR-MINUS" JRT-PRIVATE-CONSTANT
+   s" JR:JR-DOT" JRT-PRIVATE-CONSTANT
+   s" JR:JR-SLASH" JRT-PRIVATE-CONSTANT
+   s" JR:JR-ZERO" JRT-PRIVATE-CONSTANT
+   s" JR:JR-COLON" JRT-PRIVATE-CONSTANT
+   s" JR:JR-E-UPPER" JRT-PRIVATE-CONSTANT
+   s" JR:JR-LBRACK" JRT-PRIVATE-CONSTANT
+   s" JR:JR-BACKSLASH" JRT-PRIVATE-CONSTANT
+   s" JR:JR-RBRACK" JRT-PRIVATE-CONSTANT
+   s" JR:JR-CH-B" JRT-PRIVATE-CONSTANT
+   s" JR:JR-E-LOWER" JRT-PRIVATE-CONSTANT
+   s" JR:JR-CH-F" JRT-PRIVATE-CONSTANT
+   s" JR:JR-CH-N" JRT-PRIVATE-CONSTANT
+   s" JR:JR-CH-R" JRT-PRIVATE-CONSTANT
+   s" JR:JR-CH-T" JRT-PRIVATE-CONSTANT
+   s" JR:JR-CH-U" JRT-PRIVATE-CONSTANT
+   s" JR:JR-LBRACE" JRT-PRIVATE-CONSTANT
+   s" JR:JR-RBRACE" JRT-PRIVATE-CONSTANT ;
+
+: JRT-TEST-PRIVATE-HEX-CONSTANTS ( -- )
+   s" JR:JR-HEXUP-A" JRT-PRIVATE-CONSTANT
+   s" JR:JR-HEXUP-F" JRT-PRIVATE-CONSTANT
+   s" JR:JR-HEXLO-A" JRT-PRIVATE-CONSTANT
+   s" JR:JR-HEXLO-F" JRT-PRIVATE-CONSTANT
+   s" JR:JR-HEX-TEN" JRT-PRIVATE-CONSTANT
+   s" JR:JR-HEX-BASE" JRT-PRIVATE-CONSTANT ;
+
+: JRT-TEST-PRIVATE-UNICODE-CONSTANTS ( -- )
+   s" JR:JR-UTF1-MAX" JRT-PRIVATE-CONSTANT
+   s" JR:JR-UTF2-MAX" JRT-PRIVATE-CONSTANT
+   s" JR:JR-UTF3-MAX" JRT-PRIVATE-CONSTANT
+   s" JR:JR-UTF-MASK" JRT-PRIVATE-CONSTANT
+   s" JR:JR-UTF-CONT" JRT-PRIVATE-CONSTANT
+   s" JR:JR-UTF2-LEAD" JRT-PRIVATE-CONSTANT
+   s" JR:JR-UTF3-LEAD" JRT-PRIVATE-CONSTANT
+   s" JR:JR-UTF4-LEAD" JRT-PRIVATE-CONSTANT
+   s" JR:JR-SUR-HI" JRT-PRIVATE-CONSTANT
+   s" JR:JR-SUR-LO" JRT-PRIVATE-CONSTANT
+   s" JR:JR-SUR-END" JRT-PRIVATE-CONSTANT
+   s" JR:JR-SUR-BASE" JRT-PRIVATE-CONSTANT
+   s" JR:JR-SUR-SHIFT" JRT-PRIVATE-CONSTANT ;
+
+: JRT-TEST-PRIVATE-CONSTANTS ( -- )
+   JRT-TEST-PRIVATE-BYTE-CONSTANTS
+   JRT-TEST-PRIVATE-HEX-CONSTANTS
+   JRT-TEST-PRIVATE-UNICODE-CONSTANTS ;
+
+: JRT-TEST-PRIVATE-STATE ( -- )
+   s" JRT-BAD-PREMINT ( ptr a -- ptr n n ) JR:JR-STORAGE>PREMINT" JRT-REJECTED
+   s" JRT-BAD-MINT ( ptr a -- JR:reader ) JR:JR-MINT-READER" JRT-REJECTED
+   s" JRT-BAD-PRIVATE-STATE ( JR:reader -- JR:reader ptr n ptr u8 ) JR:JR-READER>STATE" JRT-REJECTED
+   s" JRT-BAD-CONSUME ( JR:reader -- ) JR:JR-CONSUME-READER" JRT-REJECTED
+   s" JRT-BAD-CELLS ( JR:reader -- JR:reader ptr n ) JR:JR-READER>CELLS" JRT-REJECTED
+   s" JRT-BAD-NEXT ( ptr n -- n ) JR:JR-NEXT" JRT-REJECTED
+   s" JRT-BAD-INT ( ptr n -- n ) JR:JR-INT" JRT-REJECTED
+   s" JRT-BAD-FLOAT ( ptr n -- r ) JR:JR-FLOAT" JRT-REJECTED
+   s" JRT-BAD-STR ( ptr n ptr u8 n -- n ) JR:JR-STR" JRT-REJECTED
+   s" JRT-BAD-SKIP ( ptr n -- ) JR:JR-SKIP-VALUE" JRT-REJECTED
+   s" JRT-BAD-FIND ( ptr n ptr u8 ptr u8 n -- bool ) JR:JR-FIND-KEY" JRT-REJECTED ;
+
+: JRT-TEST-OWNERSHIP ( -- )
+   s" short storage is rejected before mint" T-LABEL
+   [: JRT-BAD-CAPACITY ;] E-JR-CAPACITY TTHROWSQ
+   s" null storage is rejected before mint" T-LABEL
+   [: JRT-BAD-NULL-STORAGE ;] E-JR-STORAGE TTHROWSQ
+   s" misaligned storage is rejected before mint" T-LABEL
+   [: JRT-BAD-MISALIGNED-STORAGE ;] E-JR-STORAGE TTHROWSQ
+   s" negative source length is rejected before mint" T-LABEL
+   [: JRT-BAD-NEGATIVE-SOURCE ;] E-JR-SOURCE TTHROWSQ
+   s" null nonempty source is rejected before mint" T-LABEL
+   [: JRT-BAD-NULL-SOURCE ;] E-JR-SOURCE TTHROWSQ
+   s" null empty source remains a valid empty reader" T-LABEL
+   JRT-STATE-A JR:STORAGE-BYTES JRT-ZERO-U8 0 JR:INIT JR:CLOSE
+   s" byte and Unicode implementation constants stay private" T-LABEL
+   JRT-TEST-PRIVATE-CONSTANTS
+   s" raw representation and state helpers stay private" T-LABEL
+   JRT-TEST-PRIVATE-STATE
+   s" linear reader cannot be duplicated" T-LABEL
+   s" JRT-BAD-DUP ( JR:reader -- JR:reader JR:reader ) dup" JRT-REJECTED
+   s" linear reader cannot be discarded" T-LABEL
+   s" JRT-BAD-DROP ( JR:reader -- ) drop" JRT-REJECTED
+   s" raw storage cannot construct a reader" T-LABEL
+   s" JRT-BAD-RAW ( ptr a -- JR:reader ) JR:JR-MINT-READER" JRT-REJECTED
+   s" reader representation cannot be projected" T-LABEL
+   s" JRT-BAD-PROJECT ( JR:reader -- JR:reader ptr n ptr u8 ) JR:JR-READER>STATE" JRT-REJECTED
+   s" reader state cannot be rehomed" T-LABEL
+   s" JRT-BAD-REHOME ( JR:reader ptr n ptr u8 -- JR:reader ) 2>r JR-READER:UNMAKE 2drop 2r> JR-READER:MAKE" JRT-REJECTED
+   s" reader cannot be closed twice" T-LABEL
+   s" JRT-BAD-CLOSE ( JR:reader -- ) JR:CLOSE JR:CLOSE" JRT-REJECTED ;
 
 \ ---- negative fixtures (each forces one named throw) ----------------------
 : JRT-BAD-TRAILING ( -- )
-   s" 1 2" JR:INIT JR:NEXT drop JR:NEXT drop ;
+   s" 1 2" JRT-OPEN-A JR:NEXT drop JR:NEXT drop JR:CLOSE ;
 
 : JRT-BAD-UNTERM ( -- )
-   JRT-UNTERM-SRC$ JR:INIT JR:NEXT drop ;
+   JRT-UNTERM-SRC$ JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
 
 : JRT-BAD-ESCAPE ( -- )
-   JRT-BADESC-SRC$ JR:INIT JR:NEXT drop JRT-BUF JRT-CAP JR:STR drop ;
+   JRT-BADESC-SRC$ JRT-OPEN-A JR:NEXT drop JRT-BUF JRT-CAP JR:STR drop JR:CLOSE ;
 
 : JRT-BAD-SURROGATE ( -- )
-   JRT-LONE-SRC$ JR:INIT JR:NEXT drop JRT-BUF JRT-CAP JR:STR drop ;
+   JRT-LONE-SRC$ JRT-OPEN-A JR:NEXT drop JRT-BUF JRT-CAP JR:STR drop JR:CLOSE ;
 
 : JRT-BAD-DEPTH ( -- )
-   70 JRT-OPENS$ JR:INIT
-   100 0 ?do JR:NEXT drop loop ;
+   70 JRT-OPENS$ JRT-OPEN-A
+   100 0 ?do JR:NEXT drop loop
+   JR:CLOSE ;
 
 : JRT-BAD-BAREWORD ( -- )
-   s" nul" JR:INIT JR:NEXT drop ;
+   s" nul" JRT-OPEN-A JR:NEXT drop JR:CLOSE ;
 
 : JRT-BAD-TRAILING-COMMA ( -- )
-   s" [1,]" JR:INIT JR:NEXT drop JR:NEXT drop JR:NEXT drop ;
+   s" [1,]" JRT-OPEN-A JR:NEXT drop JR:NEXT drop JR:NEXT drop JR:CLOSE ;
 
 : JRT-BAD-COLON ( -- )
    SB-RESET
    JRT-LBRACE SB-APPEND-C JRT-DQ SB-APPEND-C s" a" SB-APPEND JRT-DQ SB-APPEND-C
    JRT-SP SB-APPEND-C s" 1" SB-APPEND JRT-RBRACE SB-APPEND-C
-   SB$ JR:INIT
-   JR:NEXT drop JR:NEXT drop ;
+   SB$ JRT-OPEN-A
+   JR:NEXT drop JR:NEXT drop JR:CLOSE ;
 
 : JRT-BAD-OVERFLOW ( -- )
-   s" 999999999999999999999999" JR:INIT JR:NEXT drop JR:INT drop ;
+   s" 999999999999999999999999" JRT-OPEN-A JR:NEXT drop JR:INT drop JR:CLOSE ;
 
 : JRT-BAD-STATE ( -- )
-   JRT-HI-SRC$ JR:INIT JR:NEXT drop JR:INT drop ;
+   JRT-HI-SRC$ JRT-OPEN-A JR:NEXT drop JR:INT drop JR:CLOSE ;
 
 : JRT-TEST-NEGATIVE ( -- )
    [: JRT-BAD-TRAILING ;] E-JR-TRAILING TTHROWSQ
@@ -345,21 +546,53 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JRT-TEST-FIND-SKIP
    JRT-TEST-FIND-MISS
    JRT-TEST-FIND-NOLEAK
+   JRT-TEST-INTERLEAVE
+   JRT-TEST-CATCH-ISOLATION
+   JRT-TEST-OWNERSHIP
    JRT-TEST-NEGATIVE ;
+
+public
+
+: RUN ( -- )
+   JRT-CORE ;
+
+;package
 
 \ ---- bounds regression: JR-AT is private, so probe it inside package JR ----
 \ Guards the fail-closed source-cursor read: an index below zero or at/after the
 \ source length must throw E-JR-BOUNDS, never read past the caller's buffer.
 package JR
+
+private
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create JRT-BOUNDS-STATE STORAGE-BYTES allot
+
+: JRT-BOUNDS-OPEN ( -- JR:reader )
+   JRT-BOUNDS-STATE STORAGE-BYTES s" abc" INIT ;
+
+: JRT-BOUND-AT ( JR:reader n -- JR:reader n ) {: idx:n :}
+   JR-READER>CELLS idx JR-AT ;
+
+: JRT-BAD-BOUND-HIGH ( -- )
+   JRT-BOUNDS-OPEN 3 JRT-BOUND-AT drop CLOSE ;
+
+: JRT-BAD-BOUND-LOW ( -- )
+   JRT-BOUNDS-OPEN -1 JRT-BOUND-AT drop CLOSE ;
+
 : JRT-BOUNDS ( -- )
-   s" abc" INIT
-   s" JR-AT reads a valid index" T-LABEL   0 JR-AT 97 T=
-   s" JR-AT rejects the length index" T-LABEL  [: 3 JR-AT drop ;] E-JR-BOUNDS TTHROWSQ
-   s" JR-AT rejects a negative index" T-LABEL  [: -1 JR-AT drop ;] E-JR-BOUNDS TTHROWSQ ;
+   JRT-BOUNDS-OPEN
+   s" JR-AT reads a valid index" T-LABEL
+   0 JRT-BOUND-AT 97 T=
+   CLOSE
+   s" JR-AT rejects the length index" T-LABEL
+   [: JRT-BAD-BOUND-HIGH ;] E-JR-BOUNDS TTHROWSQ
+   s" JR-AT rejects a negative index" T-LABEL
+   [: JRT-BAD-BOUND-LOW ;] E-JR-BOUNDS TTHROWSQ ;
 ;package
 
 T-RESET
-JRT-CORE
+JSON-READ-TEST:RUN
 package JR JRT-BOUNDS ;package
 T-REPORT
 s" json-read-test: ok" type cr

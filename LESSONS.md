@@ -2063,3 +2063,8 @@ fits.
 - **Close a runner package before it forks package-owning children.** Forks
   inherit the current package state, so a child cannot open its own package
   while the runner's package remains active.
+- **A linear wrapper is not opaque when its generated representation API is
+  public.** A public product can preserve its linear owner while replacing raw
+  state fields through `UNMAKE` and `MAKE`. Use an opaque linear token and keep
+  mint, state access, and consume leaves private; test the exact rehoming attack,
+  not only duplicate and drop.

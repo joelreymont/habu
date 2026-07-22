@@ -561,6 +561,40 @@ Prefer these words over constructing quoted JSON literals by hand. Use
 `JSON-WRITE:FIELD-S` when the value is arbitrary text and `JSON-WRITE:FIELD-RAW`
 only for a known-valid JSON fragment such as a prevalidated number lexeme.
 
+## JSON Read
+
+`lib/json-read.f` is a checked, zero-allocation pull reader. Each parse has an
+explicit linear `JR:reader`; there is no current-reader global, so independent
+readers may be interleaved or nested under `catch` without sharing cursor,
+nesting, token, number, or string-decode state.
+
+The caller allocates `JR:STORAGE-BYTES` bytes at a cell-aligned address, keeps
+that storage and the borrowed source live and exclusive until `JR:CLOSE`, and
+does not reuse either as mutable reader backing while the token is live. `INIT`
+rejects null or misaligned storage, insufficient capacity, a negative source
+length, and a null source paired with a positive length before minting the
+token. The current type system cannot prove the backing extent, lifetime, or
+exclusivity from raw host storage; those promises remain the one audited private
+representation boundary owned by `habu-add-bounded-host-b40b048f`.
+
+```forth
+JR:INIT       ( ptr a n ptr u8 n -- JR:reader )
+JR:CLOSE      ( JR:reader -- )
+JR:TOKEN      ( JR:reader -- JR:reader n )
+JR:SPAN$      ( JR:reader -- JR:reader ptr u8 n )
+JR:NEXT       ( JR:reader -- JR:reader n )
+JR:INT        ( JR:reader -- JR:reader n )
+JR:FLOAT      ( JR:reader -- JR:reader r )
+JR:STR        ( JR:reader ptr u8 n -- JR:reader n )
+JR:SKIP-VALUE ( JR:reader -- JR:reader )
+JR:FIND-KEY   ( JR:reader ptr u8 n -- JR:reader bool )
+```
+
+Every operation returns the same reader token except `CLOSE`, which consumes
+it. `SPAN$` borrows the raw source span and leaves escapes encoded; `STR`
+decodes the current string into caller storage. Token kinds remain the public
+`JR:T-*` constants.
+
 ## Regex
 
 `lib/regex.f` exposes a bounded capture-free regex scanner and matcher for LLM

@@ -192,15 +192,16 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	json-write	lib/json-write.f	word	JSON-WRITE:FIELD-NULL	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with null value
 1	json-write	lib/json-write.f	word	JSON-WRITE:$	(-- ptr u8 n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return JSON writer output bytes
 1	json-read	lib/json-read.f	module			lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	active	checked zero-allocation JSON pull/cursor parser complementing json-write
-1	json-read	lib/json-read.f	word	JR:INIT	(ptr u8 n --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	point the parser at a source buffer and reset state
-1	json-read	lib/json-read.f	word	JR:TOKEN	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current token kind
-1	json-read	lib/json-read.f	word	JR:SPAN$	(-- ptr u8 n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current token raw span, escapes still encoded
-1	json-read	lib/json-read.f	word	JR:NEXT	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	advance to and return the next typed token
-1	json-read	lib/json-read.f	word	JR:INT	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	parse the current integer token, fail closed on overflow
-1	json-read	lib/json-read.f	word	JR:FLOAT	(-- r)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	parse the current number token as a double
-1	json-read	lib/json-read.f	word	JR:STR	(ptr u8 n -- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	unescape the current string token into a caller buffer
-1	json-read	lib/json-read.f	word	JR:SKIP-VALUE	(--)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	skip the current value including nested containers
-1	json-read	lib/json-read.f	word	JR:FIND-KEY	(ptr u8 n -- bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	scan the current object for a key and stop on its value
+1	json-read	lib/json-read.f	word	JR:INIT	(ptr a n ptr u8 n -- JR:reader)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	open an explicit linear reader over aligned caller storage and a borrowed source
+1	json-read	lib/json-read.f	word	JR:CLOSE	(JR:reader --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	consume a reader after its final use
+1	json-read	lib/json-read.f	word	JR:TOKEN	(JR:reader -- JR:reader n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current token kind while preserving the reader
+1	json-read	lib/json-read.f	word	JR:SPAN$	(JR:reader -- JR:reader ptr u8 n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current raw token span while preserving the reader
+1	json-read	lib/json-read.f	word	JR:NEXT	(JR:reader -- JR:reader n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	advance an explicit reader and return the next token kind
+1	json-read	lib/json-read.f	word	JR:INT	(JR:reader -- JR:reader n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	parse the current integer token and fail closed on overflow
+1	json-read	lib/json-read.f	word	JR:FLOAT	(JR:reader -- JR:reader r)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	parse the current number token as a double
+1	json-read	lib/json-read.f	word	JR:STR	(JR:reader ptr u8 n -- JR:reader n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	unescape the current string token into a caller buffer
+1	json-read	lib/json-read.f	word	JR:SKIP-VALUE	(JR:reader -- JR:reader)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	skip the current value including nested containers
+1	json-read	lib/json-read.f	word	JR:FIND-KEY	(JR:reader ptr u8 n -- JR:reader bool)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	scan the current object for a key and stop on its value
 1	regex	lib/regex.f	module			lib/regex-test.f	docs/stdlib.md	stdlib-regex	active	v1 regex scanner and matcher use ptr u8 len storage buffers, never unchecked addr dereference
 1	regex	lib/regex.f	word	RX-BYTE-IN?	(n ptr u8 n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte appears in a counted byte table
 1	regex	lib/regex.f	word	RX-ESCAPABLE?	(n -- bool)	lib/regex-test.f	docs/stdlib.md	stdlib-regex	published	test whether a byte can be escaped

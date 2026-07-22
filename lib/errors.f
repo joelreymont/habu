@@ -189,6 +189,9 @@
 -3909 constant E-JR-COMMA       \ expected ',' or the matching container close
 -3910 constant E-JR-STATE       \ accessor called on the wrong token kind or dst buffer too small
 -3911 constant E-JR-BOUNDS      \ source-cursor read past the input buffer (internal invariant)
+-3912 constant E-JR-CAPACITY    \ caller-provided reader storage is smaller than JR:STORAGE-BYTES
+-3913 constant E-JR-STORAGE     \ reader storage is null or not cell-aligned
+-3914 constant E-JR-SOURCE      \ source length is negative or a positive length has a null source
 
 \ Remote device harness (ssh zed): -4000..-4099
 -4000 constant E-ZED-FIRST

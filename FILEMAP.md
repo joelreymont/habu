@@ -1910,8 +1910,8 @@ points stay listed.
 - `lib/utf8-scalar-test.f` — scalar-boundary, malformed/truncated, canary, nested, interleaved-state, and randomized property coverage for `UTF8:NEXT`.
 - `lib/json-write.f` — checked emit-only JSON writer vocabulary for fixtures and native tools.
 - `lib/json-write-test.f` — focused coverage for JSON writer escaping, structure, and errors.
-- `lib/json-read.f` — checked zero-allocation JSON pull/cursor parser complementing the writer.
-- `lib/json-read-test.f` — focused coverage for JSON parser tokens, escapes, structure, errors, and round-trip.
+- `lib/json-read.f` — checked zero-allocation JSON pull parser with an opaque linear reader over caller-owned state.
+- `lib/json-read-test.f` — focused coverage for JSON tokens, escapes, structure, ownership, interleaving, isolation, errors, and round-trip.
 - `lib/memory.f` — checked OS-backed byte buffer allocation and release helpers.
 - `lib/memory-test.f` — focused coverage for memory allocation, release, and 64K buffer spans.
 - `lib/byte-buffer.f` — one package-owned growable byte buffer (`package BUF`): copy-on-grow with capacity-as-ownership and MEM-backed release, over typed byte-len roles.

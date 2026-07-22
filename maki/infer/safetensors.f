@@ -101,6 +101,9 @@ $40000 constant ST-NAME-CAP    \ name arena bytes (256 KiB)
 1024 constant ST-SCRATCH-CAP   \ per-name unescape scratch
 $7FFFFFFFFFFFFFFF constant ST-MAX-N
 
+here CELL 1- and CELL swap - CELL 1- and allot
+create ST-JR-STATE JR:STORAGE-BYTES allot
+
 \ ---- mapping + header geometry ---------------------------------------------
 variable ST-BASE-P             \ mapping base as a byte pointer (ptr-field holder)
 variable ST-BASE-N             \ mapping base as a numeric address (data-pointer arithmetic)
@@ -167,12 +170,12 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    ST-KA @ ST-KL @ STR= ;
 
 \ ---- member value readers (cursor at the key; advance past its value) -------
-: ST-DO-DTYPE ( -- )
+: ST-DO-DTYPE ( JR:reader -- JR:reader )
    JR:NEXT JR:T-STR <> if E-ST-DTYPE throw then
    JR:SPAN$ ST-DECODE-DTYPE
    1 ST-DT-SEEN ! ;
 
-: ST-DO-SHAPE ( -- )
+: ST-DO-SHAPE ( JR:reader -- JR:reader )
    JR:NEXT JR:T-ARR <> if E-ST-SHAPE throw then
    0 ST-CUR-RK !
    begin JR:NEXT dup JR:T-ARR-END <> while
@@ -184,7 +187,7 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    repeat drop
    1 ST-SH-SEEN ! ;
 
-: ST-DO-OFFSETS ( -- )
+: ST-DO-OFFSETS ( JR:reader -- JR:reader )
    JR:NEXT JR:T-ARR <> if E-ST-OFFSETS throw then
    JR:NEXT dup JR:T-INT <> if E-ST-OFFSETS throw then drop JR:INT ST-CUR-BEG !
    JR:NEXT dup JR:T-INT <> if E-ST-OFFSETS throw then drop JR:INT ST-CUR-END !
@@ -220,7 +223,7 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    ST-CUR-BEG @ ST-CUR-END @ ST-OVERLAPS? if E-ST-OFFSETS throw then ;
 
 \ ---- one tensor value object: parse members, validate ----------------------
-: ST-TENSOR ( -- )                             \ cursor at the value T-OBJ
+: ST-TENSOR ( JR:reader -- JR:reader )         \ cursor at the value T-OBJ
    0 ST-DT-SEEN ! 0 ST-SH-SEEN ! 0 ST-OFF-SEEN ! 0 ST-CUR-RK !
    begin JR:NEXT dup JR:T-OBJ-END <> while
       dup JR:T-KEY <> if E-ST-JSON throw then drop
@@ -237,7 +240,7 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    ST-VALIDATE ;
 
 \ ---- name copy into the arena ----------------------------------------------
-: ST-READ-NAME ( -- )                          \ cursor at the member key (T-KEY)
+: ST-READ-NAME ( JR:reader -- JR:reader )      \ cursor at the member key (T-KEY)
    ST-SCRATCH ST-SCRATCH-CAP JR:STR {: nlen :}
    nlen ST-NM-BUMP @ + ST-NAME-CAP > if E-ST-CAP throw then
    ST-NM-BUMP @ ST-CUR-NMOFF !
@@ -267,7 +270,7 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    ri 1+ ST-STAGE ! ;
 
 \ ---- top-level object member iteration -------------------------------------
-: ST-MEMBERS ( -- )                            \ cursor just past the root T-OBJ
+: ST-MEMBERS ( JR:reader -- JR:reader )        \ cursor just past the root T-OBJ
    begin JR:NEXT dup JR:T-OBJ-END <> while
       dup JR:T-KEY <> if E-ST-JSON throw then drop
       ST-READ-NAME
@@ -282,9 +285,9 @@ TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
    repeat drop ;
 
 : ST-PARSE-BODY ( -- )
-   ST-BASE@ 8 BYTE+ ST-HDR-LEN @ JR:INIT
+   ST-JR-STATE JR:STORAGE-BYTES ST-BASE@ 8 BYTE+ ST-HDR-LEN @ JR:INIT
    JR:NEXT JR:T-OBJ <> if E-ST-JSON throw then
-   ST-MEMBERS ;
+   ST-MEMBERS JR:CLOSE ;
 
 public
 

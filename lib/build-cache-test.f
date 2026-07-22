@@ -42,6 +42,8 @@ create ERR CAP allot
 create REPORT-BYTES
    65 c, 32 c, 9 c, 34 c, 92 c, 10 c, 66 c,
 create REPORT-OUT FS-PATH-CAP allot
+here CELL 1- and CELL swap - CELL 1- and allot
+create REPORT-JSON-STATE JR:STORAGE-BYTES allot
 create MAX-ROOT MAX-ROOT-U allot
 create OVER-ROOT OVER-ROOT-U allot
 
@@ -356,12 +358,13 @@ $7E constant ROOT-C
    HB-BUILD:MAKER-BUILT? TTRUE
    HB-BUILD:MAKER-RAN? TFALSE
    HB-BUILD:ELAPSED-NS 42 T=
-   a u JR:INIT
+   REPORT-JSON-STATE JR:STORAGE-BYTES a u JR:INIT
    JR:NEXT JR:T-OBJ T=
    s" cache_root" JR:FIND-KEY TTRUE
    JR:TOKEN JR:T-STR T=
    REPORT-OUT FS-PATH-CAP JR:STR {: rootu:n :}
-   REPORT-OUT rootu F$ T$= ;
+   REPORT-OUT rootu F$ T$=
+   JR:CLOSE ;
 
 : CHECK-ERROR-REPORT ( -- )
    BUILD-CACHE:RESET
