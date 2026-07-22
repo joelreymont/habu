@@ -1,9 +1,9 @@
 ---
 title: "Infer scheduler: request state machine"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T09:43:30.801548+02:00"
+created-at: "\"2026-07-22T09:43:30.801548+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: new maki/infer/request-state.f, focused test, FILEMAP.md.
 Smallest check: focused transition matrix.
 Prerequisites: none.
 Owned result: request identity and state machine only.
-Claim: unassigned.
+Claim: agent=reqstate workspace=.jj-ws/habu-infer-scheduler-req-1ac1dac6 machine=spark.

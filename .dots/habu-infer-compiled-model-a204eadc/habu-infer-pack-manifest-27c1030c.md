@@ -1,9 +1,9 @@
 ---
 title: "Infer pack: manifest schema"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T09:40:20.793583+02:00"
+created-at: "\"2026-07-22T09:40:20.793583+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: new maki/infer/model-pack-manifest.f, new maki/infer/mode
 Smallest check: bin/hb --load maki/infer/model-pack-manifest-test.f.
 Prerequisites: landed safetensors loader.
 Owned result: manifest schema and validation only.
-Claim: unassigned.
+Claim: agent=packmanifest workspace=.jj-ws/habu-infer-pack-manifest-27c1030c machine=spark.

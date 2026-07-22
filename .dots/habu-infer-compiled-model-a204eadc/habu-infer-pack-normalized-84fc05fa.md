@@ -1,9 +1,9 @@
 ---
 title: "Infer pack: normalized model config"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T09:40:20.799136+02:00"
+created-at: "\"2026-07-22T09:40:20.799136+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: new maki/infer/model-config.f, new maki/infer/model-confi
 Smallest check: bin/hb --load maki/infer/model-config-test.f.
 Prerequisites: landed JSON reader and safetensors loader.
 Owned result: normalized config only.
-Claim: unassigned.
+Claim: agent=modelconfig workspace=.jj-ws/habu-infer-pack-normalized-84fc05fa machine=spark.

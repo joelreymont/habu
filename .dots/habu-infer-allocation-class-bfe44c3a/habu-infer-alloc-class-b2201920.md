@@ -1,9 +1,9 @@
 ---
 title: "Infer alloc: class contract table"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T09:43:30.659519+02:00"
+created-at: "\"2026-07-22T09:43:30.659519+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: new maki/infer/allocation-class.f, focused test, FILEMAP.
 Smallest check: focused class-table test.
 Prerequisites: none.
 Owned result: allocation class contract only.
-Claim: unassigned.
+Claim: agent=allocclass workspace=.jj-ws/habu-infer-alloc-class-b2201920 machine=spark.

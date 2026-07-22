@@ -1,9 +1,9 @@
 ---
 title: "Infer KV: fixed block-table geometry"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T09:38:16.909035+02:00"
+created-at: "\"2026-07-22T09:38:16.909035+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: maki/infer/kv-cache.f, maki/infer/kv-cache-test.f.
 Smallest check: bin/hb --load maki/infer/kv-cache-test.f; typed-local diff lint.
 Prerequisites: landed base allocator 1835f711.
 Owned result: fixed table geometry and metadata partition only.
-Claim: unassigned.
+Claim: agent=kvfixed workspace=.jj-ws/habu-infer-kv-fixed-a219f7ba machine=spark.

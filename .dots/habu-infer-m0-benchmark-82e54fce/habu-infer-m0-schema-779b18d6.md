@@ -1,9 +1,9 @@
 ---
 title: "Infer M0 schema: run identity"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T10:09:57.627760+02:00"
+created-at: "\"2026-07-22T10:09:57.627760+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: the run-identity record and focused tests.
 Smallest check: the focused identity round-trip and rejection test.
 Prerequisites: none.
 Owned result: benchmark producer identity only.
-Claim: unassigned.
+Claim: agent=benchid workspace=.jj-ws/habu-infer-m0-schema-779b18d6 machine=spark.

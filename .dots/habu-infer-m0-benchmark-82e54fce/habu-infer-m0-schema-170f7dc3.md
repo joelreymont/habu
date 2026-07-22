@@ -1,9 +1,9 @@
 ---
 title: "Infer M0 schema: workload coordinates"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T10:09:57.776583+02:00"
+created-at: "\"2026-07-22T10:09:57.776583+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: the workload-coordinate record and focused tests.
 Smallest check: the focused coordinate boundary test.
 Prerequisites: none.
 Owned result: benchmark workload coordinates only.
-Claim: unassigned.
+Claim: agent=benchwork workspace=.jj-ws/habu-infer-m0-schema-170f7dc3 machine=spark.

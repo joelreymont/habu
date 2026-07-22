@@ -1,9 +1,9 @@
 ---
 title: "Infer GPT2: tensor role binding"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-22T09:40:20.832309+02:00"
+created-at: "\"2026-07-22T09:40:20.832309+02:00\""
 ---
 
 Why this exists:
@@ -19,4 +19,4 @@ Expected touch points: maki/infer/gpt2.f or new maki/infer/gpt2-bind.f, focused 
 Smallest check: bin/hb --load the focused GPT-2 binding test.
 Prerequisites: landed safetensors loader.
 Owned result: tensor census and role binding only.
-Claim: unassigned.
+Claim: agent=gpt2bind workspace=.jj-ws/habu-infer-gpt2-tensor-f2ed655d machine=spark.
