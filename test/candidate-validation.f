@@ -190,13 +190,14 @@ variable FAILS
 \ here. The whitebox test reads these back out of this source and checks them
 \ against the enumerated rows, so a case dropped without adjusting its count
 \ trips loudly. The lone top-row case is a positive, counted here too.
-31 constant N-POSITIVE
+32 constant N-POSITIVE
 5 constant N-DIAGNOSTIC
 9 constant N-NEGATIVE
 
 : SHARED-CASES ( -- )
    s" test/type-family-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-family-rollback-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/type-field-owner-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/generated-declaration-transaction-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/decl-event-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/structure-make-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE

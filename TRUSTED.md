@@ -275,16 +275,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | TIMES | `R i64 [ R -- R ] -- R` | Counted loop keeps the quotation available across repeated `execute`; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 | stdlib-boundary | habu-multishot-quotations-typed-8832cace |
 | EACH | `R ptr a i64 [ R a -- R ] -- R` | Array iterator keeps the quotation across element calls; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 | stdlib-boundary | habu-multishot-quotations-typed-8832cace |
 | MAP | `R ptr a i64 [ R a -- R a ] -- R` | Array map keeps the quotation across element calls and mutates cells in place; direct checked code would require a recursive quotation type. | `test/engine-suite.f`, `test/run.f` | src/core/combinators.f | 2026-06-16 | stdlib-boundary | habu-multishot-quotations-typed-8832cace |
-| DEV-FLD-BEGIN | `-- n` | Field-record seam: forwards to the pre-hook field-record transaction `PF-BEGIN`; the checker cannot type the sealed pre-hook registry word from a post-hook checked body. Reconciled with `src/core/type-field.f` at merge. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
-| DEV-FLD-ADD | `n n n ptr u8 n n n n n n n n -- n` | Field-record seam: forwards to the pre-hook `PF-ADD` (validated field append under a transaction); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
-| DEV-FLD-PUBLISH | `n -- ` | Field-record seam: forwards to pre-hook `PF-PUBLISH`, which advances the reversible field publication watermark while retaining the live rollback frame until global finalization. | `test/decl-event-suite.f`, `test/generated-declaration-transaction-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-21 | stdlib-boundary | habu-atomic-generated-declaration-4c1e8b7a |
-| DEV-FLD-FINALIZE | `n -- ` | Field-record seam: forwards to pre-hook `PF-FINALIZE`, validating the published transaction token before releasing its retained rollback frame. | `test/decl-event-suite.f`, `test/generated-declaration-transaction-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-21 | stdlib-boundary | habu-atomic-generated-declaration-4c1e8b7a |
-| DEV-FLD-ROLLBACK | `n -- ` | Field-record seam: forwards to the pre-hook `PF-ROLLBACK` (retire provisional field rows); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
-| DEV-FLD-COUNT | `-- n` | Field-record seam: forwards to `TYPE-FIELD:COUNT` (committed field high-water); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
-| DEV-FLD-PROVISIONAL-COUNT | `-- n` | Field-record transaction seam: reads the pre-hook provisional high-water so PREPARE can prove the event stream names one exact contiguous field range before any watermark advances. | `test/generated-declaration-transaction-suite.f`, `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-21 | stdlib-boundary | habu-atomic-generated-declaration-4c1e8b7a |
-| TEST-PF-SWAP | `n -- ` | Private test-only field-transaction seam: captures the provisional and committed counts, depth, and token serial, then swaps the serial so the production generated-declaration snapshot path can exercise `PF-BEGIN` overflow. No production caller can resolve it. | `test/decl-event-suite.f`, `test/run.f` | test/decl-event-suite.f | 2026-07-22 | test-metaprog | habu-atomic-generated-declaration-4c1e8b7a |
-| DEV-FLD-TX-SCHEMA-FOR | `n n n -- n` | Token-scoped field-owner seam: forwards the exact live field token, declaration family, and provisional row id to the sealed owner, which rejects rows outside that frame or family. | `test/generated-declaration-transaction-suite.f`, `test/structure-make-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-21 | stdlib-boundary | habu-atomic-generated-declaration-4c1e8b7a |
-| DEV-FLD-TX-CELLS-FOR | `n n n -- n` | Token-scoped field-owner seam: validates the exact live field token, declaration family, and provisional row id before returning that row's logical width. | `test/enum-decl-suite.f`, `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-23 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
 | DEV-NAME-VARIANT-REQUIRE | `ptr u8 n -- ` | Variant-name policy seam: forwards to the sealed pre-hook `TYPE-NAME:VARIANT-REQUIRE` before any variant registry, event, field, selector, or ordinal mutation. | `test/type-family-suite.f`, `test/decl-event-suite.f`, `test/enum-decl-suite.f` | src/core/decl-event.f | 2026-07-23 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
 | DEV-SUMV-ADD | `n ptr u8 n n n n n -- n` | Variant-registry seam: forwards to the pre-hook `SUMV-ADD`, the canonical spelling and duplicate registrar; the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
 | DEV-REG-GROW1 | `ptr a n n -- ` | Growable-arena boundary: forwards to the pre-hook `REG-GROW1` (relocating buffer realloc storing the new base back); raw relocating-memory grow the checker cannot model. Missing checked growable-arena capability is a chain dot. | `test/decl-event-suite.f`, `test/run.f` | src/core/decl-event.f | 2026-07-20 | stdlib-boundary | habu-type-dsl-unify-b65d46c1 |
@@ -1280,9 +1270,9 @@ test/type-family-rollback-suite.f:TWX-SCHEMA-B@ test-metaprog habu-seal-set-chec
 test/type-family-rollback-suite.f:TWX-SCHEMA-C@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-N@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-b3676b33
-test/type-family-rollback-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
-test/type-family-rollback-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
-test/type-family-rollback-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:OPEN test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:ADD test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:CLOSE test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:TWX-PF-RAW@ test-metaprog habu-seal-set-check-b3676b33
 test/decl-event-suite.f:TWX-TFAM-RESET test-metaprog habu-seal-set-check-b3676b33
 test/decl-event-suite.f:TWX-SCHEMA-RESET test-metaprog habu-seal-set-check-b3676b33
@@ -1445,10 +1435,10 @@ test/type-family-suite.f:TWX-LAY-SIZE@ test-metaprog habu-seal-set-check-b3676b3
 test/type-family-suite.f:TWX-LAY-TAGW@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PACKED-DESC test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-PACKED-NARROW test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-PF-BEGIN test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-PF-ADD test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-PF-COMMIT test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-PF-ROLLBACK test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:OPEN test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:ADD test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:CLOSE test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:ROLLBACK test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP? test-metaprog habu-seal-set-check-b3676b33
@@ -1813,6 +1803,14 @@ pprim type-field byte-off@ - pe-n pe-in pe-n pe-out
 pprim type-field bytes@ - pe-n pe-in pe-n pe-out
 pprim type-field align@ - pe-n pe-in pe-n pe-out
 pprim type-field flags@ - pe-n pe-in pe-n pe-out
+pprim type-field-owner open - pe-n pe-out
+pprim type-field-owner add - pe-n pe-in pe-n pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+pprim type-field-owner prepare - pe-n pe-in pe-n pe-out
+pprim type-field-owner commit - pe-n pe-in
+pprim type-field-owner finalize - pe-n pe-in
+pprim type-field-owner rollback - pe-n pe-in
+pprim type-field-owner tx-schema-for - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
+pprim type-field-owner tx-cells-for - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
 prim - wf-n@ - pe-n pe-out
 prim - wf-off@ - pe-n pe-in pe-n pe-out
 prim - wf-pos@ - pe-n pe-in pe-n pe-out

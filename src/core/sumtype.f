@@ -57,14 +57,12 @@ variable TDM-SUMV   variable TDM-LAY
 variable TDM-SCH    variable TDM-ROOT
 variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 = none)
 
-\ PF-N / PF-COMMIT-N are NOT snapshot here: the only declaration that mutates PF
-\ is PRODUCT, and it runs its fields inside TDECL-PRODUCT-TX's own PF transaction
-\ (PF-BEGIN … PF-ADD … PF-ROLLBACK/PF-COMMIT), which restores PF-N on any field
-\ failure and advances PF-COMMIT-N only on the outer commit; no later step throws,
-\ so a rejected PRODUCT leaves both PF marks at baseline without a second snapshot
-\ (dot habu-protect-type-field-04d91409; regression: type-decl-suite duplicate-field
-\ TDT-NEG). SUMTYPE/ENUM/TYPEFAMILY never touch PF. The checker-scope frame's own
-\ PF marks (type-family.f TFAM-ROLLBACK-SAVE/RESTORE) stay for rejected families.
+\ PF-N / PF-COMMIT-N are NOT snapshot here. PRODUCT records fields through the
+\ nested declaration coordinator, whose event participant owns the field frame
+\ through PREPARE, reversible COMMIT, FINALIZE, or ROLLBACK. The checker-scope
+\ frame independently owns the enclosing family/schema/layout marks. Thus either
+\ participant can reject and the coordinator restores the complete declaration;
+\ SUMTYPE/ENUM/TYPEFAMILY never mutate PF directly.
 : TDECL-MARK ( -- )
    TFAM-N @ TDM-TFAM !   TF-STR-U @ TDM-STR !   TF-PK-N @ TDM-PK !
    SUMV-N @ TDM-SUMV !   LAY-N @ TDM-LAY !
@@ -789,7 +787,8 @@ variable TDD-I   variable TDD-J   variable TDD-K
 \ TFAM-WIDTH(product) = field cells (no tag). Fields are the item-7/12 hidden
 \ layout the generic LAYOUT-PUSH-FIELDS already expands off TFAM-WIDTH@*. Field
 \ names are their own tail namespace: 1-char labels (x/y) are legal, so the family
-\ RESERVED gate (which blocks a..z) does not apply; PF-ADD's TF-REQUIRE-CANON +
+\ RESERVED gate (which blocks a..z) does not apply; TYPE-FIELD-OWNER:ADD's
+\ TF-REQUIRE-CANON +
 \ dup-reject enforce lowercase + no duplicate field within the product.
 \ A product's generated surface is two words with FIXED generator-owned tails,
 \ recorded as two SUMV rows so the whole item-8 publish/protection stack
@@ -809,7 +808,15 @@ variable TDD-I   variable TDD-J   variable TDD-K
 variable TDP-N   \ product field count (schema roots)
 variable TDP-W   \ cumulative product cell width / next field's cell OFFSET
 variable TDP-FAM
-variable TDP-TX
+variable TDP-EVT
+
+defer TDECL-TXN-XT ( [ -- ] -- )
+variable TDECL-TXN-ARMED
+defer TDECL-EVENT-CURRENT-XT ( -- n )
+defer TDECL-EVENT-DECL-XT ( n n -- n )
+defer TDECL-EVENT-ARITY-XT ( n n n -- n )
+defer TDECL-EVENT-FIELD-XT ( n n ptr u8 n n n n n n n n -- n )
+defer TDECL-EVENT-ARMED ( -- bool )
 
 : TDECL-REQUIRE-FIELD-NAME ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= IF a u s" missing field name" E-TDECL-SYNTAX TDECL-THROW THEN
@@ -856,8 +863,9 @@ variable TDP-TX
    ss SCHEMA-ROOT@ TDECL-SCH-WIDTH {: fw:n :}
    fna fnu TDECL-TOK!
    s" duplicate field" TDECL-WHY!
-   TDP-TX @ fam PF-NO-VARIANT fna fnu ss
-   TDP-W @ fw TDP-W @ cells fw cells CELL PF-FLAGS-NONE PF-ADD TDP-TX !
+   TDP-EVT @ fam fna fnu ss
+   TDP-W @ fw TDP-W @ cells fw cells CELL PF-FLAGS-NONE
+   TDECL-EVENT-FIELD-XT TDP-EVT !
    fw TDP-W @ + TDP-W !
    TDP-N @ 1 + TDP-N ! ;
 
@@ -883,6 +891,9 @@ variable TDP-TX
 
 : TDECL-PRODUCT-TX-BODY ( -- )
    TDP-FAM @ {: fam:n :}
+   TDECL-EVENT-CURRENT-XT TDP-EVT !
+   TDP-EVT @ fam TDECL-EVENT-DECL-XT TDP-EVT !
+   TDP-EVT @ fam TDECL-FAM-ARITY @ TDECL-EVENT-ARITY-XT TDP-EVT !
    PF-N @ {: fstart:n :}
    SCHEMA-ROOT-N@ {: rstart:n :}
    0 TDP-N !   0 TDP-W !
@@ -896,10 +907,10 @@ variable TDP-TX
 
 : TDECL-PRODUCT-TX ( n -- ) {: fam:n :}
    fam TDP-FAM !
-   PF-BEGIN TDP-TX !
-   [: TDECL-PRODUCT-TX-BODY ;] catch {: rc:n :}
-   rc 0= 0= IF TDP-TX @ PF-ROLLBACK rc throw THEN
-   TDP-TX @ PF-COMMIT ;
+   TDECL-EVENT-ARMED 0= TDECL-TXN-ARMED @ 0= or IF
+      s" product: declaration event transaction not installed" 76 die
+   THEN
+   [: TDECL-PRODUCT-TX-BODY ;] TDECL-TXN-XT ;
 
 : CHECKER-DEFPRODUCT-BODY ( -- )
    TDECL-REQUIRE-FIT
@@ -956,12 +967,10 @@ variable TDP-TX
 \ cannot be probed for its binding, so the flag carries that fact).
 defer TDECL-EVAL-XT ( ptr u8 n -- )
 defer TDECL-PROT-WID-XT ( ptr u8 n -- )
-defer TDECL-TXN-XT ( [ -- ] -- )
 defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
 variable TDECL-EVAL-ARMED
 variable TDECL-PROT-WID-ARMED
-variable TDECL-TXN-ARMED
 
 : TDECL-NAME-PREFLIGHT-MISSING ( ptr u8 n -- )
    2drop s" sumtype: generated name preflight not installed" 76 die ;
@@ -971,7 +980,8 @@ variable TDECL-TXN-ARMED
 
 : TDECL-PREFLIGHT-DEFAULTS ( -- )
    [: TDECL-NAME-PREFLIGHT-MISSING ;] is TDECL-NAME-PREFLIGHT-XT
-   [: TDECL-CAPACITY-PREFLIGHT-MISSING ;] is TDECL-CAPACITY-PREFLIGHT-XT ;
+   [: TDECL-CAPACITY-PREFLIGHT-MISSING ;] is TDECL-CAPACITY-PREFLIGHT-XT
+   [: 0 0= 0= ;] is TDECL-EVENT-ARMED ;
 TDECL-PREFLIGHT-DEFAULTS
 
 $1000 constant TDGEN-CAP   \ derived-eq diagonal text is O(V^2); the C, guard still dies at the cap

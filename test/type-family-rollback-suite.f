@@ -57,9 +57,14 @@ TRUSTED: TWX-SCHEMA-B@ ( n -- n ) SCHEMA-B@ ;
 TRUSTED: TWX-SCHEMA-C@ ( n -- n ) SCHEMA-C@ ;
 TRUSTED: TWX-LAY-N@ ( -- n ) LAY-N@ ;
 TRUSTED: TWX-LAY-ADD ( n n n n n -- n ) LAY-ADD ;
-TRUSTED: TWX-PF-BEGIN ( -- n ) PF-BEGIN ;
-TRUSTED: TWX-PF-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
-TRUSTED: TWX-PF-COMMIT ( n -- ) PF-COMMIT ;
+
+package RB-FIELD
+public
+TRUSTED: OPEN ( -- n ) TYPE-FIELD-OWNER:OPEN ;
+TRUSTED: ADD ( n n n ptr u8 n n n n n n n n -- n ) TYPE-FIELD-OWNER:ADD ;
+TRUSTED: CLOSE ( n -- ) dup TYPE-FIELD-OWNER:PREPARE drop
+   dup TYPE-FIELD-OWNER:COMMIT TYPE-FIELD-OWNER:FINALIZE ;
+;package
 
    variable TC
 variable P-TFAM   variable P-SUMV   variable P-PF   variable P-LAY
@@ -97,10 +102,10 @@ TWX-CAND-START
    \ a product field + layout keyed on the just-added candidate family.
    s" rbc" s" cand" TWX-TFAM-FIND-IN FOUNDF ! PFOWN !
    0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFSCH !
-   TWX-PF-BEGIN PFTX !
+   RB-FIELD:OPEN PFTX !
    PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @
-      0 1 0 CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
-   PFTX @ TWX-PF-COMMIT
+      0 1 0 CELL CELL PF-FLAGS-NONE RB-FIELD:ADD PFTX !
+   PFTX @ RB-FIELD:CLOSE
    FOUNDF @ TL-BOXED 8 8 8 TWX-LAY-ADD drop
    1 TWX-SCHEMA-CON drop   2 TWX-SCHEMA-PARAM drop
    0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ drop
@@ -282,9 +287,9 @@ TYPE-FIELD:COUNT P-PF !
 TWX-CAND-START
    s" fdc" CHECKER-PACKAGE-PRIVATE s" prod" 2 TK-PRODUCT TWX-TFAM-DECL PFOWN !
    0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ PFSCH !
-   TWX-PF-BEGIN PFTX !
-   PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @ 6 1 6 cells CELL CELL PF-FLAGS-NONE TWX-PF-ADD PFTX !
-   PFTX @ TWX-PF-COMMIT
+   RB-FIELD:OPEN PFTX !
+   PFTX @ PFOWN @ PF-NO-VARIANT s" fld" PFSCH @ 6 1 6 cells CELL CELL PF-FLAGS-NONE RB-FIELD:ADD PFTX !
+   PFTX @ RB-FIELD:CLOSE
    TYPE-FIELD:COUNT P-PF @ 1 + T=       \ the field row committed inside the candidate
    P-PF @ 5 TWX-PF-RAW@ 6 T=            \ SLOT field (cell 5) written = 6 while committed
 0 TWX-CAND-DONE drop                    \ reject -> TFAM-ROLLBACK-RESTORE scrubs the PF row

@@ -1047,8 +1047,9 @@ PF-REC CELL / constant PF-REC-CELLS   \ product-field record stride, in cells
    REPEAT
    0 RES-FALSE ;
 
-\ Strict-LIFO transaction frames. Nested COMMIT keeps rows provisional; only
-\ the outer COMMIT advances PF-COMMIT-N. Every frame owns both mutable marks.
+\ Strict-LIFO transaction frames. COMMIT retains its rollback frame through
+\ global finalization. Nested commit keeps rows provisional; only outer commit
+\ advances PF-COMMIT-N. Every frame owns both mutable marks.
 0 cells constant PFTX.PFN-OFF
 1 cells constant PFTX.STRU-OFF
 2 cells constant PFTX.TOK-OFF
@@ -1086,70 +1087,118 @@ variable PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
 variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
 variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 
-0 constant PF-TX-OPEN
-1 constant PF-TX-PUBLISHED
+package TYPE-FIELD-OWNER
 
-: PF-TX-BASE ( -- ptr a ) PF-TX-P @ ;
-: PF-TX-GROW ( -- )
+0 constant STATE-OPEN
+1 constant STATE-COMMITTED
+
+: TX-BASE ( -- ptr a ) PF-TX-P @ ;
+: TX-GROW ( -- )
    PF-TX-CAP-V @ 2 * {: nc:n :}
    PF-TX-P PF-TX-CAP-V @ PF-TX-REC * nc PF-TX-REC * REG-GROW1
    nc PF-TX-CAP-V ! ;
-: PF-TX-ENSURE ( -- )
+: TX-ENSURE ( -- )
    PF-TX-DEPTH @ PF-TX-CAP-V @ < IF EXIT THEN
-   PF-TX-GROW ;
-: PF-TX-AT ( n -- ptr a ) PF-TX-REC * PF-TX-BASE + ;
-: PF-TX-TOP ( -- ptr a )
+   TX-GROW ;
+: TX-AT ( n -- ptr a ) PF-TX-REC * TX-BASE + ;
+: TX-TOP ( -- ptr a )
    PF-TX-DEPTH @ 0= IF E-PF-TX throw THEN
-   PF-TX-DEPTH @ 1 - PF-TX-AT ;
-: PF-TX-REQUIRE ( n -- ) PF-TX-TOP PFTX.TOK @ <> IF E-PF-TX throw THEN ;
+   PF-TX-DEPTH @ 1 - TX-AT ;
+: TX-REQUIRE ( n -- ) TX-TOP PFTX.TOK @ <> IF E-PF-TX throw THEN ;
+: TX-STATE-REQUIRE ( n n -- ) {: tx:n state:n :}
+   tx TX-REQUIRE
+   TX-TOP PFTX.STATE @ state <> IF E-PF-TX throw THEN ;
+: TX-MARKS-REQUIRE ( -- )
+   TX-TOP {: r:ptr :}
+   r PFTX.PFN @ PF-N @ > IF E-PF-TX throw THEN
+   r PFTX.STRU @ TF-STR-U @ > IF E-PF-TX throw THEN ;
+: TX-OPEN-MARKS-REQUIRE ( -- )
+   TX-MARKS-REQUIRE
+   TX-TOP PFTX.COMMITN @ PF-COMMIT-N @ <> IF E-PF-TX throw THEN ;
+: TX-PARENT-REQUIRE ( -- )
+   PF-TX-DEPTH @ 0= IF EXIT THEN
+   TX-TOP PFTX.STATE @ STATE-OPEN <> IF E-PF-TX throw THEN
+   TX-OPEN-MARKS-REQUIRE ;
+: TX-COMMITTED-MARKS-REQUIRE ( -- )
+   TX-MARKS-REQUIRE
+   PF-TX-DEPTH @ 1 = IF
+      PF-COMMIT-N @ PF-N @ <> IF E-PF-TX throw THEN
+      EXIT
+   THEN
+   TX-TOP PFTX.COMMITN @ PF-COMMIT-N @ <> IF E-PF-TX throw THEN ;
+: RELEASE ( -- )
+   PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
 
-: PF-BEGIN ( -- n )
-   PF-TX-ENSURE
+public
+
+\ The wrap guard stays although no test drives it. Reaching it needs 2^63 OPENs
+\ in one process, so the only way to observe it was the whitebox seam that poked
+\ PF-TX-SERIAL directly, and this leaf's contract retired that seam rather than
+\ publish a raw-state setter to keep it. Deleting the guard instead would make a
+\ wrapped serial mint token 0 or a negative token, which every phase compares by
+\ equality — a stale token could then alias a live frame, the one failure the
+\ whole token scheme exists to prevent. It is a cheap always-on precondition on
+\ the sole mutator of the serial, so it is kept unexercised and deliberately not
+\ re-exposed through a TRUSTED boundary.
+: OPEN ( -- n )
+   TX-PARENT-REQUIRE
    PF-TX-SERIAL @ 1 + dup 0 <= IF drop E-PF-TX throw THEN
-   dup PF-TX-SERIAL ! {: tok:n :}
-   PF-TX-DEPTH @ PF-TX-AT {: r:ptr :}
+   {: tok:n :}
+   TX-ENSURE
+   tok PF-TX-SERIAL !
+   PF-TX-DEPTH @ TX-AT {: r:ptr :}
    PF-N @ r PFTX.PFN !
    TF-STR-U @ r PFTX.STRU !
    PF-COMMIT-N @ r PFTX.COMMITN !
-   PF-TX-OPEN r PFTX.STATE !
+   STATE-OPEN r PFTX.STATE !
    tok r PFTX.TOK !
    PF-TX-DEPTH @ 1 + PF-TX-DEPTH !
    tok ;
-: PF-PUBLISH ( n -- ) {: tx:n :}
-   tx PF-TX-REQUIRE
-   PF-TX-TOP PFTX.STATE @ PF-TX-OPEN <> IF E-PF-TX throw THEN
+: PREPARE ( n -- n ) {: tx:n :}
+   tx STATE-OPEN TX-STATE-REQUIRE
+   TX-OPEN-MARKS-REQUIRE
+   PF-N @ ;
+: COMMIT ( n -- ) {: tx:n :}
+   tx PREPARE drop
    PF-TX-DEPTH @ 1 = IF PF-N @ PF-COMMIT-N ! THEN
-   PF-TX-PUBLISHED PF-TX-TOP PFTX.STATE ! ;
-: PF-RELEASE ( -- )
-   PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
-: PF-FINALIZE ( n -- ) {: tx:n :}
-   tx PF-TX-REQUIRE
-   PF-TX-TOP PFTX.STATE @ PF-TX-PUBLISHED <> IF E-PF-TX throw THEN
-   PF-RELEASE ;
-: PF-COMMIT ( n -- ) {: tx:n :}
-   tx PF-PUBLISH
-   tx PF-FINALIZE ;
-: PF-ROLLBACK ( n -- ) {: tx:n :}
-   tx PF-TX-REQUIRE
-   PF-TX-TOP {: r:ptr :}
+   STATE-COMMITTED TX-TOP PFTX.STATE ! ;
+: FINALIZE ( n -- ) {: tx:n :}
+   tx STATE-COMMITTED TX-STATE-REQUIRE
+   TX-COMMITTED-MARKS-REQUIRE
+   RELEASE ;
+\ A live frame is in exactly one of the two states OPEN sets and COMMIT moves it
+\ to, so the state selects which watermark check applies; there is no third value
+\ to reject.
+: ROLLBACK ( n -- ) {: tx:n :}
+   tx TX-REQUIRE
+   TX-TOP PFTX.STATE @ STATE-OPEN =
+      IF TX-OPEN-MARKS-REQUIRE ELSE TX-COMMITTED-MARKS-REQUIRE THEN
+   TX-TOP {: r:ptr :}
    r PFTX.PFN @ {: keep:n :}
    keep PF-N @ PF-SCRUB              \ scrub the provisional rows this rollback retires
    keep PF-N !
    r PFTX.STRU @ TF-STR-U !
    r PFTX.COMMITN @ PF-COMMIT-N !
-   PF-TX-DEPTH @ 1 - PF-TX-DEPTH ! ;
+   RELEASE ;
 
 \ The field owner is the only authority that can read a provisional row.  The
 \ caller must present the exact live top transaction token, the row must have
 \ been added by that frame, and its family must match.  DECL-EVENT wraps this
 \ sealed owner seam with its own declaration token and event-range proof.
-: PF-TX-SCHEMA-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
-   tx PF-TX-REQUIRE
-   id PF-TX-TOP PFTX.PFN @ < IF E-PF-ID throw THEN
+: TX-SCHEMA-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
+   tx STATE-OPEN TX-STATE-REQUIRE
+   TX-OPEN-MARKS-REQUIRE
+   id TX-TOP PFTX.PFN @ < IF E-PF-ID throw THEN
    id PF-N @ >= IF E-PF-ID throw THEN
    id PF-ROW {: r:ptr :}
    r PF.FAM @ fam <> IF E-PF-OWNER throw THEN
    r PF.SCH @ ;
+: TX-CELLS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
+   tx fam id TX-SCHEMA-FOR drop
+   id PF-ROW PF.CELLS @ ;
+
+private
+;package
 
 \ ADD validation. Field rows carry explicit logical-cell and memory-layout
 \ metadata under every registered family policy; no policy implies CELL-sized
@@ -1471,9 +1520,14 @@ TFAM-SCH-ROW-ARITY-INSTALL
    REPEAT
    RES-FALSE ;
 
-: PF-ADD ( n n n ptr u8 n n n n n n n n -- n )
+package TYPE-FIELD-OWNER
+
+public
+
+: ADD ( n n n ptr u8 n n n n n n n n -- n )
    {: tx:n fam:n var:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   tx PF-TX-REQUIRE
+   tx STATE-OPEN TX-STATE-REQUIRE
+   TX-OPEN-MARKS-REQUIRE
    fam var PF-OWNER-OK? 0= IF E-PF-OWNER throw THEN
    na nu PF-NAME-REQUIRE
    fam var na nu PF-DUP? IF E-TFAM-DUP throw THEN
@@ -1492,19 +1546,11 @@ TFAM-SCH-ROW-ARITY-INSTALL
    id 1 + PF-N !
    tx ;
 
-package TYPE-FIELD-OWNER
-
-public
-
-: TX-SCHEMA-FOR ( n n n -- n ) PF-TX-SCHEMA-FOR ;
-: TX-CELLS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
-   tx PF-TX-REQUIRE
-   PF-TX-TOP PFTX.STATE @ PF-TX-OPEN <> IF E-PF-TX throw THEN
-   tx fam id PF-TX-SCHEMA-FOR drop
-   id PF-ROW PF.CELLS @ ;
-
 private
 get-current prot-wid-add
+public
+get-current prot-wid-add
+private
 
 ;package
 

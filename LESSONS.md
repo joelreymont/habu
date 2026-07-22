@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -16,6 +16,10 @@ fits.
   land the common definition, and rebase the consumer onto it. A temporary
   consumer-local replica creates duplicate authority and is not parallel
   progress.
+- **Consume every value returned by a mutation-free preflight.** A commit may
+  repeat validation to stay safe when called directly, but it must drop or use
+  the returned proof value; otherwise the declaration coordinator correctly
+  rejects the participant for changing stack depth.
 - **Declared growth makes reservation ownership unconditional.** Expose one
   admission path that requires a positive maximum, reserve its exact ceiling
   page count before publishing a generation-bearing handle, and make every
@@ -31,6 +35,29 @@ fits.
   source, where syntax overhead and quoting would narrow or corrupt the domain.
 
 ## Checker Soundness
+
+- **Deleting a word does not retire it; only an always-reject token row does.**
+  Removing a name from the dictionary makes `CHECK` answer 1 (uncheckable), not
+  0 (rejected), because an unknown token is simply unmodelled — and any later
+  source can define the same spelling and get it admitted through an ordinary
+  signature. Dictionary absence (`search-wl`) and the rc-70 `E-UNDEFINED` load
+  failure are therefore both supplemental. The enforcing boundary is a row in
+  the checker's retired-token set, consulted in `DO-TOK1` BEFORE the signature
+  and primitive lookup, matched as a whole folded token so neighbouring names
+  (`PF-COMMIT-N` next to retired `PF-COMMIT`) keep working. Measured on the
+  product-field retirement: verdict stayed 1 after the words were deleted and
+  only flipped to 0 once the rows existed.
+- **Report a retired token as undefined, not as unsafe.** Reusing the
+  `UNSAFE` latch would have rendered "Move this compiler or runtime boundary
+  behind audited TRUST" — advice that tells the reader to do the exact thing the
+  retirement forbids. Latch the retired flag for the verdict and `UNDEFERR` for
+  the message, so the checker and the interpreter name the same failure.
+- **A package axiom is what removes a trusted shim.** Post-hook code reaching a
+  pre-hook package through `TRUSTED:` forwarders stays unaudited by the checker
+  at every call site. One `PPRIM: PKG WORD ... PPRIM;` row per public word turns
+  those into ordinary checked qualified calls: nine `DEV-FLD-*` trust rows
+  disappeared with no replacement, and deleting a single row now fails the
+  fixpoint build with "non-certified definition" instead of silently degrading.
 
 - **The registry-cell seal (`REG-PROTECT` + `IMK-SEAL-REGISTRY`, DNAME-INT bit 63)
   only fail-closes INTERPRET dispatch and interpret `'` — compile-mode references

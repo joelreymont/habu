@@ -2501,6 +2501,7 @@ variable SGBAD-KIND
 variable SGBAD-AR-DECL   \ arity kind: the family's declared arity
 variable SGBAD-AR-GOT    \ arity kind: the argument count actually written
 variable UNSAFE
+variable RETIRED             \ a permanently retired token was named in a checked body
 variable LOCALBAD
 variable LINLOCBAD           \ a linear-counting value was bound into a {: :} local
 variable UNDEFERR
@@ -4993,6 +4994,28 @@ PPRIM: TYPE-FIELD BYTE-OFF@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD BYTES@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD ALIGN@ PE-N PE-IN  PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD FLAGS@ PE-N PE-IN  PE-N PE-OUT PPRIM;
+\ Product-field transaction lifecycle (dots habu-own-product-field-86660116 /
+\ habu-type-field-owner-619ec6b5). TYPE-FIELD-OWNER is a pre-hook package, so
+\ without these axioms every post-hook caller would need a TRUSTED shim; with
+\ them DECL-EVENT calls the qualified API as ordinary checked code. The token is
+\ an opaque `n` that OPEN mints and each later phase presents unchanged. PREPARE
+\ returns the validated provisional field count, which is what lets DECL-EVENT
+\ prove event/field contiguity without reading a raw registry cell. ADD's row is
+\ the full field record: token, family, variant, name string, schema root, then
+\ the logical slot/cells and physical byte-offset/bytes/alignment/flags, and it
+\ returns the same token so callers can thread it.
+PPRIM: TYPE-FIELD-OWNER OPEN PE-N PE-OUT PPRIM;
+PPRIM: TYPE-FIELD-OWNER ADD PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TYPE-FIELD-OWNER PREPARE PE-N PE-IN  PE-N PE-OUT PPRIM;
+PPRIM: TYPE-FIELD-OWNER COMMIT PE-N PE-IN PPRIM;
+PPRIM: TYPE-FIELD-OWNER FINALIZE PE-N PE-IN PPRIM;
+PPRIM: TYPE-FIELD-OWNER ROLLBACK PE-N PE-IN PPRIM;
+PPRIM: TYPE-FIELD-OWNER TX-SCHEMA-FOR PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
+\ TX-CELLS-FOR is the sibling token-scoped provisional query and the eighth
+\ public owner word DECL-EVENT calls. It needs its own axiom for the same reason
+\ TX-SCHEMA-FOR does: without it the payload-cell readers would keep the one
+\ DEV-FLD TRUSTED shim the migration is meant to remove entirely.
+PPRIM: TYPE-FIELD-OWNER TX-CELLS-FOR PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PPRIM;
 PRIM: WF-N@ PE-N PE-OUT PRIM;
 PRIM: WF-OFF@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: WF-POS@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -6261,6 +6284,41 @@ variable CURSYM
    a u s" immediate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" [" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ]" CORE-STR=CI ;
+
+\ --- retired-token set (dots habu-own-product-field-86660116 /
+\ habu-type-field-owner-619ec6b5) --------------------------------------------
+\ The raw GLOBAL product-field lifecycle words were retired when package
+\ TYPE-FIELD-OWNER became the sole authority over field transactions. Deleting
+\ them from the dictionary is NOT the enforcement: an undefined token only makes
+\ CHECK return 1 (uncheckable), and any later source can define a global word
+\ with the same spelling and get it admitted through an ordinary signature. The
+\ rows below make the rejection structural instead — DO-TOK1 consults them
+\ BEFORE DO-TOK's usig/prim lookup, so a bare global use rejects with verdict 0
+\ whatever a future admitting row might say.
+\
+\ The invariant is about the retired GLOBAL words, not about the spelling. A
+\ package that owns its own word with one of these tails owns a DIFFERENT word,
+\ and it must stay live and certifiable: tools/lint/diff-frame.f has had a
+\ private `1 constant PF-ADD` ("parser form: add") inside package DIFF-FRAME
+\ since long before this retirement, and a context-free blocklist made that file
+\ fail to load. So RETIRED-GLOBAL? matches the spelling first (exact and
+\ case-folded — DO-TOK1 passes folded tokens — never a prefix, so PF-COMMIT-N
+\ and PF-NO-VARIANT are untouched), then asks the ordinary resolver where the
+\ token actually binds. It rejects only at the two positions that would have
+\ reached the retired raw global: the token resolves at global position, or it
+\ resolves nowhere at all. An open-package or used-package hit is someone else's
+\ word and passes straight through.
+: RETIRED-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" pf-begin" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" pf-add" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" pf-publish" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" pf-release" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" pf-finalize" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" pf-commit" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" pf-rollback" CORE-STR=CI ;
+
+\ RETIRED-GLOBAL? (the position test) lives beside REJECT-RETIRED below, where
+\ the locals table is already in scope.
 
 \ --- unsafe-symbol set (dot habu-checker-unsafety-as-1c537c1f) ----------------
 \ Unsafety is a property of the WORD, not its spelling. UNSAFE-TOK? above keeps
@@ -8449,6 +8507,39 @@ DRAIN-PRETRUST
 : REJECT-UNSAFE ( -- )
    -1 UNSAFE !  0 OK !  -1 FAILSET ! ;
 
+\ A live local name, scanned without LOC-REF?'s side effects (that word also
+\ pushes the reference or latches a quotation reject).
+variable RTL-I                        \ retired-token local scan index
+: LOC-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 RTL-I !
+   BEGIN RTL-I @ #LOC @ < WHILE
+      a u  LOCNB RTL-I @ LOC-NAME-W * +  RTL-I @ cells LOCLN + @  CORE-STR=
+         IF RES-TRUE EXIT THEN
+      RTL-I @ 1 + RTL-I !
+   REPEAT RES-FALSE ;
+
+\ Where a retired-spelling token actually binds. Reject only at the two
+\ positions that would have reached the retired raw global: it resolves at
+\ global position, or it resolves nowhere. A local, an open-package word, or a
+\ used-package public is a DIFFERENT word and passes through — locals shadow
+\ retirement exactly as they shadow every other resolution, and the checker
+\ resolves a local before any dictionary lookup, so a local reference can never
+\ reach global position.
+: RETIRED-GLOBAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u RETIRED-TOK? 0= IF RES-FALSE EXIT THEN
+   a u LOC-NAME? IF RES-FALSE EXIT THEN
+   a u CHECKER-FIND-ACTIVE-SYM dup 0= IF drop RES-TRUE EXIT THEN
+   a u CHECKER-GLOBAL-SYM? = ;
+
+\ A retired token is reported as undefined, not as an unsafe boundary: UNSAFE's
+\ repair advice is "move it behind audited TRUST", which is exactly the wrong
+\ instruction here — the word is gone for good and the caller must move to the
+\ owning package API. Latching UNDEFERR reuses the existing E-UNDEFINED
+\ diagnostic, so the checker verdict and the interpreter's own error name the
+\ same failure; RETIRED is what forces verdict 0 in CHECK-VERDICT.
+: REJECT-RETIRED ( -- )
+   -1 RETIRED !  -1 UNDEFERR !  0 OK !  -1 FAILSET ! ;
+
 \ M5: a block collective/barrier reached inside an open control frame is not
 \ block-uniform-reachable; latch the reason on the pinned token, then reject.
 \ MDIAG! must precede FAILSET (it latches only while the pin is open).
@@ -8862,6 +8953,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    TKF TKFU @ s" match" CORE-STR= IF MATCH-BEGIN ELSE
    TKF TKFU @ s" {:" CORE-STR= IF LOC-BEGIN ELSE
    TKF TKFU @ UNSAFE-TOK? IF REJECT-UNSAFE ELSE
+   TKF TKFU @ RETIRED-GLOBAL? IF REJECT-RETIRED ELSE
    TKF TKFU @ s" is" CORE-STR= IF IS-TOK ELSE
    TKF TKFU @ BTICK-CAND? IF BTICK-TOK ELSE
    OK @ IF TKF TKFU @ s" exit" CORE-STR= IF a u DEAD-OWNER! THEN THEN
@@ -8890,7 +8982,7 @@ variable CONFAM    \ resolved family id while CONM = 2
    PIMM-STREAM @ 0 = IF
       CURSYM @ PIMM-IX dup 0 < 0= IF PIMM-CNT@ PIMM-SKIP ELSE drop THEN
    THEN
-   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
+   THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN
    EXEC-OPAQUE @ IF MD-EXEC-OPAQUE MDIAG! THEN   \ name the opaque-execute reject on the pinned 'execute' token
    CATCH-OPAQUE @ IF MD-CATCH-OPAQUE MDIAG! THEN   \ name the opaque-catch reject on the pinned 'catch' token
    LIN-TAINT-SCAN
@@ -9188,7 +9280,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    0 TOKIX !  0 FAILIX !  0 DVERD !
    0 FAILB !  0 FAILE !  0 XSET !  0 DEADP !  0 DEADERR !  0 DEADTA !  0 DEADTU !
    0 THDROW !  0 THRROW !  0 THSET !
-   SGBAD-CLEAR  0 UNSAFE !  0 IMMERR !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
+   SGBAD-CLEAR  0 UNSAFE !  0 RETIRED !  0 IMMERR !  0 LOCALBAD !  0 LINLOCBAD !  0 UNDEFERR !  0 QUALBAD !  0 QDUPBAD !  0 CAPREQ !
    0 NPBAD !  0 NPBAD-KIND !  0 NPBAD-Q1 !  0 NPBAD-Q2 !  0 NPBAD-TERM !
    0 LOCSEQ !
    0 WF-N !  0 RECW !  0 RECMI !
@@ -9242,7 +9334,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    CHECK-SIG? SGHASR? and ;
 
 : CHECK-VERDICT ( -- n )
-   SGBAD @ UNSAFE @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
+   SGBAD @ UNSAFE @ or  RETIRED @ or  IMMERR @ or  LOCALBAD @ or  LINLOCBAD @ or  QDUPBAD @ or  CAPREQ @ or  MREJ @ or  NPBAD @ or 0 <> IF 0 ELSE
    UNCK @ 0 <> IF 1 ELSE OK @ THEN THEN ;
 
 \ CERT-REPOINT-ROWS ( -- ) : restore the REND-SIG contract after certifying.

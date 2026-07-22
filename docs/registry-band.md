@@ -102,7 +102,13 @@ Proof (temp engine + installed byte-fixpoint):
   ten records at seal time and calls `REG-PROTECT` at load).
 - Negatives in `test/internal-word-gate.f` (`IWG-REGISTRY-CASES`): bare cell
   names fail closed; the `99 PF-COMMIT-N !` exploit fails closed on `--load` and
-  stdin; the existing colon-builder rows (`PF-BEGIN`, `PF-FIND`) stay.
+  stdin. `PF-FIND` remains an internal reflection helper. The seven former raw
+  lifecycle names are gone from the dictionary AND carry a row in the checker's
+  retired-token set (`RETIRED-TOK?`, `src/core/checker.f`), so a checked body
+  naming one is rejected (verdict 0, reported `E-UNDEFINED`) before any
+  signature or primitive lookup — deletion alone would only make them
+  uncheckable. The sealed `TYPE-FIELD-OWNER` package is the sole lifecycle
+  authority; `test/type-field-owner-suite.f` owns the negatives.
 
 Arena rows: the arena BASE names (`PF-A-P`, `PF-A-BOOT`, `PF-TX-P`, `PF-TX-BOOT`)
 are among the marked cells, so a bare row-address computation
@@ -117,9 +123,10 @@ DATA band `[REG-BAND-OFF, +REG-BAND-LEN)` added to `GUARD-SPAN`/`PROT-GUARD`,
 `ENGINE-ERROR:SEAL-VIOLATION`). It does not close the checked-source threat model,
 for a structural reason:
 
-- A guarded band traps ordinary stores, so the LEGIT declaration-time writes
-  (`PF-ADD` advancing `PF-N`, `PF-COMMIT` advancing `PF-COMMIT-N`, all post-seal)
-  need a guard-BYPASS writer — a prim `reg-cell! ( n off -- )` doing a raw store.
+- A guarded band traps ordinary stores, so the legitimate declaration-time
+  writes (`TYPE-FIELD-OWNER:ADD` advancing `PF-N` and
+  `TYPE-FIELD-OWNER:COMMIT` advancing `PF-COMMIT-N`, all post-seal) need a
+  guard-BYPASS writer — a prim `reg-cell! ( n off -- )` doing a raw store.
   Because PF is a Forth-level registry, that bypass must be a Forth-callable word.
 - A bypass word is a no-effect internal prim — exactly the shape that the `RSEXEC`
   `T-VAR` gap laundered above. Checked source runs `' reg-cell! V !  V @ execute`
@@ -130,8 +137,8 @@ for a structural reason:
   closure.
 - (The engine's own `TXN-STATE` band is safe only because its writers are inline
   machine code inside larger compiler prims, never a standalone Forth word. PF's
-  Forth-level writers cannot be made non-launderable that way without rewriting
-  `PF-ADD`/`PF-COMMIT`/… into prim bodies.)
+  sealed Forth-level owner cannot be made non-launderable that way without
+  rewriting its mutation bodies as compiler prims.)
 
 The pointer-leak sub-audit (does a public reflection word hand back a PF pointer?)
 is moot under this finding but recorded: `COUNT/NO-VARIANT/FAMILY@/…/FLAGS@` return
@@ -153,16 +160,18 @@ and direct checked references; the laundered route is the checker's to close.
 ## TDECL-MARK/RESTORE PF-snapshot redundancy (done)
 
 `TDECL-MARK`/`TDECL-RESTORE` (`src/core/sumtype.f`) no longer snapshot
-`PF-N`/`PF-COMMIT-N`. Only `PRODUCT` mutates PF, and only inside
-`TDECL-PRODUCT-TX`'s own `PF-BEGIN … PF-ADD … PF-ROLLBACK/PF-COMMIT` transaction,
-which restores `PF-N` on any field failure and advances `PF-COMMIT-N` only on the
-outer commit; the sole later step (`TDECL-FAM-REG !`) never throws, so a rejected
-`PRODUCT` leaves both marks at baseline without a second snapshot. `SUMTYPE`/
-`ENUM`/`TYPEFAMILY` never touch PF. Regression: `test/type-decl-suite.f` `tdpdup`
-(a two-field product whose second field duplicates the first throws E-TFAM-DUP
-after one field is added; `TDT-NEG` asserts `TYPE-FIELD:COUNT` is restored). The
-checker-scope frame's own PF marks (`type-family.f` `TFAM-ROLLBACK-SAVE/RESTORE`)
-are load-bearing for rejected families and are unchanged.
+`PF-N`/`PF-COMMIT-N`. `PRODUCT` records its fields through the declaration-event
+participant, which owns one nested `TYPE-FIELD-OWNER` frame.
+`TYPE-FIELD-OWNER:PREPARE` validates the provisional count without mutation;
+`COMMIT` publishes an outer frame while retaining rollback authority;
+`FINALIZE` releases it only after every later participant succeeds; and
+`ROLLBACK` restores either an open or committed frame. A rejected `PRODUCT`
+therefore restores both marks without a duplicate snapshot. `SUMTYPE`,
+`ENUM`, and `TYPEFAMILY` never add field rows. Regression:
+`test/type-decl-suite.f` `tdpdup` throws `E-TFAM-DUP` after the first field and
+asserts that `TYPE-FIELD:COUNT` is restored. The checker-scope frame's PF marks
+(`type-family.f` `TFAM-ROLLBACK-SAVE/RESTORE`) remain load-bearing for rejected
+families.
 
 ## Per-sibling rollout recipe (`habu-protect-sibling-type-44eec932`)
 

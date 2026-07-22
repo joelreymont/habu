@@ -247,7 +247,7 @@ package DECL-EVENT
 
 : TEST-ADD-UNTRACKED-FIELD ( n -- ) {: fam:n :}
    DEV-TX-TOP DEVTX.FLDTOK @ fam DEV-NO-VARIANT
-   s" untracked" SCHROOT @ 0 1 0 CELL CELL 0 DEV-FLD-ADD drop ;
+   s" untracked" SCHROOT @ 0 1 0 CELL CELL 0 TYPE-FIELD-OWNER:ADD drop ;
 
 : TEST-PUBLISH ( -- ) TOK @ PUBLISH ;
 
@@ -313,7 +313,7 @@ E-PF-TX constant TEST-E-PF-TX
    TOK @ FV7 @ VAR-E @ 0 PAYLOAD-WIDTH@ drop ;
 
 : TEST-FIELD-CELLS ( -- )
-   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ P-PF @ DEV-FLD-TX-CELLS-FOR drop ;
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ P-PF @ TYPE-FIELD-OWNER:TX-CELLS-FOR drop ;
 
 : TEST-PUBLISHED-PAYLOAD-HIDDEN ( -- )
    OPEN TOK !
@@ -337,120 +337,57 @@ E-PF-TX constant TEST-E-PF-TX
 TEST-PUBLISHED-PAYLOAD-HIDDEN
 
 \ ---------------------------------------------------------------------------
-\ 14. A field-snapshot failure changes no participant state.  The only raw
-\     test seam swaps the pre-hook field token serial and captures its complete
-\     transaction state; it stays private to DECL-EVENT.
+\ 14. A committed field-owner frame makes a nested generated declaration fail
+\     through the public lifecycle.  The rejected declaration changes neither
+\     participant's public state, and rollback retires the owner token.
 \ ---------------------------------------------------------------------------
-$7FFFFFFFFFFFFFFF constant TEST-SERIAL-MAX
-
-variable B-DEV-N      variable B-DEV-PUB
-variable B-FLD-BASE   variable B-FLD-ORD
-variable B-VAR-ORD    variable B-CUR-VAR
-variable B-DEV-DEPTH  variable B-DEV-SERIAL
-variable C-DEV-N      variable C-DEV-PUB
-variable C-FLD-BASE   variable C-FLD-ORD
-variable C-VAR-ORD    variable C-CUR-VAR
-variable C-DEV-DEPTH  variable C-DEV-SERIAL
-
-variable S-PF-N       variable S-PF-PUB
-variable S-PF-DEPTH   variable S-PF-SERIAL
-variable B-PF-N       variable B-PF-PUB
-variable B-PF-DEPTH   variable B-PF-SERIAL
-variable C-PF-N       variable C-PF-PUB
-variable C-PF-DEPTH   variable C-PF-SERIAL
-
-TRUSTED: TEST-PF-SWAP ( n -- )
-   PF-N @ S-PF-N !
-   PF-COMMIT-N @ S-PF-PUB !
-   PF-TX-DEPTH @ S-PF-DEPTH !
-   PF-TX-SERIAL @ S-PF-SERIAL !
-   PF-TX-SERIAL ! ;
-
-: SAVE-B-DEV ( -- )
-   DEV-N @ B-DEV-N !             DEV-PUB-N @ B-DEV-PUB !
-   DEV-BASE-FLD @ B-FLD-BASE !   DEV-FLD-ORD @ B-FLD-ORD !
-   DEV-VAR-ORD @ B-VAR-ORD !     DEV-CUR-VAR @ B-CUR-VAR !
-   DEV-TX-DEPTH @ B-DEV-DEPTH !  DEV-TX-SERIAL @ B-DEV-SERIAL ! ;
-
-: SAVE-C-DEV ( -- )
-   DEV-N @ C-DEV-N !             DEV-PUB-N @ C-DEV-PUB !
-   DEV-BASE-FLD @ C-FLD-BASE !   DEV-FLD-ORD @ C-FLD-ORD !
-   DEV-VAR-ORD @ C-VAR-ORD !     DEV-CUR-VAR @ C-CUR-VAR !
-   DEV-TX-DEPTH @ C-DEV-DEPTH !  DEV-TX-SERIAL @ C-DEV-SERIAL ! ;
-
-: RESTORE-B-DEV ( -- )
-   B-DEV-N @ DEV-N !             B-DEV-PUB @ DEV-PUB-N !
-   B-FLD-BASE @ DEV-BASE-FLD !   B-FLD-ORD @ DEV-FLD-ORD !
-   B-VAR-ORD @ DEV-VAR-ORD !     B-CUR-VAR @ DEV-CUR-VAR !
-   B-DEV-DEPTH @ DEV-TX-DEPTH !  B-DEV-SERIAL @ DEV-TX-SERIAL ! ;
-
-: CHECK-B-DEV ( -- )
-   DEV-N @ B-DEV-N @ T=             DEV-PUB-N @ B-DEV-PUB @ T=
-   DEV-BASE-FLD @ B-FLD-BASE @ T=   DEV-FLD-ORD @ B-FLD-ORD @ T=
-   DEV-VAR-ORD @ B-VAR-ORD @ T=     DEV-CUR-VAR @ B-CUR-VAR @ T=
-   DEV-TX-DEPTH @ B-DEV-DEPTH @ T=  DEV-TX-SERIAL @ B-DEV-SERIAL @ T= ;
-
-: CHECK-C-DEV ( -- )
-   DEV-N @ C-DEV-N @ T=             DEV-PUB-N @ C-DEV-PUB @ T=
-   DEV-BASE-FLD @ C-FLD-BASE @ T=   DEV-FLD-ORD @ C-FLD-ORD @ T=
-   DEV-VAR-ORD @ C-VAR-ORD @ T=     DEV-CUR-VAR @ C-CUR-VAR @ T=
-   DEV-TX-DEPTH @ C-DEV-DEPTH @ T=  DEV-TX-SERIAL @ C-DEV-SERIAL @ T= ;
-
-: SAVE-B-PF ( -- )
-   S-PF-N @ B-PF-N !          S-PF-PUB @ B-PF-PUB !
-   S-PF-DEPTH @ B-PF-DEPTH !  S-PF-SERIAL @ B-PF-SERIAL ! ;
-
-: SAVE-C-PF ( -- )
-   S-PF-N @ C-PF-N !          S-PF-PUB @ C-PF-PUB !
-   S-PF-DEPTH @ C-PF-DEPTH !  S-PF-SERIAL @ C-PF-SERIAL ! ;
-
-: CHECK-B-PF ( -- )
-   S-PF-N @ B-PF-N @ T=          S-PF-PUB @ B-PF-PUB @ T=
-   S-PF-DEPTH @ B-PF-DEPTH @ T=  S-PF-SERIAL @ TEST-SERIAL-MAX T= ;
-
-: CHECK-C-PF ( -- )
-   S-PF-N @ C-PF-N @ T=          S-PF-PUB @ C-PF-PUB @ T=
-   S-PF-DEPTH @ C-PF-DEPTH @ T=  S-PF-SERIAL @ C-PF-SERIAL @ T= ;
+variable HOLD-TOK     variable HOLD-NEXT
+variable HOLD-EVN     variable HOLD-ID
+variable HOLD-EDEPTH  variable HOLD-FLD
+variable HOLD-FDEPTH
 
 : SNAP-BODY ( -- ) ;
 : SNAP-RUN ( -- ) [: SNAP-BODY ;] GENERATED-DECL:RUN ;
 : SNAP-CATCH ( -- n ) [: SNAP-RUN ;] catch ;
 
-: SEED-SNAPSHOT-BASE ( -- )
-   RESET
-   OPEN TOK !
-   TOK @ FV7 @ DECL TOK !
-   TOK @ FV7 @ s" snap-base" VARIANT TOK !
-   TOK @ FV7 @ s" snap-field" SCHROOT @ 0 1 0 CELL CELL 0 FIELD TOK !
-   TOK @ PUBLISH ;
+: HOLD-SAVE ( -- )
+   COUNT HOLD-EVN !
+   IDENTITY HOLD-ID !
+   DEPTH HOLD-EDEPTH !
+   TYPE-FIELD:COUNT HOLD-FLD !
+   TYPE-FIELD:TX-DEPTH HOLD-FDEPTH ! ;
+
+: HOLD-SAME ( -- )
+   COUNT HOLD-EVN @ T=
+   IDENTITY HOLD-ID @ T=
+   DEPTH HOLD-EDEPTH @ T=
+   TYPE-FIELD:COUNT HOLD-FLD @ T=
+   TYPE-FIELD:TX-DEPTH HOLD-FDEPTH @ T= ;
+
+: HOLD-OWNER ( -- )
+   OPEN HOLD-TOK !
+   HOLD-TOK @ FN8 @ DECL HOLD-TOK !
+   HOLD-TOK @ FN8 @ 2 ARITY HOLD-TOK !
+   HOLD-TOK @ FN8 @ s" held" SCHROOT @ 1 1 CELL CELL CELL 0 FIELD HOLD-TOK !
+   HOLD-TOK @ PREPARE
+   HOLD-TOK @ COMMIT ;
 
 : TEST-SNAPSHOT-FAILURE ( -- )
-   SEED-SNAPSHOT-BASE
-   SAVE-B-DEV
-   0 TEST-PF-SWAP  SAVE-B-PF
-   B-PF-SERIAL @ TEST-PF-SWAP
-
-   SNAP-RUN
-   SAVE-C-DEV
-   0 TEST-PF-SWAP  SAVE-C-PF
-   C-PF-SERIAL @ TEST-PF-SWAP
-
-   RESTORE-B-DEV
-   B-PF-SERIAL @ TEST-PF-SWAP
-   TEST-SERIAL-MAX TEST-PF-SWAP
+   HOLD-OWNER
+   DEPTH 1 T=
+   TYPE-FIELD:TX-DEPTH 1 T=
+   HOLD-SAVE
    SNAP-CATCH TC !
-   TEST-SERIAL-MAX TEST-PF-SWAP
-
    TC @ TEST-E-PF-TX T=
-   CHECK-B-DEV
-   CHECK-B-PF
-
-   B-PF-SERIAL @ TEST-PF-SWAP
-   SNAP-RUN
-   CHECK-C-DEV
-   0 TEST-PF-SWAP
-   CHECK-C-PF
-   C-PF-SERIAL @ TEST-PF-SWAP ;
+   HOLD-SAME
+   HOLD-TOK @ ROLLBACK
+   DEPTH 0 T=
+   TYPE-FIELD:TX-DEPTH 0 T=
+   OPEN HOLD-NEXT !
+   HOLD-NEXT @ HOLD-TOK @ 1 + T=
+   HOLD-NEXT @ ROLLBACK
+   DEPTH 0 T=
+   TYPE-FIELD:TX-DEPTH 0 T= ;
 
 TEST-SNAPSHOT-FAILURE
 
@@ -487,13 +424,16 @@ variable VN-FOWNER
    TF-PK-N@ VN-PK !           SUMV-N@ VN-SUMV !
    LAY-N@ VN-LAY !            SCHEMA-N@ VN-SCH !
    SCHEMA-ROOT-N@ VN-ROOT !   TYPE-FIELD:COUNT VN-PF !
-   DEV-FLD-PROVISIONAL-COUNT VN-PFP ! ;
+   TYPE-FIELD:COUNT VN-PFP ! ;
 
 : VN-CHECK-REG ( -- )
    TFAM-N@ VN-TFAM @ T=          TF-STR-U@ VN-STR @ T=
    TF-PK-N@ VN-PK @ T=           SUMV-N@ VN-SUMV @ T=
    LAY-N@ VN-LAY @ T=            SCHEMA-N@ VN-SCH @ T=
-   SCHEMA-ROOT-N@ VN-ROOT @ T=   TYPE-FIELD:COUNT VN-PF @ T=
+   SCHEMA-ROOT-N@ VN-ROOT @ T=   TYPE-FIELD:COUNT VN-PF @ T= ;
+
+: VN-CHECK-OPEN-REG ( -- )
+   VN-CHECK-REG
    DEV-FLD-PROVISIONAL-COUNT VN-PFP @ T= ;
 
 : VN-SAVE-OUT ( -- )
@@ -557,7 +497,7 @@ variable VN-FOWNER
    VN-SAVE-IN
    [: VN-CALL ;] catch TC !
    TC @ want T=
-   VN-CHECK-IN  VN-CHECK-REG
+   VN-CHECK-IN  VN-CHECK-OPEN-REG
    TOK @ ROLLBACK
    0 TWX-CAND-DONE drop
    VN-CHECK-OUT  VN-CHECK-REG ;
@@ -776,30 +716,31 @@ variable HF-EVA   variable HF-EVB
 variable HF-FLDA  variable HF-FLDB
 variable HF-SA    variable HF-SB
 variable HF-CA    variable HF-CB
+variable HF-BASE-PF
 
 : HF-SAVE ( -- )
    WF-REG-SAVE
    WF-STATE-SAVE
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
-      DEV-FLD-TX-SCHEMA-FOR HF-SA !
+      TYPE-FIELD-OWNER:TX-SCHEMA-FOR HF-SA !
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
-      DEV-FLD-TX-SCHEMA-FOR HF-SB !
+      TYPE-FIELD-OWNER:TX-SCHEMA-FOR HF-SB !
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
-      DEV-FLD-TX-CELLS-FOR HF-CA !
+      TYPE-FIELD-OWNER:TX-CELLS-FOR HF-CA !
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
-      DEV-FLD-TX-CELLS-FOR HF-CB ! ;
+      TYPE-FIELD-OWNER:TX-CELLS-FOR HF-CB ! ;
 
 : HF-SAME ( -- )
    WF-STATE-SAME
    WF-REG-SAME
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
-      DEV-FLD-TX-SCHEMA-FOR HF-SA @ T=
+      TYPE-FIELD-OWNER:TX-SCHEMA-FOR HF-SA @ T=
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
-      DEV-FLD-TX-SCHEMA-FOR HF-SB @ T=
+      TYPE-FIELD-OWNER:TX-SCHEMA-FOR HF-SB @ T=
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
-      DEV-FLD-TX-CELLS-FOR HF-CA @ T=
+      TYPE-FIELD-OWNER:TX-CELLS-FOR HF-CA @ T=
    DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
-      DEV-FLD-TX-CELLS-FOR HF-CB @ T=
+      TYPE-FIELD-OWNER:TX-CELLS-FOR HF-CB @ T=
    TOK @ FV7 @ VAR-E @ PAYLOAD-N 2 T=
    TOK @ FV7 @ VAR-E @ 0 PAYLOAD-SCHEMA@ SCHROOT @ T=
    TOK @ FV7 @ VAR-E @ 1 PAYLOAD-SCHEMA@ HF-SCH @ T=
@@ -808,6 +749,7 @@ variable HF-CA    variable HF-CB
    TOK @ FV7 @ VAR-E @ PAYLOAD-CELLS 2 T= ;
 
 : HF-OPEN ( -- )
+   TYPE-FIELD:COUNT HF-BASE-PF !
    RESET
    TWX-CAND-START
    OPEN TOK !
@@ -837,7 +779,7 @@ variable HF-CA    variable HF-CB
    DEV-FLD-ORD @ 0 T=       DEV-VAR-ORD @ 0 T=
    DEV-CUR-VAR @ DEV-NO-VARIANT T=
    DEV-TX-DEPTH @ 0 T=
-   DEV-FLD-PROVISIONAL-COUNT DEV-FLD-COUNT T= ;
+   TYPE-FIELD:COUNT HF-BASE-PF @ T= ;
 
 : HF-PAYLOAD-N ( -- )
    TOK @ FV7 @ VAR-E @ PAYLOAD-N drop ;
@@ -906,29 +848,29 @@ variable TXC-END
    HF-FLDA @ TXC-OWN !
    DEV-FLD-PROVISIONAL-COUNT TXC-FOREIGN !
    TXC-TOK @ FD3 @ DEV-NO-VARIANT
-      s" txc-foreign" SCHROOT @ 0 1 0 CELL CELL 0 DEV-FLD-ADD drop
+      s" txc-foreign" SCHROOT @ 0 1 0 CELL CELL 0 TYPE-FIELD-OWNER:ADD drop
    DEV-FLD-PROVISIONAL-COUNT TXC-END !
    HF-SAVE ;
 
 : TXC-WRONG-TOKEN ( -- )
    TXC-TOK @ 1 + FV7 @ TXC-OWN @
-   DEV-FLD-TX-CELLS-FOR drop ;
+   TYPE-FIELD-OWNER:TX-CELLS-FOR drop ;
 
 : TXC-WRONG-FAMILY ( -- )
    TXC-TOK @ FD3 @ TXC-OWN @
-   DEV-FLD-TX-CELLS-FOR drop ;
+   TYPE-FIELD-OWNER:TX-CELLS-FOR drop ;
 
 : TXC-FOREIGN-ROW ( -- )
    TXC-TOK @ FV7 @ TXC-FOREIGN @
-   DEV-FLD-TX-CELLS-FOR drop ;
+   TYPE-FIELD-OWNER:TX-CELLS-FOR drop ;
 
 : TXC-NEGATIVE ( -- )
    TXC-TOK @ FV7 @ -1
-   DEV-FLD-TX-CELLS-FOR drop ;
+   TYPE-FIELD-OWNER:TX-CELLS-FOR drop ;
 
 : TXC-ONE-PAST ( -- )
    TXC-TOK @ FV7 @ TXC-END @
-   DEV-FLD-TX-CELLS-FOR drop ;
+   TYPE-FIELD-OWNER:TX-CELLS-FOR drop ;
 
 TXC-OPEN
 

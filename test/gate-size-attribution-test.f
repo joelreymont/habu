@@ -277,9 +277,15 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ declaration event and sealed type-name wiring add 16 bytes to aot-seed:
 \ CODELEN 122544 -> 122560 and floor 3760 -> 3776. The same 4 KiB page still
 \ contains __text, so the whole file remains exactly 127168.
-122560 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-25 product-field lifecycle ownership (habu-own-product-field-86660116
+\ + the folded habu-type-field-owner-619ec6b5): the eight TYPE-FIELD-OWNER
+\ checker axioms and the retired-token reject add 8 bytes to aot-seed, measured
+\ at this lane's fixpoint on top of the measured master bbc9bf5e numbers:
+\ CODELEN 122560 -> 122568 and floor 3776 -> 3784. The text pad absorbs the 8
+\ bytes (320 -> 312), so the whole file remains exactly 127168.
+122568 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3776 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3784 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -343,7 +349,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" dictionary-code"         4732 q execute
    s" runtime"                 9508 q execute
    s" seed-dictionary"         8700 q execute
-   s" aot-seed"               22476 q execute
+   s" aot-seed"               22484 q execute   \ +8: TYPE-FIELD-OWNER axioms + retired-token reject
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;

@@ -1104,17 +1104,26 @@ Both multiplications are overflow-checked. `niche`, `boxed`, and `custom` field
 rows reject until those policies own explicit ABI validators; metadata accepted
 by a generic range check is not enough to define a layout ABI.
 
-PF mutation is a strict-LIFO nested transaction. `PF-N` includes provisional
-rows, while `PF-COMMIT-N` is the only reflection high-water. `ADD` returns the
-transaction token, never a field id; nested commit remains provisional and only
-the outer commit publishes ids. Rollback restores both the PF row mark and the
-shared interned-string mark. Every transaction token comes from a single
-monotonic serial that only ever increases within a process: `PF-BEGIN` is its
-sole mutator, it fails closed before the counter would wrap, and no other
-operation rewinds it. `TFAM-RESET` clears the registry high-waters and transient
-transaction state, but it refuses (`E-PF-TX`) while any field transaction is
-still open — so a live frame is never discarded out from under its token holder
-— and it deliberately does not rewind the transaction serial. Because the serial
+PF mutation belongs solely to the sealed `TYPE-FIELD-OWNER` package and uses a
+strict-LIFO nested transaction. `PF-N` includes provisional rows, while
+`PF-COMMIT-N` is the only reflection high-water. `ADD` returns the transaction
+token, never a field id. `PREPARE` validates without mutation. `COMMIT` publishes
+an outer frame but retains rollback authority; nested commit remains provisional.
+`FINALIZE` releases a committed frame, while `ROLLBACK` restores both the PF row
+mark and the shared interned-string mark from an open or committed frame.
+The field owner exposes no one-shot publication operation. Declaration
+publication belongs to `DECL-EVENT`; its `PUBLISH` composes prepare, commit, and
+finalize across the event and field state. Every public owner word carries a
+`PPRIM` axiom in `src/core/checker.f`, so post-hook callers such as `DECL-EVENT`
+reach the lifecycle as ordinary checked qualified calls whose argument roles the
+checker verifies at each site — no trusted forwarder stands between them. Every transaction token comes from a
+single monotonic serial that only ever increases within a process:
+`TYPE-FIELD-OWNER:OPEN` is its sole mutator, fails closed before the counter would
+wrap, and no other operation rewinds it. `TFAM-RESET` clears the registry
+high-waters and transient transaction state, but it refuses (`E-PF-TX`) while
+any field transaction is still open — so a live frame is never discarded out
+from under its token holder — and it deliberately does not rewind the
+transaction serial. Because the serial
 survives reset, a token minted before a reset is strictly less than every token
 minted after it and can never alias a later transaction; committing a completed
 or pre-reset token rejects `E-PF-TX` at the strict-LIFO token check. The indexed
@@ -1123,13 +1132,13 @@ negative, out-of-range, or still-provisional field id with a catchable `E-PF-ID`
 throw rather than a process-killing `die`, so a guessed id is a recoverable
 caller error, not an engine exit. Checker rollback requires no open field
 transaction and restores `PF-N`/`PF-COMMIT-N` together. Rollback also scrubs the
-records it retires back to canonical zero: a rolled-back field transaction
-(`PF-ROLLBACK`) and a rejected declaration (`TFAM-ROLLBACK-RESTORE`) both zero
-the product-field rows above the restored high-water. Rows are pointer-free, so
-a zeroed row is the canonical "absent" row and a retired declaration leaves no
-observable bytes. Snapshot persistence retains committed PF rows/high-waters
-while resetting the process-local transaction arena, and it serializes only
-committed rows: before baking, it zero-fills the unused capacity
+records it retires back to canonical zero: `TYPE-FIELD-OWNER:ROLLBACK` and a
+rejected declaration (`TFAM-ROLLBACK-RESTORE`) both zero the product-field rows
+above the restored high-water. Rows are pointer-free, so a zeroed row is the
+canonical "absent" row and a retired declaration leaves no observable bytes.
+Snapshot persistence retains committed PF rows/high-waters while resetting the
+process-local transaction arena, and it serializes only committed rows: before
+baking, it zero-fills the unused capacity
 `[PF-COMMIT-N, PF-CAP)` and — when the arena has grown — the now-dead boot
 buffer, so two registries with identical committed rows bake byte-identically
 regardless of how many declarations were rejected or rolled back along the way.

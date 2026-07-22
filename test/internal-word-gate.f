@@ -159,8 +159,6 @@ public
    s" CHECKER-FIND-ACTIVE-SIG" IWG-NEG
    s" bare E-INST fails closed" T-LABEL
    s" E-INST" IWG-NEG
-   s" bare PF-BEGIN mutation fails closed" T-LABEL
-   s" PF-BEGIN" IWG-NEG
    s" bare CT-LIVE? field-liveness query fails closed" T-LABEL
    s" CT-LIVE?" IWG-NEG ;
 
@@ -655,7 +653,7 @@ public
 package IWG-PARITY
 
 9 constant DIRECT-N
-102 constant SUBJECT-N
+101 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 

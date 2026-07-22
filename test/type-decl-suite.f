@@ -64,6 +64,24 @@ variable TDTE-A   variable TDTE-U
 variable TDB-TFAM   variable TDB-SUMV   variable TDB-SCH
 variable TDB-ROOT   variable TDB-STR    variable TDB-PK
 variable TDB-PF
+package TDT-EVENT
+public
+variable BASE
+\ Declaration-event and transaction-depth watermarks. TDT-BASE!/TDT-BASE= record
+\ only the registry high-waters, which cannot observe a rejected declaration that
+\ published an event or left an event/field frame open — the leak the nested
+\ declaration coordinator exists to prevent. SAVE/SAME bracket a negative to
+\ cover that.
+variable EV     variable EVD    variable PFD
+: SAVE ( -- )
+   DECL-EVENT:COUNT EV !
+   DECL-EVENT:DEPTH EVD !
+   TYPE-FIELD:TX-DEPTH PFD ! ;
+: SAME ( -- )
+   DECL-EVENT:COUNT EV @ T=
+   DECL-EVENT:DEPTH EVD @ T=
+   TYPE-FIELD:TX-DEPTH PFD @ T= ;
+;package
 \ whitebox boundary (dot habu-hb-crash-bare-c5be6634): checker-internal colon
 \ words probed at top level go through named trusted shims.
 TRUSTED: TWX-CHECKER-FIND-USIG ( ptr u8 n -- bool ) CHECKER-FIND-USIG ;
@@ -392,6 +410,7 @@ s" TDE-MK2 ( n -- tdcolor ) TDCOLOR:RED" CHECK-QUIET-CANDIDATE! 0 T=
 \ resolves in signatures and expands to hidden fields through the generic
 \ TWX-LAYOUT-PUSH-FIELDS (shared with sums/enums), but no constructor is published.
 \ ---------------------------------------------------------------------------
+DECL-EVENT:COUNT TDT-EVENT:BASE !
 PRODUCT tdpair 2
   FIELD fst a
   FIELD snd b
@@ -406,6 +425,14 @@ TDF @ TWX-TFAM-CELL? 0 T=
 TDF @ TWX-TFAM-LAYOUT? -1 T=
 TDF @ TFAM-ARITY@ 2 T=
 TDF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PUBLIC T=
+DECL-EVENT:COUNT TDT-EVENT:BASE @ 4 + T=
+TDT-EVENT:BASE @ DECL-EVENT:DECL? -1 T=
+TDT-EVENT:BASE @ 1 + DECL-EVENT:ARITY? -1 T=
+TDT-EVENT:BASE @ 2 + DECL-EVENT:FIELD? -1 T=
+TDT-EVENT:BASE @ 3 + DECL-EVENT:FIELD? -1 T=
+TDT-EVENT:BASE @ DECL-EVENT:FAMILY@ TDF @ T=
+TDT-EVENT:BASE @ 1 + DECL-EVENT:FAMILY@ TDF @ T=
+TDT-EVENT:BASE @ 1 + DECL-EVENT:VAR@ 2 T=
 \ width = field cells, NO tag (docs §18: WIDTH(product) = sum of field widths).
 TDF @ TWX-TFAM-SLOTS@ 2 T=
 TDF @ TFAM-WIDTH@ 2 T=
@@ -1369,10 +1396,14 @@ s" ENUM tdres red ;ENUM" E-TFAM-DUP TDT-NEG
 \ via the shared transactional path (TDT-NEG asserts TDT-BASE=, incl. PF-N), so
 \ no family, field, or schema row survives a failed product.
 \ empty / unterminated bodies.
+TDT-EVENT:SAVE
 s" PRODUCT tdpempty 0 ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
+TDT-EVENT:SAME
 s" PRODUCT tdpnoterm 2 FIELD fst a FIELD snd b" E-TDECL-SYNTAX TDT-NEG
-\ duplicate field within one product (PF-ADD dup-reject).
+\ duplicate field within one product (`TYPE-FIELD-OWNER:ADD` rejects it).
+TDT-EVENT:SAVE
 s" PRODUCT tdpdup 1 FIELD x a FIELD x a ;PRODUCT" E-TFAM-DUP TDT-NEG
+TDT-EVENT:SAME
 \ unknown / out-of-arity field types, and a dangling ptr.
 s" PRODUCT tdpbad 1 FIELD x q ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpoor 0 FIELD x a ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG

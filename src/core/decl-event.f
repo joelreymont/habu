@@ -44,19 +44,24 @@
 \ ---------------------------------------------------------------------------
 \ The field record is habu-fields-add-shared-6b063c62 (landing as
 \ src/core/type-field.f on the Mac); on this base its contract lives in
-\ src/core/type-family.f as the pre-hook PF-* transaction + TYPE-FIELD package,
-\ and variant registration is SUMV-ADD there too. These are pre-hook raw-memory
-\ words the checker cannot model from a post-hook checked body, so this module
-\ consumes them through the TRUSTED: forwarders below — the same idiom
-\ test/type-family-rollback-suite.f uses for its TWX-PF-* shims and top-row.f
-\ for its effect-read boundary. When type-field.f lands, the orchestrator
-\ re-points these forwarders; nothing else in this file changes. Consumed
-\ contract (named exactly as the field record's dot implies):
-\   PF-BEGIN         ( -- tok )                             begin a field transaction
-\   PF-ADD           ( tok fam var na nu sch slot cells boff bytes al flags -- tok )
-\   PF-PUBLISH       ( tok -- )                             publish while retaining rollback frame
-\   PF-FINALIZE      ( tok -- )                             release a published frame
-\   PF-ROLLBACK      ( tok -- )                             retire provisional field rows
+\ src/core/type-family.f as the pre-hook TYPE-FIELD-OWNER transaction + TYPE-FIELD
+\ package, and variant registration is SUMV-ADD there too.
+\
+\ The field-owner lifecycle is no longer consumed through TRUSTED forwarders.
+\ src/core/checker.f carries a PPRIM axiom for each public TYPE-FIELD-OWNER and
+\ TYPE-FIELD word, so the calls below are ordinary checked qualified calls whose
+\ argument roles the checker verifies at every site (dot
+\ habu-type-field-owner-619ec6b5). Only the two words with no axiom keep a
+\ forwarder: TYPE-NAME:VARIANT-REQUIRE and the still-global SUMV-ADD.
+\ Consumed contract:
+\   TYPE-FIELD-OWNER:OPEN      ( -- tok )                   begin a field transaction
+\   TYPE-FIELD-OWNER:ADD       ( tok fam var na nu sch slot cells boff bytes al flags -- tok )
+\   TYPE-FIELD-OWNER:PREPARE   ( tok -- provisional-count ) validate without mutation
+\   TYPE-FIELD-OWNER:COMMIT    ( tok -- )                   publish while retaining rollback
+\   TYPE-FIELD-OWNER:FINALIZE  ( tok -- )                   release a committed frame
+\   TYPE-FIELD-OWNER:ROLLBACK  ( tok -- )                   retire open or committed rows
+\   TYPE-FIELD-OWNER:TX-SCHEMA-FOR ( tok fam id -- sch )    provisional schema root
+\   TYPE-FIELD-OWNER:TX-CELLS-FOR  ( tok fam id -- cells )  provisional cell width
 \   TYPE-FIELD:COUNT ( -- n )                               committed field high-water
 \   TYPE-NAME:VARIANT-REQUIRE ( na nu -- )                  reserved/collision gate
 \   SUMV-ADD         ( fam na nu tag ss sc pc -- vid )      register one canonical, unique variant
@@ -109,18 +114,9 @@ package DECL-EVENT
 72 constant DEV-BUG-RC          \ internal invariant violation (bad id / oob): fail-closed die
 
 \ ---------------------------------------------------------------------------
-\ SEAM forwarders (see header). TRUSTED: because they call pre-hook contract
-\ words the checker cannot type here.
+\ SEAM forwarders (see header). TRUSTED: only for the two pre-hook words that
+\ still have no checker axiom; every field-owner call is checked and qualified.
 \ ---------------------------------------------------------------------------
-TRUSTED: DEV-FLD-BEGIN ( -- n ) PF-BEGIN ;
-TRUSTED: DEV-FLD-ADD ( n n n ptr u8 n n n n n n n n -- n ) PF-ADD ;
-TRUSTED: DEV-FLD-PUBLISH ( n -- ) PF-PUBLISH ;
-TRUSTED: DEV-FLD-FINALIZE ( n -- ) PF-FINALIZE ;
-TRUSTED: DEV-FLD-ROLLBACK ( n -- ) PF-ROLLBACK ;
-TRUSTED: DEV-FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
-TRUSTED: DEV-FLD-PROVISIONAL-COUNT ( -- n ) PF-N @ ;
-TRUSTED: DEV-FLD-TX-SCHEMA-FOR ( n n n -- n ) TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
-TRUSTED: DEV-FLD-TX-CELLS-FOR ( n n n -- n ) TYPE-FIELD-OWNER:TX-CELLS-FOR ;
 TRUSTED: DEV-NAME-VARIANT-REQUIRE ( ptr u8 n -- ) TYPE-NAME:VARIANT-REQUIRE ;
 TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
 
@@ -181,8 +177,8 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
    id DEV-REC * DEV-BASE + ;
 
 \ ---------------------------------------------------------------------------
-\ strict-LIFO transaction frames. Nested PUBLISH keeps events + field rows
-\ provisional; only the outer PUBLISH advances DEV-PUB-N and outer-commits the
+\ strict-LIFO transaction frames. Nested COMMIT keeps events + field rows
+\ reversible; only the outer COMMIT advances DEV-PUB-N and outer-commits the
 \ field record. Every frame owns the event-arena high-water, the field ordinal,
 \ the variant ordinal, the current-variant selector, the field-record token, and
 \ its own serial token.
@@ -233,9 +229,15 @@ variable DEV-TX-SERIAL
    DEV-TX-DEPTH @ 0= IF E-DEV-TX throw THEN
    DEV-TX-DEPTH @ 1 - DEV-TX-AT ;
 : DEV-TX-REQUIRE ( n -- ) DEV-TX-TOP DEVTX.TOK @ <> IF E-DEV-TX throw THEN ;
+: DEV-FLD-PROVISIONAL-COUNT ( -- n )
+   DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:PREPARE ;
+: DEV-TX-OPEN-REQUIRE ( n -- ) {: tok:n :}
+   tok DEV-TX-REQUIRE
+   DEV-TX-TOP DEVTX.STATE @ DEV-TX-OPEN <> IF E-DEV-TX throw THEN ;
+
 : DEV-FAMILY-REQUIRE ( n n n -- )
    {: tok:n fam:n bind:n :}
-   tok DEV-TX-REQUIRE
+   tok DEV-TX-OPEN-REQUIRE
    fam DEV-NO-FAMILY = IF E-DEV-FAMILY-SCOPE throw THEN
    DEV-TX-TOP DEVTX.FAM @ {: owner:n :}
    owner DEV-NO-FAMILY = IF
@@ -246,14 +248,19 @@ variable DEV-TX-SERIAL
    owner fam <> IF E-DEV-FAMILY-SCOPE throw THEN
    bind 0= 0= IF E-DEV-STATE throw THEN ;
 
+\ Kept unexercised for the same reason as the field owner's wrap guard (see
+\ src/core/type-family.f OPEN): only a whitebox poke of DEV-TX-SERIAL could
+\ reach it, that seam was retired by contract, and without the guard a wrapped
+\ serial would mint a token that equality-compares against a live frame.
 : DEV-OPEN ( -- n )
    DEV-TX-ENSURE
    DEV-TX-SERIAL @ 1 + dup 0 <= IF drop E-DEV-TX throw THEN
    {: tok:n :}
-   DEV-FLD-BEGIN {: fldtok:n :}             \ no event state changes before the field snapshot exists
+   \ no event state changes before the field snapshot exists
+   TYPE-FIELD-OWNER:OPEN {: fldtok:n :}
    tok DEV-TX-SERIAL !
    DEV-TX-DEPTH @ 0= IF                     \ outer: pin the field base + reset ordinals/selector
-      DEV-FLD-COUNT DEV-BASE-FLD !
+      TYPE-FIELD:COUNT DEV-BASE-FLD !
       0 DEV-FLD-ORD !
       0 DEV-VAR-ORD !
       DEV-NO-VARIANT DEV-CUR-VAR !
@@ -336,10 +343,10 @@ variable DEV-TX-SERIAL
    drop 0 0= 0= ;
 
 : DEV-FIELD-SCHEMA@ ( n n n -- n ) {: tok:n fam:n fld:n :}
-   tok DEV-TX-REQUIRE
+   tok DEV-TX-OPEN-REQUIRE
    DEV-TX-TOP DEVTX.FAM @ fam <> IF E-DEV-FAMILY-SCOPE throw THEN
    fam fld DEV-CUR-FIELD? 0= IF E-DEV-FIELD-SCOPE throw THEN
-   DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-SCHEMA-FOR ;
+   DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
 
 : DEV-PAYLOAD-FIELD? ( n n n -- bool ) {: id:n fam:n vid:n :}
    id DEV-PROV-KIND@ DEV-K-FIELD =
@@ -406,11 +413,11 @@ variable DEV-TX-SERIAL
 
 : DEV-PAYLOAD-SCHEMA@ ( n n n n -- n ) {: tok:n fam:n vid:n index:n :}
    tok fam vid index DEV-PAYLOAD-FIELD {: fld:n :}
-   DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-SCHEMA-FOR ;
+   DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
 
 : DEV-PAYLOAD-WIDTH@ ( n n n n -- n ) {: tok:n fam:n vid:n index:n :}
    tok fam vid index DEV-PAYLOAD-FIELD {: fld:n :}
-   DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-CELLS-FOR ;
+   DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-CELLS-FOR ;
 
 : DEV-PAYLOAD-CELLS ( n n n -- n ) {: tok:n fam:n vid:n :}
    tok fam vid DEV-PAYLOAD-RANGE {: start:n end:n :}
@@ -418,7 +425,7 @@ variable DEV-TX-SERIAL
    0
    BEGIN over end < WHILE
       over DEV-PROV-FLD@ {: fld:n :}
-      DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-CELLS-FOR +
+      DEV-TX-TOP DEVTX.FLDTOK @ fam fld TYPE-FIELD-OWNER:TX-CELLS-FOR +
       swap 1 + swap
    REPEAT
    nip ;
@@ -465,33 +472,30 @@ variable DEV-TX-SERIAL
 \ throws — E-TFAM-DUP / E-PF-NAME / E-TFAM-CASE / E-PF-* — on any violation, so a
 \ malformed field emits NO event and leaves the ordinal untouched), then records
 \ the event with the field's eventual committed row id (base + ordinal, proven at
-\ PUBLISH). STRUCTURE (selector NO-VARIANT) and ENUM (selector = open variant)
-\ produce the identical event + row shape.
+\ PREPARE before any participant commits). STRUCTURE (selector NO-VARIANT) and
+\ ENUM (selector = open variant) produce the identical event + row shape.
 : DEV-FIELD ( n n ptr u8 n n n n n n n n -- n )
    {: tok:n fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
    tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
-   DEV-TX-TOP DEVTX.FLDTOK @ {: fldtok:n :}        \ PF-ADD wants the field-tx token, not our serial
-   fldtok fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags DEV-FLD-ADD drop
+   DEV-TX-TOP DEVTX.FLDTOK @ {: fldtok:n :}        \ ADD wants the field-tx token, not our serial
+   fldtok fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags TYPE-FIELD-OWNER:ADD drop
    DEV-K-FIELD fam DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
    DEV-FLD-ORD @ 1 + DEV-FLD-ORD !
    tok ;
 
 \ PREPARE proves the field rows are exactly the contiguous provisional range the
-\ event stream names.  PUBLISH then has no remaining rejecting condition: nested
-\ publication closes one field frame, while the outer publication advances both
-\ published high-water marks at the global transaction finalization point.
+\ event stream names, then delegates the field owner's mutation-free preflight.
+\ COMMIT advances reversible published watermarks while retaining both frames;
+\ FINALIZE alone releases them after every participant has committed.
 : DEV-PREPARE ( n -- ) {: tok:n :}
-   tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.STATE @ DEV-TX-OPEN <> IF E-DEV-TX throw THEN
-   DEV-N @ DEV-TX-TOP DEVTX.EVN @ = IF EXIT THEN
+   tok DEV-TX-OPEN-REQUIRE
    DEV-FLD-PROVISIONAL-COUNT DEV-BASE-FLD @ DEV-FLD-ORD @ + <>
       IF E-DEV-STATE throw THEN ;
 
 : DEV-COMMIT ( n -- ) {: tok:n :}
-   tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.STATE @ DEV-TX-OPEN <> IF E-DEV-TX throw THEN
+   tok DEV-PREPARE
    DEV-N @ DEV-TX-TOP DEVTX.EVN @ <> {: changed:bool :}
-   DEV-TX-TOP DEVTX.FLDTOK @ DEV-FLD-PUBLISH
+   DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:COMMIT
    DEV-TX-DEPTH @ 1 = changed and IF
       DEV-N @ DEV-PUB-N !
    THEN
@@ -500,7 +504,7 @@ variable DEV-TX-SERIAL
 : DEV-FINALIZE ( n -- ) {: tok:n :}
    tok DEV-TX-REQUIRE
    DEV-TX-TOP DEVTX.STATE @ DEV-TX-PUBLISHED <> IF E-DEV-TX throw THEN
-   DEV-TX-TOP DEVTX.FLDTOK @ DEV-FLD-FINALIZE
+   DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:FINALIZE
    DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH ! ;
 
 : DEV-PUBLISH ( n -- ) {: tok:n :}
@@ -509,14 +513,16 @@ variable DEV-TX-SERIAL
    tok DEV-FINALIZE ;
 
 \ roll back every watermark this frame owns and delegate the field-registry
-\ cursor to the field record. DEV-PUB-N is never touched: nothing is published
-\ until the outer PUBLISH, so a rejected (nested or outer) stream leaves the
-\ published view exactly as it was. The family/variant/schema/layout cursors are
-\ retired by the enclosing checker scope/candidate frame (see header).
+\ cursor to the field record. Both open and reversibly committed frames restore
+\ the published view captured at OPEN. The family/variant/schema/layout cursors
+\ are retired by the enclosing checker scope/candidate frame (see header).
+\ A live frame is always either open or reversibly committed — the only two
+\ states DEV-OPEN and DEV-COMMIT set — and both roll back the same way, so there
+\ is no third value to reject here.
 : DEV-ROLLBACK ( n -- ) {: tok:n :}
    tok DEV-TX-REQUIRE
    DEV-TX-TOP {: r:ptr :}
-   r DEVTX.FLDTOK @ DEV-FLD-ROLLBACK
+   r DEVTX.FLDTOK @ TYPE-FIELD-OWNER:ROLLBACK
    r DEVTX.EVN @ DEV-N !
    r DEVTX.FLDORD @ DEV-FLD-ORD !
    r DEVTX.VARORD @ DEV-VAR-ORD !
@@ -633,17 +639,20 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ Phase constraints: CURRENT returns the frame opened by the coordinator
 \ snapshot and rejects outside an active coordinator; OPEN remains the explicit
 \ standalone interface. DECL/ARITY/
-\ POLICY/DERIVE/VARIANT/END-VARIANT/FIELD are legal only between OPEN and its
-\ PUBLISH or ROLLBACK, each takes and returns the same token, and each throws
-\ E-DEV-TX if the token is not the innermost open frame. PAYLOAD-* exposes only
-\ the innermost frame's provisional enum fields under that exact token and
-\ family. PUBLISH / ROLLBACK consume the token and close the frame. Remaining
-\ reflection + IDENTITY read only PUBLISHED events and are legal any time.
+\ POLICY/DERIVE/VARIANT/END-VARIANT/FIELD and provisional FIELD-SCHEMA@/
+\ PAYLOAD-* queries are legal only between OPEN and its
+\ COMMIT or ROLLBACK, each takes and returns the same token, and each throws
+\ E-DEV-TX if the token is not the innermost open frame. COMMIT retains a
+\ reversible frame; FINALIZE releases it, ROLLBACK restores it, and PUBLISH
+\ performs PREPARE, COMMIT, and FINALIZE in one call. Reflection + IDENTITY
+\ read only published events and are legal any time.
 \ ---------------------------------------------------------------------------
 public
 
 : OPEN ( -- n ) DEV-OPEN ;
-: CURRENT ( -- n ) DEV-PART-OPEN? 0= IF E-DEV-TX throw THEN DEV-PART-TOKEN ;
+: CURRENT ( -- n )
+   DEV-PART-OPEN? 0= IF E-DEV-TX throw THEN
+   DEV-PART-TOKEN dup DEV-TX-OPEN-REQUIRE ;
 : DECL ( n n -- n ) DEV-DECL ;
 : ARITY ( n n n -- n ) DEV-ARITY ;
 : POLICY ( n n n -- n ) DEV-POLICY ;
@@ -658,6 +667,8 @@ public
 : PAYLOAD-CELLS ( n n n -- n ) DEV-PAYLOAD-CELLS ;
 : PUBLISH ( n -- ) DEV-PUBLISH ;
 : PREPARE ( n -- ) DEV-PREPARE ;
+: COMMIT ( n -- ) DEV-COMMIT ;
+: FINALIZE ( n -- ) DEV-FINALIZE ;
 : ROLLBACK ( n -- ) DEV-ROLLBACK ;
 : RESET ( -- ) DEV-RESET ;
 
@@ -680,6 +691,20 @@ public
 : IDENTITY ( -- n ) DEV-IDENTITY ;
 
 private
+
+\ The declaration front ends reach this module only through these hooks, and
+\ they go through the SAME public words an outside caller uses — CURRENT carries
+\ the coordinator-frame and open-state guards that the private token reader does
+\ not. Installed here rather than inside DEV-PART-INSTALL because a quotation
+\ binds its target at compile time and the public section is defined above.
+: DEV-EVENT-HOOKS-INSTALL ( -- )
+   [: CURRENT ;] is TDECL-EVENT-CURRENT-XT
+   [: DECL ;] is TDECL-EVENT-DECL-XT
+   [: ARITY ;] is TDECL-EVENT-ARITY-XT
+   [: FIELD ;] is TDECL-EVENT-FIELD-XT
+   [: 0 0= ;] is TDECL-EVENT-ARMED ;
+
+DEV-EVENT-HOOKS-INSTALL
 DEV-PART-INSTALL
 
 ;package
