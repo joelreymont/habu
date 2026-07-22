@@ -227,14 +227,15 @@ variable DEV-TX-SERIAL
 : DEV-OPEN ( -- n )
    DEV-TX-ENSURE
    DEV-TX-SERIAL @ 1 + dup 0 <= IF drop E-DEV-TX throw THEN
-   dup DEV-TX-SERIAL ! {: tok:n :}
+   {: tok:n :}
+   DEV-FLD-BEGIN {: fldtok:n :}             \ no event state changes before the field snapshot exists
+   tok DEV-TX-SERIAL !
    DEV-TX-DEPTH @ 0= IF                     \ outer: pin the field base + reset ordinals/selector
       DEV-FLD-COUNT DEV-BASE-FLD !
       0 DEV-FLD-ORD !
       0 DEV-VAR-ORD !
       DEV-NO-VARIANT DEV-CUR-VAR !
    THEN
-   DEV-FLD-BEGIN {: fldtok:n :}             \ open the field-record transaction (nests in lockstep)
    DEV-TX-DEPTH @ DEV-TX-AT {: r:ptr :}
    DEV-N @ r DEVTX.EVN !
    DEV-FLD-ORD @ r DEVTX.FLDORD !

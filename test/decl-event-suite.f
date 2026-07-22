@@ -269,6 +269,125 @@ package DECL-EVENT
 
 TEST-STANDALONE-PREFLIGHT
 
+\ ---------------------------------------------------------------------------
+\ 12. A field-snapshot failure changes no participant state.  The only raw
+\     test seam swaps the pre-hook field token serial and captures its complete
+\     transaction state; it stays private to DECL-EVENT.
+\ ---------------------------------------------------------------------------
+E-PF-TX constant TEST-E-PF-TX
+$7FFFFFFFFFFFFFFF constant TEST-SERIAL-MAX
+
+variable B-DEV-N      variable B-DEV-PUB
+variable B-FLD-BASE   variable B-FLD-ORD
+variable B-VAR-ORD    variable B-CUR-VAR
+variable B-DEV-DEPTH  variable B-DEV-SERIAL
+variable C-DEV-N      variable C-DEV-PUB
+variable C-FLD-BASE   variable C-FLD-ORD
+variable C-VAR-ORD    variable C-CUR-VAR
+variable C-DEV-DEPTH  variable C-DEV-SERIAL
+
+variable S-PF-N       variable S-PF-PUB
+variable S-PF-DEPTH   variable S-PF-SERIAL
+variable B-PF-N       variable B-PF-PUB
+variable B-PF-DEPTH   variable B-PF-SERIAL
+variable C-PF-N       variable C-PF-PUB
+variable C-PF-DEPTH   variable C-PF-SERIAL
+
+TRUSTED: TEST-PF-SWAP ( n -- )
+   PF-N @ S-PF-N !
+   PF-COMMIT-N @ S-PF-PUB !
+   PF-TX-DEPTH @ S-PF-DEPTH !
+   PF-TX-SERIAL @ S-PF-SERIAL !
+   PF-TX-SERIAL ! ;
+
+: SAVE-B-DEV ( -- )
+   DEV-N @ B-DEV-N !             DEV-PUB-N @ B-DEV-PUB !
+   DEV-BASE-FLD @ B-FLD-BASE !   DEV-FLD-ORD @ B-FLD-ORD !
+   DEV-VAR-ORD @ B-VAR-ORD !     DEV-CUR-VAR @ B-CUR-VAR !
+   DEV-TX-DEPTH @ B-DEV-DEPTH !  DEV-TX-SERIAL @ B-DEV-SERIAL ! ;
+
+: SAVE-C-DEV ( -- )
+   DEV-N @ C-DEV-N !             DEV-PUB-N @ C-DEV-PUB !
+   DEV-BASE-FLD @ C-FLD-BASE !   DEV-FLD-ORD @ C-FLD-ORD !
+   DEV-VAR-ORD @ C-VAR-ORD !     DEV-CUR-VAR @ C-CUR-VAR !
+   DEV-TX-DEPTH @ C-DEV-DEPTH !  DEV-TX-SERIAL @ C-DEV-SERIAL ! ;
+
+: RESTORE-B-DEV ( -- )
+   B-DEV-N @ DEV-N !             B-DEV-PUB @ DEV-PUB-N !
+   B-FLD-BASE @ DEV-BASE-FLD !   B-FLD-ORD @ DEV-FLD-ORD !
+   B-VAR-ORD @ DEV-VAR-ORD !     B-CUR-VAR @ DEV-CUR-VAR !
+   B-DEV-DEPTH @ DEV-TX-DEPTH !  B-DEV-SERIAL @ DEV-TX-SERIAL ! ;
+
+: CHECK-B-DEV ( -- )
+   DEV-N @ B-DEV-N @ T=             DEV-PUB-N @ B-DEV-PUB @ T=
+   DEV-BASE-FLD @ B-FLD-BASE @ T=   DEV-FLD-ORD @ B-FLD-ORD @ T=
+   DEV-VAR-ORD @ B-VAR-ORD @ T=     DEV-CUR-VAR @ B-CUR-VAR @ T=
+   DEV-TX-DEPTH @ B-DEV-DEPTH @ T=  DEV-TX-SERIAL @ B-DEV-SERIAL @ T= ;
+
+: CHECK-C-DEV ( -- )
+   DEV-N @ C-DEV-N @ T=             DEV-PUB-N @ C-DEV-PUB @ T=
+   DEV-BASE-FLD @ C-FLD-BASE @ T=   DEV-FLD-ORD @ C-FLD-ORD @ T=
+   DEV-VAR-ORD @ C-VAR-ORD @ T=     DEV-CUR-VAR @ C-CUR-VAR @ T=
+   DEV-TX-DEPTH @ C-DEV-DEPTH @ T=  DEV-TX-SERIAL @ C-DEV-SERIAL @ T= ;
+
+: SAVE-B-PF ( -- )
+   S-PF-N @ B-PF-N !          S-PF-PUB @ B-PF-PUB !
+   S-PF-DEPTH @ B-PF-DEPTH !  S-PF-SERIAL @ B-PF-SERIAL ! ;
+
+: SAVE-C-PF ( -- )
+   S-PF-N @ C-PF-N !          S-PF-PUB @ C-PF-PUB !
+   S-PF-DEPTH @ C-PF-DEPTH !  S-PF-SERIAL @ C-PF-SERIAL ! ;
+
+: CHECK-B-PF ( -- )
+   S-PF-N @ B-PF-N @ T=          S-PF-PUB @ B-PF-PUB @ T=
+   S-PF-DEPTH @ B-PF-DEPTH @ T=  S-PF-SERIAL @ TEST-SERIAL-MAX T= ;
+
+: CHECK-C-PF ( -- )
+   S-PF-N @ C-PF-N @ T=          S-PF-PUB @ C-PF-PUB @ T=
+   S-PF-DEPTH @ C-PF-DEPTH @ T=  S-PF-SERIAL @ C-PF-SERIAL @ T= ;
+
+: SNAP-BODY ( -- ) ;
+: SNAP-RUN ( -- ) [: SNAP-BODY ;] GENERATED-DECL:RUN ;
+: SNAP-CATCH ( -- n ) [: SNAP-RUN ;] catch ;
+
+: SEED-SNAPSHOT-BASE ( -- )
+   RESET
+   OPEN TOK !
+   TOK @ FV7 @ DECL TOK !
+   TOK @ FV7 @ s" snap-base" VARIANT TOK !
+   TOK @ FV7 @ s" snap-field" SCHROOT @ 0 1 0 CELL CELL 0 FIELD TOK !
+   TOK @ PUBLISH ;
+
+: TEST-SNAPSHOT-FAILURE ( -- )
+   SEED-SNAPSHOT-BASE
+   SAVE-B-DEV
+   0 TEST-PF-SWAP  SAVE-B-PF
+   B-PF-SERIAL @ TEST-PF-SWAP
+
+   SNAP-RUN
+   SAVE-C-DEV
+   0 TEST-PF-SWAP  SAVE-C-PF
+   C-PF-SERIAL @ TEST-PF-SWAP
+
+   RESTORE-B-DEV
+   B-PF-SERIAL @ TEST-PF-SWAP
+   TEST-SERIAL-MAX TEST-PF-SWAP
+   SNAP-CATCH TC !
+   TEST-SERIAL-MAX TEST-PF-SWAP
+
+   TC @ TEST-E-PF-TX T=
+   CHECK-B-DEV
+   CHECK-B-PF
+
+   B-PF-SERIAL @ TEST-PF-SWAP
+   SNAP-RUN
+   CHECK-C-DEV
+   0 TEST-PF-SWAP
+   CHECK-C-PF
+   C-PF-SERIAL @ TEST-PF-SWAP ;
+
+TEST-SNAPSHOT-FAILURE
+
 ;package
 
 \ ---------------------------------------------------------------------------
