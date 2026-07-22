@@ -17,6 +17,7 @@ public
 7165 constant E-PARTICIPANT-DUP
 7166 constant E-REGISTRATION-ACTIVE
 7167 constant E-TRANSACTION-POISONED
+7168 constant E-PARTICIPANT-CAPACITY
 7170 constant E-REGISTRATION-SEALED
 7171 constant E-PARTICIPANT-DEPTH
 
@@ -31,6 +32,18 @@ public
 13 constant STATE-CELLS
 
 private
+
+ROW-CELLS cells constant ROW-BYTES
+$7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
+
+: ROWS>BYTES ( n -- n )
+   dup 0 < over MAX-ROWS > or IF E-PARTICIPANT-CAPACITY throw THEN
+   ROW-BYTES * ;
+
+: NEXT-CAP ( n -- n )
+   dup MAX-ROWS >= IF E-PARTICIPANT-CAPACITY throw THEN
+   dup MAX-ROWS 2 / <= IF 2 * EXIT THEN
+   drop MAX-ROWS ;
 
 0 cells constant ROW.ID-OFF
 1 cells constant ROW.ORDER-OFF
@@ -116,7 +129,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 
 : INIT-STATE ( ptr a ptr a n [ ptr a n n -- ptr a ] [ n n -- ] -- )
    {: state:ptr table:ptr cap:n allocator diagnostic :} \ typed-local-lint: allow-bare-local
-   cap 1 < IF E-REGISTRATION-SEALED throw THEN
+   cap 1 < cap MAX-ROWS > or IF E-PARTICIPANT-CAPACITY throw THEN
    table state ST.TABLE !
    cap state ST.CAP !
    0 state ST.N !
@@ -142,6 +155,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 : REQUIRE-REGISTRATION ( ptr a n -- ) {: state:ptr id:n :}
    state DEPTH@ 0 <> IF E-REGISTRATION-ACTIVE throw THEN
    state SEALED@ 0 <> IF E-REGISTRATION-SEALED throw THEN
+   state N@ MAX-ROWS >= IF E-PARTICIPANT-CAPACITY throw THEN
    state id DUPLICATE? IF E-PARTICIPANT-DUP throw THEN ;
 
 : INSERT-AT ( ptr a n -- n ) {: state:ptr order:n :}
@@ -162,8 +176,8 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 
 : GROW-TABLE ( ptr a -- ) {: state:ptr :}
    state CAP@ {: oldcap:n :}
-   oldcap 2 * {: newcap:n :}
-   state TABLE@ oldcap ROW-CELLS * cells newcap ROW-CELLS * cells
+   oldcap NEXT-CAP {: newcap:n :}
+   state TABLE@ oldcap ROWS>BYTES newcap ROWS>BYTES
       state ALLOCATOR@ execute {: grown:ptr :}
    grown state ST.TABLE !
    newcap state ST.CAP ! ;
