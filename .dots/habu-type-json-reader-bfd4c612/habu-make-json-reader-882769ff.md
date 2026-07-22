@@ -1,0 +1,11 @@
+---
+title: Make JSON reader state explicit and reentrant
+status: active
+priority: 1
+issue-type: task
+created-at: "2026-07-22T02:36:57.097359+02:00"
+---
+
+Claim: agent=json_reader_reentrant_impl workspace=.jj-ws/habu-make-json-reader-882769ff machine=spark (owns the explicit reentrant JSON reader state API and migration of its direct consumers)
+
+Problem: lib/json-read.f stores its source pointer, cursor, nesting stack, current token, string decode state, number decode state, and key scratch in process-global package cells. One reader overwrites another, so nested or interleaved consumers cannot be correct and the explicit safetensors load-session contract cannot be satisfied. Fix: replace the ambient parser singleton with a package-owned explicit reader value backed by caller-specific state. INIT creates one reader over one borrowed source; NEXT, TOKEN, SPAN, INT, FLOAT, STR, SKIP-VALUE, and FIND-KEY all take that reader explicitly and never read a current-reader global. State storage, nesting bytes, and decode scratch belong to that reader; two readers may advance in any interleaving and a failed reader cannot change another. Preserve zero-allocation streaming behavior, strict RFC 8259 validation, token order, spans, errors, and current throughput. Migrate every direct consumer to pass its own reader; no compatibility singleton or hidden current-reader shim. If the checker cannot express the reader storage lifetime, keep one named tested pointer-refinement boundary tied to habu-add-bounded-host-b40b048f rather than adding global state. Acceptance: deterministic two-reader interleaving, nested catch isolation, malformed-reader isolation, exact token and decode goldens, capacity/depth boundaries, all existing JSON consumers, and checked negatives for foreign/raw state where expressible. Files: lib/json-read.f, its focused tests, all direct Habu consumers, FILEMAP.md, TRUSTED.md, and public docs. Verify: JSON tests, consumer suites, typed-local diff lint, package/trust/error/host/filemap/dot lints, Maki, PTX standard library, fixpoint, and the full native gate. Ownership: shared JSON reader state and caller migration only; the separate type-json-reader dot still owns conversion of token/state/container integer domains to closed enums.
