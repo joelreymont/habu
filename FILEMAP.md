@@ -402,6 +402,8 @@ points stay listed.
   dynamically sized success and cache-root failure wire renderers.
 - `tools/hb-build-direct-lints.f` — optional in-process lint hook adapter for
   hb-build gate callers that already loaded lint cores.
+- `tools/hb-build-direct-lints-test.f` — checked production-path coverage for
+  direct hook replacement and lint failure propagation.
 - `tools/hb-build.f` — Habu entrypoint for native AOT/REPL builds.
 - `tools/hb-build-test.f` — checked fixture coverage for native REPL builds and
   hb-build boundary rejections.

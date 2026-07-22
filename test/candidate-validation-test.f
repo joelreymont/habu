@@ -15,12 +15,12 @@ variable CV-PU                       \ current path slice length
 : CV-PATH$ ( -- ptr u8 n )
    CV-PA @ CV-PU @ ;
 
-\ Advance to the next s" test/..." case path in the loaded source, setting CV-PATH$
+\ Advance to the next case path with the requested prefix, setting CV-PATH$
 \ to the text between the quotes; false once none remain. An unterminated path is a
 \ broken source and dies loudly rather than yielding a truncated slice.
-: CV-NEXT? ( -- bool )
+: CV-NEXT? ( ptr u8 n -- bool ) {: prefix:ptr prefixu:n :}
    SHAPE:TEXT {: a:ptr u:n :}
-   a CV-CUR @ + u CV-CUR @ - S\" s\q test/" FIND-SUB MATCH option
+   a CV-CUR @ + u CV-CUR @ - prefix prefixu FIND-SUB MATCH option
      none OF STR-FALSE exit ENDOF
      some OF IDX>N ENDOF
    ;MATCH {: rel:n :}
@@ -31,17 +31,22 @@ variable CV-PU                       \ current path slice length
    ;MATCH {: rc:n :}
    a ps + CV-PA !  rc CV-PU !  ps rc + 1+ CV-CUR !  STR-TRUE ;
 
+: CV-CASES ( ptr u8 n -- ) {: prefix:ptr prefixu:n :}
+   0 CV-CUR !
+   begin prefix prefixu CV-NEXT? while
+      CV-PATH$ FILE? TTRUE
+      CV-PATH$ 1 SHAPE:COUNT=
+      CV-N @ 1+ CV-N !
+   repeat ;
+
 \ Whitebox contract for the case list: every declared case path resolves to a file
 \ on disk and appears exactly once, and the path count equals the enumerated
 \ `construct case-kind` rows, so a path with no kind (or a kind with no path) fails.
 : CASES ( -- )
    s" test/candidate-validation.f" SHAPE:LOAD
-   0 CV-CUR ! 0 CV-N !
-   begin CV-NEXT? while
-      CV-PATH$ FILE? TTRUE
-      CV-PATH$ 1 SHAPE:COUNT=
-      CV-N @ 1+ CV-N !
-   repeat
+   0 CV-N !
+   S\" s\q test/" CV-CASES
+   S\" s\q tools/" CV-CASES
    CV-N @
    s" construct case-kind positive"   SHAPE:COUNT
    s" construct case-kind diagnostic" SHAPE:COUNT +
@@ -65,7 +70,8 @@ variable CV-PU                       \ current path slice length
    s" manifest" SHAPE:MUST-HAVE
    s" ENUM case-kind positive diagnostic negative ;ENUM" SHAPE:MUST-HAVE
    s" kind MATCH case-kind" SHAPE:MUST-HAVE
-   S\" s\q test/top-row-hook-test.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" 1 SHAPE:COUNT= ;
+   S\" s\q test/top-row-hook-test.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" 1 SHAPE:COUNT=
+   S\" s\q tools/hb-build-direct-lints-test.f\q construct case-kind positive 0 s\q \q s\q \q RUN-CASE" 1 SHAPE:COUNT= ;
 
 : DIRECT-PIN ( ptr u8 n -- )
    1 SHAPE:COUNT= ;
@@ -92,6 +98,8 @@ variable CV-PU                       \ current path slice length
 
 : RUNNER ( -- )
    s" test/gate-validation-worker.f" SHAPE:LOAD
+   s" 12 constant NESTED-EXEC-MAX" SHAPE:MUST-HAVE
+   s" count NESTED-EXEC-MAX > if" SHAPE:MUST-HAVE
    S\" candidate candidateu s\q shared\q s\q candidate validation shared\q RUN-WORKER" SHAPE:MUST-HAVE
    S\" s\q bin/hb\q s\q shared\q s\q baseline validation shared\q RUN-WORKER" SHAPE:MUST-HAVE
    S\" candidate candidateu s\q top-row\q s\q candidate validation top-row\q RUN-WORKER" SHAPE:MUST-HAVE

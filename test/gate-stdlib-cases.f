@@ -669,6 +669,7 @@ SUITE hb-build-fixtures
    tools/hb-build-test.f
    lib/build-cache-test.f
    lib/codesign-test.f
+   tools/hb-build-direct-lints-test.f
 ;SUITE
 
 SUITE gate-pool

@@ -4,7 +4,9 @@ package GATE-VALIDATION
 
 GT-OUT-CAP constant EVIDENCE-CAP
 3 constant WORKER-MAX
-8 constant NESTED-EXEC-MAX
+\ Existing validation uses 8 nested executions. The direct-lint shared row adds
+\ 2 failure children on the candidate and 2 on the baseline: 8 + 2 + 2 = 12.
+12 constant NESTED-EXEC-MAX
 
 create CANDIDATE-EVIDENCE EVIDENCE-CAP allot
 variable CANDIDATE-EVIDENCE-U
