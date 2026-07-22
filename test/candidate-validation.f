@@ -192,13 +192,17 @@ variable FAILS
 \ trips loudly. The lone top-row case is a positive, counted here too.
 32 constant N-POSITIVE
 5 constant N-DIAGNOSTIC
-9 constant N-NEGATIVE
+11 constant N-NEGATIVE
 
 : SHARED-CASES ( -- )
    s" test/type-family-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-family-rollback-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-field-owner-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/generated-declaration-transaction-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/checker-decl-nested-bad.f" construct case-kind negative 76
+      s" CHECKER-DECL-NESTED-ARMED" s" checker: declaration rollback frame mismatch" RUN-CASE
+   s" test/checker-decl-depth0-bad.f" construct case-kind negative 76
+      s" CHECKER-DECL-DEPTH0-ARMED" s" checker: declaration rollback frame mismatch" RUN-CASE
    s" test/decl-event-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/structure-make-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/structure-decl-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE

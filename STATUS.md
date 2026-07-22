@@ -42,17 +42,42 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4086  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4111  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
 Attribution for the current linux-arm64 row, which is the count this tree
 measures today:
 
-- The master commit this work sits on measures and records 4058.
-- The product-field lifecycle change adds 13, giving its recorded 4071.
-- The declaration-event participant rework that carries this edit adds 15,
-  giving 4086. It adds no engine text.
+- The master commit this stack now sits on measures 4058, and its own row
+  already records that corrected number. Two of those definitions are the
+  `TFC-XPAD-NARROW-REJECT` and `TFC-TAG-CELLS` words that master added to
+  `src/core/type-family.f` after this stack was branched; they arrived with the
+  rebase, not with any change here.
+- The product-field lifecycle change adds 13, reaching 4071.
+- The declaration-event participant rework adds 15, reaching 4086.
+- The private primitive axiom row audit changes only
+  `tools/primitive-effect-inventory.f` and its test. The census counts only the
+  assembled stage2 engine source, and neither file is part of it, so that commit
+  adds 0 and the count stays 4086.
+- The checker declaration-frame tagging that carries this edit adds 25: 20 new
+  top-level definitions in `src/core/checker.f` and 5 in
+  `src/core/type-family.f`. So 4058 + 13 + 15 + 0 + 25 = 4111, the number
+  recorded above and the number the self-check measures on this tree. The two
+  build fixes in that same commit add none: the checker default swaps one
+  definition for another, and `src/habu/verify-source.f` is not part of the
+  assembled stage2 engine source at all.
+
+The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
+the tree measures, so each commit records its own measurement rather than a
+predicted count.
+
+The checker declaration-frame tagging does add engine text: the four
+`CHECKER-DECL-FRAME` primitive axiom rows grow the ahead-of-time seed by 16
+bytes, so `LINUX-CODE-TEXT` in `test/gate-size-attribution-test.f` moves 122568
+to 122584. The same 4 KiB text page absorbs it, so the installed engine stays at
+the 127168 bytes committed as `LINUX-TOTAL`, which that gate checks against the
+live file on every run.
 
 This is the single source of truth for the self-check counts. Other docs
 (`README.md`) point here instead of quoting a number — see

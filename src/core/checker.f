@@ -9623,9 +9623,16 @@ $68 constant RBF.VSIG-OFF
 $70 constant RBF.PKGMODE-OFF
 $78 constant RBF.PKGU-OFF
 $80 constant RBF.DFEREND-OFF
-$88 constant RBF-REC
+$88 constant RBF.COORD-OFF
+$90 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
+
+\ RBF.COORD is the sole owner mark on a rollback frame: RBF-NO-COORDINATOR means
+\ an ordinary checker scope, and any other value is the GENERATED-DECL coordinator
+\ depth that owns the frame. One field, one authority — a separate boolean tag
+\ would restate what a real depth already says and could drift out of step with it.
+-1 constant RBF-NO-COORDINATOR
 
 : RBF.UEND ( ptr a -- ptr a ) RBF.UEND-OFF + ;
 : RBF.NEND ( ptr a -- ptr a ) RBF.NEND-OFF + ;
@@ -9644,6 +9651,7 @@ $8 constant RBF-REC-ALIGN
 : RBF.PKGMODE ( ptr a -- ptr a ) RBF.PKGMODE-OFF + ;
 : RBF.PKGU ( ptr a -- ptr a ) RBF.PKGU-OFF + ;
 : RBF.DFEREND ( ptr a -- ptr a ) RBF.DFEREND-OFF + ;
+: RBF.COORD ( ptr a -- ptr a ) RBF.COORD-OFF + ;
 
 RBF.UEND-OFF 0 cells CHECKER-LAYOUT=
 RBF.NEND-OFF 1 cells CHECKER-LAYOUT=
@@ -9662,7 +9670,8 @@ RBF.VSIG-OFF 13 cells CHECKER-LAYOUT=
 RBF.PKGMODE-OFF 14 cells CHECKER-LAYOUT=
 RBF.PKGU-OFF 15 cells CHECKER-LAYOUT=
 RBF.DFEREND-OFF 16 cells CHECKER-LAYOUT=
-RBF-REC 17 cells CHECKER-LAYOUT=
+RBF.COORD-OFF 17 cells CHECKER-LAYOUT=
+RBF-REC 18 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -9683,6 +9692,7 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 RBF.PKGMODE RBF.PKGMODE-OFF CHECKER-LAYOUT=
 0 RBF.PKGU RBF.PKGU-OFF CHECKER-LAYOUT=
 0 RBF.DFEREND RBF.DFEREND-OFF CHECKER-LAYOUT=
+0 RBF.COORD RBF.COORD-OFF CHECKER-LAYOUT=
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
@@ -9741,12 +9751,19 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
    CHECKER-PACKAGE-U @ r RBF.PKGU !
    DFER-END @ r RBF.DFEREND !
+   RBF-NO-COORDINATOR r RBF.COORD !
    CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
    RBF-DEPTH @ 1 + RBF-DEPTH !
    REG-EXT-RB-SAVE-XT ;
 
-: RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
-   REG-EXT-RB-RESTORE-XT
+\ Restore the top frame, running the caller's registry restore first.  The
+\ restore action is a parameter rather than a mode flag: an ordinary scope hands
+\ over the installed extension hook (which rejects a stale product-field depth),
+\ while a declaration frame hands over its own throw-free restore.  A throw
+\ inside either action can therefore never leave a latch behind that disables
+\ product-field validation for every later pop.
+: RBF-POP-WITH ( [ -- ] -- )
+   execute                 \ registry restore for the frame this pop retires
    RBF-DEPTH @ 1 - RBF-DEPTH !
    RBF-CUR {: r:ptr :}
    r RBF.UEND @ USIGS-RESTORE-END
@@ -9770,9 +9787,117 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
 
+: RBF-POP ( -- )           \ restore every mark from the top frame, retiring index rows
+   [: REG-EXT-RB-RESTORE-XT ;] RBF-POP-WITH ;
+
 : RBF-FINALIZE ( -- )     \ keep every published row and release the live savepoint
    REG-EXT-RB-FINALIZE-XT
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
+
+package CHECKER-DECL-FRAME
+
+: CLOSE-PRIVATE ( -- )
+   PE-PKG-A @ PE-PKG-U @ SYM-PRIVATE PE-NA@ PE-NU @ SYM-INTERN
+   PE-CLOSE-SYM ;
+
+PPRIM: CHECKER-DECL-FRAME START PE-N PE-IN CLOSE-PRIVATE
+PPRIM: CHECKER-DECL-FRAME PREPARE PE-N PE-IN  PE-F PE-OUT CLOSE-PRIVATE
+PPRIM: CHECKER-DECL-FRAME ROLLBACK PE-N PE-IN CLOSE-PRIVATE
+PPRIM: CHECKER-DECL-FRAME RELEASE CLOSE-PRIVATE
+
+defer TYPES-READY-XT ( n -- bool )
+defer TYPES-RESTORE-XT ( -- )
+defer TYPES-RELEASE-XT ( -- )
+
+\ The default answers the depth question the deferred word is asked: with no type
+\ coordinator installed there is nothing to wait for, so every depth is ready.
+: TYPES-READY-OK ( n -- bool ) drop 0 0= ;
+: NOOP ( -- ) ;
+: TYPES-DEFAULTS ( -- )
+   [: TYPES-READY-OK ;] is TYPES-READY-XT
+   [: NOOP ;] is TYPES-RESTORE-XT
+   [: NOOP ;] is TYPES-RELEASE-XT ;
+TYPES-DEFAULTS
+
+: FRAME ( n -- ptr a )       \ rollback frame record at a live depth index
+   RBF-REC * RBF-BASE + ;
+
+: TOP ( -- ptr a )
+   RBF-DEPTH @ 1 - FRAME ;
+
+: ORDINARY? ( n -- bool )    \ index -- frame is an ordinary checker scope?
+   FRAME RBF.COORD @ RBF-NO-COORDINATOR = ;
+
+: DECL-AT? ( n n -- bool ) {: idx:n depth:n :}   \ index, coordinator depth
+   idx FRAME RBF.COORD @ depth = ;
+
+: TOP-MATCH? ( n -- bool ) {: depth:n :}
+   RBF-DEPTH @ 0= IF 0 0= 0= EXIT THEN
+   RBF-DEPTH @ 1 - depth DECL-AT? ;
+
+: RESTORE-TOP ( -- )         \ declaration-owned pop: no product-field rejection
+   [: TYPES-RESTORE-XT ;] RBF-POP-WITH ;
+
+\ Is there one more leaked ordinary scope below the ones already counted?  The
+\ index is derived from the live depth, so the walk stops at the bottom of the
+\ arena instead of reading the record before it.
+: ORDINARY-BELOW? ( n -- n bool )
+   dup RBF-DEPTH @ >= IF 0 0= 0= EXIT THEN
+   dup RBF-DEPTH @ 1 - swap - ORDINARY? ;
+
+: ORDINARY-RUN ( -- n )      \ leaked ordinary scopes above the first coordinator-owned frame
+   0
+   BEGIN ORDINARY-BELOW? WHILE
+      1 +
+   REPEAT ;
+
+: POP-ORDINARY ( n -- )      \ discard exactly this many leaked ordinary scopes
+   BEGIN dup 0 > WHILE
+      RESTORE-TOP
+      1 -
+   REPEAT
+   drop ;
+
+: START ( n -- ) {: depth:n :}
+   RBF-PUSH
+   TOP {: r:ptr :}
+   depth r RBF.COORD ! ;
+
+: PREPARE ( n -- bool ) {: depth:n :}
+   depth TOP-MATCH? 0= IF 0 0= 0= EXIT THEN
+   RBF-DEPTH @ TYPES-READY-XT ;
+
+: FRAME-MISMATCH ( -- )
+   s" checker: declaration rollback frame mismatch" 76 die ;
+
+\ Peek before consuming anything: find this coordinator's frame underneath the
+\ leaked ordinary scopes first.  If it is not there the frame stack is beyond
+\ repair, so fail closed while the legitimate outer frames are still intact.
+: ROLLBACK ( n -- ) {: depth:n :}
+   ORDINARY-RUN {: leaked:n :}
+   RBF-DEPTH @ leaked - 1 - {: idx:n :}
+   idx 0 < IF FRAME-MISMATCH THEN
+   idx depth DECL-AT? 0= IF FRAME-MISMATCH THEN
+   leaked POP-ORDINARY
+   RESTORE-TOP ;
+
+\ RELEASE runs last, after every other participant has already published, so it
+\ must not be able to reject.  It therefore drops its own frame instead of going
+\ through the ordinary CHECKER-SCOPE-FINALIZE, whose one rejecting condition is a
+\ product-field transaction depth that no longer matches the frame.  Today that
+\ mismatch is impossible to reach from a declaration body: the only way to shift
+\ the field depth across this point is to leave a declaration-event frame open,
+\ and src/core/decl-event.f rejects exactly that at the participant's PREPARE
+\ (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE), with the depths restored.  Keep the
+\ delegation anyway — throw-freeness here is a contract of the total-release
+\ protocol, not a consequence of that upstream guard, and the upstream guard is
+\ free to move.  Dot habu-make-txn-release-c9892c89 owns the structural inventory
+\ that will make a rejecting release fail closed.
+: RELEASE ( -- )
+   TYPES-RELEASE-XT
+   RBF-DEPTH @ 1 - RBF-DEPTH ! ;
+
+;package
 
 : CHECKER-SCOPE-START ( -- )
    RBF-PUSH ;

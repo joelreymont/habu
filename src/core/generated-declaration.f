@@ -6,6 +6,46 @@
 \ protection owner seals the participant set last. RUN refuses to start before
 \ that final seal.
 
+\ The checker participant lives in this file, so it owns its identity and order
+\ outright. The three orders published below belong to participant modules that
+\ enroll from their own files and have to read the value from somewhere.
+package CHECKER-DECL-FRAME
+
+1 constant PARTICIPANT
+100 constant ORDER
+
+: PART-SNAPSHOT ( n -- n ) {: depth:n :}
+   depth START
+   depth ;
+
+: PART-PREPARE ( n -- n ) {: depth:n :}
+   depth PREPARE 0=
+      IF DECLARATION-TRANSACTION:E-PARTICIPANT-DEPTH throw THEN
+   depth ;
+
+: PART-COMMIT ( n -- n ) ;
+
+: PART-ROLLBACK ( n -- n ) {: depth:n :}
+   depth ROLLBACK
+   depth ;
+
+: PART-FINALIZE ( n -- n )
+   RELEASE ;
+
+public
+
+: INSTALL ( ptr a -- )
+   PARTICIPANT ORDER
+   [: PART-SNAPSHOT ;]
+   [: PART-PREPARE ;]
+   [: PART-COMMIT ;]
+   [: PART-ROLLBACK ;]
+   [: PART-FINALIZE ;]
+   DECLARATION-TRANSACTION:REGISTER ;
+
+private
+;package
+
 package GENERATED-DECL-OWNER
 
 4 constant PARTICIPANT-CAP-INIT
@@ -18,31 +58,8 @@ create STATE DECLARATION-TRANSACTION:STATE-CELLS cells allot
    STATE PARTICIPANT-BOOT PARTICIPANT-CAP-INIT
    [: DECLARATION-TRANSACTION:DEFAULT-ALLOCATOR ;]
    [: DECLARATION-TRANSACTION:DEFAULT-DIAGNOSTIC ;]
-   DECLARATION-TRANSACTION:INIT ;
-
-1 constant CHECKER-PARTICIPANT
-100 constant CHECKER-ORDER
-
-: CHECKER-SNAPSHOT ( n -- n )
-   CHECKER-SCOPE-START ;
-
-: CHECKER-PREPARE ( n -- n ) ;
-: CHECKER-COMMIT ( n -- n ) ;
-
-: CHECKER-ROLLBACK ( n -- n )
-   CHECKER-SCOPE-DONE ;
-
-: CHECKER-FINALIZE ( n -- n )
-   CHECKER-SCOPE-FINALIZE ;
-
-: INSTALL-CHECKER ( -- )
-   STATE CHECKER-PARTICIPANT CHECKER-ORDER
-   [: CHECKER-SNAPSHOT ;]
-   [: CHECKER-PREPARE ;]
-   [: CHECKER-COMMIT ;]
-   [: CHECKER-ROLLBACK ;]
-   [: CHECKER-FINALIZE ;]
-   DECLARATION-TRANSACTION:REGISTER ;
+   DECLARATION-TRANSACTION:INIT
+   STATE CHECKER-DECL-FRAME:INSTALL ;
 
 public
 
@@ -73,7 +90,6 @@ public
 private
 
 INIT
-INSTALL-CHECKER
 get-current prot-wid-add
 
 ;package
@@ -87,7 +103,6 @@ DECLARATION-TRANSACTION:E-REGISTRATION-ACTIVE constant E-REGISTRATION-ACTIVE
 DECLARATION-TRANSACTION:E-TRANSACTION-POISONED constant E-TRANSACTION-POISONED
 DECLARATION-TRANSACTION:E-REGISTRATION-SEALED constant E-REGISTRATION-SEALED
 
-100 constant ORDER-CHECKER
 800 constant ORDER-EVENT
 850 constant ORDER-DICTIONARY
 900 constant ORDER-PROTECTION

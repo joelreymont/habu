@@ -1867,10 +1867,15 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    TF-RBF-DEPTH @ 0= IF E-PF-TX throw THEN
    TF-RBF-DEPTH @ 1 - TF-RBF-REC * TF-RBF-BASE + ;
 
-: TF-RBF-REQUIRE-PF-DEPTH ( ptr a -- )
+package CHECKER-DECL-FRAME
+
+: PF-DEPTH= ( ptr a -- )
    TFRB.PFTXDEPTH @ PF-TX-DEPTH @ <> IF E-PF-TX throw THEN ;
 
-: TFAM-ROLLBACK-SAVE ( -- )
+: TF-RELEASE ( -- )
+   TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH ! ;
+
+: TF-SAVE ( -- )
    TF-RBF-ENSURE
    TF-RBF-CUR {: r:ptr :}
    TFAM-N @ r TFRB.TFAMN !
@@ -1882,9 +1887,9 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    PF-COMMIT-N @ r TFRB.PFCOMMITN !
    PF-TX-DEPTH @ r TFRB.PFTXDEPTH !
    TF-RBF-DEPTH @ 1 + TF-RBF-DEPTH ! ;
-: TFAM-ROLLBACK-RESTORE ( -- )
-   TF-RBF-TOP dup TF-RBF-REQUIRE-PF-DEPTH
-   TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH !
+
+: TF-RESTORE-TOP ( ptr a -- )
+   TF-RELEASE
    {: r:ptr :}
    r TFRB.TFAMN @ TFAM-N !
    r TFRB.STRU @ TF-STR-U !
@@ -1894,9 +1899,16 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    r TFRB.PFN @ PF-N !
    r TFRB.PFCOMMITN @ PF-COMMIT-N !
    r TFRB.LAYN @ LAY-N ! ;
-: TFAM-ROLLBACK-FINALIZE ( -- )
-   TF-RBF-TOP TF-RBF-REQUIRE-PF-DEPTH
-   TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH ! ;
+
+: TF-RESTORE ( -- )
+   TF-RBF-TOP PF-DEPTH=
+   TF-RBF-TOP TF-RESTORE-TOP ;
+
+: TF-FINALIZE ( -- )
+   TF-RBF-TOP PF-DEPTH=
+   TF-RELEASE ;
+
+;package
 
 \ TFAM-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
@@ -1913,20 +1925,47 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
 
 \ combined registry rollback hooks: one SAVE/RESTORE pair the checker's core
 \ RBF-PUSH/POP drives, so TFAM + SCHEMA frames stay in lockstep with core marks.
-: REG-EXT-ROLLBACK-SAVE ( -- )
-   TFAM-ROLLBACK-SAVE
+package CHECKER-DECL-FRAME
+
+: EXT-SAVE ( -- )
+   TF-SAVE
    SCHEMA-ROLLBACK-SAVE ;
-: REG-EXT-ROLLBACK-RESTORE ( -- )
+
+: EXT-RESTORE ( -- )
    SCHEMA-ROLLBACK-RESTORE
-   TFAM-ROLLBACK-RESTORE ;
-: REG-EXT-ROLLBACK-FINALIZE ( -- )
+   TF-RESTORE ;
+
+: EXT-FINALIZE ( -- )
    SCHEMA-ROLLBACK-FINALIZE
-   TFAM-ROLLBACK-FINALIZE ;
-: REG-EXT-RB-INSTALL ( -- )
-   [: REG-EXT-ROLLBACK-SAVE ;] is REG-EXT-RB-SAVE-XT
-   [: REG-EXT-ROLLBACK-FINALIZE ;] is REG-EXT-RB-FINALIZE-XT
-   [: REG-EXT-ROLLBACK-RESTORE ;] is REG-EXT-RB-RESTORE-XT ;
-REG-EXT-RB-INSTALL
+   TF-FINALIZE ;
+
+: TYPES-READY ( n -- bool ) {: depth:n :}
+   TF-RBF-DEPTH @ depth =
+   SCH-RBF-DEPTH @ depth = and ;
+
+: TYPES-RESTORE ( -- )
+   SCHEMA-ROLLBACK-RESTORE
+   TF-RBF-TOP TF-RESTORE-TOP ;
+
+: TYPES-RELEASE ( -- )
+   SCHEMA-ROLLBACK-FINALIZE
+   TF-RELEASE ;
+
+: INSTALL-TYPES ( -- )
+   [: EXT-SAVE ;] is REG-EXT-RB-SAVE-XT
+   [: EXT-FINALIZE ;] is REG-EXT-RB-FINALIZE-XT
+   [: EXT-RESTORE ;] is REG-EXT-RB-RESTORE-XT
+   [: TYPES-READY ;] is TYPES-READY-XT
+   [: TYPES-RESTORE ;] is TYPES-RESTORE-XT
+   [: TYPES-RELEASE ;] is TYPES-RELEASE-XT ;
+INSTALL-TYPES
+
+get-current prot-wid-add
+public
+get-current prot-wid-add
+private
+
+;package
 
 \ PF-PERSIST-CANONICAL ( -- ) : make the product-field capacity byte-canonical
 \ before it is baked, so retired/rejected declarations cannot leak observable bytes

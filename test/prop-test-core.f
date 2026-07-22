@@ -1123,6 +1123,16 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ extension registry; executing it at census depth zero would underflow and
 \ mutate the checker transaction substrate, so its identity and arity are pinned
 \ as noexec.
+\ The four CHECKER-DECL-FRAME rows (start, prepare, rollback, release) carry the
+\ `private` flag because they are closed with CLOSE-PRIVATE, which interns them
+\ into the package PRIVATE wordlist. A private row can only ever be noexec: the
+\ census names an executable candidate as `package:name`, and qualified lookup
+\ resolves the package PUBLIC wordlist only, so `CHECKER-DECL-FRAME:START` does
+\ not resolve at all. Their behaviour also forbids a dummy execution — start
+\ pushes a live rollback frame, release pops one (underflowing at census depth
+\ zero), and rollback fails closed with `76 die` when no matching declaration
+\ frame is present. They are pinned by the generated-declaration transaction
+\ suite and the two negative frame fixtures instead.
 \ The read-only owner-wid predicates are total over numeric dummy operands and
 \ STAY difftested as generic (kind 1) rows against the valid cold-empty registry.
 \ tfam-ctor-word? is a pure registry-read predicate and STAYS difftested as an
@@ -1495,13 +1505,17 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 327 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
 \ AXR 328 0 2 1 prim - munmap - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
 \ AXR 329 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 330 0 0 0 prim - typefamily - -
-\ AXR 331 0 0 0 prim - sumtype - -
-\ AXR 332 0 0 0 prim - enum - -
-\ AXR 333 0 0 0 prim - product - -
-\ AXR 334 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 335 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 336 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 337 0 0 0 prim - defer-layout-buffer - -
-\ AXR 338 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 339 0 0 0 prim - typed-variable - -
+\ AXR 330 0 1 0 pprim checker-decl-frame start private pe-n pe-in
+\ AXR 331 0 1 1 pprim checker-decl-frame prepare private pe-n pe-in pe-f pe-out
+\ AXR 332 0 1 0 pprim checker-decl-frame rollback private pe-n pe-in
+\ AXR 333 0 0 0 pprim checker-decl-frame release private -
+\ AXR 334 0 0 0 prim - typefamily - -
+\ AXR 335 0 0 0 prim - sumtype - -
+\ AXR 336 0 0 0 prim - enum - -
+\ AXR 337 0 0 0 prim - product - -
+\ AXR 338 0 1 0 prim - layout-buffer - pe-n pe-in
+\ AXR 339 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 340 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 341 0 0 0 prim - defer-layout-buffer - -
+\ AXR 342 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 343 0 0 0 prim - typed-variable - -

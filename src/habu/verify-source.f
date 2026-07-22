@@ -582,25 +582,37 @@ variable STG-START
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
    CHECKER-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
+\ A package primitive row has two closers, and this verifier models them exactly
+\ as the ratchet parser does (tools/primitive-effect-inventory.f PRIVATE-CLOSE?):
+\ `PPRIM;` interns the axiom into the package public wordlist and `CLOSE-PRIVATE`
+\ interns it into the package private one. Visibility is part of the row, not a
+\ different row shape, so either token ends a `PPRIM:` row. A bare `PRIM:` row has
+\ no package to be private in, so it declares no alternate closer and
+\ `CLOSE-PRIVATE` stays an ordinary effect token there.
+: ROW-CLOSER? ( ptr u8 n ptr u8 n -- bool ) {: end:ptr endu:n alt:ptr altu:n :}
+   TOKEN-A @ TOKEN-U @ end endu STR=CI IF 0 0= EXIT THEN
+   altu 0= IF 0 0= 0= EXIT THEN
+   TOKEN-A @ TOKEN-U @ alt altu STR=CI ;
+
 \ PRIM:/PPRIM: bodies use the canonical body scanner so parsing words consume
 \ their comments, strings, and raw operands before a live closer is considered.
-: RECORD-PRIM-ROW ( ptr u8 n -- ) {: end:ptr endu:n :}
+: RECORD-PRIM-ROW ( ptr u8 n ptr u8 n -- ) {: end:ptr endu:n alt:ptr altu:n :}
    NEXT-RAW dup 0= IF s" verify-source: missing primitive name" 74 die THEN
    2drop
    BEGIN
       BODY!
       TOKEN-U @ 0= IF s" verify-source: missing primitive row closer" 74 die THEN
-      TOKEN-A @ TOKEN-U @ end endu STR=CI IF EXIT THEN
+      end endu alt altu ROW-CLOSER? IF EXIT THEN
       SKIP-BODY-TOKEN
    AGAIN ;
 
 : RECORD-PRIM ( -- )
-   s" PRIM;" RECORD-PRIM-ROW ;
+   s" PRIM;" s" " RECORD-PRIM-ROW ;
 
 : RECORD-PPRIM ( -- )
    NEXT-RAW dup 0= IF s" verify-source: missing primitive package" 74 die THEN
    2drop
-   s" PPRIM;" RECORD-PRIM-ROW ;
+   s" PPRIM;" s" CLOSE-PRIVATE" RECORD-PRIM-ROW ;
 
 : STRUCTURE-END? ( ptr u8 n -- bool )
    s" END-STRUCTURE" STR=CI ;

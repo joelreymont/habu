@@ -695,16 +695,17 @@ variable REG-I
 
 \ End-to-end acceptance on the two real axiom sources. The row counts are a
 \ ratchet on the live primitive-effect table: src/core/checker.f holds 279 lines
-\ opening `PRIM: ` plus 51 opening `PPRIM: `, and src/core/sumtype.f holds 4. A
+\ opening `PRIM: ` plus 55 opening `PPRIM: `, and src/core/sumtype.f holds 4. A
 \ new primitive changes these numbers, and the number is meant to be updated
 \ deliberately with the axiom that caused it. The eight `TYPE-FIELD-OWNER` package
-\ axioms this change adds are the reason the count moved from 322 to 330.
+\ axioms moved the count from 322 to 330, and the four `CHECKER-DECL-FRAME` rows
+\ this change adds — the ones closed with `CLOSE-PRIVATE` — move it to 334.
 : TEST-REAL-REGISTRY-FILES ( -- )
    s" src/core/checker.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   REG-COUNT 330 ASSERT=
+   REG-COUNT 334 ASSERT=
    \ Line 5116's `PRIM: s"` row is the one that broke the old lexer: its name is a
    \ live string opener, so the word path consumed source through the quote in the
    \ next row. Name that row and pin that it is one token ending at its own closer.

@@ -199,6 +199,90 @@ create DIAG-BUF DIAG-MAX allot
    PPRIM-LINE-COMMENT
    PPRIM-MULTI-COMMENT ;
 
+\ A package row has two closers: PPRIM; interns the axiom publicly and
+\ CLOSE-PRIVATE interns it into the package private wordlist. Both end the row.
+\ A bare PRIM: row has no package to be private in, so there the same token is an
+\ ordinary effect token and the row still needs PRIM;.
+
+: PPRIM-PRIVATE-CLOSE ( -- )
+   s" CLOSE-PRIVATE closes a PPRIM: row and the next top-level definition stays visible" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG FOO PE-N PE-IN CLOSE-PRIVATE" ADD ADD-LF
+   s" create PRIVAFTER 0 ," ADD ADD-LF
+   s" : UPRIVAFTER ( -- ptr a ) PRIVAFTER ;" ADD  VERIFY-BUF 0 T= ;
+
+: PPRIM-PRIVATE-BODY ( -- )
+   s" a definer before CLOSE-PRIVATE is row body, so it registers nothing" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG FOO create PSL11 zz CLOSE-PRIVATE" ADD
+   s" PSL11" EXPECT-HIDDEN ;
+
+: PPRIM-PRIVATE-LOWERCASE ( -- )
+   s" a lowercase close-private closes the row exactly as the engine folds it" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG FOO PE-N close-private create PLC2 zz PPRIM;" ADD
+   s" PLC2" ADD-REF  VERIFY-BUF 0 T= ;
+
+: PPRIM-PRIVATE-STRING ( -- )
+   s" a spaced CLOSE-PRIVATE inside a body string is content, not the closer" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG FOO " ADD ADD-STRING-OPEN
+   s" q CLOSE-PRIVATE create PSL12 y" ADD ADD-QUOTE s"  2drop PPRIM;" ADD
+   s" PSL12" EXPECT-HIDDEN ;
+
+: PPRIM-PRIVATE-ESCAPED ( -- )
+   s" a spaced CLOSE-PRIVATE inside an escaped string is content, not the closer" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG FOO " ADD ADD-ESC-OPEN
+   s" q " ADD ADD-ESC-QUOTE s"  CLOSE-PRIVATE create PSL13 z" ADD ADD-QUOTE
+   s"  2drop PPRIM;" ADD  s" PSL13" EXPECT-HIDDEN ;
+
+: PPRIM-PRIVATE-LINE-COMMENT ( -- )
+   s" a CLOSE-PRIVATE inside a line comment is content, not the closer" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG FOO " ADD
+   s" \ q CLOSE-PRIVATE create PSL14 zz" ADD ADD-LF
+   s"  PE-N PPRIM;" ADD  s" PSL14" EXPECT-HIDDEN ;
+
+: PPRIM-PRIVATE-MULTI-COMMENT ( -- )
+   s" a CLOSE-PRIVATE inside a paren comment is content, not the closer" T-LABEL
+   BUF-CLEAR
+   s" PPRIM: PKG FOO ( q CLOSE-PRIVATE create PSL15 zz ) PE-N PPRIM;" ADD
+   s" PSL15" EXPECT-HIDDEN ;
+
+: PPRIM-PRIVATE-ATTACHED ( -- )
+   s" a raw CLOSE-PRIVATEX body token does not close before the live PPRIM;" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG FOO CLOSE-PRIVATEX create PSL16 zz PPRIM;" ADD
+   s" PSL16" EXPECT-HIDDEN ;
+
+: PRIM-PRIVATE-IS-EFFECT ( -- )
+   s" CLOSE-PRIVATE in a bare PRIM: row is an effect token, so the row runs on to PRIM;" T-LABEL
+   BUF-CLEAR s" PRIM: FOO PE-N PE-IN CLOSE-PRIVATE create SL17 zz PRIM;" ADD
+   s" SL17" EXPECT-HIDDEN ;
+
+: MIXED-CLOSERS ( -- )
+   s" a PPRIM; row and a CLOSE-PRIVATE row in sequence each end at their own closer" T-LABEL
+   BUF-CLEAR s" PPRIM: PKG A PE-N PE-OUT PPRIM;" ADD ADD-LF
+   s" create MIDPRIV 0 ," ADD ADD-LF
+   s" PPRIM: PKG B PE-N PE-IN CLOSE-PRIVATE" ADD ADD-LF
+   s" : UMIDPRIV ( -- ptr a ) MIDPRIV ;" ADD  VERIFY-BUF 0 T= ;
+
+: PRIVATE-ROWS-REAL ( -- )
+   s" the four checker.f declaration-frame rows scan clean and expose the next definition" T-LABEL
+   BUF-CLEAR
+   s" PPRIM: CHECKER-DECL-FRAME START PE-N PE-IN CLOSE-PRIVATE" ADD ADD-LF
+   s" PPRIM: CHECKER-DECL-FRAME PREPARE PE-N PE-IN  PE-F PE-OUT CLOSE-PRIVATE" ADD ADD-LF
+   s" PPRIM: CHECKER-DECL-FRAME ROLLBACK PE-N PE-IN CLOSE-PRIVATE" ADD ADD-LF
+   s" PPRIM: CHECKER-DECL-FRAME RELEASE CLOSE-PRIVATE" ADD ADD-LF
+   s" : VP-AFTER-PRIVATE ( -- n ) 7 ;" ADD  VERIFY-BUF 0 T= ;
+
+: TEST-PRIVATE-CLOSER ( -- )
+   PPRIM-PRIVATE-CLOSE
+   PPRIM-PRIVATE-BODY
+   PPRIM-PRIVATE-LOWERCASE
+   PPRIM-PRIVATE-STRING
+   PPRIM-PRIVATE-ESCAPED
+   PPRIM-PRIVATE-LINE-COMMENT
+   PPRIM-PRIVATE-MULTI-COMMENT
+   PPRIM-PRIVATE-ATTACHED
+   PRIM-PRIVATE-IS-EFFECT
+   MIXED-CLOSERS
+   PRIVATE-ROWS-REAL ;
+
 : BETWEEN-ROWS ( -- )
    s" a genuine top-level create between two prim rows still registers" T-LABEL
    BUF-CLEAR s" PRIM: A PE-N PRIM; create MID zz PRIM: B PE-N PRIM;" ADD ADD-LF
@@ -537,6 +621,14 @@ variable ROOT-U
    s" a live PRIM; cannot close a PPRIM: row" T-LABEL
    s" PPRIM: PKG FOO PE-N PRIM;" EXPECT-CLOSER-FAIL ;
 
+: MISSING-PRIM-PRIVATE ( -- )
+   s" a bare PRIM: row closed only with CLOSE-PRIVATE still fails closed with rc 74" T-LABEL
+   s" PRIM: FOO PE-N CLOSE-PRIVATE" EXPECT-CLOSER-FAIL ;
+
+: MISSING-PPRIM-PRIVATE ( -- )
+   s" a PPRIM: row with neither PPRIM; nor CLOSE-PRIVATE fails closed with rc 74" T-LABEL
+   s" PPRIM: PKG FOO PE-N PE-IN CLOSE-PRIVATEX" EXPECT-CLOSER-FAIL ;
+
 : MISSING-PPRIM-PACKAGE ( -- )
    s" a PPRIM: row with no package fails closed in a child with rc 74" T-LABEL
    s" PPRIM:"
@@ -550,6 +642,8 @@ variable ROOT-U
 : TEST-FAIL-CLOSED ( -- )
    MISSING-PRIM
    MISSING-PPRIM
+   MISSING-PRIM-PRIVATE
+   MISSING-PPRIM-PRIVATE
    WRONG-PRIM
    WRONG-PPRIM
    MISSING-PPRIM-PACKAGE
@@ -563,6 +657,7 @@ variable ROOT-U
    TEST-ROLES
    TEST-ATTACHED
    TEST-PPRIM-CONTENT
+   TEST-PRIVATE-CLOSER
    TEST-ROW-ORDER
    TEST-CASE-TRUSTED
    TEST-POSITIVE
