@@ -61,6 +61,7 @@ create JRT-SUBJECT-ERR $400 allot
 125 constant JRT-RBRACE
 91 constant JRT-LBRACK
 93 constant JRT-RBRACK
+107 constant JRT-K
 
 : JRT-NEAR ( r r -- bool )
    f- fabs 0.000001 f< ;
@@ -137,6 +138,19 @@ create JRT-UTF8-HIGH 34 c, $F4 c, $90 c, $80 c, $80 c, 34 c,
 create JRT-NAME 65 c, 34 c, 66 c,
 : JRT-NAME$ ( -- ptr u8 n ) JRT-NAME 3 ;
 
+\ {"a\u0062\n\"":9} -> key bytes `ab`, newline, quote
+create JRT-FIND-ESC-SRC
+   123 c, 34 c, 97 c,
+   92 c, 117 c, 48 c, 48 c, 54 c, 50 c,
+   92 c, 110 c, 92 c, 34 c,
+   34 c, 58 c, 57 c, 125 c,
+: JRT-FIND-ESC-SRC$ ( -- ptr u8 n ) JRT-FIND-ESC-SRC 17 ;
+create JRT-FIND-ESC-WANT 97 c, 98 c, 10 c, 34 c,
+: JRT-FIND-ESC-WANT$ ( -- ptr u8 n ) JRT-FIND-ESC-WANT 4 ;
+
+768 constant JRT-LONG-KEY-CAP
+create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
+
 \ ---- assertion helpers ----------------------------------------------------
 : JRT-STR= ( JR:reader ptr u8 n -- JR:reader ) {: ea:ptr eu:n :}
    JRT-BUF JRT-CAP JR:STR {: got:n :}
@@ -171,6 +185,27 @@ create JRT-NAME 65 c, 34 c, 66 c,
    JRT-LBRACE SB-APPEND-C s" x" JRT-QKEY s" 9" SB-APPEND JRT-RBRACE SB-APPEND-C
    JRT-COMMA SB-APPEND-C
    s" c" JRT-QKEY s" 3" SB-APPEND
+   JRT-RBRACE SB-APPEND-C
+   SB$ ;
+
+: JRT-ANCHOR$ ( -- ptr u8 n )
+   SB-RESET
+   JRT-LBRACE SB-APPEND-C
+   s" nested" JRT-QKEY
+   JRT-LBRACE SB-APPEND-C s" inner" JRT-QKEY s" 1" SB-APPEND
+   JRT-RBRACE SB-APPEND-C JRT-COMMA SB-APPEND-C
+   s" outer" JRT-QKEY s" 2" SB-APPEND
+   JRT-RBRACE SB-APPEND-C
+   SB$ ;
+
+: JRT-LONG-KEY! ( n -- ) {: len:n :}
+   len 0 ?do JRT-K JRT-LONG-KEY i + c! loop ;
+
+: JRT-LONG-FIND$ ( n -- ptr u8 n ) {: len:n :}
+   len JRT-LONG-KEY!
+   SB-RESET
+   JRT-LBRACE SB-APPEND-C
+   JRT-LONG-KEY len JRT-QKEY s" 7" SB-APPEND
    JRT-RBRACE SB-APPEND-C
    SB$ ;
 
@@ -377,11 +412,72 @@ create JRT-NAME 65 c, 34 c, 66 c,
    s" zzz" JR:FIND-KEY TFALSE
    JR:CLOSE ;
 
-: JRT-TEST-FIND-NOLEAK ( -- )                     \ "x" only inside nested "b"
+: JRT-TEST-FIND-NESTED-SAME-NAME ( -- )
    JRT-FIND$ JRT-OPEN-A
    JR:NEXT JR:T-OBJ T=
    s" x" JR:FIND-KEY TFALSE
    JR:CLOSE ;
+
+: JRT-TEST-FIND-LONG ( n -- ) {: len:n :}
+   len JRT-LONG-FIND$ JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   JRT-LONG-KEY len JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 7 T=
+   JR:CLOSE ;
+
+: JRT-TEST-FIND-LENGTHS ( -- )
+   256 JRT-TEST-FIND-LONG
+   257 JRT-TEST-FIND-LONG
+   JRT-LONG-KEY-CAP JRT-TEST-FIND-LONG ;
+
+: JRT-TEST-FIND-ESCAPED ( -- )
+   JRT-FIND-ESC-SRC$ JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   JRT-FIND-ESC-WANT$ JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 9 T=
+   JR:CLOSE ;
+
+: JRT-TEST-FIND-ANCHOR ( -- )
+   JRT-ANCHOR$ JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   s" nested" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-OBJ T=
+   s" outer" JR:FIND-KEY TFALSE
+   JR:TOKEN JR:T-OBJ-END T=
+   s" outer" JR:FIND-KEY TTRUE
+   JR:TOKEN JR:T-INT T=
+   JR:INT 2 T=
+   JR:CLOSE ;
+
+: JRT-BAD-FIND-ARRAY ( -- )
+   S\" [{\qx\q:1}]" JRT-OPEN-A
+   JR:NEXT drop s" x" JR:FIND-KEY drop JR:CLOSE ;
+
+: JRT-BAD-FIND-SCALAR ( -- )
+   s" 1" JRT-OPEN-A
+   JR:NEXT drop s" x" JR:FIND-KEY drop JR:CLOSE ;
+
+: JRT-BAD-FIND-PHASE ( -- )
+   JRT-FIND$ JRT-OPEN-A
+   JR:NEXT drop JR:NEXT drop
+   s" a" JR:FIND-KEY drop JR:CLOSE ;
+
+: JRT-BAD-FIND-KEY-LEN ( -- )
+   s" {}" JRT-OPEN-A
+   JR:NEXT drop JRT-ZERO-U8 -1 JR:FIND-KEY drop JR:CLOSE ;
+
+: JRT-BAD-FIND-KEY-PTR ( -- )
+   s" {}" JRT-OPEN-A
+   JR:NEXT drop JRT-ZERO-U8 1 JR:FIND-KEY drop JR:CLOSE ;
+
+: JRT-TEST-FIND-MISUSE ( -- )
+   [: JRT-BAD-FIND-ARRAY ;] E-JR-STATE TTHROWSQ
+   [: JRT-BAD-FIND-SCALAR ;] E-JR-STATE TTHROWSQ
+   [: JRT-BAD-FIND-PHASE ;] E-JR-STATE TTHROWSQ
+   [: JRT-BAD-FIND-KEY-LEN ;] E-JR-STATE TTHROWSQ
+   [: JRT-BAD-FIND-KEY-PTR ;] E-JR-STATE TTHROWSQ ;
 
 \ ---- explicit reader ownership and isolation -----------------------------
 : JRT-TEST-INTERLEAVE ( -- )
@@ -754,7 +850,11 @@ create JRT-PERF-LONG JRT-PERF-LONG-U allot
    JRT-TEST-FIND-HIT
    JRT-TEST-FIND-SKIP
    JRT-TEST-FIND-MISS
-   JRT-TEST-FIND-NOLEAK
+   JRT-TEST-FIND-NESTED-SAME-NAME
+   JRT-TEST-FIND-LENGTHS
+   JRT-TEST-FIND-ESCAPED
+   JRT-TEST-FIND-ANCHOR
+   JRT-TEST-FIND-MISUSE
    JRT-TEST-INTERLEAVE
    JRT-TEST-CATCH-ISOLATION
    JRT-TEST-OWNERSHIP

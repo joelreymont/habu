@@ -192,6 +192,7 @@ schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
 1	json-write	lib/json-write.f	word	JSON-WRITE:FIELD-NULL	(ptr u8 n --)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	emit an object field with null value
 1	json-write	lib/json-write.f	word	JSON-WRITE:$	(-- ptr u8 n)	lib/json-write-test.f	docs/stdlib.md	stdlib-json-write	published	return JSON writer output bytes
 1	json-read	lib/json-read.f	module			lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	active	checked zero-allocation JSON pull/cursor parser complementing json-write
+1	json-read	lib/json-read.f	word	JR:STORAGE-BYTES	(-- n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the required aligned reader-storage capacity in bytes
 1	json-read	lib/json-read.f	word	JR:INIT	(ptr a n ptr u8 n -- JR:reader)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	open an explicit linear reader over aligned caller storage and a borrowed source
 1	json-read	lib/json-read.f	word	JR:CLOSE	(JR:reader --)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	consume a reader after its final use
 1	json-read	lib/json-read.f	word	JR:TOKEN	(JR:reader -- JR:reader n)	lib/json-read-test.f	docs/stdlib.md	stdlib-json-read	published	return the current token kind while preserving the reader

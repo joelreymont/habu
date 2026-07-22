@@ -581,6 +581,7 @@ audited private representation boundary owned by
 `habu-add-bounded-host-b40b048f`.
 
 ```forth
+JR:STORAGE-BYTES ( -- n )
 JR:INIT       ( ptr a n ptr u8 n -- JR:reader )
 JR:CLOSE      ( JR:reader -- )
 JR:TOKEN      ( JR:reader -- JR:reader n )
@@ -599,6 +600,11 @@ decodes the current string into non-null caller storage and rejects negative or
 insufficient capacity with `E-JR-STATE`. `NEXT` accepts a string token only
 after validating every escape, UTF-16 surrogate pair, and raw UTF-8 scalar.
 Token kinds remain the public `JR:T-*` constants.
+`FIND-KEY` is valid only while positioned to search the current object. It
+captures that object's depth, skips each unmatched value completely, and stops
+at the matching object close; array, top-level scalar, and after-key phases
+throw `E-JR-STATE`. Key comparison streams decoded bytes through the same
+unescape path as `STR`, so valid key length is not bounded by reader storage.
 
 ## Regex
 

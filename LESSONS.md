@@ -2074,3 +2074,8 @@ fits.
   offsets internally, and publish numeric kind during the existing grammar pass
   instead of rescanning the token. Ratchet both repeated small documents and one
   long stream against the pre-refactor medians.
+- **Object-key search is parser state, not token scanning.** Require an active
+  object search phase, capture its depth, accept keys only at that depth, skip
+  each unmatched value, and stop at that object's close. Compare decoded bytes
+  through the shared streaming unescape sink so key length never becomes a
+  reader-storage capacity.

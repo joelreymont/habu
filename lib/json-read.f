@@ -132,11 +132,12 @@ private
 1 constant CTX-OBJ
 2 constant CTX-ARR
 64 constant MAX-DEPTH
-256 constant KEY-CAP
 
-16 constant STATE-CELLS
+0 constant UMODE-WRITE
+1 constant UMODE-MATCH
+
+18 constant STATE-CELLS
 STATE-CELLS cells constant CTX-OFF
-CTX-OFF MAX-DEPTH + constant KEY-OFF
 
 0 constant SRC-IDX
 1 cells constant SRC-U-OFF
@@ -154,10 +155,15 @@ CTX-OFF MAX-DEPTH + constant KEY-OFF
 13 cells constant HI-OFF
 14 cells constant LO-OFF
 15 cells constant NI-OFF
+16 cells constant UMODE-OFF
+17 cells constant UMATCH-OFF
+
+CTX-OFF MAX-DEPTH + constant STORAGE-SIZE
 
 public
 
-KEY-OFF KEY-CAP + constant STORAGE-BYTES
+: STORAGE-BYTES ( -- n )
+   STORAGE-SIZE ;
 
 private
 
@@ -179,9 +185,6 @@ TRUSTED: CONSUME-READER ( JR:reader -- )
 : CTX-BYTE ( ptr n n -- ptr n )
    CTX-OFF + + ;
 
-: KEY-BUF ( ptr u8 -- ptr u8 )
-   KEY-OFF + ;
-
 : INIT-STATE ( ptr n ptr u8 n -- ) {: state:ptr source:ptr len:n :}
    source state SRC-IDX ptr-field !
    len state SRC-U-OFF + !
@@ -190,7 +193,9 @@ TRUSTED: CONSUME-READER ( JR:reader -- )
    ST-VALUE state STATE-OFF + !
    T-END state KIND-OFF + !
    0 state TOK-AT-OFF + !
-   0 state TOK-LEN-OFF + ! ;
+   0 state TOK-LEN-OFF + !
+   UMODE-WRITE state UMODE-OFF + !
+   1 state UMATCH-OFF + ! ;
 
 : TRUE ( -- bool )
    0 0= ;
@@ -652,9 +657,25 @@ private
 : UNESC-CHAR ( ptr n -- n ) {: state:ptr :}
    state state UI-OFF + @ SPAN-AT ;
 
-: EMIT-BYTE ( ptr n n -- ) {: state:ptr byte:n :}
+: WRITE-BYTE ( ptr n n -- ) {: state:ptr byte:n :}
    state UO-OFF + @ state UCAP-OFF + @ >= if E-JR-STATE throw then
-   byte state UP-IDX ptr-field @ state UO-OFF + @ + c!
+   byte state UP-IDX ptr-field @ state UO-OFF + @ + c! ;
+
+: MATCH-BYTE ( ptr n n -- ) {: state:ptr byte:n :}
+   state UMATCH-OFF + @ 0= if exit then
+   state UO-OFF + @ state UCAP-OFF + @ >= if
+      0 state UMATCH-OFF + ! exit
+   then
+   state UP-IDX ptr-field @ state UO-OFF + @ + c@ byte <> if
+      0 state UMATCH-OFF + !
+   then ;
+
+: EMIT-BYTE ( ptr n n -- ) {: state:ptr byte:n :}
+   state UMODE-OFF + @ UMODE-MATCH = if
+      state byte MATCH-BYTE
+   else
+      state byte WRITE-BYTE
+   then
    state UO-OFF + dup @ 1+ swap ! ;
 
 : HEX-NEXT ( ptr n n -- n ) {: state:ptr value:n :}
@@ -729,17 +750,32 @@ private
    state UE-OFF + @ CH-U = if state UNI exit then
    state state UE-OFF + @ ESC-BYTE ;
 
-: STR-INNER ( ptr n ptr u8 n -- n ) {: state:ptr dst:ptr cap:n :}
-   state KIND-OFF + @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
-   dst 0= cap 0 < or if E-JR-STATE throw then
+: UNESC-RESET ( ptr n ptr u8 n n -- ) {: state:ptr dst:ptr cap:n mode:n :}
    dst state UP-IDX ptr-field !
    cap state UCAP-OFF + !
    0 state UI-OFF + !
    0 state UO-OFF + !
+   mode state UMODE-OFF + !
+   1 state UMATCH-OFF + ! ;
+
+: UNESC-ALL ( ptr n -- ) {: state:ptr :}
    begin state UI-OFF + @ state TOK-LEN-OFF + @ < while
       state UNESC-STEP
-   repeat
+   repeat ;
+
+: STR-INNER ( ptr n ptr u8 n -- n ) {: state:ptr dst:ptr cap:n :}
+   state KIND-OFF + @ dup T-STR = swap T-KEY = or 0= if E-JR-STATE throw then
+   dst 0= cap 0 < or if E-JR-STATE throw then
+   state dst cap UMODE-WRITE UNESC-RESET
+   state UNESC-ALL
    state UO-OFF + @ ;
+
+: MATCH-INNER ( ptr n ptr u8 n -- bool ) {: state:ptr key:ptr len:n :}
+   state KIND-OFF + @ T-KEY <> if E-JR-STATE throw then
+   state key len UMODE-MATCH UNESC-RESET
+   state UNESC-ALL
+   state UMATCH-OFF + @ 0= 0=
+   state UO-OFF + @ len = and ;
 
 public
 
@@ -759,6 +795,9 @@ private
 : CLOSER? ( n -- bool )
    dup T-OBJ-END = swap T-ARR-END = or ;
 
+: VALUE-TOKEN? ( n -- bool )
+   dup SCALAR? swap OPENER? or ;
+
 : SKIP-INNER ( ptr n -- ) {: state:ptr :}
    state KIND-OFF + @ SCALAR? if exit then
    state KIND-OFF + @ OPENER? 0= if E-JR-STATE throw then
@@ -769,21 +808,39 @@ private
       dup T-END = if E-JR-EOF throw else drop then then then
    repeat drop ;
 
-: FIND-INNER ( ptr n ptr u8 ptr u8 n -- bool ) {: state:ptr bytes:ptr ka:ptr ku:n :}
+: FIND-PHASE? ( n -- bool )
+   dup ST-KEY = swap ST-SEP = or ;
+
+: REQUIRE-KEY-SPAN ( ptr u8 n -- ) {: key:ptr len:n :}
+   len 0 < if E-JR-STATE throw then
+   len 0 > key 0= and if E-JR-STATE throw then ;
+
+: FIND-ANCHOR ( ptr n -- n ) {: state:ptr :}
+   state DEPTH-OFF + @ dup 0 <= if E-JR-STATE throw then
+   state CUR-CTX CTX-OBJ <> if E-JR-STATE throw then
+   state STATE-OFF + @ FIND-PHASE? 0= if E-JR-STATE throw then ;
+
+: REQUIRE-KEY-DEPTH ( ptr n n -- ) {: state:ptr depth:n :}
+   state DEPTH-OFF + @ depth <> if E-JR-STATE throw then ;
+
+: FIND-INNER ( ptr n ptr u8 n -- bool ) {: state:ptr key:ptr len:n :}
+   key len REQUIRE-KEY-SPAN
+   state FIND-ANCHOR {: depth:n :}
    begin
-      state NEXT-INNER
-      dup T-OBJ-END = if drop FALSE exit then
-      dup T-KEY = if
-         drop
-         state bytes KEY-BUF KEY-CAP STR-INNER
-         bytes KEY-BUF swap ka ku STR= if
-            state NEXT-INNER drop TRUE exit
-         then
-         state NEXT-INNER drop
-         state SKIP-INNER
-      else
-        T-END = if E-JR-EOF throw then
+      state NEXT-INNER {: token:n :}
+      token T-OBJ-END = if
+         state depth 1- REQUIRE-KEY-DEPTH
+         FALSE exit
       then
+      token T-KEY <> if E-JR-STATE throw then
+      state depth REQUIRE-KEY-DEPTH
+      state key len MATCH-INNER {: found:bool :}
+      state NEXT-INNER {: value:n :}
+      value VALUE-TOKEN? 0= if E-JR-STATE throw then
+      found if TRUE exit then
+      state SKIP-INNER
+      state depth REQUIRE-KEY-DEPTH
+      state STATE-OFF + @ ST-SEP <> if E-JR-STATE throw then
    again ;
 
 public
@@ -792,7 +849,7 @@ public
    READER>STATE drop SKIP-INNER ;
 
 : FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool ) {: key:ptr len:n :}
-   READER>STATE key len FIND-INNER ;
+   READER>STATE drop key len FIND-INNER ;
 
 private
 
