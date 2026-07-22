@@ -111,10 +111,6 @@ create PACKET-BUF FS-PATH-CAP allot
 : DQ ( -- )
    34 SB-APPEND-C ;
 
-: EMPTY$ ( -- ptr u8 n )
-   SB-RESET
-   SB$ ;
-
 : COUNT2$ ( -- ptr u8 n )
    SB-RESET
    DQ s" diagnostic_count" SB-APPEND DQ
