@@ -12,12 +12,18 @@ require test/gate-dictionary-lib.f
 
 TRW-LOAD-DONE
 
-: TRWK-UNDER! ( -- )
+package TEST-RUN
+
+: UNDER! ( -- )
    TR-UNDER-READY @ 0= if exit then
    TR-UNDER$ GE-HB! ;
 
-: TRWK-RUN ( -- )
-   TRWK-UNDER!
+: DICT ( -- )
+   UNDER!
    GD-MAIN ;
 
-TRWK-RUN
+' DICT
+
+;package
+
+execute
