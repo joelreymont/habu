@@ -2044,3 +2044,6 @@ fits.
   impersonate a package boundary and cancel a real owner change. Reconstruct
   the old source from the validated new file and canonical diff events, lex the
   whole old source, then align only genuine top-level transitions to new lines.
+- **Close a runner package before it forks package-owning children.** Forks
+  inherit the current package state, so a child cannot open its own package
+  while the runner's package remains active.

@@ -97,8 +97,14 @@ private
 : BOOTSTRAP-REFRESH ( -- )
    s" tools/bootstrap-refresh-doc-test.f" GSI-INCLUDE ;
 
+: PACKAGE-INHERITANCE ( -- )
+   s" test/gate-lint-tools-package-child.f" GSI-INCLUDE ;
+
+public
+
 : RUN ( -- )
    GSI-FORK-RESET
+   s" lint-tools/package-inheritance" GSI-FORK-TIMEOUT-MS [: PACKAGE-INHERITANCE ;] GT-POOL-START-FORK
    s" lint-tools/clobber" GSI-FORK-TIMEOUT-MS [: CLOBBER ;] GT-POOL-START-FORK
    s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: REPOSITORY ;] GT-POOL-START-FORK
    s" lint-tools/status" GSI-FORK-TIMEOUT-MS [: STATUS ;] GT-POOL-START-FORK
@@ -117,6 +123,6 @@ private
    s" lint-tools/bootstrap-refresh" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-REFRESH ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;
 
-RUN
-
 ;package
+
+GATE-LINT-TOOLS:RUN

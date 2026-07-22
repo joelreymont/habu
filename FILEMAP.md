@@ -2383,6 +2383,7 @@ points stay listed.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.
 - `test/gate-stdlib-lint-tools.f` — in-process lint-tools group body loaded after shared setup.
+- `test/gate-lint-tools-package-child.f` — resident lint-tools fork regression proving package-owning children inherit global package scope.
 - `test/prop-test-core.f` — reusable property-based checker-soundness runner.
 - `test/prop-test.f` — CLI entry for property-based checker-soundness test.
 - `test/engine-suite.f` — native engine behavior suite.
