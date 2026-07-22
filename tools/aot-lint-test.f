@@ -18,4 +18,4 @@ require tools/aot-lint-core.f
 
 require tools/aot-lint-test-lib.f
 
-ALT-MAIN
+AOT-LINT-TEST:RUN
