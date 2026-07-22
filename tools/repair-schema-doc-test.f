@@ -224,7 +224,7 @@ create CHK-BUF EMIT-CAP allot
    a u GJA-SUGGEST-FOR NEED-DOC ;
 
 \ Canonical repair-class enumeration (18). This is the single source of truth;
-\ RSD-NEED-CLASS proves every downstream site carries each one. Reverse drift (a
+\ NEED-CLASS proves every downstream site carries each one. Reverse drift (a
 \ class an emitter grows but this list omits) is caught at commit time by the
 \ Forth gate, which re-runs this fixture after any emitter edit; a source-parsing
 \ enumerator is deliberately out of scope (ADT/parser work, dot territory).
