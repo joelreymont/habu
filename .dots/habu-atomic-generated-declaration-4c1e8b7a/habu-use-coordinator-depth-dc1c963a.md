@@ -1,9 +1,11 @@
 ---
 title: Use coordinator depth for dictionary frames
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-22T23:52:12.689987+02:00"
+created-at: "\"2026-07-22T23:52:12.689987+02:00\""
+closed-at: "2026-07-23T00:38:54.371710+02:00"
+close-reason: Landed as 1ef723720909 on verified master; fresh destruction READY; production depth-growth and native DATA rollback mutations red; focused transaction, exact diff lints, full Maki/lint-libs, host/filemap/dot, and native port gate green.
 blocks:
   - habu-bound-declaration-participant-9967c968
   - habu-make-event-snapshot-0b239a3a
