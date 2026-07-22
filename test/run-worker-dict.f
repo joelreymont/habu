@@ -20,7 +20,7 @@ package TEST-RUN
 
 : DICT ( -- )
    UNDER!
-   GD-MAIN ;
+   GATE-DICTIONARY:RUN ;
 
 ' DICT
 

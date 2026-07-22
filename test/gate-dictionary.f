@@ -4,4 +4,4 @@
 
 include test/gate-dictionary-lib.f
 
-GD-MAIN
+GATE-DICTIONARY:RUN
