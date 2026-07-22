@@ -251,3 +251,15 @@ public
 -5700 constant E-BUF-BOUNDS      \ byte offset / active length outside the buffer
 -5701 constant E-BUF-CAPACITY    \ zero, negative, or cell-overflowing byte capacity
 -5702 constant E-BUF-STATE       \ touch of a disposed buffer, or re-init of a live one
+
+\ Open-addressing integer-key hash probe: -5800..-5899
+-5800 constant E-HM-FIRST
+-5899 constant E-HM-LAST
+-5800 constant E-HM-CAP     \ probe capacity is not a nonzero power of two
+-5801 constant E-HM-FULL    \ probe scanned every slot without an empty slot or the key
+
+\ Number formatting: -5900..-5999
+-5900 constant E-FMT-FIRST
+-5999 constant E-FMT-LAST
+-5900 constant E-FMT-DOMAIN      \ unsigned formatter (SB-U/.U) given a negative value
+-5901 constant E-FMT-OVERFLOW    \ SB-FIX scaled magnitude |x|*10^k does not fit an i64

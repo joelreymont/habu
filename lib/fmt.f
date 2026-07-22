@@ -7,9 +7,18 @@
 \ the direct printers FMT:.U / FMT:.INT / FMT:F.N reset the builder, format, and
 \ type the result. The word tails stay recognizable (SB-U, SB-INT, F.N, ...)
 \ because they read across hundreds of call sites; only the FMT: package
-\ qualifier is added. Fixed-decimal floats are exact while the scaled value
-\ (|x| * 10^k) fits an i64. The power-of-ten helper POW10I, the zero-padded
-\ fraction helper SB-FRAC, and every buffer and constant are package-private.
+\ qualifier is added.
+\
+\ Every appender is fail-closed on its domain. SB-U / .U are unsigned only: a
+\ negative value throws E-FMT-DOMAIN rather than rendering a byte below '0'.
+\ SB-INT covers the whole signed i64 range, including STR-MIN-I64
+\ ($8000000000000000), whose magnitude has no positive i64 form and so is
+\ emitted from the canonical STR-MIN-I64$ digit table instead of a negate that
+\ would overflow. Fixed-decimal floats are exact while the rounded scaled value
+\ (|x| * 10^k) fits an i64; beyond that boundary SB-FIX throws E-FMT-OVERFLOW
+\ instead of letting f>s saturate to a wrong number. The power-of-ten helper
+\ POW10I, the fits-i64 guard FIT-I64, the zero-padded fraction helper SB-FRAC,
+\ and every buffer and constant are package-private.
 \ Depends on lib/float.f (POW10) and lib/string.f (SB builder).
 
 require lib/float.f                        \ POW10 (SB-FIX float scaling)
@@ -27,10 +36,14 @@ variable FMT-DV
 \ ---- string-builder appenders ---------------------------------------------
 public
 
-: SB-U ( n -- )                            \ unsigned int, no separators
+: SB-U ( n -- )                            \ unsigned int, no separators; negative -> E-FMT-DOMAIN
+   dup 0 < if E-FMT-DOMAIN throw then
    dup 10 < if FMT-ZERO + SB-APPEND-C exit then
    dup 10 / RECURSE  10 mod FMT-ZERO + SB-APPEND-C ;
-: SB-INT ( n -- )                          \ signed int
+: SB-INT ( n -- )                          \ signed int (STR-MIN-I64 has no positive magnitude)
+   dup STR-MIN-I64 = if
+      drop STR-MINUS SB-APPEND-C  STR-MIN-I64$ STR-I64-DIGITS SB-APPEND exit
+   then
    dup 0 < if STR-MINUS SB-APPEND-C negate then SB-U ;
 
 private
@@ -51,12 +64,20 @@ private
       FMT-DV @ 10 / FMT-DV !
    repeat ;
 
+\ Fits-i64 guard: a nonnegative rounded magnitude is representable iff it stays
+\ below 2^63 (STR-MAX-I64 s>f rounds to 2^63, the first double f>s cannot hold).
+\ Beyond that, f>s would saturate to STR-MAX-I64 and print wrong digits.
+: FIT-I64 ( r -- )
+   STR-MAX-I64 s>f f< 0= if E-FMT-OVERFLOW throw then ;
+
 \ append a float with exactly k decimal places (k=0 omits the point)
 public
 
 : SB-FIX ( r n -- ) {: k :}
    dup f0< if STR-MINUS SB-APPEND-C fnegate then
-   k POW10 f*  0.5 f+  f>s {: scaled :}
+   k POW10 f*  0.5 f+                       \ rounded scaled magnitude ( r >= 0 )
+   dup FIT-I64                              \ fail closed at the fits-i64 boundary
+   f>s {: scaled:n :}
    k POW10I {: ps :}
    scaled ps / SB-U
    k 0 > if FMT-DOT SB-APPEND-C  scaled ps mod k SB-FRAC then ;
