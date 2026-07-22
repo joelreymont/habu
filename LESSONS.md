@@ -2079,3 +2079,7 @@ fits.
   each unmatched value, and stop at that object's close. Compare decoded bytes
   through the shared streaming unescape sink so key length never becomes a
   reader-storage capacity.
+- **A performance ratchet must execute every changed production path.** Numeric
+  token scans cannot bound string sink dispatch or object-key traversal. Use
+  long repeated raw, escape-heavy, hit, and miss workloads; median repeated
+  samples; and leave measured headroom above timing noise.

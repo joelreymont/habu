@@ -61,6 +61,9 @@ create JRT-SUBJECT-ERR $400 allot
 125 constant JRT-RBRACE
 91 constant JRT-LBRACK
 93 constant JRT-RBRACK
+92 constant JRT-BACKSLASH
+10 constant JRT-LF
+110 constant JRT-N
 107 constant JRT-K
 
 : JRT-NEAR ( r r -- bool )
@@ -656,10 +659,37 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
 13 constant JRT-PERF-SMALL-TOKENS
 10000 constant JRT-PERF-LONG-N
 JRT-PERF-LONG-N 2 * 1+ constant JRT-PERF-LONG-U
-\ Five-run medians on parent aa2a169469ad with these exact workloads.
+6000 constant PERF-STR-N
+192 constant PERF-STR-LEN
+PERF-STR-LEN 2 + constant PERF-RAW-U
+PERF-STR-LEN 2 * 2 + constant PERF-ESC-U
+1000 constant PERF-FIND-N
+24 constant PERF-KEY-COUNT
+32 constant PERF-KEY-LEN
+5 constant PERF-MEMBER-OVERHEAD       \ opening/closing quote, colon, value, comma
+PERF-KEY-LEN PERF-MEMBER-OVERHEAD + constant PERF-MEMBER-U
+PERF-KEY-COUNT PERF-MEMBER-U * 1+ constant PERF-FIND-U
+65 constant PERF-FIRST-SUFFIX
+PERF-FIRST-SUFFIX PERF-KEY-COUNT 1- +
+constant PERF-HIT-SUFFIX
+PERF-HIT-SUFFIX 1+ constant PERF-MISS-SUFFIX
+\ Existing numeric scan baselines: five-run medians on parent aa2a169469ad.
 67793408 constant JRT-PERF-SMALL-PARENT-NS
 2984112 constant JRT-PERF-LONG-PARENT-NS
+\ Production-path baselines: medians of five independent three-run medians on
+\ parent 83fae24d6628. Ten percent headroom is larger than observed timing noise
+\ while rejecting a material regression; TEST-BUDGET adds host calibration.
+109841024 constant PERF-RAW-BASE
+189988832 constant PERF-ESC-BASE
+89995280 constant PERF-HIT-BASE
+90105840 constant PERF-MISS-BASE
+110 constant PERF-BASE-PCT
 create JRT-PERF-LONG JRT-PERF-LONG-U allot
+create PERF-RAW-SRC PERF-RAW-U allot
+create PERF-ESC-SRC PERF-ESC-U allot
+create PERF-FIND-SRC PERF-FIND-U allot
+create PERF-HIT-KEY PERF-KEY-LEN allot
+create PERF-MISS-KEY PERF-KEY-LEN allot
 
 : JRT-PERF-DOC$ ( -- ptr u8 n )
    s" [1,2,3,4,5,6,7,8,9,10]" ;
@@ -698,6 +728,103 @@ create JRT-PERF-LONG JRT-PERF-LONG-U allot
    JRT-PERF-LONG-ONE
    mono-ns start - ;
 
+: PERF-BUILD-RAW ( -- )
+   JRT-DQ PERF-RAW-SRC c!
+   PERF-STR-LEN 0 ?do JRT-K PERF-RAW-SRC 1+ i + c! loop
+   JRT-DQ PERF-RAW-SRC PERF-RAW-U 1- + c! ;
+
+: PERF-BUILD-ESC ( -- )
+   JRT-DQ PERF-ESC-SRC c!
+   PERF-STR-LEN 0 ?do
+      JRT-BACKSLASH PERF-ESC-SRC 1 i 2 * + + c!
+      JRT-N PERF-ESC-SRC 2 i 2 * + + c!
+   loop
+   JRT-DQ PERF-ESC-SRC PERF-ESC-U 1- + c! ;
+
+: PERF-STR-ONE ( ptr u8 n -- )
+   JRT-OPEN-A JR:NEXT drop JRT-BUF JRT-CAP JR:STR drop JR:CLOSE ;
+
+: PERF-RAW-ONE ( -- )
+   PERF-RAW-SRC PERF-RAW-U PERF-STR-ONE ;
+
+: PERF-ESC-ONE ( -- )
+   PERF-ESC-SRC PERF-ESC-U PERF-STR-ONE ;
+
+: PERF-RAW-RUN ( -- n )
+   PERF-BUILD-RAW
+   mono-ns {: start:n :}
+   PERF-STR-N 0 ?do PERF-RAW-ONE loop
+   mono-ns start - ;
+
+: PERF-ESC-RUN ( -- n )
+   PERF-BUILD-ESC
+   mono-ns {: start:n :}
+   PERF-STR-N 0 ?do PERF-ESC-ONE loop
+   mono-ns start - ;
+
+: PERF-KEY! ( ptr u8 n -- ) {: key:ptr suffix:n :}
+   PERF-KEY-LEN 1- 0 ?do JRT-K key i + c! loop
+   suffix key PERF-KEY-LEN 1- + c! ;
+
+: PERF-BUILD-MEMBER ( n -- ) {: idx:n :}
+   idx PERF-MEMBER-U * 1+ {: off:n :}
+   JRT-DQ PERF-FIND-SRC off + c!
+   PERF-KEY-LEN 1- 0 ?do
+      JRT-K PERF-FIND-SRC off 1+ + i + c!
+   loop
+   PERF-FIRST-SUFFIX idx +
+   PERF-FIND-SRC off PERF-KEY-LEN + + c!
+   JRT-DQ PERF-FIND-SRC off PERF-KEY-LEN 1+ + + c!
+   JRT-COLON PERF-FIND-SRC off PERF-KEY-LEN 2 + + + c!
+   JRT-ZERO PERF-FIND-SRC off PERF-KEY-LEN 3 + + + c!
+   JRT-COMMA PERF-FIND-SRC off PERF-KEY-LEN 4 + + + c! ;
+
+: PERF-BUILD-FIND ( -- )
+   JRT-LBRACE PERF-FIND-SRC c!
+   PERF-KEY-COUNT 0 ?do i PERF-BUILD-MEMBER loop
+   JRT-RBRACE PERF-FIND-SRC PERF-FIND-U 1- + c!
+   PERF-HIT-KEY PERF-HIT-SUFFIX PERF-KEY!
+   PERF-MISS-KEY PERF-MISS-SUFFIX PERF-KEY! ;
+
+: PERF-FIND-ONE ( ptr u8 -- ) {: key:ptr :}
+   PERF-FIND-SRC PERF-FIND-U JRT-OPEN-A
+   JR:NEXT drop key PERF-KEY-LEN JR:FIND-KEY drop JR:CLOSE ;
+
+: PERF-FIND-HIT ( -- n )
+   PERF-BUILD-FIND
+   mono-ns {: start:n :}
+   PERF-FIND-N 0 ?do PERF-HIT-KEY PERF-FIND-ONE loop
+   mono-ns start - ;
+
+: PERF-FIND-MISS ( -- n )
+   PERF-BUILD-FIND
+   mono-ns {: start:n :}
+   PERF-FIND-N 0 ?do PERF-MISS-KEY PERF-FIND-ONE loop
+   mono-ns start - ;
+
+: PERF-CHECK-STR ( ptr u8 n n -- ) {: want:n :}
+   JRT-OPEN-A
+   JR:NEXT JR:T-STR T=
+   JRT-BUF JRT-CAP JR:STR PERF-STR-LEN T=
+   PERF-STR-LEN 0 ?do JRT-BUF i + c@ want T= loop
+   JR:CLOSE ;
+
+: PERF-CHECK-FIND ( ptr u8 bool -- ) {: key:ptr want:bool :}
+   PERF-FIND-SRC PERF-FIND-U JRT-OPEN-A
+   JR:NEXT JR:T-OBJ T=
+   key PERF-KEY-LEN JR:FIND-KEY
+   want if TTRUE else TFALSE then
+   JR:CLOSE ;
+
+: PERF-CHECK ( -- )
+   PERF-BUILD-RAW
+   PERF-RAW-SRC PERF-RAW-U JRT-K PERF-CHECK-STR
+   PERF-BUILD-ESC
+   PERF-ESC-SRC PERF-ESC-U JRT-LF PERF-CHECK-STR
+   PERF-BUILD-FIND
+   PERF-HIT-KEY JRT-TRUE PERF-CHECK-FIND
+   PERF-MISS-KEY JRT-TRUE 0= PERF-CHECK-FIND ;
+
 : JRT-PERF-MIN2 ( n n -- n )
    2dup > if swap then drop ;
 
@@ -716,16 +843,45 @@ create JRT-PERF-LONG JRT-PERF-LONG-U allot
    JRT-PERF-LONG-STREAM JRT-PERF-LONG-STREAM JRT-PERF-LONG-STREAM
    JRT-PERF-MEDIAN3 ;
 
+: PERF-RAW-MEDIAN ( -- n )
+   PERF-RAW-RUN PERF-RAW-RUN PERF-RAW-RUN JRT-PERF-MEDIAN3 ;
+
+: PERF-ESC-MEDIAN ( -- n )
+   PERF-ESC-RUN PERF-ESC-RUN PERF-ESC-RUN JRT-PERF-MEDIAN3 ;
+
+: PERF-HIT-MEDIAN ( -- n )
+   PERF-FIND-HIT PERF-FIND-HIT PERF-FIND-HIT JRT-PERF-MEDIAN3 ;
+
+: PERF-MISS-MEDIAN ( -- n )
+   PERF-FIND-MISS PERF-FIND-MISS PERF-FIND-MISS
+   JRT-PERF-MEDIAN3 ;
+
 : JRT-PERF-BUDGET ( n -- n )
    100 TEST-BUDGET:PERF-MS * 100 / ;
 
+: PERF-BASE-BUDGET ( n -- n )
+   PERF-BASE-PCT * 100 / JRT-PERF-BUDGET ;
+
 : JRT-TEST-PERF ( -- )
+   PERF-CHECK
    s" 20,000 small documents stay at or below the parent median" T-LABEL
    JRT-PERF-SMALL-MEDIAN
    JRT-PERF-SMALL-PARENT-NS JRT-PERF-BUDGET <= TTRUE
    s" one 10,000-value stream stays at or below the parent median" T-LABEL
    JRT-PERF-LONG-MEDIAN
-   JRT-PERF-LONG-PARENT-NS JRT-PERF-BUDGET <= TTRUE ;
+   JRT-PERF-LONG-PARENT-NS JRT-PERF-BUDGET <= TTRUE
+   s" repeated raw string decode stays within its parent budget" T-LABEL
+   PERF-RAW-MEDIAN
+   PERF-RAW-BASE PERF-BASE-BUDGET <= TTRUE
+   s" repeated escape-heavy decode stays within its parent budget" T-LABEL
+   PERF-ESC-MEDIAN
+   PERF-ESC-BASE PERF-BASE-BUDGET <= TTRUE
+   s" repeated object key-search hits stay within their parent budget" T-LABEL
+   PERF-HIT-MEDIAN
+   PERF-HIT-BASE PERF-BASE-BUDGET <= TTRUE
+   s" repeated object key-search misses stay within their parent budget" T-LABEL
+   PERF-MISS-MEDIAN
+   PERF-MISS-BASE PERF-BASE-BUDGET <= TTRUE ;
 
 \ ---- negative fixtures (each forces one named throw) ----------------------
 : JRT-BAD-TRAILING ( -- )
