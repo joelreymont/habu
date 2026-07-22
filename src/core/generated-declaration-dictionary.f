@@ -25,7 +25,6 @@ FRAME-BYTE-MAX ROW-REC / constant FRAME-ROW-MAX
 create FRAME-BOOT CAP-INIT ROW-REC * allot
 PTR-VARIABLE FRAME-P FRAME-BOOT FRAME-P !
 variable FRAME-CAP CAP-INIT FRAME-CAP !
-variable FRAME-N
 
 : FRAME-BASE ( -- ptr a ) FRAME-P @ ;
 : FRAME-ROW ( n -- ptr a )
@@ -38,10 +37,12 @@ variable FRAME-N
 TRUSTED: FRAME-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
 
-: ENSURE-ROOM ( -- )
-   FRAME-N @ FRAME-CAP @ < IF EXIT THEN
-   FRAME-N @ FRAME-ROW-MAX >= IF E-DICTIONARY-CAP throw THEN
-   FRAME-N @ 1 + {: need:n :}
+: CHECK-DEPTH ( n -- )
+   dup 0 <= IF drop E-DICTIONARY-TX throw THEN
+   FRAME-ROW-MAX > IF E-DICTIONARY-CAP throw THEN ;
+
+: ENSURE-ROOM ( n -- ) {: need:n :}
+   need FRAME-CAP @ <= IF EXIT THEN
    FRAME-CAP @ 0 <= FRAME-CAP @ FRAME-ROW-MAX > or
       IF E-DICTIONARY-CAP throw THEN
    FRAME-CAP @ FRAME-ROW-MAX 2 / <=
@@ -50,39 +51,31 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
       cap ROW-REC * FRAME-GROW FRAME-P !
    cap FRAME-CAP ! ;
 
-: REQUIRE-DEPTH ( n -- ) FRAME-N @ <> IF E-DICTIONARY-TX throw THEN ;
-
 : SNAPSHOT ( n -- n ) {: depth:n :}
-   depth FRAME-N @ 1 + <> IF E-DICTIONARY-TX throw THEN
-   ENSURE-ROOM
-   FRAME-N @ FRAME-ROW {: r:ptr :}
+   depth CHECK-DEPTH
+   depth ENSURE-ROOM
+   depth 1 - FRAME-ROW {: r:ptr :}
    ndict@ r ROW.NDICT !
    cp@ r ROW.CP !
    here r ROW.DP !
-   FRAME-N @ 1 + FRAME-N !
    depth ;
 
 : PREPARE ( n -- n ) ;
 : COMMIT ( n -- n ) ;
 
 : ROLLBACK ( n -- n ) {: depth:n :}
-   depth REQUIRE-DEPTH
-   FRAME-N @ 1 - FRAME-ROW {: r:ptr :}
+   depth CHECK-DEPTH
+   depth 1 - FRAME-ROW {: r:ptr :}
    r ROW.NDICT @ ndict!
    r ROW.CP @ cp!
    r ROW.DP @ DICTIONARY-DP!
-   FRAME-N @ 1 - FRAME-N !
    depth ;
 
-: FINALIZE ( n -- n ) {: depth:n :}
-   depth REQUIRE-DEPTH
-   FRAME-N @ 1 - FRAME-N !
-   depth ;
+: FINALIZE ( n -- n ) ;
 
 4 constant PARTICIPANT
 
 : INSTALL ( -- )
-   0 FRAME-N !
    PARTICIPANT GENERATED-DECL:ORDER-DICTIONARY
    [: SNAPSHOT ;]
    [: PREPARE ;]
@@ -93,14 +86,12 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
 
 public
 
-: DEPTH ( -- n ) FRAME-N @ ;
-
 : PREFLIGHT ( n -- )
    dup 0 < IF E-DICTIONARY-CAP throw THEN
    DICT-CAP ndict@ - > IF E-DICTIONARY-CAP throw THEN ;
 
 : SNAPSHOT-RESET ( -- )
-   FRAME-N @ 0 <> IF E-DICTIONARY-TX throw THEN
+   GENERATED-DECL:DEPTH 0 <> IF E-DICTIONARY-TX throw THEN
    FRAME-BOOT FRAME-P !
    CAP-INIT FRAME-CAP ! ;
 
