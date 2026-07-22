@@ -2106,3 +2106,19 @@ fits.
   later, already-accepted commit chain. Search current master for the claimed
   outcome and compare the exact candidate ancestry first; findings issued from
   a superseded tree are false alarms that can spawn duplicate lanes.
+- **Replace review vigilance with mechanical checklists.** Joel-directed
+  codification (2026-07-22) after a day where every review miss had a known
+  rule behind it, applied selectively. Pre-dispatch: the contract determinism
+  test — if two different workers could ship two different designs from the
+  frozen text, it is not frozen; contracts carry interface, owner,
+  dependencies, forbidden alternatives, production-path red proof, acceptance,
+  and the suite-inventory rows in the write-set; independent pre-implementation
+  review must return READY on the exact text, and any edit re-triggers it.
+  Pre-accept: walk the full production path end-to-end (trigger to exit code),
+  run the four probes (boundary trace, measured performance, forward
+  compatibility, gate enrollment), and verify the parent IS verified
+  master@origin — an ancestor of master is not the same thing, and the
+  difference was seven silently reversed dot changes in one real rejection.
+  Pre-handoff: run the same checks on your own artifact before cross-review
+  sees it — the symmetric standard is a checklist step, not a virtue.
+  Checklists survive fatigue; sharpness does not.
