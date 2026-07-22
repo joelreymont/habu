@@ -1,0 +1,9 @@
+---
+title: Make JSON-WRITE explicit and reentrant
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-22T15:44:05.337591+02:00"
+---
+
+Why: lib JSON writing is a singleton (JW-BUF-A buffer address, capacity, length, and number scratch are module-global), so any consumer that emits JSON while another emission is in flight corrupts state; MODEL-PACK-MANIFEST:ENCODE built on it would be secretly global, and duplicating JSON escaping inside the manifest would be worse. This is the writer-side twin of the landed reentrant JSON reader and a prerequisite for canonical manifest.json serialization (habu-infer-pack-manifest-27c1030c) and for normalized-config rendering. Owned result: a caller-backed opaque writer state (JSON-WRITE package; opaque handle over caller storage, mirroring the reader's session/handle discipline); every emitter word threads that writer explicitly; two interleaved writers produce deterministic independent output; bounded output reports the exact required capacity transactionally on overflow (no partial writes observable, caller keeps authority to retry with a larger buffer); NO compatibility singleton remains (the module-global words are deleted, not wrapped); every repository consumer of the old singleton surface is migrated in the same sequence. Acceptance: two-writer interleave regression producing byte-exact independent documents; overflow regression proving required-capacity reporting with zero partial output; rg proves zero remaining references to the deleted singleton words; every migrated consumer's owning suite green; escaping behavior byte-identical against the existing writer fixtures. Owning gates: the JSON writer suite via bin/hb plus each migrated consumer's owning suite. Depends: none technically, but manifest ENCODE/DECODE and normalized-config rendering block on it. Files: the JSON writer lib module, its test, migrated consumers.
