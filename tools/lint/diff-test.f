@@ -42,11 +42,14 @@ $09 constant TAB-C
 : EXPECT-NONE ( ptr u8 n -- )
    DIFF:LINE EVENT# 0 T= ;
 
-: EXPECT-HUNK ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+: EXPECT-HUNK ( ptr u8 n n n -- ) {: a:ptr u:n want-start:n want-count:n :}
    a u DIFF:LINE MATCH DIFF:event
       none OF 0 1 T= ENDOF
       section OF 0 1 T= ENDOF
-      hunk OF DIFF:HUNK-NEW-START want T= ENDOF
+      hunk OF
+         DIFF:HUNK-NEW-START want-start T=
+         DIFF:HUNK-NEW-COUNT want-count T=
+      ENDOF
       add OF 0 1 T= ENDOF
       context OF 0 1 T= ENDOF
       delete OF 0 1 T= ENDOF
@@ -136,7 +139,7 @@ $09 constant TAB-C
 : TEST-MODIFY ( -- )
    DIFF:RESET
    MOD-SPACE-HEAD
-   s" @@ -1,2 +4,2 @@ WORD" 4 EXPECT-HUNK
+   s" @@ -1,2 +4,2 @@ WORD" 4 2 EXPECT-HUNK
    s" -old" 5 s" old" EXPECT-CONTENT
    s" +new" 3 s" new" EXPECT-CONTENT
    s"  same" 4 s" same" EXPECT-CONTENT
@@ -145,7 +148,7 @@ $09 constant TAB-C
 : TEST-SPOOF-CONTENT ( -- )
    DIFF:RESET
    MOD-A-HEAD
-   s" @@ -0,0 +1,2 @@" 1 EXPECT-HUNK
+   s" @@ -0,0 +1,2 @@" 1 2 EXPECT-HUNK
    s" ++++ b/spoof.f" 3 s" +++ b/spoof.f" EXPECT-CONTENT
    s" +--- a/spoof.f" 3 s" --- a/spoof.f" EXPECT-CONTENT
    FINISH-NONE ;
@@ -160,7 +163,7 @@ $09 constant TAB-C
 : TEST-ADD ( -- )
    DIFF:RESET
    ADD-HEAD
-   s" @@ -0,0 +1 @@" 1 EXPECT-HUNK
+   s" @@ -0,0 +1 @@" 1 1 EXPECT-HUNK
    s" +new" 3 s" new" EXPECT-CONTENT
    FINISH-NONE ;
 
@@ -171,7 +174,7 @@ $09 constant TAB-C
    s" index abcdef0..0000000" EXPECT-NONE
    s" --- a/gone.f" EXPECT-NONE
    s" +++ /dev/null" 15 EXPECT-SECTION-TYPE
-   s" @@ -1 +0,0 @@" 0 EXPECT-HUNK
+   s" @@ -1 +0,0 @@" 0 0 EXPECT-HUNK
    s" -gone" 5 s" gone" EXPECT-CONTENT
    FINISH-NONE ;
 
@@ -200,7 +203,7 @@ $09 constant TAB-C
    s" index 1234567..abcdef0 100644" EXPECT-NONE
    s" --- a/old.f" EXPECT-NONE
    s" +++ b/new.f" 17 EXPECT-SECTION-TYPE
-   s" @@ -1 +1 @@" 1 EXPECT-HUNK
+   s" @@ -1 +1 @@" 1 1 EXPECT-HUNK
    s" -old" 5 s" old" EXPECT-CONTENT
    s" +new" 3 s" new" EXPECT-CONTENT
    FINISH-NONE ;
@@ -230,7 +233,7 @@ $09 constant TAB-C
    s" index 1234567..abcdef0 100644" EXPECT-NONE
    s" --- a/a.f" EXPECT-NONE
    s" +++ b/a.f" 11 EXPECT-SECTION-TYPE
-   s" @@ -1 +1 @@" 1 EXPECT-HUNK
+   s" @@ -1 +1 @@" 1 1 EXPECT-HUNK
    s" -old" 5 s" old" EXPECT-CONTENT
    s" +new" 3 s" new" EXPECT-CONTENT
    FINISH-NONE ;
@@ -243,7 +246,7 @@ $09 constant TAB-C
    s" index 1234567..abcdef0" EXPECT-NONE
    s" --- a/tool.f" EXPECT-NONE
    s" +++ b/tool.f" 21 EXPECT-SECTION-TYPE
-   s" @@ -1 +1 @@" 1 EXPECT-HUNK
+   s" @@ -1 +1 @@" 1 1 EXPECT-HUNK
    s" -old" 5 s" old" EXPECT-CONTENT
    s" +new" 3 s" new" EXPECT-CONTENT
    FINISH-NONE ;
@@ -251,14 +254,14 @@ $09 constant TAB-C
 : TEST-INSERT-HUNK ( -- )
    DIFF:RESET
    MOD-A-HEAD
-   s" @@ -5,0 +6 @@" 6 EXPECT-HUNK
+   s" @@ -5,0 +6 @@" 6 1 EXPECT-HUNK
    s" +new" 3 s" new" EXPECT-CONTENT
    FINISH-NONE ;
 
 : TEST-NO-LF-MARKERS ( -- )
    DIFF:RESET
    MOD-A-HEAD
-   s" @@ -1 +1 @@" 1 EXPECT-HUNK
+   s" @@ -1 +1 @@" 1 1 EXPECT-HUNK
    s" -old" 5 s" old" EXPECT-CONTENT
    s" \ No newline at end of file" EXPECT-NONE
    s" +new" 3 s" new" EXPECT-CONTENT

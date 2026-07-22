@@ -908,6 +908,10 @@ public
    construct event hunk NEED-EVENT
    EVENT-N @ ;
 
+: HUNK-NEW-COUNT ( -- n )
+   construct event hunk NEED-EVENT
+   NEW-LEFT @ ;
+
 : CONTENT$ ( -- ptr u8 n )
    EVENT@ CONTENT? 0= if FAIL then
    EVENT-A@ EVENT-U @ ;
