@@ -38,6 +38,12 @@ current verification state lives in `STATUS.md`.
 - Review every worker diff hunk-by-hunk before merging: no hacks, no scope
   shaving, long-term-correct only. Substandard work goes back to the worker
   or a fresh lane — it does not merge.
+- Before dispatch, prove the package owner and production test seam. The first
+  worker checkpoint must show a green baseline, a failing check through the
+  real owning path for behavioral work or a measured owning-gate violation for
+  structural work, and the package gate on a representative diff. If this
+  exposes a caller migration or public interface absent from the dot, stop and
+  redesign the dependency before implementation.
 
 ## Human English (BLOCKING)
 
@@ -88,6 +94,18 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   package owner fails the commit gate. Run the checked exact-diff package gate
   described in `docs/forth.md` § Packages on the same artifact used by the
   typed-local gate.
+- Run that gate when the first representative definition is written, not after
+  the implementation. Trace every rejected global caller before continuing;
+  adding an exception or public forwarding shim is not a fix.
+
+## Test Integrity (BLOCKING)
+
+- A regression must execute the production entry point and real provider/build
+  path. A copied validator, manifest, state machine, or synthetic model cannot
+  prove the implementation.
+- Parser and lint gates must inspect structure and include hostile comments,
+  strings, duplicate entries, reordering, and wrong-role fixtures. Raw substring
+  presence or count is not structural evidence.
 
 ## Habu Only (BLOCKING)
 
