@@ -1,6 +1,6 @@
 ---
 title: "BPE: integrate complete Unicode split"
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-21T19:22:10+02:00"
@@ -47,3 +47,6 @@ Dependencies: `habu-bpe-real-vocab-c973932a`,
 `habu-bpe-unicode-data-45a7c2e9`, and `habu-bpe-utf8-scalar-8c1d6f34`.
 Ownership: Unicode-aware GPT-2 pre-split integration and parity only. It does
 not own BPE vocabulary storage, encode workspace, or tokenizer instances.
+
+Claim: agent=bpesplit workspace=.jj-ws/habu-bpe-unicode-integration-d3e95a72
+machine=spark.
