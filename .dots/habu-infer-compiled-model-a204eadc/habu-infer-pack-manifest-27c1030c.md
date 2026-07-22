@@ -4,6 +4,10 @@ status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-22T09:40:20.793583+02:00\""
+blocks:
+  - habu-add-generic-bounded-359c0944
+  - habu-add-shared-inference-0dad1107
+  - habu-integrate-reentrant-json-34850f2f
 ---
 
 Why this exists:
@@ -17,6 +21,6 @@ canonical round-trip passes; duplicate member, unknown version, wrong target, mi
 
 Expected touch points: new maki/infer/model-pack-manifest.f, new maki/infer/model-pack-manifest-test.f, FILEMAP.md.
 Smallest check: bin/hb --load maki/infer/model-pack-manifest-test.f.
-Prerequisites: landed safetensors loader.
+Prerequisites: landed safetensors loader; habu-add-generic-bounded-359c0944; habu-add-shared-inference-0dad1107; habu-integrate-reentrant-json-34850f2f.
 Owned result: manifest schema and validation only.
 Claim: agent=packmanifest workspace=.jj-ws/habu-infer-pack-manifest-27c1030c machine=spark.

@@ -6,6 +6,8 @@ issue-type: task
 created-at: "2026-07-21T22:49:17.866125+02:00"
 blocks:
   - habu-make-json-reader-882769ff
+  - habu-add-generic-bounded-359c0944
+  - habu-return-typed-mem-ac35e3c9
 ---
 
 Claim: agent=safet_reentrant_impl workspace=.jj-ws/habu-infer-reentrant-safetensors-d3d3a8a6 machine=spark (owns the explicit reentrant safetensors load-session API, its focused ownership tests, and required consumer migration)
