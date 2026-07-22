@@ -18,8 +18,13 @@
 \   <kind> <defining-package> <word-spelling> <flags> <normalized-effect-tokens>
 \ where kind is prim|pprim, package is `-` for a bare PRIM: (global) or the folded
 \ PPRIM: package, spelling and effect tokens are folded lowercase (Forth is
-\ case-insensitive), flags is `trusted-only` when a following PRIM-TRUSTED-ONLY!
-\ marks the row, else `-`. The identity is NEVER a path, line, ordinal, or PES
+\ case-insensitive), and flags is one token naming the row's audited properties:
+\ `trusted-only` when a following PRIM-TRUSTED-ONLY! marks the row, `private`
+\ when a PPRIM: row is closed with CLOSE-PRIVATE instead of PPRIM; (the axiom is
+\ interned into the package PRIVATE wordlist, not its public one),
+\ `private-trusted-only` for both, else `-`. Recording the visibility means a
+\ closer swap that would publish a private axiom changes the identity and fails
+\ the ratchet. The identity is NEVER a path, line, ordinal, or PES
 \ address, so case/whitespace/comment-only source edits preserve it.
 \
 \ The committed manifest (a separately-committed ORDERED list -- deliberately not
@@ -89,6 +94,12 @@ $80000 constant ARENA-CAP     \ pooled strings: paths, pkgs, names, effs, ids
 40 constant CH-LPAREN
 41 constant CH-RPAREN
 92 constant CH-BSLASH
+
+\ ---- row flag bits -----------------------------------------------------------
+\ The flag column is one token in the canonical identity, so the two bits share a
+\ single spelling: `-`, `trusted-only`, `private`, `private-trusted-only`.
+1 constant FLAG-TRUSTED-ONLY
+2 constant FLAG-PRIVATE
 
 \ ---- column indices ----------------------------------------------------------
 0 constant C-KIND
@@ -214,7 +225,8 @@ create OUT-CH 1 allot
 : ROW-ID$ ( n -- ptr u8 n )   {: i:n :} i C-ID-O RC@ i C-ID-U RC@ O$ ;
 
 : ROWS ( -- n ) ROW# @ ;
-: TRUSTED-ONLY? ( n -- bool ) ROW-FLAGS 0 <> ;
+: TRUSTED-ONLY? ( n -- bool ) ROW-FLAGS FLAG-TRUSTED-ONLY and 0 <> ;
+: PRIVATE-ROW? ( n -- bool ) ROW-FLAGS FLAG-PRIVATE and 0 <> ;
 
 \ ---- string arena ------------------------------------------------------------
 : STORE-RAW ( ptr u8 n -- n n ) {: a:ptr u:n :}
@@ -257,7 +269,13 @@ create OUT-CH 1 allot
 : DASH-IF-EMPTY ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 0= if s" -" exit then a u ;
 : KIND-STR ( n -- ptr u8 n ) 0 = if s" prim" exit then s" pprim" ;
-: FLAG-STR ( n -- ptr u8 n ) 0 = if s" -" exit then s" trusted-only" ;
+: FLAG-STR ( n -- ptr u8 n ) {: f:n :}
+   f FLAG-PRIVATE and 0 <> if
+      f FLAG-TRUSTED-ONLY and 0 <> if s" private-trusted-only" exit then
+      s" private" exit
+   then
+   f FLAG-TRUSTED-ONLY and 0 <> if s" trusted-only" exit then
+   s" -" ;
 
 \ ---- streaming scanner (shared lexeme rules; line + paren comments and string
 \ bodies are skipped so a comment/string mention never produces a row) ---------
@@ -315,13 +333,20 @@ create OUT-CH 1 allot
    PT$ s" undefine" LINT-STR=CI ;
 
 \ ---- row state machine -------------------------------------------------------
+\ Two closers exist for a package row. `PPRIM;` interns the axiom into the
+\ package PUBLIC wordlist; `CLOSE-PRIVATE` interns it into the package PRIVATE
+\ wordlist. That visibility is part of the row identity, so swapping one closer
+\ for the other changes the committed identity and trips the ratchet instead of
+\ silently publishing a private axiom. A bare `PRIM:` row has no package, so
+\ `CLOSE-PRIVATE` is not a closer there and stays an ordinary effect token.
 : CLOSER$ ( -- ptr u8 n ) CUR-KIND @ 0 = if s" prim;" exit then s" pprim;" ;
+: PRIVATE-CLOSER$ ( -- ptr u8 n ) s" close-private" ;
 
-: FINALIZE-ROW ( -- )
+: FINALIZE-ROW ( n -- ) {: flags:n :}
    ROW# @ ROW-MAX >= if s" primitive-effect-inventory: row overflow" E-PEINV-RATCHET die then
    CUR-KIND @ ROW# @ C-KIND RC!
    CUR-LINE @ ROW# @ C-LINE RC!
-   0 ROW# @ C-FLAGS RC!
+   flags ROW# @ C-FLAGS RC!
    CUR-DIN @ ROW# @ C-DIN RC!
    CUR-DOUT @ ROW# @ C-DOUT RC!
    CUR-PATH-O @ ROW# @ C-PATH-O RC!
@@ -343,8 +368,10 @@ create OUT-CH 1 allot
    1 CUR-KIND !  CT-LINE @ CUR-LINE !
    EFF-RESET  0 CUR-DIN !  0 CUR-DOUT !
    1 RS ! ;
-: MARK-TRUSTED-ONLY ( -- )   \ set flag on the most recently finalized row
-   ROW# @ 0 > if 1 ROW# @ 1- C-FLAGS RC! then ;
+: MARK-TRUSTED-ONLY ( -- )   \ add the flag to the most recently finalized row
+   ROW# @ 0 > if
+      ROW# @ 1- C-FLAGS RC@ FLAG-TRUSTED-ONLY or ROW# @ 1- C-FLAGS RC!
+   then ;
 
 : FEED-IDLE ( -- )
    DEFINER-REF? if exit then
@@ -362,8 +389,13 @@ create OUT-CH 1 allot
    CT$ EFF-FOLD+
    CT$ s" pe-in" LINT-STR=CI if 1 CUR-DIN +! then
    CT$ s" pe-out" LINT-STR=CI if 1 CUR-DOUT +! then ;
+: PRIVATE-CLOSE? ( -- bool )   \ only a package row can close into a private wordlist
+   CUR-KIND @ 0 = if LINT-FALSE exit then
+   CT$ PRIVATE-CLOSER$ LINT-STR=CI ;
+
 : FEED-EFF ( -- )
-   CT$ CLOSER$ LINT-STR=CI if FINALIZE-ROW exit then
+   CT$ CLOSER$ LINT-STR=CI if 0 FINALIZE-ROW exit then
+   PRIVATE-CLOSE? if FLAG-PRIVATE FINALIZE-ROW exit then
    APPEND-EFF-TOKEN ;
 
 : FEED ( -- )
@@ -428,7 +460,10 @@ private
 : KIND-TOK-OK? ( ptr u8 n -- bool )
    2dup s" prim" LINT-STR= if 2drop LINT-TRUE exit then s" pprim" LINT-STR= ;
 : FLAG-TOK-OK? ( ptr u8 n -- bool )
-   2dup s" trusted-only" LINT-STR= if 2drop LINT-TRUE exit then s" -" LINT-STR= ;
+   2dup s" trusted-only" LINT-STR= if 2drop LINT-TRUE exit then
+   2dup s" private" LINT-STR= if 2drop LINT-TRUE exit then
+   2dup s" private-trusted-only" LINT-STR= if 2drop LINT-TRUE exit then
+   s" -" LINT-STR= ;
 
 \ Re-canonicalise one committed line: split, validate the fixed fields, then join
 \ every token with a single space so it matches ROW-CANON$ regardless of the
@@ -735,6 +770,6 @@ public
 EXPORT RESET      EXPORT ROWS         EXPORT ROW-KIND    EXPORT ROW-LINE
 EXPORT ROW-FLAGS  EXPORT ROW-DIN      EXPORT ROW-DOUT    EXPORT ROW-PATH$
 EXPORT ROW-PKG$   EXPORT ROW-NAME$    EXPORT ROW-EFF$    EXPORT ROW-ID$
-EXPORT TRUSTED-ONLY?
+EXPORT TRUSTED-ONLY?                  EXPORT PRIVATE-ROW?
 
 ;package

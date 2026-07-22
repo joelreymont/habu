@@ -81,6 +81,47 @@ package PEINV-TEST
    0 PEINV:ROW-DOUT 1 T=
    0 PEINV:ROW-ID$ s" pprim lower-cert magic - pe-n pe-out" T$= ;
 
+\ CLOSE-PRIVATE closes a package row into the package PRIVATE wordlist, so the
+\ row carries the `private` flag and its identity differs from the same axiom
+\ closed with PPRIM;. Swapping the closer therefore cannot publish a private
+\ axiom behind the ratchet's back.
+: FIX-PPRIM-PRIVATE ( -- )
+   s" PPRIM: CHECKER-DECL-FRAME START PE-N PE-IN CLOSE-PRIVATE" RSCAN
+   PEINV:ROWS 1 T=
+   0 PEINV:ROW-KIND 1 T=
+   0 PEINV:ROW-PKG$ s" checker-decl-frame" T$=
+   0 PEINV:ROW-NAME$ s" start" T$=
+   0 PEINV:ROW-DIN 1 T=
+   0 PEINV:ROW-DOUT 0 T=
+   0 PEINV:PRIVATE-ROW? TTRUE
+   0 PEINV:TRUSTED-ONLY? TFALSE
+   0 PEINV:ROW-ID$ s" pprim checker-decl-frame start private pe-n pe-in" T$= ;
+
+: FIX-PRIVATE-CLOSER-SWAP ( -- )
+   s" PPRIM: CHECKER-DECL-FRAME START PE-N PE-IN PPRIM;" RSCAN
+   0 PEINV:PRIVATE-ROW? TFALSE
+   0 PEINV:ROW-ID$ s" pprim checker-decl-frame start - pe-n pe-in" T$=
+   S\" <!-- primitive-effect-inventory-manifest\npprim checker-decl-frame start private pe-n pe-in\n-->"
+      PEINV:PARSE-MANIFEST$ TTRUE
+   CAP-BAD# 0 > TTRUE
+   LINT-OUT$ s" pprim checker-decl-frame start - pe-n pe-in" CONTAINS? TTRUE ;
+
+\ A bare PRIM: row has no package wordlist, so CLOSE-PRIVATE is an ordinary
+\ effect token there and only PRIM; ends the row.
+: FIX-PRIVATE-CLOSER-WRONG-ROLE ( -- )
+   s" PRIM: foo PE-N PE-IN CLOSE-PRIVATE PE-N PE-OUT PRIM;" RSCAN
+   PEINV:ROWS 1 T=
+   0 PEINV:PRIVATE-ROW? TFALSE
+   0 PEINV:ROW-EFF$ s" pe-n pe-in close-private pe-n pe-out" T$= ;
+
+\ Both audited properties on one row share the single flag token.
+: FIX-PRIVATE-TRUSTED-ONLY ( -- )
+   S\" PPRIM: alpha foo PE-N PE-OUT CLOSE-PRIVATE\nPRIM-TRUSTED-ONLY!" RSCAN
+   PEINV:ROWS 1 T=
+   0 PEINV:PRIVATE-ROW? TTRUE
+   0 PEINV:TRUSTED-ONLY? TTRUE
+   0 PEINV:ROW-ID$ s" pprim alpha foo private-trusted-only pe-n pe-out" T$= ;
+
 : FIX-EMPTY-EFF ( -- )
    s" PRIM: prof-report PRIM;" RSCAN
    PEINV:ROWS 1 T=
@@ -225,6 +266,9 @@ package PEINV-TEST
 : FIX-MANIFEST-PARSE ( -- )
    s" no marker here at all" PEINV:PARSE-MANIFEST$ TFALSE
    S\" <!-- primitive-effect-inventory-manifest\nprim - dup - pe-a pe-in\n-->" PEINV:PARSE-MANIFEST$ TTRUE
+   S\" <!-- primitive-effect-inventory-manifest\npprim alpha foo private pe-n\n-->" PEINV:PARSE-MANIFEST$ TTRUE
+   S\" <!-- primitive-effect-inventory-manifest\npprim alpha foo private-trusted-only pe-n\n-->" PEINV:PARSE-MANIFEST$ TTRUE
+   S\" <!-- primitive-effect-inventory-manifest\npprim alpha foo close-private pe-n\n-->" PEINV:PARSE-MANIFEST$ TFALSE
    S\" <!-- primitive-effect-inventory-manifest\nnotakind - foo - pe-n\n-->" PEINV:PARSE-MANIFEST$ TFALSE
    S\" <!-- primitive-effect-inventory-manifest\nprim - foo maybe pe-n\n-->" PEINV:PARSE-MANIFEST$ TFALSE
    S\" <!-- primitive-effect-inventory-manifest\nprim - foo\n-->" PEINV:PARSE-MANIFEST$ TFALSE
@@ -246,6 +290,10 @@ package PEINV-TEST
    LIVE-BASELINE
    FIX-PRIM
    FIX-PPRIM
+   FIX-PPRIM-PRIVATE
+   FIX-PRIVATE-CLOSER-SWAP
+   FIX-PRIVATE-CLOSER-WRONG-ROLE
+   FIX-PRIVATE-TRUSTED-ONLY
    FIX-EMPTY-EFF
    FIX-MULTILINE
    FIX-COMMENTS-DEFINERS
