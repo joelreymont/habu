@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-23T09:46:59.317971+02:00"
-blocks:
-  - habu-prove-migration-neutrality-a4c05e44
 ---
 
 Problem: the checked full `vocab.bpe` parser, token-string map, and resolved 50,000-row tables are embedded in the runtime installer `maki/examples/nanogpt/bpe-full.f`. The compact-table generator needs the same authoritative parse result; copying that parser would create two semantic authorities.
@@ -23,9 +21,9 @@ Migrate the runtime loader to the same package with public `PRESENT?` and
 public package. Delete `MAKI:BPF-PRESENT?`, `MAKI:BPF-LOAD`, global
 `E-BPF-*`, and every alias; migrate the finite caller set atomically.
 
-Prerequisites: the landed real-vocabulary loader and
-`habu-prove-migration-neutrality-a4c05e44`, so the exact package migration can
-pass the ownership gate. Owned result: one shared parser implementation, its
+Prerequisites: the landed real-vocabulary loader. The package migration's
+finite caller set must migrate ATOMICALLY - every caller moves or requalifies
+in the same change, no migration exception, no legacy caller left behind. Owned result: one shared parser implementation, its
 private resolved tables, and the narrow `BPE-FULL` loader boundary only. It
 does not own encoder.json validation, compact selection, rendering, or
 tokenizer state.
