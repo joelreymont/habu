@@ -3,25 +3,27 @@
 require test/gate-stdlib-lib.f
 require test/gate-stdlib-inline-lib.f
 
+package STDLIB-WORKER
+
 TRW-LOAD-DONE
 
-: TRWS-SETUP ( -- )
+: SETUP ( -- )
    TR-TIMINGS @ 0 <> if GSI-TIMINGS! then ;
 
-: TRWS-TOOL ( -- )
+: TOOL ( -- )
    SUITE-SKIP-TOOL-SEMANTIC!
    GSI-TOOL-TRUST ;
 
-: TRWS-TAIL-RUNNER ( -- )
+: TAIL-RUNNER ( -- )
    GSI-TAIL-RUNNER
    s" test/gate-pool-test.f" GSI-INCLUDE
    s" test/gate-pool-orphan-test.f" GSI-INCLUDE
    TR-INSTALL-POOL-HOOKS ;
 
-: TRWS-RUN ( -- )
-   TRWS-SETUP
+: RUN ( -- )
+   SETUP
    TR-RESIDENT-ID @ case
-      2 of TRWS-TOOL endof
+      2 of TOOL endof
       3 of GSI-CHECK-CLI endof
       17 of GSI-LINT-TOOLS endof
       18 of GSI-LINT-MANIFEST endof
@@ -31,7 +33,7 @@ TRW-LOAD-DONE
       25 of GSI-TOOL-TYPED endof
       26 of GSI-TAIL-FAST endof
       27 of GSI-TAIL-PURE endof
-      28 of TRWS-TAIL-RUNNER endof
+      28 of TAIL-RUNNER endof
       29 of GSI-TAIL-BUILD endof
       31 of GSI-LINT-LIBS-CORE endof
       32 of GSI-LINT-LIBS-PTX endof
@@ -46,4 +48,11 @@ TRW-LOAD-DONE
       E-TBL-BOUNDS throw
    endcase ;
 
-TRWS-RUN
+: ACTION ( -- [ -- ] )
+   [: RUN ;] ;
+
+ACTION
+
+;package
+
+execute
