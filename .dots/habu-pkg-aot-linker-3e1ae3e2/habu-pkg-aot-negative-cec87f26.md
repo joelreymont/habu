@@ -1,9 +1,11 @@
 ---
 title: Package AOT negative tests
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T21:35:52.407610+02:00\""
+created-at: "2026-07-23T21:35:52.407610+02:00"
+closed-at: "2026-07-23T22:16:17.628823+02:00"
+close-reason: Landed as 6c4bf2f08924 and integrated in eff60aa04fba; combined gates passed on 8f3cee119650.
 ---
 
 Why: the negative ahead-of-time build library is one concern but most definitions remain ambient globals. The exact entry correction must update generated closure calls in this library, and the package gate cannot accept that caller chain until the complete test concern has a real owner. Owner and interface: package AOT-NEGATIVE owns all definitions in test/gate-aot-negative-lib.f and exports only RUN. Absorb the existing AOT-BRANCH-TEST definitions into this owner without widening the public surface. Update top-level callers in test/gate-aot-negative.f and test/run-worker-aot-neg.f directly; no aliases or compatibility globals. Preserve every rejected source, diagnostic schema, exit code, closure limit, unsupported-call case, report assertion, execution order, and phase selection. No production source or assertion change. Files: test/gate-aot-negative-lib.f, test/gate-aot-negative.f, test/run-worker-aot-neg.f, FILEMAP.md. Checkpoint: clean baseline of the negative AOT phase and standalone/resident entries; the first representative package wrapper must pass the exact package diff gate before the rest moves. Acceptance: old GAN-* and AOT-BRANCH-TEST:* globals reject, AOT-NEGATIVE:RUN executes the real existing phase, all moved bodies retain exact binding identity, and negative AOT, resident worker, package, typed-local, host, file-map, and dot gates pass. Mutation proof: remove the package owner or restore an old top-level global invocation and the owning package or resolution check fails. Forbidden: partial ownership bands, changed rejection behavior, copied validators, public helpers, forwarding globals, production edits, or entry-resolution changes. Claim: agent=aot-negative-pkg workspace=.jj-ws/habu-pkg-aot-negative-cec87f26.

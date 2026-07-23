@@ -1,9 +1,11 @@
 ---
 title: "ENUM: expose provisional payload"
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T14:41:36.124396+02:00\""
+created-at: "2026-07-23T14:41:36.124396+02:00"
+closed-at: "2026-07-23T22:16:17.634526+02:00"
+close-reason: Landed through a57bbef387f7 and integrated in eff60aa04fba; combined gates passed on 8f3cee119650.
 ---
 
 Why: constructor generation runs before declaration publication, but committed SUMV-PAY-* readers cannot see the current field transaction. Calling them early is wrong; copying rows would create a second authority.
