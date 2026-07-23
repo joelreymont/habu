@@ -2132,3 +2132,8 @@ fits.
   Pre-handoff: run the same checks on your own artifact before cross-review
   sees it — the symmetric standard is a checklist step, not a virtue.
   Checklists survive fatigue; sharpness does not.
+- **A rollback scope owns references and their targets together.** Retiring a
+  type or field registry while keeping declaration events that name those rows
+  creates published dangling identities even when both local state machines
+  pass. Exercise the real outer scope, compare every related high-water mark,
+  and resolve every surviving event after success and failure.
