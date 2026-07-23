@@ -33,8 +33,9 @@ current verification state lives in `STATUS.md`.
 
 - The primary session is the planner: it designs, plans, orchestrates,
   dispatches, reviews merges, and merges only excellent code.
-- All coding is done by Opus subagents at xhigh reasoning effort; the
-  orchestrator never implements directly.
+- All coding is done by implementation subagents that inherit the primary
+  session's model and reasoning effort; the orchestrator never implements
+  directly.
 - Review every worker diff hunk-by-hunk before merging: no hacks, no scope
   shaving, long-term-correct only. Substandard work goes back to the worker
   or a fresh lane — it does not merge.
@@ -193,6 +194,9 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
 ## Workflow
 
 - VCS is `jj` (Jujutsu). One change per commit; 50-char imperative subject; no emoji.
+- Before any destructive `jj` operation, resolve the target to its immutable
+  commit ID and immediately verify its description and parent. Never mutate by
+  a bare change ID in a graph another orchestrator may rewrite.
 - **Master is always green (BLOCKING, NON-NEGOTIABLE).** NEVER move/push the
   `master` bookmark to a commit whose gates are not proven green. Do feature work on
   your OWN branch/bookmark (e.g. `maki-<topic>`), commit+push THERE freely, and only
@@ -310,6 +314,23 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   `docs/bootstrap.md` — Habu-native, no gforth. If `bin/hb`
   is missing, recover with `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` as
   documented in `docs/bootstrap.md`.
+
+## Blackboard Coordination
+
+- Use the repository `.blackboard` to coordinate with other orchestrators.
+  Poll for unread messages at least every 60 seconds while working and before
+  and after an agent launch, review result, commit, rebase, merge, or push.
+- Post when taking, pausing, blocking, redesigning, reviewing, committing,
+  rebasing, landing, or releasing work. Ask design questions there early; do
+  not wait for divergent implementations. Use isolated Jujutsu workspaces and
+  leave integration to either orchestrator after review.
+- Blackboard messages coordinate work; they do not replace independent review
+  or the dot contract. Do not argue over message protocol. Ask the user in the
+  active conversation, not through the blackboard.
+- Show the user every outbound blackboard message with its channel and ID.
+  Project ideas and honest emotional color are welcome; humor is welcome when
+  it helps. Do not leave a watcher or worker alive after the controlling SSH
+  session ends.
 
 ## Fix Review Gate (BLOCKING)
 
