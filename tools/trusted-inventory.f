@@ -2,8 +2,8 @@
 \ Streams over repo .f/.fs sources with the shared lexeme rules (line and paren
 \ comments, string bodies after openers are skipped; repo-scale lints stream,
 \ not vectorize) collecting TRUSTED: definitions, s" name" s" effect" TRUST
-\ rows, 0 set-check boundaries, ' NAME set-check / ['] NAME set-check hook
-\ installs (HOOK-INSTALL, named by the installed hook), and the fail-closed
+\ rows, 0 set-check boundaries, quoted set-check/set-top-check hook installs
+\ (HOOK-INSTALL, named by the installed hook), and the fail-closed
 \ TRUST-BARE catch-all, then
 \ prints a deterministic TSV report (kind TAB file TAB line TAB name TAB effect
 \ TAB class TAB owner, sorted by file then line) plus a summary footer. Class,
@@ -30,6 +30,7 @@ require lib/fs.f
 require lib/sort.f
 require lib/adt/option.f
 require tools/lint/text.f
+require tools/hook-sites.f
 require lib/argv.f
 
 package TINV
@@ -51,7 +52,10 @@ private
 82 constant E-TINV-OWNERS
 
 8192 constant ROW-MAX
-9 constant TAB#
+10 constant TAB#
+0 constant HK-NONE
+1 constant HK-CHECK
+2 constant HK-TOP
 variable FB-COUNT   \ committed `fold-baseline N` (separable file-level rows allowed)
 2048 constant CMAX   \ row-granularity classification block (fold split); crossed 1024 on 2026-07-21 when the STRUCTURE front-end/generator, SC-QUOT, and arity-gate suites added their audited whitebox-shim rows
 64 constant OWNER-MAX
@@ -101,6 +105,7 @@ variable RN-O
 variable RN-U
 variable RE-O
 variable RE-U
+variable RN-HK
 variable KS-I
 variable CF-I
 variable CP-X
@@ -135,6 +140,12 @@ variable OP-OK
 variable OR-HASH
 variable OR-I
 variable OR-MISS
+variable HF-I
+variable HF-N
+variable HF-FOUND
+variable HA-I
+variable HA-R
+variable HA-BAD
 
 \ manifest-table (Class/Owner column) parser state
 variable TC-N
@@ -188,6 +199,8 @@ create OWNER-ID-O OWNER-MAX cells allot
 create OWNER-ID-U OWNER-MAX cells allot
 create OWNER-REF-O OWNER-MAX cells allot
 create OWNER-REF-U OWNER-MAX cells allot
+
+create HOOK-HITS HOOK-SITES:COUNT cells allot
 
 $400 constant DOCM-CAP
 create DOCM-BUF DOCM-CAP allot
@@ -285,6 +298,7 @@ variable DOTS-ROOT-U
 : R-IX ( -- ptr a ) 6 TABLE ;
 : R-EO ( -- ptr a ) 7 TABLE ;
 : R-EU ( -- ptr a ) 8 TABLE ;
+: R-HK ( -- ptr a ) 9 TABLE ;
 
 : CTAB ( n -- ptr a )
    CMAX * cells CTAB-BASE swap + ;
@@ -337,7 +351,9 @@ variable DOTS-ROOT-U
    RN-U @ R-NU ROW# @ TAB!
    RE-O @ R-EO ROW# @ TAB!
    RE-U @ R-EU ROW# @ TAB!
-   ROW# @ 1+ ROW# ! ;
+   RN-HK @ R-HK ROW# @ TAB!
+   ROW# @ 1+ ROW# !
+   HK-NONE RN-HK ! ;
 
 : DASH-IF-EMPTY ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 0= if s" -" exit then
@@ -527,12 +543,11 @@ variable DOTS-ROOT-U
    then
    s" TRUST" ADD-BARE ;
 
-\ ' NAME set-check / ['] NAME set-check installs a checker hook. The shape is
-\ counted and ratcheted as its own HOOK-INSTALL kind, named by the installed
-\ hook, so a rogue install is visible in the TSV and grows the baseline.
-\ Static hook-identity policing in checked-boundary-lint is
-\ habu-police-set-check-850bc543.
-: ADD-HOOK ( -- )
+\ Quoted set-check and set-top-check calls install checker hooks. The shared
+\ scanner records both kinds; the immutable registry below authorizes only an
+\ exact canonical path, installed token, and hook kind.
+: ADD-HOOK ( n -- )
+   RN-HK !
    P1$ ROW-NAME!
    s" -" ROW-EFFECT!
    CL-HOOK WC-LINE @ ROW+ ;
@@ -546,16 +561,28 @@ variable DOTS-ROOT-U
          CL-SETCHECK WC-LINE @ ROW+ exit
       then
       W2-U @ 0 > if
-         P2$ s" '" LINT-STR= if ADD-HOOK exit then
-         P2$ s" [']" LINT-STR= if ADD-HOOK exit then
+         P2$ s" '" LINT-STR= if HK-CHECK ADD-HOOK exit then
+         P2$ s" [']" LINT-STR= if HK-CHECK ADD-HOOK exit then
       then
    then
    s" set-check" ADD-BARE ;
 
+: CUR-TOPCHECK ( -- )
+   DEFINER-REF? if exit then
+   W1-U @ 0 > if
+      P1$ s" 0" LINT-STR= if exit then
+      W2-U @ 0 > if
+         P2$ s" '" LINT-STR= if HK-TOP ADD-HOOK exit then
+         P2$ s" [']" LINT-STR= if HK-TOP ADD-HOOK exit then
+      then
+   then
+   s" set-top-check" ADD-BARE ;
+
 : CLASSIFY-CUR ( -- )
    WC$ s" TRUSTED:" LINT-STR=CI if CUR-TRUSTED exit then
    WC$ s" TRUST" LINT-STR=CI if CUR-TRUST exit then
-   WC$ s" set-check" LINT-STR=CI if CUR-SETCHECK then ;
+   WC$ s" set-check" LINT-STR=CI if CUR-SETCHECK exit then
+   WC$ s" set-top-check" LINT-STR=CI if CUR-TOPCHECK then ;
 
 : SCAN-TOKEN ( -- )
    READ-WORD
@@ -701,6 +728,7 @@ public
    CARENA-A @ 0= if CSTR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop CARENA-A-FIELD ! then
    0 ROW# !
    0 ARENA-END !
+   HK-NONE RN-HK !
    0 CM# !
    0 C-END !
    0 OWN-N !
@@ -709,7 +737,8 @@ public
 
 : RESET ( -- )
    0 ROW# !
-   0 ARENA-END ! ;
+   0 ARENA-END !
+   HK-NONE RN-HK ! ;
 
 : ROWS ( -- n )
    ROW# @ ;
@@ -728,6 +757,81 @@ public
 
 : ROW-EFFECT$ ( n -- ptr u8 n ) {: k:n :}
    R-EO k TAB@ R-EU k TAB@ O$ ;
+
+private
+
+: ROW-HOOK-KIND ( n -- n )
+   R-HK swap TAB@ ;
+
+: HOOK-HIT@ ( n -- n )
+   cells HOOK-HITS + @ ;
+
+: HOOK-HIT+ ( n -- ) {: k:n :}
+   k HOOK-HIT@ 1+ HOOK-HITS k cells + ! ;
+
+: HOOK-HITS-RESET ( -- )
+   HOOK-SITES:COUNT 0 ?do 0 HOOK-HITS i cells + ! loop ;
+
+: HOOK-KIND-MATCH? ( n n -- bool ) {: rowk:n site:n :}
+   rowk ROW-HOOK-KIND HK-CHECK = if site HOOK-SITES:CHECK? exit then
+   rowk ROW-HOOK-KIND HK-TOP = if site HOOK-SITES:TOP? exit then
+   rowk ROW-HOOK-KIND HK-CHECK = ;
+
+: HOOK-ROW-MATCH? ( n n -- bool ) {: rowk:n site:n :}
+   rowk ROW-PATH$ site HOOK-SITES:PATH$ STR= dup 0= if exit then drop
+   rowk ROW-NAME$ site HOOK-SITES:NAME$ STR= dup 0= if exit then drop
+   rowk site HOOK-KIND-MATCH? ;
+
+: HOOK-FIND ( n -- n ) {: rowk:n :}
+   0 HF-N !
+   -1 HF-FOUND !
+   0 HF-I !
+   begin HF-I @ HOOK-SITES:COUNT < while
+      rowk HF-I @ HOOK-ROW-MATCH? if
+         HF-N @ 1+ HF-N !
+         HF-I @ HF-FOUND !
+      then
+      HF-I @ 1+ HF-I !
+   repeat
+   HF-N @ 1 = if HF-FOUND @ else -1 then ;
+
+\ Every scanned install must resolve once, and every immutable registry row
+\ must be observed once. Production strict/baseline commands call this census;
+\ focused SCAN-SOURCE clients can still inspect partial source fixtures.
+public
+
+: HOOK-CENSUS-BAD# ( -- n )
+   HOOK-HITS-RESET
+   0 HA-BAD !
+   0 HA-R !
+   begin HA-R @ ROW# @ < while
+      HA-R @ ROW-CLASS CL-HOOK = if
+         HA-R @ HOOK-FIND dup 0 < if
+            drop HA-BAD @ 1+ HA-BAD !
+         else HOOK-HIT+ then
+      then
+      HA-R @ 1+ HA-R !
+   repeat
+   0 HA-I !
+   begin HA-I @ HOOK-SITES:COUNT < while
+      HA-I @ HOOK-HIT@ 1 <> if HA-BAD @ 1+ HA-BAD ! then
+      HA-I @ 1+ HA-I !
+   repeat
+   HA-BAD @ ;
+
+private
+
+: HOOK-SCAN-BAD# ( -- n )
+   0 HA-BAD !
+   0 HA-R !
+   begin HA-R @ ROW# @ < while
+      HA-R @ ROW-CLASS CL-HOOK = if
+         HA-R @ HOOK-FIND 0 < if HA-BAD @ 1+ HA-BAD ! then
+      then
+      HA-R @ 1+ HA-R !
+   repeat HA-BAD @ ;
+
+public
 
 : IX-ROW ( n -- n )
    R-IX swap TAB@ ;
@@ -931,6 +1035,7 @@ private
 
 \ Row lookup: exact file:name row first, then the file-level row.
 : CLASS-FIND ( n -- n ) {: rowk:n :}
+   rowk ROW-CLASS CL-HOOK = if -1 exit then
    0 CF-I !
    begin CF-I @ CM# @ < while
       CF-I @ CMAP-NAMED? if
@@ -1167,12 +1272,20 @@ public
       E-TINV-CLASSES throw
    then ;
 
-: ROW-CLASS$ ( n -- ptr u8 n )
-   CLASS-FIND dup 0 < if drop s" -" exit then
+: ROW-CLASS$ ( n -- ptr u8 n ) {: rowk:n :}
+   rowk ROW-CLASS CL-HOOK = if
+      rowk HOOK-FIND dup 0 < if drop s" -" exit then
+      HOOK-SITES:CLASS$ exit
+   then
+   rowk CLASS-FIND dup 0 < if drop s" -" exit then
    CMAP-CLASS$ ;
 
-: ROW-DOT$ ( n -- ptr u8 n )
-   CLASS-FIND dup 0 < if drop s" -" exit then
+: ROW-DOT$ ( n -- ptr u8 n ) {: rowk:n :}
+   rowk ROW-CLASS CL-HOOK = if
+      rowk HOOK-FIND dup 0 < if drop s" -" exit then
+      HOOK-SITES:OWNER$ exit
+   then
+   rowk CLASS-FIND dup 0 < if drop s" -" exit then
    CMAP-DOT$ ;
 
 : ROW-OWNER$ ( n -- ptr u8 n )
@@ -1182,9 +1295,11 @@ public
    0 UC-N !
    0 UC-I !
    begin UC-I @ ROW# @ < while
-      UC-I @ CLASS-FIND 0 < if UC-N @ 1+ UC-N ! then
+      UC-I @ ROW-CLASS CL-HOOK <> if
+         UC-I @ CLASS-FIND 0 < if UC-N @ 1+ UC-N ! then
+      then
       UC-I @ 1+ UC-I !
-   repeat UC-N @ ;
+   repeat UC-N @ HOOK-SCAN-BAD# + ;
 
 private
 
@@ -1327,6 +1442,7 @@ public
 private
 
 : CMAP-MATCHES-ROW? ( n n -- bool ) {: k:n r:n :}
+   r ROW-CLASS CL-HOOK = if false exit then
    k CMAP-FILE$ r ROW-PATH$ LINT-STR= 0= if LINT-FALSE exit then
    k CMAP-NAMED? 0= if LINT-TRUE exit then
    k CMAP-NAME$ r ROW-NAME$ LINT-STR=CI ;
@@ -1524,8 +1640,10 @@ public
    repeat
    0 RT-R !
    begin RT-R @ ROW# @ < while
-      RT-R @ CLASS-FIND {: mk:n :}
-      mk 0 >= if mk CMAP-MATCHED@ 1+ K-MATCHED mk TAB! then
+      RT-R @ ROW-CLASS CL-HOOK <> if
+         RT-R @ CLASS-FIND {: mk:n :}
+         mk 0 >= if mk CMAP-MATCHED@ 1+ K-MATCHED mk TAB! then
+      then
       RT-R @ 1+ RT-R !
    repeat ;
 
@@ -1594,7 +1712,7 @@ public
 : RATCHET-UNCOVERED. ( -- )
    0 RD-I !
    begin RD-I @ ROW# @ < while
-      RD-I @ CLASS-FIND 0 < if
+      RD-I @ ROW-CLASS CL-HOOK <> RD-I @ CLASS-FIND 0 < and if
          s" trusted-inventory: uncovered site " OUT
          RD-I @ ROW-PATH$ OUT s" :" OUT RD-I @ ROW-LINE OUT-U
          s"  " OUT RD-I @ ROW-NAME$ OUT
@@ -1607,6 +1725,11 @@ public
    RATCHET-TALLY
    RATCHET-UNCOVERED.
    RATCHET-DETAIL
+   HOOK-CENSUS-BAD# dup 0 > if
+      s" trusted-inventory: ratchet FAILED - " OUT OUT-U
+      s"  hook registry census mismatch(es)" OUT OUT-NL
+      E-TINV-RATCHET throw
+   then drop
    RATCHET-BAD# 0 > if
       s" trusted-inventory: ratchet FAILED - trust site(s) added without an audited classification row/count" OUT OUT-NL
       E-TINV-RATCHET throw
@@ -1656,13 +1779,15 @@ public
    repeat
    0 RD-I !
    begin RD-I @ ROW# @ < while
-      RD-I @ CLASS-FIND dup 0 >= if
-         {: mk:n :}
-         mk CMAP-NAMED? 0= if
-            mk CMAP-MATCHED@ 1+ K-MATCHED mk TAB!
-            RD-I @ ROW-NAME$ NAME-UNNAMEABLE? if -1 K-UNNAME mk TAB! then
-         then
-      else drop then
+      RD-I @ ROW-CLASS CL-HOOK <> if
+         RD-I @ CLASS-FIND dup 0 >= if
+            {: mk:n :}
+            mk CMAP-NAMED? 0= if
+               mk CMAP-MATCHED@ 1+ K-MATCHED mk TAB!
+               RD-I @ ROW-NAME$ NAME-UNNAMEABLE? if -1 K-UNNAME mk TAB! then
+            then
+         else drop then
+      then
       RD-I @ 1+ RD-I !
    repeat ;
 
@@ -1710,6 +1835,11 @@ public
       s"  unclassified site(s); add classification rows to TRUSTED.md" OUT OUT-NL
       E-TINV-STRICT throw
    then
+   HOOK-CENSUS-BAD# dup 0 > if
+      s" trusted-inventory: strict FAILED - " OUT OUT-U
+      s"  hook registry census mismatch(es)" OUT OUT-NL
+      E-TINV-STRICT throw
+   then drop
    STRICT-OWNERS
    CMAP-DEAD# DV-DEAD !
    CMAP-DUP# DV-DUP !

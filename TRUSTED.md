@@ -884,7 +884,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CGR-HOOK | `ptr u8 n -- n` | Code-role transformer fail-closed checker hook rejects every verdict except certification. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-12 |  |  |
 | CGR-HOOK! | `--` | Code-role transformer rearms the canonical compile preflight before reinstalling its fail-closed hook after the audited post-certification compile window. | `tools/codegen-role-test.f`, `test/run.f` | tools/codegen-role.f | 2026-07-17 | test-metaprog | cap:checker-hook-identity |
 | CPR-EVAL | `ptr u8 n -- n` | Bootstrap recovery fixture evaluates one controlled definition under `catch` so it can prove a missing compile preflight returns through the language exception path. | `tools/bootstrap.sh` | test/compile-preflight-recovery.f | 2026-07-17 | test-metaprog | habu-primitive-effect-axiom-1119f176 |
-| CPR-HOOK | `ptr u8 n -- n` | Bootstrap recovery fixture installs a test-only certifying hook while deliberately leaving compile preflight unarmed; dynamic hook installation is not expressible in checked source. | `tools/bootstrap.sh` | test/compile-preflight-recovery.f | 2026-07-17 | test-metaprog | cap:checker-hook-identity |
+| CPR-HOOK | `ptr u8 n -- n` | Bootstrap recovery fixture installs a test-only certifying hook while deliberately leaving compile preflight unarmed; dynamic hook installation is not expressible in checked source. | `tools/bootstrap.sh` | test/compile-preflight-recovery.f | 2026-07-17 |  |  |
 | CHECK! | `ptr u8 n -- n` | Check driver models the engine checker entrypoint so its fail-closed source hook compiles checked. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | TYPE-RESERVED? | `ptr u8 n -- bool` | Check driver models the checker-owned reserved-type predicate used while validating generated source dependencies. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CHECKER-DEFLINEAR | `ptr u8 n --` | Check driver models the checker primitive that publishes parsed linearity metadata in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
@@ -916,24 +916,19 @@ that source is explicitly certified; they are not stale-checked by the default
 
 `tools/trusted-inventory.f` inventories every trust site in checked-in `.f`/`.fs`
 sources (skipping `.jj-ws/` and `.dots/`): `TRUSTED:` definitions, `s" name"
-s" effect" TRUST rows, `0 set-check` boundaries, `HOOK-INSTALL` — every
-`' NAME set-check` / `['] NAME set-check` hook install, named by the installed
-hook so a rogue install is visible in the TSV and ratcheted like any other
-kind — and `TRUST-BARE`, the fail-closed catch-all for any other `TRUST` or
+s" effect" TRUST rows, `0 set-check` boundaries, `HOOK-INSTALL` — quoted
+`set-check` and `set-top-check` hook installs, named by the installed hook —
+and `TRUST-BARE`, the fail-closed catch-all for any other `TRUST` or
 `set-check` use: a bare `TRUST` call with computed strings (the one known site
 is `TRUST-SIGNATURE` in `src/habu/verify-source.f`, which grants trust from
 scanned signature text) or a `set-check` whose argument is neither literal `0`
 nor a ticked name. The only excluded `set-check` shape is a name reference
 (`' set-check` / `['] set-check`), which takes the xt without executing it.
-Hook identity is statically policed: `tools/checked-boundary-lint.f`
-(`UB-HANDLE-INSTALL`) validates every `' NAME set-check` / `['] NAME set-check`
-install against the audited hook list (`HOOK`, `USER-HOOK`, `SNAP-CHECK-HOOK`,
-`CHK-CHECK-HOOK`, `LINT-CHECK-HOOK`, `ES-VERDICT-HOOK`, `PROP-CHECK-HOOK`) and
-rejects any other installed name with an `E-UNAUDITED-HOOK` finding, so
-`' EVIL-HOOK set-check` now fails that lint. Each `HOOK-INSTALL` site is covered
-by a `file:name` classification row (below), so the derived ratchet counts every
-install site individually; identity policing is the lint-level guard against
-rogue names at those sites.
+Hook identity and classification come only from the immutable exact-tuple
+registry in `tools/hook-sites.f`. The inventory requires each scanned install
+to match one registry path, token, and hook kind, and requires each registry row
+to appear once in the scan. Missing, stale, duplicate, or mismatched installs
+therefore fail strict and baseline validation without a second allowlist.
 Sites are detected through the shared source lexer, so comment and string
 mentions never count.
 
@@ -1554,14 +1549,10 @@ test/prop-test-core.f:RUN-MEAS test-metaprog habu-typed-depth-introspection-18f0
 test/prop-test-core.f:REND-SIG$ test-metaprog habu-typed-depth-introspection-18f0efda
 test/prop-test-core.f:CONFIRM-FR? test-metaprog habu-typed-depth-introspection-18f0efda
 tools/codegen-role.f test-metaprog habu-seal-set-check-b3676b33 1
-src/core/check-hook.f:HOOK stdlib-boundary cap:checker-hook-identity
-src/habu/aot.f:USER-HOOK builder-emit cap:checker-hook-identity
-src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity 2
-tools/check-core.f:CHK-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
-tools/lint/text.f:LINT-CHECK-HOOK stdlib-boundary cap:checker-hook-identity
-test/engine-suite.f:ES-VERDICT-HOOK test-metaprog cap:checker-hook-identity 2
-test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity 2
-tools/codegen-role.f:CGR-HOOK test-metaprog cap:checker-hook-identity 2
+src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity
+test/engine-suite.f:ES-VERDICT-HOOK test-metaprog cap:checker-hook-identity
+test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity
+tools/codegen-role.f:CGR-HOOK test-metaprog cap:checker-hook-identity
 -->
 
 ## Primitive-effect inventory

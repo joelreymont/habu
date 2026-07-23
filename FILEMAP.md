@@ -1877,6 +1877,7 @@ points stay listed.
 - `tools/trust-lint-core.f` — reusable `TRUSTED.md` drift scanner core.
 - `tools/trust-lint.f` — CLI wrapper for `TRUSTED.md` drift lint.
 - `tools/trust-lint-test.f` — checked fixture coverage for `TRUSTED.md` drift lint.
+- `tools/hook-sites.f` — immutable exact path, token, kind, class, and owner registry for checker-hook installs.
 - `tools/trusted-inventory.f` — TRUSTED ratchet: lexer-backed TSV inventory of `TRUSTED:`/`TRUST`/`0 set-check` sites plus baseline compare against `TRUSTED.md`.
 - `tools/trusted-inventory-test.f` — checked fixture coverage for the trusted-inventory ratchet, plus a live child run of the production `strict` trust-gate command.
 - `tools/primitive-effect-inventory.f` — PEINV ratchet: independent identity inventory of the `PRIM:`/`PPRIM:` axiom rows (canonical kind/package/spelling/effect/flags tuple), cross-checked against the live `#PE` registry and baselined against the `primitive-effect-inventory-manifest` block in `TRUSTED.md`.

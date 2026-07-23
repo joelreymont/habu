@@ -45,6 +45,18 @@ variable LIVE-BARE
 variable LIVE-HOOK
 variable ALL-SORTED
 variable SORT-I
+variable SUB-I
+variable SUB-N
+
+: SUB-COUNT ( ptr u8 n ptr u8 n -- n ) {: src:ptr su:n needle:ptr nu:n :}
+   0 SUB-I !
+   0 SUB-N !
+   begin SUB-I @ su nu - <= while
+      src SUB-I @ + nu needle nu STR= if
+         SUB-N @ 1+ SUB-N !
+         SUB-I @ nu + SUB-I !
+      else SUB-I @ 1+ SUB-I ! then
+   repeat SUB-N @ ;
 
 \ ---- live repo scan (performed by the tool's require-time main) ------------
 : SAVE-LIVE ( -- )
@@ -60,7 +72,7 @@ variable SORT-I
    LIVE-TRUSTED @ 0 > TTRUE
    LIVE-TRUST @ 0 > TTRUE
    LIVE-SETCHECK @ 0 > TTRUE
-   LIVE-HOOK @ 0 > TTRUE
+   LIVE-HOOK @ HOOK-SITES:COUNT T=
    LIVE-TRUSTED @ LIVE-TRUST @ + LIVE-SETCHECK @ + LIVE-BARE @ + LIVE-HOOK @ +
    LIVE-ROWS @ T= ;
 
@@ -77,7 +89,8 @@ variable SORT-I
 
 : LIVE-OUTPUT ( -- )
    LINT-OUT$ s" trusted-inventory: TRUSTED " CONTAINS? TTRUE
-   LINT-OUT$ s" tools/lint/text.f" CONTAINS? TTRUE ;
+   LINT-OUT$ s" tools/lint/text.f" CONTAINS? TTRUE
+   LINT-OUT$ S\" HOOK-INSTALL\t" SUB-COUNT HOOK-SITES:COUNT T= ;
 
 \ The committed TRUSTED.md classification block is the derived ratchet ceiling:
 \ it must parse and, tallied against the live scanned rows, show no grown, stale,
@@ -92,7 +105,8 @@ variable SORT-I
 \ The committed TRUSTED.md classification must cover every live site.
 : LIVE-CLASSES ( -- )
    TINV:CLASSES# 0 > TTRUE
-   TINV:UNCLASSIFIED# 0 T= ;
+   TINV:UNCLASSIFIED# 0 T=
+   TINV:HOOK-CENSUS-BAD# 0 T= ;
 
 \ ---- live production strict command (child process) ------------------------
 \ Review finding 13: the counts/parsed-manifest/in-memory fixtures above never
@@ -237,6 +251,14 @@ create TLS-ERR TLS-ERR-CAP allot
    S\" ['] TIF-HOOK set-check" FIX-SCAN
    TINV:ROWS 1 T=
    TINV:CL-HOOK s" TIF-HOOK" 1 ROW0-IS
+   s" ' TIF-TOP set-top-check" FIX-SCAN
+   TINV:ROWS 1 T=
+   TINV:CL-HOOK s" TIF-TOP" 1 ROW0-IS
+   S\" ['] TIF-TOP set-top-check" FIX-SCAN
+   TINV:ROWS 1 T=
+   TINV:CL-HOOK s" TIF-TOP" 1 ROW0-IS
+   s" 0 set-top-check" FIX-SCAN
+   TINV:ROWS 0 T=
    s" ' EVIL-HOOK set-check" FIX-SCAN
    TINV:ROWS 1 T=
    TINV:CL-HOOK s" EVIL-HOOK" 1 ROW0-IS
@@ -246,6 +268,217 @@ create TLS-ERR TLS-ERR-CAP allot
    TINV:SETCHECK# 1 T=
    1 TINV:ROW-CLASS TINV:CL-HOOK T=
    1 TINV:ROW-LINE 2 T= ;
+
+\ ---- immutable hook registry + production inventory authorization ----------
+variable HS-I
+variable HS-CHECK
+variable HS-TOP
+variable HS-STDLIB
+variable HS-BUILDER
+variable HS-TEST
+
+: HS-CLASS ( n -- ) {: k:n :}
+   k HOOK-SITES:CLASS$ s" stdlib-boundary" STR= if
+      HS-STDLIB @ 1+ HS-STDLIB ! exit
+   then
+   k HOOK-SITES:CLASS$ s" builder-emit" STR= if
+      HS-BUILDER @ 1+ HS-BUILDER ! exit
+   then
+   k HOOK-SITES:CLASS$ s" test-metaprog" T$=
+   HS-TEST @ 1+ HS-TEST ! ;
+
+: HS-KIND ( n -- ) {: k:n :}
+   k HOOK-SITES:CHECK? if
+      k HOOK-SITES:TOP? TFALSE
+      k HOOK-SITES:PATH$ k HOOK-SITES:NAME$ HOOK-SITES:CHECK-MATCH? TTRUE
+      k HOOK-SITES:PATH$ k HOOK-SITES:NAME$ HOOK-SITES:TOP-MATCH? TFALSE
+      HS-CHECK @ 1+ HS-CHECK ! exit
+   then
+   k HOOK-SITES:TOP? TTRUE
+   k HOOK-SITES:PATH$ k HOOK-SITES:NAME$ HOOK-SITES:CHECK-MATCH? TFALSE
+   k HOOK-SITES:PATH$ k HOOK-SITES:NAME$ HOOK-SITES:TOP-MATCH? TTRUE
+   HS-TOP @ 1+ HS-TOP ! ;
+
+: FIX-HOOK-REGISTRY ( -- )
+   HOOK-SITES:COUNT 11 T=
+   0 HS-CHECK ! 0 HS-TOP !
+   0 HS-STDLIB ! 0 HS-BUILDER ! 0 HS-TEST !
+   0 HS-I !
+   begin HS-I @ HOOK-SITES:COUNT < while
+      HS-I @ HOOK-SITES:PATH$ nip 0 > TTRUE
+      HS-I @ HOOK-SITES:PATH$ s" ./" LINT-STARTS-WITH? TFALSE
+      HS-I @ HOOK-SITES:PATH$ s" /" LINT-STARTS-WITH? TFALSE
+      HS-I @ HOOK-SITES:NAME$ nip 0 > TTRUE
+      HS-I @ HOOK-SITES:OWNER$ s" cap:checker-hook-identity" T$=
+      HS-I @ HS-CLASS
+      HS-I @ HS-KIND
+      HS-I @ 1+ HS-I !
+   repeat
+   HS-CHECK @ 9 T=
+   HS-TOP @ 2 T=
+   HS-STDLIB @ 4 T=
+   HS-BUILDER @ 2 T=
+   HS-TEST @ 5 T=
+   [: -1 HOOK-SITES:PATH$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: HOOK-SITES:COUNT HOOK-SITES:PATH$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: -1 HOOK-SITES:NAME$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: HOOK-SITES:COUNT HOOK-SITES:NAME$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: -1 HOOK-SITES:CLASS$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: HOOK-SITES:COUNT HOOK-SITES:CLASS$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: -1 HOOK-SITES:OWNER$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: HOOK-SITES:COUNT HOOK-SITES:OWNER$ 2drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: -1 HOOK-SITES:CHECK? drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: HOOK-SITES:COUNT HOOK-SITES:CHECK? drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: -1 HOOK-SITES:TOP? drop ;] E-TBL-BOUNDS TTHROWSQ
+   [: HOOK-SITES:COUNT HOOK-SITES:TOP? drop ;] E-TBL-BOUNDS TTHROWSQ ;
+
+256 constant HA-CAP
+create HA-BUF HA-CAP allot
+variable HA-U
+
+512 constant HP-CAP
+create HP-BUF HP-CAP allot
+variable HP-U
+
+: HA+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   HA-U @ u + HA-CAP > if E-STR-CAPACITY throw then
+   a HA-BUF HA-U @ + u LINT-BMOVE
+   HA-U @ u + HA-U ! ;
+
+: HP+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   HP-U @ u + HP-CAP > if E-STR-CAPACITY throw then
+   a HP-BUF HP-U @ + u LINT-BMOVE
+   HP-U @ u + HP-U ! ;
+
+: HP-PREFIX$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n k:n :}
+   0 HP-U !
+   a u HP+
+   k HOOK-SITES:PATH$ HP+
+   HP-BUF HP-U @ ;
+
+: HA-OP+ ( n -- )
+   HOOK-SITES:CHECK? if s"  set-check" else s"  set-top-check" then HA+ ;
+
+: HA-NAMED$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n k:n :}
+   0 HA-U !
+   s" ' " HA+
+   a u HA+
+   k HA-OP+
+   HA-BUF HA-U @ ;
+
+: HA-SOURCE$ ( n -- ptr u8 n ) {: k:n :}
+   k HOOK-SITES:NAME$ k HA-NAMED$ ;
+
+: HA-WRONG-KIND$ ( n -- ptr u8 n ) {: k:n :}
+   0 HA-U !
+   s" ' " HA+
+   k HOOK-SITES:NAME$ HA+
+   k HOOK-SITES:CHECK? if s"  set-top-check" else s"  set-check" then HA+
+   HA-BUF HA-U @ ;
+
+: HA-QUALIFIED$ ( n -- ptr u8 n ) {: k:n :}
+   0 HA-U !
+   s" ' OTHER:" HA+
+   k HOOK-SITES:NAME$ HA+
+   k HA-OP+
+   HA-BUF HA-U @ ;
+
+: HA-COMMENT$ ( n -- ptr u8 n ) {: k:n :}
+   0 HA-U !
+   s" \\ ' " HA+
+   k HOOK-SITES:NAME$ HA+
+   k HA-OP+
+   HA-BUF HA-U @ ;
+
+: HA-STRING$ ( n -- ptr u8 n ) {: k:n :}
+   0 HA-U !
+   S\" s\q ' " HA+
+   k HOOK-SITES:NAME$ HA+
+   k HA-OP+
+   S\" \q 2drop" HA+
+   HA-BUF HA-U @ ;
+
+: HA-REORDERED$ ( n -- ptr u8 n ) {: k:n :}
+   0 HA-U !
+   k HOOK-SITES:NAME$ HA+
+   s"  '" HA+
+   k HA-OP+
+   HA-BUF HA-U @ ;
+
+: HA-SCAN ( n -- ) {: k:n :}
+   k HOOK-SITES:PATH$ k HA-SOURCE$ TINV:SCAN-SOURCE ;
+
+: HA-SCAN-FROM ( n -- )
+   HOOK-SITES:COUNT swap ?do i HA-SCAN loop ;
+
+: HA-ALL ( -- )
+   TINV:RESET 0 HA-SCAN-FROM ;
+
+: HA-CHECK-ROWS ( -- )
+   TINV:ROWS HOOK-SITES:COUNT T=
+   TINV:HOOK# HOOK-SITES:COUNT T=
+   TINV:HOOK-CENSUS-BAD# 0 T=
+   0 HS-I !
+   begin HS-I @ HOOK-SITES:COUNT < while
+      HS-I @ TINV:ROW-PATH$ HS-I @ HOOK-SITES:PATH$ T$=
+      HS-I @ TINV:ROW-NAME$ HS-I @ HOOK-SITES:NAME$ T$=
+      HS-I @ TINV:ROW-CLASS$ HS-I @ HOOK-SITES:CLASS$ T$=
+      HS-I @ TINV:ROW-OWNER$ HS-I @ HOOK-SITES:OWNER$ T$=
+      HS-I @ 1+ HS-I !
+   repeat ;
+
+: FIX-HOOK-AUDIT ( -- )
+   \ Exact scan and immutable registry agree in both directions.
+   HA-ALL HA-CHECK-ROWS
+   \ Missing registry authorization: an extra scanned identity has no row.
+   s" rogue.f" s" ' ROGUE set-check" TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   \ Stale registry identity: one committed row is absent from the scan.
+   TINV:RESET 1 HA-SCAN-FROM
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   \ A duplicate install also proves the scanned count cannot drift.
+   HA-ALL 0 HA-SCAN
+   TINV:ROWS HOOK-SITES:COUNT 1+ T=
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   \ Wrong canonical path, installed name, or hook kind fails exact matching.
+   TINV:RESET 1 HA-SCAN-FROM
+   s" wrong/" 0 HP-PREFIX$ 0 HA-SOURCE$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   TINV:RESET 1 HA-SCAN-FROM
+   0 HOOK-SITES:PATH$ s" OTHER" 0 HA-NAMED$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   TINV:RESET 1 HA-SCAN-FROM
+   0 HOOK-SITES:PATH$ 0 HA-WRONG-KIND$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   \ Qualified spoofing cannot alias the exact installed token.
+   TINV:RESET 1 HA-SCAN-FROM
+   0 HOOK-SITES:PATH$ 0 HA-QUALIFIED$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   \ Comments and strings cannot satisfy a missing registry row.
+   TINV:RESET 1 HA-SCAN-FROM
+   0 HOOK-SITES:PATH$ 0 HA-COMMENT$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   TINV:RESET 1 HA-SCAN-FROM
+   0 HOOK-SITES:PATH$ 0 HA-STRING$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   \ The safe top-hook reset is not an install.
+   HA-ALL
+   s" reset.f" s" 0 set-top-check" TINV:SCAN-SOURCE
+   HA-CHECK-ROWS
+   \ Reordered tick syntax is not an authorized install shape.
+   TINV:RESET 1 HA-SCAN-FROM
+   0 HOOK-SITES:PATH$ 0 HA-REORDERED$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   \ Authorization never normalizes dot-relative, absolute, or workspace paths.
+   TINV:RESET 1 HA-SCAN-FROM
+   s" ./" 0 HP-PREFIX$ 0 HA-SOURCE$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   TINV:RESET 1 HA-SCAN-FROM
+   s" /" 0 HP-PREFIX$ 0 HA-SOURCE$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE
+   TINV:RESET 1 HA-SCAN-FROM
+   s" .jj-ws/escaped/" 0 HP-PREFIX$ 0 HA-SOURCE$ TINV:SCAN-SOURCE
+   TINV:HOOK-CENSUS-BAD# 0 > TTRUE ;
 
 : FIX-LINES ( -- )
    S\" \\ hdr\nTRUSTED: TIF-E ( -- )\n1 2 +\ns\q TIF-F\q s\q -- \q TRUST\n0 set-check" FIX-SCAN
@@ -343,9 +576,9 @@ create TLS-ERR TLS-ERR-CAP allot
    S\" <!-- trusted-inventory-classes\nfixture.f test-metaprog dot 3\nfixture.f:TIF-W prim-axiom dot\n-->" RT-CLASSES
    TINV:UNCLASSIFIED# 1 T=
    TINV:RATCHET-BAD# 1 T=
-   \ a name at two sites (definition + install) needs an explicit count: 2 ok, 1 GREW
+   \ A repeated named trust site needs an explicit count: 2 ok, 1 GREW.
    TINV:RESET
-   s" fixture.f" S\" TRUSTED: DUP ( -- )\n' DUP set-check" TINV:SCAN-SOURCE
+   s" fixture.f" S\" TRUSTED: DUP ( -- )\nTRUSTED: DUP ( -- )" TINV:SCAN-SOURCE
    TINV:ROWS 2 T=
    S\" <!-- trusted-inventory-classes\nfixture.f:DUP prim-axiom dot 2\n-->" RT-CLASSES
    TINV:RATCHET-BAD# 0 T=
@@ -688,6 +921,8 @@ variable DF-FILE-U
    FIX-TRUST-PARTIAL
    FIX-SETCHECK
    FIX-HOOK
+   FIX-HOOK-REGISTRY
+   FIX-HOOK-AUDIT
    FIX-LINES
    FIX-CRLF
    FIX-TRUST-MULTILINE
