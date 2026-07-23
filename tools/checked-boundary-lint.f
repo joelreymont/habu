@@ -12,10 +12,12 @@ require tools/lint/json-writer.f
 require tools/checked-boundary-lint-core.f
 require lib/argv.f
 
-: CHECKED-BOUNDARY-LINT-ARGV-FILE ( n -- )
+package BOUNDARY-LINT-CLI
+
+: ARGV-FILE ( n -- )
    ARGV:POS$ CHECKED-BOUNDARY-LINT-FILE ;
 
-: CHECKED-BOUNDARY-LINT ( -- )
+: RUN ( -- )
    s" tools/checked-boundary-lint.f file ..." ARGV:USAGE!
    ARGV:PARSE
    1 -1 ARGV:EXPECT-POS
@@ -23,9 +25,11 @@ require lib/argv.f
    ARGV:JSON? UB-JSON!
    ARGV:STRICT-BOUNDARY? UB-STRICT-BOUNDARY!
    0 begin dup ARGV:POS# < while
-      dup CHECKED-BOUNDARY-LINT-ARGV-FILE
+      dup ARGV-FILE
       1+
    repeat drop
    CHECKED-BOUNDARY-LINT-FINISH ;
 
-CHECKED-BOUNDARY-LINT
+RUN
+
+;package
