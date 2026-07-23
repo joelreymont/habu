@@ -1,9 +1,11 @@
 ---
 title: Package AOT linker and maker
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-23T21:59:12.181744+02:00"
+closed-at: "2026-07-23T23:56:32.938059+02:00"
+close-reason: Landed unchanged from jointly accepted 1c0a3146 as 76f49f1d on verified master@origin a5d89220; positive/negative AOT and all required gates passed.
 blocks:
   - habu-pkg-aot-negative-cec87f26
   - habu-pkg-aot-positive-91454b58
