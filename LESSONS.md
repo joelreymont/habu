@@ -2191,3 +2191,7 @@ fits.
   audited projection private to the module that owns the storage operation,
   inventory it, and migrate production consumers onto the typed interface
   before asking them to consume typed reference data.
+- **Joint master publication needs the other agent's ACK before the push.**
+  Publishing an agreed, green commit is still unilateral if the exact commit
+  was only announced, not acknowledged. Post the commit and gate evidence,
+  receive the explicit ACK, then push and verify the remote revision.
