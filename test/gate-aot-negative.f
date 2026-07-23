@@ -4,4 +4,4 @@
 
 include test/gate-aot-negative-lib.f
 
-GAN-RUN
+AOT-NEGATIVE:RUN

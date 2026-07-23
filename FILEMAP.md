@@ -2389,7 +2389,7 @@ points stay listed.
 - `test/gate-aot-positive.f` — thin entry wrapper for AOT positive checks.
 - `test/gate-aot-positive-lib.f` — side-effect-free AOT positive gate definitions.
 - `test/gate-aot-negative.f` — thin entry wrapper for AOT rejection checks.
-- `test/gate-aot-negative-lib.f` — side-effect-free AOT rejection gate definitions.
+- `test/gate-aot-negative-lib.f` — `AOT-NEGATIVE` package for AOT rejection checks.
 - `test/gate-runner-lib.f` — side-effect-free phase dispatch definitions for native test runners, including the `tail-process` token route to `TAIL-PROCESS:RUN`.
 - `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.

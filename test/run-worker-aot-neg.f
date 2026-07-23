@@ -8,4 +8,4 @@ require test/gate-aot-negative-lib.f
 
 TRW-LOAD-DONE
 
-GAN-RUN
+AOT-NEGATIVE:RUN
