@@ -197,6 +197,7 @@ DECL-EVENT:OPEN TOK !                                   \ outer
 TOK @ FN8 @ DECL-EVENT:DECL TOK !
 TOK @ FN8 @ s" n0" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
 DECL-EVENT:OPEN ITOK !                                  \ inner
+ITOK @ FN8 @ DECL-EVENT:DECL ITOK !
 ITOK @ FN8 @ s" n1" SCHROOT @ 1 1 CELL CELL CELL 0 DECL-EVENT:FIELD ITOK !
 ITOK @ DECL-EVENT:ROLLBACK                              \ retire only the inner field/event
 TOK @ DECL-EVENT:PUBLISH                                \ outer publishes n0 only
@@ -557,6 +558,162 @@ s" raw-global" 7110 VN-REJECT
 s" raw-local" 7110 VN-REJECT
 s" raw-foreign" VN-ACCEPT
 s" ready" VN-ACCEPT
+
+\ ---------------------------------------------------------------------------
+\ 16. Every family-scoped mutator rejects a foreign family and an unbound
+\     sentinel before changing the live event, field, registry, or frame state.
+\ ---------------------------------------------------------------------------
+variable WF-N       variable WF-PUB
+variable WF-BASE    variable WF-FORD
+variable WF-VORD    variable WF-CUR
+variable WF-DEPTH   variable WF-SERIAL
+variable WF-PFN     variable WF-PF-DEPTH
+variable WF-TOK     variable WF-FLDTOK
+variable WF-FAM     variable WF-OWNER
+variable WF-FEVN    variable WF-FFORD
+variable WF-FVORD   variable WF-FCUR
+variable WF-FPUB    variable WF-FSTATE
+variable WF-K0      variable WF-F0      variable WF-V0
+variable WF-L0      variable WF-O0
+variable WF-K1      variable WF-F1      variable WF-V1
+variable WF-L1      variable WF-O1
+variable WF-CALL-FAM
+variable WF-PK      variable WF-LAY
+
+: WF-REG-SAVE ( -- )
+   TFAM-N@ P-TFAM !       SUMV-N@ P-SUMV !
+   SCHEMA-N@ P-SCHN !     SCHEMA-ROOT-N@ P-SCHR !
+   TF-STR-U@ P-STRU !      TF-PK-N@ WF-PK !
+   LAY-N@ WF-LAY !         TYPE-FIELD:COUNT P-PF ! ;
+
+: WF-REG-SAME ( -- )
+   TFAM-N@ P-TFAM @ T=       SUMV-N@ P-SUMV @ T=
+   SCHEMA-N@ P-SCHN @ T=     SCHEMA-ROOT-N@ P-SCHR @ T=
+   TF-STR-U@ P-STRU @ T=      TF-PK-N@ WF-PK @ T=
+   LAY-N@ WF-LAY @ T=         TYPE-FIELD:COUNT P-PF @ T= ;
+
+: WF-EVENT-SAVE ( -- )
+   DEV-N @ 0 > IF
+      0 DEV-PROV-KIND@ WF-K0 !
+      0 DEV-PROV-FAM@ WF-F0 !
+      0 DEV-PROV-VAR@ WF-V0 !
+      0 DEV-PROV-FLD@ WF-L0 !
+      0 DEV-PROV-OWNER@ WF-O0 !
+   THEN
+   DEV-N @ 1 > IF
+      1 DEV-PROV-KIND@ WF-K1 !
+      1 DEV-PROV-FAM@ WF-F1 !
+      1 DEV-PROV-VAR@ WF-V1 !
+      1 DEV-PROV-FLD@ WF-L1 !
+      1 DEV-PROV-OWNER@ WF-O1 !
+   THEN ;
+
+: WF-EVENT-SAME ( -- )
+   DEV-N @ 0 > IF
+      0 DEV-PROV-KIND@ WF-K0 @ T=
+      0 DEV-PROV-FAM@ WF-F0 @ T=
+      0 DEV-PROV-VAR@ WF-V0 @ T=
+      0 DEV-PROV-FLD@ WF-L0 @ T=
+      0 DEV-PROV-OWNER@ WF-O0 @ T=
+   THEN
+   DEV-N @ 1 > IF
+      1 DEV-PROV-KIND@ WF-K1 @ T=
+      1 DEV-PROV-FAM@ WF-F1 @ T=
+      1 DEV-PROV-VAR@ WF-V1 @ T=
+      1 DEV-PROV-FLD@ WF-L1 @ T=
+      1 DEV-PROV-OWNER@ WF-O1 @ T=
+   THEN ;
+
+: WF-STATE-SAVE ( -- )
+   DEV-N @ WF-N !             DEV-PUB-N @ WF-PUB !
+   DEV-BASE-FLD @ WF-BASE !   DEV-FLD-ORD @ WF-FORD !
+   DEV-VAR-ORD @ WF-VORD !    DEV-CUR-VAR @ WF-CUR !
+   DEV-TX-DEPTH @ WF-DEPTH !  DEV-TX-SERIAL @ WF-SERIAL !
+   DEV-FLD-PROVISIONAL-COUNT WF-PFN !
+   TYPE-FIELD:TX-DEPTH WF-PF-DEPTH !
+   DEV-TX-TOP {: frame:ptr :}
+   frame DEVTX.EVN @ WF-FEVN !       frame DEVTX.FLDORD @ WF-FFORD !
+   frame DEVTX.VARORD @ WF-FVORD !   frame DEVTX.CURVAR @ WF-FCUR !
+   frame DEVTX.FLDTOK @ WF-FLDTOK !  frame DEVTX.TOK @ WF-TOK !
+   frame DEVTX.PUBN @ WF-FPUB !      frame DEVTX.STATE @ WF-FSTATE !
+   frame DEVTX.FAM @ WF-FAM !        frame DEVTX.OWNER @ WF-OWNER !
+   WF-EVENT-SAVE ;
+
+: WF-STATE-SAME ( -- )
+   DEV-N @ WF-N @ T=             DEV-PUB-N @ WF-PUB @ T=
+   DEV-BASE-FLD @ WF-BASE @ T=   DEV-FLD-ORD @ WF-FORD @ T=
+   DEV-VAR-ORD @ WF-VORD @ T=    DEV-CUR-VAR @ WF-CUR @ T=
+   DEV-TX-DEPTH @ WF-DEPTH @ T=  DEV-TX-SERIAL @ WF-SERIAL @ T=
+   DEV-FLD-PROVISIONAL-COUNT WF-PFN @ T=
+   TYPE-FIELD:TX-DEPTH WF-PF-DEPTH @ T=
+   DEV-TX-TOP {: frame:ptr :}
+   frame DEVTX.EVN @ WF-FEVN @ T=
+   frame DEVTX.FLDORD @ WF-FFORD @ T=
+   frame DEVTX.VARORD @ WF-FVORD @ T=
+   frame DEVTX.CURVAR @ WF-FCUR @ T=
+   frame DEVTX.FLDTOK @ WF-FLDTOK @ T=
+   frame DEVTX.TOK @ WF-TOK @ T=
+   frame DEVTX.PUBN @ WF-FPUB @ T=
+   frame DEVTX.STATE @ WF-FSTATE @ T=
+   frame DEVTX.FAM @ WF-FAM @ T=
+   frame DEVTX.OWNER @ WF-OWNER @ T=
+   WF-EVENT-SAME ;
+
+: WF-START ( -- )
+   RESET
+   TWX-CAND-START
+   OPEN TOK !
+   TOK @ FV7 @ DECL TOK ! ;
+
+: WF-START-UNBOUND ( -- )
+   RESET
+   TWX-CAND-START
+   OPEN TOK ! ;
+
+: WF-FINISH ( -- )
+   TOK @ ROLLBACK
+   0 TWX-CAND-DONE drop
+   DEPTH 0 T=
+   CURRENT-VARIANT NO-VARIANT T= ;
+
+: WF-RUN ( [ -- ] -- ) {: op :} \ typed-local-lint: allow-bare-local
+   WF-REG-SAVE
+   WF-STATE-SAVE
+   op catch TC !
+   TC @ E-DEV-FAMILY-SCOPE T=
+   WF-STATE-SAME
+   WF-REG-SAME ;
+
+: WF-BAD-ARITY ( -- ) TOK @ WF-CALL-FAM @ 1 ARITY drop ;
+: WF-BAD-POLICY ( -- ) TOK @ WF-CALL-FAM @ 0 POLICY drop ;
+: WF-BAD-DERIVE ( -- ) TOK @ WF-CALL-FAM @ 9 DERIVE drop ;
+: WF-BAD-VARIANT ( -- ) TOK @ WF-CALL-FAM @ s" wf-variant" VARIANT drop ;
+: WF-BAD-END ( -- ) TOK @ WF-CALL-FAM @ END-VARIANT drop ;
+: WF-BAD-DECL ( -- ) TOK @ WF-CALL-FAM @ DECL drop ;
+: WF-BAD-FIELD ( -- )
+   TOK @ WF-CALL-FAM @ s" wf-field" SCHROOT @
+   0 1 0 CELL CELL 0 FIELD drop ;
+
+FE2 @ WF-CALL-FAM !
+WF-START  ' WF-BAD-ARITY WF-RUN  WF-FINISH
+WF-START  ' WF-BAD-POLICY WF-RUN  WF-FINISH
+WF-START  ' WF-BAD-DERIVE WF-RUN  WF-FINISH
+WF-START  ' WF-BAD-VARIANT WF-RUN  WF-FINISH
+WF-START
+TOK @ FV7 @ s" wf-open" VARIANT TOK !
+' WF-BAD-END WF-RUN
+WF-FINISH
+WF-START  ' WF-BAD-DECL WF-RUN  WF-FINISH
+WF-START  ' WF-BAD-FIELD WF-RUN  WF-FINISH
+
+DEV-NO-FAMILY WF-CALL-FAM !
+WF-START-UNBOUND  ' WF-BAD-ARITY WF-RUN  WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-POLICY WF-RUN  WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-DERIVE WF-RUN  WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-VARIANT WF-RUN  WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-END WF-RUN  WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-DECL WF-RUN  WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-FIELD WF-RUN  WF-FINISH
 
 ;package
 

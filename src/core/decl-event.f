@@ -83,7 +83,11 @@ package DECL-EVENT
 
 -1 constant DEV-NO-VARIANT   \ VAR sentinel: no open variant (structure fields, framing)
 -1 constant DEV-NO-FIELD     \ FLD sentinel for every non-field event
+-1 constant DEV-NO-FAMILY    \ DEVTX.FAM sentinel: DECL has not bound this frame
 -1 constant DEV-NO-OWNER     \ frame has not emitted an event
+
+0 constant DEV-FAMILY-USE
+1 constant DEV-FAMILY-BIND
 
 \ --- named reject codes (thrown, caught by the parser/CHECK path or unit `catch`).
 \ Field name-gate and variant duplicate/canonical codes (E-TFAM-DUP 7102,
@@ -229,6 +233,18 @@ variable DEV-TX-SERIAL
    DEV-TX-DEPTH @ 0= IF E-DEV-TX throw THEN
    DEV-TX-DEPTH @ 1 - DEV-TX-AT ;
 : DEV-TX-REQUIRE ( n -- ) DEV-TX-TOP DEVTX.TOK @ <> IF E-DEV-TX throw THEN ;
+: DEV-FAMILY-REQUIRE ( n n n -- )
+   {: tok:n fam:n bind:n :}
+   tok DEV-TX-REQUIRE
+   fam DEV-NO-FAMILY = IF E-DEV-FAMILY-SCOPE throw THEN
+   DEV-TX-TOP DEVTX.FAM @ {: owner:n :}
+   owner DEV-NO-FAMILY = IF
+      bind 0= IF E-DEV-FAMILY-SCOPE throw THEN
+      fam DEV-TX-TOP DEVTX.FAM !
+      EXIT
+   THEN
+   owner fam <> IF E-DEV-FAMILY-SCOPE throw THEN
+   bind 0= 0= IF E-DEV-STATE throw THEN ;
 
 : DEV-OPEN ( -- n )
    DEV-TX-ENSURE
@@ -251,7 +267,7 @@ variable DEV-TX-SERIAL
    tok r DEVTX.TOK !
    DEV-PUB-N @ r DEVTX.PUBN !
    DEV-TX-OPEN r DEVTX.STATE !
-   DEV-NO-VARIANT r DEVTX.FAM !
+   DEV-NO-FAMILY r DEVTX.FAM !
    DEV-NO-OWNER r DEVTX.OWNER !
    DEV-TX-DEPTH @ 1 + DEV-TX-DEPTH !
    tok ;
@@ -301,9 +317,7 @@ variable DEV-TX-SERIAL
 
 \ --- declaration open + header clauses.
 : DEV-DECL ( n n -- n ) {: tok:n fam:n :}          \ open one declaration
-   tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.FAM @ DEV-NO-VARIANT <> IF E-DEV-STATE throw THEN
-   fam DEV-TX-TOP DEVTX.FAM !
+   tok fam DEV-FAMILY-BIND DEV-FAMILY-REQUIRE
    DEV-K-DECL fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT
    tok ;
 
@@ -411,19 +425,19 @@ variable DEV-TX-SERIAL
    nip ;
 
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}   \ header: arity value (shared bound)
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
    DEV-K-ARITY fam arity DEV-NO-FIELD DEV-EMIT
    tok ;
 
 : DEV-POLICY ( n n n -- n ) {: tok:n fam:n policy:n :}   \ header: POLICY clause (at most once)
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-POLICY DEV-CUR-HAS-KIND? IF E-DEV-DUP-POLICY throw THEN
    DEV-K-POLICY fam policy DEV-NO-FIELD DEV-EMIT
    tok ;
 
 : DEV-DERIVE ( n n n -- n ) {: tok:n fam:n feature:n :}   \ header: DERIVE feature (each once)
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-DERIVE feature DEV-CUR-HAS-KIND-VAR? IF E-DEV-DUP-DERIVE throw THEN
    DEV-K-DERIVE fam feature DEV-NO-FIELD DEV-EMIT
    tok ;
@@ -434,7 +448,7 @@ variable DEV-TX-SERIAL
 \ (ss=sc=pc=0); field rows are discovered downstream by (family, variant-id).
 \ Close clears the selector.
 : DEV-VARIANT ( n n ptr u8 n -- n ) {: tok:n fam:n na:ptr nu:n :}
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    na nu DEV-NAME-VARIANT-REQUIRE
    fam na nu DEV-VAR-ORD @ 0 0 0 DEV-SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
@@ -442,7 +456,7 @@ variable DEV-TX-SERIAL
    DEV-K-VARIANT fam vid DEV-NO-FIELD DEV-EMIT
    tok ;
 : DEV-END-VARIANT ( n n -- n ) {: tok:n fam:n :}
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-VARIANT-END fam DEV-CUR-VAR @ DEV-NO-FIELD DEV-EMIT
    DEV-NO-VARIANT DEV-CUR-VAR !
    tok ;
@@ -456,7 +470,7 @@ variable DEV-TX-SERIAL
 \ produce the identical event + row shape.
 : DEV-FIELD ( n n ptr u8 n n n n n n n n -- n )
    {: tok:n fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-TX-TOP DEVTX.FLDTOK @ {: fldtok:n :}        \ PF-ADD wants the field-tx token, not our serial
    fldtok fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags DEV-FLD-ADD drop
    DEV-K-FIELD fam DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
