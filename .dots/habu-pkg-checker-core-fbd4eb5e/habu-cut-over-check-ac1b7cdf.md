@@ -1,9 +1,9 @@
 ---
 title: Cut over CHECK session
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-23T02:10:26.520974+02:00"
+created-at: "\"2026-07-23T02:10:26.520974+02:00\""
 ---
 
 Why: checker callers mutate global cells, borrow caller spans, eagerly materialize source, and split selection from execution. This is the one atomic ownership and public-session cutover; splitting that seam would require a second authority or forwarding globals.
@@ -16,4 +16,4 @@ Execution contract: RUN alone checks bin/hb availability, creates and cleans tem
 
 Command contract: MAIN calls RESET, parses the existing CLI spellings --json-errors, --strict-signatures, --all-errors, --source-list, and -- exactly as today through the public operations, calls RUN once, and throws any nonzero result. tools/check.f and tools/check-main.f invoke only CHECK:MAIN. GATE-DIAGNOSTICS configures checks only through public CHECK words. tools/check-test-lib.f uses bare private access only while package CHECK is reopened; do not export a test bridge.
 
-Acceptance: prove caller-buffer mutation cannot change pending source, label, or file selections; empty source differs from none; option repetitions and order are stable; every mode collision, path/source/label capacity, empty list, missing file, and missing engine outcome is exact; repeated success and failure leave no temporary state and preserve selection; captured bytes have the specified lifetime. The actual stdin, one-file, source-list, preverify, all-errors, JSON, nominal, package, and diagnostics entry points remain byte-exact. Run tools/check-test.f, real tools/check.f stdin/file/list probes, gate diagnostics diag-undef-primary, exact ownership/type checks, host lint, and file-map lint. Forbidden: borrowed selection spans, eager SOURCE materialization, sentinel lengths, inferred modes, a public list or capture-on API, aliases, exported storage, compatibility globals, provider qualification before those providers are packaged, or a second session authority. Claim: unassigned.
+Acceptance: prove caller-buffer mutation cannot change pending source, label, or file selections; empty source differs from none; option repetitions and order are stable; every mode collision, path/source/label capacity, empty list, missing file, and missing engine outcome is exact; repeated success and failure leave no temporary state and preserve selection; captured bytes have the specified lifetime. The actual stdin, one-file, source-list, preverify, all-errors, JSON, nominal, package, and diagnostics entry points remain byte-exact. Run tools/check-test.f, real tools/check.f stdin/file/list probes, gate diagnostics diag-undef-primary, exact ownership/type checks, host lint, and file-map lint. Forbidden: borrowed selection spans, eager SOURCE materialization, sentinel lengths, inferred modes, a public list or capture-on API, aliases, exported storage, compatibility globals, provider qualification before those providers are packaged, or a second session authority. Claim: agent=check_cutover workspace=.jj-ws/habu-cut-over-check-ac1b7cdf.
