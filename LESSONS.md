@@ -2209,3 +2209,7 @@ fits.
   before commit. If a red checkpoint is found before publication, rebuild its
   accepted content as individually green commits and prove the final tree is
   identical before replacing the history.
+- **Do not overlap gates that share a durable default root.** `test/run.f` and
+  standalone `maki/test.f` both use `tmp/cad-store`; concurrent runs can reset
+  each other's replay rows even when `HB_TMP` differs. Serialize them unless
+  each process has a distinct `HABU_CAD_STORE`.
