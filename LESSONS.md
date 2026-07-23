@@ -2176,3 +2176,18 @@ fits.
   review cost. Keep each row once, pin a canonical digest over the public
   accessors, and separately prove descriptor spans, bounds, and exact public
   inventory.
+- **A private name does not make returned storage immutable.** A sealed package
+  that returns its backing pointer gives every caller write authority over the
+  reference data. Return caller-owned copies, derive descriptor bounds from
+  labels, validate the complete descriptor before publication, and mutate the
+  copies to prove that a second read still returns the canonical corpus.
+- **Copy-out APIs need distinguishable spans and alias preflight.** Passing two
+  unrelated containers as the same raw header type lets a role swap certify and
+  reinterpret their layouts. Accept typed byte/cell spans, prove capacity and
+  pairwise non-overlap before the first write, and serialize raw descriptors as
+  well as logical outputs so a hidden count or offset cannot drift.
+- **A nominal API still needs a named representation owner.** A typed length or
+  index cannot enter pointer arithmetic through an ad hoc caller cast. Keep the
+  audited projection private to the module that owns the storage operation,
+  inventory it, and migrate production consumers onto the typed interface
+  before asking them to consume typed reference data.
