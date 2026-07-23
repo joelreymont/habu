@@ -1,9 +1,11 @@
 ---
 title: Package stdlib gate worker
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T05:06:41.785483+02:00\""
+created-at: "\"\\\"2026-07-23T05:06:41.785483+02:00\\\"\""
+closed-at: "2026-07-23T06:10:54.260884+02:00"
+close-reason: Landed 4d0ef032 on verified master 75bd2661; fresh destruction accepted the checked quotation handoff and Maki, PTX/stdlib, host, file-map, dot, and full native gates passed.
 ---
 
 Why: the standard-library resident worker is still a package-less executable module, so changing its tail-process dispatch would fail the exact package ownership gate. Required result: test/run-worker-stdlib.f opens package STDLIB-WORKER around the complete current module; every definition, constant, buffer, and cell stays private, and a private RUN preserves the existing argument validation and dispatch. RUN loads or forks package-owning children, so it must execute only after STDLIB-WORKER closes. Define a private ACTION with effect `( -- [ -- ] )` that returns `[: RUN ;]`, invoke ACTION immediately before `;package`, and invoke `execute` immediately after `;package`. The checked quotation is the sole value carried across package closure. Do not publish an API or add an alias, cell, defer, copied state, raw execution token, caller change, or other cross-package storage. Preserve worker identifier routing, arguments, diagnostics, exit codes, and resident-worker behavior byte-for-byte. Prerequisites: none beyond verified master. Owned result and files: package ownership of test/run-worker-stdlib.f only. Acceptance: no former worker name is globally or externally qualified reachable; the package is closed when the actual resident standard-library worker loads its first package-owning child; the production worker and its current invalid-argument cases remain exact; changing ACTION's quotation effect is rejected statically; a qualified private RUN lookup and an ownership mutation both fail. Smallest owning-path check: run the resident worker standard-library slice through its actual gate-runner path, plus exact package and typed-local diff checks. Claim: agent=stdlib_worker_pkg workspace=.jj-ws/habu-pkg-stdlib-gate-fb28fe63.
