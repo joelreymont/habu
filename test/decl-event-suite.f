@@ -103,7 +103,7 @@ DECL-EVENT:COUNT P-DEV !
 TWX-CAND-START
    DECL-EVENT:OPEN TOK !
    TOK @ FE2 @ DECL-EVENT:DECL TOK !
-   TOK @ FE2 @ s" va" DECL-EVENT:VARIANT TOK !         \ registers a variant (SUMV-ADD)
+   TOK @ FE2 @ s" valid-a" DECL-EVENT:VARIANT TOK !    \ registers a variant (SUMV-ADD)
    DECL-EVENT:CURRENT-VARIANT SUMV-N@ 1 - T=           \ selector is the just-added variant id
    TOK @ FE2 @ s" y" SCHROOT @ 0 1 0 CELL CELL 0 DECL-EVENT:FIELD TOK !
    TOK @ DECL-EVENT:ROLLBACK                            \ retire events + field rows + selector
@@ -270,11 +270,76 @@ package DECL-EVENT
 TEST-STANDALONE-PREFLIGHT
 
 \ ---------------------------------------------------------------------------
-\ 12. A field-snapshot failure changes no participant state.  The only raw
+\ 12. A frame opened before a nested declaration still receives a distinct
+\     owner when its own declaration event is emitted.
+\ ---------------------------------------------------------------------------
+: TEST-INNER-PAYLOAD ( -- )
+   TOK @ FV7 @ IDA @ PAYLOAD-N drop ;
+
+: TEST-OWNER-BEFORE-DECL ( -- )
+   TWX-CAND-START
+   OPEN TOK !
+   OPEN ITOK !
+   ITOK @ FV7 @ DECL ITOK !
+   ITOK @ FV7 @ s" owner-inner" VARIANT ITOK !
+   CURRENT-VARIANT IDA !
+   ITOK @ FV7 @ s" inner-field" SCHROOT @ 0 1 0 CELL CELL 0 FIELD ITOK !
+   ITOK @ FV7 @ END-VARIANT ITOK !
+   ITOK @ PUBLISH
+   TOK @ FV7 @ DECL TOK !
+   TOK @ FV7 @ s" owner-outer" VARIANT TOK !
+   CURRENT-VARIANT IDB !
+   TOK @ FV7 @ s" outer-field" SCHROOT @ 1 1 CELL CELL CELL 0 FIELD TOK !
+   TOK @ FV7 @ END-VARIANT TOK !
+   TOK @ FV7 @ IDB @ PAYLOAD-N 1 T=
+   [: TEST-INNER-PAYLOAD ;] catch TC !
+   TC @ E-DEV-FIELD-SCOPE T=
+   TOK @ ROLLBACK
+   0 TWX-CAND-DONE drop ;
+
+TEST-OWNER-BEFORE-DECL
+
+\ ---------------------------------------------------------------------------
+\ 13. Reversible publication closes the provisional payload view before the
+\     coordinator finalizes the frame.
+\ ---------------------------------------------------------------------------
+E-PF-TX constant TEST-E-PF-TX
+
+: TEST-PAYLOAD-QUERY ( -- )
+   TOK @ FV7 @ VAR-E @ PAYLOAD-N drop ;
+
+: TEST-PAYLOAD-WIDTH ( -- )
+   TOK @ FV7 @ VAR-E @ 0 PAYLOAD-WIDTH@ drop ;
+
+: TEST-FIELD-CELLS ( -- )
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ P-PF @ DEV-FLD-TX-CELLS-FOR drop ;
+
+: TEST-PUBLISHED-PAYLOAD-HIDDEN ( -- )
+   OPEN TOK !
+   TOK @ FV7 @ DECL TOK !
+   TOK @ FV7 @ s" hidden" VARIANT TOK !
+   CURRENT-VARIANT VAR-E !
+   TOK @ FV7 @ s" hidden-field" SCHROOT @ 0 1 0 CELL CELL 0 FIELD TOK !
+   DEV-N @ 1 - DEV-PROV-FLD@ P-PF !
+   [: TEST-PAYLOAD-WIDTH ;] catch TC !
+   TC @ E-DEV-FIELD-SCOPE T=
+   TOK @ FV7 @ END-VARIANT TOK !
+   TOK @ FV7 @ VAR-E @ 0 PAYLOAD-WIDTH@ 1 T=
+   TOK @ DEV-PREPARE
+   TOK @ DEV-COMMIT
+   [: TEST-FIELD-CELLS ;] catch TC !
+   TC @ TEST-E-PF-TX T=
+   [: TEST-PAYLOAD-QUERY ;] catch TC !
+   TC @ E-DEV-TX T=
+   TOK @ DEV-FINALIZE ;
+
+TEST-PUBLISHED-PAYLOAD-HIDDEN
+
+\ ---------------------------------------------------------------------------
+\ 14. A field-snapshot failure changes no participant state.  The only raw
 \     test seam swaps the pre-hook field token serial and captures its complete
 \     transaction state; it stays private to DECL-EVENT.
 \ ---------------------------------------------------------------------------
-E-PF-TX constant TEST-E-PF-TX
 $7FFFFFFFFFFFFFFF constant TEST-SERIAL-MAX
 
 variable B-DEV-N      variable B-DEV-PUB
@@ -387,6 +452,111 @@ TRUSTED: TEST-PF-SWAP ( n -- )
    C-PF-SERIAL @ TEST-PF-SWAP ;
 
 TEST-SNAPSHOT-FAILURE
+
+\ ---------------------------------------------------------------------------
+\ 15. The raw VARIANT event applies the sealed name policy before SUMV, ordinal,
+\ event, field, or selector mutation. Rejection changes neither the live frame
+\ nor any registry; rollback then restores the complete pre-transaction state.
+\ A family owned only by another package remains a legal variant name.
+\ ---------------------------------------------------------------------------
+s" " CHECKER-PACKAGE-PUBLIC s" raw-global" 0 TK-ENUM TWX-TFAM-DECL drop
+s" decl-event" CHECKER-PACKAGE-PUBLIC s" raw-local" 0 TK-ENUM TWX-TFAM-DECL drop
+s" other-event-test" CHECKER-PACKAGE-PUBLIC s" raw-foreign" 0 TK-ENUM TWX-TFAM-DECL drop
+VALUE-RECORD event-record payload n END-VALUE-RECORD
+
+variable VN-A         variable VN-U
+variable VN-TFAM      variable VN-STR       variable VN-PK
+variable VN-SUMV      variable VN-LAY       variable VN-SCH
+variable VN-ROOT      variable VN-PF        variable VN-PFP
+variable VN-ON        variable VN-OPUB      variable VN-OBASE
+variable VN-OFORD     variable VN-OVORD     variable VN-OCUR
+variable VN-ODEPTH
+variable VN-IN        variable VN-IPUB      variable VN-IBASE
+variable VN-IFORD     variable VN-IVORD     variable VN-ICUR
+variable VN-IDEPTH    variable VN-ISERIAL
+
+: VN-SAVE-REG ( -- )
+   TFAM-N@ VN-TFAM !          TF-STR-U@ VN-STR !
+   TF-PK-N@ VN-PK !           SUMV-N@ VN-SUMV !
+   LAY-N@ VN-LAY !            SCHEMA-N@ VN-SCH !
+   SCHEMA-ROOT-N@ VN-ROOT !   TYPE-FIELD:COUNT VN-PF !
+   DEV-FLD-PROVISIONAL-COUNT VN-PFP ! ;
+
+: VN-CHECK-REG ( -- )
+   TFAM-N@ VN-TFAM @ T=          TF-STR-U@ VN-STR @ T=
+   TF-PK-N@ VN-PK @ T=           SUMV-N@ VN-SUMV @ T=
+   LAY-N@ VN-LAY @ T=            SCHEMA-N@ VN-SCH @ T=
+   SCHEMA-ROOT-N@ VN-ROOT @ T=   TYPE-FIELD:COUNT VN-PF @ T=
+   DEV-FLD-PROVISIONAL-COUNT VN-PFP @ T= ;
+
+: VN-SAVE-OUT ( -- )
+   DEV-N @ VN-ON !               DEV-PUB-N @ VN-OPUB !
+   DEV-BASE-FLD @ VN-OBASE !     DEV-FLD-ORD @ VN-OFORD !
+   DEV-VAR-ORD @ VN-OVORD !      DEV-CUR-VAR @ VN-OCUR !
+   DEV-TX-DEPTH @ VN-ODEPTH ! ;
+
+: VN-CHECK-OUT ( -- )
+   DEV-N @ VN-ON @ T=               DEV-PUB-N @ VN-OPUB @ T=
+   DEV-BASE-FLD @ VN-OBASE @ T=     DEV-FLD-ORD @ VN-OFORD @ T=
+   DEV-VAR-ORD @ VN-OVORD @ T=      DEV-CUR-VAR @ VN-OCUR @ T=
+   DEV-TX-DEPTH @ VN-ODEPTH @ T= ;
+
+: VN-SAVE-IN ( -- )
+   DEV-N @ VN-IN !               DEV-PUB-N @ VN-IPUB !
+   DEV-BASE-FLD @ VN-IBASE !     DEV-FLD-ORD @ VN-IFORD !
+   DEV-VAR-ORD @ VN-IVORD !      DEV-CUR-VAR @ VN-ICUR !
+   DEV-TX-DEPTH @ VN-IDEPTH !    DEV-TX-SERIAL @ VN-ISERIAL ! ;
+
+: VN-CHECK-IN ( -- )
+   DEV-N @ VN-IN @ T=               DEV-PUB-N @ VN-IPUB @ T=
+   DEV-BASE-FLD @ VN-IBASE @ T=     DEV-FLD-ORD @ VN-IFORD @ T=
+   DEV-VAR-ORD @ VN-IVORD @ T=      DEV-CUR-VAR @ VN-ICUR @ T=
+   DEV-TX-DEPTH @ VN-IDEPTH @ T=    DEV-TX-SERIAL @ VN-ISERIAL @ T= ;
+
+: VN-CALL ( -- )
+   TOK @ FV7 @ VN-A @ VN-U @ VARIANT drop ;
+
+: VN-REJECT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+   a VN-A !  u VN-U !
+   VN-SAVE-REG  VN-SAVE-OUT
+   TWX-CAND-START
+   OPEN TOK !
+   TOK @ FV7 @ DECL TOK !
+   VN-SAVE-IN
+   [: VN-CALL ;] catch TC !
+   TC @ want T=
+   VN-CHECK-IN  VN-CHECK-REG
+   TOK @ ROLLBACK
+   0 TWX-CAND-DONE drop
+   VN-CHECK-OUT  VN-CHECK-REG ;
+
+: VN-ACCEPT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a VN-A !  u VN-U !
+   VN-SAVE-REG  VN-SAVE-OUT
+   TWX-CAND-START
+   OPEN TOK !
+   TOK @ FV7 @ DECL TOK !
+   [: VN-CALL ;] catch TC !
+   TC @ 0 T=
+   SUMV-N@ VN-SUMV @ 1 + T=
+   DEV-VAR-ORD @ 1 T=
+   DEV-CUR-VAR @ DECL-EVENT:NO-VARIANT <> T-TRUE
+   TOK @ ROLLBACK
+   0 TWX-CAND-DONE drop
+   VN-CHECK-OUT  VN-CHECK-REG ;
+
+s" " 7107 VN-REJECT
+s" n" 7110 VN-REJECT
+s" q" 7110 VN-REJECT
+s" if" 7110 VN-REJECT
+s" variant" 7110 VN-REJECT
+s" bool" 7110 VN-REJECT
+s" event-record" 7110 VN-REJECT
+s" space-x" 7110 VN-REJECT
+s" raw-global" 7110 VN-REJECT
+s" raw-local" 7110 VN-REJECT
+s" raw-foreign" VN-ACCEPT
+s" ready" VN-ACCEPT
 
 ;package
 

@@ -1285,6 +1285,50 @@ RBPID @ TYPE-FIELD:NO-VARIANT s" f0" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T
 RBPID @ TYPE-FIELD:NO-VARIANT s" f1" TYPE-FIELD:FIND FOUNDF ! drop FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
+\ The sealed TYPE-NAME owner rejects every reserved variant category and only
+\ families in the global or active package scope. An unrelated package does not
+\ reserve the same tail.
+\ ---------------------------------------------------------------------------
+s" " CHECKER-PACKAGE-PUBLIC s" global-variant" 0 TK-ENUM TWX-TFAM-DECL drop
+s" variant-name-test" CHECKER-PACKAGE-PUBLIC s" local-variant" 0 TK-ENUM TWX-TFAM-DECL drop
+s" other-variant-test" CHECKER-PACKAGE-PUBLIC s" foreign-variant" 0 TK-ENUM TWX-TFAM-DECL drop
+
+package variant-name-test
+
+VALUE-RECORD variant-record payload n END-VALUE-RECORD
+
+s" " ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7107 T=
+s" Bad" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7101 T=
+s" n" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" q" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" variant-record" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" field" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" bool" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" space-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" fresh-mask-x" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" if" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" global-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" local-variant" ' TYPE-NAME:VARIANT-REQUIRE catch TC ! 2drop
+TC @ 7110 T=
+s" foreign-variant" TYPE-NAME:VARIANT-REQUIRE
+s" ready" TYPE-NAME:VARIANT-REQUIRE
+
+;package
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

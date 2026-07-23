@@ -13,8 +13,9 @@
 \ carries the open variant selector; every reject anchor (mixed mode,
 \ arity-then-compact, compact header, compact positional payload, missing
 \ ;VARIANT / ;ENUM, malformed arity, empty enum, reserved / case family name,
-\ duplicate variant, and the field record's own dup / reserved / case / schema
-\ gate) fires at the offending token; a mid-declaration reject leaves every
+\ duplicate variant, every reserved variant-name category, package-scoped family
+\ collisions, and the field record's own dup / reserved / case / schema gate)
+\ fires at the offending token; a mid-declaration reject leaves every
 \ registry cursor byte-identical to the pre-declaration baseline; and the
 \ deterministic snapshot identity is reproducible for an identical declaration
 \ against a fresh registry.
@@ -84,6 +85,73 @@ TRUSTED: SUMVN@ ( -- n ) SUMV-N @ ;
 
 variable RC   variable FID   variable B   variable NODE   variable PFB   variable DEVB
 variable VS0  variable VID
+
+\ The production parser and GENERATED-DECL coordinator stay unchanged.  These
+\ private drivers pause only the test body between DRIVE and coordinator
+\ PREPARE, while declaration events and field rows are still provisional.
+package ENUM-DECL
+
+: TEST-PAYLOAD-VIEW ( -- )
+   FAM @ FID !
+   VBASE @ VS0 !
+   VBASE @ 2 + VID !
+   TOK @ RC !
+
+   s" ENUM-DECL:ED-RUN epnested 0 VARIANT foreign FIELD nested n ;VARIANT ;ENUM" EV
+   VBASE @ NODE !
+
+   s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-N 0 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-CELLS 0 T=" EV
+
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-N 1 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCH-ROOT@ SCH-A@ CCN# T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 1 + DECL-EVENT:PAYLOAD-CELLS 1 T=" EV
+
+   s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-N 2 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-SCHEMA@ SCH-ROOT@ SCH-A@ CCN# T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-SCHEMA@ SCH-ROOT@ SCH-A@ PFB @ T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ 0 DECL-EVENT:PAYLOAD-WIDTH@ 1 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ 1 DECL-EVENT:PAYLOAD-WIDTH@ 2 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ DECL-EVENT:PAYLOAD-CELLS 3 T=" EV
+
+   s" DECL-EVENT:CURRENT PFB @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7173 T=" EV
+   s" DECL-EVENT:CURRENT FID @ -1 ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VS0 @ 0 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ -1 ' DECL-EVENT:PAYLOAD-WIDTH@ catch B ! drop drop drop drop B @ 7172 T=" EV
+   s" DECL-EVENT:CURRENT FID @ VID @ 2 ' DECL-EVENT:PAYLOAD-SCHEMA@ catch B ! drop drop drop drop B @ 7172 T=" EV
+   s" DECL-EVENT:CURRENT FID @ NODE @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" EV
+
+   DECL-EVENT:OPEN NODE !
+   NODE @ FID @ DECL-EVENT:DECL NODE !
+   s" RC @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7161 T=" EV
+   s" NODE @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop B @ 7172 T=" EV
+   NODE @ DECL-EVENT:ROLLBACK ;
+
+: TEST-PAYLOAD-BODY ( -- )
+   ED-RESET DRIVE
+   TEST-PAYLOAD-VIEW ;
+
+: TEST-PAYLOAD-RUN ( -- )
+   [: TEST-PAYLOAD-BODY ;] GENERATED-DECL:RUN ;
+
+: TEST-PAYLOAD-XT ( -- [ -- ] )
+   [: TEST-PAYLOAD-RUN ;] ;
+
+: TEST-PAYLOAD-ROLL-BODY ( -- )
+   ED-RESET DRIVE
+   FAM @ FID !
+   VBASE @ VS0 !
+   TOK @ RC !
+   E-SYNTAX throw ;
+
+: TEST-PAYLOAD-ROLL ( -- )
+   [: TEST-PAYLOAD-ROLL-BODY ;] GENERATED-DECL:RUN ;
+
+: TEST-PAYLOAD-ROLL-XT ( -- [ -- ] )
+   [: TEST-PAYLOAD-ROLL ;] ;
+
+;package
 
 \ ---------------------------------------------------------------------------
 \ 1. A compact declaration persists a TK-ENUM family and one payloadless SUMV row
@@ -160,6 +228,34 @@ s" ENUM-DECL:ED-RUN emap 23 VARIANT values FIELD pa a FIELD pb b FIELD pc c FIEL
 s" emap" FAMID F-FLD-COUNT 10 T=                      \ every mapped/scalar field committed
 
 \ ---------------------------------------------------------------------------
+\ 4c. The production ENUM parser exposes only the current transaction's ordered
+\     payload view before publication.  An empty variant, a scalar field, and
+\     two ordered fields of widths one and two cover every public query.
+\ ---------------------------------------------------------------------------
+s" STRUCTURE epwide 0 FIELD left n FIELD right n ;STRUCTURE" EV
+s" epwide" FAMID PFB !
+
+package ENUM-DECL
+TEST-PAYLOAD-XT
+execute epview 0
+   VARIANT empty ;VARIANT
+   VARIANT scalar FIELD value n ;VARIANT
+   VARIANT mixed FIELD first n FIELD pair epwide ;VARIANT
+;ENUM
+;package
+
+RC @ FID @ VID @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop
+B @ 7161 T=                                            \ published token is stale
+
+package ENUM-DECL
+TEST-PAYLOAD-ROLL-XT
+catch eproll 0 VARIANT gone FIELD value n ;VARIANT ;ENUM
+;package
+7107 T=                                                \ forced body failure rolled back
+RC @ FID @ VS0 @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop
+B @ 7161 T=                                            \ rolled-back token is stale
+
+\ ---------------------------------------------------------------------------
 \ 5. Compact event stream: DECL then one VARIANT + VARIANT-END pair per variant,
 \    with no arity header (compact is implicitly arity zero).
 \ ---------------------------------------------------------------------------
@@ -193,7 +289,7 @@ DECL-EVENT:COUNT 7 T=                                 \ DECL, ARITY, VARIANT, VA
 \ 7. POLICY reaches both the family record and the event stream (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN opt 0 POLICY packed-tag VARIANT a ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN opt 0 POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" EV
 s" opt" FAMID F-POLICY@ PACKED# T=                    \ family layout policy is packed-tag
 2 DECL-EVENT:POLICY? T-TRUE                           \ a POLICY event followed DECL + ARITY
 2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
@@ -203,7 +299,7 @@ s" opt" FAMID F-POLICY@ PACKED# T=                    \ family layout policy is 
 \    one clause are accepted, each recorded once (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN der 0 DERIVE eq hash VARIANT a ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN der 0 DERIVE eq hash VARIANT alpha ;VARIANT ;ENUM" EV
 s" der" FAMID F-EQ? T-TRUE                            \ eq derived
 s" der" FAMID F-HASH? T-TRUE                          \ hash derived
 2 DECL-EVENT:DERIVE? T-TRUE                           \ two DERIVE events after DECL + ARITY
@@ -217,7 +313,7 @@ s" der" FAMID F-HASH? T-TRUE                          \ hash derived
 REG-MARK
 TYPE-FIELD:COUNT PFB !
 DECL-EVENT:COUNT DEVB !
-s" ENUM-DECL:ED-RUN dupf 0 VARIANT a FIELD z n FIELD z n ;VARIANT ;ENUM" TRY 7102 T=
+s" ENUM-DECL:ED-RUN dupf 0 VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TRY 7102 T=
 TFAMN@ RB-TFAM @ T=                                   \ family retired
 SCHN@ RB-SCH @ T=                                     \ schema nodes retired
 SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
@@ -236,23 +332,23 @@ SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
 \ ---------------------------------------------------------------------------
 \ 11. Grammar / mode / arity / name / field rejects, each at the offending token.
 \ ---------------------------------------------------------------------------
-s" ENUM-DECL:ED-RUN emix red VARIANT a ;VARIANT ;ENUM" TRY 7107 T=       \ mixed modes (block token in compact)
+s" ENUM-DECL:ED-RUN emix red VARIANT alpha ;VARIANT ;ENUM" TRY 7107 T=       \ mixed modes (block token in compact)
 s" ENUM-DECL:ED-RUN eac 2 red ;ENUM" TRY 7107 T=                         \ arity then a bare compact variant
 s" ENUM-DECL:ED-RUN ech POLICY packed-tag red ;ENUM" TRY 7107 T=         \ header clause in a compact body
 s" ENUM-DECL:ED-RUN ecp red FIELD y n ;ENUM" TRY 7107 T=                 \ positional/named payload in compact
-s" ENUM-DECL:ED-RUN emv 0 VARIANT a FIELD x n ;ENUM" TRY 7107 T=         \ missing ;VARIANT
+s" ENUM-DECL:ED-RUN emv 0 VARIANT alpha FIELD x n ;ENUM" TRY 7107 T=         \ missing ;VARIANT
 s" ENUM-DECL:ED-RUN eme red green" TRY 7107 T=                           \ missing ;ENUM
-s" ENUM-DECL:ED-RUN ear 24 VARIANT a ;VARIANT ;ENUM" TRY 7108 T=         \ arity above the shared 23 cap
+s" ENUM-DECL:ED-RUN ear 24 VARIANT alpha ;VARIANT ;ENUM" TRY 7108 T=         \ arity above the shared 23 cap
 s" ENUM-DECL:ED-RUN eempty ;ENUM" TRY 7107 T=                            \ an enum needs a variant
 s" ENUM-DECL:ED-RUN enum red ;ENUM" TRY 7110 T=                          \ reserved opener keyword as a name
 s" ENUM-DECL:ED-RUN Bad red ;ENUM" TRY 7101 T=                           \ upper-case family name (case)
 s" ENUM-DECL:ED-RUN n red ;ENUM" TRY 7110 T=                             \ single-letter family name
-s" ENUM-DECL:ED-RUN erf 0 VARIANT a FIELD make n ;VARIANT ;ENUM" TRY 7125 T=   \ reserved field name
-s" ENUM-DECL:ED-RUN ecf 0 VARIANT a FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \ upper-case field name (case)
-s" ENUM-DECL:ED-RUN ebs 0 VARIANT a FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
-s" ENUM-DECL:ED-RUN euc 0 VARIANT a FIELD x Q ;VARIANT ;ENUM" TRY 7109 T=      \ upper-case single-letter type
-s" ENUM-DECL:ED-RUN epa 0 VARIANT a FIELD x a ;VARIANT ;ENUM" TRY 7109 T=      \ parameter outside declared arity
-s" ENUM-DECL:ED-RUN epg 6 VARIANT a FIELD x h ;VARIANT ;ENUM" TRY 7109 T=      \ parameter 6 is outside arity 6
+s" ENUM-DECL:ED-RUN erf 0 VARIANT alpha FIELD make n ;VARIANT ;ENUM" TRY 7125 T=   \ reserved field name
+s" ENUM-DECL:ED-RUN ecf 0 VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \ upper-case field name (case)
+s" ENUM-DECL:ED-RUN ebs 0 VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
+s" ENUM-DECL:ED-RUN euc 0 VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TRY 7109 T=      \ upper-case single-letter type
+s" ENUM-DECL:ED-RUN epa 0 VARIANT alpha FIELD x a ;VARIANT ;ENUM" TRY 7109 T=      \ parameter outside declared arity
+s" ENUM-DECL:ED-RUN epg 6 VARIANT alpha FIELD x h ;VARIANT ;ENUM" TRY 7109 T=      \ parameter 6 is outside arity 6
 
 \ ---------------------------------------------------------------------------
 \ 12. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
@@ -294,6 +390,71 @@ DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" EV
 DECL-EVENT:IDENTITY RC @ <> T-TRUE
 REG-RESTORE
+
+\ ---------------------------------------------------------------------------
+\ Compact and full declarations reject reserved variant names before publication;
+\ the compact `variant` keyword is a syntax token, while the full name position
+\ reaches the shared 7110 policy. Every failure restores all registry and
+\ published-event cursors. Family collisions are lexical: global and
+\ active-package families reserve their tails, while a family owned only by
+\ another package does not.
+\ ---------------------------------------------------------------------------
+package other-enum-name-test
+s" ENUM-DECL:ED-RUN foreign-variant member ;ENUM" EV
+;package
+
+package enum-name-test
+
+VALUE-RECORD enum-record payload n END-VALUE-RECORD
+s" ENUM-DECL:ED-RUN local-variant member ;ENUM" EV
+
+: REG-SAME ( -- )
+   TFAMN@ RB-TFAM @ T=
+   TF-STR-U@ RB-STR @ T=
+   TF-PK-N@ RB-PK @ T=
+   SUMVN@ RB-SUMV @ T=
+   LAY-N@ RB-LAY @ T=
+   SCHN@ RB-SCH @ T=
+   SCHEMA-ROOT-N@ RB-ROOT @ T=
+   TYPE-FIELD:COUNT RB-PFN @ T=
+   TYPE-FIELD:COUNT RB-PFC @ T=
+   DECL-EVENT:COUNT DEVB @ T= ;
+
+: REJECT-SAME ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+   REG-MARK
+   DECL-EVENT:COUNT DEVB !
+   a u TRY want T=
+   REG-SAME ;
+
+s" ENUM-DECL:ED-RUN reject-compact ;ENUM" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact n ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact q ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact if ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact variant ;ENUM" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact bool ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact enum-record ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact space-x ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact color ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-compact local-variant ;ENUM" 7110 REJECT-SAME
+
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT n ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT q ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT if ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT variant ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT bool ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT enum-record ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT space-x ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT color ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full 0 VARIANT local-variant ;VARIANT ;ENUM" 7110 REJECT-SAME
+
+s" ENUM-DECL:ED-RUN allowed-compact foreign-variant ;ENUM" EV
+s" allowed-compact" FAMID F-VAR-COUNT 1 T=
+s" ENUM-DECL:ED-RUN allowed-full 0 VARIANT foreign-variant ;VARIANT ;ENUM" EV
+s" allowed-full" FAMID F-VAR-COUNT 1 T=
+s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 7102 REJECT-SAME
+
+;package
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

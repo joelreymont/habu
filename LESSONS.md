@@ -2191,3 +2191,7 @@ fits.
   audited projection private to the module that owns the storage operation,
   inventory it, and migrate production consumers onto the typed interface
   before asking them to consume typed reference data.
+- **A package has separate private and public seal boundaries.** Sealing its
+  private wordlist does not stop a public package reopen or a qualified public
+  definition. Seal both wordlists and remove that public seal in two focused
+  mutations so each publication path proves its own rejection.

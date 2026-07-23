@@ -333,6 +333,38 @@ public
    CLEANUP-RUN
    SPK-ROOT EXISTS? TFALSE ;
 
+package SPK-TYPE-NAME
+
+: REOPEN$ ( -- ptr u8 n )
+   SB-RESET
+   s" package TYPE-NAME public : HACK ( -- n ) 0 ; ;package" SPK-LINE
+   SB$ ;
+
+: QUALIFIED$ ( -- ptr u8 n )
+   SB-RESET
+   s" : TYPE-NAME:HACK ( -- n ) 0 ;" SPK-LINE
+   SB$ ;
+
+public
+
+: TEST ( -- )
+   s" TYPE-NAME public wordlist rejects package reopen" T-LABEL
+   REOPEN$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
+   s" TYPE-NAME public wordlist rejects qualified publish" T-LABEL
+   QUALIFIED$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL ;
+
+: RUN ( -- )
+   T-RESET
+   TAIL-RATCHET:START
+   SPK-PREPARE
+   TEST
+   0 2 TAIL-RATCHET:CHECK
+   SPK-CLEANUP
+   T-REPORT
+   s" seal-package-type-name-test: ok" type cr ;
+
+;package
+
 \ --- one reserved spelling: `package NAME` traps after the sealed entry. ---
 : SPK-PKG-NEG ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SPK-PKG-FORGE$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL ;
@@ -452,3 +484,4 @@ public
    s" seal-package-test: ok" type cr ;
 
 SPK-MAIN
+SPK-TYPE-NAME:RUN
