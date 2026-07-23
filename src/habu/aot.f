@@ -2,6 +2,8 @@
 \
 \ Load after src/habu/aot-lib.f.
 
+package AOT-LINK
+
 \ The AOT maker compiles the user program with its own interpret loop, so it must
 \ install the sumtype constructor eval hook the stdin/REPL path gets from
 \ include.f (src/core/include.f binds `[: INCLUDE-EVALUATE ;] is TDECL-EVAL-XT`).
@@ -49,7 +51,9 @@ TRUSTED: INSTALL-USER-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
    ['] USER-HOOK set-check ;
 
-: GO ( -- )
+public
+
+: RUN ( -- )
    AOT-RUNTIME-ARGS
    AOT-PRESEED-ARGS
    READ-PROG
@@ -58,4 +62,6 @@ TRUSTED: INSTALL-USER-HOOK ( -- )
    AOT-PB@ DATA-VA INP-CELL + !
    AOT-PB@ PN @ + DATA-VA INE-CELL + ! ;
 
-GO
+;package
+
+AOT-LINK:RUN

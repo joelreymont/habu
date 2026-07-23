@@ -138,12 +138,70 @@ variable BLR-CNT
    s" ok" SRC-CQ
    s"  count type CR ;" GE-SRC-LINE ;
 
+: SURFACE-BASE-DEFS ( -- )
+   s" package AOT-SURFACE-HOSTILE" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : SENTSET ( -- ) ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" package AOT-SURFACE-TEST" GE-SRC-LINE
+   s\" : AS-FAIL ( bool -- ) 0= if s\" AOT-LINK surface mismatch\" 74 die then ;" GE-SRC-LINE
+   s\" : AS-NS ( -- ptr a ) s\" AOT-LINK\" XREF-NAMESPACE-WL XREF-FIND-WL ;" GE-SRC-LINE
+   s" : AS-PUB ( -- n ) AS-NS XREF-START ;" GE-SRC-LINE
+   s" : AS-PRI ( -- n ) AS-NS XREF-LEN ;" GE-SRC-LINE
+   s\" : AS-HOST-PUB ( -- n ) s\" AOT-SURFACE-HOSTILE\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-START ;" GE-SRC-LINE ;
+
+: SURFACE-PUB-DEFS ( -- )
+   s\" : AS-PUB-NAME? ( ptr u8 n -- bool ) 2dup s\" LINK\" XREF-STR=CI >r s\" RUN\" XREF-STR=CI r> or ;" GE-SRC-LINE
+   s" : AS-PUB-CHECK ( -- ) AS-NS XREF-FOUND? AS-FAIL" GE-SRC+
+   s"  0 ndict@ 0 ?do i XREF-REC dup XREF-WORDLIST AS-PUB = if" GE-SRC+
+   s"  dup XREF-NAME$ AS-PUB-NAME? AS-FAIL drop 1+" GE-SRC+
+   s"  else drop then loop 2 = AS-FAIL ;" GE-SRC-LINE ;
+
+: SURFACE-PRI-DEFS ( -- )
+   s" : AS-NOT-EXPOSED-WL? ( ptr a n -- bool ) over XREF-NAME$ rot XREF-FIND-WL <> ;" GE-SRC-LINE
+   s" : AS-BARE-IDENTITY? ( ptr a -- bool ) 0 AS-NOT-EXPOSED-WL? ;" GE-SRC-LINE
+   s" : AS-QUAL-IDENTITY? ( ptr a -- bool ) AS-PUB AS-NOT-EXPOSED-WL? ;" GE-SRC-LINE
+   s" : AS-NAME-ABSENT? ( ptr u8 n n -- bool ) XREF-FIND-WL XREF-FOUND? 0= ;" GE-SRC-LINE
+   s" : AS-BARE-NAME ( ptr u8 n -- ) 0 AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
+   s" : AS-QUAL-NAME ( ptr u8 n -- ) AS-PUB AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
+   s" : AS-NAMED ( ptr u8 n -- ) 2dup AS-BARE-NAME AS-QUAL-NAME ;" GE-SRC-LINE
+   s" : AS-PRIVATE ( ptr u8 n -- ptr a ) AS-PRI XREF-FIND-WL dup XREF-FOUND? AS-FAIL ;" GE-SRC-LINE
+   s\" : AS-HOSTILE-CHECK ( -- ) s\" SENTSET\" AS-PRIVATE" GE-SRC+
+   s"  dup AS-HOST-PUB AS-NOT-EXPOSED-WL? AS-FAIL drop" GE-SRC+
+   s\"  s\" SENTSET\" AS-HOST-PUB AS-NAME-ABSENT? 0= AS-FAIL ;" GE-SRC-LINE
+   s\" : AS-MAIN-CHECK ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? AS-FAIL" GE-SRC+
+   s\"  s\" MAIN\" AS-PRI XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE
+   s" : AS-NAMED-CHECK ( -- )" GE-SRC+
+   s\"  s\" SENTSET\" AS-NAMED s\" READ-PROG\" AS-NAMED" GE-SRC+
+   s\"  s\" MAP-IN-BLOB\" AS-NAMED s\" COPY-COMPACT-BLOB\" AS-NAMED" GE-SRC+
+   s\"  s\" SEED+\" AS-NAMED ;" GE-SRC-LINE
+   s" : AS-PRI-CHECK ( -- ) 0 ndict@ 0 ?do" GE-SRC+
+   s"  i XREF-REC dup XREF-WORDLIST AS-PRI = if" GE-SRC+
+   s"  dup AS-BARE-IDENTITY? AS-FAIL dup AS-QUAL-IDENTITY? AS-FAIL" GE-SRC+
+   s"  drop 1+ else drop then loop 0 > AS-FAIL ;" GE-SRC-LINE ;
+
+: SURFACE-DEFS ( -- )
+   SURFACE-BASE-DEFS
+   SURFACE-PUB-DEFS
+   SURFACE-PRI-DEFS
+   s\" : AS-RUN ( -- ) s\" AOT-LINK\" 0 XREF-FIND-WL XREF-FOUND? 0= AS-FAIL" GE-SRC+
+   s"  AS-HOSTILE-CHECK AS-MAIN-CHECK AS-NAMED-CHECK AS-PUB-CHECK AS-PRI-CHECK ;" GE-SRC-LINE
+   s" AS-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
+
+: MAIN-OWNER-CHECK ( -- )
+   s\" : AMC ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? 0= if" GE-SRC+
+   s\"  s\" AOT global MAIN unavailable\" 74 die then ;" GE-SRC-LINE
+   s" AMC" GE-SRC-LINE ;
+
 : BUNDLE-SOURCE ( -- )
    GE-SRC-RESET
    FIB-DEFS
    COMPACT-DEFS
    FEATURE-DEFS
-   BUNDLE-MAIN ;
+   BUNDLE-MAIN
+   MAIN-OWNER-CHECK
+   SURFACE-DEFS ;
 
 : BUNDLE-EXPECT ( -- ptr u8 n )
    SB-RESET
@@ -184,19 +242,23 @@ variable BLR-CNT
 \ refills CLO/NEWOFF), so the synthetic values cannot leak into the shipped image.
 : DATA-SOURCE ( -- )
    GE-SRC-RESET
-   s" package AOT-MAP-TEST" GE-SRC-LINE
-   s" create CODE 16 allot" GE-SRC-LINE
-   s" create REC1 DREC allot" GE-SRC-LINE
-   s" create REC2 DREC allot" GE-SRC-LINE
-   s" 4 constant BODY-LEN" GE-SRC-LINE
-   s" 8 constant CODE-ROW" GE-SRC-LINE
-   s" $40 constant REC2-OFF" GE-SRC-LINE
-   s" : REC! ( ptr a ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
-   s" : RECORDS! ( -- ) REC1 CODE BODY-LEN REC! REC2 CODE CODE-ROW + BODY-LEN REC! ;" GE-SRC-LINE
-   s" : CLOSURE! ( -- ) REC1 CLO 0 ptr-field ! REC2 CLO 1 ptr-field ! 0 NEWOFF ! REC2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
-   s" : EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
-   s\" : RUN ( -- ) RECORDS! CLOSURE! REC1 CODE CODE-ROW + MAP-IN-BLOB -1 = s\" AOT closed record range\" EXPECT REC1 CODE CODE-ROW + MAP-TARGET REC2-OFF = s\" AOT adjacent record relocation\" EXPECT ;" GE-SRC-LINE
-   s" RUN" GE-SRC-LINE
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create AMAP-CODE 16 allot" GE-SRC-LINE
+   s" create AMAP-R1 DREC allot" GE-SRC-LINE
+   s" create AMAP-R2 DREC allot" GE-SRC-LINE
+   s" 4 constant AMAP-BODY-LEN" GE-SRC-LINE
+   s" 8 constant AMAP-CODE-ROW" GE-SRC-LINE
+   s" $40 constant AMAP-R2-OFF" GE-SRC-LINE
+   s" : AMAP-REC! ( ptr a ptr u8 n -- ) {: r:ptr code:ptr len:n :} code r 0 ptr-field ! len r 8 + ! ;" GE-SRC-LINE
+   s" : AMAP-RECS! ( -- ) AMAP-R1 AMAP-CODE AMAP-BODY-LEN AMAP-REC! AMAP-R2 AMAP-CODE AMAP-CODE-ROW + AMAP-BODY-LEN AMAP-REC! ;" GE-SRC-LINE
+   s" : AMAP-CLOSURE! ( -- ) AMAP-R1 CLO 0 ptr-field ! AMAP-R2 CLO 1 ptr-field ! 0 NEWOFF ! AMAP-R2-OFF NEWOFF cell+ ! 2 NCLO ! ;" GE-SRC-LINE
+   s" : AMAP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s" : AMAP-RUN ( -- ) AMAP-RECS! AMAP-CLOSURE!" GE-SRC+
+   s"  AMAP-R1 AMAP-CODE AMAP-CODE-ROW + MAP-IN-BLOB -1 =" GE-SRC+
+   s\"  s\" AOT closed record range\" AMAP-EXPECT" GE-SRC+
+   s"  AMAP-R1 AMAP-CODE AMAP-CODE-ROW + MAP-TARGET AMAP-R2-OFF =" GE-SRC+
+   s\"  s\" AOT adjacent record relocation\" AMAP-EXPECT ;" GE-SRC-LINE
+   s" AMAP-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" create TABLE 10 , 20 , 30 ," GE-SRC-LINE
    s" variable SUM" GE-SRC-LINE
@@ -229,10 +291,15 @@ variable BLR-CNT
    GE-SRC-RESET
    s" create X RBASE-VA REGION + 8 - ," GE-SRC-LINE
    s\" : MAIN ( -- ) X @ RBASE-VA REGION + 8 - = IF s\" ok\" ELSE s\" bad\" THEN type cr ;" GE-SRC-LINE
-   s" package AOT-TEXTPTR-TEST" GE-SRC-LINE
-   s" : XPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
-   s\" : RUN ( -- ) RBASE-VA REGION + 8 - CELL-TEXTPTR? 0= s\" free-region value is data\" XPECT 0 XREF-REC-ADDR CELL-TEXTPTR? s\" live dict-record is a pointer\" XPECT FINDMAIN XREF-START CELL-TEXTPTR? s\" live code entry is a pointer\" XPECT ;" GE-SRC-LINE
-   s" RUN" GE-SRC-LINE
+   s" package AOT-LINK" GE-SRC-LINE
+   s" : ATP-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s" : ATP-RUN ( -- ) RBASE-VA REGION + 8 - CELL-TEXTPTR? 0=" GE-SRC+
+   s\"  s\" free-region value is data\" ATP-EXPECT" GE-SRC+
+   s"  0 XREF-REC-ADDR CELL-TEXTPTR?" GE-SRC+
+   s\"  s\" live dict-record is a pointer\" ATP-EXPECT" GE-SRC+
+   s"  FINDMAIN XREF-START CELL-TEXTPTR?" GE-SRC+
+   s\"  s\" live code entry is a pointer\" ATP-EXPECT ;" GE-SRC-LINE
+   s" ATP-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 
 : DATA-WINDOW-EXPECT ( -- ptr u8 n )
@@ -332,15 +399,14 @@ variable BLR-CNT
 : ABS-CHAIN-SOURCE ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
-   s" package ABS-CHAIN-TEST" GE-SRC-LINE
-   s" create ACH 16 allot" GE-SRC-LINE
-   s" create ACREC DREC allot" GE-SRC-LINE
-   s" : AW! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
-   s" : BUILD-ACH ( -- ) $D2800010 ACH AW! $F2A00010 ACH 4 + AW! $F2C00010 ACH 8 + AW! $D63F0200 ACH 12 + AW! ;" GE-SRC-LINE
-   s" public" GE-SRC-LINE
-   s" : RUN ( -- ) BUILD-ACH ACH ACREC 0 ptr-field ! 12 ACREC 8 + ! ACREC CLO 0 ptr-field ! 0 NEWOFF ! 1 NCLO ! ACREC COPY-COMPACT-BLOB ;" GE-SRC-LINE
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create ABT-CHAIN 16 allot" GE-SRC-LINE
+   s" create ABT-REC DREC allot" GE-SRC-LINE
+   s" : ABT-W! ( n ptr u8 -- ) {: w:n a:ptr :} w a c! w 8 rshift a 1+ c! w 16 rshift a 2 + c! w 24 rshift a 3 + c! ;" GE-SRC-LINE
+   s" : ABT-BUILD ( -- ) $D2800010 ABT-CHAIN ABT-W! $F2A00010 ABT-CHAIN 4 + ABT-W! $F2C00010 ABT-CHAIN 8 + ABT-W! $D63F0200 ABT-CHAIN 12 + ABT-W! ;" GE-SRC-LINE
+   s" : ABT-RUN ( -- ) ABT-BUILD ABT-CHAIN ABT-REC 0 ptr-field ! 12 ABT-REC 8 + ! ABT-REC CLO 0 ptr-field ! 0 NEWOFF ! 1 NCLO ! ABT-REC COPY-COMPACT-BLOB ;" GE-SRC-LINE
+   s" ABT-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
-   s" ABS-CHAIN-TEST:RUN" GE-SRC-LINE
    s" : MAIN ( -- ) ;" GE-SRC-LINE ;
 
 : ABS-CHAIN-ARGV ( -- )                      \ --load <hb-build layers> -- SRC -o OUT

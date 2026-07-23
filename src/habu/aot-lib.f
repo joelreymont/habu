@@ -1,8 +1,8 @@
 \ aot-lib.f - stripped AOT linker words. Load after src/habu/aot-closure.f.
 \
 \ The MAKER compiles the program in-process (we point
-\ INP/INE at the program text + an AOT-LINK sentinel and return, so the maker's
-\ own interpret loop compiles the definitions into its JIT region), then AOT-LINK
+\ INP/INE at the program text + an AOT-LINK:LINK sentinel and return, so the maker's
+\ own interpret loop compiles the definitions into its JIT region), then AOT-LINK:LINK
 \ serializes ONLY the native-reachable closure of MAIN into a standalone binary:
 \ a minimal runtime entry (reserve the value stack, x19=sp) + `BL MAIN; exit`,
 \ with every other word, the interpreter, the compiler and the parser stripped.
@@ -17,6 +17,8 @@
 \ pointer inference until the typed dictionary-record schema lands (dot
 \ habu-typed-dictionary-record-c67adddb). The driver installs USER-HOOK below
 \ for user source only.
+
+package AOT-LINK
 
 variable PB  variable PN  variable PFD  variable PRD
 variable AOT-SI
@@ -62,7 +64,7 @@ s" AOT-PB@" s" -- ptr u8" TRUST
    AOT-LF AOT-PB@ PN @ + c!
    PN @ 1 + PN ! ;
 
-: SENTSET ( -- )  s"  AOT-LINK " {: sa:ptr su:n :}
+: SENTSET ( -- )  s"  AOT-LINK:LINK " {: sa:ptr su:n :}
    SENTLF
    su SENT-ROOM
    0 AOT-SI !
@@ -352,10 +354,14 @@ variable RP  variable RE
       REPEAT
       WI @ 1+ WI ! REPEAT ;
 
-: AOT-LINK ( -- )
+public
+
+: LINK ( -- )
    AOT-DATA-SPAN
    AOT-DATA-TEXTPTR? IF AOT-DATA-TEXTPTR-DIE THEN
    CLOSURE  ASM-INIT  LBL MLBL !  LBL BLOB-LBL !
    EMIT-ENTRY  COPY-BLOBS  RELOCATE  EMIT-DATA-BLOB
    AOT-WRITE-OBJ
    s" hb-prog" AOT-OUT DRV-EMIT-IMAGE ;
+
+;package
