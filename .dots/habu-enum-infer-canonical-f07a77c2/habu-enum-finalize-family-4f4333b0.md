@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-23T14:53:49.128448+02:00"
-blocks:
-  - habu-enum-expose-provisional-bcb7c765
 ---
 
 Why: full ENUM currently fixes TK-SUM before it has parsed variants, so a full declaration with no fields cannot become the canonical tag-only TK-ENUM representation. A generic raw kind mutator would violate immutable publication.
