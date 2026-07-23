@@ -2213,3 +2213,7 @@ fits.
   standalone `maki/test.f` both use `tmp/cad-store`; concurrent runs can reset
   each other's replay rows even when `HB_TMP` differs. Serialize them unless
   each process has a distinct `HABU_CAD_STORE`.
+- **A diff gate cannot prove a leaf's whole-file migration promise.** Before
+  calling an accepted diff a scope-tracking defect, compare the definition's
+  owner on both sides. If a legacy global remains global, the generic gate must
+  preserve it; the leaf needs its own complete structural ownership inventory.
