@@ -273,9 +273,13 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ shrinks 716 -> 336, so the whole file remains exactly 127168.  Attribution:
 \ main/startup +64, primitives/base +48, dictionary-code +172,
 \ seed-dictionary +48, and aot-seed +48.
-122544 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-23 re-measured at the ENUM declaration-ownership fixpoint. The
+\ declaration event and sealed type-name wiring add 16 bytes to aot-seed:
+\ CODELEN 122544 -> 122560 and floor 3760 -> 3776. The same 4 KiB page still
+\ contains __text, so the whole file remains exactly 127168.
+122560 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3760 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3776 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -339,7 +343,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" dictionary-code"         4732 q execute
    s" runtime"                 9508 q execute
    s" seed-dictionary"         8700 q execute
-   s" aot-seed"               22460 q execute
+   s" aot-seed"               22476 q execute
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;
