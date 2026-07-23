@@ -1,9 +1,9 @@
 ---
 title: "BPE: install Unicode chunk matcher"
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-23T09:47:20.909072+02:00"
+created-at: "\"2026-07-23T09:47:20.909072+02:00\""
 blocks:
   - habu-bpe-unicode-data-45a7c2e9
   - habu-bpe-utf8-scalar-8c1d6f34
@@ -17,4 +17,4 @@ Migrate both production `BPE-ENCODE` and `BPE-TRAIN` chunk traversal to `BPE-SPL
 
 Prerequisites: `habu-bpe-unicode-data-45a7c2e9` and `habu-bpe-utf8-scalar-8c1d6f34`. Owned result: chunk grammar and production routing only. It does not own reference corpus data, compact vocabulary generation, encode workspace capacity, or tokenizer instances.
 
-Acceptance: focused production tests pin ASCII adjacency and contractions, every White_Space form, Letter/Number adjacency across representative scripts and non-BMP scalars, combining marks, punctuation, malformed/truncated/overlong bytes, multiple whitespace scalars before nonspace and at end of input, bounds, repeated calls, nested scans, and interleaved scans over two explicit cursors. Mutating alternative order, whitespace backtracking, raw-lead progress, or either production caller makes a focused test fail. Public inventory is exactly `CHUNK-LEN`; all legacy names reject. Files: `bpe-split.f`, its focused test, `bpe.f`, manifests, `FILEMAP.md`. Smallest owning-path check: encode and train one fixture whose correct result changes when either caller uses the legacy matcher, plus the focused grammar suite. Also run exact typed-local, package, host, and file-map checks. Claim: unassigned.
+Acceptance: focused production tests pin ASCII adjacency and contractions, every White_Space form, Letter/Number adjacency across representative scripts and non-BMP scalars, combining marks, punctuation, malformed/truncated/overlong bytes, multiple whitespace scalars before nonspace and at end of input, bounds, repeated calls, nested scans, and interleaved scans over two explicit cursors. Mutating alternative order, whitespace backtracking, raw-lead progress, or either production caller makes a focused test fail. Public inventory is exactly `CHUNK-LEN`; all legacy names reject. Files: `bpe-split.f`, its focused test, `bpe.f`, manifests, `FILEMAP.md`. Smallest owning-path check: encode and train one fixture whose correct result changes when either caller uses the legacy matcher, plus the focused grammar suite. Also run exact typed-local, package, host, and file-map checks. Claim: agent=bpe_unicode workspace=.jj-ws/habu-bpe-install-unicode-3c84e7a1.
