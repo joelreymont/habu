@@ -340,6 +340,12 @@ package SPK-TYPE-NAME
    s" package TYPE-NAME public : HACK ( -- n ) 0 ; ;package" SPK-LINE
    SB$ ;
 
+: PRIVATE-WID$ ( -- ptr u8 n )
+   SB-RESET
+   S\" s\" TYPE-NAME\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current" SPK-LINE
+   s" : HACK-PRIVATE ( -- n ) 0 ;" SPK-LINE
+   SB$ ;
+
 : QUALIFIED$ ( -- ptr u8 n )
    SB-RESET
    s" : TYPE-NAME:HACK ( -- n ) 0 ;" SPK-LINE
@@ -348,6 +354,8 @@ package SPK-TYPE-NAME
 public
 
 : TEST ( -- )
+   s" TYPE-NAME private wordlist rejects direct publication" T-LABEL
+   PRIVATE-WID$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
    s" TYPE-NAME public wordlist rejects package reopen" T-LABEL
    REOPEN$ SPK-EXEC:SUBJECT SPK-ASSERT-SEAL
    s" TYPE-NAME public wordlist rejects qualified publish" T-LABEL
@@ -358,7 +366,7 @@ public
    TAIL-RATCHET:START
    SPK-PREPARE
    TEST
-   0 2 TAIL-RATCHET:CHECK
+   0 3 TAIL-RATCHET:CHECK
    SPK-CLEANUP
    T-REPORT
    s" seal-package-type-name-test: ok" type cr ;

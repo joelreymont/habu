@@ -475,6 +475,12 @@ variable VN-ODEPTH
 variable VN-IN        variable VN-IPUB      variable VN-IBASE
 variable VN-IFORD     variable VN-IVORD     variable VN-ICUR
 variable VN-IDEPTH    variable VN-ISERIAL
+variable VN-RK        variable VN-RF        variable VN-RV
+variable VN-RFLD      variable VN-ROWN
+variable VN-FEVN      variable VN-FFORD     variable VN-FVORD
+variable VN-FCUR      variable VN-FFLDTOK   variable VN-FTOK
+variable VN-FPUB      variable VN-FSTATE    variable VN-FFAM
+variable VN-FOWNER
 
 : VN-SAVE-REG ( -- )
    TFAM-N@ VN-TFAM !          TF-STR-U@ VN-STR !
@@ -506,13 +512,38 @@ variable VN-IDEPTH    variable VN-ISERIAL
    DEV-N @ VN-IN !               DEV-PUB-N @ VN-IPUB !
    DEV-BASE-FLD @ VN-IBASE !     DEV-FLD-ORD @ VN-IFORD !
    DEV-VAR-ORD @ VN-IVORD !      DEV-CUR-VAR @ VN-ICUR !
-   DEV-TX-DEPTH @ VN-IDEPTH !    DEV-TX-SERIAL @ VN-ISERIAL ! ;
+   DEV-TX-DEPTH @ VN-IDEPTH !    DEV-TX-SERIAL @ VN-ISERIAL !
+   DEV-CUR-START {: row:n :}
+   row DEV-PROV-KIND@ VN-RK !    row DEV-PROV-FAM@ VN-RF !
+   row DEV-PROV-VAR@ VN-RV !     row DEV-PROV-FLD@ VN-RFLD !
+   row DEV-PROV-OWNER@ VN-ROWN !
+   DEV-TX-TOP {: frame:ptr :}
+   frame DEVTX.EVN @ VN-FEVN !       frame DEVTX.FLDORD @ VN-FFORD !
+   frame DEVTX.VARORD @ VN-FVORD !   frame DEVTX.CURVAR @ VN-FCUR !
+   frame DEVTX.FLDTOK @ VN-FFLDTOK ! frame DEVTX.TOK @ VN-FTOK !
+   frame DEVTX.PUBN @ VN-FPUB !      frame DEVTX.STATE @ VN-FSTATE !
+   frame DEVTX.FAM @ VN-FFAM !       frame DEVTX.OWNER @ VN-FOWNER ! ;
 
 : VN-CHECK-IN ( -- )
    DEV-N @ VN-IN @ T=               DEV-PUB-N @ VN-IPUB @ T=
    DEV-BASE-FLD @ VN-IBASE @ T=     DEV-FLD-ORD @ VN-IFORD @ T=
    DEV-VAR-ORD @ VN-IVORD @ T=      DEV-CUR-VAR @ VN-ICUR @ T=
-   DEV-TX-DEPTH @ VN-IDEPTH @ T=    DEV-TX-SERIAL @ VN-ISERIAL @ T= ;
+   DEV-TX-DEPTH @ VN-IDEPTH @ T=    DEV-TX-SERIAL @ VN-ISERIAL @ T=
+   DEV-CUR-START {: row:n :}
+   row DEV-PROV-KIND@ VN-RK @ T=    row DEV-PROV-FAM@ VN-RF @ T=
+   row DEV-PROV-VAR@ VN-RV @ T=     row DEV-PROV-FLD@ VN-RFLD @ T=
+   row DEV-PROV-OWNER@ VN-ROWN @ T=
+   DEV-TX-TOP {: frame:ptr :}
+   frame DEVTX.EVN @ VN-FEVN @ T=
+   frame DEVTX.FLDORD @ VN-FFORD @ T=
+   frame DEVTX.VARORD @ VN-FVORD @ T=
+   frame DEVTX.CURVAR @ VN-FCUR @ T=
+   frame DEVTX.FLDTOK @ VN-FFLDTOK @ T=
+   frame DEVTX.TOK @ VN-FTOK @ T=
+   frame DEVTX.PUBN @ VN-FPUB @ T=
+   frame DEVTX.STATE @ VN-FSTATE @ T=
+   frame DEVTX.FAM @ VN-FFAM @ T=
+   frame DEVTX.OWNER @ VN-FOWNER @ T= ;
 
 : VN-CALL ( -- )
    TOK @ FV7 @ VN-A @ VN-U @ VARIANT drop ;
@@ -733,6 +764,193 @@ WF-START-UNBOUND  ' WF-BAD-PAYLOAD-N WF-RUN       WF-FINISH
 WF-START-UNBOUND  ' WF-BAD-PAYLOAD-SCHEMA WF-RUN  WF-FINISH
 WF-START-UNBOUND  ' WF-BAD-PAYLOAD-WIDTH WF-RUN   WF-FINISH
 WF-START-UNBOUND  ' WF-BAD-PAYLOAD-CELLS WF-RUN   WF-FINISH
+
+\ ---------------------------------------------------------------------------
+\ 17. Every provisional payload query rejects reordered fields, a foreign event
+\     family, or a different valid field id before reading that field row.
+\ ---------------------------------------------------------------------------
+create HF-ROW-SAVE DEV-REC allot
+
+variable HF-SCH
+variable HF-EVA   variable HF-EVB
+variable HF-FLDA  variable HF-FLDB
+variable HF-SA    variable HF-SB
+variable HF-CA    variable HF-CB
+
+: HF-SAVE ( -- )
+   WF-REG-SAVE
+   WF-STATE-SAVE
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
+      DEV-FLD-TX-SCHEMA-FOR HF-SA !
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
+      DEV-FLD-TX-SCHEMA-FOR HF-SB !
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
+      DEV-FLD-TX-CELLS-FOR HF-CA !
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
+      DEV-FLD-TX-CELLS-FOR HF-CB ! ;
+
+: HF-SAME ( -- )
+   WF-STATE-SAME
+   WF-REG-SAME
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
+      DEV-FLD-TX-SCHEMA-FOR HF-SA @ T=
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
+      DEV-FLD-TX-SCHEMA-FOR HF-SB @ T=
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDA @
+      DEV-FLD-TX-CELLS-FOR HF-CA @ T=
+   DEV-TX-TOP DEVTX.FLDTOK @ FV7 @ HF-FLDB @
+      DEV-FLD-TX-CELLS-FOR HF-CB @ T=
+   TOK @ FV7 @ VAR-E @ PAYLOAD-N 2 T=
+   TOK @ FV7 @ VAR-E @ 0 PAYLOAD-SCHEMA@ SCHROOT @ T=
+   TOK @ FV7 @ VAR-E @ 1 PAYLOAD-SCHEMA@ HF-SCH @ T=
+   TOK @ FV7 @ VAR-E @ 0 PAYLOAD-WIDTH@ 1 T=
+   TOK @ FV7 @ VAR-E @ 1 PAYLOAD-WIDTH@ 1 T=
+   TOK @ FV7 @ VAR-E @ PAYLOAD-CELLS 2 T= ;
+
+: HF-OPEN ( -- )
+   RESET
+   TWX-CAND-START
+   OPEN TOK !
+   TOK @ FV7 @ DECL TOK !
+   TOK @ FV7 @ s" hf-variant" VARIANT TOK !
+   CURRENT-VARIANT VAR-E !
+   TOK @ FV7 @ s" hf-first" SCHROOT @
+      0 1 0 CELL CELL 0 FIELD TOK !
+   1 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ HF-SCH !
+   TOK @ FV7 @ s" hf-second" HF-SCH @
+      1 1 CELL CELL CELL 0 FIELD TOK !
+   TOK @ FV7 @ END-VARIANT TOK !
+   DEV-N @ 3 - dup HF-EVA !
+   dup DEV-PROV-FLD@ HF-FLDA !
+   1 + dup HF-EVB !
+   DEV-PROV-FLD@ HF-FLDB !
+   TOK @ FV7 @ VAR-E @ PAYLOAD-N 2 T=
+   TOK @ FV7 @ VAR-E @ 0 PAYLOAD-WIDTH@ 1 T=
+   TOK @ FV7 @ VAR-E @ 1 PAYLOAD-WIDTH@ 1 T=
+   TOK @ FV7 @ VAR-E @ PAYLOAD-CELLS 2 T=
+   HF-SAVE ;
+
+: HF-CLOSE ( -- )
+   TOK @ ROLLBACK
+   0 TWX-CAND-DONE drop
+   DEV-N @ 0 T=             DEV-PUB-N @ 0 T=
+   DEV-FLD-ORD @ 0 T=       DEV-VAR-ORD @ 0 T=
+   DEV-CUR-VAR @ DEV-NO-VARIANT T=
+   DEV-TX-DEPTH @ 0 T=
+   DEV-FLD-PROVISIONAL-COUNT DEV-FLD-COUNT T= ;
+
+: HF-PAYLOAD-N ( -- )
+   TOK @ FV7 @ VAR-E @ PAYLOAD-N drop ;
+
+: HF-PAYLOAD-SCHEMA ( -- )
+   TOK @ FV7 @ VAR-E @ 0 PAYLOAD-SCHEMA@ drop ;
+
+: HF-PAYLOAD-WIDTH ( -- )
+   TOK @ FV7 @ VAR-E @ 0 PAYLOAD-WIDTH@ drop ;
+
+: HF-PAYLOAD-CELLS ( -- )
+   TOK @ FV7 @ VAR-E @ PAYLOAD-CELLS drop ;
+
+: HF-REJECT-QUERIES ( -- )
+   [: HF-PAYLOAD-N ;] catch TC !       TC @ E-DEV-FIELD-SCOPE T=
+   [: HF-PAYLOAD-SCHEMA ;] catch TC !  TC @ E-DEV-FIELD-SCOPE T=
+   [: HF-PAYLOAD-WIDTH ;] catch TC !   TC @ E-DEV-FIELD-SCOPE T=
+   [: HF-PAYLOAD-CELLS ;] catch TC !   TC @ E-DEV-FIELD-SCOPE T= ;
+
+: HF-SWAP-EVENTS ( -- )
+   HF-EVA @ DEV-ROW BYTE-VIEW HF-ROW-SAVE BYTE-VIEW DEV-REC BYTE-COPY
+   HF-EVB @ DEV-ROW BYTE-VIEW HF-EVA @ DEV-ROW BYTE-VIEW DEV-REC BYTE-COPY
+   HF-ROW-SAVE BYTE-VIEW HF-EVB @ DEV-ROW BYTE-VIEW DEV-REC BYTE-COPY ;
+
+: HF-ORDER ( -- )
+   HF-OPEN
+   HF-SWAP-EVENTS
+   HF-REJECT-QUERIES
+   HF-SWAP-EVENTS
+   HF-SAME
+   HF-CLOSE ;
+
+: HF-FAMILY ( -- )
+   HF-OPEN
+   FE2 @ HF-EVA @ DEV-ROW DEV.FAM !
+   HF-REJECT-QUERIES
+   FV7 @ HF-EVA @ DEV-ROW DEV.FAM !
+   HF-SAME
+   HF-CLOSE ;
+
+: HF-FIELD-ID ( -- )
+   HF-OPEN
+   HF-FLDB @ HF-EVA @ DEV-ROW DEV.FLD !
+   HF-REJECT-QUERIES
+   HF-FLDA @ HF-EVA @ DEV-ROW DEV.FLD !
+   HF-SAME
+   HF-CLOSE ;
+
+HF-ORDER
+HF-FAMILY
+HF-FIELD-ID
+
+\ ---------------------------------------------------------------------------
+\ 18. The field owner's public provisional-cell reader validates the exact live
+\     transaction, family, and row range before reading PF.CELLS.  A different
+\     valid family row in the same transaction is not authority for this family.
+\ ---------------------------------------------------------------------------
+variable TXC-TOK
+variable TXC-OWN
+variable TXC-FOREIGN
+variable TXC-END
+
+: TXC-OPEN ( -- )
+   HF-OPEN
+   DEV-TX-TOP DEVTX.FLDTOK @ TXC-TOK !
+   HF-FLDA @ TXC-OWN !
+   DEV-FLD-PROVISIONAL-COUNT TXC-FOREIGN !
+   TXC-TOK @ FD3 @ DEV-NO-VARIANT
+      s" txc-foreign" SCHROOT @ 0 1 0 CELL CELL 0 DEV-FLD-ADD drop
+   DEV-FLD-PROVISIONAL-COUNT TXC-END !
+   HF-SAVE ;
+
+: TXC-WRONG-TOKEN ( -- )
+   TXC-TOK @ 1 + FV7 @ TXC-OWN @
+   DEV-FLD-TX-CELLS-FOR drop ;
+
+: TXC-WRONG-FAMILY ( -- )
+   TXC-TOK @ FD3 @ TXC-OWN @
+   DEV-FLD-TX-CELLS-FOR drop ;
+
+: TXC-FOREIGN-ROW ( -- )
+   TXC-TOK @ FV7 @ TXC-FOREIGN @
+   DEV-FLD-TX-CELLS-FOR drop ;
+
+: TXC-NEGATIVE ( -- )
+   TXC-TOK @ FV7 @ -1
+   DEV-FLD-TX-CELLS-FOR drop ;
+
+: TXC-ONE-PAST ( -- )
+   TXC-TOK @ FV7 @ TXC-END @
+   DEV-FLD-TX-CELLS-FOR drop ;
+
+TXC-OPEN
+
+TXC-TOK @ FV7 @ TXC-OWN @ TYPE-FIELD-OWNER:TX-CELLS-FOR 1 T=
+
+' TXC-WRONG-TOKEN catch TC !
+TC @ E-PF-TX T=
+
+' TXC-WRONG-FAMILY catch TC !
+TC @ E-PF-OWNER T=
+
+' TXC-FOREIGN-ROW catch TC !
+TC @ E-PF-OWNER T=
+
+' TXC-NEGATIVE catch TC !
+TC @ E-PF-ID T=
+
+' TXC-ONE-PAST catch TC !
+TC @ E-PF-ID T=
+
+HF-SAME
+HF-CLOSE
 
 ;package
 

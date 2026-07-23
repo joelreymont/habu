@@ -2193,5 +2193,8 @@ fits.
   before asking them to consume typed reference data.
 - **A package has separate private and public seal boundaries.** Sealing its
   private wordlist does not stop a public package reopen or a qualified public
-  definition. Seal both wordlists and remove that public seal in two focused
-  mutations so each publication path proves its own rejection.
+  definition. Test the public seal through reopen and qualified publication;
+  test the private seal by resolving the namespace record's private wordlist
+  and publishing through `set-current`. A package reopen reaches the public
+  guard first and cannot distinguish a missing private seal. Remove each seal
+  in a focused mutation so both publication paths prove their own rejection.
