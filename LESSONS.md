@@ -1090,7 +1090,10 @@ fits.
   when a lane reports premise-missing, record the blocked-by edge immediately so the ready list
   stays truthful. A lagging branch can carry a stale plan — diff the dot against master's version
   and rebase onto the plan-owner's branch BEFORE implementing (a destruction review is only as good
-  as the spec it is given). A probe must name its LAYER (an `E-UNDEFINED` from a checked colon body
+  as the spec it is given). Reviewers must load the contract from the intended integration base,
+  not the candidate's parent: a CHECK review used a superseded dot and falsely rejected the current
+  six-word API as missing a retired capture subsystem. A probe must name its LAYER (an
+  `E-UNDEFINED` from a checked colon body
   is a CHECKER-grammar verdict, not runtime-resolver evidence); disagreeing probes mean the
   SEMANTICS are inconsistent — itself a finding. Stage-then-fan-out beats one long worker: stage 1
   resolves the core contract, stage 2 parallel workers port disjoint file clusters, stage 3 one
