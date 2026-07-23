@@ -157,6 +157,45 @@ variable BLR-CNT
    s"  dup XREF-NAME$ AS-PUB-NAME? AS-FAIL drop 1+" GE-SRC+
    s"  else drop then loop 2 = AS-FAIL ;" GE-SRC-LINE ;
 
+: SURFACE-ID-1 ( -- )
+   s\"  s\" AOT-DBASE@\" AS-ID s\" AOT-DBASE-N\" AS-ID s\" AOT-CP-N\" AS-ID" GE-SRC-LINE
+   s\"  s\" AOT-PTR@\" AS-ID s\" AOT-W32@\" AS-ID s\" MASK\" AS-ID" GE-SRC-LINE
+   s\"  s\" OPCODE\" AS-ID s\" DELTA-MASK\" AS-ID s\" SIGN\" AS-ID" GE-SRC-LINE
+   s\"  s\" CALL-MASK\" AS-ID s\" CALL-OP\" AS-ID s\" SIGNED\" AS-ID" GE-SRC-LINE ;
+
+: SURFACE-ID-2 ( -- )
+   s\"  s\" DIRECT?\" AS-ID s\" CALL?\" AS-ID s\" TARGET\" AS-ID" GE-SRC-LINE
+   s\"  s\" REC\" AS-ID s\" AOT-FOLD\" AS-ID s\" REC-NAME-LEN\" AS-ID" GE-SRC-LINE
+   s\"  s\" REC-NAME-PTR\" AS-ID s\" REC-NAME@\" AS-ID s\" REC-NAME-C@\" AS-ID" GE-SRC-LINE
+   s\"  s\" REC-NAME=\" AS-ID s\" ENTRY-NAME-BUF\" AS-ID s\" ENTRY-NAME-U\" AS-ID" GE-SRC-LINE ;
+
+: SURFACE-ID-3 ( -- )
+   s\"  s\" ENTRY-NAME$\" AS-ID s\" ENTRY-NAME!\" AS-ID s\" MAIN?\" AS-ID" GE-SRC-LINE
+   s\"  s\" AOT-UNSAFE?\" AS-ID s\" AECH\" AS-ID s\" AE1\" AS-ID" GE-SRC-LINE
+   s\"  s\" AETXT\" AS-ID s\" AEREC-TXT\" AS-ID s\" AEJCHAR\" AS-ID" GE-SRC-LINE
+   s\"  s\" AEJSTR\" AS-ID s\" AEJKEY\" AS-ID s\" AEJREC\" AS-ID" GE-SRC-LINE ;
+
+: SURFACE-ID-4 ( -- )
+   s\"  s\" AENB\" AS-ID s\" AENV\" AS-ID s\" AENN\" AS-ID" GE-SRC-LINE
+   s\"  s\" AEJNUM\" AS-ID s\" AOT-UNSAFE-JSON\" AS-ID s\" AOT-UNSAFE-PROSE\" AS-ID" GE-SRC-LINE
+   s\"  s\" AOT-UNSAFE-DIE\" AS-ID s\" FX\" AS-ID s\" REC-CODE-PTR\" AS-ID" GE-SRC-LINE
+   s\"  s\" REC-CODE-PTR@\" AS-ID s\" REC-WID@\" AS-ID s\" FINDMAIN\" AS-ID" GE-SRC-LINE ;
+
+: SURFACE-ID-5 ( -- )
+   s\"  s\" MAX-CLO\" AS-ID s\" CLO\" AS-ID s\" NCLO\" AS-ID" GE-SRC-LINE
+   s\"  s\" CLO-CX\" AS-ID s\" ROOTREC\" AS-ID s\" CLO-LIMIT\" AS-ID" GE-SRC-LINE
+   s\"  s\" CLO-LIMIT!\" AS-ID s\" IN-CLO?\" AS-ID s\" CLO-OVERFLOW-JSON\" AS-ID" GE-SRC-LINE
+   s\"  s\" CLO-OVERFLOW-PROSE\" AS-ID s\" CLO-OVERFLOW-DIE\" AS-ID s\" ADD-CLO\" AS-ID" GE-SRC-LINE ;
+
+: SURFACE-ID-6 ( -- )
+   s\"  s\" SP2\" AS-ID s\" SEND\" AS-ID s\" SCAN-CALLEE\" AS-ID" GE-SRC-LINE
+   s\"  s\" FINDADDR-PTR\" AS-ID s\" SCAN-DIRECT\" AS-ID s\" SCAN-REC\" AS-ID" GE-SRC-LINE
+   s\"  s\" WI\" AS-ID s\" NO-ENTRY-DIE\" AS-ID s\" CLOSURE\" AS-ID" GE-SRC-LINE ;
+
+: SURFACE-ID-ROWS ( -- )
+   SURFACE-ID-1 SURFACE-ID-2 SURFACE-ID-3
+   SURFACE-ID-4 SURFACE-ID-5 SURFACE-ID-6 ;
+
 : SURFACE-PRI-DEFS ( -- )
    s" : AS-NOT-EXPOSED-WL? ( ptr a n -- bool ) over XREF-NAME$ rot XREF-FIND-WL <> ;" GE-SRC-LINE
    s" : AS-BARE-IDENTITY? ( ptr a -- bool ) 0 AS-NOT-EXPOSED-WL? ;" GE-SRC-LINE
@@ -174,7 +213,14 @@ variable BLR-CNT
    s" : AS-NAMED-CHECK ( -- )" GE-SRC+
    s\"  s\" SENTSET\" AS-NAMED s\" READ-PROG\" AS-NAMED" GE-SRC+
    s\"  s\" MAP-IN-BLOB\" AS-NAMED s\" COPY-COMPACT-BLOB\" AS-NAMED" GE-SRC+
-   s\"  s\" SEED+\" AS-NAMED ;" GE-SRC-LINE
+   s\"  s\" SEED+\" AS-NAMED s\" CELL-TEXTPTR?\" AS-NAMED ;" GE-SRC-LINE
+   s" variable AS-ID-N" GE-SRC-LINE
+   s" 69 constant AS-ID-TOTAL" GE-SRC-LINE
+   s" : AS-ID ( ptr u8 n -- ) 2dup AS-PRIVATE drop AS-NAMED 1 AS-ID-N +! ;" GE-SRC-LINE
+   s" : AS-ID-CHECK ( -- ) 0 AS-ID-N !" GE-SRC-LINE
+   SURFACE-ID-ROWS
+   s"  AS-ID-N @ AS-ID-TOTAL = AS-FAIL ;" GE-SRC-LINE
+   s\" : AS-NO-BRANCH-NS ( -- ) s\" AOT-BRANCH\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE
    s" : AS-PRI-CHECK ( -- ) 0 ndict@ 0 ?do" GE-SRC+
    s"  i XREF-REC dup XREF-WORDLIST AS-PRI = if" GE-SRC+
    s"  dup AS-BARE-IDENTITY? AS-FAIL dup AS-QUAL-IDENTITY? AS-FAIL" GE-SRC+
@@ -185,7 +231,7 @@ variable BLR-CNT
    SURFACE-PUB-DEFS
    SURFACE-PRI-DEFS
    s\" : AS-RUN ( -- ) s\" AOT-LINK\" 0 XREF-FIND-WL XREF-FOUND? 0= AS-FAIL" GE-SRC+
-   s"  AS-HOSTILE-CHECK AS-MAIN-CHECK AS-NAMED-CHECK AS-PUB-CHECK AS-PRI-CHECK ;" GE-SRC-LINE
+   s"  AS-HOSTILE-CHECK AS-MAIN-CHECK AS-NAMED-CHECK AS-ID-CHECK AS-NO-BRANCH-NS AS-PUB-CHECK AS-PRI-CHECK ;" GE-SRC-LINE
    s" AS-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 

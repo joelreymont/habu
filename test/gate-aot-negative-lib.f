@@ -16,36 +16,37 @@ LOWER-CERT-HOOK:INSTALL
 \ an unregistered direct-branch target is not followed and still fails closed.
 package AOT-NEGATIVE
 
-create CODE 4 allot
-variable BT-FX
-
-: EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :}
-   ok 0= if label labelu GE-FAIL then ;
-
-: TARGET= ( n ptr u8 ptr u8 n -- ) {: instr:n want:ptr label:ptr labelu:n :}
-   CODE instr AOT-BRANCH:TARGET want = label labelu EXPECT ;
-
-: HELPER-REC ( -- ptr a )                 \ first registered engine helper in the dict
-   0 BT-FX !
-   BEGIN BT-FX @ ndict@ < WHILE
-      BT-FX @ REC dup REC-WID@ OWNER-API-PRI-WID = IF exit THEN drop
-      BT-FX @ 1+ BT-FX !
-   REPEAT XREF-NULL ;
+: BRANCH-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package AOT-LINK" GE-SRC-LINE
+   s" create ANT-CODE 4 allot" GE-SRC-LINE
+   s" variable ANT-FX" GE-SRC-LINE
+   s\" : ANT-EXPECT ( bool ptr u8 n -- ) {: ok:bool label:ptr labelu:n :} ok 0= if label labelu 74 die then ;" GE-SRC-LINE
+   s" : ANT-TARGET= ( n ptr u8 ptr u8 n -- ) {: instr:n want:ptr label:ptr labelu:n :}" GE-SRC+
+   s"  ANT-CODE instr TARGET want = label labelu ANT-EXPECT ;" GE-SRC-LINE
+   s" : ANT-HELPER-REC ( -- ptr a ) 0 ANT-FX !" GE-SRC+
+   s"  begin ANT-FX @ ndict@ < while ANT-FX @ REC dup REC-WID@ OWNER-API-PRI-WID =" GE-SRC+
+   s"  if exit then drop ANT-FX @ 1+ ANT-FX ! repeat XREF-NULL ;" GE-SRC-LINE
+   s\" : ANT-RUN ( -- ) $14000002 DIRECT? s\" AOT direct B decode\" ANT-EXPECT" GE-SRC+
+   s\"  $94000003 DIRECT? s\" AOT direct BL decode\" ANT-EXPECT" GE-SRC+
+   s\"  $54000000 DIRECT? 0= s\" AOT conditional branch exclusion\" ANT-EXPECT" GE-SRC+
+   s\"  $34000000 DIRECT? 0= s\" AOT compare branch exclusion\" ANT-EXPECT" GE-SRC+
+   s\"  $14000002 ANT-CODE 8 + s\" AOT forward B target\" ANT-TARGET=" GE-SRC+
+   s\"  $94000003 ANT-CODE 12 + s\" AOT forward BL target\" ANT-TARGET=" GE-SRC+
+   s\"  $17FFFFFF ANT-CODE 4 - s\" AOT backward B target\" ANT-TARGET=" GE-SRC+
+   s\"  $97FFFFFE ANT-CODE 8 - s\" AOT backward BL target\" ANT-TARGET=" GE-SRC+
+   s\"  ANT-HELPER-REC XREF-FOUND? s\" AOT registered helper present\" ANT-EXPECT" GE-SRC+
+   s\"  ANT-HELPER-REC dup REC-CODE-PTR@ FINDADDR-PTR = s\" AOT registered helper resolved by direct target\" ANT-EXPECT" GE-SRC+
+   s\"  ANT-HELPER-REC REC-CODE-PTR@ 4 + FINDADDR-PTR XREF-FOUND? 0= s\" AOT non-entry address excluded\" ANT-EXPECT" GE-SRC+
+   s\"  ANT-CODE FINDADDR-PTR XREF-FOUND? 0= s\" AOT unregistered address excluded\" ANT-EXPECT" GE-SRC+
+   s\"  0 REC dup REC-CODE-PTR@ FINDADDR-PTR = s\" AOT ordinary word resolved by direct target\" ANT-EXPECT ;" GE-SRC-LINE
+   s" ANT-RUN" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
 
 : BRANCH-RUN ( -- )
-   $14000002 AOT-BRANCH:DIRECT? s" AOT direct B decode" EXPECT
-   $94000003 AOT-BRANCH:DIRECT? s" AOT direct BL decode" EXPECT
-   $54000000 AOT-BRANCH:DIRECT? 0= s" AOT conditional branch exclusion" EXPECT
-   $34000000 AOT-BRANCH:DIRECT? 0= s" AOT compare branch exclusion" EXPECT
-   $14000002 CODE 8 + s" AOT forward B target" TARGET=
-   $94000003 CODE 12 + s" AOT forward BL target" TARGET=
-   $17FFFFFF CODE 4 - s" AOT backward B target" TARGET=
-   $97FFFFFE CODE 8 - s" AOT backward BL target" TARGET=
-   HELPER-REC XREF-FOUND? s" AOT registered helper present" EXPECT
-   HELPER-REC dup REC-CODE-PTR@ FINDADDR-PTR = s" AOT registered helper resolved by direct target" EXPECT
-   HELPER-REC REC-CODE-PTR@ 4 + FINDADDR-PTR XREF-FOUND? 0= s" AOT non-entry address excluded" EXPECT
-   CODE FINDADDR-PTR XREF-FOUND? 0= s" AOT unregistered address excluded" EXPECT
-   0 REC dup REC-CODE-PTR@ FINDADDR-PTR = s" AOT ordinary word resolved by direct target" EXPECT ;
+   BRANCH-SOURCE
+   GE-EVAL-FORK-CAPTURE
+   s" AOT private direct-branch fixture" GE-EXPECT-OK ;
 
 34 constant DQ
 
@@ -109,14 +110,16 @@ variable REPORT-U
 : SOURCE-CLOSURE-LIMIT ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
-   s" 8 CLO-LIMIT!" GE-SRC-LINE
    s" : W8 ( n -- n ) dup 0< if negate then ;" GE-SRC-LINE
    7 begin dup -1 > while
       dup CLO-LINE
       1-
    repeat drop
    s" : MAIN ( -- ) 1 W0 drop ;" GE-SRC-LINE
-   s" CLOSURE" GE-SRC-LINE ;
+   s" package AOT-LINK" GE-SRC-LINE
+   s" 8 CLO-LIMIT!" GE-SRC-LINE
+   s" CLOSURE" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
 
 : CLOSURE-LIMIT ( -- )
    SOURCE-CLOSURE-LIMIT
@@ -141,7 +144,9 @@ variable REPORT-U
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" TRUSTED: MAIN ( -- ) 0 0 patch32 ;" GE-SRC-LINE
-   s" CLOSURE" GE-SRC-LINE ;
+   s" package AOT-LINK" GE-SRC-LINE
+   s" CLOSURE" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE ;
 
 : PATCH32 ( -- )
    SOURCE-PATCH32
