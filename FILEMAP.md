@@ -2334,7 +2334,7 @@ points stay listed.
 - `test/run-worker-diag-all-strict.f` — resident SARIF-backed diagnostics phase.
 - `test/run-worker-dict.f` — resident dictionary/checker phase support and dispatch.
 - `test/run-worker-debug.f` — resident prop/debug phase support and dispatch.
-- `test/run-worker-aot.f` — resident positive AOT phase support.
+- `test/run-worker-aot.f` — package `AOT-POS-WORKER` owns the resident positive AOT phase and exports only `RUN`.
 - `test/run-worker-aot-neg.f` — resident negative AOT closure phase support.
 - `tools/nested-validation-rca-core.f` — checked reproducer for the resident
   engine-validation fork, its nested validation pool, the exact candidate
@@ -2386,8 +2386,8 @@ points stay listed.
 - `test/run-rerun-failed-test.f` — fixtures for --rerun-failed red-phase list persistence, parsing, and phase-skip guard.
 - `test/golden.f` — byte-exact golden-file assertions for diagnostic output, with --update-golden and temp-path redaction.
 - `test/golden-test.f` — fixtures for the golden-file update/compare/drift/redaction mechanism.
-- `test/gate-aot-positive.f` — thin entry wrapper for AOT positive checks.
-- `test/gate-aot-positive-lib.f` — side-effect-free AOT positive gate definitions.
+- `test/gate-aot-positive.f` — thin entry wrapper for `AOT-POSITIVE:RUN`.
+- `test/gate-aot-positive-lib.f` — package `AOT-POSITIVE` owns the side-effect-free positive AOT gate and exports only `RUN`.
 - `test/gate-aot-negative.f` — thin entry wrapper for AOT rejection checks.
 - `test/gate-aot-negative-lib.f` — side-effect-free AOT rejection gate definitions.
 - `test/gate-runner-lib.f` — side-effect-free phase dispatch definitions for native test runners, including the `tail-process` token route to `TAIL-PROCESS:RUN`.

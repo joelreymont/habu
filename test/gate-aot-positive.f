@@ -4,4 +4,4 @@
 
 include test/gate-aot-positive-lib.f
 
-GAP-RUN
+AOT-POSITIVE:RUN
