@@ -296,6 +296,7 @@ variable BENCH-PROG-U
 
 : BENCH-PROG! ( -- )
    0 BENCH-PROG-U !
+   s\" package MFP-BENCH\n" BP+
    s\" SUMTYPE bres 0\n  VARIANT v0 n ;VARIANT\n  VARIANT v1 n ;VARIANT\n  VARIANT v2 n ;VARIANT\n  VARIANT v3 n ;VARIANT\n  VARIANT v4 n ;VARIANT\n  VARIANT v5 n ;VARIANT\n  VARIANT v6 n ;VARIANT\n  VARIANT v7 n ;VARIANT\n;SUMTYPE\n" BP+
    s\" $100000 constant SCAP  create SRC SCAP allot  variable SU  variable T0\n" BP+
    s\" TRUSTED: EVL ( ptr u8 n -- ) evaluate ;\n" BP+
@@ -309,6 +310,7 @@ variable BENCH-PROG-U
    s\"    s\" bench: 150 ADT word compiles in \" type ms . s\"  ms\" type cr\n" BP+
    s\"    ms 6000 TEST-BUDGET:PERF-MS > if s\" bench: ADT compile over budget\" 1 die then ;\n" BP+
    s\" RUN-BENCH\n" BP+
+   s\" ;package\n" BP+
    s\" s\" ok\" type cr\n" BP+ ;
 
 : BENCH ( -- )
