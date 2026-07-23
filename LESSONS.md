@@ -2064,7 +2064,10 @@ fits.
   whole old source, then align only genuine top-level transitions to new lines.
 - **Close a runner package before it forks package-owning children.** Forks
   inherit the current package state, so a child cannot open its own package
-  while the runner's package remains active.
+  while the runner's package remains active. Keep the runner private by
+  returning a checked quotation from a private helper, close the package, then
+  execute that quotation immediately; raw execution tokens, exported aliases,
+  and storage cells weaken the boundary.
 - **A linear wrapper is not opaque when its generated representation API is
   public.** A public product can preserve its linear owner while replacing raw
   state fields through `UNMAKE` and `MAKE`. Use an opaque linear token and keep
