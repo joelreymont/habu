@@ -1,9 +1,11 @@
 ---
 title: Own stdlib process schedule
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-23T05:06:54.486290+02:00\""
+created-at: "\"\\\"2026-07-23T05:06:54.486290+02:00\\\"\""
+closed-at: "2026-07-23T07:55:15.074458+02:00"
+close-reason: "Landed atomically at master 5ae6ecc7: TAIL-PROCESS:RUN owns the schedule and verify-prim enrollment; fresh destruction and combined gates green."
 blocks:
   - habu-pkg-stdlib-gate-fb28fe63
   - habu-pkg-match-factor-28b18558
