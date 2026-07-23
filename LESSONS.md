@@ -2191,6 +2191,13 @@ fits.
   audited projection private to the module that owns the storage operation,
   inventory it, and migrate production consumers onto the typed interface
   before asking them to consume typed reference data.
+- **A package has separate private and public seal boundaries.** Sealing its
+  private wordlist does not stop a public package reopen or a qualified public
+  definition. Test the public seal through reopen and qualified publication;
+  test the private seal by resolving the namespace record's private wordlist
+  and publishing through `set-current`. A package reopen reaches the public
+  guard first and cannot distinguish a missing private seal. Remove each seal
+  in a focused mutation so both publication paths prove their own rejection.
 - **Joint master publication needs the other agent's ACK before the push.**
   Publishing an agreed, green commit is still unilateral if the exact commit
   was only announced, not acknowledged. Post the commit and gate evidence,

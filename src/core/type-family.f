@@ -1170,6 +1170,67 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
    a u s" field" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" policy" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" derive" CORE-STR=CI ;
+
+package TYPE-NAME
+
+7107 constant E-SYNTAX
+7110 constant E-RESERVED
+
+: CONTROL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" if" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" then" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" else" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" begin" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" until" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" again" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" while" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" repeat" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" case" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" of" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" endof" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" endcase" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" do" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ?do" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" loop" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" +loop" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" leave" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" unloop" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" exit" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" recurse" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" construct" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" ;match" CORE-STR=CI ;
+
+: RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u 1 = IF RES-TRUE EXIT THEN
+   a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
+   a u s" field" CORE-STR= IF RES-TRUE EXIT THEN
+   a u CON-OF 0 <> IF RES-TRUE EXIT THEN
+   a u ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
+   a u CONTROL? IF RES-TRUE EXIT THEN
+   a u TF-GRAMMAR-KEYWORD? ;
+
+: FAMILY-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
+   CHECKER-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-FIND-IN nip ;
+
+public
+
+: VARIANT-REQUIRE ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0= IF E-SYNTAX throw THEN
+   a u TF-REQUIRE-CANON
+   a u RESERVED? IF E-RESERVED throw THEN
+   a u FAMILY-TAKEN? IF E-RESERVED throw THEN ;
+
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
+
+;package
+
 : PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
    a u s" make" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -1436,6 +1497,11 @@ package TYPE-FIELD-OWNER
 public
 
 : TX-SCHEMA-FOR ( n n n -- n ) PF-TX-SCHEMA-FOR ;
+: TX-CELLS-FOR ( n n n -- n ) {: tx:n fam:n id:n :}
+   tx PF-TX-REQUIRE
+   PF-TX-TOP PFTX.STATE @ PF-TX-OPEN <> IF E-PF-TX throw THEN
+   tx fam id PF-TX-SCHEMA-FOR drop
+   id PF-ROW PF.CELLS @ ;
 
 private
 get-current prot-wid-add

@@ -14,7 +14,7 @@ LOWER-CERT-HOOK:INSTALL
 \ resolve (both carry a record), while a non-entry offset and an unregistered
 \ (no-record) address resolve to nothing. Those negatives are the security boundary:
 \ an unregistered direct-branch target is not followed and still fails closed.
-package AOT-BRANCH-TEST
+package AOT-NEGATIVE
 
 create CODE 4 allot
 variable BT-FX
@@ -32,9 +32,7 @@ variable BT-FX
       BT-FX @ 1+ BT-FX !
    REPEAT XREF-NULL ;
 
-public
-
-: RUN ( -- )
+: BRANCH-RUN ( -- )
    $14000002 AOT-BRANCH:DIRECT? s" AOT direct B decode" EXPECT
    $94000003 AOT-BRANCH:DIRECT? s" AOT direct BL decode" EXPECT
    $54000000 AOT-BRANCH:DIRECT? 0= s" AOT conditional branch exclusion" EXPECT
@@ -49,116 +47,118 @@ public
    CODE FINDADDR-PTR XREF-FOUND? 0= s" AOT unregistered address excluded" EXPECT
    0 REC dup REC-CODE-PTR@ FINDADDR-PTR = s" AOT ordinary word resolved by direct target" EXPECT ;
 
-;package
+34 constant DQ
 
-34 constant GAN-DQ
+create REPORT-PATH FS-PATH-CAP allot
+variable REPORT-U
 
-create GAN-REPORT-PATH FS-PATH-CAP allot
-variable GAN-REPORT-U
+: REPORT$ ( -- ptr u8 n )
+   REPORT-PATH REPORT-U @ ;
 
-: GAN-REPORT$ ( -- ptr u8 n )
-   GAN-REPORT-PATH GAN-REPORT-U @ ;
+: REPORT! ( -- )
+   s" hb-clo-limit.err" REPORT-PATH GT-PATH REPORT-U ! ;
 
-: GAN-REPORT! ( -- )
-   s" hb-clo-limit.err" GAN-REPORT-PATH GT-PATH GAN-REPORT-U ! ;
+: WRITE-ERR ( -- )
+   REPORT$ GT-ERR$ WRITE-ALL ;
 
-: GAN-WRITE-ERR ( -- )
-   GAN-REPORT$ GT-ERR$ WRITE-ALL ;
+: J-DQ ( -- )
+   DQ SB-APPEND-C ;
 
-: GAN-J-DQ ( -- )
-   GAN-DQ SB-APPEND-C ;
-
-: GAN-J-COLON ( -- )
+: J-COLON ( -- )
    s" :" SB-APPEND ;
 
-: GAN-JKEY ( ptr u8 n -- )
-   GAN-J-DQ
+: JKEY ( ptr u8 n -- )
+   J-DQ
    SB-APPEND
-   GAN-J-DQ ;
+   J-DQ ;
 
-: GAN-EXPECT-ERR-RAW-FIELD ( ptr u8 n ptr u8 n ptr u8 n -- )
+: EXPECT-RAW ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: key:ptr keyu:n raw:ptr rawu:n label:ptr labelu:n :}
    SB-RESET
-   key keyu GAN-JKEY
-   GAN-J-COLON
+   key keyu JKEY
+   J-COLON
    raw rawu SB-APPEND
    SB$ label labelu GE-EXPECT-ERR-HAS ;
 
-: GAN-EXPECT-ERR-STR-FIELD ( ptr u8 n ptr u8 n ptr u8 n -- )
+: EXPECT-STR ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: key:ptr keyu:n val:ptr valu:n label:ptr labelu:n :}
    SB-RESET
-   key keyu GAN-JKEY
-   GAN-J-COLON
-   GAN-J-DQ
+   key keyu JKEY
+   J-COLON
+   J-DQ
    val valu SB-APPEND
-   GAN-J-DQ
+   J-DQ
    SB$ label labelu GE-EXPECT-ERR-HAS ;
 
-: GAN-CLOSURE-NZ ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GAN-REPORT!
+: CLOSURE-NZ ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   REPORT!
    74 s" E-AOT-CLOSURE-LIMIT" label labelu GE-EVAL-FORK-BAD
-   GAN-WRITE-ERR ;
+   WRITE-ERR ;
 
-: GAN-ERR-SCHEMA ( ptr u8 n -- )
+: ERR-SCHEMA ( ptr u8 n -- )
    2drop
-   GAN-REPORT$ GJA-FIRST-JSON GJA-SCHEMA1 ;
+   REPORT$ GJA-FIRST-JSON GJA-SCHEMA1 ;
 
-: GAN-CLO-LINE ( n -- ) {: n:n :}
+: CLO-LINE ( n -- ) {: n:n :}
    s" : W" GE-SRC+
    n GE-SRC-U+
    s"  ( n -- n ) W" GE-SRC+
    n 1+ GE-SRC-U+
    s"  dup 0< if negate then ;" GE-SRC-LINE ;
 
-: GAN-SOURCE-CLOSURE-LIMIT ( -- )
+: SOURCE-CLOSURE-LIMIT ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" 8 CLO-LIMIT!" GE-SRC-LINE
    s" : W8 ( n -- n ) dup 0< if negate then ;" GE-SRC-LINE
    7 begin dup -1 > while
-      dup GAN-CLO-LINE
+      dup CLO-LINE
       1-
    repeat drop
    s" : MAIN ( -- ) 1 W0 drop ;" GE-SRC-LINE
    s" CLOSURE" GE-SRC-LINE ;
 
-: GAN-CLOSURE-LIMIT ( -- )
-   GAN-SOURCE-CLOSURE-LIMIT
-   s" hb-build closure limit" GAN-CLOSURE-NZ
-   s" code" s" E-AOT-CLOSURE-LIMIT" s" hb-build closure limit code" GAN-EXPECT-ERR-STR-FIELD
-   s" schema_version" s" 1" s" hb-build closure limit schema version" GAN-EXPECT-ERR-RAW-FIELD
-   s" reachable_count" s" 8" s" hb-build closure limit reachable count" GAN-EXPECT-ERR-RAW-FIELD
-   s" max_closure" s" 8" s" hb-build closure limit max closure" GAN-EXPECT-ERR-RAW-FIELD
-   s" root_word" s" MAIN" s" hb-build closure limit root word" GAN-EXPECT-ERR-STR-FIELD
-   s" hb-build closure limit JSON schema" GAN-ERR-SCHEMA ;
+: CLOSURE-LIMIT ( -- )
+   SOURCE-CLOSURE-LIMIT
+   s" hb-build closure limit" CLOSURE-NZ
+   s" code" s" E-AOT-CLOSURE-LIMIT" s" hb-build closure limit code" EXPECT-STR
+   s" schema_version" s" 1" s" hb-build closure limit schema version" EXPECT-RAW
+   s" reachable_count" s" 8" s" hb-build closure limit reachable count" EXPECT-RAW
+   s" max_closure" s" 8" s" hb-build closure limit max closure" EXPECT-RAW
+   s" root_word" s" MAIN" s" hb-build closure limit root word" EXPECT-STR
+   s" hb-build closure limit JSON schema" ERR-SCHEMA ;
 
 \ Kept rejection: patch32 writes the code region, which a stripped binary has
 \ no way to do (its __text is r-x and its code is at the PIE image base, not the
 \ RBASE-VA region patch32 targets). The persistent data region does NOT make this
 \ safe, so the closure walk must still reject it with E-AOT-UNSUPPORTED (exit 70).
-: GAN-UNSAFE-NZ ( ptr u8 n -- ) {: label:ptr labelu:n :}
-   GAN-REPORT!
+: UNSAFE-NZ ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   REPORT!
    70 s" E-AOT-UNSUPPORTED" label labelu GE-EVAL-FORK-BAD
-   GAN-WRITE-ERR ;
+   WRITE-ERR ;
 
-: GAN-SOURCE-PATCH32 ( -- )
+: SOURCE-PATCH32 ( -- )
    GE-SRC-RESET
    s" -1 JSON-DIAGS !" GE-SRC-LINE
    s" TRUSTED: MAIN ( -- ) 0 0 patch32 ;" GE-SRC-LINE
    s" CLOSURE" GE-SRC-LINE ;
 
-: GAN-PATCH32 ( -- )
-   GAN-SOURCE-PATCH32
-   s" hb-build AOT patch32 reject" GAN-UNSAFE-NZ
-   s" code" s" E-AOT-UNSUPPORTED" s" hb-build AOT patch32 code" GAN-EXPECT-ERR-STR-FIELD
-   s" token" s" patch32" s" hb-build AOT patch32 token" GAN-EXPECT-ERR-STR-FIELD
-   s" word" s" MAIN" s" hb-build AOT patch32 word" GAN-EXPECT-ERR-STR-FIELD
-   s" hb-build AOT patch32 JSON schema" GAN-ERR-SCHEMA ;
+: PATCH32 ( -- )
+   SOURCE-PATCH32
+   s" hb-build AOT patch32 reject" UNSAFE-NZ
+   s" code" s" E-AOT-UNSUPPORTED" s" hb-build AOT patch32 code" EXPECT-STR
+   s" token" s" patch32" s" hb-build AOT patch32 token" EXPECT-STR
+   s" word" s" MAIN" s" hb-build AOT patch32 word" EXPECT-STR
+   s" hb-build AOT patch32 JSON schema" ERR-SCHEMA ;
 
-: GAN-RUN ( -- )
+public
+
+: RUN ( -- )
    s" hb-gate-aot-negative" GT-START
-   AOT-BRANCH-TEST:RUN
-   GAN-CLOSURE-LIMIT
-   GAN-PATCH32
+   BRANCH-RUN
+   CLOSURE-LIMIT
+   PATCH32
    GT-CLEANUP
    s" PASS: native hb-build AOT negative gate phase" type cr ;
+
+;package

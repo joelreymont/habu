@@ -23,14 +23,20 @@ require test/gate-aot-positive-lib.f
 
 TRW-LOAD-DONE
 
-: TRWA-SETUP ( -- )
+package AOT-POS-WORKER
+
+: SETUP ( -- )
    TR-BUILD-CACHE$ BUILD-CACHE:ROOT! ;
 
-: TRWA-RUN ( -- )
-   TRWA-SETUP
+public
+
+: RUN ( -- )
+   SETUP
    TR-RESIDENT-ID @ case
-      7 of GAP-RUN endof
+      7 of AOT-POSITIVE:RUN endof
       E-TBL-BOUNDS throw
    endcase ;
 
-TRWA-RUN
+;package
+
+AOT-POS-WORKER:RUN

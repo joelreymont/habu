@@ -21,8 +21,9 @@
 \  - Header clauses (arity, POLICY, DERIVE) are events HERE, with duplicate-clause
 \    validation HERE (E-DEV-DUP-POLICY / E-DEV-DUP-DERIVE) and the arity value
 \    bound HERE (E-TDECL-ARITY). Their state is the event stream itself.
-\  - Variant open/close are events HERE; open performs the variant registration
-\    (SUMV-ADD) and surfaces the returned id as the CURRENT-VARIANT selector.
+\  - Variant open/close are events HERE; open enforces TYPE-NAME policy, performs
+\    SUMV-ADD duplicate registration, and surfaces the returned id as the
+\    CURRENT-VARIANT selector.
 \  - Field name-gate (duplicate / reserved / case) is NOT here: the field record
 \    raises those and this module surfaces the throw unchanged — no second gate.
 \
@@ -57,7 +58,8 @@
 \   PF-FINALIZE      ( tok -- )                             release a published frame
 \   PF-ROLLBACK      ( tok -- )                             retire provisional field rows
 \   TYPE-FIELD:COUNT ( -- n )                               committed field high-water
-\   SUMV-ADD         ( fam na nu tag ss sc pc -- vid )      register one variant (dup/canon gate)
+\   TYPE-NAME:VARIANT-REQUIRE ( na nu -- )                  reserved/collision gate
+\   SUMV-ADD         ( fam na nu tag ss sc pc -- vid )      register one canonical, unique variant
 
 package DECL-EVENT
 
@@ -81,11 +83,17 @@ package DECL-EVENT
 
 -1 constant DEV-NO-VARIANT   \ VAR sentinel: no open variant (structure fields, framing)
 -1 constant DEV-NO-FIELD     \ FLD sentinel for every non-field event
+-1 constant DEV-NO-FAMILY    \ DEVTX.FAM sentinel: DECL has not bound this frame
+-1 constant DEV-NO-OWNER     \ frame has not emitted an event
+
+0 constant DEV-FAMILY-USE
+1 constant DEV-FAMILY-BIND
 
 \ --- named reject codes (thrown, caught by the parser/CHECK path or unit `catch`).
-\ Field name-gate + variant dup/canon codes (E-TFAM-DUP 7102, E-PF-NAME 7125,
-\ E-TFAM-CASE 7101) are raised by the field record / SUMV and pass through
-\ unchanged.
+\ Field name-gate and variant duplicate/canonical codes (E-TFAM-DUP 7102,
+\ E-PF-NAME 7125, E-TFAM-CASE 7101) are raised by the field record / SUMV and
+\ pass through unchanged. TYPE-NAME raises variant syntax code 7107 or reserved
+\ name code 7110 before SUMV.
 7161 constant E-DEV-TX          \ stale or non-LIFO declaration-event transaction token
 7162 constant E-DEV-STATE       \ field-record publication broke the field-id contiguity invariant
 7163 constant E-DEV-DUP-POLICY  \ a second POLICY clause in one declaration
@@ -112,23 +120,29 @@ TRUSTED: DEV-FLD-ROLLBACK ( n -- ) PF-ROLLBACK ;
 TRUSTED: DEV-FLD-COUNT ( -- n ) TYPE-FIELD:COUNT ;
 TRUSTED: DEV-FLD-PROVISIONAL-COUNT ( -- n ) PF-N @ ;
 TRUSTED: DEV-FLD-TX-SCHEMA-FOR ( n n n -- n ) TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
+TRUSTED: DEV-FLD-TX-CELLS-FOR ( n n n -- n ) TYPE-FIELD-OWNER:TX-CELLS-FOR ;
+TRUSTED: DEV-NAME-VARIANT-REQUIRE ( ptr u8 n -- ) TYPE-NAME:VARIANT-REQUIRE ;
 TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
 
 \ ---------------------------------------------------------------------------
-\ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD are all
-\ integers, so a grow is a plain cell copy and any later snapshot bake is verbatim
-\ with no rebase). One growable buffer whose base rides a variable; grow relocates.
+\ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD/OWNER are
+\ all integers, so a grow is a plain cell copy and any later snapshot bake is
+\ verbatim with no rebase). OWNER is the first event id of the frame that
+\ emitted the row, so finalized nested declarations remain distinguishable from
+\ their still-open parent. One growable buffer whose base rides a variable.
 \ ---------------------------------------------------------------------------
 0 cells constant DEV.KIND-OFF
 1 cells constant DEV.FAM-OFF
 2 cells constant DEV.VAR-OFF
 3 cells constant DEV.FLD-OFF
-4 cells constant DEV-REC
+4 cells constant DEV.OWNER-OFF
+5 cells constant DEV-REC
 
 : DEV.KIND ( ptr a -- ptr a ) DEV.KIND-OFF + ;
 : DEV.FAM ( ptr a -- ptr a ) DEV.FAM-OFF + ;
 : DEV.VAR ( ptr a -- ptr a ) DEV.VAR-OFF + ;
 : DEV.FLD ( ptr a -- ptr a ) DEV.FLD-OFF + ;
+: DEV.OWNER ( ptr a -- ptr a ) DEV.OWNER-OFF + ;
 
 8 constant DEV-CAP-INIT           \ small seed; grows geometrically (doubles) on demand
 variable DEV-CAP-V   DEV-CAP-INIT DEV-CAP-V !
@@ -166,12 +180,6 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
    id DEV-PUB-N @ >= IF s" decl-event: bad published event id" DEV-BUG-RC die THEN
    id DEV-REC * DEV-BASE + ;
 
-: DEV-EMIT ( n n n n -- ) {: k:n fam:n var:n fld:n :}   \ append one provisional event
-   DEV-ENSURE
-   DEV-N @ DEV-REC * DEV-BASE + {: r:ptr :}
-   k r DEV.KIND !   fam r DEV.FAM !   var r DEV.VAR !   fld r DEV.FLD !
-   DEV-N @ 1 + DEV-N ! ;
-
 \ ---------------------------------------------------------------------------
 \ strict-LIFO transaction frames. Nested PUBLISH keeps events + field rows
 \ provisional; only the outer PUBLISH advances DEV-PUB-N and outer-commits the
@@ -188,7 +196,8 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
 6 cells constant DEVTX.PUBN-OFF     \ published event high-water at open
 7 cells constant DEVTX.STATE-OFF    \ open / reversibly published
 8 cells constant DEVTX.FAM-OFF      \ family owned by this declaration frame
-9 cells constant DEV-TX-REC
+9 cells constant DEVTX.OWNER-OFF    \ exact first event that owns frame rows
+10 cells constant DEV-TX-REC
 
 : DEVTX.EVN ( ptr a -- ptr a ) DEVTX.EVN-OFF + ;
 : DEVTX.FLDORD ( ptr a -- ptr a ) DEVTX.FLDORD-OFF + ;
@@ -199,6 +208,7 @@ TRUSTED: DEV-REG-GROW1 ( ptr a n n -- ) REG-GROW1 ;
 : DEVTX.PUBN ( ptr a -- ptr a ) DEVTX.PUBN-OFF + ;
 : DEVTX.STATE ( ptr a -- ptr a ) DEVTX.STATE-OFF + ;
 : DEVTX.FAM ( ptr a -- ptr a ) DEVTX.FAM-OFF + ;
+: DEVTX.OWNER ( ptr a -- ptr a ) DEVTX.OWNER-OFF + ;
 
 4 constant DEV-TX-CAP-INIT
 variable DEV-TX-CAP-V   DEV-TX-CAP-INIT DEV-TX-CAP-V !
@@ -223,6 +233,18 @@ variable DEV-TX-SERIAL
    DEV-TX-DEPTH @ 0= IF E-DEV-TX throw THEN
    DEV-TX-DEPTH @ 1 - DEV-TX-AT ;
 : DEV-TX-REQUIRE ( n -- ) DEV-TX-TOP DEVTX.TOK @ <> IF E-DEV-TX throw THEN ;
+: DEV-FAMILY-REQUIRE ( n n n -- )
+   {: tok:n fam:n bind:n :}
+   tok DEV-TX-REQUIRE
+   fam DEV-NO-FAMILY = IF E-DEV-FAMILY-SCOPE throw THEN
+   DEV-TX-TOP DEVTX.FAM @ {: owner:n :}
+   owner DEV-NO-FAMILY = IF
+      bind 0= IF E-DEV-FAMILY-SCOPE throw THEN
+      fam DEV-TX-TOP DEVTX.FAM !
+      EXIT
+   THEN
+   owner fam <> IF E-DEV-FAMILY-SCOPE throw THEN
+   bind 0= 0= IF E-DEV-STATE throw THEN ;
 
 : DEV-OPEN ( -- n )
    DEV-TX-ENSURE
@@ -245,22 +267,39 @@ variable DEV-TX-SERIAL
    tok r DEVTX.TOK !
    DEV-PUB-N @ r DEVTX.PUBN !
    DEV-TX-OPEN r DEVTX.STATE !
-   DEV-NO-VARIANT r DEVTX.FAM !
+   DEV-NO-FAMILY r DEVTX.FAM !
+   DEV-NO-OWNER r DEVTX.OWNER !
    DEV-TX-DEPTH @ 1 + DEV-TX-DEPTH !
    tok ;
 
 \ --- duplicate-clause scan over the current declaration's provisional events
 \ (this frame's [start, DEV-N) range; one declaration per transaction frame).
 : DEV-CUR-START ( -- n ) DEV-TX-TOP DEVTX.EVN @ ;
+: DEV-CUR-OWNER ( -- n )
+   DEV-TX-TOP DEVTX.OWNER @ dup DEV-NO-OWNER =
+      IF drop E-DEV-STATE throw THEN ;
+: DEV-OWNER-ENSURE ( -- )
+   DEV-TX-TOP DEVTX.OWNER @ DEV-NO-OWNER =
+      IF DEV-N @ DEV-TX-TOP DEVTX.OWNER ! THEN ;
+: DEV-EMIT ( n n n n -- ) {: k:n fam:n var:n fld:n :}
+   DEV-ENSURE
+   DEV-OWNER-ENSURE
+   DEV-N @ DEV-REC * DEV-BASE + {: r:ptr :}
+   k r DEV.KIND !   fam r DEV.FAM !   var r DEV.VAR !   fld r DEV.FLD !
+   DEV-CUR-OWNER r DEV.OWNER !
+   DEV-N @ 1 + DEV-N ! ;
 : DEV-PROV-KIND@ ( n -- n ) DEV-ROW DEV.KIND @ ;
 : DEV-PROV-FAM@ ( n -- n ) DEV-ROW DEV.FAM @ ;
 : DEV-PROV-VAR@ ( n -- n ) DEV-ROW DEV.VAR @ ;
 : DEV-PROV-FLD@ ( n -- n ) DEV-ROW DEV.FLD @ ;
+: DEV-PROV-OWNER@ ( n -- n ) DEV-ROW DEV.OWNER @ ;
 : DEV-CUR-HAS-KIND? ( n -- bool ) {: k:n :}
    0 DEV-FOUND !
    DEV-CUR-START DEV-I !
    BEGIN DEV-I @ DEV-N @ < WHILE
-      DEV-I @ DEV-PROV-KIND@ k = IF -1 DEV-FOUND ! THEN
+      DEV-I @ DEV-PROV-KIND@ k =
+      DEV-I @ DEV-PROV-OWNER@ DEV-CUR-OWNER = and
+         IF -1 DEV-FOUND ! THEN
       DEV-I @ 1 + DEV-I !
    REPEAT
    DEV-FOUND @ 0 <> ;
@@ -268,23 +307,25 @@ variable DEV-TX-SERIAL
    0 DEV-FOUND !
    DEV-CUR-START DEV-I !
    BEGIN DEV-I @ DEV-N @ < WHILE
-      DEV-I @ DEV-PROV-KIND@ k =  DEV-I @ DEV-PROV-VAR@ v =  and IF -1 DEV-FOUND ! THEN
+      DEV-I @ DEV-PROV-KIND@ k =
+      DEV-I @ DEV-PROV-VAR@ v = and
+      DEV-I @ DEV-PROV-OWNER@ DEV-CUR-OWNER = and
+         IF -1 DEV-FOUND ! THEN
       DEV-I @ 1 + DEV-I !
    REPEAT
    DEV-FOUND @ 0 <> ;
 
 \ --- declaration open + header clauses.
 : DEV-DECL ( n n -- n ) {: tok:n fam:n :}          \ open one declaration
-   tok DEV-TX-REQUIRE
-   DEV-TX-TOP DEVTX.FAM @ DEV-NO-VARIANT <> IF E-DEV-STATE throw THEN
-   fam DEV-TX-TOP DEVTX.FAM !
+   tok fam DEV-FAMILY-BIND DEV-FAMILY-REQUIRE
    DEV-K-DECL fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT
    tok ;
 
 : DEV-FIELD-MATCH? ( n n n -- bool ) {: idx:n fam:n fld:n :}
    idx DEV-PROV-KIND@ DEV-K-FIELD =
    idx DEV-PROV-FAM@ fam = and
-   idx DEV-PROV-FLD@ fld = and ;
+   idx DEV-PROV-FLD@ fld = and
+   idx DEV-PROV-OWNER@ DEV-CUR-OWNER = and ;
 
 : DEV-CUR-FIELD? ( n n -- bool ) {: fam:n fld:n :}
    DEV-CUR-START
@@ -300,37 +341,121 @@ variable DEV-TX-SERIAL
    fam fld DEV-CUR-FIELD? 0= IF E-DEV-FIELD-SCOPE throw THEN
    DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-SCHEMA-FOR ;
 
+: DEV-PAYLOAD-FIELD? ( n n n -- bool ) {: id:n fam:n vid:n :}
+   id DEV-PROV-KIND@ DEV-K-FIELD =
+   id DEV-PROV-FAM@ fam = and
+   id DEV-PROV-VAR@ vid = and
+   id DEV-PROV-OWNER@ DEV-CUR-OWNER = and ;
+
+: DEV-PAYLOAD-OPEN? ( n n n -- bool ) {: id:n fam:n vid:n :}
+   id DEV-PROV-KIND@ DEV-K-VARIANT =
+   id DEV-PROV-FAM@ fam = and
+   id DEV-PROV-VAR@ vid = and
+   id DEV-PROV-OWNER@ DEV-CUR-OWNER = and ;
+
+: DEV-PAYLOAD-END? ( n n n -- bool ) {: id:n fam:n vid:n :}
+   id DEV-PROV-KIND@ DEV-K-VARIANT-END =
+   id DEV-PROV-FAM@ fam = and
+   id DEV-PROV-VAR@ vid = and
+   id DEV-PROV-OWNER@ DEV-CUR-OWNER = and ;
+
+: DEV-FIELD-ORDERED? ( n n -- bool ) {: id:n ord:n :}
+   id DEV-PROV-FLD@ DEV-BASE-FLD @ ord + = ;
+
+: DEV-FIELDS-VALIDATE ( -- )
+   DEV-CUR-START DEV-TX-TOP DEVTX.FLDORD @
+   BEGIN over DEV-N @ < WHILE
+      over DEV-PROV-KIND@ DEV-K-FIELD = IF
+         2dup DEV-FIELD-ORDERED? 0= IF 2drop E-DEV-FIELD-SCOPE throw THEN
+         1 +
+      THEN
+      swap 1 + swap
+   REPEAT
+   nip DEV-FLD-ORD @ <> IF E-DEV-FIELD-SCOPE throw THEN ;
+
+: DEV-PAYLOAD-START ( n n n -- n ) {: tok:n fam:n vid:n :}
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
+   DEV-TX-TOP DEVTX.STATE @ DEV-TX-OPEN <> IF E-DEV-TX throw THEN
+   DEV-FIELDS-VALIDATE
+   DEV-CUR-START
+   BEGIN dup DEV-N @ < WHILE
+      dup fam vid DEV-PAYLOAD-OPEN? IF 1 + EXIT THEN
+      1 +
+   REPEAT
+   drop E-DEV-FIELD-SCOPE throw ;
+
+: DEV-PAYLOAD-END ( n n n -- n ) {: start:n fam:n vid:n :}
+   start
+   BEGIN dup DEV-N @ < WHILE
+      dup fam vid DEV-PAYLOAD-END? IF EXIT THEN
+      dup fam vid DEV-PAYLOAD-FIELD? 0= IF drop E-DEV-FIELD-SCOPE throw THEN
+      1 +
+   REPEAT
+   drop E-DEV-FIELD-SCOPE throw ;
+
+: DEV-PAYLOAD-RANGE ( n n n -- n n ) {: tok:n fam:n vid:n :}
+   tok fam vid DEV-PAYLOAD-START {: start:n :}
+   start start fam vid DEV-PAYLOAD-END ;
+
+: DEV-PAYLOAD-N ( n n n -- n ) DEV-PAYLOAD-RANGE swap - ;
+
+: DEV-PAYLOAD-FIELD ( n n n n -- n ) {: tok:n fam:n vid:n wanted:n :}
+   tok fam vid DEV-PAYLOAD-RANGE {: start:n end:n :}
+   wanted 0 < wanted end start - >= or IF E-DEV-FIELD-SCOPE throw THEN
+   start wanted + DEV-PROV-FLD@ ;
+
+: DEV-PAYLOAD-SCHEMA@ ( n n n n -- n ) {: tok:n fam:n vid:n index:n :}
+   tok fam vid index DEV-PAYLOAD-FIELD {: fld:n :}
+   DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-SCHEMA-FOR ;
+
+: DEV-PAYLOAD-WIDTH@ ( n n n n -- n ) {: tok:n fam:n vid:n index:n :}
+   tok fam vid index DEV-PAYLOAD-FIELD {: fld:n :}
+   DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-CELLS-FOR ;
+
+: DEV-PAYLOAD-CELLS ( n n n -- n ) {: tok:n fam:n vid:n :}
+   tok fam vid DEV-PAYLOAD-RANGE {: start:n end:n :}
+   start
+   0
+   BEGIN over end < WHILE
+      over DEV-PROV-FLD@ {: fld:n :}
+      DEV-TX-TOP DEVTX.FLDTOK @ fam fld DEV-FLD-TX-CELLS-FOR +
+      swap 1 + swap
+   REPEAT
+   nip ;
+
 : DEV-ARITY ( n n n -- n ) {: tok:n fam:n arity:n :}   \ header: arity value (shared bound)
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    arity 0 < arity TFAM-DECL-PARAM-COUNT > or IF E-DEV-ARITY throw THEN
    DEV-K-ARITY fam arity DEV-NO-FIELD DEV-EMIT
    tok ;
 
 : DEV-POLICY ( n n n -- n ) {: tok:n fam:n policy:n :}   \ header: POLICY clause (at most once)
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-POLICY DEV-CUR-HAS-KIND? IF E-DEV-DUP-POLICY throw THEN
    DEV-K-POLICY fam policy DEV-NO-FIELD DEV-EMIT
    tok ;
 
 : DEV-DERIVE ( n n n -- n ) {: tok:n fam:n feature:n :}   \ header: DERIVE feature (each once)
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-DERIVE feature DEV-CUR-HAS-KIND-VAR? IF E-DEV-DUP-DERIVE throw THEN
    DEV-K-DERIVE fam feature DEV-NO-FIELD DEV-EMIT
    tok ;
 
-\ --- variant open/close. Open registers the variant (SUMV-ADD: dup / canon /
-\ reserved gate passes through) and pins its id as the current-variant selector;
-\ named-field variants carry no positional payload schema (ss=sc=pc=0), the field
-\ rows are discovered downstream by (family, variant-id). Close clears the selector.
+\ --- variant open/close. Open validates the variant tail before SUMV-ADD's
+\ canonical/duplicate registration and pins its id as the current-variant
+\ selector. Named-field variants carry no positional payload schema
+\ (ss=sc=pc=0); field rows are discovered downstream by (family, variant-id).
+\ Close clears the selector.
 : DEV-VARIANT ( n n ptr u8 n -- n ) {: tok:n fam:n na:ptr nu:n :}
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
+   na nu DEV-NAME-VARIANT-REQUIRE
    fam na nu DEV-VAR-ORD @ 0 0 0 DEV-SUMV-ADD {: vid:n :}
    vid DEV-CUR-VAR !
    DEV-VAR-ORD @ 1 + DEV-VAR-ORD !
    DEV-K-VARIANT fam vid DEV-NO-FIELD DEV-EMIT
    tok ;
 : DEV-END-VARIANT ( n n -- n ) {: tok:n fam:n :}
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-K-VARIANT-END fam DEV-CUR-VAR @ DEV-NO-FIELD DEV-EMIT
    DEV-NO-VARIANT DEV-CUR-VAR !
    tok ;
@@ -344,7 +469,7 @@ variable DEV-TX-SERIAL
 \ produce the identical event + row shape.
 : DEV-FIELD ( n n ptr u8 n n n n n n n n -- n )
    {: tok:n fam:n na:ptr nu:n sch:n slot:n cellsn:n boff:n bytesn:n al:n flags:n :}
-   tok DEV-TX-REQUIRE
+   tok fam DEV-FAMILY-USE DEV-FAMILY-REQUIRE
    DEV-TX-TOP DEVTX.FLDTOK @ {: fldtok:n :}        \ PF-ADD wants the field-tx token, not our serial
    fldtok fam DEV-CUR-VAR @ na nu sch slot cellsn boff bytesn al flags DEV-FLD-ADD drop
    DEV-K-FIELD fam DEV-CUR-VAR @  DEV-BASE-FLD @ DEV-FLD-ORD @ +  DEV-EMIT
@@ -414,6 +539,7 @@ DEV-RESET
 : DEV-FAM@ ( n -- n ) DEV-REC@ DEV.FAM @ ;
 : DEV-VAR@ ( n -- n ) DEV-REC@ DEV.VAR @ ;
 : DEV-FLD@ ( n -- n ) DEV-REC@ DEV.FLD @ ;
+: DEV-OWNER@ ( n -- n ) DEV-REC@ DEV.OWNER @ ;
 : DEV-DECL? ( n -- bool ) DEV-KIND@ DEV-K-DECL = ;
 : DEV-ARITY? ( n -- bool ) DEV-KIND@ DEV-K-ARITY = ;
 : DEV-POLICY? ( n -- bool ) DEV-KIND@ DEV-K-POLICY = ;
@@ -441,6 +567,7 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
       DEV-I @ DEV-FAM@  DEV-MIX
       DEV-I @ DEV-VAR@  DEV-MIX
       DEV-I @ DEV-FLD@  DEV-MIX
+      DEV-I @ DEV-OWNER@ DEV-MIX
       DEV-I @ 1 + DEV-I !
    REPEAT ;
 
@@ -508,9 +635,10 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ standalone interface. DECL/ARITY/
 \ POLICY/DERIVE/VARIANT/END-VARIANT/FIELD are legal only between OPEN and its
 \ PUBLISH or ROLLBACK, each takes and returns the same token, and each throws
-\ E-DEV-TX if the token is not the innermost open frame. PUBLISH / ROLLBACK
-\ consume the token and close the frame. Reflection + IDENTITY read only
-\ PUBLISHED events and are legal any time.
+\ E-DEV-TX if the token is not the innermost open frame. PAYLOAD-* exposes only
+\ the innermost frame's provisional enum fields under that exact token and
+\ family. PUBLISH / ROLLBACK consume the token and close the frame. Remaining
+\ reflection + IDENTITY read only PUBLISHED events and are legal any time.
 \ ---------------------------------------------------------------------------
 public
 
@@ -524,6 +652,10 @@ public
 : END-VARIANT ( n n -- n ) DEV-END-VARIANT ;
 : FIELD ( n n ptr u8 n n n n n n n n -- n ) DEV-FIELD ;
 : FIELD-SCHEMA@ ( n n n -- n ) DEV-FIELD-SCHEMA@ ;
+: PAYLOAD-N ( n n n -- n ) DEV-PAYLOAD-N ;
+: PAYLOAD-SCHEMA@ ( n n n n -- n ) DEV-PAYLOAD-SCHEMA@ ;
+: PAYLOAD-WIDTH@ ( n n n n -- n ) DEV-PAYLOAD-WIDTH@ ;
+: PAYLOAD-CELLS ( n n n -- n ) DEV-PAYLOAD-CELLS ;
 : PUBLISH ( n -- ) DEV-PUBLISH ;
 : PREPARE ( n -- ) DEV-PREPARE ;
 : ROLLBACK ( n -- ) DEV-ROLLBACK ;
