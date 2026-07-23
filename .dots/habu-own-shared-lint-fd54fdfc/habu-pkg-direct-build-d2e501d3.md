@@ -1,9 +1,11 @@
 ---
 title: Package direct build lint hooks
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-22T17:32:17.036300+02:00"
+closed-at: "2026-07-23T02:05:41.055475+02:00"
+close-reason: Landed and remotely verified at ad47ef725011; independent destruction review and exact owning/master gates green.
 ---
 
 Files: tools/hb-build-direct-lints.f, tools/hb-build-direct-lints-test.f, FILEMAP.md, test/gate-stdlib-cases.f, test/candidate-validation.f, test/candidate-validation-test.f, and test/gate-validation-worker.f only. Add package HB-BUILD-DIRECT-LINTS, keep all state and helper words private, rename HBB-INSTALL-DIRECT-LINTS to INSTALL, and invoke INSTALL inside the package so the existing hook installation side effect is unchanged. Continue calling the still-global signature and AOT lint core APIs in this leaf.

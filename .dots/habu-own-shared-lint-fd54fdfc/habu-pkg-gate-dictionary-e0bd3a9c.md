@@ -1,9 +1,11 @@
 ---
 title: Package gate dictionary driver
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-22T17:33:11.840716+02:00\""
+created-at: "2026-07-22T17:33:11.840716+02:00"
+closed-at: "2026-07-23T02:05:41.089579+02:00"
+close-reason: Landed and remotely verified at ad47ef725011; independent destruction review and exact owning/master gates green.
 blocks:
   - habu-pkg-gate-runner-74b02485
   - habu-pkg-dictionary-worker-b894a36c

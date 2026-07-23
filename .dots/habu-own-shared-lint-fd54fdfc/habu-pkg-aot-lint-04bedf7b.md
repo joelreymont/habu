@@ -1,6 +1,6 @@
 ---
 title: Package AOT lint core
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-22T17:33:51.543853+02:00"
@@ -10,4 +10,12 @@ blocks:
   - habu-pkg-direct-build-d2e501d3
 ---
 
-Files: tools/aot-lint-core.f plus qualified call updates in AOT-LINT-CLI, AOT-LINT-TEST, and HB-BUILD-DIRECT-LINTS after those owners land. Put the core in package AOT-LINT, keep all state and helpers private with short tails, and publish exactly RESET ( -- ), FILE-AS ( ptr u8 n ptr u8 n -- ), FILE ( ptr u8 n -- ), JSON! ( bool -- ), OUT-FD! ( fd -- ), and FINISH ( -- ). Do not export summary, counts, buffers, or raw cells. Acceptance: no AL-* implementation name remains global; clean, rejection, JSON, label, structured process outcomes, and output routing remain exact; no compatibility alias. Verify: aot-lint-test.f, hb-build direct lint slice, typed-local-diff-lint, package-diff mutation, host-lint, filemap-lint.
+Why: tools/aot-lint-core.f still publishes 41 package-less definitions. A representative changed body fails package-diff-lint with E-PACKAGE-OWNERSHIP, and the landed command, test, and direct-build packages now provide the complete caller boundary.
+
+Files: tools/aot-lint-core.f, tools/aot-lint.f, tools/aot-lint-test-lib.f, and tools/hb-build-direct-lints.f only. Put the core in package AOT-LINT. Publish exactly RESET ( -- ), FILE-AS ( ptr u8 n ptr u8 n -- ), FILE ( ptr u8 n -- ), JSON! ( bool -- ), OUT-FD! ( fd -- ), and FINISH ( -- ). Remove AL- from every private core identifier; use BAD-N, SCAN-I, EXPECT-NAME, CUR-A, and CUR-U for the ambiguous private state. Qualify only AOT calls in the three consumers. Leave signature-lint and source-lexer calls unchanged.
+
+Acceptance: no AL-* implementation definition or storage remains global; no summary, count, buffer, raw cell, alias, forwarding shim, new require, or behavior change is introduced. Clean input, real rejection, JSON, source labels, output routing, and structured process outcomes remain exact. Removing the package opener or retaining any former global must fail the exact package gate.
+
+Verify: bin/hb --load tools/aot-lint-test.f; bin/hb --load tools/hb-build-direct-lints-test.f; bin/hb --load tools/hb-build-test.f for the child CLI path; exact-diff typed-local and package lints; hostile package-opener removal; host-lint; filemap-lint.
+
+Claim: agent=aot_core_pkg workspace=.jj-ws/habu-pkg-aot-lint-04bedf7b.
