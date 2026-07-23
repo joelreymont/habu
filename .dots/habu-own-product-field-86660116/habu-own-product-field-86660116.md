@@ -8,6 +8,7 @@ blocks:
   - habu-bound-declaration-participant-9967c968
   - habu-consume-registry-events-efe7fe5e
   - habu-retire-events-with-699e6475
+  - habu-type-field-owner-619ec6b5
 ---
 
 Problem: product-field transactions are mutated through raw global PF-BEGIN, PF-ADD, PF-PUBLISH, PF-COMMIT, PF-FINALIZE, and PF-ROLLBACK words. The event participant cannot adopt a qualified owner without leaving duplicate authority or changing its direct callers. The rejected combined publish-and-release replacement is incorrect for the global declaration coordinator: a later participant can fail after fields commit, so the field frame must retain rollback authority until global finalization.
