@@ -25,6 +25,7 @@ public
    BARE-PTR-SIGNATURE
    BAD-NOMINAL-DECL
    SOURCE-LOCAL-NOMINAL
+   LABEL-COPY
    LOAD-CLOSED
    GT-CLEANUP
    s" PASS: native checker diagnostics all-strict slice" type cr ;

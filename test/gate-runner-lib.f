@@ -50,6 +50,7 @@ package GATE-RUNNER
 39 constant ID-LINT-LIBS-PTX-TOOL
 40 constant ID-LINT-ARTIFACTS-FAST
 41 constant ID-TAIL-PROCESS
+42 constant ID-DIAG-LABEL-COPY
 variable START-NS
 variable ARG-I
 
@@ -132,6 +133,7 @@ variable ARG-I
    s" diag-undef-primary" ARG0= if ID-DIAG-UNDEF-PRIMARY exit then
    s" diag-all-strict" ARG0= if ID-DIAG-ALL-STRICT exit then
    s" diag-file-unsafe" ARG0= if ID-DIAG-FILE-UNSAFE exit then
+   s" diag-label-copy" ARG0= if ID-DIAG-LABEL-COPY exit then
    s" dictionary" ARG0= if ID-DICTIONARY exit then
    s" debug" ARG0= if ID-DEBUG exit then
    s" tail-fast" ARG0= if ID-TAIL-FAST exit then
@@ -189,6 +191,7 @@ variable ARG-I
       ID-DIAG-UNDEF-PRIMARY of GATE-DIAGNOSTICS:UNDEFINED-PRIMARY endof
       ID-DIAG-ALL-STRICT of GATE-DIAGNOSTICS:ALL-STRICT endof
       ID-DIAG-FILE-UNSAFE of GATE-DIAGNOSTICS:FILE-UNSAFE endof
+      ID-DIAG-LABEL-COPY of GATE-DIAGNOSTICS:LABEL-COPY-SLICE endof
       ID-DICTIONARY of GATE-DICTIONARY:RUN endof
       ID-DEBUG of GDB-RUN endof
       ID-TAIL-FAST of GSI-TAIL-FAST endof

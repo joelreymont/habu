@@ -20,6 +20,7 @@ variable TRUSTED-U
 variable ROGUE-U
 variable TOPROGUE-U
 variable TOPGOOD-U
+variable EMPTY-U
 
 create ROOT-BUF FS-PATH-CAP allot
 create GOOD-BUF FS-PATH-CAP allot
@@ -32,6 +33,7 @@ create TRUSTED-BUF FS-PATH-CAP allot
 create ROGUE-BUF FS-PATH-CAP allot
 create TOPROGUE-BUF FS-PATH-CAP allot
 create TOPGOOD-BUF FS-PATH-CAP allot
+create EMPTY-BUF FS-PATH-CAP allot
 create OUT BUF-CAP allot
 create LF-BYTE 10 c,
 
@@ -71,6 +73,9 @@ create LF-BYTE 10 c,
 
 : TOPGOOD ( -- ptr u8 n )
    TOPGOOD-BUF TOPGOOD-U @ ;
+
+: EMPTY ( -- ptr u8 n )
+   EMPTY-BUF EMPTY-U @ ;
 
 : LF ( -- )
    10 SB-APPEND-C ;
@@ -188,6 +193,7 @@ create LF-BYTE 10 c,
    ROOT s" rogue.f" ROGUE-BUF JOIN-PATH ROGUE-U !
    ROOT s" toprogue.f" TOPROGUE-BUF JOIN-PATH TOPROGUE-U !
    ROOT s" topgood.f" TOPGOOD-BUF JOIN-PATH TOPGOOD-U !
+   ROOT s" empty.f" EMPTY-BUF JOIN-PATH EMPTY-U !
    GOOD CLEANUP+
    BAD CLEANUP+
    NOPREF CLEANUP+
@@ -198,6 +204,7 @@ create LF-BYTE 10 c,
    ROGUE CLEANUP+
    TOPROGUE CLEANUP+
    TOPGOOD CLEANUP+
+   EMPTY CLEANUP+
    GOOD GOOD$ WRITE-ALL
    BAD BAD$ WRITE-ALL
    NOPREF NOPREF$ WRITE-ALL
@@ -207,40 +214,41 @@ create LF-BYTE 10 c,
    ROGUE ROGUE$ WRITE-ALL
    TOPROGUE TOPROGUE$ WRITE-ALL
    TOPGOOD TOPGOOD$ WRITE-ALL
+   EMPTY EMPTY$ WRITE-ALL
    WRITE-LARGE ;
 
 : CORE-SETUP ( bool -- ) {: strict:bool :}
-   CHECKED-BOUNDARY-LINT-RESET
+   CHECKED-BOUNDARY-LINT:RESET
    OUT BUF-CAP LINT-OUT-BUFFER!
-   strict UB-STRICT-BOUNDARY! ;
+   strict CHECKED-BOUNDARY-LINT:STRICT! ;
 
 : CORE-FINISH ( -- n n outcome )
-   [: CHECKED-BOUNDARY-LINT-FINISH ;] catch {: rc:n :}
+   [: CHECKED-BOUNDARY-LINT:FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 rc OUTCOME:EXITED ;
 
 : RUN-CURRENT ( -- n n outcome )
    LINT-FALSE CORE-SETUP
-   s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/json-file.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/host-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/filemap-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/parallel-agent-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/signature-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/signature-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/typed-local-diff-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/typed-local-diff-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/typed-local-diff-lint-test.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/stale-status-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/stale-status-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/trust-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
-   s" tools/trust-lint.f" CHECKED-BOUNDARY-LINT-FILE
+   s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/json-file.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/host-lint.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/filemap-lint.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/parallel-agent-lint.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/signature-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/signature-lint.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/typed-local-diff-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/typed-local-diff-lint.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/typed-local-diff-lint-test.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/stale-status-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/stale-status-lint.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/trust-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
+   s" tools/trust-lint.f" CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
 : RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}
    strict CORE-SETUP
-   path pathu CHECKED-BOUNDARY-LINT-FILE
+   path pathu CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
 : RUN-CORE-GOOD ( -- n n outcome )
@@ -272,8 +280,8 @@ create LF-BYTE 10 c,
 
 : RUN-CORE-CROSS ( -- n n outcome )
    LINT-FALSE CORE-SETUP
-   OFF CHECKED-BOUNDARY-LINT-FILE
-   CROSS CHECKED-BOUNDARY-LINT-FILE
+   OFF CHECKED-BOUNDARY-LINT:FILE
+   CROSS CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
 : ASSERT-CLEAN ( n n outcome -- )
@@ -338,12 +346,237 @@ create LF-BYTE 10 c,
 : TEST-TOPGOOD ( -- )                  \ ['] TR-HOOK set-top-check -> allowed, clean
    RUN-CORE-TOPGOOD ASSERT-CLEAN ;
 
+\ The public FILE wrapper propagates a scan failure and remains reusable.
+: TEST-MAP-THROW ( -- )
+   CHECKED-BOUNDARY-LINT:RESET
+   OUT 1 LINT-OUT-BUFFER!
+   LINT-FALSE CHECKED-BOUNDARY-LINT:STRICT!
+   [: BAD CHECKED-BOUNDARY-LINT:FILE ;] catch
+   LINT-OUT-BUFFER-OFF
+   E-STR-CAPACITY T=
+   [: GOOD CHECKED-BOUNDARY-LINT:FILE ;] catch 0 T=
+   CHECKED-BOUNDARY-LINT:RESET ;
+
+;package
+
+\ Typed memory owns the deterministic lifecycle proof. No test accessor is
+\ published from MEM.
+package MEM
+private
+
+create CBLT-ROOT-BUF FS-PATH-CAP allot
+create CBLT-BAD-BUF FS-PATH-CAP allot
+create CBLT-OUT 1 allot
+variable CBLT-ROOT-U
+variable CBLT-BAD-U
+
+: CBLT-ROOT ( -- ptr u8 n )
+   CBLT-ROOT-BUF CBLT-ROOT-U @ ;
+
+: CBLT-BAD ( -- ptr u8 n )
+   CBLT-BAD-BUF CBLT-BAD-U @ ;
+
+: CBLT-PREPARE ( -- )
+   CLEANUP-RESET
+   s" habu-cbl-mem" TMPDIR-MKDIR {: a:ptr u:n :}
+   a CBLT-ROOT-BUF u BYTE-COPY
+   u CBLT-ROOT-U !
+   CBLT-ROOT CLEANUP-TREE+
+   CBLT-ROOT s" bad.f" CBLT-BAD-BUF JOIN-PATH CBLT-BAD-U !
+   CBLT-BAD s\" 0 set-check\n: CBLT-BAD ( n -- n ) dup ;\n" WRITE-ALL ;
+
+: CBLT-FILE-THROW-TEST ( -- )
+   T-RESET
+   CBLT-PREPARE
+   CHECKED-BOUNDARY-LINT:RESET
+   LINT-FALSE CHECKED-BOUNDARY-LINT:STRICT!
+   ALLOC-SEQ @ {: alloc-before:n :}
+   RELEASE-SEQ @ {: release-before:n :}
+   CBLT-OUT 1 LINT-OUT-BUFFER!
+   [: CBLT-BAD CHECKED-BOUNDARY-LINT:FILE ;] catch {: rc:n :}
+   LINT-OUT-BUFFER-OFF
+   rc E-STR-CAPACITY T=
+   ALLOC-SEQ @ alloc-before 1+ T=
+   RELEASE-SEQ @ release-before 1+ T=
+   CHECKED-BOUNDARY-LINT:RESET
+   CLEANUP-RUN
+   CBLT-ROOT EXISTS? TFALSE
+   T-REPORT ;
+
+CBLT-FILE-THROW-TEST
+
+;package
+
+\ The lifecycle probes run inside the provider package so they can observe
+\ mapped spans before MEM:WITH-BYTES releases the allocation. They add no
+\ public test bridge or production hook.
+package CHECKED-BOUNDARY-LINT
+
+private
+
+create TP-ROOT-BUF FS-PATH-CAP allot
+create TP-GOOD-BUF FS-PATH-CAP allot
+create TP-BAD-BUF FS-PATH-CAP allot
+create TP-EMPTY-BUF FS-PATH-CAP allot
+create TP-OUT 1 allot
+
+variable TP-ROOT-U
+variable TP-GOOD-U
+variable TP-BAD-U
+variable TP-EMPTY-U
+variable TP-PUB-WID
+
+: TP-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+   a dst u BYTE-COPY
+   u lenp ! ;
+
+: TP-ROOT ( -- ptr u8 n )
+   TP-ROOT-BUF TP-ROOT-U @ ;
+
+: TP-GOOD ( -- ptr u8 n )
+   TP-GOOD-BUF TP-GOOD-U @ ;
+
+: TP-BAD ( -- ptr u8 n )
+   TP-BAD-BUF TP-BAD-U @ ;
+
+: TP-EMPTY ( -- ptr u8 n )
+   TP-EMPTY-BUF TP-EMPTY-U @ ;
+
+: TP-PREPARE ( -- )
+   CLEANUP-RESET
+   s" habu-cbl-map" TMPDIR-MKDIR {: a:ptr u:n :}
+   a u TP-ROOT-BUF TP-ROOT-U TP-COPY!
+   TP-ROOT CLEANUP-TREE+
+   TP-ROOT s" good.f" TP-GOOD-BUF JOIN-PATH TP-GOOD-U !
+   TP-ROOT s" bad.f" TP-BAD-BUF JOIN-PATH TP-BAD-U !
+   TP-ROOT s" empty.f" TP-EMPTY-BUF JOIN-PATH TP-EMPTY-U !
+   TP-GOOD s\" 0 set-check\nvariable TP-RAW\n: LINT-CHECK-HOOK ( -- ) CHECK! ;\nLOWER-CERT-HOOK:INSTALL\n' LINT-CHECK-HOOK set-check\n: TP-GOOD ( n -- n ) dup ;\n" WRITE-ALL
+   TP-BAD s\" 0 set-check\n: TP-BAD ( n -- n ) dup ;\n" WRITE-ALL
+   SB-RESET
+   TP-EMPTY SB$ WRITE-ALL ;
+
+: TP-FILE! ( ptr u8 n -- )
+   {: path:ptr pathu:n :}
+   path UB-FILE-A! pathu UB-FILE-U ! ;
+
+: TP-MAP-OK-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
+   UB-MAPPED-FILE
+   UB-MAPPED-SPANS-CLEAR? TTRUE ;
+
+: TP-MAP-OK-TEST ( -- )
+   RESET
+   LINT-FALSE STRICT!
+   TP-GOOD 2dup TP-FILE! FILE-SIZE {: bytes:n :}
+   bytes bytes MEM:BYTES-ALLOC-LEN
+   [: TP-MAP-OK-ACT ;] MEM:WITH-BYTES
+   UB-MAPPED-SPANS-CLEAR? TTRUE
+   RESET ;
+
+\ Checked catch requires a stack-preserving quotation, but UB-MAPPED-FILE
+\ consumes the linear mapping extent. This private test boundary catches that
+\ exact production helper and checks its state before WITH-BYTES can release
+\ the mapping or any outer cleanup can clear it.
+TRUSTED: TP-MAP-THROW-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
+   TP-OUT 1 LINT-OUT-BUFFER!
+   [: UB-MAPPED-FILE ;] catch
+   dup 0= if
+      LINT-OUT-BUFFER-OFF
+      drop
+      LINT-FALSE TTRUE
+      exit
+   then
+   {: rc:n :}
+   drop 2drop
+   LINT-OUT-BUFFER-OFF
+   rc E-STR-CAPACITY T=
+   UB-MAPPED-SPANS-CLEAR? TTRUE ;
+
+: TP-MAP-THROW-TEST ( -- )
+   RESET
+   LINT-FALSE STRICT!
+   TP-BAD 2dup TP-FILE! FILE-SIZE {: bytes:n :}
+   bytes bytes MEM:BYTES-ALLOC-LEN
+   [: TP-MAP-THROW-ACT ;] MEM:WITH-BYTES
+   UB-MAPPED-SPANS-CLEAR? TTRUE
+   RESET ;
+
+: TP-ZERO-TEST ( -- )
+   RESET
+   UB-FILE-SEQ @ {: visit-before:n :}
+   19 UB-I ! 23 UB-LINE ! 29 UB-COL !
+   TP-EMPTY FILE
+   UB-FILE-SEQ @ visit-before 1+ T=
+   UB-I @ 0 T=
+   UB-LINE @ 1 T=
+   UB-COL @ 1 T=
+   UB-SPANS-CLEAR? TTRUE
+   RESET ;
+
+public
+
+get-current TP-PUB-WID !
+
+private
+
+: TP-PUBLIC? ( ptr u8 n -- bool )
+   TP-PUB-WID @ XREF-FIND-WL XREF-FOUND? ;
+
+: TP-GLOBAL? ( ptr u8 n -- bool )
+   0 XREF-FIND-WL XREF-FOUND? ;
+
+: TP-PUBLIC-N ( -- n )
+   0 0
+   begin over ndict@ < while
+      over XREF-REC XREF-WORDLIST TP-PUB-WID @ = if 1+ then
+      swap 1+ swap
+   repeat
+   nip ;
+
+: TP-API-TEST ( -- )
+   TP-PUBLIC-N 6 T=
+   s" RESET" TP-PUBLIC? TTRUE
+   s" JSON!" TP-PUBLIC? TTRUE
+   s" STRICT!" TP-PUBLIC? TTRUE
+   s" OUT-FD!" TP-PUBLIC? TTRUE
+   s" FILE" TP-PUBLIC? TTRUE
+   s" FINISH" TP-PUBLIC? TTRUE
+   s" CHECKED-BOUNDARY-LINT-RESET" TP-PUBLIC? TFALSE
+   s" CHECKED-BOUNDARY-LINT-FILE" TP-PUBLIC? TFALSE
+   s" CHECKED-BOUNDARY-LINT-FINISH" TP-PUBLIC? TFALSE
+   s" UB-JSON!" TP-PUBLIC? TFALSE
+   s" UB-MAPPED-FILE" TP-PUBLIC? TFALSE
+   s" UB-CLEAR-SPANS" TP-PUBLIC? TFALSE
+   s" CHECKED-BOUNDARY-LINT-RESET" TP-GLOBAL? TFALSE
+   s" CHECKED-BOUNDARY-LINT-FILE" TP-GLOBAL? TFALSE
+   s" CHECKED-BOUNDARY-LINT-FINISH" TP-GLOBAL? TFALSE
+   s" UB-JSON!" TP-GLOBAL? TFALSE
+   s" UB-MAPPED-FILE" TP-GLOBAL? TFALSE
+   s" UB-CLEAR-SPANS" TP-GLOBAL? TFALSE ;
+
+: TP-TEST ( -- )
+   T-RESET
+   TP-PREPARE
+   TP-API-TEST
+   TP-ZERO-TEST
+   TP-MAP-OK-TEST
+   TP-MAP-THROW-TEST
+   CLEANUP-RUN
+   TP-ROOT EXISTS? TFALSE
+   T-REPORT ;
+
+TP-TEST
+
+;package
+
+package CBLT
+
 public
 
 : MAIN ( -- )
    T-RESET
    PREPARE
    TEST-CURRENT
+   TEST-MAP-THROW
    TEST-GOOD
    TEST-LARGE
    TEST-BAD

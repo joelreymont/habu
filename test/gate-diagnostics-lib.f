@@ -10,6 +10,7 @@ package GATE-DIAGNOSTICS
 
 create PATH-BUF FS-PATH-CAP allot
 create PATH2-BUF FS-PATH-CAP allot
+create LABEL-BUF FS-PATH-CAP allot
 create TR-ROOT-BUF FS-PATH-CAP allot
 create TR-DIR-BUF FS-PATH-CAP allot
 create TR-SRC-BUF FS-PATH-CAP allot
@@ -20,13 +21,14 @@ create TL-STR-BUF TL-STR-CAP allot
 create TL-FILE-BUF TL-FILE-CAP allot
 variable PATH-U
 variable PATH2-U
+variable LABEL-U
 variable TR-ROOT-U
 variable TR-DIR-U
 variable TR-SRC-U
 variable TR-MAN-U
 
 : USAGE ( -- )
-   s" usage: test/gate-diagnostics.f [diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe]" USAGE-RC die ;
+   s" usage: test/gate-diagnostics.f [diag-repair|diag-undef-primary|diag-all-strict|diag-file-unsafe|diag-label-copy]" USAGE-RC die ;
 
 : ARG0= ( ptr u8 n -- bool )
    0 SCRIPT-ARGV$ STR= ;
@@ -102,6 +104,12 @@ variable TR-MAN-U
 : PATH2$ ( -- ptr u8 n )
    PATH2-BUF PATH2-U @ ;
 
+: LABEL$ ( -- ptr u8 n )
+   LABEL-BUF LABEL-U @ ;
+
+: LABEL! ( ptr u8 n -- )
+   LABEL-BUF LABEL-U GE-COPY! ;
+
 : TR-ROOT$ ( -- ptr u8 n )
    TR-ROOT-BUF TR-ROOT-U @ ;
 
@@ -154,38 +162,53 @@ variable TR-MAN-U
 
 : CHECK-START ( -- )
    GE-HB-RESET
-   CHK-RESET-CFG
-   CHK-CAPTURE-OFF
+   CHECK:RESET
    LINT-OUT-BUFFER-OFF ;
 
 : CHECK-OPT ( ptr u8 n -- ) {: a:ptr u:n :}
    a u GE-ARGV+
-   a u CHK-PARSE-ONE ;
+   a u CHECK:OPT ;
 
 : CHECK-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu GE-ARGV+
-   path pathu CHK-ADD-POS ;
+   path pathu CHECK:FILE ;
 
 : CHECK-RUN ( -- )
-   CHK-DIRECT-RUN throw ;
+   CHECK:RUN throw ;
 
 \ typed-local-lint: allow-bare-local - q preserves the quotation effect.
 : CHECK-CAPTURE ( [ -- ] -- ) {: q :}
    q GE-CAPTURE-ACTION OUTCOME:EXITED GT-OUTCOME! ;
 
 : STDIN-ACT ( -- )
-   GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHK-MATERIALIZE-BUF-AS
+   GE-SRC-BUF GE-SRC-U @ s" <stdin>" CHECK:SOURCE
    CHECK-RUN ;
 
 : CHECK-STDIN ( -- )
    [: STDIN-ACT ;] CHECK-CAPTURE ;
 
 : PATH-ACT ( -- )
-   CHK-MATERIALIZE
    CHECK-RUN ;
 
 : CHECK-PATH ( -- )
    [: PATH-ACT ;] CHECK-CAPTURE ;
+
+: LABEL-COPY-ACT ( -- )
+   GE-SRC-BUF GE-SRC-U @ LABEL$ CHECK:SOURCE
+   $58 LABEL-BUF c!
+   CHECK-RUN ;
+
+: LABEL-COPY ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : LABEL-BAD ( i64 -- i64 ) dup ;" GE-SRC-LINE
+   CHECK-START
+   s" owned-label.f" LABEL!
+   [: LABEL-COPY-ACT ;] CHECK-CAPTURE
+   s" public CHECK:SOURCE accepted bad label-copy fixture" GE-EXPECT-NONZERO
+   s" owned-label.f" s" copied source label appears in diagnostic" GE-EXPECT-ERR-HAS
+   s" Xwned-label.f" s" mutated source label absent from diagnostic" GE-EXPECT-ERR-LACKS
+   CHECK:RESET ;
 
 : WRITE-ERR ( ptr u8 n -- )
    PATH!
@@ -252,27 +275,27 @@ variable TR-MAN-U
 
 : CHECK-JSON ( ptr u8 n -- ) {: label:ptr labelu:n :}
    CHECK-START
-   s" --json-errors" CHECK-OPT
+   s" json-errors" CHECK-OPT
    CHECK-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : CHECK-JSON-OK ( ptr u8 n -- ) {: label:ptr labelu:n :}
    CHECK-START
-   s" --json-errors" CHECK-OPT
+   s" json-errors" CHECK-OPT
    CHECK-STDIN
    label labelu GE-EXPECT-OK ;
 
 : CHECK-JSON-ALL ( ptr u8 n -- ) {: label:ptr labelu:n :}
    CHECK-START
-   s" --json-errors" CHECK-OPT
-   s" --all-errors" CHECK-OPT
+   s" json-errors" CHECK-OPT
+   s" all-errors" CHECK-OPT
    CHECK-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : FILE-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
    file fileu PATH!
    CHECK-START
-   s" --json-errors" CHECK-OPT
+   s" json-errors" CHECK-OPT
    PATH$ CHECK-FILE
    CHECK-PATH
    label labelu GE-EXPECT-NONZERO ;
@@ -280,8 +303,8 @@ variable TR-MAN-U
 : FILE-JSON-ALL ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
    file fileu PATH!
    CHECK-START
-   s" --json-errors" CHECK-OPT
-   s" --all-errors" CHECK-OPT
+   s" json-errors" CHECK-OPT
+   s" all-errors" CHECK-OPT
    PATH$ CHECK-FILE
    CHECK-PATH
    label labelu GE-EXPECT-NONZERO ;
@@ -289,22 +312,22 @@ variable TR-MAN-U
 : FILE-STRICT-JSON ( ptr u8 n ptr u8 n -- ) {: file:ptr fileu:n label:ptr labelu:n :}
    file fileu PATH!
    CHECK-START
-   s" --strict-signatures" CHECK-OPT
-   s" --json-errors" CHECK-OPT
+   s" strict-signatures" CHECK-OPT
+   s" json-errors" CHECK-OPT
    PATH$ CHECK-FILE
    CHECK-PATH
    label labelu GE-EXPECT-NONZERO ;
 
 : CHECK-STRICT ( ptr u8 n -- ) {: label:ptr labelu:n :}
    CHECK-START
-   s" --strict-signatures" CHECK-OPT
+   s" strict-signatures" CHECK-OPT
    CHECK-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
 : CHECK-STRICT-JSON ( ptr u8 n -- ) {: label:ptr labelu:n :}
    CHECK-START
-   s" --strict-signatures" CHECK-OPT
-   s" --json-errors" CHECK-OPT
+   s" strict-signatures" CHECK-OPT
+   s" json-errors" CHECK-OPT
    CHECK-STDIN
    label labelu GE-EXPECT-NONZERO ;
 
@@ -809,6 +832,12 @@ variable TR-MAN-U
    s" STALE-AUDIT" s" trust-lint stale audit diagnostic" GE-EXPECT-ERR-HAS ;
 
 public
+
+: LABEL-COPY-SLICE ( -- )
+   s" hb-gate-diagnostics-label-copy" GT-START
+   LABEL-COPY
+   GT-CLEANUP
+   s" PASS: native checker diagnostics label-copy slice" type cr ;
 
 : REPAIR ( -- )
    s" hb-gate-diagnostics-repair" GT-START

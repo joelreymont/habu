@@ -17,6 +17,7 @@ package GATE-DIAGNOSTICS
    SOURCE-LOCAL-NOMINAL
    REPAIR-CLASSES
    FILE-ORIGIN
+   LABEL-COPY
    STRICT-SIGNATURES
    UNSAFE-CHECKS
    LOCAL-IN-LOOP
@@ -55,6 +56,7 @@ package GATE-DIAGNOSTICS
    SLICE$ s" diag-undef-primary" STR= if UNDEFINED-PRIMARY exit then
    SLICE$ s" diag-all-strict" STR= if ALL-STRICT exit then
    SLICE$ s" diag-file-unsafe" STR= if FILE-UNSAFE exit then
+   SLICE$ s" diag-label-copy" STR= if LABEL-COPY-SLICE exit then
    USAGE ;
 
 ;package

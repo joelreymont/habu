@@ -91,6 +91,13 @@ TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
 package MEM
 private
 
+\ Observational evidence only: each successful typed ALLOC-BYTES or
+\ RELEASE-BYTES advances its raw cell sequence by one modulo 2^cell-width.
+\ These updates never throw and cannot change resource ownership or error
+\ precedence.
+variable ALLOC-SEQ
+variable RELEASE-SEQ
+
 \ Internal invariant code (never reachable): a validator/narrowing arm proven
 \ impossible by the input still needs an exhaustive MATCH arm. Mirrors the
 \ CAD-NUM E-CADNUM-TOTALITY discipline; lives in-file, not lib/errors.f.
@@ -183,7 +190,9 @@ public
 
 \ ---- allocation sinks: only the alloc-* roles reach the mmap primitive ---------
 : ALLOC-BYTES ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )
-   dup ALLOC-BYTES>N MEM-ALLOC-PTR swap ;
+   dup ALLOC-BYTES>N MEM-ALLOC-PTR
+   1 ALLOC-SEQ +!
+   swap ;
 : ALLOC-CELLS ( CAD-NUM:alloc-cell-count -- ptr a )
    ALLOC-CELLS>N cells MEM-ALLOC-PTR ;
 : ALLOC-64K ( -- ptr u8 CAD-NUM:alloc-byte-len )
@@ -198,7 +207,9 @@ public
 \ munmap rc (the kernel rejecting a misaligned/forged address) throws E-MEM-UNMAP.
 : RELEASE-BYTES ( ptr u8 CAD-NUM:alloc-byte-len -- )
    ALLOC-BYTES>N munmap
-   dup 0 < if E-MEM-UNMAP throw then drop ;
+   dup 0 < if E-MEM-UNMAP throw then
+   drop
+   1 RELEASE-SEQ +! ;
 
 \ ---- caller-facing size narrowing: raw n -> validated alloc role --------------
 \ The fixed-capacity buffer callers (source, codesign, content-key, object-cache,

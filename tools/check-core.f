@@ -18,16 +18,18 @@ require tools/source-discovery.f
 \ primitive axiom so the hook definition itself compiles checked
 \ (axiom owner: habu-primitive-effect-axiom-1119f176).
 s" CHECK!" s" ptr u8 n -- n" TRUST
-
-: CHK-CHECK-HOOK ( ptr u8 n -- n )
-   CHECK! dup -1 <> if 70 throw then ;
-LOWER-CERT-HOOK:INSTALL
-' CHK-CHECK-HOOK set-check
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
 s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
+
+package CHECK
+
+: CHK-CHECK-HOOK ( ptr u8 n -- n )
+   CHECK! dup -1 <> if 70 throw then ;
+LOWER-CERT-HOOK:INSTALL
+' CHK-CHECK-HOOK set-check
 
 $100000 constant CHK-SRC-CAP
 $120000 constant CHK-RUN-CAP
@@ -38,6 +40,11 @@ $20000 constant CHK-ERR-CAP
 128 constant CHK-MAX-POS
 128 constant CHK-DEP-MAX
 120000 constant CHK-TIMEOUT-MS
+
+0 constant CHK-SEL-NONE
+1 constant CHK-SEL-SOURCE
+2 constant CHK-SEL-FILE
+3 constant CHK-SEL-LIST
 
 10 constant CHK-LF
 13 constant CHK-CR
@@ -53,7 +60,8 @@ create CHK-NUM-BUF CHK-NUM-CAP allot
 create CHK-ROOT-BUF FS-PATH-CAP allot
 create CHK-SRC-PATH-BUF FS-PATH-CAP allot
 create CHK-RUN-PATH-BUF FS-PATH-CAP allot
-create CHK-POS-A CHK-MAX-POS cells allot
+create CHK-SEL-LABEL-BUF FS-PATH-CAP allot
+create CHK-POS-BUF CHK-MAX-POS FS-PATH-CAP * allot
 create CHK-POS-U CHK-MAX-POS cells allot
 create CHK-DEP-PATHS CHK-DEP-MAX FS-PATH-CAP * allot
 create CHK-DEP-US CHK-DEP-MAX cells allot
@@ -68,13 +76,16 @@ variable CHK-ORIGIN-BUF-A
 variable CHK-OUT-BUF-A
 variable CHK-ERR-BUF-A
 variable CHK-EXP-BUF-A
+variable CHK-SEL-SRC-BUF-A
 
 variable CHK-ARG-I
 variable CHK-POS-N
 variable CHK-JSON
 variable CHK-STRICT
 variable CHK-ALL
-variable CHK-SOURCE-LIST
+variable CHK-SEL-MODE
+variable CHK-SEL-SRC-U
+variable CHK-SEL-LABEL-U
 variable CHK-SRC-U
 variable CHK-PRE-U
 variable CHK-RUN-U
@@ -87,16 +98,11 @@ variable CHK-NUM-I
 variable CHK-LABEL-A
 variable CHK-LABEL-U
 variable CHK-SRC-A
+variable CHK-HB-A
+variable CHK-HB-U
 variable CHK-SRC-PATH-U
 variable CHK-RUN-PATH-U
 variable CHK-ROOT-U
-variable CHK-CAPTURE
-variable CHK-CAP-OUT-A
-variable CHK-CAP-ERR-A
-variable CHK-CAP-OUT-CAP
-variable CHK-CAP-ERR-CAP
-variable CHK-CAP-OUT-U
-variable CHK-CAP-ERR-U
 variable CHK-NOM-I
 variable CHK-NOM-U
 variable CHK-EXP-U
@@ -107,6 +113,9 @@ variable CHK-DEP-ORDER-N
 variable CHK-DISC-ID
 variable CHK-ALL-ID
 variable CHK-ALL-RC
+variable CHK-VREC-DEF-I
+variable CHK-VREC-NAME-I
+variable CHK-TFAM-NAME-I
 
 : CHK-PTR-U8-FIELD ( ptr a -- ptr ptr u8 )
    0 ptr-field ;
@@ -126,23 +135,21 @@ variable CHK-ALL-RC
 : CHK-PTR-U8-SLOT! ( ptr u8 n ptr a -- )
    CHK-PTR-U8-SLOT ! ;
 
-: CHK-CAP-OUT-A-FIELD ( -- ptr ptr u8 )
-   CHK-CAP-OUT-A 0 ptr-field ;
+: CHK-HB-A-FIELD ( -- ptr ptr u8 )
+   CHK-HB-A 0 ptr-field ;
 
-: CHK-CAP-ERR-A-FIELD ( -- ptr ptr u8 )
-   CHK-CAP-ERR-A 0 ptr-field ;
+: CHK-HB-A@ ( -- ptr u8 )
+   CHK-HB-A-FIELD @ ;
 
-: CHK-CAP-OUT-A@ ( -- ptr u8 )
-   CHK-CAP-OUT-A-FIELD @ ;
+: CHK-HB-A! ( ptr u8 -- )
+   CHK-HB-A-FIELD ! ;
 
-: CHK-CAP-ERR-A@ ( -- ptr u8 )
-   CHK-CAP-ERR-A-FIELD @ ;
+: CHK-HB! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a CHK-HB-A!
+   u CHK-HB-U ! ;
 
-: CHK-CAP-OUT-A! ( ptr u8 -- )
-   CHK-CAP-OUT-A-FIELD ! ;
-
-: CHK-CAP-ERR-A! ( ptr u8 -- )
-   CHK-CAP-ERR-A-FIELD ! ;
+: CHK-HB$ ( -- ptr u8 n )
+   CHK-HB-A@ CHK-HB-U @ ;
 
 : CHK-ALLOC-BUF ( n -- ptr u8 )
    MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
@@ -171,45 +178,21 @@ variable CHK-ALL-RC
    CHK-EXP-BUF-A @ 0= if CHK-SRC-CAP CHK-ALLOC-BUF CHK-EXP-BUF-A ! then
    CHK-EXP-BUF-A @ ;
 
+: CHK-SEL-SRC-BUF ( -- ptr u8 )
+   CHK-SEL-SRC-BUF-A @ 0= if
+      CHK-SRC-CAP CHK-ALLOC-BUF CHK-SEL-SRC-BUF-A !
+   then
+   CHK-SEL-SRC-BUF-A @ ;
+
 : CHK-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
    u 0= if exit then
    fd a u write u <> if E-FS-IO throw then ;
 
-: CHK-CAP-OUT+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CHK-CAP-OUT-U @ u + CHK-CAP-OUT-CAP @ > if E-STR-CAPACITY throw then
-   a CHK-CAP-OUT-A@ CHK-CAP-OUT-U @ + u BYTE-COPY
-   CHK-CAP-OUT-U @ u + CHK-CAP-OUT-U ! ;
-
-: CHK-CAP-ERR+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CHK-CAP-ERR-U @ u + CHK-CAP-ERR-CAP @ > if E-STR-CAPACITY throw then
-   a CHK-CAP-ERR-A@ CHK-CAP-ERR-U @ + u BYTE-COPY
-   CHK-CAP-ERR-U @ u + CHK-CAP-ERR-U ! ;
-
 : CHK-OUT ( ptr u8 n -- )
-   CHK-CAPTURE @ if CHK-CAP-OUT+ exit then
    1 -rot CHK-WRITE ;
 
 : CHK-ERR ( ptr u8 n -- )
-   CHK-CAPTURE @ if CHK-CAP-ERR+ exit then
    2 -rot CHK-WRITE ;
-
-: CHK-CAPTURE-BUFFERS! ( ptr u8 n ptr u8 n -- ) {: out:ptr outcap:n err:ptr errcap:n :}
-   out CHK-CAP-OUT-A!
-   err CHK-CAP-ERR-A!
-   outcap CHK-CAP-OUT-CAP !
-   errcap CHK-CAP-ERR-CAP !
-   0 CHK-CAP-OUT-U !
-   0 CHK-CAP-ERR-U !
-   -1 CHK-CAPTURE ! ;
-
-: CHK-CAPTURE-OFF ( -- )
-   0 CHK-CAPTURE ! ;
-
-: CHK-CAPTURE-OUT$ ( -- ptr u8 n )
-   CHK-CAP-OUT-A@ CHK-CAP-OUT-U @ ;
-
-: CHK-CAPTURE-ERR$ ( -- ptr u8 n )
-   CHK-CAP-ERR-A@ CHK-CAP-ERR-U @ ;
 
 : CHK-C! ( n -- )
    CHK-ONE c! ;
@@ -227,7 +210,6 @@ variable CHK-ALL-RC
    CHK-E-USAGE throw ;
 
 : CHK-THROW ( n -- )
-   CLEANUP-RUN
    throw ;
 
 : CHK-FAIL ( ptr u8 n n -- ) {: msg:ptr u:n code:n :}
@@ -243,8 +225,8 @@ variable CHK-ALL-RC
 : CHK-DASH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0 > if a c@ CHK-DASH = else 0 0= 0= then ;
 
-: CHK-POS-SLOT ( n -- ptr ptr u8 )
-   CHK-POS-A CHK-PTR-U8-SLOT ;
+: CHK-POS-SLOT ( n -- ptr u8 )
+   FS-PATH-CAP * CHK-POS-BUF + ;
 
 : CHK-POS-U-SLOT ( n -- ptr n )
    cells CHK-POS-U + ;
@@ -252,37 +234,66 @@ variable CHK-ALL-RC
 : CHK-POS$ ( n -- ptr u8 n ) {: idx:n :}
    idx 0 < if CHK-USAGE then
    idx CHK-POS-N @ >= if CHK-USAGE then
-   idx CHK-POS-SLOT @
+   idx CHK-POS-SLOT
    idx CHK-POS-U-SLOT @ ;
 
 : CHK-ADD-POS ( ptr u8 n -- ) {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
    CHK-POS-N @ CHK-MAX-POS >= if CHK-USAGE then
-   CHK-SOURCE-LIST @ 0= if CHK-POS-N @ 0 > if CHK-USAGE then then
-   a CHK-POS-N @ CHK-POS-A CHK-PTR-U8-SLOT!
+   a CHK-POS-N @ CHK-POS-SLOT u BYTE-COPY
    u CHK-POS-N @ CHK-POS-U-SLOT !
    CHK-POS-N @ 1+ CHK-POS-N ! ;
 
+: CHK-LIST-OPT ( -- )
+   CHK-SEL-MODE @
+   case
+      CHK-SEL-NONE of CHK-SEL-LIST CHK-SEL-MODE ! endof
+      CHK-SEL-FILE of CHK-SEL-LIST CHK-SEL-MODE ! endof
+      CHK-SEL-LIST of endof
+      CHK-USAGE
+   endcase ;
+
+: CHK-OPT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" json-errors" LINT-STR= if LINT-TRUE CHK-JSON ! exit then
+   a u s" strict-signatures" LINT-STR= if LINT-TRUE CHK-STRICT ! exit then
+   a u s" all-errors" LINT-STR= if LINT-TRUE CHK-ALL ! exit then
+   a u s" source-list" LINT-STR= if CHK-LIST-OPT exit then
+   CHK-USAGE ;
+
+public
+
+: OPT ( ptr u8 n -- )
+   CHK-OPT ;
+
+: FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   CHK-SEL-MODE @
+   case
+      CHK-SEL-NONE of
+         path pathu CHK-ADD-POS
+         CHK-SEL-FILE CHK-SEL-MODE !
+      endof
+      CHK-SEL-LIST of path pathu CHK-ADD-POS endof
+      CHK-USAGE
+   endcase ;
+
+private
+
 : CHK-PARSE-ONE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u s" --json-errors" LINT-STR= if -1 CHK-JSON ! exit then
-   a u s" --strict-signatures" LINT-STR= if -1 CHK-STRICT ! exit then
-   a u s" --all-errors" LINT-STR= if -1 CHK-ALL ! exit then
-   a u s" --source-list" LINT-STR= if -1 CHK-SOURCE-LIST ! exit then
+   a u s" --json-errors" LINT-STR= if s" json-errors" OPT exit then
+   a u s" --strict-signatures" LINT-STR= if s" strict-signatures" OPT exit then
+   a u s" --all-errors" LINT-STR= if s" all-errors" OPT exit then
+   a u s" --source-list" LINT-STR= if s" source-list" OPT exit then
    a u CHK-DASH? if CHK-USAGE then
-   a u CHK-ADD-POS ;
+   a u FILE ;
 
 : CHK-COLLECT-REST ( -- )
    begin CHK-ARG-I @ SCRIPT-ARGC < while
-      CHK-ARG-I @ CHK-ARG$ CHK-ADD-POS
+      CHK-ARG-I @ CHK-ARG$ FILE
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
 : CHK-PARSE ( -- )
    0 CHK-ARG-I !
-   0 CHK-POS-N !
-   0 CHK-JSON !
-   0 CHK-STRICT !
-   0 CHK-ALL !
-   0 CHK-SOURCE-LIST !
    begin CHK-ARG-I @ SCRIPT-ARGC < while
       CHK-ARG-I @ s" --" CHK-ARG= if
          CHK-ARG-I @ 1+ CHK-ARG-I !
@@ -293,13 +304,20 @@ variable CHK-ALL-RC
       CHK-ARG-I @ 1+ CHK-ARG-I !
    repeat ;
 
-: CHK-RESET-CFG ( -- )
-   0 CHK-ARG-I !
+: CHK-POS-LENS-CLEAR ( -- )
+   0 begin dup CHK-MAX-POS < while
+      0 over CHK-POS-U-SLOT !
+      1+
+   repeat drop ;
+
+: CHK-SELECT-CLEAR ( -- )
+   CHK-SEL-NONE CHK-SEL-MODE !
+   0 CHK-SEL-SRC-U !
+   0 CHK-SEL-LABEL-U !
    0 CHK-POS-N !
-   0 CHK-JSON !
-   0 CHK-STRICT !
-   0 CHK-ALL !
-   0 CHK-SOURCE-LIST !
+   CHK-POS-LENS-CLEAR ;
+
+: CHK-RUN-TEMP-CLEAR ( -- )
    0 CHK-SRC-U !
    0 CHK-PRE-U !
    0 CHK-RUN-U !
@@ -308,11 +326,33 @@ variable CHK-ALL-RC
    0 CHK-ERR-U !
    0 CHK-RC !
    0 CHK-CHILD-RC !
+   0 CHK-NUM-I !
+   0 CHK-LABEL-U !
+   NULL$ drop CHK-LABEL-A CHK-PTR-U8!
+   NULL$ drop CHK-SRC-A CHK-PTR-U8!
+   0 CHK-HB-U !
+   NULL$ drop CHK-HB-A!
+   0 CHK-NOM-I !
+   0 CHK-NOM-U !
+   0 CHK-VREC-DEF-I !
+   0 CHK-VREC-NAME-I !
+   0 CHK-TFAM-NAME-I !
    0 CHK-EXP-U !
    0 CHK-EXP-OUT-U !
    0 CHK-DEP-N !
    0 CHK-DIR-N !
-   0 CHK-DEP-ORDER-N ! ;
+   0 CHK-DEP-ORDER-N !
+   0 CHK-DISC-ID !
+   0 CHK-ALL-ID !
+   0 CHK-ALL-RC ! ;
+
+: CHK-RESET-CFG ( -- )
+   0 CHK-ARG-I !
+   0 CHK-JSON !
+   0 CHK-STRICT !
+   0 CHK-ALL !
+   CHK-SELECT-CLEAR
+   CHK-RUN-TEMP-CLEAR ;
 
 : CHK-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    u FS-PATH-CAP > if E-FS-CAPACITY throw then
@@ -328,10 +368,37 @@ variable CHK-ALL-RC
 : CHK-RUN-PATH ( -- ptr u8 n )
    CHK-RUN-PATH-BUF CHK-RUN-PATH-U @ ;
 
+: CHK-TEMP-CLEAN ( -- )
+   CHK-ROOT-U @ 0= if exit then
+   CHK-ROOT 2dup EXISTS? if REMOVE-TREE else 2drop then
+   0 CHK-ROOT-U !
+   0 CHK-SRC-PATH-U !
+   0 CHK-RUN-PATH-U ! ;
+
+: CHK-SESSION-CLEAR ( -- )
+   CHK-RESET-CFG ;
+
+: CHK-FIRST-RC ( n n -- n ) {: rc:n next-rc:n :}
+   rc 0 <> if
+      \ One public operation returns one code, so simultaneous propagation is
+      \ impossible; the earliest primary code has precedence.
+      rc exit
+   then
+   next-rc ;
+
+public
+
+: RESET ( -- )
+   [: CHK-TEMP-CLEAN ;] catch {: rc:n :}
+   CHK-SESSION-CLEAR
+   [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
+   rc provider-rc CHK-FIRST-RC
+   dup 0 <> if throw then drop ;
+
+private
+
 : CHK-MAKE-TEMP ( -- )
-   CLEANUP-RESET
    s" habu-check" TMPDIR-MKDIR CHK-ROOT-BUF CHK-ROOT-U CHK-COPY!
-   CHK-ROOT CLEANUP-TREE+
    CHK-ROOT s" source.f" CHK-SRC-PATH-BUF JOIN-PATH CHK-SRC-PATH-U !
    CHK-ROOT s" run.f" CHK-RUN-PATH-BUF JOIN-PATH CHK-RUN-PATH-U ! ;
 
@@ -357,8 +424,7 @@ variable CHK-ALL-RC
    a CHK-SRC-A CHK-PTR-U8! ;
 
 : CHK-SINGLE-FILE? ( -- bool )
-   CHK-SOURCE-LIST @ if LINT-FALSE exit then
-   CHK-POS-N @ 1 = ;
+   CHK-SEL-MODE @ CHK-SEL-FILE = ;
 
 : CHK-LINT-SOURCE ( -- ptr u8 n )
    CHK-SINGLE-FILE? if 0 CHK-POS$ exit then
@@ -520,6 +586,13 @@ variable CHK-ALL-RC
    CHK-LABEL CHK-EXPAND-PATH
    CHK-LABEL CHK-SOURCE! ;
 
+: CHK-MATERIALIZE-SOURCE ( -- )
+   CHK-SEL-SRC-BUF CHK-SRC-BUF CHK-SEL-SRC-U @ BYTE-COPY
+   CHK-SEL-SRC-U @ CHK-SRC-U !
+   CHK-SEL-LABEL-BUF CHK-SEL-LABEL-U @ CHK-LABEL!
+   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
+   CHK-SRC-PATH CHK-SOURCE! ;
+
 : CHK-MATERIALIZE-LIST ( -- )
    CHK-POS-N @ 0= if CHK-USAGE then
    s" <source-list>" CHK-LABEL!
@@ -538,39 +611,41 @@ variable CHK-ALL-RC
 : CHK-SOURCE-TOO-BIG ( -- )
    s" check.f: source exceeds capacity" CHK-E-NOINPUT CHK-FAIL ;
 
+public
+
+: SOURCE ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n label:ptr labelu:n :}
+   CHK-SEL-MODE @ CHK-SEL-NONE <> if CHK-USAGE then
+   srcu CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
+   labelu FS-PATH-CAP > if E-FS-CAPACITY throw then
+   src CHK-SEL-SRC-BUF srcu BYTE-COPY
+   label CHK-SEL-LABEL-BUF labelu BYTE-COPY
+   srcu CHK-SEL-SRC-U !
+   labelu CHK-SEL-LABEL-U !
+   CHK-SEL-SOURCE CHK-SEL-MODE ! ;
+
+private
+
 : CHK-MATERIALIZE-DISPATCH ( -- )
-   CHK-SOURCE-LIST @ if CHK-MATERIALIZE-LIST exit then
-   CHK-POS-N @ 0= if CHK-MATERIALIZE-STDIN else CHK-MATERIALIZE-FILE then ;
+   CHK-SEL-MODE @
+   case
+      CHK-SEL-NONE of CHK-MATERIALIZE-STDIN endof
+      CHK-SEL-SOURCE of CHK-MATERIALIZE-SOURCE endof
+      CHK-SEL-FILE of CHK-MATERIALIZE-FILE endof
+      CHK-SEL-LIST of CHK-MATERIALIZE-LIST endof
+      E-TBL-BOUNDS throw
+   endcase ;
 
 \ A source (or its facade expansion) over CHK-SRC-CAP fails closed with the
 \ clean NOINPUT diagnostic instead of an uncaught E-FS-CAPACITY from the read
 \ layer (dot habu-tfam-13-c2-checkcore-cap).
 : CHK-MATERIALIZE ( -- )
-   s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
+   CHK-HB$ FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
    CHK-MAKE-TEMP
    [: CHK-MATERIALIZE-DISPATCH ;] catch {: rc:n :}
    rc 0= if exit then
    rc E-FS-CAPACITY = if CHK-SOURCE-TOO-BIG then
    rc throw ;
-
-: CHK-MATERIALIZE-BUF-AS ( ptr u8 n ptr u8 n -- )
-   {: src:ptr srcu:n label:ptr labelu:n :}
-   s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
-   srcu CHK-SRC-CAP > if CHK-SOURCE-TOO-BIG then
-   src CHK-SRC-BUF srcu BYTE-COPY
-   srcu CHK-SRC-U !
-   CHK-MAKE-TEMP
-   labelu CHK-LABEL-U !
-   label CHK-LABEL-A CHK-PTR-U8!
-   CHK-SRC-PATH CHK-SRC-BUF CHK-SRC-U @ WRITE-ALL
-   CHK-SRC-PATH CHK-SRC-U ! CHK-SRC-A CHK-PTR-U8! ;
-
-: CHK-MATERIALIZE-LIST-PATH ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   s" bin/hb" FILE? 0= if s" check.f: bin/hb missing" CHK-E-UNAVAILABLE CHK-FAIL then
-   -1 CHK-SOURCE-LIST !
-   path pathu CHK-ADD-POS
-   CHK-MAKE-TEMP
-   CHK-MATERIALIZE-LIST ;
 
 : CHK-WORD-TOK? ( n -- bool ) {: k:n :}
    k L# @ >= IF LINT-FALSE exit THEN
@@ -693,9 +768,6 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 : CHK-VREC-END? ( n -- bool )
    s" END-VALUE-RECORD" CHK-TOK=CI ;
 
-variable CHK-VREC-DEF-I
-variable CHK-VREC-NAME-I
-
 : CHK-VREC-DO-DEF ( -- )
    CHK-VREC-NAME-I @ LEX-TOK
    CHK-EXP-BUF CHK-EXP-U @
@@ -721,8 +793,6 @@ variable CHK-VREC-NAME-I
       1+
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-FAIL ;
-
-variable CHK-TFAM-NAME-I
 
 : CHK-TFAM-DO-DEF ( -- )         \ arity token, or empty when absent (missing-arity packet)
    CHK-TFAM-NAME-I @ LEX-TOK
@@ -998,7 +1068,7 @@ variable CHK-TFAM-NAME-I
    s" --load" CHK-ARG+ ;
 
 : CHK-RUN-CAPTURE ( -- )
-   s" bin/hb" >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
+   CHK-HB$ >LEN CHK-OUT-BUF CHK-OUT-CAP >LEN
    CHK-ERR-BUF CHK-ERR-CAP >LEN CHK-TIMEOUT-MS >MS
    RUN-ARGV-CAPTURE MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: outu:len erru:len :}
@@ -1024,12 +1094,11 @@ variable CHK-TFAM-NAME-I
    SIGNATURE-LINT-FINISH ;
 
 : CHK-RUN-BOUNDARY ( -- )
-   CHECKED-BOUNDARY-LINT-RESET
-   2 >FD UB-OUT-FD!
-   CHK-JSON @ UB-JSON!
-   UB-TRUE UB-STRICT-BOUNDARY!
-   CHK-LINT-SOURCE CHECKED-BOUNDARY-LINT-FILE
-   CHECKED-BOUNDARY-LINT-FINISH ;
+   2 >FD CHECKED-BOUNDARY-LINT:OUT-FD!
+   CHK-JSON @ CHECKED-BOUNDARY-LINT:JSON!
+   LINT-TRUE CHECKED-BOUNDARY-LINT:STRICT!
+   CHK-LINT-SOURCE CHECKED-BOUNDARY-LINT:FILE
+   CHECKED-BOUNDARY-LINT:FINISH ;
 
 : CHK-RUN-RESERVED-NAMES ( -- )
    RESERVED-NAME-LINT-RESET
@@ -1067,7 +1136,7 @@ variable CHK-TFAM-NAME-I
    CHK-THROW ;
 
 : CHK-RUN-TRUST ( -- )
-   CHK-SOURCE-LIST @ if CHK-RUN-TRUST-LIST exit then
+   CHK-SEL-MODE @ CHK-SEL-LIST = if CHK-RUN-TRUST-LIST exit then
    CHK-RUN-TRUST-SOURCE ;
 
 \ Source-list all-errors redrive: run all-errors per ORIGINAL file in
@@ -1104,7 +1173,7 @@ variable CHK-TFAM-NAME-I
 : CHK-RUN-ALL-CURRENT ( -- )
    CHK-OUT-BUF CHK-OUT-CAP CHK-RUN-BUF CHK-RUN-CAP CHECK-ALL-ERRORS-BUFFERS!
    CHK-JSON @ CHECK-ALL-ERRORS-JSON!
-   CHK-SOURCE-LIST @ if CHK-RUN-ALL-LIST-CURRENT exit then
+   CHK-SEL-MODE @ CHK-SEL-LIST = if CHK-RUN-ALL-LIST-CURRENT exit then
    CHECK-ALL-ERRORS-SUPPORT-RESET
    CHK-LABEL CHK-SOURCE CHECK-ALL-ERRORS-FILE ;
 
@@ -1156,7 +1225,7 @@ variable CHK-TFAM-NAME-I
    CHK-LABEL CHK-SOURCE CHK-PREVERIFY-FILE-AS ;
 
 : CHK-SOURCE-LIST-REPORT ( -- )
-   CHK-SOURCE-LIST @ 0= if exit then
+   CHK-SEL-MODE @ CHK-SEL-LIST <> if exit then
    s" check.f: source-list entries:" CHK-ERR-LN
    0 begin dup CHK-POS-N @ < while
       s"   " CHK-ERR
@@ -1182,9 +1251,9 @@ variable CHK-TFAM-NAME-I
    rc CHK-THROW ;
 
 : CHK-RUN-PREVERIFY ( -- )
-   CHK-JSON @ {: old-json:n :}
+   CHK-JSON @ {: old-json:bool :}
    CHK-PREVERIFY-DIAG-START
-   -1 CHK-JSON !
+   LINT-TRUE CHK-JSON !
    CHECKER-SCOPE-START
    [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
@@ -1209,7 +1278,6 @@ variable CHK-TFAM-NAME-I
 : CHK-HANDLE-HB ( -- )
    CHK-RC @ 0= if
       CHK-REPLAY
-      CLEANUP-RUN
       exit
    then
    CHK-RC @ CHK-CHILD-RC !
@@ -1235,6 +1303,7 @@ variable CHK-TFAM-NAME-I
    rc 0 <> if rc throw then ;
 
 : CHK-RUN-STATIC-LINTS ( -- )
+   \ Zero-byte input traverses every phase; a bypass is publicly unobservable.
    CHK-RUN-NOMINAL-LINTS
    CHK-ALL @ if CHK-RUN-ALL then ;
 
@@ -1247,20 +1316,51 @@ variable CHK-TFAM-NAME-I
    CHK-RUN-HB
    CHK-HANDLE-HB ;
 
-: CHK-DIRECT-FINISH ( n -- n ) {: rc:n :}
-   rc 0 = 0= if CLEANUP-RUN then
-   rc ;
-
 : CHK-RUN-SCOPED ( -- )
    CHECKER-SCOPE-START
    [: CHK-RUN-CURRENT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0 <> if rc throw then ;
 
-: CHK-DIRECT-RUN ( -- n )
-   [: CHK-RUN-SCOPED ;] catch CHK-DIRECT-FINISH ;
-
-: CHECK-MAIN ( -- )
-   CHK-PARSE
+: CHK-RUN-INNER ( -- )
+   CHECKED-BOUNDARY-LINT:RESET
    CHK-MATERIALIZE
    CHK-RUN-SCOPED ;
+
+\ typed-local-lint: allow-bare-local - q is the next guarded run action.
+: CHK-IF-CLEAN ( n [ -- ] -- n ) {: rc:n q :}
+   rc 0 <> if rc exit then
+   q catch ;
+
+: CHK-FINAL-CLEAN ( n -- n n ) {: rc:n :}
+   [: CHK-TEMP-CLEAN ;] catch {: temp-rc:n :}
+   [: CHECKED-BOUNDARY-LINT:RESET ;] catch {: provider-rc:n :}
+   temp-rc provider-rc CHK-FIRST-RC {: clean-rc:n :}
+   rc clean-rc CHK-FIRST-RC
+   clean-rc ;
+
+: CHK-RUN-ACT ( -- n n )
+   [: CHK-TEMP-CLEAN ;] catch
+   [: CHK-RUN-INNER ;] CHK-IF-CLEAN
+   CHK-FINAL-CLEAN ;
+
+: CHK-RUN-FINISH ( n n -- n ) {: rc:n clean-rc:n :}
+   clean-rc 0 <> if CHK-SESSION-CLEAR else CHK-RUN-TEMP-CLEAR then
+   rc ;
+
+: CHK-RUN-AS ( ptr u8 n -- n ) {: hb:ptr hbu:n :}
+   CHK-RUN-TEMP-CLEAR
+   hb hbu CHK-HB!
+   CHK-RUN-ACT CHK-RUN-FINISH ;
+
+public
+
+: RUN ( -- n )
+   s" bin/hb" CHK-RUN-AS ;
+
+: MAIN ( -- )
+   RESET
+   CHK-PARSE
+   RUN dup 0 <> if throw then drop ;
+
+;package

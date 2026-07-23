@@ -3,4 +3,4 @@
 
 require tools/check-test-lib.f
 
-CHECK:TEST
+CHECK-TEST:TEST

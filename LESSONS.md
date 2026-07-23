@@ -2235,3 +2235,13 @@ fits.
   already-quoted `created-at` value; the current serializer can quote it again
   while changing status. Restore the original timestamp bytes before
   publication and keep the mutation limited to status, claim, and contract.
+- **Allocator address reuse is not ownership proof unless the actual allocation
+  is observed.** Use deterministic modulo-cell accounting at the owning
+  allocation and release seams, and test the explicit all-bits-one-to-zero wrap.
+- **A package API audit must inspect every forbidden namespace.** Count the
+  intended package wordlist, query wordlist zero for each retired alias, inject
+  an exact forbidden alias to prove rejection, and keep test evidence private
+  to its owning package.
+- **Error precedence begins before materialization.** Put every fallible session
+  entry operation inside the same caught sequence as execution so cleanup and
+  primary-result ordering do not depend on an operation being infallible today.

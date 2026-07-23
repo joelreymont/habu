@@ -613,6 +613,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | WB-SCOPE | `R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S` | Exception-safe body of `MEM:WITH-BYTES`: allocates a mapping, runs the body quotation, and releases on BOTH normal return and throw. `catch` restricts to a stack-preserving quotation and a nested quotation captures no local, so the body's arbitrary result row `S` cannot be threaded through `catch` in checked code (same limit as `SNAP=`/`EACH`). The public `WITH-BYTES` is a thin CHECKED forwarder over it, so the signature stays checker-verified at call sites. Retire under linear owner types. | `lib/memory-test.f` | lib/memory.f | 2026-07-21 | stdlib-boundary | habu-epic-type-habu-a34713f0 |
 | WB-RUN-CUR | `--` | Private `MEM:WITH-BYTES` frame op: pushes the current mapping (fat pointer + length) parked off the data stack and `EXECUTE`s its stored body xt; the true effect is row-polymorphic `( R ptr u8 CAD-NUM:alloc-byte-len -- S )`, which the checker cannot express for an xt fetched from a variable. Caught by a no-argument quotation so a throw leaves the row clean. | `lib/memory-test.f` | lib/memory.f | 2026-07-21 | stdlib-boundary | habu-epic-type-habu-a34713f0 |
 | WB-REL-CUR | `--` | Private `MEM:WITH-BYTES` frame op: releases the current mapping via `MEM:RELEASE-BYTES`, reading the fat pointer and length from off-stack frame state (the fat pointer cannot be re-typed through a bare cell read). One release per scope; the outer frame is restored after, so a repeated release is structurally impossible. | `lib/memory-test.f` | lib/memory.f | 2026-07-21 | stdlib-boundary | habu-epic-type-habu-a34713f0 |
+| TP-MAP-THROW-ACT | `n ptr u8 CAD-NUM:alloc-byte-len --` | Private provider-test adapter: checked `catch` is stack-preserving and cannot catch `UB-MAPPED-FILE` while consuming the linear mapping extent. This boundary consumes the restored throw inputs exactly once and asserts mapped spans are clear before returning to `MEM:WITH-BYTES`; it adds no production or public surface. | `tools/checked-boundary-lint-test.f` | tools/checked-boundary-lint-test-lib.f | 2026-07-23 | test-metaprog | habu-own-boundary-lint-0cff8730 |
 | IMG-MMAP-PTR | `n -- ptr u8` | Refines a raw file-backed `mmap` result into a typed byte pointer after checking the `-1` failure result; the checker cannot express syscall-result refinement yet. | `tools/imgdump-test.f`, `test/run.f` | tools/imgdump.f | 2026-06-25 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | CODE | `-- ptr u8` | Lazily maps the assembler output buffer outside DATA and refines the raw mmap result to the byte pointer used by `EMITW`, `BYTES,`, and image writers. | `test/run.f`, `tools/build-fixpoint-test.f` | src/arch/arm64/icode.f | 2026-06-26 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | ICODE-TABS | `-- ptr n` | Lazily maps the assembler label/fixup table block outside DATA and refines the raw mmap result to the numeric-cell pointer used by `LBLP`/`FXS`/`FXN`/`FXK`/`FXH`. | `test/run.f`, `tools/build-fixpoint-test.f`, `test/icode-fixup-test.f` | src/arch/arm64/icode.f | 2026-07-14 | builder-emit | habu-builder-trust-rows-c5d41af6 |
@@ -968,10 +969,13 @@ hide.f TRUSTED word with its own row), `src/core/check-hook.f`'s own
 `0 set-check` window followed by the `CHECK-F-HOOK` definition, canonical
 `LOWER-CERT-HOOK:INSTALL` preflight rearm, and `' CHECK-F-HOOK set-check`
 install, fail-closed via `70 throw`. That generated
-install is lexer-invisible to hook-identity policing by design; its shape is
-pinned by the `check/prelude-hook-shape` regression
-(`tools/check-test-lib.f`), which rejects any other installed hook name or a
-missing re-arm in the generated text.
+install is lexer-invisible to hook-identity policing by design. The
+`check/prelude-hook-public` regression (`tools/check-test-lib.f`) exercises the
+public check command with dynamically evaluated definitions that preverification
+cannot inspect: a certified definition succeeds, while a mismatched definition
+must exit 70 with the lower-certificate hook diagnostic. This proves the emitted
+child prelude restores delegated, fail-closed checking without exposing private
+generator state or accepting source-text lookalikes as evidence.
 
 Reintroducing generated trust requires updating the build-fixpoint
 source-shape regressions (`tools/build-fixpoint-test.f` asserts stage2

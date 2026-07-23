@@ -364,6 +364,7 @@ points stay listed.
 - `tools/check-main.f` — no-include checked engine entry for checker CLI reuse.
 - `tools/check-test-lib.f` — reusable checked fixture library for check runner semantics.
 - `tools/check-test.f` — checked fixture coverage for the native check runner.
+- `tools/check-cleanup-child.f` — isolated CHECK finalization and cleanup production-path fixture.
 - `tools/sha256-file-test.f` — checked fixture coverage for streaming SHA-256 helpers.
 - `lib/content-key.f` — checked manifest-hash builder for content-addressed gate caches.
 - `lib/content-key-test.f` — checked fixture coverage for content-key stability and invalidation.

@@ -2,6 +2,10 @@
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f, and
 \ tools/lint/json-writer.f.
 
+package CHECKED-BOUNDARY-LINT
+
+private
+
 32 constant UB-NUM-CAP
 
 10 constant UB-LF
@@ -43,6 +47,8 @@ variable UB-CARRY-OFF
 variable UB-JSON
 variable UB-STRICT-BOUNDARY
 variable UB-OUT-FD
+\ Observational only: each accepted FILE call advances modulo cell width.
+variable UB-FILE-SEQ
 
 : UB-FILE-A-FIELD ( -- ptr ptr u8 )
    UB-FILE-A 0 ptr-field ;
@@ -455,6 +461,38 @@ variable UB-OUT-FD
    UB-FALSE UB-TRUSTED !
    UB-FALSE UB-IN-DEF ! ;
 
+: UB-CLEAR-MAPPED-SPANS ( -- )
+   NULL$ drop UB-SRC-A!   0 UB-SRC-U !  0 UB-SRC-CAP !
+   NULL$ drop UB-TOK-A!   0 UB-TOK-U !
+   NULL$ drop UB-PREV-A!  0 UB-PREV-U !
+   NULL$ drop UB-PREV2-A! 0 UB-PREV2-U ! ;
+
+: UB-CLEAR-SPANS ( -- )
+   NULL$ drop UB-FILE-A! 0 UB-FILE-U !
+   UB-CLEAR-MAPPED-SPANS ;
+
+: UB-MAPPED-SPANS-CLEAR? ( -- bool )
+   UB-SRC-A@ NULL$ drop =
+   UB-SRC-U @ 0= and
+   UB-SRC-CAP @ 0= and
+   UB-TOK-A@ NULL$ drop = and
+   UB-TOK-U @ 0= and
+   UB-PREV-A@ NULL$ drop = and
+   UB-PREV-U @ 0= and
+   UB-PREV2-A@ NULL$ drop = and
+   UB-PREV2-U @ 0= and ;
+
+: UB-SPANS-CLEAR? ( -- bool )
+   UB-FILE-A@ NULL$ drop =
+   UB-FILE-U @ 0= and
+   UB-MAPPED-SPANS-CLEAR? and ;
+
+: UB-REQUIRE-MAPPED-CLEAR ( -- )
+   UB-MAPPED-SPANS-CLEAR? 0= if E-BUF-STATE throw then ;
+
+: UB-REQUIRE-IDLE ( -- )
+   UB-SPANS-CLEAR? 0= if E-BUF-STATE throw then ;
+
 : UB-SCAN ( -- )
    UB-RESET-FILE-SCAN
    begin UB-NEXT-TOK while
@@ -481,20 +519,58 @@ variable UB-OUT-FD
       UB-SAVE-PREV
    repeat ;
 
-: CHECKED-BOUNDARY-LINT-RESET ( -- )
+: UB-MAPPED-SCAN ( -- )
+   UB-FILE-A@ UB-FILE-U @ UB-SRC-A@ UB-SRC-CAP @ READ-ALL {: used:n :}
+   used UB-SRC-U !
+   UB-SCAN ;
+
+: UB-MAPPED-FILE ( n ptr u8 CAD-NUM:alloc-byte-len -- )
+   {: size:n src:ptr extent:CAD-NUM:alloc-byte-len :}
+   src UB-SRC-A!
+   size UB-SRC-CAP !
+   [: UB-MAPPED-SCAN ;] catch {: rc:n :}
+   UB-CLEAR-MAPPED-SPANS
+   rc 0 <> if rc throw then ;
+
+: UB-FILE-ACT ( -- )
+   UB-FILE-A@ UB-FILE-U @ FILE-SIZE {: bytes:n :}
+   bytes 0= if
+      UB-NUM UB-SRC-A!
+      UB-SCAN
+      exit
+   then
+   bytes bytes MEM:BYTES-ALLOC-LEN [: UB-MAPPED-FILE ;] MEM:WITH-BYTES
+   UB-REQUIRE-MAPPED-CLEAR ;
+
+public
+
+: JSON! ( bool -- )
+   UB-JSON! ;
+
+: STRICT! ( bool -- )
+   UB-STRICT-BOUNDARY! ;
+
+: OUT-FD! ( fd -- )
+   UB-OUT-FD! ;
+
+: RESET ( -- )
+   UB-CLEAR-SPANS
    0 UB-BAD !
    UB-FALSE UB-CHECK-OFF!
    UB-FALSE UB-JSON!
    UB-FALSE UB-STRICT-BOUNDARY!
    1 >FD UB-OUT-FD! ;
 
-: CHECKED-BOUNDARY-LINT-FILE ( ptr u8 n -- )
+: FILE ( ptr u8 n -- )
    {: path:ptr pu:n :}
+   UB-REQUIRE-IDLE
+   1 UB-FILE-SEQ +!
    path UB-FILE-A! pu UB-FILE-U !
-   path pu FILE-SIZE MEM-ALLOC-64K-SPAN
-   UB-SRC-CAP ! UB-SRC-A!
-   path pu UB-SRC-A@ UB-SRC-CAP @ READ-ALL UB-SRC-U !
-   UB-SCAN ;
+   [: UB-FILE-ACT ;] catch {: rc:n :}
+   UB-CLEAR-SPANS
+   rc 0 <> if rc throw then ;
 
-: CHECKED-BOUNDARY-LINT-FINISH ( -- )
+: FINISH ( -- )
    UB-BAD @ 0 > if 1 throw then ;
+
+;package
