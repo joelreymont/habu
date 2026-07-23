@@ -4,223 +4,223 @@
 \ tools/cli-run.f tools/checked-boundary-lint-core.f
 \ tools/checked-boundary-lint-test.f
 
-4096 constant CBLT-BUF-CAP
-10000 constant CBLT-TIMEOUT-MS
-1400 constant CBLT-LARGE-LINES
+package CBLT
 
-variable CBLT-ROOT-U
-variable CBLT-GOOD-U
-variable CBLT-BAD-U
-variable CBLT-NOPREF-U
-variable CBLT-OFF-U
-variable CBLT-CROSS-U
-variable CBLT-LARGE-U
-variable CBLT-TRUSTED-U
-variable CBLT-ROGUE-U
-variable CBLT-TOPROGUE-U
-variable CBLT-TOPGOOD-U
+4096 constant BUF-CAP
+1400 constant LARGE-LINES
 
-create CBLT-ROOT-BUF FS-PATH-CAP allot
-create CBLT-GOOD-BUF FS-PATH-CAP allot
-create CBLT-BAD-BUF FS-PATH-CAP allot
-create CBLT-NOPREF-BUF FS-PATH-CAP allot
-create CBLT-OFF-BUF FS-PATH-CAP allot
-create CBLT-CROSS-BUF FS-PATH-CAP allot
-create CBLT-LARGE-BUF FS-PATH-CAP allot
-create CBLT-TRUSTED-BUF FS-PATH-CAP allot
-create CBLT-ROGUE-BUF FS-PATH-CAP allot
-create CBLT-TOPROGUE-BUF FS-PATH-CAP allot
-create CBLT-TOPGOOD-BUF FS-PATH-CAP allot
-create CBLT-OUT CBLT-BUF-CAP allot
-create CBLT-ERR CBLT-BUF-CAP allot
-create CBLT-LF-BYTE 10 c,
+variable ROOT-U
+variable GOOD-U
+variable BAD-U
+variable NOPREF-U
+variable OFF-U
+variable CROSS-U
+variable LARGE-U
+variable TRUSTED-U
+variable ROGUE-U
+variable TOPROGUE-U
+variable TOPGOOD-U
 
-: CBLT-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
+create ROOT-BUF FS-PATH-CAP allot
+create GOOD-BUF FS-PATH-CAP allot
+create BAD-BUF FS-PATH-CAP allot
+create NOPREF-BUF FS-PATH-CAP allot
+create OFF-BUF FS-PATH-CAP allot
+create CROSS-BUF FS-PATH-CAP allot
+create LARGE-BUF FS-PATH-CAP allot
+create TRUSTED-BUF FS-PATH-CAP allot
+create ROGUE-BUF FS-PATH-CAP allot
+create TOPROGUE-BUF FS-PATH-CAP allot
+create TOPGOOD-BUF FS-PATH-CAP allot
+create OUT BUF-CAP allot
+create LF-BYTE 10 c,
+
+: COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
    a dst u BYTE-COPY
    u lenp ! ;
 
-: CBLT-ROOT ( -- ptr u8 n )
-   CBLT-ROOT-BUF CBLT-ROOT-U @ ;
+: ROOT ( -- ptr u8 n )
+   ROOT-BUF ROOT-U @ ;
 
-: CBLT-GOOD ( -- ptr u8 n )
-   CBLT-GOOD-BUF CBLT-GOOD-U @ ;
+: GOOD ( -- ptr u8 n )
+   GOOD-BUF GOOD-U @ ;
 
-: CBLT-BAD ( -- ptr u8 n )
-   CBLT-BAD-BUF CBLT-BAD-U @ ;
+: BAD ( -- ptr u8 n )
+   BAD-BUF BAD-U @ ;
 
-: CBLT-NOPREF ( -- ptr u8 n )
-   CBLT-NOPREF-BUF CBLT-NOPREF-U @ ;
+: NOPREF ( -- ptr u8 n )
+   NOPREF-BUF NOPREF-U @ ;
 
-: CBLT-OFF ( -- ptr u8 n )
-   CBLT-OFF-BUF CBLT-OFF-U @ ;
+: OFF ( -- ptr u8 n )
+   OFF-BUF OFF-U @ ;
 
-: CBLT-CROSS ( -- ptr u8 n )
-   CBLT-CROSS-BUF CBLT-CROSS-U @ ;
+: CROSS ( -- ptr u8 n )
+   CROSS-BUF CROSS-U @ ;
 
-: CBLT-LARGE ( -- ptr u8 n )
-   CBLT-LARGE-BUF CBLT-LARGE-U @ ;
+: LARGE ( -- ptr u8 n )
+   LARGE-BUF LARGE-U @ ;
 
-: CBLT-TRUSTED ( -- ptr u8 n )
-   CBLT-TRUSTED-BUF CBLT-TRUSTED-U @ ;
+: TRUSTED ( -- ptr u8 n )
+   TRUSTED-BUF TRUSTED-U @ ;
 
-: CBLT-ROGUE ( -- ptr u8 n )
-   CBLT-ROGUE-BUF CBLT-ROGUE-U @ ;
+: ROGUE ( -- ptr u8 n )
+   ROGUE-BUF ROGUE-U @ ;
 
-: CBLT-TOPROGUE ( -- ptr u8 n )
-   CBLT-TOPROGUE-BUF CBLT-TOPROGUE-U @ ;
+: TOPROGUE ( -- ptr u8 n )
+   TOPROGUE-BUF TOPROGUE-U @ ;
 
-: CBLT-TOPGOOD ( -- ptr u8 n )
-   CBLT-TOPGOOD-BUF CBLT-TOPGOOD-U @ ;
+: TOPGOOD ( -- ptr u8 n )
+   TOPGOOD-BUF TOPGOOD-U @ ;
 
-: CBLT-LF ( -- )
+: LF ( -- )
    10 SB-APPEND-C ;
 
-: CBLT-APPEND-LF ( ptr u8 n -- )
-   CBLT-LF-BYTE 1 APPEND-FILE ;
+: APPEND-LF ( ptr u8 n -- )
+   LF-BYTE 1 APPEND-FILE ;
 
-: CBLT-GOOD$ ( -- ptr u8 n )
+: GOOD$ ( -- ptr u8 n )
    SB-RESET
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" variable RAW-CELL" SB-APPEND CBLT-LF
-   s" : LINT-CHECK-HOOK ( -- ) CHECK! ;" SB-APPEND CBLT-LF
-   s" LOWER-CERT-HOOK:INSTALL" SB-APPEND CBLT-LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
-   s" : GOOD ( n -- n ) dup ;" SB-APPEND CBLT-LF
+   s" 0 set-check" SB-APPEND LF
+   s" variable RAW-CELL" SB-APPEND LF
+   s" : LINT-CHECK-HOOK ( -- ) CHECK! ;" SB-APPEND LF
+   s" LOWER-CERT-HOOK:INSTALL" SB-APPEND LF
+   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" : GOOD ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
-: CBLT-NOPREF$ ( -- ptr u8 n )
+: NOPREF$ ( -- ptr u8 n )
    SB-RESET
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" TRUSTED: PREP ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND CBLT-LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
-   s" : SHOULD-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND CBLT-LF
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" KERNEL: PREP-K ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND CBLT-LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
-   s" : KERNEL-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND CBLT-LF
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" CHECKED: PREP-C ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND CBLT-LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
-   s" : CHECKED-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND CBLT-LF
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" +: PREP-P ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND CBLT-LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
-   s" : PLUS-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND CBLT-LF
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" :noname ( -- ) LOWER-CERT-HOOK:INSTALL ; drop" SB-APPEND CBLT-LF
-   s" ' LINT-CHECK-HOOK set-check" SB-APPEND CBLT-LF
-   s" : ANON-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND CBLT-LF
-   s" LOWER-CERT-HOOK:INSTALL" SB-APPEND CBLT-LF
-   s" TRUSTED: NEVER-RUN ( -- ) 0 set-check ;" SB-APPEND CBLT-LF
-   s" : BODY-DISABLE-NO-EFFECT ( n -- n ) dup ;" SB-APPEND CBLT-LF
+   s" 0 set-check" SB-APPEND LF
+   s" TRUSTED: PREP ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
+   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" : SHOULD-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
+   s" 0 set-check" SB-APPEND LF
+   s" KERNEL: PREP-K ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
+   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" : KERNEL-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
+   s" 0 set-check" SB-APPEND LF
+   s" CHECKED: PREP-C ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
+   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" : CHECKED-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
+   s" 0 set-check" SB-APPEND LF
+   s" +: PREP-P ( -- ) LOWER-CERT-HOOK:INSTALL ;" SB-APPEND LF
+   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" : PLUS-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
+   s" 0 set-check" SB-APPEND LF
+   s" :noname ( -- ) LOWER-CERT-HOOK:INSTALL ; drop" SB-APPEND LF
+   s" ' LINT-CHECK-HOOK set-check" SB-APPEND LF
+   s" : ANON-STAY-UNCHECKED ( n -- n ) dup ;" SB-APPEND LF
+   s" LOWER-CERT-HOOK:INSTALL" SB-APPEND LF
+   s" TRUSTED: NEVER-RUN ( -- ) 0 set-check ;" SB-APPEND LF
+   s" : BODY-DISABLE-NO-EFFECT ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
-: CBLT-ROGUE$ ( -- ptr u8 n )
+: ROGUE$ ( -- ptr u8 n )
    SB-RESET
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" ' EVIL-HOOK set-check" SB-APPEND CBLT-LF
-   s" : ROGUE-OK ( n -- n ) dup ;" SB-APPEND CBLT-LF
+   s" 0 set-check" SB-APPEND LF
+   s" ' EVIL-HOOK set-check" SB-APPEND LF
+   s" : ROGUE-OK ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
 \ Tier-2 escape-window audit rows (dot habu-typed-top-tier-589c550f): a
 \ set-top-check install of any name but TR-HOOK is UNAUDITED-TOP-HOOK; the TR-HOOK
 \ install (top-row.f TR-INSTALL) is the sole allowed enforcer and stays clean.
-: CBLT-TOPROGUE$ ( -- ptr u8 n )
+: TOPROGUE$ ( -- ptr u8 n )
    SB-RESET
-   s" ['] EVIL-TOP-HOOK set-top-check" SB-APPEND CBLT-LF
+   s" ['] EVIL-TOP-HOOK set-top-check" SB-APPEND LF
    SB$ ;
 
-: CBLT-TOPGOOD$ ( -- ptr u8 n )
+: TOPGOOD$ ( -- ptr u8 n )
    SB-RESET
-   s" ['] TR-HOOK set-top-check" SB-APPEND CBLT-LF
+   s" ['] TR-HOOK set-top-check" SB-APPEND LF
    SB$ ;
 
-: CBLT-BAD$ ( -- ptr u8 n )
+: BAD$ ( -- ptr u8 n )
    SB-RESET
-   s" 0 set-check" SB-APPEND CBLT-LF
-   s" : BAD ( n -- n ) dup ;" SB-APPEND CBLT-LF
+   s" 0 set-check" SB-APPEND LF
+   s" : BAD ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
-: CBLT-OFF$ ( -- ptr u8 n )
+: OFF$ ( -- ptr u8 n )
    s" 0 set-check" ;
 
-: CBLT-CROSS$ ( -- ptr u8 n )
+: CROSS$ ( -- ptr u8 n )
    s" : CROSS-BAD ( n -- n ) dup ;" ;
 
-: CBLT-TRUSTED$ ( -- ptr u8 n )
+: TRUSTED$ ( -- ptr u8 n )
    SB-RESET
-   s" TRUSTED: USER-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" SB-APPEND CBLT-LF
-   s" TRUSTED: INSTALL-HOOK ( -- ) ['] USER-HOOK set-check ;" SB-APPEND CBLT-LF
-   s" INSTALL-HOOK" SB-APPEND CBLT-LF
-   s" : GOOD ( n -- n ) dup ;" SB-APPEND CBLT-LF
+   s" TRUSTED: USER-HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" SB-APPEND LF
+   s" TRUSTED: INSTALL-HOOK ( -- ) ['] USER-HOOK set-check ;" SB-APPEND LF
+   s" INSTALL-HOOK" SB-APPEND LF
+   s" : GOOD ( n -- n ) dup ;" SB-APPEND LF
    SB$ ;
 
-: CBLT-EMPTY$ ( -- ptr u8 n )
+: EMPTY$ ( -- ptr u8 n )
    SB-RESET
    SB$ ;
 
-: CBLT-LARGE-LINE$ ( -- ptr u8 n )
+: LARGE-LINE$ ( -- ptr u8 n )
    s" \\ boundary lint large fixture padding line 0123456789 abcdefghijklmnopqrstuvwxyz" ;
 
-: CBLT-WRITE-LARGE ( -- )
-   CBLT-LARGE s" : LARGE-OK ( n -- n ) dup ;" WRITE-ALL
-   CBLT-LARGE CBLT-APPEND-LF
-   CBLT-LARGE-LINES 0 ?do
-      CBLT-LARGE CBLT-LARGE-LINE$ APPEND-FILE
-      CBLT-LARGE CBLT-APPEND-LF
+: WRITE-LARGE ( -- )
+   LARGE s" : LARGE-OK ( n -- n ) dup ;" WRITE-ALL
+   LARGE APPEND-LF
+   LARGE-LINES 0 ?do
+      LARGE LARGE-LINE$ APPEND-FILE
+      LARGE APPEND-LF
    loop ;
 
-: CBLT-CODE$ ( -- ptr u8 n )
+: CODE$ ( -- ptr u8 n )
    s" UNCHECKED-DEFINITION" ;
 
-: CBLT-PREPARE ( -- )
+: PREPARE ( -- )
    CLEANUP-RESET
    s" habu-checked-boundary-lint" TMPDIR-MKDIR {: a:ptr u:n :}
-   a u CBLT-ROOT-BUF CBLT-ROOT-U CBLT-COPY!
-   CBLT-ROOT CLEANUP-DIR+
-   CBLT-ROOT s" good.f" CBLT-GOOD-BUF JOIN-PATH CBLT-GOOD-U !
-   CBLT-ROOT s" bad.f" CBLT-BAD-BUF JOIN-PATH CBLT-BAD-U !
-   CBLT-ROOT s" no-preflight.f" CBLT-NOPREF-BUF JOIN-PATH CBLT-NOPREF-U !
-   CBLT-ROOT s" off.f" CBLT-OFF-BUF JOIN-PATH CBLT-OFF-U !
-   CBLT-ROOT s" cross.f" CBLT-CROSS-BUF JOIN-PATH CBLT-CROSS-U !
-   CBLT-ROOT s" large.f" CBLT-LARGE-BUF JOIN-PATH CBLT-LARGE-U !
-   CBLT-ROOT s" trusted.f" CBLT-TRUSTED-BUF JOIN-PATH CBLT-TRUSTED-U !
-   CBLT-ROOT s" rogue.f" CBLT-ROGUE-BUF JOIN-PATH CBLT-ROGUE-U !
-   CBLT-ROOT s" toprogue.f" CBLT-TOPROGUE-BUF JOIN-PATH CBLT-TOPROGUE-U !
-   CBLT-ROOT s" topgood.f" CBLT-TOPGOOD-BUF JOIN-PATH CBLT-TOPGOOD-U !
-   CBLT-GOOD CLEANUP+
-   CBLT-BAD CLEANUP+
-   CBLT-NOPREF CLEANUP+
-   CBLT-OFF CLEANUP+
-   CBLT-CROSS CLEANUP+
-   CBLT-LARGE CLEANUP+
-   CBLT-TRUSTED CLEANUP+
-   CBLT-ROGUE CLEANUP+
-   CBLT-TOPROGUE CLEANUP+
-   CBLT-TOPGOOD CLEANUP+
-   CBLT-GOOD CBLT-GOOD$ WRITE-ALL
-   CBLT-BAD CBLT-BAD$ WRITE-ALL
-   CBLT-NOPREF CBLT-NOPREF$ WRITE-ALL
-   CBLT-OFF CBLT-OFF$ WRITE-ALL
-   CBLT-CROSS CBLT-CROSS$ WRITE-ALL
-   CBLT-TRUSTED CBLT-TRUSTED$ WRITE-ALL
-   CBLT-ROGUE CBLT-ROGUE$ WRITE-ALL
-   CBLT-TOPROGUE CBLT-TOPROGUE$ WRITE-ALL
-   CBLT-TOPGOOD CBLT-TOPGOOD$ WRITE-ALL
-   CBLT-WRITE-LARGE ;
+   a u ROOT-BUF ROOT-U COPY!
+   ROOT CLEANUP-DIR+
+   ROOT s" good.f" GOOD-BUF JOIN-PATH GOOD-U !
+   ROOT s" bad.f" BAD-BUF JOIN-PATH BAD-U !
+   ROOT s" no-preflight.f" NOPREF-BUF JOIN-PATH NOPREF-U !
+   ROOT s" off.f" OFF-BUF JOIN-PATH OFF-U !
+   ROOT s" cross.f" CROSS-BUF JOIN-PATH CROSS-U !
+   ROOT s" large.f" LARGE-BUF JOIN-PATH LARGE-U !
+   ROOT s" trusted.f" TRUSTED-BUF JOIN-PATH TRUSTED-U !
+   ROOT s" rogue.f" ROGUE-BUF JOIN-PATH ROGUE-U !
+   ROOT s" toprogue.f" TOPROGUE-BUF JOIN-PATH TOPROGUE-U !
+   ROOT s" topgood.f" TOPGOOD-BUF JOIN-PATH TOPGOOD-U !
+   GOOD CLEANUP+
+   BAD CLEANUP+
+   NOPREF CLEANUP+
+   OFF CLEANUP+
+   CROSS CLEANUP+
+   LARGE CLEANUP+
+   TRUSTED CLEANUP+
+   ROGUE CLEANUP+
+   TOPROGUE CLEANUP+
+   TOPGOOD CLEANUP+
+   GOOD GOOD$ WRITE-ALL
+   BAD BAD$ WRITE-ALL
+   NOPREF NOPREF$ WRITE-ALL
+   OFF OFF$ WRITE-ALL
+   CROSS CROSS$ WRITE-ALL
+   TRUSTED TRUSTED$ WRITE-ALL
+   ROGUE ROGUE$ WRITE-ALL
+   TOPROGUE TOPROGUE$ WRITE-ALL
+   TOPGOOD TOPGOOD$ WRITE-ALL
+   WRITE-LARGE ;
 
-: CBLT-CORE-SETUP ( bool -- ) {: strict:bool :}
+: CORE-SETUP ( bool -- ) {: strict:bool :}
    CHECKED-BOUNDARY-LINT-RESET
-   CBLT-OUT CBLT-BUF-CAP LINT-OUT-BUFFER!
+   OUT BUF-CAP LINT-OUT-BUFFER!
    strict UB-STRICT-BOUNDARY! ;
 
-: CBLT-CORE-FINISH ( -- n n outcome )
+: CORE-FINISH ( -- n n outcome )
    [: CHECKED-BOUNDARY-LINT-FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 rc OUTCOME:EXITED ;
 
-: CBLT-RUN-CURRENT ( -- n n outcome )
-   LINT-FALSE CBLT-CORE-SETUP
+: RUN-CURRENT ( -- n n outcome )
+   LINT-FALSE CORE-SETUP
    s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT-FILE
    s" tools/json-file.f" CHECKED-BOUNDARY-LINT-FILE
    s" tools/host-lint.f" CHECKED-BOUNDARY-LINT-FILE
@@ -236,123 +236,127 @@ create CBLT-LF-BYTE 10 c,
    s" tools/stale-status-lint.f" CHECKED-BOUNDARY-LINT-FILE
    s" tools/trust-lint-core.f" CHECKED-BOUNDARY-LINT-FILE
    s" tools/trust-lint.f" CHECKED-BOUNDARY-LINT-FILE
-   CBLT-CORE-FINISH ;
+   CORE-FINISH ;
 
-: CBLT-RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}
-   strict CBLT-CORE-SETUP
+: RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}
+   strict CORE-SETUP
    path pathu CHECKED-BOUNDARY-LINT-FILE
-   CBLT-CORE-FINISH ;
+   CORE-FINISH ;
 
-: CBLT-RUN-CORE-GOOD ( -- n n outcome )
-   CBLT-GOOD LINT-FALSE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-GOOD ( -- n n outcome )
+   GOOD LINT-FALSE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-LARGE ( -- n n outcome )
-   CBLT-LARGE LINT-FALSE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-LARGE ( -- n n outcome )
+   LARGE LINT-FALSE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-BAD ( -- n n outcome )
-   CBLT-BAD LINT-FALSE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-BAD ( -- n n outcome )
+   BAD LINT-FALSE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-NOPREF ( -- n n outcome )
-   CBLT-NOPREF LINT-FALSE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-NOPREF ( -- n n outcome )
+   NOPREF LINT-FALSE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-STRICT-GOOD ( -- n n outcome )
-   CBLT-GOOD LINT-TRUE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-STRICT-GOOD ( -- n n outcome )
+   GOOD LINT-TRUE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-STRICT-TRUSTED ( -- n n outcome )
-   CBLT-TRUSTED LINT-TRUE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-STRICT-TRUSTED ( -- n n outcome )
+   TRUSTED LINT-TRUE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-ROGUE ( -- n n outcome )
-   CBLT-ROGUE LINT-FALSE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-ROGUE ( -- n n outcome )
+   ROGUE LINT-FALSE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-TOPROGUE ( -- n n outcome )
-   CBLT-TOPROGUE LINT-FALSE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-TOPROGUE ( -- n n outcome )
+   TOPROGUE LINT-FALSE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-TOPGOOD ( -- n n outcome )
-   CBLT-TOPGOOD LINT-FALSE CBLT-RUN-CORE-FILE ;
+: RUN-CORE-TOPGOOD ( -- n n outcome )
+   TOPGOOD LINT-FALSE RUN-CORE-FILE ;
 
-: CBLT-RUN-CORE-CROSS ( -- n n outcome )
-   LINT-FALSE CBLT-CORE-SETUP
-   CBLT-OFF CHECKED-BOUNDARY-LINT-FILE
-   CBLT-CROSS CHECKED-BOUNDARY-LINT-FILE
-   CBLT-CORE-FINISH ;
+: RUN-CORE-CROSS ( -- n n outcome )
+   LINT-FALSE CORE-SETUP
+   OFF CHECKED-BOUNDARY-LINT-FILE
+   CROSS CHECKED-BOUNDARY-LINT-FILE
+   CORE-FINISH ;
 
-: CBLT-ASSERT-CLEAN ( n n outcome -- )
+: ASSERT-CLEAN ( n n outcome -- )
    0 T-OUTCOME-EXITED= {: outu:n erru:n :}
-   CBLT-OUT outu CBLT-EMPTY$ T$=
-   CBLT-ERR erru CBLT-EMPTY$ T$= ;
+   OUT outu EMPTY$ T$=
+   erru 0 T= ;
 
-: CBLT-EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
+: EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
    expect T-OUTCOME-EXITED= ;
 
-: CBLT-TEST-CURRENT ( -- )
-   CBLT-RUN-CURRENT CBLT-ASSERT-CLEAN ;
+: TEST-CURRENT ( -- )
+   RUN-CURRENT ASSERT-CLEAN ;
 
-: CBLT-TEST-GOOD ( -- )
-   CBLT-RUN-CORE-GOOD CBLT-ASSERT-CLEAN ;
+: TEST-GOOD ( -- )
+   RUN-CORE-GOOD ASSERT-CLEAN ;
 
-: CBLT-TEST-LARGE ( -- )
-   CBLT-RUN-CORE-LARGE CBLT-ASSERT-CLEAN ;
+: TEST-LARGE ( -- )
+   RUN-CORE-LARGE ASSERT-CLEAN ;
 
-: CBLT-TEST-BAD ( -- )
-   CBLT-RUN-CORE-BAD 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-BAD ( -- )
+   RUN-CORE-BAD 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   CBLT-OUT outu CBLT-CODE$ CONTAINS? TTRUE ;
+   OUT outu CODE$ CONTAINS? TTRUE ;
 
-: CBLT-TEST-NOPREF ( -- )
-   CBLT-RUN-CORE-NOPREF 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-NOPREF ( -- )
+   RUN-CORE-NOPREF 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   CBLT-OUT outu s" MISSING-PREFLIGHT-REARM" CONTAINS? TTRUE
-   CBLT-OUT outu s" SHOULD-STAY-UNCHECKED" CONTAINS? TTRUE
-   CBLT-OUT outu s" KERNEL-STAY-UNCHECKED" CONTAINS? TTRUE
-   CBLT-OUT outu s" CHECKED-STAY-UNCHECKED" CONTAINS? TTRUE
-   CBLT-OUT outu s" PLUS-STAY-UNCHECKED" CONTAINS? TTRUE
-   CBLT-OUT outu s" ANON-STAY-UNCHECKED" CONTAINS? TTRUE
-   CBLT-OUT outu s" BODY-DISABLE-NO-EFFECT" CONTAINS? TFALSE ;
+   OUT outu s" MISSING-PREFLIGHT-REARM" CONTAINS? TTRUE
+   OUT outu s" SHOULD-STAY-UNCHECKED" CONTAINS? TTRUE
+   OUT outu s" KERNEL-STAY-UNCHECKED" CONTAINS? TTRUE
+   OUT outu s" CHECKED-STAY-UNCHECKED" CONTAINS? TTRUE
+   OUT outu s" PLUS-STAY-UNCHECKED" CONTAINS? TTRUE
+   OUT outu s" ANON-STAY-UNCHECKED" CONTAINS? TTRUE
+   OUT outu s" BODY-DISABLE-NO-EFFECT" CONTAINS? TFALSE ;
 
-: CBLT-TEST-CROSS ( -- )
-   CBLT-RUN-CORE-CROSS 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-CROSS ( -- )
+   RUN-CORE-CROSS 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   CBLT-OUT outu s" CROSS-BAD" CONTAINS? TTRUE ;
+   OUT outu s" CROSS-BAD" CONTAINS? TTRUE ;
 
-: CBLT-TEST-STRICT ( -- )
-   CBLT-RUN-CORE-STRICT-GOOD 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-STRICT ( -- )
+   RUN-CORE-STRICT-GOOD 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   CBLT-OUT outu s" CHECKER-MUTATION" CONTAINS? TTRUE
-   CBLT-OUT outu s" set-check" CONTAINS? TTRUE ;
+   OUT outu s" CHECKER-MUTATION" CONTAINS? TTRUE
+   OUT outu s" set-check" CONTAINS? TTRUE ;
 
-: CBLT-TEST-STRICT-TRUSTED ( -- )
-   CBLT-RUN-CORE-STRICT-TRUSTED CBLT-ASSERT-CLEAN ;
+: TEST-STRICT-TRUSTED ( -- )
+   RUN-CORE-STRICT-TRUSTED ASSERT-CLEAN ;
 
-: CBLT-TEST-ROGUE ( -- )
-   CBLT-RUN-CORE-ROGUE 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-ROGUE ( -- )
+   RUN-CORE-ROGUE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   CBLT-OUT outu s" UNAUDITED-HOOK" CONTAINS? TTRUE
-   CBLT-OUT outu s" EVIL-HOOK" CONTAINS? TTRUE ;
+   OUT outu s" UNAUDITED-HOOK" CONTAINS? TTRUE
+   OUT outu s" EVIL-HOOK" CONTAINS? TTRUE ;
 
-: CBLT-TEST-TOPROGUE ( -- )                 \ ['] EVIL-TOP-HOOK set-top-check -> finding
-   CBLT-RUN-CORE-TOPROGUE 1 CBLT-EXPECT-EXIT {: outu:n erru:n :}
+: TEST-TOPROGUE ( -- )                 \ ['] EVIL-TOP-HOOK set-top-check -> finding
+   RUN-CORE-TOPROGUE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
-   CBLT-OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE
-   CBLT-OUT outu s" EVIL-TOP-HOOK" CONTAINS? TTRUE ;
+   OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TTRUE
+   OUT outu s" EVIL-TOP-HOOK" CONTAINS? TTRUE ;
 
-: CBLT-TEST-TOPGOOD ( -- )                  \ ['] TR-HOOK set-top-check -> allowed, clean
-   CBLT-RUN-CORE-TOPGOOD CBLT-ASSERT-CLEAN ;
+: TEST-TOPGOOD ( -- )                  \ ['] TR-HOOK set-top-check -> allowed, clean
+   RUN-CORE-TOPGOOD ASSERT-CLEAN ;
 
-: CBLT-MAIN ( -- )
+public
+
+: MAIN ( -- )
    T-RESET
-   CBLT-PREPARE
-   CBLT-TEST-CURRENT
-   CBLT-TEST-GOOD
-   CBLT-TEST-LARGE
-   CBLT-TEST-BAD
-   CBLT-TEST-NOPREF
-   CBLT-TEST-CROSS
-   CBLT-TEST-STRICT
-   CBLT-TEST-STRICT-TRUSTED
-   CBLT-TEST-ROGUE
-   CBLT-TEST-TOPROGUE
-   CBLT-TEST-TOPGOOD
+   PREPARE
+   TEST-CURRENT
+   TEST-GOOD
+   TEST-LARGE
+   TEST-BAD
+   TEST-NOPREF
+   TEST-CROSS
+   TEST-STRICT
+   TEST-STRICT-TRUSTED
+   TEST-ROGUE
+   TEST-TOPROGUE
+   TEST-TOPGOOD
    CLEANUP-RUN
-   CBLT-ROOT EXISTS? TFALSE
+   ROOT EXISTS? TFALSE
    T-REPORT
    s" checked-boundary-lint-test: ok" type cr ;
+
+;package

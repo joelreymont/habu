@@ -16,4 +16,4 @@ require tools/checked-boundary-lint-core.f
 
 require tools/checked-boundary-lint-test-lib.f
 
-CBLT-MAIN
+CBLT:MAIN
