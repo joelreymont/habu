@@ -2068,6 +2068,11 @@ fits.
   returning a checked quotation from a private helper, close the package, then
   execute that quotation immediately; raw execution tokens, exported aliases,
   and storage cells weaken the boundary.
+- **Suite coverage currently proves path membership, not scheduler roles.** It
+  catches an orphaned case member, but a different scheduling verb, group,
+  duplicate, or order can still satisfy the set. Freeze those facts in the dot
+  and prove the real production group; do not claim mutations the lint cannot
+  observe.
 - **A linear wrapper is not opaque when its generated representation API is
   public.** A public product can preserve its linear owner while replacing raw
   state fields through `UNMAKE` and `MAKE`. Use an opaque linear token and keep
