@@ -15,4 +15,18 @@ existing AOT-BRANCH:DIRECT? and AOT-BRANCH:TARGET calls with bare DIRECT? and
 TARGET calls inside the already-open AOT-LINK package. No other linker hunk is
 owned by this leaf.
 
+Destruction correction: the generated positive fixture must carry the complete
+literal identity inventory of every colon, block, create, variable, constant,
+value, and defer definition in `src/habu/aot-closure.f`, including multiple
+makers on one source line. Every inventoried tail must resolve in the private
+`AOT-LINK` wordlist and reject both bare and public-qualified lookup. Check the
+exact inventory cardinality; an exact count without the identities is
+insufficient. Keep the existing whole-private-wordlist exposure scan. A hostile
+mutation that moves the package opener below `AOT-DBASE@` must make the real
+positive AOT gate fail even before `package-diff-lint` runs. Do not add a source
+parser, production export, test-only alias, package split, or hard-coded total
+as a substitute for complete identities. This correction changes only
+`test/gate-aot-positive-lib.f`; any production-content change voids the accepted
+code review and requires a new blind review.
+
 Claim: agent=aot-closure-pkg workspace=.jj-ws/habu-pkg-aot-closure-e8852de1.
