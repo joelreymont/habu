@@ -715,6 +715,25 @@ WF-START-UNBOUND  ' WF-BAD-END WF-RUN  WF-FINISH
 WF-START-UNBOUND  ' WF-BAD-DECL WF-RUN  WF-FINISH
 WF-START-UNBOUND  ' WF-BAD-FIELD WF-RUN  WF-FINISH
 
+\ All provisional payload readers use the same family authority. An unbound
+\ frame and the sentinel are not a declaration-family capability.
+: WF-BAD-PAYLOAD-N ( -- )
+   TOK @ DEV-NO-FAMILY DEV-NO-VARIANT PAYLOAD-N drop ;
+
+: WF-BAD-PAYLOAD-SCHEMA ( -- )
+   TOK @ DEV-NO-FAMILY DEV-NO-VARIANT 0 PAYLOAD-SCHEMA@ drop ;
+
+: WF-BAD-PAYLOAD-WIDTH ( -- )
+   TOK @ DEV-NO-FAMILY DEV-NO-VARIANT 0 PAYLOAD-WIDTH@ drop ;
+
+: WF-BAD-PAYLOAD-CELLS ( -- )
+   TOK @ DEV-NO-FAMILY DEV-NO-VARIANT PAYLOAD-CELLS drop ;
+
+WF-START-UNBOUND  ' WF-BAD-PAYLOAD-N WF-RUN       WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-PAYLOAD-SCHEMA WF-RUN  WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-PAYLOAD-WIDTH WF-RUN   WF-FINISH
+WF-START-UNBOUND  ' WF-BAD-PAYLOAD-CELLS WF-RUN   WF-FINISH
+
 ;package
 
 \ ---------------------------------------------------------------------------
