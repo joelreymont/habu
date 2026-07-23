@@ -6,22 +6,22 @@ private
 
 : ARGV-FILE ( n -- ) {: idx:n :}
    ARGV:LABEL? IF
-      idx ARGV:POS$ ARGV:LABEL$ AOT-LINT-FILE-AS
+      idx ARGV:POS$ ARGV:LABEL$ AOT-LINT:FILE-AS
    ELSE
-      idx ARGV:POS$ AOT-LINT-FILE
+      idx ARGV:POS$ AOT-LINT:FILE
    THEN ;
 
 : RUN ( -- )
    s" tools/aot-lint.f [--json] [--label name] file ..." ARGV:USAGE!
    ARGV:PARSE
    1 -1 ARGV:EXPECT-POS
-   AOT-LINT-RESET
-   ARGV:JSON? AL-JSON!
+   AOT-LINT:RESET
+   ARGV:JSON? AOT-LINT:JSON!
    0 begin dup ARGV:POS# < while
       dup ARGV-FILE
       1+
    repeat drop
-   AOT-LINT-FINISH ;
+   AOT-LINT:FINISH ;
 
 RUN
 

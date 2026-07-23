@@ -100,23 +100,23 @@ create OUT BUF-CAP allot
    BAD BAD$ WRITE-ALL ;
 
 : CORE-SETUP ( bool -- ) {: json:bool :}
-   AOT-LINT-RESET
+   AOT-LINT:RESET
    OUT BUF-CAP LINT-OUT-BUFFER!
-   json AL-JSON! ;
+   json AOT-LINT:JSON! ;
 
 : CORE-FINISH ( -- n n outcome )
-   [: AOT-LINT-FINISH ;] catch {: rc:n :}
+   [: AOT-LINT:FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 rc OUTCOME:EXITED ;
 
 : RUN-CORE ( ptr u8 n -- n n outcome )
    LINT-FALSE CORE-SETUP
-   AOT-LINT-FILE
+   AOT-LINT:FILE
    CORE-FINISH ;
 
 : RUN-JSON-LABEL ( ptr u8 n -- n n outcome ) {: a:ptr u:n :}
    LINT-TRUE CORE-SETUP
-   a u s" <stdin>" AOT-LINT-FILE-AS
+   a u s" <stdin>" AOT-LINT:FILE-AS
    CORE-FINISH ;
 
 : EXPECT-EXIT ( n n outcome n -- n n ) {: expect:n :}
