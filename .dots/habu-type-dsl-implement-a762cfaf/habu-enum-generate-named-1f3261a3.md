@@ -7,8 +7,8 @@ created-at: "\"2026-07-13T17:14:05.104373+02:00\""
 blocks:
   - habu-enum-parse-full-39c0dc1b
   - habu-checker-type-enum-9569edb6
-  - habu-record-field-visibility-7bb1f8a7
-  - habu-atomic-generated-declaration-4c1e8b7a
+  - habu-fields-expose-provisional-96533716
+  - habu-pass-constructor-family-b9402f5b
 ---
 
 Own ENUM constructor generation and focused constructor tests after the checker,
