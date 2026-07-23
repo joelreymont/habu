@@ -2202,3 +2202,10 @@ fits.
   Publishing an agreed, green commit is still unilateral if the exact commit
   was only announced, not acknowledged. Post the commit and gate evidence,
   receive the explicit ACK, then push and verify the remote revision.
+- **A commit is a proof checkpoint, not temporary storage.** Commit `a51f6d33`
+  entered history with eight unclassified `TRUSTED` test helpers because strict
+  inventory was checked only after descendants removed them. Run every required
+  gate on the exact tree before describing the change, and split mixed outcomes
+  before commit. If a red checkpoint is found before publication, rebuild its
+  accepted content as individually green commits and prove the final tree is
+  identical before replacing the history.

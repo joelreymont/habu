@@ -25,11 +25,15 @@ identities remain byte-identical.
 
 Dependencies and scope: reuse the DEVTX.FAM frame field and
 E-DEV-FAMILY-SCOPE already owned by the atomic declaration transaction. This
-leaf owns only commit a51f6d3316b2e5a1fc70aad2a842e65eac98ac0b:
-src/core/decl-event.f family binding and check calls, plus the focused
-family-scope regression in test/decl-event-suite.f. DEV.OWNER, owner-filtered
-scans, payload readers, and the event identity fold belong to the
-provisional-payload implementation and are explicitly outside this leaf.
+leaf owns only the family-binding production hunks in src/core/decl-event.f
+and the final family-scope regression in test/decl-event-suite.f. Historical
+commit a51f6d3316b2e5a1fc70aad2a842e65eac98ac0b also carried provisional-payload
+tests owned by the then-active provisional-payload dot and eight temporary
+TRUSTED test helpers that made the exact a51 commit fail the strict trust
+inventory. This rebuild starts from fc27b024aa6c19d79d6f8adbe6a5a5cd7fe787a7;
+the red a51 commit is not an ancestor. DEV.OWNER, owner-filtered scans, payload
+readers, and the event identity fold belong to the provisional-payload
+implementation and are explicitly outside this leaf.
 
 Production-path failure before the change: through public DECL-EVENT
 operations, open and bind one family, then call each family-scoped operation
@@ -52,8 +56,9 @@ DEV-IDENTITY, payload-query changes, or legacy SUMTYPE or PRODUCT edits.
 
 Verify test/decl-event-suite.f, test/enum-decl-suite.f,
 test/generated-declaration-transaction-suite.f, exact typed-local and package
-diff lints for a51f6d33, strict trust inventory, native fixpoint, and full
-gates. Smallest owning path: bin/hb --load test/decl-event-suite.f.
+diff lints for the family code commit, strict trust inventory, native fixpoint,
+and full gates. Smallest owning path: bin/hb --load
+test/decl-event-suite.f.
 
 Recovery note: this contract was written after the implementation commit was
 discovered unowned during integration review. The sequence violation is not
