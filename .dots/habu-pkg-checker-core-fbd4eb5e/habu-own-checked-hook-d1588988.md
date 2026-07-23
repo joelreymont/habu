@@ -1,9 +1,11 @@
 ---
 title: Own checked hook sites
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-23T02:09:58.322065+02:00"
+created-at: "\"2026-07-23T02:09:58.322065+02:00\""
+closed-at: "2026-07-23T03:18:15.317882+02:00"
+close-reason: Landed immutable checker-hook identity registry at 2db115be; verified in master@origin.
 ---
 
 Why: trusted inventory classifies set-check installs through TRUSTED.md rows while checked-boundary lint keeps a different name-only allowlist, so file identity is not authoritative, set-top-check installs are not inventoried, and CGR-HOOK is missing from one policy. One immutable registry must own hook identity and audit classification before checked-boundary lint consumes it.

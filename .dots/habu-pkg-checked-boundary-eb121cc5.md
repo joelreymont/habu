@@ -1,9 +1,13 @@
 ---
 title: Package checked-boundary lint test library
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-22T15:48:08.449091+02:00"
+created-at: "\"2026-07-22T15:48:08.449091+02:00\""
 ---
 
-Why: tools/checked-boundary-lint-test-lib.f is a legacy global-vocabulary module (CBLT-* stems, no package declaration), so ANY edit inside it — e.g. registering a new file via s" ..." CHECKED-BOUNDARY-LINT-FILE inside CBLT-RUN-CURRENT — trips the package-first diff gate with E-PACKAGE-OWNERSHIP on the changed word. This currently blocks the host-lint policy commit (its required inventory line edits that word) and will block every future boundary-inventory registration. Owned result: the whole module moves into a real package (e.g. package CBLT) with short local tails; the CBLT-* global stems are renamed to package-local names; every caller (the call site near checked-boundary-lint-test-lib.f:289 and the checked-boundary-lint* consumers) is migrated to qualified or using-based calls; no compatibility global forwarders remain. Acceptance: package-diff-lint green on a probe diff that edits CBLT-RUN-CURRENT's body (the exact shape that is red today); the checked-boundary lint suite and every consumer's owning load path green; rg proves zero remaining CBLT-* global references outside the package. Owning gates: the checked-boundary lint suite via bin/hb plus package-diff-lint on the migration diff itself. Depends: none; the host-lint combined commit re-roots on top of this. Claim: agent=claude workspace=.jj-ws/habu-package-cblt.
+Why: tools/checked-boundary-lint-test-lib.f defines its test state and helpers globally, so any body edit fails the package ownership gate. The rejected candidate 87c155e7 proved the package migration but used a four-word owner, retained dead timeout and error-buffer state, and asserted an empty manufactured error span instead of the actual scalar result.
+
+Owner and files: package CBLT in tools/checked-boundary-lint-test-lib.f, plus the sole qualified MAIN call in tools/checked-boundary-lint-test.f. Keep every fixture path, buffer, helper, and test private; publish exactly MAIN ( -- ). Rename each CBLT-* global to its short package-local tail. Remove TIMEOUT-MS and the unused 4096-byte ERR buffer. CORE-FINISH continues returning `( -- n n outcome )`; clean and failing assertions must prove the returned error length is the scalar zero value rather than indexing a fake buffer. Preserve generated fixture bytes, output buffering, finding text, exit codes, cleanup, and all current cases. No aliases, public test bridge, copied validator, new timeout, or compatibility globals.
+
+Acceptance: the production checked-boundary suite executes CBLT:MAIN and passes; every clean and failing case still reaches the real checked-boundary core path; hostile body mutation inside the packaged library passes package ownership while removing the package owner fails with the exact measured findings; exact typed-local and package diff gates pass; no CBLT-* global remains; package CBLT exposes only MAIN; host-lint and filemap-lint pass. Base is verified master@origin 2db115be. Claim: agent=cblt_fix workspace=.jj-ws/habu-pkg-checked-boundary-eb121cc5.

@@ -1,9 +1,11 @@
 ---
 title: Package bootstrap mirror lint core
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-22T17:33:51.772904+02:00"
+created-at: "\"2026-07-22T17:33:51.772904+02:00\""
+closed-at: "2026-07-23T03:18:15.142154+02:00"
+close-reason: Landed package bootstrap mirror lint core at 01058411; verified in master@origin 2db115be.
 blocks:
   - habu-pkg-bootstrap-mirror-4021501a
 ---
