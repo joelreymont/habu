@@ -19,15 +19,20 @@ private
 
 256 constant PATH-CAP
 create ROOT-BUF PATH-CAP allot
-create FIX-BUF PATH-CAP allot
+create DIRTY-BUF PATH-CAP allot
+create IGNORED-BUF PATH-CAP allot
 variable ROOT-U
-variable FIX-U
+variable DIRTY-U
+variable IGNORED-U
 
 : ROOT ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
 
-: FIX ( -- ptr u8 n )
-   FIX-BUF FIX-U @ ;
+: DIRTY ( -- ptr u8 n )
+   DIRTY-BUF DIRTY-U @ ;
+
+: IGNORED ( -- ptr u8 n )
+   IGNORED-BUF IGNORED-U @ ;
 
 : PREPARE ( -- )
    CLEANUP-RESET
@@ -35,57 +40,63 @@ variable FIX-U
    u PATH-CAP > if E-FS-PATH throw then
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT CLEANUP-TREE+
-   ROOT s" overlay.f" FIX-BUF JOIN-PATH FIX-U ! ;
+   ROOT s" dirty.f" DIRTY-BUF JOIN-PATH DIRTY-U !
+   ROOT s" ignored.f" IGNORED-BUF JOIN-PATH IGNORED-U ! ;
 
 \ 1. the REAL recovery corpus is clean: src/ carries no ADT declaration, so
 \    the tripwire walk reports zero findings (the dot's contract holds).
 : TEST-SRC-CLEAN ( -- )
-   BOOTSTRAP-MIRROR-LINT-RESET
-   s" src" [: BML-WALK-FILE ;] WALK-FILES
-   BML-FILES @ 0 > TTRUE
-   BML-BAD @ 0 T= ;
+   RUN
+   FILE-N @ 0 > TTRUE
+   BAD-N @ 0 T= ;
 
-\ 2. red fixture: a planted declaration under a src-like label fires once per
-\    keyword, with live tokens only (definition names and escaped references
-\    stay silent - the grammar's own `: SUMTYPE` definers must not fire).
+\ 2. every live declaration keyword is found case-insensitively.
 : DIRTY$ ( -- ptr u8 n )
    SB-RESET
-   s" \ overlay fixture" SB-APPEND $0A SB-APPEND-C
-   s" SUMTYPE zzbml 0 VARIANT one n ;VARIANT ;SUMTYPE" SB-APPEND $0A SB-APPEND-C
-   s" : ENUM ( -- ) ;" SB-APPEND $0A SB-APPEND-C
-   s" ' SUMTYPE drop" SB-APPEND $0A SB-APPEND-C
-   s" postpone product" SB-APPEND $0A SB-APPEND-C
-   s" PRIM: SUMTYPE PRIM;" SB-APPEND $0A SB-APPEND-C
+   s" SuMtYpE zzbml-sum 0 VARIANT one n ;VARIANT ;SUMTYPE" SB-APPEND $0A SB-APPEND-C
+   s" eNuM zzbml-enum one ;ENUM" SB-APPEND $0A SB-APPEND-C
+   s" PrOdUcT zzbml-product 0 FIELD item n ;PRODUCT" SB-APPEND $0A SB-APPEND-C
+   s" TyPeFaMiLy zzbml-family 0" SB-APPEND $0A SB-APPEND-C
    SB$ ;
 
-: TEST-OVERLAY-FIRES ( -- )
-   FIX DIRTY$ WRITE-ALL
-   BOOTSTRAP-MIRROR-LINT-RESET
-   FIX s" src/zz-overlay.f" BOOTSTRAP-MIRROR-LINT-FILE-AS
-   BML-BAD @ 1 T=
-   [: BOOTSTRAP-MIRROR-LINT-FINISH ;] catch 1 T= ;
+: TEST-LIVE-KEYWORDS ( -- )
+   DIRTY DIRTY$ WRITE-ALL
+   RESET
+   DIRTY s" src/dirty.f" FILE-AS
+   BAD-N @ 4 T=
+   [: FINISH ;] catch 1 T= ;
 
-\ 3. a keyword-free src-like file reports nothing and FINISH stays quiet.
-: CLEAN$ ( -- ptr u8 n )
+\ 3. comments, strings, definition names, and escaped references stay silent.
+: IGNORED$ ( -- ptr u8 n )
    SB-RESET
-   s" : BMT-OK ( n -- n ) 1 + ;" SB-APPEND $0A SB-APPEND-C
+   s" \ SUMTYPE ENUM PRODUCT TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
+   S\" : BMT-TEXT ( -- ) s\" SUMTYPE ENUM PRODUCT TYPEFAMILY\" 2drop ;" SB-APPEND $0A SB-APPEND-C
+   s" : SUMTYPE ( -- ) ;" SB-APPEND $0A SB-APPEND-C
+   s" : ENUM ( -- ) ;" SB-APPEND $0A SB-APPEND-C
+   s" : PRODUCT ( -- ) ;" SB-APPEND $0A SB-APPEND-C
+   s" : TYPEFAMILY ( -- ) ;" SB-APPEND $0A SB-APPEND-C
+   s" ' SUMTYPE ' ENUM ' PRODUCT ' TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
+   s" ['] SUMTYPE ['] ENUM ['] PRODUCT ['] TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
+   s" postpone SUMTYPE postpone ENUM postpone PRODUCT postpone TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
+   s" char SUMTYPE char ENUM char PRODUCT char TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
+   s" [char] SUMTYPE [char] ENUM [char] PRODUCT [char] TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
    SB$ ;
 
-: TEST-OVERLAY-CLEAN ( -- )
-   FIX CLEAN$ WRITE-ALL
-   BOOTSTRAP-MIRROR-LINT-RESET
-   FIX s" src/zz-overlay.f" BOOTSTRAP-MIRROR-LINT-FILE-AS
-   BML-BAD @ 0 T=
-   [: BOOTSTRAP-MIRROR-LINT-FINISH ;] catch 0 T= ;
+: TEST-IGNORED-KEYWORDS ( -- )
+   IGNORED IGNORED$ WRITE-ALL
+   RESET
+   IGNORED s" src/ignored.f" FILE-AS
+   BAD-N @ 0 T=
+   [: FINISH ;] catch 0 T= ;
 
-: RUN ( -- )
+: TESTS ( -- )
    T-RESET
    PREPARE
    TEST-SRC-CLEAN
-   TEST-OVERLAY-FIRES
-   TEST-OVERLAY-CLEAN
+   TEST-LIVE-KEYWORDS
+   TEST-IGNORED-KEYWORDS
    CLEANUP-RUN
    T-REPORT ;
 
-RUN
+TESTS
 ;package

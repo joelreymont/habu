@@ -25,76 +25,78 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
 \ tools/lint/source-lex.f.
 
-$20 constant BML-NUM-CAP
-$0A constant BML-LF
+package BOOTSTRAP-MIRROR-LINT
 
-create BML-NUM BML-NUM-CAP allot
-create BML-LF-BUF 1 allot
+$20 constant NUM-CAP
+$0A constant LF
 
-variable BML-SRC-A
-variable BML-SRC-U
-variable BML-SRC-CAP
-variable BML-FILE-A
-variable BML-FILE-U
-variable BML-BAD
-variable BML-FILES
-variable BML-I
-variable BML-NUM-I
+create NUM NUM-CAP allot
+create LF-BUF 1 allot
 
-: BML-SRC-A-FIELD ( -- ptr ptr u8 )
-   BML-SRC-A 0 ptr-field ;
+variable SRC-A
+variable SRC-U
+variable SRC-CAP
+variable FILE-A
+variable FILE-U
+variable BAD-N
+variable FILE-N
+variable SCAN-I
+variable NUM-I
 
-: BML-FILE-A-FIELD ( -- ptr ptr u8 )
-   BML-FILE-A 0 ptr-field ;
+: SRC-A-FIELD ( -- ptr ptr u8 )
+   SRC-A 0 ptr-field ;
 
-: BML-SRC-A@ ( -- ptr u8 )
-   BML-SRC-A-FIELD @ ;
+: FILE-A-FIELD ( -- ptr ptr u8 )
+   FILE-A 0 ptr-field ;
 
-: BML-SRC-A! ( ptr u8 -- )
-   BML-SRC-A-FIELD ! ;
+: SRC-A@ ( -- ptr u8 )
+   SRC-A-FIELD @ ;
 
-: BML-FILE-A@ ( -- ptr u8 )
-   BML-FILE-A-FIELD @ ;
+: SRC-A! ( ptr u8 -- )
+   SRC-A-FIELD ! ;
 
-: BML-FILE-A! ( ptr u8 -- )
-   BML-FILE-A-FIELD ! ;
+: FILE-A@ ( -- ptr u8 )
+   FILE-A-FIELD @ ;
 
-: BML-C ( n -- )
-   BML-LF-BUF c!
-   BML-LF-BUF 1 type ;
+: FILE-A! ( ptr u8 -- )
+   FILE-A-FIELD ! ;
 
-: BML-NL ( -- )
-   BML-LF BML-C ;
+: C ( n -- )
+   LF-BUF c!
+   LF-BUF 1 type ;
 
-: BML-U. ( n -- ) {: u:n :}
-   BML-NUM-CAP BML-NUM-I !
+: NL ( -- )
+   LF C ;
+
+: U. ( n -- ) {: u:n :}
+   NUM-CAP NUM-I !
    u 0= if
-      BML-NUM-I @ 1- BML-NUM-I !
-      $30 BML-NUM BML-NUM-I @ + c!
-      BML-NUM BML-NUM-I @ + 1 type
+      NUM-I @ 1- NUM-I !
+      $30 NUM NUM-I @ + c!
+      NUM NUM-I @ + 1 type
       exit
    then
    u begin dup 0 > while
       dup 10 mod $30 +
-      BML-NUM-I @ 1- BML-NUM-I !
-      BML-NUM BML-NUM-I @ + c!
+      NUM-I @ 1- NUM-I !
+      NUM NUM-I @ + c!
       10 /
    repeat drop
-   BML-NUM BML-NUM-I @ + BML-NUM-CAP BML-NUM-I @ - type ;
+   NUM NUM-I @ + NUM-CAP NUM-I @ - type ;
 
-: BML-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" sumtype" LINT-STR=CI if LINT-TRUE exit then
    a u s" enum" LINT-STR=CI if LINT-TRUE exit then
    a u s" product" LINT-STR=CI if LINT-TRUE exit then
    a u s" typefamily" LINT-STR=CI ;
 
-: BML-WORD? ( n -- bool ) {: k:n :}
+: WORD? ( n -- bool ) {: k:n :}
    k L# @ >= if LINT-FALSE exit then
    k LK@ L-WORD = ;
 
-: BML-NAME-POSITION? ( n -- bool ) {: k:n :}   \ token k is a definition NAME, not a declaration
+: NAME-POSITION? ( n -- bool ) {: k:n :}   \ token k is a definition NAME, not a declaration
    k 0 <= if LINT-FALSE exit then
-   k 1- BML-WORD? 0= if LINT-FALSE exit then
+   k 1- WORD? 0= if LINT-FALSE exit then
    k 1- LEX-TOK s" :" LINT-STR= if LINT-TRUE exit then
    k 1- LEX-TOK s" +:" LINT-STR= if LINT-TRUE exit then
    k 1- LEX-TOK s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
@@ -105,84 +107,92 @@ variable BML-NUM-I
    k 1- LEX-TOK s" constant" LINT-STR=CI if LINT-TRUE exit then
    k 1- LEX-TOK s" defer" LINT-STR=CI ;
 
-: BML-ESCAPED? ( n -- bool ) {: k:n :}         \ token k is a quoted/parsed reference
+: ESCAPED? ( n -- bool ) {: k:n :}         \ token k is a quoted/parsed reference
    k 0 <= if LINT-FALSE exit then
-   k 1- BML-WORD? 0= if LINT-FALSE exit then
+   k 1- WORD? 0= if LINT-FALSE exit then
    k 1- LEX-TOK s" '" LINT-STR= if LINT-TRUE exit then
    k 1- LEX-TOK s" [']" LINT-STR= if LINT-TRUE exit then
    k 1- LEX-TOK s" postpone" LINT-STR=CI if LINT-TRUE exit then
    k 1- LEX-TOK s" char" LINT-STR=CI if LINT-TRUE exit then
    k 1- LEX-TOK s" [char]" LINT-STR=CI ;
 
-: BML-REPORT ( n -- ) {: k:n :}
-   BML-BAD @ 1+ BML-BAD !
+: REPORT ( n -- ) {: k:n :}
+   BAD-N @ 1+ BAD-N !
    s" BOOTSTRAP-MIRROR " type
-   BML-FILE-A@ BML-FILE-U @ type
-   $3A BML-C k LL@ BML-U.
+   FILE-A@ FILE-U @ type
+   $3A C k LL@ U.
    s" : ADT declaration `" type k LEX-TOK type
    s" ` in the gforth-compiled recovery corpus; land the stage-0 pass-2 mirror first (dot habu-bootstrap-mirror-pass-f1714953)" type
-   BML-NL ;
+   NL ;
 
-: BML-SCAN-TOKEN ( -- )
-   BML-I @ BML-WORD? 0= if exit then
-   BML-I @ LEX-TOK BML-KEYWORD? 0= if exit then
-   BML-I @ BML-NAME-POSITION? if exit then
-   BML-I @ BML-ESCAPED? if exit then
-   BML-I @ BML-REPORT ;
+: SCAN-TOKEN ( -- )
+   SCAN-I @ WORD? 0= if exit then
+   SCAN-I @ LEX-TOK KEYWORD? 0= if exit then
+   SCAN-I @ NAME-POSITION? if exit then
+   SCAN-I @ ESCAPED? if exit then
+   SCAN-I @ REPORT ;
 
-: BML-SCAN ( -- )
-   0 BML-I !
-   begin BML-I @ L# @ < while
-      BML-SCAN-TOKEN
-      BML-I @ 1+ BML-I !
+: SCAN ( -- )
+   0 SCAN-I !
+   begin SCAN-I @ L# @ < while
+      SCAN-TOKEN
+      SCAN-I @ 1+ SCAN-I !
    repeat ;
 
-: BML-ALLOC-NEED ( n -- n ) {: n:n :}
+: ALLOC-NEED ( n -- n ) {: n:n :}
    n 0 <= if 1 exit then
    n ;
 
-: BML-LOAD-SOURCE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE BML-ALLOC-NEED MEM-ALLOC-64K-SPAN BML-SRC-CAP ! BML-SRC-A!
-   path pathu BML-SRC-A@ BML-SRC-CAP @ READ-ALL BML-SRC-U ! ;
+: LOAD-SOURCE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FILE-SIZE ALLOC-NEED MEM-ALLOC-64K-SPAN SRC-CAP ! SRC-A!
+   path pathu SRC-A@ SRC-CAP @ READ-ALL SRC-U ! ;
 
-: BOOTSTRAP-MIRROR-LINT-FILE-AS ( ptr u8 n ptr u8 n -- )
+public
+
+: FILE-AS ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu:n label:ptr labelu:n :}
-   label BML-FILE-A!  labelu BML-FILE-U !
-   path pathu BML-LOAD-SOURCE
-   BML-FILES @ 1+ BML-FILES !
-   BML-SRC-A@ BML-SRC-U @ LEX-SOURCE
-   BML-SCAN ;
+   label FILE-A!  labelu FILE-U !
+   path pathu LOAD-SOURCE
+   FILE-N @ 1+ FILE-N !
+   SRC-A@ SRC-U @ LEX-SOURCE
+   SCAN ;
 
-: BOOTSTRAP-MIRROR-LINT-FILE ( ptr u8 n -- )
-   2dup BOOTSTRAP-MIRROR-LINT-FILE-AS ;
+: FILE ( ptr u8 n -- )
+   2dup FILE-AS ;
 
-: BML-FORTH-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+private
+
+: FORTH-FILE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .f" HAS-EXT? if LINT-TRUE exit then
    a u s" .fs" HAS-EXT? ;
 
-: BML-TEST-FILE? ( ptr u8 n -- bool )          \ src/ carries no test sources today; skip any that appear
+: TEST-FILE? ( ptr u8 n -- bool )          \ src/ carries no test sources today; skip any that appear
    s" test" LINT-CONTAINS? ;
 
-: BML-NATIVE-ONLY? ( ptr u8 n -- bool )        \ native-engine-only src subtrees outside the gforth SRC_COMMON corpus
+: NATIVE-ONLY? ( ptr u8 n -- bool )        \ native-engine-only src subtrees outside the gforth SRC_COMMON corpus
    s" src/cad/" LINT-CONTAINS? ;               \ CAD model layer: consumes lib/nominal, loaded only by the native engine
 
-: BML-WALK-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u BML-FORTH-FILE? 0= if exit then
-   a u BML-TEST-FILE? if exit then
-   a u BML-NATIVE-ONLY? if exit then
-   a u BOOTSTRAP-MIRROR-LINT-FILE ;
+: WALK-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FORTH-FILE? 0= if exit then
+   a u TEST-FILE? if exit then
+   a u NATIVE-ONLY? if exit then
+   a u FILE ;
 
-: BOOTSTRAP-MIRROR-LINT-RESET ( -- )
-   0 BML-BAD !
-   0 BML-FILES ! ;
+public
 
-: BOOTSTRAP-MIRROR-LINT-FINISH ( -- )
+: RESET ( -- )
+   0 BAD-N !
+   0 FILE-N ! ;
+
+: FINISH ( -- )
    s" bootstrap-mirror-lint: " type
-   BML-FILES @ BML-U. s"  file(s), " type
-   BML-BAD @ BML-U. s"  finding(s)" type BML-NL
-   BML-BAD @ 0 > if 1 throw then ;
+   FILE-N @ U. s"  file(s), " type
+   BAD-N @ U. s"  finding(s)" type NL
+   BAD-N @ 0 > if 1 throw then ;
 
-: BOOTSTRAP-MIRROR-LINT ( -- )
-   BOOTSTRAP-MIRROR-LINT-RESET
-   s" src" [: BML-WALK-FILE ;] WALK-FILES
-   BOOTSTRAP-MIRROR-LINT-FINISH ;
+: RUN ( -- )
+   RESET
+   s" src" [: WALK-FILE ;] WALK-FILES
+   FINISH ;
+
+;package
