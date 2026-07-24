@@ -2218,3 +2218,11 @@ fits.
   standalone `maki/test.f` both use `tmp/cad-store`; concurrent runs can reset
   each other's replay rows even when `HB_TMP` differs. Serialize them unless
   each process has a distinct `HABU_CAD_STORE`.
+- **Rebase a commit delta; do not restore whole files from a divergent tip.**
+  Restoring files from a candidate also imports unrelated parent content that
+  the candidate did not change. Duplicate or rebase the reviewed commit onto
+  the integration parent, then inspect its exact delta before composing it.
+- **Serialize device-owning gate slices.** Running the Maki device suite beside
+  the PTX toolchain made the PTX phase fail while its isolated `ptx-stdlib`
+  members passed. Parallelize CPU-only gates, but give each GPU-owning gate
+  exclusive device time so resource contention cannot masquerade as a defect.
