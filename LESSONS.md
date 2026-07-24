@@ -2235,3 +2235,7 @@ fits.
   already-quoted `created-at` value; the current serializer can quote it again
   while changing status. Restore the original timestamp bytes before
   publication and keep the mutation limited to status, claim, and contract.
+- **Prove a seal against every owner-private test before freezing it.** A
+  package seal can be correct yet make its required proof unloadable when the
+  suite reopens that package to define private helpers. Move those tests onto
+  production public seams first; never weaken the seal or add a test bridge.
