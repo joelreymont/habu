@@ -12,7 +12,7 @@
 \ envelope here.
 \
 \ NO NEW TRUST BOUNDARY / NO RAW-N IDENTITY: the envelope handle types are checked
-\ PRODUCTs whose MAKE/UNMAKE constructors are checker-native (no TRUSTED:); the envelope's
+\ STRUCTUREs whose MAKE/UNMAKE constructors are checker-native (no TRUSTED:); the envelope's
 \ own CAD-KIND:artifact-id is held whole in a typed column and serialized on the wire as its
 \ cross-process CONTENT KEY through the EXISTING public ARTIFACT:KEY>WIRE / fail-closed
 \ WIRE>KEY (blessed by maki/artifact.f, callable bare because we reopen the same package) -
@@ -101,22 +101,22 @@ public
 \ ---- envelope value types (checker-native constructors, no trust boundary) ----
 \ Distinct per-kind handles: weight-artifact and kernel-artifact never unify, so a
 \ kind confusion is a signature mismatch. `slot` indexes the private envelope pool.
-PRODUCT weight-artifact 0
+STRUCTURE weight-artifact 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
-PRODUCT kernel-artifact 0
+STRUCTURE kernel-artifact 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ The 256-bit content digest as four 64-bit words - deliberately multi-cell so no
 \ one-cell id-shaped scalar can launder into it (contract § 23.9).
-PRODUCT content-digest 0
+STRUCTURE content-digest 0
    FIELD w0 n
    FIELD w1 n
    FIELD w2 n
    FIELD w3 n
-;PRODUCT
+;STRUCTURE
 
 \ Typed decode/validate outcome: ok carries the validated pool slot; every other
 \ variant is one member of the frozen failure taxonomy. The taxonomy variants are
