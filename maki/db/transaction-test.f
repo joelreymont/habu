@@ -21,6 +21,7 @@
 \ revisions through REV:COMMIT - never a raw cast - exactly as a real producer would.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/db/transaction.f
 require maki/artifact.f
 require maki/rev.f
@@ -69,6 +70,15 @@ variable RT-LB
       malformed OF 3 ENDOF
       bounds OF 4 ENDOF
    ;MATCH ;
+
+\ ---- generated record surface -------------------------------------------------
+: TT-TXN-LAYOUT ( -- n )
+   37 TX-TXN:MAKE TX-TXN:UNMAKE ;
+
+: TT-IDEM-LAYOUT ( -- bool )
+   1 2 3 4 TX-IDEM--KEY:MAKE TX-IDEM--KEY:UNMAKE
+   {: w0:n w1:n w2:n w3:n :}
+   w0 1 = w1 2 = and w2 3 = and w3 4 = and ;
 
 \ ---- transaction fixtures -----------------------------------------------------
 \ MK-STD: a well-formed action - reads OBJ-A (present) and OBJ-B (a NEGATIVE LOOKUP,
@@ -213,6 +223,17 @@ variable RT-LB
 
 T-RESET
 
+s" TXC-TXN-MAKE ( n -- TX:txn ) TX-TXN:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TXC-TXN-UNMAKE ( TX:txn -- n ) TX-TXN:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TXC-IDEM-MAKE ( n n n n -- TX:idem-key ) TX-IDEM--KEY:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TXC-IDEM-UNMAKE ( TX:idem-key -- n n n n ) TX-IDEM--KEY:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TXC-TXN-BOOL ( bool -- TX:txn ) TX-TXN:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TXC-IDEM-B0 ( bool n n n -- TX:idem-key ) TX-IDEM--KEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TXC-IDEM-B1 ( n bool n n -- TX:idem-key ) TX-IDEM--KEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TXC-IDEM-B2 ( n n bool n -- TX:idem-key ) TX-IDEM--KEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" TXC-IDEM-B3 ( n n n bool -- TX:idem-key ) TX-IDEM--KEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+TT-TXN-LAYOUT 37 T=
+TT-IDEM-LAYOUT TTRUE
 TT-RT TTRUE
 TT-ORDER TTRUE
 TT-DUP-WRITE 1 T=

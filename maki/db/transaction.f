@@ -12,9 +12,9 @@
 \
 \ FIELDS (plan § 23 "Transactions use snapshot isolation with explicit read and write
 \ sets"):
-\   - transaction id : the checked immutable TX:txn handle. The pool is append-only
-\       and columns are written once at BUILD, so the handle names an immutable value;
-\       it can never be forged (checker-native PRODUCT, no trust boundary).
+\   - transaction id : TX:txn distinguishes transaction identifiers from plain n
+\       values in checked code. Public TX-TXN:MAKE and TXN-OF construct it from n,
+\       so the type is not an unforgeable authority.
 \   - base revision  : CAD-KIND:rev-id (the snapshot the action reads).
 \   - read set       : (CAD-KIND:artifact-id, polarity) entries; polarity PRESENT or
 \       ABSENT, so a NEGATIVE LOOKUP (object absent from the base revision) is a
@@ -87,18 +87,18 @@ public
 
 \ The checked immutable transaction id: a handle over the append-only pool slot. Two
 \ builds of one logical action yield two DISTINCT handles (instances).
-PRODUCT txn 0
+STRUCTURE txn 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ The idempotency key: a 256-bit digest as four 64-bit words (multi-cell so no
 \ one-cell scalar can launder into it), content-addressing the full canonical action.
-PRODUCT idem-key 0
+STRUCTURE idem-key 0
    FIELD w0 n
    FIELD w1 n
    FIELD w2 n
    FIELD w3 n
-;PRODUCT
+;STRUCTURE
 
 \ Typed transaction outcome (the § 23.9 art-result custom-sum idiom): `ok` carries the
 \ validated pool slot; the reject arms are the plan's validation refusals plus the
