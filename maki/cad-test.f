@@ -6,7 +6,7 @@ require lib/test.f
 require lib/string.f
 require lib/fs.f
 require lib/process.f
-require lib/process-argv.f          \ RUN-ARGV-CAPTURE: the fresh-process replay child
+require lib/process-env.f           \ RUN-ARGV-ENV-CAPTURE: the fresh-process replay child
 require lib/engine-candidate.f      \ ENGINE-CANDIDATE:PATH$: the one shared HABU_UNDER_TEST-else-self engine resolver
 require lib/engine-id.f             \ ENGINE-ID:KEY$: content key of the running engine binary for the section-7.4 store key
 require lib/fs-mutate.f             \ WRITE-ALL: the replay child driver file
@@ -116,10 +116,11 @@ create RPL-OUT $4000 allot   create RPL-ERR $1000 allot
    ENGINE-CANDIDATE:PATH$ ;
 
 : RPL-CHILD-TILE$ ( -- ptr u8 n )               \ spawn the child; return its stdout
-   PROC-ARGV-RESET
+   PROC-ARGV-ENV-RESET
    s" --load"           >LEN PROC-ARGV+
    MAKI-GRADE:DRIVER$   >LEN PROC-ARGV+
-   RPL-ENGINE$ >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-CAPTURE
+   s" HABU_CAD_STORE" >LEN  STORE-ROOT$ >LEN  PROC-ENV+
+   RPL-ENGINE$ >LEN  RPL-OUT $4000 >LEN  RPL-ERR $1000 >LEN  30000 >MS  RUN-ARGV-ENV-CAPTURE
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE 0 >RC ENDOF          \ clean child exit -> rc 0
      err OF PCAP-FAILED:UNMAKE ENDOF                  \ nonzero child: (out err code) on stack
