@@ -179,14 +179,21 @@ variable FILE-USED
    FILE$ s" .f" LINT-ENDS-WITH? if true exit then
    FILE$ s" .fs" LINT-ENDS-WITH? ;
 
-\ Exact files whose complete contents implement the global language/prelude.
-\ Files with only one global declarer are handled by GLOBAL-SURFACE? below, so
-\ an unrelated global added beside DEFTYPE or STRUCTURE is still rejected.
+\ Exact files whose global (unpackaged) definitions implement the core
+\ language/prelude, so a changed global there is not an ownership fault.  All are
+\ entirely global except src/core/type-family.f, which also opens inner packages:
+\ it is exempt only for its global surface, and only until the TFAM sealing work
+\ (dot habu-tfam-2b-sealed-1b77662c) seals that surface into packages, when this
+\ entry must be removed.  Package-boundary changes are still reported for every
+\ file here (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files
+\ with only one global declarer are handled by GLOBAL-SURFACE? below, so an
+\ unrelated global added beside DEFTYPE or STRUCTURE is still rejected.
 : GLOBAL-IMPLEMENTATION? ( -- bool )
    FILE$ s" lib/prelude.f" LINT-STR= if true exit then
    FILE$ s" src/core/sumtype.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
+   FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
 : SOURCE-ALLOC-NEED ( n -- n )
@@ -553,13 +560,21 @@ variable FILE-USED
    then
    false ;
 
+\ A changed unpackaged definition normally loses its package owner.  A non-zero
+\ SCOPE-DELTA means a `package`/`;package` boundary around this definition was
+\ added or deleted in this diff, so its ownership genuinely changed: that is
+\ reported for every file, including the allowlisted core surface (type-family.f
+\ still opens inner packages).  Only a plain body change or whole-file change of
+\ an already-global definition is exempt, and only on that surface.
 : FINISH-DEFINITION ( n -- ) {: last-line:n :}
    DEF-PACKAGED @ if
       CHECK-PREFIX
    else
-      DEF-START-LINE @ last-line ADDED-RANGE?
-      SCOPE-DELTA @ 0<> or WHOLE-CHANGED @ or if
-         GLOBAL-SURFACE? 0= if REPORT-GLOBAL then
+      SCOPE-DELTA @ 0<> if
+         REPORT-GLOBAL
+      else
+         DEF-START-LINE @ last-line ADDED-RANGE? WHOLE-CHANGED @ or
+         GLOBAL-SURFACE? 0= and if REPORT-GLOBAL then
       then
    then
    false DEF-OPEN ! ;

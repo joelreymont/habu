@@ -163,6 +163,13 @@ The complete-file global exceptions are exact paths, not directory rules:
 - `src/core/structures.f` owns the legacy global structure and field defining
   language.
 - `src/core/enums.f` owns the legacy global numeric enum defining language.
+- `src/core/type-family.f` owns the checker's global type-family registry
+  surface. Unlike the five files above it is not entirely global: it also opens
+  inner packages (`TYPE-NAME`, `TYPE-FIELD-OWNER`, `TYPE-FIELD`), so the
+  exemption covers only its global definitions, and a diff that adds or deletes
+  one of those package boundaries is still reported. This entry is interim: it
+  must be removed once the TFAM sealing work (dot
+  `habu-tfam-2b-sealed-1b77662c`) moves the registry into sealed packages.
 
 Two packaged implementation files each receive one narrower name exception:
 only `DEFTYPE` may be global in `lib/type/deftype.f`, and only `STRUCTURE` may be

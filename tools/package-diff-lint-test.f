@@ -337,6 +337,65 @@ variable TEST-DIFF-U
    TEST-DIFF-RESET s" src/core/enum-decl.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS ;
 
+: TEST-WRITE-TYPE-FAMILY-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : TF-STR-CAP ( -- n )" TEST-SOURCE-LINE
+   s"    TF-STR-CAP-V @" TEST-SOURCE-LINE
+   s" ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-TYPE-FAMILY-BODY-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,2 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : TF-STR-CAP ( -- n )" TEST-DIFF+ TEST-LF
+   s" +   TF-STR-CAP-V @" TEST-DIFF+ TEST-LF
+   s"  ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-TYPE-FAMILY-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-TYPE-FAMILY-BODY
+   TEST-DIFF-RESET path pathu TEST-TYPE-FAMILY-BODY-DIFF ;
+
+: TEST-WRITE-TYPE-FAMILY-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : TFAM-N@ ( -- n ) 0 ;" TEST-SOURCE-LINE
+   s" src/core/type-family.f" TEST-WRITE-SOURCE ;
+
+: TEST-TYPE-FAMILY-OWNER-LOSS-DIFF ( -- )
+   s" src/core/type-family.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package TYPE-NAME" TEST-DIFF+ TEST-LF
+   s"  : TFAM-N@ ( -- n ) 0 ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-TYPE-FAMILY-EXEMPTION ( -- )
+   \ Positive: a changed body line of a global word in the documented core
+   \ type-family surface is exempt from package ownership.
+   s" src/core/type-family.f" TEST-TYPE-FAMILY-CASE
+   s" type-family core surface exempts a changed global body" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling name in the same directory shares the allowlist path as
+   \ a prefix but is not exact, so it must still fail (not a startswith match).
+   s" src/core/type-family-extra.f" TEST-TYPE-FAMILY-CASE
+   s" sibling src/core/type-family-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory shares the allowlist path
+   \ as a suffix but is not exact, so it must still fail (full path, not suffix).
+   s" lib/type-family.f" TEST-TYPE-FAMILY-CASE
+   s" lib/type-family.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: an ordinary non-allowlisted lib file still fails: the exemption
+   \ was added for exactly one path and must not widen.
+   s" lib/string.f" TEST-TYPE-FAMILY-CASE
+   s" non-allowlisted lib/string.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package/;package boundary inside the
+   \ allowlisted src/core/type-family.f still reports lost ownership.  The
+   \ exemption suppresses a plain global body change, never a scope change.
+   TEST-WRITE-TYPE-FAMILY-OWNER-LOSS
+   TEST-DIFF-RESET TEST-TYPE-FAMILY-OWNER-LOSS-DIFF
+   s" deleted package boundary in type-family.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 : TEST-WRITE-OUTSIDE-HUNK-SOURCE ( -- )
    TEST-SOURCE-RESET
    s" package SHARED" TEST-SOURCE-LINE
@@ -641,6 +700,7 @@ variable TEST-DIFF-U
    TEST-DEFINER-INVENTORY
    TEST-REGISTRY-LANGUAGE
    TEST-CORE-EXEMPTIONS
+   TEST-TYPE-FAMILY-EXEMPTION
    TEST-POSITIVES
    TEST-DELETED-OWNER
    TEST-ZERO-COUNT-OWNER-DELETION
