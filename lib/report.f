@@ -13,18 +13,18 @@
 \ package-private.
 \
 \ Column storage is transactional. A column's header text pointer, header length,
-\ and alignment are owned as ONE typed record (the `col` product) held in ONE
+\ and alignment are owned as ONE typed record (the `col` structure) held in ONE
 \ bounds-checked buffer (COL-AT), so no field is ever written through raw
 \ `create ... allot` + `cells +` address arithmetic. COL+ preflights the 64-column
 \ capacity BEFORE the first store and bumps the committed count (COL-N) only after
 \ the record and the per-column emitter are both stored, so adding a 65th column
 \ throws E-REPORT-CAPACITY without mutating any prior column, the count, or
 \ adjacent memory. The emitter is an xt<[ n -- ]>; the checker cannot hold an xt in
-\ a product field (it rejects `[` as a payload type), so it rides its own,
+\ a structure field (it rejects `[` as a payload type), so it rides its own,
 \ equally bounded, typed buffer (COL-XT) indexed by the SAME committed count.
-\ A product must be public to have a constructor at all (a private product has no
-\ construction surface), so REPORT-COL:MAKE / REPORT-COL:UNMAKE are generated as an
-\ internal record ABI; they are not part of the documented REPORT API.
+\ A structure must be public to have a constructor at all (a private structure has
+\ no construction surface), so REPORT-COL:MAKE / REPORT-COL:UNMAKE are generated as
+\ an internal record ABI; they are not part of the documented REPORT API.
 
 require lib/errors.f
 require lib/render.f
@@ -34,13 +34,13 @@ package REPORT
 public
 
 \ One column's addressable fields as a single record: ha = header text pointer,
-\ hn = header text byte length, al = alignment code (AL-L / AL-R). (Product bodies
+\ hn = header text byte length, al = alignment code (AL-L / AL-R). (Structure bodies
 \ take no inline comments, hence the field notes here.)
-PRODUCT col 0
+STRUCTURE col 0
   FIELD ha ptr u8
   FIELD hn n
   FIELD al n
-;PRODUCT
+;STRUCTURE
 
 private
 
