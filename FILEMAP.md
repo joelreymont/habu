@@ -2393,7 +2393,7 @@ points stay listed.
 - `test/gate-runner-lib.f` — side-effect-free phase dispatch definitions for native test runners, including the `tail-process` token route to `TAIL-PROCESS:RUN`.
 - `test/gate-runner-support.f` — side-effect-free support bundle for focused runner-entry invocations.
 - `test/gate-runner-entry.f` — tiny CLI entry for focused native runner dispatch.
-- `test/gate-runner-entry-test.f` — standalone-load regression: spawns the documented `gate-runner-support`+`gate-runner-entry` closure and asserts it reaches GR-USAGE (rc 64), proving the whole require chain loads under the raised dictionary cap.
+- `test/gate-runner-entry-test.f` — private-package fresh-process regressions: the documented gate-runner closure and standalone stdlib wrapper must reach their canonical usage exits (rc 64) after loading their complete dependency prefixes.
 - `test/load-reject-diag-test.f` — spawn regression: rejecting `--load` paths must exit 70 with named stderr; signature-bearing and signatureless compile-time immediates reject before side effects with one structured repair packet, while top-level loaders, runtime `included`/`required`/`provided`, modeled immediates, and audited trusted immediate bodies stay live.
 - `test/gate-stdlib-inline-lib.f` — in-process stdlib gate slice dispatcher for resident runner forks; package `TAIL-PROCESS` owns the isolated process-group schedule and exports only `RUN`.
 - `test/gate-stdlib-tool-base-ready.f` — resident-runner sentinel that marks the common stdlib tool base as already loaded.

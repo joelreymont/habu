@@ -6,6 +6,7 @@
 \ requires are idempotent there. Native bin/hb already carries src/core/sha256.f.
 
 require lib/errors.f
+require lib/prelude.f
 require lib/string.f
 require lib/memory.f
 require lib/fs.f

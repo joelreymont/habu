@@ -9,10 +9,9 @@
 \ resident phases fork per-phase subsets - so nothing else exercises the whole
 \ closure in one process; this regression does, explicitly.
 \
-\ It spawns the exact documented invocation with an UNKNOWN phase token: reaching
-\ GR-USAGE (die rc 64 with the usage banner on stderr) proves the entire closure
-\ loaded and GR-MAIN ran. A dictionary-cap regression would instead die rc 77
-\ before GR-MAIN, so the exit code alone is the red/green discriminator. The
+\ It spawns each exact documented wrapper with an unknown selector. Reaching
+\ the wrapper's canonical usage exit proves its whole dependency prefix loaded.
+\ A dependency or dictionary-cap failure exits before the wrapper main. The
 \ child engine is HABU_UNDER_TEST when the gate sets it (the freshly built
 \ candidate), else bin/hb.
 \
@@ -29,6 +28,8 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/process-env.f
+
+package GATE-ENTRY-TEST
 
 $1000 constant GRE-CAP
 60000 constant GRE-TIMEOUT-MS
@@ -60,6 +61,11 @@ variable GRE-RC
    ;MATCH
    LEN>N GRE-ERR-U !  LEN>N GRE-OUT-U ! ;
 
+: GRE-CAPTURE ( -- )
+   GRE-HB$ >LEN  GRE-EMPTY 0 >LEN  GRE-OUT GRE-CAP >LEN
+   GRE-ERR GRE-CAP >LEN  GRE-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   GRE-STORE! ;
+
 \ Spawn `<hb> --load test/gate-runner-support.f test/gate-runner-entry.f -- <phase>`
 \ with empty stdin and capture the exit outcome.
 : GRE-RUN ( ptr u8 n -- ) {: phase:ptr phaseu:n :}
@@ -69,9 +75,15 @@ variable GRE-RC
    s" test/gate-runner-entry.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    phase phaseu >LEN PROC-ARGV+
-   GRE-HB$ >LEN  GRE-EMPTY 0 >LEN  GRE-OUT GRE-CAP >LEN
-   GRE-ERR GRE-CAP >LEN  GRE-TIMEOUT-MS >MS  RUN-ARGV-STDIN-CAPTURE-OUTCOME
-   GRE-STORE! ;
+   GRE-CAPTURE ;
+
+: GRE-RUN-STDLIB ( -- )
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" test/gate-stdlib.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" gre-unknown-slice" >LEN PROC-ARGV+
+   GRE-CAPTURE ;
 
 : GRE-ERR$ ( -- ptr u8 n )
    GRE-ERR GRE-ERR-U @ ;
@@ -84,15 +96,29 @@ variable GRE-RC
    GRE-RC @ GRE-USAGE-RC T=
    GRE-ERR$ s" usage: bin/hb --load test/gate-runner-support.f test/gate-runner-entry.f" CONTAINS? TTRUE ;
 
+: GRE-ASSERT-STDLIB-USAGE ( -- )
+   GRE-EXITED @ TTRUE
+   GRE-RC @ GRE-USAGE-RC T=
+   GRE-ERR$ s" usage: test/gate-stdlib.f [lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail]" CONTAINS? TTRUE
+   GRE-ERR$ s" E-UNDEFINED" CONTAINS? TFALSE ;
+
 : GRE-TEST-UNKNOWN-PHASE ( -- )
    s" the documented --load closure loads and reaches GR-USAGE" T-LABEL
    s" gre-unknown-phase" GRE-RUN
    GRE-ASSERT-USAGE ;
 
+: GRE-TEST-UNKNOWN-STDLIB-SLICE ( -- )
+   s" gate-stdlib loads fresh and reaches its usage exit" T-LABEL
+   GRE-RUN-STDLIB
+   GRE-ASSERT-STDLIB-USAGE ;
+
 : GRE-MAIN ( -- )
    T-RESET
    GRE-TEST-UNKNOWN-PHASE
+   GRE-TEST-UNKNOWN-STDLIB-SLICE
    T-REPORT
    s" gate-runner-entry-test: ok" type cr ;
 
 GRE-MAIN
+
+;package
