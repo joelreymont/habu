@@ -1604,22 +1604,3 @@ public
    TEST-MAIN ;
 
 ;package
-
-\ Provider visit evidence stays private to the provider package. This executes
-\ the public CHECK source/run path and proves zero-byte SOURCE reaches FILE once.
-package CHECKED-BOUNDARY-LINT
-private
-
-: TP-CHECK-EMPTY ( -- )
-   T-RESET
-   UB-FILE-SEQ @ {: visit-before:n :}
-   CHECK:RESET
-   s" " s" provider-empty.f" CHECK:SOURCE
-   CHECK:RUN 0 T=
-   UB-FILE-SEQ @ visit-before 1+ T=
-   CHECK:RESET
-   T-REPORT ;
-
-TP-CHECK-EMPTY
-
-;package

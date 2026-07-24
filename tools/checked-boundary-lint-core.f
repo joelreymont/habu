@@ -104,14 +104,18 @@ variable UB-FILE-SEQ
 : UB-NOT ( bool -- bool )
    IF UB-FALSE ELSE UB-TRUE THEN ;
 
-: UB-JSON! ( bool -- )
+public
+
+: JSON! ( bool -- )
    UB-JSON ! ;
 
-: UB-STRICT-BOUNDARY! ( bool -- )
+: STRICT! ( bool -- )
    UB-STRICT-BOUNDARY ! ;
 
-: UB-OUT-FD! ( fd -- )
+: OUT-FD! ( fd -- )
    UB-OUT-FD ! ;
+
+private
 
 : UB-CHECK-OFF! ( bool -- )
    dup UB-CHECK-OFF !
@@ -544,22 +548,13 @@ variable UB-FILE-SEQ
 
 public
 
-: JSON! ( bool -- )
-   UB-JSON! ;
-
-: STRICT! ( bool -- )
-   UB-STRICT-BOUNDARY! ;
-
-: OUT-FD! ( fd -- )
-   UB-OUT-FD! ;
-
 : RESET ( -- )
    UB-CLEAR-SPANS
    0 UB-BAD !
    UB-FALSE UB-CHECK-OFF!
-   UB-FALSE UB-JSON!
-   UB-FALSE UB-STRICT-BOUNDARY!
-   1 >FD UB-OUT-FD! ;
+   UB-FALSE JSON!
+   UB-FALSE STRICT!
+   1 >FD OUT-FD! ;
 
 : FILE ( ptr u8 n -- )
    {: path:ptr pu:n :}
