@@ -2231,3 +2231,7 @@ fits.
   the PTX toolchain made the PTX phase fail while its isolated `ptx-stdlib`
   members passed. Parallelize CPU-only gates, but give each GPU-owning gate
   exclusive device time so resource contention cannot masquerade as a defect.
+- **Inspect legacy timestamps after `dot on`.** Older dot files may contain an
+  already-quoted `created-at` value; the current serializer can quote it again
+  while changing status. Restore the original timestamp bytes before
+  publication and keep the mutation limited to status, claim, and contract.
