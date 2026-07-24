@@ -20,7 +20,7 @@ SUMTYPE outcome 0
 \ lengths (captured); a nonzero completion carries the SAME two lengths PLUS its
 \ completion code — a nonzero exit code, or 128+signal (failed). The lengths are
 \ valid on BOTH arms: captured output is real whether or not the child exited
-\ clean, and callers replay it either way, so both products keep the lengths and
+\ clean, and callers replay it either way, so both structures keep the lengths and
 \ only the failure adds the code. The rc sentinel this replaces buried the
 \ clean-vs-failed distinction in one signed cell; the result forces every caller
 \ to MATCH both arms. (No errno is returned here — OS spawn/wait failures THROW
@@ -28,15 +28,15 @@ SUMTYPE outcome 0
 \ completion code, never an errno.)
 package PCAP
 public
-PRODUCT captured 0
+STRUCTURE captured 0
   FIELD out len
   FIELD err len
-;PRODUCT
-PRODUCT failed 0
+;STRUCTURE
+STRUCTURE failed 0
   FIELD out len
   FIELD err len
   FIELD code rc
-;PRODUCT
+;STRUCTURE
 private
 ;package
 
