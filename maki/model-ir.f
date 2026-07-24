@@ -67,11 +67,11 @@ TYPEFAMILY operand-ref 0
 TYPEFAMILY input-index 0
 TYPEFAMILY ref-pos 0
 
-PRODUCT mark 0
+STRUCTURE mark 0
    FIELD nodes n
    FIELD slots n
    FIELD refs n
-;PRODUCT
+;STRUCTURE
 
 ;package
 
@@ -383,7 +383,7 @@ public
 : MIR-NAME$ ( -- ptr u8 n )  MI-NAME MI-NAME-U @ ;
 
 \ ---- checkpoint / restore (transient IR growth, e.g. the cad-9 backward pass) ----
-\ MIR-MARK captures the table high-water marks in a nominal MIR:mark product;
+\ MIR-MARK captures the table high-water marks in a nominal MIR:mark structure;
 \ MIR-RELEASE validates and truncates back to them and clears any pending
 \ builder. A caller that appends nodes/slots and wants the IR restored
 \ (gradcheck builds a throwaway backward pass) brackets its work with these.

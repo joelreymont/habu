@@ -74,6 +74,25 @@ T-RESET
 MIR-N@         2 T=
 MIR-IN-SLOTS@  3 T=
 
+1 LAYOUT-BUFFER MT-MARK-BUF MIR:mark
+
+: MT-MARK! ( MIR:mark -- )
+   0 MT-MARK-BUF ! ;
+
+: MT-MARK@ ( -- MIR:mark )
+   0 MT-MARK-BUF @ ;
+
+\ Make the live high-waters pairwise distinct through the production input path,
+\ then prove the production marker and generated inverse preserve field order.
+: MT-MARK-VALUES ( -- n n n )
+   MIR-MARK MT-MARK!
+   5 7 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   MIR-MARK MIR-MARK:UNMAKE ;
+: MT-MARK-RESTORE ( -- )
+   MT-MARK@ MIR-RELEASE ;
+MT-MARK-VALUES 3 T= 4 T= 2 T=
+MT-MARK-RESTORE
+
 \ typed count accessors (CAD-NUM:item-count) reflect the built graph: 2 nodes,
 \ 3 input slots, 3 operand refs (linear x,w + gelu n0), both nodes materialized.
 NODE-COUNT@        CAD-NUM:MT-IC>RAW 2 T=
@@ -218,13 +237,8 @@ s" MAKI:RAW>INPUT-INDEX" 0 search-wl 0= TTRUE
 s" MAKI:RAW>REF-POS" 0 search-wl 0= TTRUE
 
 \ ---- typed rollback mark ----------------------------------------------------
-1 LAYOUT-BUFFER MT-MARK-BUF MIR:mark
-
-: MT-MARK! ( MIR:mark -- )
-   0 MT-MARK-BUF ! ;
-
-: MT-MARK@ ( -- MIR:mark )
-   0 MT-MARK-BUF @ ;
+s" MT-MARK-MAKE ( n n n -- MIR:mark ) MIR-MARK:MAKE" MT-CHECK-YES
+s" MT-MARK-UNMAKE ( MIR:mark -- n n n ) MIR-MARK:UNMAKE" MT-CHECK-YES
 
 : MT-ROLLBACK ( -- CAD-KIND:node-id )
    MIR-RESET
