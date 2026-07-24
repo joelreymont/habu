@@ -24,6 +24,11 @@ fits.
   Check sequence or copy-on-write ownership before physical availability; an
   owned reservation with no free page is an internal invariant failure, while
   ordinary capacity exhaustion belongs only to admission.
+- **A path contract must survive every storage and transport boundary.** If a
+  provider accepts `FS-PATH-CAP`, raw consumers need `FS-PATH-CAP` bytes and C
+  strings need `FS-PATHZ-CAP`; validate the span before mutation and pass path
+  bytes through script arguments instead of interpolating them into generated
+  source, where syntax overhead and quoting would narrow or corrupt the domain.
 
 ## Checker Soundness
 

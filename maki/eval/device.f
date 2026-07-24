@@ -41,7 +41,7 @@ package EVAL
 private
 
 \ ---- device gate: run a SAXPY cubin and compare the task golden ----
-create ED-PATH 64 allot  create ED-KN 32 allot
+create ED-PATH FS-PATHZ-CAP allot  create ED-KN 32 allot
 variable ED-DEV variable ED-CTX variable ED-MOD variable ED-FUNC
 variable ED-DX variable ED-DY variable ED-AB variable ED-NV variable ED-RBUF
 
@@ -183,7 +183,7 @@ create GQ-OUT $1000 allot  create GQ-ERR $1000 allot
 \ always inits CUDA cleanly, a faulted context dies with the child, and the
 \ capture timeout bounds a HUNG kernel (SIGKILL-reaped, graded a fault).
 variable ED-CODE               \ child-side: the classified exit code to die with
-create ED-LCUBIN 64 allot      \ child-side cubin path (recorded by LAUNCH-CUBIN!)
+create ED-LCUBIN FS-PATH-CAP allot
 variable ED-LCUBIN-U
 
 : ED-LCUBIN$ ( -- ptr u8 n )
@@ -219,9 +219,7 @@ variable ED-LCUBIN-U
 \ generated launcher records the cubin path and exits with the classified code.
 : GRADE-WRITE-LAUNCHER ( -- )
    SB-RESET
-   s" s" SB-APPEND  34 SB-APPEND-C  32 SB-APPEND-C
-   MAKI-GRADE:CUBIN$ SB-APPEND  34 SB-APPEND-C
-   s"  EVAL:LAUNCH-CUBIN!" SB-APPEND  10 SB-APPEND-C
+   s" 0 SCRIPT-ARGV$ EVAL:LAUNCH-CUBIN!" SB-APPEND  10 SB-APPEND-C
    s" EVAL:LAUNCH-EXIT" SB-APPEND  10 SB-APPEND-C
    MAKI-GRADE:LAUNCH$ SB$ WRITE-ALL ;
 
@@ -230,7 +228,9 @@ create GL-OUT $1000 allot  create GL-ERR $1000 allot
    PROC-ARGV-RESET
    s" --load"             >LEN PROC-ARGV+
    s" maki/eval/device.f" >LEN PROC-ARGV+
-   MAKI-GRADE:LAUNCH$     >LEN PROC-ARGV+ ;
+   MAKI-GRADE:LAUNCH$     >LEN PROC-ARGV+
+   s" --"                 >LEN PROC-ARGV+
+   MAKI-GRADE:CUBIN$      >LEN PROC-ARGV+ ;
 
 : GRADE-DEVICE-VERDICT ( -- n )   \ spawn-isolated launch -> EVN-GREEN / -WRONG / -FAULT
    GRADE-WRITE-LAUNCHER
@@ -243,7 +243,8 @@ public
 
 \ ---- child side of the launch isolation (called by the generated launcher) --
 : LAUNCH-CUBIN! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u 63 > if E-FS-PATH throw then              \ ED-PATH >CSTR needs path + NUL in 64
+   u 0 < if E-FS-PATH throw then
+   u FS-PATH-CAP > if E-FS-PATH throw then
    a ED-LCUBIN u BYTE-COPY
    u ED-LCUBIN-U ! ;
 
