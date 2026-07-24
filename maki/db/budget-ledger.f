@@ -44,9 +44,9 @@ public
 
 \ The ledger handle: a pooled-slot handle (the maki/db/transaction.f `txn` precedent - the
 \ accounting authority lives in the slot columns, not the handle).
-PRODUCT ledger 0
+STRUCTURE ledger 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ Typed budget outcome (never value+flag): `ok` (fit / idempotent no-op); `exhausted` names the
 \ first dimension whose request exceeds the remaining budget (the resource-diagnostic axis).

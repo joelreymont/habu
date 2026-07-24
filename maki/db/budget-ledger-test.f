@@ -17,10 +17,14 @@
 
 require lib/prelude.f
 require lib/test.f
+require test/checker-assert.f
 require maki/db/budget-ledger.f
 require maki/db/budget-dim.f
 
 package LEDGER
+
+: LT-LEDGER-ROUNDTRIP ( -- n )
+   17 LEDGER-LEDGER:MAKE LEDGER-LEDGER:UNMAKE ;
 
 \ ---- typed budget-result decoders ----------------------------------------------
 : BR-CODE ( budget-result -- n )   \ 0 ok / 1 exhausted
@@ -129,9 +133,19 @@ create DBUF-B DIGEST-BYTES allot
    MK-L {: l:ledger :}
    0 WANT-COMPUTE                                         \ zero request: always fits, keys accumulate
    65 0 ?do  i KEY-A c!  l KEY-A CHARGE drop  loop ;
+: LT-INVALID-HANDLE ( -- )   RESET 0 >LEDGER KEY-COUNT drop ;
+: LT-DIGEST-BUF ( -- )   MK-L DBUF-A DIGEST-BYTES 1- DIGEST drop ;
 
 KEYS-INIT
 T-RESET
+
+LT-LEDGER-ROUNDTRIP 17 T=
+s" LT-LEDGER-MAKE ( n -- LEDGER:ledger ) LEDGER-LEDGER:MAKE"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" LT-LEDGER-UNMAKE ( LEDGER:ledger -- n ) LEDGER-LEDGER:UNMAKE"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" LT-LEDGER-WRONG ( bool -- LEDGER:ledger ) LEDGER-LEDGER:MAKE"
+   CHECK-QUIET-CANDIDATE! 0 T=
 
 LT-REMAIN-INIT 100 T=
 
@@ -152,6 +166,8 @@ LT-REPLAY-DIFFERS TTRUE
 
 ' LT-OVERFLOW E-LEDGER-CAP TTHROWS
 ' LT-KEY-OVERFLOW E-LEDGER-KEYS TTHROWS
+' LT-INVALID-HANDLE E-LEDGER-RANGE TTHROWS
+' LT-DIGEST-BUF E-LEDGER-BUF TTHROWS
 
 LEDGER:RESET
 
