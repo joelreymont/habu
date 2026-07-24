@@ -3,6 +3,9 @@
 \ tools/lint/token.f, tools/lint/lib.f, tools/lint/json-writer.f, and
 \ tools/lint/source-lex.f.
 
+package SIGNATURE-LINT
+private
+
 $10000 constant SL-FILE-CAP
 32 constant SL-NUM-CAP
 
@@ -80,11 +83,15 @@ variable SL-SUG-U
 : SL-SUG-A! ( ptr u8 -- )
    SL-SUG-A-FIELD ! ;
 
-: SL-JSON! ( bool -- )
+public
+
+: JSON! ( bool -- )
    SL-JSON ! ;
 
-: SL-OUT-FD! ( fd -- )
+: OUT-FD! ( fd -- )
    SL-OUT-FD ! ;
+
+private
 
 : SL-ALLOC-FILE-BUF ( -- )
    SL-BUF-A @ 0= if
@@ -250,24 +257,32 @@ variable SL-SUG-U
       THEN
    repeat ;
 
-: SIGNATURE-LINT-RESET ( -- )
+public
+
+: RESET ( -- )
    0 SL-BAD !
    LINT-FALSE SL-JSON !
-   1 >FD SL-OUT-FD! ;
+   1 >FD OUT-FD! ;
 
-: SIGNATURE-LINT-FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu label:ptr labelu :}
+: FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
    label SL-FILE-A! labelu SL-FILE-U !
    path pathu SL-FILE-BUF SL-FILE-CAP READ-FILE LEX-SOURCE
    SL-SCAN-TOKENS ;
 
-: SIGNATURE-LINT-FILE ( ptr u8 n -- )
-   2dup SIGNATURE-LINT-FILE-AS ;
+: FILE ( ptr u8 n -- )
+   2dup FILE-AS ;
+
+private
 
 : SL-SUMMARY ( -- )
    s" signature-lint: " SL-OUT
    SL-BAD @ SL-U$ SL-OUT
    s"  finding(s)" SL-OUT SL-NL ;
 
-: SIGNATURE-LINT-FINISH ( -- )
+public
+
+: FINISH ( -- )
    SL-JSON @ LINT-NOT SL-BAD @ 0 > and IF SL-SUMMARY THEN
    SL-BAD @ 0 > IF 1 throw THEN ;
+
+;package

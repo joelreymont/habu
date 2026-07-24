@@ -120,29 +120,29 @@ create OUT BUF-CAP allot
    NAME NAME$ WRITE-ALL ;
 
 : CORE-SETUP ( bool -- ) {: json:bool :}
-   SIGNATURE-LINT-RESET
+   SIGNATURE-LINT:RESET
    OUT BUF-CAP LINT-OUT-BUFFER!
-   json SL-JSON! ;
+   json SIGNATURE-LINT:JSON! ;
 
 : CORE-FINISH ( -- n n n )
-   [: SIGNATURE-LINT-FINISH ;] catch {: rc:n :}
+   [: SIGNATURE-LINT:FINISH ;] catch {: rc:n :}
    LINT-OUT$ nip LINT-OUT-BUFFER-OFF
    0 rc ;
 
 : RUN-CORE ( ptr u8 n -- n n n )
    LINT-FALSE CORE-SETUP
-   SIGNATURE-LINT-FILE
+   SIGNATURE-LINT:FILE
    CORE-FINISH ;
 
 : RUN-CORE-JSON ( ptr u8 n -- n n n )
    LINT-TRUE CORE-SETUP
-   SIGNATURE-LINT-FILE
+   SIGNATURE-LINT:FILE
    CORE-FINISH ;
 
 : RUN-CORE-JSON-LABEL ( ptr u8 n -- n n n )
    {: a:ptr u:n :}
    LINT-TRUE CORE-SETUP
-   a u s" <stdin>" SIGNATURE-LINT-FILE-AS
+   a u s" <stdin>" SIGNATURE-LINT:FILE-AS
    CORE-FINISH ;
 
 : EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
