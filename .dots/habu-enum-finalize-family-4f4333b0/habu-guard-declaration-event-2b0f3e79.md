@@ -1,6 +1,6 @@
 ---
 title: Guard provisional declaration ownership
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-24T02:56:00.553945+02:00\""
@@ -20,4 +20,4 @@ Public proof: add a package-owned section outside package DECL-EVENT in test/dec
 
 Acceptance: the three duplicate-claim shapes reject 7173 before public event count, identity, field count, family kind, or depth changes; active-ancestor duplication rejects at inner DECL before variant or field work; a rejected frame remains usable for a different provisional family or rollback; same-frame 7162/7173 behavior stays exact; different provisional families nest and publish normally; rollback permits later reuse; a family older than the top checker mark stays legal in a frame rolled back before publication; active-frame and checker-mark RESET reject 7161 and leave the original transaction/savepoint usable; RESET succeeds after both depths close. Both temporary owner names are absent after generated-declaration protection. Removing token validation, the provisional-range test, live-row kind/family matching, either RESET condition, or capability retirement makes a public production-path regression fail.
 
-Files: src/core/type-family.f, src/core/decl-event.f, src/core/generated-declaration-protection.f, test/decl-event-suite.f, and TRUSTED.md. Forbidden: DEV-CUR-DECL?, DEV-OWNER-ACTIVE?, published-only scanning, an ancestor DEV-PREPARE guard, another registry, watermark, latch, persisted bit, restore hook, event-record field, public API, finalizer/frontend/legacy edit, new test trust, package reopen, private-state assertion, STATUS ratchet, or caller migration. Smallest owning check: bin/hb < test/decl-event-suite.f. Then run exact typed-local, package, trust/inventory, generated-declaration, and candidate-validation slices. Depends: none. Claim: unassigned.
+Files: src/core/type-family.f, src/core/decl-event.f, src/core/generated-declaration-protection.f, test/decl-event-suite.f, and TRUSTED.md. Forbidden: DEV-CUR-DECL?, DEV-OWNER-ACTIVE?, published-only scanning, an ancestor DEV-PREPARE guard, another registry, watermark, latch, persisted bit, restore hook, event-record field, public API, finalizer/frontend/legacy edit, new test trust, package reopen, private-state assertion, STATUS ratchet, or caller migration. Smallest owning check: bin/hb < test/decl-event-suite.f. Then run exact typed-local, package, trust/inventory, generated-declaration, and candidate-validation slices. Depends: none. Claim: agent=guard_impl workspace=.jj-ws/habu-guard-provisional-ownership.
