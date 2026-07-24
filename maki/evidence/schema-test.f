@@ -14,7 +14,7 @@
 \   EV-BAD-BUNDLE show a wrong-class token/slot is a type mismatch, not a
 \   swappable int.
 \ - probe 3 (wrong-artifact evidence / store bypass, :1576-1583 "Nothing ties a
-\   verdict to the artifact it was measured on"): every class PRODUCT binds a
+\   verdict to the artifact it was measured on"): every class STRUCTURE binds a
 \   CAD-KIND:artifact-id and a class-private proof token. TS-BAD-EVID-RAW (raw n
 \   for the token), TS-BAD-EVID-ID (foreign id family for the artifact), and
 \   TS-BAD-EVID-MINT (the proof mint is private, unresolvable outside EVID) show
@@ -73,7 +73,7 @@ s" TS-BAD-EVID-MINT ( CAD-KIND:artifact-id -- EVID:certified ) MINT-CERTIFY-PROO
    CHECK-QUIET-CANDIDATE! 1 T=
 
 \ ---- wrong-class negatives: the class IS the family ---------------------------
-\ a golden proof token cannot fill a certify product's token slot.
+\ a golden proof token cannot fill a certify structure's token slot.
 s" EV-BAD-CLASS-TOK ( CAD-KIND:artifact-id EVID:golden-proof -- EVID:certified ) EVID-CERTIFIED:MAKE"
    CHECK-QUIET-CANDIDATE! 0 T=
 \ a certified value cannot stand in for a golden value.

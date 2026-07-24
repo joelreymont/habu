@@ -3,7 +3,7 @@
 \ v2-evidence-schema-products, dot habu-v2-typestate-evidence-f124dc85).
 \
 \ One family per evidence CLASS (certified / golden / gradchecked / profiled),
-\ each a PRODUCT carrying the exact CAD-KIND:artifact-id it was measured on plus a
+\ each a STRUCTURE carrying the exact CAD-KIND:artifact-id it was measured on plus a
 \ class-private proof token. The CLASS IS THE FAMILY: there is no (tag, gate-id)
 \ raw pair anywhere, so the REPORT:GATE! ( report ptr u8 n n n -- report )
 \ verdict/gate-id slot swap (maki/report.f:592, census probe 1) is UNREPRESENTABLE
@@ -12,7 +12,7 @@
 \ for another class (certify-proof and golden-proof are distinct families).
 \
 \ Device-golden provenance is a VALUE, not ambient process state: the golden
-\ product's `leg` (golden-leg) and `prec` (prec-class) FIELDS are the typed home of
+\ structure's `leg` (golden-leg) and `prec` (prec-class) FIELDS are the typed home of
 \ what maki/golden.f's GOLDEN-DEV-FLAG / GOLDEN-PREC-V globals used to track
 \ (host-vs-device leg, judged precision). The `pol` (NPOL:dom) FIELD carries the
 \ ACHIEVED numeric proof domain (maki/numpolicy.f) - so a golden judged under a
@@ -27,7 +27,7 @@
 \ transitions cannot fail yet (no gate validation until the promotion-policy
 \ sub-dot) and a polymorphic RESULT-DROP over result<a,b> is not expressible
 \ (dot habu-typestate-result-drop-5ae048a7). So EVID:CERTIFY/GOLDEN/GRADCHECK/
-\ PROFILE return the evidence product DIRECTLY; the error-carrying result arrives
+\ PROFILE return the evidence structure DIRECTLY; the error-carrying result arrives
 \ when they gain a real diagnostic path in the promotion sub-dots. The artifact
 \ binding and class separation - this sub-dot's acceptance - hold either way.
 \
@@ -42,7 +42,7 @@
 \ are the presence schema consumed by POLICY:CHECK in the promotion-policy sub-dot
 \ (habu-v2-typestate-promotion-d539e648); they are declared here as the evidence
 \ owner's surface. Identity threading is now LANDED (dot
-\ habu-public-producers-for-7084d81c): maki/typestate.f's ART:built is a PRODUCT
+\ habu-public-producers-for-7084d81c): maki/typestate.f's ART:built is a STRUCTURE
 \ carrying its CAD-KIND:artifact-id, so each transition READS the artifact from the
 \ built witness (ART-BUILT:UNMAKE) rather than taking it as a separately-fabricated
 \ operand - the evidence a transition mints is bound to the artifact that was built.
@@ -75,30 +75,30 @@ ENUM prec-class DERIVE eq
    prec-tf32
 ;ENUM
 
-\ ---- one PRODUCT per evidence class, each bound to its artifact ---------------
-PRODUCT certified 0
+\ ---- one STRUCTURE per evidence class, each bound to its artifact -------------
+STRUCTURE certified 0
    FIELD art CAD-KIND:artifact-id
    FIELD tok certify-proof
-;PRODUCT
+;STRUCTURE
 
-PRODUCT golden 0
+STRUCTURE golden 0
    FIELD art  CAD-KIND:artifact-id
    FIELD leg  golden-leg
    FIELD prec prec-class
    FIELD pol  NPOL:dom
    FIELD tok  golden-proof
-;PRODUCT
+;STRUCTURE
 
-PRODUCT gradchecked 0
+STRUCTURE gradchecked 0
    FIELD art CAD-KIND:artifact-id
    FIELD tok gradcheck-proof
-;PRODUCT
+;STRUCTURE
 
-PRODUCT profiled 0
+STRUCTURE profiled 0
    FIELD art CAD-KIND:artifact-id
    FIELD us  n
    FIELD tok profile-proof
-;PRODUCT
+;STRUCTURE
 
 \ ---- per-class presence slots + the promotion bundle -------------------------
 \ A slot is `got <evidence>` or absent; the bundle is one slot per class. Consumed
@@ -121,12 +121,12 @@ SUMTYPE profile-slot 0
    VARIANT profile-none ;VARIANT
 ;SUMTYPE
 
-PRODUCT bundle 0
+STRUCTURE bundle 0
    FIELD cert certify-slot
    FIELD gold golden-slot
    FIELD grad gradcheck-slot
    FIELD prof profile-slot
-;PRODUCT
+;STRUCTURE
 
 private
 \ Each mint is the only producer of its class's proof token. A phantom witness:
