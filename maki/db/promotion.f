@@ -4,13 +4,13 @@
 \
 \ CONCERN: the Candidate -> Verified -> Measured -> PolicySatisfied -> Promoted staged
 \ typestate. Each stage is a DISTINCT typed value DERIVED (never mutated) from the prior
-\ plus the evidence that justifies it - a fresh immutable product, so the prior stage is
+\ plus the evidence that justifies it - a fresh immutable structure, so the prior stage is
 \ structurally unchanged. This is a SEPARATE concern from the obligation VALUE + discharge
 \ gate (package OBLIG), the applicability CLOSURE (package APPLIC), the promotion POLICY
 \ value (package PPOLICY), and the discharge AUTHORITY gate (package DAUTH): PROMOTE COMPOSES
 \ all of them into the staged chain and its audit record.
 \
-\ UNCONSTRUCTIBLE WITHOUT APPLICABLE EVIDENCE (acceptance 1). Each stage is a PRODUCT sealed
+\ UNCONSTRUCTIBLE WITHOUT APPLICABLE EVIDENCE (acceptance 1). Each stage is a STRUCTURE sealed
 \ by a class-private proof token: every MINT-*-PROOF is PRIVATE (the maki/evidence/policy.f
 \ discipline), so a raw n cannot forge a stage and no wrong-stage value stands in for
 \ another (the checker rejects it - the static leg). A transition MINTS the next stage ONLY
@@ -21,7 +21,7 @@
 \ without applicable evidence, both dynamically (refusal) and statically (sealed mint).
 \
 \ REFUSAL CHANNEL (the maki/evidence/policy.f deviation, same wall). A stage is a multi-cell
-\ product, so it cannot be the single-cell `ok` payload of a bespoke result sum; the
+\ structure, so it cannot be the single-cell `ok` payload of a bespoke result sum; the
 \ transitions therefore RETURN the next stage directly and signal refusal by THROWing a
 \ named code (exactly as POLICY:CHECK throws E-EVID-*). The typed reject the dot names is
 \ the APPLIC:applicability sum a caller queries BEFORE the transition (APPLIC:VERDICT); the
@@ -67,29 +67,29 @@ TYPEFAMILY prom-proof 0
 \ ---- the immutable stage values (each derived, never mutated) ------------------
 \ candidate/verified/measured carry the model identity threaded through the chain; the
 \ policy digest (d0..d3) joins at PolicySatisfied and the audit-event-id at Promoted.
-PRODUCT candidate 0
+STRUCTURE candidate 0
    FIELD model CAD-KIND:artifact-id
    FIELD tok cand-proof
-;PRODUCT
-PRODUCT verified 0
+;STRUCTURE
+STRUCTURE verified 0
    FIELD model CAD-KIND:artifact-id
    FIELD tok ver-proof
-;PRODUCT
-PRODUCT measured 0
+;STRUCTURE
+STRUCTURE measured 0
    FIELD model CAD-KIND:artifact-id
    FIELD tok meas-proof
-;PRODUCT
-PRODUCT satisfied 0
+;STRUCTURE
+STRUCTURE satisfied 0
    FIELD model CAD-KIND:artifact-id
    FIELD d0 n  FIELD d1 n  FIELD d2 n  FIELD d3 n
    FIELD tok sat-proof
-;PRODUCT
-PRODUCT promoted 0
+;STRUCTURE
+STRUCTURE promoted 0
    FIELD model CAD-KIND:artifact-id
    FIELD d0 n  FIELD d1 n  FIELD d2 n  FIELD d3 n
    FIELD audit CAD-KIND:audit-event-id
    FIELD tok prom-proof
-;PRODUCT
+;STRUCTURE
 
 private
 TRUSTED: MINT-CAND-PROOF ( -- cand-proof )  0 ;
@@ -99,7 +99,7 @@ TRUSTED: MINT-SAT-PROOF ( -- sat-proof )    0 ;
 TRUSTED: MINT-PROM-PROOF ( -- prom-proof )  0 ;
 
 public
-\ ---- stage read surface (UNMAKE a multi-cell product; never a typed local) ------
+\ ---- stage read surface (UNMAKE a multi-cell structure; never a typed local) ----
 : CAND-MODEL ( candidate -- CAD-KIND:artifact-id )
    PROMOTE-CANDIDATE:UNMAKE {: model:CAD-KIND:artifact-id tok:cand-proof :}  model ;
 : VER-MODEL ( verified -- CAD-KIND:artifact-id )
@@ -201,7 +201,7 @@ public
 \ The policy must be FOR this model (E-PROMO-MODEL) and not past `now` (E-PROMO-EXPIRED);
 \ its four content-digest words are bound into the value (the digest-binding for
 \ REVALIDATE). PPOLICY:BIND yields the single-cell inputs so the multi-cell measured is
-\ the only product on the stack when it is UNMAKEd.
+\ the only structure on the stack when it is UNMAKEd.
 : SATISFY ( measured PPOLICY:spec n -- satisfied ) {: now:n :}
    PPOLICY:BIND
    {: pmodel:CAD-KIND:artifact-id pexpiry:n d0:n d1:n d2:n d3:n :}
