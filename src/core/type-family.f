@@ -2191,42 +2191,56 @@ TFC-QUOT-ROW-INSTALL
       TFC-J @ 1 + TFC-J !
    REPEAT ;
 
-\ Extra pads = instantiated pads - declared pads. A POSITIVE extra means the wide
-\ instantiation needs MORE zero cells than the declared family width reserves, and
-\ add-only pass 2 supplies them (WF-XPAD-FLAG fact). A NEGATIVE extra means the
-\ instantiated variant is NARROWER than the declared reservation: this happens when
-\ the widest-DECLARED variant is not the widest-INSTANTIATED one (sum two<a a> /
-\ three<n n n> at a = width 2 — declared-widest is three, instantiated-widest is two).
-\ Pass-1 lowering keys pads off the DECLARED width, so it emits MORE pad cells than
-\ the certified instantiated width has, and the add-only pass-2 fact (whose native
-\ width-fact certificate requires w >= 1) cannot REMOVE cells to correct it. The
-\ certified width and the only possible lowering permanently DISAGREE, so no sound
-\ construct/MATCH of this variant exists on the current engine — unlike the open-var
-\ case (width genuinely unknown until instantiation), which CONSTRUCT-WIDE-STAGED-REJECT
-\ leaves nameable as a type probe. A width contradiction must NEVER certify, so reject
-\ it unconditionally here, including a CHECK-CANDIDATE probe, rather than hand back a
-\ bundle wider than its certified type. (Signed pad corrections through pass 2, which
-\ would make these instantiations lowerable, are a separately-tracked deferred capability.)
+\ Extra pads = instantiated pads - declared pads, where instantiated pads =
+\ instantiated payload SLOTS - instantiated payload cells. The payload slots are the
+\ bundle width MINUS the tag cell — but only a TAGGED family (SUM/ENUM) carries a tag;
+\ a STRUCTURE/PRODUCT is TAGLESS, so its whole width is payload. Subtracting a tag cell
+\ from a tagless family is the tagless-family regression: scg<scinr> (a parametric STRUCTURE at a width-2
+\ leaf) has width 3 all payload, but `width - 1` under-counts the slots to 2 and reports
+\ a spurious extra = -1, rejecting a value the width-aware lowering handles perfectly.
+\ TFC-TAG-CELLS keys the subtraction off the registry family kind, so a product computes
+\ extra = 0 and certifies with no exemption.
+\ A POSITIVE extra means the wide instantiation needs MORE zero cells than the declared
+\ family width reserves; add-only pass 2 supplies them (WF-XPAD-FLAG fact). A genuinely
+\ NEGATIVE extra (a tagged SUM variant whose instantiated payload needs FEWER cells than
+\ the declared family width reserves — the widest-DECLARED variant is not the
+\ widest-INSTANTIATED one, OR a non-widest variant grows more than the widest does) is a
+\ real contradiction: pass-1 keys pads off the DECLARED width and emits MORE pad cells
+\ than the certified instantiated width has, and the add-only pass-2 fact cannot REMOVE
+\ cells to correct it. The certified width and the only possible lowering permanently
+\ DISAGREE, so no sound construct/MATCH of that variant exists on the current engine.
+\ Such a width contradiction must NEVER certify — reject it unconditionally, including a
+\ CHECK-CANDIDATE probe. SIGNED pass-2 corrections (a native emitter that removes cells,
+\ not only adds) would make these lowerable; that capability is tracked by dot
+\ habu-signed-pass-2-4fc2b960 and will flip these rejects to exact-width construct/MATCH.
 : TFC-XPAD-NARROW-REJECT ( -- )   \ certified instantiated width contradicts add-only lowering: never certify
    0 OK ! -1 FAILSET ! ;
 
-: TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}   \ record the wide construct's extra-pad fact, or fail closed on a narrower-than-declared instantiation
-   famterm T-WIDTH 1 -                          \ instantiated slots
+: TFC-TAG-CELLS ( n -- n )   \ layout tag cells for a family: 1 for a tagged SUM/ENUM, 0 for a tagless PRODUCT/STRUCTURE
+   dup TFAM-SUM? IF drop 1 EXIT THEN
+   TFAM-ENUM? IF 1 ELSE 0 THEN ;
+
+: TFC-CON-XPAD-RECORD ( n n n -- ) {: fam:n vid:n famterm:n :}   \ record the wide construct's extra-pad fact, or fail closed on a genuine narrower-than-declared contradiction
+   famterm T-WIDTH fam TFC-TAG-CELLS -          \ instantiated payload slots (subtract the tag cell only for a tagged family; a tagless product subtracts none)
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -        \ - declared pads = extra pads
    {: extra:n :}
    extra 0 > IF 0 fam 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ narrower-than-declared: add-only lowering cannot remove the surplus declared pads
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower than declared: add-only lowering cannot remove the surplus (until signed pass-2, dot habu-signed-pass-2-4fc2b960)
 
-: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact, or fail closed on a narrower-than-declared arm
+\ MATCH only ever sees a TAGGED family: TFAM-MATCH-FAM and TFL-MATCH-FAM? both reject a
+\ non-SUM/ENUM family (MD-FAM-KIND) before any arm is recorded, and a STRUCTURE UNMAKE
+\ takes a separate field-projection path, not this one. So the tag cell is always present
+\ here and `rt T-WIDTH 1 -` needs no kind guard.
+: TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact, or fail closed on a genuine narrower-than-declared arm
    term T-RES {: rt:n :}
    rt TFC-CON-CLOSED? 0= IF EXIT THEN           \ open-arg (unstable width): leave declared width, stay fail-closed
-   rt T-WIDTH 1 -                                \ instantiated slots
+   rt T-WIDTH 1 -                                \ instantiated payload slots (MATCH families are always tagged: subtract the one tag cell)
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
    {: extra:n :}
    extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
-   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ narrower-than-declared arm: declared-width unpack would skip a pad the bundle lacks
+   extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower-than-declared arm: declared-width unpack would skip a pad the bundle lacks (until signed pass-2, dot habu-signed-pass-2-4fc2b960)
 
 : TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ active checker package ("" at top level)
    CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ EXIT THEN

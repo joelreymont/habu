@@ -648,6 +648,83 @@ s" LOWER-WIDTH-ASYM-FAILCLOSED" type cr
 ;package
 
 \ ---------------------------------------------------------------------------
+\ dot habu-fail-closed-on-0ab1e401 (tagless pad arithmetic): the negative-extra reject is
+\ decided by KIND-CORRECT pad arithmetic. A STRUCTURE/PRODUCT is TAGLESS — it has one
+\ product shape and its whole width is payload; only a SUM/ENUM carries a tag cell.
+\ Subtracting a tag from a tagless family was the tagless-family regression: a wide parametric structure
+\ reported a spurious extra = -1 and was wrongly rejected. With the tag cell subtracted only
+\ for tagged families, a wide product's extra is 0 and it certifies with no exemption. A
+\ tagged SUM whose non-widest variant needs FEWER cells than the declared family reserves is
+\ still a genuine contradiction and fails closed (until signed pass-2, dot
+\ habu-signed-pass-2-4fc2b960) — including the INSTANTIATED-TIE case, where the verdict is
+\ ORDER-INDEPENDENT (both declaration orders reject), unlike the order-dependent
+\ accept/reject a widest-variant discriminator gave. Families use string-eval so the derived
+\ accessors resolve at global scope; the runtime value/width check lives in package XPAD-TAGLESS.
+\ ---------------------------------------------------------------------------
+\ (a) POSITIVE: a parametric STRUCTURE widens with its argument and certifies (extra is now 0,
+\ not the old spurious -1 — if the reject still fired, XPGWIDE would read 0). A COMPILED
+\ generated constructor at the wide instantiation lowers to an exact bundle: XPGW-RT builds it
+\ through XPG:MAKE, and TWX-XPG-CHECK reads the bundle's cells top->bottom (z=3, b=2, a=1) and
+\ asserts each value in declaration order. The three value checks prove content and order; the
+\ 5551 canary below the build, asserted equal afterward, proves the leaf consumed EXACTLY the
+\ bundle (a wrong width or mis-sized consume shifts it) — value+canary parity is the
+\ content-and-width proof. A checked MAKE->UNMAKE value round-trip (the SCOUTR precedent,
+\ structure-certify-suite.f:118-136) is NOT expressible for a GENERIC family at a wide
+\ instantiation, so this trusted read is the only runtime proof: SCOUTR is a CONCRETE (arity-0)
+\ structure whose wide field is fixed, so its MAKE/UNMAKE effects are concrete and the wide
+\ UNMAKE lowers through the arity-0 hidden-field expansion. xpg is GENERIC (arity 1):
+\ structure-make.f generates make(row 0) and unmake(row 1) over the same open-param field
+\ schema, a FIXED one-cell-per-param stored effect. Construct has an arg-aware escape —
+\ layout-cap slice 3 (checker.f CTOR-STEP-XT) routes a generated ctor whose declared OUTPUT
+\ instantiates the param at a multi-cell arg through the width-aware construct step, so the
+\ OUTPUT-annotated wide XPG:MAKE certifies. UNMAKE has NO such escape: its stored effect is fixed
+\ at one cell per open parameter, and no arg-aware lane instantiates it wide, so `XPG:UNMAKE` on
+\ a concrete `xpg<xpginr>` rejects at the widened field slot — an independent generic-wide UNMAKE
+\ checker gap tracked by dot habu-instantiate-wide-generic-075aced1. Hence the trusted leaf
+\ TWX-XPG-CHECK reads the cells directly.
+s" STRUCTURE xpginr 0 FIELD a n FIELD b n ;STRUCTURE" TCE-CATCH 0 T=          \ width-2 structure leaf
+s" STRUCTURE xpg 1 FIELD u a FIELD z n ;STRUCTURE" TCE-CATCH 0 T=             \ parametric structure: payload widens with a
+s" XPGWIDE ( xpginr n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T= \ wide instantiation certifies (was rejected before the tagless-arithmetic fix)
+s" XPGFLAT ( n n n -- xpg<xpginr> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! 0 T=      \ flattened (a b z) is not (xpginr z): still fail-closed
+s" XPGCONC ( n n -- xpg<n> ) XPG:MAKE" CHECK-QUIET-CANDIDATE! -1 T=            \ concrete non-widening instantiation certifies
+package XPAD-TAGLESS
+: XPGW-MK ( xpginr n -- xpg<xpginr> ) XPG:MAKE ;              \ compiled generated STRUCTURE constructor at the wide instantiation
+TRUSTED: TWX-XPG-CHECK ( xpg<xpginr> -- )                    \ trusted leaf: read the wide bundle's cells top->bottom (z, b, a) and assert their values in declaration order
+   3 T= 2 T= 1 T= ;
+: XPGW-RT ( -- )                                             \ build the certified wide bundle and verify its content + exact width
+   5551 1 2 XPGINR:MAKE 3 XPGW-MK TWX-XPG-CHECK 5551 T= ;
+XPGW-RT
+;package
+\ (b) NEGATIVE: genuine tagged-sum contradictions that fail closed (candidate 0 / rc 70). Each
+\ is exercised through the REAL generated variant constructor (FAM:VARIANT), proven resolvable
+\ by a concrete instantiation that certifies — an undefined word would itself be rc 70, so the
+\ concrete rc 0 shows the wide rc 70 is a genuine negative-extra reject, not an undefined-word
+\ miss. Signed pass-2 (dot habu-signed-pass-2-4fc2b960) will flip these to exact-width forms.
+s" PRODUCT xw2 0 FIELD x n FIELD y n ;PRODUCT" TCE-CATCH 0 T=
+\ xst<xw2>: stable(n n n, declared 3) is sole argmax both ways; grow(a, declared 1) instantiates
+\ to 2 -> extra(grow) = (3-2) - (3-1) = -1 (a non-widest variant that grows).
+s" SUMTYPE xst 1 VARIANT stable n n n ;VARIANT VARIANT grow a ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" XSTC ( xw2 -- xst<xw2> ) construct xst grow" CHECK-QUIET-CANDIDATE! 0 T=    \ reserved-construct candidate fails closed
+s" : XSTG-CONC ( n -- xst<n> ) XST:GROW ;" TCE-CATCH 0 T=                      \ generated ctor XST:GROW resolves: concrete instantiation certifies
+s" : XSTG-WIDE ( xw2 -- xst<xw2> ) XST:GROW ;" TCE-CATCH 70 T=                 \ compiled generated ctor at the wide instantiation fails closed
+s" : XSTM ( xst<xw2> -- n ) MATCH xst grow OF 2drop 0 ENDOF stable OF + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ MATCH grow arm fails closed at 'OF'
+\ tie: tbig wbig(n n n n, declared 4) / wsm(a a, declared 2) at xw2 -> both instantiate to 4
+\ (INSTANTIATED TIE); extra(wsm) = (4-4) - (4-2) = -2.
+s" SUMTYPE tbig 1 VARIANT wbig n n n n ;VARIANT VARIANT wsm a a ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" TBC ( xw2 xw2 -- tbig<xw2> ) construct tbig wsm" CHECK-QUIET-CANDIDATE! 0 T= \ reserved-construct candidate fails closed
+s" : TBWG-CONC ( n n -- tbig<n> ) TBIG:WSM ;" TCE-CATCH 0 T=                   \ generated ctor TBIG:WSM resolves: concrete instantiation certifies
+s" : TBWG-WIDE ( xw2 xw2 -- tbig<xw2> ) TBIG:WSM ;" TCE-CATCH 70 T=            \ compiled generated ctor at the instantiated tie fails closed
+s" : TBM ( tbig<xw2> -- n ) MATCH tbig wsm OF 2drop 2drop 0 ENDOF wbig OF + + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ tie MATCH arm fails closed
+\ order-independence pin: the SAME tie family with variants declared in the opposite order fails
+\ closed identically through BOTH the generated constructor and MATCH (a widest-variant
+\ discriminator flipped on declaration order).
+s" SUMTYPE tbig2 1 VARIANT wsm2 a a ;VARIANT VARIANT wbig2 n n n n ;VARIANT ;SUMTYPE" TCE-CATCH 0 T=
+s" TB2C ( xw2 xw2 -- tbig2<xw2> ) construct tbig2 wsm2" CHECK-QUIET-CANDIDATE! 0 T=   \ order-swapped reserved-construct candidate fails closed
+s" : TB2G-WIDE ( xw2 xw2 -- tbig2<xw2> ) TBIG2:WSM2 ;" TCE-CATCH 70 T=          \ order-swapped generated ctor: identical reject
+s" : TB2M ( tbig2<xw2> -- n ) MATCH tbig2 wsm2 OF 2drop 2drop 0 ENDOF wbig2 OF + + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ order-swapped MATCH arm: identical reject
+s" TAGLESS-ARITH-KEEPS-FAILCLOSED" type cr
+
+\ ---------------------------------------------------------------------------
 \ dot habu-universal-enum-parametric-ad011c21: a parametric family APPLICATION
 \ and a single-effect QUOTATION as variant payloads construct and MATCH. The
 \ nested application rides the landed width-aware construct/MATCH lowering; the
