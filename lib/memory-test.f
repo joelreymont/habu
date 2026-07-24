@@ -5,6 +5,8 @@ require lib/string.f
 require lib/test.f
 require test/checker-assert.f
 require lib/memory.f
+require lib/test/outcome.f
+require lib/process-fork.f
 
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
@@ -302,89 +304,89 @@ public
    T-REPORT ;
 RT-MEM
 
-\ Private sequences observe the typed mmap/munmap seams without exposing a
-\ production API. Failed mmap and munmap calls must not advance either sequence.
-package MEM
-private
-
--1 constant SEQ-ALL-ONES
-PTR-VARIABLE SEQ-BUF
-
-: SEQ-ALLOC-BAD ( -- )
-   MEM-MAX-N BYTES-ALLOC-LEN ALLOC-BYTES 2drop ;
-
-: SEQ-RELEASE-BAD ( -- )
-   SEQ-BUF @ 1 +
-   MEM-64K BYTES-ALLOC-LEN RELEASE-BYTES ;
-
-: SEQ-RELEASE ( -- )
-   SEQ-BUF @
-   MEM-64K BYTES-ALLOC-LEN RELEASE-BYTES
-   NULL$ drop SEQ-BUF ! ;
-
-: TEST-SEQS ( -- )
-   T-RESET
-   ALLOC-SEQ @ {: alloc-before:n :}
-   RELEASE-SEQ @ {: release-before:n :}
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
-   drop SEQ-BUF !
-   ALLOC-SEQ @ alloc-before 1 + T=
-   RELEASE-SEQ @ release-before T=
-   [: SEQ-RELEASE-BAD ;] E-MEM-UNMAP TTHROWSQ
-   ALLOC-SEQ @ alloc-before 1 + T=
-   RELEASE-SEQ @ release-before T=
-   SEQ-RELEASE
-   ALLOC-SEQ @ alloc-before 1 + T=
-   RELEASE-SEQ @ release-before 1 + T=
-   [: SEQ-ALLOC-BAD ;] E-MEM-MAP TTHROWSQ
-   ALLOC-SEQ @ alloc-before 1 + T=
-   RELEASE-SEQ @ release-before 1 + T=
-   SEQ-ALL-ONES ALLOC-SEQ !
-   SEQ-ALL-ONES RELEASE-SEQ !
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
-   drop SEQ-BUF !
-   ALLOC-SEQ @ 0 T=
-   RELEASE-SEQ @ SEQ-ALL-ONES T=
-   SEQ-RELEASE
-   ALLOC-SEQ @ 0 T=
-   RELEASE-SEQ @ 0 T=
-   T-REPORT ;
-
-TEST-SEQS
-
-;package
-
 \ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) --------------------
-\ Deterministic seam sequences prove acquisition and release. Address reuse is
-\ allocator policy and cannot prove ownership.
+\ Child processes prove release through OS-enforced mapping accessibility.
 package MEM
 private
 
 -7777 constant E-PRIMARY
-variable WBT-ALLOC-BASE
-variable WBT-RELEASE-BASE
+134 constant WBT-CRASH-EXIT
+PTR-VARIABLE WBT-SAVED
+PTR-VARIABLE WBT-OUTER
+
+: WBT-EXIT0 ( -- )
+   s" " 0 die ;
+
+: WBT-PROBE-RELEASED ( -- )
+   2 close
+   WBT-SAVED @ c@ drop
+   WBT-EXIT0 ;
+
+: WBT-FORK ( [ -- ] -- outcome )
+   {: body :} \ typed-local-lint: allow-bare-local - body keeps the quotation effect.
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if
+      body execute
+      WBT-EXIT0
+   then
+   pid PROC-WAIT-OUTCOME ;
+
+: WBT-RELEASED ( -- )
+   [: WBT-PROBE-RELEASED ;] WBT-FORK
+   MATCH outcome
+      exited OF WBT-CRASH-EXIT <> if E-PRIMARY throw then ENDOF
+      signaled OF drop E-PRIMARY throw ENDOF
+      timeout OF E-PRIMARY throw ENDOF
+   ;MATCH ;
 
 : WBT-RESULT-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- n )
    drop {: buf:ptr :}
+   buf WBT-SAVED !
    MEMT-MARK-A buf c!
    buf c@ ;
 
 : WBT-THROW-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- )
-   2drop
+   drop {: buf:ptr :}
+   buf WBT-SAVED !
    E-PRIMARY throw ;
 
-: WBT-INNER-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- )
+\ Force RELEASE-BYTES refusal without a production hook; the child owns the leak.
+: WBT-ZERO-REL ( ptr u8 CAD-NUM:alloc-byte-len -- )
    2drop
-   ALLOC-SEQ @ WBT-ALLOC-BASE @ 2 + T=
-   RELEASE-SEQ @ WBT-RELEASE-BASE @ T= ;
+   0 WB-CUR-LEN ! ;
 
-: WBT-OUTER-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- )
-   2drop
-   ALLOC-SEQ @ WBT-ALLOC-BASE @ 1+ T=
-   RELEASE-SEQ @ WBT-RELEASE-BASE @ T=
-   MEM-64K BYTES-ALLOC-LEN [: WBT-INNER-BODY ;] WITH-BYTES
-   ALLOC-SEQ @ WBT-ALLOC-BASE @ 2 + T=
-   RELEASE-SEQ @ WBT-RELEASE-BASE @ 1+ T= ;
+: WBT-ZERO-REL-THROW ( ptr u8 CAD-NUM:alloc-byte-len -- )
+   WBT-ZERO-REL
+   E-PRIMARY throw ;
+
+: WBT-INSTALL-OWNER ( ptr u8 CAD-NUM:alloc-byte-len -- )
+   ALLOC-BYTES>N WB-CUR-LEN !
+   WB-CUR-BUF ! ;
+
+: WBT-SAVE-INNER ( ptr u8 CAD-NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   buf WBT-SAVED !
+   MEMT-MARK-Z buf c! ;
+
+: WBT-TOUCH-INNER ( ptr u8 CAD-NUM:alloc-byte-len -- )
+   drop {: buf:ptr :}
+   MEMT-MARK-Z buf c!
+   buf c@ MEMT-MARK-Z <> if E-PRIMARY throw then ;
+
+: WBT-INNER-RELEASE ( ptr u8 CAD-NUM:alloc-byte-len -- )
+   drop {: outer:ptr :}
+   outer WBT-OUTER !
+   MEMT-MARK-A outer c!
+   MEM-64K BYTES-ALLOC-LEN [: WBT-SAVE-INNER ;] WITH-BYTES
+   WBT-OUTER @ c@ MEMT-MARK-A <> if E-PRIMARY throw then
+   WBT-RELEASED ;
+
+: WBT-OUTER-RELEASE ( ptr u8 CAD-NUM:alloc-byte-len -- )
+   drop {: outer:ptr :}
+   outer WBT-SAVED !
+   MEMT-MARK-A outer c!
+   MEM-64K BYTES-ALLOC-LEN [: WBT-TOUCH-INNER ;] WITH-BYTES
+   outer c@ MEMT-MARK-A <> if E-PRIMARY throw then ;
 
 : WBT-RESULT ( -- n )
    MEM-64K BYTES-ALLOC-LEN [: WBT-RESULT-BODY ;] WITH-BYTES ;
@@ -392,23 +394,78 @@ variable WBT-RELEASE-BASE
 : WBT-THROW ( -- )
    MEM-64K BYTES-ALLOC-LEN [: WBT-THROW-BODY ;] WITH-BYTES ;
 
+: WBT-CLEANUP-ONLY ( -- )
+   MEM-64K BYTES-ALLOC-LEN [: WBT-ZERO-REL ;] WITH-BYTES ;
+
+: WBT-PRIMARY-CLEANUP ( -- )
+   MEM-64K BYTES-ALLOC-LEN [: WBT-ZERO-REL-THROW ;] WITH-BYTES ;
+
+: WBT-NORMAL-CHILD ( -- )
+   WBT-RESULT MEMT-MARK-A <> if E-PRIMARY throw then
+   WBT-RELEASED
+   WBT-EXIT0 ;
+
+: WBT-THROW-CHILD ( -- )
+   [: WBT-THROW ;] catch E-PRIMARY <> if E-PRIMARY throw then
+   WBT-RELEASED
+   WBT-EXIT0 ;
+
+: WBT-INNER-CHILD ( -- )
+   MEM-64K BYTES-ALLOC-LEN [: WBT-INNER-RELEASE ;] WITH-BYTES
+   WBT-EXIT0 ;
+
+: WBT-OUTER-CHILD ( -- )
+   MEM-64K BYTES-ALLOC-LEN [: WBT-OUTER-RELEASE ;] WITH-BYTES
+   WBT-RELEASED
+   WBT-EXIT0 ;
+
+: WBT-CLEANUP-CHILD ( -- )
+   [: WBT-CLEANUP-ONLY ;] catch
+   E-MEM-UNMAP <> if E-PRIMARY throw then
+   WBT-EXIT0 ;
+
+: WBT-PRIMARY-CLEANUP-CHILD ( -- )
+   [: WBT-PRIMARY-CLEANUP ;] catch
+   E-PRIMARY <> if E-PRIMARY throw then
+   WBT-EXIT0 ;
+
+: WBT-DUP-REL-CHILD ( -- )
+   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES WBT-INSTALL-OWNER
+   WB-REL-CUR
+   [: WB-REL-CUR ;] catch
+   E-MEM-UNMAP <> if E-PRIMARY throw then
+   WBT-EXIT0 ;
+
+: WBT-RETRY-REL-CHILD ( -- )
+   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
+   drop {: buf:ptr :}
+   buf WBT-SAVED !  buf WB-CUR-BUF !  0 WB-CUR-LEN !
+   [: WB-REL-CUR ;] catch
+   E-MEM-UNMAP <> if E-PRIMARY throw then
+   WB-CUR-BUF @ WBT-SAVED @ <> if E-PRIMARY throw then
+   WB-CUR-LEN @ 0 <> if E-PRIMARY throw then
+   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES>N WB-CUR-LEN !
+   WB-REL-CUR
+   WBT-EXIT0 ;
+
+: WBT-RETAINED-CHILD ( -- )
+   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
+   drop {: buf:ptr :}
+   buf WBT-SAVED !
+   MEMT-MARK-A buf c!
+   WBT-PROBE-RELEASED ;
+
 : TEST-WITH-BYTES ( -- )
    T-RESET
-   ALLOC-SEQ @ {: alloc-before:n :}
-   RELEASE-SEQ @ {: release-before:n :}
-   WBT-RESULT MEMT-MARK-A T=
-   ALLOC-SEQ @ alloc-before 1+ T=
-   RELEASE-SEQ @ release-before 1+ T=
-   ALLOC-SEQ @ WBT-ALLOC-BASE !
-   RELEASE-SEQ @ WBT-RELEASE-BASE !
-   [: WBT-THROW ;] E-PRIMARY TTHROWSQ
-   ALLOC-SEQ @ WBT-ALLOC-BASE @ 1+ T=
-   RELEASE-SEQ @ WBT-RELEASE-BASE @ 1+ T=
-   ALLOC-SEQ @ WBT-ALLOC-BASE !
-   RELEASE-SEQ @ WBT-RELEASE-BASE !
-   MEM-64K BYTES-ALLOC-LEN [: WBT-OUTER-BODY ;] WITH-BYTES
-   ALLOC-SEQ @ WBT-ALLOC-BASE @ 2 + T=
-   RELEASE-SEQ @ WBT-RELEASE-BASE @ 2 + T=
+   [: WBT-NORMAL-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-THROW-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-INNER-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-OUTER-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-CLEANUP-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-PRIMARY-CLEANUP-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-DUP-REL-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-RETRY-REL-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-RETAINED-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
    T-REPORT ;
 
 TEST-WITH-BYTES

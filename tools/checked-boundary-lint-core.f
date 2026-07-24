@@ -47,8 +47,6 @@ variable UB-CARRY-OFF
 variable UB-JSON
 variable UB-STRICT-BOUNDARY
 variable UB-OUT-FD
-\ Observational only: each accepted FILE call advances modulo cell width.
-variable UB-FILE-SEQ
 
 : UB-FILE-A-FIELD ( -- ptr ptr u8 )
    UB-FILE-A 0 ptr-field ;
@@ -559,7 +557,6 @@ public
 : FILE ( ptr u8 n -- )
    {: path:ptr pu:n :}
    UB-REQUIRE-IDLE
-   1 UB-FILE-SEQ +!
    path UB-FILE-A! pu UB-FILE-U !
    [: UB-FILE-ACT ;] catch {: rc:n :}
    UB-CLEAR-SPANS

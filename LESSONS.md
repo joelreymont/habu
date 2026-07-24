@@ -2235,9 +2235,10 @@ fits.
   already-quoted `created-at` value; the current serializer can quote it again
   while changing status. Restore the original timestamp bytes before
   publication and keep the mutation limited to status, claim, and contract.
-- **Allocator address reuse is not ownership proof unless the actual allocation
-  is observed.** Use deterministic modulo-cell accounting at the owning
-  allocation and release seams, and test the explicit all-bits-one-to-zero wrap.
+- **Prove mapping release with an OS-enforced child-process access fault.**
+  Ambient counters prove only that a call occurred, not that ownership ended.
+- **Kernel idempotence cannot prove exactly-once release.** Consume the owner
+  only after successful `munmap` so a duplicate release fails structurally.
 - **A package API audit must inspect every forbidden namespace.** Count the
   intended package wordlist, query wordlist zero for each retired alias, inject
   an exact forbidden alias to prove rejection, and keep test evidence private

@@ -359,54 +359,6 @@ create LF-BYTE 10 c,
 
 ;package
 
-\ Typed memory owns the deterministic lifecycle proof. No test accessor is
-\ published from MEM.
-package MEM
-private
-
-create CBLT-ROOT-BUF FS-PATH-CAP allot
-create CBLT-BAD-BUF FS-PATH-CAP allot
-create CBLT-OUT 1 allot
-variable CBLT-ROOT-U
-variable CBLT-BAD-U
-
-: CBLT-ROOT ( -- ptr u8 n )
-   CBLT-ROOT-BUF CBLT-ROOT-U @ ;
-
-: CBLT-BAD ( -- ptr u8 n )
-   CBLT-BAD-BUF CBLT-BAD-U @ ;
-
-: CBLT-PREPARE ( -- )
-   CLEANUP-RESET
-   s" habu-cbl-mem" TMPDIR-MKDIR {: a:ptr u:n :}
-   a CBLT-ROOT-BUF u BYTE-COPY
-   u CBLT-ROOT-U !
-   CBLT-ROOT CLEANUP-TREE+
-   CBLT-ROOT s" bad.f" CBLT-BAD-BUF JOIN-PATH CBLT-BAD-U !
-   CBLT-BAD s\" 0 set-check\n: CBLT-BAD ( n -- n ) dup ;\n" WRITE-ALL ;
-
-: CBLT-FILE-THROW-TEST ( -- )
-   T-RESET
-   CBLT-PREPARE
-   CHECKED-BOUNDARY-LINT:RESET
-   LINT-FALSE CHECKED-BOUNDARY-LINT:STRICT!
-   ALLOC-SEQ @ {: alloc-before:n :}
-   RELEASE-SEQ @ {: release-before:n :}
-   CBLT-OUT 1 LINT-OUT-BUFFER!
-   [: CBLT-BAD CHECKED-BOUNDARY-LINT:FILE ;] catch {: rc:n :}
-   LINT-OUT-BUFFER-OFF
-   rc E-STR-CAPACITY T=
-   ALLOC-SEQ @ alloc-before 1+ T=
-   RELEASE-SEQ @ release-before 1+ T=
-   CHECKED-BOUNDARY-LINT:RESET
-   CLEANUP-RUN
-   CBLT-ROOT EXISTS? TFALSE
-   T-REPORT ;
-
-CBLT-FILE-THROW-TEST
-
-;package
-
 \ The lifecycle probes run inside the provider package so they can observe
 \ mapped spans before MEM:WITH-BYTES releases the allocation. They add no
 \ public test bridge or production hook.
@@ -503,10 +455,8 @@ TRUSTED: TP-MAP-THROW-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
 
 : TP-ZERO-TEST ( -- )
    RESET
-   UB-FILE-SEQ @ {: visit-before:n :}
    19 UB-I ! 23 UB-LINE ! 29 UB-COL !
    TP-EMPTY FILE
-   UB-FILE-SEQ @ visit-before 1+ T=
    UB-I @ 0 T=
    UB-LINE @ 1 T=
    UB-COL @ 1 T=
