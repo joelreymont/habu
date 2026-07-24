@@ -462,13 +462,15 @@ variable RX-COUNT-POS
 \ A regex hit is a matched (offset, length) span in the searched text. RX-FIND*
 \ return option<rx:hit>: SOME(off,len) when a match exists, NONE when none does —
 \ the checked replacement for the former (off len bool) value+flag return, so a
-\ caller cannot read the span on the no-match path (switchover wave B).
+\ caller cannot read the span on the no-match path (switchover wave B). The span
+\ is a unified STRUCTURE record: its sealed RX-HIT:MAKE/UNMAKE ctor package builds
+\ and takes apart the (off, len) pair in declaration order.
 package RX
 public
-PRODUCT hit 0
+STRUCTURE hit 0
   FIELD off off
   FIELD len len
-;PRODUCT
+;STRUCTURE
 ;package
 
 : RX-FIND-FROM ( ptr u8 len ptr u8 len off -- option<rx:hit> ) {: text:ptr text-u:len rx:ptr rx-u:len from:off :}   \ SOME first match span at/after `from`, else NONE
