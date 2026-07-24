@@ -24,7 +24,7 @@ TRW-LOAD-DONE
    SETUP
    TR-RESIDENT-ID @ case
       2 of TOOL endof
-      3 of GSI-CHECK-CLI endof
+      3 of CHECK-CLI-GATE:RUN endof
       17 of GSI-LINT-TOOLS endof
       18 of GSI-LINT-MANIFEST endof
       22 of GSI-TOOL-REPAIR endof

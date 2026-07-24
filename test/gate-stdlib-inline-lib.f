@@ -221,11 +221,23 @@ variable GSI-TL-FILE-A
    s" tools/trust-lint-test.f" GSI-INCLUDE
    s" tools/aot-call-report-test.f" GSI-INCLUDE ;
 
-: GSI-CHECK-CLI ( -- )
+package CHECK-CLI-GATE
+
+: REQUIRE-WORD ( ptr u8 n n -- )
+   search-wl 0= if E-TBL-FIELD throw then ;
+
+: REJECT-WORD ( ptr u8 n n -- )
+   search-wl 0<> if E-TBL-FIELD throw then ;
+
+public
+
+: RUN ( -- )
    s" stdlib/check-cli" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-SETUP
    s" tools/check-core.f" GSI-TOOL-SETUP-FILE
    s" tools/check-test.f" GSI-INCLUDE ;
+
+;package
 
 : GSI-TOOL-REPAIR-PACKET ( -- )
    s" stdlib/tool-repair/repair-packet" GSI-GROUP-SEQ GSI-GROUP-HEADER
@@ -608,3 +620,15 @@ public
    s" test/golden-test.f" GSI-INCLUDE
    s" tools/diagnose-hb-test.f" GSI-INCLUDE
    s" lib/object-test.f" GSI-INCLUDE ;
+
+package CHECK-CLI-GATE
+public
+s" RUN" get-current REQUIRE-WORD
+s" REQUIRE-WORD" get-current REJECT-WORD
+s" REJECT-WORD" get-current REJECT-WORD
+private
+s" RUN" get-current REJECT-WORD
+s" GSI-CHECK-CLI" 0 REJECT-WORD
+;package
+
+' CHECK-CLI-GATE:RUN drop
