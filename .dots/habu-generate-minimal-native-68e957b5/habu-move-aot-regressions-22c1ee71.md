@@ -6,4 +6,16 @@ issue-type: task
 created-at: "2026-07-19T20:47:07.009803+02:00"
 ---
 
-src/habu/aot-capture.f:580 onward defines and immediately executes ACAP-WID-SELFTEST and ACAP-PWID-SELFTEST during every production stdin metabuild. These are regression fixtures, not capture prerequisites: each fabricates synthetic rows, calls the serializer/deserializer proof helpers, then resets mutated global buffers before the real ACAP-CAPTURE. Keeping tests inline makes every engine build compile and execute test-only code, couples production capture ordering to cleanup in the fixtures, and leaves the only assertions embedded in the product build path instead of an independently selectable test. Extract both round-trip cases into a focused Habu-native test that loads the exact capture implementation in its owning metabuild context and proves u32 WID preservation, max-WID calculation, exact buffer reset, and failure on truncating/corrupt codecs. The production aot-capture path must contain only capture prerequisites and must yield byte-identical final engine output after removal; the focused regression and AOT/native gates must retain coverage. Files: src/habu/aot-capture.f, focused AOT capture test, test suite inventory. Depends: none. Ownership: the two immediately executed WID regression bodies only; no serialization redesign, capture behavior, or dead ACAP-. cleanup.
+Why: src/habu/aot-capture.f executes two regression fixtures during every
+production stdin metabuild. They are tests, not capture prerequisites.
+
+Outcome: this parent is an aggregate. Its children retire the redundant
+protected-WID fixture, separate the stdin builder definitions from the terminal
+entry without parsing source text, and move the record-WID round-trip into a
+selectable proof inside the real metabuild host. The children own all code.
+
+Acceptance: production aot-capture.f contains only capture prerequisites; the
+real protected-WID warm suite and record compact/expand proof retain stronger
+positive and corrupt-codec coverage; normal emitted engine bytes remain
+unchanged; no copied source parser, codec, public test helper, or compatibility
+entry remains.
