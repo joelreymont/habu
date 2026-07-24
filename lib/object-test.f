@@ -78,6 +78,11 @@ create DATA-BYTES 1 c, 2 c, 16 c,
    EXPECTED$ OBJ:LOAD
    OBJ:BYTES$ EXPECTED$ T$= ;
 
+: LINE-ROUNDTRIP ( -- )
+   s" object-line" OBJ-LINE:MAKE
+   OBJ-LINE:UNMAKE
+   s" object-line" T$= ;
+
 : HEADERS ( -- )
    BUILD
    OBJ:SOURCE$ HASH$ T$=
@@ -204,6 +209,17 @@ compiler	hb-arm64-v1
 def	WORD	nope	n -- n
 " OBJ:LOAD ;
 
+: EMPTY-INPUT ( -- )
+   s" " OBJ:LOAD ;
+
+: ONE-LINE-INPUT ( -- )
+   s" HBOBJ	1
+" OBJ:LOAD ;
+
+: BAD-MAGIC ( -- )
+   s" BADOBJ	1
+" OBJ:LOAD ;
+
 : MISSING-HEADER ( -- )
    OBJ:RESET
    HASH$ OBJ:SOURCE!
@@ -218,6 +234,9 @@ def	WORD	nope	n -- n
    [: BAD-RELOC ;] E-OBJ-FIELD TTHROWSQ
    [: BAD-SECTION ;] E-OBJ-FIELD TTHROWSQ
    [: BAD-DEF ;] E-OBJ-FIELD TTHROWSQ
+   [: EMPTY-INPUT ;] E-OBJ-SCHEMA TTHROWSQ
+   [: ONE-LINE-INPUT ;] E-OBJ-SCHEMA TTHROWSQ
+   [: BAD-MAGIC ;] E-OBJ-SCHEMA TTHROWSQ
    [: BUILD 99 OBJ:ROW$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    [: BUILD 0 -1 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
    [: BUILD 0 99 OBJ:ROW-FIELD$ 2drop ;] E-OBJ-FIELD TTHROWSQ
@@ -229,6 +248,7 @@ public
    T-RESET
    SERIALIZES
    LOAD-ROUNDTRIP
+   LINE-ROUNDTRIP
    HEADERS
    KEY-STABLE
    KEY-CHANGES

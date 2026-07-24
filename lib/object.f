@@ -291,13 +291,13 @@ variable LOAD-OFF
 \ advances the shared LOAD-OFF cursor and returns option<obj:line>: SOME(slice)
 \ while a line remains, NONE once the cursor is past the buffer end - the checked
 \ replacement for the former (ptr u8 n bool) value+flag return (switchover wave B).
-\ Public so the generated OBJ-LINE:MAKE/UNMAKE exist (products emit constructors
-\ only in a public context); NEXT-LINE itself stays package-private.
+\ Public so the generated OBJ-LINE:MAKE/UNMAKE exist; NEXT-LINE itself stays
+\ package-private.
 public
-PRODUCT line 0
+STRUCTURE line 0
   FIELD ptr ptr u8
   FIELD len n
-;PRODUCT
+;STRUCTURE
 private
 
 : NEXT-LINE ( ptr u8 n -- option<obj:line> ) {: a:ptr u:n :}   \ SOME next LF line slice (cursor advanced), else NONE
