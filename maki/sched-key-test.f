@@ -117,10 +117,11 @@ KT-DUP-LABEL TARGET:SM87 TARGET:EQUAL? TFALSE                     \ facts differ
 0 FP-REGION-ID KT-DUP-LABEL SK-KEY$ KT-BUF$ STR= TFALSE           \ -> durable keys differ
 0 FP-REGION-ID SK-ALIGN$ s" al16" T$=
 
-\ ---- typed schedule key (skey product): construction, identity, field roles --
+\ ---- typed schedule key (skey structure): region identity and field roles ----
 \ The region-0 build above (2x100, f32, row, a16) is still live. SK-KEY reads the
-\ same eight facts SK-KEY+ renders; these asserts live inside : definitions
-\ because a top-level word cannot push a layout value onto the stack.
+\ nine region-derived fields that SK-KEY+ renders before target, engine, and ptxas;
+\ these asserts live inside : definitions because a top-level word cannot push a
+\ layout value onto the stack.
 : SK-SELF-EQ ( n -- bool ) {: r:n :}
    r FP-REGION-ID SK-KEY  r FP-REGION-ID SK-KEY  MAKI-SKEY:EQ ;  \ determinism
 0 SK-SELF-EQ TTRUE
@@ -136,6 +137,18 @@ KT-DUP-LABEL TARGET:SM87 TARGET:EQUAL? TFALSE                     \ facts differ
 \ MAKI-SKEY:EQ discriminates every semantic field: one differing field -> unequal.
 : SK-BASE ( -- skey )
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+: SK-RSIG-DIFF ( -- skey )    \ only the region signature differs
+   8 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+: SK-RM-DIFF ( -- skey )      \ only the rows magnitude differs
+   7 MAKI-DIMCLASS:EXACT 3 MAKI-DIMCLASS:POW2-TAIL 128
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+: SK-CK-DIFF ( -- skey )      \ only the columns shape class differs
+   7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2 128
+   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+: SK-CM-DIFF ( -- skey )      \ only the columns magnitude differs
+   7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 256
    MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-DT-DIFF ( -- skey )      \ only dtype differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
@@ -153,17 +166,25 @@ KT-DUP-LABEL TARGET:SM87 TARGET:EQUAL? TFALSE                     \ facts differ
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
    MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:RELATIVE MAKI-SKEY:MAKE ;
 \ the EQ comparisons ride inside : definitions (interpret mode cannot hold skey):
-: SK-EQ-SELF   ( -- bool )  SK-BASE SK-BASE     MAKI-SKEY:EQ ;
-: SK-EQ-DT     ( -- bool )  SK-BASE SK-DT-DIFF  MAKI-SKEY:EQ ;
-: SK-EQ-LAY    ( -- bool )  SK-BASE SK-LAY-DIFF MAKI-SKEY:EQ ;
-: SK-EQ-AL     ( -- bool )  SK-BASE SK-AL-DIFF  MAKI-SKEY:EQ ;
-: SK-EQ-RK     ( -- bool )  SK-BASE SK-RK-DIFF  MAKI-SKEY:EQ ;
-: SK-EQ-POL    ( -- bool )  SK-BASE SK-POL-DIFF MAKI-SKEY:EQ ;
+: SK-EQ-SELF ( -- bool ) SK-BASE SK-BASE      MAKI-SKEY:EQ ;
+: SK-EQ-RSIG ( -- bool ) SK-BASE SK-RSIG-DIFF MAKI-SKEY:EQ ;
+: SK-EQ-RK   ( -- bool ) SK-BASE SK-RK-DIFF   MAKI-SKEY:EQ ;
+: SK-EQ-RM   ( -- bool ) SK-BASE SK-RM-DIFF   MAKI-SKEY:EQ ;
+: SK-EQ-CK   ( -- bool ) SK-BASE SK-CK-DIFF   MAKI-SKEY:EQ ;
+: SK-EQ-CM   ( -- bool ) SK-BASE SK-CM-DIFF   MAKI-SKEY:EQ ;
+: SK-EQ-DT   ( -- bool ) SK-BASE SK-DT-DIFF   MAKI-SKEY:EQ ;
+: SK-EQ-LAY  ( -- bool ) SK-BASE SK-LAY-DIFF  MAKI-SKEY:EQ ;
+: SK-EQ-AL   ( -- bool ) SK-BASE SK-AL-DIFF   MAKI-SKEY:EQ ;
+: SK-EQ-POL  ( -- bool ) SK-BASE SK-POL-DIFF  MAKI-SKEY:EQ ;
 SK-EQ-SELF TTRUE
+SK-EQ-RSIG TFALSE
+SK-EQ-RK   TFALSE
+SK-EQ-RM   TFALSE
+SK-EQ-CK   TFALSE
+SK-EQ-CM   TFALSE
 SK-EQ-DT   TFALSE
 SK-EQ-LAY  TFALSE
 SK-EQ-AL   TFALSE
-SK-EQ-RK   TFALSE
 SK-EQ-POL  TFALSE   \ same config, different requested policy -> different key
 
 \ ---- per-op requested policy: honest, region-derived, no independent knob -------

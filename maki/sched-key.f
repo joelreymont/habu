@@ -22,11 +22,12 @@
 \ class is a typed `dimclass` (exact/pow2/pow2-tail/unbound) + a magnitude, encoded
 \ once by DIM>CLASS and shared by both the render and the typed key below.
 \
-\ Typed key (dot habu-cad-adt-swap): SK-KEY builds the same eight facts as a typed
-\ `skey` PRODUCT (dimclass/dtype/layout/align enum fields), so a semantic-field role
-\ swap at construction is a CHECKER reject, and MAKI-SKEY:EQ is the typed identity.
-\ SK-KEY$ stays the ONE durable render; the in-memory replay table keys on that
-\ render (STR=), a documented durable-text boundary (see the replay-table note) - a
+\ Typed key (dot habu-cad-adt-swap): SK-KEY builds the nine region-derived fields as
+\ a typed `skey` STRUCTURE (dimclass/dtype/layout/align enum fields), so a
+\ semantic-field role swap at construction is a CHECKER reject, and MAKI-SKEY:EQ
+\ compares that region-derived identity. SK-KEY$ stays the ONE durable render of
+\ (skey, target, engine, ptxas); the in-memory replay table keys on that render
+\ (STR=), a documented durable-text boundary (see the replay-table note) - a
 \ typed-column table awaits the W>1 typed store (habu-checker-capability-typed S2).
 \
 \ Alignment class: the most conservative model-input alignment the region reads
@@ -65,7 +66,7 @@ require maki/target/target.f
 package MAKI
 public
 
-\ ---- typed schedule key: the shape-class family + the SKEY product record ----
+\ ---- typed schedule key: the shape-class family + the SKEY structure record --
 \ `dimclass` classifies one tensor extent exactly the way the rendered shape
 \ class does (dot habu-cad-adt-swap): an exact extent (<=64), a power-of-two
 \ bucket, a pow2 bucket with a non-pow2 tail, or an unbound (0) extent. Encoded
@@ -92,17 +93,18 @@ ENUM dimclass DERIVE eq
 \ id (maki/target/target.f), rendered into the durable key as its semantic FACTS
 \ (SK-TARGET+; injective over TARGET:EQUAL?, so two same-label descriptors never
 \ collide); engine / ptxas are per-process invariants (one engine build, one
-\ ptxas per running process). None of the three are product fields: they live in
-\ the DURABLE render (SK-KEY$) ONLY, and the field-eq == text-eq contract below
-\ is pinned per target. The persistent schedules.rows store stays keyed by that render
+\ ptxas per running process). None of the three are structure fields: they extend
+\ `skey` into the durable identity (skey, target, engine, ptxas). With target and
+\ process identity fixed, `skey` field equality corresponds to equality of the
+\ durable text. The persistent schedules.rows store stays keyed by that render
 \ (see the SK-GET/SK-PUT boundary note below). Fields (slot order, deepest first):
 \ rsig = FNV-1a region signature (n); rk/rm = representative rows class+magnitude;
 \ ck/cm = representative cols class+magnitude; dt/lay = representative dtype/layout;
 \ al = region alignment class (slots deepest-first); pol = requested numeric policy
 \ (NPOL:dom, maki/numpolicy.f) - the plan's declared proof domain, so changing the
 \ request is a different key (no FP32/TF32 baseline pairing). (Inline `\` notes
-\ inside a PRODUCT block reject.)
-PRODUCT skey 0 DERIVE eq
+\ inside a STRUCTURE block reject.)
+STRUCTURE skey 0 DERIVE eq
   FIELD rsig n
   FIELD rk dimclass
   FIELD rm n
@@ -112,7 +114,7 @@ PRODUCT skey 0 DERIVE eq
   FIELD lay layout
   FIELD al align
   FIELD pol NPOL:dom
-;PRODUCT
+;STRUCTURE
 
 private
 
@@ -156,7 +158,7 @@ variable SK-FOLD               \ scratch for little-endian byte decomposition
 
 \ ---- shape class (exact <= 64, else pow2 bucket + tail flag, ? for unbound) --
 \ DIM>CLASS is the canonical encoder (extent -> typed class + magnitude); it is
-\ the SINGLE source that both SK-KEY (the typed product) and DIM-CLASS+ (the
+\ the SINGLE source that both SK-KEY (the typed structure) and DIM-CLASS+ (the
 \ durable render) classify through, so field-eq and text-eq can never diverge.
 \ DIM>CLASS is public: it is the shape classifier the typed key and the tests
 \ share (the field-eq == text-eq contract is pinned over it).
@@ -303,16 +305,17 @@ public
    r SK-REGION-CK drop  target TARGET:VALIDATE drop
    SB-RESET r target SK-KEY+ SB$ ;
 
-\ ---- the typed section-7.4 key (the durable render's semantic twin) ----------
-\ SK-KEY builds the same nine facts SK-KEY+ renders, but as a typed `skey`
-\ record: the dims through the shared DIM>CLASS encoder, dtype/layout straight
-\ off the typed MIR accessors, alignment lifted from REGION-ALIGN's ordinal
-\ min-fold through >ALIGN, and the requested numeric policy from REGION-POL.
+\ ---- the typed region-derived part of the section-7.4 key -------------------
+\ SK-KEY builds the nine region-derived facts SK-KEY+ renders, but as a typed
+\ `skey` record: the dims through the shared DIM>CLASS encoder, dtype/layout
+\ straight off the typed MIR accessors, alignment lifted from REGION-ALIGN's
+\ ordinal min-fold through >ALIGN, and the requested numeric policy from REGION-POL.
 \ Assembly is positional and typed, so a dtype/layout
 \ (or any enum-field) role swap is a checker reject. The families ride the stack
 \ into MAKE (they cannot bind into locals); only the region ids are locals.
-\ MAKI-SKEY:EQ over two SK-KEY values is the typed identity the durable string
-\ key serializes (field-eq == SK-KEY$ text-eq, pinned in sched-key-test.f).
+\ MAKI-SKEY:EQ compares the region-derived part of the durable identity. With
+\ target and process identity fixed, its result corresponds to SK-KEY$ text
+\ equality (pinned in sched-key-test.f).
 : SK-KEY ( CAD-KIND:region -- skey ) {: r:CAD-KIND:region :}
    r SK-REGION-CK drop
    r REGION-REP {: rep:CAD-KIND:node-id :}
@@ -336,11 +339,13 @@ private
 \ feeding SCHED-LOAD's callback ONLY the stored key TEXT (store-replay-test.f even
 \ replays synthetic "sk<n>" keys that were never region keys). There are no region
 \ facts at load time, so a text key cannot be re-keyed into a `skey`, and writing a
-\ text->product parser is explicitly out of scope. The typed key still closes the
+\ text-to-structure parser is explicitly out of scope. The typed key still closes the
 \ semantic-role hole where it matters - at CONSTRUCTION (SK-KEY assembles typed
-\ fields; a role swap is a checker reject) - and SK-KEY$ is an injective encoding
-\ of the typed key (field-eq == text-eq, pinned in sched-key-test.f), so STR= over
-\ the render decides exactly what MAKI-SKEY:EQ would. Migrating this table to
+\ fields; a role swap is a checker reject) - and SK-KEY$ embeds it alongside target,
+\ engine, and ptxas. With target and process identity fixed, STR= over the render
+\ corresponds to MAKI-SKEY:EQ over its region-derived fields; across those external
+\ identities the durable text intentionally distinguishes values `skey` cannot
+\ observe. Migrating this table to
 \ parallel typed columns keyed by MAKI-SKEY:EQ waits on the W>1 typed-column store
 \ (dot habu-checker-capability-typed-a480c423 S2); until then the table stays
 \ text-keyed as the durable store's in-memory mirror.
