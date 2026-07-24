@@ -11,6 +11,9 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, and tools/lint/source-lex.f.
 
+package RESERVED-NAME-LINT
+private
+
 $20 constant RNL-NUM-CAP
 $0A constant RNL-LF
 $20 constant RNL-SP
@@ -55,11 +58,15 @@ variable RNL-NUM-I
 : RNL-FILE-A! ( ptr u8 -- )
    RNL-FILE-A-FIELD ! ;
 
-: RNL-JSON! ( bool -- )
+public
+
+: JSON! ( bool -- )
    RNL-JSON ! ;
 
-: RNL-OUT-FD! ( fd -- )
+: OUT-FD! ( fd -- )
    RNL-OUT-FD ! ;
+
+private
 
 : RNL-WRITE ( n ptr u8 n -- ) {: fd a:ptr u :}
    fd a u LINT-OUT-WRITE ;
@@ -367,20 +374,24 @@ variable RNL-NUM-I
    path pathu FILE-SIZE RNL-ALLOC-SOURCE
    path pathu RNL-SRC-A@ RNL-SRC-CAP @ READ-ALL RNL-SRC-U ! ;
 
-: RESERVED-NAME-LINT-RESET ( -- )
+public
+
+: RESET ( -- )
    0 RNL-BAD !
    0 RNL-JSON !
-   1 >FD RNL-OUT-FD! ;
+   1 >FD OUT-FD! ;
 
-: RESERVED-NAME-LINT-FILE-AS ( ptr u8 n ptr u8 n -- )
+: FILE-AS ( ptr u8 n ptr u8 n -- )
    {: path:ptr pathu label:ptr labelu :}
    label RNL-FILE-A! labelu RNL-FILE-U !
    path pathu RNL-LOAD-SOURCE
    RNL-SRC-A@ RNL-SRC-U @ LEX-SOURCE
    RNL-SCAN ;
 
-: RESERVED-NAME-LINT-FILE ( ptr u8 n -- )
-   2dup RESERVED-NAME-LINT-FILE-AS ;
+: FILE ( ptr u8 n -- )
+   2dup FILE-AS ;
 
-: RESERVED-NAME-LINT-FINISH ( -- )
+: FINISH ( -- )
    RNL-BAD @ 0 > if 1 throw then ;
+
+;package

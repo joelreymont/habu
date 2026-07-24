@@ -9,22 +9,22 @@ private
 
 : ARGV-FILE ( n -- ) {: idx:n :}
    ARGV:LABEL? if
-      idx ARGV:POS$ ARGV:LABEL$ RESERVED-NAME-LINT-FILE-AS
+      idx ARGV:POS$ ARGV:LABEL$ RESERVED-NAME-LINT:FILE-AS
    else
-      idx ARGV:POS$ RESERVED-NAME-LINT-FILE
+      idx ARGV:POS$ RESERVED-NAME-LINT:FILE
    then ;
 
 : RUN ( -- )
    s" tools/reserved-name-lint.f [--json] [--label name] file ..." ARGV:USAGE!
    ARGV:PARSE
    1 -1 ARGV:EXPECT-POS
-   RESERVED-NAME-LINT-RESET
-   ARGV:JSON? RNL-JSON!
+   RESERVED-NAME-LINT:RESET
+   ARGV:JSON? RESERVED-NAME-LINT:JSON!
    0 begin dup ARGV:POS# < while
       dup ARGV-FILE
       1+
    repeat drop
-   RESERVED-NAME-LINT-FINISH ;
+   RESERVED-NAME-LINT:FINISH ;
 
 RUN
 
