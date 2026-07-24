@@ -104,6 +104,16 @@ create LONG-BUF LONG-CAP allot
 : OPEN-IN ( -- )
    IN$ JSONF:OPEN ;
 
+: LINE-RT ( ptr u8 n -- ptr u8 n )
+   JSONF-LINE:MAKE JSONF-LINE:UNMAKE ;
+
+: ROW-RT ( n n n -- n n n )
+   JSONF-ROW:MAKE JSONF-ROW:UNMAKE ;
+
+: TEST-GENERATED ( -- )
+   s" line-layout" LINE-RT s" line-layout" T$=
+   11 22 33 ROW-RT 33 T= 22 T= 11 T= ;
+
 \ EXPECT-ROW: the next row MUST be present; leaves ( node kind code ). A NONE here
 \ is a test failure and dummy cells keep the two MATCH arms stack-balanced.
 : EXPECT-ROW ( -- n n n )
@@ -169,6 +179,7 @@ public
 : MAIN ( -- )
    T-RESET
    PREPARE
+   TEST-GENERATED
    TEST-MIXED
    TEST-LONG
    CLEANUP-RUN

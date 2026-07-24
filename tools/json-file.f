@@ -52,23 +52,23 @@ public
 \ A read line is the next LF-delimited (or trailing-EOF) slice of the file. The
 \ line cursor returns option<JSONF:line>: SOME(slice) while a line remains, NONE
 \ at end of stream. A pending partial line at EOF (no trailing LF) still yields
-\ SOME. Public so the generated JSONF-LINE:MAKE/UNMAKE exist (products emit
-\ constructors only in a public context); the cursor words stay package-private.
-PRODUCT line 0
+\ SOME. Public so the unified declaration generates JSONF-LINE:MAKE/UNMAKE;
+\ the cursor words stay package-private.
+STRUCTURE line 0
   FIELD ptr ptr u8
   FIELD len n
-;PRODUCT
+;STRUCTURE
 
 \ A parsed row mirrors JSONL-NEXT-ROW's three cells: node = the JSON parse root
 \ (-1 for non-JSON rows), kind = the JSONL-ROW-* code (JSON / BLANK / ERROR),
 \ code = the caught throw code for ERROR rows (0 otherwise). The row reader
 \ returns option<JSONF:row>: SOME(row) for data AND blank rows (kind
 \ distinguishes), NONE only at end of stream (the former JSONL-ROW-EOF sentinel).
-PRODUCT row 0
+STRUCTURE row 0
   FIELD node n
   FIELD kind n
   FIELD code n
-;PRODUCT
+;STRUCTURE
 
 private
 : RESET ( -- )
