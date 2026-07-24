@@ -1927,6 +1927,10 @@ fits.
   call; package-global registries still clobber interleaved models.
 - **GPT-2 byte vocabulary makes the classification domain all Unicode scalars.**
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
+- **Resolve wave labels from their owners before expanding them.** When a label
+  is ambiguous, derive it from the owned source and dot names: here, AOT closure
+  means ahead-of-time linker closure, while declaration transactions are a
+  separate ENUM dependency.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,
   publish once, and roll all participants back in reverse order on failure.
 - **Capacity regressions must assert the reversible preflight owner, not the
