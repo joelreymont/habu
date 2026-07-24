@@ -19,6 +19,7 @@
 \ (PRODUCER:REGISTER, CONFIG:REGISTER, REV:COMMIT, ARTIFACT:REGISTER) - never a raw cast.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/db/diagnostic.f
 require maki/db/diagnostic-render.f
 require maki/producer.f
@@ -118,6 +119,11 @@ variable DG-D-SLOT                 \ the last round-tripped diagnostic slot
 : F-HAS-PROGRESS ( -- bool )  D HAS-PROGRESS? ;
 : F-PROGRESS ( -- n )         D PROGRESS@ ;
 
+\ ---- generated handle contract -----------------------------------------------
+: DG-GENERATED-ROUNDTRIP ( n -- n )
+   DIAG-DIAGNOSTIC:MAKE
+   DIAG-DIAGNOSTIC:UNMAKE ;
+
 \ ---- a rich, everything-set diagnostic ----------------------------------------
 : RICH ( -- build-result )
    NEW
@@ -143,6 +149,11 @@ variable DG-D-SLOT                 \ the last round-tripped diagnostic slot
 : RICH-STORE ( -- )        RICH-DIAG RT-STORE ;
 
 T-RESET
+
+\ ---- 0. generated handle constructor surface ----------------------------------
+s" DG-CTOR-OK ( n -- diagnostic ) DIAG-DIAGNOSTIC:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" DG-CTOR-WRONG ( bool -- diagnostic ) DIAG-DIAGNOSTIC:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+137 DG-GENERATED-ROUNDTRIP 137 T=
 
 \ ---- 1. rich round-trip: byte-identical + field-for-field ----------------------
 RICH-BYTES TTRUE

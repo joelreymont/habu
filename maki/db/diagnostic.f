@@ -9,7 +9,7 @@
 \ concern per file: the value + wire here, the presentation there). The renderer
 \ file reopens `package DIAG` so it reaches these accessors by bare name.
 \
-\ SHAPE: a diagnostic is an opaque `diagnostic` handle (a PRODUCT over a pooled
+\ SHAPE: a diagnostic is an opaque `diagnostic` STRUCTURE over a pooled
 \ slot index, the maki/db/artifact.f weight-artifact precedent). The nine failure
 \ CLASSES are a real closed `class` ENUM (variant-closed, exhaustive MATCH, no
 \ raw-n) - the plan's "typed variants for invariant violation, unsupported
@@ -97,9 +97,9 @@ ENUM repair DERIVE eq
 ;ENUM
 
 \ ---- the diagnostic value: an opaque handle over a pooled slot -----------------
-PRODUCT diagnostic 0
+STRUCTURE diagnostic 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ ---- fallible construction / decode outcomes (custom-sum results) --------------
 SUMTYPE build-result 0
