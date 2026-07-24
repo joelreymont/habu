@@ -57,7 +57,7 @@ public
 \   threshold  the promotion acceptance threshold
 \   expiry     the promotion expiry (a promotion past it is stale)
 \   rollback   the rollback artifact identity
-PRODUCT spec 0
+STRUCTURE spec 0
    FIELD model      CAD-KIND:artifact-id
    FIELD weights    CAD-KIND:artifact-id
    FIELD target     CAD-KIND:target-id
@@ -68,7 +68,7 @@ PRODUCT spec 0
    FIELD threshold  n
    FIELD expiry     n
    FIELD rollback   CAD-KIND:artifact-id
-;PRODUCT
+;STRUCTURE
 
 private
 

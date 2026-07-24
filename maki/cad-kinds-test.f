@@ -175,18 +175,35 @@ TYPEFAMILY artifact 1
 TYPEFAMILY weight-kind 0
 TYPEFAMILY kernel-kind 0
 \ content-digest: the 256-bit digest as four 64-bit words (deliberately not one cell).
-PRODUCT content-digest 0
+STRUCTURE content-digest 0
    FIELD w0 n
    FIELD w1 n
    FIELD w2 n
    FIELD w3 n
-;PRODUCT
+;STRUCTURE
+\ word-quad: the same four-word SHAPE under a different name. It exists only so the
+\ negatives below can prove content-digest identity is NOMINAL, not structural.
+STRUCTURE word-quad 0
+   FIELD w0 n
+   FIELD w1 n
+   FIELD w2 n
+   FIELD w3 n
+;STRUCTURE
 
 s" CK-ART-POS ( artifact<weight-kind> -- artifact<weight-kind> )" YES
 s" CK-ART-XK ( artifact<weight-kind> -- artifact<kernel-kind> )" NO
 s" CK-DIG-POS ( content-digest -- content-digest )" YES
 s" CK-DIG-X1 ( CAD-KIND:artifact-id -- content-digest )" NO
 s" CK-DIG-X2 ( content-digest -- CAD-KIND:artifact-id )" NO
+\ The four-word digest never collapses to (or expands from) a bare scalar, and it
+\ does not unify with an unrelated four-word carrier: width alone is not identity.
+s" CK-DIG-X3 ( content-digest -- n )" NO
+s" CK-DIG-X4 ( n -- content-digest )" NO
+s" CK-DIG-X5 ( content-digest -- n n n n )" NO
+s" CK-DIG-X6 ( n n n n -- content-digest )" NO
+s" CK-WQ-POS ( word-quad -- word-quad )" YES
+s" CK-DIG-X7 ( content-digest -- word-quad )" NO
+s" CK-DIG-X8 ( word-quad -- content-digest )" NO
 
 \ Failure packet exposes both qualified roles to a repair agent.
 s" CK-BAD-EVENT ( CAD-KIND:audit-event-id -- CAD-KIND:artifact-id )" DIAG<
