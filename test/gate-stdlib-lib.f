@@ -7,6 +7,8 @@
 require lib/adt/option.f                 \ option<n> STR>NUMBER? consumer (switchover wave A)
 require lib/test.f
 
+package STDLIB-GATE
+
 120000 constant SUITE-TIMEOUT-MS
 64 constant SUITE-USAGE-RC
 0 constant SUITE-ALL-ID
@@ -69,11 +71,15 @@ variable SUITE-TIMINGS
 : SUITE-SKIP-TOOL-TYPED! ( -- )
    -1 SUITE-SKIP-TOOL-TYPED ! ;
 
-: SUITE-SKIP-TOOL-SEMANTIC! ( -- )
+public
+
+: SKIP-SEMANTIC! ( -- )
    SUITE-SKIP-TOOL-LINTS!
    SUITE-SKIP-TOOL-REPAIR!
    SUITE-SKIP-TOOL-DOC!
    SUITE-SKIP-TOOL-TYPED! ;
+
+private
 
 : SUITE-POOL-OPT ( -- )
    SUITE-ARG-VALUE$ SUITE-POS-NUM GT-POOL-SLOTS!
@@ -336,6 +342,10 @@ variable SUITE-TIMINGS
    [: SUITE-HB-RUN ;] TEST:RUNNER!
    [: SUITE-HB-RUN-STDIN ;] TEST:STDIN-RUNNER! ;
 
-: GATE-STDLIB-MAIN ( -- )
+public
+
+: MAIN ( -- )
    SUITE-INSTALL-TEST-HOOKS
    TEST:RESET ;
+
+;package

@@ -2364,7 +2364,7 @@ points stay listed.
   and load-scaled nominal 10-second ratchet for the stdlib process-boundary tail.
 - `test/tail-ratchet.f` — exact per-member direct/subject process-count,
   elapsed-time ratchet, and shared load-scaled tail budget policy.
-- `test/gate-stdlib-lib.f` — side-effect-free lint/stdlib gate harness helpers.
+- `test/gate-stdlib-lib.f` — package `STDLIB-GATE` owns the side-effect-free lint/stdlib harness and exports only `MAIN` and `SKIP-SEMANTIC!`.
 - `test/gate-stdlib-cases.f` — executable lint/stdlib suite declarations.
 - `test/gate-engine.f` — thin entry wrapper for engine/public-hb gate slices.
 - `test/gate-engine-lib.f` — side-effect-free engine/public-hb gate definitions.

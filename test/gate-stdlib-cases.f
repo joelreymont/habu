@@ -1,4 +1,4 @@
-GATE-STDLIB-MAIN
+STDLIB-GATE:MAIN
 
 using TEST
 
@@ -679,6 +679,34 @@ SUITE hb-build-fixtures
 SUITE gate-pool
    test/gate-pool-test.f
 ;SUITE
+
+package STDLIB-GATE public get-current ;package
+
+package STDLIB-GATE-TEST
+
+constant TARGET-WID
+
+: REQUIRE-FOUND ( n -- )
+   0= if E-TBL-BOUNDS throw then ;
+
+: REQUIRE-MISSING ( n -- )
+   0= 0= if E-TBL-BOUNDS throw then ;
+
+: RUN ( -- )
+   s" MAIN" TARGET-WID search-wl REQUIRE-FOUND
+   s" SKIP-SEMANTIC!" TARGET-WID search-wl REQUIRE-FOUND
+   s" SUITE-CHECK-CLI?" TARGET-WID search-wl REQUIRE-MISSING
+   s" GATE-STDLIB-MAIN" 0 search-wl REQUIRE-MISSING
+   s" SUITE-SKIP-TOOL-SEMANTIC!" 0 search-wl REQUIRE-MISSING ;
+
+: ACTION ( -- [ -- ] )
+   [: RUN ;] ;
+
+ACTION
+
+;package
+
+execute
 
 RUN
 

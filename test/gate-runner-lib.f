@@ -150,7 +150,7 @@ variable ARG-I
    s" test/gate-stdlib-cases.f" included ;
 
 : TOOL ( -- )
-   SUITE-SKIP-TOOL-SEMANTIC!
+   STDLIB-GATE:SKIP-SEMANTIC!
    STDLIB ;
 
 : DISPATCH-ID ( n -- )
