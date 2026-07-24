@@ -894,6 +894,231 @@ TC @ E-PF-ID T=
 HF-SAME
 HF-CLOSE
 
+\ ---------------------------------------------------------------------------
+\ 19. The coordinator participant drives the exact tokens it opened, and its
+\     cleanup retires every frame a declaration body left open above them.
+\
+\     Before this, the participant read the LIVE TOP frame at every phase. A body
+\     that opened one nested frame and never closed it therefore had that frame
+\     prepared, published and released in place of the participant's own, whose
+\     event and field frames both survived the transaction. The checker
+\     participant finalizes last, found a field-transaction depth that no longer
+\     matched its savepoint, and threw E-PF-TX out of cleanup — which poisons the
+\     single production coordinator for the whole process, so every later
+\     declaration failed with E-TRANSACTION-POISONED.
+\
+\     One deliberate behaviour change comes with this. A hostile or confused body
+\     that retires the participant's OWN frame (it can: DECL-EVENT is reopenable,
+\     the pre-existing posture) used to leave the participant reading whatever
+\     frame was on top and silently no-op. It now fails closed: the saved token
+\     no longer names a live frame, cleanup rejects before touching anything, and
+\     the coordinator poisons. That is the correct trade — once the frame the
+\     participant opened is gone, its watermarks are unrecoverable, so there is
+\     nothing left to restore and pretending otherwise is what corrupted the
+\     coordinator in the first place.
+\
+\     These are measured failures, not hypotheticals. Each mutation below was
+\     applied to the production source, the engine was refreshed, and this suite
+\     was rerun:
+\       - DEV-PART-TOKEN reading DEV-TX-TOP again instead of the saved slot:
+\         4 assertions fail in 19e/19f — the leaked frame is retired but the
+\         participant's own event frame survives the transaction.
+\       - DEV-RETIRE-THROUGH taking the top frame instead of DEV-TX-INDEX:
+\         14 assertions fail, starting with 19b's stale-event reject, which
+\         stops throwing at all, and the suite dies on an uncaught E-PF-TX.
+\       - TYPE-FIELD-OWNER ROLLBACK-THROUGH taking the top frame instead of
+\         TX-INDEX: 19a's field-depth restore and 19b's untouched-marks
+\         assertion both fail, and the suite dies on an uncaught E-PF-TX.
+\ ---------------------------------------------------------------------------
+\ Section 19 owns one family of its own so its field slots never collide with a
+\ row an earlier section committed.
+variable FR9
+s" de" CHECKER-PACKAGE-PUBLIC s" r9" 2 TK-PRODUCT TWX-TFAM-DECL FR9 !
+
+$100000 constant RT-STALE       \ added to a live token to name one never minted
+-7195 constant RT-BODY-CODE     \ a declaration body's own, unrelated failure
+
+variable RT-TOK    variable RT-FLD
+variable RT-N      variable RT-PUB    variable RT-BASE
+variable RT-FORD   variable RT-VORD   variable RT-CUR
+variable RT-EDEPTH variable RT-FDEPTH
+variable RT-RC     variable RT-EV0    variable RT-PF0
+
+: RT-SAVE ( -- )                \ every transaction mark a retire-through restores
+   DEV-N @ RT-N !               DEV-PUB-N @ RT-PUB !
+   DEV-BASE-FLD @ RT-BASE !     DEV-FLD-ORD @ RT-FORD !
+   DEV-VAR-ORD @ RT-VORD !      DEV-CUR-VAR @ RT-CUR !
+   DEV-TX-DEPTH @ RT-EDEPTH !   TYPE-FIELD:TX-DEPTH RT-FDEPTH ! ;
+
+: RT-SAME ( -- )
+   DEV-N @ RT-N @ T=              DEV-PUB-N @ RT-PUB @ T=
+   DEV-BASE-FLD @ RT-BASE @ T=    DEV-FLD-ORD @ RT-FORD @ T=
+   DEV-VAR-ORD @ RT-VORD @ T=     DEV-CUR-VAR @ RT-CUR @ T=
+   DEV-TX-DEPTH @ RT-EDEPTH @ T=  TYPE-FIELD:TX-DEPTH RT-FDEPTH @ T= ;
+
+: RT-MARK ( -- ) WF-REG-SAVE RT-SAVE ;
+: RT-RESTORED ( -- ) RT-SAME WF-REG-SAME ;
+
+: RT-BASE-FRAME ( ptr u8 n -- )    \ one frame that owns a declaration and a field
+   {: na:ptr nu:n :}
+   OPEN RT-TOK !
+   DEV-TX-TOP DEVTX.FLDTOK @ RT-FLD !
+   RT-TOK @ FR9 @ DECL RT-TOK !
+   RT-TOK @ FR9 @ na nu SCHROOT @ 0 1 0 CELL CELL 0 FIELD RT-TOK ! ;
+
+: RT-DESCEND ( ptr u8 n n -- n )   \ one nested frame with a declaration and a field
+   {: na:ptr nu:n slot:n :}
+   OPEN {: tok:n :}
+   tok FR9 @ DECL {: dtok:n :}
+   dtok FR9 @ na nu SCHROOT @ slot 1 slot cells CELL CELL 0 FIELD ;
+
+: RT-RETIRE ( -- ) RT-TOK @ RT-FLD @ DEV-RETIRE-THROUGH ;
+: RT-STALE-EVENT ( -- ) RT-TOK @ RT-STALE + RT-FLD @ DEV-RETIRE-THROUGH ;
+: RT-STALE-FIELD ( -- ) RT-TOK @ RT-FLD @ RT-STALE + DEV-RETIRE-THROUGH ;
+
+\ Both tokens live, but belonging to DIFFERENT frames. Each stack would find its
+\ own token and retire to a different depth, desynchronising the two stacks with
+\ no error, so the pair itself has to be cross-checked.
+variable RT-OUTER-TOK   variable RT-INNER-FLD
+: RT-MIXED-PAIR ( -- ) RT-OUTER-TOK @ RT-INNER-FLD @ DEV-RETIRE-THROUGH ;
+
+\ Reaching the field owner's OWN not-in-stack guard needs the pair to agree while
+\ the field token is dead, which only a narrow private swap of the frame's stored
+\ token can produce — the pair cross-check above now rejects every route that
+\ leaves them disagreeing. Swap it, prove the owner rejects pre-mutation, swap it
+\ back.
+variable RT-SAVED-FLD
+: RT-FLD-CELL ( -- ptr a ) RT-TOK @ DEV-TX-INDEX DEV-TX-AT DEVTX.FLDTOK ;
+: RT-DESYNC-FLD ( -- )
+   RT-FLD-CELL @ RT-SAVED-FLD !
+   RT-SAVED-FLD @ RT-STALE + RT-FLD-CELL ! ;
+: RT-RESYNC-FLD ( -- ) RT-SAVED-FLD @ RT-FLD-CELL ! ;
+: RT-DEAD-FIELD ( -- ) RT-TOK @ RT-FLD-CELL @ DEV-RETIRE-THROUGH ;
+
+\ 19a. Two leaked descendants are retired last-in first-out and the target
+\      frame's own marks are the ones left standing.
+TWX-CAND-START
+RT-MARK
+s" rt-base" RT-BASE-FRAME
+s" rt-d1" 1 RT-DESCEND drop
+s" rt-d2" 2 RT-DESCEND drop
+DEV-TX-DEPTH @ RT-EDEPTH @ 3 + T=
+TYPE-FIELD:TX-DEPTH RT-FDEPTH @ 3 + T=
+RT-RETIRE
+RT-RESTORED
+0 TWX-CAND-DONE drop
+
+\ 19b. Every way of presenting a bad token pair rejects BEFORE the first mutation
+\      and leaves the leaked frames exactly as they were: a dead event token (the
+\      index lookup here), a live pair from two different frames (the pair
+\      cross-check here), and a dead field token (the owner's own cleanup vector).
+TWX-CAND-START
+s" rt-guard" RT-BASE-FRAME
+s" rt-g1" 1 RT-DESCEND drop
+RT-MARK
+' RT-STALE-EVENT catch TC !
+TC @ E-DEV-TX T=
+RT-RESTORED
+' RT-STALE-FIELD catch TC !
+TC @ E-DEV-TX T=
+RT-RESTORED
+\ both tokens live, but from different frames: the pair cross-check rejects it
+\ before either stack moves. Without that check the event side retires to the
+\ outer frame and the field side only to the inner one, and the stacks end at
+\ different depths with rc 0.
+RT-TOK @ RT-OUTER-TOK !
+DEV-TX-TOP DEVTX.FLDTOK @ RT-INNER-FLD !
+' RT-MIXED-PAIR catch TC !
+TC @ E-DEV-TX T=
+RT-RESTORED
+\ pair agreeing but the field token dead: the owner's own guard is what rejects
+RT-DESYNC-FLD
+' RT-DEAD-FIELD catch TC !
+TC @ E-PF-TX T=
+RT-RESYNC-FLD
+RT-RESTORED
+RT-RETIRE
+DEV-TX-DEPTH @ RT-EDEPTH @ 2 - T=
+0 TWX-CAND-DONE drop
+
+\ 19c. Retiring a COMMITTED frame puts every published mark back, including the
+\      committed field high-water the outer commit advanced.
+TWX-CAND-START
+RT-MARK
+s" rt-commit" RT-BASE-FRAME
+RT-TOK @ PREPARE
+RT-TOK @ COMMIT
+DEV-PUB-N @ RT-PUB @ 2 + T=
+TYPE-FIELD:COUNT P-PF @ 1 + T=
+RT-RETIRE
+RT-RESTORED
+0 TWX-CAND-DONE drop
+
+\ 19d. A nested frame that succeeds on its own is still provisional: retiring the
+\      outer frame through the same path puts BOTH frames' marks back.
+TWX-CAND-START
+RT-MARK
+s" rt-outer" RT-BASE-FRAME
+s" rt-inner" 1 RT-DESCEND PUBLISH
+DEV-TX-DEPTH @ RT-EDEPTH @ 1 + T=
+TYPE-FIELD:TX-DEPTH RT-FDEPTH @ 1 + T=
+DEV-PUB-N @ RT-PUB @ T=
+RT-RETIRE
+RT-RESTORED
+0 TWX-CAND-DONE drop
+
+\ 19e. The production coordinator. A body that leaks one nested frame is now
+\      rejected in PREPARE, cleaned up in ROLLBACK, and leaves no poison; a body
+\      that leaks and then fails surfaces only its OWN error.
+\
+\      The PHASE assertion is load-bearing, not decoration. DEV-COMMIT repeats
+\      the same token proof, so gutting DEV-PART-PREPARE to `( n -- n ) ;` still
+\      rejects the leak with the identical code, identical depths and no poison —
+\      only one phase later, after the checker participant has already reversibly
+\      committed. Asserting the code alone lets that mutant live; asserting the
+\      failing phase and participant kills it.
+: RT-LEAK-BODY ( -- ) OPEN drop ;
+: RT-LEAK-RUN ( -- ) [: RT-LEAK-BODY ;] GENERATED-DECL:RUN ;
+: RT-LEAK-CATCH ( -- n ) [: RT-LEAK-RUN ;] catch ;
+
+: RT-LEAK-FAIL-BODY ( -- ) OPEN drop RT-BODY-CODE throw ;
+: RT-LEAK-FAIL-RUN ( -- ) [: RT-LEAK-FAIL-BODY ;] GENERATED-DECL:RUN ;
+: RT-LEAK-FAIL-CATCH ( -- n ) [: RT-LEAK-FAIL-RUN ;] catch ;
+
+: RT-HEALTHY ( -- )
+   GENERATED-DECL:POISONED? 0= T-TRUE
+   GENERATED-DECL:DEPTH 0 T=
+   RT-RESTORED ;
+
+RT-MARK
+RT-LEAK-CATCH RT-RC !
+RT-RC @ E-DEV-TX T=
+GENERATED-DECL:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-PREPARE T=
+GENERATED-DECL:LAST-FAILURE-PARTICIPANT DEV-PARTICIPANT T=
+RT-HEALTHY
+
+RT-LEAK-FAIL-CATCH RT-RC !
+RT-RC @ RT-BODY-CODE T=
+RT-HEALTHY
+
+\ 19f. And the next declaration through the same coordinator still publishes:
+\      the participant's own frame is the one prepared, committed and released.
+: RT-GOOD-BODY ( -- )
+   CURRENT {: tok:n :}
+   tok FR9 @ DECL {: dtok:n :}
+   dtok FR9 @ s" rt-after" SCHROOT @ 0 1 0 CELL CELL 0 FIELD drop ;
+: RT-GOOD-RUN ( -- ) [: RT-GOOD-BODY ;] GENERATED-DECL:RUN ;
+: RT-GOOD-CATCH ( -- n ) [: RT-GOOD-RUN ;] catch ;
+
+COUNT RT-EV0 !
+TYPE-FIELD:COUNT RT-PF0 !
+RT-GOOD-CATCH 0 T=
+COUNT RT-EV0 @ 2 + T=
+TYPE-FIELD:COUNT RT-PF0 @ 1 + T=
+DEPTH 0 T=
+TYPE-FIELD:TX-DEPTH 0 T=
+GENERATED-DECL:POISONED? 0= T-TRUE
+
 ;package
 
 \ ---------------------------------------------------------------------------

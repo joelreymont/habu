@@ -519,16 +519,21 @@ variable DEV-TX-SERIAL
 \ A live frame is always either open or reversibly committed — the only two
 \ states DEV-OPEN and DEV-COMMIT set — and both roll back the same way, so there
 \ is no third value to reject here.
-: DEV-ROLLBACK ( n -- ) {: tok:n :}
-   tok DEV-TX-REQUIRE
-   DEV-TX-TOP {: r:ptr :}
-   r DEVTX.FLDTOK @ TYPE-FIELD-OWNER:ROLLBACK
+: DEV-FRAME-RESTORE ( ptr a -- ) {: r:ptr :}   \ every watermark one frame owns
    r DEVTX.EVN @ DEV-N !
    r DEVTX.FLDORD @ DEV-FLD-ORD !
    r DEVTX.VARORD @ DEV-VAR-ORD !
    r DEVTX.CURVAR @ DEV-CUR-VAR !
-   r DEVTX.PUBN @ DEV-PUB-N !
-   DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH ! ;
+   r DEVTX.PUBN @ DEV-PUB-N ! ;
+
+: DEV-FRAME-POP ( -- )            \ retire the live top frame's own watermarks
+   DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
+   DEV-TX-DEPTH @ DEV-TX-AT DEV-FRAME-RESTORE ;
+
+: DEV-ROLLBACK ( n -- ) {: tok:n :}
+   tok DEV-TX-REQUIRE
+   DEV-TX-TOP DEVTX.FLDTOK @ TYPE-FIELD-OWNER:ROLLBACK
+   DEV-FRAME-POP ;
 
 : DEV-RESET ( -- )                \ base state; re-seeded at load (process-local)
    0 DEV-N !   0 DEV-PUB-N !
@@ -577,11 +582,21 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
       DEV-I @ 1 + DEV-I !
    REPEAT ;
 
-\ GENERATED-DECL adapter.  The baseline stack is indexed by the coordinator's
-\ growable nesting depth.  Saving the baseline before DEV-OPEN makes rollback
-\ safe both when OPEN throws before mutation and when it completes a frame.
+\ GENERATED-DECL adapter.  Each coordinator nesting depth owns one slot holding
+\ the EXACT event token and field token this participant opened there, both
+\ written before the declaration body can run.  Every later phase proves and
+\ drives that saved pair.  Reading the live top instead — as this adapter used
+\ to — let any frame the body opened and never closed stand in for the
+\ participant's own frame: prepare then validated the wrong frame, commit and
+\ finalize published and released the wrong frame, and the participant's real
+\ frame survived the transaction.  The checker participant finalizes last, sees
+\ a field-transaction depth that no longer matches its savepoint, and throws
+\ E-PF-TX from cleanup, which poisons the one production coordinator for the
+\ rest of the process.
 4 constant DEV-PART-CAP-INIT
-create DEV-PART-BASE-BOOT DEV-PART-CAP-INIT cells allot
+2 constant DEV-PART-REC          \ cells per depth: event token, then field token
+0 constant DEV-NO-TOKEN          \ slot sentinel; DEV-OPEN never mints a token <= 0
+create DEV-PART-BASE-BOOT DEV-PART-CAP-INIT DEV-PART-REC * cells allot
 PTR-VARIABLE DEV-PART-BASE-P   DEV-PART-BASE-BOOT DEV-PART-BASE-P !
 variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 
@@ -589,7 +604,9 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 
 : DEV-PART-GROW ( -- )
    DEV-PART-CAP @ 2 * {: nc:n :}
-   DEV-PART-BASE-P DEV-PART-CAP @ cells nc cells DEV-REG-GROW1
+   DEV-PART-BASE-P
+      DEV-PART-CAP @ DEV-PART-REC * cells
+      nc DEV-PART-REC * cells DEV-REG-GROW1
    nc DEV-PART-CAP ! ;
 
 : DEV-PART-ENSURE ( -- )
@@ -597,31 +614,98 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
    DEV-PART-GROW ;
 
 : DEV-PART-SLOT ( -- ptr a )
-   GENERATED-DECL:DEPTH 1 - cells DEV-PART-BASE + ;
+   GENERATED-DECL:DEPTH 1 - DEV-PART-REC * cells DEV-PART-BASE + ;
+: DEV-PART-TOK-SLOT ( -- ptr a ) DEV-PART-SLOT ;
+: DEV-PART-FLD-SLOT ( -- ptr a ) DEV-PART-SLOT 1 cells + ;
+
+: DEV-PART-CLEAR ( -- )
+   DEV-NO-TOKEN DEV-PART-TOK-SLOT !
+   DEV-NO-TOKEN DEV-PART-FLD-SLOT ! ;
+
+: DEV-PART-BIND ( n -- ) {: tok:n :}   \ pin the frame OPEN just created
+   tok DEV-PART-TOK-SLOT !
+   DEV-TX-TOP DEVTX.FLDTOK @ DEV-PART-FLD-SLOT ! ;
 
 : DEV-PART-SNAPSHOT ( n -- n )
    DEV-PART-ENSURE
-   DEV-TX-DEPTH @ DEV-PART-SLOT !
-   DEV-OPEN drop ;
+   DEV-PART-CLEAR                 \ OPEN may reject before it mutates anything
+   DEV-OPEN DEV-PART-BIND ;
 
 : DEV-PART-OPEN? ( -- bool )
    GENERATED-DECL:DEPTH 0= IF 0 0= 0= EXIT THEN
-   DEV-TX-DEPTH @ DEV-PART-SLOT @ > ;
+   DEV-PART-TOK-SLOT @ DEV-NO-TOKEN <> ;
 
-: DEV-PART-TOKEN ( -- n )
-   DEV-TX-TOP DEVTX.TOK @ ;
+: DEV-PART-TOKEN ( -- n ) DEV-PART-TOK-SLOT @ ;
+: DEV-PART-FIELD-TOKEN ( -- n ) DEV-PART-FLD-SLOT @ ;
+
+\ Kept unexercised, like the DEV-OPEN serial-wrap guard above.  No test drives it
+\ and none can today: DEVTX.FLDTOK is written once, by DEV-OPEN, and DEV-PART-BIND
+\ copies that same cell one step later, so once the caller has proved the saved
+\ event token IS the live top the two values are the same cell by construction.
+\ It stays because it is a free precondition on the pairing the whole participant
+\ rests on, and because DEVTX.FLDTOK gaining a second writer is exactly the change
+\ that would make it fire.  The reachable form of this check is the one in
+\ DEV-RETIRE-THROUGH below, which does have a negative fixture.
+: DEV-PART-FIELD-REQUIRE ( -- )
+   DEV-TX-TOP DEVTX.FLDTOK @ DEV-PART-FIELD-TOKEN <> IF E-DEV-TX throw THEN ;
+
+\ Prepare is the participant's whole fallible boundary.  It proves the saved event
+\ token is the live open top, that its frame's field token is the one we saved,
+\ that the field frame is the live open top of the field owner's stack, and that
+\ the field rows are exactly the contiguous range the event stream names.  Commit
+\ and finalize then only advance and release marks this proof already covered.
+\ DEV-PREPARE repeats the token proof because it is also the standalone public
+\ entry point, so a mutation that guts THIS word still rejects one phase later —
+\ test/decl-event-suite.f §19e therefore asserts the failing PHASE, not just the
+\ code, or the participant reversibly commits before the rejection lands.
+: DEV-PART-PROVE ( -- )
+   DEV-PART-TOKEN DEV-TX-OPEN-REQUIRE
+   DEV-PART-FIELD-REQUIRE
+   DEV-PART-TOKEN DEV-PREPARE ;
+
+\ Cleanup for a failed declaration.  Retire the saved frame and every frame
+\ opened above it, strictly last-in first-out.  Everything is proved before the
+\ first mutation: the event token names a live frame, that frame's own field
+\ token is the one presented, and the field chain is checked inside the field
+\ owner's own cleanup vector.  The pair cross-check is not redundant with the two
+\ token lookups — each only proves its own stack has the token somewhere, so
+\ without it a caller can hand over frame A's event token with frame B's field
+\ token and retire different depths on the two stacks, leaving them desynchronised
+\ with no error.  The field owner remains the sole authority for retiring field
+\ frames: this never walks that stack itself.
+: DEV-TX-INDEX ( n -- n ) {: tok:n :}
+   DEV-TX-DEPTH @
+   BEGIN dup 0 > WHILE
+      1 -
+      dup DEV-TX-AT DEVTX.TOK @ tok = IF EXIT THEN
+   REPEAT
+   drop E-DEV-TX throw ;
+
+: DEV-FRAMES-RETIRE ( n -- ) {: keep:n :}
+   BEGIN DEV-TX-DEPTH @ keep > WHILE
+      DEV-FRAME-POP
+   REPEAT ;
+
+: DEV-RETIRE-THROUGH ( n n -- ) {: tok:n fldtok:n :}
+   tok DEV-TX-INDEX {: keep:n :}
+   keep DEV-TX-AT DEVTX.FLDTOK @ fldtok <> IF E-DEV-TX throw THEN
+   fldtok TDECL-FIELD-CLEANUP-XT
+   keep DEV-FRAMES-RETIRE ;
 
 : DEV-PART-PREPARE ( n -- n )
-   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-PREPARE THEN ;
+   DEV-PART-OPEN? IF DEV-PART-PROVE THEN ;
 
 : DEV-PART-COMMIT ( n -- n )
    DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-COMMIT THEN ;
 
 : DEV-PART-ROLLBACK ( n -- n )
-   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-ROLLBACK THEN ;
+   DEV-PART-OPEN? IF
+      DEV-PART-TOKEN DEV-PART-FIELD-TOKEN DEV-RETIRE-THROUGH
+      DEV-PART-CLEAR
+   THEN ;
 
 : DEV-PART-FINALIZE ( n -- n )
-   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-FINALIZE THEN ;
+   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-FINALIZE DEV-PART-CLEAR THEN ;
 
 2 constant DEV-PARTICIPANT
 

@@ -44,6 +44,9 @@ variable RC
 : ABSENT ( ptr u8 n -- )
    0 search-wl 0= TTRUE ;
 
+: QUALIFIED-ABSENT ( ptr u8 n -- )
+   XREF-FIND XREF-FOUND? 0= TTRUE ;
+
 : INTERPRETER-ABSENCE ( -- )
    s" PF-BEGIN" ABSENT
    s" PF-ADD" ABSENT
@@ -161,6 +164,43 @@ variable RC
    name nameu XREF-FIND XREF-FOUND? TTRUE
    src srcu CERTIFY-VERDICT ;
 
+\ --- the multi-frame cleanup capability has no source-level surface ------------
+\ ROLLBACK-THROUGH retires a whole chain of field frames at once. It is private
+\ to this owner and reachable only through the deferred TDECL-FIELD-CLEANUP-XT
+\ that src/core/generated-declaration-protection.f retires once the compiled
+\ declaration-event participant has bound it. Scope that claim exactly: what is
+\ closed is the TYPE-FIELD-OWNER surface — the package is sealed, so no source
+\ can reopen it and pick a frame out of the middle of the field stack. It does
+\ NOT mean the whole path is unreachable: DECL-EVENT is reopenable (pre-existing
+\ posture, which is how this repo's own suites drive the participant), so source
+\ that reopens DECL-EVENT can still call DEV-RETIRE-THROUGH. That entry is
+\ guarded on its own terms — live event token, matching field token, and the
+\ field chain checked here — rather than by being unnameable.
+\ Three independent boundaries, weakest first:
+\ the name is gone from the dictionary, the checker no longer knows it, and a
+\ real child load naming it exits 70 with E-UNDEFINED.
+\
+\ A checker PRIMITIVE row would have defeated the whole arrangement: `undefine`
+\ retires a dictionary entry and its usig metadata but NOT a primitive axiom, so
+\ a PPRIM row for the cleanup vector would keep certifying calls that the runtime
+\ can no longer resolve. That is why this seam is a deferred word and not a
+\ primitive, and why the assertion below is on ABSENCE rather than on a role.
+\
+\ Measured, not hypothetical: commenting out the `undefine TDECL-FIELD-CLEANUP-XT`
+\ line in src/core/generated-declaration-protection.f and refreshing the engine
+\ makes the first assertion below fail on every run.
+: CLEANUP-SEAM-ABSENT ( -- )
+   s" TDECL-FIELD-CLEANUP-XT" ABSENT
+   s" TDECL-FIELD-CLEANUP-XT" CHECKER-DEFINED? 0= TTRUE
+   s" : TFO-NO-CLEANUP ( n -- ) TDECL-FIELD-CLEANUP-XT ;"
+      s" TDECL-FIELD-CLEANUP-XT" LOAD-REJECTS
+   s" ROLLBACK-THROUGH" ABSENT
+   s" TYPE-FIELD-OWNER:ROLLBACK-THROUGH" QUALIFIED-ABSENT
+   s" TYPE-FIELD-OWNER:ROLLBACK-THROUGH" CHECKER-DEFINED? 0= TTRUE
+   s" : TFO-NO-THROUGH ( n -- ) TYPE-FIELD-OWNER:ROLLBACK-THROUGH ;"
+      s" ROLLBACK-THROUGH" LOAD-REJECTS
+   s" TYPE-FIELD-OWNER:TX-INDEX" QUALIFIED-ABSENT ;
+
 : OWNER-API-RUNTIME-LIVE ( -- )
    s" TYPE-FIELD-OWNER:OPEN"
       s" TFO-L1 ( -- n ) TYPE-FIELD-OWNER:OPEN" OWNER-WORD-LIVE
@@ -218,6 +258,21 @@ public
 
 : REOPEN-SEALED ( -- )
    S\" package TYPE-FIELD-OWNER\nTX-TOP\n;package"
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   ERR erru s" TYPE-FIELD-OWNER" CONTAINS? TTRUE ;
+
+\ The seal is what makes ROLLBACK-THROUGH's privacy load-bearing rather than
+\ decorative: absence from the dictionary only means nothing can NAME it, while
+\ the seal is what stops source from reopening the package and calling it by its
+\ bare private tail. Assert that route closes with the same exit 84, so a future
+\ change that unseals this package fails here instead of silently handing every
+\ caller a way to retire field frames out of order.
+: REOPEN-CLEANUP-SEALED ( -- )
+   S\" package TYPE-FIELD-OWNER\n0 ROLLBACK-THROUGH\n;package"
    OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
    ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
    LEN>N {: erru:n :}
@@ -423,9 +478,11 @@ CHECKER-NEIGHBOURS-LIVE
 CHECKER-OWNER-API
 CHECKER-OWNER-ROLES
 OWNER-API-RUNTIME-LIVE
+CLEANUP-SEAM-ABSENT
 
 ;package
 
 TYPE-FIELD-OWNER-TEST:REOPEN-SEALED
+TYPE-FIELD-OWNER-TEST:REOPEN-CLEANUP-SEALED
 T-REPORT
 s" type-field-owner-suite: ok" type cr

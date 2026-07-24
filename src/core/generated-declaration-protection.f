@@ -169,3 +169,10 @@ undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
 get-current prot-wid-add
 
 ;package
+
+\ The field owner's multi-frame cleanup vector is now bound into the compiled
+\ declaration-event participant, the only caller it is ever meant to have, so
+\ retire its source-level name here with the other one-shot install seams above.
+\ It is retired outside the package block because it is a global name and
+\ `undefine` resolves an unqualified name in the CURRENT wordlist.
+undefine TDECL-FIELD-CLEANUP-XT

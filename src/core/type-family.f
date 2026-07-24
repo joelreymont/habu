@@ -1087,6 +1087,17 @@ variable PF-TX-P   PF-TX-BOOT PF-TX-P !   REG-PROTECT
 variable PF-TX-DEPTH   0 PF-TX-DEPTH !   REG-PROTECT
 variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 
+\ Multi-frame cleanup seam. A declaration participant that finds frames opened
+\ above its own has to retire them, but only this owner may walk its own frame
+\ stack, and the walk must stay unreachable from ordinary source. So the entry
+\ point is one execution vector: the owner installs its private ROLLBACK-THROUGH
+\ into this deferred word below, the compiled declaration-event participant calls
+\ the vector, and src/core/generated-declaration-protection.f retires the name
+\ once every prefix caller is compiled. The vector is deliberately NOT a checker
+\ primitive row: a primitive axiom survives `undefine`, so retiring the name
+\ would leave the checker certifying calls the runtime can no longer resolve.
+defer TDECL-FIELD-CLEANUP-XT ( n -- )
+
 package TYPE-FIELD-OWNER
 
 0 constant STATE-OPEN
@@ -1198,6 +1209,33 @@ public
    id PF-ROW PF.CELLS @ ;
 
 private
+
+\ Cleanup for a failed declaration that left frames open above the caller's own.
+\ TX-INDEX proves the exact token is still one of the live frames BEFORE anything
+\ moves, so a stale or already-released token leaves every mark untouched; the
+\ retirement itself is the ordinary ROLLBACK path applied to each live frame from
+\ the top down, so descendants are retired strictly last-in first-out and the
+\ target frame's own marks are the last ones restored. This stays private and its
+\ only caller is the vector installed below: no source-level word may ever pick a
+\ frame out of the middle of this stack.
+: TX-INDEX ( n -- n ) {: tx:n :}
+   PF-TX-DEPTH @
+   BEGIN dup 0 > WHILE
+      1 -
+      dup TX-AT PFTX.TOK @ tx = IF EXIT THEN
+   REPEAT
+   drop E-PF-TX throw ;
+
+: ROLLBACK-THROUGH ( n -- ) {: tx:n :}
+   tx TX-INDEX {: keep:n :}
+   BEGIN PF-TX-DEPTH @ keep > WHILE
+      TX-TOP PFTX.TOK @ ROLLBACK
+   REPEAT ;
+
+: CLEANUP-INSTALL ( -- )
+   [: ROLLBACK-THROUGH ;] is TDECL-FIELD-CLEANUP-XT ;
+CLEANUP-INSTALL
+
 ;package
 
 \ ADD validation. Field rows carry explicit logical-cell and memory-layout

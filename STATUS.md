@@ -42,9 +42,17 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4071  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4086  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
+
+Attribution for the current linux-arm64 row, which is the count this tree
+measures today:
+
+- The master commit this work sits on measures and records 4058.
+- The product-field lifecycle change adds 13, giving its recorded 4071.
+- The declaration-event participant rework that carries this edit adds 15,
+  giving 4086. It adds no engine text.
 
 This is the single source of truth for the self-check counts. Other docs
 (`README.md`) point here instead of quoting a number — see
