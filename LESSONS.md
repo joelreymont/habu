@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -1971,6 +1971,12 @@ fits.
 - **Nested savepoints must distinguish provisional and published watermarks.**
   Save both values and the owning transaction depth, so nested success cannot
   accidentally publish an outer transaction's still-provisional rows.
+- **Do not duplicate publication authority.** When identities are allocated
+  monotonically and savepoint finalization makes published identities
+  ineligible for later mutation, protect only same-savepoint re-entry and
+  forbid reset while its mark is live. A second persisted list duplicates
+  rollback, reset, persistence, and reader authority; semantic restore
+  validation requires a real native restore callback, not save-time checks.
 - **Dictionary publication spans records, code, and data.** Retain all three
   high-waters until global finalization; restoring only one leaves a generated
   declaration partly visible after rollback. A monotonic, non-reused identity
