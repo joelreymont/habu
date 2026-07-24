@@ -2,7 +2,7 @@
 \ (maki/db/obligation.f; dot habu-v2-proof-obligation-6cf70b4f).
 \
 \ Proves the plan:3737-3755 acceptance, each item by a named test word (all sum /
-\ product / enum values are produced and consumed INSIDE colon words, never on the
+\ structure / enum values are produced and consumed INSIDE colon words, never on the
 \ interpret-mode stack):
 \   A1-* : ACCEPTANCE 1 - wrong-domain evidence cannot discharge. The DYNAMIC leg is a
 \          typed `wrong-domain` reject (A1-DEVICE); the STATIC leg is the cad-kinds
@@ -342,6 +342,15 @@ create OBID-SHA CK-BYTES allot
 : OBID-ID-NEG ( -- )   -1 RAW>OBLIGATION-ID ID-VALIDATE drop ;
 : OBID-ID-BIG ( -- )   OBLID-N @ 100 + RAW>OBLIGATION-ID ID-VALIDATE drop ;
 
+: DEP-CAP-FAIL ( -- )
+   NEW
+   0 begin dup DEP-CAP < while
+      DEPX DEP+
+      1+
+   repeat
+   drop
+   DEPX DEP+ ;
+
 T-RESET
 
 \ ---- ACCEPTANCE 1: wrong-domain evidence cannot discharge ----------------------
@@ -379,6 +388,10 @@ NP-REL TTRUE
 NP-EMP TTRUE
 
 \ ---- round-trip ----------------------------------------------------------------
+s" OB-MAKE-EFFECT ( n -- obligation ) OBLIG-OBLIGATION:MAKE" VCHECK -1 T=
+s" OB-UNMAKE-EFFECT ( obligation -- n ) OBLIG-OBLIGATION:UNMAKE" VCHECK -1 T=
+s" EV-MAKE-EFFECT ( n -- evidence ) OBLIG-EVIDENCE:MAKE" VCHECK -1 T=
+s" EV-UNMAKE-EFFECT ( evidence -- n ) OBLIG-EVIDENCE:UNMAKE" VCHECK -1 T=
 OB-RT-BYTES TTRUE
 RT!
 RT-DOMAIN? TTRUE
@@ -421,6 +434,7 @@ s" OBID-VKW ( CAD-KIND:obligation-id ptr u8 n -- n ) OBLIG:KEY>WIRE" VCHECK -1 T
 s" OBID-VXKW ( CAD-KIND:evidence-id ptr u8 n -- n ) OBLIG:KEY>WIRE" VCHECK 0 T=
 s" OBLIG:RAW>OBLIGATION-ID" 0 search-wl 0= TTRUE
 s" OBLIG:OBLIGATION-ID>RAW" 0 search-wl 0= TTRUE
+' DEP-CAP-FAIL E-OBL-CAP TTHROWS
 
 T-REPORT
 

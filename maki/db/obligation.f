@@ -156,14 +156,14 @@ ENUM independence DERIVE eq
    self-verify independent
 ;ENUM
 
-\ ---- the value handles (opaque PRODUCTs over pooled slots) ---------------------
-PRODUCT obligation 0
+\ ---- the value handles (STRUCTUREs over pooled slots) --------------------------
+STRUCTURE obligation 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
-PRODUCT evidence 0
+STRUCTURE evidence 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ ---- discharge / decode outcomes (custom-sum results, never value+flag) --------
 \ ok carries the accepted evidence; every reject arm is one plan rule.
