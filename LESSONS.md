@@ -2246,3 +2246,7 @@ fits.
 - **Error precedence begins before materialization.** Put every fallible session
   entry operation inside the same caught sequence as execution so cleanup and
   primary-result ordering do not depend on an operation being infallible today.
+- **Prove a seal against every owner-private test before freezing it.** A
+  package seal can be correct yet make its required proof unloadable when the
+  suite reopens that package to define private helpers. Move those tests onto
+  production public seams first; never weaken the seal or add a test bridge.

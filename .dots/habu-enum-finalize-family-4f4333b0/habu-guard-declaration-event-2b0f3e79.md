@@ -1,71 +1,26 @@
 ---
-title: Guard declaration event reset
+title: Guard provisional declaration ownership
 status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-24T02:56:00.553945+02:00\""
+blocks:
+  - habu-use-established-family-3f0f8219
+  - habu-reset-declaration-events-71ec9f20
 ---
 
-Why: DECL-EVENT:DECL currently permits a second DECL in one frame and permits a freshly opened frame to bind the same provisional family after an earlier frame published under the same live checker rollback mark. DECL-EVENT:RESET also erases published evidence while an event frame or checker rollback mark is live. The ENUM finalizer cannot be immutable while either path exists. Owner and interface: after TFAM rollback-frame definitions in src/core/type-family.f, add protected temporary package TYPE-FAMILY-OWNER with PROVISIONAL? ( family -- bool ) and RESET-ALLOWED? ( -- bool ); PROVISIONAL? is true only with a live rollback frame and saved TFAM-N <= family < live TFAM-N. DECL-EVENT captures them through exactly two inventoried TRUSTED bridges, uses no raw frame access, and generated-declaration protection undefines both capabilities before user source. No finalizer or kind mutation in this leaf. Behavior: DEV-DECL requires the exact open top frame, rejects E-DEV-STATE 7162 if that frame already owns any DECL, and, only for a family in the current provisional range, rejects E-DEV-FAMILY-SCOPE 7173 if any published event already names it. Every valid event frame begins with DECL and all later rows carry that bound family, so kind and owner predicates would be redundant rather than additional protection. DEV-RESET checks before every store and rejects E-DEV-TX 7161 when DEV-TX-DEPTH is nonzero or TYPE-FAMILY-OWNER says a checker rollback frame is live. At depth zero RESET remains legal even with older live families because a later checker mark saves their high-water and PROVISIONAL? excludes them. Published event identity and lifecycle remain unchanged. Checkpoint: through public DECL-EVENT and the real CHECK-CANDIDATE start/done path, prove same-frame duplicate DECL, same-mark fresh-frame rebind, active-frame RESET, and checker-mark RESET currently succeed or erase evidence; no raw event or family store. Stop on any need for a second registry, persisted state, restore hook, event-record change, or caller migration. Acceptance: all four paths reject with the exact codes before DEV-N, DEV-PUB-N, identity, family kind, field state, or rollback depth changes; wrong-family same-frame rebind also rejects 7162; another provisional family remains legal; rollback of an unpublished first frame permits an identifier reused by a later checker mark; a family older than a new mark is not treated as provisional; RESET succeeds after all event and checker frames close. Remove either owner query, the current-frame scan, published-family scan, family comparison, range test, or pre-mutation reset guard and a production-path regression fails. Capability public/private and post-protection absence tests pass. Files: src/core/type-family.f, src/core/decl-event.f, src/core/generated-declaration-protection.f, test/decl-event-suite.f, TRUSTED.md, FILEMAP.md only if inventory requires. Smallest check: bin/hb < test/decl-event-suite.f. Run exact package/typed-local/trust/inventory and generated-declaration focused gates; no full native gate before root integration.
+Why: while a family remains inside the current checker rollback frame, exactly one live declaration-event row may claim it. Today a published row, a finalized nested row, or an active ancestor row can be followed by another event frame binding the same provisional family. RESET can also erase live event or checker evidence. Both break immutable ENUM finalization.
 
-Ratchet closure: the verified integration base now certifies 4058 linux-arm64
-definitions. The preserved guard implementation added four top-level colon
-definitions in `src/core/decl-event.f` and two in `src/core/type-family.f`, so
-4064 is expected only if its exact six-definition delta survives the rebase.
-Remeasure the assembled stage2 source on the final rebased implementation and
-update only the linux-arm64 Certified row in `STATUS.md` to that measured
-value; do not copy the expected value without proof. Uncheckable and rejected
-remain zero, the macOS row remains owed, and `Last verified` remains unchanged
-until the combined full tree is green. Acceptance: the build-fixpoint census
-and `STATUS.md` agree on the exact integration tree, status/stale-status checks
-accept the row, and removing any retained guard definition makes the ratchet
-fail. No source, date, other-target, timing, or code-size edit belongs to this
-control correction.
+Owner and interfaces: after the rollback-frame implementation in src/core/type-family.f, protected temporary package TYPE-FAMILY-OWNER publishes PROVISIONAL? ( family -- bool ), true exactly when a checker rollback frame is live and the family lies between that frame's saved family high-water and the current family high-water, and RESET-ALLOWED? ( -- bool ), true exactly when no checker rollback frame is live. DECL-EVENT captures them through inventoried internal bridges DEV-FAM-PROVISIONAL? and DEV-FAM-RESET-ALLOWED?. src/core/generated-declaration-protection.f retires both owner capabilities before user source.
 
-Implementation delivered and accepted from agent=decl_event_guard
-workspace=.jj-ws/habu-guard-declaration-event-2b0f3e79 commit=af0cef9106fa.
-Claim: agent=nested_decl_fix
-workspace=.jj-ws/habu-guard-declaration-event-2b0f3e79-r2.
+Binding invariant: before mutating the top event frame, DEV-DECL validates the exact live top token and preserves current same-frame behavior: a second same-family DECL rejects E-DEV-STATE 7162 and a wrong-family rebind rejects E-DEV-FAMILY-SCOPE 7173. When the frame is unbound and the requested family is provisional, scan every live event row in [0, DEV-N) and reject 7173 if any DECL row names that family. Bind and emit only after every check succeeds. This complete live-row scan covers globally published rows, finalized nested rows, and active ancestor rows; rolled-back rows are outside DEV-N.
 
-Destruction correction on exact candidate `9e1d46f3`: the accepted
-`DEV-PUB-FAMILY?` scans only `[0, DEV-PUB-N)`. A nested `PUBLISH` finalizes its
-frame without advancing `DEV-PUB-N`, so its surviving declaration is invisible
-to a later outer `DECL`. Simply excluding every active-frame owner is also
-wrong: an outer and inner active frame can bind one provisional family, then
-publish two declaration rows.
+Reset invariant: DEV-RESET rejects E-DEV-TX 7161 before its first store when either event depth is nonzero or RESET-ALLOWED? is false.
 
-Exact design: keep event owners and the active transaction stack as the sole
-authority. Add private `DEV-OWNER-ACTIVE?` to compare an event owner with every
-currently active frame owner. Replace the old published-only scan with private
-`DEV-SURVIVING-FAMILY?`: a matching declaration counts when it is below
-`DEV-PUB-N` or its owner belongs to no active frame. Current and active-ancestor
-rows remain provisional for this scan. Before `DEV-PREPARE` mutates field or
-publication state, compare the current frame's bound family with every active
-ancestor frame's bound family and reject `E-DEV-FAMILY-SCOPE` on a match. The
-existing current-frame duplicate guard remains authoritative within one frame.
-Do not advance `DEV-PUB-N` early and do not add a watermark, registry, state
-flag, persisted bit, or rollback hook.
+Production failures on verified master: inside a real checker savepoint, all of the following return zero: publish a new family then bind it in a fresh event frame; finalize an inner frame then bind its family in the still-open outer frame; bind the same family in active outer and inner frames; RESET with an active event frame; RESET with only the checker savepoint live.
 
-Checkpoint: through public `DECL-EVENT` inside one real `CHECK-CANDIDATE`
-savepoint, publish an inner declaration, then bind its family in the still-open
-outer frame. The pre-change path returns zero. Independently bind one family in
-an outer frame and an inner frame; the pre-change inner `PUBLISH` succeeds.
-Run the package gate on the first representative source diff before continuing.
+Public proof: add a package-owned section outside package DECL-EVENT in test/decl-event-suite.f. Reuse the existing checker-savepoint and family-declaration seams. Call only qualified public DECL-EVENT, TYPE-FIELD, and published family/reflection operations. Do not reopen DECL-EVENT, read DEV or DEVTX state, add a trusted bridge, or copy transaction state.
 
-Acceptance: both duplicate-family paths reject `E-DEV-FAMILY-SCOPE` before
-field publication, published-event watermarks, family state, transaction depth,
-or identity state changes. Cover previously global rows, rows finalized by a
-nested frame, an active ancestor followed by inner rollback, an active ancestor
-followed by rejected inner publish, frame-owner reuse after rollback, nested
-publish followed by outer rollback, and successful outer finalization. A
-different provisional family remains legal. Nested rollback permits later
-reuse; outer rollback removes surviving nested rows; outer publication makes
-the complete surviving stream globally published. Mutations that remove
-`DEV-OWNER-ACTIVE?`, use only `DEV-PUB-N`, omit the `DEV-PREPARE` ancestor
-guard, or retain stale frame ownership must each fail through the production
-path.
+Acceptance: the three duplicate-claim shapes reject 7173 before public event count, identity, field count, family kind, or depth changes; active-ancestor duplication rejects at inner DECL before variant or field work; a rejected frame remains usable for a different provisional family or rollback; same-frame 7162/7173 behavior stays exact; different provisional families nest and publish normally; rollback permits later reuse; a family older than the top checker mark stays legal in a frame rolled back before publication; active-frame and checker-mark RESET reject 7161 and leave the original transaction/savepoint usable; RESET succeeds after both depths close. Both temporary owner names are absent after generated-declaration protection. Removing token validation, the provisional-range test, live-row kind/family matching, either RESET condition, or capability retirement makes a public production-path regression fail.
 
-Exact write set remains `src/core/decl-event.f` and
-`test/decl-event-suite.f`. No ratchet, status, type-family, protection,
-manifest, public-interface, new state, or caller migration belongs to this
-correction.
+Files: src/core/type-family.f, src/core/decl-event.f, src/core/generated-declaration-protection.f, test/decl-event-suite.f, and TRUSTED.md. Forbidden: DEV-CUR-DECL?, DEV-OWNER-ACTIVE?, published-only scanning, an ancestor DEV-PREPARE guard, another registry, watermark, latch, persisted bit, restore hook, event-record field, public API, finalizer/frontend/legacy edit, new test trust, package reopen, private-state assertion, STATUS ratchet, or caller migration. Smallest owning check: bin/hb < test/decl-event-suite.f. Then run exact typed-local, package, trust/inventory, generated-declaration, and candidate-validation slices. Depends: habu-use-established-family-3f0f8219 and habu-reset-declaration-events-71ec9f20. Claim: agent=guard_impl workspace=.jj-ws/habu-guard-provisional-ownership.
