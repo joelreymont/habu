@@ -106,10 +106,10 @@ require maki/db/budget-dim.f       \ BUDGET:dim vector vocabulary (reused, not f
 package DIFFSUITE
 public
 
-\ ---- the suite value handle (opaque PRODUCT over a pooled slot) -----------------
-PRODUCT suite 0
+\ ---- the suite value handle (opaque STRUCTURE over a pooled slot) ---------------
+STRUCTURE suite 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ ---- SEAL outcome (custom-sum result, never value+flag) -------------------------
 \ ok carries the sealed suite; incomplete rejects a suite missing a required field;

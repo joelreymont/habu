@@ -1,7 +1,7 @@
 \ maki/db/diff-suite-test.f - acceptance for the DifferentialSuite artifact schema
 \ (maki/db/diff-suite.f; dot habu-v2-differential-suite-2d896ced).
 \
-\ Proves the plan:3782-3796 acceptance, each item by named test words (all sum / product
+\ Proves the plan:3782-3796 acceptance, each item by named test words (all sum / structure
 \ / enum values are produced and consumed INSIDE colon words, never on the interpret-mode
 \ stack):
 \   F-* / SAME-* / GEN-ORDER-* : ACCEPTANCE (a) - the suite digest changes for EVERY
@@ -37,6 +37,9 @@ require maki/db/obligation.f
 require maki/db/budget-dim.f
 
 package DIFFSUITE
+
+: DST-SUITE-ROUNDTRIP ( n -- n )
+   >SUITE SUITE> ;
 
 4 constant CASE-N                 \ case-ids derived per replay sequence
 
@@ -307,6 +310,12 @@ variable SP-PROP-EXTRA            \ bool: add PROP-2
    DIAG-BUFFER-OFF ;
 
 T-RESET
+
+\ ---- generated handle contract --------------------------------------------------
+37 DST-SUITE-ROUNDTRIP 37 T=
+s" DST-MAKE ( n -- suite ) DIFFSUITE-SUITE:MAKE" VCHECK -1 T=
+s" DST-UNMAKE ( suite -- n ) DIFFSUITE-SUITE:UNMAKE" VCHECK -1 T=
+s" DST-FORGE ( bool -- suite ) DIFFSUITE-SUITE:MAKE" VCHECK 0 T=
 
 \ ---- ACCEPTANCE (a): every semantic field flips the digest ---------------------
 SAME-HASH TTRUE          \ two identical suites hash equally (baseline)
