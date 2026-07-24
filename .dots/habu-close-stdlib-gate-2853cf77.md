@@ -1,0 +1,9 @@
+---
+title: Close stdlib gate prelude
+status: active
+priority: 2
+issue-type: task
+created-at: "\"2026-07-24T19:48:29.090731+02:00\""
+---
+
+Why: the documented fresh-process command bin/hb --load test/gate-stdlib.f -- lint-libs fails before dispatch with E-UNDEFINED: 0<> because CHECK-CLI-GATE:REJECT-WORD now uses the global prelude word while the standalone wrapper omits lib/prelude.f; resident paths masked the missing dependency by loading the prelude earlier. Owner: test/gate-stdlib.f, test/gate-runner-entry-test.f, and its existing FILEMAP description only. Exact result: make the standalone gate wrapper declare the prelude in its dependency prefix before any consumer, and extend the existing CLI-entry regression to spawn the exact test/gate-stdlib.f wrapper in a fresh HABU_UNDER_TEST child with an unknown selector, proving the whole prefix parses and reaches the canonical usage exit. Preserve all selector, runner, group, timing, and diagnostic behavior. Forbidden: rewriting 0<> into an ad hoc Boolean expression, relying on resident load order, conditionally loading the dependency, adding another wrapper, copying gate logic, or weakening the canonical standalone gate. Production failure: on verified master, HB_TMP set to a private root and bin/hb --load test/gate-stdlib.f -- lint-libs exits 70 with E-UNDEFINED: 0<> before a group starts. Acceptance: the new fresh-child regression is red on the parent and green on the change, asserts exited status 64 plus the canonical test/gate-stdlib.f usage banner and absence of E-UNDEFINED, the exact standalone lint-libs slice exits 0, the existing gate-runner entry regression still passes, and typed-local/package diff gates are green. Depends: none. Claim: agent=stdlib_gate_worker workspace=.jj-ws/stdlib-gate-prelude.
