@@ -2218,6 +2218,11 @@ fits.
   standalone `maki/test.f` both use `tmp/cad-store`; concurrent runs can reset
   each other's replay rows even when `HB_TMP` differs. Serialize them unless
   each process has a distinct `HABU_CAD_STORE`.
+- **A recovered claim must be checked against current master history.** A clean
+  metadata delta can still resurrect work that later landed and closed. Before
+  publishing or dispatching a recovered claim, inspect its result in
+  `master@origin`, its landing commits, and the current open and archived dot
+  state; discard the claim when the owned outcome already exists.
 - **Rebase a commit delta; do not restore whole files from a divergent tip.**
   Restoring files from a candidate also imports unrelated parent content that
   the candidate did not change. Duplicate or rebase the reviewed commit onto
