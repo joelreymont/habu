@@ -90,6 +90,24 @@ PTR-VARIABLE KVT-META-SAVE
    KVT-CACHE BYTES-PER-TOKEN 32 T=
    KVT-CACHE CHECK ;
 
+: KVT-GENERATED-OPS ( -- )
+   KVT-CACHE DISPOSE
+   2 4 2 8 4 65 16 CONFIG/P
+   KV-KVCFG:UNMAKE {: nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
+   nkv 2 T=  hdim 4 T=  dbytes 2 T=  npages 8 T=
+   nseq 4 T=  maxctx 65 T=  ptok 16 T=
+   nkv hdim dbytes npages nseq maxctx ptok KV-KVCFG:MAKE
+   KVT-CACHE swap INIT
+   KVT-CACHE 1 ALLOC-SEQ
+   KV-KVSEQ:UNMAKE {: cid:kv-cache-id slot:kv-seq-slot gen:kv-seq-gen :}
+   cid KV-CACHE-ID>N 0 > TTRUE
+   slot KV-SEQ-SLOT>N 0 T=
+   gen KV-SEQ-GEN>N 1 T=
+   cid slot gen KV-KVSEQ:MAKE 0 KVT-H!
+   KVT-CACHE 0 KVT-H@ SEQ-LEN 0 T=
+   KVT-CACHE 0 KVT-H@ CANCEL-SEQ
+   KVT-CACHE CHECK ;
+
 : KVT-OVERFLOW-TOK ( -- )
    KV-MAX-N 2 2 8 4 16 16 CONFIG/P drop ;
 
@@ -702,6 +720,7 @@ variable KVT-PICK
 T-RESET
 
 s" geometry" T-LABEL ' KVT-GEOMETRY 0 TTHROWS
+s" generated structure operations" T-LABEL ' KVT-GENERATED-OPS 0 TTHROWS
 ' KVT-OVERFLOW-TOK E-KV-CONFIG TTHROWS
 ' KVT-OVERFLOW-META E-KV-CONFIG TTHROWS
 ' KVT-OVERFLOW-META-BYTES E-KV-CONFIG TTHROWS

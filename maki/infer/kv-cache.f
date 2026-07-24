@@ -6,7 +6,7 @@
 \ reservations. The device never reads these mutable tables. Immutable device
 \ publication is the separate habu-lease-kv-snapshot-9ef40f19 child.
 \
-\ A sequence handle is the structured product (cache identity, slot, slot
+\ A sequence handle is the structured value (cache identity, slot, slot
 \ generation). Cache identities and slot generations advance monotonically and
 \ reject at their ceiling instead of wrapping. Reusing a slot, rebuilding a cache
 \ in the same header, or passing a handle to another cache therefore fails closed.
@@ -51,16 +51,16 @@ DEFTYPE KV-SEQ-GEN
 
 public
 
-\ The nominal fields are private representation roles. The product is public so
+\ The nominal fields are private representation roles. The structure is public so
 \ callers can transport a sequence value, but only allocator operations mint the
 \ three field values from raw state.
-PRODUCT kvseq 0
+STRUCTURE kvseq 0
    FIELD cache kv-cache-id
    FIELD slot kv-seq-slot
    FIELD gen kv-seq-gen
-;PRODUCT
+;STRUCTURE
 
-PRODUCT kvcfg 0
+STRUCTURE kvcfg 0
    FIELD nkv n
    FIELD hdim n
    FIELD dbytes n
@@ -68,7 +68,7 @@ PRODUCT kvcfg 0
    FIELD nseq n
    FIELD maxctx n
    FIELD ptok n
-;PRODUCT
+;STRUCTURE
 
 private
 
@@ -688,7 +688,7 @@ variable KV-CLEAN-RC
    npages nseq blkcap META-CELLS {: metac:n :}
    pageb tokb blkcap metac ;
 
-\ typed-local-lint: allow-bare-local - cfg is the multi-cell KV:kvcfg product.
+\ typed-local-lint: allow-bare-local - cfg is the multi-cell KV:kvcfg structure.
 : KV-INIT ( ptr a KV:kvcfg -- ) {: h:ptr cfg :}
    h POOLCAP-OFF H@ 0<> if E-KV-STATE throw then
    cfg KV-KVCFG:UNMAKE {: nkv:n hdim:n dbytes:n npages:n nseq:n maxctx:n ptok:n :}
