@@ -1,0 +1,9 @@
+---
+title: Retire protected WID self-test
+status: active
+priority: 1
+issue-type: task
+created-at: "\"2026-07-24T03:15:09.471564+02:00\""
+---
+
+Why: ACAP-PWID-SELFTEST fabricates protected word-list rows and executes during every production stdin metabuild even though the real protected-WID build and warm-start suite already owns the invariant end to end. Owned result: delete only ACAP-PWID-SELFTEST, its immediate execution, and ACAP-PWID-MAXWID from src/habu/aot-capture.f. ACAP-PWID-MAXWID has no production caller; native restore owns WIDN advancement. Preserve ACAP-WID-SELFTEST and every production capture, compact, proof, serialize, reset, emit, and diagnostic word byte-identically. Do not add a replacement helper or test-only production seam. Checkpoint: exact current positive/negative AOT baselines and test/aot-wid-suite.f green; rg proves ACAP-PWID-MAXWID has only the self-test caller; one representative deletion passes package and typed-local diff gates. Stop if any other caller, output drift, coverage gap, or file outside src/habu/aot-capture.f is required. Acceptance: two private-root stdin builds, one unchanged and one with only the owned block removed, produce byte-identical hb output; test/aot-wid-suite.f still builds a real engine containing WIDs 300 and 70000, restores both through warm startup, advances WIDN past 70000, and rejects publication into both; positive and negative AOT gates remain green. Reintroducing a truncated protected-WID codec makes the existing real suite fail. Production aot-capture.f contains no protected-WID self-test or orphaned max helper and still contains the record-WID self-test for its dependent relocation leaf. Run exact package, typed-local, trust, file inventory, AOT WID, positive/negative AOT, candidate, and focused native gates; root batches the full native gate. Files: src/habu/aot-capture.f only. Claim: agent=aot_pwid_selftest workspace=.jj-ws/habu-retire-protected-wid-51481949.

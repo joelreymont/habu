@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -1927,6 +1927,10 @@ fits.
   call; package-global registries still clobber interleaved models.
 - **GPT-2 byte vocabulary makes the classification domain all Unicode scalars.**
   Letter and Number data cannot be bounded to scalars seen in a vocabulary.
+- **Resolve wave labels from their owners before expanding them.** When a label
+  is ambiguous, derive it from the owned source and dot names: here, AOT closure
+  means ahead-of-time linker closure, while declaration transactions are a
+  separate ENUM dependency.
 - **Generated declarations are one transaction.** Snapshot every mutable owner,
   publish once, and roll all participants back in reverse order on failure.
 - **Capacity regressions must assert the reversible preflight owner, not the
@@ -1971,6 +1975,12 @@ fits.
 - **Nested savepoints must distinguish provisional and published watermarks.**
   Save both values and the owning transaction depth, so nested success cannot
   accidentally publish an outer transaction's still-provisional rows.
+- **Do not duplicate publication authority.** When identities are allocated
+  monotonically and savepoint finalization makes published identities
+  ineligible for later mutation, protect only same-savepoint re-entry and
+  forbid reset while its mark is live. A second persisted list duplicates
+  rollback, reset, persistence, and reader authority; semantic restore
+  validation requires a real native restore callback, not save-time checks.
 - **Dictionary publication spans records, code, and data.** Retain all three
   high-waters until global finalization; restoring only one leaves a generated
   declaration partly visible after rollback. A monotonic, non-reused identity
