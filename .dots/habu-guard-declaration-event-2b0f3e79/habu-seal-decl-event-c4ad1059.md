@@ -4,6 +4,8 @@ status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-24T16:57:44.992204+02:00\""
+blocks:
+  - habu-close-private-declaration-2df8035d
 ---
 
 Why: DECL-EVENT owns mutable declaration publication state, but its public and private wordlists are absent from the protected-wordlist registry. User source can reopen the package or publish directly through either wordlist after the friend latch closes.
