@@ -360,7 +360,7 @@ TEST-SEQS
 package MEM
 private
 
--7777 constant E-WBT-PRIMARY
+-7777 constant E-PRIMARY
 variable WBT-ALLOC-BASE
 variable WBT-RELEASE-BASE
 
@@ -371,7 +371,7 @@ variable WBT-RELEASE-BASE
 
 : WBT-THROW-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- )
    2drop
-   E-WBT-PRIMARY throw ;
+   E-PRIMARY throw ;
 
 : WBT-INNER-BODY ( ptr u8 CAD-NUM:alloc-byte-len -- )
    2drop
@@ -401,7 +401,7 @@ variable WBT-RELEASE-BASE
    RELEASE-SEQ @ release-before 1+ T=
    ALLOC-SEQ @ WBT-ALLOC-BASE !
    RELEASE-SEQ @ WBT-RELEASE-BASE !
-   [: WBT-THROW ;] E-WBT-PRIMARY TTHROWSQ
+   [: WBT-THROW ;] E-PRIMARY TTHROWSQ
    ALLOC-SEQ @ WBT-ALLOC-BASE @ 1+ T=
    RELEASE-SEQ @ WBT-RELEASE-BASE @ 1+ T=
    ALLOC-SEQ @ WBT-ALLOC-BASE !
