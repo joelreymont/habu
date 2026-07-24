@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4111  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4112  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -62,11 +62,17 @@ measures today:
   adds 0 and the count stays 4086.
 - The checker declaration-frame tagging that carries this edit adds 25: 20 new
   top-level definitions in `src/core/checker.f` and 5 in
-  `src/core/type-family.f`. So 4058 + 13 + 15 + 0 + 25 = 4111, the number
-  recorded above and the number the self-check measures on this tree. The two
+  `src/core/type-family.f`. So 4058 + 13 + 15 + 0 + 25 = 4111. The two
   build fixes in that same commit add none: the checker default swaps one
   definition for another, and `src/habu/verify-source.f` is not part of the
   assembled stage2 engine source at all.
+- The compact `ENUM` header change adds 1: the new `COMPACT-CLAUSE` dispatch
+  word in `src/core/enum-decl.f`, which is part of the assembled stage2 engine
+  source. So 4111 + 1 = 4112, the number recorded above and the number the
+  self-check measures on this tree. That same change also edits
+  `test/enum-decl-suite.f`, `docs/forth.md`, and `docs/type-families.md`, and
+  none of those three files is part of the assembled stage2 engine source, so
+  they add nothing.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

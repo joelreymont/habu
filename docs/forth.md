@@ -474,12 +474,14 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
   single-shape record (`TK-PRODUCT`, no tag) whose members are **named**
   `FIELD f type`. A public product generates sealed `FAMILY:MAKE`/`FAMILY:UNMAKE`
   plus typed field accessors.
-- `ENUM name [ DERIVE … ] v0 v1 … ;ENUM` registers a payloadless tag-only sum
+- `ENUM name header… v0 v1 … ;ENUM` registers a payloadless tag-only sum
   (`TK-ENUM`) from **bare variant names only** — it takes no arity token and no
-  `VARIANT` keyword (either rejects, throw 7101). Use `SUMTYPE` for payloads.
-- `DERIVE eq` / `DERIVE hash` / `DERIVE ord` on a public arity-0 family generates
-  the corresponding operations; the clause follows the family name on `ENUM` and
-  the arity on `SUMTYPE`/`PRODUCT`.
+  `VARIANT` keyword (either rejects, throw 7101). Optional `POLICY` and `DERIVE`
+  headers must precede the first variant. Use `SUMTYPE` for payloads.
+- `DERIVE eq` / `DERIVE hash` on a public arity-0 family generates the
+  corresponding operations; clauses follow the family name on `ENUM` and the
+  arity on `SUMTYPE`/`PRODUCT`. Distinct features may use one or several clauses;
+  repeating a feature rejects.
 - `VALUE-RECORD name field type … END-VALUE-RECORD` declares a checked value
   record; `END-VALUE-RECORD` is its terminator.
 - `BEGIN-STRUCTURE NAME … END-STRUCTURE` is the low-level Forth-2012

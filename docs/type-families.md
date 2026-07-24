@@ -133,7 +133,7 @@ So: **call the document “Type Families and Algebraic Data Types.”**
 structure-decl = STRUCTURE type-name arity header-clause* field* ;STRUCTURE
 enum-decl      = ENUM type-name (full-enum | compact-enum) ;ENUM
 full-enum      = arity header-clause* variant-block+
-compact-enum   = compact-variant+
+compact-enum   = header-clause* compact-variant+
 
 header-clause  = POLICY policy-name
                | DERIVE derive-name+
@@ -158,18 +158,18 @@ letters `f`, `n`, and `r` are excluded because they always name the concrete
 boolean, integer, and real scalar types, regardless of declared arity. Parsers,
 schema parameter indices, generated signatures, and arity diagnostics all use
 the same reversible mapping; internal type-family storage is not limited by this
-source spelling cap. Compact `ENUM` omits both arity and header clauses and is
-implicitly arity zero. Header clauses occur after the arity in full declarations.
-A clause may occur at most once; `DERIVE` features are order-independent and
+source spelling cap. Compact `ENUM` omits the arity and is implicitly arity
+zero. Its optional header clauses occur before the first variant; full
+declarations place them after the arity. `POLICY` may occur at most once.
+`DERIVE` features are order-independent, may be split across clauses, and
 duplicates reject.
 
 The compact `ENUM name v0 v1 ... ;ENUM` form is legal only when every variant
 is payloadless. The first token after the enum name selects the form: a decimal
-arity selects full block mode; a bare variant selects compact mode. A header
-clause without a preceding arity is a malformed full declaration. Bare variant
-tails and `VARIANT` blocks cannot mix. A block variant accepts only zero or
-more named `FIELD` clauses before `;VARIANT`; anonymous payload tokens are
-invalid.
+arity selects full block mode; a header clause or bare variant selects compact
+mode. Compact headers become invalid after the first variant. Bare variant tails
+and `VARIANT` blocks cannot mix. A block variant accepts only zero or more named
+`FIELD` clauses before `;VARIANT`; anonymous payload tokens are invalid.
 
 Examples:
 
@@ -1036,12 +1036,13 @@ parametric families (`derive requires a concrete (arity 0) family` — open
 payload types have no comparator). A private family rejects (`derive requires
 a public family` — there is no package to hold the words).
 
-The clause is an order-free feature list: the FIRST token after `DERIVE` must
+Each clause is an order-free feature list: the FIRST token after `DERIVE` must
 be a known feature (`eq`, `hash`; unknown rejects `E-TDECL-DERIVE`), and the
-list continues greedily while tokens stay known features (repeats are
-idempotent), so `DERIVE eq hash` and `DERIVE hash eq` are equivalent and the
-first non-feature token safely starts the variants. `DERIVE order` stays
-deferred.
+list continues greedily while tokens stay known features. Distinct features may
+be split across clauses, so `DERIVE eq hash`, `DERIVE hash eq`, and
+`DERIVE eq DERIVE hash` are equivalent. Repeating a feature in one or several
+clauses rejects. The first non-feature token safely starts the variants.
+`DERIVE order` stays deferred.
 
 ### 9.3.2 `DERIVE hash` (derive S3, semantic reference)
 
@@ -2307,7 +2308,8 @@ always at depth 0 at snapshot time, like the `HIDX` mapping.
 ### 22.0 The `POLICY` header clause
 
 A family selects its physical representation with an optional `POLICY <name>`
-clause after the mandatory arity and before the first `VARIANT` or `FIELD`:
+clause after the mandatory arity, or after the type name for a compact enum, and
+before the first `VARIANT`, compact variant, or `FIELD`:
 
 ```forth
 ENUM option 1 POLICY stack-cell-tag

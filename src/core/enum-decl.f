@@ -9,15 +9,16 @@
 \ Grammar (docs/type-families.md §2.1, §2.3):
 \   enum-decl    = ENUM type-name (full-enum | compact-enum) ;ENUM
 \   full-enum    = arity header-clause* variant-block+
-\   compact-enum = compact-variant+
+\   compact-enum = header-clause* compact-variant+
 \   header-clause = POLICY policy-name | DERIVE derive-name+
 \   variant-block = VARIANT variant-name (FIELD field-name type-expr)* ;VARIANT
 \   compact-variant = variant-name
 \ The FIRST body token after the family name selects the mode irrevocably: a
-\ decimal is the arity header of a full block declaration; any other token is the
-\ first bare variant of an implicitly-arity-zero compact declaration. The modes
-\ never mix — a header clause or a VARIANT/FIELD/;VARIANT token in a compact body,
-\ or a bare token where a full body expects a VARIANT, rejects at the exact token.
+\ decimal is the arity header of a full block declaration; any other token starts
+\ an implicitly-arity-zero compact declaration. Compact header clauses precede
+\ its first bare variant. The modes never mix — a VARIANT/FIELD/;VARIANT token
+\ in a compact body, a compact header after its first variant, or a bare token
+\ where a full body expects a VARIANT rejects at the exact token.
 \ Every malformed/duplicate/reserved/unresolved reject rolls the whole provisional
 \ declaration back to a byte-identical registry.
 \
@@ -249,8 +250,8 @@ ED-RESET
    dup SCH-APP? IF SCH-A@ FAM-WIDTH@ EXIT THEN drop 1 ;
 
 \ ---------------------------------------------------------------------------
-\ header clauses (full mode only). Each emits its event through DECL-EVENT (which
-\ owns duplicate / ordinal state) and mutates only the fresh family record.
+\ header clauses. Each emits its event through DECL-EVENT (which owns duplicate /
+\ ordinal state) and mutates only the fresh family record.
 \ ---------------------------------------------------------------------------
 : HEADER-ORDER ( -- )                   \ header clauses precede the first variant
    SEEN-VARIANT @ IF E-SYNTAX throw THEN ;
@@ -330,23 +331,27 @@ ED-RESET
    OPEN-VARIANT VARIANT-BODY CLOSE-VARIANT ;
 
 \ ---------------------------------------------------------------------------
-\ compact variants (compact mode). Each bare token is one payloadless variant:
-\ open then immediately close (no fields). A full-mode grammar keyword appearing
-\ here is a mixed-mode / compact-header / compact-payload reject at that token.
+\ compact body. POLICY and DERIVE use the shared header owner before the first
+\ payloadless variant. Full-mode block keywords always reject; a header after a
+\ variant rejects through HEADER-ORDER.
 \ ---------------------------------------------------------------------------
-: COMPACT-KW? ( ptr u8 n -- bool )      \ a full-mode keyword illegal in a compact body
+: COMPACT-KW? ( ptr u8 n -- bool )      \ a block keyword illegal in a compact body
    2dup s" variant" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" field" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup s" policy" CORE-STR=CI IF 2drop YES EXIT THEN
-   s" derive" CORE-STR=CI ;
+   s" field" CORE-STR=CI ;
 : COMPACT-VARIANT ( ptr u8 n -- )       \ register one payloadless variant
    {: na:ptr nu:n :}
-   na nu COMPACT-KW? IF E-SYNTAX throw THEN
+   -1 SEEN-VARIANT !
    TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
+: COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
+   2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup COMPACT-KW? IF 2drop E-SYNTAX throw THEN
+   2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
+   2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
+   COMPACT-VARIANT NO ;
 
 \ ---------------------------------------------------------------------------
 \ transaction orchestration.
@@ -391,8 +396,7 @@ ED-RESET
 : COMPACT-BODY ( ptr u8 n -- )          \ first variant token in hand, then loop to ;ENUM
    BEGIN
       dup 0= IF 2drop E-SYNTAX throw THEN            \ input ended before ;ENUM
-      2dup s" ;enum" CORE-STR=CI IF 2drop EXIT THEN
-      COMPACT-VARIANT
+      COMPACT-CLAUSE IF EXIT THEN
       ED-NEXT
    AGAIN ;
 

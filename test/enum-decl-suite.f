@@ -8,10 +8,11 @@
 \ named FIELD payloads reaching TYPE-FIELD reflection keyed (family, variant-id)
 \ with SV.SCH-COUNT=0 (the settled seam); a COMPACT declaration publishes
 \ payloadless TK-ENUM variants matching legacy-compact registry semantics; POLICY
-\ and DERIVE headers reach both the family record and the event stream; the shared
+\ and DERIVE headers are accepted before compact variants and reach both the
+\ family record and the event stream; the shared
 \ variant open/close and field events sequence correctly and each field event
 \ carries the open variant selector; every reject anchor (mixed mode,
-\ arity-then-compact, compact header, compact positional payload, missing
+\ arity-then-compact, late compact header, compact positional payload, missing
 \ ;VARIANT / ;ENUM, malformed arity, empty enum, reserved / case family name,
 \ duplicate variant, every reserved variant-name category, package-scoped family
 \ collisions, and the field record's own dup / reserved / case / schema gate)
@@ -286,7 +287,72 @@ DECL-EVENT:COUNT 7 T=                                 \ DECL, ARITY, VARIANT, VA
 5 DECL-EVENT:VAR@ DECL-EVENT:NO-VARIANT <> T-TRUE    \ which is a real variant, not NO-VARIANT
 
 \ ---------------------------------------------------------------------------
-\ 7. POLICY reaches both the family record and the event stream (full mode).
+\ 7. Compact POLICY and DERIVE clauses use the same family and event owners as
+\    full mode, remain TK-ENUM, and may precede variants in either header order.
+\ ---------------------------------------------------------------------------
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN compact-policy POLICY packed-tag alpha ;ENUM" EV
+s" compact-policy" FAMID F-ENUM? T-TRUE
+s" compact-policy" FAMID F-POLICY@ PACKED# T=
+s" compact-policy" FAMID F-VAR-COUNT 1 T=
+DECL-EVENT:COUNT 4 T=                                 \ DECL, POLICY, VARIANT, VARIANT-END
+0 DECL-EVENT:DECL? T-TRUE
+1 DECL-EVENT:POLICY? T-TRUE
+2 DECL-EVENT:VARIANT? T-TRUE
+3 DECL-EVENT:VARIANT-END? T-TRUE
+
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN compact-derive-a DERIVE eq hash alpha ;ENUM" EV
+s" compact-derive-a" FAMID F-ENUM? T-TRUE
+s" compact-derive-a" FAMID F-EQ? T-TRUE
+s" compact-derive-a" FAMID F-HASH? T-TRUE
+DECL-EVENT:COUNT 5 T=                                 \ DECL, DERIVE x2, VARIANT, VARIANT-END
+1 DECL-EVENT:DERIVE? T-TRUE
+2 DECL-EVENT:DERIVE? T-TRUE
+3 DECL-EVENT:VARIANT? T-TRUE
+
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN compact-derive-b DERIVE hash eq alpha ;ENUM" EV
+s" compact-derive-b" FAMID F-EQ? T-TRUE
+s" compact-derive-b" FAMID F-HASH? T-TRUE
+1 DECL-EVENT:DERIVE? T-TRUE
+2 DECL-EVENT:DERIVE? T-TRUE
+
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN compact-derive-split DERIVE eq DERIVE hash alpha ;ENUM" EV
+s" compact-derive-split" FAMID F-EQ? T-TRUE
+s" compact-derive-split" FAMID F-HASH? T-TRUE
+DECL-EVENT:COUNT 5 T=                                 \ distinct clauses retain one event per feature
+1 DECL-EVENT:DERIVE? T-TRUE
+2 DECL-EVENT:DERIVE? T-TRUE
+
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN compact-both-a POLICY packed-tag DERIVE eq hash alpha beta ;ENUM" EV
+s" compact-both-a" FAMID F-ENUM? T-TRUE
+s" compact-both-a" FAMID F-POLICY@ PACKED# T=
+s" compact-both-a" FAMID F-EQ? T-TRUE
+s" compact-both-a" FAMID F-HASH? T-TRUE
+s" compact-both-a" FAMID F-VAR-COUNT 2 T=
+DECL-EVENT:COUNT 8 T=                                 \ both headers, then two variant pairs
+1 DECL-EVENT:POLICY? T-TRUE
+2 DECL-EVENT:DERIVE? T-TRUE
+3 DECL-EVENT:DERIVE? T-TRUE
+4 DECL-EVENT:VARIANT? T-TRUE
+
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN compact-both-b DERIVE hash eq POLICY packed-tag alpha ;ENUM" EV
+s" compact-both-b" FAMID F-ENUM? T-TRUE
+s" compact-both-b" FAMID F-POLICY@ PACKED# T=
+s" compact-both-b" FAMID F-EQ? T-TRUE
+s" compact-both-b" FAMID F-HASH? T-TRUE
+DECL-EVENT:COUNT 6 T=                                 \ DERIVE x2, POLICY, one variant pair
+1 DECL-EVENT:DERIVE? T-TRUE
+2 DECL-EVENT:DERIVE? T-TRUE
+3 DECL-EVENT:POLICY? T-TRUE
+4 DECL-EVENT:VARIANT? T-TRUE
+
+\ ---------------------------------------------------------------------------
+\ 8. POLICY reaches both the family record and the event stream (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN opt 0 POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" EV
@@ -295,7 +361,7 @@ s" opt" FAMID F-POLICY@ PACKED# T=                    \ family layout policy is 
 2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
 
 \ ---------------------------------------------------------------------------
-\ 8. DERIVE reaches both the family record and the event stream; two features on
+\ 9. DERIVE reaches both the family record and the event stream; two features on
 \    one clause are accepted, each recorded once (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
@@ -306,7 +372,7 @@ s" der" FAMID F-HASH? T-TRUE                          \ hash derived
 3 DECL-EVENT:DERIVE? T-TRUE
 
 \ ---------------------------------------------------------------------------
-\ 9. A duplicate FIELD name inside a variant rejects through the field record
+\ 10. A duplicate FIELD name inside a variant rejects through the field record
 \    (E-TFAM-DUP 7102) and the whole provisional declaration rolls back
 \    byte-identically.
 \ ---------------------------------------------------------------------------
@@ -321,7 +387,7 @@ TYPE-FIELD:COUNT PFB @ T=                             \ committed field rows ret
 DECL-EVENT:COUNT DEVB @ T=                            \ nothing new published
 
 \ ---------------------------------------------------------------------------
-\ 10. A duplicate variant name rejects (E-TFAM-DUP 7102 from SUMV-ADD) and the
+\ 11. A duplicate variant name rejects (E-TFAM-DUP 7102 from SUMV-ADD) and the
 \     whole provisional declaration rolls back byte-identically.
 \ ---------------------------------------------------------------------------
 REG-MARK
@@ -330,11 +396,11 @@ TFAMN@ RB-TFAM @ T=                                   \ family retired
 SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
 
 \ ---------------------------------------------------------------------------
-\ 11. Grammar / mode / arity / name / field rejects, each at the offending token.
+\ 12. Grammar / mode / arity / name / field rejects, each at the offending token.
 \ ---------------------------------------------------------------------------
 s" ENUM-DECL:ED-RUN emix red VARIANT alpha ;VARIANT ;ENUM" TRY 7107 T=       \ mixed modes (block token in compact)
 s" ENUM-DECL:ED-RUN eac 2 red ;ENUM" TRY 7107 T=                         \ arity then a bare compact variant
-s" ENUM-DECL:ED-RUN ech POLICY packed-tag red ;ENUM" TRY 7107 T=         \ header clause in a compact body
+s" ENUM-DECL:ED-RUN ech red POLICY packed-tag ;ENUM" TRY 7107 T=         \ header clause after a compact variant
 s" ENUM-DECL:ED-RUN ecp red FIELD y n ;ENUM" TRY 7107 T=                 \ positional/named payload in compact
 s" ENUM-DECL:ED-RUN emv 0 VARIANT alpha FIELD x n ;ENUM" TRY 7107 T=         \ missing ;VARIANT
 s" ENUM-DECL:ED-RUN eme red green" TRY 7107 T=                           \ missing ;ENUM
@@ -351,13 +417,13 @@ s" ENUM-DECL:ED-RUN epa 0 VARIANT alpha FIELD x a ;VARIANT ;ENUM" TRY 7109 T=   
 s" ENUM-DECL:ED-RUN epg 6 VARIANT alpha FIELD x h ;VARIANT ;ENUM" TRY 7109 T=      \ parameter 6 is outside arity 6
 
 \ ---------------------------------------------------------------------------
-\ 12. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
+\ 13. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
 \ ---------------------------------------------------------------------------
 s" ENUM-DECL:ED-RUN twice red ;ENUM" EV
 s" ENUM-DECL:ED-RUN twice red ;ENUM" TRY 7102 T=
 
 \ ---------------------------------------------------------------------------
-\ 13. Deterministic snapshot identity: an identical declaration against a fresh
+\ 14. Deterministic snapshot identity: an identical declaration against a fresh
 \     registry (family id restored, event log reset) folds to the same identity;
 \     a different declaration folds to a different one.
 \ ---------------------------------------------------------------------------
@@ -425,6 +491,24 @@ s" ENUM-DECL:ED-RUN local-variant member ;ENUM" EV
    DECL-EVENT:COUNT DEVB !
    a u TRY want T=
    REG-SAME ;
+
+public
+
+s" ENUM-DECL:ED-RUN compact-dup-policy POLICY packed-tag POLICY stack-cell-tag alpha ;ENUM" 7163 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-dup-feature DERIVE eq eq alpha ;ENUM" 7164 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-dup-split DERIVE eq DERIVE eq alpha ;ENUM" 7164 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-missing-policy POLICY ;ENUM" 7116 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-missing-derive DERIVE ;ENUM" 7119 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-bad-policy POLICY unknown alpha ;ENUM" 7116 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-bad-feature DERIVE unknown alpha ;ENUM" 7119 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-order DERIVE order alpha ;ENUM" 7119 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-no-variant POLICY packed-tag ;ENUM" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-late-policy alpha POLICY packed-tag ;ENUM" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-late-derive alpha DERIVE eq ;ENUM" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-policy-name alpha policy ;ENUM" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN compact-derive-name alpha derive ;ENUM" 7107 REJECT-SAME
+
+private
 
 s" ENUM-DECL:ED-RUN reject-compact ;ENUM" 7107 REJECT-SAME
 s" ENUM-DECL:ED-RUN reject-compact n ;ENUM" 7110 REJECT-SAME
