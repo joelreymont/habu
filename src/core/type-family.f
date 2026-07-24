@@ -1814,6 +1814,23 @@ variable TF-RBF-DEPTH   0 TF-RBF-DEPTH !
    TF-RBF-TOP TF-RBF-REQUIRE-PF-DEPTH
    TF-RBF-DEPTH @ 1 - TF-RBF-DEPTH ! ;
 
+package TYPE-FAMILY-OWNER
+
+public
+
+: PROVISIONAL? ( n -- bool ) {: fam:n :}
+   TF-RBF-DEPTH @ 0= IF 0 0= 0= EXIT THEN
+   fam TF-RBF-TOP TFRB.TFAMN @ >=
+   fam TFAM-N @ < and ;
+
+: RESET-ALLOWED? ( -- bool )
+   TF-RBF-DEPTH @ 0= ;
+
+private
+get-current prot-wid-add
+
+;package
+
 \ TFAM-RBF-SNAP-RESET ( -- ) : snapshot prepare — frames are transient (depth 0
 \ at snapshot), so drop any grown arena back to the baked boot store.
 : TFAM-RBF-SNAP-RESET ( -- )

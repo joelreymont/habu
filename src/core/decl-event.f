@@ -123,6 +123,8 @@ TRUSTED: DEV-FLD-TX-SCHEMA-FOR ( n n n -- n ) TYPE-FIELD-OWNER:TX-SCHEMA-FOR ;
 TRUSTED: DEV-FLD-TX-CELLS-FOR ( n n n -- n ) TYPE-FIELD-OWNER:TX-CELLS-FOR ;
 TRUSTED: DEV-NAME-VARIANT-REQUIRE ( ptr u8 n -- ) TYPE-NAME:VARIANT-REQUIRE ;
 TRUSTED: DEV-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
+TRUSTED: DEV-FAM-PROVISIONAL? ( n -- bool ) TYPE-FAMILY-OWNER:PROVISIONAL? ;
+TRUSTED: DEV-FAM-RESET-ALLOWED? ( -- bool ) TYPE-FAMILY-OWNER:RESET-ALLOWED? ;
 
 \ ---------------------------------------------------------------------------
 \ event record arena (interleaved cells, pointer-free: KIND/FAM/VAR/FLD/OWNER are
@@ -315,8 +317,28 @@ variable DEV-TX-SERIAL
    REPEAT
    DEV-FOUND @ 0 <> ;
 
+: DEV-CUR-DECL? ( -- bool )
+   DEV-TX-TOP DEVTX.OWNER @ DEV-NO-OWNER = IF 0 0= 0= EXIT THEN
+   DEV-K-DECL DEV-CUR-HAS-KIND? ;
+
+: DEV-PUB-FAMILY? ( n -- bool ) {: fam:n :}
+   0 DEV-FOUND !
+   0 DEV-I !
+   BEGIN DEV-I @ DEV-PUB-N @ < WHILE
+      DEV-I @ DEV-PROV-FAM@ fam = IF -1 DEV-FOUND ! THEN
+      DEV-I @ 1 + DEV-I !
+   REPEAT
+   DEV-FOUND @ 0 <> ;
+
+: DEV-PUB-FAMILY-REQUIRE ( n -- ) {: fam:n :}
+   fam DEV-FAM-PROVISIONAL? 0= IF EXIT THEN
+   fam DEV-PUB-FAMILY? IF E-DEV-FAMILY-SCOPE throw THEN ;
+
 \ --- declaration open + header clauses.
 : DEV-DECL ( n n -- n ) {: tok:n fam:n :}          \ open one declaration
+   tok DEV-TX-REQUIRE
+   DEV-CUR-DECL? IF E-DEV-STATE throw THEN
+   fam DEV-PUB-FAMILY-REQUIRE
    tok fam DEV-FAMILY-BIND DEV-FAMILY-REQUIRE
    DEV-K-DECL fam DEV-NO-VARIANT DEV-NO-FIELD DEV-EMIT
    tok ;
@@ -524,7 +546,12 @@ variable DEV-TX-SERIAL
    r DEVTX.PUBN @ DEV-PUB-N !
    DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH ! ;
 
+: DEV-RESET-REQUIRE ( -- )
+   DEV-TX-DEPTH @ 0 <> IF E-DEV-TX throw THEN
+   DEV-FAM-RESET-ALLOWED? 0= IF E-DEV-TX throw THEN ;
+
 : DEV-RESET ( -- )                \ base state; re-seeded at load (process-local)
+   DEV-RESET-REQUIRE
    0 DEV-N !   0 DEV-PUB-N !
    0 DEV-TX-DEPTH !   0 DEV-TX-SERIAL !
    0 DEV-BASE-FLD !   0 DEV-FLD-ORD !   0 DEV-VAR-ORD !

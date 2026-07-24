@@ -707,13 +707,16 @@ variable WF-PK      variable WF-LAY
    DEPTH 0 T=
    CURRENT-VARIANT NO-VARIANT T= ;
 
-: WF-RUN ( [ -- ] -- ) {: op :} \ typed-local-lint: allow-bare-local
+: WF-RUN-WANT ( [ -- ] n -- ) {: op want:n :} \ typed-local-lint: allow-bare-local
    WF-REG-SAVE
    WF-STATE-SAVE
    op catch TC !
-   TC @ E-DEV-FAMILY-SCOPE T=
+   TC @ want T=
    WF-STATE-SAME
    WF-REG-SAME ;
+
+: WF-RUN ( [ -- ] -- ) {: op :} \ typed-local-lint: allow-bare-local
+   op E-DEV-FAMILY-SCOPE WF-RUN-WANT ;
 
 : WF-BAD-ARITY ( -- ) TOK @ WF-CALL-FAM @ 1 ARITY drop ;
 : WF-BAD-POLICY ( -- ) TOK @ WF-CALL-FAM @ 0 POLICY drop ;
@@ -734,7 +737,7 @@ WF-START
 TOK @ FV7 @ s" wf-open" VARIANT TOK !
 ' WF-BAD-END WF-RUN
 WF-FINISH
-WF-START  ' WF-BAD-DECL WF-RUN  WF-FINISH
+WF-START  ' WF-BAD-DECL E-DEV-STATE WF-RUN-WANT  WF-FINISH
 WF-START  ' WF-BAD-FIELD WF-RUN  WF-FINISH
 
 DEV-NO-FAMILY WF-CALL-FAM !
@@ -951,6 +954,247 @@ TC @ E-PF-ID T=
 
 HF-SAME
 HF-CLOSE
+
+\ ---------------------------------------------------------------------------
+\ 19. DECL is single-assignment per event frame. Both same-family and
+\     wrong-family rebinding reject before any event, family, field, or
+\     rollback state changes.
+\ ---------------------------------------------------------------------------
+variable DG-FAM
+variable DG-N
+variable DG-PUB
+variable DG-ID
+variable DG-TFAM
+variable DG-STRU
+variable DG-PK
+variable DG-SUMV
+variable DG-LAY
+variable DG-SCH
+variable DG-ROOT
+variable DG-KIND
+variable DG-FLD
+variable DG-FLD-PROV
+variable DG-FLD-DEPTH
+variable DG-CHK-DEPTH
+variable DG-DEV-DEPTH
+variable DG-SERIAL
+variable DG-FEVN
+variable DG-FFLDORD
+variable DG-FVARORD
+variable DG-FCURVAR
+variable DG-FFLDTOK
+variable DG-FTOK
+variable DG-FPUBN
+variable DG-FSTATE
+variable DG-FFAM
+variable DG-FOWNER
+variable DG-OLD-FAM
+variable DG-NEW-FAM
+variable DG-OTHER-FAM
+
+: DG-FRAME-SAVE ( -- )
+   DEV-TX-TOP {: r:ptr :}
+   r DEVTX.EVN @ DG-FEVN !
+   r DEVTX.FLDORD @ DG-FFLDORD !
+   r DEVTX.VARORD @ DG-FVARORD !
+   r DEVTX.CURVAR @ DG-FCURVAR !
+   r DEVTX.FLDTOK @ DG-FFLDTOK !
+   r DEVTX.TOK @ DG-FTOK !
+   r DEVTX.PUBN @ DG-FPUBN !
+   r DEVTX.STATE @ DG-FSTATE !
+   r DEVTX.FAM @ DG-FFAM !
+   r DEVTX.OWNER @ DG-FOWNER ! ;
+
+: DG-FRAME-SAME ( -- )
+   DEV-TX-TOP {: r:ptr :}
+   r DEVTX.EVN @ DG-FEVN @ T=
+   r DEVTX.FLDORD @ DG-FFLDORD @ T=
+   r DEVTX.VARORD @ DG-FVARORD @ T=
+   r DEVTX.CURVAR @ DG-FCURVAR @ T=
+   r DEVTX.FLDTOK @ DG-FFLDTOK @ T=
+   r DEVTX.TOK @ DG-FTOK @ T=
+   r DEVTX.PUBN @ DG-FPUBN @ T=
+   r DEVTX.STATE @ DG-FSTATE @ T=
+   r DEVTX.FAM @ DG-FFAM @ T=
+   r DEVTX.OWNER @ DG-FOWNER @ T= ;
+
+: DG-SAVE ( n -- ) {: fam:n :}
+   fam DG-FAM !
+   DEV-N @ DG-N !
+   DEV-PUB-N @ DG-PUB !
+   IDENTITY DG-ID !
+   TFAM-N@ DG-TFAM !
+   TF-STR-U@ DG-STRU !
+   TF-PK-N@ DG-PK !
+   SUMV-N@ DG-SUMV !
+   LAY-N@ DG-LAY !
+   SCHEMA-N@ DG-SCH !
+   SCHEMA-ROOT-N@ DG-ROOT !
+   fam TFAM-KIND@ DG-KIND !
+   TYPE-FIELD:COUNT DG-FLD !
+   DEV-FLD-PROVISIONAL-COUNT DG-FLD-PROV !
+   TYPE-FIELD:TX-DEPTH DG-FLD-DEPTH !
+   CHECKER-SCOPE-DEPTH DG-CHK-DEPTH !
+   DEV-TX-DEPTH @ DG-DEV-DEPTH !
+   DEV-TX-SERIAL @ DG-SERIAL !
+   DEV-TX-DEPTH @ 0 > IF DG-FRAME-SAVE THEN ;
+
+: DG-SAME ( -- )
+   DEV-N @ DG-N @ T=
+   DEV-PUB-N @ DG-PUB @ T=
+   IDENTITY DG-ID @ T=
+   TFAM-N@ DG-TFAM @ T=
+   TF-STR-U@ DG-STRU @ T=
+   TF-PK-N@ DG-PK @ T=
+   SUMV-N@ DG-SUMV @ T=
+   LAY-N@ DG-LAY @ T=
+   SCHEMA-N@ DG-SCH @ T=
+   SCHEMA-ROOT-N@ DG-ROOT @ T=
+   DG-FAM @ TFAM-KIND@ DG-KIND @ T=
+   TYPE-FIELD:COUNT DG-FLD @ T=
+   DEV-FLD-PROVISIONAL-COUNT DG-FLD-PROV @ T=
+   TYPE-FIELD:TX-DEPTH DG-FLD-DEPTH @ T=
+   CHECKER-SCOPE-DEPTH DG-CHK-DEPTH @ T=
+   DEV-TX-DEPTH @ DG-DEV-DEPTH @ T=
+   DEV-TX-SERIAL @ DG-SERIAL @ T=
+   DEV-TX-DEPTH @ 0 > IF DG-FRAME-SAME THEN ;
+
+: DG-DECL-FP1 ( -- )
+   TOK @ FP1 @ DECL drop ;
+
+: DG-DECL-FE2 ( -- )
+   TOK @ FE2 @ DECL drop ;
+
+: DG-RESET ( -- )
+   RESET ;
+
+RESET
+OPEN TOK !
+TOK @ FP1 @ DECL TOK !
+FP1 @ DG-SAVE
+' DG-DECL-FP1 catch TC !
+TC @ E-DEV-STATE T=
+DG-SAME
+' DG-DECL-FE2 catch TC !
+TC @ E-DEV-STATE T=
+DG-SAME
+TOK @ ROLLBACK
+
+\ ---------------------------------------------------------------------------
+\ 20. RESET is fail-closed before every store while either an event frame or
+\     a checker rollback frame is live, and succeeds after both close.
+\ ---------------------------------------------------------------------------
+RESET
+OPEN TOK !
+TOK @ FP1 @ DECL TOK !
+FP1 @ DG-SAVE
+' DG-RESET catch TC !
+TC @ E-DEV-TX T=
+DG-SAME
+TOK @ ROLLBACK
+
+TWX-CAND-START
+FP1 @ DG-SAVE
+' DG-RESET catch TC !
+TC @ E-DEV-TX T=
+DG-SAME
+0 TWX-CAND-DONE drop
+' DG-RESET catch TC !
+TC @ 0 T=
+DEPTH 0 T=
+CHECKER-SCOPE-DEPTH 0 T=
+
+\ ---------------------------------------------------------------------------
+\ 21. A family created after the live checker savepoint may publish only one
+\     declaration. A fresh event frame cannot bind it again under
+\     that savepoint, and rejection preserves every owner watermark.
+\ ---------------------------------------------------------------------------
+RESET
+TWX-CAND-START
+s" dg" CHECKER-PACKAGE-PUBLIC s" fresh" 0 TK-ENUM
+   TWX-TFAM-DECL DG-NEW-FAM !
+OPEN TOK !
+TOK @ DG-NEW-FAM @ DECL TOK !
+TOK @ PUBLISH
+OPEN TOK !
+DG-NEW-FAM @ DG-SAVE
+: DG-DECL-NEW ( -- )
+   TOK @ DG-NEW-FAM @ DECL drop ;
+
+: DG-DECL-OTHER ( -- )
+   TOK @ DG-OTHER-FAM @ DECL drop ;
+
+' DG-DECL-NEW catch TC !
+TC @ E-DEV-FAMILY-SCOPE T=
+DG-SAME
+TOK @ ROLLBACK
+
+s" dg" CHECKER-PACKAGE-PUBLIC s" other" 0 TK-ENUM
+   TWX-TFAM-DECL DG-OTHER-FAM !
+OPEN TOK !
+' DG-DECL-OTHER catch TC !
+TC @ 0 T=
+TOK @ ROLLBACK
+
+0 TWX-CAND-DONE drop
+' DG-RESET catch TC !
+TC @ 0 T=
+
+\ ---------------------------------------------------------------------------
+\ 22. A family older than the current checker savepoint is not provisional.
+\     Its earlier published declaration therefore does not block a fresh
+\     frame that is rolled back before publication.
+\ ---------------------------------------------------------------------------
+RESET
+OPEN TOK !
+TOK @ FP1 @ DECL TOK !
+TOK @ PUBLISH
+TWX-CAND-START
+OPEN TOK !
+' DG-DECL-FP1 catch TC !
+TC @ 0 T=
+TOK @ ROLLBACK
+0 TWX-CAND-DONE drop
+RESET
+
+\ ---------------------------------------------------------------------------
+\ 23. Rolling back the first event frame before publication leaves no stale
+\     declaration claim. After checker rollback reuses the family id, the new
+\     savepoint may bind it normally.
+\ ---------------------------------------------------------------------------
+TWX-CAND-START
+s" dg" CHECKER-PACKAGE-PUBLIC s" reused" 0 TK-ENUM
+   TWX-TFAM-DECL DG-OLD-FAM !
+OPEN TOK !
+TOK @ DG-OLD-FAM @ DECL TOK !
+TOK @ ROLLBACK
+0 TWX-CAND-DONE drop
+
+TWX-CAND-START
+s" dg" CHECKER-PACKAGE-PUBLIC s" reused" 0 TK-ENUM
+   TWX-TFAM-DECL DG-NEW-FAM !
+DG-NEW-FAM @ DG-OLD-FAM @ T=
+OPEN TOK !
+' DG-DECL-NEW catch TC !
+TC @ 0 T=
+TOK @ ROLLBACK
+0 TWX-CAND-DONE drop
+RESET
+
+\ ---------------------------------------------------------------------------
+\ 24. The owner queries were public while DECL-EVENT captured them, then the
+\     generated-declaration protection owner retired both names before user
+\     source. The compiled bridges remain the sole live capabilities.
+\ ---------------------------------------------------------------------------
+: DG-QUALIFIED-ABSENT? ( ptr u8 n -- bool )
+   XREF-FIND XREF-FOUND? 0= ;
+
+s" TYPE-FAMILY-OWNER:PROVISIONAL?" DG-QUALIFIED-ABSENT? T-TRUE
+s" TYPE-FAMILY-OWNER:RESET-ALLOWED?" DG-QUALIFIED-ABSENT? T-TRUE
+s" DG-CAP-P ( n -- bool ) TYPE-FAMILY-OWNER:PROVISIONAL?"
+   CHECK-CANDIDATE! 1 T=
+s" DG-CAP-R ( -- bool ) TYPE-FAMILY-OWNER:RESET-ALLOWED?"
+   CHECK-CANDIDATE! 1 T=
 
 ;package
 
