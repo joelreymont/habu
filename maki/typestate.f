@@ -108,7 +108,7 @@ public
 
 \ ---- ART: built (needs an emitted candidate + the artifact identity) ---------
 \ Identity threading (dot habu-public-producers-for-7084d81c, discharging the
-\ refinement the stage/evidence sub-dots deferred): ART:built is now a PRODUCT that
+\ refinement the stage/evidence sub-dots deferred): ART:built is now a STRUCTURE that
 \ CARRIES the CAD-KIND:artifact-id it was built from, so the evidence/policy/promote
 \ transitions read the artifact FROM the built witness (maki/evidence/schema.f,
 \ maki/evidence/policy.f) instead of taking it as a loose, separately-fabricated
@@ -116,7 +116,7 @@ public
 \ the evidence proof tokens (maki/evidence/schema.f): MINT-BUILD-PROOF is PRIVATE, so a
 \ caller holding an artifact-id cannot MAKE the "was actually built" witness around
 \ ART:BUILD, and therefore cannot forge downstream evidence. The old fieldless-nominal
-\ RAW>BUILT mint is retired - a product needs no raw mint.
+\ RAW>BUILT mint is retired - a structure needs no raw mint.
 \
 \ The build's artifact id comes from the public producer maki/artifact.f
 \ (ARTIFACT:REGISTER). The skeleton's decorative CAD-KIND:toolchain-id operand (it was
@@ -125,10 +125,10 @@ public
 package ART
 public
 TYPEFAMILY build-proof 0
-PRODUCT built 0
+STRUCTURE built 0
    FIELD art CAD-KIND:artifact-id
    FIELD tok build-proof
-;PRODUCT
+;STRUCTURE
 private
 TRUSTED: MINT-BUILD-PROOF ( -- build-proof )  0 ;
 public
