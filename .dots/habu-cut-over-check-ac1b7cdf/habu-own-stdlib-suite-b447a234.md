@@ -1,9 +1,11 @@
 ---
 title: Own stdlib suite selector
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-24T17:15:00.681260+02:00\""
+created-at: "\"\\\"2026-07-24T17:15:00.681260+02:00\\\"\""
+closed-at: "2026-07-24T18:11:55.690719+02:00"
+close-reason: Reviewed implementation landed at master@origin 7170b6b6; selector paths and all required gates are green.
 ---
 
 Why: the CHECK performance correction needs six independently selected spawned suites, but test/gate-stdlib-lib.f still defines its complete adapter as legacy globals, so changing SUITE-CHECK-CLI? fails the exact package-ownership gate. Exact result: package STDLIB-GATE owns the complete test/gate-stdlib-lib.f module. Keep every existing constant, cell, buffer, hook adapter, parser, selector, process runner, and helper private. Publish only MAIN ( -- ), renamed from GATE-STDLIB-MAIN, and SKIP-SEMANTIC! ( -- ), renamed from SUITE-SKIP-TOOL-SEMANTIC!. Update test/gate-stdlib-cases.f to call STDLIB-GATE:MAIN and update the package-owned callers in test/gate-runner-lib.f and test/run-worker-stdlib.f to call STDLIB-GATE:SKIP-SEMANTIC!. Preserve command parsing, slice selection, arguments, environment, process pooling, timing, diagnostics, exit status, and test hooks exactly. Do not add aliases, forwarding globals, exported storage, duplicate selectors, exceptions, compatibility names, or CHECK sharding in this leaf. Owner and files: STDLIB-GATE; test/gate-stdlib-lib.f plus the three exact callers and FILEMAP only if its ownership description changes. Pre-change proof: a representative change to SUITE-CHECK-CLI? produces E-PACKAGE-OWNERSHIP through tools/package-diff-lint.f. Acceptance: only STDLIB-GATE:MAIN and STDLIB-GATE:SKIP-SEMANTIC! resolve externally; every former global and qualified private word rejects; standalone test/gate-stdlib.f full and check-cli selection, gate-runner tool dispatch, and resident worker tool dispatch retain exact behavior; exact typed-local and package-diff gates pass. Smallest owning-path check: bin/hb --load test/gate-stdlib.f -- check-cli plus the focused gate-runner and resident-worker selector probes. Dependency: none beyond the exact reviewed local claim base. This leaf blocks habu-cut-over-check-ac1b7cdf. Claim: agent=own_stdlib_selector workspace=.jj-ws/habu-own-stdlib-suite-b447a234.

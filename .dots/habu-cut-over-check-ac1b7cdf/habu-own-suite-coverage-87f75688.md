@@ -1,9 +1,11 @@
 ---
 title: Own suite coverage lint
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-24T17:15:38.605921+02:00\""
+created-at: "\"\\\"2026-07-24T17:15:38.605921+02:00\\\"\""
+closed-at: "2026-07-24T18:11:55.655570+02:00"
+close-reason: Reviewed implementation landed at master@origin 7170b6b6; composed production paths and all required gates are green.
 ---
 
 Why: CHECK shard schedule parity belongs in the existing suite-coverage lint, but tools/suite-coverage-lint-core.f and its test still define legacy globals, so any structural extension fails the exact package-ownership gate. Exact result: package SUITE-COVERAGE-LINT owns the complete core module. Keep every SC constant, buffer, cell, table, parser, checker, loader, reporter, and helper private and publish only RUN ( -- ), preserving the current live load, finding order and count, prose bytes, and nonzero failure behavior. Package tools/suite-coverage-lint.f as SUITE-COVERAGE-LINT-CLI with a private RUN that invokes SUITE-COVERAGE-LINT:RUN and then executes inside its package. Reopen SUITE-COVERAGE-LINT privately in tools/suite-coverage-lint-test.f, keep every SCT fixture private, execute the fixture main before closing the package, and export no test bridge. Update package GATE-LINT-TOOLS to call only SUITE-COVERAGE-LINT:RUN. Preserve every current orphan, PTX parity, Maki schedule, manual, spawn-only, and lint-registration rule exactly. Do not add CHECK shard policy in this ownership leaf, rename private SC or SCT words, add aliases, export state, duplicate parsing, add exceptions, or change gate inventory. Owner and files: tools/suite-coverage-lint-core.f, tools/suite-coverage-lint.f, tools/suite-coverage-lint-test.f, the one qualified caller in test/gate-stdlib-lint-tools.f, and FILEMAP only if ownership descriptions change. Pre-change proof: a representative core and fixture change produces E-PACKAGE-OWNERSHIP through tools/package-diff-lint.f. Acceptance: only SUITE-COVERAGE-LINT:RUN resolves externally; every former global and qualified private word rejects; the real CLI, live lint, focused fixture suite, and resident lint-tools suite retain exact findings, output, and status; exact typed-local and package-diff gates pass. Smallest owning-path check: bin/hb --load tools/suite-coverage-lint.f, bin/hb --load tools/suite-coverage-lint-test.f, and the lint-tools suite. Dependency: none beyond the exact reviewed local claim base. This leaf blocks habu-cut-over-check-ac1b7cdf. Claim: agent=own_suite_coverage workspace=.jj-ws/habu-own-suite-coverage-87f75688.
