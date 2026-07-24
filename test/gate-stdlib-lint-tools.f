@@ -68,7 +68,7 @@ private
    s" tools/refine-lint-test.f" GSI-INCLUDE ;
 
 : SUITE-COVERAGE ( -- )
-   s" suite-coverage-lint" [: SUITE-COVERAGE-LINT ;] GSI-RUN
+   s" suite-coverage-lint" [: SUITE-COVERAGE-LINT:RUN ;] GSI-RUN
    s" tools/suite-coverage-lint-test.f" GSI-INCLUDE ;
 
 : NAMESPACE ( -- )

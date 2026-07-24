@@ -3,8 +3,12 @@
 
 require tools/suite-coverage-lint-core.f
 
-: SCL-MAIN ( -- )
-   [: SUITE-COVERAGE-LINT ;] catch {: code:n :}
+package SUITE-COVERAGE-LINT-CLI
+
+: RUN ( -- )
+   [: SUITE-COVERAGE-LINT:RUN ;] catch {: code:n :}
    s" suite-coverage-lint" code LINT-MAIN ;
 
-SCL-MAIN
+RUN
+
+;package

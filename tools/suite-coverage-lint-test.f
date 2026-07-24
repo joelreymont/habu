@@ -17,6 +17,9 @@ require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/suite-coverage-lint-core.f
+require test/checker-assert.f
+
+package SUITE-COVERAGE-LINT
 
 4096 constant SCT-CAP
 create SCT-CASE-BUF SCT-CAP allot     \ cases fixture (holds live member pointers)
@@ -41,7 +44,12 @@ variable SCT-GX-U
 \ ---- live tree is green -----------------------------------------------------
 : SCT-LIVE-GREEN ( -- )
    \ the real gate files must classify every suite (0 findings, exit 0)
-   [: SUITE-COVERAGE-LINT ;] catch 0 T= ;
+   [: RUN ;] catch 0 T= ;
+
+: SCT-RESOLUTION ( -- )
+   s" SCT-PUB ( -- ) SUITE-COVERAGE-LINT:RUN" CHECK-QUIET-CANDIDATE! -1 T=
+   s" SCT-PRIV ( -- ) SUITE-COVERAGE-LINT:SC-RESET" CHECK-QUIET-CANDIDATE! 1 T=
+   s" SCT-LEGACY ( -- ) SUITE-COVERAGE-LINT" CHECK-QUIET-CANDIDATE! 1 T= ;
 
 \ ---- parse: cases members are BOL .f tokens; fake `-- file.f` args excluded ---
 : SCT-PARSE-MEMBERS ( -- )
@@ -223,6 +231,7 @@ variable SCT-GX-U
 : SCT-MAIN ( -- )
    T-RESET
    SCT-LIVE-GREEN
+   SCT-RESOLUTION
    SCT-PARSE-MEMBERS
    SCT-PARSE-MEMBERS-BARE
    SCT-MAKI-BARE
@@ -238,3 +247,5 @@ variable SCT-GX-U
    T-REPORT ;
 
 SCT-MAIN
+
+;package

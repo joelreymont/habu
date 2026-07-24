@@ -33,6 +33,8 @@ require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
 
+package SUITE-COVERAGE-LINT
+
 $8000 constant SC-CASES-CAP        \ test/gate-stdlib-cases.f source (resident)
 $20000 constant SC-SCAN-CAP        \ reused GSI-file scan buffer; grown 64K->128K as test/gate-engine-lib.f (the authoritatively scanned engine gate) passed the old cap
 $800 constant SC-PTX-BUF-CAP       \ copied inprocess ptx-toolchain file names
@@ -735,9 +737,13 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    SC-LOAD-PTX
    SC-LOAD-MAKI ;
 
-: SUITE-COVERAGE-LINT ( -- )
+public
+
+: RUN ( -- )
    LINT-TRUE SC-REPORT? !
    SC-LOAD
    SC-CHECK-ALL
    SC-SUMMARY
    SC-FIND @ 0 > if 1 throw then ;
+
+;package
