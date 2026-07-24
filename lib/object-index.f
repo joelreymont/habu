@@ -8,7 +8,7 @@ require lib/memory.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/content-key.f
-require lib/adt/option.f                  \ option<objidx:rec> for LOAD (switchover wave B)
+require lib/adt/option.f                  \ option<objidx:rec> for LOAD
 
 package OBJIDX
 
@@ -116,12 +116,11 @@ public
 
 \ A loaded index record is the stored object-key bytes for a source key.
 \ LOAD returns option<objidx:rec>: SOME(key-bytes) when the index file exists,
-\ NONE when it is absent — the checked replacement for the former
-\ (ptr u8 n bool) value+flag return (switchover wave B).
-PRODUCT rec 0
+\ NONE when it is absent.
+STRUCTURE rec 0
   FIELD ptr ptr u8
   FIELD len n
-;PRODUCT
+;STRUCTURE
 
 : LOAD ( ptr u8 n -- option<objidx:rec> )   \ SOME object-key bytes when present, else NONE
    PATH!
