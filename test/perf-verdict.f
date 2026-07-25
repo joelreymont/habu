@@ -116,10 +116,18 @@ private
       hard OF s" hard" ENDOF
    ;MATCH ;
 
+public
+
+\ Public because this package is the single owner of the calibration-drift
+\ tolerance: test/json-read-perf-phase.f brackets its quiescent measurement with
+\ the same spin and must judge it by the same rule, not by a second copy of the
+\ ten-percent band.
 : DRIFT-OK? ( n n -- bool ) {: pr:n po:n :}      \ pre post -> within +-10% of pre
    po pr - {: d:n :}
    d 0 < if d negate else d then {: ad:n :}
    ad PV-HUNDRED *  pr PV-DRIFT-PCT *  <= ;
+
+private
 
 : EVIDENCE-OK? ( n bool bool bool bool bool -- bool )   \ sha correct control fresh empty cache
    {: sh:n co:bool ct:bool fr:bool em:bool ca:bool :}

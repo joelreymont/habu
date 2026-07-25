@@ -18,6 +18,7 @@ TRW-LOAD-DONE
    GSI-TAIL-RUNNER
    s" test/gate-pool-test.f" GSI-INCLUDE
    s" test/gate-pool-orphan-test.f" GSI-INCLUDE
+   s" test/json-read-perf-phase-test.f" GSI-INCLUDE
    TR-INSTALL-POOL-HOOKS ;
 
 : RUN ( -- )
@@ -32,7 +33,7 @@ TRW-LOAD-DONE
       24 of GSI-TOOL-LINT-PHASE endof
       25 of GSI-TOOL-TYPED endof
       26 of GSI-TAIL-FAST endof
-      27 of GSI-TAIL-PURE endof
+      27 of TAIL-PURE:RUN endof
       28 of TAIL-RUNNER endof
       29 of GSI-TAIL-BUILD endof
       31 of GSI-LINT-LIBS-CORE endof

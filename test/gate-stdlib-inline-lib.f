@@ -416,17 +416,30 @@ public
    s" tools/signature-scan-emitter-test.f" GSI-INCLUDE
    s" tools/compiler-dispatch-test.f" GSI-INCLUDE ;
 
-: GSI-TAIL-PURE-SETUP ( -- )
+\ This group owns its own member list, so it owns a package, the same way
+\ TAIL-PROCESS below already does. Scheduling lib/json-read-perf-contract-test.f
+\ is the change that made the list move; the group moved with it rather than
+\ keeping a raw global name for a definition that is still being edited. Both
+\ dispatchers (test/run-worker-stdlib.f and test/gate-runner-lib.f) now call
+\ TAIL-PURE:RUN, so the two entry points cannot schedule different members.
+package TAIL-PURE
+
+private
+
+: SETUP ( -- )
    GSI-TEST-SETUP
    s" lib/json-write.f" GSI-REQUIRE
    GSI-TEST! ;
 
-: GSI-TAIL-PURE ( -- )
+public
+
+: RUN ( -- )
    s" stdlib/tail-pure" GSI-GROUP-PAR GSI-GROUP-HEADER
-   GSI-TAIL-PURE-SETUP
+   SETUP
    GSI-FORK-RESET
    s" lib/json-write-test.f" GSI-FORK-INCLUDE
    s" lib/json-read-test.f" GSI-FORK-INCLUDE
+   s" lib/json-read-perf-contract-test.f" GSI-FORK-INCLUDE
    s" lib/memory-test.f" GSI-FORK-INCLUDE
    s" lib/vector-test.f" GSI-FORK-INCLUDE
    s" lib/byte-buffer-test.f" GSI-FORK-INCLUDE
@@ -452,6 +465,8 @@ public
    s" tools/unicode/class-tool-test.f" GSI-FORK-INCLUDE
    s" tools/unicode/class-verify-main.f" GSI-FORK-INCLUDE
    GSI-FORK-DRAIN ;
+
+;package
 
 : GSI-TAIL-RUNNER ( -- )
    s" stdlib/tail-runner" GSI-GROUP-SEQ GSI-GROUP-HEADER

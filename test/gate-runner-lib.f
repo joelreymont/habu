@@ -195,7 +195,7 @@ variable ARG-I
       ID-DICTIONARY of GATE-DICTIONARY:RUN endof
       ID-DEBUG of GDB-RUN endof
       ID-TAIL-FAST of GSI-TAIL-FAST endof
-      ID-TAIL-PURE of GSI-TAIL-PURE endof
+      ID-TAIL-PURE of TAIL-PURE:RUN endof
       ID-TAIL-RUNNER of GSI-TAIL-RUNNER endof
       ID-TAIL-BUILD of GSI-TAIL-BUILD endof
       ID-TAIL-PROCESS of TAIL-PROCESS:RUN endof

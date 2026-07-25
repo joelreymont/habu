@@ -1,8 +1,11 @@
 \ cal-spin.f - fresh-child calibration probe for the full-gate perf verdict.
 \
 \ Prints the wall-clock milliseconds of ONE run of the gate's fixed calibration
-\ spin (lib/test/budget.f T-BUDGET-CAL-SPIN) in a freshly spawned process, then
+\ spin (test/cal-spin-lib.f CAL-SPIN:MS) in a freshly spawned process, then
 \ exits. test/run-lib.f TR-CAL-CHILD-MS? spawns this and parses the number.
+\ The measurement itself lives in test/cal-spin-lib.f because the quiescent
+\ ratchet phase (test/json-read-perf-phase.f) brackets its own run with the same
+\ spin and the shared drift tolerance requires the same number.
 \
 \ Why a fresh child: the perf verdict brackets each attempt with a pre-run and a
 \ post-run calibration spin and invalidates the attempt on >10% drift between
@@ -21,20 +24,7 @@
 \ the pre-cal placement on every host. See test/run-lib.f TR-POST-CAL! /
 \ TR-CAL-CHILD-MS? and skills/habu-host-profiles/SKILL.md.
 
-require lib/test/budget.f
+require test/cal-spin-lib.f
 require lib/fmt.f
-
-package CAL-SPIN
-
-variable SINK
-
-public
-
-: MS ( -- n )                                \ wall-ms of one fixed calibration spin, this fresh process
-   mono-ns {: t0:n :}
-   T-BUDGET-CAL-ITERS T-BUDGET-CAL-SPIN SINK !
-   mono-ns t0 - T-BUDGET-NS-PER-MS / ;
-
-;package
 
 CAL-SPIN:MS FMT:.U cr

@@ -522,6 +522,7 @@ SUITE engine-size
 SUITE tail-pure-fixtures
    lib/json-write-test.f
    lib/json-read-test.f
+   lib/json-read-perf-contract-test.f
    lib/memory-test.f
    lib/vector-test.f
    lib/byte-buffer-test.f
@@ -678,6 +679,7 @@ SUITE hb-build-fixtures
 
 SUITE gate-pool
    test/gate-pool-test.f
+   test/json-read-perf-phase-test.f
 ;SUITE
 
 package STDLIB-GATE public get-current ;package

@@ -269,3 +269,12 @@ public
 -6399 constant E-JRP-LAST
 -6300 constant E-JRP-SAMPLE      \ sample stored out of workload order or past the declared total
 -6301 constant E-JRP-RANGE       \ workload or sample index outside the sample table
+
+\ JSON reader performance phase: -6400..-6499
+-6400 constant E-JRPP-FIRST
+-6499 constant E-JRPP-LAST
+-6400 constant E-JRPP-CHILD      \ the ratchet phase was started inside a gate-pool fork worker
+-6401 constant E-JRPP-BUSY       \ the ratchet phase was started with pool workers still in flight
+-6402 constant E-JRPP-DRIFT      \ host calibration drifted on the measurement and on its one re-measure
+-6403 constant E-JRPP-MISMATCH   \ a phase fixture read a value other than the one it required
+-6404 constant E-JRPP-REPEAT     \ the ratchet phase was started twice in one gate process

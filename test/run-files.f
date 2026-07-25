@@ -71,6 +71,8 @@ TR-FILES: TR-GATE-HARNESS-FILES
    lib/process-fork.f lib/test/record.f lib/test/runner.f lib/test/budget.f
    lib/sort.f lib/content-key.f tools/cli-run.f
    test/gate-pool.f test/gate-stats.f tools/why-threw.f
+   test/json-read-perf-phase.f test/cal-spin-lib.f
+   lib/json-read-perf-test.f lib/json-read.f lib/test/assert.f
 ;TR-FILES
 
 TR-FILES: TR-GATE-COMMON-FILES

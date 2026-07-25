@@ -2325,7 +2325,10 @@ points stay listed.
 - `test/gate-pool-orphan-test.f` — regression: pool workers reaped on parent death.
 - `test/run.f` — native test suite entry run directly by `bin/hb`.
 - `test/run-lib.f` — side-effect-free resident native test suite implementation.
+- `test/cal-spin-lib.f` — package `CAL-SPIN`: the shared fixed calibration spin measurement, so the fresh-child probe and the quiescent ratchet phase compare the same number against the same drift tolerance.
 - `test/cal-spin.f` — fresh-child calibration probe: measures the fixed gate spin in a freshly spawned process so the perf verdict's post-run calibration lands on a performance core, not the drifted driver's core.
+- `test/json-read-perf-phase.f` — package `JSON-READ-PERF-PHASE`: the one place the JSON reader's wall-clock ratchets run, as a single quiescent gate-pool fork between the drained phase DAG and `TR-COMPLETE`, admitted only from a pool-idle parent and bracketed by calibration spins.
+- `test/json-read-perf-phase-test.f` — coverage for that phase: real fork workers prove the child-stamp and busy-pool refusals by exit status, and a scripted calibration probe proves the drifted bracket is re-measured exactly once before the run goes red.
 - `test/run-lib-test.f` — manual-standalone coverage for the DGX Spark host profile mapping/detection and the fresh-child calibration probe.
 - `test/run-support.f` — minimal scheduler support for starting external phases before resident setup.
 - `test/run-resident.f` — late-loaded resident scheduler that forks phase workers without loading every phase library.
