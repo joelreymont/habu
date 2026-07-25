@@ -37,6 +37,8 @@ create TRUST-FIX FIX-CAP allot   variable TRUST-LEN
 create SRC-FIX FIX-CAP allot     variable SRC-LEN
 create BT-FIX FIX-CAP allot      variable BT-LEN
 create LEX-FIX FIX-CAP allot     variable LEX-LEN
+create BAD-FIX FIX-CAP allot     variable BAD-LEN
+create ESC-FIX FIX-CAP allot     variable ESC-LEN
 create TOK-FIX FIX-CAP allot     variable TOK-LEN
 9000 constant BIG-LEX-TOKENS
 variable BIG-LEX-A
@@ -147,6 +149,47 @@ variable BIG-LEX-U
    10 LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C ;
 : LEX-FIX$  ( -- ptr u8 n )  LEX-FIX LEX-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
 
+\ `: BAD s" nope` - the literal opened at byte 6 never closes. It lives in its
+\ own buffer so the good fixture above is never clobbered and any test that
+\ needs a malformed scan can establish one for itself.
+: UNTERM-FIX$  ( -- ptr u8 n )
+   BAD-LEN STR:BUF-RESET
+   s" : BAD s" STR:LENGTH BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND
+   DQUOTE BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND-C
+   s"  nope" STR:LENGTH BAD-FIX FIX-CAP STR:LENGTH BAD-LEN STR:BUF-APPEND
+   BAD-FIX BAD-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+
+: ESC-FIX-RESET  ( -- )
+   ESC-LEN STR:BUF-RESET ;
+
+: ESC-FIX+  ( ptr u8 n -- )
+   STR:LENGTH ESC-FIX FIX-CAP STR:LENGTH ESC-LEN STR:BUF-APPEND ;
+
+: ESC-FIX-C+  ( n -- )
+   ESC-FIX FIX-CAP STR:LENGTH ESC-LEN STR:BUF-APPEND-C ;
+
+: ESC-FIX$  ( -- ptr u8 n )  ESC-FIX ESC-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW ;
+
+\ `: E S\" a\" b" dup ;` - the S\" opener honours backslash escapes, so the
+\ escaped quote at byte 10 must NOT close the literal. Building it byte-wise
+\ keeps the fixture out of this file's own string syntax.
+: ESC-OPENER$  ( -- ptr u8 n )
+   ESC-FIX-RESET
+   s" : E S" ESC-FIX+  92 ESC-FIX-C+  DQUOTE ESC-FIX-C+
+   s"  a" ESC-FIX+     92 ESC-FIX-C+  DQUOTE ESC-FIX-C+
+   s"  b" ESC-FIX+     DQUOTE ESC-FIX-C+
+   s"  dup ;" ESC-FIX+
+   ESC-FIX$ ;
+
+\ `: P s" a\" c ;` - the plain s" opener does NOT honour backslash escapes, so
+\ the same byte pair closes the literal at byte 9.
+: PLAIN-OPENER$  ( -- ptr u8 n )
+   ESC-FIX-RESET
+   s" : P s" ESC-FIX+  DQUOTE ESC-FIX-C+
+   s"  a" ESC-FIX+     92 ESC-FIX-C+  DQUOTE ESC-FIX-C+
+   s"  c ;" ESC-FIX+
+   ESC-FIX$ ;
+
 : INIT-TOK-FIX  ( -- )
    TOK-LEN STR:BUF-RESET
    s" : X ( n -- n ) dup " STR:LENGTH TOK-FIX FIX-CAP STR:LENGTH TOK-LEN STR:BUF-APPEND
@@ -228,38 +271,86 @@ variable BIG-LEX-U
    s"  n -- n  " SIG-KIND SIG-TYPED ASSERT=
    s" private infer" SIG-KIND SIG-OPTOUT ASSERT=
    s" i64 )" SIG-KIND SIG-MISSING ASSERT=
-   s" : BAD ( i64 ) dup ;" LEX-SOURCE
-   2 LCONTENT SIG-KIND SIG-MISSING ASSERT= ;
+   s" : BAD ( i64 ) dup ;" LINT-LEX:SOURCE
+   2 LINT-LEX:CONTENT SIG-KIND SIG-MISSING ASSERT= ;
 
 : TEST-LEXER  ( -- )
-   LEX-FIX$ LEX-SOURCE
-   LEX-UNTERM-QUOTE? 0= ASSERT
-   L# @ 7 ASSERT=
-   0 LK@ L-WORD ASSERT=    0 LEX-TOK s" :" ASSERT$
-   0 LB@ 0 ASSERT=  0 LL@ 1 ASSERT=  0 LC@ 1 ASSERT=
-   1 LK@ L-WORD ASSERT=    1 LEX-TOK s" SQ" ASSERT$
-   1 LB@ 2 ASSERT=  1 LL@ 1 ASSERT=  1 LC@ 3 ASSERT=
-   2 LK@ L-COMMENT ASSERT= 2 LCONTENT s"  n -- n " ASSERT$
-   2 LB@ 5 ASSERT=  2 LL@ 1 ASSERT=  2 LC@ 6 ASSERT=
-   3 LEX-TOK nip 2 ASSERT=  3 LEX-TOK drop c@ 115 ASSERT=  3 LEX-TOK drop 1+ c@ DQUOTE ASSERT=
-   3 LB@ 16 ASSERT=  3 LL@ 1 ASSERT=  3 LC@ 17 ASSERT=
-   4 LEX-TOK s" dup" ASSERT$
-   4 LB@ 33 ASSERT=  4 LL@ 1 ASSERT=  4 LC@ 34 ASSERT=
-   5 LEX-TOK nip 2 ASSERT=  5 LEX-TOK drop c@ 99 ASSERT=  5 LEX-TOK drop 1+ c@ DQUOTE ASSERT=
-   5 LB@ 48 ASSERT=  5 LL@ 2 ASSERT=  5 LC@ 1 ASSERT=
-   6 LEX-TOK s" ;" ASSERT$
-   6 LB@ 54 ASSERT=  6 LL@ 2 ASSERT=  6 LC@ 7 ASSERT= ;
+   LEX-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 7 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    0 LINT-LEX:TOKEN s" :" ASSERT$
+   0 LINT-LEX:BYTE@ 0 ASSERT=  0 LINT-LEX:LINE@ 1 ASSERT=  0 LINT-LEX:COL@ 1 ASSERT=
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    1 LINT-LEX:TOKEN s" SQ" ASSERT$
+   1 LINT-LEX:BYTE@ 2 ASSERT=  1 LINT-LEX:LINE@ 1 ASSERT=  1 LINT-LEX:COL@ 3 ASSERT=
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  n -- n " ASSERT$
+   2 LINT-LEX:BYTE@ 5 ASSERT=  2 LINT-LEX:LINE@ 1 ASSERT=  2 LINT-LEX:COL@ 6 ASSERT=
+   3 LINT-LEX:TOKEN nip 2 ASSERT=  3 LINT-LEX:TOKEN drop c@ 115 ASSERT=  3 LINT-LEX:TOKEN drop 1+ c@ DQUOTE ASSERT=
+   3 LINT-LEX:BYTE@ 16 ASSERT=  3 LINT-LEX:LINE@ 1 ASSERT=  3 LINT-LEX:COL@ 17 ASSERT=
+   4 LINT-LEX:TOKEN s" dup" ASSERT$
+   4 LINT-LEX:BYTE@ 33 ASSERT=  4 LINT-LEX:LINE@ 1 ASSERT=  4 LINT-LEX:COL@ 34 ASSERT=
+   5 LINT-LEX:TOKEN nip 2 ASSERT=  5 LINT-LEX:TOKEN drop c@ 99 ASSERT=  5 LINT-LEX:TOKEN drop 1+ c@ DQUOTE ASSERT=
+   5 LINT-LEX:BYTE@ 48 ASSERT=  5 LINT-LEX:LINE@ 2 ASSERT=  5 LINT-LEX:COL@ 1 ASSERT=
+   6 LINT-LEX:TOKEN s" ;" ASSERT$
+   6 LINT-LEX:BYTE@ 54 ASSERT=  6 LINT-LEX:LINE@ 2 ASSERT=  6 LINT-LEX:COL@ 7 ASSERT= ;
+
+\ A clean scan must leave the generic diagnostic record at its cleared state, so
+\ ERROR-KIND@ alone distinguishes "no diagnostic" from a real one.
+: TEST-LEXER-NO-ERROR ( -- )
+   LEX-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:ERROR-KIND@ LINT-LEX:UNTERMINATED-QUOTE <> ASSERT
+   LINT-LEX:ERROR-KIND@ 0 ASSERT=
+   LINT-LEX:ERROR-BYTE@ 0 ASSERT=
+   LINT-LEX:ERROR-LINE@ 0 ASSERT=
+   LINT-LEX:ERROR-COL@ 0 ASSERT= ;
 
 : TEST-LEXER-UNTERM-QUOTE ( -- )
-   LEX-LEN STR:BUF-RESET
-   s" : BAD s" STR:LENGTH LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   DQUOTE LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND-C
-   s"  nope" STR:LENGTH LEX-FIX FIX-CAP STR:LENGTH LEX-LEN STR:BUF-APPEND
-   LEX-FIX LEX-LEN STR:BUF-LEN@ CAD-NUM:TFT-BL>RAW LEX-SOURCE
-   LEX-UNTERM-QUOTE? ASSERT
-   LEX-UNTERM-BYTE @ 6 ASSERT=
-   LEX-UNTERM-LINE @ 1 ASSERT=
-   LEX-UNTERM-COL @ 7 ASSERT= ;
+   UNTERM-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? ASSERT
+   LINT-LEX:ERROR-KIND@ LINT-LEX:UNTERMINATED-QUOTE ASSERT=
+   LINT-LEX:ERROR-BYTE@ 6 ASSERT=
+   LINT-LEX:ERROR-LINE@ 1 ASSERT=
+   LINT-LEX:ERROR-COL@ 7 ASSERT= ;
+
+\ SOURCE clears prior state before every scan, so a good file scanned after a
+\ malformed one reports no diagnostic and a full, exact token table. The
+\ malformed scan is established here rather than inherited from a sibling test,
+\ so reordering RUN cannot quietly turn the cleared-state pins into no-ops.
+: TEST-LEXER-REUSE-AFTER-ERROR ( -- )
+   UNTERM-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? ASSERT
+   LEX-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:ERROR-KIND@ 0 ASSERT=
+   LINT-LEX:ERROR-BYTE@ 0 ASSERT=
+   LINT-LEX:ERROR-LINE@ 0 ASSERT=
+   LINT-LEX:ERROR-COL@ 0 ASSERT=
+   LINT-LEX:COUNT 7 ASSERT=
+   0 LINT-LEX:TOKEN s" :" ASSERT$
+   6 LINT-LEX:TOKEN s" ;" ASSERT$ ;
+
+\ Escaped-quote spans: the S\" opener treats \" as literal text, the plain s"
+\ opener does not. The token that follows each literal pins where it closed, so
+\ neither can be satisfied by counting quotes.
+: TEST-LEXER-ESC-QUOTE ( -- )
+   ESC-OPENER$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   2 LINT-LEX:TOKEN nip 3 ASSERT=
+   2 LINT-LEX:BYTE@ 4 ASSERT=  2 LINT-LEX:COL@ 5 ASSERT=
+   3 LINT-LEX:TOKEN s" dup" ASSERT$
+   3 LINT-LEX:BYTE@ 15 ASSERT=  3 LINT-LEX:LINE@ 1 ASSERT=  3 LINT-LEX:COL@ 16 ASSERT=
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   4 LINT-LEX:BYTE@ 19 ASSERT=
+   PLAIN-OPENER$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   2 LINT-LEX:TOKEN nip 2 ASSERT=
+   2 LINT-LEX:BYTE@ 4 ASSERT=
+   3 LINT-LEX:TOKEN s" c" ASSERT$
+   3 LINT-LEX:BYTE@ 11 ASSERT=  3 LINT-LEX:COL@ 12 ASSERT=
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   4 LINT-LEX:BYTE@ 13 ASSERT= ;
 
 : TEST-TOKENIZER  ( -- )
    LINT-TRUE PARENS? !
@@ -278,11 +369,11 @@ variable BIG-LEX-U
    5 TEOL? ASSERT ;
 
 : TEST-BIG-LEXER  ( -- )
-   BIG-LEX$ LEX-SOURCE
-   L# @ BIG-LEX-TOKENS ASSERT=
-   0 LEX-TOK s" x" ASSERT$
-   8192 LEX-TOK s" x" ASSERT$
-   BIG-LEX-TOKENS 1- LEX-TOK s" x" ASSERT$ ;
+   BIG-LEX$ LINT-LEX:SOURCE
+   LINT-LEX:COUNT BIG-LEX-TOKENS ASSERT=
+   0 LINT-LEX:TOKEN s" x" ASSERT$
+   8192 LINT-LEX:TOKEN s" x" ASSERT$
+   BIG-LEX-TOKENS 1- LINT-LEX:TOKEN s" x" ASSERT$ ;
 
 : TEST-LINT-SOURCE ( -- )
    s" tools/lint/text.f" 2dup FILE-SIZE {: path:ptr pathu:n size:n :}
@@ -303,7 +394,10 @@ variable BIG-LEX-U
    TEST-SCANNERS
    TEST-SIGS
    TEST-LEXER
+   TEST-LEXER-NO-ERROR
+   TEST-LEXER-ESC-QUOTE
    TEST-LEXER-UNTERM-QUOTE
+   TEST-LEXER-REUSE-AFTER-ERROR
    TEST-TOKENIZER
    TEST-BIG-LEXER
    TEST-LINT-SOURCE

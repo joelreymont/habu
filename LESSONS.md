@@ -682,7 +682,7 @@ fits.
   get no manifest row even when public, so exported token-kind constants
   (`JR:T-OBJ` ..) never appear in `lib/std.manifest`.
 - **Repo-scale source lints must STREAM, not vectorize.** Building a per-token vector costs 8
-  `VEC-PUSH`es/token plus growth copies, so `LEX-SOURCE` took 9.2s on one file and a 141k fill
+  `VEC-PUSH`es/token plus growth copies, so `LINT-LEX:SOURCE` took 9.2s on one file and a 141k fill
   63.9s; `lib/vector.f` element access is itself constant-time (`VEC-CELL-FIELD` is
   `base off cells +`), so the cost is push/grow churn, not indexing. A streaming scanner over
   the source buffer cut a repo scan 33s→0.9s
@@ -1805,6 +1805,7 @@ fits.
 - **Dormant at startup is not dead.** Profiler, cross-reference, debugger, and REPL words are product features when users can invoke them later. Measure their resident cost and privatize helpers, but require reachability evidence before deleting them.
 - **Parallel arrays turn one logical row into several fallible commits.** Same-cell column swaps still certify, and a throw between stores leaves torn state. Prefer one checked `STRUCTURE`, preflight every backing arena, and publish the row last.
 - **A long prefix is not package ownership.** It spends dictionary bytes while leaving scratch state and helpers globally callable. Package legacy subsystems, shorten private tails, and retain only the measured cross-package API.
+- **A shared scratch cell binds two modules even when only one reads it.** `tools/lint/lib.f` declared `PSTART` and only the source lexer ever used it, so packaging the lexer had to give it a private cell — but the declaration cannot be deleted in the same change, because `tools/lint/lib.f` has no package owner and the exact-diff package gate rejects every touched definition on that line. Give the borrowed state its private home first and hand the now-unused declaration to the owning module's packaging dot; do not touch an unowned file's definition lines just to tidy up.
 - **An authenticated manifest can still be incompatible.** Validate target capability, address width, complete argument layout, launch geometry, and overflow before allocation or module load; signature or digest checks prove identity, not launch safety.
 - **Resource state and cleanup ownership belong in one typed lifecycle.** Publish a live handle only after acquisition succeeds, consume it exactly once on close, and keep primary and cleanup failures distinguishable; split flags and sentinels admit leaks, double close, and stale reuse.
 - **A committed transaction frame is sealed until finalize or rollback.** Reject nested open before token generation or mutation once a parent has committed; otherwise child publication invalidates the parent watermark and can strand the sole rollback owner.

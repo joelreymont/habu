@@ -59,7 +59,7 @@ variable SCAN-START
    BAD @ 1+ BAD ! ;
 
 : TOKEN= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k LEX-TOK a u LINT-STR= ;
+   k LINT-LEX:TOKEN a u LINT-STR= ;
 
 : TYPED? ( ptr u8 n -- bool )
    COLON-C LINT-INDEX-OF MATCH option
@@ -75,15 +75,15 @@ variable SCAN-START
    s" typed-local-lint: allow-bare-local" LINT-CONTAINS? ;
 
 : SOURCE-LINE ( n -- n )
-   LL@ NEW-LINE @ + 1- ;
+   LINT-LEX:LINE@ NEW-LINE @ + 1- ;
 
 : REPORT ( n -- ) {: k:n :}
    BAD+
    s" E-UNTYPED-LOCAL " OUT
    FILE$ dup 0= if 2drop s" <unknown>" then OUT
    COLON-C EMIT-C k SOURCE-LINE U$ OUT
-   COLON-C EMIT-C k LC@ U$ OUT
-   s" : `" OUT k LEX-TOK OUT
+   COLON-C EMIT-C k LINT-LEX:COL@ U$ OUT
+   s" : `" OUT k LINT-LEX:TOKEN OUT
    s" ` needs :type inside {: :}" OUT
    LF-C EMIT-C ;
 
@@ -94,13 +94,13 @@ variable SCAN-START
    then
    IN-LOCALS @ 0= if exit then
    ALLOW-GROUP @ if exit then
-   k LEX-TOK TYPED? 0= if k REPORT then ;
+   k LINT-LEX:TOKEN TYPED? 0= if k REPORT then ;
 
 : SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    FORTH? 0= if exit then
    a u ALLOW? if true ALLOW-GROUP ! then
-   a u LEX-SOURCE
-   0 begin dup L# @ < while
+   a u LINT-LEX:SOURCE
+   0 begin dup LINT-LEX:COUNT < while
       dup LOCAL 1+
    repeat drop ;
 

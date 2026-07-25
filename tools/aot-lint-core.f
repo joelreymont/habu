@@ -93,11 +93,11 @@ private
    a u s" patch32" LINT-STR=CI ;
 
 : WORD-TOK? ( n -- bool ) {: k:n :}
-   k L# @ >= IF LINT-FALSE exit THEN
-   k LK@ L-WORD = ;
+   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
 : TOK-END ( n -- n ) {: k:n :}
-   k LB@ k LEX-TOK nip + ;
+   k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
 : JSON-FINDING ( n -- ) {: k:n :}
    LJW-RESET
@@ -105,12 +105,12 @@ private
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY s" E-AOT-UNSUPPORTED" LJW-STRING LJW-COMMA
    s" file" LJW-KEY FILE-A@ FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY k LL@ LJW-U LJW-COMMA
-   s" column" LJW-KEY k LC@ LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY k LB@ LJW-U LJW-COMMA
+   s" line" LJW-KEY k LINT-LEX:LINE@ LJW-U LJW-COMMA
+   s" column" LJW-KEY k LINT-LEX:COL@ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY k LINT-LEX:BYTE@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY k TOK-END LJW-U LJW-COMMA
    s" word" LJW-KEY CUR-A@ CUR-U @ LJW-STRING LJW-COMMA
-   s" token" LJW-KEY k LEX-TOK LJW-STRING LJW-COMMA
+   s" token" LJW-KEY k LINT-LEX:TOKEN LJW-STRING LJW-COMMA
    s" reason" LJW-KEY s" stripped AOT has no runtime compiler or writable code" LJW-STRING LJW-COMMA
    s" suggestion" LJW-KEY
    s" stripped AOT cannot run compile,/patch32 at runtime; use --repl or remove the word" LJW-STRING
@@ -120,10 +120,10 @@ private
 : TEXT-FINDING ( n -- ) {: k:n :}
    s" E-AOT-UNSUPPORTED " OUT
    FILE-A@ FILE-U @ OUT
-   58 C k LL@ U$ OUT
-   58 C k LC@ U$ OUT
+   58 C k LINT-LEX:LINE@ U$ OUT
+   58 C k LINT-LEX:COL@ U$ OUT
    s" : `" OUT
-   k LEX-TOK OUT
+   k LINT-LEX:TOKEN OUT
    s" ` is not supported by stripped AOT" OUT
    NL ;
 
@@ -133,26 +133,26 @@ private
 
 : HANDLE-WORD ( n -- ) {: k:n :}
    EXPECT-NAME @ IF
-      k LEX-TOK CUR!
+      k LINT-LEX:TOKEN CUR!
       0 EXPECT-NAME !
       exit
    THEN
-   k LEX-TOK s" :" LINT-STR= IF
+   k LINT-LEX:TOKEN s" :" LINT-STR= IF
       -1 EXPECT-NAME !
       s" " CUR!
       exit
    THEN
-   k LEX-TOK s" ;" LINT-STR= IF
+   k LINT-LEX:TOKEN s" ;" LINT-STR= IF
       s" " CUR!
       exit
    THEN
-   k LEX-TOK UNSAFE? IF k REPORT THEN ;
+   k LINT-LEX:TOKEN UNSAFE? IF k REPORT THEN ;
 
 : SCAN-TOKENS ( -- )
    0 SCAN-I !
    0 EXPECT-NAME !
    s" " CUR!
-   begin SCAN-I @ L# @ < while
+   begin SCAN-I @ LINT-LEX:COUNT < while
       SCAN-I @ WORD-TOK? IF SCAN-I @ HANDLE-WORD THEN
       SCAN-I @ 1+ SCAN-I !
    repeat ;
@@ -167,7 +167,7 @@ public
 : FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
    label FILE-A!
    labelu FILE-U !
-   path pathu FILE-BUF FILE-CAP READ-FILE LEX-SOURCE
+   path pathu FILE-BUF FILE-CAP READ-FILE LINT-LEX:SOURCE
    SCAN-TOKENS ;
 
 : FILE ( ptr u8 n -- )

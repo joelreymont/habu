@@ -74,8 +74,8 @@ variable BAD  variable LI  variable IN-PACKAGE
 
 \ Lexed token k equals word a/u, case-insensitively; comment tokens never match.
 : LEX-WORD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k LK@ L-WORD <> IF LINT-FALSE exit THEN
-   k LEX-TOK a u LINT-STR=CI ;
+   k LINT-LEX:KIND@ LINT-LEX:WORD <> IF LINT-FALSE exit THEN
+   k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
 \ Offset from a definer token to the name it defines, 0 when k is not a definer.
 : DEF-NAME-OFFSET ( n -- n )
@@ -88,8 +88,8 @@ variable BAD  variable LI  variable IN-PACKAGE
 
 : LINT-DEFINITION ( ptr u8 n n -- ) {: pa:ptr pu:n k:n :}
    k DEF-NAME-OFFSET dup 0= IF drop exit THEN
-   k + dup L# @ >= IF drop exit THEN
-   LEX-TOK 2dup PRIM? IF
+   k + dup LINT-LEX:COUNT >= IF drop exit THEN
+   LINT-LEX:TOKEN 2dup PRIM? IF
       s" SHADOW " type pa pu type s" : `" type type s" ` hides a prim" type cr
       BAD @ 1+ BAD !
    ELSE 2drop THEN ;
@@ -107,15 +107,15 @@ variable BAD  variable LI  variable IN-PACKAGE
 \ silently skipping real definitions.
 : SL-UNTERM-FAIL ( ptr u8 n -- ) {: pa:ptr pu:n :}
    s" shadow-lint: unterminated string literal in " type pa pu type
-   s"  (line " type LEX-UNTERM-LINE @ . s" )" type cr
+   s"  (line " type LINT-LEX:ERROR-LINE@ . s" )" type cr
    E-SHADOW-UNTERM throw ;
 
 : LINT-SCAN ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
-   a u LEX-SOURCE
-   LEX-UNTERM-QUOTE? IF pa pu SL-UNTERM-FAIL THEN
+   a u LINT-LEX:SOURCE
+   LINT-LEX:ERROR? IF pa pu SL-UNTERM-FAIL THEN
    LINT-FALSE IN-PACKAGE !
    0 LI !
-   begin LI @ L# @ < while
+   begin LI @ LINT-LEX:COUNT < while
       pa pu LI @ LINT-TOKEN
       LI @ 1+ LI !
    repeat ;

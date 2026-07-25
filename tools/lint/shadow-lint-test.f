@@ -8,10 +8,10 @@ package SHADOW-LINT-TOOL
 \ Definer classification runs on the string-aware lexer: a LAYOUT-BUFFER token is
 \ a definer and the token after it (DUP) is the defined name, a real prim.
 : SLT-LAYOUT-BUFFER ( -- )
-   s" 1 LAYOUT-BUFFER DUP family" LEX-SOURCE
+   s" 1 LAYOUT-BUFFER DUP family" LINT-LEX:SOURCE
    1 DEF-NAME-OFFSET 1 T=
-   2 LEX-TOK s" DUP" LINT-STR= TTRUE
-   2 LEX-TOK PRIM? TTRUE ;
+   2 LINT-LEX:TOKEN s" DUP" LINT-STR= TTRUE
+   2 LINT-LEX:TOKEN PRIM? TTRUE ;
 
 \ PART A: a definer keyword (`variable`) and a prim name (`or`) inside a string
 \ literal must not be read as a definition. The fixture is global scope, so only

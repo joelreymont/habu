@@ -98,30 +98,30 @@ private
    RNL-NUM RNL-NUM-I @ + RNL-NUM-CAP RNL-NUM-I @ - ;
 
 : RNL-WORD? ( n -- bool ) {: k :}
-   k L# @ >= if LINT-FALSE exit then
-   k LK@ L-WORD = ;
+   k LINT-LEX:COUNT >= if LINT-FALSE exit then
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
 : RNL-TOK-END ( n -- n ) {: k :}
-   k LB@ k LEX-TOK nip + ;
+   k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
 : RNL-PARSE-NEXT? ( n -- bool ) {: k :}
-   k LEX-TOK s" char" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" [char]" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" '" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" [']" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" postpone" LINT-STR=CI ;
+   k LINT-LEX:TOKEN s" char" LINT-STR=CI if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" [char]" LINT-STR=CI if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" '" LINT-STR= if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" [']" LINT-STR= if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" postpone" LINT-STR=CI ;
 
 : RNL-COLON-DEFINER? ( n -- bool ) {: k :}
-   k LEX-TOK s" :" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" +:" LINT-STR= if LINT-TRUE exit then
-   k LEX-TOK s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" KERNEL:" LINT-STR=CI ;
+   k LINT-LEX:TOKEN s" :" LINT-STR= if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" +:" LINT-STR= if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" KERNEL:" LINT-STR=CI ;
 
 : RNL-DATA-DEFINER? ( n -- bool ) {: k :}
-   k LEX-TOK s" create" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" variable" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" constant" LINT-STR=CI if LINT-TRUE exit then
-   k LEX-TOK s" LAYOUT-BUFFER" LINT-STR=CI ;
+   k LINT-LEX:TOKEN s" create" LINT-STR=CI if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" variable" LINT-STR=CI if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" constant" LINT-STR=CI if LINT-TRUE exit then
+   k LINT-LEX:TOKEN s" LAYOUT-BUFFER" LINT-STR=CI ;
 
 : RNL-RESERVED-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u :}
    a u s" if" LINT-STR=CI if LINT-TRUE exit then
@@ -280,11 +280,11 @@ private
    s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
    s" code" LJW-KEY code codeu LJW-STRING LJW-COMMA
    s" file" LJW-KEY RNL-FILE-A@ RNL-FILE-U @ LJW-STRING LJW-COMMA
-   s" line" LJW-KEY k LL@ LJW-U LJW-COMMA
-   s" column" LJW-KEY k LC@ LJW-U LJW-COMMA
-   s" byte_start" LJW-KEY k LB@ LJW-U LJW-COMMA
+   s" line" LJW-KEY k LINT-LEX:LINE@ LJW-U LJW-COMMA
+   s" column" LJW-KEY k LINT-LEX:COL@ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY k LINT-LEX:BYTE@ LJW-U LJW-COMMA
    s" byte_end" LJW-KEY k RNL-TOK-END LJW-U LJW-COMMA
-   s" word" LJW-KEY k LEX-TOK LJW-STRING LJW-COMMA
+   s" word" LJW-KEY k LINT-LEX:TOKEN LJW-STRING LJW-COMMA
    s" reason" LJW-KEY why whyu LJW-STRING LJW-COMMA
    s" suggestion" LJW-KEY fix fixu LJW-STRING
    LJW-OBJECT-END
@@ -307,10 +307,10 @@ private
    code codeu RNL-OUT
    RNL-SP RNL-C
    RNL-FILE-A@ RNL-FILE-U @ RNL-OUT
-   RNL-COLON-C RNL-C k LL@ RNL-U$ RNL-OUT
-   RNL-COLON-C RNL-C k LC@ RNL-U$ RNL-OUT
+   RNL-COLON-C RNL-C k LINT-LEX:LINE@ RNL-U$ RNL-OUT
+   RNL-COLON-C RNL-C k LINT-LEX:COL@ RNL-U$ RNL-OUT
    s" : `" RNL-OUT
-   k LEX-TOK RNL-OUT
+   k LINT-LEX:TOKEN RNL-OUT
    why whyu RNL-OUT
    RNL-NL ;
 
@@ -336,12 +336,12 @@ private
 
 : RNL-CHECK-NAME ( n -- ) {: k:n :}
    k RNL-WORD? 0= if exit then
-   k LEX-TOK RNL-RESERVED? if k RNL-REPORT exit then
-   k LEX-TOK RNL-NUMERIC-NAME? if k RNL-REPORT-NUM then ;
+   k LINT-LEX:TOKEN RNL-RESERVED? if k RNL-REPORT exit then
+   k LINT-LEX:TOKEN RNL-NUMERIC-NAME? if k RNL-REPORT-NUM then ;
 
 : RNL-HANDLE-IN-DEF ( -- )
    RNL-I @ RNL-PARSE-NEXT? if RNL-I @ 1+ RNL-I ! exit then
-   RNL-I @ LEX-TOK s" ;" LINT-STR= if 0 RNL-IN-DEF ! then ;
+   RNL-I @ LINT-LEX:TOKEN s" ;" LINT-STR= if 0 RNL-IN-DEF ! then ;
 
 : RNL-HANDLE-TOP ( -- )
    RNL-I @ RNL-COLON-DEFINER? if
@@ -358,7 +358,7 @@ private
 : RNL-SCAN ( -- )
    0 RNL-I !
    0 RNL-IN-DEF !
-   begin RNL-I @ L# @ < while
+   begin RNL-I @ LINT-LEX:COUNT < while
       RNL-SCAN-TOKEN
       RNL-I @ 1+ RNL-I !
    repeat ;
@@ -385,7 +385,7 @@ public
    {: path:ptr pathu label:ptr labelu :}
    label RNL-FILE-A! labelu RNL-FILE-U !
    path pathu RNL-LOAD-SOURCE
-   RNL-SRC-A@ RNL-SRC-U @ LEX-SOURCE
+   RNL-SRC-A@ RNL-SRC-U @ LINT-LEX:SOURCE
    RNL-SCAN ;
 
 : FILE ( ptr u8 n -- )

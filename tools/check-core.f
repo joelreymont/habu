@@ -648,19 +648,19 @@ private
    rc throw ;
 
 : CHK-WORD-TOK? ( n -- bool ) {: k:n :}
-   k L# @ >= IF LINT-FALSE exit THEN
-   k LK@ L-WORD = ;
+   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
 : CHK-TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k CHK-WORD-TOK? 0= IF LINT-FALSE exit THEN
-   k LEX-TOK a u LINT-STR=CI ;
+   k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
 : CHK-TOK-END ( n -- n ) {: k:n :}
-   k LB@ k LEX-TOK nip + ;
+   k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
 : CHK-NOM-SRC$ ( n n -- ptr u8 n ) {: def:n name:n :}
-   CHK-SRC-BUF def LB@ +
-   name CHK-TOK-END def LB@ - ;
+   CHK-SRC-BUF def LINT-LEX:BYTE@ +
+   name CHK-TOK-END def LINT-LEX:BYTE@ - ;
 
 : CHK-NOM-BAD-SUG$ ( -- ptr u8 n )
    s" Choose a unique non-reserved nominal type name." ;
@@ -679,12 +679,12 @@ private
    s" repair_class" s" fix_nominal_type" CHK-NOM-JSTR
    s" verdict" s" rejected" CHK-NOM-JSTR
    s" word" word wordu CHK-NOM-JSTR
-   s" token" LJW-KEY name LEX-TOK LJW-STRING LJW-COMMA
+   s" token" LJW-KEY name LINT-LEX:TOKEN LJW-STRING LJW-COMMA
    name s" token_index" CHK-NOM-JU
    s" file" LJW-KEY CHK-LABEL LJW-STRING LJW-COMMA
-   name LL@ s" line" CHK-NOM-JU
-   name LC@ s" column" CHK-NOM-JU
-   name LB@ s" byte_start" CHK-NOM-JU
+   name LINT-LEX:LINE@ s" line" CHK-NOM-JU
+   name LINT-LEX:COL@ s" column" CHK-NOM-JU
+   name LINT-LEX:BYTE@ s" byte_start" CHK-NOM-JU
    name CHK-TOK-END s" byte_end" CHK-NOM-JU
    s" definition_source" LJW-KEY def name CHK-NOM-SRC$ LJW-STRING LJW-COMMA
    s" declared_effect" s" unknown " CHK-NOM-JSTR
@@ -703,7 +703,7 @@ private
 
 : CHK-NOM-PROSE ( n -- ) {: name:n :}
    s" check.f: bad nominal type '" CHK-ERR
-   name LEX-TOK CHK-ERR
+   name LINT-LEX:TOKEN CHK-ERR
    39 CHK-ERR-C
    CHK-LF CHK-ERR-C ;
 
@@ -725,7 +725,7 @@ private
 create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 : CHK-NOM-TAIL$ ( n -- ptr u8 n ) {: name:n :}
-   name LEX-TOK {: a:ptr u:n :}
+   name LINT-LEX:TOKEN {: a:ptr u:n :}
    u CHK-NOM-TAIL-CAP > IF E-FS-CAPACITY throw THEN
    a u CHK-NOM-TAIL-BUF FOLD-TO
    CHK-NOM-TAIL-BUF u ;
@@ -740,7 +740,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 : CHK-LIN-REGISTER ( n n -- ) {: def:n name:n :}
    name CHK-NOM-NAME-BAD? IF def name CHK-LIN-FAIL THEN
-   name LEX-TOK CHECKER-DEFLINEAR ;
+   name LINT-LEX:TOKEN CHECKER-DEFLINEAR ;
 
 : CHK-VREC-FAIL ( n n -- )
    s" value-record" CHK-TYPE-FAIL ;
@@ -769,7 +769,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    s" END-VALUE-RECORD" CHK-TOK=CI ;
 
 : CHK-VREC-DO-DEF ( -- )
-   CHK-VREC-NAME-I @ LEX-TOK
+   CHK-VREC-NAME-I @ LINT-LEX:TOKEN
    CHK-EXP-BUF CHK-EXP-U @
    CHECKER-DEFRECORD ;
 
@@ -784,28 +784,28 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    name CHK-NOM-NAME-BAD? IF def name CHK-VREC-FAIL THEN
    CHK-VREC-RESET
    name 1+
-   begin dup L# @ < while
+   begin dup LINT-LEX:COUNT < while
       dup CHK-VREC-END? if
          def name CHK-VREC-DEFRECORD
          1+ exit
       then
-      dup LEX-TOK CHK-VREC-TOKEN+
+      dup LINT-LEX:TOKEN CHK-VREC-TOKEN+
       1+
    repeat
    s" check.f: missing END-VALUE-RECORD" CHK-E-CHECK CHK-FAIL ;
 
 : CHK-TFAM-DO-DEF ( -- )         \ arity token, or empty when absent (missing-arity packet)
-   CHK-TFAM-NAME-I @ LEX-TOK
-   CHK-TFAM-NAME-I @ 1+ dup L# @ < IF LEX-TOK ELSE drop s" " THEN
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
+   CHK-TFAM-NAME-I @ 1+ dup LINT-LEX:COUNT < IF LINT-LEX:TOKEN ELSE drop s" " THEN
    CHECKER-DEFFAMILY ;
 
 : CHK-SUM-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
    CHK-EXP-BUF CHK-EXP-U @
    CHECKER-DEFSUM ;
 
 : CHK-SUM-DO-NOEND ( -- )        \ unterminated: declaration packet from name + partial body
-   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
    CHK-EXP-BUF CHK-EXP-U @
    CHECKER-DEFSUM-NOEND ;
 
@@ -842,9 +842,9 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k 1+ CHK-TFAM-NAME-I !
    CHK-VREC-RESET
    k 2 +
-   begin dup L# @ < while
+   begin dup LINT-LEX:COUNT < while
       dup ea eu CHK-TOK=CI if 1+ LINT-TRUE exit then
-      dup LEX-TOK CHK-VREC-TOKEN+
+      dup LINT-LEX:TOKEN CHK-VREC-TOKEN+
       1+
    repeat drop k LINT-FALSE ;
 
@@ -857,7 +857,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
       [: CHK-SUM-DO-NOEND ;] catch
       CHK-DECL-FLUSH
       CHK-DECL-FAIL
-      L# @ exit
+      LINT-LEX:COUNT exit
    then {: nxt:n :}
    CHK-DECL-CAPTURE
    [: CHK-SUM-DO-DEF ;] catch
@@ -870,12 +870,12 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 \ enum arm also closes the item-14 gap where an enum-declaring file failed
 \ the nominal pass with unknown-family rejects.
 : CHK-ENUM-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
    CHK-EXP-BUF CHK-EXP-U @
    CHECKER-DEFENUM ;
 
 : CHK-PROD-DO-DEF ( -- )
-   CHK-TFAM-NAME-I @ LEX-TOK
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
    CHK-EXP-BUF CHK-EXP-U @
    CHECKER-DEFPRODUCT ;
 
@@ -913,7 +913,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k 1+ CHK-WORD-TOK? 0= if
       s" check.f: missing package name" CHK-E-CHECK CHK-FAIL
    then
-   k 1+ LEX-TOK CHECKER-PACKAGE
+   k 1+ LINT-LEX:TOKEN CHECKER-PACKAGE
    k 2 + ;
 
 : CHK-PKG-STEP ( n -- n bool ) {: k:n :}   \ package-word dispatch: next index, handled
@@ -931,7 +931,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k s" TRUSTED:" CHK-TOK=CI ;
 
 : CHK-SKIP-DEF ( n -- n )
-   begin dup L# @ < while
+   begin dup LINT-LEX:COUNT < while
       dup CHK-TOK-SEMI? if 1+ exit then
       1+
    repeat ;
@@ -967,9 +967,9 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 : CHK-RUN-NOMINAL-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    path pathu FILE-SIZE dup CHK-SRC-CAP > if E-FS-CAPACITY throw then drop
    path pathu CHK-SRC-BUF CHK-SRC-CAP READ-ALL CHK-NOM-U !
-   CHK-SRC-BUF CHK-NOM-U @ LEX-SOURCE
+   CHK-SRC-BUF CHK-NOM-U @ LINT-LEX:SOURCE
    0 CHK-NOM-I !
-   begin CHK-NOM-I @ L# @ < while
+   begin CHK-NOM-I @ LINT-LEX:COUNT < while
       CHK-NOM-I @ CHK-NOM-STEP CHK-NOM-I !
    repeat ;
 

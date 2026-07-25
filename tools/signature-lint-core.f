@@ -141,12 +141,12 @@ private
    a SL-SUG-A!  u SL-SUG-U ! ;
 
 : SL-ORIGIN! ( n -- ) {: k :}
-   k LL@ SL-LINE !
-   k LC@ SL-COL !
-   k LB@ SL-BYTE ! ;
+   k LINT-LEX:LINE@ SL-LINE !
+   k LINT-LEX:COL@ SL-COL !
+   k LINT-LEX:BYTE@ SL-BYTE ! ;
 
 : SL-TOK-END ( n -- n ) {: k :}
-   k LB@ k LEX-TOK nip + ;
+   k LINT-LEX:BYTE@ k LINT-LEX:TOKEN nip + ;
 
 : SL-END! ( n -- )
    SL-END !
@@ -205,7 +205,7 @@ private
    s" E-MISSING-SIGNATURE" SL-CODE!
    name SL-ORIGIN!
    name SL-TOK-END SL-END!
-   name LEX-TOK SL-WORD!
+   name LINT-LEX:TOKEN SL-WORD!
    s" add a typed `( in -- out )` signature immediately after the word name" SL-SUG!
    SL-REPORT ;
 
@@ -213,25 +213,25 @@ private
    s" E-UNVERIFIED-SIGNATURE" SL-CODE!
    name SL-ORIGIN!
    sig SL-TOK-END SL-END!
-   name LEX-TOK SL-WORD!
+   name LINT-LEX:TOKEN SL-WORD!
    s" agent-facing strict mode requires a typed `( in -- out )` signature" SL-SUG!
    SL-REPORT ;
 
 : SL-WORD-TOK? ( n -- bool ) {: k :}
-   k L# @ >= IF LINT-FALSE exit THEN
-   k LK@ L-WORD = ;
+   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
 : SL-COMMENT-TOK? ( n -- bool ) {: k :}
-   k L# @ >= IF LINT-FALSE exit THEN
-   k LK@ L-COMMENT = ;
+   k LINT-LEX:COUNT >= IF LINT-FALSE exit THEN
+   k LINT-LEX:KIND@ LINT-LEX:COMMENT = ;
 
 : SL-COLON? ( n -- bool ) {: k :}
    k SL-WORD-TOK? LINT-NOT IF LINT-FALSE exit THEN
-   k LEX-TOK s" :" LINT-STR= ;
+   k LINT-LEX:TOKEN s" :" LINT-STR= ;
 
 : SL-SIG-KIND ( n -- n ) {: k :}
    k SL-COMMENT-TOK? LINT-NOT IF SIG-MISSING exit THEN
-   k LCONTENT SIG-KIND ;
+   k LINT-LEX:CONTENT SIG-KIND ;
 
 : SL-HANDLE-COLON ( -- )
    SL-I @ 1+ SL-WORD-TOK? 0= IF
@@ -249,7 +249,7 @@ private
 
 : SL-SCAN-TOKENS ( -- )
    0 SL-I !
-   begin SL-I @ L# @ < while
+   begin SL-I @ LINT-LEX:COUNT < while
       SL-I @ SL-COLON? IF
          SL-HANDLE-COLON
       ELSE
@@ -266,7 +266,7 @@ public
 
 : FILE-AS ( ptr u8 n ptr u8 n -- ) {: path:ptr pathu:n label:ptr labelu:n :}
    label SL-FILE-A! labelu SL-FILE-U !
-   path pathu SL-FILE-BUF SL-FILE-CAP READ-FILE LEX-SOURCE
+   path pathu SL-FILE-BUF SL-FILE-CAP READ-FILE LINT-LEX:SOURCE
    SL-SCAN-TOKENS ;
 
 : FILE ( ptr u8 n -- )

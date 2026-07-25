@@ -91,50 +91,50 @@ variable NUM-I
    a u s" typefamily" LINT-STR=CI ;
 
 : WORD? ( n -- bool ) {: k:n :}
-   k L# @ >= if LINT-FALSE exit then
-   k LK@ L-WORD = ;
+   k LINT-LEX:COUNT >= if LINT-FALSE exit then
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
 : NAME-POSITION? ( n -- bool ) {: k:n :}   \ token k is a definition NAME, not a declaration
    k 0 <= if LINT-FALSE exit then
    k 1- WORD? 0= if LINT-FALSE exit then
-   k 1- LEX-TOK s" :" LINT-STR= if LINT-TRUE exit then
-   k 1- LEX-TOK s" +:" LINT-STR= if LINT-TRUE exit then
-   k 1- LEX-TOK s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" KERNEL:" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" PRIM:" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" create" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" variable" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" constant" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" defer" LINT-STR=CI ;
+   k 1- LINT-LEX:TOKEN s" :" LINT-STR= if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" +:" LINT-STR= if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" TRUSTED:" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" KERNEL:" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" PRIM:" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" create" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" variable" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" constant" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" defer" LINT-STR=CI ;
 
 : ESCAPED? ( n -- bool ) {: k:n :}         \ token k is a quoted/parsed reference
    k 0 <= if LINT-FALSE exit then
    k 1- WORD? 0= if LINT-FALSE exit then
-   k 1- LEX-TOK s" '" LINT-STR= if LINT-TRUE exit then
-   k 1- LEX-TOK s" [']" LINT-STR= if LINT-TRUE exit then
-   k 1- LEX-TOK s" postpone" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" char" LINT-STR=CI if LINT-TRUE exit then
-   k 1- LEX-TOK s" [char]" LINT-STR=CI ;
+   k 1- LINT-LEX:TOKEN s" '" LINT-STR= if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" [']" LINT-STR= if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" postpone" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" char" LINT-STR=CI if LINT-TRUE exit then
+   k 1- LINT-LEX:TOKEN s" [char]" LINT-STR=CI ;
 
 : REPORT ( n -- ) {: k:n :}
    BAD-N @ 1+ BAD-N !
    s" BOOTSTRAP-MIRROR " type
    FILE-A@ FILE-U @ type
-   $3A C k LL@ U.
-   s" : ADT declaration `" type k LEX-TOK type
+   $3A C k LINT-LEX:LINE@ U.
+   s" : ADT declaration `" type k LINT-LEX:TOKEN type
    s" ` in the gforth-compiled recovery corpus; land the stage-0 pass-2 mirror first (dot habu-bootstrap-mirror-pass-f1714953)" type
    NL ;
 
 : SCAN-TOKEN ( -- )
    SCAN-I @ WORD? 0= if exit then
-   SCAN-I @ LEX-TOK KEYWORD? 0= if exit then
+   SCAN-I @ LINT-LEX:TOKEN KEYWORD? 0= if exit then
    SCAN-I @ NAME-POSITION? if exit then
    SCAN-I @ ESCAPED? if exit then
    SCAN-I @ REPORT ;
 
 : SCAN ( -- )
    0 SCAN-I !
-   begin SCAN-I @ L# @ < while
+   begin SCAN-I @ LINT-LEX:COUNT < while
       SCAN-TOKEN
       SCAN-I @ 1+ SCAN-I !
    repeat ;
@@ -154,7 +154,7 @@ public
    label FILE-A!  labelu FILE-U !
    path pathu LOAD-SOURCE
    FILE-N @ 1+ FILE-N !
-   SRC-A@ SRC-U @ LEX-SOURCE
+   SRC-A@ SRC-U @ LINT-LEX:SOURCE
    SCAN ;
 
 : FILE ( ptr u8 n -- )

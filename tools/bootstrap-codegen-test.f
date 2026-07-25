@@ -70,22 +70,22 @@ variable DEF-I
 variable DEF-N
 
 : TOK=CI ( n ptr u8 n -- bool ) {: idx:n a:ptr u:n :}
-   idx LEX-TOK a u LINT-STR=CI ;
+   idx LINT-LEX:TOKEN a u LINT-STR=CI ;
 
 : DEF? ( n ptr u8 n -- bool ) {: idx:n name:ptr nameu:n :}
    idx 0 <= if 0 0= 0= exit then
-   idx 1 + L# @ >= if 0 0= 0= exit then
-   idx 1 - LK@ L-WORD <> if 0 0= 0= exit then
-   idx LK@ L-WORD <> if 0 0= 0= exit then
-   idx 1 + LK@ L-WORD <> if 0 0= 0= exit then
+   idx 1 + LINT-LEX:COUNT >= if 0 0= 0= exit then
+   idx 1 - LINT-LEX:KIND@ LINT-LEX:WORD <> if 0 0= 0= exit then
+   idx LINT-LEX:KIND@ LINT-LEX:WORD <> if 0 0= 0= exit then
+   idx 1 + LINT-LEX:KIND@ LINT-LEX:WORD <> if 0 0= 0= exit then
    idx s" constant" TOK=CI 0= if 0 0= 0= exit then
    idx 1 + name nameu TOK=CI ;
 
 : DEF-SCAN ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   BCG-SOURCE LEX-SOURCE
+   BCG-SOURCE LINT-LEX:SOURCE
    -1 DEF-I !
    0 DEF-N !
-   0 begin dup L# @ < while
+   0 begin dup LINT-LEX:COUNT < while
       dup name nameu DEF? if
          dup DEF-I !
          DEF-N @ 1 + DEF-N !
@@ -96,7 +96,7 @@ variable DEF-N
 : DEF-VALUE ( ptr u8 n -- ptr u8 n )
    DEF-SCAN
    DEF-N @ 1 = dup TTRUE 0= if s" " exit then
-   DEF-I @ 1 - LEX-TOK ;
+   DEF-I @ 1 - LINT-LEX:TOKEN ;
 
 : TOK-SAVE ( ptr u8 n ptr u8 ptr n -- )
    {: src:ptr u:n dst:ptr lenp:ptr :}

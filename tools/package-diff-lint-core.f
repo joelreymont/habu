@@ -417,18 +417,18 @@ variable FILE-USED
 
 : WORD? ( n -- bool )
    dup 0 < if drop false exit then
-   dup L# @ >= if drop false exit then
-   LK@ L-WORD = ;
+   dup LINT-LEX:COUNT >= if drop false exit then
+   LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
 : TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k WORD? 0= if false exit then
-   k LEX-TOK a u LINT-STR=CI ;
+   k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
 \ Case-sensitive token match, for the few rules that pin an exact spelling
 \ rather than a Forth word identity.
 : TOK= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k WORD? 0= if false exit then
-   k LEX-TOK a u LINT-STR= ;
+   k LINT-LEX:TOKEN a u LINT-STR= ;
 
 \ Audited publication inventory.  The native forms come from the engine's
 \ dictionary definers and docs/typed-top-level.md.  The type/storage forms are
@@ -542,8 +542,8 @@ variable FILE-USED
    BAD+
    code codeu OUT
    32 OUT-C FILE$ OUT COLON-C OUT-C
-   k LL@ U$ OUT COLON-C OUT-C k LC@ U$ OUT
-   s" : `" OUT k LEX-TOK OUT s" ` " OUT ;
+   k LINT-LEX:LINE@ U$ OUT COLON-C OUT-C k LINT-LEX:COL@ U$ OUT
+   s" : `" OUT k LINT-LEX:TOKEN OUT s" ` " OUT ;
 
 : REPORT-GLOBAL ( -- )
    DEF-NAME-I @ s" E-PACKAGE-OWNERSHIP" REPORT-HEAD
@@ -559,7 +559,7 @@ variable FILE-USED
 
 : CHECK-PREFIX ( -- )
    DEF-TAIL-ADDED @ 0= if exit then
-   DEF-NAME-I @ LEX-TOK {: name:ptr nameu:n :}
+   DEF-NAME-I @ LINT-LEX:TOKEN {: name:ptr nameu:n :}
    name nameu PACKAGE$ OWNER-PREFIX? if REPORT-OWNER-PREFIX exit then
    name nameu STEM$ OWNER-PREFIX? if REPORT-STEM-PREFIX then ;
 
@@ -593,7 +593,7 @@ variable FILE-USED
 : ERR-VOCAB? ( -- bool )
    FILE$ s" lib/errors.f" LINT-STR= 0= if false exit then
    DEF-DEFINER-I @ s" constant" TOK= 0= if false exit then
-   DEF-NAME-I @ LEX-TOK ERR-NAME? ;
+   DEF-NAME-I @ LINT-LEX:TOKEN ERR-NAME? ;
 
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
@@ -630,11 +630,11 @@ variable FILE-USED
    kind DEF-KIND !
    k DEF-DEFINER-I !
    namei DEF-NAME-I !
-   k LL@ DEF-START-LINE !
+   k LINT-LEX:LINE@ DEF-START-LINE !
    PACKAGE-OPEN @ DEF-PACKAGED !
-   k LL@ ADDED? namei LL@ ADDED? or DEF-TAIL-ADDED !
+   k LINT-LEX:LINE@ ADDED? namei LINT-LEX:LINE@ ADDED? or DEF-TAIL-ADDED !
    kind DATA-DEFINITION = if
-      namei LL@ FINISH-DEFINITION
+      namei LINT-LEX:LINE@ FINISH-DEFINITION
    else
       true DEF-OPEN !
    then
@@ -643,7 +643,7 @@ variable FILE-USED
 : PACKAGE-SET ( n -- ) {: namei:n :}
    namei WORD? 0= if E-DIFF-SYNTAX throw then
    PACKAGE-OPEN @ if E-DIFF-SYNTAX throw then
-   namei LEX-TOK PACKAGE-BUF PACKAGE-U COPY!
+   namei LINT-LEX:TOKEN PACKAGE-BUF PACKAGE-U COPY!
    true PACKAGE-OPEN ! ;
 
 : PACKAGE-CLEAR ( -- )
@@ -653,13 +653,13 @@ variable FILE-USED
 
 : PACKAGE-TOKEN ( n -- bool ) {: k:n :}
    k s" package" TOK=CI if
-      k LL@ ADDED? if SCOPE-DELTA @ 1+ SCOPE-DELTA ! then
+      k LINT-LEX:LINE@ ADDED? if SCOPE-DELTA @ 1+ SCOPE-DELTA ! then
       k 1+ PACKAGE-SET
       k 2 + LEX-I !
       true exit
    then
    k s" ;package" TOK=CI if
-      k LL@ ADDED? if SCOPE-DELTA @ 1- SCOPE-DELTA ! then
+      k LINT-LEX:LINE@ ADDED? if SCOPE-DELTA @ 1- SCOPE-DELTA ! then
       PACKAGE-CLEAR
       k 1+ LEX-I !
       true exit
@@ -669,7 +669,7 @@ variable FILE-USED
 : SCAN-TOKEN ( n -- ) {: k:n :}
    DEF-OPEN @ if
       k DEF-KIND @ CLOSE? if
-         k LL@ FINISH-DEFINITION
+         k LINT-LEX:LINE@ FINISH-DEFINITION
       then
       k 1+ LEX-I ! exit
    then
@@ -684,16 +684,16 @@ variable FILE-USED
    repeat ;
 
 : SCAN-DEFINITIONS ( -- )
-   SOURCE$ LEX-SOURCE
-   LEX-UNTERM-QUOTE? if E-DIFF-SYNTAX throw then
+   SOURCE$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if E-DIFF-SYNTAX throw then
    0 LEX-I !
    false PACKAGE-OPEN !
    0 SCOPE-DELTA !
    1 SCAN-LINE !
    false DEF-OPEN !
    0 PACKAGE-U !
-   begin LEX-I @ L# @ < while
-      LEX-I @ LL@ APPLY-DELETED-DELTA
+   begin LEX-I @ LINT-LEX:COUNT < while
+      LEX-I @ LINT-LEX:LINE@ APPLY-DELETED-DELTA
       LEX-I @ SCAN-TOKEN
    repeat
    DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;
@@ -702,14 +702,14 @@ variable FILE-USED
    k s" package" TOK=CI if
       k 1+ WORD? 0= if E-DIFF-SYNTAX throw then
       PACKAGE-OPEN @ if E-DIFF-SYNTAX throw then
-      k LL@ 1 OLD-DELTA+
+      k LINT-LEX:LINE@ 1 OLD-DELTA+
       true PACKAGE-OPEN !
       k 2 + LEX-I !
       true exit
    then
    k s" ;package" TOK=CI if
       PACKAGE-OPEN @ 0= if E-DIFF-SYNTAX throw then
-      k LL@ -1 OLD-DELTA+
+      k LINT-LEX:LINE@ -1 OLD-DELTA+
       false PACKAGE-OPEN !
       k 1+ LEX-I !
       true exit
@@ -735,12 +735,12 @@ variable FILE-USED
    k swap OLD-START-DEFINITION ;
 
 : SCAN-OLD-BOUNDARIES ( -- )
-   OLD$ LEX-SOURCE
-   LEX-UNTERM-QUOTE? if E-DIFF-SYNTAX throw then
+   OLD$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if E-DIFF-SYNTAX throw then
    0 LEX-I !
    false PACKAGE-OPEN !
    false DEF-OPEN !
-   begin LEX-I @ L# @ < while
+   begin LEX-I @ LINT-LEX:COUNT < while
       LEX-I @ OLD-SCAN-TOKEN
    repeat
    DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;

@@ -1754,7 +1754,10 @@ points stay listed.
 - `tools/lint/diff-frame.f` — framed unified-diff artifact reader (`package DIFF-FRAME`): validates each section's raw body through the shared `DIFF:LINE` parser, derives the frame form, and streams per-line events.
 - `tools/lint/diff-frame-write.f` — framed unified-diff artifact encoder; derives form/body/mode from the raw body via the shared parser so stored tags cannot drift.
 - `tools/lint/diff-frame-test.f` — checked round-trip, framing-reject, and memory-ownership coverage for the framed diff codec.
-- `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints.
+- `tools/lint/source-lex.f` — checked vector-backed source lexer for native lints
+  (`package LINT-LEX`): sole owner of the token tables and the one generic
+  lexical diagnostic record; every consumer reads it through the qualified
+  public API and no lexer state is reachable outside the package.
 - `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
   `tools/lint/lib.f` — shared native lint foundation: checked text/file
   helpers, the whitespace token table, the growable string interner, and the

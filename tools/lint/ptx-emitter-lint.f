@@ -94,8 +94,8 @@ variable PE-IN-PKG   variable PE-LI   variable PE-BAD
 
 \ ---- token scan: only GLOBAL-scope definers, only surface names -------------
 : PE-LEX-WORD= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
-   k LK@ L-WORD <> if LINT-FALSE exit then
-   k LEX-TOK a u LINT-STR=CI ;
+   k LINT-LEX:KIND@ LINT-LEX:WORD <> if LINT-FALSE exit then
+   k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
 \ Offset from a definer token to the name it defines; 0 when k is not a definer.
 : PE-DEF-OFFSET ( n -- n )
@@ -113,10 +113,10 @@ variable PE-IN-PKG   variable PE-LI   variable PE-BAD
 
 : PE-CHECK-DEF ( n -- ) {: k:n :}
    k PE-DEF-OFFSET dup 0= if drop exit then
-   k + dup L# @ >= if drop exit then {: ni:n :}
-   ni LEX-TOK {: na:ptr nu:n :}
+   k + dup LINT-LEX:COUNT >= if drop exit then {: ni:n :}
+   ni LINT-LEX:TOKEN {: na:ptr nu:n :}
    na nu PE-FIND dup 0 < if drop exit then {: idx:n :}
-   idx PE-CNT@ 0 > if na nu ni LL@ PE-DUP-REPORT then
+   idx PE-CNT@ 0 > if na nu ni LINT-LEX:LINE@ PE-DUP-REPORT then
    idx PE-CNT+ ;
 
 \ package/;package toggle scope; the language rejects nesting, so one flag holds.
@@ -127,15 +127,15 @@ variable PE-IN-PKG   variable PE-LI   variable PE-BAD
 
 : PE-UNTERM-FAIL ( -- )
    s" ptx-emitter-lint: UNTERMINATED string literal in " type PE-FILE$ type
-   s"  (line " type LEX-UNTERM-LINE @ . s" )" type cr
+   s"  (line " type LINT-LEX:ERROR-LINE@ . s" )" type cr
    PE-BAD @ 1+ PE-BAD ! ;
 
 : PE-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u LEX-SOURCE
-   LEX-UNTERM-QUOTE? if PE-UNTERM-FAIL exit then
+   a u LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if PE-UNTERM-FAIL exit then
    LINT-FALSE PE-IN-PKG !
    0 PE-LI !
-   begin PE-LI @ L# @ < while
+   begin PE-LI @ LINT-LEX:COUNT < while
       PE-LI @ PE-TOKEN
       PE-LI @ 1+ PE-LI !
    repeat ;
