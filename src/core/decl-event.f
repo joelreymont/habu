@@ -59,6 +59,7 @@
 \   TYPE-FIELD-OWNER:PREPARE   ( tok -- provisional-count ) validate without mutation
 \   TYPE-FIELD-OWNER:COMMIT    ( tok -- )                   publish while retaining rollback
 \   TYPE-FIELD-OWNER:FINALIZE  ( tok -- )                   release a committed frame
+\   TDECL-FIELD-RELEASE-XT     ( -- )                       total release of the top frame
 \   TYPE-FIELD-OWNER:ROLLBACK  ( tok -- )                   retire open or committed rows
 \   TYPE-FIELD-OWNER:TX-SCHEMA-FOR ( tok fam id -- sch )    provisional schema root
 \   TYPE-FIELD-OWNER:TX-CELLS-FOR  ( tok fam id -- cells )  provisional cell width
@@ -485,8 +486,10 @@ variable DEV-TX-SERIAL
 
 \ PREPARE proves the field rows are exactly the contiguous provisional range the
 \ event stream names, then delegates the field owner's mutation-free preflight.
-\ COMMIT advances reversible published watermarks while retaining both frames;
-\ FINALIZE alone releases them after every participant has committed.
+\ COMMIT advances reversible published watermarks while retaining both frames.
+\ Releasing them afterwards is the coordinator's release phase (DEV-PART-RELEASE
+\ below); the public FINALIZE here is the standalone entry point and re-proves
+\ everything, which is why the participant does not use it.
 : DEV-PREPARE ( n -- ) {: tok:n :}
    tok DEV-TX-OPEN-REQUIRE
    DEV-FLD-PROVISIONAL-COUNT DEV-BASE-FLD @ DEV-FLD-ORD @ + <>
@@ -589,10 +592,11 @@ $cbf29ce484222325 constant DEV-FNV-OFFSET
 \ to — let any frame the body opened and never closed stand in for the
 \ participant's own frame: prepare then validated the wrong frame, commit and
 \ finalize published and released the wrong frame, and the participant's real
-\ frame survived the transaction.  The checker participant finalizes last, sees
-\ a field-transaction depth that no longer matches its savepoint, and throws
-\ E-PF-TX from cleanup, which poisons the one production coordinator for the
-\ rest of the process.
+\ frame survived the transaction.  The checker participant released last, saw a
+\ field-transaction depth that no longer matched its savepoint, and threw E-PF-TX
+\ from cleanup, which poisoned the one production coordinator for the rest of the
+\ process.  Release can no longer report anything, so a defect of that shape now
+\ has to be caught where it belongs: at this participant's PREPARE.
 4 constant DEV-PART-CAP-INIT
 2 constant DEV-PART-REC          \ cells per depth: event token, then field token
 0 constant DEV-NO-TOKEN          \ slot sentinel; DEV-OPEN never mints a token <= 0
@@ -653,7 +657,7 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ token is the live open top, that its frame's field token is the one we saved,
 \ that the field frame is the live open top of the field owner's stack, and that
 \ the field rows are exactly the contiguous range the event stream names.  Commit
-\ and finalize then only advance and release marks this proof already covered.
+\ and release then only advance and drop marks this proof already covered.
 \ DEV-PREPARE repeats the token proof because it is also the standalone public
 \ entry point, so a mutation that guts THIS word still rejects one phase later —
 \ test/decl-event-suite.f §19e therefore asserts the failing PHASE, not just the
@@ -704,8 +708,21 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
       DEV-PART-CLEAR
    THEN ;
 
-: DEV-PART-FINALIZE ( n -- n )
-   DEV-PART-OPEN? IF DEV-PART-TOKEN DEV-FINALIZE DEV-PART-CLEAR THEN ;
+\ Release. The coordinator runs this only after every participant's reversible
+\ commit succeeded, so it must not be able to reject and it is not caught. It is
+\ therefore NOT DEV-FINALIZE: that word is the standalone public entry point and
+\ re-proves the token, the frame state, and the field owner's watermarks, and
+\ any of those proofs can throw. Everything they would re-prove was already
+\ proved by this participant's own PREPARE (DEV-PART-PROVE) and then committed,
+\ so all that is left here is to drop the two frames this depth owns — the field
+\ frame through the owner's private total release vector, then our own event
+\ frame — and clear the saved token pair.
+: DEV-PART-RELEASE ( -- )
+   DEV-PART-OPEN? IF
+      TDECL-FIELD-RELEASE-XT
+      DEV-TX-DEPTH @ 1 - DEV-TX-DEPTH !
+      DEV-PART-CLEAR
+   THEN ;
 
 2 constant DEV-PARTICIPANT
 
@@ -715,7 +732,7 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
    [: DEV-PART-PREPARE ;]
    [: DEV-PART-COMMIT ;]
    [: DEV-PART-ROLLBACK ;]
-   [: DEV-PART-FINALIZE ;]
+   [: DEV-PART-RELEASE ;]
    GENERATED-DECL-OWNER:REGISTER ;
 
 \ ---------------------------------------------------------------------------
@@ -728,7 +745,10 @@ variable DEV-PART-CAP      DEV-PART-CAP-INIT DEV-PART-CAP !
 \ COMMIT or ROLLBACK, each takes and returns the same token, and each throws
 \ E-DEV-TX if the token is not the innermost open frame. COMMIT retains a
 \ reversible frame; FINALIZE releases it, ROLLBACK restores it, and PUBLISH
-\ performs PREPARE, COMMIT, and FINALIZE in one call. Reflection + IDENTITY
+\ performs PREPARE, COMMIT, and FINALIZE in one call. FINALIZE is the
+\ standalone release and re-proves the token, the frame state, and the field
+\ owner's watermarks, so it is not what the coordinator's total release phase
+\ runs. Reflection + IDENTITY
 \ read only published events and are legal any time.
 \ ---------------------------------------------------------------------------
 public

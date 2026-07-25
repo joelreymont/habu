@@ -2341,3 +2341,42 @@ fits.
   is actually present, and read the dot's own text for atomicity clauses: two
   of the remaining dots said in their contracts that neither could close without
   the other, which the list did not mention.
+- **A property with no behavioural witness needs a source-level regression, and
+  the regression has to be measured against the code it is meant to reject.**
+  The declaration transaction's release phase runs only after every reversible
+  commit has published, so no declaration a test can write reaches a release
+  callback in a state where it would want to reject. Swapping a total release
+  word for a validating one therefore passed every suite in the repository. The
+  workable witness reads the production sources: find each participant
+  registration, take the word in its release slot, close over everything those
+  words reach through calls and deferred vectors, and require every reached word
+  to be a definition in those sources or a member of a small allowlist of total
+  words. An allowlist rather than a list of banned words is what makes it fail
+  closed - a newly introduced helper is red because it is unrecognised, not
+  because someone remembered to ban it. Prove such an inventory by running it
+  against the parent tree first: this one reported ten reachable `throw` sites
+  there and zero after the change.
+- **A cold-cache native gate run on this box overruns the performance band while
+  correctness stays green.** `bin/hb --load test/run.f` with a fresh `HB_TMP`
+  reports `performance=hard-fail correctness=t` at roughly 33s against a 25s
+  cold budget; the second, warm run of the same tree passes at ~31s against the
+  35s warm budget. Confirm the same cold overrun on the unmodified parent before
+  attributing it to a change: parent 32793ms, changed tree 32982ms, a 0.6%
+  difference.
+- **A reviewer-supplied "verified reference patch" is a claim until you hash it.**
+  A round-2 verdict pointed at a scratch tree said to contain three verified
+  fixes; the file there was byte-identical to the unfixed original
+  (sha256 45ab6386...), so it carried none of them. Re-derive the fix and build
+  your own mutants either way - the verdict's *findings* were all three real, and
+  a fourth of the same shape was next to them. Diff or hash any handed-over
+  artifact before treating it as evidence.
+- **A source-scanning gate has to fail closed on the shapes it does not
+  understand, not skip them.** The release inventory followed deferred words only
+  through `[: WORD ;] is VECTOR`. Three sibling holes came from the same habit:
+  a root marked reachable instead of resolved (so a deferred root was never
+  followed), zero bindings treated as nothing-to-do, and `['] WORD is VECTOR`
+  dropped silently. Each was green on the real production sources under a mutation
+  that should have been red. The rule that fixes all of them at once is: record
+  every occurrence of the construct, resolve roots by the same path as interior
+  references, and report an unrecognised or absent target rather than passing
+  over it.

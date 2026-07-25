@@ -81,7 +81,8 @@ variable SNAPSHOT-TRACE
 variable PREPARE-TRACE
 variable COMMIT-TRACE
 variable ROLLBACK-TRACE
-variable FINALIZE-TRACE
+variable RELEASE-TRACE
+variable RELEASE-N
 variable TRACE-ON
 
 variable FAIL-PHASE
@@ -177,6 +178,7 @@ package GENERATED-DECLARATION-TXN-TEST
 : CAP-TEST-DIAG ( n n -- ) 2drop ;
 : CAP-TEST-REJECT-DIAG ( n n -- ) 2drop ;
 : CAP-TEST-INERT ( n -- n ) ;
+: CAP-TEST-NO-RELEASE ( -- ) ;
 
 : CAP-TEST-FILL-CELLS ( n ptr a n -- )
    {: value:n a:ptr count:n :}
@@ -252,7 +254,7 @@ package GENERATED-DECLARATION-TXN-TEST
 : CAP-TEST-REGISTER ( -- )
    CAP-TEST-STATE CAP-TEST-ID CAP-TEST-ORDER
    [: CAP-TEST-INERT ;] [: CAP-TEST-INERT ;] [: CAP-TEST-INERT ;]
-   [: CAP-TEST-INERT ;] [: CAP-TEST-INERT ;]
+   [: CAP-TEST-INERT ;] [: CAP-TEST-NO-RELEASE ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 : CAP-TEST-REGISTER-CATCH ( -- n )
@@ -480,7 +482,8 @@ package GENERATED-DECLARATION-TXN-TEST
    0 PREPARE-TRACE !
    0 COMMIT-TRACE !
    0 ROLLBACK-TRACE !
-   0 FINALIZE-TRACE ! ;
+   0 RELEASE-TRACE !
+   0 RELEASE-N ! ;
 
 : RESET-CONTROLS ( -- )
    0 FAIL-PHASE !
@@ -526,10 +529,9 @@ package GENERATED-DECLARATION-TXN-TEST
    PARTICIPANT-A MAYBE-FAIL-ROLLBACK
    depth ;
 
-: FINALIZE-A ( n -- n ) {: depth:n :}
-   1 FINALIZE-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-FINALIZE PARTICIPANT-A MAYBE-FAIL
-   depth ;
+: RELEASE-A ( -- )
+   1 RELEASE-TRACE APPEND-DIGIT
+   RELEASE-N @ 1 + RELEASE-N ! ;
 
 : SNAPSHOT-B ( n -- n ) {: depth:n :}
    TRACK-VALUES @ IF VALUE-B @ SAVED-B ! THEN
@@ -554,10 +556,9 @@ package GENERATED-DECLARATION-TXN-TEST
    PARTICIPANT-B MAYBE-FAIL-ROLLBACK
    depth ;
 
-: FINALIZE-B ( n -- n ) {: depth:n :}
-   2 FINALIZE-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-FINALIZE PARTICIPANT-B MAYBE-FAIL
-   depth ;
+: RELEASE-B ( -- )
+   2 RELEASE-TRACE APPEND-DIGIT
+   RELEASE-N @ 1 + RELEASE-N ! ;
 
 : SNAPSHOT-C ( n -- n ) {: depth:n :}
    TRACK-VALUES @ IF VALUE-C @ SAVED-C ! THEN
@@ -582,30 +583,31 @@ package GENERATED-DECLARATION-TXN-TEST
    PARTICIPANT-C MAYBE-FAIL-ROLLBACK
    depth ;
 
-: FINALIZE-C ( n -- n ) {: depth:n :}
-   3 FINALIZE-TRACE APPEND-DIGIT
-   GENERATED-DECL:PHASE-FINALIZE PARTICIPANT-C MAYBE-FAIL
-   depth ;
+: RELEASE-C ( -- )
+   3 RELEASE-TRACE APPEND-DIGIT
+   RELEASE-N @ 1 + RELEASE-N ! ;
 
 : REGISTER-A ( -- )
    TEST-STATE PARTICIPANT-A ORDER-A
    [: SNAPSHOT-A ;] [: PREPARE-A ;] [: COMMIT-A ;]
-   [: ROLLBACK-A ;] [: FINALIZE-A ;]
+   [: ROLLBACK-A ;] [: RELEASE-A ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 : REGISTER-B ( -- )
    TEST-STATE PARTICIPANT-B ORDER-B
    [: SNAPSHOT-B ;] [: PREPARE-B ;] [: COMMIT-B ;]
-   [: ROLLBACK-B ;] [: FINALIZE-B ;]
+   [: ROLLBACK-B ;] [: RELEASE-B ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 : REGISTER-C ( -- )
    TEST-STATE PARTICIPANT-C ORDER-C
    [: SNAPSHOT-C ;] [: PREPARE-C ;] [: COMMIT-C ;]
-   [: ROLLBACK-C ;] [: FINALIZE-C ;]
+   [: ROLLBACK-C ;] [: RELEASE-C ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 : INERT ( n -- n ) ;
+
+: NO-RELEASE ( -- ) ;
 
 : CORRUPT-SNAPSHOT ( n -- n ) 1 + ;
 
@@ -619,18 +621,18 @@ package GENERATED-DECLARATION-TXN-TEST
 
 : REGISTER-D ( -- )
    TEST-STATE PARTICIPANT-D ORDER-D
-   [: SNAPSHOT-D ;] [: INERT ;] [: INERT ;] [: INERT ;] [: INERT ;]
+   [: SNAPSHOT-D ;] [: INERT ;] [: INERT ;] [: INERT ;] [: NO-RELEASE ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 : REGISTER-LATE ( -- )
    TEST-STATE PARTICIPANT-LATE ORDER-LATE
-   [: SNAPSHOT-LATE ;] [: INERT ;] [: INERT ;] [: INERT ;] [: INERT ;]
+   [: SNAPSHOT-LATE ;] [: INERT ;] [: INERT ;] [: INERT ;] [: NO-RELEASE ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 : REGISTER-CORRUPT ( -- )
    TEST-STATE PARTICIPANT-CORRUPT ORDER-A
    [: CORRUPT-SNAPSHOT ;]
-   [: INERT ;] [: INERT ;] [: INERT ;] [: INERT ;]
+   [: INERT ;] [: INERT ;] [: INERT ;] [: NO-RELEASE ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 : SAVE-TEST-BYTES ( -- )
@@ -782,18 +784,19 @@ INSTALL-NESTED
    s" CHECKER-DECL-FRAME:INSTALL" CHECKER-DEFINED? 0= TTRUE
    \ The four declaration-frame words are closed into the package PRIVATE
    \ wordlist, so no caller outside the checker can reach them and no test can
-   \ drive RELEASE directly. That confinement is the reason the "RELEASE must
-   \ stay throw-free" property has no behavioural regression here: the only body
-   \ that could shift the product-field transaction depth across RELEASE is one
-   \ that leaks a declaration-event frame, and src/core/decl-event.f rejects that
-   \ at the participant's PREPARE (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE, throwing
-   \ E-DEV-TX with the depths restored), which test/decl-event-suite.f §19e already
-   \ pins including the failing phase. Swapping RELEASE for the ordinary
-   \ CHECKER-SCOPE-FINALIZE therefore survives every suite in the repository today.
-   \ Making that swap fail is the job of the structural release inventory planned
-   \ by dot habu-make-txn-release-c9892c89; until it lands, these rows are the
-   \ durable guard, because they fail the moment anyone opens a public seam onto
-   \ the frame words and quietly makes the release path reachable.
+   \ drive RELEASE directly. That confinement is why "RELEASE must stay
+   \ throw-free" cannot be observed behaviourally from here: the only body that
+   \ could shift the product-field transaction depth across RELEASE is one that
+   \ leaks a declaration-event frame, and src/core/decl-event.f rejects that at
+   \ the participant's PREPARE (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE, throwing
+   \ E-DEV-TX with the depths restored), which test/decl-event-suite.f §19e
+   \ already pins including the failing phase. Swapping RELEASE for the ordinary
+   \ CHECKER-SCOPE-FINALIZE would therefore survive every behavioural suite in the
+   \ repository. test/declaration-release-inventory.f is what makes that swap
+   \ fail: it reads the production sources and rejects any throw, catch,
+   \ allocation, lookup, validation, or publication reachable from a registered
+   \ release callback. The rows below stay as the second guard, because they fail
+   \ the moment anyone opens a public seam onto the frame words.
    s" CHECKER-DECL-FRAME:START" QUALIFIED-ABSENT? TTRUE
    s" CHECKER-DECL-FRAME:PREPARE" QUALIFIED-ABSENT? TTRUE
    s" CHECKER-DECL-FRAME:ROLLBACK" QUALIFIED-ABSENT? TTRUE
@@ -811,7 +814,7 @@ INSTALL-NESTED
    SNAPSHOT-TRACE @ 14523 T=
    PREPARE-TRACE @ 123 T=
    COMMIT-TRACE @ 123 T=
-   FINALIZE-TRACE @ 321 T=
+   RELEASE-TRACE @ 321 T=
    ROLLBACK-TRACE @ 0 T=
    ASSERT-IDLE ;
 
@@ -873,7 +876,7 @@ INSTALL-NESTED
    PREPARE-TRACE @ 123 T=
    COMMIT-TRACE @ 12 T=
    ROLLBACK-TRACE @ 321 T=
-   FINALIZE-TRACE @ 0 T=
+   RELEASE-TRACE @ 0 T=
    10 20 30 ASSERT-VALUES
    TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PHASE GENERATED-DECL:PHASE-COMMIT T=
    TEST-STATE DECLARATION-TRANSACTION:LAST-FAILURE-PARTICIPANT PARTICIPANT-B T=
@@ -899,19 +902,27 @@ INSTALL-NESTED
    RUN-BODY-CATCH DECLARATION-TRANSACTION:E-TRANSACTION-POISONED T=
    ASSERT-IDLE ;
 
-: TEST-FINALIZE-CLEANUP ( -- )
+\ Release is the phase that CANNOT report anything.  This test used to be
+\ TEST-FINALIZE-CLEANUP: it injected a failure into the last phase and pinned the
+\ old behaviour — the transaction threw, called the diagnostic with a zero
+\ primary error, named a cleanup participant, and poisoned the coordinator, all
+\ AFTER every reversible commit had already published.  That pin is retired with
+\ the injection seam that fed it; a release callback now takes nothing, returns
+\ nothing, and has no error channel to inject into.  What the run below proves is
+\ the opposite property: once every commit succeeds the transaction is over, so
+\ RUN returns normally, the diagnostic is never called, no cleanup participant is
+\ recorded, the coordinator stays usable, and every participant is still released
+\ in reverse order.
+: TEST-RELEASE-AFTER-PUBLICATION ( -- )
    RESET-CONTROLS RESET-TRACES RESET-DIAGNOSTIC
    -1 TRACE-ON !
-   GENERATED-DECL:PHASE-FINALIZE FAIL-PHASE !
-   PARTICIPANT-B FAIL-PARTICIPANT !
-   RUN-BODY-CATCH E-INJECT T=
-   FINALIZE-TRACE @ 321 T=
-   DIAGNOSTIC-COUNT @ 1 T=
-   DIAGNOSTIC-PRIMARY @ 0 T=
-   DIAGNOSTIC-CLEANUP @ E-INJECT T=
-   TEST-STATE DECLARATION-TRANSACTION:LAST-CLEANUP-PARTICIPANT PARTICIPANT-B T=
-   TEST-STATE DECLARATION-TRANSACTION:POISONED? TTRUE
-   RUN-BODY-CATCH DECLARATION-TRANSACTION:E-TRANSACTION-POISONED T=
+   RUN-BODY-CATCH 0 T=
+   RELEASE-TRACE @ 321 T=
+   COMMIT-TRACE @ 123 T=
+   DIAGNOSTIC-COUNT @ 0 T=
+   TEST-STATE DECLARATION-TRANSACTION:LAST-CLEANUP-PARTICIPANT -1 T=
+   TEST-STATE DECLARATION-TRANSACTION:POISONED? 0= TTRUE
+   RUN-BODY-CATCH 0 T=
    ASSERT-IDLE ;
 
 : TEST-CALLBACK-DEPTH ( -- )
@@ -925,10 +936,14 @@ INSTALL-NESTED
    RUN-BODY-CATCH DECLARATION-TRANSACTION:E-TRANSACTION-POISONED T=
    ASSERT-IDLE ;
 
+\ Three of the five registered participants count their own releases, so a run
+\ nested 13 deep must record exactly 3 releases per depth: one per active
+\ participant at every depth, no depth skipped and none released twice.
 : TEST-NESTING-GROWTH ( -- )
    RESET-CONTROLS RESET-TRACES
    12 RUN-NESTED
    NESTING-BODIES @ 13 T=
+   RELEASE-N @ 13 3 * T=
    ASSERT-IDLE ;
 
 : GROW-NESTED-BODY ( -- )
@@ -1005,6 +1020,38 @@ INSTALL-GROW-NESTED
    GROW-NESTING-BODIES @ FIRST-GROWN-DEPTH 1 - T=
    ASSERT-OWNER-DEPTHS ASSERT-NATIVE-HIGHWATERS
    s" GDGROW:MARK" QUALIFIED-ABSENT? TTRUE ;
+
+\ The same nesting, but succeeding, on the real generated-declaration path.
+\ Every production participant's savepoint is a depth counter or a per-depth
+\ slot, so "one release per active participant at every nesting depth" is exactly
+\ "every owner depth is back at its baseline afterwards": a skipped release
+\ leaves a depth high, a doubled release drives it below the baseline, and both
+\ fail ASSERT-OWNER-DEPTHS. The declaration inside the outermost body also
+\ exercises the event and field owners, not just the dictionary and protection
+\ owners, and its word must be visible at the end because release runs after
+\ publication, never instead of it.
+: EVALUATE-NESTED-OK-DECLARATION ( -- )
+   s" STRUCTURE gdnestok 0 FIELD x n ;STRUCTURE" INCLUDE-EVALUATE ;
+
+: PRODUCTION-NESTED-SUCCESS-BODY ( -- )
+   EVALUATE-NESTED-OK-DECLARATION
+   RUN-TO-GROWN-DEPTH ;
+
+: RUN-PRODUCTION-NESTED-SUCCESS ( -- )
+   [: PRODUCTION-NESTED-SUCCESS-BODY ;] GENERATED-DECL:RUN ;
+
+: TEST-PRODUCTION-NESTED-RELEASE ( -- )
+   RECORD-BASELINE RECORD-OWNER-DEPTHS
+   RUN-PRODUCTION-NESTED-SUCCESS
+   GROW-MAX-DEPTH @ FIRST-GROWN-DEPTH T=
+   GROW-NESTING-BODIES @ FIRST-GROWN-DEPTH 1 - T=
+   ASSERT-OWNER-DEPTHS
+   ASSERT-PRODUCTION-IDLE
+   DECL-EVENT:COUNT EVENT-N0 @ > TTRUE
+   TYPE-FIELD:COUNT FIELD-N0 @ > TTRUE
+   s" GDNESTOK:MAKE" QUALIFIED-ABSENT? 0= TTRUE
+   s" GDNESTOK-ROUNDTRIP ( n -- n ) GDNESTOK:MAKE GDNESTOK:UNMAKE"
+      CHECK-QUIET-CANDIDATE! 0 <> TTRUE ;
 
 : TEST-DATA-ROLLBACK ( -- )
    RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
@@ -1253,13 +1300,14 @@ public
    TEST-ROLLBACK-CLEANUP
    INIT-TEST-COORDINATOR
    REGISTER-TEST-PARTICIPANTS
-   TEST-FINALIZE-CLEANUP
+   TEST-RELEASE-AFTER-PUBLICATION
    TEST-CALLBACK-DEPTH
    TEST-OUTER-CHECKER-SCOPE
    TEST-CHECKER-LEAK-PREPARE
    TEST-RECYCLED-SLOT-LEAK
    TEST-NESTED-DECLARATION-ROLLBACK
    TEST-PRODUCTION-FRAME-GROWTH
+   TEST-PRODUCTION-NESTED-RELEASE
    TEST-DATA-ROLLBACK
    TEST-NAME-PREFLIGHT-CLEARS-AUTHORITY
    TEST-GENERATOR-ROLLBACK

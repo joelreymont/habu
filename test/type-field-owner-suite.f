@@ -201,6 +201,35 @@ variable RC
       s" ROLLBACK-THROUGH" LOAD-REJECTS
    s" TYPE-FIELD-OWNER:TX-INDEX" QUALIFIED-ABSENT ;
 
+\ --- the total release capability has no source-level surface either -----------
+\ The declaration transaction's release phase runs after every reversible commit
+\ has published, so the participant that owns a field frame has to discard it
+\ without being able to reject. The public FINALIZE cannot do that job: it
+\ re-proves the token, the frame state, and the watermarks, and each of those
+\ proofs throws. The discard is this owner's private RELEASE, reached by the
+\ compiled declaration-event participant through the deferred
+\ TDECL-FIELD-RELEASE-XT that src/core/generated-declaration-protection.f retires
+\ once that sole caller is bound. Same reasoning and the same three independent
+\ boundaries as the cleanup seam above: the name is gone from the dictionary, the
+\ checker no longer knows it, and a real child load naming it exits 70 with
+\ E-UNDEFINED. Deferred rather than a primitive row for the same reason - an
+\ axiom survives `undefine` and would keep certifying calls the runtime can no
+\ longer resolve.
+\
+\ Measured, not hypothetical: deleting the `undefine TDECL-FIELD-RELEASE-XT` line
+\ in src/core/generated-declaration-protection.f and refreshing the engine makes
+\ the first assertion below fail on every run.
+: RELEASE-SEAM-ABSENT ( -- )
+   s" TDECL-FIELD-RELEASE-XT" ABSENT
+   s" TDECL-FIELD-RELEASE-XT" CHECKER-DEFINED? 0= TTRUE
+   s" : TFO-NO-RELEASE ( -- ) TDECL-FIELD-RELEASE-XT ;"
+      s" TDECL-FIELD-RELEASE-XT" LOAD-REJECTS
+   s" RELEASE" ABSENT
+   s" TYPE-FIELD-OWNER:RELEASE" QUALIFIED-ABSENT
+   s" TYPE-FIELD-OWNER:RELEASE" CHECKER-DEFINED? 0= TTRUE
+   s" : TFO-NO-OWNER-RELEASE ( -- ) TYPE-FIELD-OWNER:RELEASE ;"
+      s" RELEASE" LOAD-REJECTS ;
+
 : OWNER-API-RUNTIME-LIVE ( -- )
    s" TYPE-FIELD-OWNER:OPEN"
       s" TFO-L1 ( -- n ) TYPE-FIELD-OWNER:OPEN" OWNER-WORD-LIVE
@@ -479,6 +508,7 @@ CHECKER-OWNER-API
 CHECKER-OWNER-ROLES
 OWNER-API-RUNTIME-LIVE
 CLEANUP-SEAM-ABSENT
+RELEASE-SEAM-ABSENT
 
 ;package
 

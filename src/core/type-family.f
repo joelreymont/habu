@@ -1098,6 +1098,18 @@ variable PF-TX-SERIAL   0 PF-TX-SERIAL !   REG-PROTECT
 \ would leave the checker certifying calls the runtime can no longer resolve.
 defer TDECL-FIELD-CLEANUP-XT ( n -- )
 
+\ Total release seam, same shape and lifetime as the cleanup vector above. The
+\ coordinator's release phase runs after every reversible commit succeeded, so
+\ the declaration-event participant must discard its field frame without being
+\ able to reject: PREPARE already proved the frame is the live committed top.
+\ RELEASE below is that discard and nothing else. It stays private to this owner
+\ — a public FINALIZE-style entry would have to re-validate, which is exactly
+\ what a total release may not do — so the compiled participant reaches it
+\ through this one execution vector, and
+\ src/core/generated-declaration-protection.f retires the name once that sole
+\ caller is compiled.
+defer TDECL-FIELD-RELEASE-XT ( -- )
+
 package TYPE-FIELD-OWNER
 
 0 constant STATE-OPEN
@@ -1232,9 +1244,10 @@ private
       TX-TOP PFTX.TOK @ ROLLBACK
    REPEAT ;
 
-: CLEANUP-INSTALL ( -- )
-   [: ROLLBACK-THROUGH ;] is TDECL-FIELD-CLEANUP-XT ;
-CLEANUP-INSTALL
+: VECTORS-INSTALL ( -- )
+   [: ROLLBACK-THROUGH ;] is TDECL-FIELD-CLEANUP-XT
+   [: RELEASE ;] is TDECL-FIELD-RELEASE-XT ;
+VECTORS-INSTALL
 
 ;package
 

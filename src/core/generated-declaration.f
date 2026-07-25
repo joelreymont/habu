@@ -5,6 +5,10 @@
 \ layer; the native dictionary and protection owners enroll after xref; and the
 \ protection owner seals the participant set last. RUN refuses to start before
 \ that final seal.
+\
+\ The checker participant's release callback is total, like every other one: by
+\ the time the coordinator releases, publication has already happened and no
+\ participant is allowed to reject.
 
 \ The checker participant lives in this file, so it owns its identity and order
 \ outright. The three orders published below belong to participant modules that
@@ -29,7 +33,9 @@ package CHECKER-DECL-FRAME
    depth ROLLBACK
    depth ;
 
-: PART-FINALIZE ( n -- n )
+\ The frame word this forwards to is already throw-free by contract; see the
+\ RELEASE comment in src/core/checker.f.
+: PART-RELEASE ( -- )
    RELEASE ;
 
 public
@@ -40,7 +46,7 @@ public
    [: PART-PREPARE ;]
    [: PART-COMMIT ;]
    [: PART-ROLLBACK ;]
-   [: PART-FINALIZE ;]
+   [: PART-RELEASE ;]
    DECLARATION-TRANSACTION:REGISTER ;
 
 private
@@ -64,13 +70,13 @@ create STATE DECLARATION-TRANSACTION:STATE-CELLS cells allot
 public
 
 : REGISTER
-   ( n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] -- )
-   {: id:n order:n snapshot prepare commit rollback finalize :} \ typed-local-lint: allow-bare-local
-   STATE id order snapshot prepare commit rollback finalize
+   ( n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
+   {: id:n order:n snapshot prepare commit rollback release :} \ typed-local-lint: allow-bare-local
+   STATE id order snapshot prepare commit rollback release
    DECLARATION-TRANSACTION:REGISTER ;
 
 : REGISTER-LAST
-   ( n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] -- )
+   ( n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
    REGISTER
    STATE DECLARATION-TRANSACTION:SEAL ;
 
@@ -112,7 +118,6 @@ DECLARATION-TRANSACTION:PHASE-BODY constant PHASE-BODY
 DECLARATION-TRANSACTION:PHASE-PREPARE constant PHASE-PREPARE
 DECLARATION-TRANSACTION:PHASE-COMMIT constant PHASE-COMMIT
 DECLARATION-TRANSACTION:PHASE-ROLLBACK constant PHASE-ROLLBACK
-DECLARATION-TRANSACTION:PHASE-FINALIZE constant PHASE-FINALIZE
 
 : RUN ( [ -- ] -- ) GENERATED-DECL-OWNER:RUN ;
 : COUNT ( -- n ) GENERATED-DECL-OWNER:COUNT ;

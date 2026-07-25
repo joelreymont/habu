@@ -71,7 +71,9 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
    r ROW.DP @ DICTIONARY-DP!
    depth ;
 
-: FINALIZE ( n -- n ) ;
+\ Nothing to discard: this owner's savepoint is three watermark cells in its own
+\ frame row, which the next SNAPSHOT at this depth overwrites.
+: RELEASE ( -- ) ;
 
 4 constant PARTICIPANT
 
@@ -81,7 +83,7 @@ TRUSTED: DICTIONARY-DP! ( ptr a -- ) data-base DP-CELL + ! ;
    [: PREPARE ;]
    [: COMMIT ;]
    [: ROLLBACK ;]
-   [: FINALIZE ;]
+   [: RELEASE ;]
    GENERATED-DECL-OWNER:REGISTER ;
 
 public

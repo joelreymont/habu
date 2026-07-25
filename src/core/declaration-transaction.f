@@ -4,11 +4,18 @@
 \ Callers provide the instance record, its initial row arena, an allocator, and
 \ a diagnostic callback.  Registration is ordered and becomes immutable at
 \ SEAL.  RUN retains every participant savepoint through body, prepare, and
-\ reversible commit; rollback and finalization run in reverse order.
+\ reversible commit; rollback runs in reverse order.
 \
-\ Participant cleanup failures never replace the primary error.  They poison
-\ only that coordinator instance, so no later transaction can run against a
-\ participant whose private savepoint may still be live.
+\ Once every reversible commit has succeeded the transaction has published and
+\ can no longer fail.  RELEASE then runs each participant in reverse order for
+\ the sole purpose of discarding a savepoint that PREPARE already proved
+\ discardable.  A release callback takes nothing, returns nothing, and must be
+\ total: RELEASE is not caught, not diagnosed, and never poisons the
+\ coordinator, because there is no longer any state a late error could restore.
+\
+\ Rollback failures are different: they leave a participant's private savepoint
+\ possibly live.  They never replace the primary error, and they poison that
+\ coordinator instance so no later transaction can run against it.
 
 package DECLARATION-TRANSACTION
 
@@ -26,7 +33,6 @@ public
 3 constant PHASE-PREPARE
 4 constant PHASE-COMMIT
 5 constant PHASE-ROLLBACK
-6 constant PHASE-FINALIZE
 
 7 constant ROW-CELLS
 13 constant STATE-CELLS
@@ -51,7 +57,7 @@ $7FFFFFFFFFFFFFFF ROW-BYTES / constant MAX-ROWS
 3 cells constant ROW.PREPARE-OFF
 4 cells constant ROW.COMMIT-OFF
 5 cells constant ROW.ROLLBACK-OFF
-6 cells constant ROW.FINALIZE-OFF
+6 cells constant ROW.RELEASE-OFF
 
 0 cells constant ST.TABLE-OFF
 1 cells constant ST.CAP-OFF
@@ -101,7 +107,7 @@ TRUSTED: ROW.SNAPSHOT ( ptr a -- ptr [ n -- n ] ) ROW.SNAPSHOT-OFF + ;
 TRUSTED: ROW.PREPARE ( ptr a -- ptr [ n -- n ] ) ROW.PREPARE-OFF + ;
 TRUSTED: ROW.COMMIT ( ptr a -- ptr [ n -- n ] ) ROW.COMMIT-OFF + ;
 TRUSTED: ROW.ROLLBACK ( ptr a -- ptr [ n -- n ] ) ROW.ROLLBACK-OFF + ;
-TRUSTED: ROW.FINALIZE ( ptr a -- ptr [ n -- n ] ) ROW.FINALIZE-OFF + ;
+TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 
 : ID@ ( ptr a n -- n ) ROW ROW.ID @ ;
 : ORDER@ ( ptr a n -- n ) ROW ROW.ORDER @ ;
@@ -109,7 +115,7 @@ TRUSTED: ROW.FINALIZE ( ptr a -- ptr [ n -- n ] ) ROW.FINALIZE-OFF + ;
 : PREPARE@ ( ptr a n -- [ n -- n ] ) ROW ROW.PREPARE @ ;
 : COMMIT@ ( ptr a n -- [ n -- n ] ) ROW ROW.COMMIT @ ;
 : ROLLBACK@ ( ptr a n -- [ n -- n ] ) ROW ROW.ROLLBACK @ ;
-: FINALIZE@ ( ptr a n -- [ n -- n ] ) ROW ROW.FINALIZE @ ;
+: RELEASE@ ( ptr a n -- [ -- ] ) ROW ROW.RELEASE @ ;
 
 : ID! ( n ptr a n -- ) ROW ROW.ID ! ;
 : ORDER! ( n ptr a n -- ) ROW ROW.ORDER ! ;
@@ -117,7 +123,7 @@ TRUSTED: ROW.FINALIZE ( ptr a -- ptr [ n -- n ] ) ROW.FINALIZE-OFF + ;
 : PREPARE! ( [ n -- n ] ptr a n -- ) ROW ROW.PREPARE ! ;
 : COMMIT! ( [ n -- n ] ptr a n -- ) ROW ROW.COMMIT ! ;
 : ROLLBACK! ( [ n -- n ] ptr a n -- ) ROW ROW.ROLLBACK ! ;
-: FINALIZE! ( [ n -- n ] ptr a n -- ) ROW ROW.FINALIZE ! ;
+: RELEASE! ( [ -- ] ptr a n -- ) ROW ROW.RELEASE ! ;
 
 TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 
@@ -172,7 +178,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    state from PREPARE@ state to PREPARE!
    state from COMMIT@ state to COMMIT!
    state from ROLLBACK@ state to ROLLBACK!
-   state from FINALIZE@ state to FINALIZE! ;
+   state from RELEASE@ state to RELEASE! ;
 
 : GROW-TABLE ( ptr a -- ) {: state:ptr :}
    state CAP@ {: oldcap:n :}
@@ -199,8 +205,8 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    idx ;
 
 : REGISTER-ROW
-   ( ptr a n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] -- )
-   {: state:ptr id:n order:n snapshot prepare commit rollback finalize :} \ typed-local-lint: allow-bare-local
+   ( ptr a n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
+   {: state:ptr id:n order:n snapshot prepare commit rollback release :} \ typed-local-lint: allow-bare-local
    state id REQUIRE-REGISTRATION
    state order OPEN-SLOT {: idx:n :}
    id state idx ID!
@@ -209,7 +215,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    prepare state idx PREPARE!
    commit state idx COMMIT!
    rollback state idx ROLLBACK!
-   finalize state idx FINALIZE!
+   release state idx RELEASE!
    state N@ 1 + state ST.N ! ;
 
 : ENTER-PHASE ( ptr a n n -- ) {: state:ptr phase:n idx:n :}
@@ -279,14 +285,18 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
       state -rot REMEMBER-CLEANUP
    loop ;
 
-: FINALIZE-ONE ( ptr a n -- n ) {: state:ptr idx:n :}
-   state PHASE-FINALIZE idx state idx FINALIZE@ CALL-PARTICIPANT ;
+\ Release is the one phase with no error path.  Every reversible commit has
+\ already succeeded, so there is nothing left to restore and nothing a failure
+\ could mean: the callback is required to be total, is executed directly, and is
+\ deliberately NOT wrapped in `catch`.  test/declaration-release-inventory.f
+\ inventories the sealed production release definitions and rejects any throw,
+\ catch, allocation, lookup, validation, or publication inside them.
+: RELEASE-ONE ( ptr a n -- ) {: state:ptr idx:n :}
+   state idx RELEASE@ execute ;
 
-: FINALIZE-ALL ( ptr a -- n ) {: state:ptr :}
-   0
+: RELEASE-ALL ( ptr a -- ) {: state:ptr :}
    state N@ 0 ?do
-      state state N@ 1 - i - FINALIZE-ONE
-      state -rot REMEMBER-CLEANUP
+      state state N@ 1 - i - RELEASE-ONE
    loop ;
 
 : RUN-DIAGNOSTIC ( n n [ n n -- ] -- n )
@@ -326,13 +336,9 @@ TRUSTED: CATCH-DIAGNOSTIC ( n n [ n n -- ] -- )
    prepare-code 0 <> IF state active prepare-code FAIL THEN
    state PHASE-COMMIT RUN-FORWARD {: commit-code:n :}
    commit-code 0 <> IF state active commit-code FAIL THEN
-   -1 state ST.CLEANUP-PARTICIPANT !
-   state FINALIZE-ALL {: cleanup:n :}
-   state LEAVE-TRANSACTION
-   cleanup 0 <> IF
-      state 0 cleanup REPORT-FAILURE
-      cleanup throw
-   THEN ;
+   -1 state ST.CLEANUP-PARTICIPANT !   \ published: no cleanup failure can follow
+   state RELEASE-ALL
+   state LEAVE-TRANSACTION ;
 
 public
 
@@ -340,7 +346,7 @@ public
    INIT-STATE ;
 
 : REGISTER
-   ( ptr a n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] -- )
+   ( ptr a n n [ n -- n ] [ n -- n ] [ n -- n ] [ n -- n ] [ -- ] -- )
    REGISTER-ROW ;
 
 : SEAL ( ptr a -- )

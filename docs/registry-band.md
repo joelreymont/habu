@@ -164,8 +164,9 @@ and direct checked references; the laundered route is the checker's to close.
 participant, which owns one nested `TYPE-FIELD-OWNER` frame.
 `TYPE-FIELD-OWNER:PREPARE` validates the provisional count without mutation;
 `COMMIT` publishes an outer frame while retaining rollback authority;
-`FINALIZE` releases it only after every later participant succeeds; and
-`ROLLBACK` restores either an open or committed frame. A rejected `PRODUCT`
+the frame is released only after every later participant succeeds, through the
+owner's total private release seam rather than the validating public `FINALIZE`;
+and `ROLLBACK` restores either an open or committed frame. A rejected `PRODUCT`
 therefore restores both marks without a duplicate snapshot. `SUMTYPE`,
 `ENUM`, and `TYPEFAMILY` never add field rows. Regression:
 `test/type-decl-suite.f` `tdpdup` throws `E-TFAM-DUP` after the first field and

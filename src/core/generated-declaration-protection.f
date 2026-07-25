@@ -101,7 +101,9 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 : ROLLBACK ( n -- n )
    SCRUB-TO-BASE ;
 
-: FINALIZE ( n -- n ) ;
+\ Nothing to discard: PUBLISH already scrubbed the staged rows back to this
+\ depth's base, and the base cell itself is rewritten by the next SNAPSHOT here.
+: RELEASE ( -- ) ;
 
 : STAGE-WORDLIST ( ptr u8 n -- ) {: a:ptr u:n :}
    a u TFAM-CTOR-WORD? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
@@ -139,7 +141,7 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    [: PREPARE ;]
    [: PUBLISH ;]
    [: ROLLBACK ;]
-   [: FINALIZE ;]
+   [: RELEASE ;]
    GENERATED-DECL-OWNER:REGISTER-LAST
    [: STAGE-WORDLIST ;] is TDECL-PROT-WID-XT
    [: PLAN-PREFLIGHT ;] is TDECL-CAPACITY-PREFLIGHT-XT
@@ -171,9 +173,11 @@ get-current prot-wid-add
 
 ;package
 
-\ The field owner's multi-frame cleanup vector is now bound into the compiled
-\ declaration-event participant, the only caller it is ever meant to have, so
-\ retire its source-level name here with the other one-shot install seams above.
-\ It is retired outside the package block because it is a global name and
-\ `undefine` resolves an unqualified name in the CURRENT wordlist.
+\ The field owner's multi-frame cleanup vector and its total release vector are
+\ now bound into the compiled declaration-event participant, the only caller
+\ either is ever meant to have, so retire their source-level names here with the
+\ other one-shot install seams above. They are retired outside the package block
+\ because they are global names and `undefine` resolves an unqualified name in
+\ the CURRENT wordlist.
 undefine TDECL-FIELD-CLEANUP-XT
+undefine TDECL-FIELD-RELEASE-XT
