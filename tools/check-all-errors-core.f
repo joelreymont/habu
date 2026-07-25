@@ -52,6 +52,7 @@ variable CA-OUT-A
 variable CA-OUT-CAP
 variable CA-LS
 variable CA-LE
+variable CA-TOKU                        \ length of the source word at a lexer diagnostic
 
 variable CA-FILE-A
 variable CA-FILE-U
@@ -328,14 +329,67 @@ variable CA-XSUP-BUF-CAP
    LJW$ CA-ERR
    CA-LF$ CA-ERR ;
 
-: CA-HANDLE-LEX-UNTERM ( -- )
+\ ---- malformed primitive-axiom row --------------------------------------------
+\ The lexer's second diagnostic. An incomplete `PRIM:`/`PPRIM:` row stops the scan
+\ exactly like an open string does, but it needs its own code and its own repair
+\ text: a caller told to close a string literal will look for a quote that is not
+\ there. The diagnostic site is the row OPENER, so the reported token is the opener
+\ word read out of the source.
+: CA-ROW-TOKEN-U ( -- n )
+   0 CA-TOKU !
+   begin
+      LINT-LEX:ERROR-BYTE@ CA-TOKU @ + CA-SRC-U @ <
+      CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-TOKU @ + c@ 32 > and
+   while
+      CA-TOKU @ 1+ CA-TOKU !
+   repeat
+   CA-TOKU @ ;
+
+: CA-ROW-TOKEN$ ( -- ptr u8 n )
+   CA-SRC-A@ LINT-LEX:ERROR-BYTE@ + CA-ROW-TOKEN-U ;
+
+: CA-ROW-SUGGESTION$ ( -- ptr u8 n )
+   s" Close the primitive-axiom row opened at this token: a bare row reads PRIM: name effect... PRIM;, and a package row reads PPRIM: package name effect... PPRIM; or CLOSE-PRIVATE." ;
+
+: CA-JSON-LEX-ROW ( -- )
+   LJW-RESET
+   LJW-OBJECT-START
+   s" schema_version" LJW-KEY 1 LJW-U LJW-COMMA
+   s" code" LJW-KEY s" E-MALFORMED-REGISTRY-ROW" LJW-STRING LJW-COMMA
+   s" repair_class" LJW-KEY s" fix_source" LJW-STRING LJW-COMMA
+   s" verdict" LJW-KEY s" rejected" LJW-STRING LJW-COMMA
+   s" token" LJW-KEY CA-ROW-TOKEN$ LJW-STRING LJW-COMMA
+   s" file" LJW-KEY CA-FILE-A@ CA-FILE-U @ LJW-STRING LJW-COMMA
+   s" line" LJW-KEY LINT-LEX:ERROR-LINE@ LJW-U LJW-COMMA
+   s" column" LJW-KEY LINT-LEX:ERROR-COL@ LJW-U LJW-COMMA
+   s" byte_start" LJW-KEY LINT-LEX:ERROR-BYTE@ LJW-U LJW-COMMA
+   s" byte_end" LJW-KEY LINT-LEX:ERROR-BYTE@ CA-ROW-TOKEN-U + LJW-U LJW-COMMA
+   s" suggestion" LJW-KEY CA-ROW-SUGGESTION$ LJW-STRING
+   LJW-OBJECT-END
+   LJW$ CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-PROSE-LEX-ROW ( -- )
+   s" E-MALFORMED-REGISTRY-ROW" CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-PROSE-LEX-UNTERM ( -- )
+   s" E-UNTERMINATED-STRING" CA-ERR
+   CA-LF$ CA-ERR ;
+
+: CA-EMIT-LEX-ROW ( -- )
+   CA-JSON? IF CA-JSON-LEX-ROW ELSE CA-PROSE-LEX-ROW THEN ;
+
+: CA-EMIT-LEX-UNTERM ( -- )
+   CA-JSON? IF CA-JSON-LEX-UNTERM ELSE CA-PROSE-LEX-UNTERM THEN ;
+
+: CA-LEX-ROW? ( -- bool )
+   LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = ;
+
+\ The lexer reports more than one defect now, so name the one it hit.
+: CA-HANDLE-LEX-DEFECT ( -- )
    LINT-LEX:ERROR? 0= IF exit THEN
-   CA-JSON? IF
-      CA-JSON-LEX-UNTERM
-   ELSE
-      s" E-UNTERMINATED-STRING" CA-ERR
-      CA-LF$ CA-ERR
-   THEN
+   CA-LEX-ROW? IF CA-EMIT-LEX-ROW ELSE CA-EMIT-LEX-UNTERM THEN
    70 throw ;
 
 
@@ -457,7 +511,7 @@ variable CA-XSUP-BUF-CAP
 
 : CA-RUN-SOURCE ( -- )
    CA-SRC-A@ CA-SRC-U @ LINT-LEX:SOURCE
-   CA-HANDLE-LEX-UNTERM
+   CA-HANDLE-LEX-DEFECT
    CA-RUN-DEFS
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF 70 throw THEN ;

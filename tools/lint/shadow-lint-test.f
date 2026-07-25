@@ -51,6 +51,14 @@ create SLT-UB 2 allot
 : SLT-UNTERM ( -- )
    [: s" [unterm-fixture]" SLT-UNTERM$ LINT-SCAN ;] catch E-SHADOW-UNTERM T= ;
 
+\ A `PRIM:` row with no closer is the lexer's other fail-closed defect. It must
+\ throw the registry code, not the unterminated-string code: naming it as an open
+\ quote would send the reader looking for a quote that is not there.
+: SLT-MALFORMED-ROW ( -- )
+   [: s" [registry-fixture]" s" PRIM: FOO PE-N PE-IN" LINT-SCAN ;] catch
+   dup E-SHADOW-UNTERM <> TTRUE
+   E-SHADOW-REGISTRY T= ;
+
 : SLT-MAIN ( -- )
    T-RESET
    SLT-LAYOUT-BUFFER
@@ -58,6 +66,7 @@ create SLT-UB 2 allot
    SLT-CROSS-PACKAGE
    SLT-GLOBAL-SHADOW
    SLT-UNTERM
+   SLT-MALFORMED-ROW
    T-REPORT
    s" shadow-lint-test: ok" type cr ;
 

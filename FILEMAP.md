@@ -1777,6 +1777,9 @@ points stay listed.
   text-emitter surface (`PTX-L`/`PTX-HEADER`/`PTX-EMIT-SAXPY` family, owned by
   `src/arch/ptx/emit.f`) must have exactly one GLOBAL-scope definition across the
   source tree; a second copy reds the gate.
+- `tools/lint/ptx-emitter-lint-test.f` — fixtures for that lint's fail-closed
+  lexer reporting: an unterminated string and a malformed primitive-axiom row are
+  separate defects and each finding must name the one it hit.
 - `tools/signature-lint-core.f` — reusable strict typed-signature lint core.
 - `tools/signature-lint.f` — CLI wrapper for strict typed-signature lint.
 - `tools/signature-lint-test-lib.f` — load-only strict typed-signature lint fixture library for resident runner tests.

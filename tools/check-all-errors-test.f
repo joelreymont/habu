@@ -172,6 +172,15 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-UDEF ( i64 -- i64 ) dup NOPE ;" SB-APPEND CAE-LF
    SB$ ;
 
+\ A `PRIM:` primitive-axiom row whose closer never arrives. The lexer stops there,
+\ so this source reaches the checker's lexer-defect handler rather than the
+\ definition scan. The opener sits at byte 34, line 2, column 1.
+: CAE-BAD-ROW-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CAE-ROW-OK ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
+   s" PRIM: CAE-ROW-BAD PE-N PE-IN" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-DUP-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" : CAE-DUP ( i64 -- i64 ) 1 + ;" SB-APPEND CAE-LF
@@ -283,6 +292,46 @@ create CAE-LF-BYTE 10 c,
    CAE-DQ s" CAE-BM-T-ID" SB-APPEND CAE-DQ
    SB$ ;
 
+: CAE-CODE-BAD-ROW$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" code" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" E-MALFORMED-REGISTRY-ROW" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-CODE-UNTERM$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" code" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" E-UNTERMINATED-STRING" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-TOKEN-PRIM$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" token" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   CAE-DQ s" PRIM:" SB-APPEND CAE-DQ
+   SB$ ;
+
+: CAE-ROW-SITE$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" byte_start" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   s" 34" SB-APPEND
+   SB$ ;
+
+: CAE-ROW-LINE$ ( -- ptr u8 n )
+   SB-RESET
+   CAE-DQ s" line" SB-APPEND CAE-DQ
+   58 SB-APPEND-C
+   s" 2" SB-APPEND
+   SB$ ;
+
+: CAE-PROSE-BAD-ROW$ ( -- ptr u8 n )
+   SB-RESET
+   s" E-MALFORMED-REGISTRY-ROW" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-PREPARE ( -- )
    CLEANUP-RESET
    s" habu-check-all" TMPDIR-MKDIR {: a:ptr u :}
@@ -346,6 +395,15 @@ create CAE-LF-BYTE 10 c,
    CAE-IN CAE-RUN!
    CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
    0 0= CHECK-ALL-ERRORS:JSON!
+   [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
+
+\ Same capture without JSON, so the prose arm of a diagnostic can be pinned too.
+: CAE-BUF-CAPTURE-PROSE ( ptr u8 n -- n n n )
+   CAE-BUF-SRC!
+   CAE-IN CAE-RUN!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 1 = CHECK-ALL-ERRORS:JSON!
    [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
    0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
 
@@ -482,6 +540,36 @@ create CAE-LF-BYTE 10 c,
    CAE-ERR erru s" duplicate-definition" CONTAINS? TTRUE
    s" duplicate-buffer diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+\ The lexer has two fail-closed diagnostics and they need different repairs, so a
+\ malformed primitive-axiom row must report its own code, its own opener token and
+\ its own site - never the unterminated-string diagnostic, which would send the
+\ caller hunting for a quote the source does not contain.
+: CAE-TEST-BAD-ROW-JSON ( -- )
+   s" bad-registry-row-json" CAE-CASE!
+   CAE-BAD-ROW-SOURCE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" bad-registry-row stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" bad-registry-row code" T-LABEL
+   CAE-ERR erru CAE-CODE-BAD-ROW$ CONTAINS? TTRUE
+   s" bad-registry-row is not an open string" T-LABEL
+   CAE-ERR erru CAE-CODE-UNTERM$ CONTAINS? TFALSE
+   s" bad-registry-row token is the opener" T-LABEL
+   CAE-ERR erru CAE-TOKEN-PRIM$ CONTAINS? TTRUE
+   s" bad-registry-row opener byte" T-LABEL
+   CAE-ERR erru CAE-ROW-SITE$ CONTAINS? TTRUE
+   s" bad-registry-row opener line" T-LABEL
+   CAE-ERR erru CAE-ROW-LINE$ CONTAINS? TTRUE
+   s" bad-registry-row diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 1 T= ;
+
+: CAE-TEST-BAD-ROW-PROSE ( -- )
+   s" bad-registry-row-prose" CAE-CASE!
+   CAE-BAD-ROW-SOURCE$ CAE-BUF-CAPTURE-PROSE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" bad-registry-row prose stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" bad-registry-row prose code" T-LABEL
+   CAE-ERR erru CAE-PROSE-BAD-ROW$ T$= ;
 
 : CAE-TEST-CLI-SMOKE ( -- )
    s" cli-smoke" CAE-CASE!
@@ -875,6 +963,8 @@ public
    s" undefined-json" [: CAE-TEST-UNDEFINED-JSON ;] CAE-CASE-RUN
    s" buffer-core" [: CAE-TEST-BUF-CORE ;] CAE-CASE-RUN
    s" duplicate-buffer" [: CAE-TEST-DUP-BUF ;] CAE-CASE-RUN
+   s" bad-registry-row-json" [: CAE-TEST-BAD-ROW-JSON ;] CAE-CASE-RUN
+   s" bad-registry-row-prose" [: CAE-TEST-BAD-ROW-PROSE ;] CAE-CASE-RUN
    s" cli-smoke" [: CAE-TEST-CLI-SMOKE ;] CAE-CASE-RUN
    CLEANUP-RUN
    s" cleanup root removed" T-LABEL

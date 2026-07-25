@@ -307,7 +307,7 @@ variable TEST-DIFF-U
    s" GROUP lint PARA" TEST-SOURCE-LINE
    s" ;GROUP" TEST-SOURCE-LINE
    s" PRIM: checker-word PRIM;" TEST-SOURCE-LINE
-   s" PPRIM: checker-package-word PRIM;" TEST-SOURCE-LINE
+   s" PPRIM: checker-package checker-word PPRIM;" TEST-SOURCE-LINE
    s" VJP: +. 0 DUP ;" TEST-SOURCE-LINE
    s" GRID: extent-x" TEST-SOURCE-LINE
    s" WHERE extent-x <= block-32" TEST-SOURCE-LINE ;

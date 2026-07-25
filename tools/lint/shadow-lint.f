@@ -69,6 +69,11 @@ variable SI
 \ and the -5000 cluster; lib/errors.f owns -2000..-4499 and the verdict policy
 \ blocks E-PV / E-TRV own -4500..-4699. It claims no reserved range.
 -4800 constant E-SHADOW-UNTERM
+\ The second lexer defect: a `PRIM:`/`PPRIM:` axiom row with no header or no
+\ closer. It hides definitions the same way an open string does, but a scan that
+\ names it "unterminated string literal" sends the reader hunting for a quote, so
+\ it gets its own code in the same unclaimed gap.
+-4802 constant E-SHADOW-REGISTRY
 
 variable BAD  variable LI  variable IN-PACKAGE
 
@@ -110,9 +115,25 @@ variable BAD  variable LI  variable IN-PACKAGE
    s"  (line " type LINT-LEX:ERROR-LINE@ . s" )" type cr
    E-SHADOW-UNTERM throw ;
 
+\ Same fail-closed rule, different defect: an incomplete primitive-axiom row also
+\ stops the scan, and the reader needs to be sent to the row opener rather than to
+\ a missing quote.
+: SL-REGISTRY-FAIL ( ptr u8 n -- ) {: pa:ptr pu:n :}
+   s" shadow-lint: malformed primitive registry row in " type pa pu type
+   s"  (line " type LINT-LEX:ERROR-LINE@ . s" )" type cr
+   E-SHADOW-REGISTRY throw ;
+
+\ The lexer reports more than one defect, so name the one it actually hit.
+: SL-LEX-FAIL ( ptr u8 n -- ) {: pa:ptr pu:n :}
+   LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = IF
+      pa pu SL-REGISTRY-FAIL
+   ELSE
+      pa pu SL-UNTERM-FAIL
+   THEN ;
+
 : LINT-SCAN ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    a u LINT-LEX:SOURCE
-   LINT-LEX:ERROR? IF pa pu SL-UNTERM-FAIL THEN
+   LINT-LEX:ERROR? IF pa pu SL-LEX-FAIL THEN
    LINT-FALSE IN-PACKAGE !
    0 LI !
    begin LI @ LINT-LEX:COUNT < while

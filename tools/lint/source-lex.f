@@ -3,8 +3,8 @@
 \ Load after lib/memory.f, lib/vector.f, tools/lint/text.f, tools/lint/token.f, and tools/lint/lib.f.
 \
 \ Public surface (all reads; the package owns every cell):
-\   WORD COMMENT                       token kinds returned by KIND@
-\   UNTERMINATED-QUOTE                 diagnostic kind returned by ERROR-KIND@
+\   WORD COMMENT REGISTRY              token kinds returned by KIND@
+\   UNTERMINATED-QUOTE MALFORMED-REGISTRY   diagnostic kinds from ERROR-KIND@
 \   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
 \   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body span
@@ -12,17 +12,25 @@
 \   ERROR? ( -- bool )                 the last scan hit malformed input
 \   ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
 \
+\ A complete `PRIM: ... PRIM;` or `PPRIM: pkg ... PPRIM;` primitive-axiom row is
+\ one REGISTRY token spanning the whole row, positioned at its opener; its fields
+\ never appear as separate tokens and CONTENT is empty for it. An incomplete row
+\ is the MALFORMED-REGISTRY diagnostic at the opener site.
+\
 \ The diagnostic is one generic record, not a quote-specific flag. A scan writes
-\ it at most once: the only writer runs at the malformed site, after which the
-\ scanner is already at end of input and the main loop exits. Consumers only read
-\ it back, so no caller can mutate lexer state. A consumer that requires valid
-\ source must reject when ERROR? is true.
+\ it at most once: the writer runs at the malformed site and stops the scan, so
+\ no token after that site is exposed. Consumers only read it back, so no caller
+\ can mutate lexer state. A consumer that requires valid source must reject when
+\ ERROR? is true, and should read ERROR-KIND@ to name which defect it hit.
 
 package LINT-LEX
 private
 
 1024 constant MIN-CAP
 0 constant NO-ERROR
+
+0 constant ROW-BARE             \ FAM: bare `PRIM:` row, closed by `PRIM;`
+1 constant ROW-PKG              \ FAM: `PPRIM:` row, closed by `PPRIM;` or `CLOSE-PRIVATE`
 
 variable CAP
 variable TOK-N   variable SRC-A   variable SRC-U   variable POS
@@ -33,6 +41,10 @@ variable ERR-KIND
 variable ERR-BYTE
 variable ERR-LINE
 variable ERR-COL
+variable HALTED                 \ a diagnostic ended the scan; expose no later token
+variable FAM                    \ family of the row being scanned
+variable FOFF   variable FLEN   \ current row field: offset into the source, length
+variable R-BYTE variable R-LINE variable R-COL   \ opener site of the row being scanned
 
 create KIND-V VEC-HEADER-CELLS cells allot
 create ADDR-V VEC-HEADER-CELLS cells allot
@@ -133,8 +145,10 @@ public
 
 1 constant WORD                 \ KIND@: whitespace-delimited word token
 2 constant COMMENT              \ KIND@: `( ... )` comment token, body read via CONTENT
+3 constant REGISTRY             \ KIND@: one complete PRIM:/PPRIM: primitive-axiom row
 
 1 constant UNTERMINATED-QUOTE   \ ERROR-KIND@: a string literal ran past end of input
+2 constant MALFORMED-REGISTRY   \ ERROR-KIND@: a primitive-axiom row lacked a header or its closer
 
 : COUNT ( -- n )
    TOK-N @ ;
@@ -207,7 +221,8 @@ private
    NO-ERROR ERR-KIND !
    0 ERR-BYTE !
    0 ERR-LINE !
-   0 ERR-COL ! ;
+   0 ERR-COL !
+   LINT-FALSE HALTED ! ;
 
 : MARK-UNTERM ( n -- ) {: k:n :}
    UNTERMINATED-QUOTE ERR-KIND !
@@ -224,18 +239,211 @@ private
 : BODY-U ( -- n )
    CLEN @ ;
 
+: TO-PAREN ( -- )
+   begin END? 0= CUR 41 <> and while ADV drop repeat ;
+
+\ The span from the token start the main loop recorded to the current position.
+: CUR$ ( -- ptr u8 n )
+   SRC@ START @ + POS @ START @ - ;
+
 : PAREN-COMMENT ( -- )
    ADV drop
    POS @ CSTART !
-   begin END? 0= CUR 41 <> and while ADV drop repeat
+   TO-PAREN
    POS @ CSTART @ - CLEN !
    END? 0= if ADV drop then
-   COMMENT SRC@ START @ + POS @ START @ - START @ START-LINE @ START-COL @
+   COMMENT CUR$ START @ START-LINE @ START-COL @
    BODY-A BODY-U ADD ;
+
+\ ---- primitive-axiom rows (`PRIM: ... PRIM;`, `PPRIM: pkg ... PPRIM;`) ---------
+\ The engine reads a row's name (and a package row's package) with `parse-name`,
+\ so a primitive may be NAMED `s"`, `c"`, `."`, `s\"`, `c\"`, `.\"`, `[']` or
+\ `[char]` (src/core/checker.f does name all eight). A word-at-a-time lexer treats
+\ those names as live string openers and swallows real source: before this row
+\ scanner, `PRIM: s"     PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;` on checker.f line
+\ 5093 consumed everything through the quote in the NEXT row, losing five tokens
+\ of its own row plus the following opener from the table with no diagnostic.
+\ So each complete row becomes one REGISTRY token and its fields never reach the
+\ word path. The row model is src/habu/verify-source.f RECORD-PRIM-ROW, the
+\ authoritative source replay of the same engine text: header fields raw, then
+\ body fields where comments are inert and a parsing word consumes its operand.
+\ Row fields use the engine delimiter rule (every byte below 33 separates) rather
+\ than the lexer's LINT-WS? set, because `parse-name` is what the engine runs.
+
+: RAW-WS? ( n -- bool )
+   33 < ;
+
+: SKIP-RAW-WS ( -- )
+   begin END? 0= CUR RAW-WS? and while ADV drop repeat ;
+
+: F$ ( -- ptr u8 n )
+   SRC@ FOFF @ + FLEN @ ;
+
+\ FLEN 0 means end of input: no field was left to read.
+: NEXT-FIELD ( -- )
+   SKIP-RAW-WS
+   POS @ FOFF !
+   begin END? 0= CUR RAW-WS? 0= and while ADV drop repeat
+   POS @ FOFF @ - FLEN ! ;
+
+: ROW-PAREN ( -- )
+   ADV drop
+   TO-PAREN
+   END? 0= if ADV drop then ;
+
+\ A row body is interpreted text, so `\` and `( ... )` inside it are comments and
+\ a closer spelled inside one is not a closer.
+: SKIP-INERT ( -- )
+   begin
+      SKIP-RAW-WS
+      END? if exit then
+      CUR 92 = if LINE-COMMENT else
+         CUR 40 = if ROW-PAREN else exit then
+      then
+   again ;
+
+: BODY-FIELD ( -- )
+   SKIP-INERT
+   NEXT-FIELD ;
+
+: PRIM-OPEN? ( ptr u8 n -- bool )
+   s" PRIM:" LINT-STR=CI ;
+
+: PPRIM-OPEN? ( ptr u8 n -- bool )
+   s" PPRIM:" LINT-STR=CI ;
+
+: ROW-OPEN? ( ptr u8 n -- bool )
+   2dup PPRIM-OPEN? if 2drop LINT-TRUE exit then
+   PRIM-OPEN? ;
+
+: PRIM-CLOSE? ( ptr u8 n -- bool )
+   s" PRIM;" LINT-STR=CI ;
+
+: PPRIM-CLOSE? ( ptr u8 n -- bool )
+   s" PPRIM;" LINT-STR=CI ;
+
+: PRIVATE-CLOSE? ( ptr u8 n -- bool )
+   s" CLOSE-PRIVATE" LINT-STR=CI ;
+
+\ Closer roles follow tools/primitive-effect-inventory.f: `PRIM;` closes a bare
+\ row; a package row closes with `PPRIM;` (public wordlist) or `CLOSE-PRIVATE`
+\ (package private wordlist). A bare row has no package wordlist, so
+\ `CLOSE-PRIVATE` there is an ordinary effect field, not a closer.
+: ROW-CLOSE? ( ptr u8 n -- bool )
+   FAM @ ROW-PKG = if
+      2dup PPRIM-CLOSE? if 2drop LINT-TRUE exit then
+      PRIVATE-CLOSE? exit
+   then
+   PRIM-CLOSE? ;
+
+: WRONG-CLOSE? ( ptr u8 n -- bool )
+   FAM @ ROW-PKG = if PRIM-CLOSE? exit then
+   PPRIM-CLOSE? ;
+
+\ `[']` and `[char]` parse one raw operand, so a closer-shaped token there is that
+\ operand and not a closer.
+\
+\ The bracket-less `char` is deliberately NOT here, and this is a known divergence
+\ from src/habu/verify-source.f PARSE-NEXT?, which treats `char` and `[char]`
+\ alike. Two reasons. The row grammar this file implements names exactly eight
+\ operand-parsing labels, and `char` is not one of them. And leaving it out is the
+\ safe direction: a hostile `PRIM: FOO char PRIM; create LEAK PRIM;` then closes
+\ at the first closer and hands `create LEAK` to the consumer as ordinary tokens
+\ instead of hiding it inside the row span. Real source is unaffected, because
+\ src/core/checker.f only ever writes `char` in header position, where every field
+\ is raw anyway. This rule is the canonical one; verify-source.f conforms to it
+\ when it starts consuming REGISTRY tokens (dot habu-consume-registry-events-
+\ efe7fe5e), and that leaf owns the differential fixture for `char`.
+: PARSE-NEXT? ( ptr u8 n -- bool )
+   2dup s" [']" LINT-STR= if 2drop LINT-TRUE exit then
+   s" [char]" LINT-STR=CI ;
+
+: MARK-BAD ( -- )
+   MALFORMED-REGISTRY ERR-KIND !
+   R-BYTE @ ERR-BYTE !
+   R-LINE @ ERR-LINE !
+   R-COL @ ERR-COL !
+   LINT-TRUE HALTED ! ;
+
+\ A header field names the primitive (and, for a package row, its package). An
+\ opener or a closer of this row's family there is never a name: the row is
+\ missing its header.
+: HDR-BAD? ( -- bool )
+   FLEN @ 0= if LINT-TRUE exit then
+   F$ ROW-OPEN? if LINT-TRUE exit then
+   F$ ROW-CLOSE? if LINT-TRUE exit then
+   F$ WRONG-CLOSE? ;
+
+: HDR-FIELD ( -- )
+   NEXT-FIELD
+   HDR-BAD? if MARK-BAD then ;
+
+: HDR ( -- )
+   HDR-FIELD
+   HALTED @ if exit then
+   FAM @ ROW-PKG = if HDR-FIELD then ;
+
+\ false = the operand ran past end of input, so the row can never close.
+: FIELD-OPERAND ( -- bool )
+   F$ LINT-ESC-STRING-OPENER? if SKIP-ESC-QUOTE exit then
+   F$ LINT-NORMAL-STRING-OPENER? if SKIP-QUOTE exit then
+   F$ PARSE-NEXT? if NEXT-FIELD FLEN @ 0 <> exit then
+   LINT-TRUE ;
+
+: ROW-BODY ( -- )
+   begin
+      BODY-FIELD
+      FLEN @ 0= if MARK-BAD exit then
+      F$ ROW-CLOSE? if exit then
+      F$ WRONG-CLOSE? if MARK-BAD exit then
+      F$ ROW-OPEN? if MARK-BAD exit then
+      FIELD-OPERAND 0= if MARK-BAD exit then
+   again ;
+
+: EMIT-ROW ( -- )
+   REGISTRY SRC@ R-BYTE @ + POS @ R-BYTE @ -
+   R-BYTE @ R-LINE @ R-COL @ SRC@ 0 ADD ;
+
+\ The opener field is already consumed; POS sits just past it.
+: SCAN-ROW ( n -- ) {: kind:n :}
+   kind FAM !
+   START @ R-BYTE !  START-LINE @ R-LINE !  START-COL @ R-COL !
+   HDR
+   HALTED @ if exit then
+   ROW-BODY
+   HALTED @ if exit then
+   EMIT-ROW ;
+
+: PREV$ ( -- ptr u8 n )
+   COUNT 1- TOKEN ;
+
+: PREV-WORD? ( -- bool )
+   COUNT 0= if LINT-FALSE exit then
+   COUNT 1- KIND@ WORD = ;
+
+\ The same name-position set tools/primitive-effect-inventory.f uses: after one
+\ of these the engine consumes the next word as a parsed name and never executes
+\ it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in src/core/checker.f declares the
+\ opener rather than opening a row.
+: NAME-POS? ( -- bool )
+   PREV-WORD? 0= if LINT-FALSE exit then
+   PREV$ s" :" LINT-STR= if LINT-TRUE exit then
+   PREV$ s" '" LINT-STR= if LINT-TRUE exit then
+   PREV$ s" [']" LINT-STR= if LINT-TRUE exit then
+   PREV$ s" postpone" LINT-STR=CI if LINT-TRUE exit then
+   PREV$ s" undefine" LINT-STR=CI ;
+
+: ROW-START? ( -- bool )
+   CUR$ ROW-OPEN? 0= if LINT-FALSE exit then
+   NAME-POS? LINT-NOT ;
 
 : SCAN-WORD ( -- )
    begin END? 0= CUR LINT-WS? 0= and while ADV drop repeat
-   WORD SRC@ START @ + POS @ START @ - START @ START-LINE @ START-COL @ SRC@ 0 ADD
+   ROW-START? if
+      CUR$ PPRIM-OPEN? if ROW-PKG else ROW-BARE then SCAN-ROW
+      exit
+   then
+   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD
    COUNT 1- dup TOKEN LINT-ESC-STRING-OPENER? if
       SKIP-ESC-QUOTE 0= if dup MARK-UNTERM then
    else
@@ -250,7 +458,7 @@ public
    a SRC! u SRC-U ! 0 POS ! 1 LINE-N ! 1 COL-N !
    CLEAR-ERROR
    RESET-TABLES
-   begin END? 0= while
+   begin END? 0= HALTED @ 0= and while
       CUR LINT-WS? if ADV drop
       else
          POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !

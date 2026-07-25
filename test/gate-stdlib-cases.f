@@ -42,6 +42,7 @@ SUITE filemap-lint
 
 SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint.f
+   tools/lint/ptx-emitter-lint-test.f
 ;SUITE
 
 SUITE stdin-closure-lint

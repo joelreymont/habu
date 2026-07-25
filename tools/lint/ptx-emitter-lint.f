@@ -125,14 +125,24 @@ variable PE-IN-PKG   variable PE-LI   variable PE-BAD
    k s" ;package" PE-LEX-WORD= if LINT-FALSE PE-IN-PKG ! exit then
    PE-IN-PKG @ LINT-NOT if k PE-CHECK-DEF then ;
 
-: PE-UNTERM-FAIL ( -- )
-   s" ptx-emitter-lint: UNTERMINATED string literal in " type PE-FILE$ type
+\ The lexer stops on more than one defect and each one hides later definitions, so
+\ the finding names the defect it actually hit. An open string sends the reader to
+\ a missing quote; a `PRIM:`/`PPRIM:` axiom row with no header or no closer sends
+\ them to the row opener instead.
+: PE-LEX-DEFECT$ ( -- ptr u8 n )
+   LINT-LEX:ERROR-KIND@ LINT-LEX:MALFORMED-REGISTRY = if
+      s" MALFORMED primitive registry row" exit
+   then
+   s" UNTERMINATED string literal" ;
+
+: PE-LEX-FAIL ( -- )
+   s" ptx-emitter-lint: " type PE-LEX-DEFECT$ type s"  in " type PE-FILE$ type
    s"  (line " type LINT-LEX:ERROR-LINE@ . s" )" type cr
    PE-BAD @ 1+ PE-BAD ! ;
 
 : PE-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LINT-LEX:SOURCE
-   LINT-LEX:ERROR? if PE-UNTERM-FAIL exit then
+   LINT-LEX:ERROR? if PE-LEX-FAIL exit then
    LINT-FALSE PE-IN-PKG !
    0 PE-LI !
    begin PE-LI @ LINT-LEX:COUNT < while

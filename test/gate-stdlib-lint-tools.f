@@ -29,7 +29,13 @@ private
 
 : REPOSITORY ( -- )
    s" tools/lint/shadow-lint.f" GSI-INCLUDE
-   s" tools/lint/ptx-emitter-lint.f" GSI-INCLUDE
+   \ The tool is REQUIRED, not INCLUDED, because its test file requires it too:
+   \ GSI-INCLUDE loads through `included`, which never registers the file, so an
+   \ INCLUDE here would load the tool a second time from the test's own `require`
+   \ and redefine PE-FB-CAP in the shared image. Same pairing as CLOBBER above and
+   \ filemap-lint below.
+   s" tools/lint/ptx-emitter-lint.f" GSI-REQUIRE
+   s" tools/lint/ptx-emitter-lint-test.f" GSI-INCLUDE
    s" tools/host-lint.f" GSI-REQUIRE
    s" tools/process-primitive-lint.f" GSI-INCLUDE
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
