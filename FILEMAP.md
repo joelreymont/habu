@@ -38,6 +38,7 @@ points stay listed.
 - `docs/golden-syntax.md` — golden-authoring syntax exploration: extent-typed tensor accessors and the spec word.
 - `docs/extent-substrate.md` — decision record: EXTENT:/idx<#M> mints on TFAM families (not CT roles or extent-atoms); criterion matrix, rejected-substrate costs, A1b/extent-tensor re-scope drafts.
 - `docs/seed.md` — native seed trust root and no-binary recovery.
+- `docs/short-stack.md` — the short-stack bet: why bottom-up checked Habu instead of the PyTorch/Triton tall stack; what would falsify it.
 - `docs/typed-top-level.md` — checker-modeled typed top level design (top-row
   tracker, xt<effect> typing, adoption tiers) plus the parametric-cell V2
   verdict.
