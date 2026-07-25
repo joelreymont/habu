@@ -171,6 +171,19 @@ The complete-file global exceptions are exact paths, not directory rules:
   must be removed once the TFAM sealing work (dot
   `habu-tfam-2b-sealed-1b77662c`) moves the registry into sealed packages.
 
+`lib/errors.f` carries a global surface too, admitted by declaration shape
+rather than by whole file: every package in the repository throws and catches
+the same numbered codes, so the codes themselves have to stay global words. Only
+one shape is allowed there — an error-code name defined by the lower-case
+`constant` definer, where the name starts with `E-` and is written in capitals,
+digits, and hyphens. Everything else in that file is still reported: any other
+name, any other defining word, `CONSTANT` written in capitals, and the same
+declaration in any other file. A `package` or `;package` change is reported too
+when it leaves one of these constants unpackaged where the scan reaches it, so a
+deleted or moved boundary still loses ownership; adding a complete block whose
+opener and closer both arrive together moves nothing in or out of a package and
+stays clean.
+
 Two packaged implementation files each receive one narrower name exception:
 only `DEFTYPE` may be global in `lib/type/deftype.f`, and only `STRUCTURE` may be
 global in `src/core/structure-decl.f`. Any unrelated global definition in those

@@ -21,7 +21,11 @@ $4000 constant TEST-SOURCE-CAP
 $8000 constant TEST-DIFF-CAP
 $4000 constant TEST-OUT-CAP
 10 constant TEST-LF-C
+32 constant TEST-SPACE-C
 34 constant TEST-DQUOTE-C
+43 constant TEST-PLUS-C
+45 constant TEST-MINUS-C
+92 constant TEST-BACKSLASH-C
 
 create TEST-ROOT-BUF FS-PATH-CAP allot
 create TEST-PATH-BUF FS-PATH-CAP allot
@@ -119,7 +123,7 @@ variable TEST-DIFF-U
    0 TEST-SOURCE-START !
    0 begin dup TEST-SOURCE-U @ < while
       dup TEST-SOURCE-BUF + c@ TEST-LF-C = if
-         43 TEST-DIFF-C
+         TEST-PLUS-C TEST-DIFF-C
          TEST-SOURCE-BUF TEST-SOURCE-START @ +
          over TEST-SOURCE-START @ - TEST-DIFF+ TEST-LF
          dup 1+ TEST-SOURCE-START !
@@ -164,6 +168,8 @@ variable TEST-DIFF-U
    TEST-ROOT$ s" tools" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" test/lib" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/core" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS ;
@@ -691,6 +697,220 @@ variable TEST-DIFF-U
    MAPPING-PEAK @ 2 T=
    TEST-REUSE-AFTER-ERROR ;
 
+\ ---- lib/errors.f error-vocabulary admission ------------------------------
+\ lib/errors.f may hold global error-code constants and nothing else.  Every
+\ fixture below runs the real lint entry on a constructed diff artifact.
+\
+\ The declaration lines are assembled from parts instead of written out.  This
+\ file must never spell `-NNNN constant E-NAME` literally: tools/error-code-lint.f
+\ scans repository sources for that token sequence and would record these
+\ fixtures as real claims on the shared error-code ledger.
+
+: TEST-ERR-DECL+ ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n def:ptr defu:n name:ptr nameu:n :}
+   TEST-MINUS-C TEST-SOURCE-C
+   code codeu TEST-SOURCE+
+   TEST-SPACE-C TEST-SOURCE-C
+   def defu TEST-SOURCE+
+   TEST-SPACE-C TEST-SOURCE-C
+   name nameu TEST-SOURCE+ ;
+
+: TEST-ERR-DECL-LINE ( ptr u8 n ptr u8 n ptr u8 n -- )
+   TEST-ERR-DECL+ TEST-LF-C TEST-SOURCE-C ;
+
+: TEST-ERR-CODE-LINE ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n name:ptr nameu:n :}
+   code codeu s" constant" name nameu TEST-ERR-DECL-LINE ;
+
+: TEST-ERR-DIFF-CODE ( n ptr u8 n ptr u8 n -- ) {: mark:n code:ptr codeu:n name:ptr nameu:n :}
+   mark TEST-DIFF-C
+   TEST-MINUS-C TEST-DIFF-C
+   code codeu TEST-DIFF+
+   s"  constant " TEST-DIFF+
+   name nameu TEST-DIFF+ TEST-LF ;
+
+: TEST-ADD-ERR-CODES ( -- )
+   s" 4400" s" E-TEST-FIRST" TEST-ERR-CODE-LINE
+   s" 4401" s" E-TEST-STATE" TEST-ERR-CODE-LINE ;
+
+: TEST-ERR-CODES-ADMITTED ( -- )
+   TEST-SOURCE-RESET TEST-ADD-ERR-CODES
+   TEST-DIFF-RESET s" lib/errors.f" TEST-ADD-SOURCE-SECTION
+   s" global error codes are admitted in lib/errors.f" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-ADD-ERR-PACKAGED ( -- )
+   s" package JR" TEST-SOURCE-LINE
+   s" public" TEST-SOURCE-LINE
+   s" 3912" s" E-CAPACITY" TEST-ERR-CODE-LINE
+   s" ;package" TEST-SOURCE-LINE ;
+
+: TEST-ERR-PACKAGED-BLOCK ( -- )
+   TEST-SOURCE-RESET TEST-ADD-ERR-CODES TEST-ADD-ERR-PACKAGED
+   TEST-DIFF-RESET s" lib/errors.f" TEST-ADD-SOURCE-SECTION
+   s" a packaged code block in lib/errors.f stays clean" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-ADD-ERR-BAD-NAMES ( -- )
+   s" 4401" s" TEST-STATE" TEST-ERR-CODE-LINE
+   s" 4402" s" ETEST-STATE" TEST-ERR-CODE-LINE
+   s" 4403" s" E_TEST-STATE" TEST-ERR-CODE-LINE
+   s" 4404" s" e-test-state" TEST-ERR-CODE-LINE
+   s" 4405" s" E-Test-State" TEST-ERR-CODE-LINE
+   s" 4406" s" E-" TEST-ERR-CODE-LINE ;
+
+: TEST-ERR-BAD-NAMES ( -- )
+   TEST-SOURCE-RESET TEST-ADD-ERR-BAD-NAMES
+   TEST-DIFF-RESET s" lib/errors.f" TEST-ADD-SOURCE-SECTION
+   s" only capitalised E-prefixed names are admitted" T-LABEL
+   6 TEST-EXPECT-FINDINGS ;
+
+: TEST-ADD-ERR-BAD-DEFINERS ( -- )
+   s" : E-TEST-COLON ( -- n ) 0 ;" TEST-SOURCE-LINE
+   s" CHECKED: E-TEST-CHECKED ( -- n ) 0 ;" TEST-SOURCE-LINE
+   s" variable E-TEST-VARIABLE" TEST-SOURCE-LINE
+   s" create E-TEST-CREATE" TEST-SOURCE-LINE
+   s" value E-TEST-VALUE" TEST-SOURCE-LINE
+   s" defer E-TEST-DEFER" TEST-SOURCE-LINE
+   s" 2constant E-TEST-PAIR" TEST-SOURCE-LINE
+   s" 4403" s" CONSTANT" s" E-TEST-CAPITAL" TEST-ERR-DECL-LINE
+   s" 4404" s" Constant" s" E-TEST-MIXED" TEST-ERR-DECL-LINE ;
+
+: TEST-ERR-BAD-DEFINERS ( -- )
+   TEST-SOURCE-RESET TEST-ADD-ERR-BAD-DEFINERS
+   TEST-DIFF-RESET s" lib/errors.f" TEST-ADD-SOURCE-SECTION
+   s" only the lower-case constant definer is admitted" T-LABEL
+   9 TEST-EXPECT-FINDINGS ;
+
+: TEST-ERR-CODES-AT ( ptr u8 n ptr u8 n -- ) {: why:ptr whyu:n path:ptr pathu:n :}
+   TEST-SOURCE-RESET TEST-ADD-ERR-CODES
+   TEST-DIFF-RESET path pathu TEST-ADD-SOURCE-SECTION
+   why whyu T-LABEL
+   2 TEST-EXPECT-FINDINGS ;
+
+: TEST-ERR-OTHER-PATHS ( -- )
+   s" lib/errors-extra.f keeps the path as a prefix and still fails"
+   s" lib/errors-extra.f" TEST-ERR-CODES-AT
+   s" test/lib/errors.f keeps the path as a suffix and still fails"
+   s" test/lib/errors.f" TEST-ERR-CODES-AT
+   s" tools/errors.f shares only the basename and still fails"
+   s" tools/errors.f" TEST-ERR-CODES-AT ;
+
+: TEST-WRITE-ERR-RENAME-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" 4400" s" E-TEST-FIRST" TEST-ERR-CODE-LINE
+   s" 4401" s" E-TEST-MODE" TEST-ERR-CODE-LINE
+   s" lib/errors.f" TEST-WRITE-SOURCE ;
+
+: TEST-ERR-RENAME-DIFF ( -- )
+   s" lib/errors.f" TEST-MODIFY-HEAD
+   s" @@ -1,2 +1,2 @@" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C s" 4400" s" E-TEST-FIRST" TEST-ERR-DIFF-CODE
+   TEST-MINUS-C s" 4401" s" E-TEST-STATE" TEST-ERR-DIFF-CODE
+   TEST-PLUS-C  s" 4401" s" E-TEST-MODE" TEST-ERR-DIFF-CODE ;
+
+: TEST-ERR-RENAMED-CODE ( -- )
+   TEST-WRITE-ERR-RENAME-SOURCE
+   TEST-DIFF-RESET TEST-ERR-RENAME-DIFF
+   s" renaming an existing error code stays admitted" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-WRITE-ERR-LOST-OWNER-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" 4401" s" E-TEST-STATE" TEST-ERR-CODE-LINE
+   s" lib/errors.f" TEST-WRITE-SOURCE ;
+
+: TEST-ERR-LOST-OWNER-DIFF ( -- )
+   s" lib/errors.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package ERRV" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C s" 4401" s" E-TEST-STATE" TEST-ERR-DIFF-CODE
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-ERR-DELETED-BOUNDARY ( -- )
+   TEST-WRITE-ERR-LOST-OWNER-SOURCE
+   TEST-DIFF-RESET TEST-ERR-LOST-OWNER-DIFF
+   s" deleting a package boundary in lib/errors.f still fails" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-ERR-MOVED-OWNER-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" package ERRV" TEST-SOURCE-LINE
+   s" 4400" s" E-TEST-FIRST" TEST-ERR-CODE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" 4401" s" E-TEST-STATE" TEST-ERR-CODE-LINE
+   s" lib/errors.f" TEST-WRITE-SOURCE ;
+
+: TEST-ERR-MOVED-OWNER-DIFF ( -- )
+   s" lib/errors.f" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,4 @@" TEST-DIFF+ TEST-LF
+   s"  package ERRV" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C s" 4400" s" E-TEST-FIRST" TEST-ERR-DIFF-CODE
+   s" +;package" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C s" 4401" s" E-TEST-STATE" TEST-ERR-DIFF-CODE
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-ERR-ADDED-BOUNDARY ( -- )
+   TEST-WRITE-ERR-MOVED-OWNER-SOURCE
+   TEST-DIFF-RESET TEST-ERR-MOVED-OWNER-DIFF
+   s" adding a package boundary in lib/errors.f still fails" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-ERR-COMMENT-CODE ( ptr u8 n ptr u8 n -- )
+   TEST-BACKSLASH-C TEST-SOURCE-C
+   TEST-SPACE-C TEST-SOURCE-C
+   TEST-ERR-CODE-LINE ;
+
+: TEST-ERR-QUOTED-LINE ( -- )
+   s" s" TEST-SOURCE+
+   TEST-DQUOTE-C TEST-SOURCE-C
+   TEST-SPACE-C TEST-SOURCE-C
+   s" 4402" s" constant" s" E-TEST-QUOTED" TEST-ERR-DECL+
+   TEST-DQUOTE-C TEST-SOURCE-C
+   s"  drop" TEST-SOURCE-LINE ;
+
+: TEST-ERR-COMMENT-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+   TEST-BACKSLASH-C TEST-SOURCE-C
+   TEST-SPACE-C TEST-SOURCE-C
+   a u TEST-SOURCE-LINE ;
+
+\ Two commented legs: an admitted shape, so a leaked comment cannot satisfy the
+\ admission, and a rejected shape, so a lexer that fed comment text into the
+\ token stream would raise the finding count and turn this fixture red.
+: TEST-ADD-ERR-SMUGGLED ( -- )
+   s" 4401" s" E-TEST-COMMENTED" TEST-ERR-COMMENT-CODE
+   s" variable E-TEST-COMMENTED" TEST-ERR-COMMENT-LINE
+   TEST-ERR-QUOTED-LINE
+   s" variable E-TEST-STATE" TEST-SOURCE-LINE ;
+
+: TEST-ERR-SMUGGLED-TEXT ( -- )
+   TEST-SOURCE-RESET TEST-ADD-ERR-SMUGGLED
+   TEST-DIFF-RESET s" lib/errors.f" TEST-ADD-SOURCE-SECTION
+   s" comment and string text cannot admit a bad declaration" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+\ Recorded decision: this lint reads the path, the definer, and the name shape,
+\ never the declared value, so a positive value is admitted here.  Error codes
+\ are negative by convention, but that ledger belongs to tools/error-code-lint.f;
+\ enforcing negativity in the package lint would be a separate change.
+: TEST-ERR-POSITIVE-VALUE ( -- )
+   TEST-SOURCE-RESET
+   s" 76 constant E-TEST-EXIT" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/errors.f" TEST-ADD-SOURCE-SECTION
+   s" a positive value is admitted: shape is checked, value is not" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-ERROR-VOCABULARY ( -- )
+   TEST-ERR-CODES-ADMITTED
+   TEST-ERR-POSITIVE-VALUE
+   TEST-ERR-PACKAGED-BLOCK
+   TEST-ERR-BAD-NAMES
+   TEST-ERR-BAD-DEFINERS
+   TEST-ERR-OTHER-PATHS
+   TEST-ERR-RENAMED-CODE
+   TEST-ERR-DELETED-BOUNDARY
+   TEST-ERR-ADDED-BOUNDARY
+   TEST-ERR-SMUGGLED-TEXT ;
+
 : TEST-MAIN ( -- )
    T-RESET
    TEST-PREPARE
@@ -701,6 +921,7 @@ variable TEST-DIFF-U
    TEST-REGISTRY-LANGUAGE
    TEST-CORE-EXEMPTIONS
    TEST-TYPE-FAMILY-EXEMPTION
+   TEST-ERROR-VOCABULARY
    TEST-POSITIVES
    TEST-DELETED-OWNER
    TEST-ZERO-COUNT-OWNER-DELETION

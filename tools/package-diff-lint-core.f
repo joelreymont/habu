@@ -33,7 +33,13 @@ private
 10 constant LF-C
 45 constant DASH-C
 47 constant SLASH-C
+48 constant ZERO-C
+57 constant NINE-C
 58 constant COLON-C
+65 constant UPPER-A-C
+69 constant UPPER-E-C
+90 constant UPPER-Z-C
+2 constant ERR-PREFIX-U   \ length of the mandatory `E-` error-name prefix
 
 create NUM NUM-CAP allot
 create ONE 1 allot
@@ -74,6 +80,7 @@ variable SCOPE-DELTA
 variable SCAN-LINE
 variable DEF-OPEN
 variable DEF-KIND
+variable DEF-DEFINER-I
 variable DEF-NAME-I
 variable DEF-START-LINE
 variable DEF-PACKAGED
@@ -417,6 +424,12 @@ variable FILE-USED
    k WORD? 0= if false exit then
    k LEX-TOK a u LINT-STR=CI ;
 
+\ Case-sensitive token match, for the few rules that pin an exact spelling
+\ rather than a Forth word identity.
+: TOK= ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
+   k WORD? 0= if false exit then
+   k LEX-TOK a u LINT-STR= ;
+
 \ Audited publication inventory.  The native forms come from the engine's
 \ dictionary definers and docs/typed-top-level.md.  The type/storage forms are
 \ the complete UNSAFE-TOK?/top-level declaration set in checker.f.  The
@@ -550,8 +563,41 @@ variable FILE-USED
    name nameu PACKAGE$ OWNER-PREFIX? if REPORT-OWNER-PREFIX exit then
    name nameu STEM$ OWNER-PREFIX? if REPORT-STEM-PREFIX then ;
 
+: ERR-CHAR? ( n -- bool ) {: c:n :}
+   c UPPER-A-C >= c UPPER-Z-C <= and if true exit then
+   c ZERO-C >= c NINE-C <= and if true exit then
+   c DASH-C = ;
+
+\ An error-code name is `E-` followed by at least one more character, written
+\ only in capitals, digits, and hyphens.  A lower-case letter anywhere, a
+\ different prefix, or the bare prefix alone is not an error-code name.
+: ERR-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   u ERR-PREFIX-U <= if false exit then
+   a 0 BYTE@ UPPER-E-C <> if false exit then
+   a 1 BYTE@ DASH-C <> if false exit then
+   0 begin dup u < while
+      dup a + c@ ERR-CHAR? 0= if drop false exit then
+      1+
+   repeat drop true ;
+
+\ lib/errors.f holds the repository's shared error vocabulary: every package
+\ throws and catches these codes, so the codes themselves stay global words.
+\ That file is not globally exempt, though.  It admits exactly one declaration
+\ shape -- an error-code name defined by the lower-case `constant` definer --
+\ and reports everything else: another name shape, another defining word,
+\ `CONSTANT` in capitals, and the same declaration in any other file.
+\ FINISH-DEFINITION checks SCOPE-DELTA before it consults this admission, so a
+\ deleted or moved `package`/`;package` boundary that leaves a constant
+\ unpackaged at its scan point is still reported.  A complete block whose
+\ opener and closer both change nets zero delta and is not a scope change.
+: ERR-VOCAB? ( -- bool )
+   FILE$ s" lib/errors.f" LINT-STR= 0= if false exit then
+   DEF-DEFINER-I @ s" constant" TOK= 0= if false exit then
+   DEF-NAME-I @ LEX-TOK ERR-NAME? ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
+   ERR-VOCAB? if true exit then
    FILE$ s" lib/type/deftype.f" LINT-STR= if
       DEF-NAME-I @ s" DEFTYPE" TOK=CI exit
    then
@@ -582,6 +628,7 @@ variable FILE-USED
 : START-DEFINITION ( n n -- ) {: k:n kind:n :}
    k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
    kind DEF-KIND !
+   k DEF-DEFINER-I !
    namei DEF-NAME-I !
    k LL@ DEF-START-LINE !
    PACKAGE-OPEN @ DEF-PACKAGED !
