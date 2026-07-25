@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4112  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4133  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -68,11 +68,25 @@ measures today:
   assembled stage2 engine source at all.
 - The compact `ENUM` header change adds 1: the new `COMPACT-CLAUSE` dispatch
   word in `src/core/enum-decl.f`, which is part of the assembled stage2 engine
-  source. So 4111 + 1 = 4112, the number recorded above and the number the
-  self-check measures on this tree. That same change also edits
+  source. So 4111 + 1 = 4112. That same change also edits
   `test/enum-decl-suite.f`, `docs/forth.md`, and `docs/type-families.md`, and
   none of those three files is part of the assembled stage2 engine source, so
   they add nothing.
+- The constructor payload provider adds 21, all of them new colon words in
+  `src/core/sumtype.f`. Eleven build and validate the payload snapshot:
+  `TDPV-THROW`, `TDPV-GROW-CAP`, `TDPV-VAR-ENSURE`, `TDPV-NODE-ENSURE`,
+  `TDPV-COUNT`, `TDPV-NODE+`, `TDPV-NODES+`, `TDPV-CELLS`, `TDPV-VARIANT+`,
+  `TDPV-CAPTURE`, and `TDPV-SLOT`. Four read it: `TDPV-N@`, `TDPV-CELLS@`,
+  `TDPV-NODE@`, and the zero-padding helper `TDGEN-PADS`. Four are the committed
+  capabilities and their bundle: `TDECL-SUMV-N`, `TDECL-SUMV-ROOT`,
+  `TDECL-SUMV-CELLS`, and `TDECL-SUMV-PROVIDER`. Two are the named generator
+  helpers `TDECL-PROD-WORDS-BODY` and `TDECL-GEN-BODY`. The new
+  `E-TDECL-PROVIDER` constant, the `TDPV-INIT` size, the four snapshot arenas
+  and their capacity and cursor variables are not colon definitions and add
+  nothing. So 4112 + 21 = 4133, the number recorded above and the number the
+  self-check measures on this tree. That same change also edits `TRUSTED.md`,
+  `test/type-ctor-suite.f`, and `test/type-decl-suite.f`, none of which is part
+  of the assembled stage2 engine source.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

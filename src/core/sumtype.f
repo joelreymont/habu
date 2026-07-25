@@ -30,6 +30,8 @@
 7117 constant E-TDECL-RECURSIVE \ direct self-family payload under a non-boxed policy (item 16 boxed sub-slice 1, docs §24)
 7118 constant E-TDECL-CAP       \ declaration body exceeds TDECL-CAP (item 13 C2)
 7119 constant E-TDECL-DERIVE    \ unknown, deferred, or kind-gated DERIVE clause (derive S1)
+7133 constant E-TDECL-PROVIDER  \ payload provider result contradicts the family's own schema/slot metadata
+                                \ (7120-7132 already belong to the checker, layout-buffer, field, and cast blocks)
 
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
 
@@ -1307,11 +1309,192 @@ defer TDGEN-QUOT-ROW ( n -- )   \ ( rownode -- )
 : TDGEN-QUOT-ROW-INSTALL ( -- ) [: TDGEN-QUOT-ROW-IMPL ;] is TDGEN-QUOT-ROW ;
 TDGEN-QUOT-ROW-INSTALL
 
-: TDGEN-PAYLOAD ( n -- ) {: vid:n :}     \ declared inputs, one per schema root
-   vid SUMV-PAY-N {: k:n :}
+\ --- the payload provider (dot habu-constructor-pass-payload-78c7069d).
+\ Everything below renders constructor and DERIVE text without reading payload
+\ metadata itself. Its caller supplies a PROVIDER: one opaque context cell and
+\ three quotation capabilities.
+\   qn  [ n n n -- n ]    ( ctx fam vid -- count )       payload element count
+\   qr  [ n n n n -- n ]  ( ctx fam vid index -- root )  declaration-order schema root
+\   qc  [ n n n -- n ]    ( ctx fam vid -- cells )       payload cell width
+\ The legacy SUMTYPE / ENUM / PRODUCT definers pass TDECL-SUMV-PROVIDER, whose
+\ three capabilities read the COMMITTED SUMV rows, so their generated text is
+\ unchanged. A front end whose declaration has not been published yet passes
+\ capabilities over its own live declaration token instead; nothing below can
+\ tell the two apart, and nothing below can be satisfied by an ambient read.
+\
+\ The provider is asked for the whole family's payload view exactly ONCE, before
+\ any text is rendered, and its answers are validated together and copied into
+\ the snapshot below. Every render word and DERIVE walker then reads the
+\ snapshot. That is the point of the design, not an optimisation: the view that
+\ was validated is by construction the same view that is rendered, so a provider
+\ cannot answer one way for the check and another way for the render, and no
+\ untrusted quotation ever runs while a render cursor is live.
+\
+\ What the validation does and does not promise. It proves the answers are
+\ INTERNALLY CONSISTENT and fit the family: a non-negative count no larger than
+\ the family's payload slots, schema roots that exist and are at least one cell
+\ wide, and a cell width that equals the widths of the roots the same provider
+\ returned and still fits the slots. It does NOT prove the provider described
+\ the right payload -- the provider IS the authority for WHICH payload a variant
+\ carries, which is exactly what lets an unpublished declaration generate from
+\ its own live view. A caller owns the obligation that the view it supplies is
+\ the view that will be committed.
+$40 constant TDPV-INIT                   \ initial snapshot slots (variants, roots)
+create TDPV-CNT-BOOT   TDPV-INIT cells allot
+create TDPV-CELLS-BOOT TDPV-INIT cells allot
+create TDPV-OFF-BOOT   TDPV-INIT cells allot
+create TDPV-NODE-BOOT  TDPV-INIT cells allot
+PTR-VARIABLE TDPV-CNT-P    TDPV-CNT-BOOT TDPV-CNT-P !
+PTR-VARIABLE TDPV-CELLS-P  TDPV-CELLS-BOOT TDPV-CELLS-P !
+PTR-VARIABLE TDPV-OFF-P    TDPV-OFF-BOOT TDPV-OFF-P !
+PTR-VARIABLE TDPV-NODE-P   TDPV-NODE-BOOT TDPV-NODE-P !
+variable TDPV-VAR-CAP   TDPV-INIT TDPV-VAR-CAP !
+variable TDPV-NODE-CAP  TDPV-INIT TDPV-NODE-CAP !
+variable TDPV-FAM   -1 TDPV-FAM !        \ family the snapshot describes (-1 = none)
+variable TDPV-BASE                       \ its first variant row
+variable TDPV-VARS                       \ variants captured
+variable TDPV-NODES                      \ nodes captured
+variable TDPV-I   variable TDPV-J   variable TDPV-W
+
+: TDPV-THROW ( n ptr u8 n -- )   \ family + reason -> the named provider reject
+   {: fam:n ra:ptr ru:n :}
+   fam TFAM-NAME$ ra ru E-TDECL-PROVIDER TDECL-THROW ;
+
+: TDPV-GROW-CAP ( n n -- n ) {: need:n cap:n :}
+   cap 2 * need max ;
+: TDPV-VAR-ENSURE ( n -- ) {: need:n :}
+   need TDPV-VAR-CAP @ <= IF EXIT THEN
+   need TDPV-VAR-CAP @ TDPV-GROW-CAP {: cap:n :}
+   TDPV-CNT-P @   TDPV-VAR-CAP @ cells cap cells ARENA-BYTES-GROW TDPV-CNT-P !
+   TDPV-CELLS-P @ TDPV-VAR-CAP @ cells cap cells ARENA-BYTES-GROW TDPV-CELLS-P !
+   TDPV-OFF-P @   TDPV-VAR-CAP @ cells cap cells ARENA-BYTES-GROW TDPV-OFF-P !
+   cap TDPV-VAR-CAP ! ;
+: TDPV-NODE-ENSURE ( n -- ) {: need:n :}
+   need TDPV-NODE-CAP @ <= IF EXIT THEN
+   need TDPV-NODE-CAP @ TDPV-GROW-CAP {: cap:n :}
+   TDPV-NODE-P @ TDPV-NODE-CAP @ cells cap cells ARENA-BYTES-GROW TDPV-NODE-P !
+   cap TDPV-NODE-CAP ! ;
+
+\ --- capture. One variant at a time, each capability called exactly once per
+\ answer, every answer checked before the next is asked for. The count is
+\ bounded against the family's payload slots DIRECTLY, so the arena write and
+\ the loop below are bounded by the family's own metadata and do not rest on any
+\ property of the element widths.
+: TDPV-COUNT ( n [ n n n -- n ] n n -- n )   \ ctx qn fam slots -- validated count
+   {: ctx:n qn fam:n slots:n :} \ typed-local-lint: allow-bare-local
+   ctx fam TDPV-BASE @ TDPV-VARS @ + qn execute {: k:n :}
+   k 0 < IF fam s" payload provider returned a negative count" TDPV-THROW THEN
+   k slots > IF
+      fam s" payload provider count exceeds the family payload slots" TDPV-THROW THEN
+   k ;
+
+: TDPV-NODE+ ( n [ n n n n -- n ] n -- )   \ ctx qr fam -- : append the next validated schema node
+   {: ctx:n qr fam:n :} \ typed-local-lint: allow-bare-local
+   ctx fam TDPV-BASE @ TDPV-VARS @ + TDPV-J @ qr execute {: root:n :}
+   root 0 < root SCHEMA-ROOT-N@ >= or IF
+      fam s" payload provider returned an unknown schema root" TDPV-THROW THEN
+   root SCHEMA-ROOT@ {: node:n :}
+   TDPV-W @ node TDECL-SCH-WIDTH + TDPV-W !
+   TDPV-NODES @ 1 + TDPV-NODE-ENSURE
+   node TDPV-NODE-P @ TDPV-NODES @ cells + !
+   TDPV-NODES @ 1 + TDPV-NODES ! ;
+
+: TDPV-NODES+ ( n [ n n n n -- n ] n n -- )   \ ctx qr fam k -- : the variant's whole root run
+   {: ctx:n qr fam:n k:n :} \ typed-local-lint: allow-bare-local
+   0 TDPV-W !
+   0 TDPV-J !
+   BEGIN TDPV-J @ k < WHILE
+      ctx qr fam TDPV-NODE+
+      TDPV-J @ 1 + TDPV-J !
+   REPEAT ;
+
+\ `cw` is never spelled `cells` here: that is the core cell-size operator, and a
+\ local of that name would silently shadow it in the array indexing below.
+: TDPV-CELLS ( n [ n n n -- n ] n n -- n )   \ ctx qc fam slots -- validated cell width
+   {: ctx:n qc fam:n slots:n :} \ typed-local-lint: allow-bare-local
+   ctx fam TDPV-BASE @ TDPV-VARS @ + qc execute {: cw:n :}
+   cw TDPV-W @ <> IF
+      fam s" payload provider cell width contradicts its own schema" TDPV-THROW THEN
+   cw slots > IF
+      fam s" payload provider cell width exceeds the family payload slots" TDPV-THROW THEN
+   cw ;
+
+: TDPV-VARIANT+ ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n n -- )   \ one variant's whole view
+   {: ctx:n qn qr qc fam:n slots:n :} \ typed-local-lint: allow-bare-local
+   TDPV-VARS @ 1 + TDPV-VAR-ENSURE
+   TDPV-NODES @ TDPV-OFF-P @ TDPV-VARS @ cells + !
+   ctx qn fam slots TDPV-COUNT {: k:n :}
+   ctx qr fam k TDPV-NODES+
+   ctx qc fam slots TDPV-CELLS {: cw:n :}
+   k  TDPV-CNT-P @   TDPV-VARS @ cells + !
+   cw TDPV-CELLS-P @ TDPV-VARS @ cells + !
+   TDPV-VARS @ 1 + TDPV-VARS ! ;
+
+\ TDPV-CAPTURE ( ctx qn qr qc fam -- ) : take the family's whole payload view.
+\ Runs before any rendering; nothing below it calls a capability again.
+: TDPV-CAPTURE ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- )
+   {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
+   -1 TDPV-FAM !
+   fam TFAM-VAR-START@ TDPV-BASE !
+   0 TDPV-VARS !   0 TDPV-NODES !
+   fam TFAM-SLOTS@ {: slots:n :}
+   fam TFAM-VAR-COUNT@ {: vars:n :}
+   0 TDPV-I !
+   BEGIN TDPV-I @ vars < WHILE
+      ctx qn qr qc fam slots TDPV-VARIANT+
+      TDPV-I @ 1 + TDPV-I !
+   REPEAT
+   fam TDPV-FAM ! ;
+
+\ --- snapshot readers. The snapshot is module state, so every reader names the
+\ family it expects and the variant range that was captured; a render word
+\ reaching outside either fails closed with the named code instead of reading a
+\ stale row. The range check is the one a wrong variant row hits today, because
+\ variant rows are allocated per declaration and no two live families share one.
+\ The family check covers the case that ordering cannot rule out: a rolled-back
+\ declaration releases its variant rows, so a later family can be given the same
+\ row numbers, and then the range alone would not notice.
+: TDPV-SLOT ( n n -- n ) {: fam:n vid:n :}   \ variant row -> snapshot index
+   fam TDPV-FAM @ <> IF
+      fam s" payload snapshot is not this family's" TDPV-THROW THEN
+   vid TDPV-BASE @ - {: i:n :}
+   i 0 < i TDPV-VARS @ >= or IF
+      fam s" payload snapshot has no such variant" TDPV-THROW THEN
+   i ;
+: TDPV-N@ ( n n -- n ) {: fam:n vid:n :}     \ payload element count
+   TDPV-CNT-P @ fam vid TDPV-SLOT cells + @ ;
+: TDPV-CELLS@ ( n n -- n ) {: fam:n vid:n :} \ payload cell width
+   TDPV-CELLS-P @ fam vid TDPV-SLOT cells + @ ;
+: TDPV-NODE@ ( n n n -- n ) {: fam:n vid:n j:n :}   \ declaration-order schema node
+   fam vid TDPV-SLOT {: i:n :}
+   j 0 < j TDPV-CNT-P @ i cells + @ >= or IF
+      fam s" payload snapshot has no such payload element" TDPV-THROW THEN
+   TDPV-NODE-P @ TDPV-OFF-P @ i cells + @ j + cells + @ ;
+
+: TDGEN-PADS ( n n -- n ) {: fam:n vid:n :}   \ zero cells before the tag
+   fam TFAM-SLOTS@ fam vid TDPV-CELLS@ - ;
+
+\ The provider the legacy definers supply: the committed SUMV metadata. Each
+\ capability takes the full ( ctx fam vid .. ) argument list the renderer passes
+\ every provider and answers from the variant row alone, so the context and the
+\ family are deliberately unused here.
+: TDECL-SUMV-N ( n n n -- n ) {: ctx:n fam:n vid:n :}
+   vid SUMV-PAY-N ;
+: TDECL-SUMV-ROOT ( n n n n -- n ) {: ctx:n fam:n vid:n j:n :}
+   vid j SUMV-PAY-ROOT ;
+: TDECL-SUMV-CELLS ( n n n -- n ) {: ctx:n fam:n vid:n :}
+   vid SUMV-PAYCELLS@ ;
+: TDECL-SUMV-PROVIDER ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )   \ ctx + the three committed capabilities
+   0
+   [: TDECL-SUMV-N ;]
+   [: TDECL-SUMV-ROOT ;]
+   [: TDECL-SUMV-CELLS ;] ;
+
+: TDGEN-PAYLOAD ( n n -- ) {: fam:n vid:n :}
+   fam vid TDPV-N@ {: k:n :}              \ declared inputs, one per schema root
    0 TDGEN-J !
    BEGIN TDGEN-J @ k < WHILE
-      vid TDGEN-J @ SUMV-PAY-ROOT SCHEMA-ROOT@ TDGEN-SCH
+      fam vid TDGEN-J @ TDPV-NODE@ TDGEN-SCH
       32 TDGEN-C,
       TDGEN-J @ 1 + TDGEN-J !
    REPEAT ;
@@ -1339,8 +1522,7 @@ TDGEN-QUOT-ROW-INSTALL
    TDGEN-U @ n0 - TDGEN-NU !
    32 TDGEN-C, ;
 
-: TDGEN-BODY ( n n -- ) {: fam:n vid:n :}   \ "0 .. 0 tag ;" zero pads + tag
-   fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - {: pads:n :}
+: TDGEN-BODY ( n n -- ) {: vid:n pads:n :}   \ "0 .. 0 tag ;" zero pads + tag
    0 TDGEN-K !
    BEGIN TDGEN-K @ pads < WHILE
       48 TDGEN-C,  32 TDGEN-C,
@@ -1364,15 +1546,16 @@ TDGEN-QUOT-ROW-INSTALL
    rc 0 <> IF rc throw THEN ;
 
 : TDECL-CTOR-WORD ( n n -- ) {: fam:n vid:n :}
+   fam vid TDGEN-PADS {: pads:n :}
    TDGEN-CLEAR
    vid TDGEN-NAME
    s" ( " TDGEN-APP
-   vid TDGEN-PAYLOAD
+   fam vid TDGEN-PAYLOAD
    s" -- " TDGEN-APP
    fam TDGEN-OUT-TYPE
    s"  ) " TDGEN-APP
-   fam vid TDGEN-BODY
-   vid fam TFAM-SLOTS@ vid SUMV-PAYCELLS@ - 1 + TDPLAN-CTOR+ ;
+   vid pads TDGEN-BODY
+   vid pads 1 + TDPLAN-CTOR+ ;
 
 : TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
    TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
@@ -1391,14 +1574,14 @@ TDGEN-QUOT-ROW-INSTALL
    vid TDGEN-NAME
    s" ( " TDGEN-APP
    mk 0 <> IF
-      vid TDGEN-PAYLOAD
+      fam vid TDGEN-PAYLOAD
       s" -- " TDGEN-APP
       fam TDGEN-OUT-TYPE
       s"  ) ;" TDGEN-APP
    ELSE
       fam TDGEN-OUT-TYPE
       s"  -- " TDGEN-APP
-      vid TDGEN-PAYLOAD
+      fam vid TDGEN-PAYLOAD
       s" ) ;" TDGEN-APP
    THEN
    vid 0 TDPLAN-CTOR+ ;
@@ -1439,8 +1622,8 @@ TDGEN-QUOT-ROW-INSTALL
    BEGIN TDD-J @ k < WHILE  s" drop " TDGEN-APP  TDD-J @ 1 + TDD-J !  REPEAT ;
 : TDGEN-LOCAL1 ( n n -- ) {: c:n i:n :}   \ "<c><i>:n "
    c TDGEN-C,  i TDGEN-DEC  s" :n " TDGEN-APP ;
-: TDGEN-BINDS ( n n -- ) {: vid:n c:n :}  \ "{: c0:n .. :} " over vid's payload slots
-   vid SUMV-PAY-N {: m:n :}
+: TDGEN-BINDS ( n n n -- ) {: fam:n vid:n c:n :}   \ "{: c0:n .. :} " over vid's payload slots
+   fam vid TDPV-N@ {: m:n :}
    m 0= IF EXIT THEN
    s" {: " TDGEN-APP
    0 TDD-J !
@@ -1458,62 +1641,62 @@ TDGEN-QUOT-ROW-INSTALL
    REPEAT ;
 : TDGEN-MATCH-OPEN ( n -- ) {: fam:n :}   \ "match fam "
    s" match " TDGEN-APP  fam TFAM-NAME$ TDGEN-APP  32 TDGEN-C, ;
-: TDGEN-TAG-BODY ( n -- ) {: fam:n :}     \ "match fam v of <drops> <tag> endof .. ;match ;"
+: TDGEN-TAG-BODY ( n -- ) {: fam:n :}   \ "match fam v of <drops> <tag> endof .. ;match ;"
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    0 TDD-I !
    BEGIN TDD-I @ fam TFAM-VAR-COUNT@ < WHILE
       vstart TDD-I @ + SUMV-NAME$ TDGEN-APP
       s"  of " TDGEN-APP
-      vstart TDD-I @ + SUMV-PAY-N TDGEN-DROPS
+      fam vstart TDD-I @ + TDPV-N@ TDGEN-DROPS
       vstart TDD-I @ + SUMV-TAG@ TDGEN-DEC
       s"  endof " TDGEN-APP
       TDD-I @ 1 + TDD-I !
    REPEAT
    s" ;match ;" TDGEN-APP ;
-: TDGEN-EQ-ARM ( n n -- ) {: vout:n vin:n :}   \ one inner arm: diagonal cmp / off-diag drop+false
+: TDGEN-EQ-ARM ( n n n -- ) {: fam:n vout:n vin:n :}   \ one inner arm: diagonal cmp / off-diag drop+false
    vin SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
    vin vout = IF
-      vin 112 TDGEN-BINDS
-      vin SUMV-PAY-N TDGEN-CMP
+      fam vin 112 TDGEN-BINDS
+      fam vin TDPV-N@ TDGEN-CMP
    ELSE
-      vin SUMV-PAY-N TDGEN-DROPS
+      fam vin TDPV-N@ TDGEN-DROPS
       s" 1 0= " TDGEN-APP
    THEN
    s" endof " TDGEN-APP ;
-: TDGEN-EQ-DIAG ( n -- ) {: fam:n :}      \ diagonal double-match body for payload sums
+: TDGEN-EQ-DIAG ( n -- ) {: fam:n :}   \ diagonal double-match body for payload sums
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    fam TFAM-VAR-COUNT@ {: k:n :}
    0 TDD-I !
    BEGIN TDD-I @ k < WHILE
       vstart TDD-I @ + SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
-      vstart TDD-I @ + 113 TDGEN-BINDS
+      fam vstart TDD-I @ + 113 TDGEN-BINDS
       fam TDGEN-MATCH-OPEN
       0 TDD-K !
       BEGIN TDD-K @ k < WHILE
-         vstart TDD-I @ +  vstart TDD-K @ +  TDGEN-EQ-ARM
+         fam  vstart TDD-I @ +  vstart TDD-K @ +  TDGEN-EQ-ARM
          TDD-K @ 1 + TDD-K !
       REPEAT
       s" ;match endof " TDGEN-APP
       TDD-I @ 1 + TDD-I !
    REPEAT
    s" ;match ;" TDGEN-APP ;
-: TDGEN-UNBIND ( n n -- ) {: fam:n c:n :} \ "PKG:UNMAKE " + top-down field binds
+: TDGEN-UNBIND ( n n -- ) {: fam:n c:n :}   \ "PKG:UNMAKE " + top-down field binds
    fam s" unmake" TDGEN-DRV-REF  32 TDGEN-C,
    fam TFAM-VAR-START@ {: mk:n :}
-   mk SUMV-PAY-N TDD-J !
+   fam mk TDPV-N@ TDD-J !
    BEGIN TDD-J @ 0 > WHILE
-      mk TDD-J @ 1 - SUMV-PAY-ROOT SCHEMA-ROOT@ dup SCHEMA-APP? IF
+      fam mk TDD-J @ 1 - TDPV-NODE@ dup SCHEMA-APP? IF
          dup SCHEMA-A@ s" tag" TDGEN-DRV-REF  32 TDGEN-C, THEN
       drop
       s" {: " TDGEN-APP  c TDD-J @ 1 - TDGEN-LOCAL1  s" :} " TDGEN-APP
       TDD-J @ 1 - TDD-J !
    REPEAT ;
-: TDGEN-EQ-PROD ( n -- ) {: fam:n :}      \ UNMAKE both values, field-wise compare
+: TDGEN-EQ-PROD ( n -- ) {: fam:n :}   \ UNMAKE both values, field-wise compare
    fam 113 TDGEN-UNBIND
    fam 112 TDGEN-UNBIND
-   fam TFAM-VAR-START@ SUMV-PAY-N TDGEN-CMP
+   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-CMP
    59 TDGEN-C, ;
 : TDGEN-EQ-TAGS ( n -- ) {: fam:n :}      \ payload-free family: tag equality (O(V))
    fam s" tag" TDGEN-DRV-REF  s"  swap " TDGEN-APP
@@ -1549,26 +1732,26 @@ variable TDD-H
       112 TDGEN-C,  TDD-J @ TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX
       TDD-J @ 1 + TDD-J !
    REPEAT ;
-: TDGEN-HASH-ARM ( n -- ) {: vid:n :}     \ bind payloads, fold tag then payloads
-   vid 112 TDGEN-BINDS
+: TDGEN-HASH-ARM ( n n -- ) {: fam:n vid:n :}   \ bind payloads, fold tag then payloads
+   fam vid 112 TDGEN-BINDS
    DRV-FNV-BASIS TDGEN-HEX
    vid SUMV-TAG@ TDGEN-DEC  32 TDGEN-C,  TDGEN-HMIX
-   vid SUMV-PAY-N TDGEN-HASH-FOLDS ;
-: TDGEN-HASH-BODY ( n -- ) {: fam:n :}    \ sum/enum: MATCH ladder of per-arm folds
+   fam vid TDPV-N@ TDGEN-HASH-FOLDS ;
+: TDGEN-HASH-BODY ( n -- ) {: fam:n :}   \ sum/enum: MATCH ladder of per-arm folds
    fam TDGEN-MATCH-OPEN
    fam TFAM-VAR-START@ {: vstart:n :}
    0 TDD-I !
    BEGIN TDD-I @ fam TFAM-VAR-COUNT@ < WHILE
       vstart TDD-I @ + SUMV-NAME$ TDGEN-APP  s"  of " TDGEN-APP
-      vstart TDD-I @ + TDGEN-HASH-ARM
+      fam vstart TDD-I @ + TDGEN-HASH-ARM
       s" endof " TDGEN-APP
       TDD-I @ 1 + TDD-I !
    REPEAT
    s" ;match ;" TDGEN-APP ;
-: TDGEN-HASH-PROD ( n -- ) {: fam:n :}    \ product: UNMAKE, fold fields (no tag)
+: TDGEN-HASH-PROD ( n -- ) {: fam:n :}   \ product: UNMAKE, fold fields (no tag)
    fam 112 TDGEN-UNBIND
    DRV-FNV-BASIS TDGEN-HEX
-   fam TFAM-VAR-START@ SUMV-PAY-N TDGEN-HASH-FOLDS
+   fam fam TFAM-VAR-START@ TDPV-N@ TDGEN-HASH-FOLDS
    59 TDGEN-C, ;
 : TDECL-TAG-WORD ( n -- ) {: fam:n :}
    TDGEN-CLEAR
@@ -1597,7 +1780,7 @@ variable TDD-H
    fam TFAM-DERIVE-EQ? IF fam TDECL-EQ-WORD THEN
    fam TFAM-DERIVE-HASH? IF fam TDECL-HASH-WORD THEN ;
 
-: TDECL-PROD-WORDS ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
+: TDECL-PROD-WORDS-BODY ( n -- ) {: fam:n :}   \ make (row 0) + unmake (row 1)
    fam TFAM-VAR-START@ {: vstart:n :}
    TDPLAN-BEGIN
    fam vstart 1 TDECL-PROD-WORD
@@ -1606,43 +1789,63 @@ variable TDD-H
    TDECL-GEN-EVAL
    vstart TDECL-CTOR-PROT-WID ;
 
-\ Generation for ONE family the caller names, so a caller can prove which family
-\ the complete generated plan belongs to. Rendering itself can fail after
-\ constructors have entered the authority queue, before TDECL-GEN-EVAL is
-\ reached, so this owns the whole render/preflight/evaluate/protect lifetime and
-\ clears the queue before every result escapes. The family id travels on the
-\ data stack through that boundary because a quotation cannot read its caller's
-\ locals, and the same id comes back out on every normal branch.
-: TDECL-CTOR-WORDS-BODY ( n -- n )       \ generate one live family's constructors
-   [:                                    \ ( fam ) throughout the boundary
-      dup TFAM-PUBLIC? 0= IF EXIT THEN
-      dup TFAM-PRODUCT? IF dup TDECL-PROD-WORDS EXIT THEN
-      \ parametric (arity > 0) families publish too (item 11 slice 1): a
-      \ constructor's parametric result stays one conservative logical cell while
-      \ its args are unresolved, expands to hidden fields where instantiation
-      \ proves the args non-linear (checker.f LOGHID coercion), and genuinely
-      \ linear instantiations stay rejected at the sig/param-arg layers until
-      \ whole-bundle linear counting lands.
-      TDPLAN-BEGIN
-      0 TDGEN-M !
-      BEGIN TDGEN-M @ over TFAM-VAR-COUNT@ < WHILE
-         dup dup TFAM-VAR-START@ TDGEN-M @ + TDECL-CTOR-WORD
-         TDGEN-M @ 1 + TDGEN-M !
-      REPEAT
-      dup TDECL-DRV-WORDS                \ derived words BEFORE the WID closes
-      TDECL-GEN-EVAL
-      dup TFAM-VAR-START@ TDECL-CTOR-PROT-WID
-   ;] catch {: rc:n :}
+\ Legacy adapter for the product generator, kept so the STRUCTURE make/unmake
+\ publisher (src/core/structure-make.f) keeps its ( fam -- ) call: it declares its
+\ variant rows through SUMV-ADD before generating, so the committed view is
+\ already its own view.
+: TDECL-PROD-WORDS ( n -- ) {: fam:n :}
+   TDECL-SUMV-PROVIDER fam TDPV-CAPTURE
+   fam TDECL-PROD-WORDS-BODY ;
+
+\ Generation for ONE family the caller names, reading that family's payload only
+\ through the provider the caller supplies. TDECL-GEN-BODY is the named helper
+\ that does the work with typed locals; TDECL-CTOR-WORDS-BODY is only the failure
+\ boundary around it. Rendering itself can fail after constructors have entered
+\ the authority queue, before TDECL-GEN-EVAL is reached, so that boundary owns the
+\ whole render/preflight/evaluate/protect lifetime and clears the queue before
+\ every result escapes. The provider and the family id travel on the data stack
+\ through it because a quotation cannot read its caller's locals, and the same
+\ family id comes back out on every normal branch.
+: TDECL-GEN-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n )
+   {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
+   fam TFAM-PUBLIC? 0= IF ctx qn qr qc fam EXIT THEN
+   ctx qn qr qc fam TDPV-CAPTURE          \ the whole payload view, once, validated
+   fam TFAM-PRODUCT? IF
+      fam TDECL-PROD-WORDS-BODY  ctx qn qr qc fam EXIT THEN
+   \ parametric (arity > 0) families publish too (item 11 slice 1): a
+   \ constructor's parametric result stays one conservative logical cell while
+   \ its args are unresolved, expands to hidden fields where instantiation
+   \ proves the args non-linear (checker.f LOGHID coercion), and genuinely
+   \ linear instantiations stay rejected at the sig/param-arg layers until
+   \ whole-bundle linear counting lands.
+   TDPLAN-BEGIN
+   0 TDGEN-M !
+   BEGIN TDGEN-M @ fam TFAM-VAR-COUNT@ < WHILE
+      fam  fam TFAM-VAR-START@ TDGEN-M @ +  TDECL-CTOR-WORD
+      TDGEN-M @ 1 + TDGEN-M !
+   REPEAT
+   fam TDECL-DRV-WORDS                    \ derived words BEFORE the WID closes
+   TDECL-GEN-EVAL
+   fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID
+   ctx qn qr qc fam ;
+
+: TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )   \ generate one live family's constructors
+   [: TDECL-GEN-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
-   rc 0 <> IF rc throw THEN ;
+   rc 0 <> IF rc throw THEN
+   {: ctx:n qn qr qc fam:n :} \ typed-local-lint: allow-bare-local
+   fam ;
 
 \ The legacy SUMTYPE / ENUM / PRODUCT definers below announce the family they
 \ just registered through TDECL-FAM-REG, so that ambient read lives here, in the
-\ one adapter, and nowhere beneath it. A refused declaration leaves -1 (the
+\ one adapter, and nowhere beneath it. This adapter is also where the committed
+\ payload view is chosen: a definer that has already published its rows reads
+\ them back through TDECL-SUMV-PROVIDER. A refused declaration leaves -1 (the
 \ multi-error continue path in TDECL-RUN) and generates nothing.
 : TDECL-CTOR-WORDS ( -- )
-   TDECL-FAM-REG @ dup 0 < IF drop EXIT THEN
-   TDECL-CTOR-WORDS-BODY drop ;
+   TDECL-FAM-REG @ {: fam:n :}
+   fam 0 < IF EXIT THEN
+   TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
 
 \ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.

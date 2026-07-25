@@ -120,8 +120,17 @@ TRUSTED: TWX-SUMV-SCH-START@ ( n -- n ) SUMV-SCH-START@ ;
 TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
 TRUSTED: TWX-TDECL-CTOR-PUBLISH ( n n n -- ) TDECL-CTOR-PUBLISH ;
 TRUSTED: TWX-TDECL-DERIVE-REQUIRE ( n n n -- ) TDECL-DERIVE-REQUIRE ;
-TRUSTED: TWX-TDECL-DRV-PUBLISH ( n -- )
-   TDPLAN-BEGIN TDECL-DRV-WORDS TDECL-GEN-EVAL ;
+\ The derive renderer now reads its payload metadata through a provider, so this
+\ whitebox publisher hands it the same committed one the legacy definers use.
+\ It carries a package owner because it is a changed module definition.
+package TDECL-DRV-TEST
+public
+TRUSTED: PUBLISH ( n -- ) {: fam:n :}
+   TDPLAN-BEGIN
+   TDECL-SUMV-PROVIDER fam TDPV-CAPTURE   \ the committed view, validated once
+   fam TDECL-DRV-WORDS
+   TDECL-GEN-EVAL ;
+;package
 TRUSTED: TWX-TDECL-POLICY ( n -- ) TDECL-POLICY ;
 TRUSTED: TWX-TDECL-THROW ( ptr u8 n ptr u8 n n -- ) TDECL-THROW ;
 TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
@@ -2072,7 +2081,7 @@ s" " s" tdnu" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@ TWX-TDECL-DERIVE-REQUIRE
 TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@ TWX-TDECL-CTOR-PUBLISH
-TDF @ TWX-TDECL-DRV-PUBLISH
+TDF @ TDECL-DRV-TEST:PUBLISH
 : TDNU-EQ-EMPTY ( -- bool ) construct tdnu empty construct tdnu empty TDNU:EQ ;
 : TDNU-EQ-PAIR ( -- bool ) 1 2 construct tdnu pair 1 2 construct tdnu pair TDNU:EQ ;
 : TDNU-NEQ-PAY ( -- bool ) 1 2 construct tdnu pair 1 3 construct tdnu pair TDNU:EQ ;
