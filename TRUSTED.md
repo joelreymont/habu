@@ -372,6 +372,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | FAM-VAR-RANGE! | `n n n -- ` | Type-family registry mutation seam: forwards to the pre-hook `TFAM-VAR-RANGE!` (bind the family variant range at close); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | FAM-FLD-RANGE! | `n n n -- ` | Type-family registry mutation seam: forwards to the pre-hook `TFAM-FLD-RANGE!` (bind the family field range at close); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | FAM-SLOTS! | `n n -- ` | Type-family registry mutation seam: forwards to the pre-hook `TFAM-SLOTS!` (bind the widest variant payload width at close); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
+| LAY-DESC | `n -- ` | Layout-registry mutation seam: forwards to the pre-hook `TDECL-LAYOUT-DESC`, which bakes the packed memory ABI descriptor (`LAY-ADD` of `PACKED-DESC`) for a `POLICY packed-tag` family and does nothing for any other policy. The front end calls it at the same close-stage point as the legacy definer so both spellings of a packed enum publish the same descriptor; the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-25 | stdlib-boundary | habu-cut-global-enum-56ca54e2 |
 | FAM-PUBLIC? | `n -- bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-PUBLIC?` (family visibility, for the DERIVE guard); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | FAM-ARITY@ | `n -- n` | Type-family registry read seam: forwards to the pre-hook `TFAM-ARITY@` (family arity, for the DERIVE guard); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | FAM-WIDTH@ | `n -- n` | Type-family registry read seam: forwards to the pre-hook `TFAM-WIDTH@` (referenced-family cell width, for nested-field layout); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
@@ -1385,6 +1386,11 @@ test/enum-decl-suite.f:DICT-CODE test-metaprog habu-enum-generate-named-1f3261a3
 test/enum-decl-suite.f:ARM-RC test-metaprog habu-enum-generate-named-1f3261a3
 test/enum-decl-suite.f:CTOR-SYM test-metaprog habu-enum-generate-named-1f3261a3
 test/enum-decl-suite.f:ARM-IN-TX-RC test-metaprog habu-enum-generate-named-1f3261a3
+test/enum-decl-suite.f:L-ROW? test-metaprog habu-cut-global-enum-56ca54e2
+test/enum-decl-suite.f:L-POLICY test-metaprog habu-cut-global-enum-56ca54e2
+test/enum-decl-suite.f:L-SIZE test-metaprog habu-cut-global-enum-56ca54e2
+test/enum-decl-suite.f:L-ALIGN test-metaprog habu-cut-global-enum-56ca54e2
+test/enum-decl-suite.f:L-TAGW test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-ctor-collide-bad.f:EV test-metaprog habu-enum-generate-named-1f3261a3
 test/type-ctor-suite.f:TWX-CHECKER-RECORD-SYM test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33

@@ -105,6 +105,7 @@ TRUSTED: FAM-HASH! ( n -- ) TFAM-DERIVE-HASH! ;
 TRUSTED: FAM-VAR-RANGE! ( n n n -- ) TFAM-VAR-RANGE! ;
 TRUSTED: FAM-FLD-RANGE! ( n n n -- ) TFAM-FLD-RANGE! ;
 TRUSTED: FAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
+TRUSTED: LAY-DESC ( n -- ) TDECL-LAYOUT-DESC ;
 TRUSTED: FAM-PUBLIC? ( n -- bool ) TFAM-PUBLIC? ;
 TRUSTED: FAM-ARITY@ ( n -- n ) TFAM-ARITY@ ;
 TRUSTED: FAM-WIDTH@ ( n -- n ) TFAM-WIDTH@ ;
@@ -397,11 +398,19 @@ ED-RESET
 \ full TK-SUM mode would leave compact enums a parity gap the cutover could never
 \ close.
 \ ---------------------------------------------------------------------------
-: ED-CLOSE ( -- )                          \ bind variant + field ranges + width, then arm generation
+\ The packed memory descriptor is baked HERE, at the same point the legacy
+\ definer bakes it (sumtype.f CHECKER-DEFENUM-BODY, between TFAM-VAR-RANGE! /
+\ TFAM-SLOTS! and the constructor publish): PACKED-DESC reads the variant count
+\ and the payload slot width, so both must already be bound, and a `POLICY
+\ stack-cell-tag` family bakes no row at all. LAY-ADD lands inside the checker
+\ participant's savepoint (LAY-N is one of the marks TF-SAVE/TF-RESTORE carry),
+\ so a later close-stage reject retires the descriptor with the family.
+: ED-CLOSE ( -- )                          \ bind variant + field ranges + width, bake layout, arm generation
    NVAR @ 0= IF E-SYNTAX throw THEN         \ an enum needs at least one variant
    FAM @ VBASE @ NVAR @ FAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
    FAM @ MAXSLOTS @ FAM-SLOTS!
+   FAM @ LAY-DESC
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM

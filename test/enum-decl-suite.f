@@ -744,6 +744,93 @@ s" R2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
 \ block and puts sumtype.f's die back within reach of ARM.
 
 \ ---------------------------------------------------------------------------
+\ 21. POLICY packed-tag bakes the memory ABI descriptor (docs §22.2). The
+\     descriptor is a LAY registry row sized from the variant count and the
+\     payload slot width, so it can only be baked once those are bound: the
+\     legacy definer does it in sumtype.f CHECKER-DEFENUM-BODY (`fam
+\     TDECL-LAYOUT-DESC`, between TFAM-SLOTS! and the constructor publish), and
+\     the front end does it at the same point in ED-CLOSE. Before that call
+\     existed, a POLICY packed-tag ENUM through ENUM-DECL:ED-RUN recorded the
+\     policy on the family record but baked NO row, so the front end and the
+\     global token disagreed about the family's memory ABI.
+\ ---------------------------------------------------------------------------
+package enum-layout-test
+public
+
+TRUSTED: L-ROW? ( n -- n bool ) LAY-FIND ;        \ family -> layout row id, found?
+TRUSTED: L-POLICY ( n -- n ) LAY-POLICY@ ;
+TRUSTED: L-SIZE ( n -- n ) LAY-SIZE@ ;
+TRUSTED: L-ALIGN ( n -- n ) LAY-ALIGN@ ;
+TRUSTED: L-TAGW ( n -- n ) LAY-TAGW@ ;
+
+: PARITY ( n n -- )                  \ two families bake field-identical descriptors
+   {: a:n b:n :}
+   a L-ROW? {: la:n fa:bool :}
+   b L-ROW? {: lb:n fb:bool :}
+   fa T-TRUE   fb T-TRUE
+   fa 0= fb 0= or IF EXIT THEN       \ a missing row already failed; do not read a bogus id
+   la L-POLICY lb L-POLICY T=
+   la L-SIZE   lb L-SIZE   T=
+   la L-ALIGN  lb L-ALIGN  T=
+   la L-TAGW   lb L-TAGW   T= ;
+
+: SHAPE ( n n n n -- )               \ family + expected record size, alignment, tag width
+   {: fam:n size:n align:n tagw:n :}
+   fam L-ROW? {: lid:n found:bool :}
+   found T-TRUE
+   found 0= IF EXIT THEN
+   lid L-POLICY PACKED# T=
+   lid L-SIZE  size  T=
+   lid L-ALIGN align T=
+   lid L-TAGW  tagw  T= ;
+
+: NO-ROW ( n -- )                    \ the default policy bakes nothing
+   {: fam:n :}
+   fam L-ROW? drop 0= T-TRUE ;
+
+private
+
+\ 21a. Compact mode, both paths: three payloadless variants under packed-tag.
+\      Tag-only, so the record is one byte, byte-aligned, with a one-byte tag.
+ENUM lay-legacy POLICY packed-tag lgred lggrn lgblu ;ENUM
+s" ENUM-DECL:ED-RUN lay-unified POLICY packed-tag unred ungrn unblu ;ENUM" EV
+s" lay-legacy" FAMID s" lay-unified" FAMID enum-layout-test:PARITY
+s" lay-unified" FAMID 1 1 1 enum-layout-test:SHAPE
+
+\ 21b. The default policy (stack-cell-tag) bakes no row on either path.
+ENUM lay-legacy-def dfred ;ENUM
+s" ENUM-DECL:ED-RUN lay-unified-def dfblu ;ENUM" EV
+s" lay-legacy-def" FAMID enum-layout-test:NO-ROW
+s" lay-unified-def" FAMID enum-layout-test:NO-ROW
+
+\ 21c. Full mode: the descriptor is sized from the WIDEST variant, so the bake
+\      has to follow FAM-SLOTS!. Legacy ENUM has no payload grammar, so the
+\      legacy comparison partner is SUMTYPE — the same TK-SUM kind, the same
+\      one-cell payload, the same packed policy. This pairing keeps working
+\      after the global ENUM token moves to the front end.
+SUMTYPE lay-legacy-pay 0 POLICY packed-tag VARIANT lpnone ;VARIANT VARIANT lpone n ;VARIANT ;SUMTYPE
+s" ENUM-DECL:ED-RUN lay-unified-pay 0 POLICY packed-tag VARIANT upnone ;VARIANT VARIANT upone FIELD x n ;VARIANT ;ENUM" EV
+s" lay-legacy-pay" FAMID s" lay-unified-pay" FAMID enum-layout-test:PARITY
+s" lay-unified-pay" FAMID 16 8 1 enum-layout-test:SHAPE   \ 8 payload bytes + 1 tag byte, cell-aligned
+
+;package
+
+\ 21d. A reject AFTER the bake retires the descriptor with the family. The two
+\      declarations below differ in one token — the payload type — and both reach
+\      ED-CLOSE, so both bake a row; the second is then refused at ORDER 820 by
+\      the derive payload-role gate (a pointer payload has no derived equality,
+\      7119), which runs in the commit phase, well after ED-CLOSE. LAY-N is one
+\      of the marks the checker participant's savepoint carries, so the refused
+\      declaration's row goes back with its family.
+REG-MARK
+s" ENUM-DECL:ED-RUN lay-keep 0 POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TRY 0 T=
+LAY-N@ RB-LAY @ 1 + T=                                \ the accepted twin baked exactly one row
+REG-MARK
+s" ENUM-DECL:ED-RUN lay-drop 0 POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TRY 7119 T=
+LAY-N@ RB-LAY @ T=                                    \ the refused twin left none
+TFAMN@ RB-TFAM @ T=
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" enum-decl-suite: failures" 1 die ;
