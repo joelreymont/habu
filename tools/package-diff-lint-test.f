@@ -20,13 +20,16 @@ private
 $4000 constant TEST-SOURCE-CAP
 $8000 constant TEST-DIFF-CAP
 $4000 constant TEST-OUT-CAP
+64 constant TEST-NAME-CAP
 10 constant TEST-LF-C
 32 constant TEST-SPACE-C
 34 constant TEST-DQUOTE-C
 43 constant TEST-PLUS-C
 45 constant TEST-MINUS-C
 92 constant TEST-BACKSLASH-C
+96 constant TEST-TICK-C   \ backtick: the report's finding-subject delimiter
 
+create TEST-NAME-BUF TEST-NAME-CAP allot
 create TEST-ROOT-BUF FS-PATH-CAP allot
 create TEST-PATH-BUF FS-PATH-CAP allot
 create TEST-SOURCE-BUF TEST-SOURCE-CAP allot
@@ -316,6 +319,166 @@ variable TEST-DIFF-U
    TEST-SOURCE-RESET TEST-ADD-REGISTRY-LANGUAGE
    TEST-DIFF-RESET s" test/registry.f" TEST-ADD-SOURCE-SECTION
    TEST-EXPECT-CLEAN ;
+
+\ ---- primitive-axiom registry rows -------------------------------------------
+\ tools/lint/source-lex.f delivers a complete `PRIM: ... PRIM;` or
+\ `PPRIM: pkg ... PPRIM;` row as ONE opaque REGISTRY token.  These fixtures hold
+\ that contract from both directions.  A well-formed row is invisible to the
+\ ownership rules: its body bytes can neither forge a package or a definition nor
+\ close a real package that surrounds it.  An incomplete row stops the scan with
+\ the registry code, because a token table truncated at the defect must never be
+\ analysed as if it were the whole file.
+
+: TEST-RUN-DIRECT ( -- )
+   PACKAGE-DIFF:RESET
+   TEST-ROOT$ PACKAGE-DIFF:ROOT!
+   TEST-DIFF$ PACKAGE-DIFF:SOURCE
+   PACKAGE-DIFF:FINISH ;
+
+\ A finding count alone cannot tell a report about the real global apart from a
+\ report about a word forged out of row bytes: both are "one finding".  The
+\ report writes its subject between backticks, so these read that field.
+: TEST-QUOTED-NAME$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 2 + TEST-NAME-CAP > if E-FS-CAPACITY throw then
+   TEST-TICK-C TEST-NAME-BUF c!
+   a TEST-NAME-BUF 1+ u BYTE-COPY
+   TEST-TICK-C TEST-NAME-BUF 1+ u + c!
+   TEST-NAME-BUF u 2 + ;
+
+: TEST-REPORTED? ( ptr u8 n -- bool )
+   TEST-QUOTED-NAME$ {: a:ptr u:n :}
+   LINT-OUT$ a u LINT-CONTAINS? ;
+
+: TEST-NAMES ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" the report names the changed global itself" T-LABEL
+   a u TEST-REPORTED? TTRUE ;
+
+: TEST-NOT-NAMES ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" the report never names a word forged from row bytes" T-LABEL
+   a u TEST-REPORTED? TFALSE ;
+
+: TEST-ROW-FORGED-PACKAGE ( -- )
+   TEST-SOURCE-RESET
+   s" PRIM: forge-pkg package FORGED PRIM;" TEST-SOURCE-LINE
+   s" : ROW-LEAK-PKG ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/row-package.f" TEST-ADD-SOURCE-SECTION
+   s" a row body cannot open a package around the next definition" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" ROW-LEAK-PKG" TEST-NAMES ;
+
+: TEST-ROW-FORGED-COLON ( -- )
+   TEST-SOURCE-RESET
+   s" PRIM: forge-colon : PRIM;" TEST-SOURCE-LINE
+   s" : ROW-LEAK-COLON ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/row-colon.f" TEST-ADD-SOURCE-SECTION
+   s" a row body cannot open a definition that swallows the next global" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" ROW-LEAK-COLON" TEST-NAMES
+   s" PRIM;" TEST-NOT-NAMES ;
+
+: TEST-ROW-FORGED-DATA ( -- )
+   TEST-SOURCE-RESET
+   s" PRIM: forge-data create FORGED-CELL PRIM;" TEST-SOURCE-LINE
+   s" : ROW-LEAK-DATA ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/row-data.f" TEST-ADD-SOURCE-SECTION
+   s" a row body cannot publish a data definition" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" ROW-LEAK-DATA" TEST-NAMES
+   s" FORGED-CELL" TEST-NOT-NAMES ;
+
+: TEST-ROW-KEEPS-PACKAGE ( -- )
+   TEST-SOURCE-RESET
+   s" package ROWPKG" TEST-SOURCE-LINE
+   s" PPRIM: forged-pkg forged-word ;package PPRIM;" TEST-SOURCE-LINE
+   s" : ROW-STAYS-OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/row-keep.f" TEST-ADD-SOURCE-SECTION
+   s" a row body cannot close the package that surrounds it" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+\ Same token text, two roles: `CLOSE-PRIVATE` closes a `PPRIM:` row (it ends that
+\ row's private wordlist) and is an ordinary effect field inside a bare `PRIM:`
+\ row, which has no package wordlist to close.  A scanner that matched the text
+\ without the family would cut one of these rows in the wrong place.
+: TEST-ROW-CLOSER-ROLES ( -- )
+   TEST-SOURCE-RESET
+   s" PPRIM: pkg-row pkg-word CLOSE-PRIVATE" TEST-SOURCE-LINE
+   s" PRIM: bare-word CLOSE-PRIVATE PRIM;" TEST-SOURCE-LINE
+   s" : ROW-AFTER-CLOSERS ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/row-closers.f" TEST-ADD-SOURCE-SECTION
+   s" CLOSE-PRIVATE closes a package row and is a field in a bare row" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" ROW-AFTER-CLOSERS" TEST-NAMES ;
+
+: TEST-ROW-REJECT ( ptr u8 n -- ) {: a:ptr u:n :}
+   TEST-SOURCE-RESET
+   a u TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/row-bad.f" TEST-ADD-SOURCE-SECTION
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-ROW TTHROWSQ ;
+
+: TEST-ROW-MALFORMED-SHAPES ( -- )
+   s" bare row: the closer stands where the primitive name belongs" T-LABEL
+   s" PRIM: PRIM;" TEST-ROW-REJECT
+   s" package row: one header field then a bare-row closer" T-LABEL
+   s" PPRIM: checker-package-word PRIM;" TEST-ROW-REJECT
+   s" package row closed by the bare-row closer" T-LABEL
+   s" PPRIM: pkg-row pkg-word PRIM;" TEST-ROW-REJECT
+   s" bare row closed by the package-row closer" T-LABEL
+   s" PRIM: bare-word PPRIM;" TEST-ROW-REJECT
+   s" a second opener nested inside a row body" T-LABEL
+   s" PRIM: outer-word PRIM: inner-word PRIM;" TEST-ROW-REJECT
+   s" row body runs to end of input with no closer" T-LABEL
+   s" PRIM: unclosed-word" TEST-ROW-REJECT
+   s" row header runs to end of input" T-LABEL
+   s" PRIM:" TEST-ROW-REJECT
+   s" every rejected row released its mappings" T-LABEL
+   LIVE-MAPPING# 0 T= ;
+
+: TEST-WRITE-OLD-ROW-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" package OLDROW" TEST-SOURCE-LINE
+   s" : OLD-ROW-OK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" test/row-old.f" TEST-WRITE-SOURCE ;
+
+\ The deleted line exists only in the reconstructed old source, so this reaches
+\ SCAN-OLD-BOUNDARIES and never SCAN-DEFINITIONS.
+: TEST-OLD-ROW-DIFF ( -- )
+   s" test/row-old.f" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,3 @@" TEST-DIFF+ TEST-LF
+   TEST-MINUS-C TEST-DIFF-C s" PRIM: old-word PPRIM;" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" package OLDROW" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" : OLD-ROW-OK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" ;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-OLD-SIDE-ROW ( -- )
+   TEST-WRITE-OLD-ROW-SOURCE
+   TEST-DIFF-RESET TEST-OLD-ROW-DIFF
+   s" a malformed row in the reconstructed old source rejects too" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-ROW TTHROWSQ ;
+
+\ The other lexer defect must keep its own code.  One shared code would mean the
+\ kind dispatch had no arms, and every source defect would send the reader to the
+\ wrong place.
+: TEST-ROW-QUOTE-DEFECT ( -- )
+   TEST-SOURCE-RESET
+   s" : ROW-OPEN-STRING ( -- ) s" TEST-SOURCE+
+   TEST-DQUOTE-C TEST-SOURCE-C
+   TEST-SPACE-C TEST-SOURCE-C
+   s" never closed" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/row-quote.f" TEST-ADD-SOURCE-SECTION
+   s" an open string literal keeps its own source-defect code" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-QUOTE TTHROWSQ ;
+
+: TEST-REGISTRY-ROWS ( -- )
+   TEST-ROW-FORGED-PACKAGE
+   TEST-ROW-FORGED-COLON
+   TEST-ROW-FORGED-DATA
+   TEST-ROW-KEEPS-PACKAGE
+   TEST-ROW-CLOSER-ROLES
+   TEST-ROW-MALFORMED-SHAPES
+   TEST-OLD-SIDE-ROW
+   TEST-ROW-QUOTE-DEFECT ;
 
 : TEST-ADD-WHOLE-CORE-EXEMPTION ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n path:ptr pathu:n :}
    name nameu TEST-GLOBAL-SOURCE
@@ -694,12 +857,6 @@ variable TEST-DIFF-U
    s" -: OLD ( -- n ) 0 ;" TEST-DIFF+ TEST-LF
    s" +: BAD ( -- n ) 1 ;" TEST-DIFF+ TEST-LF ;
 
-: TEST-RUN-STALE ( -- )
-   PACKAGE-DIFF:RESET
-   TEST-ROOT$ PACKAGE-DIFF:ROOT!
-   TEST-DIFF$ PACKAGE-DIFF:SOURCE
-   PACKAGE-DIFF:FINISH ;
-
 : TEST-REUSE-AFTER-ERROR ( -- )
    TEST-SOURCE-RESET
    s" package REUSE" TEST-SOURCE-LINE
@@ -714,21 +871,15 @@ variable TEST-DIFF-U
 : TEST-STALE-FAILS-CLOSED ( -- )
    TEST-WRITE-STALE-SOURCE
    TEST-DIFF-RESET TEST-STALE-DIFF
-   [: TEST-RUN-STALE ;] E-DIFF-SYNTAX TTHROWSQ
+   [: TEST-RUN-DIRECT ;] E-DIFF-SYNTAX TTHROWSQ
    LIVE-MAPPING# 0 T=
    MAPPING-PEAK @ 3 T=
    TEST-REUSE-AFTER-ERROR ;
 
-: TEST-RUN-MALFORMED ( -- )
-   PACKAGE-DIFF:RESET
-   TEST-ROOT$ PACKAGE-DIFF:ROOT!
-   TEST-DIFF$ PACKAGE-DIFF:SOURCE
-   PACKAGE-DIFF:FINISH ;
-
 : TEST-MALFORMED-REUSE ( -- )
    TEST-DIFF-RESET
    s" this is not a unified diff" TEST-DIFF+ TEST-LF
-   [: TEST-RUN-MALFORMED ;] E-DIFF-SYNTAX TTHROWSQ
+   [: TEST-RUN-DIRECT ;] E-DIFF-SYNTAX TTHROWSQ
    LIVE-MAPPING# 0 T=
    MAPPING-PEAK @ 0 T=
    TEST-REUSE-AFTER-ERROR ;
@@ -991,6 +1142,7 @@ variable TEST-DIFF-U
    TEST-REDUNDANT-PREFIXES
    TEST-DEFINER-INVENTORY
    TEST-REGISTRY-LANGUAGE
+   TEST-REGISTRY-ROWS
    TEST-CORE-EXEMPTIONS
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION

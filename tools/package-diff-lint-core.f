@@ -6,6 +6,17 @@
 \ Both complete sources are lexed: hunk context and isolated deleted lines cannot
 \ prove package scope across multiline comments, strings, or definitions.
 \
+\ The scan consumes the lint lexer's events rather than re-reading source text.
+\ Three kinds arrive.  A WORD drives the ownership rules.  A `( ... )` comment is
+\ inert.  A `PRIM:`/`PPRIM:` primitive-axiom row arrives whole, as one REGISTRY
+\ token: it declares an engine primitive's stack effect, publishes no dictionary
+\ word, opens no package, and its fields never appear as separate tokens, so the
+\ scan steps over the entire span.  Any other kind, and any lexer diagnostic,
+\ stops the scan with a named source-defect code.  There is deliberately no
+\ second row grammar here: a private re-parse of row text is exactly how a body
+\ carrying `package`, `:`, or `create` bytes could forge a scope the engine never
+\ enters and hide the global definition this lint exists to report.
+\
 \ Load after the lint lexer, memory, filesystem, and DIFF packages.
 
 require lib/adt/option.f
@@ -40,6 +51,24 @@ private
 69 constant UPPER-E-C
 90 constant UPPER-Z-C
 2 constant ERR-PREFIX-U   \ length of the mandatory `E-` error-name prefix
+
+\ ---- source-defect codes -----------------------------------------------------
+\ A lexer diagnostic describes the FILE being linted, not the diff artifact, so
+\ it must not be rethrown as tools/lint/diff-error.f's E-DIFF-SYNTAX: that code
+\ means "this patch is not a unified diff" and sends the reader to the artifact
+\ instead of to the broken source line.  The lexer names more than one defect and
+\ each one stops its scan, so each defect gets its own name here, the same way
+\ tools/lint/shadow-lint.f splits E-SHADOW-UNTERM from E-SHADOW-REGISTRY.
+\ Negative, so tools/error-code-lint.f keeps them globally unique.  -4803..-4805
+\ continue the unclaimed lint-tool gap that already holds E-SHADOW-UNTERM
+\ (-4800), E-CLOBBER-WRAP-UNRESOLVED (-4801), and E-SHADOW-REGISTRY (-4802); the
+\ gap ends before lib/errors.f's reserved E-REPORT block at -4900.
+-4803 constant E-PKGDIFF-ROW     \ a `PRIM:`/`PPRIM:` axiom row lacked a header or its closer
+-4804 constant E-PKGDIFF-QUOTE   \ a string literal ran past end of input
+\ The residual arm: a diagnostic kind added to LINT-LEX after this consumer was
+\ written.  It must reach a named refusal rather than be reported as one of the
+\ two defects this lint does understand, and it must never pass silently.
+-4805 constant E-PKGDIFF-LEX     \ a lexer diagnostic or token kind this lint was never taught
 
 create NUM NUM-CAP allot
 create ONE 1 allot
@@ -428,6 +457,40 @@ variable FILE-USED
    dup LINT-LEX:COUNT >= if drop false exit then
    LINT-LEX:KIND@ LINT-LEX:WORD = ;
 
+\ Classify one scanned token into exactly one arm.  A WORD drives the ownership
+\ rules below.  A `( ... )` comment is inert, and a complete `PRIM: ... PRIM;` or
+\ `PPRIM: pkg ... PPRIM;` primitive-axiom row arrives as a single REGISTRY token
+\ spanning the whole row (tools/lint/source-lex.f): a row publishes no dictionary
+\ word, opens no package, and its fields are never separate tokens, so the scan
+\ steps over the entire span.  That opacity is the rule, not an omission -- a row
+\ body carrying the bytes `package`, `:`, or `create` would otherwise forge a
+\ scope the engine never enters and hide the very global this lint reports.
+\ Any other kind is one this lint was never taught, and skipping it in silence is
+\ how a scanner goes blind: the token spans source the analysis never sees while
+\ the diff still reports zero findings.
+: OPAQUE? ( n -- bool ) {: k:n :}
+   k LINT-LEX:KIND@ {: kind:n :}
+   kind LINT-LEX:REGISTRY = if true exit then
+   kind LINT-LEX:COMMENT = if true exit then
+   kind LINT-LEX:WORD <> if E-PKGDIFF-LEX throw then
+   false ;
+
+\ The lexer stopped on a defect in the linted source.  Name the one it hit: a
+\ malformed axiom row sends the reader to the row opener, an open string sends
+\ them to a missing quote, and an unknown kind fails closed instead of borrowing
+\ either label.
+: LEX-DEFECT ( -- )
+   LINT-LEX:ERROR-KIND@ {: kind:n :}
+   kind LINT-LEX:MALFORMED-REGISTRY = if E-PKGDIFF-ROW throw then
+   kind LINT-LEX:UNTERMINATED-QUOTE = if E-PKGDIFF-QUOTE throw then
+   E-PKGDIFF-LEX throw ;
+
+\ Every scan of a reconstructed or on-disk source runs through here first: a
+\ diagnostic truncates the token table at the defect, so continuing would analyse
+\ a source that stops before the definitions the diff actually changed.
+: LEX-CHECK ( -- )
+   LINT-LEX:ERROR? if LEX-DEFECT then ;
+
 : TOK=CI ( n ptr u8 n -- bool ) {: k:n a:ptr u:n :}
    k WORD? 0= if false exit then
    k LINT-LEX:TOKEN a u LINT-STR=CI ;
@@ -675,6 +738,7 @@ variable FILE-USED
    false ;
 
 : SCAN-TOKEN ( n -- ) {: k:n :}
+   k OPAQUE? if k 1+ LEX-I ! exit then
    DEF-OPEN @ if
       k DEF-KIND @ CLOSE? if
          k LINT-LEX:LINE@ FINISH-DEFINITION
@@ -693,7 +757,7 @@ variable FILE-USED
 
 : SCAN-DEFINITIONS ( -- )
    SOURCE$ LINT-LEX:SOURCE
-   LINT-LEX:ERROR? if E-DIFF-SYNTAX throw then
+   LEX-CHECK
    0 LEX-I !
    false PACKAGE-OPEN !
    0 SCOPE-DELTA !
@@ -734,6 +798,7 @@ variable FILE-USED
    namei 1+ LEX-I ! ;
 
 : OLD-SCAN-TOKEN ( n -- ) {: k:n :}
+   k OPAQUE? if k 1+ LEX-I ! exit then
    DEF-OPEN @ if
       k DEF-KIND @ CLOSE? if false DEF-OPEN ! then
       k 1+ LEX-I ! exit
@@ -744,7 +809,7 @@ variable FILE-USED
 
 : SCAN-OLD-BOUNDARIES ( -- )
    OLD$ LINT-LEX:SOURCE
-   LINT-LEX:ERROR? if E-DIFF-SYNTAX throw then
+   LEX-CHECK
    0 LEX-I !
    false PACKAGE-OPEN !
    false DEF-OPEN !
