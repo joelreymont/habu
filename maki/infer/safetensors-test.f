@@ -13,10 +13,17 @@
 \ The ownership half of the suite is what makes this loader different from the
 \ process-global registry it replaced: two sessions are parsed INTERLEAVED and
 \ each census keeps answering about its own file, a failing session leaves a
-\ live census byte-identical, and the linear session/census tokens are proved
-\ un-duplicable, un-droppable, and un-reusable by feeding bad definitions to the
-\ checker itself. The presence-gated real leg parses HuggingFace GPT-2
+\ live census byte-identical, and the linear session/census/mapping tokens are
+\ proved un-duplicable, un-droppable, and un-reusable by feeding bad definitions
+\ to the checker itself. The presence-gated real leg parses HuggingFace GPT-2
 \ (openai-community/gpt2) and asserts the tensor census.
+\
+\ The mapping half adds the other question this loader has to answer: after
+\ DETACH-MAPPING hands the file mapping to its own owner, does the census still
+\ describe its tensors and refuse to hand out their bytes? Those legs assert
+\ both directions on the same census, in both disposal orders, and read the same
+\ tensor bytes back through the mapping at the MAP-OFFSET? frame to prove the
+\ two offset frames are not interchangeable.
 
 require lib/test.f
 require test/checker-assert.f
@@ -40,6 +47,13 @@ create DATA-BUF 64 allot
 
 variable SEEN-LEN
 variable SEEN-B0
+
+\ ---- what the whole-mapping body saw ---------------------------------------
+144 constant SYNTH-HDR                          \ J-VALID's header JSON byte length
+create MAP-BUF 64 allot
+variable MAP-OFF                                \ mapping-base offset the body reads from
+variable MAP-TAKE                               \ how many bytes it copies out
+variable SEEN-MAP-LEN
 
 \ ---- image builder ---------------------------------------------------------
 \ dst dstcap json$ datacount -> image byte length. Layout: 8-byte little-endian
@@ -90,6 +104,23 @@ variable SEEN-B0
    MATCH option
       none OF MISSING -1 ENDOF
       some OF ENDOF
+   ;MATCH ;
+
+\ UNMAP-MAPPING answers a result, not a throw, so an `err` where the fixture
+\ required a clean cleanup is reported at the call, exactly like MISSING above.
+\ The err arm itself is a failing munmap on a well-formed mapping, which the
+\ public surface cannot produce on purpose; what IS proved statically below is
+\ that no caller can drop the union or read it as a bare number.
+: CLEANUP-ERR ( n -- )
+   drop
+   s" cleanup result was err, not ok" T-LABEL
+   0 0= 0= TTRUE ;
+
+: RES-OK= ( result<n,n> n -- )                  \ assert ok(want)
+   {: want:n :}
+   MATCH result
+      ok  OF want T= ENDOF
+      err OF CLEANUP-ERR ENDOF
    ;MATCH ;
 
 : ID-OF ( SAFET:census ptr u8 n -- SAFET:census n )
@@ -471,6 +502,182 @@ variable BIG-LEN
    CHECK-ALPHA
    SAFET:RELEASE ;
 
+\ ---- the mapping seam ------------------------------------------------------
+\ The synthetic file's layout is known exactly: an 8-byte little-endian length
+\ prefix, then SYNTH-HDR bytes of header JSON, then the data section. So tensor
+\ "a" (data_offsets [0,16]) starts at mapping byte 8+144+0 = 152 and "b"
+\ ([16,24]) at 8+144+16 = 168, while BEGIN? keeps reporting 0 and 16. Those two
+\ frames are what this section pins: a MAP-OFFSET? that answered the
+\ data-section frame would report 0 and 16 here and fail on the first assertion,
+\ and the byte reads below show what reading a mapping at the wrong frame
+\ actually lands on.
+: SEE-MAPPING ( SAFET:mapping ptr u8 n -- SAFET:mapping )   \ scoped whole-mapping body
+   {: a:ptr u:n :}
+   u SEEN-MAP-LEN !
+   a MAP-OFF @ BYTE+  MAP-BUF  MAP-TAKE @  BYTE-COPY ;
+
+\ The byte a mapping holds at one mapping-base offset. Used only where the
+\ mapping spans the whole IMG-A image, so WITH-MAPPING's reported length is
+\ LEN-A and asserting it here also proves the body saw the entire mapping.
+: MAP-BYTE-AT ( SAFET:mapping n -- SAFET:mapping n )
+   {: off:n :}
+   off MAP-OFF !  1 MAP-TAKE !
+   $FF MAP-BUF c!                               \ poison: only the body may overwrite it
+   [: SEE-MAPPING ;] SAFET:WITH-MAPPING LEN-A @ OPT=
+   MAP-BUF c@ ;
+
+: CHECK-MAP-OFFSETS ( SAFET:census -- SAFET:census )
+   SAFET:HDR-LEN SYNTH-HDR T=
+   s" a" ID-OF {: ia:n :}
+   s" b" ID-OF {: ib:n :}
+   ia SAFET:MAP-OFFSET? 152 OPT=
+   ib SAFET:MAP-OFFSET? 168 OPT=
+   ia SAFET:BEGIN? 0 OPT=                       \ the data-section frame, unchanged
+   ib SAFET:BEGIN? 16 OPT=
+   ia SAFET:MAP-OFFSET? OPT-VAL {: again:n :}   \ repeated calls agree
+   again 152 T=
+   ib SAFET:MAP-OFFSET? 168 OPT=
+   99 SAFET:MAP-OFFSET? OPT-NONE                \ id past the census -> NONE, never an offset
+   -1 SAFET:MAP-OFFSET? OPT-NONE ;
+
+\ Everything a census must still answer once its mapping has left, and
+\ everything it must refuse. The poison assertions prove the scoped body is not
+\ run at all, rather than run over a stale address.
+: CHECK-DETACHED-CENSUS ( SAFET:census -- SAFET:census )
+   SAFET:COUNT 2 T=
+   s" a" ID-OF {: ia:n :}
+   s" b" ID-OF {: ib:n :}
+   ia SAFET:DTYPE? SAFET:DT-F32 OPT=
+   ib SAFET:DTYPE? SAFET:DT-BF16 OPT=
+   ia SAFET:RANK? 2 OPT=
+   ia 0 SAFET:DIM? 2 OPT=   ia 1 SAFET:DIM? 2 OPT=
+   ia SAFET:NBYTES? 16 OPT=  ib SAFET:NBYTES? 8 OPT=
+   ia SAFET:BEGIN? 0 OPT=   ib SAFET:END? 24 OPT=
+   ia SAFET:MAP-OFFSET? 152 OPT=                \ the frame outlives the mapping's owner
+   ib SAFET:MAP-OFFSET? 168 OPT=
+   s" absent" SAFET:FIND OPT-NONE
+   ib NAME-BUF 64 SAFET:COPY-NAME? 1 OPT=       \ names live in the census's own arena
+   NAME-BUF c@ 98 T=
+   SAFET:MAP-LEN 0 T=                           \ it records no image any more
+   -1 SEEN-LEN !                                \ poison: no scoped body may run
+   ia [: SEE-TENSOR ;] SAFET:WITH-TENSOR OPT-NONE
+   ib [: SEE-TENSOR ;] SAFET:WITH-TENSOR OPT-NONE
+   SEEN-LEN @ -1 T=
+   $FF DATA-BUF c!
+   ia DATA-BUF 64 SAFET:COPY-DATA? OPT-NONE
+   ib DATA-BUF 64 SAFET:COPY-DATA? OPT-NONE
+   DATA-BUF c@ $FF T= ;
+
+: BUILD-SYNTH ( -- )
+   J-VALID 24 BUILD-A
+   SYNTH-PATH A$ WRITE-ALL ;
+
+: TEST-MAP-OFFSET ( -- )
+   s" the mapping frame matches the known synthetic layout" T-LABEL
+   BUILD-SYNTH
+   NO-LEAK
+   SYNTH-PATH SAFET:LOAD
+   SAFET-MAP:LIVE 1 T=
+   SAFET:LIVE-OWNERS 1 T=
+   CHECK-MAP-OFFSETS
+   SAFET:RELEASE
+   NO-LEAK
+   CLEANUP ;
+
+: TEST-DETACH-MAPPING ( -- )
+   s" detaching a mapping moves ownership without mapping anything new" T-LABEL
+   BUILD-SYNTH
+   SYNTH-PATH SAFET:LOAD                        \ ( c )
+   s" b" ID-OF {: ib:n :}
+   ib DATA-BUF 64 SAFET:COPY-DATA? 8 OPT=       \ b's bytes while the census still owns them
+   DATA-BUF c@ {: want-b0:n :}
+   SAFET:DETACH-MAPPING                         \ ( c m )
+   SAFET-MAP:LIVE 1 T=                          \ the kernel mapping count does not move
+   SAFET:LIVE-OWNERS 2 T=                       \ but there are two owners now
+   s" the mapping reads the same bytes at the MAP-OFFSET? frame" T-LABEL
+   152 MAP-BYTE-AT 0 T=                         \ tensor a's first byte
+   168 MAP-BYTE-AT want-b0 T=                   \ tensor b's, byte-identical to COPY-DATA?
+   8 MAP-BYTE-AT LBRACE T=                      \ mapping byte 8 opens the header JSON
+   0 MAP-BYTE-AT SYNTH-HDR T=                   \ and byte 0 is the header-length prefix -
+                                                \ what BEGIN?'s frame would have pointed at
+   SEEN-MAP-LEN @ LEN-A @ T=                    \ the body saw the whole mapping
+   s" the census keeps its metadata and hands out no bytes" T-LABEL
+   swap                                         \ ( m c )
+   CHECK-DETACHED-CENSUS
+   SAFET:RELEASE                                \ ( m ) the census is disposed first
+   SAFET-MAP:LIVE 1 T=                          \ releasing it did NOT unmap
+   SAFET:LIVE-OWNERS 1 T=
+   s" the mapping outlives the census and unmaps exactly once" T-LABEL
+   152 MAP-BYTE-AT 0 T=                         \ still readable with the census gone
+   SAFET:UNMAP-MAPPING LEN-A @ RES-OK=
+   SAFET-MAP:LIVE 0 T=
+   NO-LEAK
+   CLEANUP ;
+
+: TEST-DETACH-TWICE ( -- )
+   s" a second detach hands out no second claim on the same bytes" T-LABEL
+   BUILD-SYNTH
+   SYNTH-PATH SAFET:LOAD                        \ ( c )
+   SAFET:DETACH-MAPPING                         \ ( c m1 )
+   swap SAFET:DETACH-MAPPING                    \ ( m1 c m2 )
+   SAFET-MAP:LIVE 1 T=                          \ still exactly one kernel mapping
+   SAFET:LIVE-OWNERS 3 T=                       \ census + two mapping owners
+   0 MAP-OFF !  1 MAP-TAKE !
+   -1 SEEN-MAP-LEN !                            \ poison: the second mapping has no bytes
+   [: SEE-MAPPING ;] SAFET:WITH-MAPPING OPT-NONE
+   SEEN-MAP-LEN @ -1 T=
+   SAFET:UNMAP-MAPPING 0 RES-OK=                \ and gives nothing back to the kernel
+   SAFET-MAP:LIVE 1 T=                          \ the real mapping is untouched
+   SAFET:RELEASE                                \ ( m1 ) metadata only
+   SAFET-MAP:LIVE 1 T=
+   SAFET:UNMAP-MAPPING LEN-A @ RES-OK=          \ the FIRST mapping still owns it
+   SAFET-MAP:LIVE 0 T=
+   NO-LEAK
+   CLEANUP ;
+
+: TEST-DETACH-ADOPTED ( -- )
+   s" a mapping detached from an adopted image unmaps nothing" T-LABEL
+   J-ALPHA 16 BUILD-A
+   LEN-A @ {: before:n :}
+   IMG-A c@ {: byte0:n :}
+   A$ SAFET:LOAD-SPAN                           \ ( c ) owns no mapping
+   SAFET-MAP:LIVE 0 T=
+   SAFET:DETACH-MAPPING                         \ ( c m )
+   SAFET-MAP:LIVE 0 T=
+   SAFET:LIVE-OWNERS 2 T=
+   8 MAP-BYTE-AT LBRACE T=                      \ the caller's image is readable through it
+   swap                                         \ ( m c )
+   -1 SEEN-LEN !
+   s" alpha" ID-OF [: SEE-TENSOR ;] SAFET:WITH-TENSOR OPT-NONE   \ but not through the census
+   SEEN-LEN @ -1 T=
+   SAFET:COUNT 1 T=                             \ which still describes its tensor
+   s" alpha" SAFET:FIND OPT-VAL SAFET:NBYTES? 16 OPT=
+   SAFET:RELEASE                                \ ( m )
+   SAFET:UNMAP-MAPPING 0 RES-OK=                \ nothing was given back
+   NO-LEAK
+   LEN-A @ before T=                            \ the caller's image survived untouched
+   IMG-A c@ byte0 T=
+   A$ SAFET:LOAD-SPAN CHECK-ALPHA SAFET:RELEASE ;
+
+: TEST-DETACH-FAILED ( -- )
+   s" a failed load leaves a live census able to detach its mapping" T-LABEL
+   BUILD-SYNTH
+   SYNTH-PATH SAFET:LOAD                        \ ( c ) the live, mapped census
+   J-BADJSON 0 BUILD-B
+   SAFET:OPEN B$ SAFET:ADOPT                    \ ( c sB )
+   [: SAFET:PARSE ;] catch {: code:n :}
+   code SAFET:E-JSON T=
+   SAFET:CLOSE                                  \ ( c )
+   SAFET-MAP:LIVE 1 T=                          \ the rejection took nothing from it
+   SAFET:LIVE-OWNERS 1 T=
+   CHECK-MAP-OFFSETS                            \ and it still answers both frames
+   SAFET:DETACH-MAPPING                         \ ( c m ) the retry succeeds
+   swap CHECK-DETACHED-CENSUS
+   SAFET:RELEASE                                \ ( m )
+   SAFET:UNMAP-MAPPING LEN-A @ RES-OK=
+   NO-LEAK
+   CLEANUP ;
+
 \ ---- checker-enforced lifetime rules ---------------------------------------
 : TEST-LINEAR-OWNERSHIP ( -- )
    s" a session cannot be duplicated, dropped, or stored" T-LABEL
@@ -493,6 +700,45 @@ variable BIG-LEN
    s" a census is released exactly once and never unmapped twice" T-LABEL
    s" STT-BAD-DOUBLE-RELEASE ( SAFET:census -- ) SAFET:RELEASE SAFET:RELEASE" REJECTED
    s" STT-BAD-RELEASE-THEN-READ ( SAFET:census -- n ) SAFET:RELEASE SAFET:COUNT" REJECTED ;
+
+: TEST-MAPPING-OWNERSHIP ( -- )
+   s" a mapping cannot be duplicated, dropped, or stored" T-LABEL
+   s" STT-BAD-MAPPING-DUP ( SAFET:mapping -- SAFET:mapping SAFET:mapping ) dup" REJECTED
+   s" STT-BAD-MAPPING-DROP ( SAFET:mapping -- ) drop" REJECTED
+   s" STT-BAD-MAPPING-STORE ( SAFET:mapping ptr n -- ) !" REJECTED
+   s" a detach keeps its census and an unmap consumes its mapping" T-LABEL
+   s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:census -- SAFET:mapping ) SAFET:DETACH-MAPPING" REJECTED
+   s" STT-BAD-UNMAP-KEEPS ( SAFET:mapping -- SAFET:mapping result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-DOUBLE-UNMAP ( SAFET:mapping -- result<n,n> result<n,n> ) SAFET:UNMAP-MAPPING SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-UNMAP-THEN-READ ( SAFET:mapping -- result<n,n> SAFET:mapping option<n> ) SAFET:UNMAP-MAPPING SAFET:WITH-MAPPING" REJECTED
+   s" the three owner tokens are not interchangeable" T-LABEL
+   s" STT-BAD-MAPPING-RELEASE ( SAFET:mapping -- ) SAFET:RELEASE" REJECTED
+   s" STT-BAD-MAPPING-CLOSE ( SAFET:mapping -- ) SAFET:CLOSE" REJECTED
+   s" STT-BAD-CENSUS-UNMAP ( SAFET:census -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-SESSION-DETACH-MAP ( SAFET:session -- SAFET:session SAFET:mapping ) SAFET:DETACH-MAPPING" REJECTED
+   s" STT-BAD-MAPPING-COUNT ( SAFET:mapping -- SAFET:mapping n ) SAFET:COUNT" REJECTED
+   s" a cleanup result cannot be dropped or read as a bare number" T-LABEL
+   s" STT-BAD-UNMAP-IGNORED ( SAFET:mapping -- ) SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-UNMAP-RAW ( SAFET:mapping -- n ) SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-UNMAP-ARITH ( SAFET:mapping -- n ) SAFET:UNMAP-MAPPING 1 +" REJECTED
+   s" no mapping reader answers without its mapping" T-LABEL
+   s" STT-BAD-AMBIENT-UNMAP ( -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-AMBIENT-DETACH ( -- SAFET:mapping ) SAFET:DETACH-MAPPING" REJECTED
+   s" the mapping surface really does resolve (control)" T-LABEL
+   s" STT-OK-DETACH ( SAFET:census -- SAFET:census SAFET:mapping ) SAFET:DETACH-MAPPING" ACCEPTED
+   s" STT-OK-UNMAP ( SAFET:mapping -- result<n,n> ) SAFET:UNMAP-MAPPING" ACCEPTED
+   s" STT-OK-MAP-OFFSET ( SAFET:census n -- SAFET:census option<n> ) SAFET:MAP-OFFSET?" ACCEPTED
+   s" the mapping record and the no-image state stay private" T-LABEL
+   s" STT-BAD-MINT-MAPPING ( ptr u8 -- SAFET:mapping ) SAFET:MINT-MAPPING" UNRESOLVED
+   s" STT-BAD-MAPPING-REC ( SAFET:mapping -- SAFET:mapping ptr n ) SAFET:MAPPING>REC" UNRESOLVED
+   s" STT-BAD-TAKE-MAPPING ( SAFET:mapping -- ptr n ) SAFET:TAKE-MAPPING" UNRESOLVED
+   s" STT-BAD-HAS-IMG ( SAFET:census -- SAFET:census bool ) SAFET:HAS-IMG?" UNRESOLVED
+   s" STT-BAD-BYTES-OK ( SAFET:census n -- SAFET:census bool ) SAFET:BYTES-OK?" UNRESOLVED
+   s" no mapping word hands back a raw pointer" T-LABEL
+   s" STT-BAD-MAP-BASE ( SAFET:mapping -- SAFET:mapping ptr u8 ) SAFET:MAP-BASE" UNRESOLVED
+   s" an offset reader returns option, never a -1 sentinel" T-LABEL
+   s" STT-BAD-MAP-OFFSET-RAW ( SAFET:census n -- SAFET:census n ) SAFET:MAP-OFFSET?" REJECTED
+   s" STT-BAD-MAP-OFFSET-SENTINEL ( SAFET:census n -- SAFET:census bool ) SAFET:MAP-OFFSET? -1 =" REJECTED ;
 
 : TEST-NO-AMBIENT-STATE ( -- )
    s" no census reader answers without its census" T-LABEL
@@ -572,7 +818,13 @@ variable BIG-LEN
    TEST-CAPACITY          NO-LEAK
    TEST-TWO-MODELS        NO-LEAK
    TEST-DISPOSAL          NO-LEAK
+   TEST-MAP-OFFSET        NO-LEAK
+   TEST-DETACH-MAPPING    NO-LEAK
+   TEST-DETACH-TWICE      NO-LEAK
+   TEST-DETACH-ADOPTED    NO-LEAK
+   TEST-DETACH-FAILED     NO-LEAK
    TEST-LINEAR-OWNERSHIP
+   TEST-MAPPING-OWNERSHIP
    TEST-NO-AMBIENT-STATE
    TEST-SEALED-REPRESENTATION
    TEST-OPTION-DISCIPLINE

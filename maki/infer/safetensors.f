@@ -12,8 +12,29 @@
 \ parsed interleaved without cross-talk and a session that fails leaves every
 \ other live session byte-identical.
 \
-\ The two tokens are DEFLINEAR, so the checker - not a runtime flag - enforces
-\ the lifetime rules: a session or census cannot be duplicated, silently
+\ MAPPED RESIDENCY (the third owner). The residency layer wants the checkpoint's
+\ BYTES to outlive the census that described them: it copies each tensor into a
+\ device buffer and then wants the tensor metadata gone while the source mapping
+\ stays alive for the rest of the copy. DETACH-MAPPING is that transfer. It moves
+\ the file mapping out of a census into its own linear `SAFET:mapping` owner and
+\ leaves the census answering metadata (COUNT / FIND / DTYPE? / dims / NBYTES? /
+\ MAP-OFFSET?) but no longer answering BYTES. Reading the tensors afterwards is
+\ MAP-OFFSET? (where the tensor sits inside the mapping) plus WITH-MAPPING (the
+\ mapping's own scoped bytes); UNMAP-MAPPING ends the mapping's life. The two
+\ owners are then disposed independently and in either order.
+\
+\ TWO OFFSET FRAMES, AND WHY BOTH EXIST. safetensors data_offsets are relative to
+\ the DATA SECTION, and that is what BEGIN? / END? report, because that is what
+\ the file says and what the format's own overlap and alignment rules are stated
+\ in. A mapping, though, starts at file byte 0, so a tensor's first byte inside
+\ the mapping is 8 + header_len + begin - which is what MAP-OFFSET? reports.
+\ Handing a BEGIN? value to a WITH-MAPPING body reads 8 + header_len bytes too
+\ early, i.e. inside the JSON header, and the bytes look plausible. Neither
+\ reader is a substitute for the other and each says its frame in its own stack
+\ comment.
+\
+\ The three tokens are DEFLINEAR, so the checker - not a runtime flag - enforces
+\ the lifetime rules: a session, census or mapping cannot be duplicated, silently
 \ dropped, stored, detached twice, closed twice, or used after it was consumed.
 \ Each session owns exactly one private memory block (allocated through
 \ lib/memory.f, see BLOCK-BYTES) holding its geometry, staging rows, name arena,
@@ -26,15 +47,18 @@
 \ body or the copying COPY-DATA? / COPY-NAME? readers, so an address never
 \ appears in a public output row and cannot be kept by accident.
 \
-\ The scoped span is ADVISORY, not enforced. Nothing stops a WITH-TENSOR body
-\ from deliberately stashing the span into a variable and reading it after
-\ RELEASE; that reads freed memory and crashes, exactly as it would in any
-\ language without region types. Escaping the scope takes a deliberate stash -
-\ the checker cannot yet express "this pointer may not outlive this call", so
-\ the guarantee here is the shape of the interface, not a proof. Closing that
-\ gap needs the pointer-lifetime / region-type checker capability, tracked by
-\ the capability dot the orchestrator is queuing for it; when that lands,
-\ WITH-TENSOR's span becomes lifetime-bounded and this note goes away.
+\ The scoped span is ADVISORY, not enforced. Nothing stops a WITH-TENSOR or
+\ WITH-MAPPING body from deliberately stashing the span into a variable and
+\ reading it after RELEASE or UNMAP-MAPPING; that reads freed memory and
+\ crashes, exactly as it would in any language without region types. Escaping
+\ the scope takes a deliberate stash - the checker cannot yet express "this
+\ pointer may not outlive this call", so the guarantee here is the shape of the
+\ interface, not a proof. Closing that gap needs the pointer-lifetime /
+\ region-type checker capability, tracked by the capability dot the orchestrator
+\ is queuing for it; when that lands, both WITH- spans become lifetime-bounded
+\ and this note goes away. The same wording applies to WITH-MAPPING deliberately:
+\ its span is exactly as advisory as WITH-TENSOR's and rests on the same missing
+\ capability, so it is claimed no more strongly here than it is there.
 \
 \ FORMAT. A safetensors file is: an 8-byte little-endian u64 HEADER LENGTH, then
 \ that many bytes of a single JSON object mapping each tensor NAME -> a small
@@ -108,6 +132,7 @@ require lib/fs.f                          \ FILE-SIZE, FS-PATHZ, FS-U64@, EXISTS
 require lib/string.f                      \ STR=, BYTE+, BYTE-COPY
 require lib/memory.f                      \ MEM: block allocation for one session
 require lib/adt/option.f                  \ option<n> for every id-addressed reader
+require lib/adt/result.f                  \ result<n,n> for UNMAP-MAPPING's cleanup outcome
 require lib/json-read.f                   \ JR: streaming JSON pull reader
 
 \ ---------------------------------------------------------------------------
@@ -193,9 +218,10 @@ public
 3 constant DT-U32
 4 constant DT-I32
 
-\ ---- the two owner tokens --------------------------------------------------
+\ ---- the three owner tokens ------------------------------------------------
 DEFLINEAR SAFET:session        \ one open, unpublished load transaction
 DEFLINEAR SAFET:census         \ one published, immutable tensor census
+DEFLINEAR SAFET:mapping        \ one file mapping detached out of a census
 
 private
 
@@ -216,9 +242,14 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 1 constant KEY-IDX             \ ptr u8: current JSON member-key span pointer
 2 cells constant MAP-LEN-OFF   \ image byte length
 3 cells constant OWNS-MAP-OFF  \ 1 when disposal must unmap the image
-4 cells constant HAS-IMG-OFF   \ 1 once an image was mapped or adopted
+4 cells constant HAS-IMG-OFF   \ 1 while this block HAS an image: set by MAP-FILE
+                               \ or ADOPT, cleared again by DETACH-MAPPING. It is
+                               \ what the session's ordering rules read and what
+                               \ byte access checks after a mapping was detached.
 5 cells constant HDR-LEN-OFF   \ JSON header byte length (the leading u64)
-6 cells constant DATA-LEN-OFF  \ data-section byte length (map_len - 8 - header_len)
+6 cells constant DATA-LEN-OFF  \ data-section byte length (map_len - 8 - header_len);
+                               \ file geometry like HDR-LEN-OFF, so it survives
+                               \ DETACH-MAPPING even though MAP-LEN-OFF does not
 7 cells constant N-OFF         \ PUBLISHED tensor count (written only by DETACH)
 8 cells constant STAGE-OFF     \ staged rows during a parse
 9 cells constant BUMP-OFF      \ name-arena bump cursor
@@ -255,13 +286,27 @@ JR-OFF JR:STORAGE-BYTES + constant BLOCK-BYTES
 5 constant C-BEG               \ data_offsets begin (data-section relative)
 6 constant C-END               \ data_offsets end
 
+\ ---- one mapping record ----------------------------------------------------
+\ A detached mapping outlives the census it came from, so it cannot borrow a
+\ cell of the census block - RELEASE frees that block whenever the caller likes,
+\ including before UNMAP-MAPPING. The mapping therefore owns a three-cell record
+\ of its own, allocated by DETACH-MAPPING and freed by UNMAP-MAPPING, holding
+\ exactly what giving the mapping back to the kernel needs: where it starts, how
+\ long it is, and whether this process is the one that mapped it. Cell 0 holds a
+\ pointer and is addressed with `ptr-field` (a cell INDEX); the other two are
+\ byte offsets used with `+`, exactly like the session block above.
+0 constant MR-BASE-IDX         \ ptr u8: first byte of the mapping
+1 cells constant MR-LEN-OFF    \ mapping byte length
+2 cells constant MR-OWNS-OFF   \ 1 when UNMAP-MAPPING must unmap these bytes
+3 cells constant MR-BYTES
+
 \ ---- audited representation boundary ---------------------------------------
-\ Seven private leaves, one abstraction: minting an owner token from its block,
+\ Ten private leaves, one abstraction: minting an owner token from its block,
 \ reading the block back out of a token, retyping a validated session as a
 \ census, consuming a token to reach its block for disposal, and the block's byte
 \ view. The tokens ARE their blocks, so every leaf is an identity or a
 \ duplication of one cell; the checker cannot express "this pointer is a live
-\ SAFET block". All seven stay package-private and unreachable from outside
+\ SAFET block". All ten stay package-private and unreachable from outside
 \ (proved in safetensors-test.f).
 TRUSTED: MINT-SESSION ( ptr u8 -- SAFET:session ) ;
 
@@ -276,6 +321,13 @@ TRUSTED: CENSUS>BLOCK ( SAFET:census -- SAFET:census ptr n )
    dup ;
 
 TRUSTED: TAKE-CENSUS ( SAFET:census -- ptr n ) ;
+
+TRUSTED: MINT-MAPPING ( ptr u8 -- SAFET:mapping ) ;
+
+TRUSTED: MAPPING>REC ( SAFET:mapping -- SAFET:mapping ptr n )
+   dup ;
+
+TRUSTED: TAKE-MAPPING ( SAFET:mapping -- ptr n ) ;
 
 \ The block's byte view. Package-private and applied only to a block address
 \ that one of the leaves above just produced.
@@ -315,6 +367,17 @@ TRUSTED: BLOCK>BYTES ( ptr n -- ptr u8 ) ;
 : ID-OK? ( ptr n n -- bool ) {: st:ptr id:n :}
    id 0 >= id st N-OFF + @ < and ;
 
+: HAS-IMG? ( ptr n -- bool ) {: st:ptr :}
+   st HAS-IMG-OFF + @ 0 <> ;
+
+\ The gate on every reader that hands out tensor BYTES. A valid id is not enough:
+\ once DETACH-MAPPING has moved the image to a SAFET:mapping owner, this block no
+\ longer has any claim on those bytes, and the mapping may already be unmapped.
+\ Metadata readers deliberately do NOT ask this - a census keeps describing its
+\ tensors after its mapping leaves, which is the whole point of the transfer.
+: BYTES-OK? ( ptr n n -- bool ) {: st:ptr id:n :}
+   st id ID-OK?  st HAS-IMG?  and ;
+
 \ ---- block lifetime --------------------------------------------------------
 \ Live session/census blocks. Pure accounting, exactly like SAFET-MAP:LIVE:
 \ nothing in the load path reads it and it decides nothing, but it lets a caller
@@ -343,6 +406,29 @@ variable LIVE-N
    st BLOCK>BYTES BLOCK-LEN MEM:RELEASE-BYTES
    -1 LIVE-N +!
    owns 0 <> if base len SAFET-MAP:UNMAP then ;
+
+\ ---- mapping records -------------------------------------------------------
+: MR-ALLOC ( -- CAD-NUM:alloc-byte-len )
+   MR-BYTES MEM:BYTES-ALLOC-LEN ;
+
+: MR-FILL ( ptr n ptr n -- ) {: mr:ptr st:ptr :}   \ copy a block's image cells into a record
+   st IMG               mr MR-BASE-IDX ptr-field !
+   st MAP-LEN-OFF + @   mr MR-LEN-OFF + !
+   st OWNS-MAP-OFF + @  mr MR-OWNS-OFF + ! ;
+
+\ The other half of the transfer. Clearing HAS-IMG-OFF is what makes byte access
+\ fail closed afterwards (BYTES-OK?), and clearing OWNS-MAP-OFF is what sends the
+\ block's later CLOSE / RELEASE down DISPOSE's metadata-only branch. The base and
+\ length go too, so nothing that could reconstruct an address survives here.
+: CLEAR-IMG ( ptr n -- ) {: st:ptr :}
+   NULL$ drop  st IMG-IDX ptr-field !
+   0 st MAP-LEN-OFF + !
+   0 st OWNS-MAP-OFF + !
+   0 st HAS-IMG-OFF + ! ;
+
+: UNMAP-BODY ( ptr u8 n -- ptr u8 n ) {: base:ptr len:n :}   \ stack-preserving, so `catch` accepts it
+   base len SAFET-MAP:UNMAP
+   base len ;
 
 \ ---- error remap: JR structural faults -> one loader surface ---------------
 : JR-ERR? ( n -- bool )
@@ -604,6 +690,84 @@ public
 : RELEASE ( SAFET:census -- )
    TAKE-CENSUS DISPOSE ;
 
+\ ---- mapped residency: moving the file mapping out of a census -------------
+\ Hands the census's image to a new SAFET:mapping owner and leaves the census
+\ describing its tensors without owning any bytes. The transfer is ATOMIC and
+\ TERMINAL: the record is allocated BEFORE any cell is written, so a memory
+\ failure leaves the census exactly as it was, and once the cells are cleared
+\ there is nothing left in the census to transfer again.
+\
+\ It REJECTS nothing of its own: there is no state a caller can put a census in
+\ that makes this word refuse. Detaching from a census that owns no mapping - one
+\ built by ADOPT or LOAD-SPAN, or one whose mapping already left - yields a
+\ mapping that owns nothing: UNMAP-MAPPING gives it back to no one and the
+\ caller's bytes are untouched. That is the same two-outcome rule RELEASE has
+\ always had, read from the same OWNS-MAP-OFF cell, so a second DETACH-MAPPING
+\ cannot hand out a second claim on the same bytes.
+\
+\ It can still THROW, and that is not the same thing. The record allocation can
+\ fail with E-MEM-MAP before any cell is written. The census is byte-identical
+\ and still owns its mapping when that happens - but the throw unwinds the stack
+\ past the census token, and the checker cannot see a linear owner abandoned that
+\ way, so a caller with nothing between DETACH-MAPPING and the throw's landing
+\ site strands the census and its mapping. Guard it the way LOAD and LOAD-SPAN
+\ guard their sessions, with a stack-preserving quotation under `catch` that
+\ disposes the owner on the failing path; see the linear-owners-and-catch note in
+\ docs/forth.md. Hand-writing that guard at every call site is the reason the
+\ linear-scope combinator (a WITH- form that disposes its owner on the throw
+\ path) is tracked as its own checker capability dot; when it lands this
+\ paragraph becomes one combinator call.
+: DETACH-MAPPING ( SAFET:census -- SAFET:census SAFET:mapping )
+   CENSUS>BLOCK {: st:ptr :}
+   MR-ALLOC MEM:ALLOC-BYTES drop MINT-MAPPING
+   1 LIVE-N +!
+   MAPPING>REC {: mr:ptr :}
+   mr st MR-FILL
+   st CLEAR-IMG ;
+
+\ Zero-copy scoped access to the whole mapping, the mapping-side twin of
+\ WITH-TENSOR: the body sees the mapping's bytes, and MAP-OFFSET? says where in
+\ them each tensor starts. This works for an adopted image too - the bytes are
+\ the caller's rather than the kernel's, but they are just as readable. For that
+\ adopted case the mapping token BORROWS the caller's memory rather than owning
+\ it, so the caller's buffer must outlive the mapping; nothing here enforces
+\ that, and it is the same missing pointer-lifetime / region-type checker
+\ capability named in this file's header. NONE (body not run) when the mapping
+\ holds no bytes at all, which is what DETACH-MAPPING hands back for a census
+\ whose image has already left.
+\ The span is advisory - see the pointer-lifetime /
+\ region-type note in this file's header for the capability that will make it
+\ enforced; it is claimed no more strongly here than for WITH-TENSOR.
+\ typed-local-lint: allow-bare-local - `body` carries the quotation effect
+\ [ SAFET:mapping ptr u8 n -- SAFET:mapping ], which a local annotation cannot express.
+: WITH-MAPPING ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping option<n> )
+   {: body :}
+   MAPPING>REC {: mr:ptr :}
+   mr MR-LEN-OFF + @ {: len:n :}
+   len 0 <= if OPTION:NONE exit then
+   mr MR-BASE-IDX ptr-field @ len body execute
+   len OPTION:SOME ;
+
+\ Ends a mapping's life and reports the outcome as a value instead of a throw.
+\ SAFET-MAP:UNMAP stays throw-based like every other syscall wrapper in that
+\ package; the conversion happens HERE, at the one site that calls it on this
+\ path, so a caller disposing of several owners can see a failed munmap without
+\ unwinding past the owners it has not disposed of yet. `ok` carries the byte
+\ count given back (0 for a mapping that owned nothing), `err` the named
+\ E-MEM-UNMAP code. Like DISPOSE, it reads the record and frees it BEFORE the
+\ syscall, so a failing munmap still cannot leak the record.
+: UNMAP-MAPPING ( SAFET:mapping -- result<n,n> )
+   TAKE-MAPPING {: mr:ptr :}
+   mr MR-BASE-IDX ptr-field @ {: base:ptr :}
+   mr MR-LEN-OFF + @ {: len:n :}
+   mr MR-OWNS-OFF + @ {: owns:n :}
+   mr BLOCK>BYTES MR-ALLOC MEM:RELEASE-BYTES
+   -1 LIVE-N +!
+   owns 0= if 0 RESULT:OK exit then
+   base len [: UNMAP-BODY ;] catch {: code:n :}
+   2drop
+   code 0= if len RESULT:OK else code RESULT:ERR then ;
+
 \ ---- whole-file convenience paths ------------------------------------------
 \ Both convenience paths guard EVERYTHING that can throw after OPEN. Taking the
 \ image is inside the guarded region, not before it: MAP-FILE alone throws on a
@@ -646,11 +810,14 @@ public
 : MAX-TENSORS ( -- n )                         \ the largest census this loader publishes
    CAP ;
 
-\ Leak accounting, not load state: it answers how many sessions and censuses have
-\ been opened and not yet disposed, and nothing about any of them. A throw
-\ unwinds the stack past a linear owner without the checker noticing, so this is
-\ how a caller (in practice the test suite) checks that every OPEN reached its
-\ CLOSE or RELEASE. Pair it with SAFET-MAP:LIVE for the mapping half.
+\ Leak accounting, not load state: it answers how many sessions, censuses and
+\ detached mappings have been created and not yet disposed, and nothing about any
+\ of them. A throw unwinds the stack past a linear owner without the checker
+\ noticing, so this is how a caller (in practice the test suite) checks that every
+\ OPEN reached its CLOSE or RELEASE and every DETACH-MAPPING reached its
+\ UNMAP-MAPPING. Pair it with SAFET-MAP:LIVE, which counts kernel mappings rather
+\ than owners: DETACH-MAPPING raises this count by one while leaving that one
+\ alone, because it moves a mapping between owners without mapping anything new.
 : LIVE-OWNERS ( -- n )
    LIVE-N @ ;
 
@@ -658,7 +825,7 @@ public
 : COUNT ( SAFET:census -- SAFET:census n )
    CENSUS>BLOCK N-OFF + @ ;
 
-: MAP-LEN ( SAFET:census -- SAFET:census n )
+: MAP-LEN ( SAFET:census -- SAFET:census n )   \ 0 once DETACH-MAPPING took the image
    CENSUS>BLOCK MAP-LEN-OFF + @ ;
 
 : HDR-LEN ( SAFET:census -- SAFET:census n )
@@ -684,6 +851,20 @@ public
 : END? ( SAFET:census n -- SAFET:census option<n> )     \ data-section relative
    C-END COL? ;
 
+\ MAPPING-BASE relative, NOT data-section relative: the byte distance from the
+\ first byte of the mapping (the file's byte 0) to this tensor's first byte,
+\ i.e. 8 + header_len + begin. This is the frame a holder of SAFET:mapping
+\ needs, because WITH-MAPPING hands out the mapping base; BEGIN? / END? above
+\ are the other frame and the two differ by exactly the 8-byte length prefix
+\ plus the JSON header. Reading a mapping at a BEGIN? offset lands inside the
+\ header. It keeps answering after DETACH-MAPPING: the frame is arithmetic on
+\ the header geometry the census still holds, not access to any bytes.
+: MAP-OFFSET? ( SAFET:census n -- SAFET:census option<n> )   \ mapping-base relative
+   {: id:n :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? 0= if OPTION:NONE exit then
+   8 st HDR-LEN-OFF + @ +  st id C-BEG ROW@ +  OPTION:SOME ;
+
 : DIM? ( SAFET:census n n -- SAFET:census option<n> )
    {: id:n axis:n :}
    CENSUS>BLOCK {: st:ptr :}
@@ -700,10 +881,12 @@ public
    st id NAME-AT drop da nlen BYTE-COPY
    nlen OPTION:SOME ;
 
+\ NONE when the id is not a tensor of this census OR when this census no longer
+\ holds the image - a census whose mapping was detached copies out no bytes.
 : COPY-DATA? ( SAFET:census n ptr u8 n -- SAFET:census option<n> )   \ SOME copied length
    {: id:n da:ptr dcap:n :}
    CENSUS>BLOCK {: st:ptr :}
-   st id ID-OK? 0= if OPTION:NONE exit then
+   st id BYTES-OK? 0= if OPTION:NONE exit then
    dcap 0 < if OPTION:NONE exit then
    st id C-NB ROW@ {: nb:n :}
    dcap nb > if nb else dcap then {: take:n :}
@@ -712,15 +895,18 @@ public
 
 \ Zero-copy scoped access: the body sees the tensor's bytes inside the mapping
 \ the census owns. NONE (body not run) when the id is not a tensor of this
-\ census. The span is advisory - a body that deliberately stashes it and reads
-\ it after RELEASE reads freed memory; see the pointer-lifetime / region-type
-\ note in this file's header for the capability that will make it enforced.
+\ census, and NONE for EVERY id once DETACH-MAPPING has moved the image out -
+\ the census cannot lend bytes it no longer owns, and the mapping behind them
+\ may already have been unmapped. The span is advisory - a body that
+\ deliberately stashes it and reads it after RELEASE reads freed memory; see the
+\ pointer-lifetime / region-type note in this file's header for the capability
+\ that will make it enforced.
 \ typed-local-lint: allow-bare-local - `body` carries the quotation effect
 \ [ SAFET:census ptr u8 n -- SAFET:census ], which a local annotation cannot express.
 : WITH-TENSOR ( SAFET:census n [ SAFET:census ptr u8 n -- SAFET:census ] -- SAFET:census option<n> )
    {: id:n body :}
    CENSUS>BLOCK {: st:ptr :}
-   st id ID-OK? 0= if OPTION:NONE exit then
+   st id BYTES-OK? 0= if OPTION:NONE exit then
    st id C-NB ROW@ {: nb:n :}
    st id TENSOR-AT nb body execute
    nb OPTION:SOME ;
