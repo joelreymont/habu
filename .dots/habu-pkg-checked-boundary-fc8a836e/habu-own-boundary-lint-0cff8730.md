@@ -1,9 +1,11 @@
 ---
 title: Own boundary lint API
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "\"2026-07-23T03:47:22.647698+02:00\""
+closed-at: "2026-07-25T14:39:37.537569+02:00"
+close-reason: "Landed in master@origin as commit 2f20da1978fe 'Integrate CHECK cutover', reachable from 79c50e5a9dbf; squashed atomically with habu-cut-over-check-ac1b7cdf exactly as both contracts required. tools/checked-boundary-lint-core.f opens package CHECKED-BOUNDARY-LINT and publishes only RESET, JSON!, STRICT!, OUT-FD!, FILE and FINISH; tools/checked-boundary-lint-test-lib.f reopens the package for the private lifecycle probes including the zero-byte scan case; tools/check-test-lib.f no longer reads any provider-private UB state."
 ---
 
 Why: the checked-boundary provider and its six caller operations are global, and its file mapping can outlive the scan state on success or failure. Package ownership and mapping lifetime must land with every caller on one green tree.

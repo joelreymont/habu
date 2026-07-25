@@ -1,9 +1,11 @@
 ---
 title: Cut over CHECK session
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "\"2026-07-23T02:10:26.520974+02:00\""
+closed-at: "2026-07-25T14:39:16.453278+02:00"
+close-reason: "Landed in master@origin as commit 2f20da1978fe 'Integrate CHECK cutover', reachable from 79c50e5a9dbf. tools/check-core.f now opens package CHECK at line 27 with the six primitive TRUST axioms kept ahead of it; tools/check.f and tools/check-main.f call only CHECK:MAIN; test/gate-diagnostics-lib.f and tools/check-test-lib.f drive the public session words. Squashed atomically with its provider partner habu-own-boundary-lint-0cff8730 in the same commit, as both contracts required."
 blocks:
   - habu-own-boundary-lint-0cff8730
 ---

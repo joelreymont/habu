@@ -2263,3 +2263,53 @@ fits.
   so a skipped or half-finished measurement looks green. Count the stored
   samples as they are appended and make the complete count part of every
   verdict; then a dropped run fails closed instead of certifying nothing.
+- **A quiet measurement phase must refuse by construction, not by convention.**
+  The one place the JSON reader ratchets now run is scheduled outside the
+  numbered phases, after every parallel phase has drained and before the run is
+  judged, so the box is idle. That is only trustworthy because the phase proves
+  its own preconditions instead of trusting the schedule: a nonzero worker slot
+  identity proves the caller is already inside a fork worker and it refuses, a
+  caller with pool workers still in flight is refused, and a second call in one
+  gate process is refused with the turn claimed only after admission, so a
+  refused call cannot burn it. When a check depends on the rest of the system
+  being quiet, make the check test that quiet itself.
+- **A gate that exits nonzero is not the same as a gate that ran.** On master
+  79c50e5a, `package-diff-lint` throws `E-DIFF-SYNTAX` and exits 67 on any real
+  diff touching `src/core/checker.f` or `src/core/sumtype.f`, printing no
+  findings, so the mandatory package-ownership rule has never been applied to
+  the two largest core files; `error-code-lint` decides string membership by
+  counting quote characters, so one bare quote token silently skips every claim
+  in the rest of a file. Both look fine from the outside. Before trusting any
+  gate's verdict on a class of input, feed it a deliberately bad example of that
+  exact class on the same command path and confirm it reports the finding you
+  expect - a clean run and an opaque throw are indistinguishable in a log.
+- **Orchestrator scratch state under /tmp does not survive a reboot.** The
+  2026-07-25 reboot destroyed a 45-item control queue that existed only as a
+  file in a session scratch directory; the only survivors were the two items
+  appended after the reboot and the items already converted into dots. Durable
+  coordination state - work queues, contracts waiting to be written up, rulings
+  not yet applied - belongs in the repository under `.blackboard/` or in the
+  persistent memory directory. Treat anything under /tmp as reproducible
+  working material, and convert a decision into a dot or a tracked file as soon
+  as it is made rather than at the end of a wave.
+- **Evidence before prose: a report line quoting tool output must be written
+  after reading that output.** A scheduler-lane worker asserted a gate number
+  from expectation before any log existed, then caught itself and re-verified
+  non-circularly. Computing the expected value and then asserting it was printed
+  is fabrication even when the number turns out to be right, because the claim
+  carries no information about what actually ran. Read first, quote second.
+- **Shared workspace state makes a reversible probe visible to concurrent
+  reviewers.** A field-owner-lane reviewer sampled a real-looking suite failure
+  at exactly the moment the worker was reinstalling the engine to probe
+  something, and the same failure reproduced 0 times out of 136 outside that
+  window. Run probes in throwaway tree copies rather than in a workspace someone
+  else may sample, and reconstruct the workspace timeline before calling any
+  intermittent failure a flake.
+- **Verify every identifier on a closure list against the tracker before acting
+  on it.** A metadata batch listed eight dots to close as landed; three of the
+  identifiers existed nowhere in `.dots`, while the work they described had in
+  fact shipped under different dots. Resolve each identifier first, then prove
+  the change is an ancestor of `master@origin` and that the file-level result
+  is actually present, and read the dot's own text for atomicity clauses: two
+  of the remaining dots said in their contracts that neither could close without
+  the other, which the list did not mention.

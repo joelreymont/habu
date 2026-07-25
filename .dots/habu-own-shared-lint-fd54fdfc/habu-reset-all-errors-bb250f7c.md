@@ -1,9 +1,11 @@
 ---
 title: Reset all-errors checker package scope
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-22T18:30:23.443984+02:00"
+closed-at: "2026-07-25T14:39:49.870442+02:00"
+close-reason: "Closed with habu-pkg-all-errors-86fd1b4a exactly as this dot's dispatch correction directed, because package-diff-lint proved a standalone change to the legacy global core could not be a valid commit. The fix landed in master@origin as commit 79c50e5a9dbf: CA-CHECK-FULL-SCOPE in tools/check-all-errors-core.f now calls CHECKER-END-PACKAGE after opening the rollback scope, so support replay and source verification run in neutral top-level package state and CHECKER-SCOPE-DONE restores the caller's exact package on both the clean and the throwing path."
 blocks:
   - habu-pkg-all-errors-86fd1b4a
 ---

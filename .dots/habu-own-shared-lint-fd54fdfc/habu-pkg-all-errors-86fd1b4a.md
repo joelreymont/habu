@@ -1,9 +1,11 @@
 ---
 title: Package all-errors core
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-22T17:33:12.806999+02:00"
+closed-at: "2026-07-25T14:39:49.849502+02:00"
+close-reason: "Landed in master@origin as commit 79c50e5a9dbf 'Package all-errors core and reset checker scope'. tools/check-all-errors-core.f opens package CHECK-ALL-ERRORS at line 15 and CA-CHECK-FULL-SCOPE now enters neutral top-level checker package state before replay. The commit message records the atomic landing with habu-pkg-all-errors-042245b9: retiring the global core API forced every caller body in tools/check-all-errors-test.f to change, so that file could not keep its package gate green unless it was packaged in the same change."
 blocks:
   - habu-pkg-all-errors-d32d59f8
   - habu-pkg-repair-hint-1b98c230

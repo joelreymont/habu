@@ -1,9 +1,11 @@
 ---
 title: Package all-errors tests
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-22T17:33:12.358342+02:00"
+closed-at: "2026-07-25T14:39:49.865150+02:00"
+close-reason: "Landed in master@origin as commit 79c50e5a9dbf 'Package all-errors core and reset checker scope', atomically with habu-pkg-all-errors-86fd1b4a as that commit message states. The pause note is discharged: the caller-package leakage the migration exposed was corrected by the neutral-scope change in the same commit, so the saved reviewed refactor of tools/check-all-errors-test.f landed with it."
 blocks:
   - habu-pkg-all-errors-86fd1b4a
 ---

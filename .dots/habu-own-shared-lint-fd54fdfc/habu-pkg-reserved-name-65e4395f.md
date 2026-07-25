@@ -1,12 +1,13 @@
 ---
 title: Package reserved-name lint core
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "\"2026-07-22T17:33:51.656025+02:00\""
+closed-at: "2026-07-25T14:39:37.559599+02:00"
+close-reason: "Landed in master@origin as commit f1bd0f227e4c 'Package reserved-name lint core', reachable from 79c50e5a9dbf, in the composed CHECK train the landing note required. tools/reserved-name-lint-core.f opens package RESERVED-NAME-LINT with a private body and publishes the six named API words; the CLI, tools/check-core.f, the packaged test library and CHECK's RESERVED-LIST-RUN call them qualified."
 blocks:
   - habu-pkg-reserved-name-c5424f85
-  - habu-pkg-remaining-legacy-39ffae5f
   - habu-cut-over-check-ac1b7cdf
 ---
 
