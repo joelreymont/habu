@@ -9,6 +9,299 @@
 \ The checker participant's release callback is total, like every other one: by
 \ the time the coordinator releases, publication has already happened and no
 \ participant is allowed to reject.
+\
+\ It also owns DECL-REJECT, the reject side of the same transaction: what a
+\ declaration reports when RUN rolls it back.  That package is defined first,
+\ because it depends on nothing else here.
+\
+\ ---------------------------------------------------------------------------
+\ DECL-REJECT — the shared reject packet for the unified declaration front ends.
+\
+\ Why it exists.  The legacy TYPEFAMILY/SUMTYPE/ENUM/PRODUCT definers keep a
+\ declaration context (sumtype.f TDK/TDN/TDT/TDW) and report it through
+\ render.f's TDECL-DIAG before the named code propagates, so a bad legacy
+\ declaration prints
+\     habu: bad enum declaration 'colour': duplicate variant at 'red'
+\ and, under --json-errors, the matching E-BAD-DECLARATION object.  The unified
+\ front ends (STRUCTURE-DECL:SD-RUN, ENUM-DECL:ED-RUN) threw the same codes with
+\ no message at all.  This package is the one surface both front ends raise
+\ through, so both produce that line from the SAME renderer.
+\
+\ It deliberately owns no renderer.  RENDER forwards to render.f's TDECL-DIAG,
+\ which is also what writes into the diagnostic capture buffer (RDIAG-APPEND).
+\ That is how tools/check-core.f's CHK-DECL-CAPTURE / CHK-DECL-FLUSH pair
+\ collects legacy declaration packets today, so a front-end packet reaches that
+\ capture through the same channel, in both the prose and the JSON leg, with no
+\ change to the check tool.
+\
+\ Scope of that claim, precisely.  What is proven is the CHANNEL: the suites arm
+\ the identical DIAG-JSON! / DIAG-BUFFER! pair the check tool arms and read the
+\ rendered packet back out of DIAG-BUFFER$.  It is NOT yet proven end to end
+\ through check-core, because check-core cannot reach these front ends at all
+\ today: CHK-ENUM-REGISTER drives the legacy CHECKER-DEFENUM, and STRUCTURE is
+\ not scanned by it.  A buffer-driven registration entry is the next prerequisite
+\ leaf; the end-to-end leg lands with it.
+\
+\ The code is never laundered.  GUARD renders the packet and then rethrows the
+\ code it caught, unchanged, so every reject class keeps the exact value the
+\ suites pin.
+\
+\ Why this file owns it.  The packet must be defined before its first consumer,
+\ structure-decl.f, and it needs nothing from the declaration-event transaction
+\ or the coordinator — only render.f, loaded far earlier in the checker prefix.
+\ This is the earliest packaged file in the declaration layer and the one that
+\ owns GENERATED-DECL:RUN, the exact boundary both front ends wrap, so the
+\ reject-reporting half of that boundary lives beside it and the whole layer
+\ below (decl-event.f, structure-make.f, both front ends) can arm reasons.
+\
+\ Reason selection.  A front end that detects the fault itself passes its own
+\ reason text with REJECT.  A fault raised deeper — by the family registry, the
+\ variant registry, the field record, or a transaction participant — arrives as
+\ a bare code, so REASON falls back to a text table keyed by that code.  An
+\ armed reason is honoured only when it was armed FOR the code that actually
+\ escaped; that is what stops a stale reason from being printed against an
+\ unrelated failure.
+\
+\ Nesting.  STRUCTURE and ENUM are top-level, interpret-only declaration
+\ keywords and never nest: one declaration is open at a time, so the packet is a
+\ single frame.  OPEN clears every field, which is what keeps a previous
+\ declaration's family name from leaking into the next declaration's diagnostic.
+\ Clause nesting WITHIN one declaration (a FIELD inside a VARIANT inside an
+\ ENUM) is not packet nesting: the family stays the declaration's family and
+\ only the offending token moves.
+\ ---------------------------------------------------------------------------
+package DECL-REJECT
+
+\ --- spans.  Four short byte slots hold the packet text.  They are copies, not
+\ borrowed spans: a declaration body spans several input lines, the engine
+\ refills its input buffer per line when the source is a stream, and the family
+\ name is read on the first line but rendered after a reject on a later one.  A
+\ borrowed span would render whatever bytes later occupied that buffer.
+4 constant SLOTS
+96 constant SPAN-CAP        \ per-slot bytes; a longer span is capped, never overruns
+3 constant MARK-LEN         \ bytes the truncation marker occupies inside SPAN-CAP
+46 constant MARK-BYTE       \ ASCII '.', repeated MARK-LEN times
+
+0 constant S-KIND           \ declaration kind word: "structure" / "enum"
+1 constant S-FAMILY         \ declared family name ("" before the name is parsed)
+2 constant S-TOKEN          \ offending token ("" when the fault has no token)
+3 constant S-REASON         \ short reason text
+
+create SPAN-BUF  SLOTS SPAN-CAP * allot
+create SPAN-LEN  SLOTS cells allot
+
+\ The one raw-memory boundary in this package.  A checked body cannot type the
+\ address arithmetic from a `create` region to a `ptr u8` span, exactly as
+\ structure-decl.f's PEND! / PEND@ pushback cells cannot be typed; every other
+\ word here is ordinary checked Habu.  SLOT! clamps to SPAN-CAP, so no caller can
+\ write past its slot regardless of the span it was handed.
+\
+\ A capped span is MARKED, not silently shortened: the last MARK-LEN bytes of the
+\ slot become "..." so the rendered packet says the value continued rather than
+\ presenting a prefix as if it were the whole name.  Silent truncation would
+\ report a different identifier than the source contains, which is strictly worse
+\ than the legacy definer's borrowed span; the marker keeps the bounded copy
+\ honest while still refusing to read memory the declaration no longer owns.
+TRUSTED: SLOT! ( ptr u8 n n -- ) {: a:ptr u:n s:n :}   \ span, slot
+   u SPAN-CAP > IF SPAN-CAP ELSE u THEN {: len:n :}
+   len s cells SPAN-LEN + !
+   s SPAN-CAP * SPAN-BUF + {: d:ptr :}
+   0 BEGIN dup len < WHILE
+      dup a + c@  over d + c!
+      1 +
+   REPEAT drop
+   u SPAN-CAP > IF
+      len MARK-LEN - BEGIN dup len < WHILE
+         MARK-BYTE over d + c!
+         1 +
+      REPEAT drop
+   THEN ;
+TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
+   s SPAN-CAP * SPAN-BUF +  s cells SPAN-LEN + @ ;
+
+\ render.f's declaration-diagnostic writer: the SAME producer the legacy
+\ definers report through, so prose, JSON, and the check tool's packet capture
+\ all behave identically for a unified declaration.
+TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
+
+\ --- reject codes this package can be asked to explain.  Re-declared package-
+\ locally with the owning name in the comment, exactly as structure-decl.f and
+\ enum-decl.f re-declare theirs: the global pre-hook constants that own these
+\ values are removed by the type-DSL cutover and do not survive the checked
+\ engine's fixpoint self-rebuild.
+7101 constant C-CASE        \ type-family.f E-TFAM-CASE
+7102 constant C-DUP         \ type-family.f E-TFAM-DUP
+7107 constant C-SYNTAX      \ sumtype.f E-TDECL-SYNTAX
+7108 constant C-ARITY       \ sumtype.f E-TDECL-ARITY
+7109 constant C-PAYLOAD     \ sumtype.f E-TDECL-PAYLOAD
+7110 constant C-NAME        \ sumtype.f E-TDECL-NAME
+7116 constant C-POLICY      \ sumtype.f E-TDECL-POLICY
+7117 constant C-RECURSIVE   \ sumtype.f E-TDECL-RECURSIVE
+7118 constant C-CAP         \ sumtype.f E-TDECL-CAP
+7119 constant C-DERIVE      \ sumtype.f E-TDECL-DERIVE
+7122 constant C-PF-ID       \ type-family.f E-PF-ID
+7123 constant C-PF-TX       \ type-family.f E-PF-TX
+7124 constant C-PF-OWNER    \ type-family.f E-PF-OWNER
+7125 constant C-PF-NAME     \ type-family.f E-PF-NAME
+7126 constant C-PF-SCHEMA   \ type-family.f E-PF-SCHEMA
+7127 constant C-PF-LAYOUT   \ type-family.f E-PF-LAYOUT
+7128 constant C-PF-FLAGS    \ type-family.f E-PF-FLAGS
+7161 constant C-EVENT-TX    \ decl-event.f E-DEV-TX
+7162 constant C-EVENT-STATE \ decl-event.f E-DEV-STATE
+7163 constant C-DUP-POLICY  \ decl-event.f E-DEV-DUP-POLICY
+7164 constant C-DUP-DERIVE  \ decl-event.f E-DEV-DUP-DERIVE
+7170 constant C-SEALED      \ declaration-transaction.f E-REGISTRATION-SEALED
+7171 constant C-PART-DEPTH  \ declaration-transaction.f E-PARTICIPANT-DEPTH
+7172 constant C-FIELD-SCOPE \ decl-event.f E-DEV-FIELD-SCOPE
+7173 constant C-FAMILY-SCOPE \ decl-event.f E-DEV-FAMILY-SCOPE
+7174 constant C-DICT-TX     \ generated-declaration-dictionary.f E-DICTIONARY-TX
+7175 constant C-DICT-CAP    \ generated-declaration-dictionary.f E-DICTIONARY-CAP
+7176 constant C-CTOR-ARM    \ E-CTOR-ARM, below in this file
+7190 constant C-MAKE-FAM    \ structure-make.f E-SM-FAM
+7191 constant C-MAKE-EMPTY  \ structure-make.f E-SM-EMPTY
+
+0 constant NO-CODE          \ no reason is armed
+
+variable ARMED              \ the code the armed reason explains (NO-CODE = none)
+
+: FOUND ( -- bool ) 0 0= ;
+: MISSING ( -- bool ) 0 0= 0= ;
+: NOTHING$ ( -- ptr u8 n ) s" " ;
+: FALLBACK$ ( -- ptr u8 n ) s" declaration failed" ;
+
+\ --- reason table, grouped by the registry that raises each code.  Each group
+\ answers the text and a found flag, so an unmapped code stays distinguishable
+\ from a mapped one instead of silently reading as the default.
+: REASON-GRAMMAR ( n -- ptr u8 n bool ) {: code:n :}
+   code C-SYNTAX    = IF s" malformed declaration"        FOUND EXIT THEN
+   code C-ARITY     = IF s" arity must be a decimal, at most 23 parameters" FOUND EXIT THEN
+   code C-PAYLOAD   = IF s" unknown payload type"         FOUND EXIT THEN
+   code C-POLICY    = IF s" unknown layout policy"        FOUND EXIT THEN
+   code C-RECURSIVE = IF s" invalid layout policy for recursive sum" FOUND EXIT THEN
+   code C-CAP       = IF s" declaration too long"         FOUND EXIT THEN
+   \ 7119 reaching the table (rather than an armed front-end reason) means the
+   \ derive requirement failed later, in the constructor participant's payload
+   \ role and equality checks, not that the feature token was unknown.
+   code C-DERIVE    = IF s" a payload type or role has no derived equality" FOUND EXIT THEN
+   NOTHING$ MISSING ;
+
+: REASON-NAME ( n -- ptr u8 n bool ) {: code:n :}
+   \ Both front ends arm "reserved name" at their own name gates, so 7110
+   \ reaching this table was raised by a deeper owner: the variant-name gate
+   \ (a reserved tail or a family-name collision) or the constructor collide
+   \ check (a variant spelled like a word the DERIVE clause generates). The text
+   \ has to be true of both.
+   code C-NAME = IF s" name is reserved or already taken" FOUND EXIT THEN
+   code C-CASE = IF s" name must be a lowercase tail"     FOUND EXIT THEN
+   code C-DUP  = IF s" duplicate name in this package"    FOUND EXIT THEN
+   NOTHING$ MISSING ;
+
+: REASON-FIELD ( n -- ptr u8 n bool ) {: code:n :}
+   code C-PF-ID     = IF s" invalid or uncommitted field id"         FOUND EXIT THEN
+   code C-PF-TX     = IF s" stale or out-of-order field transaction" FOUND EXIT THEN
+   code C-PF-OWNER  = IF s" invalid field owner family or variant"   FOUND EXIT THEN
+   code C-PF-NAME   = IF s" reserved field name"                     FOUND EXIT THEN
+   code C-PF-SCHEMA = IF s" malformed or owner-incompatible field schema" FOUND EXIT THEN
+   code C-PF-LAYOUT = IF s" invalid field layout metadata"           FOUND EXIT THEN
+   code C-PF-FLAGS  = IF s" undefined field flag bits"               FOUND EXIT THEN
+   NOTHING$ MISSING ;
+
+: REASON-TXN ( n -- ptr u8 n bool ) {: code:n :}
+   code C-EVENT-TX     = IF s" stale or out-of-order declaration event" FOUND EXIT THEN
+   code C-EVENT-STATE  = IF s" field publication broke field-id contiguity" FOUND EXIT THEN
+   code C-DUP-POLICY   = IF s" a second POLICY clause in one declaration" FOUND EXIT THEN
+   code C-DUP-DERIVE   = IF s" the same DERIVE feature twice in one declaration" FOUND EXIT THEN
+   code C-SEALED       = IF s" declaration registration is sealed"   FOUND EXIT THEN
+   code C-PART-DEPTH   = IF s" declaration participant depth mismatch" FOUND EXIT THEN
+   code C-FIELD-SCOPE  = IF s" field is outside this declaration"    FOUND EXIT THEN
+   code C-FAMILY-SCOPE = IF s" declaration does not own this family" FOUND EXIT THEN
+   code C-DICT-TX      = IF s" generated-name transaction is out of order" FOUND EXIT THEN
+   code C-DICT-CAP     = IF s" generated-name table is full"         FOUND EXIT THEN
+   code C-CTOR-ARM     = IF s" family cannot own generated constructors" FOUND EXIT THEN
+   code C-MAKE-FAM     = IF s" family cannot own generated make/unmake" FOUND EXIT THEN
+   code C-MAKE-EMPTY   = IF s" a constructed family needs at least one field" FOUND EXIT THEN
+   NOTHING$ MISSING ;
+
+: CODE-REASON ( n -- ptr u8 n ) {: code:n :}
+   code REASON-GRAMMAR IF EXIT THEN 2drop
+   code REASON-NAME    IF EXIT THEN 2drop
+   code REASON-FIELD   IF EXIT THEN 2drop
+   code REASON-TXN     IF EXIT THEN 2drop
+   FALLBACK$ ;
+
+\ An armed reason describes ONE code.  If a different code escaped, the arming
+\ was for a fault that did not happen and the table answers instead.
+: PICK-REASON ( n -- ptr u8 n ) {: code:n :}
+   ARMED @ code = IF S-REASON SLOT@ EXIT THEN
+   code CODE-REASON ;
+
+: RENDER ( n -- ) {: code:n :}
+   S-KIND SLOT@  S-FAMILY SLOT@  S-TOKEN SLOT@  code PICK-REASON  DIAG ;
+
+public
+
+\ OPEN ( kind -- ) : start one declaration's packet.  Every field is cleared, so
+\ nothing from the previous declaration can be reported against this one.
+: OPEN ( ptr u8 n -- )
+   S-KIND SLOT!
+   NOTHING$ S-FAMILY SLOT!
+   NOTHING$ S-TOKEN SLOT!
+   FALLBACK$ S-REASON SLOT!
+   NO-CODE ARMED ! ;
+
+\ The declared family name, as soon as the front end has validated it.
+: FAMILY! ( ptr u8 n -- ) S-FAMILY SLOT! ;
+
+\ The token the front end is currently acting on.  Front ends record every body
+\ token here, so a fault raised inside a registry or a participant still names
+\ the token that provoked it.
+\
+\ Recording a new token also disarms any armed reason.  An arming describes a
+\ fault expected AT one token; once the front end has moved on, that reason can
+\ no longer explain a failure, so it is retired by construction rather than
+\ left to be printed against something unrelated later in the declaration.
+: TOKEN! ( ptr u8 n -- )
+   S-TOKEN SLOT!
+   NO-CODE ARMED ! ;
+
+\ Point the offending token back at the family name.  A close-stage fault is a
+\ property of the whole declaration, not of the terminator token that happened
+\ to be read last, and the legacy definers anchor those on the family too.
+: AT-FAMILY ( -- ) S-FAMILY SLOT@ TOKEN! ;
+
+\ EXPECT ( reason code -- ) : arm the reason for a fault a deeper owner may
+\ raise, immediately before the call that can raise it.
+: EXPECT ( ptr u8 n n -- ) {: wa:ptr wu:n code:n :}
+   wa wu S-REASON SLOT!
+   code ARMED ! ;
+
+\ REJECT ( reason code -- code ) : the front end's own reject, for a fault at the
+\ token it has already recorded.  It ANSWERS the code instead of throwing it, so
+\ the call site spells `throw` itself: the reject reads as one line, and the
+\ thrown value is visible in the front-end source at every reject site rather
+\ than hidden behind a helper that could substitute a different one.
+: REJECT ( ptr u8 n n -- n ) {: wa:ptr wu:n code:n :}
+   wa wu code EXPECT
+   code ;
+
+\ GUARD ( body -- ) : run one declaration.  A reject is rendered through the
+\ shared declaration diagnostic and then rethrown with its exact code, so the
+\ transaction's rollback, the caller's error handling, and every pinned reject
+\ value are unchanged; only the missing message is added.
+: GUARD ( [ -- ] -- )
+   catch {: rc:n :}
+   rc 0= IF EXIT THEN
+   rc RENDER
+   rc throw ;
+
+\ Reflection for the suites: what the packet would report right now.
+: KIND$ ( -- ptr u8 n ) S-KIND SLOT@ ;
+: FAMILY$ ( -- ptr u8 n ) S-FAMILY SLOT@ ;
+: TOKEN$ ( -- ptr u8 n ) S-TOKEN SLOT@ ;
+: REASON$ ( n -- ptr u8 n ) PICK-REASON ;
+
+private
+;package
 
 \ The checker participant lives in this file, so it owns its identity and order
 \ outright. The three orders published below belong to participant modules that

@@ -83,6 +83,10 @@ package ENUM-DECL
 7116 constant E-POLICY      \ unknown or not-yet-supported layout policy
 7119 constant E-DERIVE      \ unknown or not-yet-supported derive feature
 7101 constant E-CASE        \ family name is not a lowercase canonical tail
+7102 constant E-DUP         \ duplicate family, variant, or field tail (type-family.f
+                            \ E-TFAM-DUP, raised by TFAM-DECL / SUMV-ADD / the field-event
+                            \ path; named here only so a reason can be armed before those
+                            \ calls)
 
 110 constant ASCII-N
 102 constant ASCII-F
@@ -168,9 +172,15 @@ variable ED-SI         \ private digit-scan index
    0 PEND-U !   0 TOK !   0 SEEN-VARIANT ! ;
 ED-RESET
 
-: ED-NEXT ( -- ptr u8 n )              \ next body token (honours one pushback)
+: ED-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
    PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
    parse-name ;
+\ Every body token is recorded as the packet's offending token as it is read, so
+\ a reject raised inside the family registry, the variant registry, the field
+\ record, or a transaction participant still names the token that provoked it
+\ without those owners knowing anything about the packet.
+: ED-NEXT ( -- ptr u8 n )              \ next body token, recorded for diagnostics
+   ED-RAW 2dup DECL-REJECT:TOKEN! ;
 : UNGET ( ptr u8 n -- ) PEND! ;
 
 \ ---------------------------------------------------------------------------
@@ -186,9 +196,10 @@ ED-RESET
    CON-CODE 0 <> ;
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
-   dup 0= IF 2drop E-SYNTAX throw THEN
-   2dup CANON? 0= IF 2drop E-CASE throw THEN
-   NAME-RESERVED? IF E-NAME throw THEN ;
+   dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup CANON? 0= IF
+      2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
+   NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
 \ --- mode-selection / arity token: a decimal within the shared alphabet.
 : ED-DIGIT? ( n -- bool ) dup 47 > swap 58 < and ;
@@ -210,10 +221,13 @@ ED-RESET
       ED-SI @ 1 + ED-SI !
    REPEAT
    nip ;                            \ drop a, keep acc
+\ Same wording the legacy definer prints for a bad arity token.
+: ARITY-WHY$ ( -- ptr u8 n ) s" arity must be a decimal, at most 23 parameters" ;
 : PARSE-ARITY ( ptr u8 n -- n )
-   dup 0= IF 2drop E-ARITY throw THEN
-   2dup ED-ALLDIG? 0= IF 2drop E-ARITY throw THEN
-   DEC dup TFAM-DECL-PARAM-COUNT > IF drop E-ARITY throw THEN ;
+   dup 0= IF 2drop s" missing arity" E-ARITY DECL-REJECT:REJECT throw THEN
+   2dup ED-ALLDIG? 0= IF 2drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN
+   DEC dup TFAM-DECL-PARAM-COUNT > IF
+      drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN ;
 
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
@@ -234,18 +248,19 @@ ED-RESET
    dup ASCII-N = IF drop CON-N ED-SCH-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL ED-SCH-CON EXIT THEN
    dup ASCII-R = IF drop CON-R ED-SCH-CON EXIT THEN
-   TFAM-DECL-CHAR>PARAM 0= IF drop E-PAYLOAD throw THEN
+   TFAM-DECL-CHAR>PARAM 0= IF
+      drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    dup ED-ARITY @ < IF ED-SCH-PARAM EXIT THEN
    drop
-   E-PAYLOAD throw ;
+   s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
-   dup 0= IF 2drop E-SYNTAX throw THEN
+   dup 0= IF 2drop s" missing payload type" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ptr" CORE-STR=CI IF 2drop ED-NEXT RECURSE ED-SCH-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
    2dup CON-CODE dup 0 <> IF nip nip ED-SCH-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 ED-SCH-APP EXIT THEN drop
-   2drop E-PAYLOAD throw ;
+   2drop s" unknown payload type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
    dup SCH-APP? IF SCH-A@ FAM-WIDTH@ EXIT THEN drop 1 ;
@@ -255,13 +270,14 @@ ED-RESET
 \ ordinal state) and mutates only the fresh family record.
 \ ---------------------------------------------------------------------------
 : HEADER-ORDER ( -- )                   \ header clauses precede the first variant
-   SEEN-VARIANT @ IF E-SYNTAX throw THEN ;
+   SEEN-VARIANT @ IF
+      s" header clause after the first variant" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
 : POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
-   dup 0= IF 2drop E-POLICY throw THEN
+   dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
    2dup s" stack-cell-tag" CORE-STR=CI IF 2drop LT-STACK EXIT THEN
    2dup s" packed-tag" CORE-STR=CI IF 2drop LT-PACKED EXIT THEN
-   2drop E-POLICY throw ;
+   2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
    ED-NEXT POLICY-CODE {: code:n :}
@@ -273,18 +289,23 @@ ED-RESET
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )                   \ derive needs a public, concrete (arity 0) family
-   FAM @ FAM-PUBLIC? 0= IF E-DERIVE throw THEN
-   FAM @ FAM-ARITY@ 0 <> IF E-DERIVE throw THEN ;
+   FAM @ FAM-PUBLIC? 0= IF
+      s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
+   FAM @ FAM-ARITY@ 0 <> IF
+      s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )                \ ( fam feature-code -- ) emit the DERIVE event
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 : DERIVE-ONE ( ptr u8 n -- )            \ apply one feature + emit its event
    DERIVE-GUARD
    2dup s" eq" CORE-STR=CI IF 2drop FAM @ FAM-EQ! FAM @ DV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop FAM @ FAM-HASH! FAM @ DV-HASH EMIT-DERIVE EXIT THEN
-   2drop E-DERIVE throw ;                \ order recognised but not yet supported, plus unknown
+   2dup s" order" CORE-STR=CI IF
+      2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
+   2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )                  \ DERIVE feature+ : first mandatory, rest by lookahead
    HEADER-ORDER
-   ED-NEXT dup 0= IF 2drop E-DERIVE throw THEN DERIVE-ONE
+   ED-NEXT dup 0= IF
+      2drop s" missing derive feature" E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
    BEGIN ED-NEXT dup 0= IF 2drop EXIT THEN
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
@@ -299,21 +320,27 @@ ED-RESET
 : EMIT-FIELD ( ptr u8 n n -- )          \ ( na nu node -- ) layout + drive the field event
    SCH-ROOT+ {: sch:n :}                \ ( na nu )
    sch SCH-ROOT@ SCH-WIDTH {: fw:n :}
+   2dup DECL-REJECT:TOKEN!              \ the field name owns the field record's rejects
+   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ 2swap sch                \ ( tok fam na nu sch )
    VCELLS @  fw  VCELLS @ CELL *  fw CELL *  CELL  FLAGS-NONE
    DECL-EVENT:FIELD TOK !
    fw VCELLS @ + VCELLS !
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
-   ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN   \ field name
+   ED-NEXT dup 0= IF
+      2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
    ED-NEXT RESOLVE-TYPE {: node:n :}
    na nu node EMIT-FIELD ;
 
 : VARIANT-NAME ( -- ptr u8 n )          \ next token = variant name (must be present)
-   ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN ;
+   ED-NEXT dup 0= IF
+      2drop s" missing variant name" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
 : OPEN-VARIANT ( -- )
    VARIANT-NAME {: na:ptr nu:n :}
+   na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
+   s" duplicate variant" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !             \ SUMV-ADD + set current-variant selector
    0 VCELLS ! ;
@@ -322,10 +349,11 @@ ED-RESET
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !     \ clear the current-variant selector
    NVAR @ 1 + NVAR ! ;
 : VARIANT-CLAUSE ( -- bool )            \ read one variant-body token; YES = ;VARIANT
-   ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN
+   ED-NEXT dup 0= IF 2drop s" missing ;VARIANT" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;variant" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
-   2drop E-SYNTAX throw ;               \ anonymous payload token / stray token
+   2drop s" unexpected token in variant block" E-SYNTAX
+   DECL-REJECT:REJECT throw ;           \ anonymous payload token / stray token
 : VARIANT-BODY ( -- ) BEGIN VARIANT-CLAUSE UNTIL ;
 : VARIANT-BLOCK ( -- )
    -1 SEEN-VARIANT !
@@ -343,13 +371,17 @@ ED-RESET
 : COMPACT-VARIANT ( ptr u8 n -- )       \ register one payloadless variant
    {: na:ptr nu:n :}
    -1 SEEN-VARIANT !
+   na nu DECL-REJECT:TOKEN!             \ the variant name owns the variant registry's rejects
+   s" duplicate variant" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ na nu
    DECL-EVENT:VARIANT TOK !
    TOK @ FAM @ DECL-EVENT:END-VARIANT TOK !
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
+   2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
    2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
-   2dup COMPACT-KW? IF 2drop E-SYNTAX throw THEN
+   2dup COMPACT-KW? IF
+      2drop s" block keyword in a compact enum" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    COMPACT-VARIANT NO ;
@@ -368,6 +400,8 @@ ED-RESET
 : REGISTER-FULL ( ptr u8 n n -- )          \ ( na nu arity -- ) TK-SUM family, arity header event
    {: na:ptr nu:n ar:n :}
    ar ED-ARITY !
+   na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
+   s" duplicate family" E-DUP DECL-REJECT:EXPECT
    ACTIVE-PKG$ VIS na nu
    ar TK-SUM-K FAM-DECL FAM !
    OPEN-TX
@@ -375,6 +409,8 @@ ED-RESET
 : REGISTER-COMPACT ( ptr u8 n -- )         \ ( na nu -- ) TK-ENUM family, arity 0, no header event
    {: na:ptr nu:n :}
    0 ED-ARITY !
+   na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
+   s" duplicate family" E-DUP DECL-REJECT:EXPECT
    ACTIVE-PKG$ VIS na nu
    0 TK-ENUM-K FAM-DECL FAM !
    OPEN-TX ;
@@ -406,31 +442,45 @@ ED-RESET
 \ participant's savepoint (LAY-N is one of the marks TF-SAVE/TF-RESTORE carry),
 \ so a later close-stage reject retires the descriptor with the family.
 : ED-CLOSE ( -- )                          \ bind variant + field ranges + width, bake layout, arm generation
-   NVAR @ 0= IF E-SYNTAX throw THEN         \ an enum needs at least one variant
+   DECL-REJECT:AT-FAMILY                    \ close-stage faults belong to the whole declaration
+   NVAR @ 0= IF s" empty enum" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ needs a variant
    FAM @ VBASE @ NVAR @ FAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
    FAM @ MAXSLOTS @ FAM-SLOTS!
    FAM @ LAY-DESC
+   \ No reason is armed for the constructor participant's collide check. That
+   \ check runs two phases later, in the commit phase, and nothing between here
+   \ and there is a token this front end holds, so an arming made here would
+   \ have to cover the whole of generation and would then be inherited by any
+   \ other reserved-name reject generation raises. The packet answers that class
+   \ from its code table instead: less specific than sumtype.f's own wording,
+   \ and true for every reserved-name reject generation can produce.
    FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
-   ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN
+   ED-NEXT dup 0= IF 2drop
+      DECL-REJECT:AT-FAMILY
+      s" missing ;ENUM" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" variant" CORE-STR=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
-   2drop E-SYNTAX throw ;               \ arity-then-compact / stray / mixed-legacy token
+   2drop s" unexpected token in enum declaration" E-SYNTAX
+   DECL-REJECT:REJECT throw ;           \ arity-then-compact / stray / mixed-legacy token
 : FULL-BODY ( -- ) BEGIN FULL-CLAUSE UNTIL ;
 
 : COMPACT-BODY ( ptr u8 n -- )          \ first variant token in hand, then loop to ;ENUM
    BEGIN
-      dup 0= IF 2drop E-SYNTAX throw THEN            \ input ended before ;ENUM
+      dup 0= IF 2drop
+         DECL-REJECT:AT-FAMILY
+         s" missing ;ENUM" E-SYNTAX DECL-REJECT:REJECT throw THEN
       COMPACT-CLAUSE IF EXIT THEN
       ED-NEXT
    AGAIN ;
 
 : DRIVE ( -- )                          \ name + mode select + register + body
-   parse-name 2dup REQUIRE-NAME         \ ( na nu )  keep the span
+   ED-NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
+   2dup REQUIRE-NAME                    \ named before validation, so a bad name is reported
    {: na:ptr nu:n :}
    ED-NEXT {: ta:ptr tu:n :}            \ first body token selects the mode
    ta tu ED-ALLDIG? IF
@@ -443,11 +493,19 @@ ED-RESET
    THEN
    ED-CLOSE ;
 
-public
-
 \ One provisional transaction: commit by persisting, roll the family + schema +
 \ layout + variant + event stream back to a byte-identical registry on any reject.
-: ED-RUN ( -- )
+: ED-BODY ( -- )
    [: ED-RESET DRIVE ;] GENERATED-DECL:RUN ;
+
+public
+
+\ A reject is rendered through the shared declaration packet AFTER the
+\ coordinator has rolled everything back, then rethrown with its exact code,
+\ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
+\ restore, report, rethrow).
+: ED-RUN ( -- )
+   s" enum" DECL-REJECT:OPEN
+   [: ED-BODY ;] DECL-REJECT:GUARD ;
 
 ;package

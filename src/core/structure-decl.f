@@ -60,6 +60,9 @@ package STRUCTURE-DECL
 7116 constant E-POLICY      \ unknown or not-yet-supported layout policy
 7119 constant E-DERIVE      \ unknown or not-yet-supported derive feature
 7101 constant E-CASE        \ family name is not a lowercase canonical tail
+7102 constant E-DUP         \ duplicate family or field tail (type-family.f E-TFAM-DUP,
+                            \ raised by TFAM-DECL / the field-event path; named here only
+                            \ so a reason can be armed for it before those calls)
 
 110 constant ASCII-N
 102 constant ASCII-F
@@ -138,9 +141,15 @@ variable SD-SI         \ private digit-scan index
    0 PEND-U !   0 TOK !   0 SEEN-FIELD ! ;
 SD-RESET
 
-: SD-NEXT ( -- ptr u8 n )              \ next body token (honours one pushback)
+: SD-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
    PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
    parse-name ;
+\ Every body token is recorded as the packet's offending token as it is read, so
+\ a reject raised inside the family registry, the field record, or a transaction
+\ participant still names the token that provoked it without those owners
+\ knowing anything about the packet.
+: SD-NEXT ( -- ptr u8 n )              \ next body token, recorded for diagnostics
+   SD-RAW 2dup DECL-REJECT:TOKEN! ;
 : UNGET ( ptr u8 n -- ) PEND! ;
 
 \ ---------------------------------------------------------------------------
@@ -156,9 +165,10 @@ SD-RESET
    CON-CODE 0 <> ;
 
 : REQUIRE-NAME ( ptr u8 n -- )      \ validate the family name (throws; consumes the copy)
-   dup 0= IF 2drop E-SYNTAX throw THEN
-   2dup CANON? 0= IF 2drop E-CASE throw THEN
-   NAME-RESERVED? IF E-NAME throw THEN ;
+   dup 0= IF 2drop s" missing name" E-SYNTAX DECL-REJECT:REJECT throw THEN
+   2dup CANON? 0= IF
+      2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
+   NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
 \ --- arity token: a small decimal within the shared declaration alphabet.
 : SD-DIGIT? ( n -- bool ) dup 47 > swap 58 < and ;
@@ -180,10 +190,13 @@ SD-RESET
       SD-SI @ 1 + SD-SI !
    REPEAT
    nip ;                            \ drop a, keep acc
+\ Same wording the legacy definer prints for a bad arity token.
+: ARITY-WHY$ ( -- ptr u8 n ) s" arity must be a decimal, at most 23 parameters" ;
 : PARSE-ARITY ( ptr u8 n -- n )
-   dup 0= IF 2drop E-ARITY throw THEN
-   2dup SD-ALLDIG? 0= IF 2drop E-ARITY throw THEN
-   DEC dup TFAM-DECL-PARAM-COUNT > IF drop E-ARITY throw THEN ;
+   dup 0= IF 2drop s" missing arity" E-ARITY DECL-REJECT:REJECT throw THEN
+   2dup SD-ALLDIG? 0= IF 2drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN
+   DEC dup TFAM-DECL-PARAM-COUNT > IF
+      drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN ;
 
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
@@ -203,18 +216,19 @@ SD-RESET
    dup ASCII-N = IF drop CON-N SD-SCH-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL SD-SCH-CON EXIT THEN
    dup ASCII-R = IF drop CON-R SD-SCH-CON EXIT THEN
-   TFAM-DECL-CHAR>PARAM 0= IF drop E-PAYLOAD throw THEN
+   TFAM-DECL-CHAR>PARAM 0= IF
+      drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    dup SD-ARITY @ < IF SD-SCH-PARAM EXIT THEN
    drop
-   E-PAYLOAD throw ;
+   s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
-   dup 0= IF 2drop E-SYNTAX throw THEN
+   dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE SD-SCH-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
    2dup CON-CODE dup 0 <> IF nip nip SD-SCH-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 SD-SCH-APP EXIT THEN drop
-   2drop E-PAYLOAD throw ;
+   2drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
    dup SCH-APP? IF SCH-A@ FAM-WIDTH@ EXIT THEN drop 1 ;
@@ -224,13 +238,14 @@ SD-RESET
 \ ordinal / selector state) and mutates only the fresh family record.
 \ ---------------------------------------------------------------------------
 : HEADER-ORDER ( -- )                   \ header clauses precede the first field
-   SEEN-FIELD @ IF E-SYNTAX throw THEN ;
+   SEEN-FIELD @ IF
+      s" header clause after the first field" E-SYNTAX DECL-REJECT:REJECT throw THEN ;
 
 : POLICY-CODE ( ptr u8 n -- n )         \ policy name -> layout code (or reject)
-   dup 0= IF 2drop E-POLICY throw THEN
+   dup 0= IF 2drop s" missing layout policy name" E-POLICY DECL-REJECT:REJECT throw THEN
    2dup s" stack-cell-tag" CORE-STR=CI IF 2drop LT-STACK EXIT THEN
    2dup s" packed-tag" CORE-STR=CI IF 2drop LT-PACKED EXIT THEN
-   2drop E-POLICY throw ;
+   2drop s" unknown layout policy" E-POLICY DECL-REJECT:REJECT throw ;
 : POLICY-CLAUSE ( -- )
    HEADER-ORDER
    SD-NEXT POLICY-CODE {: code:n :}
@@ -242,18 +257,23 @@ SD-RESET
    2dup s" hash" CORE-STR=CI IF 2drop YES EXIT THEN
    s" order" CORE-STR=CI ;
 : DERIVE-GUARD ( -- )                   \ derive needs a public, concrete (arity 0) family
-   FAM @ FAM-PUBLIC? 0= IF E-DERIVE throw THEN
-   FAM @ FAM-ARITY@ 0 <> IF E-DERIVE throw THEN ;
+   FAM @ FAM-PUBLIC? 0= IF
+      s" derive requires a public family" E-DERIVE DECL-REJECT:REJECT throw THEN
+   FAM @ FAM-ARITY@ 0 <> IF
+      s" derive requires a concrete (arity 0) family" E-DERIVE DECL-REJECT:REJECT throw THEN ;
 : EMIT-DERIVE ( n n -- )                \ ( fam feature-code -- ) emit the DERIVE event
    TOK @ -rot DECL-EVENT:DERIVE TOK ! ;
 : DERIVE-ONE ( ptr u8 n -- )            \ apply one feature + emit its event
    DERIVE-GUARD
    2dup s" eq" CORE-STR=CI IF 2drop FAM @ FAM-EQ! FAM @ DV-EQ EMIT-DERIVE EXIT THEN
    2dup s" hash" CORE-STR=CI IF 2drop FAM @ FAM-HASH! FAM @ DV-HASH EMIT-DERIVE EXIT THEN
-   2drop E-DERIVE throw ;                \ order recognised but not yet supported, plus unknown
+   2dup s" order" CORE-STR=CI IF
+      2drop s" derive feature not yet supported" E-DERIVE DECL-REJECT:REJECT throw THEN
+   2drop s" unknown derive feature" E-DERIVE DECL-REJECT:REJECT throw ;
 : DERIVE-CLAUSE ( -- )                  \ DERIVE feature+ : first mandatory, rest by lookahead
    HEADER-ORDER
-   SD-NEXT dup 0= IF 2drop E-DERIVE throw THEN DERIVE-ONE
+   SD-NEXT dup 0= IF
+      2drop s" missing derive feature" E-DERIVE DECL-REJECT:REJECT throw THEN DERIVE-ONE
    BEGIN SD-NEXT dup 0= IF 2drop EXIT THEN
       2dup DERIVE-FEATURE? IF DERIVE-ONE ELSE UNGET EXIT THEN
    AGAIN ;
@@ -261,13 +281,16 @@ SD-RESET
 : EMIT-FIELD ( ptr u8 n n -- )          \ ( na nu node -- ) layout + drive the field event
    SCH-ROOT+ {: sch:n :}                \ ( na nu )
    sch SCH-ROOT@ SCH-WIDTH {: fw:n :}
+   2dup DECL-REJECT:TOKEN!              \ the field name owns the field record's rejects
+   s" duplicate field name" E-DUP DECL-REJECT:EXPECT
    TOK @ FAM @ 2swap sch                \ ( tok fam na nu sch )
    SD-CELLS @  fw  SD-CELLS @ CELL *  fw CELL *  CELL  FLAGS-NONE
    DECL-EVENT:FIELD TOK !
    fw SD-CELLS @ + SD-CELLS !
    NFLD @ 1 + NFLD ! ;
 : FIELD-CLAUSE ( -- )
-   SD-NEXT dup 0= IF 2drop E-SYNTAX throw THEN   \ field name
+   SD-NEXT dup 0= IF
+      2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
    SD-NEXT RESOLVE-TYPE {: node:n :}
    na nu node EMIT-FIELD
@@ -281,6 +304,8 @@ SD-RESET
 : SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
    {: na:ptr nu:n ar:n :}
    ar SD-ARITY !
+   na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
+   s" duplicate family" E-DUP DECL-REJECT:EXPECT
    ACTIVE-PKG$ VIS na nu
    ar TK-PROD FAM-DECL FAM !
    TYPE-FIELD:COUNT FLDBASE !
@@ -292,31 +317,48 @@ SD-RESET
 : SD-MAKEABLE? ( -- bool )                 \ a public structure WITH fields owns a MAKE/UNMAKE package
    FAM @ FAM-PUBLIC? NFLD @ 0 > and ;
 : SD-CLOSE ( -- )                          \ bind field range + width, then generate the ctors
+   DECL-REJECT:AT-FAMILY                   \ close-stage faults belong to the whole declaration
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
    FAM @ SD-CELLS @ FAM-SLOTS!
+   \ No reason is armed for the generator's own rejects, for the same reason
+   \ ED-CLOSE arms none: they are raised past the last token this front end
+   \ holds, so an arming here would cover all of generation rather than the one
+   \ fault it names. The packet answers them from its code table.
    SD-MAKEABLE? IF TOK @ FAM @ STRUCTURE-MAKE:GENERATE THEN ;
 
 : CLAUSE ( -- bool )                    \ read + dispatch one body token; YES = ;STRUCTURE
-   SD-NEXT dup 0= IF 2drop E-SYNTAX throw THEN
+   SD-NEXT dup 0= IF 2drop
+      DECL-REJECT:AT-FAMILY
+      s" missing ;STRUCTURE" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" ;structure" CORE-STR=CI IF 2drop SD-CLOSE YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
-   2drop E-SYNTAX throw ;               \ unexpected / mixed-legacy token at the exact token
+   2drop s" unexpected token in structure declaration" E-SYNTAX
+   DECL-REJECT:REJECT throw ;           \ unexpected / mixed-legacy token at the exact token
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
 
 : DRIVE ( -- )                          \ name + arity + register + body
-   parse-name 2dup REQUIRE-NAME         \ ( na nu )  keep the span
-   parse-name PARSE-ARITY               \ ( na nu arity )
+   SD-NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
+   2dup REQUIRE-NAME                    \ named before validation, so a bad name is reported
+   SD-NEXT PARSE-ARITY                  \ ( na nu arity )
    SD-REGISTER
    CLAUSES ;
 
-public
-
 \ One provisional transaction: commit by persisting, roll the family + schema +
 \ layout + event stream back to a byte-identical registry on any reject.
-: SD-RUN ( -- )
+: SD-BODY ( -- )
    [: SD-RESET DRIVE ;] GENERATED-DECL:RUN ;
+
+public
+
+\ A reject is rendered through the shared declaration packet AFTER the
+\ coordinator has rolled everything back, then rethrown with its exact code,
+\ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
+\ restore, report, rethrow).
+: SD-RUN ( -- )
+   s" structure" DECL-REJECT:OPEN
+   [: SD-BODY ;] DECL-REJECT:GUARD ;
 
 ;package
 

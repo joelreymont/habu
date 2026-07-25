@@ -18,6 +18,12 @@
 \ A failure prints F<index> + detail; REPORT exits 1.
 
 require test/checker-assert.f
+require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
+
+\ Every reject below now renders a declaration diagnostic. Capture it from the
+\ start so the suite's own output stays clean; the last section turns the
+\ capture into assertions about the exact rendered line.
+DECL-DIAG:PROSE
 
 variable #FAIL
 variable #CASE
@@ -249,6 +255,143 @@ STRUCTURE hidden 0 FIELD x n ;STRUCTURE
 public
 ;package
 SUMVN@ SV0 @ T=                                       \ private structure generates no ctor words
+
+\ ---------------------------------------------------------------------------
+\ Reject diagnostics. Before this section existed, SD-RUN threw every code below
+\ with no message at all, while the legacy PRODUCT definer printed
+\ "habu: bad product declaration 'x': <reason> at 'tok'". STRUCTURE now renders
+\ through render.f's TDECL-DIAG, the same producer the legacy definers use, so
+\ the assertions here read the exact bytes that reach the diagnostic channel,
+\ captured through the same DIAG-BUFFER! / DIAG-BUFFER$ pair
+\ tools/check-core.f's CHK-DECL-CAPTURE and CHK-DECL-FLUSH use. That proves the
+\ channel, not an end-to-end run of the check tool: check-core does not scan
+\ STRUCTURE at all until the buffer-driven registration entry lands.
+\
+\ Each case asserts the WHOLE rendered line, not a substring, so a message that
+\ named the wrong family, dropped the token, or picked a stale reason fails.
+\ ---------------------------------------------------------------------------
+
+\ one case per reject code this suite pins, each rendering family + reason +
+\ token and rethrowing the exact code.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN Sdgcase 0 ;STRUCTURE" TRY 7101 T=
+s" habu: bad structure declaration 'Sdgcase': name must be a lowercase family tail at 'Sdgcase'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN n 0 ;STRUCTURE" TRY 7110 T=
+s" habu: bad structure declaration 'n': reserved name at 'n'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgdup 0 FIELD z n FIELD z n ;STRUCTURE" TRY 7102 T=
+s" habu: bad structure declaration 'sdgdup': duplicate field name at 'z'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgar q ;STRUCTURE" TRY 7108 T=
+s" habu: bad structure declaration 'sdgar': arity must be a decimal, at most 23 parameters at 'q'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgbad 0 FIELD a nosuchtype ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdgbad': unknown field type at 'nosuchtype'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgpol 0 POLICY nosuch ;STRUCTURE" TRY 7116 T=
+s" habu: bad structure declaration 'sdgpol': unknown layout policy at 'nosuch'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgdrv 0 DERIVE nosuch ;STRUCTURE" TRY 7119 T=
+s" habu: bad structure declaration 'sdgdrv': unknown derive feature at 'nosuch'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgstray 0 VARIANT ;STRUCTURE" TRY 7107 T=
+s" habu: bad structure declaration 'sdgstray': unexpected token in structure declaration at 'VARIANT'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgfn 0 FIELD make n ;STRUCTURE" TRY 7125 T=
+s" habu: bad structure declaration 'sdgfn': reserved field name at 'make'" DECL-DIAG:HAS? -1 T=
+
+\ a terminator that never arrives anchors on the family, exactly as the legacy
+\ unterminated-declaration packet does (sumtype.f TDECL-PRODUCT-NOEND-BODY).
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgnoend 0 FIELD a n" TRY 7107 T=
+s" habu: bad structure declaration 'sdgnoend': missing ;STRUCTURE at 'sdgnoend'"
+DECL-DIAG:HAS? -1 T=
+
+\ the self-referential FIELD. The field type resolves to the family being
+\ declared, whose width is not bound until close, so the field record refuses the
+\ layout (E-PF-LAYOUT). That reject used to be a bare 7127 with no message; it now
+\ names the declaration, the offending field, and the reason. The legacy PRODUCT
+\ definer refuses the same shape earlier, at its own recursion gate (7117), so the
+\ codes differ by construction — the front end has no recursion pre-check yet.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgself 0 FIELD selffld sdgself ;STRUCTURE" TRY 7127 T=
+s" habu: bad structure declaration 'sdgself': invalid field layout metadata at 'selffld'"
+DECL-DIAG:HAS? -1 T=
+
+\ no family leaks from one declaration into the next: a declaration that fails
+\ before its own name is read reports an empty family, not sdgself.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN" TRY 7107 T=
+s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? -1 T=
+s" sdgself" DECL-DIAG:HAS? 0 T=
+
+\ hostile declarations: a field spelled like a fragment of the message is
+\ reported as the token it is, and exactly one line is emitted.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgforge 0 FIELD duplicate n FIELD duplicate n ;STRUCTURE" TRY 7102 T=
+s" habu: bad structure declaration 'sdgforge': duplicate field name at 'duplicate'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:LEN 80 T=
+
+\ a family name spelled like one of the JSON packet's own keys keeps key and
+\ value distinguishable, and a token carrying a double quote is escaped rather
+\ than closing the JSON string early.
+DECL-DIAG:JSON
+s" STRUCTURE-DECL:SD-RUN token 0 FIELD z n FIELD z n ;STRUCTURE" TRY 7102 T=
+s\" \"decl\":\"structure\"" DECL-DIAG:HAS? -1 T=
+s\" \"family\":\"token\"" DECL-DIAG:HAS? -1 T=
+s\" \"token\":\"z\"" DECL-DIAG:HAS? -1 T=
+s\" \"reason\":\"duplicate field name\"" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:JSON
+s\" STRUCTURE-DECL:SD-RUN sdgquote 0 FIELD aq\"b n ;STRUCTURE" TRY 7101 T=
+s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? -1 T=
+s\" \"family\":\"sdgquote\"" DECL-DIAG:HAS? -1 T=
+
+\ accepted declarations stay silent, and a rendered reject still leaves the
+\ registry byte-identical: rendering happens after the coordinator has rolled
+\ back and touches no registry cursor.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgok1 0 FIELD a n ;STRUCTURE" TRY 0 T=
+s" STRUCTURE-DECL:SD-RUN sdgok2 0 ;STRUCTURE" TRY 0 T=
+s" STRUCTURE-DECL:SD-RUN sdgok3 1 FIELD a a ;STRUCTURE" TRY 0 T=
+s" STRUCTURE-DECL:SD-RUN sdgok4 0 DERIVE eq FIELD a n ;STRUCTURE" TRY 0 T=
+DECL-DIAG:SILENT? -1 T=
+
+\ the armed duplicate-family reason, which no case above reaches: it is armed at
+\ SD-REGISTER, immediately before the registry call that can raise it.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgtwice 0 FIELD a n ;STRUCTURE" TRY 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgtwice 0 FIELD b n ;STRUCTURE" TRY 7102 T=
+s" habu: bad structure declaration 'sdgtwice': duplicate family at 'sdgtwice'"
+DECL-DIAG:HAS? -1 T=
+
+\ SD-CLOSE arms no reason of its own: the generator's rejects are raised past the
+\ last token this front end holds, so they are answered from the packet's code
+\ table. The over-long span cap and its "..." marker belong to the shared packet
+\ and are pinned once, in test/enum-decl-suite.f section 22h.
+DECL-DIAG:PROSE
+s" STRUCTURE-DECL:SD-RUN sdgvrsv 0 FIELD z sdgvrsv ;STRUCTURE" TRY 7127 T=
+s" habu: bad structure declaration 'sdgvrsv': invalid field layout metadata at 'z'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

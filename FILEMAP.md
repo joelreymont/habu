@@ -64,7 +64,7 @@ points stay listed.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/sumtype.f` — TYPEFAMILY/SUMTYPE/PRODUCT declaration grammar registering package-aware families, variants, and atomic shared field schemas.
 - `src/core/declaration-transaction.f` — reusable ordered transaction coordinator with one aggregate participant-row arena per growth, immutable sealing, exact callback-depth validation, reverse rollback, primary-error preservation, rollback poisoning, a total uncaught reverse release phase that runs only after every reversible commit succeeded, and per-instance telemetry and allocator/diagnostic controls.
-- `src/core/generated-declaration.f` — sealed production declaration-transaction instance and narrow public runner/telemetry surface; it installs the shared checker-backed runner used by legacy SUMTYPE/ENUM/PRODUCT and the typed front ends without exposing registration or test controls.
+- `src/core/generated-declaration.f` — sealed production declaration-transaction instance and narrow public runner/telemetry surface; it installs the shared checker-backed runner used by legacy SUMTYPE/ENUM/PRODUCT and the typed front ends without exposing registration or test controls. It also owns `DECL-REJECT`, the shared reject packet both typed front ends report through: the declaration kind, family name, offending token, and reason are held as private copies, a reason armed for one code is only used when that code escapes, and the packet renders through the `src/core/render.f` declaration diagnostic before the caught code is rethrown unchanged.
 - `src/core/decl-event.f` — shared post-hook `DECL-EVENT` participant and standalone declaration syntax-event transaction: every coordinator snapshot opens an event and field frame, nested publication remains provisional to its outer owner, token-and-family-scoped field schema reads gate generation, and committed reflection and deterministic identity expose only published events.
 - `src/core/structure-make.f` — STRUCTURE constructor generator (package `STRUCTURE-MAKE`): given a live declaration token and validated product family, generates sealed `FAMILY:MAKE` and `FAMILY:UNMAKE` checked words from token-scoped provisional field schemas; local validation precedes mutation, while the enclosing coordinator rolls every registry and dictionary change back atomically.
 - `src/core/structure-decl.f` — the `STRUCTURE name arity [POLICY p] [DERIVE f+] (FIELD name type)* ;STRUCTURE` typed-declaration front end (package `STRUCTURE-DECL`): parses and validates the grammar, stages product family/schema/layout/event metadata, and generates public MAKE/UNMAKE words inside one `GENERATED-DECL` transaction, so any parser, evaluator, checker, or later-participant rejection restores the complete declaration.
@@ -2109,6 +2109,13 @@ points stay listed.
 
 - `test/checker-assert.f` — shared quiet checker-candidate assertion helper for
   negative checked-source tests.
+- `test/decl-diag-capture.f` — shared declaration-diagnostic capture for the
+  declaration suites (package `DECL-DIAG`): arms the prose or JSON leg through
+  the same `DIAG-JSON!` / `DIAG-BUFFER!` pair `tools/check-core.f` uses, so a
+  suite asserts on the rendered declaration packet through the channel the
+  check tool reads it from — channel parity, not an end-to-end run of the check
+  tool, which cannot reach these front ends until the buffer-driven registration
+  entry lands — and expected reject diagnostics stay out of the suite's output.
 - `test/drec-shape-test.f` — checked-prim surface pins for the typed
   dictionary-record capability: the record access shapes the XREF-*/BFR-*/
   BP-SLOT-* rewrite relies on compile checked today, and the two PES gaps

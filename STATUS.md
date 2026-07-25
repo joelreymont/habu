@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4150  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4178  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -105,6 +105,24 @@ measures today:
   the assembled stage2 engine source. The engine binary is byte-identical across
   the added gate clause, so the CODELEN and per-region rows below are unchanged
   by it.
+- The unified declaration reject diagnostics add 28, reaching 4178. Twenty-two
+  are the new `DECL-REJECT` package in `src/core/generated-declaration.f`, the
+  shared reject packet both typed front ends report through. Eleven are private:
+  the two boolean answers `FOUND` and `MISSING`, the two fixed texts `NOTHING$`
+  and `FALLBACK$`, the four reason groups `REASON-GRAMMAR`, `REASON-NAME`,
+  `REASON-FIELD` and `REASON-TXN`, the table entry `CODE-REASON`, the armed-or-
+  table choice `PICK-REASON`, and `RENDER`. Eleven are public: `OPEN`,
+  `FAMILY!`, `TOKEN!`, `AT-FAMILY`, `EXPECT`, `REJECT`, `GUARD`, and the four
+  reflection words `KIND$`, `FAMILY$`, `TOKEN$` and `REASON$`. Its three
+  `TRUSTED:` boundaries `SLOT!`, `SLOT@` and `DIAG`, its slot and code
+  constants, its two `create` regions and its one variable are not colon
+  definitions and count nothing. The remaining six are three per front end:
+  `src/core/structure-decl.f` gains `SD-RAW` (the pushback-honouring read that
+  `SD-NEXT` now records the token around), `ARITY-WHY$`, and `SD-BODY`; and
+  `src/core/enum-decl.f` gains `ED-RAW`, `ARITY-WHY$`, and `ED-BODY`. So
+  4150 + 28 = 4178. That change also edits `TRUSTED.md`, `FILEMAP.md`, and
+  three test files including the new `test/decl-diag-capture.f`, none of which
+  is part of the assembled stage2 engine source.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

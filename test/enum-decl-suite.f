@@ -27,6 +27,12 @@
 \ new front end through its package-qualified entry rather than a global keyword.
 
 require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected, 1 uncheckable
+require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
+
+\ Every reject below now renders a declaration diagnostic. Capture it from the
+\ start so the suite's own output stays clean; section 22 turns the capture into
+\ assertions about the exact rendered line.
+DECL-DIAG:PROSE
 
 variable #FAIL
 variable #CASE
@@ -829,6 +835,280 @@ REG-MARK
 s" ENUM-DECL:ED-RUN lay-drop 0 POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TRY 7119 T=
 LAY-N@ RB-LAY @ T=                                    \ the refused twin left none
 TFAMN@ RB-TFAM @ T=
+
+\ ---------------------------------------------------------------------------
+\ 22. Reject diagnostics. Before this section existed, ED-RUN threw every code
+\     below with no message at all, while the legacy ENUM definer printed
+\     "habu: bad enum declaration 'x': <reason> at 'tok'". Both spellings now
+\     render through render.f's TDECL-DIAG, so the assertions here read the exact
+\     bytes that reach the diagnostic channel, captured through the same
+\     DIAG-BUFFER! / DIAG-BUFFER$ pair tools/check-core.f's CHK-DECL-CAPTURE and
+\     CHK-DECL-FLUSH use. That proves the channel. It is not an end-to-end run of
+\     the check tool over a unified declaration: check-core drives the legacy
+\     definers today and does not scan STRUCTURE at all, so that leg waits on the
+\     buffer-driven registration entry.
+\
+\     Each case asserts the WHOLE rendered line, not a substring: a message that
+\     named the wrong family, dropped the token, or picked a stale reason fails,
+\     and text supplied by the declaration itself cannot satisfy the assertion by
+\     appearing somewhere else in the buffer.
+\ ---------------------------------------------------------------------------
+
+\ 22a. One case per reject code this suite pins, each rendering family + reason +
+\      token and rethrowing the exact code.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgempty ;ENUM" TRY 7107 T=
+s" habu: bad enum declaration 'dgempty': empty enum at 'dgempty'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN Dgcase red ;ENUM" TRY 7101 T=
+s" habu: bad enum declaration 'Dgcase': name must be a lowercase family tail at 'Dgcase'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN n red ;ENUM" TRY 7110 T=
+s" habu: bad enum declaration 'n': reserved name at 'n'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgdup red red ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dgdup': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgar 24 VARIANT vv ;VARIANT ;ENUM" TRY 7108 T=
+s" habu: bad enum declaration 'dgar': arity must be a decimal, at most 23 parameters at '24'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgpay 0 VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'dgpay': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgpol POLICY nosuch red ;ENUM" TRY 7116 T=
+s" habu: bad enum declaration 'dgpol': unknown layout policy at 'nosuch'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgdrv DERIVE nosuch red ;ENUM" TRY 7119 T=
+s" habu: bad enum declaration 'dgdrv': unknown derive feature at 'nosuch'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgord DERIVE order red ;ENUM" TRY 7119 T=
+s" habu: bad enum declaration 'dgord': derive feature not yet supported at 'order'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgfn 0 VARIANT vv FIELD make n ;VARIANT ;ENUM" TRY 7125 T=
+s" habu: bad enum declaration 'dgfn': reserved field name at 'make'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgkw variant ;ENUM" TRY 7107 T=
+s" habu: bad enum declaration 'dgkw': block keyword in a compact enum at 'variant'"
+DECL-DIAG:HAS? -1 T=
+
+\ a terminator that never arrives anchors on the family, exactly as the legacy
+\ unterminated-declaration packet does (sumtype.f TDECL-ENUM-NOEND-BODY).
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgnoend red" TRY 7107 T=
+s" habu: bad enum declaration 'dgnoend': missing ;ENUM at 'dgnoend'" DECL-DIAG:HAS? -1 T=
+
+\ 22b. Legacy / unified parity. The same malformed shape through the legacy ENUM
+\      definer and through ED-RUN produces the same code and the same message,
+\      differing only in the family name the two declarations had to be given.
+DECL-DIAG:PROSE
+s" ENUM dglegacy red red ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dglegacy': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgunified red red ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dgunified': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM dglegacy2 ;ENUM" TRY 7107 T=
+s" habu: bad enum declaration 'dglegacy2': empty enum at 'dglegacy2'" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgunified2 ;ENUM" TRY 7107 T=
+s" habu: bad enum declaration 'dgunified2': empty enum at 'dgunified2'" DECL-DIAG:HAS? -1 T=
+
+\ 22c. Clause nesting inside one declaration. A FIELD inside a VARIANT inside an
+\      ENUM reports the ENUM's family, not the variant or the field it is nested
+\      in, while the token moves to the offending payload token.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgnest 0 VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'dgnest': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
+s" declaration 'nestvar'" DECL-DIAG:HAS? 0 T=
+s" declaration 'nestfld'" DECL-DIAG:HAS? 0 T=
+
+\ 22d. A declaration that ends before its own name reports an empty family, not
+\      the family dgnest declared just above. What this pins is DRIVE's ordering:
+\      the front end names the family from the token it just read, unconditionally
+\      and before validating it, so the empty token replaces the previous family.
+\      It does NOT exercise OPEN's clear — DRIVE reaches FAMILY! on this path — so
+\      OPEN's own contract is pinned directly in 22g below.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN" TRY 7107 T=
+s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? -1 T=
+s" dgnest" DECL-DIAG:HAS? 0 T=
+
+\ 22e. Hostile declarations. Text supplied BY the declaration cannot forge or
+\      displace the packet: a variant spelled like a fragment of the message is
+\      reported as the token it is, the reason still comes from the reject, and
+\      exactly one line is emitted (length = the line plus its newline).
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgforge duplicate duplicate ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dgforge': duplicate variant at 'duplicate'" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:LEN 71 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgat at at ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dgat': duplicate variant at 'at'" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:LEN 61 T=
+
+\      A family name spelled like one of the JSON packet's own keys keeps key and
+\      value distinguishable, and a token carrying a double quote is escaped
+\      rather than closing the JSON string early.
+DECL-DIAG:JSON
+s" ENUM-DECL:ED-RUN reason red red ;ENUM" TRY 7102 T=
+s\" \"family\":\"reason\"" DECL-DIAG:HAS? -1 T=
+s\" \"reason\":\"duplicate variant\"" DECL-DIAG:HAS? -1 T=
+s\" \"token\":\"red\"" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:JSON
+s\" ENUM-DECL:ED-RUN dgquote aq\"b red ;ENUM" TRY 7101 T=
+s\" \"token\":\"aq\\\"b\"" DECL-DIAG:HAS? -1 T=
+s\" \"family\":\"dgquote\"" DECL-DIAG:HAS? -1 T=
+s\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? -1 T=
+
+\ 22f. Accepted declarations stay silent, and a rendered reject still leaves the
+\      registry byte-identical: rendering happens after the coordinator has
+\      rolled back and touches no registry cursor.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgok1 red green ;ENUM" TRY 0 T=
+s" ENUM-DECL:ED-RUN dgok2 0 VARIANT okvar FIELD okfld n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM-DECL:ED-RUN dgok3 POLICY packed-tag redd greend ;ENUM" TRY 0 T=
+s" ENUM-DECL:ED-RUN dgok4 DERIVE eq rede greene ;ENUM" TRY 0 T=
+DECL-DIAG:SILENT? -1 T=
+
+REG-MARK
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgroll red red ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dgroll': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
+TFAMN@ RB-TFAM @ T=
+SUMVN@ RB-SUMV @ T=
+SCHN@ RB-SCH @ T=
+
+DECL-DIAG:OFF
+
+\ 22g. The packet's own contract, asserted on DECL-REJECT's public surface rather
+\      than inferred from a front end that happens to exercise it.
+\
+\      An armed reason describes ONE code. It answers for that code, the table
+\      answers for any other, and reading a new token retires the arming outright
+\      — an arming names a fault expected AT a token, so once the front end has
+\      moved on it can no longer explain anything.
+s" enum" DECL-REJECT:OPEN
+s" armed-for-7102" 7102 DECL-REJECT:EXPECT
+7102 DECL-REJECT:REASON$ s" armed-for-7102" DECL-DIAG:SAME? -1 T=
+7107 DECL-REJECT:REASON$ s" malformed declaration" DECL-DIAG:SAME? -1 T=
+s" moved-on" DECL-REJECT:TOKEN!
+7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? -1 T=
+
+\      OPEN clears every field. The packet below is fully populated first, so a
+\      clear that stopped happening would leave one of these three assertions
+\      reading the previous declaration's value.
+s" enum" DECL-REJECT:OPEN
+s" leaked-family" DECL-REJECT:FAMILY!
+s" leaked-token" DECL-REJECT:TOKEN!
+s" leaked-reason" 7102 DECL-REJECT:EXPECT
+s" enum" DECL-REJECT:OPEN
+DECL-REJECT:FAMILY$ nip 0 T=
+DECL-REJECT:TOKEN$ nip 0 T=
+7102 DECL-REJECT:REASON$ s" duplicate name in this package" DECL-DIAG:SAME? -1 T=
+
+\ 22h. SLOT! bounds. A span longer than the 96-byte slot is capped and MARKED
+\      with a trailing "...", so the packet never presents a prefix as if it were
+\      the whole name, and the copy never runs past its own slot into the next
+\      one. The token is written FIRST here and the over-long family SECOND,
+\      because S-FAMILY sits immediately below S-TOKEN: an unclamped copy would
+\      overwrite the token that was already there.
+s" enum" DECL-REJECT:OPEN
+s" survivor" DECL-REJECT:TOKEN!
+s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop"
+DECL-REJECT:FAMILY!
+DECL-REJECT:TOKEN$ s" survivor" DECL-DIAG:SAME? -1 T=
+DECL-REJECT:FAMILY$ nip 96 T=
+DECL-REJECT:FAMILY$
+s" qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwe..."
+DECL-DIAG:SAME? -1 T=
+
+\      and the marked cap reaches the rendered line through the real front end.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiop ;ENUM"
+TRY 7107 T=
+s" habu: bad enum declaration 'qwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwertyuiopqwe...': empty enum"
+DECL-DIAG:HAS? -1 T=
+
+\ 22i. The reasons no case above reaches: the armed duplicate-family text, the
+\      declaration-event clause duplicates, the variant-block and header-order
+\      grammar faults, and the three codes whose reason can only come from the
+\      table because the owner that raises them is past the front end's last
+\      token.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgtwice red ;ENUM" TRY 0 T=
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgtwice blue ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dgtwice': duplicate family at 'dgtwice'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgdupfld 0 VARIANT vv FIELD zz n FIELD zz n ;VARIANT ;ENUM" TRY 7102 T=
+s" habu: bad enum declaration 'dgdupfld': duplicate field name at 'zz'" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dg2pol POLICY packed-tag POLICY packed-tag red ;ENUM" TRY 7163 T=
+s" habu: bad enum declaration 'dg2pol': a second POLICY clause in one declaration at 'packed-tag'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dg2drv DERIVE eq DERIVE eq red ;ENUM" TRY 7164 T=
+s" habu: bad enum declaration 'dg2drv': the same DERIVE feature twice in one declaration at 'eq'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dghdr red POLICY packed-tag ;ENUM" TRY 7107 T=
+s" habu: bad enum declaration 'dghdr': header clause after the first variant at 'POLICY'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgvb 0 VARIANT vv stray ;VARIANT ;ENUM" TRY 7107 T=
+s" habu: bad enum declaration 'dgvb': unexpected token in variant block at 'stray'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgvn 0 VARIANT" TRY 7107 T=
+s" habu: bad enum declaration 'dgvn': missing variant name" DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgdgd 1 DERIVE eq VARIANT vv ;VARIANT ;ENUM" TRY 7119 T=
+s" habu: bad enum declaration 'dgdgd': derive requires a concrete (arity 0) family at 'eq'"
+DECL-DIAG:HAS? -1 T=
+
+\      7119 raised by the constructor participant's payload-role check, two
+\      phases after the body: no reason is armed for it, so the table answers.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgroleq 0 DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TRY 7119 T=
+s" habu: bad enum declaration 'dgroleq': a payload type or role has no derived equality at 'dgroleq'"
+DECL-DIAG:HAS? -1 T=
+
+\      7110 raised by the variant-name gate, and 7101 raised by the field record:
+\      both are deeper owners, both answered from the table.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgvrsv 0 VARIANT n ;VARIANT ;ENUM" TRY 7110 T=
+s" habu: bad enum declaration 'dgvrsv': name is reserved or already taken at 'n'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN dgfcase 0 VARIANT vv FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=
+s" habu: bad enum declaration 'dgfcase': name must be a lowercase tail at 'Zed'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )
