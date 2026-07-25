@@ -227,14 +227,14 @@ variable START-NS
    RUN dup 0 <> if throw then drop ;
 
 : CORE-ACT ( -- )
-   BAD$ BAD$ CHECK-ALL-ERRORS-FILE ;
+   BAD$ BAD$ CHECK-ALL-ERRORS:FILE ;
 
 : CORE-JSON ( ptr u8 n -- n n n ) {: src:ptr srcu:n :}
    BAD$ src srcu WRITE-ALL
-   CAP-ERR BUF-CAP CAP-OUT BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
-   0 0= CHECK-ALL-ERRORS-JSON!
+   CAP-ERR BUF-CAP CAP-OUT BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= CHECK-ALL-ERRORS:JSON!
    [: CORE-ACT ;] catch {: rc:n :}
-   0 CHECK-ALL-ERRORS-OUT$ nip rc ;
+   0 CHECK-ALL-ERRORS:OUT$ nip rc ;
 
 : MUT-SRC$ ( -- ptr u8 n )
    MUT-SRC MUT-SRC-U @ ;

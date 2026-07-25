@@ -4,10 +4,24 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
 \ tools/lint/json-writer.f, and tools/lint/source-lex.f.
 
-: CA-MAYBE-VERIFY-SOURCE ( -- )
-   s" VERIFY:SOURCE-BUF" XREF-FIND 0= if s" src/habu/verify-source.f" required then ;
+\ The checked source verifier is a load-time dependency: every checker scope
+\ opened below replays source through VERIFY. It is required here, at top
+\ level, because VERIFY opens its own package and packages cannot nest;
+\ the require registry makes co-loaded `require src/habu/verify-source.f`
+\ sites a no-op after the first, which is the sole dedupe protecting this
+\ line (verify-source is NOT in the engine's baked startup prefix).
+require src/habu/verify-source.f
 
-CA-MAYBE-VERIFY-SOURCE
+package CHECK-ALL-ERRORS
+
+public
+
+\ Exit code the checker reports for a duplicate definition. It is published
+\ because this core both raises it and classifies it, so a caller comparing its
+\ own run against the same value must read it from here.
+$4E constant DUP-RC
+
+private
 
 \ Checker-internal multi-error mode control; the checker registry does not
 \ publish these to later checked loads (same boundary class as verify-source's
@@ -17,12 +31,8 @@ TRUSTED: CA-MULTI-BEGIN ( -- )
 TRUSTED: CA-MULTI-END ( -- n )
    MULTI-ERR-END ;
 
-$10000 constant CA-DEFAULT-ERR-CAP
-$10000 constant CA-DEFAULT-OUT-CAP
-
 10 constant CA-LF
 123 constant CA-LBRACE
-$4E constant CA-DUP-RC
 
 create CA-LF-BUF 1 allot
 
@@ -93,19 +103,6 @@ variable CA-JSON
 : CA-OUT-A! ( ptr u8 -- )
    CA-OUT-A-FIELD ! ;
 
-: CHECK-ALL-ERRORS-BUFFERS! ( ptr u8 n ptr u8 n -- ) {: outa:ptr outcap:n erra:ptr errcap:n :}
-   outcap CA-OUT-CAP !
-   outa CA-OUT-A!
-   errcap CA-ERR-CAP !
-   erra CA-ERR-A!
-   0 CA-OUT-LEN ! ;
-
-: CHECK-ALL-ERRORS-OUT$ ( -- ptr u8 n )
-   CA-OUT-A@ CA-OUT-LEN @ ;
-
-: CHECK-ALL-ERRORS-JSON! ( bool -- )
-   CA-JSON ! ;
-
 : CA-JSON? ( -- bool )
    CA-JSON @ 0 <> ;
 
@@ -127,10 +124,6 @@ variable CA-JSON
 
 
 
-
-: CA-WRITE ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
-   u 0= IF exit THEN
-   fd a u write u <> IF s" check-all-errors: write failed" 74 CA-FAIL THEN ;
 
 : CA-OUT-ROOM ( n -- )
    CA-OUT-LEN @ + CA-OUT-CAP @ > IF s" check-all-errors: output buffer full" 76 CA-FAIL THEN ;
@@ -174,16 +167,6 @@ variable CA-XSUP-BUF-CAP
 : CA-XSUP$ ( n -- ptr u8 n ) {: i:n :}
    CA-XSUP-PATHS i FS-PATH-CAP * +
    CA-XSUP-US i cells + @ ;
-
-: CHECK-ALL-ERRORS-SUPPORT-RESET ( -- )
-   0 CA-XSUP-N ! ;
-
-: CHECK-ALL-ERRORS-SUPPORT+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   CA-XSUP-N @ CA-XSUP-MAX >= IF E-TBL-BOUNDS throw THEN
-   u FS-PATH-CAP > IF E-FS-CAPACITY throw THEN
-   a CA-XSUP-PATHS CA-XSUP-N @ FS-PATH-CAP * + u BYTE-COPY
-   u CA-XSUP-US CA-XSUP-N @ cells + !
-   CA-XSUP-N @ 1+ CA-XSUP-N ! ;
 
 : CA-XSUP-BUF ( n -- ptr u8 n ) {: need:n :}
    need CA-XSUP-BUF-CAP @ > IF
@@ -325,7 +308,7 @@ variable CA-XSUP-BUF-CAP
 : CA-HANDLE-DUP ( -- )
    CA-TRUE CA-FAILED !
    CA-JSON? IF CA-JSON-DUP ELSE CA-PROSE-DUP THEN
-   CA-DUP-RC CA-RAW-FAILURE ! ;
+   DUP-RC CA-RAW-FAILURE ! ;
 
 : CA-JSON-LEX-UNTERM ( -- )
    LJW-RESET
@@ -403,9 +386,18 @@ variable CA-XSUP-BUF-CAP
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
 
+\ The rollback frame CHECKER-SCOPE-START pushes SAVES the caller's checker
+\ package mode, name, and length, but it does not clear them, so the replayed
+\ source would keep checking as if it were still inside the caller's package -
+\ a top-level EXPORT directive in that source then reads as an in-package
+\ re-export and the run exits DUP-RC. The replayed file is standalone source,
+\ so enter neutral top-level package state before the replay; the matching
+\ CHECKER-SCOPE-DONE pops the frame and restores the caller's exact package on
+\ both the clean and the throwing path.
 : CA-CHECK-FULL-SCOPE ( -- n )
    0 CA-FULL-R !
    CHECKER-SCOPE-START
+   CHECKER-END-PACKAGE
    [: CA-XSUP-REPLAY CA-CHECK-FULL CA-FULL-R ! ;] catch
    CHECKER-SCOPE-DONE
    dup 0= IF drop CA-FULL-R @ exit THEN ;
@@ -438,7 +430,7 @@ variable CA-XSUP-BUF-CAP
 \ reject's declared signature so later callers check against it (no phantom
 \ E-UNDEFINED cascade), and continues to the next definition - the native
 \ load path and this tool now share the same machinery. A duplicate
-\ definition throws CA-DUP-RC (reported exactly as before), and a verdict-1
+\ definition throws DUP-RC (reported exactly as before), and a verdict-1
 \ uncheckable still aborts fail-closed at its definition: uncheckables are
 \ not counted by MULTI-ERR-N, so continuing past them would let an
 \ all-uncheckable file read as clean.
@@ -448,7 +440,7 @@ variable CA-XSUP-BUF-CAP
    CA-CHECK-FULL-SCOPE {: rc:n :}
    CA-MULTI-END {: rejects:n :}
    CA-XSUP-RC @ 0 <> IF CA-XSUP-RC @ throw THEN
-   rc CA-DUP-RC = IF CA-HANDLE-DUP exit THEN
+   rc DUP-RC = IF CA-HANDLE-DUP exit THEN
    rc 0 <> rejects 0 > or IF rc CA-EMIT-CAPTURED THEN ;
 
 : CA-ALLOC-SOURCE ( n -- )
@@ -470,16 +462,54 @@ variable CA-XSUP-BUF-CAP
    CA-RAW-FAILURE @ 0 <> IF CA-RAW-FAILURE @ throw THEN
    CA-FAILED @ 0 <> IF 70 throw THEN ;
 
-: CHECK-ALL-ERRORS-FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
+public
+
+\ Both capture buffers belong to the caller. The first pair is the report
+\ buffer this core appends to and OUT$ hands back; the second pair is the
+\ scratch buffer the checker renders its raw diagnostics into. Also clears the
+\ recorded report length.
+: BUFFERS! ( ptr u8 n ptr u8 n -- ) {: outa:ptr outcap:n erra:ptr errcap:n :}
+   outcap CA-OUT-CAP !
+   outa CA-OUT-A!
+   errcap CA-ERR-CAP !
+   erra CA-ERR-A!
+   0 CA-OUT-LEN ! ;
+
+\ The report the last run accumulated in the caller's first buffer.
+: OUT$ ( -- ptr u8 n )
+   CA-OUT-A@ CA-OUT-LEN @ ;
+
+\ True selects one JSON diagnostic record per rejected definition; false
+\ selects the prose rendering.
+: JSON! ( bool -- )
+   CA-JSON ! ;
+
+\ Empty the ordered list of already-verified files replayed before each run.
+: SUPPORT-RESET ( -- )
+   0 CA-XSUP-N ! ;
+
+\ Append one already-verified file path to that replay list.
+: SUPPORT+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   CA-XSUP-N @ CA-XSUP-MAX >= IF E-TBL-BOUNDS throw THEN
+   u FS-PATH-CAP > IF E-FS-CAPACITY throw THEN
+   a CA-XSUP-PATHS CA-XSUP-N @ FS-PATH-CAP * + u BYTE-COPY
+   u CA-XSUP-US CA-XSUP-N @ cells + !
+   CA-XSUP-N @ 1+ CA-XSUP-N ! ;
+
+\ Check the source file at the given path, reporting it under the given label.
+: FILE ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n patha:ptr pathu:n :}
    0 CA-XSUP-RC !
    labelu CA-FILE-U !
    labela CA-FILE-A!
    patha pathu CA-READ-SOURCE
    CA-RUN-SOURCE ;
 
-: CHECK-ALL-ERRORS-BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
+\ Check an in-memory source buffer, reporting it under the given label.
+: BUF ( ptr u8 n ptr u8 n -- ) {: labela:ptr labelu:n srca:ptr srcu:n :}
    0 CA-XSUP-RC !
    labelu CA-FILE-U !
    labela CA-FILE-A!
    srca srcu CA-SOURCE-BUF!
    CA-RUN-SOURCE ;
+
+;package

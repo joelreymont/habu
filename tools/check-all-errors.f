@@ -8,21 +8,31 @@
 package CHECK-ALL-ERRORS-CLI
 private
 
-create ERR-BUF CA-DEFAULT-ERR-CAP allot
-create OUT-BUF CA-DEFAULT-OUT-CAP allot
+\ Capture sizes are a command decision, not a core one: the core writes into
+\ whatever buffers its caller hands it.
+$10000 constant ERR-CAP
+$10000 constant OUT-CAP
+74 constant RC-IO
+
+create ERR-BUF ERR-CAP allot
+create OUT-BUF OUT-CAP allot
+
+: WRITE-FD ( n ptr u8 n -- ) {: fd:n a:ptr u:n :}
+   u 0= IF exit THEN
+   fd a u write u <> IF s" check-all-errors: write failed" RC-IO die THEN ;
 
 : FLUSH ( -- )
-   2 CHECK-ALL-ERRORS-OUT$ CA-WRITE ;
+   2 CHECK-ALL-ERRORS:OUT$ WRITE-FD ;
 
 : EXEC ( -- )
    s" tools/check-all-errors.f [--json-errors] --label name source" ARGV:USAGE!
    ARGV:PARSE
    ARGV:REQUIRE-LABEL
    1 ARGV:EXPECT-POS-EXACT
-   OUT-BUF CA-DEFAULT-OUT-CAP
-   ERR-BUF CA-DEFAULT-ERR-CAP CHECK-ALL-ERRORS-BUFFERS!
-   ARGV:JSON? CHECK-ALL-ERRORS-JSON!
-   ARGV:LABEL$ 0 ARGV:POS$ CHECK-ALL-ERRORS-FILE ;
+   OUT-BUF OUT-CAP
+   ERR-BUF ERR-CAP CHECK-ALL-ERRORS:BUFFERS!
+   ARGV:JSON? CHECK-ALL-ERRORS:JSON!
+   ARGV:LABEL$ 0 ARGV:POS$ CHECK-ALL-ERRORS:FILE ;
 
 : RUN ( -- )
    [: EXEC ;] catch

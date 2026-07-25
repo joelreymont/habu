@@ -166,14 +166,14 @@ create ERR BUF-CAP allot
    DIAG CLEANUP+ ;
 
 : RUN-CHECK-ACT ( -- )
-   LABEL$ SRC CHECK-ALL-ERRORS-FILE ;
+   LABEL$ SRC CHECK-ALL-ERRORS:FILE ;
 
 : RUN-CHECK ( ptr u8 n -- n n n )
    2drop
-   ERR BUF-CAP OUT BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
-   0 0= CHECK-ALL-ERRORS-JSON!
+   ERR BUF-CAP OUT BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= CHECK-ALL-ERRORS:JSON!
    [: RUN-CHECK-ACT ;] catch {: rc:n :}
-   0 CHECK-ALL-ERRORS-OUT$ nip rc ;
+   0 CHECK-ALL-ERRORS:OUT$ nip rc ;
 
 : RC-NAME. ( n -- ) {: rc:n :}
    rc 60 = if s" E-PROC-SPAWN" type exit then

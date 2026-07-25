@@ -492,19 +492,19 @@ variable START-NS
    s" : USE-CK ( -- n ) CK:EXPORTED ;" GE-SRC-LINE ;
 
 : CHECK-BUF-ACT ( -- )
-   LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS-BUF ;
+   LABEL$ GE-SRC-BUF GE-SRC-U @ CHECK-ALL-ERRORS:BUF ;
 
 : CHECK-BUF-STORE ( n -- ) {: rc:n :}
    rc OUTCOME:EXITED GT-OUTCOME!
    0 GT-OUT-U !
-   CHECK-ALL-ERRORS-OUT$ nip GT-ERR-U ! ;
+   CHECK-ALL-ERRORS:OUT$ nip GT-ERR-U ! ;
 
 : CHECK-BUF-RUN ( ptr u8 n -- ) {: label:ptr labelu:n :}
    label labelu GT-PROGRESS-RUN
    s" inprocess-check" GS-EVENT
    label labelu LABEL!
-   GT-ERR-BUF GT-ERR-CAP GT-OUT-BUF GT-OUT-CAP CHECK-ALL-ERRORS-BUFFERS!
-   0 0= 0= CHECK-ALL-ERRORS-JSON!
+   GT-ERR-BUF GT-ERR-CAP GT-OUT-BUF GT-OUT-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= 0= CHECK-ALL-ERRORS:JSON!
    [: CHECK-BUF-ACT ;] catch CHECK-BUF-STORE ;
 
 : CHECK-BUF-BAD ( n ptr u8 n ptr u8 n -- )

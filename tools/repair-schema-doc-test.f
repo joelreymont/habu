@@ -260,13 +260,13 @@ create CHK-BUF EMIT-CAP allot
    LOAD-EMITTERS ;
 
 : RUN-CHECK-ACT ( -- )
-   SRC SRC CHECK-ALL-ERRORS-FILE ;
+   SRC SRC CHECK-ALL-ERRORS:FILE ;
 
 : RUN-CHECK ( -- n n n )
-   ERR BUF-CAP OUT BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
-   0 0= CHECK-ALL-ERRORS-JSON!
+   ERR BUF-CAP OUT BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= CHECK-ALL-ERRORS:JSON!
    [: RUN-CHECK-ACT ;] catch {: rc:n :}
-   0 CHECK-ALL-ERRORS-OUT$ nip rc ;
+   0 CHECK-ALL-ERRORS:OUT$ nip rc ;
 
 : EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=

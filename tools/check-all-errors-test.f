@@ -23,6 +23,10 @@ require tools/lint/source-lex.f
 require tools/check-all-errors-core.f
 require lib/argv.f
 
+package CHECK-ALL-ERRORS-TEST
+
+private
+
 4096 constant CAE-BUF-CAP
 1400 constant CAE-LARGE-LINES
 530 constant CAE-MANY-DEFS
@@ -325,25 +329,25 @@ create CAE-LF-BYTE 10 c,
    CAE-LARGE CAE-APPEND-LF ;
 
 : CAE-RUN-CORE-ACT ( -- )
-   CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS-FILE ;
+   CAE-RUN$ CAE-RUN$ CHECK-ALL-ERRORS:FILE ;
 
 : CAE-RUN-BUF-ACT ( -- )
-   CAE-RUN$ CAE-BUF-SRC$ CHECK-ALL-ERRORS-BUF ;
+   CAE-RUN$ CAE-BUF-SRC$ CHECK-ALL-ERRORS:BUF ;
 
 : CAE-CORE-CAPTURE ( ptr u8 n -- n n n )
    CAE-RUN!
-   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
-   0 0= CHECK-ALL-ERRORS-JSON!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= CHECK-ALL-ERRORS:JSON!
    [: CAE-RUN-CORE-ACT ;] catch CAE-RC !
-   0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
 
 : CAE-BUF-CAPTURE ( ptr u8 n -- n n n )
    CAE-BUF-SRC!
    CAE-IN CAE-RUN!
-   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
-   0 0= CHECK-ALL-ERRORS-JSON!
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   0 0= CHECK-ALL-ERRORS:JSON!
    [: CAE-RUN-BUF-ACT ;] catch CAE-RC !
-   0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
 
 : CAE-ARGV-CHECK ( ptr u8 n -- ) {: file:ptr fileu :}
    ARGV:MOCK-CLEAR
@@ -357,9 +361,9 @@ create CAE-LF-BYTE 10 c,
    ARGV:PARSE
    ARGV:REQUIRE-LABEL
    1 ARGV:EXPECT-POS-EXACT
-   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS-BUFFERS!
-   ARGV:JSON? CHECK-ALL-ERRORS-JSON!
-   ARGV:LABEL$ 0 ARGV:POS$ CHECK-ALL-ERRORS-FILE ;
+   CAE-ERR CAE-BUF-CAP CAE-OUT CAE-BUF-CAP CHECK-ALL-ERRORS:BUFFERS!
+   ARGV:JSON? CHECK-ALL-ERRORS:JSON!
+   ARGV:LABEL$ 0 ARGV:POS$ CHECK-ALL-ERRORS:FILE ;
 
 : CAE-RUN ( -- n n n )
    CAE-IN CAE-CORE-CAPTURE ;
@@ -372,7 +376,7 @@ create CAE-LF-BYTE 10 c,
    [: CAE-RUN-ARGV-ACT ;] catch CAE-RC !
    ARGV:USE-SCRIPT
    ARGV:RESET
-   0 CHECK-ALL-ERRORS-OUT$ nip CAE-RC @ ;
+   0 CHECK-ALL-ERRORS:OUT$ nip CAE-RC @ ;
 
 : CAE-DUMP-CAPTURE ( n n n n -- )
    {: outu:n erru:n code:n expect:n :}
@@ -469,7 +473,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TEST-DUP-BUF ( -- )
    s" duplicate-buffer" CAE-CASE!
-   CAE-DUP-SOURCE$ CAE-BUF-CAPTURE CA-DUP-RC CAE-EXPECT-EXIT {: outu:n erru:n :}
+   CAE-DUP-SOURCE$ CAE-BUF-CAPTURE CHECK-ALL-ERRORS:DUP-RC CAE-EXPECT-EXIT {: outu:n erru:n :}
    s" duplicate-buffer stdout" T-LABEL
    CAE-OUT outu CAE-EMPTY$ T$=
    s" duplicate-buffer code" T-LABEL
@@ -578,11 +582,7 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-DT-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    SB$ ;
 
-package CAE-PKG-NOMINAL
-
-private
-
-: SOURCE$ ( -- ptr u8 n )
+: CAE-PKG-NOMINAL-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" package CAE-DTP" SB-APPEND CAE-LF
    s" DEFTYPE CAE-PKG-ID" SB-APPEND CAE-LF
@@ -590,8 +590,6 @@ private
    s" : CAE-PKG-BAD ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
    s" ;package" SB-APPEND CAE-LF
    SB$ ;
-
-;package
 
 : CAE-DEFLINEAR-SOURCE$ ( -- ptr u8 n )
    SB-RESET
@@ -662,16 +660,10 @@ private
    s" nominal-support" CAE-CASE!
    CAE-NOMINAL-SOURCE$ s" cae-dt-use" s" cae-dt-bad" CAE-CHECK-SUPPORT-PARITY ;
 
-package CAE-PKG-NOMINAL
-
-public
-
-: TEST ( -- )
+: CAE-TEST-PACKAGE-NOMINAL-SUPPORT ( -- )
    s" package-nominal-support" CAE-CASE!
-   SOURCE$
+   CAE-PKG-NOMINAL-SOURCE$
    s" cae-pkg-good" s" cae-pkg-bad" CAE-CHECK-SUPPORT-PARITY ;
-
-;package
 
 : CAE-TEST-DEFLINEAR-SUPPORT ( -- )
    s" deflinear-support" CAE-CASE!
@@ -791,9 +783,43 @@ public
    CAE-CASE$ T-LABEL
    CAE-ERR erru s" cae-al-bad" CAE-WORD-JSON$ CONTAINS? TTRUE ;
 
+\ A caller that is itself inside a package is the shape that exposed the
+\ checker package-scope leak. The rollback frame the core opens SAVED the
+\ caller's checker package but left it active, so a replayed top-level EXPORT
+\ directive read as an in-package re-export and the clean source below exited
+\ CHECK-ALL-ERRORS:DUP-RC instead of 0. This whole file is package
+\ CHECK-ALL-ERRORS-TEST, so the two runs below are made HERE, in the package
+\ body, where the checker's package mode really is this package's. Calling them
+\ from a case word instead would run them with no package open and could not
+\ reproduce the defect; the case word only reports what they recorded.
+variable CAE-PKG-CLEAN-RC
+variable CAE-PKG-CLEAN-U
+variable CAE-PKG-REJECT-RC
+
+: CAE-PKG-RUN-CLEAN ( -- )
+   CAE-EXPORT-SOURCE$ CAE-BUF-CAPTURE rot drop {: diagu:n rc:n :}
+   diagu CAE-PKG-CLEAN-U !
+   rc CAE-PKG-CLEAN-RC ! ;
+
+: CAE-PKG-RUN-REJECT ( -- )
+   CAE-EXPORT-ALIAS-BAD-SOURCE$ CAE-BUF-CAPTURE rot drop {: diagu:n rc:n :}
+   rc CAE-PKG-REJECT-RC ! ;
+
+CAE-PKG-RUN-CLEAN
+CAE-PKG-RUN-REJECT
+
+: CAE-TEST-PKG-EXPORT ( -- )
+   s" package-caller-export" CAE-CASE!
+   CAE-CASE$ T-LABEL
+   CAE-PKG-CLEAN-RC @ 0 T=
+   CAE-CASE$ T-LABEL
+   CAE-PKG-CLEAN-U @ 0 T=
+   CAE-CASE$ T-LABEL
+   CAE-PKG-REJECT-RC @ 70 T= ;
+
 \ Cross-file support: a prior source-list file's type and word are in scope
 \ for the checked buffer only when its path is registered through
-\ CHECK-ALL-ERRORS-SUPPORT+; the same buffer without registration fail-closed
+\ CHECK-ALL-ERRORS:SUPPORT+; the same buffer without registration fail-closed
 \ rejects. This is the hook the check source-list redrive drives per file.
 : CAE-XSUP-SUP$ ( -- ptr u8 n )
    SB-RESET
@@ -809,26 +835,28 @@ public
 : CAE-TEST-XSUP-REPLAY ( -- )
    s" xsup-replay" CAE-CASE!
    CAE-XSUP CAE-XSUP-SUP$ WRITE-ALL
-   CHECK-ALL-ERRORS-SUPPORT-RESET
+   CHECK-ALL-ERRORS:SUPPORT-RESET
    CAE-XSUP-USE$ CAE-BUF-CAPTURE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
    CAE-CASE$ T-LABEL
    CAE-ERR erru s" cae-xt-use" CAE-WORD-JSON$ CONTAINS? TTRUE
-   CAE-XSUP CHECK-ALL-ERRORS-SUPPORT+
+   CAE-XSUP CHECK-ALL-ERRORS:SUPPORT+
    CAE-XSUP-USE$ CAE-BUF-CAPTURE 0 CAE-EXPECT-EXIT {: outu2:n erru2:n :}
    CAE-CASE$ T-LABEL
    outu2 0 T=
    CAE-CASE$ T-LABEL
    erru2 0 T=
-   CHECK-ALL-ERRORS-SUPPORT-RESET ;
+   CHECK-ALL-ERRORS:SUPPORT-RESET ;
 
-: CAE-MAIN ( -- )
+public
+
+: RUN ( -- )
    T-RESET
    CAE-PREPARE
    s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
    s" cascade-no-phantom" [: CAE-TEST-CASCADE ;] CAE-CASE-RUN
    s" all-uncheckable" [: CAE-TEST-UNCHECKABLE-FAILS ;] CAE-CASE-RUN
    s" nominal-support" [: CAE-TEST-NOMINAL-SUPPORT ;] CAE-CASE-RUN
-   s" package-nominal-support" [: CAE-PKG-NOMINAL:TEST ;] CAE-CASE-RUN
+   s" package-nominal-support" [: CAE-TEST-PACKAGE-NOMINAL-SUPPORT ;] CAE-CASE-RUN
    s" deflinear-support" [: CAE-TEST-DEFLINEAR-SUPPORT ;] CAE-CASE-RUN
    s" value-record-support" [: CAE-TEST-VREC-SUPPORT ;] CAE-CASE-RUN
    s" const-layout-narrow" [: CAE-TEST-CONST-LAYOUT ;] CAE-CASE-RUN
@@ -837,6 +865,7 @@ public
    s" immediate-support" [: CAE-TEST-IMMEDIATE-SUPPORT ;] CAE-CASE-RUN
    s" export-support" [: CAE-TEST-EXPORT-SUPPORT ;] CAE-CASE-RUN
    s" export-alias" [: CAE-TEST-EXPORT-ALIAS ;] CAE-CASE-RUN
+   s" package-caller-export" [: CAE-TEST-PKG-EXPORT ;] CAE-CASE-RUN
    s" xsup-replay" [: CAE-TEST-XSUP-REPLAY ;] CAE-CASE-RUN
    s" large-source" [: CAE-TEST-LARGE ;] CAE-CASE-RUN
    s" support-source" [: CAE-TEST-SUPPORT-SOURCE ;] CAE-CASE-RUN
@@ -853,4 +882,6 @@ public
    T-REPORT
    s" check-all-errors-test: ok" type cr ;
 
-CAE-MAIN
+;package
+
+CHECK-ALL-ERRORS-TEST:RUN
