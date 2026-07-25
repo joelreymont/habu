@@ -402,6 +402,78 @@ variable TEST-DIFF-U
    s" deleted package boundary in type-family.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+: TEST-WRITE-CHECKER-COMMENT-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : CHECK-RESET ( -- n )" TEST-SOURCE-LINE
+   s"    TOKBUF-ENSURE   \ gate probe comment" TEST-SOURCE-LINE
+   s" ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-CHECKER-COMMENT-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : CHECK-RESET ( -- n )" TEST-DIFF+ TEST-LF
+   s" -   TOKBUF-ENSURE" TEST-DIFF+ TEST-LF
+   s" +   TOKBUF-ENSURE   \ gate probe comment" TEST-DIFF+ TEST-LF
+   s"  ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-CHECKER-COMMENT-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-CHECKER-COMMENT-BODY
+   TEST-DIFF-RESET path pathu TEST-CHECKER-COMMENT-DIFF ;
+
+: TEST-CHECKER-NEW-GLOBAL-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-DIFF-RESET
+   s" CHECKER-NEW-GLOBAL" TEST-GLOBAL-SOURCE
+   path pathu TEST-ADD-SOURCE-SECTION ;
+
+: TEST-WRITE-CHECKER-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : RBF-POP ( -- ) ;" TEST-SOURCE-LINE
+   s" src/core/checker.f" TEST-WRITE-SOURCE ;
+
+: TEST-CHECKER-OWNER-LOSS-DIFF ( -- )
+   s" src/core/checker.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package CHECKER-FRAME" TEST-DIFF+ TEST-LF
+   s"  : RBF-POP ( -- ) ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-CHECKER-EXEMPTION ( -- )
+   \ Positive: the control probe that proved the gate used to reject every
+   \ possible checker change -- one trailing comment on an existing global body,
+   \ defining no new word and changing no behavior -- is now admitted.
+   s" src/core/checker.f" TEST-CHECKER-COMMENT-CASE
+   s" checker core surface exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global word in the checker is admitted too; the pre-hook
+   \ axiom and rollback-frame surface grows by adding global words.
+   s" src/core/checker.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" checker core surface exempts a new global definition" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: the very same new-global diff on a neighbouring core file still
+   \ fails.  The exemption is one exact path, not a hole and not a directory.
+   s" src/core/check-hook.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" nearby core src/core/check-hook.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling whose name carries the allowlist path as a prefix is not
+   \ an exact match, so it must still fail (not a startswith match).
+   s" src/core/checker-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/core/checker-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the allowlist path
+   \ as a suffix but is not exact, so it must still fail (full path, not suffix).
+   s" lib/checker.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/checker.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package/;package boundary inside the
+   \ allowlisted src/core/checker.f still reports lost ownership, exactly as it
+   \ does for the other exempt files.  The exemption suppresses a plain global
+   \ body or definition change, never a scope change.
+   TEST-WRITE-CHECKER-OWNER-LOSS
+   TEST-DIFF-RESET TEST-CHECKER-OWNER-LOSS-DIFF
+   s" deleted package boundary in checker.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 : TEST-WRITE-OUTSIDE-HUNK-SOURCE ( -- )
    TEST-SOURCE-RESET
    s" package SHARED" TEST-SOURCE-LINE
@@ -921,6 +993,7 @@ variable TEST-DIFF-U
    TEST-REGISTRY-LANGUAGE
    TEST-CORE-EXEMPTIONS
    TEST-TYPE-FAMILY-EXEMPTION
+   TEST-CHECKER-EXEMPTION
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES
    TEST-DELETED-OWNER

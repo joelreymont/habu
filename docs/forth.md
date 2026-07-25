@@ -170,6 +170,13 @@ The complete-file global exceptions are exact paths, not directory rules:
   one of those package boundaries is still reported. This entry is interim: it
   must be removed once the TFAM sealing work (dot
   `habu-tfam-2b-sealed-1b77662c`) moves the registry into sealed packages.
+- `src/core/checker.f` owns the checker itself, which is a global pre-hook
+  language surface by current construction: the `PRIM:`/`PPRIM:` primitive-axiom
+  machinery and the `RBF` rollback-frame surface are global by design and load
+  before any package exists, so the checker is admitted on the same terms as
+  `sumtype.f`, `roles.f`, `structures.f`, and `enums.f`. Like `type-family.f`
+  this entry is interim: it must be removed once the checker sealing work (dot
+  `habu-seal-the-checker-5314c0ab`) gives those seams real package owners.
 
 `lib/errors.f` carries a global surface too, admitted by declaration shape
 rather than by whole file: every package in the repository throws and catches

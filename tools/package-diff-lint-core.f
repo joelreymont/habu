@@ -191,16 +191,24 @@ variable FILE-USED
 \ entirely global except src/core/type-family.f, which also opens inner packages:
 \ it is exempt only for its global surface, and only until the TFAM sealing work
 \ (dot habu-tfam-2b-sealed-1b77662c) seals that surface into packages, when this
-\ entry must be removed.  Package-boundary changes are still reported for every
-\ file here (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files
-\ with only one global declarer are handled by GLOBAL-SURFACE? below, so an
-\ unrelated global added beside DEFTYPE or STRUCTURE is still rejected.
+\ entry must be removed.  src/core/checker.f is the second interim entry, on the
+\ same terms: the checker is a global pre-hook language surface by current
+\ construction -- its PRIM:/PPRIM: primitive-axiom machinery and its RBF
+\ rollback-frame surface are global by design and load before any package
+\ exists -- so it is admitted the way sumtype.f, roles.f, structures.f and
+\ enums.f are, and it must be removed once the checker sealing work (dot
+\ habu-seal-the-checker-5314c0ab) gives those seams real package owners.
+\ Package-boundary changes are still reported for every file here
+\ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
+\ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
+\ global added beside DEFTYPE or STRUCTURE is still rejected.
 : GLOBAL-IMPLEMENTATION? ( -- bool )
    FILE$ s" lib/prelude.f" LINT-STR= if true exit then
    FILE$ s" src/core/sumtype.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
    FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header
+   FILE$ s" src/core/checker.f" LINT-STR= if true exit then      \ core surface, interim; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
 : SOURCE-ALLOC-NEED ( n -- n )
