@@ -1,5 +1,40 @@
 \ safetensors.f - native safetensors weight loader for the GB10 UMA inference
-\ engine (package SAFET; epic habu-epic-gb10-uma-391d12e8, phase 1).
+\ engine (packages SAFET-MAP and SAFET; epic habu-epic-gb10-uma-391d12e8).
+\
+\ OWNERSHIP MODEL (the point of this module). Loading a checkpoint is an explicit
+\ transaction, not a process-wide registry. SAFET:OPEN begins one isolated LOAD
+\ SESSION and hands back a linear `SAFET:session` token. Every later step takes
+\ that token explicitly: MAP-FILE or ADOPT gives the session its image, PARSE
+\ reads and validates the header into that session's own staging area, DETACH
+\ consumes a fully validated session and returns one immutable `SAFET:census`
+\ that owns the mapping, and CLOSE consumes a session that will never be
+\ published. No public word reads "the current load", so two sessions can be
+\ parsed interleaved without cross-talk and a session that fails leaves every
+\ other live session byte-identical.
+\
+\ The two tokens are DEFLINEAR, so the checker - not a runtime flag - enforces
+\ the lifetime rules: a session or census cannot be duplicated, silently
+\ dropped, stored, detached twice, closed twice, or used after it was consumed.
+\ Each session owns exactly one private memory block (allocated through
+\ lib/memory.f, see BLOCK-BYTES) holding its geometry, staging rows, name arena,
+\ scratch and JSON reader storage; DETACH transfers that same block to the census
+\ unchanged, so publication copies nothing.
+\
+\ NO PUBLIC WORD RETURNS A RAW POINTER. The census answers questions about
+\ tensors (count, id by name, dtype, rank, dims, byte length, data-section
+\ offsets) and gives access to tensor BYTES only through the scoped WITH-TENSOR
+\ body or the copying COPY-DATA? / COPY-NAME? readers, so an address never
+\ appears in a public output row and cannot be kept by accident.
+\
+\ The scoped span is ADVISORY, not enforced. Nothing stops a WITH-TENSOR body
+\ from deliberately stashing the span into a variable and reading it after
+\ RELEASE; that reads freed memory and crashes, exactly as it would in any
+\ language without region types. Escaping the scope takes a deliberate stash -
+\ the checker cannot yet express "this pointer may not outlive this call", so
+\ the guarantee here is the shape of the interface, not a proof. Closing that
+\ gap needs the pointer-lifetime / region-type checker capability, tracked by
+\ the capability dot the orchestrator is queuing for it; when that lands,
+\ WITH-TENSOR's span becomes lifetime-bounded and this note goes away.
 \
 \ FORMAT. A safetensors file is: an 8-byte little-endian u64 HEADER LENGTH, then
 \ that many bytes of a single JSON object mapping each tensor NAME -> a small
@@ -10,20 +45,20 @@
 \ carries free-form strings and is skipped.
 \
 \ ZERO-COPY ON UMA. The loader mmaps the file read-only (MAP_PRIVATE) and
-\ registers each tensor as a TYPED SPAN over the mapping: (dtype, shape, data
-\ pointer = data-section-base + begin, byte length). No tensor bytes are copied -
+\ records each tensor as a TYPED SPAN over the mapping: (dtype, shape, data
+\ offset = data-section-base + begin, byte length). No tensor bytes are copied -
 \ on the GB10's coherent unified memory the mapped pages are already GPU-visible,
-\ so the registry hands the forward pass pointers straight into the mapping. Only
-\ the small tensor NAMES are copied out (into a private arena) so lookups survive
-\ independent of the shared JSON cursor.
+\ so WITH-TENSOR hands the forward pass a span straight into the mapping for the
+\ duration of the body. Only the small tensor NAMES are copied out (into the
+\ session's private arena) so lookups survive independent of the JSON cursor.
 \
-\ FAIL-CLOSED, NO PARTIAL REGISTRATION. Every malformed input throws a named
-\ E-ST-* code and leaves COUNT at 0: tensors are staged into the registry during
-\ the parse and only PUBLISHED (COUNT := staged) after the entire header
-\ validates. A throw anywhere aborts with COUNT unchanged. A parse failure after
-\ mapping unmaps before rethrowing (LOAD), so a rejected file leaks nothing.
-\ Structural JSON faults from the streaming reader (lib/json-read.f, E-JR-*) are
-\ remapped to E-ST-JSON so the loader presents one error surface.
+\ FAIL-CLOSED, NO PARTIAL PUBLICATION. Every malformed input throws a named
+\ SAFET:E-* code and leaves the session unpublished: tensors are staged during
+\ the parse and the published count is only written by DETACH, which refuses a
+\ session whose header never validated (SAFET:E-ORDER). A throw anywhere aborts
+\ with the staging area discarded on the next PARSE and the session still
+\ closeable. Structural JSON faults from the streaming reader (lib/json-read.f,
+\ E-JR-*) are remapped to SAFET:E-JSON so the loader presents one error surface.
 \
 \ STREAMING PARSE (design note). The header is parsed with the zero-allocation
 \ pull reader lib/json-read.f, NOT the DOM tool tools/json.f: a DOM materialises
@@ -42,7 +77,7 @@
 \ free-form and is SKIPPED, not interpreted as config.
 \
 \ TENSOR ORIENTATION - ORIGINAL vs PACKED (for the forward + model-pack dots).
-\ Tensors are registered in their ORIGINAL on-disk orientation. HuggingFace GPT-2
+\ Tensors are recorded in their ORIGINAL on-disk orientation. HuggingFace GPT-2
 \ stores its attention/MLP projection weights as `Conv1D`, whose weight is
 \ [in_features, out_features] - the TRANSPOSE of a `nn.Linear` weight
 \ [out_features, in_features]. Example from openai-community/gpt2: attn.c_attn
@@ -56,317 +91,638 @@
 \ RESIDENCY (contract; measured in docs/gb10-uma-residency.md). A cuMemAlloc
 \ device buffer reads at ~273 GB/s vs ~160 GB/s for a directly-mmap'd host pointer
 \ on the GB10, so the residency layer copies weights into device buffers when they
-\ fit; it MUST then UNMAP the source (see UNMAP) so two full checkpoints are never
-\ resident at once, keeping peak load memory bounded (model size + one tensor).
+\ fit; it MUST then RELEASE the census that owns the source mapping so two full
+\ checkpoints are never resident at once, keeping peak load memory bounded (model
+\ size + one tensor).
 \
 \ ABSOLUTE ALIGNMENT (design note). safetensors packs tensor data contiguously
 \ with no padding, so each begin is a multiple of its element size RELATIVE to
-\ the data section (enforced: E-ST-ALIGN), but the data section itself starts at
-\ file byte 8+header_len, which is generally NOT element-aligned (GPT-2: 14291,
+\ the data section (enforced: SAFET:E-ALIGN), but the data section itself starts
+\ at file byte 8+header_len, which is generally NOT element-aligned (GPT-2: 14291,
 \ so wte's absolute pointer is 3 bytes off a 4-byte boundary). The forward pass /
-\ residency layer must treat mapped tensor pointers as byte-aligned, not
+\ residency layer must treat WITH-TENSOR spans as byte-aligned, not
 \ element-aligned - see docs/gb10-uma-residency.md.
 
-require lib/errors.f                     \ E-FS-*, E-MEM-MAP, E-JR-FIRST/E-JR-LAST
+require lib/errors.f                     \ E-FS-*, E-MEM-MAP/E-MEM-UNMAP, E-JR-FIRST/E-JR-LAST
 require lib/fs.f                          \ FILE-SIZE, FS-PATHZ, FS-U64@, EXISTS?, FILE?
 require lib/string.f                      \ STR=, BYTE+, BYTE-COPY
+require lib/memory.f                      \ MEM: block allocation for one session
+require lib/adt/option.f                  \ option<n> for every id-addressed reader
 require lib/json-read.f                   \ JR: streaming JSON pull reader
 
-\ ---- named throw codes (owned by this module; block -7600..-7607) ----------
--7600 constant E-ST-HEADER    \ file < 8 bytes, or 8+header_len exceeds the file, or header_len <= 0
--7601 constant E-ST-JSON      \ header JSON malformed, not an object, or a value not an object
--7602 constant E-ST-DTYPE     \ unknown / unsupported dtype wire string
--7603 constant E-ST-SHAPE     \ shape not an array, negative dim, rank overflow, or byte-size mismatch
--7604 constant E-ST-OFFSETS   \ data_offsets not [begin,end], begin>end, out of range, or overlapping
--7605 constant E-ST-ALIGN     \ begin not a multiple of the element size
--7606 constant E-ST-FIELD     \ a tensor object is missing dtype / shape / data_offsets
--7607 constant E-ST-CAP       \ too many tensors, or name arena exhausted
+\ ---------------------------------------------------------------------------
+\ package SAFET-MAP - the host file-mapping seam.
+\
+\ Two responsibilities live here and nowhere else: turning a path into a
+\ read-only private mapping, and giving that mapping back to the kernel. Keeping
+\ them in their own package is not decoration - package SAFET publishes OPEN and
+\ CLOSE, which would shadow the `open` and `close` syscall words for every later
+\ definition inside SAFET. Isolating the syscalls structurally removes that
+\ hazard instead of relying on definition order.
+\ ---------------------------------------------------------------------------
+package SAFET-MAP
 
+private
+
+\ Reinterprets the raw address the mmap primitive returns as a typed byte
+\ pointer. The checker cannot express this syscall-result refinement, and this
+\ is the only place in the loader that needs it.
+TRUSTED: N>PTR ( n -- ptr u8 ) ;
+
+0 constant MAP-ADDR-ANY
+1 constant MAP-PROT-READ
+2 constant MAP-PRIVATE
+0 constant OPEN-RDONLY
+0 constant OPEN-MODE
+0 constant MAP-OFF-ZERO
+
+\ Live checkpoint mappings held by this process. Pure accounting: nothing in the
+\ load path reads it, and it decides nothing. It exists so a caller - in practice
+\ the test suite - can assert the leak invariant directly after every load,
+\ failure and disposal, instead of trusting that each mapping found its unmap.
+variable LIVE-N
+
+public
+
+: LIVE ( -- n )                                \ checkpoint mappings not yet released
+   LIVE-N @ ;
+
+: MAP-PATH ( ptr u8 n n -- ptr u8 )            \ path + byte length -> mapping base
+   {: pa:ptr pu:n sz:n :}
+   sz 0 <= if E-FS-STAT throw then
+   pa pu FS-PATHZ OPEN-RDONLY OPEN-MODE open {: fd:n :}
+   fd 0 < if E-FS-OPEN throw then
+   MAP-ADDR-ANY sz MAP-PROT-READ MAP-PRIVATE fd MAP-OFF-ZERO mmap {: base:n :}
+   fd close
+   base 0 < if E-MEM-MAP throw then
+   1 LIVE-N +!
+   base N>PTR ;
+
+: UNMAP ( ptr u8 n -- )                        \ give one mapping back to the kernel
+   munmap
+   dup 0 < if E-MEM-UNMAP throw then
+   drop
+   -1 LIVE-N +! ;
+
+;package
+
+\ ---------------------------------------------------------------------------
+\ package SAFET - load sessions, published censuses, and the header parser.
+\ ---------------------------------------------------------------------------
 package SAFET
 
 public
+
+\ ---- named throw codes (this module owns the block -7600..-7699) -----------
+-7600 constant E-HEADER    \ file < 8 bytes, or 8+header_len exceeds the file, or header_len <= 0
+-7601 constant E-JSON      \ header JSON malformed, not an object, or a value not an object
+-7602 constant E-DTYPE     \ unknown / unsupported dtype wire string
+-7603 constant E-SHAPE     \ shape not an array, negative dim, rank overflow, or byte-size mismatch
+-7604 constant E-OFFSETS   \ data_offsets not [begin,end], begin>end, out of range, or overlapping
+-7605 constant E-ALIGN     \ begin not a multiple of the element size
+-7606 constant E-FIELD     \ a tensor object is missing dtype / shape / data_offsets
+-7607 constant E-CAP       \ too many tensors, or name arena exhausted
+-7608 constant E-ORDER     \ session step taken out of order (image twice, parse first, detach unparsed)
+
 \ ---- dtype codes (numerically match maki/tensor.f MAKI:DT-* for the intersecting
-\ set, so the forward dot maps SAFET:DTYPE@ -> MAKI dtype by value; the loader is
+\ set, so the forward dot maps SAFET:DTYPE? -> MAKI dtype by value; the loader is
 \ the authority on the safetensors wire dtype and may support a superset) --------
-0 constant ST-DT-F32
-1 constant ST-DT-F16
-2 constant ST-DT-BF16
-3 constant ST-DT-U32
-4 constant ST-DT-I32
+0 constant DT-F32
+1 constant DT-F16
+2 constant DT-BF16
+3 constant DT-U32
+4 constant DT-I32
+
+\ ---- the two owner tokens --------------------------------------------------
+DEFLINEAR SAFET:session        \ one open, unpublished load transaction
+DEFLINEAR SAFET:census         \ one published, immutable tensor census
+
 private
 
-8    constant ST-MAX-RANK      \ max tensor rank the registry records
-2048 constant ST-CAP           \ max tensors (GPT-2: 160; LLaMA-70B: ~700)
-$40000 constant ST-NAME-CAP    \ name arena bytes (256 KiB)
-1024 constant ST-SCRATCH-CAP   \ per-name unescape scratch
-$7FFFFFFFFFFFFFFF constant ST-MAX-N
+\ ---- capacities ------------------------------------------------------------
+8    constant MAX-RANK         \ max tensor rank a census records
+2048 constant CAP              \ max tensors (GPT-2: 160; LLaMA-70B: ~700)
+$40000 constant NAME-CAP       \ name arena bytes (256 KiB)
+1024 constant SCRATCH-CAP      \ per-name unescape scratch
+$7FFFFFFFFFFFFFFF constant MAX-N
+7 constant ROW-CELLS           \ cells per staged/published tensor row
 
-here CELL 1- and CELL swap - CELL 1- and allot
-create ST-JR-STATE JR:STORAGE-BYTES allot
+\ ---- one session block -----------------------------------------------------
+\ Everything a load owns lives in this single allocation, so DETACH publishes by
+\ retyping the owner token rather than copying, and CLOSE/RELEASE free exactly
+\ one region. Cells 0 and 1 hold pointers and are addressed with `ptr-field`
+\ (cell INDEXES); every other field is a byte offset used with `+`.
+0 constant IMG-IDX             \ ptr u8: image base (mapping or adopted span)
+1 constant KEY-IDX             \ ptr u8: current JSON member-key span pointer
+2 cells constant MAP-LEN-OFF   \ image byte length
+3 cells constant OWNS-MAP-OFF  \ 1 when disposal must unmap the image
+4 cells constant HAS-IMG-OFF   \ 1 once an image was mapped or adopted
+5 cells constant HDR-LEN-OFF   \ JSON header byte length (the leading u64)
+6 cells constant DATA-LEN-OFF  \ data-section byte length (map_len - 8 - header_len)
+7 cells constant N-OFF         \ PUBLISHED tensor count (written only by DETACH)
+8 cells constant STAGE-OFF     \ staged rows during a parse
+9 cells constant BUMP-OFF      \ name-arena bump cursor
+10 cells constant PARSED-OFF   \ 1 once a whole header validated
+11 cells constant NMOFF-OFF    \ ---- per-tensor parse accumulators ----
+12 cells constant NMLEN-OFF
+13 cells constant DT-OFF
+14 cells constant ES-OFF       \ element size of the current dtype
+15 cells constant RK-OFF
+16 cells constant BEG-OFF
+17 cells constant END-OFF
+18 cells constant DT-SEEN-OFF
+19 cells constant SH-SEEN-OFF
+20 cells constant OFF-SEEN-OFF
+21 cells constant KEY-LEN-OFF
+22 cells constant OVL-OFF
+23 cells constant CUR-DIMS-OFF
 
-\ ---- mapping + header geometry ---------------------------------------------
-variable ST-BASE-P             \ mapping base as a byte pointer (ptr-field holder)
-variable ST-BASE-N             \ mapping base as a numeric address (data-pointer arithmetic)
-variable ST-MAP-LEN            \ mapped byte length (= file size)
-variable ST-HDR-LEN            \ JSON header byte length (the leading u64)
-variable ST-DATA-BASE-N        \ numeric address of the data section (base + 8 + header_len)
-variable ST-DATA-LEN           \ data-section byte length (map_len - 8 - header_len)
+\ Regions after the header, in order. NAME-CAP and SCRATCH-CAP are cell
+\ multiples, so JR-OFF stays cell-aligned for JR:INIT.
+CUR-DIMS-OFF MAX-RANK cells + constant ROWS-OFF
+ROWS-OFF CAP ROW-CELLS * cells + constant DIMS-OFF
+DIMS-OFF CAP MAX-RANK * cells + constant ARENA-OFF
+ARENA-OFF NAME-CAP + constant SCRATCH-OFF
+SCRATCH-OFF SCRATCH-CAP + constant JR-OFF
+JR-OFF JR:STORAGE-BYTES + constant BLOCK-BYTES
 
-\ ---- registry (parallel arrays, one row per tensor) ------------------------
-variable ST-N                  \ PUBLISHED tensor count (0 until a whole header validates)
-variable ST-STAGE              \ staged rows during a parse
-create ST-NM-OFF  ST-CAP cells allot           \ name offset into the arena
-create ST-NM-LEN  ST-CAP cells allot           \ name length
-create ST-DTY     ST-CAP cells allot           \ dtype code (ST-DT-*)
-create ST-RANK    ST-CAP cells allot           \ tensor rank
-create ST-DATA    ST-CAP cells allot           \ tensor data pointer (numeric address)
-create ST-NB      ST-CAP cells allot           \ tensor byte length
-create ST-BEG     ST-CAP cells allot           \ data_offsets begin (for overlap checks)
-create ST-END     ST-CAP cells allot           \ data_offsets end
-create ST-DIMS    ST-CAP ST-MAX-RANK * cells allot   \ dims, row-major by tensor
+\ ---- tensor row columns ----------------------------------------------------
+0 constant C-NMOFF             \ name offset into the arena
+1 constant C-NMLEN             \ name length
+2 constant C-DTY               \ dtype code (DT-*)
+3 constant C-RANK
+4 constant C-NB                \ tensor byte length
+5 constant C-BEG               \ data_offsets begin (data-section relative)
+6 constant C-END               \ data_offsets end
 
-create ST-NAME-ARENA ST-NAME-CAP allot         \ copied tensor names
-variable ST-NM-BUMP                            \ arena bump cursor
-create ST-SCRATCH ST-SCRATCH-CAP allot         \ name unescape scratch
+\ ---- audited representation boundary ---------------------------------------
+\ Seven private leaves, one abstraction: minting an owner token from its block,
+\ reading the block back out of a token, retyping a validated session as a
+\ census, consuming a token to reach its block for disposal, and the block's byte
+\ view. The tokens ARE their blocks, so every leaf is an identity or a
+\ duplication of one cell; the checker cannot express "this pointer is a live
+\ SAFET block". All seven stay package-private and unreachable from outside
+\ (proved in safetensors-test.f).
+TRUSTED: MINT-SESSION ( ptr u8 -- SAFET:session ) ;
 
-\ ---- per-tensor parse accumulators -----------------------------------------
-variable ST-CUR-NMOFF variable ST-CUR-NMLEN
-variable ST-CUR-DT    variable ST-CUR-ES       \ dtype code + element size
-variable ST-CUR-RK
-create   ST-CUR-DIMS ST-MAX-RANK cells allot
-variable ST-CUR-BEG   variable ST-CUR-END
-variable ST-DT-SEEN   variable ST-SH-SEEN variable ST-OFF-SEEN
-variable ST-KA        variable ST-KL         \ stashed member-key span
-variable ST-OVL
+TRUSTED: SESSION>BLOCK ( SAFET:session -- SAFET:session ptr n )
+   dup ;
 
-\ ---- pointer reinterprets (audited soundness boundary; the mmap primitive and
-\ the registry cells carry raw addresses the checker cannot type) ------------
-TRUSTED: ST-N>PTR ( n -- ptr u8 ) ;            \ numeric address -> byte pointer
-TRUSTED: ST-PTR>N ( ptr u8 -- n ) ;            \ byte pointer -> numeric address
+TRUSTED: TAKE-SESSION ( SAFET:session -- ptr n ) ;
 
-: ST-BASE-FIELD ( -- ptr ptr u8 )  ST-BASE-P 0 ptr-field ;
-: ST-BASE@ ( -- ptr u8 )  ST-BASE-FIELD @ ;
-: ST-BASE! ( ptr u8 -- )  ST-BASE-FIELD ! ;
+TRUSTED: SESSION>CENSUS ( SAFET:session -- SAFET:census ) ;
+
+TRUSTED: CENSUS>BLOCK ( SAFET:census -- SAFET:census ptr n )
+   dup ;
+
+TRUSTED: TAKE-CENSUS ( SAFET:census -- ptr n ) ;
+
+\ The block's byte view. Package-private and applied only to a block address
+\ that one of the leaves above just produced.
+TRUSTED: BLOCK>BYTES ( ptr n -- ptr u8 ) ;
+
+\ ---- block regions ---------------------------------------------------------
+: ARENA ( ptr n -- ptr u8 )
+   BLOCK>BYTES ARENA-OFF BYTE+ ;
+
+: SCRATCH ( ptr n -- ptr u8 )
+   BLOCK>BYTES SCRATCH-OFF BYTE+ ;
+
+: IMG ( ptr n -- ptr u8 ) {: st:ptr :}
+   st IMG-IDX ptr-field @ ;
+
+: DATA-BASE ( ptr n -- ptr u8 ) {: st:ptr :}   \ first byte past the JSON header
+   st IMG  8 st HDR-LEN-OFF + @ +  BYTE+ ;
+
+: ROW@ ( ptr n n n -- n ) {: st:ptr row:n col:n :}
+   st ROWS-OFF + row ROW-CELLS * col + cells + @ ;
+
+: ROW! ( ptr n n n n -- ) {: st:ptr row:n col:n value:n :}
+   value  st ROWS-OFF + row ROW-CELLS * col + cells +  ! ;
+
+: DIMS@ ( ptr n n n -- n ) {: st:ptr id:n axis:n :}
+   st DIMS-OFF + id MAX-RANK * axis + cells + @ ;
+
+: DIMS! ( ptr n n n n -- ) {: st:ptr id:n axis:n value:n :}
+   value  st DIMS-OFF + id MAX-RANK * axis + cells +  ! ;
+
+: NAME-AT ( ptr n n -- ptr u8 n ) {: st:ptr id:n :}
+   st ARENA  st id C-NMOFF ROW@ BYTE+   st id C-NMLEN ROW@ ;
+
+: TENSOR-AT ( ptr n n -- ptr u8 ) {: st:ptr id:n :}
+   st DATA-BASE  st id C-BEG ROW@ BYTE+ ;
+
+: ID-OK? ( ptr n n -- bool ) {: st:ptr id:n :}
+   id 0 >= id st N-OFF + @ < and ;
+
+\ ---- block lifetime --------------------------------------------------------
+\ Live session/census blocks. Pure accounting, exactly like SAFET-MAP:LIVE:
+\ nothing in the load path reads it and it decides nothing, but it lets a caller
+\ assert after any sequence of loads and failures that every owner reached its
+\ CLOSE or RELEASE. A linear token that is abandoned by a throw is invisible to
+\ the checker (the stack is unwound past it), so this counter is how "no hidden
+\ registry, nothing left over" is actually observed.
+variable LIVE-N
+
+: BLOCK-LEN ( -- CAD-NUM:alloc-byte-len )
+   BLOCK-BYTES MEM:BYTES-ALLOC-LEN ;
+
+: INIT-BLOCK ( ptr n -- ) {: st:ptr :}
+   0 st MAP-LEN-OFF + !   0 st OWNS-MAP-OFF + !  0 st HAS-IMG-OFF + !
+   0 st HDR-LEN-OFF + !   0 st DATA-LEN-OFF + !
+   0 st N-OFF + !         0 st STAGE-OFF + !     0 st BUMP-OFF + !
+   0 st PARSED-OFF + ! ;
+
+\ The single disposal path behind both CLOSE and RELEASE. It reads the mapping
+\ decision out of the block BEFORE freeing the block, so neither outcome can
+\ touch released memory and a failing munmap still cannot leak the metadata.
+: DISPOSE ( ptr n -- ) {: st:ptr :}
+   st OWNS-MAP-OFF + @ {: owns:n :}
+   st IMG {: base:ptr :}
+   st MAP-LEN-OFF + @ {: len:n :}
+   st BLOCK>BYTES BLOCK-LEN MEM:RELEASE-BYTES
+   -1 LIVE-N +!
+   owns 0 <> if base len SAFET-MAP:UNMAP then ;
 
 \ ---- error remap: JR structural faults -> one loader surface ---------------
-: ST-JR-ERR? ( n -- bool )
+: JR-ERR? ( n -- bool )
    dup E-JR-LAST >= swap E-JR-FIRST <= and ;   \ code in [-3999,-3900]
 
-: ST-REMAP ( n -- )
+: REMAP ( n -- )
    dup 0= if drop exit then
-   dup ST-JR-ERR? if drop E-ST-JSON throw then
+   dup JR-ERR? if drop E-JSON throw then
    throw ;
 
-\ ---- dtype wire decode: set ST-CUR-DT + ST-CUR-ES --------------------------
-: ST-DECODE-DTYPE ( ptr u8 n -- )
-   2dup s" F32"  STR= if 2drop ST-DT-F32  ST-CUR-DT ! 4 ST-CUR-ES ! exit then
-   2dup s" F16"  STR= if 2drop ST-DT-F16  ST-CUR-DT ! 2 ST-CUR-ES ! exit then
-   2dup s" BF16" STR= if 2drop ST-DT-BF16 ST-CUR-DT ! 2 ST-CUR-ES ! exit then
-   2dup s" I32"  STR= if 2drop ST-DT-I32  ST-CUR-DT ! 4 ST-CUR-ES ! exit then
-   2dup s" U32"  STR= if 2drop ST-DT-U32  ST-CUR-DT ! 4 ST-CUR-ES ! exit then
-   2drop E-ST-DTYPE throw ;
+\ ---- dtype wire decode: set the current dtype code + element size ----------
+: DECODE-DTYPE ( ptr u8 n ptr n -- ) {: st:ptr :}
+   2dup s" F32"  STR= if 2drop DT-F32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" F16"  STR= if 2drop DT-F16  st DT-OFF + ! 2 st ES-OFF + ! exit then
+   2dup s" BF16" STR= if 2drop DT-BF16 st DT-OFF + ! 2 st ES-OFF + ! exit then
+   2dup s" I32"  STR= if 2drop DT-I32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" U32"  STR= if 2drop DT-U32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2drop E-DTYPE throw ;
 
-: ST-KEY= ( ptr u8 n -- bool )                 \ literal vs the stashed member key
-   ST-KA @ ST-KL @ STR= ;
+: KEY= ( ptr u8 n ptr n -- bool ) {: st:ptr :}   \ literal vs the stashed member key
+   st KEY-IDX ptr-field @ st KEY-LEN-OFF + @ STR= ;
 
 \ ---- member value readers (cursor at the key; advance past its value) -------
-: ST-DO-DTYPE ( JR:reader -- JR:reader )
-   JR:NEXT JR:T-STR <> if E-ST-DTYPE throw then
-   JR:SPAN$ ST-DECODE-DTYPE
-   1 ST-DT-SEEN ! ;
+: DO-DTYPE ( JR:reader ptr n -- JR:reader ) {: st:ptr :}
+   JR:NEXT JR:T-STR <> if E-DTYPE throw then
+   JR:SPAN$ st DECODE-DTYPE
+   1 st DT-SEEN-OFF + ! ;
 
-: ST-DO-SHAPE ( JR:reader -- JR:reader )
-   JR:NEXT JR:T-ARR <> if E-ST-SHAPE throw then
-   0 ST-CUR-RK !
+: DO-SHAPE ( JR:reader ptr n -- JR:reader ) {: st:ptr :}
+   JR:NEXT JR:T-ARR <> if E-SHAPE throw then
+   0 st RK-OFF + !
    begin JR:NEXT dup JR:T-ARR-END <> while
-      dup JR:T-INT <> if E-ST-SHAPE throw then drop
-      JR:INT dup 0 < if E-ST-SHAPE throw then
-      ST-CUR-RK @ ST-MAX-RANK >= if E-ST-SHAPE throw then
-      ST-CUR-DIMS ST-CUR-RK @ cells + !
-      ST-CUR-RK @ 1+ ST-CUR-RK !
+      dup JR:T-INT <> if E-SHAPE throw then drop
+      JR:INT dup 0 < if E-SHAPE throw then
+      st RK-OFF + @ MAX-RANK >= if E-SHAPE throw then
+      st CUR-DIMS-OFF + st RK-OFF + @ cells + !
+      st RK-OFF + @ 1+ st RK-OFF + !
    repeat drop
-   1 ST-SH-SEEN ! ;
+   1 st SH-SEEN-OFF + ! ;
 
-: ST-DO-OFFSETS ( JR:reader -- JR:reader )
-   JR:NEXT JR:T-ARR <> if E-ST-OFFSETS throw then
-   JR:NEXT dup JR:T-INT <> if E-ST-OFFSETS throw then drop JR:INT ST-CUR-BEG !
-   JR:NEXT dup JR:T-INT <> if E-ST-OFFSETS throw then drop JR:INT ST-CUR-END !
-   JR:NEXT JR:T-ARR-END <> if E-ST-OFFSETS throw then   \ exactly two elements
-   1 ST-OFF-SEEN ! ;
+: DO-OFFSETS ( JR:reader ptr n -- JR:reader ) {: st:ptr :}
+   JR:NEXT JR:T-ARR <> if E-OFFSETS throw then
+   JR:NEXT dup JR:T-INT <> if E-OFFSETS throw then drop JR:INT st BEG-OFF + !
+   JR:NEXT dup JR:T-INT <> if E-OFFSETS throw then drop JR:INT st END-OFF + !
+   JR:NEXT JR:T-ARR-END <> if E-OFFSETS throw then   \ exactly two elements
+   1 st OFF-SEEN-OFF + ! ;
 
-\ ---- validation: fill nothing new, just check the accumulators --------------
-: ST-SHAPE-MUL ( n n -- n ) {: a:n b:n :}
-   a 0 < b 0 < or if E-ST-SHAPE throw then
+\ ---- validation: check the accumulators against the staged rows ------------
+: SHAPE-MUL ( n n -- n ) {: a:n b:n :}
+   a 0 < b 0 < or if E-SHAPE throw then
    a 0= b 0= or if 0 exit then
-   a ST-MAX-N b / > if E-ST-SHAPE throw then
+   a MAX-N b / > if E-SHAPE throw then
    a b * ;
 
-: ST-NELEMS ( -- n )
-   1 ST-CUR-RK @ 0 ?do ST-CUR-DIMS i cells + @ ST-SHAPE-MUL loop ;
+: NELEMS ( ptr n -- n ) {: st:ptr :}
+   1 st RK-OFF + @ 0 ?do st CUR-DIMS-OFF + i cells + @ SHAPE-MUL loop ;
 
-: ST-OVERLAPS? ( n n -- bool )
-   {: b e :}
-   0 ST-OVL !
-   ST-STAGE @ 0 ?do
-      b ST-END i cells + @ <  ST-BEG i cells + @ e <  and
-      if 1 ST-OVL ! leave then
+: OVERLAPS? ( ptr n n n -- bool ) {: st:ptr b:n e:n :}
+   0 st OVL-OFF + !
+   st STAGE-OFF + @ 0 ?do
+      b st i C-END ROW@ <  st i C-BEG ROW@ e <  and
+      if 1 st OVL-OFF + ! leave then
    loop
-   ST-OVL @ 0 <> ;
+   st OVL-OFF + @ 0 <> ;
 
-: ST-VALIDATE ( -- )
-   ST-NELEMS ST-CUR-ES @ ST-SHAPE-MUL {: expect:n :}
-   ST-CUR-BEG @ 0 < if E-ST-OFFSETS throw then
-   ST-CUR-END @ ST-CUR-BEG @ < if E-ST-OFFSETS throw then
-   ST-CUR-END @ ST-DATA-LEN @ > if E-ST-OFFSETS throw then
-   ST-CUR-BEG @ ST-CUR-ES @ mod 0 <> if E-ST-ALIGN throw then
-   ST-CUR-END @ ST-CUR-BEG @ - expect <> if E-ST-SHAPE throw then
-   ST-CUR-BEG @ ST-CUR-END @ ST-OVERLAPS? if E-ST-OFFSETS throw then ;
+: VALIDATE ( ptr n -- ) {: st:ptr :}
+   st NELEMS st ES-OFF + @ SHAPE-MUL {: expect:n :}
+   st BEG-OFF + @ 0 < if E-OFFSETS throw then
+   st END-OFF + @ st BEG-OFF + @ < if E-OFFSETS throw then
+   st END-OFF + @ st DATA-LEN-OFF + @ > if E-OFFSETS throw then
+   st BEG-OFF + @ st ES-OFF + @ mod 0 <> if E-ALIGN throw then
+   st END-OFF + @ st BEG-OFF + @ - expect <> if E-SHAPE throw then
+   st st BEG-OFF + @ st END-OFF + @ OVERLAPS? if E-OFFSETS throw then ;
 
 \ ---- one tensor value object: parse members, validate ----------------------
-: ST-TENSOR ( JR:reader -- JR:reader )         \ cursor at the value T-OBJ
-   0 ST-DT-SEEN ! 0 ST-SH-SEEN ! 0 ST-OFF-SEEN ! 0 ST-CUR-RK !
+: STASH-KEY ( JR:reader ptr n -- JR:reader ) {: st:ptr :}
+   JR:SPAN$ st KEY-LEN-OFF + !  st KEY-IDX ptr-field ! ;
+
+: TENSOR-MEMBER ( JR:reader ptr n -- JR:reader ) {: st:ptr :}
+   s" dtype"        st KEY= if st DO-DTYPE   else
+   s" shape"        st KEY= if st DO-SHAPE   else
+   s" data_offsets" st KEY= if st DO-OFFSETS else
+      JR:NEXT drop JR:SKIP-VALUE
+   then then then ;
+
+: TENSOR-FIELDS? ( ptr n -- ) {: st:ptr :}
+   st DT-SEEN-OFF  + @ 0= if E-FIELD throw then
+   st SH-SEEN-OFF  + @ 0= if E-FIELD throw then
+   st OFF-SEEN-OFF + @ 0= if E-FIELD throw then ;
+
+: TENSOR ( JR:reader ptr n -- JR:reader ) {: st:ptr :}   \ cursor at the value T-OBJ
+   0 st DT-SEEN-OFF + ! 0 st SH-SEEN-OFF + ! 0 st OFF-SEEN-OFF + ! 0 st RK-OFF + !
    begin JR:NEXT dup JR:T-OBJ-END <> while
-      dup JR:T-KEY <> if E-ST-JSON throw then drop
-      JR:SPAN$ ST-KL ! ST-KA !
-      s" dtype"        ST-KEY= if ST-DO-DTYPE   else
-      s" shape"        ST-KEY= if ST-DO-SHAPE   else
-      s" data_offsets" ST-KEY= if ST-DO-OFFSETS else
-         JR:NEXT drop JR:SKIP-VALUE
-      then then then
+      dup JR:T-KEY <> if E-JSON throw then drop
+      st STASH-KEY
+      st TENSOR-MEMBER
    repeat drop
-   ST-DT-SEEN  @ 0= if E-ST-FIELD throw then
-   ST-SH-SEEN  @ 0= if E-ST-FIELD throw then
-   ST-OFF-SEEN @ 0= if E-ST-FIELD throw then
-   ST-VALIDATE ;
+   st TENSOR-FIELDS?
+   st VALIDATE ;
 
-\ ---- name copy into the arena ----------------------------------------------
-: ST-READ-NAME ( JR:reader -- JR:reader )      \ cursor at the member key (T-KEY)
-   ST-SCRATCH ST-SCRATCH-CAP JR:STR {: nlen :}
-   nlen ST-NM-BUMP @ + ST-NAME-CAP > if E-ST-CAP throw then
-   ST-NM-BUMP @ ST-CUR-NMOFF !
-   nlen ST-CUR-NMLEN !
-   ST-SCRATCH  ST-NAME-ARENA ST-NM-BUMP @ +  nlen BYTE-COPY
-   ST-NM-BUMP @ nlen + ST-NM-BUMP ! ;
+\ ---- name copy into the session's arena ------------------------------------
+: READ-NAME ( JR:reader ptr n -- JR:reader ) {: st:ptr :}   \ cursor at the member key
+   st SCRATCH SCRATCH-CAP JR:STR {: nlen:n :}
+   nlen st BUMP-OFF + @ + NAME-CAP > if E-CAP throw then
+   st BUMP-OFF + @ st NMOFF-OFF + !
+   nlen st NMLEN-OFF + !
+   st SCRATCH  st ARENA st BUMP-OFF + @ BYTE+  nlen BYTE-COPY
+   st BUMP-OFF + @ nlen + st BUMP-OFF + ! ;
 
-: ST-CUR-META? ( -- bool )
-   ST-NAME-ARENA ST-CUR-NMOFF @ +  ST-CUR-NMLEN @  s" __metadata__" STR= ;
+: CUR-META? ( ptr n -- bool ) {: st:ptr :}
+   st ARENA st NMOFF-OFF + @ BYTE+  st NMLEN-OFF + @  s" __metadata__" STR= ;
 
-\ ---- commit a validated tensor into the registry ---------------------------
-: ST-STAGE-COMMIT ( -- )
-   ST-STAGE @ ST-CAP >= if E-ST-CAP throw then
-   ST-STAGE @ {: ri :}
-   ST-CUR-NMOFF @  ST-NM-OFF ri cells + !
-   ST-CUR-NMLEN @  ST-NM-LEN ri cells + !
-   ST-CUR-DT    @  ST-DTY    ri cells + !
-   ST-CUR-RK    @  ST-RANK   ri cells + !
-   ST-CUR-BEG   @  ST-BEG    ri cells + !
-   ST-CUR-END   @  ST-END    ri cells + !
-   ST-CUR-END @ ST-CUR-BEG @ -            ST-NB   ri cells + !
-   ST-DATA-BASE-N @ ST-CUR-BEG @ +        ST-DATA ri cells + !
-   ST-CUR-RK @ 0 ?do
-      ST-CUR-DIMS i cells + @
-      ST-DIMS ri ST-MAX-RANK * i + cells + !
-   loop
-   ri 1+ ST-STAGE ! ;
+\ ---- commit a validated tensor into the staging rows -----------------------
+: COMMIT-DIMS ( ptr n n -- ) {: st:ptr row:n :}
+   st RK-OFF + @ 0 ?do
+      st row i  st CUR-DIMS-OFF + i cells + @  DIMS!
+   loop ;
+
+: COMMIT-ROW ( ptr n n -- ) {: st:ptr row:n :}
+   st row C-NMOFF st NMOFF-OFF + @ ROW!
+   st row C-NMLEN st NMLEN-OFF + @ ROW!
+   st row C-DTY   st DT-OFF + @    ROW!
+   st row C-RANK  st RK-OFF + @    ROW!
+   st row C-BEG   st BEG-OFF + @   ROW!
+   st row C-END   st END-OFF + @   ROW!
+   st row C-NB    st END-OFF + @ st BEG-OFF + @ -  ROW! ;
+
+: STAGE-COMMIT ( ptr n -- ) {: st:ptr :}
+   st STAGE-OFF + @ CAP >= if E-CAP throw then
+   st STAGE-OFF + @ {: row:n :}
+   st row COMMIT-ROW
+   st row COMMIT-DIMS
+   row 1+ st STAGE-OFF + ! ;
 
 \ ---- top-level object member iteration -------------------------------------
-: ST-MEMBERS ( JR:reader -- JR:reader )        \ cursor just past the root T-OBJ
+: MEMBER-VALUE ( JR:reader n ptr n -- JR:reader ) {: st:ptr :}   \ value kind already read
+   st CUR-META? if
+      drop JR:SKIP-VALUE
+   else
+      JR:T-OBJ <> if E-JSON throw then
+      st TENSOR
+      st STAGE-COMMIT
+   then ;
+
+: MEMBERS ( JR:reader ptr n -- JR:reader ) {: st:ptr :}   \ cursor just past the root T-OBJ
    begin JR:NEXT dup JR:T-OBJ-END <> while
-      dup JR:T-KEY <> if E-ST-JSON throw then drop
-      ST-READ-NAME
-      JR:NEXT                                  \ ( valuekind )
-      ST-CUR-META? if
-         drop JR:SKIP-VALUE
-      else
-         JR:T-OBJ <> if E-ST-JSON throw then
-         ST-TENSOR
-         ST-STAGE-COMMIT
-      then
+      dup JR:T-KEY <> if E-JSON throw then drop
+      st READ-NAME
+      JR:NEXT
+      st MEMBER-VALUE
    repeat drop ;
 
-: ST-PARSE-BODY ( -- )
-   ST-JR-STATE JR:STORAGE-BYTES ST-BASE@ 8 BYTE+ ST-HDR-LEN @ JR:INIT
-   JR:NEXT JR:T-OBJ <> if E-ST-JSON throw then
-   ST-MEMBERS JR:CLOSE ;
+: RUN-PARSE ( ptr n -- ) {: st:ptr :}
+   st JR-OFF + JR:STORAGE-BYTES  st IMG 8 BYTE+  st HDR-LEN-OFF + @  JR:INIT
+   JR:NEXT JR:T-OBJ <> if E-JSON throw then
+   st MEMBERS JR:CLOSE ;
 
-public
+: PARSE-BODY ( ptr n -- ptr n )                \ stack-preserving, so `catch` accepts it
+   dup RUN-PARSE ;
 
-\ ---- lifecycle -------------------------------------------------------------
-: RESET ( -- )                                 \ empty the registry (no unmap)
-   0 ST-N ! 0 ST-STAGE ! 0 ST-NM-BUMP ! ;
+: READ-HEADER ( ptr n -- ) {: st:ptr :}        \ the leading u64 and the derived geometry
+   st MAP-LEN-OFF + @ 8 < if E-HEADER throw then
+   st IMG FS-U64@ st HDR-LEN-OFF + !
+   st HDR-LEN-OFF + @ 0 <= if E-HEADER throw then
+   8 st HDR-LEN-OFF + @ + st MAP-LEN-OFF + @ > if E-HEADER throw then
+   st MAP-LEN-OFF + @ 8 - st HDR-LEN-OFF + @ - st DATA-LEN-OFF + ! ;
 
-: PARSE ( -- )                                 \ parse the header at ST-BASE/ST-MAP-LEN
-   0 ST-N ! 0 ST-STAGE ! 0 ST-NM-BUMP !
-   ST-MAP-LEN @ 8 < if E-ST-HEADER throw then
-   ST-BASE@ FS-U64@ ST-HDR-LEN !
-   ST-HDR-LEN @ 0 <= if E-ST-HEADER throw then
-   8 ST-HDR-LEN @ + ST-MAP-LEN @ > if E-ST-HEADER throw then
-   ST-BASE-N @ 8 + ST-HDR-LEN @ + ST-DATA-BASE-N !
-   ST-MAP-LEN @ 8 - ST-HDR-LEN @ - ST-DATA-LEN !
-   [: ST-PARSE-BODY ;] catch ST-REMAP
-   ST-STAGE @ ST-N ! ;
+: PARSE-INTO ( ptr n -- ) {: st:ptr :}
+   st HAS-IMG-OFF + @ 0= if E-ORDER throw then
+   0 st STAGE-OFF + ! 0 st BUMP-OFF + ! 0 st PARSED-OFF + ! 0 st N-OFF + !
+   st READ-HEADER
+   st [: PARSE-BODY ;] catch nip REMAP
+   1 st PARSED-OFF + ! ;
 
-: PARSE-SPAN ( ptr u8 n -- )                   \ parse an in-memory image (no mmap)
-   {: pa:ptr pu :}
-   pa ST-BASE!
-   pa ST-PTR>N ST-BASE-N !
-   pu ST-MAP-LEN !
-   PARSE ;
+: PUBLISH ( ptr n -- ) {: st:ptr :}
+   st PARSED-OFF + @ 0= if E-ORDER throw then
+   st STAGE-OFF + @ st N-OFF + ! ;
 
-: MAP ( ptr u8 n -- )                          \ mmap a file read-only into ST-BASE/ST-MAP-LEN
-   {: pa:ptr pu :}
-   pa pu FILE-SIZE {: sz :}
-   sz 8 < if E-ST-HEADER throw then
-   pa pu FS-PATHZ 0 0 open {: fd :}
-   fd 0 < if E-FS-OPEN throw then
-   0 sz 1 2 fd 0 mmap {: base :}
-   fd close
-   base 0 < if E-MEM-MAP throw then
-   base ST-BASE-N !
-   base ST-N>PTR ST-BASE!
-   sz ST-MAP-LEN ! ;
+\ The image guard is separate from TAKE-IMAGE because MAP-FILE must refuse a
+\ second image BEFORE it maps one: rejecting afterwards would strand a mapping
+\ that no owner records and nothing can ever unmap.
+: NO-IMAGE? ( ptr n -- ) {: st:ptr :}
+   st HAS-IMG-OFF + @ 0 <> if E-ORDER throw then ;
 
-: UNMAP ( -- )                                 \ release the mapping (tensors invalid afterwards)
-   ST-BASE-N @ 0= if exit then
-   ST-BASE@ ST-MAP-LEN @ munmap drop
-   0 ST-BASE-N ! 0 ST-MAP-LEN ! ;
+: TAKE-IMAGE ( ptr n ptr u8 n n -- ) {: st:ptr ia:ptr ilen:n owns:n :}
+   st NO-IMAGE?
+   ia st IMG-IDX ptr-field !
+   ilen st MAP-LEN-OFF + !
+   owns st OWNS-MAP-OFF + !
+   1 st HAS-IMG-OFF + ! ;
 
-: LOAD ( ptr u8 n -- )                         \ RESET + MAP + PARSE, unmapping on a parse fault
-   RESET
-   MAP
-   [: PARSE ;] catch {: code :}
-   code 0 <> if UNMAP code throw then ;
-
-\ ---- accessors -------------------------------------------------------------
-: COUNT ( -- n )  ST-N @ ;
-: BASE ( -- ptr u8 )  ST-BASE@ ;
-: MAP-LEN ( -- n )  ST-MAP-LEN @ ;
-: HDR-LEN ( -- n )  ST-HDR-LEN @ ;
-
-: NAME$ ( n -- ptr u8 n )
-   {: id :}
-   ST-NAME-ARENA ST-NM-OFF id cells + @ +  ST-NM-LEN id cells + @ ;
-
-: FIND ( ptr u8 n -- n )                      \ tensor id by name, or -1
-   {: qa:ptr qu :}
-   -1  ST-N @ 0 ?do
-      ST-NAME-ARENA ST-NM-OFF i cells + @ +  ST-NM-LEN i cells + @  qa qu STR=
+\ Name lookup keeps its -1 "not found" sentinel strictly inside the package; the
+\ public FIND converts it to option<n> so no caller can compare against -1.
+: FIND-ID ( ptr n ptr u8 n -- n ) {: st:ptr qa:ptr qu:n :}
+   -1 st N-OFF + @ 0 ?do
+      st i NAME-AT qa qu STR=
       if drop i leave then
    loop ;
 
-: DTYPE@ ( n -- n )  cells ST-DTY + @ ;
-: RANK@ ( n -- n )  cells ST-RANK + @ ;
-: DIM@ ( n n -- n )
-   {: id axis :}  ST-DIMS id ST-MAX-RANK * axis + cells + @ ;
-: DATA@ ( n -- n )  cells ST-DATA + @ ;        \ tensor data pointer as a numeric address
-: DATA-PTR ( n -- ptr u8 )  DATA@ ST-N>PTR ;   \ same, as a byte pointer
-: NBYTES@ ( n -- n )  cells ST-NB + @ ;
-: BEGIN@ ( n -- n )  cells ST-BEG + @ ;
-: END@ ( n -- n )  cells ST-END + @ ;
+: ID? ( n -- option<n> )
+   dup 0 < if drop OPTION:NONE exit then
+   OPTION:SOME ;
 
-: PRESENT? ( ptr u8 n -- bool )                 \ true iff a readable file exists at path
-   {: pa:ptr pu :}
+\ Shared by every id-addressed scalar reader: one column of one row, or NONE
+\ when the id is not a tensor of this census.
+: COL? ( SAFET:census n n -- SAFET:census option<n> ) {: id:n col:n :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? 0= if OPTION:NONE exit then
+   st id col ROW@ OPTION:SOME ;
+
+public
+
+\ ---- session lifecycle -----------------------------------------------------
+: OPEN ( -- SAFET:session )                    \ begin one isolated load transaction
+   BLOCK-LEN MEM:ALLOC-BYTES drop MINT-SESSION
+   1 LIVE-N +!
+   SESSION>BLOCK INIT-BLOCK ;
+
+: MAP-FILE ( SAFET:session ptr u8 n -- SAFET:session )   \ give the session a mapped file
+   {: pa:ptr pu:n :}
+   SESSION>BLOCK {: st:ptr :}
+   st NO-IMAGE?                                 \ refuse before mapping, never after
+   pa pu FILE-SIZE {: sz:n :}
+   sz 8 < if E-HEADER throw then
+   st  pa pu sz SAFET-MAP:MAP-PATH  sz  1  TAKE-IMAGE ;
+
+: ADOPT ( SAFET:session ptr u8 n -- SAFET:session )      \ borrow a caller-owned image
+   {: ia:ptr ilen:n :}
+   SESSION>BLOCK {: st:ptr :}
+   st ia ilen 0 TAKE-IMAGE ;
+
+: PARSE ( SAFET:session -- SAFET:session )     \ read + validate this session's header
+   SESSION>BLOCK PARSE-INTO ;
+
+: DETACH ( SAFET:session -- SAFET:census )     \ consume a validated session, publish it
+   SESSION>BLOCK PUBLISH
+   SESSION>CENSUS ;
+
+: CLOSE ( SAFET:session -- )                   \ consume a session that will not publish
+   TAKE-SESSION DISPOSE ;
+
+\ ---- census disposal -------------------------------------------------------
+\ RELEASE has exactly two outcomes, decided by the block's mapping-ownership
+\ cell, and DISPOSE implements both:
+\
+\   owns = 1  the census still owns the file mapping it was detached with, so
+\             RELEASE unmaps that mapping and then frees the census metadata.
+\             Every census produced from MAP-FILE / LOAD is in this state today.
+\   owns = 0  the census does not own its image, so RELEASE frees the census
+\             metadata ONLY and leaves the bytes alone. Today this is the
+\             ADOPT / LOAD-SPAN case, where the image belongs to the caller.
+\
+\ The second outcome is the seam the mapping-owner leaf (SAFET:mapping,
+\ WITH-MAPPING, UNMAP-MAPPING, DETACH-MAPPING) plugs into: transferring a
+\ mapping out of a census only has to clear OWNS-MAP-OFF and hand the base and
+\ length to the new owner. RELEASE's contract - consume the census, free
+\ everything the census still owns, never unmap what it does not - is already
+\ final and does not change when that state arrives.
+: RELEASE ( SAFET:census -- )
+   TAKE-CENSUS DISPOSE ;
+
+\ ---- whole-file convenience paths ------------------------------------------
+\ Both convenience paths guard EVERYTHING that can throw after OPEN. Taking the
+\ image is inside the guarded region, not before it: MAP-FILE alone throws on a
+\ missing path, an unstattable path, a file under 8 bytes, and a failed
+\ open/mmap, and any of those escaping the catch would strand the session block
+\ with no owner to close it. The two words below carry their arguments straight
+\ back out so the quotation is stack-preserving, which is what `catch` requires
+\ - a quotation cannot read the caller's locals.
+: TAKE-FILE+PARSE ( SAFET:session ptr u8 n -- SAFET:session ptr u8 n )
+   {: pa:ptr pu:n :}
+   pa pu MAP-FILE PARSE
+   pa pu ;
+
+: TAKE-SPAN+PARSE ( SAFET:session ptr u8 n -- SAFET:session ptr u8 n )
+   {: ia:ptr ilen:n :}
+   ia ilen ADOPT PARSE
+   ia ilen ;
+
+: LOAD ( ptr u8 n -- SAFET:census )            \ map + parse + publish, closing on any fault
+   {: pa:ptr pu:n :}
+   OPEN pa pu
+   [: TAKE-FILE+PARSE ;] catch {: code:n :}
+   2drop
+   code 0 <> if CLOSE code throw then
+   DETACH ;
+
+: LOAD-SPAN ( ptr u8 n -- SAFET:census )       \ the same over a caller-owned image
+   {: ia:ptr ilen:n :}
+   OPEN ia ilen
+   [: TAKE-SPAN+PARSE ;] catch {: code:n :}
+   2drop
+   code 0 <> if CLOSE code throw then
+   DETACH ;
+
+: PRESENT? ( ptr u8 n -- bool )                \ true iff a readable file exists at path
+   {: pa:ptr pu:n :}
    pa pu EXISTS? 0= if 0 0= 0= exit then
    pa pu FILE? ;
+
+: MAX-TENSORS ( -- n )                         \ the largest census this loader publishes
+   CAP ;
+
+\ Leak accounting, not load state: it answers how many sessions and censuses have
+\ been opened and not yet disposed, and nothing about any of them. A throw
+\ unwinds the stack past a linear owner without the checker noticing, so this is
+\ how a caller (in practice the test suite) checks that every OPEN reached its
+\ CLOSE or RELEASE. Pair it with SAFET-MAP:LIVE for the mapping half.
+: LIVE-OWNERS ( -- n )
+   LIVE-N @ ;
+
+\ ---- census readers (every one takes its census; none reads ambient state) --
+: COUNT ( SAFET:census -- SAFET:census n )
+   CENSUS>BLOCK N-OFF + @ ;
+
+: MAP-LEN ( SAFET:census -- SAFET:census n )
+   CENSUS>BLOCK MAP-LEN-OFF + @ ;
+
+: HDR-LEN ( SAFET:census -- SAFET:census n )
+   CENSUS>BLOCK HDR-LEN-OFF + @ ;
+
+: FIND ( SAFET:census ptr u8 n -- SAFET:census option<n> )   \ tensor id by name
+   {: qa:ptr qu:n :}
+   CENSUS>BLOCK {: st:ptr :}
+   st qa qu FIND-ID ID? ;
+
+: DTYPE? ( SAFET:census n -- SAFET:census option<n> )
+   C-DTY COL? ;
+
+: RANK? ( SAFET:census n -- SAFET:census option<n> )
+   C-RANK COL? ;
+
+: NBYTES? ( SAFET:census n -- SAFET:census option<n> )
+   C-NB COL? ;
+
+: BEGIN? ( SAFET:census n -- SAFET:census option<n> )   \ data-section relative
+   C-BEG COL? ;
+
+: END? ( SAFET:census n -- SAFET:census option<n> )     \ data-section relative
+   C-END COL? ;
+
+: DIM? ( SAFET:census n n -- SAFET:census option<n> )
+   {: id:n axis:n :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? 0= if OPTION:NONE exit then
+   axis 0 < axis st id C-RANK ROW@ >= or if OPTION:NONE exit then
+   st id axis DIMS@ OPTION:SOME ;
+
+: COPY-NAME? ( SAFET:census n ptr u8 n -- SAFET:census option<n> )   \ SOME copied length
+   {: id:n da:ptr dcap:n :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? 0= if OPTION:NONE exit then
+   st id C-NMLEN ROW@ {: nlen:n :}
+   nlen dcap > if OPTION:NONE exit then
+   st id NAME-AT drop da nlen BYTE-COPY
+   nlen OPTION:SOME ;
+
+: COPY-DATA? ( SAFET:census n ptr u8 n -- SAFET:census option<n> )   \ SOME copied length
+   {: id:n da:ptr dcap:n :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? 0= if OPTION:NONE exit then
+   dcap 0 < if OPTION:NONE exit then
+   st id C-NB ROW@ {: nb:n :}
+   dcap nb > if nb else dcap then {: take:n :}
+   st id TENSOR-AT da take BYTE-COPY
+   take OPTION:SOME ;
+
+\ Zero-copy scoped access: the body sees the tensor's bytes inside the mapping
+\ the census owns. NONE (body not run) when the id is not a tensor of this
+\ census. The span is advisory - a body that deliberately stashes it and reads
+\ it after RELEASE reads freed memory; see the pointer-lifetime / region-type
+\ note in this file's header for the capability that will make it enforced.
+\ typed-local-lint: allow-bare-local - `body` carries the quotation effect
+\ [ SAFET:census ptr u8 n -- SAFET:census ], which a local annotation cannot express.
+: WITH-TENSOR ( SAFET:census n [ SAFET:census ptr u8 n -- SAFET:census ] -- SAFET:census option<n> )
+   {: id:n body :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? 0= if OPTION:NONE exit then
+   st id C-NB ROW@ {: nb:n :}
+   st id TENSOR-AT nb body execute
+   nb OPTION:SOME ;
 
 ;package

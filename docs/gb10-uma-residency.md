@@ -72,9 +72,11 @@ is decisively worth it whenever the copy fits.
 - **Model + KV cache + activations fit in the 121 GiB pool with headroom
   (GPT-2 124M; LLaMA-7B ≈14 GiB bf16; anything NVFP4-quantized): COPY ONCE into
   `cuMemAlloc` device buffers.** The safetensors loader mmaps the checkpoint
-  zero-copy; the residency layer copies each tensor into a device buffer, then
-  **unmaps the source** (`SAFET:UNMAP`) so two full checkpoints are never resident
-  at once. Peak load memory = model size + one in-flight tensor, bounded and small.
+  zero-copy; the residency layer copies each tensor out through the scoped
+  `SAFET:WITH-TENSOR` body into a device buffer, then **releases the census that
+  owns the mapping** (`SAFET:RELEASE`, which unmaps it) so two full checkpoints are
+  never resident at once. Peak load memory = model size + one in-flight tensor,
+  bounded and small.
 - **Model at the memory ceiling where a full device copy + KV cache will not fit
   (e.g. 70B bf16 ≈140 GiB > 121 GiB): do NOT copy-once.** Either quantize first
   (NVFP4, epic phase 4 — the real lever) or serve weights from the direct mmap and

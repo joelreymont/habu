@@ -1484,17 +1484,40 @@ points stay listed.
   copy-on-write, private ownership-table visibility, and randomized churn with the
   complete private allocator invariant checked after every mutation.
 - `maki/infer/safetensors.f` — native safetensors weight loader for the GB10 UMA
-  inference engine (`package SAFET`, epic habu-epic-gb10-uma-391d12e8 M1): mmaps the
-  checkpoint read-only and registers each tensor as a zero-copy typed span (dtype,
-  shape, data pointer, byte length) over the mapping, streaming the JSON header with
-  the pull reader `lib/json-read.f` (the DOM `tools/json.f` overflows on real
-  models). Fail-closed named `E-ST-*` codes, no partial registration. Owns -7600..-7607.
-- `maki/infer/safetensors-test.f` — hermetic red-first coverage: builds a synthetic
-  file in Forth and parses it back through mmap, rejects every malformed input
-  (truncated header, bad JSON, out-of-range / overlapping / misaligned / mismatched
-  offsets, shape-product and element-byte overflow, unknown dtype, missing field)
-  with its named code, and a presence-gated real leg asserting the HF GPT-2 tensor
-  census (160 tensors, wte [50257,768]).
+  inference engine (`package SAFET-MAP` for the file-mapping syscalls plus
+  `package SAFET` for everything else, epic habu-epic-gb10-uma-391d12e8 M1).
+  Loading is an explicit transaction, not a process-wide registry: `SAFET:OPEN`
+  begins one isolated load session and returns a linear `SAFET:session`, `MAP-FILE`
+  or `ADOPT` gives it an image, `PARSE` validates the header into that session's own
+  staging area, `DETACH` consumes a validated session and returns one immutable
+  mapping-owning `SAFET:census`, and `CLOSE` consumes a session that will not
+  publish. Both owner tokens are `DEFLINEAR`, so the checker rejects duplicating,
+  dropping, storing, or reusing one. Census readers (`COUNT`, `FIND`, `DTYPE?`,
+  `RANK?`, `DIM?`, `NBYTES?`, `BEGIN?`, `END?`) take their census and answer
+  `option<n>`; tensor bytes are reachable only through the scoped `WITH-TENSOR`
+  body or the copying `COPY-DATA?` / `COPY-NAME?` readers, so no public word
+  returns a raw pointer. The scoped span is advisory rather than enforced — a
+  body that deliberately stashes it can still read it after `RELEASE` — until
+  the pointer-lifetime / region-type checker capability lands; see the note in
+  the file header. The JSON header is streamed with the pull reader `lib/json-read.f` (the
+  DOM `tools/json.f` overflows on real models). Fail-closed named `SAFET:E-*`
+  codes, no partial publication. `SAFET-MAP:LIVE` and `SAFET:LIVE-OWNERS` count
+  mappings and undisposed owners so the leak invariant can be asserted directly —
+  a throw unwinds the stack past a linear owner without the checker noticing.
+  Owns -7600..-7699.
+- `maki/infer/safetensors-test.f` — hermetic coverage: builds a synthetic file in
+  Forth and loads it back through mmap, rejects every malformed input (truncated
+  header, bad JSON, out-of-range / overlapping / misaligned / mismatched offsets,
+  shape-product and element-byte overflow, unknown dtype, missing field) with its
+  named code, and proves the ownership model — two sessions parsed interleaved
+  without cross-talk, a failing session leaving a live census byte-identical, a
+  nested catch, capacity rollback one tensor past the limit, close-after-failure,
+  out-of-order steps throwing `E-ORDER`, two model lifetimes released in either
+  order, and both `RELEASE` disposal outcomes. The linear rules themselves are
+  asserted by feeding bad definitions to the checker (duplicate, drop, store,
+  double detach/close/release, reader without its census, private representation
+  words). A presence-gated real leg asserts the HF GPT-2 tensor census (160
+  tensors, wte [50257,768]).
 - `maki/infer/gpt2-reference-data.f` /
   `maki/infer/gpt2-reference-data-test.f` — pinned independent GPT-2 correctness data
   from PyTorch 2.11.0 and Transformers 5.14.1 over the exact F32 checkpoint:
