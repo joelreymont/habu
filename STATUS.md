@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4133  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4150  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -83,10 +83,28 @@ measures today:
   helpers `TDECL-PROD-WORDS-BODY` and `TDECL-GEN-BODY`. The new
   `E-TDECL-PROVIDER` constant, the `TDPV-INIT` size, the four snapshot arenas
   and their capacity and cursor variables are not colon definitions and add
-  nothing. So 4112 + 21 = 4133, the number recorded above and the number the
-  self-check measures on this tree. That same change also edits `TRUSTED.md`,
-  `test/type-ctor-suite.f`, and `test/type-decl-suite.f`, none of which is part
-  of the assembled stage2 engine source.
+  nothing. So 4112 + 21 = 4133.
+- The constructor-generation participant adds 17, all of them new colon words in
+  the `GENERATED-DECL-CTOR` package in `src/core/generated-declaration.f`. Six
+  own its armed-family slot: `ARM-BASE`, `ARM-SLOT`, `ARM-GROW1`, `ARM-ENSURE`,
+  `ARMED-FAM`, and `DISARM`. Three are the generation gate: `GEN-OK?`, the
+  already-generated existence check `GENERATED?`, and the throwing form
+  `GEN-REQUIRE` that combines them. Five are the participant callbacks:
+  `PART-SNAPSHOT`, `PART-PREPARE`, `PART-COMMIT`, `PART-ROLLBACK`, and
+  `PART-RELEASE`. One is `INSTALL`, and two are the public surface the ENUM front
+  end calls, `ARM` and `OWNS?`. The twelve trusted forwarders are `TRUSTED:`
+  boundaries rather than certified definitions, and the `E-CTOR-ARM` constant,
+  the participant id, the no-family sentinel, the initial capacity, the boot
+  arena, and its two cursor variables are not colon definitions, so none of them
+  counts, and neither does the thirteenth trusted forwarder `VAR-CTOR-SYM`.
+  `src/core/enum-decl.f` gains no definition: `ED-CLOSE` calls the participant's
+  own gate rather than declaring a second one. So 4133 + 17 = 4150, the number
+  recorded above and the number the self-check measures on this tree. That change
+  also edits `TRUSTED.md`, `FILEMAP.md`, `tools/decl-gen-probe.f`,
+  `test/enum-ctor-collide-bad.f`, and five test files, none of which is part of
+  the assembled stage2 engine source. The engine binary is byte-identical across
+  the added gate clause, so the CODELEN and per-region rows below are unchanged
+  by it.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

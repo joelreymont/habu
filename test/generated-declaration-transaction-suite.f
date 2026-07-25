@@ -773,7 +773,10 @@ INSTALL-NESTED
    TEST-STATE DECLARATION-TRANSACTION:SEAL
    REGISTER-LATE-CATCH DECLARATION-TRANSACTION:E-REGISTRATION-SEALED T=
 
-   GENERATED-DECL:COUNT 4 T=
+   \ Five sealed production participants: the checker frame (100), DECL-EVENT
+   \ (800), constructor generation (820), the native dictionary (850), and
+   \ protection (900), which registers last and seals the set.
+   GENERATED-DECL:COUNT 5 T=
    GENERATED-DECL:SEALED? TTRUE
    s" GENERATED-DECL:REGISTER" WORD-ABSENT? TTRUE
    s" GENERATED-DECL:ALLOCATOR!" WORD-ABSENT? TTRUE

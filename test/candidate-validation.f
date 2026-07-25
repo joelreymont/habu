@@ -192,7 +192,7 @@ variable FAILS
 \ trips loudly. The lone top-row case is a positive, counted here too.
 33 constant N-POSITIVE
 5 constant N-DIAGNOSTIC
-11 constant N-NEGATIVE
+12 constant N-NEGATIVE
 
 : SHARED-CASES ( -- )
    s" test/type-family-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
@@ -209,6 +209,8 @@ variable FAILS
    s" test/structure-decl-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/structure-certify-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/enum-decl-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
+   s" test/enum-ctor-collide-bad.f" construct case-kind negative 76
+      s" ENUM-CTOR-COLLIDE-ARMED" s" sumtype: generated declaration already defined" RUN-CASE
    s" test/type-decl-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/deftype-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/deftype-dup-bad.f" construct case-kind negative 67

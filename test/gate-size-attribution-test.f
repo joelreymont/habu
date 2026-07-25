@@ -293,9 +293,21 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ part of the engine build at all, and src/core/checker.f is boot-time source the
 \ engine reads at every launch (renaming a definition there was measured
 \ byte-neutral for this row).
-122584 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-25 constructor-generation participant (package GENERATED-DECL-CTOR in
+\ src/core/generated-declaration.f, dot habu-enum-generate-named-1f3261a3):
+\ re-measured live at the linux-arm64 byte fixpoint (install --force run twice to
+\ a byte-identical bin/hb, then HABU_ENGINE_SIZE_MAP=1 captured through the stdin
+\ metabuild host and reconciled with zero residue). The whole delta is +8 bytes of
+\ aot-seed (22500 -> 22508) - the participant's private axiom rows - so CODELEN
+\ 122584 -> 122592 and floor 3800 -> 3808. The text pad absorbs the 8 bytes
+\ (296 -> 288), so the whole file remains exactly 127168 and LINUX-TOTAL is
+\ unchanged. src/core/enum-decl.f moves no engine bytes: it gains no definition,
+\ only a call to the participant's gate. tools/decl-gen-probe.f, TRUSTED.md,
+\ FILEMAP.md, STATUS.md, and the four test files are not part of the assembled
+\ stage2 engine source.
+122592 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3800 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+3808 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
 127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
@@ -359,7 +371,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" dictionary-code"         4732 q execute
    s" runtime"                 9508 q execute
    s" seed-dictionary"         8700 q execute
-   s" aot-seed"               22500 q execute   \ +16: the four CHECKER-DECL-FRAME private axiom rows
+   s" aot-seed"               22508 q execute   \ +8: the GENERATED-DECL-CTOR private axiom rows
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;

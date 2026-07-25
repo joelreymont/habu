@@ -26,6 +26,8 @@
 \ the legacy sumtype.f definer until the hard cutover, so this suite drives the
 \ new front end through its package-qualified entry rather than a global keyword.
 
+require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected, 1 uncheckable
+
 variable #FAIL
 variable #CASE
 
@@ -426,7 +428,19 @@ s" ENUM-DECL:ED-RUN twice red ;ENUM" TRY 7102 T=
 \ 14. Deterministic snapshot identity: an identical declaration against a fresh
 \     registry (family id restored, event log reset) folds to the same identity;
 \     a different declaration folds to a different one.
+\
+\     These declarations are package-scoped, which makes them private, which
+\     keeps constructor generation out of the way. REG-RESTORE is a whitebox
+\     reset of the REGISTRY cursors only: it rewinds the family, variant, schema,
+\     and field counters so the same family id can be re-declared, but it cannot
+\     rewind the native dictionary. A public re-declaration would therefore ask
+\     the generator to define constructor names that the first pass already
+\     published, and sumtype.f's TDPLAN-NAME+ correctly refuses to render a plan
+\     row for a live word. Visibility is not part of the event stream the
+\     identity folds over — the events are DECL / VARIANT / FIELD keyed by family
+\     id — so scoping these costs the assertion nothing.
 \ ---------------------------------------------------------------------------
+package enum-identity-test
 REG-MARK
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN idc ia ib ic ;ENUM" EV
@@ -456,6 +470,7 @@ DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" EV
 DECL-EVENT:IDENTITY RC @ <> T-TRUE
 REG-RESTORE
+;package
 
 \ ---------------------------------------------------------------------------
 \ Compact and full declarations reject reserved variant names before publication;
@@ -539,6 +554,194 @@ s" allowed-full" FAMID F-VAR-COUNT 1 T=
 s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 7102 REJECT-SAME
 
 ;package
+
+\ ---------------------------------------------------------------------------
+\ 20. Constructor generation. A public ENUM family with variants owns one sealed
+\     checked FAMILY:VARIANT constructor per variant, rendered, evaluated,
+\     certified and published by the ORDER 820 participant inside this
+\     declaration's own transaction (src/core/generated-declaration.f, package
+\     GENERATED-DECL-CTOR). The participant commits after DECL-EVENT has promoted
+\     this declaration's TYPE-FIELD rows past PF-COMMIT-N, so it generates from
+\     the ordinary committed provider and needs no provisional reader.
+\
+\     Both ENUM modes generate. The legacy sumtype.f definer already publishes
+\     constructors for a compact payloadless enum, so gating on the full TK-SUM
+\     mode alone would leave compact enums a parity gap the global-token cutover
+\     could never close. TK-PRODUCT is excluded: the STRUCTURE front end owns its
+\     own make/unmake generation.
+\ ---------------------------------------------------------------------------
+package enum-ctor-test
+public
+
+variable CT-I   variable CT-N
+variable CT-DICT   variable CT-CP   variable CT-FAM
+
+TRUSTED: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
+TRUSTED: DICT-RECS ( -- n ) ndict@ ;
+TRUSTED: DICT-CODE ( -- n ) cp@ ;
+TRUSTED: ARM-RC ( n -- n ) ['] GENERATED-DECL-CTOR:ARM catch ;
+
+\ Arm the participant with CT-FAM from inside a real coordinator transaction, so
+\ the depth precondition is satisfied and whatever ARM rejects is rejected on its
+\ own merits. The throw escapes RUN through the ordinary body-failure path, which
+\ also rolls the transaction back.
+: ARM-IN-TX-BODY ( -- ) CT-FAM @ GENERATED-DECL-CTOR:ARM ;
+: ARM-IN-TX ( -- ) [: ARM-IN-TX-BODY ;] GENERATED-DECL:RUN ;
+TRUSTED: ARM-IN-TX-RC ( -- n ) ['] ARM-IN-TX catch ;
+
+\ The committed payload arity, counted straight off the TYPE-FIELD registry
+\ rather than through SUMV-PAY-N — the reader the generator itself uses. This is
+\ the corrected observable: SV.SCH-COUNT is 0 for every ENUM-front-end variant by
+\ design, so the row count keyed (family, variant) is what a rendered
+\ constructor's input arity has to equal.
+: PAY-ROWS ( n n -- n ) {: fam:n vid:n :}
+   0 CT-N !   0 CT-I !
+   BEGIN CT-I @ TYPE-FIELD:COUNT < WHILE
+      CT-I @ TYPE-FIELD:FAMILY@ fam =
+      CT-I @ TYPE-FIELD:VARIANT@ vid = and IF CT-N @ 1 + CT-N ! THEN
+      CT-I @ 1 + CT-I !
+   REPEAT
+   CT-N @ ;
+
+: DICT-MARK ( -- ) DICT-RECS CT-DICT !  DICT-CODE CT-CP ! ;
+: DICT-SAME ( -- ) DICT-RECS CT-DICT @ T=  DICT-CODE CT-CP @ T= ;
+: DICT-MOVED ( -- ) DICT-RECS CT-DICT @ > T-TRUE ;
+
+\ A generation failure must leave every registry cursor, the published event log,
+\ AND the native dictionary byte-identical: whatever the generator had already
+\ defined is truncated with the rest of the declaration.
+: CTOR-REJECT ( ptr u8 n n -- ) {: a:ptr u:n want:n :}
+   REG-MARK
+   DICT-MARK
+   DECL-EVENT:COUNT DEVB !
+   a u TRY want T=
+   TFAMN@ RB-TFAM @ T=
+   SUMVN@ RB-SUMV @ T=
+   SCHN@ RB-SCH @ T=
+   SCHEMA-ROOT-N@ RB-ROOT @ T=
+   LAY-N@ RB-LAY @ T=
+   TF-STR-U@ RB-STR @ T=
+   TYPE-FIELD:COUNT RB-PFN @ T=
+   DECL-EVENT:COUNT DEVB @ T=
+   DICT-SAME ;
+
+private
+;package
+
+\ 20a. A full payload ENUM publishes a mixed set: a nullary constructor for the
+\      payloadless variant and a two-input one for the variant with two FIELDs.
+\      Generation moves the native dictionary, which is what the dictionary
+\      participant's savepoint has to be able to undo.
+enum-ctor-test:DICT-MARK
+s" ENUM-DECL:ED-RUN msgctor 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" EV
+enum-ctor-test:DICT-MOVED
+
+s" msgctor" FAMID FID !
+FID @ F-VAR-START VS0 !
+VS0 @ enum-ctor-test:CTOR-PKG$ s" MSGCTOR" CORE-STR= T-TRUE       \ package derived and stamped on the rows
+VS0 @ 1 + enum-ctor-test:CTOR-PKG$ s" MSGCTOR" CORE-STR= T-TRUE
+
+\ rendered arity == committed TYPE-FIELD row count for (family, variant)
+FID @ VS0 @ enum-ctor-test:PAY-ROWS 0 T=
+FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS 2 T=
+s" C1 ( -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! -1 T=
+s" C2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ the effect is pinned in both directions: one input too few, one too many, and a
+\ wrong result type all reject
+s" C3 ( n -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! 0 T=
+s" C4 ( n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
+s" C5 ( n n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
+s" C6 ( n n -- n ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ 20b. DERIVE rides the same commit. TDECL-DERIVE-REQUIRE reads committed SUMV /
+\      TYPE-FIELD rows, which is exactly what ORDER 820 gives it, so a payload
+\      family that derives publishes its constructors AND its derived tag and
+\      equality words from one pass.
+s" ENUM-DECL:ED-RUN dctor 0 DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" EV
+s" D1 ( n -- dctor ) DCTOR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
+s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
+s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
+s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
+
+\ 20c. Compact-mode parity with the legacy definer: the same three variant names
+\      declared through `ENUM` and through ED-RUN produce the same derived
+\      constructor package spelling, the same declaration-order tags, and
+\      constructors that certify and reject identically.
+s" ENUM lgpar red green blue ;ENUM" EV
+s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" EV
+s" lgpar" FAMID F-VAR-START B !
+s" fepar" FAMID F-VAR-START VID !
+B @ enum-ctor-test:CTOR-PKG$ s" LGPAR" CORE-STR= T-TRUE
+VID @ enum-ctor-test:CTOR-PKG$ s" FEPAR" CORE-STR= T-TRUE
+B @ SV-TAG@ VID @ SV-TAG@ T=
+B @ 1 + SV-TAG@ VID @ 1 + SV-TAG@ T=
+B @ 2 + SV-TAG@ VID @ 2 + SV-TAG@ T=
+s" P1 ( -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! -1 T=
+s" P2 ( -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! -1 T=
+s" P3 ( -- lgpar ) LGPAR:BLUE" CHECK-QUIET-CANDIDATE! -1 T=
+s" P4 ( -- fepar ) FEPAR:BLUE" CHECK-QUIET-CANDIDATE! -1 T=
+s" P5 ( n -- lgpar ) LGPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
+s" P6 ( n -- fepar ) FEPAR:RED" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ 20d. The gate. A PRODUCT family is not owned here (STRUCTURE generates its own
+\      make/unmake), and the existing PRODUCT generation is untouched. Arming the
+\      participant with an unowned family is refused at the boundary rather than
+\      three phases later, and arming outside a declaration transaction is
+\      refused too.
+s" PRODUCT prodctor 0 FIELD a n FIELD b n ;PRODUCT" EV
+s" prodctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= T-TRUE
+s" G1 ( n n -- prodctor ) PRODCTOR:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" prodctor" FAMID enum-ctor-test:ARM-RC 7176 T=      \ wrong kind, and no open transaction
+s" msgctor" FAMID GENERATED-DECL-CTOR:OWNS? T-TRUE
+s" msgctor" FAMID enum-ctor-test:ARM-RC 7176 T=       \ right kind, but depth 0
+
+\ 20e. A private ENUM stays inert: the family and its variants register, but the
+\      gate refuses it, so no constructor package is derived onto the variant
+\      rows and no constructor symbol is recorded for them.
+package enum-ctor-private
+s" ENUM-DECL:ED-RUN privctor 0 VARIANT alpha FIELD a n ;VARIANT ;ENUM" EV
+s" privctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= T-TRUE
+s" privctor" FAMID F-VAR-COUNT 1 T=                   \ the variant really is there
+s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-PKG$ nip 0 T=  \ but carries no constructor package
+s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-SYM 0 T=       \ and no constructor symbol
+;package
+
+\ 20f. A generation failure rolls the WHOLE declaration back. Both anchors fail
+\      inside the participant's commit, after the family, its variants, its field
+\      rows and its events are all in place: a payload role with no derived
+\      equality, and a variant spelled like the derived word the same DERIVE
+\      clause generates. Every registry cursor, the published event log, and the
+\      native dictionary come back byte-identical.
+s" ENUM-DECL:ED-RUN rollctor 0 DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
+   7119 enum-ctor-test:CTOR-REJECT
+s" ENUM-DECL:ED-RUN rollctor2 0 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
+   7110 enum-ctor-test:CTOR-REJECT
+s" rollctor" FAMID 0 T=                               \ the family itself never landed
+s" rollctor2" FAMID 0 T=
+
+\ 20g. Arming a family whose constructors are already live is refused by name.
+\      This is the boundary that keeps a caller away from sumtype.f's
+\      TDPLAN-NAME+ duplicate guard, which answers a second plan row for a live
+\      word with `76 die` — a process exit that no transaction can roll back and
+\      no `catch` can see (test/enum-ctor-collide-bad.f pins that behaviour where
+\      it can still be observed). The check is an existence test on the variant
+\      row's recorded constructor symbol, so it is independent of the kind and
+\      visibility gate: msgctor still OWNS? its constructors, and its published
+\      words survive the refused transaction untouched.
+s" msgctor" FAMID GENERATED-DECL-CTOR:OWNS? T-TRUE     \ still an owning kind
+s" msgctor" FAMID F-VAR-START enum-ctor-test:CTOR-SYM 0 <> T-TRUE   \ and already generated
+s" msgctor" FAMID enum-ctor-test:CT-FAM !
+enum-ctor-test:ARM-IN-TX-RC 7176 T=                   \ named reject, inside a real transaction
+GENERATED-DECL:DEPTH 0 T=                             \ which rolled back and left no frame
+s" R1 ( -- msgctor ) MSGCTOR:QUIT" CHECK-QUIET-CANDIDATE! -1 T=   \ live words untouched
+s" R2 ( n n -- msgctor ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! -1 T=
+\ The two other ARM preconditions are held satisfied above rather than assumed:
+\ the depth clause cannot be what fired, because ARM-IN-TX runs inside a live
+\ GENERATED-DECL:RUN, and the kind clause cannot be what fired, because OWNS? is
+\ true for this same family. Deleting the already-generated clause reds this
+\ block and puts sumtype.f's die back within reach of ARM.
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

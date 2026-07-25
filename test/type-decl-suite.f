@@ -118,19 +118,6 @@ TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 TRUSTED: TWX-SUMV-SCH-COUNT@ ( n -- n ) SUMV-SCH-COUNT@ ;
 TRUSTED: TWX-SUMV-SCH-START@ ( n -- n ) SUMV-SCH-START@ ;
 TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
-TRUSTED: TWX-TDECL-CTOR-PUBLISH ( n n n -- ) TDECL-CTOR-PUBLISH ;
-TRUSTED: TWX-TDECL-DERIVE-REQUIRE ( n n n -- ) TDECL-DERIVE-REQUIRE ;
-\ The derive renderer now reads its payload metadata through a provider, so this
-\ whitebox publisher hands it the same committed one the legacy definers use.
-\ It carries a package owner because it is a changed module definition.
-package TDECL-DRV-TEST
-public
-TRUSTED: PUBLISH ( n -- ) {: fam:n :}
-   TDPLAN-BEGIN
-   TDECL-SUMV-PROVIDER fam TDPV-CAPTURE   \ the committed view, validated once
-   fam TDECL-DRV-WORDS
-   TDECL-GEN-EVAL ;
-;package
 TRUSTED: TWX-TDECL-POLICY ( n -- ) TDECL-POLICY ;
 TRUSTED: TWX-TDECL-THROW ( ptr u8 n ptr u8 n n -- ) TDECL-THROW ;
 TRUSTED: TWX-CAND-START ( -- ) CHECK-CANDIDATE-START ;
@@ -2070,18 +2057,20 @@ s" SUMTYPE tdhb3 0 DERIVE hash VARIANT hold ptr u8 ;VARIANT ;SUMTYPE" E-TDECL-DE
 s" PRODUCT tdhb4 0 DERIVE hash FIELD cc tdrw ;PRODUCT" E-TDECL-DERIVE TDT-NEG
 
 \ Unified named-field ENUM metadata drives the same derivation validator and
-\ semantic generators. Constructor publication for this front end is a later
-\ dot, so this focused whitebox installs only the existing constructor-package
-\ metadata needed to exercise TAG, EQ, and HASH over the canonical payload seam.
+\ semantic generators. This used to need a focused whitebox that called
+\ TDECL-DERIVE-REQUIRE, TDECL-CTOR-PUBLISH, and the derived-word publisher by
+\ hand, because the ENUM front end published nothing. The ORDER 820 constructor
+\ participant now does all three on the real declaration path — it commits after
+\ DECL-EVENT has promoted these FIELD rows past PF-COMMIT-N, which is exactly the
+\ committed view TDECL-DERIVE-REQUIRE reads — so the declaration below is the
+\ whole setup and TAG, EQ, and HASH are exercised as the front end actually
+\ publishes them.
 ENUM-DECL:ED-RUN tdnu 0 DERIVE eq hash
   VARIANT empty ;VARIANT
   VARIANT pair FIELD first n FIELD second n ;VARIANT
 ;ENUM
 s" " s" tdnu" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
-TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@ TWX-TDECL-DERIVE-REQUIRE
-TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@ TWX-TDECL-CTOR-PUBLISH
-TDF @ TDECL-DRV-TEST:PUBLISH
 : TDNU-EQ-EMPTY ( -- bool ) construct tdnu empty construct tdnu empty TDNU:EQ ;
 : TDNU-EQ-PAIR ( -- bool ) 1 2 construct tdnu pair 1 2 construct tdnu pair TDNU:EQ ;
 : TDNU-NEQ-PAY ( -- bool ) 1 2 construct tdnu pair 1 3 construct tdnu pair TDNU:EQ ;
@@ -2104,15 +2093,14 @@ TDNU-HASH-EQ -1 T=
 TDNU-HASH-ORDER 0 T=
 
 \ The named-field derivation validator resolves the field schema too: a pointer
-\ payload rejects with the same declaration-time error as a legacy SUMTYPE.
-ENUM-DECL:ED-RUN tdnu-bad 0 DERIVE eq
-  VARIANT hold FIELD raw ptr u8 ;VARIANT
-;ENUM
-s" " s" tdnu-bad" TWX-TFAM-FIND-IN TDOK ! TDF !
-TDOK @ -1 T=
-TDF @ TDF @ TFAM-VAR-START@ TDF @ TFAM-VAR-COUNT@
-   ' TWX-TDECL-DERIVE-REQUIRE catch TDTC ! 2drop drop
-TDTC @ E-TDECL-DERIVE T=
+\ payload now rejects at declaration time, exactly like a legacy SUMTYPE, because
+\ the constructor participant runs TDECL-DERIVE-REQUIRE inside the declaration's
+\ own reversible commit. Before that participant existed this could only be
+\ asserted by calling the validator by hand against the already-published family;
+\ the declaration itself succeeded. TDT-NEG additionally proves the whole
+\ declaration rolled back to a byte-identical registry.
+s" ENUM-DECL:ED-RUN tdnu-bad 0 DERIVE eq VARIANT hold FIELD raw ptr u8 ;VARIANT ;ENUM"
+   E-TDECL-DERIVE TDT-NEG
 
 \ ---------------------------------------------------------------------------
 \ typed locals for family types (slice 1): a bare arity-0 family tail is a

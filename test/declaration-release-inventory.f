@@ -51,21 +51,25 @@ package DECL-RELEASE-INV-TEST
 
 : PRODUCTION-RUN ( -- n )
    RELEASE-INV:RESET
-   4 RELEASE-INV:ROOTS-EXPECT!
+   5 RELEASE-INV:ROOTS-EXPECT!
    READ-SOURCES
    RELEASE-INV:INDEX
    RELEASE-INV:SEED
    PIN-COORDINATOR
    RELEASE-INV:RUN ;
 
-\ Four sealed production participants register a release callback; the fifth
-\ registration call is the forwarder in GENERATED-DECL-OWNER, which passes its
-\ own locals rather than quotations and is therefore not a registration site.
+\ Five sealed production participants register a release callback: the checker
+\ frame, DECL-EVENT, constructor generation, the native dictionary, and
+\ protection. The sixth registration call is the forwarder in
+\ GENERATED-DECL-OWNER, which passes its own locals rather than quotations and is
+\ therefore not a registration site. Constructor generation's release callback
+\ lives in src/core/generated-declaration.f, already in the scanned set, so the
+\ source list does not grow with it.
 : TEST-PRODUCTION ( -- )
    PRODUCTION-RUN 0 T=
-   RELEASE-INV:ROOTS 4 T=
-   RELEASE-INV:SITES 5 T=
-   RELEASE-INV:QUOTED-SITES 4 T=
+   RELEASE-INV:ROOTS 5 T=
+   RELEASE-INV:SITES 6 T=
+   RELEASE-INV:QUOTED-SITES 5 T=
    RELEASE-INV:DEFS 0 > TTRUE
    RELEASE-INV:BINDINGS 0 > TTRUE ;
 

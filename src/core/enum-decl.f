@@ -378,11 +378,31 @@ ED-RESET
    0 TK-ENUM-K FAM-DECL FAM !
    OPEN-TX ;
 
-: ED-CLOSE ( -- )                          \ bind variant + field ranges + width
+\ ---------------------------------------------------------------------------
+\ constructor generation. This front end still renders nothing itself: once the
+\ variant range, the field range, and the payload width are bound, it names the
+\ family to the ORDER 820 constructor participant and the declaration transaction
+\ does the work in its commit phase, after DECL-EVENT has promoted this
+\ declaration's TYPE-FIELD rows to the committed watermark the shared generator
+\ reads. So a rendering, evaluation, or certification failure anywhere in the set
+\ rolls every participant back and publishes no constructor at all.
+\
+\ The gate itself lives with the participant (GENERATED-DECL-CTOR:OWNS?) so that
+\ one predicate covers arming here and the participant's own re-proof, and both
+\ ENUM modes pass it. Both, because the global-token cutover's acceptance is that
+\ every existing plain ENUM behaves identically through this front end, and the
+\ legacy sumtype.f definer already publishes constructors for a compact
+\ payloadless enum: measured on the parent, a legacy-declared `LGC:RED` resolves
+\ while the same compact family through ED-RUN was E-UNDEFINED. Arming only the
+\ full TK-SUM mode would leave compact enums a parity gap the cutover could never
+\ close.
+\ ---------------------------------------------------------------------------
+: ED-CLOSE ( -- )                          \ bind variant + field ranges + width, then arm generation
    NVAR @ 0= IF E-SYNTAX throw THEN         \ an enum needs at least one variant
    FAM @ VBASE @ NVAR @ FAM-VAR-RANGE!
    FAM @ FLDBASE @ NFLD @ FAM-FLD-RANGE!
-   FAM @ MAXSLOTS @ FAM-SLOTS! ;
+   FAM @ MAXSLOTS @ FAM-SLOTS!
+   FAM @ GENERATED-DECL-CTOR:OWNS? IF FAM @ GENERATED-DECL-CTOR:ARM THEN ;
 
 : FULL-CLAUSE ( -- bool )               \ read + dispatch one full-body token; YES = ;ENUM
    ED-NEXT dup 0= IF 2drop E-SYNTAX throw THEN
