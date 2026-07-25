@@ -2250,3 +2250,16 @@ fits.
   package seal can be correct yet make its required proof unloadable when the
   suite reopens that package to define private helpers. Move those tests onto
   production public seams first; never weaken the seal or add a test bridge.
+- **A wall-clock ratchet inside a parallel test group measures the contention,
+  not the code.** The six JSON reader ratchets ran through
+  `lib/json-read-test.f`, a member of the parallel `stdlib/tail-pure` fork
+  group, so every budget had to be padded for whatever else the box was doing.
+  Split timing from judging - one word that runs the warm-up and stores every
+  raw sample, one word that turns those samples into budgets and verdicts - so a
+  scheduler can measure while nothing else runs. Extracting them also cut the
+  correctness suite from 2.20s to 0.44s.
+- **An upper-bound budget check passes trivially on an unmeasured table.** A
+  verdict of the form `median <= budget` reads a zeroed sample table as a pass,
+  so a skipped or half-finished measurement looks green. Count the stored
+  samples as they are appended and make the complete count part of every
+  verdict; then a dropped run fails closed instead of certifying nothing.

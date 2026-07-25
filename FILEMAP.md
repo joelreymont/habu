@@ -1916,6 +1916,8 @@ points stay listed.
 - `lib/json-write-test.f` — focused coverage for JSON writer escaping, structure, and errors.
 - `lib/json-read.f` — checked zero-allocation JSON pull parser with a sealed opaque linear reader, strict RFC 8259 string validation, and depth-anchored streaming object-key search.
 - `lib/json-read-test.f` — focused coverage for JSON tokens, escapes, UTF-8, structure, ownership, interleaving, isolation, storage bounds, arbitrary key lengths, search-phase rejection, errors, and round-trip.
+- `lib/json-read-perf-test.f` — package `JSON-READ-PERF-TEST`: the JSON reader's six wall-clock ratchet workloads, with `MEASURE` storing all eighteen raw samples after a production-path warm-up and `REPORT` turning them into calibrated budgets, evidence lines, and the six verdicts.
+- `lib/json-read-perf-contract-test.f` — focused coverage for that provider: `MEASURE` stores every sample, `REPORT` fails closed on an incomplete table, and one slowed workload reddens exactly its own verdict.
 - `lib/memory.f` — checked OS-backed byte buffer allocation and release helpers.
 - `lib/memory-test.f` — focused coverage for memory allocation, release, and 64K buffer spans.
 - `lib/byte-buffer.f` — one package-owned growable byte buffer (`package BUF`): copy-on-grow with capacity-as-ownership and MEM-backed release, over typed byte-len roles.

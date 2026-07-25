@@ -263,3 +263,9 @@ public
 -5999 constant E-FMT-LAST
 -5900 constant E-FMT-DOMAIN      \ unsigned formatter (SB-U/.U) given a negative value
 -5901 constant E-FMT-OVERFLOW    \ SB-FIX scaled magnitude |x|*10^k does not fit an i64
+
+\ JSON reader performance samples: -6300..-6399
+-6300 constant E-JRP-FIRST
+-6399 constant E-JRP-LAST
+-6300 constant E-JRP-SAMPLE      \ sample stored out of workload order or past the declared total
+-6301 constant E-JRP-RANGE       \ workload or sample index outside the sample table
