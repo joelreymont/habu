@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-24
+Last updated: 2026-07-25
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -608,6 +608,19 @@ fits.
 
 ## Tool & Infra
 
+- **To see the engine reject its OWN prefix source, build a warm snapshot engine
+  BEFORE breaking the tree.** `bin/hb` recompiles `src/core/*.f` from the working
+  tree at every launch, so a half-migrated prefix edit dies at the first
+  declaration in any tool's libraries (`tfam: bad family id`, rc 76) long before
+  the fixpoint's stage2 certify pass can print the checker's verdict. Build
+  `$HB_TMP/hb-new` with `-- snap` while the tree is still healthy (its prefix is
+  baked into the image, not reread), then run
+  `hb-new --load <lib preamble> tools/build-fixpoint.f tools/build-fixpoint-main.f -- stage`
+  over the broken tree: that stops right after `BF-CERTIFY-STAGE2` and prints
+  `certify: stage2-src rejected rc 70` with the offending word and token. Do not
+  try `tools/check.f --source-list src/core/<file>.f` for this — a prefix file
+  reads sealed cold registry cells (`TFAM-N`) that a user-level check reports as
+  `E-UNDEFINED`, which is a harness artifact, not the reject you are after.
 - **Do not overlap a top-level gate with a second invocation of one of its own
   suites.** `test/run.f` already launches the Maki core suite; running
   `maki/test.f` beside it made both `maki/cad-test.f` processes contend through

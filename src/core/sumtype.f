@@ -1357,7 +1357,7 @@ TDGEN-QUOT-ROW-INSTALL
 
 \ The constructor queue is an authority, not scratch state. This inner boundary
 \ proves exact consumption on success and clears name/capacity/candidate/evaluator
-\ failures. TDECL-CTOR-WORDS starts the outer owner before plan rendering.
+\ failures. TDECL-CTOR-WORDS-BODY starts the outer owner before plan rendering.
 : TDECL-GEN-EVAL ( -- )
    [: TDECL-GEN-EVAL-BODY ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
@@ -1606,36 +1606,43 @@ variable TDD-H
    TDECL-GEN-EVAL
    vstart TDECL-CTOR-PROT-WID ;
 
-: TDECL-CTOR-WORDS-BODY ( -- )           \ engine-load generation for the last sum
-   TDECL-FAM-REG @ {: fam:n :}
-   fam 0 < IF EXIT THEN
-   fam TFAM-PUBLIC? 0= IF EXIT THEN
-   fam TFAM-PRODUCT? IF fam TDECL-PROD-WORDS EXIT THEN
-   \ parametric (arity > 0) families publish too (item 11 slice 1): a
-   \ constructor's parametric result stays one conservative logical cell while
-   \ its args are unresolved, expands to hidden fields where instantiation
-   \ proves the args non-linear (checker.f LOGHID coercion), and genuinely
-   \ linear instantiations stay rejected at the sig/param-arg layers until
-   \ whole-bundle linear counting lands.
-   fam TFAM-VAR-START@ {: vstart:n :}
-   fam TFAM-VAR-COUNT@ {: k:n :}
-   TDPLAN-BEGIN
-   0 TDGEN-M !
-   BEGIN TDGEN-M @ k < WHILE
-      fam vstart TDGEN-M @ + TDECL-CTOR-WORD
-      TDGEN-M @ 1 + TDGEN-M !
-   REPEAT
-   fam TDECL-DRV-WORDS                   \ derived words BEFORE the WID closes
-   TDECL-GEN-EVAL
-   vstart TDECL-CTOR-PROT-WID ;
-
-\ Rendering itself can fail after constructors have entered the authority queue,
-\ before TDECL-GEN-EVAL is reached. Own the whole render/preflight/evaluate/stage
-\ lifetime here and clear the queue before every result escapes.
-: TDECL-CTOR-WORDS ( -- )
-   [: TDECL-CTOR-WORDS-BODY ;] catch {: rc:n :}
+\ Generation for ONE family the caller names, so a caller can prove which family
+\ the complete generated plan belongs to. Rendering itself can fail after
+\ constructors have entered the authority queue, before TDECL-GEN-EVAL is
+\ reached, so this owns the whole render/preflight/evaluate/protect lifetime and
+\ clears the queue before every result escapes. The family id travels on the
+\ data stack through that boundary because a quotation cannot read its caller's
+\ locals, and the same id comes back out on every normal branch.
+: TDECL-CTOR-WORDS-BODY ( n -- n )       \ generate one live family's constructors
+   [:                                    \ ( fam ) throughout the boundary
+      dup TFAM-PUBLIC? 0= IF EXIT THEN
+      dup TFAM-PRODUCT? IF dup TDECL-PROD-WORDS EXIT THEN
+      \ parametric (arity > 0) families publish too (item 11 slice 1): a
+      \ constructor's parametric result stays one conservative logical cell while
+      \ its args are unresolved, expands to hidden fields where instantiation
+      \ proves the args non-linear (checker.f LOGHID coercion), and genuinely
+      \ linear instantiations stay rejected at the sig/param-arg layers until
+      \ whole-bundle linear counting lands.
+      TDPLAN-BEGIN
+      0 TDGEN-M !
+      BEGIN TDGEN-M @ over TFAM-VAR-COUNT@ < WHILE
+         dup dup TFAM-VAR-START@ TDGEN-M @ + TDECL-CTOR-WORD
+         TDGEN-M @ 1 + TDGEN-M !
+      REPEAT
+      dup TDECL-DRV-WORDS                \ derived words BEFORE the WID closes
+      TDECL-GEN-EVAL
+      dup TFAM-VAR-START@ TDECL-CTOR-PROT-WID
+   ;] catch {: rc:n :}
    CTOR-PEND-CLEAR
    rc 0 <> IF rc throw THEN ;
+
+\ The legacy SUMTYPE / ENUM / PRODUCT definers below announce the family they
+\ just registered through TDECL-FAM-REG, so that ambient read lives here, in the
+\ one adapter, and nowhere beneath it. A refused declaration leaves -1 (the
+\ multi-error continue path in TDECL-RUN) and generates nothing.
+: TDECL-CTOR-WORDS ( -- )
+   TDECL-FAM-REG @ dup 0 < IF drop EXIT THEN
+   TDECL-CTOR-WORDS-BODY drop ;
 
 \ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.

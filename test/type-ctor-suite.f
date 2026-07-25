@@ -774,6 +774,72 @@ PQM-RUN 105 T=
 s" PARAMETRIC-QUOT-PAYLOAD" type cr
 
 \ ---------------------------------------------------------------------------
+\ dot habu-pass-constructor-family-b9402f5b: the generator body is told WHICH
+\ family to generate instead of reading the last-registered one, so a caller can
+\ generate a family that is not the last one declared. The SUMTYPE definer runs
+\ registration and generation in one transaction; this test splits them:
+\ register two families through the shared CHECKER-DEFSUM path, each in its own
+\ real declaration transaction, then generate the FIRST one and prove the whole
+\ generated plan is that family's. The last-registered family is the second one,
+\ so a generator that still read the register would publish ZXB:TWO here
+\ instead of ZXA:ONE.
+\ ---------------------------------------------------------------------------
+package CTOR-FAMILY-TEST
+
+\ whitebox boundary (dot habu-hb-crash-bare-c5be6634): the engine-private
+\ registration path, generator, and plan buffer go through named trusted shims.
+TRUSTED: DEFSUM ( ptr u8 n ptr u8 n -- ) CHECKER-DEFSUM ;
+TRUSTED: CTOR-BODY ( n -- n ) TDECL-CTOR-WORDS-BODY ;
+TRUSTED: PLAN-N ( -- n ) TDPLAN-N @ ;
+TRUSTED: PLAN-NAME$ ( n -- ptr u8 n ) TDPLAN-NAME$ ;
+TRUSTED: FAM-REG ( -- n ) TDECL-FAM-REG @ ;
+
+variable FAM-A    \ the family registered first, then left behind by the register
+variable FAM-B    \ the family registered last, the one the register still names
+variable ASKED    \ family id handed to the generator
+variable GOT      \ family id the generator handed back
+
+: REGISTER-A ( -- ) s" zxa" s" 0 VARIANT one n ;VARIANT" DEFSUM ;
+: REGISTER-B ( -- ) s" zxb" s" 0 VARIANT two n ;VARIANT" DEFSUM ;
+: DECLARE-A ( -- ) [: REGISTER-A ;] GENERATED-DECL:RUN  FAM-REG FAM-A ! ;
+: DECLARE-B ( -- ) [: REGISTER-B ;] GENERATED-DECL:RUN  FAM-REG FAM-B ! ;
+: GENERATE-BODY ( -- ) ASKED @ CTOR-BODY GOT ! ;
+
+public
+
+\ DECLARE registers both families and generates neither, so a live family that
+\ is NOT the one the register names exists to generate.
+: DECLARE ( -- ) DECLARE-A DECLARE-B ;
+: FIRST ( -- n ) FAM-A @ ;
+: SECOND ( -- n ) FAM-B @ ;
+: GENERATE ( n -- n ) ASKED ! [: GENERATE-BODY ;] GENERATED-DECL:RUN  GOT @ ;
+: PLAN-COUNT ( -- n ) PLAN-N ;
+: PLAN-NAME ( n -- ptr u8 n ) PLAN-NAME$ ;
+
+;package
+
+CTOR-FAMILY-TEST:DECLARE
+CTOR-FAMILY-TEST:FIRST 0 < 0= -1 T=
+\ zxa is live, and is no longer the family the register names.
+CTOR-FAMILY-TEST:SECOND CTOR-FAMILY-TEST:FIRST <> -1 T=
+\ generate the NON-LAST family: the id comes back unchanged and the whole plan
+\ is zxa's single constructor.
+CTOR-FAMILY-TEST:FIRST CTOR-FAMILY-TEST:GENERATE CTOR-FAMILY-TEST:FIRST T=
+CTOR-FAMILY-TEST:PLAN-COUNT 1 T=
+0 CTOR-FAMILY-TEST:PLAN-NAME s" ZXA:ONE" T$=
+\ only that family was published: zxa's constructor certifies, while zxb's
+\ constructor word does not exist yet (verdict 1 = uncheckable/undefined).
+s" ZQ1 ( n -- zxa ) ZXA:ONE" CHECK-QUIET-CANDIDATE! -1 T=
+s" ZQ2 ( n -- zxb ) ZXB:TWO" CHECK-QUIET-CANDIDATE! 1 T=
+\ the still-ungenerated family generates afterwards through the same call.
+CTOR-FAMILY-TEST:SECOND CTOR-FAMILY-TEST:GENERATE CTOR-FAMILY-TEST:SECOND T=
+CTOR-FAMILY-TEST:PLAN-COUNT 1 T=
+0 CTOR-FAMILY-TEST:PLAN-NAME s" ZXB:TWO" T$=
+s" ZQ3 ( n -- zxb ) ZXB:TWO" CHECK-QUIET-CANDIDATE! -1 T=
+
+s" EXPLICIT-CTOR-FAMILY" type cr
+
+\ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

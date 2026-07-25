@@ -744,6 +744,14 @@ address arithmetic at the public boundary.
 - **Checked `catch` is quotation catch.** Consume success outputs inside the
   quotation (`[: WORD drop ;] catch`) and preserve the exact throw code as data at
   an explicit recovery boundary. Do not widen checked code to arbitrary xt catch.
+- **A caught quotation must be stack-preserving, and that is how a value crosses
+  the boundary.** `catch` unifies the live stack with the quotation's inputs AND
+  its outputs, so `[: … ;]` may consume items only if it returns the same shape:
+  `( n -- n )` is accepted, `( n -- )` is rejected. Because a quotation cannot
+  read the enclosing word's locals, a value that the caught code needs travels on
+  the data stack through the quotation and comes back out on every branch —
+  `: W ( n -- n ) [: dup USE … ;] catch {: rc:n :} CLEANUP rc 0 <> IF rc throw THEN ;`.
+  Do not invent a staging variable for it.
 - **Higher-order signatures publish themselves.** If a checked word with
   quotation effects (`DIP`, `KEEP`, row callbacks) passes `CHECK!`, let it render
   into public signatures; do not keep a `TRUST` row just to pin its scheme.

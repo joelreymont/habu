@@ -1355,6 +1355,11 @@ test/type-ctor-suite.f:TWX-SUMV-PAYCELLS@ test-metaprog habu-seal-set-check-b367
 test/type-ctor-suite.f:TWX-SYMS test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33
+test/type-ctor-suite.f:DEFSUM test-metaprog habu-pass-constructor-family-b9402f5b
+test/type-ctor-suite.f:CTOR-BODY test-metaprog habu-pass-constructor-family-b9402f5b
+test/type-ctor-suite.f:PLAN-N test-metaprog habu-pass-constructor-family-b9402f5b
+test/type-ctor-suite.f:PLAN-NAME$ test-metaprog habu-pass-constructor-family-b9402f5b
+test/type-ctor-suite.f:FAM-REG test-metaprog habu-pass-constructor-family-b9402f5b
 test/type-decl-suite.f:TQX<QS test-metaprog cap:qualified-family-payloads
 test/type-decl-suite.f:TQX>QS test-metaprog cap:qualified-family-payloads
 test/type-decl-suite.f:TWX-CAND-DONE test-metaprog habu-seal-set-check-b3676b33
