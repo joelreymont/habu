@@ -67,6 +67,8 @@ create CLI-ROOT FS-PATH-CAP allot
 create CLI-TARGET FS-PATH-CAP allot
 create CLI-LINK-PATH FS-PATH-CAP allot
 create CLI-HB FS-PATH-CAP allot
+create CAP-OUT-PATH FS-PATH-CAP allot
+create CAP-ERR-PATH FS-PATH-CAP allot
 
 variable OUT-A
 variable ERR-A
@@ -86,6 +88,10 @@ variable CLI-ROOT-U
 variable CLI-TARGET-U
 variable CLI-LINK-U
 variable CLI-HB-U
+variable CAP-OUT-PATH-U
+variable CAP-ERR-PATH-U
+variable SAVE-OUT-FD
+variable SAVE-ERR-FD
 variable START-NS
 
 : PATH-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr lenp:ptr :}
@@ -158,6 +164,67 @@ variable START-NS
 : CAP-ERR ( -- ptr u8 )
    ERR-A @ 0= if CAP-ALLOC ERR-A! then
    ERR-A@ ;
+
+: CAP-OUT-PATH$ ( -- ptr u8 n )
+   CAP-OUT-PATH CAP-OUT-PATH-U @ ;
+
+: CAP-ERR-PATH$ ( -- ptr u8 n )
+   CAP-ERR-PATH CAP-ERR-PATH-U @ ;
+
+\ Stream capture for the in-process CHECK drivers below. The check tool writes
+\ its diagnostics with plain `write` calls on the process stdout and stderr, so
+\ the only faithful way to read them back without a test-only hook inside the
+\ tool is to move those two descriptors for the duration of one run. The
+\ production code stays untouched and the assertions see exactly the bytes a
+\ command-line user would see.
+1 constant CAP-STDOUT
+2 constant CAP-STDERR
+
+: FD-MOVE ( n n -- ) {: from:n to:n :}
+   from to dup2 0 < if E-PROC-OUTPUT throw then ;
+
+: FD-CLOSE ( n -- ) {: fd:n :}
+   fd close-rc 0 < if E-PROC-OUTPUT throw then ;
+
+\ Opening a file hands back a fresh kernel-chosen descriptor number; moving the
+\ live stream onto that number closes the just-opened file and leaves the number
+\ holding a second reference to the original stream. That is the saved copy.
+: FD-SAVE ( n ptr u8 n -- n ) {: fd:n a:ptr u:n :}
+   a u OPEN-APPEND-FD {: slot:n :}
+   fd slot FD-MOVE
+   slot ;
+
+: FD-TO-FILE ( ptr u8 n n -- ) {: a:ptr u:n dst:n :}
+   a u OPEN-APPEND-FD {: fd:n :}
+   fd dst FD-MOVE
+   fd FD-CLOSE ;
+
+: CAP-BEGIN ( -- )
+   CAP-OUT-PATH$ s" " WRITE-ALL
+   CAP-ERR-PATH$ s" " WRITE-ALL
+   CAP-STDOUT CAP-OUT-PATH$ FD-SAVE SAVE-OUT-FD !
+   CAP-STDERR CAP-ERR-PATH$ FD-SAVE SAVE-ERR-FD !
+   CAP-OUT-PATH$ CAP-STDOUT FD-TO-FILE
+   CAP-ERR-PATH$ CAP-STDERR FD-TO-FILE ;
+
+: CAP-END ( -- n n )   \ restore both streams, then slurp them into the assertion buffers
+   SAVE-OUT-FD @ CAP-STDOUT FD-MOVE  SAVE-OUT-FD @ FD-CLOSE
+   SAVE-ERR-FD @ CAP-STDERR FD-MOVE  SAVE-ERR-FD @ FD-CLOSE
+   CAP-OUT-PATH$ CAP-OUT BUF-CAP READ-ALL
+   CAP-ERR-PATH$ CAP-ERR BUF-CAP READ-ALL ;
+
+\ typed-local-lint: allow-bare-local - q is the guarded in-process run action.
+: IN-PROC ( [ -- ] -- n n n )   \ outn errn code, the same triple the CLI drivers return
+   {: q :}
+   CAP-BEGIN
+   q catch {: rc:n :}
+   CAP-END rc ;
+
+\ CHECK:MAIN turns a non-zero run code into a throw, which the engine reports as
+\ the process exit status. The in-process drivers reproduce that mapping so a
+\ converted test still compares against the code the command line would exit with.
+: RUN-ACT ( -- )
+   RUN dup 0 <> if throw then drop ;
 
 : CORE-ACT ( -- )
    BAD$ BAD$ CHECK-ALL-ERRORS-FILE ;
@@ -249,33 +316,17 @@ variable START-NS
    $2710 >MS RUN-ARGV-STDIN-CAPTURE
    CAPTURE>N ;
 
-: DIRECT-STDIN ( ptr u8 n -- n n n )
+\ ---- command-line drivers ---------------------------------------------------
+\ These stay on a real child process because they are the standalone entry
+\ coverage: argument parsing, reading the program from standard input, and the
+\ exit status of `bin/hb tools/check.f`. Everything else drives the same tool
+\ in this process through the CHECK package's public words.
+
+: CLI-STDIN ( ptr u8 n -- n n n )
    CHECK-ARGV-START
    CHECK-STDIN-CAPTURE ;
 
-: DIRECT-ALL-STDIN ( ptr u8 n -- n n n )
-   CHECK-ARGV-START
-   s" --all-errors" CHECK-ARG+
-   CHECK-STDIN-CAPTURE ;
-
-: ALL-JSON-STDIN ( ptr u8 n -- n n n )
-   CHECK-ARGV-START
-   s" --all-errors" CHECK-ARG+
-   s" --json-errors" CHECK-ARG+
-   CHECK-STDIN-CAPTURE ;
-
-: DIRECT-JSON-STDIN ( ptr u8 n -- n n n )
-   CHECK-ARGV-START
-   s" --json-errors" CHECK-ARG+
-   CHECK-STDIN-CAPTURE ;
-
-: LIST-RUN ( ptr u8 n -- n n n )
-   CHECK-ARGV-START
-   s" --source-list" CHECK-ARG+
-   CHECK-ARG+
-   CHECK-CAPTURE ;
-
-: DIRECT-ALL-LIST ( ptr u8 n ptr u8 n -- n n n )
+: CLI-ALL-LIST ( ptr u8 n ptr u8 n -- n n n )
    {: aa:ptr au:n ba:ptr bu:n :}
    CHECK-ARGV-START
    s" --json-errors" CHECK-ARG+
@@ -285,18 +336,62 @@ variable START-NS
    ba bu CHECK-ARG+
    CHECK-CAPTURE ;
 
-: LIST-PREVERIFY ( ptr u8 n -- n n n )
-   LIST-RUN ;
-
-: DIRECT-PREVERIFY-PATH ( ptr u8 n -- n n n )
-   CHECK-ARGV-START
-   CHECK-ARG+
-   CHECK-CAPTURE ;
-
-: DIRECT-BAD-FLAG ( -- n n n )
+: CLI-BAD-FLAG ( -- n n n )
    CHECK-ARGV-START
    s" --bad-flag" CHECK-ARG+
    CHECK-CAPTURE ;
+
+\ ---- in-process drivers -----------------------------------------------------
+\ Same tool, same phases, same diagnostics: only the process boundary is gone.
+\ Sources that the command line reads from standard input are selected with
+\ CHECK:SOURCE under the `<stdin>` label the tool itself uses, so every
+\ diagnostic still names the same file.
+
+: STDIN-LABEL$ ( -- ptr u8 n )
+   s" <stdin>" ;
+
+: SELECT-STDIN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu STDIN-LABEL$ SOURCE ;
+
+: DIRECT-STDIN ( ptr u8 n -- n n n )
+   RESET
+   SELECT-STDIN
+   [: RUN-ACT ;] IN-PROC ;
+
+: DIRECT-ALL-STDIN ( ptr u8 n -- n n n )
+   RESET
+   s" all-errors" OPT
+   SELECT-STDIN
+   [: RUN-ACT ;] IN-PROC ;
+
+: ALL-JSON-STDIN ( ptr u8 n -- n n n )
+   RESET
+   s" all-errors" OPT
+   s" json-errors" OPT
+   SELECT-STDIN
+   [: RUN-ACT ;] IN-PROC ;
+
+: DIRECT-JSON-STDIN ( ptr u8 n -- n n n )
+   RESET
+   s" json-errors" OPT
+   SELECT-STDIN
+   [: RUN-ACT ;] IN-PROC ;
+
+: LIST-RUN ( ptr u8 n -- n n n )
+   RESET
+   LIST-OPT
+   FILE
+   [: RUN-ACT ;] IN-PROC ;
+
+: EMPTY-LIST-RUN ( -- n n n )
+   RESET
+   LIST-OPT
+   [: RUN-ACT ;] IN-PROC ;
+
+: PATH-RUN ( ptr u8 n -- n n n )
+   RESET
+   FILE
+   [: RUN-ACT ;] IN-PROC ;
 
 : CLI-HB$ ( -- ptr u8 n )
    HB$ {: hb:ptr hbu:n :}
@@ -705,6 +800,8 @@ variable START-NS
    ROOT$ s" inc-entry.f" INC-ENTRY-PATH JOIN-PATH INC-ENTRY-U !
    ROOT$ s" list-sup.f" SUP-PATH JOIN-PATH SUP-U !
    ROOT$ s" list-use.f" USE-PATH JOIN-PATH USE-U !
+   ROOT$ s" capture-out.txt" CAP-OUT-PATH JOIN-PATH CAP-OUT-PATH-U !
+   ROOT$ s" capture-err.txt" CAP-ERR-PATH JOIN-PATH CAP-ERR-PATH-U !
    BAD$ BAD$SRC WRITE-ALL ;
 
 : TEST-GOOD ( -- )
@@ -741,7 +838,7 @@ variable START-NS
    CAP-ERR erru BAD$ CONTAINS? TTRUE ;
 
 : TEST-USAGE ( -- )
-   DIRECT-BAD-FLAG 64 T=
+   CLI-BAD-FLAG 64 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
@@ -832,7 +929,7 @@ variable START-NS
    RESET ;
 
 : TEST-DIE ( -- )
-   DIE$ DIRECT-STDIN 5 T=
+   DIE$ CLI-STDIN 5 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" bye" CONTAINS? TTRUE ;
@@ -943,7 +1040,7 @@ variable START-NS
    CAP-ERR erru s" <source-list>" CONTAINS? TTRUE ;
 
 : AUDITED-LIB-TEST ( -- )
-   s" lib/test.f" LIST-PREVERIFY 0 T=
+   s" lib/test.f" LIST-RUN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
@@ -1108,9 +1205,7 @@ variable START-NS
    RESET
    OVERCAP-SOURCE-LEN dup MEM:BYTES-ALLOC-LEN
    [: OVERCAP-FILE-BODY ;] MEM:WITH-BYTES
-   CHECK-ARGV-START
-   DIRECT$ CHECK-ARG+
-   CHECK-CAPTURE 66 T=
+   DIRECT$ PATH-RUN 66 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" source exceeds capacity" CONTAINS? TTRUE
@@ -1157,9 +1252,7 @@ variable START-NS
    MUT-PATH$ FILE ;
 
 : TEST-EMPTY-LIST ( -- )
-   CHECK-ARGV-START
-   s" --source-list" CHECK-ARG+
-   CHECK-CAPTURE 64 T=
+   EMPTY-LIST-RUN 64 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" usage: tools/check.f" CONTAINS? TTRUE ;
@@ -1284,13 +1377,18 @@ create BIG $2000 allot   variable BIG-U
 
 \ Same arm through the real CLI entry: `bin/hb tools/check.f fixture` must
 \ carry the diagnostic on stderr with the rc unchanged.
+\ The engine's script form reads standard input to end of file before it runs
+\ the script, so the child must be handed its own empty input. Letting it
+\ inherit whatever input this test process happens to have makes the case block
+\ until the capture timeout whenever that stream stays open.
 : ENUM-CLI-RUN ( -- n n n )
    BAD$ ENUM-NOEND$ WRITE-ALL
    PROC-ARGV-RESET
    s" tools/check.f" >LEN PROC-ARGV+
    BAD$ >LEN PROC-ARGV+
-   HB$ >LEN CAP-OUT BUF-CAP >LEN
-   CAP-ERR BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   HB$ >LEN s" " >LEN
+   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
+   $2710 >MS RUN-ARGV-STDIN-CAPTURE
    CAPTURE>N ;
 
 : ENUM-CLI-TEST ( -- )
@@ -1306,8 +1404,14 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CAP-ERR erru s" field<point,y,n>" CONTAINS? TTRUE ;
 
+\ This fixture deliberately defines a word called DEFTYPE at top level, so it
+\ only type-checks in an engine whose dictionary does not already hold the real
+\ DEFTYPE declarer. This test library runs inside the gate runner, which does
+\ load lib/type/deftype.f, so checking the fixture here would be a true
+\ duplicate definition. The standalone tools/check.f process has the smaller
+\ dictionary the fixture needs, which is why this case keeps the child process.
 : NOM-SCAN-TEST ( -- )
-   NOM-SCAN-BODY$ DIRECT-STDIN 0 T=
+   NOM-SCAN-BODY$ CLI-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
@@ -1406,7 +1510,7 @@ create BIG $2000 allot   variable BIG-U
 : TEST-INCLUDED-DEP ( -- )
    INC-DEP$ s\" : CKT-EIGHT ( -- n ) 8 ;\n" WRITE-ALL
    INC-ENTRY$ INC-ENTRY-SRC$ WRITE-ALL
-   INC-ENTRY$ DIRECT-PREVERIFY-PATH 0 T=
+   INC-ENTRY$ PATH-RUN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
@@ -1418,7 +1522,7 @@ create BIG $2000 allot   variable BIG-U
 : LIST-ALL-TEST ( -- )
    SUP$ s\" : CKT-SEVEN ( -- n ) 7 ;\n" WRITE-ALL
    USE$ s\" : CKT-GOOD-USE ( -- n ) CKT-SEVEN ;\n: CKT-BAD-ONE ( -- n n ) CKT-SEVEN ;\n: CKT-BAD-TWO ( n -- ) CKT-SEVEN ;\n" WRITE-ALL
-   SUP$ USE$ DIRECT-ALL-LIST 70 T=
+   SUP$ USE$ CLI-ALL-LIST 70 T=
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru USE$ CONTAINS? TTRUE
