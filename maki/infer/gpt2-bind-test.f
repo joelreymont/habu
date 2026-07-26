@@ -334,6 +334,17 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    WSTORE:LIVE TX-BASE-WS @ 1 + T=
    LIVE TX-BASE-PREP @ 1 + T= ;
 
+\ What a committed model owns: the prep block is gone, and the table block and the
+\ checkpoint mapping have moved into the residency the model holds.
+: TX-MODEL-HELD ( -- )
+   SAFET-MAP:LIVE TX-BASE-MAP @ 1 + T=
+   SAFET:LIVE-OWNERS TX-BASE-OWN @ 1 + T=
+   WSTORE:LIVE TX-BASE-WS @ 1 + T=
+   LIVE TX-BASE-PREP @ T= ;
+
+: TX-BYTES= ( ptr u8 n ptr u8 n -- )
+   STR= TTRUE ;
+
 : TX-REJECTED ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
@@ -663,6 +674,158 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    ;MATCH
    TX-NO-LEAK ;
 
+\ ---- the foreign-model compare, on the production word --------------------------
+\ The commit half's whole refusal rests on this one comparison, so it is tested on
+\ the production word rather than on a re-derivation of it. The prep is always built
+\ from configuration A; what varies is the configuration that would CONSUME it. A
+\ compare that was deleted, or that compared a configuration with itself, would
+\ still pass the first assertion and fail the second.
+: TX-FOREIGN? ( MDLCFG:mcfg -- bool )           \ the mcfg is the CONSUMING one
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE          \ the prep is configuration A's
+   MATCH GPT2TX:prep-result
+      prepared OF                               \ ( mcfg prep )
+         swap PREP-FOREIGN?                     \ ( prep mcfg bool )
+         >r drop ABORT r>
+      ENDOF
+      rejected OF                               \ ( mcfg census code )
+         s" foreign-compare leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE drop
+         0 0= 0= TTRUE
+         0 0=                                   \ keep the row shape; the leg failed
+      ENDOF
+   ;MATCH ;
+
+: T-FOREIGN-COMPARE ( -- )
+   s" a prep is not foreign to the configuration that built it" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-CFG-A TX-FOREIGN? 0= TTRUE
+   TX-NO-LEAK
+   s" and the identity twin IS foreign, though it binds the same census" T-LABEL
+   TX-CFG-B TX-FOREIGN? TTRUE
+   TX-NO-LEAK ;
+
+\ ---- the second half: compare, then commit --------------------------------------
+\ These three legs walk the transaction one state at a time and prove the same thing
+\ about each: every state has an owner and a total exit, so no step in the sequence can
+\ leave a resource with nobody to give it back.
+\
+\ WHY THIS IS THE HONEST FORM OF "NOTHING CAN STRAND". The contract asks for a throw
+\ injected at each step boundary. The only step in the whole bind whose failure is
+\ reachable is the record allocation inside SAFET:DETACH-MAPPING, and nothing in the
+\ suite can force an out-of-memory there - the alternative would be a fault hook in
+\ production code, which is not allowed to exist. So the property is pinned the way it
+\ is actually decided: the failure is GUARDED inside CHECK, which answers with a value,
+\ and the states either side of it are shown to be completely disposable -
+\ prep -> ABORT, checked prep -> ABORT-CHECKED, model -> MODEL-DISPOSE - with every
+\ counter returning to the suite's entry baseline. COMMIT-MAPPED itself has no guarded
+\ step because it has no fallible one; what makes that true is the checked-prep type,
+\ not a rule someone has to remember.
+: TX-STASH-MKEY ( GPT2TX:gpt2-model -- GPT2TX:gpt2-model )
+   MODEL-KEY MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
+   k0 TX-KA0 !  k1 TX-KA1 !  k2 TX-KA2 !  k3 TX-KA3 ! ;
+
+: T-CHECK-FOREIGN ( -- )
+   s" a foreign configuration is refused, and nothing has moved" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         TX-CFG-B CHECK                          \ the twin: same census, other identity
+         MATCH GPT2TX:check-result
+            matched OF
+               s" the identity twin was accepted as this model" T-LABEL
+               0 0= 0= TTRUE
+               ABORT-CHECKED
+            ENDOF
+            foreign OF
+               {: code:n :}
+               code E-GX-FOREIGN T=
+               s" and the refused prep is whole: still held, still ABORTable" T-LABEL
+               TX-HELD
+               ABORT
+            ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" foreign leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH
+   TX-NO-LEAK ;
+
+: T-CHECK-MATCH ( -- )
+   s" the configuration that built the prep matches it" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         TX-CFG-A CHECK
+         MATCH GPT2TX:check-result
+            matched OF
+               \ The census gave up its image and was released; the mapping it gave up
+               \ is now the compared prep's. One owner out, one owner in, so the totals
+               \ are exactly where PREPARE left them - and no kernel mapping moved.
+               s" the mapping moved out of the census without changing what is owned" T-LABEL
+               TX-HELD
+               s" and a compared prep that declines to commit disposes totally" T-LABEL
+               ABORT-CHECKED
+            ENDOF
+            foreign OF
+               {: code:n :}
+               s" a prep was called foreign to its own configuration, code" T-LABEL
+               code . cr
+               0 0= 0= TTRUE
+               ABORT
+            ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" match leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH
+   TX-NO-LEAK ;
+
+: T-COMMIT ( -- )
+   s" a compared prep commits to a mapped model" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-CFG-A TX-CFG-KEY!                          \ the configuration's own key, to compare
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         TX-CFG-A CHECK
+         MATCH GPT2TX:check-result
+            matched OF
+               COMMIT-MAPPED
+               s" the prep block is gone and the residency is held" T-LABEL
+               TX-MODEL-HELD
+               s" the model carries the depth the prep validated" T-LABEL
+               MODEL-NL TX-NL T=
+               s" and the identity the prep captured, cell for cell" T-LABEL
+               TX-STASH-MKEY
+               TX-KEY-IS-CFG
+               s" and the model's exit gives every owner back" T-LABEL
+               MODEL-DISPOSE RES-CODE 0 T=
+            ENDOF
+            foreign OF
+               {: code:n :}
+               s" commit leg was refused, code" T-LABEL
+               code . cr
+               0 0= 0= TTRUE
+               ABORT
+            ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" commit leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH
+   TX-NO-LEAK ;
+
 \ ---- static half: the checker enforces the transaction's ownership rules -------
 : T-CHECKER ( -- )
    s" a prep cannot be forged from a raw cell or a pointer" T-LABEL
@@ -686,6 +849,51 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    s" GX-OK-PREPARE ( SAFET:census MDLCFG:mcfg -- GPT2TX:prep-result ) GPT2TX:PREPARE" TX-ACCEPTED
    s" GX-OK-ABORT ( GPT2TX:prep -- ) GPT2TX:ABORT" TX-ACCEPTED
    s" GX-OK-LIVE ( -- n ) GPT2TX:LIVE" TX-ACCEPTED
+   s" the commit half's public surface resolves" T-LABEL
+   s" GX-OK-CHECK ( GPT2TX:prep MDLCFG:mcfg -- GPT2TX:check-result ) GPT2TX:CHECK" TX-ACCEPTED
+   s" GX-OK-ABORT-CHECKED ( GPT2TX:checked-prep -- ) GPT2TX:ABORT-CHECKED" TX-ACCEPTED
+   s" GX-OK-COMMIT ( GPT2TX:checked-prep -- GPT2TX:gpt2-model ) GPT2TX:COMMIT-MAPPED" TX-ACCEPTED
+   s" GX-OK-MODEL-DISPOSE ( GPT2TX:gpt2-model -- result<n,n> ) GPT2TX:MODEL-DISPOSE" TX-ACCEPTED
+   \ THE POINT OF THE WHOLE SHAPE. The commit cannot be reached with an uncompared prep:
+   \ its argument type is one only CHECK produces, so "the identity was compared" is a
+   \ static precondition rather than a rule the commit's body has to remember. Deleting
+   \ the compare from CHECK cannot restore this candidate either - it is the TYPE that
+   \ refuses, so no edit to a body makes an unchecked prep committable.
+   s" the commit is unreachable without the compare" T-LABEL
+   s" GX-BAD-COMMIT-PREP ( GPT2TX:prep -- GPT2TX:gpt2-model ) GPT2TX:COMMIT-MAPPED" TX-REJECTED
+   s" GX-BAD-COMMIT-CENSUS ( SAFET:census -- GPT2TX:gpt2-model ) GPT2TX:COMMIT-MAPPED" TX-REJECTED
+   s" GX-BAD-CHECK-CHECKED ( GPT2TX:checked-prep MDLCFG:mcfg -- GPT2TX:check-result ) GPT2TX:CHECK" TX-REJECTED
+   s" GX-BAD-CHECK-AMBIENT ( MDLCFG:mcfg -- GPT2TX:check-result ) GPT2TX:CHECK" TX-REJECTED
+   s" a checked prep is linear: no copy, no discard, no store, no forging" T-LABEL
+   s" GX-BAD-CHK-DUP ( GPT2TX:checked-prep -- GPT2TX:checked-prep GPT2TX:checked-prep ) dup" TX-REJECTED
+   s" GX-BAD-CHK-DROP ( GPT2TX:checked-prep -- ) drop" TX-REJECTED
+   s" GX-BAD-CHK-STORE ( GPT2TX:checked-prep ptr n -- ) !" TX-REJECTED
+   s" GX-BAD-CHK-FORGE ( n -- GPT2TX:checked-prep ) " TX-REJECTED
+   s" the two prep kinds do not substitute for each other at any exit" T-LABEL
+   s" GX-BAD-ABORT-CHECKED-PREP ( GPT2TX:prep -- ) GPT2TX:ABORT-CHECKED" TX-REJECTED
+   s" GX-BAD-ABORT-CHK ( GPT2TX:checked-prep -- ) GPT2TX:ABORT" TX-REJECTED
+   s" GX-BAD-CHK-TWICE ( GPT2TX:checked-prep -- ) GPT2TX:ABORT-CHECKED GPT2TX:ABORT-CHECKED" TX-REJECTED
+   s" GX-BAD-COMMIT-THEN-ABORT ( GPT2TX:checked-prep -- GPT2TX:gpt2-model ) GPT2TX:COMMIT-MAPPED GPT2TX:ABORT-CHECKED" TX-REJECTED
+   s" check-result payloads cannot cross roles" T-LABEL
+   s" GX-BAD-MATCHED-PREP ( GPT2TX:prep -- GPT2TX:check-result ) GPT2TX-CHECK--RESULT:MATCHED" TX-REJECTED
+   s" GX-BAD-FOREIGN-CHK ( GPT2TX:checked-prep n -- GPT2TX:check-result ) GPT2TX-CHECK--RESULT:FOREIGN" TX-REJECTED
+   s" GX-BAD-CHECK-DROPPED ( GPT2TX:prep MDLCFG:mcfg -- ) GPT2TX:CHECK" TX-REJECTED
+   \ A model owns a linear residency, so the RECORD is linear by containment: the
+   \ checker refuses to copy or discard it, which is what makes the checkpoint mapping
+   \ impossible to leak or to free twice.
+   s" a bound model is linear by containment, and cannot be forged" T-LABEL
+   s" GX-BAD-MODEL-DUP ( GPT2TX:gpt2-model -- GPT2TX:gpt2-model GPT2TX:gpt2-model ) dup" TX-REJECTED
+   s" GX-BAD-MODEL-DROP ( GPT2TX:gpt2-model -- ) drop" TX-REJECTED
+   s" GX-BAD-MODEL-STORE ( GPT2TX:gpt2-model ptr n -- ) !" TX-REJECTED
+   s" GX-BAD-MODEL-FORGE ( n -- GPT2TX:gpt2-model ) " TX-REJECTED
+   s" GX-BAD-MODEL-PROOF-RAW ( WSTORE:resident n MDLCFG:cfgkey n -- GPT2TX:gpt2-model ) GPT2TX-GPT2--MODEL:MAKE" TX-REJECTED
+   s" the model's exit consumes it exactly once" T-LABEL
+   s" GX-BAD-MD-TWICE ( GPT2TX:gpt2-model -- result<n,n> result<n,n> ) GPT2TX:MODEL-DISPOSE GPT2TX:MODEL-DISPOSE" TX-REJECTED
+   s" GX-BAD-MD-KEEPS ( GPT2TX:gpt2-model -- GPT2TX:gpt2-model result<n,n> ) GPT2TX:MODEL-DISPOSE" TX-REJECTED
+   s" GX-BAD-MD-DROPPED ( GPT2TX:gpt2-model -- ) GPT2TX:MODEL-DISPOSE" TX-REJECTED
+   s" GX-BAD-MD-RESIDENT ( WSTORE:resident -- result<n,n> ) GPT2TX:MODEL-DISPOSE" TX-REJECTED
+   s" and the residency inside a model cannot be reached around it" T-LABEL
+   s" GX-BAD-MODEL-RD ( GPT2TX:gpt2-model -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" TX-REJECTED
    \ The erasures are the whole soundness cost of this module, so their confinement
    \ is asserted, not assumed. A candidate names them qualified, the way a foreign
    \ file would have to; each is unresolvable, which is what package-private means
@@ -700,21 +908,93 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    s" GX-BAD-CENSUS-N ( SAFET:census -- n ) GPT2TX:CENSUS>N" UNRESOLVED
    s" GX-BAD-N-CENSUS ( n -- SAFET:census ) GPT2TX:N>CENSUS" UNRESOLVED
    s" GX-BAD-TABLE-N ( WSTORE:table -- n ) GPT2TX:TABLE>N" UNRESOLVED
-   s" GX-BAD-N-TABLE ( n -- WSTORE:table ) GPT2TX:N>TABLE" UNRESOLVED ;
+   s" GX-BAD-N-TABLE ( n -- WSTORE:table ) GPT2TX:N>TABLE" UNRESOLVED
+   s" GX-BAD-MINT-CHECKED ( ptr u8 -- GPT2TX:checked-prep ) GPT2TX:MINT-CHECKED" UNRESOLVED
+   s" GX-BAD-TAKE-CHECKED ( GPT2TX:checked-prep -- ptr n ) GPT2TX:TAKE-CHECKED" UNRESOLVED
+   s" GX-BAD-MAPPING-N ( SAFET:mapping -- n ) GPT2TX:MAPPING>N" UNRESOLVED
+   s" GX-BAD-N-MAPPING ( n -- SAFET:mapping ) GPT2TX:N>MAPPING" UNRESOLVED
+   s" GX-BAD-MINT-PROOF ( -- GPT2TX:mdl-proof ) GPT2TX:MINT-MDL-PROOF" UNRESOLVED
+   s" GX-BAD-MODEL-NL ( GPT2TX:gpt2-model -- GPT2TX:gpt2-model n ) GPT2TX:MODEL-NL" UNRESOLVED
+   s" GX-BAD-MODEL-KEY ( GPT2TX:gpt2-model -- GPT2TX:gpt2-model MDLCFG:cfgkey ) GPT2TX:MODEL-KEY" UNRESOLVED ;
 
 \ ---- presence-gated real artifact ----------------------------------------------
 : TX-REAL-PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
+
+768 4 * constant TX-PB-LEN                      \ h.0.ln_1.weight: nembd F32 values
+create TX-PBA TX-PB-LEN allot                   \ the bytes the census copied out
+create TX-PBB TX-PB-LEN allot                   \ the bytes found at the computed offset
+variable TX-MOFF
+
+: TX-MAP-BODY ( SAFET:mapping ptr u8 n -- SAFET:mapping ) {: ba:ptr blen:n :}
+   ba TX-MOFF @ BYTE+  TX-PBB  TX-PB-LEN  BYTE-COPY ;
+
+\ WHAT THIS PROVES, AND WHAT IT DOES NOT. The mapped store serves a slot as
+\ mapping-base + the row's offset, and the row's offset is the census's MAP-OFFSET?.
+\ This leg checks that arithmetic against the real checkpoint from both ends: the bytes
+\ the census copies out of one real tensor, and the bytes sitting at that tensor's
+\ computed offset inside the detached mapping, are the same bytes. Since the mapping IS
+\ the file mapped read-only, those are the file's bytes at that offset.
+\
+\ It stops one link short of reading through the committed model, and the reason is
+\ structural rather than an omission: reading a slot through a held resident needs a
+\ scoped access that disposes its owner on the throw path (WSTORE:WITH-SLOT throws
+\ E-SLOT/E-EXTENT, and a resident cannot be rebuilt around a throw), which is the
+\ linear-scope capability and belongs to the forward-pass leaf. The remaining link -
+\ that WITH-SLOT over a mapped store returns the bytes at base+offset - is already
+\ pinned by the byte-equality legs in weight-store-test.f over both arms.
+: TX-REAL-BYTES ( -- )
+   TX-REAL-PATH SAFET:LOAD
+   s" h.0.ln_1.weight" SAFET:FIND TX-OPT-VAL {: id:n :}
+   id TX-PBA TX-PB-LEN SAFET:COPY-DATA? TX-OPT-VAL TX-PB-LEN T=
+   id SAFET:MAP-OFFSET? TX-OPT-VAL TX-MOFF !
+   SAFET:DETACH-MAPPING                         \ ( census mapping )
+   swap SAFET:RELEASE                           \ ( mapping )
+   [: TX-MAP-BODY ;] SAFET:WITH-MAPPING TX-OPT-VAL drop
+   SAFET:UNMAP-MAPPING RES-CODE 0 T=
+   s" one real weight span is byte-identical at its computed mapping offset" T-LABEL
+   TX-PBA TX-PB-LEN TX-PBB TX-PB-LEN TX-BYTES= ;
+
+: TX-REAL-COMMIT ( -- )
+   TX-REAL-PATH SAFET:LOAD TX-CFG-124M PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         s" real gpt2 prepared rows=" type PREP-COUNT dup . cr
+         160 T=
+         TX-CFG-124M CHECK
+         MATCH GPT2TX:check-result
+            matched OF
+               COMMIT-MAPPED
+               s" the real checkpoint commits to a mapped model of 12 layers" T-LABEL
+               MODEL-NL 12 T=
+               TX-MODEL-HELD
+               s" and the whole 548 MB residency goes back through the model's exit" T-LABEL
+               MODEL-DISPOSE RES-CODE 0 T=
+            ENDOF
+            foreign OF
+               {: code:n :}
+               s" the real checkpoint was refused as foreign, code" T-LABEL
+               code . cr
+               0 0= 0= TTRUE
+               ABORT
+            ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" the real checkpoint did not prepare, code" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH ;
 
 : T-REAL ( -- )
    TX-REAL-PATH SAFET:PRESENT? 0= if
       s" gpt2-bind: gpt2-model/model.safetensors absent -> real-artifact leg SKIPPED" type cr
       0 0= TTRUE exit
    then
-   s" the real gpt2 checkpoint prepares with its full census" T-LABEL
-   TX-REAL-PATH SAFET:LOAD TX-CFG-124M PREPARE
-   TX-EXPECT-PREPARED
-   s" real gpt2 prepared rows=" type PLAN-COUNT dup . cr
-   160 T=
+   s" the real gpt2 checkpoint binds end to end" T-LABEL
+   TX-REAL-BYTES
+   TX-NO-LEAK
+   TX-REAL-COMMIT
    TX-NO-LEAK ;
 
 : RUN ( -- )
@@ -729,6 +1009,10 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    T-ABORT            TX-NO-LEAK
    T-PREP-OWNS-PLAN   TX-NO-LEAK
    T-TWIN             TX-NO-LEAK
+   T-FOREIGN-COMPARE  TX-NO-LEAK
+   T-CHECK-FOREIGN    TX-NO-LEAK
+   T-CHECK-MATCH      TX-NO-LEAK
+   T-COMMIT           TX-NO-LEAK
    T-REAL
    s" the whole suite released every owner it took" T-LABEL
    TX-NO-LEAK

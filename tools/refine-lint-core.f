@@ -42,7 +42,7 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-64 constant SEED#
+65 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -242,6 +242,12 @@ private
       \ retire with the linear-scope combinator, habu-checker-linear-scope-6218899c.
       62 of s" N>MAP" endof                \ the sole inverse of MAP>N (mapped arm)
       63 of s" N>BUF" endof                \ the sole inverse of BUF>N (allocated arm)
+      \ The GPT-2 bind transaction's COMPARED prep (leaf S6b3) parks the file mapping
+      \ it moved out of the census in its own block as a raw cell; this reads it back,
+      \ reachable only from the two words that end a checked prep's life
+      \ (GPT2TX:ABORT-CHECKED and GPT2TX:COMMIT-MAPPED). Retires with the linear-scope
+      \ combinator, habu-checker-linear-scope-6218899c.
+      64 of s" N>MAPPING" endof            \ the sole inverse of MAPPING>N
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -311,6 +317,7 @@ private
       61 of s" maki/infer/gpt2-bind.f" endof
       62 of s" maki/infer/weight-store.f" endof
       63 of s" maki/infer/weight-store.f" endof
+      64 of s" maki/infer/gpt2-bind.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

@@ -1776,7 +1776,35 @@ points stay listed.
   habu-checker-linear-scope-6218899c lands. The package is NOT prot-wid sealed,
   because its own suite reopens it for the row projections; the erasures are
   package-private (probed unresolvable) and refine-lint confines the two inverse
-  mints here. Owns -5660..-5674.
+  mints here.
+
+  The transaction's second half lives here too (leaf S6b3, redesign 2). It is
+  split so that everything that can fail is on one side of a value: `CHECK
+  ( GPT2TX:prep MDLCFG:mcfg -- check-result )` is the recoverable half — payload
+  ENUM `check-result` = matched(checked-prep) | foreign(prep, code) — and it is
+  the sole place the prep's captured cfgkey is compared against the consuming
+  configuration's, refusing a stranger with `E-GX-FOREIGN` BEFORE any resource
+  moves, so the refused prep comes back whole and still `ABORT`able. Two
+  configurations of one geometry that differ only in a field no tensor reflects
+  bind the same census, so the captured identity is the only thing that can tell
+  them apart. `CHECK` then performs the transaction's ONE reachable failure —
+  `SAFET:DETACH-MAPPING`, guarded, whose refusal is reported as a value with the
+  prep rebuilt — and releases the census that gave up its image.
+  `checked-prep` is a public `DEFLINEAR` that IS the same block with the census
+  cell replaced by the moved mapping, and `ABORT-CHECKED ( checked-prep -- )` is
+  its total exit. `COMMIT-MAPPED ( checked-prep -- gpt2-model )` is therefore
+  TOTAL: it contains no `catch` and no step that can fail for any reason a caller
+  could cause, because the identity was decided and the mapping was moved by
+  `CHECK`, `WSTORE:HOLD` is total by its reserved cells, and the one package-block
+  free is placed where no checker-tracked owner is live. That is what the distinct
+  type buys — "the identity was compared" is a static precondition of the commit,
+  not a rule its body has to remember, and no proof/subject mismatch is
+  expressible because a checked prep IS the prep after comparison. `gpt2-model` is
+  a public checked STRUCTURE (res `WSTORE:resident`, nl, key `MDLCFG:cfgkey`, tok
+  `mdl-proof`) — linear by containment, so the checker refuses to copy or discard
+  a model and there is no non-consuming field read; `MODEL-DISPOSE
+  ( gpt2-model -- result<n,n> )` is its exit, delegating to
+  `WSTORE:RESIDENT-DISPOSE`. Owns -5660..-5674.
 - `maki/infer/gpt2-bind-test.f` — GPT2TX acceptance, run inside the package
   because no public word hands a row out of a prep. Fixtures are generated
   through the production vocabulary: a thirty-tensor tiny geometry emitted as a

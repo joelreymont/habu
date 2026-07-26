@@ -147,6 +147,7 @@ public
 -5667 constant E-GX-EXTENT   \ an extent, a row end, or the packed prefix sum overflows
 -5668 constant E-GX-RENDER   \ a role's HF key did not fit the private render buffer
 -5669 constant E-GX-ALIAS    \ two roles resolved to one census tensor
+-5670 constant E-GX-FOREIGN  \ the prep was built against a different configuration
 
 \ ---- the prepared bind: opaque, linear, no accessors -------------------------
 DEFLINEAR GPT2TX:prep
@@ -158,6 +159,49 @@ ENUM prep-result 0
    VARIANT prepared FIELD p GPT2TX:prep ;VARIANT
    VARIANT rejected FIELD c SAFET:census FIELD code n ;VARIANT
 ;ENUM
+
+\ ---- the compared bind: a prep whose identity matched, and whose mapping moved ----
+\ A DISTINCT linear type, and CHECK is its only maker. That is what turns "the
+\ identity was compared" from a rule COMMIT-MAPPED follows into a precondition the
+\ CHECKER enforces: the commit cannot be reached without a value only the comparison
+\ produces, and because a checked prep IS the prep after comparison, no mismatch
+\ between a proof and the thing it is about is expressible.
+DEFLINEAR GPT2TX:checked-prep
+
+\ ---- what CHECK answers ----------------------------------------------------------
+\ matched carries the whole transaction forward; foreign gives the prep back beside
+\ the code that refused it, still live and still ABORTable.
+ENUM check-result 0
+   VARIANT matched FIELD c GPT2TX:checked-prep ;VARIANT
+   VARIANT foreign FIELD p GPT2TX:prep FIELD code n ;VARIANT
+;ENUM
+
+\ ---- the bound model -------------------------------------------------------------
+\ The private-mint proof is an arity-0 TYPEFAMILY, the MDLCFG:cfg-proof shape: a
+\ zero-field STRUCTURE fails closed as a product field, so a nominal cell family is
+\ the one shape that can ride inside the record while staying constructible ONLY
+\ through this package's trusted mint. A raw n in the proof slot is a checker reject.
+TYPEFAMILY mdl-proof 0
+
+\ A model owns its residency as ONE field, which is why WSTORE:resident exists: a
+\ store is a two-owner bundle, and a record field may name a bare linear owner but
+\ not a compound that transitively contains one (measured; the checker capability is
+\ habu-checker-enum-payload-9e1ae6cc).
+\
+\ THE RECORD IS LINEAR BY CONTAINMENT, AND THAT HAS A CONSEQUENCE. Because the
+\ resident field is linear, the checker refuses to duplicate or discard a model, which
+\ is what makes the residency impossible to leak or double-free. It also means there
+\ is NO non-consuming read of a model: `dup` is a reject, so every field read goes
+\ through UNMAKE and rebuilds the record (see MODEL-NL / MODEL-KEY). The generated
+\ MAKE/UNMAKE are for this package's own use - a holder of a real model can UNMAKE and
+\ re-MAKE it with the same proof, exactly the caveat MDLCFG:mcfg documents, and closing
+\ it needs the sealed-destructure capability.
+STRUCTURE gpt2-model 0
+   FIELD res WSTORE:resident
+   FIELD nl n
+   FIELD key MDLCFG:cfgkey
+   FIELD tok mdl-proof
+;STRUCTURE
 
 private
 
@@ -181,6 +225,24 @@ TRUSTED: N>CENSUS ( n -- SAFET:census ) ;
 TRUSTED: TABLE>N ( WSTORE:table -- n ) ;
 TRUSTED: N>TABLE ( n -- WSTORE:table ) ;
 
+\ A checked prep is the SAME block as the prep it came from, with the census cell
+\ replaced by the mapping CHECK moved out of that census, so its mint and its consume
+\ are the same identities MINT-PREP and TAKE-PREP are.
+TRUSTED: MINT-CHECKED ( ptr u8 -- GPT2TX:checked-prep ) ;
+TRUSTED: TAKE-CHECKED ( GPT2TX:checked-prep -- ptr n ) ;
+
+\ The moved file mapping, parked in that same cell. Same discipline and same cost as
+\ the census and table crossings above: package-private, no public inverse, and from
+\ the park until the recovery the checker cannot see the owner - what holds "owned
+\ exactly once" is one park site in CHECK, one recovery site per exit (ABORT-CHECKED
+\ and COMMIT-MAPPED), no accessor, plus the SAFET counters the suite asserts.
+\ Retires with the linear-scope combinator habu-checker-linear-scope-6218899c.
+TRUSTED: MAPPING>N ( SAFET:mapping -- n ) ;
+TRUSTED: N>MAPPING ( n -- SAFET:mapping ) ;
+
+\ The model's private-mint proof (the MDLCFG:MINT-CFG-PROOF shape).
+TRUSTED: MINT-MDL-PROOF ( -- mdl-proof )  0 ;
+
 \ ---- geometry and layout constants -------------------------------------------
 4 constant NGLOBAL             \ |grole|: the checkpoint-global tensors
 13 constant NBLOCK             \ |brole|: tensors per transformer block
@@ -193,6 +255,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 \ scratch while an earlier prep is still alive, so a commit leaf reading process
 \ statics would read another transaction's numbers.
 0 constant P-CEN
+0 constant P-MAP               \ the same cell in a CHECKED block: the moved mapping
 1 constant P-TBL
 2 constant P-NL
 3 constant P-K0
@@ -445,6 +508,16 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 : PREP-ALLOC ( -- CAD-NUM:alloc-byte-len )
    P-CELLS cells MEM:BYTES-ALLOC-LEN ;
 
+\ The single release path for a prep or checked-prep block, shared by all three exits
+\ (ABORT, ABORT-CHECKED, COMMIT-MAPPED) so the length arithmetic and the counter live
+\ in one place - the WSTORE:BLK-FREE discipline. This is package memory being given
+\ back, the same unguarded free WSTORE's DISPOSE arms perform on their own blocks:
+\ munmap of a region this process mapped, at the length it recorded, whose only
+\ failure mode is a programming error rather than a runtime condition.
+: FREE-BLOCK ( ptr n -- )
+   BLK>BYTES PREP-ALLOC MEM:RELEASE-BYTES
+   -1 LIVE-N +! ;
+
 \ The one site where the census and table stop being checker-tracked values, and it
 \ is TOTAL: the caller hands in a block that is already allocated, so nothing
 \ between the first erasure and the last cell write can throw. That is deliberate -
@@ -505,13 +578,58 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
    0
    count 0 ?do  SEEN i cells + @ 0 <> if 1 + then  loop ;
 
-: PREP-KEY ( GPT2TX:prep -- GPT2TX:prep MDLCFG:cfgkey )
-   PREP>BLOCK {: blk:ptr :}
+\ The captured identity, read straight off a block. Both the prep reader below and the
+\ commit share it, so the four cells are assembled in exactly one place.
+: BLK-KEY ( ptr n -- MDLCFG:cfgkey ) {: blk:ptr :}
    blk P-K0 0 + cells + @
    blk P-K0 1 + cells + @
    blk P-K0 2 + cells + @
    blk P-K0 3 + cells + @
    MDLCFG-CFGKEY:MAKE ;
+
+: PREP-KEY ( GPT2TX:prep -- GPT2TX:prep MDLCFG:cfgkey )
+   PREP>BLOCK BLK-KEY ;
+
+\ ---- is this prep a stranger to the configuration about to consume it? ----------
+\ The question a commit must answer before it moves any resource. PREPARE cannot
+\ ask it: it mints every layer identity from the configuration it is validating, so
+\ its identity assertion always compares a configuration with itself (see the header
+\ note on E-GB-FOREIGN). What PREPARE does instead is CAPTURE the configuration's
+\ content identity into the prep, and this is where that capture is spent - the
+\ prep's captured cfgkey against the consuming configuration's own, through the
+\ MDLCFG comparison, which is the only authority on cfgkey equality.
+\
+\ Geometry cannot substitute for it. Two configurations of one geometry differing
+\ only in a field no tensor reflects - tied embeddings, say - bind the SAME census
+\ and pass every per-row check, so nothing a commit could re-derive from the table
+\ tells them apart; only the captured identity does. Neither value is a typed local
+\ (only single-cell nominal families can be), so both keys ride the MDLCFG
+\ whole-bundle-transport idiom.
+: PREP-FOREIGN? ( GPT2TX:prep MDLCFG:mcfg -- GPT2TX:prep MDLCFG:mcfg bool )
+   MDLCFG:CFGKEY@ >r                            \ the consuming key parks
+   swap PREP-KEY                                \ ( mcfg prep cfgkey ), the captured key
+   r> MDLCFG:CFGKEY= 0=
+   >r swap r> ;                                 \ ( prep mcfg bool )
+
+\ ---- reading a bound model -----------------------------------------------------
+\ A model holds a linear resident, so the record is linear by containment and `dup` is
+\ a checker reject: there is no non-consuming read. Each reader therefore UNMAKEs and
+\ rebuilds, which is total, and the rebuilt record carries a freshly minted proof - the
+\ proof asserts "minted inside this package", which is exactly as true of the rebuild.
+\ These are the shape the forward pass will read geometry through.
+: MODEL-NL ( gpt2-model -- gpt2-model n )
+   GPT2TX-GPT2--MODEL:UNMAKE {: tok:mdl-proof :}
+   >r {: nl:n :}                                \ the key parks; ( res )
+   nl r> MINT-MDL-PROOF GPT2TX-GPT2--MODEL:MAKE
+   nl ;
+
+\ The key is a plain record, so it is the one field that can simply be copied: one copy
+\ answers the caller, the other goes back into the rebuilt model.
+: MODEL-KEY ( gpt2-model -- gpt2-model MDLCFG:cfgkey )
+   GPT2TX-GPT2--MODEL:UNMAKE {: tok:mdl-proof :}
+   dup >r                                       \ ( res nl key ), the copy parks
+   MINT-MDL-PROOF GPT2TX-GPT2--MODEL:MAKE
+   r> ;
 
 \ ---- the two guarded steps after validation ------------------------------------
 \ Both run under `catch` with an empty stack effect, so the census sitting below
@@ -532,6 +650,27 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 : TBL-BACK ( WSTORE:table n -- n ) {: cause:n :}
    WSTORE:TABLE-DISPOSE RES-CODE {: rc:n :}
    rc 0 <> if rc else cause then ;
+
+\ ---- the transaction's one reachable failure, guarded ------------------------------
+\ Taking the file mapping out of the census is the ONLY step in the whole bind that
+\ can fail for a reason a caller cannot control: SAFET:DETACH-MAPPING allocates a
+\ record first and throws E-MEM-MAP if that fails, leaving the census byte-identical.
+\ It is guarded HERE, inside the word that can still answer with a refusal, which is
+\ exactly why COMMIT-MAPPED downstream has no failure path left to guard.
+\
+\ Shape: a caught quotation must be stack-preserving and cannot read the caller's
+\ locals, so the census crosses through a package cell and the mapping comes back the
+\ same way (the PREPARE TABLE-STEP arrangement). On the throwing path nothing has
+\ moved - the record allocation fails before any census cell is written - so the cell
+\ still holds a whole census and CHECK rebuilds the prep around it.
+variable PEND-CEN                               \ the census in, then the imageless census out
+variable PEND-MAP                               \ the mapping the census gave up
+
+: DETACH-STEP ( -- )
+   PEND-CEN @ N>CENSUS
+   SAFET:DETACH-MAPPING
+   MAPPING>N PEND-MAP !
+   CENSUS>N PEND-CEN ! ;
 
 public
 
@@ -570,9 +709,92 @@ public
    TAKE-PREP {: blk:ptr :}
    blk P-TBL cells + @ N>TABLE WSTORE:TABLE-DISPOSE RES-CODE {: tc:n :}
    blk P-CEN cells + @ N>CENSUS SAFET:RELEASE
-   blk BLK>BYTES PREP-ALLOC MEM:RELEASE-BYTES
-   -1 LIVE-N +!
+   blk FREE-BLOCK
    tc 0 <> if tc throw then ;
+
+\ ---- the transaction's second half, part one: compare, then move ------------------
+\ CHECK is the RECOVERABLE half of the commit, and the split is the whole design. It
+\ answers two questions in order and both can refuse: is this prep this
+\ configuration's, and can the mapping be taken out of its census. Everything that can
+\ fail lives here, where a refusal is a VALUE - the prep comes back whole, still
+\ ABORTable - because a throw out of a word that consumed a linear argument strands
+\ that argument beyond any caller's catch. What survives to COMMIT-MAPPED therefore has
+\ nothing left to fail.
+\
+\ THE IDENTITY COMPARE IS FIRST, AND BEFORE ANY RESOURCE MOVES. A foreign prep is
+\ refused with the prep untouched: no mapping detached, no census released, no cell
+\ rewritten, every counter where PREPARE left it. That ordering is the contract - the
+\ compare cannot be after the detach, because the detach is terminal and a refusal then
+\ would have nothing to give back.
+\
+\ WHY THE FOREIGN ARM CARRIES A MEMORY CODE TOO. The arm's name is about the common
+\ case; its code says what actually refused, exactly as PREPARE's rejected arm surfaces
+\ whichever code fired underneath. E-GX-FOREIGN for a stranger, or the surfaced
+\ E-MEM-MAP when the mapping could not be moved.
+: CHECK ( GPT2TX:prep MDLCFG:mcfg -- check-result )
+   PREP-FOREIGN? if
+      drop
+      E-GX-FOREIGN GPT2TX-CHECK--RESULT:FOREIGN exit
+   then
+   drop                                         \ the configuration has answered
+   TAKE-PREP {: blk:ptr :}
+   blk P-CEN cells + @ PEND-CEN !
+   [: DETACH-STEP ;] catch {: code:n :}
+   code 0 <> if
+      blk BLK>BYTES MINT-PREP                   \ nothing moved: the prep is whole again
+      code GPT2TX-CHECK--RESULT:FOREIGN exit
+   then
+   PEND-CEN @ N>CENSUS SAFET:RELEASE            \ the census has given up its image
+   PEND-MAP @ blk P-MAP cells + !
+   blk BLK>BYTES MINT-CHECKED
+   GPT2TX-CHECK--RESULT:MATCHED ;
+
+\ ---- total disposal of a compared prep ---------------------------------------------
+\ The exit for a checked prep a holder decided not to commit. Its census is already
+\ gone, so what it owns is the mapping and the table; both are given back before
+\ anything is reported, the ABORT discipline.
+: ABORT-CHECKED ( GPT2TX:checked-prep -- )
+   TAKE-CHECKED {: blk:ptr :}
+   blk P-TBL cells + @ N>TABLE WSTORE:TABLE-DISPOSE RES-CODE {: tc:n :}
+   blk P-MAP cells + @ N>MAPPING SAFET:UNMAP-MAPPING RES-CODE {: mc:n :}
+   blk FREE-BLOCK
+   tc 0 <> if tc throw then
+   mc 0 <> if mc throw then ;
+
+\ ---- the transaction's second half, part two: the commit --------------------------
+\ TOTAL. There is no catch in this word and no step in it that can fail for any reason
+\ a caller could cause: the identity was decided by CHECK, the mapping was moved by
+\ CHECK, and what remains is reading cells, one package-block free, and three total
+\ constructions - WSTORE-STORE:MAPPED, WSTORE:HOLD (total by the reserved residency
+\ cells), and the record mint. That is the point of the checked-prep type: the fallible
+\ work is behind a value the checker demands, so the terminal stretch has nothing left
+\ to guard and nothing that could strand the mapping it just took ownership of.
+\
+\ The block free is placed while the mapping and the table are still raw cells, so no
+\ owner the checker tracks is live across it; it is the same unguarded package free
+\ every WSTORE DISPOSE performs, and FREE-BLOCK says what its failure would mean.
+\
+\ GPT2TX:LIVE drops here: the prep block is gone and its two owners have moved into the
+\ store the model holds.
+: COMMIT-MAPPED ( GPT2TX:checked-prep -- gpt2-model )
+   TAKE-CHECKED {: blk:ptr :}
+   blk P-NL cells + @ {: nl:n :}
+   blk BLK-KEY >r                               \ the captured identity, parked whole
+   blk P-MAP cells + @ {: mc:n :}
+   blk P-TBL cells + @ {: tc:n :}
+   blk FREE-BLOCK
+   mc N>MAPPING  tc N>TABLE  WSTORE-STORE:MAPPED  WSTORE:HOLD
+   nl  r>  MINT-MDL-PROOF
+   GPT2TX-GPT2--MODEL:MAKE ;
+
+\ ---- the model's exit --------------------------------------------------------------
+\ The single way a bound model's memory goes back: unwrap in-package and hand the
+\ residency to its owner. ok carries what WSTORE gave back - the checkpoint mapping's
+\ own byte length for a mapped model.
+: MODEL-DISPOSE ( gpt2-model -- result<n,n> )
+   GPT2TX-GPT2--MODEL:UNMAKE {: tok:mdl-proof :}
+   drop drop                                    \ the captured key, then the depth
+   WSTORE:RESIDENT-DISPOSE ;
 
 \ ---- leak accounting (decides nothing; the WSTORE:LIVE pattern) -----------------
 \ Undisposed prep blocks. The census and the table inside a prep are raw cells the
