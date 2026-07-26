@@ -21,6 +21,18 @@
 \ pin the totals and that NO kernel mapping is ever leaked (the refusal legs use
 \ adopted images precisely so SAFET-MAP:LIVE ends at 0).
 \
+\ WHICH REFUSALS COST A BLOCK, AND WHY THAT SPLIT IS THE POINT. The four SLOT!
+\ refusals run their population step as a stack-preserving quotation under `catch`,
+\ so the builder survives the refusal and the leg gives it back through
+\ BUILDER-DISPOSE - they cost nothing now, and the residue after them is 0. The two
+\ SEAL refusals cannot be written that way, because a `catch` over SEAL would have to
+\ hold a builder on one arm and a table on the other, so each still strands one
+\ builder; the access refusals still strand their arm owner and table, because MATCH
+\ had already deconstructed the store when the throw fired. Every number in the leak
+\ accounting is therefore a statement about a NAMED missing capability (the
+\ linear-scope combinator) rather than an accepted leak, and moving a block from one
+\ column to the other is what changes the totals.
+\
 \ The static half feeds bad definitions to the checker itself: store, table,
 \ builder, and buffer linearity (no dup / drop / store / reuse), double DISPOSE,
 \ arm confusion in both constructor directions, SLOT! on a sealed table (the
@@ -46,6 +58,16 @@
 \ the caller did not want to make - and by fabricating a store that never
 \ described any residency. It is recorded here as a rejected alternative so nobody
 \ reintroduces it; a table's own exit is the honest fix.
+\
+\ The builder and buffer legs are the same argument for the module's other two owners.
+\ A builder a caller will not seal - because a SLOT! refused, or because it gave up on
+\ the transaction - and a filled buffer whose store was never built are both reachable
+\ states this package minted, and neither had any exit: the checker refuses a bare
+\ `drop` on either, correctly, and the block behind each is package-private. There was
+\ not even a hack available for the builder, since the fabricate-a-store shape above
+\ needs a SEALED table. Those legs mint each owner alone, dispose it, and check the
+\ counter returns to where it started; the refusal legs further down are where a
+\ builder that was actually refused gets given back.
 
 require lib/test.f
 require test/checker-assert.f
@@ -288,6 +310,38 @@ private
    SAFET-MAP:LIVE 0 T=                          \ nothing was ever mapped for this leg
    SAFET:LIVE-OWNERS 0 T= ;
 
+\ ---- the other two owners dispose on their own too -----------------------------------
+\ Same argument and same counter discipline as the leg above, for the two owners that
+\ had no exit before: a builder whose population was refused, and a filled buffer
+\ whose store never got built. Each leg is entered at zero live blocks and returns
+\ there, so the counter covers the whole life of the owner. What ok carries is checked
+\ against the named layout parts, not a magic number: the block a builder gives back
+\ is the same size a sealed table's is (SEAL retypes one allocation, it does not copy
+\ it), and a buffer gives back the bytes it owned, not its two-cell record.
+: MK-BUF8 ( -- WSTORE:buffer )                  \ eight owned bytes, never made a store
+   8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES WSTORE:BUFFER ;
+
+: T-OWNER-EXITS ( -- )
+   s" an unsealed builder disposes on its own" T-LABEL
+   WSTORE:LIVE 0 T=
+   2 WSTORE:TABLE-NEW
+   WSTORE:LIVE 1 T=
+   WSTORE:BUILDER-DISPOSE 2 TBL-BYTES RES-OK=
+   WSTORE:LIVE 0 T=
+   s" a half-populated builder gives back the same block" T-LABEL
+   2 WSTORE:TABLE-NEW
+   0 0 >BOFF 4 >BLEN WSTORE:SLOT!
+   WSTORE:LIVE 1 T=
+   WSTORE:BUILDER-DISPOSE 2 TBL-BYTES RES-OK=
+   WSTORE:LIVE 0 T=
+   s" a filled buffer that never became a store disposes on its own" T-LABEL
+   MK-BUF8
+   WSTORE:LIVE 1 T=
+   WSTORE:BUFFER-DISPOSE 8 RES-OK=              \ the bytes it owned, not its record
+   WSTORE:LIVE 0 T=
+   SAFET-MAP:LIVE 0 T=                          \ nothing was ever mapped for this leg
+   SAFET:LIVE-OWNERS 0 T= ;
+
 \ ---- refusal legs: table construction ----------------------------------------------
 : TBL-BURN ( WSTORE:table -- )                  \ consume a table through a real store
    8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES WSTORE:BUFFER
@@ -297,27 +351,45 @@ private
 : TN-ZERO ( -- )   0 WSTORE:TABLE-NEW WSTORE:SEAL TBL-BURN ;
 : TN-HUGE ( -- )   $10001 WSTORE:TABLE-NEW WSTORE:SEAL TBL-BURN ;   \ MAX-SLOTS + 1
 
-: SL-RANGE ( -- )
-   2 WSTORE:TABLE-NEW
-   2 0 >BOFF 4 >BLEN WSTORE:SLOT!
-   WSTORE:SEAL TBL-BURN ;
+\ ---- the four SLOT! refusals, with the builder given back ----------------------------
+\ SLOT! is stack-preserving ( tbuilder -- tbuilder ), so the population step runs as a
+\ quotation under `catch` and a refusal leaves the builder exactly where it was - the
+\ SAFET:LOAD / GPT2TX:PREPARE discipline. Each leg then hands the block back through
+\ BUILDER-DISPOSE and rethrows the code TTHROWSQ is asserting, so it proves two things
+\ at once: the named refusal still fires, and it no longer costs a block. Before
+\ BUILDER-DISPOSE existed none of this could be written at all and each leg leaked one
+\ builder; the residue below counted six such leaks.
+: BUILDER-BACK ( WSTORE:tbuilder n n -- )       \ the code catch reported, the slot count
+   {: code:n nslots:n :}
+   WSTORE:BUILDER-DISPOSE nslots TBL-BYTES RES-OK=
+   code 0= if E-WST-FIX throw then              \ the step was supposed to refuse
+   code throw ;
 
-: SL-NEG ( -- )
-   2 WSTORE:TABLE-NEW
-   -1 0 >BOFF 4 >BLEN WSTORE:SLOT!
-   WSTORE:SEAL TBL-BURN ;
+: SET-RANGE ( WSTORE:tbuilder -- WSTORE:tbuilder )   \ slot 2 of a two-slot table
+   2 0 >BOFF 4 >BLEN WSTORE:SLOT! ;
 
-: SL-DUP ( -- )
-   1 WSTORE:TABLE-NEW
+: SET-NEG ( WSTORE:tbuilder -- WSTORE:tbuilder )
+   -1 0 >BOFF 4 >BLEN WSTORE:SLOT! ;
+
+: SET-DUP ( WSTORE:tbuilder -- WSTORE:tbuilder )     \ slot 0 written twice
    0 0 >BOFF 4 >BLEN WSTORE:SLOT!
-   0 4 >BOFF 4 >BLEN WSTORE:SLOT!
-   WSTORE:SEAL TBL-BURN ;
+   0 4 >BOFF 4 >BLEN WSTORE:SLOT! ;
 
-: SL-OVER ( -- )
-   1 WSTORE:TABLE-NEW
-   0 WT-MAX-N >BOFF 8 >BLEN WSTORE:SLOT!
-   WSTORE:SEAL TBL-BURN ;
+: SET-OVER ( WSTORE:tbuilder -- WSTORE:tbuilder )    \ row end overflows a cell
+   0 WT-MAX-N >BOFF 8 >BLEN WSTORE:SLOT! ;
 
+: SL-RANGE ( -- )   2 WSTORE:TABLE-NEW [: SET-RANGE ;] catch 2 BUILDER-BACK ;
+: SL-NEG   ( -- )   2 WSTORE:TABLE-NEW [: SET-NEG ;]   catch 2 BUILDER-BACK ;
+: SL-DUP   ( -- )   1 WSTORE:TABLE-NEW [: SET-DUP ;]   catch 1 BUILDER-BACK ;
+: SL-OVER  ( -- )   1 WSTORE:TABLE-NEW [: SET-OVER ;]  catch 1 BUILDER-BACK ;
+
+\ ---- the two SEAL refusals, which still strand ---------------------------------------
+\ These cannot be written the way the four above are. SEAL is ( tbuilder -- table ), so
+\ a `catch` over it would have to hold a BUILDER on the refusal arm and a TABLE on the
+\ success arm, and no stack effect can say that today. The missing piece is the
+\ linear-scope combinator (habu-checker-linear-scope-6218899c) - a scope that disposes
+\ the owner it holds when its body throws - and until it lands each of these legs
+\ strands its builder. That is the whole of the residue T-TABLE-ERRORS asserts.
 : SEAL-UNSET ( -- )
    2 WSTORE:TABLE-NEW
    0 0 >BOFF 4 >BLEN WSTORE:SLOT!
@@ -326,20 +398,21 @@ private
 : SEAL-EMPTY ( -- )
    1 WSTORE:TABLE-NEW WSTORE:SEAL TBL-BURN ;
 
-\ Each SLOT!/SEAL refusal strands one builder block (the documented throw-strand
-\ behavior); the residue is asserted so a silent extra leak cannot hide in it.
 : T-TABLE-ERRORS ( -- )
    s" every table-construction refusal throws its named code" T-LABEL
    [: TN-ZERO ;]    WSTORE:E-SLOTS  TTHROWSQ
    [: TN-HUGE ;]    WSTORE:E-SLOTS  TTHROWSQ
    WSTORE:LIVE 0 T=                             \ refused before any allocation
+   s" a refused SLOT! gives its builder back instead of stranding it" T-LABEL
    [: SL-RANGE ;]   WSTORE:E-SLOT   TTHROWSQ
    [: SL-NEG ;]     WSTORE:E-SLOT   TTHROWSQ
    [: SL-DUP ;]     WSTORE:E-SET    TTHROWSQ
    [: SL-OVER ;]    WSTORE:E-EXTENT TTHROWSQ
+   WSTORE:LIVE 0 T=                             \ all four disposed; nothing left over
+   s" a refused SEAL still strands its builder (the linear-scope gap)" T-LABEL
    [: SEAL-UNSET ;] WSTORE:E-UNSET  TTHROWSQ
    [: SEAL-EMPTY ;] WSTORE:E-UNSET  TTHROWSQ
-   WSTORE:LIVE 6 T= ;                           \ exactly the six stranded builders
+   WSTORE:LIVE 2 T= ;                           \ exactly the two SEAL strands
 
 \ ---- refusal legs: access -------------------------------------------------------------
 : MK-ASTORE ( -- WSTORE:store )                 \ 8 pattern bytes 10..17 in slot 0
@@ -372,14 +445,14 @@ private
    MK-ASTORE
    0 [: SUM-BODY ;] WSTORE:WITH-SLOT SUM-PAT T=
    WSTORE:DISPOSE 8 RES-OK=
-   WSTORE:LIVE 6 T= ;                           \ back to the table-error residue
+   WSTORE:LIVE 2 T= ;                           \ back to the two SEAL strands
 
 : WS-ZERO ( -- )
    MK-ASTOREZ
    1 [: SUM-BODY ;] WSTORE:WITH-SLOT 0 T=       \ zero-extent slot runs the body on 0 bytes
    0 [: SUM-BODY ;] WSTORE:WITH-SLOT SUM-PAT T=
    WSTORE:DISPOSE 8 RES-OK=
-   WSTORE:LIVE 6 T= ;
+   WSTORE:LIVE 2 T= ;
 
 : WS-RANGE ( -- )
    MK-ASTORE
@@ -505,7 +578,7 @@ private
    SAFET:LIVE-OWNERS 2 T=                       \ nested mapped stores all disposed
    s" an aborted inner WITH-SLOT does not poison the outer call's frame" T-LABEL
    NEST-POISON
-   WSTORE:LIVE 14 T= ;                          \ + the poisoned inner's buffer and table
+   WSTORE:LIVE 10 T= ;                          \ + the poisoned inner's buffer and table
 
 : T-ACCESS ( -- )
    BUILD-IMG
@@ -519,7 +592,7 @@ private
    [: WS-EXTENT ;]  WSTORE:E-EXTENT TTHROWSQ    \ strands buffer + table
    [: WS-DEADMAP ;] WSTORE:E-EXTENT TTHROWSQ    \ strands byteless mapping + table
    [: WS-FATROW ;]  WSTORE:E-EXTENT TTHROWSQ    \ strands borrowed mapping + table
-   WSTORE:LIVE 12 T=                            \ 6 + 2 + 2 + 1 + 1, all documented strands
+   WSTORE:LIVE 8 T=                             \ 2 + 2 + 2 + 1 + 1, all documented strands
    SAFET:LIVE-OWNERS 2 T=                       \ the two stranded mapping owners
    SAFET-MAP:LIVE 0 T= ;                        \ and NO kernel mapping leaked anywhere
 
@@ -560,7 +633,29 @@ private
    s" WST-BAD-TD-RAW ( WSTORE:table -- n ) WSTORE:TABLE-DISPOSE 1 +" REJECTED
    s" an unsealed builder is not a table, so the table exit refuses it" T-LABEL
    s" WST-BAD-TD-BUILDER ( WSTORE:tbuilder -- result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED
-   s" WST-BAD-TD-STORE ( WSTORE:store -- result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED ;
+   s" WST-BAD-TD-STORE ( WSTORE:store -- result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED
+   s" BUILDER-DISPOSE consumes its builder exactly once and yields a real union" T-LABEL
+   s" WST-BAD-BD-TWICE ( WSTORE:tbuilder -- result<n,n> result<n,n> ) WSTORE:BUILDER-DISPOSE WSTORE:BUILDER-DISPOSE" REJECTED
+   s" WST-BAD-BD-KEEPS ( WSTORE:tbuilder -- WSTORE:tbuilder result<n,n> ) WSTORE:BUILDER-DISPOSE" REJECTED
+   s" WST-BAD-BD-DROPPED ( WSTORE:tbuilder -- ) WSTORE:BUILDER-DISPOSE" REJECTED
+   s" WST-BAD-BD-RAW ( WSTORE:tbuilder -- n ) WSTORE:BUILDER-DISPOSE 1 +" REJECTED
+   s" WST-BAD-BD-AFTER ( WSTORE:tbuilder -- result<n,n> WSTORE:table ) WSTORE:BUILDER-DISPOSE WSTORE:SEAL" REJECTED
+   s" the builder exit takes a builder and nothing else" T-LABEL
+   s" WST-BAD-BD-TABLE ( WSTORE:table -- result<n,n> ) WSTORE:BUILDER-DISPOSE" REJECTED
+   s" WST-BAD-BD-BUFFER ( WSTORE:buffer -- result<n,n> ) WSTORE:BUILDER-DISPOSE" REJECTED
+   s" WST-BAD-BD-STORE ( WSTORE:store -- result<n,n> ) WSTORE:BUILDER-DISPOSE" REJECTED
+   s" BUFFER-DISPOSE consumes its buffer exactly once and yields a real union" T-LABEL
+   s" WST-BAD-BFD-TWICE ( WSTORE:buffer -- result<n,n> result<n,n> ) WSTORE:BUFFER-DISPOSE WSTORE:BUFFER-DISPOSE" REJECTED
+   s" WST-BAD-BFD-KEEPS ( WSTORE:buffer -- WSTORE:buffer result<n,n> ) WSTORE:BUFFER-DISPOSE" REJECTED
+   s" WST-BAD-BFD-DROPPED ( WSTORE:buffer -- ) WSTORE:BUFFER-DISPOSE" REJECTED
+   s" WST-BAD-BFD-RAW ( WSTORE:buffer -- n ) WSTORE:BUFFER-DISPOSE 1 +" REJECTED
+   s" WST-BAD-BFD-AFTER ( WSTORE:buffer WSTORE:table -- result<n,n> WSTORE:store ) WSTORE:BUFFER-DISPOSE swap WSTORE-STORE:ALLOCATED" REJECTED
+   s" the buffer exit takes a buffer and nothing else" T-LABEL
+   s" WST-BAD-BFD-TABLE ( WSTORE:table -- result<n,n> ) WSTORE:BUFFER-DISPOSE" REJECTED
+   s" WST-BAD-BFD-BUILDER ( WSTORE:tbuilder -- result<n,n> ) WSTORE:BUFFER-DISPOSE" REJECTED
+   s" WST-BAD-BFD-STORE ( WSTORE:store -- result<n,n> ) WSTORE:BUFFER-DISPOSE" REJECTED
+   s" a disposed owner cannot be handed to another owner's exit either" T-LABEL
+   s" WST-BAD-BD-THEN-BFD ( WSTORE:tbuilder -- result<n,n> result<n,n> ) WSTORE:BUILDER-DISPOSE WSTORE:BUFFER-DISPOSE" REJECTED ;
 
 : T-ESCAPE ( -- )
    s" a quotation declared to return the span pointer rejects statically" T-LABEL
@@ -579,6 +674,8 @@ private
    s" WST-OK-SEAL ( WSTORE:tbuilder -- WSTORE:table ) WSTORE:SEAL" ACCEPTED
    s" WST-OK-DISPOSE ( WSTORE:store -- result<n,n> ) WSTORE:DISPOSE" ACCEPTED
    s" WST-OK-TABLE-DISPOSE ( WSTORE:table -- result<n,n> ) WSTORE:TABLE-DISPOSE" ACCEPTED
+   s" WST-OK-BUILDER-DISPOSE ( WSTORE:tbuilder -- result<n,n> ) WSTORE:BUILDER-DISPOSE" ACCEPTED
+   s" WST-OK-BUFFER-DISPOSE ( WSTORE:buffer -- result<n,n> ) WSTORE:BUFFER-DISPOSE" ACCEPTED
    s" the representation stays behind the seal" T-LABEL
    s" WST-BAD-MINT-TB ( ptr u8 -- WSTORE:tbuilder ) WSTORE:MINT-TBUILDER" UNRESOLVED
    s" WST-BAD-TB-BLOCK ( WSTORE:tbuilder -- WSTORE:tbuilder ptr n ) WSTORE:TB>BLOCK" UNRESOLVED
@@ -589,6 +686,7 @@ private
    s" WST-BAD-BUF-REC ( WSTORE:buffer -- WSTORE:buffer ptr n ) WSTORE:BUF>REC" UNRESOLVED
    s" WST-BAD-TAKE-BUF ( WSTORE:buffer -- ptr n ) WSTORE:TAKE-BUFFER" UNRESOLVED
    s" WST-BAD-BLK-BYTES ( ptr n -- ptr u8 ) WSTORE:BLK>BYTES" UNRESOLVED
+   s" WST-BAD-BLK-FREE ( ptr n -- n ) WSTORE:BLK-FREE" UNRESOLVED
    s" WST-BAD-PARK ( -- ) WSTORE:PARK" UNRESOLVED
    s" WST-BAD-RUN-PARKED ( ptr u8 n -- ) WSTORE:RUN-PARKED" UNRESOLVED
    s" WST-BAD-BOFF ( CAD-NUM:byte-off -- n ) WSTORE:BOFF>N" UNRESOLVED
@@ -620,11 +718,12 @@ public
    T-SEALED
    T-EQUALITY
    T-TABLE-DISPOSE
+   T-OWNER-EXITS
    T-TABLE-ERRORS
    T-ACCESS
    T-NESTED
    s" final leak accounting: only the documented throw strands remain" T-LABEL
-   WSTORE:LIVE 14 T=
+   WSTORE:LIVE 10 T=                            \ 2 SEAL + 6 access-throw + 2 poisoned inner
    SAFET:LIVE-OWNERS 2 T=
    SAFET-MAP:LIVE 0 T=
    T-REPORT ;

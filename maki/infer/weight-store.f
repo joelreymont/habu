@@ -49,6 +49,32 @@
 \ TABLE-DISPOSE is that exit, and it reports the same result<n,n> shape DISPOSE
 \ does so a caller unwinding several owners handles one outcome type.
 \
+\ EVERY OWNER OWNS ITS EXIT. The same argument settles the other two owners, so all
+\ four now have a public way out: BUILDER-DISPOSE for a builder that will not be
+\ sealed, and BUFFER-DISPOSE for a filled buffer whose store never got built. Both
+\ were reachable states with no exit, and this module minted the owner in each of
+\ them. The four exits report one outcome type, and what ok carries is always the
+\ memory THAT word gave back - a block's byte length for the two table exits, the
+\ buffer's byte extent for BUFFER-DISPOSE, the arm's bytes for DISPOSE.
+\
+\ WHAT THE EXITS STILL CANNOT REACH, AND WHY THAT IS THE CHECKER'S GAP. An owner a
+\ THROW strands is not recoverable by any of them: the throw unwinds past the token
+\ itself, so the caller's catch has nothing left to hand to an exit. Which refusals
+\ that leaves recoverable follows from the SHAPE of the step that refuses:
+\   - SLOT! is stack-preserving ( tbuilder -- tbuilder ), so a caller can run it
+\     inside a `catch` and a refusal leaves the builder exactly where it was (the
+\     SAFET:LOAD discipline). Those four refusals - E-SLOT twice, E-SET, E-EXTENT -
+\     are now disposable, and the suite disposes them;
+\   - SEAL is ( tbuilder -- table ), so a `catch` over it would have to hold a
+\     BUILDER on the refusal arm and a TABLE on the success arm. No effect can say
+\     that today, so E-UNSET still strands its builder;
+\   - WITH-SLOT's E-SLOT/E-EXTENT still strand the arm owner AND the table, because
+\     MATCH had already deconstructed the store when the throw fired.
+\ Both remaining residues are the same missing capability - the linear-scope
+\ combinator named further down, which is what would let a scope dispose the owner it
+\ holds on the throw path - and not a missing exit. The suite's leak accounting names
+\ which of its strands is which.
+\
 \ NO PUBLIC WORD RETURNS A RAW POINTER. Weight bytes are reachable only inside
 \ the WITH-SLOT quotation, whose declared effect is [ ptr u8 n -- n ]: the result
 \ row is one scalar, so a quotation declared to return the span pointer (or any
@@ -292,11 +318,20 @@ variable LIVE-N                \ undisposed WSTORE-owned blocks (accounting only
    swap WSTORE-STORE:ALLOCATED ;
 
 \ ---- DISPOSE internals -------------------------------------------------------------
+\ One block free for BOTH block owners. A builder and a sealed table are the same
+\ allocation - SEAL retypes it, it does not copy it - so there is exactly one place
+\ that computes a block's byte length from its slot count and hands it back, and the
+\ length it computed is left on the stack because every exit that reports a result
+\ needs it. Recomputing that arithmetic per exit is how two callers drift apart.
+: BLK-FREE ( ptr n -- n )                      \ frees one builder/table block; n = bytes given back
+   {: blk:ptr :}
+   blk NSLOTS@ TB-ALLOC-LEN ABLEN>N {: blen:n :}
+   blk BLK>BYTES blen MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES
+   -1 LIVE-N +!
+   blen ;
+
 : TBL-FREE ( WSTORE:table -- )
-   TAKE-TABLE {: blk:ptr :}
-   blk NSLOTS@ {: nslots:n :}
-   blk BLK>BYTES nslots TB-ALLOC-LEN MEM:RELEASE-BYTES
-   -1 LIVE-N +! ;
+   TAKE-TABLE BLK-FREE drop ;
 
 : MAPPED-DISPOSE ( SAFET:mapping WSTORE:table -- result<n,n> )
    TBL-FREE
@@ -404,10 +439,47 @@ public
 \ union buys is that a caller disposing several owners in sequence reads one
 \ outcome type across all of them.
 : TABLE-DISPOSE ( WSTORE:table -- result<n,n> )
-   TBL>BLOCK {: blk:ptr :}
-   blk NSLOTS@ TB-ALLOC-LEN ABLEN>N {: blen:n :}
-   TBL-FREE
-   blen RESULT:OK ;
+   TAKE-TABLE BLK-FREE RESULT:OK ;
+
+\ ---- disposal of a builder that never got sealed ------------------------------------------
+\ The exit for a builder that is not going to become a table. Before this word the
+\ only route out of a builder was SEAL, so a caller holding one it could not seal -
+\ because a SLOT! refused, or because it decided against the transaction - held a
+\ linear token with no exit at all: it could not seal it, it could not drop it (the
+\ checker refuses that, correctly), and it could not free the block by hand because
+\ the block is package-private. There was not even the fabricate-a-store hack the
+\ table's exit retired, since that shape needs a SEALED table. That was the same real
+\ leak in this module's surface TABLE-DISPOSE closed for tables, and the module's own
+\ suite documented it as six stranded builder blocks.
+\
+\ It frees the block through the SAME private path both DISPOSE arms and
+\ TABLE-DISPOSE use, reached by the audited identity retype SEAL itself uses. That
+\ retype is honest here rather than a shortcut around the seal: the two owners ARE
+\ one allocation, and the free path reads only the slot count TABLE-NEW wrote before
+\ any SLOT! could run, so what it gives back does not depend on how far population
+\ got. A builder with no slots populated and a fully populated one cost identically,
+\ and ok carries that byte length. The result is the shape, not a wider failure
+\ model, for the reason TABLE-DISPOSE gives: a caller unwinding several owners in
+\ sequence reads one outcome type across all of them.
+: BUILDER-DISPOSE ( WSTORE:tbuilder -- result<n,n> )
+   TB>TABLE TAKE-TABLE BLK-FREE RESULT:OK ;
+
+\ ---- disposal of a buffer that never became a store ---------------------------------------
+\ The exit for the allocated arm's owner alone. A caller that has filled a buffer and
+\ then cannot build the store around it - because the table it needed was refused, or
+\ because a later step in its own transaction ran out of memory - owns a buffer and
+\ nothing else, and the same argument applies: the package that mints a linear owner
+\ owns its exit. The bind transaction's commit phase is exactly that caller, which is
+\ why this word exists before the arena copy is written.
+\
+\ Unlike the two table exits this one can genuinely report err, and it is the same
+\ err the allocated arm's DISPOSE reports: the buffer's bytes go back through the
+\ guarded MEM release, so a failed release becomes err(code) instead of a throw past
+\ owners the caller has not disposed of yet. ok carries the buffer's byte extent -
+\ the bytes it owned, not the two-cell record - which is the same number
+\ DISPOSE answers for the allocated arm.
+: BUFFER-DISPOSE ( WSTORE:buffer -- result<n,n> )
+   BUF-FREE ;
 
 \ ---- leak accounting (decides nothing; the SAFET:LIVE-OWNERS pattern) --------------------
 : LIVE ( -- n )                                \ undisposed builder/table blocks + buffer records
