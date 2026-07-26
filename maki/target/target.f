@@ -32,20 +32,55 @@ public
 64 constant CAP-BARRIER
 127 constant CAP-ALL
 
-SUMTYPE descriptor 0
-   VARIANT value n n n n n n ;VARIANT
-;SUMTYPE
+\ The descriptor is the immutable bundle of semantic facts that owns target
+\ identity - the exact six cells DESC-HASH folds, DESC-FACTS$ serializes and
+\ DESC-EQ? compares. Declared through the unified ENUM front end in full mode
+\ (the arity token after the name selects it), so every payload cell carries a
+\ named FIELD instead of a positional type token. The six names are the ones this
+\ file already uses for those cells everywhere else - the typed locals of
+\ DESC-HASH / DESC-FACTS$ / DESC-CK, the public ISA@ / ARCH@ / WARP@ / THREADS@ /
+\ SHARED@ / CAPS@ readers, and the canonical isa=|arch=|warp=|threads=|shared=|caps=
+\ serialization keys - so the declaration and its consumers read as one vocabulary
+\ and a reordered cell is a renamed slot rather than a silent swap of two
+\ indistinguishable n's. The generated TARGET-DESCRIPTOR:VALUE constructor, its
+\ checked effect, and every `construct descriptor value` / `MATCH descriptor` site
+\ are unchanged: the spelling and the payload binding order derive from the
+\ package, the family tail and the declaration order, none of which the mode
+\ touches.
+\
+\ The six cells, in declaration order (DESC-CK states the admissible range of
+\ each): isa, the ISA family, where ISA-PTX is the only admissible value; arch,
+\ the SM architecture number (87, 121, ...); warp, the warp width in threads, a
+\ power of two no wider than 64; threads, the maximum threads per block, a
+\ multiple of warp; shared, the shared-memory budget in bytes per block; caps,
+\ the capability bitset, a subset of CAP-ALL that must include CAP-PTX. No
+\ definer accepts a comment inside a declaration body, so the per-cell notes live
+\ here rather than on the FIELD lines.
+ENUM descriptor 0
+   VARIANT value
+      FIELD isa n
+      FIELD arch n
+      FIELD warp n
+      FIELD threads n
+      FIELD shared n
+      FIELD caps n
+   ;VARIANT
+;ENUM
 
 \ WIRE>ID decode result (MODEL-CAD-V2-PLAN.md § 23.9 "Foreign identity
 \ constructors and wire codecs", the art-result custom-sum idiom): `ok` carries the
-\ refined nominal id; the reject arms are the fixed-width byte-decode refusals the
-\ contract names (wrong width, unresolved/out-of-range value). A bespoke per-package
-\ sum, not result<a,b>, so a total ok construction leaves no free error variable.
-SUMTYPE id-result 1
-   VARIANT ok a ;VARIANT
+\ refined nominal id in its `id` field; the reject arms are the fixed-width
+\ byte-decode refusals the contract names (wrong width, unresolved/out-of-range
+\ value). A bespoke per-package sum, not result<a,b>, so a total ok construction
+\ leaves no free error variable. Declared through the unified ENUM front end in
+\ full mode, so the one payload of `ok` is a named FIELD; the generated
+\ TARGET-ID--RESULT:OK / :WRONG-WIDTH / :UNKNOWN constructors and every MATCH site
+\ are unchanged, for the same reason the descriptor's are.
+ENUM id-result 1
+   VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT
-;SUMTYPE
+;ENUM
 
 ;package
 
