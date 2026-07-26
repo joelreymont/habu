@@ -75,6 +75,25 @@
 \ holds on the throw path - and not a missing exit. The suite's leak accounting names
 \ which of its strands is which.
 \
+\ A STORE HELD AS ONE CELL (the residency handle). A store is a bundle of two
+\ owners, so it is three stack cells wide, and a bound model cannot carry it as a
+\ field: a STRUCTURE or ENUM field may name a bare linear owner but not a compound
+\ that transitively contains one (measured; the checker capability is tracked by
+\ habu-checker-enum-payload-9e1ae6cc). HOLD answers the same store as a single-cell
+\ linear `resident`, which a model CAN hold as one checked field, and
+\ RESIDENT-DISPOSE is its only exit.
+\
+\ The handle allocates nothing, and that is a requirement rather than a saving. Its
+\ caller is a bind commit: it takes a census's file mapping through
+\ SAFET:DETACH-MAPPING, an atomic and terminal step, and may run nothing fallible
+\ afterwards, because a throw past a fresh mapping strands it beyond any catch. So
+\ the handle's two cells are reserved in every table block by TABLE-NEW and HOLD
+\ only writes them. Builder, table and resident are ONE allocation retyped three
+\ times, and every transition is total - the same discipline SEAL already follows,
+\ carried one step further. The price is two cells per table block, paid whether or
+\ not the table is ever held; the alternative was a fallible step in the one place
+\ the transaction cannot tolerate one.
+\
 \ NO PUBLIC WORD RETURNS A RAW POINTER. Weight bytes are reachable only inside
 \ the WITH-SLOT quotation, whose declared effect is [ ptr u8 n -- n ]: the result
 \ row is one scalar, so a quotation declared to return the span pointer (or any
@@ -142,14 +161,16 @@ public
 -7712 constant E-SET       \ SLOT! on a slot that is already set
 -7713 constant E-UNSET     \ SEAL on a builder with an unset slot
 -7714 constant E-EXTENT    \ row end overflows, or the row does not fit the arm's bytes
+-7715 constant E-ARM       \ a resident's parked arm tag is neither mapped nor allocated
 
 \ ---- the residency choice (the contract's "policy" enum; see the naming note) --
 ENUM residency mapped allocated ;ENUM
 
-\ ---- the three linear owners -------------------------------------------------
+\ ---- the four linear owners -------------------------------------------------
 DEFLINEAR WSTORE:tbuilder      \ one table under construction
 DEFLINEAR WSTORE:table         \ one sealed immutable slot table
 DEFLINEAR WSTORE:buffer        \ one owned byte buffer (the allocated arm's bytes)
+DEFLINEAR WSTORE:resident      \ one store, held as a single cell (see the header)
 
 \ ---- the residency value. The generated WSTORE-STORE:MAPPED / :ALLOCATED are
 \ the public store constructors for the two arms; both are total. --------------
@@ -164,11 +185,25 @@ private
 $10000 constant MAX-SLOTS      \ slots per table; GPT-2 needs 4 + 13*nlayer = 160
 0 cells constant NSLOTS-OFF    \ slot count
 1 cells constant NSET-OFF      \ how many slots SLOT! has populated
-2 cells constant ROWS-OFF      \ first row; rows are (off, len, set)
+
+\ The residency handle's two cells, reserved in EVERY table block from the moment
+\ TABLE-NEW allocates it. They are empty until HOLD fills them, and reserving them
+\ up front is what makes HOLD allocation-free and therefore TOTAL - see the header.
+2 cells constant RES-ARM-OFF   \ which arm HOLD parked here (RA-*)
+3 cells constant RES-OWN-OFF   \ that arm's own owner, as one parked cell
+4 cells constant ROWS-OFF      \ first row; rows are (off, len, set)
+4 constant HDR-CELLS           \ the four cells above, before the first row
 3 constant ROW-CELLS
 0 constant C-OFF               \ row byte offset into the arm's bytes
 1 constant C-LEN               \ row byte extent
 2 constant C-SET               \ 1 once SLOT! wrote this row
+
+\ The parked arm tag. RA-NONE is 0 so a block INIT-BLOCK cleared and HOLD never
+\ touched cannot read back as a real arm: the tag a resident carries is one a HOLD
+\ arm wrote, or the handle is refused.
+0 constant RA-NONE             \ never held
+1 constant RA-MAPPED           \ the mapped arm's SAFET:mapping is parked
+2 constant RA-ALLOC            \ the allocated arm's WSTORE:buffer is parked
 
 \ ---- one buffer record ----------------------------------------------------------
 \ A buffer owner outlives the raw (base, extent) pair it was minted from, so it
@@ -201,6 +236,25 @@ TRUSTED: BUF>REC ( WSTORE:buffer -- WSTORE:buffer ptr n )
    dup ;
 
 TRUSTED: TAKE-BUFFER ( WSTORE:buffer -- ptr n ) ;
+
+\ The residency handle is the store's own table block retyped once more, so its
+\ mint and its consume are the same identities SEAL and TAKE-TABLE already are.
+TRUSTED: MINT-RESIDENT ( ptr u8 -- WSTORE:resident ) ;
+
+TRUSTED: TAKE-RESIDENT ( WSTORE:resident -- ptr n ) ;
+
+\ The held arm's own owner, parked in the block as one raw cell. A DEFLINEAR carries
+\ no fields, so a single-cell owner cannot be stored as a typed value; these four
+\ leaves are the only crossing, they are package-private with no public inverse, and
+\ between a park and its recovery the checker cannot see the owner. What holds
+\ "owned exactly once" over that stretch is this file's structure - one park site per
+\ arm inside HOLD, one recovery site inside RESIDENT-DISPOSE, no accessor - plus the
+\ LIVE and SAFET:LIVE-OWNERS counters the suite asserts around every transaction.
+\ They retire with the linear-scope combinator, habu-checker-linear-scope-6218899c.
+TRUSTED: MAP>N ( SAFET:mapping -- n ) ;
+TRUSTED: N>MAP ( n -- SAFET:mapping ) ;
+TRUSTED: BUF>N ( WSTORE:buffer -- n ) ;
+TRUSTED: N>BUF ( n -- WSTORE:buffer ) ;
 
 \ Byte view of a table block or buffer record, applied only to an address one of
 \ the leaves above just produced; the release path still consumes `ptr u8`.
@@ -249,7 +303,7 @@ variable LIVE-N                \ undisposed WSTORE-owned blocks (accounting only
    blk NSLOTS-OFF + @ ;
 
 : TB-ALLOC-LEN ( n -- CAD-NUM:alloc-byte-len )
-   ROW-CELLS * 2 + cells MEM:BYTES-ALLOC-LEN ;
+   ROW-CELLS * HDR-CELLS + cells MEM:BYTES-ALLOC-LEN ;
 
 : RB-ALLOC ( -- CAD-NUM:alloc-byte-len )
    RB-BYTES MEM:BYTES-ALLOC-LEN ;
@@ -260,6 +314,8 @@ variable LIVE-N                \ undisposed WSTORE-owned blocks (accounting only
 : INIT-BLOCK ( ptr n n -- ) {: blk:ptr nslots:n :}
    nslots blk NSLOTS-OFF + !
    0 blk NSET-OFF + !
+   RA-NONE blk RES-ARM-OFF + !                 \ no residency parked yet
+   0 blk RES-OWN-OFF + !
    nslots 0 ?do blk i C-SET 0 ROW! loop ;
 
 \ ---- SLOT! helpers ------------------------------------------------------------
@@ -358,6 +414,33 @@ variable LIVE-N                \ undisposed WSTORE-owned blocks (accounting only
 : ALLOC-DISPOSE ( WSTORE:buffer WSTORE:table -- result<n,n> )
    TBL-FREE
    BUF-FREE ;
+
+\ ---- HOLD internals: park one arm in the table's own block ---------------------------
+\ Consumes the table token and answers the same block as bytes, ready to be minted as
+\ a resident. Nothing here can fail: the cells were reserved by TABLE-NEW, the tag is
+\ a constant, and the owner cell is a single-cell erasure. That totality is the whole
+\ reason the cells are reserved rather than allocated on demand.
+: PARK-ARM ( WSTORE:table n n -- ptr u8 ) {: arm:n own:n :}
+   TAKE-TABLE {: blk:ptr :}
+   arm blk RES-ARM-OFF + !
+   own blk RES-OWN-OFF + !
+   blk BLK>BYTES ;
+
+: HOLD-MAPPED ( SAFET:mapping WSTORE:table -- WSTORE:resident )
+   swap MAP>N {: own:n :}
+   RA-MAPPED own PARK-ARM MINT-RESIDENT ;
+
+: HOLD-ALLOC ( WSTORE:buffer WSTORE:table -- WSTORE:resident )
+   swap BUF>N {: own:n :}
+   RA-ALLOC own PARK-ARM MINT-RESIDENT ;
+
+\ ---- RESIDENT-DISPOSE internals ------------------------------------------------------
+\ The block is the table's, so the table token comes back by the same retype SEAL
+\ performs, and the arm owner comes back out of its parked cell. Rebuilding the store
+\ and handing it to DISPOSE is deliberate: the arm disposal sequence stays written
+\ once, in DISPOSE, instead of being copied here where the two could drift apart.
+: UNPARK-TABLE ( ptr n -- WSTORE:table )
+   BLK>BYTES MINT-TBUILDER TB>TABLE ;
 
 public
 
@@ -480,6 +563,54 @@ public
 \ DISPOSE answers for the allocated arm.
 : BUFFER-DISPOSE ( WSTORE:buffer -- result<n,n> )
    BUF-FREE ;
+
+\ ---- holding a store as one cell -----------------------------------------------------
+\ A store is a two-owner bundle, so it is three stack cells wide and no record can
+\ carry it: a STRUCTURE or ENUM field may name a bare linear owner but not a compound
+\ that transitively holds one (measured; the checker capability is tracked by
+\ habu-checker-enum-payload-9e1ae6cc). A bound model has to own its residency as ONE
+\ field, so this word answers the same store as a single-cell linear handle.
+\
+\ WHY IT ALLOCATES NOTHING, AND WHY THAT IS THE POINT. HOLD is TOTAL. Its caller is a
+\ bind commit, which takes a census's file mapping away through SAFET:DETACH-MAPPING -
+\ an atomic, terminal step - and may not run anything that can fail afterwards, because
+\ a throw past a fresh mapping strands it where no catch can reach it. A HOLD that
+\ allocated would be exactly such a step. So the handle's two cells are reserved in
+\ every table block by TABLE-NEW, and HOLD only writes them: builder, table and
+\ resident are ONE allocation retyped three times, each transition total, which is the
+\ same discipline SEAL already follows.
+\
+\ WHAT KEEPS IT HONEST AS THE STORE GROWS. The arm is read by MATCH, not by any
+\ assumption about the store's width, and MATCH is exhaustiveness-checked: a third
+\ residency arm makes this word fail to compile until it is handled here. Nothing in
+\ this file depends on how many cells a store happens to occupy.
+: HOLD ( WSTORE:store -- WSTORE:resident )
+   MATCH store
+      mapped    OF HOLD-MAPPED ENDOF
+      allocated OF HOLD-ALLOC ENDOF
+   ;MATCH ;
+
+\ ---- the residency handle's exit ------------------------------------------------------
+\ The single exit for a resident, and the only way back to the store it holds. It
+\ reports what the underlying DISPOSE reported - the arm's bytes for ok, the named
+\ release code for err - because that is the memory this call actually gave back.
+\
+\ The tag is validated before any owner is rebuilt. No caller can reach a bad tag: the
+\ only writers are HOLD's two arms and INIT-BLOCK's RA-NONE, and a resident can only be
+\ minted by HOLD. The test is kept for the reason the module checks a slot at the point
+\ it indexes memory - the value is read out of a block and decides which owner is
+\ reconstructed, so a wrong answer would hand a mapping to the buffer path. Refusing
+\ before anything is rebuilt means the refusal strands no owner.
+: RESIDENT-DISPOSE ( WSTORE:resident -- result<n,n> )
+   TAKE-RESIDENT {: blk:ptr :}
+   blk RES-ARM-OFF + @ {: arm:n :}
+   arm RA-MAPPED <>  arm RA-ALLOC <>  and if E-ARM throw then
+   blk RES-OWN-OFF + @ {: own:n :}
+   blk UNPARK-TABLE                              \ ( table ), the same block retyped back
+   arm RA-MAPPED = if
+      own N>MAP swap WSTORE-STORE:MAPPED DISPOSE exit
+   then
+   own N>BUF swap WSTORE-STORE:ALLOCATED DISPOSE ;
 
 \ ---- leak accounting (decides nothing; the SAFET:LIVE-OWNERS pattern) --------------------
 : LIVE ( -- n )                                \ undisposed builder/table blocks + buffer records

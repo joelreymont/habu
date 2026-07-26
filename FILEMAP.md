@@ -1550,8 +1550,20 @@ points stay listed.
   only route to a table's memory ran through `DISPOSE`, so such a caller had to
   fabricate a store around a mapping it did not want to consume, or leak the
   block outright; the package that mints a linear owner owns its exit.
-  `WSTORE:LIVE` counts undisposed WSTORE-owned blocks for leak assertions.
-  Owns -7710..-7714.
+  `BUILDER-DISPOSE` and `BUFFER-DISPOSE` are the same exit for the other two
+  owners: a builder that will not be sealed, and a filled buffer whose store was
+  never built. `HOLD ( WSTORE:store -- WSTORE:resident )` answers a store as a
+  single-cell linear handle, which is the only shape a bound model can own as one
+  field — a record field may name a bare linear owner but not a compound that
+  transitively contains one — and `RESIDENT-DISPOSE ( WSTORE:resident --
+  result<n,n> )` is its only exit, rebuilding the store and releasing it through
+  the same `DISPOSE` path. The handle allocates nothing: its two cells (the parked
+  arm and that arm's owner) are reserved in every table block, so builder, table
+  and resident are one allocation retyped in turn and every transition is total.
+  That totality is a requirement, not a saving — a bind commit runs `HOLD` after
+  `SAFET:DETACH-MAPPING`, where a fallible step would strand a fresh mapping
+  beyond any catch. `WSTORE:LIVE` counts undisposed WSTORE-owned blocks for leak
+  assertions. Owns -7710..-7715.
 - `maki/infer/weight-store-test.f` — byte-equality of `WITH-SLOT` across both
   residency arms over one synthetic safetensors fixture (the mapped arm built
   through the real `OPEN`/`MAP-FILE`/`PARSE`/`DETACH`/`DETACH-MAPPING` path, the

@@ -107,12 +107,17 @@ create SUBJ-ERR $400 allot
 108 constant SUM-PAT                            \ 10+11+..+17, the MK-ASTORE pattern
 
 \ ---- the table block TABLE-DISPOSE gives back --------------------------------
-\ Mirrors the module's documented table layout: two header cells (slot count and
-\ populated count) then three cells per slot (offset, extent, set flag). Derived
+\ Mirrors the module's documented table layout: four header cells - slot count,
+\ populated count, and the two the residency handle reserves (the parked arm tag and
+\ that arm's owner) - then three cells per slot (offset, extent, set flag). Derived
 \ from those named parts rather than written as one magic byte count, so a layout
-\ change reds this leg instead of quietly agreeing with it.
+\ change reds this leg instead of quietly agreeing with it; the two residency cells
+\ arrived that way, and the number below is the deliberate answer to it. Reserving
+\ them in every block is what lets HOLD allocate nothing and so be total.
 3 constant WT-ROW-CELLS
-2 constant WT-TBL-HDR-CELLS
+2 constant WT-TBL-CORE-CELLS                    \ slot count + populated count
+2 constant WT-TBL-RES-CELLS                     \ the residency handle's arm + owner
+WT-TBL-CORE-CELLS WT-TBL-RES-CELLS + constant WT-TBL-HDR-CELLS
 
 : TBL-BYTES ( n -- n )                          \ block bytes for a table of n slots
    WT-ROW-CELLS * WT-TBL-HDR-CELLS + cells ;
@@ -441,6 +446,62 @@ private
    WSTORE:SEAL
    WSTORE-STORE:ALLOCATED ;
 
+\ ---- a store held as one cell ---------------------------------------------------------
+\ Both arms, entered and left at zero live blocks, so the counters cover the whole life
+\ of the handle.
+\
+\ WHAT THE MIDDLE ASSERTION IN EACH HALF DOES AND DOES NOT PROVE. It proves the handle
+\ mints no NEW owner: the block count across HOLD is unchanged, so the resident is the
+\ store's own table block retyped rather than a second allocation, which is the
+\ mechanism that removes the allocation from the commit's terminal stretch. It is not a
+\ proof of totality by itself - WSTORE:LIVE counts owner blocks this module bumps by
+\ hand, so a HOLD that allocated without minting an owner would still pass it. That
+\ HOLD cannot fail is a property of its call graph (MATCH, an identity retype, two cell
+\ writes, one single-cell erasure - no allocation and no throw anywhere on the path),
+\ argued in the module header and checkable by reading it; the checker has no effect
+\ system that could assert it here. What the counter does close is the one way that
+\ property could regress silently, which is a second block appearing.
+\
+\ What ok carries is not a number invented here either: it is what the underlying
+\ DISPOSE reports for that arm - the mapping's own byte length, and the buffer's extent.
+: MK-MSTORE ( -- WSTORE:store )                 \ a real mapped store over the fixture
+   SAFET:OPEN SYNTH-PATH SAFET:MAP-FILE SAFET:PARSE SAFET:DETACH
+   MK-MTBL                                      \ ( c mtbl )
+   swap SAFET:DETACH-MAPPING                    \ ( mtbl c m )
+   swap SAFET:RELEASE                           \ ( mtbl m )
+   swap WSTORE-STORE:MAPPED ;
+
+: T-RESIDENT ( -- )
+   s" a mapped store can be held as one cell" T-LABEL
+   BUILD-SYNTH
+   WSTORE:LIVE 0 T=
+   MK-MSTORE                                    \ ( store )
+   WSTORE:LIVE 1 T=                             \ its table block
+   SAFET-MAP:LIVE 1 T=                          \ the kernel mapping the store now serves
+   SAFET:LIVE-OWNERS 1 T=                       \ the detached mapping owner
+   WSTORE:HOLD                                  \ ( resident )
+   s" holding allocated nothing: no counter moved" T-LABEL
+   WSTORE:LIVE 1 T=
+   SAFET-MAP:LIVE 1 T=
+   SAFET:LIVE-OWNERS 1 T=
+   s" and the handle's exit gives the mapping back to the kernel" T-LABEL
+   WSTORE:RESIDENT-DISPOSE LEN-I @ RES-OK=
+   WSTORE:LIVE 0 T=
+   SAFET-MAP:LIVE 0 T=
+   SAFET:LIVE-OWNERS 0 T=
+   s" the allocated arm holds and releases the same way" T-LABEL
+   MK-ASTORE
+   WSTORE:LIVE 2 T=                             \ its table block and its buffer record
+   WSTORE:HOLD
+   s" holding the other arm allocated nothing either" T-LABEL
+   WSTORE:LIVE 2 T=
+   s" and its exit releases the buffer's own bytes" T-LABEL
+   WSTORE:RESIDENT-DISPOSE 8 RES-OK=
+   WSTORE:LIVE 0 T=
+   SAFET-MAP:LIVE 0 T=
+   SAFET:LIVE-OWNERS 0 T=
+   CLEANUP ;
+
 : WS-GOOD ( -- )
    MK-ASTORE
    0 [: SUM-BODY ;] WSTORE:WITH-SLOT SUM-PAT T=
@@ -655,7 +716,43 @@ private
    s" WST-BAD-BFD-BUILDER ( WSTORE:tbuilder -- result<n,n> ) WSTORE:BUFFER-DISPOSE" REJECTED
    s" WST-BAD-BFD-STORE ( WSTORE:store -- result<n,n> ) WSTORE:BUFFER-DISPOSE" REJECTED
    s" a disposed owner cannot be handed to another owner's exit either" T-LABEL
-   s" WST-BAD-BD-THEN-BFD ( WSTORE:tbuilder -- result<n,n> result<n,n> ) WSTORE:BUILDER-DISPOSE WSTORE:BUFFER-DISPOSE" REJECTED ;
+   s" WST-BAD-BD-THEN-BFD ( WSTORE:tbuilder -- result<n,n> result<n,n> ) WSTORE:BUILDER-DISPOSE WSTORE:BUFFER-DISPOSE" REJECTED
+   s" a resident is linear: no copy, no discard, no store" T-LABEL
+   s" WST-BAD-RES-DUP ( WSTORE:resident -- WSTORE:resident WSTORE:resident ) dup" REJECTED
+   s" WST-BAD-RES-DROP ( WSTORE:resident -- ) drop" REJECTED
+   s" WST-BAD-RES-STORE ( WSTORE:resident ptr n -- ) !" REJECTED
+   s" WST-BAD-RES-FORGE ( n -- WSTORE:resident ) " REJECTED
+   s" HOLD consumes its store exactly once and its result cannot be dropped" T-LABEL
+   s" WST-BAD-HOLD-KEEPS ( WSTORE:store -- WSTORE:store WSTORE:resident ) WSTORE:HOLD" REJECTED
+   s" WST-BAD-HOLD-DROPPED ( WSTORE:store -- ) WSTORE:HOLD" REJECTED
+   s" WST-BAD-HOLD-TWICE ( WSTORE:store -- WSTORE:resident WSTORE:resident ) WSTORE:HOLD WSTORE:HOLD" REJECTED
+   s" a held store is gone: the arm owners cannot be used beside the handle" T-LABEL
+   s" WST-BAD-HOLD-THEN-DISPOSE ( WSTORE:store -- WSTORE:resident result<n,n> ) WSTORE:HOLD WSTORE:DISPOSE" REJECTED
+   s" HOLD takes a store and nothing else" T-LABEL
+   s" WST-BAD-HOLD-TABLE ( WSTORE:table -- WSTORE:resident ) WSTORE:HOLD" REJECTED
+   s" WST-BAD-HOLD-BUILDER ( WSTORE:tbuilder -- WSTORE:resident ) WSTORE:HOLD" REJECTED
+   s" WST-BAD-HOLD-BUFFER ( WSTORE:buffer -- WSTORE:resident ) WSTORE:HOLD" REJECTED
+   s" WST-BAD-HOLD-RESIDENT ( WSTORE:resident -- WSTORE:resident ) WSTORE:HOLD" REJECTED
+   s" HOLD answers about the store it is given, never ambient state" T-LABEL
+   s" WST-BAD-HOLD-AMBIENT ( -- WSTORE:resident ) WSTORE:HOLD" REJECTED
+   s" RESIDENT-DISPOSE consumes its handle exactly once and yields a real union" T-LABEL
+   s" WST-BAD-RD-TWICE ( WSTORE:resident -- result<n,n> result<n,n> ) WSTORE:RESIDENT-DISPOSE WSTORE:RESIDENT-DISPOSE" REJECTED
+   s" WST-BAD-RD-KEEPS ( WSTORE:resident -- WSTORE:resident result<n,n> ) WSTORE:RESIDENT-DISPOSE" REJECTED
+   s" WST-BAD-RD-DROPPED ( WSTORE:resident -- ) WSTORE:RESIDENT-DISPOSE" REJECTED
+   s" WST-BAD-RD-RAW ( WSTORE:resident -- n ) WSTORE:RESIDENT-DISPOSE 1 +" REJECTED
+   s" the handle's exit takes a handle and nothing else" T-LABEL
+   s" WST-BAD-RD-STORE ( WSTORE:store -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" REJECTED
+   s" WST-BAD-RD-TABLE ( WSTORE:table -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" REJECTED
+   s" WST-BAD-RD-BUILDER ( WSTORE:tbuilder -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" REJECTED
+   s" WST-BAD-RD-BUFFER ( WSTORE:buffer -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" REJECTED
+   s" and a handle is not accepted by any other owner's exit" T-LABEL
+   s" WST-BAD-RES-TO-DISPOSE ( WSTORE:resident -- result<n,n> ) WSTORE:DISPOSE" REJECTED
+   s" WST-BAD-RES-TO-TD ( WSTORE:resident -- result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED
+   s" WST-BAD-RES-TO-BD ( WSTORE:resident -- result<n,n> ) WSTORE:BUILDER-DISPOSE" REJECTED
+   s" WST-BAD-RES-TO-BFD ( WSTORE:resident -- result<n,n> ) WSTORE:BUFFER-DISPOSE" REJECTED
+   s" and a handle is not a table, so it cannot be re-sealed or read as one" T-LABEL
+   s" WST-BAD-RES-SEAL ( WSTORE:resident -- WSTORE:table ) WSTORE:SEAL" REJECTED
+   s" WST-BAD-RES-WITH-SLOT ( WSTORE:resident n -- WSTORE:resident n ) [: drop 0 ;] WSTORE:WITH-SLOT" REJECTED ;
 
 : T-ESCAPE ( -- )
    s" a quotation declared to return the span pointer rejects statically" T-LABEL
@@ -676,6 +773,8 @@ private
    s" WST-OK-TABLE-DISPOSE ( WSTORE:table -- result<n,n> ) WSTORE:TABLE-DISPOSE" ACCEPTED
    s" WST-OK-BUILDER-DISPOSE ( WSTORE:tbuilder -- result<n,n> ) WSTORE:BUILDER-DISPOSE" ACCEPTED
    s" WST-OK-BUFFER-DISPOSE ( WSTORE:buffer -- result<n,n> ) WSTORE:BUFFER-DISPOSE" ACCEPTED
+   s" WST-OK-HOLD ( WSTORE:store -- WSTORE:resident ) WSTORE:HOLD" ACCEPTED
+   s" WST-OK-RESIDENT-DISPOSE ( WSTORE:resident -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" ACCEPTED
    s" the representation stays behind the seal" T-LABEL
    s" WST-BAD-MINT-TB ( ptr u8 -- WSTORE:tbuilder ) WSTORE:MINT-TBUILDER" UNRESOLVED
    s" WST-BAD-TB-BLOCK ( WSTORE:tbuilder -- WSTORE:tbuilder ptr n ) WSTORE:TB>BLOCK" UNRESOLVED
@@ -687,6 +786,14 @@ private
    s" WST-BAD-TAKE-BUF ( WSTORE:buffer -- ptr n ) WSTORE:TAKE-BUFFER" UNRESOLVED
    s" WST-BAD-BLK-BYTES ( ptr n -- ptr u8 ) WSTORE:BLK>BYTES" UNRESOLVED
    s" WST-BAD-BLK-FREE ( ptr n -- n ) WSTORE:BLK-FREE" UNRESOLVED
+   s" WST-BAD-MINT-RES ( ptr u8 -- WSTORE:resident ) WSTORE:MINT-RESIDENT" UNRESOLVED
+   s" WST-BAD-TAKE-RES ( WSTORE:resident -- ptr n ) WSTORE:TAKE-RESIDENT" UNRESOLVED
+   s" WST-BAD-MAP-N ( SAFET:mapping -- n ) WSTORE:MAP>N" UNRESOLVED
+   s" WST-BAD-N-MAP ( n -- SAFET:mapping ) WSTORE:N>MAP" UNRESOLVED
+   s" WST-BAD-BUF-N ( WSTORE:buffer -- n ) WSTORE:BUF>N" UNRESOLVED
+   s" WST-BAD-N-BUF ( n -- WSTORE:buffer ) WSTORE:N>BUF" UNRESOLVED
+   s" WST-BAD-PARK-ARM ( WSTORE:table n n -- ptr u8 ) WSTORE:PARK-ARM" UNRESOLVED
+   s" WST-BAD-UNPARK-TABLE ( ptr n -- WSTORE:table ) WSTORE:UNPARK-TABLE" UNRESOLVED
    s" WST-BAD-PARK ( -- ) WSTORE:PARK" UNRESOLVED
    s" WST-BAD-RUN-PARKED ( ptr u8 n -- ) WSTORE:RUN-PARKED" UNRESOLVED
    s" WST-BAD-BOFF ( CAD-NUM:byte-off -- n ) WSTORE:BOFF>N" UNRESOLVED
@@ -719,6 +826,7 @@ public
    T-EQUALITY
    T-TABLE-DISPOSE
    T-OWNER-EXITS
+   T-RESIDENT
    T-TABLE-ERRORS
    T-ACCESS
    T-NESTED

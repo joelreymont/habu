@@ -42,7 +42,7 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-62 constant SEED#
+64 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -234,6 +234,14 @@ private
       \ habu-checker-linear-scope-6218899c.
       60 of s" N>CENSUS" endof             \ the sole inverse of CENSUS>N, reached only by ABORT
       61 of s" N>TABLE" endof              \ the sole inverse of TABLE>N, reached only by ABORT
+      \ WSTORE's residency handle holds a whole store as ONE cell, because a bound
+      \ model cannot carry a store as a field - a compound field may not transitively
+      \ contain a linear owner. The held arm's own owner is parked in the handle's
+      \ block as a raw cell, and these two read it back; each is reachable only from
+      \ WSTORE:RESIDENT-DISPOSE, the single word that ends a resident's life. Both
+      \ retire with the linear-scope combinator, habu-checker-linear-scope-6218899c.
+      62 of s" N>MAP" endof                \ the sole inverse of MAP>N (mapped arm)
+      63 of s" N>BUF" endof                \ the sole inverse of BUF>N (allocated arm)
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -301,6 +309,8 @@ private
       59 of s" maki/db/diff-suite-id.f" endof
       60 of s" maki/infer/gpt2-bind.f" endof
       61 of s" maki/infer/gpt2-bind.f" endof
+      62 of s" maki/infer/weight-store.f" endof
+      63 of s" maki/infer/weight-store.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
