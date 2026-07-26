@@ -2099,7 +2099,7 @@ private
 \ constant while every other process-spawning ratchet in the gate - the
 \ stdlib tail ratchet (test/tail-ratchet.f TAIL-BUDGET:PROCESS-MS =
 \ 10000 TEST-BUDGET:PERF-MS) and the whole-gate stop-lines (test/run-lib.f
-\ TR-CAL-SCALED) - already scales its nominal by the measured host-calibration
+\ TEST-RUN:CAL-SCALED) - already scales its nominal by the measured host-calibration
 \ factor. That factor (lib/test/budget.f: a fixed-work integer spin measured
 \ against an idle-box reference, clamped to [100..300]% and exported by the gate
 \ as the host-calibration percentage) is the repo's canonical load signal. The

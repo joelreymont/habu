@@ -5,10 +5,10 @@ require test/gate-stdlib-inline-lib.f
 
 package STDLIB-WORKER
 
-TRW-LOAD-DONE
+TEST-RUN:TRW-LOAD-DONE
 
 : SETUP ( -- )
-   TR-TIMINGS @ 0 <> if GSI-TIMINGS! then ;
+   TEST-RUN:TIMINGS? if GSI-TIMINGS! then ;
 
 : TOOL ( -- )
    STDLIB-GATE:SKIP-SEMANTIC!
@@ -19,11 +19,11 @@ TRW-LOAD-DONE
    s" test/gate-pool-test.f" GSI-INCLUDE
    s" test/gate-pool-orphan-test.f" GSI-INCLUDE
    s" test/json-read-perf-phase-test.f" GSI-INCLUDE
-   TR-INSTALL-POOL-HOOKS ;
+   TEST-RUN:INSTALL-POOL-HOOKS ;
 
 : RUN ( -- )
    SETUP
-   TR-RESIDENT-ID @ case
+   TEST-RUN:RESIDENT case
       2 of TOOL endof
       3 of CHECK-CLI-GATE:RUN endof
       17 of GSI-LINT-TOOLS endof

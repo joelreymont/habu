@@ -10,27 +10,39 @@ require test/run-result-cache.f
 require test/perf-verdict.f              \ pure performance-verdict policy
 require test/run-verdict.f              \ TR-VERDICT retry driver over the policy
 
+package TEST-RUN
+private
+
 64 constant TR-USAGE-RC
 65 constant TR-BUDGET-RC
 66 constant TR-PROFILE-RC
 70000 constant TR-DEFAULT-BUDGET-MS
-4 constant TR-DEFAULT-NESTED-POOL-SLOTS
+public
+4 constant DEFAULT-NESTED-POOL-SLOTS
+private
 12 constant TR-TOP-POOL-MAX
-600000 constant TR-TIMEOUT-MS
+public
+600000 constant TIMEOUT-MS
+private
 41 constant TR-PHASES
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
-$2 constant TR-CANDIDATE-HOST-PHASES
-$1B constant TR-EARLY-HOST-PHASES
-$3 constant TR-LATE-PHASES
+public
+$2 constant CANDIDATE-HOST-PHASES
+$1B constant EARLY-HOST-PHASES
+$3 constant LATE-PHASES
+private
 9 constant TR-UNDER-PREFIX-U
 0 constant TR-GROUP-SEQ
 1 constant TR-GROUP-PAR
 1 constant TR-PROFILE-MACOS-ARM64-10X2
 2 constant TR-PROFILE-JETSON-ORIN-CLOCKS-4X2
 3 constant TR-PROFILE-LINUX-ARM64-4X2
-4 constant TR-PROFILE-DGX-SPARK-10X2
+public
+4 constant PROFILE-DGX-SPARK-10X2
+
+;package
 
 package RUN-BUDGET
 
@@ -88,6 +100,9 @@ public
 
 ;package
 
+package TEST-RUN
+private
+
 \ Budget calibration: profile budget tables were tuned green on a reference
 \ host; a startup spin probe measures this run's speed against the profile's
 \ reference probe time and scales the timed budgets so load or downclocking
@@ -99,7 +114,9 @@ T-BUDGET-CAL-ITERS constant TR-CAL-ITERS             \ shared with lib/test/budg
 T-BUDGET-CAL-REF-MACOS-MS constant TR-CAL-REF-MACOS-MS
 0 constant TR-CAL-REF-JETSON-MS
 0 constant TR-CAL-REF-LINUX-MS
-87 constant TR-CAL-REF-SPARK-MS       \ committed: fixed spin on a GB10 X925 performance core (idle box)
+public
+87 constant CAL-REF-SPARK-MS       \ committed: fixed spin on a GB10 X925 performance core (idle box)
+private
 T-BUDGET-MIN-PCT constant TR-CAL-MIN-PCT
 T-BUDGET-MAX-PCT constant TR-CAL-MAX-PCT
 
@@ -205,12 +222,16 @@ variable TR-PRE-DIAG-FILE
 : TR-PATH$ ( -- ptr u8 n )
    TR-PATH-BUF TR-PATH-U @ ;
 
-: TR-BUILD-CACHE$ ( -- ptr u8 n )
+public
+: BUILD-CACHE$ ( -- ptr u8 n )
    TR-BUILD-CACHE-BUF TR-BUILD-CACHE-U @ ;
+private
 
-: TR-UNDER$ ( -- ptr u8 n )
+public
+: UNDER$ ( -- ptr u8 n )
    TR-UNDER-BUF TR-UNDER-U @ ;
 
+private
 : TR-UNDER-ARG$ ( -- ptr u8 n )
    TR-UNDER-ARG-BUF TR-UNDER-ARG-U @ ;
 
@@ -312,30 +333,32 @@ variable TR-PRE-DIAG-FILE
 : TR-SPARK-DMI$ ( -- ptr u8 n )
    s" /sys/class/dmi/id/product_family" ;
 
-: TR-SPARK-MODEL? ( -- bool )
+public
+: SPARK-MODEL? ( -- bool )
    TR-SPARK-DMI$ TR-HOST-READ s" DGX Spark" CONTAINS? ;
 
-: TR-DETECT-PROFILE ( -- n )
+: DETECT-PROFILE ( -- n )
    HB-TARGET-MACOS? if TR-PROFILE-MACOS-ARM64-10X2 exit then
    HB-TARGET-LINUX? if
       s" /proc/device-tree/model" EXISTS? if
          TR-JETSON-MODEL? if TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
       then
       TR-SPARK-DMI$ EXISTS? if
-         TR-SPARK-MODEL? if TR-PROFILE-DGX-SPARK-10X2 exit then
+         SPARK-MODEL? if PROFILE-DGX-SPARK-10X2 exit then
       then
       TR-PROFILE-LINUX-ARM64-4X2 exit
    then
    s" no supported timed host profile" TR-PROFILE-FAIL ;
 
-: TR-PROFILE-ID? ( ptr u8 n -- n )
-   2dup s" auto" STR= if 2drop TR-DETECT-PROFILE exit then
+: PROFILE-ID? ( ptr u8 n -- n )
+   2dup s" auto" STR= if 2drop DETECT-PROFILE exit then
    2dup s" macos-arm64-10x2" STR= if 2drop TR-PROFILE-MACOS-ARM64-10X2 exit then
    2dup s" jetson-orin-clocks-4x2" STR= if 2drop TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 exit then
    2dup s" linux-arm64-4x2" STR= if 2drop TR-PROFILE-LINUX-ARM64-4X2 exit then
-   2dup s" dgx-spark-10x2" STR= if 2drop TR-PROFILE-DGX-SPARK-10X2 exit then
+   2dup s" dgx-spark-10x2" STR= if 2drop PROFILE-DGX-SPARK-10X2 exit then
    2drop TR-USAGE ;
 
+private
 : TR-CAL-SPIN ( n -- n )
    T-BUDGET-CAL-SPIN ;
 
@@ -344,29 +367,33 @@ variable TR-PRE-DIAG-FILE
    TR-CAL-ITERS TR-CAL-SPIN TR-CAL-SINK !
    mono-ns t0 - PROC-NS-PER-MS / TR-CAL-MEASURED-MS ! ;
 
-: TR-CAL-REF-MS ( -- n )
+public
+: CAL-REF-MS ( -- n )
    TR-PROFILE-ID @ case
       TR-PROFILE-MACOS-ARM64-10X2 of TR-CAL-REF-MACOS-MS endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CAL-REF-JETSON-MS endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-CAL-REF-LINUX-MS endof
-      TR-PROFILE-DGX-SPARK-10X2 of TR-CAL-REF-SPARK-MS endof
+      PROFILE-DGX-SPARK-10X2 of CAL-REF-SPARK-MS endof
       0 swap
    endcase ;
 
+private
 : TR-CAL-CLAMP ( n -- n ) {: pct:n :}
    pct TR-CAL-MIN-PCT < if TR-CAL-MIN-PCT exit then
    pct TR-CAL-MAX-PCT > if TR-CAL-MAX-PCT exit then
    pct ;
 
 : TR-CAL-PCT ( -- n )
-   TR-CAL-REF-MS {: ref:n :}
+   CAL-REF-MS {: ref:n :}
    ref 0 <= if TR-CAL-MIN-PCT exit then
    TR-CAL-MEASURED-MS @ 0 <= if TR-CAL-MIN-PCT exit then
    TR-CAL-MEASURED-MS @ 100 * ref / TR-CAL-CLAMP ;
 
-: TR-CAL-SCALED ( n -- n )
+public
+: CAL-SCALED ( n -- n )
    TR-CAL-PCT * 100 / ;
 
+private
 : TR-PROFILE-APPLY ( n -- ) {: id:n :}
    id TR-PROFILE-ID !
    id case
@@ -377,7 +404,7 @@ variable TR-PRE-DIAG-FILE
             RUN-BUDGET:MACOS-MS TR-CAL-PCT TR-BUDGET-SET!
          then
          TR-WALL-BUDGET-USER @ 0= if
-            RUN-BUDGET:MACOS-WALL-MS TR-CAL-SCALED TR-WALL-BUDGET !
+            RUN-BUDGET:MACOS-WALL-MS CAL-SCALED TR-WALL-BUDGET !
          then
       endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of
@@ -390,7 +417,7 @@ variable TR-PRE-DIAG-FILE
             117000 TR-CAL-PCT TR-BUDGET-SET!
          then
          TR-WALL-BUDGET-USER @ 0= if
-            128000 TR-CAL-SCALED TR-WALL-BUDGET !
+            128000 CAL-SCALED TR-WALL-BUDGET !
          then
       endof
       TR-PROFILE-LINUX-ARM64-4X2 of
@@ -403,14 +430,14 @@ variable TR-PRE-DIAG-FILE
             0 TR-WALL-BUDGET !
          then
       endof
-      TR-PROFILE-DGX-SPARK-10X2 of
+      PROFILE-DGX-SPARK-10X2 of
          10 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
          TR-BUDGET-USER @ 0= if
             RUN-BUDGET:SPARK-MS TR-CAL-PCT TR-BUDGET-SET!
          then
          TR-WALL-BUDGET-USER @ 0= if
-            RUN-BUDGET:SPARK-WALL-MS TR-CAL-SCALED TR-WALL-BUDGET !
+            RUN-BUDGET:SPARK-WALL-MS CAL-SCALED TR-WALL-BUDGET !
          then
       endof
    endcase ;
@@ -420,14 +447,14 @@ variable TR-PRE-DIAG-FILE
    0 TR-WALL-BUDGET !
    0 TR-BUDGET-USER !
    0 TR-WALL-BUDGET-USER !
-   TR-DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
+   DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
    0 TR-TIMINGS !
    0 TR-COLD-CACHE !
    0 TR-NO-RESULT-CACHE !
    0 TR-RERUN !
    0 TR-GATE-ATTEMPT !
    0 TR-UNDER-ARG-U !
-   TR-DETECT-PROFILE TR-PROFILE-APPLY ;
+   DETECT-PROFILE TR-PROFILE-APPLY ;
 
 \ The UNSCALED cold-cache base per profile (the cold sibling of the warm
 \ per-profile table); TR-COLD-BUDGET-MS scales it by the live calibration.
@@ -436,19 +463,19 @@ variable TR-PRE-DIAG-FILE
       TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-MS endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 175000 endof
       TR-PROFILE-LINUX-ARM64-4X2 of 150000 endof
-      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-MS endof
+      PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-MS endof
       TR-BUDGET-BASE @ swap
    endcase ;
 
 : TR-COLD-BUDGET-MS ( -- n )
-   TR-COLD-BASE TR-CAL-SCALED ;
+   TR-COLD-BASE CAL-SCALED ;
 
 : TR-COLD-WALL-BUDGET-MS ( -- n )
    TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-WALL-MS TR-CAL-SCALED endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 187000 TR-CAL-SCALED endof
+      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-WALL-MS CAL-SCALED endof
+      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 187000 CAL-SCALED endof
       TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
-      TR-PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-WALL-MS TR-CAL-SCALED endof
+      PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-WALL-MS CAL-SCALED endof
       TR-WALL-BUDGET @ swap
    endcase ;
 
@@ -463,7 +490,7 @@ variable TR-PRE-DIAG-FILE
    TR-COLD-BUDGETS ;
 
 : TR-PERF-PROFILE-OPT ( -- )
-   TR-ARG-VALUE$ TR-PROFILE-ID? TR-PROFILE-APPLY
+   TR-ARG-VALUE$ PROFILE-ID? TR-PROFILE-APPLY
    2 TR-ADVANCE ;
 
 : TR-UNDER-ARG! ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -532,15 +559,17 @@ variable TR-PRE-DIAG-FILE
 : TR-WALL-BUDGET? ( -- bool )
    TR-WALL-BUDGET-MS 0 > ;
 
-: TR-PROFILE$ ( -- ptr u8 n )
+public
+: PROFILE$ ( -- ptr u8 n )
    TR-PROFILE-ID @ case
       TR-PROFILE-MACOS-ARM64-10X2 of s" macos-arm64-10x2" endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of s" jetson-orin-clocks-4x2" endof
       TR-PROFILE-LINUX-ARM64-4X2 of s" linux-arm64-4x2" endof
-      TR-PROFILE-DGX-SPARK-10X2 of s" dgx-spark-10x2" endof
+      PROFILE-DGX-SPARK-10X2 of s" dgx-spark-10x2" endof
       s" unknown" rot
    endcase ;
 
+private
 : TR-CACHE-ROOT$ ( -- ptr u8 n )
    TR-COLD-CACHE @ 0 <> if s" scratch" exit then
    s" persistent" ;
@@ -559,14 +588,14 @@ variable TR-PRE-DIAG-FILE
 : TR-CHECK-DGX-SPARK-PROFILE ( -- )
    HB-TARGET-LINUX? 0= if s" dgx-spark-10x2 requires Linux target" TR-PROFILE-FAIL then
    TR-SPARK-DMI$ EXISTS? 0= if s" dgx-spark-10x2 requires NVIDIA DGX Spark DMI" TR-PROFILE-FAIL then
-   TR-SPARK-MODEL? 0= if s" dgx-spark-10x2 requires NVIDIA DGX Spark model" TR-PROFILE-FAIL then ;
+   SPARK-MODEL? 0= if s" dgx-spark-10x2 requires NVIDIA DGX Spark model" TR-PROFILE-FAIL then ;
 
 : TR-CHECK-PROFILE ( -- )
    TR-PROFILE-ID @ case
       TR-PROFILE-MACOS-ARM64-10X2 of TR-CHECK-MACOS-PROFILE endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-CHECK-JETSON-PROFILE endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-CHECK-LINUX-PROFILE endof
-      TR-PROFILE-DGX-SPARK-10X2 of TR-CHECK-DGX-SPARK-PROFILE endof
+      PROFILE-DGX-SPARK-10X2 of TR-CHECK-DGX-SPARK-PROFILE endof
       drop s" unknown perf profile" TR-PROFILE-FAIL
    endcase ;
 
@@ -598,15 +627,17 @@ variable TR-PRE-DIAG-FILE
 : TR-PERSIST? ( -- bool )
    TR-PERSIST-U @ 0 > ;
 
-: TR-PERSIST$ ( -- ptr u8 n )
+public
+: PERSIST$ ( -- ptr u8 n )
    TR-PERSIST? 0= if E-FS-PATH throw then
    TR-PERSIST-BUF TR-PERSIST-U @ ;
 
+private
 : TR-PERSIST-ENSURE ( -- )
-   TR-PERSIST$ MAKE-DIRS ;
+   PERSIST$ MAKE-DIRS ;
 
 : TR-PERF-LINE ( -- )
-   s" perf-profile: " type TR-PROFILE$ type
+   s" perf-profile: " type PROFILE$ type
    s"  cache-root=" type TR-CACHE-ROOT$ type
    s"  pool=" type GT-POOL-LIMIT @ GT-U-TYPE
    s"  nested=" type TR-NESTED-POOL @ GT-U-TYPE
@@ -625,19 +656,21 @@ variable TR-PRE-DIAG-FILE
 defer TR-FINISH ( -- )
 
 : TR-BUILD-CACHE-PATHS ( -- )
-   TR-PERSIST$ s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
-   TR-BUILD-CACHE$ MAKE-DIRS ;
+   PERSIST$ s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
+   BUILD-CACHE$ MAKE-DIRS ;
 
 : TR-BUILD-CACHE-ENV ( -- )
    TR-BUILD-CACHE-PATHS
-   s" HABU_BUILD_CACHE" >LEN TR-BUILD-CACHE$ >LEN PROC-ENV+ ;
+   s" HABU_BUILD_CACHE" >LEN BUILD-CACHE$ >LEN PROC-ENV+ ;
 
 : TR-DEFAULT+ ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n val:ptr valu:n :}
    name nameu >LEN val valu >LEN PROC-ENV-DEFAULT+ ;
 
-: TR-TMP-DEFAULT+ ( -- )
+public
+: TMP-DEFAULT+ ( -- )
    s" HB_TMP" GT-ROOT TR-DEFAULT+ ;
 
+private
 create TR-CAL-PCT-BUF 4 allot
 
 : TR-CAL-PCT-DIGIT! ( n n -- ) {: d:n i:n :}
@@ -676,28 +709,30 @@ create TR-CAL-PCT-BUF 4 allot
 \ Export the load factor to spawned workers so suite budgets
 \ (lib/test/budget.f T-BUDGET-MS) scale with the gate's measured calibration
 \ and its structural pool pressure; forked/in-process suites read the cell
-\ TR-PREPARE sets directly.
-: TR-LOAD-PCT-DEFAULT+ ( -- )
+\ PREPARE sets directly.
+public
+: LOAD-PCT-DEFAULT+ ( -- )
    s" HB_LOAD_PCT" TR-LOAD-PCT-EXPORT TR-PCT$ TR-DEFAULT+ ;
 
-: TR-CAL-PCT-DEFAULT+ ( -- )
+: CAL-PCT-DEFAULT+ ( -- )
    s" HB_CAL_PCT" TR-CAL-PCT TR-PCT$ TR-DEFAULT+ ;
 
-: TR-BUILD-CACHE-DEFAULT+ ( -- )
+: BUILD-CACHE-DEFAULT+ ( -- )
    TR-BUILD-CACHE-PATHS
-   s" HABU_BUILD_CACHE" TR-BUILD-CACHE$ TR-DEFAULT+ ;
+   s" HABU_BUILD_CACHE" BUILD-CACHE$ TR-DEFAULT+ ;
 
-: TR-STATS-DEFAULT+ ( -- )
+: STATS-DEFAULT+ ( -- )
    GS-ON? if s" HABU_GATE_STATS" GS-PATH$ TR-DEFAULT+ then ;
 
+private
 : TR-UNDER-PATHS ( -- )
    GT-ROOT s" hb-under-test" TR-UNDER-BUF JOIN-PATH TR-UNDER-U !
-   TR-UNDER$ EXISTS? if TR-UNDER$ REMOVE-FILE then
+   UNDER$ EXISTS? if UNDER$ REMOVE-FILE then
    0 TR-UNDER-READY !
    0 TR-UNDER-CACHE-HIT ! ;
 
 : TR-UNDER-ENV+ ( -- )
-   s" HABU_UNDER_TEST" >LEN TR-UNDER$ >LEN PROC-ENV+ ;
+   s" HABU_UNDER_TEST" >LEN UNDER$ >LEN PROC-ENV+ ;
 
 : TR-POOL-PASS-SPAN ( ptr u8 n n -- ) {: label:ptr labelu:n ms:n :}
    label labelu ms GS-SPAN-AUTH ;
@@ -705,12 +740,14 @@ create TR-CAL-PCT-BUF 4 allot
 : TR-POOL-TIMEOUT-STAT ( ptr u8 n n n n n -- ) {: label:ptr labelu:n ms:n live:n limit:n waits:n :}
    label labelu ms live limit waits GS-POOL-TIMEOUT ;
 
-: TR-INSTALL-POOL-HOOKS ( -- )
+public
+: INSTALL-POOL-HOOKS ( -- )
    [: TR-POOL-PASS-SPAN ;] is GT-POOL-PASS-HOOK
    [: TR-POOL-TIMEOUT-STAT ;] is GT-POOL-TIMEOUT-HOOK ;
 
-TR-INSTALL-POOL-HOOKS
+INSTALL-POOL-HOOKS
 
+private
 : TR-START ( -- )
    GT-RESET
    CLEANUP-RESET
@@ -724,40 +761,42 @@ TR-INSTALL-POOL-HOOKS
    then
    TR-PERSIST-INIT
    TR-PERSIST-ENSURE
-   TR-PERSIST$ CONTENT-KEY:CACHE-ROOT!
+   PERSIST$ CONTENT-KEY:CACHE-ROOT!
    TRC:RESET
-   TR-PERSIST$ TRC:ROOT!
+   PERSIST$ TRC:ROOT!
    GT-ROOT GS-ROOT!
    TR-UNDER-PATHS ;
 
-: TR-KEPT-ROOT-LINE ( -- )
+public
+: KEPT-ROOT-LINE ( -- )
    s" capture root kept: " type GT-ROOT type cr ;
 
+private
 : TR-FAIL ( ptr u8 n -- ) {: label:ptr labelu:n :}
    s" FAIL: " type label labelu type cr
    GT-POOL-RED# 0 > if
       GT-POOL-RED-REPORT
-      TR-KEPT-ROOT-LINE
+      KEPT-ROOT-LINE
       label labelu 1 die
    then
    GT-CLEANUP
    label labelu 1 die ;
 
 : TR-UNDER-SHA! ( -- )
-   TR-UNDER$ TR-UNDER-HEX SHA256-FILE-HEX 0 <> if
+   UNDER$ TR-UNDER-HEX SHA256-FILE-HEX 0 <> if
       s" failed to hash Habu-under-test" TR-FAIL
    then ;
 
 : TR-UNDER-LINE ( -- )
    TR-UNDER-SHA!
    s" Habu-under-test: " type
-   TR-UNDER$ type
+   UNDER$ type
    s"  sha256=" type
    TR-UNDER-HEX 64 type cr ;
 
 : TR-EXPECT-UNDER ( -- )
-   TR-UNDER$ EXECUTABLE? 0= if
-      s" missing Habu-under-test: " type TR-UNDER$ type cr
+   UNDER$ EXECUTABLE? 0= if
+      s" missing Habu-under-test: " type UNDER$ type cr
       s" Habu-under-test not produced executable" TR-FAIL
    then
    -1 TR-UNDER-READY !
@@ -770,8 +809,8 @@ TR-INSTALL-POOL-HOOKS
 : TR-UNDER-IMPORT ( -- )
    TR-UNDER-ARG? 0= if exit then
    TR-UNDER-ARG$ EXECUTABLE? 0= if s" --under executable missing" TR-FAIL then
-   TR-UNDER-ARG$ TR-UNDER$ COPY-FILE-STREAM
-   TR-UNDER$ CHMOD-X
+   TR-UNDER-ARG$ UNDER$ COPY-FILE-STREAM
+   UNDER$ CHMOD-X
    s" candidate-import" GS-EVENT
    -1 TR-UNDER-READY ! ;
 
@@ -885,8 +924,8 @@ TR-INSTALL-POOL-HOOKS
 
 : TR-UNDER-CACHE-PATHS ( -- )
    TR-UNDER-NAME!
-   TR-PERSIST$ MAKE-DIRS
-   TR-PERSIST$ TR-UNDER-NAME$ TR-UNDER-CACHE-BUF JOIN-PATH TR-UNDER-CACHE-U !
+   PERSIST$ MAKE-DIRS
+   PERSIST$ TR-UNDER-NAME$ TR-UNDER-CACHE-BUF JOIN-PATH TR-UNDER-CACHE-U !
    TR-UNDER-CACHE$ s" .tmp" TR-UNDER-CACHE-TMP-BUF TR-UNDER-CACHE-TMP-U TR-SUFFIX!
    TR-UNDER-CACHE$ s" .lock" TR-UNDER-CACHE-LOCK-BUF TR-UNDER-CACHE-LOCK-U TR-SUFFIX!
    TR-UNDER-CACHE$ s" .stamp" TR-UNDER-CACHE-STAMP-BUF TR-UNDER-CACHE-STAMP-U TR-SUFFIX!
@@ -946,8 +985,8 @@ TR-INSTALL-POOL-HOOKS
    TR-UNDER-CACHE-STAMP-MISSING? if TR-MARK-COLD s" candidate-cache-miss" GS-EVENT exit then
    TR-UNDER-CACHE-STAMP-OK? 0= if TR-UNDER-CACHE-CORRUPT then
    s" candidate-cache-hit" GS-EVENT
-   TR-UNDER-CACHE$ TR-UNDER$ COPY-FILE-STREAM
-   TR-UNDER$ CHMOD-X
+   TR-UNDER-CACHE$ UNDER$ COPY-FILE-STREAM
+   UNDER$ CHMOD-X
    -1 TR-UNDER-CACHE-HIT !
    -1 TR-UNDER-READY ! ;
 
@@ -959,7 +998,7 @@ TR-INSTALL-POOL-HOOKS
       then
    then
    TR-UNDER-CACHE-REMOVE
-   TR-UNDER$ TR-UNDER-CACHE-TMP$ COPY-FILE-STREAM
+   UNDER$ TR-UNDER-CACHE-TMP$ COPY-FILE-STREAM
    TR-UNDER-CACHE-TMP$ CHMOD-X
    TR-UNDER-SHA!
    TR-UNDER-STAMP!
@@ -1133,7 +1172,8 @@ TR-INSTALL-POOL-HOOKS
 : TR-UNSCHEDULED-PHASE ( -- )
    E-TBL-BOUNDS throw ;
 
-: TR-PHASE-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
+public
+: PHASE-LABEL ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N case
       0 of s" unused legacy phase 0" endof
       1 of s" unused legacy phase 1" endof
@@ -1179,6 +1219,7 @@ TR-INSTALL-POOL-HOOKS
       E-TBL-BOUNDS throw
    endcase ;
 
+private
 : TR-PHASE-DIR ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N case
       0 of s" gate-unused-0" endof
@@ -1351,7 +1392,8 @@ TR-INSTALL-POOL-HOOKS
 \ Phases whose fork inherits the parent shared tool base: stdlib slices plus
 \ the dictionary/checker and diagnostics families, whose require lists dedupe
 \ against the base so only their gate-lib deltas load after the fork.
-: TR-SHARED-BASE? ( idx -- bool ) {: idx:idx :}
+public
+: SHARED-BASE? ( idx -- bool ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if TR-TRUE exit then
    idx IDX>N case
       10 of TR-TRUE endof
@@ -1362,6 +1404,7 @@ TR-INSTALL-POOL-HOOKS
       TR-FALSE swap
    endcase ;
 
+private
 : TR-PHASE-POOL-ARGS ( idx -- ) {: idx:idx :}
    idx TR-STDLIB-SLICE? if
       TR-NESTED-POOL @ TR-POOL-ARG+
@@ -1374,7 +1417,8 @@ TR-INSTALL-POOL-HOOKS
 : TR-PHASE-TOOLS-ENV ( idx -- )
    drop ;
 
-: TR-PHASE-UNDER? ( idx -- bool ) {: idx:idx :}
+public
+: PHASE-UNDER? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
       3 of TR-TRUE endof
       14 of TR-TRUE endof
@@ -1383,25 +1427,27 @@ TR-INSTALL-POOL-HOOKS
       TR-FALSE swap
    endcase ;
 
+private
 : TR-PHASE-UNDER-BUILD? ( idx -- bool ) {: idx:idx :}
    idx IDX>N 15 = ;
 
 : TR-PHASE-UNDER-ENV? ( idx -- bool ) {: idx:idx :}
    idx TR-PHASE-UNDER-BUILD? if TR-TRUE exit then
    TR-UNDER-READY @ 0= if TR-FALSE exit then
-   idx TR-PHASE-UNDER? ;
+   idx PHASE-UNDER? ;
 
 : TR-PHASE-UNDER-EXE? ( idx -- bool ) {: idx:idx :}
    TR-UNDER-READY @ 0= if TR-FALSE exit then
-   idx TR-PHASE-UNDER? ;
+   idx PHASE-UNDER? ;
 
-: TR-UNDER-DEFAULT+ ( idx -- ) {: idx:idx :}
-   idx TR-PHASE-UNDER? if
-      s" HABU_UNDER_TEST" TR-UNDER$ TR-DEFAULT+
+public
+: UNDER-DEFAULT+ ( idx -- ) {: idx:idx :}
+   idx PHASE-UNDER? if
+      s" HABU_UNDER_TEST" UNDER$ TR-DEFAULT+
       exit
    then ;
 
-: TR-PHASE-RESIDENT? ( idx -- bool ) {: idx:idx :}
+: PHASE-RESIDENT? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
       0 of TR-FALSE endof
       1 of TR-FALSE endof
@@ -1412,7 +1458,7 @@ TR-INSTALL-POOL-HOOKS
       TR-TRUE swap
    endcase ;
 
-: TR-PHASE-SUBJECT ( idx -- ptr u8 n ) {: idx:idx :}
+: PHASE-SUBJECT ( idx -- ptr u8 n ) {: idx:idx :}
    idx IDX>N case
       0 of s" artifact" endof
       1 of s" artifact" endof
@@ -1426,20 +1472,21 @@ TR-INSTALL-POOL-HOOKS
       s" host-source" rot
    endcase ;
 
-: TR-PHASE-RUNNER-KIND ( idx -- ptr u8 n ) {: idx:idx :}
-   idx TR-PHASE-RESIDENT? if s" resident" exit then
+: PHASE-RUNNER-KIND ( idx -- ptr u8 n ) {: idx:idx :}
+   idx PHASE-RESIDENT? if s" resident" exit then
    idx TR-PHASE-UNDER-EXE? if s" under" exit then
    s" bin" ;
 
-: TR-PHASE-BOUNDARY ( idx -- ptr u8 n ) {: idx:idx :}
-   idx TR-PHASE-RESIDENT? if s" resident-fork" exit then
+: PHASE-BOUNDARY ( idx -- ptr u8 n ) {: idx:idx :}
+   idx PHASE-RESIDENT? if s" resident-fork" exit then
    s" process" ;
 
-: TR-PHASE-SHA ( idx -- ptr u8 n )
+: PHASE-SHA ( idx -- ptr u8 n )
    drop
    TR-UNDER-READY @ 0= if s" -" exit then
    TR-UNDER-HEX 64 ;
 
+private
 : TR-TIMINGS-ARG+ ( -- )
    s" --timings" TR-ARG+ ;
 
@@ -1447,14 +1494,16 @@ TR-INSTALL-POOL-HOOKS
    TR-TIMINGS @ 0= if exit then
    idx TR-STDLIB-SLICE? if TR-TIMINGS-ARG+ exit then ;
 
-: TR-PHASE-TEST ( idx -- ) {: idx:idx :}
-   idx TR-PHASE-LABEL
-   idx TR-PHASE-SUBJECT
-   idx TR-PHASE-RUNNER-KIND
-   idx TR-PHASE-BOUNDARY
-   idx TR-PHASE-SHA
+public
+: PHASE-TEST ( idx -- ) {: idx:idx :}
+   idx PHASE-LABEL
+   idx PHASE-SUBJECT
+   idx PHASE-RUNNER-KIND
+   idx PHASE-BOUNDARY
+   idx PHASE-SHA
    GS-TEST ;
 
+private
 : TR-PHASE-UNDER-ENV ( idx -- ) {: idx:idx :}
    idx TR-PHASE-UNDER-ENV? if
       s" under-env" GS-EVENT
@@ -1462,7 +1511,7 @@ TR-INSTALL-POOL-HOOKS
    then ;
 
 : TR-PHASE-EXE ( idx -- ptr u8 n ) {: idx:idx :}
-   idx TR-PHASE-UNDER-EXE? if TR-UNDER$ exit then
+   idx TR-PHASE-UNDER-EXE? if UNDER$ exit then
    s" bin/hb" ;
 
 : TR-PHASE-ARGV-COLD ( -- )
@@ -1489,16 +1538,18 @@ TR-INSTALL-POOL-HOOKS
    PROC-ENV-INHERIT-MISSING
    TR-PHASE-ARGV-COLD ;
 
-: TR-PHASE-START ( idx -- ) {: idx:idx :}
+public
+: PHASE-START ( idx -- ) {: idx:idx :}
    idx TR-PHASE-BASE
    idx TR-PHASE-ARGS
    idx TR-PHASE-POOL-ARGS
    idx TR-PHASE-TIMINGS-ARGS
    s" top-phase-spawn" GS-EVENT
    idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
-   idx TR-PHASE-TEST
-   idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+   idx PHASE-TEST
+   idx TR-PHASE-EXE idx PHASE-LABEL TIMEOUT-MS GT-POOL-START ;
 
+private
 : TR-PHASE-START-SLOT ( idx idx -- ) {: idx:idx slot:idx :}
    idx TR-PHASE-BASE
    idx TR-PHASE-ARGS
@@ -1506,20 +1557,22 @@ TR-INSTALL-POOL-HOOKS
    idx TR-PHASE-TIMINGS-ARGS
    s" top-phase-spawn" GS-EVENT
    idx TR-PHASE-UNDER-EXE? if s" under-phase-spawn" GS-EVENT then
-   idx TR-PHASE-TEST
-   idx TR-PHASE-EXE idx TR-PHASE-LABEL TR-TIMEOUT-MS slot GT-POOL-START-SLOT ;
+   idx PHASE-TEST
+   idx TR-PHASE-EXE idx PHASE-LABEL TIMEOUT-MS slot GT-POOL-START-SLOT ;
 
 : TR-GROUP-MODE ( idx -- n )
    drop TR-GROUP-PAR ;
 
-: TR-GROUP-SEQ? ( idx -- bool )
+public
+: GROUP-SEQ? ( idx -- bool )
    TR-GROUP-MODE TR-GROUP-SEQ = ;
 
+private
 : TR-UNDER-DONE? ( -- bool )
-   TR-UNDER$ EXECUTABLE? ;
+   UNDER$ EXECUTABLE? ;
 
 : TR-UNDER-MISSING-FAIL ( -- )
-   s" missing Habu-under-test after build pool drained: " type TR-UNDER$ type cr
+   s" missing Habu-under-test after build pool drained: " type UNDER$ type cr
    s" Habu-under-test build artifact missing" TR-FAIL ;
 
 \ Launch the standalone maki candidate suite. Forward-declared here so the
@@ -1527,7 +1580,8 @@ TR-INSTALL-POOL-HOOKS
 \ is defined later in the file.
 defer TR-MAKI-KICK ( -- )
 
-: TR-DRAIN-UNTIL-UNDER ( -- )
+public
+: DRAIN-UNTIL-UNDER ( -- )
    begin TR-UNDER-DONE? 0= while
       GT-POOL-LIVE @ 0= if TR-UNDER-MISSING-FAIL then
       GT-POOL-STEP
@@ -1536,13 +1590,13 @@ defer TR-MAKI-KICK ( -- )
    TR-UNDER-CACHE-INSTALL
    TR-MAKI-KICK ;
 
-: TR-CANDIDATE-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
+: CANDIDATE-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-CANDIDATE-HOST-ORDER + @ >IDX ;
 
-: TR-LATE-ORDER@ ( idx -- idx ) {: idx:idx :}
+: LATE-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-LATE-ORDER + @ >IDX ;
 
-: TR-EARLY-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
+: EARLY-HOST-ORDER@ ( idx -- idx ) {: idx:idx :}
    idx IDX>N cells TR-EARLY-HOST-ORDER + @ >IDX ;
 
 \ Per-phase content-keyed PASS-stamp cache. A phase with a declared file set
@@ -1550,6 +1604,7 @@ defer TR-MAKI-KICK ( -- )
 \ declared files); a stamp hit skips the phase as PASS (cached). Misses are
 \ recorded and stamped only after a fully green run; --cold-cache and
 \ --no-result-cache bypass both sides.
+private
 : TR-RESULT-CACHE-ON? ( -- bool )
    TR-COLD-CACHE @ 0 <> if TR-FALSE exit then
    TR-NO-RESULT-CACHE @ 0 <> if TR-FALSE exit then
@@ -1567,7 +1622,7 @@ defer TR-MAKI-KICK ( -- )
    endcase ;
 
 : TR-RESULT-UNDER-KEY? ( idx -- bool ) {: idx:idx :}
-   idx TR-PHASE-UNDER? 0= if TR-TRUE exit then
+   idx PHASE-UNDER? 0= if TR-TRUE exit then
    TR-UNDER-READY @ 0= if TR-FALSE exit then
    TR-UNDER-SHA!
    TR-UNDER-HEX 64 CONTENT-KEY:TEXT+
@@ -1576,14 +1631,15 @@ defer TR-MAKI-KICK ( -- )
 : TR-RESULT-KEY? ( idx -- bool ) {: idx:idx :}
    CONTENT-KEY:RESET
    s" gate-phase-pass-v1" CONTENT-KEY:TEXT+
-   idx TR-PHASE-LABEL CONTENT-KEY:TEXT+
+   idx PHASE-LABEL CONTENT-KEY:TEXT+
    s" bin/hb" TR-KEY-FILE+
    idx TR-RESULT-UNDER-KEY? 0= if TR-FALSE exit then
    idx TR-RESULT-KEY-FILES? 0= if TR-FALSE exit then
    TR-RESULT-KEY-HEX CONTENT-KEY:FINAL-HEX
    TR-TRUE ;
 
-: TR-RESULT-CACHED? ( idx -- bool ) {: idx:idx :}
+public
+: RESULT-CACHED? ( idx -- bool ) {: idx:idx :}
    TR-RESULT-CACHE-ON? 0= if TR-FALSE exit then
    idx TR-RESULT-KEY? 0= if TR-FALSE exit then
    TR-RESULT-KEY-HEX TRC:HIT? if TR-TRUE exit then
@@ -1591,12 +1647,13 @@ defer TR-MAKI-KICK ( -- )
    idx IDX>N TR-RESULT-KEY-HEX TRC:PENDING+
    TR-FALSE ;
 
-: TR-RESULT-SKIP ( idx -- ) {: idx:idx :}
+: RESULT-SKIP ( idx -- ) {: idx:idx :}
    s" result-cache-hit" GS-EVENT
-   s" PASS (cached): " type idx TR-PHASE-LABEL type cr ;
+   s" PASS (cached): " type idx PHASE-LABEL type cr ;
 
+private
 : TR-RESULT-STAMP-I ( n -- ) {: i:n :}
-   i TRC:PENDING-PHASE >IDX TR-PHASE-LABEL i TRC:PENDING-KEY TRC:STAMP+ ;
+   i TRC:PENDING-PHASE >IDX PHASE-LABEL i TRC:PENDING-KEY TRC:STAMP+ ;
 
 : TR-RESULT-STAMPS ( -- )
    TR-RESULT-CACHE-ON? 0= if exit then
@@ -1620,7 +1677,8 @@ defer TR-MAKI-KICK ( -- )
    0 TR-PRE-DIAG-UNDEF !
    0 TR-PRE-DIAG-FILE ! ;
 
-: TR-PRE? ( idx -- bool ) {: idx:idx :}
+public
+: PRE? ( idx -- bool ) {: idx:idx :}
    idx IDX>N case
       3 of TR-PRE-CHECK @ 0 <> endof
       4 of TR-PRE-TAIL @ 0 <> endof
@@ -1637,7 +1695,7 @@ defer TR-MAKI-KICK ( -- )
       TR-FALSE swap
    endcase ;
 
-: TR-PRE-MARK ( idx -- ) {: idx:idx :}
+: PRE-MARK ( idx -- ) {: idx:idx :}
    idx IDX>N case
       3 of -1 TR-PRE-CHECK ! endof
       4 of -1 TR-PRE-TAIL ! endof
@@ -1650,9 +1708,10 @@ defer TR-MAKI-KICK ( -- )
       21 of -1 TR-PRE-VALIDATE ! endof
    endcase ;
 
+private
 : TR-PRE-START ( idx -- ) {: idx:idx :}
-   idx TR-PHASE-START
-   idx TR-PRE-MARK ;
+   idx PHASE-START
+   idx PRE-MARK ;
 
 : TR-PRE-TOOLS-START ( -- )
    ;
@@ -1665,11 +1724,16 @@ defer TR-MAKI-KICK ( -- )
 \ sub-length and next-offset back to raw cells, keeping the rerun line scanner
 \ byte-identical. Plain checked words over the audited private *>N projections -
 \ not a new boundary.
+;package
+
 package CAD-NUM
 public
 : TR-BL>RAW ( CAD-NUM:byte-len -- n ) BYTE-LEN>N ;
 : TR-BO>RAW ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
 ;package
+
+package TEST-RUN
+private
 
 \ Typed STR:SPLIT-NEXT with the raw-shaped result TR-RERUN-LINES consumes:
 \ convert the length/offset args to roles, then project the sub-length and
@@ -1683,13 +1747,15 @@ public
    ;MATCH ;
 
 \ --rerun-failed: a failing gate run persists its red top-level phases (phase
-\ index plus the exact standalone repro command) under TR-PERSIST$; a later
+\ index plus the exact standalone repro command) under PERSIST$; a later
 \ --rerun-failed run reads that list and schedules only those phases.
 
-: TR-RED-LIST$ ( -- ptr u8 n )
-   TR-PERSIST$ s" gate-red-phases.txt" TR-RED-LIST-PATH-BUF JOIN-PATH TR-RED-LIST-PATH-U !
+public
+: RED-LIST$ ( -- ptr u8 n )
+   PERSIST$ s" gate-red-phases.txt" TR-RED-LIST-PATH-BUF JOIN-PATH TR-RED-LIST-PATH-U !
    TR-RED-LIST-PATH-BUF TR-RED-LIST-PATH-U @ ;
 
+private
 : TR-RED-FILE+ ( ptr u8 n -- ) {: src:ptr srclen:n :}
    src srclen STR:LENGTH  TR-RED-FILE-BUF  TR-RED-FILE-CAP STR:LENGTH  TR-RED-FILE-U  STR:BUF-APPEND ;
 
@@ -1697,7 +1763,7 @@ public
    TR-RED-FILE-BUF  TR-RED-FILE-CAP STR:LENGTH  TR-RED-FILE-U  STR:BUF-APPEND-C ;
 
 \ Rebuild a phase's argv into PROC-ARGV so the persisted repro line matches
-\ what TR-PHASE-START would spawn; env-only temp paths stay out of the argv.
+\ what PHASE-START would spawn; env-only temp paths stay out of the argv.
 : TR-REPRO-BUILD ( idx -- ) {: idx:idx :}
    PROC-ARGV-RESET
    TR-PHASE-ARGV-COLD
@@ -1715,7 +1781,8 @@ public
       1+
    repeat drop ;
 
-: TR-RED-LINE+ ( idx -- ) {: idx:idx :}
+public
+: RED-LINE+ ( idx -- ) {: idx:idx :}
    idx IDX>N TR-NUM$ TR-RED-FILE+
    $9 TR-RED-FILE-C+
    idx TR-PHASE-EXE TR-RED-FILE+
@@ -1724,14 +1791,15 @@ public
    TR-REPRO-ARGS+
    $A TR-RED-FILE-C+ ;
 
-: TR-LABEL>IDX ( ptr u8 n -- idx bool ) {: a:ptr u:n :}
+: LABEL>IDX ( ptr u8 n -- idx bool ) {: a:ptr u:n :}
    0 begin dup TR-PHASES < while
-      dup >IDX TR-PHASE-LABEL a u STR= if >IDX TR-TRUE exit then
+      dup >IDX PHASE-LABEL a u STR= if >IDX TR-TRUE exit then
       1+
    repeat drop 0 >IDX TR-FALSE ;
 
+private
 : TR-RED-PERSIST-ENTRY ( n -- ) {: i:n :}
-   i GT-POOL-RED-LABEL$ TR-LABEL>IDX if TR-RED-LINE+ else drop then ;
+   i GT-POOL-RED-LABEL$ LABEL>IDX if RED-LINE+ else drop then ;
 
 : TR-RED-PERSIST ( -- )
    TR-PERSIST? 0= if exit then
@@ -1740,38 +1808,43 @@ public
       dup TR-RED-PERSIST-ENTRY
       1+
    repeat drop
-   TR-RED-LIST$ TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N WRITE-ALL
-   s" red phase list written: " type TR-RED-LIST$ type cr ;
+   RED-LIST$ TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N WRITE-ALL
+   s" red phase list written: " type RED-LIST$ type cr ;
 
 : TR-RR-SLOT ( idx -- ptr a ) {: idx:idx :}
    idx IDX>N 0 < if E-TBL-BOUNDS throw then
    idx IDX>N TR-PHASES >= if E-TBL-BOUNDS throw then
    idx IDX>N cells TR-RERUN-SET + ;
 
-: TR-RR-MARKED? ( idx -- bool )
+public
+: RR-MARKED? ( idx -- bool )
    TR-RR-SLOT @ 0 <> ;
 
+private
 : TR-RR-MARK ( idx -- )
    -1 swap TR-RR-SLOT ! ;
 
-: TR-RR-CLEAR ( -- )
+public
+: RR-CLEAR ( -- )
    0 begin dup TR-PHASES < while
       0 over >IDX TR-RR-SLOT !
       1+
    repeat drop
    0 TR-RERUN-N ! ;
 
-: TR-RERUN-SKIP? ( idx -- bool ) {: idx:idx :}
+: RERUN-SKIP? ( idx -- bool ) {: idx:idx :}
    TR-RERUN @ 0= if TR-FALSE exit then
-   idx TR-RR-MARKED? 0= ;
+   idx RR-MARKED? 0= ;
 
+private
 : TR-FIELD0$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    0 begin dup u < while
       dup a + c@ $9 = if a swap exit then
       1+
    repeat drop a u ;
 
-: TR-RERUN-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+public
+: RERUN-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0= if exit then
    a u TR-FIELD0$ STR>NUMBER? MATCH option
      none OF exit ENDOF
@@ -1780,32 +1853,35 @@ public
    {: v:n :}
    v 0 < if exit then
    v TR-PHASES >= if exit then
-   v >IDX TR-RR-MARKED? if exit then
+   v >IDX RR-MARKED? if exit then
    v >IDX TR-RR-MARK
    TR-RERUN-N @ 1+ TR-RERUN-N ! ;
 
+private
 : TR-RERUN-LINES ( ptr u8 n -- ) {: a:ptr u:n :}
    0 TR-RERUN-POS !
    begin TR-RERUN-POS @ u <= while
       a u $A TR-RERUN-POS @ TR-SPLIT-NEXT drop {: fa:ptr fu:n next:n :}
-      fa fu TR-RERUN-LINE
+      fa fu RERUN-LINE
       next TR-RERUN-POS !
    repeat ;
 
-: TR-RERUN-LOAD ( -- )
-   TR-RR-CLEAR
-   TR-RED-LIST$ EXISTS? 0= if
-      s" --rerun-failed: no red phase list at " type TR-RED-LIST$ type cr
+public
+: RERUN-LOAD ( -- )
+   RR-CLEAR
+   RED-LIST$ EXISTS? 0= if
+      s" --rerun-failed: no red phase list at " type RED-LIST$ type cr
       s" no red phase list; run the gate first" TR-USAGE-RC die
    then
-   TR-RED-LIST$ TR-RED-FILE-BUF TR-RED-FILE-CAP READ-ALL
+   RED-LIST$ TR-RED-FILE-BUF TR-RED-FILE-CAP READ-ALL
    TR-RED-FILE-BUF swap TR-RERUN-LINES ;
 
+private
 : TR-RERUN-MAYBE-LOAD ( -- )
    TR-RERUN @ 0= if exit then
-   TR-RERUN-LOAD
+   RERUN-LOAD
    s" --rerun-failed: " type TR-RERUN-N @ TR-NUM$ type
-   s"  phase(s) from " type TR-RED-LIST$ type cr ;
+   s"  phase(s) from " type RED-LIST$ type cr ;
 
 \ The maki suite as parallel standalone children against the CANDIDATE engine
 \ (dots habu-route-the-maki-e61d8a1b, habu-gate-must-test-cd70ef4e,
@@ -1815,11 +1891,11 @@ public
 \ cold long pole); it is now split into four parallel slice loaders
 \ (maki/test-<slice>.f) that each sit at the DICT-CAP word wall, so each must run
 \ STANDALONE - never with the gate base libs prepended, which would overflow its
-\ image. Each runs the freshly built candidate (TR-UNDER$) with HABU_UNDER_TEST set,
-\ so they can only start once the candidate is proven ready; TR-DRAIN-UNTIL-UNDER
+\ image. Each runs the freshly built candidate (UNDER$) with HABU_UNDER_TEST set,
+\ so they can only start once the candidate is proven ready; DRAIN-UNTIL-UNDER
 \ kicks them (via TR-MAKI-KICK) at that barrier so their walls overlap the remaining
 \ candidate-work phases. Each holds one top pool slot and a nonzero rc fails the gate
-\ closed through the normal red-phase path (GT-POOL-RED# in TR-COMPLETE).
+\ closed through the normal red-phase path (GT-POOL-RED# in COMPLETE).
 \
 \ Slice metadata, ordered heaviest-first (measured GB10 idle walls: core ~9.2s,
 \ db ~9.0s, eval-emit ~7.7s, eval ~5.8s) so the long slice grabs a pool slot first
@@ -1869,9 +1945,9 @@ public
    s" --load"  >LEN PROC-ARGV+
    i TR-MAKI-SLICE-LOAD  >LEN PROC-ARGV+ ;
 
-\ Candidate sha for stats attribution, mirroring TR-PHASE-SHA: maki now runs the
+\ Candidate sha for stats attribution, mirroring PHASE-SHA: maki now runs the
 \ candidate, so its phase reports the candidate binary hash (populated by the time
-\ TR-DRAIN-UNTIL-UNDER kicks maki, since TR-EXPECT-UNDER ran TR-UNDER-SHA! first).
+\ DRAIN-UNTIL-UNDER kicks maki, since TR-EXPECT-UNDER ran TR-UNDER-SHA! first).
 : TR-MAKI-SHA ( -- ptr u8 n )
    TR-UNDER-READY @ 0= if s" -" exit then
    TR-UNDER-HEX 64 ;
@@ -1891,7 +1967,7 @@ public
    s" top-phase-spawn" GS-EVENT
    s" under-phase-spawn" GS-EVENT
    i TR-MAKI-SLICE-LABEL TR-MAKI-TEST
-   TR-UNDER$ i TR-MAKI-SLICE-LABEL TR-TIMEOUT-MS GT-POOL-START ;
+   UNDER$ i TR-MAKI-SLICE-LABEL TIMEOUT-MS GT-POOL-START ;
 
 : TR-MAKI-START ( -- )
    0 begin dup TR-MAKI-SLICES < while
@@ -1899,23 +1975,24 @@ public
       1+
    repeat drop ;
 
-\ Install the deferred readiness kick (declared before TR-DRAIN-UNTIL-UNDER, which
+\ Install the deferred readiness kick (declared before DRAIN-UNTIL-UNDER, which
 \ launches maki only after the candidate binary is proven ready).
 : TR-MAKI-KICK-INSTALL ( -- )
    [: TR-MAKI-START ;] is TR-MAKI-KICK ;
 TR-MAKI-KICK-INSTALL
 
-: TR-EARLY-EXTERNAL-START ( -- )
+public
+: EARLY-EXTERNAL-START ( -- )
    GT-POOL-RESET
    TR-PRE-TOOLS-START
    TR-PRE-CANDIDATE-START
    TR-UNDER-READY @ 0= if
-      15 >IDX TR-PHASE-START
+      15 >IDX PHASE-START
    else
       s" candidate-build-skip" GS-EVENT
    then ;
 
-: TR-PREPARE ( -- )
+: PREPARE ( -- )
    TR-CALIBRATE
    TR-GATE-START!
    TR-CHECK-ARGS
@@ -1929,17 +2006,17 @@ TR-MAKI-KICK-INSTALL
    TR-UNDER-CACHE-RESTORE
    TR-RERUN-MAYBE-LOAD ;
 
-: TR-RED-COMPLETE ( -- )
+: RED-COMPLETE ( -- )
    TR-RED-PERSIST
    GT-POOL-RED-REPORT
-   TR-KEPT-ROOT-LINE
+   KEPT-ROOT-LINE
    s" native test suite phases failed" 1 die ;
 
 \ ===========================================================================
 \ Robust performance verdict integration (dot habu-integrate-robust-verdict-7f26769e).
 \
 \ ATTEMPT UNIT = the whole gate. TR-GATE-ELAPSED-MS measures the entire run from
-\ TR-GATE-START! (TR-PREPARE, right after pre-calibration) to here; the calibrated
+\ TR-GATE-START! (PREPARE, right after pre-calibration) to here; the calibrated
 \ budget and the HB_TMP/XDG_CACHE_HOME/HABU_BUILD_CACHE roots are all gate-scoped,
 \ and the phases mutate global runner state that cannot be soundly reset in
 \ process. So a fresh-root attempt is a fresh SUBPROCESS of the whole gate
@@ -1949,6 +2026,7 @@ TR-MAKI-KICK-INSTALL
 \ their root is not proven empty. A worker (--gate-attempt N) runs the gate once
 \ and reports one machine line; it never retries, so there is no recursion.
 
+private
 variable TR-POST-CAL-MS
 variable TR-SHA-ACC
 variable TR-SHA-I
@@ -2003,7 +2081,8 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
 \ GT-CLEANUP has already removed GT-ROOT by the time TR-FINISH runs). A nonzero
 \ exit, a signal, a timeout, or unparseable output returns 0, which TR-A-POST
 \ clamps to 1 so the drift gate fails CLOSED (attempt inadmissible).
-: TR-CAL-CHILD-MS? ( -- n )
+public
+: CAL-CHILD-MS? ( -- n )
    TR-CAL-UNTRACE
    PROC-ARGV-RESET
    s" --load" TR-ARG+
@@ -2019,8 +2098,9 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
       timeout OF 2drop 0 ENDOF
    ;MATCH ;
 
+private
 : TR-POST-CAL! ( -- )
-   TR-CAL-CHILD-MS? TR-POST-CAL-MS ! ;
+   CAL-CHILD-MS? TR-POST-CAL-MS ! ;
 
 : TR-A-PRE ( -- n )                          \ pre-calibration spin ms, clamped >=1
    TR-CAL-MEASURED-MS @ dup 1 < if drop 1 then ;
@@ -2052,22 +2132,24 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
    repeat
    TR-SHA-ACC @ $7FFFFFFFFFFFFFFF and ;
 
-: TR-VERDICT-CONTROL? ( -- bool )            \ host admission: a known timed profile ran
+public
+: VERDICT-CONTROL? ( -- bool )            \ host admission: a known timed profile ran
    TR-PROFILE-ID @ case
       TR-PROFILE-MACOS-ARM64-10X2 of TR-TRUE endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-TRUE endof
       TR-PROFILE-LINUX-ARM64-4X2 of TR-TRUE endof
-      TR-PROFILE-DGX-SPARK-10X2 of TR-TRUE endof
+      PROFILE-DGX-SPARK-10X2 of TR-TRUE endof
       TR-FALSE swap
    endcase ;
 
 \ The seven shared measurement fields. Correctness is TRUE by construction:
-\ TR-COMPLETE runs the red-phase gate (GT-POOL-RED#) and dies with the existing
+\ COMPLETE runs the red-phase gate (GT-POOL-RED#) and dies with the existing
 \ RUN_EXIT code BEFORE the verdict, so correctness gates admission and its exit
 \ codes are unchanged; performance is a SEPARATE field decided here.
+private
 : TR-A-CORE ( -- n n n n n bool bool )       \ elapsed budget pre post sha correct control
    TR-GATE-ELAPSED-MS TR-BUDGET-MS TR-A-PRE TR-A-POST TR-UNDER-SHA-CELL
-   TR-TRUE TR-VERDICT-CONTROL? ;
+   TR-TRUE VERDICT-CONTROL? ;
 
 : TR-VERDICT-FIELDS ( -- n n n n n bool bool bool )   \ + cache (worker machine line)
    TR-A-CORE GS-ATTEMPT-CACHE-OK? ;
@@ -2130,7 +2212,7 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
    n TR-NUM$ TR-ARG+
    s" --cold-cache" TR-ARG+
    s" --perf-profile" TR-ARG+
-   TR-PROFILE$ TR-ARG+ ;
+   PROFILE$ TR-ARG+ ;
 
 : TR-VA-OPEN-OUT ( -- n )                    \ raw write fd for the child's stdout file
    TR-VA-OUT$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open
@@ -2186,10 +2268,39 @@ create TR-CAL-ERR-BUF TR-CAL-CAP allot
 
 TR-VERDICT-INSTALL
 
-: TR-COMPLETE ( -- )
+public
+: COMPLETE ( -- )
    GS-SUMMARY
-   GT-POOL-RED# 0 > if TR-RED-COMPLETE then
+   GT-POOL-RED# 0 > if RED-COMPLETE then
    GS-LABEL-DUP-GUARD
    TR-RESULT-STAMPS
    GT-CLEANUP
    TR-FINISH ;
+
+\ ---- capability-shaped access to runner state ------------------------------
+\ The cells behind these stay private. A caller asks the runner a question or
+\ tells it to do one thing; it never reaches into a variable, so the runner can
+\ change how it stores any of this without a caller noticing. These replace the
+\ twelve raw variable and buffer names that used to be read and written from
+\ outside the file.
+public
+
+: NESTED-POOL ( -- n )        TR-NESTED-POOL @ ;
+: NESTED-POOL! ( n -- )       TR-NESTED-POOL ! ;
+: TIMINGS? ( -- bool )        TR-TIMINGS @ 0 <> ;
+: UNDER-READY? ( -- bool )    TR-UNDER-READY @ 0 <> ;
+: PRE-REPAIR? ( -- bool )     TR-PRE-REPAIR @ 0 <> ;
+: PROFILE ( -- n )            TR-PROFILE-ID @ ;
+: PROFILE! ( n -- )           TR-PROFILE-ID ! ;
+: RESIDENT ( -- n )           TR-RESIDENT-ID @ ;
+: RESIDENT! ( n -- )          TR-RESIDENT-ID ! ;
+: RERUN! ( n -- )             TR-RERUN ! ;
+: RERUN-N ( -- n )            TR-RERUN-N @ ;
+: RED-FILE$ ( -- ptr u8 n )   TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N ;
+: RED-FILE-RESET ( -- )       TR-RED-FILE-U STR:BUF-RESET ;
+
+: PERSIST! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a TR-PERSIST-BUF u BYTE-COPY
+   u TR-PERSIST-U ! ;
+
+;package

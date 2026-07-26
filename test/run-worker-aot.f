@@ -21,18 +21,18 @@ require test/gate-build-common.f
 require test/gate-build-hbb.f
 require test/gate-aot-positive-lib.f
 
-TRW-LOAD-DONE
+TEST-RUN:TRW-LOAD-DONE
 
 package AOT-POS-WORKER
 
 : SETUP ( -- )
-   TR-BUILD-CACHE$ BUILD-CACHE:ROOT! ;
+   TEST-RUN:BUILD-CACHE$ BUILD-CACHE:ROOT! ;
 
 public
 
 : RUN ( -- )
    SETUP
-   TR-RESIDENT-ID @ case
+   TEST-RUN:RESIDENT case
       7 of AOT-POSITIVE:RUN endof
       E-TBL-BOUNDS throw
    endcase ;

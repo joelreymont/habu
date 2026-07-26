@@ -24,12 +24,12 @@ require tools/check-core.f
 require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 
-TRW-LOAD-DONE
+TEST-RUN:TRW-LOAD-DONE
 
 package TEST-RUN
 
 : DIAG ( -- )
-   TR-RESIDENT-ID @ case
+   TEST-RUN:RESIDENT case
       10 of GATE-DIAGNOSTICS:REPAIR endof
       11 of GATE-DIAGNOSTICS:UNDEFINED-PRIMARY endof
       13 of GATE-DIAGNOSTICS:FILE-UNSAFE endof

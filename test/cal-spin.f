@@ -2,7 +2,7 @@
 \
 \ Prints the wall-clock milliseconds of ONE run of the gate's fixed calibration
 \ spin (test/cal-spin-lib.f CAL-SPIN:MS) in a freshly spawned process, then
-\ exits. test/run-lib.f TR-CAL-CHILD-MS? spawns this and parses the number.
+\ exits. test/run-lib.f TEST-RUN:CAL-CHILD-MS? spawns this and parses the number.
 \ The measurement itself lives in test/cal-spin-lib.f because the quiescent
 \ ratchet phase (test/json-read-perf-phase.f) brackets its own run with the same
 \ spin and the shared drift tolerance requires the same number.
@@ -22,7 +22,7 @@
 \ the driver's full (unpinned) affinity mask and is placed by the scheduler on a
 \ performance core from its first instruction, so its spin reads 87ms and matches
 \ the pre-cal placement on every host. See test/run-lib.f TR-POST-CAL! /
-\ TR-CAL-CHILD-MS? and skills/habu-host-profiles/SKILL.md.
+\ TEST-RUN:CAL-CHILD-MS? and skills/habu-host-profiles/SKILL.md.
 
 require test/cal-spin-lib.f
 require lib/fmt.f

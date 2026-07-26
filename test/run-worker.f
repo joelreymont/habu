@@ -1,7 +1,10 @@
 \ run-worker.f - phase-owned resident worker dispatcher.
 \
-\ Loaded inside a forked worker after test/run-resident.f stores TR-RESIDENT-ID.
+\ Loaded inside a forked worker after test/run-resident.f stores the resident phase id.
 
+
+package TEST-RUN
+private
 variable TRW-LOAD-START-NS
 variable TRW-PATH-A
 variable TRW-PATH-U
@@ -15,15 +18,17 @@ variable TRW-PATH-U
 : TRW-LOAD-MS ( -- n )
    mono-ns TRW-LOAD-START-NS @ - PROC-NS-PER-MS / ;
 
+public
 : TRW-LOAD-DONE ( -- )
    TRW-PATH$ TRW-LOAD-MS GS-SPAN-LOAD ;
 
+public
 : TRW-CHILD-TEST ( ptr u8 n idx -- ) {: label:ptr labelu:n idx:idx :}
    label labelu
-   idx TR-PHASE-SUBJECT
-   idx TR-PHASE-RUNNER-KIND
-   idx TR-PHASE-BOUNDARY
-   idx TR-PHASE-SHA
+   idx PHASE-SUBJECT
+   idx PHASE-RUNNER-KIND
+   idx PHASE-BOUNDARY
+   idx PHASE-SHA
    GS-TEST ;
 
 : TRW-LOAD ( ptr u8 n -- )
@@ -34,7 +39,7 @@ variable TRW-PATH-U
    path pathu included ;
 
 : TRW-RUN ( -- )
-   TR-RESIDENT-ID @ case
+   RESIDENT case
       2 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       3 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       5 of s" test/run-worker-engine.f" TRW-LOAD endof
@@ -72,4 +77,8 @@ variable TRW-PATH-U
       E-TBL-BOUNDS throw
    endcase ;
 
-TRW-RUN
+\ The phase body is included at load time, so it must run at top-level
+\ scope: a package is still open here and an include cannot open another.
+' TRW-RUN
+;package
+execute

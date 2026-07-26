@@ -18,7 +18,7 @@
 \ cores at ~132ms) WHERE the measuring process is scheduled decides what it
 \ reads. test/cal-spin.f exists so the gate driver measures from a freshly
 \ spawned CPU-bound child instead of from its own migrated core. See
-\ test/cal-spin.f and test/run-lib.f TR-CAL-CHILD-MS?.
+\ test/cal-spin.f and test/run-lib.f TEST-RUN:CAL-CHILD-MS?.
 
 require lib/test/budget.f
 

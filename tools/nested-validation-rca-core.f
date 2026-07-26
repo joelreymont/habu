@@ -184,9 +184,9 @@ defer VALIDATION ( -- )
 
 : RESIDENT-WORKER ( -- )
    s" resident-enter" STEP
-   TR-DEFAULT-NESTED-POOL-SLOTS GT-POOL-SLOTS!
+   TEST-RUN:DEFAULT-NESTED-POOL-SLOTS GT-POOL-SLOTS!
    GT-POOL-RESET
-   s" native engine candidate validation slice" TR-TIMEOUT-MS
+   s" native engine candidate validation slice" TEST-RUN:TIMEOUT-MS
       [: VALIDATION-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    s" resident-leave" STEP ;
@@ -199,7 +199,7 @@ defer VALIDATION ( -- )
    1 GT-POOL-SLOTS!
    GT-POOL-RESET
    s" root-enter" STEP
-   s" native engine post-candidate group" TR-TIMEOUT-MS
+   s" native engine post-candidate group" TEST-RUN:TIMEOUT-MS
       [: RESIDENT-WORKER ;] GT-POOL-START-FORK
    GT-POOL-DRAIN
    s" root-leave" STEP

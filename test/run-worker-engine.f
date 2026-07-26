@@ -7,22 +7,25 @@ require tools/build-fixpoint.f
 require test/gate-common-lib.f
 require test/gate-engine-lib.f
 
+package TEST-RUN
+private
+
 TRW-LOAD-DONE
 
 variable TRWE-FORK-ID
 
 : TRWE-UNDER! ( -- )
-   TR-UNDER-READY @ 0= if exit then
-   TR-RESIDENT-ID @ >IDX TR-PHASE-UNDER? if
-      TR-UNDER$ GE-HB!
-      TR-UNDER$ GE-CANDIDATE-PATH!
+   UNDER-READY? 0= if exit then
+   RESIDENT >IDX PHASE-UNDER? if
+      UNDER$ GE-HB!
+      UNDER$ GE-CANDIDATE-PATH!
       exit
    then
    0 GE-HB-U !
    0 GE-CAND-U ! ;
 
 : TRWE-RUN-ID ( idx -- ) {: idx:idx :}
-   idx IDX>N TR-RESIDENT-ID !
+   idx IDX>N RESIDENT!
    TRWE-UNDER!
    idx IDX>N case
       5 of GENG-REPAIR-SLICE endof
@@ -47,18 +50,19 @@ variable TRWE-FORK-ID
 : TRWE-START-FORK ( idx -- ) {: idx:idx :}
    idx IDX>N TRWE-FORK-ID !
    idx TRWE-CHILD-LABEL idx TRW-CHILD-TEST
-   idx TRWE-CHILD-LABEL TR-TIMEOUT-MS [: TRWE-FORK-RUN ;] GT-POOL-START-FORK ;
+   idx TRWE-CHILD-LABEL TIMEOUT-MS [: TRWE-FORK-RUN ;] GT-POOL-START-FORK ;
 
+public
 : TRWE-POST-CANDIDATE ( -- )
    GT-POOL-RESET
-   TR-PRE-REPAIR @ 0= if 5 >IDX TRWE-START-FORK then
+   PRE-REPAIR? 0= if 5 >IDX TRWE-START-FORK then
    9 >IDX TRWE-START-FORK
    16 >IDX TRWE-START-FORK
    21 >IDX TRWE-START-FORK
    GT-POOL-DRAIN ;
 
 : TRWE-RUN ( -- )
-   TR-RESIDENT-ID @ case
+   RESIDENT case
       9 of TRWE-POST-CANDIDATE endof
       5 of 5 >IDX TRWE-RUN-ID endof
       16 of 16 >IDX TRWE-RUN-ID endof
@@ -66,4 +70,8 @@ variable TRWE-FORK-ID
       E-TBL-BOUNDS throw
    endcase ;
 
-TRWE-RUN
+\ The phase body is included at load time, so it must run at top-level
+\ scope: a package is still open here and an include cannot open another.
+' TRWE-RUN
+;package
+execute

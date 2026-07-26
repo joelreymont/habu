@@ -54,7 +54,7 @@ private
 \ known nonzero number and two different spin readings must produce two
 \ different budgets.
 : PROFILE-PIN! ( -- )
-   TR-PROFILE-DGX-SPARK-10X2 TR-PROFILE-ID ! ;
+   TEST-RUN:PROFILE-DGX-SPARK-10X2 TEST-RUN:PROFILE! ;
 
 1000 constant PROBE-BASE              \ a round base, so the factor reads straight off the budget
 
@@ -177,7 +177,7 @@ variable SCRIPT-I
 \ worthless. Pure, so it needs no measurement.
 : CASE-SATURATION ( -- )
    PROFILE-PIN!
-   TR-CAL-REF-MS {: ref:n :}
+   TEST-RUN:CAL-REF-MS {: ref:n :}
    s" an idle bracket is admissible" T-LABEL
    ref ref ADMISSIBLE? TTRUE
    s" a stable bracket on a box past the compensation clamp is refused" T-LABEL
@@ -269,7 +269,7 @@ variable LOAD-FIX-U
 \ again, and both readings collapse to the same number and this worker dies.
 : BUDGET-WORKER ( -- )
    PROFILE-PIN!
-   TR-CAL-REF-MS {: ref:n :}          \ the committed performance-core spin time
+   TEST-RUN:CAL-REF-MS {: ref:n :}          \ the committed performance-core spin time
    SCRIPT-INSTALL!
    ref  ref  ref 2 *  ref 2 *  SCRIPT!
    ATTEMPT drop                       \ bracket one: the box is at the reference speed

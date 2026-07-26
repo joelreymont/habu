@@ -25,14 +25,14 @@ require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 require test/gate-diagnostics-all-strict-lib.f
 
-TRW-LOAD-DONE
+TEST-RUN:TRW-LOAD-DONE
 
 package TEST-RUN
 
 variable FORK-ID
 
 : RUN-ID ( idx -- ) {: idx:idx :}
-   idx IDX>N TR-RESIDENT-ID !
+   idx IDX>N TEST-RUN:RESIDENT!
    idx IDX>N case
       10 of GATE-DIAGNOSTICS:REPAIR endof
       11 of GATE-DIAGNOSTICS:UNDEFINED-PRIMARY endof
@@ -55,8 +55,8 @@ variable FORK-ID
 
 : START-FORK ( idx -- ) {: idx:idx :}
    idx IDX>N FORK-ID !
-   idx CHILD-LABEL idx TRW-CHILD-TEST
-   idx CHILD-LABEL TR-TIMEOUT-MS [: FORK-RUN ;] GT-POOL-START-FORK ;
+   idx CHILD-LABEL idx TEST-RUN:TRW-CHILD-TEST
+   idx CHILD-LABEL TEST-RUN:TIMEOUT-MS [: FORK-RUN ;] GT-POOL-START-FORK ;
 
 : DIAG-ALL ( -- )
    GT-POOL-RESET

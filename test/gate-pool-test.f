@@ -26,6 +26,9 @@ public
 : GPT-IX>RAW ( CAD-NUM:index -- n ) INDEX>N ;
 ;package
 
+package GATE-POOL-TEST
+private
+
 $20000 constant GPT-CAP
 $2710 constant GPT-TIMEOUT-MS
 250 constant GPT-HANG-TIMEOUT-MS
@@ -180,6 +183,8 @@ variable GPT-KR-LOG-U
    repeat drop
    GPT-COUNT-N @ ;
 
+;package
+
 package GATE-POOL-TEST
 
 variable ROW-I
@@ -215,6 +220,9 @@ public
    GPT-COUNT-N @ ;
 
 ;package
+
+package GATE-POOL-TEST
+private
 
 : GPT-EXPECT-TRUNC-OUT ( n -- ) {: outu:n :}
    GPT-OUT outu s" gate-pool failing worker" CONTAINS? TTRUE
@@ -382,7 +390,7 @@ variable GPT-GEN-SAVE-U
    GPT-GEN-SAVE GPT-GEN-SAVE-U @ GS-GEN! ;
 
 \ The genuine label-collision mis-fire this dot prevents: a fork child that is
-\ ITSELF a nested pool parent (the TRWE-POST-CANDIDATE shape) emits its nested
+\ ITSELF a nested pool parent (the TEST-RUN:TRWE-POST-CANDIDATE shape) emits its nested
 \ slot's authoritative pass-hook span through the same GS-SPAN entry its own
 \ self-suppression watches. When the nested slot's label bytes equal the
 \ child's own slot label, byte-matching suppression swallows an authoritative
@@ -506,8 +514,8 @@ variable GPT-SG-PATH-U
    GPT-ROOT-RESTORE ;
 
 \ Child driver for the kept-root e2e: reproduce the real red-gate completion so
-\ TR-COMPLETE routes a red phase to TR-RED-COMPLETE, which prints the red list
-\ plus TR-KEPT-ROOT-LINE and dies without GT-CLEANUP, leaving the capture root
+\ TEST-RUN:COMPLETE routes a red phase to TEST-RUN:RED-COMPLETE, which prints the red list
+\ plus TEST-RUN:KEPT-ROOT-LINE and dies without GT-CLEANUP, leaving the capture root
 \ (and its pool-*-out.log files) on disk for the parent to inspect.
 : GPT-KEPT-ROOT-CHILD ( -- )
    s" gpt-kept-root" GT-START
@@ -517,7 +525,7 @@ variable GPT-SG-PATH-U
    GT-POOL-RED-RESET
    s" kept-root worker" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT
-   TR-COMPLETE ;
+   TEST-RUN:COMPLETE ;
 
 : GPT-KR-MARK$ ( -- ptr u8 n )
    s" capture root kept: " ;
@@ -713,4 +721,8 @@ variable GPT-GK-SENTINEL-U
    T-REPORT
    s" gate-pool-test: ok" type cr ;
 
-GATE-POOL-TEST-MAIN
+\ The battery runs at load time, so it is dispatched from top-level scope:
+\ a package is still open above this line.
+' GATE-POOL-TEST-MAIN
+;package
+execute

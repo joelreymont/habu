@@ -1,7 +1,7 @@
 \ run-shared-stdlib.f - parent-loaded shared setup for forked workers.
 \
 \ Loads the stdlib tool base once; stdlib slices plus the dictionary and
-\ diagnostics families (TR-SHARED-BASE?) fork after this setup and inherit
+\ diagnostics families (TEST-RUN:SHARED-BASE?) fork after this setup and inherit
 \ it copy-on-write, so their require lists load only the gate-lib deltas.
 \ Do not widen this base with family gate libs: the parent load is serial
 \ on the critical path of every post-setup fork (measured 7952ms -> 16825ms
