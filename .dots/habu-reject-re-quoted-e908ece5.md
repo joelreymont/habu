@@ -1,0 +1,9 @@
+---
+title: Reject re-quoted dot frontmatter
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-07-26T09:44:10.432939+02:00"
+---
+
+Problem: every rewrite of an existing dot file by the external dot CLI (a compiled binary at ~/.local/bin/dot, source outside this repo) adds a quoting layer to quoted frontmatter scalars: created-at: "2026-07-22T..." becomes "\"2026-07-22T...\"" after one rewrite and gains another layer on the next. Evidence: the 2026-07-26 metadata-wave closure diff on habu-consume-registry-events-efe7fe5e.md (one layer added) and habu-enum-generate-named-1f3261a3.md (now two layers). The serializer re-quotes the raw stored string instead of round-tripping the parsed value, so tracker metadata corrupts cumulatively with every claim edit, reopen, or closure. Invariant: parse-then-serialize of a dot file is byte-stable for unchanged fields, and the repo gate refuses trees where it is not. Exact behavior, repo side (the binary fix is upstream and must be reported to the dot CLI owner): tools/dot-dep-lint.f gains a finding for any frontmatter scalar whose value begins with a backslash-escaped quote (an over-quoted layer), so the gate fails closed before the corruption spreads; a checked Habu repair tool normalizes every affected field across .dots/ to exactly one canonical quoting layer. Acceptance: a fixture dot with a double-quoted created-at fails dot-dep-lint with the new finding; the repair pass brings the whole tree to 0 findings and a second repair run is a byte-identical no-op; hostile fixtures include an escaped quote legitimately inside a title string, which must NOT be flagged. Files: tools/dot-dep-lint.f and its test, the repair tool under tools/. Verify: dot-dep-lint suite plus a full-tree run. Depends: none. Ownership: tracker frontmatter integrity only.

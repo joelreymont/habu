@@ -1,0 +1,9 @@
+---
+title: Reject archived dots in the gate
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-07-26T09:51:48.847924+02:00"
+---
+
+Problem: the external dot CLI's closure command moved two closed dots into .dots/archive/ on 2026-07-26 (habu-pass-constructor-family-b9402f5b and the habu-own-product-field-86660116 directory), while the repo's canonical closure form is closed-in-place - 302 existing closed dots live at their original paths, and the trusted-inventory owner resolver plus dot blocker references resolve dots by their in-place ids only. The divergence surfaced as a master-gate red: five TRUSTED.md rows in test/type-ctor-suite.f cite b9402f5b as owner, and the archive move made the owner unresolvable (lint-tools/trusted-inventory strict: 1 invalid owner). The wave repaired it by restoring both dots in place. Invariant: a dot referenced anywhere (trust row owner, blocker, claim) resolves at its canonical .dots/ path for as long as the reference exists; the gate refuses trees where the archive form reappears. Exact behavior: tools/dot-dep-lint.f gains a finding for any file under .dots/archive/ (or any dot file whose id is referenced but not resolvable in place), so the next CLI archive trips the tracker gate directly instead of a distant trust-ratchet red. Report the CLI behavior upstream alongside the frontmatter re-quoting defect tracked by habu-reject-re-quoted-e908ece5. Acceptance: a fixture tree with one dot under .dots/archive/ fails dot-dep-lint with the new finding naming the path; the current tree passes with 0 findings; a hostile fixture with the word archive inside a dot title or body is NOT flagged. Files: tools/dot-dep-lint.f (or its core), its test. Verify: dot-dep-lint suite plus a full-tree run. Depends: none. Ownership: tracker location integrity only.

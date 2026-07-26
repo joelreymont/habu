@@ -1,14 +1,15 @@
 ---
 title: "ENUM: generate named constructors"
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-13T17:14:05.104373+02:00\""
+created-at: "\"\\\"2026-07-13T17:14:05.104373+02:00\\\"\""
+closed-at: "2026-07-26T08:59:10.768176+02:00"
+close-reason: "Outcome landed, mechanism amended in the dot text: constructor generation became the fifth sealed participant (ORDER 820) in the generated-declaration transaction, armed by ED-CLOSE, publishing through the committed payload provider. Landed across aedcff552503 (participant), 3979b8fad73f (explicit family), 8146e7b4faf1 (committed provider), and 32182617b6e8 (;ENUM through the unified front end); all ancestors of master@origin. All-or-nothing publication and residue-free rollback hold via the dictionary savepoint preceding all commits; suites cover nullary, payload, duplicate-name, injected mid-set failure, rollback, snapshot, and AOT."
 blocks:
   - habu-enum-parse-full-39c0dc1b
   - habu-checker-type-enum-9569edb6
   - habu-fields-expose-provisional-96533716
-  - habu-pass-constructor-family-b9402f5b
 ---
 
 Own ENUM constructor generation and focused constructor tests after the checker,
@@ -32,3 +33,15 @@ Claim: RELEASED 2026-07-21. The `enumnamed` workspace is preserved as evidence,
 but its direct-generator implementation is obsolete and must never merge: it
 was not wired into `;ENUM`, checked only the first constructor, and could leave
 a partially published set.
+
+Amended at closure (2026-07-26): the outcome landed, with one mechanism
+deviation from this text. The 2026-07-25 constructor re-freeze replaced
+"generate in the declaration body from live field provenance" with a FIFTH
+sealed participant in the generated-declaration transaction (ORDER 820): the
+front end's ;ENUM path arms it via ED-CLOSE, its COMMIT renders, evaluates,
+and publishes constructors through the landed committed payload provider, and
+the dictionary savepoint preceding all commits gives the demanded
+all-or-nothing publication and residue-free rollback. The
+habu-fields-expose-provisional-96533716 blocker listed above was superseded by
+that ruling (certification reads committed rows; no live provider is needed)
+and did not land as a prerequisite.

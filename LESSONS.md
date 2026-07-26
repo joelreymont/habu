@@ -2435,3 +2435,40 @@ fits.
   every occurrence of the construct, resolve roots by the same path as interior
   references, and report an unrecognised or absent target rather than passing
   over it.
+- **Launch every gate and worker `bin/hb` with stdin redirected from /dev/null;
+  an inherited terminal or pipe is an undefined input, not a neutral one.** The
+  week of "box contention" gate reds was one mechanism: a bare-argv `bin/hb`
+  reads stdin to end-of-file before running its script, capture spawns passed
+  descriptor -1 so children inherited the orchestrator's never-ending
+  background pipe, and every bare-hb capture child blocked until its deadline.
+  The red set equalled the bare-hb spawner set exactly; `--load` spawners were
+  immune; the HB_TMP-length and contention hypotheses died under experiment.
+  Two corollaries: a retry that "passes" proves the launch path changed, not
+  the tree; and attributing reds to environment noise without isolating the
+  spawner class is how a real seam hides for a week.
+- **A checkpoint stop that forces a redesign is the system working, not
+  overhead - three stops in one wave each caught a wrong premise before code
+  was built on it.** The shared MODEL enums stopped on a package-name
+  collision with the CAD typestate stage (resolved by renaming the stage
+  package to CADMODEL, not by bending the new owner); the global-ENUM cutover
+  stopped on multi-error loads, exposing that reject-swallowing lived in the
+  legacy definer and had to be inherited deliberately by the front-end GUARD
+  with per-front-end resynchronization; the safetensors S4 seam stopped on the
+  discovery that its base surface had never landed on master, flipping the
+  order to re-derive the core first. In each case the cheap pre-edit
+  checkpoint (green baseline, one real failing check) surfaced an unplanned
+  interface or a false ancestry assumption; the redesign cost minutes, and
+  building on the wrong premise would have cost the lane.
+- **A buffer that cannot represent its input must raise - truncation is a
+  value heuristic, and it now belongs on the review-gate checklist.** The
+  replay-registration work ratified the rule for BODY-APPEND and every buffer
+  builder: raising on overflow keeps the failure at the boundary that
+  understands it, while silent truncation converts an input problem into a
+  downstream mystery. Reviewers should treat "fits so far" buffers like magic
+  ranges and lucky sentinels: if the structural fix (raise, or size from the
+  input) is possible, a truncating build is a patch and goes back to the lane.
+- **Gate verification and push are always two separate tool calls.** A
+  bookmark-set-and-push chained in the same pipeline as the gate run fired the
+  push before the gate return code was read; the outcome happened to be safe,
+  but the ordering was luck. The push command may only be issued after the
+  gate verdict has been read from a completed, separate invocation.

@@ -1,9 +1,11 @@
 ---
 title: Type field-owner checker surface
-status: open
+status: closed
 priority: 1
 issue-type: task
-created-at: "2026-07-23T06:29:36.031905+02:00"
+created-at: "\"2026-07-23T06:29:36.031905+02:00\""
+closed-at: "2026-07-26T08:59:47.646992+02:00"
+close-reason: "Implemented, reviewed, merged: landed atomically with the runtime owner in 91b1bbd5be7d (Own product-field lifecycle in TYPE-FIELD-OWNER), an ancestor of master@origin. Checker PPRIM rows for OPEN, ADD, PREPARE, COMMIT, FINALIZE, ROLLBACK, and TX-SCHEMA-FOR live at src/core/checker.f around lines 5011-5022 with the dot cited in the comment; DECL-EVENT calls the owner through ordinary checked qualified calls; the DEV-FLD trusted shims are gone and the retired PF lifecycle names reject."
 blocks:
   - habu-consume-registry-events-efe7fe5e
 ---
@@ -44,5 +46,7 @@ Smallest real check: production CHECK-CANDIDATE! over the qualified API and all
 seven retired names.
 Depends: habu-consume-registry-events-efe7fe5e.
 Ownership: static TYPE-FIELD-OWNER API model and retired PF rejection only.
-Claim: unassigned; implement atomically in the field-owner workspace after the
-registry-event package lint dependency lands.
+Claim: agent=claude-solo workspace=.jj-ws/habu-own-product-field-86660116.
+Recorded retroactively at closure; implemented atomically with
+habu-own-product-field-86660116 in the field-owner workspace as this text
+required, during the solo-orchestrator shift.
