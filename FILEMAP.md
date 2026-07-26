@@ -1540,6 +1540,29 @@ points stay listed.
   typed EQ identity per family, and all 20 ordered cross-family swaps as
   checker rejects even though the runtime tags coincide, each beside its
   certifying positive control.
+- `maki/infer/model-config.f` — the validated model configuration value
+  (package MDLCFG, rev-4 correction 2; the schema half of the normalized-pack
+  contract — no second normalized-config authority). STRUCTURE `mcfg` =
+  explicit schema-version + the common behavioral fields (MAKI:dtype, nctx,
+  nvocab, nlayer, nembd, nhead, tied flag, bos/eos) + payload ENUM `arch` =
+  gpt2(ln-eps, attn-scale) | llama(nkvhead, ffn-dim, rope-theta, rms-eps) + an
+  embedded four-cell `cfgkey` (32-byte CONTENT-KEY digest over schema-version,
+  every common field, and the canonical arch serialization, in declared order)
+  + a private-mint proof token, so a raw n cannot forge an mcfg. The sole
+  constructor `BUILD` validates every field class with checked arithmetic
+  (extents with overflow-checked composed products, head-dim divisibility,
+  token range, llama GQA divisibility, positive epsilons, the gpt2 census
+  bound) BEFORE the key mints as its final act. The four semantic MODEL values
+  are DERIVED from the arch arm (FAMILY@/POSITION@/NORM@/ACT@), never stored.
+  Public: per-field accessors, ARCH@, CFGKEY@, CFGKEY=. Owns -5640..-5649.
+- `maki/infer/model-config-test.f` — MDLCFG acceptance: both arms construct
+  (llama from day one) with every accessor and derived semantic checked;
+  cfgkey sensitivity (byte-identical equal; each single behavioral field flip
+  — schema-version, dtype, geometry, flag, tokens, each arm payload field, and
+  the arm itself — flips the key); every constructor rejection class as its
+  named throw; and checker negatives (raw n in the proof slot, unresolvable
+  private mint, GQA-shaped field on the gpt2 arm by construction, raw cells as
+  a cfgkey, MODEL family value in the dtype slot).
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer

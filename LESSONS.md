@@ -432,6 +432,12 @@ fits.
 
 ## Types, ADTs & Signatures
 
+- **A zero-field STRUCTURE cannot be a product FIELD — the declaration
+  fail-closes (`invalid field layout metadata`, throw 7127).** Nested
+  payload-ENUM and multi-field STRUCTURE fields both work; an embedded proof
+  token therefore stays an arity-0 `TYPEFAMILY` plus a private `TRUSTED:` mint
+  (the ART:built / promotion shape) even under the unified-STRUCTURE
+  convention (probed 2026-07-26 while building MDLCFG:mcfg).
 - **Type-family tail reuse needs lexical tiers, not a declaration ban.** Family
   identity is already the exact `(package, tail)` registry key, so resolution
   must preserve that structure: the open package's exact row first, the exact
