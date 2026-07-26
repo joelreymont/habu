@@ -1662,7 +1662,7 @@ fits.
   stayed green because inconsistencies were "(logged, non-fatal)" and shards mute output — a property
   tester that prints findings and exits 0 is error masking; make the counters FATAL at the summary, and
   a 100% failure rate on a metamorphic leg means the CONTRACT is broken (probe the contract word directly
-  before shrinking N "different" cases). Stateful scanners split at cursor phases (`SS-COUNT-LINE?`
+  before shrinking N "different" cases). Stateful scanners split at cursor phases (`STALE-STATUS-LINT`s private `COUNT-LINE?`
   delegating advance/digit-run/ratio/keyword to typed helpers) with fixtures around the boundary. Report
   reducers use DEDICATED scratch cells (`RR-I/J/K` get clobbered by nested helpers; a `RR-RATIO.` stack
   leak truncated a table) — add row-count regressions and `cmp` regenerated reports. Doc-contract
