@@ -128,31 +128,11 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 : TDECL-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? ;
 
-: TDECL-CONTROL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" if" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" then" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" else" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" begin" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" until" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" again" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" while" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" repeat" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" case" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" of" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" endof" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" endcase" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" do" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" ?do" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" loop" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" +loop" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" leave" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" unloop" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" exit" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" recurse" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" construct" CORE-STR=CI IF RES-TRUE EXIT THEN   \ item 9 reserved token protocol
-   a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN       \ item 9 MATCH control form
-   a u s" ;match" CORE-STR=CI ;                          \ item 9 MATCH block close
-
+\ The control-word list itself lives once, in TYPE-NAME:CONTROL? (type-family.f).
+\ This file used to carry a second copy; the two drifted (the unified front ends
+\ inherited only the grammar-keyword half), so the list now has a single owner
+\ and every gate asks it. `construct`, `match` and `;match` — the item 9 reserved
+\ token protocol and MATCH control form — are part of that list.
 : TDECL-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF RES-TRUE EXIT THEN                    \ a..z incl n/f/r type letters
    a u VREC-FIND IF drop RES-TRUE EXIT THEN drop
@@ -160,7 +140,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    a u CON-OF 0 <> IF RES-TRUE EXIT THEN          \ builtin + declared CT names
    a u ATOM-TOK? IF RES-TRUE EXIT THEN
    a u FRESH-ATOM-TOK? IF RES-TRUE EXIT THEN
-   a u TDECL-CONTROL? IF RES-TRUE EXIT THEN
+   a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
    a u TDECL-KEYWORD? ;
 
 \ TDECL-FAM-TAKEN? ( ptr u8 n -- bool ) : the name matches a family the

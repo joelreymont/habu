@@ -192,7 +192,7 @@ reject) riding existing TFAM parametric unification.
    fails a declaration closed when the tail is a single letter (`u 1 =`), an
    atom-prefix token (`ATOM-TOK?`: `extent-`/`space-`/`mask-`/`block-`/`geom-`/
    `parity-`/`align-`), a builtin or CT-role name (`CON-OF`), or a control/keyword
-   token (`TDECL-CONTROL?`/`TDECL-KEYWORD?`). So **both** `#M`→`m` (single-letter)
+   token (`TYPE-NAME:CONTROL?`/`TDECL-KEYWORD?`). So **both** `#M`→`m` (single-letter)
    **and** `#M`→`extent-m` (atom prefix) are rejected at declaration. The mangling
    scheme must avoid single-letter tails, the atom prefixes, existing
    CT-role/builtin names, and control/keyword tokens — e.g. a multi-letter,

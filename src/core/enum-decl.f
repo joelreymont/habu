@@ -122,6 +122,7 @@ TRUSTED: PKG-ACTIVE? ( -- bool ) CHECKER-PACKAGE-ACTIVE? ;
 TRUSTED: PKG-MODE@ ( -- n ) CHECKER-PACKAGE-MODE @ ;
 TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
+TRUSTED: CONTROL-KW? ( ptr u8 n -- bool ) TYPE-NAME:CONTROL? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
 TRUSTED: SUMV-N@ ( -- n ) SUMV-N @ ;    \ variant-cursor high-water (variant range start)
 TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
@@ -189,12 +190,18 @@ ED-RESET
 : UNGET ( ptr u8 n -- ) PEND! ;
 
 \ ---------------------------------------------------------------------------
-\ name gate: a reserved family name is a grammar keyword, the ENUM openers, a
-\ single-character token (would collide with a type letter / arity param), or a
-\ concrete checker type name. Case + duplicate are enforced by TFAM-DECL itself.
+\ name gate: a reserved family name is a grammar keyword, a control word, the
+\ ENUM openers, a single-character token (would collide with a type letter /
+\ arity param), or a concrete checker type name. Case + duplicate are enforced by
+\ TFAM-DECL itself. The control-word arm reads TYPE-NAME:CONTROL?, the single
+\ owner of that list, which is the same list the legacy definer's
+\ TDECL-RESERVED? consults: without it `ENUM-DECL:ED-RUN if red green ;ENUM` was
+\ accepted here while `ENUM if red green ;ENUM` was refused 7110, so the global
+\ token could not move to this front end without losing the reject.
 \ ---------------------------------------------------------------------------
 : NAME-RESERVED? ( ptr u8 n -- bool )
    2dup GRAMMAR-KW? IF 2drop YES EXIT THEN
+   2dup CONTROL-KW? IF 2drop YES EXIT THEN
    2dup s" enum" CORE-STR=CI IF 2drop YES EXIT THEN
    2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
    dup 1 = IF 2drop YES EXIT THEN

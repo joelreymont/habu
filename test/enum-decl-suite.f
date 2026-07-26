@@ -495,6 +495,11 @@ package enum-name-test
 VALUE-RECORD enum-record payload n END-VALUE-RECORD
 s" ENUM-DECL:ED-RUN local-variant member ;ENUM" EV
 
+public
+
+\ REG-SAME / REJECT-SAME are the suite's shared "this reject changed nothing"
+\ proof. They are public so section 24 (control-word names) can reuse them
+\ instead of keeping a second copy of the cursor list.
 : REG-SAME ( -- )
    TFAMN@ RB-TFAM @ T=
    TF-STR-U@ RB-STR @ T=
@@ -512,8 +517,6 @@ s" ENUM-DECL:ED-RUN local-variant member ;ENUM" EV
    DECL-EVENT:COUNT DEVB !
    a u TRY want T=
    REG-SAME ;
-
-public
 
 s" ENUM-DECL:ED-RUN compact-dup-policy POLICY packed-tag POLICY stack-cell-tag alpha ;ENUM" 7163 REJECT-SAME
 s" ENUM-DECL:ED-RUN compact-dup-feature DERIVE eq eq alpha ;ENUM" 7164 REJECT-SAME
@@ -1283,6 +1286,113 @@ FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS VID @ enum-replay-test:VS1 @ 1 + enum-ct
 \ the one intended divergence: words for the live family, none for the replayed
 VS0 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
 enum-replay-test:VS1 @ enum-ctor-test:CTOR-SYM 0 T=
+
+\ ---------------------------------------------------------------------------
+\ 24. Control words are reserved in every declaration name position, and the list
+\     of them has exactly one owner.
+\
+\     A family, variant, or field named `if` would be compiled as the control
+\     word `if` wherever the generated code names it, so no declaration position
+\     may take one. The legacy definers have always refused them (sumtype.f
+\     TDECL-RESERVED?); this front end only consulted the grammar-keyword list,
+\     so `ENUM-DECL:ED-RUN if red green ;ENUM` was accepted here while
+\     `ENUM if red green ;ENUM` was refused 7110 — measured on the parent commit,
+\     and the reason the global ENUM token could not move to this front end
+\     without losing the reject. The list now lives once, in TYPE-NAME:CONTROL?
+\     (src/core/type-family.f); this front end reads it through CONTROL-KW?, the
+\     legacy definer reads it from TDECL-RESERVED?, and field rows read it from
+\     PF-RESERVED?. A second copy is what let the two drift apart.
+\
+\     24a walks the whole list so a word silently dropped from the owner is a
+\     failure here; 24b proves the two spellings of the same declaration answer
+\     identically, code and rendered line; 24c-24d cover the other two name
+\     positions; 24e proves the match is on the whole token, not a prefix or a
+\     substring, so ordinary names that merely contain a control word still
+\     declare.
+\ ---------------------------------------------------------------------------
+package enum-control-test
+public
+
+\ 24a. Every word on the shared list, in the family-name position. Three of them
+\      (`?do`, `+loop`, `;match`) never reach the reserved-name gate: their
+\      leading byte is not a lowercase letter, so the canonical-tail gate refuses
+\      them first with 7101. Both codes are the same on the legacy definer, which
+\      runs the same two gates in the same order.
+DECL-DIAG:PROSE                          \ these 23 rejects are expected; keep stderr clean
+s" ENUM-DECL:ED-RUN if red ;ENUM"        7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN then red ;ENUM"      7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN else red ;ENUM"      7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN begin red ;ENUM"     7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN until red ;ENUM"     7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN again red ;ENUM"     7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN while red ;ENUM"     7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN repeat red ;ENUM"    7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN case red ;ENUM"      7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN of red ;ENUM"        7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN endof red ;ENUM"     7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN endcase red ;ENUM"   7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN do red ;ENUM"        7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN loop red ;ENUM"      7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN leave red ;ENUM"     7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN unloop red ;ENUM"    7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN exit red ;ENUM"      7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN recurse red ;ENUM"   7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN construct red ;ENUM" 7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN match red ;ENUM"     7110 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN ?do red ;ENUM"       7101 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN +loop red ;ENUM"     7101 enum-name-test:REJECT-SAME
+s" ENUM-DECL:ED-RUN ;match red ;ENUM"    7101 enum-name-test:REJECT-SAME
+DECL-DIAG:OFF
+
+\ 24b. The two spellings agree to the byte: same code, same rendered line. This
+\      is the parity the global-token cutover needs, so it is asserted on the
+\      legacy definer as well as on the front end.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN if red green ;ENUM" TRY 7110 T=
+s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+DECL-DIAG:PROSE
+s" ENUM if red green ;ENUM" TRY 7110 T=
+s" habu: bad enum declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ 24c. Variant-name position, both modes. These already refused control words
+\      before this section existed (the variant gate is TYPE-NAME:VARIANT-REQUIRE,
+\      which reads the same owner); the fixtures pin that the shared owner keeps
+\      serving them.
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN cwvc do loop ;ENUM" TRY 7110 T=
+s" habu: bad enum declaration 'cwvc': name is reserved or already taken at 'do'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN cwvf 0 VARIANT loop ;VARIANT ;ENUM" TRY 7110 T=
+s" habu: bad enum declaration 'cwvf': name is reserved or already taken at 'loop'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ 24d. Field-name position. The field row's own gate (PF-RESERVED?) answers, so
+\      the code is 7125 — the same code and the same wording a reserved
+\      generated-operation name such as `make` already produced, and the same
+\      answer the legacy PRODUCT definer now gives for the identical field name
+\      (test/type-decl-suite.f pins that half).
+DECL-DIAG:PROSE
+s" ENUM-DECL:ED-RUN cwfld 0 VARIANT vv FIELD then n ;VARIANT ;ENUM" TRY 7125 T=
+s" habu: bad enum declaration 'cwfld': reserved field name at 'then'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ 24e. The match is on the WHOLE token. A name that starts with, ends with, or
+\      contains a control word is an ordinary name and still declares — in every
+\      one of the three positions.
+s" ENUM-DECL:ED-RUN iffy dolly matcher constructor elsewhere ;ENUM" EV
+s" iffy" FAMID F-VAR-COUNT 4 T=
+s" ENUM-DECL:ED-RUN doing 0 VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" EV
+s" doing" FAMID F-FLD-COUNT 2 T=
+
+;package
 
 \ ---------------------------------------------------------------------------
 : REPORT ( -- )

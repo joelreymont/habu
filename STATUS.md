@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4192  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4191  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -142,6 +142,17 @@ measures today:
   `tools/check-core.f`, `src/habu/verify-source.f`, `TRUSTED.md`, `FILEMAP.md`,
   and four test files including the new `test/decl-replay-verify-source.f`, none
   of which is part of the assembled stage2 engine source.
+- Giving the control-word list a single owner removes one, reaching 4191.
+  `src/core/sumtype.f` had its own copy of that list as `TDECL-CONTROL?`; the
+  copy is deleted and `TDECL-RESERVED?` now asks `TYPE-NAME:CONTROL?` in
+  `src/core/type-family.f`, which already held the identical list and is now
+  public so the unified front ends and the field-name gate can read it too. So
+  4192 - 1 = 4191. Nothing is added: `src/core/enum-decl.f` and
+  `src/core/structure-decl.f` each gain a `TRUSTED:` forwarder (`CONTROL-KW?`),
+  which is not a colon definition and counts nothing, and `PF-RESERVED?` gains a
+  line rather than a definition. That change also edits `TRUSTED.md`,
+  `docs/extent-substrate.md` and three test files, none of which is part of the
+  assembled stage2 engine source.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

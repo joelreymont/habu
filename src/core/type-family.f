@@ -1276,6 +1276,16 @@ package TYPE-NAME
 7107 constant E-SYNTAX
 7110 constant E-RESERVED
 
+public
+
+\ CONTROL? is the ONE place the control-word list is written down. Every
+\ declaration name gate in the engine asks this word rather than keeping a list
+\ of its own: this package's own RESERVED? (variant names), sumtype.f's
+\ TDECL-RESERVED? (legacy family names), PF-RESERVED? below (field names), and
+\ the unified STRUCTURE / ENUM front ends through their CONTROL-KW? forwarders.
+\ A name that spells a control word would compile into a definition body as that
+\ control word, so no declaration position may take one; keeping a second copy of
+\ the list is how the front ends and the legacy definers drifted apart before.
 : CONTROL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" if" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" then" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -1300,6 +1310,8 @@ package TYPE-NAME
    a u s" construct" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" match" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;match" CORE-STR=CI ;
+
+private
 
 : RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 1 = IF RES-TRUE EXIT THEN
@@ -1331,8 +1343,16 @@ get-current prot-wid-add
 
 ;package
 
+\ A field tail may not spell a grammar keyword, a control word, or one of the
+\ generated-operation names. The control-word arm comes from TYPE-NAME:CONTROL?,
+\ the single owner of that list, so a field named `if` is refused on every path
+\ that registers a field row: the legacy PRODUCT definer through
+\ TDECL-REQUIRE-FIELD-NAME and the unified STRUCTURE / ENUM front ends through
+\ TYPE-FIELD-OWNER:ADD. Before this arm existed the two family-name gates
+\ rejected `if` and the field gate accepted it.
 : PF-RESERVED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u TF-GRAMMAR-KEYWORD? IF RES-TRUE EXIT THEN
+   a u TYPE-NAME:CONTROL? IF RES-TRUE EXIT THEN
    a u s" make" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" unmake" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" tag" CORE-STR=CI IF RES-TRUE EXIT THEN

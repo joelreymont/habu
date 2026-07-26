@@ -1404,9 +1404,28 @@ TDT-EVENT:SAME
 s" PRODUCT tdpbad 1 FIELD x q ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpoor 0 FIELD x a ;PRODUCT" E-TDECL-PAYLOAD TDT-NEG
 s" PRODUCT tdpptr 1 FIELD x ptr ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
-\ bad field names: uppercase, grammar keyword.
+\ bad field names: uppercase, grammar keyword, control word. The control-word arm
+\ comes from TYPE-NAME:CONTROL?, the one place that list is written down, which
+\ this file's family-name gate (TDECL-RESERVED?) has always consulted; the field
+\ gate did not, so `FIELD if n` used to register while `PRODUCT if` was refused.
+\ The unified STRUCTURE and ENUM front ends reach the identical answer through
+\ the same owner (test/structure-decl-suite.f, test/enum-decl-suite.f § 24).
+\ A name that merely CONTAINS a control word is ordinary and still registers.
 s" PRODUCT tdpfc 1 FIELD X a ;PRODUCT" E-TFAM-CASE TDT-NEG
 s" PRODUCT tdpfmake 0 FIELD make n ;PRODUCT" E-PF-NAME TDT-NEG
+s" PRODUCT tdpfif 0 FIELD if n ;PRODUCT" E-PF-NAME TDT-NEG
+s" PRODUCT tdpfloop 0 FIELD x n FIELD loop n ;PRODUCT" E-PF-NAME TDT-NEG
+s" PRODUCT tdpfmatch 0 FIELD match n ;PRODUCT" E-PF-NAME TDT-NEG
+\ control words are refused in the family and variant positions too, on this
+\ legacy path, with the same codes the unified front ends answer.
+s" PRODUCT if 0 FIELD x n ;PRODUCT" E-TDECL-NAME TDT-NEG
+s" SUMTYPE do 0 VARIANT one ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+s" SUMTYPE tdscw 0 VARIANT loop ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
+\ whole-token match: these names contain control words and still register.
+s" PRODUCT iffy 0 FIELD looping n FIELD thence n ;PRODUCT" TDT-EVAL-CATCH 0 T=
+s" " s" iffy" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+TDF @ TWX-TFAM-FLD-COUNT@ 2 T=
 \ a stray token where FIELD is expected.
 s" PRODUCT tdpstray 1 stray FIELD x a ;PRODUCT" E-TDECL-SYNTAX TDT-NEG
 \ missing arity token.

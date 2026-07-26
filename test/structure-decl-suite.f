@@ -490,6 +490,54 @@ s" STRUCTURE-DECL:SD-RUN rpsdafter 0 FIELD one n ;STRUCTURE" TRY 0 T=
 s" rpsdafter" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
 
 \ ---------------------------------------------------------------------------
+\ Control words are reserved in both name positions this front end gates.
+\
+\ A family or field named `if` would be compiled as the control word `if`
+\ wherever generated code names it. The legacy definers have always refused such
+\ names (sumtype.f TDECL-RESERVED?); this front end consulted only the
+\ grammar-keyword half of that list, so `STRUCTURE if 0 FIELD x n ;STRUCTURE`
+\ was accepted while the legacy spelling of the same name was refused 7110. The
+\ list now lives once, in TYPE-NAME:CONTROL? (src/core/type-family.f), read here
+\ through CONTROL-KW? and by field rows through PF-RESERVED?.
+\
+\ The family position answers 7110 (this front end's own name gate) and the
+\ field position answers 7125 (the field record's gate, the same code and wording
+\ `make` already produced). Three of the words never reach either gate: `?do`,
+\ `+loop` and `;match` do not start with a lowercase letter, so the canonical
+\ tail gate refuses them first with 7101.
+\ ---------------------------------------------------------------------------
+DECL-DIAG:PROSE
+s" STRUCTURE if 0 FIELD x n ;STRUCTURE"      TRY 7110 T=
+s" habu: bad structure declaration 'if': reserved name at 'if'" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+s" STRUCTURE do 0 FIELD x n ;STRUCTURE"      TRY 7110 T=
+DECL-DIAG:PROSE
+s" STRUCTURE match 0 FIELD x n ;STRUCTURE"   TRY 7110 T=
+DECL-DIAG:PROSE
+s" STRUCTURE endcase 0 FIELD x n ;STRUCTURE" TRY 7110 T=
+DECL-DIAG:PROSE
+s" STRUCTURE ?do 0 FIELD x n ;STRUCTURE"     TRY 7101 T=
+DECL-DIAG:PROSE
+s" STRUCTURE ;match 0 FIELD x n ;STRUCTURE"  TRY 7101 T=
+
+DECL-DIAG:PROSE
+s" STRUCTURE sdcwf 0 FIELD if n ;STRUCTURE" TRY 7125 T=
+s" habu: bad structure declaration 'sdcwf': reserved field name at 'if'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdcwf2 0 FIELD x n FIELD loop n ;STRUCTURE" TRY 7125 T=
+s" habu: bad structure declaration 'sdcwf2': reserved field name at 'loop'"
+DECL-DIAG:HAS? -1 T=
+
+\ The match is on the WHOLE token: a name that merely contains a control word is
+\ an ordinary name and still declares, in both positions.
+DECL-DIAG:PROSE
+s" STRUCTURE iffy 0 FIELD looping n FIELD thence n ;STRUCTURE" TRY 0 T=
+s" iffy" FAMID struct-replay-test:FAM-FLD-COUNT 2 T=
+DECL-DIAG:SILENT? -1 T=
+DECL-DIAG:OFF
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" structure-decl-suite: failures" 1 die ;
