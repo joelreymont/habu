@@ -85,76 +85,19 @@ variable BASE-N
 \ type-registry field row keyed (family, variant). Six cells of the same type is
 \ exactly where an exchanged pair hides: the values below cannot see it, because
 \ every accessor is positional, so the field NAME to payload SLOT mapping is
-\ pinned directly. The words used are the read-only registry axioms
-\ tools/public-signatures-core.f already reads (no trust boundary; they cannot
-\ mutate anything).
+\ pinned directly. REFLECT (test/checker-assert.f) does the reading, through the
+\ read-only registry axioms tools/public-signatures-core.f already reads (no trust
+\ boundary; they cannot mutate anything).
 \
 \ A family is identified by its tail plus the constructor package its variants
 \ carry, which is exactly the (package, tail) pair that owns family identity, so
-\ the pins below name the family they pin rather than guessing from shape.
-: FAM-TAIL? ( n ptr u8 n -- bool ) {: fam:n na:ptr nu:n :}
-   fam TFAM-NAME$ na nu STR= ;
-
-: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
-   fam TFAM-VAR-COUNT@ 0 <= if false exit then
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
-
-: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
-   fam ta tu FAM-TAIL? fam pa pu FAM-CTOR? and ;
-
-: FAM-N ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ how many registered families answer to this (tail, constructor package)
-   0
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if 1+ then
-   loop ;
-
-: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ its family id, or -1
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if i unloop exit then
-   loop -1 ;
-
-: DESC-TAIL$ ( -- ptr u8 n )   s" descriptor" ;
-: DESC-CTOR$ ( -- ptr u8 n )   s" TARGET-DESCRIPTOR" ;
-: IDR-TAIL$ ( -- ptr u8 n )    s" id-result" ;
-: IDR-CTOR$ ( -- ptr u8 n )    s" TARGET-ID--RESULT" ;
-
-\ FAM-ID answers -1 for a family that is not registered, and the registry readers
-\ take a live id, so every read below refuses the sentinel first: a missing family
-\ has to report a wrong number, never read a record that is not there. The upper
-\ bound needs no guard - FAM-ID only ever returns an index it walked.
-: FAM-VARS ( n -- n ) {: fam:n :}                     \ variant count, or -1 when the family is missing
-   fam 0 < if -1 exit then
-   fam TFAM-VAR-COUNT@ ;
-
-: FAM-WIDTH ( n -- n ) {: fam:n :}                    \ cell width, or -1 when the family is missing
-   fam 0 < if -1 exit then
-   fam TFAM-WIDTH@ ;
-
-: FAM-VAR ( n n -- n ) {: fam:n k:n :}                \ the family's k-th variant id, or -1
-   fam FAM-VARS k <= if -1 exit then
-   fam TFAM-VAR-START@ k + ;
-
-: VAR-NAME$ ( n -- ptr u8 n ) {: var:n :}             \ variant name, or a name no declaration can spell
-   var 0 < if s" <missing>" exit then
-   var SUMV-NAME$ ;
-
-: DESC-FAM ( -- n )   DESC-TAIL$ DESC-CTOR$ FAM-ID ;
-: DESC-VAR ( -- n )   DESC-FAM 0 FAM-VAR ;            \ the sole `value` variant
-: IDR-FAM ( -- n )    IDR-TAIL$ IDR-CTOR$ FAM-ID ;
-: IDR-VAR ( -- n )    IDR-FAM 0 FAM-VAR ;             \ the `ok` variant
-
-: FLD-SLOT ( n n ptr u8 n -- n )                      \ payload slot of a named field, -1 when the variant has no such field
-   TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:SLOT@ ;
-
-: DESC-SLOT ( ptr u8 n -- n ) {: na:ptr nu:n :}       \ slot of a named descriptor payload cell
-   DESC-FAM DESC-VAR na nu FLD-SLOT ;
-
-: VAR-FLD-N ( n n -- n ) {: fam:n var:n :}            \ committed field rows this variant owns
-   0
-   TYPE-FIELD:COUNT 0 ?do
-      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
-   loop ;
+\ the pins below name the family they pin rather than guessing from shape. That
+\ matters most for `id-result`: eight packages declare a family with that tail, so
+\ the constructor package is the only thing separating TARGET's from the others, and
+\ REFLECT:FAMS = 1 is the assertion that the separation still holds. Both families
+\ carry their payload on arm 0, which the pins name explicitly.
+: DESC$ ( -- ptr u8 n ptr u8 n )   s" descriptor" s" TARGET-DESCRIPTOR" ;
+: IDR$ ( -- ptr u8 n ptr u8 n )    s" id-result" s" TARGET-ID--RESULT" ;
 
 T-RESET
 
@@ -223,28 +166,28 @@ s" TC-FGN ( CAD-KIND:artifact-id -- TARGET:id-result<CAD-KIND:target-id> ) TARGE
 \ ---- the six named payload cells sit at the six declared slots ------------------
 \ Exactly one registered family answers to each (tail, constructor package) pair,
 \ so the slot pins below are about TARGET's own families and nothing else.
-DESC-TAIL$ DESC-CTOR$ FAM-N 1 T=
-IDR-TAIL$ IDR-CTOR$ FAM-N 1 T=
-DESC-FAM FAM-VARS 1 T=                          \ descriptor has the one `value` variant
-DESC-VAR VAR-NAME$ s" value" T$=
-DESC-FAM FAM-WIDTH 7 T=                         \ six payload cells plus one tag cell
-DESC-FAM DESC-VAR VAR-FLD-N 6 T=                \ and exactly six named cells, no more
-s" isa" DESC-SLOT 0 T=
-s" arch" DESC-SLOT 1 T=
-s" warp" DESC-SLOT 2 T=
-s" threads" DESC-SLOT 3 T=
-s" shared" DESC-SLOT 4 T=
-s" caps" DESC-SLOT 5 T=
-s" facts" DESC-SLOT -1 T=                       \ an undeclared name resolves to no slot
-IDR-FAM FAM-VARS 3 T=                           \ ok, wrong-width, unknown
-IDR-VAR VAR-NAME$ s" ok" T$=
-IDR-FAM 1 FAM-VAR VAR-NAME$ s" wrong-width" T$=
-IDR-FAM 2 FAM-VAR VAR-NAME$ s" unknown" T$=
-IDR-FAM FAM-WIDTH 2 T=                          \ one payload cell plus one tag cell
-IDR-FAM IDR-VAR s" id" FLD-SLOT 0 T=            \ ok carries its id at slot 0
-IDR-FAM IDR-VAR VAR-FLD-N 1 T=
-IDR-FAM IDR-FAM 1 FAM-VAR VAR-FLD-N 0 T=        \ wrong-width carries no payload
-IDR-FAM IDR-FAM 2 FAM-VAR VAR-FLD-N 0 T=        \ unknown carries no payload
+DESC$ REFLECT:FAMS 1 T=
+IDR$ REFLECT:FAMS 1 T=
+DESC$ REFLECT:VARS 1 T=                         \ descriptor has the one `value` variant
+DESC$ 0 REFLECT:ARM$ s" value" T$=
+DESC$ REFLECT:WIDTH 7 T=                        \ six payload cells plus one tag cell
+DESC$ 0 REFLECT:ARM-FLDS 6 T=                   \ and exactly six named cells, no more
+DESC$ 0 s" isa" REFLECT:ARM-SLOT 0 T=
+DESC$ 0 s" arch" REFLECT:ARM-SLOT 1 T=
+DESC$ 0 s" warp" REFLECT:ARM-SLOT 2 T=
+DESC$ 0 s" threads" REFLECT:ARM-SLOT 3 T=
+DESC$ 0 s" shared" REFLECT:ARM-SLOT 4 T=
+DESC$ 0 s" caps" REFLECT:ARM-SLOT 5 T=
+DESC$ 0 s" facts" REFLECT:ARM-SLOT -1 T=        \ an undeclared name resolves to no slot
+IDR$ REFLECT:VARS 3 T=                          \ ok, wrong-width, unknown
+IDR$ 0 REFLECT:ARM$ s" ok" T$=
+IDR$ 1 REFLECT:ARM$ s" wrong-width" T$=
+IDR$ 2 REFLECT:ARM$ s" unknown" T$=
+IDR$ REFLECT:WIDTH 2 T=                         \ one payload cell plus one tag cell
+IDR$ 0 s" id" REFLECT:ARM-SLOT 0 T=             \ ok carries its id at slot 0
+IDR$ 0 REFLECT:ARM-FLDS 1 T=
+IDR$ 1 REFLECT:ARM-FLDS 0 T=                    \ wrong-width carries no payload
+IDR$ 2 REFLECT:ARM-FLDS 0 T=                    \ unknown carries no payload
 
 \ ---- the six cells round-trip through the production path in declared order -----
 \ One distinct value per cell, written through TARGET:DESCRIPTOR + TARGET:REGISTER

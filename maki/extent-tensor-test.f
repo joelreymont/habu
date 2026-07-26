@@ -124,32 +124,30 @@ TR-CAP 256 T=                       \ the raised cap this regression pins
 \ records it as an enum family and no longer as a general sum. Both spellings are
 \ one cell wide and both give the same MATCH surface, so no consumer can tell them
 \ apart by behaviour - which is precisely why the recorded kind is pinned here,
-\ read live out of the family registry through the read-only accessors the checker
-\ publishes for exactly this kind of tool (src/core/checker.f, "Public-signature
-\ metadata"). Writing the declaration back as `SUMTYPE tensor-kind 0 ...`, or as
-\ the arity-headed full enum form, changes the recorded kind and turns this suite
-\ red. The same probe pins the generated constructor package spelling that
-\ KIND-DATA and KIND-GATHER compile against, so a constructor rename cannot pass
-\ unnoticed either.
-variable KP-FAM                     \ tensor-kind's row in the live family registry
-variable KP-VAR                     \ its first case's row in the variant registry
-: KP-NAMED? ( n ptr u8 n -- bool ) {: id:n a:ptr u:n :}  id TFAM-NAME$ a u STR= ;
-: KP-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}   \ family row for tail `a u`, or -1
-   TFAM-N@ 0 ?do  i a u KP-NAMED? if i unloop exit then  loop  -1 ;
+\ read live out of the family registry by REFLECT (test/checker-assert.f). Writing
+\ the declaration back as `SUMTYPE tensor-kind 0 ...`, or as the arity-headed full
+\ enum form, changes the recorded kind and turns this suite red. The same probe pins
+\ the generated constructor package spelling that KIND-DATA and KIND-GATHER compile
+\ against, so a constructor rename cannot pass unnoticed either.
+\
+\ The family is named by its tail AND the constructor package its variants carry.
+\ `tensor-kind` happens to be a unique tail today, but nothing keeps it that way:
+\ a second package declaring the same tail would make a tail-only lookup pin the
+\ wrong family and still report green. REFLECT:FAMS = 1 below is what makes this pin
+\ stay honest - it fails the day the tail stops being unique.
+: TKIND$ ( -- ptr u8 n ptr u8 n )   s" tensor-kind" s" MAKI-TENSOR--KIND" ;
 
-s" tensor-kind" KP-FIND KP-FAM !
-KP-FAM @ 0 < 0 T=                   \ the family is registered ...
-KP-FAM @ TFAM-KIND@ TK-ENUM T=      \ ... as an enum family (the pinned ruling) ...
-KP-FAM @ TFAM-KIND@ TK-SUM = 0 T=   \ ... and not as a general sum
-KP-FAM @ TFAM-ARITY@ 0 T=           \ compact form declares no type parameters
-KP-FAM @ TFAM-WIDTH@ 1 T=           \ one cell, the same width the sum form had
-KP-FAM @ TFAM-PUBLIC? -1 T=         \ public, so the constructors are generated
-KP-FAM @ TFAM-VAR-COUNT@ 2 T=
-KP-FAM @ TFAM-VAR-START@ KP-VAR !
-KP-VAR @     SUMV-NAME$ s" data" T$=                     \ case order fixes the tags
-KP-VAR @ 1 + SUMV-NAME$ s" gather" T$=
-KP-VAR @     SUMV-CTOR-PKG$ s" MAKI-TENSOR--KIND" T$=    \ constructor spelling
-KP-VAR @ 1 + SUMV-CTOR-PKG$ s" MAKI-TENSOR--KIND" T$=
+TKIND$ REFLECT:FAMS 1 T=            \ exactly one registered family answers this identity
+TKIND$ REFLECT:KIND TK-ENUM T=      \ ... recorded as an enum family (the pinned ruling) ...
+TKIND$ REFLECT:KIND TK-SUM = 0 T=   \ ... and not as a general sum
+TKIND$ REFLECT:ARITY 0 T=           \ compact form declares no type parameters
+TKIND$ REFLECT:WIDTH 1 T=           \ one cell, the same width the sum form had
+TKIND$ REFLECT:VIS 1 T=             \ public, so the constructors are generated
+TKIND$ REFLECT:VARS 2 T=
+TKIND$ 0 REFLECT:ARM$ s" data" T$=                     \ case order fixes the tags
+TKIND$ 1 REFLECT:ARM$ s" gather" T$=
+TKIND$ 0 REFLECT:ARM-CTOR$ s" MAKI-TENSOR--KIND" T$=   \ constructor spelling
+TKIND$ 1 REFLECT:ARM-CTOR$ s" MAKI-TENSOR--KIND" T$=
 
 \ both cases round-trip: constructor -> MATCH projection -> rebuild -> the
 \ MATCH-based predicates. No step reads a bare tag off the stack.
