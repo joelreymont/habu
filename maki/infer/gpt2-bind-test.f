@@ -77,6 +77,7 @@ package GPT2TX
 4 constant TX-BK-KEY                            \ misspell the key
 5 constant TX-BK-EXTRA                          \ emit one tensor beyond the census
 6 constant TX-BK-ALIAS                          \ emit the PREVIOUS slot's key on this row
+7 constant TX-BK-PAD                            \ prepend __metadata__, shifting every offset
 
 variable TX-BAD-SLOT                            \ which slot to damage, -1 for none
 variable TX-BAD-KIND
@@ -95,6 +96,7 @@ variable TX-DOFF                                \ running data-section offset
 variable TX-IMGLEN
 variable TX-WANT-OFF                            \ the probed row read off the census
 variable TX-WANT-LEN
+variable TX-WANT-ID                             \ and the census id that named it
 variable TX-KA0  variable TX-KA1
 variable TX-KA2  variable TX-KA3                \ one twin's captured cfgkey cells
 variable TX-KB0  variable TX-KB1
@@ -240,6 +242,19 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 : TX-ZERO-DATA ( n n -- ) {: base:n nb:n :}     \ tensor bytes are all zero
    nb 0 ?do  0 TX-IMG base i + + c!  loop ;
 
+\ A `__metadata__` member, which the loader recognises and SKIPS: it commits no row and
+\ is not counted as a tensor. Emitting it therefore lengthens the header and nothing
+\ else, and every tensor's mapping offset is 8 + header length + its data-section
+\ begin - so this variant shifts EVERY row's offset while leaving the tensor count, the
+\ dtypes, the shapes, the extents and the prefix sum exactly as they were. That is the
+\ interference a commit has to survive, and the one an aggregates-only check cannot see.
+: TX-J+PAD ( -- )
+   s" __metadata__" TX-J+MEM
+   TX-LBRACE TX-J+C
+   s" pad" TX-J+MEM  s" shift-every-mapping-offset" TX-J+STR
+   TX-RBRACE TX-J+C
+   TX-COMMA TX-J+C ;
+
 : TX-ASSEMBLE ( -- )
    TX-JLEN @ {: hl:n :}
    hl TX-HDR!
@@ -250,6 +265,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 : TX-BUILD ( MDLCFG:mcfg -- MDLCFG:mcfg )
    0 TX-JLEN !  0 TX-DOFF !
    TX-LBRACE TX-J+C
+   TX-BAD-KIND @ TX-BK-PAD = if TX-J+PAD then
    TX-CNT 0 ?do  i TX-J+ROW  loop
    TX-BAD-KIND @ TX-BK-EXTRA = if TX-J+EXTRA then
    TX-RBRACE TX-J+C
@@ -257,7 +273,14 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 
 : TX-PATH ( -- ptr u8 n )  s" /tmp/hb-gpt2tx-synth.safetensors" ;
 
-: TX-CLEANUP ( -- )  TX-PATH FS-PATHZ unlink drop ;
+\ The offset-shifted variant lives at a SECOND path deliberately: the first transaction's
+\ census holds a live mapping of TX-PATH, and rewriting those bytes underneath it would
+\ change what the FIRST census reads - the one thing the interference fixture must not do.
+: TX-PATH2 ( -- ptr u8 n )  s" /tmp/hb-gpt2tx-shift.safetensors" ;
+
+: TX-CLEANUP ( -- )
+   TX-PATH FS-PATHZ unlink drop
+   TX-PATH2 FS-PATHZ unlink drop ;
 
 : TX-CLEAN! ( -- )
    -1 TX-BAD-SLOT !  TX-BK-NONE TX-BAD-KIND ! ;
@@ -299,6 +322,13 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 
 : TX-LAY ( -- )                                 \ write the current variant to disk
    TX-CFG-A TX-WRITE drop ;
+
+: TX-LAY-SHIFTED ( -- )
+   TX-BK-PAD TX-BAD-KIND !
+   TX-CFG-A TX-BUILD
+   TX-PATH2 TX-IMG TX-IMGLEN @ WRITE-ALL
+   drop
+   TX-BK-NONE TX-BAD-KIND ! ;
 
 \ ---- assertion helpers ---------------------------------------------------------
 : TX-MISSING ( -- )
@@ -416,12 +446,35 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    drop                                         \ the mcfg copy
    TX-KBUF klen SAFET:FIND TX-OPT-VAL {: id:n :}
    id SAFET:MAP-OFFSET? TX-OPT-VAL TX-WANT-OFF !
-   id SAFET:NBYTES? TX-OPT-VAL TX-WANT-LEN ! ;
+   id SAFET:NBYTES? TX-OPT-VAL TX-WANT-LEN !
+   id TX-WANT-ID ! ;
 
 : TX-PROBE-MATCHES ( n -- ) {: slot:n :}        \ the validated row is the census's own
    slot PLAN-ROW {: off:n len:n :}
    off TX-WANT-OFF @ T=
    len TX-WANT-LEN @ T= ;
+
+\ The same assertion against what the PREP carries, which is what a commit will read.
+\ Stability under an interfering PREPARE is proved elsewhere; this is the other half -
+\ that the carried row is the RIGHT row. A snapshot compare cannot see a plan that was
+\ wrong in both copies, and the census id is checked too, because an id that names the
+\ wrong tensor would copy the wrong bytes into a correctly sized and placed span.
+: TX-CARRIED-MATCHES ( GPT2TX:prep n -- GPT2TX:prep ) {: slot:n :}
+   slot PREP-ROW {: off:n len:n id:n :}
+   off TX-WANT-OFF @ T=
+   len TX-WANT-LEN @ T=
+   id  TX-WANT-ID @ T= ;
+
+: TX-EXPECT-CARRIED ( GPT2TX:prep-result n -- ) {: slot:n :}
+   MATCH GPT2TX:prep-result
+      prepared OF slot TX-CARRIED-MATCHES ABORT ENDOF
+      rejected OF
+         s" expected prepared, got refusal code" T-LABEL
+         . cr
+         SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH ;
 
 : T-PREPARE-OK ( -- )
    s" a matching census and configuration yield prepared" T-LABEL
@@ -429,7 +482,8 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    TX-PATH SAFET:LOAD
    TX-PROBE-SLOT TX-RECORD-PROBE
    TX-CFG-A PREPARE
-   TX-EXPECT-PREPARED
+   s" the mask row the PREP CARRIES is the census's own offset, extent and id" T-LABEL
+   TX-PROBE-SLOT TX-EXPECT-CARRIED
    s" the mask row is the census's own offset and extent" T-LABEL
    TX-PROBE-SLOT TX-PROBE-MATCHES
    s" the plan counted one row per census tensor" T-LABEL
@@ -448,7 +502,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    TX-PATH SAFET:LOAD
    TX-PROBE-CONV TX-RECORD-PROBE
    TX-CFG-A PREPARE
-   TX-EXPECT-PREPARED
+   TX-PROBE-CONV TX-EXPECT-CARRIED
    TX-PROBE-CONV TX-PROBE-MATCHES
    \ A second transaction must start from a cleared accumulator, not add to the
    \ first: the same census over the same configuration has to report the same sum.
@@ -609,6 +663,27 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    0 SUM-N !  -1 16 TX-ARITH!  [: TX-ARITH ;] E-GX-EXTENT TTHROWSQ
    0 SUM-N ! ;
 
+\ ---- the block grows with the count, and the growth is bounded -----------------
+\ The block is now sized by a multiplication, so the boundaries of that arithmetic are
+\ pinned here rather than left to the census that happens to arrive. The cap case is
+\ the one that matters for memory: at ROW-CAP the block is the widest this package can
+\ ever ask for, and it is still an ordinary cell count.
+: TX-CELLS-AT ( n -- n )  BLOCK-CELLS ;
+
+: T-BLOCK-CELLS ( -- )
+   s" the block carries the nine fixed cells plus three per row" T-LABEL
+   1 TX-CELLS-AT P-ROWS P-ROW-CELLS + T=
+   TX-CNT TX-CELLS-AT P-ROWS TX-CNT P-ROW-CELLS * + T=
+   s" the real checkpoint's 160 rows make a 489-cell block" T-LABEL
+   160 TX-CELLS-AT 489 T=
+   s" a count at the census cap is accepted and is still a cell count" T-LABEL
+   ROW-CAP TX-CELLS-AT P-ROWS ROW-CAP P-ROW-CELLS * + T=
+   ROW-CAP TX-CELLS-AT MAX-N < TTRUE
+   s" a count of zero, a negative count, and one past the cap are refused" T-LABEL
+   [: 0 TX-CELLS-AT drop ;]          E-GX-COUNT TTHROWSQ
+   [: -1 TX-CELLS-AT drop ;]         E-GX-COUNT TTHROWSQ
+   [: ROW-CAP 1 + TX-CELLS-AT drop ;] E-GX-COUNT TTHROWSQ ;
+
 \ ---- ABORT gives everything back -----------------------------------------------
 \ The counters are the proof: the census owner, its kernel mapping, and the WSTORE
 \ table block all return to zero through ABORT alone.
@@ -632,6 +707,80 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    TX-NO-LEAK ;
 
 
+\ ---- row-granularity snapshot of a prep's carried plan -------------------------
+\ The aggregates (count and sum) were always enough to catch a commit that sized its
+\ arena from another transaction's numbers. They are NOT enough to catch a commit that
+\ reads another transaction's ROWS: two censuses of one geometry agree on both
+\ aggregates and disagree on every row. So the whole carried plan is copied aside
+\ before the interfering PREPARE and compared cell for cell afterwards.
+3 constant TX-ROW-CELLS                         \ (mapping offset, extent, census id)
+create TX-ROWSNAP TX-CNT TX-ROW-CELLS * cells allot
+variable TX-SNAP-N
+
+: TX-SNAP-CELL ( n n -- ptr n ) {: row:n col:n :}
+   TX-ROWSNAP row TX-ROW-CELLS * col + cells + ;
+
+: TX-ROWS-SNAP ( GPT2TX:prep -- GPT2TX:prep )   \ copy every carried row aside
+   PREP-COUNT {: count:n :}
+   count TX-SNAP-N !
+   count 0 ?do
+      i PREP-ROW {: off:n len:n id:n :}
+      off  i 0 TX-SNAP-CELL !
+      len  i 1 TX-SNAP-CELL !
+      id   i 2 TX-SNAP-CELL !
+   loop ;
+
+: TX-ROWS-SAME ( GPT2TX:prep -- GPT2TX:prep )   \ every carried row unmoved, in order
+   PREP-COUNT TX-SNAP-N @ T=
+   TX-SNAP-N @ {: count:n :}
+   count 0 ?do
+      i PREP-ROW {: off:n len:n id:n :}
+      off  i 0 TX-SNAP-CELL @ T=
+      len  i 1 TX-SNAP-CELL @ T=
+      id   i 2 TX-SNAP-CELL @ T=
+   loop ;
+
+\ How many of a prep's carried rows differ from the snapshot. The interfering
+\ transaction is measured with this before its own prep is thrown away: if its rows did
+\ NOT differ, the fixture would be interfering with nothing and the stability assertion
+\ above would pass for the wrong reason.
+variable TX-DIFFN
+
+: TX-ROWS-DIFF-COUNT ( GPT2TX:prep -- GPT2TX:prep )
+   0 TX-DIFFN !
+   PREP-COUNT {: count:n :}
+   count 0 ?do
+      i PREP-ROW {: off:n len:n id:n :}
+      off  i 0 TX-SNAP-CELL @ <>
+      len  i 1 TX-SNAP-CELL @ <>  or
+      id   i 2 TX-SNAP-CELL @ <>  or
+      if TX-DIFFN @ 1 + TX-DIFFN ! then
+   loop ;
+
+\ Runs a WHOLE second transaction that succeeds, over the same model with every mapping
+\ offset shifted. Its aggregates match the first's exactly - same tensor count, same
+\ extents, same prefix sum - so only the rows can tell the two apart, which is what
+\ makes it the right interference for a row-carrying block.
+: TX-INTERFERE-SHIFTED ( -- )
+   TX-LAY-SHIFTED
+   TX-PATH2 SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         s" the interfering transaction agrees on both aggregates" T-LABEL
+         PREP-COUNT TX-CNT T=
+         PREP-SUM TX-DOFF @ T=
+         s" and disagrees on every single row" T-LABEL
+         TX-ROWS-DIFF-COUNT
+         TX-DIFFN @ TX-CNT T=
+         ABORT
+      ENDOF
+      rejected OF
+         s" the offset-shifted census failed to prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH ;
+
 \ ---- the prep carries its own plan --------------------------------------------
 \ The scenario a commit leaf has to survive: it is handed a prep, and between the
 \ PREPARE that built it and the commit that consumes it, another transaction runs
@@ -648,6 +797,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
       prepared OF
          PREP-COUNT TX-CNT T=
          PREP-SUM TX-DOFF @ T=
+         TX-ROWS-SNAP
          TX-PATH SAFET:LOAD TX-CFG-DEEP PREPARE
          E-GX-COUNT TX-EXPECT-REJECTED SAFET:RELEASE
          s" the refused call did move the scratch" T-LABEL
@@ -655,6 +805,13 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
          s" and the live prep still reports its own plan" T-LABEL
          PREP-COUNT TX-CNT T=
          PREP-SUM TX-DOFF @ T=
+         s" every one of its carried rows is byte-identical" T-LABEL
+         TX-ROWS-SAME
+         TX-INTERFERE-SHIFTED
+         s" and they are still byte-identical after a SUCCEEDING transaction" T-LABEL
+         PREP-COUNT TX-CNT T=
+         PREP-SUM TX-DOFF @ T=
+         TX-ROWS-SAME
          ABORT
       ENDOF
       rejected OF
@@ -1130,6 +1287,7 @@ variable TX-MOFF
    T-CHECKER
    T-CLAIM
    T-ARITH
+   T-BLOCK-CELLS
    T-PREPARE-OK       TX-NO-LEAK
    T-REJECT-CFG       TX-NO-LEAK
    T-REJECT-CENSUS    TX-NO-LEAK

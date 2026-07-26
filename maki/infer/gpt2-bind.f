@@ -279,11 +279,24 @@ TRUSTED: MINT-MDL-PROOF ( -- mdl-proof )  0 ;
 $7FFFFFFFFFFFFFFF constant MAX-N
 64 constant KEY-CAP            \ the GPT2BIND KEY-CAP bound: longest HF key is 39 bytes
 
-\ prep block: the two moved owners, nlayer, the four cfgkey cells, then the plan
-\ the transaction was validated against. The plan travels IN the prep, not in this
-\ package's scratch: a later PREPARE - including one that refuses - overwrites the
-\ scratch while an earlier prep is still alive, so a commit leaf reading process
-\ statics would read another transaction's numbers.
+\ prep block: the two moved owners, nlayer, the four cfgkey cells, the plan's
+\ aggregates, and then the plan ITSELF - one row per validated slot. The plan travels
+\ IN the prep, not in this package's scratch: a later PREPARE - including one that
+\ refuses - overwrites the scratch while an earlier prep is still alive, so a commit
+\ leaf reading process statics would read another transaction's numbers.
+\
+\ WHY THE ROWS ARE HERE AND NOT JUST THE AGGREGATES. P-CNT and P-SUM alone tell a
+\ commit how big its arena is and how many slots it has, and that was enough for the
+\ MAPPED arm, which needs no rows: it serves weights out of the file mapping through
+\ the table PREPARE already sealed. An ALLOCATED commit needs more. To fill a PACKED
+\ arena it must know, per slot, the extent (to place the row and advance the running
+\ offset) and the CENSUS ID (SAFET:COPY-DATA? is keyed by id, and it is the only copy
+\ the census offers). Neither survived a call anywhere: the sealed table has no public
+\ row reader by design, and the walk spent each id on its checks and dropped it. So a
+\ commit could only have reached its plan through the scratch - which is exactly the
+\ corruption the paragraph above forbids, and it would have type-checked in silence.
+\ Carrying the rows is what makes "a commit reads its plan from the prep it was given"
+\ true of the whole plan rather than of its two summary numbers.
 0 constant P-CEN
 0 constant P-MAP               \ the same cell in a CHECKED block: the moved mapping
 1 constant P-TBL
@@ -291,13 +304,21 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 3 constant P-K0
 7 constant P-CNT               \ rows validated, and the sealed table's slot count
 8 constant P-SUM               \ prefix sum of every extent (the packed arena size)
-9 constant P-CELLS
+9 constant P-ROWS              \ first carried row cell; the block is P-ROWS + 3*count
+3 constant P-ROW-CELLS
+0 constant PR-OFF              \ the tensor's mapping-base-relative byte offset
+1 constant PR-LEN              \ its byte extent
+2 constant PR-ID               \ its census id, which is how the copy names it
 
-\ row scratch: (mapping offset, extent) per slot, sized by the largest census the
-\ loader can publish, so pass one never allocates (see the header)
+\ row STAGING for one PLAN walk: (mapping offset, extent, census id) per slot, sized
+\ by the largest census the loader can publish so pass one never allocates (see the
+\ header). Nothing outside a single PREPARE call reads it - MINT copies the staged rows
+\ into that call's own block, and the next call overwrites the staging buffer whether
+\ it succeeds or refuses. The block copy is what any later reader must use.
 0 constant R-OFF
 1 constant R-LEN
-2 constant R-CELLS
+2 constant R-ID
+3 constant R-CELLS
 
 create KEY-BUF KEY-CAP allot                    \ private key render landing pad
 create ROWS SAFET:MAX-TENSORS R-CELLS * cells allot
@@ -318,10 +339,11 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 
 : ROW-CAP ( -- n )  SAFET:MAX-TENSORS ;
 
-\ ---- row scratch accessors ----------------------------------------------------
-: ROW! ( n n n -- ) {: row:n off:n len:n :}
+\ ---- row staging accessors ----------------------------------------------------
+: ROW! ( n n n n -- ) {: row:n off:n len:n id:n :}
    off  ROWS row R-CELLS * R-OFF + cells +  !
-   len  ROWS row R-CELLS * R-LEN + cells +  ! ;
+   len  ROWS row R-CELLS * R-LEN + cells +  !
+   id   ROWS row R-CELLS * R-ID  + cells +  ! ;
 
 : ROW@ ( n n -- n ) {: row:n col:n :}
    ROWS row R-CELLS * col + cells + @ ;
@@ -509,7 +531,7 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
    id rank d0 d1 d2 d3 V-SHAPE
    id ROW-OF {: off:n len:n :}
    off len V-ARITH
-   slot off len ROW!
+   slot off len id ROW!                         \ the id is carried, not just spent
    r> ;
 
 \ ---- pass one: validate everything, write no table ----------------------------
@@ -550,8 +572,28 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
    WSTORE:SEAL ;
 
 \ ---- the prep block ------------------------------------------------------------
-: PREP-ALLOC ( -- CAD-NUM:alloc-byte-len )
-   P-CELLS cells MEM:BYTES-ALLOC-LEN ;
+\ The block is sized by the count it will carry, and the bound is re-checked HERE,
+\ at the point that turns a count into memory, rather than trusted from PLAN. PLAN
+\ already refuses a count outside (0, ROW-CAP], so no census reaching this word can
+\ make the guard fire - it stays for the reason V-SLOT's range test stays: this is
+\ where the number becomes an allocation size and a multiplication, and a check at
+\ that point does not depend on a caller continuing to guarantee a range it is free
+\ to change. It also bounds the product: with ROW-CAP at SAFET's 2048-tensor cap the
+\ widest block this can ask for is 9 + 3*2048 = 6153 cells, so the cell arithmetic
+\ cannot overflow and MEM:BYTES-ALLOC-LEN validates the byte length after it.
+: BLOCK-CELLS ( n -- n ) {: count:n :}
+   count 0 <=  count ROW-CAP >  or if E-GX-COUNT throw then
+   count P-ROW-CELLS * P-ROWS + ;
+
+: PREP-ALLOC ( n -- CAD-NUM:alloc-byte-len )
+   BLOCK-CELLS cells MEM:BYTES-ALLOC-LEN ;
+
+\ ---- carried row cells --------------------------------------------------------
+\ One address helper, so the row stride is written once. Every carried-row read and
+\ write below goes through it; an off-by-one in the layout is therefore a single
+\ place to be wrong rather than six.
+: ROW-CELL ( ptr n n n -- ptr n ) {: blk:ptr row:n col:n :}
+   blk P-ROWS row P-ROW-CELLS * + col + cells + ;
 
 \ The single release path for a prep or checked-prep block, shared by all three exits
 \ (ABORT, ABORT-CHECKED, COMMIT-MAPPED) so the length arithmetic and the counter live
@@ -559,8 +601,14 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ back, the same unguarded free WSTORE's DISPOSE arms perform on their own blocks:
 \ munmap of a region this process mapped, at the length it recorded, whose only
 \ failure mode is a programming error rather than a runtime condition.
+\ The block says how big it is: P-CNT is written by MINT and never rewritten, so the
+\ release reads its own length out of the block it is about to give back. That is what
+\ keeps this word's signature - and therefore the bodies of all three exits - unchanged
+\ now that the length depends on the count.
 : FREE-BLOCK ( ptr n -- )
-   BLK>BYTES PREP-ALLOC MEM:RELEASE-BYTES
+   {: blk:ptr :}
+   blk P-CNT cells + @ {: count:n :}
+   blk BLK>BYTES count PREP-ALLOC MEM:RELEASE-BYTES
    -1 LIVE-N +! ;
 
 \ The one site where the census and table stop being checker-tracked values, and it
@@ -569,6 +617,26 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ the erasures are the window where a throw would strand an owner the checker can
 \ no longer see, so the only fallible step (the allocation) is kept outside it,
 \ where PREPARE guards it and can still dispose both owners by hand.
+\ Copies this walk's staged rows into the block that will outlive the walk. It runs
+\ inside MINT's total stretch: the cells were reserved by the allocation PREPARE
+\ already guarded, so there is nothing here that can fail.
+\
+\ THE COUNT COMES FROM THE BLOCK, WHICH IS WHAT MAKES THAT SAFE. The block is
+\ self-describing: the step that sized the allocation wrote the count into P-CNT, and
+\ every later size computation - this copy, the row readers, the release - reads it back
+\ out. That is the WSTORE table-block discipline (TABLE-NEW writes the slot count,
+\ BLK-FREE derives the length from it), and it is the difference between "these two
+\ numbers are computed from the same variable so they agree" and "there is only one
+\ number". Taking this count from the staging counter instead would let a block sized for
+\ one count be filled to another, and the overflow would land in the allocation's own
+\ slack where nothing observes it - measured, not hypothesised.
+: COPY-ROWS ( ptr n n -- ) {: blk:ptr count:n :}
+   count 0 ?do
+      i R-OFF ROW@  blk i PR-OFF ROW-CELL !
+      i R-LEN ROW@  blk i PR-LEN ROW-CELL !
+      i R-ID  ROW@  blk i PR-ID  ROW-CELL !
+   loop ;
+
 : MINT ( SAFET:census WSTORE:table ptr u8 n n n n n -- GPT2TX:prep )
    {: k0:n k1:n k2:n k3:n nl:n :}
    MINT-PREP
@@ -580,8 +648,8 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
    k1  blk P-K0 1 + cells + !
    k2  blk P-K0 2 + cells + !
    k3  blk P-K0 3 + cells + !
-   PLAN-N @ blk P-CNT cells + !
    SUM-N @ blk P-SUM cells + !
+   blk  blk P-CNT cells + @  COPY-ROWS   \ P-CNT was written by the allocating step
    1 LIVE-N +! ;
 
 \ ---- package-private projections (for the commit leaves and the test seam) -----
@@ -600,6 +668,21 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 
 : PREP-SUM ( GPT2TX:prep -- GPT2TX:prep n )     \ bytes the packed arena will need
    PREP>BLOCK P-SUM cells + @ ;
+
+\ ---- the carried plan, one row at a time ---------------------------------------
+\ What an ALLOCATED commit walks: for each slot, where the tensor sits in the mapping
+\ frame, how many bytes it is, and the census id that names it to SAFET:COPY-DATA?.
+\ Read off the block, so what comes back belongs to THIS transaction no matter how
+\ many PREPARE calls have run since. The block-level reader is the one a commit uses -
+\ it already holds the block pointer - and the prep-level wrapper exists for a holder
+\ that has not taken the block apart yet.
+: BLK-ROW ( ptr n n -- n n n ) {: blk:ptr row:n :}
+   blk row PR-OFF ROW-CELL @
+   blk row PR-LEN ROW-CELL @
+   blk row PR-ID  ROW-CELL @ ;
+
+: PREP-ROW ( GPT2TX:prep n -- GPT2TX:prep n n n ) {: row:n :}
+   PREP>BLOCK row BLK-ROW ;
 
 \ ---- scratch readers, for this package's own acceptance suite only -------------
 \ These describe the LAST PREPARE call, successful or not, and nothing outside the
@@ -686,8 +769,13 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 : TABLE-STEP ( -- )
    PLAN-N @ FILL-TABLE TABLE>N PEND-TBL ! ;
 
+\ Allocates the block AND stamps the count it was sized for into it, so the block
+\ describes its own extent from the moment it exists. Every later size computation reads
+\ that cell rather than recomputing from a counter (see COPY-ROWS).
 : BLOCK-STEP ( -- )
-   PREP-ALLOC MEM:ALLOC-BYTES drop PEND-BLK ! ;
+   PLAN-N @ {: count:n :}
+   count PREP-ALLOC MEM:ALLOC-BYTES drop PEND-BLK !
+   count PEND-BLK @ P-CNT cells + ! ;
 
 \ Gives the sealed table back when the block allocation failed. A failure to
 \ release takes precedence in the reported code - it is the more proximate fault
