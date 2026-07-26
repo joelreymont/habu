@@ -166,34 +166,47 @@ STRUCTURE evidence 0
 ;STRUCTURE
 
 \ ---- discharge / decode outcomes (custom-sum results, never value+flag) --------
-\ ok carries the accepted evidence; every reject arm is one plan rule.
-SUMTYPE discharge-result 0
-   VARIANT ok evidence ;VARIANT
+\ All three result families below are declared through the unified ENUM front end in full
+\ mode (the arity after the name selects it), so each payload is a named FIELD rather than
+\ a positional one. Constructor spellings, checked effects, case order and every MATCH
+\ site are unchanged - including the three cross-package consumers of discharge-result
+\ (maki/db/evidence-applicability.f, maki/db/promotion-authority.f, and through the latter
+\ maki/db/commit-store.f) - because spellings and payload binding order derive from the
+\ package, the family tail and the declaration order, none of which the mode touches.
+\
+\ ok carries the accepted evidence; every reject arm is one plan rule. The payload is
+\ named `ev`, this file's own short name for an evidence value: >EV / EV> convert it and
+\ every reader is EV-SUBJECT@ / EV-DOMAIN@ / EV-RELATION@ / EV-ENVIRONMENT@ /
+\ EV-VERIFIER@ / EV-VERIFIER-CLASS@.
+ENUM discharge-result 0
+   VARIANT ok FIELD ev evidence ;VARIANT
    VARIANT wrong-subject ;VARIANT
    VARIANT wrong-domain ;VARIANT
    VARIANT wrong-relation ;VARIANT
    VARIANT wrong-environment ;VARIANT
    VARIANT wrong-verifier-class ;VARIANT
    VARIANT not-independent ;VARIANT
-;SUMTYPE
+;ENUM
 
-SUMTYPE decode-result 0
-   VARIANT ok obligation ;VARIANT
+\ ok carries the decoded obligation, named `obl` for the same reason: >OBL / OBL> are this
+\ file's converters for an obligation value and DC-OK builds its payload with >OBL.
+ENUM decode-result 0
+   VARIANT ok FIELD obl obligation ;VARIANT
    VARIANT malformed ;VARIANT
    VARIANT noncanonical ;VARIANT
    VARIANT bounds ;VARIANT
    VARIANT duplicate ;VARIANT
    VARIANT unknown-required ;VARIANT
-;SUMTYPE
+;ENUM
 
 \ obligation-id wire-decode result (the § 23.9 art-result custom-sum idiom, the
 \ maki/producer.f id-result precedent): `ok` carries the refined nominal id; the reject
 \ arms are the fixed-width byte-decode refusals (wrong width, unresolved/out-of-range raw).
-SUMTYPE id-result 1
-   VARIANT ok a ;VARIANT
+ENUM id-result 1
+   VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

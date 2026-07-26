@@ -27,6 +27,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/db/obligation.f
 require maki/numpolicy.f
 require maki/artifact.f
@@ -351,6 +352,80 @@ create OBID-SHA CK-BYTES allot
    drop
    DEPX DEP+ ;
 
+\ ---- every payload variant constructs and dispatches through MATCH -------------------
+\ The legs above reach the three result families only through DISCHARGE, DECODE and the
+\ wire decoders. These construct the payload-carrying variant DIRECTLY through the private
+\ production wrappers and match it straight back, which is what proves the named FIELDs
+\ (`ev` on discharge-result's ok, `obl` on decode-result's ok, `id` on id-result's ok) bind
+\ in declaration order. Each recovered payload is projected to its raw slot / registry raw
+\ and compared with the value that was constructed, at TWO distinct values per family, so a
+\ payload the constructor dropped, zeroed or replaced with a constant fails instead of
+\ passing.
+\
+\ Construction is factored into one typed word per variant because the checker requires
+\ MATCH's scrutinee to be a concretely instantiated family value: a single word that both
+\ constructs and matches is refused, and the diagnostic names the family token as an
+\ undefined word. That refusal predates this migration (it reproduces identically on the
+\ legacy declaration) and is reported separately.
+: TT-MK-DR-OK ( evidence -- discharge-result )   DR-OK ;
+: TT-MK-DR-WS ( -- discharge-result )            DR-WSUBJECT ;
+: TT-MK-DC-OK ( n -- decode-result )             DC-OK ;
+: TT-MK-DC-MAL ( -- decode-result )              DC-MALFORMED ;
+: TT-MK-ID-OK ( CAD-KIND:obligation-id -- id-result<CAD-KIND:obligation-id> )   IDR-OK ;
+: TT-MK-ID-WW ( -- id-result<CAD-KIND:obligation-id> )   IDR-WRONG-WIDTH ;
+
+: TT-DR-EV ( discharge-result -- n )             \ the ok evidence's slot, else -1
+   MATCH discharge-result
+      ok                   OF {: got:evidence :} got EV> ENDOF
+      wrong-subject        OF -1 ENDOF
+      wrong-domain         OF -1 ENDOF
+      wrong-relation       OF -1 ENDOF
+      wrong-environment    OF -1 ENDOF
+      wrong-verifier-class OF -1 ENDOF
+      not-independent      OF -1 ENDOF
+   ;MATCH ;
+
+: TT-DC-OBL ( decode-result -- n )               \ the ok obligation's slot, else -1
+   MATCH decode-result
+      ok               OF {: got:obligation :} got OBL> ENDOF
+      malformed        OF -1 ENDOF
+      noncanonical     OF -1 ENDOF
+      bounds           OF -1 ENDOF
+      duplicate        OF -1 ENDOF
+      unknown-required OF -1 ENDOF
+   ;MATCH ;
+
+: TT-ID-RAW ( id-result<CAD-KIND:obligation-id> -- n )   \ the ok id's registry raw, else -1
+   MATCH id-result
+      ok          OF {: got:CAD-KIND:obligation-id :} got OBLIGATION-ID>RAW ENDOF
+      wrong-width OF -1 ENDOF
+      unknown     OF -1 ENDOF
+   ;MATCH ;
+
+: TT-DR-RT ( evidence -- n )                     \ 0 = this evidence came back unchanged
+   dup EV> {: want:n :}
+   TT-MK-DR-OK TT-DR-EV want = if 0 else 1 then ;
+: TT-DC-RT ( n -- n )                            \ 0 = this obligation slot came back unchanged
+   dup {: want:n :}
+   TT-MK-DC-OK TT-DC-OBL want = if 0 else 1 then ;
+: TT-ID-RT ( CAD-KIND:obligation-id -- n )       \ 0 = this id came back unchanged
+   dup OBLIGATION-ID>RAW {: want:n :}
+   TT-MK-ID-OK TT-ID-RAW want = if 0 else 1 then ;
+
+: TT-DR-RT-A ( -- n )    EV-MATCH TT-DR-RT ;
+: TT-DR-RT-B ( -- n )    EV-DEVICE TT-DR-RT ;
+: TT-DR-AB-DIFF ( -- bool )   EV-MATCH EV> EV-DEVICE EV> <> ;   \ the two controls differ
+: TT-DR-WS-EV ( -- n )   TT-MK-DR-WS TT-DR-EV ;                 \ a reject arm carries no evidence
+: TT-DC-RT-A ( -- n )    OBL-CANON OBL> TT-DC-RT ;
+: TT-DC-RT-B ( -- n )    OBL-OTHER OBL> TT-DC-RT ;
+: TT-DC-AB-DIFF ( -- bool )   OBL-CANON OBL> OBL-OTHER OBL> <> ;
+: TT-DC-MAL-OBL ( -- n ) TT-MK-DC-MAL TT-DC-OBL ;
+: TT-ID-RT-A ( -- n )    OBL-CANON INTERN TT-ID-RT ;
+: TT-ID-RT-B ( -- n )    OBL-OTHER INTERN TT-ID-RT ;
+: TT-ID-AB-DIFF ( -- bool )
+   OBL-CANON INTERN OBLIGATION-ID>RAW  OBL-OTHER INTERN OBLIGATION-ID>RAW  <> ;
+: TT-ID-WW-RAW ( -- n )  TT-MK-ID-WW TT-ID-RAW ;
+
 T-RESET
 
 \ ---- ACCEPTANCE 1: wrong-domain evidence cannot discharge ----------------------
@@ -436,6 +511,203 @@ s" OBLIG:RAW>OBLIGATION-ID" 0 search-wl 0= TTRUE
 s" OBLIG:OBLIGATION-ID>RAW" 0 search-wl 0= TTRUE
 ' DEP-CAP-FAIL E-OBL-CAP TTHROWS
 
-T-REPORT
+\ ---- the three result families construct and dispatch through MATCH ------------------
+TT-DR-AB-DIFF TTRUE        \ the two evidence controls are distinct values
+TT-DR-RT-A 0 T=            \ discharge ok carries its `ev` payload through unchanged ...
+TT-DR-RT-B 0 T=            \ ... at a second distinct evidence, so it is not a constant
+TT-DR-WS-EV -1 T=          \ a reject arm carries no evidence
+TT-DC-AB-DIFF TTRUE
+TT-DC-RT-A 0 T=            \ decode ok carries its `obl` payload through unchanged ...
+TT-DC-RT-B 0 T=            \ ... at a second distinct obligation
+TT-DC-MAL-OBL -1 T=        \ a reject arm carries no obligation
+TT-ID-AB-DIFF TTRUE
+TT-ID-RT-A 0 T=            \ id-result ok carries its `id` payload through unchanged ...
+TT-ID-RT-B 0 T=            \ ... at a second distinct id
+TT-ID-WW-RAW -1 T=         \ a reject arm carries no id
 
 ;package
+
+\ ---- how the three result families are DECLARED (dot habu-migrate-obligation-...) -----
+\ All three keep a payload, so all three use the FULL ENUM form and stay general sums in
+\ the type registry (kind 2). Nothing about them may move: this file's own legs and three
+\ OTHER packages MATCH these families - maki/db/evidence-applicability.f and
+\ maki/db/promotion-authority.f directly, and maki/db/commit-store.f through
+\ promotion-authority's AUTHORIZED-DISCHARGE - so a drifted constructor spelling would
+\ break consumers this suite never loads. The pins below read the family LIVE out of the
+\ registry through the read-only accessors the checker publishes for public-signature
+\ tooling (src/core/checker.f), because the ordinal decoders above are keyed by case NAME
+\ and are therefore blind to a case-order change (wave C7 finding).
+\
+\ Identifying a family by its bare tail is NOT enough here: `id-result` alone is declared
+\ by numpolicy, journal, rev, producer, evidence, suiteid, target AND obligation, so a
+\ tail-only lookup silently pins another package's family. Each pin below therefore matches
+\ the tail AND the constructor package its variants carry.
+package OBLIG-TEST
+
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+
+variable KF                        \ the family row under test
+variable KV                        \ its first case's row in the variant registry
+
+: KP-NAMED? ( n ptr u8 n -- bool ) {: id:n a:ptr u:n :}   id TFAM-NAME$ a u STR= ;
+: KP-CTOR? ( n ptr u8 n -- bool ) {: f:n a:ptr u:n :}
+   f TFAM-VAR-COUNT@ 0 <= if false exit then
+   f TFAM-VAR-START@ SUMV-CTOR-PKG$ a u STR= ;
+: KF! ( ptr u8 n ptr u8 n -- ) {: ta:ptr tu:n ca:ptr cu:n :}   \ tail AND constructor package
+   -1 KF !
+   TFAM-N@ 0 ?do
+      i ta tu KP-NAMED? i ca cu KP-CTOR? and if i KF ! unloop exit then
+   loop ;
+: KF-FOUND ( -- bool )   KF @ 0 >= ;
+: KF-KIND ( -- n )       KF @ TFAM-KIND@ ;
+: KF-ARITY ( -- n )      KF @ TFAM-ARITY@ ;
+: KF-WIDTH ( -- n )      KF @ TFAM-WIDTH@ ;
+: KF-PUBLIC ( -- bool )  KF @ TFAM-PUBLIC? ;
+: KF-VARS ( -- n )       KF @ TFAM-VAR-COUNT@ ;
+: KV! ( -- )             KF @ TFAM-VAR-START@ KV ! ;
+: CASE$ ( n -- ptr u8 n ) {: k:n :}   KV @ k + SUMV-NAME$ ;
+: CTOR$ ( n -- ptr u8 n ) {: k:n :}   KV @ k + SUMV-CTOR-PKG$ ;
+
+public
+
+\ Three shape twins, one per family: same arity, same cases in the same order, same named
+\ payload field. They exist only so the negatives below can prove result identity is
+\ NOMINAL - two identically shaped families never unify, in either direction. Public, so
+\ each publishes constructors for its own positive control. The generated packages
+\ (OBLIG--TEST-DR--TWIN, -DC--TWIN, -IDR--TWIN) are 20-21 bytes, inside the 32-byte
+\ readable-spelling limit TF-CTOR-NAME-LIMIT (src/core/type-family.f).
+ENUM dr-twin 0
+   VARIANT ok FIELD ev OBLIG:evidence ;VARIANT
+   VARIANT wrong-subject ;VARIANT
+   VARIANT wrong-domain ;VARIANT
+   VARIANT wrong-relation ;VARIANT
+   VARIANT wrong-environment ;VARIANT
+   VARIANT wrong-verifier-class ;VARIANT
+   VARIANT not-independent ;VARIANT
+;ENUM
+
+ENUM dc-twin 0
+   VARIANT ok FIELD obl OBLIG:obligation ;VARIANT
+   VARIANT malformed ;VARIANT
+   VARIANT noncanonical ;VARIANT
+   VARIANT bounds ;VARIANT
+   VARIANT duplicate ;VARIANT
+   VARIANT unknown-required ;VARIANT
+;ENUM
+
+ENUM idr-twin 1
+   VARIANT ok FIELD id a ;VARIANT
+   VARIANT wrong-width ;VARIANT
+   VARIANT unknown ;VARIANT
+;ENUM
+
+private
+
+\ ---- live registry: discharge-result -------------------------------------------------
+s" discharge-result" s" OBLIG-DISCHARGE--RESULT" KF!
+KF-FOUND TTRUE
+KF-KIND TK-SUM T=                  \ a payload family is a general sum ...
+KF-KIND TK-ENUM = 0 T=             \ ... never recorded as a payloadless enum
+KF-ARITY 0 T=
+KF-WIDTH 2 T=                      \ tag + one payload cell
+KF-PUBLIC TTRUE
+KF-VARS 7 T=
+KV!
+0 CASE$ s" ok" T$=                 \ case order fixes the tags
+1 CASE$ s" wrong-subject" T$=
+2 CASE$ s" wrong-domain" T$=
+3 CASE$ s" wrong-relation" T$=
+4 CASE$ s" wrong-environment" T$=
+5 CASE$ s" wrong-verifier-class" T$=
+6 CASE$ s" not-independent" T$=
+0 CTOR$ s" OBLIG-DISCHARGE--RESULT" T$=
+6 CTOR$ s" OBLIG-DISCHARGE--RESULT" T$=
+
+\ ---- live registry: decode-result ----------------------------------------------------
+s" decode-result" s" OBLIG-DECODE--RESULT" KF!
+KF-FOUND TTRUE
+KF-KIND TK-SUM T=
+KF-ARITY 0 T=
+KF-WIDTH 2 T=
+KF-PUBLIC TTRUE
+KF-VARS 6 T=
+KV!
+0 CASE$ s" ok" T$=
+1 CASE$ s" malformed" T$=
+2 CASE$ s" noncanonical" T$=
+3 CASE$ s" bounds" T$=
+4 CASE$ s" duplicate" T$=
+5 CASE$ s" unknown-required" T$=
+0 CTOR$ s" OBLIG-DECODE--RESULT" T$=
+5 CTOR$ s" OBLIG-DECODE--RESULT" T$=
+
+\ ---- live registry: id-result (the tail eight packages share) ------------------------
+s" id-result" s" OBLIG-ID--RESULT" KF!
+KF-FOUND TTRUE
+KF-KIND TK-SUM T=
+KF-ARITY 1 T=                      \ the one type parameter the id rides in
+KF-WIDTH 2 T=
+KF-PUBLIC TTRUE
+KF-VARS 3 T=
+KV!
+0 CASE$ s" ok" T$=
+1 CASE$ s" wrong-width" T$=
+2 CASE$ s" unknown" T$=
+0 CTOR$ s" OBLIG-ID--RESULT" T$=
+2 CTOR$ s" OBLIG-ID--RESULT" T$=
+
+\ ---- generated constructors: exact spelling + exact effect ---------------------------
+\ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot
+\ resolve, and YES demands -1, so a -1 means the checker resolved EXACTLY this constructor
+\ name; NO demands 0, which it can only reach after resolving the name and refusing the
+\ types.
+s" DR-C-OK ( OBLIG:evidence -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:OK" YES
+s" DR-C-WS ( -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:WRONG-SUBJECT" YES
+s" DR-C-WD ( -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:WRONG-DOMAIN" YES
+s" DR-C-WR ( -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:WRONG-RELATION" YES
+s" DR-C-WE ( -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:WRONG-ENVIRONMENT" YES
+s" DR-C-WV ( -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:WRONG-VERIFIER-CLASS" YES
+s" DR-C-NI ( -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:NOT-INDEPENDENT" YES
+s" DC-C-OK ( OBLIG:obligation -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:OK" YES
+s" DC-C-MAL ( -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:MALFORMED" YES
+s" DC-C-NC ( -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:NONCANONICAL" YES
+s" DC-C-BND ( -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:BOUNDS" YES
+s" DC-C-DUP ( -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:DUPLICATE" YES
+s" DC-C-UNK ( -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:UNKNOWN-REQUIRED" YES
+s" ID-C-OK ( CAD-KIND:obligation-id -- OBLIG:id-result<CAD-KIND:obligation-id> ) OBLIG-ID--RESULT:OK" YES
+s" ID-C-WW ( -- OBLIG:id-result<CAD-KIND:obligation-id> ) OBLIG-ID--RESULT:WRONG-WIDTH" YES
+s" ID-C-UNK ( -- OBLIG:id-result<CAD-KIND:obligation-id> ) OBLIG-ID--RESULT:UNKNOWN" YES
+\ Forge negatives. The payload is mandatory and is not a bare scalar, a reject arm takes no
+\ payload, and a raw cell cannot fill a payload slot. DR-F-SIB and DC-F-SIB are the sharp
+\ ones: obligation and evidence are same-width sibling structures in this very package, so
+\ each ok arm must refuse the other's role.
+s" DR-F-NONE ( -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:OK" NO
+s" DR-F-BARE ( OBLIG:evidence -- n ) OBLIG-DISCHARGE--RESULT:OK" NO
+s" DR-F-RAW ( n -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:OK" NO
+s" DR-F-SIB ( OBLIG:obligation -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:OK" NO
+s" DR-F-PAY ( OBLIG:evidence -- OBLIG:discharge-result ) OBLIG-DISCHARGE--RESULT:WRONG-SUBJECT" NO
+s" DC-F-NONE ( -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:OK" NO
+s" DC-F-RAW ( n -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:OK" NO
+s" DC-F-SIB ( OBLIG:evidence -- OBLIG:decode-result ) OBLIG-DECODE--RESULT:OK" NO
+s" ID-F-RAW ( n -- OBLIG:id-result<CAD-KIND:obligation-id> ) OBLIG-ID--RESULT:OK" NO
+s" ID-F-BARE ( CAD-KIND:obligation-id -- n ) OBLIG-ID--RESULT:OK" NO
+s" ID-F-NONE ( -- OBLIG:id-result<CAD-KIND:obligation-id> ) OBLIG-ID--RESULT:OK" NO
+s" ID-F-FGN ( CAD-KIND:artifact-id -- OBLIG:id-result<CAD-KIND:obligation-id> ) OBLIG-ID--RESULT:OK" NO
+\ Cross-family negatives between the two production families that share this package.
+s" DC-F-XFAM ( OBLIG:evidence -- OBLIG:decode-result ) OBLIG-DISCHARGE--RESULT:OK" NO
+s" DR-F-XFAM ( OBLIG:obligation -- OBLIG:discharge-result ) OBLIG-DECODE--RESULT:OK" NO
+\ The three shape twins: same shape, different name, no unification in either direction.
+s" TW-DR ( OBLIG:evidence -- dr-twin ) OBLIG--TEST-DR--TWIN:OK" YES
+s" TW-DR-X1 ( OBLIG:evidence -- dr-twin ) OBLIG-DISCHARGE--RESULT:OK" NO
+s" TW-DR-X2 ( OBLIG:evidence -- OBLIG:discharge-result ) OBLIG--TEST-DR--TWIN:OK" NO
+s" TW-DC ( OBLIG:obligation -- dc-twin ) OBLIG--TEST-DC--TWIN:OK" YES
+s" TW-DC-X1 ( OBLIG:obligation -- dc-twin ) OBLIG-DECODE--RESULT:OK" NO
+s" TW-DC-X2 ( OBLIG:obligation -- OBLIG:decode-result ) OBLIG--TEST-DC--TWIN:OK" NO
+s" TW-ID ( CAD-KIND:obligation-id -- idr-twin<CAD-KIND:obligation-id> ) OBLIG--TEST-IDR--TWIN:OK" YES
+s" TW-ID-X1 ( CAD-KIND:obligation-id -- idr-twin<CAD-KIND:obligation-id> ) OBLIG-ID--RESULT:OK" NO
+s" TW-ID-X2 ( CAD-KIND:obligation-id -- OBLIG:id-result<CAD-KIND:obligation-id> ) OBLIG--TEST-IDR--TWIN:OK" NO
+
+;package
+
+T-REPORT
