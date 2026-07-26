@@ -326,6 +326,9 @@ private
 : MK-BUF8 ( -- WSTORE:buffer )                  \ eight owned bytes, never made a store
    8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES WSTORE:BUFFER ;
 
+: MK-BUF8N ( -- WSTORE:buffer )                 \ the same, allocated and owned in one step
+   8 MEM:BYTES-ALLOC-LEN WSTORE:BUFFER-NEW ;
+
 : T-OWNER-EXITS ( -- )
    s" an unsealed builder disposes on its own" T-LABEL
    WSTORE:LIVE 0 T=
@@ -343,6 +346,11 @@ private
    MK-BUF8
    WSTORE:LIVE 1 T=
    WSTORE:BUFFER-DISPOSE 8 RES-OK=              \ the bytes it owned, not its record
+   WSTORE:LIVE 0 T=
+   s" BUFFER-NEW allocates and owns in one step, and disposes the same way" T-LABEL
+   MK-BUF8N
+   WSTORE:LIVE 1 T=
+   WSTORE:BUFFER-DISPOSE 8 RES-OK=
    WSTORE:LIVE 0 T=
    SAFET-MAP:LIVE 0 T=                          \ nothing was ever mapped for this leg
    SAFET:LIVE-OWNERS 0 T= ;
@@ -754,6 +762,20 @@ private
    s" WST-BAD-RES-SEAL ( WSTORE:resident -- WSTORE:table ) WSTORE:SEAL" REJECTED
    s" WST-BAD-RES-WITH-SLOT ( WSTORE:resident n -- WSTORE:resident n ) [: drop 0 ;] WSTORE:WITH-SLOT" REJECTED ;
 
+\ Its own word rather than more lines in T-LINEAR: that word already carries some fifty
+\ candidates, and appending five more stopped the harness outright instead of reporting a
+\ verdict on them. The candidates below are unchanged from what was appended there and
+\ pass exactly as written, so the split is the fix.
+: T-BUFFER-NEW ( -- )
+   s" BUFFER-NEW yields one linear buffer and never raw memory" T-LABEL
+   s" WST-BAD-BN-DUP ( CAD-NUM:alloc-byte-len -- WSTORE:buffer WSTORE:buffer ) WSTORE:BUFFER-NEW dup" REJECTED
+   s" WST-BAD-BN-DROP ( CAD-NUM:alloc-byte-len -- ) WSTORE:BUFFER-NEW" REJECTED
+   s" WST-BAD-BN-RAW ( CAD-NUM:alloc-byte-len -- ptr u8 ) WSTORE:BUFFER-NEW" REJECTED
+   s" WST-BAD-BN-BARE ( n -- WSTORE:buffer ) WSTORE:BUFFER-NEW" REJECTED
+   s" WST-BAD-BN-TABLE ( CAD-NUM:alloc-byte-len -- WSTORE:table ) WSTORE:BUFFER-NEW" REJECTED
+   s" the record allocation stays behind the seal" T-LABEL
+   s" WST-BAD-RB-STEP ( -- ) WSTORE:RB-STEP" UNRESOLVED ;
+
 : T-ESCAPE ( -- )
    s" a quotation declared to return the span pointer rejects statically" T-LABEL
    s" WST-BAD-ESC1 ( WSTORE:store n -- WSTORE:store n ) [: WSTORE-TEST:ESC-BODY ;] WSTORE:WITH-SLOT" REJECTED
@@ -773,6 +795,7 @@ private
    s" WST-OK-TABLE-DISPOSE ( WSTORE:table -- result<n,n> ) WSTORE:TABLE-DISPOSE" ACCEPTED
    s" WST-OK-BUILDER-DISPOSE ( WSTORE:tbuilder -- result<n,n> ) WSTORE:BUILDER-DISPOSE" ACCEPTED
    s" WST-OK-BUFFER-DISPOSE ( WSTORE:buffer -- result<n,n> ) WSTORE:BUFFER-DISPOSE" ACCEPTED
+   s" WST-OK-BUFFER-NEW ( CAD-NUM:alloc-byte-len -- WSTORE:buffer ) WSTORE:BUFFER-NEW" ACCEPTED
    s" WST-OK-HOLD ( WSTORE:store -- WSTORE:resident ) WSTORE:HOLD" ACCEPTED
    s" WST-OK-RESIDENT-DISPOSE ( WSTORE:resident -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" ACCEPTED
    s" the representation stays behind the seal" T-LABEL
@@ -820,6 +843,7 @@ public
 : RUN ( -- )
    T-RESET
    T-LINEAR
+   T-BUFFER-NEW
    T-ESCAPE
    T-SURFACE
    T-SEALED

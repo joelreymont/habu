@@ -79,6 +79,8 @@ package GPT2TX
 6 constant TX-BK-ALIAS                          \ emit the PREVIOUS slot's key on this row
 7 constant TX-BK-PAD                            \ prepend __metadata__, shifting every offset
 
+-5698 constant E-TX-FIX                          \ fixture invariant broke (never expected)
+
 variable TX-BAD-SLOT                            \ which slot to damage, -1 for none
 variable TX-BAD-KIND
 
@@ -239,8 +241,18 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 : TX-HDR! ( n -- ) {: hl:n :}                   \ 8-byte little-endian header length
    8 0 ?do  hl i 8 * rshift $FF and  TX-IMG i + c!  loop ;
 
-: TX-ZERO-DATA ( n n -- ) {: base:n nb:n :}     \ tensor bytes are all zero
-   nb 0 ?do  0 TX-IMG base i + + c!  loop ;
+\ Every data byte is a function of its POSITION in the data section, and never zero.
+\ That is load-bearing for every byte comparison this suite makes: with a constant fill
+\ - zeros, as this emitter used to write - a span probe compares zeros with zeros, so it
+\ holds for a wrong arena offset, a wrong extent and a wrong census id alike, and the
+\ assertion proves only that both sides are the same length. With a position-dependent
+\ pattern, reading one byte from the wrong place is visible. Never zero, so a span that
+\ was never written at all cannot pass either.
+: TX-PAT ( n -- n ) {: i:n :}
+   i 31 * 7 + 251 mod 1 + ;
+
+: TX-PAT-DATA ( n n -- ) {: base:n nb:n :}
+   nb 0 ?do  i TX-PAT  TX-IMG base i + +  c!  loop ;
 
 \ A `__metadata__` member, which the loader recognises and SKIPS: it commits no row and
 \ is not counted as a tensor. Emitting it therefore lengthens the header and nothing
@@ -259,7 +271,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    TX-JLEN @ {: hl:n :}
    hl TX-HDR!
    TX-JBUF TX-IMG 8 + hl BYTE-COPY
-   8 hl + TX-DOFF @ TX-ZERO-DATA
+   8 hl + TX-DOFF @ TX-PAT-DATA
    8 hl + TX-DOFF @ + TX-IMGLEN ! ;
 
 : TX-BUILD ( MDLCFG:mcfg -- MDLCFG:mcfg )
@@ -322,6 +334,11 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 
 : TX-LAY ( -- )                                 \ write the current variant to disk
    TX-CFG-A TX-WRITE drop ;
+
+: TX-LAY-WIDE ( -- )                            \ the wider model, at the second path
+   TX-CFG-WIDE TX-BUILD
+   TX-PATH2 TX-IMG TX-IMGLEN @ WRITE-ALL
+   drop ;
 
 : TX-LAY-SHIFTED ( -- )
    TX-BK-PAD TX-BAD-KIND !
@@ -746,6 +763,9 @@ variable TX-SNAP-N
 \ above would pass for the wrong reason.
 variable TX-DIFFN
 
+variable TX-SUM0                                \ the live prep's own prefix sum, before any
+                                                \ interfering emit rewrites TX-DOFF
+
 : TX-ROWS-DIFF-COUNT ( GPT2TX:prep -- GPT2TX:prep )
    0 TX-DIFFN !
    PREP-COUNT {: count:n :}
@@ -761,6 +781,29 @@ variable TX-DIFFN
 \ offset shifted. Its aggregates match the first's exactly - same tensor count, same
 \ extents, same prefix sum - so only the rows can tell the two apart, which is what
 \ makes it the right interference for a row-carrying block.
+\ The interference that moves EXTENTS. Its rows disagree with the live prep's in the two
+\ columns the allocated arm actually reads, so a commit taking its plan from the scratch
+\ would size and place every span wrongly - which the offset-only variant cannot show.
+: TX-INTERFERE-WIDE ( -- )
+   TX-LAY-WIDE
+   TX-PATH2 SAFET:LOAD TX-CFG-WIDE PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         s" the wider transaction agrees on the tensor count" T-LABEL
+         PREP-COUNT TX-CNT T=
+         s" and disagrees on the prefix sum and on every row" T-LABEL
+         PREP-SUM TX-SUM0 @ <> TTRUE
+         TX-ROWS-DIFF-COUNT
+         TX-DIFFN @ TX-CNT T=
+         ABORT
+      ENDOF
+      rejected OF
+         s" the wider census failed to prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH ;
+
 : TX-INTERFERE-SHIFTED ( -- )
    TX-LAY-SHIFTED
    TX-PATH2 SAFET:LOAD TX-CFG-A PREPARE
@@ -797,6 +840,7 @@ variable TX-DIFFN
       prepared OF
          PREP-COUNT TX-CNT T=
          PREP-SUM TX-DOFF @ T=
+         TX-DOFF @ TX-SUM0 !
          TX-ROWS-SNAP
          TX-PATH SAFET:LOAD TX-CFG-DEEP PREPARE
          E-GX-COUNT TX-EXPECT-REJECTED SAFET:RELEASE
@@ -811,6 +855,11 @@ variable TX-DIFFN
          s" and they are still byte-identical after a SUCCEEDING transaction" T-LABEL
          PREP-COUNT TX-CNT T=
          PREP-SUM TX-DOFF @ T=
+         TX-ROWS-SAME
+         TX-INTERFERE-WIDE
+         s" and after one whose EXTENTS differ, which is what this arm reads" T-LABEL
+         PREP-COUNT TX-CNT T=
+         PREP-SUM TX-SUM0 @ T=
          TX-ROWS-SAME
          ABORT
       ENDOF
@@ -1281,6 +1330,344 @@ variable TX-MOFF
    TX-REAL-COMMIT
    TX-NO-LEAK ;
 
+\ ---- the allocated arm's gate: compare and retype, nothing moves -----------------
+: T-CHECK-ALLOC ( -- )
+   s" CHECK-ALLOC refuses a foreign prep and moves nothing" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         TX-CFG-B CHECK-ALLOC
+         MATCH GPT2TX:check-alloc-result
+            matched OF
+               s" a foreign configuration must not match" T-LABEL
+               ABORT-CHECKED-ALLOC
+               0 0= 0= TTRUE
+            ENDOF
+            refused OF
+               E-GX-FOREIGN T=
+               s" and the refused prep is still whole and still ABORTable" T-LABEL
+               PREP-COUNT TX-CNT T=
+               ABORT
+            ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" check-alloc leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH
+   TX-NO-LEAK ;
+
+\ ---- the allocated commit -------------------------------------------------------------
+\ Copy correctness is checked against the ARENA the commit actually filled, not against a
+\ re-derivation: CA-ARENA is where COMMIT-ALLOCATED put the weights and ARENA-OFF is where
+\ it decided each slot goes, so reading those bytes back and comparing them with what the
+\ census itself copies out is a comparison between the commit's output and the file. It has
+\ to be done this way today because there is no way to read a slot back through a bound
+\ model - that needs the scoped access over a held resident which the linear-scope
+\ capability provides, exactly as the mapped arm's real-artifact leg records.
+$800 constant TX-CB-CAP
+create TX-CB-A TX-CB-CAP allot                  \ what the census says the tensor is
+create TX-CB-B TX-CB-CAP allot                  \ what the commit put in the arena
+
+: TX-ARENA-BYTES ( n n -- )                     \ arena offset, length -> TX-CB-B
+   {: aoff:n len:n :}
+   CA-ARENA @ aoff BYTE+  TX-CB-B  len BYTE-COPY ;
+
+\ One slot, compared end to end: the census's own copy of the tensor against the bytes the
+\ commit placed at that slot's arena offset. Parameterised by slot so the leg can walk
+\ tensors of different rank and file position rather than trusting one.
+\ Compares a bounded PREFIX of the span, the way the mapped arm's real-artifact probe
+\ does: a weight can be megabytes, and what is being proved is that the commit put THIS
+\ tensor's bytes at THIS arena offset - a wrong id, a wrong offset or a shifted row all
+\ show up in the first bytes. COPY-DATA? truncates to the capacity it is given, so the
+\ prefix length is what it returns and what both sides are compared over.
+\ Reads the LAST bytes of a tensor out of the census, which COPY-DATA? cannot do - it
+\ copies from the start and truncates to the capacity it is given, so a head-only probe
+\ passes for a span that was copied short. The tail is where a truncation shows.
+variable TX-TAIL-N
+
+: TX-TAIL-BODY ( SAFET:census ptr u8 n -- SAFET:census ) {: sa:ptr slen:n :}
+   slen TX-CB-CAP > if TX-CB-CAP else slen then {: take:n :}
+   sa slen take - BYTE+  TX-CB-A  take BYTE-COPY
+   take TX-TAIL-N ! ;
+
+\ Head AND tail, because either alone is blind to a real defect: the head misses a copy
+\ that was truncated, and a span long enough to exceed the compare buffer is exactly where
+\ that happens. Both ends are compared against a fresh census of the same file.
+: TX-SPAN-AGREES ( SAFET:census n n n -- SAFET:census )
+   {: id:n aoff:n len:n :}
+   len TX-CB-CAP > if TX-CB-CAP else len then {: take:n :}
+   id TX-CB-A take SAFET:COPY-DATA? TX-OPT-VAL take T=
+   aoff take TX-ARENA-BYTES
+   TX-CB-A take TX-CB-B take TX-BYTES=
+   id [: TX-TAIL-BODY ;] SAFET:WITH-TENSOR TX-OPT-VAL drop
+   TX-TAIL-N @ {: tn:n :}
+   aoff len + tn -  tn TX-ARENA-BYTES
+   TX-CB-A tn TX-CB-B tn TX-BYTES= ;
+
+\ ---- forced failure at each fallible step ----------------------------------------------
+\ There is no allocation fault injector in the tree, so each leg forces its step to fail by
+\ corrupting ONE field of a real witness block produced by a real PREPARE, and then runs the
+\ real COMMIT-ALLOCATED. What is under test is the unwind, and the unwind does not care
+\ which code came out of the step - it cares that everything acquired so far, plus the two
+\ owners the prep still held, are given back before the code surfaces. Every leg therefore
+\ ends at the same place: TX-NO-LEAK, every counter back where the suite found it. That
+\ helper compares against the captured baseline rather than against zero, which is what
+\ makes these legs correct under maki/test.f - the suites share one process, and the
+\ weight-store suite ahead of this one leaves its own documented throw strands behind.
+
+\ An arena size no allocator can satisfy: the step that asks for it fails, and nothing has
+\ been acquired yet beyond the prep's own owners.
+: TX-WRECK-SUM ( GPT2TX:checked-prep-alloc -- GPT2TX:checked-prep-alloc )
+   TAKE-CHECKED-ALLOC {: blk:ptr :}
+   MAX-N 16 - blk P-SUM cells + !
+   blk BLK>BYTES MINT-CHECKED-ALLOC ;
+
+\ A row extent no arena can lay out: the table step meets it while the arena and its buffer
+\ are already live, so this leg is the one that proves the buffer is given back. It wrecks a
+\ ROW rather than P-CNT deliberately - P-CNT is how the block describes its own size to the
+\ release, so corrupting that would break the unwind itself instead of testing it.
+: TX-WRECK-LEN ( GPT2TX:checked-prep-alloc -- GPT2TX:checked-prep-alloc )
+   TAKE-CHECKED-ALLOC {: blk:ptr :}
+   MAX-N  blk 0 PR-LEN ROW-CELL !
+   blk BLK>BYTES MINT-CHECKED-ALLOC ;
+
+\ A census id no census has: the copy walk refuses with the arena, its buffer AND the
+\ arena-frame table all live, which is the widest unwind this word has.
+: TX-WRECK-ID ( GPT2TX:checked-prep-alloc -- GPT2TX:checked-prep-alloc )
+   TAKE-CHECKED-ALLOC {: blk:ptr :}
+   $7FFFFFF  blk 0 PR-ID ROW-CELL !
+   blk BLK>BYTES MINT-CHECKED-ALLOC ;
+
+\ Each leg builds a real transaction, wrecks the one field that makes its step fail, and
+\ runs the real commit. A leg that reaches MODEL-DISPOSE has NOT thrown, and TTHROWSQ says
+\ so; the baseline assertion after it is what proves the unwind was complete.
+: TX-CA-WITNESS ( -- GPT2TX:check-alloc-result )
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF TX-CFG-A CHECK-ALLOC ENDOF
+      rejected OF
+         s" forced-failure leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         E-TX-FIX throw
+      ENDOF
+   ;MATCH ;
+
+: TX-GATE-REFUSED ( n -- )
+   s" forced-failure leg was refused by the gate" T-LABEL
+   . cr
+   0 0= 0= TTRUE ;
+
+: TX-WRECK-SUM-RUN ( -- )
+   TX-CA-WITNESS
+   MATCH GPT2TX:check-alloc-result
+      matched OF TX-WRECK-SUM COMMIT-ALLOCATED MODEL-DISPOSE TX-RES-VAL drop ENDOF
+      refused OF TX-GATE-REFUSED ABORT ENDOF
+   ;MATCH ;
+
+: TX-WRECK-LEN-RUN ( -- )
+   TX-CA-WITNESS
+   MATCH GPT2TX:check-alloc-result
+      matched OF TX-WRECK-LEN COMMIT-ALLOCATED MODEL-DISPOSE TX-RES-VAL drop ENDOF
+      refused OF TX-GATE-REFUSED ABORT ENDOF
+   ;MATCH ;
+
+: TX-WRECK-ID-RUN ( -- )
+   TX-CA-WITNESS
+   MATCH GPT2TX:check-alloc-result
+      matched OF TX-WRECK-ID COMMIT-ALLOCATED MODEL-DISPOSE TX-RES-VAL drop ENDOF
+      refused OF TX-GATE-REFUSED ABORT ENDOF
+   ;MATCH ;
+
+\ The happy path, and the two span probes that prove the arena holds the file's bytes at the
+\ offsets the commit chose. The probes run against a SECOND census of the same file, so what
+\ they compare the arena with is the file rather than anything the commit computed.
+\ ONE slot pair, used by both halves of the probe. The recording word and the comparing
+\ word must name the SAME slots: recording slot A's arena location and then comparing
+\ slot B's bytes against it passes whenever the data is uniform and means nothing when it
+\ is not, which is exactly the shape this pair replaced.
+2 constant TX-PROBE-VEC                         \ ln_f.weight: a rank-1 vector
+variable TX-RA-OFF   variable TX-RA-LEN   variable TX-RA-ID
+variable TX-RB-OFF   variable TX-RB-LEN   variable TX-RB-ID
+
+variable TX-CA-VEC-OFF                          \ the vector slot's arena offset and extent
+variable TX-CA-VEC-LEN
+variable TX-CA-CONV-OFF                         \ and the Conv1D slot's
+variable TX-CA-CONV-LEN
+
+\ The census id a slot's HF key resolves to, asked of the census on the stack.
+: TX-ID-OF-SLOT ( SAFET:census n -- SAFET:census n ) {: slot:n :}
+   TX-CFG-A slot TX-KEY-LEN {: klen:n :}
+   drop                                         \ the mcfg copy
+   TX-KBUF klen SAFET:FIND TX-OPT-VAL ;
+
+: TX-PROBE-SPANS ( -- )
+   TX-PATH SAFET:LOAD
+   TX-PROBE-VEC TX-ID-OF-SLOT {: vid:n :}
+   TX-PROBE-CONV TX-ID-OF-SLOT {: cid:n :}
+   s" the rank-1 vector span is the file's own bytes, at its arena offset" T-LABEL
+   vid  TX-CA-VEC-OFF @  TX-CA-VEC-LEN @  TX-SPAN-AGREES
+   s" and so is the Conv1D matrix the forward pass reads" T-LABEL
+   cid  TX-CA-CONV-OFF @  TX-CA-CONV-LEN @  TX-SPAN-AGREES
+   SAFET:RELEASE ;
+
+
+\ Which slot carries a given census id. The real checkpoint's slots are not knowable by
+\ eye, so a probe names its tensor by HF key, resolves the key to a census id, and finds
+\ the slot from the block's own carried rows - the same rows the commit copied by.
+: TX-SLOT-OF-ID ( ptr n n -- n ) {: blk:ptr id:n :}
+   -1
+   blk P-CNT cells + @ 0 ?do
+      blk i PR-ID ROW-CELL @ id = if drop i then
+   loop ;
+
+: TX-NOTE-ID ( ptr n n ptr n ptr n -- ) {: blk:ptr id:n ovar:ptr lvar:ptr :}
+   blk id TX-SLOT-OF-ID {: slot:n :}
+   slot 0 < if E-TX-FIX throw then
+   blk slot ARENA-OFF ovar !
+   blk slot PR-LEN ROW-CELL @ lvar ! ;
+
+\ ---- the packed layout, asserted as a recurrence -------------------------------------
+\ The span probes check two slots. This checks the SHAPE of the whole layout, which is
+\ what a two-slot probe cannot: the arena starts at zero, every row begins exactly where
+\ the previous one ended - so there is no gap and no overlap anywhere - and the last row
+\ ends exactly at the arena size the commit allocated. An arena walk that drifts by one
+\ row, or a length that disagrees with the sum, shows up here rather than in whichever
+\ two slots the probes happened to pick.
+variable TX-WALK-BAD
+
+: TX-ARENA-WALK ( GPT2TX:checked-prep-alloc -- GPT2TX:checked-prep-alloc )
+   TAKE-CHECKED-ALLOC {: blk:ptr :}
+   blk P-CNT cells + @ {: count:n :}
+   0 TX-WALK-BAD !
+   s" the packed arena starts at zero" T-LABEL
+   blk 0 ARENA-OFF 0 T=
+   count 0 ?do
+      blk i ARENA-OFF  blk i PR-LEN ROW-CELL @ +  {: end:n :}
+      i 1 + count < if
+         blk i 1 + ARENA-OFF end <> if 1 TX-WALK-BAD ! then
+      else
+         end blk P-SUM cells + @ <> if 1 TX-WALK-BAD ! then
+      then
+   loop
+   s" every row begins where the previous ended, and the last ends at the arena size" T-LABEL
+   TX-WALK-BAD @ 0 T=
+   blk BLK>BYTES MINT-CHECKED-ALLOC ;
+
+: TX-NOTE-ARENA ( GPT2TX:checked-prep-alloc -- GPT2TX:checked-prep-alloc )
+   TAKE-CHECKED-ALLOC {: blk:ptr :}
+   blk TX-PROBE-VEC ARENA-OFF TX-CA-VEC-OFF !
+   blk TX-PROBE-VEC PR-LEN ROW-CELL @ TX-CA-VEC-LEN !
+   blk TX-PROBE-CONV ARENA-OFF TX-CA-CONV-OFF !
+   blk TX-PROBE-CONV PR-LEN ROW-CELL @ TX-CA-CONV-LEN !
+   blk BLK>BYTES MINT-CHECKED-ALLOC ;
+
+\ The real checkpoint, committed to an ALLOCATED model: 548 MB copied span by span into
+\ one packed arena. Both probes compare the arena against a second census of the same
+\ file, so what they agree with is the file on disk and not any number the commit derived.
+: TX-NOTE-REAL ( GPT2TX:checked-prep-alloc -- GPT2TX:checked-prep-alloc )
+   TAKE-CHECKED-ALLOC {: blk:ptr :}
+   TX-REAL-PATH SAFET:LOAD
+   s" h.0.ln_1.weight" SAFET:FIND TX-OPT-VAL {: vid:n :}
+   s" h.0.attn.c_attn.weight" SAFET:FIND TX-OPT-VAL {: cid:n :}
+   SAFET:RELEASE
+   vid TX-RA-ID !  cid TX-RB-ID !
+   blk vid TX-RA-OFF TX-RA-LEN TX-NOTE-ID
+   blk cid TX-RB-OFF TX-RB-LEN TX-NOTE-ID
+   blk BLK>BYTES MINT-CHECKED-ALLOC ;
+
+: TX-REAL-SPANS ( -- )
+   TX-REAL-PATH SAFET:LOAD
+   s" the real rank-1 vector is the file's own bytes at its arena offset" T-LABEL
+   TX-RA-ID @ TX-RA-OFF @ TX-RA-LEN @ TX-SPAN-AGREES
+   s" and so is the real Conv1D matrix the forward pass reads" T-LABEL
+   TX-RB-ID @ TX-RB-OFF @ TX-RB-LEN @ TX-SPAN-AGREES
+   SAFET:RELEASE ;
+
+: T-REAL-ALLOC ( -- )
+   TX-REAL-PATH SAFET:PRESENT? 0= if
+      s" gpt2-bind: real-artifact allocated leg SKIPPED" type cr exit
+   then
+   s" the real checkpoint commits to an ALLOCATED model that owns its arena" T-LABEL
+   TX-CFG-124M TX-CFG-KEY!
+   TX-REAL-PATH SAFET:LOAD TX-CFG-124M PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         PREP-SUM {: want:n :}
+         TX-CFG-124M CHECK-ALLOC
+         MATCH GPT2TX:check-alloc-result
+            matched OF
+               TX-ARENA-WALK
+               TX-NOTE-REAL
+               COMMIT-ALLOCATED
+               MODEL-NL 12 T=
+               TX-STASH-MKEY
+               TX-KEY-IS-CFG
+               TX-REAL-SPANS
+               s" and its exit gives back exactly the packed arena" T-LABEL
+               MODEL-DISPOSE TX-RES-VAL want T=
+               TX-NO-LEAK
+            ENDOF
+            refused OF TX-GATE-REFUSED ABORT ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" real allocated leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH ;
+
+: T-COMMIT-ALLOC ( -- )
+   s" a matched prep commits to an allocated model that owns its arena" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-CFG-A TX-CFG-KEY!
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         PREP-SUM {: want:n :}
+         TX-CFG-A CHECK-ALLOC
+         MATCH GPT2TX:check-alloc-result
+            matched OF
+               TX-ARENA-WALK
+               TX-NOTE-ARENA
+               COMMIT-ALLOCATED
+               s" it reports the depth PREPARE validated" T-LABEL
+               MODEL-NL TX-NL T=
+               s" and the configuration's identity, cell for cell" T-LABEL
+               TX-STASH-MKEY
+               TX-KEY-IS-CFG
+               TX-PROBE-SPANS
+               s" and its exit gives back exactly the packed arena" T-LABEL
+               MODEL-DISPOSE TX-RES-VAL want T=
+               TX-NO-LEAK
+            ENDOF
+            refused OF TX-GATE-REFUSED ABORT ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" allocated-commit leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH
+   TX-NO-LEAK ;
+
+: T-COMMIT-ALLOC-FAILS ( -- )
+   s" an arena the allocator cannot satisfy unwinds completely" T-LABEL
+   TX-CLEAN!  TX-LAY
+   [: TX-WRECK-SUM-RUN ;] E-MEM-MAP TTHROWSQ
+   TX-NO-LEAK
+   s" a row extent no arena can lay out unwinds the live buffer too" T-LABEL
+   [: TX-WRECK-LEN-RUN ;] WSTORE:E-EXTENT TTHROWSQ
+   TX-NO-LEAK
+   s" a census id the census does not have unwinds buffer and table together" T-LABEL
+   [: TX-WRECK-ID-RUN ;] E-GX-COPY TTHROWSQ
+   TX-NO-LEAK ;
+
 : RUN ( -- )
    T-RESET
    TX-BASELINE!
@@ -1300,6 +1687,10 @@ variable TX-MOFF
    T-CHECK-MATCH      TX-NO-LEAK
    T-COMMIT           TX-NO-LEAK
    T-REFUSE-THEN-BIND TX-NO-LEAK
+   T-CHECK-ALLOC      TX-NO-LEAK
+   T-COMMIT-ALLOC     TX-NO-LEAK
+   T-COMMIT-ALLOC-FAILS TX-NO-LEAK
+   T-REAL-ALLOC       TX-NO-LEAK
    T-REAL
    s" the whole suite released every owner it took" T-LABEL
    TX-NO-LEAK

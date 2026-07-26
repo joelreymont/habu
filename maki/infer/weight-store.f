@@ -308,6 +308,13 @@ variable LIVE-N                \ undisposed WSTORE-owned blocks (accounting only
 : RB-ALLOC ( -- CAD-NUM:alloc-byte-len )
    RB-BYTES MEM:BYTES-ALLOC-LEN ;
 
+\ The record allocation BUFFER-NEW runs under `catch`, parked because a caught quotation
+\ must be stack-neutral and cannot hand a value back out (the lib/memory.f WB-CUR pattern).
+PTR-VARIABLE RB-PEND
+
+: RB-STEP ( -- )
+   RB-ALLOC MEM:ALLOC-BYTES drop RB-PEND ! ;
+
 : SLOT-GUARD ( ptr n n -- ) {: blk:ptr slot:n :}
    slot 0 <  slot blk NSLOTS@ >=  or if E-SLOT throw then ;
 
@@ -480,6 +487,33 @@ public
    ABLEN>N {: blen:n :}
    {: base:ptr :}
    RB-ALLOC MEM:ALLOC-BYTES drop MINT-BUFFER
+   1 LIVE-N +!
+   BUF>REC {: rec:ptr :}
+   base rec RB-BASE-IDX ptr-field !
+   blen rec RB-LEN-OFF + ! ;
+
+\ ---- allocate the bytes and own them in ONE step -----------------------------------------
+\ BUFFER above adopts bytes the caller already owns, which leaves the caller holding raw
+\ memory between its own MEM:ALLOC-BYTES and the adoption. That window is small and it is
+\ real: every caller has to carry a release-by-hand path for a failure inside it, and such a
+\ path is reached only when the second allocation fails, so it is the one branch a test
+\ cannot force and review cannot trust. This word removes the window instead of asking each
+\ caller to handle it - the bytes and the record are acquired together, and if the record
+\ cannot be allocated the bytes go straight back before the failure surfaces, so there is no
+\ state in which this package has handed out unowned memory.
+\
+\ It is the same owner-owns-its-exit argument BUILDER-DISPOSE and BUFFER-DISPOSE make, taken
+\ one step earlier: the package that owns the exit should also own the entry.
+: BUFFER-NEW ( CAD-NUM:alloc-byte-len -- WSTORE:buffer )
+   MEM:ALLOC-BYTES                              \ ( base alen ) owned by nobody yet
+   [: RB-STEP ;] catch {: code:n :}
+   code 0 <> if
+      MEM:RELEASE-BYTES                         \ straight back, before anything is reported
+      code throw
+   then
+   ABLEN>N {: blen:n :}
+   {: base:ptr :}
+   RB-PEND @ MINT-BUFFER
    1 LIVE-N +!
    BUF>REC {: rec:ptr :}
    base rec RB-BASE-IDX ptr-field !

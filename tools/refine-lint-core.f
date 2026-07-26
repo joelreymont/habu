@@ -42,7 +42,7 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-68 constant SEED#
+69 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -248,6 +248,14 @@ private
       \ (GPT2TX:ABORT-CHECKED and GPT2TX:COMMIT-MAPPED). Retires with the linear-scope
       \ combinator, habu-checker-linear-scope-6218899c.
       64 of s" N>MAPPING" endof            \ the sole inverse of MAPPING>N
+      \ The ALLOCATED arm of the same transaction (leaf S6b2) parks the weight arena's
+      \ buffer the same way and for the same reason: COMMIT-ALLOCATED still has guarded
+      \ steps to run after the buffer exists, and a caught quotation must be stack-neutral,
+      \ so a linear owner cannot be handed from one guarded step to the next as a value.
+      \ Reachable only from the unwind rung that disposes it and the success path that
+      \ hands it to the allocated store constructor. Retires with the same linear-scope
+      \ combinator, habu-checker-linear-scope-6218899c.
+      68 of s" N>BUFFER" endof             \ the sole inverse of BUFFER>N
       \ The three private-mint PROOF tokens of the inference intake path. Each is the
       \ sole constructor of an arity-0 nominal family that rides inside a validated
       \ record - MDLCFG:mcfg, GPT2BIND:layerid, GPT2TX:gpt2-model - and each is what
@@ -333,6 +341,7 @@ private
       65 of s" maki/infer/model-config.f" endof
       66 of s" maki/infer/gpt2-roles.f" endof
       67 of s" maki/infer/gpt2-bind.f" endof
+      68 of s" maki/infer/gpt2-bind.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

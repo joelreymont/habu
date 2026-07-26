@@ -129,6 +129,37 @@
 \ the mask gets no exemption; a half-precision or bf16 export of the same weights
 \ is a different artifact and is refused, not silently accepted.
 \
+\ THE SECOND ARM: ALLOCATED RESIDENCY. Everything above describes the mapped arm, where a
+\ model serves its weights straight out of the checkpoint's file mapping. The allocated arm
+\ answers the other residency choice - copy the weights once into a packed arena this
+\ process owns - and it is a different transaction after the prep, because it needs the
+\ opposite resource. CHECK detaches the mapping and releases the census; an allocated
+\ commit must still HAVE the census, because that is what it copies from. So the second
+\ half of the transaction is doubled rather than shared:
+\   CHECK-ALLOC ( prep mcfg -- check-alloc-result ) compares the captured identity and
+\     retypes the prep into `checked-prep-alloc`. Nothing moves and nothing allocates, so
+\     unlike CHECK it is TOTAL and its refused arm can only ever carry E-GX-FOREIGN;
+\   ABORT-CHECKED-ALLOC is that witness's total exit, and it is ABORT's body over the
+\     other witness type, because the witness still owns exactly what a prep owns;
+\   COMMIT-ALLOCATED ( checked-prep-alloc -- gpt2-model ) allocates the packed arena,
+\     builds a SECOND table whose rows are arena offsets rather than file offsets, copies
+\     every span out of the census by the carried census ids, releases the census, and
+\     mints the model around an allocated store.
+\ COMMIT-ALLOCATED is the one word in this file that is not total. It spends memory, and
+\ memory runs out; what it guarantees instead is that running out costs nothing, because
+\ every throw in it has already given back everything that existed at that point.
+\
+\ WHAT NOTHING YET OBSERVES: THE ARENA TABLE. The arena-frame table this commit builds is
+\ checked by no assertion anywhere. The suite proves the arena's BYTES are the file's bytes
+\ at the offsets the layout walk computes, and it proves that walk is a gapless prefix sum
+\ ending exactly at the allocated size - but the table itself, the thing a forward pass will
+\ read slots through, is never read back. It cannot be: reading a slot out of a bound model
+\ needs a scoped access over a held resident, and WSTORE:WITH-SLOT wants a store, which the
+\ model has already consumed into a WSTORE:resident. That is the capability the orchestrator
+\ is minting a dot for (a WSTORE scoped read over a held resident); until it lands this is a
+\ named gap, recorded here for the same reason the sealed-destructure caveats above are -
+\ so nobody reads the green suite as evidence of something it does not check.
+\
 \ maki -> habu only. Owns -5660..-5674.
 
 require lib/prelude.f
@@ -158,6 +189,7 @@ public
 -5669 constant E-GX-ALIAS    \ two roles resolved to one census tensor
 -5670 constant E-GX-FOREIGN  \ the prep was built against a different configuration
 -5671 constant E-GX-IMAGE    \ the census no longer holds the checkpoint's bytes
+-5672 constant E-GX-COPY     \ a validated span did not copy out of the census whole
 
 \ ---- the prepared bind: opaque, linear, no accessors -------------------------
 DEFLINEAR GPT2TX:prep
@@ -185,6 +217,32 @@ DEFLINEAR GPT2TX:checked-prep
 \ the surfaced memory refusal alike (see WHAT THE REFUSED ARM CARRIES, below).
 ENUM check-result 0
    VARIANT matched FIELD c GPT2TX:checked-prep ;VARIANT
+   VARIANT refused FIELD p GPT2TX:prep FIELD code n ;VARIANT
+;ENUM
+
+\ ---- the compared bind for the ALLOCATED arm -------------------------------------
+\ A SECOND witness type, and the reason it is not the one above is the resource it
+\ holds. CHECK detaches the file mapping and releases the census, because a mapped
+\ model serves weights straight out of that mapping. An allocated model does the
+\ opposite: it copies every span OUT of the census, so the census must still be alive
+\ and still holding its image when the commit runs. One witness cannot describe both
+\ states - "the mapping has moved out" and "the census is intact" are contradictory -
+\ so each arm gets the witness that says what it actually owns.
+\
+\ Everything else is the same design as CHECK's: a distinct linear type whose only
+\ maker is the comparison, so the commit cannot be reached without a value only the
+\ comparison produces. CHECK-ALLOC is even simpler than CHECK, because nothing moves:
+\ it compares and retypes, and it is total.
+DEFLINEAR GPT2TX:checked-prep-alloc
+
+\ ---- what CHECK-ALLOC answers ----------------------------------------------------
+\ Same two arms and the same names as check-result, for the same reasons: matched
+\ carries the transaction forward, refused gives the prep back live and ABORTable. The
+\ refused arm here can only ever carry E-GX-FOREIGN - unlike CHECK there is no second
+\ cause, because there is no step that can fail - but it keeps the shape so a caller
+\ handling both arms reads one pattern.
+ENUM check-alloc-result 0
+   VARIANT matched FIELD c GPT2TX:checked-prep-alloc ;VARIANT
    VARIANT refused FIELD p GPT2TX:prep FIELD code n ;VARIANT
 ;ENUM
 
@@ -261,6 +319,11 @@ TRUSTED: N>TABLE ( n -- WSTORE:table ) ;
 TRUSTED: MINT-CHECKED ( ptr u8 -- GPT2TX:checked-prep ) ;
 TRUSTED: TAKE-CHECKED ( GPT2TX:checked-prep -- ptr n ) ;
 
+\ The allocated arm's witness is the same block again, with nothing replaced - the
+\ census cell still holds the census, because CHECK-ALLOC moves nothing.
+TRUSTED: MINT-CHECKED-ALLOC ( ptr u8 -- GPT2TX:checked-prep-alloc ) ;
+TRUSTED: TAKE-CHECKED-ALLOC ( GPT2TX:checked-prep-alloc -- ptr n ) ;
+
 \ The moved file mapping, parked in that same cell. Same discipline and same cost as
 \ the census and table crossings above: package-private, no public inverse, and from
 \ the park until the recovery the checker cannot see the owner - what holds "owned
@@ -269,6 +332,15 @@ TRUSTED: TAKE-CHECKED ( GPT2TX:checked-prep -- ptr n ) ;
 \ Retires with the linear-scope combinator habu-checker-linear-scope-6218899c.
 TRUSTED: MAPPING>N ( SAFET:mapping -- n ) ;
 TRUSTED: N>MAPPING ( n -- SAFET:mapping ) ;
+
+\ The allocated commit's owned byte buffer, parked in a package cell for the stretch
+\ where later steps still run under `catch`. It is the same crossing and the same cost
+\ as the three above, and it is forced by the same gap: a caught quotation must be
+\ stack-neutral, so a linear owner minted by one guarded step cannot be handed to the
+\ next as a value. One park site and one recovery site per exit, no accessor.
+\ Retires with the linear-scope combinator habu-checker-linear-scope-6218899c.
+TRUSTED: BUFFER>N ( WSTORE:buffer -- n ) ;
+TRUSTED: N>BUFFER ( n -- WSTORE:buffer ) ;
 
 \ The model's private-mint proof (the MDLCFG:MINT-CFG-PROOF shape).
 TRUSTED: MINT-MDL-PROOF ( -- mdl-proof )  0 ;
@@ -605,6 +677,10 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ release reads its own length out of the block it is about to give back. That is what
 \ keeps this word's signature - and therefore the bodies of all three exits - unchanged
 \ now that the length depends on the count.
+\ It matters that this length and the ALLOCATION's length are one number rather than two
+\ that agree: a block sized for one count and released at another leaves the difference
+\ mapped, and an under-sized block filled to the larger count writes into the
+\ allocation's own slack, where nothing observes it - measured, not hypothesised.
 : FREE-BLOCK ( ptr n -- )
    {: blk:ptr :}
    blk P-CNT cells + @ {: count:n :}
@@ -627,9 +703,7 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ out. That is the WSTORE table-block discipline (TABLE-NEW writes the slot count,
 \ BLK-FREE derives the length from it), and it is the difference between "these two
 \ numbers are computed from the same variable so they agree" and "there is only one
-\ number". Taking this count from the staging counter instead would let a block sized for
-\ one count be filled to another, and the overflow would land in the allocation's own
-\ slack where nothing observes it - measured, not hypothesised.
+\ number".
 : COPY-ROWS ( ptr n n -- ) {: blk:ptr count:n :}
    count 0 ?do
       i R-OFF ROW@  blk i PR-OFF ROW-CELL !
@@ -814,6 +888,116 @@ variable PEND-MAP                               \ the mapping the census gave up
    MAPPING>N PEND-MAP !
    CENSUS>N PEND-CEN ! ;
 
+\ ---- the allocated commit's four fallible steps --------------------------------------
+\ Unlike the mapped arm, this commit spends memory: an arena for the packed weights, a
+\ table in the arena's own frame, and the buffer record that owns the arena. Each of
+\ those can fail on memory alone, and every failure has to give EVERYTHING back - the
+\ things this word acquired, and the two owners the prep was still holding - because a
+\ throw out of a word that consumed a linear argument strands that argument beyond any
+\ caller's catch. So the steps are guarded one at a time and each parks its product in a
+\ package cell, the PREPARE TABLE-STEP/BLOCK-STEP arrangement, for the same reason:
+\ a caught quotation must be stack-neutral, so a linear product cannot be returned.
+PTR-VARIABLE CA-BLK                             \ the witness block being consumed
+PTR-VARIABLE CA-ARENA                           \ the packed weight arena
+variable CA-BUF                                 \ the buffer that owns it, as a raw cell
+variable CA-TBL                                 \ the arena-frame table, as a raw cell
+
+\ Where slot n's bytes live in the packed arena: the sum of every earlier extent. Both
+\ the table build and the copy walk ask THIS word, so a row's arena address has exactly
+\ one definition - two loops each keeping their own running total would look equivalent
+\ and would silently misplace every weight after the first divergence.
+: ARENA-OFF ( ptr n n -- n ) {: blk:ptr slot:n :}
+   0
+   slot 0 ?do  blk i PR-LEN ROW-CELL @ +  loop ;
+
+\ The arena's byte length, in ONE place. It was written out three times - to allocate, to
+\ adopt and to release - and three copies of an expression that must agree is how a
+\ four-byte shortening survives into allocation slack where nothing observes it. This is
+\ the WSTORE:BLK-FREE discipline: the size of a thing is computed where the thing is
+\ described, once, and every user asks for it.
+: ARENA-LEN ( -- CAD-NUM:alloc-byte-len )
+   CA-BLK @ P-SUM cells + @ MEM:BYTES-ALLOC-LEN ;
+
+: ARENA-STEP ( -- )
+   ARENA-LEN MEM:ALLOC-BYTES drop CA-ARENA ! ;
+
+\ Minted before the table and the copies so that a failure in either of those can give
+\ the arena back through ONE exit: a buffer owns the bytes, and WSTORE:BUFFER-DISPOSE
+\ releases the record and the bytes together. Without that exit this arm would have had
+\ to release the raw arena by hand at every later rung, duplicating WSTORE's own free.
+: BUF-STEP ( -- )
+   CA-ARENA @ ARENA-LEN WSTORE:BUFFER BUFFER>N CA-BUF ! ;
+
+\ The arena-frame table: the same slots as the prep's table, but each row placed where
+\ the packed arena put it rather than where the file did. Population cannot refuse - the
+\ count was range-checked, every extent was validated, and the running offsets are
+\ bounded by the prefix sum V-ARITH already proved fits a cell. SEAL allocates nothing -
+\ it retypes the block TABLE-NEW already made - so the ONE thing that can fail here is
+\ TABLE-NEW's own allocation.
+\ Population is stack-preserving, which is what lets the step above guard it and give the
+\ BUILDER back if a row is ever refused. It cannot be refused by any prep PREPARE built -
+\ V-ARITH proved every row end and the whole prefix sum fit a cell - but an unreachable
+\ refusal that leaks is still a leak, and WSTORE:BUILDER-DISPOSE is the exit that makes
+\ handling it possible at all. SEAL's own refusal (E-UNSET) is the one case still not
+\ recoverable, because a `catch` over it would have to hold a builder on one arm and a
+\ table on the other; it is unreachable here for a stronger reason - the loop writes every
+\ slot exactly once - and it retires with habu-checker-linear-scope-6218899c.
+: ATBL-POP ( WSTORE:tbuilder -- WSTORE:tbuilder )
+   CA-BLK @ {: blk:ptr :}
+   blk P-CNT cells + @ {: count:n :}
+   count 0 ?do
+      i  blk i ARENA-OFF >OFF  blk i PR-LEN ROW-CELL @ >LEN  WSTORE:SLOT!
+   loop ;
+
+: ATBL-STEP ( -- )
+   CA-BLK @ P-CNT cells + @ WSTORE:TABLE-NEW
+   [: ATBL-POP ;] catch {: code:n :}
+   code 0 <> if
+      WSTORE:BUILDER-DISPOSE RES-CODE {: bc:n :}
+      code bc FOLD-CODE throw
+   then
+   WSTORE:SEAL TABLE>N CA-TBL ! ;
+
+\ Copies every validated span out of the census and into its arena slot. This is the
+\ step the carried census ids exist for: SAFET:COPY-DATA? names a tensor by id, and it
+\ TRUNCATES to the capacity it is given rather than refusing, so the returned length is
+\ compared against the extent the plan validated. A short or missing copy is E-GX-COPY -
+\ it cannot happen for a census that passed PREPARE, and it is checked because a silent
+\ partial copy would produce a model of plausible-looking wrong weights.
+: COPY-STEP ( -- )
+   CA-BLK @ {: blk:ptr :}
+   blk P-CEN cells + @ N>CENSUS
+   blk P-CNT cells + @ {: count:n :}
+   count 0 ?do
+      blk i PR-LEN ROW-CELL @ {: len:n :}
+      blk i PR-ID  ROW-CELL @ {: id:n :}
+      id  CA-ARENA @ blk i ARENA-OFF BYTE+  len  SAFET:COPY-DATA?
+      E-GX-COPY NEED
+      len <> if E-GX-COPY throw then
+   loop
+   CENSUS>N blk P-CEN cells + ! ;
+
+\ ---- the allocated commit's unwind ladder ----------------------------------------------
+\ The prep's own two owners and its block, in the ABORT order: the table it was holding
+\ (a FILE-frame table this arm never uses), then the census, then the block. It is also
+\ the SUCCESS path's cleanup, which is the point - the commit consumes those three
+\ whether it finishes or fails, so there is one word for it and the failure rungs differ
+\ only in what they dispose BEFORE reaching it.
+: CA-PREP-BACK ( ptr n n -- n ) {: blk:ptr cause:n :}
+   blk P-TBL cells + @ N>TABLE WSTORE:TABLE-DISPOSE RES-CODE {: tc:n :}
+   blk P-CEN cells + @ N>CENSUS SAFET:RELEASE
+   blk FREE-BLOCK
+   cause tc FOLD-CODE ;
+
+: CA-ARENA-BACK ( -- )                          \ the raw arena, before a buffer owns it
+   CA-ARENA @ ARENA-LEN MEM:RELEASE-BYTES ;
+
+: CA-BUF-BACK ( -- n )                          \ the buffer, which owns the arena bytes
+   CA-BUF @ N>BUFFER WSTORE:BUFFER-DISPOSE RES-CODE ;
+
+: CA-TBL-BACK ( -- n )                          \ the arena-frame table
+   CA-TBL @ N>TABLE WSTORE:TABLE-DISPOSE RES-CODE ;
+
 public
 
 \ ---- the transaction's first half ---------------------------------------------
@@ -936,6 +1120,81 @@ public
    blk P-TBL cells + @ {: tc:n :}
    blk FREE-BLOCK
    mc N>MAPPING  tc N>TABLE  WSTORE-STORE:MAPPED  WSTORE:HOLD
+   nl  r>  MINT-MDL-PROOF
+   GPT2TX-GPT2--MODEL:MAKE ;
+
+\ ---- the allocated arm's gate: compare, and move nothing ------------------------------
+\ The same question CHECK asks first, and here it is the ONLY question: is this prep this
+\ configuration's. Nothing else can refuse, because nothing moves - no mapping is
+\ detached, no census released, no cell rewritten, no memory taken. The prep is simply
+\ retyped into the witness the commit demands, which is why this word is total and why
+\ its refused arm hands the prep straight back, untouched and still ABORTable.
+\
+\ The identity compare being FIRST is still the contract even with nothing to undo: the
+\ commit downstream takes real memory, and a foreign prep must be turned away before any
+\ of that starts rather than after.
+: CHECK-ALLOC ( GPT2TX:prep MDLCFG:mcfg -- check-alloc-result )
+   PREP-FOREIGN? if
+      drop
+      E-GX-FOREIGN GPT2TX-CHECK--ALLOC--RESULT:REFUSED exit
+   then
+   drop                                         \ the configuration has answered
+   TAKE-PREP BLK>BYTES MINT-CHECKED-ALLOC
+   GPT2TX-CHECK--ALLOC--RESULT:MATCHED ;
+
+\ ---- total disposal of a compared prep on the allocated arm ---------------------------
+\ The exit for a witness a holder decided not to commit. Its census is still whole - the
+\ gate moved nothing - so what it owns is exactly what a prep owns, and this is ABORT's
+\ body over the other witness type.
+: ABORT-CHECKED-ALLOC ( GPT2TX:checked-prep-alloc -- )
+   TAKE-CHECKED-ALLOC {: blk:ptr :}
+   blk P-TBL cells + @ N>TABLE WSTORE:TABLE-DISPOSE RES-CODE {: tc:n :}
+   blk P-CEN cells + @ N>CENSUS SAFET:RELEASE
+   blk FREE-BLOCK
+   tc 0 <> if tc throw then ;
+
+\ ---- the allocated commit -------------------------------------------------------------
+\ Copies the whole model into one packed arena and hands back a resident allocated store.
+\ Unlike COMMIT-MAPPED this word is NOT total: it spends memory, and memory can run out.
+\ What it guarantees instead is that running out costs nothing - every throw below has
+\ already given back everything that existed at that point, in the order the ABORT
+\ discipline requires, so a caller that catches an exhaustion code holds no leaked owner
+\ and no leaked byte. That is what the four rungs below are, and each is reached by a
+\ forced-allocation-failure leg in the acceptance suite.
+\
+\ WHERE THE NUMBERS COME FROM. The arena size, the slot count and every row come off the
+\ WITNESS BLOCK and nothing else - never this package's scratch, which belongs to the
+\ most recent PREPARE call rather than to this transaction.
+\
+\ THE CENSUS IS RELEASED EXACTLY ONCE, on every path: inside CA-PREP-BACK, which every
+\ rung and the success path alike run exactly once.
+: COMMIT-ALLOCATED ( GPT2TX:checked-prep-alloc -- gpt2-model )
+   TAKE-CHECKED-ALLOC CA-BLK !
+   [: ARENA-STEP ;] catch {: acode:n :}
+   acode 0 <> if CA-BLK @ acode CA-PREP-BACK throw then
+   [: BUF-STEP ;] catch {: bcode:n :}
+   bcode 0 <> if
+      CA-ARENA-BACK
+      CA-BLK @ bcode CA-PREP-BACK throw
+   then
+   [: ATBL-STEP ;] catch {: tcode:n :}
+   tcode 0 <> if
+      tcode CA-BUF-BACK FOLD-CODE {: c1:n :}
+      CA-BLK @ c1 CA-PREP-BACK throw
+   then
+   [: COPY-STEP ;] catch {: ccode:n :}
+   ccode 0 <> if
+      ccode CA-TBL-BACK FOLD-CODE CA-BUF-BACK FOLD-CODE {: c2:n :}
+      CA-BLK @ c2 CA-PREP-BACK throw
+   then
+   CA-BLK @ P-NL cells + @ {: nl:n :}
+   CA-BLK @ BLK-KEY >r                          \ the captured identity, parked whole
+   CA-BLK @ 0 CA-PREP-BACK {: pcode:n :}
+   pcode 0 <> if
+      r> drop
+      pcode CA-TBL-BACK FOLD-CODE CA-BUF-BACK FOLD-CODE throw
+   then
+   CA-BUF @ N>BUFFER  CA-TBL @ N>TABLE  WSTORE-STORE:ALLOCATED  WSTORE:HOLD
    nl  r>  MINT-MDL-PROOF
    GPT2TX-GPT2--MODEL:MAKE ;
 

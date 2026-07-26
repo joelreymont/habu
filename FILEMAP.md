@@ -1819,7 +1819,24 @@ points stay listed.
   `mdl-proof`) — linear by containment, so the checker refuses to copy or discard
   a model and there is no non-consuming field read; `MODEL-DISPOSE
   ( gpt2-model -- result<n,n> )` is its exit, delegating to
-  `WSTORE:RESIDENT-DISPOSE`. Owns -5660..-5674.
+  `WSTORE:RESIDENT-DISPOSE`. The ALLOCATED arm is the same transaction over the
+  other residency choice and is doubled rather than shared, because `CHECK`
+  releases the census while an allocated commit must still copy from it:
+  `CHECK-ALLOC ( GPT2TX:prep MDLCFG:mcfg -- check-alloc-result )` compares the
+  captured identity and retypes the prep into the `checked-prep-alloc` witness —
+  payload ENUM `check-alloc-result` = matched(checked-prep-alloc) |
+  refused(prep, code) — moving no resource, so it is total and can only refuse
+  with `E-GX-FOREIGN`; `ABORT-CHECKED-ALLOC` is that witness's total exit; and
+  `COMMIT-ALLOCATED ( GPT2TX:checked-prep-alloc -- gpt2-model )` allocates the
+  packed arena, builds a second table in the arena's own frame, copies every span
+  out of the census by the carried census ids, releases the census exactly once,
+  and mints the model around an allocated store. It is the one word here that is
+  not total — it spends memory — and every throw in it disposes everything that
+  existed at that point. The prep block carries the validated plan itself, not
+  just its aggregates: `9 + 3*count` cells, three per slot (mapping offset, byte
+  extent, census id), which is what makes an allocated commit able to read its
+  plan from the prep it was handed rather than from this package's scratch.
+  Owns -5660..-5674.
 - `maki/infer/gpt2-bind-test.f` — GPT2TX acceptance, run inside the package
   because no public word hands a row out of a prep. Fixtures are generated
   through the production vocabulary: a thirty-tensor tiny geometry emitted as a
