@@ -71,15 +71,15 @@ variable TG-NR
 \ not match the tensor's rank, instead of an undefined-word crash inside the
 \ generated evaluate. Rank of a gather is 1 (the single domain index a gather call
 \ IX[m] consumes). ------------------------------------------------------------
-\ tensor kind: a real sum type, not a bare integer flag. The kind is its own
-\ checker type, so a rank or a raw 0/1 cannot pose as a kind, and every branch on
-\ the kind is an exhaustive MATCH (a forgotten arm fails certification).
+\ tensor kind: a real declared type, not a bare integer flag. Both cases carry no
+\ payload, so the declaration is the compact ENUM form (one bare token per case)
+\ and the type registry records it as an enum family rather than a general sum;
+\ the two are the same one cell wide. The kind is still its own checker type, so a
+\ rank or a raw 0/1 cannot pose as a kind, and every branch on the kind is an
+\ exhaustive MATCH (a forgotten arm fails certification).
 \ `data` = a data tensor (NAME@ / NAME!); `gather` = a gather index tensor (NAME@).
 public
-SUMTYPE tensor-kind 0
-   VARIANT data ;VARIANT
-   VARIANT gather ;VARIANT
-;SUMTYPE
+ENUM tensor-kind data gather ;ENUM
 
 \ tr-slot is the tensor-registry row index, its own type: a rank or an extent slot
 \ cannot address a tensor row without the explicit `>TR-SLOT` crossing.
@@ -92,7 +92,7 @@ DEFTYPE TR-SLOT
 private
 
 \ short constructors + the raw-cell tag projection/rebuild. The kind is stored as
-\ its variant tag in a flat cell (TR-KIND-A) and rebuilt into the sum on read, so
+\ its case tag in a flat cell (TR-KIND-A) and rebuilt into the kind on read, so
 \ the registry array stays a plain cell array while every reader sees `tensor-kind`.
 : KIND-DATA   ( -- tensor-kind )  MAKI-TENSOR--KIND:DATA ;
 : KIND-GATHER ( -- tensor-kind )  MAKI-TENSOR--KIND:GATHER ;
