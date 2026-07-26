@@ -1,9 +1,11 @@
 ---
 title: Migrate journal id-result to payload ENUM
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T10:31:34.886533+02:00"
 ---
 
 Pathfinder A1 of the unified-type migration program (.blackboard/migration-plan-20260726.md): the FIRST production SUMTYPE to payload-carrying ENUM migration; it pins the recipe for the roughly 50 remaining sums. Target: maki/journal.f line 49, SUMTYPE id-result 1 (variants ok with one positional payload a, wrong-width, unknown) inside package JOURNAL. Behavior: SUMTYPE becomes ENUM and ;SUMTYPE becomes ;ENUM in full mode (arity 1 stays); the positional payload gains a FIELD name chosen per the short-name rules; payloadless variants unchanged; generated constructor spellings (JOURNAL-ID--RESULT:OK and siblings) must be byte-identical after migration - any drift is a stop-the-lane unified-frontend bug, not something to accommodate; MATCH sites and consumers untouched (payload binding stays declaration order). Tests, following the landed STRUCTURE-migration pattern of commit 6ef124d0c64e adapted to sums: every variant round-trips through MATCH with typed locals; static checker pins of the generated constructor effects; forge negatives - a raw cell in the typed payload slot rejects, constructing from a bare scalar rejects, a same-width foreign role in the payload slot rejects; a nominal-identity negative declaring a second same-shape ENUM family and proving no unification. STOP conditions (report per the Checker-Miss RCA protocol, never route around): any checker miss or capability gap; constructor spelling drift; a reserved declaration token collision (the WSTORE policy-to-residency precedent); preverify E-UNDEFINED on generated constructors (known dot habu-resolve-generated-constructors-523eff19). Owner: package JOURNAL in maki/journal.f. Dependencies: none; files disjoint from all active lanes. Acceptance: maki/journal-test.f and full maki/test.f green on the exact tree; typed-local-diff-lint and package-diff-lint accept the jj diff --git artifact; behavior identical - the suite proves the same accept/reject outcomes as before the migration. Claim: agent=mig-a1 workspace=.jj-ws/habu-mig-journal
+
+Closed 2026-07-26: landed on master@origin in the move #30 train as c85210fe5817 "Migrate journal id-result to payload ENUM". First production SUMTYPE-to-payload-ENUM migration; constructor spellings proven preserved via checker verdict tables; recipe reference for all wave B-G lanes.
