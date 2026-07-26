@@ -1837,31 +1837,78 @@ points stay listed.
   extent, census id), which is what makes an allocated commit able to read its
   plan from the prep it was handed rather than from this package's scratch.
   Owns -5660..-5674.
-- `maki/infer/gpt2-bind-test.f` — GPT2TX acceptance, run inside the package
-  because no public word hands a row out of a prep. Fixtures are generated
-  through the production vocabulary: a thirty-tensor tiny geometry emitted as a
-  real synthetic safetensors file and loaded back through the real mmap path,
-  every name from `GPT2BIND:COPY-KEY?` and every shape from `TID-SHAPE`, byte
-  extents computed from the EMITTED dims so each corrupted variant is still a
-  file the parser accepts and the refusal is PREPARE's verdict. Happy path pins
-  the walk length, one probed Conv1D row cross-checked against the census's own
-  `MAP-OFFSET?`/`NBYTES?`, and the prefix sum against the whole data section.
-  Configuration-fault refusals (one layer too many; a wider embedding) hand the
-  census back and a second PREPARE with the right configuration returns
-  prepared; census-fault refusals (non-F32 tensor, non-F32 mask, wrong rank,
-  one wrong dim, a misspelled key, one tensor beyond the census) prove the
-  census still answers its readers, that a second PREPARE returns the same
-  code, and that it releases with every counter at zero. `ABORT` returns the
-  census owner, its kernel mapping, and the WSTORE table block to zero. The
-  twin leg pins what PREPARE actually owns: two configurations of one geometry
-  differing only in a census-invisible field both bind the same census, and the
-  preps capture DIFFERENT cfgkeys — E-GB-FOREIGN is unreachable from PREPARE,
-  which mints every layer identity from the configuration it validates against.
-  Checker negatives cover prep forgery from a raw cell or pointer, prep
-  linearity, double ABORT, prep-result payload role crossings, a dropped
-  result, ambient PREPARE, and all eight audited erasures proving unresolvable
-  from outside the package. A presence-gated leg prepares the real
-  openai-community/gpt2 checkpoint and pins 160 rows.
+- `maki/infer/gpt2-bind-fixture.f` — the shared test support the three GPT2TX bind
+  suites run on; defines no test and runs nothing. Owns the synthetic-checkpoint
+  emitter, the corruption knobs, the fixture configurations, the leak counters and
+  the shared assertion helpers, so the one emitter the three suites must agree on
+  exists once rather than three times. Fixtures are generated through the
+  production vocabulary: a thirty-tensor tiny geometry emitted as a real
+  safetensors file and loaded back through the real mmap path, every name from
+  `GPT2BIND:COPY-KEY?` and every shape from `TID-SHAPE`, byte extents computed
+  from the EMITTED dims so each corrupted variant is still a file the parser
+  accepts and the refusal is the transaction's verdict. Data bytes are a
+  position-dependent, never-zero pattern, so a span read from the wrong offset is
+  visible instead of comparing zeros with zeros. Reopens package GPT2TX because
+  the suites read validated rows that no public word hands out.
+- `maki/infer/gpt2-bind-test.f` — GPT2TX acceptance, the PREPARE half. Happy path
+  pins the walk length, one probed mask row and one probed Conv1D row
+  cross-checked against the census's own `MAP-OFFSET?`/`NBYTES?`, and the prefix
+  sum against the whole data section. Configuration-fault refusals (one layer too
+  many; a wider embedding) hand the census back and a second PREPARE with the
+  right configuration returns prepared; census-fault refusals (non-F32 tensor,
+  non-F32 mask, wrong rank, one wrong dim, a misspelled key, one tensor beyond
+  the census, a census naming one tensor twice) prove the census still answers its
+  readers, that a second PREPARE returns the same code, and that it releases with
+  every counter at zero. An imageless census is refused. The claim set, the extent
+  arithmetic and the block-size arithmetic are pinned at their exact boundaries.
+  `ABORT` returns the census owner, its kernel mapping, and the WSTORE table block
+  to zero. The prep-owns-plan leg copies every carried row aside and proves it
+  byte-identical across a refusing PREPARE and across two SUCCEEDING ones whose
+  offsets and extents differ. The twin leg pins what PREPARE actually owns: two
+  configurations of one geometry differing only in a census-invisible field both
+  bind the same census, and the preps capture DIFFERENT cfgkeys — E-GB-FOREIGN is
+  unreachable from PREPARE, which mints every layer identity from the
+  configuration it validates against — and `PREP-FOREIGN?` is then tested on the
+  production word. Checker negatives cover prep forgery from a raw cell or
+  pointer, prep linearity, double ABORT, prep-result payload role crossings, a
+  dropped result, ambient PREPARE, and the eight PREPARE-phase audited erasures
+  proving unresolvable.
+- `maki/infer/gpt2-check-test.f` — GPT2TX acceptance, the MAPPED arm. Walks the
+  compare-and-commit sequence one state at a time and proves every state has an
+  owner and a total exit: a foreign configuration is refused with the prep still
+  held and still ABORTable, a matching one moves the mapping out of the census
+  without changing what is owned, `ABORT-CHECKED` disposes totally, and
+  `COMMIT-MAPPED` yields a model carrying the validated depth and the captured
+  identity cell for cell. The refuse-then-bind leg SPENDS a refused prep — the
+  same prep binds all the way to a model under its own configuration — which is
+  what counters alone cannot show. Checker negatives cover the checked prep's
+  linearity and forgery, the commit being unreachable without the compare,
+  check-result payload role crossings, the model's linearity by containment and
+  single-consumption exit, the residency being unreachable around the model, and
+  the mapped arm's audited erasures. A presence-gated leg proves three real
+  tensors byte-identical at their computed mapping offsets, commits the real
+  openai-community/gpt2 checkpoint to a mapped model of 12 layers, and pins the
+  exact file size its exit gives back. Ends with a section in package GPT2TX-DR,
+  which has never opened GPT2TX, recording from that outside vantage the gaps the
+  private-mint proof does NOT close.
+- `maki/infer/gpt2-alloc-test.f` — GPT2TX acceptance, the ALLOCATED arm.
+  `CHECK-ALLOC` refuses a foreign prep and moves nothing; `COMMIT-ALLOCATED`
+  yields a model owning a packed arena. The arena walk asserts the layout as a
+  recurrence — it starts at zero, every row begins exactly where the previous one
+  ended, and the last ends exactly at the allocated size — which no two-slot probe
+  can show, and the span probes then compare head AND tail of two slots against a
+  fresh census of the same file, so what the arena agrees with is the file rather
+  than any number the commit derived. Each fallible step is forced to fail by
+  corrupting one field of a real witness block, and every leg ends with every
+  counter back at the suite's entry baseline, proving the unwind gave back the
+  arena, its buffer and the arena-frame table. Checker negatives cover the
+  allocated witness's linearity and forgery, the allocated commit being
+  unreachable without `CHECK-ALLOC`, every crossing between the mapped and
+  allocated witnesses at every exit, double consumption, the gate running twice or
+  after the prep is gone, check-alloc-result payload role crossings, the public
+  surface as accepted controls, and the allocated arm's audited erasures. A
+  presence-gated leg commits the real checkpoint to an allocated model and pins
+  the arena its exit gives back.
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer
