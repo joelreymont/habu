@@ -1,0 +1,9 @@
+---
+title: Add forked memory fault injector
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-26T22:16:01.349558+02:00"
+---
+
+Why: two accepted MAJOR reviews and the frozen fatal-release contract all require forcing memory allocation and release failures honestly; no injector exists (gpt2-alloc-test.f:96 admits it), so fallible steps are tested by fixture substitution or not at all. Behavior: a named tested test-support boundary (own package under test support, not production) that runs a quotation in a FORKED child in which the Nth MEM allocation or the Nth release is forced to fail, and reports the child exit status plus captured stderr to the parent for assertion. Forbidden designs: any conditional or hook in production MEM words (production image behavior must remain byte-identical, proven); any env-variable arming reachable from a production load; value heuristics. Injection is armed only through an explicit test-only load path behind an audited TRUSTED boundary; the arming word must be unreachable from production loads and the suite must prove arming outside the boundary fails closed. Interface: WITH-ALLOC-FAULT ( n q -- exit-rc ptr u8 n ) and WITH-RELEASE-FAULT ( n q -- exit-rc ptr u8 n ) or checkpoint-corrected equivalents; exact shape frozen at worker checkpoint after the mechanism survey. Owner: new test-support package. Dependencies: none. Acceptance: forcing an allocation failure observes the caller error path through the real production entry; forcing a release failure observes the fatal exit code and diagnostic once the release flip lands (until then, the propagated throw); arming-outside-boundary fixture fails closed; focused suite green; both diff lints clean. Real pre-change failure: no test in the tree can force BUF-STEP or BUFFER-NEW allocation failure - the alloc-test comment is the measured admission.

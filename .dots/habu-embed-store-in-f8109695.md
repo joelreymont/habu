@@ -1,0 +1,9 @@
+---
+title: Embed store in model, delete resident
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-26T22:19:34.564791+02:00"
+---
+
+Why: measured on master (probe: STRUCTURE box 0 FIELD s WSTORE:store ;STRUCTURE declares, rc 0) - the linear-payload capability removes the entire premise for WSTORE:resident; the rationale commit 38c9b90f claiming a field cannot carry the three-cell store is factually false (a field names one typed value; width does not block embedding). Behavior: gpt2-model carries WSTORE:store directly in its declared field; GPT2TX destructures in-package to reach the store, calls WSTORE:WITH-SLOT (post-redesign shape) and DISPOSE, and rebuilds the model; DELETE the DEFLINEAR resident, the trusted park/unpark erasures, HOLD, the per-table pre-reserved HOLD cells, RESIDENT-DISPOSE, and the scoped-resident capability leaf (habu-add-wstore-scoped-e57e32e2 narrows or closes - decided at freeze). Dependencies: habu-retype-wstore-disposal-944e0f89 and habu-straighten-gpt2tx-cleanup-b0995d53 (total disposal surfaces and straight ladders first) and the owner-only destructure capability (habu-store-structure-destructure-8c20c92a chain) so outside forgery is closed before the model exposes the store shape; coordinate with the WITH-SLOT redesign leaf so weight reads land on the final scoped shape once. Forbidden: keeping resident as a compatibility layer; any TRUSTED erasure surviving where a declared linear field now expresses the same thing. Owner: GPT2TX and WSTORE. Acceptance: model round-trip suites green on the embedded shape with the same leak-counter stations; every deleted word proven caller-free by boundary-aware bare-name sweep; the erasure inventory in TRUSTED.md shrinks by the retired rows; destruction review before merge. Real pre-change defect: the landed rationale asserts an impossibility the declarer accepts - the probe is the failing check.

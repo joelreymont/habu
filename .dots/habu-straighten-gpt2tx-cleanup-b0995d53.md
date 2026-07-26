@@ -1,0 +1,9 @@
+---
+title: Straighten GPT2TX cleanup ladders
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-26T22:25:12.215782+02:00"
+---
+
+Why: the bind transaction's cleanup ladders fold disposal result codes that the total surfaces can no longer produce - CA-PREP-BACK, CA-BUF-BACK, CA-TBL-BACK, the RES-CODE and FOLD-CODE users, and RELINQUISH's fold with its unreachable census-release arm. Behavior: every ladder becomes straight-line total code; RES-CODE/FOLD-CODE and dead arms delete; RELINQUISH simplifies to its total form; the gpt2-bind.f stale rationale paragraphs from 38c9b90f corrected the same way as the WSTORE leaf (no comment may assert a checker acceptance or rejection not measured in the same change). Owner: GPT2TX package only. Dependencies: habu-retype-safet-unmap and habu-retype-wstore-disposal (this leaf consumes both total surfaces). Coordination: the unlanded BIND commit rides above these files; the S6b4 lane rebases and re-verifies after this lands. Acceptance: all four bind suites green on the straight-line ladders with retired assertions named; both diff lints clean; destruction review before merge. Real pre-change defect: CA-PREP-BACK reads TABLE-DISPOSE as total while its type says otherwise - the ladder is correct only because the err arm is a lie.
