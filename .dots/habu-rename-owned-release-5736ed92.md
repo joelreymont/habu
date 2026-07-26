@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-07-26T22:56:29.209632+02:00"
 blocks:
-  - habu-pkg-vector-module-9f6d35f6
+  - habu-retire-raw-vector-14bb24b6
   - habu-pkg-mem-test-c0d215ed
 ---
 
