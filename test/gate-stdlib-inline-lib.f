@@ -631,7 +631,6 @@ public
    s" tools/sha256-file-test.f" GSI-INCLUDE
    s" lib/content-key-test.f" GSI-INCLUDE
    s" test/run-result-cache-test.f" GSI-INCLUDE
-   s" test/run-budget-cal-test.f" GSI-INCLUDE
    s" test/run-rerun-failed-test.f" GSI-INCLUDE
    s" test/golden-test.f" GSI-INCLUDE
    s" tools/diagnose-hb-test.f" GSI-INCLUDE

@@ -353,16 +353,6 @@ points stay listed.
   for native gate duplicate-work RCA.
 - `test/gate-stats-test.f` — focused fixture for gate stats event counting,
   process choke coverage, fresh-child inheritance, and owner-local accounting.
-- `test/perf-verdict.f` — pure PERF-VERDICT policy package for the frozen full-gate
-  timing rule: pass/marginal/hard bands, calibration-drift stability, admissibility,
-  2-of-3 retry aggregation, and a deterministic ATTEMPT-LINE over a typed attempt record.
-- `test/perf-verdict-test.f` — manual-standalone acceptance fixtures for the
-  PERF-VERDICT policy (band thresholds, retry aggregation, fail-closed evidence, rows).
-- `test/run-verdict.f` — TR-VERDICT retry driver that runs the PERF-VERDICT frozen rule
-  over real gate attempts through an injectable measure seam, renders attempt/verdict rows,
-  and owns the deterministic worker machine-line channel (PA-LINE$/PA-PARSE).
-- `test/run-verdict-test.f` — manual-standalone fixtures for the TR-VERDICT retry driver
-  (exact attempt counts / no recursion, 2-of-3, SHA and empty-root fail-closed, machine-line round trip).
 - `tools/seed.f` — checked native seed installer, SHA verifier, smoke test, and fixpoint rebuild driver.
 - `tools/seed-main.f` — CLI entrypoint for checked native seed recovery.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.
@@ -2766,8 +2756,8 @@ points stay listed.
 - `test/gate-pool-orphan-test.f` — regression: pool workers reaped on parent death.
 - `test/run.f` — native test suite entry run directly by `bin/hb`.
 - `test/run-lib.f` — side-effect-free resident native test suite implementation.
-- `test/cal-spin-lib.f` — package `CAL-SPIN`: the shared fixed calibration spin measurement, so the fresh-child probe and the quiescent ratchet phase compare the same number against the same drift tolerance.
-- `test/cal-spin.f` — fresh-child calibration probe: measures the fixed gate spin in a freshly spawned process so the perf verdict's post-run calibration lands on a performance core, not the drifted driver's core.
+- `test/cal-spin-lib.f` — package `CAL-SPIN`: the shared fixed calibration spin measurement and the drift tolerance over a pair of them, so the standalone probe and the quiescent ratchet phase compare the same number by the same rule.
+- `test/cal-spin.f` — standalone host calibration probe: measures the fixed gate spin in a freshly spawned process so the reading lands on a performance core rather than a long-lived process's migrated one. Used to derive and check a host profile's spin reference.
 - `test/json-read-perf-phase.f` — package `JSON-READ-PERF-PHASE`: the one place the JSON reader's wall-clock ratchets run, as a single quiescent gate-pool fork between the drained phase DAG and `TR-COMPLETE`, admitted only from a pool-idle parent, bracketed by calibration spins, and refusing to report at all on a contended box — a drifted or clamp-saturated bracket is re-measured up to `ATTEMPT-MAX` times and then leaves by `CONTENDED-RC`, which is not the status a benchmark over budget leaves. Each attempt records the one-minute load average and the runnable-process count on its evidence line.
 - `test/json-read-perf-phase-test.f` — coverage for that phase: real fork workers prove the child-stamp and busy-pool refusals by exit status, a scripted calibration probe proves the retry bound and the exact refusal status, pure cases prove a stable-but-saturated bracket is still refused, byte-buffer cases prove the load parser rejects malformed content instead of inventing a sample, and real spawned CPU-bound neighbours prove the runnable-process sample tracks actual machine load.
 - `test/run-lib-test.f` — manual-standalone coverage for the DGX Spark host profile mapping/detection and the fresh-child calibration probe.
@@ -2829,7 +2819,6 @@ points stay listed.
 - `test/lit-emit-size-test.f` — exact compiled-body sizes for scalar literal emission (constants and string lengths now use the shared minimal MOVZ/MOVN+MOVK synthesizer, not the fixed four-instruction x9 chain), by needed-chunk count, plus the source-shape proof that scalars materialize into x16 and relocatable addresses flow only through the dedicated C-DATA-ADDR/C-CODE-ADDR emitters.
 - `test/run-result-cache.f` — per-phase content-keyed PASS-stamp store for the native gate result cache.
 - `test/run-result-cache-test.f` — fixtures for result-cache hit/miss/invalidation and red-never-cached rules.
-- `test/run-budget-cal-test.f` — fixtures for the startup spin-probe budget calibration and clamping.
 - `test/run-rerun-failed-test.f` — fixtures for --rerun-failed red-phase list persistence, parsing, and phase-skip guard.
 - `test/golden.f` — byte-exact golden-file assertions for diagnostic output, with --update-golden and temp-path redaction.
 - `test/golden-test.f` — fixtures for the golden-file update/compare/drift/redaction mechanism.

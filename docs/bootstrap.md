@@ -224,11 +224,10 @@ bin/hb --load test/run.f
 This is the native port gate. It runs as a checked bounded DAG pool with
 private `HB_TMP` roots. It proves the host `bin/hb`, source selection,
 checker/lints, self-refresh, engine suite, REPL build, and AOT output for the
-current platform under the default 70s budget. Host policy is argv, not env:
-append `-- --pool-slots N --nested-pool-slots M --budget-ms B` when measuring a
-specific machine. It intentionally does not run LLM
-benchmark fixtures or require JavaScript, Python, Rust, TypeScript, or model
-runtimes.
+current platform. Host policy is argv, not env: append
+`-- --pool-slots N --nested-pool-slots M` when running on a specific machine.
+It intentionally does not run LLM benchmark fixtures or require JavaScript,
+Python, Rust, TypeScript, or model runtimes.
 
 The test suite runs directly in the small `bin/hb` engine; it does not bake a
 top-level test-suite snapshot and it does not use checker/tool snapshot images
@@ -237,29 +236,37 @@ candidates and builder/maker artifacts. Snapshot coverage belongs to the native
 build/fixpoint path; generated images are local artifacts and must not be
 committed.
 
-### Performance verdict
+### Performance
 
-Correctness and performance are **separate** gate verdicts. A failing
-correctness phase still exits with its existing `RUN_EXIT` code before any timing
-is judged (correctness gates admission). Once every phase is green, the
-budget-only pass/fail (formerly `RUN_EXIT=65`) is decided by the robust
-performance verdict, whose policy owner is
-[`test/perf-verdict.f`](../test/perf-verdict.f) and whose runner integration is
-`test/run-verdict.f` + `test/run-lib.f`:
+**The gate does not time itself.** It used to: each attempt was the whole gate,
+measured against a fixed per-profile budget. That is gone. Timing the whole gate
+meant every suite anyone landed permanently ate the budget's margin, so a tree
+that had not regressed eventually failed on its own growth — and by the time it
+was removed the gate was failing on every tree, blocking all landings, while
+correctness stayed green (dot `habu-recalibrate-cold-gate-ec0ba309`).
 
-- Each attempt is the whole gate, bracketed by pre/post calibration spins and
-  normalized against the calibrated budget. Elapsed at or below 100% of budget is
-  a pass, above 100% through 110% is marginal, above 110% is a hard fail; more
-  than 10% calibration drift makes the attempt invalid.
-- An **initial pass runs once**. An **initial marginal runs exactly two more**
-  fresh attempts (never more than three, no recursion) as cold subprocess
-  re-runs with distinct fresh `HB_TMP`/`XDG_CACHE_HOME`/`HABU_BUILD_CACHE` roots,
-  each proven empty of prior-attempt artifacts, all pinned to one exact-tree
-  under-test SHA; the run passes iff at least two of three are pass-band. Any
-  hard fail, invalid attempt, SHA mismatch, or missing evidence fails closed.
-- The gate prints one deterministic `attempt …` row per attempt plus a final
-  `perf-verdict: performance=… correctness=… attempts=…` row as the audit trail.
-  `--gate-attempt N` runs a single worker attempt (no retry) for the driver.
+Performance is judged only where a stopwatch wraps **one fixed workload and
+nothing else**. Today that is the six confined JSON-reader benchmarks in
+[`lib/json-read-perf-test.f`](../lib/json-read-perf-test.f), run by
+[`test/json-read-perf-phase.f`](../test/json-read-perf-phase.f) as a single
+quiescent fork after every scheduled phase has drained:
+
+- Each benchmark owns its own recorded baseline constant and margin, and is
+  judged on the median of three samples. A benchmark over budget reds its own
+  verdict and reds the gate through the ordinary red-phase path — the same exit
+  status any failing phase produces.
+- The phase brackets itself with a calibration spin before and after. If the
+  bracket moved, or the box is so slow that budget compensation has saturated at
+  its clamp, the attempt is **inadmissible** rather than a verdict: it is
+  re-measured, and if the box never goes quiet the phase exits **68**, meaning
+  *the measurement could not be taken* — never *the tree is slow*. Rerun in a
+  quiet window. Every attempt records the one-minute load average and the
+  runnable-process count on its evidence line.
+
+Widening performance coverage means **adding another confined benchmark with its
+own budget**, never re-introducing an aggregate timer over the whole gate.
+
+Per-phase timeouts remain as hang guards, not perf verdicts.
 
 `bin/hb` itself must stay the small source-loading engine.
 

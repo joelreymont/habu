@@ -7,16 +7,12 @@ require lib/test/budget.f
 require test/run-support.f
 require test/run-files.f
 require test/run-result-cache.f
-require test/perf-verdict.f              \ pure performance-verdict policy
-require test/run-verdict.f              \ TR-VERDICT retry driver over the policy
 
 package TEST-RUN
 private
 
 64 constant TR-USAGE-RC
-65 constant TR-BUDGET-RC
 66 constant TR-PROFILE-RC
-70000 constant TR-DEFAULT-BUDGET-MS
 public
 4 constant DEFAULT-NESTED-POOL-SLOTS
 private
@@ -44,72 +40,23 @@ public
 
 ;package
 
-package RUN-BUDGET
-
-public
-
-\ Timed-budget stop-lines per 10x2 host profile (ms). Raised +5000 to absorb the
-\ maki suite now routed into the gate (dot habu-route-the-maki-e61d8a1b): on the
-\ maki-dominated retry/cold attempts the maki child (~26s wall) becomes the long
-\ pole, so the elapsed budget moves up to the former wall value (35000) and the
-\ wall rises with it, restoring the pass-attempt headroom the maki wall consumed.
-35000 constant MACOS-MS
-40000 constant MACOS-WALL-MS
-35000 constant SPARK-MS
-40000 constant SPARK-WALL-MS
-
-\ Cold-cache stop-lines for the 10x2 profiles, separate from the warm pair above
-\ (which assume the candidate is served from the persistent cache). A cold cache
-\ does a real candidate build + cache install + AOT maker build and runs a heavier
-\ maki child, so the native AOT-positive phase becomes the long pole. The startup
-\ spin probe runs before that load ramps up, so the calibration factor never scales
-\ for it; the cold stop-line carries static headroom instead. Spark cold was
-\ re-measured on the healed content-key cache (dot habu-re-derive-spark-4487e129,
-\ heal 5d6edc8e): the worst of four idle fresh-XDG_CACHE_HOME cold runs was 26.812s
-\ elapsed at cal ~100%, so 34000 = ~26.8s + 25% and the 38000 wall keeps the same
-\ ~11% headroom over the elapsed budget that the old pair carried. The pre-heal
-\ 44.6s worst case is retired. macOS is still unmeasurable on this box: it mirrors
-\ the healed spark cold pair on the assumption the shared cache heal cut macOS cold
-\ proportionally, and must be re-measured on macOS to confirm - the committed
-\ 39.336s / 41.64s macOS cold-fill reference is a 2026-07-01 pre-heal number that no
-\ longer bounds the budget.
-\ 2026-07-19 re-derived DOWN after the monolithic maki suite was split into four
-\ parallel gate slices (dot habu-split-monolithic-maki-fccca4ea). The single ~31s
-\ maki child that had forced the 46000/51000 bump is gone: the four slices
-\ (core ~9.4s, db ~8.6s, eval-emit ~7.6s, eval ~6.3s) run concurrently in the pool
-\ after the candidate barrier, so the maki long pole dropped 30.995s -> 9.371s and
-\ the whole cold attempt elapsed dropped from a worst-of-six 36.8s to a worst-of-
-\ three 15.141s at cal ~100% (three idle fresh-XDG_CACHE_HOME spark cold runs:
-\ 15.060 / 15.141 / 14.944). 19000 = ~15.1s + 25%; 21000 keeps the same ~11% wall
-\ headroom over the elapsed budget. macOS mirrors spark as before and still must be
-\ re-measured on macOS - the split cuts macOS maki cost proportionally, but no macOS
-\ box is available here to confirm the new pair.
-\ 2026-07-20 re-derived UP after the day's coverage wave: ~15 new suites landed
-\ (12-block stack acceptance + gradcheck conversion, strided-view core, MHA
-\ rework + block + fusion, weight tying, generation, BPE, cross-seq reject,
-\ capacity regressions), growing the maki core slice 9.4s -> 14.8s and the
-\ measured cold attempt 15.1s -> 20.2s worst-of-three at cal ~101%
-\ (20.057 / 20.183 / 20.469 quiet-box attempts, sha-stable, correctness=t).
-\ 25000 = ~20.2s + 25% (the derivation idiom above); 27500 keeps the same ~10%
-\ wall headroom. macOS mirrors spark as before and still must be re-measured on
-\ a macOS box.
-25000 constant SPARK-COLD-MS
-27500 constant SPARK-COLD-WALL-MS
-25000 constant MACOS-COLD-MS
-27500 constant MACOS-COLD-WALL-MS
-
-;package
 
 package TEST-RUN
 private
 
-\ Budget calibration: profile budget tables were tuned green on a reference
-\ host; a startup spin probe measures this run's speed against the profile's
-\ reference probe time and scales the timed budgets so load or downclocking
-\ cannot fail a green tree. A profile with reference 0 is uncalibrated and
-\ keeps its static budgets; user-supplied --budget-ms/--wall-budget-ms are
-\ never scaled. The factor is clamped to [100%,300%] so a thrashing host
-\ still trips the stop-line rather than stretching it without bound.
+\ Host calibration. A startup spin probe measures this run's speed against the
+\ profile's reference probe time; the resulting factor scales the PER-SUITE wall
+\ budgets (lib/test/budget.f) so a loaded or downclocked box does not fail a
+\ green tree on its own slowness. A profile with reference 0 is uncalibrated and
+\ leaves those budgets alone. The factor is clamped to [100%,300%] so a thrashing
+\ host still trips its suite stop-lines rather than stretching them unbounded.
+\
+\ There is no whole-gate timed budget here any more. Timing the entire gate made
+\ every landed suite eat the margin of a fixed constant, so a tree that had not
+\ regressed failed on its own growth (dot habu-recalibrate-cold-gate-ec0ba309).
+\ Performance is judged only where a stopwatch wraps one fixed workload and
+\ nothing else - today the six confined benchmarks behind
+\ test/json-read-perf-phase.f, each with its own recorded budget.
 T-BUDGET-CAL-ITERS constant TR-CAL-ITERS             \ shared with lib/test/budget.f self-calibration
 T-BUDGET-CAL-REF-MACOS-MS constant TR-CAL-REF-MACOS-MS
 0 constant TR-CAL-REF-JETSON-MS
@@ -183,26 +130,10 @@ variable TR-UNDER-READY
 variable TR-UNDER-CACHE-HIT
 variable TR-UNDER-CACHE-RC
 variable TR-ARG-I
-variable TR-BUDGET
-variable TR-WALL-BUDGET
-variable TR-BUDGET-USER
-variable TR-WALL-BUDGET-USER
-variable TR-BUDGET-BASE      \ unscaled per-attempt budget constant that produced TR-BUDGET
-variable TR-BUDGET-FACTOR    \ calibration factor (percent) applied to TR-BUDGET-BASE
-
-\ Set the per-attempt budget AND record its provenance together, so the verdict
-\ can reproduce budget = base*factor/100 and name which base/factor produced it.
-\ EVERY TR-BUDGET write goes through here; a bare `TR-BUDGET !` would leave the
-\ recorded provenance stale and the derivation invisible again.
-: TR-BUDGET-SET! ( n n -- ) {: base:n factor:n :}    \ base factor
-   base TR-BUDGET-BASE !
-   factor TR-BUDGET-FACTOR !
-   base factor * 100 / TR-BUDGET ! ;
 variable TR-NESTED-POOL
 variable TR-TIMINGS
 variable TR-COLD-CACHE
 variable TR-NO-RESULT-CACHE
-variable TR-GATE-ATTEMPT           \ 0 = driver mode; N>0 = single-attempt worker (no retry)
 variable TR-PROFILE-ID
 variable TR-NUM-U
 variable TR-RESIDENT-ID
@@ -254,7 +185,7 @@ private
    TR-UNDER-NAME-BUF TR-UNDER-NAME-U @ ;
 
 : TR-USAGE ( -- )
-   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--perf-profile NAME|auto] [--pool-slots N] [--nested-pool-slots N] [--budget-ms N] [--wall-budget-ms N] [--cold-cache] [--no-result-cache] [--rerun-failed] [--timings]" TR-USAGE-RC die ;
+   s" usage: bin/hb --load libs test/run.f -- [--under PATH] [--perf-profile NAME|auto] [--pool-slots N] [--nested-pool-slots N] [--cold-cache] [--no-result-cache] [--rerun-failed] [--timings]" TR-USAGE-RC die ;
 
 : TR-ARG$ ( -- ptr u8 n )
    TR-ARG-I @ SCRIPT-ARGV$ ;
@@ -290,16 +221,6 @@ private
 
 : TR-NESTED-POOL-OPT ( -- )
    TR-ARG-VALUE$ TR-POS-NUM GT-POOL-CHECK-LIMIT TR-NESTED-POOL !
-   2 TR-ADVANCE ;
-
-: TR-BUDGET-OPT ( -- )
-   TR-ARG-VALUE$ TR-POS-NUM 100 TR-BUDGET-SET!   \ user override is unscaled: base=value, factor=100
-   -1 TR-BUDGET-USER !
-   2 TR-ADVANCE ;
-
-: TR-WALL-BUDGET-OPT ( -- )
-   TR-ARG-VALUE$ TR-POS-NUM TR-WALL-BUDGET !
-   -1 TR-WALL-BUDGET-USER !
    2 TR-ADVANCE ;
 
 : TR-TIMINGS-OPT ( -- )
@@ -400,12 +321,6 @@ private
       TR-PROFILE-MACOS-ARM64-10X2 of
          10 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
-         TR-BUDGET-USER @ 0= if
-            RUN-BUDGET:MACOS-MS TR-CAL-PCT TR-BUDGET-SET!
-         then
-         TR-WALL-BUDGET-USER @ 0= if
-            RUN-BUDGET:MACOS-WALL-MS CAL-SCALED TR-WALL-BUDGET !
-         then
       endof
       TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of
          4 GT-POOL-SLOTS!
@@ -413,81 +328,32 @@ private
          \ +17% over the pre-maki 100000/110000 - the same relative bump spark took,
          \ applied unmeasured (no Jetson here) because the Orin runs maki's CUDA legs
          \ and has fewer pool slots, so its maki wall scales with its ~3.3x budget.
-         TR-BUDGET-USER @ 0= if
-            117000 TR-CAL-PCT TR-BUDGET-SET!
-         then
-         TR-WALL-BUDGET-USER @ 0= if
-            128000 CAL-SCALED TR-WALL-BUDGET !
-         then
       endof
       TR-PROFILE-LINUX-ARM64-4X2 of
          4 GT-POOL-SLOTS!
          2 TR-NESTED-POOL !
-         TR-BUDGET-USER @ 0= if
-            120000 TR-CAL-PCT TR-BUDGET-SET!
-         then
-         TR-WALL-BUDGET-USER @ 0= if
-            0 TR-WALL-BUDGET !
-         then
       endof
       PROFILE-DGX-SPARK-10X2 of
          10 TR-TOP-POOL-SLOTS!
          2 TR-NESTED-POOL !
-         TR-BUDGET-USER @ 0= if
-            RUN-BUDGET:SPARK-MS TR-CAL-PCT TR-BUDGET-SET!
-         then
-         TR-WALL-BUDGET-USER @ 0= if
-            RUN-BUDGET:SPARK-WALL-MS CAL-SCALED TR-WALL-BUDGET !
-         then
       endof
    endcase ;
 
 : TR-ARGS-DEFAULTS ( -- )
-   TR-DEFAULT-BUDGET-MS 100 TR-BUDGET-SET!    \ default is unscaled; TR-PROFILE-APPLY below overwrites it
-   0 TR-WALL-BUDGET !
-   0 TR-BUDGET-USER !
-   0 TR-WALL-BUDGET-USER !
    DEFAULT-NESTED-POOL-SLOTS TR-NESTED-POOL !
    0 TR-TIMINGS !
    0 TR-COLD-CACHE !
    0 TR-NO-RESULT-CACHE !
    0 TR-RERUN !
-   0 TR-GATE-ATTEMPT !
    0 TR-UNDER-ARG-U !
    DETECT-PROFILE TR-PROFILE-APPLY ;
 
-\ The UNSCALED cold-cache base per profile (the cold sibling of the warm
-\ per-profile table); TR-COLD-BUDGET-MS scales it by the live calibration.
-: TR-COLD-BASE ( -- n )
-   TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-MS endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 175000 endof
-      TR-PROFILE-LINUX-ARM64-4X2 of 150000 endof
-      PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-MS endof
-      TR-BUDGET-BASE @ swap
-   endcase ;
-
-: TR-COLD-BUDGET-MS ( -- n )
-   TR-COLD-BASE CAL-SCALED ;
-
-: TR-COLD-WALL-BUDGET-MS ( -- n )
-   TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of RUN-BUDGET:MACOS-COLD-WALL-MS CAL-SCALED endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of 187000 CAL-SCALED endof
-      TR-PROFILE-LINUX-ARM64-4X2 of 0 endof
-      PROFILE-DGX-SPARK-10X2 of RUN-BUDGET:SPARK-COLD-WALL-MS CAL-SCALED endof
-      TR-WALL-BUDGET @ swap
-   endcase ;
-
-: TR-COLD-BUDGETS ( -- )
-   TR-COLD-CACHE @ 0 = if exit then
-   TR-BUDGET-USER @ 0= if TR-COLD-BASE TR-CAL-PCT TR-BUDGET-SET! then
-   TR-WALL-BUDGET-USER @ 0= if TR-COLD-WALL-BUDGET-MS TR-WALL-BUDGET ! then ;
-
+\ The cache-root world is still tracked: a candidate cache miss mid-run means
+\ this gate built its candidate instead of being served one, which the perf
+\ profile line reports. It no longer selects a budget, because there is none.
 : TR-MARK-COLD ( -- )
    TR-COLD-CACHE @ 0 <> if exit then
-   -1 TR-COLD-CACHE !
-   TR-COLD-BUDGETS ;
+   -1 TR-COLD-CACHE ! ;
 
 : TR-PERF-PROFILE-OPT ( -- )
    TR-ARG-VALUE$ PROFILE-ID? TR-PROFILE-APPLY
@@ -507,12 +373,6 @@ private
    -1 TR-RERUN !
    1 TR-ADVANCE ;
 
-\ Internal: run a single fresh attempt for the verdict retry loop and report
-\ its machine line, without itself retrying (no recursion).
-: TR-GATE-ATTEMPT-OPT ( -- )
-   TR-ARG-VALUE$ TR-POS-NUM TR-GATE-ATTEMPT !
-   2 TR-ADVANCE ;
-
 : TR-PARSE-ARG ( -- )
    TR-ARG$ s" full" STR= if
       s" test/run.f full retired; the native gate is test/run.f" TR-USAGE-RC die
@@ -520,13 +380,10 @@ private
    TR-ARG$ s" --under" STR= if TR-UNDER-OPT exit then
    TR-ARG$ s" --pool-slots" STR= if TR-POOL-OPT exit then
    TR-ARG$ s" --nested-pool-slots" STR= if TR-NESTED-POOL-OPT exit then
-   TR-ARG$ s" --budget-ms" STR= if TR-BUDGET-OPT exit then
-   TR-ARG$ s" --wall-budget-ms" STR= if TR-WALL-BUDGET-OPT exit then
    TR-ARG$ s" --perf-profile" STR= if TR-PERF-PROFILE-OPT exit then
    TR-ARG$ s" --cold-cache" STR= if TR-COLD-CACHE-OPT exit then
    TR-ARG$ s" --no-result-cache" STR= if TR-NO-RESULT-CACHE-OPT exit then
    TR-ARG$ s" --rerun-failed" STR= if TR-RERUN-OPT exit then
-   TR-ARG$ s" --gate-attempt" STR= if TR-GATE-ATTEMPT-OPT exit then
    TR-ARG$ s" --timings" STR= if TR-TIMINGS-OPT exit then
    TR-USAGE ;
 
@@ -535,8 +392,7 @@ private
    0 TR-ARG-I !
    begin TR-ARG-I @ SCRIPT-ARGC < while
       TR-PARSE-ARG
-   repeat
-   TR-COLD-BUDGETS ;
+   repeat ;
 
 : TR-TRUE ( -- bool )
    0 0= ;
@@ -549,15 +405,6 @@ private
 
 : TR-GATE-ELAPSED-MS ( -- n )
    mono-ns TR-GATE-START-NS @ - PROC-NS-PER-MS / ;
-
-: TR-BUDGET-MS ( -- n )
-   TR-BUDGET @ ;
-
-: TR-WALL-BUDGET-MS ( -- n )
-   TR-WALL-BUDGET @ ;
-
-: TR-WALL-BUDGET? ( -- bool )
-   TR-WALL-BUDGET-MS 0 > ;
 
 public
 : PROFILE$ ( -- ptr u8 n )
@@ -643,17 +490,9 @@ private
    s"  nested=" type TR-NESTED-POOL @ GT-U-TYPE
    s"  cal-ms=" type TR-CAL-MEASURED-MS @ GT-U-TYPE
    s"  cal-factor=" type TR-CAL-PCT GT-U-TYPE s" %" type
-   s"  budget-base=" type TR-BUDGET-BASE @ GT-U-TYPE
-   s"  budget-ms=" type TR-BUDGET-MS GT-U-TYPE
-   TR-WALL-BUDGET? if
-      s"  wall-budget-ms=" type TR-WALL-BUDGET-MS GT-U-TYPE
-   then
+   s"  elapsed-ms=" type TR-GATE-ELAPSED-MS GT-U-TYPE
    cr ;
 
-\ The gate-finish verdict is the robust PERF-VERDICT retry rule (dot
-\ habu-integrate-robust-verdict-7f26769e). The implementation is installed at the
-\ end of this file, once its runner/subprocess dependencies are defined.
-defer TR-FINISH ( -- )
 
 : TR-BUILD-CACHE-PATHS ( -- )
    PERSIST$ s" hb-build-cache" TR-BUILD-CACHE-BUF JOIN-PATH TR-BUILD-CACHE-U !
@@ -2012,270 +1851,23 @@ public
    KEPT-ROOT-LINE
    s" native test suite phases failed" 1 die ;
 
-\ ===========================================================================
-\ Robust performance verdict integration (dot habu-integrate-robust-verdict-7f26769e).
-\
-\ ATTEMPT UNIT = the whole gate. TR-GATE-ELAPSED-MS measures the entire run from
-\ TR-GATE-START! (PREPARE, right after pre-calibration) to here; the calibrated
-\ budget and the HB_TMP/XDG_CACHE_HOME/HABU_BUILD_CACHE roots are all gate-scoped,
-\ and the phases mutate global runner state that cannot be soundly reset in
-\ process. So a fresh-root attempt is a fresh SUBPROCESS of the whole gate
-\ (--gate-attempt), never an in-process re-run. Attempt 1 is this process (its
-\ roots were fresh at start, no prior attempt); attempts 2/3 (only on an initial
-\ marginal) are cold, distinct-fresh-root subprocess re-runs that fail closed if
-\ their root is not proven empty. A worker (--gate-attempt N) runs the gate once
-\ and reports one machine line; it never retries, so there is no recursion.
-
-private
-variable TR-POST-CAL-MS
-variable TR-SHA-ACC
-variable TR-SHA-I
-
-create TR-VA-BASE-BUF FS-PATH-CAP allot    variable TR-VA-BASE-U
-create TR-VA-TMP-BUF FS-PATH-CAP allot      variable TR-VA-TMP-U
-create TR-VA-CACHE-BUF FS-PATH-CAP allot    variable TR-VA-CACHE-U
-create TR-VA-BUILD-BUF FS-PATH-CAP allot    variable TR-VA-BUILD-U
-create TR-VA-UNDER-BUF FS-PATH-CAP allot    variable TR-VA-UNDER-U
-create TR-VA-OUT-BUF FS-PATH-CAP allot      variable TR-VA-OUT-U
-$40000 constant TR-VA-READ-CAP
-create TR-VA-READ-BUF TR-VA-READ-CAP allot
-
-\ ---- pre/post calibration bracket + folded under-test SHA ------------------
-\ POST calibration runs in a FRESHLY SPAWNED child (test/cal-spin.f), not in this
-\ long-lived driver. The spin has zero in-process drift; the observed pre/post
-\ drift is core PLACEMENT: the driver launches on a performance core (pre) but the
-\ scheduler migrates it onto a slower efficiency core while it blocks on the pool,
-\ so its own post-cal spin reads a blended over-time and trips the >10% drift gate
-\ on heterogeneous hosts (GB10). A fresh CPU-bound child inherits the driver's full
-\ affinity mask and is placed on a performance core again, matching the pre-cal
-\ placement. See test/cal-spin.f.
-64 constant TR-CAL-CAP
-create TR-CAL-OUT-BUF TR-CAL-CAP allot
-create TR-CAL-ERR-BUF TR-CAL-CAP allot
-3000 constant TR-CAL-TIMEOUT-MS              \ fresh hb load + one spin is ~240ms; 12x headroom
-
-: TR-CAL-PARSE ( ptr u8 n -- n )             \ trimmed decimal ms, 0 if empty/garbage
-   TRIM STR>NUMBER? MATCH option
-      none OF 0 ENDOF
-      some OF ENDOF
-   ;MATCH ;
-
-: TR-CAL-OUT-MS ( len -- n )                 \ parse the captured stdout of that byte-length
-   TR-CAL-OUT-BUF swap LEN>N TR-CAL-PARSE ;
-
-: TR-CAL-EXITED ( len len n -- n )           \ out-len err-len exit-code; clean exit(0) -> parse, else fail closed
-   0 = if drop TR-CAL-OUT-MS else 2drop 0 then ;
-
-: TR-CAL-NOTRACE ( ptr u8 n -- )             \ no-op spawn-trace event
-   2drop ;
-
-\ Detach the gate-stats spawn trace before the calibration/verdict child spawns.
-\ Those spawns run in TR-FINISH, AFTER GS-SUMMARY reported and GT-CLEANUP removed
-\ the stats/GT-ROOT tree; leaving the EXEC hook live makes the trace write to a
-\ deleted path and throw E-FS-OPEN. They are infrastructure, not suite phases, so
-\ dropping their trace is correct.
-: TR-CAL-UNTRACE ( -- )
-   [: TR-CAL-NOTRACE ;] PROCESS-TRACE:EXEC-HOOK! ;
-
-\ Post-cal spin ms from a fresh child (in-memory capture; no temp dir, since
-\ GT-CLEANUP has already removed GT-ROOT by the time TR-FINISH runs). A nonzero
-\ exit, a signal, a timeout, or unparseable output returns 0, which TR-A-POST
-\ clamps to 1 so the drift gate fails CLOSED (attempt inadmissible).
 public
-: CAL-CHILD-MS? ( -- n )
-   TR-CAL-UNTRACE
-   PROC-ARGV-RESET
-   s" --load" TR-ARG+
-   s" test/cal-spin.f" TR-ARG+
-   s" bin/hb" >LEN
-   TR-CAL-OUT-BUF TR-CAL-CAP >LEN
-   TR-CAL-ERR-BUF TR-CAL-CAP >LEN
-   TR-CAL-TIMEOUT-MS >MS
-   RUN-ARGV-CAPTURE-OUTCOME
-   MATCH outcome
-      exited OF TR-CAL-EXITED ENDOF
-      signaled OF 2drop drop 0 ENDOF
-      timeout OF 2drop 0 ENDOF
-   ;MATCH ;
-
-private
-: TR-POST-CAL! ( -- )
-   CAL-CHILD-MS? TR-POST-CAL-MS ! ;
-
-: TR-A-PRE ( -- n )                          \ pre-calibration spin ms, clamped >=1
-   TR-CAL-MEASURED-MS @ dup 1 < if drop 1 then ;
-
-: TR-A-POST ( -- n )                         \ post-calibration spin ms, clamped >=1
-   TR-POST-CAL-MS @ dup 1 < if drop 1 then ;
-
-\ ---- per-attempt budget provenance (base, factor, cache-root world) ---------
-\ These make the budget's derivation an explicit, reproducible part of every
-\ attempt line: budget = base*factor/100, cold=true when this attempt ran in the
-\ scratch-cache world (a cold retry subprocess, or a mid-run candidate-cache-miss
-\ fallback via TR-MARK-COLD). base/factor clamp to >=1 so a value-less profile
-\ never emits a zero the verdict would reject.
-: TR-A-BASE ( -- n )    TR-BUDGET-BASE @ dup 1 < if drop 1 then ;
-: TR-A-FACTOR ( -- n )  TR-BUDGET-FACTOR @ dup 1 < if drop 1 then ;
-: TR-A-COLD ( -- bool ) TR-COLD-CACHE @ 0 <> ;
-
-\ Fold the 64-hex under-test digest into one non-negative identity cell (the
-\ policy's sha token). No candidate -> 0 -> fails closed.
-: TR-UNDER-SHA-CELL ( -- n )
-   TR-UNDER-READY @ 0= if 0 exit then
-   0 TR-SHA-ACC !
-   0 TR-SHA-I !
-   begin TR-SHA-I @ 64 < while
-      TR-SHA-ACC @ 4 lshift
-      TR-UNDER-HEX TR-SHA-I @ + c@ CONTENT-KEY:HEX-NIB or
-      TR-SHA-ACC !
-      TR-SHA-I @ 1+ TR-SHA-I !
-   repeat
-   TR-SHA-ACC @ $7FFFFFFFFFFFFFFF and ;
-
-public
-: VERDICT-CONTROL? ( -- bool )            \ host admission: a known timed profile ran
-   TR-PROFILE-ID @ case
-      TR-PROFILE-MACOS-ARM64-10X2 of TR-TRUE endof
-      TR-PROFILE-JETSON-ORIN-CLOCKS-4X2 of TR-TRUE endof
-      TR-PROFILE-LINUX-ARM64-4X2 of TR-TRUE endof
-      PROFILE-DGX-SPARK-10X2 of TR-TRUE endof
-      TR-FALSE swap
-   endcase ;
-
-\ The seven shared measurement fields. Correctness is TRUE by construction:
-\ COMPLETE runs the red-phase gate (GT-POOL-RED#) and dies with the existing
-\ RUN_EXIT code BEFORE the verdict, so correctness gates admission and its exit
-\ codes are unchanged; performance is a SEPARATE field decided here.
-private
-: TR-A-CORE ( -- n n n n n bool bool )       \ elapsed budget pre post sha correct control
-   TR-GATE-ELAPSED-MS TR-BUDGET-MS TR-A-PRE TR-A-POST TR-UNDER-SHA-CELL
-   TR-TRUE VERDICT-CONTROL? ;
-
-: TR-VERDICT-FIELDS ( -- n n n n n bool bool bool )   \ + cache (worker machine line)
-   TR-A-CORE GS-ATTEMPT-CACHE-OK? ;
-
-\ Attempt 1 is in-process: fresh=true, empty=true (it is the first attempt, so no
-\ prior-attempt artifact can exist); cache is the within-attempt counter contract.
-: TR-ATTEMPT-1 ( -- PERF-VERDICT:att )
-   TR-A-CORE TR-TRUE TR-TRUE GS-ATTEMPT-CACHE-OK?
-   TR-A-BASE TR-A-FACTOR TR-A-COLD PERF-VERDICT:ATTEMPT ;
-
-\ ---- distinct fresh roots per retry attempt --------------------------------
-: TR-VA-BASE$ ( -- ptr u8 n )    TR-VA-BASE-BUF TR-VA-BASE-U @ ;
-: TR-VA-TMP$ ( -- ptr u8 n )     TR-VA-TMP-BUF TR-VA-TMP-U @ ;
-: TR-VA-CACHE$ ( -- ptr u8 n )   TR-VA-CACHE-BUF TR-VA-CACHE-U @ ;
-: TR-VA-BUILD$ ( -- ptr u8 n )   TR-VA-BUILD-BUF TR-VA-BUILD-U @ ;
-: TR-VA-UNDER$ ( -- ptr u8 n )   TR-VA-UNDER-BUF TR-VA-UNDER-U @ ;
-: TR-VA-OUT$ ( -- ptr u8 n )     TR-VA-OUT-BUF TR-VA-OUT-U @ ;
-: TR-VA-READ ( -- ptr u8 )       TR-VA-READ-BUF ;
-
-\ Deterministic sibling root <GT-ROOT>-verdict-a<n> (no entropy, index-derived).
-: TR-VA-BASE! ( n -- ) {: n:n :}
-   GT-ROOT {: ga:ptr gu:n :}
-   s" -verdict-a" {: sa:ptr su:n :}
-   n TR-NUM$ {: na:ptr nu:n :}
-   gu su + nu + FS-PATH-CAP > if E-FS-PATH throw then
-   ga TR-VA-BASE-BUF gu BYTE-COPY
-   sa TR-VA-BASE-BUF gu + su BYTE-COPY
-   na TR-VA-BASE-BUF gu su + + nu BYTE-COPY
-   gu su + nu + TR-VA-BASE-U ! ;
-
-: TR-VA-PATHS! ( n -- ) {: n:n :}
-   n TR-VA-BASE!
-   TR-VA-BASE$ MAKE-DIRS
-   TR-VA-BASE$ s" tmp" TR-VA-TMP-BUF JOIN-PATH TR-VA-TMP-U !
-   TR-VA-BASE$ s" cache" TR-VA-CACHE-BUF JOIN-PATH TR-VA-CACHE-U !
-   TR-VA-BASE$ s" build-cache" TR-VA-BUILD-BUF JOIN-PATH TR-VA-BUILD-U !
-   TR-VA-BASE$ s" verdict-attempt.out" TR-VA-OUT-BUF JOIN-PATH TR-VA-OUT-U !
-   TR-VA-TMP$ MAKE-DIRS
-   TR-VA-CACHE$ MAKE-DIRS
-   TR-VA-BUILD$ MAKE-DIRS
-   TR-VA-TMP$ s" hb-under-test" TR-VA-UNDER-BUF JOIN-PATH TR-VA-UNDER-U ! ;
-
-\ Executable check (not assumption): a fresh root must hold no candidate binary.
-: TR-VA-EMPTY? ( -- bool )
-   TR-VA-UNDER$ EXECUTABLE? 0= ;
-
-: TR-VA-ENV ( -- )
-   PROC-ENV-RESET
-   s" HB_TMP" >LEN TR-VA-TMP$ >LEN PROC-ENV+
-   s" XDG_CACHE_HOME" >LEN TR-VA-CACHE$ >LEN PROC-ENV+
-   s" HABU_BUILD_CACHE" >LEN TR-VA-BUILD$ >LEN PROC-ENV+
-   PROC-ENV-INHERIT-MISSING ;
-
-: TR-VA-ARGV ( n -- ) {: n:n :}
-   PROC-ARGV-RESET
-   s" --load" TR-ARG+
-   s" test/run.f" TR-ARG+
-   s" --" TR-ARG+
-   s" --gate-attempt" TR-ARG+
-   n TR-NUM$ TR-ARG+
-   s" --cold-cache" TR-ARG+
-   s" --perf-profile" TR-ARG+
-   PROFILE$ TR-ARG+ ;
-
-: TR-VA-OPEN-OUT ( -- n )                    \ raw write fd for the child's stdout file
-   TR-VA-OUT$ FS-PATHZ FS-O-WRONLY FS-O-CREAT or FS-O-TRUNC or FS-MODE-0644 open
-   dup 0 < if E-FS-OPEN throw then ;
-
-: TR-VA-CHILD-OK? ( n -- bool ) {: fd:n :}   \ spawn worker, stdout+stderr -> fd, wait
-   s" bin/hb" >LEN  -1 >FD  fd >FD  fd >FD  PROC-RUN-ARGV-ENV-IO-RC
-   MATCH result
-      ok OF drop TR-TRUE ENDOF
-      err OF drop TR-FALSE ENDOF
-   ;MATCH ;
-
-\ One fresh-root subprocess attempt. fresh=true (distinct root); empty is proven
-\ pre-spawn by the executable check; the other eight fields come from the worker
-\ machine line. A failed/silent child yields a fail-closed attempt.
-: TR-ATTEMPT-SUBPROC ( n -- PERF-VERDICT:att ) {: n:n :}
-   n TR-VA-PATHS!
-   TR-VA-EMPTY? {: em:bool :}
-   TR-VA-ENV
-   n TR-VA-ARGV
-   TR-VA-OPEN-OUT {: fd:n :}
-   fd TR-VA-CHILD-OK? {: ok:bool :}
-   fd close
-   ok 0= if TR-VA-READ 0 em TR-VERDICT:PA-PARSE exit then
-   TR-VA-OUT$ EXISTS? 0= if TR-VA-READ 0 em TR-VERDICT:PA-PARSE exit then
-   TR-VA-OUT$ TR-VA-READ TR-VA-READ-CAP READ-ALL {: got:n :}
-   TR-VA-READ got em TR-VERDICT:PA-PARSE ;
-
-: TR-VERDICT-MEASURE ( n -- PERF-VERDICT:att ) {: n:n :}
-   n 1 = if TR-ATTEMPT-1 exit then
-   n TR-ATTEMPT-SUBPROC ;
-
-\ ---- worker vs driver finish ----------------------------------------------
-: TR-VERDICT-WORKER ( -- )                   \ --gate-attempt: one attempt, one line, no retry
-   TR-POST-CAL!
-   TR-PERF-LINE
-   TR-VERDICT-FIELDS TR-A-BASE TR-A-FACTOR TR-A-COLD TR-VERDICT:PA-EMIT ;
-
-: TR-VERDICT-DRIVER ( -- )                   \ retry rule: pass returns, any fail dies TR-BUDGET-RC
-   TR-POST-CAL!
-   TR-PERF-LINE
-   TR-VERDICT:RUN 0= if
-      s" native test suite performance verdict failed" TR-BUDGET-RC die
-   then ;
-
-: TR-VERDICT-FINISH ( -- )
-   TR-GATE-ATTEMPT @ 0 > if TR-VERDICT-WORKER exit then
-   TR-VERDICT-DRIVER ;
-
-: TR-VERDICT-INSTALL ( -- )
-   [: TR-VERDICT-MEASURE ;] is TR-VERDICT:MEASURE
-   [: TR-VERDICT-FINISH ;] is TR-FINISH ;
-
-TR-VERDICT-INSTALL
-
-public
+\ The gate finishes on CORRECTNESS alone. It used to time itself as a whole and
+\ judge that number against a fixed budget, which meant every suite anyone landed
+\ ate the margin until a tree that had not regressed failed on its own growth
+\ (dot habu-recalibrate-cold-gate-ec0ba309). Performance now belongs to the
+\ confined benchmark phases, where a stopwatch wraps one fixed workload and
+\ nothing else, and each reds the gate through the ordinary red-phase path when
+\ its own budget is missed. What is left here is the profile line: how this host
+\ was calibrated and how long the run took, reported as information, never a
+\ verdict.
 : COMPLETE ( -- )
    GS-SUMMARY
    GT-POOL-RED# 0 > if RED-COMPLETE then
    GS-LABEL-DUP-GUARD
    TR-RESULT-STAMPS
    GT-CLEANUP
-   TR-FINISH ;
+   TR-PERF-LINE ;
 
 \ ---- capability-shaped access to runner state ------------------------------
 \ The cells behind these stay private. A caller asks the runner a question or

@@ -36,9 +36,9 @@
 require lib/prelude.f
 
 \ Codegen-buffer throw codes. lib/errors.f owns the canonical stdlib blocks up to
-\ -4499; the -4700..-4799 block is unclaimed there, so - like test/perf-verdict.f's
-\ -4500 block - it is declared at the owning module. error-code-lint enforces global
-\ uniqueness across every source tree, so these stay distinct from every other E-*.
+\ -4499; the -4700..-4799 block is unclaimed there, so it is declared at the
+\ owning module instead. error-code-lint enforces global uniqueness across every
+\ source tree, so these stay distinct from every other E-*.
 -4700 constant E-CG-CAP     \ an append would exceed a codegen buffer's capacity
 -4701 constant E-CG-VALUE   \ APPEND-DECIMAL was handed a negative value
 

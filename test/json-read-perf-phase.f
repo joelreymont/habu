@@ -23,7 +23,7 @@
 \
 \ Calibration brackets the measurement: one fixed calibration spin before the
 \ workloads sets the budget factor, one after checks that the host did not
-\ change speed underneath them, and PERF-VERDICT:DRIFT-OK? - the single owner of
+\ change speed underneath them, and CAL-SPIN:DRIFT-OK? - the single owner of
 \ that tolerance - decides. A bracket that moved, or a box so slow that the
 \ budget compensation has saturated at its clamp, means the numbers describe the
 \ machine rather than the tree.
@@ -52,7 +52,6 @@ require lib/test/runner.f
 require test/cal-spin-lib.f
 require test/gate-stats.f
 require test/gate-pool.f
-require test/perf-verdict.f
 require test/run-lib.f                \ TEST-RUN:CAL-REF-MS: the owner of the per-profile spin reference
 require lib/json-read-perf-test.f
 
@@ -94,7 +93,7 @@ variable RAN
 \ The spin measurement is deferred so a fixture can script a known pair of
 \ calibration readings and drive the real drift rule, the real diagnostic line
 \ and the real re-measure without owning a clock. Production installs the shared
-\ spin below; the seam mirrors test/run-verdict.f TR-VERDICT:MEASURE.
+\ spin below.
 defer PROBE-MS ( -- n )               \ one fixed calibration spin, wall ms
 
 : PROBE-MS-DEFAULT! ( -- )
@@ -192,7 +191,7 @@ variable LOAD-POS
 
 \ ---- admissibility --------------------------------------------------------
 \ Two structural conditions, neither of them a tuned threshold:
-\   - the bracket must hold. PERF-VERDICT:DRIFT-OK? is the single owner of the
+\   - the bracket must hold. CAL-SPIN:DRIFT-OK? is the single owner of the
 \     ten-percent rule, and a bracket that moved means the box changed speed
 \     underneath the workloads, so the budgets they were judged against were
 \     never the budgets they ran under.
@@ -206,7 +205,7 @@ variable LOAD-POS
    pre FACTOR T-BUDGET-MAX-PCT >= ;
 
 : ADMISSIBLE? ( n n -- bool ) {: pre:n post:n :}
-   pre post PERF-VERDICT:DRIFT-OK?
+   pre post CAL-SPIN:DRIFT-OK?
    pre SATURATED? 0= and ;
 
 \ ---- the calibration evidence line -----------------------------------------
@@ -221,7 +220,7 @@ variable LOAD-POS
    SB-RESET
    s" json-read-perf-phase: calibration pre=" SB-APPEND pre FMT:SB-U
    s"  post=" SB-APPEND post FMT:SB-U
-   s"  stable=" SB-APPEND pre post PERF-VERDICT:DRIFT-OK? SB-TF
+   s"  stable=" SB-APPEND pre post CAL-SPIN:DRIFT-OK? SB-TF
    s"  saturated=" SB-APPEND pre SATURATED? SB-TF ;
 
 : CAL-LOAD ( n n n n -- ) {: lpre:n lpost:n rpre:n rpost:n :}
