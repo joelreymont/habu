@@ -263,6 +263,10 @@ private
 : SKIP-PATH? ( ptr u8 n -- bool )
    REL$
    2dup s" .jj-ws/" LINT-STARTS-WITH? IF 2drop LINT-TRUE exit THEN
+   \ .blackboard/ is untracked, so it is outside the tree this gate speaks for,
+   \ and its dated messages quote one past gate run as evidence, not as a live
+   \ claim. Root-anchored like every skip here: notes/.blackboard/x.md is scanned.
+   2dup s" .blackboard/" LINT-STARTS-WITH? IF 2drop LINT-TRUE exit THEN
    2dup s" docs/archive/" LINT-STARTS-WITH? IF 2drop LINT-TRUE exit THEN   \ frozen history: counts there are records, not claims
    s" maki/" LINT-STARTS-WITH? ;
 

@@ -34,6 +34,7 @@ variable JJ-DIR-U
 variable MAKI-DIR-U
 variable MAKI-STATUS-U
 variable TODAY-U
+variable SUB-U
 variable COUNT
 
 create ROOT-BUF FS-PATH-CAP allot
@@ -45,6 +46,7 @@ create JJ-DIR-BUF FS-PATH-CAP allot
 create MAKI-DIR-BUF FS-PATH-CAP allot
 create MAKI-STATUS-BUF FS-PATH-CAP allot
 create TODAY-BUF DATE-CAP allot
+create SUB-BUF FS-PATH-CAP allot
 create OUT-BUF CAP allot
 create ERR-BUF CAP allot
 
@@ -82,6 +84,19 @@ create ERR-BUF CAP allot
 
 : TODAY-STR ( -- ptr u8 n )
    TODAY-BUF TODAY-U @ ;
+
+: SUB$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ path under the fixture root
+   ROOT a u SUB-BUF JOIN-PATH SUB-U !
+   SUB-BUF SUB-U @ ;
+
+: SUB-MKDIRS ( ptr u8 n -- )
+   SUB$ MAKE-DIRS ;
+
+: SUB-WRITE ( ptr u8 n ptr u8 n -- ) {: p:ptr pu:n body:ptr bodyu:n :}
+   p pu SUB$ body bodyu WRITE-ALL ;
+
+: SUB-RM ( ptr u8 n -- )
+   SUB$ REMOVE-TREE ;
 
 : +NL ( -- )
    LF-C SB-APPEND-C ;
@@ -153,6 +168,11 @@ create ERR-BUF CAP allot
    s" ```text" SB-APPEND +NL
    s" llm-results: rows=290 certified=195 tests=210" SB-APPEND +NL
    s" ```" SB-APPEND +NL
+   SB$ ;
+
+: BOARD$ ( -- ptr u8 n )   \ how a blackboard message quotes one past gate run
+   SB-RESET
+   s" Gate run on d52cf52a: 890 certified, 0 uncheckable." SB-APPEND +NL
    SB$ ;
 
 : WRITE-LONG-README ( -- )
@@ -246,6 +266,10 @@ create ERR-BUF CAP allot
 : EXPECT-BAD ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n needle:ptr needleu:n :}
    s" 2026-06-16" code codeu needle needleu EXPECT-BAD-TODAY ;
 
+: EXPECT-ONE ( ptr u8 n -- ) {: needle:ptr needleu:n :}   \ exactly one finding, at this path and line
+   s" STALE-STATUS" needle needleu EXPECT-BAD
+   COUNT @ 1 T= ;
+
 : TEST-CLEAN ( -- )
    RESET-FILES
    EXPECT-OK ;
@@ -321,6 +345,40 @@ create ERR-BUF CAP allot
    MAKI-STATUS MAKI-STATUS$ WRITE-ALL
    EXPECT-CLEAN ;
 
+: TEST-SKIP-BLACKBOARD ( -- )   \ untracked coordination history is out of scope
+   RESET-FILES
+   s" .blackboard/channels/general" SUB-MKDIRS
+   s" .blackboard/channels/general/msg.md" BOARD$ SUB-WRITE
+   EXPECT-CLEAN
+   s" .blackboard" SUB-RM ;
+
+: TEST-TRACKED-DOC-COUNT ( -- )   \ the same bytes in a tracked doc still flag
+   RESET-FILES
+   s" docs" SUB-MKDIRS
+   s" docs/notes.md" BOARD$ SUB-WRITE
+   s" docs/notes.md:1: count-shaped string" EXPECT-ONE
+   s" docs" SUB-RM ;
+
+: TEST-BLACKBOARD-NAME-COUNT ( -- )   \ a file merely named like the board is scanned
+   RESET-FILES
+   s" blackboard.md" BOARD$ SUB-WRITE
+   s" blackboard.md:1: count-shaped string" EXPECT-ONE
+   s" blackboard.md" SUB-RM ;
+
+: TEST-NESTED-BLACKBOARD-COUNT ( -- )   \ the skip is root-anchored, not any-depth
+   RESET-FILES
+   s" notes/.blackboard" SUB-MKDIRS
+   s" notes/.blackboard/x.md" BOARD$ SUB-WRITE
+   s" notes/.blackboard/x.md:1: count-shaped string" EXPECT-ONE
+   s" notes" SUB-RM ;
+
+: TEST-SIBLING-BLACKBOARD-COUNT ( -- )   \ the trailing slash keeps neighbours in scope
+   RESET-FILES
+   s" .blackboard-archive" SUB-MKDIRS
+   s" .blackboard-archive/msg.md" BOARD$ SUB-WRITE
+   s" .blackboard-archive/msg.md:1: count-shaped string" EXPECT-ONE
+   s" .blackboard-archive" SUB-RM ;
+
 : MAIN ( -- )
    T-RESET
    PREPARE
@@ -339,6 +397,11 @@ create ERR-BUF CAP allot
    TEST-LONG-MARKDOWN
    TEST-SKIP-JJ-WS
    TEST-SKIP-MAKI
+   TEST-SKIP-BLACKBOARD
+   TEST-TRACKED-DOC-COUNT
+   TEST-BLACKBOARD-NAME-COUNT
+   TEST-NESTED-BLACKBOARD-COUNT
+   TEST-SIBLING-BLACKBOARD-COUNT
    CLEANUP-RUN
    ROOT EXISTS? TFALSE
    T-REPORT
