@@ -13,7 +13,10 @@
 \ The closing TC/TK/TM section (package TLIN) covers the OTHER way a bundle
 \ becomes one linear unit: not through its type arguments but through a declared
 \ field or variant payload that names a family which itself owns a linear value
-\ (dot habu-checker-enum-payload-9e1ae6cc).
+\ (dot habu-checker-enum-payload-9e1ae6cc). Inside it, TC21-TC30 pin that typed
+\ memory stays closed to a linear value carried under a generic layer, each with
+\ a width-identical non-linear control, and the TA block records that the atomic
+\ memory operations transport no layout at all.
 
 require test/checker-assert.f
 
@@ -222,6 +225,90 @@ s" TC18=" type s" TC18 ( ptr lone -- lone ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" TC19=" type s" TC19 ( ptr plain -- plain ) @" CHECK-QUIET-CANDIDATE! -1 T=
 s" TC20=" type s" TC20 ( ptr lone -- ptr lone ptr lone ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 cr
+
+\ ---------------------------------------------------------------------------
+\ typed memory has to stay closed to a linear value buried under a GENERIC layer
+\ as well, and that is a DIFFERENT question in the checker from the one TC18 asks.
+\ TC18 refuses `ptr lone` because the pointee family is itself linear; the checker
+\ answers that from the family. `opt<lone>` is linear for another reason — its
+\ type ARGUMENT is — and the checker answers that by walking the argument list and
+\ asking each argument whether it reaches a linear value. Nothing above exercised
+\ that walk through memory, so deleting its containment answer left every case in
+\ this file green while a whole linear bundle could cross typed memory through
+\ `( ptr opt<lone> -- opt<lone> ) @`.
+\
+\ `opt<lone>` and `opt<plain>` are the same width — one tag cell and one payload
+\ cell — and differ only in owning a linear value, so a load that refuses for one
+\ and certifies for the other is answering linearity and not width. Repeating the
+\ pair at two generic layers pins the recursion instead of one fixed depth, and
+\ the store direction is pinned beside the load because `!` reaches the same guard
+\ from the other side.
+\ ---------------------------------------------------------------------------
+ENUM opt 1
+  VARIANT none ;VARIANT
+  VARIANT some FIELD v a ;VARIANT
+;ENUM
+s" TC21=" type s" TC21 ( ptr opt<lone> -- opt<lone> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC22=" type s" TC22 ( ptr opt<plain> -- opt<plain> ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC23=" type s" TC23 ( opt<lone> ptr opt<lone> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC24=" type s" TC24 ( opt<plain> ptr opt<plain> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+\ two layers: the walk recurses rather than looking one argument deep.
+s" TC25=" type s" TC25 ( ptr opt<opt<lone>> -- opt<opt<lone>> ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC26=" type s" TC26 ( ptr opt<opt<plain>> -- opt<opt<plain>> ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC27=" type s" TC27 ( opt<opt<lone>> ptr opt<opt<lone>> -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC28=" type s" TC28 ( opt<opt<plain>> ptr opt<opt<plain>> -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+\ the store direction for the bare family too, so the pair above is not the only
+\ evidence that `!` consults the same guard `@` does.
+s" TC29=" type s" TC29 ( lone ptr lone -- ) !" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC30=" type s" TC30 ( plain ptr plain -- ) !" CHECK-QUIET-CANDIDATE! -1 T=
+cr
+
+\ ---------------------------------------------------------------------------
+\ The ATOMIC memory operations: a CLOSED-SURFACE TRIPWIRE, not a linearity proof.
+\
+\ atomic@ and atomic! carry the same polymorphic pointer effect as @ and !, and
+\ atomic-cas and atomic-add take a pointer too, so all four look like more doors a
+\ linear bundle could cross. They are not doors at all today. The layout-aware
+\ transport step is selected by TOKEN NAME and only `@` and `!` have that name, so
+\ a layout value of ANY kind fails to bind here and every case below rejects — the
+\ linear one and its width-identical non-linear twin alike.
+\
+\ That is exactly why these are labelled a tripwire and not evidence. A negative
+\ whose control also rejects says nothing about linearity; what these cases pin is
+\ that the surface is CLOSED. The `ptr n` cases at the end certify, which is what
+\ keeps the block honest: the four words exist and work, so the rejections above
+\ are about layouts and not about an unknown word.
+\
+\ If layouts are ever opened to the atomic operations, the non-linear controls go
+\ red first, and whoever opens them has to add real linearity pins in the same
+\ change rather than inherit a silent hole.
+\ ---------------------------------------------------------------------------
+s" TA1=" type s" TA1 ( ptr opt<lone> -- opt<lone> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA2=" type s" TA2 ( ptr opt<plain> -- opt<plain> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=   \ control also refused: surface closed
+s" TA3=" type s" TA3 ( opt<lone> ptr opt<lone> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA4=" type s" TA4 ( opt<plain> ptr opt<plain> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA5=" type s" TA5 ( ptr opt<opt<lone>> -- opt<opt<lone>> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA6=" type s" TA6 ( ptr opt<opt<plain>> -- opt<opt<plain>> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA7=" type s" TA7 ( opt<lone> opt<lone> ptr opt<lone> -- opt<lone> ) atomic-cas" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA8=" type s" TA8 ( opt<plain> opt<plain> ptr opt<plain> -- opt<plain> ) atomic-cas" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA9=" type s" TA9 ( opt<lone> ptr opt<lone> -- opt<lone> ) atomic-add" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA10=" type s" TA10 ( opt<plain> ptr opt<plain> -- opt<plain> ) atomic-add" CHECK-QUIET-CANDIDATE! 0 T=
+\ the bare families close the same way.
+s" TA11=" type s" TA11 ( ptr lone -- lone ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+s" TA12=" type s" TA12 ( ptr plain -- plain ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
+\ and the four words themselves certify over a plain cell, so nothing above is
+\ passing merely because an atomic word went missing.
+s" TA13=" type s" TA13 ( ptr n -- n ) atomic@" CHECK-QUIET-CANDIDATE! -1 T=
+s" TA14=" type s" TA14 ( n ptr n -- ) atomic!" CHECK-QUIET-CANDIDATE! -1 T=
+s" TA15=" type s" TA15 ( n ptr n -- n ) atomic-add" CHECK-QUIET-CANDIDATE! -1 T=
+s" TA16=" type s" TA16 ( n n ptr n -- n ) atomic-cas" CHECK-QUIET-CANDIDATE! -1 T=
+cr
+
+\ A second lock now stands in front of the shape above: a record can no longer
+\ even NAME a pointer to a linear value, because both unified declarers refuse
+\ `FIELD p ptr <linear>` outright. That door is pinned where it lives, in
+\ test/structure-decl-suite.f and test/enum-decl-suite.f; this file stays about
+\ what the checker does with such a value once it is on a row.
 
 \ the sealed MAKE/UNMAKE pair moves the resource without copying or losing it.
 s" TK1=" type s" TK1 ( box n -- model ) TLIN-MODEL:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
