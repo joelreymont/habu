@@ -102,20 +102,32 @@ STRUCTURE diagnostic 0
 ;STRUCTURE
 
 \ ---- fallible construction / decode outcomes (custom-sum results) --------------
-SUMTYPE build-result 0
-   VARIANT ok diagnostic ;VARIANT
+\ Both are declared through the unified ENUM front end in full mode (the arity after the
+\ name selects it), so each ok payload is a named FIELD rather than a positional one. The
+\ field is called `diag` because that is the name this file already uses for exactly this
+\ value: the wrappers are `>DIAG ( n -- diagnostic )` and `DIAG> ( diagnostic -- n )`, the
+\ package is DIAG, and B-OK / D-OK below place the result of `>DIAG` into the ok slot. The
+\ generated DIAG-BUILD--RESULT:* and DIAG-DECODE--RESULT:* constructors and every MATCH
+\ site are unchanged, because both spellings and payload binding order derive from the
+\ package, the family tail and the declaration order, none of which the mode changes.
+\
+\ These two tails are NOT unique in the tree: DIFFSUITE declares its own build-result and
+\ decode-result, and OBLIG its own decode-result. The families are nominal, so those never
+\ unify with these; diagnostic-test.f pins that in both directions.
+ENUM build-result 0
+   VARIANT ok FIELD diag diagnostic ;VARIANT
    VARIANT missing-owner ;VARIANT
    VARIANT missing-reproduction ;VARIANT
-;SUMTYPE
+;ENUM
 
-SUMTYPE decode-result 0
-   VARIANT ok diagnostic ;VARIANT
+ENUM decode-result 0
+   VARIANT ok FIELD diag diagnostic ;VARIANT
    VARIANT malformed ;VARIANT
    VARIANT noncanonical ;VARIANT
    VARIANT bounds ;VARIANT
    VARIANT duplicate ;VARIANT
    VARIANT unknown-required ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

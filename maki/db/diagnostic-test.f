@@ -27,6 +27,38 @@ require maki/config.f
 require maki/rev.f
 require maki/artifact.f
 
+\ ---- same-shape twins for the two diagnostic outcome families ------------------
+\ bres-twin and dres-twin are DIAG:build-result's and DIAG:decode-result's SHAPES under
+\ different names: same arity, same variants in the same order, same named payload field
+\ carrying the same DIAG:diagnostic. They exist only so the negatives below can prove
+\ these outcomes are NOMINAL - two identically shaped ENUM families never unify, in either
+\ direction. They live in their OWN package, not in the reopened package DIAG, because a
+\ test must not add public words to the production package's surface; and they must be
+\ public, because a private family publishes no constructors at all, which would let the
+\ negatives pass by being unresolvable rather than ill-typed. The tails are kept short on
+\ purpose: the generated constructor packages are DIAG--TEST-BRES--TWIN and
+\ DIAG--TEST-DRES--TWIN at 21 characters, clear of the 32-character readability cap above
+\ which a generated name falls back to an unreadable hash spelling.
+package DIAG-TEST
+public
+
+ENUM bres-twin 0
+   VARIANT ok FIELD diag DIAG:diagnostic ;VARIANT
+   VARIANT missing-owner ;VARIANT
+   VARIANT missing-reproduction ;VARIANT
+;ENUM
+
+ENUM dres-twin 0
+   VARIANT ok FIELD diag DIAG:diagnostic ;VARIANT
+   VARIANT malformed ;VARIANT
+   VARIANT noncanonical ;VARIANT
+   VARIANT bounds ;VARIANT
+   VARIANT duplicate ;VARIANT
+   VARIANT unknown-required ;VARIANT
+;ENUM
+
+;package
+
 package DIAG
 
 create DG-A 1024 allot
@@ -382,6 +414,120 @@ DG-DUP 4 T=
    0 U32W TBB-LE
    TBB$ DEC-CODE ;
 DG-BOUNDS 3 T=
+
+\ ---- both outcome families construct and dispatch through MATCH ----------------
+\ BUILD and DECODE reach these arms only through a real build or a real byte decode. These
+\ construct each variant DIRECTLY through the production producers B-OK / D-OK and the
+\ payloadless wrappers, and match it straight back, so each named payload FIELD is proven
+\ to bind in declaration order. The ok arms bind their payload to a TYPED local and report
+\ the pool slot behind it, which is the diagnostic's whole representation, so a payload the
+\ constructor dropped or zeroed reads back as a different slot instead of passing.
+\
+\ The diagnostic pool is a RING whose cursor starts at 0, and a zeroed payload also reads
+\ back as slot 0, so a comparison riding slot 0 would pass on a dropped payload. TT-ANCHOR
+\ burns a slot whenever the cursor is about to hand out 0, and TT-B-NZ / TT-D-NZ pin the
+\ compared slot non-zero, so that escape stays closed.
+: TT-ANCHOR ( -- )                              \ keep the next allocated slot off zero
+   P-NEXT @ 0= if RICH OK-DIAG drop then ;
+: TT-DIAG ( -- diagnostic )   TT-ANCHOR RICH OK-DIAG ;   \ a diagnostic on a NON-ZERO slot
+
+: TT-B-SLOT ( build-result -- n )               \ ok payload's pool slot, else -1
+   MATCH build-result
+      ok OF {: got:diagnostic :} got DIAG> ENDOF
+      missing-owner OF -1 ENDOF
+      missing-reproduction OF -1 ENDOF
+   ;MATCH ;
+
+: TT-D-CODE ( decode-result -- n )              \ 0 ok, else the reject taxonomy ordinal
+   MATCH decode-result
+      ok OF DIAG> drop 0 ENDOF
+      malformed OF 1 ENDOF
+      noncanonical OF 2 ENDOF
+      bounds OF 3 ENDOF
+      duplicate OF 4 ENDOF
+      unknown-required OF 5 ENDOF
+   ;MATCH ;
+
+: TT-D-SLOT ( decode-result -- n )              \ ok payload's pool slot, else -1
+   MATCH decode-result
+      ok OF {: got:diagnostic :} got DIAG> ENDOF
+      malformed OF -1 ENDOF
+      noncanonical OF -1 ENDOF
+      bounds OF -1 ENDOF
+      duplicate OF -1 ENDOF
+      unknown-required OF -1 ENDOF
+   ;MATCH ;
+
+: TT-B-ARM ( -- n )      TT-DIAG DIAG> B-OK BUILD-CODE ;
+: TT-B-RT ( -- n )                              \ 0 = the diagnostic came back on its own slot
+   TT-DIAG DIAG> {: want:n :}
+   want B-OK TT-B-SLOT want = if 0 else 1 then ;
+: TT-B-NZ ( -- bool )    TT-DIAG DIAG> 0 > ;    \ that slot is never the 0 a zeroed payload reads as
+: TT-B-NO-ARM ( -- n )   B-NO-OWNER BUILD-CODE ;
+: TT-B-NR-ARM ( -- n )   B-NO-REPRO BUILD-CODE ;
+: TT-B-NO-SLOT ( -- n )  B-NO-OWNER TT-B-SLOT ;  \ a payloadless arm carries no slot
+
+: TT-D-ARM ( -- n )      TT-DIAG DIAG> D-OK TT-D-CODE ;
+: TT-D-RT ( -- n )                              \ 0 = the diagnostic came back on its own slot
+   TT-DIAG DIAG> {: want:n :}
+   want D-OK TT-D-SLOT want = if 0 else 1 then ;
+: TT-D-NZ ( -- bool )    TT-DIAG DIAG> 0 > ;
+: TT-D-MAL ( -- n )      D-R-MALFORMED TT-D-CODE ;
+: TT-D-NON ( -- n )      D-R-NONCANON TT-D-CODE ;
+: TT-D-BND ( -- n )      D-R-BOUNDS TT-D-CODE ;
+: TT-D-DUP ( -- n )      D-R-DUP TT-D-CODE ;
+: TT-D-UNK ( -- n )      D-R-UNKNOWN TT-D-CODE ;
+: TT-D-MAL-SLOT ( -- n ) D-R-MALFORMED TT-D-SLOT ;   \ a payloadless arm carries no slot
+
+TT-B-ARM 0 T=                                   \ a constructed ok reaches the ok arm
+TT-B-RT 0 T=                                    \ and carries its payload through unchanged
+TT-B-NZ TTRUE                                   \ against a non-zero slot, so a zeroed payload fails
+TT-B-NO-ARM 1 T=                                \ missing-owner reaches its own arm
+TT-B-NR-ARM 2 T=                                \ missing-reproduction reaches its own arm
+TT-B-NO-SLOT -1 T=                              \ the payloadless arms of TT-B-SLOT are live
+TT-D-ARM 0 T=                                   \ the decode ok arm likewise
+TT-D-RT 0 T=
+TT-D-NZ TTRUE
+TT-D-MAL 1 T=                                   \ each reject case keeps its own tag
+TT-D-NON 2 T=
+TT-D-BND 3 T=
+TT-D-DUP 4 T=
+TT-D-UNK 5 T=
+TT-D-MAL-SLOT -1 T=                             \ the payloadless arms of TT-D-SLOT are live
+
+\ ---- the generated constructors: exact spelling + exact effect -----------------
+\ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot
+\ resolve, and YES demands -1, so a -1 means it resolved EXACTLY this constructor name; NO
+\ demands 0, which it can only reach after resolving the name and refusing the types. The
+\ 1-verdict rows are the controls that prove that split.
+s" TC-B-OK ( diagnostic -- build-result ) DIAG-BUILD--RESULT:OK" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC-B-NO ( -- build-result ) DIAG-BUILD--RESULT:MISSING-OWNER" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC-B-NR ( -- build-result ) DIAG-BUILD--RESULT:MISSING-REPRODUCTION" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC-B-SPELL ( diagnostic -- build-result ) DIAG-BUILD--RESULTX:OK" CHECK-QUIET-CANDIDATE! 1 T=
+s" TC-D-OK ( diagnostic -- decode-result ) DIAG-DECODE--RESULT:OK" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC-D-UNK ( -- decode-result ) DIAG-DECODE--RESULT:UNKNOWN-REQUIRED" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC-D-SPELL ( diagnostic -- decode-result ) DIAG-DECODE--RESULTX:OK" CHECK-QUIET-CANDIDATE! 1 T=
+\ Forge negatives on each ok payload slot: a raw cell cannot fill it, the result is not a
+\ bare scalar, and the payload is mandatory.
+s" TC-B-RAW ( n -- build-result ) DIAG-BUILD--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-B-BARE ( diagnostic -- n ) DIAG-BUILD--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-B-NONE ( -- build-result ) DIAG-BUILD--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-D-RAW ( n -- decode-result ) DIAG-DECODE--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-D-BARE ( diagnostic -- n ) DIAG-DECODE--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-D-NONE ( -- decode-result ) DIAG-DECODE--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+\ The two families in THIS package do not cross either.
+s" TC-X-BD ( diagnostic -- decode-result ) DIAG-BUILD--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-X-DB ( diagnostic -- build-result ) DIAG-DECODE--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---- identity is by name, not by shape ----------------------------------------
+\ A positive control builds through each twin's own generated constructor, so the negatives
+\ cannot pass by being unresolvable; then neither family unifies with its twin either way.
+s" TC-TW-B ( diagnostic -- DIAG-TEST:bres-twin ) DIAG--TEST-BRES--TWIN:OK" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC-TW-B-X1 ( diagnostic -- DIAG-TEST:bres-twin ) DIAG-BUILD--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-TW-B-X2 ( diagnostic -- build-result ) DIAG--TEST-BRES--TWIN:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-TW-D ( diagnostic -- DIAG-TEST:dres-twin ) DIAG--TEST-DRES--TWIN:OK" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC-TW-D-X1 ( diagnostic -- DIAG-TEST:dres-twin ) DIAG-DECODE--RESULT:OK" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC-TW-D-X2 ( diagnostic -- decode-result ) DIAG--TEST-DRES--TWIN:OK" CHECK-QUIET-CANDIDATE! 0 T=
 
 T-REPORT
 
