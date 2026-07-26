@@ -547,27 +547,13 @@ package OBLIG-TEST
 : YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
 : NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
-variable KF                        \ the family row under test
-variable KV                        \ its first case's row in the variant registry
-
-: KP-NAMED? ( n ptr u8 n -- bool ) {: id:n a:ptr u:n :}   id TFAM-NAME$ a u STR= ;
-: KP-CTOR? ( n ptr u8 n -- bool ) {: f:n a:ptr u:n :}
-   f TFAM-VAR-COUNT@ 0 <= if false exit then
-   f TFAM-VAR-START@ SUMV-CTOR-PKG$ a u STR= ;
-: KF! ( ptr u8 n ptr u8 n -- ) {: ta:ptr tu:n ca:ptr cu:n :}   \ tail AND constructor package
-   -1 KF !
-   TFAM-N@ 0 ?do
-      i ta tu KP-NAMED? i ca cu KP-CTOR? and if i KF ! unloop exit then
-   loop ;
-: KF-FOUND ( -- bool )   KF @ 0 >= ;
-: KF-KIND ( -- n )       KF @ TFAM-KIND@ ;
-: KF-ARITY ( -- n )      KF @ TFAM-ARITY@ ;
-: KF-WIDTH ( -- n )      KF @ TFAM-WIDTH@ ;
-: KF-PUBLIC ( -- bool )  KF @ TFAM-PUBLIC? ;
-: KF-VARS ( -- n )       KF @ TFAM-VAR-COUNT@ ;
-: KV! ( -- )             KF @ TFAM-VAR-START@ KV ! ;
-: CASE$ ( n -- ptr u8 n ) {: k:n :}   KV @ k + SUMV-NAME$ ;
-: CTOR$ ( n -- ptr u8 n ) {: k:n :}   KV @ k + SUMV-CTOR-PKG$ ;
+\ the three (tail, constructor package) identities this file pins. REFLECT
+\ (test/checker-assert.f) does the reading, and its FAMS answers how many registered
+\ families match an identity, so the `1` pinned below is the uniqueness assertion this
+\ file's shared-tail hazard needs.
+: DR$ ( -- ptr u8 n ptr u8 n )   s" discharge-result" s" OBLIG-DISCHARGE--RESULT" ;
+: DC$ ( -- ptr u8 n ptr u8 n )   s" decode-result" s" OBLIG-DECODE--RESULT" ;
+: IDR$ ( -- ptr u8 n ptr u8 n )  s" id-result" s" OBLIG-ID--RESULT" ;
 
 public
 
@@ -605,57 +591,51 @@ ENUM idr-twin 1
 private
 
 \ ---- live registry: discharge-result -------------------------------------------------
-s" discharge-result" s" OBLIG-DISCHARGE--RESULT" KF!
-KF-FOUND TTRUE
-KF-KIND TK-SUM T=                  \ a payload family is a general sum ...
-KF-KIND TK-ENUM = 0 T=             \ ... never recorded as a payloadless enum
-KF-ARITY 0 T=
-KF-WIDTH 2 T=                      \ tag + one payload cell
-KF-PUBLIC TTRUE
-KF-VARS 7 T=
-KV!
-0 CASE$ s" ok" T$=                 \ case order fixes the tags
-1 CASE$ s" wrong-subject" T$=
-2 CASE$ s" wrong-domain" T$=
-3 CASE$ s" wrong-relation" T$=
-4 CASE$ s" wrong-environment" T$=
-5 CASE$ s" wrong-verifier-class" T$=
-6 CASE$ s" not-independent" T$=
-0 CTOR$ s" OBLIG-DISCHARGE--RESULT" T$=
-6 CTOR$ s" OBLIG-DISCHARGE--RESULT" T$=
+DR$ REFLECT:FAMS 1 T=
+DR$ REFLECT:KIND TK-SUM T=         \ a payload family is a general sum ...
+DR$ REFLECT:KIND TK-ENUM = 0 T=    \ ... never recorded as a payloadless enum
+DR$ REFLECT:ARITY 0 T=
+DR$ REFLECT:WIDTH 2 T=             \ tag + one payload cell
+DR$ REFLECT:VIS 1 T=
+DR$ REFLECT:VARS 7 T=
+DR$ 0 REFLECT:ARM$ s" ok" T$=      \ case order fixes the tags
+DR$ 1 REFLECT:ARM$ s" wrong-subject" T$=
+DR$ 2 REFLECT:ARM$ s" wrong-domain" T$=
+DR$ 3 REFLECT:ARM$ s" wrong-relation" T$=
+DR$ 4 REFLECT:ARM$ s" wrong-environment" T$=
+DR$ 5 REFLECT:ARM$ s" wrong-verifier-class" T$=
+DR$ 6 REFLECT:ARM$ s" not-independent" T$=
+DR$ 0 REFLECT:ARM-CTOR$ s" OBLIG-DISCHARGE--RESULT" T$=
+DR$ 6 REFLECT:ARM-CTOR$ s" OBLIG-DISCHARGE--RESULT" T$=
 
 \ ---- live registry: decode-result ----------------------------------------------------
-s" decode-result" s" OBLIG-DECODE--RESULT" KF!
-KF-FOUND TTRUE
-KF-KIND TK-SUM T=
-KF-ARITY 0 T=
-KF-WIDTH 2 T=
-KF-PUBLIC TTRUE
-KF-VARS 6 T=
-KV!
-0 CASE$ s" ok" T$=
-1 CASE$ s" malformed" T$=
-2 CASE$ s" noncanonical" T$=
-3 CASE$ s" bounds" T$=
-4 CASE$ s" duplicate" T$=
-5 CASE$ s" unknown-required" T$=
-0 CTOR$ s" OBLIG-DECODE--RESULT" T$=
-5 CTOR$ s" OBLIG-DECODE--RESULT" T$=
+DC$ REFLECT:FAMS 1 T=
+DC$ REFLECT:KIND TK-SUM T=
+DC$ REFLECT:ARITY 0 T=
+DC$ REFLECT:WIDTH 2 T=
+DC$ REFLECT:VIS 1 T=
+DC$ REFLECT:VARS 6 T=
+DC$ 0 REFLECT:ARM$ s" ok" T$=
+DC$ 1 REFLECT:ARM$ s" malformed" T$=
+DC$ 2 REFLECT:ARM$ s" noncanonical" T$=
+DC$ 3 REFLECT:ARM$ s" bounds" T$=
+DC$ 4 REFLECT:ARM$ s" duplicate" T$=
+DC$ 5 REFLECT:ARM$ s" unknown-required" T$=
+DC$ 0 REFLECT:ARM-CTOR$ s" OBLIG-DECODE--RESULT" T$=
+DC$ 5 REFLECT:ARM-CTOR$ s" OBLIG-DECODE--RESULT" T$=
 
 \ ---- live registry: id-result (the tail eight packages share) ------------------------
-s" id-result" s" OBLIG-ID--RESULT" KF!
-KF-FOUND TTRUE
-KF-KIND TK-SUM T=
-KF-ARITY 1 T=                      \ the one type parameter the id rides in
-KF-WIDTH 2 T=
-KF-PUBLIC TTRUE
-KF-VARS 3 T=
-KV!
-0 CASE$ s" ok" T$=
-1 CASE$ s" wrong-width" T$=
-2 CASE$ s" unknown" T$=
-0 CTOR$ s" OBLIG-ID--RESULT" T$=
-2 CTOR$ s" OBLIG-ID--RESULT" T$=
+IDR$ REFLECT:FAMS 1 T=
+IDR$ REFLECT:KIND TK-SUM T=
+IDR$ REFLECT:ARITY 1 T=            \ the one type parameter the id rides in
+IDR$ REFLECT:WIDTH 2 T=
+IDR$ REFLECT:VIS 1 T=
+IDR$ REFLECT:VARS 3 T=
+IDR$ 0 REFLECT:ARM$ s" ok" T$=
+IDR$ 1 REFLECT:ARM$ s" wrong-width" T$=
+IDR$ 2 REFLECT:ARM$ s" unknown" T$=
+IDR$ 0 REFLECT:ARM-CTOR$ s" OBLIG-ID--RESULT" T$=
+IDR$ 2 REFLECT:ARM-CTOR$ s" OBLIG-ID--RESULT" T$=
 
 \ ---- generated constructors: exact spelling + exact effect ---------------------------
 \ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot

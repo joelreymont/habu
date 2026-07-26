@@ -202,17 +202,15 @@ variable EA-K                                   \ bad index handed to a catch xt
 \ bare token per payloadless case) under the wave ruling. Both spellings are one cell wide
 \ and both give the same MATCH surface, so no consumer can tell the declaration form apart
 \ by behaviour - which is exactly why the recorded kind is pinned here, read live out of
-\ the family registry through the read-only accessors the checker publishes for this
-\ purpose. Writing either declaration back as SUMTYPE, or writing dispatch-result in the
-\ arity-headed full form, changes the recorded kind and turns this suite red. The same
-\ probe pins the generated constructor package that the DR-* and RR-* wrappers compile
-\ against, so a constructor rename cannot pass unnoticed either.
-variable KP-DR                                  \ dispatch-result's row in the live family registry
-variable KP-RR                                  \ register-result's row
-variable KP-VAR                                 \ a case's row in the variant registry
-: KP-NAMED? ( n ptr u8 n -- bool ) {: id:n a:ptr u:n :}  id TFAM-NAME$ a u STR= ;
-: KP-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}     \ family row for tail `a u`, or -1
-   TFAM-N@ 0 ?do  i a u KP-NAMED? if i unloop exit then  loop  -1 ;
+\ the family registry by REFLECT (test/checker-assert.f). Writing either declaration back
+\ as SUMTYPE, or writing dispatch-result in the arity-headed full form, changes the
+\ recorded kind and turns this suite red. The same probe pins the generated constructor
+\ package that the DR-* and RR-* wrappers compile against, so a constructor rename cannot
+\ pass unnoticed either. Each family is named by its tail plus that constructor package,
+\ the (package, tail) pair that owns family identity, so REFLECT:FAMS = 1 below is also
+\ the proof that the identity resolves exactly one registered family.
+: DR$ ( -- ptr u8 n ptr u8 n )   s" dispatch-result" s" ACTION-DISPATCH--RESULT" ;
+: RR$ ( -- ptr u8 n ptr u8 n )   s" register-result" s" ACTION-REGISTER--RESULT" ;
 
 \ ---- hostile decoy: identity is by NAME, not by shape --------------------------
 \ drother repeats dispatch-result's five case names in the same order at the same one-cell
@@ -402,24 +400,21 @@ EA-CANARY     TTRUE                             \ rejected: no ORD-BUILD, no OOB
 EA-INRANGE-OK TTRUE                             \ every 0<=k<COUNT returns a validated, in-range id
 
 \ ---- the recorded declaration kind (read live from the family registry) --------
-s" dispatch-result" KP-FIND KP-DR !
-s" register-result" KP-FIND KP-RR !
 TK-ENUM TK-SUM = 0 T=                           \ the two kinds are distinct, so the pins below bite
-KP-DR @ 0 < 0 T=                                \ the compact family is registered ...
-KP-DR @ TFAM-KIND@ TK-ENUM T=                   \ ... as an enum family (the pinned ruling) ...
-KP-DR @ TFAM-KIND@ TK-SUM = 0 T=                \ ... and not as a general sum
-KP-DR @ TFAM-ARITY@ 0 T=                        \ compact form declares no type parameters
-KP-DR @ TFAM-WIDTH@ 1 T=                        \ one cell, the same width the sum form had
-KP-DR @ TFAM-PUBLIC? -1 T=                      \ public, so the constructors are generated
-KP-DR @ TFAM-VAR-COUNT@ 5 T=
-KP-DR @ TFAM-VAR-START@ KP-VAR !
-KP-VAR @     SUMV-NAME$ s" accepted" T$=        \ case order fixes the tags
-KP-VAR @ 1 + SUMV-NAME$ s" unknown-action" T$=
-KP-VAR @ 2 + SUMV-NAME$ s" wrong-kind" T$=
-KP-VAR @ 3 + SUMV-NAME$ s" unauthorized" T$=
-KP-VAR @ 4 + SUMV-NAME$ s" unsupported" T$=
-KP-VAR @     SUMV-CTOR-PKG$ s" ACTION-DISPATCH--RESULT" T$=   \ constructor spelling
-KP-VAR @ 4 + SUMV-CTOR-PKG$ s" ACTION-DISPATCH--RESULT" T$=
+DR$ REFLECT:FAMS 1 T=                           \ the compact family is registered, exactly once ...
+DR$ REFLECT:KIND TK-ENUM T=                     \ ... as an enum family (the pinned ruling) ...
+DR$ REFLECT:KIND TK-SUM = 0 T=                  \ ... and not as a general sum
+DR$ REFLECT:ARITY 0 T=                          \ compact form declares no type parameters
+DR$ REFLECT:WIDTH 1 T=                          \ one cell, the same width the sum form had
+DR$ REFLECT:VIS 1 T=                            \ public, so the constructors are generated
+DR$ REFLECT:VARS 5 T=
+DR$ 0 REFLECT:ARM$ s" accepted" T$=             \ case order fixes the tags
+DR$ 1 REFLECT:ARM$ s" unknown-action" T$=
+DR$ 2 REFLECT:ARM$ s" wrong-kind" T$=
+DR$ 3 REFLECT:ARM$ s" unauthorized" T$=
+DR$ 4 REFLECT:ARM$ s" unsupported" T$=
+DR$ 0 REFLECT:ARM-CTOR$ s" ACTION-DISPATCH--RESULT" T$=   \ constructor spelling
+DR$ 4 REFLECT:ARM-CTOR$ s" ACTION-DISPATCH--RESULT" T$=
 \ The payload family is pinned the other way round, and that asymmetry is the point.
 \ Only the COMPACT form registers a family as an enum; a full-mode declaration - the
 \ arity-headed form with named payload FIELDs - is still recorded as a general SUM, the
@@ -428,16 +423,15 @@ KP-VAR @ 4 + SUMV-CTOR-PKG$ s" ACTION-DISPATCH--RESULT" T$=
 \ byte-compared enum census while compact sites enter it. Pinning TK-SUM here means a
 \ later rewrite of register-result into the compact form - which would silently drop its
 \ ok payload - flips this to TK-ENUM and turns the suite red.
-KP-RR @ 0 < 0 T=                                \ the payload family is registered ...
-KP-RR @ TFAM-KIND@ TK-SUM T=                    \ ... as a general sum, unchanged by full mode ...
-KP-RR @ TFAM-KIND@ TK-ENUM = 0 T=               \ ... and NOT as a compact enum family
-KP-RR @ TFAM-ARITY@ 1 T=                        \ full mode keeps the one type parameter
-KP-RR @ TFAM-VAR-COUNT@ 3 T=
-KP-RR @ TFAM-VAR-START@ KP-VAR !
-KP-VAR @     SUMV-NAME$ s" ok" T$=
-KP-VAR @ 1 + SUMV-NAME$ s" incomplete" T$=
-KP-VAR @ 2 + SUMV-NAME$ s" conflict" T$=
-KP-VAR @     SUMV-CTOR-PKG$ s" ACTION-REGISTER--RESULT" T$=
+RR$ REFLECT:FAMS 1 T=                           \ the payload family is registered, exactly once ...
+RR$ REFLECT:KIND TK-SUM T=                      \ ... as a general sum, unchanged by full mode ...
+RR$ REFLECT:KIND TK-ENUM = 0 T=                 \ ... and NOT as a compact enum family
+RR$ REFLECT:ARITY 1 T=                          \ full mode keeps the one type parameter
+RR$ REFLECT:VARS 3 T=
+RR$ 0 REFLECT:ARM$ s" ok" T$=
+RR$ 1 REFLECT:ARM$ s" incomplete" T$=
+RR$ 2 REFLECT:ARM$ s" conflict" T$=
+RR$ 0 REFLECT:ARM-CTOR$ s" ACTION-REGISTER--RESULT" T$=
 
 \ ---- both families construct and dispatch through MATCH ------------------------
 TT-RR-ARM 0 T=                                  \ a constructed ok reaches the ok arm

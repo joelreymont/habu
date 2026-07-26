@@ -25,56 +25,13 @@ require maki/db/budget-dim.f
 \ ---- declaration-shape reflection ----------------------------------------------
 \ attenuate-result is declared through the unified ENUM front end in full mode, so
 \ each carrying arm publishes a named FIELD as a type-registry row keyed
-\ (family, variant). These helpers read those rows through the public read-only
-\ registry axioms (the same ones tools/public-signatures-core.f reads; they cannot
-\ mutate anything). A family is identified by its tail plus the constructor package
-\ its variants carry - the (package, tail) pair that owns family identity - which
-\ also keeps the dimension pins off the unrelated arity-0 `dim` cell family that
-\ shares a tail with BUDGET:dim.
+\ (family, variant). The readers live in REFLECT (test/checker-assert.f); this
+\ package holds only the identity this suite pins - the family tail plus the
+\ constructor package its variants carry, the (package, tail) pair that owns family
+\ identity, which also keeps the dimension pins off the unrelated arity-0 `dim` cell
+\ family that shares a tail with BUDGET:dim.
 package CAPTOK-PINS
-private
-
-: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
-   fam TFAM-VAR-COUNT@ 0 <= if false exit then
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
-: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
-   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
-: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if i unloop exit then
-   loop -1 ;
-\ FAM-ID answers -1 for a family that is not registered and the registry readers
-\ take a live id, so every read refuses the sentinel first.
-: LIVE-VARS ( n -- n ) {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-VAR-COUNT@ ;
-: LIVE-VAR ( n n -- n ) {: fam:n k:n :}
-   fam LIVE-VARS k <= if -1 exit then  fam TFAM-VAR-START@ k + ;
-
 public
-
-: FAMS ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}
-   0
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if 1+ then
-   loop ;
-: VARS ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-VARS ;
-: ARITY ( ptr u8 n ptr u8 n -- n )
-   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-ARITY@ ;
-: WIDTH ( ptr u8 n ptr u8 n -- n )
-   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-WIDTH@ ;
-: ARM$ ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
-   ta tu pa pu FAM-ID k LIVE-VAR {: var:n :}
-   var 0 < if s" <missing>" exit then  var SUMV-NAME$ ;
-: ARM-FLDS ( ptr u8 n ptr u8 n n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam k LIVE-VAR {: var:n :}
-   0
-   TYPE-FIELD:COUNT 0 ?do
-      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
-   loop ;
-: ARM-SLOT ( ptr u8 n ptr u8 n n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n na:ptr nu:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam  fam k LIVE-VAR  na nu TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:SLOT@ ;
 
 : AR$ ( -- ptr u8 n ptr u8 n )   s" attenuate-result" s" CAPTOK-ATTENUATE--RESULT" ;
 
@@ -243,22 +200,22 @@ s" AR-M-SWAP ( CAPTOK:attenuate-result<CAPTOK:grant> -- n ) MATCH CAPTOK:attenua
 \ the three arms keep their names and order, the family stays arity 1, the ok and
 \ escape-budget arms each carry exactly one named cell at payload slot 0 - `child`
 \ and `dim` - and the payloadless escape-cap arm carries none.
-CAPTOK-PINS:AR$ CAPTOK-PINS:FAMS 1 T=
-CAPTOK-PINS:AR$ CAPTOK-PINS:VARS 3 T=
-CAPTOK-PINS:AR$ CAPTOK-PINS:ARITY 1 T=          \ still parametric over the grant type
-CAPTOK-PINS:AR$ CAPTOK-PINS:WIDTH 2 T=          \ one payload cell plus one tag cell
-CAPTOK-PINS:AR$ 0 CAPTOK-PINS:ARM$ s" ok" T$=
-CAPTOK-PINS:AR$ 1 CAPTOK-PINS:ARM$ s" escape-cap" T$=
-CAPTOK-PINS:AR$ 2 CAPTOK-PINS:ARM$ s" escape-budget" T$=
-CAPTOK-PINS:AR$ 0 CAPTOK-PINS:ARM-FLDS 1 T=
-CAPTOK-PINS:AR$ 1 CAPTOK-PINS:ARM-FLDS 0 T=
-CAPTOK-PINS:AR$ 2 CAPTOK-PINS:ARM-FLDS 1 T=
-CAPTOK-PINS:AR$ 0 s" child" CAPTOK-PINS:ARM-SLOT 0 T=
-CAPTOK-PINS:AR$ 2 s" dim" CAPTOK-PINS:ARM-SLOT 0 T=
+CAPTOK-PINS:AR$ REFLECT:FAMS 1 T=
+CAPTOK-PINS:AR$ REFLECT:VARS 3 T=
+CAPTOK-PINS:AR$ REFLECT:ARITY 1 T=          \ still parametric over the grant type
+CAPTOK-PINS:AR$ REFLECT:WIDTH 2 T=          \ one payload cell plus one tag cell
+CAPTOK-PINS:AR$ 0 REFLECT:ARM$ s" ok" T$=
+CAPTOK-PINS:AR$ 1 REFLECT:ARM$ s" escape-cap" T$=
+CAPTOK-PINS:AR$ 2 REFLECT:ARM$ s" escape-budget" T$=
+CAPTOK-PINS:AR$ 0 REFLECT:ARM-FLDS 1 T=
+CAPTOK-PINS:AR$ 1 REFLECT:ARM-FLDS 0 T=
+CAPTOK-PINS:AR$ 2 REFLECT:ARM-FLDS 1 T=
+CAPTOK-PINS:AR$ 0 s" child" REFLECT:ARM-SLOT 0 T=
+CAPTOK-PINS:AR$ 2 s" dim" REFLECT:ARM-SLOT 0 T=
 \ the two payload names are per-arm, so neither answers on the other's arm.
-CAPTOK-PINS:AR$ 0 s" dim" CAPTOK-PINS:ARM-SLOT -1 T=
-CAPTOK-PINS:AR$ 2 s" child" CAPTOK-PINS:ARM-SLOT -1 T=
-CAPTOK-PINS:AR$ 1 s" child" CAPTOK-PINS:ARM-SLOT -1 T=
+CAPTOK-PINS:AR$ 0 s" dim" REFLECT:ARM-SLOT -1 T=
+CAPTOK-PINS:AR$ 2 s" child" REFLECT:ARM-SLOT -1 T=
+CAPTOK-PINS:AR$ 1 s" child" REFLECT:ARM-SLOT -1 T=
 
 \ constructed directly through the production producers and matched straight back.
 \ The escaping dimension under test is `retries` (ordinal 4) rather than

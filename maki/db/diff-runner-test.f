@@ -324,22 +324,14 @@ package DIFFRUN-TEST
 : YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
 : NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
-variable KF                        \ the family row under test
-variable KV                        \ its first case's row in the variant registry
-
-: KP-NAMED? ( n ptr u8 n -- bool ) {: id:n a:ptr u:n :}   id TFAM-NAME$ a u STR= ;
-: KF! ( ptr u8 n -- ) {: a:ptr u:n :}      \ point KF at the family whose tail is `a u`
-   -1 KF !
-   TFAM-N@ 0 ?do  i a u KP-NAMED? if i KF ! unloop exit then  loop ;
-: KF-FOUND ( -- bool )   KF @ 0 >= ;
-: KF-KIND ( -- n )       KF @ TFAM-KIND@ ;
-: KF-ARITY ( -- n )      KF @ TFAM-ARITY@ ;
-: KF-WIDTH ( -- n )      KF @ TFAM-WIDTH@ ;
-: KF-PUBLIC ( -- bool )  KF @ TFAM-PUBLIC? ;
-: KF-VARS ( -- n )       KF @ TFAM-VAR-COUNT@ ;
-: KV! ( -- )             KF @ TFAM-VAR-START@ KV ! ;
-: CASE$ ( n -- ptr u8 n ) {: k:n :}     KV @ k + SUMV-NAME$ ;
-: CTOR$ ( n -- ptr u8 n ) {: k:n :}     KV @ k + SUMV-CTOR-PKG$ ;
+\ the four (tail, constructor package) identities this file pins. REFLECT
+\ (test/checker-assert.f) does the reading; a family is named by its tail plus the
+\ constructor package its variants carry, so REFLECT:FAMS = 1 below is also the proof
+\ that each identity resolves exactly one registered family.
+: RUNR$ ( -- ptr u8 n ptr u8 n )   s" run-result" s" DIFFRUN-RUN--RESULT" ;
+: REFR$ ( -- ptr u8 n ptr u8 n )   s" ref-result" s" DIFFRUN-REF--RESULT" ;
+: CV$ ( -- ptr u8 n ptr u8 n )     s" case-verdict" s" DIFFRUN-CASE--VERDICT" ;
+: RV$ ( -- ptr u8 n ptr u8 n )     s" run-verdict" s" DIFFRUN-RUN--VERDICT" ;
 
 public
 
@@ -362,66 +354,58 @@ ENUM cv-decoy agree mismatch subject-fault reference-skip ;ENUM
 ENUM rv-decoy verified falsified subject-faulted skipped ;ENUM
 
 \ ---- live registry: run-result stays a full-form sum with two cases -------------------
-s" run-result" KF!
-KF-FOUND TTRUE
-KF-KIND TK-SUM T=                  \ a payload family stays a general sum ...
-KF-KIND TK-ENUM = 0 T=             \ ... and is NOT recorded as an enum
-KF-ARITY 0 T=
-KF-WIDTH 2 T=                      \ tag + one payload cell
-KF-PUBLIC TTRUE
-KF-VARS 2 T=
-KV!
-0 CASE$ s" produced" T$=           \ case order fixes the tags
-1 CASE$ s" faulted" T$=
-0 CTOR$ s" DIFFRUN-RUN--RESULT" T$=
-1 CTOR$ s" DIFFRUN-RUN--RESULT" T$=
+RUNR$ REFLECT:FAMS 1 T=
+RUNR$ REFLECT:KIND TK-SUM T=       \ a payload family stays a general sum ...
+RUNR$ REFLECT:KIND TK-ENUM = 0 T=  \ ... and is NOT recorded as an enum
+RUNR$ REFLECT:ARITY 0 T=
+RUNR$ REFLECT:WIDTH 2 T=           \ tag + one payload cell
+RUNR$ REFLECT:VIS 1 T=
+RUNR$ REFLECT:VARS 2 T=
+RUNR$ 0 REFLECT:ARM$ s" produced" T$=           \ case order fixes the tags
+RUNR$ 1 REFLECT:ARM$ s" faulted" T$=
+RUNR$ 0 REFLECT:ARM-CTOR$ s" DIFFRUN-RUN--RESULT" T$=
+RUNR$ 1 REFLECT:ARM-CTOR$ s" DIFFRUN-RUN--RESULT" T$=
 
 \ ---- live registry: ref-result, the same shape under its own name ---------------------
-s" ref-result" KF!
-KF-FOUND TTRUE
-KF-KIND TK-SUM T=
-KF-ARITY 0 T=
-KF-WIDTH 2 T=
-KF-PUBLIC TTRUE
-KF-VARS 2 T=
-KV!
-0 CASE$ s" value" T$=
-1 CASE$ s" skip" T$=
-0 CTOR$ s" DIFFRUN-REF--RESULT" T$=
+REFR$ REFLECT:FAMS 1 T=
+REFR$ REFLECT:KIND TK-SUM T=
+REFR$ REFLECT:ARITY 0 T=
+REFR$ REFLECT:WIDTH 2 T=
+REFR$ REFLECT:VIS 1 T=
+REFR$ REFLECT:VARS 2 T=
+REFR$ 0 REFLECT:ARM$ s" value" T$=
+REFR$ 1 REFLECT:ARM$ s" skip" T$=
+REFR$ 0 REFLECT:ARM-CTOR$ s" DIFFRUN-REF--RESULT" T$=
 
 \ ---- live registry: case-verdict is now a COMPACT enum family ------------------------
-s" case-verdict" KF!
-KF-FOUND TTRUE
-KF-KIND TK-ENUM T=                 \ the pinned ruling R1 kind ...
-KF-KIND TK-SUM = 0 T=              \ ... and no longer a general sum
-KF-ARITY 0 T=
-KF-WIDTH 1 T=                      \ one cell, the same width the sum form had
-KF-PUBLIC TTRUE
-KF-VARS 4 T=
-KV!
-0 CASE$ s" agree" T$=
-1 CASE$ s" mismatch" T$=
-2 CASE$ s" subject-fault" T$=
-3 CASE$ s" reference-skip" T$=
-0 CTOR$ s" DIFFRUN-CASE--VERDICT" T$=
-3 CTOR$ s" DIFFRUN-CASE--VERDICT" T$=
+CV$ REFLECT:FAMS 1 T=
+CV$ REFLECT:KIND TK-ENUM T=        \ the pinned ruling R1 kind ...
+CV$ REFLECT:KIND TK-SUM = 0 T=     \ ... and no longer a general sum
+CV$ REFLECT:ARITY 0 T=
+CV$ REFLECT:WIDTH 1 T=             \ one cell, the same width the sum form had
+CV$ REFLECT:VIS 1 T=
+CV$ REFLECT:VARS 4 T=
+CV$ 0 REFLECT:ARM$ s" agree" T$=
+CV$ 1 REFLECT:ARM$ s" mismatch" T$=
+CV$ 2 REFLECT:ARM$ s" subject-fault" T$=
+CV$ 3 REFLECT:ARM$ s" reference-skip" T$=
+CV$ 0 REFLECT:ARM-CTOR$ s" DIFFRUN-CASE--VERDICT" T$=
+CV$ 3 REFLECT:ARM-CTOR$ s" DIFFRUN-CASE--VERDICT" T$=
 
 \ ---- live registry: run-verdict, the second compact family ---------------------------
-s" run-verdict" KF!
-KF-FOUND TTRUE
-KF-KIND TK-ENUM T=
-KF-KIND TK-SUM = 0 T=
-KF-ARITY 0 T=
-KF-WIDTH 1 T=
-KF-PUBLIC TTRUE
-KF-VARS 4 T=
-KV!
-0 CASE$ s" verified" T$=
-1 CASE$ s" falsified" T$=
-2 CASE$ s" subject-faulted" T$=
-3 CASE$ s" skipped" T$=
-0 CTOR$ s" DIFFRUN-RUN--VERDICT" T$=
-3 CTOR$ s" DIFFRUN-RUN--VERDICT" T$=
+RV$ REFLECT:FAMS 1 T=
+RV$ REFLECT:KIND TK-ENUM T=
+RV$ REFLECT:KIND TK-SUM = 0 T=
+RV$ REFLECT:ARITY 0 T=
+RV$ REFLECT:WIDTH 1 T=
+RV$ REFLECT:VIS 1 T=
+RV$ REFLECT:VARS 4 T=
+RV$ 0 REFLECT:ARM$ s" verified" T$=
+RV$ 1 REFLECT:ARM$ s" falsified" T$=
+RV$ 2 REFLECT:ARM$ s" subject-faulted" T$=
+RV$ 3 REFLECT:ARM$ s" skipped" T$=
+RV$ 0 REFLECT:ARM-CTOR$ s" DIFFRUN-RUN--VERDICT" T$=
+RV$ 3 REFLECT:ARM-CTOR$ s" DIFFRUN-RUN--VERDICT" T$=
 
 \ ---- generated constructors: exact spelling + exact effect ---------------------------
 \ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot

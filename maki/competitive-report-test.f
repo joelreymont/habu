@@ -24,94 +24,18 @@ require maki/competitive-report.f
 \ ---- registry-shape reflection -------------------------------------------------
 \ The declarations publish their field names as type-registry rows: keyed
 \ (family, no-variant) for a STRUCTURE, keyed (family, variant) for a payload arm.
-\ These helpers read those rows through the public read-only registry axioms (the
-\ same ones tools/public-signatures-core.f reads; they cannot mutate anything), so
-\ the pins below can state each field NAME to payload SLOT mapping. That mapping is
-\ the only observable an exchanged pair of SAME-TYPED fields moves: this schema has
-\ two such pairs per record (spol/bpol, both NPOL:dom, and subj/base, both the same
-\ reading family), and a positional MAKE/UNMAKE round-trip cannot see either
-\ exchange even when every field carries a distinct value.
+\ REFLECT (test/checker-assert.f) reads those rows through the public read-only
+\ registry axioms, so the pins below can state each field NAME to payload SLOT
+\ mapping. That mapping is the only observable an exchanged pair of SAME-TYPED fields
+\ moves: this schema has two such pairs per record (spol/bpol, both NPOL:dom, and
+\ subj/base, both the same reading family), and a positional MAKE/UNMAKE round-trip
+\ cannot see either exchange even when every field carries a distinct value.
+\ This package holds only the identities this suite pins. A family is identified by
+\ its tail plus the constructor package its generated operations carry - exactly the
+\ (package, tail) pair that owns family identity, so a pin names the family it pins
+\ instead of guessing from shape.
 package BENCH-REC
-private
-
-: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
-   fam TFAM-VAR-COUNT@ 0 <= if false exit then
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
-
-: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
-   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
-
-\ A family is identified by its tail plus the constructor package its generated
-\ operations carry - exactly the (package, tail) pair that owns family identity, so
-\ a pin names the family it pins instead of guessing from shape.
-: FAM-N ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}
-   0
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if 1+ then
-   loop ;
-
-: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if i unloop exit then
-   loop -1 ;
-
-\ FAM-ID answers -1 for a family that is not registered and the registry readers
-\ take a live id, so every read refuses the sentinel first: a missing family must
-\ report a wrong number, never read a record that is not there.
-: LIVE-KIND ( n -- n ) {: fam:n :}
-   fam 0 < if -1 exit then  fam TFAM-KIND@ ;
-: LIVE-WIDTH ( n -- n ) {: fam:n :}
-   fam 0 < if -1 exit then  fam TFAM-WIDTH@ ;
-: LIVE-VARS ( n -- n ) {: fam:n :}
-   fam 0 < if -1 exit then  fam TFAM-VAR-COUNT@ ;
-: LIVE-VAR ( n n -- n ) {: fam:n k:n :}          \ the family's k-th variant id, or -1
-   fam LIVE-VARS k <= if -1 exit then
-   fam TFAM-VAR-START@ k + ;
-: VAR-NAME$ ( n -- ptr u8 n ) {: var:n :}        \ variant name, or a name no declaration can spell
-   var 0 < if s" <missing>" exit then  var SUMV-NAME$ ;
-
-: OWNED-N ( n n -- n ) {: fam:n var:n :}         \ committed field rows owned by (fam,var)
-   0
-   TYPE-FIELD:COUNT 0 ?do
-      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
-   loop ;
-
 public
-
-\ --- a record: fields keyed (family, no-variant) --------------------------------
-: REC-FAMS ( ptr u8 n ptr u8 n -- n )    FAM-N ;
-: REC-KIND ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-KIND ;
-: REC-WIDTH ( ptr u8 n ptr u8 n -- n )   FAM-ID LIVE-WIDTH ;
-: REC-FLDS ( ptr u8 n ptr u8 n -- n )
-   FAM-ID {: fam:n :}   fam TYPE-FIELD:NO-VARIANT OWNED-N ;
-: REC-SLOT ( ptr u8 n ptr u8 n ptr u8 n -- n )   \ payload slot of a named field, -1 when absent
-   {: ta:ptr tu:n pa:ptr pu:n na:ptr nu:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam TYPE-FIELD:NO-VARIANT na nu TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:SLOT@ ;
-: REC-CELLS ( ptr u8 n ptr u8 n ptr u8 n -- n )  \ cell width of a named field, -1 when absent
-   {: ta:ptr tu:n pa:ptr pu:n na:ptr nu:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam TYPE-FIELD:NO-VARIANT na nu TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:CELLS@ ;
-
-\ --- a payload sum: fields keyed (family, arm) ----------------------------------
-: SUM-FAMS ( ptr u8 n ptr u8 n -- n )    FAM-N ;
-: SUM-KIND ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-KIND ;
-: SUM-WIDTH ( ptr u8 n ptr u8 n -- n )   FAM-ID LIVE-WIDTH ;
-: SUM-VARS ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-VARS ;
-: SUM-ARM$ ( ptr u8 n ptr u8 n n -- ptr u8 n )   \ the k-th arm's name
-   {: ta:ptr tu:n pa:ptr pu:n k:n :}
-   ta tu pa pu FAM-ID k LIVE-VAR VAR-NAME$ ;
-: SUM-ARM-FLDS ( ptr u8 n ptr u8 n n -- n )      \ named cells on the k-th arm
-   {: ta:ptr tu:n pa:ptr pu:n k:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam  fam k LIVE-VAR  OWNED-N ;
-: SUM-ARM-SLOT ( ptr u8 n ptr u8 n n ptr u8 n -- n )   \ slot of a named cell on the k-th arm
-   {: ta:ptr tu:n pa:ptr pu:n k:n na:ptr nu:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam  fam k LIVE-VAR  na nu TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:SLOT@ ;
 
 \ the (tail, constructor package) identities this file pins
 : CGB$ ( -- ptr u8 n ptr u8 n )   s" comparison-gbps" s" BENCH-COMPARISON--GBPS" ;
@@ -395,27 +319,27 @@ RF-NA-REASON$ s" not-measured" T$=
 \ (tail, constructor package), the arms keep their names and order, the width is
 \ unchanged by the migration, and each arm carries exactly ONE named cell at
 \ payload slot 0 - `milli` on the present arm, `reason` on the absent one.
-BENCH-REC:GB$ BENCH-REC:SUM-FAMS 1 T=
-BENCH-REC:GF$ BENCH-REC:SUM-FAMS 1 T=
-BENCH-REC:GB$ BENCH-REC:SUM-VARS 2 T=
-BENCH-REC:GF$ BENCH-REC:SUM-VARS 2 T=
-BENCH-REC:GB$ BENCH-REC:SUM-WIDTH 2 T=    \ one payload cell plus one tag cell
-BENCH-REC:GF$ BENCH-REC:SUM-WIDTH 2 T=
-BENCH-REC:GB$ 0 BENCH-REC:SUM-ARM$ s" gbps-at" T$=
-BENCH-REC:GB$ 1 BENCH-REC:SUM-ARM$ s" gbps-na" T$=
-BENCH-REC:GF$ 0 BENCH-REC:SUM-ARM$ s" gflops-at" T$=
-BENCH-REC:GF$ 1 BENCH-REC:SUM-ARM$ s" gflops-na" T$=
-BENCH-REC:GB$ 0 BENCH-REC:SUM-ARM-FLDS 1 T=
-BENCH-REC:GB$ 1 BENCH-REC:SUM-ARM-FLDS 1 T=
-BENCH-REC:GF$ 0 BENCH-REC:SUM-ARM-FLDS 1 T=
-BENCH-REC:GF$ 1 BENCH-REC:SUM-ARM-FLDS 1 T=
-BENCH-REC:GB$ 0 s" milli" BENCH-REC:SUM-ARM-SLOT 0 T=
-BENCH-REC:GB$ 1 s" reason" BENCH-REC:SUM-ARM-SLOT 0 T=
-BENCH-REC:GF$ 0 s" milli" BENCH-REC:SUM-ARM-SLOT 0 T=
-BENCH-REC:GF$ 1 s" reason" BENCH-REC:SUM-ARM-SLOT 0 T=
+BENCH-REC:GB$ REFLECT:FAMS 1 T=
+BENCH-REC:GF$ REFLECT:FAMS 1 T=
+BENCH-REC:GB$ REFLECT:VARS 2 T=
+BENCH-REC:GF$ REFLECT:VARS 2 T=
+BENCH-REC:GB$ REFLECT:WIDTH 2 T=    \ one payload cell plus one tag cell
+BENCH-REC:GF$ REFLECT:WIDTH 2 T=
+BENCH-REC:GB$ 0 REFLECT:ARM$ s" gbps-at" T$=
+BENCH-REC:GB$ 1 REFLECT:ARM$ s" gbps-na" T$=
+BENCH-REC:GF$ 0 REFLECT:ARM$ s" gflops-at" T$=
+BENCH-REC:GF$ 1 REFLECT:ARM$ s" gflops-na" T$=
+BENCH-REC:GB$ 0 REFLECT:ARM-FLDS 1 T=
+BENCH-REC:GB$ 1 REFLECT:ARM-FLDS 1 T=
+BENCH-REC:GF$ 0 REFLECT:ARM-FLDS 1 T=
+BENCH-REC:GF$ 1 REFLECT:ARM-FLDS 1 T=
+BENCH-REC:GB$ 0 s" milli" REFLECT:ARM-SLOT 0 T=
+BENCH-REC:GB$ 1 s" reason" REFLECT:ARM-SLOT 0 T=
+BENCH-REC:GF$ 0 s" milli" REFLECT:ARM-SLOT 0 T=
+BENCH-REC:GF$ 1 s" reason" REFLECT:ARM-SLOT 0 T=
 \ the two payload names are per-arm, so neither answers on the other's arm.
-BENCH-REC:GB$ 0 s" reason" BENCH-REC:SUM-ARM-SLOT -1 T=
-BENCH-REC:GB$ 1 s" milli" BENCH-REC:SUM-ARM-SLOT -1 T=
+BENCH-REC:GB$ 0 s" reason" REFLECT:ARM-SLOT -1 T=
+BENCH-REC:GB$ 1 s" milli" REFLECT:ARM-SLOT -1 T=
 
 \ ==== the two comparisons as nine-field STRUCTUREs ==============================
 \ The generated pair keeps its exact spelling and effect, so COMPARE-*, RENDER-*,
@@ -453,39 +377,39 @@ RF-ORDER? T-ASSERT
 \ These pins are what catch an exchange of the two SAME-TYPED pairs (spol/bpol and
 \ subj/base) - the checker cannot refuse either, and RB-ORDER? above cannot see
 \ either, because MAKE and UNMAKE are both positional.
-BENCH-REC:CGB$ BENCH-REC:REC-FAMS 1 T=
-BENCH-REC:CGF$ BENCH-REC:REC-FAMS 1 T=
-BENCH-REC:CGB$ BENCH-REC:REC-KIND BENCH-REC:CGF$ BENCH-REC:REC-KIND T=   \ one record kind
-BENCH-REC:CGB$ BENCH-REC:REC-WIDTH 11 T=   \ seven single cells plus two two-cell readings
-BENCH-REC:CGF$ BENCH-REC:REC-WIDTH 11 T=
-BENCH-REC:CGB$ BENCH-REC:REC-FLDS 9 T=     \ exactly nine named fields, no more
-BENCH-REC:CGF$ BENCH-REC:REC-FLDS 9 T=
-BENCH-REC:CGB$ s" wl" BENCH-REC:REC-SLOT 0 T=
-BENCH-REC:CGB$ s" sh" BENCH-REC:REC-SLOT 1 T=
-BENCH-REC:CGB$ s" pr" BENCH-REC:REC-SLOT 2 T=
-BENCH-REC:CGB$ s" bl" BENCH-REC:REC-SLOT 3 T=
-BENCH-REC:CGB$ s" cache" BENCH-REC:REC-SLOT 4 T=
-BENCH-REC:CGB$ s" spol" BENCH-REC:REC-SLOT 5 T=
-BENCH-REC:CGB$ s" bpol" BENCH-REC:REC-SLOT 6 T=
-BENCH-REC:CGB$ s" subj" BENCH-REC:REC-SLOT 7 T=
-BENCH-REC:CGB$ s" base" BENCH-REC:REC-SLOT 9 T=
-BENCH-REC:CGF$ s" wl" BENCH-REC:REC-SLOT 0 T=
-BENCH-REC:CGF$ s" sh" BENCH-REC:REC-SLOT 1 T=
-BENCH-REC:CGF$ s" pr" BENCH-REC:REC-SLOT 2 T=
-BENCH-REC:CGF$ s" bl" BENCH-REC:REC-SLOT 3 T=
-BENCH-REC:CGF$ s" cache" BENCH-REC:REC-SLOT 4 T=
-BENCH-REC:CGF$ s" spol" BENCH-REC:REC-SLOT 5 T=
-BENCH-REC:CGF$ s" bpol" BENCH-REC:REC-SLOT 6 T=
-BENCH-REC:CGF$ s" subj" BENCH-REC:REC-SLOT 7 T=
-BENCH-REC:CGF$ s" base" BENCH-REC:REC-SLOT 9 T=
+BENCH-REC:CGB$ REFLECT:FAMS 1 T=
+BENCH-REC:CGF$ REFLECT:FAMS 1 T=
+BENCH-REC:CGB$ REFLECT:KIND BENCH-REC:CGF$ REFLECT:KIND T=   \ one record kind
+BENCH-REC:CGB$ REFLECT:WIDTH 11 T=   \ seven single cells plus two two-cell readings
+BENCH-REC:CGF$ REFLECT:WIDTH 11 T=
+BENCH-REC:CGB$ REFLECT:FLDS 9 T=     \ exactly nine named fields, no more
+BENCH-REC:CGF$ REFLECT:FLDS 9 T=
+BENCH-REC:CGB$ s" wl" REFLECT:SLOT 0 T=
+BENCH-REC:CGB$ s" sh" REFLECT:SLOT 1 T=
+BENCH-REC:CGB$ s" pr" REFLECT:SLOT 2 T=
+BENCH-REC:CGB$ s" bl" REFLECT:SLOT 3 T=
+BENCH-REC:CGB$ s" cache" REFLECT:SLOT 4 T=
+BENCH-REC:CGB$ s" spol" REFLECT:SLOT 5 T=
+BENCH-REC:CGB$ s" bpol" REFLECT:SLOT 6 T=
+BENCH-REC:CGB$ s" subj" REFLECT:SLOT 7 T=
+BENCH-REC:CGB$ s" base" REFLECT:SLOT 9 T=
+BENCH-REC:CGF$ s" wl" REFLECT:SLOT 0 T=
+BENCH-REC:CGF$ s" sh" REFLECT:SLOT 1 T=
+BENCH-REC:CGF$ s" pr" REFLECT:SLOT 2 T=
+BENCH-REC:CGF$ s" bl" REFLECT:SLOT 3 T=
+BENCH-REC:CGF$ s" cache" REFLECT:SLOT 4 T=
+BENCH-REC:CGF$ s" spol" REFLECT:SLOT 5 T=
+BENCH-REC:CGF$ s" bpol" REFLECT:SLOT 6 T=
+BENCH-REC:CGF$ s" subj" REFLECT:SLOT 7 T=
+BENCH-REC:CGF$ s" base" REFLECT:SLOT 9 T=
 \ the two readings are the two-cell fields; the seven head fields are single cells.
-BENCH-REC:CGB$ s" subj" BENCH-REC:REC-CELLS 2 T=
-BENCH-REC:CGB$ s" base" BENCH-REC:REC-CELLS 2 T=
-BENCH-REC:CGB$ s" spol" BENCH-REC:REC-CELLS 1 T=
-BENCH-REC:CGB$ s" bpol" BENCH-REC:REC-CELLS 1 T=
+BENCH-REC:CGB$ s" subj" REFLECT:CELLS 2 T=
+BENCH-REC:CGB$ s" base" REFLECT:CELLS 2 T=
+BENCH-REC:CGB$ s" spol" REFLECT:CELLS 1 T=
+BENCH-REC:CGB$ s" bpol" REFLECT:CELLS 1 T=
 \ an undeclared name resolves to no slot in either record.
-BENCH-REC:CGB$ s" milli" BENCH-REC:REC-SLOT -1 T=
-BENCH-REC:CGF$ s" unit" BENCH-REC:REC-SLOT -1 T=
+BENCH-REC:CGB$ s" milli" REFLECT:SLOT -1 T=
+BENCH-REC:CGF$ s" unit" REFLECT:SLOT -1 T=
 
 public
 

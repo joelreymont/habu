@@ -29,8 +29,7 @@
 \ (a real bundle is constructible since TF-CTOR-NAME-LIMIT rose to 32).
 
 require lib/test.f
-require lib/string.f               \ STR= - the registry pins below compare family and field names
-require test/checker-assert.f
+require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE! plus REFLECT, which reads the registry
 require maki/artifact.f
 require maki/evidence/policy.f
 
@@ -101,64 +100,15 @@ public
 
 \ ---- record-shape reflection ---------------------------------------------------
 \ A STRUCTURE publishes its fields as type-registry rows keyed (family, no-variant).
-\ These helpers read those rows through the public read-only registry axioms, so the
-\ pins at the bottom of this file can state the migrated records' field NAME to
-\ payload SLOT mapping - the one thing a positional MAKE/UNMAKE round-trip over
-\ same-typed fields cannot observe. The helpers live in a test-owned package because
-\ a test file may not define global words.
+\ REFLECT (test/checker-assert.f) reads those rows through the public read-only
+\ registry axioms, so the pins at the bottom of this file can state the migrated
+\ records' field NAME to payload SLOT mapping - the one thing a positional
+\ MAKE/UNMAKE round-trip over same-typed fields cannot observe. This package holds
+\ only the identities this suite pins: a family tail plus the constructor package its
+\ generated operations carry, exactly the (package, tail) pair that owns family
+\ identity.
 package POLICY-REC
-private
-
-: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
-   fam TFAM-VAR-COUNT@ 0 <= if false exit then
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
-
-: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
-   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
-
-\ A family is identified by its tail plus the constructor package its generated
-\ operations carry - exactly the (package, tail) pair that owns family identity.
-: FAM-N ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}
-   0
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if 1+ then
-   loop ;
-
-: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if i unloop exit then
-   loop -1 ;
-
-\ FAM-ID answers -1 for a family that is not registered and the registry readers
-\ take a live id, so every read refuses the sentinel first: a missing family must
-\ report a wrong number, never read a record that is not there.
-: LIVE-KIND ( n -- n ) {: fam:n :}
-   fam 0 < if -1 exit then
-   fam TFAM-KIND@ ;
-
-: LIVE-WIDTH ( n -- n ) {: fam:n :}
-   fam 0 < if -1 exit then
-   fam TFAM-WIDTH@ ;
-
-: FLD-N ( n -- n ) {: fam:n :}                    \ record field rows this family owns
-   0
-   TYPE-FIELD:COUNT 0 ?do
-      i TYPE-FIELD:FAMILY@ fam =
-      i TYPE-FIELD:VARIANT@ TYPE-FIELD:NO-VARIANT = and if 1+ then
-   loop ;
-
 public
-
-: REC-FAMS ( ptr u8 n ptr u8 n -- n )    FAM-N ;
-: REC-KIND ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-KIND ;
-: REC-WIDTH ( ptr u8 n ptr u8 n -- n )   FAM-ID LIVE-WIDTH ;
-: REC-FLDS ( ptr u8 n ptr u8 n -- n )    FAM-ID FLD-N ;
-
-: REC-SLOT ( ptr u8 n ptr u8 n ptr u8 n -- n )    \ payload slot of a named field, -1 when absent
-   {: ta:ptr tu:n pa:ptr pu:n na:ptr nu:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam TYPE-FIELD:NO-VARIANT na nu TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:SLOT@ ;
 
 \ the two (tail, constructor package) identities this file pins
 : GATE$ ( -- ptr u8 n ptr u8 n )    s" gate-set" s" POLICY-GATE--SET" ;
@@ -264,24 +214,24 @@ s" PG-GUN-FGN ( POLICY:granted -- CAD-KIND:artifact-id CAD-KIND:schema-id EVID:c
 \ the record sealed. Both are pinned by NAME to SLOT through the read-only type
 \ registry (the same axioms tools/public-signatures-core.f reads), because a
 \ keyword-swap migration has to prove nothing moved, not merely that it still runs.
-POLICY-REC:GATE$ POLICY-REC:REC-FAMS 1 T=
-POLICY-REC:GRANT$ POLICY-REC:REC-FAMS 1 T=
-POLICY-REC:GATE$ POLICY-REC:REC-KIND POLICY-REC:GRANT$ POLICY-REC:REC-KIND T=   \ one record kind
-POLICY-REC:GATE$ POLICY-REC:REC-WIDTH 6 T=      \ six single-cell fields, no tag
-POLICY-REC:GRANT$ POLICY-REC:REC-WIDTH 3 T=
-POLICY-REC:GATE$ POLICY-REC:REC-FLDS 6 T=       \ exactly six named cells, no more
-POLICY-REC:GRANT$ POLICY-REC:REC-FLDS 3 T=
-POLICY-REC:GATE$ s" cert" POLICY-REC:REC-SLOT 0 T=
-POLICY-REC:GATE$ s" gold" POLICY-REC:REC-SLOT 1 T=
-POLICY-REC:GATE$ s" grad" POLICY-REC:REC-SLOT 2 T=
-POLICY-REC:GATE$ s" prof" POLICY-REC:REC-SLOT 3 T=
-POLICY-REC:GATE$ s" pol" POLICY-REC:REC-SLOT 4 T=
-POLICY-REC:GATE$ s" npol" POLICY-REC:REC-SLOT 5 T=
-POLICY-REC:GRANT$ s" art" POLICY-REC:REC-SLOT 0 T=
-POLICY-REC:GRANT$ s" pol" POLICY-REC:REC-SLOT 1 T=
-POLICY-REC:GRANT$ s" tok" POLICY-REC:REC-SLOT 2 T=
+POLICY-REC:GATE$ REFLECT:FAMS 1 T=
+POLICY-REC:GRANT$ REFLECT:FAMS 1 T=
+POLICY-REC:GATE$ REFLECT:KIND POLICY-REC:GRANT$ REFLECT:KIND T=   \ one record kind
+POLICY-REC:GATE$ REFLECT:WIDTH 6 T=      \ six single-cell fields, no tag
+POLICY-REC:GRANT$ REFLECT:WIDTH 3 T=
+POLICY-REC:GATE$ REFLECT:FLDS 6 T=       \ exactly six named cells, no more
+POLICY-REC:GRANT$ REFLECT:FLDS 3 T=
+POLICY-REC:GATE$ s" cert" REFLECT:SLOT 0 T=
+POLICY-REC:GATE$ s" gold" REFLECT:SLOT 1 T=
+POLICY-REC:GATE$ s" grad" REFLECT:SLOT 2 T=
+POLICY-REC:GATE$ s" prof" REFLECT:SLOT 3 T=
+POLICY-REC:GATE$ s" pol" REFLECT:SLOT 4 T=
+POLICY-REC:GATE$ s" npol" REFLECT:SLOT 5 T=
+POLICY-REC:GRANT$ s" art" REFLECT:SLOT 0 T=
+POLICY-REC:GRANT$ s" pol" REFLECT:SLOT 1 T=
+POLICY-REC:GRANT$ s" tok" REFLECT:SLOT 2 T=
 \ an undeclared name resolves to no slot in either record.
-POLICY-REC:GATE$ s" tok" POLICY-REC:REC-SLOT -1 T=
-POLICY-REC:GRANT$ s" npol" POLICY-REC:REC-SLOT -1 T=
+POLICY-REC:GATE$ s" tok" REFLECT:SLOT -1 T=
+POLICY-REC:GRANT$ s" npol" REFLECT:SLOT -1 T=
 
 T-REPORT
