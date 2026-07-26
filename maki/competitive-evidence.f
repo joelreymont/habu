@@ -93,15 +93,29 @@ ENUM compiler DERIVE eq
 ;ENUM
 
 \ ---- a metric reading: a present (value,unit) or a named absence -----------------
-SUMTYPE reading 0
-   VARIANT rd-at n unit ;VARIANT
-   VARIANT rd-na BENCH:absence ;VARIANT
-;SUMTYPE
+\ Declared through the unified ENUM front end in full mode (the arity token after the
+\ name selects it), so each arm's payload cells are named FIELDs rather than
+\ positional type tokens. The present arm carries the two cells this file already
+\ names together: `value`, the integer reading VAL-CK bounds against EV-VAL-MAX, and
+\ `unit`, the sealed metric unit RD-APPEND renders after the colon. The absent arm
+\ carries `reason`, the same spelling maki/competitive-report.f uses for a
+\ BENCH:absence payload - the two competitive files share that vocabulary along with
+\ the family itself. The generated CEVID-READING:RD-AT / :RD-NA constructors and
+\ every MATCH site are unchanged: spelling and payload binding order come from the
+\ package, the family tail and the declaration order, not from the mode.
+ENUM reading 0
+   VARIANT rd-at FIELD value n FIELD unit unit ;VARIANT
+   VARIANT rd-na FIELD reason BENCH:absence ;VARIANT
+;ENUM
 
 \ ---- the evidence-row handle: single-cell over a bounded pool slot ---------------
-PRODUCT evidence 0
+\ Declared through the unified STRUCTURE front end; the header clause and the FIELD
+\ line are unchanged, so CEVID-EVIDENCE:MAKE / :UNMAKE keep their exact spelling and
+\ effect and no call site moves (the maki/db/budget-ledger.f `ledger` handle
+\ precedent).
+STRUCTURE evidence 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ ---- unit -> category (each metric field admits exactly one category) ------------
 ENUM ucat DERIVE eq
