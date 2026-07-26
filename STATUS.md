@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4178  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4192  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -123,6 +123,25 @@ measures today:
   4150 + 28 = 4178. That change also edits `TRUSTED.md`, `FILEMAP.md`, and
   three test files including the new `test/decl-diag-capture.f`, none of which
   is part of the assembled stage2 engine source.
+- The generation-free registration entry for replayed declarations adds 14,
+  reaching 4192. Eight are the new `DECL-REPLAY` package in
+  `src/core/generated-declaration.f`, the token stream a tool hands a front end
+  when it is registering a declaration it already lexed. Four are private: the
+  separator test `RP-SEP?`, the two scan steps `RP-SKIP` and `RP-TOKEN-END`, and
+  the body reader `RP-BODY-NEXT`. Four are public: `RP-ACTIVE?`, which both
+  front ends and both constructor generators read, `RP-CLAIM`, `RP-RELEASE`, and
+  `RP-NEXT`. Its four `TRUSTED:` span boundaries `RP-HEAD!`, `RP-HEAD@`,
+  `RP-BODY!` and `RP-BODY@`, its separator and error constants and its seven
+  variables are not colon definitions and count nothing. The remaining six are
+  three per front end: `src/core/structure-decl.f` gains `SD-GUARDED` (the one
+  guarded body both drivers share), `SD-REPLAY-END` and the entry `SD-REPLAY`;
+  `src/core/enum-decl.f` gains `ED-GUARDED`, `ED-REPLAY-END` and `ED-REPLAY`. So
+  4178 + 14 = 4192. `src/core/structure-make.f` splits its one `TRUSTED:`
+  `SM-EMIT` into `SM-EMIT-ROWS` and `SM-EMIT-WORDS`, which are not colon
+  definitions and leave the count unchanged. That change also edits
+  `tools/check-core.f`, `src/habu/verify-source.f`, `TRUSTED.md`, `FILEMAP.md`,
+  and four test files including the new `test/decl-replay-verify-source.f`, none
+  of which is part of the assembled stage2 engine source.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

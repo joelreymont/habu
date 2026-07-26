@@ -180,10 +180,27 @@ create BODY-BUF BODYBUF-CAP allot
 : BODY! ( -- )
    NEXT-BODY  TOKEN-U !  TOKEN-A ! ;
 
+\ A body buffer that cannot represent its input RAISES; it never truncates.
+\
+\ This used to skip the one token that would not fit and keep appending the
+\ shorter ones after it, on the reasoning that an over-cap body would be caught
+\ downstream by the engine's own TDECL-CAP anyway. That reasoning died with the
+\ registration-only replay entries: they parse whatever tokens arrive and have no
+\ length gate, so a dropped token produces a declaration that is WELL-FORMED and
+\ WRONG. Measured on the previous commit, a 1302-variant compact ENUM whose body
+\ exceeds BODYBUF-CAP replayed with rc 0 and registered 1142 variants — 160
+\ silently missing, and every tag after the first gap shifted, which is exactly
+\ the kind of quiet registry divergence the parity suite exists to prevent.
+\
+\ The code is the declaration layer's own "declaration too long" (sumtype.f
+\ E-TDECL-CAP), re-declared locally the way structure-decl.f and enum-decl.f
+\ re-declare their reject codes, because that is precisely the condition: this
+\ source is too long for the path that carries it. Source that trips this bound
+\ also trips the engine's TDECL-CAP, so both paths answer the same code.
+7118 constant E-VS-BODY-CAP
+
 : BODY-APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
-   \ over-cap: cap (skip) instead of raw-die; the body still exceeds TDECL-CAP,
-   \ so CHECKER-DEFSUM rejects it with the declaration packet (§24 C2).
-   BODY-U @ u + 1 + BODYBUF-CAP > IF EXIT THEN
+   BODY-U @ u + 1 + BODYBUF-CAP > IF E-VS-BODY-CAP throw THEN
    0 BEGIN dup u < WHILE
       dup a + c@  BODY-BUF BODY-U @ + c!
       BODY-U @ 1 + BODY-U !
@@ -458,18 +475,72 @@ variable NOM-TAIL-U
 : ENUM-END? ( ptr u8 n -- bool )
    s" ;ENUM" STR=CI ;
 
-\ Metadata-only replay of `ENUM name v0 v1 .. ;ENUM` (mirrors RECORD-SUMTYPE):
-\ buffer the bare variant tokens through ;ENUM and register the TK-ENUM family.
+\ The token reader for a REPLAYED declaration window, and the reason it is not
+\ NEXT-SCAN.
+\
+\ NEXT-SCAN launders comments: a bare `\` makes it skip to the newline and a bare
+\ `(` makes it skip to the `)`. That is right for scanning a FILE, where comments
+\ are inert between definitions. It is wrong inside a declaration body, because
+\ the engine does not scan a declaration body — the live keyword reads it with
+\ `parse-name`, which has no comment rule at all, so `\` and `(` arrive as
+\ ordinary tokens and hit the name gate. Measured: `ENUM c red \ note` through
+\ the live front end rejects 7101 "name must be a lowercase tail at '\'".
+\ Stripping them here would let a replay ACCEPT source the engine refuses, and
+\ register a family that can never exist.
+\
+\ NEXT-RAW is exactly `parse-name`'s rule — the next whitespace-delimited token,
+\ no comment or string interpretation — so the replayed body is the same token
+\ sequence the live keyword would have read. The substitution is scoped to the
+\ two replay windows below; every other scan in this file keeps NEXT-SCAN, since
+\ outside a declaration comments really are inert.
+: DECL-TOKEN ( -- ptr u8 n ) NEXT-RAW ;
+
+\ Registration-only replay of `ENUM name .. ;ENUM` (mirrors RECORD-SUMTYPE):
+\ buffer the body through ;ENUM and register the family from it.
+\
+\ This drives the unified ENUM front end's replay entry rather than sumtype.f's
+\ CHECKER-DEFENUM, which the type-DSL cutover deletes. It also widens what this
+\ arm understands: the legacy entry only ever read a compact list of bare
+\ variant names, while the replay entry runs the real grammar and so accepts the
+\ full `arity VARIANT name FIELD f t ;VARIANT` form too. The terminator is
+\ buffered with the body because the front end parses its own terminator.
 : RECORD-ENUM ( -- )
-   NEXT-SCAN {: name:ptr nameu:n :}
+   DECL-TOKEN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing enum name" 74 die THEN
    0 BODY-U !
    BEGIN
-      NEXT-SCAN
+      DECL-TOKEN
       dup 0= IF s" verify-source: missing ;ENUM" 74 die THEN
       2dup ENUM-END? IF
-         2drop
-         name nameu BODY-BUF BODY-U @ CHECKER-DEFENUM
+         BODY-APPEND
+         name nameu BODY-BUF BODY-U @ ENUM-DECL:ED-REPLAY
+         EXIT
+      THEN
+      BODY-APPEND
+   AGAIN ;
+
+: STRUCTURE-DECL-END? ( ptr u8 n -- bool )
+   s" ;STRUCTURE" STR=CI ;
+
+\ Registration-only replay of the unified `STRUCTURE name arity FIELD f t ..
+\ ;STRUCTURE` (mirrors RECORD-ENUM). Distinct from RECORD-STRUCTURE above, which
+\ handles the Forth-standard `BEGIN-STRUCTURE .. END-STRUCTURE` layout facility;
+\ these are different declarations that happen to share a word stem.
+\
+\ Without this arm a STRUCTURE family was never registered on this path, so a
+\ later signature or payload type naming it could not resolve. Registration
+\ includes the family's MAKE/UNMAKE variant rows and constructor package, so
+\ `FAMILY:MAKE` in the same source resolves; no dictionary word is defined.
+: RECORD-STRUCTURE-DECL ( -- )
+   DECL-TOKEN {: name:ptr nameu:n :}
+   nameu 0= IF s" verify-source: missing structure name" 74 die THEN
+   0 BODY-U !
+   BEGIN
+      DECL-TOKEN
+      dup 0= IF s" verify-source: missing ;STRUCTURE" 74 die THEN
+      2dup STRUCTURE-DECL-END? IF
+         BODY-APPEND
+         name nameu BODY-BUF BODY-U @ STRUCTURE-DECL:SD-REPLAY
          EXIT
       THEN
       BODY-APPEND
@@ -660,6 +731,7 @@ variable STG-START
    a u s" deflinear" STR=CI IF RECORD-DEFLINEAR 0 0= EXIT THEN
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
+   a u s" structure" STR=CI IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
    a u s" typefamily" STR=CI IF RECORD-TYPEFAMILY 0 0= EXIT THEN
    a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN

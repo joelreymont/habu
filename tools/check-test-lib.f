@@ -625,6 +625,123 @@ variable START-NS
 : ENUM-NOEND$ ( -- ptr u8 n )
    s" ENUM enoend red green" ;
 
+\ --- unified STRUCTURE declarations. The nominal pass had no arm for these at
+\ all: the keyword was skipped, so the family was never registered and any later
+\ use of it as a payload type rejected with "unknown payload type". That is the
+\ live bug these cover — it made every STRUCTURE-declaring file uncheckable,
+\ including maki/db/promotion.f through maki/db/obligation.f.
+: STRUCT-GOOD$ ( -- ptr u8 n )   \ declaration + signature use of the family
+   SB-RESET
+   s" STRUCTURE sck 0 FIELD lo n FIELD hi n ;STRUCTURE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-SD-PASS ( sck -- sck ) ;" SB-APPEND
+   SB$ ;
+
+\ The shape that actually broke: a STRUCTURE family named as a later
+\ declaration's payload type, exactly as maki/db/obligation.f names `evidence`
+\ inside `SUMTYPE discharge-result`.
+: STRUCT-PAYLOAD$ ( -- ptr u8 n )
+   SB-RESET
+   s" STRUCTURE spay 0 FIELD v n ;STRUCTURE" SB-APPEND
+   $0a SB-APPEND-C
+   s" SUMTYPE sbox 0 VARIANT full spay ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-SD-BOX ( sbox -- sbox ) ;" SB-APPEND
+   SB$ ;
+
+: STRUCT-BAD$ ( -- ptr u8 n )    \ unresolvable field type rejects fail-closed
+   SB-RESET
+   s" STRUCTURE sbad 0 FIELD one nosuchtype ;STRUCTURE" SB-APPEND
+   $0a SB-APPEND-C
+   s" : CKT-AFTER-SBAD ( n -- n ) ;" SB-APPEND
+   SB$ ;
+
+: STRUCT-NOEND$ ( -- ptr u8 n )
+   s" STRUCTURE snoend 0 FIELD x n" ;
+
+\ --- comments inside a declaration body are SYNTAX ERRORS, and the nominal pass
+\ must say so rather than launder them.
+\
+\ The engine reads a declaration body with `parse-name`, which has no comment
+\ rule at all, so `\` and `(` inside one are ordinary tokens that hit the name
+\ gate. The nominal pass's lexer disagrees: it drops a `\` line comment without
+\ emitting any token. Rebuilding the body from those tokens therefore used to
+\ hand the replay a body the source never had — measured, `ENUM c9 red \ note`
+\ registered cleanly in the nominal pass and only died later in the child run,
+\ reporting the raw engine throw (exit 67) instead of the tool's own rendered
+\ declaration packet (exit 70). These four pin the repaired behavior: the same
+\ named reject the live keyword gives, through check's own error path.
+: ENUM-LINE-COMMENT$ ( -- ptr u8 n )
+   SB-RESET
+   s" ENUM ecmt red \ trailing note" SB-APPEND
+   $0a SB-APPEND-C
+   s" green ;ENUM" SB-APPEND
+   SB$ ;
+
+: ENUM-PAREN-COMMENT$ ( -- ptr u8 n )
+   s" ENUM epcmt red ( note ) green ;ENUM" ;
+
+: STRUCT-LINE-COMMENT$ ( -- ptr u8 n )
+   SB-RESET
+   s" STRUCTURE scmt 0 FIELD a n \ trailing note" SB-APPEND
+   $0a SB-APPEND-C
+   s" FIELD b n ;STRUCTURE" SB-APPEND
+   SB$ ;
+
+: STRUCT-PAREN-COMMENT$ ( -- ptr u8 n )
+   s" STRUCTURE spcmt 0 FIELD a n ( note ) FIELD b n ;STRUCTURE" ;
+
+\ --- a declaration longer than a capture buffer must REJECT, never truncate.
+\
+\ The shared string builder holds 1024 bytes, so this one needs its own. The
+\ danger it guards is specific to the replay entries: they parse whatever tokens
+\ arrive and have no length gate of their own, so a capture arm that silently
+\ dropped an over-cap token would hand them a well-formed and WRONG declaration.
+\ Both capture arms therefore raise instead — this tool's CHK-VREC-ROOM answers
+\ E-FS-CAPACITY, and verify-source's BODY-APPEND answers the declaration layer's
+\ own "declaration too long" (7118), which is also what the engine's TDECL-CAP
+\ answers for the same source. test/decl-replay-verify-source.f pins the
+\ verify-source half against its exact 8000-byte bound; this pins that the same
+\ source is refused loudly, with that named code, all the way out through the
+\ real command line.
+$4000 constant LONG-CAP
+create LONG-BUF LONG-CAP allot
+variable LONG-U
+variable LONG-I
+
+: LONG-C ( n -- ) {: c:n :}
+   LONG-U @ LONG-CAP >= if E-FS-CAPACITY throw then
+   c LONG-BUF LONG-U @ + c!
+   LONG-U @ 1 + LONG-U ! ;
+
+: LONG-PUT ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LONG-I !
+   begin LONG-I @ u < while
+      a LONG-I @ + c@ LONG-C
+      LONG-I @ 1 + LONG-I !
+   repeat ;
+
+: LONG-DIGIT ( n -- ) 48 + LONG-C ;
+: LONG-VARIANT ( n -- ) {: i:n :}      \ one `vNNNN ` name: 6 bytes
+   118 LONG-C
+   i 1000 / 10 mod LONG-DIGIT
+   i 100 / 10 mod LONG-DIGIT
+   i 10 / 10 mod LONG-DIGIT
+   i 10 mod LONG-DIGIT
+   32 LONG-C ;
+
+variable LONG-J
+: LONG-ENUM$ ( n -- ptr u8 n ) {: n:n :}
+   0 LONG-U !
+   s" ENUM toolong " LONG-PUT
+   0 LONG-J !
+   begin LONG-J @ n < while
+      LONG-J @ LONG-VARIANT
+      LONG-J @ 1 + LONG-J !
+   repeat
+   s" ;ENUM" LONG-PUT
+   LONG-BUF LONG-U @ ;
+
 : PROD-NOEND$ ( -- ptr u8 n )
    s" PRODUCT pnoend 0 FIELD x n" ;
 
@@ -1338,6 +1455,46 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
    CAP-ERR erru s" duplicate variant" CONTAINS? TTRUE ;
 
+: TEST-STRUCT-GOOD ( -- )
+   STRUCT-GOOD$ DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: TEST-STRUCT-PAYLOAD ( -- )
+   STRUCT-PAYLOAD$ DIRECT-STDIN 0 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+\ Both diagnostic legs of a malformed STRUCTURE, through the check tool's own
+\ declaration-packet capture (CHK-DECL-CAPTURE / CHK-DECL-FLUSH). The unified
+\ front end raises through the shared DECL-REJECT packet, which renders with the
+\ same writer the legacy definers use, so the check tool collects it unchanged.
+: TEST-STRUCT-BAD-JSON ( -- )
+   STRUCT-BAD$ DIRECT-JSON-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" E-BAD-DECLARATION" CONTAINS? TTRUE
+   CAP-ERR erru s" unknown field type" CONTAINS? TTRUE
+   CAP-ERR erru s" nosuchtype" CONTAINS? TTRUE ;
+
+: TEST-STRUCT-BAD-PROSE ( -- )
+   STRUCT-BAD$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" bad structure declaration 'sbad'" CONTAINS? TTRUE
+   CAP-ERR erru s" unknown field type at 'nosuchtype'" CONTAINS? TTRUE ;
+
+\ The migrated ENUM arm reports through the same packet on the prose leg too;
+\ the JSON leg is TEST-ENUM-BAD above.
+: TEST-ENUM-BAD-PROSE ( -- )
+   ENUM-BAD$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" bad enum declaration 'ebad'" CONTAINS? TTRUE
+   CAP-ERR erru s" duplicate variant at 'red'" CONTAINS? TTRUE ;
+
 : TEST-PRODUCT-GOOD ( -- )
    PROD-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
@@ -1362,6 +1519,60 @@ create BIG $2000 allot   variable BIG-U
    {: outu:n erru:n :}
    outu 0 T=
    CAP-ERR erru s" check.f: missing ;ENUM" CONTAINS? TTRUE ;
+
+\ Each case asserts check's OWN exit (70) and its rendered packet, which is what
+\ distinguishes "the nominal pass rejected it" from "the child run happened to
+\ die later" (exit 67, no packet) — the state before the capture was repaired.
+: TEST-ENUM-LINE-COMMENT ( -- )
+   ENUM-LINE-COMMENT$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" bad enum declaration 'ecmt'" CONTAINS? TTRUE
+   CAP-ERR erru s" name must be a lowercase tail at '\" CONTAINS? TTRUE ;
+
+: TEST-ENUM-PAREN-COMMENT ( -- )
+   ENUM-PAREN-COMMENT$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" bad enum declaration 'epcmt'" CONTAINS? TTRUE
+   CAP-ERR erru s" at '('" CONTAINS? TTRUE ;
+
+: TEST-STRUCT-LINE-COMMENT ( -- )
+   STRUCT-LINE-COMMENT$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" bad structure declaration 'scmt'" CONTAINS? TTRUE
+   CAP-ERR erru s" unexpected token in structure declaration at '\" CONTAINS? TTRUE ;
+
+: TEST-STRUCT-PAREN-COMMENT ( -- )
+   STRUCT-PAREN-COMMENT$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" bad structure declaration 'spcmt'" CONTAINS? TTRUE
+   CAP-ERR erru s" at '('" CONTAINS? TTRUE ;
+
+\ 1302 variants is ~7.8KB of body. WHICH bound refuses it is worth being exact
+\ about, because the two capture paths do not share one. This tool's capture
+\ buffer is far larger than that, and the replay entry it feeds has no length
+\ gate at all, so the nominal pass buffers and registers the declaration without
+\ complaint; the refusal comes from the ENGINE's own 4096-byte TDECL-CAP when
+\ the child run loads the source, which is an uncaught declaration throw and so
+\ exits 67 rather than check's own 70. verify-source's 8000-byte buffer is the
+\ other bound, pinned against its exact edge in
+\ test/decl-replay-verify-source.f. What this case pins is the property that
+\ matters at the command line: too-long source is refused LOUDLY and by name,
+\ never quietly shortened into a declaration that parses.
+: TEST-DECL-OVER-CAP ( -- )
+   1302 LONG-ENUM$ DIRECT-STDIN 67 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" declaration too long" CONTAINS? TTRUE ;
+
+: TEST-STRUCT-NOEND ( -- )
+   STRUCT-NOEND$ DIRECT-STDIN 70 T=
+   {: outu:n erru:n :}
+   outu 0 T=
+   CAP-ERR erru s" check.f: missing ;STRUCTURE" CONTAINS? TTRUE ;
 
 : TEST-PROD-NOEND ( -- )
    PROD-NOEND$ DIRECT-STDIN 70 T=
@@ -1679,6 +1890,17 @@ private
    s" check/product-good" [: TEST-PRODUCT-GOOD ;] CASE-RUN
    s" check/product-bad" [: TEST-PRODUCT-BAD ;] CASE-RUN
    s" check/product-all-errors" [: PROD-ALL-TEST ;] CASE-RUN
+   s" check/struct-good" [: TEST-STRUCT-GOOD ;] CASE-RUN
+   s" check/struct-payload" [: TEST-STRUCT-PAYLOAD ;] CASE-RUN
+   s" check/struct-bad-json" [: TEST-STRUCT-BAD-JSON ;] CASE-RUN
+   s" check/struct-bad-prose" [: TEST-STRUCT-BAD-PROSE ;] CASE-RUN
+   s" check/enum-bad-prose" [: TEST-ENUM-BAD-PROSE ;] CASE-RUN
+   s" check/enum-line-comment" [: TEST-ENUM-LINE-COMMENT ;] CASE-RUN
+   s" check/enum-paren-comment" [: TEST-ENUM-PAREN-COMMENT ;] CASE-RUN
+   s" check/struct-line-comment" [: TEST-STRUCT-LINE-COMMENT ;] CASE-RUN
+   s" check/struct-paren-comment" [: TEST-STRUCT-PAREN-COMMENT ;] CASE-RUN
+   s" check/decl-over-cap" [: TEST-DECL-OVER-CAP ;] CASE-RUN
+   s" check/struct-noend" [: TEST-STRUCT-NOEND ;] CASE-RUN
    s" check/enum-noend" [: TEST-ENUM-NOEND ;] CASE-RUN
    s" check/product-noend" [: TEST-PROD-NOEND ;] CASE-RUN
    s" check/value-record-noend" [: TEST-VREC-NOEND ;] CASE-RUN

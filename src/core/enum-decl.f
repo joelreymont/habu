@@ -172,8 +172,13 @@ variable ED-SI         \ private digit-scan index
    0 PEND-U !   0 TOK !   0 SEEN-VARIANT ! ;
 ED-RESET
 
+\ Tokens come from the live input source, or — when a tool is replaying a
+\ declaration it has already lexed (ED-REPLAY below) — from that tool's token
+\ stream. The pushback is checked first either way, so the compact body's
+\ lookahead behaves identically on both sources.
 : ED-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
    PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
+   DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
    parse-name ;
 \ Every body token is recorded as the packet's offending token as it is read, so
 \ a reject raised inside the family registry, the variant registry, the field
@@ -498,14 +503,50 @@ ED-RESET
 : ED-BODY ( -- )
    [: ED-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
-public
-
 \ A reject is rendered through the shared declaration packet AFTER the
 \ coordinator has rolled everything back, then rethrown with its exact code,
 \ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
-\ restore, report, rethrow).
+\ restore, report, rethrow). Both drivers below share this one guarded body, so
+\ a replayed declaration reports through exactly the same renderer.
+: ED-GUARDED ( -- )
+   [: ED-BODY ;] DECL-REJECT:GUARD ;
+
+\ The replay stream is retired on BOTH exits. Closing only on success would
+\ leave a rejected replay installed, and the next live ENUM would then read its
+\ tokens from a spent buffer instead of the input source.
+: ED-REPLAY-END ( n -- )               \ ( caught-code -- ) close, then re-raise unchanged
+   DECL-REPLAY:RP-RELEASE
+   dup 0= IF drop EXIT THEN
+   throw ;
+
+public
+
 : ED-RUN ( -- )
    s" enum" DECL-REJECT:OPEN
-   [: ED-BODY ;] DECL-REJECT:GUARD ;
+   ED-GUARDED ;
+
+\ ED-REPLAY ( name body -- ) : register an ENUM from tokens a tool has already
+\ lexed, defining no word. Same grammar, same validation, same registry writes,
+\ same reject packet as ED-RUN — only the token source differs and the variant
+\ constructors are registered without being rendered (the ORDER 820 participant
+\ in generated-declaration.f). BOTH modes replay: the first body token still
+\ selects full or compact exactly as it does live, so this entry replaces the
+\ legacy compact-only CHECKER-DEFENUM that tools/check-core.f and
+\ src/habu/verify-source.f drive today. The body buffer is the declaration body
+\ INCLUDING its ;ENUM terminator; a buffer without one rejects through the front
+\ end's own "missing ;ENUM" gate exactly as a truncated live declaration does.
+\
+\ The stream is claimed BEFORE the packet is opened. Claiming can fail — another
+\ replay is already installed — and that failure belongs to the caller that
+\ misused the entry, not to any declaration: it must not clear the packet of the
+\ declaration that owns the live stream, and it must not close that stream on the
+\ way out. So it propagates as its own code with no packet of its own, and only a
+\ claim that SUCCEEDED reaches the close below.
+: ED-REPLAY ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n ba:ptr bu:n :}
+   na nu ba bu DECL-REPLAY:RP-CLAIM
+   s" enum" DECL-REJECT:OPEN
+   [: ED-GUARDED ;] catch
+   ED-REPLAY-END ;
 
 ;package

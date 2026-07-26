@@ -394,6 +394,102 @@ DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
+\ SD-REPLAY — registering a STRUCTURE from tokens a tool already lexed.
+\
+\ Before this entry existed, STRUCTURE had no registration path for a tool that
+\ is reading source rather than interpreting it, so tools/check-core.f simply
+\ skipped the keyword: the family was never registered, and the next declaration
+\ that named it as a payload type rejected with "unknown payload type". That is
+\ the live bug this closes — `bin/hb --load tools/check.f -- maki/db/promotion.f`
+\ could not get past maki/db/obligation.f's `STRUCTURE evidence`.
+\
+\ Registration here includes the family's MAKE/UNMAKE variant rows and their
+\ constructor package, because that is how a later `FAMILY:MAKE` in the same
+\ source resolves. Only the rendering of those two words is skipped.
+\ ---------------------------------------------------------------------------
+package struct-replay-test
+public
+
+TRUSTED: RP-EV ( ptr u8 n ptr u8 n -- ) STRUCTURE-DECL:SD-REPLAY ;
+TRUSTED: RP-TRY ( ptr u8 n ptr u8 n -- n ) ['] RP-EV catch ;
+TRUSTED: SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
+TRUSTED: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
+TRUSTED: FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
+TRUSTED: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
+TRUSTED: FAM-FLD-COUNT ( n -- n ) TFAM-FLD-COUNT@ ;
+TRUSTED: FAM-PRODUCT? ( n -- bool ) TFAM-PRODUCT? ;
+TRUSTED: DICT-RECS ( -- n ) ndict@ ;
+
+variable RP-DICT
+: DICT-MARK ( -- ) DICT-RECS RP-DICT ! ;
+: DICT-SAME ( -- ) DICT-RECS RP-DICT @ T= ;
+
+private
+;package
+
+\ A replayed STRUCTURE registers the family, its fields, and its make/unmake
+\ rows, and moves the native dictionary not at all.
+struct-replay-test:DICT-MARK
+s" rpsd" s" 0 FIELD one n FIELD two n ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
+struct-replay-test:DICT-SAME
+
+s" rpsd" FAMID FID !
+FID @ struct-replay-test:FAM-PRODUCT? -1 T=
+FID @ struct-replay-test:FAM-FLD-COUNT 2 T=
+FID @ FAM-SLOTS@ 2 T=
+FID @ struct-replay-test:FAM-VAR-COUNT 2 T=          \ make + unmake rows registered
+FID @ struct-replay-test:FAM-VAR-START SV0 !
+SV0 @ struct-replay-test:SV-NAME$ s" make" CORE-STR= T-TRUE
+SV0 @ 1 + struct-replay-test:SV-NAME$ s" unmake" CORE-STR= T-TRUE
+SV0 @ struct-replay-test:CTOR-PKG$ s" RPSD" CORE-STR= T-TRUE
+
+\ registration yes, generation no: no constructor symbol, and the word does not
+\ resolve (1 = uncheckable; the identical live declaration answers -1, accepted).
+SV0 @ struct-replay-test:CTOR-SYM 0 T=
+SV0 @ 1 + struct-replay-test:CTOR-SYM 0 T=
+s" S1 ( n n -- rpsd ) RPSD:MAKE" CHECK-QUIET-CANDIDATE! 1 T=
+
+\ Header clauses replay onto the same family record.
+s" rpsdh" s" 0 POLICY packed-tag DERIVE eq FIELD one n ;STRUCTURE"
+struct-replay-test:RP-TRY 0 T=
+s" rpsdh" FAMID FID !
+FID @ FAM-POLICY@ PACKED# T=
+FID @ FAM-EQ? -1 T=
+
+\ A field typed by a family REGISTERED THROUGH AN EARLIER REPLAY resolves — this
+\ is the exact shape that was broken: obligation.f declares `STRUCTURE evidence`
+\ and then names `evidence` as a payload type further down the same file.
+s" rpsdpay" s" 0 FIELD h rpsd ;STRUCTURE" struct-replay-test:RP-TRY 0 T=
+s" rpsdpay" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
+
+\ A malformed replayed STRUCTURE reports through the same renderer as a live one.
+DECL-DIAG:PROSE
+s" rpsdbad" s" 0 FIELD one nope ;STRUCTURE" struct-replay-test:RP-TRY 7109 T=
+s" habu: bad structure declaration 'rpsdbad': unknown field type at 'nope'"
+DECL-DIAG:HAS? -1 T=
+
+\ A buffer with no terminator rejects through the front end's own gate.
+DECL-DIAG:PROSE
+s" rpsdnoend" s" 0 FIELD one n" struct-replay-test:RP-TRY 7107 T=
+s" habu: bad structure declaration 'rpsdnoend': missing ;STRUCTURE"
+DECL-DIAG:HAS? -1 T=
+
+\ A zero-length name reaches the missing-name gate.
+DECL-DIAG:PROSE
+s" " s" 0 FIELD one n ;STRUCTURE" struct-replay-test:RP-TRY 7107 T=
+s" habu: bad structure declaration '': missing name" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ A rejected replay leaves the stream closed, so the next LIVE declaration reads
+\ the input source again.
+DECL-DIAG:PROSE
+s" rpsddangle" s" 0 FIELD" struct-replay-test:RP-TRY 7107 T=
+DECL-DIAG:OFF
+s" STRUCTURE-DECL:SD-RUN rpsdafter 0 FIELD one n ;STRUCTURE" TRY 0 T=
+s" rpsdafter" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" structure-decl-suite: failures" 1 die ;

@@ -865,14 +865,62 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-DECL-FAIL
    nxt ;
 
-\ ENUM/PRODUCT block declarations (items 14/15) register through the same
-\ collector so signature uses of the family later in the file resolve. The
+\ ENUM/PRODUCT/STRUCTURE block declarations (items 14/15) register through the
+\ same collector so signature uses of the family later in the file resolve. The
 \ enum arm also closes the item-14 gap where an enum-declaring file failed
 \ the nominal pass with unknown-family rejects.
+\
+\ ENUM and STRUCTURE register through the unified front ends' replay entries
+\ (ENUM-DECL:ED-REPLAY, STRUCTURE-DECL:SD-REPLAY), which run the real
+\ declaration grammar over the collected tokens and define no word. ENUM used to
+\ drive sumtype.f's CHECKER-DEFENUM, which the type-DSL cutover deletes and
+\ which only ever understood the compact form; the replay entry accepts both
+\ modes. STRUCTURE had no arm at all, so any file declaring one left that family
+\ unregistered and the next declaration naming it as a payload type rejected
+\ with "unknown payload type" — check could not check maki/db/promotion.f.
+\ PRODUCT stays on the legacy definer; the cutover retires that arm with the
+\ definer itself.
+\
+\ CHK-BLOCK-COLLECT stops ON the terminator and does not buffer it, so each
+\ replayed body re-appends the exact terminator the collector just matched. The
+\ front ends parse their own terminator, and a body missing one is what their
+\ "missing ;ENUM" / "missing ;STRUCTURE" gates exist to report.
+\
+\ COMMENTS MUST SURVIVE THE CAPTURE. The engine reads a declaration body with
+\ `parse-name`, which has no comment rule, so a `\` or `(` inside one is an
+\ ordinary token that hits the name gate: `ENUM c red \ note` rejects 7101
+\ "name must be a lowercase tail at '\'". The lexer above disagrees — it drops a
+\ `\` line comment without emitting any token at all (a `( .. )` comment does
+\ become one, which is why the paren case already rejected). Rebuilding the body
+\ from those tokens would therefore LAUNDER a `\` comment out of the source and
+\ let the replay register a family the engine refuses.
+\
+\ So these two arms rebuild the body from the RAW SOURCE BYTES of the
+\ declaration window instead of from the token list: from the first body token's
+\ byte offset up to the terminator token's. That is byte-for-byte what the live
+\ keyword would have read, comments included. The span is bounded by the two
+\ token offsets the collector already found, so it is scoped strictly to one
+\ declaration; every other scan in this file, and the legacy SUMTYPE/PRODUCT
+\ arms, keep the token-joined body unchanged.
+: CHK-DECL-RAW-BODY ( n n ptr u8 n -- ) {: k:n nxt:n ea:ptr eu:n :}
+   CHK-VREC-RESET
+   k 2 + {: b:n :}                     \ first body token
+   nxt 1 - {: t:n :}                   \ the terminator the collector matched
+   b t < IF
+      b LINT-LEX:BYTE@ {: s:n :}
+      t LINT-LEX:BYTE@ {: e:n :}
+      CHK-SRC-BUF s +  e s -  CHK-VREC-APP
+   THEN
+   ea eu CHK-VREC-TOKEN+ ;
 : CHK-ENUM-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
    CHK-EXP-BUF CHK-EXP-U @
-   CHECKER-DEFENUM ;
+   ENUM-DECL:ED-REPLAY ;
+
+: CHK-STRUCT-DO-DEF ( -- )
+   CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
+   CHK-EXP-BUF CHK-EXP-U @
+   STRUCTURE-DECL:SD-REPLAY ;
 
 : CHK-PROD-DO-DEF ( -- )
    CHK-TFAM-NAME-I @ LINT-LEX:TOKEN
@@ -883,8 +931,20 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k s" ;ENUM" CHK-BLOCK-COLLECT 0= if
       drop s" check.f: missing ;ENUM" CHK-E-CHECK CHK-FAIL
    then {: nxt:n :}
+   k nxt s" ;ENUM" CHK-DECL-RAW-BODY
    CHK-DECL-CAPTURE
    [: CHK-ENUM-DO-DEF ;] catch
+   CHK-DECL-FLUSH
+   CHK-DECL-FAIL
+   nxt ;
+
+: CHK-STRUCT-REGISTER ( n -- n ) {: k:n :}   \ k at 'structure'; next scan index
+   k s" ;STRUCTURE" CHK-BLOCK-COLLECT 0= if
+      drop s" check.f: missing ;STRUCTURE" CHK-E-CHECK CHK-FAIL
+   then {: nxt:n :}
+   k nxt s" ;STRUCTURE" CHK-DECL-RAW-BODY
+   CHK-DECL-CAPTURE
+   [: CHK-STRUCT-DO-DEF ;] catch
    CHK-DECL-FLUSH
    CHK-DECL-FAIL
    nxt ;
@@ -958,6 +1018,9 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    then
    k s" ENUM" CHK-TOK=CI if
       k CHK-ENUM-REGISTER exit
+   then
+   k s" STRUCTURE" CHK-TOK=CI if
+      k CHK-STRUCT-REGISTER exit
    then
    k s" PRODUCT" CHK-TOK=CI if
       k CHK-PROD-REGISTER exit

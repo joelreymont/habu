@@ -85,17 +85,17 @@ TRUSTED: SM-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 : SM-FIELD-SCHEMA@ ( n n n n -- n ) {: idx:n tok:n fam:n fs:n :}
    tok fam fs idx + DECL-EVENT:FIELD-SCHEMA@ ;
 
-\ SM-EMIT: the sealed mutation for a validated provisional product.
-\ Rebuilds the current transaction's field schema nodes into one contiguous declaration-order
-\ root run (the payload-schema range the two generated variant rows carry —
-\ exactly the run shape the PRODUCT ctor path builds while parsing its fields),
+\ SM-EMIT-ROWS: the sealed REGISTRATION mutation for a validated provisional
+\ product. Rebuilds the current transaction's field schema nodes into one contiguous
+\ declaration-order root run (the payload-schema range the two generated variant rows
+\ carry — exactly the run shape the PRODUCT ctor path builds while parsing its fields),
 \ adds the make(0)/unmake(1) variant rows over it at the family's product width,
-\ sets the variant range, derives the constructor package, and drives the shared
-\ generator. TRUSTED: because every word it calls is a sealed pre-hook registry /
-\ generation word. GENERATE has already validated its local preconditions; any
-\ evaluator or checker rejection propagates to GENERATED-DECL for full rollback.
+\ sets the variant range, and derives the constructor package.
+\ TRUSTED: because every word it calls is a sealed pre-hook registry word.
+\ GENERATE has already validated its local preconditions; any evaluator or checker
+\ rejection propagates to GENERATED-DECL for full rollback.
 variable SM-RSTART   variable SM-VSTART
-TRUSTED: SM-EMIT ( n n n n -- ) {: tok:n fam:n fs:n fc:n :}
+TRUSTED: SM-EMIT-ROWS ( n n n n -- ) {: tok:n fam:n fs:n fc:n :}
    SCHEMA-ROOT-N@ SM-RSTART !
    0 BEGIN dup fc < WHILE
       dup tok fam fs SM-FIELD-SCHEMA@ SCHEMA-ROOT@ SCHEMA-ROOT+ drop
@@ -105,7 +105,12 @@ TRUSTED: SM-EMIT ( n n n n -- ) {: tok:n fam:n fs:n fc:n :}
    fam s" make"   0 SM-RSTART @ fc  fam TFAM-SLOTS@ SUMV-ADD drop
    fam s" unmake" 1 SM-RSTART @ fc  fam TFAM-SLOTS@ SUMV-ADD drop
    fam SM-VSTART @ 2 TFAM-VAR-RANGE!
-   fam SM-VSTART @ 2 TDECL-CTOR-PUBLISH
+   fam SM-VSTART @ 2 TDECL-CTOR-PUBLISH ;
+
+\ SM-EMIT-WORDS: the GENERATION half — render, evaluate, certify and seal the
+\ MAKE/UNMAKE pair. Split from the rows above because a replayed declaration
+\ performs the registration and stops here (see GENERATE).
+TRUSTED: SM-EMIT-WORDS ( n -- ) {: fam:n :}
    fam TDECL-PROD-WORDS ;
 
 \ --- validation pass (checked; no registry write). A reject here leaves every
@@ -134,12 +139,21 @@ public
 \ a DECL-EVENT scope error (the token does not own that family/field), or E-SM-DUP
 \ (MAKE/UNMAKE already generated) — every reject
 \ before any registry write, so a rejected call publishes nothing.
+\
+\ A REPLAYED declaration (tools/check-core.f's nominal pass, verify-source)
+\ registers the make/unmake variant rows and the constructor package, then
+\ stops: it is reading source, not building a program, so it must define no
+\ word. It cannot skip the rows, because they are how a later `FAMILY:MAKE` in
+\ the same source resolves — the same reason the legacy metadata-only entry
+\ CHECKER-DEFENUM ends with TDECL-CTOR-PUBLISH and defines nothing.
 : GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY
    fam SM-FLD-COUNT {: fc:n :}
    fc 1 < IF E-SM-EMPTY throw THEN
    fam SM-REQUIRE-UNGENERATED
    tok fam fc SM-REQUIRE-READABLE
-   tok fam  fam SM-FLD-START  fc  SM-EMIT ;
+   tok fam  fam SM-FLD-START  fc  SM-EMIT-ROWS
+   DECL-REPLAY:RP-ACTIVE? IF EXIT THEN
+   fam SM-EMIT-WORDS ;
 
 ;package

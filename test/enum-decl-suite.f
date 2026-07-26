@@ -1111,6 +1111,180 @@ DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
+\ 23. ED-REPLAY — registering an ENUM from tokens a tool already lexed.
+\
+\     tools/check-core.f's nominal pass and src/habu/verify-source.f scan a file
+\     token by token and must register every family they meet, so a later
+\     signature in the same file resolves. They cannot let the front end call
+\     `parse-name` (they are not interpreting the file) and must define no word
+\     (they are reading source, not building a program). ED-REPLAY is that entry:
+\     the SAME grammar loop, validation, registry writes and reject packet as
+\     ED-RUN, reading its tokens from the caller's buffer.
+\
+\     What these cases have to separate is registration from generation, because
+\     the two used to be one step. Registration includes the constructor PACKAGE
+\     stamped on each variant row — that is metadata the checker resolves types
+\     through, and the legacy metadata-only entry CHECKER-DEFENUM published it
+\     too. Generation is the rendering of the constructor WORDS, and that is the
+\     only thing a replay skips. So each case below pins both halves: the rows
+\     are there, the words are not.
+\ ---------------------------------------------------------------------------
+package enum-replay-test
+public
+
+\ The replay entry under `catch`, so a reject answers its code the way TRY does
+\ for the live entry. TRUSTED: for the same reason TRY is — `catch` over a word
+\ the checker cannot type through a quotation boundary here.
+TRUSTED: RP-EV ( ptr u8 n ptr u8 n -- ) ENUM-DECL:ED-REPLAY ;
+TRUSTED: RP-TRY ( ptr u8 n ptr u8 n -- n ) ['] RP-EV catch ;
+
+\ Force the replay stream open so the re-entry guard can be reached at all; the
+\ production callers never nest, which is exactly why the guard needs a test.
+TRUSTED: RP-FORCE-OPEN ( -- ) s" x" s" y" DECL-REPLAY:RP-CLAIM ;
+
+\ second variant cursor, for the live-vs-replayed side-by-side comparison
+variable VS1
+TRUSTED: RP-FORCE-CLOSE ( -- ) DECL-REPLAY:RP-RELEASE ;
+
+private
+;package
+
+\ 23a. A compact ENUM replays to the same family shape the live front end
+\      registers, and moves the native dictionary NOT AT ALL.
+enum-ctor-test:DICT-MARK
+s" rpcompact" s" red green blue ;ENUM" enum-replay-test:RP-TRY 0 T=
+enum-ctor-test:DICT-SAME
+
+s" rpcompact" FAMID FID !
+FID @ F-ENUM? -1 T=                       \ compact mode still picks TK-ENUM
+FID @ F-VAR-COUNT 3 T=
+FID @ F-WIDTH 1 T=
+FID @ F-VAR-START VS0 !
+VS0 @ SV-NAME$ s" red" CORE-STR= T-TRUE
+VS0 @ 1 + SV-NAME$ s" green" CORE-STR= T-TRUE
+VS0 @ 2 + SV-NAME$ s" blue" CORE-STR= T-TRUE
+VS0 @ SV-TAG@ 0 T=
+VS0 @ 2 + SV-TAG@ 2 T=
+
+\ REGISTRATION happened: the constructor package is stamped on every row, which
+\ is what a later `RPCOMPACT:RED` in the same source resolves through.
+VS0 @ enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
+VS0 @ 2 + enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
+
+\ GENERATION did not: no constructor symbol was recorded on any row, and the
+\ constructor word genuinely does not exist. This is the observable that fails
+\ the moment the replay driver is allowed to generate.
+VS0 @ enum-ctor-test:CTOR-SYM 0 T=
+VS0 @ 2 + enum-ctor-test:CTOR-SYM 0 T=
+\ 1 = uncheckable: the family type resolves (it IS registered) but the
+\ constructor word does not exist, so the body cannot be checked at all. The
+\ identical live declaration in section 20a answers -1, accepted.
+s" R1 ( -- rpcompact ) RPCOMPACT:RED" CHECK-QUIET-CANDIDATE! 1 T=
+
+\ 23b. FULL mode replays too. The legacy CHECKER-DEFENUM this entry replaces read
+\      a compact list of bare variant names and nothing else, so an arity header
+\      or a VARIANT block was unregisterable through the old consumers.
+s" rpfull" s" 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
+enum-replay-test:RP-TRY 0 T=
+s" rpfull" FAMID FID !
+FID @ F-SUM? -1 T=                        \ full mode still picks TK-SUM
+FID @ F-VAR-COUNT 2 T=
+FID @ F-FLD-COUNT 2 T=
+FID @ F-VAR-START VS0 !
+VS0 @ SV-NAME$ s" quit" CORE-STR= T-TRUE
+VS0 @ 1 + SV-NAME$ s" move" CORE-STR= T-TRUE
+FID @ VS0 @ enum-ctor-test:PAY-ROWS 0 T=
+FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS 2 T=
+VS0 @ 1 + enum-ctor-test:CTOR-SYM 0 T=    \ still no words
+
+\ 23c. Header clauses replay: POLICY and DERIVE reach the same family record.
+s" rppol" s" POLICY packed-tag DERIVE eq hash red green ;ENUM"
+enum-replay-test:RP-TRY 0 T=
+s" rppol" FAMID FID !
+FID @ F-POLICY@ PACKED# T=
+FID @ F-EQ? -1 T=
+FID @ F-HASH? -1 T=
+
+\ 23d. A malformed replayed declaration reports through the SAME renderer as a
+\      live one — the end-to-end half of the channel claim the diagnostics leaf
+\      could only make for the live path.
+DECL-DIAG:PROSE
+s" rpbadv" s" 0 VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 7107 T=
+s" habu: bad enum declaration 'rpbadv': unexpected token in variant block at 'stray'"
+DECL-DIAG:HAS? -1 T=
+
+DECL-DIAG:PROSE
+s" rpbadname" s" red red ;ENUM" enum-replay-test:RP-TRY 7102 T=
+s" habu: bad enum declaration 'rpbadname': duplicate variant at 'red'"
+DECL-DIAG:HAS? -1 T=
+
+\ 23e. A buffer whose terminator is missing rejects through the front end's own
+\      end-of-input gate, exactly as a truncated live declaration does. The
+\      consumers therefore cannot register a half-read declaration by accident.
+DECL-DIAG:PROSE
+s" rpnoend" s" red green" enum-replay-test:RP-TRY 7107 T=
+s" habu: bad enum declaration 'rpnoend': missing ;ENUM" DECL-DIAG:HAS? -1 T=
+
+\ 23f. A zero-length name reaches the missing-name gate instead of silently
+\      promoting the first body token to the family name.
+DECL-DIAG:PROSE
+s" " s" red green ;ENUM" enum-replay-test:RP-TRY 7107 T=
+s" habu: bad enum declaration '': missing name" DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ 23g. A REJECTED replay leaves the stream closed, so the next LIVE declaration
+\      reads the input source again rather than a spent buffer. This is the
+\      failure the two-exit close in ED-REPLAY exists to prevent.
+DECL-DIAG:PROSE
+s" rpdangle" s" 0 VARIANT" enum-replay-test:RP-TRY 7107 T=
+DECL-DIAG:OFF
+s" ENUM-DECL:ED-RUN rpafterbad 0 VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
+s" rpafterbad" FAMID F-VAR-COUNT 1 T=
+
+\ 23h. Re-entry is refused with its own named code rather than retargeting a
+\      stream that is already installed.
+enum-replay-test:RP-FORCE-OPEN
+s" rpbusy" s" red ;ENUM" enum-replay-test:RP-TRY 7177 T=
+enum-replay-test:RP-FORCE-CLOSE
+s" ENUM-DECL:ED-RUN rpafterbusy 0 VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
+
+\ 23i. Live and replayed declarations of the SAME shape register the SAME
+\      registry state. Declared in two packages so both families coexist; every
+\      reflected field is compared, and the only intended difference is that the
+\      replayed one carries no constructor symbol.
+package rp-live-test
+public
+s" ENUM-DECL:ED-RUN shape 0 POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM" EV
+;package
+package rp-copy-test
+public
+s" shape" s" 0 POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM"
+enum-replay-test:RP-TRY 0 T=
+;package
+
+s" rp-live-test:shape" FAMID FID !
+s" rp-copy-test:shape" FAMID VID !
+FID @ F-SUM?      VID @ F-SUM?      T=
+FID @ F-ENUM?     VID @ F-ENUM?     T=
+FID @ F-VAR-COUNT VID @ F-VAR-COUNT T=
+FID @ F-FLD-COUNT VID @ F-FLD-COUNT T=
+FID @ F-WIDTH     VID @ F-WIDTH     T=
+FID @ F-POLICY@   VID @ F-POLICY@   T=
+FID @ F-EQ?       VID @ F-EQ?       T=
+FID @ F-HASH?     VID @ F-HASH?     T=
+FID @ F-VAR-START VS0 !
+VID @ F-VAR-START enum-replay-test:VS1 !
+VS0 @ SV-NAME$ enum-replay-test:VS1 @ SV-NAME$ CORE-STR= T-TRUE
+VS0 @ 1 + SV-NAME$ enum-replay-test:VS1 @ 1 + SV-NAME$ CORE-STR= T-TRUE
+VS0 @ SV-TAG@ enum-replay-test:VS1 @ SV-TAG@ T=
+VS0 @ 1 + SV-TAG@ enum-replay-test:VS1 @ 1 + SV-TAG@ T=
+FID @ VS0 @ enum-ctor-test:PAY-ROWS  VID @ enum-replay-test:VS1 @ enum-ctor-test:PAY-ROWS  T=
+FID @ VS0 @ 1 + enum-ctor-test:PAY-ROWS VID @ enum-replay-test:VS1 @ 1 + enum-ctor-test:PAY-ROWS T=
+\ the one intended divergence: words for the live family, none for the replayed
+VS0 @ enum-ctor-test:CTOR-SYM 0 <> T-TRUE
+enum-replay-test:VS1 @ enum-ctor-test:CTOR-SYM 0 T=
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" enum-decl-suite: failures" 1 die ;

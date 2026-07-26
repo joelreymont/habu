@@ -157,6 +157,7 @@ TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
 7174 constant C-DICT-TX     \ generated-declaration-dictionary.f E-DICTIONARY-TX
 7175 constant C-DICT-CAP    \ generated-declaration-dictionary.f E-DICTIONARY-CAP
 7176 constant C-CTOR-ARM    \ E-CTOR-ARM, below in this file
+7177 constant C-REPLAY-BUSY \ DECL-REPLAY:E-REPLAY-BUSY, below in this file
 7190 constant C-MAKE-FAM    \ structure-make.f E-SM-FAM
 7191 constant C-MAKE-EMPTY  \ structure-make.f E-SM-EMPTY
 
@@ -218,6 +219,7 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
    code C-DICT-TX      = IF s" generated-name transaction is out of order" FOUND EXIT THEN
    code C-DICT-CAP     = IF s" generated-name table is full"         FOUND EXIT THEN
    code C-CTOR-ARM     = IF s" family cannot own generated constructors" FOUND EXIT THEN
+   code C-REPLAY-BUSY  = IF s" a replayed declaration is already open"   FOUND EXIT THEN
    code C-MAKE-FAM     = IF s" family cannot own generated make/unmake" FOUND EXIT THEN
    code C-MAKE-EMPTY   = IF s" a constructed family needs at least one field" FOUND EXIT THEN
    NOTHING$ MISSING ;
@@ -299,6 +301,172 @@ public
 : FAMILY$ ( -- ptr u8 n ) S-FAMILY SLOT@ ;
 : TOKEN$ ( -- ptr u8 n ) S-TOKEN SLOT@ ;
 : REASON$ ( n -- ptr u8 n ) PICK-REASON ;
+
+private
+;package
+
+\ ---------------------------------------------------------------------------
+\ DECL-REPLAY — where a declaration's tokens come from, and whether that
+\ declaration is allowed to define words.
+\
+\ Why it exists.  Two tools need to register a declaration they have ALREADY
+\ lexed: tools/check-core.f's nominal pass and src/habu/verify-source.f both
+\ scan a file token by token and must register each family they meet, so that a
+\ later signature in the same file can resolve it.  Neither is interpreting the
+\ file, so neither can let a front end call `parse-name`, and neither wants the
+\ constructor words a real declaration defines — check is reading source, not
+\ building a program.  Until now they drove sumtype.f's CHECKER-DEFENUM, the
+\ legacy metadata-only registration, which the type-DSL cutover deletes; and
+\ STRUCTURE had no such entry at all, which is why the check tool could not
+\ check any file that declared one (a STRUCTURE family stayed unregistered, so
+\ the next declaration that named it as a payload type rejected with "unknown
+\ payload type").
+\
+\ What it is.  One installed token stream plus one mode flag, read by both
+\ front ends and by both constructor generators.  A front end asks it for the
+\ next token instead of calling `parse-name`; the generators ask it whether
+\ this declaration may define words.  The two facts are deliberately ONE piece
+\ of state with one name: a replayed declaration is exactly the one that must
+\ not define words, so the pair cannot drift apart and no caller can ask for a
+\ replay that generates, or a live declaration that does not.
+\
+\ The stream is in two segments because that is the shape both callers already
+\ have: they lexed the family name as its own token before they knew what kind
+\ of declaration it was, then buffered the rest of the body.  HEAD is that name
+\ token, BODY the buffered remainder (space-separated, which is what both
+\ callers' buffer builders emit).  Handing a zero-length HEAD through unchanged
+\ matters: it reaches the front end's own "missing name" gate rather than
+\ silently promoting the first body token to the family name.
+\
+\ What it is NOT.  It is not a second parser.  The front ends' grammar loops,
+\ validation, registry calls, and reject packets are entirely unchanged; only
+\ the source of their tokens moves.  That is the whole point — a replayed
+\ declaration must register the same family identity, tags, variant and field
+\ rows, and policy/derive metadata as a real one, because the checker resolves
+\ types through exactly those rows.
+\
+\ Why it lives in THIS file rather than its own.  It has to be defined before
+\ its first consumer and needs nothing from the layer below — the same argument
+\ that puts DECL-REJECT here.  It also has to be visible to GENERATED-DECL-CTOR
+\ further down this file and to structure-make.f, which is why it sits above
+\ both.  A separate src/core/decl-replay.f would be the tidier home, but adding
+\ any engine-prefix source file requires editing the file list in
+\ tools/build-fixpoint.f, which is wholly unpackaged and not allowlisted, so
+\ that edit fails the package-ownership gate (measured: adding one
+\ BF-APPEND-SOURCE line reports "`BF-APPEND-DECL-FILES` defines a changed
+\ module word outside a package").  That veto is already tracked as its own
+\ dot; when it lifts, this package moves out unchanged.
+\
+\ Why every tail carries an `RP-` stem.  The neighbouring declaration-layer
+\ packages do the same (`SD-` in structure-decl.f, `ED-` in enum-decl.f, `SM-`
+\ in structure-make.f, `DEV-` in decl-event.f), and it is not decoration:
+\ test/engine-error-package.f corrupts the baked `checker-package` name to prove
+\ the engine still fails closed with no checker, and in that image package scope
+\ is gone, so every package-local tail is a bare global.  A tail spelled like
+\ another prelude package's tail then duplicates instead — measured, an `OPEN`
+\ here collided with DECL-REJECT's `OPEN` and the patched engine exited 78
+\ (E-DUP-DEFINITION, silently, during boot) instead of the pinned 70 with its
+\ "undefined word 'START'" diagnostic.  The stem keeps the fail-closed ORDER
+\ that test pins, and `CLAIM`/`RELEASE` say what they do better than
+\ `OPEN`/`CLOSE` anyway: the stream is taken from a caller and handed back.
+\ ---------------------------------------------------------------------------
+package DECL-REPLAY
+
+\ Re-entry is refused with a named code the transaction can roll back, rather
+\ than silently retargeting a live stream.  The production callers never nest —
+\ a replayed body is never evaluated, so it cannot re-enter a front end — but
+\ the guard makes that a proven property instead of an assumed one.
+7177 constant E-REPLAY-BUSY   \ a replayed declaration is already open
+
+32 constant RP-SPACE
+9 constant RP-TAB
+10 constant RP-LF
+13 constant RP-CR
+
+variable RP-OPEN?      \ a replay stream is installed (0 = tokens come from live input)
+variable RP-HEAD?      \ the leading (family name) token has not been read yet
+variable RP-HEAD-U     variable RP-HEAD-A
+variable RP-BODY-U     variable RP-BODY-A
+variable RP-SCAN-I     \ scan cursor within the body buffer
+
+\ The two raw-memory boundaries, the same idiom as structure-decl.f's PEND! /
+\ PEND@ pushback cells: a checked body cannot store a `ptr u8` through a plain
+\ cell and read it back.  Every other word in this package is checked Habu, and
+\ the token scan below runs entirely on the typed span these answer.
+TRUSTED: RP-HEAD! ( ptr u8 n -- ) RP-HEAD-U ! RP-HEAD-A ! ;
+TRUSTED: RP-HEAD@ ( -- ptr u8 n ) RP-HEAD-A @ RP-HEAD-U @ ;
+TRUSTED: RP-BODY! ( ptr u8 n -- ) RP-BODY-U ! RP-BODY-A ! ;
+TRUSTED: RP-BODY@ ( -- ptr u8 n ) RP-BODY-A @ RP-BODY-U @ ;
+
+: RP-SEP? ( n -- bool ) {: c:n :}      \ a token separator byte
+   c RP-SPACE = c RP-TAB = or c RP-LF = or c RP-CR = or ;
+
+: RP-SKIP ( ptr u8 n -- n ) {: a:ptr u:n :}   \ first non-separator offset at/after the cursor
+   RP-SCAN-I @
+   BEGIN dup u < WHILE
+      dup a + c@ RP-SEP? 0= IF EXIT THEN
+      1 +
+   REPEAT ;
+
+: RP-TOKEN-END ( ptr u8 n n -- n ) {: a:ptr u:n s:n :}   \ offset one past the token starting at s
+   s
+   BEGIN dup u < WHILE
+      dup a + c@ RP-SEP? IF EXIT THEN
+      1 +
+   REPEAT ;
+
+: RP-BODY-NEXT ( -- ptr u8 n )         \ next body token; zero length once the buffer is spent
+   RP-BODY@ {: a:ptr u:n :}
+   a u RP-SKIP {: s:n :}
+   a u s RP-TOKEN-END {: e:n :}
+   e RP-SCAN-I !
+   a s +  e s - ;
+
+public
+
+\ Is a replayed declaration open?  The front ends read this to choose their
+\ token source; the constructor generators read it to decide whether this
+\ declaration publishes words.
+: RP-ACTIVE? ( -- bool ) RP-OPEN? @ 0 <> ;
+
+\ RP-CLAIM ( name body -- ) : install one declaration's already-lexed token stream.
+\
+\ CAPACITY IS THE CALLER'S CONTRACT. This package holds two spans and never
+\ copies, so it imposes no length bound of its own and cannot detect one that was
+\ already violated: a body buffer that dropped a token arrives indistinguishable
+\ from a complete one, and the grammar loop parses it happily. The caller's
+\ buffer builder must therefore RAISE when the declaration does not fit, never
+\ truncate — src/habu/verify-source.f's BODY-APPEND throws E-VS-BODY-CAP and
+\ tools/check-core.f's CHK-VREC-ROOM throws E-FS-CAPACITY. A builder that
+\ silently shortens its input turns a too-long declaration into a well-formed and
+\ WRONG one, and nothing downstream of this point can tell.
+\
+\ COMMENTS ARE NOT LAUNDERED, for the same reason. The engine reads a declaration
+\ body with `parse-name`, so a `\` or `(` inside it is an ordinary token and a
+\ syntax error. A capture arm that strips comments before buffering would let
+\ replay accept source the live keyword refuses, so the arms feed their raw
+\ declaration-window tokens through unchanged and the front end rejects at the
+\ comment token exactly as it does live.
+: RP-CLAIM ( ptr u8 n ptr u8 n -- )
+   RP-ACTIVE? IF 2drop 2drop E-REPLAY-BUSY throw THEN
+   RP-BODY!  RP-HEAD!
+   0 RP-SCAN-I !
+   -1 RP-HEAD? !
+   -1 RP-OPEN? ! ;
+
+\ RP-RELEASE ( -- ) : retire the stream and leave replay mode.  Callers close on both
+\ the accepting and the rejecting path, so a rejected replay cannot leave the
+\ next live declaration reading a spent buffer.
+: RP-RELEASE ( -- )
+   0 RP-OPEN? !  0 RP-HEAD? !  0 RP-HEAD-U !  0 RP-BODY-U !  0 RP-SCAN-I ! ;
+
+\ RP-NEXT ( -- token ) : the family name once, then the body tokens in order, then
+\ zero-length forever — the same end-of-input signal `parse-name` gives the
+\ front ends, so their "missing ;STRUCTURE" / "missing ;ENUM" gates fire
+\ unchanged on a truncated stream.
+: RP-NEXT ( -- ptr u8 n )
+   RP-HEAD? @ IF 0 RP-HEAD? ! RP-HEAD@ EXIT THEN
+   RP-BODY-NEXT ;
 
 private
 ;package
@@ -581,6 +749,17 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ variant row, then render/evaluate/certify/seal the whole set through the shared
 \ generator. Both role gates read committed rows, which is why they work here and
 \ could not work in the body phase.
+\
+\ The last step, and ONLY the last step, is what a replayed declaration skips.
+\ The split is not a shortcut, it is where the legacy definer already draws the
+\ line: sumtype.f's global ENUM keyword is CHECKER-DEFENUM followed by
+\ TDECL-CTOR-WORDS, and CHECKER-DEFENUM — the metadata-only entry check-core and
+\ verify-source drive today — ends with TDECL-CTOR-PUBLISH and defines no word.
+\ So the constructor PACKAGE STAMP on each variant row is registration, not
+\ generation: it is how a later `FAMILY:VARIANT` in the same source resolves at
+\ all. Skipping the arming instead of the rendering would have left every
+\ constructor use in a replayed file undefined, which is the whole reason the
+\ legacy entry published those rows in the first place.
 : PART-COMMIT ( n -- n ) {: depth:n :}
    ARMED-FAM {: fam:n :}
    fam NO-FAMILY = IF depth EXIT THEN
@@ -590,6 +769,7 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
    fam vstart count CTOR-COLLIDE
    fam vstart count CTOR-REQUIRE
    fam vstart count CTOR-PUBLISH
+   DECL-REPLAY:RP-ACTIVE? IF depth EXIT THEN
    CTOR-PROVIDER fam CTOR-GEN drop
    depth ;
 

@@ -141,8 +141,13 @@ variable SD-SI         \ private digit-scan index
    0 PEND-U !   0 TOK !   0 SEEN-FIELD ! ;
 SD-RESET
 
+\ Tokens come from the live input source, or — when a tool is replaying a
+\ declaration it has already lexed (SD-REPLAY below) — from that tool's token
+\ stream. The pushback is checked first either way, so lookahead behaves
+\ identically on both sources.
 : SD-RAW ( -- ptr u8 n )               \ next body token (honours one pushback)
    PEND-U @ 0 > IF PEND@ 0 PEND-U ! EXIT THEN
+   DECL-REPLAY:RP-ACTIVE? IF DECL-REPLAY:RP-NEXT EXIT THEN
    parse-name ;
 \ Every body token is recorded as the packet's offending token as it is read, so
 \ a reject raised inside the family registry, the field record, or a transaction
@@ -350,15 +355,50 @@ SD-RESET
 : SD-BODY ( -- )
    [: SD-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
-public
-
 \ A reject is rendered through the shared declaration packet AFTER the
 \ coordinator has rolled everything back, then rethrown with its exact code,
 \ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
-\ restore, report, rethrow).
+\ restore, report, rethrow). Both drivers below share this one guarded body, so
+\ a replayed declaration reports through exactly the same renderer.
+: SD-GUARDED ( -- )
+   [: SD-BODY ;] DECL-REJECT:GUARD ;
+
+\ The replay stream is retired on BOTH exits. Closing only on success would
+\ leave a rejected replay installed, and the next live STRUCTURE would then read
+\ its tokens from a spent buffer instead of the input source.
+: SD-REPLAY-END ( n -- )               \ ( caught-code -- ) close, then re-raise unchanged
+   DECL-REPLAY:RP-RELEASE
+   dup 0= IF drop EXIT THEN
+   throw ;
+
+public
+
 : SD-RUN ( -- )
    s" structure" DECL-REJECT:OPEN
-   [: SD-BODY ;] DECL-REJECT:GUARD ;
+   SD-GUARDED ;
+
+\ SD-REPLAY ( name body -- ) : register a STRUCTURE from tokens a tool has
+\ already lexed, defining no word. Same grammar, same validation, same registry
+\ writes, same reject packet as SD-RUN — only the token source differs and the
+\ MAKE/UNMAKE pair is registered without being rendered (structure-make.f
+\ GENERATE). This is what lets tools/check-core.f and src/habu/verify-source.f
+\ see a STRUCTURE family at all, so a later signature in the same source can
+\ name it. The body buffer is the declaration body INCLUDING its ;STRUCTURE
+\ terminator; a buffer without one rejects through the front end's own
+\ "missing ;STRUCTURE" gate exactly as a truncated live declaration does.
+\
+\ The stream is claimed BEFORE the packet is opened. Claiming can fail — another
+\ replay is already installed — and that failure belongs to the caller that
+\ misused the entry, not to any declaration: it must not clear the packet of the
+\ declaration that owns the live stream, and it must not close that stream on the
+\ way out. So it propagates as its own code with no packet of its own, and only a
+\ claim that SUCCEEDED reaches the close below.
+: SD-REPLAY ( ptr u8 n ptr u8 n -- )
+   {: na:ptr nu:n ba:ptr bu:n :}
+   na nu ba bu DECL-REPLAY:RP-CLAIM
+   s" structure" DECL-REJECT:OPEN
+   [: SD-GUARDED ;] catch
+   SD-REPLAY-END ;
 
 ;package
 
