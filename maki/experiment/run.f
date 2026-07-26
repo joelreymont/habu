@@ -80,21 +80,31 @@ package RUN
 public
 
 \ WIRE>KEY decode result (the § 23.9 id-result custom-sum idiom): `ok` carries the refined
-\ nominal id; the reject arms are the fixed-width content-key refusals (wrong width,
-\ unresolved content key). A bespoke per-package sum, not result<a,b>, so a total ok
-\ construction leaves no free error variable.
-SUMTYPE id-result 1
-   VARIANT ok a ;VARIANT
+\ nominal id in its `id` field; the reject arms are the fixed-width content-key refusals
+\ (wrong width, unresolved content key). A bespoke per-package sum, not result<a,b>, so a
+\ total ok construction leaves no free error variable. Declared through the unified ENUM
+\ front end in full mode (the arity after the name selects it), so the payload is a named
+\ FIELD rather than a positional one; the generated RUN-ID--RESULT:OK / :WRONG-WIDTH /
+\ :UNKNOWN constructors and every MATCH site are unchanged, because both spellings and
+\ payload binding order derive from the package, the family tail, and the declaration
+\ order, none of which the mode changes.
+ENUM id-result 1
+   VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT
-;SUMTYPE
+;ENUM
 
-\ SEAL outcome (custom-sum result, never value+flag): `ok` carries the interned run-id;
-\ `incomplete` rejects a run key missing any required field (including license / authority).
-SUMTYPE seal-result 1
-   VARIANT ok a ;VARIANT
+\ SEAL outcome (custom-sum result, never value+flag): `ok` carries the interned run-id in
+\ its `id` field. That is the same refined nominal identity `id` names above: SEAL reaches
+\ the arm as INTERN-DIGEST SR-OK, INTERN-DIGEST ends in `raw RAW>RUN-ID`, and SR-OK's own
+\ effect is ( CAD-KIND:run-id -- seal-result<CAD-KIND:run-id> ). `incomplete` rejects a run
+\ key missing any required field (including license / authority). Also declared through the
+\ unified ENUM front end in full mode, with the generated RUN-SEAL--RESULT:OK / :INCOMPLETE
+\ spellings and every MATCH site unchanged.
+ENUM seal-result 1
+   VARIANT ok FIELD id a ;VARIANT
    VARIANT incomplete ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

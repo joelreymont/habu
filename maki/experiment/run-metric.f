@@ -70,22 +70,34 @@ ENUM aggregation DERIVE eq
 
 \ ---- the two DISTINCT metric families (single-cell handles over a pool slot) -----
 \ report-metric and objective-metric never unify: an objective consumer rejects a
-\ report metric at compile time.
-PRODUCT report-metric 0
+\ report metric at compile time. That separation is NOMINAL, not structural - the two
+\ declarations are deliberately field-identical, so only the family name distinguishes
+\ them, and run-metric-test.f keeps a third field-identical family to prove a same-shape
+\ record still refuses to unify with either. Declared through the unified STRUCTURE front
+\ end; each FIELD line and each generated RUNMETRIC-REPORT--METRIC:MAKE / :UNMAKE and
+\ RUNMETRIC-OBJECTIVE--METRIC:MAKE / :UNMAKE spelling is unchanged, so no call site moves.
+STRUCTURE report-metric 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
-PRODUCT objective-metric 0
+STRUCTURE objective-metric 0
    FIELD slot n
-;PRODUCT
+;STRUCTURE
 
 \ ---- PROMOTE-OBJECTIVE outcome (custom-sum result, never value+flag) -------------
-\ ok carries the eligible objective-metric; not-training rejects a held-out / validation
-\ measurement promoted as a training objective.
-SUMTYPE objective-result 0
-   VARIANT ok objective-metric ;VARIANT
+\ ok carries the eligible objective-metric in its `metric` field - the name says what the
+\ payload IS, which is the whole point of the family: PROMOTE-OBJECTIVE ends in `s >OBJ
+\ OR-OK` and OR-OK's effect is ( objective-metric -- objective-result ), so the payload is
+\ the promoted metric itself, never a run or a slot. not-training rejects a held-out /
+\ validation measurement promoted as a training objective. Declared through the unified
+\ ENUM front end in full mode (the arity after the name selects it, and 0 is a family with
+\ no type parameter), so the payload is a named FIELD rather than a positional one; the
+\ generated RUNMETRIC-OBJECTIVE--RESULT:OK / :NOT-TRAINING spellings and every MATCH site
+\ are unchanged.
+ENUM objective-result 0
+   VARIANT ok FIELD metric objective-metric ;VARIANT
    VARIANT not-training ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

@@ -23,11 +23,37 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/experiment/run.f
 require maki/artifact.f
 require maki/numpolicy.f
 require maki/target/target.f
 require maki/config.f
+
+\ ---- same-shape twins for the two run result families ---------------------------
+\ idr-twin and sealr-twin are RUN:id-result's and RUN:seal-result's SHAPES under
+\ different names: same arity, same variants in the same order, same named payload
+\ field. They exist only so the negatives further down can prove these decode and seal
+\ outcomes are NOMINAL - two identically shaped ENUM families never unify, in either
+\ direction. They live in their OWN package, not in a reopened package RUN, because a
+\ test must not add public words to the production package's surface; and they must be
+\ public, because a private family publishes no constructors at all, which would let the
+\ negatives pass by being unresolvable rather than ill-typed.
+package RUN-TEST
+public
+
+ENUM idr-twin 1
+   VARIANT ok FIELD id a ;VARIANT
+   VARIANT wrong-width ;VARIANT
+   VARIANT unknown ;VARIANT
+;ENUM
+
+ENUM sealr-twin 1
+   VARIANT ok FIELD id a ;VARIANT
+   VARIANT incomplete ;VARIANT
+;ENUM
+
+;package
 
 package RUN
 
@@ -209,6 +235,89 @@ variable SP-AUTH-ALT
 : COMPLETE-OK ( -- n )   SPEC-RESET POPULATE SEAL-CODE ;
 : SEAL-EMPTY ( -- n )    NEW SEAL-CODE ;
 
+\ ---- both result families construct and dispatch through MATCH ------------------
+\ The words above reach the arms only through SEAL or a wire decode. These construct
+\ each variant DIRECTLY through the production producers and match it straight back, so
+\ each named payload FIELD is proven to bind in declaration order. The ok arms bind
+\ their payload to a TYPED local and report the recovered registry index, which is
+\ exactly what EQUAL? compares (interning makes run-key identity raw index equality), so
+\ a payload the constructor dropped or zeroed would come back as a different index.
+\
+\ Construction is factored into one typed word per variant because the checker requires
+\ MATCH's scrutinee to be a concretely instantiated family value: a single word that both
+\ constructs and matches is refused, and the diagnostic names the family token as an
+\ undefined word. That refusal predates this migration (it reproduces identically on the
+\ legacy declaration) and is tracked separately by dot habu-checker-ground-match-c0cb9d44.
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+\ NOWORD is the verdict for a candidate naming a word that does not exist: the checker
+\ reports 1 (uncheckable) rather than a type refusal. It is what makes the constructor
+\ spelling pins bite instead of passing vacuously.
+: NOWORD ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  1 T= ;
+
+: TT-MK-IDR-OK ( CAD-KIND:run-id -- id-result<CAD-KIND:run-id> )    IDR-OK ;
+: TT-MK-IDR-WW ( -- id-result<CAD-KIND:run-id> )                    IDR-WRONG-WIDTH ;
+: TT-MK-IDR-UNK ( -- id-result<CAD-KIND:run-id> )                   IDR-UNKNOWN ;
+: TT-MK-SR-OK ( CAD-KIND:run-id -- seal-result<CAD-KIND:run-id> )   SR-OK ;
+: TT-MK-SR-INC ( -- seal-result<CAD-KIND:run-id> )                  SR-INCOMPLETE ;
+
+: TT-IDR-ARM ( id-result<CAD-KIND:run-id> -- n )     \ 1 ok, 2 wrong-width, 3 unknown
+   MATCH id-result
+      ok          OF drop 1 ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-IDR-RAW ( id-result<CAD-KIND:run-id> -- n )     \ ok payload's registry index, else -1
+   MATCH id-result
+      ok          OF {: got:CAD-KIND:run-id :} got RUN-ID>RAW ENDOF
+      wrong-width OF -1 ENDOF
+      unknown     OF -1 ENDOF
+   ;MATCH ;
+
+: TT-SR-ARM ( seal-result<CAD-KIND:run-id> -- n )    \ 1 ok, 2 incomplete
+   MATCH seal-result
+      ok         OF drop 1 ENDOF
+      incomplete OF 2 ENDOF
+   ;MATCH ;
+
+: TT-SR-RAW ( seal-result<CAD-KIND:run-id> -- n )    \ ok payload's registry index, else -1
+   MATCH seal-result
+      ok         OF {: got:CAD-KIND:run-id :} got RUN-ID>RAW ENDOF
+      incomplete OF -1 ENDOF
+   ;MATCH ;
+
+\ TT-RUN-2ND interns a run whose registry index is at least one: it interns the default
+\ spec first so the registry cannot be empty, then interns a spec whose seed no other
+\ fixture uses. The first run interned in a process legitimately sits at index 0, which
+\ is also what a zeroed payload reads back as, so a payload comparison riding index 0
+\ would pass on a dropped payload. TT-RT-IDR-NZ / TT-RT-SR-NZ pin that index non-zero.
+4242 constant TT-SEED                           \ a seed no other run fixture uses
+: TT-RUN-2ND ( -- CAD-KIND:run-id )
+   SPEC-RESET BUILD-SPEC drop                   \ anchor: the run registry is not empty
+   SPEC-RESET TT-SEED SP-SEED ! BUILD-SPEC ;
+
+: TT-RT-IDR-ARM ( -- n )                        \ a constructed ok reaches the ok arm
+   TT-RUN-2ND TT-MK-IDR-OK TT-IDR-ARM ;
+: TT-RT-IDR-RAW ( -- n )                        \ 0 = the interned id came back unchanged
+   TT-RUN-2ND dup RUN-ID>RAW {: want:n :}
+   TT-MK-IDR-OK TT-IDR-RAW want = if 0 else 1 then ;
+: TT-RT-IDR-NZ ( -- bool )                      \ that index is never the 0 a zeroed payload reads as
+   TT-RUN-2ND RUN-ID>RAW 0 > ;
+: TT-RT-IDR-WW ( -- n )   TT-MK-IDR-WW TT-IDR-ARM ;
+: TT-RT-IDR-UNK ( -- n )  TT-MK-IDR-UNK TT-IDR-ARM ;
+: TT-WW-RAW ( -- n )      TT-MK-IDR-WW TT-IDR-RAW ;   \ a payloadless arm carries no index
+
+: TT-RT-SR-ARM ( -- n )                         \ a constructed seal ok reaches the ok arm
+   TT-RUN-2ND TT-MK-SR-OK TT-SR-ARM ;
+: TT-RT-SR-RAW ( -- n )                         \ 0 = the interned id came back unchanged
+   TT-RUN-2ND dup RUN-ID>RAW {: want:n :}
+   TT-MK-SR-OK TT-SR-RAW want = if 0 else 1 then ;
+: TT-RT-SR-NZ ( -- bool )                       \ that index is never the 0 a zeroed payload reads as
+   TT-RUN-2ND RUN-ID>RAW 0 > ;
+: TT-RT-SR-INC ( -- n )   TT-MK-SR-INC TT-SR-ARM ;
+: TT-INC-RAW ( -- n )     TT-MK-SR-INC TT-SR-RAW ;    \ a payloadless arm carries no index
+
 \ ---- ACCEPTANCE: deterministic next-batch identity ------------------------------
 : BATCH-REBUILD ( -- bool )        \ batch 0 stable across a rebuild (same interned run)
    SPEC-RESET BUILD-SPEC {: a:CAD-KIND:run-id :}
@@ -271,6 +380,55 @@ BATCH-REBUILD TTRUE
 BATCH-INDEX-DIFF TTRUE
 BATCH-RUN-DIFF TTRUE
 BATCH-ORDER TTRUE
+
+\ every variant of both result families dispatches to its own arm and carries its payload
+TT-RT-IDR-ARM 1 T=                              \ decode ok dispatches to its own arm
+TT-RT-IDR-RAW 0 T=                              \ and carries its payload through unchanged
+TT-RT-IDR-NZ TTRUE                              \ against a non-zero index, so a zeroed payload fails
+TT-RT-IDR-WW 2 T=                               \ wrong-width dispatches to its own arm
+TT-RT-IDR-UNK 3 T=                              \ unknown dispatches to its own arm
+TT-WW-RAW -1 T=                                 \ the no-payload arms of TT-IDR-RAW are live
+TT-RT-SR-ARM 1 T=                               \ seal ok dispatches to its own arm
+TT-RT-SR-RAW 0 T=                               \ and carries the interned run-id unchanged
+TT-RT-SR-NZ TTRUE                               \ against a non-zero index
+TT-RT-SR-INC 2 T=                               \ incomplete dispatches to its own arm
+TT-INC-RAW -1 T=                                \ the no-payload arm of TT-SR-RAW is live
+
+\ ---- the generated constructors: exact spelling + exact effect ------------------
+\ Both families are declared through the unified ENUM front end in full mode, so these
+\ pins are the migration's identity proof. The SPELLING is load-bearing: the checker
+\ answers 1 (uncheckable) for a name it cannot resolve, and YES demands -1, so a -1 means
+\ it resolved EXACTLY this constructor name; NO demands 0, which it can only reach after
+\ resolving the name and refusing the types. The NOWORD controls prove that split.
+s" TC-IDR-OK ( CAD-KIND:run-id -- id-result<CAD-KIND:run-id> ) IDR-OK" YES
+s" TC-IDR-WW ( -- id-result<CAD-KIND:run-id> ) IDR-WRONG-WIDTH" YES
+s" TC-IDR-UNK ( -- id-result<CAD-KIND:run-id> ) IDR-UNKNOWN" YES
+s" TC-GEN-OK ( CAD-KIND:run-id -- id-result<CAD-KIND:run-id> ) RUN-ID--RESULT:OK" YES
+s" TC-GEN-SPELL ( CAD-KIND:run-id -- id-result<CAD-KIND:run-id> ) RUN-ID--RESULTX:OK" NOWORD
+s" TC-SR-OK ( CAD-KIND:run-id -- seal-result<CAD-KIND:run-id> ) RUN-SEAL--RESULT:OK" YES
+s" TC-SR-INC ( -- seal-result<CAD-KIND:run-id> ) RUN-SEAL--RESULT:INCOMPLETE" YES
+s" TC-SR-SPELL ( CAD-KIND:run-id -- seal-result<CAD-KIND:run-id> ) RUN-SEAL--RESULTX:OK" NOWORD
+\ Forge negatives on each ok payload slot: a raw cell cannot fill it, the result is not a
+\ bare scalar, the payload is mandatory, and a foreign identity role cannot stand in.
+s" TC-IDR-RAW ( n -- id-result<CAD-KIND:run-id> ) RUN-ID--RESULT:OK" NO
+s" TC-IDR-BARE ( CAD-KIND:run-id -- n ) RUN-ID--RESULT:OK" NO
+s" TC-IDR-NONE ( -- id-result<CAD-KIND:run-id> ) RUN-ID--RESULT:OK" NO
+s" TC-IDR-FGN ( CAD-KIND:artifact-id -- id-result<CAD-KIND:run-id> ) RUN-ID--RESULT:OK" NO
+s" TC-SR-RAW ( n -- seal-result<CAD-KIND:run-id> ) RUN-SEAL--RESULT:OK" NO
+s" TC-SR-BARE ( CAD-KIND:run-id -- n ) RUN-SEAL--RESULT:OK" NO
+s" TC-SR-NONE ( -- seal-result<CAD-KIND:run-id> ) RUN-SEAL--RESULT:OK" NO
+s" TC-SR-FGN ( CAD-KIND:artifact-id -- seal-result<CAD-KIND:run-id> ) RUN-SEAL--RESULT:OK" NO
+\ The two run families are distinct: neither constructor builds the other's result.
+s" TC-X-SR-IDR ( CAD-KIND:run-id -- id-result<CAD-KIND:run-id> ) RUN-SEAL--RESULT:OK" NO
+s" TC-X-IDR-SR ( CAD-KIND:run-id -- seal-result<CAD-KIND:run-id> ) RUN-ID--RESULT:OK" NO
+\ Nominal identity against the same-shape twins: a positive control builds through each
+\ twin's own ok, then neither family unifies with its twin in either direction.
+s" TC-TWIN-IDR ( CAD-KIND:run-id -- RUN-TEST:idr-twin<CAD-KIND:run-id> ) RUN--TEST-IDR--TWIN:OK" YES
+s" TC-TWIN-IDR-X1 ( CAD-KIND:run-id -- RUN-TEST:idr-twin<CAD-KIND:run-id> ) RUN-ID--RESULT:OK" NO
+s" TC-TWIN-IDR-X2 ( CAD-KIND:run-id -- id-result<CAD-KIND:run-id> ) RUN--TEST-IDR--TWIN:OK" NO
+s" TC-TWIN-SR ( CAD-KIND:run-id -- RUN-TEST:sealr-twin<CAD-KIND:run-id> ) RUN--TEST-SEALR--TWIN:OK" YES
+s" TC-TWIN-SR-X1 ( CAD-KIND:run-id -- RUN-TEST:sealr-twin<CAD-KIND:run-id> ) RUN-SEAL--RESULT:OK" NO
+s" TC-TWIN-SR-X2 ( CAD-KIND:run-id -- seal-result<CAD-KIND:run-id> ) RUN--TEST-SEALR--TWIN:OK" NO
 
 T-REPORT
 
