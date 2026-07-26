@@ -2500,3 +2500,17 @@ fits.
   to a file and echo the command's own return code (`cmd >log 2>&1; echo $?`);
   a pass verdict requires both the true zero and the positive verdict lines
   from the log.
+- **`DERIVE eq` cannot ride on a STRUCTURE that carries an arity-0 TYPEFAMILY
+  proof field - the declaration fails outright ("bad structure declaration").**
+  The MODELPROV lane hit this building a self-contained identity value. The
+  working patterns are the MDLCFG split (keep the key value and the
+  proof-carrying record as separate structures) or a hand-written cell
+  comparison on the proof-carrying value. Worth remembering before designing
+  any new sealed identity record; the engine limit is real, not a syntax slip.
+- **A helper that consumes several values off the stack folds them in reverse
+  declared order - for a content-key preimage that silently reorders the
+  identity with no type error.** The MODELPROV fold helper written as bare
+  stack consumption produced rows in the wrong order and only the structural
+  test that decodes the real preimage rows caught it; a substring-presence
+  test would have passed. Bind locals in fold helpers, and prove fold order by
+  decoding the production preimage bytes, never by reading the source.
