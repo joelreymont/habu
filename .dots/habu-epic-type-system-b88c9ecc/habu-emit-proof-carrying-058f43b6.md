@@ -5,7 +5,7 @@ priority: 3
 issue-type: task
 created-at: "2026-07-13T11:44:22.408382+02:00"
 blocks:
-  - habu-differentially-test-arm64-7b6e4269
+  - habu-allocate-straight-line-bc4e0075
 ---
 
-Context: Model CAD V2 requires a smaller trusted core and evidence-gated promotion. Even with CFG checking, consumers currently trust the compiler run that selected physical registers and spills. Fix: emit a compact certificate bound to the exact source, typed IR, target, CFG, and code hash containing live ranges, physical assignments, spills and frame slots, call clobbers, preservation facts, SP proof, and verifier version. Add an independent checked verifier that accepts the certificate before image or kernel promotion and emits structured evidence; no compiler-internal mutable state is trusted by the verifier. Acceptance: valid native and kernel allocations verify; mutations to code, CFG, assignment, spill slot, call effect, hash, or certificate reject with structured diagnostics; certificate verification is deterministic and content-keyed; promotion requires the evidence row.
+Compiler-IR reconciliation: this dot owns the native register-allocation witness and independent validator required by design sections 7.9 and 10.2. Bind source/checker manifest, input A64IR, target, live ranges, assignments, spills/frame slots, call clobbers, SP facts, output, pass/schema versions, and payload digest. The producer and validator are separate packages; GPU witnesses remain with GPU stage owners. Acceptance: the Wave 2 allocation validates, while mutations to any binding, range, overlap, register, spill slot, call effect, SP fact, or digest reject before layout/encoding or promotion.
