@@ -608,6 +608,10 @@ SUITE effect-read-api
    test/effect-read-api-test.f
 ;SUITE
 
+SUITE checker-assert
+   test/checker-assert-test.f
+;SUITE
+
 SUITE prim-link
    test/prim-link-test.f
 ;SUITE

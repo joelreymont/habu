@@ -31,48 +31,10 @@ require maki/db/budget-dim.f
 \ constructor package its variants carry - exactly the (package, tail) pair that
 \ owns family identity - which also keeps the pins off the unrelated arity-0 `dim`
 \ cell family that shares a tail with BUDGET:dim.
+\ The readers live in REFLECT (test/checker-assert.f); this package holds only the
+\ identity this suite pins.
 package LEDGER-PINS
-private
-
-: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
-   fam TFAM-VAR-COUNT@ 0 <= if false exit then
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
-: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
-   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
-: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if i unloop exit then
-   loop -1 ;
-\ FAM-ID answers -1 for a family that is not registered and the registry readers
-\ take a live id, so every read refuses the sentinel first.
-: LIVE-VARS ( n -- n ) {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-VAR-COUNT@ ;
-: LIVE-VAR ( n n -- n ) {: fam:n k:n :}
-   fam LIVE-VARS k <= if -1 exit then  fam TFAM-VAR-START@ k + ;
-
 public
-
-: FAMS ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}    \ families answering to this identity
-   0
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if 1+ then
-   loop ;
-: VARS ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-VARS ;
-: WIDTH ( ptr u8 n ptr u8 n -- n )
-   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-WIDTH@ ;
-: ARM$ ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
-   ta tu pa pu FAM-ID k LIVE-VAR {: var:n :}
-   var 0 < if s" <missing>" exit then  var SUMV-NAME$ ;
-: ARM-FLDS ( ptr u8 n ptr u8 n n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}   \ named cells on arm k
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam k LIVE-VAR {: var:n :}
-   0
-   TYPE-FIELD:COUNT 0 ?do
-      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
-   loop ;
-: ARM-SLOT ( ptr u8 n ptr u8 n n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n na:ptr nu:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam  fam k LIVE-VAR  na nu TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:SLOT@ ;
 
 : BR$ ( -- ptr u8 n ptr u8 n )   s" budget-result" s" LEDGER-BUDGET--RESULT" ;
 
@@ -263,16 +225,16 @@ s" BR-M-SWAP ( LEDGER:budget-result -- n ) MATCH LEDGER:budget-result ok OF {: d
 \ the exhausted arm carries exactly one named cell `dim` at payload slot 0, and the
 \ ok arm carries none. The identity is (tail, constructor package), so these pins
 \ are about LEDGER's own family and nothing else.
-LEDGER-PINS:BR$ LEDGER-PINS:FAMS 1 T=
-LEDGER-PINS:BR$ LEDGER-PINS:VARS 2 T=
-LEDGER-PINS:BR$ LEDGER-PINS:WIDTH 2 T=          \ one payload cell plus one tag cell
-LEDGER-PINS:BR$ 0 LEDGER-PINS:ARM$ s" ok" T$=
-LEDGER-PINS:BR$ 1 LEDGER-PINS:ARM$ s" exhausted" T$=
-LEDGER-PINS:BR$ 0 LEDGER-PINS:ARM-FLDS 0 T=
-LEDGER-PINS:BR$ 1 LEDGER-PINS:ARM-FLDS 1 T=
-LEDGER-PINS:BR$ 1 s" dim" LEDGER-PINS:ARM-SLOT 0 T=
-LEDGER-PINS:BR$ 0 s" dim" LEDGER-PINS:ARM-SLOT -1 T=   \ the name is per-arm
-LEDGER-PINS:BR$ 1 s" budget" LEDGER-PINS:ARM-SLOT -1 T= \ an undeclared name has no slot
+LEDGER-PINS:BR$ REFLECT:FAMS 1 T=
+LEDGER-PINS:BR$ REFLECT:VARS 2 T=
+LEDGER-PINS:BR$ REFLECT:WIDTH 2 T=          \ one payload cell plus one tag cell
+LEDGER-PINS:BR$ 0 REFLECT:ARM$ s" ok" T$=
+LEDGER-PINS:BR$ 1 REFLECT:ARM$ s" exhausted" T$=
+LEDGER-PINS:BR$ 0 REFLECT:ARM-FLDS 0 T=
+LEDGER-PINS:BR$ 1 REFLECT:ARM-FLDS 1 T=
+LEDGER-PINS:BR$ 1 s" dim" REFLECT:ARM-SLOT 0 T=
+LEDGER-PINS:BR$ 0 s" dim" REFLECT:ARM-SLOT -1 T=   \ the name is per-arm
+LEDGER-PINS:BR$ 1 s" budget" REFLECT:ARM-SLOT -1 T= \ an undeclared name has no slot
 
 \ constructed directly through the production producer and matched straight back.
 \ The dimension under test is `retries` (ordinal 4) rather than `compute-time`,

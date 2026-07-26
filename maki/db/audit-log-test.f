@@ -36,48 +36,11 @@ require maki/db/evidence.f
 require maki/rev.f
 
 \ ---- declaration-shape reflection ----------------------------------------------
+\ The readers live in REFLECT (test/checker-assert.f); this package holds only the
+\ identity this suite pins - the family tail plus the constructor package its
+\ variants carry, which together name exactly one family.
 package AUDIT-PINS
-private
-
-: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
-   fam TFAM-VAR-COUNT@ 0 <= if false exit then
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
-: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
-   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
-: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if i unloop exit then
-   loop -1 ;
-\ FAM-ID answers -1 for a family that is not registered and the registry readers
-\ take a live id, so every read refuses the sentinel first.
-: LIVE-VARS ( n -- n ) {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-VAR-COUNT@ ;
-: LIVE-VAR ( n n -- n ) {: fam:n k:n :}
-   fam LIVE-VARS k <= if -1 exit then  fam TFAM-VAR-START@ k + ;
-
 public
-
-: FAMS ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}
-   0
-   TFAM-N@ 0 ?do
-      i ta tu pa pu FAM-HIT? if 1+ then
-   loop ;
-: VARS ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-VARS ;
-: WIDTH ( ptr u8 n ptr u8 n -- n )
-   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-WIDTH@ ;
-: ARM$ ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
-   ta tu pa pu FAM-ID k LIVE-VAR {: var:n :}
-   var 0 < if s" <missing>" exit then  var SUMV-NAME$ ;
-: ARM-FLDS ( ptr u8 n ptr u8 n n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam k LIVE-VAR {: var:n :}
-   0
-   TYPE-FIELD:COUNT 0 ?do
-      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
-   loop ;
-: ARM-SLOT ( ptr u8 n ptr u8 n n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n na:ptr nu:n :}
-   ta tu pa pu FAM-ID {: fam:n :}
-   fam  fam k LIVE-VAR  na nu TYPE-FIELD:FIND 0= if drop -1 exit then
-   TYPE-FIELD:SLOT@ ;
 
 : VR$ ( -- ptr u8 n ptr u8 n )   s" verify-result" s" AUDIT-VERIFY--RESULT" ;
 
@@ -394,25 +357,25 @@ s" VR-M-OVERBIND ( AUDIT:verify-result -- n ) MATCH AUDIT:verify-result ok OF {:
 \ one named cell `idx` at payload slot 0. Both cells share the name because both are
 \ the same thing - a record index - and this file's owner keeps ONE variable (V-IDX)
 \ for both; the rows are keyed (family, variant), so they stay independent.
-AUDIT-PINS:VR$ AUDIT-PINS:FAMS 1 T=
-AUDIT-PINS:VR$ AUDIT-PINS:VARS 5 T=
-AUDIT-PINS:VR$ AUDIT-PINS:WIDTH 2 T=            \ one payload cell plus one tag cell
-AUDIT-PINS:VR$ 0 AUDIT-PINS:ARM$ s" ok" T$=
-AUDIT-PINS:VR$ 1 AUDIT-PINS:ARM$ s" malformed" T$=
-AUDIT-PINS:VR$ 2 AUDIT-PINS:ARM$ s" broken-chain" T$=
-AUDIT-PINS:VR$ 3 AUDIT-PINS:ARM$ s" bad-head" T$=
-AUDIT-PINS:VR$ 4 AUDIT-PINS:ARM$ s" bad-nondeterministic" T$=
-AUDIT-PINS:VR$ 0 AUDIT-PINS:ARM-FLDS 0 T=
-AUDIT-PINS:VR$ 1 AUDIT-PINS:ARM-FLDS 0 T=
-AUDIT-PINS:VR$ 2 AUDIT-PINS:ARM-FLDS 1 T=
-AUDIT-PINS:VR$ 3 AUDIT-PINS:ARM-FLDS 0 T=
-AUDIT-PINS:VR$ 4 AUDIT-PINS:ARM-FLDS 1 T=
-AUDIT-PINS:VR$ 2 s" idx" AUDIT-PINS:ARM-SLOT 0 T=
-AUDIT-PINS:VR$ 4 s" idx" AUDIT-PINS:ARM-SLOT 0 T=
-AUDIT-PINS:VR$ 0 s" idx" AUDIT-PINS:ARM-SLOT -1 T=   \ the payloadless arms hold none
-AUDIT-PINS:VR$ 1 s" idx" AUDIT-PINS:ARM-SLOT -1 T=
-AUDIT-PINS:VR$ 3 s" idx" AUDIT-PINS:ARM-SLOT -1 T=
-AUDIT-PINS:VR$ 2 s" index" AUDIT-PINS:ARM-SLOT -1 T= \ an undeclared name has no slot
+AUDIT-PINS:VR$ REFLECT:FAMS 1 T=
+AUDIT-PINS:VR$ REFLECT:VARS 5 T=
+AUDIT-PINS:VR$ REFLECT:WIDTH 2 T=            \ one payload cell plus one tag cell
+AUDIT-PINS:VR$ 0 REFLECT:ARM$ s" ok" T$=
+AUDIT-PINS:VR$ 1 REFLECT:ARM$ s" malformed" T$=
+AUDIT-PINS:VR$ 2 REFLECT:ARM$ s" broken-chain" T$=
+AUDIT-PINS:VR$ 3 REFLECT:ARM$ s" bad-head" T$=
+AUDIT-PINS:VR$ 4 REFLECT:ARM$ s" bad-nondeterministic" T$=
+AUDIT-PINS:VR$ 0 REFLECT:ARM-FLDS 0 T=
+AUDIT-PINS:VR$ 1 REFLECT:ARM-FLDS 0 T=
+AUDIT-PINS:VR$ 2 REFLECT:ARM-FLDS 1 T=
+AUDIT-PINS:VR$ 3 REFLECT:ARM-FLDS 0 T=
+AUDIT-PINS:VR$ 4 REFLECT:ARM-FLDS 1 T=
+AUDIT-PINS:VR$ 2 s" idx" REFLECT:ARM-SLOT 0 T=
+AUDIT-PINS:VR$ 4 s" idx" REFLECT:ARM-SLOT 0 T=
+AUDIT-PINS:VR$ 0 s" idx" REFLECT:ARM-SLOT -1 T=   \ the payloadless arms hold none
+AUDIT-PINS:VR$ 1 s" idx" REFLECT:ARM-SLOT -1 T=
+AUDIT-PINS:VR$ 3 s" idx" REFLECT:ARM-SLOT -1 T=
+AUDIT-PINS:VR$ 2 s" index" REFLECT:ARM-SLOT -1 T= \ an undeclared name has no slot
 
 \ every arm constructs and dispatches to its OWN branch, and each carrying arm
 \ brings its index back unchanged. The two carrying arms are indistinguishable by

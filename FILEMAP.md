@@ -2297,8 +2297,15 @@ points stay listed.
 
 ## Tests And Benchmarks
 
-- `test/checker-assert.f` — shared quiet checker-candidate assertion helper for
-  negative checked-source tests.
+- `test/checker-assert.f` — shared test support for asserting what the checker and
+  the type registry recorded: the quiet checker-candidate assertion helper for
+  negative checked-source tests, plus package `REFLECT`, the declaration-shape
+  readers (family identity by tail plus constructor package, uniqueness count,
+  kind/arity/width/visibility, case name and order, field name to payload slot).
+- `test/checker-assert-test.f` — acceptance for `REFLECT` with hostile fixtures: two
+  public families sharing one tail must read back separately, two private families
+  sharing one tail must be reported as ambiguous, and a wrong constructor package,
+  unknown tail or out-of-range case index must answer the sentinel.
 - `test/decl-diag-capture.f` — shared declaration-diagnostic capture for the
   declaration suites (package `DECL-DIAG`): arms the prose or JSON leg through
   the same `DIAG-JSON!` / `DIAG-BUFFER!` pair `tools/check-core.f` uses, so a
