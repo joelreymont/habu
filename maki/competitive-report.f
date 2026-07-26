@@ -88,17 +88,38 @@ ENUM absence DERIVE eq
 ;ENUM
 
 \ ---- unit-typed throughput readings: present value or named absence ----------
-SUMTYPE gbps 0
-   VARIANT gbps-at n ;VARIANT
-   VARIANT gbps-na absence ;VARIANT
-;SUMTYPE
-SUMTYPE gflops 0
-   VARIANT gflops-at n ;VARIANT
-   VARIANT gflops-na absence ;VARIANT
-;SUMTYPE
+\ Both are declared through the unified ENUM front end in full mode (the arity token
+\ after the name selects it), so each arm's payload is a named FIELD rather than a
+\ positional type token. The present arm carries `milli`, the reading in milli-units
+\ (x1000) that RATE-CK bounds against BENCH-RATE-MAX and FMT:SB-INT renders; the
+\ absent arm carries `reason`, the named absence reason the row renders as
+\ na:<reason>. These families must stay declared BEFORE the two comparison records
+\ below, which use them as field types. The generated BENCH-GBPS:GBPS-AT / :GBPS-NA
+\ and BENCH-GFLOPS:GFLOPS-AT / :GFLOPS-NA constructors and every MATCH site are
+\ unchanged: spelling and payload binding order come from the package, the family
+\ tail and the declaration order, not from the mode.
+ENUM gbps 0
+   VARIANT gbps-at FIELD milli n ;VARIANT
+   VARIANT gbps-na FIELD reason absence ;VARIANT
+;ENUM
+ENUM gflops 0
+   VARIANT gflops-at FIELD milli n ;VARIANT
+   VARIANT gflops-na FIELD reason absence ;VARIANT
+;ENUM
 
 \ ---- the two per-unit competitive comparisons -------------------------------
-PRODUCT comparison-gbps 0
+\ Declared through the unified STRUCTURE front end; the header clause and every
+\ FIELD line are unchanged, so BENCH-COMPARISON--GBPS:MAKE / :UNMAKE and their
+\ GFLOP/s counterparts keep their exact spelling, effect and field order, and
+\ COMPARE-*, *-COMPARABLE? and RENDER-* below plus tools/eval-triton.f and
+\ maki/competitive-store.f are untouched. The four leading id fields are four
+\ DISTINCT nominal families, so the checker refuses an exchange among them, but
+\ `spol` and `bpol` are both NPOL:dom and `subj` and `base` are both the same
+\ reading family - two same-typed pairs an exchange could pass silently through, so
+\ maki/competitive-report-test.f pins every field NAME to its payload SLOT through
+\ the type registry. Note the slots are not 0..8: `subj` is a two-cell reading, so
+\ it occupies slots 7 and 8 and `base` begins at slot 9.
+STRUCTURE comparison-gbps 0
    FIELD wl workload
    FIELD sh shape
    FIELD pr protocol
@@ -108,8 +129,8 @@ PRODUCT comparison-gbps 0
    FIELD bpol NPOL:dom
    FIELD subj gbps
    FIELD base gbps
-;PRODUCT
-PRODUCT comparison-gflops 0
+;STRUCTURE
+STRUCTURE comparison-gflops 0
    FIELD wl workload
    FIELD sh shape
    FIELD pr protocol
@@ -119,7 +140,7 @@ PRODUCT comparison-gflops 0
    FIELD bpol NPOL:dom
    FIELD subj gflops
    FIELD base gflops
-;PRODUCT
+;STRUCTURE
 
 private
 
