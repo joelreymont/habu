@@ -1781,10 +1781,15 @@ points stay listed.
   The transaction's second half lives here too (leaf S6b3, redesign 2). It is
   split so that everything that can fail is on one side of a value: `CHECK
   ( GPT2TX:prep MDLCFG:mcfg -- check-result )` is the recoverable half — payload
-  ENUM `check-result` = matched(checked-prep) | foreign(prep, code) — and it is
+  ENUM `check-result` = matched(checked-prep) | refused(prep, code) — and it is
   the sole place the prep's captured cfgkey is compared against the consuming
-  configuration's, refusing a stranger with `E-GX-FOREIGN` BEFORE any resource
-  moves, so the refused prep comes back whole and still `ABORT`able. Two
+  configuration's, refusing a prep built against another configuration with
+  `E-GX-FOREIGN` BEFORE any resource moves, so the refused prep comes back whole
+  and still `ABORT`able — and demonstrably still bindable, since the suite spends
+  a refused prep by re-checking it under its own configuration and committing it.
+  The arm is named `refused` rather than `foreign` because it carries two
+  refusals: the foreign identity, and the surfaced `E-MEM-MAP` when the mapping
+  could not be moved. Two
   configurations of one geometry that differ only in a field no tensor reflects
   bind the same census, so the captured identity is the only thing that can tell
   them apart. `CHECK` then performs the transaction's ONE reachable failure —

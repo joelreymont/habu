@@ -42,7 +42,7 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-65 constant SEED#
+68 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -248,6 +248,18 @@ private
       \ (GPT2TX:ABORT-CHECKED and GPT2TX:COMMIT-MAPPED). Retires with the linear-scope
       \ combinator, habu-checker-linear-scope-6218899c.
       64 of s" N>MAPPING" endof            \ the sole inverse of MAPPING>N
+      \ The three private-mint PROOF tokens of the inference intake path. Each is the
+      \ sole constructor of an arity-0 nominal family that rides inside a validated
+      \ record - MDLCFG:mcfg, GPT2BIND:layerid, GPT2TX:gpt2-model - and each is what
+      \ makes that record unforgeable from nothing outside its package. They are seeded
+      \ so the confinement is name-and-path enforced rather than resting on the family
+      \ being private: a copy of any of them appearing in another file is a finding.
+      \ Note what they do NOT close: the generated UNMAKE is public, so a REAL record
+      \ can be destructured and rebuilt with forged scalars and the original proof.
+      \ That is the sealed-destructure capability, habu-checker-sealed-destructure-d967fc03.
+      65 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
+      66 of s" MINT-GB-PROOF" endof        \ seals an authenticated GPT2BIND:layerid
+      67 of s" MINT-MDL-PROOF" endof       \ seals a bound GPT2TX:gpt2-model
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -318,6 +330,9 @@ private
       62 of s" maki/infer/weight-store.f" endof
       63 of s" maki/infer/weight-store.f" endof
       64 of s" maki/infer/gpt2-bind.f" endof
+      65 of s" maki/infer/model-config.f" endof
+      66 of s" maki/infer/gpt2-roles.f" endof
+      67 of s" maki/infer/gpt2-bind.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

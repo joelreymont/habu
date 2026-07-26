@@ -1,14 +1,23 @@
-\ gpt2-bind.f - the GPT-2 bind transaction's PREPARE phase and the prepared-bind
-\ capability (package GPT2TX; inference design rev-4 correction 3 leaf S6b1,
-\ blackboard 20260724-191041.846, with the rev-5 amendments and the 2026-07-26
-\ redesign recorded in .dots/habu-bind-txn-prepare-eaa50b5b.md).
+\ gpt2-bind.f - the whole GPT-2 bind transaction: the PREPARE phase and the
+\ prepared-bind capability (leaf S6b1), then the compare-and-commit half that turns
+\ a prep into a bound model (leaf S6b3). Package GPT2TX; inference design rev-4
+\ correction 3, blackboard 20260724-191041.846, with the rev-5 amendments and the
+\ 2026-07-26 redesigns recorded in .dots/habu-bind-txn-prepare-eaa50b5b.md and
+\ .dots/habu-bind-txn-commit-ccf652d2.md.
 \
 \ CONCERN: decide, once and completely, whether a published tensor census can be
 \ bound as the GPT-2 model a validated configuration describes - and if it can,
-\ hand back a single linear value holding everything the commit needs. Binding is
-\ a transaction in two halves. This file is the first half: it either REFUSES and
-\ gives the census back untouched, or it produces a `prep`. The second half (the
-\ two commit leaves) turns a prep into a model and cannot refuse.
+\ hand back a single linear value holding everything the commit needs, then turn
+\ that value into a model that owns the checkpoint's residency.
+\
+\ THE TRANSACTION IN THREE STEPS, AND WHERE EACH CAN REFUSE. PREPARE either REFUSES
+\ and gives the census back untouched, or it produces a `prep`. CHECK either REFUSES
+\ and gives the PREP back untouched - it is the sole place the captured identity is
+\ compared, and it also performs the one resource move that can fail - or it produces
+\ a `checked-prep`. COMMIT-MAPPED cannot refuse at all: by the time a checked prep
+\ exists, every question with a wrong answer has been asked and every step that could
+\ fail has run. Two of the three halves refuse; the third is total, and the type
+\ system is what keeps them in that order.
 \
 \ WHY ALL THE VALIDATION IS HERE. A commit allocates an arena or takes a file
 \ mapping away from its census; both are steps that must not discover a problem
@@ -169,11 +178,13 @@ ENUM prep-result 0
 DEFLINEAR GPT2TX:checked-prep
 
 \ ---- what CHECK answers ----------------------------------------------------------
-\ matched carries the whole transaction forward; foreign gives the prep back beside
-\ the code that refused it, still live and still ABORTable.
+\ matched carries the whole transaction forward; refused gives the prep back beside
+\ the code that turned it down, still live and still ABORTable. The arm is named for
+\ what it DOES, not for one of its causes: it carries the foreign-identity refusal and
+\ the surfaced memory refusal alike (see WHAT THE REFUSED ARM CARRIES, below).
 ENUM check-result 0
    VARIANT matched FIELD c GPT2TX:checked-prep ;VARIANT
-   VARIANT foreign FIELD p GPT2TX:prep FIELD code n ;VARIANT
+   VARIANT refused FIELD p GPT2TX:prep FIELD code n ;VARIANT
 ;ENUM
 
 \ ---- the bound model -------------------------------------------------------------
@@ -192,10 +203,28 @@ TYPEFAMILY mdl-proof 0
 \ resident field is linear, the checker refuses to duplicate or discard a model, which
 \ is what makes the residency impossible to leak or double-free. It also means there
 \ is NO non-consuming read of a model: `dup` is a reject, so every field read goes
-\ through UNMAKE and rebuilds the record (see MODEL-NL / MODEL-KEY). The generated
-\ MAKE/UNMAKE are for this package's own use - a holder of a real model can UNMAKE and
-\ re-MAKE it with the same proof, exactly the caveat MDLCFG:mcfg documents, and closing
-\ it needs the sealed-destructure capability.
+\ through UNMAKE and rebuilds the record (see MODEL-NL / MODEL-KEY).
+\
+\ EXACTLY WHAT THE PROOF GUARANTEES, AND WHAT IT DOES NOT. The proof makes a model
+\ unforgeable from NOTHING: `mdl-proof` has no constructor outside this package, so no
+\ foreign file can assemble a model out of a residency and three scalars. That is the
+\ whole of the guarantee. It does NOT make a genuine model tamper-proof, because the
+\ generated UNMAKE is public, and three things follow that a reader should not have to
+\ discover for themselves:
+\   - the RESIDENCY CAN BE EXTRACTED. A holder can UNMAKE a real model and keep the
+\     WSTORE:resident, then dispose it through WSTORE:RESIDENT-DISPOSE directly -
+\     behind the model's back, bypassing MODEL-DISPOSE entirely;
+\   - THE SCALARS CAN BE FORGED. UNMAKE also yields the proof, so the record can be
+\     rebuilt around a DIFFERENT depth or a different captured cfgkey while carrying
+\     the original proof. A model claiming twelve layers is therefore evidence that
+\     this package built it, never that twelve is the depth PREPARE validated;
+\   - so the proof answers "did GPT2TX mint this?" and never "has this been altered
+\     since?".
+\ It is the same caveat MDLCFG:mcfg and maki/typestate.f ART:built carry, and closing
+\ it needs the sealed-destructure capability, habu-checker-sealed-destructure-d967fc03.
+\ All three holes are pinned as ACCEPT candidates from OUTSIDE this package in
+\ gpt2-bind-test.f's GPT2TX-DR section, so when that capability lands those pins fail
+\ and this paragraph retires with them.
 STRUCTURE gpt2-model 0
    FIELD res WSTORE:resident
    FIELD nl n
@@ -651,6 +680,15 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
    WSTORE:TABLE-DISPOSE RES-CODE {: rc:n :}
    rc 0 <> if rc else cause then ;
 
+\ Folds the outcomes of two releases performed in sequence into the one code a caller
+\ will see, the same precedence rule TBL-BACK states: the LATER failure wins, because
+\ it is the more proximate fault, and reporting only the earlier one would hide it.
+\ Neither is dropped on the floor - if the first release failed and the second
+\ succeeded, the first is what surfaces. The alternative, reporting the first and
+\ discarding the second, is how a real leak goes unnoticed.
+: FOLD-CODE ( n n -- n ) {: first:n later:n :}
+   later 0 <> if later else first then ;
+
 \ ---- the transaction's one reachable failure, guarded ------------------------------
 \ Taking the file mapping out of the census is the ONLY step in the whole bind that
 \ can fail for a reason a caller cannot control: SAFET:DETACH-MAPPING allocates a
@@ -721,20 +759,23 @@ public
 \ that argument beyond any caller's catch. What survives to COMMIT-MAPPED therefore has
 \ nothing left to fail.
 \
-\ THE IDENTITY COMPARE IS FIRST, AND BEFORE ANY RESOURCE MOVES. A foreign prep is
+\ THE IDENTITY COMPARE IS FIRST, AND BEFORE ANY RESOURCE MOVES. A prep built against
+\ another configuration is
 \ refused with the prep untouched: no mapping detached, no census released, no cell
 \ rewritten, every counter where PREPARE left it. That ordering is the contract - the
 \ compare cannot be after the detach, because the detach is terminal and a refusal then
 \ would have nothing to give back.
 \
-\ WHY THE FOREIGN ARM CARRIES A MEMORY CODE TOO. The arm's name is about the common
-\ case; its code says what actually refused, exactly as PREPARE's rejected arm surfaces
-\ whichever code fired underneath. E-GX-FOREIGN for a stranger, or the surfaced
-\ E-MEM-MAP when the mapping could not be moved.
+\ WHAT THE REFUSED ARM CARRIES. Two different refusals, and its code says which:
+\ E-GX-FOREIGN when the prep was built against another configuration, or the surfaced
+\ E-MEM-MAP when the mapping could not be moved out of the census. That is why the arm
+\ is not called `foreign` - the name would have described one cause and lied about the
+\ other - and it is the same way PREPARE's rejected arm already surfaces whichever code
+\ fired underneath it.
 : CHECK ( GPT2TX:prep MDLCFG:mcfg -- check-result )
    PREP-FOREIGN? if
       drop
-      E-GX-FOREIGN GPT2TX-CHECK--RESULT:FOREIGN exit
+      E-GX-FOREIGN GPT2TX-CHECK--RESULT:REFUSED exit
    then
    drop                                         \ the configuration has answered
    TAKE-PREP {: blk:ptr :}
@@ -742,7 +783,7 @@ public
    [: DETACH-STEP ;] catch {: code:n :}
    code 0 <> if
       blk BLK>BYTES MINT-PREP                   \ nothing moved: the prep is whole again
-      code GPT2TX-CHECK--RESULT:FOREIGN exit
+      code GPT2TX-CHECK--RESULT:REFUSED exit
    then
    PEND-CEN @ N>CENSUS SAFET:RELEASE            \ the census has given up its image
    PEND-MAP @ blk P-MAP cells + !
@@ -751,15 +792,22 @@ public
 
 \ ---- total disposal of a compared prep ---------------------------------------------
 \ The exit for a checked prep a holder decided not to commit. Its census is already
-\ gone, so what it owns is the mapping and the table; both are given back before
-\ anything is reported, the ABORT discipline.
+\ gone, so what it owns is the mapping and the table; both are given back, and the
+\ block after them, BEFORE anything is reported - the ABORT discipline, so a failing
+\ release cannot strand the owners the word had not reached yet.
+\
+\ The two release outcomes are folded into one reported code rather than checked in
+\ sequence. Checking them in sequence looks equivalent and is not: it would report the
+\ table's code and silently discard the mapping's, so a failed munmap of the
+\ checkpoint - the one that leaves kernel state behind - could vanish behind a package
+\ free that also failed. FOLD-CODE states which one wins and why.
 : ABORT-CHECKED ( GPT2TX:checked-prep -- )
    TAKE-CHECKED {: blk:ptr :}
    blk P-TBL cells + @ N>TABLE WSTORE:TABLE-DISPOSE RES-CODE {: tc:n :}
    blk P-MAP cells + @ N>MAPPING SAFET:UNMAP-MAPPING RES-CODE {: mc:n :}
    blk FREE-BLOCK
-   tc 0 <> if tc throw then
-   mc 0 <> if mc throw then ;
+   tc mc FOLD-CODE {: code:n :}
+   code 0 <> if code throw then ;
 
 \ ---- the transaction's second half, part two: the commit --------------------------
 \ TOTAL. There is no catch in this word and no step in it that can fail for any reason

@@ -1,4 +1,6 @@
-\ gpt2-bind-test.f - GPT2TX bind-transaction PREPARE acceptance (rev-4 S6b1).
+\ gpt2-bind-test.f - GPT2TX bind-transaction acceptance: the PREPARE half (rev-4
+\ S6b1) and the compare-and-commit half (S6b3, redesign 2) - PREPARE, CHECK,
+\ COMMIT-MAPPED, and the exits for all three of the transaction's owners.
 \
 \ WHY THIS SUITE REOPENS package GPT2TX. What the leaf contract asks the fixtures
 \ to prove is which rows the transaction validated, and no public word hands a row,
@@ -344,6 +346,19 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 
 : TX-BYTES= ( ptr u8 n ptr u8 n -- )
    STR= TTRUE ;
+
+\ The ok payload of a release outcome. Reading it is the difference between "the exit
+\ reported success" and "the exit gave back the bytes it was holding".
+: TX-RES-VAL ( result<n,n> -- n )
+   MATCH result
+      ok  OF ENDOF
+      err OF
+         s" a release reported err, code" T-LABEL
+         . cr
+         0 0= 0= TTRUE
+         -1
+      ENDOF
+   ;MATCH ;
 
 : TX-REJECTED ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -737,7 +752,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
                0 0= 0= TTRUE
                ABORT-CHECKED
             ENDOF
-            foreign OF
+            refused OF
                {: code:n :}
                code E-GX-FOREIGN T=
                s" and the refused prep is whole: still held, still ABORTable" T-LABEL
@@ -771,7 +786,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
                s" and a compared prep that declines to commit disposes totally" T-LABEL
                ABORT-CHECKED
             ENDOF
-            foreign OF
+            refused OF
                {: code:n :}
                s" a prep was called foreign to its own configuration, code" T-LABEL
                code . cr
@@ -809,7 +824,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
                s" and the model's exit gives every owner back" T-LABEL
                MODEL-DISPOSE RES-CODE 0 T=
             ENDOF
-            foreign OF
+            refused OF
                {: code:n :}
                s" commit leg was refused, code" T-LABEL
                code . cr
@@ -820,6 +835,61 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
       ENDOF
       rejected OF
          s" commit leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH
+   TX-NO-LEAK ;
+
+\ ---- a refusal leaves the prep genuinely usable, not merely alive ----------------
+\ The counters in T-CHECK-FOREIGN show a refused prep is still HELD; they cannot show
+\ it is still WORKABLE. This leg spends it: the same prep that was just refused is
+\ handed to CHECK again under the configuration that built it, and it commits all the
+\ way to a model. That is the property a binder actually relies on when it tries a
+\ second configuration on a prep, and nothing weaker demonstrates it - a prep whose
+\ block had been half-consumed on the refusal path would pass every counter assertion
+\ and fail right here.
+: T-REFUSE-THEN-BIND ( -- )
+   s" a refused prep still binds under its own configuration" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-CFG-A TX-CFG-KEY!
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         TX-CFG-B CHECK                          \ refused: the twin's identity
+         MATCH GPT2TX:check-result
+            matched OF
+               s" the twin was accepted, so the refusal never happened" T-LABEL
+               0 0= 0= TTRUE
+               ABORT-CHECKED
+            ENDOF
+            refused OF
+               {: code:n :}
+               code E-GX-FOREIGN T=
+               TX-CFG-A CHECK                    \ the very same prep, its own identity
+               MATCH GPT2TX:check-result
+                  matched OF
+                     COMMIT-MAPPED
+                     s" and the model it yields is complete" T-LABEL
+                     MODEL-NL TX-NL T=
+                     TX-STASH-MKEY
+                     TX-KEY-IS-CFG
+                     TX-MODEL-HELD
+                     MODEL-DISPOSE RES-CODE 0 T=
+                  ENDOF
+                  refused OF
+                     {: c2:n :}
+                     s" the refusal damaged the prep: its own configuration was refused, code" T-LABEL
+                     c2 . cr
+                     0 0= 0= TTRUE
+                     ABORT
+                  ENDOF
+               ;MATCH
+            ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" refuse-then-bind leg could not prepare" T-LABEL
          . cr SAFET:RELEASE
          0 0= 0= TTRUE
       ENDOF
@@ -876,7 +946,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    s" GX-BAD-COMMIT-THEN-ABORT ( GPT2TX:checked-prep -- GPT2TX:gpt2-model ) GPT2TX:COMMIT-MAPPED GPT2TX:ABORT-CHECKED" TX-REJECTED
    s" check-result payloads cannot cross roles" T-LABEL
    s" GX-BAD-MATCHED-PREP ( GPT2TX:prep -- GPT2TX:check-result ) GPT2TX-CHECK--RESULT:MATCHED" TX-REJECTED
-   s" GX-BAD-FOREIGN-CHK ( GPT2TX:checked-prep n -- GPT2TX:check-result ) GPT2TX-CHECK--RESULT:FOREIGN" TX-REJECTED
+   s" GX-BAD-REFUSED-CHK ( GPT2TX:checked-prep n -- GPT2TX:check-result ) GPT2TX-CHECK--RESULT:REFUSED" TX-REJECTED
    s" GX-BAD-CHECK-DROPPED ( GPT2TX:prep MDLCFG:mcfg -- ) GPT2TX:CHECK" TX-REJECTED
    \ A model owns a linear residency, so the RECORD is linear by containment: the
    \ checker refuses to copy or discard it, which is what makes the checkpoint mapping
@@ -942,19 +1012,38 @@ variable TX-MOFF
 \ linear-scope capability and belongs to the forward-pass leaf. The remaining link -
 \ that WITH-SLOT over a mapped store returns the bytes at base+offset - is already
 \ pinned by the byte-equality legs in weight-store-test.f over both arms.
-: TX-REAL-BYTES ( -- )
+\ One tensor, named by its real HF key: copy its first bytes out of the census, note
+\ the mapping-frame offset the table will carry, then read the mapping at exactly that
+\ offset and require the same bytes. Parameterised by key so the leg can walk several
+\ tensors of different shapes and file positions rather than trusting one.
+: TX-PROBE-ONE ( ptr u8 n -- ) {: ka:ptr ku:n :}
    TX-REAL-PATH SAFET:LOAD
-   s" h.0.ln_1.weight" SAFET:FIND TX-OPT-VAL {: id:n :}
+   ka ku SAFET:FIND TX-OPT-VAL {: id:n :}
    id TX-PBA TX-PB-LEN SAFET:COPY-DATA? TX-OPT-VAL TX-PB-LEN T=
    id SAFET:MAP-OFFSET? TX-OPT-VAL TX-MOFF !
    SAFET:DETACH-MAPPING                         \ ( census mapping )
    swap SAFET:RELEASE                           \ ( mapping )
    [: TX-MAP-BODY ;] SAFET:WITH-MAPPING TX-OPT-VAL drop
    SAFET:UNMAP-MAPPING RES-CODE 0 T=
-   s" one real weight span is byte-identical at its computed mapping offset" T-LABEL
    TX-PBA TX-PB-LEN TX-PBB TX-PB-LEN TX-BYTES= ;
 
+\ Three tensors, chosen so a single lucky offset cannot pass the leg: a rank-1 vector
+\ near the start of the data section, the rank-2 Conv1D matrix whose [in,out]
+\ orientation the forward pass depends on, and a tensor in the LAST block, whose data
+\ sits hundreds of megabytes into the file where a 32-bit offset truncation or a
+\ header-length slip would show up and a small-offset probe would not.
+: TX-REAL-BYTES ( -- )
+   s" a rank-1 vector is byte-identical at its computed mapping offset" T-LABEL
+   s" h.0.ln_1.weight" TX-PROBE-ONE
+   s" so is the Conv1D matrix the forward pass reads untransposed" T-LABEL
+   s" h.0.attn.c_attn.weight" TX-PROBE-ONE
+   s" and so is a tensor far into the file, where a truncated offset would show" T-LABEL
+   s" h.11.mlp.c_proj.weight" TX-PROBE-ONE ;
+
+548105171 constant TX-REAL-BYTES-N               \ the pinned checkpoint's exact file size
+
 : TX-REAL-COMMIT ( -- )
+   TX-CFG-124M TX-CFG-KEY!                      \ the real configuration's own identity
    TX-REAL-PATH SAFET:LOAD TX-CFG-124M PREPARE
    MATCH GPT2TX:prep-result
       prepared OF
@@ -967,10 +1056,17 @@ variable TX-MOFF
                s" the real checkpoint commits to a mapped model of 12 layers" T-LABEL
                MODEL-NL 12 T=
                TX-MODEL-HELD
-               s" and the whole 548 MB residency goes back through the model's exit" T-LABEL
-               MODEL-DISPOSE RES-CODE 0 T=
+               s" bound to the real configuration's identity, cell for cell" T-LABEL
+               TX-STASH-MKEY
+               TX-KEY-IS-CFG
+               \ ok is not a token success flag: it carries the byte count WSTORE gave
+               \ back, which for a mapped model is the whole checkpoint mapping. Pinning
+               \ the exact file size is what proves the model was serving the entire
+               \ file rather than some truncated span of it.
+               s" and its exit gives back the whole checkpoint mapping, to the byte" T-LABEL
+               MODEL-DISPOSE TX-RES-VAL TX-REAL-BYTES-N T=
             ENDOF
-            foreign OF
+            refused OF
                {: code:n :}
                s" the real checkpoint was refused as foreign, code" T-LABEL
                code . cr
@@ -1013,12 +1109,68 @@ variable TX-MOFF
    T-CHECK-FOREIGN    TX-NO-LEAK
    T-CHECK-MATCH      TX-NO-LEAK
    T-COMMIT           TX-NO-LEAK
+   T-REFUSE-THEN-BIND TX-NO-LEAK
    T-REAL
    s" the whole suite released every owner it took" T-LABEL
    TX-NO-LEAK
-   TX-CLEANUP
-   T-REPORT ;
+   TX-CLEANUP ;
 
 RUN
+
+;package
+
+\ ---------------------------------------------------------------------------------
+\ package GPT2TX-DR - the destruction-review pins, from OUTSIDE the package.
+\
+\ WHY THIS SECTION DOES NOT REOPEN GPT2TX. Everything above runs inside the package,
+\ because the leaf contract asks the fixtures to read validated rows that no public
+\ word hands out. That is also why the legs above cannot speak for what a FOREIGN file
+\ can do: inside the package the private words resolve, so an "is this reachable?"
+\ question asked from in there answers about the wrong vantage point. This section is
+\ the outside vantage point - a package that has never opened GPT2TX - and it pins the
+\ gap the model's private-mint proof does NOT close, the MODELPROV-TEST T-KNOWN-GAP
+\ convention.
+\
+\ WHAT THE PROOF DOES AND DOES NOT BUY. `mdl-proof` makes a model unforgeable from
+\ nothing: no outside file can conjure the proof, so no outside file can MAKE a model
+\ out of thin air. It does not make a REAL model tamper-proof, because the generated
+\ UNMAKE is public: a holder of a genuine model can take the residency straight out of
+\ it, dispose it behind the model's back, or rebuild the record with a forged depth and
+\ the original proof. The three pins below are written as ACCEPT deliberately - they
+\ record what compiles TODAY. When the sealed-destructure capability
+\ (habu-checker-sealed-destructure-d967fc03) lands, these three legs FAIL, and that
+\ failure is the signal to delete them and retire the caveat in gpt2-bind.f's header.
+\ The fourth pin is the control that keeps the other three honest: the package's own
+\ readers stay unreachable from here, so these are gaps in the GENERATED surface, not
+\ an accident of the suite's vantage point.
+\ ---------------------------------------------------------------------------------
+package GPT2TX-DR
+
+: ACCEPTED ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! -1 T= ;
+
+: UNRESOLVED ( ptr u8 n -- )
+   CHECK-QUIET-CANDIDATE! 1 T= ;
+
+: T-KNOWN-GAP ( -- )
+   s" KNOWN GAP: the generated UNMAKE extracts a real model's residency TODAY" T-LABEL
+   s" DRX-UNMAKE ( GPT2TX:gpt2-model -- WSTORE:resident n MDLCFG:cfgkey GPT2TX:mdl-proof ) GPT2TX-GPT2--MODEL:UNMAKE"
+      ACCEPTED
+   s" KNOWN GAP: so the residency can be disposed behind the model's back" T-LABEL
+   s" DRX-STEAL ( GPT2TX:gpt2-model -- result<n,n> ) GPT2TX-GPT2--MODEL:UNMAKE drop drop drop WSTORE:RESIDENT-DISPOSE"
+      ACCEPTED
+   s" KNOWN GAP: and a real model can be rebuilt with a forged depth" T-LABEL
+   s" DRX-FORGE-NL ( GPT2TX:gpt2-model -- GPT2TX:gpt2-model ) GPT2TX-GPT2--MODEL:UNMAKE >r >r drop 99 r> r> GPT2TX-GPT2--MODEL:MAKE"
+      ACCEPTED
+   s" the proof still refuses a model built from nothing, which is what it is for" T-LABEL
+   s" DRX-FORGE-WHOLE ( WSTORE:resident n MDLCFG:cfgkey n -- GPT2TX:gpt2-model ) GPT2TX-GPT2--MODEL:MAKE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" CONTROL: the package's own readers are unreachable from outside it, so the" T-LABEL
+   s" three gaps above are in the GENERATED surface, not in this suite's vantage" T-LABEL
+   s" DRX-MODEL-NL ( GPT2TX:gpt2-model -- GPT2TX:gpt2-model n ) GPT2TX:MODEL-NL" UNRESOLVED
+   s" DRX-MINT-PROOF ( -- GPT2TX:mdl-proof ) GPT2TX:MINT-MDL-PROOF" UNRESOLVED ;
+
+T-KNOWN-GAP
+T-REPORT
 
 ;package
