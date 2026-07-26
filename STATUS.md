@@ -1,47 +1,48 @@
 # habu — Status
 
 Last verified: 2026-07-26
-Merged state: the type-families campaign (TFAM 9/10/12/14/15 engine — pass-2 width
-lowering, construct/MATCH lowering, record staging) merged into fable (Model CAD:
-subsystem packages, EVAL/GPU packages, 76-suite maki manifest, the set-check
-checker-xt validation, BCHECKFETCH, and undefined-word EVAL recovery).
-Gate: passing; current tree is under active test-suite architecture work. Last
-measured persistent content-key hot run after removing top snapshot launchers,
-splitting AOT closure diagnostics from the maker path, collapsing the remaining
-semantic diagnostic/JIT helper launches, running tail/lint groups through
-worker-local fork pools, fixing post-build candidate scheduling, and moving PTY
-coverage to the post-candidate runtime slice is 16.702s
-internal / 19.00s shell-wall on 2026-07-01
-UTC on macOS/aarch64 with the `macos-arm64-10x2` profile, manifest-hashed small
-`hb-under-test`, no top test-suite snapshot, no checker/tool snapshot launchers,
-and an AOT artifact cache hit for this source revision. A scratch cold-cache
-fill run with one real candidate build, one candidate-cache install, one
-candidate validation, and one real AOT maker build measured 39.336s internal /
-41.64s shell-wall under the scratch-cache budget.
-The native gate uses
-a 10-way macOS checked
-DAG pool, 2-way nested stdlib pool, split stdlib lint slices
-(tools/manifest/artifacts/libs), split resident tool-lint semantic groups,
-direct in-process diagnostic JSON and AOT report assertions, batched dictionary
-checker certifications/rejections, a direct manifest phase, in-process
-check-tool semantic fixtures, batched engine fixture source-list checks,
-attributed pool outcomes, a default content-keyed gate cache, and auto-detected
-host-class timing profiles. The resident controller loads only scheduler/common
-support first, then loads the common stdlib tool setup once as suite setup and
-forks phase-owned resident workers. Tool/lint/tail semantic slices run
-in-process with live lint/test words called directly and CLI wrappers reserved
-for standalone entry coverage. Discovered candidate cache misses automatically
-switch the run to the
-host profile's cold budget; explicit `--cold-cache` still uses a private per-run
-cache root. Host timing policy is exposed as script args:
-`--perf-profile`, `--pool-slots`, `--nested-pool-slots`, `--budget-ms`,
-`--wall-budget-ms`, and `--cold-cache`.
-Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
-`helper-spawn=25`, `spans=235`, `candidate-hit=1`, `candidate-validate=1`,
-`slowest-test=native checker diagnostics group` at 11.891s; engine
-post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
-tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
-run.
+Verification context: the performance-gate repair landing, DGX Spark linux-arm64.
+
+## What is running and what is next
+
+The active goal is serving large models on DGX Spark (a vLLM replacement),
+built as checked Habu Forth. The GPT-2 loading chain is landed on master and
+destruction-reviewed end to end: real 548 MB checkpoint (all tensors F32,
+census 160) → safetensors mapping → tensor census → the GPT2TX bind
+transaction (PREPARE → CHECK → COMMIT, both arms: zero-copy mapped and
+packed-arena allocated, with total commits, compare-and-retype witnesses, and
+disposal returning every byte) → a linear gpt2-model value. The checker now
+accepts linear payloads in unified ENUM/STRUCTURE declarations (guard deletion,
+twice-reviewed), which the bind result type consumes directly.
+
+In flight, in landing order: the linear-payload capability train; the sealed
+destructure and linear-scope checker capabilities (decomposed into dotted
+leaves); the transaction-layer redesign (total owned release with an
+uncatchable fatal path, per-call linear transaction contexts replacing global
+scratch, scoped mutable buffer access, owner-preserving resident reads) per
+`.blackboard/txn-v2-plan-20260726.md`; signature-lint dynamic input; then BIND
+(built, holding in its lane) and GPT-2 forward + greedy decode on the mapped
+arm. The allocated arm is a host oracle; production device residency
+(cuMemAlloc, bounded streaming, peak of model plus one in-flight chunk) is a
+frozen leaf ahead of modern-dense serving.
+
+## Gate state
+
+Correctness gates: maki/test.f (all suites), host-lint, filemap-lint,
+dot-dep-lint, stale-status-lint, enum-census verify, trusted-inventory
+(strict + baseline), and the native gate `bin/hb --load test/run.f` — all green
+on master at every fast-forward; master only moves by verified-green
+fast-forward.
+
+Performance gating (policy since 2026-07-26): the aggregate whole-gate
+performance verdict is RETIRED. Only individually timed, sha-pinned benchmarks
+gate — currently the six confined JSON read benchmarks, each with its own
+calibrated budget, quiescent-fork isolation, median-of-3, and recorded
+provenance. Contended attempts are inadmissible and re-measured, never a
+verdict; retry exhaustion exits with its own distinct code. Whole-gate
+elapsed-ms is informational only; per-phase timeouts remain as hang guards.
+Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
+gap (habu-add-pinned-engine-90090800).
 Certified (linux-arm64): 4192  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
