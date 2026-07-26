@@ -17,8 +17,9 @@
 \ raw cell; they are never paired with a public inverse.
 \
 \ Failure is a VALUE, not a throw. Expected validation failures return the
-\ on-stack sum `numeric-result<a>` (success `ok a`, or a payloadless
-\ `negative` / `zero` / `overflow` / `underflow` / `bad-alignment` /
+\ on-stack sum `numeric-result<a>` (success `ok`, carrying the validated role in
+\ its `role` field, or a payloadless `negative` / `zero` / `overflow` /
+\ `underflow` / `bad-alignment` /
 \ `misaligned`); they never collapse different failures into one flag and never
 \ throw. The `E-CADNUM-*` constants below name each refusal reason so a consumer
 \ can throw the named code at its own boundary. `numeric-result<a>` is a layout
@@ -47,7 +48,7 @@
 \ The mints remain audited boundaries until the TVK-RAW checker capability (dot
 \ habu-nominal-storage-raw-a3430ef2) closes generic raw-value laundering.
 \
-\ No `require`: the type-declaration grammar (package/TYPEFAMILY/SUMTYPE/
+\ No `require`: the type-declaration grammar (package/TYPEFAMILY/ENUM/
 \ TRUSTED:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). CAD-NUM must
 \ not depend on lib/memory.f - MEM:ALLOC-* consumes CAD-NUM:alloc-* roles, so a
 \ dependency would be a cycle; MAX-CELL-N mirrors the machine max cell that
@@ -77,15 +78,30 @@ TYPEFAMILY alloc-byte-len 0     \ positive byte extent accepted by an allocator
 TYPEFAMILY alloc-cell-count 0   \ positive cell count accepted by a cell allocator
 
 \ ---- the on-stack validation result (success carries one cell-kinded a) -------
-SUMTYPE numeric-result 1
-   VARIANT ok a ;VARIANT
+\ Declared through the unified ENUM front end in full mode: the arity token after
+\ the family name is what selects that mode, so the success payload is a named
+\ FIELD instead of a positional type token. The field is called `role` because
+\ that is this file's own word for the thing the ok arm carries: the families just
+\ above are "scalar nominal role families", the mints below turn a validated raw
+\ cell into a "nominal role", and the checker's job here is to refuse a
+\ "cross-role" swap. So `role` names the payload after what it is rather than
+\ after the generic slot it sits in.
+\
+\ Nothing else moves. The generated CAD--NUM-NUMERIC--RESULT:OK, :NEGATIVE,
+\ :ZERO, :OVERFLOW, :UNDERFLOW, :BAD-ALIGNMENT and :MISALIGNED constructors keep
+\ their exact spellings and their exact checked effects, and every MATCH site in
+\ this package and in its consumers is untouched, because the spellings come from
+\ the package name and the family tail and the payload binding order comes from
+\ the declaration order - none of which the declaration mode changes.
+ENUM numeric-result 1
+   VARIANT ok FIELD role a ;VARIANT
    VARIANT negative ;VARIANT
    VARIANT zero ;VARIANT
    VARIANT overflow ;VARIANT
    VARIANT underflow ;VARIANT
    VARIANT bad-alignment ;VARIANT
    VARIANT misaligned ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 
