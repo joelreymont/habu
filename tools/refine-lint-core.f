@@ -42,7 +42,7 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-60 constant SEED#
+62 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -225,6 +225,15 @@ private
       \ habu-v2-differential-runner-13359019); the RAW>EVIDENCE-ID shape - content-addressed
       \ by the DifferentialSuite digest.
       59 of s" RAW>SUITE-ID" endof         \ content-addressed by the interned suite digest
+      \ The GPT-2 bind transaction's prepared value (leaf S6b1) parks its two
+      \ linear children - the moved census and the sealed slot table - in the prep
+      \ block as raw cells, because a DEFLINEAR carries no fields and an ENUM
+      \ payload field cannot name a record transitively holding a linear field.
+      \ These two read them back out, each reachable only from GPT2TX:ABORT.
+      \ Both retire with the linear-scope combinator capability,
+      \ habu-checker-linear-scope-6218899c.
+      60 of s" N>CENSUS" endof             \ the sole inverse of CENSUS>N, reached only by ABORT
+      61 of s" N>TABLE" endof              \ the sole inverse of TABLE>N, reached only by ABORT
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -290,6 +299,8 @@ private
       57 of s" maki/db/capability.f" endof
       58 of s" maki/experiment/run.f" endof
       59 of s" maki/db/diff-suite-id.f" endof
+      60 of s" maki/infer/gpt2-bind.f" endof
+      61 of s" maki/infer/gpt2-bind.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

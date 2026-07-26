@@ -1721,6 +1721,75 @@ points stay listed.
   demonstrates the text-to-pin inverse and asserts the checker verdicts as they
   behave today — and the package seal refuses new definitions. Fixtures live in a
   per-run `TMPDIR-MKDIR` tree, removed at the end.
+- `maki/infer/gpt2-bind.f` — the GPT-2 bind transaction's PREPARE phase and the
+  prepared-bind capability (package GPT2TX, inference design rev-4 correction 3
+  leaf S6b1 with the rev-5 amendments). `PREPARE
+  ( SAFET:census MDLCFG:mcfg -- prep-result )` decides once and completely
+  whether a published tensor census can be bound as the GPT-2 the configuration
+  describes: payload ENUM `prep-result` = prepared(prep) | rejected(census,
+  code). ALL validation lives here so the two commit leaves are left with memory
+  faults only — census count equals `GPT2BIND:CENSUS-COUNT`, and per role the
+  exact HF key (rendered through `COPY-KEY?`) is present, the dtype is F32 with
+  no mask exemption, rank and every declared dim match `TID-SHAPE`, a mapping
+  offset exists, `TID-SLOT` round-trips to the slot being walked and is
+  bound-checked against the census count before it indexes anything, and both
+  overflow facts hold (each row's end, and the running sum of every extent that
+  the packed arena will need), and each census tensor is CLAIMED exactly once —
+  counts and shapes cannot detect two roles landing on one tensor, so the claim
+  set (`E-GX-ALIAS`) is what keeps the role-to-tensor map one-to-one. Two passes
+  in a fixed order: pass one validates every row into a private static row
+  scratch sized by `SAFET:MAX-TENSORS`, pass two creates the WSTORE table and
+  populates it from those raw cells, so populate-and-SEAL cannot refuse. The two
+  steps that remain fallible on memory alone — building the table and allocating
+  the prep block — each run under their own `catch` and turn a failure into a
+  refusal rather than a throw, the second giving the sealed table back through
+  `WSTORE:TABLE-DISPOSE` first; the block allocation is hoisted out of the mint
+  so the stretch where the census and table are raw cells cannot fail at all. Every rejection hands the census back
+  untouched — validation runs inside a `catch` over a stack-preserving quotation
+  (the `SAFET:LOAD` discipline) so a throw cannot strand the linear census.
+  `prep` is an opaque `DEFLINEAR` that IS its private block, holding the moved
+  census token, the sealed table, the captured cfgkey, nlayer, and the plan it
+  was validated against (row count and packed-arena size, so a commit leaf never
+  reads this package's scratch, which the next PREPARE overwrites), with NO
+  public accessor; `GPT2TX:LIVE` counts undisposed preps, the only way an
+  abandoned prep — and the census and table inside it — is observable at all;
+  `ABORT ( prep -- )` is total disposal — table through
+  `WSTORE:TABLE-DISPOSE`, census through `SAFET:RELEASE`, then the block, with a
+  failed release reported only after everything is given back. The census and
+  table cross into the block through package-private audited erasures because a
+  `DEFLINEAR` carries no fields and an ENUM payload field cannot name a record
+  transitively holding a linear field (habu-checker-enum-payload-9e1ae6cc); from
+  mint to abort the checker cannot see those two owners, so single ownership
+  rests on this file's one-mint/one-exit structure and the leak counters until
+  habu-checker-linear-scope-6218899c lands. The package is NOT prot-wid sealed,
+  because its own suite reopens it for the row projections; the erasures are
+  package-private (probed unresolvable) and refine-lint confines the two inverse
+  mints here. Owns -5660..-5674.
+- `maki/infer/gpt2-bind-test.f` — GPT2TX acceptance, run inside the package
+  because no public word hands a row out of a prep. Fixtures are generated
+  through the production vocabulary: a thirty-tensor tiny geometry emitted as a
+  real synthetic safetensors file and loaded back through the real mmap path,
+  every name from `GPT2BIND:COPY-KEY?` and every shape from `TID-SHAPE`, byte
+  extents computed from the EMITTED dims so each corrupted variant is still a
+  file the parser accepts and the refusal is PREPARE's verdict. Happy path pins
+  the walk length, one probed Conv1D row cross-checked against the census's own
+  `MAP-OFFSET?`/`NBYTES?`, and the prefix sum against the whole data section.
+  Configuration-fault refusals (one layer too many; a wider embedding) hand the
+  census back and a second PREPARE with the right configuration returns
+  prepared; census-fault refusals (non-F32 tensor, non-F32 mask, wrong rank,
+  one wrong dim, a misspelled key, one tensor beyond the census) prove the
+  census still answers its readers, that a second PREPARE returns the same
+  code, and that it releases with every counter at zero. `ABORT` returns the
+  census owner, its kernel mapping, and the WSTORE table block to zero. The
+  twin leg pins what PREPARE actually owns: two configurations of one geometry
+  differing only in a census-invisible field both bind the same census, and the
+  preps capture DIFFERENT cfgkeys — E-GB-FOREIGN is unreachable from PREPARE,
+  which mints every layer identity from the configuration it validates against.
+  Checker negatives cover prep forgery from a raw cell or pointer, prep
+  linearity, double ABORT, prep-result payload role crossings, a dropped
+  result, ambient PREPARE, and all eight audited erasures proving unresolvable
+  from outside the package. A presence-gated leg prepares the real
+  openai-community/gpt2 checkpoint and pins 160 rows.
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer
