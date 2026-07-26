@@ -489,7 +489,7 @@ public
 \ guard: adding or deleting Forth files anywhere moves it, and the number has to
 \ be updated with the change that moved it, which is also when somebody notices
 \ that a new tree exists. Raising it without looking at WHAT moved defeats it.
-1260 constant WALKED-FILES               \ .f/.fs files under the five trees below
+1262 constant WALKED-FILES               \ .f/.fs files under the five trees below
 
 : WALK-TREES ( -- )
    s" src" [: WALK-FILE ;] WALK-FILES

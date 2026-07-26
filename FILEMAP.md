@@ -1596,6 +1596,47 @@ points stay listed.
   named throw; and checker negatives (raw n in the proof slot, unresolvable
   private mint, GQA-shaped field on the gpt2 arm by construction, raw cells as
   a cfgkey, MODEL family value in the dtype slot).
+- `maki/infer/gpt2-roles.f` — the GPT-2 tensor vocabulary and typed identity
+  (package GPT2BIND, inference design rev-3 S6a + the rev-4 identity design).
+  Payload-free ENUMs `grole` (wte, wpe, lnf-g, lnf-b) and `brole` (the thirteen
+  per-layer HF GPT2Block tensors, including the attn.bias causal-mask buffer;
+  160 = 4 + 12*13 against the real checkpoint census) plus declared `orient`
+  {plain, conv1d}; STRUCTURE `layerid` embeds (MDLCFG:cfgkey, index, private
+  GPT2BIND proof) with sole constructor `LAYER` (E-GB-LAYER range check +
+  cfgkey capture); payload ENUM `tid` = global(grole) | block(layerid, brole),
+  so a global tensor cannot carry a layer and a block tensor cannot omit one.
+  Pure words: `COPY-KEY?` (exact HF tensor name copied into a caller buffer,
+  option<n>, NONE on too-small capacity - the SAFET COPY-NAME? contract; no
+  public word returns a pointer into statics or touches the shared string
+  builder), `TID-SHAPE` (rank d0 d1 d2 d3, 1-padded, from the common mcfg
+  geometry; every composed dim AND the full element product overflow-checked),
+  `TID-ORIENT` (conv1d DECLARED per exact HF key on the four Conv1D weights,
+  never inferred from shape), `TID-SLOT` (E-GB-FOREIGN identity assertion
+  BEFORE slot arithmetic, then the embedded index revalidated E-GB-LAYER
+  against the re-MAKE forgery caveat; globals 0..3, then 4 + layer*13 + role
+  ordinal, in [0, census) unconditionally), `CENSUS-COUNT` (4 + 13*nlayer, own
+  overflow pre-check), and `FORMAT-ID` (MODEL-ADAPTER:HF-GPT2).
+  Owns -5650..-5659.
+- `maki/infer/gpt2-roles-test.f` — GPT2BIND acceptance: exact HF key pins
+  through COPY-KEY? into caller buffers (all globals, all thirteen layer-0
+  keys, a two-digit layer index, the 39-byte largest-index render, a
+  too-small-buffer NONE with the buffer untouched, and an interleave leg
+  proving two copies into two caller buffers leave both intact); 124M shape
+  pins for every role and tiny distinct-non-square pins ([768,2304] qkv,
+  [3072,768] mproj, [1,1,1024,1024] mask, census 160); declared-orientation
+  table including the square aproj-w plus the FORMAT-ID adapter identity;
+  checked-arithmetic boundaries derived from MAX-N and the suite's own role
+  table (largest accepted nlayer/nembd/nctx and each plus one rejecting
+  E-GB-EXTENT, plus the measured 4e9-nctx mask and 2^40-nembd full-product
+  escapes); LAYER range rejects; TID-SLOT bijectivity on the tiny geometry
+  (every slot hit exactly once); the ratified same-nlayer identity fixture
+  (layerid minted on config A used with config B rejects E-GB-FOREIGN with
+  the slot provably in bounds, proving identity precedes slot arithmetic);
+  the re-MAKE forgery legs (out-of-range and negative embedded index reject
+  E-GB-LAYER); and checker negatives (global-with-layer, block-without-layer,
+  reordered block fields, role-family crossings, cross-package proof
+  substitution both directions, raw-cell key and proof forgeries,
+  unresolvable private mint).
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer
