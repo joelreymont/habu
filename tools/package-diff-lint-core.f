@@ -247,6 +247,63 @@ variable FILE-USED
    FILE$ s" src/core/checker.f" LINT-STR= if true exit then      \ core surface, interim; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
+\ Declaration-grammar fixture suites.  The second principled category, built on
+\ the same terms as GLOBAL-IMPLEMENTATION? above: a named, reasoned, exact-path
+\ list pinned by this lint's own unit test, not an ad hoc waiver.
+\
+\ Why it is a category and not an exception.  These suites test the global
+\ declaration grammar itself, so a global declaration IS the thing under test.
+\ test/type-decl-suite.f says so in its own header: everything it declares is
+\ "USER source arriving after the engine sealed the TFAM/TYPE/MATCH system
+\ packages", and each accepting declaration "is also the post-seal proof: user
+\ declarations register families through the baked grammar words WITHOUT opening
+\ any reserved package".  Wrapping those fixtures in a package would not satisfy
+\ the ownership rule, it would delete the proof - the suite would stop testing
+\ the position a real user declares from.  The same obligation covers the other
+\ entries, each of which must declare or forge source at genuine top level.
+\
+\ The category is deliberately narrow in two structural ways.  Entries are exact
+\ paths, so a global added to any OTHER test file still reports.  And the path
+\ must live under test/, so the list can never admit a library or engine source:
+\ lib/process-pty-handle.f is NOT here and must not be added - its six role
+\ families were real debt and were packaged (dot habu-pkg-process-pty-ad38b5da).
+\ It shares GLOBAL-IMPLEMENTATION?'s known limit: within a listed file the
+\ admission is file-wide, so an unrelated global added beside the fixtures is
+\ admitted too.  FINISH-DEFINITION still checks SCOPE-DELTA first, so adding or
+\ deleting a package boundary around a fixture is reported even here.
+: GRAMMAR-FIXTURE-PATH? ( -- bool )
+   \ the declaration grammar's own behaviour suite: positives, negatives,
+   \ rollback and multi-error, all declared from real top-level user position
+   FILE$ s" test/type-decl-suite.f" LINT-STR= if true exit then
+   \ proves which words stay executable at top level; its forge helpers build the
+   \ top-level declaration source whose position is the property under test
+   FILE$ s" test/internal-word-gate.f" LINT-STR= if true exit then
+   \ decision-record probe for the extent substrate: the stand-in families must be
+   \ declared the way the candidate design would declare them
+   FILE$ s" test/extent-substrate-probe.f" LINT-STR= if true exit then
+   \ BTC-7 product/factorization regression over top-level extent-role families
+   FILE$ s" test/extent-product-test.f" LINT-STR= if true exit then
+   \ TYPED-VARIABLE / TYPED-BUFFER contract: the nominal scalars must be ordinary
+   \ user families, since the point is that a raw `variable` cannot mint one
+   FILE$ s" test/typed-storage-test.f" LINT-STR= if true exit then
+   \ CAST: accept contract: the arity-0 and parametric families it retypes between
+   \ are the user-declared families a real caller would write
+   FILE$ s" test/cast-suite.f" LINT-STR= if true exit then
+   \ CAST: reject contract, same fixture position as the accept suite
+   FILE$ s" test/cast-negative-suite.f" LINT-STR= if true exit then
+   \ LAYOUT-BUFFER is the introduction form for a top-level nominal scalar, so the
+   \ family it introduces has to be declared at top level
+   FILE$ s" test/layout-buffer.f" LINT-STR= if true exit then
+   \ DEFER-LAYOUT-BUFFER over a top-level arity-0 nominal scalar, same obligation
+   FILE$ s" test/layout-defer.f" LINT-STR= if true exit then
+   \ the engine's own behaviour suite: its nominal scalar backs the only checked
+   \ source of a pointee accessor, declared where the engine sees user source
+   FILE$ s" test/engine-suite.f" LINT-STR= ;
+
+: GRAMMAR-FIXTURE? ( -- bool )
+   FILE$ s" test/" LINT-STARTS-WITH? 0= if false exit then
+   GRAMMAR-FIXTURE-PATH? ;
+
 : SOURCE-ALLOC-NEED ( n -- n )
    dup 0 <= if drop 1 then ;
 
@@ -675,6 +732,7 @@ variable FILE-USED
 
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
+   GRAMMAR-FIXTURE? if true exit then
    ERR-VOCAB? if true exit then
    FILE$ s" lib/type/deftype.f" LINT-STR= if
       DEF-NAME-I @ s" DEFTYPE" TOK=CI exit

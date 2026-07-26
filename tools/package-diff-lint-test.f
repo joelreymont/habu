@@ -519,6 +519,82 @@ variable TEST-DIFF-U
    TEST-DIFF-RESET s" src/core/enum-decl.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- declaration-grammar fixture suites -------------------------------------
+\ The second principled category.  These files test the global declaration
+\ grammar, so a global declaration is the thing under test and packaging it
+\ would delete the proof rather than satisfy the rule.  The pins below fix the
+\ exact list, and the hostile cases prove the category cannot spread: a test
+\ file that is not listed still reports, and the category refuses any path
+\ outside test/ so a library or engine source can never be admitted through it.
+
+: TEST-FIXTURE-FAMILY-SOURCE ( ptr u8 n -- )   \ a top-level family declaration
+   TEST-SOURCE-RESET
+   s" TYPEFAMILY " TEST-SOURCE+ TEST-SOURCE+ s"  0" TEST-SOURCE-LINE ;
+
+: TEST-FIXTURE-AT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   s" pdlfam" TEST-FIXTURE-FAMILY-SOURCE
+   TEST-DIFF-RESET path pathu TEST-ADD-SOURCE-SECTION ;
+
+: TEST-GRAMMAR-FIXTURE-LIST ( -- )   \ every listed path is admitted
+   TEST-DIFF-RESET
+   s" pdlfam" TEST-FIXTURE-FAMILY-SOURCE
+   s" test/type-decl-suite.f" TEST-ADD-SOURCE-SECTION
+   s" test/internal-word-gate.f" TEST-ADD-SOURCE-SECTION
+   s" test/extent-substrate-probe.f" TEST-ADD-SOURCE-SECTION
+   s" test/extent-product-test.f" TEST-ADD-SOURCE-SECTION
+   s" test/typed-storage-test.f" TEST-ADD-SOURCE-SECTION
+   s" test/cast-suite.f" TEST-ADD-SOURCE-SECTION
+   s" test/cast-negative-suite.f" TEST-ADD-SOURCE-SECTION
+   s" test/layout-buffer.f" TEST-ADD-SOURCE-SECTION
+   s" test/layout-defer.f" TEST-ADD-SOURCE-SECTION
+   s" test/engine-suite.f" TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN ;
+
+: TEST-GRAMMAR-FIXTURE-HOSTILE ( -- )
+   s" an unlisted test file still reports its global declaration" T-LABEL
+   s" test/not-a-grammar-fixture.f" TEST-FIXTURE-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a listed basename under another directory is not the listed path" T-LABEL
+   s" tools/type-decl-suite.f" TEST-FIXTURE-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a listed path as a suffix of a longer path is not the listed path" T-LABEL
+   s" test/lib/type-decl-suite.f" TEST-FIXTURE-AT
+   1 TEST-EXPECT-FINDINGS
+   s" the category never admits a library source, however it is spelled" T-LABEL
+   s" lib/process-pty-handle.f" TEST-FIXTURE-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a global colon word in an unlisted test file still reports" T-LABEL
+   s" TEST-LEAK" TEST-GLOBAL-SOURCE
+   TEST-DIFF-RESET s" test/other-suite.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-FIXTURE-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" TYPEFAMILY pdlfam 0" TEST-SOURCE-LINE
+   s" test/type-decl-suite.f" TEST-WRITE-SOURCE ;
+
+: TEST-FIXTURE-OWNER-LOSS-DIFF ( -- )
+   s" test/type-decl-suite.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package PDLFIX" TEST-DIFF+ TEST-LF
+   s"  TYPEFAMILY pdlfam 0" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-GRAMMAR-FIXTURE-SCOPE-DELTA ( -- )
+   \ FINISH-DEFINITION checks SCOPE-DELTA before the category, so a deleted
+   \ package boundary around a fixture is reported even in a listed file: the
+   \ category admits a plain global declaration, never a scope change.
+   s" a deleted package boundary in a listed file is still reported" T-LABEL
+   TEST-WRITE-FIXTURE-OWNER-LOSS
+   TEST-DIFF-RESET TEST-FIXTURE-OWNER-LOSS-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-GRAMMAR-FIXTURES ( -- )
+   s" every listed grammar-fixture suite is admitted" T-LABEL
+   TEST-GRAMMAR-FIXTURE-LIST
+   TEST-GRAMMAR-FIXTURE-HOSTILE
+   TEST-GRAMMAR-FIXTURE-SCOPE-DELTA ;
+
 : TEST-WRITE-TYPE-FAMILY-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
    TEST-SOURCE-RESET
    s" : TF-STR-CAP ( -- n )" TEST-SOURCE-LINE
@@ -1157,6 +1233,7 @@ variable TEST-DIFF-U
    TEST-REGISTRY-LANGUAGE
    TEST-REGISTRY-ROWS
    TEST-CORE-EXEMPTIONS
+   TEST-GRAMMAR-FIXTURES
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
    TEST-ERROR-VOCABULARY
