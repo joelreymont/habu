@@ -31,7 +31,7 @@ variable TR-R-SETUP-START-NS
    CAL-PCT-DEFAULT+
    idx UNDER-DEFAULT+
    PERSIST$ CONTENT-KEY:CACHE-ROOT!
-   NESTED-POOL GT-POOL-SLOTS! ;
+   TR-NESTED-POOL @ GT-POOL-SLOTS! ;
 
 : TR-RESIDENT-RUN-IMPL ( idx -- ) {: idx:idx :}
    idx TR-PHASE-RESIDENT-SETUP
@@ -44,7 +44,7 @@ variable TR-R-SETUP-START-NS
    s" top-phase-fork" GS-EVENT
    s" runner-phase-fork" GS-EVENT
    idx PHASE-TEST
-   idx IDX>N RESIDENT!
+   idx IDX>N TR-RESIDENT-ID !
    idx PHASE-LABEL TIMEOUT-MS [: TR-PHASE-RESIDENT-RUN-CURRENT ;] GT-POOL-START-FORK ;
 
 : TR-R-PHASE-START ( idx -- ) {: idx:idx :}

@@ -15,7 +15,7 @@ TEST-RUN:TRW-LOAD-DONE
 package TEST-RUN
 
 : UNDER! ( -- )
-   TEST-RUN:UNDER-READY? 0= if exit then
+   TR-UNDER-READY @ 0= if exit then
    TEST-RUN:UNDER$ GE-HB! ;
 
 : DICT ( -- )

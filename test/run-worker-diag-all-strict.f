@@ -32,7 +32,7 @@ package TEST-RUN
 variable FORK-ID
 
 : RUN-ID ( idx -- ) {: idx:idx :}
-   idx IDX>N TEST-RUN:RESIDENT!
+   idx IDX>N TR-RESIDENT-ID !
    idx IDX>N case
       10 of GATE-DIAGNOSTICS:REPAIR endof
       11 of GATE-DIAGNOSTICS:UNDEFINED-PRIMARY endof

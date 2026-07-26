@@ -1869,30 +1869,45 @@ public
    GT-CLEANUP
    TR-PERF-LINE ;
 
-\ ---- capability-shaped access to runner state ------------------------------
-\ The cells behind these stay private. A caller asks the runner a question or
-\ tells it to do one thing; it never reaches into a variable, so the runner can
-\ change how it stores any of this without a caller noticing. These replace the
-\ twelve raw variable and buffer names that used to be read and written from
-\ outside the file.
-public
-
-: NESTED-POOL ( -- n )        TR-NESTED-POOL @ ;
-: NESTED-POOL! ( n -- )       TR-NESTED-POOL ! ;
-: TIMINGS? ( -- bool )        TR-TIMINGS @ 0 <> ;
-: UNDER-READY? ( -- bool )    TR-UNDER-READY @ 0 <> ;
-: PRE-REPAIR? ( -- bool )     TR-PRE-REPAIR @ 0 <> ;
-: PROFILE ( -- n )            TR-PROFILE-ID @ ;
-: PROFILE! ( n -- )           TR-PROFILE-ID ! ;
-: RESIDENT ( -- n )           TR-RESIDENT-ID @ ;
-: RESIDENT! ( n -- )          TR-RESIDENT-ID ! ;
-: RERUN! ( n -- )             TR-RERUN ! ;
-: RERUN-N ( -- n )            TR-RERUN-N @ ;
-: RED-FILE$ ( -- ptr u8 n )   TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N ;
-: RED-FILE-RESET ( -- )       TR-RED-FILE-U STR:BUF-RESET ;
-
+\ ---- the persistent-root path, set from a caller's bytes -------------------
+\ The length is CHECKED before the copy. TR-PERSIST-BUF is a fixed FS-PATH-CAP
+\ region, so copying a caller's byte count into it unvalidated overwrites
+\ whatever `create` put next to it. A refusal is a named throw rather than a
+\ truncation: a silently shortened gate root would send the whole run at the
+\ wrong directory. Private, because after the caller measurement below the only
+\ caller is a white-box test that reopens this package.
 : PERSIST! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u 0 < if E-TR-PATH-LEN throw then
+   u FS-PATH-CAP > if E-TR-PATH-LEN throw then
    a TR-PERSIST-BUF u BYTE-COPY
    u TR-PERSIST-U ! ;
+
+\ ---- what genuinely crosses an owner boundary ------------------------------
+\ Everything the runner's own family needs it reaches as package members: the
+\ worker bodies, the resident dispatcher and the white-box tests all live in or
+\ reopen TEST-RUN, so they use the state directly and need no public surface at
+\ all. What is left below crosses a REAL boundary - test/json-read-perf-phase.f
+\ and its test own a different package - and each one is a question or a
+\ validated operation, never a store.
+\
+\ The readers cannot corrupt anything: they answer about the run rather than
+\ handing out the cell. PROFILE! is the one mutator, and it is a behaviour with
+\ a domain: the runner only knows the profile ids below, and anything else is a
+\ caller bug reported as a named throw rather than a runner that quietly
+\ believes in profile 99.
+public
+
+: TIMINGS? ( -- bool )        TR-TIMINGS @ 0 <> ;
+: UNDER-READY? ( -- bool )    TR-UNDER-READY @ 0 <> ;
+: PROFILE ( -- n )            TR-PROFILE-ID @ ;
+: RESIDENT ( -- n )           TR-RESIDENT-ID @ ;
+
+: PROFILE-KNOWN? ( n -- bool ) {: id:n :}
+   id TR-PROFILE-MACOS-ARM64-10X2 >=
+   id PROFILE-DGX-SPARK-10X2 <= and ;
+
+: PROFILE! ( n -- ) {: id:n :}
+   id PROFILE-KNOWN? 0= if E-TR-PROFILE throw then
+   id TR-PROFILE-ID ! ;
 
 ;package

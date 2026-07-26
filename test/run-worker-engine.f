@@ -25,7 +25,7 @@ variable TRWE-FORK-ID
    0 GE-CAND-U ! ;
 
 : TRWE-RUN-ID ( idx -- ) {: idx:idx :}
-   idx IDX>N RESIDENT!
+   idx IDX>N TR-RESIDENT-ID !
    TRWE-UNDER!
    idx IDX>N case
       5 of GENG-REPAIR-SLICE endof
@@ -55,7 +55,7 @@ variable TRWE-FORK-ID
 public
 : TRWE-POST-CANDIDATE ( -- )
    GT-POOL-RESET
-   PRE-REPAIR? 0= if 5 >IDX TRWE-START-FORK then
+   TR-PRE-REPAIR @ 0= if 5 >IDX TRWE-START-FORK then
    9 >IDX TRWE-START-FORK
    16 >IDX TRWE-START-FORK
    21 >IDX TRWE-START-FORK

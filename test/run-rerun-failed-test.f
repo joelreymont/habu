@@ -4,7 +4,7 @@
 require test/run-lib.f
 require lib/test.f
 
-package RRF
+package TEST-RUN
 
 6 constant PH-DEBUG
 9 constant PH-FIXTURES
@@ -16,54 +16,72 @@ package RRF
    CLEANUP-RESET
    s" habu-rerun" TMPDIR-MKDIR {: a:ptr u:n :}
    a u CLEANUP-TREE+
-   a u TEST-RUN:PERSIST!
-   TEST-RUN:PERSIST$ MAKE-DIRS ;
+   a u PERSIST!
+   PERSIST$ MAKE-DIRS ;
 
-\ TEST-RUN:PHASE-LABEL is the pool label, so a red label maps back to its phase index.
+\ PHASE-LABEL is the pool label, so a red label maps back to its phase index.
 : LABEL-ROUNDTRIP ( -- )
-   PH-DEBUG >IDX TEST-RUN:PHASE-LABEL TEST-RUN:LABEL>IDX TTRUE
+   PH-DEBUG >IDX PHASE-LABEL LABEL>IDX TTRUE
    IDX>N PH-DEBUG T= ;
 
 : LINE-CONTENT ( -- )
-   TEST-RUN:RED-FILE-RESET
-   PH-DEBUG >IDX TEST-RUN:RED-LINE+
-   TEST-RUN:RED-FILE$ s" 6" STARTS-WITH? TTRUE
-   TEST-RUN:RED-FILE$ s" bin/hb" T-CONTAINS
-   TEST-RUN:RED-FILE$ s" --load" T-CONTAINS
-   TEST-RUN:RED-FILE$ s" test/gate-debug.f" T-CONTAINS ;
+   TR-RED-FILE-U STR:BUF-RESET
+   PH-DEBUG >IDX RED-LINE+
+   TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N s" 6" STARTS-WITH? TTRUE
+   TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N s" bin/hb" T-CONTAINS
+   TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N s" --load" T-CONTAINS
+   TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N s" test/gate-debug.f" T-CONTAINS ;
 
 : WRITE-RED-FILE ( -- )
-   TEST-RUN:RED-FILE-RESET
-   PH-DEBUG >IDX TEST-RUN:RED-LINE+
-   PH-FIXTURES >IDX TEST-RUN:RED-LINE+
-   TEST-RUN:RED-LIST$ TEST-RUN:RED-FILE$ WRITE-ALL ;
+   TR-RED-FILE-U STR:BUF-RESET
+   PH-DEBUG >IDX RED-LINE+
+   PH-FIXTURES >IDX RED-LINE+
+   RED-LIST$ TR-RED-FILE-BUF TR-RED-FILE-U @ LEN>N WRITE-ALL ;
 
 : ROUNDTRIP ( -- )
    WRITE-RED-FILE
-   TEST-RUN:RERUN-LOAD
-   TEST-RUN:RERUN-N 2 T=
-   PH-DEBUG >IDX TEST-RUN:RR-MARKED? TTRUE
-   PH-FIXTURES >IDX TEST-RUN:RR-MARKED? TTRUE
-   5 >IDX TEST-RUN:RR-MARKED? TFALSE
-   7 >IDX TEST-RUN:RR-MARKED? TFALSE ;
+   RERUN-LOAD
+   TR-RERUN-N @ 2 T=
+   PH-DEBUG >IDX RR-MARKED? TTRUE
+   PH-FIXTURES >IDX RR-MARKED? TTRUE
+   5 >IDX RR-MARKED? TFALSE
+   7 >IDX RR-MARKED? TFALSE ;
 
 \ Duplicate lines must not double-count.
 : DEDUP ( -- )
-   TEST-RUN:RR-CLEAR
-   s" 6" TEST-RUN:RERUN-LINE
-   s" 6" TEST-RUN:RERUN-LINE
-   TEST-RUN:RERUN-N 1 T= ;
+   RR-CLEAR
+   s" 6" RERUN-LINE
+   s" 6" RERUN-LINE
+   TR-RERUN-N @ 1 T= ;
 
 : SKIP-GUARD ( -- )
    ROUNDTRIP
-   -1 TEST-RUN:RERUN!
-   PH-DEBUG >IDX TEST-RUN:RERUN-SKIP? TFALSE
-   5 >IDX TEST-RUN:RERUN-SKIP? TTRUE
-   0 TEST-RUN:RERUN!
-   5 >IDX TEST-RUN:RERUN-SKIP? TFALSE ;
+   -1 TR-RERUN !
+   PH-DEBUG >IDX RERUN-SKIP? TFALSE
+   5 >IDX RERUN-SKIP? TTRUE
+   0 TR-RERUN !
+   5 >IDX RERUN-SKIP? TFALSE ;
+
+\ PERSIST! copies a caller's bytes into a fixed FS-PATH-CAP region, so the
+\ length is what stands between a caller and the data next to that buffer. The
+\ refusal is proven through the REAL entry - this file reopens TEST-RUN, so the
+\ word called here is the production one, not a copy - and at the exact edge:
+\ FS-PATH-CAP is accepted and FS-PATH-CAP+1 throws. A truncating PERSIST! would
+\ pass the first case and silently fail the second.
+create OVER-PATH FS-PATH-CAP 1 + allot
+
+: OVER-PATH-FILL ( -- )
+   FS-PATH-CAP 1 + 0 ?do  $61 OVER-PATH i + c!  loop ;
+
+: PATH-LENGTH-GUARD ( -- )
+   OVER-PATH-FILL
+   s" a path one byte past the buffer is refused, not copied" T-LABEL
+   [: OVER-PATH FS-PATH-CAP 1 + PERSIST! ;] E-TR-PATH-LEN TTHROWSQ
+   s" a path of exactly the buffer size is accepted" T-LABEL
+   [: OVER-PATH FS-PATH-CAP PERSIST! ;] catch 0 T= ;
 
 : CLEANUP ( -- )
-   0 TEST-RUN:RERUN!
+   0 TR-RERUN !
    CLEANUP-RUN ;
 
 : MAIN ( -- )
@@ -74,6 +92,7 @@ package RRF
    ROUNDTRIP
    DEDUP
    SKIP-GUARD
+   PATH-LENGTH-GUARD
    CLEANUP
    T-REPORT ;
 
