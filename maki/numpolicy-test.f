@@ -11,6 +11,7 @@
 \ maki/evidence/policy-e2e-test.f.
 
 require lib/test.f
+require test/checker-assert.f
 require maki/numpolicy.f
 
 \ ---- compact helpers (RANK is bijective with the domain, so rank pins the value) ---
@@ -122,6 +123,53 @@ PIPE-TF32-EXACT 2 T=                           \ TF32 matmul + exact elementwise
 ' TRY-NDOM-HI      E-NPOL-DOM   TTHROWS         \ wire id out of range
 ' TRY-NDOM-NEG     E-NPOL-DOM   TTHROWS
 
+\ ---- the generated id-result constructors: exact spelling + exact effect -------
+\ id-result is declared through the unified ENUM front end in full mode, so these
+\ pins are the migration's identity proof and must keep holding for every later
+\ declaration change. The SPELLING is load-bearing here: the checker answers 1
+\ (uncheckable) for a name it cannot resolve, and YES demands -1, so a -1 means the
+\ checker resolved EXACTLY this constructor name; NO demands 0, which it can only
+\ reach after resolving the name and refusing the types. The pins and the shape twin
+\ own their own test package rather than the global scope the older legs above use.
+package NPOL-TEST
+
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+
+s" NP-C-OK ( CAD-KIND:numeric-policy-id -- NPOL:id-result<CAD-KIND:numeric-policy-id> ) NPOL-ID--RESULT:OK" YES
+s" NP-C-WW ( -- NPOL:id-result<CAD-KIND:numeric-policy-id> ) NPOL-ID--RESULT:WRONG-WIDTH" YES
+s" NP-C-UNK ( -- NPOL:id-result<CAD-KIND:numeric-policy-id> ) NPOL-ID--RESULT:UNKNOWN" YES
+\ Forge negatives on the ok payload slot: a raw cell cannot fill it, the result is
+\ not a bare scalar, the payload is mandatory (a payloadless ok is not constructible),
+\ and a same-width FOREIGN identity role cannot stand in for the numeric-policy id.
+s" NP-C-RAW ( n -- NPOL:id-result<CAD-KIND:numeric-policy-id> ) NPOL-ID--RESULT:OK" NO
+s" NP-C-BARE ( CAD-KIND:numeric-policy-id -- n ) NPOL-ID--RESULT:OK" NO
+s" NP-C-NONE ( -- NPOL:id-result<CAD-KIND:numeric-policy-id> ) NPOL-ID--RESULT:OK" NO
+s" NP-C-FGN ( CAD-KIND:target-id -- NPOL:id-result<CAD-KIND:numeric-policy-id> ) NPOL-ID--RESULT:OK" NO
+
+public
+
+\ idr-twin is NPOL:id-result's SHAPE under a different name: same arity, same three
+\ variants in the same order, same named payload field. It exists only so the
+\ negatives below can prove decode-result identity is NOMINAL - two identically
+\ shaped ENUM families never unify, in either direction. It has to be public: a
+\ private family publishes no constructors at all, and the positive control below
+\ builds through the twin's own ok, so neither negative can pass by being
+\ unresolvable rather than ill-typed.
+ENUM idr-twin 1
+   VARIANT ok FIELD id a ;VARIANT
+   VARIANT wrong-width ;VARIANT
+   VARIANT unknown ;VARIANT
+;ENUM
+
+private
+
+s" NP-C-TWIN ( CAD-KIND:numeric-policy-id -- idr-twin<CAD-KIND:numeric-policy-id> ) NPOL--TEST-IDR--TWIN:OK" YES
+s" NP-C-TWIN-X1 ( CAD-KIND:numeric-policy-id -- idr-twin<CAD-KIND:numeric-policy-id> ) NPOL-ID--RESULT:OK" NO
+s" NP-C-TWIN-X2 ( CAD-KIND:numeric-policy-id -- NPOL:id-result<CAD-KIND:numeric-policy-id> ) NPOL--TEST-IDR--TWIN:OK" NO
+
+;package
+
 \ § 23.9 numeric-policy-id: constructor + wire codec round-trip + fail-closed decode.
 \ Reopen the owner package for LE-PUT / DOM-COUNT (an out-of-range wire raw is only
 \ forgeable inside the owning package).
@@ -177,6 +225,50 @@ create TT-KBUF TT-WCAP allot
       1+
    repeat drop 0 ;
 
+\ ---- every variant constructs and dispatches through MATCH ---------------------
+\ The wire words above reach the arms only through a decode. These construct each
+\ variant DIRECTLY through the production producers and match it straight back, so
+\ the named payload FIELD is proven to bind in declaration order. The ok arm binds
+\ its payload to a TYPED local and reports the recovered raw, which for this family
+\ IS the dom rank (the § 23.9 minimal content key), so a payload the constructor
+\ dropped or zeroed would come back as a different rank instead of passing. The id
+\ under test is `relative` (rank 2), so a zeroed payload is distinguishable from a
+\ live one.
+\
+\ Construction is factored into one typed word per variant because the checker
+\ requires MATCH's scrutinee to be a concretely instantiated family value: a single
+\ word that both constructs and matches is refused, and the diagnostic names the
+\ family token as an undefined word. That refusal predates this migration (it
+\ reproduces identically on the legacy declaration) and is reported separately.
+: TT-ID ( -- CAD-KIND:numeric-policy-id )   NPOL-DOM:RELATIVE REGISTER ;
+
+: TT-MK-OK ( CAD-KIND:numeric-policy-id -- id-result<CAD-KIND:numeric-policy-id> ) R-OK ;
+: TT-MK-WW ( -- id-result<CAD-KIND:numeric-policy-id> )   R-WRONG-WIDTH ;
+: TT-MK-UNK ( -- id-result<CAD-KIND:numeric-policy-id> )  R-UNKNOWN ;
+
+: TT-ARM ( id-result<CAD-KIND:numeric-policy-id> -- n )   \ 1 ok, 2 wrong-width, 3 unknown
+   MATCH id-result
+      ok          OF drop 1 ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-OK-RANK ( id-result<CAD-KIND:numeric-policy-id> -- n )   \ ok payload's rank, else -1
+   MATCH id-result
+      ok          OF {: got:CAD-KIND:numeric-policy-id :} got NUMERIC-POLICY-ID>RAW ENDOF
+      wrong-width OF -1 ENDOF
+      unknown     OF -1 ENDOF
+   ;MATCH ;
+
+: TT-RT-OK-ARM ( -- n )                         \ a constructed ok reaches the ok arm
+   TT-ID TT-MK-OK TT-ARM ;
+: TT-RT-OK-RANK ( -- n )                        \ 0 = the registered id came back unchanged
+   TT-ID dup NUMERIC-POLICY-ID>RAW {: want:n :}
+   TT-MK-OK TT-OK-RANK want = if 0 else 1 then ;
+: TT-RT-WW ( -- n )   TT-MK-WW TT-ARM ;
+: TT-RT-UNK ( -- n )  TT-MK-UNK TT-ARM ;
+: TT-WW-RANK ( -- n ) TT-MK-WW TT-OK-RANK ;     \ a payloadless arm carries no rank
+
 NPOL-DOM:EXACT     TT-RT 0 T=
 NPOL-DOM:ULP       TT-RT 0 T=
 NPOL-DOM:RELATIVE  TT-RT 0 T=
@@ -186,6 +278,12 @@ TT-WIRE-UNKNOWN 3 T=
 NPOL-DOM:EXACT     TT-CKEY-RT 0 T=
 NPOL-DOM:EMPIRICAL TT-CKEY-RT 0 T=
 TT-CKEY-IS-RANK 0 T=
+TT-ID NUMERIC-POLICY-ID>RAW 2 T=                \ the round-trip payload is the non-zero rank 2
+TT-RT-OK-ARM 1 T=                               \ ok dispatches to its own arm
+TT-RT-OK-RANK 0 T=                              \ and carries its payload through unchanged
+TT-RT-WW 2 T=                                   \ wrong-width dispatches to its own arm
+TT-RT-UNK 3 T=                                  \ unknown dispatches to its own arm
+TT-WW-RANK -1 T=                                \ the no-payload arms of TT-OK-RANK are live
 
 ;package
 
