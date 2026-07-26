@@ -60,14 +60,20 @@ package CONFIG
 public
 
 \ WIRE>ID decode result (the § 23.9 art-result custom-sum idiom): `ok` carries the
-\ refined nominal id; the reject arms are the fixed-width byte-decode refusals the
-\ contract names (wrong width, unresolved/out-of-range raw). A bespoke per-package
-\ sum, not result<a,b>, so a total ok construction leaves no free error variable.
-SUMTYPE id-result 1
-   VARIANT ok a ;VARIANT
+\ refined nominal id in its `id` field; the reject arms are the fixed-width
+\ byte-decode refusals the contract names (wrong width, unresolved/out-of-range
+\ raw). A bespoke per-package sum, not result<a,b>, so a total ok construction
+\ leaves no free error variable. Declared through the unified ENUM front end in full
+\ mode (the arity after the name selects it), so the payload is a named FIELD rather
+\ than a positional one; the generated CONFIG-ID--RESULT:OK / :WRONG-WIDTH /
+\ :UNKNOWN constructors and every MATCH site are unchanged, because both spellings
+\ and payload binding order derive from the package, the family tail, and the
+\ declaration order, none of which the mode changes.
+ENUM id-result 1
+   VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

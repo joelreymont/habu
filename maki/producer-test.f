@@ -16,6 +16,10 @@ variable BASE-N
 
 : YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
 : NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+\ NOWORD is the verdict for a candidate naming a word that does not exist: the
+\ checker reports 1 (uncheckable) rather than a type refusal. It is what makes the
+\ constructor-spelling pins below bite instead of passing vacuously.
+: NOWORD ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  1 T= ;
 
 : REG ( ptr u8 n -- CAD-KIND:producer-id )  PRODUCER:REGISTER ;
 
@@ -46,6 +50,49 @@ s" PR-XC ( CAD-KIND:config-id -- ptr u8 n ) PRODUCER:NAME$" NO
 s" PR-XKW ( CAD-KIND:schema-id ptr u8 n -- n ) PRODUCER:KEY>WIRE" NO             \ a foreign id cannot encode
 s" PRODUCER:RAW>PRODUCER-ID" 0 search-wl 0= TTRUE                                \ mint is private
 s" PRODUCER:PRODUCER-ID>RAW" 0 search-wl 0= TTRUE                                \ projection is private
+
+\ ---- the generated id-result constructors: exact spelling + exact effect -------
+\ id-result is declared through the unified ENUM front end in full mode, so these
+\ pins are the migration's identity proof and must keep holding for every later
+\ declaration change. The SPELLING is load-bearing: the checker answers 1
+\ (uncheckable) for a name it cannot resolve, and YES demands -1, so a -1 means the
+\ checker resolved EXACTLY this constructor name; NO demands 0, which it can only
+\ reach after resolving the name and refusing the types. The NOWORD control below
+\ proves that split rather than assuming it.
+s" PRC-OK ( CAD-KIND:producer-id -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER-ID--RESULT:OK" YES
+s" PRC-WW ( -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER-ID--RESULT:WRONG-WIDTH" YES
+s" PRC-UNK ( -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER-ID--RESULT:UNKNOWN" YES
+\ One character off the real spelling, everything else identical to PRC-OK: the
+\ verdict is uncheckable, never a -1 and never a type refusal.
+s" PRC-SPELL ( CAD-KIND:producer-id -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER-ID--RESULTX:OK" NOWORD
+\ Forge negatives on the ok payload slot: a raw cell cannot fill it, the result is
+\ not a bare scalar, the payload is mandatory (a payloadless ok is not constructible),
+\ and a same-width FOREIGN identity role cannot stand in for the producer id.
+s" PRC-RAW ( n -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER-ID--RESULT:OK" NO
+s" PRC-BARE ( CAD-KIND:producer-id -- n ) PRODUCER-ID--RESULT:OK" NO
+s" PRC-NONE ( -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER-ID--RESULT:OK" NO
+s" PRC-FGN ( CAD-KIND:schema-id -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER-ID--RESULT:OK" NO
+
+public
+
+\ idr-twin is PRODUCER:id-result's SHAPE under a different name: same arity, same
+\ three variants in the same order, same named payload field. It exists only so the
+\ negatives below can prove decode-result identity is NOMINAL - two identically
+\ shaped ENUM families never unify, in either direction. It has to be public: a
+\ private family publishes no constructors at all, and the positive control below
+\ builds through the twin's own ok, so neither negative can pass by being
+\ unresolvable rather than ill-typed.
+ENUM idr-twin 1
+   VARIANT ok FIELD id a ;VARIANT
+   VARIANT wrong-width ;VARIANT
+   VARIANT unknown ;VARIANT
+;ENUM
+
+private
+
+s" PRC-TWIN ( CAD-KIND:producer-id -- idr-twin<CAD-KIND:producer-id> ) PRODUCER--TEST-IDR--TWIN:OK" YES
+s" PRC-TWIN-X1 ( CAD-KIND:producer-id -- idr-twin<CAD-KIND:producer-id> ) PRODUCER-ID--RESULT:OK" NO
+s" PRC-TWIN-X2 ( CAD-KIND:producer-id -- PRODUCER:id-result<CAD-KIND:producer-id> ) PRODUCER--TEST-IDR--TWIN:OK" NO
 
 ;package
 
@@ -125,6 +172,55 @@ create TT-SHA CK-BYTES allot
    id TT-WBUF TT-WCAP KEY>WIRE drop
    TT-WBUF TT-SHA CK-EQ? if 0 else 1 then ;
 
+\ ---- every variant constructs and dispatches through MATCH ---------------------
+\ The wire words above reach the arms only through a decode. These construct each
+\ variant DIRECTLY through the production producers and match it straight back, so
+\ the named payload FIELD is proven to bind in declaration order. The ok arm binds
+\ its payload to a TYPED local and reports the recovered registry index, which is
+\ exactly what EQUAL? compares (interning makes name identity raw index equality),
+\ so a payload the constructor dropped or zeroed would come back as a different
+\ index instead of passing.
+\
+\ Construction is factored into one typed word per variant because the checker
+\ requires MATCH's scrutinee to be a concretely instantiated family value: a single
+\ word that both constructs and matches is refused, and the diagnostic names the
+\ family token as an undefined word. That refusal predates this migration (it
+\ reproduces identically on the legacy declaration) and is tracked separately by dot
+\ habu-checker-ground-match-c0cb9d44.
+: TT-MK-OK ( CAD-KIND:producer-id -- id-result<CAD-KIND:producer-id> ) R-OK ;
+: TT-MK-WW ( -- id-result<CAD-KIND:producer-id> )   R-WRONG-WIDTH ;
+: TT-MK-UNK ( -- id-result<CAD-KIND:producer-id> )  R-UNKNOWN ;
+
+: TT-ARM ( id-result<CAD-KIND:producer-id> -- n )   \ 1 ok, 2 wrong-width, 3 unknown
+   MATCH id-result
+      ok          OF drop 1 ENDOF
+      wrong-width OF 2 ENDOF
+      unknown     OF 3 ENDOF
+   ;MATCH ;
+
+: TT-OK-RAW ( id-result<CAD-KIND:producer-id> -- n )   \ ok payload's registry index, else -1
+   MATCH id-result
+      ok          OF {: got:CAD-KIND:producer-id :} got PRODUCER-ID>RAW ENDOF
+      wrong-width OF -1 ENDOF
+      unknown     OF -1 ENDOF
+   ;MATCH ;
+
+: TT-RT-OK-ARM ( -- n )                         \ a constructed ok reaches the ok arm
+   s" pass/lowering" REGISTER TT-MK-OK TT-ARM ;
+\ The payload check deliberately rides the SECOND name registered above, whose
+\ registry index is therefore at least one. The first name can legitimately land at
+\ index 0, and a payload the constructor zeroed also reads back as 0, so comparing
+\ against index 0 would pass on a zeroed payload. TT-RT-OK-NZ pins the index it
+\ compares against as non-zero, so that escape stays closed.
+: TT-RT-OK-RAW ( -- n )                         \ 0 = the registered id came back unchanged
+   s" agent/search" REGISTER dup PRODUCER-ID>RAW {: want:n :}
+   TT-MK-OK TT-OK-RAW want = if 0 else 1 then ;
+: TT-RT-OK-NZ ( -- bool )                       \ that index is never the 0 a zeroed payload reads as
+   s" agent/search" REGISTER PRODUCER-ID>RAW 0 > ;
+: TT-RT-WW ( -- n )   TT-MK-WW TT-ARM ;
+: TT-RT-UNK ( -- n )  TT-MK-UNK TT-ARM ;
+: TT-WW-RAW ( -- n )  TT-MK-WW TT-OK-RAW ;      \ a payloadless arm carries no index
+
 ' TT-ID-NEG E-PRODUCER-ID TTHROWS
 ' TT-ID-BIG E-PRODUCER-ID TTHROWS
 TT-WIRE-ALL 0 T=
@@ -134,6 +230,12 @@ TT-CKEY-ALL 0 T=
 TT-CKEY-WIDTH 2 T=
 TT-CKEY-UNKNOWN 3 T=
 TT-CKEY-IS-SHA 0 T=
+TT-RT-OK-ARM 1 T=                               \ ok dispatches to its own arm
+TT-RT-OK-RAW 0 T=                               \ and carries its payload through unchanged
+TT-RT-OK-NZ TTRUE                               \ against a non-zero index, so a zeroed payload fails
+TT-RT-WW 2 T=                                   \ wrong-width dispatches to its own arm
+TT-RT-UNK 3 T=                                  \ unknown dispatches to its own arm
+TT-WW-RAW -1 T=                                 \ the no-payload arms of TT-OK-RAW are live
 
 ;package
 
