@@ -1,9 +1,0 @@
----
-title: "Checker: linear-scope WITH-owner combinator"
-status: open
-priority: 2
-issue-type: task
-created-at: "2026-07-26T09:00:47.465023+02:00"
----
-
-Problem: linear owners leak on throw. A throw unwinds the stack past a linear token invisibly - catch restores the stack but a consumed-by-nobody owner has no reclaim path, and the checker cannot see the abandonment. Evidence and precedent: maki/infer/safetensors.f LOAD and LOAD-SPAN (lines 711-717) hand-write the catch-and-close pattern that disposes the owner on the failing path, and the file header notes the missing linear-scope combinator; the SAFET live counters exist precisely because leaked mappings are otherwise unobservable and they caught two real defects on delivery day; the WSTORE review recorded that any throw between TABLE-NEW and store construction strands a builder past catch, forcing a validate-everything-then-build order. Required capability: a checked linear-scope combinator - a WITH- form that takes a linear owner and a quotation, runs the quotation, and disposes the owner exactly once on both the normal and the throw path - so callers stop hand-writing catch-and-close and the checker can require it wherever a linear owner crosses a fallible region. docs/forth.md carries a linear-owners-and-catch paragraph meanwhile. Acceptance: a minimal fixture in which a quotation throws past a linear owner and the owner is still disposed exactly once, proven through the live leak counters; a negative checked regression that hand-abandonment no longer certifies where the combinator is required; SAFET LOAD and LOAD-SPAN migrate to the combinator and drop their manual pattern. Files: src/core/checker.f, the combinator owner module, maki/infer/safetensors.f, docs/forth.md. Verify: checker suites, safetensors suites, fixpoint. Depends: none. Ownership: linear-scope disposal combinator and checker enforcement only. Claim: unassigned.
