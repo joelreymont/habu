@@ -491,6 +491,58 @@ variable TX-SUM0                                \ the live prep's own prefix sum
    ;MATCH
    TX-NO-LEAK ;
 
+\ ---- the prep-to-census exit ----------------------------------------------------
+\ RELINQUISH claims to convert a prep back into the census it was built from, TOTALLY,
+\ and that is three claims at once: the prep block is gone, the sealed table is gone,
+\ and the census is not merely alive but UNCHANGED. The counters answer the first two,
+\ and they are the half a leaky implementation fails - a RELINQUISH that forgot the
+\ table leaves the WSTORE counter high and nothing else moves.
+\
+\ The third claim needs the census to be SPENT, because "still an owner" and "still
+\ usable" are different properties and only the counters see the first. So the census
+\ that comes back is handed straight to another PREPARE, and the plan that transaction
+\ builds is compared with the plan the FIRST prep carried - count, prefix sum, and every
+\ carried row, cell for cell. A census that came back subtly damaged - an image quietly
+\ detached, a reader half-consumed, the wrong census entirely - passes every counter
+\ assertion above and fails right here.
+: T-RELINQUISH ( -- )
+   s" RELINQUISH hands the census back and disposes everything else" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-PATH SAFET:LOAD TX-CFG-A PREPARE
+   MATCH GPT2TX:prep-result
+      prepared OF
+         TX-HELD                                  \ census, mapping, table and block
+         TX-ROWS-SNAP                             \ the plan this prep was built on
+         RELINQUISH                               \ ( census )
+         s" the prep block and the sealed table are gone, and the census is not" T-LABEL
+         TX-CENSUS-ONLY
+         s" the census it answers with still reports its own tensors and image" T-LABEL
+         SAFET:COUNT TX-CNT T=
+         SAFET:MAP-LEN 0 > TTRUE
+         s" and it binds again, on exactly the plan the first prep carried" T-LABEL
+         TX-CFG-A PREPARE
+         MATCH GPT2TX:prep-result
+            prepared OF
+               PREP-COUNT TX-CNT T=
+               PREP-SUM TX-DOFF @ T=
+               TX-ROWS-SAME
+               ABORT
+            ENDOF
+            rejected OF
+               s" the relinquished census would not prepare again, code" T-LABEL
+               . cr SAFET:RELEASE
+               0 0= 0= TTRUE
+            ENDOF
+         ;MATCH
+      ENDOF
+      rejected OF
+         s" relinquish leg could not prepare" T-LABEL
+         . cr SAFET:RELEASE
+         0 0= 0= TTRUE
+      ENDOF
+   ;MATCH
+   TX-NO-LEAK ;
+
 \ ---- the identity twin: same census, different captured cfgkey -----------------
 : TX-STASH-KEY ( GPT2TX:prep -- GPT2TX:prep )
    PREP-KEY MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
@@ -579,6 +631,22 @@ variable TX-SUM0                                \ the live prep's own prefix sum
    s" ABORT consumes its prep exactly once" T-LABEL
    s" GX-BAD-ABORT-TWICE ( GPT2TX:prep -- ) GPT2TX:ABORT GPT2TX:ABORT" TX-REJECTED
    s" GX-BAD-ABORT-KEEPS ( GPT2TX:prep -- GPT2TX:prep ) GPT2TX:ABORT" TX-REJECTED
+   \ The prep's two total exits are linear in the same way and differ only in what
+   \ they answer with, so the same shape of negative applies to both: spent twice,
+   \ spent and kept, spent and discarded, or spent after the other exit already ran.
+   s" RELINQUISH consumes its prep exactly once and answers with the census" T-LABEL
+   s" GX-OK-RELINQUISH ( GPT2TX:prep -- SAFET:census ) GPT2TX:RELINQUISH" TX-ACCEPTED
+   s" GX-BAD-RELINQ-TWICE ( GPT2TX:prep -- SAFET:census ) GPT2TX:RELINQUISH GPT2TX:RELINQUISH" TX-REJECTED
+   s" GX-BAD-RELINQ-AFTER-ABORT ( GPT2TX:prep -- SAFET:census ) GPT2TX:ABORT GPT2TX:RELINQUISH" TX-REJECTED
+   s" GX-BAD-ABORT-AFTER-RELINQ ( GPT2TX:prep -- SAFET:census ) GPT2TX:RELINQUISH GPT2TX:ABORT" TX-REJECTED
+   s" GX-BAD-RELINQ-KEEPS ( GPT2TX:prep -- GPT2TX:prep SAFET:census ) GPT2TX:RELINQUISH" TX-REJECTED
+   s" GX-BAD-RELINQ-DROPPED ( GPT2TX:prep -- ) GPT2TX:RELINQUISH" TX-REJECTED
+   s" GX-BAD-RELINQ-AMBIENT ( -- SAFET:census ) GPT2TX:RELINQUISH" TX-REJECTED
+   s" the exit belongs to a prep, and answers with a census and nothing else" T-LABEL
+   s" GX-BAD-RELINQ-CHECKED ( GPT2TX:checked-prep -- SAFET:census ) GPT2TX:RELINQUISH" TX-REJECTED
+   s" GX-BAD-RELINQ-ALLOC ( GPT2TX:checked-prep-alloc -- SAFET:census ) GPT2TX:RELINQUISH" TX-REJECTED
+   s" GX-BAD-RELINQ-CENSUS ( SAFET:census -- SAFET:census ) GPT2TX:RELINQUISH" TX-REJECTED
+   s" GX-BAD-RELINQ-MAPPING ( GPT2TX:prep -- SAFET:mapping ) GPT2TX:RELINQUISH" TX-REJECTED
    s" prep-result payloads cannot cross roles" T-LABEL
    s" GX-BAD-PREPARED-CENSUS ( SAFET:census -- GPT2TX:prep-result ) GPT2TX-PREP--RESULT:PREPARED" TX-REJECTED
    s" GX-BAD-REJECTED-PREP ( GPT2TX:prep n -- GPT2TX:prep-result ) GPT2TX-PREP--RESULT:REJECTED" TX-REJECTED
@@ -619,6 +687,7 @@ variable TX-SUM0                                \ the live prep's own prefix sum
    T-REJECT-IMAGELESS TX-NO-LEAK
    T-ABORT            TX-NO-LEAK
    T-PREP-OWNS-PLAN   TX-NO-LEAK
+   T-RELINQUISH       TX-NO-LEAK
    T-TWIN             TX-NO-LEAK
    T-FOREIGN-COMPARE  TX-NO-LEAK
    TX-CLEANUP ;

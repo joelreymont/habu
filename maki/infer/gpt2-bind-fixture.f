@@ -372,6 +372,18 @@ variable TX-BASE-PREP
    WSTORE:LIVE TX-BASE-WS @ 1 + T=
    LIVE TX-BASE-PREP @ T= ;
 
+\ What a relinquished transaction leaves: the prep block and the sealed table are both
+\ gone, and the census is still whole - still an owner, still holding its mapping. It is
+\ the one state where the four counters disagree with each other, which is exactly why
+\ it is worth asserting: a RELINQUISH that forgot the table would satisfy TX-HELD's
+\ census legs and this one's census legs alike, and only the WSTORE leg here tells them
+\ apart.
+: TX-CENSUS-ONLY ( -- )
+   SAFET-MAP:LIVE TX-BASE-MAP @ 1 + T=
+   SAFET:LIVE-OWNERS TX-BASE-OWN @ 1 + T=
+   WSTORE:LIVE TX-BASE-WS @ T=
+   LIVE TX-BASE-PREP @ T= ;
+
 : TX-BYTES= ( ptr u8 n ptr u8 n -- )
    STR= TTRUE ;
 

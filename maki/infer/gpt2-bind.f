@@ -83,9 +83,12 @@
 \ nlayer, and the plan the transaction was validated against. It has NO public
 \ accessor: nothing hands out the census, the table, a slot row, or a pointer, so
 \ through the PUBLIC surface the only things a holder can do with a prep are commit
-\ it (the later leaves) or ABORT it. ABORT is total - table back through
-\ WSTORE:TABLE-DISPOSE, census back through SAFET:RELEASE, then the block - and it
-\ is the same disposal the commit leaves reuse when they run out of memory.
+\ it (the later leaves), ABORT it, or RELINQUISH it. ABORT is total - table back
+\ through WSTORE:TABLE-DISPOSE, census back through SAFET:RELEASE, then the block -
+\ and it is the same disposal the commit leaves reuse when they run out of memory.
+\ RELINQUISH is that same disposal with the census KEPT and handed back instead of
+\ released, which is what lets a caller refuse after the prep exists and still return
+\ the census it was given.
 \
 \ HOW STRONG THAT OPACITY ACTUALLY IS. It is a public-surface guarantee, not a
 \ sealed one. WSTORE closes its package with the prot-wid seal, so a foreign file
@@ -1037,6 +1040,44 @@ public
    blk P-CEN cells + @ N>CENSUS SAFET:RELEASE
    blk FREE-BLOCK
    tc 0 <> if tc throw then ;
+
+\ ---- the other total exit: end the prep, keep the census -------------------------
+\ ABORT ends the whole transaction. This ends the PREP and gives back what the caller
+\ handed in: the table goes back through WSTORE:TABLE-DISPOSE, the block is freed, and
+\ the census comes out of the block exactly as it went in - same tensors, same mapping,
+\ still answering its readers, still releasable through SAFET:RELEASE and still
+\ bindable by another PREPARE. It is ABORT's body with one owner kept instead of
+\ released.
+\
+\ WHY IT EXISTS. Before it, the only thing a holder could do with a prep it was not
+\ going to commit was throw it away, and that threw the census away with it. A
+\ dispatcher cannot work that way: a refusal decided AFTER the prep exists still has to
+\ answer with the census the caller supplied, because that census is the caller's and
+\ nothing about it was wrong. This is the word that makes "refuse late, hand back what
+\ you were given" expressible at all, and it is why the PREPARE phase's rejected arm
+\ and a later stage's refusal can carry the same payload.
+\
+\ WHY IT IS TOTAL, AND WHAT THE ORDER BUYS. Every step is total. WSTORE:TABLE-DISPOSE
+\ answers ok unconditionally; the one way its block release can fail is a munmap of a
+\ region this process mapped, which throws out of MEM:RELEASE-BYTES rather than
+\ becoming err - the same unguarded package free FREE-BLOCK itself performs, and a
+\ programming error rather than a runtime condition. The census is read out of the
+\ block as a raw cell and minted back into a checked value LAST, after the block is
+\ gone, so no owner the checker can see is live across the block free. That is
+\ COMMIT-MAPPED's placement, for exactly COMMIT-MAPPED's reason.
+\
+\ THE UNREACHABLE REPORT STILL GIVES EVERYTHING BACK. A word cannot both throw and
+\ answer with a census, so if a release ever did report a code this one releases the
+\ census before reporting it: the ABORT discipline - everything back before anything is
+\ said. Reporting while still holding the census would strand it past any caller's
+\ catch, which is the one outcome no exit in this file is allowed to have.
+: RELINQUISH ( GPT2TX:prep -- SAFET:census )
+   TAKE-PREP {: blk:ptr :}
+   blk P-CEN cells + @ {: cen:n :}
+   blk P-TBL cells + @ N>TABLE WSTORE:TABLE-DISPOSE RES-CODE {: tc:n :}
+   blk FREE-BLOCK
+   tc 0 <> if cen N>CENSUS SAFET:RELEASE tc throw then
+   cen N>CENSUS ;
 
 \ ---- the transaction's second half, part one: compare, then move ------------------
 \ CHECK is the RECOVERABLE half of the commit, and the split is the whole design. It
