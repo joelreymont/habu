@@ -1,9 +1,11 @@
 ---
 title: Lift family reflection helpers into shared test support
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T12:42:17.662473+02:00"
 ---
 
 Three migration lanes (C13, D1, and the C7/C1 registry-pin blocks) hand-rolled the same family-lookup-plus-field-slot reflection helpers because the shared file was write-locked by concurrent lanes. The shapes are now stable across two family kinds and four suites. Behavior: lift one canonical helper set into test/checker-assert.f (family-by-tail-plus-ctor-package lookup with uniqueness assertion and -1 sentinel refusal; field name-to-slot reader; case name/order reader; kind reader), convert the existing hand-rolled copies in maki/evidence/policy-test.f, maki/evidence/schema-test.f, maki/competitive-report-test.f, maki/db/diff-runner-test.f, maki/db/action-test.f to the shared set with byte-identical assertion outcomes, and every future migration lane uses it. Acceptance: all five converted suites green with unchanged assertion counts; the helper set has its own focused test with a hostile fixture (ambiguous tail must fail the uniqueness assertion, wrong ctor package must not resolve); maki/test.f green. Owner: the checker-assert test-support package. Dependencies: dispatch only when no migration lane is in flight (whole-file conversions across the suites). Scope grown since minting: sweep ALL hand-rolled copies - policy-test, schema-test, competitive-report-test, diff-runner-test, action-test, obligation-test, diagnostic-test, audit-log-test, budget-ledger-test, capability-test - and key the shared helper on tail PLUS constructor package with a uniqueness assertion (program rule R7; a tail-only lookup silently pins the wrong family, measured in C10). Claim: agent=lift workspace=.jj-ws/habu-lift-helpers
+
+Closed 2026-07-26: landed as cb44455d7191 (canonical REFLECT set + focused suite; hostile fixture immediately found the NO-VARIANT=-1 fallthrough bug shared by all six hand-rolled copies), aec547195b62 (seven-suite conversion, 14/14 mutations detected, counts byte-identical), and 7dfb143b07f0 (the two stragglers, including the tail-only R7 hazard in extent-tensor-test; the OBLIG-ID--RESULT collision mutation is the direct R7 proof). Sweep complete: rg for the hand-rolled helper names returns only test/checker-assert.f. Corrections to the sweep list recorded: diagnostic-test.f is reflection-free (stale entry, nothing converted); two unused lib/string requires deliberately left for a tidy-up lane.
