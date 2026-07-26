@@ -347,7 +347,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | FAM-WIDTH@ | `n -- n` | Type-family registry read seam: forwards to the pre-hook `TFAM-WIDTH@` (referenced-family cell width, for nested-field layout); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | FAM-LAYOUT? | `n -- bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-LAYOUT?` (family occupies an ADT layout, for nested-field type resolution); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | FAM-CELL? | `n -- bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-CELL?` (nominal-scalar family kind, for nested-field type resolution); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
-| FAM-LINEAR? | `n -- bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-CONCRETE-LINEAR?` (concrete linear payload check, rejecting a linear nested-field family); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | SIG-RESOLVE | `ptr u8 n ptr u8 n -- n bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-SIG-RESOLVE` (signature-scope family lookup for a nested-field type token); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | ACTIVE-PKG$ | `-- ptr u8 n` | Checker package-scope seam: forwards to the pre-hook `TFAM-ACTIVE-PKG$` (active checker package for registration/resolution); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
 | PKG-ACTIVE? | `-- bool` | Checker package-scope seam: forwards to the pre-hook `CHECKER-PACKAGE-ACTIVE?` (is a checker package open, for declaration visibility); the checker cannot type the sealed pre-hook word from a post-hook checked body. | `test/structure-decl-suite.f`, `test/run.f` | src/core/structure-decl.f | 2026-07-21 | stdlib-boundary | habu-structure-parse-typed-c5a01e1f |
@@ -389,7 +388,6 @@ that source is explicitly certified; they are not stale-checked by the default
 | FAM-WIDTH@ | `n -- n` | Type-family registry read seam: forwards to the pre-hook `TFAM-WIDTH@` (referenced-family cell width, for nested-field layout); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | FAM-LAYOUT? | `n -- bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-LAYOUT?` (family occupies an ADT layout, for nested-field type resolution); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | FAM-CELL? | `n -- bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-CELL?` (nominal-scalar family kind, for nested-field type resolution); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
-| FAM-LINEAR? | `n -- bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-CONCRETE-LINEAR?` (concrete linear payload check, rejecting a linear nested-field family); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | SIG-RESOLVE | `ptr u8 n ptr u8 n -- n bool` | Type-family registry read seam: forwards to the pre-hook `TFAM-SIG-RESOLVE` (signature-scope family lookup for a nested-field type token); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | ACTIVE-PKG$ | `-- ptr u8 n` | Checker package-scope seam: forwards to the pre-hook `TFAM-ACTIVE-PKG$` (active checker package for registration/resolution); the checker cannot type the sealed pre-hook registry word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
 | PKG-ACTIVE? | `-- bool` | Checker package-scope seam: forwards to the pre-hook `CHECKER-PACKAGE-ACTIVE?` (is a checker package open, for declaration visibility); the checker cannot type the sealed pre-hook word from a post-hook checked body. | `test/enum-decl-suite.f`, `test/run.f` | src/core/enum-decl.f | 2026-07-21 | stdlib-boundary | habu-enum-parse-full-39c0dc1b |
@@ -1285,6 +1283,8 @@ test/rigid-region-suite.f:RR-XRGN3 test-metaprog habu-add-bounded-host-b40b048f
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-layout-lower-pending.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11b-open-ee9c72c6
+test/type-linear-suite.f:TLIN:FREE-MODEL test-metaprog habu-checker-enum-payload-9e1ae6cc
+test/type-linear-suite.f:TLIN:MINT-TOK test-metaprog habu-checker-enum-payload-9e1ae6cc
 test/engine-suite.f:T-CHECK-PASSES test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-RDF test-metaprog cap:checker-hook-identity 2
 test/engine-suite.f:TR-SYM-LAYOUT-RAW test-metaprog cap:checker-registry-whitebox
@@ -1449,6 +1449,7 @@ test/structure-decl-suite.f:REG-RESTORE test-metaprog habu-structure-parse-typed
 test/structure-decl-suite.f:TFAMN@ test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:SCHN@ test-metaprog habu-structure-parse-typed-c5a01e1f
 test/structure-decl-suite.f:SUMVN@ test-metaprog habu-structure-parse-typed-c5a01e1f
+test/structure-decl-suite.f:LINEAR? test-metaprog habu-checker-enum-payload-9e1ae6cc
 test/decl-replay-verify-source.f:FAMID test-metaprog habu-cut-global-enum-56ca54e2
 test/decl-replay-verify-source.f:F-KIND test-metaprog habu-cut-global-enum-56ca54e2
 test/decl-replay-verify-source.f:F-ARITY test-metaprog habu-cut-global-enum-56ca54e2
@@ -1529,6 +1530,7 @@ test/enum-decl-suite.f:L-ALIGN test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-decl-suite.f:L-TAGW test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-decl-suite.f:SRC$ test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-decl-suite.f:PUT-C test-metaprog habu-cut-global-enum-56ca54e2
+test/enum-decl-suite.f:LINEAR? test-metaprog habu-checker-enum-payload-9e1ae6cc
 test/enum-ctor-collide-bad.f:EV test-metaprog habu-enum-generate-named-1f3261a3
 test/type-ctor-suite.f:TWX-CHECKER-RECORD-SYM test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33

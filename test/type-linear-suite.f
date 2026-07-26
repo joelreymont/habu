@@ -9,6 +9,11 @@
 \ consumption land with item 9). Width stays truthful: linear-arg layouts
 \ expand to hidden fields exactly like non-linear ones (LAYOUT-ARGS-OPEN?),
 \ so checker rows and runtime cells agree.
+\
+\ The closing TC/TK/TM section (package TLIN) covers the OTHER way a bundle
+\ becomes one linear unit: not through its type arguments but through a declared
+\ field or variant payload that names a family which itself owns a linear value
+\ (dot habu-checker-enum-payload-9e1ae6cc).
 
 require test/checker-assert.f
 
@@ -136,6 +141,123 @@ s" NL5=" type s" NC5 ( lopt<lq2<ltok,n>> -- lopt<lq2<ltok,n>> )" CHECK-QUIET-CAN
 s" NL6=" type s" NC6 ( lopt<lq2<ltok,n>> -- lopt<lq2<ltok,n>> ) MATCH lopt none OF LOPT:NONE ENDOF some OF LOPT:SOME ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
 s" NL7=" type s" NC7 ( lopt<lq2<ltok,n>> -- n ) MATCH lopt none OF 0 ENDOF some OF drop 1 ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 cr
+
+\ ---------------------------------------------------------------------------
+\ LINEARITY BY CONTAINMENT through a declared field or payload (dot
+\ habu-checker-enum-payload-9e1ae6cc).
+\
+\ The sections above make a bundle linear through its TYPE ARGUMENTS. This one
+\ makes it linear through its DECLARED MEMBERS: a structure field or a variant
+\ payload that names a family which itself owns a linear value. Until this dot
+\ both unified declarers refused that spelling outright, so `FIELD res
+\ WSTORE:resident` was legal but `FIELD m gpt2-model` — the same resource one
+\ structure deeper — rejected as an "unknown" type. Refusing it never protected
+\ anything, because the obligation is carried by the value either way; it only
+\ made the resource unnameable one level out, which is what blocked the GPT-2
+\ bind transaction from answering with a bound model.
+\
+\ What decides linearity is TFAM-CONCRETE-LINEAR?, which walks a family's field
+\ and payload schemas and follows an application node into the family it names.
+\ It already recursed, so accepting the spelling was enough: TCn below prove the
+\ containment reaches an arbitrary depth and through a sum, TKn that the sealed
+\ MAKE/UNMAKE pair conserves the resource, and TMn that MATCH hands the payload
+\ to the arm as a linear value the arm must discharge exactly once.
+\
+\ FREE-MODEL / MINT-TOK are the abstract consumer and producer (test-fixture
+\ boundary, the FREE-MTOK pattern of test/type-match-suite.f) so an arm can fully
+\ discharge or fully re-supply the resource without a runtime.
+\
+\ The whole section lives in package TLIN, which is also how production writes
+\ these types (maki/infer/weight-store.f owns `WSTORE:resident` the same way).
+\ The candidates are checked from inside the package because `construct` resolves
+\ its family in the ACTIVE package, so a fixture that constructs has to be
+\ written where a real caller of these types would be written.
+\ ---------------------------------------------------------------------------
+package TLIN
+public
+
+DEFLINEAR TLIN:tok                                             \ the linear owner everything below nests
+STRUCTURE box 0 FIELD t TLIN:tok FIELD k n ;STRUCTURE          \ depth 1: names the con
+STRUCTURE model 0 FIELD inner box FIELD z n ;STRUCTURE         \ depth 2: names that family
+STRUCTURE deep 0 FIELD d model ;STRUCTURE                      \ depth 3: and again
+STRUCTURE lone 0 FIELD t TLIN:tok ;STRUCTURE                   \ one cell, linear
+STRUCTURE plain 0 FIELD v n ;STRUCTURE                         \ one cell, its non-linear twin
+STRUCTURE plainer 0 FIELD inner plain ;STRUCTURE               \ control: nothing linear anywhere
+ENUM bind 0
+  VARIANT bound    FIELD m model ;VARIANT
+  VARIANT rejected FIELD code n ;VARIANT
+;ENUM
+STRUCTURE viabind 0 FIELD b bind ;STRUCTURE                    \ a product reaching a linear SUM
+s" TLIN:FREE-MODEL" s" TLIN:model --" TRUST
+s" TLIN:MINT-TOK" s" -- TLIN:tok" TRUST
+
+\ the value itself: identity and permutation conserve it, every copy or loss does not.
+s" TC1=" type s" TC1 ( model -- model )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC2=" type s" TC2 ( model -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC3=" type s" TC3 ( model -- model model ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC4=" type s" TC4 ( model model -- model ) nip" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC5=" type s" TC5 ( model n -- n model ) swap" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC6=" type s" TC6 ( model -- ) >r" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC7=" type s" TC7 ( model -- model model ) >r r@ r>" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC8=" type s" TC8 ( model -- ) FREE-MODEL" CHECK-QUIET-CANDIDATE! -1 T=
+\ one more level of nesting is still one linear unit, not zero.
+s" TC9=" type s" TC9 ( deep -- deep )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC10=" type s" TC10 ( deep -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC11=" type s" TC11 ( deep -- deep deep ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+\ a product reaching the resource through a SUM counts the same way.
+s" TC12=" type s" TC12 ( viabind -- viabind )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC13=" type s" TC13 ( viabind -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC14=" type s" TC14 ( viabind -- viabind viabind ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+\ the control: an identically nested chain with no linear member copies and drops
+\ freely, so the rejects above answer the chain and not the nesting.
+s" TC15=" type s" TC15 ( plainer -- plainer plainer ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC16=" type s" TC16 ( plainer -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+\ a local capture of the bundle launders the count, so it stays refused.
+s" TC17=" type s" TC17 ( model -- model ) {: v:model :} v" CHECK-QUIET-CANDIDATE! 0 T=
+\ typed memory stays closed to the resource, so no address round trip can launder
+\ it. `lone` and `plain` are both one cell and differ only in owning a linear
+\ value, so the load that certifies for one and refuses for the other is answering
+\ linearity and not width. The address is not the resource and still copies.
+s" TC18=" type s" TC18 ( ptr lone -- lone ) @" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC19=" type s" TC19 ( ptr plain -- plain ) @" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC20=" type s" TC20 ( ptr lone -- ptr lone ptr lone ) dup" CHECK-QUIET-CANDIDATE! -1 T=
+cr
+
+\ the sealed MAKE/UNMAKE pair moves the resource without copying or losing it.
+s" TK1=" type s" TK1 ( box n -- model ) TLIN-MODEL:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TK2=" type s" TK2 ( model -- box n ) TLIN-MODEL:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TK3=" type s" TK3 ( box n -- box n ) TLIN-MODEL:MAKE TLIN-MODEL:UNMAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" TK4=" type s" TK4 ( model -- n ) TLIN-MODEL:UNMAKE nip" CHECK-QUIET-CANDIDATE! 0 T=
+s" TK5=" type s" TK5 ( box n -- model model ) TLIN-MODEL:MAKE dup" CHECK-QUIET-CANDIDATE! 0 T=
+s" TK6=" type s" TK6 ( box n -- ) TLIN-MODEL:MAKE drop" CHECK-QUIET-CANDIDATE! 0 T=
+cr
+
+\ construction consumes the payload exactly once and mints one linear bundle.
+s" TM1=" type s" TM1 ( model -- bind ) construct bind bound" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM2=" type s" TM2 ( n -- bind ) construct bind rejected" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM3=" type s" TM3 ( model -- bind model ) dup construct bind bound swap" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM4=" type s" TM4 ( model n -- bind ) nip construct bind rejected" CHECK-QUIET-CANDIDATE! 0 T=
+\ the bundle itself is one linear unit.
+s" TM5=" type s" TM5 ( bind -- bind )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM6=" type s" TM6 ( bind -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM7=" type s" TM7 ( bind -- bind bind ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+\ MATCH binds the payload INTO the arm as a linear value: discharging it once
+\ certifies, and copying, dropping, stranding or leaving it does not.
+s" TM8=" type s" TM8 ( bind -- n ) MATCH bind bound OF FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM9=" type s" TM9 ( bind -- n ) MATCH bind bound OF drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM10=" type s" TM10 ( bind -- n ) MATCH bind bound OF dup FREE-MODEL FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM11=" type s" TM11 ( bind -- n ) MATCH bind bound OF 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM12=" type s" TM12 ( bind -- n ) MATCH bind bound OF >r 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM13=" type s" TM13 ( bind -- n ) MATCH bind bound OF exit ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ re-minting the bundle is a legitimate discharge, and so is moving the payload
+\ out through the join — both consume the arm's value exactly once.
+s" TM14=" type s" TM14 ( bind -- bind ) MATCH bind bound OF construct bind bound ENDOF rejected OF construct bind rejected ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM15=" type s" TM15 ( bind -- model ) MATCH bind bound OF ENDOF rejected OF drop MINT-TOK 0 TLIN-BOX:MAKE 0 TLIN-MODEL:MAKE ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ unpacking the payload inside the arm keeps the obligation on the parts.
+s" TM16=" type s" TM16 ( bind -- n ) MATCH bind bound OF TLIN-MODEL:UNMAKE drop TLIN-BOX:UNMAKE drop drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+cr
+
+;package
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

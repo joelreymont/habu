@@ -1455,6 +1455,87 @@ VS0 @ LONG-N 1 - + SV-TAG@ LONG-N 1 - T=   \ no gap: the last tag is N-1
 ;package
 
 \ ---------------------------------------------------------------------------
+\ A variant payload may name a family that owns a linear value, and the enum then
+\ owns that obligation by containment (dot habu-checker-enum-payload-9e1ae6cc).
+\
+\ The resolver used to refuse any family whose schemas reach a linear value. That
+\ made `FIELD p GPT2TX:prep` legal but `FIELD m gpt2-model` — the very same
+\ resource one structure deeper — reject 7109 as an "unknown payload type", about
+\ a family that had just registered successfully. The two spellings carry the same
+\ obligation, so refusing one of them bought no soundness; it only blocked the
+\ name. What actually enforces the discipline is TFAM-CONCRETE-LINEAR?, which
+\ walks each variant's payload schemas, follows an application node into the
+\ family it names, and reports the containing enum linear. That walk already
+\ recursed, so it needed no change: only the refusal had to go.
+\
+\ These cases use the live ENUM keyword, which is what real source writes. They
+\ pin the registry side; test/type-linear-suite.f pins what the checker does with
+\ such a value on a row, including what a MATCH arm may do with the payload.
+\
+\ The linear owner and the registry reader are owned by package EDLIN. Production
+\ writes the owner that way too (maki/infer/weight-store.f owns
+\ `WSTORE:resident`), so naming it as a payload type also exercises the qualified
+\ spelling the resolver meets in real source.
+\ ---------------------------------------------------------------------------
+package EDLIN
+public
+DEFLINEAR EDLIN:tok                                   \ the linear owner these fixtures nest
+TRUSTED: LINEAR? ( n -- bool ) TFAM-CONCRETE-LINEAR? ;   \ owns one, directly or through a payload
+;package
+
+\ depth 1, legal before this change: a payload naming the linear con itself.
+s" ENUM edlone 0 VARIANT hold FIELD t EDLIN:tok ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" edlone" FAMID EDLIN:LINEAR? T-TRUE
+
+\ depth 2, the shape this dot unblocks: a payload naming a linear family. This is
+\ the frozen bind-result shape, with a stand-in for gpt2-model.
+s" STRUCTURE edlmodel 0 FIELD res EDLIN:tok FIELD nl n ;STRUCTURE" TRY 0 T=
+s" edlmodel" FAMID EDLIN:LINEAR? T-TRUE
+s" ENUM edlbind 0 VARIANT bound FIELD m edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
+s" edlbind" FAMID EDLIN:LINEAR? T-TRUE                    \ linear by containment
+s" edlbind" FAMID F-VAR-COUNT 2 T=
+s" edlbind" FAMID F-FLD-COUNT 2 T=                    \ one named payload per variant
+s" edlbind" FAMID F-WIDTH 3 T=                        \ tag cell + the widest payload (two cells)
+
+\ depth 3: the walk recurses again rather than stopping one level down.
+s" STRUCTURE edlhold 0 FIELD b edlbind ;STRUCTURE" TRY 0 T=
+s" edlhold" FAMID EDLIN:LINEAR? T-TRUE
+s" ENUM edlnest 0 VARIANT hold FIELD h edlhold ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" edlnest" FAMID EDLIN:LINEAR? T-TRUE
+
+\ the control: a chain with no linear value anywhere stays non-linear, so the
+\ walk is answering about the chain and not about nesting as such.
+s" STRUCTURE edlplain 0 FIELD v n ;STRUCTURE" TRY 0 T=
+s" ENUM edlctl 0 VARIANT hold FIELD m edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" edlctl" FAMID EDLIN:LINEAR? 0= T-TRUE
+
+\ wrong role: the same word in the FIELD NAME position is a name, never a type,
+\ so it neither resolves nor makes the enum linear.
+s" ENUM edlrole 0 VARIANT hold FIELD edlmodel n ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" edlrole" FAMID EDLIN:LINEAR? 0= T-TRUE
+
+\ reordering: naming a family before it is declared is still an unknown type,
+\ so acceptance comes from resolution and not from the spelling alone.
+DECL-DIAG:PROSE
+s" ENUM edlfwd 0 VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlfwd': unknown payload type at 'edllater'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ ---------------------------------------------------------------------------
+\ A name that DOES resolve says why it cannot be a payload type. A parametric
+\ family named bare is the one such case source can reach, and reporting it as
+\ "unknown payload type" sent readers looking for a declaration that was right
+\ there. A name that resolves to nothing still reports unknown, which is true.
+\ ---------------------------------------------------------------------------
+s" ENUM edlgen 1 VARIANT hold FIELD m a ;VARIANT ;ENUM" TRY 0 T=
+DECL-DIAG:PROSE
+s" ENUM edlgenuse 0 VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlgenuse': payload type is parametric and needs type arguments at 'edlgen'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" enum-decl-suite: failures" 1 die ;

@@ -89,7 +89,6 @@ TRUSTED: FAM-ARITY@ ( n -- n ) TFAM-ARITY@ ;
 TRUSTED: FAM-WIDTH@ ( n -- n ) TFAM-WIDTH@ ;
 TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
-TRUSTED: FAM-LINEAR? ( n -- bool ) TFAM-CONCRETE-LINEAR? ;
 TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: PKG-ACTIVE? ( -- bool ) CHECKER-PACKAGE-ACTIVE? ;
@@ -212,14 +211,29 @@ SD-RESET
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
 \ multi-char con names), positional letter params within arity, ptr T, and closed
-\ non-linear arity-0 layout/cell families. Everything else is unresolved.
+\ arity-0 layout/cell families. Everything else is unresolved.
+\
+\ A family that owns a linear value — directly or through its own fields — IS an
+\ accepted field type (dot habu-checker-enum-payload-9e1ae6cc). The structure then
+\ owns that obligation by containment, which is the same rule a field naming a
+\ bare DEFLINEAR con already relies on: TFAM-CONCRETE-LINEAR? walks the product's
+\ field schemas, follows an application node into the family it names, and reports
+\ the structure linear, so the checker counts the whole bundle as one linear unit.
+\ Refusing the family spelling while accepting the con spelling blocked the name
+\ and never the obligation, so it bought no soundness.
+\
+\ A parametric family named bare is the one resolved-but-unusable case source can
+\ reach, and it now says so. Calling a registered family "unknown field type" sent
+\ readers hunting for a missing declaration that was in fact right there. The
+\ remaining kind test still falls through to the unknown message because the only
+\ kind it excludes, TK-EVIDENCE, has no declarer any source can write.
 \ ---------------------------------------------------------------------------
 : FIELD-FAM? ( ptr u8 n -- n bool )     \ resolve a closed arity-0 layout/cell family
    ACTIVE-PKG$ 2swap SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
    {: id:n :}
    id FAM-LAYOUT? id FAM-CELL? or 0= IF 0 NO EXIT THEN
-   id FAM-ARITY@ 0 <> IF 0 NO EXIT THEN
-   id FAM-LINEAR? IF 0 NO EXIT THEN
+   id FAM-ARITY@ 0 <> IF
+      s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
 : LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r

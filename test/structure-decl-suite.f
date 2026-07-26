@@ -538,6 +538,91 @@ DECL-DIAG:SILENT? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
+\ A field may name a family that owns a linear value, and the structure then owns
+\ that obligation by containment (dot habu-checker-enum-payload-9e1ae6cc).
+\
+\ The resolver used to refuse any family whose schemas reach a linear value. That
+\ made `FIELD res WSTORE:resident` legal but `FIELD m gpt2-model` — the very same
+\ resource one structure deeper — reject 7109 as an "unknown field type", about a
+\ family that had just registered successfully. The two spellings carry the same
+\ obligation, so refusing one of them bought no soundness; it only blocked the
+\ name. What actually enforces the discipline is TFAM-CONCRETE-LINEAR?, which
+\ walks a product's field schemas, follows an application node into the family it
+\ names, and reports the containing family linear. That walk already recursed, so
+\ it needed no change: only the refusal had to go.
+\
+\ These cases pin the registry side — which families read back linear, and that
+\ the walk keeps recursing at every extra level of nesting. test/type-linear-suite.f
+\ pins what the checker then does with such a value on a row.
+\
+\ The linear owner and the registry reader are owned by package SDLIN. Production
+\ writes the owner that way too (maki/infer/weight-store.f owns
+\ `WSTORE:resident`), so naming it as a field type also exercises the qualified
+\ spelling the resolver meets in real source.
+\ ---------------------------------------------------------------------------
+package SDLIN
+public
+DEFLINEAR SDLIN:tok                                   \ the linear owner these fixtures nest
+TRUSTED: LINEAR? ( n -- bool ) TFAM-CONCRETE-LINEAR? ;   \ owns one, directly or through a field
+;package
+
+\ depth 1, legal before this change: a field naming the linear con itself.
+s" STRUCTURE sdlbox 0 FIELD t SDLIN:tok FIELD k n ;STRUCTURE" TRY 0 T=
+s" sdlbox" FAMID SDLIN:LINEAR? T-TRUE
+s" sdlbox" FAMID FAM-SLOTS@ 2 T=
+
+\ depth 2, the shape this dot unblocks: a field naming that linear family.
+TYPE-FIELD:COUNT B !
+s" STRUCTURE sdlouter 0 FIELD inner sdlbox FIELD z n ;STRUCTURE" TRY 0 T=
+s" sdlouter" FAMID SDLIN:LINEAR? T-TRUE                 \ linear by containment
+s" sdlouter" FAMID FAM-SLOTS@ 3 T=                    \ the nested bundle keeps its own two cells
+B @ TYPE-FIELD:NAME$ s" inner" CORE-STR= T-TRUE
+B @ TYPE-FIELD:CELLS@ 2 T=                            \ the field is the whole bundle, not one cell
+B @ 1 + TYPE-FIELD:SLOT@ 2 T=                         \ z sits after it
+
+\ depth 3: the walk recurses again rather than stopping one level down.
+s" STRUCTURE sdldeep 0 FIELD d sdlouter ;STRUCTURE" TRY 0 T=
+s" sdldeep" FAMID SDLIN:LINEAR? T-TRUE
+
+\ a sum reached through a product counts the same way.
+s" ENUM sdlsum 0 VARIANT hold FIELD m sdlbox ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" sdlsum" FAMID SDLIN:LINEAR? T-TRUE
+s" STRUCTURE sdlviasum 0 FIELD e sdlsum ;STRUCTURE" TRY 0 T=
+s" sdlviasum" FAMID SDLIN:LINEAR? T-TRUE
+
+\ the control: a chain with no linear value anywhere stays non-linear, so the
+\ walk is answering about the chain and not about nesting as such.
+s" STRUCTURE sdlplain 0 FIELD v n ;STRUCTURE" TRY 0 T=
+s" STRUCTURE sdlplainer 0 FIELD inner sdlplain ;STRUCTURE" TRY 0 T=
+s" sdlplainer" FAMID SDLIN:LINEAR? 0= T-TRUE
+
+\ wrong role: the same word in the FIELD NAME position is a name, never a type,
+\ so it neither resolves nor makes the structure linear.
+s" STRUCTURE sdlrole 0 FIELD sdlbox n ;STRUCTURE" TRY 0 T=
+s" sdlrole" FAMID SDLIN:LINEAR? 0= T-TRUE
+
+\ reordering: naming a family before it is declared is still an unknown type,
+\ so acceptance comes from resolution and not from the spelling alone.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlfwd 0 FIELD m sdllater ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlfwd': unknown field type at 'sdllater'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ ---------------------------------------------------------------------------
+\ A name that DOES resolve says why it cannot be a field type. A parametric
+\ family named bare is the one such case source can reach, and reporting it as
+\ "unknown field type" sent readers looking for a declaration that was right
+\ there. A name that resolves to nothing still reports unknown, which is true.
+\ ---------------------------------------------------------------------------
+s" STRUCTURE sdlgen 1 FIELD a a ;STRUCTURE" TRY 0 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdlgenuse 0 FIELD m sdlgen ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlgenuse': field type is parametric and needs type arguments at 'sdlgen'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" structure-decl-suite: failures" 1 die ;

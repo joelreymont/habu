@@ -1186,15 +1186,39 @@ until width instantiation exists for variable-width parameter kinds.
 Field names are their own tail namespace (single letters such as `x` are
 legal, lowercase canon enforced, duplicates reject). Field and variant payload
 types use the §2.1 positional parameter alphabet within arity, concrete cell
-types, `ptr T`, or a closed, non-linear, arity-0 layout family. The family form becomes an
+types, `ptr T`, or a closed, arity-0 layout family. The family form becomes an
 SC-APP carrying the resolved family id. Its physical width is the referenced
 family's full `WIDTH`, so `PF.SLOT`, product width, sum padding, constructors,
 destructors, and `MATCH` preserve nested layouts rather than counting the
-schema root as one cell. Parametric, linear, and direct self-recursive families
+schema root as one cell. Parametric and direct self-recursive families
 reject; explicit parameterized application syntax is not yet part of the
 declaration grammar. `MAKE`/`UNMAKE` consume and produce the field under its
 family type, so same-width family swaps remain checker errors. Pinned in
 `test/type-decl-suite.f` and `test/lower-txn-large.f`.
+
+A family that owns a linear value is an ACCEPTED field and payload type, and the
+containing family then owns that obligation by containment (dot
+`habu-checker-enum-payload-9e1ae6cc`). Both unified declarers used to refuse the
+family spelling while accepting a bare `DEFLINEAR` con in the same position, so
+`FIELD res WSTORE:resident` was legal but `FIELD m gpt2-model` — the same
+resource one structure deeper — rejected 7109 as an "unknown" type, about a
+family that had just registered. The two spellings carry the same obligation, so
+the refusal bought no soundness: it only made the resource unnameable one level
+out. `TFAM-CONCRETE-LINEAR?` (§19) is what decides the question — it walks a
+family's field and payload schemas and follows an SC-APP into the family it
+names, to any depth and through a sum — and it already recursed, so accepting the
+spelling was the whole change. `MATCH` needs no linearity rule of its own: an arm
+receives the payload as an ordinary linear value on the row, and the per-step
+conservation check makes the arm discharge it exactly once. Pinned in
+`test/type-linear-suite.f` (TC/TK/TM), `test/structure-decl-suite.f` and
+`test/enum-decl-suite.f`.
+
+A name that resolves to a family but cannot serve as a field or payload type now
+says why: a parametric family named bare reports `field type is parametric and
+needs type arguments` from `STRUCTURE`, and `payload type is parametric and needs
+type arguments` from `ENUM`, rather than the old `unknown field type` /
+`unknown payload type`. Only a name that resolves to nothing is reported as
+unknown.
 
 A PUBLIC product publishes exactly two generated words in its derived
 constructor package, with fixed generator-owned tails (the analogue of a
