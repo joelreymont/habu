@@ -275,6 +275,9 @@ public
 -6499 constant E-JRPP-LAST
 -6400 constant E-JRPP-CHILD      \ the ratchet phase was started inside a gate-pool fork worker
 -6401 constant E-JRPP-BUSY       \ the ratchet phase was started with pool workers still in flight
--6402 constant E-JRPP-DRIFT      \ host calibration drifted on the measurement and on its one re-measure
+\ -6402 was E-JRPP-DRIFT, thrown when the calibration bracket moved twice. A
+\ drifted bracket is now an inadmissible measurement rather than a failure: the
+\ phase re-measures and, if the box never goes quiet, leaves by its own exit
+\ status (JSON-READ-PERF-PHASE CONTENDED-RC) instead of throwing.
 -6403 constant E-JRPP-MISMATCH   \ a phase fixture read a value other than the one it required
 -6404 constant E-JRPP-REPEAT     \ the ratchet phase was started twice in one gate process

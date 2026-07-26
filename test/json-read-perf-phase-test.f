@@ -15,10 +15,20 @@
 \   - That same unstamped worker, holding a real undrained nested pool worker, is
 \     refused with E-JRPP-BUSY, and the same admission word admits it again once
 \     the nested worker is reaped.
-\   - A calibration bracket that drifts is re-measured EXACTLY once: the scripted
-\     probe holds four readings and refuses a fifth, so a second re-measure would
-\     surface as a capacity throw instead of the phase's own code.
-\   - Two drifted brackets end in E-JRPP-DRIFT rather than another attempt.
+\   - A contended bracket is re-measured rather than judged, and a clean bracket
+\     after it is accepted: the scripted probe proves exactly two brackets ran.
+\   - A box that never goes quiet exhausts ATTEMPT-MAX brackets and leaves with
+\     CONTENDED-RC. The verdict is that exact exit status, not merely "nonzero":
+\     a benchmark that missed its budget dies 1 through the ordinary fork-throw
+\     path, so the two outcomes are proven distinguishable rather than assumed.
+\   - A UNIFORMLY contended box is refused too. Its bracket is perfectly stable,
+\     so the drift rule alone would admit it; the saturation rule catches it,
+\     which is the whole reason admissibility is not just DRIFT-OK?.
+\   - The load sampler parses a real /proc/loadavg, reports n/a rather than a
+\     number on a host without one, and rejects malformed content instead of
+\     inventing a sample from it.
+\   - Spawning real CPU-bound neighbours raises the recorded runnable-process
+\     count, so the sample on the evidence line tracks actual machine load.
 \   - The spin the phase measures actually decides the budget: two brackets that
 \     differ only in their scripted spin reading must produce two different
 \     budgets, so measuring the spin and then dropping it cannot pass.
@@ -49,9 +59,10 @@ private
 1000 constant PROBE-BASE              \ a round base, so the factor reads straight off the budget
 
 \ ---- scripted calibration probe -------------------------------------------
-\ Four readings is exactly two brackets. Reading past the script throws, so
-\ "the phase re-measured a second time" cannot be mistaken for a drift verdict.
-4 constant SCRIPT-MAX
+\ Eight readings is four brackets - one more than ATTEMPT-MAX allows. Reading
+\ past the script throws, so "the phase measured one more time than its bound"
+\ can never be mistaken for the phase refusing a contended box.
+8 constant SCRIPT-MAX
 create SCRIPT SCRIPT-MAX cells allot
 variable SCRIPT-N
 variable SCRIPT-I
@@ -141,20 +152,112 @@ variable SCRIPT-I
    s" without that stamp the refusal is the busy one, and drains away" T-LABEL
    s" jrpp unstamped child" [: CHILD-UNSTAMPED ;] FORK-CASE TTRUE ;
 
-\ ---- re-measure bound -----------------------------------------------------
-\ Each bracket runs the real MEASURE, so the two cases run as concurrent pool
+\ ---- retry bound and the refusal ------------------------------------------
+\ Each bracket runs the real MEASURE, so the cases run as concurrent pool
 \ workers rather than back to back, and each one's verdict is its exit status.
-: DRIFT-ONCE-WORKER ( -- )
+: RETRY-WORKER ( -- )
    SCRIPT-INSTALL!
    100 200 100 101 SCRIPT!
-   STABLE-ONCE                        \ a stable re-measure must be accepted
-   SCRIPT-I @ 4 EXPECT-EQ ;           \ exactly one re-measure, no more
+   MEASURE-ADMISSIBLE                 \ a clean bracket after a contended one is accepted
+   SCRIPT-I @ 4 EXPECT-EQ ;           \ exactly two brackets, no more
 
-: DRIFT-TWICE-WORKER ( -- )
+\ Every bracket drifts, so the phase must give up at its bound and leave with
+\ CONTENDED-RC. It never returns, so the assertion is the exit status the parent
+\ reads; a worker that instead fell through to REPORT would exit 0 or 1 here.
+: EXHAUST-WORKER ( -- )
    SCRIPT-INSTALL!
-   100 200 100 200 SCRIPT!
-   [: STABLE-ONCE ;] catch E-JRPP-DRIFT EXPECT-EQ
-   SCRIPT-I @ 4 EXPECT-EQ ;           \ no third bracket was attempted
+   SCRIPT-RESET
+   100 SCRIPT+ 200 SCRIPT+
+   100 SCRIPT+ 200 SCRIPT+
+   100 SCRIPT+ 200 SCRIPT+
+   MEASURE-ADMISSIBLE ;
+
+\ A box that is evenly loaded for the whole bracket does not drift at all: pre
+\ and post agree, DRIFT-OK? is happy, and only saturation says the numbers are
+\ worthless. Pure, so it needs no measurement.
+: CASE-SATURATION ( -- )
+   PROFILE-PIN!
+   TR-CAL-REF-MS {: ref:n :}
+   s" an idle bracket is admissible" T-LABEL
+   ref ref ADMISSIBLE? TTRUE
+   s" a stable bracket on a box past the compensation clamp is refused" T-LABEL
+   ref 3 *  ref 3 *  ADMISSIBLE? TFALSE
+   s" a drifted bracket is refused even below the clamp" T-LABEL
+   ref  ref 2 *  ADMISSIBLE? TFALSE ;
+
+\ ---- load sampling --------------------------------------------------------
+\ Structural, not substring: each case hands the parser a byte buffer and reads
+\ the two numbers back, including buffers built to look plausible but be wrong.
+create LOAD-FIX 64 allot
+variable LOAD-FIX-U
+
+: LOAD-FIX! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a LOAD-FIX u BYTE-COPY
+   u LOAD-FIX-U ! ;
+
+: LOAD-FIX$ ( -- ptr u8 n )
+   LOAD-FIX LOAD-FIX-U @ ;
+
+: CASE-LOAD-PARSE ( -- )
+   s" 0.31 2.59 2.82 4/702 2013010" LOAD-FIX!
+   s" the one-minute average is read in hundredths" T-LABEL
+   LOAD-FIX$ LOAD-AVG-X100 31 T=
+   s" the runnable count is the numerator of the fourth field" T-LABEL
+   LOAD-FIX$ LOAD-RUNNABLE 4 T=
+   s" a two-digit whole part is not truncated" T-LABEL
+   s" 12.07 2.59 2.82 17/702 9" LOAD-FIX!
+   LOAD-FIX$ LOAD-AVG-X100 1207 T=
+   LOAD-FIX$ LOAD-RUNNABLE 17 T=
+   s" content with no decimal point yields no sample" T-LABEL
+   s" garbage here" LOAD-FIX!
+   LOAD-FIX$ LOAD-AVG-X100 LOAD-NONE T=
+   s" a truncated line yields no runnable sample" T-LABEL
+   s" 0.31 2.59" LOAD-FIX!
+   LOAD-FIX$ LOAD-RUNNABLE LOAD-NONE T=
+   s" a fourth field with no slash yields no runnable sample" T-LABEL
+   s" 0.31 2.59 2.82 702 2013010" LOAD-FIX!
+   LOAD-FIX$ LOAD-RUNNABLE LOAD-NONE T= ;
+
+\ ---- real spawned load ----------------------------------------------------
+\ The sampler is proved against REAL neighbours, not a fixture. It stays small
+\ and short on purpose: this file runs as one slot of the gate's own pool, so a
+\ leg that saturated every core to force an inadmissible verdict would corrupt
+\ the timing of every other slot running beside it. The refusal logic is proved
+\ deterministically by the scripted brackets above; what a real spawn adds, and
+\ all it needs to add, is that the recorded number tracks the actual machine.
+4 constant LOAD-NEIGHBOURS
+6 constant SPIN-REPS                  \ about half a second of real CPU per neighbour:
+                                      \ far longer than the spawn-then-sample window,
+                                      \ short enough not to disturb the slots beside it
+
+: SPIN-CHILD ( -- )
+   SPIN-REPS 0 ?do
+      T-BUDGET-CAL-ITERS T-BUDGET-CAL-SPIN drop
+   loop ;
+
+: SPAWN-NEIGHBOUR ( -- )
+   GT-POOL-FIND-FREE {: idx:idx :}
+   s" jrpp load neighbour" WORK-TIMEOUT-MS idx [: SPIN-CHILD ;] GT-POOL-START-FORK-SLOT ;
+
+: CASE-LOAD-SPAWN ( -- )
+   LOAD-NOW {: quiet-avg:n quiet-run:n :}
+   LOAD-NEIGHBOURS 0 ?do SPAWN-NEIGHBOUR loop
+   LOAD-NOW {: busy-avg:n busy-run:n :}
+   GT-POOL-DRAIN-SOFT
+   quiet-run LOAD-NONE = if
+      s" a host with no load file reports n/a for both samples" T-LABEL
+      busy-run LOAD-NONE T=
+      exit
+   then
+   \ A lower bound justified by construction, NOT a comparison against the
+   \ pre-spawn sample. LOAD-NEIGHBOURS CPU-bound children were just forked and
+   \ are runnable, so the sample cannot read below that on any box. Comparing
+   \ against the earlier reading looked stronger and was actually flaky: this
+   \ file runs as one slot of the gate's own pool, where the ambient runnable
+   \ count moves by more between the two samples than the neighbours add, so
+   \ the count can legitimately fall while the neighbours are running.
+   s" the runnable sample counts real CPU-bound neighbours" T-LABEL
+   busy-run LOAD-NEIGHBOURS >= TTRUE ;
 
 \ ---- the pre-spin actually reaches the budget --------------------------------
 \ The regression the review demanded. ATTEMPT measures a spin and is supposed to
@@ -175,26 +278,32 @@ variable SCRIPT-I
    PROBE-BASE TEST-BUDGET:PERF-MS PROBE-BASE 2 * EXPECT-EQ ;
 
 : CASE-WORKERS ( -- )
-   GT-POOL-FIND-FREE {: once:idx :}
-   s" jrpp drift once" WORK-TIMEOUT-MS once [: DRIFT-ONCE-WORKER ;] GT-POOL-START-FORK-SLOT
-   GT-POOL-FIND-FREE {: twice:idx :}
-   s" jrpp drift twice" WORK-TIMEOUT-MS twice [: DRIFT-TWICE-WORKER ;] GT-POOL-START-FORK-SLOT
+   GT-POOL-FIND-FREE {: retry:idx :}
+   s" jrpp contended retry" WORK-TIMEOUT-MS retry [: RETRY-WORKER ;] GT-POOL-START-FORK-SLOT
+   GT-POOL-FIND-FREE {: exhaust:idx :}
+   s" jrpp contended exhaust" WORK-TIMEOUT-MS exhaust [: EXHAUST-WORKER ;] GT-POOL-START-FORK-SLOT
    GT-POOL-FIND-FREE {: budget:idx :}
    s" jrpp budget wiring" WORK-TIMEOUT-MS budget [: BUDGET-WORKER ;] GT-POOL-START-FORK-SLOT
    GT-POOL-DRAIN-SOFT
-   s" one drifted bracket is re-measured once and accepted when stable" T-LABEL
-   once GT-POOL-OK? TTRUE
-   s" two drifted brackets end in the phase's own drift code" T-LABEL
-   twice GT-POOL-OK? TTRUE
+   s" a contended bracket is re-measured and a clean one after it is accepted" T-LABEL
+   retry GT-POOL-OK? TTRUE
+   s" a box that never goes quiet exits with the phase's own status" T-LABEL
+   exhaust GT-POOL-EXITED-PTR @ TTRUE
+   exhaust GT-POOL-CODE-PTR @ CONTENDED-RC T=
+   s" that status is not the one a failed benchmark leaves behind" T-LABEL
+   CONTENDED-RC 1 <> TTRUE
    s" the measured spin decides the budget, it is not measured and dropped" T-LABEL
    budget GT-POOL-OK? TTRUE ;
 
 : MAIN ( -- )
    T-RESET
    s" json-read-perf-phase-test" GT-START
-   3 GT-POOL-SLOTS!
+   LOAD-NEIGHBOURS 2 + GT-POOL-SLOTS!
    GT-POOL-RESET
    CASE-ADMISSION
+   CASE-SATURATION
+   CASE-LOAD-PARSE
+   CASE-LOAD-SPAWN
    CASE-WORKERS
    GT-CLEANUP
    T-REPORT ;
