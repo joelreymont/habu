@@ -623,6 +623,110 @@ DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
+\ A field may NOT name a POINTER to a linear value.
+\
+\ Accepting the family spelling above also let `FIELD p ptr sdlbox` through, and
+\ that spelling is the opposite of the one above: a pointer is a non-owning
+\ boundary, so the linearity walk stops at the pointer node and the containing
+\ structure reads NON-linear. It would then copy and drop freely while a linear
+\ resource sat behind the address — the resource laundered, which is exactly what
+\ the containment rule exists to prevent. Nothing in the tree writes that
+\ spelling, and it was legal only because no producer route happened to reach it.
+\ It is refused at the declaration door instead.
+\
+\ One rule decides it, TFCL-NODE?, the same node walk the linearity accounting
+\ already trusts. So the con spelling and the family spelling are refused alike —
+\ they launder identically — and the refusal holds at every depth: `ptr ptr sdlbox`
+\ rejects on the inner recursion, which anchors the diagnostic on the family that
+\ actually owns the resource rather than on the outer pointer.
+\
+\ A pointer to something that owns nothing stays legal. `ptr n` and `ptr sdlplain`
+\ are how ordinary records point at ordinary data, and refusing those would break
+\ every existing record for no gain.
+\ ---------------------------------------------------------------------------
+
+\ the two spellings side by side. Naming the value owns it; pointing at it cannot.
+s" STRUCTURE sdlowns 0 FIELD m sdlbox ;STRUCTURE" TRY 0 T=
+s" sdlowns" FAMID SDLIN:LINEAR? T-TRUE
+
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptr 0 FIELD p ptr sdlbox ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlptr': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+DECL-DIAG:HAS? -1 T=
+
+\ the con spelling launders the same way, so the same rule refuses it, and the
+\ diagnostic names the con it found rather than some enclosing family.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptrcon 0 FIELD p ptr SDLIN:tok ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlptrcon': field type is a pointer to a linear value and cannot own it at 'SDLIN:tok'"
+DECL-DIAG:HAS? -1 T=
+
+\ depth: a second pointer does not launder past the rule. The inner recursion
+\ rejects first, so the token names the family that owns the resource.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptr2 0 FIELD p ptr ptr sdlbox ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlptr2': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+DECL-DIAG:HAS? -1 T=
+
+\ reaching the resource through a nested family or through a sum is still reaching
+\ it, so a pointer to either is refused for the same reason.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptrdeep 0 FIELD p ptr sdldeep ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlptrdeep': field type is a pointer to a linear value and cannot own it at 'sdldeep'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptrsum 0 FIELD p ptr sdlsum ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlptrsum': field type is a pointer to a linear value and cannot own it at 'sdlsum'"
+DECL-DIAG:HAS? -1 T=
+
+\ a field anywhere in the body is checked, not just the first one, and the token
+\ names the offending field's type rather than the declaration's first field.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptrlate 0 FIELD a n FIELD p ptr sdlbox FIELD c n ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlptrlate': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+DECL-DIAG:HAS? -1 T=
+
+\ the controls. A pointer to a family that owns nothing declares, keeps its one
+\ cell, and leaves the structure non-linear — so the rejects above answer the
+\ POINTEE's linearity and not the word `ptr`.
+s" STRUCTURE sdlptrok 0 FIELD p ptr sdlplain FIELD k n ;STRUCTURE" TRY 0 T=
+s" sdlptrok" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" sdlptrok" FAMID FAM-SLOTS@ 2 T=                    \ the pointer is one cell, k is the other
+s" STRUCTURE sdlptrok2 0 FIELD p ptr ptr sdlplain ;STRUCTURE" TRY 0 T=
+s" sdlptrok2" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" STRUCTURE sdlptrn 0 FIELD p ptr n ;STRUCTURE" TRY 0 T=
+s" sdlptrn" FAMID SDLIN:LINEAR? 0= T-TRUE
+
+\ wrong role: the same words in the FIELD NAME position are names, never types.
+\ Neither resolves, neither is refused, and neither makes the structure linear.
+s" STRUCTURE sdlptrrole 0 FIELD ptr n ;STRUCTURE" TRY 0 T=
+s" sdlptrrole" FAMID SDLIN:LINEAR? 0= T-TRUE
+s" STRUCTURE sdlptrrole2 0 FIELD sdlbox n ;STRUCTURE" TRY 0 T=
+s" sdlptrrole2" FAMID SDLIN:LINEAR? 0= T-TRUE
+
+\ hostile comments. A declaration body has NO comment syntax: its reader takes
+\ plain tokens, so `(` and `\` are ordinary tokens in a type or clause position
+\ and the whole declaration is malformed. Text that merely reads like a field can
+\ therefore neither smuggle a type in nor be quietly skipped — and it rejects
+\ 7107, a DIFFERENT code from this rule's 7109, so no verdict here is ever
+\ produced by scanning prose.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptrpar 0 FIELD v n ( FIELD p ptr sdlbox ) ;STRUCTURE" TRY 7107 T=
+s" habu: bad structure declaration 'sdlptrpar': unexpected token in structure declaration at '('"
+DECL-DIAG:HAS? -1 T=                                  \ the paren itself was the token
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptrbsl 0 FIELD v n \ FIELD p ptr sdlbox" TRY 7107 T=
+s" habu: bad structure declaration 'sdlptrbsl': unexpected token in structure declaration at '\'"
+DECL-DIAG:HAS? -1 T=                                  \ and so was the backslash
+\ and trailing text after the offending field cannot suppress the reject, because
+\ the field is resolved before anything following it is read.
+DECL-DIAG:PROSE
+s" STRUCTURE sdlptrtail 0 FIELD p ptr sdlbox ( note ) ;STRUCTURE" TRY 7109 T=
+s" habu: bad structure declaration 'sdlptrtail': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" structure-decl-suite: failures" 1 die ;

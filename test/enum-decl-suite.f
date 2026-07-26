@@ -1536,6 +1536,103 @@ DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
+\ A variant payload may NOT name a POINTER to a linear value.
+\
+\ Accepting the family spelling above also let `FIELD p ptr edlmodel` through, and
+\ that spelling is the opposite of the one above: a pointer is a non-owning
+\ boundary, so the linearity walk stops at the pointer node and the containing
+\ enum reads NON-linear. It would then copy and drop freely while a linear
+\ resource sat behind the address — the resource laundered, which is exactly what
+\ the containment rule exists to prevent. Nothing in the tree writes that
+\ spelling, and it was legal only because no producer route happened to reach it.
+\ It is refused at the declaration door instead.
+\
+\ This is the same rule structure-decl.f applies to a field, decided by the same
+\ node walk (TFCL-NODE?), because a variant payload carries exactly the same
+\ obligation as a field. So the con spelling and the family spelling are refused
+\ alike, and the refusal holds at every depth: `ptr ptr edlmodel` rejects on the
+\ inner recursion, which anchors the diagnostic on the family that actually owns
+\ the resource. A pointer to something that owns nothing stays legal.
+\ ---------------------------------------------------------------------------
+
+\ the two spellings side by side. Naming the value owns it; pointing at it cannot.
+s" ENUM edlowns 0 VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" edlowns" FAMID EDLIN:LINEAR? T-TRUE
+
+DECL-DIAG:PROSE
+s" ENUM edlptr 0 VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlptr': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+DECL-DIAG:HAS? -1 T=
+
+\ the con spelling launders the same way, so the same rule refuses it, and the
+\ diagnostic names the con it found rather than some enclosing family.
+DECL-DIAG:PROSE
+s" ENUM edlptrcon 0 VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlptrcon': payload type is a pointer to a linear value and cannot own it at 'EDLIN:tok'"
+DECL-DIAG:HAS? -1 T=
+
+\ depth: a second pointer does not launder past the rule. The inner recursion
+\ rejects first, so the token names the family that owns the resource.
+DECL-DIAG:PROSE
+s" ENUM edlptr2 0 VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlptr2': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+DECL-DIAG:HAS? -1 T=
+
+\ reaching the resource through a nested family or through a sum is still reaching
+\ it, so a pointer to either is refused for the same reason.
+DECL-DIAG:PROSE
+s" ENUM edlptrsum 0 VARIANT hold FIELD p ptr edlbind ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edlbind'"
+DECL-DIAG:HAS? -1 T=
+
+\ every variant is checked, not just the first, and the token names the offending
+\ payload rather than the declaration's first payload.
+DECL-DIAG:PROSE
+s" ENUM edlptrlate 0 VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlptrlate': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+DECL-DIAG:HAS? -1 T=
+
+\ the controls. A pointer to a family that owns nothing declares and leaves the
+\ enum non-linear — so the rejects above answer the POINTEE's linearity and not
+\ the word `ptr`.
+s" ENUM edlptrok 0 VARIANT hold FIELD p ptr edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" edlptrok" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" edlptrok" FAMID F-WIDTH 2 T=                       \ tag cell + the one-cell pointer payload
+s" ENUM edlptrok2 0 VARIANT hold FIELD p ptr ptr edlplain ;VARIANT ;ENUM" TRY 0 T=
+s" edlptrok2" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" ENUM edlptrn 0 VARIANT hold FIELD p ptr n ;VARIANT ;ENUM" TRY 0 T=
+s" edlptrn" FAMID EDLIN:LINEAR? 0= T-TRUE
+
+\ wrong role: the same words in the FIELD NAME position are names, never types.
+\ Neither resolves, neither is refused, and neither makes the enum linear.
+s" ENUM edlptrrole 0 VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TRY 0 T=
+s" edlptrrole" FAMID EDLIN:LINEAR? 0= T-TRUE
+s" ENUM edlptrrole2 0 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TRY 0 T=
+s" edlptrrole2" FAMID EDLIN:LINEAR? 0= T-TRUE
+
+\ hostile comments. A variant block has NO comment syntax: its reader takes plain
+\ tokens, so `(` and `\` are ordinary tokens in a type or clause position and the
+\ whole declaration is malformed. Text that merely reads like a payload can
+\ therefore neither smuggle a type in nor be quietly skipped — and it rejects
+\ 7107, a DIFFERENT code from this rule's 7109, so no verdict here is ever
+\ produced by scanning prose.
+DECL-DIAG:PROSE
+s" ENUM edlptrpar 0 VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TRY 7107 T=
+s" habu: bad enum declaration 'edlptrpar': unexpected token in variant block at '('"
+DECL-DIAG:HAS? -1 T=                                  \ the paren itself was the token
+DECL-DIAG:PROSE
+s" ENUM edlptrbsl 0 VARIANT hold FIELD v n \ FIELD p ptr edlmodel" TRY 7107 T=
+s" habu: bad enum declaration 'edlptrbsl': unexpected token in variant block at '\'"
+DECL-DIAG:HAS? -1 T=                                  \ and so was the backslash
+\ and trailing text after the offending payload cannot suppress the reject,
+\ because the payload is resolved before anything following it is read.
+DECL-DIAG:PROSE
+s" ENUM edlptrtail 0 VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlptrtail': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+DECL-DIAG:HAS? -1 T=
+DECL-DIAG:OFF
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" enum-decl-suite: failures" 1 die ;

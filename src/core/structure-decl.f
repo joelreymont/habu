@@ -113,6 +113,7 @@ TRUSTED: SCH-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: SCH-APP? ( n -- bool ) SCHEMA-APP? ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
+TRUSTED: SCH-OWNS-LINEAR? ( n -- bool ) TFCL-NODE? ;   \ node reaches a linear value
 TRUSTED: FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;   \ field-record layout flag: none
 TRUSTED: TK-PROD ( -- n ) TK-PRODUCT ;         \ single-shape record family kind
 
@@ -247,9 +248,19 @@ SD-RESET
    drop
    s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
+\ A pointer is a NON-OWNING boundary: TFCL-NODE? stops at a pointer node, so a
+\ field spelled `ptr <linear>` reads non-linear and the containing family would
+\ copy and drop freely while a linear resource sits behind the address. The
+\ family spelling and the con spelling launder identically, so both are refused
+\ here, at the declaration door, with one rule.
+: REQUIRE-POINTEE ( n -- n )                \ pointee node, or reject a linear owner behind the address
+   dup SCH-OWNS-LINEAR? IF
+      s" field type is a pointer to a linear value and cannot own it"
+      E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
+
 : RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
    dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE SD-SCH-PTR EXIT THEN
+   2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE REQUIRE-POINTEE SD-SCH-PTR EXIT THEN
    dup 1 = IF LETTER-TYPE EXIT THEN
    2dup CON-CODE dup 0 <> IF nip nip SD-SCH-CON EXIT THEN drop
    2dup FIELD-FAM? IF nip nip 0 0 SD-SCH-APP EXIT THEN drop
