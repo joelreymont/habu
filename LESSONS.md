@@ -2472,3 +2472,31 @@ fits.
   push before the gate return code was read; the outcome happened to be safe,
   but the ordering was luck. The push command may only be issued after the
   gate verdict has been read from a completed, separate invocation.
+- **An external binary that rewrites tracker state is an untrusted writer -
+  the repo must fail closed on its output, because convention is not
+  protection until a lint rejects the violation.** The dot CLI corrupted the
+  tracker in two ways in one wave: every rewrite added a quoting layer to
+  quoted frontmatter scalars (cumulative and silent), and `dot off` moved two
+  closed dots into `.dots/archive/` when the repository's canonical form is
+  closed-in-place (302 precedents). The archive defect orphaned five
+  TRUSTED.md owner rows and surfaced as a distant trusted-inventory red at
+  landing time, not as a tracker error at mutation time. Both shapes now have
+  fail-closed gate dots (habu-reject-re-quoted-e908ece5,
+  habu-reject-archived-dots-db3cbf63); the general rule is that any tool
+  outside the repo's own gates gets its writes linted, and the lint lands
+  before the next use of the tool, not after the next incident.
+- **After `jj squash`, a change's commit id moves - re-resolve the change id
+  to its current commit id immediately before any rebase or abandon.** Acting
+  on the remembered pre-squash commit id rebased a stale copy and created a
+  divergent change; recovery required abandoning the stale copy and rebasing
+  the squashed one. The existing rule about resolving targets before
+  destructive jj operations already covered this and was skipped under
+  routine; the id must be re-read after every rewriting operation, not once
+  per task.
+- **Never read a gate's return code after a pipe - `cmd | tail; echo $?`
+  reports the pipe tail's status, not the gate's.** One gate harness echoed
+  `run=0` while the suite had printed `native test suite phases failed`; the
+  red was caught only from the failure text. Gate harnesses log each command
+  to a file and echo the command's own return code (`cmd >log 2>&1; echo $?`);
+  a pass verdict requires both the true zero and the positive verdict lines
+  from the log.

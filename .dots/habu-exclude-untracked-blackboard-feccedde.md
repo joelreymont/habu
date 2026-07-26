@@ -1,0 +1,10 @@
+---
+title: Exclude untracked blackboard from stale-status scan
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-07-26T10:06:26.430429+02:00"
+---
+
+Why: the master gate list must be a pure function of the committed tree, and stale-status-lint is not: STALE-STATUS-LINT at tools/stale-status-lint-core.f:529 walks the filesystem from the repo root (SS-ROOT WALK-FILES) and scans every .md it finds, including .blackboard/, which is entirely untracked (jj file list shows zero tracked files under it). Proven 2026-07-26: the identical tree gated stale=0 in a .jj-ws workspace (no .blackboard materialized) and stale=1 with 40 findings in the main workspace, all 40 in untracked coordination messages dated before the change under test; the same red repeats inside test/run.f via the lint-tools/status phase. Behavior: SS-SKIP-PATH? in tools/stale-status-lint-core.f gains a .blackboard/ prefix skip beside the existing .jj-ws/ and docs/archive/ skips, with a comment stating both reasons: the path is untracked (out of the gated tree) and its messages are timestamped history, where quoting the numbers of a specific gate run is evidence, not a stale claim. The count-shaped-string rule stays fully live for every tracked doc. Owner: the existing stale-status lint package in tools/stale-status-lint-core.f. Dependencies: none. Acceptance: through the real bin/hb --load tools/stale-status-lint.f path from a workspace that contains a .blackboard file with a count-shaped string, the lint reports 0 findings for it after the change and flagged it before; test/run.f lint-tools/status goes green in the main workspace on an otherwise-green tree. Hostile fixtures in the lint suite: a count-shaped string under .blackboard/ must not flag; the same string in a tracked doc path must still flag; a file named blackboard.md outside .blackboard/ must still flag; a path containing .blackboard as a non-leading component must still flag.
+ Claim: agent=stale-scope workspace=.jj-ws/habu-exclude-untracked-blackboard-feccedde

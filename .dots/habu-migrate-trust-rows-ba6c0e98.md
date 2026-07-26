@@ -1,0 +1,9 @@
+---
+title: Migrate trust rows off closed dots, then reject closed owners
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-26T09:58:56.887712+02:00"
+---
+
+Why: every trusted site in TRUSTED.md names an owning dot that tracks the missing typed capability which will eventually remove the trusted boundary. Today a row whose owner is a closed-in-place dot still resolves (example: the rows owned by closed habu-type-ctor work at TRUSTED.md lines 313-320), so ownership silently goes stale: no live dot owns the boundary and nobody is accountable for removing it. Behavior: (1) a one-time migration pass rewrites every TRUSTED.md row whose owner is a closed dot to either the live checker-capability dot that tracks the missing feature (for example habu-checker-ptr-lifetime-f59d1e9d, habu-checker-linear-scope-6218899c, habu-checker-sealed-destructure-d967fc03) or a permanent cap:<name> anchor for boundaries that are permanent by design; (2) after migration, tools/trusted-inventory.f strict mode rejects any row whose owner resolves to a dot with status closed, with a diagnostic naming the row and the closed owner. This turns dot closure into a ratchet: closing a dot that still owns trust rows is a gate red until its rows are migrated in the same change. Owner: tools/trusted-inventory.f in its existing package. Dependencies: none new; the migration edit touches TRUSTED.md wholesale, so schedule it when no lane holds TRUSTED.md edits in flight. Acceptance: through the real bin/hb --load tools/trusted-inventory.f -- strict path, a fixture row owned by a closed dot is red before the strict change is considered done and the migrated real TRUSTED.md is green after; baseline re-recorded via -- baseline TRUSTED.md. Hostile fixtures: a row owned by a closed dot must flag; the word closed inside a dot body must not flag; a cap: anchor row must pass; a row owned by an open or active dot must pass; a duplicate row must still flag as today.
