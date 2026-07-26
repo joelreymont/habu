@@ -164,9 +164,20 @@ create TT-WBUF TT-WCAP allot
 
 : TT-RT-OK-ARM ( -- n )                         \ a constructed ok reaches the ok arm
    s" evt: match arm" APPEND TT-MK-OK TT-ARM ;
+\ The payload check appends TWICE and rides the SECOND event, whose sequence is
+\ therefore at least one. A journal that starts empty puts its first event at
+\ sequence 0, and a payload the constructor zeroed also reads back as 0, so riding a
+\ first event would compare 0 against 0 and pass on a zeroed payload. Anchoring the
+\ append inside the word makes that independent of how many events earlier
+\ assertions happened to add, and TT-RT-OK-NZ pins the sequence being compared as
+\ non-zero, so the escape stays closed.
 : TT-RT-OK-SEQ ( -- n )                         \ 0 = the appended id came back unchanged
+   s" evt: match payload anchor" APPEND drop
    s" evt: match payload" APPEND dup SEQ {: want:n :}
    TT-MK-OK TT-OK-SEQ want = if 0 else 1 then ;
+: TT-RT-OK-NZ ( -- bool )                       \ that sequence is never the 0 a zeroed payload reads as
+   s" evt: match payload anchor" APPEND drop
+   s" evt: match payload" APPEND SEQ 0 > ;
 : TT-RT-WW ( -- n )   TT-MK-WW TT-ARM ;
 : TT-RT-UNK ( -- n )  TT-MK-UNK TT-ARM ;
 : TT-WW-SEQ ( -- n )  TT-MK-WW TT-OK-SEQ ;      \ a payloadless arm carries no sequence
@@ -178,6 +189,7 @@ TT-WIRE-WIDTH 2 T=
 TT-WIRE-UNKNOWN 3 T=
 TT-RT-OK-ARM 1 T=                               \ ok dispatches to its own arm
 TT-RT-OK-SEQ 0 T=                               \ and carries its payload through unchanged
+TT-RT-OK-NZ TTRUE                               \ against a non-zero sequence, so a zeroed payload fails
 TT-RT-WW 2 T=                                   \ wrong-width dispatches to its own arm
 TT-RT-UNK 3 T=                                  \ unknown dispatches to its own arm
 TT-WW-SEQ -1 T=                                 \ the no-payload arms of TT-OK-SEQ are live
