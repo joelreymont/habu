@@ -189,11 +189,11 @@ ENUM check-result 0
 ;ENUM
 
 \ ---- the bound model -------------------------------------------------------------
-\ The private-mint proof is an arity-0 TYPEFAMILY, the MDLCFG:cfg-proof shape: a
+\ The private-mint proof is an arity-0 NEWTYPE, the MDLCFG:cfg-proof shape: a
 \ zero-field STRUCTURE fails closed as a product field, so a nominal cell family is
 \ the one shape that can ride inside the record while staying constructible ONLY
 \ through this package's trusted mint. A raw n in the proof slot is a checker reject.
-TYPEFAMILY mdl-proof 0
+NEWTYPE mdl-proof 0
 
 \ A model owns its residency as ONE field, which is why WSTORE:resident exists: a
 \ store is a two-owner bundle, and a record field may name a bare linear owner but

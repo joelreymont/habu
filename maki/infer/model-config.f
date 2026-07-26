@@ -17,7 +17,7 @@
 \ no meaningless fields on either arm - + the embedded cfgkey + the
 \ private-mint proof token.
 \
-\ The proof is an arity-0 TYPEFAMILY exactly like maki/typestate.f ART:built's
+\ The proof is an arity-0 NEWTYPE exactly like maki/typestate.f ART:built's
 \ build-proof (and maki/db/promotion.f's five stage proofs): the engine
 \ fail-closes a zero-field STRUCTURE as a product field ("invalid field layout
 \ metadata", throw 7127), so the nominal cell family is the one shape that can
@@ -78,7 +78,7 @@ STRUCTURE cfgkey 0 DERIVE eq
 ;STRUCTURE
 
 \ ---- the private-mint proof (see header: arity-0 nominal, ART:built shape) ---
-TYPEFAMILY cfg-proof 0
+NEWTYPE cfg-proof 0
 
 STRUCTURE mcfg 0
    FIELD sv n

@@ -340,7 +340,7 @@ $DEAD1D constant EA-POISON                       \ a distinctive raw an OOB read
 T-RESET
 
 \ acceptance 2 (STATIC, the cad-kinds verdict pattern): a real art-kind reaches DISPATCH;
-\ an artifact-id in the kind slot cannot. Effects use only nominal TYPEFAMILY inputs; the
+\ an artifact-id in the kind slot cannot. Effects use only nominal NEWTYPE inputs; the
 \ kind is built in the body and the dispatch-result dropped, so the fixture never depends
 \ on composite-type resolution.
 s" AD-K-OK ( CAD-KIND:action-id -- ) ACTION-ART--KIND:TRANSACTION 63 -1 ACTION:DISPATCH drop" YES

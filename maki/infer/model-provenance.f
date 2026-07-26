@@ -71,7 +71,7 @@
 \ schema-version, so a reader meets one version convention across the two
 \ identity domains.
 \
-\ THE PROOF, AND THE GAP IT DOES NOT CLOSE. prov-proof is an arity-0 TYPEFAMILY,
+\ THE PROOF, AND THE GAP IT DOES NOT CLOSE. prov-proof is an arity-0 NEWTYPE,
 \ the maki/typestate.f ART:built shape also used by MDLCFG: the engine
 \ fail-closes a zero-field STRUCTURE used as a product field (throw 7127), so a
 \ nominal cell family is the one shape that rides inside mprov while staying
@@ -130,7 +130,7 @@ public
 ENUM packing as-stored transposed ;ENUM
 
 \ ---- the private-mint proof (see header: arity-0 nominal, ART:built shape) ---
-TYPEFAMILY prov-proof 0
+NEWTYPE prov-proof 0
 
 \ ---- the pin: a 32-byte content digest, plus its proof -----------------------
 \ The digest is its OWN nested structure with a DERIVED equality, and MPROV=

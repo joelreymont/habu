@@ -27,7 +27,7 @@ public
 \ The published opaque nominal row handle. External consumers (src/cad/effect.f)
 \ name NOM:row directly in signatures (dot habu-export-public-nom-20170121). The
 \ record index and the audited mint/erase boundary stay private below.
-TYPEFAMILY row 0
+NEWTYPE row 0
 
 private
 

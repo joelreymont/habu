@@ -54,10 +54,10 @@ package EVID
 public
 
 \ ---- class-private proof tokens (minted only by the transitions below) -------
-TYPEFAMILY certify-proof 0
-TYPEFAMILY golden-proof 0
-TYPEFAMILY gradcheck-proof 0
-TYPEFAMILY profile-proof 0
+NEWTYPE certify-proof 0
+NEWTYPE golden-proof 0
+NEWTYPE gradcheck-proof 0
+NEWTYPE profile-proof 0
 
 \ ---- golden provenance, moved out of maki/golden.f ambient globals -----------
 \ golden-leg: which leg produced the golden verdict (GOLDEN-DEV-FLAG generalised:

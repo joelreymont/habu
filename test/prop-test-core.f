@@ -1140,7 +1140,7 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ trust records a live checker signature from its string operands (a checker
 \ substrate mutation; UNSAFE-TOK? bans it inside checked bodies anyway);
 \ check/check! spawn a full checker run over their string operand (a dummy
-\ pointer would be lexed); typefamily/sumtype/product are top-level parser
+\ pointer would be lexed); newtype/sumtype/product are top-level parser
 \ words that consume their own block tokens up to the ;NAME closer, so a census
 \ runner has no input to feed them. `enum` had a row here of exactly that class
 \ until the global ENUM keyword moved to the unified front end: it is an ordinary
@@ -1514,7 +1514,7 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 330 0 1 1 pprim checker-decl-frame prepare private pe-n pe-in pe-f pe-out
 \ AXR 331 0 1 0 pprim checker-decl-frame rollback private pe-n pe-in
 \ AXR 332 0 0 0 pprim checker-decl-frame release private -
-\ AXR 333 0 0 0 prim - typefamily - -
+\ AXR 333 0 0 0 prim - newtype - -
 \ AXR 334 0 0 0 prim - sumtype - -
 \ AXR 335 0 0 0 prim - product - -
 \ AXR 336 0 1 0 prim - layout-buffer - pe-n pe-in

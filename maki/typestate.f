@@ -39,8 +39,8 @@ require maki/cad-kinds.f
 \ Renamed from MODEL to free MODEL for the sealed inference semantics package, 2026-07-26.
 package CADMODEL
 public
-TYPEFAMILY decl 0
-TYPEFAMILY elab 0
+NEWTYPE decl 0
+NEWTYPE elab 0
 private
 TRUSTED: RAW>DECL ( n -- decl ) ;
 TRUSTED: RAW>ELAB ( n -- elab ) ;
@@ -53,7 +53,7 @@ public
 \ ---- TIR: type/shape solved -------------------------------------------------
 package TIR
 public
-TYPEFAMILY solved 0
+NEWTYPE solved 0
 private
 TRUSTED: RAW>SOLVED ( n -- solved ) ;
 public
@@ -63,7 +63,7 @@ public
 \ ---- RIR: region-legalized --------------------------------------------------
 package RIR
 public
-TYPEFAMILY legal 0
+NEWTYPE legal 0
 private
 TRUSTED: RAW>LEGAL ( n -- legal ) ;
 public
@@ -73,8 +73,8 @@ public
 \ ---- PLAN: draft / complete -------------------------------------------------
 package PLAN
 public
-TYPEFAMILY draft 0
-TYPEFAMILY complete 0
+NEWTYPE draft 0
+NEWTYPE complete 0
 private
 TRUSTED: RAW>DRAFT ( n -- draft ) ;
 TRUSTED: RAW>COMPLETE ( n -- complete ) ;
@@ -87,8 +87,8 @@ public
 \ ---- KIR: drafted / verified ------------------------------------------------
 package KIR
 public
-TYPEFAMILY drafted 0
-TYPEFAMILY verified 0
+NEWTYPE drafted 0
+NEWTYPE verified 0
 private
 TRUSTED: RAW>DRAFTED ( n -- drafted ) ;
 TRUSTED: RAW>VERIFIED ( n -- verified ) ;
@@ -100,7 +100,7 @@ public
 \ ---- CAND: emitted (needs a verified KIR + a target) ------------------------
 package CAND
 public
-TYPEFAMILY emitted 0
+NEWTYPE emitted 0
 private
 TRUSTED: RAW>EMITTED ( n -- emitted ) ;
 public
@@ -125,7 +125,7 @@ public
 \ toolchain provenance in ART:built is a follow-on if a consumer needs it.
 package ART
 public
-TYPEFAMILY build-proof 0
+NEWTYPE build-proof 0
 STRUCTURE built 0
    FIELD art CAD-KIND:artifact-id
    FIELD tok build-proof

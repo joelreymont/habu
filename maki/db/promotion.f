@@ -58,11 +58,11 @@ package PROMOTE
 public
 
 \ ---- sealed stage proof tokens (minted only by the transitions below) ----------
-TYPEFAMILY cand-proof 0
-TYPEFAMILY ver-proof 0
-TYPEFAMILY meas-proof 0
-TYPEFAMILY sat-proof 0
-TYPEFAMILY prom-proof 0
+NEWTYPE cand-proof 0
+NEWTYPE ver-proof 0
+NEWTYPE meas-proof 0
+NEWTYPE sat-proof 0
+NEWTYPE prom-proof 0
 
 \ ---- the immutable stage values (each derived, never mutated) ------------------
 \ candidate/verified/measured carry the model identity threaded through the chain; the

@@ -23,8 +23,8 @@ routes `... 7 -> 17g -> 12 -> 17h -> 8 -> 17i -> 9` (`PLAN.md:1031`). **None of
 commit is `TFAM 4: registry-driven params + family-id terms`; open dots
 `habu-tfam-5/6/7/8/12`). Direct evidence:
 
-- No `SUMTYPE`/`TYPEFAMILY`/`VARIANT`/`;SUMTYPE` defining word exists
-  (`rg '^: SUMTYPE|^: VARIANT|^: TYPEFAMILY'` = 0) — item 6 grammar absent.
+- No `SUMTYPE`/`NEWTYPE`/`VARIANT`/`;SUMTYPE` defining word exists
+  (`rg '^: SUMTYPE|^: VARIANT|^: NEWTYPE'` = 0) — item 6 grammar absent.
 - `MATCH`/`;MATCH`/`construct` are **undefined and definable** today (probes
   below): the checker rejects *usage* fail-closed, but nothing *reserves* the
   spellings and no `CF-MATCH` frame or capture exists.
@@ -284,7 +284,7 @@ item 10 adds the `J-MATCH` analogues there.
 
 ## 4. Dependencies consumed + friend-only buildable slice
 
-- **Consumes item 6** (`SUMTYPE`/`TYPEFAMILY` grammar, unbuilt): real
+- **Consumes item 6** (`SUMTYPE`/`NEWTYPE` grammar, unbuilt): real
   `SUMTYPE result … ;SUMTYPE` fixtures and the `TFAM-VAR-RANGE!` call that
   populates the variant range item 9 enumerates (§2a).
 - **Consumes item 7** (hidden physical fields, unbuilt): spec §14 steps 3-6

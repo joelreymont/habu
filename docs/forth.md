@@ -157,7 +157,7 @@ The complete-file global exceptions are exact paths, not directory rules:
 
 - `lib/prelude.f` owns the deliberately global prelude helpers.
 - `src/core/sumtype.f` owns the pre-hook type-declaration implementation and its
-  global `TYPEFAMILY`, `SUMTYPE`, `ENUM`, and `PRODUCT` language words.
+  global `NEWTYPE`, `SUMTYPE`, `ENUM`, and `PRODUCT` language words.
 - `src/core/roles.f` owns the pre-hook nominal role conversions and declaration
   words that must be available before application packages load.
 - `src/core/structures.f` owns the legacy global structure and field defining
@@ -429,7 +429,7 @@ SUITE parser-cases
 ### Structures And Enums
 
 Habu's live composite-type declaration surface is the typed-family DSL in
-`src/core/sumtype.f` (`TYPEFAMILY`, `SUMTYPE`, `PRODUCT`, `ENUM`) plus the
+`src/core/sumtype.f` (`NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`) plus the
 value-record (`src/core/roles.f`), low-level structure (`src/core/structures.f`),
 and counter-enum (`src/core/enums.f`) definers. Each block opener parses its own
 body up to a `;NAME`/`END-NAME` closer and registers the family whole; the
@@ -437,7 +437,7 @@ body up to a `;NAME`/`END-NAME` closer and registers the family whole; the
 top-level-interpret-only and reject inside checked bodies.
 
 ```forth
-TYPEFAMILY index 0                  \ opaque nominal cell family, no closer
+NEWTYPE index 0                     \ opaque nominal cell family, no closer
 
 PRODUCT point 0                     \ single-shape record, no tag
    FIELD x n
@@ -452,7 +452,7 @@ SUMTYPE message 0                   \ tagged union; positional variant payloads
 ENUM color red green blue ;ENUM     \ payloadless tag-only sum
 ```
 
-- `TYPEFAMILY name arity` registers a nominal cell family (`TK-CELL`) with no
+- `NEWTYPE name arity` registers a nominal cell family (`TK-CELL`) with no
   closer: arity `0` is an opaque scalar newtype (see `lib/cad-num-types.f`),
   arity `N` binds positional params.
 - Type-family identity is the exact `(package, tail)` pair. A package-owned

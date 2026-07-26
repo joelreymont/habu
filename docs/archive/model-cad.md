@@ -122,7 +122,7 @@ sum/enum/product families as TFAM lands (dot `cad-adt-swap`). No
 result-specific staging helpers; no new `TRUSTED:`/`set-check` boundaries for
 report or IR plumbing.
 
-As of 2026-07-07 TFAM 1-8 have landed on `maki-type-families`: `TYPEFAMILY`,
+As of 2026-07-07 TFAM 1-8 have landed on `maki-type-families`: `NEWTYPE`,
 `SUMTYPE`/`VARIANT`/`;SUMTYPE`, and trust-free generated constructors
 (`ZRES:OK` shape, public arity-0 sums) are live, along with package sealing and
 source-replay. The `cad-adt-swap` swap itself still waits on `MATCH` (tfam-9,
@@ -133,7 +133,7 @@ ops (tfam-12), and native lowering (tfam-10); see the dot for the pinned syntax.
 
 | Model CAD need | TFAM dot |
 | --- | --- |
-| `TYPEFAMILY` registry (replace parser whitelist) | tfam-2a, 4, 6 |
+| `NEWTYPE` registry (replace parser whitelist) | tfam-2a, 4, 6 |
 | Generated constructors without trust | tfam-8, 9 |
 | Checked `MATCH` + lowering + bad-tag proof | tfam-9, 10 |
 | Layout-aware `dup`/`drop`/locals over ADTs | tfam-12 |

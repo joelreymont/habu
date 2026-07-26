@@ -40,11 +40,11 @@ XP-DIAG 8192 DIAG-BUFFER!
 \   xidx  = candidate-B's parametric index family idx<extent>  (arity 1, value nominal)
 \   xm xn xk = flat extent roles #M #N #K            (arity-0 nominal tags)
 \   xprod = BTC-7 product former  #B*#T              (arity-2 parametric family)
-TYPEFAMILY xidx 1
-TYPEFAMILY xm 0
-TYPEFAMILY xn 0
-TYPEFAMILY xk 0
-TYPEFAMILY xprod 2
+NEWTYPE xidx 1
+NEWTYPE xm 0
+NEWTYPE xn 0
+NEWTYPE xk 0
+NEWTYPE xprod 2
 
 \ --- (a) flat idx<#M>: two extents distinct (the candidate-B guarantee) --------
 \ index over the same extent unifies (identity flow).

@@ -17,9 +17,9 @@
 \ ---------------------------------------------------------------------------
 \ DECL-REJECT — the shared reject packet for the unified declaration front ends.
 \
-\ Why it exists.  The legacy TYPEFAMILY/SUMTYPE/ENUM/PRODUCT definers keep a
+\ Why it exists.  The pre-unified NEWTYPE/SUMTYPE/ENUM/PRODUCT definers keep a
 \ declaration context (sumtype.f TDK/TDN/TDT/TDW) and report it through
-\ render.f's TDECL-DIAG before the named code propagates, so a bad legacy
+\ render.f's TDECL-DIAG before the named code propagates, so a bad pre-unified
 \ declaration prints
 \     habu: bad enum declaration 'colour': duplicate variant at 'red'
 \ and, under --json-errors, the matching E-BAD-DECLARATION object.  The unified

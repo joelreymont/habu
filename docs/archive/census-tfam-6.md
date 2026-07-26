@@ -1,7 +1,7 @@
 # Definer / Reserved-Token Census — dot habu-tfam-6-typefamily-ccf45abb
 
 PLAN.md item 6 (lines 563-599): add package-aware public defining words for cell
-families (`TYPEFAMILY`) and sum families (`SUMTYPE`), each `VARIANT` block closed
+families (`NEWTYPE`) and sum families (`SUMTYPE`), each `VARIANT` block closed
 by `;VARIANT`, each sum block by `;SUMTYPE`. Token grammar must reject
 delimiters, control words, illegal qualified names, empty sums, upper/mixed-case
 family names, reserved signature/type tokens (`a`..`z`, `n`/`f`/`r`, `ptr`,
@@ -95,7 +95,7 @@ existing rollback primitive to extend for family records.
   (:14), clears `STRUCT-ACTIVE`, back-patches size (`swap !`).
 - `:22 +FIELD`, `:26 PTR-FIELD:`, `:34 CFIELD:` — mid-block field words guarded by
   `STRUCT-REQUIRE-OPEN`. Template for the open/closed state discipline
-  `TYPEFAMILY`/`VARIANT`/`;VARIANT` nesting needs (nested-open must reject:
+  `NEWTYPE`/`VARIANT`/`;VARIANT` nesting needs (nested-open must reject:
   `STRUCT-REQUIRE-CLOSED` :12 dies on "nested begin").
 
 Best template to mirror: VALUE-RECORD (roles.f:172) for the block token loop +
@@ -117,7 +117,7 @@ words on one path but explicit keyword-dispatch entries on the other.
   CF-ENTRY THEN`. Existing entries (:2993-3004): `package`->`C-PACKAGE`,
   `public`->`C-PUBLIC`, `private`->`C-PRIVATE`, `;package`->`C-END-PACKAGE`,
   `trusted:`, `defer`, `create`, `variable`, `constant`, `'`, `char`,
-  `immediate`. THIS is where `TYPEFAMILY`/`SUMTYPE`/`VARIANT`/`;VARIANT`/
+  `immediate`. THIS is where `NEWTYPE`/`SUMTYPE`/`VARIANT`/`;VARIANT`/
   `;SUMTYPE` add native `KEEP?`-gated `CF-ENTRY` rows (need new `LKW*`
   labels + `C-*` handler words like C-PACKAGE).
 - `habu2.f:2941-2965` `C-PUBLIC` and `:2937?`..`C-PACKAGE`, `:2968` `C-PRIVATE`,
@@ -127,7 +127,7 @@ words on one path but explicit keyword-dispatch entries on the other.
   follow this shape but must `parse-name`/scan the family name + body tokens.
 - `habu2.f:3021` `EM-INTERPRET-FIND` — ORDINARY dictionary lookup, runs only
   after the keyword table misses. Keywords are recognized BEFORE this. So a
-  `TYPEFAMILY` keyword entry shadows any dictionary word of the same name.
+  `NEWTYPE` keyword entry shadows any dictionary word of the same name.
 - `habu2.f:3027` `EM-INTERPRET-WORDS` / `:3036` `EM-INTERPRET` — dispatch order:
   colon check -> `EM-INTERPRET-DEFINE-KEYWORDS` -> string keywords -> number ->
   find. Confirms keyword dispatch precedes lookup.
@@ -140,10 +140,10 @@ words on one path but explicit keyword-dispatch entries on the other.
   `deflinear`->RECORD-DEFLINEAR, `value-record`->RECORD-VALUE-RECORD,
   `constant`/`create`/`variable`->TRUST-NEXT, `defer`, `trusted:`, `undefine`;
   falls through to `0 0= 0=` (false) for ordinary defs. THIS is the cleanest
-  place to add TYPEFAMILY/SUMTYPE dispatch (parallel to RECORD-VALUE-RECORD).
+  place to add NEWTYPE/SUMTYPE dispatch (parallel to RECORD-VALUE-RECORD).
 - `verify-source.f:358` `RECORD-VALUE-RECORD` — mirrors roles.f:172 as a
   verify-source handler: `NEXT-SCAN` name, `BEGIN NEXT-SCAN ... VALUE-RECORD-END?
-  ... CHECKER-DEFRECORD ... AGAIN`. Direct template for RECORD-TYPEFAMILY /
+  ... CHECKER-DEFRECORD ... AGAIN`. Direct template for RECORD-NEWTYPE /
   RECORD-SUMTYPE with `;SUMTYPE`/`;VARIANT` terminators.
 - `verify-source.f:345-353` `RECORD-DEFTYPE`/`RECORD-DEFLINEAR` — single-name
   handler template (`NEXT-SCAN` + missing-name die + `CHECKER-DEFTYPE`).
@@ -174,7 +174,7 @@ words on one path but explicit keyword-dispatch entries on the other.
   trust/kernel:/check-does!.
 - `:153` `RNL-RESERVED-DEFINER?` — definers: create/variable/constant/**package/
   public/private/;package**/undefine. THIS is where item 6's five tokens
-  (`TYPEFAMILY`, `SUMTYPE`, `VARIANT`, `;VARIANT`, `;SUMTYPE`) are added,
+  (`NEWTYPE`, `SUMTYPE`, `VARIANT`, `;VARIANT`, `;SUMTYPE`) are added,
   by the same `a u s" tok" LINT-STR=CI if LINT-TRUE exit then` pattern.
 - `:163` `RNL-RESERVED?` — the aggregator (control OR parser OR definer). Callers
   hit this to reject user words that shadow a reserved token.
@@ -213,7 +213,7 @@ name. It consults, in order, these classes (all in `src/core/checker.f`):
    `fresh-extent- fresh-mask-`.
 8. Single lowercase letter type vars `a`..`z` — `:1775` `TYPE-VAR-TOK?`
    (`:1759`: `u 1 = IF a c@ LOWER?`). NOTE this already covers `n`/`f`/`r`/`a`
-   (plan's `TYPEFAMILY a 0`, `SUMTYPE n 0` examples) as single letters, and CT
+   (plan's `NEWTYPE a 0`, `SUMTYPE n 0` examples) as single letters, and CT
    covers them again as builtins.
 9. Bad chars `<` `>` `,` — `:1776` `TYPE-BAD-CHAR?` (`:1762`: bytes 60/62/44).
 
@@ -265,7 +265,7 @@ var, else `BAD-SIG-TYPE` (:1793 -> `SGBAD-UNKNOWN!`). `checker.f:1728`
   CAND-CTU CAND-LIN-NDECL CAND-VREC-N CAND-VREC-FIELD-N CAND-VREC-NODE-N`) driven
   by `CHECKER-CANDIDATE-SCOPE-START`/`-DONE` (used at verify-source.f:431-433).
   Family-record cells must be added to this snapshot set for transactional
-  rollback of a rejected `TYPEFAMILY`/`SUMTYPE`.
+  rollback of a rejected `NEWTYPE`/`SUMTYPE`.
 
 ---
 

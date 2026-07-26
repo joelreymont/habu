@@ -7,7 +7,7 @@ PLAN.md item 13 (lines 958-1011). Work required, condensed:
 - keep repair packets stable; add explicit machine-readable ADT fields (family id/name, arity, variant/tag, payload position, expected type, actual type)
 - logical rendering includes package identity in JSON, disambiguates same-tail families
 - synthesize public signatures for generated constructors from TFAM/SUMV metadata
-- add a non-definition declaration-error packet shape (TYPEFAMILY/SUMTYPE/VARIANT) that does NOT require word/declared_effect/inferred_effect/definition_source/source_excerpt/return_stack/expected/actual
+- add a non-definition declaration-error packet shape (NEWTYPE/SUMTYPE/VARIANT) that does NOT require word/declared_effect/inferred_effect/definition_source/source_excerpt/return_stack/expected/actual
 - declaration packets carry: declaration kind, family id/name, variant/tag, arity, package id/name, source span, error class
 - gate JSON assertions + repair packets accept the new shape explicitly
 - public-signature tokenization must follow executable Forth standalone-comment rule (not treat every paren-prefixed word as a comment); `(CMP)` stays visible

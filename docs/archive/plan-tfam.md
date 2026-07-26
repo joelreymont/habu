@@ -74,7 +74,7 @@ feature is allowed.
   WIDs without u8 truncation, and advance `WIDN` above every restored protected
   WID before any user `wordlist` or `package` allocation can run.
 - `package TYPE`: user-facing definers that are ordinary language words only at
-  the parser boundary (`TYPEFAMILY`, `SUMTYPE`, `VARIANT`, `;VARIANT`,
+  the parser boundary (`NEWTYPE`, `SUMTYPE`, `VARIANT`, `;VARIANT`,
   `;SUMTYPE`, later `ENUM`/`PRODUCT`). Parser keywords may be global/reserved, but their
   implementations call TFAM through the sealed system/friend capability rather
   than user-callable package words or direct arena access.
@@ -386,7 +386,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
    - Work: first implement the generic ordered event log, restricted discovery
      pass, source-span capture, replay engine, and existing support-form parity
      without requiring ADT declarations. After item 6 and item 8 land, plug
-     `TYPEFAMILY`/`SUMTYPE` and generated constructor metadata into the same
+     `NEWTYPE`/`SUMTYPE` and generated constructor metadata into the same
      event/replay framework so later signatures are checked against identical
      support state. Replace path-set dependency closure with ordered source-composition event
      replay. Every `require`, `required`, `include`, `included`,
@@ -433,7 +433,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
      Invalid top-level family declarations and bad support signatures involving
      family types are collected as diagnostic units, not treated as unguarded
      support replay. Reserve every new definer/control token at the item that
-     introduces it: item 6 reserves `TYPEFAMILY`, `SUMTYPE`, `VARIANT`,
+     introduces it: item 6 reserves `NEWTYPE`, `SUMTYPE`, `VARIANT`,
      `;VARIANT`, `;SUMTYPE`; item 9 reserves `construct`, `MATCH`,
      `;MATCH`, plus branch tokens used by `MATCH`; item 14 reserves/migrates
      `ENUM`/`;ENUM`; item 15 reserves `PRODUCT`/`FIELD`/`;PRODUCT`; item
@@ -473,7 +473,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
      non-colon support forms survive isolated redrive. Event-closure lints scan
      every discovered include/require/provided dependency path with original
      labels, not only explicit source-list inputs. After item 6, same-file
-     `TYPEFAMILY`/`SUMTYPE` definitions can be used by later signatures in the
+     `NEWTYPE`/`SUMTYPE` definitions can be used by later signatures in the
      same source list, bad family declarations report original file spans, and
      defining/shadowing item-6 tokens fails with reserved-name diagnostics.
      Support-only/no-colon bad declaration files produce first-class
@@ -503,12 +503,12 @@ This plan cites files and word/symbol names, not line numbers; per-item
      `MATCH`, and new branch tokens in source-list files.
    - Effort: medium.
    - Depends on: items 2-4 for the generic event/replay framework. Later
-     checkpoints follow items 6 (`TYPEFAMILY`/`SUMTYPE` replay), 8 (generated
+     checkpoints follow items 6 (`NEWTYPE`/`SUMTYPE` replay), 8 (generated
      constructor metadata), 14 (`ENUM`), 15 (`PRODUCT`), and 16 (`POLICY`) as
      they land; those are not prerequisites of this item's first checkpoint.
    - Goal mapping: keeps CLI/checker paths fail-closed and aligned with runtime.
 
-6. **Implement `TYPEFAMILY` and `SUMTYPE` declaration grammar**
+6. **Implement `NEWTYPE` and `SUMTYPE` declaration grammar**
    - Paths: `src/core/checker.f`, `src/core/roles.f`, `src/habu/habu2.f`,
      `docs/type-families.md`.
    - Work: add package-aware public defining words for cell families and sum
@@ -526,11 +526,11 @@ This plan cites files and word/symbol names, not line numbers; per-item
      (`PKG:Result<n>` rejects). Top-level bad family declarations under
      multi-error mode must be reported and rolled back without requiring a fake
      declared stack signature.
-   - Acceptance: fixtures define `TYPEFAMILY`, `SUMTYPE result`, `SUMTYPE option`,
+   - Acceptance: fixtures define `NEWTYPE`, `SUMTYPE result`, `SUMTYPE option`,
      use them in signatures, and reject duplicate names, empty sums, bad params,
      uppercase/mixed-case family declarations or signature references
-     (`TYPEFAMILY Result`, `SUMTYPE Result`, `Result<n>`), reserved family names
-     (`TYPEFAMILY a 0`, `SUMTYPE n 0`, `TYPEFAMILY ptr 0`), unknown payload
+     (`NEWTYPE Result`, `SUMTYPE Result`, `Result<n>`), reserved family names
+     (`NEWTYPE a 0`, `SUMTYPE n 0`, `NEWTYPE ptr 0`), unknown payload
      types, bad tokens, missing terminators, and package visibility violations.
      Qualified fixtures prove `PKG:result<n>` accepts and `PKG:Result<n>`
      rejects.
@@ -863,7 +863,7 @@ This plan cites files and word/symbol names, not line numbers; per-item
       generated constructors are synthesized from TFAM/SUMV metadata. Repair
       packet construction and JSON packet assertions must preserve the new ADT
       fields end-to-end for LLM repair consumers. Add a non-definition
-      diagnostic shape for top-level declaration errors (`TYPEFAMILY`, `SUMTYPE`,
+      diagnostic shape for top-level declaration errors (`NEWTYPE`, `SUMTYPE`,
       `VARIANT`, etc.) that does not require fake `word`, `declared_effect`, or
       `inferred_effect`, `definition_source`, `source_excerpt`, `return_stack`,
       `expected`, or `actual` fields. Declaration packets carry declaration

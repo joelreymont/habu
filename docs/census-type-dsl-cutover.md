@@ -4,16 +4,29 @@
 **Cutover parent:** `habu-epic-one-structure-04f9804f`
 
 This census is the migration contract for replacing every public composite or
-type-family declaration block with exactly two blocks:
+type-family declaration block with exactly three declaration words:
 
 ```forth
 STRUCTURE name arity ... ;STRUCTURE
 ENUM name arity ... VARIANT ... ;VARIANT ... ;ENUM
 ENUM name variant ... ;ENUM
+NEWTYPE name arity
 ```
 
+`NEWTYPE` is permanent. Joel ruled on 2026-07-26 (dot
+`habu-rename-typefamily-definer-538979cc`) that the nominal wrapper definer is
+the third and last declaration word, ratified alongside `STRUCTURE` and `ENUM`,
+and renamed from its former spelling `TYPEFAMILY` in the same breath: in type
+theory a type family is a type-level function, whereas this declaration is
+exactly a Haskell newtype — a zero-cost, nominally distinct wrapper over one
+cell, and with a private mint, a newtype with a hidden constructor. The rename
+was hard: no alias, no compatibility definer, and the retired spelling is not a
+word (the tombstone regression lives in `test/type-decl-suite.f`). A single-cell
+nominal role therefore keeps its own short declaration instead of being written
+as a field-less `STRUCTURE`.
+
 There are no aliases, compatibility definers, or mixed-syntax transition
-forms. `TYPEFAMILY`, `PRODUCT`, `VALUE-RECORD`, `BEGIN-STRUCTURE`,
+forms. `PRODUCT`, `VALUE-RECORD`, `BEGIN-STRUCTURE`,
 `END-STRUCTURE`, `SUMTYPE`, and their closing/field words are removed after
 their owning migrations land. `ENUM+` and `ENUM4+` are also retired: typed
 named alternatives use `ENUM`; unrelated integer constants use `constant`.
@@ -28,7 +41,6 @@ Generated-source strings and token-recognition code are inventoried separately.
 |---|---:|---:|---|
 | `BEGIN-STRUCTURE ... END-STRUCTURE` | 20 | 6 | `habu-migration-core-records-77182600`, `habu-migration-libs-to-4e798110` |
 | `VALUE-RECORD ... END-VALUE-RECORD` | 10 | 3 | `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
-| `TYPEFAMILY` | 43 | 7 | `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
 | `PRODUCT ... ;PRODUCT` | 30 | 12 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
 | `SUMTYPE ... ;SUMTYPE` | 75 | 17 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
 | legacy payloadless `ENUM ... ;ENUM` | 37 | 21 | `habu-migration-libs-to-4e798110`, `habu-migration-tests-and-51d00332`, `habu-migration-maki-models-c965e65d` |
@@ -39,7 +51,6 @@ Reproduce the baseline with:
 ```text
 rg -ni '^[[:space:]]*BEGIN-STRUCTURE[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
 rg -ni '^[[:space:]]*VALUE-RECORD[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
-rg -ni '^[[:space:]]*TYPEFAMILY[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
 rg -ni '^[[:space:]]*PRODUCT[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
 rg -ni '^[[:space:]]*SUMTYPE[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
 rg -ni '^[[:space:]]*ENUM[[:space:]]' src lib maki tools test bootstrap examples --glob '*.f' --glob '*.fs'
@@ -215,6 +226,13 @@ VALUE-RECORD END-VALUE-RECORD
 TYPEFAMILY PRODUCT ;PRODUCT SUMTYPE ;SUMTYPE ENUM+ ENUM4+
 ```
 
-`VARIANT`, `;VARIANT`, `FIELD`, `ENUM`, and `;ENUM` remain only as parts of the
-new grammar. The final lint distinguishes those legal contexts from every
+`TYPEFAMILY` reaches zero by rename rather than by deletion: the definer it
+named is retained as `NEWTYPE`, and the retired spelling is now nothing at all.
+That half of the completion contract is already discharged — the whole tree
+carries no `TYPEFAMILY` outside the tombstone regression in
+`test/type-decl-suite.f` and the historical dot and lessons records, which are
+records and are not rewritten.
+
+`VARIANT`, `;VARIANT`, `FIELD`, `ENUM`, `;ENUM`, and `NEWTYPE` remain as parts
+of the new grammar. The final lint distinguishes those legal contexts from every
 legacy form and proves every exception is non-executable test data.

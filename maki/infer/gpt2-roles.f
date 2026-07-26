@@ -57,7 +57,7 @@
 \ index would be in bounds. By spec the identity assertion lives ONLY in
 \ TID-SLOT: a foreign layerid passes TID-SHAPE and TID-ORIENT (both are
 \ layer-value-independent) and rejects at the table row - fail-closed, but
-\ late by design; do not widen. The proof is an arity-0 TYPEFAMILY exactly
+\ late by design; do not widen. The proof is an arity-0 NEWTYPE exactly
 \ like MDLCFG's cfg-proof (see model-config.f header for the engine
 \ constraint and the UNMAKE/re-MAKE scope caveat, closed by the
 \ sealed-destructure dot). Because that caveat still lets a holder re-MAKE a
@@ -134,7 +134,7 @@ ENUM orient DERIVE eq
 ;ENUM
 
 \ ---- the private-mint proof (arity-0 nominal; MDLCFG cfg-proof shape) -----------
-TYPEFAMILY gb-proof 0
+NEWTYPE gb-proof 0
 
 \ ---- authenticated layer identity: cfgkey copy + index + private proof ----------
 STRUCTURE layerid 0

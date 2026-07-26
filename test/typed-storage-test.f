@@ -26,8 +26,8 @@ require test/checker-assert.f
 \ ---- families under test ----------------------------------------------------
 \ tsk / tsk2 are arity-0 nominal scalars; tsres a closed non-linear layout
 \ family; tsowned a linear layout (inadmissible for storage).
-TYPEFAMILY tsk 0
-TYPEFAMILY tsk2 0
+NEWTYPE tsk 0
+NEWTYPE tsk2 0
 SUMTYPE tsres 2
    VARIANT ok a ;VARIANT
    VARIANT err b ;VARIANT
@@ -204,7 +204,7 @@ PTR-VARIABLE TS-DP
 \    enforcing path — then a laundering word is checked with the quiet checker.
 \ =============================================================================
 : TS-REG-RAW ( -- )
-   s\" TYPEFAMILY rawk 0\nvariable RAWV\ncreate RAWC 8 allot\n7 constant RAWK"
+   s\" NEWTYPE rawk 0\nvariable RAWV\ncreate RAWC 8 allot\n7 constant RAWK"
    VERIFY:SOURCE-BUF-IN-SCOPE ;
 
 : TS-SECTION-PIN-RAW-REJECT ( -- )

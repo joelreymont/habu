@@ -49,7 +49,7 @@ The current checker JSON intentionally uses `definition_source` rather than
 `source_excerpt`, and `suggestion` rather than `reason`. Packet builders must
 copy or normalize these fields instead of requiring the checker to emit aliases.
 
-Top-level type-family declaration failures (`TYPEFAMILY`/`SUMTYPE`) emit a
+Top-level type-family declaration failures (`NEWTYPE`/`SUMTYPE`) emit a
 declaration-shaped object instead of the definition shape above: code
 `E-BAD-DECLARATION`, repair class `fix_family_declaration`, `verdict`
 `rejected`, plus `decl` (declaration kind), `family` (family name token),
@@ -100,7 +100,7 @@ Declaration packets carry only declaration evidence:
 | --- | --- | --- | --- |
 | `schema_version` | integer | required | Repair packet schema version, currently `1`. |
 | `kind` | string | required | Must be `habu_repair_packet`. |
-| `decl` | string | required | Declaration kind (`typefamily`, `sumtype`, `enum`, or `product`). |
+| `decl` | string | required | Declaration kind (`newtype`, `sumtype`, `enum`, or `product`). |
 | `family` | string | required | Family token; may be empty when the declaration omitted it. |
 | `token` | string | required | Offending token; may be empty when one was missing. |
 | `file` | string | required | Source label or path. |
@@ -152,7 +152,7 @@ Current checker classes:
   element type, e.g. `ptr u8` or `ptr a`.
 - `fix_nominal_type`: a `deftype` declaration used a reserved, duplicate, or
   syntactically invalid nominal type name.
-- `fix_family_declaration`: a `TYPEFAMILY` or `SUMTYPE` declaration used a
+- `fix_family_declaration`: a `NEWTYPE` or `SUMTYPE` declaration used a
   reserved, non-lowercase, or duplicate family/variant name, a bad arity token,
   an unknown payload type, or a malformed/unterminated `VARIANT` block.
 - `rewrite_uncheckable`: the checker could not model the word; rewrite with

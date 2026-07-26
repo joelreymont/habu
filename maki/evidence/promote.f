@@ -49,7 +49,7 @@ require maki/evidence/policy.f     \ POLICY:granted (pulls maki/evidence/schema.
 
 package ART
 public
-TYPEFAMILY promoted 0
+NEWTYPE promoted 0
 private
 \ RAW>PROMOTED: the only producer of a `promoted` cell, invoked by PROMOTE after it has
 \ consumed a real grant (the maki/typestate.f RAW>* stage-mint pattern). Private, so a raw n

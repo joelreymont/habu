@@ -62,10 +62,10 @@ require lib/cad-num-arithmetic.f   \ CAD-NUM:item-count role for the typed count
 package MIR
 public
 
-TYPEFAMILY input-slot 0
-TYPEFAMILY operand-ref 0
-TYPEFAMILY input-index 0
-TYPEFAMILY ref-pos 0
+NEWTYPE input-slot 0
+NEWTYPE operand-ref 0
+NEWTYPE input-index 0
+NEWTYPE ref-pos 0
 
 STRUCTURE mark 0
    FIELD nodes n

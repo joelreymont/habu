@@ -87,7 +87,7 @@ explicit typed artifacts and pass contracts.
 > this section do not exist in the shipped engine: loading a `STRUCTURE`
 > declaration fails `E-UNDEFINED: STRUCTURE` (exit 70), and
 > `E-REMOVED-TYPE-SYNTAX` appears nowhere in `src/`. The live composite-type
-> surface — `TYPEFAMILY`, `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
+> surface — `NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
 > `BEGIN-STRUCTURE` — is documented in [`docs/forth.md`](docs/forth.md)
 > § Structures And Enums, the source of truth for what ships. This cutover is
 > owned by epic `habu-epic-one-structure-04f9804f`; its implementation chain is
@@ -153,7 +153,10 @@ support, and checker hook.
 This is a hard cutover. The implementation will remove `TYPEFAMILY`, `PRODUCT`,
 `;PRODUCT`, `VALUE-RECORD`, `END-VALUE-RECORD`, `BEGIN-STRUCTURE`,
 `END-STRUCTURE`, `+FIELD`, `PTR-FIELD:`, `CFIELD:`, `SUMTYPE`, `;SUMTYPE`,
-`ENUM+`, and `ENUM4+`. They will have no aliases, shims, desugaring path, or
+`ENUM+`, and `ENUM4+`. `TYPEFAMILY` is already gone: the nominal wrapper definer
+it named is retained and permanent under its new name `NEWTYPE` (Joel's ruling
+of 2026-07-26, dot `habu-rename-typefamily-definer-538979cc`), and the old
+spelling is not a word. They will have no aliases, shims, desugaring path, or
 second registry. Error-only compiler tombstones will report
 `E-REMOVED-TYPE-SYNTAX`; they cannot execute or mutate metadata. Mixed
 compact/block enums, anonymous variant payloads, legacy field words/closers
@@ -1772,7 +1775,7 @@ Everything below describes the landed pre-cutover machinery the unified DSL
 must preserve; the cited spellings are migration sites, not V2 syntax:
 
 - planned zero-field `STRUCTURE` package kinds: historical pre-cutover evidence
-  uses the `TYPEFAMILY` spelling and `CHECKER-DEFPRODUCT`/`TDECL-FAMILY`
+  uses the `NEWTYPE` spelling and `CHECKER-DEFPRODUCT`/`TDECL-FAMILY`
   internals in src/core/sumtype.f; the migration site is
   maki/cad-kinds.f:7-33 (`CAD-KIND`), R3 above.
 - planned `STRUCTURE`/`ENUM`/`MATCH` declarations: historical pre-cutover
@@ -3711,7 +3714,7 @@ envelope work inherits them:
   per-package SUM FAMILY, not the shared `result<a,b>`.** Constructing the ok arm
   in a total (ok-only) word leaves `result`'s error type variable free, and a
   free variable unifies with a structural type (`n`, `ptr u8`) but NOT with a
-  nominal ENUM/TYPEFAMILY, so `( n -- result<n,diag> ) RESULT:OK` is rejected
+  nominal ENUM/NEWTYPE, so `( n -- result<n,diag> ) RESULT:OK` is rejected
   (LESSONS 2026-07-17). The blessed shape is the lib/cad-num-types.f
   `numeric-result` idiom: a bespoke `SUMTYPE x-result 1` whose `ok` arm carries a
   SINGLE-CELL payload (an index or arity-0 handle — a multi-cell PRODUCT can be

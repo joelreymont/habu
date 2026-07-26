@@ -182,7 +182,7 @@ private
    a u s" private" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;package" LINT-STR=CI if LINT-TRUE exit then
    a u s" export" LINT-STR=CI if LINT-TRUE exit then    \ EXPORT re-export keyword + hb-build directive
-   a u s" typefamily" LINT-STR=CI if LINT-TRUE exit then
+   a u s" newtype" LINT-STR=CI if LINT-TRUE exit then
    a u s" sumtype" LINT-STR=CI if LINT-TRUE exit then
    a u s" variant" LINT-STR=CI if LINT-TRUE exit then
    a u s" ;variant" LINT-STR=CI if LINT-TRUE exit then

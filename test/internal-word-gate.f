@@ -252,11 +252,40 @@ public
 \ hide runtime input parsing + registry mutation, so UNSAFE-TOK? rejects them
 \ inside checked bodies (dot habu-checker-in-body-af7cf855, LBUF parity). ----
 
-: IWG-TDSL-TOP-FORGE$ ( -- ptr u8 n )    \ TYPEFAMILY/PRODUCT still work at top level
+: IWG-TDSL-TOP-FORGE$ ( -- ptr u8 n )    \ NEWTYPE/PRODUCT still work at top level
    SB-RESET
-   s" TYPEFAMILY iwgtf 0" SB-APPEND IWG-LF
+   s" NEWTYPE iwgtf 0" SB-APPEND IWG-LF
    s" PRODUCT iwgpr 0 FIELD x n ;PRODUCT" SB-APPEND IWG-LF
    SB$ ;
+
+\ --- the retired NEWTYPE spelling. Until 2026-07-26 this definer was called
+\ TYPEFAMILY. Joel ruled (dot habu-rename-typefamily-definer-538979cc) that the
+\ arity-0 nominal wrapper definer is permanent and renamed it to NEWTYPE with no
+\ alias and no compatibility definer, because in type theory a type family is a
+\ type-level function while this declaration is exactly a Haskell newtype. The
+\ old spelling is therefore not a word at all, and the child below proves it on
+\ the real load path: rc 70 with the ordinary undefined-word diagnostic naming
+\ the token, having declared nothing. The companion child proves the tombstone is
+\ structural rather than textual - the same characters in a line comment and in a
+\ string literal are inert text, and a real NEWTYPE declaration beside them still
+\ loads, so the child exits 0. ----
+
+package IWG-TOMB
+public
+
+: RETIRED$ ( -- ptr u8 n )               \ the retired spelling is an undefined word
+   SB-RESET
+   s" TYPEFAMILY iwgtomb 0" SB-APPEND IWG-LF
+   SB$ ;
+
+: TEXT$ ( -- ptr u8 n )                  \ same characters as comment and string text
+   SB-RESET
+   s" \ TYPEFAMILY iwgtombc 0" SB-APPEND IWG-LF
+   S\" : IWG-TOMB-TEXT ( -- ptr u8 n ) s\" TYPEFAMILY iwgtombs 0\" ;" SB-APPEND IWG-LF
+   s" NEWTYPE iwgtombok 0" SB-APPEND IWG-LF
+   SB$ ;
+
+;package
 
 : IWG-PF-REFLECT-FORGE$ ( -- ptr u8 n )  \ packaged committed reflection is checked/public
    SB-RESET
@@ -356,15 +385,20 @@ public
    IWG-OPENER-DIAG$ IWG-ASSERT-DIAG ;
 
 : IWG-OPENER-CASES ( -- )
-   s" TYPEFAMILY/PRODUCT DSL still works at top level" T-LABEL
+   s" NEWTYPE/PRODUCT DSL still works at top level" T-LABEL
    IWG-TDSL-TOP-FORGE$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
+   s" the retired TYPEFAMILY spelling is an undefined word" T-LABEL
+   IWG-TOMB:RETIRED$ IWG-EXEC:SUBJECT
+   s" E-UNDEFINED: TYPEFAMILY" IWG-ASSERT-DIAG
+   s" the retired spelling as comment or string text declares nothing" T-LABEL
+   IWG-TOMB:TEXT$ IWG-EXEC:SUBJECT IWG-ASSERT-OK
    s" packaged field reflection is checked/public" T-LABEL
    IWG-PF-REFLECT-FORGE$ IWG-RUN-LOAD IWG-ASSERT-OK
    s" raw field reflection is unavailable to checked code" T-LABEL
    IWG-PF-RAW-FORGE$ IWG-RUN-LOAD
    s" at 'PF-FIND'" IWG-ASSERT-DIAG
-   s" TYPEFAMILY in a checked body is rejected unsafe" T-LABEL
-   s" TYPEFAMILY" IWG-NEG-OPENER
+   s" NEWTYPE in a checked body is rejected unsafe" T-LABEL
+   s" NEWTYPE" IWG-NEG-OPENER
    s" SUMTYPE in a checked body is rejected unsafe" T-LABEL
    s" SUMTYPE" IWG-NEG-OPENER
    s" ENUM in a checked body is rejected unsafe" T-LABEL
@@ -395,8 +429,8 @@ public
    s" ENUM" IWG-NEG-EXPORT
    s" EXPORT PRODUCT rejects E-EXPORT-UNSAFE" T-LABEL
    s" PRODUCT" IWG-NEG-EXPORT
-   s" EXPORT TYPEFAMILY rejects E-EXPORT-UNSAFE" T-LABEL
-   s" TYPEFAMILY" IWG-NEG-EXPORT
+   s" EXPORT NEWTYPE rejects E-EXPORT-UNSAFE" T-LABEL
+   s" NEWTYPE" IWG-NEG-EXPORT
    s" EXPORT DEFER-LAYOUT-BUFFER rejects E-EXPORT-UNSAFE" T-LABEL
    s" DEFER-LAYOUT-BUFFER" IWG-NEG-EXPORT
    s" qualified unsafe alias for a body cannot be minted" T-LABEL
@@ -653,7 +687,7 @@ public
 package IWG-PARITY
 
 9 constant DIRECT-N
-101 constant SUBJECT-N
+103 constant SUBJECT-N   \ +2: the retired-TYPEFAMILY reject and its inert-text control
 : RESULT ( -- ptr u8 n ptr u8 n n )
    IWG-OUT IWG-OUT-U @ IWG-ERR IWG-ERR-U @ IWG-RC @ ;
 

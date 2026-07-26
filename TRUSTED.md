@@ -2132,7 +2132,7 @@ pprim checker-decl-frame start private pe-n pe-in
 pprim checker-decl-frame prepare private pe-n pe-in pe-f pe-out
 pprim checker-decl-frame rollback private pe-n pe-in
 pprim checker-decl-frame release private -
-prim - typefamily - -
+prim - newtype - -
 prim - sumtype - -
 prim - product - -
 prim - layout-buffer - pe-n pe-in

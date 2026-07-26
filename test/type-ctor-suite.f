@@ -147,7 +147,7 @@ SUMTYPE tres 0
   VARIANT yes n ;VARIANT
 ;SUMTYPE
 private
-TYPEFAMILY zonly 1
+NEWTYPE zonly 1
 ;package
 \ package mode continued private after generation ran inside the block.
 s" zpub" s" zonly" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=

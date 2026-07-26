@@ -56,7 +56,7 @@ variable IGNORED-U
    s" SuMtYpE zzbml-sum 0 VARIANT one n ;VARIANT ;SUMTYPE" SB-APPEND $0A SB-APPEND-C
    s" eNuM zzbml-enum one ;ENUM" SB-APPEND $0A SB-APPEND-C
    s" PrOdUcT zzbml-product 0 FIELD item n ;PRODUCT" SB-APPEND $0A SB-APPEND-C
-   s" TyPeFaMiLy zzbml-family 0" SB-APPEND $0A SB-APPEND-C
+   s" NeWtYpE zzbml-family 0" SB-APPEND $0A SB-APPEND-C
    SB$ ;
 
 : TEST-LIVE-KEYWORDS ( -- )
@@ -69,17 +69,17 @@ variable IGNORED-U
 \ 3. comments, strings, definition names, and escaped references stay silent.
 : IGNORED$ ( -- ptr u8 n )
    SB-RESET
-   s" \ SUMTYPE ENUM PRODUCT TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
-   S\" : BMT-TEXT ( -- ) s\" SUMTYPE ENUM PRODUCT TYPEFAMILY\" 2drop ;" SB-APPEND $0A SB-APPEND-C
+   s" \ SUMTYPE ENUM PRODUCT NEWTYPE" SB-APPEND $0A SB-APPEND-C
+   S\" : BMT-TEXT ( -- ) s\" SUMTYPE ENUM PRODUCT NEWTYPE\" 2drop ;" SB-APPEND $0A SB-APPEND-C
    s" : SUMTYPE ( -- ) ;" SB-APPEND $0A SB-APPEND-C
    s" : ENUM ( -- ) ;" SB-APPEND $0A SB-APPEND-C
    s" : PRODUCT ( -- ) ;" SB-APPEND $0A SB-APPEND-C
-   s" : TYPEFAMILY ( -- ) ;" SB-APPEND $0A SB-APPEND-C
-   s" ' SUMTYPE ' ENUM ' PRODUCT ' TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
-   s" ['] SUMTYPE ['] ENUM ['] PRODUCT ['] TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
-   s" postpone SUMTYPE postpone ENUM postpone PRODUCT postpone TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
-   s" char SUMTYPE char ENUM char PRODUCT char TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
-   s" [char] SUMTYPE [char] ENUM [char] PRODUCT [char] TYPEFAMILY" SB-APPEND $0A SB-APPEND-C
+   s" : NEWTYPE ( -- ) ;" SB-APPEND $0A SB-APPEND-C
+   s" ' SUMTYPE ' ENUM ' PRODUCT ' NEWTYPE" SB-APPEND $0A SB-APPEND-C
+   s" ['] SUMTYPE ['] ENUM ['] PRODUCT ['] NEWTYPE" SB-APPEND $0A SB-APPEND-C
+   s" postpone SUMTYPE postpone ENUM postpone PRODUCT postpone NEWTYPE" SB-APPEND $0A SB-APPEND-C
+   s" char SUMTYPE char ENUM char PRODUCT char NEWTYPE" SB-APPEND $0A SB-APPEND-C
+   s" [char] SUMTYPE [char] ENUM [char] PRODUCT [char] NEWTYPE" SB-APPEND $0A SB-APPEND-C
    SB$ ;
 
 : TEST-IGNORED-KEYWORDS ( -- )

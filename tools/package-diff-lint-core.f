@@ -612,7 +612,7 @@ variable FILE-USED
    k s" +FIELD" TOK=CI ;
 
 : TYPE-DEFINER? ( n -- bool ) {: k:n :}
-   k s" TYPEFAMILY" TOK=CI if true exit then
+   k s" NEWTYPE" TOK=CI if true exit then
    k s" DEFTYPE" TOK=CI if true exit then
    k s" DEFLINEAR" TOK=CI if true exit then
    k s" ENUM+" TOK=CI if true exit then

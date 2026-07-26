@@ -54,7 +54,7 @@ PTR-VARIABLE SLOT
 \ is then checked with the quiet candidate checker so the reject renders no stray
 \ diagnostic. Verdict 0 = rejected, -1 = certified.
 : REG-RAW-DEFINERS ( -- )
-   s\" TYPEFAMILY rsvfam 0\nvariable RSVV\ncreate RSVC 8 allot\n7 constant RSVK" VERIFY:SOURCE-BUF-IN-SCOPE ;
+   s\" NEWTYPE rsvfam 0\nvariable RSVV\ncreate RSVC 8 allot\n7 constant RSVK" VERIFY:SOURCE-BUF-IN-SCOPE ;
 : VERIFY-RAW-VALUE ( -- )
    REG-RAW-DEFINERS
    s" RSV-VAR-MINT ( n -- rsvfam ) RSVV ! RSVV @" CHECK-QUIET-CANDIDATE! 0 T=

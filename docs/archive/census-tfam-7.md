@@ -26,8 +26,8 @@ Term encoding (from census-tfam-4, re-verified): 3-bit tag `TAG = x and 7`
 - **Item 4 (whitelist → TFAM lookup): DONE.** The old `PARAM-CTOR?` whitelist is
   gone; `SIG-FAM?` (`checker.f:1830`) resolves any registered family:
   `: SIG-FAM? ( ptr u8 n -- n bool )  s" " 2swap TFAM-RESOLVE* ;`.
-- **Item 6 (`TYPEFAMILY`/`SUMTYPE` grammar): NOT DONE.** Tree-wide search for
-  `SUMTYPE`/`TYPEFAMILY`/`;SUMTYPE`/`VARIANT` defining words returns only the
+- **Item 6 (`NEWTYPE`/`SUMTYPE` grammar): NOT DONE.** Tree-wide search for
+  `SUMTYPE`/`NEWTYPE`/`;SUMTYPE`/`VARIANT` defining words returns only the
   spec, PLAN, and one comment line (`checker.f` "waits on the … declaration
   grammar (PLAN item 6)"). The mutators `SUMV-ADD`, `TFAM-SLOTS!`,
   `TFAM-VAR-RANGE!`, `LAY-ADD` are **defined but never called** outside
@@ -311,7 +311,7 @@ From `PLAN.md:558-564`:
    + `CHECKER-STEP` (`checker.f:1030-1038`).
 
 **Consumes from item 6** (`PLAN.md:509-544`, UNBUILT — see §0/§C1): the
-`SUMTYPE`/`TYPEFAMILY` defining words that populate `TF.KIND=TK-SUM/TK-ENUM`,
+`SUMTYPE`/`NEWTYPE` defining words that populate `TF.KIND=TK-SUM/TK-ENUM`,
 `TF.SLOTS` (via `TFAM-SLOTS!`), `SUMV` variant rows (via `SUMV-ADD`), and reserve
 the new tokens. Item 7 reject-only can substitute **friend-only `TFAM-DECL`
 + `TFAM-SLOTS!`** in tests, so it is buildable ahead of item 6, but its gate
@@ -393,7 +393,7 @@ new *unchecked boundary* introduced either.)
 
 - **C1 — Dependency (item 6) is unbuilt.** Item 7 "Depends on: item 6"
   (`PLAN.md:568`) and the order `6 -> 17f -> 7` (`PLAN.md:1031`) presume the
-  `SUMTYPE`/`TYPEFAMILY` grammar exists, but no such defining word exists in the
+  `SUMTYPE`/`NEWTYPE` grammar exists, but no such defining word exists in the
   tree (§0). The registry mutators (`SUMV-ADD`, `TFAM-SLOTS!`, `LAY-ADD`) are
   defined but uncalled. Item 7 is therefore only *testable* via friend-only
   `TFAM-DECL`/`TFAM-SLOTS!` synthetic registrations until item 6 lands; its gate

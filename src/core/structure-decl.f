@@ -33,8 +33,8 @@
 \     generation is deferred type-DSL work, not invented here.
 \   - FIELDS only. A zero-field structure is an opaque one-cell family that
 \     publishes no constructor (docs/type-families.md §2.2 — the authority-safe
-\     TYPEFAMILY replacement); only a declaration WITH fields is a product with a
-\     MAKE/UNMAKE pair, so GENERATE is skipped when NFLD is zero.
+\     shape a bare NEWTYPE also declares); only a declaration WITH fields is a
+\     product with a MAKE/UNMAKE pair, so GENERATE is skipped when NFLD is zero.
 \ Generation remains inside the shared transaction. If evaluation or checker
 \ certification rejects either constructor, the coordinator restores every
 \ participant before the error returns to the caller.
@@ -367,7 +367,7 @@ SD-RESET
 \ declaration to the interpreter, the terminator is this declaration's own
 \ boundary, and there is nothing to skip once `;STRUCTURE` has been consumed or
 \ the input has ended. Measured before this existed:
-\ `STRUCTURE m7sbad 0 FIELD x n FIELD x n ;STRUCTURE TYPEFAMILY m7scont 1`
+\ `STRUCTURE m7sbad 0 FIELD x n FIELD x n ;STRUCTURE NEWTYPE m7scont 1`
 \ reported the duplicate field, counted it, then died on
 \ `E-UNDEFINED: ;STRUCTURE`.
 : SD-SKIP-BODY ( -- )

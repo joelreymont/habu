@@ -105,7 +105,7 @@ package PROMO-AUTH-TEST
 \ ---- a foreign proof token, for the unforgeability negatives ---------------------
 \ Its only purpose is to be a DIFFERENT arity-0 nominal cell family of the same width
 \ as DAUTH:auth-proof, which is exactly what a forger would bring to the tok slot.
-TYPEFAMILY other-proof 0
+NEWTYPE other-proof 0
 
 \ ---- the identities these pins are about (tail + constructor package, REFLECT's R7 key)
 : AUTH$ ( -- ptr u8 n ptr u8 n )   s" authority" s" DAUTH-AUTHORITY" ;

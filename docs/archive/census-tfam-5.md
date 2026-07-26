@@ -118,7 +118,7 @@ and every loader word (`include`/`required`/`provided`/...).
 6. **`constant` logical shape** — verify-source `:381` and public-signatures `:552`
    fake it as one-cell `-- a`; all-errors replays the literal line (needs the literal
    value on the stack, a different behavior). Plan wants consistent treatment.
-7. **`TYPEFAMILY`/`SUMTYPE`/generated-constructor metadata** — deferred to items 6/8
+7. **`NEWTYPE`/`SUMTYPE`/generated-constructor metadata** — deferred to items 6/8
    (not a first-checkpoint gap, but same event/replay framework).
 
 ---

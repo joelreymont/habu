@@ -62,7 +62,7 @@ package MAKI
 public
 
 \ ix<extent> is the index value family: arity 1, one cell, the extent a phantom arg.
-TYPEFAMILY ix 1
+NEWTYPE ix 1
 
 \ IX>N projects any index value back to a plain cell. Generic over the extent
 \ (type var `e`), so one word serves every extent - the projection direction is

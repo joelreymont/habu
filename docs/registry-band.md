@@ -168,7 +168,7 @@ the frame is released only after every later participant succeeds, through the
 owner's total private release seam rather than the validating public `FINALIZE`;
 and `ROLLBACK` restores either an open or committed frame. A rejected `PRODUCT`
 therefore restores both marks without a duplicate snapshot. `SUMTYPE`,
-`ENUM`, and `TYPEFAMILY` never add field rows. Regression:
+`ENUM`, and `NEWTYPE` never add field rows. Regression:
 `test/type-decl-suite.f` `tdpdup` throws `E-TFAM-DUP` after the first field and
 asserts that `TYPE-FIELD:COUNT` is restored. The checker-scope frame's PF marks
 (`type-family.f` `TFAM-ROLLBACK-SAVE/RESTORE`) remain load-bearing for rejected

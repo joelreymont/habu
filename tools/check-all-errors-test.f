@@ -752,7 +752,7 @@ create CAE-LF-BYTE 10 c,
 
 : CAE-TFAM-SOURCE$ ( -- ptr u8 n )
    SB-RESET
-   s" TYPEFAMILY cae-tf 1" SB-APPEND CAE-LF
+   s" NEWTYPE cae-tf 1" SB-APPEND CAE-LF
    s" SUMTYPE cae-rs 2" SB-APPEND CAE-LF
    s"   VARIANT ok  a ;VARIANT" SB-APPEND CAE-LF
    s"   VARIANT err b ;VARIANT" SB-APPEND CAE-LF

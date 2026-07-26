@@ -48,7 +48,7 @@
 \ The mints remain audited boundaries until the TVK-RAW checker capability (dot
 \ habu-nominal-storage-raw-a3430ef2) closes generic raw-value laundering.
 \
-\ No `require`: the type-declaration grammar (package/TYPEFAMILY/ENUM/
+\ No `require`: the type-declaration grammar (package/NEWTYPE/ENUM/
 \ TRUSTED:/MATCH) is in the checker prefix (cf. maki/cad-kinds.f). CAD-NUM must
 \ not depend on lib/memory.f - MEM:ALLOC-* consumes CAD-NUM:alloc-* roles, so a
 \ dependency would be a cycle; MAX-CELL-N mirrors the machine max cell that
@@ -66,16 +66,16 @@ package CAD-NUM
 public
 
 \ ---- scalar nominal role families (one cell each, no widening to/from n) ------
-TYPEFAMILY byte-len 0            \ nonnegative extent measured in bytes
-TYPEFAMILY item-count 0         \ nonnegative logical element count
-TYPEFAMILY cell-count 0         \ nonnegative machine-cell count
-TYPEFAMILY index 0              \ nonnegative ordinal, not yet bounded
-TYPEFAMILY byte-off 0           \ nonnegative byte offset
-TYPEFAMILY cell-off 0           \ nonnegative cell offset
-TYPEFAMILY alignment 0          \ positive power-of-two alignment
-TYPEFAMILY positive-divisor 0   \ positive divisor for unit-preserving extent arithmetic
-TYPEFAMILY alloc-byte-len 0     \ positive byte extent accepted by an allocator
-TYPEFAMILY alloc-cell-count 0   \ positive cell count accepted by a cell allocator
+NEWTYPE byte-len 0               \ nonnegative extent measured in bytes
+NEWTYPE item-count 0            \ nonnegative logical element count
+NEWTYPE cell-count 0            \ nonnegative machine-cell count
+NEWTYPE index 0                 \ nonnegative ordinal, not yet bounded
+NEWTYPE byte-off 0              \ nonnegative byte offset
+NEWTYPE cell-off 0              \ nonnegative cell offset
+NEWTYPE alignment 0             \ positive power-of-two alignment
+NEWTYPE positive-divisor 0      \ positive divisor for unit-preserving extent arithmetic
+NEWTYPE alloc-byte-len 0        \ positive byte extent accepted by an allocator
+NEWTYPE alloc-cell-count 0      \ positive cell count accepted by a cell allocator
 
 \ ---- the on-stack validation result (success carries one cell-kinded a) -------
 \ Declared through the unified ENUM front end in full mode: the arity token after

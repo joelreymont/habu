@@ -170,10 +170,10 @@ s" CK-EV-X2 ( ADAG:event-id -- CAD-KIND:audit-event-id )" NO
 \ digest is a multi-cell owned value that never unifies with the one-cell
 \ artifact-id, so no id-shaped scalar can be read or stored as a digest.
 \ artifact<k>: the envelope stand-in, parameterized by kind.
-TYPEFAMILY artifact 1
+NEWTYPE artifact 1
 \ weight-kind / kernel-kind: two distinct concrete artifact kinds.
-TYPEFAMILY weight-kind 0
-TYPEFAMILY kernel-kind 0
+NEWTYPE weight-kind 0
+NEWTYPE kernel-kind 0
 \ content-digest: the 256-bit digest as four 64-bit words (deliberately not one cell).
 STRUCTURE content-digest 0
    FIELD w0 n

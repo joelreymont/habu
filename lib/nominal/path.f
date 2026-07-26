@@ -26,7 +26,7 @@ public
 \ The published opaque nominal path handle. External consumers name NOM:path
 \ directly in signatures (dot habu-export-public-nom-20170121). The node index
 \ and the audited mint/erase boundary stay private below.
-TYPEFAMILY path 0
+NEWTYPE path 0
 
 private
 

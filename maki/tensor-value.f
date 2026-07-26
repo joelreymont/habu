@@ -234,7 +234,7 @@ public
 \ public conversion exists. The private RAW>TENSOR/TENSOR>RAW pair below is the
 \ only representation authority; handles carry the store generation and fail
 \ closed once TV-RESET invalidates them.
-TYPEFAMILY tensor 0
+NEWTYPE tensor 0
 
 \ Live-descriptor sizing derives from the model (dot habu-size-model-proportional):
 \ the columns start at TV-SEED and grow-to-largest, reused across captures. TV-CAP is

@@ -529,7 +529,7 @@ variable START-NS
 
 : TFAM-GOOD$ ( -- ptr u8 n )   \ declarations + signature use, multi-line
    SB-RESET
-   s" TYPEFAMILY tfck 1" SB-APPEND
+   s" NEWTYPE tfck 1" SB-APPEND
    $0a SB-APPEND-C
    s" SUMTYPE rsck 2" SB-APPEND
    $0a SB-APPEND-C
@@ -553,9 +553,9 @@ variable START-NS
 
 \ S2: a declaration PRE-CHECK reject (missing arity / unterminated) must report
 \ the same E-BAD-DECLARATION packet the native path emits, not a raw die.
-: TFAM-NOARITY$ ( -- ptr u8 n )   \ TYPEFAMILY missing its arity token
+: TFAM-NOARITY$ ( -- ptr u8 n )   \ NEWTYPE missing its arity token
    SB-RESET
-   s" TYPEFAMILY ckfnoar" SB-APPEND
+   s" NEWTYPE ckfnoar" SB-APPEND
    SB$ ;
 
 : SUM-NOEND$ ( -- ptr u8 n )      \ SUMTYPE body never reaches ;SUMTYPE
@@ -1192,13 +1192,13 @@ variable LONG-J
    CAP-ERR erru s" E-MISMATCH" CONTAINS? TTRUE
    CAP-ERR erru s" field<rect,w,n>" CONTAINS? TTRUE ;
 
-: TEST-TYPEFAMILY-GOOD ( -- )
+: TEST-NEWTYPE-GOOD ( -- )
    TFAM-GOOD$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
    erru 0 T= ;
 
-: TEST-TYPEFAMILY-ALL ( -- )
+: TEST-NEWTYPE-ALL ( -- )
    TFAM-GOOD$ DIRECT-ALL-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
@@ -1242,7 +1242,7 @@ variable LONG-J
 \ E-DUPLICATE-DEFINITION. A DEFTYPE declarer needs `require deftype.f`
 \ for the child to define it, so a bare source is statically clean yet its child
 \ load fails E-UNDEFINED -- the honest verdict, and the only family surface that
-\ reaches the JSON redrive re-run. SUMTYPE/TYPEFAMILY/DEFLINEAR declarers are
+\ reaches the JSON redrive re-run. SUMTYPE/NEWTYPE/DEFLINEAR declarers are
 \ baked into the engine, so their child loads succeed, the redrive re-run never
 \ fires, and they were never affected (probed: all report 0 through --all-errors).
 : NOM-ALL-BARE$ ( -- ptr u8 n )   \ statically clean; bare child load is E-UNDEFINED
@@ -1880,8 +1880,8 @@ private
    s" check/linear-bad" [: TEST-LINEAR-BAD ;] CASE-RUN
    s" check/value-record-bad" [: VREC-BAD-TEST ;] CASE-RUN
    s" check/value-record-partial" [: VREC-PARTIAL-TEST ;] CASE-RUN
-   s" check/typefamily-good" [: TEST-TYPEFAMILY-GOOD ;] CASE-RUN
-   s" check/typefamily-all-errors" [: TEST-TYPEFAMILY-ALL ;] CASE-RUN
+   s" check/newtype-good" [: TEST-NEWTYPE-GOOD ;] CASE-RUN
+   s" check/newtype-all-errors" [: TEST-NEWTYPE-ALL ;] CASE-RUN
    s" check/sumtype-bad" [: TEST-SUMTYPE-BAD ;] CASE-RUN
    s" check/sumtype-all-redrive" [: SUM-REDRIVE-TEST ;] CASE-RUN
    s" check/nominal-all-redrive" [: NOM-REDRIVE-TEST ;] CASE-RUN

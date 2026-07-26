@@ -31,9 +31,9 @@ Item 16 declares `Depends on: items 9-15` (`PLAN.md:947`) and is the **terminal
 code item** (`16 -> 17p`, `PLAN.md:1031`). **None of the ADT grammar/lowering
 chain (items 5-15) is landed.** Evidence:
 
-- Grammar/lowering words `SUMTYPE / TYPEFAMILY / PRODUCT / ;PRODUCT / MATCH /
+- Grammar/lowering words `SUMTYPE / NEWTYPE / PRODUCT / ;PRODUCT / MATCH /
   ;MATCH / PUSH-LOGICAL / LAYOUT-PUSH-FIELDS` have **zero definitions** in
-  `src/ lib/ tools/` (`rg -l '^: SUMTYPE|^: TYPEFAMILY|^: PRODUCT|^: ;PRODUCT|^: MATCH |^: ;MATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
+  `src/ lib/ tools/` (`rg -l '^: SUMTYPE|^: NEWTYPE|^: PRODUCT|^: ;PRODUCT|^: MATCH |^: ;MATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
   = 0 hits).
 - `dot list` (2026-07): items **5,6,7,8,10,11,12,13,16** open (`o`); items
   **9,14,15** staged (`>`). Item 16 itself
@@ -314,7 +314,7 @@ is opt-in and gated.
 Item 16 `Depends on: items 9-15` (`PLAN.md:947`); transitively 5-8/10-13. All
 UNBUILT (§0). Per-item artifacts item 16 needs:
 
-- **Item 6 (`SUMTYPE`/`TYPEFAMILY` grammar + header parsing, UNBUILT):** the
+- **Item 6 (`SUMTYPE`/`NEWTYPE` grammar + header parsing, UNBUILT):** the
   `POLICY <name>` modifier is a **`SUMTYPE`/`PRODUCT` header extension** (spec
   shows it inline: `SUMTYPE option 1 POLICY niche-null`,
   `type-families.md:1323`; `SUMTYPE tree 1 POLICY boxed`, `:1344`). Item 16

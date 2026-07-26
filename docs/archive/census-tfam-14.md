@@ -43,11 +43,11 @@ the chain (`... 13 -> 17m -> 14 -> 17n`, `PLAN.md:1031`). **None of the ADT
 grammar/elimination/lowering machinery items 6-13 build is landed in this tree.**
 Evidence:
 
-- Grammar/eliminator words `SUMTYPE / TYPEFAMILY / VARIANT / ;VARIANT /
+- Grammar/eliminator words `SUMTYPE / NEWTYPE / VARIANT / ;VARIANT /
   ;SUMTYPE / ENUM(block) / ;ENUM / MATCH / OF / ENDOF / ;MATCH /
   construct` and the expander `PUSH-LOGICAL / LAYOUT-PUSH-FIELDS` have **zero
   definitions** anywhere in `src/ lib/ tools/`
-  (`rg -l '^: SUMTYPE|^: TYPEFAMILY|^: VARIANT|^: ENUM |^: MATCH |^: ;MATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
+  (`rg -l '^: SUMTYPE|^: NEWTYPE|^: VARIANT|^: ENUM |^: MATCH |^: ;MATCH|PUSH-LOGICAL|LAYOUT-PUSH-FIELDS' src/ lib/ tools/`
   = 0 hits).
 - `dot list` (2026-07): items **6,7,8,10,11,12** are open (`o`); item **9**
   (`habu-tfam-9-construct-2dd4f2d3`), item **13** (`habu-tfaam-13-adt-5d3288f0`),
@@ -312,7 +312,7 @@ Package Shape (`PLAN.md:89-102`): uppercase package+tail, so `color` → `COLOR:
 Item 14 `Depends on: items 9-13` (`PLAN.md:906`); transitively 6/7/8/11/12.
 Per-item artifacts (all UNBUILT, §0):
 
-- **Item 6 (`PLAN.md:509-544`):** the `SUMTYPE`/`TYPEFAMILY` defining-word grammar
+- **Item 6 (`PLAN.md:509-544`):** the `SUMTYPE`/`NEWTYPE` defining-word grammar
   + token reservation. Item 14's `ENUM`/`;ENUM` is sugar that calls item 6's
   `SUMTYPE color 0 … ;SUMTYPE` machinery (spec §9.3 `:529-537`). Item 6
   reserves the block tokens (`PLAN.md:434-435`), leaving `ENUM`/`;ENUM` for

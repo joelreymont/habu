@@ -14,7 +14,7 @@
 \ ACTION): those CONSUME a grant / share the vocabulary, never redefine it.
 \
 \ ---- UNFORGEABILITY (raw values cannot forge - the nominal/refinement discipline) --------
-\ A grant is a nominal HANDLE (`CAPTOK:grant`, an arity-0 TYPEFAMILY) over an append-only pool
+\ A grant is a nominal HANDLE (`CAPTOK:grant`, an arity-0 NEWTYPE) over an append-only pool
 \ slot that stores the authority. The ONLY authority-bearing public mints are ROOT (the
 \ authority ORIGIN - the trusted upstream contract boundary, plan:3203-3211) and ATTENUATE (a
 \ subset-only derivation). The private representation refinements RAW>GRANT / GRANT>RAW are
@@ -52,7 +52,7 @@ package CAPTOK
 public
 
 \ The unforgeable capability grant: a nominal handle over an append-only authority slot.
-TYPEFAMILY grant 0
+NEWTYPE grant 0
 
 \ Typed attenuation outcome (the § 23.9 art-result custom-sum idiom, never value+flag): `ok`
 \ carries the derived child grant; the reject arms name the axis that would ESCAPE the parent.

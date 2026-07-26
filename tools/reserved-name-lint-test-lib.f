@@ -85,7 +85,7 @@ variable NUM-U
 
 : TFAM-SRC$ ( -- ptr u8 n )
    SB-RESET
-   s" : typefamily ( -- ) ;" SB-APPEND LF
+   s" : newtype ( -- ) ;" SB-APPEND LF
    s" : SUMTYPE ( -- ) ;" SB-APPEND LF
    s" : variant ( -- ) ;" SB-APPEND LF
    s" : ;VARIANT ( -- ) ;" SB-APPEND LF
@@ -214,7 +214,7 @@ variable NUM-U
    TFAM$ RUN-CORE 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=
    OUT outu s" E-RESERVED-DEFINITION" CONTAINS? TTRUE
-   OUT outu s" `typefamily`" CONTAINS? TTRUE
+   OUT outu s" `newtype`" CONTAINS? TTRUE
    OUT outu s" `SUMTYPE`" CONTAINS? TTRUE
    OUT outu s" `variant`" CONTAINS? TTRUE
    OUT outu s" `;VARIANT`" CONTAINS? TTRUE

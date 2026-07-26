@@ -1844,7 +1844,7 @@ s" check@ round-trip: hook still fires" T-LABEL 5 ES-CHK-RT 10 T=
 \ Verdict 0 = rejected, -1 = certified. `esnp` is an arity-0 nominal-scalar family;
 \ ESNP-AT is its generated LAYOUT-BUFFER pointee accessor (the only checked source
 \ of `ptr esnp`). All scaffolding is checked Habu — no trust surface is added.
-TYPEFAMILY esnp 0
+NEWTYPE esnp 0
 4 LAYOUT-BUFFER ESNP-AT esnp                  \ ESNP-AT ( n -- ptr esnp ) accessor
 : ESNP-ID ( esnp -- esnp ) ;                  \ concrete nominal identity wrapper
 : ESNP-MERGE ( g g -- g ) nip ;               \ collapses its two inputs to one type

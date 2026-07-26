@@ -38,12 +38,12 @@ public
 \ ---- the sealed authority value (an allowlist of authorized verifier identities) ---
 \ Multi-cell (slot + sealed token), so it flows on the stack and is UNMAKEd, never bound
 \ as a typed local (the maki/evidence/policy.f multi-cell-product discipline).
-TYPEFAMILY auth-proof 0
+NEWTYPE auth-proof 0
 \ Declared through the unified STRUCTURE front end; the header clause and both FIELD
 \ lines are unchanged, so DAUTH-AUTHORITY:MAKE / :UNMAKE keep their exact spelling
 \ and effect and no call site moves. It deliberately carries NO `DERIVE eq`, and
 \ cannot: the engine refuses a derive clause when any field's own family does not
-\ itself derive equality, and an arity-0 TYPEFAMILY proof token never does. That is
+\ itself derive equality, and an arity-0 NEWTYPE proof token never does. That is
 \ not a loss here - an authority's meaning is that it EXISTS, minted by the one word
 \ allowed to mint it, so equality has nothing to say about it. Comparison of who may
 \ discharge goes through the allowlist, not through the handle.

@@ -869,7 +869,7 @@ DIAG-PRINT-INSTALL
 BADSIG-DIAG-INSTALL
 
 \ --- top-level type-family declaration diagnostics (PLAN item 6). A bad
-\ TYPEFAMILY/SUMTYPE reports a declaration-shaped packet: decl kind, family,
+\ NEWTYPE/SUMTYPE reports a declaration-shaped packet: decl kind, family,
 \ offending token, and reason — with NO invented definition fields (no
 \ declared_effect, definition_source, or return_stack; docs/type-families.md
 \ §24). Source-span fields wait on the declaration origin plumbing (item 13).

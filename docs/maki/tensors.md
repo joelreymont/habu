@@ -53,7 +53,7 @@ Two more fact families in `package MAKI`:
   real pointer** at construction (`P>N` low bits), never assumed; a descriptor
   with no buffer records `unknown`.
 
-The tensor value itself lives in `package TENSOR`: `TYPEFAMILY tensor 0` is an
+The tensor value itself lives in `package TENSOR`: `NEWTYPE tensor 0` is an
 opaque nominal one-cell handle indexing a fixed-capacity record table
 (`TV-CAP` = 256, free counter `TV-U`); handles carry the store GENERATION, so a
 handle from before a `TV-RESET` fails closed (`E-TV-HANDLE`), and no raw-`n`

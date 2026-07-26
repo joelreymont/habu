@@ -33,7 +33,7 @@ variable #CASE
 create CNDIAG-BUF 8192 allot
 CNDIAG-BUF 8192 DIAG-BUFFER!
 
-TYPEFAMILY cnfam 0
+NEWTYPE cnfam 0
 
 \ Arm the one-shot cast window with the declaration name, then certify the
 \ declaration as a candidate. A legality violation throws its named code (caught

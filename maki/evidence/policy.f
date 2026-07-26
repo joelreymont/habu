@@ -66,7 +66,7 @@ package POLICY
 public
 
 \ grant-proof: the sealed promotion witness; only MINT-GRANT-PROOF produces one.
-TYPEFAMILY grant-proof 0
+NEWTYPE grant-proof 0
 
 \ req: how strongly a policy requires each evidence class. Ordinary policy DATA,
 \ so DERIVE eq gives POLICY-REQ:EQ ( req req -- bool ) for schema comparison.
@@ -107,7 +107,7 @@ STRUCTURE gate-set 0
 \ the same byte-identical terms. Neither record carries `DERIVE eq`, and neither
 \ can: a derive clause is refused when ANY field's own family does not itself
 \ derive equality, which covers `grant-proof` here and `CAD-KIND:schema-id` in
-\ gate-set above (both arity-0 TYPEFAMILYs). A grant has no equality semantics to
+\ gate-set above (both arity-0 NEWTYPEs). A grant has no equality semantics to
 \ offer anyway - its meaning is that it EXISTS, minted by the one word allowed to
 \ mint it.
 STRUCTURE granted 0

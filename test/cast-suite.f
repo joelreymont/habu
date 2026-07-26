@@ -37,9 +37,9 @@ CSDIAG-BUF 8192 DIAG-BUFFER!
 9001 constant E-CS-RANGE
 
 \ two arity-0 family scalars and one parametric cell family.
-TYPEFAMILY csrole 0
-TYPEFAMILY csbnd 0
-TYPEFAMILY csix 1
+NEWTYPE csrole 0
+NEWTYPE csbnd 0
+NEWTYPE csix 1
 
 \ 1. empty-body cast: n <-> arity-0 family scalar, both directions.
 CAST: >CSROLE ( n -- csrole ) ;

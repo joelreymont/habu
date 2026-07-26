@@ -2,7 +2,7 @@
 
 Read-only scout census, 2026-07-04, branch `maki-type-families` (~head ea89bbc1).
 Orchestrator correction: the scout's "items 5–16 unbuilt" framing came from
-stale census §0 headers — items 5 (ordered events) and 6 (TYPEFAMILY/SUMTYPE
+stale census §0 headers — items 5 (ordered events) and 6 (NEWTYPE/SUMTYPE
 declaration grammar, `src/core/sumtype.f`) ARE landed; items 7–16 remain
 queued. The site inventory below is unaffected (sentinel conventions predate
 the ADTs). Wave dots: `habu-switchover-wave-*` (minted 2026-07-04).

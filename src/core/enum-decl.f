@@ -520,7 +520,7 @@ ED-RESET
 \ terminator. This front end reads as it parses and stops at the fault, so the
 \ tokens between the fault and `;ENUM` are still ahead of the interpreter, which
 \ would try to execute them. Measured on the commit before this one:
-\ `ENUM m7bad red red blue ;ENUM TYPEFAMILY m7cont 1` reported the duplicate
+\ `ENUM m7bad red red blue ;ENUM NEWTYPE m7cont 1` reported the duplicate
 \ variant, counted it, and then died on `E-UNDEFINED: blue` — the load aborted
 \ where the legacy definer continued and declared `m7cont`.
 \

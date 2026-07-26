@@ -21,7 +21,7 @@ variable #CASE
    then ;
 
 \ ---- deferred column over an arity-0 nominal scalar family (width 1) ---------
-TYPEFAMILY dtk 0
+NEWTYPE dtk 0
 
 \ The declaration itself is the decisive assertion: if the checker rejected the
 \ deferred accessor body, this line throws and the load fails.

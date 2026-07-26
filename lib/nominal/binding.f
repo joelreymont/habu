@@ -21,7 +21,7 @@ public
 \ The published opaque nominal binding handle. External consumers name
 \ NOM:binding directly in signatures (dot habu-export-public-nom-20170121). The
 \ pool index and the audited mint/erase boundary stay private below.
-TYPEFAMILY binding 0
+NEWTYPE binding 0
 
 private
 

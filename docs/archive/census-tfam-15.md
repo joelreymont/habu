@@ -35,7 +35,7 @@ VR-PTR 3 VR-PUSH 4 VR-QUOT 5 VR-ATOM 6 VR-PARAM 7` (`checker.f:1249-1256`).
   "item 15 reserves `PRODUCT`/`FIELD`/`;PRODUCT`" (`PLAN.md:437`).
 - **Prerequisites 6/7/8/12 are UNBUILT** (confirmed by `docs/census-tfam-7.md` §0
   and `docs/census-tfam-8.md` §0; tree is at TFAM item 4). No
-  `SUMTYPE`/`TYPEFAMILY` grammar, no `PUSH-LOGICAL`/`LAYOUT-PUSH-FIELDS`, no
+  `SUMTYPE`/`NEWTYPE` grammar, no `PUSH-LOGICAL`/`LAYOUT-PUSH-FIELDS`, no
   layout-aware `dup`/`drop`. Item 15 `Depends on: item 12` (`PLAN.md:931`) and is
   last-in-line before 16.
 - **VREC is the ONLY working by-value record mechanism today** and it is a
@@ -337,7 +337,7 @@ distinct tokens, not renamed by this criterion but the file where a product
 
 ## 4. Dependencies: what item 15 consumes from 6/7/8/12; early vs waits
 
-- **Item 6 (grammar/reservation, UNBUILT):** the `SUMTYPE`/`TYPEFAMILY` defining
+- **Item 6 (grammar/reservation, UNBUILT):** the `SUMTYPE`/`NEWTYPE` defining
   machinery + token reservation this item mirrors for `PRODUCT`; item 6 also
   reserves the sibling tokens (`PLAN.md:434`). Item 15 reserves
   `PRODUCT`/`FIELD`/`;PRODUCT` itself (`:437`).

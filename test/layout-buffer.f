@@ -112,8 +112,8 @@ here LB-DP 0 ptr-field !
 s" 1 LAYOUT-BUFFER TFAM:BAD lb-res<n,n>" LB-EVAL E-LAYOUT-BUFFER T=
 
 \ ---- nominal scalars (arity-0 TK-CELL): LAYOUT-BUFFER is the introduction ----
-TYPEFAMILY lbtk 0
-TYPEFAMILY lbtk2 0
+NEWTYPE lbtk 0
+NEWTYPE lbtk2 0
 
 4 LAYOUT-BUFFER LBTK-AT lbtk
 

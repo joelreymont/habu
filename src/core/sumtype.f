@@ -1,6 +1,6 @@
-\ sumtype.f — TYPEFAMILY/SUMTYPE/ENUM/PRODUCT declaration grammar
+\ sumtype.f — NEWTYPE/SUMTYPE/ENUM/PRODUCT declaration grammar
 \ (docs/type-families.md §9, PLAN items 6 + 14 + 15). The public ADT authoring
-\ surface: `TYPEFAMILY name
+\ surface: `NEWTYPE name
 \ arity` registers a TK-CELL family; `ENUM name v0 v1 .. ;ENUM` registers a
 \ TK-ENUM family (a zero-payload sum, docs §9.3); `PRODUCT name arity FIELD f t ..
 \ ;PRODUCT` registers a TK-PRODUCT family (single-shape record, PF-* field rows,
@@ -36,7 +36,7 @@
 $1000 constant TDECL-CAP        \ buffered declaration body bytes
 
 \ --- declaration context (set before TDECL-RUN, read by bodies + diagnostics).
-variable TDK-A   variable TDK-U      \ decl kind token ("typefamily"/"sumtype")
+variable TDK-A   variable TDK-U      \ decl kind token ("newtype"/"sumtype")
 variable TDN-A   variable TDN-U      \ family name token
 variable TDB-A   variable TDB-U      \ body (SUMTYPE token buffer / arity token)
 variable TDT-A   variable TDT-U      \ offending token (diagnostics)
@@ -64,7 +64,7 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
 \ through PREPARE, reversible COMMIT, FINALIZE, or ROLLBACK. The checker-scope
 \ frame independently owns the enclosing family/schema/layout marks. Thus either
 \ participant can reject and the coordinator restores the complete declaration;
-\ SUMTYPE/ENUM/TYPEFAMILY never mutate PF directly.
+\ SUMTYPE/ENUM/NEWTYPE never mutate PF directly.
 : TDECL-MARK ( -- )
    TFAM-N @ TDM-TFAM !   TF-STR-U @ TDM-STR !   TF-PK-N @ TDM-PK !
    SUMV-N @ TDM-SUMV !   LAY-N @ TDM-LAY !
@@ -883,7 +883,7 @@ defer TDECL-EVENT-ARMED ( -- bool )
 
 : CHECKER-DEFFAMILY ( ptr u8 n ptr u8 n -- )   \ name, arity token
    {: na:ptr nu:n aa:ptr au:n :}
-   s" typefamily" na nu aa au TDECL-CTX!
+   s" newtype" na nu aa au TDECL-CTX!
    [: CHECKER-DEFFAMILY-BODY ;] TDECL-RUN ;
 
 \ --- runtime constructor generation (item 8, docs §12). Only the engine's
@@ -1791,9 +1791,9 @@ variable TDD-H
    fam 0 < IF EXIT THEN
    TDECL-SUMV-PROVIDER fam TDECL-CTOR-WORDS-BODY drop ;
 
-\ --- public defining words. TYPEFAMILY consumes name + arity; SUMTYPE buffers
+\ --- public defining words. NEWTYPE consumes name + arity; SUMTYPE buffers
 \ the block up to ;SUMTYPE (VALUE-RECORD's shape), then registers it whole.
-: TYPEFAMILY ( -- )
+: NEWTYPE ( -- )
    parse-name {: na:ptr nu:n :}
    parse-name {: aa:ptr au:n :}
    na nu aa au CHECKER-DEFFAMILY ;
@@ -1880,6 +1880,6 @@ variable TDECL-I
 \ ENUM has no row: it is an ordinary checked ( -- ) definition over
 \ ENUM-DECL:ED-RUN, exactly like STRUCTURE, so the checker already knows its
 \ effect and the marking pass leaves it top-level executable without an axiom.
-PRIM: TYPEFAMILY PRIM;
+PRIM: NEWTYPE PRIM;
 PRIM: SUMTYPE PRIM;
 PRIM: PRODUCT PRIM;

@@ -449,7 +449,7 @@ variable NOM-TAIL-U
 
 \ Missing name/arity are reported by CHECKER-DEFFAMILY through the declaration
 \ packet (E-BAD-DECLARATION), matching the native path -- no raw pre-check die (§24).
-: RECORD-TYPEFAMILY ( -- )
+: RECORD-NEWTYPE ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    NEXT-SCAN {: ar:ptr aru:n :}
    name nameu ar aru CHECKER-DEFFAMILY ;
@@ -732,7 +732,7 @@ variable STG-START
    a u s" value-record" STR=CI IF RECORD-VALUE-RECORD 0 0= EXIT THEN
    a u s" begin-structure" STR=CI IF RECORD-STRUCTURE 0 0= EXIT THEN
    a u s" structure" STR=CI IF RECORD-STRUCTURE-DECL 0 0= EXIT THEN
-   a u s" typefamily" STR=CI IF RECORD-TYPEFAMILY 0 0= EXIT THEN
+   a u s" newtype" STR=CI IF RECORD-NEWTYPE 0 0= EXIT THEN
    a u s" sumtype" STR=CI IF RECORD-SUMTYPE 0 0= EXIT THEN
    a u s" enum" STR=CI IF RECORD-ENUM 0 0= EXIT THEN
    a u s" product" STR=CI IF RECORD-PRODUCT 0 0= EXIT THEN

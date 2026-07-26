@@ -10,7 +10,7 @@
 > `E-REMOVED-TYPE-SYNTAX` tombstones. Neither ships today: loading a `STRUCTURE`
 > declaration fails `E-UNDEFINED: STRUCTURE` (exit 70), and
 > `E-REMOVED-TYPE-SYNTAX` appears nowhere in `src/`. The live composite-type
-> surface is still `TYPEFAMILY`, `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
+> surface is still `NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
 > and `BEGIN-STRUCTURE`; none of them is removed. The single source of truth for
 > what actually ships — including the real error codes and the positional
 > `SUMTYPE` / bare-names `ENUM` split — is [`docs/forth.md`](forth.md)
@@ -50,7 +50,7 @@ registered parametric family tail** — `ptr` (seeded arity 2), `span`, `matrix`
 and the other cell families seeded in `src/core/type-family.f` — is not a
 reserved-name token at all: it passes the name gate and instead collides at
 registration (`TFAM-DECL`), rejecting `E-TFAM-DUP` (7102, "duplicate family").
-So `TYPEFAMILY n 0` reports reserved-name while `TYPEFAMILY ptr 0` reports
+So `NEWTYPE n 0` reports reserved-name while `NEWTYPE ptr 0` reports
 duplicate-family, and both are correct: `ptr` genuinely *is* a registered family,
 so redeclaring it is a real same-scope duplicate, not a reserved-name shadow.
 (`test/type-decl-suite.f` pins both codes.) A package family may share a tail
@@ -203,8 +203,9 @@ ENUM message 0
 
 A structure is one nominal, single-shape type family. A zero-field declaration
 is an opaque one-cell family and publishes no generic raw constructor,
-destructor, cast, or field operation. This is the authority-safe replacement
-for `TYPEFAMILY`. A declaration with fields is a product; its fields are the
+destructor, cast, or field operation. That is the same authority-safe shape a
+bare `NEWTYPE` declares; `NEWTYPE` is retained (§9.1) and remains the shorter
+way to write it. A declaration with fields is a product; its fields are the
 sole schema source for checker expansion, stack width, storage size, alignment,
 field offsets, codecs, reflection, snapshot rows, and AOT metadata.
 Field order is declaration order, deepest stack field first. Field types may be
@@ -280,7 +281,8 @@ output type that does not match the projected field type; and a malformed
 `test/layout-buffer.f` (`cell+` on a layout pointer, an empty-body retype to
 `ptr u8`) stay red.
 
-Former `TYPEFAMILY` declarations become zero-field structures. Authority-bearing
+`NEWTYPE` declarations stay as they are (§9.1): the definer is retained, so a
+one-cell nominal role is not rewritten as a zero-field structure. Authority-bearing
 ids keep raw representation refinement and decoding private to the validating
 owner; there is no universal `n` cast or generated `MAKE`. Former
 pointer-layout structures use the same field schema and typed address
@@ -406,6 +408,10 @@ BEGIN-STRUCTURE END-STRUCTURE +FIELD PTR-FIELD: CFIELD:
 VALUE-RECORD END-VALUE-RECORD
 TYPEFAMILY PRODUCT ;PRODUCT SUMTYPE ;SUMTYPE ENUM+ ENUM4+
 ```
+
+`TYPEFAMILY` already has no executable definition: it was the former spelling of
+the retained `NEWTYPE` definer (§9.1) and was removed outright, without an
+alias, rather than tombstoned.
 
 The compiler is to keep only error tombstones so each removed token reports
 `E-REMOVED-TYPE-SYNTAX` with its `STRUCTURE` or `ENUM` replacement. A tombstone
@@ -823,27 +829,36 @@ This section records the implementation being removed so registry and checker
 behavior are not lost during migration. None of its declaration spellings is a
 post-cutover public API. The normative grammar is §2.
 
-### 9.1 Removed `TYPEFAMILY`
+### 9.1 Retained `NEWTYPE` (formerly spelled `TYPEFAMILY`)
 
-Pre-cutover ordinary one-cell parametric types used:
+This entry is the one exception to the section above: the definer is not being
+removed. Joel ruled on 2026-07-26 (dot
+`habu-rename-typefamily-definer-538979cc`) that the nominal wrapper definer is
+permanent alongside `STRUCTURE` and `ENUM`, and renamed it from `TYPEFAMILY` to
+`NEWTYPE` in the same change, because the declaration is a Haskell newtype and
+not a type-level function. Only the old spelling was removed, with no alias.
+The forms below are therefore current grammar, not an inventory of something
+about to disappear.
+
+Ordinary one-cell parametric types use:
 
 ```forth
-TYPEFAMILY span 3
-TYPEFAMILY matrix 4
-TYPEFAMILY gridctx 3
-TYPEFAMILY tile 3
-TYPEFAMILY uniform 1
+NEWTYPE span 3
+NEWTYPE matrix 4
+NEWTYPE gridctx 3
+NEWTYPE tile 3
+NEWTYPE uniform 1
 ```
 
 This replaces hard-coded parser knowledge.
 
-An arity-zero `TYPEFAMILY` is a package-scoped nominal cell kind:
+An arity-zero `NEWTYPE` is a package-scoped nominal cell kind:
 
 ```forth
 package CAD-KIND
 public
-TYPEFAMILY design-id 0
-TYPEFAMILY node-id 0
+NEWTYPE design-id 0
+NEWTYPE node-id 0
 ;package
 ```
 
@@ -2663,7 +2678,7 @@ relocatable `TF-STR` pool — and exits `ENGINE-ERROR:BAD-TAG` (process exit sta
 `src/habu/layout.f`). There is no normal continuation past the die.
 
 Top-level declaration diagnostics are not fake word-definition diagnostics. A
-bad `SUMTYPE` or `TYPEFAMILY` reports a declaration-shaped packet with its source
+bad `SUMTYPE` or `NEWTYPE` reports a declaration-shaped packet with its source
 span and ADT fields; it does not invent a declared stack effect or require
 definition-only fields such as `definition_source`, `source_excerpt`,
 `return_stack`, `expected`, or `actual`.
@@ -2683,7 +2698,7 @@ habu: in RESULT>CODE: at ;MATCH
 
 ### 25.1 Type-family registry tests
 
-- `TYPEFAMILY foo 2` registers `foo`.
+- `NEWTYPE foo 2` registers `foo`.
 - `foo<n,n>` parses.
 - `foo<n>` is rejected for wrong arity.
 - unknown `bar<n>` is rejected.
@@ -2848,7 +2863,7 @@ TFAM-FIND-INTERNAL
 TFAM-KIND@
 TFAM-ARITY@
 TFAM-LAYOUT?
-TYPEFAMILY
+NEWTYPE
 ```
 
 Replace hard-coded parametric constructor lookup with internal TFAM lookup.

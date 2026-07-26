@@ -1260,7 +1260,7 @@ $7FFFFFFFFFFFFFFF constant PF-MAX-N
 : TF-GRAMMAR-KEYWORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" variant" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;variant" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ;sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN

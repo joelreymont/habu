@@ -21,11 +21,11 @@ chain routes `... 6 -> 17f -> 7 -> 17g -> 12 -> 17h -> 8` (`PLAN.md:1031`).
 - Open dots (`o` = open): `habu-tfam-5-ordered`, `habu-tfam-6-typefamily`,
   `habu-tfam-7-hidden`, `habu-tfam-12-layout`, **`habu-tfam-8-generated`**,
   `habu-tfam-4-remainder` (SC-QUOT/uncapped arity/package-aware SIG still open).
-- Grammar words `SUMTYPE / TYPEFAMILY / VARIANT / ;VARIANT / ;SUMTYPE`
+- Grammar words `SUMTYPE / NEWTYPE / VARIANT / ;VARIANT / ;SUMTYPE`
   and `PUSH-LOGICAL / LAYOUT-PUSH-FIELDS` have **zero definitions** anywhere in
-  `src/ lib/ tools/` (`rg '^: SUMTYPE|^: VARIANT|^: TYPEFAMILY|PUSH-LOGICAL'` =
+  `src/ lib/ tools/` (`rg '^: SUMTYPE|^: VARIANT|^: NEWTYPE|PUSH-LOGICAL'` =
   0 hits). Confirmed at `src/core/checker.f:1826-1827`: "Package-local
-  resolution waits on the TYPEFAMILY declaration grammar (PLAN item 6)".
+  resolution waits on the NEWTYPE declaration grammar (PLAN item 6)".
 
 Consequence for the census: the SUMV registry that item 8 consumes exists
 (`src/core/type-family.f`), but there is **no declaration surface that populates
@@ -208,7 +208,7 @@ SUMTYPE result 2
 Enum is a zero-payload sum with the same terminated form
 (`docs/type-families.md:530-538`). Item 6 (open) owns installing these tokens;
 item 8 only consumes the SUMV rows they produce. PLAN reserves the tokens at
-item 6: `PLAN.md:434-435` "item 6 reserves `TYPEFAMILY`, `SUMTYPE`, `VARIANT`,
+item 6: `PLAN.md:434-435` "item 6 reserves `NEWTYPE`, `SUMTYPE`, `VARIANT`,
 `;VARIANT`, `;SUMTYPE`".
 
 ---

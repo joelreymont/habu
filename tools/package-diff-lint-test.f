@@ -253,7 +253,7 @@ variable TEST-DIFF-U
    s" +FIELD FIELD-WORD" TEST-SOURCE-LINE ;
 
 : TEST-ADD-TYPE-DEFINERS ( -- )
-   s" TYPEFAMILY family-word 0" TEST-SOURCE-LINE
+   s" NEWTYPE family-word 0" TEST-SOURCE-LINE
    s" DEFTYPE DEFTYPE-WORD" TEST-SOURCE-LINE
    s" DEFLINEAR LINEAR-WORD" TEST-SOURCE-LINE
    s" ENUM+ ENUM-WORD" TEST-SOURCE-LINE
@@ -529,7 +529,7 @@ variable TEST-DIFF-U
 
 : TEST-FIXTURE-FAMILY-SOURCE ( ptr u8 n -- )   \ a top-level family declaration
    TEST-SOURCE-RESET
-   s" TYPEFAMILY " TEST-SOURCE+ TEST-SOURCE+ s"  0" TEST-SOURCE-LINE ;
+   s" NEWTYPE " TEST-SOURCE+ TEST-SOURCE+ s"  0" TEST-SOURCE-LINE ;
 
 : TEST-FIXTURE-AT ( ptr u8 n -- ) {: path:ptr pathu:n :}
    s" pdlfam" TEST-FIXTURE-FAMILY-SOURCE
@@ -570,14 +570,14 @@ variable TEST-DIFF-U
 
 : TEST-WRITE-FIXTURE-OWNER-LOSS ( -- )
    TEST-SOURCE-RESET
-   s" TYPEFAMILY pdlfam 0" TEST-SOURCE-LINE
+   s" NEWTYPE pdlfam 0" TEST-SOURCE-LINE
    s" test/type-decl-suite.f" TEST-WRITE-SOURCE ;
 
 : TEST-FIXTURE-OWNER-LOSS-DIFF ( -- )
    s" test/type-decl-suite.f" TEST-MODIFY-HEAD
    s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
    s" -package PDLFIX" TEST-DIFF+ TEST-LF
-   s"  TYPEFAMILY pdlfam 0" TEST-DIFF+ TEST-LF
+   s"  NEWTYPE pdlfam 0" TEST-DIFF+ TEST-LF
    s" -;package" TEST-DIFF+ TEST-LF ;
 
 : TEST-GRAMMAR-FIXTURE-SCOPE-DELTA ( -- )

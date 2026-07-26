@@ -23,7 +23,7 @@ row index must be typed `idx<#B*#T>`, factored into free `idx<#B>` × in-block
 **rejects** the free `#B`. A product-of-extents is a *structured* type argument.
 Only TFAM already carries structured, ordered, nesting, identity-unified type
 arguments — so the product's **type representation and its identity unification**
-come for **free**: a `TYPEFAMILY <tail> 2` whose ordered args already reject a
+come for **free**: a `NEWTYPE <tail> 2` whose ordered args already reject a
 swapped or mismatched factor and nest inside `idx<…>` (probes below), with no new
 registry or unification kernel. What stays **net-new BTC-7 work** is the *rules
 on top* of that representation: the `*` infix desugar, the factorization/split,
@@ -82,7 +82,7 @@ legal lowercase family tail (EXTENT: owns the mangling).
 | criterion | atom | CT-role (DEFTYPE / A1) | **TFAM family (chosen)** |
 |---|---|---|---|
 | (a) flat `idx<#M>` fit | ✓ incumbent phantom tag | ✓ | ✓ |
-| (b) **BTC-7 product/factorization** | ✗ new structured-atom grammar even for the *representation* | ✗✗ flat cons, no arg slots | **◑ product *representation* + ordered/nesting identity-unification free (`TYPEFAMILY <tail> 2`); the split/join + free-vs-inner contraction rule + `*` desugar are net-new BTC-7 work, but ride existing parametric unification** |
+| (b) **BTC-7 product/factorization** | ✗ new structured-atom grammar even for the *representation* | ✗✗ flat cons, no arg slots | **◑ product *representation* + ordered/nesting identity-unification free (`NEWTYPE <tail> 2`); the split/join + free-vs-inner contraction rule + `*` desugar are net-new BTC-7 work, but ride existing parametric unification** |
 | (c) package-scoping (A1b cost) | ✗ global prefix, none | ✗ needs CON-OF restructure (A1b) | **✓ already package-scoped (TFAM-DECL)** |
 | (d) converter / crossing | n/a (phantom, no value) | ✓ auto `>NAME`/`NAME>N`, strict-vs-n | none auto — but extents are phantom args, not cast values (index↔n is `idx`'s job, not the extent's) |
 | (e) persistence (snapshot/AOT/fixpoint) | none needed (lexical, reset per-check) — but **no registry to reflect** | ✓ CT-SNAPSHOT-PERSIST + RBF rollback | **✓ TFAM-SNAPSHOT-PERSIST + TFAM-ROLLBACK (same path span/matrix ride)** |
@@ -122,8 +122,8 @@ TFAM. Recorded here so the pivot is explicit.
   structured-atom node (product with ordered children) + product unification +
   `*` grammar in the atom path — all net-new, on a representation with no
   registry to persist/reflect and no typo protection. Package-scoping absent.
-- **TFAM (chosen):** flat extent = `TYPEFAMILY <tail> 0`; product =
-  `TYPEFAMILY <tail> 2`; both already unify, nest, persist, roll back, and
+- **TFAM (chosen):** flat extent = `NEWTYPE <tail> 0`; product =
+  `NEWTYPE <tail> 2`; both already unify, nest, persist, roll back, and
   package-scope. BTC-7's *new* work shrinks to the `*` infix desugar + the
   factorization/join rule + the free/inner contraction rule — no new type
   representation or unification kernel.

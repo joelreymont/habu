@@ -17,12 +17,12 @@ package PROCESS-PTY
 \ it), and the public lifecycle surface converts each role back to `pid` or `fd`
 \ at the boundary, so no caller outside ever names one.
 
-TYPEFAMILY sup-pid 0
-TYPEFAMILY pgrp 0
-TYPEFAMILY target-pid 0
-TYPEFAMILY group-watch 0
-TYPEFAMILY target-watch 0
-TYPEFAMILY sup-watch 0
+NEWTYPE sup-pid 0
+NEWTYPE pgrp 0
+NEWTYPE target-pid 0
+NEWTYPE group-watch 0
+NEWTYPE target-watch 0
+NEWTYPE sup-watch 0
 
 $10 constant SLOT-CAP
 $FF constant SLOT-MASK

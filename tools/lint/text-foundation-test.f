@@ -702,7 +702,7 @@ variable REG-I
 \ moved its count from 322 to 330 and the four `CHECKER-DECL-FRAME` rows — the
 \ ones closed with `CLOSE-PRIVATE` — moved it to 334; deleting the
 \ `checker-defenum` row took one away, leaving 333. In src/core/sumtype.f the
-\ four block openers were `TYPEFAMILY`, `SUMTYPE`, `ENUM` and `PRODUCT`; deleting
+\ four block openers were `NEWTYPE`, `SUMTYPE`, `ENUM` and `PRODUCT`; deleting
 \ the `ENUM` row leaves 3. Both deletions have the same cause: the global ENUM
 \ keyword is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN now, so
 \ it needs no axiom of its own, and the metadata-only `checker-defenum` entry it

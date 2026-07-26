@@ -4,7 +4,7 @@
 \ (SRC_COMMON: src/core + src/arch + src/os + src/habu) with the Gforth stage-0
 \ emitter, which has NO width-aware pass-2 mirror (bootstrap/cg/forth.fs; dot
 \ habu-bootstrap-mirror-pass-f1714953). That is sound exactly while no ADT
-\ declaration (SUMTYPE / ENUM / PRODUCT / TYPEFAMILY) exists in src/ non-test
+\ declaration (SUMTYPE / ENUM / PRODUCT / NEWTYPE) exists in src/ non-test
 \ source: lib/'s wide families are compiled only by the recovered NATIVE engine
 \ at the immediate fixpoint refresh. This lint turns that boundary into a red
 \ gate: it fires the moment a declaration keyword appears as a live token in
@@ -12,7 +12,7 @@
 \
 \ A live token is a lexed word (comments and strings skipped by the source
 \ lexer) that is not a definition NAME (src/core/sumtype.f defines the words
-\ SUMTYPE / ENUM / PRODUCT / TYPEFAMILY themselves) and not an escaped
+\ SUMTYPE / ENUM / PRODUCT / NEWTYPE themselves) and not an escaped
 \ reference (' / ['] / postpone / char / [char]).
 \
 \ Native-engine-only src subtrees that the gforth stage-0 never compiles (they are
@@ -99,7 +99,7 @@ variable NUM-I
    a u s" sumtype" LINT-STR=CI if LINT-TRUE exit then
    a u s" enum" LINT-STR=CI if LINT-TRUE exit then
    a u s" product" LINT-STR=CI if LINT-TRUE exit then
-   a u s" typefamily" LINT-STR=CI ;
+   a u s" newtype" LINT-STR=CI ;
 
 : WORD? ( n -- bool ) {: k:n :}
    k LINT-LEX:COUNT >= if LINT-FALSE exit then

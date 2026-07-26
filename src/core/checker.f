@@ -6273,7 +6273,7 @@ variable CURSYM
    a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" typed-variable" CORE-STR=CI IF RES-TRUE EXIT THEN
-   a u s" typefamily" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" newtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" sumtype" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" enum" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" product" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -6330,7 +6330,7 @@ variable CURSYM
 \ engine/syntax tokens ([, ], postpone, immediate, compile,, evaluate, trust,
 \ set-check, set-preflight) that never intern a checker symbol. The
 \ definers/openers (deflinear, value-record, sumtype, enum, product,
-\ typefamily, layout-buffer)
+\ newtype, layout-buffer)
 \ DO intern a symbol, and those are exactly the words that carry a checked
 \ signature or a prim axiom — so they are the only ones an EXPORT alias could
 \ mint. UNSAFE-SET-SEAL interns their symbol IDs here at seal time; the EXPORT
@@ -6377,7 +6377,7 @@ variable UNSAFE-SYM-N
    s" sumtype"       UNSAFE-NAME-ADD
    s" enum"          UNSAFE-NAME-ADD
    s" product"       UNSAFE-NAME-ADD
-   s" typefamily"    UNSAFE-NAME-ADD
+   s" newtype"    UNSAFE-NAME-ADD
    s" layout-buffer" UNSAFE-NAME-ADD
    s" defer-layout-buffer" UNSAFE-NAME-ADD
    s" typed-buffer"  UNSAFE-NAME-ADD

@@ -114,7 +114,7 @@ public
 ;package
 
 \ DEFTYPE - the value-nominal declaration keyword. Core language surface: a
-\ single global declarer word (sibling to ENUM / SUMTYPE / TYPEFAMILY)
+\ single global declarer word (sibling to ENUM / SUMTYPE / NEWTYPE)
 \ so it reads bare from any application package while the family lands in that
 \ package's scope. Top-level-interpret-only, like the other type-declaration
 \ openers: it parses the next name off the input stream and mutates the type

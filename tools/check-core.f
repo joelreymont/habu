@@ -809,7 +809,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    CHK-EXP-BUF CHK-EXP-U @
    CHECKER-DEFSUM-NOEND ;
 
-\ A failed TYPEFAMILY/SUMTYPE declaration already reported through the
+\ A failed NEWTYPE/SUMTYPE declaration already reported through the
 \ checker's declaration diagnostics (TDECL-DIAG, declaration-shaped packet);
 \ capture that packet into the check error stream (the preverify pattern) and
 \ map the registration throw to the check rc without a second packet.
@@ -827,7 +827,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 \ Missing arity is reported by CHECKER-DEFFAMILY through the declaration packet
 \ (§24), matching native/verify-source -- not a raw pre-check throw.
-: CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'typefamily'; next scan index
+: CHK-TFAM-REGISTER ( n -- n ) {: k:n :}   \ k at 'newtype'; next scan index
    k 1+ CHK-TFAM-NAME-I !
    CHK-DECL-CAPTURE
    [: CHK-TFAM-DO-DEF ;] catch
@@ -961,7 +961,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
 
 \ Package blocks (dot habu-tools-check-scanner-685b735e) mirror verify-source's
 \ RECORD-PACKAGE/-PUBLIC/-PRIVATE/-END-PACKAGE at the checker level, so the
-\ TYPEFAMILY/SUMTYPE/ENUM/PRODUCT registrations above land in the declaring
+\ NEWTYPE/SUMTYPE/ENUM/PRODUCT registrations above land in the declaring
 \ package under the live visibility mode (TDECL reads CHECKER-PACKAGE-*), and
 \ qualified pkg:tail signature uses resolve public-only exactly as native.
 \ The CHECKER-SCOPE frame wrapping the nominal pass saves/restores package
@@ -1010,7 +1010,7 @@ create CHK-NOM-TAIL-BUF CHK-NOM-TAIL-CAP allot
    k s" VALUE-RECORD" CHK-TOK=CI if
       k k 1+ CHK-VREC-REGISTER exit
    then
-   k s" TYPEFAMILY" CHK-TOK=CI if
+   k s" NEWTYPE" CHK-TOK=CI if
       k CHK-TFAM-REGISTER exit
    then
    k s" SUMTYPE" CHK-TOK=CI if

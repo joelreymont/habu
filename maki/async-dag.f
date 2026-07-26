@@ -50,9 +50,9 @@ require maki/cad-kinds.f
 package ADAG
 public
 
-TYPEFAMILY stream-id 0
-TYPEFAMILY event-id 0
-TYPEFAMILY node-id 0
+NEWTYPE stream-id 0
+NEWTYPE event-id 0
+NEWTYPE node-id 0
 
 PRODUCT stats 0
    FIELD nodes n

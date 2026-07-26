@@ -1,4 +1,4 @@
-\ type-decl-suite.f — behavior suite for the TYPEFAMILY/SUMTYPE declaration
+\ type-decl-suite.f — behavior suite for the NEWTYPE/SUMTYPE declaration
 \ grammar (src/core/sumtype.f; docs/type-families.md §9, PLAN item 6). Run BY
 \ THE ENGINE over stdin, exactly like test/type-family-suite.f:
 \     bin/hb < test/type-decl-suite.f
@@ -169,9 +169,9 @@ create TDIAG-BUF 8192 allot
 TDIAG-BUF 8192 DIAG-BUFFER!
 
 \ ---------------------------------------------------------------------------
-\ TYPEFAMILY: registers a TK-CELL family in the global scope, usable in sigs.
+\ NEWTYPE: registers a TK-CELL family in the global scope, usable in sigs.
 \ ---------------------------------------------------------------------------
-TYPEFAMILY tdfoo 2
+NEWTYPE tdfoo 2
 s" " s" tdfoo" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
 TDF @ TFAM-ARITY@ 2 T=
@@ -186,9 +186,47 @@ s" TDBAD-ARITY ( tdfoo<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TDBAD-UPPER ( Tdfoo<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ zero-arity family: the bare token resolves through TFAM, not nominal lookup.
-TYPEFAMILY tdzero 0
+NEWTYPE tdzero 0
 s" TDOK-ZERO ( tdzero -- tdzero )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDBAD-ZERO-N ( tdzero -- n )" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
+\ The retired spelling. This definer used to be called TYPEFAMILY. Joel's
+\ ruling of 2026-07-26 renamed it to NEWTYPE with no alias and no compatibility
+\ definer (dot habu-rename-typefamily-definer-538979cc): in type theory a type
+\ family is a type-level function, while this declaration is exactly a Haskell
+\ newtype - a zero-cost, nominally distinct wrapper, and with a private mint, a
+\ newtype with a hidden constructor. So the old spelling is not a word any more.
+\
+\ The live reject is proved where the evidence can be read honestly: a child
+\ process in test/internal-word-gate.f loads a real `TYPEFAMILY iwgtomb 0` and
+\ must exit 70 with `E-UNDEFINED: TYPEFAMILY` on its stderr. It cannot be proved
+\ here, because that diagnostic comes from the engine's undefined-word handler
+\ rather than the checker's diagnostic renderer, so neither DIAG-BUFFER! nor
+\ DIAG-QUIET captures it, and this suite is a candidate-validation positive case
+\ that must leave stderr empty (test/candidate-validation.f).
+\
+\ What this suite owns is the registry half, which no subprocess can see. The
+\ retired spelling inside a line comment, inside a paren comment, or inside a
+\ string literal is ordinary text: TDT-NEG asserts each one throws nothing AND
+\ leaves every registry high-water mark untouched, so neither a reader nor a lint
+\ may treat the mere presence of the characters as the definer.
+\ ---------------------------------------------------------------------------
+s" \ TYPEFAMILY tdtombline 0" 0 TDT-NEG
+s" " s" tdtombline" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=
+
+s" ( TYPEFAMILY tdtombparen 0 )" 0 TDT-NEG
+s" " s" tdtombparen" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=
+
+s\" : TDT-TOMB-TEXT ( -- ptr u8 n ) s\" TYPEFAMILY tdtombstr 0\" ;" 0 TDT-NEG
+s" " s" tdtombstr" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=
+
+\ The live spelling needs no separate control here: `tdfoo` and `tdzero` above
+\ already pin what a NEWTYPE declaration registers, and the internal-word-gate
+\ child declares one beside the inert text to prove the child loads clean.
 
 \ ---------------------------------------------------------------------------
 \ SUMTYPE: registers a TK-SUM family + SUMV variants + payload schemas, and
@@ -1046,7 +1084,7 @@ SUMTYPE tres 1
   VARIANT yes a ;VARIANT
 ;SUMTYPE
 private
-TYPEFAMILY tpriv 1
+NEWTYPE tpriv 1
 ;package
 s" tdpa" s" tres" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
@@ -1059,7 +1097,7 @@ TDF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 \ same tail in a second package registers without aliasing (docs §6).
 package tdpb
 public
-TYPEFAMILY tres 1
+NEWTYPE tres 1
 ;package
 s" tdpb" s" tres" TWX-TFAM-FIND-IN TDOK ! TDF !
 TDOK @ -1 T=
@@ -1136,13 +1174,13 @@ s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 \ ---------------------------------------------------------------------------
 package MEM
 public
-TYPEFAMILY span 6
+NEWTYPE span 6
 private
-TYPEFAMILY tier 1
+NEWTYPE tier 1
 
 s" TPC-OWNER ( span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPC-OWN-PRIVATE ( tier<n> -- MEM:tier<n> )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TYPEFAMILY span 6" E-TFAM-DUP TDT-NEG
+s" NEWTYPE span 6" E-TFAM-DUP TDT-NEG
 \ This failure creates a family and one variant before the duplicate variant
 \ rejects; the declaration transaction must retire every provisional row.
 s" SUMTYPE rolled-span 6 VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE" E-TFAM-DUP TDT-NEG
@@ -1152,7 +1190,7 @@ TDOK @ 0 T=
 
 package OTHER
 public
-TYPEFAMILY tier 2
+NEWTYPE tier 2
 ;package
 
 \ The existing global span remains the bare top-level identity.
@@ -1200,26 +1238,26 @@ TDF @ TFAM-ARITY@ 6 T=
 \ negative declarations: named throw code + full registry rollback each time.
 \ ---------------------------------------------------------------------------
 \ uppercase/mixed-case family names reject before storage.
-s" TYPEFAMILY Bad 1" E-TFAM-CASE TDT-NEG
-s" TYPEFAMILY tdBAD 1" E-TFAM-CASE TDT-NEG
+s" NEWTYPE Bad 1" E-TFAM-CASE TDT-NEG
+s" NEWTYPE tdBAD 1" E-TFAM-CASE TDT-NEG
 s" SUMTYPE Res 1 VARIANT ok a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 \ qualified names are illegal in declaration position.
-s" TYPEFAMILY pkg:tail 1" E-TFAM-CASE TDT-NEG
+s" NEWTYPE pkg:tail 1" E-TFAM-CASE TDT-NEG
 \ hyphen edges / doubled hyphens are not canonical tails.
-s" TYPEFAMILY td--x 1" E-TFAM-CASE TDT-NEG
-s" TYPEFAMILY -tdx 1" E-TFAM-CASE TDT-NEG
+s" NEWTYPE td--x 1" E-TFAM-CASE TDT-NEG
+s" NEWTYPE -tdx 1" E-TFAM-CASE TDT-NEG
 \ injection-shaped text is not a canonical name token.
-s\" TYPEFAMILY s\" 1" E-TFAM-CASE TDT-NEG
+s\" NEWTYPE s\" 1" E-TFAM-CASE TDT-NEG
 \ reserved signature/type tokens as family names.
-s" TYPEFAMILY a 0" E-TDECL-NAME TDT-NEG
+s" NEWTYPE a 0" E-TDECL-NAME TDT-NEG
 s" SUMTYPE n 0 VARIANT x ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
-s" TYPEFAMILY field 1" E-TDECL-NAME TDT-NEG
-s" TYPEFAMILY str 1" E-TDECL-NAME TDT-NEG
-s" TYPEFAMILY space-x 1" E-TDECL-NAME TDT-NEG
-s" TYPEFAMILY fresh-mask-x 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE field 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE str 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE space-x 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE fresh-mask-x 1" E-TDECL-NAME TDT-NEG
 \ item 9 reserved token protocol: construct/match/;match may not name a
 \ family or a variant (;match already fails the canonical-tail gate).
-s" TYPEFAMILY construct 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE construct 1" E-TDECL-NAME TDT-NEG
 s" SUMTYPE match 0 VARIANT x n ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdcn 1 VARIANT construct a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdcn2 1 VARIANT match a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
@@ -1227,35 +1265,35 @@ s" SUMTYPE tdcn3 1 VARIANT ;match a ;VARIANT ;SUMTYPE" E-TFAM-CASE TDT-NEG
 \ redeclaring a global family at top level is a same-scope duplicate (the
 \ top-level declaring scope IS the global scope, so the collision is a real
 \ duplicate — E-TFAM-DUP, not a reserved-name shadow; both classes reject)...
-s" TYPEFAMILY ptr 0" E-TFAM-DUP TDT-NEG
-s" TYPEFAMILY span 3" E-TFAM-DUP TDT-NEG
+s" NEWTYPE ptr 0" E-TFAM-DUP TDT-NEG
+s" NEWTYPE span 3" E-TFAM-DUP TDT-NEG
 \ The global/package same-tail case above is legal; only an exact same-package
 \ duplicate remains E-TFAM-DUP.
 \ variant names may not collide with any family the declaring scope resolves,
 \ in ANY scope: builtin tails, prior user families, and (inside a package)
 \ the package's own tails all reject; the verdict matches across scopes.
 s" SUMTYPE tdvres 1 VARIANT span a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
-TYPEFAMILY tduserfam 1
+NEWTYPE tduserfam 1
 s" SUMTYPE tdvres2 1 VARIANT tduserfam a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 package tvshad
 s" SUMTYPE tdvres3 1 VARIANT span a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
-TYPEFAMILY tvloc 1
+NEWTYPE tvloc 1
 s" SUMTYPE tdvres4 1 VARIANT tvloc a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 ;package
 \ family declarations must reject a prior in-scope variant tail too; otherwise
 \ the collision verdict depends on declaration order.
 ENUM tdvowner tdfuture ;ENUM
-s" TYPEFAMILY tdfuture 0" E-TDECL-NAME TDT-NEG
+s" NEWTYPE tdfuture 0" E-TDECL-NAME TDT-NEG
 package tvorder
 ENUM tvowner tvfuture ;ENUM
-s" TYPEFAMILY tvfuture 0" E-TDECL-NAME TDT-NEG
+s" NEWTYPE tvfuture 0" E-TDECL-NAME TDT-NEG
 ;package
 \ Package-local variant tails do not reserve unrelated package namespaces.
 package tvordera
 ENUM tvowner tvlocal ;ENUM
 ;package
 package tvorderb
-TYPEFAMILY tvlocal 0
+NEWTYPE tvlocal 0
 ;package
 \ ...and an unreserved variant name in the same shape still accepts.
 SUMTYPE tdvok 1
@@ -1266,19 +1304,19 @@ TDOK @ -1 T=
 TDF @ TFAM-VAR-COUNT@ 1 T=
 TDF @ TFAM-VAR-START@ SUMV-NAME$ s" fine" T$=
 \ control words and grammar keywords are not names.
-s" TYPEFAMILY if 1" E-TDECL-NAME TDT-NEG
-s" TYPEFAMILY repeat 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE if 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE repeat 1" E-TDECL-NAME TDT-NEG
 s" SUMTYPE variant 1 VARIANT ok a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 \ value-record names collide.
 VALUE-RECORD tdvrec x n END-VALUE-RECORD
-s" TYPEFAMILY tdvrec 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE tdvrec 1" E-TDECL-NAME TDT-NEG
 \ duplicate family (same package scope).
-s" TYPEFAMILY tdfoo 2" E-TFAM-DUP TDT-NEG
+s" NEWTYPE tdfoo 2" E-TFAM-DUP TDT-NEG
 \ bad arity tokens.
-s" TYPEFAMILY tdnoar" E-TDECL-ARITY TDT-NEG
-s" TYPEFAMILY tdarx x" E-TDECL-ARITY TDT-NEG
-s" TYPEFAMILY tdarneg -1" E-TDECL-ARITY TDT-NEG
-s" TYPEFAMILY tdarbig 24" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdnoar" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdarx x" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdarneg -1" E-TDECL-ARITY TDT-NEG
+s" NEWTYPE tdarbig 24" E-TDECL-ARITY TDT-NEG
 s" PRODUCT tdarprod 24 FIELD v z ;PRODUCT" E-TDECL-ARITY TDT-NEG
 s" SUMTYPE tdarv VARIANT ok a ;VARIANT ;SUMTYPE" E-TDECL-ARITY TDT-NEG
 \ unterminated body (no ;SUMTYPE) reports the declaration packet via SUM-NOEND (S2).
@@ -1451,7 +1489,7 @@ s" PRODUCT tdres 1 FIELD x a ;PRODUCT" E-TFAM-DUP TDT-NEG
 \ product / field are reserved as variant names too (case-folded dictionary).
 s" SUMTYPE tdpv 1 VARIANT product a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdpv2 1 VARIANT field a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
-s" TYPEFAMILY product 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE product 1" E-TDECL-NAME TDT-NEG
 
 \ ---------------------------------------------------------------------------
 \ item 16: layout-policy header clause (`POLICY <name>`, docs §22/§24). A missing
@@ -1546,7 +1584,7 @@ s" SUMTYPE tdpolmiss 1 POLICY ;SUMTYPE" E-TDECL-POLICY TDT-NEG
 \ POLICY is reserved: it may not name a family or a variant.
 s" SUMTYPE policy 1 VARIANT some a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
 s" SUMTYPE tdpolrv 1 VARIANT policy a ;VARIANT ;SUMTYPE" E-TDECL-NAME TDT-NEG
-s" TYPEFAMILY policy 1" E-TDECL-NAME TDT-NEG
+s" NEWTYPE policy 1" E-TDECL-NAME TDT-NEG
 
 \ ---------------------------------------------------------------------------
 \ item 16 boxed sub-slice 1: a DIRECT self-family reference in a payload makes
@@ -1597,7 +1635,7 @@ TDF @ TFAM-KIND@ TK-SUM T=
 \ payload family references resolve in SIGNATURE scope (dot habu-checker-
 \ tdecl-payload-1efe0326): qualified PKG:tail payloads resolve exactly like a
 \ signature reference (public cross-package, private in-package), and an
-\ arity-0 CELL family (nominal scalar, TYPEFAMILY x 0) is as admissible as a
+\ arity-0 CELL family (nominal scalar, NEWTYPE x 0) is as admissible as a
 \ layout family — the same type a signature, LAYOUT-BUFFER, or option<...>
 \ argument already accepts. A PRIVATE family in another package must NOT
 \ become reachable; a QUALIFIED self-reference rejects recursive by resolved
@@ -1606,12 +1644,12 @@ TDF @ TFAM-KIND@ TK-SUM T=
 \ ---------------------------------------------------------------------------
 package tdqp
 public
-TYPEFAMILY qslot 0
+NEWTYPE qslot 0
 SUMTYPE qsum 0
   VARIANT qa n ;VARIANT
 ;SUMTYPE
 private
-TYPEFAMILY qpriv 0
+NEWTYPE qpriv 0
 ;package
 
 \ cross-package qualified CELL-family payload: the dot's exact shape.
@@ -1665,7 +1703,7 @@ TDF @ TFAM-VAR-START@ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ TDX @ T
 \ in-package: a package's OWN private cell family is a payload by bare tail,
 \ and a product FIELD takes the qualified public cell family.
 package tdqc
-TYPEFAMILY cslot 0
+NEWTYPE cslot 0
 SUMTYPE cwrap 0
   VARIANT cv cslot ;VARIANT
 ;SUMTYPE
@@ -1723,11 +1761,11 @@ TDT-BASE=
 \ ---------------------------------------------------------------------------
 DIAG-BUFFER-OFF
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
-s" TYPEFAMILY tdfoo 2" E-TFAM-DUP TDT-NEG
+s" NEWTYPE tdfoo 2" E-TFAM-DUP TDT-NEG
 DIAG-BUFFER$ s\" \"code\":\"E-BAD-DECLARATION\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" \"repair_class\":\"fix_family_declaration\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" \"verdict\":\"rejected\"" TDT-CONTAINS? -1 T=
-DIAG-BUFFER$ s\" \"decl\":\"typefamily\"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"decl\":\"newtype\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" \"family\":\"tdfoo\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" \"reason\":\"duplicate family\"" TDT-CONTAINS? -1 T=
 DIAG-BUFFER$ s\" \"declared_effect\"" TDT-CONTAINS? 0 T=
@@ -1776,7 +1814,7 @@ TDT-BIG-SUM$ E-TDECL-CAP TDT-NEG
 \ rolled back, without a fake declared signature, and the load continues.
 \ ---------------------------------------------------------------------------
 TWX-MULTI-ERR-BEGIN
-s" SUMTYPE tdme 2 VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE TYPEFAMILY tdcont 1 : TDMEW ( n -- n ) ;" evaluate
+s" SUMTYPE tdme 2 VARIANT ok a ;VARIANT VARIANT ok b ;VARIANT ;SUMTYPE NEWTYPE tdcont 1 : TDMEW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" " s" tdme" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
@@ -1799,7 +1837,7 @@ TDOK @ 0 T=
 \ carried on. Each case rejects MID-BODY, on purpose — a reject at or after the
 \ terminator has nothing left to skip and would prove nothing here.
 TWX-MULTI-ERR-BEGIN
-s" ENUM tdmee red red blue ;ENUM TYPEFAMILY tdmeecont 1 : TDMEEW ( n -- n ) ;" evaluate
+s" ENUM tdmee red red blue ;ENUM NEWTYPE tdmeecont 1 : TDMEEW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" " s" tdmee" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=                                  \ the rejected enum registered nothing
@@ -1807,7 +1845,7 @@ s" " s" tdmeecont" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ -1 T=                                 \ the next declaration still loaded
 s" TDMEEW" TWX-CHECKER-FIND-USIG -1 T=       \ and so did the definition after it
 TWX-MULTI-ERR-BEGIN
-s" STRUCTURE tdmes 0 FIELD x n FIELD x n ;STRUCTURE TYPEFAMILY tdmescont 1 : TDMESW ( n -- n ) ;" evaluate
+s" STRUCTURE tdmes 0 FIELD x n FIELD x n ;STRUCTURE NEWTYPE tdmescont 1 : TDMESW ( n -- n ) ;" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" " s" tdmes" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
@@ -1818,7 +1856,7 @@ s" TDMESW" TWX-CHECKER-FIND-USIG -1 T=
 \ next tokens are the following declaration, not this one's tail. `tdmea` is an
 \ enum with no variants, which ED-CLOSE refuses once `;ENUM` is already read.
 TWX-MULTI-ERR-BEGIN
-s" ENUM tdmea ;ENUM TYPEFAMILY tdmeacont 1" evaluate
+s" ENUM tdmea ;ENUM NEWTYPE tdmeacont 1" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" " s" tdmeacont" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ -1 T=
@@ -1830,7 +1868,7 @@ s" " s" tdmenoe" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
 \ two bad declarations count separately.
 TWX-MULTI-ERR-BEGIN
-s" TYPEFAMILY Bad1 1 TYPEFAMILY tdok9 1 SUMTYPE tdes 1 ;SUMTYPE" evaluate
+s" NEWTYPE Bad1 1 NEWTYPE tdok9 1 SUMTYPE tdes 1 ;SUMTYPE" evaluate
 TWX-MULTI-ERR-END 2 T=
 s" " s" tdok9" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ -1 T=
@@ -2212,7 +2250,7 @@ s" TDLB6 ( n -- n ) {: x:tdfoo :} x" CHECK-QUIET-CANDIDATE! 0 T=
 \ bare W>1 bundle locals keep working (item 12 regression).
 s" TDLB7 ( tdsv -- tdsv ) {: x :} x" CHECK-QUIET-CANDIDATE! -1 T=
 \ arity-0 cell family annotation = the signature nominal.
-TYPEFAMILY tdlnom 0
+NEWTYPE tdlnom 0
 s" TDLB8 ( tdlnom -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! -1 T=
 s" TDLB9 ( n -- tdlnom ) {: x:tdlnom :} x" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -2238,7 +2276,7 @@ s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" expected: tdlv<> actual: tdlp<> " TDT-CONTAINS? -1 T=
 \ foreign-package family: the interned name renders qualified pkg:tail.
 s" tdlrpk" CHECKER-PACKAGE   CHECKER-PUBLIC
-TYPEFAMILY tdlrfam 0
+NEWTYPE tdlrfam 0
 CHECKER-END-PACKAGE
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
