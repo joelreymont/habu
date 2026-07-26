@@ -198,7 +198,7 @@ T-REPORT
 \ real typed allocation via the shared MEM narrowing helpers: MEM:BYTES-ALLOC-LEN
 \ / MEM:CELLS-ALLOC-COUNT take a raw n straight to the validated alloc role and
 \ throw E-MEM-SIZE on any refusal before an mmap (TTHROWSQ cases drive the
-\ zero/negative/overflow refusals in RT-MEM).
+\ zero/negative/overflow refusals in MEM's TEST-ALLOC-ROLES).
 
 \ The returned alloc role's raw projection is MEM-private, so the tests touch
 \ memory over the KNOWN raw extent and drop the role.
@@ -254,23 +254,29 @@ public
 \ forged pointer the kernel rejects, so RELEASE-BYTES propagates E-MEM-UNMAP. A
 \ zero/negative release length never narrows to an alloc role, so it is refused
 \ with E-MEM-SIZE at the typed boundary, before any munmap.
-: MEMT-ALLOC-WRITE-RELEASE ( -- )
-   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES         \ ptr-u8 alloc-byte-len
-   over MEMT-MARK-A swap c!                             \ first byte
-   over MEM-64K 1 - + MEMT-MARK-Z swap c!              \ last byte
+\ White-box suite block: these fixtures and their runner live inside package MEM
+\ beside the WITH-BYTES fixtures below, so package words are called bare and the
+\ suite owns a real package tail instead of a raw global stem.
+package MEM
+private
+
+: RBT-ROUNDTRIP ( -- )
+   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES     \ ptr-u8 alloc-byte-len
+   over MEMT-MARK-A swap c!                \ first byte
+   over MEM-64K 1 - + MEMT-MARK-Z swap c!  \ last byte
    over c@ MEMT-MARK-A T=
    over MEM-64K 1 - + c@ MEMT-MARK-Z T=
-   MEM:RELEASE-BYTES ;
-: MEMT-RELEASE-FORGED ( -- )
-   MEM-64K MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES         \ ptr-u8 alloc-byte-len
-   swap 1 + swap                                        \ misalign the address by one byte
-   MEM:RELEASE-BYTES ;
-: MEMT-RELEASE-ZERO ( -- )
-   MEM:ALLOC-64K drop  0 MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
-: MEMT-RELEASE-NEG ( -- )
-   MEM:ALLOC-64K drop -1 MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+   RELEASE-BYTES ;
+: RBT-FORGED ( -- )
+   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES     \ ptr-u8 alloc-byte-len
+   swap 1 + swap                           \ misalign the address by one byte
+   RELEASE-BYTES ;
+: RBT-ZERO ( -- )
+   ALLOC-64K drop  0 BYTES-ALLOC-LEN RELEASE-BYTES ;
+: RBT-NEG ( -- )
+   ALLOC-64K drop -1 BYTES-ALLOC-LEN RELEASE-BYTES ;
 
-: RT-MEM ( -- )
+: TEST-ALLOC-ROLES ( -- )
    T-RESET
    MEMT-COUNT-PARITY
    \ scalar sizing admits zero and positive (zero is a valid scalar answer)
@@ -290,19 +296,22 @@ public
    MEMT-TYPED-CELLS
    \ shared narrowing helpers refuse zero/negative/overflow with E-MEM-SIZE
    \ before any mmap primitive is reachable
-   [: 0 MEM:BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
-   [: -1 MEM:BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
-   [: 0 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
-   [: -1 MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
-   [: MEM-MAX-CELLS 1 + MEM:CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: 0 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
+   [: -1 BYTES-ALLOC-LEN drop ;] E-MEM-SIZE TTHROWSQ
+   [: 0 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: -1 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
+   [: MEM-MAX-CELLS 1 + CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    \ typed release round-trips a real mapping; a forged address propagates
    \ E-MEM-UNMAP; a zero/negative length refuses at the typed boundary before munmap
-   MEMT-ALLOC-WRITE-RELEASE
-   [: MEMT-RELEASE-FORGED ;] E-MEM-UNMAP TTHROWSQ
-   [: MEMT-RELEASE-ZERO ;] E-MEM-SIZE TTHROWSQ
-   [: MEMT-RELEASE-NEG ;] E-MEM-SIZE TTHROWSQ
+   RBT-ROUNDTRIP
+   [: RBT-FORGED ;] E-MEM-UNMAP TTHROWSQ
+   [: RBT-ZERO ;] E-MEM-SIZE TTHROWSQ
+   [: RBT-NEG ;] E-MEM-SIZE TTHROWSQ
    T-REPORT ;
-RT-MEM
+
+TEST-ALLOC-ROLES
+
+;package
 
 \ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) --------------------
 \ Child processes prove release through OS-enforced mapping accessibility.
@@ -474,7 +483,10 @@ TEST-WITH-BYTES
 
 \ ---- static rejection matrix: frozen signatures accept; role swaps reject ------
 \ CHECK-QUIET-CANDIDATE!: -1 accepted, 0 rejected (type error), 1 uncheckable.
-: STAT-MEM ( -- )
+package MEM
+private
+
+: STAT ( -- )
    T-RESET
    \ positive signature controls: the exact B5.5-frozen effects resolve.
    s" G-CELLS>BYTES ( CAD-NUM:cell-count -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) MEM:CELLS>BYTES"
@@ -531,5 +543,9 @@ TEST-WITH-BYTES
    s" B-WB-CELL-LEN ( R CAD-NUM:alloc-cell-count [ R ptr u8 CAD-NUM:alloc-cell-count -- S ] -- S ) MEM:WITH-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
-STAT-MEM
+
+STAT
+
+;package
+
 s" memory-test: ok" type cr
