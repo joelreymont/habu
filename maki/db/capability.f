@@ -56,11 +56,18 @@ TYPEFAMILY grant 0
 
 \ Typed attenuation outcome (the § 23.9 art-result custom-sum idiom, never value+flag): `ok`
 \ carries the derived child grant; the reject arms name the axis that would ESCAPE the parent.
-SUMTYPE attenuate-result 1
-   VARIANT ok a ;VARIANT
+\ Declared through the unified ENUM front end in full mode (the arity token after
+\ the name selects it, so the family stays parametric over the grant type). The ok
+\ arm names its payload `child` - this file and agent-loop.f's MK-CHILD already
+\ call it the CHILD grant - and the escape-budget arm names its dimension cell
+\ `dim`, matching maki/db/commit-store.f and the ledger's budget-result. The
+\ generated CAPTOK-ATTENUATE--RESULT:OK / :ESCAPE-CAP / :ESCAPE-BUDGET constructors
+\ and every MATCH site are unchanged.
+ENUM attenuate-result 1
+   VARIANT ok FIELD child a ;VARIANT
    VARIANT escape-cap ;VARIANT
-   VARIANT escape-budget BUDGET:dim ;VARIANT
-;SUMTYPE
+   VARIANT escape-budget FIELD dim BUDGET:dim ;VARIANT
+;ENUM
 
 private
 

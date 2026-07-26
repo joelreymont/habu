@@ -50,10 +50,14 @@ STRUCTURE ledger 0
 
 \ Typed budget outcome (never value+flag): `ok` (fit / idempotent no-op); `exhausted` names the
 \ first dimension whose request exceeds the remaining budget (the resource-diagnostic axis).
-SUMTYPE budget-result 0
+\ Declared through the unified ENUM front end in full mode; the exhausted arm names
+\ its dimension cell `dim`, the same spelling maki/db/commit-store.f already uses
+\ for a BUDGET:dim payload. The generated LEDGER-BUDGET--RESULT:OK / :EXHAUSTED
+\ constructors and every MATCH site are unchanged.
+ENUM budget-result 0
    VARIANT ok ;VARIANT
-   VARIANT exhausted BUDGET:dim ;VARIANT
-;SUMTYPE
+   VARIANT exhausted FIELD dim BUDGET:dim ;VARIANT
+;ENUM
 
 private
 

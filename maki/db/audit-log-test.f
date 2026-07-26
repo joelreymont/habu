@@ -35,6 +35,54 @@ require maki/producer.f
 require maki/db/evidence.f
 require maki/rev.f
 
+\ ---- declaration-shape reflection ----------------------------------------------
+package AUDIT-PINS
+private
+
+: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
+   fam TFAM-VAR-COUNT@ 0 <= if false exit then
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
+: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
+   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
+: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
+   TFAM-N@ 0 ?do
+      i ta tu pa pu FAM-HIT? if i unloop exit then
+   loop -1 ;
+\ FAM-ID answers -1 for a family that is not registered and the registry readers
+\ take a live id, so every read refuses the sentinel first.
+: LIVE-VARS ( n -- n ) {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-VAR-COUNT@ ;
+: LIVE-VAR ( n n -- n ) {: fam:n k:n :}
+   fam LIVE-VARS k <= if -1 exit then  fam TFAM-VAR-START@ k + ;
+
+public
+
+: FAMS ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}
+   0
+   TFAM-N@ 0 ?do
+      i ta tu pa pu FAM-HIT? if 1+ then
+   loop ;
+: VARS ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-VARS ;
+: WIDTH ( ptr u8 n ptr u8 n -- n )
+   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-WIDTH@ ;
+: ARM$ ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
+   ta tu pa pu FAM-ID k LIVE-VAR {: var:n :}
+   var 0 < if s" <missing>" exit then  var SUMV-NAME$ ;
+: ARM-FLDS ( ptr u8 n ptr u8 n n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
+   ta tu pa pu FAM-ID {: fam:n :}
+   fam k LIVE-VAR {: var:n :}
+   0
+   TYPE-FIELD:COUNT 0 ?do
+      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
+   loop ;
+: ARM-SLOT ( ptr u8 n ptr u8 n n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n na:ptr nu:n :}
+   ta tu pa pu FAM-ID {: fam:n :}
+   fam  fam k LIVE-VAR  na nu TYPE-FIELD:FIND 0= if drop -1 exit then
+   TYPE-FIELD:SLOT@ ;
+
+: VR$ ( -- ptr u8 n ptr u8 n )   s" verify-result" s" AUDIT-VERIFY--RESULT" ;
+
+;package
+
 package AUDIT-LOG-TEST
 
 \ One private store dir for the whole suite; the scenario RESETs it first.
@@ -115,6 +163,31 @@ create DG1 THASH-W allot   create DG2 THASH-W allot   create DG3 THASH-W allot
       bad-head             OF -1 ENDOF
       bad-nondeterministic OF ENDOF
    ;MATCH ;
+
+\ ---- named-payload round-trip through the production producers ------------------
+\ Both carrying arms hold a bare n, so no type can tell them apart: an exchanged
+\ binding between them is invisible to the checker. What separates them is which arm
+\ a constructed value DISPATCHES to, so each arm is built directly through its own
+\ generated constructor and matched straight back. The index under test is 7,
+\ deliberately non-zero: a dropped or zeroed payload would read back as 0 and pass.
+7 constant AU-VR-IDX
+: AU-VR-MK-BROKEN ( n -- AUDIT:verify-result )   AUDIT-VERIFY--RESULT:BROKEN-CHAIN ;
+: AU-VR-MK-ND ( n -- AUDIT:verify-result )       AUDIT-VERIFY--RESULT:BAD-NONDETERMINISTIC ;
+: AU-VR-MK-OK ( -- AUDIT:verify-result )         AUDIT-VERIFY--RESULT:OK ;
+: AU-VR-MK-MAL ( -- AUDIT:verify-result )        AUDIT-VERIFY--RESULT:MALFORMED ;
+: AU-VR-MK-HEAD ( -- AUDIT:verify-result )       AUDIT-VERIFY--RESULT:BAD-HEAD ;
+\ each arm reaches its OWN branch...
+: AU-VR-ARM-OK ( -- n )      AU-VR-MK-OK VCODE ;
+: AU-VR-ARM-MAL ( -- n )     AU-VR-MK-MAL VCODE ;
+: AU-VR-ARM-BROKEN ( -- n )  AU-VR-IDX AU-VR-MK-BROKEN VCODE ;
+: AU-VR-ARM-HEAD ( -- n )    AU-VR-MK-HEAD VCODE ;
+: AU-VR-ARM-ND ( -- n )      AU-VR-IDX AU-VR-MK-ND VCODE ;
+\ ...and each carrying arm brings its index back unchanged, while the payloadless
+\ arms carry none.
+: AU-VR-IDX-BROKEN ( -- n )  AU-VR-IDX AU-VR-MK-BROKEN VIDX ;
+: AU-VR-IDX-ND ( -- n )      AU-VR-IDX AU-VR-MK-ND VIDX ;
+: AU-VR-IDX-OK ( -- n )      AU-VR-MK-OK VIDX ;
+: AU-VR-IDX-HEAD ( -- n )    AU-VR-MK-HEAD VIDX ;
 : EKN ( AUDIT:event-kind -- n )
    MATCH AUDIT:event-kind
       action-request    OF 0 ENDOF
@@ -282,6 +355,104 @@ AU-KIND 2 T=
 AU-AUX 0 T=
 ' AU-CAP-OVERFLOW E-AUDIT-CAP TTHROWS
 ' AU-BUF-SMALL E-AUDIT-BUF TTHROWS
+
+\ ==== verify-result as a full-mode payload ENUM =================================
+\ All five generated constructors, by exact spelling and exact effect. A -1 means
+\ the checker resolved EXACTLY this name (it answers 1 for a name it cannot
+\ resolve), so these also prove the constructor package did not drift.
+s" VR-P-OK ( -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:OK"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" VR-P-MAL ( -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:MALFORMED"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" VR-P-BRK ( n -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:BROKEN-CHAIN"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" VR-P-HEAD ( -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:BAD-HEAD"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" VR-P-ND ( n -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:BAD-NONDETERMINISTIC"
+   CHECK-QUIET-CANDIDATE! -1 T=
+\ each index payload is mandatory on its own arm and forbidden on the payloadless
+\ arms, and the result is never a bare scalar. These are the FIELD-removal kills the
+\ declaration has to keep failing.
+s" VR-F-BRK-NOPAY ( -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:BROKEN-CHAIN"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" VR-F-ND-NOPAY ( -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:BAD-NONDETERMINISTIC"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" VR-F-OK-PAY ( n -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:OK"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" VR-F-HEAD-PAY ( n -- AUDIT:verify-result ) AUDIT-VERIFY--RESULT:BAD-HEAD"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" VR-F-BRK-BARE ( n -- n ) AUDIT-VERIFY--RESULT:BROKEN-CHAIN"
+   CHECK-QUIET-CANDIDATE! 0 T=
+\ a MATCH must bind on exactly the carrying arms: binding a payloadless arm rejects,
+\ and leaving a carrying arm unbound rejects.
+s" VR-M-OK ( AUDIT:verify-result -- n ) MATCH AUDIT:verify-result ok OF 0 ENDOF malformed OF 1 ENDOF broken-chain OF {: i:n :} 2 ENDOF bad-head OF 3 ENDOF bad-nondeterministic OF {: i:n :} 4 ENDOF ;MATCH"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" VR-M-OVERBIND ( AUDIT:verify-result -- n ) MATCH AUDIT:verify-result ok OF {: i:n :} 0 ENDOF malformed OF 1 ENDOF broken-chain OF {: i:n :} 2 ENDOF bad-head OF 3 ENDOF bad-nondeterministic OF {: i:n :} 4 ENDOF ;MATCH"
+   CHECK-QUIET-CANDIDATE! 0 T=
+
+\ the five arms keep their names and order, and exactly the two carrying arms hold
+\ one named cell `idx` at payload slot 0. Both cells share the name because both are
+\ the same thing - a record index - and this file's owner keeps ONE variable (V-IDX)
+\ for both; the rows are keyed (family, variant), so they stay independent.
+AUDIT-PINS:VR$ AUDIT-PINS:FAMS 1 T=
+AUDIT-PINS:VR$ AUDIT-PINS:VARS 5 T=
+AUDIT-PINS:VR$ AUDIT-PINS:WIDTH 2 T=            \ one payload cell plus one tag cell
+AUDIT-PINS:VR$ 0 AUDIT-PINS:ARM$ s" ok" T$=
+AUDIT-PINS:VR$ 1 AUDIT-PINS:ARM$ s" malformed" T$=
+AUDIT-PINS:VR$ 2 AUDIT-PINS:ARM$ s" broken-chain" T$=
+AUDIT-PINS:VR$ 3 AUDIT-PINS:ARM$ s" bad-head" T$=
+AUDIT-PINS:VR$ 4 AUDIT-PINS:ARM$ s" bad-nondeterministic" T$=
+AUDIT-PINS:VR$ 0 AUDIT-PINS:ARM-FLDS 0 T=
+AUDIT-PINS:VR$ 1 AUDIT-PINS:ARM-FLDS 0 T=
+AUDIT-PINS:VR$ 2 AUDIT-PINS:ARM-FLDS 1 T=
+AUDIT-PINS:VR$ 3 AUDIT-PINS:ARM-FLDS 0 T=
+AUDIT-PINS:VR$ 4 AUDIT-PINS:ARM-FLDS 1 T=
+AUDIT-PINS:VR$ 2 s" idx" AUDIT-PINS:ARM-SLOT 0 T=
+AUDIT-PINS:VR$ 4 s" idx" AUDIT-PINS:ARM-SLOT 0 T=
+AUDIT-PINS:VR$ 0 s" idx" AUDIT-PINS:ARM-SLOT -1 T=   \ the payloadless arms hold none
+AUDIT-PINS:VR$ 1 s" idx" AUDIT-PINS:ARM-SLOT -1 T=
+AUDIT-PINS:VR$ 3 s" idx" AUDIT-PINS:ARM-SLOT -1 T=
+AUDIT-PINS:VR$ 2 s" index" AUDIT-PINS:ARM-SLOT -1 T= \ an undeclared name has no slot
+
+\ every arm constructs and dispatches to its OWN branch, and each carrying arm
+\ brings its index back unchanged. The two carrying arms are indistinguishable by
+\ type - both hold a bare n - so this dispatch table is the only thing that can see
+\ them exchanged.
+AU-VR-ARM-OK 0 T=
+AU-VR-ARM-MAL 1 T=
+AU-VR-ARM-BROKEN 2 T=
+AU-VR-ARM-HEAD 3 T=
+AU-VR-ARM-ND 4 T=
+AU-VR-IDX-BROKEN 7 T=                            \ non-zero: a zeroed payload would read 0
+AU-VR-IDX-ND 7 T=
+AU-VR-IDX-OK -1 T=                               \ the no-payload arms of VIDX are live
+AU-VR-IDX-HEAD -1 T=
+
+public
+
+\ vr-twin is verify-result's SHAPE under a different name: same arity, same five
+\ arms in the same order, same named index cells on the same two arms. It exists
+\ only so the negatives below can prove verify-result identity is NOMINAL - two
+\ identically shaped families never unify, in either direction, and matching arm
+\ names do not make one family the other. It has to be public: a private family
+\ publishes no constructors, and the positive control builds through the twin's own
+\ constructor, so no negative can pass by being unresolvable rather than ill-typed.
+ENUM vr-twin 0
+   VARIANT vr-twin-ok ;VARIANT
+   VARIANT vr-twin-malformed ;VARIANT
+   VARIANT vr-twin-broken FIELD idx n ;VARIANT
+   VARIANT vr-twin-bad-head ;VARIANT
+   VARIANT vr-twin-nd FIELD idx n ;VARIANT
+;ENUM
+
+private
+
+s" VR-TW ( n -- vr-twin ) AUDIT--LOG--TEST-VR--TWIN:VR-TWIN-BROKEN"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" VR-TW-X1 ( n -- vr-twin ) AUDIT-VERIFY--RESULT:BROKEN-CHAIN"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" VR-TW-X2 ( n -- AUDIT:verify-result ) AUDIT--LOG--TEST-VR--TWIN:VR-TWIN-BROKEN"
+   CHECK-QUIET-CANDIDATE! 0 T=
 
 CSTORE:RESET
 

@@ -22,6 +22,64 @@ require test/checker-assert.f
 require maki/db/capability.f
 require maki/db/budget-dim.f
 
+\ ---- declaration-shape reflection ----------------------------------------------
+\ attenuate-result is declared through the unified ENUM front end in full mode, so
+\ each carrying arm publishes a named FIELD as a type-registry row keyed
+\ (family, variant). These helpers read those rows through the public read-only
+\ registry axioms (the same ones tools/public-signatures-core.f reads; they cannot
+\ mutate anything). A family is identified by its tail plus the constructor package
+\ its variants carry - the (package, tail) pair that owns family identity - which
+\ also keeps the dimension pins off the unrelated arity-0 `dim` cell family that
+\ shares a tail with BUDGET:dim.
+package CAPTOK-PINS
+private
+
+: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
+   fam TFAM-VAR-COUNT@ 0 <= if false exit then
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
+: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
+   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
+: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
+   TFAM-N@ 0 ?do
+      i ta tu pa pu FAM-HIT? if i unloop exit then
+   loop -1 ;
+\ FAM-ID answers -1 for a family that is not registered and the registry readers
+\ take a live id, so every read refuses the sentinel first.
+: LIVE-VARS ( n -- n ) {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-VAR-COUNT@ ;
+: LIVE-VAR ( n n -- n ) {: fam:n k:n :}
+   fam LIVE-VARS k <= if -1 exit then  fam TFAM-VAR-START@ k + ;
+
+public
+
+: FAMS ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}
+   0
+   TFAM-N@ 0 ?do
+      i ta tu pa pu FAM-HIT? if 1+ then
+   loop ;
+: VARS ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-VARS ;
+: ARITY ( ptr u8 n ptr u8 n -- n )
+   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-ARITY@ ;
+: WIDTH ( ptr u8 n ptr u8 n -- n )
+   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-WIDTH@ ;
+: ARM$ ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
+   ta tu pa pu FAM-ID k LIVE-VAR {: var:n :}
+   var 0 < if s" <missing>" exit then  var SUMV-NAME$ ;
+: ARM-FLDS ( ptr u8 n ptr u8 n n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
+   ta tu pa pu FAM-ID {: fam:n :}
+   fam k LIVE-VAR {: var:n :}
+   0
+   TYPE-FIELD:COUNT 0 ?do
+      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
+   loop ;
+: ARM-SLOT ( ptr u8 n ptr u8 n n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n na:ptr nu:n :}
+   ta tu pa pu FAM-ID {: fam:n :}
+   fam  fam k LIVE-VAR  na nu TYPE-FIELD:FIND 0= if drop -1 exit then
+   TYPE-FIELD:SLOT@ ;
+
+: AR$ ( -- ptr u8 n ptr u8 n )   s" attenuate-result" s" CAPTOK-ATTENUATE--RESULT" ;
+
+;package
+
 package CAPTOK
 
 \ ---- checker verdict wrappers (the maki/db/action-test precedent) ---------------
@@ -50,6 +108,16 @@ package CAPTOK
       escape-cap    OF 0 false ENDOF
       escape-budget OF drop 0 false ENDOF
    ;MATCH ;
+
+\ ---- named-payload round-trip through the production producer -------------------
+\ `retries` is ordinal 4: deliberately NOT compute-time, whose ordinal is 0 and
+\ would make a dropped or zeroed payload read back as a legitimate dimension.
+: CT-AR-DIM ( -- BUDGET:dim )        BUDGET-DIM:RETRIES ;
+: CT-AR-DIM-NONZERO ( -- bool )      CT-AR-DIM BUDGET:DIM>N 0<> ;
+: CT-AR-MK-BUD ( BUDGET:dim -- attenuate-result<CAPTOK:grant> )   AR-ESCAPE-BUDGET ;
+: CT-AR-RT-BUD ( -- n )              CT-AR-DIM CT-AR-MK-BUD AR-CODE ;
+: CT-AR-RT-DIM ( -- n )              CT-AR-DIM CT-AR-MK-BUD AR-ESCAPE-DIM ;
+: CT-AR-CAP-DIM ( -- n )             AR-ESCAPE-CAP AR-ESCAPE-DIM ;   \ payloadless arm
 
 : AR-CHILD-BUD-COMPUTE ( attenuate-result<CAPTOK:grant> -- n bool )   \ child compute-time ceiling + ok
    MATCH attenuate-result
@@ -148,6 +216,77 @@ CT-COVERS-NO TFALSE
 
 \ ---- capacity fail-closed ------------------------------------------------------
 ' CT-OVERFLOW E-CAPTOK-CAP TTHROWS
+
+\ ==== attenuate-result as a full-mode payload ENUM ==============================
+\ The generated constructors, by exact spelling and exact effect. The family stays
+\ arity 1, so the ok arm's payload is the type PARAMETER and every pin below names
+\ the instantiation explicitly.
+s" AR-P-OK ( CAPTOK:grant -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:OK" YES
+s" AR-P-CAP ( -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:ESCAPE-CAP" YES
+s" AR-P-BUD ( BUDGET:dim -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:ESCAPE-BUDGET" YES
+\ each arm's payload is mandatory, typed, and its own: a raw cell cannot forge the
+\ child grant, the two carrying arms cannot trade payload types even though both are
+\ single cells, a payloadless ok is not constructible, and the result is not a bare
+\ scalar. The parameter is real: an ok built from one instantiation is not another.
+s" AR-F-RAW ( n -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:OK" NO
+s" AR-F-DIM-AS-CHILD ( BUDGET:dim -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:OK" NO
+s" AR-F-CHILD-AS-DIM ( CAPTOK:grant -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:ESCAPE-BUDGET" NO
+s" AR-F-NOPAY ( -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:OK" NO
+s" AR-F-CAPPAY ( CAPTOK:grant -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:ESCAPE-CAP" NO
+s" AR-F-BARE ( CAPTOK:grant -- n ) CAPTOK-ATTENUATE--RESULT:OK" NO
+s" AR-F-INST ( CAPTOK:grant -- CAPTOK:attenuate-result<BUDGET:dim> ) CAPTOK-ATTENUATE--RESULT:OK" NO
+\ MATCH arm bindings are per-arm and typed: the ok arm binds the child grant, the
+\ escape-budget arm binds a dimension, and exchanging the two bindings rejects.
+s" AR-M-OK ( CAPTOK:attenuate-result<CAPTOK:grant> -- n ) MATCH CAPTOK:attenuate-result ok OF {: c:CAPTOK:grant :} 0 ENDOF escape-cap OF 1 ENDOF escape-budget OF {: d:BUDGET:dim :} 2 ENDOF ;MATCH" YES
+s" AR-M-SWAP ( CAPTOK:attenuate-result<CAPTOK:grant> -- n ) MATCH CAPTOK:attenuate-result ok OF {: d:BUDGET:dim :} 0 ENDOF escape-cap OF 1 ENDOF escape-budget OF {: c:CAPTOK:grant :} 2 ENDOF ;MATCH" NO
+
+\ the three arms keep their names and order, the family stays arity 1, the ok and
+\ escape-budget arms each carry exactly one named cell at payload slot 0 - `child`
+\ and `dim` - and the payloadless escape-cap arm carries none.
+CAPTOK-PINS:AR$ CAPTOK-PINS:FAMS 1 T=
+CAPTOK-PINS:AR$ CAPTOK-PINS:VARS 3 T=
+CAPTOK-PINS:AR$ CAPTOK-PINS:ARITY 1 T=          \ still parametric over the grant type
+CAPTOK-PINS:AR$ CAPTOK-PINS:WIDTH 2 T=          \ one payload cell plus one tag cell
+CAPTOK-PINS:AR$ 0 CAPTOK-PINS:ARM$ s" ok" T$=
+CAPTOK-PINS:AR$ 1 CAPTOK-PINS:ARM$ s" escape-cap" T$=
+CAPTOK-PINS:AR$ 2 CAPTOK-PINS:ARM$ s" escape-budget" T$=
+CAPTOK-PINS:AR$ 0 CAPTOK-PINS:ARM-FLDS 1 T=
+CAPTOK-PINS:AR$ 1 CAPTOK-PINS:ARM-FLDS 0 T=
+CAPTOK-PINS:AR$ 2 CAPTOK-PINS:ARM-FLDS 1 T=
+CAPTOK-PINS:AR$ 0 s" child" CAPTOK-PINS:ARM-SLOT 0 T=
+CAPTOK-PINS:AR$ 2 s" dim" CAPTOK-PINS:ARM-SLOT 0 T=
+\ the two payload names are per-arm, so neither answers on the other's arm.
+CAPTOK-PINS:AR$ 0 s" dim" CAPTOK-PINS:ARM-SLOT -1 T=
+CAPTOK-PINS:AR$ 2 s" child" CAPTOK-PINS:ARM-SLOT -1 T=
+CAPTOK-PINS:AR$ 1 s" child" CAPTOK-PINS:ARM-SLOT -1 T=
+
+\ constructed directly through the production producers and matched straight back.
+\ The escaping dimension under test is `retries` (ordinal 4) rather than
+\ `compute-time`, whose ordinal is 0: a dropped or zeroed dimension payload would
+\ read back as 0 and pass.
+CT-AR-DIM-NONZERO TTRUE                          \ the dimension under test is not ordinal 0
+CT-AR-RT-BUD 2 T=                                \ escape-budget dispatches to its own arm
+CT-AR-RT-DIM 4 T=                                \ and carries `retries`, not a zeroed ordinal
+CT-AR-CAP-DIM -1 T=                              \ the no-payload arm of AR-ESCAPE-DIM is live
+
+public
+
+\ att-twin is attenuate-result's SHAPE under a different name - same arity 1, same
+\ three arms in the same order, same named payload cells. Identity is nominal even
+\ for a PARAMETRIC family: the twin does not unify with attenuate-result at the same
+\ instantiation, in either direction. Public because a private family publishes no
+\ constructors, so the positive control builds through the twin's own constructor.
+ENUM att-twin 1
+   VARIANT att-twin-ok FIELD child a ;VARIANT
+   VARIANT att-twin-cap ;VARIANT
+   VARIANT att-twin-bud FIELD dim BUDGET:dim ;VARIANT
+;ENUM
+
+private
+
+s" AR-TW ( CAPTOK:grant -- att-twin<CAPTOK:grant> ) CAPTOK-ATT--TWIN:ATT-TWIN-OK" YES
+s" AR-TW-X1 ( CAPTOK:grant -- att-twin<CAPTOK:grant> ) CAPTOK-ATTENUATE--RESULT:OK" NO
+s" AR-TW-X2 ( CAPTOK:grant -- CAPTOK:attenuate-result<CAPTOK:grant> ) CAPTOK-ATT--TWIN:ATT-TWIN-OK" NO
 
 CAPTOK:RESET
 

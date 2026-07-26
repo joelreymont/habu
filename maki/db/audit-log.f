@@ -83,13 +83,23 @@ ENUM event-kind
 \ broken-chain carries the first index whose prev-hash mismatched (tamper/reorder/omission);
 \ bad-head = the last record's hash != the declared head; bad-nondeterministic carries the
 \ index of a marked event missing its captured-output key.
-SUMTYPE verify-result 0
+\ Declared through the unified ENUM front end in full mode (the arity token after
+\ the name selects it), so each carrying arm's payload is a named FIELD rather than
+\ a positional type token. Both payloads are the same thing - a record index into
+\ the log's sequence - and this file already keeps ONE variable for both of them
+\ (V-IDX below), so both arms name their cell `idx`. Field rows are keyed
+\ (family, variant), so the two rows are independent despite the shared name. The
+\ generated AUDIT-VERIFY--RESULT:OK / :MALFORMED / :BROKEN-CHAIN / :BAD-HEAD /
+\ :BAD-NONDETERMINISTIC constructors and every MATCH site are unchanged: spelling
+\ and payload binding order come from the package, the family tail and the
+\ declaration order, not from the mode.
+ENUM verify-result 0
    VARIANT ok ;VARIANT
    VARIANT malformed ;VARIANT
-   VARIANT broken-chain n ;VARIANT
+   VARIANT broken-chain FIELD idx n ;VARIANT
    VARIANT bad-head ;VARIANT
-   VARIANT bad-nondeterministic n ;VARIANT
-;SUMTYPE
+   VARIANT bad-nondeterministic FIELD idx n ;VARIANT
+;ENUM
 
 private
 

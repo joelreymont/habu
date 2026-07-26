@@ -21,6 +21,63 @@ require test/checker-assert.f
 require maki/db/budget-ledger.f
 require maki/db/budget-dim.f
 
+\ ---- declaration-shape reflection ----------------------------------------------
+\ budget-result is declared through the unified ENUM front end in full mode, so its
+\ exhausted arm publishes a named FIELD as a type-registry row keyed
+\ (family, variant). These helpers read those rows through the public read-only
+\ registry axioms (the same ones tools/public-signatures-core.f reads; they cannot
+\ mutate anything), so the pins below can state the field NAME to payload SLOT
+\ mapping the declaration published. A family is identified by its tail plus the
+\ constructor package its variants carry - exactly the (package, tail) pair that
+\ owns family identity - which also keeps the pins off the unrelated arity-0 `dim`
+\ cell family that shares a tail with BUDGET:dim.
+package LEDGER-PINS
+private
+
+: FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
+   fam TFAM-VAR-COUNT@ 0 <= if false exit then
+   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
+: FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
+   fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
+: FAM-ID ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}   \ family id, or -1
+   TFAM-N@ 0 ?do
+      i ta tu pa pu FAM-HIT? if i unloop exit then
+   loop -1 ;
+\ FAM-ID answers -1 for a family that is not registered and the registry readers
+\ take a live id, so every read refuses the sentinel first.
+: LIVE-VARS ( n -- n ) {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-VAR-COUNT@ ;
+: LIVE-VAR ( n n -- n ) {: fam:n k:n :}
+   fam LIVE-VARS k <= if -1 exit then  fam TFAM-VAR-START@ k + ;
+
+public
+
+: FAMS ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}    \ families answering to this identity
+   0
+   TFAM-N@ 0 ?do
+      i ta tu pa pu FAM-HIT? if 1+ then
+   loop ;
+: VARS ( ptr u8 n ptr u8 n -- n )    FAM-ID LIVE-VARS ;
+: WIDTH ( ptr u8 n ptr u8 n -- n )
+   FAM-ID {: fam:n :}   fam 0 < if -1 exit then  fam TFAM-WIDTH@ ;
+: ARM$ ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
+   ta tu pa pu FAM-ID k LIVE-VAR {: var:n :}
+   var 0 < if s" <missing>" exit then  var SUMV-NAME$ ;
+: ARM-FLDS ( ptr u8 n ptr u8 n n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}   \ named cells on arm k
+   ta tu pa pu FAM-ID {: fam:n :}
+   fam k LIVE-VAR {: var:n :}
+   0
+   TYPE-FIELD:COUNT 0 ?do
+      i TYPE-FIELD:FAMILY@ fam = i TYPE-FIELD:VARIANT@ var = and if 1+ then
+   loop ;
+: ARM-SLOT ( ptr u8 n ptr u8 n n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n k:n na:ptr nu:n :}
+   ta tu pa pu FAM-ID {: fam:n :}
+   fam  fam k LIVE-VAR  na nu TYPE-FIELD:FIND 0= if drop -1 exit then
+   TYPE-FIELD:SLOT@ ;
+
+: BR$ ( -- ptr u8 n ptr u8 n )   s" budget-result" s" LEDGER-BUDGET--RESULT" ;
+
+;package
+
 package LEDGER
 
 : LT-LEDGER-ROUNDTRIP ( -- n )
@@ -37,6 +94,16 @@ package LEDGER
       ok        OF -1 ENDOF
       exhausted OF BUDGET:DIM>N ENDOF
    ;MATCH ;
+
+\ ---- named-payload round-trip through the production producer -------------------
+\ `retries` is ordinal 4: deliberately NOT compute-time, whose ordinal is 0 and
+\ would make a dropped or zeroed payload read back as a legitimate dimension.
+: LT-BR-DIM ( -- BUDGET:dim )        BUDGET-DIM:RETRIES ;
+: LT-BR-DIM-NONZERO ( -- bool )      LT-BR-DIM BUDGET:DIM>N 0<> ;
+: LT-BR-MK-EXH ( BUDGET:dim -- budget-result )   BR-EXHAUSTED ;
+: LT-BR-RT-CODE ( -- n )             LT-BR-DIM LT-BR-MK-EXH BR-CODE ;
+: LT-BR-RT-DIM ( -- n )              LT-BR-DIM LT-BR-MK-EXH BR-DIM ;
+: LT-BR-OK-DIM ( -- n )              BR-OK BR-DIM ;   \ the payloadless arm carries none
 
 \ ---- fixtures ------------------------------------------------------------------
 create KEY-A KEY-W allot
@@ -168,6 +235,73 @@ LT-REPLAY-DIFFERS TTRUE
 ' LT-KEY-OVERFLOW E-LEDGER-KEYS TTHROWS
 ' LT-INVALID-HANDLE E-LEDGER-RANGE TTHROWS
 ' LT-DIGEST-BUF E-LEDGER-BUF TTHROWS
+
+\ ==== budget-result as a full-mode payload ENUM =================================
+\ The generated constructors, by exact spelling and exact effect. A -1 means the
+\ checker resolved EXACTLY this name (it answers 1 for a name it cannot resolve),
+\ so these also prove the constructor package did not drift.
+s" BR-P-OK ( -- LEDGER:budget-result ) LEDGER-BUDGET--RESULT:OK"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" BR-P-EXH ( BUDGET:dim -- LEDGER:budget-result ) LEDGER-BUDGET--RESULT:EXHAUSTED"
+   CHECK-QUIET-CANDIDATE! -1 T=
+\ the dimension payload is mandatory and typed: a payloadless exhausted, a raw cell,
+\ a payload on the ok arm, and a bare-scalar result all reject.
+s" BR-F-NOPAY ( -- LEDGER:budget-result ) LEDGER-BUDGET--RESULT:EXHAUSTED"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" BR-F-RAW ( n -- LEDGER:budget-result ) LEDGER-BUDGET--RESULT:EXHAUSTED"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" BR-F-OKPAY ( BUDGET:dim -- LEDGER:budget-result ) LEDGER-BUDGET--RESULT:OK"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" BR-F-BARE ( BUDGET:dim -- n ) LEDGER-BUDGET--RESULT:EXHAUSTED"
+   CHECK-QUIET-CANDIDATE! 0 T=
+\ MATCH arm bindings are per-arm: the payloadless ok arm binds nothing.
+s" BR-M-OK ( LEDGER:budget-result -- n ) MATCH LEDGER:budget-result ok OF 0 ENDOF exhausted OF {: d:BUDGET:dim :} 1 ENDOF ;MATCH"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" BR-M-SWAP ( LEDGER:budget-result -- n ) MATCH LEDGER:budget-result ok OF {: d:BUDGET:dim :} 0 ENDOF exhausted OF {: d:BUDGET:dim :} 1 ENDOF ;MATCH"
+   CHECK-QUIET-CANDIDATE! 0 T=
+
+\ the exhausted arm carries exactly one named cell `dim` at payload slot 0, and the
+\ ok arm carries none. The identity is (tail, constructor package), so these pins
+\ are about LEDGER's own family and nothing else.
+LEDGER-PINS:BR$ LEDGER-PINS:FAMS 1 T=
+LEDGER-PINS:BR$ LEDGER-PINS:VARS 2 T=
+LEDGER-PINS:BR$ LEDGER-PINS:WIDTH 2 T=          \ one payload cell plus one tag cell
+LEDGER-PINS:BR$ 0 LEDGER-PINS:ARM$ s" ok" T$=
+LEDGER-PINS:BR$ 1 LEDGER-PINS:ARM$ s" exhausted" T$=
+LEDGER-PINS:BR$ 0 LEDGER-PINS:ARM-FLDS 0 T=
+LEDGER-PINS:BR$ 1 LEDGER-PINS:ARM-FLDS 1 T=
+LEDGER-PINS:BR$ 1 s" dim" LEDGER-PINS:ARM-SLOT 0 T=
+LEDGER-PINS:BR$ 0 s" dim" LEDGER-PINS:ARM-SLOT -1 T=   \ the name is per-arm
+LEDGER-PINS:BR$ 1 s" budget" LEDGER-PINS:ARM-SLOT -1 T= \ an undeclared name has no slot
+
+\ constructed directly through the production producer and matched straight back.
+\ The dimension under test is `retries` (ordinal 4) rather than `compute-time`,
+\ because compute-time's ordinal is 0 and a dropped or zeroed dimension payload
+\ would read back as 0 and pass; LT-RESERVE-EXHAUST-DIM above is exactly that
+\ zero-ordinal case, so this is the leg that can see a lost payload.
+LT-BR-DIM-NONZERO TTRUE                          \ the dimension under test is not ordinal 0
+LT-BR-RT-CODE 1 T=                               \ exhausted dispatches to its own arm
+LT-BR-RT-DIM 4 T=                                \ and carries `retries`, not a zeroed ordinal
+LT-BR-OK-DIM -1 T=                               \ the no-payload arm of BR-DIM is live
+
+public
+
+\ br-twin is budget-result's SHAPE under a different name, for the same reason:
+\ identity is nominal, so an identically shaped family never unifies with it in
+\ either direction. Public because a private family publishes no constructors.
+ENUM br-twin 0
+   VARIANT br-twin-ok ;VARIANT
+   VARIANT br-twin-exhausted FIELD dim BUDGET:dim ;VARIANT
+;ENUM
+
+private
+
+s" BR-TW ( BUDGET:dim -- br-twin ) LEDGER-BR--TWIN:BR-TWIN-EXHAUSTED"
+   CHECK-QUIET-CANDIDATE! -1 T=
+s" BR-TW-X1 ( BUDGET:dim -- br-twin ) LEDGER-BUDGET--RESULT:EXHAUSTED"
+   CHECK-QUIET-CANDIDATE! 0 T=
+s" BR-TW-X2 ( BUDGET:dim -- LEDGER:budget-result ) LEDGER-BR--TWIN:BR-TWIN-EXHAUSTED"
+   CHECK-QUIET-CANDIDATE! 0 T=
 
 LEDGER:RESET
 
