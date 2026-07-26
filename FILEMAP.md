@@ -1696,14 +1696,16 @@ points stay listed.
   order/kernel-payload pins, byte-identical rebuild renders, event no-op
   replay, and the empty/unsealed/unsupported fail-closed paths.
 - `maki/typestate.f` — R7 stage typestate skeleton: one package per IR level
-  (MODEL/TIR/RIR/PLAN/KIR/CAND/ART) with sealed arity-0 stage nominals and the
+  (CADMODEL/TIR/RIR/PLAN/KIR/CAND/ART; the model stage renamed from MODEL to
+  free MODEL for the sealed inference semantics package) with sealed arity-0
+  stage nominals and the
   transition words that thread the one legal pipeline order, so a wrong-stage
   input is a checker reject before runtime. ART:built is a PRODUCT carrying its
   `CAD-KIND:artifact-id` + a private build-proof token (identity threading), so
   downstream evidence/policy transitions read the artifact from the built witness.
 - `maki/typestate-test.f` — stage-order acceptance: per-transition positive
   controls, wrong-stage negatives (unconstrained-model, draft-plan,
-  unverified-KIR, reverse-stage), and a runnable MODEL→KIR pipeline.
+  unverified-KIR, reverse-stage), and a runnable CADMODEL→KIR pipeline.
 - `maki/evidence/schema.f` — R7 artifact-indexed evidence families: one PRODUCT
   per class (certified/golden/gradchecked/profiled) binding a CAD-KIND:artifact-id
   and a class-private proof token, golden leg/precision/numeric-domain as fields

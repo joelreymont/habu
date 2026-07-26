@@ -12,12 +12,14 @@ require lib/test.f
 require test/checker-assert.f
 require maki/typestate.f
 
-\ Runnable positive control: the full MODEL->...->KIR pipeline composes and runs.
+package TYPESTATE-TEST
+
+\ Runnable positive control: the full CADMODEL->...->KIR pipeline composes and runs.
 \ (CAND:EMIT / ART:BUILD need a CAD-KIND target/toolchain id, minted only inside
 \ their owner packages, so the executable leg stops at KIR:verified; their type
 \ order is pinned by the CHECK-QUIET candidates below.)
 : TS-PIPE ( -- )
-   MODEL:DECLARE MODEL:ELABORATE TIR:SOLVE RIR:LEGALIZE
+   CADMODEL:DECLARE CADMODEL:ELABORATE TIR:SOLVE RIR:LEGALIZE
    PLAN:DRAFT PLAN:FINISH
    KIR:DRAFT KIR:VERIFY
    drop ;
@@ -25,9 +27,9 @@ require maki/typestate.f
 T-RESET
 
 \ ---- positive controls: every transition certifies in the right order --------
-s" TS-OK-ELAB ( MODEL:decl -- MODEL:elab ) MODEL:ELABORATE"
+s" TS-OK-ELAB ( CADMODEL:decl -- CADMODEL:elab ) CADMODEL:ELABORATE"
    CHECK-QUIET-CANDIDATE! -1 T=
-s" TS-OK-SOLVE ( MODEL:elab -- TIR:solved ) TIR:SOLVE"
+s" TS-OK-SOLVE ( CADMODEL:elab -- TIR:solved ) TIR:SOLVE"
    CHECK-QUIET-CANDIDATE! -1 T=
 s" TS-OK1 ( TIR:solved -- RIR:legal ) RIR:LEGALIZE"
    CHECK-QUIET-CANDIDATE! -1 T=
@@ -46,7 +48,7 @@ s" TS-OK-BUILT-UNMAKE ( ART:built -- CAD-KIND:artifact-id ART:build-proof ) ART-
 
 \ ---- wrong-stage negatives: each must be a checker reject (verdict 0) ---------
 \ 1. unconstrained Model IR cannot enter region planning (R7 acceptance 1).
-s" TS-BAD-ORDER ( MODEL:elab -- RIR:legal ) RIR:LEGALIZE"
+s" TS-BAD-ORDER ( CADMODEL:elab -- RIR:legal ) RIR:LEGALIZE"
    CHECK-QUIET-CANDIDATE! 0 T=
 \ 2. a draft plan cannot enter kernel lowering (R7 acceptance 2).
 s" TS-BAD-PLAN ( PLAN:draft KIR:drafted -- KIR:verified ) KIR:VERIFY"
@@ -74,6 +76,8 @@ s" TS-BAD-BUILT-MINT ( CAD-KIND:artifact-id -- ART:built ) MINT-BUILD-PROOF ART-
 
 \ ---- executable positive: the pipeline composes and runs ---------------------
 TS-PIPE
-s" typestate: MODEL->TIR->RIR->PLAN->KIR pipeline ran" type cr
+s" typestate: CADMODEL->TIR->RIR->PLAN->KIR pipeline ran" type cr
 
 T-REPORT
+
+;package

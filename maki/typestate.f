@@ -2,8 +2,8 @@
 \ Addendum", implementation sub-dot 1 v2-typestate-stage-kinds; dot
 \ habu-v2-typestate-stage-a0eb43a2).
 \
-\ Each Model-CAD IR level is a package (MODEL / TIR / RIR / PLAN / KIR / CAND /
-\ ART) exposing sealed arity-0 stage nominals. A stage value exists ONLY if a
+\ Each Model-CAD IR level is a package (CADMODEL / TIR / RIR / PLAN / KIR /
+\ CAND / ART) exposing sealed arity-0 stage nominals. A stage value exists ONLY if a
 \ transition minted it: every RAW>* mint is PRIVATE, so a raw n cannot forge a
 \ stage and no caller can fabricate a "verified" object. The transition words
 \ thread the pipeline in exactly one legal order, so feeding a wrong-stage value
@@ -25,7 +25,7 @@
 \ a refinement for the evidence sub-dots; here each mint takes a fresh 0.
 \
 \ SCOPE: 7 of the R7 addendum's 13 transition words live here - the STAGE
-\ transitions (MODEL:ELABORATE TIR:SOLVE RIR:LEGALIZE PLAN:FINISH KIR:VERIFY
+\ transitions (CADMODEL:ELABORATE TIR:SOLVE RIR:LEGALIZE PLAN:FINISH KIR:VERIFY
 \ CAND:EMIT ART:BUILD). The remaining 6 are owned by the follow-on sub-dots
 \ whose families they mint: EVID:CERTIFY/GOLDEN/GRADCHECK/PROFILE by the
 \ evidence-schema sub-dot (habu-v2-typestate-evidence-f124dc85), POLICY:CHECK
@@ -35,8 +35,9 @@
 
 require maki/cad-kinds.f
 
-\ ---- MODEL: declared / elaborated -------------------------------------------
-package MODEL
+\ ---- CADMODEL: declared / elaborated ----------------------------------------
+\ Renamed from MODEL to free MODEL for the sealed inference semantics package, 2026-07-26.
+package CADMODEL
 public
 TYPEFAMILY decl 0
 TYPEFAMILY elab 0
@@ -44,7 +45,7 @@ private
 TRUSTED: RAW>DECL ( n -- decl ) ;
 TRUSTED: RAW>ELAB ( n -- elab ) ;
 public
-\ DECLARE seeds the pipeline: the only public entry to a MODEL:decl.
+\ DECLARE seeds the pipeline: the only public entry to a CADMODEL:decl.
 : DECLARE ( -- decl )  0 RAW>DECL ;
 : ELABORATE ( decl -- elab )  drop  0 RAW>ELAB ;
 ;package
@@ -56,7 +57,7 @@ TYPEFAMILY solved 0
 private
 TRUSTED: RAW>SOLVED ( n -- solved ) ;
 public
-: SOLVE ( MODEL:elab -- solved )  drop  0 RAW>SOLVED ;
+: SOLVE ( CADMODEL:elab -- solved )  drop  0 RAW>SOLVED ;
 ;package
 
 \ ---- RIR: region-legalized --------------------------------------------------

@@ -3,7 +3,7 @@
 \
 \ The acceptance the public producers + the TF-CTOR-NAME-LIMIT 16->32 raise unblocked:
 \ POLICY:CHECK is RUN over a REAL EVID:bundle built from GENUINE values - artifact ids
-\ from ARTIFACT:REGISTER, an ART:built from the public MODEL->...->ART:BUILD pipeline,
+\ from ARTIFACT:REGISTER, an ART:built from the public CADMODEL->...->ART:BUILD pipeline,
 \ and evidence from the real EVID gate transitions - not pinned by a type candidate.
 \ It proves the census probe-3 fact executably (MODEL-CAD-V2-PLAN.md:1576-1583):
 \   - a matching, complete bundle GRANTS, and the grant is bound to that artifact;
@@ -22,10 +22,12 @@ require maki/target/target.f         \ TARGET:SM87 (the target-id the pipeline e
 require maki/artifact.f              \ ARTIFACT:REGISTER
 require maki/evidence/promote.f      \ ART:PROMOTE (pulls policy.f -> schema.f -> typestate.f)
 
+package POLICY-E2E-TEST
+
 \ ---- build a real ART:built for an artifact through the public pipeline --------
 : BUILT-FOR ( CAD-KIND:artifact-id -- ART:built )
    {: art:CAD-KIND:artifact-id :}
-   MODEL:DECLARE MODEL:ELABORATE TIR:SOLVE RIR:LEGALIZE
+   CADMODEL:DECLARE CADMODEL:ELABORATE TIR:SOLVE RIR:LEGALIZE
    PLAN:DRAFT PLAN:FINISH KIR:DRAFT KIR:VERIFY   \ KIR:verified
    TARGET:SM87 CAND:EMIT                          \ CAND:emitted
    art ART:BUILD ;                                \ ART:built carrying art
@@ -140,3 +142,5 @@ E2E-NPOL-REL-GRANT?          T-ASSERT   \ relative golden + relative request thr
 ' E2E-NPOL-EXACT-REFUSE E-NPOL-APPROX TTHROWS \ relative golden + exact request through POLICY:CHECK: refused
 
 T-REPORT
+
+;package

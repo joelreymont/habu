@@ -10,6 +10,13 @@ with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
 and in git history. One tight bullet per lesson; add a section only if none
 fits.
 
+- **Re-prove a frozen contract's package owner against the live tree at
+  dispatch (`rg 'package NAME'`).** The S5a "sealed package MODEL" contract
+  collided with the CAD typestate stage package `MODEL` (maki/typestate.f);
+  the checkpoint red proof caught it before any code, and the right resolution
+  was renaming the SMALLER side — the 8-reference internal stage vocabulary
+  became `CADMODEL` — so every frozen cross-contract `MODEL:*` spelling stayed
+  literal.
 - **Schedule shared types and ownership primitives before their consumers.** If
   a consumer lane discovers that it needs a common record, lifetime token, or
   checked capability, park the consumer at that seam, record the dependency,
