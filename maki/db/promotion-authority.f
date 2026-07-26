@@ -39,20 +39,37 @@ public
 \ Multi-cell (slot + sealed token), so it flows on the stack and is UNMAKEd, never bound
 \ as a typed local (the maki/evidence/policy.f multi-cell-product discipline).
 TYPEFAMILY auth-proof 0
-PRODUCT authority 0
+\ Declared through the unified STRUCTURE front end; the header clause and both FIELD
+\ lines are unchanged, so DAUTH-AUTHORITY:MAKE / :UNMAKE keep their exact spelling
+\ and effect and no call site moves. It deliberately carries NO `DERIVE eq`, and
+\ cannot: the engine refuses a derive clause when any field's own family does not
+\ itself derive equality, and an arity-0 TYPEFAMILY proof token never does. That is
+\ not a loss here - an authority's meaning is that it EXISTS, minted by the one word
+\ allowed to mint it, so equality has nothing to say about it. Comparison of who may
+\ discharge goes through the allowlist, not through the handle.
+STRUCTURE authority 0
    FIELD slot n
    FIELD tok auth-proof
-;PRODUCT
+;STRUCTURE
 
 \ Typed gate outcome (a bespoke custom sum, never value+flag): `ok` carries the accepted
 \ evidence; `not-discharged` folds every OBLIG:DISCHARGE named-field refusal (class /
 \ independence / subject / domain / relation / environment); `unauthorized` is the new
 \ identity leg - the evidence's verifier is not on the authority allowlist.
-SUMTYPE authz-result 0
-   VARIANT ok OBLIG:evidence ;VARIANT
+\ Declared through the unified ENUM front end in full mode (the arity token after the
+\ name selects it), so the accepting arm's payload is a named FIELD rather than a
+\ positional type token. It carries `ev`, the accepted evidence - the spelling
+\ maki/evidence/schema.f already uses for an evidence payload on a full-mode arm, and
+\ the value AUTHORIZED-DISCHARGE below binds as `e`. The generated DAUTH-AUTHZ--RESULT:OK
+\ / :NOT-DISCHARGED / :UNAUTHORIZED constructors and every MATCH site are unchanged,
+\ including the cross-package one in maki/db/commit-store.f: spelling and payload
+\ binding order come from the package, the family tail and the declaration order, not
+\ from the mode.
+ENUM authz-result 0
+   VARIANT ok FIELD ev OBLIG:evidence ;VARIANT
    VARIANT not-discharged ;VARIANT
    VARIANT unauthorized ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 TRUSTED: MINT-AUTH-PROOF ( -- auth-proof )  0 ;
