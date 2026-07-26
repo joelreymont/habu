@@ -1527,6 +1527,19 @@ points stay listed.
   lexical-scratch verifier gates the checkpoint on the pinned SHA-256 digest;
   focused tests cover scalar access, bounds, and distinct artifact failures.
   Owns -7632..-7634.
+- `maki/infer/model-types.f` — canonical shared inference model semantics
+  (package MODEL, dot habu-add-shared-inference-0dad1107 as amended by the rev-4
+  inference design): exactly five closed payload-free enum families — `family`
+  {gpt2, llama}, `position` {learned, rope}, `normalization` {layer-norm,
+  rms-norm}, `activation` {gelu-new, silu}, and the typed provenance FORMAT-ID
+  `adapter` {hf-gpt2} — each with DERIVE eq. Deliberately NO dtype family:
+  `MAKI:dtype` (maki/tensor.f) is the sole dtype authority. No parser, storage,
+  JSON, or target identity.
+- `maki/infer/model-types-test.f` — MODEL enum acceptance: every variant
+  constructs and renders through an exhaustive MATCH via the public package,
+  typed EQ identity per family, and all 20 ordered cross-family swaps as
+  checker rejects even though the runtime tags coincide, each beside its
+  certifying positive control.
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer
