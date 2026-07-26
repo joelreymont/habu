@@ -7,14 +7,22 @@ DEFLINEAR process-pty-reservation
 DEFLINEAR process-pty-handle
 DEFLINEAR process-pty-teardown
 
+package PROCESS-PTY
+
+\ The six supervisor roles. Each is a distinct one-cell nominal family so the
+\ checker refuses a cross-role swap: a supervisor pid is not a process-group id
+\ is not a target pid, and the three watch descriptors are not interchangeable
+\ either. They are declared INSIDE the package and stay private to it: every
+\ user is in this package (this file and lib/process-pty-io.f, which reopens
+\ it), and the public lifecycle surface converts each role back to `pid` or `fd`
+\ at the boundary, so no caller outside ever names one.
+
 TYPEFAMILY sup-pid 0
 TYPEFAMILY pgrp 0
 TYPEFAMILY target-pid 0
 TYPEFAMILY group-watch 0
 TYPEFAMILY target-watch 0
 TYPEFAMILY sup-watch 0
-
-package PROCESS-PTY
 
 $10 constant SLOT-CAP
 $FF constant SLOT-MASK
