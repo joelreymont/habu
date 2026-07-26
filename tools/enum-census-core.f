@@ -33,9 +33,23 @@
 \ counted separately and not replayed: this census is about the plain form the
 \ legacy definer could express.
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
-\ lib/fs-mutate.f, tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f and
-\ tools/lint/source-lex.f.
+\ This core loads its own dependencies, so `bin/hb --load tools/enum-census-core.f`
+\ works on its own. It used to only list them in a comment and rely on the caller
+\ having loaded them first; that held for tools/enum-census.f and inside the resident
+\ gate, but left the core dead on its own and took the standalone
+\ test/gate-stdlib-lint-tools.f down with it (the census core is the first thing that
+\ file requires, and it died on LINT-LEX:COUNT before the file's own body was reached).
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require lib/fs-mutate.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/source-lex.f
 
 package ENUM-CENSUS
 
@@ -489,7 +503,7 @@ public
 \ guard: adding or deleting Forth files anywhere moves it, and the number has to
 \ be updated with the change that moved it, which is also when somebody notices
 \ that a new tree exists. Raising it without looking at WHAT moved defeats it.
-1267 constant WALKED-FILES               \ .f/.fs files under the five trees below
+1268 constant WALKED-FILES               \ .f/.fs files under the five trees below
 
 : WALK-TREES ( -- )
    s" src" [: WALK-FILE ;] WALK-FILES

@@ -2580,6 +2580,13 @@ points stay listed.
   for the flat production modules and spawns a fresh child engine to bare-load
   each one, failing closed if any module cannot load its own dependency closure
   (guards against hidden load-order coupling).
+- `test/lint-cli-standalone-load.f` — standalone lint entry gate: walks the tools
+  directory for the flat lint command entries (the files whose names end in
+  -lint.f) and spawns a fresh child engine to load each one, failing closed if an
+  entry dies while loading because it did not require its own dependency closure.
+  The verdict is "did not exit with the engine reject status" rather than "exit 0",
+  so an entry that loads and then refuses its argument list still passes while a
+  dead entry does not.
 - `test/wide-store-seal.f` — generated checked W=2 ADT store forges proving
   ordinary storage and first/later-cell protected-band intersections: zero-valued
   payload/tag attempts against the seal latch must trap `ENGINE-ERROR:SEAL-VIOLATION`

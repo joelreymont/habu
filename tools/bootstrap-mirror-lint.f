@@ -21,9 +21,20 @@
 \ effect-atom / slot-kind sums and the effect-row family, none of which reach the
 \ Gforth emitter (they are absent from bootstrap.sh SRC_COMMON and srclist.f).
 \
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
-\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
-\ tools/lint/source-lex.f.
+\ This is a standalone entry point: it loads its own dependencies, so
+\ `bin/hb --load tools/bootstrap-mirror-lint.f` works on its own. It used to only
+\ list them in a comment and rely on the caller having loaded them first, which
+\ held inside test/run.f but left the standalone command dead.
+
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/token.f
+require tools/lint/lib.f
+require tools/lint/source-lex.f
 
 package BOOTSTRAP-MIRROR-LINT
 

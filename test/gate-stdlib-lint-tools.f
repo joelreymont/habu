@@ -12,6 +12,33 @@ require tools/enum-census-core.f
 package GATE-LINT-TOOLS
 private
 
+\ This file is an in-process gate BODY, not a standalone entry point. Its header says
+\ "Load after GSI-LINT-TOOLS-SETUP", and GSI-LINT-TOOLS in
+\ test/gate-stdlib-inline-lib.f is what runs that setup and then includes this file.
+\ The setup is what supplies the lint cores and the GSI-* harness words the bodies
+\ below compile against, so there is nothing this file could require to stand alone.
+\
+\ Loading it directly used to die with an opaque E-UNDEFINED naming whichever harness
+\ word happened to be reached first, which reads like a missing require rather than a
+\ misuse of the file. Refuse loudly instead, naming the harness that has to run first,
+\ so the diagnostic points at the caller rather than at an innocent-looking word.
+9002 constant E-GLT-NO-HARNESS          \ harness bound, not a product error code
+
+: HARNESS-READY? ( -- bool )            \ has GSI-LINT-TOOLS-SETUP been loaded?
+   s" GSI-LINT-TOOLS-SETUP" 0 search-wl 0 <> ;
+
+: REQUIRE-HARNESS ( -- )
+   HARNESS-READY? if exit then
+   s" test/gate-stdlib-lint-tools.f is an in-process gate body, not a standalone entry."
+      type cr
+   s" Run it through GSI-LINT-TOOLS (test/gate-stdlib-inline-lib.f), which calls"
+      type cr
+   s" GSI-LINT-TOOLS-SETUP first and then includes this file."
+      type cr
+   E-GLT-NO-HARNESS throw ;
+
+REQUIRE-HARNESS
+
 : REPL ( -- )
    s" ." REPL-ROOT!
    REPL-LINT ;

@@ -555,6 +555,7 @@ SUITE stdlib-source-default
 SUITE stdlib-process-fixtures
    tools/hb-cli-contracts-test.f
    tools/standalone-load-test.f
+   test/lint-cli-standalone-load.f
    lib/process-test.f
    lib/process-command-test.f
    lib/process-pty-handle-test.f

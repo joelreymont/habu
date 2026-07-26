@@ -171,6 +171,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" lib/argv-test.f" q execute
    s" lib/source-test.f" q execute
    s" tools/standalone-load-test.f" q execute
+   s" test/lint-cli-standalone-load.f" q execute
    \ pthread-live tasking suites isolated to the spawned gate
    s" lib/task-test.f" q execute
    s" test/atomics-smoke.f" q execute
