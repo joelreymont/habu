@@ -255,6 +255,8 @@ SUITE maki/config-test.f
 ;SUITE
 SUITE maki/infer/safetensors-test.f
 ;SUITE
+SUITE maki/infer/weight-store-test.f
+;SUITE
 SUITE maki/infer/gpt2-reference-data-test.f
 ;SUITE
 SUITE maki/infer/model-types-test.f

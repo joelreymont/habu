@@ -1519,6 +1519,39 @@ points stay listed.
   double detach/close/release, reader without its census, private representation
   words). A presence-gated real leg asserts the HF GPT-2 tensor census (160
   tensors, wte [50257,768]).
+- `maki/infer/weight-store.f` — policy-selectable weight residency for the GB10
+  UMA inference engine (sealed `package WSTORE`, inference leaf S3d). A bound
+  model owns exactly one immutable linear residency value: the payload store
+  enum is mapped(`SAFET:mapping`, table) | allocated(buffer, table), so multi-GiB
+  checkpoints can be served straight from the checkpoint's file mapping with no
+  forced copy, while the allocated arm owns a `MEM`-allocated buffer the loader
+  filled once. The residency choice itself is the payload-free enum `residency`
+  (the leaf contract's "policy"; that tail is a reserved declaration-grammar
+  token). The slot table is model-agnostic — slot numbers to (byte-offset,
+  byte-extent) rows, sealed immutable by `TABLE-NEW`/`SLOT!`/`SEAL` with a
+  full-population check — and slot meaning stays the consumer's pure function.
+  Weight bytes are reachable only inside the `WITH-SLOT` quotation
+  `[ ptr u8 n -- n ]`, whose scalar result row makes a pointer-returning body a
+  static reject; the span is advisory pending the pointer-lifetime checker
+  capability, exactly as for `SAFET:WITH-TENSOR`. `DISPOSE` is the single exit:
+  the mapped arm unmaps through `SAFET:UNMAP-MAPPING`, the allocated arm
+  releases through `MEM:RELEASE-BYTES`, both reporting one `result<n,n>`.
+  `WSTORE:LIVE` counts undisposed WSTORE-owned blocks for leak assertions.
+  Owns -7710..-7714.
+- `maki/infer/weight-store-test.f` — byte-equality of `WITH-SLOT` across both
+  residency arms over one synthetic safetensors fixture (the mapped arm built
+  through the real `OPEN`/`MAP-FILE`/`PARSE`/`DETACH`/`DETACH-MAPPING` path, the
+  allocated arm copied from the same census), disposal proof on both arms
+  (`SAFET-MAP:LIVE` drops on the mapped unmap; ok carries the released byte
+  count), every named refusal with its exact leak-counter residue (bad slot
+  count, out-of-range/negative/double-set slot, row-end overflow, unset-slot
+  SEAL, out-of-range slot and oversized/byteless rows at access on both arms),
+  checker negatives for store/builder/table/buffer linearity, double dispose,
+  constructor arm confusion, sealed-table mutation, dropped or raw-read cleanup
+  results, and the quotation escape negative; nested re-entry regressions (a
+  body minting, reading, and disposing a second store on both arms, plus an
+  aborted inner call under catch) pin the parked frame's ordering discipline;
+  a forked child proves the package seal refuses new definitions into WSTORE.
 - `maki/infer/gpt2-reference-data.f` /
   `maki/infer/gpt2-reference-data-test.f` — pinned independent GPT-2 correctness data
   from PyTorch 2.11.0 and Transformers 5.14.1 over the exact F32 checkpoint:

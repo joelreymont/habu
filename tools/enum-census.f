@@ -31,30 +31,14 @@ require lib/argv.f
 package ENUM-CENSUS-CLI
 private
 
-: BASELINE$ ( -- ptr u8 n ) s" tools/enum-census-baseline.txt" ;
-
-: RUN-WALK ( -- )
-   ENUM-CENSUS:RESET
-   ENUM-CENSUS:WALK
-   ENUM-CENSUS:SUMMARY ;
-
-\ A finding is a site the census could not replay or could not read back. It is
-\ reported before any baseline comparison, because a baseline that matches a
-\ broken census proves nothing.
-: REQUIRE-CLEAN ( -- )
-   ENUM-CENSUS:FINDINGS 0= IF EXIT THEN
-   s" enum-census: " type ENUM-CENSUS:FINDINGS . s" site(s) failed to replay" type cr
-   1 throw ;
-
 \ Verification is two claims, and both have to hold. First: the keyword really is
 \ the unified front end and nothing else answers for it. Second: every plain
 \ declaration in the tree registers exactly what it registered before the keyword
-\ moved. Either one alone is satisfiable by a tree nobody wants.
+\ moved. Either one alone is satisfiable by a tree nobody wants. The whole
+\ sequence lives in the core (ENUM-CENSUS:VERIFY-COMMITTED) so the native gate
+\ can run it without this file's argv parse.
 : DO-VERIFY ( -- )
-   ENUM-CENSUS:PROVE-UNIFIED
-   RUN-WALK
-   REQUIRE-CLEAN
-   BASELINE$ ENUM-CENSUS:VERIFY ;
+   ENUM-CENSUS:VERIFY-COMMITTED ;
 
 \ Recording disarms the second-parser tripwire: a baseline is taken on the tree
 \ BEFORE the cutover, where the legacy parser words are still present and are
@@ -64,7 +48,7 @@ private
    ENUM-CENSUS:TRIPWIRE-OFF!
    ENUM-CENSUS:WALK
    ENUM-CENSUS:SUMMARY
-   REQUIRE-CLEAN
+   ENUM-CENSUS:REQUIRE-CLEAN
    path pathu ENUM-CENSUS:REPORT$ WRITE-ALL
    s" enum-census: baseline written to " type path pathu type cr ;
 

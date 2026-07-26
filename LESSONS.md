@@ -618,6 +618,18 @@ fits.
   loop heads at the host level and bind each head's weight/activation block before a
   2-free SPEC projection. Rank-3 `TENSOR:` factors and the 2-contraction `+SUM a b`
   form both work; a swapped operand in either is still an author-time reject.
+- **A full payload ENUM carries DEFLINEAR CT tokens as concrete FIELD types, and
+  the bundle is then one linear unit** (WSTORE, probed then pinned in
+  maki/infer/weight-store-test.f): the generated constructor consumes the linear
+  payload, a MATCH arm re-introduces it and must consume or re-mint it, and
+  dup/drop/store/reuse of the whole bundle reject — the same conservation the
+  parametric suite proved, now through concrete named FIELDs. Two families in
+  ONE package may reuse variant tails (`mapped`/`allocated` on both the policy
+  and the store enum coexist). But a declaration-grammar keyword is a RESERVED
+  family name: `ENUM policy … ;ENUM` throws 7110 because `POLICY` is the layout
+  header clause — probe the intended tail with the real front end before
+  freezing a contract spelling, and expect to rename (WSTORE spells it
+  `residency`).
 
 ## Tool & Infra
 
@@ -915,6 +927,23 @@ fits.
   name such as `dot_file`, especially in verification scripts that must fail closed.
 
 ## Gate Harness, Scheduling & Caching
+
+- **SUBJECT:RUN forks the live test process, so call it with NO package open,
+  and never gate a CLI file that parses argv.** A suite whose RUN executes
+  inside its own package makes the forked child's `package X` a NESTED-package
+  reject (exit 75) instead of the behavior under test (weight-store's seal probe
+  expected SEAL-PACKAGE 84); close the package and call `PKG:RUN` from top level
+  (the json-read-test arrangement). Same fork-inheritance class: a gate child
+  inherits the pool's argv, so a gate row that GSI-INCLUDEs a strict-argv CLI
+  file (`tools/enum-census.f` under `--pool-slots 1`) dies on usage before doing
+  any work — gates call an argv-free library word (`ENUM-CENSUS:VERIFY-COMMITTED`)
+  and leave CLI files to humans.
+- **The plain-ENUM census is a change-time ratchet: adding any `.f` file bumps
+  `WALKED-FILES`, adding a plain ENUM re-records the baseline.** Re-record to a
+  scratch path, then prove the change is only yours with an ordinal-normalized
+  diff — the report keys sites by a walk-order scratch package (`ctor=ECn-…`),
+  so inserting one file renumbers every later site and the RAW diff looks like a
+  mass divergence when the real delta is one line.
 
 - **A new file / TRUSTED word / candidate case each trips a specific manifest the
   focused suite never shows — only `test/run.f` does.** (1) A **flat `lib/*.f`**

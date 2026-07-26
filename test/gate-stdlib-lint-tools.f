@@ -2,6 +2,13 @@
 \
 \ Load after GSI-LINT-TOOLS-SETUP.
 
+\ The census core loads in the PARENT so the enum-census row below compiles
+\ against ENUM-CENSUS:VERIFY-COMMITTED; its lexer dependencies are already in
+\ from GSI-TOOL-BASE, and require is include-once for the rest.
+require lib/vector.f
+require lib/fs-mutate.f
+require tools/enum-census-core.f
+
 package GATE-LINT-TOOLS
 private
 
@@ -97,9 +104,12 @@ private
 : PRIMITIVE-EFFECT-INVENTORY ( -- )
    s" tools/primitive-effect-inventory-test.f" GSI-INCLUDE ;
 
+\ The census verify runs as a WORD, never by including tools/enum-census.f: the
+\ gate child inherits the pool's argv (--pool-slots ...), which that file's
+\ strict CLI parse rightly refuses.
 : ENUM-CENSUS ( -- )
    s" tools/enum-census-test.f" GSI-INCLUDE
-   s" tools/enum-census.f" GSI-INCLUDE ;
+   s" enum-census-verify" [: ENUM-CENSUS:VERIFY-COMMITTED ;] GSI-RUN ;
 
 : BOOTSTRAP-MIRROR ( -- )
    s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;

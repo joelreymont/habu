@@ -489,7 +489,7 @@ public
 \ guard: adding or deleting Forth files anywhere moves it, and the number has to
 \ be updated with the change that moved it, which is also when somebody notices
 \ that a new tree exists. Raising it without looking at WHAT moved defeats it.
-1258 constant WALKED-FILES               \ .f/.fs files under the five trees below
+1260 constant WALKED-FILES               \ .f/.fs files under the five trees below
 
 : WALK-TREES ( -- )
    s" src" [: WALK-FILE ;] WALK-FILES
@@ -607,5 +607,27 @@ public
    PROVE-FULL-FORM
    PROVE-RESERVED
    s" enum-census: the global ENUM keyword is the unified front end" type cr ;
+
+\ ---- argv-free committed-baseline verification ------------------------------
+\ The whole verify sequence as one word, so the gate
+\ (test/gate-stdlib-lint-tools.f) can run it directly: a gate child inherits the
+\ pool's own argv (--pool-slots ...), which the CLI's strict argv parse rightly
+\ refuses, so the gate must never reach verification THROUGH the CLI file. The
+\ CLI's verify verb dispatches here too - one implementation, two callers.
+: BASELINE-PATH$ ( -- ptr u8 n )       \ the committed baseline artifact
+   s" tools/enum-census-baseline.txt" ;
+
+: REQUIRE-CLEAN ( -- )                 \ a census that cannot replay proves nothing
+   FINDINGS 0= IF EXIT THEN
+   s" enum-census: " type FINDINGS DEC$ type s"  site(s) failed to replay" type cr
+   1 throw ;
+
+: VERIFY-COMMITTED ( -- )              \ tree vs the committed baseline
+   PROVE-UNIFIED
+   RESET
+   WALK
+   SUMMARY
+   REQUIRE-CLEAN
+   BASELINE-PATH$ VERIFY ;
 
 ;package
