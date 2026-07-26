@@ -12,4 +12,4 @@ require tools/lint/lib.f
 require lib/argv.f
 require tools/stale-status-lint-core.f
 
-SS-MAIN
+STALE-STATUS-LINT:MAIN

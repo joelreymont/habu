@@ -26,9 +26,9 @@ private
    TRUST-LINT ;
 
 : STALE-STATUS ( -- )
-   s" ." SS-ROOT!
-   epoch-seconds DATE:SECONDS-DAY / SS-TODAY-DAYS !
-   STALE-STATUS-LINT ;
+   s" ." STALE-STATUS-LINT:ROOT!
+   epoch-seconds DATE:SECONDS-DAY / STALE-STATUS-LINT:TODAY!
+   STALE-STATUS-LINT:RUN 0 > IF 1 throw THEN ;
 
 : CLOBBER ( -- )
    s" tools/lint/clobber-lint.f" GSI-REQUIRE

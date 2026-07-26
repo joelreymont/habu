@@ -3,544 +3,542 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and tools/argv.f.
 \ Run: bin/hb --load lib/date.f lib/errors.f lib/string.f lib/fs.f
 \ tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/argv.f
-\ tools/stale-status-lint-core.f provides SS-MAIN; tools/stale-status-lint.f is
-\ the CLI entrypoint.
+\ tools/stale-status-lint-core.f provides STALE-STATUS-LINT:MAIN;
+\ tools/stale-status-lint.f is the CLI entrypoint.
 
-32 constant SS-NUM-CAP
+package STALE-STATUS-LINT
+private
 
-10 constant SS-LF
-47 constant SS-SLASH
-48 constant SS-ZERO
-58 constant SS-COLON
+32 constant NUM-CAP
 
-create SS-NUM-BUF SS-NUM-CAP allot
-create SS-TODAY-BUF DATE:LEN allot
-create SS-PATH-BUF FS-PATH-CAP allot
-create SS-ONE 1 allot
+10 constant LF-C
+47 constant SLASH-C
+48 constant ZERO-C
+58 constant COLON-C
 
-variable SS-BAD
-variable SS-FILE-A
-variable SS-FILE-CAP
-variable SS-NUM-L
-variable SS-LINE-N
-variable SS-FOUND?
-variable SS-DATE-A
-variable SS-DATE-U
-variable SS-PATH-A
-variable SS-PATH-U
-variable SS-DISP-A
-variable SS-DISP-U
-variable SS-SCAN-X
-variable SS-RUN
-variable SS-DIGITS
-variable SS-TODAY-DAYS
-variable SS-ROOT-A
-variable SS-ROOT-U
-variable SS-SRC-A
-variable SS-SRC-U
-variable SS-LINE-S
-variable SS-LINE-E
-variable SS-FENCE
-variable SS-OUT-A
-variable SS-OUT-CAP
-variable SS-OUT-U
-variable SS-ERR-A
-variable SS-ERR-CAP
-variable SS-ERR-U
+create NUM-BUF NUM-CAP allot
+create TODAY-BUF DATE:LEN allot
+create PATH-BUF FS-PATH-CAP allot
+create ONE-BUF 1 allot
 
-: SS-ROOT-A-FIELD ( -- ptr ptr u8 )
-   SS-ROOT-A 0 ptr-field ;
+variable BAD
+variable FILE-A
+variable FILE-CAP
+variable NUM-L
+variable LINE-N
+variable FOUND?
+variable DATE-A
+variable DATE-U
+variable DISP-A
+variable DISP-U
+variable SCAN-X
+variable SLASH-I
+variable DIGITS
+variable TODAY-DAYS
+variable ROOT-A
+variable ROOT-U
+variable SRC-A
+variable SRC-U
+variable LINE-S
+variable LINE-E
+variable FENCE
+variable OUT-A
+variable OUT-CAP
+variable OUT-U
+variable ERR-A
+variable ERR-CAP
+variable ERR-U
 
-: SS-FILE-A-FIELD ( -- ptr ptr u8 )
-   SS-FILE-A 0 ptr-field ;
+: ROOT-A-FIELD ( -- ptr ptr u8 )
+   ROOT-A 0 ptr-field ;
 
-: SS-SRC-A-FIELD ( -- ptr ptr u8 )
-   SS-SRC-A 0 ptr-field ;
+: FILE-A-FIELD ( -- ptr ptr u8 )
+   FILE-A 0 ptr-field ;
 
-: SS-DATE-A-FIELD ( -- ptr ptr u8 )
-   SS-DATE-A 0 ptr-field ;
+: SRC-A-FIELD ( -- ptr ptr u8 )
+   SRC-A 0 ptr-field ;
 
-: SS-DISP-A-FIELD ( -- ptr ptr u8 )
-   SS-DISP-A 0 ptr-field ;
+: DATE-A-FIELD ( -- ptr ptr u8 )
+   DATE-A 0 ptr-field ;
 
-: SS-OUT-A-FIELD ( -- ptr ptr u8 )
-   SS-OUT-A 0 ptr-field ;
+: DISP-A-FIELD ( -- ptr ptr u8 )
+   DISP-A 0 ptr-field ;
 
-: SS-ERR-A-FIELD ( -- ptr ptr u8 )
-   SS-ERR-A 0 ptr-field ;
+: OUT-A-FIELD ( -- ptr ptr u8 )
+   OUT-A 0 ptr-field ;
 
-: SS-ROOT-A@ ( -- ptr u8 )
-   SS-ROOT-A-FIELD @ ;
+: ERR-A-FIELD ( -- ptr ptr u8 )
+   ERR-A 0 ptr-field ;
 
-: SS-FILE-A@ ( -- ptr u8 )
-   SS-FILE-A-FIELD @ ;
+: ROOT-A@ ( -- ptr u8 )
+   ROOT-A-FIELD @ ;
 
-: SS-SRC-A@ ( -- ptr u8 )
-   SS-SRC-A-FIELD @ ;
+: FILE-A@ ( -- ptr u8 )
+   FILE-A-FIELD @ ;
 
-: SS-DATE-A@ ( -- ptr u8 )
-   SS-DATE-A-FIELD @ ;
+: SRC-A@ ( -- ptr u8 )
+   SRC-A-FIELD @ ;
 
-: SS-DISP-A@ ( -- ptr u8 )
-   SS-DISP-A-FIELD @ ;
+: DATE-A@ ( -- ptr u8 )
+   DATE-A-FIELD @ ;
 
-: SS-OUT-A@ ( -- ptr u8 )
-   SS-OUT-A-FIELD @ ;
+: DISP-A@ ( -- ptr u8 )
+   DISP-A-FIELD @ ;
 
-: SS-ERR-A@ ( -- ptr u8 )
-   SS-ERR-A-FIELD @ ;
+: OUT-A@ ( -- ptr u8 )
+   OUT-A-FIELD @ ;
 
-: SS-ROOT-A! ( ptr u8 -- )
-   SS-ROOT-A-FIELD ! ;
+: ERR-A@ ( -- ptr u8 )
+   ERR-A-FIELD @ ;
 
-: SS-FILE-A! ( ptr u8 -- )
-   SS-FILE-A-FIELD ! ;
+: ROOT-A! ( ptr u8 -- )
+   ROOT-A-FIELD ! ;
 
-: SS-SRC-A! ( ptr u8 -- )
-   SS-SRC-A-FIELD ! ;
+: FILE-A! ( ptr u8 -- )
+   FILE-A-FIELD ! ;
 
-: SS-DATE-A! ( ptr u8 -- )
-   SS-DATE-A-FIELD ! ;
+: SRC-A! ( ptr u8 -- )
+   SRC-A-FIELD ! ;
 
-: SS-DISP-A! ( ptr u8 -- )
-   SS-DISP-A-FIELD ! ;
+: DATE-A! ( ptr u8 -- )
+   DATE-A-FIELD ! ;
 
-: SS-OUT-A! ( ptr u8 -- )
-   SS-OUT-A-FIELD ! ;
+: DISP-A! ( ptr u8 -- )
+   DISP-A-FIELD ! ;
 
-: SS-ERR-A! ( ptr u8 -- )
-   SS-ERR-A-FIELD ! ;
+: OUT-A! ( ptr u8 -- )
+   OUT-A-FIELD ! ;
 
-: SS-ROOT$ ( -- ptr u8 n )
-   SS-ROOT-A@ SS-ROOT-U @ ;
+: ERR-A! ( ptr u8 -- )
+   ERR-A-FIELD ! ;
 
-: SS-SRC$ ( -- ptr u8 n )
-   SS-SRC-A@ SS-SRC-U @ ;
+: ROOT$ ( -- ptr u8 n )
+   ROOT-A@ ROOT-U @ ;
 
-: SS-DATE$ ( -- ptr u8 n )
-   SS-DATE-A@ SS-DATE-U @ ;
+: SRC$ ( -- ptr u8 n )
+   SRC-A@ SRC-U @ ;
 
-: SS-DISP$ ( -- ptr u8 n )
-   SS-DISP-A@ SS-DISP-U @ ;
+: DATE$ ( -- ptr u8 n )
+   DATE-A@ DATE-U @ ;
 
-: SS-SKIP ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n n:n :}
+: DISP$ ( -- ptr u8 n )
+   DISP-A@ DISP-U @ ;
+
+: CUT ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n n:n :}
    a n +  u n - ;
 
-: SS-C! ( n -- ) SS-ONE c! ;
+: BYTE! ( n -- ) ONE-BUF c! ;
 
-: SS-OUT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
-   a SS-OUT-A!
-   cap SS-OUT-CAP !
-   0 SS-OUT-U ! ;
+public
 
-: SS-ERR-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
-   a SS-ERR-A!
-   cap SS-ERR-CAP !
-   0 SS-ERR-U ! ;
+: OUT-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a OUT-A!
+   cap OUT-CAP !
+   0 OUT-U ! ;
 
-: SS-BUFFERS-OFF ( -- )
-   NULL$ drop SS-OUT-A!
-   NULL$ drop SS-ERR-A!
-   0 SS-OUT-CAP !
-   0 SS-ERR-CAP !
-   0 SS-OUT-U !
-   0 SS-ERR-U ! ;
+: ERR-BUFFER! ( ptr u8 n -- ) {: a:ptr cap:n :}
+   a ERR-A!
+   cap ERR-CAP !
+   0 ERR-U ! ;
 
-: SS-OUT$ ( -- ptr u8 n )
-   SS-OUT-A@ SS-OUT-U @ ;
+: BUFFERS-OFF ( -- )
+   NULL$ drop OUT-A!
+   NULL$ drop ERR-A!
+   0 OUT-CAP !
+   0 ERR-CAP !
+   0 OUT-U !
+   0 ERR-U ! ;
 
-: SS-ERR$ ( -- ptr u8 n )
-   SS-ERR-A@ SS-ERR-U @ ;
+: OUT$ ( -- ptr u8 n )
+   OUT-A@ OUT-U @ ;
 
-: SS-OUT-BUFFERED? ( -- bool )
-   SS-OUT-A@ 0= 0= ;
+: ERR$ ( -- ptr u8 n )
+   ERR-A@ ERR-U @ ;
 
-: SS-ERR-BUFFERED? ( -- bool )
-   SS-ERR-A@ 0= 0= ;
+private
 
-: SS-OUT ( ptr u8 n -- )
+: OUT-BUFFERED? ( -- bool )
+   OUT-A@ 0= 0= ;
+
+: ERR-BUFFERED? ( -- bool )
+   ERR-A@ 0= 0= ;
+
+: SAY ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
-   SS-OUT-BUFFERED? IF
-      STR:LENGTH SS-OUT-A@ SS-OUT-CAP @ STR:LENGTH SS-OUT-U STR:BUF-APPEND
+   OUT-BUFFERED? IF
+      STR:LENGTH OUT-A@ OUT-CAP @ STR:LENGTH OUT-U STR:BUF-APPEND
       exit
    THEN
    1 -rot write drop ;
 
-: SS-ERR ( ptr u8 n -- )
+: SAY-ERR ( ptr u8 n -- )
    dup 0= IF 2drop exit THEN
-   SS-ERR-BUFFERED? IF
-      STR:LENGTH SS-ERR-A@ SS-ERR-CAP @ STR:LENGTH SS-ERR-U STR:BUF-APPEND
+   ERR-BUFFERED? IF
+      STR:LENGTH ERR-A@ ERR-CAP @ STR:LENGTH ERR-U STR:BUF-APPEND
       exit
    THEN
    2 -rot write drop ;
 
-: SS-C ( n -- )
-   SS-C!
-   SS-ONE 1 SS-OUT ;
+: SAY-C ( n -- )
+   BYTE!
+   ONE-BUF 1 SAY ;
 
-: SS-NL ( -- ) SS-LF SS-C ;
+: SAY-NL ( -- ) LF-C SAY-C ;
 
-: SS-U. ( n -- )
-   0 SS-NUM-L !
-   dup 0= IF drop SS-ZERO SS-C exit THEN
+: SAY-U ( n -- )
+   0 NUM-L !
+   dup 0= IF drop ZERO-C SAY-C exit THEN
    begin dup 0 > while
-      dup 10 mod SS-ZERO + SS-NUM-BUF SS-NUM-L @ + c!
+      dup 10 mod ZERO-C + NUM-BUF NUM-L @ + c!
       10 /
-      SS-NUM-L @ 1+ SS-NUM-L !
+      NUM-L @ 1+ NUM-L !
    repeat drop
-   begin SS-NUM-L @ 0 > while
-      SS-NUM-L @ 1- SS-NUM-L !
-      SS-NUM-BUF SS-NUM-L @ + c@ SS-C
+   begin NUM-L @ 0 > while
+      NUM-L @ 1- NUM-L !
+      NUM-BUF NUM-L @ + c@ SAY-C
    repeat ;
 
-: SS-2D ( n -- )
-   dup 10 < IF SS-ZERO SS-C THEN
-   SS-U. ;
-
-: SS-4D ( n -- )
-   dup 1000 < IF SS-ZERO SS-C THEN
-   dup 100 < IF SS-ZERO SS-C THEN
-   dup 10 < IF SS-ZERO SS-C THEN
-   SS-U. ;
-
-: SS-DIGIT? ( n -- bool )
+: DIGIT? ( n -- bool )
    dup 47 > swap 58 < and ;
 
-: SS-TRUE ( -- bool )
-   0 0= ;
-
-: SS-FALSE ( -- bool )
-   0 1 = ;
-
-: SS-NOT ( bool -- bool )
-   IF SS-FALSE ELSE SS-TRUE THEN ;
-
-: SS-ALNUM? ( n -- bool ) {: c:n :}
-   c SS-DIGIT? IF SS-TRUE exit THEN
-   c 64 > c 91 < and IF SS-TRUE exit THEN
+: ALNUM? ( n -- bool ) {: c:n :}
+   c DIGIT? IF LINT-TRUE exit THEN
+   c 64 > c 91 < and IF LINT-TRUE exit THEN
    c 96 > c 123 < and ;
 
-: SS-REL ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   SS-ROOT$ {: root:ptr rootu:n :}
+: REL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   ROOT$ {: root:ptr rootu:n :}
    rootu 0 >  root rootu s" ." LINT-STR= 0= and IF
       u rootu > IF
          a rootu root rootu LINT-STR= IF
-            a rootu + c@ SS-SLASH = IF
+            a rootu + c@ SLASH-C = IF
                a rootu 1 + +  u rootu 1 + -  exit
             THEN
          THEN
       THEN
    THEN
    u 2 >= IF
-      a c@ 46 =  a 1 + c@ SS-SLASH = and IF a 2 + u 2 - exit THEN
+      a c@ 46 =  a 1 + c@ SLASH-C = and IF a 2 + u 2 - exit THEN
    THEN
    a u ;
 
-: SS-ROOT ( -- ptr u8 n )
-   SS-ROOT$ ;
+public
 
-: SS-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a SS-ROOT-A!
-   u SS-ROOT-U ! ;
+: ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a ROOT-A!
+   u ROOT-U ! ;
 
-: SS-ROOT-SELF? ( -- bool )
-   SS-ROOT$ {: root:ptr rootu:n :}
-   rootu 0= IF SS-TRUE exit THEN
+: TODAY! ( n -- )
+   TODAY-DAYS ! ;
+
+private
+
+: ROOT-SELF? ( -- bool )
+   ROOT$ {: root:ptr rootu:n :}
+   rootu 0= IF LINT-TRUE exit THEN
    root rootu s" ." LINT-STR= ;
 
-: SS-ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   SS-ROOT$ {: root:ptr rootu:n :}
-   SS-ROOT-SELF? IF a u exit THEN
+: ROOTED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   ROOT$ {: root:ptr rootu:n :}
+   ROOT-SELF? IF a u exit THEN
    rootu u + 1 + FS-PATH-CAP > IF s" stale-status-lint: root path too long" 1 die THEN
-   root SS-PATH-BUF rootu BYTE-COPY
-   root rootu 1 - + c@ SS-SLASH = IF
-      a SS-PATH-BUF rootu + u BYTE-COPY
-      SS-PATH-BUF rootu u + exit
+   root PATH-BUF rootu BYTE-COPY
+   root rootu 1 - + c@ SLASH-C = IF
+      a PATH-BUF rootu + u BYTE-COPY
+      PATH-BUF rootu u + exit
    THEN
-   SS-SLASH SS-PATH-BUF rootu + c!
-   a SS-PATH-BUF rootu 1 + + u BYTE-COPY
-   SS-PATH-BUF rootu 1 + u + ;
+   SLASH-C PATH-BUF rootu + c!
+   a PATH-BUF rootu 1 + + u BYTE-COPY
+   PATH-BUF rootu 1 + u + ;
 
-: SS-DISPLAY! ( ptr u8 n -- )
-   SS-REL SS-DISP-U ! SS-DISP-A! ;
+: DISPLAY! ( ptr u8 n -- )
+   REL$ DISP-U ! DISP-A! ;
 
-: SS-ALLOWED? ( ptr u8 n -- bool )
-   SS-REL
-   2dup s" STATUS.md" LINT-STR= IF 2drop SS-TRUE exit THEN
-   2dup s" LESSONS.md" LINT-STR= IF 2drop SS-TRUE exit THEN
+: ALLOWED? ( ptr u8 n -- bool )
+   REL$
+   2dup s" STATUS.md" LINT-STR= IF 2drop LINT-TRUE exit THEN
+   2dup s" LESSONS.md" LINT-STR= IF 2drop LINT-TRUE exit THEN
    s" docs/archive/lessons-" LINT-STARTS-WITH? ;
 
-: SS-SKIP-PATH? ( ptr u8 n -- bool )
-   SS-REL
-   2dup s" .jj-ws/" LINT-STARTS-WITH? IF 2drop SS-TRUE exit THEN
-   2dup s" docs/archive/" LINT-STARTS-WITH? IF 2drop SS-TRUE exit THEN   \ frozen history: counts there are records, not claims
+: SKIP-PATH? ( ptr u8 n -- bool )
+   REL$
+   2dup s" .jj-ws/" LINT-STARTS-WITH? IF 2drop LINT-TRUE exit THEN
+   2dup s" docs/archive/" LINT-STARTS-WITH? IF 2drop LINT-TRUE exit THEN   \ frozen history: counts there are records, not claims
    s" maki/" LINT-STARTS-WITH? ;
 
-: SS-MD? ( ptr u8 n -- bool )
+: MD? ( ptr u8 n -- bool )
    s" .md" HAS-EXT? ;
 
-: SS-LINE-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
+: LINE-PREFIX? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
    a u b v LINT-STARTS-WITH? ;
 
-: SS-FENCE-LINE? ( ptr u8 n -- bool )
+: FENCE-LINE? ( ptr u8 n -- bool )
    LINT-TRIM s" ```" LINT-STARTS-WITH? ;
 
-: SS-FENCE-TOGGLE ( -- )
-   SS-FENCE @ 0= IF -1 ELSE 0 THEN SS-FENCE ! ;
+: FENCE-TOGGLE ( -- )
+   FENCE @ 0= IF -1 ELSE 0 THEN FENCE ! ;
 
-: SS-LINE-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
+: LINE-END ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
    start begin dup u < while
-      dup a + c@ SS-LF = IF exit THEN
+      dup a + c@ LF-C = IF exit THEN
       1+
    repeat ;
 
-: SS-STATUS-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
+: STATUS-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u LINT-TRIM
-   2dup s" Last verified:" SS-LINE-PREFIX? IF
-      14 SS-SKIP LINT-LTRIM
-      SS-DATE-U ! SS-DATE-A!
-      -1 SS-FOUND? !
+   2dup s" Last verified:" LINE-PREFIX? IF
+      14 CUT LINT-LTRIM
+      DATE-U ! DATE-A!
+      -1 FOUND? !
    ELSE
       2drop
    THEN ;
 
-: SS-FILE-ENSURE ( n -- ) {: need:n :}
+: FILE-ENSURE ( n -- ) {: need:n :}
    need 0 <= IF 1 ELSE need THEN {: cap:n :}
-   SS-FILE-A@ 0= 0= SS-FILE-CAP @ cap >= and IF exit THEN
-   cap MEM-ALLOC-64K-SPAN SS-FILE-CAP ! SS-FILE-A! ;
+   FILE-A@ 0= 0= FILE-CAP @ cap >= and IF exit THEN
+   cap MEM-ALLOC-64K-SPAN FILE-CAP ! FILE-A! ;
 
-: SS-LOAD-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
-   path pathu FILE-SIZE SS-FILE-ENSURE
-   path pathu SS-FILE-A@ SS-FILE-CAP @ READ-FILE
-   SS-SRC-U ! SS-SRC-A! ;
+: LOAD-FILE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu FILE-SIZE FILE-ENSURE
+   path pathu FILE-A@ FILE-CAP @ READ-FILE
+   SRC-U ! SRC-A! ;
 
-: SS-SET-LINE-END ( -- )
-   SS-SRC$ SS-LINE-S @ SS-LINE-END SS-LINE-E ! ;
+: SET-LINE-END ( -- )
+   SRC$ LINE-S @ LINE-END LINE-E ! ;
 
-: SS-CURRENT-LINE ( -- ptr u8 n )
-   SS-SRC$ {: src:ptr srcu:n :}
-   src SS-LINE-S @ +  SS-LINE-E @ SS-LINE-S @ - ;
+: CURRENT-LINE ( -- ptr u8 n )
+   SRC$ {: src:ptr srcu:n :}
+   src LINE-S @ +  LINE-E @ LINE-S @ - ;
 
-: SS-ADVANCE-LINE ( -- )
-   SS-LINE-E @ 1+ SS-LINE-S ! ;
+: ADVANCE-LINE ( -- )
+   LINE-E @ 1+ LINE-S ! ;
 
-: SS-STATUS-DATE! ( -- )
-   0 SS-FOUND? !
-   s" STATUS.md" SS-ROOTED$ SS-LOAD-FILE
-   0 SS-LINE-S !
-   begin SS-LINE-S @ SS-SRC$ nip < while
-      SS-SET-LINE-END
-      SS-CURRENT-LINE SS-STATUS-LINE
-      SS-ADVANCE-LINE
+: STATUS-DATE! ( -- )
+   0 FOUND? !
+   s" STATUS.md" ROOTED$ LOAD-FILE
+   0 LINE-S !
+   begin LINE-S @ SRC$ nip < while
+      SET-LINE-END
+      CURRENT-LINE STATUS-LINE
+      ADVANCE-LINE
    repeat ;
 
-: SS-TODAY-FROM-EPOCH ( -- ptr u8 n )
-   SS-TODAY-DAYS @ SS-TODAY-BUF DATE:LEN DATE:FORMAT-YMD ;
+: TODAY$ ( -- ptr u8 n )
+   TODAY-DAYS @ TODAY-BUF DATE:LEN DATE:FORMAT-YMD ;
 
-: SS-BAD+ ( -- )
-   SS-BAD @ 1+ SS-BAD ! ;
+: BAD+ ( -- )
+   BAD @ 1+ BAD ! ;
 
-: SS-BAD-TODAY ( ptr u8 n -- )
-   s" BAD-TODAY today argument invalid `" SS-OUT
-   SS-OUT
-   s" `" SS-OUT SS-NL
+: BAD-TODAY ( ptr u8 n -- )
+   s" BAD-TODAY today argument invalid `" SAY
+   SAY
+   s" `" SAY SAY-NL
    1 throw ;
 
-: SS-PARSE-TODAY ( ptr u8 n -- n ) {: a:ptr u:n :}
+public
+
+: PARSE-TODAY ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u DATE:PARSE-YMD MATCH option
-     none OF a u SS-BAD-TODAY ENDOF
+     none OF a u BAD-TODAY ENDOF
      some OF ENDOF
    ;MATCH ;
 
-: SS-BAD-STATUS-DATE ( -- )
-   s" BAD-STATUS-DATE STATUS.md: Last verified invalid `" SS-OUT
-   SS-DATE$ SS-OUT
-   s" `" SS-OUT SS-NL
-   SS-BAD+ ;
+private
 
-: SS-TODAY$ ( -- ptr u8 n )
-   SS-TODAY-FROM-EPOCH ;
+: BAD-STATUS-DATE ( -- )
+   s" BAD-STATUS-DATE STATUS.md: Last verified invalid `" SAY
+   DATE$ SAY
+   s" `" SAY SAY-NL
+   BAD+ ;
 
-: SS-MISSING-STATUS ( -- )
-   s" STALE-STATUS STATUS.md: missing `Last verified: YYYY-MM-DD`" SS-OUT SS-NL
-   SS-BAD+ ;
+: MISSING-STATUS ( -- )
+   s" STALE-STATUS STATUS.md: missing `Last verified: YYYY-MM-DD`" SAY SAY-NL
+   BAD+ ;
 
-: SS-DATE-MISMATCH ( ptr u8 n -- )
-   s" STALE-STATUS STATUS.md: Last verified is " SS-OUT
-   SS-DATE$ SS-OUT
-   s" , expected " SS-OUT
-   SS-OUT SS-NL
-   SS-BAD+ ;
+: DATE-MISMATCH ( ptr u8 n -- )
+   s" STALE-STATUS STATUS.md: Last verified is " SAY
+   DATE$ SAY
+   s" , expected " SAY
+   SAY SAY-NL
+   BAD+ ;
 
-: SS-CHECK-STATUS ( -- )
-   SS-STATUS-DATE!
-   SS-FOUND? @ 0= IF SS-MISSING-STATUS exit THEN
-   SS-DATE$ DATE:PARSE-YMD MATCH option
-     none OF SS-BAD-STATUS-DATE exit ENDOF
+: CHECK-STATUS ( -- )
+   STATUS-DATE!
+   FOUND? @ 0= IF MISSING-STATUS exit THEN
+   DATE$ DATE:PARSE-YMD MATCH option
+     none OF BAD-STATUS-DATE exit ENDOF
      some OF drop ENDOF
    ;MATCH
-   SS-TODAY$ 2dup SS-DATE$ LINT-STR= 0= IF SS-DATE-MISMATCH ELSE 2drop THEN ;
+   TODAY$ 2dup DATE$ LINT-STR= 0= IF DATE-MISMATCH ELSE 2drop THEN ;
 
-: SS-BEFORE-BOUND? ( ptr u8 n -- bool ) {: a:ptr pos:n :}
-   pos 0= IF SS-TRUE exit THEN
-   a pos 1- + c@ SS-ALNUM? SS-NOT ;
+: BEFORE-BOUND? ( ptr u8 n -- bool ) {: a:ptr pos:n :}
+   pos 0= IF LINT-TRUE exit THEN
+   a pos 1- + c@ ALNUM? LINT-NOT ;
 
-: SS-AFTER-BOUND? ( ptr u8 n n -- bool ) {: a:ptr u:n pos:n :}
-   pos u >= IF SS-TRUE exit THEN
-   a pos + c@ SS-ALNUM? SS-NOT ;
+: AFTER-BOUND? ( ptr u8 n n -- bool ) {: a:ptr u:n pos:n :}
+   pos u >= IF LINT-TRUE exit THEN
+   a pos + c@ ALNUM? LINT-NOT ;
 
-: SS-SLASH-RUN ( ptr u8 n n -- n bool ) {: a:ptr u:n pos:n :}
-   pos u >= IF pos SS-FALSE exit THEN
-   a pos + c@ SS-SLASH <> IF pos SS-FALSE exit THEN
-   pos 1+ SS-RUN !
-   SS-RUN @ SS-DIGITS !
-   begin SS-RUN @ u <  a SS-RUN @ + c@ SS-DIGIT? and while
-      SS-RUN @ 1+ SS-RUN !
+: SLASH-RUN ( ptr u8 n n -- n bool ) {: a:ptr u:n pos:n :}
+   pos u >= IF pos LINT-FALSE exit THEN
+   a pos + c@ SLASH-C <> IF pos LINT-FALSE exit THEN
+   pos 1+ SLASH-I !
+   SLASH-I @ DIGITS !
+   begin SLASH-I @ u <  a SLASH-I @ + c@ DIGIT? and while
+      SLASH-I @ 1+ SLASH-I !
    repeat
-   SS-RUN @  SS-RUN @ SS-DIGITS @ > ;
+   SLASH-I @  SLASH-I @ DIGITS @ > ;
 
-: SS-WORD-AT? ( ptr u8 n n ptr u8 n -- bool ) {: a:ptr u:n pos:n b:ptr v:n :}
-   u pos - v < IF SS-FALSE exit THEN
+: WORD-AT? ( ptr u8 n n ptr u8 n -- bool ) {: a:ptr u:n pos:n b:ptr v:n :}
+   u pos - v < IF LINT-FALSE exit THEN
    a pos + v b v LINT-STR=CI ;
 
-: SS-SCAN-ADVANCE ( -- )
-   SS-SCAN-X @ 1+ SS-SCAN-X ! ;
+: SCAN-ADVANCE ( -- )
+   SCAN-X @ 1+ SCAN-X ! ;
 
-: SS-SCAN-C@ ( ptr u8 -- n )
-   SS-SCAN-X @ + c@ ;
+: SCAN-C@ ( ptr u8 -- n )
+   SCAN-X @ + c@ ;
 
-: SS-SCAN-DIGITS ( ptr u8 n -- )
+: SCAN-DIGITS ( ptr u8 n -- )
    {: a:ptr u:n :}
-   0 SS-DIGITS !
-   begin SS-SCAN-X @ u <  a SS-SCAN-C@ SS-DIGIT? and while
-      SS-DIGITS @ 1+ SS-DIGITS !
-      SS-SCAN-ADVANCE
+   0 DIGITS !
+   begin SCAN-X @ u <  a SCAN-C@ DIGIT? and while
+      DIGITS @ 1+ DIGITS !
+      SCAN-ADVANCE
    repeat ;
 
-: SS-LONG-DIGIT-RUN? ( -- bool )
-   SS-DIGITS @ 3 >= ;
+: LONG-DIGIT-RUN? ( -- bool )
+   DIGITS @ 3 >= ;
 
-: SS-CURRENT-WS? ( ptr u8 n -- bool )
+: CURRENT-WS? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   SS-SCAN-X @ u >= IF SS-FALSE exit THEN
-   a SS-SCAN-C@ LINT-WS? ;
+   SCAN-X @ u >= IF LINT-FALSE exit THEN
+   a SCAN-C@ LINT-WS? ;
 
-: SS-SKIP-WS ( ptr u8 n -- )
+: SKIP-WS ( ptr u8 n -- )
    {: a:ptr u:n :}
-   begin a u SS-CURRENT-WS? while
-      SS-SCAN-ADVANCE
+   begin a u CURRENT-WS? while
+      SCAN-ADVANCE
    repeat ;
 
-: SS-TAKE-SLASH-RUN? ( ptr u8 n -- bool )
+: TAKE-SLASH-RUN? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u SS-SCAN-X @ SS-SLASH-RUN IF
-      SS-SCAN-X !
-      SS-TRUE
+   a u SCAN-X @ SLASH-RUN IF
+      SCAN-X !
+      LINT-TRUE
    ELSE
       drop
-      SS-FALSE
+      LINT-FALSE
    THEN ;
 
-: SS-COUNT-RATIO? ( ptr u8 n -- bool )
+: COUNT-RATIO? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u SS-TAKE-SLASH-RUN? IF
-      a u SS-TAKE-SLASH-RUN? IF
-         a u SS-SCAN-X @ SS-AFTER-BOUND?
+   a u TAKE-SLASH-RUN? IF
+      a u TAKE-SLASH-RUN? IF
+         a u SCAN-X @ AFTER-BOUND?
       ELSE
-         SS-FALSE
+         LINT-FALSE
       THEN
    ELSE
-      SS-FALSE
+      LINT-FALSE
    THEN ;
 
-: SS-COUNT-KEYWORD? ( ptr u8 n -- bool )
+: COUNT-KEYWORD? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a u SS-CURRENT-WS? IF
-      a u SS-SKIP-WS
-      a u SS-SCAN-X @ s" certified" SS-WORD-AT? IF SS-TRUE exit THEN
-      a u SS-SCAN-X @ s" uncheckable" SS-WORD-AT?
+   a u CURRENT-WS? IF
+      a u SKIP-WS
+      a u SCAN-X @ s" certified" WORD-AT? IF LINT-TRUE exit THEN
+      a u SCAN-X @ s" uncheckable" WORD-AT?
    ELSE
-      SS-FALSE
+      LINT-FALSE
    THEN ;
 
-: SS-COUNT-TAIL? ( ptr u8 n -- bool )
+: COUNT-TAIL? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   SS-SCAN-X @ u >= IF SS-FALSE exit THEN
-   a SS-SCAN-C@ SS-SLASH = IF a u SS-COUNT-RATIO? exit THEN
-   a u SS-COUNT-KEYWORD? ;
+   SCAN-X @ u >= IF LINT-FALSE exit THEN
+   a SCAN-C@ SLASH-C = IF a u COUNT-RATIO? exit THEN
+   a u COUNT-KEYWORD? ;
 
-: SS-COUNT-CANDIDATE? ( ptr u8 n -- bool )
+: COUNT-CANDIDATE? ( ptr u8 n -- bool )
    {: a:ptr u:n :}
-   a SS-SCAN-C@ SS-DIGIT? IF
-      a SS-SCAN-X @ SS-BEFORE-BOUND? IF
-         a u SS-SCAN-DIGITS
-         SS-LONG-DIGIT-RUN? IF a u SS-COUNT-TAIL? ELSE SS-FALSE THEN
+   a SCAN-C@ DIGIT? IF
+      a SCAN-X @ BEFORE-BOUND? IF
+         a u SCAN-DIGITS
+         LONG-DIGIT-RUN? IF a u COUNT-TAIL? ELSE LINT-FALSE THEN
       ELSE
-         SS-SCAN-ADVANCE
-         SS-FALSE
+         SCAN-ADVANCE
+         LINT-FALSE
       THEN
    ELSE
-      SS-SCAN-ADVANCE
-      SS-FALSE
+      SCAN-ADVANCE
+      LINT-FALSE
    THEN ;
 
-: SS-COUNT-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 SS-SCAN-X !
-   begin SS-SCAN-X @ u < while
-      a u SS-COUNT-CANDIDATE? IF SS-TRUE exit THEN
+: COUNT-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 SCAN-X !
+   begin SCAN-X @ u < while
+      a u COUNT-CANDIDATE? IF LINT-TRUE exit THEN
    repeat
-   SS-FALSE ;
+   LINT-FALSE ;
 
-: SS-FINDING ( -- )
-   s" STALE-STATUS " SS-OUT
-   SS-DISP$ SS-OUT
-   SS-COLON SS-C
-   SS-LINE-N @ SS-U.
-   s" : count-shaped string - point to STATUS.md instead of quoting a number" SS-OUT
-   SS-NL
-   SS-BAD+ ;
+: FINDING ( -- )
+   s" STALE-STATUS " SAY
+   DISP$ SAY
+   COLON-C SAY-C
+   LINE-N @ SAY-U
+   s" : count-shaped string - point to STATUS.md instead of quoting a number" SAY
+   SAY-NL
+   BAD+ ;
 
-: SS-SCAN-CURRENT-LINE ( -- )
-   SS-CURRENT-LINE SS-FENCE-LINE? IF SS-FENCE-TOGGLE exit THEN
-   SS-FENCE @ 0= IF
-      SS-CURRENT-LINE SS-COUNT-LINE? IF SS-FINDING THEN
+: SCAN-CURRENT-LINE ( -- )
+   CURRENT-LINE FENCE-LINE? IF FENCE-TOGGLE exit THEN
+   FENCE @ 0= IF
+      CURRENT-LINE COUNT-LINE? IF FINDING THEN
    THEN ;
 
-: SS-SCAN-MD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SS-SKIP-PATH? IF exit THEN
-   a u SS-ALLOWED? IF exit THEN
-   a u SS-MD? SS-NOT IF exit THEN
-   a u EXISTS? SS-NOT IF exit THEN
-   a u SS-DISPLAY!
-   a u SS-LOAD-FILE
-   0 SS-FENCE !
-   0 SS-LINE-N !
-   0 SS-LINE-S !
-   begin SS-LINE-S @ SS-SRC$ nip < while
-      SS-LINE-N @ 1+ SS-LINE-N !
-      SS-SET-LINE-END
-      SS-SCAN-CURRENT-LINE
-      SS-ADVANCE-LINE
+: SCAN-MD ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SKIP-PATH? IF exit THEN
+   a u ALLOWED? IF exit THEN
+   a u MD? LINT-NOT IF exit THEN
+   a u EXISTS? LINT-NOT IF exit THEN
+   a u DISPLAY!
+   a u LOAD-FILE
+   0 FENCE !
+   0 LINE-N !
+   0 LINE-S !
+   begin LINE-S @ SRC$ nip < while
+      LINE-N @ 1+ LINE-N !
+      SET-LINE-END
+      SCAN-CURRENT-LINE
+      ADVANCE-LINE
    repeat ;
 
-: STALE-STATUS-LINT ( -- )
-   0 SS-BAD !
-   SS-CHECK-STATUS
-   SS-ROOT [: SS-SCAN-MD ;] WALK-FILES
-   s" stale-status-lint: " SS-OUT SS-BAD @ SS-U. s"  finding(s)" SS-OUT SS-NL
-   SS-BAD @ 0 > IF 1 throw THEN ;
+: SCAN-TREE ( -- )
+   0 BAD !
+   CHECK-STATUS
+   ROOT$ [: SCAN-MD ;] WALK-FILES
+   s" stale-status-lint: " SAY BAD @ SAY-U s"  finding(s)" SAY SAY-NL ;
 
-: SS-CONFIG ( -- )
+: CONFIG ( -- )
    s" tools/stale-status-lint.f [ROOT] [TODAY]" ARGV:USAGE!
    ARGV:PARSE
    0 2 ARGV:EXPECT-POS
-   ARGV:POS# 0 > IF 0 ARGV:POS$ SS-ROOT! ELSE s" ." SS-ROOT! THEN
+   ARGV:POS# 0 > IF 0 ARGV:POS$ ROOT! ELSE s" ." ROOT! THEN
    ARGV:POS# 1 > IF
-      1 ARGV:POS$ SS-PARSE-TODAY SS-TODAY-DAYS !
+      1 ARGV:POS$ PARSE-TODAY TODAY!
    ELSE
-      epoch-seconds DATE:SECONDS-DAY / SS-TODAY-DAYS !
+      epoch-seconds DATE:SECONDS-DAY / TODAY!
    THEN ;
 
-: SS-MAIN ( -- )
-   SS-CONFIG
-   STALE-STATUS-LINT ;
+public
+
+: RUN ( -- n )   \ scan STATUS.md plus every tracked doc; leaves the finding count
+   SCAN-TREE
+   BAD @ ;
+
+: MAIN ( -- )
+   CONFIG
+   RUN 0 > IF 1 throw THEN ;
+
+;package
