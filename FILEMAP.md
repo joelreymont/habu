@@ -47,7 +47,15 @@ points stay listed.
 
 ## Core Checker
 
-- `src/core/util.f` — shared subset helpers.
+- `src/core/util.f` — shared subset helpers. Also owns `PATHZ`/`PATH0`, the
+  NUL-terminating path helper on the open path of every file reader
+  (`SHA256-FILE`, the makers, the REPL file loader). Both of its length guards
+  are load-bearing and both `throw` the named `E-PATH-RANGE` (7134) rather than
+  exiting: a negative length would otherwise write the terminator BEFORE the
+  buffer, and an over-cap length used to `die` 76 uncatchably, which left every
+  `SHA256-FILE` caller unable to report a too-long path. Its constants load
+  before the check hook, so they are not nameable from checked user code; a test
+  that needs the code pins the ABI value.
 - `src/core/cell.f` — target cell-width constant and load-time native/recovery invariant.
 - `src/core/cell-effects.f` — post-hook checked effects for target cell-width words.
 - `src/core/pointer-storage.f` — one-concern `PTR-VARIABLE` pointer-cell definer.
@@ -1637,6 +1645,72 @@ points stay listed.
   reordered block fields, role-family crossings, cross-package proof
   substitution both directions, raw-cell key and proof forgeries,
   unresolvable private mint).
+- `maki/infer/model-provenance.f` — the model artifact-set provenance pin (sealed
+  `package MODELPROV`, inference leaf S3c). `STRUCTURE mprov` is a nested
+  `STRUCTURE provkey` — the 32-byte CONTENT-KEY digest as four cells, with a
+  DERIVED equality — plus a private-mint `prov-proof` token, so a raw four-cell
+  value cannot pose as a pin and `MPROV=` cannot be narrowed by an edit to
+  compare fewer than all four cells. The sole constructor
+  `PIN` folds, in this declared order, the preimage schema version `SCHEMA-V`
+  (first, as its raw little-endian cell bytes exactly as `MDLCFG:BUILD` folds
+  mcfg's schema-version; a source constant rather than a caller argument, so no
+  caller can stamp a pin with a format this build does not implement, and a later
+  format change is an explicit bump that visibly re-renders every stored key),
+  the family label, the revision label, the
+  configuration digest, the tokenizer digest, the tensor artifact's own computed
+  whole-file digest, and the canonical tag texts of `MODEL:adapter`,
+  `WSTORE:residency`, and MODELPROV's own `packing` {as-stored, transposed}
+  family — the packer's transpose convention, which is a fact about the published
+  pack and not GPT2BIND's per-key source orientation. Exactly one input is
+  DERIVED: `PIN` digests the tensor file itself and refuses unless the bytes
+  render to the expected digest, so no pin describes tensor bytes nobody read.
+  The configuration and tokenizer digests are the caller's ASSERTION — PIN is not
+  handed those artifacts and validates only their shape (canonical 64-character
+  lower-case hexadecimal), and labels must be non-empty, bounded, and printable.
+  The artifact path length is taken as a validated `CAD-NUM:byte-len`, so a raw
+  cell cannot reach the core NUL-terminating path primitive through this word.
+  `PIN` also RESETs the process-wide CONTENT-KEY accumulator, so a caller
+  building its own key must compute the pin first. `SCHEMA` publishes the
+  preimage version a stored rendering was produced under, read-only.
+  This is the ARTIFACT-SET identity domain, deliberately
+  distinct from `MDLCFG:cfgkey` (the behavioral configuration domain): the two
+  carry different private proof families, and nothing in the bind or weight
+  lookup path consumes a pin — it is for the pack manifest and compatibility
+  checks. `MPROV=` compares two pins; `KEY-HEX` renders one as canonical
+  hexadecimal for a manifest to store. MODELPROV publishes no inverse, which is
+  NOT unforgeability: until the sealed-destructure / linear-UNMAKE checker
+  capability lands (dot habu-checker-sealed-destructure-d967fc03) the generated
+  `MODELPROV-MPROV:UNMAKE` plus `CONTENT-KEY:HEX-NIB` reconstruct a pin around
+  cells decoded from arbitrary stored text, so a pin proves integrity against
+  ACCIDENT and never possession. The test suite demonstrates that inverse and
+  pins the checker verdicts as they behave today, so the capability landing
+  fails the suite and forces the caveat to be retired. Owns -7635..-7639.
+- `maki/infer/model-provenance-test.f` — MODELPROV acceptance: a pin minted over
+  real fixture files whose digests are the published FIPS-180 SHA-256 vectors
+  (so the artifact leg is anchored outside this engine), two pinned published
+  identity renderings, and a STRUCTURAL fold check that walks the real
+  CONTENT-KEY preimage rows — nine tag- and length-delimited rows in declared
+  order with their exact bytes, the schema-version row first and checked byte by
+  byte against the expected little-endian cell encoding rather than against the
+  module's own fold word, which is what proves the adapter, residency, and
+  packing tags reach the key (a two-adapter runtime comparison is impossible
+  while `MODEL:adapter` has one variant). Key sensitivity per whole input plus
+  hostile reordering, wrong-role, and label-boundary-alias cases, and separately
+  four single-digest-cell differences, which whole-input cases cannot catch.
+  Every refusal as its named throw with each accept/reject boundary checked from
+  BOTH sides (the printable range at `~` and DEL and at a bad leading byte, the
+  hexadecimal ranges at `/`, `:`, backtick and `g`, the label length at 128 and
+  129, and a digest whose only bad character is the 64th) and a no-residue proof.
+  The artifact path is probed at the core path cap, one byte over it (a named
+  refusal from the core primitive, not a process exit), and at a negative length
+  the byte-length role refuses before PIN is entered. Checker negatives for a raw
+  n or a foreign `MDLCFG:cfg-proof` in the proof slot, raw cells as the digest, a
+  raw cell in the path-length slot, the unresolvable private mint and helpers,
+  cfgkey-versus-pin comparison in both directions, and permuted typed convention
+  arguments. The KNOWN forgery gap is pinned as an executable fact — the suite
+  demonstrates the text-to-pin inverse and asserts the checker verdicts as they
+  behave today — and the package seal refuses new definitions. Fixtures live in a
+  per-run `TMPDIR-MKDIR` tree, removed at the end.
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer

@@ -216,7 +216,13 @@ variable FILE-USED
    FILE$ s" .fs" LINT-ENDS-WITH? ;
 
 \ Exact files whose global (unpackaged) definitions implement the core
-\ language/prelude, so a changed global there is not an ownership fault.  All are
+\ language/prelude, so a changed global there is not an ownership fault.
+\ src/core/util.f is the strongest case in the list rather than an exception to
+\ it: it is the FIRST core prefix source, it contains no `package` at all, it
+\ loads before the check hook exists, and the checker registers the words it
+\ defines (CORE-STR=, PATHZ, PATH0) as global primitive axioms that every later
+\ prefix file and the makers resolve bare -- giving them a package owner would
+\ break those axiom rows and every core caller.  All the entries are
 \ entirely global except src/core/type-family.f, which also opens inner packages:
 \ it is exempt only for its global surface, and only until the TFAM sealing work
 \ (dot habu-tfam-2b-sealed-1b77662c) seals that surface into packages, when this
@@ -233,6 +239,7 @@ variable FILE-USED
 \ global added beside DEFTYPE or STRUCTURE is still rejected.
 : GLOBAL-IMPLEMENTATION? ( -- bool )
    FILE$ s" lib/prelude.f" LINT-STR= if true exit then
+   FILE$ s" src/core/util.f" LINT-STR= if true exit then          \ first prefix source; see header
    FILE$ s" src/core/sumtype.f" LINT-STR= if true exit then
    FILE$ s" src/core/roles.f" LINT-STR= if true exit then
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then

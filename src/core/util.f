@@ -61,9 +61,23 @@ variable REG-PROT-N   0 REG-PROT-N !
 	   SEQ @ 0 <> ;
 
 \ NUL-terminated path helper for open: copy (a,u) to d, append NUL.
+\ Both guards below are load-bearing and neither may be a die. This is a library
+\ path primitive on the open path of every file reader (SHA256-FILE, the makers,
+\ the REPL file loader), so a caller handed a bad length must get a catchable
+\ named refusal, not a process exit: die belongs to build-time makers and CLI
+\ boundaries (docs/forth.md § Errors), and an uncatchable exit here made every
+\ SHA256-FILE caller unable to report a too-long path. The negative check is the
+\ memory-safety guard - without it `0 d u + c!` writes the NUL BEFORE the buffer
+\ (u = -1 corrupts one byte; a large negative u faults), because the copy loop
+\ `0 BEGIN dup u <` never runs for u < 0 and cannot bound the terminator write.
+\ The checker models PATHZ/path0 as primitives with a stack effect only, so this
+\ throw is invisible to it; callers that want a process exit still get one from
+\ an uncaught throw at their top level.
 256 constant PATH-CAP
+7134 constant E-PATH-RANGE   \ path length negative, or longer than PATH-CAP holds with its NUL
 : PATHZ {: a:ptr u d:ptr :} ( ptr u8 n ptr u8 -- )
-   u 1 + PATH-CAP > IF s" path too long" 76 die THEN
+   u 0 < IF E-PATH-RANGE throw THEN
+   u 1 + PATH-CAP > IF E-PATH-RANGE throw THEN
    0 BEGIN dup u < WHILE  dup a + c@  over d + c!  1 + REPEAT drop  0 d u + c! ;
 create PZB PATH-CAP allot
 

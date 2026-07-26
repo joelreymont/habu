@@ -265,6 +265,8 @@ SUITE maki/infer/model-config-test.f
 ;SUITE
 SUITE maki/infer/gpt2-roles-test.f
 ;SUITE
+SUITE maki/infer/model-provenance-test.f
+;SUITE
 SUITE maki/journal-test.f
 ;SUITE
 SUITE maki/rev-test.f
