@@ -76,15 +76,26 @@ require maki/competitive-evidence.f   \ reopen package CEVID: RENDER + the typed
 package CEVID
 public
 
-\ Typed LOAD outcome: ok carries the rehydrated typed evidence handle; absent is no durable
-\ file; malformed is a present file that fails structural decode / canonicalisation / the
-\ content-path identity check. A bespoke per-package sum (the diff-case-store shape), never
-\ a value+flag sentinel.
-SUMTYPE load-result 0
-   VARIANT ok evidence ;VARIANT
+\ Typed LOAD outcome: ok carries the rehydrated typed evidence handle in its `evidence`
+\ field; absent is no durable file; malformed is a present file that fails structural decode /
+\ canonicalisation / the content-path identity check. A bespoke per-package sum (the
+\ diff-case-store shape), never a value+flag sentinel.
+\
+\ Declared through the unified ENUM front end in full mode (the arity after the name selects
+\ it), so the payload is a named FIELD rather than a positional one. The name is this file's
+\ own: the LOAD, DECODE and LOAD-surface contracts all write the outcome as `ok<evidence>`.
+\ `FIELD evidence evidence` reads as a repetition but is not one - FIELD takes a name and then
+\ a type, and the carried type here is CEVID's own `evidence` product, which is spelled bare
+\ inside this package. The generated CEVID-LOAD--RESULT:OK / :ABSENT / :MALFORMED constructors
+\ and every MATCH site are unchanged, because both the spellings and the payload binding order
+\ derive from the package, the family tail and the declaration order - none of which the mode
+\ touches. Note the tail `load-result` is shared with CASESTORE (maki/db/diff-case-store.f):
+\ the two families are distinct and never unify, which the suite pins in both directions.
+ENUM load-result 0
+   VARIANT ok FIELD evidence evidence ;VARIANT
    VARIANT absent ;VARIANT
    VARIANT malformed ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

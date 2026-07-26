@@ -68,15 +68,25 @@ require maki/db/diff-runner.f      \ DIFFRUN run-result / ref-result / case-verd
 package CASESTORE
 public
 
-\ Typed LOAD outcome: ok carries the pooled record slot; absent is no durable file; malformed is
-\ a present file of the wrong size; mismatch is a present file whose embedded descriptor does not
-\ match the looked-up case (content-path corruption). A bespoke per-package sum, not result<a,b>.
-SUMTYPE load-result 1
-   VARIANT ok a ;VARIANT
+\ Typed LOAD outcome: ok carries the pooled record slot in its `slot` field; absent is no
+\ durable file; malformed is a present file of the wrong size; mismatch is a present file whose
+\ embedded descriptor does not match the looked-up case (content-path corruption). A bespoke
+\ per-package sum, not result<a,b>.
+\
+\ Declared through the unified ENUM front end in full mode (the arity after the name selects
+\ it), so the payload is a named FIELD rather than a positional one. The name is this file's
+\ own: the LOAD contract above writes the outcome as `ok<slot>`, the pool is addressed by slot
+\ throughout (SLOT-ALLOC, LREC-AT, LOAD-CAP "record slots"), and the whole rehydrated-read
+\ surface below binds that value as the slot. The generated CASESTORE-LOAD--RESULT:OK /
+\ :ABSENT / :MALFORMED / :MISMATCH constructors and every MATCH site are unchanged, because
+\ both the spellings and the payload binding order derive from the package, the family tail
+\ and the declaration order - none of which the mode touches.
+ENUM load-result 1
+   VARIANT ok FIELD slot a ;VARIANT
    VARIANT absent ;VARIANT
    VARIANT malformed ;VARIANT
    VARIANT mismatch ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

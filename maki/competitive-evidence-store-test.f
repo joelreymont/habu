@@ -29,7 +29,13 @@ require lib/test.f
 require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
+require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE! plus REFLECT, which reads the registry
 require maki/competitive-evidence-store.f
+\ The OTHER production `load-result`. Loaded here so both families sharing the tail are
+\ registered in ONE process: that is the only condition under which the pair-keyed
+\ identity pins and the cross-package non-unification negatives below actually prove
+\ anything. With just one of them loaded the tail would be trivially unambiguous.
+require maki/db/diff-case-store.f
 
 package CEVIDSTORE-TEST
 
@@ -159,6 +165,55 @@ create CT-BUF 1024 allot  variable CT-BU        \ stable copy (a path / render s
 : F-CANON$ ( -- ptr u8 n )    \ a non-canonical value spelling (leading zero) -> E-CEVIDST-CANON
    s" cevid/v1|wl=saxpy|rev=saxpy-v4|sh=n1m|pol=exact|tgt=sm_87|comp=ptxas-12.6|cache=warm|pr=wallclock|bl=triton|lat=na:not-measured|thr=064209:gbps|byt=2516582400:bytes|launch=200:count|mem=na:not-measured|energy=25:watts|schema=cevid/v1" ;
 
+\ ---- load-result: construct each arm directly and dispatch it back ------------------------
+\ LOAD and DECODE reach these arms only through a real file probe or a real byte decode.
+\ These construct each arm DIRECTLY through the generated constructors the LR-* wrappers
+\ compile against, and match it straight back, so the named `evidence` FIELD is proven to
+\ bind in declaration order. Construction and matching are separate words because the
+\ checker requires MATCH's scrutinee to be a concretely instantiated family value.
+: MK-OK ( CEVID:evidence -- CEVID:load-result )   CEVID-LOAD--RESULT:OK ;
+: MK-AB ( -- CEVID:load-result )                  CEVID-LOAD--RESULT:ABSENT ;
+: MK-MF ( -- CEVID:load-result )                  CEVID-LOAD--RESULT:MALFORMED ;
+
+: ARM>N ( CEVID:load-result -- n )     \ 1 ok / 2 absent / 3 malformed
+   MATCH CEVID:load-result
+      ok        OF drop 1 ENDOF
+      absent    OF 2 ENDOF
+      malformed OF 3 ENDOF
+   ;MATCH ;
+
+\ The carried handle is re-ENCODEd rather than compared as a cell: the render is derived
+\ from the whole evidence, so a payload the constructor dropped, zeroed or swapped cannot
+\ reproduce the golden row. That is the non-zero payload discipline for a handle payload -
+\ a zeroed handle has no valid render at all, and an exchanged one renders differently.
+: OK>ENC$ ( CEVID:load-result -- ptr u8 n )       \ the ok arm's payload, re-encoded
+   MATCH CEVID:load-result
+      ok        OF CEVID:ENCODE ENDOF
+      absent    OF -777 throw ENDOF
+      malformed OF -777 throw ENDOF
+   ;MATCH ;
+
+: RT-ARM-OK ( -- n )    ST-SAXPY MK-OK ARM>N ;
+: RT-ARM-AB ( -- n )    MK-AB ARM>N ;
+: RT-ARM-MF ( -- n )    MK-MF ARM>N ;
+: RT-OK-CARRIES$ ( -- ptr u8 n )   ST-SAXPY MK-OK OK>ENC$ ;
+: RT-OK-DISTINCT ( -- bool )       \ the field carries THIS handle, not just any handle
+   ST-GEMM MK-OK OK>ENC$ CT-COPY
+   ST-SAXPY MK-OK OK>ENC$ {: sa:ptr su:n :}
+   su CT-BU @ = if CT-BUF sa su MEM= 0= else true then ;
+
+\ Every row below runs AFTER T-RESET: that call zeroes both the case and the FAILURE
+\ counter, so an assertion placed above it is reported by T-REPORT as if it had never run -
+\ a red row there would leave the suite green.
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: UNRESOLVED ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! 1 T= ;
+
+\ The two production families that share the tail `load-result`. Identity is the tail PLUS
+\ the constructor package its variants carry; the bare tail names neither of them.
+: LR$ ( -- ptr u8 n ptr u8 n )     s" load-result" s" CEVID-LOAD--RESULT" ;
+: CS-LR$ ( -- ptr u8 n ptr u8 n )  s" load-result" s" CASESTORE-LOAD--RESULT" ;
+
 T-RESET
 
 \ ==== (a) byte goldens: the derived canonical row (commit these) ===========================
@@ -193,6 +248,80 @@ F-LABEL$     DEC>N 2 T=
 F-UNIT$      DEC>N 2 T=
 F-CAP$       DEC>N 2 T=
 F-CANON$     DEC>N 2 T=
+
+\ ==== (g) load-result construct + dispatch, per arm ========================================
+RT-ARM-OK 1 T=                 \ a constructed ok dispatches to its own arm
+RT-ARM-AB 2 T=                 \ absent dispatches to its own arm
+RT-ARM-MF 3 T=                 \ malformed dispatches to its own arm
+RT-OK-CARRIES$ SAXPY-GOLD$ T$= \ and the named field carries the handle through unchanged
+RT-OK-DISTINCT TTRUE           \ a DIFFERENT handle comes back different, so the pin is live
+
+\ ==== (h) the generated constructors: exact spelling + exact effect ========================
+\ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot
+\ resolve and -1 only for one it resolved and accepted, so a -1 means EXACTLY this
+\ constructor name typechecked; a 0 means the name resolved and the TYPES were refused. The
+\ two 1-verdict rows are the calibration that proves that split.
+s" CC-OK ( CEVID:evidence -- CEVID:load-result ) CEVID-LOAD--RESULT:OK" YES
+s" CC-AB ( -- CEVID:load-result ) CEVID-LOAD--RESULT:ABSENT" YES
+s" CC-MF ( -- CEVID:load-result ) CEVID-LOAD--RESULT:MALFORMED" YES
+\ Forge negatives on the ok payload slot: a raw cell cannot fill it, the result is not a
+\ bare scalar, and the payload is mandatory.
+s" CC-RAW ( n -- CEVID:load-result ) CEVID-LOAD--RESULT:OK" NO
+s" CC-BARE ( CEVID:evidence -- n ) CEVID-LOAD--RESULT:OK" NO
+s" CC-NONE ( -- CEVID:load-result ) CEVID-LOAD--RESULT:OK" NO
+s" CC-K1 ( -- CEVID:load-result ) CEVID-LOAD--RESULT:NOPE" UNRESOLVED
+s" CC-K2 ( -- CEVID:load-result ) CEVID-LOAD--RESULTX:ABSENT" UNRESOLVED
+
+\ ==== (i) the shared tail: two production families, neither unifying with the other =======
+\ This is the cross-PACKAGE negative, and it needs no synthetic twin: maki/db/diff-case-store.f
+\ declares a REAL second `load-result`, so each row below asks one production store's
+\ constructor to build the other store's result. Both directions, on the payload arm and on
+\ the payloadless arms. The YES rows above are the positive controls that keep these from
+\ passing by being unresolvable rather than ill-typed.
+s" DX-1 ( CEVID:evidence -- CASESTORE:load-result<CEVID:evidence> ) CEVID-LOAD--RESULT:OK" NO
+s" DX-2 ( n -- CEVID:load-result ) CASESTORE-LOAD--RESULT:OK" NO
+s" DX-3 ( -- CASESTORE:load-result<n> ) CEVID-LOAD--RESULT:ABSENT" NO
+s" DX-4 ( -- CEVID:load-result ) CASESTORE-LOAD--RESULT:ABSENT" NO
+s" DX-5 ( -- CASESTORE:load-result<n> ) CEVID-LOAD--RESULT:MALFORMED" NO
+s" DX-6 ( -- CEVID:load-result ) CASESTORE-LOAD--RESULT:MALFORMED" NO
+\ CASESTORE's fourth case does not exist in CEVID's family at all.
+s" DX-7 ( -- CEVID:load-result ) CEVID-LOAD--RESULT:MISMATCH" UNRESOLVED
+
+\ ==== (j) the recorded declaration shape, pair-keyed ======================================
+\ Both families are registered in this process and share the tail, so these two blocks are
+\ the R7 proof: each identity resolves EXACTLY one family, and the two resolve DIFFERENT
+\ families - ARITY 0 vs 1 and VARS 3 vs 4 could not both hold if the pair-keying collapsed
+\ to the tail. Full-form families get no enum-census row, so these pins are the only
+\ case-order and payload-slot detector either family has.
+LR$ REFLECT:FAMS 1 T=
+LR$ REFLECT:KIND TK-SUM T=              \ a payload family stays a general sum ...
+LR$ REFLECT:KIND TK-ENUM = 0 T=         \ ... and is NOT recorded as a compact enum
+LR$ REFLECT:ARITY 0 T=                  \ CEVID's carries a concrete handle, no parameter
+LR$ REFLECT:WIDTH 2 T=                  \ one payload cell plus one tag cell
+LR$ REFLECT:VIS 1 T=                    \ public, so the constructors are generated
+LR$ REFLECT:VARS 3 T=
+LR$ 0 REFLECT:ARM$ s" ok" T$=           \ case order fixes the tags
+LR$ 1 REFLECT:ARM$ s" absent" T$=
+LR$ 2 REFLECT:ARM$ s" malformed" T$=
+LR$ 0 REFLECT:ARM-CTOR$ s" CEVID-LOAD--RESULT" T$=      \ constructor spelling
+LR$ 2 REFLECT:ARM-CTOR$ s" CEVID-LOAD--RESULT" T$=
+LR$ 0 REFLECT:ARM-FLDS 1 T=             \ exactly one named cell on ok, none elsewhere
+LR$ 1 REFLECT:ARM-FLDS 0 T=
+LR$ 2 REFLECT:ARM-FLDS 0 T=
+LR$ 0 s" evidence" REFLECT:ARM-SLOT 0 T=   \ the payload is named `evidence` at slot 0
+LR$ 0 s" evidence" REFLECT:ARM-CELLS 1 T=
+LR$ 1 s" evidence" REFLECT:ARM-SLOT -1 T=  \ the name is per-arm: absent carries none
+LR$ 0 s" ev" REFLECT:ARM-SLOT -1 T=        \ and it is `evidence`, not the EVID-style `ev`
+\ the same tail under the OTHER constructor package is the OTHER family, not this one.
+CS-LR$ REFLECT:FAMS 1 T=
+CS-LR$ REFLECT:ARITY 1 T=               \ CASESTORE's is parametric where CEVID's is not
+CS-LR$ REFLECT:VARS 4 T=                \ and has the fourth `mismatch` case
+CS-LR$ 3 REFLECT:ARM$ s" mismatch" T$=
+CS-LR$ 0 s" slot" REFLECT:ARM-SLOT 0 T=    \ its payload is named `slot`, not `evidence`
+CS-LR$ 0 s" evidence" REFLECT:ARM-SLOT -1 T=
+LR$ 0 s" slot" REFLECT:ARM-SLOT -1 T=      \ and CEVID's is not named `slot`
+\ a tail with a constructor package no family carries resolves nothing at all.
+s" load-result" s" NOPE-LOAD--RESULT" REFLECT:FAMS 0 T=
 
 CEVID:RESET
 ;package

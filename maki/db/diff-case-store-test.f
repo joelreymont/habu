@@ -16,6 +16,7 @@ require lib/test.f
 require lib/string.f
 require lib/fs.f
 require lib/fs-mutate.f
+require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE! plus REFLECT, which reads the registry
 require maki/db/diff-case-store.f
 require maki/db/diff-runner.f
 require maki/db/diff-suite.f
@@ -200,6 +201,82 @@ s" hb-casestore-test" TMPDIR-MKDIR CASESTORE:ROOT!
 \ ---- ROOT+ creates the store tree ----------------------------------------------------
 : T-ROOT-PLUS ( -- bool )   CASESTORE:ROOT+ EXISTS? ;
 
+\ ---- load-result: construct each arm directly and dispatch it back -------------------
+\ LOAD reaches these arms only through a real file probe. These construct each arm
+\ DIRECTLY through the generated constructors the LR-* wrappers compile against, and
+\ match it straight back, so the named `slot` FIELD is proven to bind in declaration
+\ order. Construction and matching are separate words on purpose: the checker requires
+\ MATCH's scrutinee to be a concretely instantiated family value, so a single word that
+\ both constructs and matches is refused.
+: MK-OK ( n -- CASESTORE:load-result<n> )   CASESTORE-LOAD--RESULT:OK ;
+: MK-AB ( -- CASESTORE:load-result<n> )     CASESTORE-LOAD--RESULT:ABSENT ;
+: MK-MF ( -- CASESTORE:load-result<n> )     CASESTORE-LOAD--RESULT:MALFORMED ;
+: MK-MM ( -- CASESTORE:load-result<n> )     CASESTORE-LOAD--RESULT:MISMATCH ;
+
+: ARM>N ( CASESTORE:load-result<n> -- n )   \ 1 ok / 2 absent / 3 malformed / 4 mismatch
+   MATCH CASESTORE:load-result
+      ok        OF drop 1 ENDOF
+      absent    OF 2 ENDOF
+      malformed OF 3 ENDOF
+      mismatch  OF 4 ENDOF
+   ;MATCH ;
+
+: OK-SLOT ( CASESTORE:load-result<n> -- n )   \ the ok arm's payload, else -1
+   MATCH CASESTORE:load-result
+      ok        OF {: got:n :} got ENDOF
+      absent    OF -1 ENDOF
+      malformed OF -1 ENDOF
+      mismatch  OF -1 ENDOF
+   ;MATCH ;
+
+\ The compared payload is deliberately NON-ZERO. A slot is a small pool index whose
+\ ring starts at 0, so a payload the constructor dropped or zeroed would read back as
+\ 0; comparing against 0 would pass on exactly the bug this pin exists to catch.
+: RT-OK-ARM ( -- n )    5 MK-OK ARM>N ;
+: RT-OK-SLOT ( -- n )   5 MK-OK OK-SLOT ;
+: RT-AB ( -- n )        MK-AB ARM>N ;
+: RT-MF ( -- n )        MK-MF ARM>N ;
+: RT-MM ( -- n )        MK-MM ARM>N ;
+: RT-AB-SLOT ( -- n )   MK-AB OK-SLOT ;      \ the payloadless arms of OK-SLOT are live
+
+\ Same discipline on the PRODUCTION path. The pool ring hands out slot 0 first, and a
+\ fresh store's only record lives in slot 0, so a LOAD whose payload was dropped would
+\ still read the right bytes through slot 0 and pass. Taking one handout first moves the
+\ compared slot off 0, and the non-zero check below is what keeps that escape closed.
+: LOAD-2ND-SLOT ( -- n )
+   CASESTORE:RESET
+   SUITE-A ENV-A 3  42 >PROD  42 >VAL  >AGR  CASESTORE:PUT
+   SUITE-A ENV-A 3 LOAD-SLOT drop                \ burn the slot-0 handout
+   SUITE-A ENV-A 3 LOAD-SLOT ;
+: T-LOAD-NZ ( -- bool )                          \ a non-zero slot still rehydrates its record
+   LOAD-2ND-SLOT {: s:n :}
+   s 0 <>
+   s CASESTORE:PARAM@ 3 = and
+   s CASESTORE:SUBJ-VAL@ 42 = and ;
+
+\ ---- the generated constructors: exact spelling + exact effect -----------------------
+\ load-result moved to the unified ENUM front end in full mode, so these pins are the
+\ migration's identity proof. The SPELLING is load-bearing: the checker answers 1
+\ (uncheckable) for a name it cannot resolve and -1 only for one it resolved and
+\ accepted, so a -1 means EXACTLY this constructor name typechecked; a 0 means the name
+\ resolved and the TYPES were refused. The two 1-verdict rows are the calibration that
+\ proves that three-way split, so a 0 below can never be a silently missing name.
+\ Every row below runs AFTER T-RESET: that call zeroes both the case and the FAILURE
+\ counter, so an assertion placed above it is reported by T-REPORT as if it had never
+\ run - a red row there would leave the suite green.
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: UNRESOLVED ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! 1 T= ;
+
+\ ---- what the declaration recorded --------------------------------------------------
+\ The MATCH projections above dispatch on case NAME, so they are blind to a case-order
+\ change, and full-form families get no enum-census row - these pins are the only
+\ case-order and payload-slot detector this family has. The identity is the family tail
+\ PLUS the constructor package its variants carry, which matters unusually much here:
+\ maki/competitive-evidence-store.f declares its OWN `load-result`, so the bare tail is
+\ ambiguous repo-wide and only the pair names this family. FAMS = 1 is that assertion.
+: LR$ ( -- ptr u8 n ptr u8 n )   s" load-result" s" CASESTORE-LOAD--RESULT" ;
+
 T-RESET
 
 T-ROUNDTRIP TTRUE          \ input/outputs/outcome/environment all durably rehydrated
@@ -215,6 +292,51 @@ T-PATH-STABLE TTRUE
 T-MALFORMED 2 T=          \ wrong-size file -> malformed
 T-MISMATCH 3 T=          \ wrong-content file at the content path -> mismatch
 T-ROOT-PLUS TTRUE
+RT-OK-ARM 1 T=             \ a constructed ok dispatches to its own arm
+RT-OK-SLOT 5 T=            \ and carries its named payload through unchanged (non-zero)
+RT-AB 2 T=                 \ absent dispatches to its own arm
+RT-MF 3 T=                 \ malformed dispatches to its own arm
+RT-MM 4 T=                 \ mismatch dispatches to its own arm
+RT-AB-SLOT -1 T=           \ the no-payload arms of OK-SLOT are live
+T-LOAD-NZ TTRUE            \ a real LOAD onto a NON-ZERO slot rehydrates that slot's record
+
+\ ---- the generated constructors: exact spelling + exact effect -----------------------
+s" DC-OK ( n -- CASESTORE:load-result<n> ) CASESTORE-LOAD--RESULT:OK" YES
+s" DC-AB ( -- CASESTORE:load-result<n> ) CASESTORE-LOAD--RESULT:ABSENT" YES
+s" DC-MF ( -- CASESTORE:load-result<n> ) CASESTORE-LOAD--RESULT:MALFORMED" YES
+s" DC-MM ( -- CASESTORE:load-result<n> ) CASESTORE-LOAD--RESULT:MISMATCH" YES
+\ Forge negatives on the ok payload slot: the result is not a bare scalar, the payload is
+\ mandatory, and the payload must match the instantiated type parameter rather than any
+\ same-width cell.
+s" DC-BARE ( n -- n ) CASESTORE-LOAD--RESULT:OK" NO
+s" DC-NONE ( -- CASESTORE:load-result<n> ) CASESTORE-LOAD--RESULT:OK" NO
+s" DC-INST ( n -- CASESTORE:load-result<CAD-KIND:config-id> ) CASESTORE-LOAD--RESULT:OK" NO
+\ calibration: an unknown case name and an unknown constructor package resolve to nothing.
+s" DC-K1 ( -- CASESTORE:load-result<n> ) CASESTORE-LOAD--RESULT:NOPE" UNRESOLVED
+s" DC-K2 ( -- CASESTORE:load-result<n> ) CASESTORE-LOAD--RESULTX:ABSENT" UNRESOLVED
+
+\ ---- the recorded declaration shape -------------------------------------------------
+LR$ REFLECT:FAMS 1 T=
+LR$ REFLECT:KIND TK-SUM T=              \ a payload family stays a general sum ...
+LR$ REFLECT:KIND TK-ENUM = 0 T=         \ ... and is NOT recorded as a compact enum
+LR$ REFLECT:ARITY 1 T=                  \ the one type parameter the slot rides in
+LR$ REFLECT:WIDTH 2 T=                  \ one payload cell plus one tag cell
+LR$ REFLECT:VIS 1 T=                    \ public, so the constructors are generated
+LR$ REFLECT:VARS 4 T=
+LR$ 0 REFLECT:ARM$ s" ok" T$=           \ case order fixes the tags
+LR$ 1 REFLECT:ARM$ s" absent" T$=
+LR$ 2 REFLECT:ARM$ s" malformed" T$=
+LR$ 3 REFLECT:ARM$ s" mismatch" T$=
+LR$ 0 REFLECT:ARM-CTOR$ s" CASESTORE-LOAD--RESULT" T$=   \ constructor spelling
+LR$ 3 REFLECT:ARM-CTOR$ s" CASESTORE-LOAD--RESULT" T$=
+LR$ 0 REFLECT:ARM-FLDS 1 T=             \ exactly one named cell on ok, none elsewhere
+LR$ 1 REFLECT:ARM-FLDS 0 T=
+LR$ 2 REFLECT:ARM-FLDS 0 T=
+LR$ 3 REFLECT:ARM-FLDS 0 T=
+LR$ 0 s" slot" REFLECT:ARM-SLOT 0 T=    \ the payload is named `slot` at payload slot 0
+LR$ 0 s" slot" REFLECT:ARM-CELLS 1 T=
+LR$ 1 s" slot" REFLECT:ARM-SLOT -1 T=   \ the name is per-arm: absent carries none
+LR$ 0 s" a" REFLECT:ARM-SLOT -1 T=      \ the old positional spelling is not a field name
 
 T-REPORT
 
