@@ -28,6 +28,28 @@ require maki/db/action.f
 require maki/db/obligation.f
 require maki/db/diagnostic.f
 
+\ ---- same-shape twin for the register outcome -----------------------------------
+\ regr-twin is ACTION:register-result's SHAPE under a different name: same arity, same
+\ three variants in the same order, same named payload field. It exists only so the
+\ negatives below can prove the register outcome is NOMINAL - two identically shaped ENUM
+\ families never unify, in either direction. It lives in its OWN package, not in the
+\ reopened package ACTION, because a test must not add public words to the production
+\ package's surface; and it must be public, because a private family publishes no
+\ constructors at all, which would let the negatives pass by being unresolvable rather
+\ than ill-typed. The tail is kept short on purpose: the generated constructor package is
+\ ACTION--TEST-REGR--TWIN at 23 characters, clear of the 32-character readability cap
+\ above which a generated name falls back to an unreadable hash spelling.
+package ACTION-TEST
+public
+
+ENUM regr-twin 1
+   VARIANT ok FIELD id a ;VARIANT
+   VARIANT incomplete ;VARIANT
+   VARIANT conflict ;VARIANT
+;ENUM
+
+;package
+
 package ACTION
 
 create BUF   8192 allot
@@ -175,6 +197,76 @@ variable EA-K                                   \ bad index handed to a catch xt
    id ACTION-ART--KIND:REVISION ALL-EFF ALL-CAP DISPATCH DCODE
    RESEED-A ;
 
+\ ---- how the two outcome families are DECLARED ---------------------------------
+\ register-result is a full-mode payload ENUM and dispatch-result is a COMPACT ENUM (one
+\ bare token per payloadless case) under the wave ruling. Both spellings are one cell wide
+\ and both give the same MATCH surface, so no consumer can tell the declaration form apart
+\ by behaviour - which is exactly why the recorded kind is pinned here, read live out of
+\ the family registry through the read-only accessors the checker publishes for this
+\ purpose. Writing either declaration back as SUMTYPE, or writing dispatch-result in the
+\ arity-headed full form, changes the recorded kind and turns this suite red. The same
+\ probe pins the generated constructor package that the DR-* and RR-* wrappers compile
+\ against, so a constructor rename cannot pass unnoticed either.
+variable KP-DR                                  \ dispatch-result's row in the live family registry
+variable KP-RR                                  \ register-result's row
+variable KP-VAR                                 \ a case's row in the variant registry
+: KP-NAMED? ( n ptr u8 n -- bool ) {: id:n a:ptr u:n :}  id TFAM-NAME$ a u STR= ;
+: KP-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}     \ family row for tail `a u`, or -1
+   TFAM-N@ 0 ?do  i a u KP-NAMED? if i unloop exit then  loop  -1 ;
+
+\ ---- hostile decoy: identity is by NAME, not by shape --------------------------
+\ drother repeats dispatch-result's five case names in the same order at the same one-cell
+\ width. It is a DIFFERENT type in both directions. Declared private here, so it publishes
+\ no constructors of its own and the MATCH negatives cannot pass by being unresolvable.
+ENUM drother
+   accepted unknown-action wrong-kind unauthorized unsupported
+;ENUM
+
+\ ---- both outcome families construct and dispatch through MATCH ----------------
+\ REGISTER and DISPATCH reach these arms only through a real registration or gate run.
+\ These construct each variant DIRECTLY through the production wrappers and match it
+\ straight back, so the register payload FIELD is proven to bind in declaration order and
+\ every dispatch case is proven to keep its own tag.
+: NOWORD ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  1 T= ;
+
+: TT-MK-RR-OK ( CAD-KIND:action-id -- register-result<CAD-KIND:action-id> )  RR-OK ;
+: TT-MK-RR-INC ( -- register-result<CAD-KIND:action-id> )   RR-INCOMPLETE ;
+: TT-MK-RR-CON ( -- register-result<CAD-KIND:action-id> )   RR-CONFLICT ;
+
+: TT-RR-RAW ( register-result<CAD-KIND:action-id> -- n )    \ ok payload's registry index, else -1
+   MATCH register-result
+      ok         OF {: got:CAD-KIND:action-id :} got ACTION-ID>RAW ENDOF
+      incomplete OF -1 ENDOF
+      conflict   OF -1 ENDOF
+   ;MATCH ;
+
+\ TT-REG-2ND registers an action whose registry index is at least one: RESEED-A leaves the
+\ nine seeded actions occupying indices 0..8, so the test-owned name below can only land at
+\ 9 or beyond. Index 0 is a legitimate index and is also what a zeroed payload reads back
+\ as, so a payload comparison riding index 0 would pass on a dropped payload; TT-RR-NZ pins
+\ the compared index non-zero.
+: TT-REG-2ND ( -- CAD-KIND:action-id )
+   RESEED-A                                     \ the nine seeded actions take indices 0..8
+   DECL-COMPLETE s" TEST:C1-PAYLOAD" REG-ID ;
+
+: TT-RR-ARM ( -- n )      TT-REG-2ND TT-MK-RR-OK RCODE ;
+: TT-RR-RT ( -- n )                             \ 0 = the interned id came back unchanged
+   TT-REG-2ND dup ACTION-ID>RAW {: want:n :}
+   TT-MK-RR-OK TT-RR-RAW want = if 0 else 1 then ;
+: TT-RR-NZ ( -- bool )    TT-REG-2ND ACTION-ID>RAW 0 > ;
+: TT-RR-INC-ARM ( -- n )  TT-MK-RR-INC RCODE ;
+: TT-RR-CON-ARM ( -- n )  TT-MK-RR-CON RCODE ;
+: TT-RR-INC-RAW ( -- n )  TT-MK-RR-INC TT-RR-RAW ;   \ a payloadless arm carries no index
+
+\ every dispatch case round-trips: constructor -> MATCH -> its own ordinal
+: TT-DR-ACC ( -- n )   DR-ACCEPTED DCODE ;
+: TT-DR-UNK ( -- n )   DR-UNKNOWN DCODE ;
+: TT-DR-WK ( -- n )    DR-WRONG-KIND DCODE ;
+: TT-DR-UNA ( -- n )   DR-UNAUTHORIZED DCODE ;
+: TT-DR-UNS ( -- n )   DR-UNSUPPORTED DCODE ;
+
+: TT-RESTORE ( -- n )   RESEED-A COUNT ;        \ drop the test-owned registration again
+
 \ ---- seeded declarations reflect the landed surfaces ---------------------------
 : AT-COUNT ( -- n )            RESEED-A COUNT ;
 : AT-COMMIT-INPUT ( -- n )     TX-COMMIT-ID INPUT-KIND@ KIND>N ;     \ transaction = 4
@@ -308,6 +400,94 @@ AT-SCHEMA-OUTPUT 1 T=
 ' EA-WRAP-AT E-ACTION-ID TTHROWS                \ k whose *cells wraps ORD+0
 EA-CANARY     TTRUE                             \ rejected: no ORD-BUILD, no OOB write, no nominal escape
 EA-INRANGE-OK TTRUE                             \ every 0<=k<COUNT returns a validated, in-range id
+
+\ ---- the recorded declaration kind (read live from the family registry) --------
+s" dispatch-result" KP-FIND KP-DR !
+s" register-result" KP-FIND KP-RR !
+TK-ENUM TK-SUM = 0 T=                           \ the two kinds are distinct, so the pins below bite
+KP-DR @ 0 < 0 T=                                \ the compact family is registered ...
+KP-DR @ TFAM-KIND@ TK-ENUM T=                   \ ... as an enum family (the pinned ruling) ...
+KP-DR @ TFAM-KIND@ TK-SUM = 0 T=                \ ... and not as a general sum
+KP-DR @ TFAM-ARITY@ 0 T=                        \ compact form declares no type parameters
+KP-DR @ TFAM-WIDTH@ 1 T=                        \ one cell, the same width the sum form had
+KP-DR @ TFAM-PUBLIC? -1 T=                      \ public, so the constructors are generated
+KP-DR @ TFAM-VAR-COUNT@ 5 T=
+KP-DR @ TFAM-VAR-START@ KP-VAR !
+KP-VAR @     SUMV-NAME$ s" accepted" T$=        \ case order fixes the tags
+KP-VAR @ 1 + SUMV-NAME$ s" unknown-action" T$=
+KP-VAR @ 2 + SUMV-NAME$ s" wrong-kind" T$=
+KP-VAR @ 3 + SUMV-NAME$ s" unauthorized" T$=
+KP-VAR @ 4 + SUMV-NAME$ s" unsupported" T$=
+KP-VAR @     SUMV-CTOR-PKG$ s" ACTION-DISPATCH--RESULT" T$=   \ constructor spelling
+KP-VAR @ 4 + SUMV-CTOR-PKG$ s" ACTION-DISPATCH--RESULT" T$=
+\ The payload family is pinned the other way round, and that asymmetry is the point.
+\ Only the COMPACT form registers a family as an enum; a full-mode declaration - the
+\ arity-headed form with named payload FIELDs - is still recorded as a general SUM, the
+\ same kind the legacy SUMTYPE spelling produced. So register-result's recorded kind did
+\ NOT change in this migration, which is also why full-form sites stay out of the
+\ byte-compared enum census while compact sites enter it. Pinning TK-SUM here means a
+\ later rewrite of register-result into the compact form - which would silently drop its
+\ ok payload - flips this to TK-ENUM and turns the suite red.
+KP-RR @ 0 < 0 T=                                \ the payload family is registered ...
+KP-RR @ TFAM-KIND@ TK-SUM T=                    \ ... as a general sum, unchanged by full mode ...
+KP-RR @ TFAM-KIND@ TK-ENUM = 0 T=               \ ... and NOT as a compact enum family
+KP-RR @ TFAM-ARITY@ 1 T=                        \ full mode keeps the one type parameter
+KP-RR @ TFAM-VAR-COUNT@ 3 T=
+KP-RR @ TFAM-VAR-START@ KP-VAR !
+KP-VAR @     SUMV-NAME$ s" ok" T$=
+KP-VAR @ 1 + SUMV-NAME$ s" incomplete" T$=
+KP-VAR @ 2 + SUMV-NAME$ s" conflict" T$=
+KP-VAR @     SUMV-CTOR-PKG$ s" ACTION-REGISTER--RESULT" T$=
+
+\ ---- both families construct and dispatch through MATCH ------------------------
+TT-RR-ARM 0 T=                                  \ a constructed ok reaches the ok arm
+TT-RR-RT 0 T=                                   \ and carries its payload through unchanged
+TT-RR-NZ TTRUE                                  \ against a non-zero index, so a zeroed payload fails
+TT-RR-INC-ARM 1 T=                              \ incomplete reaches its own arm
+TT-RR-CON-ARM 2 T=                              \ conflict reaches its own arm
+TT-RR-INC-RAW -1 T=                             \ the payloadless arms of TT-RR-RAW are live
+TT-DR-ACC 0 T=                                  \ each dispatch case keeps its own tag
+TT-DR-UNK 1 T=
+TT-DR-WK 2 T=
+TT-DR-UNA 3 T=
+TT-DR-UNS 4 T=
+TT-RESTORE 9 T=                                 \ the test-owned registration is dropped again
+
+\ ---- the generated constructors: exact spelling + exact effect -----------------
+\ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot
+\ resolve, and YES demands -1, so a -1 means it resolved EXACTLY this constructor name; NO
+\ demands 0, which it can only reach after resolving the name and refusing the types. The
+\ NOWORD rows are the controls that prove that split.
+s" TC-RR-OK ( CAD-KIND:action-id -- register-result<CAD-KIND:action-id> ) ACTION-REGISTER--RESULT:OK" YES
+s" TC-RR-INC ( -- register-result<CAD-KIND:action-id> ) ACTION-REGISTER--RESULT:INCOMPLETE" YES
+s" TC-RR-CON ( -- register-result<CAD-KIND:action-id> ) ACTION-REGISTER--RESULT:CONFLICT" YES
+s" TC-RR-SPELL ( CAD-KIND:action-id -- register-result<CAD-KIND:action-id> ) ACTION-REGISTER--RESULTX:OK" NOWORD
+s" TC-RR-RAW ( n -- register-result<CAD-KIND:action-id> ) ACTION-REGISTER--RESULT:OK" NO
+s" TC-RR-BARE ( CAD-KIND:action-id -- n ) ACTION-REGISTER--RESULT:OK" NO
+s" TC-RR-NONE ( -- register-result<CAD-KIND:action-id> ) ACTION-REGISTER--RESULT:OK" NO
+s" TC-RR-FGN ( CAD-KIND:artifact-id -- register-result<CAD-KIND:action-id> ) ACTION-REGISTER--RESULT:OK" NO
+\ the compact family's constructors are nullary and yield the family, never a bare cell
+s" TC-DR-ACC ( -- dispatch-result ) ACTION-DISPATCH--RESULT:ACCEPTED" YES
+s" TC-DR-UNS ( -- dispatch-result ) ACTION-DISPATCH--RESULT:UNSUPPORTED" YES
+s" TC-DR-SPELL ( -- dispatch-result ) ACTION-DISPATCH--RESULTX:ACCEPTED" NOWORD
+s" TC-DR-BARE ( -- n ) ACTION-DISPATCH--RESULT:ACCEPTED" NO
+s" TC-DR-ARG ( n -- dispatch-result ) ACTION-DISPATCH--RESULT:ACCEPTED" NO
+\ a bare cell cannot be MATCHed as either family, and the families do not cross
+s" TC-DR-MATCH-N ( n -- ) MATCH dispatch-result accepted OF ENDOF unknown-action OF ENDOF wrong-kind OF ENDOF unauthorized OF ENDOF unsupported OF ENDOF ;MATCH" NO
+s" TC-X-DR-RR ( -- register-result<CAD-KIND:action-id> ) ACTION-DISPATCH--RESULT:ACCEPTED" NO
+s" TC-X-RR-DR ( CAD-KIND:action-id -- dispatch-result ) ACTION-REGISTER--RESULT:OK" NO
+
+\ ---- identity is by name, not by shape ----------------------------------------
+\ The decoy repeats every case name of dispatch-result in the same order at the same width:
+\ a positive control MATCHes it in its own right, then neither family can be MATCHed as the
+\ other. The register twin gets the same treatment through its own generated constructor.
+s" TC-DEC-OK ( drother -- ) MATCH drother accepted OF ENDOF unknown-action OF ENDOF wrong-kind OF ENDOF unauthorized OF ENDOF unsupported OF ENDOF ;MATCH" YES
+s" TC-DEC-X1 ( drother -- ) MATCH dispatch-result accepted OF ENDOF unknown-action OF ENDOF wrong-kind OF ENDOF unauthorized OF ENDOF unsupported OF ENDOF ;MATCH" NO
+s" TC-DEC-X2 ( dispatch-result -- ) MATCH drother accepted OF ENDOF unknown-action OF ENDOF wrong-kind OF ENDOF unauthorized OF ENDOF unsupported OF ENDOF ;MATCH" NO
+s" TC-DEC-X3 ( -- drother ) ACTION-DISPATCH--RESULT:ACCEPTED" NO
+s" TC-TWIN-RR ( CAD-KIND:action-id -- ACTION-TEST:regr-twin<CAD-KIND:action-id> ) ACTION--TEST-REGR--TWIN:OK" YES
+s" TC-TWIN-X1 ( CAD-KIND:action-id -- ACTION-TEST:regr-twin<CAD-KIND:action-id> ) ACTION-REGISTER--RESULT:OK" NO
+s" TC-TWIN-X2 ( CAD-KIND:action-id -- register-result<CAD-KIND:action-id> ) ACTION--TEST-REGR--TWIN:OK" NO
 EA-OOR-ALL    TTRUE                             \ every k in [COUNT, ACT-CAP] rejects
 EA-NEG-ALL    TTRUE                             \ every k in [-8, -1] rejects
 

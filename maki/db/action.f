@@ -125,22 +125,38 @@ ENUM staging DERIVE eq
 \ rejects re-registering an existing name with a DIFFERENT declaration (an idempotent
 \ re-register of an IDENTICAL declaration is ok). A bespoke per-package sum, not
 \ result<a,b>, so a total ok construction leaves no free error variable.
-SUMTYPE register-result 1
-   VARIANT ok a ;VARIANT
+\ Declared through the unified ENUM front end in full mode (the arity after the name
+\ selects it), so the ok payload is a named FIELD rather than a positional one. It is
+\ called `id` because that is what REGISTER puts there: both of its ok paths end in
+\ `RAW>ACTION-ID RR-OK` (the resolved idempotent re-register and the freshly interned
+\ one), and RR-OK's own effect is ( a -- register-result<a> ), instantiated at
+\ CAD-KIND:action-id by REGISTER's signature. The generated ACTION-REGISTER--RESULT:OK
+\ / :INCOMPLETE / :CONFLICT constructors and every MATCH site are unchanged, because
+\ both spellings and payload binding order derive from the package, the family tail and
+\ the declaration order, none of which the mode changes.
+ENUM register-result 1
+   VARIANT ok FIELD id a ;VARIANT
    VARIANT incomplete ;VARIANT
    VARIANT conflict ;VARIANT
-;SUMTYPE
+;ENUM
 
 \ ---- DISPATCH outcome (the protocol gate; executes nothing) ---------------------
 \ accepted: every gate passed and the action is implemented, so a thin adapter may now
 \ invoke the underlying operation. The reject arms each return BEFORE `accepted`.
-SUMTYPE dispatch-result 0
-   VARIANT accepted ;VARIANT
-   VARIANT unknown-action ;VARIANT
-   VARIANT wrong-kind ;VARIANT
-   VARIANT unauthorized ;VARIANT
-   VARIANT unsupported ;VARIANT
-;SUMTYPE
+\ Every arm carries no payload, so this is written in the COMPACT enum form (one bare
+\ token per case) rather than the arity-headed full form. The type registry therefore
+\ records it as an enum family and no longer as a general sum. That kind change is
+\ deliberate: both spellings are one cell wide and both give the same MATCH surface, so
+\ no consumer - including the cross-package MATCH in maki/db/agent-loop.f - can tell them
+\ apart by behaviour, which is exactly why action-test.f pins the recorded kind live out
+\ of the family registry. Writing this back as `SUMTYPE dispatch-result 0 ...`, or as the
+\ arity-headed full enum form, changes the recorded kind and turns that suite red. The
+\ generated ACTION-DISPATCH--RESULT:ACCEPTED / :UNKNOWN-ACTION / :WRONG-KIND /
+\ :UNAUTHORIZED / :UNSUPPORTED constructors keep their exact spellings, and case order
+\ still fixes the tags.
+ENUM dispatch-result
+   accepted unknown-action wrong-kind unauthorized unsupported
+;ENUM
 
 private
 
