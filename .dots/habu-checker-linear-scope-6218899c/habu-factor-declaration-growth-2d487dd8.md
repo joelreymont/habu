@@ -21,8 +21,9 @@ algorithm, allocator callback interface, table publication order, capacity
 errors, and rollback behavior. Do not weaken `THROW-EDGE`, add catches, make
 `ROWS>BYTES` total, or move validation to runtime guards.
 
-Owner: package `DECL-TX` in `src/core/decl-tx.f` and its existing generated
-transaction suite only. Acceptance: the unmodified transaction suite passes.
+Owner: package `DECL-TX` in `src/core/declaration-transaction.f` and its
+existing generated transaction suite only. Acceptance: the unmodified
+transaction suite passes.
 With only the frozen `THROW-EDGE` all-row unification applied as a temporary
 checker candidate, the real engine suite must certify `GROW-TABLE` and proceed
 past its former `ROWS>BYTES` rejection. If that run exposes a different caller,
