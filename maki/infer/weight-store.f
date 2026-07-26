@@ -76,12 +76,18 @@
 \ which of its strands is which.
 \
 \ A STORE HELD AS ONE CELL (the residency handle). A store is a bundle of two
-\ owners, so it is three stack cells wide, and a bound model cannot carry it as a
-\ field: a STRUCTURE or ENUM field may name a bare linear owner but not a compound
-\ that transitively contains one (measured; the checker capability is tracked by
-\ habu-checker-enum-payload-9e1ae6cc). HOLD answers the same store as a single-cell
-\ linear `resident`, which a model CAN hold as one checked field, and
-\ RESIDENT-DISPOSE is its only exit.
+\ owners, so it is three stack cells wide, and a field names ONE value: a bound
+\ model cannot carry a three-cell bundle in a single field whatever the field is
+\ allowed to contain. HOLD answers the same store as a single-cell linear
+\ `resident`, which a model holds as one checked field, and RESIDENT-DISPOSE is its
+\ only exit.
+\
+\ THE REASON HAS NARROWED, AND THE SHAPE IS STILL RIGHT. This paragraph used to say
+\ that a declaration field may not name a compound that transitively contains a
+\ linear owner. That restriction is gone: such a field is legal now, and it carries
+\ the disposal obligation with it. What remains is the plainer fact above - a store
+\ is three cells and a field is one - so the handle is still how a store becomes
+\ something a record can hold.
 \
 \ The handle allocates nothing, and that is a requirement rather than a saving. Its
 \ caller is a bind commit: it takes a census's file mapping through
@@ -599,11 +605,12 @@ public
    BUF-FREE ;
 
 \ ---- holding a store as one cell -----------------------------------------------------
-\ A store is a two-owner bundle, so it is three stack cells wide and no record can
-\ carry it: a STRUCTURE or ENUM field may name a bare linear owner but not a compound
-\ that transitively holds one (measured; the checker capability is tracked by
-\ habu-checker-enum-payload-9e1ae6cc). A bound model has to own its residency as ONE
-\ field, so this word answers the same store as a single-cell linear handle.
+\ A store is a two-owner bundle, so it is three stack cells wide, and a field names one
+\ value: no record can carry it, whatever a field is allowed to contain. A bound model
+\ has to own its residency as ONE field, so this word answers the same store as a
+\ single-cell linear handle. (What a field may CONTAIN is no longer the constraint - a
+\ field naming a record that transitively owns a linear value is legal today. The width
+\ is the reason this handle exists; the old prohibition is not.)
 \
 \ WHY IT ALLOCATES NOTHING, AND WHY THAT IS THE POINT. HOLD is TOTAL. Its caller is a
 \ bind commit, which takes a census's file mapping away through SAFET:DETACH-MAPPING -

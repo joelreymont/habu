@@ -103,19 +103,31 @@
 \ makes an abandoned prep observable. A sealed package that a test can still reach
 \ needs the sealed-destructure capability; until then this is the honest boundary.
 \
-\ THE AUDITED ERASURE, AND WHAT IT COSTS. A DEFLINEAR is one cell and carries no
-\ fields, and an ENUM payload field cannot name a STRUCTURE that transitively
-\ holds a linear field (measured; tracked by habu-checker-enum-payload-9e1ae6cc),
-\ so a bundle of linear children cannot be expressed as a typed record today. The
-\ census and table therefore cross into the prep block through package-private
-\ trusted erasures and come back out the same way. Inside the block the checker
-\ can no longer see them, which is exactly the guarantee this file gives up: from
-\ MINT until ABORT, "the census is owned once" is enforced by this file's
-\ structure - one mint site, one exit site, no accessor - and not by the type
-\ system. The linear-scope combinator (habu-checker-linear-scope-6218899c) and
-\ pointer-lifetime/region types (habu-checker-ptr-lifetime-f59d1e9d) are the
-\ capabilities that would let a linear bundle be a checked value; when they land,
-\ these erasures and their TRUSTED.md rows go away.
+\ THE AUDITED ERASURE, AND WHAT IT COSTS. The census and the table cross into the
+\ prep block through package-private trusted erasures and come back out the same
+\ way. Inside the block the checker can no longer see them, which is exactly the
+\ guarantee this file gives up: from MINT until ABORT or RELINQUISH, "the census is
+\ owned once" is enforced by this file's structure - one mint site, one exit site
+\ per outcome, no accessor - and not by the type system.
+\
+\ WHAT ACTUALLY FORCES THEM, NOW THAT THE OLD REASON IS GONE. This paragraph used to
+\ say that a bundle of linear children could not be a typed record at all, because a
+\ declaration field could not name a record transitively holding a linear field. That
+\ restriction no longer exists (it was tracked by habu-checker-enum-payload-9e1ae6cc),
+\ so it is not what keeps these crossings here. What keeps them is the prep's
+\ REPRESENTATION: the prep token IS a raw block, sized and allocated before the mint,
+\ and the two owners are cells inside it alongside the carried rows. Turning those
+\ cells into a checked record changes that representation, and it has to keep MINT's
+\ stretch total - a fallible step between the first erasure and the last cell write
+\ would strand owners the checker can no longer see. That redesign is a queued
+\ ownership-train leaf rather than something this file decides; until it lands, these
+\ crossings and their TRUSTED.md rows stay.
+\
+\ The linear-scope combinator (habu-checker-linear-scope-6218899c) and
+\ pointer-lifetime/region types (habu-checker-ptr-lifetime-f59d1e9d) still govern the
+\ OTHER parked owners - the moved mapping and the allocated commit's buffer - which
+\ are parked because a caught quotation must be stack-neutral, not because of any
+\ rule about fields.
 \
 \ SLOT ENUMERATION. Slots are the dense GPT2BIND numbering: 0..3 are the
 \ checkpoint globals in grole declaration order, then slot 4 + 13*layer + role
@@ -257,9 +269,10 @@ ENUM check-alloc-result 0
 NEWTYPE mdl-proof 0
 
 \ A model owns its residency as ONE field, which is why WSTORE:resident exists: a
-\ store is a two-owner bundle, and a record field may name a bare linear owner but
-\ not a compound that transitively contains one (measured; the checker capability is
-\ habu-checker-enum-payload-9e1ae6cc).
+\ store is a two-owner bundle, three stack cells wide, and a field names one value.
+\ That is a width argument and not a containment one: a field naming a record that
+\ transitively owns a linear value is legal. A store cannot be a field because it is
+\ three cells, not because of what it holds.
 \
 \ THE RECORD IS LINEAR BY CONTAINMENT, AND THAT HAS A CONSEQUENCE. Because the
 \ resident field is linear, the checker refuses to duplicate or discard a model, which
