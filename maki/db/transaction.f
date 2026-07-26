@@ -102,20 +102,34 @@ STRUCTURE idem-key 0
 ;STRUCTURE
 
 \ Typed transaction outcome (the § 23.9 art-result custom-sum idiom): `ok` carries the
-\ validated pool slot; the reject arms are the plan's validation refusals plus the
-\ structural decode refusals. A bespoke per-package sum, not the generic two-parameter
-\ result<a,b>, so a total ok construction leaves no free error variable. The tail is
-\ plain `result` because a family may not repeat its package owner; identity is the
-\ (package, tail) pair, so TX:result and the global result family stay distinct, and a
-\ caller outside package TX must spell this one TX:result - a bare `result` there
-\ reaches the global row first.
-SUMTYPE result 1
-   VARIANT ok a ;VARIANT
+\ validated pool slot in its `slot` field; the reject arms are the plan's validation
+\ refusals plus the structural decode refusals. A bespoke per-package sum, not the
+\ generic two-parameter result<a,b>, so a total ok construction leaves no free error
+\ variable. The tail is plain `result` because a family may not repeat its package
+\ owner; identity is the (package, tail) pair, so TX:result and the global result
+\ family stay distinct, and a caller outside package TX must spell this one TX:result -
+\ a bare `result` there reaches the global row first.
+\
+\ Declared through the unified ENUM front end in full mode: the arity token after the
+\ family name is what selects that mode, so the success payload is a named FIELD
+\ instead of a positional type token. The field is called `slot` because that is what
+\ this file already calls the value everywhere it is described - the txn handle above
+\ holds it as `FIELD slot n`, VALIDATE "carries the validated slot", DECODE "carries
+\ the fresh slot", and TXN-OF rebuilds a handle "from a validated ok slot".
+\
+\ Nothing else moves. The generated TX-RESULT:OK, :DUPLICATE-WRITE, :OMITTED-READ,
+\ :MALFORMED and :BOUNDS constructors keep the exact spellings and exact checked
+\ effects the rename gave them, and every MATCH site here, in maki/db/commit-store.f
+\ and in the cross-process child maki/db/keywire-xproc-env-child.f is untouched:
+\ spellings come from the package name and the family tail, payload binding order
+\ comes from declaration order, and the declaration mode changes neither.
+ENUM result 1
+   VARIANT ok FIELD slot a ;VARIANT
    VARIANT duplicate-write ;VARIANT
    VARIANT omitted-read ;VARIANT
    VARIANT malformed ;VARIANT
    VARIANT bounds ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

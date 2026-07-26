@@ -359,3 +359,205 @@ s" X-BARE-ARITY ( result<n> -- n ) drop 0" NO
 ;package
 
 T-REPORT
+
+\ ---- what the unified ENUM declaration registered and generated ---------------
+\ TX:result moved off the retired legacy sum opener onto the unified ENUM front end in
+\ full mode. Nothing above this line changed, and neither consumer changed - not
+\ maki/db/commit-store.f and not the cross-process child
+\ maki/db/keywire-xproc-env-child.f - which is why this section exists: the two
+\ declaration forms are MATCH-identical and width-identical, so the suites above
+\ cannot see the difference and therefore cannot see a REGRESSION either.
+\
+\ This reopens package TX-TEST and reuses the YES / NO / UNRES verdict words and the
+\ TX$ identity from the rename section rather than redeclaring them. Its T-RESET comes
+\ FIRST and every assertion sits below it: an assertion above a suite's reset is
+\ counted against the previous report and passes silently even when it fails.
+T-RESET
+
+package TX-TEST
+private
+
+\ The twin's identity. TX$ (the production family) comes from the section above.
+: TW$ ( -- ptr u8 n ptr u8 n )   s" tr-twin" s" TX--TEST-TR--TWIN" ;
+
+\ ---- fixtures built through the real production builder ------------------------
+\ These use the public TX builder surface a genuine producer uses, not the private
+\ helpers of the suite above, so the round trip below runs the production path.
+: OBJ-P ( -- CAD-KIND:artifact-id )   s" tx-mig-obj-p" ARTIFACT:REGISTER ;
+: OBJ-Q ( -- CAD-KIND:artifact-id )   s" tx-mig-obj-q" ARTIFACT:REGISTER ;
+: RB0 ( -- CAD-KIND:rev-id )   s" tx-mig-rev-0" REV:COMMIT ;
+: RB1 ( -- CAD-KIND:rev-id )   s" tx-mig-rev-1" REV:COMMIT ;
+
+: MK-ON ( CAD-KIND:rev-id -- TX:txn )        \ smallest valid action on a given base
+   TX:OPEN
+   OBJ-P TX:PRESENT TX:READ+
+   OBJ-P TX:WRITE+
+   OBJ-P TX:DEP+
+   TX:BUILD ;
+: MK-DUP-ON ( -- TX:txn )                    \ two conflicting writes to one object
+   RB0 TX:OPEN
+   OBJ-P TX:PRESENT TX:READ+
+   OBJ-P TX:WRITE+
+   OBJ-P TX:WRITE+
+   OBJ-P TX:DEP+
+   TX:BUILD ;
+: MK-OMIT-ON ( -- TX:txn )                   \ a dependency on an object never read
+   RB0 TX:OPEN
+   OBJ-P TX:PRESENT TX:READ+
+   OBJ-P TX:WRITE+
+   OBJ-Q TX:DEP+
+   TX:BUILD ;
+
+\ ---- compiled round trip through all five generated constructors --------------
+\ The checker pins below prove the constructors resolve and type-check as candidate
+\ text. This word proves they work in COMPILED code: it takes a real TX:result apart
+\ and puts it back together arm by arm, so all five generated constructors are
+\ compiled, and the ok arm binds its payload through a typed local before handing it
+\ back to the ok constructor. The five-arm shape is repeated rather than factored
+\ because the suite above cannot lend its own classifier - that one is private to the
+\ production TX reopen - and a polymorphic eliminator over the whole bundle is not
+\ expressible yet (dot habu-typestate-result-drop-5ae048a7).
+\
+\ Every effect here spells the family TX:result QUALIFIED: this package owns no
+\ `result` row, so a bare token would reach the global arity-2 family instead.
+: REBUILD ( TX:result<n> -- TX:result<n> )
+   MATCH TX:result
+      ok OF {: got:n :} got TX-RESULT:OK ENDOF
+      duplicate-write OF TX-RESULT:DUPLICATE-WRITE ENDOF
+      omitted-read OF TX-RESULT:OMITTED-READ ENDOF
+      malformed OF TX-RESULT:MALFORMED ENDOF
+      bounds OF TX-RESULT:BOUNDS ENDOF
+   ;MATCH ;
+
+: CODE ( TX:result<n> -- n )                 \ 0 ok, else the reject taxonomy ordinal
+   MATCH TX:result
+      ok OF drop 0 ENDOF
+      duplicate-write OF 1 ENDOF
+      omitted-read OF 2 ENDOF
+      malformed OF 3 ENDOF
+      bounds OF 4 ENDOF
+   ;MATCH ;
+
+\ The payload's VALUE, not merely its presence. The recovered slot is fed straight
+\ back through the production TX:TXN-OF, exactly as the keywire child does, and the
+\ rebuilt handle must still name a transaction sitting on the base revision it was
+\ built on. A slot the round trip zeroed or altered would name a different pool entry
+\ and the base comparison would disagree.
+: OK-BASE? ( CAD-KIND:rev-id TX:result<n> -- bool )
+   MATCH TX:result
+      ok OF {: got:n :} got TX:TXN-OF TX:BASE-REV REV:EQUAL? ENDOF
+      duplicate-write OF drop false ENDOF
+      omitted-read OF drop false ENDOF
+      malformed OF drop false ENDOF
+      bounds OF drop false ENDOF
+   ;MATCH ;
+
+: RT-OK# ( -- n )       RB0 MK-ON TX:VALIDATE REBUILD CODE ;
+: RT-DUP# ( -- n )      MK-DUP-ON TX:VALIDATE REBUILD CODE ;
+: RT-OMIT# ( -- n )     MK-OMIT-ON TX:VALIDATE REBUILD CODE ;
+: RT-SAME? ( -- bool )  RB0 RB0 MK-ON TX:VALIDATE REBUILD OK-BASE? ;
+: RT-ALT? ( -- bool )   RB1 RB1 MK-ON TX:VALIDATE REBUILD OK-BASE? ;
+: RT-CROSS? ( -- bool ) RB1 RB0 MK-ON TX:VALIDATE REBUILD OK-BASE? ;
+
+public
+
+\ tr-twin is TX:result's SHAPE under another name: same arity, the same five cases in
+\ the same order, the same named payload field. It exists only so the negatives below
+\ can prove transaction-outcome identity is NOMINAL - two identically shaped families
+\ never unify, in either direction. It has to be public, because a private family
+\ publishes no constructors and the positive control builds through the twin's own ok,
+\ so neither negative could pass by being unresolvable instead of ill-typed. Its
+\ generated constructor package TX--TEST-TR--TWIN is 17 bytes, well inside the 32-byte
+\ readable-spelling cap TF-CTOR-NAME-LIMIT (src/core/type-family.f), so it keeps the
+\ readable escaped spelling rather than falling back to the opaque SHA form; the pin on
+\ that exact spelling below is what would notice a crossing.
+ENUM tr-twin 1
+   VARIANT ok FIELD slot a ;VARIANT
+   VARIANT duplicate-write ;VARIANT
+   VARIANT omitted-read ;VARIANT
+   VARIANT malformed ;VARIANT
+   VARIANT bounds ;VARIANT
+;ENUM
+
+private
+
+\ ---- the named payload field the migration adds -------------------------------
+\ This is the one registry row the move changes: the legacy positional payload
+\ registered NO field row at all, so `1` here fails on the previous declaration, and
+\ `0` is the slot the ok arm binds first. The shape pins in the section above (kind,
+\ arity, width, visibility, case order, constructor package) still hold unchanged,
+\ which is the other half of the claim - the declaration mode moved and nothing else.
+TX$ 0 REFLECT:ARM-FLDS 1 T=
+TX$ 0 s" slot" REFLECT:ARM-SLOT 0 T=
+TX$ 0 s" slot" REFLECT:ARM-CELLS 1 T=
+TX$ 0 s" value" REFLECT:ARM-SLOT -1 T=   \ and it is spelled `slot`, nothing else
+TX$ 1 REFLECT:ARM-FLDS 0 T=              \ the reject arms carry no payload at all
+TX$ 4 REFLECT:ARM-FLDS 0 T=
+TX$ 5 REFLECT:ARM-FLDS -1 T=             \ a case that does not exist answers the sentinel
+TX$ REFLECT:KIND TK-SUM T=               \ a payload family is a general sum ...
+TX$ REFLECT:KIND TK-ENUM = 0 T=          \ ... never recorded as a payloadless enum
+
+\ ---- generated constructors: unchanged spelling + unchanged effect ------------
+s" TC-OK ( n -- TX:result<n> ) TX-RESULT:OK" YES
+s" TC-DUP ( -- TX:result<n> ) TX-RESULT:DUPLICATE-WRITE" YES
+s" TC-OMIT ( -- TX:result<n> ) TX-RESULT:OMITTED-READ" YES
+s" TC-MAL ( -- TX:result<n> ) TX-RESULT:MALFORMED" YES
+s" TC-BND ( -- TX:result<n> ) TX-RESULT:BOUNDS" YES
+\ The payload really is a parameter: an arity-0 nominal cell family instantiates it as
+\ readily as raw n, and a reject arm under that instantiation still takes no payload.
+s" TC-OK-REV ( CAD-KIND:rev-id -- TX:result<CAD-KIND:rev-id> ) TX-RESULT:OK" YES
+s" TC-BND-REV ( -- TX:result<CAD-KIND:rev-id> ) TX-RESULT:BOUNDS" YES
+
+\ Calibration for the seven YES lines above: these three spellings do not exist, and
+\ an unresolvable constructor word answers 1. Were the family renamed again, the real
+\ constructors would answer 1 too and every YES would fail - which is what makes -1
+\ mean "the checker resolved exactly this name".
+s" TC-X-SEP ( n -- TX:result<n> ) TXRESULT:OK" UNRES
+s" TC-X-PKG ( n -- TX:result<n> ) TX--RESULT:OK" UNRES
+s" TC-X-ARM ( n -- TX:result<n> ) TX-RESULT:OKAY" UNRES
+
+\ ---- forge negatives on the ok payload slot -----------------------------------
+\ This family's payload is instantiated at raw n in production, so "a raw cell in the
+\ payload slot" is legitimate here and cannot be a negative. The discipline rests on
+\ INSTANTIATION IDENTITY instead: the ok constructor must not hand back a result
+\ instantiated at a type it did not consume, must not drop the mandatory payload, and
+\ must not attach one to a reject arm.
+\
+\ Every type argument below is one the checker ACCEPTS on its own - n and the CAD-KIND
+\ nominals each instantiate this family successfully in the positives above - so none
+\ of these mismatches can pass merely by naming a type argument the family would have
+\ refused anyway. TF-XNOM is the sharpest: rev-id and artifact-id are both one-cell
+\ nominals, so nothing but family identity separates them.
+s" TF-BARE ( n -- n ) TX-RESULT:OK" NO
+s" TF-NONE ( -- TX:result<n> ) TX-RESULT:OK" NO
+s" TF-PAY ( n -- TX:result<n> ) TX-RESULT:BOUNDS" NO
+s" TF-PAY-REV ( CAD-KIND:rev-id -- TX:result<CAD-KIND:rev-id> ) TX-RESULT:BOUNDS" NO
+s" TF-INST ( n -- TX:result<CAD-KIND:rev-id> ) TX-RESULT:OK" NO
+s" TF-NOM ( CAD-KIND:rev-id -- TX:result<n> ) TX-RESULT:OK" NO
+s" TF-XNOM ( CAD-KIND:rev-id -- TX:result<CAD-KIND:artifact-id> ) TX-RESULT:OK" NO
+
+\ ---- live registry + non-unification for the shape twin ----------------------
+TW$ REFLECT:FAMS 1 T=
+TW$ REFLECT:KIND TK-SUM T=
+TW$ REFLECT:ARITY 1 T=
+TW$ REFLECT:WIDTH 2 T=
+TW$ REFLECT:VIS 1 T=
+TW$ REFLECT:VARS 5 T=
+TW$ 0 REFLECT:ARM-CTOR$ s" TX--TEST-TR--TWIN" T$=   \ readable spelling, not the SHA form
+TW$ 0 REFLECT:ARM-FLDS 1 T=
+TW$ 0 s" slot" REFLECT:ARM-SLOT 0 T=
+s" TT-TW ( n -- tr-twin<n> ) TX--TEST-TR--TWIN:OK" YES
+s" TT-TW-X1 ( n -- tr-twin<n> ) TX-RESULT:OK" NO
+s" TT-TW-X2 ( n -- TX:result<n> ) TX--TEST-TR--TWIN:OK" NO
+
+\ ---- compiled round trip through every generated constructor -----------------
+RT-OK# 0 T=                 \ ok is rebuilt as ok ...
+RT-DUP# 1 T=                \ ... duplicate-write as duplicate-write ...
+RT-OMIT# 2 T=               \ ... and omitted-read as omitted-read
+RT-SAME? TTRUE              \ the recovered slot still names its own transaction
+RT-ALT? TTRUE               \ on a second, different base revision too
+RT-CROSS? TFALSE            \ and it is not merely answering true for any base
+
+;package
+
+T-REPORT
