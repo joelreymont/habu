@@ -77,7 +77,7 @@ private
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
 
 : REFINE ( -- )
-   s" refine-lint" [: REFINE-LINT ;] GSI-RUN
+   s" refine-lint" [: RFL:RUN ;] GSI-RUN
    s" tools/refine-lint-test.f" GSI-INCLUDE ;
 
 : SUITE-COVERAGE ( -- )

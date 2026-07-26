@@ -13,8 +13,4 @@ require tools/lint/lib.f
 require tools/trust-lint-core.f
 require tools/refine-lint-core.f
 
-: RFL-MAIN ( -- )
-   [: REFINE-LINT ;] catch {: code:n :}
-   s" refine-lint" code LINT-MAIN ;
-
-RFL-MAIN
+RFL:MAIN

@@ -18,211 +18,217 @@ require tools/lint/lib.f
 require tools/trust-lint-core.f
 require tools/refine-lint-core.f
 
-4096 constant RFLT-OUT-CAP
+package RFL-TEST
 
-variable RFLT-ROOT-U
-variable RFLT-FILE-U
-variable RFLT-MAN-U
+4096 constant OUT-CAP
 
-create RFLT-ROOT-BUF FS-PATH-CAP allot
-create RFLT-FILE-BUF FS-PATH-CAP allot
-create RFLT-MAN-BUF FS-PATH-CAP allot
-create RFLT-OUT-BUF RFLT-OUT-CAP allot
+variable ROOT-U
+variable FILE-U
+variable MAN-U
 
-: RFLT-ROOT$ ( -- ptr u8 n ) RFLT-ROOT-BUF RFLT-ROOT-U @ ;
-: RFLT-FILE$ ( -- ptr u8 n ) RFLT-FILE-BUF RFLT-FILE-U @ ;
-: RFLT-MAN$ ( -- ptr u8 n ) RFLT-MAN-BUF RFLT-MAN-U @ ;
+create ROOT-BUF FS-PATH-CAP allot
+create FILE-BUF FS-PATH-CAP allot
+create MAN-BUF FS-PATH-CAP allot
+create OUT-BUF OUT-CAP allot
 
-: RFLT-ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
-   a RFLT-ROOT-BUF u BYTE-COPY
-   u RFLT-ROOT-U ! ;
+: ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
+: FILE$ ( -- ptr u8 n ) FILE-BUF FILE-U @ ;
+: MAN$ ( -- ptr u8 n ) MAN-BUF MAN-U @ ;
 
-: RFLT-DQ ( -- ) 34 SB-APPEND-C ;
+: ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
+   a ROOT-BUF u BYTE-COPY
+   u ROOT-U ! ;
 
-: RFLT-SETUP ( -- )
-   RFL-BUFFERS
-   RFL-RESET
-   RFL-INVENTORY
-   RFL-BAD @ 0 T= ;                             \ seed/manifest cross-check is clean
+: DQ ( -- ) 34 SB-APPEND-C ;
 
-: RFLT-SHAPE ( -- )
-   s" n -- CAD-KIND:rows" RFL-MINT-SHAPE? TTRUE
-   s" n -- MIR:input-slot" RFL-MINT-SHAPE? TTRUE
-   s" ptr n -- ptr CAD-KIND:dim" RFL-MINT-SHAPE? TTRUE
-   s" CAD-KIND:rows -- n" RFL-MINT-SHAPE? TFALSE       \ projection direction stays per-site policy
-   s" n -- tensor" RFL-MINT-SHAPE? TFALSE              \ bare-nominal mints are seed-only
-   s" n n -- matrix<space-global,f32,m,q>" RFL-MINT-SHAPE? TFALSE
-   s" ptr u8 n -- bool" RFL-MINT-SHAPE? TFALSE
-   s" -- CAD-KIND:dim" RFL-MINT-SHAPE? TFALSE          \ no raw input to refine
-   s" n -- rows:" RFL-MINT-SHAPE? TFALSE               \ edge colons are not family tokens
-   s" n -- :rows" RFL-MINT-SHAPE? TFALSE ;
+: SETUP ( -- )
+   RFL:BUFFERS
+   RFL:RESET
+   RFL:INVENTORY
+   RFL:FINDINGS 0 T= ;                             \ seed/manifest cross-check is clean
 
-: RFLT-DETECT ( -- )
-   s" 7 ROWS-REFINE drop" RFL-COUNT-STR 1 T=
-   s" 7 MAKI:ROWS-REFINE drop" RFL-COUNT-STR 1 T=      \ qualified reference is still a reference
-   s" 7 rows-refine drop" RFL-COUNT-STR 1 T=           \ the dictionary is case-insensitive
-   s" 1 RAW>NODE 2 RAW>SLOT" RFL-COUNT-STR 2 T=
-   s" 1 RAW>ANODE 2 RAW>ASTREAM 3 RAW>AEVENT" RFL-COUNT-STR 3 T=
-   s" 3 N>LBTK drop" RFL-COUNT-STR 1 T= ;              \ seed-only mint without a manifest row
+: SHAPE ( -- )
+   s" n -- CAD-KIND:rows" RFL:MINT-SHAPE? TTRUE
+   s" n -- MIR:input-slot" RFL:MINT-SHAPE? TTRUE
+   s" ptr n -- ptr CAD-KIND:dim" RFL:MINT-SHAPE? TTRUE
+   s" CAD-KIND:rows -- n" RFL:MINT-SHAPE? TFALSE       \ projection direction stays per-site policy
+   s" n -- tensor" RFL:MINT-SHAPE? TFALSE              \ bare-nominal mints are seed-only
+   s" n n -- matrix<space-global,f32,m,q>" RFL:MINT-SHAPE? TFALSE
+   s" ptr u8 n -- bool" RFL:MINT-SHAPE? TFALSE
+   s" -- CAD-KIND:dim" RFL:MINT-SHAPE? TFALSE          \ no raw input to refine
+   s" n -- rows:" RFL:MINT-SHAPE? TFALSE               \ edge colons are not family tokens
+   s" n -- :rows" RFL:MINT-SHAPE? TFALSE ;
 
-: RFLT-STR-CONTENT$ ( -- ptr u8 n )
+: DETECT ( -- )
+   s" 7 ROWS-REFINE drop" RFL:COUNT-STR 1 T=
+   s" 7 MAKI:ROWS-REFINE drop" RFL:COUNT-STR 1 T=      \ qualified reference is still a reference
+   s" 7 rows-refine drop" RFL:COUNT-STR 1 T=           \ the dictionary is case-insensitive
+   s" 1 RAW>NODE 2 RAW>SLOT" RFL:COUNT-STR 2 T=
+   s" 1 RAW>ANODE 2 RAW>ASTREAM 3 RAW>AEVENT" RFL:COUNT-STR 3 T=
+   s" 3 N>LBTK drop" RFL:COUNT-STR 1 T= ;              \ seed-only mint without a manifest row
+
+: STR-CONTENT$ ( -- ptr u8 n )
    SB-RESET
-   s" : RFLT-X ( -- ) s" SB-APPEND RFLT-DQ
-   s"  has ROWS-REFINE within" SB-APPEND RFLT-DQ
+   s" : X ( -- ) s" SB-APPEND DQ
+   s"  has ROWS-REFINE within" SB-APPEND DQ
    s"  2drop ;" SB-APPEND
    SB$ ;
 
-: RFLT-ESC-CONTENT$ ( -- ptr u8 n )
+: ESC-CONTENT$ ( -- ptr u8 n )
    SB-RESET
-   s" S\" SB-APPEND RFLT-DQ
-   s"  has ROWS-REFINE bytes\" SB-APPEND RFLT-DQ
+   s" S\" SB-APPEND DQ
+   s"  has ROWS-REFINE bytes\" SB-APPEND DQ
    s"  drop" SB-APPEND
    SB$ ;
 
-: RFLT-NO-FALSE-POSITIVE ( -- )
-   s" \ prose mentioning ROWS-REFINE in a line comment" RFL-COUNT-STR 0 T=
-   s" : F ( n -- n ) dup ; ( ROWS-REFINE in a paren comment )" RFL-COUNT-STR 0 T=
-   RFLT-STR-CONTENT$ RFL-COUNT-STR 0 T=                \ s" string bodies are excluded
-   RFLT-ESC-CONTENT$ RFL-COUNT-STR 0 T=                \ S\" escaped-string bodies too
-   s" MY-ROWS-REFINE drop" RFL-COUNT-STR 0 T=          \ whole-token matching only
-   s" ROWS-REFINED drop" RFL-COUNT-STR 0 T=
-   s" :ROWS-REFINE drop" RFL-COUNT-STR 0 T= ;          \ edge colon is not a qualifier
+: NO-FALSE-POSITIVE ( -- )
+   s" \ prose mentioning ROWS-REFINE in a line comment" RFL:COUNT-STR 0 T=
+   s" : F ( n -- n ) dup ; ( ROWS-REFINE in a paren comment )" RFL:COUNT-STR 0 T=
+   STR-CONTENT$ RFL:COUNT-STR 0 T=                \ s" string bodies are excluded
+   ESC-CONTENT$ RFL:COUNT-STR 0 T=                \ S\" escaped-string bodies too
+   s" MY-ROWS-REFINE drop" RFL:COUNT-STR 0 T=          \ whole-token matching only
+   s" ROWS-REFINED drop" RFL:COUNT-STR 0 T=
+   s" :ROWS-REFINE drop" RFL:COUNT-STR 0 T= ;          \ edge colon is not a qualifier
 
-: RFLT-CONFINE-POLICY ( -- )
+: CONFINE-POLICY ( -- )
    \ owner file is allowed
-   s" maki/tensor.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
+   s" maki/tensor.f" s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 0 T=
    \ a file cited by the mint's TRUSTED.md Tests cell is allowed
-   s" maki/model-ir-test.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 0 T=
-   s" maki/async-dag.f" s" 0 RAW>ANODE drop" RFL-COUNT-STR-AT 0 T=
-   s" maki/async-dag-test.f" s" 0 RAW>ASTREAM drop" RFL-COUNT-STR-AT 0 T=
+   s" maki/model-ir-test.f" s" 0 RAW>SLOT drop" RFL:COUNT-STR-AT 0 T=
+   s" maki/async-dag.f" s" 0 RAW>ANODE drop" RFL:COUNT-STR-AT 0 T=
+   s" maki/async-dag-test.f" s" 0 RAW>ASTREAM drop" RFL:COUNT-STR-AT 0 T=
    \ another mint's owner is not this mint's boundary
-   s" maki/tensor.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T=
-   s" maki/eval/eval.f" s" 0 RAW>AEVENT drop" RFL-COUNT-STR-AT 1 T=
+   s" maki/tensor.f" s" 0 RAW>SLOT drop" RFL:COUNT-STR-AT 1 T=
+   s" maki/eval/eval.f" s" 0 RAW>AEVENT drop" RFL:COUNT-STR-AT 1 T=
    \ any other tree file is a finding
-   s" maki/eval/eval.f" s" 0 RAW>SLOT drop" RFL-COUNT-STR-AT 1 T= ;
+   s" maki/eval/eval.f" s" 0 RAW>SLOT drop" RFL:COUNT-STR-AT 1 T= ;
 
-: RFLT-ALLOWLIST ( -- )
-   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T=
-   s" ROWS-REFINE" s" maki/eval/eval.f" RFL-ALLOW+
-   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
+: ALLOWLIST ( -- )
+   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 1 T=
+   s" ROWS-REFINE" s" maki/eval/eval.f" RFL:ALLOW+
+   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 0 T=
    \ the allow entry is mint-specific
-   s" maki/eval/eval.f" s" 1 COLS-REFINE drop" RFL-COUNT-STR-AT 1 T=
+   s" maki/eval/eval.f" s" 1 COLS-REFINE drop" RFL:COUNT-STR-AT 1 T=
    \ reset clears the allowlist
-   RFL-RESET
-   RFL-INVENTORY
-   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T= ;
+   RFL:RESET
+   RFL:INVENTORY
+   s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 1 T= ;
 
-: RFLT-RED-PREPARE ( -- )
+: RED-PREPARE ( -- )
    CLEANUP-RESET
-   s" habu-refine-lint" TMPDIR-MKDIR RFLT-ROOT!
-   RFLT-ROOT$ CLEANUP-DIR+
-   RFLT-ROOT$ s" mint.f" RFLT-FILE-BUF JOIN-PATH RFLT-FILE-U !
-   RFLT-FILE$ CLEANUP+
-   RFLT-FILE$ s" : RFLT-FORGE ( n -- n ) ROWS-REFINE ROWS-RAW ;" WRITE-ALL
-   RFLT-ROOT$ s" TRUSTED.md" RFLT-MAN-BUF JOIN-PATH RFLT-MAN-U !
-   RFLT-MAN$ CLEANUP+ ;
+   s" habu-refine-lint" TMPDIR-MKDIR ROOT!
+   ROOT$ CLEANUP-DIR+
+   ROOT$ s" mint.f" FILE-BUF JOIN-PATH FILE-U !
+   FILE$ CLEANUP+
+   FILE$ s" : FORGE ( n -- n ) ROWS-REFINE ROWS-RAW ;" WRITE-ALL
+   ROOT$ s" TRUSTED.md" MAN-BUF JOIN-PATH MAN-U !
+   MAN$ CLEANUP+ ;
 
-: RFLT-RED-SCAN ( -- ptr u8 n )                 \ captured finding output; RFL-BAD holds count
-   0 RFL-BAD !
-   RFLT-OUT-BUF RFLT-OUT-CAP LINT-OUT-BUFFER!
-   RFLT-FILE$ RFL-SCAN-FILE
+: RED-SCAN ( -- ptr u8 n )                 \ captured finding output; RFL:FINDINGS holds count
+   RFL:CLEAR-FINDINGS
+   OUT-BUF OUT-CAP LINT-OUT-BUFFER!
+   FILE$ RFL:SCAN-FILE
    LINT-OUT$
    LINT-OUT-BUFFER-OFF ;
 
-: RFLT-RED ( -- )
-   RFLT-RED-SCAN {: oa:ptr ou:n :}
-   RFL-BAD @ 1 T=                               \ the mint fires; the projection does not
+: RED ( -- )
+   RED-SCAN {: oa:ptr ou:n :}
+   RFL:FINDINGS 1 T=                               \ the mint fires; the projection does not
    oa ou s" REFINE-CONFINE " LINT-CONTAINS? TTRUE
    oa ou s" mint.f:1: " LINT-CONTAINS? TTRUE
    oa ou s" ROWS-REFINE" LINT-CONTAINS? TTRUE
    oa ou s" ` referenced outside owner maki/tensor.f" LINT-CONTAINS? TTRUE
-   0 RFL-BAD ! ;
+   RFL:CLEAR-FINDINGS ;
 
 \ ---- synthetic-manifest coverage for the anti-rot ratchet -------------------
 
-: RFLT-LF ( -- ) 10 SB-APPEND-C ;
+: LF ( -- ) 10 SB-APPEND-C ;
 
-: RFLT-MAN-HEADER ( -- )
-   s" | Word | Effect | Reason | Tests | Site | Last audited |" SB-APPEND RFLT-LF
-   s" |------|--------|--------|-------|------|--------------|" SB-APPEND RFLT-LF ;
+: MAN-HEADER ( -- )
+   s" | Word | Effect | Reason | Tests | Site | Last audited |" SB-APPEND LF
+   s" |------|--------|--------|-------|------|--------------|" SB-APPEND LF ;
 
-: RFLT-SHAPE-MAN$ ( -- ptr u8 n )
-   SB-RESET RFLT-MAN-HEADER
-   s" | RFLT-FAKE-MINT | `n -- CAD-KIND:fake` | test | `maki/fake-test.f` | maki/fake.f | 2026-07-13 |" SB-APPEND RFLT-LF
+: SHAPE-MAN$ ( -- ptr u8 n )
+   SB-RESET MAN-HEADER
+   s" | FAKE-MINT | `n -- CAD-KIND:fake` | test | `maki/fake-test.f` | maki/fake.f | 2026-07-13 |" SB-APPEND LF
    SB$ ;
 
-: RFLT-MAN-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   RFLT-MAN$ a u WRITE-ALL
-   RFLT-ROOT$ TRUST-LINT-ROOT!
+: MAN-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
+   MAN$ a u WRITE-ALL
+   ROOT$ TRUST-LINT-ROOT!
    TRUST-LINT-RESET
    TL-SCAN-MANIFEST ;
 
-: RFLT-NEW-MINT-RED ( -- )
-   RFLT-SHAPE-MAN$ RFLT-MAN-LOAD
-   RFL-REPORT-OFF
-   0 RFL-BAD !
-   RFL-SHAPE-SCAN
-   RFL-BAD @ 1 T=                               \ an unseeded mint-shaped row is a finding
-   0 RFL-BAD !
-   RFL-REPORT-ON ;
+: NEW-MINT-RED ( -- )
+   SHAPE-MAN$ MAN-LOAD
+   RFL:REPORT-OFF
+   RFL:CLEAR-FINDINGS
+   RFL:SHAPE-SCAN
+   RFL:FINDINGS 1 T=                               \ an unseeded mint-shaped row is a finding
+   RFL:CLEAR-FINDINGS
+   RFL:REPORT-ON ;
 
 \ ---- source-derived anti-rot ratchet ----------------------------------------
 \ Seed 1 is ROWS-REFINE (owner maki/tensor.f). STALE-SEED liveness now comes from
 \ the owner-source declaration, not a manifest row; confinement is name-and-path
 \ based, so it is identical for both declarer forms.
 
-: RFLT-FORM-CONFINED ( ptr u8 n -- ) {: ca:ptr cu:n :}
+: FORM-CONFINED ( ptr u8 n -- ) {: ca:ptr cu:n :}
    \ this declarer form keeps the seed live (no STALE-SEED) ...
-   0 RFL-BAD !
-   ca cu 1 RFL-STALE-IF-DEAD
-   RFL-BAD @ 0 T=
+   RFL:CLEAR-FINDINGS
+   ca cu 1 RFL:STALE-IF-DEAD
+   RFL:FINDINGS 0 T=
    \ ... and its raw->nominal forge stays module-private: an out-of-owner
    \ reference is a finding (red), owner + <owner-stem>-test.f are the greens.
-   s" maki/eval/eval.f"   s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 1 T=
-   s" maki/tensor.f"      s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T=
-   s" maki/tensor-test.f" s" 1 ROWS-REFINE drop" RFL-COUNT-STR-AT 0 T= ;
+   s" maki/eval/eval.f"   s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 1 T=
+   s" maki/tensor.f"      s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 0 T=
+   s" maki/tensor-test.f" s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 0 T= ;
 
-: RFLT-DRIFT-RED ( -- )
-   RFL-REPORT-OFF
+: DRIFT-RED ( -- )
+   RFL:REPORT-OFF
    \ STALE-SEED, source-derived (red-first): a seed whose owner source no longer
    \ declares it (plain `:` colon def, no CAST:/TRUSTED:) trips the ratchet.
-   0 RFL-BAD !
-   s" : ROWS-REFINE ( n -- CAD-KIND:rows ) ROWS-RAW ;" 1 RFL-STALE-IF-DEAD
-   RFL-BAD @ 1 T=
+   RFL:CLEAR-FINDINGS
+   s" : ROWS-REFINE ( n -- CAD-KIND:rows ) ROWS-RAW ;" 1 RFL:STALE-IF-DEAD
+   RFL:FINDINGS 1 T=
    \ both declarer forms keep it live and confined (REFINE-CONFINE red-first each):
-   s" TRUSTED: ROWS-REFINE ( n -- CAD-KIND:rows ) ;" RFLT-FORM-CONFINED
-   s" CAST: ROWS-REFINE ( n -- CAD-KIND:rows ) ;"    RFLT-FORM-CONFINED
+   s" TRUSTED: ROWS-REFINE ( n -- CAD-KIND:rows ) ;" FORM-CONFINED
+   s" CAST: ROWS-REFINE ( n -- CAD-KIND:rows ) ;"    FORM-CONFINED
    \ the manifest Tests cell is no longer consulted: MINT-PATH's old row cited
    \ lib/nominal/nominal-test.f, which is not <owner-stem>-test.f, so absent an
-   \ RFL-ALLOW+ entry it is now a finding - the semantics genuinely changed.
-   s" lib/nominal/nominal-test.f" s" 1 MINT-PATH drop" RFL-COUNT-STR-AT 1 T=
-   0 RFL-BAD !
-   RFL-REPORT-ON ;
+   \ RFL:ALLOW+ entry it is now a finding - the semantics genuinely changed.
+   s" lib/nominal/nominal-test.f" s" 1 MINT-PATH drop" RFL:COUNT-STR-AT 1 T=
+   RFL:CLEAR-FINDINGS
+   RFL:REPORT-ON ;
 
-: RFLT-RESTORE ( -- )
-   RFL-RESET
-   RFL-INVENTORY                                \ back to the real TRUSTED.md
-   RFL-BAD @ 0 T=
+: RESTORE ( -- )
+   RFL:RESET
+   RFL:INVENTORY                                \ back to the real TRUSTED.md
+   RFL:FINDINGS 0 T=
    CLEANUP-RUN ;
 
-: RFLT-LIVE ( -- )
+: LIVE ( -- )
    \ the real tree (maki/ lib/ src/ tools/) must be confined -> returns clean
-   REFINE-LINT ;
+   RFL:RUN ;
 
-: RFLT-MAIN ( -- )
+public
+
+: MAIN ( -- )
    T-RESET
-   RFLT-SETUP
-   RFLT-SHAPE
-   RFLT-DETECT
-   RFLT-NO-FALSE-POSITIVE
-   RFLT-CONFINE-POLICY
-   RFLT-ALLOWLIST
-   RFLT-RED-PREPARE
-   RFLT-RED
-   RFLT-NEW-MINT-RED
-   RFLT-DRIFT-RED
-   RFLT-RESTORE
-   RFLT-LIVE
+   SETUP
+   SHAPE
+   DETECT
+   NO-FALSE-POSITIVE
+   CONFINE-POLICY
+   ALLOWLIST
+   RED-PREPARE
+   RED
+   NEW-MINT-RED
+   DRIFT-RED
+   RESTORE
+   LIVE
    T-REPORT ;
 
-RFLT-MAIN
+;package
+
+RFL-TEST:MAIN

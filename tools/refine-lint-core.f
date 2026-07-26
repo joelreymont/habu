@@ -7,7 +7,7 @@
 \ nominal with no gate failing. This lint pins the convention: every reference to
 \ a mint outside its owning file is a finding unless the referencing file is the
 \ mint owner's module test (`<owner-stem>-test.f`) or named on the explicit
-\ allowlist (RFL-ALLOW+). The confinement is name-and-path based, so it is
+\ allowlist (ALLOW+). The confinement is name-and-path based, so it is
 \ identical for both declarer forms - migrating a mint from TRUSTED: to CAST:
 \ neither weakens nor relaxes it.
 \
@@ -36,103 +36,115 @@
 \ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
 \ tools/trust-lint-core.f.
 
-$40000 constant RFL-STR-CAP     \ trust-lint manifest string store
-$80000 constant RFL-FILE-CAP    \ largest scanned source watermark (checker.f class)
-60 constant RFL-SEED#
-8 constant RFL-ALLOW-MAX
-32 constant RFL-NUM-CAP
+package RFL
 
-10 constant RFL-LF
-48 constant RFL-ZERO
-58 constant RFL-COLON
+private
 
-create RFL-NUM-BUF RFL-NUM-CAP allot
-create RFL-ONE 1 allot
-create RFL-STEM-BUF FS-PATH-CAP allot
-create RFL-ALW-NO RFL-ALLOW-MAX cells allot
-create RFL-ALW-NU RFL-ALLOW-MAX cells allot
-create RFL-ALW-PO RFL-ALLOW-MAX cells allot
-create RFL-ALW-PU RFL-ALLOW-MAX cells allot
+$40000 constant STR-CAP     \ trust-lint manifest string store
+$80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
+60 constant SEED#
+8 constant ALLOW-MAX
+32 constant NUM-CAP
 
-variable RFL-STR-A
-variable RFL-FILE-A
-variable RFL-BAD
-variable RFL-ALLOW#
-variable RFL-REPORT?
-variable RFL-NUM-L
-variable RFL-LINE
-variable RFL-CUR-A
-variable RFL-CUR-U
-variable RFL-LA
-variable RFL-LU
-variable RFL-LX
-variable RFL-LS
-variable RFL-LE
+10 constant LF
+48 constant ZERO
+58 constant COLON
 
-: RFL-STR-A-FIELD ( -- ptr ptr u8 ) RFL-STR-A 0 ptr-field ;
-: RFL-FILE-A-FIELD ( -- ptr ptr u8 ) RFL-FILE-A 0 ptr-field ;
-: RFL-CUR-A-FIELD ( -- ptr ptr u8 ) RFL-CUR-A 0 ptr-field ;
-: RFL-LA-FIELD ( -- ptr ptr u8 ) RFL-LA 0 ptr-field ;
-: RFL-ALW-NO-FIELD ( n -- ptr ptr u8 ) cells RFL-ALW-NO + 0 ptr-field ;
-: RFL-ALW-PO-FIELD ( n -- ptr ptr u8 ) cells RFL-ALW-PO + 0 ptr-field ;
+create NUM-BUF NUM-CAP allot
+create ONE 1 allot
+create STEM-BUF FS-PATH-CAP allot
+create ALW-NO ALLOW-MAX cells allot
+create ALW-NU ALLOW-MAX cells allot
+create ALW-PO ALLOW-MAX cells allot
+create ALW-PU ALLOW-MAX cells allot
 
-: RFL-CUR$ ( -- ptr u8 n ) RFL-CUR-A-FIELD @ RFL-CUR-U @ ;
-: RFL-CUR! ( ptr u8 n -- ) RFL-CUR-U ! RFL-CUR-A-FIELD ! ;
-: RFL-LA@ ( -- ptr u8 ) RFL-LA-FIELD @ ;
-: RFL-LA! ( ptr u8 -- ) RFL-LA-FIELD ! ;
+variable STR-A
+variable FILE-A
+variable BAD
+variable ALLOW#
+variable REPORT?
+variable NUM-L
+variable LINE
+variable CUR-A
+variable CUR-U
+variable LA
+variable LU
+variable LX
+variable LS
+variable LE
 
-: RFL-FAIL ( ptr u8 n -- ) 76 die ;
+: STR-A-FIELD ( -- ptr ptr u8 ) STR-A 0 ptr-field ;
+: FILE-A-FIELD ( -- ptr ptr u8 ) FILE-A 0 ptr-field ;
+: CUR-A-FIELD ( -- ptr ptr u8 ) CUR-A 0 ptr-field ;
+: LA-FIELD ( -- ptr ptr u8 ) LA 0 ptr-field ;
+: ALW-NO-FIELD ( n -- ptr ptr u8 ) cells ALW-NO + 0 ptr-field ;
+: ALW-PO-FIELD ( n -- ptr ptr u8 ) cells ALW-PO + 0 ptr-field ;
 
-: RFL-STR-BUF ( -- ptr u8 )
-   RFL-STR-A @ 0= if
-      RFL-STR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop RFL-STR-A-FIELD !
+: CUR$ ( -- ptr u8 n ) CUR-A-FIELD @ CUR-U @ ;
+: CUR! ( ptr u8 n -- ) CUR-U ! CUR-A-FIELD ! ;
+: LA@ ( -- ptr u8 ) LA-FIELD @ ;
+: LA! ( ptr u8 -- ) LA-FIELD ! ;
+
+: FAIL ( ptr u8 n -- ) 76 die ;
+
+: STR-BUF ( -- ptr u8 )
+   STR-A @ 0= if
+      STR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop STR-A-FIELD !
    then
-   RFL-STR-A-FIELD @ ;
+   STR-A-FIELD @ ;
 
-: RFL-FILE-BUF ( -- ptr u8 )
-   RFL-FILE-A @ 0= if
-      RFL-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop RFL-FILE-A-FIELD !
+: FILE-BUF ( -- ptr u8 )
+   FILE-A @ 0= if
+      FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FILE-A-FIELD !
    then
-   RFL-FILE-A-FIELD @ ;
+   FILE-A-FIELD @ ;
 
-: RFL-BUFFERS ( -- )
-   RFL-STR-BUF RFL-STR-CAP
-   RFL-FILE-BUF RFL-FILE-CAP
+public
+
+: BUFFERS ( -- )
+   STR-BUF STR-CAP
+   FILE-BUF FILE-CAP
    TRUST-LINT-BUFFERS! ;
+private
+
 
 \ ---- output ----------------------------------------------------------------
 
-: RFL-OUT ( ptr u8 n -- ) {: a:ptr u:n :}
+: OUT ( ptr u8 n -- ) {: a:ptr u:n :}
    1 a u LINT-OUT-WRITE ;
 
-: RFL-C ( n -- )
-   RFL-ONE c! RFL-ONE 1 RFL-OUT ;
+: C ( n -- )
+   ONE c! ONE 1 OUT ;
 
-: RFL-NL ( -- ) RFL-LF RFL-C ;
+: NL ( -- ) LF C ;
 
-: RFL-U. ( n -- )
-   0 RFL-NUM-L !
-   dup 0= IF drop RFL-ZERO RFL-C exit THEN
+: U. ( n -- )
+   0 NUM-L !
+   dup 0= IF drop ZERO C exit THEN
    begin dup 0 > while
-      dup 10 mod RFL-ZERO + RFL-NUM-BUF RFL-NUM-L @ + c!
+      dup 10 mod ZERO + NUM-BUF NUM-L @ + c!
       10 /
-      RFL-NUM-L @ 1+ RFL-NUM-L !
+      NUM-L @ 1+ NUM-L !
    repeat drop
-   begin RFL-NUM-L @ 0 > while
-      RFL-NUM-L @ 1- RFL-NUM-L !
-      RFL-NUM-BUF RFL-NUM-L @ + c@ RFL-C
+   begin NUM-L @ 0 > while
+      NUM-L @ 1- NUM-L !
+      NUM-BUF NUM-L @ + c@ C
    repeat ;
 
-: RFL-BAD+ ( -- ) RFL-BAD @ 1+ RFL-BAD ! ;
+: BAD+ ( -- ) BAD @ 1+ BAD ! ;
 
-: RFL-REPORT-ON ( -- ) LINT-TRUE RFL-REPORT? ! ;
-: RFL-REPORT-OFF ( -- ) LINT-FALSE RFL-REPORT? ! ;
+public
+
+: REPORT-ON ( -- ) LINT-TRUE REPORT? ! ;
+: REPORT-OFF ( -- ) LINT-FALSE REPORT? ! ;
+private
+
 
 \ ---- mint seed table: (name, owning file) -----------------------------------
 \ The confinement set. Owners outside the scanned roots (test/) are seed-only
 \ boundaries whose confinement still applies inside the scanned roots.
 
-: RFL-SEED-NAME$ ( n -- ptr u8 n )
+: SEED-NAME$ ( n -- ptr u8 n )
    case
       0 of s" DIM-REFINE" endof
       1 of s" ROWS-REFINE" endof
@@ -216,7 +228,7 @@ variable RFL-LE
       E-TBL-BOUNDS throw
    endcase ;
 
-: RFL-SEED-OWNER$ ( n -- ptr u8 n )
+: SEED-OWNER$ ( n -- ptr u8 n )
    case
       0 of s" maki/tensor.f" endof
       1 of s" maki/tensor.f" endof
@@ -281,9 +293,9 @@ variable RFL-LE
       E-TBL-BOUNDS throw
    endcase ;
 
-: RFL-SEEDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup RFL-SEED# < while
-      dup RFL-SEED-NAME$ a u LINT-STR=CI if drop LINT-TRUE exit then
+: SEEDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup SEED# < while
+      dup SEED-NAME$ a u LINT-STR=CI if drop LINT-TRUE exit then
       1+
    repeat drop LINT-FALSE ;
 
@@ -291,91 +303,100 @@ variable RFL-LE
 \ Empty today. Entries must cite the review that documented the exception.
 \ Caller-supplied strings must stay live for the run (s" literals are).
 
-: RFL-ALLOW-NAME$ ( n -- ptr u8 n )
-   dup RFL-ALW-NO-FIELD @ swap cells RFL-ALW-NU + @ ;
+: ALLOW-NAME$ ( n -- ptr u8 n )
+   dup ALW-NO-FIELD @ swap cells ALW-NU + @ ;
 
-: RFL-ALLOW-PATH$ ( n -- ptr u8 n )
-   dup RFL-ALW-PO-FIELD @ swap cells RFL-ALW-PU + @ ;
+: ALLOW-PATH$ ( n -- ptr u8 n )
+   dup ALW-PO-FIELD @ swap cells ALW-PU + @ ;
 
-: RFL-ALLOW+ ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n pa:ptr pu:n :}
-   RFL-ALLOW# @ RFL-ALLOW-MAX >= if s" refine-lint: allowlist full" RFL-FAIL then
-   na RFL-ALLOW# @ RFL-ALW-NO-FIELD !
-   nu RFL-ALW-NU RFL-ALLOW# @ cells + !
-   pa RFL-ALLOW# @ RFL-ALW-PO-FIELD !
-   pu RFL-ALW-PU RFL-ALLOW# @ cells + !
-   RFL-ALLOW# @ 1+ RFL-ALLOW# ! ;
+public
 
-: RFL-ALLOW-LISTED? ( n -- bool ) {: k:n :}
-   0 begin dup RFL-ALLOW# @ < while
-      dup RFL-ALLOW-NAME$ k RFL-SEED-NAME$ LINT-STR=CI if
-         dup RFL-ALLOW-PATH$ RFL-CUR$ FS-PATH= if drop LINT-TRUE exit then
+: ALLOW+ ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n pa:ptr pu:n :}
+   ALLOW# @ ALLOW-MAX >= if s" refine-lint: allowlist full" FAIL then
+   na ALLOW# @ ALW-NO-FIELD !
+   nu ALW-NU ALLOW# @ cells + !
+   pa ALLOW# @ ALW-PO-FIELD !
+   pu ALW-PU ALLOW# @ cells + !
+   ALLOW# @ 1+ ALLOW# ! ;
+
+private
+
+
+: ALLOW-LISTED? ( n -- bool ) {: k:n :}
+   0 begin dup ALLOW# @ < while
+      dup ALLOW-NAME$ k SEED-NAME$ LINT-STR=CI if
+         dup ALLOW-PATH$ CUR$ FS-PATH= if drop LINT-TRUE exit then
       then
       1+
    repeat drop LINT-FALSE ;
 
 \ ---- inventory: manifest cross-check + mint-shape scan ----------------------
 
-: RFL-FAMILY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u RFL-COLON LINT-INDEX-OF MATCH option
+: FAMILY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u COLON LINT-INDEX-OF MATCH option
      none OF LINT-FALSE ENDOF
      some OF {: i:n :} i 0 >  i u 1- <  and ENDOF
    ;MATCH ;
 
-: RFL-EFF-DASH-IDX ( -- n )
+: EFF-DASH-IDX ( -- n )
    0 begin dup SN# @ < while
       dup S@ s" --" LINT-STR= if exit then
       1+
    repeat drop -1 ;
 
-: RFL-EFF-RAW-IN? ( n -- bool ) {: dash:n :}
+: EFF-RAW-IN? ( n -- bool ) {: dash:n :}
    0 begin dup dash < while
       dup S@ s" n" LINT-STR= if drop LINT-TRUE exit then
       1+
    repeat drop LINT-FALSE ;
 
-: RFL-EFF-FAMILY-OUT? ( n -- bool ) {: dash:n :}
+: EFF-FAMILY-OUT? ( n -- bool ) {: dash:n :}
    dash 1+ begin dup SN# @ < while
-      dup S@ RFL-FAMILY-TOK? if drop LINT-TRUE exit then
+      dup S@ FAMILY-TOK? if drop LINT-TRUE exit then
       1+
    repeat drop LINT-FALSE ;
 
-: RFL-MINT-SHAPE? ( ptr u8 n -- bool )
+public
+
+: MINT-SHAPE? ( ptr u8 n -- bool )
    SPLIT-WHITESPACE
-   RFL-EFF-DASH-IDX dup 0 < if drop LINT-FALSE exit then
+   EFF-DASH-IDX dup 0 < if drop LINT-FALSE exit then
    {: dash:n :}
-   dash RFL-EFF-RAW-IN? 0= if LINT-FALSE exit then
-   dash RFL-EFF-FAMILY-OUT? ;
+   dash EFF-RAW-IN? 0= if LINT-FALSE exit then
+   dash EFF-FAMILY-OUT? ;
 
-: RFL-STALE-SEED ( n -- ) {: k:n :}
-   RFL-REPORT? @ if
-      s" STALE-SEED refine-lint: `" RFL-OUT k RFL-SEED-NAME$ RFL-OUT
-      s" ` is not declared (CAST:/TRUSTED:) in owner " RFL-OUT k RFL-SEED-OWNER$ RFL-OUT
-      s" ; retire or update the seed list" RFL-OUT RFL-NL
-   then
-   RFL-BAD+ ;
+private
 
-: RFL-NEW-MINT ( n -- ) {: m:n :}
-   RFL-REPORT? @ if
-      s" NEW-MINT TRUSTED.md " RFL-OUT m TL-M-KEY-PATH$ RFL-OUT
-      s" : `" RFL-OUT m TL-M-NAME$ RFL-OUT
-      s" ` `" RFL-OUT m TL-M-EFF$ RFL-OUT
-      s" ` is mint-shaped but not in the refine-lint seed list" RFL-OUT RFL-NL
+: STALE-SEED ( n -- ) {: k:n :}
+   REPORT? @ if
+      s" STALE-SEED refine-lint: `" OUT k SEED-NAME$ OUT
+      s" ` is not declared (CAST:/TRUSTED:) in owner " OUT k SEED-OWNER$ OUT
+      s" ; retire or update the seed list" OUT NL
    then
-   RFL-BAD+ ;
+   BAD+ ;
+
+: NEW-MINT ( n -- ) {: m:n :}
+   REPORT? @ if
+      s" NEW-MINT TRUSTED.md " OUT m TL-M-KEY-PATH$ OUT
+      s" : `" OUT m TL-M-NAME$ OUT
+      s" ` `" OUT m TL-M-EFF$ OUT
+      s" ` is mint-shaped but not in the refine-lint seed list" OUT NL
+   then
+   BAD+ ;
 
 \ ---- source-derived liveness: the owner file must still declare the mint ------
 \ STALE-SEED is decided by the OWNER SOURCE declaration (CAST: or TRUSTED:), not
 \ a manifest row, so a mint migrated from TRUSTED: to CAST: stays live while a
 \ retired or moved declaration trips the ratchet.
 
-: RFL-DECLARER-TOK? ( -- bool )                 \ current PAT token is a mint declarer
+: DECLARER-TOK? ( -- bool )                 \ current PAT token is a mint declarer
    s" CAST:" PAT-TOK= if LINT-TRUE exit then
    s" TRUSTED:" PAT-TOK= ;
 
-: RFL-DECLARES? ( ptr u8 n ptr u8 n -- bool ) {: ca:ptr cu:n na:ptr nu:n :}
+: DECLARES? ( ptr u8 n ptr u8 n -- bool ) {: ca:ptr cu:n na:ptr nu:n :}
    ca cu PAT-RESET
    begin PAT-READ-TOKEN while
-      RFL-DECLARER-TOK? if
+      DECLARER-TOK? if
          PAT-CAP-TOKEN-1 if
             P1A@ P1U @ na nu LINT-STR=CI if LINT-TRUE exit then
          then
@@ -384,181 +405,222 @@ variable RFL-LE
       then
    repeat LINT-FALSE ;
 
-: RFL-CONTENT-LIVE? ( ptr u8 n n -- bool ) {: ca:ptr cu:n k:n :}
-   ca cu k RFL-SEED-NAME$ RFL-DECLARES? ;
+: CONTENT-LIVE? ( ptr u8 n n -- bool ) {: ca:ptr cu:n k:n :}
+   ca cu k SEED-NAME$ DECLARES? ;
 
-: RFL-STALE-IF-DEAD ( ptr u8 n n -- ) {: ca:ptr cu:n k:n :}
-   ca cu k RFL-CONTENT-LIVE? 0= if k RFL-STALE-SEED then ;
+public
 
-: RFL-CHECK-LIVE ( n -- ) {: k:n :}
-   k RFL-SEED-OWNER$ EXISTS? 0= if k RFL-STALE-SEED exit then
-   k RFL-SEED-OWNER$ RFL-FILE-BUF RFL-FILE-CAP READ-FILE k RFL-STALE-IF-DEAD ;
+: STALE-IF-DEAD ( ptr u8 n n -- ) {: ca:ptr cu:n k:n :}
+   ca cu k CONTENT-LIVE? 0= if k STALE-SEED then ;
 
-: RFL-SELECT ( -- )
-   0 begin dup RFL-SEED# < while
-      dup RFL-CHECK-LIVE
+private
+
+: CHECK-LIVE ( n -- ) {: k:n :}
+   k SEED-OWNER$ EXISTS? 0= if k STALE-SEED exit then
+   k SEED-OWNER$ FILE-BUF FILE-CAP READ-FILE k STALE-IF-DEAD ;
+
+: SELECT ( -- )
+   0 begin dup SEED# < while
+      dup CHECK-LIVE
       1+
    repeat drop ;
 
-: RFL-SHAPE-SCAN ( -- )
+public
+
+: SHAPE-SCAN ( -- )
    0 begin dup TL-M# @ < while
-      dup TL-M-EFF$ RFL-MINT-SHAPE? if
-         dup TL-M-NAME$ RFL-SEEDED? 0= if dup RFL-NEW-MINT then
+      dup TL-M-EFF$ MINT-SHAPE? if
+         dup TL-M-NAME$ SEEDED? 0= if dup NEW-MINT then
       then
       1+
    repeat drop ;
 
-: RFL-INVENTORY ( -- )
+public
+
+: INVENTORY ( -- )
    s" ." TRUST-LINT-ROOT!
    TRUST-LINT-RESET
    TL-SCAN-MANIFEST
-   RFL-SELECT
-   RFL-SHAPE-SCAN ;
+   SELECT
+   SHAPE-SCAN ;
 
 \ ---- confinement scan --------------------------------------------------------
 
 \ The owner's module test - <owner-stem>-test.f (owner `maki/tensor.f` ->
 \ `maki/tensor-test.f`) - may reference the mint. Any other module test that
-\ exercises a mint (e.g. a shared package harness) is a documented RFL-ALLOW+
+\ exercises a mint (e.g. a shared package harness) is a documented ALLOW+
 \ entry, not an implicit exception.
-: RFL-STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+: STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u s" .fs" HAS-EXT? if a u 3 - exit then
    a u s" .f"  HAS-EXT? if a u 2 - exit then
    a u ;
 
-: RFL-STEM-TEST$ ( n -- ptr u8 n ) {: k:n :}
-   k RFL-SEED-OWNER$ RFL-STEM$ {: sa:ptr su:n :}
-   su 7 + FS-PATH-CAP > if s" refine-lint: stem path too long" RFL-FAIL then
-   sa RFL-STEM-BUF su LINT-BMOVE
-   s" -test.f" RFL-STEM-BUF su + swap LINT-BMOVE
-   RFL-STEM-BUF su 7 + ;
+: STEM-TEST$ ( n -- ptr u8 n ) {: k:n :}
+   k SEED-OWNER$ STEM$ {: sa:ptr su:n :}
+   su 7 + FS-PATH-CAP > if s" refine-lint: stem path too long" FAIL then
+   sa STEM-BUF su LINT-BMOVE
+   s" -test.f" STEM-BUF su + swap LINT-BMOVE
+   STEM-BUF su 7 + ;
 
-: RFL-STEM-TEST? ( n -- bool ) {: k:n :}
-   RFL-CUR$ k RFL-STEM-TEST$ FS-PATH= ;
+: STEM-TEST? ( n -- bool ) {: k:n :}
+   CUR$ k STEM-TEST$ FS-PATH= ;
 
-: RFL-ALLOWED? ( n -- bool ) {: k:n :}
-   RFL-CUR$ k RFL-SEED-OWNER$ FS-PATH= if LINT-TRUE exit then
-   k RFL-STEM-TEST? if LINT-TRUE exit then
-   k RFL-ALLOW-LISTED? ;
+: ALLOWED? ( n -- bool ) {: k:n :}
+   CUR$ k SEED-OWNER$ FS-PATH= if LINT-TRUE exit then
+   k STEM-TEST? if LINT-TRUE exit then
+   k ALLOW-LISTED? ;
 
-: RFL-QUAL-TOK? ( n -- bool ) {: k:n :}
-   k RFL-SEED-NAME$ {: na:ptr nu:n :}
+: QUAL-TOK? ( n -- bool ) {: k:n :}
+   k SEED-NAME$ {: na:ptr nu:n :}
    PTU @ nu 2 + < if LINT-FALSE exit then
    PTA@ PTU @ nu - +  nu  na nu LINT-STR=CI 0= if LINT-FALSE exit then
-   PTA@ PTU @ nu - 1- + c@ RFL-COLON = ;
+   PTA@ PTU @ nu - 1- + c@ COLON = ;
 
-: RFL-TOK-MINT? ( n -- bool ) {: k:n :}
-   PAT-TOK$ k RFL-SEED-NAME$ LINT-STR=CI if LINT-TRUE exit then
-   k RFL-QUAL-TOK? ;
+: TOK-MINT? ( n -- bool ) {: k:n :}
+   PAT-TOK$ k SEED-NAME$ LINT-STR=CI if LINT-TRUE exit then
+   k QUAL-TOK? ;
 
-: RFL-HIT ( n -- ) {: k:n :}
-   RFL-REPORT? @ if
-      s" REFINE-CONFINE " RFL-OUT
-      RFL-CUR$ RFL-OUT RFL-COLON RFL-C RFL-LINE @ RFL-U.
-      s" : `" RFL-OUT k RFL-SEED-NAME$ RFL-OUT
-      s" ` referenced outside owner " RFL-OUT k RFL-SEED-OWNER$ RFL-OUT RFL-NL
+: HIT ( n -- ) {: k:n :}
+   REPORT? @ if
+      s" REFINE-CONFINE " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : `" OUT k SEED-NAME$ OUT
+      s" ` referenced outside owner " OUT k SEED-OWNER$ OUT NL
    then
-   RFL-BAD+ ;
+   BAD+ ;
 
-: RFL-MATCH-TOKEN ( -- )
-   0 begin dup RFL-SEED# < while
-      dup RFL-TOK-MINT? if
-         dup RFL-ALLOWED? 0= if dup RFL-HIT then
+: MATCH-TOKEN ( -- )
+   0 begin dup SEED# < while
+      dup TOK-MINT? if
+         dup ALLOWED? 0= if dup HIT then
       then
       1+
    repeat drop ;
 
-: RFL-STRING-OPENER? ( -- bool )
+: STRING-OPENER? ( -- bool )
    PAT-TOK$ LINT-NORMAL-STRING-OPENER? if LINT-TRUE exit then
    PAT-TOK$ LINT-ESC-STRING-OPENER? ;
 
-: RFL-SCAN-LINE ( ptr u8 n -- )
+: SCAN-LINE ( ptr u8 n -- )
    PAT-RESET
    begin PAT-READ-TOKEN while
-      RFL-STRING-OPENER? if PAT-SKIP-STRING-BODY else RFL-MATCH-TOKEN then
+      STRING-OPENER? if PAT-SKIP-STRING-BODY else MATCH-TOKEN then
    repeat ;
 
-: RFL-LINE-LEN ( ptr u8 n -- ptr u8 n )
+: LINE-LEN ( ptr u8 n -- ptr u8 n )
    dup 0 > IF
       2dup + 1- c@ 13 = IF 1- THEN
    THEN ;
 
-: RFL-DO-LINE ( n -- )
-   RFL-LE !
-   RFL-LINE @ 1+ RFL-LINE !
-   RFL-LA@ RFL-LS @ +  RFL-LE @ RFL-LS @ -  RFL-LINE-LEN
-   RFL-SCAN-LINE
-   RFL-LE @ 1+ RFL-LS ! ;
+: DO-LINE ( n -- )
+   LE !
+   LINE @ 1+ LINE !
+   LA@ LS @ +  LE @ LS @ -  LINE-LEN
+   SCAN-LINE
+   LE @ 1+ LS ! ;
 
-: RFL-FOR-LINES ( ptr u8 n -- )
-   RFL-LU ! RFL-LA!
-   0 RFL-LINE !  0 RFL-LX !  0 RFL-LS !
-   begin RFL-LX @ RFL-LU @ < while
-      RFL-LA@ RFL-LX @ + c@ RFL-LF = IF RFL-LX @ RFL-DO-LINE THEN
-      RFL-LX @ 1+ RFL-LX !
+: FOR-LINES ( ptr u8 n -- )
+   LU ! LA!
+   0 LINE !  0 LX !  0 LS !
+   begin LX @ LU @ < while
+      LA@ LX @ + c@ LF = IF LX @ DO-LINE THEN
+      LX @ 1+ LX !
    repeat
-   RFL-LS @ RFL-LU @ < IF RFL-LU @ RFL-DO-LINE THEN ;
+   LS @ LU @ < IF LU @ DO-LINE THEN ;
 
-: RFL-SCAN-STR ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
-   pa pu RFL-CUR!
-   a u RFL-FOR-LINES ;
+: SCAN-STR ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
+   pa pu CUR!
+   a u FOR-LINES ;
 
 \ findings from one string scanned in isolation under the given path
 \ (reset -> scan -> count); leaves the run counters untouched.
-: RFL-COUNT-STR-AT ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu:n a:ptr u:n :}
-   RFL-REPORT? @ {: report:bool :}
-   RFL-BAD @ {: prior:n :}
-   RFL-REPORT-OFF
-   0 RFL-BAD !
-   pa pu a u RFL-SCAN-STR
-   RFL-BAD @ {: found:n :}
-   prior RFL-BAD !
-   report RFL-REPORT? !
+public
+
+: COUNT-STR-AT ( ptr u8 n ptr u8 n -- n ) {: pa:ptr pu:n a:ptr u:n :}
+   REPORT? @ {: report:bool :}
+   BAD @ {: prior:n :}
+   REPORT-OFF
+   0 BAD !
+   pa pu a u SCAN-STR
+   BAD @ {: found:n :}
+   prior BAD !
+   report REPORT? !
    found ;
 
-: RFL-COUNT-STR ( ptr u8 n -- n ) {: a:ptr u:n :}
-   s" rfl-scratch.f" a u RFL-COUNT-STR-AT ;
+: COUNT-STR ( ptr u8 n -- n ) {: a:ptr u:n :}
+   s" rfl-scratch.f" a u COUNT-STR-AT ;
 
-: RFL-SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+private
+
+: SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" .f" HAS-EXT?  a u s" .fs" HAS-EXT? or ;
 
-: RFL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u RFL-SRC? 0= if exit then
-   a u RFL-CUR!
-   a u RFL-FILE-BUF RFL-FILE-CAP READ-FILE RFL-FOR-LINES ;
+public
 
-: RFL-SCAN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u DIR? 0= if s" refine-lint: missing scan root" RFL-FAIL then
-   a u [: RFL-SCAN-FILE ;] WALK-FILES ;
+: SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SRC? 0= if exit then
+   a u CUR!
+   a u FILE-BUF FILE-CAP READ-FILE FOR-LINES ;
+
+: SCAN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u DIR? 0= if s" refine-lint: missing scan root" FAIL then
+   a u [: SCAN-FILE ;] WALK-FILES ;
 
 \ ---- entry -------------------------------------------------------------------
 
-: RFL-RESET ( -- )
-   0 RFL-BAD !
-   0 RFL-ALLOW# !
-   RFL-REPORT-ON ;
+public
+
+: RESET ( -- )
+   0 BAD !
+   0 ALLOW# !
+   REPORT-ON ;
 
 \ Documented module-test exceptions: the lib/nominal package confines its private
 \ representation mints (MINT-PATH/MINT-BINDING/MINT-ROW) but exercises them from
 \ shared harnesses, not per-owner <owner-stem>-test.f files. Each cites the owner
 \ and the reviewed test (dot habu-epic-type-system-b88c9ecc).
-: RFL-ALLOW-SEED ( -- )
-   s" MINT-PATH"    s" lib/nominal/nominal-test.f"      RFL-ALLOW+
-   s" MINT-BINDING" s" lib/nominal/nominal-prop-test.f" RFL-ALLOW+
-   s" MINT-ROW"     s" lib/nominal/nominal-test.f"      RFL-ALLOW+ ;
+private
 
-: RFL-REPORT ( -- )
-   s" refine-lint: " RFL-OUT RFL-SEED# RFL-U. s"  mint(s), " RFL-OUT
-   RFL-BAD @ RFL-U. s"  finding(s)" RFL-OUT RFL-NL
-   RFL-BAD @ 0 > IF 1 throw THEN ;
+: ALLOW-SEED ( -- )
+   s" MINT-PATH"    s" lib/nominal/nominal-test.f"      ALLOW+
+   s" MINT-BINDING" s" lib/nominal/nominal-prop-test.f" ALLOW+
+   s" MINT-ROW"     s" lib/nominal/nominal-test.f"      ALLOW+ ;
 
-: REFINE-LINT ( -- )
-   RFL-BUFFERS
-   RFL-RESET
-   RFL-ALLOW-SEED
-   RFL-INVENTORY
-   s" maki" RFL-SCAN-ROOT
-   s" lib" RFL-SCAN-ROOT
-   s" src" RFL-SCAN-ROOT
-   s" tools" RFL-SCAN-ROOT
-   RFL-REPORT ;
+: REPORT ( -- )
+   s" refine-lint: " OUT SEED# U. s"  mint(s), " OUT
+   BAD @ U. s"  finding(s)" OUT NL
+   BAD @ 0 > IF 1 throw THEN ;
+
+public
+
+: RUN ( -- )
+   BUFFERS
+   RESET
+   ALLOW-SEED
+   INVENTORY
+   s" maki" SCAN-ROOT
+   s" lib" SCAN-ROOT
+   s" src" SCAN-ROOT
+   s" tools" SCAN-ROOT
+   REPORT ;
+
+\ How many findings the last run recorded, and a way to start a fresh count. The
+\ counter itself stays private: exporting the cell would let a caller assign any
+\ value to it, including one that hides a finding, whereas these two can only
+\ read it or zero it. RESET is the whole-run reset; this clears the count alone,
+\ which is what a fixture scanning one string at a time needs.
+: FINDINGS ( -- n )
+   BAD @ ;
+
+: CLEAR-FINDINGS ( -- )
+   0 BAD ! ;
+
+\ The CLI entry. The catch and the LINT-MAIN reporting live here rather than in
+\ the wrapper so no lint definition sits outside a package; behavior is the
+\ wrapper's previous body unchanged, so stdout, stderr and exit status are the
+\ same as before this package existed.
+: MAIN ( -- )
+   [: RUN ;] catch {: code:n :}
+   s" refine-lint" code LINT-MAIN ;
+
+;package
