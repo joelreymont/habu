@@ -127,7 +127,79 @@ package POLICY-E2E-TEST
    art BUNDLE-REL-GOLD art NPOL-DOM:EXACT GRANT-REQ
    POLICY-GRANTED:UNMAKE drop drop drop ;   \ unreached on refusal; balances the no-refusal case
 
+\ ---- each slot's named payload comes back out of its own arm --------------------
+\ The four presence slots are full-mode payload ENUMs whose got arm carries one named
+\ `ev` cell. POLICY:CHECK reads that payload internally; these MATCH the slots HERE,
+\ so each arm's binding is observed directly rather than inferred from a verdict: the
+\ got arm projects the carried evidence's artifact and must recover the artifact the
+\ evidence was measured on, and the none arm must be the arm a constructed absence
+\ reaches. Every projection is the same one policy.f uses for that class.
+: SLOT-CERT? ( -- bool )
+   s" e2e-slot-cert" ARTIFACT:REGISTER {: art:CAD-KIND:artifact-id :}
+   art CERT-FOR EVID-CERTIFY--SLOT:CERTIFY-GOT
+   MATCH certify-slot
+      certify-got  OF EVID-CERTIFIED:UNMAKE drop art ARTIFACT:EQUAL? ENDOF
+      certify-none OF false ENDOF
+   ;MATCH ;
+: SLOT-GOLD? ( -- bool )
+   s" e2e-slot-gold" ARTIFACT:REGISTER {: art:CAD-KIND:artifact-id :}
+   art GOLD-FOR EVID-GOLDEN--SLOT:GOLDEN-GOT
+   MATCH golden-slot
+      golden-got  OF EVID-GOLDEN:UNMAKE drop drop drop drop art ARTIFACT:EQUAL? ENDOF
+      golden-none OF false ENDOF
+   ;MATCH ;
+: SLOT-GRAD? ( -- bool )
+   s" e2e-slot-grad" ARTIFACT:REGISTER {: art:CAD-KIND:artifact-id :}
+   art GRAD-FOR EVID-GRADCHECK--SLOT:GRADCHECK-GOT
+   MATCH gradcheck-slot
+      gradcheck-got  OF EVID-GRADCHECKED:UNMAKE drop art ARTIFACT:EQUAL? ENDOF
+      gradcheck-none OF false ENDOF
+   ;MATCH ;
+: SLOT-PROF? ( -- bool )
+   s" e2e-slot-prof" ARTIFACT:REGISTER {: art:CAD-KIND:artifact-id :}
+   art PROF-FOR EVID-PROFILE--SLOT:PROFILE-GOT
+   MATCH profile-slot
+      profile-got  OF EVID-PROFILED:UNMAKE drop drop art ARTIFACT:EQUAL? ENDOF
+      profile-none OF false ENDOF
+   ;MATCH ;
+
+\ the absent arms: a constructed absence reaches `none`, never the payload arm.
+: SLOT-CERT-NONE? ( -- bool )
+   EVID-CERTIFY--SLOT:CERTIFY-NONE
+   MATCH certify-slot
+      certify-got  OF EVID-CERTIFIED:UNMAKE drop drop false ENDOF
+      certify-none OF true ENDOF
+   ;MATCH ;
+: SLOT-GOLD-NONE? ( -- bool )
+   EVID-GOLDEN--SLOT:GOLDEN-NONE
+   MATCH golden-slot
+      golden-got  OF EVID-GOLDEN:UNMAKE drop drop drop drop drop false ENDOF
+      golden-none OF true ENDOF
+   ;MATCH ;
+: SLOT-GRAD-NONE? ( -- bool )
+   EVID-GRADCHECK--SLOT:GRADCHECK-NONE
+   MATCH gradcheck-slot
+      gradcheck-got  OF EVID-GRADCHECKED:UNMAKE drop drop false ENDOF
+      gradcheck-none OF true ENDOF
+   ;MATCH ;
+: SLOT-PROF-NONE? ( -- bool )
+   EVID-PROFILE--SLOT:PROFILE-NONE
+   MATCH profile-slot
+      profile-got  OF EVID-PROFILED:UNMAKE drop drop drop false ENDOF
+      profile-none OF true ENDOF
+   ;MATCH ;
+
 T-RESET
+
+\ ---- each full-mode slot ENUM binds and dispatches its payload -----------------
+SLOT-CERT?      T-ASSERT   \ the certify got arm recovers its evidence's artifact
+SLOT-GOLD?      T-ASSERT
+SLOT-GRAD?      T-ASSERT
+SLOT-PROF?      T-ASSERT
+SLOT-CERT-NONE? T-ASSERT   \ and a constructed absence reaches the none arm
+SLOT-GOLD-NONE? T-ASSERT
+SLOT-GRAD-NONE? T-ASSERT
+SLOT-PROF-NONE? T-ASSERT
 
 \ ---- executed end-to-end -----------------------------------------------------
 E2E-GRANT-ART?                 T-ASSERT   \ green: grants, and the grant binds the artifact

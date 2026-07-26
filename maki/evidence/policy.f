@@ -87,22 +87,34 @@ ENUM req DERIVE eq
 \ satisfy at promotion. `npol` is the region's requested policy (the skey pol field /
 \ maki/sched-key.f REGION-POL) threaded in by the promotion caller; CHECK enforces
 \ EVID:GOLD-DOM SATISFIES? npol before minting the grant (see CHECK).
-PRODUCT gate-set 0
+\ Declared through the unified STRUCTURE front end; the header clause and every
+\ FIELD line are unchanged, so POLICY-GATE--SET:MAKE / :UNMAKE keep their exact
+\ spelling, effect and field order and no call site moves. The first four fields
+\ are all `req`, which is precisely where an exchanged pair would be invisible to
+\ any value test, so maki/evidence/policy-test.f pins each field NAME to its
+\ payload SLOT through the type registry.
+STRUCTURE gate-set 0
    FIELD cert req
    FIELD gold req
    FIELD grad req
    FIELD prof req
    FIELD pol  CAD-KIND:schema-id
    FIELD npol NPOL:dom
-;PRODUCT
+;STRUCTURE
 
 \ granted: the sealed grant - bound to its artifact, its policy identity, and a
-\ private proof token that only POLICY:CHECK can mint.
-PRODUCT granted 0
+\ private proof token that only POLICY:CHECK can mint. Also a STRUCTURE now, on
+\ the same byte-identical terms. Neither record carries `DERIVE eq`, and neither
+\ can: a derive clause is refused when ANY field's own family does not itself
+\ derive equality, which covers `grant-proof` here and `CAD-KIND:schema-id` in
+\ gate-set above (both arity-0 TYPEFAMILYs). A grant has no equality semantics to
+\ offer anyway - its meaning is that it EXISTS, minted by the one word allowed to
+\ mint it.
+STRUCTURE granted 0
    FIELD art CAD-KIND:artifact-id
    FIELD pol CAD-KIND:schema-id
    FIELD tok grant-proof
-;PRODUCT
+;STRUCTURE
 
 private
 

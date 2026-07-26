@@ -104,22 +104,33 @@ STRUCTURE profiled 0
 \ A slot is `got <evidence>` or absent; the bundle is one slot per class. Consumed
 \ by POLICY:CHECK (promotion-policy sub-dot). Class-prefixed variant names because
 \ variant names are package-scoped.
-SUMTYPE certify-slot 0
-   VARIANT certify-got certified ;VARIANT
+\
+\ All four are declared through the unified ENUM front end in full mode (the arity
+\ token after the name selects it), so the present arm's payload is a named FIELD
+\ rather than a positional type token. The one payload each `got` arm carries is
+\ the evidence value itself, named `ev` in all four: this file calls it "the
+\ evidence" and POLICY:CHECK calls it "the evidence value", and using ONE name
+\ across the four slots keeps visible what the DEVIATION note above states - the
+\ four slots are the SAME shape, differing only in which class they carry. The
+\ generated EVID-CERTIFY--SLOT:CERTIFY-GOT / :CERTIFY-NONE constructors and every
+\ MATCH site are unchanged: spelling and payload binding order come from the
+\ package, the family tail and the declaration order, not from the mode.
+ENUM certify-slot 0
+   VARIANT certify-got FIELD ev certified ;VARIANT
    VARIANT certify-none ;VARIANT
-;SUMTYPE
-SUMTYPE golden-slot 0
-   VARIANT golden-got golden ;VARIANT
+;ENUM
+ENUM golden-slot 0
+   VARIANT golden-got FIELD ev golden ;VARIANT
    VARIANT golden-none ;VARIANT
-;SUMTYPE
-SUMTYPE gradcheck-slot 0
-   VARIANT gradcheck-got gradchecked ;VARIANT
+;ENUM
+ENUM gradcheck-slot 0
+   VARIANT gradcheck-got FIELD ev gradchecked ;VARIANT
    VARIANT gradcheck-none ;VARIANT
-;SUMTYPE
-SUMTYPE profile-slot 0
-   VARIANT profile-got profiled ;VARIANT
+;ENUM
+ENUM profile-slot 0
+   VARIANT profile-got FIELD ev profiled ;VARIANT
    VARIANT profile-none ;VARIANT
-;SUMTYPE
+;ENUM
 
 STRUCTURE bundle 0
    FIELD cert certify-slot
