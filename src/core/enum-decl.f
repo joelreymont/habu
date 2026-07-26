@@ -41,27 +41,27 @@
 \ variant-id), per the settled seam, until the sumvfields rename lands.
 \
 \ ---------------------------------------------------------------------------
-\ TRANSACTION and PARSE-ONLY SCOPE.
+\ TRANSACTION SCOPE.
 \ ---------------------------------------------------------------------------
-\ The checker, metadata, event, and constructor-protection participants retain
-\ one shared savepoint until the complete declaration has validated. A reject
-\ restores every owned registry in reverse participant order. This front end is
-\ parse only: it publishes family, variant, and field metadata and drives no
-\ constructor generation. The per-variant checked
-\ constructor package (MESSAGE:QUIT, docs §2.3) is enum-generate-named's later
-\ stage; the compact ENUM's constructor words the legacy sumtype.f definer emits
-\ today are NOT reproduced here, because this front end is registration-only.
+\ The checker, metadata, event, constructor-generation and constructor-protection
+\ participants retain one shared savepoint until the complete declaration has
+\ validated. A reject restores every owned registry in reverse participant order.
+\ This front end parses and publishes family, variant, and field metadata; it
+\ renders no constructor itself. Once the variant range, the field range and the
+\ payload width are bound, ED-CLOSE names the family to the ORDER 820 constructor
+\ participant (src/core/generated-declaration.f) and the declaration transaction
+\ generates the per-variant checked constructor package (MESSAGE:QUIT, docs §2.3)
+\ inside its commit phase, so a failure anywhere publishes no constructor at all.
 \
 \ ---------------------------------------------------------------------------
-\ GLOBAL-KEYWORD BINDING (staged). The global ENUM token still belongs to the
-\ legacy sumtype.f definer, whose live call sites (test/type-decl-suite.f,
-\ test/type-family-suite.f, test/candidate-validation.f, maki/async-dag.f, ...)
-\ depend on its exact grammar, reject codes, and generated constructors. Binding
-\ the global ENUM token to THIS front end now would shadow that definer and break
-\ those gates, so the front end is reached as ENUM-DECL:ED-RUN and the hard cutover
-\ (docs §2.7 tombstones + call-site migration) rebinds the global token later.
-\ enum-decl.f therefore defines NO global word and is a pure prelude leaf: no
-\ existing prelude file calls into it.
+\ GLOBAL-KEYWORD BINDING (landed). The global `ENUM` keyword IS this front end:
+\ `: ENUM ( -- ) ENUM-DECL:ED-RUN ;` at the end of this file is the sole global
+\ entry, written the way src/core/structure-decl.f writes `STRUCTURE`. The legacy
+\ compact parser and generator in src/core/sumtype.f, and its metadata-only
+\ CHECKER-DEFENUM entry, are deleted; a tool that has already lexed a declaration
+\ registers it through ED-REPLAY below. tools/enum-census.f re-declares every
+\ plain ENUM in the repository through this keyword and compares the registry
+\ against a baseline recorded before the cutover.
 \
 \ Loaded AFTER the checker hook and AFTER decl-event.f (it drives DECL-EVENT:*),
 \ in the post-hook DECL group after structure-decl.f.

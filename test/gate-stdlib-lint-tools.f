@@ -97,6 +97,10 @@ private
 : PRIMITIVE-EFFECT-INVENTORY ( -- )
    s" tools/primitive-effect-inventory-test.f" GSI-INCLUDE ;
 
+: ENUM-CENSUS ( -- )
+   s" tools/enum-census-test.f" GSI-INCLUDE
+   s" tools/enum-census.f" GSI-INCLUDE ;
+
 : BOOTSTRAP-MIRROR ( -- )
    s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
 
@@ -125,6 +129,7 @@ public
    s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: HOST ;] GT-POOL-START-FORK
    s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: TRUSTED-INVENTORY ;] GT-POOL-START-FORK
    s" lint-tools/primitive-effect-inventory" GSI-FORK-TIMEOUT-MS [: PRIMITIVE-EFFECT-INVENTORY ;] GT-POOL-START-FORK
+   s" lint-tools/enum-census" GSI-FORK-TIMEOUT-MS [: ENUM-CENSUS ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-refresh" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-REFRESH ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;
