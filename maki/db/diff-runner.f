@@ -78,33 +78,42 @@ package DIFFRUN
 public
 
 \ ---- the runner's typed results (custom sums; never a value+flag sentinel) -------------
-\ A subject run is a clean scalar output or a fault (crash/hang/nonzero exit).
-SUMTYPE run-result 0
-   VARIANT produced n ;VARIANT
+\ All four families are declared through the unified ENUM front end. The two that carry a
+\ payload use the FULL form (an arity after the name, then VARIANT blocks with named FIELD
+\ payloads); the two that are entirely payloadless use the COMPACT form (bare case names,
+\ no arity and no VARIANT keyword). Constructor spellings, checked effects, case order,
+\ tags, widths and every MATCH site are unchanged in all four.
+\
+\ A subject run is a clean scalar output or a fault (crash/hang/nonzero exit). The produced
+\ payload is named `subj` because that is what this file calls it everywhere the value is
+\ read: the MATCH arm in CASE-VERDICT binds `{: subj:n :}`, RESOLVE-REF takes it as `subj`,
+\ CLOSE? compares `subj` against `ref`, and EMIT-COUNTEREXAMPLE renders it as `subj=`.
+ENUM run-result 0
+   VARIANT produced FIELD subj n ;VARIANT
    VARIANT faulted ;VARIANT
-;SUMTYPE
+;ENUM
 
-\ A reference run is a scalar value or an unavailable (off-device / no PyTorch) skip.
-SUMTYPE ref-result 0
-   VARIANT value n ;VARIANT
+\ A reference run is a scalar value or an unavailable (off-device / no PyTorch) skip. The
+\ payload is named `ref` for the same reason: RESOLVE-REF's own MATCH arm binds
+\ `{: ref:n :}`, CLOSE?'s second parameter is `ref`, and the counterexample renders it as
+\ `ref=`. The variant stays `value`; the field is the value's role in the comparison.
+ENUM ref-result 0
+   VARIANT value FIELD ref n ;VARIANT
    VARIANT skip ;VARIANT
-;SUMTYPE
+;ENUM
 
-\ Per-case verdict: fault is its OWN member and is never a wrong value.
-SUMTYPE case-verdict 0
-   VARIANT agree ;VARIANT
-   VARIANT mismatch ;VARIANT
-   VARIANT subject-fault ;VARIANT
-   VARIANT reference-skip ;VARIANT
-;SUMTYPE
+\ Per-case verdict: fault is its OWN member and is never a wrong value. No case carries a
+\ payload, so this is the compact form. The type registry therefore records it as an enum
+\ family (kind 3) rather than a general sum (kind 2) - the deliberate kind change ruling R1
+\ asks for. Both forms are one cell wide and give the same MATCH surface, so no consumer
+\ can tell them apart by behaviour; that is exactly why maki/db/diff-runner-test.f pins the
+\ recorded kind, the case order and the constructor spelling live out of the family
+\ registry, and why the census baseline gains a row for this family.
+ENUM case-verdict agree mismatch subject-fault reference-skip ;ENUM
 
-\ Whole-run verdict (deterministic first-failure order).
-SUMTYPE run-verdict 0
-   VARIANT verified ;VARIANT
-   VARIANT falsified ;VARIANT
-   VARIANT subject-faulted ;VARIANT
-   VARIANT skipped ;VARIANT
-;SUMTYPE
+\ Whole-run verdict (deterministic first-failure order). Payloadless, so compact for the
+\ same reasons; RUN-VERDICT>N below is the tag order this form fixes.
+ENUM run-verdict verified falsified subject-faulted skipped ;ENUM
 
 private
 

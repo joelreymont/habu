@@ -30,6 +30,7 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f
 require maki/db/diff-runner.f
 require maki/db/diff-suite.f
 require maki/numpolicy.f
@@ -185,6 +186,69 @@ variable INJ-THRESH variable REF-OFFSET variable FAULT-AT variable REF-AVAIL
       missing-reproduction OF false ENDOF
    ;MATCH ;
 
+\ ---- every variant constructs and dispatches through MATCH ---------------------------
+\ The acceptance legs above reach the two payload families only through the scripted
+\ adapters. These construct each variant DIRECTLY through the private production wrappers
+\ and read it straight back, which is what proves the named payload FIELDs (`subj` on
+\ run-result's produced, `ref` on ref-result's value) bind in declaration order. Each
+\ payload arm binds a TYPED local and returns the recovered scalar, and each family is
+\ read back at TWO distinct non-zero values, so a payload the constructor dropped, zeroed
+\ or replaced with a constant fails instead of passing.
+\
+\ Construction is factored into one typed word per variant because the checker requires
+\ MATCH's scrutinee to be a concretely instantiated family value: a single word that both
+\ constructs and matches is refused, and the diagnostic names the family token as an
+\ undefined word. That refusal predates this migration (it reproduces identically on the
+\ legacy declaration) and is reported separately.
+: TT-MK-PROD ( n -- run-result )   >PRODUCED ;
+: TT-MK-FLT ( -- run-result )      >FAULTED ;
+: TT-MK-VAL ( n -- ref-result )    >VALUE ;
+: TT-MK-SKIP ( -- ref-result )     >SKIP ;
+
+: TT-RR-ARM ( run-result -- n )                  \ 1 produced, 2 faulted
+   MATCH run-result
+      produced OF drop 1 ENDOF
+      faulted  OF 2 ENDOF
+   ;MATCH ;
+: TT-RR-SUBJ ( run-result -- n )                 \ the produced scalar, else -1
+   MATCH run-result
+      produced OF {: subj:n :} subj ENDOF
+      faulted  OF -1 ENDOF
+   ;MATCH ;
+: TT-FR-ARM ( ref-result -- n )                  \ 1 value, 2 skip
+   MATCH ref-result
+      value OF drop 1 ENDOF
+      skip  OF 2 ENDOF
+   ;MATCH ;
+: TT-FR-REF ( ref-result -- n )                  \ the reference scalar, else -1
+   MATCH ref-result
+      value OF {: ref:n :} ref ENDOF
+      skip  OF -1 ENDOF
+   ;MATCH ;
+
+: TT-RR-RT-ARM ( -- n )    7 TT-MK-PROD TT-RR-ARM ;
+: TT-RR-RT-7 ( -- n )      7 TT-MK-PROD TT-RR-SUBJ ;      \ two distinct values: not a constant
+: TT-RR-RT-9 ( -- n )      9 TT-MK-PROD TT-RR-SUBJ ;
+: TT-RR-RT-FLT ( -- n )    TT-MK-FLT TT-RR-ARM ;
+: TT-RR-FLT-SUBJ ( -- n )  TT-MK-FLT TT-RR-SUBJ ;         \ a payloadless arm carries no scalar
+: TT-FR-RT-ARM ( -- n )    11 TT-MK-VAL TT-FR-ARM ;
+: TT-FR-RT-11 ( -- n )     11 TT-MK-VAL TT-FR-REF ;
+: TT-FR-RT-13 ( -- n )     13 TT-MK-VAL TT-FR-REF ;
+: TT-FR-RT-SKIP ( -- n )   TT-MK-SKIP TT-FR-ARM ;
+: TT-FR-SKIP-REF ( -- n )  TT-MK-SKIP TT-FR-REF ;
+
+\ The two payloadless families are read back through their public ordinal projections,
+\ which are MATCH-based, so these eight values pin the declared CASE ORDER: exchanging any
+\ two cases in either declaration renumbers the tags and turns these red.
+: TT-CV-AGREE ( -- n )    >AGREE CASE-VERDICT>N ;
+: TT-CV-MIS ( -- n )      >MISMATCH CASE-VERDICT>N ;
+: TT-CV-SF ( -- n )       >SUBJECT-FAULT CASE-VERDICT>N ;
+: TT-CV-RS ( -- n )       >REFERENCE-SKIP CASE-VERDICT>N ;
+: TT-RV-VER ( -- n )      >VERIFIED RUN-VERDICT>N ;
+: TT-RV-FAL ( -- n )      >FALSIFIED RUN-VERDICT>N ;
+: TT-RV-SFD ( -- n )      >SUBJECT-FAULTED RUN-VERDICT>N ;
+: TT-RV-SKP ( -- n )      >SKIPPED RUN-VERDICT>N ;
+
 T-RESET
 
 \ ---- ACCEPTANCE (a) ------------------------------------------------------------------
@@ -217,6 +281,200 @@ D-ENV-FLIP TTRUE
 CX-CODE -5398 T=
 CX-ROUNDTRIP TTRUE
 
-T-REPORT
+\ ---- the four families construct and dispatch through MATCH --------------------------
+TT-RR-RT-ARM 1 T=          \ produced dispatches to its own arm
+TT-RR-RT-7 7 T=            \ and carries its `subj` payload through unchanged ...
+TT-RR-RT-9 9 T=            \ ... at a second distinct value, so it is not a constant
+TT-RR-RT-FLT 2 T=          \ faulted dispatches to its own arm
+TT-RR-FLT-SUBJ -1 T=       \ the no-payload arm of TT-RR-SUBJ is live
+TT-FR-RT-ARM 1 T=          \ value dispatches to its own arm
+TT-FR-RT-11 11 T=          \ and carries its `ref` payload through unchanged ...
+TT-FR-RT-13 13 T=          \ ... at a second distinct value
+TT-FR-RT-SKIP 2 T=         \ skip dispatches to its own arm
+TT-FR-SKIP-REF -1 T=       \ the no-payload arm of TT-FR-REF is live
+TT-CV-AGREE 0 T=           \ compact case order: agree=0 ...
+TT-CV-MIS 1 T=
+TT-CV-SF 2 T=
+TT-CV-RS 3 T=              \ ... reference-skip=3
+TT-RV-VER 0 T=             \ compact case order: verified=0 ...
+TT-RV-FAL 1 T=
+TT-RV-SFD 2 T=
+TT-RV-SKP 3 T=             \ ... skipped=3
 
 ;package
+
+\ ---- how the four families are DECLARED (dot habu-migrate-diff-runner-e4257b87) ------
+\ run-result and ref-result carry a payload, so they use the full ENUM form and the type
+\ registry records them as general sums (kind 2). case-verdict and run-verdict are entirely
+\ payloadless, so they use the compact form and are recorded as enum families (kind 3) -
+\ the deliberate kind change ruling R1 asks for, and the reason the census baseline gains a
+\ row for each of them. Compact and sum spellings are both one cell wide here and give the
+\ same MATCH surface, so no consumer can tell them apart by behaviour; that is precisely
+\ why the recorded kind, arity, width, visibility, case order and generated constructor
+\ package are pinned below, read LIVE out of the family registry through the read-only
+\ accessors the checker publishes for public-signature tooling (src/core/checker.f). Writing
+\ any of these declarations back to SUMTYPE, or moving a payloadless one to the full form,
+\ changes the recorded kind and turns this suite red; exchanging two cases changes the
+\ pinned order.
+\
+\ These pins and the shape decoys own their own test package: nothing here needs the
+\ production package's private wrappers, so no test-only word is added to DIFFRUN.
+package DIFFRUN-TEST
+
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+
+variable KF                        \ the family row under test
+variable KV                        \ its first case's row in the variant registry
+
+: KP-NAMED? ( n ptr u8 n -- bool ) {: id:n a:ptr u:n :}   id TFAM-NAME$ a u STR= ;
+: KF! ( ptr u8 n -- ) {: a:ptr u:n :}      \ point KF at the family whose tail is `a u`
+   -1 KF !
+   TFAM-N@ 0 ?do  i a u KP-NAMED? if i KF ! unloop exit then  loop ;
+: KF-FOUND ( -- bool )   KF @ 0 >= ;
+: KF-KIND ( -- n )       KF @ TFAM-KIND@ ;
+: KF-ARITY ( -- n )      KF @ TFAM-ARITY@ ;
+: KF-WIDTH ( -- n )      KF @ TFAM-WIDTH@ ;
+: KF-PUBLIC ( -- bool )  KF @ TFAM-PUBLIC? ;
+: KF-VARS ( -- n )       KF @ TFAM-VAR-COUNT@ ;
+: KV! ( -- )             KF @ TFAM-VAR-START@ KV ! ;
+: CASE$ ( n -- ptr u8 n ) {: k:n :}     KV @ k + SUMV-NAME$ ;
+: CTOR$ ( n -- ptr u8 n ) {: k:n :}     KV @ k + SUMV-CTOR-PKG$ ;
+
+public
+
+\ twin is DIFFRUN:run-result's SHAPE under a different name: same arity, same two cases in
+\ the same order, same named payload field. It proves runner-result identity is NOMINAL -
+\ two identically shaped families never unify, in either direction. Public, so it publishes
+\ constructors for the positive control; the generated package is DIFFRUN--TEST-TWIN, well
+\ inside the 32-byte readable-spelling limit (TF-CTOR-NAME-LIMIT, src/core/type-family.f).
+ENUM twin 0
+   VARIANT produced FIELD subj n ;VARIANT
+   VARIANT faulted ;VARIANT
+;ENUM
+
+private
+
+\ The two decoys are the payloadless counterpart: same compact form, same four case names
+\ in the same order, same one-cell width as the family each shadows. Private, so they
+\ publish no constructors and the negatives below are MATCH-based in both directions.
+ENUM cv-decoy agree mismatch subject-fault reference-skip ;ENUM
+ENUM rv-decoy verified falsified subject-faulted skipped ;ENUM
+
+\ ---- live registry: run-result stays a full-form sum with two cases -------------------
+s" run-result" KF!
+KF-FOUND TTRUE
+KF-KIND TK-SUM T=                  \ a payload family stays a general sum ...
+KF-KIND TK-ENUM = 0 T=             \ ... and is NOT recorded as an enum
+KF-ARITY 0 T=
+KF-WIDTH 2 T=                      \ tag + one payload cell
+KF-PUBLIC TTRUE
+KF-VARS 2 T=
+KV!
+0 CASE$ s" produced" T$=           \ case order fixes the tags
+1 CASE$ s" faulted" T$=
+0 CTOR$ s" DIFFRUN-RUN--RESULT" T$=
+1 CTOR$ s" DIFFRUN-RUN--RESULT" T$=
+
+\ ---- live registry: ref-result, the same shape under its own name ---------------------
+s" ref-result" KF!
+KF-FOUND TTRUE
+KF-KIND TK-SUM T=
+KF-ARITY 0 T=
+KF-WIDTH 2 T=
+KF-PUBLIC TTRUE
+KF-VARS 2 T=
+KV!
+0 CASE$ s" value" T$=
+1 CASE$ s" skip" T$=
+0 CTOR$ s" DIFFRUN-REF--RESULT" T$=
+
+\ ---- live registry: case-verdict is now a COMPACT enum family ------------------------
+s" case-verdict" KF!
+KF-FOUND TTRUE
+KF-KIND TK-ENUM T=                 \ the pinned ruling R1 kind ...
+KF-KIND TK-SUM = 0 T=              \ ... and no longer a general sum
+KF-ARITY 0 T=
+KF-WIDTH 1 T=                      \ one cell, the same width the sum form had
+KF-PUBLIC TTRUE
+KF-VARS 4 T=
+KV!
+0 CASE$ s" agree" T$=
+1 CASE$ s" mismatch" T$=
+2 CASE$ s" subject-fault" T$=
+3 CASE$ s" reference-skip" T$=
+0 CTOR$ s" DIFFRUN-CASE--VERDICT" T$=
+3 CTOR$ s" DIFFRUN-CASE--VERDICT" T$=
+
+\ ---- live registry: run-verdict, the second compact family ---------------------------
+s" run-verdict" KF!
+KF-FOUND TTRUE
+KF-KIND TK-ENUM T=
+KF-KIND TK-SUM = 0 T=
+KF-ARITY 0 T=
+KF-WIDTH 1 T=
+KF-PUBLIC TTRUE
+KF-VARS 4 T=
+KV!
+0 CASE$ s" verified" T$=
+1 CASE$ s" falsified" T$=
+2 CASE$ s" subject-faulted" T$=
+3 CASE$ s" skipped" T$=
+0 CTOR$ s" DIFFRUN-RUN--VERDICT" T$=
+3 CTOR$ s" DIFFRUN-RUN--VERDICT" T$=
+
+\ ---- generated constructors: exact spelling + exact effect ---------------------------
+\ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot
+\ resolve, and YES demands -1, so a -1 means the checker resolved EXACTLY this constructor
+\ name; NO demands 0, which it can only reach after resolving the name and refusing the
+\ types. maki/db/diff-case-store.f and maki/db/diff-case-store-xproc-child.f construct and
+\ MATCH these families across a package boundary, so drift here would break consumers this
+\ suite never loads.
+s" RR-C-PROD ( n -- DIFFRUN:run-result ) DIFFRUN-RUN--RESULT:PRODUCED" YES
+s" RR-C-FLT ( -- DIFFRUN:run-result ) DIFFRUN-RUN--RESULT:FAULTED" YES
+s" FR-C-VAL ( n -- DIFFRUN:ref-result ) DIFFRUN-REF--RESULT:VALUE" YES
+s" FR-C-SKIP ( -- DIFFRUN:ref-result ) DIFFRUN-REF--RESULT:SKIP" YES
+s" CV-C-AGR ( -- DIFFRUN:case-verdict ) DIFFRUN-CASE--VERDICT:AGREE" YES
+s" CV-C-MIS ( -- DIFFRUN:case-verdict ) DIFFRUN-CASE--VERDICT:MISMATCH" YES
+s" CV-C-SF ( -- DIFFRUN:case-verdict ) DIFFRUN-CASE--VERDICT:SUBJECT-FAULT" YES
+s" CV-C-RS ( -- DIFFRUN:case-verdict ) DIFFRUN-CASE--VERDICT:REFERENCE-SKIP" YES
+s" RV-C-VER ( -- DIFFRUN:run-verdict ) DIFFRUN-RUN--VERDICT:VERIFIED" YES
+s" RV-C-FAL ( -- DIFFRUN:run-verdict ) DIFFRUN-RUN--VERDICT:FALSIFIED" YES
+s" RV-C-SFD ( -- DIFFRUN:run-verdict ) DIFFRUN-RUN--VERDICT:SUBJECT-FAULTED" YES
+s" RV-C-SKP ( -- DIFFRUN:run-verdict ) DIFFRUN-RUN--VERDICT:SKIPPED" YES
+\ Forge negatives: the produced/value payload is mandatory and is not a bare scalar, a
+\ payloadless case takes no payload, and a payloadless family's constructor is not an n.
+s" RR-F-NONE ( -- DIFFRUN:run-result ) DIFFRUN-RUN--RESULT:PRODUCED" NO
+s" RR-F-BARE ( n -- n ) DIFFRUN-RUN--RESULT:PRODUCED" NO
+s" RR-F-PAY ( n -- DIFFRUN:run-result ) DIFFRUN-RUN--RESULT:FAULTED" NO
+s" FR-F-NONE ( -- DIFFRUN:ref-result ) DIFFRUN-REF--RESULT:VALUE" NO
+s" CV-F-N ( -- n ) DIFFRUN-CASE--VERDICT:AGREE" NO
+s" CV-F-PAY ( n -- DIFFRUN:case-verdict ) DIFFRUN-CASE--VERDICT:AGREE" NO
+\ Cross-family negatives between the PRODUCTION families. run-result and ref-result are
+\ structurally identical (arity 0, one n-payload case plus one payloadless case) and the two
+\ verdict families are both four payloadless cases, so these four are the real
+\ same-shape-different-name test, not a synthetic one.
+s" RR-F-XFAM ( n -- DIFFRUN:ref-result ) DIFFRUN-RUN--RESULT:PRODUCED" NO
+s" FR-F-XFAM ( n -- DIFFRUN:run-result ) DIFFRUN-REF--RESULT:VALUE" NO
+s" RV-F-XFAM ( -- DIFFRUN:case-verdict ) DIFFRUN-RUN--VERDICT:VERIFIED" NO
+s" CV-F-XFAM ( -- DIFFRUN:run-verdict ) DIFFRUN-CASE--VERDICT:AGREE" NO
+\ The public twin: same shape, different name, does not unify in either direction.
+s" TW-C ( n -- twin ) DIFFRUN--TEST-TWIN:PRODUCED" YES
+s" TW-X1 ( n -- twin ) DIFFRUN-RUN--RESULT:PRODUCED" NO
+s" TW-X2 ( n -- DIFFRUN:run-result ) DIFFRUN--TEST-TWIN:PRODUCED" NO
+\ The compact decoys: MATCH accepts each family only for its own scrutinee. The first
+\ candidate of each pair is the positive control, so a refusal below cannot be a refusal of
+\ the shape. A raw cell is not a verdict at the MATCH entry either.
+s" CV-M-OK ( DIFFRUN:case-verdict -- ) MATCH DIFFRUN:case-verdict agree OF ENDOF mismatch OF ENDOF subject-fault OF ENDOF reference-skip OF ENDOF ;MATCH" YES
+s" CV-M-N ( n -- ) MATCH DIFFRUN:case-verdict agree OF ENDOF mismatch OF ENDOF subject-fault OF ENDOF reference-skip OF ENDOF ;MATCH" NO
+s" CV-D-OK ( cv-decoy -- ) MATCH cv-decoy agree OF ENDOF mismatch OF ENDOF subject-fault OF ENDOF reference-skip OF ENDOF ;MATCH" YES
+s" CV-D-X1 ( cv-decoy -- ) MATCH DIFFRUN:case-verdict agree OF ENDOF mismatch OF ENDOF subject-fault OF ENDOF reference-skip OF ENDOF ;MATCH" NO
+s" CV-D-X2 ( DIFFRUN:case-verdict -- ) MATCH cv-decoy agree OF ENDOF mismatch OF ENDOF subject-fault OF ENDOF reference-skip OF ENDOF ;MATCH" NO
+s" RV-M-OK ( DIFFRUN:run-verdict -- ) MATCH DIFFRUN:run-verdict verified OF ENDOF falsified OF ENDOF subject-faulted OF ENDOF skipped OF ENDOF ;MATCH" YES
+s" RV-D-OK ( rv-decoy -- ) MATCH rv-decoy verified OF ENDOF falsified OF ENDOF subject-faulted OF ENDOF skipped OF ENDOF ;MATCH" YES
+s" RV-D-X1 ( rv-decoy -- ) MATCH DIFFRUN:run-verdict verified OF ENDOF falsified OF ENDOF subject-faulted OF ENDOF skipped OF ENDOF ;MATCH" NO
+s" RV-D-X2 ( DIFFRUN:run-verdict -- ) MATCH rv-decoy verified OF ENDOF falsified OF ENDOF subject-faulted OF ENDOF skipped OF ENDOF ;MATCH" NO
+
+;package
+
+T-REPORT
