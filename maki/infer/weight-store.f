@@ -30,11 +30,24 @@
 \ SEAL consumes the builder and publishes the table by retyping the same block;
 \ the store constructors (the generated WSTORE-STORE:MAPPED / :ALLOCATED) consume
 \ their arm's owner and the table and are TOTAL - no throw sits between a
-\ DETACH-MAPPING and the mapped store's construction. DISPOSE is the single exit:
-\ the mapped arm frees the table and gives the mapping back through
+\ DETACH-MAPPING and the mapped store's construction. DISPOSE is the exit for a
+\ store: the mapped arm frees the table and gives the mapping back through
 \ SAFET:UNMAP-MAPPING; the allocated arm frees the table and releases the buffer
 \ through MEM:RELEASE-BYTES. Both report one result<n,n> (ok = bytes given back)
 \ instead of throwing past owners a caller has not disposed of yet.
+\
+\ A SEALED TABLE HAS ITS OWN EXIT. A table does not have to become a store. A
+\ caller can seal one and then decide not to commit - the bind transaction's
+\ prepared value is exactly that: it owns a sealed table and no arm owner yet, and
+\ its abort path must dispose the table on its own. Before TABLE-DISPOSE existed
+\ the only route to the table's memory was through DISPOSE, so such a caller had
+\ to FABRICATE a store around a mapping it did not want to consume just to reach a
+\ free path, and a caller that could not do even that leaked the block with no
+\ public word able to free it (the checker refuses a bare `drop` on a linear
+\ table, correctly). That was a real leak in this module's surface, not merely an
+\ inconvenience: the package that mints a linear owner must own its exit.
+\ TABLE-DISPOSE is that exit, and it reports the same result<n,n> shape DISPOSE
+\ does so a caller unwinding several owners handles one outcome type.
 \
 \ NO PUBLIC WORD RETURNS A RAW POINTER. Weight bytes are reachable only inside
 \ the WITH-SLOT quotation, whose declared effect is [ ptr u8 n -- n ]: the result
@@ -379,6 +392,22 @@ public
       mapped    OF MAPPED-DISPOSE ENDOF
       allocated OF ALLOC-DISPOSE ENDOF
    ;MATCH ;
+
+\ ---- disposal of a sealed table that never became a store -------------------------
+\ The exit for the table alone (see the header note on why it exists). It frees
+\ the same block by the same private path DISPOSE's two arms use, so a table
+\ disposed here and a table disposed inside a store cost identically; ok carries
+\ the table block's own byte length, which is the only memory this word gives
+\ back. The result is the shape, not a wider failure model: releasing the block is
+\ the unguarded package-memory free both DISPOSE arms already perform on it, so a
+\ failing munmap throws here exactly as it throws through DISPOSE today. What the
+\ union buys is that a caller disposing several owners in sequence reads one
+\ outcome type across all of them.
+: TABLE-DISPOSE ( WSTORE:table -- result<n,n> )
+   TBL>BLOCK {: blk:ptr :}
+   blk NSLOTS@ TB-ALLOC-LEN ABLEN>N {: blen:n :}
+   TBL-FREE
+   blen RESULT:OK ;
 
 \ ---- leak accounting (decides nothing; the SAFET:LIVE-OWNERS pattern) --------------------
 : LIVE ( -- n )                                \ undisposed builder/table blocks + buffer records

@@ -30,6 +30,22 @@
 \ SAFET fixtures. ACCEPTED controls prove the harness resolves this package;
 \ UNRESOLVED probes prove the representation leaves stay behind the seal, and a
 \ forked child proves the seal itself refuses new definitions into WSTORE.
+\
+\ The sealed-table disposal leg covers the case a store never appears: a caller
+\ seals a table and then decides not to commit, so the table is the only thing it
+\ owns. TABLE-DISPOSE frees it and WSTORE:LIVE returns to where it started. The
+\ shape this word retires is worth naming, because it is what the bind
+\ transaction would otherwise have had to do to free a table:
+\
+\   : KILL-TABLE ( SAFET:census WSTORE:table -- result<n,n> )
+\      swap SAFET:DETACH-MAPPING  rot  WSTORE-STORE:MAPPED
+\      WSTORE:DISPOSE  swap SAFET:RELEASE ;
+\
+\ That type-checks, and it is a hack: it reaches a private free path by consuming
+\ the census's file mapping through DETACH-MAPPING - an atomic, TERMINAL transfer
+\ the caller did not want to make - and by fabricating a store that never
+\ described any residency. It is recorded here as a rejected alternative so nobody
+\ reintroduces it; a table's own exit is the honest fix.
 
 require lib/test.f
 require test/checker-assert.f
@@ -67,6 +83,17 @@ create SUBJ-ERR $400 allot
 16 constant NB-A       8 constant NB-B
 0 constant BEG-A       16 constant BEG-B
 108 constant SUM-PAT                            \ 10+11+..+17, the MK-ASTORE pattern
+
+\ ---- the table block TABLE-DISPOSE gives back --------------------------------
+\ Mirrors the module's documented table layout: two header cells (slot count and
+\ populated count) then three cells per slot (offset, extent, set flag). Derived
+\ from those named parts rather than written as one magic byte count, so a layout
+\ change reds this leg instead of quietly agreeing with it.
+3 constant WT-ROW-CELLS
+2 constant WT-TBL-HDR-CELLS
+
+: TBL-BYTES ( n -- n )                          \ block bytes for a table of n slots
+   WT-ROW-CELLS * WT-TBL-HDR-CELLS + cells ;
 
 : SYNTH-PATH ( -- ptr u8 n )  s" /tmp/hb-wst-synth.safetensors" ;
 
@@ -244,6 +271,22 @@ private
    WSTORE:LIVE 0 T=
    SAFET:LIVE-OWNERS 0 T=
    CLEANUP ;
+
+\ ---- a sealed table with no arm owner disposes on its own ---------------------------
+\ Entered at zero live blocks (T-EQUALITY leaves it there), so the counter proves
+\ the whole life of the table: one block after SEAL, none after TABLE-DISPOSE. No
+\ census and no mapping take part, which is the point - this is the state a caller
+\ that declines to commit is left holding, and the leg would be impossible to
+\ write at all if the table's only exit ran through a store.
+: T-TABLE-DISPOSE ( -- )
+   s" a sealed table that never became a store disposes on its own" T-LABEL
+   WSTORE:LIVE 0 T=
+   MK-ATBL                                      \ ( tbl ) sealed, sole owner of its block
+   WSTORE:LIVE 1 T=
+   WSTORE:TABLE-DISPOSE 2 TBL-BYTES RES-OK=     \ ok carries the block it gave back
+   WSTORE:LIVE 0 T=
+   SAFET-MAP:LIVE 0 T=                          \ nothing was ever mapped for this leg
+   SAFET:LIVE-OWNERS 0 T= ;
 
 \ ---- refusal legs: table construction ----------------------------------------------
 : TBL-BURN ( WSTORE:table -- )                  \ consume a table through a real store
@@ -509,7 +552,15 @@ private
    s" WST-BAD-RESULT-DROPPED ( WSTORE:store -- ) WSTORE:DISPOSE" REJECTED
    s" WST-BAD-RESULT-RAW ( WSTORE:store -- n ) WSTORE:DISPOSE 1 +" REJECTED
    s" no reader answers without its store" T-LABEL
-   s" WST-BAD-AMBIENT ( n -- n ) [: WSTORE-TEST:SUM-BODY ;] WSTORE:WITH-SLOT" REJECTED ;
+   s" WST-BAD-AMBIENT ( n -- n ) [: WSTORE-TEST:SUM-BODY ;] WSTORE:WITH-SLOT" REJECTED
+   s" TABLE-DISPOSE consumes its table exactly once and yields a real union" T-LABEL
+   s" WST-BAD-TD-TWICE ( WSTORE:table -- result<n,n> result<n,n> ) WSTORE:TABLE-DISPOSE WSTORE:TABLE-DISPOSE" REJECTED
+   s" WST-BAD-TD-KEEPS ( WSTORE:table -- WSTORE:table result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED
+   s" WST-BAD-TD-DROPPED ( WSTORE:table -- ) WSTORE:TABLE-DISPOSE" REJECTED
+   s" WST-BAD-TD-RAW ( WSTORE:table -- n ) WSTORE:TABLE-DISPOSE 1 +" REJECTED
+   s" an unsealed builder is not a table, so the table exit refuses it" T-LABEL
+   s" WST-BAD-TD-BUILDER ( WSTORE:tbuilder -- result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED
+   s" WST-BAD-TD-STORE ( WSTORE:store -- result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED ;
 
 : T-ESCAPE ( -- )
    s" a quotation declared to return the span pointer rejects statically" T-LABEL
@@ -527,6 +578,7 @@ private
    s" WST-OK-SLOT ( WSTORE:tbuilder n CAD-NUM:byte-off CAD-NUM:byte-len -- WSTORE:tbuilder ) WSTORE:SLOT!" ACCEPTED
    s" WST-OK-SEAL ( WSTORE:tbuilder -- WSTORE:table ) WSTORE:SEAL" ACCEPTED
    s" WST-OK-DISPOSE ( WSTORE:store -- result<n,n> ) WSTORE:DISPOSE" ACCEPTED
+   s" WST-OK-TABLE-DISPOSE ( WSTORE:table -- result<n,n> ) WSTORE:TABLE-DISPOSE" ACCEPTED
    s" the representation stays behind the seal" T-LABEL
    s" WST-BAD-MINT-TB ( ptr u8 -- WSTORE:tbuilder ) WSTORE:MINT-TBUILDER" UNRESOLVED
    s" WST-BAD-TB-BLOCK ( WSTORE:tbuilder -- WSTORE:tbuilder ptr n ) WSTORE:TB>BLOCK" UNRESOLVED
@@ -567,6 +619,7 @@ public
    T-SURFACE
    T-SEALED
    T-EQUALITY
+   T-TABLE-DISPOSE
    T-TABLE-ERRORS
    T-ACCESS
    T-NESTED

@@ -1541,9 +1541,15 @@ points stay listed.
   Weight bytes are reachable only inside the `WITH-SLOT` quotation
   `[ ptr u8 n -- n ]`, whose scalar result row makes a pointer-returning body a
   static reject; the span is advisory pending the pointer-lifetime checker
-  capability, exactly as for `SAFET:WITH-TENSOR`. `DISPOSE` is the single exit:
-  the mapped arm unmaps through `SAFET:UNMAP-MAPPING`, the allocated arm
+  capability, exactly as for `SAFET:WITH-TENSOR`. `DISPOSE` is the exit for a
+  store: the mapped arm unmaps through `SAFET:UNMAP-MAPPING`, the allocated arm
   releases through `MEM:RELEASE-BYTES`, both reporting one `result<n,n>`.
+  `TABLE-DISPOSE ( WSTORE:table -- result<n,n> )` is the exit for a sealed table
+  that never became a store — the state a caller holds when it seals a table and
+  then declines to commit (the bind transaction's prepared value). Without it the
+  only route to a table's memory ran through `DISPOSE`, so such a caller had to
+  fabricate a store around a mapping it did not want to consume, or leak the
+  block outright; the package that mints a linear owner owns its exit.
   `WSTORE:LIVE` counts undisposed WSTORE-owned blocks for leak assertions.
   Owns -7710..-7714.
 - `maki/infer/weight-store-test.f` — byte-equality of `WITH-SLOT` across both
@@ -1556,7 +1562,11 @@ points stay listed.
   SEAL, out-of-range slot and oversized/byteless rows at access on both arms),
   checker negatives for store/builder/table/buffer linearity, double dispose,
   constructor arm confusion, sealed-table mutation, dropped or raw-read cleanup
-  results, and the quotation escape negative; nested re-entry regressions (a
+  results, and the quotation escape negative; a sealed table with no arm owner
+  disposing on its own through `TABLE-DISPOSE`, entered and left at zero live
+  blocks, with wrong-role negatives proving a builder and a store are not tables
+  and the fabricate-a-store workaround recorded in the header as the shape that
+  word retires; nested re-entry regressions (a
   body minting, reading, and disposing a second store on both arms, plus an
   aborted inner call under catch) pin the parked frame's ordering discipline;
   a forked child proves the package seal refuses new definitions into WSTORE.
