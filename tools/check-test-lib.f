@@ -1551,22 +1551,39 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" bad structure declaration 'spcmt'" CONTAINS? TTRUE
    CAP-ERR erru s" at '('" CONTAINS? TTRUE ;
 
-\ 1302 variants is ~7.8KB of body. WHICH bound refuses it is worth being exact
-\ about, because the two capture paths do not share one. This tool's capture
-\ buffer is far larger than that, and the replay entry it feeds has no length
-\ gate at all, so the nominal pass buffers and registers the declaration without
-\ complaint; the refusal comes from the ENGINE's own 4096-byte TDECL-CAP when
-\ the child run loads the source, which is an uncaught declaration throw and so
-\ exits 67 rather than check's own 70. verify-source's 8000-byte buffer is the
-\ other bound, pinned against its exact edge in
-\ test/decl-replay-verify-source.f. What this case pins is the property that
-\ matters at the command line: too-long source is refused LOUDLY and by name,
-\ never quietly shortened into a declaration that parses.
+\ How long a declaration may be, and which bound answers when it is too long.
+\
+\ 1302 variants is ~7.8KB of body. That used to be refused, by the ENGINE's own
+\ 4096-byte TDECL-CAP: the legacy compact definer copied the whole body into one
+\ fixed buffer before parsing it, and `TDECL-REQUIRE-FIT` refused anything that
+\ did not fit. The global ENUM keyword is the unified front end now, which reads
+\ tokens straight from the input source with a one-token pushback and never
+\ buffers a body, so that bound is simply gone — it was a property of the old
+\ collection strategy, not of the language, and the declaration is well formed.
+\ The engine registers all 1302 variants (pinned in test/enum-decl-suite.f), and
+\ the command exits 0.
+\
+\ One length bound is left, and it is the one that matters here: this tool does
+\ not interpret the source, it buffers each declaration through
+\ src/habu/verify-source.f's 8000-byte body buffer and replays it. That buffer
+\ RAISES rather than shortening — a buffer that cannot represent its input must
+\ say so — so a longer declaration still fails loudly, with the declaration
+\ layer's own "declaration too long" code 7118. It now surfaces from THIS
+\ process's preverify pass rather than from the child run, so the code arrives
+\ raw instead of as the child's exit 67; the CLI still reports it as an uncaught
+\ throw. Its exact edge is pinned in test/decl-replay-verify-source.f. What this
+\ case pins is the property that matters at the command line: a long declaration
+\ either goes through whole or is refused loudly, and is never quietly shortened
+\ into one that parses.
 : TEST-DECL-OVER-CAP ( -- )
-   1302 LONG-ENUM$ DIRECT-STDIN 67 T=
+   1302 LONG-ENUM$ DIRECT-STDIN 0 T=
    {: outu:n erru:n :}
    outu 0 T=
-   CAP-ERR erru s" declaration too long" CONTAINS? TTRUE ;
+   erru 0 T=
+   1400 LONG-ENUM$ DIRECT-STDIN 7118 T=
+   {: outu2:n erru2:n :}
+   outu2 0 T=
+   CAP-ERR erru2 s" preverify failed" CONTAINS? TTRUE ;
 
 : TEST-STRUCT-NOEND ( -- )
    STRUCT-NOEND$ DIRECT-STDIN 70 T=

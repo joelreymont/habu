@@ -136,10 +136,11 @@ variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
+variable SEEN-END   \ this declaration's ;STRUCTURE has been consumed
 variable SD-SI         \ private digit-scan index
 
 : SD-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   0 PEND-U !   0 TOK !   0 SEEN-FIELD ! ;
+   0 PEND-U !   0 TOK !   0 SEEN-FIELD !   0 SEEN-END ! ;
 SD-RESET
 
 \ Tokens come from the live input source, or — when a tool is replaying a
@@ -340,7 +341,7 @@ SD-RESET
    SD-NEXT dup 0= IF 2drop
       DECL-REJECT:AT-FAMILY
       s" missing ;STRUCTURE" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ;structure" CORE-STR=CI IF 2drop SD-CLOSE YES EXIT THEN
+   2dup s" ;structure" CORE-STR=CI IF 2drop -1 SEEN-END ! SD-CLOSE YES EXIT THEN
    2dup s" field" CORE-STR=CI IF 2drop FIELD-CLAUSE NO EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
@@ -360,13 +361,38 @@ SD-RESET
 : SD-BODY ( -- )
    [: SD-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
+\ Resynchronize the input to the end of THIS declaration. Same contract, same
+\ reasoning and same two exemptions as enum-decl.f's ED-RESYNC: it matters only
+\ when a multi-error load will swallow the reject and hand the rest of the
+\ declaration to the interpreter, the terminator is this declaration's own
+\ boundary, and there is nothing to skip once `;STRUCTURE` has been consumed or
+\ the input has ended. Measured before this existed:
+\ `STRUCTURE m7sbad 0 FIELD x n FIELD x n ;STRUCTURE TYPEFAMILY m7scont 1`
+\ reported the duplicate field, counted it, then died on
+\ `E-UNDEFINED: ;STRUCTURE`.
+: SD-SKIP-BODY ( -- )
+   BEGIN
+      SD-RAW dup 0= IF 2drop EXIT THEN
+      2dup s" ;structure" CORE-STR=CI IF 2drop EXIT THEN
+      2drop
+   AGAIN ;
+: SD-RESYNC ( -- )
+   SEEN-END @ IF EXIT THEN
+   DECL-REJECT:MULTI-ERROR? 0= IF EXIT THEN
+   SD-SKIP-BODY ;
+
 \ A reject is rendered through the shared declaration packet AFTER the
 \ coordinator has rolled everything back, then rethrown with its exact code,
 \ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
 \ restore, report, rethrow). Both drivers below share this one guarded body, so
 \ a replayed declaration reports through exactly the same renderer.
+: SD-DRIVE ( -- )                      \ body, then resynchronize before reporting
+   [: SD-BODY ;] catch {: rc:n :}
+   rc 0= IF EXIT THEN
+   SD-RESYNC
+   rc throw ;
 : SD-GUARDED ( -- )
-   [: SD-BODY ;] DECL-REJECT:GUARD ;
+   [: SD-DRIVE ;] DECL-REJECT:GUARD ;
 
 \ The replay stream is retired on BOTH exits. Closing only on success would
 \ leave a rejected replay installed, and the next live STRUCTURE would then read

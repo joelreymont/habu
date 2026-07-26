@@ -675,6 +675,13 @@ variable FILE-USED
    FILE$ s" src/core/structure-decl.f" LINT-STR= if
       DEF-NAME-I @ s" STRUCTURE" TOK=CI exit
    then
+   \ Same shape and same reason as STRUCTURE above: ENUM is one of the executable
+   \ composite-declaration keywords, a documented global language surface, and it
+   \ is the ONE name in this file that may stay global. Everything else the file
+   \ defines lives in package ENUM-DECL and is still reported.
+   FILE$ s" src/core/enum-decl.f" LINT-STR= if
+      DEF-NAME-I @ s" ENUM" TOK=CI exit
+   then
    false ;
 
 \ A changed unpackaged definition normally loses its package owner.  A non-zero

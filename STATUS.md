@@ -42,7 +42,7 @@ Latest hot counters: `inner-hb=1`, `inner-hb-stdin=4`, `boundary=5`,
 post-candidate is 11.161s, dictionary/checker is 7.815s, `check-cli` is 3.162s,
 tail/lint groups are under 7.7s, and AOT negative is 7.837s with no AOT maker
 run.
-Certified (linux-arm64): 4191  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4192  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -153,6 +153,31 @@ measures today:
   line rather than a definition. That change also edits `TRUSTED.md`,
   `docs/extent-substrate.md` and three test files, none of which is part of the
   assembled stage2 engine source.
+- Moving the global `ENUM` keyword to the unified front end removes seven
+  definitions and adds eight, so the row ends where it started, at 4192. The
+  removals: seven definitions leave `src/core/sumtype.f` with the legacy
+  compact ENUM parser and generator: `TDECL-ENUM-VARIANT`,
+  `TDECL-ENUM-VARIANTS`, `CHECKER-DEFENUM-BODY`, `CHECKER-DEFENUM`,
+  `ENUM-COLLECT`, `TDECL-ENUM-NOEND-BODY`, and the old `ENUM` definer itself.
+  The additions: `src/core/enum-decl.f` gains `: ENUM ( -- ) ENUM-DECL:ED-RUN ;`,
+  the global keyword, written exactly the way `src/core/structure-decl.f` writes
+  `STRUCTURE`; each front end gains the three words that resynchronize the input
+  after a swallowed reject (`ED-SKIP-BODY`, `ED-RESYNC`, `ED-DRIVE` in
+  `src/core/enum-decl.f`, `SD-SKIP-BODY`, `SD-RESYNC`, `SD-DRIVE` in
+  `src/core/structure-decl.f`), which is the guarantee the deleted
+  collect-then-parse definer used to provide for free; and
+  `src/core/generated-declaration.f` gains `DECL-REJECT:MULTI-ERROR?`, the public
+  reading of the multi-error flag those front ends ask before skipping. So
+  4191 - 7 + 8 = 4192: the row returns to the value it held before the
+  control-word change above took one away. Two axiom rows go with the deleted
+  words
+  (`PRIM: ENUM` in `src/core/sumtype.f` and `PRIM: CHECKER-DEFENUM` in
+  `src/core/checker.f`) and `src/core/generated-declaration.f` gains two
+  `TRUSTED:` forwarders for the multi-error load flag; neither kind is a colon
+  definition and neither counts. That change also edits `TRUSTED.md`,
+  `test/prop-test-core.f`'s axiom ledger, `tools/lint/text-foundation-test.f`'s
+  registry-row ratchet, `tools/check-all-errors-test.f`, and five test files,
+  none of which is part of the assembled stage2 engine source.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

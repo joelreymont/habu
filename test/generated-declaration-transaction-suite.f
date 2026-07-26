@@ -3,6 +3,7 @@
 
 require lib/test.f
 require test/checker-assert.f
+require test/decl-diag-capture.f   \ DECL-DIAG: the check tool's own declaration-packet capture
 
 T-RESET
 
@@ -70,7 +71,7 @@ variable GENERATED-NAME-PREFLIGHT-N
 variable GENERATED-PLAN-BROKEN
 variable GENERATED-XREF-ABSENT
 variable GENERATED-CHECKER-ABSENT
-variable GENERATED-EVENT-UNPUBLISHED
+variable GENERATED-EVENT-STAGED
 variable GENERATED-PROTECTION-UNPUBLISHED
 variable GENERATED-DICTIONARY-UNPUBLISHED
 variable NATIVE-NDICT-N0
@@ -344,7 +345,17 @@ package GENERATED-DECLARATION-TXN-TEST
 : RECORD-PREFLIGHT-NONPUBLICATION ( -- )
    s" GDTX:RED" XREF-FIND XREF-FOUND? 0= GENERATED-XREF-ABSENT !
    s" GDTX:RED" CHECKER-DEFINED? 0= GENERATED-CHECKER-ABSENT !
-   DECL-EVENT:COUNT EVENT-N0 @ = GENERATED-EVENT-UNPUBLISHED !
+   \ The declaration's own event rows ARE on the stream by the time generation
+   \ runs, and that is the point: commit runs in ascending participant order, so
+   \ DECL-EVENT (800) has already promoted this declaration's rows to the
+   \ committed watermark before the constructor participant (820) reads them
+   \ through the committed provider. The rows are reversible — ASSERT-UNCHANGED
+   \ below proves DECL-EVENT:COUNT is back at the baseline after the reject. This
+   \ used to read `= EVENT-N0` because the vehicle was sumtype.f's compact ENUM
+   \ definer, which wrote registry rows directly and emitted no events at all; the
+   \ global ENUM keyword is the unified front end now, so the honest observable at
+   \ this instant is that the events are staged, not that they are absent.
+   DECL-EVENT:COUNT EVENT-N0 @ > GENERATED-EVENT-STAGED !
    prot-wid-room PROTECTION-ROOM-N0 @ = GENERATED-PROTECTION-UNPUBLISHED !
    ndict@ NATIVE-NDICT-N0 @ =
    cp@ NATIVE-CP-N0 @ = and
@@ -364,7 +375,7 @@ package GENERATED-DECLARATION-TXN-TEST
    0 GENERATED-PLAN-BROKEN !
    0 GENERATED-XREF-ABSENT !
    0 GENERATED-CHECKER-ABSENT !
-   0 GENERATED-EVENT-UNPUBLISHED !
+   0 GENERATED-EVENT-STAGED !
    0 GENERATED-PROTECTION-UNPUBLISHED !
    0 GENERATED-DICTIONARY-UNPUBLISHED !
    [: EVALUATE-GENERATED ;] is TDECL-EVAL-XT
@@ -1178,7 +1189,16 @@ INSTALL-GROW-NESTED
 : TEST-NAME-PREFLIGHT-CLEARS-AUTHORITY ( -- )
    RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
    INSTALL-NAME-PREFLIGHT-FAILURE
+   \ The vehicle is the global ENUM keyword, which is the unified front end. Its
+   \ rejects are rendered as a declaration packet before they are rethrown, so the
+   \ expected diagnostic is captured and asserted rather than left on stderr — the
+   \ legacy compact definer printed nothing for a generation-phase failure, since
+   \ its constructor step ran outside the body its reporter guarded.
+   DECL-DIAG:PROSE
    s" ENUM gdnamefail left right ;ENUM" EVALUATE-CATCH E-INJECT T=
+   s" habu: bad enum declaration 'gdnamefail': declaration failed at 'gdnamefail'"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF
    RESTORE-GENERATED-EVALUATOR
    GENERATED-N @ 0 T=
    GENERATED-NAME-PREFLIGHT-N @ 1 T=
@@ -1191,16 +1211,22 @@ INSTALL-GROW-NESTED
    RECORD-BASELINE RECORD-OWNER-DEPTHS
    RECORD-NATIVE-HIGHWATERS
    INSTALL-SECOND-WORD-FAILURE
+   DECL-DIAG:PROSE
    s" ENUM gdtx red blue ;ENUM" EVALUATE-CATCH
       E-GENERATED-REJECT T=
+   s" habu: bad enum declaration 'gdtx': declaration failed at 'gdtx'"
+   DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF
    RESTORE-GENERATED-EVALUATOR
    GENERATED-N @ 0 T=
    GENERATED-NAME-PREFLIGHT-N @ 2 T=
-   GENERATED-PLAN-BROKEN @ TTRUE
-   GENERATED-XREF-ABSENT @ TTRUE
-   GENERATED-CHECKER-ABSENT @ TTRUE
-   GENERATED-EVENT-UNPUBLISHED @ TTRUE
+   s" plan broken at the second word" T-LABEL GENERATED-PLAN-BROKEN @ TTRUE
+   s" xref absent when generation ran" T-LABEL GENERATED-XREF-ABSENT @ TTRUE
+   s" checker row absent when generation ran" T-LABEL GENERATED-CHECKER-ABSENT @ TTRUE
+   s" event rows staged when generation ran" T-LABEL GENERATED-EVENT-STAGED @ TTRUE
+   s" protection unpublished when generation ran" T-LABEL
    GENERATED-PROTECTION-UNPUBLISHED @ TTRUE
+   s" dictionary unpublished when generation ran" T-LABEL
    GENERATED-DICTIONARY-UNPUBLISHED @ TTRUE
    ASSERT-UNCHANGED
    ASSERT-OWNER-DEPTHS

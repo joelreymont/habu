@@ -155,6 +155,22 @@ create CAE-LF-BYTE 10 c,
    s" : CAE-BAD2 ( i64 -- ) >r ;" SB-APPEND CAE-LF
    SB$ ;
 
+\ Three faults, two of them in ENUM declarations. The global ENUM keyword is the
+\ unified front end, whose reporter is DECL-REJECT:GUARD; the third fault is an
+\ ordinary definition reject, so one source exercises both reporters in one pass.
+\ Under a multi-error load every one of them must be reported and the pass must
+\ continue: before GUARD grew its multi-error branch the first bad declaration
+\ ended the run and the other two faults were never seen, even though sumtype.f's
+\ TDECL-RUN had answered that way for the legacy definers all along. The good
+\ declaration first proves the arm does not swallow accepted declarations.
+: CAE-DECL-SOURCE$ ( -- ptr u8 n )
+   SB-RESET
+   s" ENUM cae-dgood red green ;ENUM" SB-APPEND CAE-LF
+   s" ENUM cae-dbad1 if ;ENUM" SB-APPEND CAE-LF
+   s" ENUM cae-dbad2 red red ;ENUM" SB-APPEND CAE-LF
+   s" : CAE-DBAD3 ( i64 -- i64 ) dup ;" SB-APPEND CAE-LF
+   SB$ ;
+
 : CAE-SUPPORT-SOURCE$ ( -- ptr u8 n )
    SB-RESET
    s" 7 constant CAE-SUP-K" SB-APPEND CAE-LF
@@ -647,6 +663,26 @@ create CAE-LF-BYTE 10 c,
    s" base diag count" T-LABEL
    CAE-ERR erru 10 COUNT-CHAR 2 T= ;
 
+: CAE-TEST-DECL-MULTI ( -- )
+   s" declaration-multi" CAE-CASE!
+   CAE-DECL-SOURCE$ CAE-BUF-CAPTURE-PROSE 70 CAE-EXPECT-EXIT {: outu:n erru:n :}
+   s" declaration-multi stdout" T-LABEL
+   CAE-OUT outu CAE-EMPTY$ T$=
+   s" declaration-multi first declaration reject" T-LABEL
+   CAE-ERR erru
+   s" habu: bad enum declaration 'cae-dbad1': name is reserved or already taken at 'if'"
+   CONTAINS? TTRUE
+   s" declaration-multi second declaration reject" T-LABEL
+   CAE-ERR erru
+   s" habu: bad enum declaration 'cae-dbad2': duplicate variant at 'red'"
+   CONTAINS? TTRUE
+   s" declaration-multi definition reject still reached" T-LABEL
+   CAE-ERR erru s" cae-dbad3" CONTAINS? TTRUE
+   s" declaration-multi accepted declaration silent" T-LABEL
+   CAE-ERR erru s" cae-dgood" CONTAINS? TFALSE
+   s" declaration-multi diag count" T-LABEL
+   CAE-ERR erru 10 COUNT-CHAR 3 T= ;
+
 : CAE-TEST-LARGE ( -- )
    CAE-WRITE-LARGE
    s" large-source" CAE-CASE!
@@ -941,6 +977,7 @@ public
    T-RESET
    CAE-PREPARE
    s" base-two-errors" [: CAE-TEST-BASE ;] CAE-CASE-RUN
+   s" declaration-multi" [: CAE-TEST-DECL-MULTI ;] CAE-CASE-RUN
    s" cascade-no-phantom" [: CAE-TEST-CASCADE ;] CAE-CASE-RUN
    s" all-uncheckable" [: CAE-TEST-UNCHECKABLE-FAILS ;] CAE-CASE-RUN
    s" nominal-support" [: CAE-TEST-NOMINAL-SUPPORT ;] CAE-CASE-RUN

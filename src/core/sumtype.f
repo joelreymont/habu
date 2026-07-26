@@ -717,50 +717,14 @@ variable TDD-I   variable TDD-J   variable TDD-K
    s" sumtype" na nu ba bu TDECL-CTX!
    [: CHECKER-DEFSUM-BODY ;] TDECL-RUN ;
 
-\ --- enum families (item 14, docs §9.3): an `ENUM name v0 v1 .. ;ENUM` block is
-\ a zero-payload sum registered as TK-ENUM (arity 0, slots 0). One bare variant
-\ name per token becomes a zero-payload SUMV row (tag = declaration order); the
-\ shared close/ctor/rollback path is reused so construct + exhaustive MATCH lower
-\ enum-kind families exactly as they already do for a 0-arity sum.
-: TDECL-ENUM-VARIANT ( ptr u8 n n -- )   \ variant tail (a u) + family id
-   {: a:ptr u:n fam:n :}
-   a u TDECL-REQUIRE-VARIANT-NAME
-   a TDV-NA !  u TDV-NU !
-   SCHEMA-ROOT-N@ TDV-SS !
-   0 TDV-PC !                            \ enum variants carry no payload
-   0 TDV-PW !
-   fam TDECL-VARIANT-CLOSE ;
-
-: TDECL-ENUM-VARIANTS ( n -- ) {: fam:n :}
-   BEGIN
-      TDECL-NEXT
-      dup 0= IF 2drop EXIT THEN
-      fam TDECL-ENUM-VARIANT
-   AGAIN ;
-
-: CHECKER-DEFENUM-BODY ( -- )
-   TDECL-REQUIRE-FIT
-   TDN-A @ TDN-U @ TDECL-REQUIRE-FAMILY-NAME
-   TDB-A @ TDB-U @ TDECL-CURSOR!
-   0 TDECL-FAM-ARITY !                   \ enums are non-parametric
-   0 TK-ENUM TDECL-FAMILY {: fam:n :}
-   fam TDECL-POLICY                       \ optional POLICY clause before the variants
-   fam TDECL-DERIVE                       \ optional DERIVE clause (derive S1+S2)
-   SUMV-N @ {: vstart:n :}
-   0 TDV-TAG !  0 TDV-N !  0 TDV-MAX !
-   fam TDECL-ENUM-VARIANTS
-   TDV-N @ 0= IF TDN-A @ TDN-U @ s" empty enum" E-TDECL-SYNTAX TDECL-THROW THEN
-   fam vstart TDV-N @ TDECL-DERIVE-COLLIDE
-   fam vstart TDV-N @ TFAM-VAR-RANGE!
-   fam TDV-MAX @ TFAM-SLOTS!             \ TDV-MAX stays 0: enum = tag only
-   fam TDECL-LAYOUT-DESC
-   fam vstart TDV-N @ TDECL-CTOR-PUBLISH
-   fam TDECL-FAM-REG ! ;
-
-: CHECKER-DEFENUM ( ptr u8 n ptr u8 n -- )   \ name, buffered variant tokens
-   {: na:ptr nu:n ba:ptr bu:n :}
-   s" enum" na nu ba bu TDECL-CTX!
-   [: CHECKER-DEFENUM-BODY ;] TDECL-RUN ;
+\ --- enum families (item 14, docs §9.3) are no longer declared here. The global
+\ ENUM keyword is the unified front end (src/core/enum-decl.f, ENUM-DECL:ED-RUN),
+\ which registers the same TK-ENUM family for a compact body and additionally
+\ accepts the full named-variant payload grammar this file never had. The compact
+\ parser, its metadata-only entry CHECKER-DEFENUM, and their shared close path
+\ went with the cutover; a tool that has already lexed a declaration registers it
+\ through ENUM-DECL:ED-REPLAY instead. SUMTYPE and PRODUCT below are unchanged and
+\ still own their own bodies until their own migrations.
 
 \ --- product families (item 15, docs §9.4): a `PRODUCT name arity FIELD f t ..
 \ ;PRODUCT` block is a single-shape record registered as TK-PRODUCT (no tag, no
@@ -1872,30 +1836,11 @@ variable TDECL-I
    [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ CHECKER-DEFSUM TDECL-CTOR-WORDS ;]
       TDECL-TXN-XT ;
 
-\ ENUM buffers the bare variant names up to ;ENUM (SUMTYPE's shape without an
-\ arity token or VARIANT keywords), then registers the whole block.
-: ENUM-COLLECT ( -- bool )   \ buffer tokens; false = input ended unterminated
-   BEGIN
-      parse-name
-      dup 0= IF 2drop RES-FALSE EXIT THEN
-      2dup s" ;enum" CORE-STR=CI IF 2drop RES-TRUE EXIT THEN
-      TDECL-TOKEN+
-   AGAIN ;
-
-: TDECL-ENUM-NOEND-BODY ( -- )
-   TDN-A @ TDN-U @ s" missing ;ENUM" E-TDECL-SYNTAX TDECL-THROW ;
-
-: ENUM ( -- )
-   parse-name {: na:ptr nu:n :}
-   TDECL-CLEAR
-   ENUM-COLLECT 0= IF
-      s" enum" na nu TDECL-BUF TDECL-U @ TDECL-CTX!
-      [: TDECL-ENUM-NOEND-BODY ;] TDECL-RUN EXIT
-   THEN
-   na TDN-A !  nu TDN-U !
-   TDECL-TXN-ARMED @ 0= IF s" sumtype: declaration transaction not installed" 76 die THEN
-   [: TDN-A @ TDN-U @ TDECL-BUF TDECL-U @ CHECKER-DEFENUM TDECL-CTOR-WORDS ;]
-      TDECL-TXN-XT ;
+\ ENUM used to buffer bare variant names here and hand them to CHECKER-DEFENUM.
+\ The global keyword is now the unified front end (`: ENUM ( -- )
+\ ENUM-DECL:ED-RUN ;` at the end of src/core/enum-decl.f), which reads the input
+\ stream itself rather than through a collection buffer, so there is no collector,
+\ no unterminated-body entry and no axiom row for it here.
 
 \ PRODUCT buffers the `arity FIELD f t ..` body up to ;PRODUCT (SUMTYPE's shape),
 \ then registers the whole block and generates the PKG:MAKE/PKG:UNMAKE words
@@ -1932,7 +1877,9 @@ variable TDECL-I
 \ input stream and mutate the type registry at run time, which ( -- ) does not
 \ express — dot habu-checker-in-body-af7cf855, LAYOUT-BUFFER parity), so the
 \ axioms add no checked-code capability.
+\ ENUM has no row: it is an ordinary checked ( -- ) definition over
+\ ENUM-DECL:ED-RUN, exactly like STRUCTURE, so the checker already knows its
+\ effect and the marking pass leaves it top-level executable without an axiom.
 PRIM: TYPEFAMILY PRIM;
 PRIM: SUMTYPE PRIM;
-PRIM: ENUM PRIM;
 PRIM: PRODUCT PRIM;

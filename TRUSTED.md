@@ -303,7 +303,9 @@ that source is explicitly certified; they are not stale-checked by the default
 | VAR-CTOR-SYM | `n -- n` | Variant-registry read: forwards to the pre-hook `SUMV-CTOR-SYM@`. A non-zero constructor symbol on a variant row means the family set is already live, which ARM must refuse by a named throw rather than let a caller reach sumtype.f `TDPLAN-NAME+` duplicate `76 die` — a process exit no transaction can roll back. | `test/enum-decl-suite.f`, `test/generated-declaration-transaction-suite.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-25 | stdlib-boundary | habu-enum-generate-named-1f3261a3 |
 | SLOT! | `ptr u8 n n -- ` | Declaration reject-packet span store (package `DECL-REJECT`): copies a caller span into one of four fixed byte slots that hold the declaration kind, family, offending token, and reason. A `create` region is not a typed `ptr u8` span in a checked body — the same boundary `structure-decl.f`'s `PEND!` documents. The copy is what makes the packet safe to render after a multi-line declaration refilled the input buffer, and the length is clamped to `SPAN-CAP` inside this word, so no caller can write past its slot. | `test/enum-decl-suite.f`, `test/structure-decl-suite.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-checker-certify-unified-5d56fe73 |
 | SLOT@ | `n -- ptr u8 n` | Declaration reject-packet span read (package `DECL-REJECT`): answers one slot's copied bytes and length for rendering and for the suites' reflection words. Same `create`-region boundary as `SLOT!`. | `test/enum-decl-suite.f`, `test/structure-decl-suite.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-checker-certify-unified-5d56fe73 |
-| DIAG | `ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ` | Declaration-diagnostic writer (package `DECL-REJECT`): forwards to the pre-hook `TDECL-DIAG` in `src/core/render.f`, the same producer the legacy `SUMTYPE`/`ENUM`/`PRODUCT` definers report through and the one whose output `tools/check-core.f`'s `CHK-DECL-CAPTURE` collects. Reusing it, rather than forking a renderer, is what puts a unified `STRUCTURE`/`ENUM` reject on the same rendering and capture channel as a legacy one, in both the prose and the JSON leg. Channel parity is what the suites prove; end-to-end capture through the check tool waits on the buffer-driven registration entry, since check-core drives the legacy definers today and does not scan `STRUCTURE`. | `test/enum-decl-suite.f`, `test/structure-decl-suite.f`, `test/type-decl-suite.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-checker-certify-unified-5d56fe73 |
+| DIAG | `ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ` | Declaration-diagnostic writer (package `DECL-REJECT`): forwards to the pre-hook `TDECL-DIAG` in `src/core/render.f`, the same producer the legacy `SUMTYPE` and `PRODUCT` definers report through and the one whose output `tools/check-core.f`'s `CHK-DECL-CAPTURE` collects. Reusing it, rather than forking a renderer, is what puts a unified `STRUCTURE`/`ENUM` reject on the same rendering and capture channel as a legacy one, in both the prose and the JSON leg. Channel parity is what the suites prove; end-to-end capture through the check tool arrived with the buffer-driven registration entry, which is how check-core now registers both unified kinds. | `test/enum-decl-suite.f`, `test/structure-decl-suite.f`, `test/type-decl-suite.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-checker-certify-unified-5d56fe73 |
+| MULTI? | ` -- bool` | Multi-error load-mode read (package `DECL-REJECT`): forwards to the checker's own `MULTI-ERR?`. The checker registry does not publish that flag to later checked loads, so `GUARD`'s continue-past-reject decision rides the same verifier boundary `src/habu/verify-source.f`'s `MULTI-ERR-MODE?` already documents. | `tools/check-all-errors-test.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-cut-global-enum-56ca54e2 |
+| MULTI-COUNT+ | ` -- ` | Multi-error reject counter (package `DECL-REJECT`): bumps the checker's own `MULTI-ERR-N` so a rejected declaration is counted exactly the way `sumtype.f`'s `TDECL-RUN` counts one for the legacy definers, and the all-errors driver's `CA-MULTI-END` sees it. Same unpublished-mode-word boundary as `MULTI?`. | `tools/check-all-errors-test.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-cut-global-enum-56ca54e2 |
 | RP-HEAD! | `ptr u8 n -- ` | Replayed-declaration token-stream store (package `DECL-REPLAY`): holds the family-name token a tool already lexed, so the front end reads it as its first token instead of calling `parse-name`. Storing a `ptr u8` span through a plain cell and reading it back is the boundary `structure-decl.f`'s `PEND!` documents; the span belongs to the calling tool's buffer and stays valid for the one call. | `test/enum-decl-suite.f`, `test/structure-decl-suite.f`, `test/decl-replay-verify-source.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-cut-global-enum-56ca54e2 |
 | RP-HEAD@ | ` -- ptr u8 n` | Replayed-declaration token-stream read (package `DECL-REPLAY`): answers the family-name token once, then the body scan takes over. Same span boundary as `RP-HEAD!`. A zero-length name is handed through unchanged so it reaches the front end's own "missing name" gate rather than promoting the first body token to the family name. | `test/enum-decl-suite.f`, `test/structure-decl-suite.f`, `test/decl-replay-verify-source.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-cut-global-enum-56ca54e2 |
 | RP-BODY! | `ptr u8 n -- ` | Replayed-declaration body-buffer store (package `DECL-REPLAY`): holds the space-separated body tokens the calling tool collected, terminator included. Same span boundary as `RP-HEAD!`. | `test/enum-decl-suite.f`, `test/structure-decl-suite.f`, `test/decl-replay-verify-source.f`, `test/run.f` | src/core/generated-declaration.f | 2026-07-26 | stdlib-boundary | habu-cut-global-enum-56ca54e2 |
@@ -1168,8 +1170,10 @@ test/typed-storage-test.f:TSRES-UN test-metaprog habu-checker-seal-nominal-0b2ea
 test/typed-storage-test.f:RES-K-UN test-metaprog habu-checker-seal-nominal-0b2eaece
 test/layout-valid-growth.f:NAME$ test-metaprog cap:fetched-adt-validation
 test/layout-valid-growth.f:BUILD test-metaprog cap:fetched-adt-validation
+test/layout-valid-growth.f:LVGD-FAMID test-metaprog habu-cut-global-enum-56ca54e2
 test/layout-valid-guard-base.f:RAW test-metaprog cap:fetched-adt-validation
 test/layout-valid-guard-base.f:SET test-metaprog cap:fetched-adt-validation
+test/layout-valid-guard-base.f:LVG-FAMID test-metaprog habu-cut-global-enum-56ca54e2
 test/layout-valid-guard-base.f:LVG-TFAM-ACTIVE-PKG$ test-metaprog habu-seal-set-check-b3676b33
 test/layout-valid-guard-base.f:LVG-TFAM-DECL test-metaprog habu-seal-set-check-b3676b33
 test/layout-valid-guard-base.f:LVG-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33
@@ -1447,6 +1451,8 @@ test/enum-decl-suite.f:L-POLICY test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-decl-suite.f:L-SIZE test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-decl-suite.f:L-ALIGN test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-decl-suite.f:L-TAGW test-metaprog habu-cut-global-enum-56ca54e2
+test/enum-decl-suite.f:SRC$ test-metaprog habu-cut-global-enum-56ca54e2
+test/enum-decl-suite.f:PUT-C test-metaprog habu-cut-global-enum-56ca54e2
 test/enum-ctor-collide-bad.f:EV test-metaprog habu-enum-generate-named-1f3261a3
 test/type-ctor-suite.f:TWX-CHECKER-RECORD-SYM test-metaprog habu-seal-set-check-b3676b33
 test/type-ctor-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33
@@ -1898,7 +1904,6 @@ prim - checker-defrecord - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-deffamily - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defsum - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defsum-noend - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-prim - checker-defenum - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defproduct - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-layout-info - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-n pe-out pe-f pe-out
 prim - checker-storage-info - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out
@@ -2057,7 +2062,6 @@ pprim checker-decl-frame rollback private pe-n pe-in
 pprim checker-decl-frame release private -
 prim - typefamily - -
 prim - sumtype - -
-prim - enum - -
 prim - product - -
 prim - layout-buffer - pe-n pe-in
 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in

@@ -34,13 +34,14 @@
 \ capture through the same channel, in both the prose and the JSON leg, with no
 \ change to the check tool.
 \
-\ Scope of that claim, precisely.  What is proven is the CHANNEL: the suites arm
-\ the identical DIAG-JSON! / DIAG-BUFFER! pair the check tool arms and read the
-\ rendered packet back out of DIAG-BUFFER$.  It is NOT yet proven end to end
-\ through check-core, because check-core cannot reach these front ends at all
-\ today: CHK-ENUM-REGISTER drives the legacy CHECKER-DEFENUM, and STRUCTURE is
-\ not scanned by it.  A buffer-driven registration entry is the next prerequisite
-\ leaf; the end-to-end leg lands with it.
+\ Scope of that claim, precisely.  What is proven here is the CHANNEL: the suites
+\ arm the identical DIAG-JSON! / DIAG-BUFFER! pair the check tool arms and read
+\ the rendered packet back out of DIAG-BUFFER$.  When this was written that was
+\ all it could be, because check-core could not reach these front ends at all: it
+\ drove the legacy CHECKER-DEFENUM and did not scan STRUCTURE.  The buffer-driven
+\ registration entry below (DECL-REPLAY) closed that, and the check tool now
+\ registers both kinds through the front ends, so the end-to-end leg is covered
+\ by test/decl-replay-verify-source.f and tools/check-test.f as well.
 \
 \ The code is never laundered.  GUARD renders the packet and then rethrows the
 \ code it caught, unchanged, so every reject class keeps the exact value the
@@ -123,6 +124,14 @@ TRUSTED: SLOT@ ( n -- ptr u8 n ) {: s:n :}
 \ definers report through, so prose, JSON, and the check tool's packet capture
 \ all behave identically for a unified declaration.
 TRUSTED: DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ) TDECL-DIAG ;
+
+\ Multi-error load state, the checker's own (checker.f). Under `--all-errors` a
+\ rejected definition is counted and the load continues instead of stopping at
+\ the first fault; the legacy definers' reporter TDECL-RUN has answered that way
+\ since multi-error mode existed, and GUARD below is the unified front ends'
+\ reporter, so it answers the same way.
+TRUSTED: MULTI? ( -- bool ) MULTI-ERR? ;
+TRUSTED: MULTI-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 
 \ --- reject codes this package can be asked to explain.  Re-declared package-
 \ locally with the owning name in the comment, exactly as structure-decl.f and
@@ -290,11 +299,33 @@ public
 \ shared declaration diagnostic and then rethrown with its exact code, so the
 \ transaction's rollback, the caller's error handling, and every pinned reject
 \ value are unchanged; only the missing message is added.
+\
+\ Under a multi-error load (`--all-errors`) the reject is counted and the load
+\ continues instead — the declaration is already rolled back by the time this
+\ runs, so there is nothing half-registered to carry forward, and the point of
+\ that mode is to report every fault in a file rather than the first one. This is
+\ exactly what sumtype.f's TDECL-RUN does for the legacy definers; the branch was
+\ latent here until the global ENUM keyword became a front end, because the only
+\ multi-error consumer wrapped declarations in a catch of its own.
+\
+\ Swallowing a reject only continues the LOAD; it does not by itself continue the
+\ INPUT. The legacy definers collected a whole declaration before parsing it, so
+\ by the time TDECL-RUN swallowed anything the stream was already past the
+\ terminator. A front end reads the stream as it parses, so it stops wherever the
+\ fault was and the interpreter would meet the rest of the declaration as if it
+\ were code. Resynchronizing is the front end's job — only it knows its own
+\ terminator — so each one skips to its own before raising; MULTI-ERROR? below is
+\ how it asks whether this load will swallow.
 : GUARD ( [ -- ] -- )
    catch {: rc:n :}
    rc 0= IF EXIT THEN
    rc RENDER
+   MULTI? IF MULTI-COUNT+ EXIT THEN
    rc throw ;
+
+\ Will a reject be swallowed rather than raised? The front ends ask this to
+\ decide whether they still owe the interpreter a resynchronized input stream.
+: MULTI-ERROR? ( -- bool ) MULTI? ;
 
 \ Reflection for the suites: what the packet would report right now.
 : KIND$ ( -- ptr u8 n ) S-KIND SLOT@ ;
@@ -315,8 +346,8 @@ private
 \ later signature in the same file can resolve it.  Neither is interpreting the
 \ file, so neither can let a front end call `parse-name`, and neither wants the
 \ constructor words a real declaration defines — check is reading source, not
-\ building a program.  Until now they drove sumtype.f's CHECKER-DEFENUM, the
-\ legacy metadata-only registration, which the type-DSL cutover deletes; and
+\ building a program.  They used to drive sumtype.f's CHECKER-DEFENUM, the legacy
+\ metadata-only registration, which the type-DSL cutover has since deleted; and
 \ STRUCTURE had no such entry at all, which is why the check tool could not
 \ check any file that declared one (a STRUCTURE family stayed unregistered, so
 \ the next declaration that named it as a payload type rejected with "unknown
@@ -751,10 +782,11 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ could not work in the body phase.
 \
 \ The last step, and ONLY the last step, is what a replayed declaration skips.
-\ The split is not a shortcut, it is where the legacy definer already draws the
-\ line: sumtype.f's global ENUM keyword is CHECKER-DEFENUM followed by
+\ The split is not a shortcut, it is where the legacy definer already drew the
+\ line: sumtype.f's global ENUM keyword was CHECKER-DEFENUM followed by
 \ TDECL-CTOR-WORDS, and CHECKER-DEFENUM — the metadata-only entry check-core and
-\ verify-source drive today — ends with TDECL-CTOR-PUBLISH and defines no word.
+\ verify-source drove before this one existed — ended with TDECL-CTOR-PUBLISH and
+\ defined no word.
 \ So the constructor PACKAGE STAMP on each variant row is registration, not
 \ generation: it is how a later `FAMILY:VARIANT` in the same source resolves at
 \ all. Skipping the arming instead of the rendering would have left every

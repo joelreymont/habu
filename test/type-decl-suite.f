@@ -1378,7 +1378,15 @@ s" ENUM tdedup red red ;ENUM" E-TFAM-DUP TDT-NEG
 s" ENUM tdecase Red ;ENUM" E-TFAM-CASE TDT-NEG
 s" ENUM tdesl a ;ENUM" E-TDECL-NAME TDT-NEG
 s" ENUM tdekw enum ;ENUM" E-TDECL-NAME TDT-NEG
-s" ENUM tdekw2 variant ;ENUM" E-TDECL-NAME TDT-NEG
+\ `variant` in a compact body answers E-TDECL-SYNTAX, not E-TDECL-NAME. The
+\ legacy compact parser had no full mode, so every token after the family name
+\ was a candidate variant name and `variant` could only fail the name gate. The
+\ global ENUM keyword is now the unified front end, which has both modes: a
+\ block keyword standing where a compact variant belongs is a confusion of the
+\ two forms, and the front end says so ("block keyword in a compact enum") at
+\ the token itself. Ruled 2026-07-26 during the cutover freeze: the syntax code
+\ wins, and test/enum-decl-suite.f already pinned that reading deliberately.
+s" ENUM tdekw2 variant ;ENUM" E-TDECL-SYNTAX TDT-NEG
 s" ENUM tdevf tdfoo ;ENUM" E-TDECL-NAME TDT-NEG
 \ bad family names: uppercase, reserved single-letter, grammar keyword.
 s" ENUM Bad red ;ENUM" E-TFAM-CASE TDT-NEG
@@ -1780,6 +1788,45 @@ TWX-MULTI-ERR-BEGIN
 s" SUMTYPE tdnoe 1 VARIANT ok a ;VARIANT" evaluate
 TWX-MULTI-ERR-END 1 T=
 s" " s" tdnoe" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=
+\ The same contract for the two UNIFIED front ends, which read the input stream
+\ as they parse instead of buffering the declaration first. Continuing the load
+\ means continuing the INPUT too: the tokens between the fault and the
+\ terminator belong to the rejected declaration, so the front end has to consume
+\ them before the interpreter sees them. Measured without that resynchronization,
+\ the ENUM case below died on `E-UNDEFINED: blue` and the STRUCTURE case on
+\ `E-UNDEFINED: ;STRUCTURE`; both aborted the load where the legacy definer above
+\ carried on. Each case rejects MID-BODY, on purpose — a reject at or after the
+\ terminator has nothing left to skip and would prove nothing here.
+TWX-MULTI-ERR-BEGIN
+s" ENUM tdmee red red blue ;ENUM TYPEFAMILY tdmeecont 1 : TDMEEW ( n -- n ) ;" evaluate
+TWX-MULTI-ERR-END 1 T=
+s" " s" tdmee" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=                                  \ the rejected enum registered nothing
+s" " s" tdmeecont" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ -1 T=                                 \ the next declaration still loaded
+s" TDMEEW" TWX-CHECKER-FIND-USIG -1 T=       \ and so did the definition after it
+TWX-MULTI-ERR-BEGIN
+s" STRUCTURE tdmes 0 FIELD x n FIELD x n ;STRUCTURE TYPEFAMILY tdmescont 1 : TDMESW ( n -- n ) ;" evaluate
+TWX-MULTI-ERR-END 1 T=
+s" " s" tdmes" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ 0 T=
+s" " s" tdmescont" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ -1 T=
+s" TDMESW" TWX-CHECKER-FIND-USIG -1 T=
+\ A reject raised AFTER the terminator was consumed must not skip anything: the
+\ next tokens are the following declaration, not this one's tail. `tdmea` is an
+\ enum with no variants, which ED-CLOSE refuses once `;ENUM` is already read.
+TWX-MULTI-ERR-BEGIN
+s" ENUM tdmea ;ENUM TYPEFAMILY tdmeacont 1" evaluate
+TWX-MULTI-ERR-END 1 T=
+s" " s" tdmeacont" TWX-TFAM-FIND-IN TDOK ! drop
+TDOK @ -1 T=
+\ A unified declaration whose input simply ends: nothing to skip, still counted.
+TWX-MULTI-ERR-BEGIN
+s" ENUM tdmenoe red green" evaluate
+TWX-MULTI-ERR-END 1 T=
+s" " s" tdmenoe" TWX-TFAM-FIND-IN TDOK ! drop
 TDOK @ 0 T=
 \ two bad declarations count separately.
 TWX-MULTI-ERR-BEGIN

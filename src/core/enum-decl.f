@@ -167,10 +167,11 @@ variable NFLD       \ total field count across all variants
 variable VCELLS     \ running payload cell width WITHIN the open variant
 variable MAXSLOTS   \ widest variant payload cell width (the sum's payload slots)
 variable SEEN-VARIANT \ a VARIANT has appeared (header clauses must precede variants)
+variable SEEN-END     \ this declaration's ;ENUM has been consumed
 variable ED-SI         \ private digit-scan index
 
 : ED-RESET ( -- )                      \ base state; re-seeded at load (process-local)
-   0 PEND-U !   0 TOK !   0 SEEN-VARIANT ! ;
+   0 PEND-U !   0 TOK !   0 SEEN-VARIANT !   0 SEEN-END ! ;
 ED-RESET
 
 \ Tokens come from the live input source, or — when a tool is replaying a
@@ -391,7 +392,7 @@ ED-RESET
    NVAR @ 1 + NVAR ! ;
 : COMPACT-CLAUSE ( ptr u8 n -- bool )    \ dispatch one compact token; YES = ;ENUM
    2dup DECL-REJECT:TOKEN!               \ the mode-selecting token arrives pre-read
-   2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
    2dup COMPACT-KW? IF
       2drop s" block keyword in a compact enum" E-SYNTAX DECL-REJECT:REJECT throw THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
@@ -473,7 +474,7 @@ ED-RESET
    ED-NEXT dup 0= IF 2drop
       DECL-REJECT:AT-FAMILY
       s" missing ;ENUM" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ;enum" CORE-STR=CI IF 2drop YES EXIT THEN
+   2dup s" ;enum" CORE-STR=CI IF 2drop -1 SEEN-END ! YES EXIT THEN
    2dup s" policy" CORE-STR=CI IF 2drop POLICY-CLAUSE NO EXIT THEN
    2dup s" derive" CORE-STR=CI IF 2drop DERIVE-CLAUSE NO EXIT THEN
    2dup s" variant" CORE-STR=CI IF 2drop VARIANT-BLOCK NO EXIT THEN
@@ -510,13 +511,49 @@ ED-RESET
 : ED-BODY ( -- )
    [: ED-RESET DRIVE ;] GENERATED-DECL:RUN ;
 
+\ Resynchronize the input to the end of THIS declaration.
+\
+\ It matters only when the reject will be swallowed — a multi-error load, where
+\ the interpreter carries on with whatever the stream holds next. The legacy
+\ definer got this for free: it copied every token through `;ENUM` into a buffer
+\ before parsing any of it, so a swallowed reject always left the stream past the
+\ terminator. This front end reads as it parses and stops at the fault, so the
+\ tokens between the fault and `;ENUM` are still ahead of the interpreter, which
+\ would try to execute them. Measured on the commit before this one:
+\ `ENUM m7bad red red blue ;ENUM TYPEFAMILY m7cont 1` reported the duplicate
+\ variant, counted it, and then died on `E-UNDEFINED: blue` — the load aborted
+\ where the legacy definer continued and declared `m7cont`.
+\
+\ The terminator is this declaration's own boundary, so skipping to it consumes
+\ exactly what belongs to it and nothing more. Two cases need no skip and get
+\ none: a reject raised after `;ENUM` was already consumed (SEEN-END — skipping
+\ then would eat the NEXT declaration), and a reject raised because the input
+\ ended without a terminator (the scan simply meets end of input). Tokens are
+\ read through ED-RAW rather than ED-NEXT so the packet keeps naming the token
+\ that actually provoked the reject; GUARD renders it after this returns.
+: ED-SKIP-BODY ( -- )
+   BEGIN
+      ED-RAW dup 0= IF 2drop EXIT THEN
+      2dup s" ;enum" CORE-STR=CI IF 2drop EXIT THEN
+      2drop
+   AGAIN ;
+: ED-RESYNC ( -- )
+   SEEN-END @ IF EXIT THEN
+   DECL-REJECT:MULTI-ERROR? 0= IF EXIT THEN
+   ED-SKIP-BODY ;
+
 \ A reject is rendered through the shared declaration packet AFTER the
 \ coordinator has rolled everything back, then rethrown with its exact code,
 \ which is the same order the legacy definers use (sumtype.f TDECL-RUN:
 \ restore, report, rethrow). Both drivers below share this one guarded body, so
 \ a replayed declaration reports through exactly the same renderer.
+: ED-DRIVE ( -- )                      \ body, then resynchronize before reporting
+   [: ED-BODY ;] catch {: rc:n :}
+   rc 0= IF EXIT THEN
+   ED-RESYNC
+   rc throw ;
 : ED-GUARDED ( -- )
-   [: ED-BODY ;] DECL-REJECT:GUARD ;
+   [: ED-DRIVE ;] DECL-REJECT:GUARD ;
 
 \ The replay stream is retired on BOTH exits. Closing only on success would
 \ leave a rejected replay installed, and the next live ENUM would then read its
@@ -557,3 +594,15 @@ public
    ED-REPLAY-END ;
 
 ;package
+
+\ ENUM is the global sum/enum declaration keyword and therefore a documented
+\ global language surface (the same package-first exception STRUCTURE carries):
+\ it parses its own body up to ;ENUM at interpret time, so its checked effect is
+\ ( -- ). This is the sole global entry — there is no alias and no second parser.
+\ A compact body registers the TK-ENUM family sumtype.f's definer used to
+\ register; a body whose first token is an arity registers the full TK-SUM form
+\ with named variants and named FIELD payloads, which the compact grammar could
+\ not express at all.
+\ ENUM type-name (variant)+ ;ENUM
+\ ENUM type-name arity [POLICY p] [DERIVE f+] (VARIANT name (FIELD n t)* ;VARIANT)+ ;ENUM
+: ENUM ( -- ) ENUM-DECL:ED-RUN ;

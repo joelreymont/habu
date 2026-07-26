@@ -502,6 +502,18 @@ variable TEST-DIFF-U
    s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE
    TEST-DIFF-RESET s" src/core/structure-decl.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS
+   \ ENUM carries the same single-name exception in its own front-end file: the
+   \ keyword itself is exempt, a second global beside it is not, and the name is
+   \ exempt only in that file.
+   TEST-SOURCE-RESET
+   s" : ENUM ( -- ) ;" TEST-SOURCE-LINE
+   s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" src/core/enum-decl.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   TEST-SOURCE-RESET
+   s" : ENUM ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" src/core/structure-decl.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
    s" NEARBY-GLOBAL" TEST-GLOBAL-SOURCE
    TEST-DIFF-RESET s" src/core/enum-decl.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS ;

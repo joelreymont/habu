@@ -1395,6 +1395,66 @@ s" doing" FAMID F-FLD-COUNT 2 T=
 ;package
 
 \ ---------------------------------------------------------------------------
+\ 25. A declaration longer than the legacy body buffer registers WHOLE.
+\
+\     sumtype.f's compact definer copied the body into one fixed 4096-byte
+\     buffer before parsing it, and TDECL-REQUIRE-FIT refused anything longer.
+\     That bound belonged to the collection strategy, not to the language: this
+\     front end reads tokens straight from the input source with a one-token
+\     pushback and never buffers a body, so the same declaration is simply
+\     accepted. The risk worth pinning is not the length itself but silent loss
+\     — a body that overflows a buffer and registers a prefix, with every tag
+\     after the gap shifted (that really happened once on the verify-source path,
+\     which is why its buffer raises instead of truncating). So this declares 700
+\     variants, ~4.2KB of body, and proves all 700 arrive with the last tag equal
+\     to 699. It is package-private, which keeps constructor generation out of it
+\     and the case fast.
+\ ---------------------------------------------------------------------------
+package enum-long-test
+
+$2000 constant SRC-CAP
+create SRC-BUF SRC-CAP allot
+variable SRC-U
+variable LI
+
+700 constant LONG-N
+
+TRUSTED: SRC$ ( -- ptr u8 n ) SRC-BUF SRC-U @ ;
+TRUSTED: PUT-C ( n -- ) {: c:n :}
+   SRC-U @ SRC-CAP >= IF s" enum-decl-suite: long-enum buffer overflow" 1 die THEN
+   c SRC-BUF SRC-U @ + c!  SRC-U @ 1 + SRC-U ! ;
+: PUT$ ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 LI !
+   BEGIN LI @ u < WHILE  a LI @ + c@ PUT-C  LI @ 1 + LI !  REPEAT ;
+: PUT-DIGIT ( n -- ) 48 + PUT-C ;
+: PUT-VARIANT ( n -- ) {: i:n :}       \ one `vNNN ` name, 5 bytes, tag = i
+   118 PUT-C
+   i 100 / 10 mod PUT-DIGIT
+   i 10 / 10 mod PUT-DIGIT
+   i 10 mod PUT-DIGIT
+   32 PUT-C ;
+: BUILD ( -- )                         \ the whole declaration, as one line of source
+   0 SRC-U !
+   s" ENUM-DECL:ED-RUN longenum " PUT$
+   0 LI !
+   LONG-N 0 ?DO I PUT-VARIANT LOOP
+   s" ;ENUM" PUT$ ;
+
+private
+BUILD
+SRC$ TRY 0 T=
+s" longenum" FAMID FID !
+FID @ F-VAR-COUNT LONG-N T=            \ every variant arrived
+FID @ F-ENUM? -1 T=
+FID @ F-VAR-START VS0 !
+VS0 @ SV-NAME$ s" v000" CORE-STR= T-TRUE
+VS0 @ SV-TAG@ 0 T=
+VS0 @ LONG-N 1 - + SV-NAME$ s" v699" CORE-STR= T-TRUE
+VS0 @ LONG-N 1 - + SV-TAG@ LONG-N 1 - T=   \ no gap: the last tag is N-1
+
+;package
+
+\ ---------------------------------------------------------------------------
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then
    #FAIL @ . s" enum-decl-suite: failures" 1 die ;

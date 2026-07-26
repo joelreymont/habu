@@ -4,7 +4,22 @@ package LAYOUT-VALID-GROWTH
 
 ENUM lvgd-inner zero one ;ENUM
 variable PREV
-TDECL-FAM-REG @ PREV !
+
+\ Seed the nesting chain with the family just declared, resolved BY NAME in the
+\ declaring scope. This used to read TDECL-FAM-REG, the ambient "last family the
+\ legacy definer registered" variable in sumtype.f. That variable belongs to the
+\ legacy definers and their constructor adapter; the global ENUM keyword is the
+\ unified front end now, which never writes it. Resolving the name is also the
+\ honest question — this file wants `lvgd-inner`, not whichever family happened
+\ to be registered last.
+\ Fails closed on an unresolvable name for the same reason as
+\ test/layout-valid-guard-base.f's LVG-FAMID: dropping the found flag would seed
+\ the nesting chain with family 0.
+TRUSTED: LVGD-FAMID ( ptr u8 n -- n )
+   TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE
+   0= IF drop s" layout-valid-growth: family does not resolve" 1 die THEN ;
+
+s" lvgd-inner" LVGD-FAMID PREV !
 
 create NAME 11 allot
 

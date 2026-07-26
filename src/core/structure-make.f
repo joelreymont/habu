@@ -145,7 +145,8 @@ public
 \ stops: it is reading source, not building a program, so it must define no
 \ word. It cannot skip the rows, because they are how a later `FAMILY:MAKE` in
 \ the same source resolves — the same reason the legacy metadata-only entry
-\ CHECKER-DEFENUM ends with TDECL-CTOR-PUBLISH and defines nothing.
+\ CHECKER-DEFENUM ended with TDECL-CTOR-PUBLISH and defined nothing, before the
+\ ENUM cutover deleted it.
 : GENERATE ( n n -- ) {: tok:n fam:n :}
    fam SM-REQUIRE-FAMILY
    fam SM-FLD-COUNT {: fc:n :}
