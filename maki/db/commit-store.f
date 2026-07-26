@@ -330,7 +330,7 @@ public
 private
 \ ---- transaction validity as an ordinal (0 ok / 1 dup / 2 omitted) --------------
 : V-CODE ( txn -- n )
-   TX:VALIDATE MATCH TX:tx-result
+   TX:VALIDATE MATCH TX:result
       ok OF drop 0 ENDOF
       duplicate-write OF 1 ENDOF
       omitted-read OF 2 ENDOF

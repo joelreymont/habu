@@ -36,7 +36,7 @@ require maki/numpolicy.f
 require maki/journal.f
 require maki/artifact.f
 require maki/db/artifact.f            \ ARTIFACT:DECODE-WEIGHT + art-result (envelope codec)
-require maki/db/transaction.f         \ TX:DECODE + tx-result + BASE-REV (transaction codec)
+require maki/db/transaction.f         \ TX:DECODE + TX:result + BASE-REV (transaction codec)
 
 package KWXPC-ENV
 public
@@ -122,8 +122,13 @@ variable OKF
       digest-mismatch OF false ENDOF
    ;MATCH ;
 
-: TXN-BASE-OK? ( tx-result<n> -- bool )     \ decode ok AND base rev resolves to REG-REV by content
-   MATCH TX:tx-result
+\ The effect must name TX:result QUALIFIED. The old tail `tx-result` was unique in the
+\ repository, so a bare token reached it by the "sole eligible public row in another
+\ package" rule; the new tail is shared with the global result family in
+\ lib/adt/result.f, which the global row rule reaches FIRST. A bare `result` here
+\ would silently mean that arity-2 family instead of this one.
+: TXN-BASE-OK? ( TX:result<n> -- bool )  \ decode ok AND base rev resolves to REG-REV by content
+   MATCH TX:result
       ok OF TX:TXN-OF TX:BASE-REV  REG-REV  REV:EQUAL? ENDOF
       duplicate-write OF false ENDOF
       omitted-read OF false ENDOF

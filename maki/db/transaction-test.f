@@ -16,7 +16,7 @@
 \   TT-MALFORMED       : truncated bytes -> DECODE malformed (typed, not a throw)
 \   capacity / polarity / no-base : throws only at the capacity/precondition boundaries
 \
-\ The test reopens package TX (a friend) so MATCH over the public tx-result and the
+\ The test reopens package TX (a friend) so MATCH over the public result and the
 \ builder API read bare; object identities are minted through ARTIFACT:REGISTER and
 \ revisions through REV:COMMIT - never a raw cast - exactly as a real producer would.
 
@@ -26,6 +26,14 @@ require maki/db/transaction.f
 require maki/artifact.f
 require maki/rev.f
 require maki/db/obligation.f
+\ The GLOBAL result family, loaded on purpose and used by nothing here: TX's outcome
+\ family is now named `result` too, so this require is what makes the identity
+\ assertions at the end of this file live. Without it they would pass in an empty
+\ room, and the one real hazard of the rename - two families sharing the tail
+\ `result`, told apart only by the constructor package - would go unproven. It also
+\ puts the bare `result` inside this package's own MATCH sites under a live global
+\ homonym, which is exactly the coexistence maki/test.f exercises.
+require lib/adt/result.f
 
 package TX
 
@@ -62,8 +70,8 @@ variable RT-LB
       1+
    repeat drop true ;
 
-: VCODE ( tx-result<n> -- n )                   \ 0=ok else taxonomy ordinal
-   MATCH tx-result
+: VCODE ( result<n> -- n )                   \ 0=ok else taxonomy ordinal
+   MATCH result
       ok OF drop 0 ENDOF
       duplicate-write OF 1 ENDOF
       omitted-read OF 2 ENDOF
@@ -158,7 +166,7 @@ variable RT-LB
 : TT-RT ( -- bool )
    MK-STD RT-A 4096 ENCODE {: la:n :}
    RT-A la DECODE
-   MATCH tx-result
+   MATCH result
       ok OF TXN-OF RT-B 4096 ENCODE RT-LB !
             RT-A la RT-B RT-LB @ BYTES-EQ? ENDOF
       duplicate-write OF false ENDOF
@@ -260,3 +268,94 @@ TT-MALFORMED 3 T=
 T-REPORT
 
 ;package
+
+\ ---- the family is TX:result now, and only TX:result -------------------------
+\ The rename moved this family's tail off its own package name (`tx-result` inside
+\ package TX repeated its owner). Renaming a family also renames its generated
+\ constructor package - TX-TX--RESULT became TX-RESULT - so every call site in this
+\ package, in maki/db/commit-store.f and in the cross-process child
+\ maki/db/keywire-xproc-env-child.f moved with it. The suite above proves the
+\ BEHAVIOUR still holds; what it cannot show is that the old spellings are really
+\ gone and that the new tail did not quietly merge with the global `result` family
+\ that lib/adt/result.f declares. That is what this section pins.
+\
+\ Its T-RESET comes FIRST and every assertion sits below it: an assertion above a
+\ suite's reset is counted against the previous report and passes silently even when
+\ it fails.
+T-RESET
+
+package TX-TEST
+private
+
+\ CHECK-QUIET-CANDIDATE! answers -1 accepted, 0 refused, 1 unresolvable. All three
+\ appear below and each means something different, so they get separate words rather
+\ than a single "not accepted" helper.
+: YES   ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO    ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: UNRES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  1 T= ;
+
+\ REFLECT keys a family on its tail AND the constructor package its variants carry.
+\ For this rename that pairing is the whole safety argument: TX$ and GLOB$ share the
+\ tail `result` and are told apart only by the second half.
+: TX$   ( -- ptr u8 n ptr u8 n )   s" result" s" TX-RESULT" ;
+: OLD$  ( -- ptr u8 n ptr u8 n )   s" tx-result" s" TX-TX--RESULT" ;
+: GLOB$ ( -- ptr u8 n ptr u8 n )   s" result" s" RESULT" ;
+
+\ ---- identity: the old pair is gone, the new pair is unique ------------------
+OLD$ REFLECT:FAMS 0 T=              \ nothing answers to the old (tail, ctor package)
+TX$ REFLECT:FAMS 1 T=               \ exactly one family is TX's result ...
+GLOB$ REFLECT:FAMS 1 T=             \ ... and exactly one is the global result
+TX$ REFLECT:ARITY 1 T=              \ they are not the same family: different arity ...
+GLOB$ REFLECT:ARITY 2 T=
+TX$ 0 REFLECT:ARM-CTOR$ s" TX-RESULT" T$=     \ ... and different constructor packages
+TX$ 4 REFLECT:ARM-CTOR$ s" TX-RESULT" T$=
+
+\ ---- the recorded shape is untouched by the rename ---------------------------
+TX$ REFLECT:KIND TK-SUM T=
+TX$ REFLECT:WIDTH 2 T=
+TX$ REFLECT:VIS 1 T=
+TX$ REFLECT:VARS 5 T=
+TX$ 0 REFLECT:ARM$ s" ok" T$=       \ case order fixes the tags
+TX$ 1 REFLECT:ARM$ s" duplicate-write" T$=
+TX$ 2 REFLECT:ARM$ s" omitted-read" T$=
+TX$ 3 REFLECT:ARM$ s" malformed" T$=
+TX$ 4 REFLECT:ARM$ s" bounds" T$=
+TX$ 5 REFLECT:ARM$ s" <missing>" T$=
+
+\ ---- the new spellings carry the whole effect table --------------------------
+s" N-OK ( n -- TX:result<n> ) TX-RESULT:OK" YES
+s" N-DUP ( -- TX:result<n> ) TX-RESULT:DUPLICATE-WRITE" YES
+s" N-OMIT ( -- TX:result<n> ) TX-RESULT:OMITTED-READ" YES
+s" N-MAL ( -- TX:result<n> ) TX-RESULT:MALFORMED" YES
+s" N-BND ( -- TX:result<n> ) TX-RESULT:BOUNDS" YES
+s" N-REV ( CAD-KIND:rev-id -- TX:result<CAD-KIND:rev-id> ) TX-RESULT:OK" YES
+
+\ ---- the old spellings carry nothing -----------------------------------------
+\ The two halves fail by different mechanisms, and pinning them separately is what
+\ makes this proof readable. An unresolvable WORD in the body answers 1; an
+\ unresolvable TYPE in the stack effect is reported as a type error and answers 0.
+\ So the old constructor alone is unresolvable, the old type alone is refused, and
+\ the pair - the literal text every call site used to hold - is refused. What matters
+\ is that not one of them is ACCEPTED.
+s" O-CTOR ( n -- TX:result<n> ) TX-TX--RESULT:OK" UNRES
+s" O-TYPE ( n -- TX:tx-result<n> ) TX-RESULT:OK" NO
+s" O-BOTH ( n -- TX:tx-result<n> ) TX-TX--RESULT:OK" NO
+s" O-DUP ( -- TX:tx-result<n> ) TX-TX--RESULT:DUPLICATE-WRITE" NO
+s" O-BND ( -- TX:tx-result<n> ) TX-TX--RESULT:BOUNDS" NO
+
+\ ---- the two result families do not unify ------------------------------------
+\ Sharing a tail is legal; sharing an identity is not. A bare `result` written here
+\ resolves the global row, so these two cross the packages in both directions.
+s" X-GLOB-CTOR ( n -- TX:result<n> ) RESULT:OK" NO
+s" X-TX-CTOR ( n n -- result<n,n> ) TX-RESULT:OK" NO
+\ And the consequence callers must live with, pinned as its own fact: outside package
+\ TX a BARE `result` is the global arity-2 family, not this one. The old tail was
+\ unique repo-wide so a bare token used to reach TX's family; after the rename it does
+\ not, which is why maki/db/keywire-xproc-env-child.f spells the effect TX:result.
+\ This section runs inside package TX-TEST, which owns no `result` row, so a bare
+\ token here resolves exactly as it does in that child.
+s" X-BARE-ARITY ( result<n> -- n ) drop 0" NO
+
+;package
+
+T-REPORT

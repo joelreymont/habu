@@ -62,8 +62,9 @@
 \ 32-byte content key (OBLIG:KEY>WIRE / WIRE>KEY) - all resolved BY CONTENT, so the derived
 \ PROPOSE revision chain is a cross-process-deterministic Merkle chain that survives process death.
 \
-\ Typed domain outcomes are the bespoke tx-result sum family (the § 23.9 art-result
-\ idiom, never result<a,b>); throws are reserved for capacity boundaries.
+\ Typed domain outcomes are this package's own TX:result sum family (the § 23.9
+\ art-result idiom, never the generic two-parameter result<a,b> of lib/adt/result.f -
+\ the tail is shared, the family is not); throws are reserved for capacity boundaries.
 \ maki -> habu only; transaction owns -5350..-5353.
 
 require lib/prelude.f
@@ -102,9 +103,13 @@ STRUCTURE idem-key 0
 
 \ Typed transaction outcome (the § 23.9 art-result custom-sum idiom): `ok` carries the
 \ validated pool slot; the reject arms are the plan's validation refusals plus the
-\ structural decode refusals. A bespoke per-package sum, not result<a,b>, so a total
-\ ok construction leaves no free error variable.
-SUMTYPE tx-result 1
+\ structural decode refusals. A bespoke per-package sum, not the generic two-parameter
+\ result<a,b>, so a total ok construction leaves no free error variable. The tail is
+\ plain `result` because a family may not repeat its package owner; identity is the
+\ (package, tail) pair, so TX:result and the global result family stay distinct, and a
+\ caller outside package TX must spell this one TX:result - a bare `result` there
+\ reaches the global row first.
+SUMTYPE result 1
    VARIANT ok a ;VARIANT
    VARIANT duplicate-write ;VARIANT
    VARIANT omitted-read ;VARIANT
@@ -119,11 +124,11 @@ private
 : TXN> ( txn -- n )              TX-TXN:UNMAKE ;
 : >IDEM ( n n n n -- idem-key )  TX-IDEM--KEY:MAKE ;
 
-: R-OK ( n -- tx-result<n> )       TX-TX--RESULT:OK ;
-: R-DUP-WRITE ( -- tx-result<n> )  TX-TX--RESULT:DUPLICATE-WRITE ;
-: R-OMITTED ( -- tx-result<n> )    TX-TX--RESULT:OMITTED-READ ;
-: R-MALFORMED ( -- tx-result<n> )  TX-TX--RESULT:MALFORMED ;
-: R-BOUNDS ( -- tx-result<n> )     TX-TX--RESULT:BOUNDS ;
+: R-OK ( n -- result<n> )       TX-RESULT:OK ;
+: R-DUP-WRITE ( -- result<n> )  TX-RESULT:DUPLICATE-WRITE ;
+: R-OMITTED ( -- result<n> )    TX-RESULT:OMITTED-READ ;
+: R-MALFORMED ( -- result<n> )  TX-RESULT:MALFORMED ;
+: R-BOUNDS ( -- result<n> )     TX-RESULT:BOUNDS ;
 
 \ ---- capacities + protocol constants ------------------------------------------
 8 constant TX-CAP                     \ live transaction slots (ring reuse)
@@ -681,7 +686,7 @@ public
 
 \ VALIDATE returns the plan's typed transaction outcome: duplicate/conflicting writes
 \ and an omitted read dependency are REJECTS; otherwise ok carries the validated slot.
-: VALIDATE ( txn -- tx-result<n> ) {: t:txn :}
+: VALIDATE ( txn -- result<n> ) {: t:txn :}
    t TXN> {: s:n :}
    s VALID@ {: v:n :}
    v V-DUP-WRITE = if R-DUP-WRITE exit then
@@ -829,7 +834,7 @@ private
       unknown     OF D-BOUNDS DFAIL false ENDOF
    ;MATCH ;
 
-: DEC-RESULT ( -- tx-result<n> )
+: DEC-RESULT ( -- result<n> )
    DERR @ D-MALFORMED = if R-MALFORMED exit then
    R-BOUNDS ;
 
@@ -840,7 +845,7 @@ public
 \ transaction through the same canonicalising builder; ok carries the fresh slot, so
 \ decode -> re-ENCODE is byte-identical. Structural failures fold into malformed /
 \ bounds (REV:WIRE>ID wrong-width -> malformed, unknown -> bounds).
-: DECODE ( ptr u8 n -- tx-result<n> ) {: a:ptr u:n :}
+: DECODE ( ptr u8 n -- result<n> ) {: a:ptr u:n :}
    a DBASE 0 ptr-field !  u DLEN !  0 DPOS !  0 DERR !
    DEC-BASE 0= if DEC-RESULT exit then
    DEC-READ DEC-WRITE DEC-DEP DEC-CAP DEC-BUDGET DEC-OBLIG
