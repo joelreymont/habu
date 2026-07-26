@@ -273,6 +273,8 @@ SUITE maki/infer/gpt2-check-test.f
 ;SUITE
 SUITE maki/infer/gpt2-alloc-test.f
 ;SUITE
+SUITE maki/infer/gpt2-payload-test.f
+;SUITE
 SUITE maki/journal-test.f
 ;SUITE
 SUITE maki/rev-test.f

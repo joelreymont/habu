@@ -1899,6 +1899,34 @@ points stay listed.
   surface as accepted controls, and the allocated arm's audited erasures. A
   presence-gated leg commits the real checkpoint to an allocated model and pins
   the arena its exit gives back.
+- `maki/infer/gpt2-payload-test.f` — the linear-payload declaration capability over
+  the REAL bound model, from a FOREIGN package (`GPT2PAY`) that has never opened
+  GPT2TX and uses only the public surface. It declares `ENUM held` with
+  `FIELD m GPT2TX:gpt2-model` — the exact spelling that rejected 7109 "unknown
+  payload type" before the capability landed — and a width-identical non-linear
+  twin, `held-twin`, whose payload is also seven cells. The registry pins read
+  what REFLECT can see: arity, visibility, kind, case order, constructor package,
+  one named payload field of seven cells at slot 0, and the resulting eight-cell
+  width for both families. Linearity itself is pinned on the checker rather than
+  the registry, because the predicate that decides it
+  (`TFAM-CONCRETE-LINEAR?`) has no `PRIM:` row and REFLECT cannot reach it. Every
+  refusal is PAIRED with the same candidate over the twin, so copy, discard,
+  return-stack re-push, typed-memory load, payload loss at construction and every
+  failure to discharge the payload in a MATCH arm are shown to be the linearity
+  obligation; the pairs where the twin also refuses (raw-cell forge,
+  unconsumed value, unbalanced `>r`, multi-cell store, multi-cell typed local,
+  keeping the scrutinee across MATCH) are labelled as the other rules they are.
+  Wrong-role fixtures pin that the two variants' payloads do not cross, the two
+  eight-cell families do not substitute for each other, and a MATCH naming the
+  wrong family refuses instead of reading the tag they share.
+  A presence-gated leg then runs the real production path — `SAFET:LOAD` over the
+  pinned 548 MB checkpoint, `PREPARE`, `CHECK`, `COMMIT-MAPPED` — wraps the
+  resulting model in the declared payload slot, matches it back out and disposes
+  it, asserting all four ownership counters at entry, after commit, after the wrap,
+  inside the arm and after disposal, and pinning the exact file size the exit gives
+  back. Closes with KNOWN GAP pins recording that `throw` from inside a MATCH arm
+  holding the payload certifies today and abandons the model; they flip to
+  rejections when linear-scope quotations land.
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer
