@@ -157,6 +157,7 @@ public
 -5668 constant E-GX-RENDER   \ a role's HF key did not fit the private render buffer
 -5669 constant E-GX-ALIAS    \ two roles resolved to one census tensor
 -5670 constant E-GX-FOREIGN  \ the prep was built against a different configuration
+-5671 constant E-GX-IMAGE    \ the census no longer holds the checkpoint's bytes
 
 \ ---- the prepared bind: opaque, linear, no accessors -------------------------
 DEFLINEAR GPT2TX:prep
@@ -514,13 +515,28 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ ---- pass one: validate everything, write no table ----------------------------
 \ Stack-preserving so `catch` accepts it and a refusal leaves the census exactly
 \ where it was (see the header). Nothing here creates or consumes an owner.
+\
+\ THE FIRST QUESTION IS WHETHER THE CENSUS STILL HAS BYTES AT ALL, and it has to be
+\ asked here even though no per-row check needs it. A census that has already given up
+\ its image through SAFET:DETACH-MAPPING keeps answering every reader this pass
+\ consults: its count, its dtypes, its shapes, and MAP-OFFSET?, which is arithmetic on
+\ the header geometry rather than access to any bytes. So an imageless census passes
+\ every row - and the model built from it would own a residency of zero bytes, with the
+\ fault surfacing at the first weight read as E-EXTENT, by which time the mapping and
+\ the table have been deconstructed and no catch can recover them. Refusing it here
+\ costs a caller nothing: the census comes back exactly as it arrived, still answering
+\ its metadata and still disposable through SAFET:RELEASE.
 : PLAN ( SAFET:census MDLCFG:mcfg -- SAFET:census MDLCFG:mcfg )
    0 SUM-N !
    GPT2BIND:CENSUS-COUNT {: count:n :}
    count 0 <=  count ROW-CAP >  or if E-GX-COUNT throw then
    count PLAN-N !
    count CLAIM-CLEAR
-   >r SAFET:COUNT {: have:n :} r>                \ the mcfg parks while the census answers
+   >r                                            \ the mcfg parks while the census answers
+   SAFET:MAP-LEN {: mlen:n :}
+   SAFET:COUNT {: have:n :}
+   r>
+   mlen 0 <= if E-GX-IMAGE throw then
    have count <> if E-GX-COUNT throw then
    count 0 ?do  i count V-ROW  loop ;
 

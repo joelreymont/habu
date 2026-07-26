@@ -510,6 +510,37 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 
 
 
+\ ---- a census with no bytes left cannot be bound --------------------------------
+\ The state this leg builds is reachable through the PUBLIC surface alone and by design:
+\ SAFET:DETACH-MAPPING moves a census's image out, and the census keeps answering every
+\ metadata reader afterwards - count, dtypes, shapes, and MAP-OFFSET?, which is pure
+\ arithmetic on the header geometry it still holds. So an imageless census satisfies
+\ every per-row question PREPARE asks, and without this refusal it binds: the model that
+\ came out would own a residency of zero bytes, and the first weight read would throw
+\ E-EXTENT with the mapping and the table already deconstructed by the MATCH, where no
+\ catch can reach them (WSTORE's own header states that strand). The fault has to be
+\ caught here, in the half whose whole job is to ask every question that has a wrong
+\ answer while a refusal is still free.
+\
+\ WHAT rejected(census, code) MEANS FOR AN IMAGELESS CENSUS. The same as for every other
+\ refusal: the census comes back EXACTLY as it arrived. It is imageless, and that is not
+\ damage this call did - it is the state the caller handed in. It still answers its own
+\ metadata readers, and SAFET:RELEASE still disposes it (freeing the metadata only,
+\ since it no longer owns any bytes), so the caller loses nothing by being refused.
+: T-REJECT-IMAGELESS ( -- )
+   s" a census whose image has already left is refused" T-LABEL
+   TX-CLEAN!  TX-LAY
+   TX-PATH SAFET:LOAD                           \ ( census )
+   SAFET:DETACH-MAPPING                         \ ( census mapping ) - the image leaves
+   swap TX-CFG-A PREPARE                        \ ( mapping prep-result )
+   E-GX-IMAGE TX-EXPECT-REJECTED                \ ( mapping census )
+   s" and the refused census still answers, and still releases" T-LABEL
+   SAFET:COUNT TX-CNT T=
+   SAFET:MAP-LEN 0 T=                           \ imageless, exactly as it arrived
+   SAFET:RELEASE                                \ ( mapping )
+   SAFET:UNMAP-MAPPING RES-CODE 0 T=
+   TX-NO-LEAK ;
+
 \ ---- the claim set: one census tensor per role ---------------------------------
 \ Why this leg is not driven through a fixture. Every role looks up its OWN key and
 \ SAFET:FIND answers the first tensor carrying it, so two roles can only land on one
@@ -1102,6 +1133,7 @@ variable TX-MOFF
    T-PREPARE-OK       TX-NO-LEAK
    T-REJECT-CFG       TX-NO-LEAK
    T-REJECT-CENSUS    TX-NO-LEAK
+   T-REJECT-IMAGELESS TX-NO-LEAK
    T-ABORT            TX-NO-LEAK
    T-PREP-OWNS-PLAN   TX-NO-LEAK
    T-TWIN             TX-NO-LEAK

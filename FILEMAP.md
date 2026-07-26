@@ -1740,7 +1740,17 @@ points stay listed.
   whether a published tensor census can be bound as the GPT-2 the configuration
   describes: payload ENUM `prep-result` = prepared(prep) | rejected(census,
   code). ALL validation lives here so the two commit leaves are left with memory
-  faults only — census count equals `GPT2BIND:CENSUS-COUNT`, and per role the
+  faults only. The first question is whether the census still HOLDS the
+  checkpoint's bytes: one whose image already left through
+  `SAFET:DETACH-MAPPING` keeps answering every reader this pass consults —
+  count, dtypes, shapes, and `MAP-OFFSET?`, which is arithmetic on the header
+  geometry rather than access to bytes — so it would otherwise pass every row
+  and bind to a model owning a zero-byte residency, with the fault surfacing at
+  the first weight read as `WSTORE:E-EXTENT` after the mapping and table had been
+  deconstructed beyond any catch. `E-GX-IMAGE` refuses it while a refusal is
+  still free, and the census comes back exactly as it arrived: imageless, still
+  answering its metadata, still disposable through `SAFET:RELEASE`. Then the
+  census count equals `GPT2BIND:CENSUS-COUNT`, and per role the
   exact HF key (rendered through `COPY-KEY?`) is present, the dtype is F32 with
   no mask exemption, rank and every declared dim match `TID-SHAPE`, a mapping
   offset exists, `TID-SLOT` round-trips to the slot being walked and is
