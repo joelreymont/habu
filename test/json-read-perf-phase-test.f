@@ -218,6 +218,48 @@ variable LOAD-FIX-U
    s" 0.31 2.59 2.82 702 2013010" LOAD-FIX!
    LOAD-FIX$ LOAD-RUNNABLE LOAD-NONE T= ;
 
+\ ---- hostile input: the sample ends exactly at a mapping boundary ----------
+\ Poisoning the byte after the input cannot fail. Forth `and` evaluates both
+\ operands, so an out-of-bounds read is DISCARDED by and-with-false and no value
+\ placed there can change a verdict. The only honest hostile input is one whose
+\ next byte cannot be read at all, so this places the sample against a real
+\ boundary: two 64K regions are mapped and the second is handed back to the
+\ kernel, leaving the first ending at an unmapped address. 64K is a multiple of
+\ every ARM64 page size, so that split is always page-aligned.
+\
+\ The sample is written flush against the boundary and passed to the REAL parser
+\ entry points. The input is deliberately TRUNCATED - fewer fields than
+\ LOAD-RUN-FIELD asks for - so the scan must walk to the very end, which is the
+\ case that reads one past. A scan that dereferences before testing its bounds
+\ faults here; the guarded scan stops.
+MEM-64K constant FENCE-SPAN
+
+: FENCE-BASE ( -- ptr u8 )
+   FENCE-SPAN 2 * MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
+
+: FENCE-ARM ( ptr u8 -- ) {: base:ptr :}
+   base FENCE-SPAN BYTE+ FENCE-SPAN munmap drop ;
+
+: FENCE-FREE ( ptr u8 -- ) {: base:ptr :}
+   base FENCE-SPAN munmap drop ;
+
+\ Copy the sample so its LAST byte is the last readable byte of the mapping.
+: FENCE-PUT ( ptr u8 ptr u8 n -- ptr u8 n ) {: base:ptr src:ptr u:n :}
+   base FENCE-SPAN u - BYTE+ {: dst:ptr :}
+   src dst u BYTE-COPY
+   dst u ;
+
+: CASE-END-OF-MAPPING ( -- )
+   FENCE-BASE {: base:ptr :}
+   base FENCE-ARM
+   s" 0.31 2.59" {: sa:ptr su:n :}
+   base sa su FENCE-PUT {: fa:ptr fu:n :}
+   s" a truncated sample flush against an unmapped page yields no runnable count" T-LABEL
+   fa fu LOAD-RUNNABLE LOAD-NONE T=
+   s" the one-minute average still reads from that same sample" T-LABEL
+   fa fu LOAD-AVG-X100 31 T=
+   base FENCE-FREE ;
+
 \ ---- real spawned load ----------------------------------------------------
 \ The sampler is proved against REAL neighbours, not a fixture. It stays small
 \ and short on purpose: this file runs as one slot of the gate's own pool, so a
@@ -303,6 +345,7 @@ variable LOAD-FIX-U
    CASE-ADMISSION
    CASE-SATURATION
    CASE-LOAD-PARSE
+   CASE-END-OF-MAPPING
    CASE-LOAD-SPAWN
    CASE-WORKERS
    GT-CLEANUP

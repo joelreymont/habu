@@ -151,13 +151,26 @@ variable LOAD-POS
       some OF ENDOF
    ;MATCH ;
 
+\ Index of the next separator at or after `from`, else u.
+\
+\ The bounds test has to DECIDE before any dereference. Forth `and` evaluates
+\ both of its operands, so the tempting one-line form
+\    begin pos u <  a pos BYTE+ c@ LOAD-SP <>  and while
+\ reads the byte even when the position is already at the end. The verdict still
+\ comes out right, because and-with-false discards it, but the read happened:
+\ one byte past the input on every exit at end-of-buffer, and past the mapping
+\ itself whenever a read filled LOAD-BUF to exactly LOAD-CAP. This is the shape
+\ SKIP-TO above already uses - bounds in the `while`, dereference in the body.
+: LOAD-NEXT-SP ( ptr u8 n n -- n ) {: a:ptr u:n from:n :}
+   from begin dup u < while
+      dup a + c@ LOAD-SP = if exit then
+      1+
+   repeat ;
+
 : LOAD-SKIP-FIELDS ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n skip:n :}
    0 LOAD-POS !
    skip 0 ?do
-      begin LOAD-POS @ u < a LOAD-POS @ BYTE+ c@ LOAD-SP <> and while
-         LOAD-POS @ 1+ LOAD-POS !
-      repeat
-      LOAD-POS @ 1+ LOAD-POS !
+      a u LOAD-POS @ LOAD-NEXT-SP 1+ LOAD-POS !
    loop
    LOAD-POS @ u >= if a 0 exit then
    a LOAD-POS @ BYTE+  u LOAD-POS @ - ;
