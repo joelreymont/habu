@@ -20,6 +20,7 @@
 \ process death; here the same boundaries are asserted in-process against the same files.
 
 require lib/test.f
+require test/checker-assert.f
 require lib/fs.f
 require lib/fs-mutate.f
 require maki/db/commit-store.f
@@ -28,6 +29,9 @@ require maki/artifact.f
 require maki/rev.f
 
 package CSTORE-TEST
+
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
 
 \ One private store dir for the whole suite; each test RESETs its files first.
 s" hb-cstore-test" TMPDIR-MKDIR CSTORE:ROOT!
@@ -146,8 +150,120 @@ T-CRASH-AFTER-HEAD TTRUE
 T-NO-PARTIAL TTRUE
 T-FULL TTRUE
 
+\ ---- the generated commit-result constructors: exact spelling + exact effect ----
+\ commit-result is declared through the unified ENUM front end in full mode, so these
+\ pins are the migration's identity proof and must keep holding for every later
+\ declaration change. The SPELLING is load-bearing here: the checker answers 1
+\ (uncheckable) for a name it cannot resolve, and YES demands -1, so a -1 means the
+\ checker resolved EXACTLY this constructor name; NO demands 0, which it can only
+\ reach after resolving the name and refusing the types.
+s" CR-C-COM ( CAD-KIND:rev-id -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:COMMITTED" YES
+s" CR-C-CON ( -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:CONFLICT" YES
+s" CR-C-DUP ( -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:DUPLICATE-WRITE" YES
+s" CR-C-OMI ( -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:OMITTED-READ" YES
+\ Forge negatives on the committed payload slot: a raw cell cannot fill it, the result
+\ is not a bare scalar, the payload is mandatory, a same-width FOREIGN identity role
+\ cannot stand in for the revision, and a payloadless arm takes no payload.
+s" CR-F-RAW ( n -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:COMMITTED" NO
+s" CR-F-BARE ( CAD-KIND:rev-id -- n ) CSTORE-COMMIT--RESULT:COMMITTED" NO
+s" CR-F-NONE ( -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:COMMITTED" NO
+s" CR-F-FGN ( CAD-KIND:artifact-id -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:COMMITTED" NO
+s" CR-F-PAY ( CAD-KIND:rev-id -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:CONFLICT" NO
+
+public
+
+\ twin is CSTORE:commit-result's SHAPE under a different name: same arity, same four
+\ variants in the same order, same named payload field. It exists only so the negatives
+\ below can prove commit-outcome identity is NOMINAL - two identically shaped ENUM
+\ families never unify, in either direction. It has to be public: a private family
+\ publishes no constructors at all, and the positive control below builds through the
+\ twin's own committed, so neither negative can pass by being unresolvable rather than
+\ ill-typed. The tail is deliberately SHORT: the generated constructor package here is
+\ CSTORE--TEST-TWIN, and a name over TF-CTOR-NAME-LIMIT (32 bytes,
+\ src/core/type-family.f) silently switches to the opaque hashed spelling.
+ENUM twin 1
+   VARIANT committed FIELD rev a ;VARIANT
+   VARIANT conflict ;VARIANT
+   VARIANT duplicate-write ;VARIANT
+   VARIANT omitted-read ;VARIANT
+;ENUM
+
+private
+
+s" CR-C-TWIN ( CAD-KIND:rev-id -- twin<CAD-KIND:rev-id> ) CSTORE--TEST-TWIN:COMMITTED" YES
+s" CR-C-TWIN-X1 ( CAD-KIND:rev-id -- twin<CAD-KIND:rev-id> ) CSTORE-COMMIT--RESULT:COMMITTED" NO
+s" CR-C-TWIN-X2 ( CAD-KIND:rev-id -- CSTORE:commit-result<CAD-KIND:rev-id> ) CSTORE--TEST-TWIN:COMMITTED" NO
+
+;package
+
+\ ---- every variant constructs and dispatches through MATCH ---------------------
+\ The tests above reach the commit-result arms only through CSTORE:COMMIT. The variant
+\ producers R-COMMITTED / R-CONFLICT / R-DUP-WRITE / R-OMITTED are owner-private, so
+\ reopen the owning package to construct each variant DIRECTLY and match it straight
+\ back; that is what proves the named payload FIELD binds in declaration order. The
+\ committed arm binds its payload to a TYPED local and the round-trip demands the
+\ recovered revision equal the one constructed AND differ from a second live revision,
+\ so a payload the constructor dropped, zeroed or replaced with a constant fails
+\ instead of passing.
+\
+\ Construction is factored into one typed word per variant because the checker requires
+\ MATCH's scrutinee to be a concretely instantiated family value: a single word that
+\ both constructs and matches is refused, and the diagnostic names the family token as
+\ an undefined word. That refusal predates this migration (it reproduces identically on
+\ the legacy declaration) and is reported separately. Names carry a per-family prefix
+\ because all three commit-store suites reopen this one package in the same process.
+package CSTORE
+
+: TT-CR-REV-A ( -- CAD-KIND:rev-id )   s" c4-cr-rt-a" REV:COMMIT ;
+: TT-CR-REV-B ( -- CAD-KIND:rev-id )   s" c4-cr-rt-b" REV:COMMIT ;
+
+: TT-CR-MK-COM ( CAD-KIND:rev-id -- commit-result<CAD-KIND:rev-id> ) R-COMMITTED ;
+: TT-CR-MK-CON ( -- commit-result<CAD-KIND:rev-id> )   R-CONFLICT ;
+: TT-CR-MK-DUP ( -- commit-result<CAD-KIND:rev-id> )   R-DUP-WRITE ;
+: TT-CR-MK-OMI ( -- commit-result<CAD-KIND:rev-id> )   R-OMITTED ;
+
+: TT-CR-ARM ( commit-result<CAD-KIND:rev-id> -- n )   \ 1 committed .. 4 omitted-read
+   MATCH commit-result
+      committed       OF drop 1 ENDOF
+      conflict        OF 2 ENDOF
+      duplicate-write OF 3 ENDOF
+      omitted-read    OF 4 ENDOF
+   ;MATCH ;
+
+: TT-CR-REV ( commit-result<CAD-KIND:rev-id> -- CAD-KIND:rev-id bool )   \ committed -> (rev,true)
+   MATCH commit-result
+      committed       OF true ENDOF
+      conflict        OF TT-CR-REV-B false ENDOF
+      duplicate-write OF TT-CR-REV-B false ENDOF
+      omitted-read    OF TT-CR-REV-B false ENDOF
+   ;MATCH ;
+
+: TT-CR-AB-DIFF ( -- bool )   TT-CR-REV-A TT-CR-REV-B REV:EQUAL? 0= ;   \ the two controls differ
+
+: TT-CR-RT-ARM ( -- n )   TT-CR-REV-A TT-CR-MK-COM TT-CR-ARM ;
+: TT-CR-RT-REV ( -- n )                          \ 0 = payload is A, and is NOT B
+   TT-CR-REV-A TT-CR-MK-COM TT-CR-REV {: got:CAD-KIND:rev-id found:bool :}
+   found 0= if 1 exit then
+   got TT-CR-REV-A REV:EQUAL? 0= if 2 exit then
+   got TT-CR-REV-B REV:EQUAL? if 3 exit then
+   0 ;
+: TT-CR-RT-CON ( -- n )   TT-CR-MK-CON TT-CR-ARM ;
+: TT-CR-RT-DUP ( -- n )   TT-CR-MK-DUP TT-CR-ARM ;
+: TT-CR-RT-OMI ( -- n )   TT-CR-MK-OMI TT-CR-ARM ;
+: TT-CR-CON-REV ( -- n )                         \ a payloadless arm carries no revision
+   TT-CR-MK-CON TT-CR-REV {: got:CAD-KIND:rev-id found:bool :}
+   found if 1 else 0 then ;
+
+TT-CR-AB-DIFF TTRUE                              \ the distinguishability control is real
+TT-CR-RT-ARM 1 T=                                \ committed dispatches to its own arm
+TT-CR-RT-REV 0 T=                                \ and carries its payload through unchanged
+TT-CR-RT-CON 2 T=                                \ conflict dispatches to its own arm
+TT-CR-RT-DUP 3 T=                                \ duplicate-write dispatches to its own arm
+TT-CR-RT-OMI 4 T=                                \ omitted-read dispatches to its own arm
+TT-CR-CON-REV 0 T=                               \ the no-payload arms of TT-CR-REV are live
+
+;package
+
 CSTORE:RESET
 
 T-REPORT
-
-;package

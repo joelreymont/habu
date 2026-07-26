@@ -80,15 +80,23 @@ require maki/db/audit-log.f       \ AUDIT:RECORD-EVIDENCE-DECISION: the canonica
 package CSTORE
 public
 
-\ Typed commit outcome: `committed` carries the resulting revision id; `conflict` is the
-\ stale base/head precondition; the reject arms compose TX:VALIDATE's refusals. A bespoke
-\ per-package sum (not result<a,b>).
-SUMTYPE commit-result 1
-   VARIANT committed a ;VARIANT
+\ Typed commit outcome: `committed` carries the resulting revision id in its `rev` field;
+\ `conflict` is the stale base/head precondition; the reject arms compose TX:VALIDATE's
+\ refusals. A bespoke per-package sum (not result<a,b>). Declared through the unified ENUM
+\ front end in full mode (the arity after the name selects it), so the payload is a named
+\ FIELD rather than a positional one. `rev` is the name this file already uses for that
+\ value: REV-KEY! / REV-PATH$ / REV-PRESENT? / REV-COMPLETE? and the revs/<revhex> layout
+\ all name it, and COMMIT binds it as the revision TX:PROPOSE returns. The generated
+\ CSTORE-COMMIT--RESULT:COMMITTED / :CONFLICT / :DUPLICATE-WRITE / :OMITTED-READ
+\ constructors and every MATCH site are unchanged, because both spellings and payload
+\ binding order derive from the package, the family tail, and the declaration order, none
+\ of which the mode changes.
+ENUM commit-result 1
+   VARIANT committed FIELD rev a ;VARIANT
    VARIANT conflict ;VARIANT
    VARIANT duplicate-write ;VARIANT
    VARIANT omitted-read ;VARIANT
-;SUMTYPE
+;ENUM
 
 \ Typed AUTHORIZED-commit outcome: COMMIT-AUTHORIZED composes the capability + budget gates around
 \ COMMIT (dot habu-v2-capability-and-0970a96d, the deferred § 23 "capability and resource budgets
@@ -97,14 +105,21 @@ SUMTYPE commit-result 1
 \ granted-authority ⊉ declared-capabilities reject (the ACTION:DISPATCH precedent); `exhausted`
 \ names the first budget dimension whose declared reserve exceeds the ledger's remaining. The two
 \ new reject arms fire BEFORE any publish, so an unauthorized or exhausted commit publishes nothing.
-SUMTYPE auth-result 1
-   VARIANT committed a ;VARIANT
+\ Declared through the unified ENUM front end in full mode, so both payloads are named
+\ FIELDs: `committed` carries the published revision in `rev` (the COMMIT payload above,
+\ same name), and `exhausted` carries the first over-budget dimension in `dim` - the name
+\ this file uses for that value in A-EXHAUSTED ( BUDGET:dim -- ... ), in RESERVE-DIM's
+\ BUDGET:DIM>N projection, and at the AUTHORIZED-PUBLISH call site that turns the ordinal
+\ back into a dimension with BUDGET:N>DIM. Constructor spellings, checked effects and every
+\ MATCH site are unchanged, here and in the cross-package consumer maki/db/agent-loop.f.
+ENUM auth-result 1
+   VARIANT committed FIELD rev a ;VARIANT
    VARIANT conflict ;VARIANT
    VARIANT duplicate-write ;VARIANT
    VARIANT omitted-read ;VARIANT
    VARIANT unauthorized ;VARIANT
-   VARIANT exhausted BUDGET:dim ;VARIANT
-;SUMTYPE
+   VARIANT exhausted FIELD dim BUDGET:dim ;VARIANT
+;ENUM
 
 \ Typed DISCHARGE-gated commit outcome: COMMIT-DISCHARGED composes the folded obligation-discharge
 \ AUTHORITY gate (DAUTH:AUTHORIZED-DISCHARGE - the § 23.9 "who may discharge which obligation" third
@@ -115,16 +130,23 @@ SUMTYPE auth-result 1
 \ discharging verifier is not on the authority allowlist). The discharge leg fires FIRST and BEFORE
 \ any publish, so a non-discharged or unauthorized-verifier commit publishes nothing and charges
 \ nothing; a successful discharge records the decision as a canonical audit event before publishing.
-SUMTYPE commit-discharge-result 1
-   VARIANT committed a ;VARIANT
+\ Declared through the unified ENUM front end in full mode with the same two named payload
+\ FIELDs as auth-result, which this family mirrors arm for arm: `rev` is the published
+\ revision, `dim` is the first over-budget dimension. Constructor spellings and effects are
+\ unchanged; note that CSTORE-COMMIT--DISCHARGE--RESULT is exactly 32 bytes, which is
+\ TF-CTOR-NAME-LIMIT (src/core/type-family.f), so this family sits on the last readable
+\ generated spelling - renaming the package or lengthening the family tail would silently
+\ move every constructor here to the opaque hashed form.
+ENUM commit-discharge-result 1
+   VARIANT committed FIELD rev a ;VARIANT
    VARIANT conflict ;VARIANT
    VARIANT duplicate-write ;VARIANT
    VARIANT omitted-read ;VARIANT
    VARIANT unauthorized ;VARIANT
-   VARIANT exhausted BUDGET:dim ;VARIANT
+   VARIANT exhausted FIELD dim BUDGET:dim ;VARIANT
    VARIANT not-discharged ;VARIANT
    VARIANT unauthorized-verifier ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 
