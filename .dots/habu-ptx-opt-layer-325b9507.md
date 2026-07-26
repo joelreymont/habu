@@ -4,9 +4,20 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-18T14:15:04.496599+02:00"
+blocks:
+  - habu-remove-generated-ptx-f949cf0f
 ---
 
 Depth review: NO native optimizer exists (zero peephole/fold/CSE/DCE in src/habu; only bootstrap/cg/opt.fs, 240 lines gforth-side). When the PTX typed IR lands (docs/tma-gather.md campaign), build the opt layer target-independent + native-first or we get a third per-dialect optimizer. Also: do not copy the label-VARIABLE global-state emitter pattern (habu1/habu2/jit) into the PTX emitter — the emit.f line-sink shape is the better precedent.
+
+Compiler-IR reconciliation: this dot owns the closed `GPU-KIR`/`GPU-GIR`
+schema and stable structured pass framework used by GPU Waves B-D. It does not
+own PTXIR2, RIR fusion output, physical register assignment, artifact promotion,
+or the Wave E tuner cutover. Its first bounded outcome is the elementwise
+load/compute/store schema, flat schedule records, and exact structural
+canonicalization needed by the Wave B children. Existing tile/layout/staging
+and pipeline ideas remain retained outcomes only when their owning wave reaches
+them and their measured baseline supports them.
 
 2026-07-20 SETTLED DESIGN (orchestrator, answering Joel's "can we automate what
 triton automates? how?"): Triton's automation = a tile-level IR + three passes;

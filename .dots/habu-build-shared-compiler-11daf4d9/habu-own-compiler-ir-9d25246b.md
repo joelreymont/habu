@@ -1,0 +1,12 @@
+---
+title: Own compiler IR context
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-07-26T22:54:38.107827+02:00"
+blocks:
+  - habu-bind-compiler-target-b3dfa307
+  - habu-make-owned-release-79de2b5c
+---
+
+Full context: design section 6.2 and PLAN.md lifecycle require one explicit owner for target/numeric policy, module serials, sources, diagnostics, scratch, modules, witnesses, and metrics. Implement context creation, nonzero monotonic serial allocation with exhaustion, stale-handle registry, and total teardown over the repository owned-release contract. Acceptance: serials never reuse; failure returns the owner; stale/double use rejects; teardown releases every live child. Dependencies: target policy and habu-make-owned-release-79de2b5c.
