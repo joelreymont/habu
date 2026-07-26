@@ -112,14 +112,27 @@ STRUCTURE suite 0
 ;STRUCTURE
 
 \ ---- SEAL outcome (custom-sum result, never value+flag) -------------------------
-\ ok carries the sealed suite; incomplete rejects a suite missing a required field;
-\ tolerance-mismatch and reference-not-independent are the two plan-named typed gates.
-SUMTYPE build-result 0
-   VARIANT ok suite ;VARIANT
+\ ok carries the sealed suite in its `suite` field; incomplete rejects a suite missing a
+\ required field; tolerance-mismatch and reference-not-independent are the two plan-named
+\ typed gates.
+\
+\ Declared through the unified ENUM front end in full mode (the arity after the name
+\ selects it), so the payload is a named FIELD rather than a positional one. The name
+\ follows the convention the two landed lanes that migrated this same pair of tails
+\ already set: DIAG named its payload `diag` after its >DIAG / DIAG> converters, OBLIG
+\ named its `obl` after >OBL / OBL>, and this file's converters for a suite value are
+\ >SUITE / SUITE> - which BR-OK and DR-DEC-OK use to build the payload. Here that name
+\ coincides with the carried type's own spelling, so the declaration reads `FIELD suite
+\ suite`: a field name followed by the bare `suite` STRUCTURE token, not a repetition.
+\ The generated DIFFSUITE-BUILD--RESULT:* constructors and every MATCH site are
+\ unchanged, because both the spellings and the payload binding order derive from the
+\ package, the family tail and the declaration order - none of which the mode touches.
+ENUM build-result 0
+   VARIANT ok FIELD suite suite ;VARIANT
    VARIANT incomplete ;VARIANT
    VARIANT tolerance-mismatch ;VARIANT
    VARIANT reference-not-independent ;VARIANT
-;SUMTYPE
+;ENUM
 
 \ ---- DECODE outcome (the maki/db/diagnostic.f decode-result idiom) ----------------
 \ ok carries the reconstructed sealed suite; the reject arms are the folded structured
@@ -128,13 +141,22 @@ SUMTYPE build-result 0
 \ stored tag-13 digest), bounds (a set count over SET-CAP or a field length over cap), and
 \ unknown (a foreign content key - subject / comparison / target - unresolved in the local
 \ registry). A bespoke per-package sum, not result<a,b>, so a total ok leaves no free error.
-SUMTYPE decode-result 0
-   VARIANT ok suite ;VARIANT
+\ Full mode as above, and `suite` for the same reason - DR-DEC-OK builds this payload with
+\ >SUITE.
+\
+\ Neither tail is unique in the tree: DIAG declares its own build-result and decode-result
+\ and OBLIG its own decode-result, so three production families answer to `decode-result`
+\ and two to `build-result`. The families are nominal, so none of them ever unify with
+\ these; diff-suite-test.f pins that in both directions, and identifies each family by its
+\ tail PLUS the constructor package its variants carry, because the bare tails name nothing
+\ in particular.
+ENUM decode-result 0
+   VARIANT ok FIELD suite suite ;VARIANT
    VARIANT malformed ;VARIANT
    VARIANT noncanonical ;VARIANT
    VARIANT bounds ;VARIANT
    VARIANT unknown ;VARIANT
-;SUMTYPE
+;ENUM
 
 private
 

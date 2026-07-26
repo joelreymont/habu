@@ -29,7 +29,13 @@
 
 require lib/test.f
 require lib/string.f
+require test/checker-assert.f      \ CHECK-QUIET-CANDIDATE! plus REFLECT, which reads the registry
 require maki/db/diff-suite.f
+\ The OTHER production families on these two tails. DIAG declares its own build-result and
+\ decode-result, OBLIG its own decode-result (already required below), so loading DIAG here
+\ puts all of them in ONE process - the only condition under which the pair-keyed identity
+\ pins and the cross-package non-unification negatives below prove anything.
+require maki/db/diagnostic.f
 require maki/numpolicy.f
 require maki/producer.f
 require maki/target/target.f
@@ -309,6 +315,123 @@ variable SP-PROP-EXTRA            \ bool: add PROP-2
    CHECK-CANDIDATE!
    DIAG-BUFFER-OFF ;
 
+\ ---- both outcome families: construct each arm directly and dispatch it back -----
+\ SEAL and DECODE reach these arms only through a real build or a real byte decode. These
+\ construct each arm DIRECTLY through the generated constructors the BR-* / DR-* wrappers
+\ compile against, and match it straight back, so each named `suite` FIELD is proven to
+\ bind in declaration order. Construction and matching are separate words because the
+\ checker requires MATCH's scrutinee to be a concretely instantiated family value.
+: MK-BR-OK ( suite -- build-result )   DIFFSUITE-BUILD--RESULT:OK ;
+: MK-BR-INC ( -- build-result )        DIFFSUITE-BUILD--RESULT:INCOMPLETE ;
+: MK-BR-TOL ( -- build-result )        DIFFSUITE-BUILD--RESULT:TOLERANCE-MISMATCH ;
+: MK-BR-NI ( -- build-result )         DIFFSUITE-BUILD--RESULT:REFERENCE-NOT-INDEPENDENT ;
+: MK-DR-OK ( suite -- decode-result )  DIFFSUITE-DECODE--RESULT:OK ;
+: MK-DR-MF ( -- decode-result )        DIFFSUITE-DECODE--RESULT:MALFORMED ;
+: MK-DR-NC ( -- decode-result )        DIFFSUITE-DECODE--RESULT:NONCANONICAL ;
+: MK-DR-BD ( -- decode-result )        DIFFSUITE-DECODE--RESULT:BOUNDS ;
+: MK-DR-UNK ( -- decode-result )       DIFFSUITE-DECODE--RESULT:UNKNOWN ;
+
+: BR-ARM ( build-result -- n )     \ 1 ok / 2 incomplete / 3 tolerance / 4 not-independent
+   MATCH build-result
+      ok OF drop 1 ENDOF
+      incomplete OF 2 ENDOF
+      tolerance-mismatch OF 3 ENDOF
+      reference-not-independent OF 4 ENDOF
+   ;MATCH ;
+: DR-ARM ( decode-result -- n )    \ 1 ok / 2 malformed / 3 noncanonical / 4 bounds / 5 unknown
+   MATCH decode-result
+      ok OF drop 1 ENDOF
+      malformed OF 2 ENDOF
+      noncanonical OF 3 ENDOF
+      bounds OF 4 ENDOF
+      unknown OF 5 ENDOF
+   ;MATCH ;
+
+\ The carried suite is compared by DIGEST, not by its pool slot: the digest is SHA-256 over
+\ the whole canonical semantic prefix, so a payload the constructor dropped, zeroed or
+\ exchanged cannot reproduce it. The slot is ALSO pinned non-zero, because the pool is a
+\ ring whose cursor starts at 0 - a zeroed payload reads back as slot 0, and a comparison
+\ riding slot 0 would pass on exactly the bug these pins exist to catch.
+: BR-OK-SLOT ( build-result -- n )        \ the carried suite's pool slot, else -1
+   MATCH build-result
+      ok OF SUITE> ENDOF
+      incomplete OF -1 ENDOF
+      tolerance-mismatch OF -1 ENDOF
+      reference-not-independent OF -1 ENDOF
+   ;MATCH ;
+: DR-OK-SLOT ( decode-result -- n )
+   MATCH decode-result
+      ok OF SUITE> ENDOF
+      malformed OF -1 ENDOF
+      noncanonical OF -1 ENDOF
+      bounds OF -1 ENDOF
+      unknown OF -1 ENDOF
+   ;MATCH ;
+: BR-OK-DIG? ( build-result ptr u8 -- bool )   {: out:ptr :}   \ digest of the carried suite
+   MATCH build-result
+      ok OF out DIGEST! true ENDOF
+      incomplete OF false ENDOF
+      tolerance-mismatch OF false ENDOF
+      reference-not-independent OF false ENDOF
+   ;MATCH ;
+: DR-OK-DIG? ( decode-result ptr u8 -- bool )  {: out:ptr :}
+   MATCH decode-result
+      ok OF out DIGEST! true ENDOF
+      malformed OF false ENDOF
+      noncanonical OF false ENDOF
+      bounds OF false ENDOF
+      unknown OF false ENDOF
+   ;MATCH ;
+
+: RT-BR-ARM ( -- n )   SPEC-RESET BUILD-SPEC MK-BR-OK BR-ARM ;
+: RT-BR-INC ( -- n )   MK-BR-INC BR-ARM ;
+: RT-BR-TOL ( -- n )   MK-BR-TOL BR-ARM ;
+: RT-BR-NI ( -- n )    MK-BR-NI BR-ARM ;
+: RT-DR-ARM ( -- n )   SPEC-RESET BUILD-SPEC MK-DR-OK DR-ARM ;
+: RT-DR-MF ( -- n )    MK-DR-MF DR-ARM ;
+: RT-DR-NC ( -- n )    MK-DR-NC DR-ARM ;
+: RT-DR-BD ( -- n )    MK-DR-BD DR-ARM ;
+: RT-DR-UNK ( -- n )   MK-DR-UNK DR-ARM ;
+: RT-BR-INC-SLOT ( -- n )   MK-BR-INC BR-OK-SLOT ;   \ the payloadless arms stay live
+: RT-DR-MF-SLOT ( -- n )    MK-DR-MF DR-OK-SLOT ;
+
+\ A result value is constructed twice rather than held in a typed local: typed locals do
+\ not accept a sum family type. That is not this migration's doing - it rejects identically
+\ for DIAG:build-result, which moved to the same full ENUM form in an earlier wave - and it
+\ is fail-closed, so it cannot hide anything. The payload INSIDE a MATCH arm is what binds
+\ to a typed local, which is what these projections do.
+: RT-BR-CARRIES? ( -- bool )      \ ok hands back a suite of the SAME digest, on a live slot
+   SPEC-RESET BUILD-SPEC {: h:suite :}
+   h DA DIGEST!
+   h MK-BR-OK BR-OK-SLOT 0 <>
+   h MK-BR-OK DB BR-OK-DIG? and
+   DA DB KEY= and ;
+: RT-DR-CARRIES? ( -- bool )
+   SPEC-RESET BUILD-SPEC {: h:suite :}
+   h DA DIGEST!
+   h MK-DR-OK DR-OK-SLOT 0 <>
+   h MK-DR-OK DB DR-OK-DIG? and
+   DA DB KEY= and ;
+: RT-BR-DISTINCT? ( -- bool )     \ a DIFFERENT suite comes back different, so the pin is live
+   SPEC-RESET BUILD-SPEC DA DIGEST!
+   SPEC-RESET CMP-ULP SP-COMPARE ! 1 SP-TOL ! BUILD-SPEC {: h2:suite :}
+   h2 MK-BR-OK DB BR-OK-DIG? if DA DB KEY= 0= else false then ;
+
+\ Every row below runs AFTER T-RESET: that call zeroes the FAILURE counter as well as the
+\ case counter, so an assertion placed above it is reported by T-REPORT as if it had never
+\ run - a red row there would leave the suite green.
+: YES ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! -1 T= ;
+: NO  ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE!  0 T= ;
+: UNRESOLVED ( ptr u8 n -- )   CHECK-QUIET-CANDIDATE! 1 T= ;
+
+\ The families answering to these two tails. Identity is the tail PLUS the constructor
+\ package its variants carry; the bare tails name none of them in particular.
+: BR$ ( -- ptr u8 n ptr u8 n )        s" build-result" s" DIFFSUITE-BUILD--RESULT" ;
+: DR$ ( -- ptr u8 n ptr u8 n )        s" decode-result" s" DIFFSUITE-DECODE--RESULT" ;
+: DIAG-BR$ ( -- ptr u8 n ptr u8 n )   s" build-result" s" DIAG-BUILD--RESULT" ;
+: DIAG-DR$ ( -- ptr u8 n ptr u8 n )   s" decode-result" s" DIAG-DECODE--RESULT" ;
+: OBL-DR$ ( -- ptr u8 n ptr u8 n )    s" decode-result" s" OBLIG-DECODE--RESULT" ;
+
 T-RESET
 
 \ ---- generated handle contract --------------------------------------------------
@@ -384,6 +507,137 @@ s" DSVC4 ( CAD-KIND:numeric-policy-id -- ) DIFFSUITE:SUBJECT" VCHECK 0 T=
 \ TARGET-NEED requires a target-id; a producer-id is rejected, control certifies.
 s" DSVC5 ( CAD-KIND:target-id -- ) DIFFSUITE:TARGET-NEED" VCHECK -1 T=
 s" DSVC6 ( CAD-KIND:producer-id -- ) DIFFSUITE:TARGET-NEED" VCHECK 0 T=
+
+\ ---- both outcome families construct and dispatch through MATCH -----------------
+RT-BR-ARM 1 T=              \ a constructed ok reaches the ok arm
+RT-BR-INC 2 T=
+RT-BR-TOL 3 T=
+RT-BR-NI 4 T=
+RT-DR-ARM 1 T=
+RT-DR-MF 2 T=
+RT-DR-NC 3 T=
+RT-DR-BD 4 T=
+RT-DR-UNK 5 T=
+RT-BR-INC-SLOT -1 T=        \ the payloadless arms of the slot projections are live
+RT-DR-MF-SLOT -1 T=
+RT-BR-CARRIES? TTRUE        \ ok carries the suite through: same digest, non-zero slot
+RT-DR-CARRIES? TTRUE
+RT-BR-DISTINCT? TTRUE       \ and a DIFFERENT suite reads back different
+
+\ ---- the generated constructors: exact spelling + exact effect -------------------
+\ The SPELLING is load-bearing: the checker answers 1 (uncheckable) for a name it cannot
+\ resolve and -1 only for one it resolved and accepted, so a -1 means EXACTLY this
+\ constructor name typechecked; a 0 means the name resolved and the TYPES were refused.
+\ The 1-verdict rows below are the calibration that proves that three-way split.
+s" VB-OK ( DIFFSUITE:suite -- DIFFSUITE:build-result ) DIFFSUITE-BUILD--RESULT:OK" YES
+s" VB-INC ( -- DIFFSUITE:build-result ) DIFFSUITE-BUILD--RESULT:INCOMPLETE" YES
+s" VB-TOL ( -- DIFFSUITE:build-result ) DIFFSUITE-BUILD--RESULT:TOLERANCE-MISMATCH" YES
+s" VB-NI ( -- DIFFSUITE:build-result ) DIFFSUITE-BUILD--RESULT:REFERENCE-NOT-INDEPENDENT" YES
+s" VD-OK ( DIFFSUITE:suite -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:OK" YES
+s" VD-MF ( -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:MALFORMED" YES
+s" VD-NC ( -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:NONCANONICAL" YES
+s" VD-BD ( -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:BOUNDS" YES
+s" VD-UNK ( -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:UNKNOWN" YES
+\ Forge negatives on each ok payload slot: a raw cell cannot fill it, the result is not a
+\ bare scalar, and the payload is mandatory.
+s" VB-RAW ( n -- DIFFSUITE:build-result ) DIFFSUITE-BUILD--RESULT:OK" NO
+s" VB-BARE ( DIFFSUITE:suite -- n ) DIFFSUITE-BUILD--RESULT:OK" NO
+s" VB-NONE ( -- DIFFSUITE:build-result ) DIFFSUITE-BUILD--RESULT:OK" NO
+s" VD-RAW ( n -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:OK" NO
+s" VD-BARE ( DIFFSUITE:suite -- n ) DIFFSUITE-DECODE--RESULT:OK" NO
+s" VD-NONE ( -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:OK" NO
+\ The two families in THIS package do not cross either, despite carrying the same suite.
+s" VX-BD ( DIFFSUITE:suite -- DIFFSUITE:decode-result ) DIFFSUITE-BUILD--RESULT:OK" NO
+s" VX-DB ( DIFFSUITE:suite -- DIFFSUITE:build-result ) DIFFSUITE-DECODE--RESULT:OK" NO
+\ calibration: unknown case name, unknown constructor package, and a case that exists in a
+\ SIBLING family on the same tail but not in this one.
+s" VK-1 ( -- DIFFSUITE:build-result ) DIFFSUITE-BUILD--RESULT:NOPE" UNRESOLVED
+s" VK-2 ( -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULTX:MALFORMED" UNRESOLVED
+s" VK-3 ( -- DIFFSUITE:decode-result ) DIFFSUITE-DECODE--RESULT:DUPLICATE" UNRESOLVED
+s" VK-4 ( -- DIAG:build-result ) DIAG-BUILD--RESULT:TOLERANCE-MISMATCH" UNRESOLVED
+
+\ ---- the shared tails: three production families, none unifying with another -----
+\ This is the cross-PACKAGE negative and it needs no synthetic twin: DIAG declares real
+\ build-result and decode-result families and OBLIG a real decode-result, so every row
+\ below asks one production family's constructor to build another's result. Both
+\ directions, on the payload arms and the payloadless arms. The YES rows above are the
+\ positive controls that keep these from passing by being unresolvable rather than
+\ ill-typed.
+s" VX-1 ( DIAG:diagnostic -- DIFFSUITE:build-result ) DIAG-BUILD--RESULT:OK" NO
+s" VX-2 ( DIFFSUITE:suite -- DIAG:build-result ) DIFFSUITE-BUILD--RESULT:OK" NO
+s" VX-3 ( DIAG:diagnostic -- DIFFSUITE:decode-result ) DIAG-DECODE--RESULT:OK" NO
+s" VX-4 ( DIFFSUITE:suite -- DIAG:decode-result ) DIFFSUITE-DECODE--RESULT:OK" NO
+s" VX-5 ( OBLIG:obligation -- DIFFSUITE:decode-result ) OBLIG-DECODE--RESULT:OK" NO
+s" VX-6 ( DIFFSUITE:suite -- OBLIG:decode-result ) DIFFSUITE-DECODE--RESULT:OK" NO
+s" VX-7 ( -- DIFFSUITE:decode-result ) DIAG-DECODE--RESULT:MALFORMED" NO
+s" VX-8 ( -- OBLIG:decode-result ) DIFFSUITE-DECODE--RESULT:MALFORMED" NO
+
+\ ---- the recorded declaration shape, pair-keyed ---------------------------------
+\ The MATCH projections dispatch on case NAME, so they are blind to a case-order change,
+\ and full-form families get no enum-census row - these pins are the only case-order and
+\ payload-slot detector either family has. All five families on these two tails are
+\ registered in this process, so FAMS = 1 per identity is a real uniqueness assertion.
+BR$ REFLECT:FAMS 1 T=
+BR$ REFLECT:KIND TK-SUM T=              \ a payload family stays a general sum ...
+BR$ REFLECT:KIND TK-ENUM = 0 T=         \ ... and is NOT recorded as a compact enum
+BR$ REFLECT:ARITY 0 T=
+BR$ REFLECT:WIDTH 2 T=                  \ one payload cell plus one tag cell
+BR$ REFLECT:VIS 1 T=
+BR$ REFLECT:VARS 4 T=
+BR$ 0 REFLECT:ARM$ s" ok" T$=           \ case order fixes the tags
+BR$ 1 REFLECT:ARM$ s" incomplete" T$=
+BR$ 2 REFLECT:ARM$ s" tolerance-mismatch" T$=
+BR$ 3 REFLECT:ARM$ s" reference-not-independent" T$=
+BR$ 0 REFLECT:ARM-CTOR$ s" DIFFSUITE-BUILD--RESULT" T$=
+BR$ 3 REFLECT:ARM-CTOR$ s" DIFFSUITE-BUILD--RESULT" T$=
+BR$ 0 REFLECT:ARM-FLDS 1 T=             \ exactly one named cell on ok, none elsewhere
+BR$ 1 REFLECT:ARM-FLDS 0 T=
+BR$ 2 REFLECT:ARM-FLDS 0 T=
+BR$ 3 REFLECT:ARM-FLDS 0 T=
+BR$ 0 s" suite" REFLECT:ARM-SLOT 0 T=   \ the payload is named `suite` at payload slot 0
+BR$ 0 s" suite" REFLECT:ARM-CELLS 1 T=
+BR$ 1 s" suite" REFLECT:ARM-SLOT -1 T=  \ the name is per-arm
+BR$ 0 s" slot" REFLECT:ARM-SLOT -1 T=   \ `slot` is the carried STRUCTURE's field, not this one
+
+DR$ REFLECT:FAMS 1 T=
+DR$ REFLECT:KIND TK-SUM T=
+DR$ REFLECT:ARITY 0 T=
+DR$ REFLECT:WIDTH 2 T=
+DR$ REFLECT:VIS 1 T=
+DR$ REFLECT:VARS 5 T=
+DR$ 0 REFLECT:ARM$ s" ok" T$=
+DR$ 1 REFLECT:ARM$ s" malformed" T$=
+DR$ 2 REFLECT:ARM$ s" noncanonical" T$=
+DR$ 3 REFLECT:ARM$ s" bounds" T$=
+DR$ 4 REFLECT:ARM$ s" unknown" T$=
+DR$ 0 REFLECT:ARM-CTOR$ s" DIFFSUITE-DECODE--RESULT" T$=
+DR$ 4 REFLECT:ARM-CTOR$ s" DIFFSUITE-DECODE--RESULT" T$=
+DR$ 0 REFLECT:ARM-FLDS 1 T=
+DR$ 1 REFLECT:ARM-FLDS 0 T=
+DR$ 0 s" suite" REFLECT:ARM-SLOT 0 T=
+DR$ 0 s" suite" REFLECT:ARM-CELLS 1 T=
+
+\ Same tails, other constructor packages, other families. On `build-result` the case count
+\ separates DIFFSUITE from DIAG; on `decode-result` DIAG and OBLIG BOTH have six cases, so
+\ the count does not separate those two at all - the payload FIELD NAME does, and each
+\ family owns exactly one of `suite`, `diag`, `obl`. None of these could hold if the
+\ pair-keying collapsed to the bare tail.
+DIAG-BR$ REFLECT:FAMS 1 T=
+DIAG-BR$ REFLECT:VARS 3 T=              \ against DIFFSUITE's four
+DIAG-DR$ REFLECT:FAMS 1 T=
+DIAG-DR$ REFLECT:VARS 6 T=              \ against DIFFSUITE's five
+OBL-DR$ REFLECT:FAMS 1 T=
+OBL-DR$ REFLECT:VARS 6 T=               \ the same six as DIAG's: the count cannot separate them
+DIAG-DR$ 0 s" diag" REFLECT:ARM-SLOT 0 T=      \ so the field name does
+OBL-DR$ 0 s" obl" REFLECT:ARM-SLOT 0 T=
+DIAG-DR$ 0 s" obl" REFLECT:ARM-SLOT -1 T=
+OBL-DR$ 0 s" diag" REFLECT:ARM-SLOT -1 T=
+DIAG-DR$ 0 s" suite" REFLECT:ARM-SLOT -1 T=    \ and neither sibling carries a `suite`
+OBL-DR$ 0 s" suite" REFLECT:ARM-SLOT -1 T=
+DR$ 0 s" diag" REFLECT:ARM-SLOT -1 T=          \ nor does DIFFSUITE carry theirs
+DR$ 0 s" obl" REFLECT:ARM-SLOT -1 T=
+\ a tail with a constructor package no family carries resolves nothing at all.
+s" decode-result" s" NOPE-DECODE--RESULT" REFLECT:FAMS 0 T=
 
 T-REPORT
 
