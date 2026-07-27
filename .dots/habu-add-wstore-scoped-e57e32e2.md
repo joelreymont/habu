@@ -6,15 +6,50 @@ issue-type: task
 created-at: "2026-07-26T17:11:32.436417+02:00"
 ---
 
-S6c prerequisite, from the S6b2 destruction review (F3): the arena-domain and mapped-domain slot tables inside a committed gpt2-model are built and never observed by any assertion, because RESIDENT-DISPOSE consumes rather than lends and no scoped access exists over a held resident - a wrong table would produce plausible wrong weights with no test signal anywhere in the intake path, and the forward pass reads every weight through exactly that table. Behavior, package WSTORE: WITH-RESIDENT-SLOT ( WSTORE:resident n [ ptr u8 n -- n ] -- WSTORE:resident n ) - scoped access to one slot's span through a HELD resident, both arms (mapped: base+offset span; allocated: arena span), the resident returned held, the quotation pinned to the WITH-SLOT shape, throw-path ownership per the linear-scope discipline (if the quotation throws, the resident must not strand - if that is inexpressible today, the same named-boundary treatment as WITH-SLOT with the linear-scope dot cited). Tests: read-back byte-identity through a held resident against the census for both arms, synthetic and real artifact; table-correctness assertions retrofit into the gpt2-bind suites (the F3 gap closes: mutate ATBL-POP to the scratch and a read-through must red); double-hold and use-after-dispose checker negatives. Acceptance: weight-store + gpt2-bind suites green; both diff lints; refine-lint if any new erasure (prefer none); this dot BLOCKS the S6c freeze. Owner: package WSTORE. Dependencies: lands after the S6b2 pair merges.
+Why: both slot tables inside a committed GPT-2 model are currently write-only.
+The forward pass will trust those rows for every weight, so a wrong offset can
+return plausible bytes without any production-path test observing the defect.
 
-Design freeze (2026-07-27): read the slot through the still-held resident; never
-unpark or reconstruct the store. A private stack-preserving guarded serve keeps
-the resident on the catch frame. On a slot, extent, or body throw, consume it
-through RESIDENT-DISPOSE before rethrowing; a cleanup failure takes precedence.
-Do not export a raw pointer, representation reader, duplicate owner, or second
-slot API. The first checkpoint must show the green owning suites, a failing
-production-path held-resident read, and the package gate on the representative
-public definition.
+Owner and interface: package `WSTORE` owns
+`WITH-RESIDENT-SLOT
+( WSTORE:resident n [ ptr u8 n -- n ] -- WSTORE:resident n )`.
+It lends exactly one validated slot span and returns the same held resident plus
+the body result. This dot blocks `habu-bind-txn-bind-d402a260`.
+
+Dependencies: the WSTORE builder and disposal contracts
+`habu-add-wstore-builder-606aaa1c` and
+`habu-add-wstore-public-db6c70fe`, plus the total SAFET mapping contract
+`habu-return-typed-mem-ac35e3c9`.
+
+Design: when `HOLD` still owns the mapped or allocated arm, cache that arm's
+immutable base pointer and full byte length in the resident table header. Keep
+the real arm parked solely for final disposal. Before calling the user body,
+convert the public resident to one package-private linear guard. Only that guard
+may remain below `ptr u8 n`; the body must be unable to name, reconstruct, or
+dispose a public `WSTORE:resident`, `WSTORE:buffer`, or `SAFET:mapping`. On
+normal return, convert the guard back to the resident. On any slot, extent, or
+body failure, consume the guard and dispose the parked owner exactly once, then
+rethrow; cleanup failure takes precedence over the original failure.
+
+Forbidden: public raw accessors, representation readers, duplicate owners,
+owner reconstruction while the body runs, a second slot API, sentinels,
+compatibility paths, runtime reentry flags, or a copied validator. The existing
+linear-scope capability dot does not excuse an unsafe runtime boundary.
+
+Checkpoint: show clean focused WSTORE and GPT-2 bind baselines; reproduce the
+current missing held-resident read through the real committed-model path; prove
+the exact package owner on a representative definition. Stop if the private
+guard requires a public interface, a caller migration outside this leaf, or a
+new ownership authority.
+
+Acceptance: the checker rejects a body that recursively opens the same
+resident, while nesting different residents succeeds. A nested body failure
+disposes each owner exactly once and leaves the live-owner count unchanged.
+Synthetic mapped and allocated fixtures reject corrupt table offsets. Real
+mapped and allocated GPT-2 tensors match their complete source spans by
+SHA-256, not a prefix. Double use and use after dispose reject statically.
+WSTORE and GPT-2 bind suites, the exact changed-file load paths, package and
+typed-local diff gates, trust/refine gates if touched, and the combined Maki
+gate pass.
 
 Claim: agent=wstore-scoped workspace=.jj-ws/habu-add-wstore-scoped-e57e32e2
