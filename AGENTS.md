@@ -266,12 +266,16 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   Trial-and-error print-bisecting is the slow path and is forbidden once a tool
   could answer the question.
 - Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
-  not edit the current tree; workers edit isolated jj workspaces unless their
-  file ownership is disjoint.
+  not edit the current tree; concurrent editors always use separate isolated jj
+  workspaces. Never assign overlapping files to concurrent editors in the same
+  workspace.
 - **Dot dispatch status (BLOCKING):** before claiming, create the workspace with
   `jj workspace add .jj-ws/<dot-id> --name <name> -r <verified-base>`, verify
   `@- == <verified-base>` with `jj -R .jj-ws/<dot-id> log -r '@-'`, clean
-  `jj -R .jj-ws/<dot-id> st`, and disjoint write sets. Record
+  `jj -R .jj-ws/<dot-id> st`, sole dot ownership, and a frozen contract for
+  every shared interface, schema, persistence/trust boundary, and acceptance
+  path. Overlapping write sets across separate workspaces do not block dispatch.
+  Record
   `Claim: agent=<name> workspace=.jj-ws/<dot-id>` in the exact leaf, run
   `dot on <exact-id>`, inspect the diff, and run
   `HB_TMP=<private-root> bin/hb --load tools/dot-dep-lint.f` plus focused
@@ -285,6 +289,9 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   commit may merge or push until the claim change is verified at
   `master@origin`; a competing remote claim stops the worker and releases or
   reconciles the losing local claim before any publication.
+  Before integrating overlapping work, fetch and rebase every workspace,
+  reconcile conflicts and shared-file semantics in one integration tree, then
+  run the combined focused and publication gates on that exact tree.
   Before fast-forwarding `master`, run `maki/test.f`, ptx-stdlib plus touched
   native slices, `host-lint`, `filemap-lint`, and the native dot gate on the exact
   rebased tree; then push with

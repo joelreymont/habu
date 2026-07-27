@@ -62,9 +62,10 @@ an owner.
 
 `DERIVED` — Raw conversion authority must have one owner.
 
-- `src/compiler/ir/id.f` opens `IR` only to declare public ID families. It then
-  owns separate package `IR-RAW`, whose private checked `CAST:` mint/projection
-  words cannot be reached by reopening the public facade.
+- `src/compiler/ir/id.f` opens `IR-ID` only to declare the public ID families
+  with exact tails `ir-module-id` through `ir-count`. It then owns separate
+  package `IR-RAW`, whose private checked `CAST:` mint/projection words cannot
+  be reached by reopening the public type owner or the later `IR` facade.
 - Only `id.f`, `arena.f`, the focused ID test, and the codec projection owner may
   open `IR-RAW`; package/refine lints enforce that closed list.
 - Other substrate concerns use `IR-SOURCE`, `IR-TYPE`, `IR-ATTR`, `IR-SCHEMA`,
@@ -300,11 +301,12 @@ test/gate-stdlib-cases.f
 test/gate-stdlib-inline-lib.f
 ```
 
-It declares public `NEWTYPE` identities for `ir-module-id`, `ir-source-id`,
-`ir-function-id`, `ir-block-id`, `ir-operation-id`, `ir-value-id`, `ir-type-id`,
-`ir-attribute-id`, `ir-symbol-id`, `ir-span-id`, `ir-pool-offset`, and
-`ir-count`. Private checked `CAST:` words implement three separate contracts:
-module serials, packed referential IDs, and scalar count/offset roles. No new
+It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
+`ir-module-id`, `ir-source-id`, `ir-function-id`, `ir-block-id`,
+`ir-operation-id`, `ir-value-id`, `ir-type-id`, `ir-attribute-id`,
+`ir-symbol-id`, `ir-span-id`, `ir-pool-offset`, and `ir-count`. Private checked
+`CAST:` words in package `IR-RAW` implement three separate contracts: module
+serials, packed referential IDs, and scalar count/offset roles. No new
 `TRUSTED:` declaration or `TRUSTED.md` row is permitted.
 
 The frozen representation contract is:
@@ -319,24 +321,25 @@ count/pool offset:    0 .. 0x7fffffffffffffff, never packed
 The exact private `IR-RAW` representation casts are:
 
 ```text
-MINT-MODULE        ( n -- IR:ir-module-id )
-MODULE>N           ( IR:ir-module-id -- n )
-MINT-COUNT         ( n -- IR:ir-count )
-COUNT>N            ( IR:ir-count -- n )
-MINT-POOL-OFF      ( n -- IR:ir-pool-offset )
-POOL-OFF>N         ( IR:ir-pool-offset -- n )
-MINT-{KIND}        ( n -- IR:ir-{kind}-id )
-{KIND}>N           ( IR:ir-{kind}-id -- n )
+MINT-MODULE        ( n -- IR-ID:ir-module-id )
+MODULE>N           ( IR-ID:ir-module-id -- n )
+MINT-COUNT         ( n -- IR-ID:ir-count )
+COUNT>N            ( IR-ID:ir-count -- n )
+MINT-POOL-OFF      ( n -- IR-ID:ir-pool-offset )
+POOL-OFF>N         ( IR-ID:ir-pool-offset -- n )
+MINT-{KIND}        ( n -- IR-ID:ir-{kind}-id )
+{KIND}>N           ( IR-ID:ir-{kind}-id -- n )
 ```
 
 Packing, projection, and validation are ordinary checked `IR-RAW` words that
 compose only those identity-shaped casts:
 
 ```text
-PACK-{KIND}        ( ir-module-id n -- ir-{kind}-id )
-{KIND}-OWNER       ( ir-{kind}-id -- ir-module-id )
-{KIND}-LOCAL       ( ir-{kind}-id -- n )
-{KIND}-CHECK       ( ir-module-id ir-count ir-{kind}-id -- ir-{kind}-id )
+PACK-{KIND}        ( IR-ID:ir-module-id n -- IR-ID:ir-{kind}-id )
+{KIND}-OWNER       ( IR-ID:ir-{kind}-id -- IR-ID:ir-module-id )
+{KIND}-LOCAL       ( IR-ID:ir-{kind}-id -- n )
+{KIND}-CHECK       ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-{kind}-id
+                     -- IR-ID:ir-{kind}-id )
 ```
 
 `{KIND}` expands exactly to `SOURCE`, `FUNCTION`, `BLOCK`, `OPERATION`, `VALUE`,

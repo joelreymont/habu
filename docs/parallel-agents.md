@@ -11,8 +11,9 @@ gate.
   order, and the final gate.
 - Read-only scouts map broad areas into concrete findings or dots. They must not
   edit the current working tree.
-- Workers implement one concrete dot each in a separate jj workspace unless their
-  write sets are known to be disjoint.
+- Concurrent editing workers implement one concrete dot each in separate jj
+  workspaces. Never assign overlapping files to concurrent editors in the same
+  workspace.
 
 ## Map Phase
 
@@ -23,11 +24,15 @@ gate.
 3. Scouts return findings, file paths, tests, and proposed dots. The orchestrator
    creates missing work with `dot add "Title" -d "Problem: ... Acceptance: ... Files: ... Verify: ... Depends: ... Ownership: ... Claim: unassigned."`.
 4. The orchestrator chooses only unblocked leaves printed by `dot ready`, checks
-   each full brief with `dot show <id>`, and proves the ownership sets disjoint.
+   each full brief with `dot show <id>`, proves sole dot ownership, and freezes
+   every shared interface, schema, persistence/trust boundary, and acceptance
+   path under one owner. Overlapping file sets are allowed only in separate jj
+   workspaces with an explicit integration reconciliation point.
 
 ## Work Phase
 
-1. Give every worker one dot, one ownership scope, and a disjoint file set.
+1. Give every worker one dot, one ownership scope, and one isolated workspace.
+   Never assign overlapping files to concurrent editors in the same workspace.
 2. If a worker will edit files, create it from the verified integration base:
    `jj workspace add .jj-ws/<dot-id> --name <name> -r <verified-base>`. Verify
    `@- == <verified-base>` with `jj -R .jj-ws/<dot-id> log -r '@-'`, plus
@@ -50,8 +55,10 @@ gate.
    dot, or read-only scout.
 4. The worker commits its own completed work with `jj commit -m "<short title>"`
    and reports changed files, tests run, and unresolved risks.
-5. The main workspace may continue only on non-overlapping files while workers
-   run. Do not let two workers edit the same files in parallel.
+5. Other work may continue in separate jj workspaces, including on overlapping
+   files after the shared contract is frozen. Before integration, fetch and
+   rebase every workspace, reconcile conflicts and shared-file semantics in one
+   integration tree, and run the combined focused and publication gates there.
 
 ## Reduce Phase
 
@@ -59,8 +66,9 @@ gate.
    are no longer needed.
 2. Review each worker with `jj show --stat` and targeted diffs before merging.
 3. Merge one worker at a time with `jj rebase -s <workspace>@ -d @`.
-4. Resolve conflicts in the main workspace, rerun the relevant focused tests,
-   then move to the next worker.
+4. Resolve conflicts and reconcile overlapping shared-file semantics in the
+   integration workspace, rerun the relevant focused tests, then move to the
+   next worker.
 5. After all merges, run the full native gate command from `docs/bootstrap.md`.
 6. Keep each dot active through fresh destruction review, integration, and the
    owning gates. Only then close it with
@@ -73,6 +81,9 @@ gate.
 ## Conflict Rules
 
 - A worker may not revert user changes or unrelated agent changes.
+- Overlap across separate workspaces is not integration proof. Fetch and rebase
+  every reviewed tip, reconcile the combined semantics in one integration tree,
+  and run the combined gates before integration.
 - If a worker discovers a larger dependency, it reports the dependency instead of
   broadening its write scope.
 - If a dot is too large, split it immediately with `dot add` child dots before
