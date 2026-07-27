@@ -19,10 +19,12 @@ require maki/infer/gpt2-checkpoint-fixture.f
 
 package GPT2LOAD
 
+using SAFET
+
 : T-CHECK-DIFFERENT-CONFIG ( -- )
    s" a different configuration is rejected, and nothing has moved" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          OTHER-IDENTITY-CONFIG CHECK-MAPPED                          \ same parsed tensor index, other identity
@@ -43,7 +45,7 @@ package GPT2LOAD
       ENDOF
       rejected OF
          s" different-configuration test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -52,7 +54,7 @@ package GPT2LOAD
 : T-CHECK-READY ( -- )
    s" the configuration that built the prepared-load matches it" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          MATCHING-CONFIG CHECK-MAPPED
@@ -77,7 +79,7 @@ package GPT2LOAD
       ENDOF
       rejected OF
          s" CHECK-MAPPED test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -87,7 +89,7 @@ package GPT2LOAD
    s" mapped-ready loads to a mapped model" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
    MATCHING-CONFIG SAVE-CONFIG-KEY                          \ the configuration's own key, to compare
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          MATCHING-CONFIG CHECK-MAPPED
@@ -115,7 +117,7 @@ package GPT2LOAD
       ENDOF
       rejected OF
          s" mapped-load test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -134,7 +136,7 @@ package GPT2LOAD
    s" a rejected prepared-load still loads under its own configuration" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
    MATCHING-CONFIG SAVE-CONFIG-KEY
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          OTHER-IDENTITY-CONFIG CHECK-MAPPED                          \ rejected: alternate identity
@@ -171,7 +173,7 @@ package GPT2LOAD
       ENDOF
       rejected OF
          s" reject-then-load test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -205,14 +207,14 @@ variable MAPPED-OFFSET
 \ offset and require the same bytes. Parameterized by key so the test can walk several
 \ tensors of different shapes and file positions rather than trusting one.
 : CHECK-MAPPED-TENSOR ( ptr u8 n -- ) {: ka:ptr ku:n :}
-   REAL-CHECKPOINT-PATH SAFET:LOAD
-   ka ku SAFET:FIND OPTION-VALUE {: id:n :}
-   id FILE-PROBE-BUFFER MAPPED-PROBE-LENGTH SAFET:COPY-DATA? OPTION-VALUE MAPPED-PROBE-LENGTH T=
-   id SAFET:MAP-OFFSET? OPTION-VALUE MAPPED-OFFSET !
-   SAFET:DETACH-MAPPING EXPECT-DETACHED-MAPPING        \ ( parsed tensor index mapping )
-   swap SAFET:RELEASE                           \ ( mapping )
-   [: READ-MAPPED-BYTES ;] SAFET:WITH-MAPPING drop
-   SAFET:UNMAP-MAPPING RESULT-CODE 0 T=
+   REAL-CHECKPOINT-PATH LOAD
+   ka ku FIND OPTION-VALUE {: id:n :}
+   id FILE-PROBE-BUFFER MAPPED-PROBE-LENGTH COPY-DATA? OPTION-VALUE MAPPED-PROBE-LENGTH T=
+   id MAP-OFFSET? OPTION-VALUE MAPPED-OFFSET !
+   DETACH-MAPPING EXPECT-DETACHED-MAPPING        \ ( parsed tensor index mapping )
+   swap RELEASE                           \ ( mapping )
+   [: READ-MAPPED-BYTES ;] WITH-MAPPING drop
+   UNMAP-MAPPING RESULT-CODE 0 T=
    FILE-PROBE-BUFFER MAPPED-PROBE-LENGTH MAPPED-PROBE-BUFFER MAPPED-PROBE-LENGTH ASSERT-BYTES-EQUAL ;
 
 \ Three tensors, chosen so a single lucky offset cannot pass the test: a rank-1 vector
@@ -232,7 +234,7 @@ variable MAPPED-OFFSET
 
 : LOAD-REAL-MAPPED ( -- )
    REAL-MODEL-CONFIG SAVE-CONFIG-KEY                      \ the real configuration's own identity
-   REAL-CHECKPOINT-PATH SAFET:LOAD REAL-MODEL-CONFIG PREPARE
+   REAL-CHECKPOINT-PATH LOAD REAL-MODEL-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          PREPARED-ROW-COUNT 160 T=
@@ -264,13 +266,13 @@ variable MAPPED-OFFSET
       ENDOF
       rejected OF
          s" the real checkpoint did not prepare, code" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH ;
 
 : T-REAL-MAPPED ( -- )
-   REAL-CHECKPOINT-PATH SAFET:PRESENT? 0= if
+   REAL-CHECKPOINT-PATH PRESENT? 0= if
       s" gpt2-mapped: gpt2-model/model.safetensors absent -> real-artifact test SKIPPED" type cr
       0 0= TTRUE exit
    then
@@ -279,6 +281,8 @@ variable MAPPED-OFFSET
    EXPECT-NO-LEAK
    LOAD-REAL-MAPPED
    EXPECT-NO-LEAK ;
+
+;using
 
 \ ---- checker rules for mapped-storage ownership ----------------------------------------
 \ The PREPARE phase's own static rules live with gpt2-prepare-test.f; these are the ones
