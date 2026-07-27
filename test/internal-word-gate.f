@@ -22,57 +22,9 @@
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
 \   test/internal-word-gate.f
 \
-\ Package ownership (dot habu-pkg-internal-word-da4149d9). The whole file is one
-\ package, INTERNAL-WORD-GATE, and every word in it is private. This suite is a
-\ leaf: a whole-tree sweep found no file that calls any word it defines, only
-\ files that name its PATH (the gate slice in test/gate-stdlib-inline-lib.f, the
-\ suite row in test/gate-stdlib-cases.f and FILEMAP.md). The owner replaces 85
-\ raw global IWG- names and also absorbs the three small inner packages IWG-EXEC,
-\ IWG-TOMB and IWG-PARITY, which could not remain nested inside a file-wide
-\ owner.
-\
-\ Nothing is public: the package exports no words at all. The suite still has to
-\ RUN at global scope, and that part is forced. Most cases here run their child
-\ program in a disposable SUBJECT fork, and a fork inherits the parent's open
-\ package scope; a child that opens its own package (the EXPORT cases forge
-\ `package IWGXP ... ;package`) would then be opening a nested package and exit
-\ 75 with the `package` diagnostic. Measured directly: forking with a package
-\ open gives the child rc 75, forking after `;package` gives rc 0. What the fork
-\ seam forces is the position of the runner, not an export. The standing pattern
-\ carries a private word across the close as a value: `ACTION` returns a checked
-\ quotation over MAIN, evaluating ACTION before `;package` leaves that quotation
-\ on the stack, and `execute` on the line after the close runs it at global
-\ scope. Same shape as test/run-worker-stdlib.f and test/gate-stdlib-cases.f.
-\
-\ Names. The 85 words that carried the IWG- stem simply dropped it. Each bare
-\ tail was first checked against this file's real dependency image by a collision
-\ oracle - one global definition attempt per tail, where a `duplicate definition`
-\ reject means the name is already live - and all 85 came back free.
-\
-\ The other 11 renamed words are the ones the three dissolved packages held. They
-\ never carried the stem, so there was nothing to strip; each needed a name that
-\ still reads correctly outside its package. Three groups:
-\ - RUN-SUBJECT, the dissolved-package sibling, was IWG-EXEC:SUBJECT. A bare
-\   SUBJECT would read as the unrelated SUBJECT package whose SUBJECT:RUN this
-\   very word calls. RUN-SUBJECT is simply the third sibling of RUN-LOAD and
-\   RUN-STDIN.
-\ - The two TOMB forge builders, TOMB-RETIRED-FORGE$ and TOMB-TEXT-FORGE$, were
-\   IWG-TOMB:RETIRED$ and IWG-TOMB:TEXT$. Bare RETIRED$ and TEXT$ would sit among
-\   twenty other *-FORGE$ child-source builders without saying they are builders
-\   too, and TEXT$ reads like "the text" rather than "the tombstone spelled as
-\   inert text".
-\ - The eight PARITY- group words, anchored on PARITY-CHECK: the oracle found
-\   CHECK already live in this image, so IWG-PARITY:CHECK had to change no matter
-\   what. The rest of its group (DIRECT-N, SUBJECT-N, RESULT, NEG-LOAD, NEG-STDIN,
-\   POS-LOAD, TEST) took the same PARITY- marker, because their dissolved package
-\   supplied it and bare RESULT, TEST, NEG-LOAD and POS-LOAD would misdescribe
-\   themselves standing next to the general RUN-LOAD and the file-wide assertions.
-\
-\ The child-process fixture strings are deliberately byte-identical to before.
-\ Every IWG- name still inside an s" body - IWG-RAW, IWG-V, IWG-LV, IWG-PFV,
-\ IWG-NO-SUCH-WORD and the rest - is a word in a program handed to a separate
-\ bin/hb process, not a name in this file's namespace, so renaming them would
-\ change what the children declare while proving nothing.
+\ INTERNAL-WORD-GATE privately owns every definition in this file, exports
+\ nothing, and has no external callers. All 297 child-program literals must stay
+\ byte-identical; names inside them belong to the child programs.
 
 require lib/errors.f
 require lib/string.f
@@ -802,10 +754,8 @@ create EMPTY 1 allot            \ zero-length stdin
    T-REPORT
    s" internal-word-gate: ok" type cr ;
 
-\ The suite has to run after the package closes - see the header note on SUBJECT
-\ forks - and MAIN is private, so it cannot be named from out there. ACTION hands
-\ the runner across the boundary as a checked quotation: evaluating ACTION here
-\ leaves the quotation on the stack, and `execute` below runs it at global scope.
+\ ACTION returns a checked quotation for private MAIN before the package closes;
+\ execute it globally after the close so SUBJECT forks inherit no open package.
 : ACTION ( -- [ -- ] )
    [: MAIN ;] ;
 
