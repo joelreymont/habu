@@ -47,6 +47,8 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
    2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
    1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT EMBED-SIZE HEAD-COUNT false 1 2 MDLCFG:BUILD ;
 
+using SAFET
+
 \ ---- consuming a prepare-result ---------------------------------------------------
 \ Both variants consume their payload, so no test can forget a linear value.
 : EXPECT-PREPARED ( GPT2LOAD:prepare-result -- )
@@ -55,7 +57,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
       rejected OF
          s" expected prepared, got rejection code" T-LABEL
          . cr
-         SAFET:RELEASE
+         RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH ;
@@ -67,7 +69,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
          s" expected a rejection, got prepared" T-LABEL
          0 0= 0= TTRUE
          DISCARD-PREPARED
-         FIXTURE-PATH SAFET:LOAD                     \ keep the row shape after failure
+         FIXTURE-PATH LOAD                           \ keep the row shape after failure
       ENDOF
       rejected OF
          {: code:n :}
@@ -89,9 +91,9 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
 : SAVE-TENSOR-INDEX-ROW ( SAFET:census n -- SAFET:census ) {: slot:n :}
    MATCHING-CONFIG slot ROLE-NAME-LENGTH {: name-len:n :}
    drop                                         \ the configuration copy
-   ROLE-NAME-BUFFER name-len SAFET:FIND OPTION-VALUE {: id:n :}
-   id SAFET:MAP-OFFSET? OPTION-VALUE EXPECTED-OFFSET !
-   id SAFET:NBYTES? OPTION-VALUE EXPECTED-LENGTH !
+   ROLE-NAME-BUFFER name-len FIND OPTION-VALUE {: id:n :}
+   id MAP-OFFSET? OPTION-VALUE EXPECTED-OFFSET !
+   id NBYTES? OPTION-VALUE EXPECTED-LENGTH !
    id EXPECTED-TENSOR-ID ! ;
 
 : CHECK-STAGED-ROW ( n -- ) {: slot:n :}           \ the validated row is the parsed tensor index's own
@@ -116,7 +118,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
       rejected OF
          s" expected prepared, got rejection code" T-LABEL
          . cr
-         SAFET:RELEASE
+         RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH ;
@@ -124,7 +126,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
 : T-PREPARE-OK ( -- )
    s" a matching parsed tensor index and configuration yield prepared" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    MASK-SLOT SAVE-TENSOR-INDEX-ROW
    MATCHING-CONFIG PREPARE
    s" the mask row the prepared load CARRIES is the parsed tensor index's own offset, extent and id" T-LABEL
@@ -144,7 +146,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
    s" the walk covered the parsed tensor index: the prefix sum is the whole data section" T-LABEL
    STAGED-TOTAL-BYTES DATA-OFFSET @ T=
    s" a Conv1D row probes the same way" T-LABEL
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    ATTENTION-WEIGHT-SLOT SAVE-TENSOR-INDEX-ROW
    MATCHING-CONFIG PREPARE
    ATTENTION-WEIGHT-SLOT EXPECT-PREPARED-ROW
@@ -158,7 +160,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
 : T-REJECT-MODEL-FAMILY ( -- )
    s" a non-GPT-2 configuration is rejected before tensor validation" T-LABEL
    RESET-FIXTURE WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    -1 STAGED-ROW-COUNT-CELL !
    -1 STAGED-TOTAL-BYTES-CELL !
    EXPECT-TENSOR-INDEX-RESOURCES
@@ -176,14 +178,14 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
 : T-REJECT-CONFIG ( -- )
    s" one layer too many is rejected, and the same parsed tensor index still loads" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    EXTRA-LAYER-CONFIG PREPARE
    E-TENSOR-COUNT EXPECT-REJECTED                \ ( parsed tensor index )
    MATCHING-CONFIG PREPARE                             \ the very same parsed tensor index, right config
    EXPECT-PREPARED
    EXPECT-NO-LEAK
    s" a wider embedding is rejected on shape, and the parsed tensor index still loads" T-LABEL
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    WIDE-EMBEDDING-CONFIG PREPARE
    E-TENSOR-SHAPE EXPECT-REJECTED
    MATCHING-CONFIG PREPARE
@@ -195,13 +197,13 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
 \ a second PREPARE returns the same code, and it releases with nothing left over.
 : EXPECT-DAMAGE-REJECTED ( n n n -- ) {: slot:n kind:n want:n :}
    slot kind SET-DAMAGE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    MATCHING-CONFIG PREPARE
    want EXPECT-REJECTED                      \ ( parsed tensor index )
    SAFET:COUNT TENSOR-COUNT kind DAMAGE-EXTRA = if 1 + then T=
    MATCHING-CONFIG PREPARE
    want EXPECT-REJECTED
-   SAFET:RELEASE
+   RELEASE
    EXPECT-NO-LEAK ;
 
 : T-REJECT-TENSOR-INDEX ( -- )
@@ -245,15 +247,15 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
 : T-REJECT-NO-CHECKPOINT-BYTES ( -- )
    s" a parsed tensor index whose image has already left is rejected" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD                           \ ( parsed tensor index )
-   SAFET:DETACH-MAPPING EXPECT-DETACHED-MAPPING         \ ( parsed tensor index mapping ) - the image leaves
+   FIXTURE-PATH LOAD                                 \ ( parsed tensor index )
+   DETACH-MAPPING EXPECT-DETACHED-MAPPING            \ ( parsed tensor index mapping ) - the image leaves
    swap MATCHING-CONFIG PREPARE                        \ ( mapping prepare-result )
    E-NO-CHECKPOINT-BYTES EXPECT-REJECTED                \ ( mapping parsed tensor index )
    s" and the rejected parsed tensor index still answers, and still releases" T-LABEL
    SAFET:COUNT TENSOR-COUNT T=
-   SAFET:MAP-LEN 0 T=                           \ without checkpoint bytes, exactly as it arrived
-   SAFET:RELEASE                                \ ( mapping )
-   SAFET:UNMAP-MAPPING RESULT-CODE 0 T=
+   MAP-LEN 0 T=                                 \ without checkpoint bytes, exactly as it arrived
+   RELEASE                                      \ ( mapping )
+   UNMAP-MAPPING RESULT-CODE 0 T=
    EXPECT-NO-LEAK ;
 
 \ ---- the claim set: one tensor per role ---------------------------------------
@@ -351,7 +353,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
 : T-DISCARD-PREPARED ( -- )
    s" DISCARD-PREPARED disposes the parsed tensor index, its mapping, and the table" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
@@ -361,7 +363,7 @@ variable CLAIM-ID  variable CLAIM-COUNT               \ CLAIM-TENSOR boundary ar
       ENDOF
       rejected OF
          s" DISCARD-PREPARED test could not reach a prepared value" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -429,7 +431,7 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
 \ would size and place every span wrongly - which the offset-only variant cannot show.
 : PREPARE-WIDE ( -- )
    WRITE-WIDE-CHECKPOINT
-   SHIFTED-PATH SAFET:LOAD WIDE-EMBEDDING-CONFIG PREPARE
+   SHIFTED-PATH LOAD WIDE-EMBEDDING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          s" the wider load agrees on the tensor count" T-LABEL
@@ -442,14 +444,14 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
       ENDOF
       rejected OF
          s" the wider parsed tensor index failed to prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH ;
 
 : PREPARE-SHIFTED ( -- )
    WRITE-SHIFTED-CHECKPOINT
-   SHIFTED-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   SHIFTED-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          s" the interfering load agrees on both aggregates" T-LABEL
@@ -462,7 +464,7 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
       ENDOF
       rejected OF
          s" the offset-shifted parsed tensor index failed to prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH ;
@@ -478,15 +480,15 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
 : T-PREPARED-LOAD-OWNS-VALIDATED-ROWS ( -- )
    s" a prepared-load carries its own validated rows, not this package's scratch" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          PREPARED-ROW-COUNT TENSOR-COUNT T=
          PREPARED-TOTAL-BYTES DATA-OFFSET @ T=
          DATA-OFFSET @ SAVED-TOTAL-BYTES !
          SAVE-ROWS
-         FIXTURE-PATH SAFET:LOAD EXTRA-LAYER-CONFIG PREPARE
-         E-TENSOR-COUNT EXPECT-REJECTED SAFET:RELEASE
+         FIXTURE-PATH LOAD EXTRA-LAYER-CONFIG PREPARE
+         E-TENSOR-COUNT EXPECT-REJECTED RELEASE
          s" the rejected call did move the scratch" T-LABEL
          STAGED-ROW-COUNT TENSOR-COUNT <> TTRUE
          s" and the live prepared-load still reports its own validated rows" T-LABEL
@@ -508,7 +510,7 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
       ENDOF
       rejected OF
          s" validated-row ownership test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -531,7 +533,7 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
 : T-RETURN-TENSOR-INDEX ( -- )
    s" RETURN-TENSOR-INDEX hands the parsed tensor index back and disposes everything else" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          EXPECT-PREPARED-RESOURCES                             \ parsed tensor index, mapping, table and block
@@ -541,7 +543,7 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
          EXPECT-TENSOR-INDEX-RESOURCES
          s" the parsed tensor index it answers with still reports its own tensors and image" T-LABEL
          SAFET:COUNT TENSOR-COUNT T=
-         SAFET:MAP-LEN 0 > TTRUE
+         MAP-LEN 0 > TTRUE
          s" and it loads again with exactly the rows the first prepared-load carried" T-LABEL
          MATCHING-CONFIG PREPARE
          MATCH GPT2LOAD:prepare-result
@@ -553,36 +555,40 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
             ENDOF
             rejected OF
                s" the returned parsed tensor index would not prepare again, code" T-LABEL
-               . cr SAFET:RELEASE
+               . cr RELEASE
                0 0= 0= TTRUE
             ENDOF
          ;MATCH
       ENDOF
       rejected OF
          s" RETURN-TENSOR-INDEX test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
    EXPECT-NO-LEAK ;
 
 \ ---- alternate identity: same parsed tensor index, different configuration key ----------------
+using MDLCFG-CFGKEY
+
 : SAVE-PREPARED-KEY ( GPT2LOAD:prepared-load -- GPT2LOAD:prepared-load )
-   PREPARED-CONFIG-KEY MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
+   PREPARED-CONFIG-KEY UNMAKE {: k0:n k1:n k2:n k3:n :}
    k0 CAPTURED-KEY0 !  k1 CAPTURED-KEY1 !  k2 CAPTURED-KEY2 !  k3 CAPTURED-KEY3 ! ;
 
 : PREPARED-KEY-DIFFERS? ( GPT2LOAD:prepared-load -- GPT2LOAD:prepared-load bool )
-   PREPARED-CONFIG-KEY MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
+   PREPARED-CONFIG-KEY UNMAKE {: k0:n k1:n k2:n k3:n :}
    k0 CAPTURED-KEY0 @ <>  k1 CAPTURED-KEY1 @ <>  or
    k2 CAPTURED-KEY2 @ <>  or  k3 CAPTURED-KEY3 @ <>  or ;
 
+;using
+
 : SAVE-PREPARED-KEY-OF ( MDLCFG:mcfg -- )             \ prepare, save the key, discard
-   FIXTURE-PATH SAFET:LOAD swap PREPARE
+   FIXTURE-PATH LOAD swap PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF SAVE-PREPARED-KEY DISCARD-PREPARED ENDOF
       rejected OF
          s" alternate-configuration test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH ;
@@ -596,12 +602,12 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
    MATCHING-CONFIG SAVE-CONFIG-KEY
    KEY-MATCHES-CONFIG
    s" and the prepared-load captures a DIFFERENT identity for each" T-LABEL
-   FIXTURE-PATH SAFET:LOAD OTHER-IDENTITY-CONFIG PREPARE
+   FIXTURE-PATH LOAD OTHER-IDENTITY-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF PREPARED-KEY-DIFFERS? TTRUE DISCARD-PREPARED ENDOF
       rejected OF
          s" alternate configuration B could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -616,7 +622,7 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
 \ that was deleted, or that compared a configuration with itself, would still pass
 \ the first assertion and fail the second.
 : TEST-CONFIG-DIFFERS? ( MDLCFG:mcfg -- bool )           \ the configuration requests the load
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE          \ prepared for configuration A
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE                \ prepared for configuration A
    MATCH GPT2LOAD:prepare-result
       prepared OF                               \ ( configuration prepared-load )
          swap OTHER-CONFIG?                     \ ( prepared-load configuration bool )
@@ -624,7 +630,7 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
       ENDOF
       rejected OF                               \ ( configuration parsed tensor index code )
          s" configuration comparison test could not prepare" T-LABEL
-         . cr SAFET:RELEASE drop
+         . cr RELEASE drop
          0 0= 0= TTRUE
          0 0=                                   \ keep the row shape after failure
       ENDOF
@@ -638,6 +644,8 @@ variable SAVED-TOTAL-BYTES                                \ the live prepared-lo
    s" a different configuration does not match, though it loads the same parsed tensor index" T-LABEL
    OTHER-IDENTITY-CONFIG TEST-CONFIG-DIFFERS? TTRUE
    EXPECT-NO-LEAK ;
+
+;using
 
 \ ---- checker rules for PREPARE ownership ---------------------------------------
 \ The mapped and copied phases have the same static rule shape and live with the
