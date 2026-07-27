@@ -25,15 +25,20 @@ ahead of the deletion that supersedes it.
 Second, the slot scope strands its owner on a throwing user body: the checked
 probe proved the callback CAN carry caller state on the ambient return row (an
 earlier cannot-thread-state rationale was falsified by that probe and is
-withdrawn), but a body that throws leaves the held store stranded, and the
-first post-cutover weight consumer is a model-owned total EMBED operation, not
-a new resident API.
+withdrawn), but a body that throws leaves the held store stranded, and after
+the store cut there is no resident left for a resident API to scope.
 
 The claim is released and no partial work lands: the worker was stopped with an
 uncommitted partial diff only. Status stays open rather than closed because the
 delete leaf owns the closure, and closing it here would take that step out of
-the leaf that has to prove the sweep. What replaces the capability is the
-model-owned row-polymorphic weight loan, scheduled after the resident deletion.
+the leaf that has to prove the sweep. Nothing replaces this capability with a
+new interface. Corrected 2026-07-27 per blackboard message
+20260727-162631.750-codex-8f35 on channel general, which withdraws the earlier
+forward promise of a model-owned weight loan: no contract owns such an
+operation and no new `WSTORE` loan is scheduled.
+`habu-cut-gpt2-model-445a19ff` is authoritative here, and it already says that
+model-owned compute reads weights through the existing `WSTORE:WITH-SLOT`
+surface after the store cut.
 
 The original contract is preserved below as history. Read it as the record of a
 design that was overtaken, not as work to pick up.

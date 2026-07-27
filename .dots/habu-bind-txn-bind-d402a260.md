@@ -1,26 +1,82 @@
 ---
-title: Bind transaction BIND dispatch
+title: Dispatch GPT-2 binding
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T18:09:25.424095+02:00"
 blocks:
-  - habu-add-wstore-scoped-e57e32e2
+  - habu-delete-resident-and-05c594cb
 ---
 
-The SAFET mapping prerequisite landed 2026-07-27 as e0b22bf2 "Make SAFET
-mapping detach total" and fa96f47f "Make mapping scope total", so
-habu-return-typed-mem-ac35e3c9 is closed and its blocker edge is removed here.
-The scoped weight-store read prerequisite remains.
+Refrozen 2026-07-27 against the correction list in blackboard message
+20260727-162631.750-codex-8f35 on channel general. The earlier candidate
+`666a7269` and its claim are rejected evidence only.
 
-Redesign 2026-07-27: the candidate and its former claim are rejected evidence
-only. Resume only after the remaining blocker lands. BIND stays a thin exhaustive
-dispatcher over one `mcfg`; mapped CHECK uses allocation-free SAFET
-`moved|empty`, and both arms prove bytes through the committed model's
-`WSTORE:WITH-RESIDENT-SLOT` path and the real allocated table. No late mapping
-allocation, recovery state, copied slot walk, private arena bypass, optional
-real-artifact success, or masked disposal result is accepted.
+Why: once the model owns its weight store and `WSTORE:resident` is deleted, the
+two validated residency arms still need one public operation that produces the
+same model state without duplicating validation or weight access. The blocker
+edge is retargeted here to `habu-delete-resident-and-05c594cb`, the leaf that
+performs that deletion. The previous edge pointed at
+`habu-add-wstore-scoped-e57e32e2`, which is marked obsolete and do-not-implement
+and whose closure the delete leaf owns, so it could never have cleared.
+
+Owner and interface: package `GPT2TX` owns a new payload ENUM `bind-result`
+with exact arms `bound(FIELD m GPT2TX:gpt2-model)` and
+`rejected(FIELD c SAFET:census FIELD code n)`. It owns
+`BIND ( SAFET:census MDLCFG:mcfg WSTORE:residency -- GPT2TX:bind-result )`.
+
+Behavior: `BIND` is only an exhaustive dispatcher. It calls `PREPARE`, branches
+on the residency, and runs `CHECK` plus `COMMIT-MAPPED` or `CHECK-ALLOC` plus
+`COMMIT-ALLOCATED`. One `mcfg` supplies every stage, so the implementation must
+not fabricate a foreign-identity late arm.
+
+How a refusal becomes a `bind-result`, stated exactly because the obvious
+shorthand is wrong: a `PREPARE` refusal does NOT pass through unchanged.
+`maki/infer/gpt2-bind.f` declares three separate ENUM families -
+`prep-result` at line 215, `check-result` at 232, and `check-alloc-result` at
+258 - and `bind-result` will be a fourth. A value of one family is not a value
+of another, so `BIND` must unpack `prep-result.rejected(c, code)` and construct
+`bind-result.rejected(c, code)` from its two fields. The census and the code
+are carried over unchanged; the result value is rebuilt.
+
+Both `refused` arms are handled for exhaustiveness, and neither is claimed to
+be reachable through this entry point. `check-result.refused` and
+`check-alloc-result.refused` hand back a live `GPT2TX:prep`, not a census, so
+those arms call the already-landed `RELINQUISH ( GPT2TX:prep -- SAFET:census )`
+and then build `bind-result.rejected` from that census and the returned code.
+Because the same `mcfg` feeds `PREPARE` and the check stage, the identity
+refusal `E-GX-FOREIGN` and the defensive no-image refusal cannot arise here.
+This dot therefore owns no fixture and no mutation for a late refusal; that
+defensive behavior stays proven where it is owned, in the `CHECK` and
+`CHECK-ALLOC` suites.
+
+The one failure `BIND` can genuinely surface is an allocation throw out of
+`COMMIT-ALLOCATED`. It propagates as a throw, not as a `rejected` arm, and only
+after that word's existing cleanup rungs have run: each of `ARENA-STEP`,
+`BUF-STEP`, `ATBL-STEP`, and `COPY-STEP` is caught and unwound through
+`CA-ARENA-BACK`, `CA-BUF-BACK`, `CA-TBL-BACK`, and `CA-PREP-BACK` with
+`FOLD-CODE` before the rethrow, and the census is released exactly once on
+every path. `BIND` adds no recovery state of its own and must leave every owner
+count restored by that existing cleanup.
+
+Forbidden: `WITH-RESIDENT-SLOT`, weight-byte probes, public resident or store
+loans, any new `WSTORE` loan, copied slot walks, new validation, compatibility
+surfaces, a two-commit contract, a stale claim requirement, optional
+real-artifact success, or masked disposal failure. Weight-byte parity is not
+this leaf's business and no future operation is named here as its owner:
+`habu-cut-gpt2-model-445a19ff` is authoritative, and model-owned compute may use
+the existing `WSTORE:WITH-SLOT` surface internally after the store cut.
+
+Dependency: the sole blocker is `habu-delete-resident-and-05c594cb`.
+
+Acceptance: hermetic mapped and allocated fixtures take their exact arms; a
+census returned in a `rejected` result binds successfully on a retry; model
+disposal and all live-owner, mapping, table, and allocation counts return to
+baseline on success and on refusal; and both residency arms bind the real GPT-2
+artifact. Mutations that swap the residency arms, lose the census, skip
+`RELINQUISH`, or leak the model fail through the production bind and disposal
+paths. The focused GPT-2 bind, allocation, weight-store, and Maki suites pass,
+plus the package and typed-local diff gates and the error-code lint if any code
+is minted.
 
 Claim: released after rejection of `666a7269`.
-
-S6b4, the final bind-transaction leaf (rev-4 Correction 3, amended by everything landed since — the landed surface is authoritative: PREPARE with E-GX-IMAGE, CHECK/checked-prep for the mapped arm, CHECK-ALLOC/checked-prep-alloc for the allocated arm, gpt2-model, MODEL-DISPOSE, the refused arm-name convention). Two commits in one lane. COMMIT 1 — RELINQUISH ( GPT2TX:prep -- SAFET:census ): the prep-to-census exit the original contract omitted (S6b3 review forward-risk ii): unpacks the prep block, disposes the sealed table via WSTORE:TABLE-DISPOSE, frees the block, returns the census intact and usable; the counters prove total conversion (prep gone, census live, table gone); linearity negatives; this is what lets BIND refuse late and still hand back what the caller handed in. COMMIT 2 — BIND ( SAFET:tensor-census MDLCFG:mcfg WSTORE:residency -- GPT2TX:bind-result ) with payload ENUM bind-result 0 = bound(FIELD m gpt2-model) | rejected(FIELD c SAFET:census, FIELD code n): thin dispatch, no validation of its own — PREPARE, then per the residency arm CHECK+COMMIT-MAPPED or CHECK-ALLOC+COMMIT-ALLOCATED; a PREPARE rejection passes through; a CHECK/CHECK-ALLOC refusal (only the surfaced memory case is reachable — the identity refusal is unreachable by construction since one mcfg feeds both stages, and the header SAYS so instead of promising a foreign leg it cannot have; S6b3 review forward-risk i) converts via RELINQUISH to rejected(census, code). Fixtures per rev-4: both arms bind the same hermetic fixture and the probed weights are byte-equal ACROSS ARMS (mapped span bytes equal allocated span bytes for the same tid — vector AND Conv1D, the multi-role probe the reviews demanded); a rejected census binds successfully on a second BIND; the mapped-arm rejection fixture proves detach was never reached (mapping authority still with the census); real-artifact leg binds both arms of the 548 MB checkpoint. Mutation kills: RELINQUISH leaks the table (counter leg reds); BIND swaps the arms (cross-arm byte-equal leg reds on residency mismatch — assert the store arm through registry or dispose byte-count difference); rejected passthrough drops the census (usable-after leg reds). STOP on any checker miss or any need for new GPT2TX/WSTORE surface beyond RELINQUISH. Acceptance: the three bind suites + weight-store + maki/test.f green; both diff lints; refine-lint (no new mints expected beyond possible RELINQUISH internals — justify any); error-code-lint (codes from the remaining -5672..-5674 tail if needed). Claim: agent=s6b4 workspace=.jj-ws/habu-s6b4-bind

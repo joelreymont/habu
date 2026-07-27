@@ -1,9 +1,11 @@
 ---
 title: Package public-signatures core module
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "\"2026-07-27T08:47:43.798709+02:00\""
+blocks:
+  - habu-own-nominal-linear-491d11e4
 ---
 
 Seventh wall instance (intern checkpoint): tools/public-signatures-core.f is unpackaged, so the intern migration's edit to PS-EXPORTED? trips E-PACKAGE-OWNERSHIP. NOT contained: 198 definitions, 5 consumers including gate infrastructure (test/gate-diagnostics.f, test/gate-runner-support.f, two run-worker-diag files). MEASURE-FIRST checkpoint mandatory: public surface, consumer reference counts by resolved owner, packaged-status of every file to be edited (the standing lesson: consumers being identifiable is not consumers being editable), and the load-position audit for gate-loaded files - report before any edit; STOP if the cascade escapes tools/ and test/ gate files. Then: one package, short tails, consumers migrated same-commit or split at proven-green seams. Acceptance: whitespace probe passes; the five consumer suites and the gate slices that load them green; both diff lints.
@@ -12,4 +14,24 @@ MEASURE-FIRST DELIVERED (2026-07-27, vecmem2; the dot is now dispatch-ready as a
 
 DELIVERED IN-LANE (not on master): lane commit 97642e1c "Package public-signatures core and its callers" creates package PUBLIC-SIGNATURES with a thirteen-word export surface (MAIN stays private and the command-line entry reopens the package), puts the suite in its own package, and produces byte-identical outputs (18723-byte JSON, 133-line trust report). Measured divergences from the plan above, all confirmed and none scope-expanding: 224 definitions rather than 223, and the real cross-file surface is 13 words rather than 15 because two of the counted names were a comment and a fixture string, resolved by call rather than by token presence. That commit is not reachable from master; it lives only in the vecmem lane workspace .jj-ws/habu-pkg-vecmem.
 
-Claim: agent=vecmem-lane workspace=.jj-ws/habu-pkg-vecmem (delivered in-lane at 97642e1c; codex re-review and integration pending)
+PARKED 2026-07-27. The vector lane is stopped at a clean boundary and this
+contract is not dispatchable. Two independent destruction reviews rejected the
+work it rests on. The six-blocker vector verdict (blackboard message
+20260727-155303.315-codex-9253 on channel habu-extend-typed-vector-320e1620)
+found that the public typed interface still takes a bare pointer, so arbitrary
+byte storage is accepted as a vector header and no vector owner or element
+identity exists; that disposal clears capacity and length before a fallible
+release, so a refused unmap makes retry a no-op and leaks the mapping; and that
+the closed-predicate premise behind the typed search is false. The seven-blocker
+interner verdict (blackboard message 20260727-154724.143-codex-da26 on channel
+habu-pkg-intern-lint-e735c0f6) found that the chunk append copies and advances
+before it reserves, that lazy initialization is non-recoverable, that the fault
+tests do not prove allocator failure, and that chunk ownership is erased into
+three independent vectors with no rollback or disposal lifecycle. Any lane
+commit named above is preserved as rejected evidence in
+.jj-ws/habu-pkg-vecmem; none of it is work to resume. This dot now blocks on
+habu-own-nominal-linear-491d11e4, the design parent that has to freeze the
+nominal linear vector owner first, and it may not be re-dispatched until that
+design review is clean.
+
+Claim: RELEASED 2026-07-27 with the park above. The vecmem lane worker is released and .jj-ws/habu-pkg-vecmem is kept as rejected evidence only.
