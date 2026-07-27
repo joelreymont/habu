@@ -42,24 +42,27 @@ Proof contracts:
   `TRUSTED:`, and `0 set-check` calls, plus package-reopen attempts. Each route
   asserts its exact exit and diagnostic. A production declaration close is the
   positive control.
-- Rollback proof stays with each production owner. The family suite compares
-  bytes for exactly its eight arenas: family records, family strings, package
-  ids, variant rows, field rows, layout rows, schema nodes, and schema roots.
-  It has a specific layout-row mutation control; an aggregate `IMG-MOVED` is
-  not evidence that layout was observed. The existing `DECL-EVENT` suite keeps
-  sole proof of its event bytes, published cursor, field and variant ordinals,
-  current-variant cursor, frames, and field transaction. Candidate validation
-  pins both suites, so neither owner can disappear from the production route.
-- Candidate validation contains these literal positive rows:
-  `s" test/family-schema-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE`;
-  `s" test/family-schema-confine.f" construct case-kind positive 0 s" " s" " RUN-CASE`;
-  and
-  `s" test/linear-authority-matrix.f" construct case-kind positive 0 s" " s" " RUN-CASE`.
-  Each requires exit 0, empty stderr, and stdout ending in `ok` plus LF,
-  matching `POSITIVE`. `test/candidate-validation-test.f` must `DIRECT-PIN`
-  each literal row and include mutation kills for row deletion and kind
-  change. It also fails if `N-POSITIVE` changes from 37 to 36, `N-DIAGNOSTIC`
-  changes from 5 to 6, or any row changes from `positive` to `diagnostic`.
+- Rollback proof stays with each production owner. The family suite proves all
+  eight logical high-water marks restore, every pre-existing live prefix stays
+  unchanged, the exact rejection survives, and an immediate declaration with
+  the same name succeeds. The arenas are family records, family strings,
+  parameter kinds, variant rows, field rows, layout rows, schema nodes, and
+  schema roots. It must not call a restored live prefix a full-capacity byte
+  image. Retired tails, arena base/capacity restoration, and deterministic
+  snapshot persistence belong to `habu-own-type-registry-e8f77b18`; that
+  pre-existing registry-transaction defect does not regrow this close-time
+  query leaf. The existing `DECL-EVENT` suite keeps sole proof of its event
+  bytes, published cursor, field and variant ordinals, current-variant cursor,
+  frames, and field transaction.
+- Candidate validation enrolls the family schema, confinement, and linear
+  authority suites through the real shared runner. Before `SHARED-CASES`, reset
+  one named seen flag per exact path. `RUN-CASE` records each path only when its
+  actual `case-kind` is `positive`, rejects a duplicate or wrong kind, and the
+  runner requires all three after execution. Each case still requires exit 0,
+  empty stderr, and stdout ending in `ok` plus LF. Comments, strings, dormant
+  definitions, deletion, duplication, path changes, and kind changes cannot
+  satisfy this executable enrollment. Remove the raw `DIRECT-PIN` family rows;
+  substring counting is not structural evidence.
 
 Rejected reference evidence, not merge candidates:
 
@@ -77,6 +80,7 @@ Rejected reference evidence, not merge candidates:
 Acceptance: all production declaration, family-schema, `DECL-EVENT`,
 confinement, linearity, candidate-validation, diff-lint, and trusted-inventory
 gates pass. Mutating each recursion edge, owner filter, legacy route,
-confinement route, or owner-local rollback proof makes its exact test fail.
+confinement route, logical rollback mark, or executable enrollment makes its
+exact test fail.
 
 Claim: agent=famschema5 workspace=.jj-ws/habu-validate-family-schema (three-commit revision on 5acf8157 per the landed contracts; prior stack 331311f3/d64e51b8/8223af92 retained as reference evidence only)

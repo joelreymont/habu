@@ -24,5 +24,7 @@ The implementation is exactly these three leaves:
 
 The two close integrations land together, after the shared query. This parent
 closes only after all three reviewed leaves land and the production declaration
-gates prove one authority, exact diagnostics, confinement, and byte-identical
-rollback.
+gates prove one authority, exact diagnostics, confinement, executable suite
+enrollment, and logical rollback. Full retired-tail, arena-capacity, and
+snapshot byte atomicity remains owned by
+`habu-own-type-registry-e8f77b18`.

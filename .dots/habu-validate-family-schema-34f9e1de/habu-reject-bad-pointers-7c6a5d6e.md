@@ -23,10 +23,12 @@ FIELD t FSCX:tok ;VARIANT ;ENUM` path rejects at `p`; the variant names remain
 multi-character because one-character names are reserved. Nested pointers,
 applications, legacy positional sums, package identity, first-offender order,
 and safe non-linear self-pointers use the same production entry. A rejected
-declaration restores the family suite's eight owned arenas and a clean
-successor with the same name succeeds. The family suite has a layout-specific
-mutation control; the existing `DECL-EVENT` suite separately owns event bytes,
-cursors, frames, and the field transaction. Candidate validation pins both.
+declaration restores all eight logical registry marks, preserves every
+pre-existing live prefix, and a clean successor with the same name succeeds.
+Full retired-tail, base/capacity, and snapshot byte atomicity belongs to
+`habu-own-type-registry-e8f77b18`. The existing `DECL-EVENT` suite separately
+owns event bytes, cursors, frames, and the field transaction. Executable
+candidate enrollment pins both.
 
 Forbidden: a runtime guard, an ENUM-only query, retained early authority,
 participant reordering, a copied rollback model, or synthetic declarer.

@@ -20,11 +20,12 @@ Production proof: the real
 `STRUCTURE slaunder 0 FIELD p ptr slaunder FIELD t FSCX:tok ;STRUCTURE`
 path rejects at `p`; nested pointers, applications, package identity, first
 offender order, and safe non-linear self-pointers use the same production
-entry. A rejected declaration leaves the family suite's eight owned arenas
-byte-identical, then an accepted declaration with the same family name
-succeeds. The family suite has a layout-specific mutation control. The
-existing `DECL-EVENT` suite separately proves its event bytes, cursors, frames,
-and field transaction; candidate validation pins both suites.
+entry. A rejected declaration restores all eight logical registry marks,
+preserves every pre-existing live prefix, and an accepted declaration with the
+same family name then succeeds. Full retired-tail, base/capacity, and snapshot
+byte atomicity belongs to `habu-own-type-registry-e8f77b18`. The existing
+`DECL-EVENT` suite separately proves its event bytes, cursors, frames, and field
+transaction; executable candidate enrollment pins both suites.
 
 Forbidden: a runtime guard, a STRUCTURE-only query, an early guard retained for
 diagnostics, copied rollback inventory, or synthetic declarer.
