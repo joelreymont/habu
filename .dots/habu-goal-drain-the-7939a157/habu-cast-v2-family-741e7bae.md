@@ -1,9 +1,47 @@
 ---
 title: "CAST: v2 - family ownership rule for cast declarations"
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-19T01:59:06.031631+02:00"
 ---
 
-Tightening follow-up to the landed CAST: declarer (habu-checked-cast-primitive-92991136). v1 lets any top-level source declare a cast into ANY declared family - bounded by the legality gate (single-cell, certified body) and no broader than what TRUSTED: already allowed, but a family owner should control who mints converters into it: a forged ( n -- report ) cast bypasses REPORT:NEW's invariants without touching trust machinery. Design direction: casting into family F is legal only from F's declaring package (same (package,tail) key the family registry already carries) or through an explicit grant word the owner executes; projection casts OUT of a family stay unrestricted (erasure is always sound). Also consider a cast-site inventory lint (CAST: tokens are grep-visible) so the cast surface is auditable the way trust sites are. Serialize behind any in-flight checker.f lane.
+Prerequisite to IR-0.1 and tightening follow-up to the landed CAST declarer
+`habu-checked-cast-primitive-92991136`. A cast into a resolved scalar-cell
+family, including a parametric `NEWTYPE` instance, is legal only when one
+engine-owned provider authenticates the live namespace record and actual
+public/private definition wordlist as that family's exact declaring package.
+`CHECKER-PACKAGE-*` is parser and verification mirror state, never authority;
+only the private catch-safe source-verifier and check-runner scopes may select
+it, after it exactly matches the live provider. Projection casts remain
+unrestricted. Explicit cross-package grants remain deferred; IR-0.1 needs none.
+
+This dot owns the shared authority repair in `src/core/checker.f`,
+`src/core/type-family.f`, `src/core/sumtype.f`, `src/core/structure-decl.f`,
+`src/core/enum-decl.f`, `src/habu/verify-source.f`, `src/habu/xref.f`, and
+`tools/check-core.f`; its hostile and confinement gates are
+`test/cast-negative-suite.f`, `test/compiler/ir-id.f`,
+`test/type-decl-suite.f`, `test/type-export-suite.f`,
+`tools/refine-lint-core.f`, `tools/refine-lint-test.f`, and `TRUSTED.md`.
+
+Checkpoint: the family owner is the live namespace provider; production
+entries are source verification, the check runner, and `CAST:` declaration.
+The verified baseline accepts ordinary owned casts but the hostile foreign
+owner mint reaches the declaration path. The interface change is one
+provider-authenticated destination-owner check. Forbidden alternatives are
+trust expansion, checker-mirror authority, runtime guards, value heuristics,
+or a public grant. Focused acceptance is the cast-negative, type-declaration,
+type-export, compiler-ID, and refine-lint suites; broader gates are trust,
+package, typed-local, file-map, Maki, PTX standard library, fixpoint, bootstrap,
+and the native publication gate.
+
+Acceptance covers A-as-B owner spoofing, visibility spoofing, foreign private
+lookup, poisoned mirrors under a legitimate owner, stale namespace records,
+wordlist/current mismatches, catch-safe offline verification, normal package
+verification, and sealed provider state. The 26 compiler-IR raw tails are
+definable only as private `CAST:` words in `src/compiler/ir/id.f`'s `IR-ID`
+window; all 19 compiler API packages reject raw definitions, aliases, and
+exports, while unrelated or global same-tail role APIs such as global
+`COUNT>N` remain distinct. No `IR-RAW` package is introduced.
+
+Claim: agent=ir0 workspace=.jj-ws/habu-add-compiler-ir-21e976fc branch=ir0
