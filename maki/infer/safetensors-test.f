@@ -126,6 +126,14 @@ variable SEEN-MAP-LEN
 : ID-OF ( SAFET:census ptr u8 n -- SAFET:census n )
    SAFET:FIND OPT-VAL ;
 
+\ Extracts the first detach's moved payload. Empty on a fresh validated census is
+\ a broken loader invariant, so the focused suite stops at that exact call.
+: TAKE-MOVED ( SAFET:map-take -- SAFET:mapping )
+   MATCH SAFET:map-take
+      moved OF ENDOF
+      empty OF SAFET:E-ORDER throw ENDOF
+   ;MATCH ;
+
 \ CHECK-QUIET-CANDIDATE! verdicts: -1 accepted, 0 rejected on a type error,
 \ 1 uncheckable (a token the dictionary cannot resolve at all). The three
 \ assertions below keep those apart, so "private" is proved by non-resolution
@@ -479,7 +487,7 @@ variable BIG-LEN
 
 \ ---- the mapping-owning and metadata-only disposal outcomes ----------------
 : TEST-DISPOSAL ( -- )
-   s" a mapped census unmaps on release; an adopted image is left alone" T-LABEL
+   s" release frees an unused reservation; adopted bytes remain caller-owned" T-LABEL
    J-VALID 24 BUILD-A
    SYNTH-PATH A$ WRITE-ALL
    SYNTH-PATH SAFET:LOAD                        \ this census owns its mapping
@@ -500,7 +508,30 @@ variable BIG-LEN
    IMG-A c@ byte0 T=
    A$ SAFET:LOAD-SPAN                           \ and is still loadable
    CHECK-ALPHA
-   SAFET:RELEASE ;
+   SAFET:RELEASE
+   s" direct PARSE and CLOSE release the reservation before publication" T-LABEL
+   J-VALID 24 BUILD-A
+   SYNTH-PATH A$ WRITE-ALL
+   SAFET:OPEN SYNTH-PATH SAFET:MAP-FILE SAFET:PARSE
+   SAFET:CLOSE
+   NO-LEAK
+   CLEANUP ;
+
+: TEST-PARSE-RETRY ( -- )
+   s" a rejected parse can retry and reserve exactly one mapping record" T-LABEL
+   J-ALPHA 16 BUILD-A
+   ZERO-CH IMG-A 8 + c!                        \ invalidate the root object byte
+   SAFET:OPEN A$ SAFET:ADOPT
+   [: SAFET:PARSE ;] catch {: code:n :}
+   code SAFET:E-JSON T=
+   SAFET-MAP:LIVE 0 T=
+   SAFET:LIVE-OWNERS 1 T=                      \ the session remains the sole owner
+   LBRACE IMG-A 8 + c!
+   SAFET:PARSE SAFET:DETACH
+   SAFET:DETACH-MAPPING TAKE-MOVED
+   swap SAFET:RELEASE
+   SAFET:UNMAP-MAPPING 0 RES-OK=
+   NO-LEAK ;
 
 \ ---- the mapping seam ------------------------------------------------------
 \ The synthetic file's layout is known exactly: an 8-byte little-endian length
@@ -591,7 +622,7 @@ variable BIG-LEN
    s" b" ID-OF {: ib:n :}
    ib DATA-BUF 64 SAFET:COPY-DATA? 8 OPT=       \ b's bytes while the census still owns them
    DATA-BUF c@ {: want-b0:n :}
-   SAFET:DETACH-MAPPING                         \ ( c m )
+   SAFET:DETACH-MAPPING TAKE-MOVED              \ ( c m )
    SAFET-MAP:LIVE 1 T=                          \ the kernel mapping count does not move
    SAFET:LIVE-OWNERS 2 T=                       \ but there are two owners now
    s" the mapping reads the same bytes at the MAP-OFFSET? frame" T-LABEL
@@ -612,26 +643,35 @@ variable BIG-LEN
    SAFET:UNMAP-MAPPING LEN-A @ RES-OK=
    SAFET-MAP:LIVE 0 T=
    NO-LEAK
+   s" the mapping can leave first while the census keeps its metadata" T-LABEL
+   SYNTH-PATH SAFET:LOAD
+   SAFET:DETACH-MAPPING TAKE-MOVED               \ ( c m )
+   SAFET:UNMAP-MAPPING LEN-A @ RES-OK=           \ ( c )
+   SAFET-MAP:LIVE 0 T=
+   SAFET:LIVE-OWNERS 1 T=
+   CHECK-DETACHED-CENSUS
+   SAFET:RELEASE
+   NO-LEAK
    CLEANUP ;
 
 : TEST-DETACH-TWICE ( -- )
-   s" a second detach hands out no second claim on the same bytes" T-LABEL
+   s" repeated PARSE reuses one reservation; a second detach is empty" T-LABEL
    BUILD-SYNTH
-   SYNTH-PATH SAFET:LOAD                        \ ( c )
-   SAFET:DETACH-MAPPING                         \ ( c m1 )
-   swap SAFET:DETACH-MAPPING                    \ ( m1 c m2 )
-   SAFET-MAP:LIVE 1 T=                          \ still exactly one kernel mapping
-   SAFET:LIVE-OWNERS 3 T=                       \ census + two mapping owners
-   0 MAP-OFF !  1 MAP-TAKE !
-   -1 SEEN-MAP-LEN !                            \ poison: the second mapping has no bytes
-   [: SEE-MAPPING ;] SAFET:WITH-MAPPING OPT-NONE
-   SEEN-MAP-LEN @ -1 T=
-   SAFET:UNMAP-MAPPING 0 RES-OK=                \ and gives nothing back to the kernel
-   SAFET-MAP:LIVE 1 T=                          \ the real mapping is untouched
-   SAFET:RELEASE                                \ ( m1 ) metadata only
-   SAFET-MAP:LIVE 1 T=
-   SAFET:UNMAP-MAPPING LEN-A @ RES-OK=          \ the FIRST mapping still owns it
-   SAFET-MAP:LIVE 0 T=
+   SAFET:OPEN SYNTH-PATH SAFET:MAP-FILE
+   SAFET:PARSE SAFET:PARSE SAFET:DETACH          \ ( c )
+   SAFET:DETACH-MAPPING TAKE-MOVED               \ ( c m1 )
+   swap SAFET:DETACH-MAPPING                     \ ( m1 c map-take )
+   MATCH SAFET:map-take
+      moved OF SAFET:E-ORDER throw ENDOF
+      empty OF
+         SAFET-MAP:LIVE 1 T=                     \ still exactly one kernel mapping
+         SAFET:LIVE-OWNERS 2 T=                  \ census + first mapping only
+         SAFET:RELEASE                           \ ( m1 ) metadata only
+         SAFET-MAP:LIVE 1 T=
+         SAFET:UNMAP-MAPPING LEN-A @ RES-OK=
+         SAFET-MAP:LIVE 0 T=
+      ENDOF
+   ;MATCH
    NO-LEAK
    CLEANUP ;
 
@@ -642,7 +682,7 @@ variable BIG-LEN
    IMG-A c@ {: byte0:n :}
    A$ SAFET:LOAD-SPAN                           \ ( c ) owns no mapping
    SAFET-MAP:LIVE 0 T=
-   SAFET:DETACH-MAPPING                         \ ( c m )
+   SAFET:DETACH-MAPPING TAKE-MOVED              \ ( c m )
    SAFET-MAP:LIVE 0 T=
    SAFET:LIVE-OWNERS 2 T=
    8 MAP-BYTE-AT LBRACE T=                      \ the caller's image is readable through it
@@ -671,7 +711,7 @@ variable BIG-LEN
    SAFET-MAP:LIVE 1 T=                          \ the rejection took nothing from it
    SAFET:LIVE-OWNERS 1 T=
    CHECK-MAP-OFFSETS                            \ and it still answers both frames
-   SAFET:DETACH-MAPPING                         \ ( c m ) the retry succeeds
+   SAFET:DETACH-MAPPING TAKE-MOVED              \ ( c m ) the retry succeeds
    swap CHECK-DETACHED-CENSUS
    SAFET:RELEASE                                \ ( m )
    SAFET:UNMAP-MAPPING LEN-A @ RES-OK=
@@ -706,8 +746,12 @@ variable BIG-LEN
    s" STT-BAD-MAPPING-DUP ( SAFET:mapping -- SAFET:mapping SAFET:mapping ) dup" REJECTED
    s" STT-BAD-MAPPING-DROP ( SAFET:mapping -- ) drop" REJECTED
    s" STT-BAD-MAPPING-STORE ( SAFET:mapping ptr n -- ) !" REJECTED
+   s" its typed detach result cannot hide a moved mapping" T-LABEL
+   s" STT-BAD-TAKE-DROP ( SAFET:map-take -- ) drop" REJECTED
+   s" STT-OK-TAKE-MOVED ( SAFET:mapping -- SAFET:map-take ) SAFET-MAP--TAKE:MOVED" ACCEPTED
+   s" STT-OK-TAKE-EMPTY ( -- SAFET:map-take ) SAFET-MAP--TAKE:EMPTY" ACCEPTED
    s" a detach keeps its census and an unmap consumes its mapping" T-LABEL
-   s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:census -- SAFET:mapping ) SAFET:DETACH-MAPPING" REJECTED
+   s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:census -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" STT-BAD-UNMAP-KEEPS ( SAFET:mapping -- SAFET:mapping result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-DOUBLE-UNMAP ( SAFET:mapping -- result<n,n> result<n,n> ) SAFET:UNMAP-MAPPING SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-UNMAP-THEN-READ ( SAFET:mapping -- result<n,n> SAFET:mapping option<n> ) SAFET:UNMAP-MAPPING SAFET:WITH-MAPPING" REJECTED
@@ -715,7 +759,7 @@ variable BIG-LEN
    s" STT-BAD-MAPPING-RELEASE ( SAFET:mapping -- ) SAFET:RELEASE" REJECTED
    s" STT-BAD-MAPPING-CLOSE ( SAFET:mapping -- ) SAFET:CLOSE" REJECTED
    s" STT-BAD-CENSUS-UNMAP ( SAFET:census -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
-   s" STT-BAD-SESSION-DETACH-MAP ( SAFET:session -- SAFET:session SAFET:mapping ) SAFET:DETACH-MAPPING" REJECTED
+   s" STT-BAD-SESSION-DETACH-MAP ( SAFET:session -- SAFET:session SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" STT-BAD-MAPPING-COUNT ( SAFET:mapping -- SAFET:mapping n ) SAFET:COUNT" REJECTED
    s" a cleanup result cannot be dropped or read as a bare number" T-LABEL
    s" STT-BAD-UNMAP-IGNORED ( SAFET:mapping -- ) SAFET:UNMAP-MAPPING" REJECTED
@@ -723,9 +767,9 @@ variable BIG-LEN
    s" STT-BAD-UNMAP-ARITH ( SAFET:mapping -- n ) SAFET:UNMAP-MAPPING 1 +" REJECTED
    s" no mapping reader answers without its mapping" T-LABEL
    s" STT-BAD-AMBIENT-UNMAP ( -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
-   s" STT-BAD-AMBIENT-DETACH ( -- SAFET:mapping ) SAFET:DETACH-MAPPING" REJECTED
+   s" STT-BAD-AMBIENT-DETACH ( -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" the mapping surface really does resolve (control)" T-LABEL
-   s" STT-OK-DETACH ( SAFET:census -- SAFET:census SAFET:mapping ) SAFET:DETACH-MAPPING" ACCEPTED
+   s" STT-OK-DETACH ( SAFET:census -- SAFET:census SAFET:map-take ) SAFET:DETACH-MAPPING" ACCEPTED
    s" STT-OK-UNMAP ( SAFET:mapping -- result<n,n> ) SAFET:UNMAP-MAPPING" ACCEPTED
    s" STT-OK-MAP-OFFSET ( SAFET:census n -- SAFET:census option<n> ) SAFET:MAP-OFFSET?" ACCEPTED
    s" the mapping record and the no-image state stay private" T-LABEL
@@ -818,6 +862,7 @@ variable BIG-LEN
    TEST-CAPACITY          NO-LEAK
    TEST-TWO-MODELS        NO-LEAK
    TEST-DISPOSAL          NO-LEAK
+   TEST-PARSE-RETRY       NO-LEAK
    TEST-MAP-OFFSET        NO-LEAK
    TEST-DETACH-MAPPING    NO-LEAK
    TEST-DETACH-TWICE      NO-LEAK

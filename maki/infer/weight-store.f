@@ -138,16 +138,11 @@
 \ three.
 \
 \ THROWS AND STRANDED OWNERS. WITH-SLOT throws E-SLOT on an out-of-range slot
-\ and E-EXTENT on a row that does not fit inside the arm's bytes (or a mapping
-\ that holds no bytes at all - the ownerless mapping DETACH-MAPPING yields for a
-\ census whose image already left). A throw unwinds the runtime stack past the
-\ deconstructed store, so the caller's catch cannot recover the owner - the same
-\ documented behavior as SAFET:DETACH-MAPPING's allocation failure. Guard
-\ fallibly-reached stores the way SAFET:LOAD guards its session; the WITH- form
-\ that disposes its owner on the throw path is the same linear-scope combinator
-\ capability dot named there. LIVE is the leak counter that makes such strands
-\ observable (the SAFET:LIVE-OWNERS pattern): it counts undisposed WSTORE-owned
-\ blocks - builder/table blocks and buffer records - and decides nothing.
+\ and E-EXTENT on a row outside the arm's bytes. A throw unwinds past the
+\ deconstructed store, so the caller's catch cannot recover it. A WITH form that
+\ disposes its owner on the throw path needs the tracked linear-scope checker
+\ capability. LIVE makes such strands observable: it counts undisposed
+\ WSTORE-owned blocks and decides nothing.
 
 require lib/errors.f                     \ E-MEM-* via lib/memory.f load order
 require lib/string.f                     \ BYTE+
@@ -348,8 +343,7 @@ PTR-VARIABLE RB-PEND
 \ ---- WITH-SLOT internals ---------------------------------------------------------
 \ ROW-ARGS parks one validated row; both arms then serve the same parked range,
 \ which is what makes access identical over both arms. A serve helper that finds
-\ the row outside the arm's bytes runs nothing, so TAKE-RESULT reports E-EXTENT;
-\ the same path reports a byteless mapping, whose WITH-MAPPING never runs a body.
+\ the row outside the arm's bytes runs nothing, so TAKE-RESULT reports E-EXTENT.
 : ROW-ARGS ( WSTORE:table n -- WSTORE:table ) {: slot:n :}
    TBL>BLOCK {: blk:ptr :}
    blk slot SLOT-GUARD

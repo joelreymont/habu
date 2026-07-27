@@ -1495,7 +1495,12 @@ points stay listed.
   `RANK?`, `DIM?`, `NBYTES?`, `BEGIN?`, `END?`) take their census and answer
   `option<n>`; tensor bytes are reachable only through the scoped `WITH-TENSOR`
   body or the copying `COPY-DATA?` / `COPY-NAME?` readers, so no public word
-  returns a raw pointer. The scoped span is advisory rather than enforced — a
+  returns a raw pointer. After full validation, `PARSE` reserves and initializes
+  the separate mapping record before publication. `DETACH-MAPPING` is therefore
+  total: its `map-take` result is `moved(mapping)` on the first call and `empty`
+  thereafter, without allocating or fabricating an owner; `CLOSE`/`RELEASE`
+  frees a reservation that was never moved. The scoped span is advisory rather
+  than enforced — a
   body that deliberately stashes it can still read it after `RELEASE` — until
   the pointer-lifetime / region-type checker capability lands; see the note in
   the file header. The JSON header is streamed with the pull reader `lib/json-read.f` (the
@@ -1511,8 +1516,10 @@ points stay listed.
   named code, and proves the ownership model — two sessions parsed interleaved
   without cross-talk, a failing session leaving a live census byte-identical, a
   nested catch, capacity rollback one tensor past the limit, close-after-failure,
-  out-of-order steps throwing `E-ORDER`, two model lifetimes released in either
-  order, and both `RELEASE` disposal outcomes. The linear rules themselves are
+  a rejected parse followed by a successful retry, out-of-order steps throwing
+  `E-ORDER`, two model lifetimes released in either order, both `RELEASE`
+  disposal outcomes, and a repeated mapping detach returning typed `empty`
+  without a new owner. The linear rules themselves are
   asserted by feeding bad definitions to the checker (duplicate, drop, store,
   double detach/close/release, reader without its census, private representation
   words). A presence-gated real leg asserts the HF GPT-2 tensor census (160
@@ -1561,7 +1568,7 @@ points stay listed.
   (`SAFET-MAP:LIVE` drops on the mapped unmap; ok carries the released byte
   count), every named refusal with its exact leak-counter residue (bad slot
   count, out-of-range/negative/double-set slot, row-end overflow, unset-slot
-  SEAL, out-of-range slot and oversized/byteless rows at access on both arms),
+  SEAL, out-of-range slot and oversized rows at access on both arms),
   checker negatives for store/builder/table/buffer linearity, double dispose,
   constructor arm confusion, sealed-table mutation, dropped or raw-read cleanup
   results, and the quotation escape negative; a sealed table with no arm owner
@@ -1787,14 +1794,15 @@ points stay listed.
   `E-GX-FOREIGN` BEFORE any resource moves, so the refused prep comes back whole
   and still `ABORT`able — and demonstrably still bindable, since the suite spends
   a refused prep by re-checking it under its own configuration and committing it.
-  The arm is named `refused` rather than `foreign` because it carries two
-  refusals: the foreign identity, and the surfaced `E-MEM-MAP` when the mapping
-  could not be moved. Two
+  The arm is named `refused` rather than `foreign` because it carries both the
+  foreign-identity refusal and a defensive `E-GX-IMAGE` refusal if the total
+  mapping detach reports `empty`; the public `PREPARE` path rules that second
+  state out before a prep exists. Two
   configurations of one geometry that differ only in a field no tensor reflects
   bind the same census, so the captured identity is the only thing that can tell
-  them apart. `CHECK` then performs the transaction's ONE reachable failure —
-  `SAFET:DETACH-MAPPING`, guarded, whose refusal is reported as a value with the
-  prep rebuilt — and releases the census that gave up its image.
+  them apart. `CHECK` then matches `SAFET:DETACH-MAPPING` directly, with no
+  allocation, catch, or package-global staging, and releases the census that
+  gave up its image.
   `checked-prep` is a public `DEFLINEAR` that IS the same block with the census
   cell replaced by the moved mapping, and `ABORT-CHECKED ( checked-prep -- )` is
   its total exit. `COMMIT-MAPPED ( checked-prep -- gpt2-model )` is therefore

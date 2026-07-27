@@ -227,9 +227,8 @@ DEFLINEAR GPT2TX:checked-prep
 
 \ ---- what CHECK answers ----------------------------------------------------------
 \ matched carries the whole transaction forward; refused gives the prep back beside
-\ the code that turned it down, still live and still ABORTable. The arm is named for
-\ what it DOES, not for one of its causes: it carries the foreign-identity refusal and
-\ the surfaced memory refusal alike (see WHAT THE REFUSED ARM CARRIES, below).
+\ the code that turned it down, still live and still ABORTable. It carries either the
+\ foreign-identity refusal or the defensive no-image refusal.
 ENUM check-result 0
    VARIANT matched FIELD c GPT2TX:checked-prep ;VARIANT
    VARIANT refused FIELD p GPT2TX:prep FIELD code n ;VARIANT
@@ -883,27 +882,6 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 : FOLD-CODE ( n n -- n ) {: first:n later:n :}
    later 0 <> if later else first then ;
 
-\ ---- the transaction's one reachable failure, guarded ------------------------------
-\ Taking the file mapping out of the census is the ONLY step in the whole bind that
-\ can fail for a reason a caller cannot control: SAFET:DETACH-MAPPING allocates a
-\ record first and throws E-MEM-MAP if that fails, leaving the census byte-identical.
-\ It is guarded HERE, inside the word that can still answer with a refusal, which is
-\ exactly why COMMIT-MAPPED downstream has no failure path left to guard.
-\
-\ Shape: a caught quotation must be stack-preserving and cannot read the caller's
-\ locals, so the census crosses through a package cell and the mapping comes back the
-\ same way (the PREPARE TABLE-STEP arrangement). On the throwing path nothing has
-\ moved - the record allocation fails before any census cell is written - so the cell
-\ still holds a whole census and CHECK rebuilds the prep around it.
-variable PEND-CEN                               \ the census in, then the imageless census out
-variable PEND-MAP                               \ the mapping the census gave up
-
-: DETACH-STEP ( -- )
-   PEND-CEN @ N>CENSUS
-   SAFET:DETACH-MAPPING
-   MAPPING>N PEND-MAP !
-   CENSUS>N PEND-CEN ! ;
-
 \ ---- the allocated commit's four fallible steps --------------------------------------
 \ Unlike the mapped arm, this commit spends memory: an arena for the packed weights, a
 \ table in the arena's own frame, and the buffer record that owns the arena. Each of
@@ -1093,13 +1071,9 @@ public
    cen N>CENSUS ;
 
 \ ---- the transaction's second half, part one: compare, then move ------------------
-\ CHECK is the RECOVERABLE half of the commit, and the split is the whole design. It
-\ answers two questions in order and both can refuse: is this prep this
-\ configuration's, and can the mapping be taken out of its census. Everything that can
-\ fail lives here, where a refusal is a VALUE - the prep comes back whole, still
-\ ABORTable - because a throw out of a word that consumed a linear argument strands
-\ that argument beyond any caller's catch. What survives to COMMIT-MAPPED therefore has
-\ nothing left to fail.
+\ CHECK is the recoverable half of the commit. It compares identity first, then asks
+\ SAFET's total detach for the mapping. Either refusal returns the prep whole and still
+\ ABORTable. A matched result has no fallible work left for COMMIT-MAPPED.
 \
 \ THE IDENTITY COMPARE IS FIRST, AND BEFORE ANY RESOURCE MOVES. A prep built against
 \ another configuration is
@@ -1108,12 +1082,9 @@ public
 \ compare cannot be after the detach, because the detach is terminal and a refusal then
 \ would have nothing to give back.
 \
-\ WHAT THE REFUSED ARM CARRIES. Two different refusals, and its code says which:
-\ E-GX-FOREIGN when the prep was built against another configuration, or the surfaced
-\ E-MEM-MAP when the mapping could not be moved out of the census. That is why the arm
-\ is not called `foreign` - the name would have described one cause and lied about the
-\ other - and it is the same way PREPARE's rejected arm already surfaces whichever code
-\ fired underneath it.
+\ The defensive empty arm cannot arise from a prep built through the public path:
+\ PREPARE refuses an imageless census and exposes no census accessor afterwards. It is
+\ still handled as E-GX-IMAGE before a checked prep is minted.
 : CHECK ( GPT2TX:prep MDLCFG:mcfg -- check-result )
    PREP-FOREIGN? if
       drop
@@ -1121,16 +1092,20 @@ public
    then
    drop                                         \ the configuration has answered
    TAKE-PREP {: blk:ptr :}
-   blk P-CEN cells + @ PEND-CEN !
-   [: DETACH-STEP ;] catch {: code:n :}
-   code 0 <> if
-      blk BLK>BYTES MINT-PREP                   \ nothing moved: the prep is whole again
-      code GPT2TX-CHECK--RESULT:REFUSED exit
-   then
-   PEND-CEN @ N>CENSUS SAFET:RELEASE            \ the census has given up its image
-   PEND-MAP @ blk P-MAP cells + !
-   blk BLK>BYTES MINT-CHECKED
-   GPT2TX-CHECK--RESULT:MATCHED ;
+   blk P-CEN cells + @ N>CENSUS SAFET:DETACH-MAPPING
+   MATCH SAFET:map-take
+      moved OF
+         swap SAFET:RELEASE
+         MAPPING>N blk P-MAP cells + !
+         blk BLK>BYTES MINT-CHECKED
+         GPT2TX-CHECK--RESULT:MATCHED
+      ENDOF
+      empty OF
+         CENSUS>N drop
+         blk BLK>BYTES MINT-PREP
+         E-GX-IMAGE GPT2TX-CHECK--RESULT:REFUSED
+      ENDOF
+   ;MATCH ;
 
 \ ---- total disposal of a compared prep ---------------------------------------------
 \ The exit for a checked prep a holder decided not to commit. Its census is already

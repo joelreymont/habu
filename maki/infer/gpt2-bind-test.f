@@ -42,6 +42,12 @@ variable TX-WANT-ID                             \ and the census id that named i
 variable TX-AO  variable TX-AL                  \ V-ARITH boundary-leg arguments
 variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 
+: BIND-TAKE-MOVED ( SAFET:map-take -- SAFET:mapping )
+   MATCH SAFET:map-take
+      moved OF ENDOF
+      empty OF E-GX-IMAGE throw ENDOF
+   ;MATCH ;
+
 \ ---- consuming a prep-result ---------------------------------------------------
 \ Both arms consume their payload, so no leg can forget a linear value.
 : TX-EXPECT-PREPARED ( GPT2TX:prep-result -- )
@@ -223,7 +229,7 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    s" a census whose image has already left is refused" T-LABEL
    TX-CLEAN!  TX-LAY
    TX-PATH SAFET:LOAD                           \ ( census )
-   SAFET:DETACH-MAPPING                         \ ( census mapping ) - the image leaves
+   SAFET:DETACH-MAPPING BIND-TAKE-MOVED         \ ( census mapping ) - the image leaves
    swap TX-CFG-A PREPARE                        \ ( mapping prep-result )
    E-GX-IMAGE TX-EXPECT-REJECTED                \ ( mapping census )
    s" and the refused census still answers, and still releases" T-LABEL

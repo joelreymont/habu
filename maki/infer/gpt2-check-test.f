@@ -12,21 +12,20 @@
 \ each: every state has an owner and a total exit, so no step in the sequence can
 \ leave a resource with nobody to give it back.
 \
-\ WHY THIS IS THE HONEST FORM OF "NOTHING CAN STRAND". The contract asks for a throw
-\ injected at each step boundary. The only step in the whole bind whose failure is
-\ reachable is the record allocation inside SAFET:DETACH-MAPPING, and nothing in the
-\ suite can force an out-of-memory there - the alternative would be a fault hook in
-\ production code, which is not allowed to exist. So the property is pinned the way it
-\ is actually decided: the failure is GUARDED inside CHECK, which answers with a value,
-\ and the states either side of it are shown to be completely disposable -
-\ prep -> ABORT, checked prep -> ABORT-CHECKED, model -> MODEL-DISPOSE - with every
-\ counter returning to the suite's entry baseline. COMMIT-MAPPED itself has no guarded
-\ step because it has no fallible one; what makes that true is the checked-prep type,
-\ not a rule someone has to remember.
+\ SAFET reserves the mapping record before publishing the census, so CHECK has no
+\ allocation or catch. These legs prove each state has a total exit: prep -> ABORT,
+\ checked prep -> ABORT-CHECKED, model -> MODEL-DISPOSE. The checked-prep type keeps
+\ COMMIT-MAPPED free of fallible preparation.
 
 require maki/infer/gpt2-bind-fixture.f
 
 package GPT2TX
+
+: CHECK-TAKE-MOVED ( SAFET:map-take -- SAFET:mapping )
+   MATCH SAFET:map-take
+      moved OF ENDOF
+      empty OF E-GX-IMAGE throw ENDOF
+   ;MATCH ;
 
 : T-CHECK-FOREIGN ( -- )
    s" a foreign configuration is refused, and nothing has moved" T-LABEL
@@ -217,7 +216,7 @@ variable TX-MOFF
    ka ku SAFET:FIND TX-OPT-VAL {: id:n :}
    id TX-PBA TX-PB-LEN SAFET:COPY-DATA? TX-OPT-VAL TX-PB-LEN T=
    id SAFET:MAP-OFFSET? TX-OPT-VAL TX-MOFF !
-   SAFET:DETACH-MAPPING                         \ ( census mapping )
+   SAFET:DETACH-MAPPING CHECK-TAKE-MOVED        \ ( census mapping )
    swap SAFET:RELEASE                           \ ( mapping )
    [: TX-MAP-BODY ;] SAFET:WITH-MAPPING TX-OPT-VAL drop
    SAFET:UNMAP-MAPPING RES-CODE 0 T=

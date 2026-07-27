@@ -15,11 +15,10 @@
 \ The refusal half feeds every named throw its minimal trigger: bad slot count,
 \ out-of-range and negative slot, double-set slot, row-end overflow, unset-slot
 \ SEAL, out-of-range slot at access, a row past the arm's bytes on both arms,
-\ and a byteless mapping. A throw unwinds past the deconstructed linear owners
-\ (the documented SAFET:DETACH-MAPPING strand behavior), so each refusal leg
-\ asserts the exact leak-counter residue it leaves; the suite's final assertions
-\ pin the totals and that NO kernel mapping is ever leaked (the refusal legs use
-\ adopted images precisely so SAFET-MAP:LIVE ends at 0).
+\ and a row past each residency arm's bytes. A throw unwinds past deconstructed
+\ linear owners, so each refusal leg asserts the exact leak-counter residue it
+\ leaves; the suite's final assertions pin the totals and prove no kernel mapping
+\ is leaked (the mapped refusal uses an adopted image).
 \
 \ WHICH REFUSALS COST A BLOCK, AND WHY THAT SPLIT IS THE POINT. The four SLOT!
 \ refusals run their population step as a stack-preserving quotation under `catch`,
@@ -49,9 +48,8 @@
 \ shape this word retires is worth naming, because it is what the bind
 \ transaction would otherwise have had to do to free a table:
 \
-\   : KILL-TABLE ( SAFET:census WSTORE:table -- result<n,n> )
-\      swap SAFET:DETACH-MAPPING  rot  WSTORE-STORE:MAPPED
-\      WSTORE:DISPOSE  swap SAFET:RELEASE ;
+\   detach the census, unwrap `moved`, fabricate a mapped store, dispose it, and
+\   release the census
 \
 \ That type-checks, and it is a hack: it reaches a private free path by consuming
 \ the census's file mapping through DETACH-MAPPING - an atomic, TERMINAL transfer
@@ -182,6 +180,12 @@ WT-TBL-CORE-CELLS WT-TBL-RES-CELLS + constant WT-TBL-HDR-CELLS
 : ID-OF ( SAFET:census ptr u8 n -- SAFET:census n )
    SAFET:FIND OPT-VAL ;
 
+: TAKE-MOVED ( SAFET:map-take -- SAFET:mapping )
+   MATCH SAFET:map-take
+      moved OF ENDOF
+      empty OF E-WST-FIX throw ENDOF
+   ;MATCH ;
+
 \ ---- checker-candidate verdict assertions -------------------------------------
 : REJECTED ( ptr u8 n -- )
    CHECK-QUIET-CANDIDATE! 0 T= ;
@@ -269,7 +273,7 @@ private
    SAFET-MAP:LIVE 1 T=
    MK-ABUF                                      \ ( c abuf ) copied while the census owns the bytes
    swap MK-MTBL                                 \ ( abuf c mtbl )
-   swap SAFET:DETACH-MAPPING                    \ ( abuf mtbl c m )
+   swap SAFET:DETACH-MAPPING TAKE-MOVED         \ ( abuf mtbl c m )
    swap SAFET:RELEASE                           \ ( abuf mtbl m )
    swap                                         \ ( abuf m mtbl )
    WSTORE-STORE:MAPPED                          \ ( abuf mstore )
@@ -475,7 +479,7 @@ private
 : MK-MSTORE ( -- WSTORE:store )                 \ a real mapped store over the fixture
    SAFET:OPEN SYNTH-PATH SAFET:MAP-FILE SAFET:PARSE SAFET:DETACH
    MK-MTBL                                      \ ( c mtbl )
-   swap SAFET:DETACH-MAPPING                    \ ( mtbl c m )
+   swap SAFET:DETACH-MAPPING TAKE-MOVED         \ ( mtbl c m )
    swap SAFET:RELEASE                           \ ( mtbl m )
    swap WSTORE-STORE:MAPPED ;
 
@@ -535,25 +539,9 @@ private
 
 \ Adopted-image mapped stores: refusals on the mapped arm must not pin a kernel
 \ mapping, so these borrow IMG instead of mapping the synthetic file.
-: MK-DEADMAP ( -- WSTORE:store )                \ a mapping that owns no bytes at all
-   IMG LEN-I @ SAFET:LOAD-SPAN                  \ ( c )
-   SAFET:DETACH-MAPPING                         \ ( c m1 )
-   swap SAFET:DETACH-MAPPING                    \ ( m1 c m2 )
-   swap SAFET:RELEASE                           \ ( m1 m2 )
-   swap SAFET:UNMAP-MAPPING 0 RES-OK=           \ ( m2 ) the first owner borrowed, gave back nothing
-   1 WSTORE:TABLE-NEW
-   0 0 >BOFF 0 >BLEN WSTORE:SLOT!
-   WSTORE:SEAL
-   WSTORE-STORE:MAPPED ;
-
-: WS-DEADMAP ( -- )
-   MK-DEADMAP
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT drop
-   WSTORE:DISPOSE RES-DROP ;
-
 : MK-FATROW ( -- WSTORE:store )                 \ a live borrowed mapping, row far past it
    IMG LEN-I @ SAFET:LOAD-SPAN
-   SAFET:DETACH-MAPPING
+   SAFET:DETACH-MAPPING TAKE-MOVED
    swap SAFET:RELEASE                           \ ( m )
    1 WSTORE:TABLE-NEW
    0 8 >BOFF 10000 >BLEN WSTORE:SLOT!
@@ -567,7 +555,7 @@ private
 
 : MK-BORROWMAP ( -- WSTORE:store )              \ a live borrowed mapping, honest row
    IMG LEN-I @ SAFET:LOAD-SPAN
-   SAFET:DETACH-MAPPING
+   SAFET:DETACH-MAPPING TAKE-MOVED
    swap SAFET:RELEASE                           \ ( m )
    1 WSTORE:TABLE-NEW
    0 8 >BOFF 4 >BLEN WSTORE:SLOT!               \ mapping bytes 8.. open the header JSON
@@ -644,10 +632,10 @@ private
    NEST-AA
    NEST-MA
    NEST-MM
-   SAFET:LIVE-OWNERS 2 T=                       \ nested mapped stores all disposed
+   SAFET:LIVE-OWNERS 1 T=                       \ nested mapped stores all disposed
    s" an aborted inner WITH-SLOT does not poison the outer call's frame" T-LABEL
    NEST-POISON
-   WSTORE:LIVE 10 T= ;                          \ + the poisoned inner's buffer and table
+   WSTORE:LIVE 9 T= ;                           \ + the poisoned inner's buffer and table
 
 : T-ACCESS ( -- )
    BUILD-IMG
@@ -659,10 +647,9 @@ private
    s" access refusals throw their named codes" T-LABEL
    [: WS-RANGE ;]   WSTORE:E-SLOT   TTHROWSQ    \ strands buffer + table
    [: WS-EXTENT ;]  WSTORE:E-EXTENT TTHROWSQ    \ strands buffer + table
-   [: WS-DEADMAP ;] WSTORE:E-EXTENT TTHROWSQ    \ strands byteless mapping + table
    [: WS-FATROW ;]  WSTORE:E-EXTENT TTHROWSQ    \ strands borrowed mapping + table
-   WSTORE:LIVE 8 T=                             \ 2 + 2 + 2 + 1 + 1, all documented strands
-   SAFET:LIVE-OWNERS 2 T=                       \ the two stranded mapping owners
+   WSTORE:LIVE 7 T=                             \ 2 + 2 + 2 + 1 documented strands
+   SAFET:LIVE-OWNERS 1 T=                       \ the stranded borrowed mapping
    SAFET-MAP:LIVE 0 T= ;                        \ and NO kernel mapping leaked anywhere
 
 \ ---- static half: the checker enforces the ownership and escape rules ---------------
@@ -855,8 +842,8 @@ public
    T-ACCESS
    T-NESTED
    s" final leak accounting: only the documented throw strands remain" T-LABEL
-   WSTORE:LIVE 10 T=                            \ 2 SEAL + 6 access-throw + 2 poisoned inner
-   SAFET:LIVE-OWNERS 2 T=
+   WSTORE:LIVE 9 T=                             \ 2 SEAL + 5 access-throw + 2 poisoned inner
+   SAFET:LIVE-OWNERS 1 T=
    SAFET-MAP:LIVE 0 T=
    T-REPORT ;
 

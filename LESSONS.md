@@ -2553,3 +2553,8 @@ fits.
   candidate validation pins both, so extending the family snapshot duplicates
   authority. The real gap was the copied confinement lexer; prove confinement
   through exact child-process routes against the shipped binary.
+- **Reserve a linear transfer record before publishing its source owner.** A
+  late allocation forced every caller to carry catch state after publication
+  and made repeated transfer fabricate an empty owner. Allocate and initialize
+  the record before publication, move it once, and return a typed `empty` arm
+  thereafter; expected absence is a value, not an owner or an error.

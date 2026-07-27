@@ -13,15 +13,12 @@
 \ other live session byte-identical.
 \
 \ MAPPED RESIDENCY (the third owner). The residency layer wants the checkpoint's
-\ BYTES to outlive the census that described them: it copies each tensor into a
-\ device buffer and then wants the tensor metadata gone while the source mapping
-\ stays alive for the rest of the copy. DETACH-MAPPING is that transfer. It moves
-\ the file mapping out of a census into its own linear `SAFET:mapping` owner and
-\ leaves the census answering metadata (COUNT / FIND / DTYPE? / dims / NBYTES? /
-\ MAP-OFFSET?) but no longer answering BYTES. Reading the tensors afterwards is
-\ MAP-OFFSET? (where the tensor sits inside the mapping) plus WITH-MAPPING (the
-\ mapping's own scoped bytes); UNMAP-MAPPING ends the mapping's life. The two
-\ owners are then disposed independently and in either order.
+\ bytes to outlive the census that described them. DETACH-MAPPING moves the file
+\ mapping into its own linear `SAFET:mapping` owner and leaves the census answering
+\ metadata but no longer lending bytes. Its total `map-take` result distinguishes
+\ that first move from a later `empty` attempt. Reading afterwards is MAP-OFFSET?
+\ plus WITH-MAPPING; UNMAP-MAPPING ends the mapping's life. The two owners can be
+\ disposed independently and in either order.
 \
 \ TWO OFFSET FRAMES, AND WHY BOTH EXIST. safetensors data_offsets are relative to
 \ the DATA SECTION, and that is what BEGIN? / END? report, because that is what
@@ -36,10 +33,9 @@
 \ The three tokens are DEFLINEAR, so the checker - not a runtime flag - enforces
 \ the lifetime rules: a session, census or mapping cannot be duplicated, silently
 \ dropped, stored, detached twice, closed twice, or used after it was consumed.
-\ Each session owns exactly one private memory block (allocated through
-\ lib/memory.f, see BLOCK-BYTES) holding its geometry, staging rows, name arena,
-\ scratch and JSON reader storage; DETACH transfers that same block to the census
-\ unchanged, so publication copies nothing.
+\ Each session owns one private metadata block and, after validation, one mapping
+\ record reservation. DETACH transfers the metadata block to the census without
+\ copying; the first DETACH-MAPPING moves the separate record.
 \
 \ NO PUBLIC WORD RETURNS A RAW POINTER. The census answers questions about
 \ tensors (count, id by name, dtype, rank, dims, byte length, data-section
@@ -223,6 +219,13 @@ DEFLINEAR SAFET:session        \ one open, unpublished load transaction
 DEFLINEAR SAFET:census         \ one published, immutable tensor census
 DEFLINEAR SAFET:mapping        \ one file mapping detached out of a census
 
+\ A detach is total: the first call moves the reserved mapping record; later
+\ calls report empty and mint no owner.
+ENUM map-take 0
+   VARIANT moved FIELD m SAFET:mapping ;VARIANT
+   VARIANT empty ;VARIANT
+;ENUM
+
 private
 
 \ ---- capacities ------------------------------------------------------------
@@ -234,9 +237,10 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 7 constant ROW-CELLS           \ cells per staged/published tensor row
 
 \ ---- one session block -----------------------------------------------------
-\ Everything a load owns lives in this single allocation, so DETACH publishes by
-\ retyping the owner token rather than copying, and CLOSE/RELEASE free exactly
-\ one region. Cells 0 and 1 hold pointers and are addressed with `ptr-field`
+\ All metadata lives in this allocation, so DETACH publishes by retyping the
+\ owner token rather than copying. A validated session also owns the separate
+\ mapping-record reservation stored in the appended slot. Cells 0 and 1 hold
+\ pointers and are addressed with `ptr-field`
 \ (cell INDEXES); every other field is a byte offset used with `+`.
 0 constant IMG-IDX             \ ptr u8: image base (mapping or adopted span)
 1 constant KEY-IDX             \ ptr u8: current JSON member-key span pointer
@@ -268,14 +272,17 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 22 cells constant OVL-OFF
 23 cells constant CUR-DIMS-OFF
 
-\ Regions after the header, in order. NAME-CAP and SCRATCH-CAP are cell
-\ multiples, so JR-OFF stays cell-aligned for JR:INIT.
+\ Regions after the header, in order. NAME-CAP, SCRATCH-CAP and JR storage are
+\ cell multiples, so the appended pointer slot stays cell-aligned without moving
+\ any existing field or region.
 CUR-DIMS-OFF MAX-RANK cells + constant ROWS-OFF
 ROWS-OFF CAP ROW-CELLS * cells + constant DIMS-OFF
 DIMS-OFF CAP MAX-RANK * cells + constant ARENA-OFF
 ARENA-OFF NAME-CAP + constant SCRATCH-OFF
 SCRATCH-OFF SCRATCH-CAP + constant JR-OFF
-JR-OFF JR:STORAGE-BYTES + constant BLOCK-BYTES
+JR-OFF JR:STORAGE-BYTES + constant MR-REC-OFF
+MR-REC-OFF 1 cells / constant MR-REC-IDX
+MR-REC-OFF 1 cells + constant BLOCK-BYTES
 
 \ ---- tensor row columns ----------------------------------------------------
 0 constant C-NMOFF             \ name offset into the arena
@@ -287,14 +294,10 @@ JR-OFF JR:STORAGE-BYTES + constant BLOCK-BYTES
 6 constant C-END               \ data_offsets end
 
 \ ---- one mapping record ----------------------------------------------------
-\ A detached mapping outlives the census it came from, so it cannot borrow a
-\ cell of the census block - RELEASE frees that block whenever the caller likes,
-\ including before UNMAP-MAPPING. The mapping therefore owns a three-cell record
-\ of its own, allocated by DETACH-MAPPING and freed by UNMAP-MAPPING, holding
-\ exactly what giving the mapping back to the kernel needs: where it starts, how
-\ long it is, and whether this process is the one that mapped it. Cell 0 holds a
-\ pointer and is addressed with `ptr-field` (a cell INDEX); the other two are
-\ byte offsets used with `+`, exactly like the session block above.
+\ A detached mapping outlives its census, so its three-cell record is a separate
+\ allocation. PARSE allocates and fills it before publication; the census owns
+\ that reservation until DETACH-MAPPING moves it. Cell 0 holds a pointer and is
+\ addressed with `ptr-field`; the other two are byte offsets.
 0 constant MR-BASE-IDX         \ ptr u8: first byte of the mapping
 1 cells constant MR-LEN-OFF    \ mapping byte length
 2 cells constant MR-OWNS-OFF   \ 1 when UNMAP-MAPPING must unmap these bytes
@@ -390,11 +393,15 @@ variable LIVE-N
 : BLOCK-LEN ( -- CAD-NUM:alloc-byte-len )
    BLOCK-BYTES MEM:BYTES-ALLOC-LEN ;
 
+: MR-ALLOC ( -- CAD-NUM:alloc-byte-len )
+   MR-BYTES MEM:BYTES-ALLOC-LEN ;
+
 : INIT-BLOCK ( ptr n -- ) {: st:ptr :}
    0 st MAP-LEN-OFF + !   0 st OWNS-MAP-OFF + !  0 st HAS-IMG-OFF + !
    0 st HDR-LEN-OFF + !   0 st DATA-LEN-OFF + !
    0 st N-OFF + !         0 st STAGE-OFF + !     0 st BUMP-OFF + !
-   0 st PARSED-OFF + ! ;
+   0 st PARSED-OFF + !
+   NULL$ drop st MR-REC-IDX ptr-field ! ;
 
 \ The single disposal path behind both CLOSE and RELEASE. It reads the mapping
 \ decision out of the block BEFORE freeing the block, so neither outcome can
@@ -403,18 +410,26 @@ variable LIVE-N
    st OWNS-MAP-OFF + @ {: owns:n :}
    st IMG {: base:ptr :}
    st MAP-LEN-OFF + @ {: len:n :}
+   st MR-REC-IDX ptr-field @ 0= 0= if
+      st MR-REC-IDX ptr-field @ MR-ALLOC MEM:RELEASE-BYTES
+   then
    st BLOCK>BYTES BLOCK-LEN MEM:RELEASE-BYTES
    -1 LIVE-N +!
    owns 0 <> if base len SAFET-MAP:UNMAP then ;
 
 \ ---- mapping records -------------------------------------------------------
-: MR-ALLOC ( -- CAD-NUM:alloc-byte-len )
-   MR-BYTES MEM:BYTES-ALLOC-LEN ;
-
 : MR-FILL ( ptr n ptr n -- ) {: mr:ptr st:ptr :}   \ copy a block's image cells into a record
    st IMG               mr MR-BASE-IDX ptr-field !
    st MAP-LEN-OFF + @   mr MR-LEN-OFF + !
    st OWNS-MAP-OFF + @  mr MR-OWNS-OFF + ! ;
+
+\ Reserve and fully initialize the record after validation. Re-parsing the same
+\ session reuses its reservation, so only the first successful parse allocates.
+: RESERVE-MAPPING ( ptr n -- ) {: st:ptr :}
+   st MR-REC-IDX ptr-field @ 0= 0= if exit then
+   MR-ALLOC MEM:ALLOC-BYTES drop {: mr:ptr :}
+   mr st MR-FILL
+   mr st MR-REC-IDX ptr-field ! ;
 
 \ The other half of the transfer. Clearing HAS-IMG-OFF is what makes byte access
 \ fail closed afterwards (BYTES-OK?), and clearing OWNS-MAP-OFF is what sends the
@@ -601,6 +616,7 @@ variable LIVE-N
    0 st STAGE-OFF + ! 0 st BUMP-OFF + ! 0 st PARSED-OFF + ! 0 st N-OFF + !
    st READ-HEADER
    st [: PARSE-BODY ;] catch nip REMAP
+   st RESERVE-MAPPING
    1 st PARSED-OFF + ! ;
 
 : PUBLISH ( ptr n -- ) {: st:ptr :}
@@ -691,39 +707,17 @@ public
    TAKE-CENSUS DISPOSE ;
 
 \ ---- mapped residency: moving the file mapping out of a census -------------
-\ Hands the census's image to a new SAFET:mapping owner and leaves the census
-\ describing its tensors without owning any bytes. The transfer is ATOMIC and
-\ TERMINAL: the record is allocated BEFORE any cell is written, so a memory
-\ failure leaves the census exactly as it was, and once the cells are cleared
-\ there is nothing left in the census to transfer again.
-\
-\ It REJECTS nothing of its own: there is no state a caller can put a census in
-\ that makes this word refuse. Detaching from a census that owns no mapping - one
-\ built by ADOPT or LOAD-SPAN, or one whose mapping already left - yields a
-\ mapping that owns nothing: UNMAP-MAPPING gives it back to no one and the
-\ caller's bytes are untouched. That is the same two-outcome rule RELEASE has
-\ always had, read from the same OWNS-MAP-OFF cell, so a second DETACH-MAPPING
-\ cannot hand out a second claim on the same bytes.
-\
-\ It can still THROW, and that is not the same thing. The record allocation can
-\ fail with E-MEM-MAP before any cell is written. The census is byte-identical
-\ and still owns its mapping when that happens - but the throw unwinds the stack
-\ past the census token, and the checker cannot see a linear owner abandoned that
-\ way, so a caller with nothing between DETACH-MAPPING and the throw's landing
-\ site strands the census and its mapping. Guard it the way LOAD and LOAD-SPAN
-\ guard their sessions, with a stack-preserving quotation under `catch` that
-\ disposes the owner on the failing path; see the linear-owners-and-catch note in
-\ docs/forth.md. Hand-writing that guard at every call site is the reason the
-\ linear-scope combinator (a WITH- form that disposes its owner on the throw
-\ path) is tracked as its own checker capability dot; when it lands this
-\ paragraph becomes one combinator call.
-: DETACH-MAPPING ( SAFET:census -- SAFET:census SAFET:mapping )
+\ The first call moves the record PARSE reserved and clears the census image.
+\ Every step is total. A later call finds no reservation, changes nothing, and
+\ returns empty; it cannot allocate or fabricate an owner.
+: DETACH-MAPPING ( SAFET:census -- SAFET:census SAFET:map-take )
    CENSUS>BLOCK {: st:ptr :}
-   MR-ALLOC MEM:ALLOC-BYTES drop MINT-MAPPING
+   st MR-REC-IDX ptr-field @ 0= if SAFET-MAP--TAKE:EMPTY exit then
+   st MR-REC-IDX ptr-field @ {: mr:ptr :}
+   NULL$ drop st MR-REC-IDX ptr-field !
+   st CLEAR-IMG
    1 LIVE-N +!
-   MAPPING>REC {: mr:ptr :}
-   mr st MR-FILL
-   st CLEAR-IMG ;
+   mr MINT-MAPPING SAFET-MAP--TAKE:MOVED ;
 
 \ Zero-copy scoped access to the whole mapping, the mapping-side twin of
 \ WITH-TENSOR: the body sees the mapping's bytes, and MAP-OFFSET? says where in
@@ -732,9 +726,7 @@ public
 \ adopted case the mapping token BORROWS the caller's memory rather than owning
 \ it, so the caller's buffer must outlive the mapping; nothing here enforces
 \ that, and it is the same missing pointer-lifetime / region-type checker
-\ capability named in this file's header. NONE (body not run) when the mapping
-\ holds no bytes at all, which is what DETACH-MAPPING hands back for a census
-\ whose image has already left.
+\ capability named in this file's header.
 \ The span is advisory - see the pointer-lifetime /
 \ region-type note in this file's header for the capability that will make it
 \ enforced; it is claimed no more strongly here than for WITH-TENSOR.
@@ -814,10 +806,9 @@ public
 \ detached mappings have been created and not yet disposed, and nothing about any
 \ of them. A throw unwinds the stack past a linear owner without the checker
 \ noticing, so this is how a caller (in practice the test suite) checks that every
-\ OPEN reached its CLOSE or RELEASE and every DETACH-MAPPING reached its
-\ UNMAP-MAPPING. Pair it with SAFET-MAP:LIVE, which counts kernel mappings rather
-\ than owners: DETACH-MAPPING raises this count by one while leaving that one
-\ alone, because it moves a mapping between owners without mapping anything new.
+\ OPEN reached its CLOSE or RELEASE and every moved mapping reached
+\ UNMAP-MAPPING. Pair it with SAFET-MAP:LIVE, which counts kernel mappings: a
+\ moved result raises this owner count by one without changing that one.
 : LIVE-OWNERS ( -- n )
    LIVE-N @ ;
 
