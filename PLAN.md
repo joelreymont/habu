@@ -46,8 +46,8 @@ an owner.
 - A process-wide allocator issues nonzero module serials monotonically and never
   reuses them.
 - A referential ID is `(module-serial << 32) | local-u32-index`.
-- `ir-module-id` carries a module serial. `ir-count` and `ir-pool-offset` are
-  scalar roles and are never packed IDs.
+- `IR-ID:ir-module-id` carries a module serial. `IR-ID:ir-count` and
+  `IR-ID:ir-pool-offset` are scalar roles and are never packed IDs.
 - A dereference checks owner equality before the kind-specific committed bound.
 - Runtime serials are not serialized. Canonical encoding remaps references to
   module-local unsigned indices, so construction history cannot change bytes or
@@ -55,8 +55,8 @@ an owner.
 - Module-serial allocation and exhaustion belong to context lifecycle, not the
   pure ID leaf.
 - Source bytes may be cached by the context, but every frozen module owns its
-  source table and `ir-source-id` values. Import remaps equal source digests into
-  module-local source IDs.
+  source table and `IR-ID:ir-source-id` values. Import remaps equal source
+  digests into module-local source IDs.
 
 ### Package boundary
 
@@ -108,9 +108,9 @@ CONTEXT-DISPOSE   ( compiler-context -- )
 NEW-BUILDER       ( compiler-context dialect-schema -- ir-builder )
 ABORT             ( ir-builder -- compiler-context )
 FREEZE            ( ir-builder -- freeze-result )
-MODULE-RETIRE     ( compiler-context ir-module-id -- compiler-context )
+MODULE-RETIRE     ( compiler-context IR-ID:ir-module-id -- compiler-context )
 PASS-VALIDATE     ( compiler-context pass-result -- compiler-context pass-validation-result )
-PASS-ACCEPT       ( compiler-context validated-pass-result -- compiler-context ir-module-id )
+PASS-ACCEPT       ( compiler-context validated-pass-result -- compiler-context IR-ID:ir-module-id )
 PASS-RELEASE      ( compiler-context pass-result -- compiler-context )
 ```
 
