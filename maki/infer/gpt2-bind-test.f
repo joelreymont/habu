@@ -18,19 +18,18 @@
 \ returns the SAME code (nothing was consumed or mutated on the way out), and it
 \ then releases with every leak counter back at zero. Both shapes are exercised.
 \
-\ ON THE IDENTITY TWIN, AND WHAT PREPARE CAN AND CANNOT REFUSE. The leaf contract
-\ asks for a "foreign configuration" reject leg. PREPARE cannot produce one, and
-\ the reason is structural rather than an omission: PREPARE mints every layer
-\ identity from the very configuration it is validating against (GPT2BIND:LAYER is
-\ the sole layerid constructor), so the identity assertion inside TID-SLOT always
-\ compares a configuration with itself and E-GB-FOREIGN is unreachable from this
-\ entry point. The honest test of what PREPARE does own is the twin-cfgkey leg: two
-\ configurations of the SAME geometry differing in one behavioral field that no
-\ tensor reflects (tied embeddings) both bind the same census - correctly, because
-\ nothing in a tensor census can tell them apart - and the two preps carry
-\ DIFFERENT captured cfgkeys. That captured key is what lets a commit refuse a
-\ model built against the other configuration, so this leg pins the capture instead
-\ of pretending PREPARE can reject on it.
+\ ON THE IDENTITY TWIN, AND WHAT THE FAMILY GUARD DOES NOT CLAIM. PREPARE refuses a
+\ non-GPT-2 model family before tensor planning. It cannot produce E-GB-FOREIGN for
+\ two GPT-2 configurations, and the reason is structural rather than an omission:
+\ PREPARE mints every layer identity from the very configuration it is validating
+\ against (GPT2BIND:LAYER is the sole layerid constructor), so the identity assertion
+\ inside TID-SLOT always compares a configuration with itself. The twin-cfgkey leg
+\ therefore proves the separate contract: two GPT-2 configurations of the SAME
+\ geometry differing in one behavioral field that no tensor reflects (tied
+\ embeddings) both bind the same census, and the two preps carry DIFFERENT captured
+\ cfgkeys. That captured key lets a commit refuse a model built against the other
+\ configuration, so this leg pins the capture instead of confusing family rejection
+\ with downstream identity comparison.
 
 require maki/infer/gpt2-bind-fixture.f
 
@@ -41,6 +40,10 @@ variable TX-WANT-LEN
 variable TX-WANT-ID                             \ and the census id that named it
 variable TX-AO  variable TX-AL                  \ V-ARITH boundary-leg arguments
 variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
+
+: TX-CFG-LLAMA ( -- MDLCFG:mcfg )
+   2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
+   1 TX-DT TX-NC TX-NV TX-NL TX-NE TX-NH false 1 2 MDLCFG:BUILD ;
 
 : BIND-TAKE-MOVED ( SAFET:map-take -- SAFET:mapping )
    MATCH SAFET:map-take
@@ -154,6 +157,23 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    \ first: the same census over the same configuration has to report the same sum.
    s" a second PREPARE reports the same sum, so the accumulator was reset" T-LABEL
    PLAN-SUM TX-DOFF @ T=
+   TX-NO-LEAK ;
+
+: T-REJECT-FAMILY ( -- )
+   s" a non-GPT-2 configuration is refused before plan work" T-LABEL
+   TX-CLEAN! TX-LAY
+   TX-PATH SAFET:LOAD
+   -1 PLAN-N !
+   -1 SUM-N !
+   TX-CENSUS-ONLY
+   TX-CFG-LLAMA PREPARE
+   E-GX-FAMILY TX-EXPECT-REJECTED
+   PLAN-N @ -1 T=
+   SUM-N @ -1 T=
+   TX-CENSUS-ONLY
+   SAFET:COUNT TX-CNT T=
+   TX-CFG-A PREPARE
+   TX-EXPECT-PREPARED
    TX-NO-LEAK ;
 
 \ ---- refusals caused by the CONFIGURATION: the census still binds afterwards ----
@@ -688,6 +708,7 @@ variable TX-SUM0                                \ the live prep's own prefix sum
    T-ARITH
    T-BLOCK-CELLS
    T-PREPARE-OK       TX-NO-LEAK
+   T-REJECT-FAMILY    TX-NO-LEAK
    T-REJECT-CFG       TX-NO-LEAK
    T-REJECT-CENSUS    TX-NO-LEAK
    T-REJECT-IMAGELESS TX-NO-LEAK

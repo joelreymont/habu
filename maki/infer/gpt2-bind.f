@@ -205,6 +205,7 @@ public
 -5670 constant E-GX-FOREIGN  \ the prep was built against a different configuration
 -5671 constant E-GX-IMAGE    \ the census no longer holds the checkpoint's bytes
 -5672 constant E-GX-COPY     \ a validated span did not copy out of the census whole
+-5673 constant E-GX-FAMILY   \ the normalized configuration is not GPT-2
 
 \ ---- the prepared bind: opaque, linear, no accessors -------------------------
 DEFLINEAR GPT2TX:prep
@@ -625,8 +626,8 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ Stack-preserving so `catch` accepts it and a refusal leaves the census exactly
 \ where it was (see the header). Nothing here creates or consumes an owner.
 \
-\ THE FIRST QUESTION IS WHETHER THE CENSUS STILL HAS BYTES AT ALL, and it has to be
-\ asked here even though no per-row check needs it. A census that has already given up
+\ THE FIRST QUESTION ABOUT THE CENSUS IS WHETHER IT STILL HAS BYTES AT ALL, and it
+\ has to be asked here even though no per-row check needs it. A census that has given up
 \ its image through SAFET:DETACH-MAPPING keeps answering every reader this pass
 \ consults: its count, its dtypes, its shapes, and MAP-OFFSET?, which is arithmetic on
 \ the header geometry rather than access to any bytes. So an imageless census passes
@@ -635,7 +636,12 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ the table have been deconstructed and no catch can recover them. Refusing it here
 \ costs a caller nothing: the census comes back exactly as it arrived, still answering
 \ its metadata and still disposable through SAFET:RELEASE.
+: V-FAMILY ( MDLCFG:mcfg -- MDLCFG:mcfg )
+   MDLCFG:FAMILY@
+   MODEL-FAMILY:GPT2 MODEL-FAMILY:EQ 0= if E-GX-FAMILY throw then ;
+
 : PLAN ( SAFET:census MDLCFG:mcfg -- SAFET:census MDLCFG:mcfg )
+   V-FAMILY
    0 SUM-N !
    GPT2BIND:CENSUS-COUNT {: count:n :}
    count 0 <=  count ROW-CAP >  or if E-GX-COUNT throw then
