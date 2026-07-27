@@ -361,10 +361,12 @@ public
 
 `using NAME` is the consumer-side import: it makes package `NAME`'s **public**
 wordlist visible to bare, unqualified lookup in the current scope, without
-opening or reopening `NAME`. A consumer-only entry, runner, or orchestration
-file that calls several public words from one package MUST use
-`using NAME ... ;using` and bare words. PREFER `NAME:WORD` for a one-off call or
-when qualification is needed to escape a collision or ambiguity.
+opening or reopening `NAME`. The consumer rule covers temporary `/tmp` probes,
+perf launchers, generated fixtures, and committed source. After
+requiring a package, a consumer that calls two or more of its public words MUST
+import it once with `using NAME ... ;using` and call them bare. PREFER
+`NAME:WORD` for a one-off call or when qualification is needed to escape a
+collision or ambiguity.
 
 ```forth
 require test/run-lib.f
