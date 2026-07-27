@@ -361,19 +361,24 @@ public
 
 `using NAME` is the consumer-side import: it makes package `NAME`'s **public**
 wordlist visible to bare, unqualified lookup in the current scope, without
-opening or reopening `NAME`. The consumer rule covers temporary `/tmp` probes,
-perf launchers, generated fixtures, and committed source. After
-requiring a package, a consumer that calls two or more of its public words MUST
-import it once with `using NAME ... ;using` and call them bare. PREFER
-`NAME:WORD` for a one-off call or when qualification is needed to escape a
-collision or ambiguity.
+opening or reopening `NAME`. Every new or changed temporary, generated, or
+committed consumer that calls two or more public words from one required
+package MUST import it once with `using NAME ... ;using` and call them bare.
+Untouched legacy consumers remain explicit debt until owner-scoped migration;
+this staged rule does not claim they are already converted. PREFER `NAME:WORD`
+for a one-off call or when qualification is needed to escape a collision or
+ambiguity.
 
 ```forth
 require test/run-lib.f
+require test/json-read-perf-phase.f
 
 using TEST-RUN
 PREPARE
+EARLY-EXTERNAL-START
+require test/run-resident.f
 DAG-RUN-REST
+JSON-READ-PERF-PHASE:START
 COMPLETE
 ;using
 ```

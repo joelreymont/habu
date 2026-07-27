@@ -1,17 +1,17 @@
 \ run.f - native test suite entry.
 \
-\ This file stays OUTSIDE package TEST-RUN on purpose. It interleaves a
-\ `require` with the calls that have to run before that file loads, and a file
-\ loaded while a package is open inherits that scope, so it could not open a
-\ package of its own. This file defines nothing, so it simply names the
-\ runner's words across the package boundary.
+\ This file stays outside package TEST-RUN. One consumer import spans the
+\ ordered runner calls and the late resident require; the required file opens
+\ and closes its package definition scope without closing this using scope.
 
 require test/run-lib.f
 require test/json-read-perf-phase.f
 
-TEST-RUN:PREPARE
-TEST-RUN:EARLY-EXTERNAL-START
+using TEST-RUN
+PREPARE
+EARLY-EXTERNAL-START
 require test/run-resident.f
-TEST-RUN:DAG-RUN-REST
+DAG-RUN-REST
 JSON-READ-PERF-PHASE:START
-TEST-RUN:COMPLETE
+COMPLETE
+;using

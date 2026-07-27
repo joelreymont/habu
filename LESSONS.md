@@ -1939,15 +1939,14 @@ fits.
 - **An unbuilt example is an unowned compatibility surface, not verification.** The Zig kernel consumer was excluded from every repository gate, referenced absent generated artifacts, and accumulated three repair tasks while live documentation described it as a working ABI example. Keep executable examples under an owning gate; otherwise remove them and retain only the language-neutral contract they were meant to illustrate.
 - **Let one authoritative DATA cell coordinate engine and checker; do not keep two counters.** The `using` depth lives in a single engine DATA cell the machine code owns and the checker reads through `data-base OFFSET +`; every scope boundary (`;using`, `;package`, end-of-file, throw, REPL) just restores that one cell and the checker's parallel name table is automatically bounded by it, so no boundary needs a cross-side resync call and the two views cannot drift.
 - **A used-package search belongs at the token-resolution sites, not in the leaf FIND.** Injecting the used-publics scan into `LFIND` itself would fire on the engine's own internal keyword lookups (`trust`, `checker-does`, …); it must sit only in the interpret/compile/tick user-token resolvers so `using` never captures an engine-internal name.
-- **Every multi-call package consumer imports the public DSL once.** The
-  `TEST-RUN` case showed that repeated qualified calls after `require` obscure
-  one consumer scope; treating temporary or generated files as exempt repeats
-  the same cause. The rule covers `/tmp` probes, perf launchers,
-  generated fixtures, and committed source: after requiring a package, a
-  consumer calling two or more public words uses one
-  `using NAME ... ;using` block and bare calls. Keep qualification for a
-  one-off call or a collision or ambiguity. Verify one balanced import, no
-  repeated qualifier for that package, and a successful owning-path load.
+- **Migrate multi-call package consumers when they are created or changed.**
+  `test/run.f` proved one `using TEST-RUN` scope can span a required file that
+  reopens the package while preserving phase order. Every new or changed
+  temporary, generated, or committed consumer that calls two or more public
+  words from one required package uses one bounded `using NAME ... ;using`
+  block and bare calls. Untouched legacy consumers remain explicit debt until
+  owner-scoped migration; never claim the whole tree is converted from a
+  partial sweep.
 - **Adding a `PRIM:`/`TRUST` site or a validation-suite case ripples into committed inventories.** A new prim bumps the prop-test axiom ledger count and its per-index `\ AXR` rows, a new TRUST site bumps `TRUSTED.md` rows and its per-file class ceiling, engine growth trips the exact-CODELEN ratchet, and a new candidate-validation case bumps its declared kind tally — each is a committed ratchet that fails loudly and must move in the same commit. Insert each axiom recipe at its exact live slot and shift every later slot; keep read-only zero-argument state readers executable, while state-consuming transaction finalizers need an explicit no-exec rationale.
 
 - **Fix review gate: re-derive the invariant, never accept the fix's own label.**
