@@ -45,5 +45,6 @@ This is a pure hard cutover and one compiling commit.
 
 The allocation test is included only to rename its direct calls from the old
 private fixture-helper names to `TX-NAME-LEN` and `TX-NAME-BUF`; no behavior
-changes there. Claim:
-agent=codex-gpt2-tensor workspace=.jj-ws/habu-rename-gpt-2-60fee511
+changes there.
+
+Claim: agent=codex-gpt2-tensor workspace=.jj-ws/habu-rename-gpt-2-60fee511
