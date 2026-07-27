@@ -19,11 +19,12 @@
 \ then releases with every leak counter back at zero. Both shapes are exercised.
 \
 \ ON THE IDENTITY TWIN, AND WHAT THE FAMILY GUARD DOES NOT CLAIM. PREPARE refuses a
-\ non-GPT-2 model family before tensor planning. It cannot produce E-GB-FOREIGN for
+\ non-GPT-2 model family before tensor planning. It cannot produce E-CONFIG for
 \ two GPT-2 configurations, and the reason is structural rather than an omission:
 \ PREPARE mints every layer identity from the very configuration it is validating
-\ against (GPT2BIND:LAYER is the sole layerid constructor), so the identity assertion
-\ inside TID-SLOT always compares a configuration with itself. The twin-cfgkey leg
+\ against (GPT2TENSOR:LAYER-ID is the sole layer-id constructor), so the
+\ identity assertion inside SLOT always compares a configuration with itself.
+\ The twin-cfgkey leg
 \ therefore proves the separate contract: two GPT-2 configurations of the SAME
 \ geometry differing in one behavioral field that no tensor reflects (tied
 \ embeddings) both bind the same census, and the two preps carry DIFFERENT captured
@@ -91,9 +92,9 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
 6 constant TX-PROBE-SLOT                        \ h.0.attn.bias (mask, rank 4)
 
 : TX-RECORD-PROBE ( SAFET:census n -- SAFET:census ) {: slot:n :}
-   TX-CFG-A slot TX-KEY-LEN {: klen:n :}
+   TX-CFG-A slot TX-NAME-LEN {: name-len:n :}
    drop                                         \ the mcfg copy
-   TX-KBUF klen SAFET:FIND TX-OPT-VAL {: id:n :}
+   TX-NAME-BUF name-len SAFET:FIND TX-OPT-VAL {: id:n :}
    id SAFET:MAP-OFFSET? TX-OPT-VAL TX-WANT-OFF !
    id SAFET:NBYTES? TX-OPT-VAL TX-WANT-LEN !
    id TX-WANT-ID ! ;
@@ -260,11 +261,11 @@ variable TX-CID  variable TX-CCNT               \ CLAIM boundary-leg arguments
    TX-NO-LEAK ;
 
 \ ---- the claim set: one census tensor per role ---------------------------------
-\ Why this leg is not driven through a fixture. Every role looks up its OWN key and
+\ Why this leg is not driven through a fixture. Every role looks up its OWN name and
 \ SAFET:FIND answers the first tensor carrying it, so two roles can only land on one
-\ census id if two roles RENDER THE SAME KEY - a collision in the GPT2BIND
+\ census id if two roles RENDER THE SAME NAME - a collision in the GPT2TENSOR
 \ vocabulary, not in any checkpoint. No census mutation can produce it: duplicating
-\ a name in the file leaves the shadowed role's key absent, which is refused one
+\ a name in the file leaves the shadowed role's name absent, which is refused one
 \ check earlier (the leg above pins exactly that). So the collision the claim set
 \ defends against is unreachable from today's vocabulary, and a fixture that
 \ pretended otherwise would be theatre.

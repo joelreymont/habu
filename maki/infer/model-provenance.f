@@ -24,7 +24,7 @@
 \ the residency choice is WSTORE:residency, and the digest machinery is
 \ CONTENT-KEY. `packing` is the one family this package does own, because the
 \ transpose convention a PACKER wrote with is a fact about the published pack;
-\ it is not GPT2BIND's per-key source orientation, which describes the incoming
+\ it is not GPT2TENSOR's per-tensor source orientation, which describes the incoming
 \ checkpoint instead.
 \
 \ ONE INPUT IS DERIVED; THE OTHER TWO DIGESTS ARE THE CALLER'S ASSERTION. Be

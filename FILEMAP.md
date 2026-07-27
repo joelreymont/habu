@@ -1624,30 +1624,31 @@ points stay listed.
   named throw; and checker negatives (raw n in the proof slot, unresolvable
   private mint, GQA-shaped field on the gpt2 arm by construction, raw cells as
   a cfgkey, MODEL family value in the dtype slot).
-- `maki/infer/gpt2-roles.f` — the GPT-2 tensor vocabulary and typed identity
-  (package GPT2BIND, inference design rev-3 S6a + the rev-4 identity design).
-  Payload-free ENUMs `grole` (wte, wpe, lnf-g, lnf-b) and `brole` (the thirteen
-  per-layer HF GPT2Block tensors, including the attn.bias causal-mask buffer;
-  160 = 4 + 12*13 against the real checkpoint census) plus declared `orient`
-  {plain, conv1d}; STRUCTURE `layerid` embeds (MDLCFG:cfgkey, index, private
-  GPT2BIND proof) with sole constructor `LAYER` (E-GB-LAYER range check +
-  cfgkey capture); payload ENUM `tid` = global(grole) | block(layerid, brole),
-  so a global tensor cannot carry a layer and a block tensor cannot omit one.
-  Pure words: `COPY-KEY?` (exact HF tensor name copied into a caller buffer,
+- `maki/infer/gpt2-tensor.f` — the GPT-2 tensor vocabulary and typed identity
+  (package GPT2TENSOR, inference design rev-3 S6a + the rev-4 identity design).
+  Payload-free ENUMs `global-role` (wte, wpe, lnf-g, lnf-b) and `layer-role`
+  (the thirteen per-layer HF GPT2Block tensors, including the attn.bias causal-mask buffer;
+  160 = 4 + 12*13 against the real checkpoint census) plus declared `orientation`
+  {plain, conv1d}; STRUCTURE `layer-id` embeds (MDLCFG:cfgkey, index, private
+  GPT2TENSOR proof) with sole constructor `LAYER-ID` (E-LAYER range check +
+  cfgkey capture); payload ENUM `tensor-id` =
+  global(global-role) | layer(layer-id, layer-role), so a global tensor cannot
+  carry a layer and a layer tensor cannot omit one.
+  Pure words: `COPY-NAME?` (exact HF tensor name copied into a caller buffer,
   option<n>, NONE on too-small capacity - the SAFET COPY-NAME? contract; no
   public word returns a pointer into statics or touches the shared string
-  builder), `TID-SHAPE` (rank d0 d1 d2 d3, 1-padded, from the common mcfg
+  builder), `SHAPE` (rank d0 d1 d2 d3, 1-padded, from the common mcfg
   geometry; every composed dim AND the full element product overflow-checked),
-  `TID-ORIENT` (conv1d DECLARED per exact HF key on the four Conv1D weights,
-  never inferred from shape), `TID-SLOT` (E-GB-FOREIGN identity assertion
-  BEFORE slot arithmetic, then the embedded index revalidated E-GB-LAYER
+  `ORIENTATION` (conv1d DECLARED per exact HF tensor name on the four Conv1D weights,
+  never inferred from shape), `SLOT` (E-CONFIG identity assertion
+  BEFORE slot arithmetic, then the embedded index revalidated E-LAYER
   against the re-MAKE forgery caveat; globals 0..3, then 4 + layer*13 + role
-  ordinal, in [0, census) unconditionally), `CENSUS-COUNT` (4 + 13*nlayer, own
+  ordinal, in [0, census) unconditionally), `COUNT` (4 + 13*nlayer, own
   overflow pre-check), and `FORMAT-ID` (MODEL-ADAPTER:HF-GPT2).
   Owns -5650..-5659.
-- `maki/infer/gpt2-roles-test.f` — GPT2BIND acceptance: exact HF key pins
-  through COPY-KEY? into caller buffers (all globals, all thirteen layer-0
-  keys, a two-digit layer index, the 39-byte largest-index render, a
+- `maki/infer/gpt2-tensor-test.f` — GPT2TENSOR acceptance: exact HF tensor-name pins
+  through COPY-NAME? into caller buffers (all globals, all thirteen layer-0
+  names, a two-digit layer index, the 39-byte largest-index render, a
   too-small-buffer NONE with the buffer untouched, and an interleave leg
   proving two copies into two caller buffers leave both intact); 124M shape
   pins for every role and tiny distinct-non-square pins ([768,2304] qkv,
@@ -1655,14 +1656,14 @@ points stay listed.
   table including the square aproj-w plus the FORMAT-ID adapter identity;
   checked-arithmetic boundaries derived from MAX-N and the suite's own role
   table (largest accepted nlayer/nembd/nctx and each plus one rejecting
-  E-GB-EXTENT, plus the measured 4e9-nctx mask and 2^40-nembd full-product
-  escapes); LAYER range rejects; TID-SLOT bijectivity on the tiny geometry
+  E-SIZE, plus the measured 4e9-nctx mask and 2^40-nembd full-product
+  escapes); LAYER-ID range rejects; SLOT bijectivity on the tiny geometry
   (every slot hit exactly once); the ratified same-nlayer identity fixture
-  (layerid minted on config A used with config B rejects E-GB-FOREIGN with
+  (layer-id minted on config A used with config B rejects E-CONFIG with
   the slot provably in bounds, proving identity precedes slot arithmetic);
   the re-MAKE forgery legs (out-of-range and negative embedded index reject
-  E-GB-LAYER); and checker negatives (global-with-layer, block-without-layer,
-  reordered block fields, role-family crossings, cross-package proof
+  E-LAYER); and checker negatives (global-with-layer, layer-without-layer-id,
+  reordered layer fields, role-family crossings, cross-package proof
   substitution both directions, raw-cell key and proof forgeries,
   unresolvable private mint).
 - `maki/infer/model-provenance.f` — the model artifact-set provenance pin (sealed
@@ -1681,7 +1682,7 @@ points stay listed.
   whole-file digest, and the canonical tag texts of `MODEL:adapter`,
   `WSTORE:residency`, and MODELPROV's own `packing` {as-stored, transposed}
   family — the packer's transpose convention, which is a fact about the published
-  pack and not GPT2BIND's per-key source orientation. Exactly one input is
+  pack and not GPT2TENSOR's per-tensor source orientation. Exactly one input is
   DERIVED: `PIN` digests the tensor file itself and refuses unless the bytes
   render to the expected digest, so no pin describes tensor bytes nobody read.
   The configuration and tokenizer digests are the caller's ASSERTION — PIN is not
@@ -1748,10 +1749,10 @@ points stay listed.
   deconstructed beyond any catch. `E-GX-IMAGE` refuses it while a refusal is
   still free, and the census comes back exactly as it arrived: imageless, still
   answering its metadata, still disposable through `SAFET:RELEASE`. Then the
-  census count equals `GPT2BIND:CENSUS-COUNT`, and per role the
-  exact HF key (rendered through `COPY-KEY?`) is present, the dtype is F32 with
-  no mask exemption, rank and every declared dim match `TID-SHAPE`, a mapping
-  offset exists, `TID-SLOT` round-trips to the slot being walked and is
+  census count equals `GPT2TENSOR:COUNT`, and per role the
+  exact HF tensor name (rendered through `COPY-NAME?`) is present, the dtype is F32 with
+  no mask exemption, rank and every declared dim match `SHAPE`, a mapping
+  offset exists, `SLOT` round-trips to the slot being walked and is
   bound-checked against the census count before it indexes anything, and both
   overflow facts hold (each row's end, and the running sum of every extent that
   the packed arena will need), and each census tensor is CLAIMED exactly once —
@@ -1843,7 +1844,7 @@ points stay listed.
   exists once rather than three times. Fixtures are generated through the
   production vocabulary: a thirty-tensor tiny geometry emitted as a real
   safetensors file and loaded back through the real mmap path, every name from
-  `GPT2BIND:COPY-KEY?` and every shape from `TID-SHAPE`, byte extents computed
+  `GPT2TENSOR:COPY-NAME?` and every shape from `SHAPE`, byte extents computed
   from the EMITTED dims so each corrupted variant is still a file the parser
   accepts and the refusal is the transaction's verdict. Data bytes are a
   position-dependent, never-zero pattern, so a span read from the wrong offset is
@@ -1865,7 +1866,7 @@ points stay listed.
   byte-identical across a refusing PREPARE and across two SUCCEEDING ones whose
   offsets and extents differ. The twin leg pins what PREPARE actually owns: two
   configurations of one geometry differing only in a census-invisible field both
-  bind the same census, and the preps capture DIFFERENT cfgkeys — E-GB-FOREIGN is
+  bind the same census, and the preps capture DIFFERENT cfgkeys — E-CONFIG is
   unreachable from PREPARE, which mints every layer identity from the
   configuration it validates against — and `PREP-FOREIGN?` is then tested on the
   production word. Checker negatives cover prep forgery from a raw cell or

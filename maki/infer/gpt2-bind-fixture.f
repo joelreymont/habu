@@ -20,8 +20,8 @@
 \ (nlayer 2, nembd 4, nhead 2, nctx 8, nvocab 5 - thirty tensors) is emitted as a
 \ real synthetic safetensors file and loaded back through the real mmap path, the
 \ safetensors-test SYNTH-PATH pattern. The header rows are not hand-written JSON:
-\ each tensor's name comes from GPT2BIND:COPY-KEY? and its shape from
-\ GPT2BIND:TID-SHAPE, so a fixture that drifts from the role vocabulary cannot be
+\ each tensor's name comes from GPT2TENSOR:COPY-NAME? and its shape from
+\ GPT2TENSOR:SHAPE, so a fixture that drifts from the role vocabulary cannot be
 \ written. Byte extents and data offsets are computed from the EMITTED dims, so
 \ every corrupted variant is still a file the safetensors parser itself accepts -
 \ which is what makes each refusal PREPARE's verdict and not the parser's.
@@ -70,11 +70,11 @@ variable TX-BAD-KIND
 \ ---- buffers -------------------------------------------------------------------
 $8000 constant TX-IMG-CAP
 $4000 constant TX-JCAP
-64 constant TX-KCAP
+64 constant TX-NAME-CAP
 
 create TX-IMG TX-IMG-CAP allot
 create TX-JBUF TX-JCAP allot
-create TX-KBUF TX-KCAP allot
+create TX-NAME-BUF TX-NAME-CAP allot
 
 variable TX-JLEN                                \ bytes of header JSON emitted
 variable TX-DOFF                                \ running data-section offset
@@ -119,12 +119,12 @@ variable TX-BASE-PREP
 : TX-J+MEM ( ptr u8 n -- )                      \ "text":
    TX-J+STR TX-COLON TX-J+C ;
 
-\ ---- the role's own key and shape, straight from GPT2BIND ----------------------
-: TX-KEY-LEN ( MDLCFG:mcfg n -- MDLCFG:mcfg n )   \ render the slot's HF key
-   SLOT>TID TX-KBUF TX-KCAP GPT2BIND:COPY-KEY? E-GX-RENDER NEED ;
+\ ---- the role's own name and shape, straight from GPT2TENSOR ---------------------
+: TX-NAME-LEN ( MDLCFG:mcfg n -- MDLCFG:mcfg n )
+   SLOT>TENSOR-ID TX-NAME-BUF TX-NAME-CAP GPT2TENSOR:COPY-NAME? E-GX-RENDER NEED ;
 
 : TX-SHAPE ( MDLCFG:mcfg n -- MDLCFG:mcfg n n n n n )
-   SLOT>TID GPT2BIND:TID-SHAPE ;
+   SLOT>TENSOR-ID GPT2TENSOR:SHAPE ;
 
 \ ---- emitted dims: the role's shape with this slot's damage applied ------------
 : TX-DAMAGED? ( n -- bool ) {: slot:n :}
@@ -182,12 +182,12 @@ variable TX-BASE-PREP
 
 \ The misspelled variant appends one byte to the rendered name, so the census holds
 \ a key no role can ever ask for and the role's own key is absent.
-: TX-J+KEY ( n n -- ) {: slot:n klen:n :}
+: TX-J+KEY ( n n -- ) {: slot:n name-len:n :}
    slot TX-BK-KEY TX-KIND? if
-      TX-LOWER-X TX-KBUF klen + c!
-      TX-KBUF klen 1 + TX-J+STR
+      TX-LOWER-X TX-NAME-BUF name-len + c!
+      TX-NAME-BUF name-len 1 + TX-J+STR
    else
-      TX-KBUF klen TX-J+STR
+      TX-NAME-BUF name-len TX-J+STR
    then
    TX-COLON TX-J+C ;
 
@@ -199,8 +199,8 @@ variable TX-BASE-PREP
 
 : TX-J+ROW ( MDLCFG:mcfg n -- MDLCFG:mcfg ) {: slot:n :}
    slot 0 > if TX-COMMA TX-J+C then
-   slot TX-KEY-SLOT TX-KEY-LEN {: klen:n :}
-   slot klen TX-J+KEY
+   slot TX-KEY-SLOT TX-NAME-LEN {: name-len:n :}
+   slot name-len TX-J+KEY
    slot TX-SHAPE {: rank:n d0:n d1:n d2:n d3:n :}
    slot rank d0 d1 d2 d3 TX-J+BODY ;
 

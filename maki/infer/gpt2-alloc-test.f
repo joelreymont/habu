@@ -182,11 +182,11 @@ variable TX-CA-VEC-LEN
 variable TX-CA-CONV-OFF                         \ and the Conv1D slot's
 variable TX-CA-CONV-LEN
 
-\ The census id a slot's HF key resolves to, asked of the census on the stack.
+\ The census id a slot's tensor name resolves to, asked of the census on the stack.
 : TX-ID-OF-SLOT ( SAFET:census n -- SAFET:census n ) {: slot:n :}
-   TX-CFG-A slot TX-KEY-LEN {: klen:n :}
+   TX-CFG-A slot TX-NAME-LEN {: name-len:n :}
    drop                                         \ the mcfg copy
-   TX-KBUF klen SAFET:FIND TX-OPT-VAL ;
+   TX-NAME-BUF name-len SAFET:FIND TX-OPT-VAL ;
 
 : TX-PROBE-SPANS ( -- )
    TX-PATH SAFET:LOAD
@@ -199,7 +199,7 @@ variable TX-CA-CONV-LEN
    SAFET:RELEASE ;
 
 \ Which slot carries a given census id. The real checkpoint's slots are not knowable by
-\ eye, so a probe names its tensor by HF key, resolves the key to a census id, and finds
+\ eye, so a probe names its tensor, resolves the name to a census id, and finds
 \ the slot from the block's own carried rows - the same rows the commit copied by.
 : TX-SLOT-OF-ID ( ptr n n -- n ) {: blk:ptr id:n :}
    -1

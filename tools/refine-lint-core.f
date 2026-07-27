@@ -258,7 +258,7 @@ private
       68 of s" N>BUFFER" endof             \ the sole inverse of BUFFER>N
       \ The three private-mint PROOF tokens of the inference intake path. Each is the
       \ sole constructor of an arity-0 nominal family that rides inside a validated
-      \ record - MDLCFG:mcfg, GPT2BIND:layerid, GPT2TX:gpt2-model - and each is what
+      \ record - MDLCFG:mcfg, GPT2TENSOR:layer-id, GPT2TX:gpt2-model - and each is what
       \ makes that record unforgeable from nothing outside its package. They are seeded
       \ so the confinement is name-and-path enforced rather than resting on the family
       \ being private: a copy of any of them appearing in another file is a finding.
@@ -266,7 +266,7 @@ private
       \ can be destructured and rebuilt with forged scalars and the original proof.
       \ That is the sealed-destructure capability, habu-checker-sealed-destructure-d967fc03.
       65 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
-      66 of s" MINT-GB-PROOF" endof        \ seals an authenticated GPT2BIND:layerid
+      66 of s" MINT-LAYER-PROOF" endof      \ seals an authenticated GPT2TENSOR:layer-id
       67 of s" MINT-MDL-PROOF" endof       \ seals a bound GPT2TX:gpt2-model
       E-TBL-BOUNDS throw
    endcase ;
@@ -339,7 +339,7 @@ private
       63 of s" maki/infer/weight-store.f" endof
       64 of s" maki/infer/gpt2-bind.f" endof
       65 of s" maki/infer/model-config.f" endof
-      66 of s" maki/infer/gpt2-roles.f" endof
+      66 of s" maki/infer/gpt2-tensor.f" endof
       67 of s" maki/infer/gpt2-bind.f" endof
       68 of s" maki/infer/gpt2-bind.f" endof
       E-TBL-BOUNDS throw

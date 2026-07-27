@@ -63,13 +63,13 @@
 \ validation runs inside a `catch` over a stack-preserving quotation (the
 \ SAFET:LOAD discipline): a throw would unwind past the linear census token and
 \ strand it, and the checker cannot see that happen. The codes a caller sees are
-\ either this package's own E-GX-* or whichever GPT2BIND code fired underneath -
-\ E-GB-LAYER and E-GB-EXTENT are both reachable that way.
+\ either this package's own E-GX-* or whichever GPT2TENSOR code fired underneath -
+\ E-LAYER and E-SIZE are both reachable that way.
 \
-\ WHAT PREPARE CANNOT REFUSE ON, AND WHY THAT IS NOT A HOLE. GPT2BIND's identity
-\ assertion (E-GB-FOREIGN) cannot fire from this entry point: PREPARE mints every
+\ WHAT PREPARE CANNOT REFUSE ON, AND WHY THAT IS NOT A HOLE. GPT2TENSOR's identity
+\ assertion (E-CONFIG) cannot fire from this entry point: PREPARE mints every
 \ layer identity from the very configuration it is validating against, since
-\ GPT2BIND:LAYER is the sole layerid constructor, so TID-SLOT is always comparing a
+\ GPT2TENSOR:LAYER-ID is the sole layer-id constructor, so SLOT is always comparing a
 \ configuration with itself. Two configurations that differ only in a field no
 \ tensor reflects - tied embeddings, say - therefore both bind the same census, and
 \ they SHOULD: nothing in a tensor census distinguishes them. What separates them is
@@ -129,13 +129,13 @@
 \ are parked because a caught quotation must be stack-neutral, not because of any
 \ rule about fields.
 \
-\ SLOT ENUMERATION. Slots are the dense GPT2BIND numbering: 0..3 are the
-\ checkpoint globals in grole declaration order, then slot 4 + 13*layer + role
-\ ordinal. This file walks 0..count-1, rebuilds the tid each slot, and asserts
-\ GPT2BIND:TID-SLOT answers that same slot - a round trip that pins the slot
+\ SLOT ENUMERATION. Slots are the dense GPT2TENSOR numbering: 0..3 are the
+\ checkpoint globals in global-role declaration order, then slot 4 + 13*layer + role
+\ ordinal. This file walks 0..count-1, rebuilds the tensor-id each slot, and asserts
+\ GPT2TENSOR:SLOT answers that same slot - a round trip that pins the slot
 \ formula in both directions, so an off-by-one in either place is a refusal rather
 \ than a silently transposed weight. The result is also bound-checked against the
-\ census count before it reaches the scratch, even though TID-SLOT enforces its
+\ census count before it reaches the scratch, even though SLOT enforces its
 \ own range: the value indexes memory here, so this file checks it here.
 \
 \ DTYPE IS F32 FOR EVERY TENSOR, NO EXCEPTIONS. The pinned checkpoint
@@ -185,7 +185,7 @@ require lib/memory.f
 require maki/infer/safetensors.f
 require maki/infer/weight-store.f
 require maki/infer/model-config.f
-require maki/infer/gpt2-roles.f
+require maki/infer/gpt2-tensor.f
 
 package GPT2TX
 
@@ -362,10 +362,10 @@ TRUSTED: N>BUFFER ( n -- WSTORE:buffer ) ;
 TRUSTED: MINT-MDL-PROOF ( -- mdl-proof )  0 ;
 
 \ ---- geometry and layout constants -------------------------------------------
-4 constant NGLOBAL             \ |grole|: the checkpoint-global tensors
-13 constant NBLOCK             \ |brole|: tensors per transformer block
+4 constant GLOBAL-COUNT             \ |global-role|: the checkpoint-global tensors
+13 constant LAYER-ROLE-COUNT             \ |layer-role|: tensors per transformer block
 $7FFFFFFFFFFFFFFF constant MAX-N
-64 constant KEY-CAP            \ the GPT2BIND KEY-CAP bound: longest HF key is 39 bytes
+64 constant NAME-CAP            \ longest GPT2TENSOR name is 39 bytes
 
 \ prep block: the two moved owners, nlayer, the four cfgkey cells, the plan's
 \ aggregates, and then the plan ITSELF - one row per validated slot. The plan travels
@@ -408,7 +408,7 @@ $7FFFFFFFFFFFFFFF constant MAX-N
 2 constant R-ID
 3 constant R-CELLS
 
-create KEY-BUF KEY-CAP allot                    \ private key render landing pad
+create NAME-BUF NAME-CAP allot                   \ private name render landing pad
 create ROWS SAFET:MAX-TENSORS R-CELLS * cells allot
 create SEEN SAFET:MAX-TENSORS cells allot       \ census ids already claimed by a role
 
@@ -438,7 +438,7 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 
 \ ---- census-id claims: the role->tensor map must be one-to-one -----------------
 \ Matching counts and matching shapes are not enough. If two roles ever render to
-\ the same census key - a vocabulary collision, or a checkpoint that names two
+\ the same census name - a vocabulary collision, or a checkpoint that names two
 \ tensors alike - every per-row check still passes: both roles find the same
 \ tensor, its dtype and shape satisfy both, and the counts still agree. The table
 \ would then point two slots at one tensor while some other tensor is never
@@ -492,51 +492,51 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 : >LEN ( n -- CAD-NUM:byte-len )   CAD-NUM:BYTE-LEN FIX-LEN ;
 
 \ ---- slot ordinal -> role (declaration order; the tables pin the role counts) --
-: G-ROLE ( n -- GPT2BIND:grole )
+: GLOBAL-ROLE ( n -- GPT2TENSOR:global-role )
    case
-      0 of GPT2BIND-GROLE:WTE   endof
-      1 of GPT2BIND-GROLE:WPE   endof
-      2 of GPT2BIND-GROLE:LNF-G endof
-      3 of GPT2BIND-GROLE:LNF-B endof
+      0 of GPT2TENSOR-GLOBAL--ROLE:WTE   endof
+      1 of GPT2TENSOR-GLOBAL--ROLE:WPE   endof
+      2 of GPT2TENSOR-GLOBAL--ROLE:LNF-G endof
+      3 of GPT2TENSOR-GLOBAL--ROLE:LNF-B endof
       E-GX-SLOT throw
    endcase ;
 
-: B-ROLE ( n -- GPT2BIND:brole )
+: LAYER-ROLE ( n -- GPT2TENSOR:layer-role )
    case
-      0  of GPT2BIND-BROLE:LN1-G   endof
-      1  of GPT2BIND-BROLE:LN1-B   endof
-      2  of GPT2BIND-BROLE:MASK    endof
-      3  of GPT2BIND-BROLE:QKV-W   endof
-      4  of GPT2BIND-BROLE:QKV-B   endof
-      5  of GPT2BIND-BROLE:APROJ-W endof
-      6  of GPT2BIND-BROLE:APROJ-B endof
-      7  of GPT2BIND-BROLE:LN2-G   endof
-      8  of GPT2BIND-BROLE:LN2-B   endof
-      9  of GPT2BIND-BROLE:FC-W    endof
-      10 of GPT2BIND-BROLE:FC-B    endof
-      11 of GPT2BIND-BROLE:MPROJ-W endof
-      12 of GPT2BIND-BROLE:MPROJ-B endof
+      0  of GPT2TENSOR-LAYER--ROLE:LN1-G   endof
+      1  of GPT2TENSOR-LAYER--ROLE:LN1-B   endof
+      2  of GPT2TENSOR-LAYER--ROLE:MASK    endof
+      3  of GPT2TENSOR-LAYER--ROLE:QKV-W   endof
+      4  of GPT2TENSOR-LAYER--ROLE:QKV-B   endof
+      5  of GPT2TENSOR-LAYER--ROLE:APROJ-W endof
+      6  of GPT2TENSOR-LAYER--ROLE:APROJ-B endof
+      7  of GPT2TENSOR-LAYER--ROLE:LN2-G   endof
+      8  of GPT2TENSOR-LAYER--ROLE:LN2-B   endof
+      9  of GPT2TENSOR-LAYER--ROLE:FC-W    endof
+      10 of GPT2TENSOR-LAYER--ROLE:FC-B    endof
+      11 of GPT2TENSOR-LAYER--ROLE:MPROJ-W endof
+      12 of GPT2TENSOR-LAYER--ROLE:MPROJ-B endof
       E-GX-SLOT throw
    endcase ;
 
-\ The tid this file expects at a slot. LAYER is the sole layerid constructor, so
-\ the identity a block tid carries is this mcfg's own by construction - which is
-\ what makes the TID-SLOT round trip below a real assertion about the FILE rather
+\ The tensor-id this file expects at a slot. LAYER-ID is the sole layer-id constructor, so
+\ the identity a layer tensor-id carries is this mcfg's own by construction - which is
+\ what makes the SLOT round trip below a real assertion about the FILE rather
 \ than about the identity.
-: SLOT>TID ( MDLCFG:mcfg n -- MDLCFG:mcfg GPT2BIND:tid ) {: slot:n :}
-   slot NGLOBAL < if
-      slot G-ROLE GPT2BIND-TID:GLOBAL exit
+: SLOT>TENSOR-ID ( MDLCFG:mcfg n -- MDLCFG:mcfg GPT2TENSOR:tensor-id ) {: slot:n :}
+   slot GLOBAL-COUNT < if
+      slot GLOBAL-ROLE GPT2TENSOR-TENSOR--ID:GLOBAL exit
    then
-   slot NGLOBAL - {: rel:n :}
-   rel NBLOCK / GPT2BIND:LAYER
-   rel NBLOCK mod B-ROLE GPT2BIND-TID:BLOCK ;
+   slot GLOBAL-COUNT - {: rel:n :}
+   rel LAYER-ROLE-COUNT / GPT2TENSOR:LAYER-ID
+   rel LAYER-ROLE-COUNT mod LAYER-ROLE GPT2TENSOR-TENSOR--ID:LAYER ;
 
 \ ---- per-row validation -------------------------------------------------------
 \ The slot the role claims must be in range for the census AND be the slot this walk
 \ is on.
 \
 \ The range test is structurally undominatable and kept anyway. PREPARE mints every
-\ layerid through GPT2BIND:LAYER, which validates the index, and TID-SLOT revalidates
+\ layer-id through GPT2TENSOR:LAYER-ID, which validates the index, and SLOT revalidates
 \ the embedded one before it multiplies, so the slot it returns is already inside
 \ [0, census) unconditionally - no fixture reaching this word through PREPARE can
 \ make this test fire, and deleting it leaves the whole suite green. It stays because
@@ -548,14 +548,14 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ round-trips the slot formula, so an off-by-one on either side is a refusal instead
 \ of a weight silently filed under the wrong role.
 : V-SLOT ( MDLCFG:mcfg n n -- MDLCFG:mcfg ) {: slot:n count:n :}
-   slot SLOT>TID GPT2BIND:TID-SLOT {: got:n :}
+   slot SLOT>TENSOR-ID GPT2TENSOR:SLOT {: got:n :}
    got 0 <  got count >=  or if E-GX-SLOT throw then
    got slot <> if E-GX-SLOT throw then ;
 
-\ The census id for a role's exact HF key, rendered through the public copy-out.
-: FIND-KEY ( SAFET:census GPT2BIND:tid -- SAFET:census n )
-   KEY-BUF KEY-CAP GPT2BIND:COPY-KEY? E-GX-RENDER NEED {: klen:n :}
-   KEY-BUF klen SAFET:FIND E-GX-KEY NEED ;
+\ The census id for a role's exact HF name, rendered through the public copy-out.
+: FIND-NAME ( SAFET:census GPT2TENSOR:tensor-id -- SAFET:census n )
+   NAME-BUF NAME-CAP GPT2TENSOR:COPY-NAME? E-GX-RENDER NEED {: name-len:n :}
+   NAME-BUF name-len SAFET:FIND E-GX-KEY NEED ;
 
 : V-DTYPE ( SAFET:census n -- SAFET:census ) {: id:n :}
    id SAFET:DTYPE? E-GX-DTYPE NEED
@@ -565,7 +565,7 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
    id axis SAFET:DIM? E-GX-SHAPE NEED
    want <> if E-GX-SHAPE throw then ;
 
-\ Rank first, then every dim the rank declares. The trailing 1s TID-SHAPE pads
+\ Rank first, then every dim the rank declares. The trailing 1s SHAPE pads
 \ with are not census axes, so they are not looked up; the rank equality is what
 \ makes that safe.
 : V-SHAPE ( SAFET:census n n n n n n -- SAFET:census )
@@ -609,11 +609,11 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 : V-ROW ( SAFET:census MDLCFG:mcfg n n -- SAFET:census MDLCFG:mcfg )
    {: slot:n count:n :}
    slot count V-SLOT
-   slot SLOT>TID GPT2BIND:TID-SHAPE
+   slot SLOT>TENSOR-ID GPT2TENSOR:SHAPE
    {: rank:n d0:n d1:n d2:n d3:n :}
-   slot SLOT>TID
-   swap >r                                      \ ( census tid ), the mcfg parked
-   FIND-KEY {: id:n :}
+   slot SLOT>TENSOR-ID
+   swap >r                                      \ ( census tensor-id ), the mcfg parked
+   FIND-NAME {: id:n :}
    id count CLAIM
    id V-DTYPE
    id rank d0 d1 d2 d3 V-SHAPE
@@ -643,7 +643,7 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 : PLAN ( SAFET:census MDLCFG:mcfg -- SAFET:census MDLCFG:mcfg )
    V-FAMILY
    0 SUM-N !
-   GPT2BIND:CENSUS-COUNT {: count:n :}
+   GPT2TENSOR:COUNT {: count:n :}
    count 0 <=  count ROW-CAP >  or if E-GX-COUNT throw then
    count PLAN-N !
    count CLAIM-CLEAR
@@ -817,7 +817,7 @@ variable LIVE-N                                 \ undisposed prep blocks (accoun
 \ The question a commit must answer before it moves any resource. PREPARE cannot
 \ ask it: it mints every layer identity from the configuration it is validating, so
 \ its identity assertion always compares a configuration with itself (see the header
-\ note on E-GB-FOREIGN). What PREPARE does instead is CAPTURE the configuration's
+\ note on E-CONFIG). What PREPARE does instead is CAPTURE the configuration's
 \ content identity into the prep, and this is where that capture is spent - the
 \ prep's captured cfgkey against the consuming configuration's own, through the
 \ MDLCFG comparison, which is the only authority on cfgkey equality.

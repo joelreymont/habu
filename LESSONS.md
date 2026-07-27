@@ -2515,14 +2515,14 @@ fits.
   test would have passed. Bind locals in fold helpers, and prove fold order by
   decoding the production preimage bytes, never by reading the source.
 - **Guard a composed `a*b + c` with one divide-form pre-check, not a check after
-  each operation.** GPT2BIND's census first multiplied with an overflow check and
+  each operation.** GPT2TENSOR's census first multiplied with an overflow check and
   then guarded the add - but no multiple of 13 lands in the 4-value window where
   the add alone overflows, so the second branch was unreachable dead code that
   no fixture could ever exercise. Bounding the input first (`n > (MAX-N - c) / b`
   rejects) makes the whole expression provably safe with a single branch a test
   can actually reach, and it is the same shape MDLCFG's V-CENSUS already used.
 - **Test an overflow guard at its exact boundary, derived, not just at the
-  MAX-N extreme.** GPT2BIND's census and multiply guards were exercised only
+  MAX-N extreme.** GPT2TENSOR's census and multiply guards were exercised only
   with MAX-N-scale inputs, so loosening either bound by one left the suite
   green; the destruction review caught it. Every guard needs the largest
   accepted input AND that value plus one rejecting, with both values computed
@@ -2530,7 +2530,7 @@ fits.
   what a composed expression promises: per-factor checks alone let a
   "d0*d1*d2*d3 fits" claim overflow through the pair product.
 - **A public word must not hand out a span into a mutable static; copy into a
-  caller buffer and answer option<n>.** GPT2BIND's first TID-KEY returned a
+  caller buffer and answer option<n>.** GPT2TENSOR's first name reader returned a
   pointer into its render scratch with the invalidation rule in a comment; the
   neighboring SAFET package had already solved this structurally with
   COPY-NAME? (NONE on too-small capacity, SOME of the copied length). When a
