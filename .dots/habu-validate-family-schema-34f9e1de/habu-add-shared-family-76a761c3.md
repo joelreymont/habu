@@ -1,15 +1,80 @@
 ---
 title: Add shared family pointer query
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:41:07.304435+02:00"
 ---
 
-The shared authority for the incomplete-family pointer soundness hole. One pure query owned by package FAMILY-SCHEMA in src/core/type-family.f with the exact public effect BAD-PTR ( fam -- ptr u8 n bool ): scans the completed provisional TYPE-FIELD range by exact family id, recursively covers nested SC-PTR and SC-APP arguments, follows final applied-family ownership, terminates on the expressible self-pointer cycle, and returns the first offending field name with true, or false. No declarer integration in this leaf. Fixture: production-built - declare the currently accepted slaunder structure and elaunder enum reproductions, prove the query names p; safe non-linear self-pointers and same-tail families in different packages return false. Acceptance: query suite green; both diff lints; TRUSTED.md row for any forwarder in the same commit.
+Why: both unified declarers need one answer after the complete provisional
+family exists: the first member that holds a pointer whose final destination
+owns linear state.
 
-Claim: agent=valfam workspace=.jj-ws/habu-validate-family-schema (three-commit lane covering this leaf then the two integration leaves per the reshape).
+Owner and interface: package `FAMILY-SCHEMA` in
+`src/core/type-family.f` owns a private query with effect
+`( fam -- ptr u8 n bool )`. It is reached by both compiled front ends through
+the short ephemeral vector `TFAM-PTR-XT`, then the vector name is undefined.
+The package is sealed and exports nothing.
 
-Amended 2026-07-26 (checkpoint finding accepted, option 1): the single authority TFAM-CONCRETE-LINEAR? is asymmetric on in-progress families - the product branch walks provisional PF-ROW rows while the sum branch reads through the committed watermark (SUMV-PAY-N raises E-TFAM-PAYLOAD via PF-COMMIT-N, type-family.f:1663-1669 vs the sum path) - so the ENUM close cannot ask it the question. This leaf therefore ALSO makes the authority symmetric in the same commit: the sum branch walks the family's own field rows by exact family id the way the product branch does, retaining the legacy SUMV-SCH walk for families the unified declarers did not create. Behavior-identity proof required for committed unified sums (measured pre/post equality on existing families). Integrity-coverage proof required: the E-TFAM-PAYLOAD integrity throws that no longer fire from the linearity walk must be shown to still fire on the paths that own payload-metadata integrity, via a fixture with malformed metadata rejecting through a real owner - the linearity walk was never the right integrity checkpoint, but its coverage does not get silently retired. Measured leaf-text corrections from the checkpoint: mutual two-family cycles are NOT expressible (forward reference rejects 7109 - state the measurement, no fixture inventable); direct self-containment is refused before the walk (7127/7133 - why no visited set is needed); the ENUM reproduction uses a multi-character variant name (single-character names are reserved, 7110) with the offending FIELD still p.
+Behavior: walk the valid declaration graph only. Scan the provisional
+`TYPE-FIELD` range by exact family id; recurse through pointer nodes,
+application arguments, nested structures, unified sums, and legacy positional
+sum payloads; use the final resolved family and existing linearity authority;
+return the first owning field or payload name with true, or an empty span with
+false. The query defines no mutable storage and calls no allocator. This is a
+code-review invariant, not a new parser, scanner, or lint prerequisite. Direct
+self-containment already rejects with 7127 or 7133, and a mutual family cycle
+cannot be expressed because its forward reference rejects with 7109, so no
+visited arena or forged-registry fixture is permitted.
 
-Amended (codex preflight 5): required negative - an internal-word production fixture proving ordinary user source cannot call FAMILY-SCHEMA:BAD-PTR (a TRUSTED.md row is bookkeeping, not confinement).
+`TFAM-CONCRETE-LINEAR?` must read provisional unified sum fields by exact owner,
+as its product arm does, while retaining the legacy positional-sum route.
+Freeze the old kind, arity, variant count, field count, throw result, and linear
+verdict for direct, nested, cross-package, compact, parametric, empty, pointer,
+self-pointer, product-through-sum, and sum-through-product families. The
+payload-metadata owner must still reject malformed metadata; this query does
+not inherit or replace that integrity check.
+
+Proof contracts:
+
+- Confinement uses child processes to exercise both the raw vector spelling and
+  qualified package spelling through interpreted, checked compiled,
+  `TRUSTED:`, and `0 set-check` calls, plus package-reopen attempts. Each route
+  asserts its exact exit and diagnostic. A production declaration close is the
+  positive control.
+- Rollback proof stays with each production owner. The family suite compares
+  bytes for exactly its eight arenas: family records, family strings, package
+  ids, variant rows, field rows, layout rows, schema nodes, and schema roots.
+  It has a specific layout-row mutation control; an aggregate `IMG-MOVED` is
+  not evidence that layout was observed. The existing `DECL-EVENT` suite keeps
+  sole proof of its event bytes, published cursor, field and variant ordinals,
+  current-variant cursor, frames, and field transaction. Candidate validation
+  pins both suites, so neither owner can disappear from the production route.
+- Candidate validation contains these literal positive rows:
+  `s" test/family-schema-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE`;
+  `s" test/family-schema-confine.f" construct case-kind positive 0 s" " s" " RUN-CASE`;
+  and
+  `s" test/linear-authority-matrix.f" construct case-kind positive 0 s" " s" " RUN-CASE`.
+  Each requires exit 0, empty stderr, and stdout ending in `ok` plus LF,
+  matching `POSITIVE`. `test/candidate-validation-test.f` must `DIRECT-PIN`
+  each literal row and include mutation kills for row deletion and kind
+  change. It also fails if `N-POSITIVE` changes from 37 to 36, `N-DIAGNOSTIC`
+  changes from 5 to 6, or any row changes from `positive` to `diagnostic`.
+
+Rejected reference evidence, not merge candidates:
+
+- `331311f31677e77909af40b757b4a221b3edc92e` introduced the right traversal
+  shape but added the verbose `TFAM-BAD-PTR-XT` global and comments that cited
+  tests not present in that commit.
+- `d64e51b863f4d489b4b6b79017bd6400908b7427` used aggregate `IMG-MOVED` as
+  layout evidence, omitted checked compiled raw and qualified calls plus the
+  unchecked compiled qualified call from confinement, and copied a whitespace
+  scanner.
+- `8223af9290b987e3c4c1b241cf91923412ca827f` added needed traversal kills but
+  still used the four-part test helper `TWX-TFAM-CONCRETE-LINEAR?`; use the
+  shorter `TWX-TFAM-LINEAR?` and satisfy every mutation twin above.
+
+Acceptance: all production declaration, family-schema, `DECL-EVENT`,
+confinement, linearity, candidate-validation, diff-lint, and trusted-inventory
+gates pass. Mutating each recursion edge, owner filter, legacy route,
+confinement route, or owner-local rollback proof makes its exact test fail.

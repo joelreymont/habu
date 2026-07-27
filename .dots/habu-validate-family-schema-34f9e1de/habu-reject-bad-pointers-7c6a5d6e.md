@@ -8,8 +8,29 @@ blocks:
   - habu-add-shared-family-76a761c3
 ---
 
-ENUM integration of the shared query: same rule after final variant, field, and width binding and before layout and generation - call FAMILY-SCHEMA:BAD-PTR, arm DECL-REJECT at the returned payload name, reject, prove rollback and a clean successor declaration. Production-declarer negative for the elaunder reproduction with exact payload-name diagnostic. LAND TOGETHER with the STRUCTURE integration. Acceptance: enum-decl-suite green; both diff lints.
+Owner: `ENUM-DECL` in `src/core/enum-decl.f`.
 
-Note (2026-07-26): the symmetric-authority fix lands with the query leaf, so this integration asks TFAM-CONCRETE-LINEAR?-rooted BAD-PTR at ED-CLOSE directly - no participant reordering, no second predicate.
+Behavior: delete the parse-time pointee guard. In `ED-CLOSE`, after binding the
+final variant range, field range, and payload width, but before layout
+publication and constructor generation, call the shared private family query.
+On true, arm `DECL-REJECT` with the returned payload field name and reject with
+code 7109 and the exact payload diagnostic. Do not reorder transaction
+participants and do not add another predicate.
 
-Amended (codex preflight 5): this integration explicitly DELETES the early REQUIRE-POINTEE authority from enum-decl.f, matching the STRUCTURE integration.
+Production proof: the real
+`ENUM elaunder 0 VARIANT ptrarm FIELD p ptr elaunder ;VARIANT VARIANT ownarm
+FIELD t FSCX:tok ;VARIANT ;ENUM` path rejects at `p`; the variant names remain
+multi-character because one-character names are reserved. Nested pointers,
+applications, legacy positional sums, package identity, first-offender order,
+and safe non-linear self-pointers use the same production entry. A rejected
+declaration restores the family suite's eight owned arenas and a clean
+successor with the same name succeeds. The family suite has a layout-specific
+mutation control; the existing `DECL-EVENT` suite separately owns event bytes,
+cursors, frames, and the field transaction. Candidate validation pins both.
+
+Forbidden: a runtime guard, an ENUM-only query, retained early authority,
+participant reordering, a copied rollback model, or synthetic declarer.
+
+Acceptance: the enum declaration suite, shared family suite, `DECL-EVENT`
+suite, linearity matrix, candidate validation, both diff lints, and the native
+gate pass. Land with the STRUCTURE close leaf.

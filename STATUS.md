@@ -1,7 +1,7 @@
 # habu — Status
 
-Last verified: 2026-07-26
-Verification context: the performance-gate repair landing, DGX Spark linux-arm64.
+Last verified: 2026-07-27
+Verification context: repair-control exact-tree verification, DGX Spark linux-arm64.
 
 ## What is running and what is next
 

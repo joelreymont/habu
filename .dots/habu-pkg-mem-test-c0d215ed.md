@@ -6,6 +6,22 @@ issue-type: task
 created-at: "2026-07-26T23:22:48.841607+02:00"
 ---
 
-Companion to the vector packaging, same wall, file-local: lib/memory-test.f holds four MEMT-* boundary fixtures (lines 257-270) and STAT-MEM (line 477) OUTSIDE its existing package MEM block (309-473), so the MEM:RELEASE rename's edits to their bodies trip E-PACKAGE-OWNERSHIP. Move them inside the package (reopen or extend the existing block; white-box suite idiom - the file already owns package MEM's test surface; load-position rule respected). Callers measured file-local; no cross-file cascade expected - if the sweep finds an external caller, report it, do not export a bridge. Acceptance: package-diff-lint rc=0 on a representative body edit to each moved word; lib/memory-test.f rc=0; both diff lints on the artifact. Real pre-change failure: the rename artifact's six findings, five of them in this file.
+Why: `lib/memory-test.f` defines four `MEMT-*` boundary fixtures and
+`STAT-MEM` outside its existing package. Any body edit therefore fails package
+ownership.
 
-Claim: agent=vecmem workspace=.jj-ws/habu-pkg-vecmem (commit 1 delivered as ba95c67c, held for integration; acceptance probe green - the five whitespace-edit findings clear in the packaged home).
+Owner: the existing `MEM` package in `lib/memory-test.f`.
+
+Behavior: move the five file-local white-box helpers into that package and use
+short private tails. Preserve load order and behavior. If any external caller
+exists, stop and redesign; do not export a bridge.
+
+Acceptance: a representative body edit to every moved word passes the package
+diff lint; `bin/hb --load lib/memory-test.f`, both diff lints, and the owning
+standard-library slice pass.
+
+Reviewed implementation evidence:
+`d72514eb7d32156171b8b7ee94bb922049f32c1e` satisfies this owned result. The dot
+remains active until the reviewed change is integrated and verified.
+
+Claim: agent=vecmem workspace=.jj-ws/habu-pkg-vecmem

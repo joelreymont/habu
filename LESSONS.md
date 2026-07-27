@@ -2537,3 +2537,19 @@ fits.
   sibling package has a reviewed contract for the same problem, mirror it
   instead of inventing a weaker one - and test the interleave the weaker API
   would fail.
+- **Queries defend valid graphs, not forged corruption.** Mutual family cycles
+  cannot be declared; a trusted forged-cycle fixture did not justify global
+  visited state. Put corruption checks at the writer and specify the smallest
+  mechanism a rejection needs.
+- **A worker dot is a frozen implementation contract, not a research prompt.**
+  Before dispatch, name its owner, interface, reachability, failure, and real
+  failing production check; otherwise keep it as an unclaimed design parent.
+- **Reuse the repository's proven engine-seam pattern.** For a runner that must
+  execute after package close, a private `ACTION` returns a checked quotation
+  before `;package`, then the quotation executes after close with zero exports.
+  A measurement justifies that mechanism, not a public API.
+- **Rollback proof stays with each production owner.** The family suite owns
+  its eight registries; `DECL-EVENT` owns its bytes, cursors, and frames;
+  candidate validation pins both, so extending the family snapshot duplicates
+  authority. The real gap was the copied confinement lexer; prove confinement
+  through exact child-process routes against the shipped binary.

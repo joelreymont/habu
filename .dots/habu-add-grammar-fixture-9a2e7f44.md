@@ -6,4 +6,45 @@ issue-type: task
 created-at: "2026-07-26T17:21:34.511553+02:00"
 ---
 
-Prerequisite for the NEWTYPE rename merge, and a principled lint category rather than an exception: ten test files' global declarations are LOAD-BEARING FIXTURES - test/type-decl-suite.f's own header states its declarations exist to prove user declarations register families through the baked grammar words WITHOUT opening any reserved package; packaging them would destroy the proof. The same class covers the flagged declarations in test/internal-word-gate.f, extent-substrate-probe.f, extent-product-test.f, typed-storage-test.f, cast-suite.f, cast-negative-suite.f, layout-buffer.f, layout-defer.f, engine-suite.f. Behavior: tools/package-diff-lint-core.f gains a second principled list beside GLOBAL-IMPLEMENTATION? - declaration-grammar fixture files - each entry carrying a one-line justification citing the suite's proof obligation (the src/core/util.f boot-necessity precedent: a named reasoned list pinned by the lint's own unit test, not an ad hoc waiver); entries are exact paths; a global added to any OTHER test file still rejects; the lint's unit test pins the list and proves a non-listed test file still flags. lib/process-pty-handle.f is explicitly NOT on this list (it is real debt with its own packaging dot). Acceptance: the lint unit test green with the new pins including the hostile non-listed-file fixture; the NEWTYPE rename diff passes package-diff-lint; full lint-tools slice green. Owner: the package-diff lint package. Claim: agent=newtype workspace=.jj-ws/habu-newtype-rename (commit 2 of the restacked rename lane).
+Why: nine suites must declare selected type and storage fixtures at top level to
+test the real user grammar. Packaging those declarations would remove the
+behavior under test. This is a narrow grammar category, not a file exemption.
+
+Owner: `PACKAGE-DIFF` in `tools/package-diff-lint-core.f`.
+
+Behavior: admit only a declaration whose exact path and opener match one row in
+this table:
+
+- `test/type-decl-suite.f`: `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
+  `NEWTYPE`, `DEFLINEAR`, `LAYOUT-BUFFER`
+- `test/extent-substrate-probe.f`: `NEWTYPE`
+- `test/extent-product-test.f`: `NEWTYPE`
+- `test/typed-storage-test.f`: `TYPED-VARIABLE`, `TYPED-BUFFER`, `SUMTYPE`,
+  `NEWTYPE`, `PTR-VARIABLE`, `LAYOUT-BUFFER`, `DEFLINEAR`
+- `test/cast-suite.f`: `CAST:`, `NEWTYPE`
+- `test/cast-negative-suite.f`: `NEWTYPE`
+- `test/layout-buffer.f`: `SUMTYPE`, `PRODUCT`, `ENUM`, `NEWTYPE`,
+  `DEFLINEAR`, `LAYOUT-BUFFER`, `PTR-VARIABLE`
+- `test/layout-defer.f`: `DEFER-LAYOUT-BUFFER`, `SUMTYPE`, `NEWTYPE`,
+  `DEFLINEAR`
+- `test/engine-suite.f`: `VALUE-RECORD`, `NEWTYPE`, `DEFTYPE`, `DEFLINEAR`,
+  `LAYOUT-BUFFER`
+
+The path comparison is exact and centralized. The opener comes from the
+structural scan, not text search. A different opener in a listed file, any
+global in an unlisted test file, and any package-scope change still reject.
+`test/internal-word-gate.f` is excluded: it defines no declaration opener; its
+declarations are strings executed by child processes, while its real globals
+belong to the packaging dot `habu-pkg-internal-word-da4149d9`.
+
+Acceptance: the package-lint unit suite pins every row and opener, generates a
+hostile near-path case for all nine rows, proves comments and strings cannot
+forge an opener, and proves an unlisted test file still rejects. The exact
+NEWTYPE rename artifact passes both diff lints and the lint-tools gate.
+
+Accepted implementation evidence: commit
+`d10dc8fea911d22abe9786a6998b07a469b4d655` was independently reviewed and
+accepted. The dot remains active until that commit lands and its owning gates
+pass on the integration tree.
+
+Claim: agent=gramfix workspace=.jj-ws/habu-add-grammar-fixture-9a2e7f44

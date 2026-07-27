@@ -10,7 +10,19 @@ blocks:
   - habu-reject-bad-pointers-7c6a5d6e
 ---
 
-Why: measured soundness hole in the landed pointer-to-linear guard (130e7b92) - REQUIRE-POINTEE runs at parse time while the current family is incomplete, so a self-pointer declared BEFORE a later linear member passes both unified declarers (STRUCTURE slaunder 0 FIELD p ptr slaunder FIELD t lateown ;STRUCTURE and the ENUM twin both declare, reproduced and production-probed: the completed family reads linear while ptr slaunder duplicates freely). The parse-time guard is a prefix check posing as the rule. Behavior: after final field and variant ranges are bound and BEFORE generation and commit, one shared whole-family schema validation walks the completed schema - self-reference, nested pointer nodes, application nodes, structures, sums, package identity, cycles - and rejects any pointer whose FINAL pointee owns linear state, with the diagnostic anchored to the offending field or payload token and a transactional rollback. Both declarers call the one shared pass; single authority. The parse-time REQUIRE-POINTEE either delegates to the same predicate or is deleted - the leaf measures whether early rejection buys diagnostic value the final pass cannot anchor equally; two half-authorities are forbidden. Owner: the shared generated-declaration validation seam (structure-decl.f and enum-decl.f callers). Dependencies: none - this corrects landed code and jumps ahead of dependent declaration work. Acceptance: both reproductions rejected with anchored diagnostics through the production declarers; cycle fixtures (self, mutual two-family where expressible) behave; the existing 26 rejection fixtures stay green; rollback proven (a rejected family registers nothing, next declaration clean); both diff lints; destruction review before merge. Real pre-change failing check: the slaunder probe declares rc 0 on master today.
+Coordination parent only; it owns no implementation and has no claim.
 
+Why: the parse-time pointer guard reads an incomplete family. Both unified
+declarers therefore accept a self-pointer written before a later linear member,
+then publish a family that owns linear state through a freely copyable pointer.
 
-Reshaped 2026-07-26 (codex gate-stop accepted): this dot is now the COORDINATION PARENT only. The implementation lives in three leaves - habu-add-shared-family-76a761c3 (the pure FAMILY-SCHEMA:BAD-PTR query, ready root), habu-reject-bad-pointers-230fa9c9 (STRUCTURE close integration), habu-reject-bad-pointers-7c6a5d6e (ENUM close integration). The two integrations land together so master never carries two authorities. This parent closes when all three leaves land.
+The implementation is exactly these three leaves:
+
+- `habu-add-shared-family-76a761c3`: one private, state-free whole-family query
+- `habu-reject-bad-pointers-230fa9c9`: STRUCTURE close integration
+- `habu-reject-bad-pointers-7c6a5d6e`: ENUM close integration
+
+The two close integrations land together, after the shared query. This parent
+closes only after all three reviewed leaves land and the production declaration
+gates prove one authority, exact diagnostics, confinement, and byte-identical
+rollback.
