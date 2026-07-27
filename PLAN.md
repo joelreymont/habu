@@ -382,11 +382,11 @@ Acceptance:
 only uncovered outcomes. Every retained item appears once; no review-only dot is
 created.
 
-Before dispatch, follow `docs/parallel-agents.md` for an active claim, immutable
-base, and isolated `.jj-ws/<dot-id>`. Separate workspaces may edit overlapping
-files concurrently; overlap alone does not block coding. Each leaf gets its
-focused test, required diff/lint gates, independent destruction review, and
-exact owning integration gate before closure.
+Before dispatch, follow `AGENTS.md` § Parallel dots: establish an active claim
+on an immutable base and use an isolated `.jj-ws/<dot-id>`. Separate workspaces
+may edit overlapping files concurrently; overlap alone does not block coding.
+Each leaf gets its focused test, required diff/lint gates, independent
+destruction review, and exact owning integration gate before closure.
 
 Before IR-0.1 integrates or pushes, fetch, rebase, and reconcile every
 overlapping change; verify remotely valid ownership; then run the exact focused

@@ -187,7 +187,6 @@ private
    s" trust-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" stale-status-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint" SUITE-LABEL= if SUITE-TRUE exit then
-   s" parallel-agent-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" filemap-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdin-closure-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then

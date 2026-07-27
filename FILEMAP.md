@@ -27,7 +27,6 @@ points stay listed.
   process-boundary rules.
 - `docs/habu-pitch.md` — the research pitch: eliminate silently-wrong GPU kernels (the Triton #10927 K=511 class) by writing the math (`O[m,n] = Σk A[ix[m],k] · B[n,k]`) and letting the compiler derive tiling, fusion, data movement, precision, and the backward pass, or refuse to compile.
 - `docs/kernel-principles.md` — roofline, the 3 bounds, the device's compute/memory roofs, and where each Habu kernel sits (apply before optimizing any kernel).
-- `docs/parallel-agents.md` — map-reduce protocol for parallel dot execution.
 - `docs/ptx.md` — Habu→PTX GPU DSL strategy and scope.
 - `docs/ptx-sketch.md` — Habu→PTX v0 language spec.
 - `docs/inference.md` — Habu→PTX local type inference: infer bodies, annotate the contract edge.
@@ -2341,7 +2340,6 @@ points stay listed.
 - `tools/stale-status-lint-core.f` — reusable stale status/count lint core.
 - `tools/stale-status-lint.f` — CLI wrapper for stale status/count lint.
 - `tools/stale-status-lint-test.f` — checked fixture coverage for stale status/count lint.
-- `tools/parallel-agent-lint.f` — freshness lint for the parallel-agent protocol.
 - `tools/dot-dep-lint-core.f` — reusable dot blocker dependency validator.
 - `tools/dot-dep-lint.f` — CLI wrapper for dot blocker dependency lint.
 - `tools/dot-dep-lint-test.f` — checked fixture coverage for dot blocker dependency lint.

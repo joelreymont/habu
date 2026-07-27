@@ -73,7 +73,6 @@ REQUIRE-HARNESS
    s" tools/host-lint.f" GSI-REQUIRE
    s" tools/process-primitive-lint.f" GSI-INCLUDE
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
-   s" tools/parallel-agent-lint.f" GSI-INCLUDE
    s" tools/filemap-lint.f" GSI-REQUIRE
    s" tools/filemap-lint-test.f" GSI-INCLUDE
    s" tools/stdin-closure-lint.f" GSI-REQUIRE ;

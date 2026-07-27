@@ -31,10 +31,6 @@ SUITE host-lint
    tools/host-lint.f
 ;SUITE
 
-SUITE parallel-agent-lint
-   tools/parallel-agent-lint.f
-;SUITE
-
 SUITE filemap-lint
    tools/filemap-lint.f
    tools/filemap-lint-test.f

@@ -230,7 +230,6 @@ variable FM-EXC#
    s" LESSONS.md" FM-REQ
    s" STATUS.md" FM-REQ
    s" TRUSTED.md" FM-REQ
-   s" docs/parallel-agents.md" FM-REQ
    s" docs/seed.md" FM-REQ
    s" docs/swiftforth-task-api.md" FM-REQ
    s" docs/type-families.md" FM-REQ ;
