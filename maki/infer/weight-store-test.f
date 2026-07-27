@@ -1,5 +1,5 @@
 \ weight-store-test.f - focused coverage for the weight-store residency value
-\ (maki/infer/weight-store.f, inference leaf S3d). Run standalone:
+\ (maki/infer/weight-store.f). Run standalone:
 \ bin/hb --load maki/infer/weight-store-test.f
 \
 \ The equality half is the point of the module: the SAME fixture bytes are
@@ -42,11 +42,11 @@
 \ UNRESOLVED probes prove the representation leaves stay behind the seal, and a
 \ forked child proves the seal itself refuses new definitions into WSTORE.
 \
-\ The sealed-table disposal leg covers the case a store never appears: a caller
-\ seals a table and then decides not to commit, so the table is the only thing it
+\ The sealed-table disposal test covers the case where no store is created: a caller
+\ seals a table and stops, so the table is the only thing it
 \ owns. TABLE-DISPOSE frees it and WSTORE:LIVE returns to where it started. The
-\ shape this word retires is worth naming, because it is what the bind
-\ transaction would otherwise have had to do to free a table:
+\ shape this word retires is worth naming, because it is what the checkpoint
+\ load would otherwise have had to do to free a table:
 \
 \   detach the census, unwrap `moved`, fabricate a mapped store, dispose it, and
 \   release the census
@@ -59,7 +59,7 @@
 \
 \ The builder and buffer legs are the same argument for the module's other two owners.
 \ A builder a caller will not seal - because a SLOT! refused, or because it gave up on
-\ the transaction - and a filled buffer whose store was never built are both reachable
+\ the load - and a filled buffer whose store was never built are both reachable
 \ states this package minted, and neither had any exit: the checker refuses a bare
 \ `drop` on either, correctly, and the block behind each is package-private. There was
 \ not even a hack available for the builder, since the fabricate-a-store shape above
@@ -307,7 +307,7 @@ private
 \ Entered at zero live blocks (T-EQUALITY leaves it there), so the counter proves
 \ the whole life of the table: one block after SEAL, none after TABLE-DISPOSE. No
 \ census and no mapping take part, which is the point - this is the state a caller
-\ that declines to commit is left holding, and the leg would be impossible to
+\ that stops before creating a store is left holding, and the test would be impossible to
 \ write at all if the table's only exit ran through a store.
 : T-TABLE-DISPOSE ( -- )
    s" a sealed table that never became a store disposes on its own" T-LABEL
@@ -371,7 +371,7 @@ private
 \ ---- the four SLOT! refusals, with the builder given back ----------------------------
 \ SLOT! is stack-preserving ( tbuilder -- tbuilder ), so the population step runs as a
 \ quotation under `catch` and a refusal leaves the builder exactly where it was - the
-\ SAFET:LOAD / GPT2TX:PREPARE discipline. Each leg then hands the block back through
+\ SAFET:LOAD / GPT2LOAD:PREPARE discipline. Each test then hands the block back through
 \ BUILDER-DISPOSE and rethrows the code TTHROWSQ is asserting, so it proves two things
 \ at once: the named refusal still fires, and it no longer costs a block. Before
 \ BUILDER-DISPOSE existed none of this could be written at all and each leg leaked one
@@ -465,7 +465,7 @@ private
 \ WHAT THE MIDDLE ASSERTION IN EACH HALF DOES AND DOES NOT PROVE. It proves the handle
 \ mints no NEW owner: the block count across HOLD is unchanged, so the resident is the
 \ store's own table block retyped rather than a second allocation, which is the
-\ mechanism that removes the allocation from the commit's terminal stretch. It is not a
+\ mechanism that removes allocation from LOAD-MAPPED after mapping ownership moves. It is not a
 \ proof of totality by itself - WSTORE:LIVE counts owner blocks this module bumps by
 \ hand, so a HOLD that allocated without minting an owner would still pass it. That
 \ HOLD cannot fail is a property of its call graph (MATCH, an identity retype, two cell

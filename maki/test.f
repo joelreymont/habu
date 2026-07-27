@@ -316,11 +316,11 @@ SUITE maki/infer/gpt2-tensor-test.f
 ;SUITE
 SUITE maki/infer/model-provenance-test.f
 ;SUITE
-SUITE maki/infer/gpt2-bind-test.f
+SUITE maki/infer/gpt2-prepare-test.f
 ;SUITE
-SUITE maki/infer/gpt2-check-test.f
+SUITE maki/infer/gpt2-mapped-test.f
 ;SUITE
-SUITE maki/infer/gpt2-alloc-test.f
+SUITE maki/infer/gpt2-copy-test.f
 ;SUITE
 SUITE maki/infer/gpt2-payload-test.f
 ;SUITE

@@ -152,12 +152,12 @@ cr
 \ The sections above make a bundle linear through its TYPE ARGUMENTS. This one
 \ makes it linear through its DECLARED MEMBERS: a structure field or a variant
 \ payload that names a family which itself owns a linear value. Until this dot
-\ both unified declarers refused that spelling outright, so `FIELD res
+\ both unified declarers rejected that spelling outright, so `FIELD res
 \ WSTORE:resident` was legal but `FIELD m gpt2-model` — the same resource one
 \ structure deeper — rejected as an "unknown" type. Refusing it never protected
 \ anything, because the obligation is carried by the value either way; it only
 \ made the resource unnameable one level out, which is what blocked the GPT-2
-\ bind transaction from answering with a bound model.
+\ checkpoint load from answering with a loaded model.
 \
 \ What decides linearity is TFAM-CONCRETE-LINEAR?, which walks a family's field
 \ and payload schemas and follows an application node into the family it names.
@@ -186,11 +186,11 @@ STRUCTURE deep 0 FIELD d model ;STRUCTURE                      \ depth 3: and ag
 STRUCTURE lone 0 FIELD t TLIN:tok ;STRUCTURE                   \ one cell, linear
 STRUCTURE plain 0 FIELD v n ;STRUCTURE                         \ one cell, its non-linear twin
 STRUCTURE plainer 0 FIELD inner plain ;STRUCTURE               \ control: nothing linear anywhere
-ENUM bind 0
-  VARIANT bound    FIELD m model ;VARIANT
+ENUM load-result 0
+  VARIANT loaded   FIELD model model ;VARIANT
   VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
-STRUCTURE viabind 0 FIELD b bind ;STRUCTURE                    \ a product reaching a linear SUM
+STRUCTURE via-load 0 FIELD result load-result ;STRUCTURE       \ a structure reaching a linear ENUM
 s" TLIN:FREE-MODEL" s" TLIN:model --" TRUST
 s" TLIN:MINT-TOK" s" -- TLIN:tok" TRUST
 
@@ -207,19 +207,19 @@ s" TC8=" type s" TC8 ( model -- ) FREE-MODEL" CHECK-QUIET-CANDIDATE! -1 T=
 s" TC9=" type s" TC9 ( deep -- deep )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TC10=" type s" TC10 ( deep -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 s" TC11=" type s" TC11 ( deep -- deep deep ) dup" CHECK-QUIET-CANDIDATE! 0 T=
-\ a product reaching the resource through a SUM counts the same way.
-s" TC12=" type s" TC12 ( viabind -- viabind )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TC13=" type s" TC13 ( viabind -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TC14=" type s" TC14 ( viabind -- viabind viabind ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+\ a structure reaching the resource through an ENUM counts the same way.
+s" TC12=" type s" TC12 ( via-load -- via-load )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TC13=" type s" TC13 ( via-load -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TC14=" type s" TC14 ( via-load -- via-load via-load ) dup" CHECK-QUIET-CANDIDATE! 0 T=
 \ the control: an identically nested chain with no linear member copies and drops
 \ freely, so the rejects above answer the chain and not the nesting.
 s" TC15=" type s" TC15 ( plainer -- plainer plainer ) dup" CHECK-QUIET-CANDIDATE! -1 T=
 s" TC16=" type s" TC16 ( plainer -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
-\ a local capture of the bundle launders the count, so it stays refused.
+\ a local capture of the model hides its linear use, so it stays rejected.
 s" TC17=" type s" TC17 ( model -- model ) {: v:model :} v" CHECK-QUIET-CANDIDATE! 0 T=
 \ typed memory stays closed to the resource, so no address round trip can launder
 \ it. `lone` and `plain` are both one cell and differ only in owning a linear
-\ value, so the load that certifies for one and refuses for the other is answering
+\ value, so the load that certifies for one and rejects the other is answering
 \ linearity and not width. The address is not the resource and still copies.
 s" TC18=" type s" TC18 ( ptr lone -- lone ) @" CHECK-QUIET-CANDIDATE! 0 T=
 s" TC19=" type s" TC19 ( ptr plain -- plain ) @" CHECK-QUIET-CANDIDATE! -1 T=
@@ -229,7 +229,7 @@ cr
 \ ---------------------------------------------------------------------------
 \ typed memory has to stay closed to a linear value buried under a GENERIC layer
 \ as well, and that is a DIFFERENT question in the checker from the one TC18 asks.
-\ TC18 refuses `ptr lone` because the pointee family is itself linear; the checker
+\ TC18 rejects `ptr lone` because the pointee family is itself linear; the checker
 \ answers that from the family. `opt<lone>` is linear for another reason — its
 \ type ARGUMENT is — and the checker answers that by walking the argument list and
 \ asking each argument whether it reaches a linear value. Nothing above exercised
@@ -238,7 +238,7 @@ cr
 \ `( ptr opt<lone> -- opt<lone> ) @`.
 \
 \ `opt<lone>` and `opt<plain>` are the same width — one tag cell and one payload
-\ cell — and differ only in owning a linear value, so a load that refuses for one
+\ cell — and differ only in owning a linear value, so a load that rejects one
 \ and certifies for the other is answering linearity and not width. Repeating the
 \ pair at two generic layers pins the recursion instead of one fixed depth, and
 \ the store direction is pinned beside the load because `!` reaches the same guard
@@ -270,7 +270,7 @@ cr
 \ atomic-cas and atomic-add take a pointer too, so all four look like more doors a
 \ linear bundle could cross. They are not doors at all today. The layout-aware
 \ transport step is selected by TOKEN NAME and only `@` and `!` have that name, so
-\ a layout value of ANY kind fails to bind here and every case below rejects — the
+\ a layout value of ANY kind cannot be captured here and every case below rejects — the
 \ linear one and its width-identical non-linear twin alike.
 \
 \ That is exactly why these are labelled a tripwire and not evidence. A negative
@@ -284,7 +284,7 @@ cr
 \ change rather than inherit a silent hole.
 \ ---------------------------------------------------------------------------
 s" TA1=" type s" TA1 ( ptr opt<lone> -- opt<lone> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
-s" TA2=" type s" TA2 ( ptr opt<plain> -- opt<plain> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=   \ control also refused: surface closed
+s" TA2=" type s" TA2 ( ptr opt<plain> -- opt<plain> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=   \ control also rejected: surface closed
 s" TA3=" type s" TA3 ( opt<lone> ptr opt<lone> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
 s" TA4=" type s" TA4 ( opt<plain> ptr opt<plain> -- ) atomic!" CHECK-QUIET-CANDIDATE! 0 T=
 s" TA5=" type s" TA5 ( ptr opt<opt<lone>> -- opt<opt<lone>> ) atomic@" CHECK-QUIET-CANDIDATE! 0 T=
@@ -305,7 +305,7 @@ s" TA16=" type s" TA16 ( n n ptr n -- n ) atomic-cas" CHECK-QUIET-CANDIDATE! -1 
 cr
 
 \ A second lock now stands in front of the shape above: a record can no longer
-\ even NAME a pointer to a linear value, because both unified declarers refuse
+\ even NAME a pointer to a linear value, because both unified declarers reject
 \ `FIELD p ptr <linear>` outright. That door is pinned where it lives, in
 \ test/structure-decl-suite.f and test/enum-decl-suite.f; this file stays about
 \ what the checker does with such a value once it is on a row.
@@ -319,29 +319,29 @@ s" TK5=" type s" TK5 ( box n -- model model ) TLIN-MODEL:MAKE dup" CHECK-QUIET-C
 s" TK6=" type s" TK6 ( box n -- ) TLIN-MODEL:MAKE drop" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
-\ construction consumes the payload exactly once and mints one linear bundle.
-s" TM1=" type s" TM1 ( model -- bind ) construct bind bound" CHECK-QUIET-CANDIDATE! -1 T=
-s" TM2=" type s" TM2 ( n -- bind ) construct bind rejected" CHECK-QUIET-CANDIDATE! -1 T=
-s" TM3=" type s" TM3 ( model -- bind model ) dup construct bind bound swap" CHECK-QUIET-CANDIDATE! 0 T=
-s" TM4=" type s" TM4 ( model n -- bind ) nip construct bind rejected" CHECK-QUIET-CANDIDATE! 0 T=
-\ the bundle itself is one linear unit.
-s" TM5=" type s" TM5 ( bind -- bind )" CHECK-QUIET-CANDIDATE! -1 T=
-s" TM6=" type s" TM6 ( bind -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TM7=" type s" TM7 ( bind -- bind bind ) dup" CHECK-QUIET-CANDIDATE! 0 T=
-\ MATCH binds the payload INTO the arm as a linear value: discharging it once
+\ construction consumes the model exactly once and creates one load-result.
+s" TM1=" type s" TM1 ( model -- load-result ) construct load-result loaded" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM2=" type s" TM2 ( n -- load-result ) construct load-result rejected" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM3=" type s" TM3 ( model -- load-result model ) dup construct load-result loaded swap" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM4=" type s" TM4 ( model n -- load-result ) nip construct load-result rejected" CHECK-QUIET-CANDIDATE! 0 T=
+\ load-result is one linear value.
+s" TM5=" type s" TM5 ( load-result -- load-result )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM6=" type s" TM6 ( load-result -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM7=" type s" TM7 ( load-result -- load-result load-result ) dup" CHECK-QUIET-CANDIDATE! 0 T=
+\ MATCH hands the payload to the branch as a linear value: discharging it once
 \ certifies, and copying, dropping, stranding or leaving it does not.
-s" TM8=" type s" TM8 ( bind -- n ) MATCH bind bound OF FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-s" TM9=" type s" TM9 ( bind -- n ) MATCH bind bound OF drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-s" TM10=" type s" TM10 ( bind -- n ) MATCH bind bound OF dup FREE-MODEL FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-s" TM11=" type s" TM11 ( bind -- n ) MATCH bind bound OF 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-s" TM12=" type s" TM12 ( bind -- n ) MATCH bind bound OF >r 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-s" TM13=" type s" TM13 ( bind -- n ) MATCH bind bound OF exit ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
-\ re-minting the bundle is a legitimate discharge, and so is moving the payload
-\ out through the join — both consume the arm's value exactly once.
-s" TM14=" type s" TM14 ( bind -- bind ) MATCH bind bound OF construct bind bound ENDOF rejected OF construct bind rejected ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-s" TM15=" type s" TM15 ( bind -- model ) MATCH bind bound OF ENDOF rejected OF drop MINT-TOK 0 TLIN-BOX:MAKE 0 TLIN-MODEL:MAKE ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
-\ unpacking the payload inside the arm keeps the obligation on the parts.
-s" TM16=" type s" TM16 ( bind -- n ) MATCH bind bound OF TLIN-MODEL:UNMAKE drop TLIN-BOX:UNMAKE drop drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM8=" type s" TM8 ( load-result -- n ) MATCH load-result loaded OF FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM9=" type s" TM9 ( load-result -- n ) MATCH load-result loaded OF drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM10=" type s" TM10 ( load-result -- n ) MATCH load-result loaded OF dup FREE-MODEL FREE-MODEL 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM11=" type s" TM11 ( load-result -- n ) MATCH load-result loaded OF 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM12=" type s" TM12 ( load-result -- n ) MATCH load-result loaded OF >r 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+s" TM13=" type s" TM13 ( load-result -- n ) MATCH load-result loaded OF exit ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
+\ reconstructing load-result is a legitimate discharge, and so is moving the model
+\ out through the join — both consume the branch's value exactly once.
+s" TM14=" type s" TM14 ( load-result -- load-result ) MATCH load-result loaded OF construct load-result loaded ENDOF rejected OF construct load-result rejected ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+s" TM15=" type s" TM15 ( load-result -- model ) MATCH load-result loaded OF ENDOF rejected OF drop MINT-TOK 0 TLIN-BOX:MAKE 0 TLIN-MODEL:MAKE ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! -1 T=
+\ unpacking the payload inside the branch keeps the obligation on the parts.
+s" TM16=" type s" TM16 ( load-result -- n ) MATCH load-result loaded OF TLIN-MODEL:UNMAKE drop TLIN-BOX:UNMAKE drop drop 0 ENDOF rejected OF ENDOF ;MATCH" CHECK-QUIET-CANDIDATE! 0 T=
 cr
 
 ;package

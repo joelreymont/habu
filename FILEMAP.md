@@ -1525,59 +1525,58 @@ points stay listed.
   words). A presence-gated real leg asserts the HF GPT-2 tensor census (160
   tensors, wte [50257,768]).
 - `maki/infer/weight-store.f` — policy-selectable weight residency for the GB10
-  UMA inference engine (sealed `package WSTORE`, inference leaf S3d). A bound
+  UMA inference engine (sealed `package WSTORE`). A loaded
   model owns exactly one immutable linear residency value: the payload store
   enum is mapped(`SAFET:mapping`, table) | allocated(buffer, table), so multi-GiB
   checkpoints can be served straight from the checkpoint's file mapping with no
-  forced copy, while the allocated arm owns a `MEM`-allocated buffer the loader
-  filled once. The residency choice itself is the payload-free enum `residency`
-  (the leaf contract's "policy"; that tail is a reserved declaration-grammar
-  token). The slot table is model-agnostic — slot numbers to (byte-offset,
+  forced copy, while the allocated variant owns a `MEM`-allocated buffer the loader
+  filled once. The payload-free enum is named `residency` because `policy` is
+  reserved by the declaration grammar. The slot table is model-agnostic — slot numbers to (byte-offset,
   byte-extent) rows, sealed immutable by `TABLE-NEW`/`SLOT!`/`SEAL` with a
   full-population check — and slot meaning stays the consumer's pure function.
   Weight bytes are reachable only inside the `WITH-SLOT` quotation
   `[ ptr u8 n -- n ]`, whose scalar result row makes a pointer-returning body a
   static reject; the span is advisory pending the pointer-lifetime checker
   capability, exactly as for `SAFET:WITH-TENSOR`. `DISPOSE` is the exit for a
-  store: the mapped arm unmaps through `SAFET:UNMAP-MAPPING`, the allocated arm
+  store: the mapped variant unmaps through `SAFET:UNMAP-MAPPING`, the allocated variant
   releases through `MEM:RELEASE-BYTES`, both reporting one `result<n,n>`.
   `TABLE-DISPOSE ( WSTORE:table -- result<n,n> )` is the exit for a sealed table
   that never became a store — the state a caller holds when it seals a table and
-  then declines to commit (the bind transaction's prepared value). Without it the
+  stops before creating a store (the checkpoint load's prepared value). Without it the
   only route to a table's memory ran through `DISPOSE`, so such a caller had to
   fabricate a store around a mapping it did not want to consume, or leak the
-  block outright; the package that mints a linear owner owns its exit.
+  block outright; the package that creates a linear owner owns its exit.
   `BUILDER-DISPOSE` and `BUFFER-DISPOSE` are the same exit for the other two
   owners: a builder that will not be sealed, and a filled buffer whose store was
   never built. `HOLD ( WSTORE:store -- WSTORE:resident )` answers a store as a
-  single-cell linear handle, which is the only shape a bound model can own as one
-  field — a record field may name a bare linear owner but not a compound that
-  transitively contains one — and `RESIDENT-DISPOSE ( WSTORE:resident --
+  single-cell linear handle, which is the only shape a loaded model can own as one
+  field. A record field may transitively contain a linear owner; width is the
+  constraint here because a store is three cells. `RESIDENT-DISPOSE ( WSTORE:resident --
   result<n,n> )` is its only exit, rebuilding the store and releasing it through
-  the same `DISPOSE` path. The handle allocates nothing: its two cells (the parked
-  arm and that arm's owner) are reserved in every table block, so builder, table
+  the same `DISPOSE` path. The handle allocates nothing: cells for the storage-kind
+  tag and current storage owner are reserved in every table block, so builder, table
   and resident are one allocation retyped in turn and every transition is total.
-  That totality is a requirement, not a saving — a bind commit runs `HOLD` after
+  That totality is a requirement, not a saving — `LOAD-MAPPED` runs `HOLD` after
   `SAFET:DETACH-MAPPING`, where a fallible step would strand a fresh mapping
   beyond any catch. `WSTORE:LIVE` counts undisposed WSTORE-owned blocks for leak
   assertions. Owns -7710..-7715.
 - `maki/infer/weight-store-test.f` — byte-equality of `WITH-SLOT` across both
-  residency arms over one synthetic safetensors fixture (the mapped arm built
+  residency variants over one synthetic safetensors fixture (the mapped variant built
   through the real `OPEN`/`MAP-FILE`/`PARSE`/`DETACH`/`DETACH-MAPPING` path, the
-  allocated arm copied from the same census), disposal proof on both arms
+  allocated variant copied from the same census), disposal proof on both variants
   (`SAFET-MAP:LIVE` drops on the mapped unmap; ok carries the released byte
-  count), every named refusal with its exact leak-counter residue (bad slot
+  count), every named rejection with its exact leak-counter residue (bad slot
   count, out-of-range/negative/double-set slot, row-end overflow, unset-slot
-  SEAL, out-of-range slot and oversized rows at access on both arms),
+  SEAL, out-of-range slot and oversized rows at access on both variants),
   checker negatives for store/builder/table/buffer linearity, double dispose,
-  constructor arm confusion, sealed-table mutation, dropped or raw-read cleanup
-  results, and the quotation escape negative; a sealed table with no arm owner
+  constructor variant confusion, sealed-table mutation, dropped or raw-read cleanup
+  results, and the quotation escape negative; a sealed table with no storage owner
   disposing on its own through `TABLE-DISPOSE`, entered and left at zero live
   blocks, with wrong-role negatives proving a builder and a store are not tables
-  and the fabricate-a-store workaround recorded in the header as the shape that
-  word retires; nested re-entry regressions (a
-  body minting, reading, and disposing a second store on both arms, plus an
-  aborted inner call under catch) pin the parked frame's ordering discipline;
+  and the old unchecked store construction recorded in the header as the case
+  that word retires; nested re-entry regressions (a
+  body creating, reading, and disposing a second store on both variants, plus a
+  failed inner call under catch) pin the saved callback state's order;
   a forked child proves the package seal refuses new definitions into WSTORE.
 - `maki/infer/gpt2-reference-data.f` /
   `maki/infer/gpt2-reference-data-test.f` — pinned independent GPT-2 correctness data
@@ -1694,7 +1693,7 @@ points stay listed.
   preimage version a stored rendering was produced under, read-only.
   This is the ARTIFACT-SET identity domain, deliberately
   distinct from `MDLCFG:cfgkey` (the behavioral configuration domain): the two
-  carry different private proof families, and nothing in the bind or weight
+  carry different private proof families, and nothing in the load or weight
   lookup path consumes a pin — it is for the pack manifest and compatibility
   checks. `MPROV=` compares two pins; `KEY-HEX` renders one as canonical
   hexadecimal for a manifest to store. MODELPROV publishes no inverse, which is
@@ -1731,211 +1730,65 @@ points stay listed.
   demonstrates the text-to-pin inverse and asserts the checker verdicts as they
   behave today — and the package seal refuses new definitions. Fixtures live in a
   per-run `TMPDIR-MKDIR` tree, removed at the end.
-- `maki/infer/gpt2-bind.f` — the GPT-2 bind transaction's PREPARE phase and the
-  prepared-bind capability (package GPT2TX, inference design rev-4 correction 3
-  leaf S6b1 with the rev-5 amendments). `PREPARE
-  ( SAFET:census MDLCFG:mcfg -- prep-result )` decides once and completely
-  whether a published tensor census can be bound as the GPT-2 the configuration
-  describes: payload ENUM `prep-result` = prepared(prep) | rejected(census,
-  code). ALL validation lives here so the two commit leaves are left with memory
-  faults only. The first question is whether the census still HOLDS the
-  checkpoint's bytes: one whose image already left through
-  `SAFET:DETACH-MAPPING` keeps answering every reader this pass consults —
-  count, dtypes, shapes, and `MAP-OFFSET?`, which is arithmetic on the header
-  geometry rather than access to bytes — so it would otherwise pass every row
-  and bind to a model owning a zero-byte residency, with the fault surfacing at
-  the first weight read as `WSTORE:E-EXTENT` after the mapping and table had been
-  deconstructed beyond any catch. `E-GX-IMAGE` refuses it while a refusal is
-  still free, and the census comes back exactly as it arrived: imageless, still
-  answering its metadata, still disposable through `SAFET:RELEASE`. Then the
-  census count equals `GPT2TENSOR:COUNT`, and per role the
-  exact HF tensor name (rendered through `COPY-NAME?`) is present, the dtype is F32 with
-  no mask exemption, rank and every declared dim match `SHAPE`, a mapping
-  offset exists, `SLOT` round-trips to the slot being walked and is
-  bound-checked against the census count before it indexes anything, and both
-  overflow facts hold (each row's end, and the running sum of every extent that
-  the packed arena will need), and each census tensor is CLAIMED exactly once —
-  counts and shapes cannot detect two roles landing on one tensor, so the claim
-  set (`E-GX-ALIAS`) is what keeps the role-to-tensor map one-to-one. Two passes
-  in a fixed order: pass one validates every row into a private static row
-  scratch sized by `SAFET:MAX-TENSORS`, pass two creates the WSTORE table and
-  populates it from those raw cells, so populate-and-SEAL cannot refuse. The two
-  steps that remain fallible on memory alone — building the table and allocating
-  the prep block — each run under their own `catch` and turn a failure into a
-  refusal rather than a throw, the second giving the sealed table back through
-  `WSTORE:TABLE-DISPOSE` first; the block allocation is hoisted out of the mint
-  so the stretch where the census and table are raw cells cannot fail at all. Every rejection hands the census back
-  untouched — validation runs inside a `catch` over a stack-preserving quotation
-  (the `SAFET:LOAD` discipline) so a throw cannot strand the linear census.
-  `prep` is an opaque `DEFLINEAR` that IS its private block, holding the moved
-  census token, the sealed table, the captured cfgkey, nlayer, and the plan it
-  was validated against (row count and packed-arena size, so a commit leaf never
-  reads this package's scratch, which the next PREPARE overwrites), with NO
-  public accessor; `GPT2TX:LIVE` counts undisposed preps, the only way an
-  abandoned prep — and the census and table inside it — is observable at all;
-  `ABORT ( prep -- )` is total disposal — table through
-  `WSTORE:TABLE-DISPOSE`, census through `SAFET:RELEASE`, then the block, with a
-  failed release reported only after everything is given back. The census and
-  table cross into the block through package-private audited erasures because a
-  `DEFLINEAR` carries no fields and an ENUM payload field cannot name a record
-  transitively holding a linear field (habu-checker-enum-payload-9e1ae6cc); from
-  mint to abort the checker cannot see those two owners, so single ownership
-  rests on this file's one-mint/one-exit structure and the leak counters until
-  habu-checker-linear-scope-6218899c lands. The package is NOT prot-wid sealed,
-  because its own suite reopens it for the row projections; the erasures are
-  package-private (probed unresolvable) and refine-lint confines the two inverse
-  mints here.
+- `maki/infer/gpt2-load.f` — `package GPT2LOAD`, the checked GPT-2 checkpoint
+  loader. `PREPARE ( SAFET:census MDLCFG:mcfg -- prepare-result )` validates
+  checkpoint ownership, model family, tensor count, names, element types,
+  shapes, slots, mapping ranges, total copied size, and one-to-one role
+  assignment. It returns `prepared(load)` or `rejected(tensor-index, code)`; rejection
+  returns the parsed tensor index unchanged. A `prepared-load` owns that tensor
+  index, a sealed weight table, the configuration identity, and every validated
+  tensor span. `DISCARD-PREPARED` releases it; `RETURN-TENSOR-INDEX` ends the
+  preparation while returning the original parsed tensor index.
 
-  The transaction's second half lives here too (leaf S6b3, redesign 2). It is
-  split so that everything that can fail is on one side of a value: `CHECK
-  ( GPT2TX:prep MDLCFG:mcfg -- check-result )` is the recoverable half — payload
-  ENUM `check-result` = matched(checked-prep) | refused(prep, code) — and it is
-  the sole place the prep's captured cfgkey is compared against the consuming
-  configuration's, refusing a prep built against another configuration with
-  `E-GX-FOREIGN` BEFORE any resource moves, so the refused prep comes back whole
-  and still `ABORT`able — and demonstrably still bindable, since the suite spends
-  a refused prep by re-checking it under its own configuration and committing it.
-  The arm is named `refused` rather than `foreign` because it carries both the
-  foreign-identity refusal and a defensive `E-GX-IMAGE` refusal if the total
-  mapping detach reports `empty`; the public `PREPARE` path rules that second
-  state out before a prep exists. Two
-  configurations of one geometry that differ only in a field no tensor reflects
-  bind the same census, so the captured identity is the only thing that can tell
-  them apart. `CHECK` then matches `SAFET:DETACH-MAPPING` directly, with no
-  allocation, catch, or package-global staging, and releases the census that
-  gave up its image.
-  `checked-prep` is a public `DEFLINEAR` that IS the same block with the census
-  cell replaced by the moved mapping, and `ABORT-CHECKED ( checked-prep -- )` is
-  its total exit. `COMMIT-MAPPED ( checked-prep -- gpt2-model )` is therefore
-  TOTAL: it contains no `catch` and no step that can fail for any reason a caller
-  could cause, because the identity was decided and the mapping was moved by
-  `CHECK`, `WSTORE:HOLD` is total by its reserved cells, and the one package-block
-  free is placed where no checker-tracked owner is live. That is what the distinct
-  type buys — "the identity was compared" is a static precondition of the commit,
-  not a rule its body has to remember, and no proof/subject mismatch is
-  expressible because a checked prep IS the prep after comparison. `gpt2-model` is
-  a public checked STRUCTURE (res `WSTORE:resident`, nl, key `MDLCFG:cfgkey`, tok
-  `mdl-proof`) — linear by containment, so the checker refuses to copy or discard
-  a model and there is no non-consuming field read; `MODEL-DISPOSE
-  ( gpt2-model -- result<n,n> )` is its exit, delegating to
-  `WSTORE:RESIDENT-DISPOSE`. The ALLOCATED arm is the same transaction over the
-  other residency choice and is doubled rather than shared, because `CHECK`
-  releases the census while an allocated commit must still copy from it:
-  `CHECK-ALLOC ( GPT2TX:prep MDLCFG:mcfg -- check-alloc-result )` compares the
-  captured identity and retypes the prep into the `checked-prep-alloc` witness —
-  payload ENUM `check-alloc-result` = matched(checked-prep-alloc) |
-  refused(prep, code) — moving no resource, so it is total and can only refuse
-  with `E-GX-FOREIGN`; `ABORT-CHECKED-ALLOC` is that witness's total exit; and
-  `COMMIT-ALLOCATED ( GPT2TX:checked-prep-alloc -- gpt2-model )` allocates the
-  packed arena, builds a second table in the arena's own frame, copies every span
-  out of the census by the carried census ids, releases the census exactly once,
-  and mints the model around an allocated store. It is the one word here that is
-  not total — it spends memory — and every throw in it disposes everything that
-  existed at that point. The prep block carries the validated plan itself, not
-  just its aggregates: `9 + 3*count` cells, three per slot (mapping offset, byte
-  extent, census id), which is what makes an allocated commit able to read its
-  plan from the prep it was handed rather than from this package's scratch.
-  Owns -5660..-5674.
-- `maki/infer/gpt2-bind-fixture.f` — the shared test support the three GPT2TX bind
-  suites run on; defines no test and runs nothing. Owns the synthetic-checkpoint
-  emitter, the corruption knobs, the fixture configurations, the leak counters and
-  the shared assertion helpers, so the one emitter the three suites must agree on
-  exists once rather than three times. Fixtures are generated through the
-  production vocabulary: a thirty-tensor tiny geometry emitted as a real
-  safetensors file and loaded back through the real mmap path, every name from
-  `GPT2TENSOR:COPY-NAME?` and every shape from `SHAPE`, byte extents computed
-  from the EMITTED dims so each corrupted variant is still a file the parser
-  accepts and the refusal is the transaction's verdict. Data bytes are a
-  position-dependent, never-zero pattern, so a span read from the wrong offset is
-  visible instead of comparing zeros with zeros. Reopens package GPT2TX because
-  the suites read validated rows that no public word hands out.
-- `maki/infer/gpt2-bind-test.f` — GPT2TX acceptance, the PREPARE half. Happy path
-  pins the walk length, one probed mask row and one probed Conv1D row
-  cross-checked against the census's own `MAP-OFFSET?`/`NBYTES?`, and the prefix
-  sum against the whole data section. Configuration-fault refusals (one layer too
-  many; a wider embedding) hand the census back and a second PREPARE with the
-  right configuration returns prepared; census-fault refusals (non-F32 tensor,
-  non-F32 mask, wrong rank, one wrong dim, a misspelled key, one tensor beyond
-  the census, a census naming one tensor twice) prove the census still answers its
-  readers, that a second PREPARE returns the same code, and that it releases with
-  every counter at zero. An imageless census is refused. The claim set, the extent
-  arithmetic and the block-size arithmetic are pinned at their exact boundaries.
-  `ABORT` returns the census owner, its kernel mapping, and the WSTORE table block
-  to zero. The prep-owns-plan leg copies every carried row aside and proves it
-  byte-identical across a refusing PREPARE and across two SUCCEEDING ones whose
-  offsets and extents differ. The twin leg pins what PREPARE actually owns: two
-  configurations of one geometry differing only in a census-invisible field both
-  bind the same census, and the preps capture DIFFERENT cfgkeys — E-CONFIG is
-  unreachable from PREPARE, which mints every layer identity from the
-  configuration it validates against — and `PREP-FOREIGN?` is then tested on the
-  production word. Checker negatives cover prep forgery from a raw cell or
-  pointer, prep linearity, double ABORT, prep-result payload role crossings, a
-  dropped result, ambient PREPARE, and the eight PREPARE-phase audited erasures
-  proving unresolvable.
-- `maki/infer/gpt2-check-test.f` — GPT2TX acceptance, the MAPPED arm. Walks the
-  compare-and-commit sequence one state at a time and proves every state has an
-  owner and a total exit: a foreign configuration is refused with the prep still
-  held and still ABORTable, a matching one moves the mapping out of the census
-  without changing what is owned, `ABORT-CHECKED` disposes totally, and
-  `COMMIT-MAPPED` yields a model carrying the validated depth and the captured
-  identity cell for cell. The refuse-then-bind leg SPENDS a refused prep — the
-  same prep binds all the way to a model under its own configuration — which is
-  what counters alone cannot show. Checker negatives cover the checked prep's
-  linearity and forgery, the commit being unreachable without the compare,
-  check-result payload role crossings, the model's linearity by containment and
-  single-consumption exit, the residency being unreachable around the model, and
-  the mapped arm's audited erasures. A presence-gated leg proves three real
-  tensors byte-identical at their computed mapping offsets, commits the real
-  openai-community/gpt2 checkpoint to a mapped model of 12 layers, and pins the
-  exact file size its exit gives back. Ends with a section in package GPT2TX-DR,
-  which has never opened GPT2TX, recording from that outside vantage the gaps the
-  private-mint proof does NOT close.
-- `maki/infer/gpt2-alloc-test.f` — GPT2TX acceptance, the ALLOCATED arm.
-  `CHECK-ALLOC` refuses a foreign prep and moves nothing; `COMMIT-ALLOCATED`
-  yields a model owning a packed arena. The arena walk asserts the layout as a
-  recurrence — it starts at zero, every row begins exactly where the previous one
-  ended, and the last ends exactly at the allocated size — which no two-slot probe
-  can show, and the span probes then compare head AND tail of two slots against a
-  fresh census of the same file, so what the arena agrees with is the file rather
-  than any number the commit derived. Each fallible step is forced to fail by
-  corrupting one field of a real witness block, and every leg ends with every
-  counter back at the suite's entry baseline, proving the unwind gave back the
-  arena, its buffer and the arena-frame table. Checker negatives cover the
-  allocated witness's linearity and forgery, the allocated commit being
-  unreachable without `CHECK-ALLOC`, every crossing between the mapped and
-  allocated witnesses at every exit, double consumption, the gate running twice or
-  after the prep is gone, check-alloc-result payload role crossings, the public
-  surface as accepted controls, and the allocated arm's audited erasures. A
-  presence-gated leg commits the real checkpoint to an allocated model and pins
-  the arena its exit gives back.
-- `maki/infer/gpt2-payload-test.f` — the linear-payload declaration capability over
-  the REAL bound model, from a FOREIGN package (`GPT2PAY`) that has never opened
-  GPT2TX and uses only the public surface. It declares `ENUM held` with
-  `FIELD m GPT2TX:gpt2-model` — the exact spelling that rejected 7109 "unknown
-  payload type" before the capability landed — and a width-identical non-linear
-  twin, `held-twin`, whose payload is also seven cells. The registry pins read
-  what REFLECT can see: arity, visibility, kind, case order, constructor package,
-  one named payload field of seven cells at slot 0, and the resulting eight-cell
-  width for both families. Linearity itself is pinned on the checker rather than
-  the registry, because the predicate that decides it
-  (`TFAM-CONCRETE-LINEAR?`) has no `PRIM:` row and REFLECT cannot reach it. Every
-  refusal is PAIRED with the same candidate over the twin, so copy, discard,
-  return-stack re-push, typed-memory load, payload loss at construction and every
-  failure to discharge the payload in a MATCH arm are shown to be the linearity
-  obligation; the pairs where the twin also refuses (raw-cell forge,
-  unconsumed value, unbalanced `>r`, multi-cell store, multi-cell typed local,
-  keeping the scrutinee across MATCH) are labelled as the other rules they are.
-  Wrong-role fixtures pin that the two variants' payloads do not cross, the two
-  eight-cell families do not substitute for each other, and a MATCH naming the
-  wrong family refuses instead of reading the tag they share.
-  A presence-gated leg then runs the real production path — `SAFET:LOAD` over the
-  pinned 548 MB checkpoint, `PREPARE`, `CHECK`, `COMMIT-MAPPED` — wraps the
-  resulting model in the declared payload slot, matches it back out and disposes
-  it, asserting all four ownership counters at entry, after commit, after the wrap,
-  inside the arm and after disposal, and pinning the exact file size the exit gives
-  back. Closes with KNOWN GAP pins recording that `throw` from inside a MATCH arm
-  holding the payload certifies today and abandons the model; they flip to
-  rejections when linear-scope quotations land.
+  `CHECK-MAPPED` compares the prepared configuration before moving the checkpoint
+  mapping and returns `ready(load)` or `rejected(load, code)`. `LOAD-MAPPED`
+  consumes the resulting `mapped-ready` value and creates a file-backed model;
+  `DISCARD-MAPPED` releases it without creating a model. `CHECK-COPY` performs the
+  same identity check without moving the parsed tensor index. `LOAD-COPIED`
+  consumes the resulting `copy-ready` value, copies every validated tensor into
+  one copy buffer, and creates a copied-storage model; `DISCARD-COPY` releases
+  the ready load. Allocation-failure cleanup returns acquired resources when
+  each release succeeds. An `E-MEM-UNMAP` throw can interrupt later cleanup
+  until `habu-make-owned-release-79de2b5c` lands.
+
+  `gpt2-model` is a linear `STRUCTURE` containing its weight storage, layer count,
+  configuration key, and a private construction proof. `RELEASE-MODEL` is its
+  public exit. `LIVE-PREPARED-LOADS` exposes leak accounting only. All raw
+  block/owner conversions are package-private, inventoried in `TRUSTED.md`, and
+  confined by `tools/refine-lint-core.f`. Owns error codes -5660..-5673.
+- `maki/infer/gpt2-checkpoint-fixture.f` — shared GPT2LOAD test support. It
+  generates a real small safetensors checkpoint from `GPT2TENSOR` names and
+  shapes, loads it through the production parser and mapping path, exposes
+  controlled malformed variants, and provides common ownership assertions.
+  The data pattern makes a wrong tensor offset visible. The file defines no test
+  entry and runs nothing.
+- `maki/infer/gpt2-prepare-test.f` — `PREPARE`, `DISCARD-PREPARED`, and
+  `RETURN-TENSOR-INDEX` coverage. It proves every validation rejection returns a
+  usable parsed tensor index, every resource count returns to baseline, copied
+  span metadata belongs to the prepared load rather than shared scratch, numeric
+  bounds accept and reject at their exact limits, and all raw conversion words
+  remain private.
+- `maki/infer/gpt2-mapped-test.f` — mapped-storage coverage. It proves
+  configuration rejection leaves the prepared load reusable, `CHECK-MAPPED`
+  moves ownership only after a successful comparison, ordinary `DISCARD-MAPPED`
+  releases every owner, and `LOAD-MAPPED` creates a model with the validated layer count
+  and configuration key. The real-checkpoint case compares mapped tensor bytes
+  and proves `RELEASE-MODEL` returns the full mapping length. Outside-package
+  checks pin both the private construction boundary and the tracked generated
+  `UNMAKE` limitation.
+- `maki/infer/gpt2-copy-test.f` — copied-storage coverage. It proves
+  `CHECK-COPY` changes only the linear state, the copied layout has no gaps or
+  overlaps and matches checkpoint bytes, forced allocation/copy failures
+  release all owners when each release succeeds, and `LOAD-COPIED` cannot run
+  without `copy-ready`. The
+  real-checkpoint case loads and releases a copied model.
+- `maki/infer/gpt2-payload-test.f` — unified payload-`ENUM` coverage using a real
+  `GPT2LOAD:gpt2-model` from outside the GPT2LOAD package. It proves the enum owns
+  the linear model, rejects copying, dropping, payloads made without the checked
+  constructor, wrong roles, and
+  incomplete `MATCH` handling, then runs the real
+  `SAFET:LOAD → PREPARE → CHECK-MAPPED → LOAD-MAPPED → RELEASE-MODEL` path and
+  verifies every ownership counter returns to baseline.
 - `maki/infer/resid-kernel.cu` / `maki/infer/residency-probe.f` — the sanctioned
   UMA weight-residency timing lane: a grid-stride read-reduction kernel timed over a
   directly-mmap'd host pointer vs a registered mapping vs a copied device buffer

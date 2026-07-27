@@ -2573,9 +2573,19 @@ fits.
   Once `SAFET:mapping` can only be minted from a parsed positive-length image,
   `WITH-MAPPING` must always run its body and return the length directly; an
   obsolete option weakens every caller and hides the mint invariant.
-- **Name an operation by what it does.** The GPT-2 “bind” path loads and
-  validates checkpoint tensors, so call it `LOAD`; reserve unfamiliar terms
-  for concepts that cannot be stated plainly.
+- **Name an operation by what it does.** A checkpoint path that reads and
+  validates tensors is a load; reserve unfamiliar terms for concepts that
+  cannot be stated plainly. A hard rename is also a contract audit: do not
+  carry a retired capability caveat into the new source, inventory, or trust
+  prose just because the old text already had it.
+- **A successful release test does not prove total cleanup.** If a release can
+  throw, it can interrupt later cleanup and abandon owners hidden in raw cells.
+  State only the valid-state guarantee until the release itself is uncatchably
+  fatal or preserves every owner for retry.
+- **Mechanical Forth rewrites must preserve line boundaries.** Test the rewrite
+  on a scratch copy and compare line counts before touching the working tree;
+  an inline `\` comment turns all following code on a collapsed line into a
+  comment.
 - **`dot on` still double-quotes an already quoted `created-at` value.** It
   reproduced on the current tool, so inspect every status mutation, normalize
   the changed file before publication, and keep the writer-fix dot open until

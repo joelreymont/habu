@@ -1459,11 +1459,11 @@ VS0 @ LONG-N 1 - + SV-TAG@ LONG-N 1 - T=   \ no gap: the last tag is N-1
 \ owns that obligation by containment (dot habu-checker-enum-payload-9e1ae6cc).
 \
 \ The resolver used to refuse any family whose schemas reach a linear value. That
-\ made `FIELD p GPT2TX:prep` legal but `FIELD m gpt2-model` — the very same
-\ resource one structure deeper — reject 7109 as an "unknown payload type", about
-\ a family that had just registered successfully. The two spellings carry the same
-\ obligation, so refusing one of them bought no soundness; it only blocked the
-\ name. What actually enforces the discipline is TFAM-CONCRETE-LINEAR?, which
+\ made `FIELD res WSTORE:resident` legal but `FIELD model gpt2-model` reject 7109
+\ as an "unknown payload type", even though gpt2-model owns that resident through
+\ a structure field. Both forms carry the resident's obligation, so refusing the
+\ nested form bought no soundness; it only blocked the name. What actually
+\ enforces the discipline is TFAM-CONCRETE-LINEAR?, which
 \ walks each variant's payload schemas, follows an application node into the
 \ family it names, and reports the containing enum linear. That walk already
 \ recursed, so it needed no change: only the refusal had to go.
@@ -1488,19 +1488,19 @@ s" ENUM edlone 0 VARIANT hold FIELD t EDLIN:tok ;VARIANT VARIANT none FIELD c n 
 s" edlone" FAMID EDLIN:LINEAR? T-TRUE
 
 \ depth 2, the shape this dot unblocks: a payload naming a linear family. This is
-\ the frozen bind-result shape, with a stand-in for gpt2-model.
+\ the frozen load-result shape, with a stand-in for gpt2-model.
 s" STRUCTURE edlmodel 0 FIELD res EDLIN:tok FIELD nl n ;STRUCTURE" TRY 0 T=
 s" edlmodel" FAMID EDLIN:LINEAR? T-TRUE
-s" ENUM edlbind 0 VARIANT bound FIELD m edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
-s" edlbind" FAMID EDLIN:LINEAR? T-TRUE                    \ linear by containment
-s" edlbind" FAMID F-VAR-COUNT 2 T=
-s" edlbind" FAMID F-FLD-COUNT 2 T=                    \ one named payload per variant
-s" edlbind" FAMID F-WIDTH 3 T=                        \ tag cell + the widest payload (two cells)
+s" ENUM edl-load-result 0 VARIANT loaded FIELD model edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
+s" edl-load-result" FAMID EDLIN:LINEAR? T-TRUE                    \ linear by containment
+s" edl-load-result" FAMID F-VAR-COUNT 2 T=
+s" edl-load-result" FAMID F-FLD-COUNT 2 T=                    \ one named payload per variant
+s" edl-load-result" FAMID F-WIDTH 3 T=                        \ tag cell + the widest payload (two cells)
 
 \ depth 3: the walk recurses again rather than stopping one level down.
-s" STRUCTURE edlhold 0 FIELD b edlbind ;STRUCTURE" TRY 0 T=
-s" edlhold" FAMID EDLIN:LINEAR? T-TRUE
-s" ENUM edlnest 0 VARIANT hold FIELD h edlhold ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" STRUCTURE edl-via-load 0 FIELD result edl-load-result ;STRUCTURE" TRY 0 T=
+s" edl-via-load" FAMID EDLIN:LINEAR? T-TRUE
+s" ENUM edlnest 0 VARIANT loaded FIELD result edl-via-load ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
 s" edlnest" FAMID EDLIN:LINEAR? T-TRUE
 
 \ the control: a chain with no linear value anywhere stays non-linear, so the
@@ -1581,8 +1581,8 @@ DECL-DIAG:HAS? -1 T=
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
-s" ENUM edlptrsum 0 VARIANT hold FIELD p ptr edlbind ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edlbind'"
+s" ENUM edlptrsum 0 VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TRY 7109 T=
+s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edl-load-result'"
 DECL-DIAG:HAS? -1 T=
 
 \ every variant is checked, not just the first, and the token names the offending

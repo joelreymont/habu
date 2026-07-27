@@ -1,7 +1,7 @@
 \ weight-store.f - policy-selectable weight residency for the GB10 UMA inference
-\ engine (sealed package WSTORE; inference leaf S3d, epic habu-epic-gb10-uma-391d12e8).
+\ engine (sealed package WSTORE; epic habu-epic-gb10-uma-391d12e8).
 \
-\ WHY THIS MODULE EXISTS. A bound model owns exactly ONE immutable linear
+\ WHY THIS MODULE EXISTS. A loaded model owns exactly ONE immutable linear
 \ residency value - the store - and every weight read goes through it. The store
 \ has two arms because the GB10 plan forbids forcing a copy of multi-GiB
 \ checkpoints: the MAPPED arm serves weights straight out of the checkpoint's
@@ -37,9 +37,9 @@
 \ instead of throwing past owners a caller has not disposed of yet.
 \
 \ A SEALED TABLE HAS ITS OWN EXIT. A table does not have to become a store. A
-\ caller can seal one and then decide not to commit - the bind transaction's
-\ prepared value is exactly that: it owns a sealed table and no arm owner yet, and
-\ its abort path must dispose the table on its own. Before TABLE-DISPOSE existed
+\ caller can seal one and then stop before creating a store. A prepared load is
+\ exactly that: it owns a sealed table and no storage owner yet, so
+\ DISCARD-PREPARED must dispose the table directly. Before TABLE-DISPOSE existed
 \ the only route to the table's memory was through DISPOSE, so such a caller had
 \ to FABRICATE a store around a mapping it did not want to consume just to reach a
 \ free path, and a caller that could not do even that leaked the block with no
@@ -76,7 +76,7 @@
 \ which of its strands is which.
 \
 \ A STORE HELD AS ONE CELL (the residency handle). A store is a bundle of two
-\ owners, so it is three stack cells wide, and a field names ONE value: a bound
+\ owners, so it is three stack cells wide, and a field names ONE value: a loaded
 \ model cannot carry a three-cell bundle in a single field whatever the field is
 \ allowed to contain. HOLD answers the same store as a single-cell linear
 \ `resident`, which a model holds as one checked field, and RESIDENT-DISPOSE is its
@@ -90,7 +90,7 @@
 \ something a record can hold.
 \
 \ The handle allocates nothing, and that is a requirement rather than a saving. Its
-\ caller is a bind commit: it takes a census's file mapping through
+\ caller is LOAD-MAPPED: it takes a parsed tensor index's file mapping through
 \ SAFET:DETACH-MAPPING, an atomic and terminal step, and may run nothing fallible
 \ afterwards, because a throw past a fresh mapping strands it beyond any catch. So
 \ the handle's two cells are reserved in every table block by TABLE-NEW and HOLD
@@ -98,7 +98,7 @@
 \ times, and every transition is total - the same discipline SEAL already follows,
 \ carried one step further. The price is two cells per table block, paid whether or
 \ not the table is ever held; the alternative was a fallible step in the one place
-\ the transaction cannot tolerate one.
+\ the load cannot tolerate one.
 \
 \ NO PUBLIC WORD RETURNS A RAW POINTER. Weight bytes are reachable only inside
 \ the WITH-SLOT quotation, whose declared effect is [ ptr u8 n -- n ]: the result
@@ -249,7 +249,7 @@ TRUSTED: TAKE-RESIDENT ( WSTORE:resident -- ptr n ) ;
 \ between a park and its recovery the checker cannot see the owner. What holds
 \ "owned exactly once" over that stretch is this file's structure - one park site per
 \ arm inside HOLD, one recovery site inside RESIDENT-DISPOSE, no accessor - plus the
-\ LIVE and SAFET:LIVE-OWNERS counters the suite asserts around every transaction.
+\ LIVE and SAFET:LIVE-OWNERS counters the suite asserts around every load.
 \ They retire with the linear-scope combinator, habu-checker-linear-scope-6218899c.
 TRUSTED: MAP>N ( SAFET:mapping -- n ) ;
 TRUSTED: N>MAP ( n -- SAFET:mapping ) ;
@@ -554,7 +554,7 @@ public
 \ ---- disposal of a builder that never got sealed ------------------------------------------
 \ The exit for a builder that is not going to become a table. Before this word the
 \ only route out of a builder was SEAL, so a caller holding one it could not seal -
-\ because a SLOT! refused, or because it decided against the transaction - held a
+\ because a SLOT! refused, or because it decided against the load - held a
 \ linear token with no exit at all: it could not seal it, it could not drop it (the
 \ checker refuses that, correctly), and it could not free the block by hand because
 \ the block is package-private. There was not even the fabricate-a-store hack the
@@ -577,10 +577,10 @@ public
 \ ---- disposal of a buffer that never became a store ---------------------------------------
 \ The exit for the allocated arm's owner alone. A caller that has filled a buffer and
 \ then cannot build the store around it - because the table it needed was refused, or
-\ because a later step in its own transaction ran out of memory - owns a buffer and
+\ because a later step in its own load ran out of memory - owns a buffer and
 \ nothing else, and the same argument applies: the package that mints a linear owner
-\ owns its exit. The bind transaction's commit phase is exactly that caller, which is
-\ why this word exists before the arena copy is written.
+\ owns its exit. LOAD-COPIED is exactly that caller, which is
+\ why this word exists before the copy buffer is filled.
 \
 \ Unlike the two table exits this one can genuinely report err, and it is the same
 \ err the allocated arm's DISPOSE reports: the buffer's bytes go back through the
@@ -593,14 +593,14 @@ public
 
 \ ---- holding a store as one cell -----------------------------------------------------
 \ A store is a two-owner bundle, so it is three stack cells wide, and a field names one
-\ value: no record can carry it, whatever a field is allowed to contain. A bound model
+\ value: no record can carry it, whatever a field is allowed to contain. A loaded model
 \ has to own its residency as ONE field, so this word answers the same store as a
 \ single-cell linear handle. (What a field may CONTAIN is no longer the constraint - a
 \ field naming a record that transitively owns a linear value is legal today. The width
 \ is the reason this handle exists; the old prohibition is not.)
 \
-\ WHY IT ALLOCATES NOTHING, AND WHY THAT IS THE POINT. HOLD is TOTAL. Its caller is a
-\ bind commit, which takes a census's file mapping away through SAFET:DETACH-MAPPING -
+\ WHY IT ALLOCATES NOTHING, AND WHY THAT IS THE POINT. HOLD is TOTAL. Its caller is
+\ LOAD-MAPPED, which takes a parsed tensor index's file mapping through SAFET:DETACH-MAPPING -
 \ an atomic, terminal step - and may not run anything that can fail afterwards, because
 \ a throw past a fresh mapping strands it where no catch can reach it. A HOLD that
 \ allocated would be exactly such a step. So the handle's two cells are reserved in

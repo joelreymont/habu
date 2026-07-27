@@ -1,5 +1,5 @@
 \ gpt2-payload-test.f - the linear-payload declaration capability, exercised over the
-\ REAL bound GPT-2 model rather than over a stand-in.
+\ REAL loaded GPT-2 model rather than over a stand-in.
 \
 \ WHY THIS SUITE EXISTS. The capability that lets a unified ENUM variant or STRUCTURE
 \ field name a family which owns a linear value is pinned in two places already:
@@ -7,64 +7,64 @@
 \ and test/type-linear-suite.f pins what the CHECKER does with such a value on a row.
 \ Both of those work over small stand-in owners - a one-cell DEFLINEAR token wrapped in
 \ a two-cell record. The consumer the capability was built for is not that shape: it is
-\ GPT2TX:gpt2-model, a seven-cell record whose linearity arrives through a nested
-\ WSTORE:resident, carrying a four-cell configuration identity and a private-mint proof
+\ GPT2LOAD:gpt2-model, a seven-cell record whose linearity arrives through a nested
+\ WSTORE:resident, carrying a four-cell configuration identity and a private construction proof
 \ beside it. Nothing before this file put that type through a declared payload slot, so
 \ "it works for the real model" was an inference from two smaller cases rather than a
 \ measurement. This suite makes it a measurement.
 \
 \ WHAT "THE REAL PATH" MEANS HERE. The model this suite wraps is not constructed by the
-\ suite. It is obtained the only way production obtains one: census the pinned 548 MB
-\ GPT-2 checkpoint through SAFET:LOAD, validate it against the real 124M configuration
-\ through GPT2TX:PREPARE, compare the captured identity through GPT2TX:CHECK, and commit
-\ the mapped arm through GPT2TX:COMMIT-MAPPED. The value that then goes into the ENUM
+\ suite. It is obtained by parsing the pinned 548 MB GPT-2 checkpoint through
+\ SAFET:LOAD, validating it against the real 124M configuration through
+\ GPT2LOAD:PREPARE, comparing the captured identity through GPT2LOAD:CHECK-MAPPED,
+\ and loading mapped storage through GPT2LOAD:LOAD-MAPPED. The value that then goes into the ENUM
 \ variant owns the whole checkpoint mapping, and the proof that it still does after the
-\ round trip is that MODEL-DISPOSE gives back exactly 548105171 bytes at the end. The
-\ mapped arm is enough: it is zero-copy, so the round trip costs no second copy of the
-\ weights, and the allocated arm would prove nothing further about the payload slot.
+\ round trip is that RELEASE-MODEL gives back exactly 548105171 bytes at the end. The
+\ mapped-storage path is enough: it is zero-copy, so the round trip costs no second copy of the
+\ weights, and the copied-storage path would prove nothing further about the payload slot.
 \
-\ WHY THIS SUITE HAS ITS OWN PACKAGE AND ITS OWN CONFIGURATION. The three GPT2TX bind
-\ suites reopen package GPT2TX, because what they check is which rows the transaction
+\ WHY THIS SUITE HAS ITS OWN PACKAGE AND ITS OWN CONFIGURATION. The three GPT2LOAD
+\ suites reopen package GPT2LOAD, because what they check is which rows the load
 \ validated and no public word hands a row out. This suite checks the opposite thing:
-\ what a FOREIGN consumer can declare and do with a bound model. So it runs from its own
+\ what an outside consumer can declare and do with a loaded model. So it runs from its own
 \ package, calls only the public surface, and spells out the checkpoint path and the
-\ 124M configuration itself rather than reaching into the bind fixture's private ones
-\ (they are private: package GPT2TX publishes none of its TX- fixtures). That costs one
-\ repeated configuration and buys the honest vantage point, and the repeat is
-\ self-checking - a configuration that drifted from the checkpoint is refused by PREPARE
+\ 124M configuration itself rather than reaching into the checkpoint fixture's private ones
+\ (they are private: package GPT2LOAD publishes none of these private test helpers).
+\ That costs one
+\ repeated configuration and checks the true outside-package surface. The repeat is
+\ self-checking - a configuration that drifted from the checkpoint is rejected by PREPARE
 \ and this suite goes red rather than quiet.
 \
-\ THE WIDTH-IDENTICAL CONTROL, AND WHY EVERY REFUSAL IS PAIRED. `held` and `held-twin`
+\ THE WIDTH-IDENTICAL CONTROL. `model-payload` and `plain-payload`
 \ are both eight cells wide - a tag cell plus a seven-cell payload - and they differ in
-\ exactly one thing: `held`'s payload owns a linear value and `held-twin`'s does not. A
-\ refusal on its own proves nothing, because it could be answering payload width, nesting
-\ depth, declared arity, return-stack balance, or a multi-cell value the operation simply
-\ cannot express. So every refusal below is run again over the twin, and the pair is what
-\ is reported. Three of them turn out NOT to be linearity, and this file says so out loud
+\ exactly one thing: `model-payload`'s payload owns a linear value and `plain-payload`'s does not. A
+\ rejection on its own proves nothing, because it could be answering payload width,
+\ nesting level, declared arity, return-stack balance, or a multi-cell value the operation simply
+\ cannot express. Where that ambiguity matters, the suite repeats the exact
+\ operation over `plain-payload`. Four control categories turn out NOT to test
+\ linearity, and this file says so out loud
 \ rather than banking them as evidence:
-\   - a raw-cell forge, an unconsumed value and an unbalanced `>r` refuse for the twin
+\   - a raw-cell construction, an unconsumed value and an unbalanced `>r` reject `plain-payload`
 \     too, so those are nominal typing, arity and return-stack balance;
-\   - a typed local capturing the bundle refuses for the twin too, so that is about
-\     capturing a multi-cell layout value in a local, not about laundering an owner (a
+\   - a typed local capturing the payload rejects `plain-payload` too, so that is about
+\     capturing a multi-cell layout value in a local, not about hiding a linear owner (a
 \     one-cell typed local is accepted, which is the control for the control);
-\   - `!` refuses for the twin too, so only the `@` half of the typed-memory pair
-\     discriminates;
-\   - keeping the scrutinee across a MATCH refuses for the twin too, because MATCH
+\   - `!` rejects `plain-payload` too, so only the `@` test distinguishes linearity;
+\   - keeping the matched input value across a MATCH rejects `plain-payload` too, because MATCH
 \     consumes what it matches for every family.
-\ What is left after that subtraction is the linearity obligation, and it is large:
-\ copy, discard, re-push from the return stack, load through typed memory, payload loss
-\ at construction, and every way a MATCH arm can fail to discharge the payload exactly
-\ once.
+\ The paired cases left after that subtraction isolate copying, discarding,
+\ return-stack re-push, typed-memory load, and selected MATCH behavior. Unpaired
+\ negative cases remain contract checks, not independent proof of why the checker
+\ rejected them.
 \
-\ WHY LINEARITY IS PINNED THROUGH THE CHECKER AND NOT THROUGH REFLECTION. The leaf asked
-\ for the declared family to "read linear" through package REFLECT. REFLECT cannot answer
-\ that today: it reads the registry through the checker's published primitives, and the
+\ WHY LINEARITY IS PINNED THROUGH THE CHECKER AND NOT THROUGH REFLECTION. REFLECT
+\ cannot report linearity today: it reads the registry through the checker's published primitives, and the
 \ predicate that decides this - TFAM-CONCRETE-LINEAR? - is not one of them (it has no
 \ PRIM: row in src/core/checker.f, so it is unreachable from any ordinary package).
-\ Publishing it is an engine change and is not this leaf's to make. Everything REFLECT
-\ CAN see is pinned below - the eight-cell width, the seven-cell payload at slot 0, the
-\ arity, the kind, the case order and the constructor package - and linearity itself is
-\ pinned where it is actually decided, on the checker, by the paired battery.
+\ Independent reflection evidence is therefore unavailable. Everything REFLECT
+\ can see is pinned below - width, payload slot, arity, kind, case order, and
+\ constructor package - while the paired checker cases provide the current
+\ linearity proof.
 \
 \ maki -> habu only.
 
@@ -72,28 +72,28 @@ require lib/prelude.f
 require lib/adt/result.f
 require lib/test.f
 require test/checker-assert.f
-require maki/infer/gpt2-bind.f
+require maki/infer/gpt2-load.f
 
-package GPT2PAY
+package GPT2PAYLOAD
 
 public
 
 \ ---- the declaration the capability legalized ----------------------------------
-\ `FIELD m GPT2TX:gpt2-model` is the exact spelling that rejected 7109 "unknown payload
+\ `FIELD model GPT2LOAD:gpt2-model` is the exact spelling that rejected 7109 "unknown payload
 \ type" before the capability landed, about a family that had just registered
-\ successfully. The second variant is the ordinary refusal shape a real consumer pairs
+\ successfully. The second variant is the ordinary rejection shape a real consumer pairs
 \ it with.
-ENUM held 0
-   VARIANT model FIELD m GPT2TX:gpt2-model ;VARIANT
-   VARIANT empty FIELD code n ;VARIANT
+ENUM model-payload 0
+   VARIANT model FIELD model GPT2LOAD:gpt2-model ;VARIANT
+   VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
 
 \ The control: the same eight cells, no linear value anywhere. MDLCFG:cfgkey is four
-\ cells and the three scalars make seven, so the twin's payload matches the model's cell
-\ for cell.
-ENUM held-twin 0
+\ cells and the three scalars make seven, so plain-payload matches model-payload
+\ cell for cell.
+ENUM plain-payload 0
    VARIANT key   FIELD k MDLCFG:cfgkey FIELD a n FIELD b n FIELD c n ;VARIANT
-   VARIANT empty FIELD code n ;VARIANT
+   VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
 
 private
@@ -102,18 +102,19 @@ private
 \ The exact file size is the assertion that matters at the end of the cycle: a mapped
 \ model's release reports the byte count WSTORE gave back, so pinning it proves the value
 \ that came out of the payload slot was still serving the WHOLE checkpoint and not some
-\ truncated span of it. The depth cannot be asserted from here - GPT2TX:MODEL-NL is
-\ package-private, which is exactly the foreign vantage point this suite is written from.
+\ truncated span of it. The layer count cannot be asserted here because
+\ GPT2LOAD:MODEL-LAYER-COUNT is package-private, which is exactly the
+\ outside-package surface this suite tests.
 548105171 constant FILE-BYTES                   \ the pinned checkpoint's exact file size
 
-: PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
+: CHECKPOINT-PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
 
-: CFG ( -- MDLCFG:mcfg )                        \ the real 124M geometry
+: MODEL-CONFIG ( -- MDLCFG:mcfg )                        \ the real 124M geometry
    0.00001 true MDLCFG-ARCH:GPT2
    1 MAKI-DTYPE:DF32 1024 50257 12 768 12 true 50256 50256 MDLCFG:BUILD ;
 
 \ ---- candidate verdicts --------------------------------------------------------
-\ -1 is "the checker certified this definition", 0 is "the checker refused it". The
+\ -1 is "the checker certified this definition", 0 is "the checker rejected it". The
 \ two are kept apart from verdict 1, which is "the dictionary could not resolve a
 \ token", so a typo can never be mistaken for a type error.
 : ACCEPTED ( ptr u8 n -- )  CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -121,29 +122,29 @@ private
 
 \ ---- leak accounting, as a delta against this suite's own entry -----------------
 \ The four counters are process-wide and a combined run reaches this file after suites
-\ that leave documented strands of their own, so every station is a delta from the entry
-\ baseline and never an absolute. One word takes all four numbers, so a station reads as
+\ with known counter deltas, so every check is relative to this suite's entry
+\ baseline and never absolute. One word takes all four numbers, so each check reads as
 \ the four owners it expects rather than as four separate assertions.
-variable BASE-MAP                               \ SAFET kernel mappings
-variable BASE-OWN                               \ SAFET owners
-variable BASE-WS                                \ WSTORE blocks
-variable BASE-PREP                              \ live GPT2TX preps
+variable BASE-MAPPING                           \ SAFET kernel mappings
+variable BASE-OWNER                             \ SAFET owners
+variable BASE-STORE                             \ WSTORE blocks
+variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
 
 : BASELINE! ( -- )
-   SAFET-MAP:LIVE BASE-MAP !
-   SAFET:LIVE-OWNERS BASE-OWN !
-   WSTORE:LIVE BASE-WS !
-   GPT2TX:LIVE BASE-PREP ! ;
+   SAFET-MAP:LIVE BASE-MAPPING !
+   SAFET:LIVE-OWNERS BASE-OWNER !
+   WSTORE:LIVE BASE-STORE !
+   GPT2LOAD:LIVE-PREPARED-LOADS BASE-PREPARED-LOADS ! ;
 
-: COUNTERS ( n n n n -- ) {: map:n own:n ws:n prep:n :}
-   SAFET-MAP:LIVE BASE-MAP @ - map T=
-   SAFET:LIVE-OWNERS BASE-OWN @ - own T=
-   WSTORE:LIVE BASE-WS @ - ws T=
-   GPT2TX:LIVE BASE-PREP @ - prep T= ;
+: COUNTERS ( n n n n -- ) {: mapping:n owner:n store:n prepared:n :}
+   SAFET-MAP:LIVE BASE-MAPPING @ - mapping T=
+   SAFET:LIVE-OWNERS BASE-OWNER @ - owner T=
+   WSTORE:LIVE BASE-STORE @ - store T=
+   GPT2LOAD:LIVE-PREPARED-LOADS BASE-PREPARED-LOADS @ - prepared T= ;
 
 \ The ok payload of a release outcome. Reading it is the difference between "the exit
 \ reported success" and "the exit gave back the bytes it was holding".
-: RES-VAL ( result<n,n> -- n )
+: RESULT-VALUE ( result<n,n> -- n )
    MATCH result
       ok  OF ENDOF
       err OF
@@ -154,56 +155,56 @@ variable BASE-PREP                              \ live GPT2TX preps
       ENDOF
    ;MATCH ;
 
-\ ---- the positive leg: a real model through a declared payload slot -------------
-\ The MATCH arm receives the model as an ordinary linear value on the row, so the arm has
-\ to discharge it exactly once; discharging it through MODEL-DISPOSE is what proves the
+\ ---- a real model through a declared payload slot -----------------------------
+\ The MATCH branch receives the model as an ordinary linear value on the row, so the branch has
+\ to discharge it exactly once; discharging it through RELEASE-MODEL is what proves the
 \ value that came back out is the same owner that went in, because only the real owner
 \ can hand back the whole checkpoint mapping.
-: SPEND ( held -- )
-   MATCH held
+: RELEASE-MODEL-PAYLOAD ( model-payload -- )
+   MATCH model-payload
       model OF
          s" the counters do not move when MATCH hands the model back out" T-LABEL
          1 1 1 0 COUNTERS
          s" and the model still owns the whole checkpoint mapping, to the byte" T-LABEL
-         GPT2TX:MODEL-DISPOSE RES-VAL FILE-BYTES T=
+         GPT2LOAD:RELEASE-MODEL RESULT-VALUE FILE-BYTES T=
       ENDOF
-      empty OF
-         s" the wrapped model came back as the empty variant" T-LABEL
+      rejected OF
+         s" the wrapped model came back as the rejected variant" T-LABEL
          drop false TTRUE
       ENDOF
    ;MATCH ;
 
-: WRAP-AND-SPEND ( GPT2TX:checked-prep -- )
-   GPT2TX:COMMIT-MAPPED
-   s" the real checkpoint commits to a mapped model" T-LABEL
+: CHECK-PAYLOAD-OWNER ( GPT2LOAD:mapped-ready -- )
+   GPT2LOAD:LOAD-MAPPED
+   s" the real checkpoint loads to a mapped model" T-LABEL
    1 1 1 0 COUNTERS
-   GPT2PAY-HELD:MODEL
+   GPT2PAYLOAD-MODEL--PAYLOAD:MODEL
    s" and wrapping it in a declared payload slot moves no owner" T-LABEL
    1 1 1 0 COUNTERS
-   SPEND
+   RELEASE-MODEL-PAYLOAD
    s" and the whole cycle gives every owner back" T-LABEL
    0 0 0 0 COUNTERS ;
 
-: CHECKED-ARM ( GPT2TX:prep -- )
-   CFG GPT2TX:CHECK
-   MATCH GPT2TX:check-result
-      matched OF WRAP-AND-SPEND ENDOF
-      refused OF
+: CHECK-MAPPED-PAYLOAD ( GPT2LOAD:prepared-load -- )
+   MODEL-CONFIG GPT2LOAD:CHECK-MAPPED
+   MATCH GPT2LOAD:mapped-check-result
+      ready OF CHECK-PAYLOAD-OWNER ENDOF
+      rejected OF
          {: code:n :}
-         s" the real checkpoint was refused as foreign, code" T-LABEL
+         s" the real checkpoint was rejected by its matching configuration, code" T-LABEL
          code . cr
          false TTRUE
-         GPT2TX:ABORT
+         GPT2LOAD:DISCARD-PREPARED
       ENDOF
    ;MATCH ;
 
 : T-REAL-PAYLOAD ( -- )
-   s" a real bound GPT-2 model rides a declared linear payload slot" T-LABEL
+   s" a real loaded GPT-2 model is stored in a declared linear payload field" T-LABEL
    BASELINE!
    0 0 0 0 COUNTERS
-   PATH SAFET:LOAD CFG GPT2TX:PREPARE
-   MATCH GPT2TX:prep-result
-      prepared OF CHECKED-ARM ENDOF
+   CHECKPOINT-PATH SAFET:LOAD MODEL-CONFIG GPT2LOAD:PREPARE
+   MATCH GPT2LOAD:prepare-result
+      prepared OF CHECK-MAPPED-PAYLOAD ENDOF
       rejected OF
          {: code:n :}
          s" the real checkpoint did not prepare, code" T-LABEL
@@ -217,8 +218,11 @@ variable BASE-PREP                              \ live GPT2TX preps
 \ ---- family identity for the registry readers ----------------------------------
 \ A family is identified by its tail PLUS the constructor package its variants carry, so
 \ these readers cannot silently pin a neighbouring family that happens to share a tail.
-: H$ ( -- ptr u8 n ptr u8 n )  s" held" s" GPT2PAY-HELD" ;
-: W$ ( -- ptr u8 n ptr u8 n )  s" held-twin" s" GPT2PAY-HELD--TWIN" ;
+: MODEL-PAYLOAD-IDENTITY ( -- ptr u8 n ptr u8 n )
+   s" model-payload" s" GPT2PAYLOAD-MODEL--PAYLOAD" ;
+
+: PLAIN-PAYLOAD-IDENTITY ( -- ptr u8 n ptr u8 n )
+   s" plain-payload" s" GPT2PAYLOAD-PLAIN--PAYLOAD" ;
 
 \ ---------------------------------------------------------------------------------
 \ What the registry recorded. These are top-level lines rather than the body of a word
@@ -228,191 +232,190 @@ variable BASE-PREP                              \ live GPT2TX preps
 \ ---------------------------------------------------------------------------------
 T-RESET
 
-s" the payload family is unambiguous, arity-0, public, and a general sum" T-LABEL
-H$ REFLECT:FAMS 1 T=
-H$ REFLECT:ARITY 0 T=
-H$ REFLECT:VIS 1 T=
-H$ REFLECT:KIND TK-SUM T=
-H$ REFLECT:KIND TK-ENUM = 0 T=                  \ never recorded as a payloadless enum
-H$ REFLECT:VARS 2 T=
+s" model-payload is one public arity-0 payload-bearing ENUM" T-LABEL
+MODEL-PAYLOAD-IDENTITY REFLECT:FAMS 1 T=
+MODEL-PAYLOAD-IDENTITY REFLECT:ARITY 0 T=
+MODEL-PAYLOAD-IDENTITY REFLECT:VIS 1 T=
+MODEL-PAYLOAD-IDENTITY REFLECT:KIND TK-SUM T=             \ internal kind for payload-bearing ENUM
+MODEL-PAYLOAD-IDENTITY REFLECT:KIND TK-ENUM = 0 T=          \ not a payloadless enum
+MODEL-PAYLOAD-IDENTITY REFLECT:VARS 2 T=
 s" its cases are in declaration order, under this suite's constructor package" T-LABEL
-H$ 0 REFLECT:ARM$ s" model" T$=
-H$ 1 REFLECT:ARM$ s" empty" T$=
-H$ 0 REFLECT:ARM-CTOR$ s" GPT2PAY-HELD" T$=
-s" the model rides ONE named payload field, seven cells wide, at slot 0" T-LABEL
-H$ 0 REFLECT:ARM-FLDS 1 T=
-H$ 0 s" m" REFLECT:ARM-SLOT 0 T=
-H$ 0 s" m" REFLECT:ARM-CELLS 7 T=
+MODEL-PAYLOAD-IDENTITY 0 REFLECT:ARM$ s" model" T$=
+MODEL-PAYLOAD-IDENTITY 1 REFLECT:ARM$ s" rejected" T$=
+MODEL-PAYLOAD-IDENTITY 0 REFLECT:ARM-CTOR$ s" GPT2PAYLOAD-MODEL--PAYLOAD" T$=
+s" the model occupies one named payload field, seven cells wide, at slot 0" T-LABEL
+MODEL-PAYLOAD-IDENTITY 0 REFLECT:ARM-FLDS 1 T=
+MODEL-PAYLOAD-IDENTITY 0 s" model" REFLECT:ARM-SLOT 0 T=
+MODEL-PAYLOAD-IDENTITY 0 s" model" REFLECT:ARM-CELLS 7 T=
 s" so the family is a tag cell plus that payload: eight cells" T-LABEL
-H$ REFLECT:WIDTH 8 T=
+MODEL-PAYLOAD-IDENTITY REFLECT:WIDTH 8 T=
 s" and the non-linear control is eight cells wide too, from four declared fields" T-LABEL
-W$ REFLECT:FAMS 1 T=
-W$ REFLECT:WIDTH 8 T=
-W$ 0 REFLECT:ARM-FLDS 4 T=
+PLAIN-PAYLOAD-IDENTITY REFLECT:FAMS 1 T=
+PLAIN-PAYLOAD-IDENTITY REFLECT:WIDTH 8 T=
+PLAIN-PAYLOAD-IDENTITY 0 REFLECT:ARM-FLDS 4 T=
 
 \ ---------------------------------------------------------------------------------
-\ The bundle is ONE linear unit. Each refusal is followed by the same candidate over the
-\ width-identical twin; where the twin is accepted the refusal is linearity, and where
-\ the twin is refused too this file says which other rule answered.
+\ The model-payload value is ONE linear unit. Paired plain-payload controls isolate
+\ the linearity reason where needed; unpaired negatives are contract checks.
 \ ---------------------------------------------------------------------------------
-s" identity and permutation conserve the bundle" T-LABEL
-s" GP-ID ( held -- held )" ACCEPTED
-s" GP-SWAP ( held n -- n held ) swap" ACCEPTED
-s" GP-ROT ( held n n -- n n held ) rot" ACCEPTED
-s" GP-2SWAP ( held n n n -- n n held n ) 2swap" ACCEPTED
+s" identity and permutation conserve model-payload" T-LABEL
+s" MODEL-PAYLOAD-PASS ( model-payload -- model-payload )" ACCEPTED
+s" MODEL-PAYLOAD-SWAP ( model-payload n -- n model-payload ) swap" ACCEPTED
+s" MODEL-PAYLOAD-ROTATE ( model-payload n n -- n n model-payload ) rot" ACCEPTED
+s" MODEL-PAYLOAD-2SWAP ( model-payload n n n -- n n model-payload n ) 2swap" ACCEPTED
 
-s" copying the bundle is refused, and the non-linear twin copies freely" T-LABEL
-s" GP-DUP ( held -- held held ) dup" REJECTED
-s" GP-DUP-CTL ( held-twin -- held-twin held-twin ) dup" ACCEPTED
-s" GP-OVER ( held n -- held n held ) over" REJECTED
-s" GP-2DUP ( held n -- held n held n ) 2dup" REJECTED
-s" GP-2DUP-CTL ( held-twin n -- held-twin n held-twin n ) 2dup" ACCEPTED
-s" GP-TUCK ( n held -- held n held ) tuck" REJECTED
+s" copying model-payload is rejected, and plain-payload copies freely" T-LABEL
+s" MODEL-PAYLOAD-DUP ( model-payload -- model-payload model-payload ) dup" REJECTED
+s" PLAIN-PAYLOAD-DUP ( plain-payload -- plain-payload plain-payload ) dup" ACCEPTED
+s" MODEL-PAYLOAD-OVER ( model-payload n -- model-payload n model-payload ) over" REJECTED
+s" MODEL-PAYLOAD-2DUP ( model-payload n -- model-payload n model-payload n ) 2dup" REJECTED
+s" PLAIN-PAYLOAD-2DUP ( plain-payload n -- plain-payload n plain-payload n ) 2dup" ACCEPTED
+s" MODEL-PAYLOAD-TUCK ( n model-payload -- model-payload n model-payload ) tuck" REJECTED
 
-s" discarding the bundle is refused, and the twin discards freely" T-LABEL
-s" GP-DROP ( held -- ) drop" REJECTED
-s" GP-DROP-CTL ( held-twin -- ) drop" ACCEPTED
-s" GP-NIP ( held held -- held ) nip" REJECTED
-s" GP-NIP-CTL ( held-twin held-twin -- held-twin ) nip" ACCEPTED
-s" GP-2DROP ( held n -- ) 2drop" REJECTED
-s" GP-2DROP-CTL ( held-twin n -- ) 2drop" ACCEPTED
+s" discarding model-payload is rejected, and plain-payload discards freely" T-LABEL
+s" MODEL-PAYLOAD-DROP ( model-payload -- ) drop" REJECTED
+s" PLAIN-PAYLOAD-DROP ( plain-payload -- ) drop" ACCEPTED
+s" MODEL-PAYLOAD-NIP ( model-payload model-payload -- model-payload ) nip" REJECTED
+s" PLAIN-PAYLOAD-NIP ( plain-payload plain-payload -- plain-payload ) nip" ACCEPTED
+s" MODEL-PAYLOAD-2DROP ( model-payload n -- ) 2drop" REJECTED
+s" PLAIN-PAYLOAD-2DROP ( plain-payload n -- ) 2drop" ACCEPTED
 
-s" a return-stack ROUND TRIP conserves the bundle; re-pushing it copies it" T-LABEL
-s" GP-RTRIP ( held -- held ) >r r>" ACCEPTED
-s" GP-RAT ( held -- held held ) >r r@ r>" REJECTED
-s" GP-RAT-CTL ( held-twin -- held-twin held-twin ) >r r@ r>" ACCEPTED
+s" a return-stack round trip conserves model-payload; re-pushing it copies it" T-LABEL
+s" MODEL-PAYLOAD-RSTACK-MOVE ( model-payload -- model-payload ) >r r>" ACCEPTED
+s" MODEL-PAYLOAD-RSTACK-COPY ( model-payload -- model-payload model-payload ) >r r@ r>" REJECTED
+s" PLAIN-PAYLOAD-RSTACK-COPY ( plain-payload -- plain-payload plain-payload ) >r r@ r>" ACCEPTED
 
-s" typed memory stays closed to the bundle: the load discriminates, the store does not" T-LABEL
-s" GP-LOAD ( ptr held -- held ) @" REJECTED
-s" GP-LOAD-CTL ( ptr held-twin -- held-twin ) @" ACCEPTED
-\ NOT LINEARITY: `!` refuses for the twin as well, so the store half of this pair is the
+s" typed memory stays closed to model-payload: the load discriminates, the store does not" T-LABEL
+s" MODEL-PAYLOAD-MEMORY-LOAD ( ptr model-payload -- model-payload ) @" REJECTED
+s" PLAIN-PAYLOAD-MEMORY-LOAD ( ptr plain-payload -- plain-payload ) @" ACCEPTED
+\ NOT LINEARITY: `!` rejects plain-payload as well, so the store half of this pair is the
 \ checker declining to express a multi-cell store at all. It is pinned so a later change
 \ that made `!` work for layout values cannot quietly open it for the linear one.
-s" GP-STORE ( held ptr n -- ) !" REJECTED
-s" GP-STORE-CTL ( held-twin ptr n -- ) !" REJECTED
+s" MODEL-PAYLOAD-MEMORY-STORE ( model-payload ptr n -- ) !" REJECTED
+s" PLAIN-PAYLOAD-MEMORY-STORE ( plain-payload ptr n -- ) !" REJECTED
 
-\ NOT LINEARITY: a typed local capturing the bundle refuses for the twin too, so this is
+\ NOT LINEARITY: a typed local capturing model-payload rejects plain-payload too, so this is
 \ about capturing a multi-cell layout value in a local. The one-cell control shows typed
 \ locals themselves are fine, which is what makes the pair readable.
-s" a typed local cannot capture either eight-cell bundle (locals, not linearity)" T-LABEL
-s" GP-LOCAL ( held -- held ) {: v:held :} v" REJECTED
-s" GP-LOCAL-CTL ( held-twin -- held-twin ) {: v:held-twin :} v" REJECTED
-s" GP-LOCAL-CELL ( n -- n ) {: v:n :} v" ACCEPTED
+s" a typed local cannot capture either eight-cell payload (locals, not linearity)" T-LABEL
+s" MODEL-PAYLOAD-LOCAL ( model-payload -- model-payload ) {: v:model-payload :} v" REJECTED
+s" PLAIN-PAYLOAD-LOCAL ( plain-payload -- plain-payload ) {: v:plain-payload :} v" REJECTED
+s" SCALAR-LOCAL ( n -- n ) {: v:n :} v" ACCEPTED
 
-\ NOT LINEARITY: forging from a raw cell and leaving a value unconsumed refuse for the
-\ twin too - the first is nominal typing, the second is the declared arity.
-s" a bundle cannot be forged from a raw cell, nor left unconsumed (typing and arity)" T-LABEL
-s" GP-FORGE ( n -- held ) " REJECTED
-s" GP-FORGE-CTL ( n -- held-twin ) " REJECTED
-s" GP-UNCONS ( held -- )" REJECTED
-s" GP-UNCONS-CTL ( held-twin -- )" REJECTED
-\ NOT LINEARITY either: an unbalanced `>r` refuses for the twin, so the strand refusal
-\ is return-stack balance. The linear-specific half of this story is GP-RAT above.
-s" GP-STRAND ( held -- ) >r" REJECTED
-s" GP-STRAND-CTL ( held-twin -- ) >r" REJECTED
+\ NOT LINEARITY: raw-cell construction and leaving a value unconsumed reject
+\ plain-payload too - the first is nominal typing, the second is the declared arity.
+s" a payload cannot be built from a raw cell or left unconsumed (typing and arity)" T-LABEL
+s" MODEL-PAYLOAD-FROM-RAW-CELL ( n -- model-payload ) " REJECTED
+s" PLAIN-PAYLOAD-FROM-RAW-CELL ( n -- plain-payload ) " REJECTED
+s" MODEL-PAYLOAD-UNCONSUMED ( model-payload -- )" REJECTED
+s" PLAIN-PAYLOAD-UNCONSUMED ( plain-payload -- )" REJECTED
+\ NOT LINEARITY either: an unbalanced `>r` rejects plain-payload, so this rejection
+\ is return-stack balance. MODEL-PAYLOAD-RSTACK-COPY above provides the
+\ linear-specific evidence.
+s" MODEL-PAYLOAD-UNBALANCED-RSTACK ( model-payload -- ) >r" REJECTED
+s" PLAIN-PAYLOAD-UNBALANCED-RSTACK ( plain-payload -- ) >r" REJECTED
 
 \ ---------------------------------------------------------------------------------
-\ Construction consumes the model exactly once and mints one bundle.
+\ Construction consumes the model exactly once and creates one model-payload.
 \ ---------------------------------------------------------------------------------
-s" wrapping a real model mints one bundle, through the word and the inline form" T-LABEL
-s" GP-MINT ( GPT2TX:gpt2-model -- held ) GPT2PAY-HELD:MODEL" ACCEPTED
-s" GP-MINT-INLINE ( GPT2TX:gpt2-model -- held ) construct held model" ACCEPTED
-s" GP-MINT-CODE ( n -- held ) GPT2PAY-HELD:EMPTY" ACCEPTED
+s" wrapping a real model creates one model-payload through the word or inline form" T-LABEL
+s" MODEL-PAYLOAD-FROM-MODEL ( GPT2LOAD:gpt2-model -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:MODEL" ACCEPTED
+s" MODEL-PAYLOAD-FROM-MODEL-INLINE ( GPT2LOAD:gpt2-model -- model-payload ) construct model-payload model" ACCEPTED
+s" MODEL-PAYLOAD-FROM-REJECTION ( n -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:REJECTED" ACCEPTED
 
 \ Wrong roles: the payload slot is nominal, so neither variant will take the other's
 \ argument, the two eight-cell families do not substitute for each other, and a MATCH
-\ naming the wrong family refuses rather than reading the tag it happens to share.
+\ naming the wrong family rejects rather than reading the tag it happens to share.
 s" the two variants' payloads cannot cross, and neither can the two families" T-LABEL
-s" GP-ROLE-MODEL-CELL ( n -- held ) GPT2PAY-HELD:MODEL" REJECTED
-s" GP-ROLE-EMPTY-MODEL ( GPT2TX:gpt2-model -- held ) GPT2PAY-HELD:EMPTY" REJECTED
-s" GP-ROLE-TWIN-MODEL ( GPT2TX:gpt2-model -- held-twin ) GPT2PAY-HELD--TWIN:KEY" REJECTED
-s" GP-ROLE-BUNDLE ( held -- held-twin )" REJECTED
-s" GP-ROLE-MATCH-FAM ( held -- n ) MATCH held-twin key OF drop drop drop drop 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
+s" MODEL-PAYLOAD-WRONG-MODEL-CELL ( n -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:MODEL" REJECTED
+s" MODEL-PAYLOAD-WRONG-REJECTION-MODEL ( GPT2LOAD:gpt2-model -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:REJECTED" REJECTED
+s" PLAIN-PAYLOAD-WRONG-MODEL ( GPT2LOAD:gpt2-model -- plain-payload ) GPT2PAYLOAD-PLAIN--PAYLOAD:KEY" REJECTED
+s" MODEL-PAYLOAD-AS-PLAIN-PAYLOAD ( model-payload -- plain-payload )" REJECTED
+s" MODEL-PAYLOAD-MATCH-WRONG-FAMILY ( model-payload -- n ) MATCH plain-payload key OF drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
-s" losing, copying or re-using the model at construction is refused" T-LABEL
-s" GP-CTOR-DROPPED ( GPT2TX:gpt2-model n -- held ) nip GPT2PAY-HELD:EMPTY" REJECTED
-s" GP-CTOR-COPY ( GPT2TX:gpt2-model -- held held ) GPT2PAY-HELD:MODEL dup" REJECTED
-s" GP-CTOR-BRANCH ( GPT2TX:gpt2-model f -- held ) if GPT2PAY-HELD:MODEL then" REJECTED
-s" GP-CTOR-TWICE ( GPT2TX:gpt2-model -- held ) GPT2PAY-HELD:MODEL GPT2PAY-HELD:MODEL" REJECTED
+s" losing, copying or re-using the model at construction is rejected" T-LABEL
+s" MODEL-PAYLOAD-CONSTRUCT-DROPS-MODEL ( GPT2LOAD:gpt2-model n -- model-payload ) nip GPT2PAYLOAD-MODEL--PAYLOAD:REJECTED" REJECTED
+s" MODEL-PAYLOAD-CONSTRUCT-COPIES-MODEL ( GPT2LOAD:gpt2-model -- model-payload model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:MODEL dup" REJECTED
+s" MODEL-PAYLOAD-CONSTRUCT-MISSING-BRANCH ( GPT2LOAD:gpt2-model f -- model-payload ) if GPT2PAYLOAD-MODEL--PAYLOAD:MODEL then" REJECTED
+s" MODEL-PAYLOAD-CONSTRUCT-TWICE ( GPT2LOAD:gpt2-model -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:MODEL GPT2PAYLOAD-MODEL--PAYLOAD:MODEL" REJECTED
 
 \ ---------------------------------------------------------------------------------
-\ MATCH hands the payload to the arm as a linear value the arm must discharge exactly
-\ once. Disposing it through the real production exit is a discharge; so is re-minting
-\ the bundle. Every other ending is refused.
+\ MATCH hands the payload to a branch as a linear value that branch must discharge exactly
+\ once. Disposing it through the real production exit is valid; so is wrapping
+\ the payload. Every other ending is rejected.
 \ ---------------------------------------------------------------------------------
-s" an arm that disposes the model through its real exit certifies" T-LABEL
-s" GP-M-DISPOSE ( held -- n ) MATCH held model OF GPT2TX:MODEL-DISPOSE drop 0 ENDOF empty OF ENDOF ;MATCH" ACCEPTED
-s" GP-M-DISPOSE-READ ( held -- n ) MATCH held model OF GPT2TX:MODEL-DISPOSE MATCH result ok OF ENDOF err OF ENDOF ;MATCH ENDOF empty OF ENDOF ;MATCH" ACCEPTED
-s" and so does an arm that re-mints the bundle" T-LABEL
-s" GP-M-REMINT ( held -- held ) MATCH held model OF GPT2PAY-HELD:MODEL ENDOF empty OF GPT2PAY-HELD:EMPTY ENDOF ;MATCH" ACCEPTED
+s" a MATCH branch that releases the model through its real exit certifies" T-LABEL
+s" MODEL-PAYLOAD-MATCH-RELEASE ( model-payload -- n ) MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
+s" MODEL-PAYLOAD-MATCH-RELEASE-RESULT ( model-payload -- n ) MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL MATCH result ok OF ENDOF err OF ENDOF ;MATCH ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
+s" and so does a branch that wraps the payload again" T-LABEL
+s" MODEL-PAYLOAD-MATCH-REWRAP ( model-payload -- model-payload ) MATCH model-payload model OF GPT2PAYLOAD-MODEL--PAYLOAD:MODEL ENDOF rejected OF GPT2PAYLOAD-MODEL--PAYLOAD:REJECTED ENDOF ;MATCH" ACCEPTED
 
-s" dropping the payload inside the arm is refused, and the twin drops its payload freely" T-LABEL
-s" GP-M-DROP ( held -- n ) MATCH held model OF drop 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
-s" GP-M-DROP-CTL ( held-twin -- n ) MATCH held-twin key OF drop drop drop drop 0 ENDOF empty OF ENDOF ;MATCH" ACCEPTED
+s" dropping the payload inside the branch is rejected, and plain-payload drops freely" T-LABEL
+s" MODEL-PAYLOAD-MATCH-DROP ( model-payload -- n ) MATCH model-payload model OF drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
+s" PLAIN-PAYLOAD-MATCH-DROP ( plain-payload -- n ) MATCH plain-payload key OF drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
 
-s" copying the payload to dispose it twice is refused" T-LABEL
-s" GP-M-DOUBLE ( held -- n ) MATCH held model OF dup GPT2TX:MODEL-DISPOSE drop GPT2TX:MODEL-DISPOSE drop 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
-s" and so is matching the same bundle twice, which needs a copy of the bundle" T-LABEL
-s" GP-M-TWICE ( held -- n n ) dup MATCH held model OF GPT2TX:MODEL-DISPOSE drop 0 ENDOF empty OF ENDOF ;MATCH swap MATCH held model OF GPT2TX:MODEL-DISPOSE drop 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
+s" copying the payload to release it twice is rejected" T-LABEL
+s" MODEL-PAYLOAD-MATCH-RELEASE-TWICE ( model-payload -- n ) MATCH model-payload model OF dup GPT2LOAD:RELEASE-MODEL drop GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
+s" and so is matching the same model-payload twice, which requires a copy" T-LABEL
+s" MODEL-PAYLOAD-MATCH-TWICE ( model-payload -- n n ) dup MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH swap MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
-s" leaving the payload on the row, stranding it, or exiting past it is refused" T-LABEL
-s" GP-M-KEEP ( held -- n ) MATCH held model OF 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
-s" GP-M-ESCAPE ( held -- n ) MATCH held model OF >r 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
-s" GP-M-EXIT ( held -- n ) MATCH held model OF exit ENDOF empty OF ENDOF ;MATCH" REJECTED
+s" leaving the payload on the row, stranding it, or exiting past it is rejected" T-LABEL
+s" MODEL-PAYLOAD-MATCH-KEEP-PAYLOAD ( model-payload -- n ) MATCH model-payload model OF 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
+s" MODEL-PAYLOAD-MATCH-RSTACK-ESCAPE ( model-payload -- n ) MATCH model-payload model OF >r 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
+s" MODEL-PAYLOAD-MATCH-EARLY-EXIT ( model-payload -- n ) MATCH model-payload model OF exit ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
-s" unpacking the model inside the arm keeps the obligation on its residency" T-LABEL
-s" GP-M-UNMAKE ( held -- n ) MATCH held model OF GPT2TX-GPT2--MODEL:UNMAKE drop drop drop drop 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
+s" unpacking the model inside the branch keeps the obligation on its residency" T-LABEL
+s" MODEL-PAYLOAD-MATCH-UNMAKE-MODEL ( model-payload -- n ) MATCH model-payload model OF GPT2LOAD-GPT2--MODEL:UNMAKE drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
 \ NOT LINEARITY: MATCH consumes what it matches for every family, so keeping the
-\ scrutinee refuses for the twin as well.
-s" the matched bundle itself cannot survive its own MATCH (MATCH consumes, not linearity)" T-LABEL
-s" GP-M-KEPT ( held -- held n ) MATCH held model OF GPT2TX:MODEL-DISPOSE drop 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
-s" GP-M-KEPT-CTL ( held-twin -- held-twin n ) MATCH held-twin key OF drop drop drop drop 0 ENDOF empty OF ENDOF ;MATCH" REJECTED
+\ matched input value is rejected for plain-payload as well.
+s" a model-payload value cannot survive its own MATCH (MATCH consumes, not linearity)" T-LABEL
+s" MODEL-PAYLOAD-MATCH-KEEP-INPUT ( model-payload -- model-payload n ) MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
+s" PLAIN-PAYLOAD-MATCH-KEEP-INPUT ( plain-payload -- plain-payload n ) MATCH plain-payload key OF drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
 \ ---------------------------------------------------------------------------------
-\ KNOWN GAP: `throw` abandons a linear value held by a MATCH arm.
+\ KNOWN GAP: `throw` abandons a linear value owned by a MATCH branch.
 \
 \ The three pins below are written as ACCEPT deliberately - they record what the checker
-\ certifies TODAY, in the MODELPROV T-KNOWN-GAP / GPT2TX-DR convention. An arm that
-\ throws while still holding the model certifies, and so does an arm that catches a
+\ certifies today, in the MODELPROV T-KNOWN-GAP / GPT2LOAD-OUTSIDE-TEST convention. A branch that
+\ throws while still owning the model certifies, and so does a branch that catches a
 \ throw and carries on. On the throw edge the payload is simply abandoned: nothing
-\ disposes it, and a surrounding catch resumes with the checkpoint mapping stranded and
+\ releases it, and a surrounding catch resumes with the checkpoint mapping stranded and
 \ no handle left to reach it.
 \
 \ This is not something the linear-payload capability introduced. It is the engine-wide
 \ behaviour recorded as finding 6 of .blackboard/txn-v2-plan-20260726.md ("throw abandons
-\ linears in MATCH arms and quotations", measured byte-identical on the parent engine),
-\ and its real fix is that plan's pillar B, checker-enforced linear-scope quotations - a
-\ quotation shape that guarantees threaded owners are returned or disposed on every edge
-\ including throw. When that capability lands these three legs FAIL, and that failure is
+\ linears in MATCH branches and quotations", measured byte-identical on the parent engine).
+\ The real fix is checker-enforced linear-scope quotations: a
+\ quotation shape that guarantees threaded owners are returned or released on every edge
+\ including throw. When that capability lands these three tests fail, and that failure is
 \ the signal to turn them into REJECTED and delete this banner.
 \
 \ Nothing here guards or works around the gap, and the runtime consequence is
-\ deliberately not executed: driving the throw edge over the real model would strand the
-\ 548 MB checkpoint mapping for the rest of the process with no handle to recover it.
+\ deliberately not executed: driving the throw edge over the real model would abandon the
+\ 548 MB checkpoint mapping for the rest of the process with no handle to restore it.
 \
 \ The throw code in these candidates is never thrown - a candidate is checked, never
 \ run - so it is written as a bare cell rather than borrowed from a module's range.
 \ ---------------------------------------------------------------------------------
-s" KNOWN GAP: an arm that throws while holding the model certifies, abandoning it" T-LABEL
-s" GP-GAP-THROW ( held -- n ) MATCH held model OF -5699 throw ENDOF empty OF ENDOF ;MATCH" ACCEPTED
-s" KNOWN GAP: and a catch inside the arm resumes past the throw, model still held" T-LABEL
-s" GP-GAP-CATCH ( held -- n ) MATCH held model OF [: -5699 throw ;] catch drop GPT2TX:MODEL-DISPOSE drop 0 ENDOF empty OF ENDOF ;MATCH" ACCEPTED
-s" CONTROL: the throw edge is accepted for the twin too, so the gap is the ABANDONED" T-LABEL
-s" owner and not the throw" T-LABEL
-s" GP-GAP-THROW-CTL ( held-twin -- n ) MATCH held-twin key OF drop drop drop drop -5699 throw ENDOF empty OF ENDOF ;MATCH" ACCEPTED
-s" CONTROL: an arm that disposes BEFORE it throws is legitimate, not a gap" T-LABEL
-s" GP-GAP-THROW-AFTER ( held -- n ) MATCH held model OF GPT2TX:MODEL-DISPOSE drop -5699 throw ENDOF empty OF ENDOF ;MATCH" ACCEPTED
+s" KNOWN GAP: a branch that throws while owning the model certifies, abandoning it" T-LABEL
+s" MODEL-PAYLOAD-THROW-GAP ( model-payload -- n ) MATCH model-payload model OF -5699 throw ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
+s" KNOWN GAP: a catch inside the branch resumes past the throw while the branch still owns the model" T-LABEL
+s" MODEL-PAYLOAD-CATCH-GAP ( model-payload -- n ) MATCH model-payload model OF [: -5699 throw ;] catch drop GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
+s" CONTROL: plain-payload accepts the throw edge, so the gap is the abandoned owner" T-LABEL
+s" PLAIN-PAYLOAD-THROW ( plain-payload -- n ) MATCH plain-payload key OF drop drop drop drop -5699 throw ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
+s" CONTROL: a branch that releases before it throws is legitimate, not a gap" T-LABEL
+s" MODEL-PAYLOAD-RELEASE-THEN-THROW ( model-payload -- n ) MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL drop -5699 throw ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
 
-\ ---- the real-model leg --------------------------------------------------------
-\ Presence-gated the way the other real-checkpoint legs are (gpt2-check-test.f,
-\ gpt2-alloc-test.f), so a host without the 548 MB artifact reports the skip loudly
+\ ---- the real-model test ------------------------------------------------------
+\ Presence-gated the way the other real-checkpoint tests are (gpt2-mapped-test.f,
+\ gpt2-copy-test.f), so a host without the 548 MB artifact reports the skip loudly
 \ instead of failing. Everything above runs unconditionally.
 : RUN ( -- )
-   PATH SAFET:PRESENT? if
+   CHECKPOINT-PATH SAFET:PRESENT? if
       T-REAL-PAYLOAD
    else
-      s" gpt2-payload: gpt2-model/model.safetensors absent -> real-model leg SKIPPED" type cr
+      s" gpt2-payload: gpt2-model/model.safetensors absent -> real-model test SKIPPED" type cr
    then ;
 
 RUN

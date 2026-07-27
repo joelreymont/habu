@@ -8,23 +8,23 @@ Verification context: repair-control exact-tree verification, DGX Spark linux-ar
 The active goal is serving large models on DGX Spark (a vLLM replacement),
 built as checked Habu Forth. The GPT-2 loading chain is landed on master and
 destruction-reviewed end to end: real 548 MB checkpoint (all tensors F32,
-census 160) → safetensors mapping → tensor census → the GPT2TX bind
-transaction (PREPARE → CHECK → COMMIT, both arms: zero-copy mapped and
-packed-arena allocated, with total commits, compare-and-retype witnesses, and
-disposal returning every byte) → a linear gpt2-model value. The checker now
-accepts linear payloads in unified ENUM/STRUCTURE declarations (guard deletion,
-twice-reviewed), which the bind result type consumes directly.
+160 tensors) → safetensors file mapping and parsed tensor index → GPT2LOAD
+`PREPARE` → either `CHECK-MAPPED → LOAD-MAPPED` or
+`CHECK-COPY → LOAD-COPIED` → a linear `gpt2-model`. Failed checks return their
+owned input unchanged. Ordinary release paths return their owned resources, and
+the copied path cleans up partial allocations when release succeeds. A release
+can still throw `E-MEM-UNMAP` and interrupt later cleanup; that total-release
+fix is tracked by `habu-make-owned-release-79de2b5c`. The checker accepts linear payloads in unified
+`ENUM` and `STRUCTURE` declarations, which the loader tests exercise directly
+with the model.
 
-In flight, in landing order: the linear-payload capability train; the sealed
-destructure and linear-scope checker capabilities (decomposed into dotted
-leaves); the transaction-layer redesign (total owned release with an
-uncatchable fatal path, per-call linear transaction contexts replacing global
-scratch, scoped mutable buffer access, owner-preserving resident reads) per
-`.blackboard/txn-v2-plan-20260726.md`; signature-lint dynamic input; then BIND
-(built, holding in its lane) and GPT-2 forward + greedy decode on the mapped
-arm. The allocated arm is a host oracle; production device residency
-(cuMemAlloc, bounded streaming, peak of model plus one in-flight chunk) is a
-frozen leaf ahead of modern-dense serving.
+In flight, in landing order: sealed-destructure and linear-scope checker
+capabilities; owned-release and model-store work tracked by
+`habu-make-owned-release-79de2b5c` and `habu-embed-store-in-f8109695`;
+signature-lint dynamic input; then GPT-2 forward execution and greedy decode
+on mapped storage. Copied storage is the host oracle; production device
+residency (cuMemAlloc, bounded streaming, peak of model plus one in-flight
+chunk) is a planned task ahead of modern-dense serving.
 
 ## Gate state
 

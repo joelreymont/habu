@@ -225,40 +225,32 @@ private
       \ habu-v2-differential-runner-13359019); the RAW>EVIDENCE-ID shape - content-addressed
       \ by the DifferentialSuite digest.
       59 of s" RAW>SUITE-ID" endof         \ content-addressed by the interned suite digest
-      \ The GPT-2 bind transaction's prepared value (leaf S6b1) parks its two
-      \ linear children - the moved census and the sealed slot table - in the prep
-      \ block as raw cells, because a DEFLINEAR carries no fields and an ENUM
-      \ payload field cannot name a record transitively holding a linear field.
-      \ These two read them back out, each reachable only from GPT2TX:ABORT.
+      \ The GPT-2 checkpoint loader stores its parsed tensor index and sealed
+      \ slot table in the prepared-load block as raw cells. These two private
+      \ words restore the owners only for GPT2LOAD transitions and exits.
       \ Both retire with the linear-scope combinator capability,
       \ habu-checker-linear-scope-6218899c.
-      60 of s" N>CENSUS" endof             \ the sole inverse of CENSUS>N, reached only by ABORT
-      61 of s" N>TABLE" endof              \ the sole inverse of TABLE>N, reached only by ABORT
-      \ WSTORE's residency handle holds a whole store as ONE cell, because a bound
-      \ model cannot carry a store as a field - a compound field may not transitively
-      \ contain a linear owner. The held arm's own owner is parked in the handle's
-      \ block as a raw cell, and these two read it back; each is reachable only from
+      60 of s" CELL>TENSOR-INDEX" endof    \ sole inverse of TENSOR-INDEX>CELL
+      61 of s" CELL>TABLE" endof           \ sole inverse of TABLE>CELL
+      \ WSTORE's residency handle holds a whole store as ONE cell because a loaded
+      \ model field names one value while the store is three cells wide. The current
+      \ storage owner is stored in the resident block as a raw cell, and these two
+      \ words read it back; each is reachable only from
       \ WSTORE:RESIDENT-DISPOSE, the single word that ends a resident's life. Both
       \ retire with the linear-scope combinator, habu-checker-linear-scope-6218899c.
-      62 of s" N>MAP" endof                \ the sole inverse of MAP>N (mapped arm)
-      63 of s" N>BUF" endof                \ the sole inverse of BUF>N (allocated arm)
-      \ The GPT-2 bind transaction's COMPARED prep (leaf S6b3) parks the file mapping
-      \ it moved out of the census in its own block as a raw cell; this reads it back,
-      \ reachable only from the two words that end a checked prep's life
-      \ (GPT2TX:ABORT-CHECKED and GPT2TX:COMMIT-MAPPED). Retires with the linear-scope
-      \ combinator, habu-checker-linear-scope-6218899c.
-      64 of s" N>MAPPING" endof            \ the sole inverse of MAPPING>N
-      \ The ALLOCATED arm of the same transaction (leaf S6b2) parks the weight arena's
-      \ buffer the same way and for the same reason: COMMIT-ALLOCATED still has guarded
-      \ steps to run after the buffer exists, and a caught quotation must be stack-neutral,
-      \ so a linear owner cannot be handed from one guarded step to the next as a value.
-      \ Reachable only from the unwind rung that disposes it and the success path that
-      \ hands it to the allocated store constructor. Retires with the same linear-scope
-      \ combinator, habu-checker-linear-scope-6218899c.
-      68 of s" N>BUFFER" endof             \ the sole inverse of BUFFER>N
-      \ The three private-mint PROOF tokens of the inference intake path. Each is the
-      \ sole constructor of an arity-0 nominal family that rides inside a validated
-      \ record - MDLCFG:mcfg, GPT2TENSOR:layer-id, GPT2TX:gpt2-model - and each is what
+      62 of s" N>MAP" endof                \ the sole inverse of MAP>N (mapped variant)
+      63 of s" N>BUF" endof                \ the sole inverse of BUF>N (allocated variant)
+      \ CHECK-MAPPED stores the checkpoint mapping in the mapped-ready block.
+      \ This private word restores it only for DISCARD-MAPPED or LOAD-MAPPED.
+      \ Retires with habu-checker-linear-scope-6218899c.
+      64 of s" CELL>MAPPING" endof         \ sole inverse of MAPPING>CELL
+      \ LOAD-COPIED stores its owned copy buffer while later fallible steps run.
+      \ This private word restores it exactly once for cleanup or successful
+      \ store construction. Retires with the same linear-scope capability.
+      68 of s" CELL>BUFFER" endof          \ sole inverse of BUFFER>CELL
+      \ The three private proof makers of the inference intake path. Each is the
+      \ only constructor of an arity-0 nominal family inside a validated
+      \ record - MDLCFG:mcfg, GPT2TENSOR:layer-id, GPT2LOAD:gpt2-model - and each is what
       \ makes that record unforgeable from nothing outside its package. They are seeded
       \ so the confinement is name-and-path enforced rather than resting on the family
       \ being private: a copy of any of them appearing in another file is a finding.
@@ -267,7 +259,7 @@ private
       \ That is the sealed-destructure capability, habu-checker-sealed-destructure-d967fc03.
       65 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
       66 of s" MINT-LAYER-PROOF" endof      \ seals an authenticated GPT2TENSOR:layer-id
-      67 of s" MINT-MDL-PROOF" endof       \ seals a bound GPT2TX:gpt2-model
+      67 of s" MAKE-MODEL-PROOF" endof     \ seals a loaded GPT2LOAD:gpt2-model
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -333,15 +325,15 @@ private
       57 of s" maki/db/capability.f" endof
       58 of s" maki/experiment/run.f" endof
       59 of s" maki/db/diff-suite-id.f" endof
-      60 of s" maki/infer/gpt2-bind.f" endof
-      61 of s" maki/infer/gpt2-bind.f" endof
+      60 of s" maki/infer/gpt2-load.f" endof
+      61 of s" maki/infer/gpt2-load.f" endof
       62 of s" maki/infer/weight-store.f" endof
       63 of s" maki/infer/weight-store.f" endof
-      64 of s" maki/infer/gpt2-bind.f" endof
+      64 of s" maki/infer/gpt2-load.f" endof
       65 of s" maki/infer/model-config.f" endof
       66 of s" maki/infer/gpt2-tensor.f" endof
-      67 of s" maki/infer/gpt2-bind.f" endof
-      68 of s" maki/infer/gpt2-bind.f" endof
+      67 of s" maki/infer/gpt2-load.f" endof
+      68 of s" maki/infer/gpt2-load.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
