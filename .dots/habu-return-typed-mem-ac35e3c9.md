@@ -1,9 +1,61 @@
 ---
-title: Return typed memory allocation outcomes
+title: Make SAFET mapping detach total
 status: active
 priority: 1
 issue-type: task
 created-at: "\"2026-07-22T16:06:15.121298+02:00\""
 ---
 
-Why: safetensors needs nonthrowing record allocation before an owner exists, but a public raw mmap n-plus-length sentinel would expose address refinement and force every caller to repeat it. Exact interface: package MEM owns allocation-result with allocated(ptr u8, CAD-NUM:alloc-byte-len) and refused(rc, CAD-NUM:alloc-byte-len); MEM:TRY-ALLOC-BYTES consumes one validated positive allocation length and returns that exhaustive result. Only MEM refines a successful mmap address to ptr u8; refusal preserves the exact negative operating-system result as rc and the exact typed length; no raw MEM:ALLOC-BYTES-RC API is published. Existing throwing MEM:ALLOC-BYTES remains a policy wrapper over the same primitive behavior. Owned result: the result family, total allocator, focused success and real refusal tests, manifest/docs/FILEMAP updates. Acceptance: callers must MATCH both arms; success can release the exact span; refusal returns no pointer; checked negatives reject treating refused as allocated or swapping rc and length; safetensors consumes this result and immediately mints its private record owner. Smallest check: bin/hb --load lib/memory-test.f. Depends: none. Ownership: lib/memory.f, lib/memory-test.f, lib/std.manifest, docs/stdlib.md, FILEMAP.md. Claim: agent=mem_alloc_result_impl workspace=.jj-ws/mem-alloc-result-impl.
+Why: `SAFET:DETACH-MAPPING` allocates its mapping record after a census has
+been published. Allocation can throw after consuming a linear census, so every
+mapped GPT-2 bind carries recovery state solely for that late allocation.
+
+Owner and interface: package `SAFET` owns public payload ENUM `map-take` with
+exact arms `moved(FIELD m SAFET:mapping)` and `empty`. Change
+`DETACH-MAPPING` to
+`( SAFET:census -- SAFET:census SAFET:map-take )`. No compatibility wrapper,
+sentinel mapping, public representation reader, memory injector, or new MEM API
+survives.
+
+Behavior: append one private reserved-record pointer cell to the SAFET session
+block without shifting any existing field or region offset. After a complete
+header parse, allocate the three-cell mapping record before setting `PARSED`.
+Repeated parses reuse the reservation. A parse or reservation failure leaves
+the session unpublished and closeable through the existing `PARSE`, `LOAD`, and
+`LOAD-SPAN` failure paths. `CLOSE` and `RELEASE` free an unused reservation.
+The first detach takes the reservation, fills it, clears the census image,
+increments the mapping-owner count, and returns `moved`; later detaches return
+`empty` without allocating, minting an owner, changing counters, or touching
+the kernel mapping. `UNMAP-MAPPING` continues to consume only a real moved
+mapping.
+
+Caller cutover: migrate every direct caller in `maki/infer` and its tests in
+the same stack; no old result shape remains. GPT2TX `CHECK` compares identity
+first, then detaches without `catch`. Its `moved` arm releases the imageless
+census and mints `checked-prep`; its defensive `empty` arm rebuilds the intact
+prep and returns `E-GX-IMAGE`. Delete `PEND-CEN`, `PEND-MAP`, `DETACH-STEP`,
+the late `E-MEM-MAP` contract, and all assertions that a second detach creates
+an empty mapping owner.
+
+Checkpoint: prove clean current `master@origin`; green SAFET, WSTORE,
+GPT2 bind, check, and allocated baselines; one failing production-path
+regression for `moved|empty`; and the package gate on a representative change.
+Stop if the unified ENUM cannot carry the linear mapping or if any caller needs
+a new public interface.
+
+Acceptance: real `LOAD`, `LOAD-SPAN`, and direct `PARSE` paths prove
+reservation precedes publication, cleanup restores owner/map counters, and a
+retry succeeds. First detach is `moved`; second is `empty`; owned and adopted
+images support both census/mapping disposal orders. An allocator-failure
+mutation at reservation makes the real parse path fail before publication and
+leak nothing. Mutations moving allocation back into detach, omitting reserved
+record release, omitting reserve clear, or fabricating a second owner fail.
+SAFET, WSTORE, GPT2 bind/check/allocated, Maki, both diff lints, trust/refine,
+error-code, file-map, host, suite-coverage, and dot gates pass.
+
+The former typed-MEM outcome commits are rejected evidence only: the native
+syscall boundary normalizes failures to `-1`, the outcome was freely
+duplicable/droppable, and SAFET never consumed it. This design removes that API
+and its claimed need.
+
+Claim: agent=safet-map-take workspace=.jj-ws/habu-return-typed-mem-ac35e3c9
