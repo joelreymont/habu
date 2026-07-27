@@ -15,8 +15,8 @@ Checkpoint:
 1. Owner: Rocq module `Habu.Common.IdAllocatorLaws`; model dependency `Habu.Common.IdAllocator`.
 2. Entry: `formal/Common/IdAllocatorLaws.v`.
 3. Green: clean compilation of `Ids.v` and `IdAllocator.v`.
-4. Red: extending that compile with `IdAllocatorLaws.v` fails before the theorem file and theorem-local `Print Assumptions` evidence exist.
+4. Red: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocator.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocatorLaws.v`; the third command fails before the theorem file and theorem-local `Print Assumptions` evidence exist.
 5. Interface: monotonicity, nonzero, uniqueness, stale-retry, exhaustion-before-wrap, and host-refinement theorems, mutation counterexamples, and local assumption output.
 6. Forbidden: stronger CAS axioms, hidden or renamed assumptions, weakened interleavings, post-wrap rejection, a committed report, parity work, Habu edits, or Admitted.
-7. Focused: `rocq compile -Q formal Habu formal/Common/Ids.v formal/Common/IdAllocator.v formal/Common/IdAllocatorLaws.v`, checking local assumptions output.
+7. Focused: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocator.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocatorLaws.v`, checking local assumptions output.
 8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, file-map, stale-status, and dot dependency gates.

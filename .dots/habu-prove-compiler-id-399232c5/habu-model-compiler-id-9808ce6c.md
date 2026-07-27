@@ -15,8 +15,8 @@ Checkpoint:
 1. Owner: Rocq module `Habu.Common.IdAllocator`; corresponding `IR-ID` serial cell.
 2. Entry: `formal/Common/IdAllocator.v` after `Habu.Common.Ids`.
 3. Green: accepted IR-0.1 allocator/concurrency suite plus compiled `Ids.v`.
-4. Red: `rocq compile -Q formal Habu formal/Common/Ids.v formal/Common/IdAllocator.v` fails because the allocator model does not exist.
+4. Red: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocator.v`; the second command fails because the allocator model does not exist.
 5. Interface: aligned cell, CAS result and pure transition, guarded next step, attempt result, interleaved runner, and named host-CAS/linearizability boundary.
 6. Forbidden: resettable or per-context serials, post-add overflow checks, wrapping, non-atomic transitions, hidden axioms, allocator theorems, Habu edits, or a committed assumptions report.
-7. Focused: `rocq compile -Q formal Habu formal/Common/Ids.v formal/Common/IdAllocator.v`.
+7. Focused: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdAllocator.v`.
 8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, file-map, stale-status, and dot dependency gates.
