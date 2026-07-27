@@ -70,10 +70,9 @@ variable TI
    ENUM-CENSUS:REPORT$ 2swap CONTAINS? ;
 
 \ ---------------------------------------------------------------------------
-\ 1. Imitations. A line comment, a paren comment, a string literal, a definition
-\    name and four escaped references all spell ENUM; none is a declaration. One
-\    real declaration sits at the end, so a scanner that saw nothing at all would
-\    fail this case too.
+\ 1. Imitations. Comments, a string, direct definition names, and four escaped
+\    references all spell ENUM; none is a declaration. One real declaration
+\    sits at the end, so a scanner that saw nothing at all would fail too.
 \ ---------------------------------------------------------------------------
 : FIXTURE-IMITATIONS ( -- )
    RESET-SRC
@@ -81,6 +80,7 @@ variable TI
    s" ( ENUM parenthesised red green ;ENUM )" LINE
    s" : QUOTED ( -- ptr u8 n ) s" PUT DQ s"  ENUM instring red ;ENUM" PUT DQ s"  ;" LINE
    s" : ENUM ( -- ) ;" LINE
+   s" 3 constant ENUM" LINE
    s" : REFS ( -- ) ' ENUM drop ['] ENUM drop ;" LINE
    s" : MORE-REFS ( -- ) postpone ENUM ; immediate" LINE
    s" : CHARS ( -- ) char ENUM drop [char] ENUM drop ;" LINE

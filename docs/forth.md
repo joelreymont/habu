@@ -142,16 +142,16 @@ new-side hunk line against the current file, reconstructs the complete old side
 from those canonical diff events, and lexes both complete sources. A package
 opener outside the hunk is therefore authoritative, while comment, string,
 definition-body, or diff-header text on either side cannot forge a boundary.
-Its publication inventory is derived from the native dictionary definers, the
+The shared `tools/lint/def.f` inventory classifies native dictionary definers,
 checker-owned type and storage declarers, every repository defining word that
 executes `create`, and every repository declarer that generates definitions
-through the audited `evaluate` boundaries. The focused fixture names every form
-in that inventory. Parser grammars that only add rows to an owning registry are
-not word definitions: `PRIM:` and `PPRIM:` add checker axioms; `SUITE`, `GROUP`,
-and `SUITE-STDIN` add test-runner rows; `VJP:` adds an automatic-differentiation
+through the audited `evaluate` boundaries. Its focused fixture names all 57
+forms; package and authority lints consume that one structural classifier.
+Parser grammars that only add rows to an owning registry are not word
+definitions: `PRIM:` and `PPRIM:` add checker axioms; `SUITE`, `GROUP`, and
+`SUITE-STDIN` add test-runner rows; `VJP:` adds an automatic-differentiation
 row; and `GRID:` and `WHERE` consume kernel-header metadata. Their labels do not
-become callable dictionary words, so the package-definition lint deliberately
-does not classify them as definers.
+become callable dictionary words, so the shared classifier omits them.
 
 The complete-file global exceptions are exact paths, not directory rules:
 

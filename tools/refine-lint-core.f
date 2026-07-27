@@ -43,6 +43,7 @@
 
 require lib/vector.f
 require tools/lint/source-lex.f
+require tools/lint/def.f
 
 package RFL
 
@@ -92,10 +93,12 @@ variable LINE
 variable TOK-I
 variable CUR-A
 variable CUR-U
-variable PACKAGE-PENDING
 variable PACKAGE-LINE
 variable PACKAGE-KIND
-variable PACKAGE-PUBLIC
+variable PACKAGE-OPEN
+variable DEF-OPEN
+variable DEF-KIND
+variable DEF-LINE
 
 : STR-A-FIELD ( -- ptr ptr u8 ) STR-A 0 ptr-field ;
 : FILE-A-FIELD ( -- ptr ptr u8 ) FILE-A 0 ptr-field ;
@@ -658,7 +661,7 @@ private
    a u s" IR-RAW" LINT-STR=CI if PKG-IR-RAW exit then
    PKG-OTHER ;
 
-: COMPILER-PUBLIC-PKG? ( n -- bool )
+: COMPILER-API-PKG? ( n -- bool )
    dup PKG-IR-ID >= swap PKG-GPU-IR <= and ;
 
 : COMPILER-PKG? ( ptr u8 n -- bool )
@@ -770,28 +773,76 @@ private
    then
    BAD+ ;
 
-: RAW-PUBLICATION-HIT ( -- )
+: RAW-AUTHORITY-HIT ( -- )
    REPORT? @ if
-      s" REFINE-IR-PUBLIC " OUT
+      s" REFINE-IR-RAW " OUT
       CUR$ OUT COLON C LINE @ U.
       s" : `" OUT TOK$ OUT
-      s" ` publishes or references a frozen raw IR authority name" OUT NL
+      s" ` defines or qualifies a frozen raw IR authority name" OUT NL
    then
    BAD+ ;
 
-: PENDING-PACKAGE-HIT ( -- )
+: MISSING-PACKAGE-NAME-HIT ( -- )
    REPORT? @ if
-      s" REFINE-PACKAGE-END " OUT
-      CUR$ OUT COLON C PACKAGE-LINE @ U.
-      s" : package has no name before file boundary" OUT NL
+      s" REFINE-PACKAGE-NAME " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : package has no atomic name" OUT NL
    then
    BAD+ ;
 
-: UNCLOSED-IR-RAW-HIT ( -- )
+: PACKAGE-NAME-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-NAME " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : package name is a delimiter or contains `:`" OUT NL
+   then
+   BAD+ ;
+
+: NESTED-PACKAGE-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-NEST " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : nested package opener is forbidden" OUT NL
+   then
+   BAD+ ;
+
+: STRAY-PACKAGE-END-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-STRAY " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : stray ;package has no open package" OUT NL
+   then
+   BAD+ ;
+
+: STRAY-PACKAGE-MODE-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-STRAY " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : public or private appears outside a package" OUT NL
+   then
+   BAD+ ;
+
+: UNCLOSED-PACKAGE-HIT ( -- )
    REPORT? @ if
       s" REFINE-PACKAGE-END " OUT
       CUR$ OUT COLON C PACKAGE-LINE @ U.
-      s" : package IR-RAW is unclosed at file boundary" OUT NL
+      s" : package is unclosed at file boundary" OUT NL
+   then
+   BAD+ ;
+
+: DEFINITION-SYNTAX-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-DEFINITION " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : defining word or EXPORT lacks its atomic operand" OUT NL
+   then
+   BAD+ ;
+
+: UNCLOSED-DEFINITION-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-DEFINITION " OUT
+      CUR$ OUT COLON C DEF-LINE @ U.
+      s" : definition is unclosed at file boundary" OUT NL
    then
    BAD+ ;
 
@@ -803,60 +854,144 @@ private
    then
    BAD+ ;
 
-: PACKAGE-NAME ( -- )
-   LINT-FALSE PACKAGE-PENDING !
+: BAD-PACKAGE-NAME? ( -- bool )
+   PACKAGE-TOK? if LINT-TRUE exit then
+   PACKAGE-END-TOK? if LINT-TRUE exit then
+   TOK$ COLON LINT-COUNT-CHAR 0= 0= ;
+
+: PACKAGE-START ( -- )
+   PACKAGE-OPEN @ {: nested:bool :}
+   nested if NESTED-PACKAGE-HIT then
+   TOK-I @ 1+ dup LINT-LEX:COUNT >= if
+      drop MISSING-PACKAGE-NAME-HIT
+      exit
+   then
+   TOK-I !
+   TOK-I @ LINT-LEX:LINE@ LINE !
+   TOK-I @ LINT-LEX:KIND@ LINT-LEX:WORD <> if
+      PACKAGE-NAME-HIT
+      exit
+   then
+   BAD-PACKAGE-NAME? if PACKAGE-NAME-HIT exit then
+   nested if exit then
    TOK$ PACKAGE-KIND-OF PACKAGE-KIND !
-   LINT-FALSE PACKAGE-PUBLIC !
+   LINT-TRUE PACKAGE-OPEN !
+   LINE @ PACKAGE-LINE !
    PACKAGE-KIND @ PKG-IR-RAW = if
       IR-RAW-PATH? 0= if IR-RAW-HIT then
    then ;
 
+: PACKAGE-END ( -- )
+   PACKAGE-OPEN @ 0= if
+      STRAY-PACKAGE-END-HIT
+      exit
+   then
+   LINT-FALSE PACKAGE-OPEN !
+   PKG-OTHER PACKAGE-KIND ! ;
+
+: START-DEFINITION ( n -- ) {: kind:n :}
+   TOK-I @ LINT-DEF:NAME-I
+   MATCH option
+      none OF
+         PACKAGE-OPEN @ if DEFINITION-SYNTAX-HIT then
+      ENDOF
+      some OF {: namei:n :}
+         namei TOK-I !
+         namei LINT-LEX:LINE@ LINE !
+         MATCH-TOKEN
+         TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT then
+         PACKAGE-KIND @ COMPILER-API-PKG? if
+            TOK$ RAW-NAME? if RAW-AUTHORITY-HIT then
+         then
+         kind LINT-DEF:DATA <> if
+            kind DEF-KIND !
+            LINE @ DEF-LINE !
+            LINT-TRUE DEF-OPEN !
+         then
+      ENDOF
+   ;MATCH ;
+
+: RAW-ALIAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u COLON LINT-COUNT-CHAR
+   dup 0= if drop a u RAW-NAME? exit then
+   1 <> if LINT-FALSE exit then
+   a u COLON LINT-INDEX-OF
+   MATCH option
+      none OF LINT-FALSE ENDOF
+      some OF {: i:n :}
+         i 0= i u 1- = or if LINT-FALSE exit then
+         a i 1+ + u i - 1- RAW-NAME?
+      ENDOF
+   ;MATCH ;
+
+: MATCH-EXPORT ( -- )
+   TOK-I @ LINT-DEF:EXPORT-I
+   MATCH option
+      none OF DEFINITION-SYNTAX-HIT ENDOF
+      some OF {: namei:n :}
+         namei TOK-I !
+         namei LINT-LEX:LINE@ LINE !
+         PACKAGE-OPEN @ 0= if exit then
+         MATCH-TOKEN
+         TOK$ QUALIFIED-RAW? if
+            RAW-AUTHORITY-HIT
+         else
+            PACKAGE-KIND @ COMPILER-API-PKG? if
+               TOK$ RAW-ALIAS? if RAW-AUTHORITY-HIT then
+            then
+         then
+      ENDOF
+   ;MATCH ;
+
+: MATCH-DEFINITION-BODY ( -- )
+   TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT else MATCH-TOKEN then
+   TOK-I @ DEF-KIND @ LINT-DEF:CLOSE? if LINT-FALSE DEF-OPEN ! then ;
+
 : MATCH-WORD ( -- )
-   PACKAGE-PENDING @ if
-      PACKAGE-NAME
+   DEF-OPEN @ if
+      MATCH-DEFINITION-BODY
       exit
    then
    PACKAGE-TOK? if
-      LINT-TRUE PACKAGE-PENDING !
-      LINE @ PACKAGE-LINE !
+      PACKAGE-START
       exit
    then
    PACKAGE-END-TOK? if
-      PKG-OTHER PACKAGE-KIND !
-      LINT-FALSE PACKAGE-PUBLIC !
+      PACKAGE-END
       exit
    then
    PUBLIC-TOK? if
+      PACKAGE-OPEN @ 0= if STRAY-PACKAGE-MODE-HIT exit then
       PACKAGE-KIND @ PKG-IR-RAW = if IR-RAW-PUBLIC-HIT then
-      LINT-TRUE PACKAGE-PUBLIC !
       exit
    then
    PRIVATE-TOK? if
-      LINT-FALSE PACKAGE-PUBLIC !
+      PACKAGE-OPEN @ 0= if STRAY-PACKAGE-MODE-HIT then
       exit
    then
-   TOK$ QUALIFIED-RAW? if RAW-PUBLICATION-HIT exit then
-   PACKAGE-PUBLIC @ PACKAGE-KIND @ COMPILER-PUBLIC-PKG? and if
-      TOK$ RAW-NAME? if RAW-PUBLICATION-HIT exit then
+   TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT exit then
+   TOK-I @ LINT-DEF:EXPORT? if MATCH-EXPORT exit then
+   TOK-I @ LINT-DEF:DIRECT-KIND dup LINT-DEF:NONE <> if
+      START-DEFINITION exit
    then
+   drop
    MATCH-TOKEN ;
 
 : SCAN-SOURCE ( ptr u8 n -- )
-   LINT-FALSE PACKAGE-PENDING !
-   LINT-FALSE PACKAGE-PUBLIC !
+   LINT-FALSE PACKAGE-OPEN !
+   LINT-FALSE DEF-OPEN !
    PKG-OTHER PACKAGE-KIND !
    0 PACKAGE-LINE !
    LINT-LEX:SOURCE
-   LINT-LEX:ERROR? if SOURCE-LEX-HIT then
-   0 begin dup LINT-LEX:COUNT < while
-      dup TOK-I !
-      dup LINT-LEX:LINE@ LINE !
-      dup LINT-LEX:KIND@ LINT-LEX:WORD = if MATCH-WORD then
-      1+
+   LINT-LEX:ERROR? if SOURCE-LEX-HIT exit then
+   0 TOK-I !
+   begin TOK-I @ LINT-LEX:COUNT < while
+      TOK-I @ LINT-LEX:LINE@ LINE !
+      TOK-I @ LINT-LEX:KIND@ LINT-LEX:WORD = if MATCH-WORD then
+      TOK-I @ 1+ TOK-I !
    repeat
-   drop
-   PACKAGE-PENDING @ if PENDING-PACKAGE-HIT then
-   PACKAGE-KIND @ PKG-IR-RAW = if UNCLOSED-IR-RAW-HIT then ;
+   DEF-OPEN @ if UNCLOSED-DEFINITION-HIT then
+   PACKAGE-OPEN @ if UNCLOSED-PACKAGE-HIT then ;
 
 : SCAN-STR ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    pa pu CUR!

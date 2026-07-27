@@ -2600,3 +2600,7 @@ fits.
   `gio trash "$candidate_file"` trashed the current directory. Stop when target
   creation fails; cleanup only an explicit, nonempty path proven inside the
   intended temporary root.
+
+- **Visibility and token spelling are not authority.** Confinement must use
+  structural definer and `EXPORT` roles plus generated dictionary ownership,
+  while preserving legitimate inherited globals such as `COUNT>N`.

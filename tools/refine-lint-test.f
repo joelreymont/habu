@@ -24,6 +24,7 @@ package RFL-TEST
 11 constant IR-PUBLIC-PKG#
 9 constant IR-KIND#
 6 constant IR-KIND-FORM#
+57 constant DEF-FORM#
 
 variable ROOT-U
 variable FILE-U
@@ -139,12 +140,121 @@ create RAW-NAME-BUF 64 allot
    endcase
    SB$ ;
 
+: DEF-FORM$ ( n -- ptr u8 n )
+   case
+      0 of s" :" endof
+      1 of s" +:" endof
+      2 of s" CHECKED:" endof
+      3 of s" TRUSTED:" endof
+      4 of s" KERNEL:" endof
+      5 of s" CAST:" endof
+      6 of s" MODEL:" endof
+      7 of s" SUMTYPE" endof
+      8 of s" PRODUCT" endof
+      9 of s" ENUM" endof
+      10 of s" STRUCTURE" endof
+      11 of s" VALUE-RECORD" endof
+      12 of s" BEGIN-STRUCTURE" endof
+      13 of s" constant" endof
+      14 of s" 2constant" endof
+      15 of s" fconstant" endof
+      16 of s" variable" endof
+      17 of s" 2variable" endof
+      18 of s" fvariable" endof
+      19 of s" create" endof
+      20 of s" value" endof
+      21 of s" defer" endof
+      22 of s" LAYOUT-BUFFER" endof
+      23 of s" DEFER-LAYOUT-BUFFER" endof
+      24 of s" TYPED-BUFFER" endof
+      25 of s" TYPED-VARIABLE" endof
+      26 of s" PTR-VARIABLE" endof
+      27 of s" PTR-FIELD:" endof
+      28 of s" CFIELD:" endof
+      29 of s" +FIELD" endof
+      30 of s" NEWTYPE" endof
+      31 of s" DEFTYPE" endof
+      32 of s" DEFLINEAR" endof
+      33 of s" ENUM+" endof
+      34 of s" ENUM4+" endof
+      35 of s" BUFFER:" endof
+      36 of s" BUFFER" endof
+      37 of s" BUFFER-E" endof
+      38 of s" CODEGEN:BUFFER" endof
+      39 of s" CODEGEN:BUFFER-E" endof
+      40 of s" TASK" endof
+      41 of s" +USER" endof
+      42 of s" FACILITY" endof
+      43 of s" TASK:TASK" endof
+      44 of s" TASK:+USER" endof
+      45 of s" TASK:FACILITY" endof
+      46 of s" TR-FILES:" endof
+      47 of s" GE-FILES:" endof
+      48 of s" IOP:" endof
+      49 of s" CONST" endof
+      50 of s" ARR" endof
+      51 of s" EXTENT:" endof
+      52 of s" FREE-EXTENT:" endof
+      53 of s" EXTPROD:" endof
+      54 of s" TENSOR:" endof
+      55 of s" ITENSOR:" endof
+      56 of s" SPEC:" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: DEF-KIND ( n -- n ) {: k:n :}
+   k 7 < if LINT-DEF:COLON exit then
+   k 13 < if k 5 - exit then
+   LINT-DEF:DATA ;
+
+: DEF-CLOSE$ ( n -- ptr u8 n )
+   case
+      LINT-DEF:COLON of s" ;" endof
+      LINT-DEF:SUMTYPE of s" ;SUMTYPE" endof
+      LINT-DEF:PRODUCT of s" ;PRODUCT" endof
+      LINT-DEF:ENUM of s" ;ENUM" endof
+      LINT-DEF:STRUCTURE of s" ;STRUCTURE" endof
+      LINT-DEF:VALUE-RECORD of s" END-VALUE-RECORD" endof
+      LINT-DEF:LOW-STRUCTURE of s" END-STRUCTURE" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: PRIVATE-FORM$ ( ptr u8 n n -- ptr u8 n )
+   {: pa:ptr pu:n form:n :}
+   SB-RESET
+   s" package " SB-APPEND pa pu SB-APPEND
+   s"  private " SB-APPEND form DEF-FORM$ SB-APPEND
+   s"  MINT-MODULE" SB-APPEND
+   form DEF-KIND dup LINT-DEF:DATA <> if
+      32 SB-APPEND-C DEF-CLOSE$ SB-APPEND
+   else
+      drop
+   then
+   s"  ;package" SB-APPEND
+   SB$ ;
+
 : PUBLIC-MUTATION$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: pa:ptr pu:n na:ptr nu:n :}
    SB-RESET
    s" package " SB-APPEND pa pu SB-APPEND
    s"  public : " SB-APPEND na nu SB-APPEND
    s"  ( -- ) ; ;package" SB-APPEND
+   SB$ ;
+
+: PRIVATE-MUTATION$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   SB-RESET
+   s" package " SB-APPEND pa pu SB-APPEND
+   s"  private : " SB-APPEND na nu SB-APPEND
+   s"  ( -- ) ; ;package" SB-APPEND
+   SB$ ;
+
+: EXPORT-MUTATION$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   SB-RESET
+   s" package " SB-APPEND pa pu SB-APPEND
+   s"  private EXPORT " SB-APPEND na nu SB-APPEND
+   s"  ;package" SB-APPEND
    SB$ ;
 
 : QUALIFIED-MUTATION$ ( ptr u8 n ptr u8 n -- ptr u8 n )
@@ -155,15 +265,15 @@ create RAW-NAME-BUF 64 allot
    s"  ( -- ) ;" SB-APPEND
    SB$ ;
 
-: RAW-PUBLIC-FAILS ( ptr u8 n -- )
+: RAW-PRIVATE-FAILS ( ptr u8 n -- )
    {: na:ptr nu:n :}
    na RAW-NAME-BUF nu BYTE-COPY
    s" test/compiler-ir-mutation.f"
-      s" IR" RAW-NAME-BUF nu PUBLIC-MUTATION$ RFL:COUNT-STR-AT 1 T= ;
+      s" IR" RAW-NAME-BUF nu PRIVATE-MUTATION$ RFL:COUNT-STR-AT 1 T= ;
 
 : RAW-TABLE-CASE ( ptr u8 n -- )
    2dup RFL:RAW-NAME? TTRUE
-   RAW-PUBLIC-FAILS ;
+   RAW-PRIVATE-FAILS ;
 
 : RAW-TABLE-COVERAGE ( -- )
    RFL:RAW-NAME-COUNT 60 T=
@@ -181,6 +291,31 @@ create RAW-NAME-BUF 64 allot
    s" MINT-MODULE-X" RFL:RAW-NAME? TFALSE
    s" X-MODULE>N" RFL:RAW-NAME? TFALSE
    s" PACK-MODULE" RFL:RAW-NAME? TFALSE ;
+
+: PRIVATE-FORM-MUTATIONS ( -- )
+   LINT-DEF:FORM-COUNT DEF-FORM# T=
+   IR-PUBLIC-PKG# 0 ?do
+      DEF-FORM# 0 ?do
+         s" test/compiler-ir-mutation.f"
+            j IR-PUBLIC-PKG$ i PRIVATE-FORM$
+            RFL:COUNT-STR-AT 1 T=
+      loop
+   loop ;
+
+: EXPORT-MUTATIONS ( -- )
+   IR-PUBLIC-PKG# 0 ?do
+      s" test/compiler-ir-mutation.f"
+         i IR-PUBLIC-PKG$ s" MINT-MODULE" EXPORT-MUTATION$
+         RFL:COUNT-STR-AT 1 T=
+      s" test/compiler-ir-mutation.f"
+         i IR-PUBLIC-PKG$ s" GLOBAL:COUNT>N" EXPORT-MUTATION$
+         RFL:COUNT-STR-AT 1 T=
+   loop
+   s" test/compiler-ir-mutation.f" s" EXPORT IR:COUNT>N"
+      RFL:COUNT-STR-AT 0 T=
+   s" test/compiler-ir-mutation.f"
+      s" package IR private : RESOLVE ( n -- n ) COUNT>N ; ;package"
+      RFL:COUNT-STR-AT 0 T= ;
 
 : PUBLICATION-MUTATIONS ( -- )
    IR-PUBLIC-PKG# 0 ?do
@@ -258,7 +393,7 @@ create RAW-NAME-BUF 64 allot
    s" src/compiler/ir/id.f" s" package IR-RAW PuBlIc public ;package"
       RFL:COUNT-STR-AT 2 T=
    s" src/compiler/ir/id.f" s" package IR-RAW ;package public"
-      RFL:COUNT-STR-AT 0 T=
+      RFL:COUNT-STR-AT 1 T=
    \ Whole-source lexical state spans newlines: inert bodies stay green and a
    \ real public token after either body remains visible.
    s" src/compiler/ir/id.f" LINT-FALSE IR-RAW-MULTILINE-PAREN$
@@ -272,7 +407,7 @@ create RAW-NAME-BUF 64 allot
    \ Comments, strings, near names, reordering, and the wrong opener role do not fire.
    s" test/other.f" s" \ package IR-RAW" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" IR-RAW-STRING$ RFL:COUNT-STR-AT 0 T=
-   s" test/other.f" s" package IR-RAWER" RFL:COUNT-STR-AT 0 T=
+   s" test/other.f" s" package IR-RAWER" RFL:COUNT-STR-AT 1 T=
    s" test/other.f" s" IR-RAW package OTHER ;package" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" s" using IR-RAW" RFL:COUNT-STR-AT 0 T=
    s" src/compiler/ir/id.f" s" package IR-RAW PUBLIC-X ;package"
@@ -283,6 +418,30 @@ create RAW-NAME-BUF 64 allot
    s" test/other.f" s" package IR-RAW" RFL:COUNT-STR-AT 2 T=
    s" src/compiler/ir/id.f" s" package IR-RAW ;package"
       RFL:COUNT-STR-AT 0 T= ;
+
+: PACKAGE-SYNTAX ( -- )
+   s" test/compiler-ir-mutation.f" s" package package"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package ;package"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package IR:BAD"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package IR package HIR ;package"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" ;package"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" public private"
+      RFL:COUNT-STR-AT 2 T=
+   s" test/compiler-ir-mutation.f" s" package OTHER"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package IR"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package IR private : (COMMENT-NAME) ; ;package"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package IR ( unterminated"
+      RFL:COUNT-STR-AT 1 T= ;
 
 : CONFINE-POLICY ( -- )
    \ owner file is allowed
@@ -414,8 +573,11 @@ public
    DETECT
    NO-FALSE-POSITIVE
    RAW-TABLE-COVERAGE
+   PRIVATE-FORM-MUTATIONS
+   EXPORT-MUTATIONS
    PUBLICATION-MUTATIONS
    IR-RAW-CONFINEMENT
+   PACKAGE-SYNTAX
    CONFINE-POLICY
    ALLOWLIST
    RED-PREPARE

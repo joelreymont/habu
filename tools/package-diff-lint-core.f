@@ -27,20 +27,13 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require tools/lint/def.f
 require tools/lint/diff.f
 
 package PACKAGE-DIFF
 private
 
 32 constant NUM-CAP
-1 constant COLON-BLOCK
-2 constant SUMTYPE-BLOCK
-3 constant PRODUCT-BLOCK
-4 constant ENUM-BLOCK
-5 constant STRUCTURE-BLOCK
-6 constant VALUE-RECORD-BLOCK
-7 constant LOW-STRUCTURE-BLOCK
-8 constant DATA-DEFINITION
 10 constant LF-C
 45 constant DASH-C
 47 constant SLASH-C
@@ -682,108 +675,6 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    k WORD? 0= if false exit then
    k LINT-LEX:TOKEN a u LINT-STR= ;
 
-\ Audited publication inventory.  The native forms come from the engine's
-\ dictionary definers and docs/typed-top-level.md.  The type/storage forms are
-\ the complete UNSAFE-TOK?/top-level declaration set in checker.f.  The
-\ remaining project forms are the transitive defining words found by auditing
-\ every executable `create` and generated-definition `evaluate` owner in the
-\ Forth tree.  Registry grammars that do not publish dictionary words (PRIM:,
-\ PPRIM:, SUITE/GROUP, VJP:, GRID:/WHERE) are intentionally absent.
-: COLON-DEFINER? ( n -- bool ) {: k:n :}
-   k s" :" TOK=CI if true exit then
-   k s" +:" TOK=CI if true exit then
-   k s" CHECKED:" TOK=CI if true exit then
-   k s" TRUSTED:" TOK=CI if true exit then
-   k s" KERNEL:" TOK=CI if true exit then
-   k s" CAST:" TOK=CI if true exit then
-   k s" MODEL:" TOK=CI ;
-
-: BLOCK-DEFINER-KIND ( n -- n ) {: k:n :}
-   k s" SUMTYPE" TOK=CI if SUMTYPE-BLOCK exit then
-   k s" PRODUCT" TOK=CI if PRODUCT-BLOCK exit then
-   k s" ENUM" TOK=CI if ENUM-BLOCK exit then
-   k s" STRUCTURE" TOK=CI if STRUCTURE-BLOCK exit then
-   k s" VALUE-RECORD" TOK=CI if VALUE-RECORD-BLOCK exit then
-   k s" BEGIN-STRUCTURE" TOK=CI if LOW-STRUCTURE-BLOCK exit then
-   0 ;
-
-: NATIVE-DATA-DEFINER? ( n -- bool ) {: k:n :}
-   k s" constant" TOK=CI if true exit then
-   k s" 2constant" TOK=CI if true exit then
-   k s" fconstant" TOK=CI if true exit then
-   k s" variable" TOK=CI if true exit then
-   k s" 2variable" TOK=CI if true exit then
-   k s" fvariable" TOK=CI if true exit then
-   k s" create" TOK=CI if true exit then
-   k s" value" TOK=CI if true exit then
-   k s" defer" TOK=CI ;
-
-: STORAGE-DEFINER? ( n -- bool ) {: k:n :}
-   k s" LAYOUT-BUFFER" TOK=CI if true exit then
-   k s" DEFER-LAYOUT-BUFFER" TOK=CI if true exit then
-   k s" TYPED-BUFFER" TOK=CI if true exit then
-   k s" TYPED-VARIABLE" TOK=CI if true exit then
-   k s" PTR-VARIABLE" TOK=CI if true exit then
-   k s" PTR-FIELD:" TOK=CI if true exit then
-   k s" CFIELD:" TOK=CI if true exit then
-   k s" +FIELD" TOK=CI ;
-
-: TYPE-DEFINER? ( n -- bool ) {: k:n :}
-   k s" NEWTYPE" TOK=CI if true exit then
-   k s" DEFTYPE" TOK=CI if true exit then
-   k s" DEFLINEAR" TOK=CI if true exit then
-   k s" ENUM+" TOK=CI if true exit then
-   k s" ENUM4+" TOK=CI ;
-
-: PROJECT-DATA-DEFINER? ( n -- bool ) {: k:n :}
-   k s" BUFFER:" TOK=CI if true exit then
-   k s" BUFFER" TOK=CI if true exit then
-   k s" BUFFER-E" TOK=CI if true exit then
-   k s" CODEGEN:BUFFER" TOK=CI if true exit then
-   k s" CODEGEN:BUFFER-E" TOK=CI if true exit then
-   k s" TASK" TOK=CI if true exit then
-   k s" +USER" TOK=CI if true exit then
-   k s" FACILITY" TOK=CI if true exit then
-   k s" TASK:TASK" TOK=CI if true exit then
-   k s" TASK:+USER" TOK=CI if true exit then
-   k s" TASK:FACILITY" TOK=CI if true exit then
-   k s" TR-FILES:" TOK=CI if true exit then
-   k s" GE-FILES:" TOK=CI if true exit then
-   k s" IOP:" TOK=CI if true exit then
-   k s" CONST" TOK=CI if true exit then
-   k s" ARR" TOK=CI ;
-
-: MAKI-DEFINER? ( n -- bool ) {: k:n :}
-   k s" EXTENT:" TOK=CI if true exit then
-   k s" FREE-EXTENT:" TOK=CI if true exit then
-   k s" EXTPROD:" TOK=CI if true exit then
-   k s" TENSOR:" TOK=CI if true exit then
-   k s" ITENSOR:" TOK=CI if true exit then
-   k s" SPEC:" TOK=CI ;
-
-: DATA-DEFINER? ( n -- bool ) {: k:n :}
-   k NATIVE-DATA-DEFINER? if true exit then
-   k STORAGE-DEFINER? if true exit then
-   k TYPE-DEFINER? if true exit then
-   k PROJECT-DATA-DEFINER? if true exit then
-   k MAKI-DEFINER? ;
-
-: DEFINER-KIND ( n -- n ) {: k:n :}
-   k COLON-DEFINER? if COLON-BLOCK exit then
-   k BLOCK-DEFINER-KIND dup 0<> if exit then drop
-   k DATA-DEFINER? if DATA-DEFINITION exit then
-   0 ;
-
-: CLOSE? ( n n -- bool ) {: k:n kind:n :}
-   kind COLON-BLOCK = if k s" ;" TOK=CI exit then
-   kind SUMTYPE-BLOCK = if k s" ;SUMTYPE" TOK=CI exit then
-   kind PRODUCT-BLOCK = if k s" ;PRODUCT" TOK=CI exit then
-   kind ENUM-BLOCK = if k s" ;ENUM" TOK=CI exit then
-   kind STRUCTURE-BLOCK = if k s" ;STRUCTURE" TOK=CI exit then
-   kind VALUE-RECORD-BLOCK = if k s" END-VALUE-RECORD" TOK=CI exit then
-   kind LOW-STRUCTURE-BLOCK = if k s" END-STRUCTURE" TOK=CI exit then
-   false ;
-
 : ADDED-RANGE? ( n n -- bool ) {: first:n last:n :}
    first begin dup last <= while
       dup ADDED? if drop true exit then
@@ -938,19 +829,24 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    false DEF-OPEN ! ;
 
 : START-DEFINITION ( n n -- ) {: k:n kind:n :}
-   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
-   kind DEF-KIND !
-   k DEF-DEFINER-I !
-   namei DEF-NAME-I !
-   k LINT-LEX:LINE@ DEF-START-LINE !
-   PACKAGE-OPEN @ DEF-PACKAGED !
-   k LINT-LEX:LINE@ ADDED? namei LINT-LEX:LINE@ ADDED? or DEF-TAIL-ADDED !
-   kind DATA-DEFINITION = if
-      namei LINT-LEX:LINE@ FINISH-DEFINITION
-   else
-      true DEF-OPEN !
-   then
-   namei 1+ LEX-I ! ;
+   k LINT-DEF:NAME-I
+   MATCH option
+      none OF E-DIFF-SYNTAX throw ENDOF
+      some OF {: namei:n :}
+         kind DEF-KIND !
+         k DEF-DEFINER-I !
+         namei DEF-NAME-I !
+         k LINT-LEX:LINE@ DEF-START-LINE !
+         PACKAGE-OPEN @ DEF-PACKAGED !
+         k LINT-LEX:LINE@ ADDED? namei LINT-LEX:LINE@ ADDED? or DEF-TAIL-ADDED !
+         kind LINT-DEF:DATA = if
+            namei LINT-LEX:LINE@ FINISH-DEFINITION
+         else
+            true DEF-OPEN !
+         then
+         namei 1+ LEX-I !
+      ENDOF
+   ;MATCH ;
 
 : PACKAGE-SET ( n -- ) {: namei:n :}
    namei WORD? 0= if E-DIFF-SYNTAX throw then
@@ -981,13 +877,13 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 : SCAN-TOKEN ( n -- ) {: k:n :}
    k OPAQUE? if k 1+ LEX-I ! exit then
    DEF-OPEN @ if
-      k DEF-KIND @ CLOSE? if
+      k DEF-KIND @ LINT-DEF:CLOSE? if
          k LINT-LEX:LINE@ FINISH-DEFINITION
       then
       k 1+ LEX-I ! exit
    then
    k PACKAGE-TOKEN if exit then
-   k DEFINER-KIND dup 0= if drop k 1+ LEX-I ! exit then
+   k LINT-DEF:DIRECT-KIND dup LINT-DEF:NONE = if drop k 1+ LEX-I ! exit then
    k swap START-DEFINITION ;
 
 : APPLY-DELETED-DELTA ( n -- ) {: line:n :}
@@ -1030,22 +926,28 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    false ;
 
 : OLD-START-DEFINITION ( n n -- ) {: k:n kind:n :}
-   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
-   kind DATA-DEFINITION = if
-      namei 1+ LEX-I ! exit
-   then
-   kind DEF-KIND !
-   true DEF-OPEN !
-   namei 1+ LEX-I ! ;
+   k LINT-DEF:NAME-I
+   MATCH option
+      none OF E-DIFF-SYNTAX throw ENDOF
+      some OF {: namei:n :}
+         kind LINT-DEF:DATA = if
+            namei 1+ LEX-I !
+         else
+            kind DEF-KIND !
+            true DEF-OPEN !
+            namei 1+ LEX-I !
+         then
+      ENDOF
+   ;MATCH ;
 
 : OLD-SCAN-TOKEN ( n -- ) {: k:n :}
    k OPAQUE? if k 1+ LEX-I ! exit then
    DEF-OPEN @ if
-      k DEF-KIND @ CLOSE? if false DEF-OPEN ! then
+      k DEF-KIND @ LINT-DEF:CLOSE? if false DEF-OPEN ! then
       k 1+ LEX-I ! exit
    then
    k OLD-PACKAGE-TOKEN if exit then
-   k DEFINER-KIND dup 0= if drop k 1+ LEX-I ! exit then
+   k LINT-DEF:DIRECT-KIND dup LINT-DEF:NONE = if drop k 1+ LEX-I ! exit then
    k swap OLD-START-DEFINITION ;
 
 : SCAN-OLD-BOUNDARIES ( -- )

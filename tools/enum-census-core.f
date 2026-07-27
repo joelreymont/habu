@@ -50,6 +50,7 @@ require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
+require tools/lint/def.f
 
 package ENUM-CENSUS
 
@@ -177,15 +178,15 @@ TRUSTED: NUM-PUT ( n -- ) {: d:n :}
    k WORD? 0= IF LINT-FALSE EXIT THEN
    k LINT-LEX:TOKEN a u LINT-STR=CI ;
 
-\ A definition NAME rather than a declaration: `: ENUM`, `TRUSTED: ENUM`, ...
+\ A definition NAME rather than a declaration: `: ENUM`, `constant ENUM`, ...
 : NAME-POSITION? ( n -- bool ) {: k:n :}
    k 0 <= IF LINT-FALSE EXIT THEN
+   k 1 - LINT-DEF:NAME-I
+   MATCH option
+      none OF ENDOF
+      some OF k = IF LINT-TRUE EXIT THEN ENDOF
+   ;MATCH
    k 1 - WORD? 0= IF LINT-FALSE EXIT THEN
-   k 1 - LINT-LEX:TOKEN s" :" LINT-STR= IF LINT-TRUE EXIT THEN
-   k 1 - LINT-LEX:TOKEN s" +:" LINT-STR= IF LINT-TRUE EXIT THEN
-   k 1 - s" TRUSTED:" TOK= IF LINT-TRUE EXIT THEN
-   k 1 - s" KERNEL:" TOK= IF LINT-TRUE EXIT THEN
-   k 1 - s" CHECKED:" TOK= IF LINT-TRUE EXIT THEN
    k 1 - s" PRIM:" TOK= ;
 
 \ An escaped reference rather than a declaration: `' ENUM`, `postpone ENUM`, ...
@@ -503,7 +504,7 @@ public
 \ guard: adding or deleting Forth files anywhere moves it, and the number has to
 \ be updated with the change that moved it, which is also when somebody notices
 \ that a new tree exists. Raising it without looking at WHAT moved defeats it.
-1267 constant WALKED-FILES               \ .f/.fs files under the five trees below
+1270 constant WALKED-FILES               \ .f/.fs files under the five trees below
 
 : WALK-TREES ( -- )
    s" src" [: WALK-FILE ;] WALK-FILES

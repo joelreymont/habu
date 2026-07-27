@@ -110,6 +110,10 @@ SUITE text-foundation-fixtures
    tools/lint/text-foundation-test.f
 ;SUITE
 
+SUITE lint-def-fixtures
+   tools/lint/def-test.f
+;SUITE
+
 SUITE lint-intern-set
    tools/lint/set-test.f
 ;SUITE

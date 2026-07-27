@@ -106,6 +106,9 @@ REQUIRE-HARNESS
    s" refine-lint" [: RFL:RUN ;] GSI-RUN
    s" tools/refine-lint-test.f" GSI-INCLUDE ;
 
+: LINT-DEF ( -- )
+   s" tools/lint/def-test.f" GSI-INCLUDE ;
+
 : SUITE-COVERAGE ( -- )
    s" suite-coverage-lint" [: SUITE-COVERAGE-LINT:RUN ;] GSI-RUN
    s" tools/suite-coverage-lint-test.f" GSI-INCLUDE ;
@@ -158,6 +161,7 @@ public
    s" lint-tools/nanogpt" GSI-FORK-TIMEOUT-MS [: NANOGPT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
    s" lint-tools/refine" GSI-FORK-TIMEOUT-MS [: REFINE ;] GT-POOL-START-FORK
+   s" lint-tools/def" GSI-FORK-TIMEOUT-MS [: LINT-DEF ;] GT-POOL-START-FORK
    s" lint-tools/suite-coverage" GSI-FORK-TIMEOUT-MS [: SUITE-COVERAGE ;] GT-POOL-START-FORK
    s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
    s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK

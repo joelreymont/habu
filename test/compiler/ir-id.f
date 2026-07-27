@@ -1,8 +1,31 @@
 \ ir-id.f - checked shared compiler IR identity tests.
 
-require src/compiler/ir/id.f
 require lib/test.f
+require lib/string.f
 require test/checker-assert.f
+
+package IR-ID-AUDIT
+private
+
+variable ND0
+variable ND1
+variable GLOBAL-COUNT-N
+variable RAW-HITS
+
+public
+
+: BEFORE ( -- )
+   ndict@ ND0 !
+   s" COUNT>N" 0 XREF-FIND-WL-INDEX GLOBAL-COUNT-N ! ;
+
+: AFTER ( -- )
+   ndict@ ND1 ! ;
+
+;package
+
+IR-ID-AUDIT:BEFORE
+require src/compiler/ir/id.f
+IR-ID-AUDIT:AFTER
 
 package IR-RAW
 private
@@ -162,6 +185,101 @@ private
 RUN
 
 ;package
+
+package IR-ID-AUDIT
+private
+
+60 constant RAW#
+9 constant KIND#
+6 constant FORM#
+
+: KIND$ ( n -- ptr u8 n )
+   case
+      0 of s" SOURCE" endof
+      1 of s" FUN" endof
+      2 of s" BLOCK" endof
+      3 of s" OP" endof
+      4 of s" VALUE" endof
+      5 of s" TYPE" endof
+      6 of s" ATTR" endof
+      7 of s" SYMBOL" endof
+      8 of s" SPAN" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: KIND-RAW$ ( n n -- ptr u8 n ) {: kind:n form:n :}
+   SB-RESET
+   form
+   case
+      0 of s" MINT-" SB-APPEND kind KIND$ SB-APPEND endof
+      1 of kind KIND$ SB-APPEND s" >N" SB-APPEND endof
+      2 of s" PACK-" SB-APPEND kind KIND$ SB-APPEND endof
+      3 of kind KIND$ SB-APPEND s" -OWNER" SB-APPEND endof
+      4 of kind KIND$ SB-APPEND s" -LOCAL" SB-APPEND endof
+      5 of kind KIND$ SB-APPEND s" -CHECK" SB-APPEND endof
+      E-TBL-BOUNDS throw
+   endcase
+   SB$ ;
+
+: RAW$ ( n -- ptr u8 n ) {: k:n :}
+   k 6 < if
+      k
+      case
+         0 of s" MINT-MODULE" endof
+         1 of s" MODULE>N" endof
+         2 of s" MINT-COUNT" endof
+         3 of s" COUNT>N" endof
+         4 of s" MINT-POOL-OFF" endof
+         5 of s" POOL-OFF>N" endof
+         E-TBL-BOUNDS throw
+      endcase
+      exit
+   then
+   k 6 - {: raw:n :}
+   raw FORM# / raw FORM# mod KIND-RAW$ ;
+
+: IR-RAW-NS ( -- ptr a )
+   s" IR-RAW" XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? TTRUE ;
+
+: RAW-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
+   IR-RAW-NS {: ns:ptr :}
+   ns XREF-START {: pub:n :}
+   ns XREF-LEN {: pri:n :}
+   a u pub XREF-FIND-WL XREF-FOUND? TFALSE
+   a u pri XREF-FIND-WL-INDEX {: idx:n :}
+   idx ND0 @ >= TTRUE
+   idx ND1 @ < TTRUE
+   0 RAW-HITS !
+   ND0 @ begin dup ND1 @ < while
+      dup XREF-REC dup a u XREF-MATCH? if
+         XREF-WORDLIST pri T=
+         1 RAW-HITS +!
+      else
+         drop
+      then
+      1+
+   repeat drop
+   RAW-HITS @ 1 T= ;
+
+: DICTIONARY-OWNERSHIP ( -- )
+   KIND# FORM# * 6 + RAW# T=
+   GLOBAL-COUNT-N @ 0 >= TTRUE
+   GLOBAL-COUNT-N @ ND0 @ < TTRUE
+   GLOBAL-COUNT-N @ XREF-REC XREF-WORDLIST 0 T=
+   s" COUNT>N" 0 XREF-FIND-WL-INDEX GLOBAL-COUNT-N @ T=
+   RAW# 0 ?do i RAW$ RAW-ROW loop ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   DICTIONARY-OWNERSHIP
+   T-REPORT ;
+
+;package
+
+IR-ID-AUDIT:RUN
 
 package IR-ID-TEST
 private

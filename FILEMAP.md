@@ -108,7 +108,8 @@ points stay listed.
   the private checked module, packed-reference, count, and pool-offset
   representation authority.
 - `test/compiler/ir-id.f` — identity round-trip, range, owner, bound,
-  wrong-family, projection, and private-surface regression suite.
+  wrong-family, projection, private-surface, and exact pre/post-load dictionary
+  ownership regression suite for all 60 raw authority tails.
 
 ## Native Engine And Builders
 
@@ -2057,6 +2058,12 @@ points stay listed.
   (`package LINT-LEX`): sole owner of the token tables and the one generic
   lexical diagnostic record; every consumer reads it through the qualified
   public API and no lexer state is reachable outside the package.
+- `tools/lint/def.f` — shared 57-form structural dictionary-definition
+  classifier: direct-form kind, exact closer, atomic name operand, and package
+  `EXPORT` alias roles for package and authority lints.
+- `tools/lint/def-test.f` — anti-rot coverage for every defining form, kind,
+  closer, mixed-case and legacy spelling, EXPORT, and hostile inert or missing
+  operands.
 - `tools/lint/text.f` / `tools/lint/token.f` / `tools/lint/intern.f` /
   `tools/lint/lib.f` — shared native lint foundation: checked text/file
   helpers, the whitespace token table, the growable string interner, and the
@@ -2094,7 +2101,7 @@ points stay listed.
 - `tools/typed-local-diff-lint-core.f` — reusable diff scanner that rejects newly added bare locals.
 - `tools/typed-local-diff-lint.f` — CLI wrapper for typed-local diff lint.
 - `tools/typed-local-diff-lint-test.f` — checked fixture coverage for typed-local diff lint.
-- `tools/package-diff-lint-core.f` — exact-diff package ownership scanner: validates new-side lines against the post-change file, reconstructs and lexes the complete old side, derives scope from both complete sources, and rejects changed global module definitions or redundant package/file owner prefixes, while admitting the documented global surfaces, including error-code constants in `lib/errors.f`.
+- `tools/package-diff-lint-core.f` — exact-diff package ownership scanner: validates new-side lines against the post-change file, reconstructs and lexes the complete old side, derives scope from both complete sources through the shared structural definer classifier, and rejects changed global module definitions or redundant package/file owner prefixes, while admitting the documented global surfaces, including error-code constants in `lib/errors.f`.
 - `tools/package-diff-lint.f` — CLI wrapper for the package ownership diff gate.
 - `tools/package-diff-lint-test.f` — hostile checked fixtures for global library/tool/test definitions, old/new package boundary changes, multiline lexical forgeries, scope outside hunks, prefix policy, bodyless renames, allocation cleanup, core/prelude exemptions, and the `lib/errors.f` error-code admission.
 - `tools/release-inventory.f` — structural inventory of the sealed production release definitions of the generated-declaration transaction: locates each participant registration, takes the word in its fifth callback slot, closes over everything those words reach (including through deferred vectors), and rejects any reached word outside a small allowlist of total words, naming the class - error signalling, allocation, name lookup, publication, reporting, or coordinator failure machinery - that came back.
@@ -2133,10 +2140,10 @@ points stay listed.
 - `tools/process-primitive-lint.f` — live-tree raw process primitive lint.
 - `tools/process-primitive-lint-test.f` — comment/string, raw-call, and owner
   allowlist coverage for process primitive confinement.
-- `tools/enum-census-core.f` — plain-ENUM declaration census: finds every `ENUM name variant... ;ENUM` site in the tree, re-declares each one through the global ENUM keyword into its own scratch package, and reports the registered family (kind, visibility, variant names and tags, width, policy, derive flags, constructor package and symbol) as one comparable line per site; also trips on any file that defines a retired legacy-parser word or re-adds an ENUM primitive-axiom row.
+- `tools/enum-census-core.f` — plain-ENUM declaration census: finds every structural `ENUM name variant... ;ENUM` site in the tree while excluding names owned by the shared direct-definer classifier, ratchets the walked Forth-source count, re-declares each one through the global ENUM keyword into its own scratch package, and reports the registered family (kind, visibility, variant names and tags, width, policy, derive flags, constructor package and symbol) as one comparable line per site; also trips on any file that defines a retired legacy-parser word or re-adds an ENUM primitive-axiom row.
 - `tools/enum-census.f` — CLI for the plain-ENUM census: `verify` proves the keyword is the unified front end and compares the tree against the committed baseline; `record PATH` writes a fresh baseline.
 - `tools/enum-census-baseline.txt` — the census baseline, recorded on the commit BEFORE the global ENUM keyword moved to the unified front end, so `verify` is a before/after parity check rather than a snapshot of the new behaviour agreeing with itself.
-- `tools/enum-census-test.f` — hostile fixtures for the census scanner: ENUM in comments, in strings, as a definition name, as an escaped reference, unterminated, full-form, and duplicate tails in one file.
+- `tools/enum-census-test.f` — hostile fixtures for the census scanner: ENUM in comments, strings, structural direct-definition names, escaped references, unterminated and full forms, and duplicate tails in one file.
 - `tools/bootstrap-mirror-lint.f` — tripwire: ADT declarations must not enter the gforth-compiled recovery corpus (src/) before the stage-0 pass-2 mirror lands.
 - `tools/bootstrap-mirror-lint-test.f` — focused coverage for the recovery-corpus tripwire (clean src walk + planted overlay).
 - `tools/bootstrap-refresh-doc.f` — checked validator for the fenced native refresh command in docs/bootstrap.md.
@@ -2194,9 +2201,9 @@ points stay listed.
 - `tools/trusted-inventory-test.f` — checked fixture coverage for the trusted-inventory ratchet, plus a live child run of the production `strict` trust-gate command.
 - `tools/primitive-effect-inventory.f` — PEINV ratchet: independent identity inventory of the `PRIM:`/`PPRIM:` axiom rows (canonical kind/package/spelling/effect/flags tuple), cross-checked against the live `#PE` registry and baselined against the `primitive-effect-inventory-manifest` block in `TRUSTED.md`.
 - `tools/primitive-effect-inventory-test.f` — checked fixture coverage for the primitive-effect inventory ratchet: identity round-trip, formatting stability, and the add/delete/duplicate/reorder/mutation tamper matrix.
-- `tools/refine-lint-core.f` — sealed-style `package RFL`: whole-source lexer confinement for source-derived `CAST:`/`TRUSTED:` refinement mints plus the compiler IR raw-authority contract. It scans `maki/`, `lib/`, `src/`, `tools/`, and `test/`; confines seeded mint references to exact owners/tests/allowlists; rejects unauthorized or public `IR-RAW`, every frozen raw API name published from a compiler public namespace or qualified through one, incomplete package boundaries, and stale/new inventory rows. Interim until the TVK-RAW checker capability lands.
+- `tools/refine-lint-core.f` — sealed-style `package RFL`: whole-source lexer confinement for source-derived `CAST:`/`TRUSTED:` refinement mints plus the compiler IR raw-authority contract. It scans `maki/`, `lib/`, `src/`, `tools/`, and `test/`; confines seeded mint references to exact owners/tests/allowlists; rejects unauthorized or public `IR-RAW`, structural direct definitions or package EXPORT aliases of every frozen raw API tail in compiler packages, exact qualified compiler raw references, malformed package state, lexer defects, and stale/new inventory rows while preserving top-level hb-build EXPORT and inherited global `COUNT>N`. Interim until the TVK-RAW checker capability lands.
 - `tools/refine-lint.f` — CLI wrapper for the refinement-mint confinement lint; one line, `RFL:MAIN` (the catch plus LINT-MAIN reporting lives in the package, so no lint definition sits outside one).
-- `tools/refine-lint-test.f` — `package RFL-TEST`: checked fixture coverage — shape/policy fixtures, a red scratch-file mint call outside the tree, and the green live tree run. Reads the finding count through `RFL:FINDINGS`/`RFL:CLEAR-FINDINGS` rather than the counter cell, which stays package-private so no caller can assign it a value that hides a finding.
+- `tools/refine-lint-test.f` — `package RFL-TEST`: checked fixture coverage — shape/policy fixtures, all 60 raw tails, every compiler package crossed with all 57 structural definers, EXPORT and package-state forgeries, a red scratch-file mint call outside the tree, and the green live tree run. Reads the finding count through `RFL:FINDINGS`/`RFL:CLEAR-FINDINGS` rather than the counter cell, which stays package-private so no caller can assign it a value that hides a finding.
 - `tools/suite-coverage-lint-core.f` — derives the gate suite lists from test/gate-stdlib-cases.f, test/gate-stdlib-inline-lib.f, test/gate-stdlib-lint-tools.f, test/run-worker-stdlib.f, test/gate-engine-lib.f, and test/candidate-validation.f each run; enforces that every TEST:SUITE member is scheduled/manual-documented/spawn-only-documented and that the inprocess GSI-LINT-LIBS-PTX-TOOL list equals the spawned ptx-toolchain list minus the documented spawn-only bench set.
 - `tools/suite-coverage-lint.f` — CLI wrapper for the stdlib gate suite-coverage lint.
 - `tools/suite-coverage-lint-test.f` — checked fixture coverage for the suite-coverage lint: BOL member parsing, orphan detection, ptx missing/extra/spawn-only divergence, exact-equality clean case, and manual/spawn-only table staleness.

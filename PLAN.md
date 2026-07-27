@@ -295,10 +295,19 @@ src/compiler/ir/id.f
 test/compiler/ir-id.f
 lib/errors.f
 FILEMAP.md
+LESSONS.md
+docs/forth.md
+tools/lint/def.f
+tools/lint/def-test.f
+tools/package-diff-lint-core.f
+tools/enum-census-core.f
+tools/enum-census-test.f
 tools/refine-lint-core.f
 tools/refine-lint-test.f
 test/gate-stdlib-cases.f
+test/gate-stdlib-lib.f
 test/gate-stdlib-inline-lib.f
+test/gate-stdlib-lint-tools.f
 ```
 
 It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
@@ -370,6 +379,12 @@ Acceptance:
 - checker fixtures reject wrong-family substitutions;
 - canonical local projection excludes the runtime owner;
 - no public raw converter or dialect-specific cast resolves;
+- every frozen raw tail added by this leaf belongs only to the private
+  `IR-RAW` dictionary window, while the pre-existing global `COUNT>N` remains
+  unchanged;
+- the shared 57-form structural classifier makes private direct definitions
+  and package `EXPORT` aliases of all 60 raw tails fail closed in every
+  compiler API package without rejecting inherited global `COUNT>N`;
 - every cast is checker-certified and confined by `refine-lint`;
 - `bin/hb --load test/compiler/ir-id.f` passes;
 - the `compiler-ir-id` suite is declared and scheduled by the inline stdlib
@@ -406,3 +421,4 @@ Pre-distillation version: `PLAN.md` SHA-256
 | Fixed first-version file layout for every later dialect | Premature detail not required to start the dependency-ordered substrate |
 | Generic per-leaf gate checklist | Repository workflow already owns it; only the first leaf needs exact routing now |
 | Blackboard lifecycle text | Explicitly disabled by the user for the remote Spark agents |
+| Automated Wave 0 semantic rediscovery | The design requires a source-pinned inventory, not a new call-graph/provenance analyzer; audit hashes plus structural review force re-audit without delaying compiler work. Rejected split: `b776cdd872ce25da8dd0c0fc0e8cb09f5c4ca564`. |
