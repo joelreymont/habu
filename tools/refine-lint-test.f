@@ -21,9 +21,9 @@ require tools/refine-lint-core.f
 package RFL-TEST
 
 4096 constant OUT-CAP
-11 constant IR-PUBLIC-PKG#
+19 constant IR-PUBLIC-PKG#
 9 constant IR-KIND#
-6 constant IR-KIND-FORM#
+2 constant IR-RAW-FORM#
 57 constant DEF-FORM#
 
 variable ROOT-U
@@ -109,6 +109,14 @@ create RAW-NAME-BUF 64 allot
       8 of s" GPU-GIR" endof
       9 of s" GPU-PTXIR2" endof
       10 of s" GPU-IR" endof
+      11 of s" IR-SOURCE" endof
+      12 of s" IR-TYPE" endof
+      13 of s" IR-ATTR" endof
+      14 of s" IR-SCHEMA" endof
+      15 of s" IR-BUILD" endof
+      16 of s" IR-VERIFY" endof
+      17 of s" IR-CODEC" endof
+      18 of s" IR-PASS" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -276,7 +284,9 @@ create RAW-NAME-BUF 64 allot
    RAW-PRIVATE-FAILS ;
 
 : RAW-TABLE-COVERAGE ( -- )
-   RFL:RAW-NAME-COUNT 60 T=
+   RFL:RAW-NAME-COUNT 26 T=
+   s" MINT-KEY" RAW-TABLE-CASE
+   s" KEY>N" RAW-TABLE-CASE
    s" MINT-MODULE" RAW-TABLE-CASE
    s" MODULE>N" RAW-TABLE-CASE
    s" MINT-COUNT" RAW-TABLE-CASE
@@ -284,10 +294,14 @@ create RAW-NAME-BUF 64 allot
    s" MINT-POOL-OFF" RAW-TABLE-CASE
    s" POOL-OFF>N" RAW-TABLE-CASE
    IR-KIND# 0 ?do
-      IR-KIND-FORM# 0 ?do
+      IR-RAW-FORM# 0 ?do
          j i IR-API$ RAW-TABLE-CASE
       loop
    loop
+   s" PACK-SOURCE" RFL:RAW-NAME? TFALSE
+   s" SOURCE-OWNER" RFL:RAW-NAME? TFALSE
+   s" SOURCE-LOCAL" RFL:RAW-NAME? TFALSE
+   s" SOURCE-CHECK" RFL:RAW-NAME? TFALSE
    s" MINT-MODULE-X" RFL:RAW-NAME? TFALSE
    s" X-MODULE>N" RFL:RAW-NAME? TFALSE
    s" PACK-MODULE" RFL:RAW-NAME? TFALSE ;
@@ -326,8 +340,6 @@ create RAW-NAME-BUF 64 allot
          i IR-PUBLIC-PKG$ s" MINT-MODULE" QUALIFIED-MUTATION$
          RFL:COUNT-STR-AT 1 T=
    loop
-   s" src/compiler/ir/id.f" s" package IR-RAW public ;package"
-      RFL:COUNT-STR-AT 1 T=
    s" test/compiler-ir-mutation.f"
       s" IR-RAW" s" MINT-MODULE" QUALIFIED-MUTATION$
       RFL:COUNT-STR-AT 1 T=
@@ -338,7 +350,22 @@ create RAW-NAME-BUF 64 allot
    s" test/compiler-ir-mutation.f" s" : IR:MINT-MODULE-X ( -- ) ;"
       RFL:COUNT-STR-AT 0 T=
    s" test/compiler-ir-mutation.f" s" : IR:MINT-MODULE:EXTRA ( -- ) ;"
-      RFL:COUNT-STR-AT 0 T= ;
+      RFL:COUNT-STR-AT 0 T=
+   s" test/compiler-ir-mutation.f"
+      s" package IR public : PACK-SOURCE ( -- ) ; ;package"
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f"
+      s" package IR-ID private CAST: MINT-MODULE ( n -- IR-ID:ir-module-id ) ; ;package"
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f"
+      s" package IR-ID public CAST: MINT-MODULE ( n -- IR-ID:ir-module-id ) ; ;package"
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f"
+      s" package IR-ID private CAST: EXTRA ( n -- IR-ID:ir-module-id ) ; ;package"
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f"
+      s" package IR-ID public CAST: EXTRA ( n -- IR-ID:ir-module-id ) ; ;package"
+      RFL:COUNT-STR-AT 1 T= ;
 
 : IR-RAW-STRING$ ( -- ptr u8 n )
    SB-RESET
@@ -374,36 +401,37 @@ create RAW-NAME-BUF 64 allot
    s" ;package" SB-APPEND
    SB$ ;
 
-: IR-RAW-CONFINEMENT ( -- )
-   \ The four frozen owner paths may reopen the private representation package.
-   s" src/compiler/ir/id.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
-   s" src/compiler/ir/arena.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
-   s" src/compiler/ir/codec.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
-   s" test/compiler/ir-id.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
-   \ Any other path fires, case-insensitively and across line boundaries.
+: IR-AUTHORITY-CONFINEMENT ( -- )
+   s" legacy package authority" T-LABEL
+   \ The deleted lexical authority package cannot be reintroduced anywhere.
+   s" src/compiler/ir/id.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/arena.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/codec.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 1 T=
+   s" test/compiler/ir-id.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 1 T=
    s" src/compiler/ir/source.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 1 T=
    s" test/other.f" s" PaCkAgE ir-raw ;package" RFL:COUNT-STR-AT 1 T=
    s" test/other.f" IR-RAW-SPLIT$ RFL:COUNT-STR-AT 1 T=
    \ Duplicates are separate authority violations.
    s" test/other.f" s" package IR-RAW ;package package IR-RAW ;package"
       RFL:COUNT-STR-AT 2 T=
-   \ IR-RAW can never publish, including in an otherwise allowed owner file.
+   \ One legacy opener is one finding; mode tokens do not create extra findings.
    s" src/compiler/ir/id.f" s" package IR-RAW public ;package"
       RFL:COUNT-STR-AT 1 T=
    s" src/compiler/ir/id.f" s" package IR-RAW PuBlIc public ;package"
-      RFL:COUNT-STR-AT 2 T=
-   s" src/compiler/ir/id.f" s" package IR-RAW ;package public"
       RFL:COUNT-STR-AT 1 T=
-   \ Whole-source lexical state spans newlines: inert bodies stay green and a
-   \ real public token after either body remains visible.
+   s" src/compiler/ir/id.f" s" package IR-RAW ;package public"
+      RFL:COUNT-STR-AT 2 T=
+   s" multiline legacy authority" T-LABEL
+   \ Whole-source lexical state spans newlines; inert bodies add no finding.
    s" src/compiler/ir/id.f" LINT-FALSE IR-RAW-MULTILINE-PAREN$
-      RFL:COUNT-STR-AT 0 T=
+      RFL:COUNT-STR-AT 1 T=
    s" src/compiler/ir/id.f" LINT-TRUE IR-RAW-MULTILINE-PAREN$
       RFL:COUNT-STR-AT 1 T=
    s" src/compiler/ir/id.f" LINT-FALSE IR-RAW-MULTILINE-STRING$
-      RFL:COUNT-STR-AT 0 T=
+      RFL:COUNT-STR-AT 1 T=
    s" src/compiler/ir/id.f" LINT-TRUE IR-RAW-MULTILINE-STRING$
       RFL:COUNT-STR-AT 1 T=
+   s" inert legacy authority text" T-LABEL
    \ Comments, strings, near names, reordering, and the wrong opener role do not fire.
    s" test/other.f" s" \ package IR-RAW" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" IR-RAW-STRING$ RFL:COUNT-STR-AT 0 T=
@@ -411,13 +439,14 @@ create RAW-NAME-BUF 64 allot
    s" test/other.f" s" IR-RAW package OTHER ;package" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" s" using IR-RAW" RFL:COUNT-STR-AT 0 T=
    s" src/compiler/ir/id.f" s" package IR-RAW PUBLIC-X ;package"
-      RFL:COUNT-STR-AT 0 T=
+      RFL:COUNT-STR-AT 1 T=
+   s" incomplete legacy authority" T-LABEL
    \ File boundaries fail closed on incomplete scope syntax.
    s" src/compiler/ir/id.f" s" package" RFL:COUNT-STR-AT 1 T=
-   s" src/compiler/ir/id.f" s" package IR-RAW" RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f" s" package IR-RAW" RFL:COUNT-STR-AT 2 T=
    s" test/other.f" s" package IR-RAW" RFL:COUNT-STR-AT 2 T=
    s" src/compiler/ir/id.f" s" package IR-RAW ;package"
-      RFL:COUNT-STR-AT 0 T= ;
+      RFL:COUNT-STR-AT 1 T= ;
 
 : PACKAGE-SYNTAX ( -- )
    s" test/compiler-ir-mutation.f" s" package package"
@@ -576,7 +605,7 @@ public
    PRIVATE-FORM-MUTATIONS
    EXPORT-MUTATIONS
    PUBLICATION-MUTATIONS
-   IR-RAW-CONFINEMENT
+   IR-AUTHORITY-CONFINEMENT
    PACKAGE-SYNTAX
    CONFINE-POLICY
    ALLOWLIST

@@ -143,6 +143,40 @@ variable XREF-NV
    XREF-U ! XREF-A!
    XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
 
+package CAST-OWNER
+private
+
+: TARGET? ( ptr a -- bool ) {: rec:ptr :}
+   rec XREF-START {: pub:n :}
+   rec XREF-LEN {: pri:n :}
+   pub data-base PKG-PUB-CELL + @ <> if XREF-FALSE exit then
+   pri data-base PKG-PRI-CELL + @ <> if XREF-FALSE exit then
+   get-current dup pub = swap pri = or ;
+
+\ CAST introductions are owned by the engine's live namespace record, not the
+\ checker's parser mirror. For a package family, prove the record class/name,
+\ both live WIDs, and the actual definition target. For a global family, require
+\ the exact record-free global state. PKG-REC and its companion cells are
+\ engine-owned and protected after cold load.
+: OWNER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   data-base PKG-REC-CELL + @ XREF-N>REC {: rec:ptr :}
+   u 0= if
+      rec XREF-FOUND? if XREF-FALSE exit then
+      data-base PKG-PUB-CELL + @ 0 <> if XREF-FALSE exit then
+      data-base PKG-PRI-CELL + @ 0 <> if XREF-FALSE exit then
+      get-current 0 = exit
+   then
+   rec XREF-FOUND? 0= if XREF-FALSE exit then
+   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if XREF-FALSE exit then
+   rec XREF-NAME$ a u XREF-STR=CI 0= if XREF-FALSE exit then
+   rec TARGET? ;
+
+: INSTALL ( -- )
+   [: OWNER? ;] is CAST-PKG-OWNER-XT ;
+INSTALL
+
+;package
+
 : XREF-FIND-WL ( ptr u8 n n -- ptr a )
    XREF-WID ! XREF-FU ! XREF-FN!
    ndict@ 1-
@@ -383,6 +417,22 @@ variable XREF-FORGET-CP
       dup XREF-REC dup XREF-RETIRED? if drop else XREF-NAME. space then
       1+
    repeat drop cr ;
+
+\ The installed CAST owner quotation holds direct code references. Retire every
+\ source-level rebinding seam before the engine-prefix seal so user source cannot
+\ replace the real package identity check.
+undefine CAST-PKG-OWNER-XT
+undefine TFAM-PKG-XT
+undefine TFAM-PKG$*
+package CAST-OWNER
+undefine INSTALL
+undefine OWNER?
+undefine TARGET?
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
+;package
 
 \ TFAM 2b-iii: freeze the dictionary-truncation watermark (baseline capture).
 \ xref.f is the last BASE prefix file, but src/os/script-argv.f still loads

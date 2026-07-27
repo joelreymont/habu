@@ -13,7 +13,7 @@ interfere with the independent Spark vLLM-replacement work.
 
 - Design: `docs/compiler-ir-design.md`
 - Design SHA-256:
-  `d2e659b6f52bdfdffb2f8abe2867147781a0ad4f58a08d9fccadc0de42122590`
+  `78b3fa8b2c9290d9416c94e556e2b0977b8d4b83e403c4abc30f199f5348d7c3`
 - Design audit commit: `eb5742e916978d5c9067218737ce9c62a1af25a4`
 - Reviewed remote base:
   `197fb07d55b3395cdf9bfd007aac999eb6895473`
@@ -321,6 +321,7 @@ docs/compiler-ir-design.md
 docs/forth.md
 src/core/checker.f
 src/core/type-family.f
+src/habu/xref.f
 test/cast-negative-suite.f
 tools/refine-lint-core.f
 tools/refine-lint-test.f
@@ -423,6 +424,9 @@ Acceptance:
   executable defensive-state coverage plus monotonic, nonzero, unique, and
   exhaustion-before-wrap unreachability proofs;
 - checker fixtures reject wrong-family substitutions;
+- the CAST owner gate binds the destination package to the engine's live
+  namespace record and actual public/private definition WID; callable
+  `CHECKER-PACKAGE` and direct checker-mirror mutation cannot authorize a mint;
 - canonical local projection excludes the runtime owner;
 - no public raw converter or dialect-specific cast resolves;
 - all 26 raw tails belong only to the private `IR-ID` dictionary window;

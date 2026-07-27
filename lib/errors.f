@@ -297,3 +297,4 @@ public
 -6603 constant E-IR-INDEX-BOUND
 -6604 constant E-IR-OWNER
 -6605 constant E-IR-SCALAR-RANGE
+-6606 constant E-IR-MODULE-EXHAUSTED

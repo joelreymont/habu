@@ -2582,6 +2582,7 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
    [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ item 7: checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
+   [: TFAM-PKG$ ;]    is TFAM-PKG-XT       \ nominal CAST introduction belongs to the declaring package
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
    [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ item 9: construct family resolution (active package only)

@@ -64,7 +64,9 @@ points stay listed.
   depend on `lib/string.f` order.
 - `src/core/engine-error.f` — authoritative package-scoped engine failure ABI.
 - `src/core/engine-error-effects.f` — checker rows installed after the early engine failure package.
-- `src/core/checker.f` — native stack-effect checker and verifier.
+- `src/core/checker.f` — native stack-effect checker and verifier, including
+  destination-package ownership for resolved scalar-cell family `CAST:`
+  declarations.
 - `src/core/lower-cert-base.f` — boot-safe, package-scoped lowering-certificate ABI and fail-closed producer dispatcher loaded immediately after the checker.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
 - `src/core/type-family.f` — package-scoped TFAM/SUMV/layout registries and the shared transactional field-schema arena with canonical STACK/PACKED validation, committed public reflection, token-scoped owner-only provisional schema access, and publish/finalize/rollback integration.
@@ -105,11 +107,19 @@ points stay listed.
 ## Compiler IR
 
 - `src/compiler/ir/id.f` — public nominal compiler IR identity families plus
-  the private checked module, packed-reference, count, and pool-offset
-  representation authority.
-- `test/compiler/ir-id.f` — identity round-trip, range, owner, bound,
-  wrong-family, projection, private-surface, and exact pre/post-load dictionary
-  ownership regression suite for all 60 raw authority tails.
+  the sole private checked module-key, packed-reference, count, and pool-offset
+  representation authority; its aligned atomic allocator issues monotonic
+  nonzero process-wide module serials and both package wordlists are protected.
+- `test/compiler/ir-id-concurrency.f` — fresh-process task fixture proving the
+  module allocator yields nonzero unique serials after a `READY`/`GO` overlap
+  barrier; a private erase-only observer writes validated owners to shared raw
+  test storage, caught parent failures attempt to release every task, and an
+  exact activation-error case reruns all four task objects to prove cleanup.
+- `test/compiler/ir-id.f` — key-based identity round-trip, reachable
+  local/scalar guards, owner, bound, wrong-family, nonzero concurrent serials,
+  barrier-removal and cleanup-reuse mutations, replay, package sealing, private
+  allocator-helper absence, later allocator-proof ownership, and exact private
+  dictionary ownership coverage for all 26 production raw casts.
 
 ## Native Engine And Builders
 
@@ -241,7 +251,10 @@ points stay listed.
 - `src/habu/hide.f` — refresh-only dictionary/signature truncation prelude used
   before reloading common engine source.
 - `src/habu/xref.f` — baked live dictionary lifecycle/inspection words:
-  `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`.
+  `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`; it
+  installs the scalar-family CAST owner query over the live namespace record
+  and actual definition WID, then retires every owner-query rebinding seam
+  before sealing.
 - `src/core/generated-declaration-dictionary.f` — generated-declaration participant retaining native dictionary record, code, and data high-waters across nested success so an outer rollback removes every provisional word and package allocation.
 - `src/core/generated-declaration-protection.f` — final generated-declaration participant that stages constructor wordlists, preflights the immutable protection registry, publishes only at the outer commit, and seals the production participant set.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
@@ -2201,9 +2214,9 @@ points stay listed.
 - `tools/trusted-inventory-test.f` — checked fixture coverage for the trusted-inventory ratchet, plus a live child run of the production `strict` trust-gate command.
 - `tools/primitive-effect-inventory.f` — PEINV ratchet: independent identity inventory of the `PRIM:`/`PPRIM:` axiom rows (canonical kind/package/spelling/effect/flags tuple), cross-checked against the live `#PE` registry and baselined against the `primitive-effect-inventory-manifest` block in `TRUSTED.md`.
 - `tools/primitive-effect-inventory-test.f` — checked fixture coverage for the primitive-effect inventory ratchet: identity round-trip, formatting stability, and the add/delete/duplicate/reorder/mutation tamper matrix.
-- `tools/refine-lint-core.f` — sealed-style `package RFL`: whole-source lexer confinement for source-derived `CAST:`/`TRUSTED:` refinement mints plus the compiler IR raw-authority contract. It scans `maki/`, `lib/`, `src/`, `tools/`, and `test/`; confines seeded mint references to exact owners/tests/allowlists; rejects unauthorized or public `IR-RAW`, structural direct definitions or package EXPORT aliases of every frozen raw API tail in compiler packages, exact qualified compiler raw references, malformed package state, lexer defects, and stale/new inventory rows while preserving top-level hb-build EXPORT and inherited global `COUNT>N`. Interim until the TVK-RAW checker capability lands.
+- `tools/refine-lint-core.f` — sealed-style `package RFL`: whole-source lexer confinement for source-derived `CAST:`/`TRUSTED:` refinement mints plus the compiler IR authority contract. It scans `maki/`, `lib/`, `src/`, `tools/`, and `test/`; confines seeded mint references to exact owners/tests/allowlists; rejects legacy `IR-RAW`, any raw cast outside `src/compiler/ir/id.f`'s private `IR-ID` window, structural direct definitions or package EXPORT aliases of the 26 frozen raw tails in all 19 compiler API packages, exact qualified raw references, malformed package state, lexer defects, and stale/new inventory rows while preserving top-level hb-build EXPORT and inherited global `COUNT>N`. Interim until the TVK-RAW checker capability lands.
 - `tools/refine-lint.f` — CLI wrapper for the refinement-mint confinement lint; one line, `RFL:MAIN` (the catch plus LINT-MAIN reporting lives in the package, so no lint definition sits outside one).
-- `tools/refine-lint-test.f` — `package RFL-TEST`: checked fixture coverage — shape/policy fixtures, all 60 raw tails, every compiler package crossed with all 57 structural definers, EXPORT and package-state forgeries, a red scratch-file mint call outside the tree, and the green live tree run. Reads the finding count through `RFL:FINDINGS`/`RFL:CLEAR-FINDINGS` rather than the counter cell, which stays package-private so no caller can assign it a value that hides a finding.
+- `tools/refine-lint-test.f` — `package RFL-TEST`: checked fixture coverage — shape/policy fixtures, all 26 raw tails, every compiler API package crossed with all 57 structural definers, EXPORT, legacy-package, and package-state forgeries, a red scratch-file mint call outside the tree, and the green live tree run. Reads the finding count through `RFL:FINDINGS`/`RFL:CLEAR-FINDINGS` rather than the counter cell, which stays package-private so no caller can assign it a value that hides a finding.
 - `tools/suite-coverage-lint-core.f` — derives the gate suite lists from test/gate-stdlib-cases.f, test/gate-stdlib-inline-lib.f, test/gate-stdlib-lint-tools.f, test/run-worker-stdlib.f, test/gate-engine-lib.f, and test/candidate-validation.f each run; enforces that every TEST:SUITE member is scheduled/manual-documented/spawn-only-documented and that the inprocess GSI-LINT-LIBS-PTX-TOOL list equals the spawned ptx-toolchain list minus the documented spawn-only bench set.
 - `tools/suite-coverage-lint.f` — CLI wrapper for the stdlib gate suite-coverage lint.
 - `tools/suite-coverage-lint-test.f` — checked fixture coverage for the suite-coverage lint: BOL member parsing, orphan detection, ptx missing/extra/spawn-only divergence, exact-equality clean case, and manual/spawn-only table staleness.
@@ -2748,7 +2761,7 @@ points stay listed.
 - `test/deftype-suite.f` — behavior contract for the `DEFTYPE` surface (lib/type/deftype.f): same-nominal accept, other-nominal/generic-int reject, explicit converters, converter no-launder, demanded-input direction, package scoping (same name in two packages stays distinct), and snapshot-persist survival.
 - `test/deftype-dup-bad.f` — child-process negative fixture: a duplicate `DEFTYPE` in one package is refused fail-closed (exit 67, "duplicate family").
 - `test/cast-suite.f` — positive behavior contract for the `CAST:` checked retype declarer (src/core/roles.f + checker.f CAST-PEND window): empty-body and guarded nominal casts, runtime value pass-through, guard throw, parametric round-trip and generic projection, and checked-caller certification against the published row.
-- `test/cast-negative-suite.f` — reject contract for `CAST:`: E-CAST-ARITY/E-CAST-CLASS/E-CAST-FAM named rejects, identity-certification failures (net-stack and input-consuming bodies), and the unsafe-token reject of `cast:` inside a checked body.
+- `test/cast-negative-suite.f` — reject contract for `CAST:`: E-CAST-ARITY/E-CAST-CLASS/E-CAST-FAM/E-CAST-OWNER named rejects; real same-owner and foreign-owner arity-0/parametric scalar-cell family cases; callable and direct-cell checker-package mirror spoofs; unrestricted foreign projections; identity-certification failures (net-stack and input-consuming bodies); and the unsafe-token reject of `cast:` inside a checked body.
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/using-test.f` — behavior suite for `using NAME … ;using` package import (top-level and in-package resolution, private isolation, inner-scope-wins, compile-time resolution, and the missing-name/colon/unknown/overflow/unbalanced/ambiguous/leak rejects).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).

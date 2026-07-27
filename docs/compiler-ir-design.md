@@ -2483,7 +2483,9 @@ Acceptance:
 - no public raw converter, key mint, legacy `IR-RAW`, or per-dialect cast;
 - `CAST:` declarations into resolved scalar-cell families, including
   parametric `NEWTYPE` instances, are accepted only in the destination family's
-  declaring package; projection casts remain unrestricted.
+  declaring package; the owner check uses the engine's live namespace record
+  and actual definition wordlist rather than mutable checker mirror state;
+  projection casts remain unrestricted.
 
 #### IR-0.2 — source registry and spans
 

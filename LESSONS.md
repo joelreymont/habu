@@ -2604,3 +2604,8 @@ fits.
 - **Visibility and token spelling are not authority.** Confinement must use
   structural definer and `EXPORT` roles plus generated dictionary ownership,
   while preserving legitimate inherited globals such as `COUNT>N`.
+- **A nominal family package is its mint authority.** Keep checked
+  representation casts private in the declaring package, protect that
+  wordlist, and bind `CAST:` authorization to the engine's live namespace
+  record and actual definition wordlist, never a mutable checker scope mirror;
+  a second raw-authority package only splits ownership.

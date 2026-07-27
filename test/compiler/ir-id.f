@@ -1,7 +1,10 @@
-\ ir-id.f - checked shared compiler IR identity tests.
+\ ir-id.f - checked shared compiler IR identity and authority tests.
 
 require lib/test.f
 require lib/string.f
+require lib/process-argv.f
+require lib/test/outcome.f
+require lib/test/subject.f
 require test/checker-assert.f
 
 package IR-ID-AUDIT
@@ -9,17 +12,20 @@ private
 
 variable ND0
 variable ND1
-variable GLOBAL-COUNT-N
+variable TF0
+variable TF1
 variable RAW-HITS
+variable PUBLIC-HITS
 
 public
 
 : BEFORE ( -- )
    ndict@ ND0 !
-   s" COUNT>N" 0 XREF-FIND-WL-INDEX GLOBAL-COUNT-N ! ;
+   TFAM-N@ TF0 ! ;
 
 : AFTER ( -- )
-   ndict@ ND1 ! ;
+   ndict@ ND1 !
+   TFAM-N@ TF1 ! ;
 
 ;package
 
@@ -27,146 +33,262 @@ IR-ID-AUDIT:BEFORE
 require src/compiler/ir/id.f
 IR-ID-AUDIT:AFTER
 
-package IR-RAW
+package IR-ID-TEST
 private
 
-: MODULE-RANGE-CASES ( -- )
-   1 MINT-MODULE MODULE>N 1 T=
-   $7FFFFFFF MINT-MODULE MODULE>N $7FFFFFFF T=
-   [: 0 MINT-MODULE drop ;] E-IR-MODULE-ZERO TTHROWSQ
-   [: -1 MINT-MODULE drop ;] E-IR-MODULE-RANGE TTHROWSQ
-   [: $80000000 MINT-MODULE drop ;] E-IR-MODULE-RANGE TTHROWSQ ;
+$FFFFFFFF constant LOCAL-MAX
+$1000 constant SUBJECT-CAP
+2000 constant SUBJECT-MS
+
+create SUBJECT-OUT SUBJECT-CAP allot
+create SUBJECT-ERR SUBJECT-CAP allot
 
 : SCALAR-CASES ( -- )
-   0 MINT-COUNT COUNT>N 0 T=
-   $7FFFFFFFFFFFFFFF MINT-COUNT COUNT>N $7FFFFFFFFFFFFFFF T=
-   0 MINT-POOL-OFF POOL-OFF>N 0 T=
-   $7FFFFFFFFFFFFFFF MINT-POOL-OFF POOL-OFF>N $7FFFFFFFFFFFFFFF T=
-   [: $8000000000000000 MINT-COUNT drop ;]
-      E-IR-SCALAR-RANGE TTHROWSQ
-   [: $8000000000000000 MINT-POOL-OFF drop ;]
-      E-IR-SCALAR-RANGE TTHROWSQ
-   [: -1 MINT-COUNT drop ;] E-IR-SCALAR-RANGE TTHROWSQ
-   [: -1 MINT-POOL-OFF drop ;] E-IR-SCALAR-RANGE TTHROWSQ ;
+   0 IR-ID:COUNT IR-ID:COUNT-N 0 T=
+   $7FFFFFFFFFFFFFFF IR-ID:COUNT IR-ID:COUNT-N
+      $7FFFFFFFFFFFFFFF T=
+   0 IR-ID:POOL-OFF IR-ID:POOL-OFF-N 0 T=
+   $7FFFFFFFFFFFFFFF IR-ID:POOL-OFF IR-ID:POOL-OFF-N
+      $7FFFFFFFFFFFFFFF T=
+   [: -1 IR-ID:COUNT drop ;] E-IR-SCALAR-RANGE TTHROWSQ
+   [: -1 IR-ID:POOL-OFF drop ;] E-IR-SCALAR-RANGE TTHROWSQ ;
 
 : SOURCE-CASE ( -- )
-   1 MINT-MODULE 7 PACK-SOURCE
-   dup SOURCE-LOCAL 7 T=
-   dup SOURCE-OWNER MODULE>N 1 T=
-   SOURCE>N $100000007 T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 7 IR-ID:PACK-SOURCE {: id:IR-ID:ir-source-id :}
+   id IR-ID:SOURCE-LOCAL 7 T=
+   id IR-ID:SOURCE-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 8 IR-ID:COUNT id IR-ID:SOURCE-CHECK
+      IR-ID:SOURCE-LOCAL 7 T= ;
 
 : FUN-CASE ( -- )
-   2 MINT-MODULE 8 PACK-FUN
-   dup FUN-LOCAL 8 T=
-   dup FUN-OWNER MODULE>N 2 T=
-   FUN>N $200000008 T=
-   2 MINT-MODULE 9 MINT-COUNT
-      2 MINT-MODULE 8 PACK-FUN
-      FUN-CHECK FUN>N $200000008 T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 8 IR-ID:PACK-FUN {: id:IR-ID:ir-fun-id :}
+   id IR-ID:FUN-LOCAL 8 T=
+   id IR-ID:FUN-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 9 IR-ID:COUNT id IR-ID:FUN-CHECK IR-ID:FUN-LOCAL 8 T= ;
 
 : BLOCK-CASE ( -- )
-   3 MINT-MODULE 9 PACK-BLOCK
-   dup BLOCK-LOCAL 9 T=
-   dup BLOCK-OWNER MODULE>N 3 T=
-   BLOCK>N $300000009 T=
-   3 MINT-MODULE 10 MINT-COUNT
-      3 MINT-MODULE 9 PACK-BLOCK
-      BLOCK-CHECK BLOCK>N $300000009 T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 9 IR-ID:PACK-BLOCK {: id:IR-ID:ir-block-id :}
+   id IR-ID:BLOCK-LOCAL 9 T=
+   id IR-ID:BLOCK-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 10 IR-ID:COUNT id IR-ID:BLOCK-CHECK IR-ID:BLOCK-LOCAL 9 T= ;
 
 : OP-CASE ( -- )
-   4 MINT-MODULE 10 PACK-OP
-   dup OP-LOCAL 10 T=
-   dup OP-OWNER MODULE>N 4 T=
-   OP>N $40000000A T=
-   4 MINT-MODULE 11 MINT-COUNT
-      4 MINT-MODULE 10 PACK-OP
-      OP-CHECK OP>N $40000000A T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 10 IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
+   id IR-ID:OP-LOCAL 10 T=
+   id IR-ID:OP-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 11 IR-ID:COUNT id IR-ID:OP-CHECK IR-ID:OP-LOCAL 10 T= ;
 
 : VALUE-CASE ( -- )
-   5 MINT-MODULE 11 PACK-VALUE
-   dup VALUE-LOCAL 11 T=
-   dup VALUE-OWNER MODULE>N 5 T=
-   VALUE>N $50000000B T=
-   5 MINT-MODULE 12 MINT-COUNT
-      5 MINT-MODULE 11 PACK-VALUE
-      VALUE-CHECK VALUE>N $50000000B T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 11 IR-ID:PACK-VALUE {: id:IR-ID:ir-value-id :}
+   id IR-ID:VALUE-LOCAL 11 T=
+   id IR-ID:VALUE-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 12 IR-ID:COUNT id IR-ID:VALUE-CHECK IR-ID:VALUE-LOCAL 11 T= ;
 
 : TYPE-CASE ( -- )
-   6 MINT-MODULE 12 PACK-TYPE
-   dup TYPE-LOCAL 12 T=
-   dup TYPE-OWNER MODULE>N 6 T=
-   TYPE>N $60000000C T=
-   6 MINT-MODULE 13 MINT-COUNT
-      6 MINT-MODULE 12 PACK-TYPE
-      TYPE-CHECK TYPE>N $60000000C T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 12 IR-ID:PACK-TYPE {: id:IR-ID:ir-type-id :}
+   id IR-ID:TYPE-LOCAL 12 T=
+   id IR-ID:TYPE-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 13 IR-ID:COUNT id IR-ID:TYPE-CHECK IR-ID:TYPE-LOCAL 12 T= ;
 
 : ATTR-CASE ( -- )
-   7 MINT-MODULE 13 PACK-ATTR
-   dup ATTR-LOCAL 13 T=
-   dup ATTR-OWNER MODULE>N 7 T=
-   ATTR>N $70000000D T=
-   7 MINT-MODULE 14 MINT-COUNT
-      7 MINT-MODULE 13 PACK-ATTR
-      ATTR-CHECK ATTR>N $70000000D T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 13 IR-ID:PACK-ATTR {: id:IR-ID:ir-attr-id :}
+   id IR-ID:ATTR-LOCAL 13 T=
+   id IR-ID:ATTR-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 14 IR-ID:COUNT id IR-ID:ATTR-CHECK IR-ID:ATTR-LOCAL 13 T= ;
 
 : SYMBOL-CASE ( -- )
-   8 MINT-MODULE 14 PACK-SYMBOL
-   dup SYMBOL-LOCAL 14 T=
-   dup SYMBOL-OWNER MODULE>N 8 T=
-   SYMBOL>N $80000000E T=
-   8 MINT-MODULE 15 MINT-COUNT
-      8 MINT-MODULE 14 PACK-SYMBOL
-      SYMBOL-CHECK SYMBOL>N $80000000E T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 14 IR-ID:PACK-SYMBOL {: id:IR-ID:ir-symbol-id :}
+   id IR-ID:SYMBOL-LOCAL 14 T=
+   id IR-ID:SYMBOL-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 15 IR-ID:COUNT id IR-ID:SYMBOL-CHECK IR-ID:SYMBOL-LOCAL 14 T= ;
 
 : SPAN-CASE ( -- )
-   9 MINT-MODULE 15 PACK-SPAN
-   dup SPAN-LOCAL 15 T=
-   dup SPAN-OWNER MODULE>N 9 T=
-   SPAN>N $90000000F T=
-   9 MINT-MODULE 16 MINT-COUNT
-      9 MINT-MODULE 15 PACK-SPAN
-      SPAN-CHECK SPAN>N $90000000F T= ;
+   IR-ID:NEW-MODULE {: key:IR-ID:ir-module-key owner:IR-ID:ir-module-id :}
+   key 15 IR-ID:PACK-SPAN {: id:IR-ID:ir-span-id :}
+   id IR-ID:SPAN-LOCAL 15 T=
+   id IR-ID:SPAN-OWNER owner IR-ID:MODULE-SAME? TTRUE
+   key 16 IR-ID:COUNT id IR-ID:SPAN-CHECK IR-ID:SPAN-LOCAL 15 T= ;
 
-: PACK-RANGE-CASES ( -- )
-   $7FFFFFFF MINT-MODULE $FFFFFFFF PACK-SOURCE
-      {: id:IR-ID:ir-source-id :}
-   id SOURCE>N $7FFFFFFFFFFFFFFF T=
-   id SOURCE-OWNER MODULE>N $7FFFFFFF T=
-   id SOURCE-LOCAL $FFFFFFFF T=
-   $7FFFFFFF MINT-MODULE $100000000 MINT-COUNT id
-      SOURCE-CHECK SOURCE>N $7FFFFFFFFFFFFFFF T=
-   1 MINT-MODULE $FFFFFFFF PACK-SOURCE SOURCE-LOCAL $FFFFFFFF T=
-   [: 1 MINT-MODULE -1 PACK-SOURCE drop ;] E-IR-INDEX-RANGE TTHROWSQ
-   [: 1 MINT-MODULE $100000000 PACK-SOURCE drop ;]
-      E-IR-INDEX-RANGE TTHROWSQ ;
+: BAD-LOCAL-NEG ( -- )
+   IR-ID:NEW-MODULE drop -1 IR-ID:PACK-SOURCE drop ;
 
-: CHECK-CASES ( -- )
-   1 MINT-MODULE 8 MINT-COUNT
-      1 MINT-MODULE 7 PACK-SOURCE SOURCE-CHECK SOURCE>N $100000007 T=
-   [: 1 MINT-MODULE 7 MINT-COUNT
-      1 MINT-MODULE 7 PACK-SOURCE SOURCE-CHECK drop ;]
-      E-IR-INDEX-BOUND TTHROWSQ
-   [: 2 MINT-MODULE 8 MINT-COUNT
-      1 MINT-MODULE 7 PACK-SOURCE SOURCE-CHECK drop ;]
-      E-IR-OWNER TTHROWSQ ;
+: BAD-LOCAL-HIGH ( -- )
+   IR-ID:NEW-MODULE drop LOCAL-MAX 1+ IR-ID:PACK-SOURCE drop ;
+
+: BAD-BOUND ( -- )
+   IR-ID:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   key 7 IR-ID:COUNT key 7 IR-ID:PACK-SOURCE IR-ID:SOURCE-CHECK drop ;
+
+: BAD-OWNER ( -- )
+   IR-ID:NEW-MODULE drop {: key-a:IR-ID:ir-module-key :}
+   IR-ID:NEW-MODULE drop {: key-b:IR-ID:ir-module-key :}
+   key-b 8 IR-ID:COUNT key-a 7 IR-ID:PACK-SOURCE IR-ID:SOURCE-CHECK drop ;
+
+: RANGE-CASES ( -- )
+   IR-ID:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   key LOCAL-MAX IR-ID:PACK-SOURCE IR-ID:SOURCE-LOCAL LOCAL-MAX T=
+   [: BAD-LOCAL-NEG ;] E-IR-INDEX-RANGE TTHROWSQ
+   [: BAD-LOCAL-HIGH ;] E-IR-INDEX-RANGE TTHROWSQ
+   [: BAD-BOUND ;] E-IR-INDEX-BOUND TTHROWSQ
+   [: BAD-OWNER ;] E-IR-OWNER TTHROWSQ ;
 
 : WRONG-FAMILY-CASES ( -- )
-   s" IR-BAD-SRC ( IR-ID:ir-module-id n -- IR-ID:ir-fun-id ) PACK-SOURCE"
+   s" IR-BAD-SRC ( IR-ID:ir-module-key n -- IR-ID:ir-fun-id ) IR-ID:PACK-SOURCE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" IR-BAD-FN ( IR-ID:ir-module-id n -- IR-ID:ir-source-id ) PACK-FUN"
+   s" IR-BAD-FN ( IR-ID:ir-module-key n -- IR-ID:ir-source-id ) IR-ID:PACK-FUN"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" IR-BAD-OWNER ( IR-ID:ir-source-id -- IR-ID:ir-count ) SOURCE-OWNER"
+   s" IR-BAD-OWNER ( IR-ID:ir-source-id -- IR-ID:ir-count ) IR-ID:SOURCE-OWNER"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" IR-BAD-LOCAL ( IR-ID:ir-fun-id -- n ) SOURCE-LOCAL"
+   s" IR-BAD-LOCAL ( IR-ID:ir-fun-id -- n ) IR-ID:SOURCE-LOCAL"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" IR-BAD-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-fun-id -- IR-ID:ir-fun-id ) SOURCE-CHECK"
+   s" IR-BAD-CHECK ( IR-ID:ir-module-key IR-ID:ir-count IR-ID:ir-fun-id -- IR-ID:ir-fun-id ) IR-ID:SOURCE-CHECK"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" IR-BAD-BOUND ( IR-ID:ir-module-id IR-ID:ir-pool-offset IR-ID:ir-source-id -- IR-ID:ir-source-id ) SOURCE-CHECK"
+   s" IR-KEY-FORGE ( n -- IR-ID:ir-module-key )"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IR-KEY-ERASE ( IR-ID:ir-module-key -- n )"
       CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: SUBJECT-RUN ( ptr u8 n -- len len outcome )
+   SUBJECT-OUT SUBJECT-CAP >LEN
+   SUBJECT-ERR SUBJECT-CAP >LEN
+   SUBJECT-MS >MS SUBJECT:RUN ;
+
+: CONCURRENT-SOURCE$ ( n -- ptr u8 n ) {: mode:n :}
+   SB-RESET
+   s" require test/compiler/ir-id-concurrency.f" SB-APPEND
+   10 SB-APPEND-C
+   mode 2 = if
+      s" IR-ID-CONCURRENCY:CLEANUP-REUSE" SB-APPEND
+      SB$ exit
+   then
+   mode
+   case
+      0 of s" 0" endof
+      1 of s" 1" endof
+      E-TBL-BOUNDS throw
+   endcase
+   SB-APPEND
+   s"  IR-ID-CONCURRENCY:RUN" SB-APPEND
+   SB$ ;
+
+: CONCURRENT-RUN ( n -- len len outcome ) {: mode:n :}
+   mode CONCURRENT-SOURCE$ {: src:ptr srcu:n :}
+   PROC-ARGV-RESET
+   0 ARGV$ >LEN src srcu >LEN
+   SUBJECT-OUT SUBJECT-CAP >LEN
+   SUBJECT-ERR SUBJECT-CAP >LEN
+   SUBJECT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+
+: CONCURRENT-GREEN ( -- )
+   s" concurrent allocator barrier" T-LABEL
+   1 CONCURRENT-RUN 0 T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CONCURRENT-MUTATION ( -- )
+   s" barrier-removal mutation fails overlap witness" T-LABEL
+   0 CONCURRENT-RUN 76 T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CONCURRENT-ACTIVATE-CLEANUP ( -- )
+   s" activation cleanup permits same-process task reuse" T-LABEL
+   2 CONCURRENT-RUN 0 T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+: CONCURRENT-UNIQUE ( -- )
+   CONCURRENT-GREEN
+   CONCURRENT-MUTATION
+   CONCURRENT-ACTIVATE-CLEANUP ;
+
+: SEAL-CASE ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n needle:ptr needleu:n :}
+   src srcu SUBJECT-RUN ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   SUBJECT-ERR erru needle needleu CONTAINS? TTRUE ;
+
+: OWNER-CAST-REJECT ( ptr u8 n -- )
+   SUBJECT-RUN UNCAUGHT-RC T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   SUBJECT-ERR erru s" uncaught throw code 7135" CONTAINS? TTRUE ;
+
+: OWNER-CAST-CASE ( -- )
+   S\" package HIR\npublic\nCAST: ANY ( n -- IR-ID:ir-module-key ) ;\n;package"
+   OWNER-CAST-REJECT ;
+
+: OWNER-CAST-SPOOF ( -- )
+   S\" s\" IR-ID\" CHECKER-PACKAGE\nCAST: FAKE ( n -- IR-ID:ir-module-key ) ;"
+   OWNER-CAST-REJECT ;
+
+: OWNER-MIRROR-SPOOF ( -- )
+   S\" 105 CHECKER-PACKAGE-NAME c!\n114 CHECKER-PACKAGE-NAME 1 + c!\n45 CHECKER-PACKAGE-NAME 2 + c!\n105 CHECKER-PACKAGE-NAME 3 + c!\n100 CHECKER-PACKAGE-NAME 4 + c!\n5 CHECKER-PACKAGE-U !\nCHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !\nCAST: FAKE ( n -- IR-ID:ir-module-key ) ;"
+   OWNER-CAST-REJECT ;
+
+: RELOAD-STABLE$ ( -- ptr u8 n )
+   SB-RESET
+   s" require src/compiler/ir/id.f" SB-APPEND 10 SB-APPEND-C
+   s" IR-ID:NEW-MODULE nip" SB-APPEND 10 SB-APPEND-C
+   s" INCLUDE-SNAPSHOT-PREPARE" SB-APPEND 10 SB-APPEND-C
+   s" require src/compiler/ir/id.f" SB-APPEND 10 SB-APPEND-C
+   s" : DISTINCT ( IR-ID:ir-module-id -- ) IR-ID:NEW-MODULE nip"
+      SB-APPEND
+   s"  IR-ID:MODULE-SAME? if 76 throw then ;" SB-APPEND 10 SB-APPEND-C
+   s" DISTINCT" SB-APPEND
+   SB$ ;
+
+: AUTHORITY-CASES ( -- )
+   s" cast owner hook is not addressable" T-LABEL
+   s" CAST-PKG-OWNER-XT" XREF-FIND XREF-FOUND? TFALSE
+   s" family package hook is not addressable" T-LABEL
+   s" TFAM-PKG-XT" XREF-FIND XREF-FOUND? TFALSE
+   s" family package wrapper is not addressable" T-LABEL
+   s" TFAM-PKG$*" XREF-FIND XREF-FOUND? TFALSE
+   s" sealed private package cannot reopen" T-LABEL
+   S\" package IR-ID\nprivate\n: FORGE ( n -- IR-ID:ir-module-key ) MINT-KEY ;\n;package"
+      s" IR-ID" SEAL-CASE
+   s" sealed qualified tail cannot define" T-LABEL
+   s" : IR-ID:FORGE ( -- ) ;" s" IR-ID:FORGE" SEAL-CASE
+   s" sealed private wordlist cannot mutate" T-LABEL
+   S\" s\" IR-ID\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current\n: FORGE ( -- ) ;"
+      s" FORGE" SEAL-CASE
+   s" sealed source cannot include twice" T-LABEL
+   S\" s\" src/compiler/ir/id.f\" included" s" IR-ID" SEAL-CASE
+   s" nominal cast output requires owner package" T-LABEL
+   OWNER-CAST-CASE
+   s" checker package mirror cannot authorize cast" T-LABEL
+   OWNER-CAST-SPOOF
+   s" direct checker mirror mutation cannot authorize cast" T-LABEL
+   OWNER-MIRROR-SPOOF
+   s" module serial survives require replay" T-LABEL
+   RELOAD-STABLE$ SUBJECT-RUN 0 T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   erru 0 T= ;
+
+public
 
 : RUN ( -- )
    T-RESET
-   MODULE-RANGE-CASES
    SCALAR-CASES
    SOURCE-CASE
    FUN-CASE
@@ -177,21 +299,21 @@ private
    ATTR-CASE
    SYMBOL-CASE
    SPAN-CASE
-   PACK-RANGE-CASES
-   CHECK-CASES
+   RANGE-CASES
    WRONG-FAMILY-CASES
+   CONCURRENT-UNIQUE
+   AUTHORITY-CASES
    T-REPORT ;
-
-RUN
 
 ;package
 
 package IR-ID-AUDIT
 private
 
-60 constant RAW#
+26 constant RAW#
+42 constant PUBLIC#
+13 constant FAMILY#
 9 constant KIND#
-6 constant FORM#
 
 : KIND$ ( n -- ptr u8 n )
    case
@@ -207,43 +329,85 @@ private
       E-TBL-BOUNDS throw
    endcase ;
 
-: KIND-RAW$ ( n n -- ptr u8 n ) {: kind:n form:n :}
+: FAMILY$ ( n -- ptr u8 n )
+   case
+      0 of s" ir-module-key" endof
+      1 of s" ir-module-id" endof
+      2 of s" ir-source-id" endof
+      3 of s" ir-fun-id" endof
+      4 of s" ir-block-id" endof
+      5 of s" ir-op-id" endof
+      6 of s" ir-value-id" endof
+      7 of s" ir-type-id" endof
+      8 of s" ir-attr-id" endof
+      9 of s" ir-symbol-id" endof
+      10 of s" ir-span-id" endof
+      11 of s" ir-pool-offset" endof
+      12 of s" ir-count" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: KIND-API$ ( n n -- ptr u8 n ) {: kind:n form:n :}
    SB-RESET
    form
    case
-      0 of s" MINT-" SB-APPEND kind KIND$ SB-APPEND endof
-      1 of kind KIND$ SB-APPEND s" >N" SB-APPEND endof
-      2 of s" PACK-" SB-APPEND kind KIND$ SB-APPEND endof
-      3 of kind KIND$ SB-APPEND s" -OWNER" SB-APPEND endof
-      4 of kind KIND$ SB-APPEND s" -LOCAL" SB-APPEND endof
-      5 of kind KIND$ SB-APPEND s" -CHECK" SB-APPEND endof
+      0 of s" PACK-" SB-APPEND kind KIND$ SB-APPEND endof
+      1 of kind KIND$ SB-APPEND s" -OWNER" SB-APPEND endof
+      2 of kind KIND$ SB-APPEND s" -LOCAL" SB-APPEND endof
+      3 of kind KIND$ SB-APPEND s" -CHECK" SB-APPEND endof
       E-TBL-BOUNDS throw
    endcase
    SB$ ;
 
-: RAW$ ( n -- ptr u8 n ) {: k:n :}
+: PUBLIC$ ( n -- ptr u8 n ) {: k:n :}
    k 6 < if
       k
       case
-         0 of s" MINT-MODULE" endof
-         1 of s" MODULE>N" endof
-         2 of s" MINT-COUNT" endof
-         3 of s" COUNT>N" endof
-         4 of s" MINT-POOL-OFF" endof
-         5 of s" POOL-OFF>N" endof
+         0 of s" NEW-MODULE" endof
+         1 of s" MODULE-SAME?" endof
+         2 of s" COUNT" endof
+         3 of s" COUNT-N" endof
+         4 of s" POOL-OFF" endof
+         5 of s" POOL-OFF-N" endof
          E-TBL-BOUNDS throw
       endcase
       exit
    then
-   k 6 - {: raw:n :}
-   raw FORM# / raw FORM# mod KIND-RAW$ ;
+   k 6 - {: api:n :}
+   api 4 / api 4 mod KIND-API$ ;
 
-: IR-RAW-NS ( -- ptr a )
-   s" IR-RAW" XREF-NAMESPACE-WL XREF-FIND-WL
+: KIND-RAW$ ( n n -- ptr u8 n ) {: kind:n form:n :}
+   SB-RESET
+   form 0= if s" MINT-" SB-APPEND kind KIND$ SB-APPEND else
+      kind KIND$ SB-APPEND s" >N" SB-APPEND
+   then
+   SB$ ;
+
+: RAW$ ( n -- ptr u8 n ) {: k:n :}
+   k 8 < if
+      k
+      case
+         0 of s" MINT-KEY" endof
+         1 of s" KEY>N" endof
+         2 of s" MINT-MODULE" endof
+         3 of s" MODULE>N" endof
+         4 of s" MINT-COUNT" endof
+         5 of s" COUNT>N" endof
+         6 of s" MINT-POOL-OFF" endof
+         7 of s" POOL-OFF>N" endof
+         E-TBL-BOUNDS throw
+      endcase
+      exit
+   then
+   k 8 - {: raw:n :}
+   raw 2 / raw 2 mod KIND-RAW$ ;
+
+: AUTH-NS ( -- ptr a )
+   s" IR-ID" XREF-NAMESPACE-WL XREF-FIND-WL
    dup XREF-FOUND? TTRUE ;
 
 : RAW-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
-   IR-RAW-NS {: ns:ptr :}
+   AUTH-NS {: ns:ptr :}
    ns XREF-START {: pub:n :}
    ns XREF-LEN {: pri:n :}
    a u pub XREF-FIND-WL XREF-FOUND? TFALSE
@@ -262,71 +426,57 @@ private
    repeat drop
    RAW-HITS @ 1 T= ;
 
+: PUBLIC-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
+   AUTH-NS {: ns:ptr :}
+   ns XREF-START {: pub:n :}
+   a u pub XREF-FIND-WL-INDEX {: idx:n :}
+   idx ND0 @ >= TTRUE
+   idx ND1 @ < TTRUE
+   0 PUBLIC-HITS !
+   ND0 @ begin dup ND1 @ < while
+      dup XREF-REC dup a u XREF-MATCH? if
+         XREF-WORDLIST pub T=
+         1 PUBLIC-HITS +!
+      else
+         drop
+      then
+      1+
+   repeat drop
+   PUBLIC-HITS @ 1 T= ;
+
+: PUBLIC-SURFACE ( -- )
+   AUTH-NS XREF-START {: pub:n :}
+   0 PUBLIC-HITS !
+   ND0 @ begin dup ND1 @ < while
+      dup XREF-REC XREF-WORDLIST pub = if 1 PUBLIC-HITS +! then
+      1+
+   repeat drop
+   PUBLIC-HITS @ PUBLIC# T=
+   PUBLIC# 0 ?do i PUBLIC$ PUBLIC-ROW loop
+   s" SERIAL-NEXT" pub XREF-FIND-WL XREF-FOUND? TFALSE ;
+
+: FAMILY-SURFACE ( -- )
+   TF1 @ TF0 @ - FAMILY# T=
+   FAMILY# 0 ?do
+      TF0 @ i + dup TFAM-NAME$ i FAMILY$ T-STR= TTRUE
+      TFAM-ARITY@ 0 T=
+   loop ;
+
 : DICTIONARY-OWNERSHIP ( -- )
-   KIND# FORM# * 6 + RAW# T=
-   GLOBAL-COUNT-N @ 0 >= TTRUE
-   GLOBAL-COUNT-N @ ND0 @ < TTRUE
-   GLOBAL-COUNT-N @ XREF-REC XREF-WORDLIST 0 T=
-   s" COUNT>N" 0 XREF-FIND-WL-INDEX GLOBAL-COUNT-N @ T=
-   RAW# 0 ?do i RAW$ RAW-ROW loop ;
+   KIND# 2 * 8 + RAW# T=
+   RAW# 0 ?do i RAW$ RAW-ROW loop
+   s" IR-RAW" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? TFALSE ;
 
 public
 
 : RUN ( -- )
    T-RESET
+   FAMILY-SURFACE
+   PUBLIC-SURFACE
    DICTIONARY-OWNERSHIP
    T-REPORT ;
 
 ;package
 
 IR-ID-AUDIT:RUN
-
-package IR-ID-TEST
-private
-
-: ABSENT? ( ptr u8 n -- bool )
-   XREF-FIND XREF-FOUND? 0= ;
-
-: UNRESOLVED ( ptr u8 n -- )
-   CHECK-QUIET-CANDIDATE! 1 T= ;
-
-: PUBLIC-ABSENCE ( -- )
-   s" IR-ID:MINT-MODULE" ABSENT? TTRUE
-   s" IR:MINT-MODULE" ABSENT? TTRUE
-   s" HIR:MINT-MODULE" ABSENT? TTRUE
-   s" SIR:MINT-MODULE" ABSENT? TTRUE
-   s" LIR:MINT-MODULE" ABSENT? TTRUE
-   s" A64IR:MINT-MODULE" ABSENT? TTRUE
-   s" GPU-RIR:MINT-MODULE" ABSENT? TTRUE
-   s" GPU-KIR:MINT-MODULE" ABSENT? TTRUE
-   s" GPU-GIR:MINT-MODULE" ABSENT? TTRUE
-   s" GPU-PTXIR2:MINT-MODULE" ABSENT? TTRUE
-   s" GPU-IR:MINT-MODULE" ABSENT? TTRUE
-   s" IR-RAW:MINT-MODULE" ABSENT? TTRUE
-   s" IR:PACK-SOURCE" ABSENT? TTRUE
-   s" IR:SOURCE-OWNER" ABSENT? TTRUE
-   s" IR:SOURCE-LOCAL" ABSENT? TTRUE
-   s" IR:SOURCE-CHECK" ABSENT? TTRUE
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) IR-ID:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) IR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) HIR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) SIR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) LIR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) A64IR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) GPU-RIR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) GPU-KIR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) GPU-GIR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) GPU-PTXIR2:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) GPU-IR:MINT-MODULE" UNRESOLVED
-   s" IR-NO-PUBLIC ( n -- IR-ID:ir-module-id ) IR-RAW:MINT-MODULE" UNRESOLVED ;
-
-public
-
-: RUN ( -- )
-   T-RESET
-   PUBLIC-ABSENCE
-   T-REPORT ;
-
-;package
-
 IR-ID-TEST:RUN

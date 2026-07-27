@@ -461,6 +461,8 @@ defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family i
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
+defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
+defer CAST-PKG-OWNER-XT ( ptr u8 n -- bool )             \ declaring package is the engine's real definition target
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
@@ -513,6 +515,15 @@ variable CHECKER-PACKAGE-MODE
 
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
+
+\ Engine-owned package state. checker.f loads before layout.f, so these mirror
+\ the fixed DATA offsets named there. The default owner gate admits only the
+\ exact global-family/global-wordlist case needed before xref.f installs the
+\ namespace-record check. A package-family cast therefore fails closed during
+\ that prefix window, and mutable CHECKER-PACKAGE-* mirror state is irrelevant.
+$78 constant CK-PKG-PUB-OFF
+$80 constant CK-PKG-PRI-OFF
+$90 constant CK-PKG-REC-OFF
 
 0 constant UK-EXACT
 1 constant UK-INPUT
@@ -596,6 +607,14 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 : RES-FALSE ( -- bool )
    0 0= 0= ;
 
+: CAST-GLOBAL-OWNER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a drop
+   u 0 <> IF RES-FALSE EXIT THEN
+   data-base CK-PKG-REC-OFF + @ 0 <> IF RES-FALSE EXIT THEN
+   data-base CK-PKG-PUB-OFF + @ 0 <> IF RES-FALSE EXIT THEN
+   data-base CK-PKG-PRI-OFF + @ 0 <> IF RES-FALSE EXIT THEN
+   get-current 0 = ;
+
 \ --- BTC-7 extent-role product/factorization role registry (dot
 \ habu-extent-role-product-8e364885, docs/extent-substrate.md §Decision, BTC-7).
 \ EXT-PROD-FAM / EXT-REDX-FAM are the built-in `extprod`/`redx` family ids,
@@ -633,6 +652,7 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 : TFAM-ARITY* ( n -- n ) TFAM-ARITY-XT ;
 : TFAM-LAYOUT?* ( n -- bool ) TFAM-LAYOUT?-XT ;
 : TFAM-CELL?* ( n -- bool ) TFAM-CELL?-XT ;
+: TFAM-PKG$* ( n -- ptr u8 n ) TFAM-PKG-XT ;
 : TFAM-WIDTH@* ( n -- n ) TFAM-WIDTH-XT ;
 
 \ Registry-not-loaded DEFAULTS for the TFAM query hooks (wrapped in a word so the
@@ -646,6 +666,8 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: drop 0 ;] is TFAM-ARITY-XT
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
+   [: drop s" " ;] is TFAM-PKG-XT
+   [: CAST-GLOBAL-OWNER? ;] is CAST-PKG-OWNER-XT
    [: drop 1 ;] is TFAM-WIDTH-XT
    [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
@@ -6423,6 +6445,7 @@ variable UNSAFE-SYM-N
 7129 constant E-CAST-ARITY    \ sig is not exactly one input and one output term
 7130 constant E-CAST-CLASS    \ in/out is not a single retype-eligible machine cell
 7131 constant E-CAST-FAM      \ in/out names an undeclared family/type
+7135 constant E-CAST-OWNER    \ scalar-cell family output is outside its declaring package
 
 \ sealed system-package names: checker mirror of the native RESTAB table
 \ (src/habu/habu2.f) — foundational and stable, like CK-SEAL-LATCH-OFF.
@@ -9502,6 +9525,15 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    t TAG T-VAR = IF RES-TRUE EXIT THEN
    t TAG T-PARAM = IF t T-WIDTH 1 = EXIT THEN
    RES-FALSE ;
+\ CAST-OWNER? : projection out of a cell family is unrestricted. Introduction
+\ into one is authorized only when the destination's declaring package is the
+\ engine's real open namespace record and the actual definition wordlist is one
+\ of that record's public/private pair. xref.f installs that read-only identity
+\ check and retires the mutable defer name. The pre-xref default admits only the
+\ real global scope. CHECKER-PACKAGE-* is a parser mirror, never authority.
+: CAST-OWNER? ( n -- bool ) {: t0:n :}
+   t0 T-RES dup NP-CELLFAM? 0= IF drop RES-TRUE EXIT THEN
+   PARAM>FAM TFAM-PKG$* CAST-PKG-OWNER-XT ;
 \ CAST-CERTIFY : the matched-window certification. Throw the named reject when the
 \ declared retype is illegal, else certify the body output against SGIN (the
 \ identity ( in -- in ) flow); the shared tail then records the declared row.
@@ -9512,6 +9544,7 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
    SGOUT @ CAST-ROW-1? 0= IF E-CAST-ARITY throw THEN
    SGIN @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
    SGOUT @ CAST-ROW-TERM CAST-CELL? 0= IF E-CAST-CLASS throw THEN
+   SGOUT @ CAST-ROW-TERM CAST-OWNER? 0= IF E-CAST-OWNER throw THEN
    SGIN @ SUNI-COERCE ;
 
 \ Generative layout-buffer authorization. xref.f erases every arming-state

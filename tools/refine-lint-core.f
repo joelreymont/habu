@@ -25,10 +25,11 @@
 \ capability (dot habu-nominal-storage-raw-a3430ef2), which closes the mint
 \ direction at unification. Retire this lint's mint class when that lands.
 \
-\ IR-RAW uses common cast tails such as COUNT>N that cannot be identified by a
-\ bare token alone. Its package opener is therefore the confinement choke: only
-\ id.f, arena.f, codec.f, and the focused ID test may reopen IR-RAW. The seed
-\ table still proves every IR representation CAST remains declared in id.f.
+\ IR-ID's private CAST tails use common names such as COUNT>N that cannot be
+\ identified by a bare token alone. Runtime protection of both IR-ID wordlists
+\ is the authority boundary. This lint independently audits that every raw
+\ definition remains in id.f's private IR-ID section and that no compiler
+\ package publishes, aliases, or qualifies one.
 \
 \ Scan discipline: one whole-source LINT-LEX token stream per file, so multiline
 \ comments and strings cannot forge or hide package/public state. Matching is
@@ -52,10 +53,10 @@ private
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
 69 constant TOKEN-SEED#
-93 constant SEED#
+95 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
-60 constant RAW-NAME#
+26 constant RAW-NAME#
 
 10 constant LF
 48 constant ZERO
@@ -73,7 +74,15 @@ $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
 9 constant PKG-GPU-GIR
 10 constant PKG-GPU-PTXIR2
 11 constant PKG-GPU-IR
-12 constant PKG-IR-RAW
+12 constant PKG-IR-SOURCE
+13 constant PKG-IR-TYPE
+14 constant PKG-IR-ATTR
+15 constant PKG-IR-SCHEMA
+16 constant PKG-IR-BUILD
+17 constant PKG-IR-VERIFY
+18 constant PKG-IR-CODEC
+19 constant PKG-IR-PASS
+20 constant PKG-IR-RAW
 
 create NUM-BUF NUM-CAP allot
 create ONE 1 allot
@@ -96,6 +105,7 @@ variable CUR-U
 variable PACKAGE-LINE
 variable PACKAGE-KIND
 variable PACKAGE-OPEN
+variable PACKAGE-PUBLIC
 variable DEF-OPEN
 variable DEF-KIND
 variable DEF-LINE
@@ -286,7 +296,7 @@ private
       67 of s" MAKE-MODEL-PROOF" endof     \ seals a loaded GPT2LOAD:gpt2-model
       \ Shared compiler IR representation casts. Several tails are deliberately
       \ ordinary (COUNT>N, TYPE>N), so token confinement would collide with
-      \ unrelated packages. IR-RAW package-opener confinement owns their use.
+      \ unrelated packages. The structural IR-ID private-window scan owns them.
       69 of s" MINT-MODULE" endof
       70 of s" MODULE>N" endof
       71 of s" MINT-COUNT" endof
@@ -311,6 +321,8 @@ private
       90 of s" SYMBOL>N" endof
       91 of s" MINT-SPAN" endof
       92 of s" SPAN>N" endof
+      93 of s" MINT-KEY" endof
+      94 of s" KEY>N" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -409,6 +421,8 @@ private
       90 of s" src/compiler/ir/id.f" endof
       91 of s" src/compiler/ir/id.f" endof
       92 of s" src/compiler/ir/id.f" endof
+      93 of s" src/compiler/ir/id.f" endof
+      94 of s" src/compiler/ir/id.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -565,71 +579,37 @@ public
 
 \ ---- compiler IR raw authority ----------------------------------------------
 
-\ Exact frozen representation surface from PLAN.md IR-0.1. The first six rows
-\ are module/scalar casts; each referential kind then owns mint, projection,
-\ pack, owner, local, and check names in that order.
+\ Exact private representation surface from PLAN.md IR-0.1: key/module/scalar
+\ casts, then mint/projection for each referential kind. Semantic pack,
+\ observation, and validation words are public IR-ID APIs and are not raw names.
 : RAW-NAME$ ( n -- ptr u8 n )
    case
-      0 of s" MINT-MODULE" endof
-      1 of s" MODULE>N" endof
-      2 of s" MINT-COUNT" endof
-      3 of s" COUNT>N" endof
-      4 of s" MINT-POOL-OFF" endof
-      5 of s" POOL-OFF>N" endof
-      6 of s" MINT-SOURCE" endof
-      7 of s" SOURCE>N" endof
-      8 of s" PACK-SOURCE" endof
-      9 of s" SOURCE-OWNER" endof
-      10 of s" SOURCE-LOCAL" endof
-      11 of s" SOURCE-CHECK" endof
-      12 of s" MINT-FUN" endof
-      13 of s" FUN>N" endof
-      14 of s" PACK-FUN" endof
-      15 of s" FUN-OWNER" endof
-      16 of s" FUN-LOCAL" endof
-      17 of s" FUN-CHECK" endof
-      18 of s" MINT-BLOCK" endof
-      19 of s" BLOCK>N" endof
-      20 of s" PACK-BLOCK" endof
-      21 of s" BLOCK-OWNER" endof
-      22 of s" BLOCK-LOCAL" endof
-      23 of s" BLOCK-CHECK" endof
-      24 of s" MINT-OP" endof
-      25 of s" OP>N" endof
-      26 of s" PACK-OP" endof
-      27 of s" OP-OWNER" endof
-      28 of s" OP-LOCAL" endof
-      29 of s" OP-CHECK" endof
-      30 of s" MINT-VALUE" endof
-      31 of s" VALUE>N" endof
-      32 of s" PACK-VALUE" endof
-      33 of s" VALUE-OWNER" endof
-      34 of s" VALUE-LOCAL" endof
-      35 of s" VALUE-CHECK" endof
-      36 of s" MINT-TYPE" endof
-      37 of s" TYPE>N" endof
-      38 of s" PACK-TYPE" endof
-      39 of s" TYPE-OWNER" endof
-      40 of s" TYPE-LOCAL" endof
-      41 of s" TYPE-CHECK" endof
-      42 of s" MINT-ATTR" endof
-      43 of s" ATTR>N" endof
-      44 of s" PACK-ATTR" endof
-      45 of s" ATTR-OWNER" endof
-      46 of s" ATTR-LOCAL" endof
-      47 of s" ATTR-CHECK" endof
-      48 of s" MINT-SYMBOL" endof
-      49 of s" SYMBOL>N" endof
-      50 of s" PACK-SYMBOL" endof
-      51 of s" SYMBOL-OWNER" endof
-      52 of s" SYMBOL-LOCAL" endof
-      53 of s" SYMBOL-CHECK" endof
-      54 of s" MINT-SPAN" endof
-      55 of s" SPAN>N" endof
-      56 of s" PACK-SPAN" endof
-      57 of s" SPAN-OWNER" endof
-      58 of s" SPAN-LOCAL" endof
-      59 of s" SPAN-CHECK" endof
+      0 of s" MINT-KEY" endof
+      1 of s" KEY>N" endof
+      2 of s" MINT-MODULE" endof
+      3 of s" MODULE>N" endof
+      4 of s" MINT-COUNT" endof
+      5 of s" COUNT>N" endof
+      6 of s" MINT-POOL-OFF" endof
+      7 of s" POOL-OFF>N" endof
+      8 of s" MINT-SOURCE" endof
+      9 of s" SOURCE>N" endof
+      10 of s" MINT-FUN" endof
+      11 of s" FUN>N" endof
+      12 of s" MINT-BLOCK" endof
+      13 of s" BLOCK>N" endof
+      14 of s" MINT-OP" endof
+      15 of s" OP>N" endof
+      16 of s" MINT-VALUE" endof
+      17 of s" VALUE>N" endof
+      18 of s" MINT-TYPE" endof
+      19 of s" TYPE>N" endof
+      20 of s" MINT-ATTR" endof
+      21 of s" ATTR>N" endof
+      22 of s" MINT-SYMBOL" endof
+      23 of s" SYMBOL>N" endof
+      24 of s" MINT-SPAN" endof
+      25 of s" SPAN>N" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -658,11 +638,19 @@ private
    a u s" GPU-GIR" LINT-STR=CI if PKG-GPU-GIR exit then
    a u s" GPU-PTXIR2" LINT-STR=CI if PKG-GPU-PTXIR2 exit then
    a u s" GPU-IR" LINT-STR=CI if PKG-GPU-IR exit then
+   a u s" IR-SOURCE" LINT-STR=CI if PKG-IR-SOURCE exit then
+   a u s" IR-TYPE" LINT-STR=CI if PKG-IR-TYPE exit then
+   a u s" IR-ATTR" LINT-STR=CI if PKG-IR-ATTR exit then
+   a u s" IR-SCHEMA" LINT-STR=CI if PKG-IR-SCHEMA exit then
+   a u s" IR-BUILD" LINT-STR=CI if PKG-IR-BUILD exit then
+   a u s" IR-VERIFY" LINT-STR=CI if PKG-IR-VERIFY exit then
+   a u s" IR-CODEC" LINT-STR=CI if PKG-IR-CODEC exit then
+   a u s" IR-PASS" LINT-STR=CI if PKG-IR-PASS exit then
    a u s" IR-RAW" LINT-STR=CI if PKG-IR-RAW exit then
    PKG-OTHER ;
 
 : COMPILER-API-PKG? ( n -- bool )
-   dup PKG-IR-ID >= swap PKG-GPU-IR <= and ;
+   dup PKG-IR-ID >= swap PKG-IR-PASS <= and ;
 
 : COMPILER-PKG? ( ptr u8 n -- bool )
    PACKAGE-KIND-OF PKG-OTHER <> ;
@@ -727,12 +715,6 @@ private
       1+
    repeat drop ;
 
-: IR-RAW-PATH? ( -- bool )
-   CUR$ s" src/compiler/ir/id.f" FS-PATH= if LINT-TRUE exit then
-   CUR$ s" src/compiler/ir/arena.f" FS-PATH= if LINT-TRUE exit then
-   CUR$ s" src/compiler/ir/codec.f" FS-PATH= if LINT-TRUE exit then
-   CUR$ s" test/compiler/ir-id.f" FS-PATH= ;
-
 : PACKAGE-TOK? ( -- bool )
    s" package" TOK=CI ;
 
@@ -744,6 +726,9 @@ private
 
 : PRIVATE-TOK? ( -- bool )
    s" private" TOK=CI ;
+
+: CAST-TOK? ( -- bool )
+   s" CAST:" TOK=CI ;
 
 : QUALIFIED-RAW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u COLON LINT-COUNT-CHAR 1 <> if LINT-FALSE exit then
@@ -761,15 +746,7 @@ private
    REPORT? @ if
       s" REFINE-PACKAGE " OUT
       CUR$ OUT COLON C LINE @ U.
-      s" : package IR-RAW opened outside its exact owner set" OUT NL
-   then
-   BAD+ ;
-
-: IR-RAW-PUBLIC-HIT ( -- )
-   REPORT? @ if
-      s" REFINE-PUBLIC " OUT
-      CUR$ OUT COLON C LINE @ U.
-      s" : public is forbidden inside package IR-RAW" OUT NL
+      s" : legacy package IR-RAW is forbidden; IR-ID owns sealed authority" OUT NL
    then
    BAD+ ;
 
@@ -876,9 +853,10 @@ private
    nested if exit then
    TOK$ PACKAGE-KIND-OF PACKAGE-KIND !
    LINT-TRUE PACKAGE-OPEN !
+   LINT-FALSE PACKAGE-PUBLIC !
    LINE @ PACKAGE-LINE !
    PACKAGE-KIND @ PKG-IR-RAW = if
-      IR-RAW-PATH? 0= if IR-RAW-HIT then
+      IR-RAW-HIT
    then ;
 
 : PACKAGE-END ( -- )
@@ -887,9 +865,14 @@ private
       exit
    then
    LINT-FALSE PACKAGE-OPEN !
+   LINT-FALSE PACKAGE-PUBLIC !
    PKG-OTHER PACKAGE-KIND ! ;
 
-: START-DEFINITION ( n -- ) {: kind:n :}
+: RAW-DEFINITION-ALLOWED? ( -- bool )
+   CUR$ s" src/compiler/ir/id.f" FS-PATH= 0= if LINT-FALSE exit then
+   PACKAGE-KIND @ PKG-IR-ID = PACKAGE-PUBLIC @ 0= and ;
+
+: START-DEFINITION ( n bool -- ) {: kind:n cast:bool :}
    TOK-I @ LINT-DEF:NAME-I
    MATCH option
       none OF
@@ -900,9 +883,14 @@ private
          namei LINT-LEX:LINE@ LINE !
          MATCH-TOKEN
          TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT then
-         PACKAGE-KIND @ COMPILER-API-PKG? if
-            TOK$ RAW-NAME? if RAW-AUTHORITY-HIT then
-         then
+         cast PACKAGE-KIND @ PKG-IR-ID = and if
+            RAW-DEFINITION-ALLOWED? TOK$ RAW-NAME? and 0=
+            if RAW-AUTHORITY-HIT then
+         else PACKAGE-KIND @ COMPILER-API-PKG? if
+            TOK$ RAW-NAME? if
+               RAW-DEFINITION-ALLOWED? 0= if RAW-AUTHORITY-HIT then
+            then
+         then then
          kind LINT-DEF:DATA <> if
             kind DEF-KIND !
             LINE @ DEF-LINE !
@@ -962,23 +950,25 @@ private
    then
    PUBLIC-TOK? if
       PACKAGE-OPEN @ 0= if STRAY-PACKAGE-MODE-HIT exit then
-      PACKAGE-KIND @ PKG-IR-RAW = if IR-RAW-PUBLIC-HIT then
+      LINT-TRUE PACKAGE-PUBLIC !
       exit
    then
    PRIVATE-TOK? if
-      PACKAGE-OPEN @ 0= if STRAY-PACKAGE-MODE-HIT then
+      PACKAGE-OPEN @ 0= if STRAY-PACKAGE-MODE-HIT exit then
+      LINT-FALSE PACKAGE-PUBLIC !
       exit
    then
    TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT exit then
    TOK-I @ LINT-DEF:EXPORT? if MATCH-EXPORT exit then
    TOK-I @ LINT-DEF:DIRECT-KIND dup LINT-DEF:NONE <> if
-      START-DEFINITION exit
+      CAST-TOK? START-DEFINITION exit
    then
    drop
    MATCH-TOKEN ;
 
 : SCAN-SOURCE ( ptr u8 n -- )
    LINT-FALSE PACKAGE-OPEN !
+   LINT-FALSE PACKAGE-PUBLIC !
    LINT-FALSE DEF-OPEN !
    PKG-OTHER PACKAGE-KIND !
    0 PACKAGE-LINE !
