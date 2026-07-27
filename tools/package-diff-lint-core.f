@@ -69,6 +69,11 @@ private
 \ written.  It must reach a named refusal rather than be reported as one of the
 \ two defects this lint does understand, and it must never pass silently.
 -4805 constant E-PKGDIFF-LEX     \ a lexer diagnostic or token kind this lint was never taught
+\ The grammar-fixture row table is built once at load time from fixed rows, so
+\ overflowing it means a row was added without raising its capacity.  That must
+\ stop the load rather than silently drop the row and quietly stop admitting the
+\ suite it belongs to.
+-4806 constant E-PKGDIFF-ROWTAB  \ a fixture row, or a row index, fell outside the table
 
 create NUM NUM-CAP allot
 create ONE 1 allot
@@ -260,49 +265,161 @@ variable FILE-USED
 \ any reserved package".  Wrapping those fixtures in a package would not satisfy
 \ the ownership rule, it would delete the proof - the suite would stop testing
 \ the position a real user declares from.  The same obligation covers the other
-\ entries, each of which must declare or forge source at genuine top level.
+\ entries, each of which must declare at genuine top level.
 \
-\ The category is deliberately narrow in two structural ways.  Entries are exact
-\ paths, so a global added to any OTHER test file still reports.  And the path
+\ The category is deliberately narrow in three structural ways.  Entries are
+\ exact paths, so a global added to any OTHER test file still reports.  The path
 \ must live under test/, so the list can never admit a library or engine source:
 \ lib/process-pty-handle.f is NOT here and must not be added - its six role
 \ families were real debt and were packaged (dot habu-pkg-process-pty-ad38b5da).
-\ It shares GLOBAL-IMPLEMENTATION?'s known limit: within a listed file the
-\ admission is file-wide, so an unrelated global added beside the fixtures is
-\ admitted too.  FINISH-DEFINITION still checks SCOPE-DELTA first, so adding or
-\ deleting a package boundary around a fixture is reported even here.
-: GRAMMAR-FIXTURE-PATH? ( -- bool )
-   \ the declaration grammar's own behaviour suite: positives, negatives,
-   \ rollback and multi-error, all declared from real top-level user position
-   FILE$ s" test/type-decl-suite.f" LINT-STR= if true exit then
-   \ proves which words stay executable at top level; its forge helpers build the
-   \ top-level declaration source whose position is the property under test
-   FILE$ s" test/internal-word-gate.f" LINT-STR= if true exit then
-   \ decision-record probe for the extent substrate: the stand-in families must be
-   \ declared the way the candidate design would declare them
-   FILE$ s" test/extent-substrate-probe.f" LINT-STR= if true exit then
-   \ BTC-7 product/factorization regression over top-level extent-role families
-   FILE$ s" test/extent-product-test.f" LINT-STR= if true exit then
-   \ TYPED-VARIABLE / TYPED-BUFFER contract: the nominal scalars must be ordinary
-   \ user families, since the point is that a raw `variable` cannot mint one
-   FILE$ s" test/typed-storage-test.f" LINT-STR= if true exit then
-   \ CAST: accept contract: the arity-0 and parametric families it retypes between
-   \ are the user-declared families a real caller would write
-   FILE$ s" test/cast-suite.f" LINT-STR= if true exit then
-   \ CAST: reject contract, same fixture position as the accept suite
-   FILE$ s" test/cast-negative-suite.f" LINT-STR= if true exit then
-   \ LAYOUT-BUFFER is the introduction form for a top-level nominal scalar, so the
-   \ family it introduces has to be declared at top level
-   FILE$ s" test/layout-buffer.f" LINT-STR= if true exit then
-   \ DEFER-LAYOUT-BUFFER over a top-level arity-0 nominal scalar, same obligation
-   FILE$ s" test/layout-defer.f" LINT-STR= if true exit then
-   \ the engine's own behaviour suite: its nominal scalar backs the only checked
-   \ source of a pointee accessor, declared where the engine sees user source
-   FILE$ s" test/engine-suite.f" LINT-STR= ;
+\ And admission is by declaration SHAPE, per path: each row below pairs an exact
+\ path with the exact set of declaration openers that path's own fixtures use,
+\ so a suite whose fixtures only ever declare with NEWTYPE does not admit
+\ SUMTYPE, ENUM or anything else, and an ordinary colon word, variable, create,
+\ constant or TRUSTED: wrapper is reported in every row like any other
+\ unpackaged global.  The opener token comes from the index the scan already
+\ recorded, so the decision needs no second parser and never looks at the
+\ declared family name.  The token-to-bit half sits beside GLOBAL-SURFACE?
+\ below rather than here, because it needs the token comparator, exactly as
+\ ERR-VOCAB? does.  FINISH-DEFINITION still checks SCOPE-DELTA first, so adding
+\ or deleting a package boundary around a fixture is reported even here.
+\
+\ test/internal-word-gate.f was listed here and was removed once the shape rule
+\ was measured: it declares nothing through the grammar - its fixtures are
+\ declaration SOURCE built as strings and handed to child processes - so its
+\ entry admitted only its 85 raw-stem IWG- test helpers, which are ordinary
+\ packaging debt tracked by dot habu-pkg-internal-word-da4149d9.
+\ One bit per declaration opener any listed suite declares with.  These are the
+\ only openers the category knows; a definer outside them is an ordinary global
+\ everywhere, in every row.  STRUCTURE has no bit because no listed suite
+\ declares with it; the leaf that lands the first suite which does adds the bit
+\ here and the bit to that suite's row, and to no other row.
+$0001 constant O-SUMTYPE
+$0002 constant O-PRODUCT
+$0004 constant O-ENUM
+$0008 constant O-VALUE-RECORD
+$0010 constant O-NEWTYPE
+$0020 constant O-DEFTYPE
+$0040 constant O-DEFLINEAR
+$0080 constant O-CAST
+$0100 constant O-LAYOUT-BUFFER
+$0200 constant O-DEFER-LAYOUT
+$0400 constant O-TYPED-VARIABLE
+$0800 constant O-TYPED-BUFFER
+$1000 constant O-PTR-VARIABLE
 
-: GRAMMAR-FIXTURE? ( -- bool )
-   FILE$ s" test/" LINT-STARTS-WITH? 0= if false exit then
-   GRAMMAR-FIXTURE-PATH? ;
+\ Each set is the EXACT set of openers that path's own fixtures declare with,
+\ measured by replaying that file through this lint with the category off and
+\ reading every reported definition back at its own line and column.  The counts
+\ in each comment are that measurement; they are what a reviewer re-derives to
+\ check a row, and they are why no row carries an opener its suite never uses.
+\ SUMTYPE 28, PRODUCT 15, ENUM 8, NEWTYPE 5, LAYOUT-BUFFER 4, VALUE-RECORD 1,
+\ DEFLINEAR 1 - the declaration grammar's own behaviour suite: positives,
+\ negatives, rollback and multi-error, all from real top-level user position.
+O-SUMTYPE O-PRODUCT or O-ENUM or O-VALUE-RECORD or O-NEWTYPE or
+O-DEFLINEAR or O-LAYOUT-BUFFER or constant TYPE-DECL-SET
+\ NEWTYPE 5 - decision-record probe for the extent substrate: the stand-in
+\ families must be declared the way the candidate design would declare them.
+O-NEWTYPE constant EXTENT-PROBE-SET
+\ NEWTYPE 5 - BTC-7 product/factorization regression over extent-role families.
+O-NEWTYPE constant EXTENT-PRODUCT-SET
+\ TYPED-VARIABLE 3, TYPED-BUFFER 2, SUMTYPE 2, NEWTYPE 2, PTR-VARIABLE 1,
+\ LAYOUT-BUFFER 1, DEFLINEAR 1 - the TYPED-VARIABLE / TYPED-BUFFER contract: the
+\ nominal scalars must be ordinary user families, since the point is that a raw
+\ `variable` cannot mint one.
+O-TYPED-VARIABLE O-TYPED-BUFFER or O-SUMTYPE or O-NEWTYPE or
+O-PTR-VARIABLE or O-LAYOUT-BUFFER or O-DEFLINEAR or constant TYPED-STORAGE-SET
+\ CAST: 6, NEWTYPE 3 - the CAST: accept contract: the retype declarer under test
+\ plus the arity-0 and parametric families a real caller would write.
+O-NEWTYPE O-CAST or constant CAST-SET
+\ NEWTYPE 1 - the CAST: reject contract.  Its illegal casts are handed to the
+\ checker as strings rather than written at top level, so the file itself
+\ declares only the family they name, and this row admits only that.
+O-NEWTYPE constant CAST-NEG-SET
+\ SUMTYPE 3, LAYOUT-BUFFER 3, NEWTYPE 2, PTR-VARIABLE 1, PRODUCT 1, ENUM 1,
+\ DEFLINEAR 1 - LAYOUT-BUFFER is the introduction form for a top-level nominal
+\ scalar, so the family it introduces has to be declared at top level.
+O-SUMTYPE O-PRODUCT or O-ENUM or O-NEWTYPE or
+O-DEFLINEAR or O-LAYOUT-BUFFER or O-PTR-VARIABLE or constant LAYOUT-BUFFER-SET
+\ DEFER-LAYOUT-BUFFER 2, SUMTYPE 1, NEWTYPE 1, DEFLINEAR 1 - the deferred form
+\ over a top-level arity-0 nominal scalar, same obligation.
+O-DEFER-LAYOUT O-SUMTYPE or O-NEWTYPE or O-DEFLINEAR or constant LAYOUT-DEFER-SET
+\ VALUE-RECORD 8, DEFTYPE 3, NEWTYPE 1, LAYOUT-BUFFER 1, DEFLINEAR 1 - the
+\ engine's own behaviour suite: its nominal scalar backs the only checked source
+\ of a pointee accessor, declared where the engine sees user source.
+O-VALUE-RECORD O-NEWTYPE or O-DEFTYPE or
+O-DEFLINEAR or O-LAYOUT-BUFFER or constant ENGINE-SET
+
+\ ---- the row table -----------------------------------------------------------
+\ The rows are DATA, not nine repeated comparisons.  That distinction is the
+\ whole design: when each row carried its own `FILE$ s" ..." LINT-STR=` test,
+\ each row could be weakened on its own - swap one of them to a suffix or
+\ case-insensitive comparison and only that path starts admitting
+\ test/lib/<name>, which no hostile written against a different path can see.
+\ Here every row is a (path, opener set) pair in one table, reached through one
+\ accessor, and compared by the single LINT-STR= site in FIXTURE-ROW-AT.  A
+\ weakening now has exactly one place to live and changes every row at once, so
+\ the generated hostile battery in the unit test kills it on all nine.
+16 constant FIXTURE-ROW-CAP        \ headroom for the cutover's new fixture files
+512 constant FIXTURE-TEXT-CAP      \ arena holding the row paths
+create FIXTURE-TEXT FIXTURE-TEXT-CAP allot
+create FIXTURE-PATH-A FIXTURE-ROW-CAP cells allot
+create FIXTURE-PATH-U FIXTURE-ROW-CAP cells allot
+create FIXTURE-MASK FIXTURE-ROW-CAP cells allot
+variable FIXTURE-ROW#
+variable FIXTURE-TEXT-U
+
+: ROW-PATH$ ( n -- ptr u8 n ) {: i:n :}
+   i 0 < i FIXTURE-ROW# @ >= or if E-PKGDIFF-ROWTAB throw then
+   i cells FIXTURE-PATH-A + @   i cells FIXTURE-PATH-U + @ ;
+
+: ROW-MASK ( n -- n ) {: i:n :}
+   i 0 < i FIXTURE-ROW# @ >= or if E-PKGDIFF-ROWTAB throw then
+   i cells FIXTURE-MASK + @ ;
+
+\ Rows are appended once at load time.  The path bytes are copied into the arena
+\ because a source string literal is transient; storing its address would leave
+\ every row pointing at whatever text was parsed last.
+: ROW+ ( ptr u8 n n -- ) {: a:ptr u:n mask:n :}
+   FIXTURE-ROW# @ FIXTURE-ROW-CAP >= if E-PKGDIFF-ROWTAB throw then
+   FIXTURE-TEXT-U @ u + FIXTURE-TEXT-CAP > if E-PKGDIFF-ROWTAB throw then
+   FIXTURE-TEXT FIXTURE-TEXT-U @ + {: dst:ptr :}
+   a dst u BYTE-COPY
+   dst FIXTURE-ROW# @ cells FIXTURE-PATH-A + !
+   u FIXTURE-ROW# @ cells FIXTURE-PATH-U + !
+   mask FIXTURE-ROW# @ cells FIXTURE-MASK + !
+   FIXTURE-TEXT-U @ u + FIXTURE-TEXT-U !
+   FIXTURE-ROW# @ 1+ FIXTURE-ROW# ! ;
+
+\ THE path comparison.  Every row is admitted or refused by this one word, so
+\ the whole category has a single place where "is this the listed file?" is
+\ decided: whole path, exact bytes, no suffix and no case folding.
+: ROW-PATH= ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
+   a u i ROW-PATH$ LINT-STR= ;
+
+: FIXTURE-ROW-AT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup FIXTURE-ROW# @ < while
+      dup a u ROW-PATH= if exit then
+      1+
+   repeat drop -1 ;
+
+\ One line per row, carrying the exact path and that path's exact opener set.
+s" test/type-decl-suite.f" TYPE-DECL-SET ROW+
+s" test/extent-substrate-probe.f" EXTENT-PROBE-SET ROW+
+s" test/extent-product-test.f" EXTENT-PRODUCT-SET ROW+
+s" test/typed-storage-test.f" TYPED-STORAGE-SET ROW+
+s" test/cast-suite.f" CAST-SET ROW+
+s" test/cast-negative-suite.f" CAST-NEG-SET ROW+
+s" test/layout-buffer.f" LAYOUT-BUFFER-SET ROW+
+s" test/layout-defer.f" LAYOUT-DEFER-SET ROW+
+s" test/engine-suite.f" ENGINE-SET ROW+
+
+\ No row means the empty opener set, so an unlisted path and a listed path that
+\ cannot declare with this opener fail through the same arithmetic rather than
+\ through two different rules.
+: FIXTURE-OPENER-SET ( -- n )
+   FILE$ FIXTURE-ROW-AT dup 0 < if drop 0 exit then
+   ROW-MASK ;
 
 : SOURCE-ALLOC-NEED ( n -- n )
    dup 0 <= if drop 1 then ;
@@ -729,6 +846,54 @@ variable FILE-USED
    FILE$ s" lib/errors.f" LINT-STR= 0= if false exit then
    DEF-DEFINER-I @ s" constant" TOK= 0= if false exit then
    DEF-NAME-I @ LINT-LEX:TOKEN ERR-NAME? ;
+
+\ Which opener a definer token is, as the bit the per-path rows are written in.
+\ Zero means the token is not a declaration opener at all, in any row.
+: COMPOSITE-OPENER-BIT ( n -- n ) {: k:n :}
+   k s" SUMTYPE" TOK=CI if O-SUMTYPE exit then
+   k s" PRODUCT" TOK=CI if O-PRODUCT exit then
+   k s" ENUM" TOK=CI if O-ENUM exit then
+   k s" VALUE-RECORD" TOK=CI if O-VALUE-RECORD exit then
+   0 ;
+
+: FAMILY-OPENER-BIT ( n -- n ) {: k:n :}
+   \ the live family-introduction word (src/core/sumtype.f) and the only opener
+   \ every one of the nine rows carries: 25 declarations across all of them
+   k s" NEWTYPE" TOK=CI if O-NEWTYPE exit then
+   k s" DEFTYPE" TOK=CI if O-DEFTYPE exit then
+   k s" DEFLINEAR" TOK=CI if O-DEFLINEAR exit then
+   \ cast-suite.f's subject: the checked retype declarer its whole contract is
+   \ about, declared from real top-level user position.  It gets a bit on purpose
+   \ even though DEFINER-KIND lexes CAST: as a colon block - these bits name
+   \ declaration ROLE, which is a different question from block shape.
+   k s" CAST:" TOK=CI if O-CAST exit then
+   0 ;
+
+: STORAGE-OPENER-BIT ( n -- n ) {: k:n :}
+   k s" LAYOUT-BUFFER" TOK=CI if O-LAYOUT-BUFFER exit then
+   k s" DEFER-LAYOUT-BUFFER" TOK=CI if O-DEFER-LAYOUT exit then
+   k s" TYPED-VARIABLE" TOK=CI if O-TYPED-VARIABLE exit then
+   k s" TYPED-BUFFER" TOK=CI if O-TYPED-BUFFER exit then
+   k s" PTR-VARIABLE" TOK=CI if O-PTR-VARIABLE exit then
+   0 ;
+
+: OPENER-BIT ( n -- n ) {: k:n :}
+   k COMPOSITE-OPENER-BIT dup 0<> if exit then drop
+   k FAMILY-OPENER-BIT dup 0<> if exit then drop
+   k STORAGE-OPENER-BIT ;
+
+\ A listed path is necessary but not sufficient, and neither is a declaration in
+\ the abstract: the definition must be a declaration THIS path's fixtures make.
+\ The definer token is the one the scan already recorded when the definition
+\ opened, so a declaration keyword written inside a comment or a string body is
+\ not a definer and cannot admit anything.
+: GRAMMAR-FIXTURE? ( -- bool )
+   FILE$ s" test/" LINT-STARTS-WITH? 0= if false exit then
+   FIXTURE-OPENER-SET {: allowed:n :}
+   allowed 0= if false exit then
+   DEF-DEFINER-I @ OPENER-BIT {: bit:n :}
+   bit 0= if false exit then
+   allowed bit and 0<> ;
 
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then

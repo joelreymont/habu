@@ -28,10 +28,19 @@ $4000 constant TEST-OUT-CAP
 45 constant TEST-MINUS-C
 92 constant TEST-BACKSLASH-C
 96 constant TEST-TICK-C   \ backtick: the report's finding-subject delimiter
+115 constant TEST-S-C     \ the byte that turns a listed `.f` path into `.fs`
+9 constant TEST-PATH#     \ rows in the grammar-fixture path table
+13 constant TEST-OPENER#  \ declaration openers the category knows
+5 constant TEST-PREFIX-U  \ length of the `test/` every listed path begins with
+32 constant TEST-CASE-DELTA   \ lower-case byte minus its upper-case twin
 
 create TEST-NAME-BUF TEST-NAME-CAP allot
 create TEST-ROOT-BUF FS-PATH-CAP allot
 create TEST-PATH-BUF FS-PATH-CAP allot
+\ A path built for a hostile variant cannot live in TEST-PATH-BUF: TEST-FULL-PATH
+\ joins into that same buffer, so passing it back in would read and write one
+\ buffer at once.
+create TEST-ALT-BUF FS-PATH-CAP allot
 create TEST-SOURCE-BUF TEST-SOURCE-CAP allot
 create TEST-DIFF-BUF TEST-DIFF-CAP allot
 create TEST-OUT-BUF TEST-OUT-CAP allot
@@ -41,6 +50,9 @@ variable TEST-PATH-U
 variable TEST-SOURCE-U
 variable TEST-SOURCE-START
 variable TEST-DIFF-U
+variable TEST-CELL-BAD    \ path-and-opener cells that behaved wrongly
+variable TEST-CELL-OK     \ path-and-opener cells that were admitted
+variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 
 : TEST-COPY! ( ptr u8 n ptr u8 ptr n -- ) {: a:ptr u:n dst:ptr up:ptr :}
    a dst u BYTE-COPY
@@ -173,6 +185,9 @@ variable TEST-DIFF-U
    TEST-ROOT$ s" test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" test/lib" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ holds the nested-duplicate hostile, test/test/<name>
+   TEST-ROOT$ s" test/test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/core" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS ;
@@ -521,11 +536,15 @@ variable TEST-DIFF-U
 
 \ ---- declaration-grammar fixture suites -------------------------------------
 \ The second principled category.  These files test the global declaration
-\ grammar, so a global declaration is the thing under test and packaging it
-\ would delete the proof rather than satisfy the rule.  The pins below fix the
-\ exact list, and the hostile cases prove the category cannot spread: a test
-\ file that is not listed still reports, and the category refuses any path
-\ outside test/ so a library or engine source can never be admitted through it.
+\ grammar, so a global DECLARATION is the thing under test and packaging it
+\ would delete the proof rather than satisfy the rule.  Admission needs both
+\ halves: the path must be on the exact list, and the definition's own definer
+\ token must be one of the declaration openers measured from those suites.
+\ The pins below fix the list, fix the opener set, and prove the category
+\ cannot spread in either direction - a test file that is not listed still
+\ reports, no path outside test/ can ever be admitted, and an ordinary colon
+\ word, variable, constant or create standing beside the fixtures in a LISTED
+\ file reports like any other unpackaged global.
 
 : TEST-FIXTURE-FAMILY-SOURCE ( ptr u8 n -- )   \ a top-level family declaration
    TEST-SOURCE-RESET
@@ -536,10 +555,10 @@ variable TEST-DIFF-U
    TEST-DIFF-RESET path pathu TEST-ADD-SOURCE-SECTION ;
 
 : TEST-GRAMMAR-FIXTURE-LIST ( -- )   \ every listed path is admitted
+   s" every listed grammar-fixture suite admits a declaration" T-LABEL
    TEST-DIFF-RESET
    s" pdlfam" TEST-FIXTURE-FAMILY-SOURCE
    s" test/type-decl-suite.f" TEST-ADD-SOURCE-SECTION
-   s" test/internal-word-gate.f" TEST-ADD-SOURCE-SECTION
    s" test/extent-substrate-probe.f" TEST-ADD-SOURCE-SECTION
    s" test/extent-product-test.f" TEST-ADD-SOURCE-SECTION
    s" test/typed-storage-test.f" TEST-ADD-SOURCE-SECTION
@@ -549,6 +568,350 @@ variable TEST-DIFF-U
    s" test/layout-defer.f" TEST-ADD-SOURCE-SECTION
    s" test/engine-suite.f" TEST-ADD-SOURCE-SECTION
    TEST-EXPECT-CLEAN ;
+
+\ ---- the path-and-opener matrix ----------------------------------------------
+\ The admission rule is per path, so the evidence has to be per path too.  The
+\ three tables below are the TEST's own statement of the measurement, written in
+\ the test's own opener order and as literal masks rather than by reusing the
+\ lint's O-* bits, so a wrong edit to the lint's table cannot quietly agree with
+\ itself.  Every one of the 9 x 13 pairs is then run through the real lint.
+
+: TEST-PATH$ ( n -- ptr u8 n ) {: p:n :}
+   p 0 = if s" test/type-decl-suite.f" exit then
+   p 1 = if s" test/extent-substrate-probe.f" exit then
+   p 2 = if s" test/extent-product-test.f" exit then
+   p 3 = if s" test/typed-storage-test.f" exit then
+   p 4 = if s" test/cast-suite.f" exit then
+   p 5 = if s" test/cast-negative-suite.f" exit then
+   p 6 = if s" test/layout-buffer.f" exit then
+   p 7 = if s" test/layout-defer.f" exit then
+   s" test/engine-suite.f" ;
+
+: TEST-OPENER$ ( n -- ptr u8 n ) {: o:n :}
+   o 0 = if s" SUMTYPE" exit then
+   o 1 = if s" PRODUCT" exit then
+   o 2 = if s" ENUM" exit then
+   o 3 = if s" VALUE-RECORD" exit then
+   o 4 = if s" NEWTYPE" exit then
+   o 5 = if s" DEFTYPE" exit then
+   o 6 = if s" DEFLINEAR" exit then
+   o 7 = if s" CAST:" exit then
+   o 8 = if s" LAYOUT-BUFFER" exit then
+   o 9 = if s" DEFER-LAYOUT-BUFFER" exit then
+   o 10 = if s" TYPED-VARIABLE" exit then
+   o 11 = if s" TYPED-BUFFER" exit then
+   s" PTR-VARIABLE" ;
+
+\ One complete top-level declaration per opener, closer included where the form
+\ needs one, so every cell presents a real definition rather than a fragment.
+: TEST-OPENER-LINE ( n -- ) {: o:n :}
+   o 0 = if s" SUMTYPE pdlx 0 ;SUMTYPE" TEST-SOURCE-LINE exit then
+   o 1 = if s" PRODUCT pdlx 0 ;PRODUCT" TEST-SOURCE-LINE exit then
+   o 2 = if s" ENUM pdlx item ;ENUM" TEST-SOURCE-LINE exit then
+   o 3 = if s" VALUE-RECORD pdlx q n END-VALUE-RECORD" TEST-SOURCE-LINE exit then
+   o 4 = if s" NEWTYPE pdlx 0" TEST-SOURCE-LINE exit then
+   o 5 = if s" DEFTYPE pdlx" TEST-SOURCE-LINE exit then
+   o 6 = if s" DEFLINEAR pdlx" TEST-SOURCE-LINE exit then
+   o 7 = if s" CAST: >PDLX ( n -- pdlx ) ;" TEST-SOURCE-LINE exit then
+   o 8 = if s" LAYOUT-BUFFER pdlx" TEST-SOURCE-LINE exit then
+   o 9 = if s" DEFER-LAYOUT-BUFFER pdlx" TEST-SOURCE-LINE exit then
+   o 10 = if s" TYPED-VARIABLE pdlx" TEST-SOURCE-LINE exit then
+   o 11 = if s" TYPED-BUFFER pdlx" TEST-SOURCE-LINE exit then
+   s" PTR-VARIABLE pdlx" TEST-SOURCE-LINE ;
+
+\ Bit i of a row means opener i above.  Each comment spells the row out, so the
+\ mask and the prose have to be edited together to move a pin.
+: TEST-PATH-MASK ( n -- n ) {: p:n :}
+   \ SUMTYPE PRODUCT ENUM VALUE-RECORD NEWTYPE DEFLINEAR LAYOUT-BUFFER
+   p 0 = if $015F exit then
+   \ NEWTYPE
+   p 1 = if $0010 exit then
+   \ NEWTYPE
+   p 2 = if $0010 exit then
+   \ SUMTYPE NEWTYPE DEFLINEAR LAYOUT-BUFFER TYPED-VARIABLE TYPED-BUFFER
+   \ PTR-VARIABLE
+   p 3 = if $1D51 exit then
+   \ NEWTYPE CAST:
+   p 4 = if $0090 exit then
+   \ NEWTYPE
+   p 5 = if $0010 exit then
+   \ SUMTYPE PRODUCT ENUM NEWTYPE DEFLINEAR LAYOUT-BUFFER PTR-VARIABLE
+   p 6 = if $1157 exit then
+   \ SUMTYPE NEWTYPE DEFLINEAR DEFER-LAYOUT-BUFFER
+   p 7 = if $0251 exit then
+   \ VALUE-RECORD NEWTYPE DEFTYPE DEFLINEAR LAYOUT-BUFFER
+   $0178 ;
+
+: TEST-ALLOWED? ( n n -- bool ) {: p:n o:n :}
+   p TEST-PATH-MASK  1 o lshift and  0<> ;
+
+\ One lint run against an expected finding count.  Zero means the run must come
+\ back clean; anything else means it must come back rejected with that count.
+: TEST-RUN-EXPECT? ( n -- bool ) {: want:n :}
+   TEST-RUN-BUILT {: rc:n bad:n :}
+   want 0 = if rc 0 = bad 0 = and exit then
+   rc 1 = bad want = and ;
+
+: TEST-CELL-NOTE ( n n -- ) {: p:n o:n :}
+   TEST-CELL-BAD @ 1+ TEST-CELL-BAD !
+   s" matrix cell wrong: " type p TEST-PATH$ type
+   s"  declared with " type o TEST-OPENER$ type cr ;
+
+: TEST-CELL ( n n -- ) {: p:n o:n :}
+   TEST-SOURCE-RESET o TEST-OPENER-LINE
+   TEST-DIFF-RESET p TEST-PATH$ TEST-ADD-SOURCE-SECTION
+   p o TEST-ALLOWED? if
+      0 TEST-RUN-EXPECT? if TEST-CELL-OK @ 1+ TEST-CELL-OK ! exit then
+      p o TEST-CELL-NOTE exit
+   then
+   1 TEST-RUN-EXPECT? if exit then
+   p o TEST-CELL-NOTE ;
+
+: TEST-CELL-ROW ( n -- ) {: p:n :}
+   0 begin dup TEST-OPENER# < while
+      p over TEST-CELL
+      1+
+   repeat drop ;
+
+: TEST-OPENER-MATRIX ( -- )
+   0 TEST-CELL-BAD ! 0 TEST-CELL-OK !
+   0 begin dup TEST-PATH# < while
+      dup TEST-CELL-ROW
+      1+
+   repeat drop
+   s" each path admits exactly the openers its own fixtures declare with" T-LABEL
+   TEST-CELL-BAD @ 0 T=
+   s" the nine rows admit 35 of the 117 path-and-opener pairs" T-LABEL
+   TEST-CELL-OK @ 35 T= ;
+
+\ The narrowing itself.  Each of these five stands in a listed file beside real
+\ fixtures, and every one of them reports in every row.  Under the file-wide
+\ admission this replaced, all five passed.
+: TEST-ADD-ORDINARY-GLOBALS ( -- )
+   s" : PDL-HELPER ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" TRUSTED: PDL-WRAPPER ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" variable PDL-STATE" TEST-SOURCE-LINE
+   s" constant PDL-LIMIT" TEST-SOURCE-LINE
+   s" create PDL-CELL" TEST-SOURCE-LINE ;
+
+: TEST-OPENER-CASE-AT ( ptr u8 n -- ) {: opener:ptr openeru:n :}
+   TEST-SOURCE-RESET
+   opener openeru TEST-SOURCE+ s"  pdlcase 0" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/type-decl-suite.f" TEST-ADD-SOURCE-SECTION ;
+
+\ The definer match is case-insensitive, like every other definer test in this
+\ lint: three spellings of one Forth word must behave alike.  The last case
+\ holds the other direction - case-folding must not turn a non-opener into one.
+: TEST-GRAMMAR-FIXTURE-CASE ( -- )
+   s" an upper-case opener is admitted in a listed file" T-LABEL
+   s" NEWTYPE" TEST-OPENER-CASE-AT
+   TEST-EXPECT-CLEAN
+   s" the lower-case spelling is the same word and is admitted" T-LABEL
+   s" newtype" TEST-OPENER-CASE-AT
+   TEST-EXPECT-CLEAN
+   s" the mixed-case spelling is the same word and is admitted" T-LABEL
+   s" NeWtYpE" TEST-OPENER-CASE-AT
+   TEST-EXPECT-CLEAN
+   s" a case-varied ordinary definer is still not an opener" T-LABEL
+   TEST-SOURCE-RESET
+   s" VaRiAbLe PDL-MIXED" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/type-decl-suite.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   s" PDL-MIXED" TEST-NAMES ;
+
+\ Declaration keywords that are only text.  A `( )` comment body, a backslash
+\ line comment and a string body each carry an admitted opener AND an ordinary
+\ definer.  None of the six is a real definer, so the count is exactly one: the
+\ colon word at the end.  The three `variable` lines are what makes a leak
+\ visible - if comment or string bytes were scanned as words they would publish
+\ globals with a NON-admitted definer and raise the count, whereas a leaked
+\ `NEWTYPE` would be admitted and leave no trace.
+: TEST-ADD-FORGED-OPENER-TEXT ( -- )
+   s" ( NEWTYPE pdlfa 0 )" TEST-SOURCE-LINE
+   s" ( variable pdlfb )" TEST-SOURCE-LINE
+   TEST-BACKSLASH-C TEST-SOURCE-C s"  NEWTYPE pdlfc 0" TEST-SOURCE-LINE
+   TEST-BACKSLASH-C TEST-SOURCE-C s"  variable pdlfd" TEST-SOURCE-LINE
+   s" s" TEST-SOURCE+ TEST-DQUOTE-C TEST-SOURCE-C
+   s" NEWTYPE pdlfe 0" TEST-SOURCE+ TEST-DQUOTE-C TEST-SOURCE-C
+   s"  drop" TEST-SOURCE-LINE
+   s" s" TEST-SOURCE+ TEST-DQUOTE-C TEST-SOURCE-C
+   s" variable pdlff" TEST-SOURCE+ TEST-DQUOTE-C TEST-SOURCE-C
+   s"  drop" TEST-SOURCE-LINE
+   s" : PDL-AFTER-FORGERY ( -- n ) 1 ;" TEST-SOURCE-LINE ;
+
+\ ---- the per-path rejection sweep --------------------------------------------
+\ These eight hold for every row, so they run on every row.  A representative
+\ path would leave eight rows unproven, and looping the table costs a second.
+\
+\ The four path variants loop too, and that is not belt-and-braces.  Each row
+\ calls the comparator itself, so the comparator is a per-row decision: weaken
+\ ONE row from LINT-STR= to LINT-ENDS-WITH? and only that row starts admitting
+\ test/lib/<name>, while a hostile written against one other path stays green
+\ and reports nothing.  A per-row weakening needs a per-row kill, so every row
+\ gets the subdirectory, case-varied, extension and outside-test/ shapes.
+
+\ NEWTYPE is on all nine rows, so the deleted-boundary case can use it
+\ everywhere and stay a genuine "admitted opener, boundary removed" case.
+: TEST-LOSS-SRC ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" NEWTYPE pdlfam 0" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-LOSS-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package PDLFIX" TEST-DIFF+ TEST-LF
+   s"  NEWTYPE pdlfam 0" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-ALT-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u 1+ FS-PATH-CAP > if E-FS-CAPACITY throw then
+   a TEST-ALT-BUF u BYTE-COPY
+   TEST-S-C TEST-ALT-BUF u + c!
+   TEST-ALT-BUF u 1+ ;
+
+\ Every listed path starts `test/`, so the file name is what follows it.
+: TEST-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u TEST-PREFIX-U <= if E-FS-CAPACITY throw then
+   a TEST-PREFIX-U + u TEST-PREFIX-U - ;
+
+\ The same file name under a different directory.
+: TEST-REDIR$ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: dir:ptr diru:n a:ptr u:n :}
+   a u TEST-TAIL$ {: tail:ptr tailu:n :}
+   diru tailu + FS-PATH-CAP > if E-FS-CAPACITY throw then
+   dir TEST-ALT-BUF diru BYTE-COPY
+   tail TEST-ALT-BUF diru + tailu BYTE-COPY
+   TEST-ALT-BUF diru tailu + ;
+
+\ The same path with the first letter of the file name in the other case.  A row
+\ that compared case-insensitively would still admit this one.
+: TEST-RECASE$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+   u FS-PATH-CAP > if E-FS-CAPACITY throw then
+   a TEST-ALT-BUF u BYTE-COPY
+   TEST-ALT-BUF TEST-PREFIX-U + c@ TEST-CASE-DELTA -
+   TEST-ALT-BUF TEST-PREFIX-U + c!
+   TEST-ALT-BUF u ;
+
+\ One family declaration at a path that must not be the listed one.
+: TEST-VARIANT-ROW? ( ptr u8 n -- bool ) {: path:ptr pathu:n :}
+   s" pdlfam" TEST-FIXTURE-FAMILY-SOURCE
+   TEST-DIFF-RESET path pathu TEST-ADD-SOURCE-SECTION
+   1 TEST-RUN-EXPECT? ;
+
+: TEST-ORDINARY-ROW? ( n -- bool ) {: p:n :}
+   TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS
+   TEST-DIFF-RESET p TEST-PATH$ TEST-ADD-SOURCE-SECTION
+   5 TEST-RUN-EXPECT? ;
+
+: TEST-STRUCTURE-ROW? ( n -- bool ) {: p:n :}
+   TEST-SOURCE-RESET
+   s" STRUCTURE pdlstruct 0 ;STRUCTURE" TEST-SOURCE-LINE
+   TEST-DIFF-RESET p TEST-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-RUN-EXPECT? ;
+
+: TEST-FORGED-ROW? ( n -- bool ) {: p:n :}
+   TEST-SOURCE-RESET TEST-ADD-FORGED-OPENER-TEXT
+   TEST-DIFF-RESET p TEST-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-RUN-EXPECT? ;
+
+: TEST-EXTENSION-ROW? ( n -- bool ) {: p:n :}
+   p TEST-PATH$ TEST-ALT-PATH$ TEST-VARIANT-ROW? ;
+
+\ The listed file name moved into a subdirectory: what a comparison narrowed to
+\ the file name alone, or to a path-segment suffix, would admit.
+: TEST-SUBDIR-ROW? ( n -- bool ) {: p:n :}
+   s" test/lib/" p TEST-PATH$ TEST-REDIR$ TEST-VARIANT-ROW? ;
+
+\ The listed path nested under a second `test/`.  This one both starts with
+\ `test/` and carries the WHOLE listed path as a trailing byte run, so it is the
+\ shape that the comparator weakened from equality to LINT-ENDS-WITH? admits.
+\ test/lib/<name> does not do that job: `lib/<name>` is not `test/<name>`, so a
+\ byte-suffix comparison rejects it and the weakening would survive.
+: TEST-NESTED-ROW? ( n -- bool ) {: p:n :}
+   s" test/test/" p TEST-PATH$ TEST-REDIR$ TEST-VARIANT-ROW? ;
+
+: TEST-RECASE-ROW? ( n -- bool ) {: p:n :}
+   p TEST-PATH$ TEST-RECASE$ TEST-VARIANT-ROW? ;
+
+: TEST-MOVED-ROW? ( n -- bool ) {: p:n :}
+   s" tools/" p TEST-PATH$ TEST-REDIR$ TEST-VARIANT-ROW? ;
+
+: TEST-BOUNDARY-ROW? ( n -- bool ) {: p:n :}
+   p TEST-PATH$ TEST-LOSS-SRC
+   TEST-DIFF-RESET p TEST-PATH$ TEST-LOSS-DIFF
+   1 TEST-RUN-EXPECT? ;
+
+: TEST-ROW-NOTE ( n ptr u8 n -- ) {: p:n what:ptr whatu:n :}
+   s" row check wrong: " type p TEST-PATH$ type
+   s"  on " type what whatu type cr ;
+
+: TEST-ROW-CHECKS ( n -- n ) {: p:n :}
+   0
+   p TEST-ORDINARY-ROW? 0= if p s" ordinary globals" TEST-ROW-NOTE 1+ then
+   p TEST-STRUCTURE-ROW? 0= if p s" a STRUCTURE declaration" TEST-ROW-NOTE 1+ then
+   p TEST-FORGED-ROW? 0= if p s" forged comment and string text" TEST-ROW-NOTE 1+ then
+   p TEST-EXTENSION-ROW? 0= if p s" the .fs path variant" TEST-ROW-NOTE 1+ then
+   p TEST-SUBDIR-ROW? 0= if p s" the test/lib/ subdirectory variant" TEST-ROW-NOTE 1+ then
+   p TEST-NESTED-ROW? 0= if p s" the nested test/test/ variant" TEST-ROW-NOTE 1+ then
+   p TEST-RECASE-ROW? 0= if p s" the case-varied path variant" TEST-ROW-NOTE 1+ then
+   p TEST-MOVED-ROW? 0= if p s" the tools/ directory variant" TEST-ROW-NOTE 1+ then
+   p TEST-BOUNDARY-ROW? 0= if p s" a deleted package boundary" TEST-ROW-NOTE 1+ then ;
+
+: TEST-PATH-ROWS ( -- )
+   0 TEST-ROW-BAD !
+   0 begin dup TEST-PATH# < while
+      dup TEST-ROW-CHECKS TEST-ROW-BAD @ + TEST-ROW-BAD !
+      1+
+   repeat drop
+   s" every row rejects ordinary globals, STRUCTURE, forged text, a changed path and a lost boundary" T-LABEL
+   TEST-ROW-BAD @ 0 T= ;
+
+\ ---- the production table itself ---------------------------------------------
+\ Everything above tests BEHAVIOUR at nine paths this suite names.  That can
+\ never see a row this suite does not name: append one more ROW+ line after the
+\ production block and a tenth exemption exists which no behavioural pin visits.
+\ So the table is pinned directly - its length against the expected row count,
+\ and every row's path and opener set against this suite's own literals.  The
+\ test-side masks are deliberately written in the same bit order as the O-*
+\ constants so they can be compared as numbers, and they are written as literals
+\ so a change on either side has to be mirrored on the other.
+: TEST-TABLE-ROW? ( n -- bool ) {: p:n :}
+   p ROW-PATH$ p TEST-PATH$ LINT-STR= 0= if false exit then
+   p ROW-MASK p TEST-PATH-MASK = ;
+
+: TEST-TABLE ( -- )
+   s" the production row table holds exactly the rows this suite pins" T-LABEL
+   FIXTURE-ROW# @ TEST-PATH# T=
+   0 TEST-ROW-BAD !
+   0 begin dup TEST-PATH# < while
+      dup TEST-TABLE-ROW? 0= if
+         dup s" its production path or opener set" TEST-ROW-NOTE
+         TEST-ROW-BAD @ 1+ TEST-ROW-BAD !
+      then
+      1+
+   repeat drop
+   s" every production row carries this suite's own path and opener set" T-LABEL
+   TEST-ROW-BAD @ 0 T= ;
+
+\ The sweeps above count findings; they cannot say WHICH word a finding named.
+\ This spot-check does, on one row, for the two fixtures where naming the wrong
+\ subject would be the interesting failure.
+: TEST-FIX-NAMES ( -- )
+   s" the ordinary-global report names each ordinary global" T-LABEL
+   TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS
+   TEST-DIFF-RESET s" test/type-decl-suite.f" TEST-ADD-SOURCE-SECTION
+   5 TEST-EXPECT-FINDINGS
+   s" PDL-HELPER" TEST-NAMES
+   s" PDL-STATE" TEST-NAMES
+   s" PDL-CELL" TEST-NAMES
+   s" the forged-text report names the colon word, never the forged names" T-LABEL
+   TEST-SOURCE-RESET TEST-ADD-FORGED-OPENER-TEXT
+   TEST-DIFF-RESET s" test/type-decl-suite.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   s" PDL-AFTER-FORGERY" TEST-NAMES
+   s" pdlfb" TEST-NOT-NAMES
+   s" pdlfd" TEST-NOT-NAMES
+   s" pdlff" TEST-NOT-NAMES ;
 
 : TEST-GRAMMAR-FIXTURE-HOSTILE ( -- )
    s" an unlisted test file still reports its global declaration" T-LABEL
@@ -560,6 +923,12 @@ variable TEST-DIFF-U
    s" a listed path as a suffix of a longer path is not the listed path" T-LABEL
    s" test/lib/type-decl-suite.f" TEST-FIXTURE-AT
    1 TEST-EXPECT-FINDINGS
+   \ the path list matches case-sensitively while the definer list does not.
+   \ That asymmetry is deliberate - a path is a filename, a definer is a Forth
+   \ word - so it needs its own pin rather than a reader's assumption.
+   s" a listed path spelled in another case is not the listed path" T-LABEL
+   s" test/Type-Decl-Suite.f" TEST-FIXTURE-AT
+   1 TEST-EXPECT-FINDINGS
    s" the category never admits a library source, however it is spelled" T-LABEL
    s" lib/process-pty-handle.f" TEST-FIXTURE-AT
    1 TEST-EXPECT-FINDINGS
@@ -568,32 +937,27 @@ variable TEST-DIFF-U
    TEST-DIFF-RESET s" test/other-suite.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS ;
 
-: TEST-WRITE-FIXTURE-OWNER-LOSS ( -- )
-   TEST-SOURCE-RESET
-   s" NEWTYPE pdlfam 0" TEST-SOURCE-LINE
-   s" test/type-decl-suite.f" TEST-WRITE-SOURCE ;
-
-: TEST-FIXTURE-OWNER-LOSS-DIFF ( -- )
-   s" test/type-decl-suite.f" TEST-MODIFY-HEAD
-   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
-   s" -package PDLFIX" TEST-DIFF+ TEST-LF
-   s"  NEWTYPE pdlfam 0" TEST-DIFF+ TEST-LF
-   s" -;package" TEST-DIFF+ TEST-LF ;
-
-: TEST-GRAMMAR-FIXTURE-SCOPE-DELTA ( -- )
-   \ FINISH-DEFINITION checks SCOPE-DELTA before the category, so a deleted
-   \ package boundary around a fixture is reported even in a listed file: the
-   \ category admits a plain global declaration, never a scope change.
-   s" a deleted package boundary in a listed file is still reported" T-LABEL
-   TEST-WRITE-FIXTURE-OWNER-LOSS
-   TEST-DIFF-RESET TEST-FIXTURE-OWNER-LOSS-DIFF
-   1 TEST-EXPECT-FINDINGS ;
+\ test/internal-word-gate.f was on the path list and was removed: measured
+\ against the shape rule it declares nothing through the grammar - its fixtures
+\ are declaration SOURCE built as strings for child processes - so the entry
+\ only ever admitted its raw-stem IWG- helpers, which are ordinary packaging
+\ debt (dot habu-pkg-internal-word-da4149d9).  Pin the removal, or a future
+\ reader restores the entry from the old comment.
+: TEST-GRAMMAR-FIXTURE-REMOVED ( -- )
+   s" test/internal-word-gate.f is no longer listed and now reports" T-LABEL
+   s" test/internal-word-gate.f" TEST-FIXTURE-AT
+   1 TEST-EXPECT-FINDINGS
+   s" pdlfam" TEST-NAMES ;
 
 : TEST-GRAMMAR-FIXTURES ( -- )
-   s" every listed grammar-fixture suite is admitted" T-LABEL
+   TEST-TABLE
    TEST-GRAMMAR-FIXTURE-LIST
+   TEST-OPENER-MATRIX
+   TEST-PATH-ROWS
+   TEST-FIX-NAMES
+   TEST-GRAMMAR-FIXTURE-CASE
    TEST-GRAMMAR-FIXTURE-HOSTILE
-   TEST-GRAMMAR-FIXTURE-SCOPE-DELTA ;
+   TEST-GRAMMAR-FIXTURE-REMOVED ;
 
 : TEST-WRITE-TYPE-FAMILY-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
    TEST-SOURCE-RESET
