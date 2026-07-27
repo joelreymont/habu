@@ -2562,3 +2562,10 @@ fits.
   Once `SAFET:mapping` can only be minted from a parsed positive-length image,
   `WITH-MAPPING` must always run its body and return the length directly; an
   obsolete option weakens every caller and hides the mint invariant.
+- **Name an operation by what it does.** The GPT-2 “bind” path loads and
+  validates checkpoint tensors, so call it `LOAD`; reserve unfamiliar terms
+  for concepts that cannot be stated plainly.
+- **`dot on` still double-quotes an already quoted `created-at` value.** It
+  reproduced on the current tool, so inspect every status mutation, normalize
+  the changed file before publication, and keep the writer-fix dot open until
+  a regression proves the bug cannot recur.
