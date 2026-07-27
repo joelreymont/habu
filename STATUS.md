@@ -43,7 +43,7 @@ verdict; retry exhaustion exits with its own distinct code. Whole-gate
 elapsed-ms is informational only; per-phase timeouts remain as hang guards.
 Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
 gap (habu-add-pinned-engine-90090800).
-Certified (linux-arm64): 4192  Uncheckable: 0  Rejected: 0
+Certified (linux-arm64): 4194  Uncheckable: 0  Rejected: 0
 Certified (macos-arm64): 3775
 Host-script workflow hooks: retired and gated
 
@@ -179,6 +179,22 @@ measures today:
   `test/prop-test-core.f`'s axiom ledger, `tools/lint/text-foundation-test.f`'s
   registry-row ratchet, `tools/check-all-errors-test.f`, and five test files,
   none of which is part of the assembled stage2 engine source.
+- Rejecting pointer fields to linear values adds two, reaching 4194. That change
+  landed on 2026-07-26 as `130e7b92` and left this row at 4192; the row above
+  and this entry are the correction. Each unified front end gains one
+  definition, and both are named `REQUIRE-POINTEE`: one in
+  `src/core/enum-decl.f` and one in `src/core/structure-decl.f`. Each is the
+  parse-time guard that reads the pointee node and refuses a pointer whose
+  destination owns a linear value. The `SCH-OWNS-LINEAR?` forwarder each file
+  gains beside it is a `TRUSTED:` boundary rather than a colon definition and
+  counts nothing, because the census scanner matches the exact token `:` and not
+  every name that merely ends in one. So 4192 + 2 = 4194. That change also edits
+  `TRUSTED.md`, `test/enum-decl-suite.f`, and `test/structure-decl-suite.f`,
+  none of which is part of the assembled stage2 engine source. Both guards are
+  temporary: the family-schema repair train deletes them and moves the rejection
+  to one shared close-time family query — `habu-reject-bad-pointers-7c6a5d6e`
+  for `ED-CLOSE` and `habu-reject-bad-pointers-230fa9c9` for `SD-CLOSE` — so
+  this row is measured and re-ledgered again when that train lands.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a
