@@ -265,10 +265,9 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   `tools/` or `docs/debugging.md` so the next crash starts with a tool, not a guess.
   Trial-and-error print-bisecting is the slow path and is forbidden once a tool
   could answer the question.
-- Parallel dot execution follows `docs/parallel-agents.md`: read-only scouts do
-  not edit the current tree; concurrent editors always use separate isolated jj
-  workspaces. Never assign overlapping files to concurrent editors in the same
-  workspace.
+- Generic parallel orchestration follows the installed global `minions` and
+  `parallel` skills. Read-only scouts do not edit the current tree; Habu editors
+  use isolated Jujutsu workspaces unless their file ownership is disjoint.
 - **Dot dispatch status (BLOCKING):** before claiming, create the workspace with
   `jj workspace add .jj-ws/<dot-id> --name <name> -r <verified-base>`, verify
   `@- == <verified-base>` with `jj -R .jj-ws/<dot-id> log -r '@-'`, clean
