@@ -322,12 +322,12 @@ Define sealed nominal single-cell families:
 
 ```text
 ir-module-id
-ir-function-id
+ir-fun-id
 ir-block-id
-ir-operation-id
+ir-op-id
 ir-value-id
 ir-type-id
-ir-attribute-id
+ir-attr-id
 ir-symbol-id
 ir-span-id
 ir-pool-offset
@@ -381,7 +381,7 @@ symbol-id
 signature-type-id
 first-block
 block-count
-attribute-window
+attr-window
 source-span
 linkage
 calling-convention
@@ -393,10 +393,10 @@ flags
 Each block record contains:
 
 ```text
-parent-function
+parent-fun
 argument-window
-operation-window
-terminator-operation
+op-window
+terminator-op
 predecessor-count
 successor-count
 source-span
@@ -414,7 +414,7 @@ dialect-opcode
 parent-block
 operand-window
 result-window
-attribute-window
+attr-window
 successor-window
 source-span
 effect-class
@@ -495,8 +495,8 @@ parent-span
 The common builder API should be small:
 
 ```text
-BEGIN-FUNCTION
-END-FUNCTION
+BEGIN-FUN
+END-FUN
 
 BEGIN-BLOCK
 ADD-BLOCK-ARG
@@ -506,11 +506,11 @@ ADD-OP
 ADD-OPERAND
 ADD-RESULT
 ADD-SUCCESSOR
-ADD-ATTRIBUTE
+ADD-ATTR
 
 INTERN-TYPE
 INTERN-SYMBOL
-INTERN-ATTRIBUTE
+INTERN-ATTR
 ADD-SPAN
 ```
 
@@ -1807,7 +1807,7 @@ src/compiler/ir/context.f
 src/compiler/ir/arena.f
 src/compiler/ir/source.f
 src/compiler/ir/type.f
-src/compiler/ir/attribute.f
+src/compiler/ir/attr.f
 src/compiler/ir/schema.f
 src/compiler/ir/builder.f
 src/compiler/ir/freeze.f

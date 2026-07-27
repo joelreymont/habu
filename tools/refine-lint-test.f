@@ -114,12 +114,12 @@ create RAW-NAME-BUF 64 allot
 : IR-KIND$ ( n -- ptr u8 n )
    case
       0 of s" SOURCE" endof
-      1 of s" FUNCTION" endof
+      1 of s" FUN" endof
       2 of s" BLOCK" endof
-      3 of s" OPERATION" endof
+      3 of s" OP" endof
       4 of s" VALUE" endof
       5 of s" TYPE" endof
-      6 of s" ATTRIBUTE" endof
+      6 of s" ATTR" endof
       7 of s" SYMBOL" endof
       8 of s" SPAN" endof
       E-TBL-BOUNDS throw

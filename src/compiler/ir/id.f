@@ -7,12 +7,12 @@ public
 
 NEWTYPE ir-module-id 0
 NEWTYPE ir-source-id 0
-NEWTYPE ir-function-id 0
+NEWTYPE ir-fun-id 0
 NEWTYPE ir-block-id 0
-NEWTYPE ir-operation-id 0
+NEWTYPE ir-op-id 0
 NEWTYPE ir-value-id 0
 NEWTYPE ir-type-id 0
-NEWTYPE ir-attribute-id 0
+NEWTYPE ir-attr-id 0
 NEWTYPE ir-symbol-id 0
 NEWTYPE ir-span-id 0
 NEWTYPE ir-pool-offset 0
@@ -45,18 +45,18 @@ CAST: POOL-OFF>N ( IR-ID:ir-pool-offset -- n ) ;
 
 CAST: MINT-SOURCE ( n -- IR-ID:ir-source-id ) ;
 CAST: SOURCE>N ( IR-ID:ir-source-id -- n ) ;
-CAST: MINT-FUNCTION ( n -- IR-ID:ir-function-id ) ;
-CAST: FUNCTION>N ( IR-ID:ir-function-id -- n ) ;
+CAST: MINT-FUN ( n -- IR-ID:ir-fun-id ) ;
+CAST: FUN>N ( IR-ID:ir-fun-id -- n ) ;
 CAST: MINT-BLOCK ( n -- IR-ID:ir-block-id ) ;
 CAST: BLOCK>N ( IR-ID:ir-block-id -- n ) ;
-CAST: MINT-OPERATION ( n -- IR-ID:ir-operation-id ) ;
-CAST: OPERATION>N ( IR-ID:ir-operation-id -- n ) ;
+CAST: MINT-OP ( n -- IR-ID:ir-op-id ) ;
+CAST: OP>N ( IR-ID:ir-op-id -- n ) ;
 CAST: MINT-VALUE ( n -- IR-ID:ir-value-id ) ;
 CAST: VALUE>N ( IR-ID:ir-value-id -- n ) ;
 CAST: MINT-TYPE ( n -- IR-ID:ir-type-id ) ;
 CAST: TYPE>N ( IR-ID:ir-type-id -- n ) ;
-CAST: MINT-ATTRIBUTE ( n -- IR-ID:ir-attribute-id ) ;
-CAST: ATTRIBUTE>N ( IR-ID:ir-attribute-id -- n ) ;
+CAST: MINT-ATTR ( n -- IR-ID:ir-attr-id ) ;
+CAST: ATTR>N ( IR-ID:ir-attr-id -- n ) ;
 CAST: MINT-SYMBOL ( n -- IR-ID:ir-symbol-id ) ;
 CAST: SYMBOL>N ( IR-ID:ir-symbol-id -- n ) ;
 CAST: MINT-SPAN ( n -- IR-ID:ir-span-id ) ;
@@ -91,14 +91,14 @@ CAST: SPAN>N ( IR-ID:ir-span-id -- n ) ;
 : SOURCE-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-source-id -- IR-ID:ir-source-id )
    SOURCE>N CHECK-N MINT-SOURCE ;
 
-: PACK-FUNCTION ( IR-ID:ir-module-id n -- IR-ID:ir-function-id )
-   PACK-N MINT-FUNCTION ;
-: FUNCTION-OWNER ( IR-ID:ir-function-id -- IR-ID:ir-module-id )
-   FUNCTION>N OWNER-N ;
-: FUNCTION-LOCAL ( IR-ID:ir-function-id -- n )
-   FUNCTION>N LOCAL-N ;
-: FUNCTION-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-function-id -- IR-ID:ir-function-id )
-   FUNCTION>N CHECK-N MINT-FUNCTION ;
+: PACK-FUN ( IR-ID:ir-module-id n -- IR-ID:ir-fun-id )
+   PACK-N MINT-FUN ;
+: FUN-OWNER ( IR-ID:ir-fun-id -- IR-ID:ir-module-id )
+   FUN>N OWNER-N ;
+: FUN-LOCAL ( IR-ID:ir-fun-id -- n )
+   FUN>N LOCAL-N ;
+: FUN-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-fun-id -- IR-ID:ir-fun-id )
+   FUN>N CHECK-N MINT-FUN ;
 
 : PACK-BLOCK ( IR-ID:ir-module-id n -- IR-ID:ir-block-id )
    PACK-N MINT-BLOCK ;
@@ -109,14 +109,14 @@ CAST: SPAN>N ( IR-ID:ir-span-id -- n ) ;
 : BLOCK-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-block-id -- IR-ID:ir-block-id )
    BLOCK>N CHECK-N MINT-BLOCK ;
 
-: PACK-OPERATION ( IR-ID:ir-module-id n -- IR-ID:ir-operation-id )
-   PACK-N MINT-OPERATION ;
-: OPERATION-OWNER ( IR-ID:ir-operation-id -- IR-ID:ir-module-id )
-   OPERATION>N OWNER-N ;
-: OPERATION-LOCAL ( IR-ID:ir-operation-id -- n )
-   OPERATION>N LOCAL-N ;
-: OPERATION-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-operation-id -- IR-ID:ir-operation-id )
-   OPERATION>N CHECK-N MINT-OPERATION ;
+: PACK-OP ( IR-ID:ir-module-id n -- IR-ID:ir-op-id )
+   PACK-N MINT-OP ;
+: OP-OWNER ( IR-ID:ir-op-id -- IR-ID:ir-module-id )
+   OP>N OWNER-N ;
+: OP-LOCAL ( IR-ID:ir-op-id -- n )
+   OP>N LOCAL-N ;
+: OP-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-op-id -- IR-ID:ir-op-id )
+   OP>N CHECK-N MINT-OP ;
 
 : PACK-VALUE ( IR-ID:ir-module-id n -- IR-ID:ir-value-id )
    PACK-N MINT-VALUE ;
@@ -136,14 +136,14 @@ CAST: SPAN>N ( IR-ID:ir-span-id -- n ) ;
 : TYPE-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-type-id -- IR-ID:ir-type-id )
    TYPE>N CHECK-N MINT-TYPE ;
 
-: PACK-ATTRIBUTE ( IR-ID:ir-module-id n -- IR-ID:ir-attribute-id )
-   PACK-N MINT-ATTRIBUTE ;
-: ATTRIBUTE-OWNER ( IR-ID:ir-attribute-id -- IR-ID:ir-module-id )
-   ATTRIBUTE>N OWNER-N ;
-: ATTRIBUTE-LOCAL ( IR-ID:ir-attribute-id -- n )
-   ATTRIBUTE>N LOCAL-N ;
-: ATTRIBUTE-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-attribute-id -- IR-ID:ir-attribute-id )
-   ATTRIBUTE>N CHECK-N MINT-ATTRIBUTE ;
+: PACK-ATTR ( IR-ID:ir-module-id n -- IR-ID:ir-attr-id )
+   PACK-N MINT-ATTR ;
+: ATTR-OWNER ( IR-ID:ir-attr-id -- IR-ID:ir-module-id )
+   ATTR>N OWNER-N ;
+: ATTR-LOCAL ( IR-ID:ir-attr-id -- n )
+   ATTR>N LOCAL-N ;
+: ATTR-CHECK ( IR-ID:ir-module-id IR-ID:ir-count IR-ID:ir-attr-id -- IR-ID:ir-attr-id )
+   ATTR>N CHECK-N MINT-ATTR ;
 
 : PACK-SYMBOL ( IR-ID:ir-module-id n -- IR-ID:ir-symbol-id )
    PACK-N MINT-SYMBOL ;

@@ -302,8 +302,8 @@ test/gate-stdlib-inline-lib.f
 ```
 
 It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
-`ir-module-id`, `ir-source-id`, `ir-function-id`, `ir-block-id`,
-`ir-operation-id`, `ir-value-id`, `ir-type-id`, `ir-attribute-id`,
+`ir-module-id`, `ir-source-id`, `ir-fun-id`, `ir-block-id`,
+`ir-op-id`, `ir-value-id`, `ir-type-id`, `ir-attr-id`,
 `ir-symbol-id`, `ir-span-id`, `ir-pool-offset`, and `ir-count`. Private checked
 `CAST:` words in package `IR-RAW` implement three separate contracts: module
 serials, packed referential IDs, and scalar count/offset roles. No new
@@ -342,8 +342,8 @@ PACK-{KIND}        ( IR-ID:ir-module-id n -- IR-ID:ir-{kind}-id )
                      -- IR-ID:ir-{kind}-id )
 ```
 
-`{KIND}` expands exactly to `SOURCE`, `FUNCTION`, `BLOCK`, `OPERATION`, `VALUE`,
-`TYPE`, `ATTRIBUTE`, `SYMBOL`, and `SPAN`. The later arena/builder is the only
+`{KIND}` expands exactly to `SOURCE`, `FUN`, `BLOCK`, `OP`, `VALUE`,
+`TYPE`, `ATTR`, `SYMBOL`, and `SPAN`. The later arena/builder is the only
 semantic caller of `PACK-*`; the codec is the only semantic caller of `*-LOCAL`.
 `refine-lint` confines these private words to `id.f`, `arena.f`, their focused
 test, and the later codec owner.

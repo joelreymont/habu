@@ -292,18 +292,18 @@ private
       74 of s" POOL-OFF>N" endof
       75 of s" MINT-SOURCE" endof
       76 of s" SOURCE>N" endof
-      77 of s" MINT-FUNCTION" endof
-      78 of s" FUNCTION>N" endof
+      77 of s" MINT-FUN" endof
+      78 of s" FUN>N" endof
       79 of s" MINT-BLOCK" endof
       80 of s" BLOCK>N" endof
-      81 of s" MINT-OPERATION" endof
-      82 of s" OPERATION>N" endof
+      81 of s" MINT-OP" endof
+      82 of s" OP>N" endof
       83 of s" MINT-VALUE" endof
       84 of s" VALUE>N" endof
       85 of s" MINT-TYPE" endof
       86 of s" TYPE>N" endof
-      87 of s" MINT-ATTRIBUTE" endof
-      88 of s" ATTRIBUTE>N" endof
+      87 of s" MINT-ATTR" endof
+      88 of s" ATTR>N" endof
       89 of s" MINT-SYMBOL" endof
       90 of s" SYMBOL>N" endof
       91 of s" MINT-SPAN" endof
@@ -579,24 +579,24 @@ public
       9 of s" SOURCE-OWNER" endof
       10 of s" SOURCE-LOCAL" endof
       11 of s" SOURCE-CHECK" endof
-      12 of s" MINT-FUNCTION" endof
-      13 of s" FUNCTION>N" endof
-      14 of s" PACK-FUNCTION" endof
-      15 of s" FUNCTION-OWNER" endof
-      16 of s" FUNCTION-LOCAL" endof
-      17 of s" FUNCTION-CHECK" endof
+      12 of s" MINT-FUN" endof
+      13 of s" FUN>N" endof
+      14 of s" PACK-FUN" endof
+      15 of s" FUN-OWNER" endof
+      16 of s" FUN-LOCAL" endof
+      17 of s" FUN-CHECK" endof
       18 of s" MINT-BLOCK" endof
       19 of s" BLOCK>N" endof
       20 of s" PACK-BLOCK" endof
       21 of s" BLOCK-OWNER" endof
       22 of s" BLOCK-LOCAL" endof
       23 of s" BLOCK-CHECK" endof
-      24 of s" MINT-OPERATION" endof
-      25 of s" OPERATION>N" endof
-      26 of s" PACK-OPERATION" endof
-      27 of s" OPERATION-OWNER" endof
-      28 of s" OPERATION-LOCAL" endof
-      29 of s" OPERATION-CHECK" endof
+      24 of s" MINT-OP" endof
+      25 of s" OP>N" endof
+      26 of s" PACK-OP" endof
+      27 of s" OP-OWNER" endof
+      28 of s" OP-LOCAL" endof
+      29 of s" OP-CHECK" endof
       30 of s" MINT-VALUE" endof
       31 of s" VALUE>N" endof
       32 of s" PACK-VALUE" endof
@@ -609,12 +609,12 @@ public
       39 of s" TYPE-OWNER" endof
       40 of s" TYPE-LOCAL" endof
       41 of s" TYPE-CHECK" endof
-      42 of s" MINT-ATTRIBUTE" endof
-      43 of s" ATTRIBUTE>N" endof
-      44 of s" PACK-ATTRIBUTE" endof
-      45 of s" ATTRIBUTE-OWNER" endof
-      46 of s" ATTRIBUTE-LOCAL" endof
-      47 of s" ATTRIBUTE-CHECK" endof
+      42 of s" MINT-ATTR" endof
+      43 of s" ATTR>N" endof
+      44 of s" PACK-ATTR" endof
+      45 of s" ATTR-OWNER" endof
+      46 of s" ATTR-LOCAL" endof
+      47 of s" ATTR-CHECK" endof
       48 of s" MINT-SYMBOL" endof
       49 of s" SYMBOL>N" endof
       50 of s" PACK-SYMBOL" endof
