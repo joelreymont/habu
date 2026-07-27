@@ -361,18 +361,18 @@ public
 
 `using NAME` is the consumer-side import: it makes package `NAME`'s **public**
 wordlist visible to bare, unqualified lookup in the current scope, without
-opening `NAME`. It is the readable form for pure DSL files — a suite manifest
-reads `using TEST … SUITE foo … ;SUITE … ;using` instead of spelling
-`TEST:SUITE`/`TEST:;SUITE` at every site.
+opening or reopening `NAME`. A whole-file consumer or entry file imports its
+public DSL once, calls its semantic words bare, and lets end-of-file close the
+import:
 
 ```forth
-using TEST
+require test/run-lib.f
 
-SUITE parser-cases
-   parser.f
-;SUITE
+using TEST-RUN
 
-;using
+PREPARE
+   \ phase words
+COMPLETE
 ```
 
 - `using NAME` consumes the next token, rejects a missing name and a name
@@ -380,13 +380,20 @@ SUITE parser-cases
   top level and inside an open package. Only `NAME`'s public wordlist joins the
   search — its private words stay invisible, and no definition can ever land in
   `NAME` through a `using` (definitions still target the current scope's
-  wordlist, exactly as without the `using`).
+  wordlist, exactly as without the `using`). Required files may open or reopen
+  `NAME`; when the require returns, the consumer remains in its original,
+  normally global, definition scope.
 - The scope of a `using` ends at the matching `;using` (the `FOO … ;FOO`
   block-pair convention), at the enclosing `;package` when the `using` was opened
   inside a package, or at the end of the load file — whichever comes first.
   `;using` closes the most recent `using`; a `;using` with no open `using` is an
   error. Multiple concurrent usings are allowed up to a small fixed capacity
-  (`USE-MAX`, 16); a further `using` past the limit is rejected.
+  (`USE-MAX`, 16); a further `using` past the limit is rejected. Omit redundant
+  `;using` when the import owns the rest of the file; write it only when later
+  content must not see that import.
+- New lifecycle APIs should prefer a semantic block pair such as `RUN … ;RUN`,
+  so a consumer reads as one scoped action instead of a series of phase
+  mechanics.
 - Lookup order for a bare tail is the open-package scope (private then own
   public) FIRST, then the global wordlist, then each used package's public
   wordlist. A tail found in the OPEN-PACKAGE scope silently wins over a used
