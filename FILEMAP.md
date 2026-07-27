@@ -2571,7 +2571,7 @@ points stay listed.
   `E-FS-OPEN`, a child engine with `HABU_UNDER_TEST=""` proves the no-override
   fallback to its own identity, and `ENGINE-CANDIDATE:PATH$` feeds
   `PROCESS-PTY:SPAWN` to supervise the resolved engine to exit and teardown.
-- `test/internal-word-gate.f` — engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection.
+- `test/internal-word-gate.f` — fully private `package INTERNAL-WORD-GATE` (no exports): engine-internal execution-gate regressions, including sealed field mutation and checked read-only field reflection. The runner is carried out of the package as a checked quotation from `ACTION` and executed on the line after `;package`, because the SUBJECT forks it starts must not inherit an open package.
   (dot habu-hb-crash-bare-c5be6634): bare/ticked internal checker colon words
   fail closed with `hb: internal engine word:` + rc 70 on both cold-prefix
   paths; positives pin E-UNDEFINED/E-UNDERFLOW, unchecked user words, TRUST/
