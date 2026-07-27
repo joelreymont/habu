@@ -1,6 +1,6 @@
 ---
 title: Reject bad pointers at STRUCTURE close
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:41:07.311515+02:00"
@@ -32,3 +32,5 @@ diagnostics, copied rollback inventory, or synthetic declarer.
 Acceptance: the structure declaration suite, shared family suite,
 `DECL-EVENT` suite, candidate validation, both diff lints, and the native gate
 pass. Land with the ENUM close leaf so master never carries two authorities.
+
+Claim: agent=famschema5 workspace=.jj-ws/habu-validate-family-schema (three-commit revision on 5acf8157 per the landed contracts; prior stack 331311f3/d64e51b8/8223af92 retained as reference evidence only)

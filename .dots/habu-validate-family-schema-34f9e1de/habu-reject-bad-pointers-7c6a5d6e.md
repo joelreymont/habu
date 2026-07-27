@@ -1,6 +1,6 @@
 ---
 title: Reject bad pointers at ENUM close
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:41:07.316830+02:00"
@@ -34,3 +34,5 @@ participant reordering, a copied rollback model, or synthetic declarer.
 Acceptance: the enum declaration suite, shared family suite, `DECL-EVENT`
 suite, linearity matrix, candidate validation, both diff lints, and the native
 gate pass. Land with the STRUCTURE close leaf.
+
+Claim: agent=famschema5 workspace=.jj-ws/habu-validate-family-schema (three-commit revision on 5acf8157 per the landed contracts; prior stack 331311f3/d64e51b8/8223af92 retained as reference evidence only)

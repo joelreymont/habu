@@ -1,6 +1,6 @@
 ---
 title: Add shared family pointer query
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:41:07.304435+02:00"
@@ -78,3 +78,5 @@ Acceptance: all production declaration, family-schema, `DECL-EVENT`,
 confinement, linearity, candidate-validation, diff-lint, and trusted-inventory
 gates pass. Mutating each recursion edge, owner filter, legacy route,
 confinement route, or owner-local rollback proof makes its exact test fail.
+
+Claim: agent=famschema5 workspace=.jj-ws/habu-validate-family-schema (three-commit revision on 5acf8157 per the landed contracts; prior stack 331311f3/d64e51b8/8223af92 retained as reference evidence only)
