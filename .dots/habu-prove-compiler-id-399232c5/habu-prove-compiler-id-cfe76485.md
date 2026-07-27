@@ -14,9 +14,9 @@ Checkpoint:
 
 1. Owner: Rocq module `Habu.Common.IdLaws`; sole model dependency `Habu.Common.Ids`.
 2. Entry: `formal/Common/IdLaws.v`.
-3. Green: clean `rocq compile -Q formal Habu formal/Common/Ids.v`.
-4. Red: adding `formal/Common/IdLaws.v` to that compile fails before the theorem file exists.
+3. Green: `rocq compile -Q formal Habu formal/Common/Ids.v` succeeds.
+4. Red: after Green, `rocq compile -Q formal Habu formal/Common/IdLaws.v` fails before the theorem file exists.
 5. Interface: bounded pack, projection, injection, owner separation, reject, count scalar-identity, and pool-offset scalar-identity theorems plus focused counterexamples.
 6. Forbidden: changing `Ids.v`, runtime kind predicates, examples as theorem substitutes, missing boundary mutations, scalar proof only below bit 32, allocator/parity work, or Admitted.
-7. Focused: `rocq compile -Q formal Habu formal/Common/Ids.v formal/Common/IdLaws.v`.
+7. Focused: run `rocq compile -Q formal Habu formal/Common/Ids.v`, then `rocq compile -Q formal Habu formal/Common/IdLaws.v`.
 8. Broader: every current `formal/Common/*.v`, no-Admitted and assumption scans, host, file-map, stale-status, and dot dependency gates.
