@@ -43,6 +43,14 @@ require maki/infer/gpt2-load.f
 
 package GPT2LOAD
 
+using GPT2TENSOR
+using MDLCFG-ARCH
+using MDLCFG
+using SAFET-MAP
+using SAFET
+using WSTORE
+using MDLCFG-CFGKEY
+
 \ ---- the tiny fixture geometry -------------------------------------------------
 2 constant LAYER-COUNT                                \ layer count
 4 constant EMBED-SIZE                                \ nembd
@@ -126,7 +134,7 @@ variable START-PREPARED-COUNT
    TENSOR-ID-FOR-SLOT ROLE-NAME-BUFFER ROLE-NAME-CAPACITY GPT2TENSOR:COPY-NAME? E-NAME-TOO-LONG REQUIRE-VALUE ;
 
 : ROLE-SHAPE ( MDLCFG:mcfg n -- MDLCFG:mcfg n n n n n )
-   TENSOR-ID-FOR-SLOT GPT2TENSOR:SHAPE ;
+   TENSOR-ID-FOR-SLOT SHAPE ;
 
 \ ---- emitted dims: the role's shape with this slot's damage applied ------------
 : DAMAGED? ( n -- bool ) {: slot:n :}
@@ -289,28 +297,28 @@ variable START-PREPARED-COUNT
 : NORM-EPSILON ( -- r )  0.00001 ;
 
 : MATCHING-CONFIG ( -- MDLCFG:mcfg )
-   NORM-EPSILON true MDLCFG-ARCH:GPT2
-   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT EMBED-SIZE HEAD-COUNT true 4 4 MDLCFG:BUILD ;
+   NORM-EPSILON true GPT2
+   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT EMBED-SIZE HEAD-COUNT true 4 4 BUILD ;
 
 \ alternate identity: same geometry, one field invisible to the parsed tensor index is flipped
 : OTHER-IDENTITY-CONFIG ( -- MDLCFG:mcfg )
-   NORM-EPSILON true MDLCFG-ARCH:GPT2
-   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT EMBED-SIZE HEAD-COUNT false 4 4 MDLCFG:BUILD ;
+   NORM-EPSILON true GPT2
+   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT EMBED-SIZE HEAD-COUNT false 4 4 BUILD ;
 
 \ one more layer: the parsed tensor index count no longer matches
 : EXTRA-LAYER-CONFIG ( -- MDLCFG:mcfg )
-   NORM-EPSILON true MDLCFG-ARCH:GPT2
-   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT 1 + EMBED-SIZE HEAD-COUNT true 4 4 MDLCFG:BUILD ;
+   NORM-EPSILON true GPT2
+   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT 1 + EMBED-SIZE HEAD-COUNT true 4 4 BUILD ;
 
 \ same parsed tensor index count, every embedding-shaped tensor twice as wide
 : WIDE-EMBEDDING-CONFIG ( -- MDLCFG:mcfg )
-   NORM-EPSILON true MDLCFG-ARCH:GPT2
-   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT EMBED-SIZE 2 * HEAD-COUNT true 4 4 MDLCFG:BUILD ;
+   NORM-EPSILON true GPT2
+   1 MODEL-ELEMENT-TYPE CONTEXT-SIZE VOCAB-SIZE LAYER-COUNT EMBED-SIZE 2 * HEAD-COUNT true 4 4 BUILD ;
 
 \ the real 124M geometry for the presence-gated tests
 : REAL-MODEL-CONFIG ( -- MDLCFG:mcfg )
-   NORM-EPSILON true MDLCFG-ARCH:GPT2
-   1 MODEL-ELEMENT-TYPE 1024 50257 12 768 12 true 50256 50256 MDLCFG:BUILD ;
+   NORM-EPSILON true GPT2
+   1 MODEL-ELEMENT-TYPE 1024 50257 12 768 12 true 50256 50256 BUILD ;
 
 : WRITE-FIXTURE ( MDLCFG:mcfg -- MDLCFG:mcfg )
    BUILD-IMAGE
@@ -357,19 +365,19 @@ variable START-PREPARED-COUNT
 \ measures exactly what these fixtures took and gave back.
 : SAVE-BASELINE ( -- )
    SAFET-MAP:LIVE START-MAPPING-COUNT !
-   SAFET:LIVE-OWNERS START-OWNER-COUNT !
+   LIVE-OWNERS START-OWNER-COUNT !
    WSTORE:LIVE START-STORE-COUNT !
    LIVE-PREPARED-LOADS START-PREPARED-COUNT ! ;
 
 : EXPECT-NO-LEAK ( -- )                             \ every owner and mapping given back
    SAFET-MAP:LIVE START-MAPPING-COUNT @ T=
-   SAFET:LIVE-OWNERS START-OWNER-COUNT @ T=
+   LIVE-OWNERS START-OWNER-COUNT @ T=
    WSTORE:LIVE START-STORE-COUNT @ T=
    LIVE-PREPARED-LOADS START-PREPARED-COUNT @ T= ;
 
 : EXPECT-PREPARED-RESOURCES ( -- )                           \ exactly one prepared load is live
    SAFET-MAP:LIVE START-MAPPING-COUNT @ 1 + T=
-   SAFET:LIVE-OWNERS START-OWNER-COUNT @ 1 + T=
+   LIVE-OWNERS START-OWNER-COUNT @ 1 + T=
    WSTORE:LIVE START-STORE-COUNT @ 1 + T=
    LIVE-PREPARED-LOADS START-PREPARED-COUNT @ 1 + T= ;
 
@@ -377,7 +385,7 @@ variable START-PREPARED-COUNT
 \ checkpoint mapping have moved into the residency the model holds.
 : EXPECT-MAPPED-MODEL-RESOURCES ( -- )
    SAFET-MAP:LIVE START-MAPPING-COUNT @ 1 + T=
-   SAFET:LIVE-OWNERS START-OWNER-COUNT @ 1 + T=
+   LIVE-OWNERS START-OWNER-COUNT @ 1 + T=
    WSTORE:LIVE START-STORE-COUNT @ 1 + T=
    LIVE-PREPARED-LOADS START-PREPARED-COUNT @ T= ;
 
@@ -388,7 +396,7 @@ variable START-PREPARED-COUNT
 \ parsed-tensor-index counters in both states, and only the WSTORE count distinguishes them.
 : EXPECT-TENSOR-INDEX-RESOURCES ( -- )
    SAFET-MAP:LIVE START-MAPPING-COUNT @ 1 + T=
-   SAFET:LIVE-OWNERS START-OWNER-COUNT @ 1 + T=
+   LIVE-OWNERS START-OWNER-COUNT @ 1 + T=
    WSTORE:LIVE START-STORE-COUNT @ T=
    LIVE-PREPARED-LOADS START-PREPARED-COUNT @ T= ;
 
@@ -427,12 +435,12 @@ variable START-PREPARED-COUNT
 7 constant ATTENTION-WEIGHT-SLOT                        \ h.0.attn.c_attn.weight (Conv1D)
 
 : SAVE-CONFIG-KEY ( MDLCFG:mcfg -- )                \ save a configuration's own key cells
-   MDLCFG:CFGKEY@ MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
+   CFGKEY@ UNMAKE {: k0:n k1:n k2:n k3:n :}
    drop
    k0 CONFIG-KEY0 !  k1 CONFIG-KEY1 !  k2 CONFIG-KEY2 !  k3 CONFIG-KEY3 ! ;
 
 : SAVE-MODEL-CONFIG-KEY ( GPT2LOAD:gpt2-model -- GPT2LOAD:gpt2-model )
-   MODEL-CONFIG-KEY MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
+   MODEL-CONFIG-KEY UNMAKE {: k0:n k1:n k2:n k3:n :}
    k0 CAPTURED-KEY0 !  k1 CAPTURED-KEY1 !  k2 CAPTURED-KEY2 !  k3 CAPTURED-KEY3 ! ;
 
 \ Cell by cell, in order. A reversed or rotated capture would still differ from the
@@ -443,5 +451,13 @@ variable START-PREPARED-COUNT
    CAPTURED-KEY1 @ CONFIG-KEY1 @ T=
    CAPTURED-KEY2 @ CONFIG-KEY2 @ T=
    CAPTURED-KEY3 @ CONFIG-KEY3 @ T= ;
+
+;using
+;using
+;using
+;using
+;using
+;using
+;using
 
 ;package
