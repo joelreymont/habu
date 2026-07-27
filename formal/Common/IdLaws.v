@@ -34,6 +34,69 @@ Proof.
   lia.
 Qed.
 
+Lemma scalar_in_range :
+  forall raw,
+    0 <= raw <= Ids.cell_max ->
+    Ids.scalar_validb raw = true.
+Proof.
+  intros raw [Hmin Hmax].
+  unfold Ids.scalar_validb, Ids.betweenb.
+  apply Bool.andb_true_iff.
+  split.
+  - apply Z.leb_le.
+    exact Hmin.
+  - apply Z.leb_le.
+  exact Hmax.
+Qed.
+
+Theorem count_scalar_id :
+  forall raw,
+    0 <= raw <= Ids.cell_max ->
+    Ids.make_count raw = Some (Ids.MkCount raw)
+    /\ Ids.count_raw (Ids.MkCount raw) = raw.
+Proof.
+  intros raw Hbounds.
+  unfold Ids.make_count.
+  rewrite scalar_in_range by exact Hbounds.
+  split; reflexivity.
+Qed.
+
+Theorem pool_off_scalar_id :
+  forall raw,
+    0 <= raw <= Ids.cell_max ->
+    Ids.make_pool_offset raw = Some (Ids.MkPoolOffset raw)
+    /\ Ids.pool_offset_raw (Ids.MkPoolOffset raw) = raw.
+Proof.
+  intros raw Hbounds.
+  unfold Ids.make_pool_offset.
+  rewrite scalar_in_range by exact Hbounds.
+  split; reflexivity.
+Qed.
+
+Theorem count_roundtrip :
+  forall count,
+    Ids.count_validb count = true ->
+    Ids.make_count (Ids.count_raw count) = Some count.
+Proof.
+  intros [raw] Hvalid.
+  unfold Ids.count_validb in Hvalid.
+  unfold Ids.make_count.
+  rewrite Hvalid.
+  reflexivity.
+Qed.
+
+Theorem pool_off_roundtrip :
+  forall offset,
+    Ids.pool_offset_validb offset = true ->
+    Ids.make_pool_offset (Ids.pool_offset_raw offset) = Some offset.
+Proof.
+  intros [raw] Hvalid.
+  unfold Ids.pool_offset_validb in Hvalid.
+  unfold Ids.make_pool_offset.
+  rewrite Hvalid.
+  reflexivity.
+Qed.
+
 Lemma local_mask_identity :
   forall idx,
     Ids.local_validb idx = true ->
@@ -419,6 +482,11 @@ Definition owner_at_shift (shift raw : Z) : Z :=
 Definition local_at_mask (mask raw : Z) : Z :=
   Z.land raw mask.
 
+Definition make_trunc {A : Type} (make : Z -> A) (raw : Z) : option A :=
+  if Ids.scalar_validb raw
+  then Some (make (Z.land raw Ids.local_mask))
+  else None.
+
 Definition check_without_owner_eq
     (serial bound raw : Z) : bool :=
   Ids.serial_validb serial
@@ -489,3 +557,34 @@ Example mutation_strict_bound_falsifies_equal_rejection :
   equal_bound_rejectedb Ids.checkb = true
   /\ equal_bound_rejectedb check_with_nonstrict_bound = false.
 Proof. repeat split; vm_compute; reflexivity. Qed.
+
+Example count_trunc_fails :
+  Ids.make_count 4294967296 =
+    Some (Ids.MkCount 4294967296)
+  /\ make_trunc Ids.MkCount 4294967296 =
+    Some (Ids.MkCount 0).
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+Example pool_off_trunc_fails :
+  Ids.make_pool_offset 4294967296 =
+    Some (Ids.MkPoolOffset 4294967296)
+  /\ make_trunc Ids.MkPoolOffset 4294967296 =
+    Some (Ids.MkPoolOffset 0).
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+Print Assumptions pack_as_sum.
+Print Assumptions pack_within_signed_cell.
+Print Assumptions owner_pack.
+Print Assumptions local_pack.
+Print Assumptions pack_injective.
+Print Assumptions pack_projection_roundtrip.
+Print Assumptions projection_pack_roundtrip.
+Print Assumptions distinct_valid_owners_separate.
+Print Assumptions try_pack_rejects_negative.
+Print Assumptions try_pack_rejects_overflow.
+Print Assumptions check_rejects_equal_bound.
+Print Assumptions check_rejects_foreign_owner.
+Print Assumptions count_scalar_id.
+Print Assumptions pool_off_scalar_id.
+Print Assumptions count_roundtrip.
+Print Assumptions pool_off_roundtrip.
