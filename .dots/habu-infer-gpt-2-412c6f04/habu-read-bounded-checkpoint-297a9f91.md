@@ -19,8 +19,9 @@ and very large indexes return `NONE` without a throw or address computation.
 
 No public raw-pointer word, type, span, native load primitive, global scratch,
 PTX change, or change to scalar `F32`. Write set:
-`maki/infer/gpt2.f`, `maki/infer/gpt2-test.f`, `maki/test.f`, and
-`FILEMAP.md`.
+`maki/infer/gpt2.f`, `maki/infer/gpt2-test.f`, `maki/test-core.f`, and
+`FILEMAP.md`. Register the inference suite exactly once in `maki/test-core.f`;
+do not add a second registration to `maki/test.f`.
 
 Production seam: the focused test reopens `GPT2` and calls the actual private
 reader inside real `MEM:WITH-BYTES`. This is the deepest production path until
