@@ -287,3 +287,13 @@ public
 -6599 constant E-TR-LAST
 -6500 constant E-TR-PATH-LEN    \ a persistent-root path longer than the runner's buffer
 -6501 constant E-TR-PROFILE     \ a host-profile id outside the runner's known profiles
+
+\ Shared compiler IR representation: -6600..-6699
+-6600 constant E-IR-FIRST
+-6699 constant E-IR-LAST
+-6600 constant E-IR-MODULE-ZERO
+-6601 constant E-IR-MODULE-RANGE
+-6602 constant E-IR-INDEX-RANGE
+-6603 constant E-IR-INDEX-BOUND
+-6604 constant E-IR-OWNER
+-6605 constant E-IR-SCALAR-RANGE

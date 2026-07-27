@@ -1,4 +1,4 @@
-\ refine-lint-core.f - confine raw->nominal refinement mints to their owning files.
+\ refine-lint-core.f - confine nominal representation boundaries to owning files.
 \
 \ Refinement mints (declared `TRUSTED: NAME ( n -- <nominal family> )` or, once
 \ migrated, `CAST: NAME ( ... )`, e.g. ROWS-REFINE `n -- CAD-KIND:rows`) forge
@@ -25,10 +25,15 @@
 \ capability (dot habu-nominal-storage-raw-a3430ef2), which closes the mint
 \ direction at unification. Retire this lint's mint class when that lands.
 \
+\ IR-RAW uses common cast tails such as COUNT>N that cannot be identified by a
+\ bare token alone. Its package opener is therefore the confinement choke: only
+\ id.f, arena.f, codec.f, and the focused ID test may reopen IR-RAW. The seed
+\ table still proves every IR representation CAST remains declared in id.f.
+\
 \ Scan discipline: whole-token matching over the shared PAT-* scanner, so `\`
 \ and `( )` comments and string-literal bodies are excluded; matching is
 \ case-insensitive (the dictionary is case-insensitive) and also catches
-\ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/.
+\ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/ test/.
 \ Owner liveness reads the owner source; NEW-MINT rows are read through
 \ tools/trust-lint-core.f (TL-M-*).
 \
@@ -42,7 +47,8 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-69 constant SEED#
+69 constant TOKEN-SEED#
+93 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -72,6 +78,7 @@ variable LU
 variable LX
 variable LS
 variable LE
+variable PACKAGE-PENDING
 
 : STR-A-FIELD ( -- ptr ptr u8 ) STR-A 0 ptr-field ;
 : FILE-A-FIELD ( -- ptr ptr u8 ) FILE-A 0 ptr-field ;
@@ -260,6 +267,33 @@ private
       65 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
       66 of s" MINT-LAYER-PROOF" endof      \ seals an authenticated GPT2TENSOR:layer-id
       67 of s" MAKE-MODEL-PROOF" endof     \ seals a loaded GPT2LOAD:gpt2-model
+      \ Shared compiler IR representation casts. Several tails are deliberately
+      \ ordinary (COUNT>N, TYPE>N), so token confinement would collide with
+      \ unrelated packages. IR-RAW package-opener confinement owns their use.
+      69 of s" MINT-MODULE" endof
+      70 of s" MODULE>N" endof
+      71 of s" MINT-COUNT" endof
+      72 of s" COUNT>N" endof
+      73 of s" MINT-POOL-OFF" endof
+      74 of s" POOL-OFF>N" endof
+      75 of s" MINT-SOURCE" endof
+      76 of s" SOURCE>N" endof
+      77 of s" MINT-FUNCTION" endof
+      78 of s" FUNCTION>N" endof
+      79 of s" MINT-BLOCK" endof
+      80 of s" BLOCK>N" endof
+      81 of s" MINT-OPERATION" endof
+      82 of s" OPERATION>N" endof
+      83 of s" MINT-VALUE" endof
+      84 of s" VALUE>N" endof
+      85 of s" MINT-TYPE" endof
+      86 of s" TYPE>N" endof
+      87 of s" MINT-ATTRIBUTE" endof
+      88 of s" ATTRIBUTE>N" endof
+      89 of s" MINT-SYMBOL" endof
+      90 of s" SYMBOL>N" endof
+      91 of s" MINT-SPAN" endof
+      92 of s" SPAN>N" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -334,6 +368,30 @@ private
       66 of s" maki/infer/gpt2-tensor.f" endof
       67 of s" maki/infer/gpt2-load.f" endof
       68 of s" maki/infer/gpt2-load.f" endof
+      69 of s" src/compiler/ir/id.f" endof
+      70 of s" src/compiler/ir/id.f" endof
+      71 of s" src/compiler/ir/id.f" endof
+      72 of s" src/compiler/ir/id.f" endof
+      73 of s" src/compiler/ir/id.f" endof
+      74 of s" src/compiler/ir/id.f" endof
+      75 of s" src/compiler/ir/id.f" endof
+      76 of s" src/compiler/ir/id.f" endof
+      77 of s" src/compiler/ir/id.f" endof
+      78 of s" src/compiler/ir/id.f" endof
+      79 of s" src/compiler/ir/id.f" endof
+      80 of s" src/compiler/ir/id.f" endof
+      81 of s" src/compiler/ir/id.f" endof
+      82 of s" src/compiler/ir/id.f" endof
+      83 of s" src/compiler/ir/id.f" endof
+      84 of s" src/compiler/ir/id.f" endof
+      85 of s" src/compiler/ir/id.f" endof
+      86 of s" src/compiler/ir/id.f" endof
+      87 of s" src/compiler/ir/id.f" endof
+      88 of s" src/compiler/ir/id.f" endof
+      89 of s" src/compiler/ir/id.f" endof
+      90 of s" src/compiler/ir/id.f" endof
+      91 of s" src/compiler/ir/id.f" endof
+      92 of s" src/compiler/ir/id.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -534,12 +592,39 @@ public
    BAD+ ;
 
 : MATCH-TOKEN ( -- )
-   0 begin dup SEED# < while
+   0 begin dup TOKEN-SEED# < while
       dup TOK-MINT? if
          dup ALLOWED? 0= if dup HIT then
       then
       1+
    repeat drop ;
+
+: IR-RAW-PATH? ( -- bool )
+   CUR$ s" src/compiler/ir/id.f" FS-PATH= if LINT-TRUE exit then
+   CUR$ s" src/compiler/ir/arena.f" FS-PATH= if LINT-TRUE exit then
+   CUR$ s" src/compiler/ir/codec.f" FS-PATH= if LINT-TRUE exit then
+   CUR$ s" test/compiler/ir-id.f" FS-PATH= ;
+
+: IR-RAW-TOK? ( -- bool )
+   PAT-TOK$ s" IR-RAW" LINT-STR=CI ;
+
+: PACKAGE-TOK? ( -- bool )
+   PAT-TOK$ s" package" LINT-STR=CI ;
+
+: IR-RAW-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : package IR-RAW opened outside its exact owner set" OUT NL
+   then
+   BAD+ ;
+
+: MATCH-PACKAGE ( -- )
+   PACKAGE-PENDING @ if
+      0 PACKAGE-PENDING !
+      IR-RAW-TOK? if IR-RAW-PATH? 0= if IR-RAW-HIT then then
+   then
+   PACKAGE-TOK? if LINT-TRUE PACKAGE-PENDING ! then ;
 
 : STRING-OPENER? ( -- bool )
    PAT-TOK$ LINT-NORMAL-STRING-OPENER? if LINT-TRUE exit then
@@ -548,6 +633,7 @@ public
 : SCAN-LINE ( ptr u8 n -- )
    PAT-RESET
    begin PAT-READ-TOKEN while
+      MATCH-PACKAGE
       STRING-OPENER? if PAT-SKIP-STRING-BODY else MATCH-TOKEN then
    repeat ;
 
@@ -565,7 +651,7 @@ public
 
 : FOR-LINES ( ptr u8 n -- )
    LU ! LA!
-   0 LINE !  0 LX !  0 LS !
+   0 LINE !  0 LX !  0 LS !  0 PACKAGE-PENDING !
    begin LX @ LU @ < while
       LA@ LX @ + c@ LF = IF LX @ DO-LINE THEN
       LX @ 1+ LX !
@@ -631,7 +717,7 @@ private
    s" MINT-ROW"     s" lib/nominal/nominal-test.f"      ALLOW+ ;
 
 : REPORT ( -- )
-   s" refine-lint: " OUT SEED# U. s"  mint(s), " OUT
+   s" refine-lint: " OUT SEED# U. s"  boundary word(s), " OUT
    BAD @ U. s"  finding(s)" OUT NL
    BAD @ 0 > IF 1 throw THEN ;
 
@@ -646,6 +732,7 @@ public
    s" lib" SCAN-ROOT
    s" src" SCAN-ROOT
    s" tools" SCAN-ROOT
+   s" test" SCAN-ROOT
    REPORT ;
 
 \ How many findings the last run recorded, and a way to start a fresh count. The

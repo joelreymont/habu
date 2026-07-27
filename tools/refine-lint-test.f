@@ -40,6 +40,7 @@ create OUT-BUF OUT-CAP allot
    u ROOT-U ! ;
 
 : DQ ( -- ) 34 SB-APPEND-C ;
+: IR-NL ( -- ) 10 SB-APPEND-C ;
 
 : SETUP ( -- )
    RFL:BUFFERS
@@ -89,6 +90,39 @@ create OUT-BUF OUT-CAP allot
    s" MY-ROWS-REFINE drop" RFL:COUNT-STR 0 T=          \ whole-token matching only
    s" ROWS-REFINED drop" RFL:COUNT-STR 0 T=
    s" :ROWS-REFINE drop" RFL:COUNT-STR 0 T= ;          \ edge colon is not a qualifier
+
+: IR-RAW-STRING$ ( -- ptr u8 n )
+   SB-RESET
+   s" : X ( -- ) s" SB-APPEND DQ
+   s" package IR-RAW" SB-APPEND DQ
+   s" 2drop ;" SB-APPEND
+   SB$ ;
+
+: IR-RAW-SPLIT$ ( -- ptr u8 n )
+   SB-RESET
+   s" package" SB-APPEND IR-NL
+   s" IR-RAW" SB-APPEND
+   SB$ ;
+
+: IR-RAW-CONFINEMENT ( -- )
+   \ The four frozen owner paths may reopen the private representation package.
+   s" src/compiler/ir/id.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/arena.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/codec.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
+   s" test/compiler/ir-id.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
+   \ Any other path fires, case-insensitively and across line boundaries.
+   s" src/compiler/ir/source.f" s" package IR-RAW" RFL:COUNT-STR-AT 1 T=
+   s" test/other.f" s" PaCkAgE ir-raw" RFL:COUNT-STR-AT 1 T=
+   s" test/other.f" IR-RAW-SPLIT$ RFL:COUNT-STR-AT 1 T=
+   \ Duplicates are separate authority violations.
+   s" test/other.f" s" package IR-RAW ;package package IR-RAW"
+      RFL:COUNT-STR-AT 2 T=
+   \ Comments, strings, near names, reordering, and the wrong opener role do not fire.
+   s" test/other.f" s" \ package IR-RAW" RFL:COUNT-STR-AT 0 T=
+   s" test/other.f" IR-RAW-STRING$ RFL:COUNT-STR-AT 0 T=
+   s" test/other.f" s" package IR-RAWER" RFL:COUNT-STR-AT 0 T=
+   s" test/other.f" s" IR-RAW package" RFL:COUNT-STR-AT 0 T=
+   s" test/other.f" s" using IR-RAW" RFL:COUNT-STR-AT 0 T= ;
 
 : CONFINE-POLICY ( -- )
    \ owner file is allowed
@@ -219,6 +253,7 @@ public
    SHAPE
    DETECT
    NO-FALSE-POSITIVE
+   IR-RAW-CONFINEMENT
    CONFINE-POLICY
    ALLOWLIST
    RED-PREPARE

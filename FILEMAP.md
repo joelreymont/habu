@@ -102,6 +102,14 @@ points stay listed.
 - `src/core/combinators.f` — legacy higher-order library words baked into
   `bin/hb` (audited unchecked boundary; new higher-order words are checked).
 
+## Compiler IR
+
+- `src/compiler/ir/id.f` — public nominal compiler IR identity families plus
+  the private checked module, packed-reference, count, and pool-offset
+  representation authority.
+- `test/compiler/ir-id.f` — identity round-trip, range, owner, bound,
+  wrong-family, projection, and private-surface regression suite.
+
 ## Native Engine And Builders
 
 - `src/habu/habu1.f` — primitive engine, dictionary, parser, and prim registry.

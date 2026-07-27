@@ -1,0 +1,983 @@
+DIGEST de9d7101ad352296c9695b1fe6fb3d26
+FHabu.Common.IdAllocatorLaws
+R27:30 Stdlib.Bool.Bool <> <> lib
+R32:37 Stdlib.ZArith.ZArith <> <> lib
+R39:42 Stdlib.Lists.List <> <> lib
+R44:46 Stdlib.micromega.Lia <> <> lib
+R48:61 Stdlib.Sorting.Sorted <> <> lib
+R96:98 Habu.Common.Ids <> <> lib
+R100:110 Habu.Common.IdAllocator <> <> lib
+R121:133 Stdlib.Lists.List ListNotations <> mod
+def 191:202 <> event_serial
+R209:213 Habu.Common.IdAllocator <> event ind
+binder 205:205 <> e:1
+R218:223 Corelib.Init.Datatypes <> option ind
+R225:225 Corelib.Numbers.BinNums <> Z ind
+R238:238 Habu.Common.IdAllocatorLaws <> e:1 var
+R249:253 Habu.Common.IdAllocator <> Tried constr
+R258:263 Habu.Common.IdAllocator <> Issued constr
+R276:279 Corelib.Init.Datatypes <> Some constr
+R297:300 Corelib.Init.Datatypes <> None constr
+def 319:332 <> issued_serials
+R340:343 Corelib.Init.Datatypes <> list ind
+R345:349 Habu.Common.IdAllocator <> event ind
+binder 335:336 <> es:3
+R354:357 Corelib.Init.Datatypes <> list ind
+R359:359 Corelib.Numbers.BinNums <> Z ind
+R372:373 Habu.Common.IdAllocatorLaws <> es:3 var
+R384:385 Stdlib.Lists.List ListNotations ::list_scope:'['_']' not
+R390:391 Stdlib.Lists.List ListNotations ::list_scope:'['_']' not
+R398:401 Corelib.Init.Datatypes <> ::list_scope:x_'::'_x not
+R422:433 Habu.Common.IdAllocatorLaws <> event_serial def
+R450:453 Corelib.Init.Datatypes <> Some constr
+R471:474 Corelib.Init.Datatypes <> ::list_scope:x_'::'_x not
+R475:488 Habu.Common.IdAllocatorLaws <> issued_serials:4 def
+R503:506 Corelib.Init.Datatypes <> None constr
+R511:524 Habu.Common.IdAllocatorLaws <> issued_serials:4 def
+prf 555:568 <> serial_ok_spec
+binder 581:586 <> serial:6
+R616:624 Corelib.Init.Logic <> ::type_scope:x_'<->'_x not
+R609:611 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R593:601 Habu.Common.IdAllocator <> serial_ok def
+R603:608 Habu.Common.IdAllocatorLaws <> serial:6 var
+R612:615 Corelib.Init.Datatypes <> true constr
+R639:642 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R649:652 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R625:638 Habu.Common.Ids <> serial_min def
+R643:648 Habu.Common.IdAllocatorLaws <> serial:6 var
+R653:666 Habu.Common.Ids <> serial_max def
+R702:710 Habu.Common.IdAllocator <> serial_ok def
+R713:729 Habu.Common.Ids <> serial_validb def
+R732:743 Habu.Common.Ids <> betweenb def
+R756:768 Stdlib.Bool.Bool <> andb_true_iff thm
+R772:779 Stdlib.ZArith.BinInt Z leb_le thm
+prf 809:824 <> next_serial_some
+binder 837:840 <> seen:7
+binder 842:846 <> fresh:8
+R882:889 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R869:871 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R853:863 Habu.Common.IdAllocator <> next_serial def
+R865:868 Habu.Common.IdAllocatorLaws <> seen:7 var
+R872:875 Corelib.Init.Datatypes <> Some constr
+R877:881 Habu.Common.IdAllocatorLaws <> fresh:8 var
+R906:913 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R895:897 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R890:894 Habu.Common.IdAllocatorLaws <> fresh:8 var
+R902:904 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R898:901 Habu.Common.IdAllocatorLaws <> seen:7 var
+R928:931 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R937:940 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R914:927 Habu.Common.Ids <> serial_min def
+R932:936 Habu.Common.IdAllocatorLaws <> fresh:8 var
+R941:954 Habu.Common.Ids <> serial_max def
+R1000:1010 Habu.Common.IdAllocator <> next_serial def
+R1034:1034 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1045:1050 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1073:1073 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1036:1040 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<=?'_x not
+R1055:1058 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<?'_x not
+R1059:1072 Habu.Common.Ids <> serial_max def
+R1150:1162 Stdlib.Bool.Bool <> andb_true_iff thm
+R1203:1210 Stdlib.ZArith.BinInt Z leb_le thm
+R1232:1239 Stdlib.ZArith.BinInt Z ltb_lt thm
+R1261:1274 Habu.Common.Ids <> serial_min def
+prf 1296:1318 <> pure_attempt_transition
+binder 1331:1331 <> c:9
+binder 1333:1336 <> seen:10
+binder 1338:1339 <> c':11
+binder 1341:1343 <> out:12
+R1381:1388 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1369:1371 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1350:1361 Habu.Common.IdAllocator <> pure_attempt def
+R1363:1363 Habu.Common.IdAllocatorLaws <> c:9 var
+R1365:1368 Habu.Common.IdAllocatorLaws <> seen:10 var
+R1372:1372 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R1375:1376 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R1380:1380 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R1373:1374 Habu.Common.IdAllocatorLaws <> c':11 var
+R1377:1379 Habu.Common.IdAllocatorLaws <> out:12 var
+R1395:1397 Habu.Common.IdAllocatorLaws <> out:12 var
+R1410:1415 Habu.Common.IdAllocator <> Issued constr
+R1449:1460 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1440:1442 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R1435:1437 Habu.Common.IdAllocator <> cur proj
+R1439:1439 Habu.Common.IdAllocatorLaws <> c:9 var
+R1476:1487 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1467:1469 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1461:1463 Habu.Common.IdAllocator <> cur proj
+R1465:1466 Habu.Common.IdAllocatorLaws <> c':11 var
+R1504:1506 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1488:1496 Habu.Common.IdAllocator <> serial_ok def
+R1507:1510 Corelib.Init.Datatypes <> true constr
+R1518:1522 Habu.Common.IdAllocator <> Retry constr
+R1553:1564 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1549:1551 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1547:1548 Habu.Common.IdAllocatorLaws <> c':11 var
+R1552:1552 Habu.Common.IdAllocatorLaws <> c:9 var
+R1576:1587 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1569:1571 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1572:1575 Habu.Common.IdAllocatorLaws <> seen:10 var
+R1602:1613 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1594:1596 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1597:1599 Habu.Common.IdAllocator <> cur proj
+R1601:1601 Habu.Common.IdAllocatorLaws <> c:9 var
+R1618:1621 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R1614:1617 Habu.Common.IdAllocatorLaws <> seen:10 var
+R1622:1624 Habu.Common.IdAllocator <> cur proj
+R1626:1626 Habu.Common.IdAllocatorLaws <> c:9 var
+R1634:1642 Habu.Common.IdAllocator <> Exhausted constr
+R1669:1680 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1665:1667 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1663:1664 Habu.Common.IdAllocatorLaws <> c':11 var
+R1668:1668 Habu.Common.IdAllocatorLaws <> c:9 var
+R1695:1706 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1688:1690 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1691:1694 Habu.Common.IdAllocatorLaws <> seen:10 var
+R1723:1725 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1707:1717 Habu.Common.IdAllocator <> next_serial def
+R1719:1722 Habu.Common.IdAllocatorLaws <> seen:10 var
+R1726:1729 Corelib.Init.Datatypes <> None constr
+R1789:1800 Habu.Common.IdAllocator <> pure_attempt def
+R1803:1809 Habu.Common.IdAllocator <> attempt def
+R1836:1846 Habu.Common.IdAllocator <> next_serial def
+R1889:1891 Habu.Common.IdAllocator <> cas def
+R1920:1924 Stdlib.ZArith.BinInt Z eqb def
+R1927:1929 Habu.Common.IdAllocator <> cur proj
+R2003:2010 Stdlib.ZArith.BinInt Z eqb_eq thm
+R2040:2055 Habu.Common.IdAllocatorLaws <> next_serial_some thm
+R2182:2186 Corelib.Init.Logic <> proj2 thm
+R2189:2202 Habu.Common.IdAllocatorLaws <> serial_ok_spec thm
+R2286:2294 Stdlib.ZArith.BinInt Z eqb_neq thm
+prf 2408:2434 <> pure_attempt_success_strict
+binder 2447:2447 <> c:14
+binder 2449:2452 <> seen:15
+binder 2454:2455 <> c':16
+binder 2457:2462 <> serial:17
+R2510:2517 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2488:2490 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2469:2480 Habu.Common.IdAllocator <> pure_attempt def
+R2482:2482 Habu.Common.IdAllocatorLaws <> c:14 var
+R2484:2487 Habu.Common.IdAllocatorLaws <> seen:15 var
+R2491:2491 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R2494:2495 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R2509:2509 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R2492:2493 Habu.Common.IdAllocatorLaws <> c':16 var
+R2496:2501 Habu.Common.IdAllocator <> Issued constr
+R2503:2508 Habu.Common.IdAllocatorLaws <> serial:17 var
+R2532:2535 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R2523:2525 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R2518:2520 Habu.Common.IdAllocator <> cur proj
+R2522:2522 Habu.Common.IdAllocatorLaws <> c:14 var
+R2526:2531 Habu.Common.IdAllocatorLaws <> serial:17 var
+R2542:2544 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2536:2538 Habu.Common.IdAllocator <> cur proj
+R2540:2541 Habu.Common.IdAllocatorLaws <> c':16 var
+R2545:2550 Habu.Common.IdAllocatorLaws <> serial:17 var
+R2614:2636 Habu.Common.IdAllocatorLaws <> pure_attempt_transition thm
+R2649:2654 Habu.Common.IdAllocator <> Issued constr
+prf 2741:2769 <> pure_attempt_issued_in_domain
+binder 2782:2782 <> c:18
+binder 2784:2787 <> seen:19
+binder 2789:2790 <> c':20
+binder 2792:2797 <> serial:21
+R2845:2852 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2823:2825 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2804:2815 Habu.Common.IdAllocator <> pure_attempt def
+R2817:2817 Habu.Common.IdAllocatorLaws <> c:18 var
+R2819:2822 Habu.Common.IdAllocatorLaws <> seen:19 var
+R2826:2826 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R2829:2830 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R2844:2844 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R2827:2828 Habu.Common.IdAllocatorLaws <> c':20 var
+R2831:2836 Habu.Common.IdAllocator <> Issued constr
+R2838:2843 Habu.Common.IdAllocatorLaws <> serial:21 var
+R2864:2867 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R2859:2862 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R2853:2858 Habu.Common.IdAllocatorLaws <> serial:21 var
+R2884:2886 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2868:2876 Habu.Common.IdAllocator <> serial_ok def
+R2878:2883 Habu.Common.IdAllocatorLaws <> serial:21 var
+R2887:2890 Corelib.Init.Datatypes <> true constr
+R2954:2976 Habu.Common.IdAllocatorLaws <> pure_attempt_transition thm
+R2989:2994 Habu.Common.IdAllocator <> Issued constr
+R3108:3121 Habu.Common.IdAllocatorLaws <> serial_ok_spec thm
+R3143:3156 Habu.Common.Ids <> serial_min def
+R3196:3200 Corelib.Init.Logic <> proj2 thm
+R3203:3216 Habu.Common.IdAllocatorLaws <> serial_ok_spec thm
+prf 3258:3285 <> pure_attempt_retry_preserved
+binder 3298:3298 <> c:22
+binder 3300:3303 <> seen:23
+binder 3305:3306 <> c':24
+binder 3308:3311 <> want:25
+binder 3313:3318 <> actual:26
+R3370:3377 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R3344:3346 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3325:3336 Habu.Common.IdAllocator <> pure_attempt def
+R3338:3338 Habu.Common.IdAllocatorLaws <> c:22 var
+R3340:3343 Habu.Common.IdAllocatorLaws <> seen:23 var
+R3347:3347 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R3350:3351 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R3369:3369 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R3348:3349 Habu.Common.IdAllocatorLaws <> c':24 var
+R3352:3356 Habu.Common.IdAllocator <> Retry constr
+R3358:3361 Habu.Common.IdAllocatorLaws <> want:25 var
+R3363:3368 Habu.Common.IdAllocatorLaws <> actual:26 var
+R3384:3391 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R3380:3382 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3378:3379 Habu.Common.IdAllocatorLaws <> c':24 var
+R3383:3383 Habu.Common.IdAllocatorLaws <> c:22 var
+R3403:3410 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R3396:3398 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3392:3395 Habu.Common.IdAllocatorLaws <> want:25 var
+R3399:3402 Habu.Common.IdAllocatorLaws <> seen:23 var
+R3425:3432 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R3417:3419 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3411:3416 Habu.Common.IdAllocatorLaws <> actual:26 var
+R3420:3422 Habu.Common.IdAllocator <> cur proj
+R3424:3424 Habu.Common.IdAllocatorLaws <> c:22 var
+R3437:3440 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R3433:3436 Habu.Common.IdAllocatorLaws <> seen:23 var
+R3441:3443 Habu.Common.IdAllocator <> cur proj
+R3445:3445 Habu.Common.IdAllocatorLaws <> c:22 var
+R3518:3540 Habu.Common.IdAllocatorLaws <> pure_attempt_transition thm
+R3553:3557 Habu.Common.IdAllocator <> Retry constr
+prf 3597:3628 <> pure_attempt_exhausted_unchanged
+binder 3641:3641 <> c:27
+binder 3643:3646 <> seen:28
+R3676:3683 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R3669:3671 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3653:3663 Habu.Common.IdAllocator <> next_serial def
+R3665:3668 Habu.Common.IdAllocatorLaws <> seen:28 var
+R3672:3675 Corelib.Init.Datatypes <> None constr
+R3703:3705 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3684:3695 Habu.Common.IdAllocator <> pure_attempt def
+R3697:3697 Habu.Common.IdAllocatorLaws <> c:27 var
+R3699:3702 Habu.Common.IdAllocatorLaws <> seen:28 var
+R3706:3706 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R3708:3709 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R3724:3724 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R3707:3707 Habu.Common.IdAllocatorLaws <> c:27 var
+R3710:3718 Habu.Common.IdAllocator <> Exhausted constr
+R3720:3723 Habu.Common.IdAllocatorLaws <> seen:28 var
+R3766:3777 Habu.Common.IdAllocator <> pure_attempt def
+R3780:3786 Habu.Common.IdAllocator <> attempt def
+prf 3835:3860 <> exhaustion_before_addition
+R3892:3894 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3866:3876 Habu.Common.IdAllocator <> next_serial def
+R3878:3891 Habu.Common.Ids <> serial_max def
+R3895:3898 Corelib.Init.Datatypes <> None constr
+prf 3940:3969 <> exhaustion_preserves_max_state
+binder 3982:3988 <> slot_id:29
+R4064:4070 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3995:4006 Habu.Common.IdAllocator <> pure_attempt def
+R4015:4018 Habu.Common.IdAllocator <> Cell constr
+R4020:4026 Habu.Common.IdAllocatorLaws <> slot_id:29 var
+R4028:4041 Habu.Common.Ids <> serial_max def
+R4050:4063 Habu.Common.Ids <> serial_max def
+R4071:4071 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4099:4100 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4125:4125 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4072:4075 Habu.Common.IdAllocator <> Cell constr
+R4077:4083 Habu.Common.IdAllocatorLaws <> slot_id:29 var
+R4085:4098 Habu.Common.Ids <> serial_max def
+R4101:4109 Habu.Common.IdAllocator <> Exhausted constr
+R4111:4124 Habu.Common.Ids <> serial_max def
+R4161:4192 Habu.Common.IdAllocatorLaws <> pure_attempt_exhausted_unchanged thm
+R4203:4228 Habu.Common.IdAllocatorLaws <> exhaustion_before_addition thm
+prf 4243:4262 <> pure_step_transition
+binder 4275:4275 <> w:30
+binder 4277:4277 <> a:31
+binder 4279:4280 <> w':32
+binder 4282:4282 <> e:33
+R4312:4319 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4302:4304 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4289:4297 Habu.Common.IdAllocator <> pure_step def
+R4299:4299 Habu.Common.IdAllocatorLaws <> w:30 var
+R4301:4301 Habu.Common.IdAllocatorLaws <> a:31 var
+R4305:4305 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4308:4309 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4311:4311 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R4306:4307 Habu.Common.IdAllocatorLaws <> w':32 var
+R4310:4310 Habu.Common.IdAllocatorLaws <> e:33 var
+R4320:4320 Corelib.Init.Logic <> ::type_scope:x_'\/'_x not
+R4383:4392 Corelib.Init.Logic <> ::type_scope:x_'\/'_x not
+R4542:4542 Corelib.Init.Logic <> ::type_scope:x_'\/'_x not
+R4342:4350 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R4335:4337 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4321:4332 Habu.Common.IdAllocatorLaws <> event_serial def
+R4334:4334 Habu.Common.IdAllocatorLaws <> e:33 var
+R4338:4341 Corelib.Init.Datatypes <> None constr
+R4366:4368 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4351:4353 Habu.Common.IdAllocator <> cur proj
+R4356:4361 Habu.Common.IdAllocator <> shared proj
+R4363:4364 Habu.Common.IdAllocatorLaws <> w':32 var
+R4369:4371 Habu.Common.IdAllocator <> cur proj
+R4374:4379 Habu.Common.IdAllocator <> shared proj
+R4381:4381 Habu.Common.IdAllocatorLaws <> w:30 var
+R4393:4399 Corelib.Init.Logic <> ::type_scope:'exists'_x_'..'_x_','_x not
+R4406:4413 Corelib.Init.Logic <> ::type_scope:'exists'_x_'..'_x_','_x not
+binder 4400:4405 <> serial:34
+R4442:4451 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R4428:4430 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4414:4425 Habu.Common.IdAllocatorLaws <> event_serial def
+R4427:4427 Habu.Common.IdAllocatorLaws <> e:33 var
+R4431:4434 Corelib.Init.Datatypes <> Some constr
+R4436:4441 Habu.Common.IdAllocatorLaws <> serial:34 var
+R4475:4484 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R4466:4468 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R4452:4454 Habu.Common.IdAllocator <> cur proj
+R4457:4462 Habu.Common.IdAllocator <> shared proj
+R4464:4464 Habu.Common.IdAllocatorLaws <> w:30 var
+R4469:4474 Habu.Common.IdAllocatorLaws <> serial:34 var
+R4509:4518 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R4500:4502 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4485:4487 Habu.Common.IdAllocator <> cur proj
+R4490:4495 Habu.Common.IdAllocator <> shared proj
+R4497:4498 Habu.Common.IdAllocatorLaws <> w':32 var
+R4503:4508 Habu.Common.IdAllocatorLaws <> serial:34 var
+R4535:4537 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4519:4527 Habu.Common.IdAllocator <> serial_ok def
+R4529:4534 Habu.Common.IdAllocatorLaws <> serial:34 var
+R4538:4541 Corelib.Init.Datatypes <> true constr
+R4586:4594 Habu.Common.IdAllocator <> pure_step def
+R4597:4600 Habu.Common.IdAllocator <> step def
+R4718:4725 Habu.Common.IdAllocator <> view_get def
+R4730:4737 Habu.Common.IdAllocator <> observed proj
+R4777:4788 Habu.Common.IdAllocator <> pure_attempt def
+R4816:4827 Habu.Common.IdAllocator <> pure_attempt def
+R4830:4835 Habu.Common.IdAllocator <> shared proj
+R4936:4958 Habu.Common.IdAllocatorLaws <> pure_attempt_transition thm
+R4961:4966 Habu.Common.IdAllocator <> shared proj
+prf 5568:5591 <> pure_step_success_strict
+binder 5604:5604 <> w:35
+binder 5606:5606 <> a:36
+binder 5608:5609 <> w':37
+binder 5611:5611 <> e:38
+binder 5613:5618 <> serial:39
+R5648:5655 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R5638:5640 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5625:5633 Habu.Common.IdAllocator <> pure_step def
+R5635:5635 Habu.Common.IdAllocatorLaws <> w:35 var
+R5637:5637 Habu.Common.IdAllocatorLaws <> a:36 var
+R5641:5641 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R5644:5645 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R5647:5647 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R5642:5643 Habu.Common.IdAllocatorLaws <> w':37 var
+R5646:5646 Habu.Common.IdAllocatorLaws <> e:38 var
+R5684:5691 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R5670:5672 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5656:5667 Habu.Common.IdAllocatorLaws <> event_serial def
+R5669:5669 Habu.Common.IdAllocatorLaws <> e:38 var
+R5673:5676 Corelib.Init.Datatypes <> Some constr
+R5678:5683 Habu.Common.IdAllocatorLaws <> serial:39 var
+R5715:5722 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R5706:5708 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R5692:5694 Habu.Common.IdAllocator <> cur proj
+R5697:5702 Habu.Common.IdAllocator <> shared proj
+R5704:5704 Habu.Common.IdAllocatorLaws <> w:35 var
+R5709:5714 Habu.Common.IdAllocatorLaws <> serial:39 var
+R5747:5754 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R5738:5740 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5723:5725 Habu.Common.IdAllocator <> cur proj
+R5728:5733 Habu.Common.IdAllocator <> shared proj
+R5735:5736 Habu.Common.IdAllocatorLaws <> w':37 var
+R5741:5746 Habu.Common.IdAllocatorLaws <> serial:39 var
+R5771:5773 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5755:5763 Habu.Common.IdAllocator <> serial_ok def
+R5765:5770 Habu.Common.IdAllocatorLaws <> serial:39 var
+R5774:5777 Corelib.Init.Datatypes <> true constr
+R5841:5860 Habu.Common.IdAllocatorLaws <> pure_step_transition thm
+def 6107:6116 <> trace_laws
+R6127:6127 Corelib.Numbers.BinNums <> Z ind
+binder 6119:6123 <> start:40
+R6136:6139 Corelib.Init.Datatypes <> list ind
+R6141:6145 Habu.Common.IdAllocator <> event ind
+binder 6131:6132 <> es:41
+R6199:6204 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R6160:6173 Stdlib.Sorting.Sorted <> StronglySorted ind
+R6181:6194 Habu.Common.IdAllocatorLaws <> issued_serials def
+R6196:6197 Habu.Common.IdAllocatorLaws <> es:41 var
+R6175:6178 Stdlib.ZArith.BinInt Z lt def
+R6262:6267 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R6205:6210 Corelib.Lists.ListDef <> Forall ind
+R6244:6257 Habu.Common.IdAllocatorLaws <> issued_serials def
+R6259:6260 Habu.Common.IdAllocatorLaws <> es:41 var
+binder 6217:6222 <> serial:42
+R6232:6234 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R6227:6231 Habu.Common.IdAllocatorLaws <> start:40 var
+R6235:6240 Habu.Common.IdAllocatorLaws <> serial:42 var
+R6268:6273 Corelib.Lists.ListDef <> Forall ind
+R6316:6329 Habu.Common.IdAllocatorLaws <> issued_serials def
+R6331:6332 Habu.Common.IdAllocatorLaws <> es:41 var
+binder 6280:6285 <> serial:43
+R6306:6308 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6290:6298 Habu.Common.IdAllocator <> serial_ok def
+R6300:6305 Habu.Common.IdAllocatorLaws <> serial:43 var
+R6309:6312 Corelib.Init.Datatypes <> true constr
+prf 6345:6363 <> pure_run_trace_laws
+binder 6376:6376 <> w:44
+binder 6378:6384 <> actions:45
+binder 6386:6387 <> w':46
+binder 6389:6390 <> es:47
+R6426:6433 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R6415:6417 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6397:6404 Habu.Common.IdAllocator <> pure_run def
+R6406:6406 Habu.Common.IdAllocatorLaws <> w:44 var
+R6408:6414 Habu.Common.IdAllocatorLaws <> actions:45 var
+R6418:6418 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R6421:6422 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R6425:6425 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R6419:6420 Habu.Common.IdAllocatorLaws <> w':46 var
+R6423:6424 Habu.Common.IdAllocatorLaws <> es:47 var
+R6434:6443 Habu.Common.IdAllocatorLaws <> trace_laws def
+R6446:6448 Habu.Common.IdAllocator <> cur proj
+R6451:6456 Habu.Common.IdAllocator <> shared proj
+R6458:6458 Habu.Common.IdAllocatorLaws <> w:44 var
+R6462:6463 Habu.Common.IdAllocatorLaws <> es:47 var
+R6686:6693 Habu.Common.IdAllocator <> pure_run def
+R6713:6715 Habu.Common.IdAllocator <> run def
+R6736:6744 Habu.Common.IdAllocator <> pure_step def
+R6769:6777 Habu.Common.IdAllocator <> pure_step def
+R6819:6821 Habu.Common.IdAllocator <> run def
+R6823:6825 Habu.Common.IdAllocator <> cas def
+R6898:6905 Habu.Common.IdAllocator <> pure_run def
+R6969:6978 Habu.Common.IdAllocatorLaws <> trace_laws def
+R7062:7081 Habu.Common.IdAllocatorLaws <> pure_step_transition thm
+R7246:7259 Habu.Common.IdAllocatorLaws <> issued_serials def
+R7353:7363 Stdlib.Lists.List <> Forall_impl thm
+R7497:7510 Habu.Common.IdAllocatorLaws <> issued_serials def
+R7613:7623 Stdlib.Lists.List <> Forall_impl thm
+R7805:7815 Stdlib.Lists.List <> Forall_impl thm
+prf 7964:7992 <> strictly_sorted_no_duplicates
+binder 8005:8011 <> serials:48
+R8045:8052 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R8018:8031 Stdlib.Sorting.Sorted <> StronglySorted ind
+R8038:8044 Habu.Common.IdAllocatorLaws <> serials:48 var
+R8033:8036 Stdlib.ZArith.BinInt Z lt def
+R8053:8057 Stdlib.Lists.List <> NoDup ind
+R8059:8065 Habu.Common.IdAllocatorLaws <> serials:48 var
+R8222:8234 Stdlib.Lists.List <> Forall_forall thm
+prf 8328:8360 <> pure_run_issues_strictly_increase
+binder 8373:8373 <> w:49
+binder 8375:8381 <> actions:50
+binder 8383:8384 <> w':51
+binder 8386:8387 <> es:52
+R8423:8430 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R8412:8414 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8394:8401 Habu.Common.IdAllocator <> pure_run def
+R8403:8403 Habu.Common.IdAllocatorLaws <> w:49 var
+R8405:8411 Habu.Common.IdAllocatorLaws <> actions:50 var
+R8415:8415 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R8418:8419 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R8422:8422 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R8416:8417 Habu.Common.IdAllocatorLaws <> w':51 var
+R8420:8421 Habu.Common.IdAllocatorLaws <> es:52 var
+R8431:8444 Stdlib.Sorting.Sorted <> StronglySorted ind
+R8452:8465 Habu.Common.IdAllocatorLaws <> issued_serials def
+R8467:8468 Habu.Common.IdAllocatorLaws <> es:52 var
+R8446:8449 Stdlib.ZArith.BinInt Z lt def
+R8524:8542 Habu.Common.IdAllocatorLaws <> pure_run_trace_laws thm
+prf 8617:8646 <> pure_run_every_issue_in_domain
+binder 8659:8659 <> w:53
+binder 8661:8667 <> actions:54
+binder 8669:8670 <> w':55
+binder 8672:8673 <> es:56
+R8709:8716 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R8698:8700 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8680:8687 Habu.Common.IdAllocator <> pure_run def
+R8689:8689 Habu.Common.IdAllocatorLaws <> w:53 var
+R8691:8697 Habu.Common.IdAllocatorLaws <> actions:54 var
+R8701:8701 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R8704:8705 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R8708:8708 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R8702:8703 Habu.Common.IdAllocatorLaws <> w':55 var
+R8706:8707 Habu.Common.IdAllocatorLaws <> es:56 var
+R8717:8722 Corelib.Lists.ListDef <> Forall ind
+R8792:8805 Habu.Common.IdAllocatorLaws <> issued_serials def
+R8807:8808 Habu.Common.IdAllocatorLaws <> es:56 var
+binder 8735:8740 <> serial:57
+R8756:8759 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R8751:8754 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R8745:8750 Habu.Common.IdAllocatorLaws <> serial:57 var
+R8776:8778 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8760:8768 Habu.Common.IdAllocator <> serial_ok def
+R8770:8775 Habu.Common.IdAllocatorLaws <> serial:57 var
+R8779:8782 Corelib.Init.Datatypes <> true constr
+R8864:8882 Habu.Common.IdAllocatorLaws <> pure_run_trace_laws thm
+R8938:8948 Stdlib.Lists.List <> Forall_impl thm
+R8998:9011 Habu.Common.IdAllocatorLaws <> serial_ok_spec thm
+R9030:9043 Habu.Common.Ids <> serial_min def
+R9080:9084 Corelib.Init.Logic <> proj2 thm
+R9087:9100 Habu.Common.IdAllocatorLaws <> serial_ok_spec thm
+prf 9139:9153 <> pure_run_unique
+binder 9166:9166 <> w:58
+binder 9168:9174 <> actions:59
+binder 9176:9177 <> w':60
+binder 9179:9180 <> es:61
+R9216:9223 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R9205:9207 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9187:9194 Habu.Common.IdAllocator <> pure_run def
+R9196:9196 Habu.Common.IdAllocatorLaws <> w:58 var
+R9198:9204 Habu.Common.IdAllocatorLaws <> actions:59 var
+R9208:9208 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R9211:9212 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R9215:9215 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R9209:9210 Habu.Common.IdAllocatorLaws <> w':60 var
+R9213:9214 Habu.Common.IdAllocatorLaws <> es:61 var
+R9224:9228 Stdlib.Lists.List <> NoDup ind
+R9231:9244 Habu.Common.IdAllocatorLaws <> issued_serials def
+R9246:9247 Habu.Common.IdAllocatorLaws <> es:61 var
+R9297:9325 Habu.Common.IdAllocatorLaws <> strictly_sorted_no_duplicates thm
+R9337:9369 Habu.Common.IdAllocatorLaws <> pure_run_issues_strictly_increase thm
+prf 9468:9487 <> host_attempt_refines
+binder 9500:9500 <> c:62
+binder 9502:9505 <> seen:63
+R9531:9533 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9512:9523 Habu.Common.IdAllocator <> host_attempt def
+R9525:9525 Habu.Common.IdAllocatorLaws <> c:62 var
+R9527:9530 Habu.Common.IdAllocatorLaws <> seen:63 var
+R9534:9545 Habu.Common.IdAllocator <> pure_attempt def
+R9547:9547 Habu.Common.IdAllocatorLaws <> c:62 var
+R9549:9552 Habu.Common.IdAllocatorLaws <> seen:63 var
+R9588:9599 Habu.Common.IdAllocator <> host_attempt def
+R9602:9613 Habu.Common.IdAllocator <> pure_attempt def
+R9616:9622 Habu.Common.IdAllocator <> attempt def
+R9637:9647 Habu.Common.IdAllocator <> next_serial def
+R9681:9703 Habu.Common.IdAllocator <> atomic_cas_linearizable prfax
+prf 9754:9770 <> host_step_refines
+binder 9783:9783 <> w:64
+binder 9785:9785 <> a:65
+R9805:9807 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9792:9800 Habu.Common.IdAllocator <> host_step def
+R9802:9802 Habu.Common.IdAllocatorLaws <> w:64 var
+R9804:9804 Habu.Common.IdAllocatorLaws <> a:65 var
+R9808:9816 Habu.Common.IdAllocator <> pure_step def
+R9818:9818 Habu.Common.IdAllocatorLaws <> w:64 var
+R9820:9820 Habu.Common.IdAllocatorLaws <> a:65 var
+R9853:9861 Habu.Common.IdAllocator <> host_step def
+R9864:9872 Habu.Common.IdAllocator <> pure_step def
+R9875:9878 Habu.Common.IdAllocator <> step def
+R9937:9944 Habu.Common.IdAllocator <> view_get def
+R9949:9956 Habu.Common.IdAllocator <> observed proj
+R9989:10008 Habu.Common.IdAllocatorLaws <> host_attempt_refines thm
+prf 10063:10078 <> host_run_refines
+binder 10091:10091 <> w:66
+binder 10093:10099 <> actions:67
+R10124:10126 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10106:10113 Habu.Common.IdAllocator <> host_run def
+R10115:10115 Habu.Common.IdAllocatorLaws <> w:66 var
+R10117:10123 Habu.Common.IdAllocatorLaws <> actions:67 var
+R10127:10134 Habu.Common.IdAllocator <> pure_run def
+R10136:10136 Habu.Common.IdAllocatorLaws <> w:66 var
+R10138:10144 Habu.Common.IdAllocatorLaws <> actions:67 var
+R10256:10256 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10354:10364 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10462:10462 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10273:10281 Habu.Common.IdAllocator <> host_step def
+R10262:10262 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10265:10266 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10268:10268 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10314:10321 Habu.Common.IdAllocator <> host_run def
+R10302:10302 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10305:10306 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10309:10309 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10341:10341 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10344:10345 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10353:10353 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10347:10350 Corelib.Init.Datatypes <> ::list_scope:x_'::'_x not
+R10381:10389 Habu.Common.IdAllocator <> pure_step def
+R10370:10370 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10373:10374 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10376:10376 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10422:10429 Habu.Common.IdAllocator <> pure_run def
+R10410:10410 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10413:10414 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10417:10417 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10449:10449 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10452:10453 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10461:10461 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10455:10458 Corelib.Init.Datatypes <> ::list_scope:x_'::'_x not
+R10478:10494 Habu.Common.IdAllocatorLaws <> host_step_refines thm
+R10511:10519 Habu.Common.IdAllocator <> pure_step def
+prf 10584:10610 <> host_attempt_success_strict
+binder 10623:10623 <> c:68
+binder 10625:10628 <> seen:69
+binder 10630:10631 <> c':70
+binder 10633:10638 <> serial:71
+R10686:10693 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R10664:10666 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10645:10656 Habu.Common.IdAllocator <> host_attempt def
+R10658:10658 Habu.Common.IdAllocatorLaws <> c:68 var
+R10660:10663 Habu.Common.IdAllocatorLaws <> seen:69 var
+R10667:10667 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10670:10671 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10685:10685 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R10668:10669 Habu.Common.IdAllocatorLaws <> c':70 var
+R10672:10677 Habu.Common.IdAllocator <> Issued constr
+R10679:10684 Habu.Common.IdAllocatorLaws <> serial:71 var
+R10708:10715 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10699:10701 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R10694:10696 Habu.Common.IdAllocator <> cur proj
+R10698:10698 Habu.Common.IdAllocatorLaws <> c:68 var
+R10702:10707 Habu.Common.IdAllocatorLaws <> serial:71 var
+R10731:10738 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10722:10724 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10716:10718 Habu.Common.IdAllocator <> cur proj
+R10720:10721 Habu.Common.IdAllocatorLaws <> c':70 var
+R10725:10730 Habu.Common.IdAllocatorLaws <> serial:71 var
+R10750:10757 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10745:10748 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R10739:10744 Habu.Common.IdAllocatorLaws <> serial:71 var
+R10774:10776 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10758:10766 Habu.Common.IdAllocator <> serial_ok def
+R10768:10773 Habu.Common.IdAllocatorLaws <> serial:71 var
+R10777:10780 Corelib.Init.Datatypes <> true constr
+R10836:10855 Habu.Common.IdAllocatorLaws <> host_attempt_refines thm
+R10888:10910 Habu.Common.IdAllocatorLaws <> pure_attempt_transition thm
+R10923:10928 Habu.Common.IdAllocator <> Issued constr
+R11016:11029 Habu.Common.IdAllocatorLaws <> serial_ok_spec thm
+R11051:11064 Habu.Common.Ids <> serial_min def
+prf 11098:11125 <> host_attempt_retry_preserved
+binder 11138:11138 <> c:72
+binder 11140:11143 <> seen:73
+binder 11145:11146 <> c':74
+binder 11148:11151 <> want:75
+binder 11153:11158 <> actual:76
+R11210:11217 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R11184:11186 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11165:11176 Habu.Common.IdAllocator <> host_attempt def
+R11178:11178 Habu.Common.IdAllocatorLaws <> c:72 var
+R11180:11183 Habu.Common.IdAllocatorLaws <> seen:73 var
+R11187:11187 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11190:11191 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11209:11209 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11188:11189 Habu.Common.IdAllocatorLaws <> c':74 var
+R11192:11196 Habu.Common.IdAllocator <> Retry constr
+R11198:11201 Habu.Common.IdAllocatorLaws <> want:75 var
+R11203:11208 Habu.Common.IdAllocatorLaws <> actual:76 var
+R11224:11231 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11220:11222 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11218:11219 Habu.Common.IdAllocatorLaws <> c':74 var
+R11223:11223 Habu.Common.IdAllocatorLaws <> c:72 var
+R11243:11250 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11236:11238 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11232:11235 Habu.Common.IdAllocatorLaws <> want:75 var
+R11239:11242 Habu.Common.IdAllocatorLaws <> seen:73 var
+R11265:11272 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11257:11259 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11251:11256 Habu.Common.IdAllocatorLaws <> actual:76 var
+R11260:11262 Habu.Common.IdAllocator <> cur proj
+R11264:11264 Habu.Common.IdAllocatorLaws <> c:72 var
+R11277:11280 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R11273:11276 Habu.Common.IdAllocatorLaws <> seen:73 var
+R11281:11283 Habu.Common.IdAllocator <> cur proj
+R11285:11285 Habu.Common.IdAllocatorLaws <> c:72 var
+R11346:11365 Habu.Common.IdAllocatorLaws <> host_attempt_refines thm
+R11393:11420 Habu.Common.IdAllocatorLaws <> pure_attempt_retry_preserved thm
+prf 11469:11492 <> host_step_success_strict
+binder 11505:11505 <> w:77
+binder 11507:11507 <> a:78
+binder 11509:11510 <> w':79
+binder 11512:11512 <> e:80
+binder 11514:11519 <> serial:81
+R11549:11556 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R11539:11541 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11526:11534 Habu.Common.IdAllocator <> host_step def
+R11536:11536 Habu.Common.IdAllocatorLaws <> w:77 var
+R11538:11538 Habu.Common.IdAllocatorLaws <> a:78 var
+R11542:11542 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11545:11546 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11548:11548 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11543:11544 Habu.Common.IdAllocatorLaws <> w':79 var
+R11547:11547 Habu.Common.IdAllocatorLaws <> e:80 var
+R11585:11592 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R11571:11573 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11557:11568 Habu.Common.IdAllocatorLaws <> event_serial def
+R11570:11570 Habu.Common.IdAllocatorLaws <> e:80 var
+R11574:11577 Corelib.Init.Datatypes <> Some constr
+R11579:11584 Habu.Common.IdAllocatorLaws <> serial:81 var
+R11616:11623 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11607:11609 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R11593:11595 Habu.Common.IdAllocator <> cur proj
+R11598:11603 Habu.Common.IdAllocator <> shared proj
+R11605:11605 Habu.Common.IdAllocatorLaws <> w:77 var
+R11610:11615 Habu.Common.IdAllocatorLaws <> serial:81 var
+R11648:11655 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11639:11641 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11624:11626 Habu.Common.IdAllocator <> cur proj
+R11629:11634 Habu.Common.IdAllocator <> shared proj
+R11636:11637 Habu.Common.IdAllocatorLaws <> w':79 var
+R11642:11647 Habu.Common.IdAllocatorLaws <> serial:81 var
+R11672:11674 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11656:11664 Habu.Common.IdAllocator <> serial_ok def
+R11666:11671 Habu.Common.IdAllocatorLaws <> serial:81 var
+R11675:11678 Corelib.Init.Datatypes <> true constr
+R11738:11754 Habu.Common.IdAllocatorLaws <> host_step_refines thm
+R11779:11802 Habu.Common.IdAllocatorLaws <> pure_step_success_strict thm
+prf 11850:11864 <> host_run_unique
+binder 11877:11877 <> w:82
+binder 11879:11885 <> actions:83
+binder 11887:11888 <> w':84
+binder 11890:11891 <> es:85
+R11927:11934 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R11916:11918 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11898:11905 Habu.Common.IdAllocator <> host_run def
+R11907:11907 Habu.Common.IdAllocatorLaws <> w:82 var
+R11909:11915 Habu.Common.IdAllocatorLaws <> actions:83 var
+R11919:11919 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11922:11923 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11926:11926 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R11920:11921 Habu.Common.IdAllocatorLaws <> w':84 var
+R11924:11925 Habu.Common.IdAllocatorLaws <> es:85 var
+R11935:11939 Stdlib.Lists.List <> NoDup ind
+R11942:11955 Habu.Common.IdAllocatorLaws <> issued_serials def
+R11957:11958 Habu.Common.IdAllocatorLaws <> es:85 var
+R12010:12025 Habu.Common.IdAllocatorLaws <> host_run_refines thm
+R12045:12059 Habu.Common.IdAllocatorLaws <> pure_run_unique thm
+prf 12098:12127 <> host_run_every_issue_in_domain
+binder 12140:12140 <> w:86
+binder 12142:12148 <> actions:87
+binder 12150:12151 <> w':88
+binder 12153:12154 <> es:89
+R12190:12197 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R12179:12181 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12161:12168 Habu.Common.IdAllocator <> host_run def
+R12170:12170 Habu.Common.IdAllocatorLaws <> w:86 var
+R12172:12178 Habu.Common.IdAllocatorLaws <> actions:87 var
+R12182:12182 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R12185:12186 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R12189:12189 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R12183:12184 Habu.Common.IdAllocatorLaws <> w':88 var
+R12187:12188 Habu.Common.IdAllocatorLaws <> es:89 var
+R12198:12203 Corelib.Lists.ListDef <> Forall ind
+R12273:12286 Habu.Common.IdAllocatorLaws <> issued_serials def
+R12288:12289 Habu.Common.IdAllocatorLaws <> es:89 var
+binder 12216:12221 <> serial:90
+R12237:12240 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R12232:12235 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R12226:12231 Habu.Common.IdAllocatorLaws <> serial:90 var
+R12257:12259 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12241:12249 Habu.Common.IdAllocator <> serial_ok def
+R12251:12256 Habu.Common.IdAllocatorLaws <> serial:90 var
+R12260:12263 Corelib.Init.Datatypes <> true constr
+R12341:12356 Habu.Common.IdAllocatorLaws <> host_run_refines thm
+R12376:12405 Habu.Common.IdAllocatorLaws <> pure_run_every_issue_in_domain thm
+prf 12444:12478 <> host_exhaustion_preserves_max_state
+binder 12491:12497 <> slot_id:91
+R12573:12579 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12504:12515 Habu.Common.IdAllocator <> host_attempt def
+R12524:12527 Habu.Common.IdAllocator <> Cell constr
+R12529:12535 Habu.Common.IdAllocatorLaws <> slot_id:91 var
+R12537:12550 Habu.Common.Ids <> serial_max def
+R12559:12572 Habu.Common.Ids <> serial_max def
+R12580:12580 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R12608:12609 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R12634:12634 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R12581:12584 Habu.Common.IdAllocator <> Cell constr
+R12586:12592 Habu.Common.IdAllocatorLaws <> slot_id:91 var
+R12594:12607 Habu.Common.Ids <> serial_max def
+R12610:12618 Habu.Common.IdAllocator <> Exhausted constr
+R12620:12633 Habu.Common.Ids <> serial_max def
+R12672:12691 Habu.Common.IdAllocatorLaws <> host_attempt_refines thm
+R12702:12731 Habu.Common.IdAllocatorLaws <> exhaustion_preserves_max_state thm
+def 12814:12836 <> next_serial_weak_domain
+R12846:12846 Corelib.Numbers.BinNums <> Z ind
+binder 12839:12842 <> seen:92
+R12851:12856 Corelib.Init.Datatypes <> option ind
+R12858:12858 Corelib.Numbers.BinNums <> Z ind
+R12868:12868 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R12880:12885 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R12908:12908 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R12871:12875 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<=?'_x not
+R12876:12879 Habu.Common.IdAllocatorLaws <> seen:92 var
+R12890:12893 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<?'_x not
+R12886:12889 Habu.Common.IdAllocatorLaws <> seen:92 var
+R12894:12907 Habu.Common.Ids <> serial_max def
+R12946:12949 Corelib.Init.Datatypes <> None constr
+R12919:12922 Corelib.Init.Datatypes <> Some constr
+R12929:12931 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R12925:12928 Habu.Common.IdAllocatorLaws <> seen:92 var
+def 12961:12999 <> weakened_domain_mutation_counterexample
+R13042:13047 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R13033:13035 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R13005:13027 Habu.Common.IdAllocatorLaws <> next_serial_weak_domain def
+R13036:13039 Corelib.Init.Datatypes <> Some constr
+R13059:13061 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R13048:13056 Habu.Common.IdAllocator <> serial_ok def
+R13062:13066 Corelib.Init.Datatypes <> false constr
+def 13125:13141 <> cas_stuck_success
+R13152:13155 Habu.Common.IdAllocator <> cell rec
+binder 13148:13148 <> c:93
+R13172:13172 Corelib.Numbers.BinNums <> Z ind
+binder 13159:13162 <> want:94
+binder 13164:13168 <> fresh:95
+R13181:13183 Corelib.Init.Datatypes <> ::type_scope:x_'*'_x not
+R13177:13180 Habu.Common.IdAllocator <> cell rec
+R13184:13190 Habu.Common.IdAllocator <> cas_out ind
+R13200:13204 Stdlib.ZArith.BinInt Z eqb def
+R13207:13209 Habu.Common.IdAllocator <> cur proj
+R13211:13211 Habu.Common.IdAllocatorLaws <> c:93 var
+R13214:13217 Habu.Common.IdAllocatorLaws <> want:94 var
+R13261:13261 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13263:13264 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13285:13285 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13262:13262 Habu.Common.IdAllocatorLaws <> c:93 var
+R13265:13271 Habu.Common.IdAllocator <> CasMiss constr
+R13273:13276 Habu.Common.IdAllocatorLaws <> want:94 var
+R13279:13281 Habu.Common.IdAllocator <> cur proj
+R13283:13283 Habu.Common.IdAllocatorLaws <> c:93 var
+R13228:13228 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13230:13231 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13248:13248 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13229:13229 Habu.Common.IdAllocatorLaws <> c:93 var
+R13232:13236 Habu.Common.IdAllocator <> CasOk constr
+R13238:13241 Habu.Common.IdAllocatorLaws <> want:94 var
+R13243:13247 Habu.Common.IdAllocatorLaws <> fresh:95 var
+def 13300:13320 <> stuck_success_attempt
+R13328:13331 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13324:13327 Habu.Common.IdAllocator <> cell rec
+R13333:13336 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13332:13332 Corelib.Numbers.BinNums <> Z ind
+R13341:13343 Corelib.Init.Datatypes <> ::type_scope:x_'*'_x not
+R13337:13340 Habu.Common.IdAllocator <> cell rec
+R13344:13350 Habu.Common.IdAllocator <> try_out ind
+R13357:13363 Habu.Common.IdAllocator <> attempt def
+R13365:13381 Habu.Common.IdAllocatorLaws <> cas_stuck_success def
+def 13393:13434 <> success_transition_mutation_counterexample
+R13501:13506 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R13474:13480 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R13440:13460 Habu.Common.IdAllocatorLaws <> stuck_success_attempt def
+R13463:13466 Habu.Common.IdAllocator <> Cell constr
+R13481:13481 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13490:13491 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13500:13500 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13482:13485 Habu.Common.IdAllocator <> Cell constr
+R13492:13497 Habu.Common.IdAllocator <> Issued constr
+R13553:13555 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R13507:13509 Habu.Common.IdAllocator <> cur proj
+R13512:13514 Corelib.Init.Datatypes <> fst def
+R13517:13537 Habu.Common.IdAllocatorLaws <> stuck_success_attempt def
+R13540:13543 Habu.Common.IdAllocator <> Cell constr
+def 13615:13629 <> cas_loses_retry
+R13640:13643 Habu.Common.IdAllocator <> cell rec
+binder 13636:13636 <> c:96
+R13660:13660 Corelib.Numbers.BinNums <> Z ind
+binder 13647:13650 <> want:97
+binder 13652:13656 <> fresh:98
+R13669:13671 Corelib.Init.Datatypes <> ::type_scope:x_'*'_x not
+R13665:13668 Habu.Common.IdAllocator <> cell rec
+R13672:13678 Habu.Common.IdAllocator <> cas_out ind
+R13688:13692 Stdlib.ZArith.BinInt Z eqb def
+R13695:13697 Habu.Common.IdAllocator <> cur proj
+R13699:13699 Habu.Common.IdAllocatorLaws <> c:96 var
+R13702:13705 Habu.Common.IdAllocatorLaws <> want:97 var
+R13763:13763 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13765:13766 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13784:13784 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13764:13764 Habu.Common.IdAllocatorLaws <> c:96 var
+R13767:13773 Habu.Common.IdAllocator <> CasMiss constr
+R13775:13778 Habu.Common.IdAllocatorLaws <> want:97 var
+R13780:13783 Habu.Common.IdAllocatorLaws <> want:97 var
+R13716:13716 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13732:13733 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13750:13750 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13717:13723 Habu.Common.IdAllocator <> set_cur def
+R13725:13725 Habu.Common.IdAllocatorLaws <> c:96 var
+R13727:13731 Habu.Common.IdAllocatorLaws <> fresh:98 var
+R13734:13738 Habu.Common.IdAllocator <> CasOk constr
+R13740:13743 Habu.Common.IdAllocatorLaws <> want:97 var
+R13745:13749 Habu.Common.IdAllocatorLaws <> fresh:98 var
+def 13799:13816 <> lost_retry_attempt
+R13824:13827 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13820:13823 Habu.Common.IdAllocator <> cell rec
+R13829:13832 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13828:13828 Corelib.Numbers.BinNums <> Z ind
+R13837:13839 Corelib.Init.Datatypes <> ::type_scope:x_'*'_x not
+R13833:13836 Habu.Common.IdAllocator <> cell rec
+R13840:13846 Habu.Common.IdAllocator <> try_out ind
+R13853:13859 Habu.Common.IdAllocator <> attempt def
+R13861:13875 Habu.Common.IdAllocatorLaws <> cas_loses_retry def
+def 13887:13928 <> retry_preservation_mutation_counterexample
+R13987:13992 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R13959:13965 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R13934:13945 Habu.Common.IdAllocator <> pure_attempt def
+R13948:13951 Habu.Common.IdAllocator <> Cell constr
+R13966:13966 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13975:13976 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13986:13986 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R13967:13970 Habu.Common.IdAllocator <> Cell constr
+R13977:13981 Habu.Common.IdAllocator <> Retry constr
+R14024:14030 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R13993:14010 Habu.Common.IdAllocatorLaws <> lost_retry_attempt def
+R14013:14016 Habu.Common.IdAllocator <> Cell constr
+R14031:14031 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14040:14041 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14051:14051 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14032:14035 Habu.Common.IdAllocator <> Cell constr
+R14042:14046 Habu.Common.IdAllocator <> Retry constr
+def 14110:14125 <> next_serial_wrap
+R14135:14135 Corelib.Numbers.BinNums <> Z ind
+binder 14128:14131 <> seen:99
+R14140:14145 Corelib.Init.Datatypes <> option ind
+R14147:14147 Corelib.Numbers.BinNums <> Z ind
+R14154:14157 Corelib.Init.Datatypes <> Some constr
+R14160:14167 Stdlib.ZArith.BinInt Z modulo def
+R14174:14176 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R14170:14173 Habu.Common.IdAllocatorLaws <> seen:99 var
+R14195:14197 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R14181:14194 Habu.Common.Ids <> serial_max def
+def 14215:14226 <> wrap_attempt
+R14233:14236 Habu.Common.IdAllocator <> cell rec
+binder 14229:14229 <> c:100
+R14247:14247 Corelib.Numbers.BinNums <> Z ind
+binder 14240:14243 <> seen:101
+R14256:14258 Corelib.Init.Datatypes <> ::type_scope:x_'*'_x not
+R14252:14255 Habu.Common.IdAllocator <> cell rec
+R14259:14265 Habu.Common.IdAllocator <> try_out ind
+R14278:14293 Habu.Common.IdAllocatorLaws <> next_serial_wrap def
+R14295:14298 Habu.Common.IdAllocatorLaws <> seen:101 var
+R14309:14312 Corelib.Init.Datatypes <> None constr
+R14317:14317 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14319:14320 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14335:14335 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14318:14318 Habu.Common.IdAllocatorLaws <> c:100 var
+R14321:14329 Habu.Common.IdAllocator <> Exhausted constr
+R14331:14334 Habu.Common.IdAllocatorLaws <> seen:101 var
+R14341:14344 Corelib.Init.Datatypes <> Some constr
+R14379:14381 Habu.Common.IdAllocator <> cas def
+R14383:14383 Habu.Common.IdAllocatorLaws <> c:100 var
+R14385:14388 Habu.Common.IdAllocatorLaws <> seen:101 var
+R14366:14366 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14369:14370 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14374:14374 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14428:14432 Habu.Common.IdAllocator <> CasOk constr
+R14441:14441 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14444:14445 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14458:14458 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14446:14451 Habu.Common.IdAllocator <> Issued constr
+R14468:14474 Habu.Common.IdAllocator <> CasMiss constr
+R14491:14491 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14494:14495 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14513:14513 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14496:14500 Habu.Common.IdAllocator <> Retry constr
+def 14541:14580 <> exhaustion_guard_mutation_counterexample
+R14645:14649 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14586:14597 Habu.Common.IdAllocatorLaws <> wrap_attempt def
+R14604:14607 Habu.Common.IdAllocator <> Cell constr
+R14611:14624 Habu.Common.Ids <> serial_max def
+R14631:14644 Habu.Common.Ids <> serial_max def
+R14650:14650 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14659:14660 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14669:14669 Corelib.Init.Datatypes <> ::core_scope:'('_x_','_x_','_'..'_','_x_')' not
+R14651:14654 Habu.Common.IdAllocator <> Cell constr
+R14661:14666 Habu.Common.IdAllocator <> Issued constr
+R14728:14742 Habu.Common.IdAllocatorLaws <> pure_run_unique thm
+R14763:14792 Habu.Common.IdAllocatorLaws <> pure_run_every_issue_in_domain thm
+R14813:14842 Habu.Common.IdAllocatorLaws <> exhaustion_preserves_max_state thm
+R14863:14882 Habu.Common.IdAllocatorLaws <> host_attempt_refines thm
+R14903:14919 Habu.Common.IdAllocatorLaws <> host_step_refines thm
+R14940:14955 Habu.Common.IdAllocatorLaws <> host_run_refines thm
+R14976:15002 Habu.Common.IdAllocatorLaws <> host_attempt_success_strict thm
+R15023:15046 Habu.Common.IdAllocatorLaws <> host_step_success_strict thm
+R15067:15081 Habu.Common.IdAllocatorLaws <> host_run_unique thm
+R15102:15136 Habu.Common.IdAllocatorLaws <> host_exhaustion_preserves_max_state thm

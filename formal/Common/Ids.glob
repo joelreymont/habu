@@ -1,0 +1,1021 @@
+DIGEST cb4ed96641316d809d26e184c4fba5ff
+FHabu.Common.Ids
+R27:30 Stdlib.Bool.Bool <> <> lib
+R32:37 Stdlib.ZArith.ZArith <> <> lib
+def 73:81 <> cell_bits
+R85:85 Corelib.Numbers.BinNums <> Z ind
+def 105:119 <> cell_value_bits
+R123:123 Corelib.Numbers.BinNums <> Z ind
+R137:139 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R128:136 Habu.Common.Ids <> cell_bits def
+def 154:164 <> serial_bits
+R168:168 Corelib.Numbers.BinNums <> Z ind
+def 188:197 <> local_bits
+R201:201 Corelib.Numbers.BinNums <> Z ind
+def 222:229 <> cell_min
+R233:233 Corelib.Numbers.BinNums <> Z ind
+R238:239 Stdlib.ZArith.BinInt <> ::Z_scope:'-'_x not
+R259:259 Stdlib.ZArith.BinInt <> ::Z_scope:'-'_x not
+R241:243 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R244:258 Habu.Common.Ids <> cell_value_bits def
+def 273:280 <> cell_max
+R284:284 Corelib.Numbers.BinNums <> Z ind
+R308:310 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R290:292 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R293:307 Habu.Common.Ids <> cell_value_bits def
+def 326:335 <> serial_min
+R339:339 Corelib.Numbers.BinNums <> Z ind
+def 358:367 <> serial_max
+R371:371 Corelib.Numbers.BinNums <> Z ind
+R391:393 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R377:379 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R380:390 Habu.Common.Ids <> serial_bits def
+def 408:416 <> local_min
+R420:420 Corelib.Numbers.BinNums <> Z ind
+def 439:447 <> local_max
+R451:451 Corelib.Numbers.BinNums <> Z ind
+R470:472 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R457:459 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R460:469 Habu.Common.Ids <> local_bits def
+def 487:497 <> local_shift
+R501:501 Corelib.Numbers.BinNums <> Z ind
+def 521:530 <> local_mask
+R534:534 Corelib.Numbers.BinNums <> Z ind
+R539:547 Habu.Common.Ids <> local_max def
+def 562:569 <> betweenb
+R586:586 Corelib.Numbers.BinNums <> Z ind
+binder 572:573 <> lo:1
+binder 575:576 <> hi:2
+binder 578:582 <> value:3
+R591:594 Corelib.Init.Datatypes <> bool ind
+R615:618 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R601:605 Stdlib.ZArith.BinInt Z leb def
+R607:608 Habu.Common.Ids <> lo:1 var
+R610:614 Habu.Common.Ids <> value:3 var
+R619:623 Stdlib.ZArith.BinInt Z leb def
+R625:629 Habu.Common.Ids <> value:3 var
+R631:632 Habu.Common.Ids <> hi:2 var
+def 647:657 <> cell_validb
+R668:668 Corelib.Numbers.BinNums <> Z ind
+binder 660:664 <> value:4
+R673:676 Corelib.Init.Datatypes <> bool ind
+R683:690 Habu.Common.Ids <> betweenb def
+R692:699 Habu.Common.Ids <> cell_min def
+R701:708 Habu.Common.Ids <> cell_max def
+R710:714 Habu.Common.Ids <> value:4 var
+def 729:741 <> serial_validb
+R753:753 Corelib.Numbers.BinNums <> Z ind
+binder 744:749 <> serial:5
+R758:761 Corelib.Init.Datatypes <> bool ind
+R768:775 Habu.Common.Ids <> betweenb def
+R777:786 Habu.Common.Ids <> serial_min def
+R788:797 Habu.Common.Ids <> serial_max def
+R799:804 Habu.Common.Ids <> serial:5 var
+def 819:830 <> local_validb
+R841:841 Corelib.Numbers.BinNums <> Z ind
+binder 833:837 <> local:6
+R846:849 Corelib.Init.Datatypes <> bool ind
+R856:863 Habu.Common.Ids <> betweenb def
+R865:873 Habu.Common.Ids <> local_min def
+R875:883 Habu.Common.Ids <> local_max def
+R885:889 Habu.Common.Ids <> local:6 var
+def 904:916 <> scalar_validb
+R927:927 Corelib.Numbers.BinNums <> Z ind
+binder 919:923 <> value:7
+R932:935 Corelib.Init.Datatypes <> bool ind
+R942:949 Habu.Common.Ids <> betweenb def
+R953:960 Habu.Common.Ids <> cell_max def
+R962:966 Habu.Common.Ids <> value:7 var
+def 981:984 <> pack
+R1002:1002 Corelib.Numbers.BinNums <> Z ind
+binder 987:992 <> serial:8
+binder 994:998 <> local:9
+R1007:1007 Corelib.Numbers.BinNums <> Z ind
+R1014:1018 Stdlib.ZArith.BinInt Z lor def
+R1021:1028 Stdlib.ZArith.BinInt Z shiftl def
+R1030:1035 Habu.Common.Ids <> serial:8 var
+R1037:1047 Habu.Common.Ids <> local_shift def
+R1050:1054 Habu.Common.Ids <> local:9 var
+def 1069:1079 <> pack_validb
+R1097:1097 Corelib.Numbers.BinNums <> Z ind
+binder 1082:1087 <> serial:10
+binder 1089:1093 <> local:11
+R1102:1105 Corelib.Init.Datatypes <> bool ind
+R1132:1135 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1112:1124 Habu.Common.Ids <> serial_validb def
+R1126:1131 Habu.Common.Ids <> serial:10 var
+R1136:1147 Habu.Common.Ids <> local_validb def
+R1149:1153 Habu.Common.Ids <> local:11 var
+def 1168:1175 <> try_pack
+R1193:1193 Corelib.Numbers.BinNums <> Z ind
+binder 1178:1183 <> serial:12
+binder 1185:1189 <> local:13
+R1198:1203 Corelib.Init.Datatypes <> option ind
+R1205:1205 Corelib.Numbers.BinNums <> Z ind
+R1215:1225 Habu.Common.Ids <> pack_validb def
+R1227:1232 Habu.Common.Ids <> serial:12 var
+R1234:1238 Habu.Common.Ids <> local:13 var
+R1279:1282 Corelib.Init.Datatypes <> None constr
+R1247:1250 Corelib.Init.Datatypes <> Some constr
+R1253:1256 Habu.Common.Ids <> pack def
+R1258:1263 Habu.Common.Ids <> serial:12 var
+R1265:1269 Habu.Common.Ids <> local:13 var
+def 1297:1301 <> owner
+R1310:1310 Corelib.Numbers.BinNums <> Z ind
+binder 1304:1306 <> raw:14
+R1315:1315 Corelib.Numbers.BinNums <> Z ind
+R1322:1329 Stdlib.ZArith.BinInt Z shiftr def
+R1331:1333 Habu.Common.Ids <> raw:14 var
+R1335:1345 Habu.Common.Ids <> local_shift def
+def 1360:1364 <> local
+R1373:1373 Corelib.Numbers.BinNums <> Z ind
+binder 1367:1369 <> raw:15
+R1378:1378 Corelib.Numbers.BinNums <> Z ind
+R1385:1390 Stdlib.ZArith.BinInt Z land def
+R1392:1394 Habu.Common.Ids <> raw:15 var
+R1396:1405 Habu.Common.Ids <> local_mask def
+def 1420:1432 <> packed_validb
+R1441:1441 Corelib.Numbers.BinNums <> Z ind
+binder 1435:1437 <> raw:16
+R1446:1449 Corelib.Init.Datatypes <> bool ind
+R1502:1507 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1471:1476 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1456:1466 Habu.Common.Ids <> cell_validb def
+R1468:1470 Habu.Common.Ids <> raw:16 var
+R1477:1489 Habu.Common.Ids <> serial_validb def
+R1492:1496 Habu.Common.Ids <> owner def
+R1498:1500 Habu.Common.Ids <> raw:16 var
+R1508:1519 Habu.Common.Ids <> local_validb def
+R1522:1526 Habu.Common.Ids <> local def
+R1528:1530 Habu.Common.Ids <> raw:16 var
+def 1546:1551 <> checkb
+R1573:1573 Corelib.Numbers.BinNums <> Z ind
+binder 1554:1559 <> serial:17
+binder 1561:1565 <> bound:18
+binder 1567:1569 <> raw:19
+R1578:1581 Corelib.Init.Datatypes <> bool ind
+R1686:1691 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1656:1661 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1633:1638 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1608:1613 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R1588:1600 Habu.Common.Ids <> serial_validb def
+R1602:1607 Habu.Common.Ids <> serial:17 var
+R1614:1626 Habu.Common.Ids <> scalar_validb def
+R1628:1632 Habu.Common.Ids <> bound:18 var
+R1639:1651 Habu.Common.Ids <> packed_validb def
+R1653:1655 Habu.Common.Ids <> raw:19 var
+R1662:1666 Stdlib.ZArith.BinInt Z eqb def
+R1669:1673 Habu.Common.Ids <> owner def
+R1675:1677 Habu.Common.Ids <> raw:19 var
+R1680:1685 Habu.Common.Ids <> serial:17 var
+R1692:1696 Stdlib.ZArith.BinInt Z ltb def
+R1699:1703 Habu.Common.Ids <> local def
+R1705:1707 Habu.Common.Ids <> raw:19 var
+R1710:1714 Habu.Common.Ids <> bound:18 var
+rec 1800:1812 <> ir_module_key
+proj 1840:1853 <> module_key_raw
+R1857:1857 Corelib.Numbers.BinNums <> Z ind
+rec 1873:1884 <> ir_module_id
+proj 1911:1923 <> module_id_raw
+R1927:1927 Corelib.Numbers.BinNums <> Z ind
+rec 1943:1954 <> ir_source_id
+proj 1981:1993 <> source_id_raw
+R1997:1997 Corelib.Numbers.BinNums <> Z ind
+rec 2013:2021 <> ir_fun_id
+proj 2045:2054 <> fun_id_raw
+R2058:2058 Corelib.Numbers.BinNums <> Z ind
+rec 2074:2084 <> ir_block_id
+proj 2110:2121 <> block_id_raw
+R2125:2125 Corelib.Numbers.BinNums <> Z ind
+rec 2141:2148 <> ir_op_id
+proj 2171:2179 <> op_id_raw
+R2183:2183 Corelib.Numbers.BinNums <> Z ind
+rec 2199:2209 <> ir_value_id
+proj 2235:2246 <> value_id_raw
+R2250:2250 Corelib.Numbers.BinNums <> Z ind
+rec 2266:2275 <> ir_type_id
+proj 2300:2310 <> type_id_raw
+R2314:2314 Corelib.Numbers.BinNums <> Z ind
+rec 2330:2339 <> ir_attr_id
+proj 2364:2374 <> attr_id_raw
+R2378:2378 Corelib.Numbers.BinNums <> Z ind
+rec 2394:2405 <> ir_symbol_id
+proj 2432:2444 <> symbol_id_raw
+R2448:2448 Corelib.Numbers.BinNums <> Z ind
+rec 2464:2473 <> ir_span_id
+proj 2498:2508 <> span_id_raw
+R2512:2512 Corelib.Numbers.BinNums <> Z ind
+rec 2528:2541 <> ir_pool_offset
+proj 2570:2584 <> pool_offset_raw
+R2588:2588 Corelib.Numbers.BinNums <> Z ind
+rec 2604:2611 <> ir_count
+proj 2635:2643 <> count_raw
+R2647:2647 Corelib.Numbers.BinNums <> Z ind
+def 2664:2680 <> module_key_validb
+R2689:2701 Habu.Common.Ids <> ir_module_key rec
+binder 2683:2685 <> key:46
+R2706:2709 Corelib.Init.Datatypes <> bool ind
+R2716:2728 Habu.Common.Ids <> serial_validb def
+R2731:2744 Habu.Common.Ids <> module_key_raw proj
+R2746:2748 Habu.Common.Ids <> key:46 var
+def 2764:2779 <> module_id_validb
+R2787:2798 Habu.Common.Ids <> ir_module_id rec
+binder 2782:2783 <> id:47
+R2803:2806 Corelib.Init.Datatypes <> bool ind
+R2813:2825 Habu.Common.Ids <> serial_validb def
+R2828:2840 Habu.Common.Ids <> module_id_raw proj
+R2842:2843 Habu.Common.Ids <> id:47 var
+def 2859:2874 <> source_id_validb
+R2882:2893 Habu.Common.Ids <> ir_source_id rec
+binder 2877:2878 <> id:48
+R2898:2901 Corelib.Init.Datatypes <> bool ind
+R2908:2920 Habu.Common.Ids <> packed_validb def
+R2923:2935 Habu.Common.Ids <> source_id_raw proj
+R2937:2938 Habu.Common.Ids <> id:48 var
+def 2954:2966 <> fun_id_validb
+R2974:2982 Habu.Common.Ids <> ir_fun_id rec
+binder 2969:2970 <> id:49
+R2987:2990 Corelib.Init.Datatypes <> bool ind
+R2997:3009 Habu.Common.Ids <> packed_validb def
+R3012:3021 Habu.Common.Ids <> fun_id_raw proj
+R3023:3024 Habu.Common.Ids <> id:49 var
+def 3040:3054 <> block_id_validb
+R3062:3072 Habu.Common.Ids <> ir_block_id rec
+binder 3057:3058 <> id:50
+R3077:3080 Corelib.Init.Datatypes <> bool ind
+R3087:3099 Habu.Common.Ids <> packed_validb def
+R3102:3113 Habu.Common.Ids <> block_id_raw proj
+R3115:3116 Habu.Common.Ids <> id:50 var
+def 3132:3143 <> op_id_validb
+R3151:3158 Habu.Common.Ids <> ir_op_id rec
+binder 3146:3147 <> id:51
+R3163:3166 Corelib.Init.Datatypes <> bool ind
+R3173:3185 Habu.Common.Ids <> packed_validb def
+R3188:3196 Habu.Common.Ids <> op_id_raw proj
+R3198:3199 Habu.Common.Ids <> id:51 var
+def 3215:3229 <> value_id_validb
+R3237:3247 Habu.Common.Ids <> ir_value_id rec
+binder 3232:3233 <> id:52
+R3252:3255 Corelib.Init.Datatypes <> bool ind
+R3262:3274 Habu.Common.Ids <> packed_validb def
+R3277:3288 Habu.Common.Ids <> value_id_raw proj
+R3290:3291 Habu.Common.Ids <> id:52 var
+def 3307:3320 <> type_id_validb
+R3328:3337 Habu.Common.Ids <> ir_type_id rec
+binder 3323:3324 <> id:53
+R3342:3345 Corelib.Init.Datatypes <> bool ind
+R3352:3364 Habu.Common.Ids <> packed_validb def
+R3367:3377 Habu.Common.Ids <> type_id_raw proj
+R3379:3380 Habu.Common.Ids <> id:53 var
+def 3396:3409 <> attr_id_validb
+R3417:3426 Habu.Common.Ids <> ir_attr_id rec
+binder 3412:3413 <> id:54
+R3431:3434 Corelib.Init.Datatypes <> bool ind
+R3441:3453 Habu.Common.Ids <> packed_validb def
+R3456:3466 Habu.Common.Ids <> attr_id_raw proj
+R3468:3469 Habu.Common.Ids <> id:54 var
+def 3485:3500 <> symbol_id_validb
+R3508:3519 Habu.Common.Ids <> ir_symbol_id rec
+binder 3503:3504 <> id:55
+R3524:3527 Corelib.Init.Datatypes <> bool ind
+R3534:3546 Habu.Common.Ids <> packed_validb def
+R3549:3561 Habu.Common.Ids <> symbol_id_raw proj
+R3563:3564 Habu.Common.Ids <> id:55 var
+def 3580:3593 <> span_id_validb
+R3601:3610 Habu.Common.Ids <> ir_span_id rec
+binder 3596:3597 <> id:56
+R3615:3618 Corelib.Init.Datatypes <> bool ind
+R3625:3637 Habu.Common.Ids <> packed_validb def
+R3640:3650 Habu.Common.Ids <> span_id_raw proj
+R3652:3653 Habu.Common.Ids <> id:56 var
+def 3669:3686 <> pool_offset_validb
+R3698:3711 Habu.Common.Ids <> ir_pool_offset rec
+binder 3689:3694 <> offset:57
+R3716:3719 Corelib.Init.Datatypes <> bool ind
+R3726:3738 Habu.Common.Ids <> scalar_validb def
+R3741:3755 Habu.Common.Ids <> pool_offset_raw proj
+R3757:3762 Habu.Common.Ids <> offset:57 var
+def 3778:3789 <> count_validb
+R3800:3807 Habu.Common.Ids <> ir_count rec
+binder 3792:3796 <> count:58
+R3812:3815 Corelib.Init.Datatypes <> bool ind
+R3822:3834 Habu.Common.Ids <> scalar_validb def
+R3837:3845 Habu.Common.Ids <> count_raw proj
+R3847:3851 Habu.Common.Ids <> count:58 var
+def 3867:3873 <> pack_id
+binder 3876:3876 <> A:59
+R3899:3902 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R3898:3898 Corelib.Numbers.BinNums <> Z ind
+R3903:3903 Habu.Common.Ids <> A:59 var
+binder 3891:3894 <> make:60
+R3913:3925 Habu.Common.Ids <> ir_module_key rec
+binder 3907:3909 <> key:61
+R3935:3935 Corelib.Numbers.BinNums <> Z ind
+binder 3929:3931 <> idx:62
+R3940:3945 Corelib.Init.Datatypes <> option ind
+R3947:3947 Habu.Common.Ids <> A:59 var
+R3960:3967 Habu.Common.Ids <> try_pack def
+R3970:3983 Habu.Common.Ids <> module_key_raw proj
+R3985:3987 Habu.Common.Ids <> key:61 var
+R3990:3992 Habu.Common.Ids <> idx:62 var
+R4003:4006 Corelib.Init.Datatypes <> Some constr
+R4015:4018 Corelib.Init.Datatypes <> Some constr
+R4021:4024 Habu.Common.Ids <> make:60 var
+R4035:4038 Corelib.Init.Datatypes <> None constr
+R4043:4046 Corelib.Init.Datatypes <> None constr
+def 4067:4074 <> id_owner
+binder 4077:4077 <> A:63
+R4103:4106 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4102:4102 Habu.Common.Ids <> A:63 var
+R4107:4107 Corelib.Numbers.BinNums <> Z ind
+binder 4092:4098 <> get_raw:64
+R4116:4116 Habu.Common.Ids <> A:63 var
+binder 4111:4112 <> id:65
+R4121:4132 Habu.Common.Ids <> ir_module_id rec
+R4139:4148 Habu.Common.Ids <> MkModuleId constr
+R4151:4155 Habu.Common.Ids <> owner def
+R4158:4164 Habu.Common.Ids <> get_raw:64 var
+R4166:4167 Habu.Common.Ids <> id:65 var
+def 4184:4191 <> id_local
+binder 4194:4194 <> A:66
+R4220:4223 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4219:4219 Habu.Common.Ids <> A:66 var
+R4224:4224 Corelib.Numbers.BinNums <> Z ind
+binder 4209:4215 <> get_raw:67
+R4233:4233 Habu.Common.Ids <> A:66 var
+binder 4228:4229 <> id:68
+R4238:4238 Corelib.Numbers.BinNums <> Z ind
+R4245:4249 Habu.Common.Ids <> local def
+R4252:4258 Habu.Common.Ids <> get_raw:67 var
+R4260:4261 Habu.Common.Ids <> id:68 var
+def 4277:4285 <> id_checkb
+binder 4288:4288 <> A:69
+R4314:4317 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4313:4313 Habu.Common.Ids <> A:69 var
+R4318:4318 Corelib.Numbers.BinNums <> Z ind
+binder 4303:4309 <> get_raw:70
+R4332:4344 Habu.Common.Ids <> ir_module_key rec
+binder 4326:4328 <> key:71
+R4356:4363 Habu.Common.Ids <> ir_count rec
+binder 4348:4352 <> bound:72
+R4372:4372 Habu.Common.Ids <> A:69 var
+binder 4367:4368 <> id:73
+R4377:4380 Corelib.Init.Datatypes <> bool ind
+R4387:4392 Habu.Common.Ids <> checkb def
+R4395:4408 Habu.Common.Ids <> module_key_raw proj
+R4410:4412 Habu.Common.Ids <> key:71 var
+R4416:4424 Habu.Common.Ids <> count_raw proj
+R4426:4430 Habu.Common.Ids <> bound:72 var
+R4434:4440 Habu.Common.Ids <> get_raw:70 var
+R4442:4443 Habu.Common.Ids <> id:73 var
+def 4459:4474 <> make_pool_offset
+R4483:4483 Corelib.Numbers.BinNums <> Z ind
+binder 4477:4479 <> raw:74
+R4488:4493 Corelib.Init.Datatypes <> option ind
+R4495:4508 Habu.Common.Ids <> ir_pool_offset rec
+R4518:4530 Habu.Common.Ids <> scalar_validb def
+R4532:4534 Habu.Common.Ids <> raw:74 var
+R4570:4573 Corelib.Init.Datatypes <> None constr
+R4541:4544 Corelib.Init.Datatypes <> Some constr
+R4547:4558 Habu.Common.Ids <> MkPoolOffset constr
+R4560:4562 Habu.Common.Ids <> raw:74 var
+def 4588:4597 <> make_count
+R4606:4606 Corelib.Numbers.BinNums <> Z ind
+binder 4600:4602 <> raw:75
+R4611:4616 Corelib.Init.Datatypes <> option ind
+R4618:4625 Habu.Common.Ids <> ir_count rec
+R4635:4647 Habu.Common.Ids <> scalar_validb def
+R4649:4651 Habu.Common.Ids <> raw:75 var
+R4682:4685 Corelib.Init.Datatypes <> None constr
+R4658:4661 Corelib.Init.Datatypes <> Some constr
+R4664:4670 Habu.Common.Ids <> MkCount constr
+R4672:4674 Habu.Common.Ids <> raw:75 var
+def 4700:4710 <> pack_source
+R4723:4735 Habu.Common.Ids <> ir_module_key rec
+binder 4717:4719 <> key:76
+R4745:4745 Corelib.Numbers.BinNums <> Z ind
+binder 4739:4741 <> idx:77
+R4750:4755 Corelib.Init.Datatypes <> option ind
+R4757:4768 Habu.Common.Ids <> ir_source_id rec
+R4775:4781 Habu.Common.Ids <> pack_id def
+R4798:4800 Habu.Common.Ids <> idx:77 var
+R4794:4796 Habu.Common.Ids <> key:76 var
+R4783:4792 Habu.Common.Ids <> MkSourceId constr
+def 4815:4826 <> source_owner
+R4834:4845 Habu.Common.Ids <> ir_source_id rec
+binder 4829:4830 <> id:78
+R4850:4861 Habu.Common.Ids <> ir_module_id rec
+R4868:4875 Habu.Common.Ids <> id_owner def
+R4891:4892 Habu.Common.Ids <> id:78 var
+R4877:4889 Habu.Common.Ids <> source_id_raw proj
+def 4907:4918 <> source_local
+R4926:4937 Habu.Common.Ids <> ir_source_id rec
+binder 4921:4922 <> id:79
+R4942:4942 Corelib.Numbers.BinNums <> Z ind
+R4949:4956 Habu.Common.Ids <> id_local def
+R4972:4973 Habu.Common.Ids <> id:79 var
+R4958:4970 Habu.Common.Ids <> source_id_raw proj
+def 4988:5000 <> source_checkb
+R5013:5025 Habu.Common.Ids <> ir_module_key rec
+binder 5007:5009 <> key:80
+R5037:5044 Habu.Common.Ids <> ir_count rec
+binder 5029:5033 <> bound:81
+R5053:5064 Habu.Common.Ids <> ir_source_id rec
+binder 5048:5049 <> id:82
+R5069:5072 Corelib.Init.Datatypes <> bool ind
+R5079:5087 Habu.Common.Ids <> id_checkb def
+R5113:5114 Habu.Common.Ids <> id:82 var
+R5107:5111 Habu.Common.Ids <> bound:81 var
+R5103:5105 Habu.Common.Ids <> key:80 var
+R5089:5101 Habu.Common.Ids <> source_id_raw proj
+def 5129:5136 <> pack_fun
+R5149:5161 Habu.Common.Ids <> ir_module_key rec
+binder 5143:5145 <> key:83
+R5171:5171 Corelib.Numbers.BinNums <> Z ind
+binder 5165:5167 <> idx:84
+R5176:5181 Corelib.Init.Datatypes <> option ind
+R5183:5191 Habu.Common.Ids <> ir_fun_id rec
+R5198:5204 Habu.Common.Ids <> pack_id def
+R5218:5220 Habu.Common.Ids <> idx:84 var
+R5214:5216 Habu.Common.Ids <> key:83 var
+R5206:5212 Habu.Common.Ids <> MkFunId constr
+def 5235:5243 <> fun_owner
+R5251:5259 Habu.Common.Ids <> ir_fun_id rec
+binder 5246:5247 <> id:85
+R5264:5275 Habu.Common.Ids <> ir_module_id rec
+R5282:5289 Habu.Common.Ids <> id_owner def
+R5302:5303 Habu.Common.Ids <> id:85 var
+R5291:5300 Habu.Common.Ids <> fun_id_raw proj
+def 5318:5326 <> fun_local
+R5334:5342 Habu.Common.Ids <> ir_fun_id rec
+binder 5329:5330 <> id:86
+R5347:5347 Corelib.Numbers.BinNums <> Z ind
+R5354:5361 Habu.Common.Ids <> id_local def
+R5374:5375 Habu.Common.Ids <> id:86 var
+R5363:5372 Habu.Common.Ids <> fun_id_raw proj
+def 5390:5399 <> fun_checkb
+R5412:5424 Habu.Common.Ids <> ir_module_key rec
+binder 5406:5408 <> key:87
+R5436:5443 Habu.Common.Ids <> ir_count rec
+binder 5428:5432 <> bound:88
+R5452:5460 Habu.Common.Ids <> ir_fun_id rec
+binder 5447:5448 <> id:89
+R5465:5468 Corelib.Init.Datatypes <> bool ind
+R5475:5483 Habu.Common.Ids <> id_checkb def
+R5506:5507 Habu.Common.Ids <> id:89 var
+R5500:5504 Habu.Common.Ids <> bound:88 var
+R5496:5498 Habu.Common.Ids <> key:87 var
+R5485:5494 Habu.Common.Ids <> fun_id_raw proj
+def 5522:5531 <> pack_block
+R5544:5556 Habu.Common.Ids <> ir_module_key rec
+binder 5538:5540 <> key:90
+R5566:5566 Corelib.Numbers.BinNums <> Z ind
+binder 5560:5562 <> idx:91
+R5571:5576 Corelib.Init.Datatypes <> option ind
+R5578:5588 Habu.Common.Ids <> ir_block_id rec
+R5595:5601 Habu.Common.Ids <> pack_id def
+R5617:5619 Habu.Common.Ids <> idx:91 var
+R5613:5615 Habu.Common.Ids <> key:90 var
+R5603:5611 Habu.Common.Ids <> MkBlockId constr
+def 5634:5644 <> block_owner
+R5652:5662 Habu.Common.Ids <> ir_block_id rec
+binder 5647:5648 <> id:92
+R5667:5678 Habu.Common.Ids <> ir_module_id rec
+R5685:5692 Habu.Common.Ids <> id_owner def
+R5707:5708 Habu.Common.Ids <> id:92 var
+R5694:5705 Habu.Common.Ids <> block_id_raw proj
+def 5723:5733 <> block_local
+R5741:5751 Habu.Common.Ids <> ir_block_id rec
+binder 5736:5737 <> id:93
+R5756:5756 Corelib.Numbers.BinNums <> Z ind
+R5763:5770 Habu.Common.Ids <> id_local def
+R5785:5786 Habu.Common.Ids <> id:93 var
+R5772:5783 Habu.Common.Ids <> block_id_raw proj
+def 5801:5812 <> block_checkb
+R5825:5837 Habu.Common.Ids <> ir_module_key rec
+binder 5819:5821 <> key:94
+R5849:5856 Habu.Common.Ids <> ir_count rec
+binder 5841:5845 <> bound:95
+R5865:5875 Habu.Common.Ids <> ir_block_id rec
+binder 5860:5861 <> id:96
+R5880:5883 Corelib.Init.Datatypes <> bool ind
+R5890:5898 Habu.Common.Ids <> id_checkb def
+R5923:5924 Habu.Common.Ids <> id:96 var
+R5917:5921 Habu.Common.Ids <> bound:95 var
+R5913:5915 Habu.Common.Ids <> key:94 var
+R5900:5911 Habu.Common.Ids <> block_id_raw proj
+def 5939:5945 <> pack_op
+R5958:5970 Habu.Common.Ids <> ir_module_key rec
+binder 5952:5954 <> key:97
+R5980:5980 Corelib.Numbers.BinNums <> Z ind
+binder 5974:5976 <> idx:98
+R5985:5990 Corelib.Init.Datatypes <> option ind
+R5992:5999 Habu.Common.Ids <> ir_op_id rec
+R6006:6012 Habu.Common.Ids <> pack_id def
+R6025:6027 Habu.Common.Ids <> idx:98 var
+R6021:6023 Habu.Common.Ids <> key:97 var
+R6014:6019 Habu.Common.Ids <> MkOpId constr
+def 6042:6049 <> op_owner
+R6057:6064 Habu.Common.Ids <> ir_op_id rec
+binder 6052:6053 <> id:99
+R6069:6080 Habu.Common.Ids <> ir_module_id rec
+R6087:6094 Habu.Common.Ids <> id_owner def
+R6106:6107 Habu.Common.Ids <> id:99 var
+R6096:6104 Habu.Common.Ids <> op_id_raw proj
+def 6122:6129 <> op_local
+R6137:6144 Habu.Common.Ids <> ir_op_id rec
+binder 6132:6133 <> id:100
+R6149:6149 Corelib.Numbers.BinNums <> Z ind
+R6156:6163 Habu.Common.Ids <> id_local def
+R6175:6176 Habu.Common.Ids <> id:100 var
+R6165:6173 Habu.Common.Ids <> op_id_raw proj
+def 6191:6199 <> op_checkb
+R6212:6224 Habu.Common.Ids <> ir_module_key rec
+binder 6206:6208 <> key:101
+R6236:6243 Habu.Common.Ids <> ir_count rec
+binder 6228:6232 <> bound:102
+R6252:6259 Habu.Common.Ids <> ir_op_id rec
+binder 6247:6248 <> id:103
+R6264:6267 Corelib.Init.Datatypes <> bool ind
+R6274:6282 Habu.Common.Ids <> id_checkb def
+R6304:6305 Habu.Common.Ids <> id:103 var
+R6298:6302 Habu.Common.Ids <> bound:102 var
+R6294:6296 Habu.Common.Ids <> key:101 var
+R6284:6292 Habu.Common.Ids <> op_id_raw proj
+def 6320:6329 <> pack_value
+R6342:6354 Habu.Common.Ids <> ir_module_key rec
+binder 6336:6338 <> key:104
+R6364:6364 Corelib.Numbers.BinNums <> Z ind
+binder 6358:6360 <> idx:105
+R6369:6374 Corelib.Init.Datatypes <> option ind
+R6376:6386 Habu.Common.Ids <> ir_value_id rec
+R6393:6399 Habu.Common.Ids <> pack_id def
+R6415:6417 Habu.Common.Ids <> idx:105 var
+R6411:6413 Habu.Common.Ids <> key:104 var
+R6401:6409 Habu.Common.Ids <> MkValueId constr
+def 6432:6442 <> value_owner
+R6450:6460 Habu.Common.Ids <> ir_value_id rec
+binder 6445:6446 <> id:106
+R6465:6476 Habu.Common.Ids <> ir_module_id rec
+R6483:6490 Habu.Common.Ids <> id_owner def
+R6505:6506 Habu.Common.Ids <> id:106 var
+R6492:6503 Habu.Common.Ids <> value_id_raw proj
+def 6521:6531 <> value_local
+R6539:6549 Habu.Common.Ids <> ir_value_id rec
+binder 6534:6535 <> id:107
+R6554:6554 Corelib.Numbers.BinNums <> Z ind
+R6561:6568 Habu.Common.Ids <> id_local def
+R6583:6584 Habu.Common.Ids <> id:107 var
+R6570:6581 Habu.Common.Ids <> value_id_raw proj
+def 6599:6610 <> value_checkb
+R6623:6635 Habu.Common.Ids <> ir_module_key rec
+binder 6617:6619 <> key:108
+R6647:6654 Habu.Common.Ids <> ir_count rec
+binder 6639:6643 <> bound:109
+R6663:6673 Habu.Common.Ids <> ir_value_id rec
+binder 6658:6659 <> id:110
+R6678:6681 Corelib.Init.Datatypes <> bool ind
+R6688:6696 Habu.Common.Ids <> id_checkb def
+R6721:6722 Habu.Common.Ids <> id:110 var
+R6715:6719 Habu.Common.Ids <> bound:109 var
+R6711:6713 Habu.Common.Ids <> key:108 var
+R6698:6709 Habu.Common.Ids <> value_id_raw proj
+def 6737:6745 <> pack_type
+R6758:6770 Habu.Common.Ids <> ir_module_key rec
+binder 6752:6754 <> key:111
+R6780:6780 Corelib.Numbers.BinNums <> Z ind
+binder 6774:6776 <> idx:112
+R6785:6790 Corelib.Init.Datatypes <> option ind
+R6792:6801 Habu.Common.Ids <> ir_type_id rec
+R6808:6814 Habu.Common.Ids <> pack_id def
+R6829:6831 Habu.Common.Ids <> idx:112 var
+R6825:6827 Habu.Common.Ids <> key:111 var
+R6816:6823 Habu.Common.Ids <> MkTypeId constr
+def 6846:6855 <> type_owner
+R6863:6872 Habu.Common.Ids <> ir_type_id rec
+binder 6858:6859 <> id:113
+R6877:6888 Habu.Common.Ids <> ir_module_id rec
+R6895:6902 Habu.Common.Ids <> id_owner def
+R6916:6917 Habu.Common.Ids <> id:113 var
+R6904:6914 Habu.Common.Ids <> type_id_raw proj
+def 6932:6941 <> type_local
+R6949:6958 Habu.Common.Ids <> ir_type_id rec
+binder 6944:6945 <> id:114
+R6963:6963 Corelib.Numbers.BinNums <> Z ind
+R6970:6977 Habu.Common.Ids <> id_local def
+R6991:6992 Habu.Common.Ids <> id:114 var
+R6979:6989 Habu.Common.Ids <> type_id_raw proj
+def 7007:7017 <> type_checkb
+R7030:7042 Habu.Common.Ids <> ir_module_key rec
+binder 7024:7026 <> key:115
+R7054:7061 Habu.Common.Ids <> ir_count rec
+binder 7046:7050 <> bound:116
+R7070:7079 Habu.Common.Ids <> ir_type_id rec
+binder 7065:7066 <> id:117
+R7084:7087 Corelib.Init.Datatypes <> bool ind
+R7094:7102 Habu.Common.Ids <> id_checkb def
+R7126:7127 Habu.Common.Ids <> id:117 var
+R7120:7124 Habu.Common.Ids <> bound:116 var
+R7116:7118 Habu.Common.Ids <> key:115 var
+R7104:7114 Habu.Common.Ids <> type_id_raw proj
+def 7142:7150 <> pack_attr
+R7163:7175 Habu.Common.Ids <> ir_module_key rec
+binder 7157:7159 <> key:118
+R7185:7185 Corelib.Numbers.BinNums <> Z ind
+binder 7179:7181 <> idx:119
+R7190:7195 Corelib.Init.Datatypes <> option ind
+R7197:7206 Habu.Common.Ids <> ir_attr_id rec
+R7213:7219 Habu.Common.Ids <> pack_id def
+R7234:7236 Habu.Common.Ids <> idx:119 var
+R7230:7232 Habu.Common.Ids <> key:118 var
+R7221:7228 Habu.Common.Ids <> MkAttrId constr
+def 7251:7260 <> attr_owner
+R7268:7277 Habu.Common.Ids <> ir_attr_id rec
+binder 7263:7264 <> id:120
+R7282:7293 Habu.Common.Ids <> ir_module_id rec
+R7300:7307 Habu.Common.Ids <> id_owner def
+R7321:7322 Habu.Common.Ids <> id:120 var
+R7309:7319 Habu.Common.Ids <> attr_id_raw proj
+def 7337:7346 <> attr_local
+R7354:7363 Habu.Common.Ids <> ir_attr_id rec
+binder 7349:7350 <> id:121
+R7368:7368 Corelib.Numbers.BinNums <> Z ind
+R7375:7382 Habu.Common.Ids <> id_local def
+R7396:7397 Habu.Common.Ids <> id:121 var
+R7384:7394 Habu.Common.Ids <> attr_id_raw proj
+def 7412:7422 <> attr_checkb
+R7435:7447 Habu.Common.Ids <> ir_module_key rec
+binder 7429:7431 <> key:122
+R7459:7466 Habu.Common.Ids <> ir_count rec
+binder 7451:7455 <> bound:123
+R7475:7484 Habu.Common.Ids <> ir_attr_id rec
+binder 7470:7471 <> id:124
+R7489:7492 Corelib.Init.Datatypes <> bool ind
+R7499:7507 Habu.Common.Ids <> id_checkb def
+R7531:7532 Habu.Common.Ids <> id:124 var
+R7525:7529 Habu.Common.Ids <> bound:123 var
+R7521:7523 Habu.Common.Ids <> key:122 var
+R7509:7519 Habu.Common.Ids <> attr_id_raw proj
+def 7547:7557 <> pack_symbol
+R7570:7582 Habu.Common.Ids <> ir_module_key rec
+binder 7564:7566 <> key:125
+R7592:7592 Corelib.Numbers.BinNums <> Z ind
+binder 7586:7588 <> idx:126
+R7597:7602 Corelib.Init.Datatypes <> option ind
+R7604:7615 Habu.Common.Ids <> ir_symbol_id rec
+R7622:7628 Habu.Common.Ids <> pack_id def
+R7645:7647 Habu.Common.Ids <> idx:126 var
+R7641:7643 Habu.Common.Ids <> key:125 var
+R7630:7639 Habu.Common.Ids <> MkSymbolId constr
+def 7662:7673 <> symbol_owner
+R7681:7692 Habu.Common.Ids <> ir_symbol_id rec
+binder 7676:7677 <> id:127
+R7697:7708 Habu.Common.Ids <> ir_module_id rec
+R7715:7722 Habu.Common.Ids <> id_owner def
+R7738:7739 Habu.Common.Ids <> id:127 var
+R7724:7736 Habu.Common.Ids <> symbol_id_raw proj
+def 7754:7765 <> symbol_local
+R7773:7784 Habu.Common.Ids <> ir_symbol_id rec
+binder 7768:7769 <> id:128
+R7789:7789 Corelib.Numbers.BinNums <> Z ind
+R7796:7803 Habu.Common.Ids <> id_local def
+R7819:7820 Habu.Common.Ids <> id:128 var
+R7805:7817 Habu.Common.Ids <> symbol_id_raw proj
+def 7835:7847 <> symbol_checkb
+R7860:7872 Habu.Common.Ids <> ir_module_key rec
+binder 7854:7856 <> key:129
+R7884:7891 Habu.Common.Ids <> ir_count rec
+binder 7876:7880 <> bound:130
+R7900:7911 Habu.Common.Ids <> ir_symbol_id rec
+binder 7895:7896 <> id:131
+R7916:7919 Corelib.Init.Datatypes <> bool ind
+R7926:7934 Habu.Common.Ids <> id_checkb def
+R7960:7961 Habu.Common.Ids <> id:131 var
+R7954:7958 Habu.Common.Ids <> bound:130 var
+R7950:7952 Habu.Common.Ids <> key:129 var
+R7936:7948 Habu.Common.Ids <> symbol_id_raw proj
+def 7976:7984 <> pack_span
+R7997:8009 Habu.Common.Ids <> ir_module_key rec
+binder 7991:7993 <> key:132
+R8019:8019 Corelib.Numbers.BinNums <> Z ind
+binder 8013:8015 <> idx:133
+R8024:8029 Corelib.Init.Datatypes <> option ind
+R8031:8040 Habu.Common.Ids <> ir_span_id rec
+R8047:8053 Habu.Common.Ids <> pack_id def
+R8068:8070 Habu.Common.Ids <> idx:133 var
+R8064:8066 Habu.Common.Ids <> key:132 var
+R8055:8062 Habu.Common.Ids <> MkSpanId constr
+def 8085:8094 <> span_owner
+R8102:8111 Habu.Common.Ids <> ir_span_id rec
+binder 8097:8098 <> id:134
+R8116:8127 Habu.Common.Ids <> ir_module_id rec
+R8134:8141 Habu.Common.Ids <> id_owner def
+R8155:8156 Habu.Common.Ids <> id:134 var
+R8143:8153 Habu.Common.Ids <> span_id_raw proj
+def 8171:8180 <> span_local
+R8188:8197 Habu.Common.Ids <> ir_span_id rec
+binder 8183:8184 <> id:135
+R8202:8202 Corelib.Numbers.BinNums <> Z ind
+R8209:8216 Habu.Common.Ids <> id_local def
+R8230:8231 Habu.Common.Ids <> id:135 var
+R8218:8228 Habu.Common.Ids <> span_id_raw proj
+def 8246:8256 <> span_checkb
+R8269:8281 Habu.Common.Ids <> ir_module_key rec
+binder 8263:8265 <> key:136
+R8293:8300 Habu.Common.Ids <> ir_count rec
+binder 8285:8289 <> bound:137
+R8309:8318 Habu.Common.Ids <> ir_span_id rec
+binder 8304:8305 <> id:138
+R8323:8326 Corelib.Init.Datatypes <> bool ind
+R8333:8341 Habu.Common.Ids <> id_checkb def
+R8365:8366 Habu.Common.Ids <> id:138 var
+R8359:8363 Habu.Common.Ids <> bound:137 var
+R8355:8357 Habu.Common.Ids <> key:136 var
+R8343:8353 Habu.Common.Ids <> span_id_raw proj
+def 8378:8391 <> cell_min_exact
+R8405:8407 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8397:8404 Habu.Common.Ids <> cell_min def
+def 8464:8477 <> cell_max_exact
+R8491:8493 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8483:8490 Habu.Common.Ids <> cell_max def
+def 8549:8564 <> serial_max_exact
+R8580:8582 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8570:8579 Habu.Common.Ids <> serial_max def
+def 8629:8643 <> local_max_exact
+R8658:8660 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8649:8657 Habu.Common.Ids <> local_max def
+def 8707:8727 <> width_constants_exact
+R8747:8752 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R8742:8744 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8733:8741 Habu.Common.Ids <> cell_bits def
+R8769:8774 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R8764:8766 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8753:8763 Habu.Common.Ids <> serial_bits def
+R8790:8795 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R8785:8787 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8775:8784 Habu.Common.Ids <> local_bits def
+R8812:8817 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R8807:8809 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8796:8806 Habu.Common.Ids <> local_shift def
+R8828:8830 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8818:8827 Habu.Common.Ids <> local_mask def
+def 8890:8907 <> cell_bounds_decide
+R8940:8945 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R8933:8935 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8913:8923 Habu.Common.Ids <> cell_validb def
+R8925:8932 Habu.Common.Ids <> cell_min def
+R8936:8939 Corelib.Init.Datatypes <> true constr
+R8973:8978 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R8966:8968 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8946:8956 Habu.Common.Ids <> cell_validb def
+R8958:8965 Habu.Common.Ids <> cell_max def
+R8969:8972 Corelib.Init.Datatypes <> true constr
+R9013:9018 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9005:9007 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8979:8989 Habu.Common.Ids <> cell_validb def
+R9000:9002 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R8992:8999 Habu.Common.Ids <> cell_min def
+R9008:9012 Corelib.Init.Datatypes <> false constr
+R9045:9047 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9019:9029 Habu.Common.Ids <> cell_validb def
+R9040:9042 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R9032:9039 Habu.Common.Ids <> cell_max def
+R9048:9052 Corelib.Init.Datatypes <> false constr
+def 9102:9121 <> serial_bounds_decide
+R9158:9163 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9151:9153 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9127:9139 Habu.Common.Ids <> serial_validb def
+R9141:9150 Habu.Common.Ids <> serial_min def
+R9154:9157 Corelib.Init.Datatypes <> true constr
+R9195:9200 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9188:9190 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9164:9176 Habu.Common.Ids <> serial_validb def
+R9178:9187 Habu.Common.Ids <> serial_max def
+R9191:9194 Corelib.Init.Datatypes <> true constr
+R9224:9229 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9216:9218 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9201:9213 Habu.Common.Ids <> serial_validb def
+R9219:9223 Corelib.Init.Datatypes <> false constr
+R9260:9262 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9230:9242 Habu.Common.Ids <> serial_validb def
+R9255:9257 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R9245:9254 Habu.Common.Ids <> serial_max def
+R9263:9267 Corelib.Init.Datatypes <> false constr
+def 9317:9335 <> local_bounds_decide
+R9370:9375 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9363:9365 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9341:9352 Habu.Common.Ids <> local_validb def
+R9354:9362 Habu.Common.Ids <> local_min def
+R9366:9369 Corelib.Init.Datatypes <> true constr
+R9405:9410 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9398:9400 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9376:9387 Habu.Common.Ids <> local_validb def
+R9389:9397 Habu.Common.Ids <> local_max def
+R9401:9404 Corelib.Init.Datatypes <> true constr
+R9436:9441 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9428:9430 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9411:9422 Habu.Common.Ids <> local_validb def
+R9431:9435 Corelib.Init.Datatypes <> false constr
+R9470:9472 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9442:9453 Habu.Common.Ids <> local_validb def
+R9465:9467 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R9456:9464 Habu.Common.Ids <> local_max def
+R9473:9477 Corelib.Init.Datatypes <> false constr
+def 9527:9546 <> scalar_bounds_decide
+R9574:9579 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9567:9569 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9552:9564 Habu.Common.Ids <> scalar_validb def
+R9570:9573 Corelib.Init.Datatypes <> true constr
+R9609:9614 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9602:9604 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9580:9592 Habu.Common.Ids <> scalar_validb def
+R9594:9601 Habu.Common.Ids <> cell_max def
+R9605:9608 Corelib.Init.Datatypes <> true constr
+R9641:9646 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9633:9635 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9615:9627 Habu.Common.Ids <> scalar_validb def
+R9636:9640 Corelib.Init.Datatypes <> false constr
+R9675:9677 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9647:9659 Habu.Common.Ids <> scalar_validb def
+R9670:9672 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R9662:9669 Habu.Common.Ids <> cell_max def
+R9678:9682 Corelib.Init.Datatypes <> false constr
+def 9732:9757 <> scalar_constructors_decide
+R9794:9799 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9775:9777 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9763:9772 Habu.Common.Ids <> make_count def
+R9778:9781 Corelib.Init.Datatypes <> Some constr
+R9784:9790 Habu.Common.Ids <> MkCount constr
+R9845:9850 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9819:9821 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9800:9809 Habu.Common.Ids <> make_count def
+R9811:9818 Habu.Common.Ids <> cell_max def
+R9822:9825 Corelib.Init.Datatypes <> Some constr
+R9828:9834 Habu.Common.Ids <> MkCount constr
+R9836:9843 Habu.Common.Ids <> cell_max def
+R9873:9878 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9866:9868 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9851:9860 Habu.Common.Ids <> make_count def
+R9869:9872 Corelib.Init.Datatypes <> None constr
+R9921:9926 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9897:9899 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9879:9894 Habu.Common.Ids <> make_pool_offset def
+R9900:9903 Corelib.Init.Datatypes <> Some constr
+R9906:9917 Habu.Common.Ids <> MkPoolOffset constr
+R9983:9988 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R9952:9954 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9927:9942 Habu.Common.Ids <> make_pool_offset def
+R9944:9951 Habu.Common.Ids <> cell_max def
+R9955:9958 Corelib.Init.Datatypes <> Some constr
+R9961:9972 Habu.Common.Ids <> MkPoolOffset constr
+R9974:9981 Habu.Common.Ids <> cell_max def
+R10020:10022 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9989:10004 Habu.Common.Ids <> make_pool_offset def
+R10015:10017 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R10007:10014 Habu.Common.Ids <> cell_max def
+R10023:10026 Corelib.Init.Datatypes <> None constr
+def 10076:10091 <> pack_word_bounds
+R10135:10140 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10122:10124 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10097:10100 Habu.Common.Ids <> pack def
+R10102:10111 Habu.Common.Ids <> serial_min def
+R10113:10121 Habu.Common.Ids <> local_min def
+R10166:10168 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10141:10144 Habu.Common.Ids <> pack def
+R10146:10155 Habu.Common.Ids <> serial_max def
+R10157:10165 Habu.Common.Ids <> local_max def
+R10169:10176 Habu.Common.Ids <> cell_max def
+def 10226:10243 <> pack_inputs_decide
+R10296:10301 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10278:10280 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10249:10256 Habu.Common.Ids <> try_pack def
+R10258:10267 Habu.Common.Ids <> serial_min def
+R10269:10277 Habu.Common.Ids <> local_min def
+R10281:10284 Corelib.Init.Datatypes <> Some constr
+R10347:10352 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10331:10333 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10302:10309 Habu.Common.Ids <> try_pack def
+R10311:10320 Habu.Common.Ids <> serial_max def
+R10322:10330 Habu.Common.Ids <> local_max def
+R10334:10337 Corelib.Init.Datatypes <> Some constr
+R10339:10346 Habu.Common.Ids <> cell_max def
+R10372:10377 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10365:10367 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10353:10360 Habu.Common.Ids <> try_pack def
+R10368:10371 Corelib.Init.Datatypes <> None constr
+R10412:10417 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10405:10407 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10378:10385 Habu.Common.Ids <> try_pack def
+R10398:10400 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R10388:10397 Habu.Common.Ids <> serial_max def
+R10408:10411 Corelib.Init.Datatypes <> None constr
+R10449:10454 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10442:10444 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10418:10425 Habu.Common.Ids <> try_pack def
+R10427:10436 Habu.Common.Ids <> serial_min def
+R10445:10448 Corelib.Init.Datatypes <> None constr
+R10490:10492 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10455:10462 Habu.Common.Ids <> try_pack def
+R10464:10473 Habu.Common.Ids <> serial_min def
+R10485:10487 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R10476:10484 Habu.Common.Ids <> local_max def
+R10493:10496 Corelib.Init.Datatypes <> None constr
+def 10546:10563 <> projections_decide
+R10590:10595 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10586:10588 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10569:10573 Habu.Common.Ids <> owner def
+R10576:10579 Habu.Common.Ids <> pack def
+R10618:10623 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10613:10615 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10596:10600 Habu.Common.Ids <> local def
+R10603:10606 Habu.Common.Ids <> pack def
+R10651:10656 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10638:10640 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10624:10628 Habu.Common.Ids <> owner def
+R10630:10637 Habu.Common.Ids <> cell_max def
+R10641:10650 Habu.Common.Ids <> serial_max def
+R10671:10673 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10657:10661 Habu.Common.Ids <> local def
+R10663:10670 Habu.Common.Ids <> cell_max def
+R10674:10682 Habu.Common.Ids <> local_max def
+def 10732:10751 <> packed_values_decide
+R10805:10810 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10798:10800 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10757:10769 Habu.Common.Ids <> packed_validb def
+R10772:10775 Habu.Common.Ids <> pack def
+R10777:10786 Habu.Common.Ids <> serial_min def
+R10788:10796 Habu.Common.Ids <> local_min def
+R10801:10804 Corelib.Init.Datatypes <> true constr
+R10859:10864 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10852:10854 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10811:10823 Habu.Common.Ids <> packed_validb def
+R10826:10829 Habu.Common.Ids <> pack def
+R10831:10840 Habu.Common.Ids <> serial_max def
+R10842:10850 Habu.Common.Ids <> local_max def
+R10855:10858 Corelib.Init.Datatypes <> true constr
+R10888:10893 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10880:10882 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10865:10877 Habu.Common.Ids <> packed_validb def
+R10883:10887 Corelib.Init.Datatypes <> false constr
+R10920:10925 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R10912:10914 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10894:10906 Habu.Common.Ids <> packed_validb def
+R10915:10919 Corelib.Init.Datatypes <> false constr
+R10954:10956 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10926:10938 Habu.Common.Ids <> packed_validb def
+R10949:10951 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R10941:10948 Habu.Common.Ids <> cell_max def
+R10957:10961 Corelib.Init.Datatypes <> false constr
+def 11011:11023 <> checks_decide
+R11059:11064 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11052:11054 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11029:11034 Habu.Common.Ids <> checkb def
+R11042:11045 Habu.Common.Ids <> pack def
+R11055:11058 Corelib.Init.Datatypes <> true constr
+R11096:11101 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11088:11090 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11065:11070 Habu.Common.Ids <> checkb def
+R11078:11081 Habu.Common.Ids <> pack def
+R11091:11095 Corelib.Init.Datatypes <> false constr
+R11133:11138 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11125:11127 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11102:11107 Habu.Common.Ids <> checkb def
+R11115:11118 Habu.Common.Ids <> pack def
+R11128:11132 Corelib.Init.Datatypes <> false constr
+R11162:11164 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11139:11144 Habu.Common.Ids <> checkb def
+R11152:11155 Habu.Common.Ids <> pack def
+R11165:11169 Corelib.Init.Datatypes <> false constr
+def 11219:11237 <> typed_source_decide
+R11305:11310 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11273:11275 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11243:11253 Habu.Common.Ids <> pack_source def
+R11256:11266 Habu.Common.Ids <> MkModuleKey constr
+R11276:11279 Corelib.Init.Datatypes <> Some constr
+R11282:11291 Habu.Common.Ids <> MkSourceId constr
+R11294:11297 Habu.Common.Ids <> pack def
+R11363:11368 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11348:11350 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11311:11322 Habu.Common.Ids <> source_owner def
+R11325:11334 Habu.Common.Ids <> MkSourceId constr
+R11337:11340 Habu.Common.Ids <> pack def
+R11351:11360 Habu.Common.Ids <> MkModuleId constr
+R11411:11416 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R11406:11408 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11369:11380 Habu.Common.Ids <> source_local def
+R11383:11392 Habu.Common.Ids <> MkSourceId constr
+R11395:11398 Habu.Common.Ids <> pack def
+R11491:11493 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R11417:11429 Habu.Common.Ids <> source_checkb def
+R11439:11449 Habu.Common.Ids <> MkModuleKey constr
+R11455:11461 Habu.Common.Ids <> MkCount constr
+R11468:11477 Habu.Common.Ids <> MkSourceId constr
+R11480:11483 Habu.Common.Ids <> pack def
+R11494:11497 Corelib.Init.Datatypes <> true constr
+def 11555:11576 <> wrong_family_is_static
+R11580:11583 Corelib.Init.Datatypes <> bool ind
+R11590:11602 Habu.Common.Ids <> source_checkb def
+R11609:11619 Habu.Common.Ids <> MkModuleKey constr
+R11625:11631 Habu.Common.Ids <> MkCount constr
+R11638:11644 Habu.Common.Ids <> MkFunId constr
+R11647:11650 Habu.Common.Ids <> pack def

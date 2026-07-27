@@ -212,6 +212,10 @@ SUITE engine-identity
    lib/engine-id-test.f
 ;SUITE
 
+SUITE compiler-ir-id
+   test/compiler/ir-id.f
+;SUITE
+
 SUITE object-record-codec
    lib/object-test.f
 ;SUITE

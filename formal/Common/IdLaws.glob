@@ -1,0 +1,909 @@
+DIGEST 08e6675c1090c721798f81a6971a45f2
+FHabu.Common.IdLaws
+R27:30 Stdlib.Bool.Bool <> <> lib
+R32:34 Stdlib.micromega.Lia <> <> lib
+R36:41 Stdlib.ZArith.ZArith <> <> lib
+R76:78 Habu.Common.Ids <> <> lib
+prf 132:150 <> serial_valid_bounds
+binder 163:168 <> serial:1
+R206:213 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R199:201 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R175:191 Habu.Common.Ids <> serial_validb def
+R193:198 Habu.Common.IdLaws <> serial:1 var
+R202:205 Corelib.Init.Datatypes <> true constr
+R215:218 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R225:228 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R219:224 Habu.Common.IdLaws <> serial:1 var
+R281:297 Habu.Common.Ids <> serial_validb def
+R300:311 Habu.Common.Ids <> betweenb def
+R332:349 Stdlib.Bool.Bool <> andb_true_iff thm
+R385:392 Stdlib.ZArith.BinInt Z leb_le thm
+R411:418 Stdlib.ZArith.BinInt Z leb_le thm
+R440:443 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R477:480 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+prf 521:538 <> local_valid_bounds
+binder 551:553 <> idx:2
+R587:594 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R580:582 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R560:575 Habu.Common.Ids <> local_validb def
+R577:579 Habu.Common.IdLaws <> idx:2 var
+R583:586 Corelib.Init.Datatypes <> true constr
+R596:599 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<'_x not
+R603:605 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<'_x not
+R600:602 Habu.Common.IdLaws <> idx:2 var
+R655:670 Habu.Common.Ids <> local_validb def
+R673:684 Habu.Common.Ids <> betweenb def
+R705:722 Stdlib.Bool.Bool <> andb_true_iff thm
+R758:765 Stdlib.ZArith.BinInt Z leb_le thm
+R784:791 Stdlib.ZArith.BinInt Z leb_le thm
+R813:816 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R844:847 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+prf 888:902 <> scalar_in_range
+binder 915:917 <> raw:3
+R948:955 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R925:928 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R932:935 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R929:931 Habu.Common.IdLaws <> raw:3 var
+R936:947 Habu.Common.Ids <> cell_max def
+R977:979 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R956:972 Habu.Common.Ids <> scalar_validb def
+R974:976 Habu.Common.IdLaws <> raw:3 var
+R980:983 Corelib.Init.Datatypes <> true constr
+R1028:1044 Habu.Common.Ids <> scalar_validb def
+R1047:1058 Habu.Common.Ids <> betweenb def
+R1069:1086 Stdlib.Bool.Bool <> andb_true_iff thm
+R1108:1115 Stdlib.ZArith.BinInt Z leb_le thm
+R1144:1151 Stdlib.ZArith.BinInt Z leb_le thm
+prf 1182:1196 <> count_scalar_id
+binder 1209:1211 <> raw:4
+R1242:1249 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1219:1222 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R1226:1229 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R1223:1225 Habu.Common.IdLaws <> raw:4 var
+R1230:1241 Habu.Common.Ids <> cell_max def
+R1293:1300 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1268:1270 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1250:1263 Habu.Common.Ids <> make_count def
+R1265:1267 Habu.Common.IdLaws <> raw:4 var
+R1271:1274 Corelib.Init.Datatypes <> Some constr
+R1277:1287 Habu.Common.Ids <> MkCount constr
+R1289:1291 Habu.Common.IdLaws <> raw:4 var
+R1332:1334 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1301:1313 Habu.Common.Ids <> count_raw proj
+R1316:1326 Habu.Common.Ids <> MkCount constr
+R1328:1330 Habu.Common.IdLaws <> raw:4 var
+R1335:1337 Habu.Common.IdLaws <> raw:4 var
+R1378:1391 Habu.Common.Ids <> make_count def
+R1404:1418 Habu.Common.IdLaws <> scalar_in_range thm
+prf 1474:1491 <> pool_off_scalar_id
+binder 1504:1506 <> raw:5
+R1537:1544 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1514:1517 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R1521:1524 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R1518:1520 Habu.Common.IdLaws <> raw:5 var
+R1525:1536 Habu.Common.Ids <> cell_max def
+R1599:1606 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R1569:1571 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1545:1564 Habu.Common.Ids <> make_pool_offset def
+R1566:1568 Habu.Common.IdLaws <> raw:5 var
+R1572:1575 Corelib.Init.Datatypes <> Some constr
+R1578:1593 Habu.Common.Ids <> MkPoolOffset constr
+R1595:1597 Habu.Common.IdLaws <> raw:5 var
+R1649:1651 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1607:1625 Habu.Common.Ids <> pool_offset_raw proj
+R1628:1643 Habu.Common.Ids <> MkPoolOffset constr
+R1645:1647 Habu.Common.IdLaws <> raw:5 var
+R1652:1654 Habu.Common.IdLaws <> raw:5 var
+R1695:1714 Habu.Common.Ids <> make_pool_offset def
+R1727:1741 Habu.Common.IdLaws <> scalar_in_range thm
+prf 1797:1811 <> count_roundtrip
+binder 1824:1828 <> count:6
+R1864:1871 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R1857:1859 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1835:1850 Habu.Common.Ids <> count_validb def
+R1852:1856 Habu.Common.IdLaws <> count:6 var
+R1860:1863 Corelib.Init.Datatypes <> true constr
+R1908:1910 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R1872:1885 Habu.Common.Ids <> make_count def
+R1888:1900 Habu.Common.Ids <> count_raw proj
+R1902:1906 Habu.Common.IdLaws <> count:6 var
+R1911:1914 Corelib.Init.Datatypes <> Some constr
+R1916:1920 Habu.Common.IdLaws <> count:6 var
+R1962:1977 Habu.Common.Ids <> count_validb def
+R1999:2012 Habu.Common.Ids <> make_count def
+prf 2062:2079 <> pool_off_roundtrip
+binder 2092:2097 <> offset:7
+R2140:2147 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2133:2135 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2104:2125 Habu.Common.Ids <> pool_offset_validb def
+R2127:2132 Habu.Common.IdLaws <> offset:7 var
+R2136:2139 Corelib.Init.Datatypes <> true constr
+R2197:2199 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2148:2167 Habu.Common.Ids <> make_pool_offset def
+R2170:2188 Habu.Common.Ids <> pool_offset_raw proj
+R2190:2195 Habu.Common.IdLaws <> offset:7 var
+R2200:2203 Corelib.Init.Datatypes <> Some constr
+R2205:2210 Habu.Common.IdLaws <> offset:7 var
+R2252:2273 Habu.Common.Ids <> pool_offset_validb def
+R2295:2314 Habu.Common.Ids <> make_pool_offset def
+prf 2362:2380 <> local_mask_identity
+binder 2393:2395 <> idx:8
+R2429:2436 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R2422:2424 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2402:2417 Habu.Common.Ids <> local_validb def
+R2419:2421 Habu.Common.IdLaws <> idx:8 var
+R2425:2428 Corelib.Init.Datatypes <> true constr
+R2462:2464 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2437:2442 Stdlib.ZArith.BinInt Z land def
+R2444:2446 Habu.Common.IdLaws <> idx:8 var
+R2448:2461 Habu.Common.Ids <> local_mask def
+R2465:2467 Habu.Common.IdLaws <> idx:8 var
+R2512:2529 Habu.Common.IdLaws <> local_valid_bounds thm
+R2583:2585 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2562:2567 Stdlib.ZArith.BinInt Z land def
+R2619:2624 Stdlib.ZArith.BinInt Z ones def
+R2645:2650 Stdlib.ZArith.BinInt Z ones def
+R2677:2687 Stdlib.ZArith.BinInt Z land_ones thm
+R2725:2727 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2710:2714 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R2742:2752 Stdlib.ZArith.BinInt Z mod_small thm
+prf 2781:2803 <> shifted_local_mask_zero
+binder 2816:2821 <> serial:9
+R2883:2885 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2828:2833 Stdlib.ZArith.BinInt Z land def
+R2836:2843 Stdlib.ZArith.BinInt Z shiftl def
+R2845:2850 Habu.Common.IdLaws <> serial:9 var
+R2852:2866 Habu.Common.Ids <> local_shift def
+R2869:2882 Habu.Common.Ids <> local_mask def
+R2961:2963 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R2923:2928 Stdlib.ZArith.BinInt Z land def
+R2931:2938 Stdlib.ZArith.BinInt Z shiftl def
+R2995:3000 Stdlib.ZArith.BinInt Z ones def
+R3021:3026 Stdlib.ZArith.BinInt Z ones def
+R3053:3063 Stdlib.ZArith.BinInt Z land_ones thm
+R3083:3099 Stdlib.ZArith.BinInt Z shiftl_mul_pow2 thm
+R3155:3157 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3119:3119 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3139:3144 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R3126:3128 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R3170:3178 Stdlib.ZArith.BinInt Z mod_mul thm
+prf 3209:3230 <> shifted_local_disjoint
+binder 3243:3248 <> serial:10
+binder 3250:3252 <> idx:11
+R3286:3293 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R3279:3281 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3259:3274 Habu.Common.Ids <> local_validb def
+R3276:3278 Habu.Common.IdLaws <> idx:11 var
+R3282:3285 Corelib.Init.Datatypes <> true constr
+R3338:3340 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3294:3299 Stdlib.ZArith.BinInt Z land def
+R3302:3309 Stdlib.ZArith.BinInt Z shiftl def
+R3311:3316 Habu.Common.IdLaws <> serial:10 var
+R3318:3332 Habu.Common.Ids <> local_shift def
+R3335:3337 Habu.Common.IdLaws <> idx:11 var
+R3393:3411 Habu.Common.IdLaws <> local_mask_identity thm
+R3437:3447 Stdlib.ZArith.BinInt Z land_comm thm
+R3453:3466 Habu.Common.Ids <> local_mask def
+R3480:3491 Stdlib.ZArith.BinInt Z land_assoc thm
+R3504:3526 Habu.Common.IdLaws <> shifted_local_mask_zero thm
+R3537:3546 Stdlib.ZArith.BinInt Z land_0_l thm
+prf 3563:3573 <> pack_as_sum
+binder 3586:3591 <> serial:12
+binder 3593:3595 <> idx:13
+R3629:3636 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R3622:3624 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3602:3617 Habu.Common.Ids <> local_validb def
+R3619:3621 Habu.Common.IdLaws <> idx:13 var
+R3625:3628 Corelib.Init.Datatypes <> true constr
+R3656:3658 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R3637:3644 Habu.Common.Ids <> pack def
+R3646:3651 Habu.Common.IdLaws <> serial:12 var
+R3653:3655 Habu.Common.IdLaws <> idx:13 var
+R3678:3680 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R3665:3667 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R3659:3664 Habu.Common.IdLaws <> serial:12 var
+R3681:3683 Habu.Common.IdLaws <> idx:13 var
+R3730:3737 Habu.Common.Ids <> pack def
+R3758:3771 Stdlib.ZArith.Zbitwise Z add_lor_land thm
+R3781:3788 Stdlib.ZArith.BinInt Z shiftl def
+R3797:3811 Habu.Common.Ids <> local_shift def
+R3838:3859 Habu.Common.IdLaws <> shifted_local_disjoint thm
+R3896:3904 Stdlib.ZArith.BinInt Z add_0_r thm
+R3974:3988 Habu.Common.Ids <> local_shift def
+R3941:3957 Stdlib.ZArith.BinInt Z shiftl_mul_pow2 thm
+R4006:4020 Habu.Common.Ids <> local_shift def
+prf 4052:4074 <> pack_within_signed_cell
+binder 4087:4092 <> serial:14
+binder 4094:4096 <> idx:15
+R4134:4141 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4127:4129 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4103:4119 Habu.Common.Ids <> serial_validb def
+R4121:4126 Habu.Common.IdLaws <> serial:14 var
+R4130:4133 Corelib.Init.Datatypes <> true constr
+R4169:4176 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4162:4164 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4142:4157 Habu.Common.Ids <> local_validb def
+R4159:4161 Habu.Common.IdLaws <> idx:15 var
+R4165:4168 Corelib.Init.Datatypes <> true constr
+R4178:4181 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R4201:4204 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R4182:4189 Habu.Common.Ids <> pack def
+R4191:4196 Habu.Common.IdLaws <> serial:14 var
+R4198:4200 Habu.Common.IdLaws <> idx:15 var
+R4205:4216 Habu.Common.Ids <> cell_max def
+R4274:4292 Habu.Common.IdLaws <> serial_valid_bounds thm
+R4343:4360 Habu.Common.IdLaws <> local_valid_bounds thm
+R4398:4408 Habu.Common.IdLaws <> pack_as_sum thm
+R4440:4443 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R4469:4472 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R4463:4465 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4450:4452 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+prf 4516:4525 <> owner_pack
+binder 4538:4543 <> serial:16
+binder 4545:4547 <> idx:17
+R4581:4588 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R4574:4576 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4554:4569 Habu.Common.Ids <> local_validb def
+R4571:4573 Habu.Common.IdLaws <> idx:17 var
+R4577:4580 Corelib.Init.Datatypes <> true constr
+R4620:4622 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4589:4597 Habu.Common.Ids <> owner def
+R4600:4607 Habu.Common.Ids <> pack def
+R4609:4614 Habu.Common.IdLaws <> serial:16 var
+R4616:4618 Habu.Common.IdLaws <> idx:17 var
+R4623:4628 Habu.Common.IdLaws <> serial:16 var
+R4675:4683 Habu.Common.Ids <> owner def
+R4696:4706 Habu.Common.IdLaws <> pack_as_sum thm
+R4778:4780 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4739:4746 Stdlib.ZArith.BinInt Z shiftr def
+R4768:4770 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4755:4757 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R4800:4816 Stdlib.ZArith.BinInt Z shiftr_div_pow2 thm
+R4880:4882 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R4840:4840 Stdlib.ZArith.BinInt <> ::Z_scope:x_'/'_x not
+R4866:4869 Stdlib.ZArith.BinInt <> ::Z_scope:x_'/'_x not
+R4860:4862 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R4847:4849 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R4902:4912 Stdlib.ZArith.BinInt Z div_add_l thm
+R4941:4951 Stdlib.ZArith.BinInt Z div_small thm
+R4973:4990 Habu.Common.IdLaws <> local_valid_bounds thm
+prf 5025:5034 <> local_pack
+binder 5047:5052 <> serial:18
+binder 5054:5056 <> idx:19
+R5090:5097 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R5083:5085 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5063:5078 Habu.Common.Ids <> local_validb def
+R5080:5082 Habu.Common.IdLaws <> idx:19 var
+R5086:5089 Corelib.Init.Datatypes <> true constr
+R5129:5131 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5098:5106 Habu.Common.Ids <> local def
+R5109:5116 Habu.Common.Ids <> pack def
+R5118:5123 Habu.Common.IdLaws <> serial:18 var
+R5125:5127 Habu.Common.IdLaws <> idx:19 var
+R5132:5134 Habu.Common.IdLaws <> idx:19 var
+R5181:5189 Habu.Common.Ids <> local def
+R5245:5247 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5206:5211 Stdlib.ZArith.BinInt Z land def
+R5214:5221 Habu.Common.Ids <> pack def
+R5281:5286 Stdlib.ZArith.BinInt Z ones def
+R5307:5312 Stdlib.ZArith.BinInt Z ones def
+R5339:5349 Stdlib.ZArith.BinInt Z land_ones thm
+R5369:5379 Habu.Common.IdLaws <> pack_as_sum thm
+R5454:5456 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5412:5412 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R5438:5443 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R5432:5434 Stdlib.ZArith.BinInt <> ::Z_scope:x_'+'_x not
+R5419:5421 Stdlib.ZArith.BinInt <> ::Z_scope:x_'*'_x not
+R5473:5482 Stdlib.ZArith.BinInt Z add_comm thm
+R5495:5503 Stdlib.ZArith.BinInt Z mod_add thm
+R5530:5540 Stdlib.ZArith.BinInt Z mod_small thm
+R5551:5568 Habu.Common.IdLaws <> local_valid_bounds thm
+prf 5601:5614 <> pack_injective
+binder 5627:5634 <> serial_a:20
+binder 5636:5643 <> serial_b:21
+binder 5645:5649 <> idx_a:22
+binder 5651:5655 <> idx_b:23
+R5691:5698 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R5684:5686 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5662:5677 Habu.Common.Ids <> local_validb def
+R5679:5683 Habu.Common.IdLaws <> idx_a:22 var
+R5687:5690 Corelib.Init.Datatypes <> true constr
+R5728:5735 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R5721:5723 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5699:5714 Habu.Common.Ids <> local_validb def
+R5716:5720 Habu.Common.IdLaws <> idx_b:23 var
+R5724:5727 Corelib.Init.Datatypes <> true constr
+R5785:5792 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R5759:5761 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5736:5743 Habu.Common.Ids <> pack def
+R5745:5752 Habu.Common.IdLaws <> serial_a:20 var
+R5754:5758 Habu.Common.IdLaws <> idx_a:22 var
+R5762:5769 Habu.Common.Ids <> pack def
+R5771:5778 Habu.Common.IdLaws <> serial_b:21 var
+R5780:5784 Habu.Common.IdLaws <> idx_b:23 var
+R5812:5815 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R5801:5803 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5793:5800 Habu.Common.IdLaws <> serial_a:20 var
+R5804:5811 Habu.Common.IdLaws <> serial_b:21 var
+R5821:5823 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R5816:5820 Habu.Common.IdLaws <> idx_a:22 var
+R5824:5828 Habu.Common.IdLaws <> idx_b:23 var
+R5928:5934 Corelib.Init.Logic <> f_equal thm
+R5936:5944 Habu.Common.Ids <> owner def
+R5977:5986 Habu.Common.IdLaws <> owner_pack thm
+R6027:6036 Habu.Common.IdLaws <> owner_pack thm
+R6099:6105 Corelib.Init.Logic <> f_equal thm
+R6107:6115 Habu.Common.Ids <> local def
+R6148:6157 Habu.Common.IdLaws <> local_pack thm
+R6198:6207 Habu.Common.IdLaws <> local_pack thm
+prf 6268:6292 <> pack_projection_roundtrip
+binder 6305:6310 <> serial:24
+binder 6312:6314 <> idx:25
+R6348:6355 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R6341:6343 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6321:6336 Habu.Common.Ids <> local_validb def
+R6338:6340 Habu.Common.IdLaws <> idx:25 var
+R6344:6347 Corelib.Init.Datatypes <> true constr
+R6444:6450 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6356:6363 Habu.Common.Ids <> pack def
+R6372:6380 Habu.Common.Ids <> owner def
+R6383:6390 Habu.Common.Ids <> pack def
+R6392:6397 Habu.Common.IdLaws <> serial:24 var
+R6399:6401 Habu.Common.IdLaws <> idx:25 var
+R6412:6420 Habu.Common.Ids <> local def
+R6423:6430 Habu.Common.Ids <> pack def
+R6432:6437 Habu.Common.IdLaws <> serial:24 var
+R6439:6441 Habu.Common.IdLaws <> idx:25 var
+R6451:6458 Habu.Common.Ids <> pack def
+R6460:6465 Habu.Common.IdLaws <> serial:24 var
+R6467:6469 Habu.Common.IdLaws <> idx:25 var
+R6517:6526 Habu.Common.IdLaws <> owner_pack thm
+R6555:6564 Habu.Common.IdLaws <> local_pack thm
+prf 6610:6621 <> owner_as_div
+binder 6634:6636 <> raw:26
+R6656:6658 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6643:6651 Habu.Common.Ids <> owner def
+R6653:6655 Habu.Common.IdLaws <> raw:26 var
+R6662:6664 Stdlib.ZArith.BinInt <> ::Z_scope:x_'/'_x not
+R6659:6661 Habu.Common.IdLaws <> raw:26 var
+R6707:6715 Habu.Common.Ids <> owner def
+R6743:6745 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6728:6735 Stdlib.ZArith.BinInt Z shiftr def
+R6749:6751 Stdlib.ZArith.BinInt <> ::Z_scope:x_'/'_x not
+R6773:6789 Stdlib.ZArith.BinInt Z shiftr_div_pow2 thm
+prf 6811:6822 <> local_as_mod
+binder 6835:6837 <> raw:27
+R6857:6859 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6844:6852 Habu.Common.Ids <> local def
+R6854:6856 Habu.Common.IdLaws <> raw:27 var
+R6863:6867 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R6860:6862 Habu.Common.IdLaws <> raw:27 var
+R6910:6918 Habu.Common.Ids <> local def
+R6952:6954 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R6931:6936 Stdlib.ZArith.BinInt Z land def
+R6958:6962 Stdlib.ZArith.BinInt <> ::Z_scope:x_'mod'_x not
+R7003:7008 Stdlib.ZArith.BinInt Z ones def
+R7029:7034 Stdlib.ZArith.BinInt Z ones def
+R7061:7071 Stdlib.ZArith.BinInt Z land_ones thm
+prf 7110:7134 <> projection_pack_roundtrip
+binder 7147:7149 <> raw:28
+R7184:7191 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R7177:7179 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7156:7172 Habu.Common.Ids <> packed_validb def
+R7174:7176 Habu.Common.IdLaws <> raw:28 var
+R7180:7183 Corelib.Init.Datatypes <> true constr
+R7232:7234 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7192:7199 Habu.Common.Ids <> pack def
+R7202:7210 Habu.Common.Ids <> owner def
+R7212:7214 Habu.Common.IdLaws <> raw:28 var
+R7218:7226 Habu.Common.Ids <> local def
+R7228:7230 Habu.Common.IdLaws <> raw:28 var
+R7235:7237 Habu.Common.IdLaws <> raw:28 var
+R7277:7293 Habu.Common.Ids <> packed_validb def
+R7314:7331 Stdlib.Bool.Bool <> andb_true_iff thm
+R7374:7384 Habu.Common.IdLaws <> pack_as_sum thm
+R7413:7424 Habu.Common.IdLaws <> owner_as_div thm
+R7427:7438 Habu.Common.IdLaws <> local_as_mod thm
+R7455:7463 Stdlib.ZArith.BinInt Z div_mod thm
+prf 7533:7562 <> distinct_valid_owners_separate
+binder 7575:7582 <> serial_a:29
+binder 7584:7591 <> serial_b:30
+binder 7593:7597 <> idx_a:31
+binder 7599:7603 <> idx_b:32
+R7643:7650 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R7636:7638 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7610:7626 Habu.Common.Ids <> serial_validb def
+R7628:7635 Habu.Common.IdLaws <> serial_a:29 var
+R7639:7642 Corelib.Init.Datatypes <> true constr
+R7684:7691 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R7677:7679 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7651:7667 Habu.Common.Ids <> serial_validb def
+R7669:7676 Habu.Common.IdLaws <> serial_b:30 var
+R7680:7683 Corelib.Init.Datatypes <> true constr
+R7721:7728 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R7714:7716 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7692:7707 Habu.Common.Ids <> local_validb def
+R7709:7713 Habu.Common.IdLaws <> idx_a:31 var
+R7717:7720 Corelib.Init.Datatypes <> true constr
+R7758:7765 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R7751:7753 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R7729:7744 Habu.Common.Ids <> local_validb def
+R7746:7750 Habu.Common.IdLaws <> idx_b:32 var
+R7754:7757 Corelib.Init.Datatypes <> true constr
+R7786:7793 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R7774:7777 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R7766:7773 Habu.Common.IdLaws <> serial_a:29 var
+R7778:7785 Habu.Common.IdLaws <> serial_b:30 var
+R7817:7820 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R7794:7801 Habu.Common.Ids <> pack def
+R7803:7810 Habu.Common.IdLaws <> serial_a:29 var
+R7812:7816 Habu.Common.IdLaws <> idx_a:31 var
+R7821:7828 Habu.Common.Ids <> pack def
+R7830:7837 Habu.Common.IdLaws <> serial_b:30 var
+R7839:7843 Habu.Common.IdLaws <> idx_b:32 var
+R7966:7979 Habu.Common.IdLaws <> pack_injective thm
+prf 8091:8115 <> try_pack_rejects_negative
+binder 8128:8133 <> serial:33
+binder 8135:8137 <> idx:34
+R8151:8158 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R8147:8149 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R8144:8146 Habu.Common.IdLaws <> idx:34 var
+R8182:8184 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8159:8170 Habu.Common.Ids <> try_pack def
+R8172:8177 Habu.Common.IdLaws <> serial:33 var
+R8179:8181 Habu.Common.IdLaws <> idx:34 var
+R8185:8188 Corelib.Init.Datatypes <> None constr
+R8238:8249 Habu.Common.Ids <> try_pack def
+R8252:8266 Habu.Common.Ids <> pack_validb def
+R8269:8284 Habu.Common.Ids <> local_validb def
+R8291:8302 Habu.Common.Ids <> betweenb def
+R8305:8317 Habu.Common.Ids <> local_min def
+R8332:8336 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<=?'_x not
+R8347:8351 Corelib.Init.Datatypes <> false constr
+R8368:8384 Habu.Common.Ids <> serial_validb def
+R8432:8439 Stdlib.ZArith.BinInt Z leb_gt thm
+prf 8477:8501 <> try_pack_rejects_overflow
+binder 8514:8519 <> serial:35
+binder 8521:8523 <> idx:36
+R8549:8556 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R8543:8545 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R8530:8542 Habu.Common.Ids <> local_max def
+R8546:8548 Habu.Common.IdLaws <> idx:36 var
+R8580:8582 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8557:8568 Habu.Common.Ids <> try_pack def
+R8570:8575 Habu.Common.IdLaws <> serial:35 var
+R8577:8579 Habu.Common.IdLaws <> idx:36 var
+R8583:8586 Corelib.Init.Datatypes <> None constr
+R8636:8647 Habu.Common.Ids <> try_pack def
+R8650:8664 Habu.Common.Ids <> pack_validb def
+R8667:8682 Habu.Common.Ids <> local_validb def
+R8689:8700 Habu.Common.Ids <> betweenb def
+R8717:8721 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<=?'_x not
+R8722:8734 Habu.Common.Ids <> local_max def
+R8742:8746 Corelib.Init.Datatypes <> false constr
+R8761:8777 Stdlib.Bool.Bool <> andb_false_r thm
+R8780:8796 Stdlib.Bool.Bool <> andb_false_r thm
+R8840:8847 Stdlib.ZArith.BinInt Z leb_gt thm
+prf 8885:8909 <> check_rejects_equal_bound
+binder 8922:8927 <> serial:37
+binder 8929:8933 <> bound:38
+R8971:8978 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R8964:8966 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8940:8956 Habu.Common.Ids <> serial_validb def
+R8958:8963 Habu.Common.IdLaws <> serial:37 var
+R8967:8970 Corelib.Init.Datatypes <> true constr
+R9008:9015 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R9001:9003 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R8979:8994 Habu.Common.Ids <> local_validb def
+R8996:9000 Habu.Common.IdLaws <> bound:38 var
+R9004:9007 Corelib.Init.Datatypes <> true constr
+R9063:9065 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R9016:9025 Habu.Common.Ids <> checkb def
+R9027:9032 Habu.Common.IdLaws <> serial:37 var
+R9034:9038 Habu.Common.IdLaws <> bound:38 var
+R9041:9048 Habu.Common.Ids <> pack def
+R9050:9055 Habu.Common.IdLaws <> serial:37 var
+R9057:9061 Habu.Common.IdLaws <> bound:38 var
+R9066:9070 Corelib.Init.Datatypes <> false constr
+R9127:9136 Habu.Common.Ids <> checkb def
+R9169:9185 Habu.Common.Ids <> scalar_validb def
+R9199:9202 Corelib.Init.Datatypes <> true constr
+R9223:9239 Habu.Common.Ids <> scalar_validb def
+R9242:9253 Habu.Common.Ids <> betweenb def
+R9272:9289 Habu.Common.IdLaws <> local_valid_bounds thm
+R9341:9358 Stdlib.Bool.Bool <> andb_true_iff thm
+R9384:9391 Stdlib.ZArith.BinInt Z leb_le thm
+R9417:9424 Stdlib.ZArith.BinInt Z leb_le thm
+R9446:9449 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R9498:9514 Habu.Common.Ids <> packed_validb def
+R9517:9524 Habu.Common.Ids <> pack def
+R9546:9549 Corelib.Init.Datatypes <> true constr
+R9570:9586 Habu.Common.Ids <> packed_validb def
+R9613:9630 Stdlib.Bool.Bool <> andb_true_iff thm
+R9656:9673 Stdlib.Bool.Bool <> andb_true_iff thm
+R9704:9718 Habu.Common.Ids <> cell_validb def
+R9721:9732 Habu.Common.Ids <> betweenb def
+R9749:9766 Stdlib.Bool.Bool <> andb_true_iff thm
+R9799:9821 Habu.Common.IdLaws <> pack_within_signed_cell thm
+R9899:9902 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R9924:9927 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R9903:9910 Habu.Common.Ids <> pack def
+R10000:10007 Stdlib.ZArith.BinInt Z leb_le thm
+R10060:10063 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R10064:10071 Habu.Common.Ids <> pack def
+R10119:10126 Stdlib.ZArith.BinInt Z leb_le thm
+R10180:10183 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R10159:10166 Habu.Common.Ids <> pack def
+R10237:10246 Habu.Common.IdLaws <> owner_pack thm
+R10302:10311 Habu.Common.IdLaws <> local_pack thm
+R10364:10373 Habu.Common.IdLaws <> owner_pack thm
+R10402:10411 Habu.Common.IdLaws <> local_pack thm
+R10440:10449 Stdlib.ZArith.BinInt Z eqb_refl thm
+R10452:10463 Stdlib.ZArith.BinInt Z ltb_irrefl thm
+prf 10495:10521 <> check_rejects_foreign_owner
+binder 10534:10541 <> expected:39
+binder 10543:10548 <> actual:40
+binder 10550:10554 <> bound:41
+binder 10556:10558 <> idx:42
+R10598:10605 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R10591:10593 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10565:10581 Habu.Common.Ids <> serial_validb def
+R10583:10590 Habu.Common.IdLaws <> expected:39 var
+R10594:10597 Corelib.Init.Datatypes <> true constr
+R10637:10644 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R10630:10632 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10606:10622 Habu.Common.Ids <> serial_validb def
+R10624:10629 Habu.Common.IdLaws <> actual:40 var
+R10633:10636 Corelib.Init.Datatypes <> true constr
+R10675:10682 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R10668:10670 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10645:10661 Habu.Common.Ids <> scalar_validb def
+R10663:10667 Habu.Common.IdLaws <> bound:41 var
+R10671:10674 Corelib.Init.Datatypes <> true constr
+R10710:10717 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R10703:10705 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10683:10698 Habu.Common.Ids <> local_validb def
+R10700:10702 Habu.Common.IdLaws <> idx:42 var
+R10706:10709 Corelib.Init.Datatypes <> true constr
+R10729:10736 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R10721:10723 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<'_x not
+R10718:10720 Habu.Common.IdLaws <> idx:42 var
+R10724:10728 Habu.Common.IdLaws <> bound:41 var
+R10755:10762 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R10745:10748 Corelib.Init.Logic <> ::type_scope:x_'<>'_x not
+R10737:10744 Habu.Common.IdLaws <> expected:39 var
+R10749:10754 Habu.Common.IdLaws <> actual:40 var
+R10810:10812 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R10763:10772 Habu.Common.Ids <> checkb def
+R10774:10781 Habu.Common.IdLaws <> expected:39 var
+R10783:10787 Habu.Common.IdLaws <> bound:41 var
+R10790:10797 Habu.Common.Ids <> pack def
+R10799:10804 Habu.Common.IdLaws <> actual:40 var
+R10806:10808 Habu.Common.IdLaws <> idx:42 var
+R10813:10817 Corelib.Init.Datatypes <> false constr
+R10924:10933 Habu.Common.Ids <> checkb def
+R10976:10992 Habu.Common.Ids <> packed_validb def
+R10995:11002 Habu.Common.Ids <> pack def
+R11022:11025 Corelib.Init.Datatypes <> true constr
+R11046:11062 Habu.Common.Ids <> packed_validb def
+R11089:11106 Stdlib.Bool.Bool <> andb_true_iff thm
+R11132:11149 Stdlib.Bool.Bool <> andb_true_iff thm
+R11180:11194 Habu.Common.Ids <> cell_validb def
+R11197:11208 Habu.Common.Ids <> betweenb def
+R11225:11242 Stdlib.Bool.Bool <> andb_true_iff thm
+R11275:11297 Habu.Common.IdLaws <> pack_within_signed_cell thm
+R11371:11374 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R11394:11397 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x_'<='_x not
+R11375:11382 Habu.Common.Ids <> pack def
+R11470:11477 Stdlib.ZArith.BinInt Z leb_le thm
+R11530:11533 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R11534:11541 Habu.Common.Ids <> pack def
+R11587:11594 Stdlib.ZArith.BinInt Z leb_le thm
+R11646:11649 Stdlib.ZArith.BinInt <> ::Z_scope:x_'<='_x not
+R11627:11634 Habu.Common.Ids <> pack def
+R11703:11712 Habu.Common.IdLaws <> owner_pack thm
+R11766:11775 Habu.Common.IdLaws <> local_pack thm
+R11824:11833 Habu.Common.IdLaws <> owner_pack thm
+R11867:11870 Stdlib.ZArith.BinInt <> ::Z_scope:x_'=?'_x not
+R11886:11890 Corelib.Init.Datatypes <> false constr
+R11934:11942 Stdlib.ZArith.BinInt Z eqb_neq thm
+def 11975:12002 <> negative_local_rejects_exact
+R12027:12029 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12008:12019 Habu.Common.Ids <> try_pack def
+R12030:12033 Corelib.Init.Datatypes <> None constr
+def 12070:12094 <> equal_bound_rejects_exact
+R12131:12133 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12100:12109 Habu.Common.Ids <> checkb def
+R12117:12124 Habu.Common.Ids <> pack def
+R12134:12138 Corelib.Init.Datatypes <> false constr
+def 12187:12214 <> overflow_local_rejects_exact
+R12245:12247 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12220:12231 Habu.Common.Ids <> try_pack def
+R12248:12251 Corelib.Init.Datatypes <> None constr
+def 12288:12314 <> foreign_owner_rejects_exact
+R12351:12353 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R12320:12329 Habu.Common.Ids <> checkb def
+R12337:12344 Habu.Common.Ids <> pack def
+R12354:12358 Corelib.Init.Datatypes <> false constr
+def 12410:12428 <> cell_fits_at_widthb
+R12442:12442 Corelib.Numbers.BinNums <> Z ind
+binder 12431:12434 <> bits:43
+binder 12436:12438 <> raw:44
+R12447:12450 Corelib.Init.Datatypes <> bool ind
+R12457:12468 Habu.Common.Ids <> betweenb def
+R12471:12472 Stdlib.ZArith.BinInt <> ::Z_scope:'-'_x not
+R12487:12487 Stdlib.ZArith.BinInt <> ::Z_scope:'-'_x not
+R12474:12477 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R12486:12486 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R12482:12484 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R12478:12481 Habu.Common.IdLaws <> bits:43 var
+R12505:12507 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R12492:12495 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R12504:12504 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R12500:12502 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R12496:12499 Habu.Common.IdLaws <> bits:43 var
+R12511:12513 Habu.Common.IdLaws <> raw:44 var
+def 12528:12548 <> serial_fits_at_widthb
+R12565:12565 Corelib.Numbers.BinNums <> Z ind
+binder 12551:12554 <> bits:45
+binder 12556:12561 <> serial:46
+R12570:12573 Corelib.Init.Datatypes <> bool ind
+R12580:12591 Habu.Common.Ids <> betweenb def
+R12604:12606 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R12597:12599 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R12600:12603 Habu.Common.IdLaws <> bits:45 var
+R12610:12615 Habu.Common.IdLaws <> serial:46 var
+def 12630:12649 <> local_fits_at_widthb
+R12663:12663 Corelib.Numbers.BinNums <> Z ind
+binder 12652:12655 <> bits:47
+binder 12657:12659 <> idx:48
+R12668:12671 Corelib.Init.Datatypes <> bool ind
+R12678:12689 Habu.Common.Ids <> betweenb def
+R12702:12704 Stdlib.ZArith.BinInt <> ::Z_scope:x_'-'_x not
+R12695:12697 Stdlib.ZArith.BinInt <> ::Z_scope:x_'^'_x not
+R12698:12701 Habu.Common.IdLaws <> bits:47 var
+R12708:12710 Habu.Common.IdLaws <> idx:48 var
+def 12725:12737 <> pack_at_shift
+R12759:12759 Corelib.Numbers.BinNums <> Z ind
+binder 12740:12744 <> shift:49
+binder 12746:12751 <> serial:50
+binder 12753:12755 <> idx:51
+R12764:12764 Corelib.Numbers.BinNums <> Z ind
+R12771:12775 Stdlib.ZArith.BinInt Z lor def
+R12778:12785 Stdlib.ZArith.BinInt Z shiftl def
+R12787:12792 Habu.Common.IdLaws <> serial:50 var
+R12794:12798 Habu.Common.IdLaws <> shift:49 var
+R12801:12803 Habu.Common.IdLaws <> idx:51 var
+def 12818:12831 <> owner_at_shift
+R12846:12846 Corelib.Numbers.BinNums <> Z ind
+binder 12834:12838 <> shift:52
+binder 12840:12842 <> raw:53
+R12851:12851 Corelib.Numbers.BinNums <> Z ind
+R12858:12865 Stdlib.ZArith.BinInt Z shiftr def
+R12867:12869 Habu.Common.IdLaws <> raw:53 var
+R12871:12875 Habu.Common.IdLaws <> shift:52 var
+def 12890:12902 <> local_at_mask
+R12916:12916 Corelib.Numbers.BinNums <> Z ind
+binder 12905:12908 <> mask:54
+binder 12910:12912 <> raw:55
+R12921:12921 Corelib.Numbers.BinNums <> Z ind
+R12928:12933 Stdlib.ZArith.BinInt Z land def
+R12935:12937 Habu.Common.IdLaws <> raw:55 var
+R12939:12942 Habu.Common.IdLaws <> mask:54 var
+def 12957:12966 <> make_trunc
+binder 12969:12969 <> A:56
+R12988:12991 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R12987:12987 Corelib.Numbers.BinNums <> Z ind
+R12992:12992 Habu.Common.IdLaws <> A:56 var
+binder 12980:12983 <> make:57
+R13002:13002 Corelib.Numbers.BinNums <> Z ind
+binder 12996:12998 <> raw:58
+R13007:13012 Corelib.Init.Datatypes <> option ind
+R13014:13014 Habu.Common.IdLaws <> A:56 var
+R13024:13040 Habu.Common.Ids <> scalar_validb def
+R13042:13044 Habu.Common.IdLaws <> raw:58 var
+R13100:13103 Corelib.Init.Datatypes <> None constr
+R13053:13056 Corelib.Init.Datatypes <> Some constr
+R13059:13062 Habu.Common.IdLaws <> make:57 var
+R13065:13070 Stdlib.ZArith.BinInt Z land def
+R13072:13074 Habu.Common.IdLaws <> raw:58 var
+R13076:13089 Habu.Common.Ids <> local_mask def
+def 13118:13139 <> check_without_owner_eq
+R13165:13165 Corelib.Numbers.BinNums <> Z ind
+binder 13146:13151 <> serial:59
+binder 13153:13157 <> bound:60
+binder 13159:13161 <> raw:61
+R13170:13173 Corelib.Init.Datatypes <> bool ind
+R13260:13265 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R13233:13238 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R13204:13209 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R13180:13196 Habu.Common.Ids <> serial_validb def
+R13198:13203 Habu.Common.IdLaws <> serial:59 var
+R13210:13226 Habu.Common.Ids <> scalar_validb def
+R13228:13232 Habu.Common.IdLaws <> bound:60 var
+R13239:13255 Habu.Common.Ids <> packed_validb def
+R13257:13259 Habu.Common.IdLaws <> raw:61 var
+R13266:13270 Stdlib.ZArith.BinInt Z ltb def
+R13273:13281 Habu.Common.Ids <> local def
+R13283:13285 Habu.Common.IdLaws <> raw:61 var
+R13288:13292 Habu.Common.IdLaws <> bound:60 var
+def 13307:13332 <> check_with_nonstrict_bound
+R13358:13358 Corelib.Numbers.BinNums <> Z ind
+binder 13339:13344 <> serial:62
+binder 13346:13350 <> bound:63
+binder 13352:13354 <> raw:64
+R13363:13366 Corelib.Init.Datatypes <> bool ind
+R13487:13492 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R13453:13458 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R13426:13431 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R13397:13402 Corelib.Init.Datatypes <> ::bool_scope:x_'&&'_x not
+R13373:13389 Habu.Common.Ids <> serial_validb def
+R13391:13396 Habu.Common.IdLaws <> serial:62 var
+R13403:13419 Habu.Common.Ids <> scalar_validb def
+R13421:13425 Habu.Common.IdLaws <> bound:63 var
+R13432:13448 Habu.Common.Ids <> packed_validb def
+R13450:13452 Habu.Common.IdLaws <> raw:64 var
+R13459:13463 Stdlib.ZArith.BinInt Z eqb def
+R13466:13474 Habu.Common.Ids <> owner def
+R13476:13478 Habu.Common.IdLaws <> raw:64 var
+R13481:13486 Habu.Common.IdLaws <> serial:62 var
+R13493:13497 Stdlib.ZArith.BinInt Z leb def
+R13500:13508 Habu.Common.Ids <> local def
+R13510:13512 Habu.Common.IdLaws <> raw:64 var
+R13515:13519 Habu.Common.IdLaws <> bound:63 var
+def 13534:13559 <> owner_projection_expectedb
+R13570:13570 Corelib.Numbers.BinNums <> Z ind
+binder 13562:13566 <> shift:65
+R13575:13578 Corelib.Init.Datatypes <> bool ind
+R13585:13589 Stdlib.ZArith.BinInt Z eqb def
+R13596:13609 Habu.Common.IdLaws <> owner_at_shift def
+R13611:13615 Habu.Common.IdLaws <> shift:65 var
+R13624:13636 Habu.Common.IdLaws <> pack_at_shift def
+R13638:13642 Habu.Common.IdLaws <> shift:65 var
+def 13678:13703 <> local_projection_expectedb
+R13713:13713 Corelib.Numbers.BinNums <> Z ind
+binder 13706:13709 <> mask:66
+R13718:13721 Corelib.Init.Datatypes <> bool ind
+R13728:13732 Stdlib.ZArith.BinInt Z eqb def
+R13739:13751 Habu.Common.IdLaws <> local_at_mask def
+R13753:13756 Habu.Common.IdLaws <> mask:66 var
+R13759:13766 Habu.Common.Ids <> pack def
+def 13811:13833 <> foreign_owner_rejectedb
+R13851:13854 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13850:13850 Corelib.Numbers.BinNums <> Z ind
+R13856:13859 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13855:13855 Corelib.Numbers.BinNums <> Z ind
+R13861:13864 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13860:13860 Corelib.Numbers.BinNums <> Z ind
+R13865:13868 Corelib.Init.Datatypes <> bool ind
+binder 13840:13846 <> checker:67
+R13873:13876 Corelib.Init.Datatypes <> bool ind
+R13883:13886 Corelib.Init.Datatypes <> negb def
+R13889:13895 Habu.Common.IdLaws <> checker:67 var
+R13903:13910 Habu.Common.Ids <> pack def
+def 13932:13952 <> equal_bound_rejectedb
+R13970:13973 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13969:13969 Corelib.Numbers.BinNums <> Z ind
+R13975:13978 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13974:13974 Corelib.Numbers.BinNums <> Z ind
+R13980:13983 Corelib.Init.Notations <> ::type_scope:x_'->'_x not
+R13979:13979 Corelib.Numbers.BinNums <> Z ind
+R13984:13987 Corelib.Init.Datatypes <> bool ind
+binder 13959:13965 <> checker:68
+R13992:13995 Corelib.Init.Datatypes <> bool ind
+R14002:14005 Corelib.Init.Datatypes <> negb def
+R14008:14014 Habu.Common.IdLaws <> checker:68 var
+R14022:14029 Habu.Common.Ids <> pack def
+def 14048:14089 <> mutation_cell_width_falsifies_max_pack_fit
+R14179:14184 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R14172:14174 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14095:14113 Habu.Common.IdLaws <> cell_fits_at_widthb def
+R14115:14127 Habu.Common.Ids <> cell_bits def
+R14134:14141 Habu.Common.Ids <> pack def
+R14143:14156 Habu.Common.Ids <> serial_max def
+R14158:14170 Habu.Common.Ids <> local_max def
+R14175:14178 Corelib.Init.Datatypes <> true constr
+R14251:14253 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14185:14203 Habu.Common.IdLaws <> cell_fits_at_widthb def
+R14213:14220 Habu.Common.Ids <> pack def
+R14222:14235 Habu.Common.Ids <> serial_max def
+R14237:14249 Habu.Common.Ids <> local_max def
+R14254:14258 Corelib.Init.Datatypes <> false constr
+def 14321:14366 <> mutation_serial_width_falsifies_max_serial_fit
+R14431:14436 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R14424:14426 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14372:14392 Habu.Common.IdLaws <> serial_fits_at_widthb def
+R14394:14408 Habu.Common.Ids <> serial_bits def
+R14410:14423 Habu.Common.Ids <> serial_max def
+R14427:14430 Corelib.Init.Datatypes <> true constr
+R14476:14478 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14437:14457 Habu.Common.IdLaws <> serial_fits_at_widthb def
+R14462:14475 Habu.Common.Ids <> serial_max def
+R14479:14483 Corelib.Init.Datatypes <> false constr
+def 14546:14589 <> mutation_local_width_falsifies_max_local_fit
+R14651:14656 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R14644:14646 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14595:14614 Habu.Common.IdLaws <> local_fits_at_widthb def
+R14616:14629 Habu.Common.Ids <> local_bits def
+R14631:14643 Habu.Common.Ids <> local_max def
+R14647:14650 Corelib.Init.Datatypes <> true constr
+R14694:14696 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14657:14676 Habu.Common.IdLaws <> local_fits_at_widthb def
+R14681:14693 Habu.Common.Ids <> local_max def
+R14697:14701 Corelib.Init.Datatypes <> false constr
+def 14764:14804 <> mutation_shift_falsifies_owner_projection
+R14859:14864 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R14852:14854 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14810:14835 Habu.Common.IdLaws <> owner_projection_expectedb def
+R14837:14851 Habu.Common.Ids <> local_shift def
+R14855:14858 Corelib.Init.Datatypes <> true constr
+R14894:14896 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R14865:14890 Habu.Common.IdLaws <> owner_projection_expectedb def
+R14897:14901 Corelib.Init.Datatypes <> false constr
+def 14964:15003 <> mutation_mask_falsifies_local_projection
+R15057:15062 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R15050:15052 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15009:15034 Habu.Common.IdLaws <> local_projection_expectedb def
+R15036:15049 Habu.Common.Ids <> local_mask def
+R15053:15056 Corelib.Init.Datatypes <> true constr
+R15100:15102 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15063:15088 Habu.Common.IdLaws <> local_projection_expectedb def
+R15103:15107 Corelib.Init.Datatypes <> false constr
+def 15170:15214 <> mutation_owner_eq_falsifies_foreign_rejection
+R15261:15266 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R15254:15256 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15220:15242 Habu.Common.IdLaws <> foreign_owner_rejectedb def
+R15244:15253 Habu.Common.Ids <> checkb def
+R15257:15260 Corelib.Init.Datatypes <> true constr
+R15313:15315 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15267:15289 Habu.Common.IdLaws <> foreign_owner_rejectedb def
+R15291:15312 Habu.Common.IdLaws <> check_without_owner_eq def
+R15316:15320 Corelib.Init.Datatypes <> false constr
+def 15383:15429 <> mutation_strict_bound_falsifies_equal_rejection
+R15474:15479 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R15467:15469 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15435:15455 Habu.Common.IdLaws <> equal_bound_rejectedb def
+R15457:15466 Habu.Common.Ids <> checkb def
+R15470:15473 Corelib.Init.Datatypes <> true constr
+R15528:15530 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15480:15500 Habu.Common.IdLaws <> equal_bound_rejectedb def
+R15502:15527 Habu.Common.IdLaws <> check_with_nonstrict_bound def
+R15531:15535 Corelib.Init.Datatypes <> false constr
+def 15598:15614 <> count_trunc_fails
+R15681:15686 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R15645:15651 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15620:15633 Habu.Common.Ids <> make_count def
+R15652:15655 Corelib.Init.Datatypes <> Some constr
+R15658:15668 Habu.Common.Ids <> MkCount constr
+R15720:15726 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15687:15696 Habu.Common.IdLaws <> make_trunc def
+R15698:15708 Habu.Common.Ids <> MkCount constr
+R15727:15730 Corelib.Init.Datatypes <> Some constr
+R15733:15743 Habu.Common.Ids <> MkCount constr
+def 15809:15828 <> pool_off_trunc_fails
+R15906:15911 Corelib.Init.Logic <> ::type_scope:x_'/\'_x not
+R15865:15871 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15834:15853 Habu.Common.Ids <> make_pool_offset def
+R15872:15875 Corelib.Init.Datatypes <> Some constr
+R15878:15893 Habu.Common.Ids <> MkPoolOffset constr
+R15950:15956 Corelib.Init.Logic <> ::type_scope:x_'='_x not
+R15912:15921 Habu.Common.IdLaws <> make_trunc def
+R15923:15938 Habu.Common.Ids <> MkPoolOffset constr
+R15957:15960 Corelib.Init.Datatypes <> Some constr
+R15963:15978 Habu.Common.Ids <> MkPoolOffset constr
+R16054:16064 Habu.Common.IdLaws <> pack_as_sum thm
+R16085:16107 Habu.Common.IdLaws <> pack_within_signed_cell thm
+R16128:16137 Habu.Common.IdLaws <> owner_pack thm
+R16158:16167 Habu.Common.IdLaws <> local_pack thm
+R16188:16201 Habu.Common.IdLaws <> pack_injective thm
+R16222:16246 Habu.Common.IdLaws <> pack_projection_roundtrip thm
+R16267:16291 Habu.Common.IdLaws <> projection_pack_roundtrip thm
+R16312:16341 Habu.Common.IdLaws <> distinct_valid_owners_separate thm
+R16362:16386 Habu.Common.IdLaws <> try_pack_rejects_negative thm
+R16407:16431 Habu.Common.IdLaws <> try_pack_rejects_overflow thm
+R16452:16476 Habu.Common.IdLaws <> check_rejects_equal_bound thm
+R16497:16523 Habu.Common.IdLaws <> check_rejects_foreign_owner thm
+R16544:16558 Habu.Common.IdLaws <> count_scalar_id thm
+R16579:16596 Habu.Common.IdLaws <> pool_off_scalar_id thm
+R16617:16631 Habu.Common.IdLaws <> count_roundtrip thm
+R16652:16669 Habu.Common.IdLaws <> pool_off_roundtrip thm
