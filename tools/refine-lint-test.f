@@ -21,6 +21,9 @@ require tools/refine-lint-core.f
 package RFL-TEST
 
 4096 constant OUT-CAP
+11 constant IR-PUBLIC-PKG#
+9 constant IR-KIND#
+6 constant IR-KIND-FORM#
 
 variable ROOT-U
 variable FILE-U
@@ -30,6 +33,7 @@ create ROOT-BUF FS-PATH-CAP allot
 create FILE-BUF FS-PATH-CAP allot
 create MAN-BUF FS-PATH-CAP allot
 create OUT-BUF OUT-CAP allot
+create RAW-NAME-BUF 64 allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : FILE$ ( -- ptr u8 n ) FILE-BUF FILE-U @ ;
@@ -78,7 +82,7 @@ create OUT-BUF OUT-CAP allot
 : ESC-CONTENT$ ( -- ptr u8 n )
    SB-RESET
    s" S\" SB-APPEND DQ
-   s"  has ROWS-REFINE bytes\" SB-APPEND DQ
+   s"  has ROWS-REFINE bytes" SB-APPEND DQ
    s"  drop" SB-APPEND
    SB$ ;
 
@@ -91,6 +95,116 @@ create OUT-BUF OUT-CAP allot
    s" ROWS-REFINED drop" RFL:COUNT-STR 0 T=
    s" :ROWS-REFINE drop" RFL:COUNT-STR 0 T= ;          \ edge colon is not a qualifier
 
+: IR-PUBLIC-PKG$ ( n -- ptr u8 n )
+   case
+      0 of s" IR-ID" endof
+      1 of s" IR" endof
+      2 of s" HIR" endof
+      3 of s" SIR" endof
+      4 of s" LIR" endof
+      5 of s" A64IR" endof
+      6 of s" GPU-RIR" endof
+      7 of s" GPU-KIR" endof
+      8 of s" GPU-GIR" endof
+      9 of s" GPU-PTXIR2" endof
+      10 of s" GPU-IR" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: IR-KIND$ ( n -- ptr u8 n )
+   case
+      0 of s" SOURCE" endof
+      1 of s" FUNCTION" endof
+      2 of s" BLOCK" endof
+      3 of s" OPERATION" endof
+      4 of s" VALUE" endof
+      5 of s" TYPE" endof
+      6 of s" ATTRIBUTE" endof
+      7 of s" SYMBOL" endof
+      8 of s" SPAN" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+: IR-API$ ( n n -- ptr u8 n ) {: kind:n form:n :}
+   SB-RESET
+   form
+   case
+      0 of s" MINT-" SB-APPEND kind IR-KIND$ SB-APPEND endof
+      1 of kind IR-KIND$ SB-APPEND s" >N" SB-APPEND endof
+      2 of s" PACK-" SB-APPEND kind IR-KIND$ SB-APPEND endof
+      3 of kind IR-KIND$ SB-APPEND s" -OWNER" SB-APPEND endof
+      4 of kind IR-KIND$ SB-APPEND s" -LOCAL" SB-APPEND endof
+      5 of kind IR-KIND$ SB-APPEND s" -CHECK" SB-APPEND endof
+      E-TBL-BOUNDS throw
+   endcase
+   SB$ ;
+
+: PUBLIC-MUTATION$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   SB-RESET
+   s" package " SB-APPEND pa pu SB-APPEND
+   s"  public : " SB-APPEND na nu SB-APPEND
+   s"  ( -- ) ; ;package" SB-APPEND
+   SB$ ;
+
+: QUALIFIED-MUTATION$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: pa:ptr pu:n na:ptr nu:n :}
+   SB-RESET
+   s" : " SB-APPEND pa pu SB-APPEND
+   s" :" SB-APPEND na nu SB-APPEND
+   s"  ( -- ) ;" SB-APPEND
+   SB$ ;
+
+: RAW-PUBLIC-FAILS ( ptr u8 n -- )
+   {: na:ptr nu:n :}
+   na RAW-NAME-BUF nu BYTE-COPY
+   s" test/compiler-ir-mutation.f"
+      s" IR" RAW-NAME-BUF nu PUBLIC-MUTATION$ RFL:COUNT-STR-AT 1 T= ;
+
+: RAW-TABLE-CASE ( ptr u8 n -- )
+   2dup RFL:RAW-NAME? TTRUE
+   RAW-PUBLIC-FAILS ;
+
+: RAW-TABLE-COVERAGE ( -- )
+   RFL:RAW-NAME-COUNT 60 T=
+   s" MINT-MODULE" RAW-TABLE-CASE
+   s" MODULE>N" RAW-TABLE-CASE
+   s" MINT-COUNT" RAW-TABLE-CASE
+   s" COUNT>N" RAW-TABLE-CASE
+   s" MINT-POOL-OFF" RAW-TABLE-CASE
+   s" POOL-OFF>N" RAW-TABLE-CASE
+   IR-KIND# 0 ?do
+      IR-KIND-FORM# 0 ?do
+         j i IR-API$ RAW-TABLE-CASE
+      loop
+   loop
+   s" MINT-MODULE-X" RFL:RAW-NAME? TFALSE
+   s" X-MODULE>N" RFL:RAW-NAME? TFALSE
+   s" PACK-MODULE" RFL:RAW-NAME? TFALSE ;
+
+: PUBLICATION-MUTATIONS ( -- )
+   IR-PUBLIC-PKG# 0 ?do
+      s" test/compiler-ir-mutation.f"
+         i IR-PUBLIC-PKG$ s" MINT-MODULE" PUBLIC-MUTATION$
+         RFL:COUNT-STR-AT 1 T=
+      s" test/compiler-ir-mutation.f"
+         i IR-PUBLIC-PKG$ s" MINT-MODULE" QUALIFIED-MUTATION$
+         RFL:COUNT-STR-AT 1 T=
+   loop
+   s" src/compiler/ir/id.f" s" package IR-RAW public ;package"
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f"
+      s" IR-RAW" s" MINT-MODULE" QUALIFIED-MUTATION$
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package OTHER public : MINT-MODULE ( -- ) ; ;package"
+      RFL:COUNT-STR-AT 0 T=
+   s" test/compiler-ir-mutation.f" s" : OTHER:MINT-MODULE ( -- ) ;"
+      RFL:COUNT-STR-AT 0 T=
+   s" test/compiler-ir-mutation.f" s" : IR:MINT-MODULE-X ( -- ) ;"
+      RFL:COUNT-STR-AT 0 T=
+   s" test/compiler-ir-mutation.f" s" : IR:MINT-MODULE:EXTRA ( -- ) ;"
+      RFL:COUNT-STR-AT 0 T= ;
+
 : IR-RAW-STRING$ ( -- ptr u8 n )
    SB-RESET
    s" : X ( -- ) s" SB-APPEND DQ
@@ -101,53 +215,73 @@ create OUT-BUF OUT-CAP allot
 : IR-RAW-SPLIT$ ( -- ptr u8 n )
    SB-RESET
    s" package" SB-APPEND IR-NL
-   s" IR-RAW" SB-APPEND
+   s" IR-RAW" SB-APPEND IR-NL
+   s" ;package" SB-APPEND
    SB$ ;
 
-: IR-RAW-PUBLIC-STRING$ ( -- ptr u8 n )
+: IR-RAW-MULTILINE-PAREN$ ( bool -- ptr u8 n ) {: hostile:bool :}
+   SB-RESET
+   s" package IR-RAW" SB-APPEND IR-NL
+   s" ( multiline" SB-APPEND IR-NL
+   s" public MINT-MODULE" SB-APPEND IR-NL
+   s" )" SB-APPEND IR-NL
+   hostile if s" public" SB-APPEND IR-NL then
+   s" ;package" SB-APPEND
+   SB$ ;
+
+: IR-RAW-MULTILINE-STRING$ ( bool -- ptr u8 n ) {: hostile:bool :}
    SB-RESET
    s" package IR-RAW s" SB-APPEND DQ
-   s" public" SB-APPEND DQ
-   s" 2drop ;package" SB-APPEND
-   SB$ ;
-
-: IR-RAW-PUBLIC-COMMENT$ ( -- ptr u8 n )
-   SB-RESET
-   s" package IR-RAW \ public" SB-APPEND IR-NL
+   s"  multiline" SB-APPEND IR-NL
+   s" public MINT-MODULE" SB-APPEND DQ
+   s"  2drop" SB-APPEND IR-NL
+   hostile if s" public" SB-APPEND IR-NL then
    s" ;package" SB-APPEND
    SB$ ;
 
 : IR-RAW-CONFINEMENT ( -- )
    \ The four frozen owner paths may reopen the private representation package.
-   s" src/compiler/ir/id.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
-   s" src/compiler/ir/arena.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
-   s" src/compiler/ir/codec.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
-   s" test/compiler/ir-id.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/arena.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/codec.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
+   s" test/compiler/ir-id.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 0 T=
    \ Any other path fires, case-insensitively and across line boundaries.
-   s" src/compiler/ir/source.f" s" package IR-RAW" RFL:COUNT-STR-AT 1 T=
-   s" test/other.f" s" PaCkAgE ir-raw" RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/source.f" s" package IR-RAW ;package" RFL:COUNT-STR-AT 1 T=
+   s" test/other.f" s" PaCkAgE ir-raw ;package" RFL:COUNT-STR-AT 1 T=
    s" test/other.f" IR-RAW-SPLIT$ RFL:COUNT-STR-AT 1 T=
    \ Duplicates are separate authority violations.
-   s" test/other.f" s" package IR-RAW ;package package IR-RAW"
+   s" test/other.f" s" package IR-RAW ;package package IR-RAW ;package"
       RFL:COUNT-STR-AT 2 T=
    \ IR-RAW can never publish, including in an otherwise allowed owner file.
-   s" src/compiler/ir/id.f" s" package IR-RAW public"
+   s" src/compiler/ir/id.f" s" package IR-RAW public ;package"
       RFL:COUNT-STR-AT 1 T=
    s" src/compiler/ir/id.f" s" package IR-RAW PuBlIc public ;package"
       RFL:COUNT-STR-AT 2 T=
    s" src/compiler/ir/id.f" s" package IR-RAW ;package public"
       RFL:COUNT-STR-AT 0 T=
+   \ Whole-source lexical state spans newlines: inert bodies stay green and a
+   \ real public token after either body remains visible.
+   s" src/compiler/ir/id.f" LINT-FALSE IR-RAW-MULTILINE-PAREN$
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f" LINT-TRUE IR-RAW-MULTILINE-PAREN$
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f" LINT-FALSE IR-RAW-MULTILINE-STRING$
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f" LINT-TRUE IR-RAW-MULTILINE-STRING$
+      RFL:COUNT-STR-AT 1 T=
    \ Comments, strings, near names, reordering, and the wrong opener role do not fire.
    s" test/other.f" s" \ package IR-RAW" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" IR-RAW-STRING$ RFL:COUNT-STR-AT 0 T=
    s" test/other.f" s" package IR-RAWER" RFL:COUNT-STR-AT 0 T=
-   s" test/other.f" s" IR-RAW package" RFL:COUNT-STR-AT 0 T=
+   s" test/other.f" s" IR-RAW package OTHER ;package" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" s" using IR-RAW" RFL:COUNT-STR-AT 0 T=
-   s" src/compiler/ir/id.f" IR-RAW-PUBLIC-STRING$
-      RFL:COUNT-STR-AT 0 T=
-   s" src/compiler/ir/id.f" IR-RAW-PUBLIC-COMMENT$
-      RFL:COUNT-STR-AT 0 T=
    s" src/compiler/ir/id.f" s" package IR-RAW PUBLIC-X ;package"
+      RFL:COUNT-STR-AT 0 T=
+   \ File boundaries fail closed on incomplete scope syntax.
+   s" src/compiler/ir/id.f" s" package" RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f" s" package IR-RAW" RFL:COUNT-STR-AT 1 T=
+   s" test/other.f" s" package IR-RAW" RFL:COUNT-STR-AT 2 T=
+   s" src/compiler/ir/id.f" s" package IR-RAW ;package"
       RFL:COUNT-STR-AT 0 T= ;
 
 : CONFINE-POLICY ( -- )
@@ -279,6 +413,8 @@ public
    SHAPE
    DETECT
    NO-FALSE-POSITIVE
+   RAW-TABLE-COVERAGE
+   PUBLICATION-MUTATIONS
    IR-RAW-CONFINEMENT
    CONFINE-POLICY
    ALLOWLIST

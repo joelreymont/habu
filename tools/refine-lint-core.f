@@ -30,16 +30,19 @@
 \ id.f, arena.f, codec.f, and the focused ID test may reopen IR-RAW. The seed
 \ table still proves every IR representation CAST remains declared in id.f.
 \
-\ Scan discipline: whole-token matching over the shared PAT-* scanner, so `\`
-\ and `( )` comments and string-literal bodies are excluded; matching is
+\ Scan discipline: one whole-source LINT-LEX token stream per file, so multiline
+\ comments and strings cannot forge or hide package/public state. Matching is
 \ case-insensitive (the dictionary is case-insensitive) and also catches
 \ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/ test/.
 \ Owner liveness reads the owner source; NEW-MINT rows are read through
 \ tools/trust-lint-core.f (TL-M-*).
 \
 \ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
-\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
-\ tools/trust-lint-core.f.
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
+\ tools/lint/source-lex.f, and tools/trust-lint-core.f.
+
+require lib/vector.f
+require tools/lint/source-lex.f
 
 package RFL
 
@@ -51,10 +54,25 @@ $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
 93 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
+60 constant RAW-NAME#
 
 10 constant LF
 48 constant ZERO
 58 constant COLON
+
+0 constant PKG-OTHER
+1 constant PKG-IR-ID
+2 constant PKG-IR
+3 constant PKG-HIR
+4 constant PKG-SIR
+5 constant PKG-LIR
+6 constant PKG-A64IR
+7 constant PKG-GPU-RIR
+8 constant PKG-GPU-KIR
+9 constant PKG-GPU-GIR
+10 constant PKG-GPU-PTXIR2
+11 constant PKG-GPU-IR
+12 constant PKG-IR-RAW
 
 create NUM-BUF NUM-CAP allot
 create ONE 1 allot
@@ -71,27 +89,22 @@ variable ALLOW#
 variable REPORT?
 variable NUM-L
 variable LINE
+variable TOK-I
 variable CUR-A
 variable CUR-U
-variable LA
-variable LU
-variable LX
-variable LS
-variable LE
 variable PACKAGE-PENDING
-variable IR-RAW-ACTIVE
+variable PACKAGE-LINE
+variable PACKAGE-KIND
+variable PACKAGE-PUBLIC
 
 : STR-A-FIELD ( -- ptr ptr u8 ) STR-A 0 ptr-field ;
 : FILE-A-FIELD ( -- ptr ptr u8 ) FILE-A 0 ptr-field ;
 : CUR-A-FIELD ( -- ptr ptr u8 ) CUR-A 0 ptr-field ;
-: LA-FIELD ( -- ptr ptr u8 ) LA 0 ptr-field ;
 : ALW-NO-FIELD ( n -- ptr ptr u8 ) cells ALW-NO + 0 ptr-field ;
 : ALW-PO-FIELD ( n -- ptr ptr u8 ) cells ALW-PO + 0 ptr-field ;
 
 : CUR$ ( -- ptr u8 n ) CUR-A-FIELD @ CUR-U @ ;
 : CUR! ( ptr u8 n -- ) CUR-U ! CUR-A-FIELD ! ;
-: LA@ ( -- ptr u8 ) LA-FIELD @ ;
-: LA! ( ptr u8 -- ) LA-FIELD ! ;
 
 : FAIL ( ptr u8 n -- ) 76 die ;
 
@@ -547,6 +560,110 @@ public
    SELECT
    SHAPE-SCAN ;
 
+\ ---- compiler IR raw authority ----------------------------------------------
+
+\ Exact frozen representation surface from PLAN.md IR-0.1. The first six rows
+\ are module/scalar casts; each referential kind then owns mint, projection,
+\ pack, owner, local, and check names in that order.
+: RAW-NAME$ ( n -- ptr u8 n )
+   case
+      0 of s" MINT-MODULE" endof
+      1 of s" MODULE>N" endof
+      2 of s" MINT-COUNT" endof
+      3 of s" COUNT>N" endof
+      4 of s" MINT-POOL-OFF" endof
+      5 of s" POOL-OFF>N" endof
+      6 of s" MINT-SOURCE" endof
+      7 of s" SOURCE>N" endof
+      8 of s" PACK-SOURCE" endof
+      9 of s" SOURCE-OWNER" endof
+      10 of s" SOURCE-LOCAL" endof
+      11 of s" SOURCE-CHECK" endof
+      12 of s" MINT-FUNCTION" endof
+      13 of s" FUNCTION>N" endof
+      14 of s" PACK-FUNCTION" endof
+      15 of s" FUNCTION-OWNER" endof
+      16 of s" FUNCTION-LOCAL" endof
+      17 of s" FUNCTION-CHECK" endof
+      18 of s" MINT-BLOCK" endof
+      19 of s" BLOCK>N" endof
+      20 of s" PACK-BLOCK" endof
+      21 of s" BLOCK-OWNER" endof
+      22 of s" BLOCK-LOCAL" endof
+      23 of s" BLOCK-CHECK" endof
+      24 of s" MINT-OPERATION" endof
+      25 of s" OPERATION>N" endof
+      26 of s" PACK-OPERATION" endof
+      27 of s" OPERATION-OWNER" endof
+      28 of s" OPERATION-LOCAL" endof
+      29 of s" OPERATION-CHECK" endof
+      30 of s" MINT-VALUE" endof
+      31 of s" VALUE>N" endof
+      32 of s" PACK-VALUE" endof
+      33 of s" VALUE-OWNER" endof
+      34 of s" VALUE-LOCAL" endof
+      35 of s" VALUE-CHECK" endof
+      36 of s" MINT-TYPE" endof
+      37 of s" TYPE>N" endof
+      38 of s" PACK-TYPE" endof
+      39 of s" TYPE-OWNER" endof
+      40 of s" TYPE-LOCAL" endof
+      41 of s" TYPE-CHECK" endof
+      42 of s" MINT-ATTRIBUTE" endof
+      43 of s" ATTRIBUTE>N" endof
+      44 of s" PACK-ATTRIBUTE" endof
+      45 of s" ATTRIBUTE-OWNER" endof
+      46 of s" ATTRIBUTE-LOCAL" endof
+      47 of s" ATTRIBUTE-CHECK" endof
+      48 of s" MINT-SYMBOL" endof
+      49 of s" SYMBOL>N" endof
+      50 of s" PACK-SYMBOL" endof
+      51 of s" SYMBOL-OWNER" endof
+      52 of s" SYMBOL-LOCAL" endof
+      53 of s" SYMBOL-CHECK" endof
+      54 of s" MINT-SPAN" endof
+      55 of s" SPAN>N" endof
+      56 of s" PACK-SPAN" endof
+      57 of s" SPAN-OWNER" endof
+      58 of s" SPAN-LOCAL" endof
+      59 of s" SPAN-CHECK" endof
+      E-TBL-BOUNDS throw
+   endcase ;
+
+public
+
+: RAW-NAME-COUNT ( -- n )
+   RAW-NAME# ;
+
+: RAW-NAME? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup RAW-NAME# < while
+      dup RAW-NAME$ a u LINT-STR=CI if drop LINT-TRUE exit then
+      1+
+   repeat drop LINT-FALSE ;
+
+private
+
+: PACKAGE-KIND-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u s" IR-ID" LINT-STR=CI if PKG-IR-ID exit then
+   a u s" IR" LINT-STR=CI if PKG-IR exit then
+   a u s" HIR" LINT-STR=CI if PKG-HIR exit then
+   a u s" SIR" LINT-STR=CI if PKG-SIR exit then
+   a u s" LIR" LINT-STR=CI if PKG-LIR exit then
+   a u s" A64IR" LINT-STR=CI if PKG-A64IR exit then
+   a u s" GPU-RIR" LINT-STR=CI if PKG-GPU-RIR exit then
+   a u s" GPU-KIR" LINT-STR=CI if PKG-GPU-KIR exit then
+   a u s" GPU-GIR" LINT-STR=CI if PKG-GPU-GIR exit then
+   a u s" GPU-PTXIR2" LINT-STR=CI if PKG-GPU-PTXIR2 exit then
+   a u s" GPU-IR" LINT-STR=CI if PKG-GPU-IR exit then
+   a u s" IR-RAW" LINT-STR=CI if PKG-IR-RAW exit then
+   PKG-OTHER ;
+
+: COMPILER-PUBLIC-PKG? ( n -- bool )
+   dup PKG-IR-ID >= swap PKG-GPU-IR <= and ;
+
+: COMPILER-PKG? ( ptr u8 n -- bool )
+   PACKAGE-KIND-OF PKG-OTHER <> ;
+
 \ ---- confinement scan --------------------------------------------------------
 
 \ The owner's module test - <owner-stem>-test.f (owner `maki/tensor.f` ->
@@ -573,14 +690,21 @@ public
    k STEM-TEST? if LINT-TRUE exit then
    k ALLOW-LISTED? ;
 
+: TOK$ ( -- ptr u8 n )
+   TOK-I @ LINT-LEX:TOKEN ;
+
+: TOK=CI ( ptr u8 n -- bool )
+   TOK$ 2swap LINT-STR=CI ;
+
 : QUAL-TOK? ( n -- bool ) {: k:n :}
    k SEED-NAME$ {: na:ptr nu:n :}
-   PTU @ nu 2 + < if LINT-FALSE exit then
-   PTA@ PTU @ nu - +  nu  na nu LINT-STR=CI 0= if LINT-FALSE exit then
-   PTA@ PTU @ nu - 1- + c@ COLON = ;
+   TOK$ {: a:ptr u:n :}
+   u nu 2 + < if LINT-FALSE exit then
+   a u nu - +  nu  na nu LINT-STR=CI 0= if LINT-FALSE exit then
+   a u nu - 1- + c@ COLON = ;
 
 : TOK-MINT? ( n -- bool ) {: k:n :}
-   PAT-TOK$ k SEED-NAME$ LINT-STR=CI if LINT-TRUE exit then
+   TOK$ k SEED-NAME$ LINT-STR=CI if LINT-TRUE exit then
    k QUAL-TOK? ;
 
 : HIT ( n -- ) {: k:n :}
@@ -606,17 +730,29 @@ public
    CUR$ s" src/compiler/ir/codec.f" FS-PATH= if LINT-TRUE exit then
    CUR$ s" test/compiler/ir-id.f" FS-PATH= ;
 
-: IR-RAW-TOK? ( -- bool )
-   PAT-TOK$ s" IR-RAW" LINT-STR=CI ;
-
 : PACKAGE-TOK? ( -- bool )
-   PAT-TOK$ s" package" LINT-STR=CI ;
+   s" package" TOK=CI ;
 
 : PACKAGE-END-TOK? ( -- bool )
-   PAT-TOK$ s" ;package" LINT-STR=CI ;
+   s" ;package" TOK=CI ;
 
 : PUBLIC-TOK? ( -- bool )
-   PAT-TOK$ s" public" LINT-STR=CI ;
+   s" public" TOK=CI ;
+
+: PRIVATE-TOK? ( -- bool )
+   s" private" TOK=CI ;
+
+: QUALIFIED-RAW? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u COLON LINT-COUNT-CHAR 1 <> if LINT-FALSE exit then
+   a u COLON LINT-INDEX-OF
+   MATCH option
+      none OF LINT-FALSE ENDOF
+      some OF {: i:n :}
+         i 0= i u 1- = or if LINT-FALSE exit then
+         a i COMPILER-PKG? 0= if LINT-FALSE exit then
+         a i 1+ + u i - 1- RAW-NAME?
+      ENDOF
+   ;MATCH ;
 
 : IR-RAW-HIT ( -- )
    REPORT? @ if
@@ -634,57 +770,97 @@ public
    then
    BAD+ ;
 
-: MATCH-PACKAGE ( -- )
+: RAW-PUBLICATION-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-IR-PUBLIC " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : `" OUT TOK$ OUT
+      s" ` publishes or references a frozen raw IR authority name" OUT NL
+   then
+   BAD+ ;
+
+: PENDING-PACKAGE-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-END " OUT
+      CUR$ OUT COLON C PACKAGE-LINE @ U.
+      s" : package has no name before file boundary" OUT NL
+   then
+   BAD+ ;
+
+: UNCLOSED-IR-RAW-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PACKAGE-END " OUT
+      CUR$ OUT COLON C PACKAGE-LINE @ U.
+      s" : package IR-RAW is unclosed at file boundary" OUT NL
+   then
+   BAD+ ;
+
+: SOURCE-LEX-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-LEX " OUT
+      CUR$ OUT COLON C LINT-LEX:ERROR-LINE@ U.
+      s" : malformed source prevents complete confinement scan" OUT NL
+   then
+   BAD+ ;
+
+: PACKAGE-NAME ( -- )
+   LINT-FALSE PACKAGE-PENDING !
+   TOK$ PACKAGE-KIND-OF PACKAGE-KIND !
+   LINT-FALSE PACKAGE-PUBLIC !
+   PACKAGE-KIND @ PKG-IR-RAW = if
+      IR-RAW-PATH? 0= if IR-RAW-HIT then
+   then ;
+
+: MATCH-WORD ( -- )
    PACKAGE-PENDING @ if
-      0 PACKAGE-PENDING !
-      IR-RAW-TOK? if
-         LINT-TRUE IR-RAW-ACTIVE !
-         IR-RAW-PATH? 0= if IR-RAW-HIT then
-      then
+      PACKAGE-NAME
       exit
    then
-   IR-RAW-ACTIVE @ if
-      PUBLIC-TOK? if IR-RAW-PUBLIC-HIT then
-      PACKAGE-END-TOK? if LINT-FALSE IR-RAW-ACTIVE ! then
+   PACKAGE-TOK? if
+      LINT-TRUE PACKAGE-PENDING !
+      LINE @ PACKAGE-LINE !
+      exit
    then
-   PACKAGE-TOK? if LINT-TRUE PACKAGE-PENDING ! then ;
+   PACKAGE-END-TOK? if
+      PKG-OTHER PACKAGE-KIND !
+      LINT-FALSE PACKAGE-PUBLIC !
+      exit
+   then
+   PUBLIC-TOK? if
+      PACKAGE-KIND @ PKG-IR-RAW = if IR-RAW-PUBLIC-HIT then
+      LINT-TRUE PACKAGE-PUBLIC !
+      exit
+   then
+   PRIVATE-TOK? if
+      LINT-FALSE PACKAGE-PUBLIC !
+      exit
+   then
+   TOK$ QUALIFIED-RAW? if RAW-PUBLICATION-HIT exit then
+   PACKAGE-PUBLIC @ PACKAGE-KIND @ COMPILER-PUBLIC-PKG? and if
+      TOK$ RAW-NAME? if RAW-PUBLICATION-HIT exit then
+   then
+   MATCH-TOKEN ;
 
-: STRING-OPENER? ( -- bool )
-   PAT-TOK$ LINT-NORMAL-STRING-OPENER? if LINT-TRUE exit then
-   PAT-TOK$ LINT-ESC-STRING-OPENER? ;
-
-: SCAN-LINE ( ptr u8 n -- )
-   PAT-RESET
-   begin PAT-READ-TOKEN while
-      MATCH-PACKAGE
-      STRING-OPENER? if PAT-SKIP-STRING-BODY else MATCH-TOKEN then
-   repeat ;
-
-: LINE-LEN ( ptr u8 n -- ptr u8 n )
-   dup 0 > IF
-      2dup + 1- c@ 13 = IF 1- THEN
-   THEN ;
-
-: DO-LINE ( n -- )
-   LE !
-   LINE @ 1+ LINE !
-   LA@ LS @ +  LE @ LS @ -  LINE-LEN
-   SCAN-LINE
-   LE @ 1+ LS ! ;
-
-: FOR-LINES ( ptr u8 n -- )
-   LU ! LA!
-   0 LINE !  0 LX !  0 LS !
-   0 PACKAGE-PENDING !  0 IR-RAW-ACTIVE !
-   begin LX @ LU @ < while
-      LA@ LX @ + c@ LF = IF LX @ DO-LINE THEN
-      LX @ 1+ LX !
+: SCAN-SOURCE ( ptr u8 n -- )
+   LINT-FALSE PACKAGE-PENDING !
+   LINT-FALSE PACKAGE-PUBLIC !
+   PKG-OTHER PACKAGE-KIND !
+   0 PACKAGE-LINE !
+   LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if SOURCE-LEX-HIT then
+   0 begin dup LINT-LEX:COUNT < while
+      dup TOK-I !
+      dup LINT-LEX:LINE@ LINE !
+      dup LINT-LEX:KIND@ LINT-LEX:WORD = if MATCH-WORD then
+      1+
    repeat
-   LS @ LU @ < IF LU @ DO-LINE THEN ;
+   drop
+   PACKAGE-PENDING @ if PENDING-PACKAGE-HIT then
+   PACKAGE-KIND @ PKG-IR-RAW = if UNCLOSED-IR-RAW-HIT then ;
 
 : SCAN-STR ( ptr u8 n ptr u8 n -- ) {: pa:ptr pu:n a:ptr u:n :}
    pa pu CUR!
-   a u FOR-LINES ;
+   a u SCAN-SOURCE ;
 
 \ findings from one string scanned in isolation under the given path
 \ (reset -> scan -> count); leaves the run counters untouched.
@@ -714,7 +890,7 @@ public
 : SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u SRC? 0= if exit then
    a u CUR!
-   a u FILE-BUF FILE-CAP READ-FILE FOR-LINES ;
+   a u FILE-BUF FILE-CAP READ-FILE SCAN-SOURCE ;
 
 : SCAN-ROOT ( ptr u8 n -- ) {: a:ptr u:n :}
    a u DIR? 0= if s" refine-lint: missing scan root" FAIL then
