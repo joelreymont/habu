@@ -6,12 +6,10 @@ issue-type: task
 created-at: "2026-07-22T09:40:20.853809+02:00"
 ---
 
-The tensor role binding prerequisite is done and its dot is closed. It was
-habu-infer-gpt2-tensor-f2ed655d, superseded by 1746455e "Add GPT-2 tensor
-vocabulary (GPT2BIND)" and 5756381d "Add GPT2TX bind PREPARE and prep
-capability", both ancestors of master, so its blocker edge is removed here.
-Where the text below says "Prerequisites: tensor role binding", read those two
-commits.
+The tensor identity and checkpoint-preparation prerequisites are done. Commits
+1746455e and 5756381d introduced the tensor vocabulary now named GPT2TENSOR
+and PREPARE, respectively. Both are ancestors of master, so the obsolete
+blocker edge to habu-infer-gpt2-tensor-f2ed655d is removed.
 
 Why this exists:
 parity requires a reproducible external reference tied to the exact checkpoint and prompt inputs, not an opaque blob.
@@ -24,6 +22,6 @@ regeneration from the pinned environment is byte-identical or numerically equiva
 
 Expected touch points: GPT-2 reference fixture, provenance record, Habu fixture validator.
 Smallest check: validator plus regeneration comparison.
-Prerequisites: tensor role binding.
+Prerequisites: tensor identity and checkpoint preparation.
 Owned result: external reference generation record and committed fixture only.
 Claim: unassigned.

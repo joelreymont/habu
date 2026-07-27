@@ -22,14 +22,14 @@ first operation. The validator compares `MDLCFG:FAMILY@` with
 plan into `rejected`.
 
 Dependencies: the landed `MDLCFG:FAMILY@`, `MODEL:family` equality,
-`GPT2BIND` tensor vocabulary, and `GPT2TX:PREPARE` are sufficient. This leaf
+`GPT2TENSOR` tensor vocabulary, and `GPT2TX:PREPARE` are sufficient. This leaf
 adds no type, package, compatibility path, allocation, or public word other
 than the named error constant.
 
 Owned result and write set: only `maki/infer/gpt2-bind.f` and
 `maki/infer/gpt2-bind-test.f`. The test builds a valid tiny Llama
 configuration and a real production-derived safetensors census through
-`TX-LAY`, `SAFET:LOAD`, `GPT2BIND:COPY-KEY?`, and `GPT2BIND:TID-SHAPE`.
+`TX-LAY`, `SAFET:LOAD`, `GPT2TENSOR:COPY-NAME?`, and `GPT2TENSOR:SHAPE`.
 Before `PREPARE`, set the private plan and sum counters to sentinels. The
 rejection must leave both sentinels unchanged, proving that no tensor walk,
 table creation, prep-block allocation, or weight-store allocation began. The
