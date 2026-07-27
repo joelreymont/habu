@@ -382,7 +382,7 @@ Acceptance:
 only uncovered outcomes. Every retained item appears once; no review-only dot is
 created.
 
-Before dispatch, follow `AGENTS.md` § Parallel dots: establish an active claim
+Before dispatch, follow the parallel-work and dot-dispatch rules in `AGENTS.md`: establish an active claim
 on an immutable base and use an isolated `.jj-ws/<dot-id>`. Separate workspaces
 may edit overlapping files concurrently; overlap alone does not block coding.
 Each leaf gets its focused test, required diff/lint gates, independent
