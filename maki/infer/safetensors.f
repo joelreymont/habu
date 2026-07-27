@@ -730,15 +730,16 @@ public
 \ The span is advisory - see the pointer-lifetime /
 \ region-type note in this file's header for the capability that will make it
 \ enforced; it is claimed no more strongly here than for WITH-TENSOR.
+\ Every mapping was minted from a successfully parsed positive-length image, so
+\ the body always runs and the returned length needs no optional arm.
 \ typed-local-lint: allow-bare-local - `body` carries the quotation effect
 \ [ SAFET:mapping ptr u8 n -- SAFET:mapping ], which a local annotation cannot express.
-: WITH-MAPPING ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping option<n> )
+: WITH-MAPPING ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping n )
    {: body :}
    MAPPING>REC {: mr:ptr :}
    mr MR-LEN-OFF + @ {: len:n :}
-   len 0 <= if OPTION:NONE exit then
    mr MR-BASE-IDX ptr-field @ len body execute
-   len OPTION:SOME ;
+   len ;
 
 \ Ends a mapping's life and reports the outcome as a value instead of a throw.
 \ SAFET-MAP:UNMAP stays throw-based like every other syscall wrapper in that

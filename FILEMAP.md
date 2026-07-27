@@ -1499,8 +1499,9 @@ points stay listed.
   the separate mapping record before publication. `DETACH-MAPPING` is therefore
   total: its `map-take` result is `moved(mapping)` on the first call and `empty`
   thereafter, without allocating or fabricating an owner; `CLOSE`/`RELEASE`
-  frees a reservation that was never moved. The scoped span is advisory rather
-  than enforced — a
+  frees a reservation that was never moved. Every moved mapping has a validated
+  positive length, so `WITH-MAPPING` always runs its body and returns that length
+  directly. The scoped span is advisory rather than enforced — a
   body that deliberately stashes it can still read it after `RELEASE` — until
   the pointer-lifetime / region-type checker capability lands; see the note in
   the file header. The JSON header is streamed with the pull reader `lib/json-read.f` (the

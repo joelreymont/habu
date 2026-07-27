@@ -148,7 +148,6 @@ require lib/errors.f                     \ E-MEM-* via lib/memory.f load order
 require lib/string.f                     \ BYTE+
 require lib/cad-num-arithmetic.f         \ byte-off/byte-len roles + ADVANCE-BYTE-OFF
 require lib/memory.f                     \ MEM: typed allocation and release
-require lib/adt/option.f                 \ option<n> from SAFET:WITH-MAPPING
 require lib/adt/result.f                 \ result<n,n> cleanup outcome
 require maki/infer/safetensors.f         \ SAFET:mapping, WITH-MAPPING, UNMAP-MAPPING
 
@@ -360,19 +359,13 @@ PTR-VARIABLE RB-PEND
    WS-OFF @ WS-LEN @ +  rec RB-LEN-OFF + @  > if exit then
    rec RB-BASE-IDX ptr-field @  WS-OFF @ BYTE+  WS-LEN @  RUN-PARKED ;
 
-: OPT-DROP ( option<n> -- )
-   MATCH option
-      none OF ENDOF
-      some OF drop ENDOF
-   ;MATCH ;
-
 : TAKE-RESULT ( -- n )
    WS-RAN @ 0= if E-EXTENT throw then
    WS-RES @ ;
 
 : MAPPED-SLOT ( n SAFET:mapping WSTORE:table -- WSTORE:store )
    rot ROW-ARGS
-   swap [: MAP-BODY ;] SAFET:WITH-MAPPING OPT-DROP
+   swap [: MAP-BODY ;] SAFET:WITH-MAPPING drop
    swap WSTORE-STORE:MAPPED ;
 
 : ALLOC-SLOT ( n WSTORE:buffer WSTORE:table -- WSTORE:store )

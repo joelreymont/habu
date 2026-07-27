@@ -554,7 +554,7 @@ variable BIG-LEN
    {: off:n :}
    off MAP-OFF !  1 MAP-TAKE !
    $FF MAP-BUF c!                               \ poison: only the body may overwrite it
-   [: SEE-MAPPING ;] SAFET:WITH-MAPPING LEN-A @ OPT=
+   [: SEE-MAPPING ;] SAFET:WITH-MAPPING LEN-A @ T=
    MAP-BUF c@ ;
 
 : CHECK-MAP-OFFSETS ( SAFET:census -- SAFET:census )
@@ -754,7 +754,8 @@ variable BIG-LEN
    s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:census -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" STT-BAD-UNMAP-KEEPS ( SAFET:mapping -- SAFET:mapping result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-DOUBLE-UNMAP ( SAFET:mapping -- result<n,n> result<n,n> ) SAFET:UNMAP-MAPPING SAFET:UNMAP-MAPPING" REJECTED
-   s" STT-BAD-UNMAP-THEN-READ ( SAFET:mapping -- result<n,n> SAFET:mapping option<n> ) SAFET:UNMAP-MAPPING SAFET:WITH-MAPPING" REJECTED
+   s" STT-BAD-UNMAP-THEN-READ ( SAFET:mapping -- result<n,n> SAFET:mapping n ) SAFET:UNMAP-MAPPING SAFET:WITH-MAPPING" REJECTED
+   s" STT-OK-MAPPING-WITH ( SAFET:mapping [ SAFET:mapping ptr u8 n -- SAFET:mapping ] -- SAFET:mapping n ) SAFET:WITH-MAPPING" ACCEPTED
    s" the three owner tokens are not interchangeable" T-LABEL
    s" STT-BAD-MAPPING-RELEASE ( SAFET:mapping -- ) SAFET:RELEASE" REJECTED
    s" STT-BAD-MAPPING-CLOSE ( SAFET:mapping -- ) SAFET:CLOSE" REJECTED

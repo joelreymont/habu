@@ -218,7 +218,7 @@ variable TX-MOFF
    id SAFET:MAP-OFFSET? TX-OPT-VAL TX-MOFF !
    SAFET:DETACH-MAPPING CHECK-TAKE-MOVED        \ ( census mapping )
    swap SAFET:RELEASE                           \ ( mapping )
-   [: TX-MAP-BODY ;] SAFET:WITH-MAPPING TX-OPT-VAL drop
+   [: TX-MAP-BODY ;] SAFET:WITH-MAPPING drop
    SAFET:UNMAP-MAPPING RES-CODE 0 T=
    TX-PBA TX-PB-LEN TX-PBB TX-PB-LEN TX-BYTES= ;
 

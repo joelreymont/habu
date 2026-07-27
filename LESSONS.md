@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-25
+Last updated: 2026-07-27
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -2558,3 +2558,7 @@ fits.
   and made repeated transfer fabricate an empty owner. Allocate and initialize
   the record before publication, move it once, and return a typed `empty` arm
   thereafter; expected absence is a value, not an owner or an error.
+- **A validated linear owner should not retain an impossible absence arm.**
+  Once `SAFET:mapping` can only be minted from a parsed positive-length image,
+  `WITH-MAPPING` must always run its body and return the length directly; an
+  obsolete option weakens every caller and hides the mint invariant.
