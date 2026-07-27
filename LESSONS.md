@@ -1859,6 +1859,11 @@ fits.
   demand; a rescue engine copy lives outside the repo; and any workspace whose
   directory disappears gets its registration forgotten promptly so stale wc
   pointers cannot confuse later operations.
+- **Validate cleanup targets before destructive calls.** If setup fails, stop
+  cleanup. Move, trash, or delete only an explicit, nonempty, validated,
+  resolved, bounded path. Unsupported `jj diff --check` skipped temporary-path
+  assignment, so `gio trash ""` moved the repository root; Trash restoration
+  preserved every Jujutsu workspace.
 - Clobber-lint was structurally blind to wrapped emitter calls: a `PKG:CALL`
   macro (PROT-GUARD:CALL) is neither a bare mnemonic nor a `LABEL@ BL,` triple,
   so its emitted branch-with-link was never counted, its register-move plus
