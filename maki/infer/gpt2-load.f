@@ -133,6 +133,11 @@ STRUCTURE gpt2-model 0
 
 private
 
+using WSTORE
+using GPT2LOAD-GPT2--MODEL
+using WSTORE-STORE
+using SAFET
+
 \ ---- audited representation boundary -----------------------------------------
 \ A prepared-load is represented by its block. These package-private conversions
 \ create, view, or consume that representation. The checker cannot yet prove
@@ -228,8 +233,8 @@ $7FFFFFFFFFFFFFFF constant MAX-CELL
 3 constant STAGED-ROW-CELLS
 
 create NAME-BUFFER NAME-CAPACITY allot                   \ private name render landing pad
-create STAGED-ROWS SAFET:MAX-TENSORS STAGED-ROW-CELLS * cells allot
-create CLAIMED-TENSORS SAFET:MAX-TENSORS cells allot       \ tensor IDs already claimed by a role
+create STAGED-ROWS MAX-TENSORS STAGED-ROW-CELLS * cells allot
+create CLAIMED-TENSORS MAX-TENSORS cells allot       \ tensor IDs already claimed by a role
 
 \ These three are SCRATCH for one PREPARE call and nothing else reads them
 \ afterwards: the next call overwrites them, whether it succeeds or rejects. What
@@ -244,7 +249,7 @@ PTR-VARIABLE PENDING-BLOCK                           \ the prepared-load block t
 
 variable LIVE-PREPARED-COUNT                                 \ undisposed prepared-load blocks (accounting only)
 
-: MAX-ROW-COUNT ( -- n )  SAFET:MAX-TENSORS ;
+: MAX-ROW-COUNT ( -- n )  MAX-TENSORS ;
 
 \ ---- row staging accessors ----------------------------------------------------
 : STAGE-ROW ( n n n n -- ) {: row:n off:n len:n id:n :}
@@ -307,48 +312,67 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
       misaligned OF E-BYTE-SIZE throw ENDOF
    ;MATCH ;
 
-: CHECKED-OFFSET ( n -- CAD-NUM:byte-off )   CAD-NUM:BYTE-OFF REQUIRE-OFFSET ;
-: CHECKED-LENGTH ( n -- CAD-NUM:byte-len )   CAD-NUM:BYTE-LEN REQUIRE-LENGTH ;
+using CAD-NUM
+
+: CHECKED-OFFSET ( n -- CAD-NUM:byte-off )   BYTE-OFF REQUIRE-OFFSET ;
+: CHECKED-LENGTH ( n -- CAD-NUM:byte-len )   BYTE-LEN REQUIRE-LENGTH ;
+
+;using
 
 \ ---- slot ordinal -> role (declaration order; the tables pin the role counts) --
+using GPT2TENSOR-GLOBAL--ROLE
+
 : GLOBAL-ROLE ( n -- GPT2TENSOR:global-role )
    case
-      0 of GPT2TENSOR-GLOBAL--ROLE:WTE   endof
-      1 of GPT2TENSOR-GLOBAL--ROLE:WPE   endof
-      2 of GPT2TENSOR-GLOBAL--ROLE:LNF-G endof
-      3 of GPT2TENSOR-GLOBAL--ROLE:LNF-B endof
+      0 of WTE   endof
+      1 of WPE   endof
+      2 of LNF-G endof
+      3 of LNF-B endof
       E-TENSOR-SLOT throw
    endcase ;
+
+;using
+
+using GPT2TENSOR-LAYER--ROLE
 
 : LAYER-ROLE ( n -- GPT2TENSOR:layer-role )
    case
-      0  of GPT2TENSOR-LAYER--ROLE:LN1-G   endof
-      1  of GPT2TENSOR-LAYER--ROLE:LN1-B   endof
-      2  of GPT2TENSOR-LAYER--ROLE:MASK    endof
-      3  of GPT2TENSOR-LAYER--ROLE:QKV-W   endof
-      4  of GPT2TENSOR-LAYER--ROLE:QKV-B   endof
-      5  of GPT2TENSOR-LAYER--ROLE:APROJ-W endof
-      6  of GPT2TENSOR-LAYER--ROLE:APROJ-B endof
-      7  of GPT2TENSOR-LAYER--ROLE:LN2-G   endof
-      8  of GPT2TENSOR-LAYER--ROLE:LN2-B   endof
-      9  of GPT2TENSOR-LAYER--ROLE:FC-W    endof
-      10 of GPT2TENSOR-LAYER--ROLE:FC-B    endof
-      11 of GPT2TENSOR-LAYER--ROLE:MPROJ-W endof
-      12 of GPT2TENSOR-LAYER--ROLE:MPROJ-B endof
+      0  of LN1-G   endof
+      1  of LN1-B   endof
+      2  of MASK    endof
+      3  of QKV-W   endof
+      4  of QKV-B   endof
+      5  of APROJ-W endof
+      6  of APROJ-B endof
+      7  of LN2-G   endof
+      8  of LN2-B   endof
+      9  of FC-W    endof
+      10 of FC-B    endof
+      11 of MPROJ-W endof
+      12 of MPROJ-B endof
       E-TENSOR-SLOT throw
    endcase ;
+
+;using
 
 \ The tensor-id this file expects at a slot. LAYER-ID is the sole layer-id constructor, so
 \ the identity a layer tensor-id carries is this configuration's own by construction - which is
 \ what makes the SLOT round trip below a real assertion about the FILE rather
 \ than about the identity.
+using GPT2TENSOR-TENSOR--ID
+
 : TENSOR-ID-FOR-SLOT ( MDLCFG:mcfg n -- MDLCFG:mcfg GPT2TENSOR:tensor-id ) {: slot:n :}
    slot GLOBAL-TENSOR-COUNT < if
-      slot GLOBAL-ROLE GPT2TENSOR-TENSOR--ID:GLOBAL exit
+      slot GLOBAL-ROLE GLOBAL exit
    then
    slot GLOBAL-TENSOR-COUNT - {: rel:n :}
    rel LAYER-ROLE-COUNT / GPT2TENSOR:LAYER-ID
-   rel LAYER-ROLE-COUNT mod LAYER-ROLE GPT2TENSOR-TENSOR--ID:LAYER ;
+   rel LAYER-ROLE-COUNT mod LAYER-ROLE LAYER ;
+
+;using
+
+using MDLCFG
+using GPT2TENSOR
 
 \ ---- per-row validation -------------------------------------------------------
 \ The slot the role claims must be in range for the parsed tensor index AND be the slot this walk
@@ -375,14 +399,14 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
 \ public copy-out.
 : FIND-TENSOR ( SAFET:census GPT2TENSOR:tensor-id -- SAFET:census n )
    NAME-BUFFER NAME-CAPACITY GPT2TENSOR:COPY-NAME? E-NAME-TOO-LONG REQUIRE-VALUE {: name-len:n :}
-   NAME-BUFFER name-len SAFET:FIND E-TENSOR-NAME REQUIRE-VALUE ;
+   NAME-BUFFER name-len FIND E-TENSOR-NAME REQUIRE-VALUE ;
 
 : CHECK-ELEMENT-TYPE ( SAFET:census n -- SAFET:census ) {: id:n :}
-   id SAFET:DTYPE? E-ELEMENT-TYPE REQUIRE-VALUE
-   SAFET:DT-F32 <> if E-ELEMENT-TYPE throw then ;
+   id DTYPE? E-ELEMENT-TYPE REQUIRE-VALUE
+   DT-F32 <> if E-ELEMENT-TYPE throw then ;
 
 : CHECK-DIMENSION ( SAFET:census n n n -- SAFET:census ) {: id:n axis:n want:n :}
-   id axis SAFET:DIM? E-TENSOR-SHAPE REQUIRE-VALUE
+   id axis DIM? E-TENSOR-SHAPE REQUIRE-VALUE
    want <> if E-TENSOR-SHAPE throw then ;
 
 \ Rank first, then every dim the rank declares. The trailing 1s SHAPE pads
@@ -390,7 +414,7 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
 \ makes that safe.
 : CHECK-TENSOR-SHAPE ( SAFET:census n n n n n n -- SAFET:census )
    {: id:n rank:n d0:n d1:n d2:n d3:n :}
-   id SAFET:RANK? E-TENSOR-RANK REQUIRE-VALUE
+   id RANK? E-TENSOR-RANK REQUIRE-VALUE
    rank <> if E-TENSOR-RANK throw then
    id 0 d0 CHECK-DIMENSION
    rank 1 > if id 1 d1 CHECK-DIMENSION then
@@ -398,8 +422,8 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
    rank 3 > if id 3 d3 CHECK-DIMENSION then ;
 
 : READ-TENSOR-SPAN ( SAFET:census n -- SAFET:census n n ) {: id:n :}
-   id SAFET:MAP-OFFSET? E-MAPPING-OFFSET REQUIRE-VALUE {: off:n :}
-   id SAFET:NBYTES? E-BYTE-SIZE REQUIRE-VALUE {: len:n :}
+   id MAP-OFFSET? E-MAPPING-OFFSET REQUIRE-VALUE {: off:n :}
+   id NBYTES? E-BYTE-SIZE REQUIRE-VALUE {: len:n :}
    off len ;
 
 \ Two independent overflow facts, both required before a load can be arithmetic
@@ -429,7 +453,7 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
 : CHECK-AND-STAGE-ROW ( SAFET:census MDLCFG:mcfg n n -- SAFET:census MDLCFG:mcfg )
    {: slot:n count:n :}
    slot count CHECK-SLOT
-   slot TENSOR-ID-FOR-SLOT GPT2TENSOR:SHAPE
+   slot TENSOR-ID-FOR-SLOT SHAPE
    {: rank:n d0:n d1:n d2:n d3:n :}
    slot TENSOR-ID-FOR-SLOT
    swap >r                                      \ ( tensor-index tensor-id ), configuration saved
@@ -456,9 +480,13 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
 \ the table have been deconstructed and no catch can restore them. Refusing it here
 \ costs a caller nothing: the parsed tensor index comes back exactly as it arrived, still answering
 \ its metadata and still disposable through SAFET:RELEASE.
+using MODEL-FAMILY
+
 : CHECK-MODEL-FAMILY ( MDLCFG:mcfg -- MDLCFG:mcfg )
-   MDLCFG:FAMILY@
-   MODEL-FAMILY:GPT2 MODEL-FAMILY:EQ 0= if E-MODEL-FAMILY throw then ;
+   FAMILY@
+   GPT2 EQ 0= if E-MODEL-FAMILY throw then ;
+
+;using
 
 : VALIDATE-CHECKPOINT ( SAFET:census MDLCFG:mcfg -- SAFET:census MDLCFG:mcfg )
    CHECK-MODEL-FAMILY
@@ -468,21 +496,26 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
    count STAGED-ROW-COUNT-CELL !
    count CLEAR-CLAIMS
    >r                                            \ save the configuration while the parsed tensor index answers
-   SAFET:MAP-LEN {: mapping-length:n :}
+   MAP-LEN {: mapping-length:n :}
    SAFET:COUNT {: actual-count:n :}
    r>
    mapping-length 0 <= if E-NO-CHECKPOINT-BYTES throw then
    actual-count count <> if E-TENSOR-COUNT throw then
    count 0 ?do  i count CHECK-AND-STAGE-ROW  loop ;
 
+;using
+
+using MDLCFG-CFGKEY
+using MEM
+
 \ ---- pass two: build the sealed table from validated rows ---------------------
 \ Infallible by construction except for memory: see the header's two-pass note.
 : BUILD-MAPPED-TABLE ( n -- WSTORE:table ) {: count:n :}
-   count WSTORE:TABLE-NEW
+   count TABLE-NEW
    count 0 ?do
-      i  i STAGED-ROW-OFFSET STAGED-ROW-CELL CHECKED-OFFSET  i STAGED-ROW-LENGTH STAGED-ROW-CELL CHECKED-LENGTH  WSTORE:SLOT!
+      i  i STAGED-ROW-OFFSET STAGED-ROW-CELL CHECKED-OFFSET  i STAGED-ROW-LENGTH STAGED-ROW-CELL CHECKED-LENGTH  SLOT!
    loop
-   WSTORE:SEAL ;
+   SEAL ;
 
 \ ---- the prepared-load block ------------------------------------------------------------
 \ The block is sized by the count it will carry, and the range is rechecked HERE,
@@ -499,7 +532,7 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
    count LOAD-ROW-CELLS * LOAD-ROWS-CELL + ;
 
 : PREPARED-BLOCK-SIZE ( n -- CAD-NUM:alloc-byte-len )
-   PREPARED-BLOCK-CELLS cells MEM:BYTES-ALLOC-LEN ;
+   PREPARED-BLOCK-CELLS cells BYTES-ALLOC-LEN ;
 
 \ ---- carried row cells --------------------------------------------------------
 \ One address helper, so the row stride is written once. Every carried-row read and
@@ -524,7 +557,7 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
 : RELEASE-PREPARED-BLOCK ( ptr n -- )
    {: blk:ptr :}
    blk LOAD-ROW-COUNT-CELL cells + @ {: count:n :}
-   blk BLOCK>BYTE-POINTER count PREPARED-BLOCK-SIZE MEM:RELEASE-BYTES
+   blk BLOCK>BYTE-POINTER count PREPARED-BLOCK-SIZE RELEASE-BYTES
    -1 LIVE-PREPARED-COUNT +! ;
 
 \ The parsed tensor index and table stop being checker-tracked values here.
@@ -642,9 +675,9 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
 \ (only single-cell nominal families can be), so both complete keys stay on the
 \ stack.
 : OTHER-CONFIG? ( GPT2LOAD:prepared-load MDLCFG:mcfg -- GPT2LOAD:prepared-load MDLCFG:mcfg bool )
-   MDLCFG:CFGKEY@ >r                            \ save the consuming key
+   CFGKEY@ >r                            \ save the consuming key
    swap PREPARED-CONFIG-KEY                     \ ( configuration prepared-load configuration-key ), the captured key
-   r> MDLCFG:CFGKEY= 0=
+   r> CFGKEY= 0=
    >r swap r> ;                                 \ ( prepared-load configuration bool )
 
 \ ---- reading a loaded model -----------------------------------------------------
@@ -682,14 +715,14 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
 \ that cell rather than recomputing from a counter (see COPY-STAGED-ROWS).
 : ALLOCATE-PENDING-BLOCK ( -- )
    STAGED-ROW-COUNT-CELL @ {: count:n :}
-   count PREPARED-BLOCK-SIZE MEM:ALLOC-BYTES drop PENDING-BLOCK !
+   count PREPARED-BLOCK-SIZE ALLOC-BYTES drop PENDING-BLOCK !
    count PENDING-BLOCK @ LOAD-ROW-COUNT-CELL cells + ! ;
 
 \ Gives the sealed table back when the block allocation failed. A failure to
 \ release takes precedence in the reported code - it is the more proximate fault
 \ and swallowing it would hide a real leak - otherwise the original cause stands.
 : RELEASE-TABLE-AFTER-ERROR ( WSTORE:table n -- n ) {: cause:n :}
-   WSTORE:TABLE-DISPOSE RESULT-CODE {: release-code:n :}
+   TABLE-DISPOSE RESULT-CODE {: release-code:n :}
    release-code 0 <> if release-code else cause then ;
 
 \ Combines the results of two releases performed in sequence into the one code a caller
@@ -726,17 +759,17 @@ variable COPY-TABLE                                 \ the copy-offset table, as 
 \ the WSTORE:BLK-FREE discipline: the size of a thing is computed where the thing is
 \ described, once, and every user asks for it.
 : COPY-BUFFER-SIZE ( -- CAD-NUM:alloc-byte-len )
-   COPY-BLOCK @ LOAD-TOTAL-BYTES-CELL cells + @ MEM:BYTES-ALLOC-LEN ;
+   COPY-BLOCK @ LOAD-TOTAL-BYTES-CELL cells + @ BYTES-ALLOC-LEN ;
 
 : ALLOCATE-COPY-BUFFER ( -- )
-   COPY-BUFFER-SIZE MEM:ALLOC-BYTES drop RAW-COPY-BUFFER ! ;
+   COPY-BUFFER-SIZE ALLOC-BYTES drop RAW-COPY-BUFFER ! ;
 
 \ created before the table and the copies so that a failure in either of those can give
 \ the copy buffer back through one exit: a buffer owns the bytes, and WSTORE:BUFFER-DISPOSE
 \ releases the record and the bytes together. Without that exit this path would have had
 \ to release the raw copy buffer by hand at every later cleanup branch, duplicating WSTORE's own free.
 : OWN-COPY-BUFFER ( -- )
-   RAW-COPY-BUFFER @ COPY-BUFFER-SIZE WSTORE:BUFFER BUFFER>CELL OWNED-COPY-BUFFER ! ;
+   RAW-COPY-BUFFER @ COPY-BUFFER-SIZE BUFFER BUFFER>CELL OWNED-COPY-BUFFER ! ;
 
 \ The copy-offset table: the same slots as the prepared-load's table, but each row placed where
 \ the copy buffer put it rather than where the file did. Population cannot reject - the
@@ -756,17 +789,17 @@ variable COPY-TABLE                                 \ the copy-offset table, as 
    COPY-BLOCK @ {: blk:ptr :}
    blk LOAD-ROW-COUNT-CELL cells + @ {: count:n :}
    count 0 ?do
-      i  blk i COPY-OFFSET CHECKED-OFFSET  blk i LOAD-ROW-LENGTH PREPARED-ROW-CELL @ CHECKED-LENGTH  WSTORE:SLOT!
+      i  blk i COPY-OFFSET CHECKED-OFFSET  blk i LOAD-ROW-LENGTH PREPARED-ROW-CELL @ CHECKED-LENGTH  SLOT!
    loop ;
 
 : BUILD-COPY-TABLE ( -- )
-   COPY-BLOCK @ LOAD-ROW-COUNT-CELL cells + @ WSTORE:TABLE-NEW
+   COPY-BLOCK @ LOAD-ROW-COUNT-CELL cells + @ TABLE-NEW
    [: FILL-COPY-TABLE ;] catch {: code:n :}
    code 0 <> if
-      WSTORE:BUILDER-DISPOSE RESULT-CODE {: builder-code:n :}
+      BUILDER-DISPOSE RESULT-CODE {: builder-code:n :}
       code builder-code MERGE-RELEASE-CODES throw
    then
-   WSTORE:SEAL TABLE>CELL COPY-TABLE ! ;
+   SEAL TABLE>CELL COPY-TABLE ! ;
 
 \ Copies every validated span out of the parsed tensor index and into its copy-buffer slot. This is the
 \ step the carried tensor IDs exist for: SAFET:COPY-DATA? names a tensor by ID, and it
@@ -781,7 +814,7 @@ variable COPY-TABLE                                 \ the copy-offset table, as 
    count 0 ?do
       blk i LOAD-ROW-LENGTH PREPARED-ROW-CELL @ {: len:n :}
       blk i LOAD-ROW-ID  PREPARED-ROW-CELL @ {: id:n :}
-      id  RAW-COPY-BUFFER @ blk i COPY-OFFSET BYTE+  len  SAFET:COPY-DATA?
+      id  RAW-COPY-BUFFER @ blk i COPY-OFFSET BYTE+  len  COPY-DATA?
       E-SHORT-COPY REQUIRE-VALUE
       len <> if E-SHORT-COPY throw then
    loop
@@ -794,19 +827,21 @@ variable COPY-TABLE                                 \ the copy-offset table, as 
 \ whether it finishes or fails, so there is one word for it and the failure cleanup branches differ
 \ only in what they release before reaching it.
 : RELEASE-COPY-INPUT ( ptr n n -- n ) {: blk:ptr cause:n :}
-   blk LOAD-TABLE-CELL cells + @ CELL>TABLE WSTORE:TABLE-DISPOSE RESULT-CODE {: table-code:n :}
-   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX SAFET:RELEASE
+   blk LOAD-TABLE-CELL cells + @ CELL>TABLE TABLE-DISPOSE RESULT-CODE {: table-code:n :}
+   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX RELEASE
    blk RELEASE-PREPARED-BLOCK
    cause table-code MERGE-RELEASE-CODES ;
 
 : RELEASE-RAW-COPY-BUFFER ( -- )                          \ raw copy buffer before a buffer owns it
-   RAW-COPY-BUFFER @ COPY-BUFFER-SIZE MEM:RELEASE-BYTES ;
+   RAW-COPY-BUFFER @ COPY-BUFFER-SIZE RELEASE-BYTES ;
 
 : RELEASE-COPY-BUFFER ( -- n )                          \ the buffer that owns the copied bytes
-   OWNED-COPY-BUFFER @ CELL>BUFFER WSTORE:BUFFER-DISPOSE RESULT-CODE ;
+   OWNED-COPY-BUFFER @ CELL>BUFFER BUFFER-DISPOSE RESULT-CODE ;
 
 : RELEASE-COPY-TABLE ( -- n )                          \ the copy-offset table
-   COPY-TABLE @ CELL>TABLE WSTORE:TABLE-DISPOSE RESULT-CODE ;
+   COPY-TABLE @ CELL>TABLE TABLE-DISPOSE RESULT-CODE ;
+
+;using
 
 public
 
@@ -815,25 +850,31 @@ public
 \ in-progress load comes back as one linear prepared-load, or it cannot and the parsed tensor index comes
 \ back untouched beside the code that rejected it. Nothing in between: no partial
 \ table, no moved mapping, no allocation left over on any rejection path.
+using GPT2LOAD-PREPARE--RESULT
+
 : PREPARE ( SAFET:census MDLCFG:mcfg -- prepare-result )
    [: VALIDATE-CHECKPOINT ;] catch {: code:n :}
    code 0 <> if
       drop
-      code GPT2LOAD-PREPARE--RESULT:REJECTED exit
+      code REJECTED exit
    then
-   MDLCFG:NLAYER@ {: layer-count:n :}
-   MDLCFG:CFGKEY@ MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
+   NLAYER@ {: layer-count:n :}
+   CFGKEY@ MDLCFG-CFGKEY:UNMAKE {: k0:n k1:n k2:n k3:n :}
    drop
    [: BUILD-PENDING-TABLE ;] catch {: table-code:n :}
-   table-code 0 <> if table-code GPT2LOAD-PREPARE--RESULT:REJECTED exit then
+   table-code 0 <> if table-code REJECTED exit then
    [: ALLOCATE-PENDING-BLOCK ;] catch {: block-code:n :}
    block-code 0 <> if
       PENDING-TABLE @ CELL>TABLE block-code RELEASE-TABLE-AFTER-ERROR
-      GPT2LOAD-PREPARE--RESULT:REJECTED exit
+      REJECTED exit
    then
    PENDING-TABLE @ CELL>TABLE
    PENDING-BLOCK @ k0 k1 k2 k3 layer-count BUILD-PREPARED-LOAD
-   GPT2LOAD-PREPARE--RESULT:PREPARED ;
+   PREPARED ;
+
+;using
+;using
+;using
 
 \ ---- discard a prepared load -------------------------------------------------
 \ This requests release of the table, parsed tensor index, and block in that
@@ -841,8 +882,8 @@ public
 \ public effect; habu-make-owned-release-79de2b5c owns the total-release fix.
 : DISCARD-PREPARED ( GPT2LOAD:prepared-load -- )
    TAKE-PREPARED-BLOCK {: blk:ptr :}
-   blk LOAD-TABLE-CELL cells + @ CELL>TABLE WSTORE:TABLE-DISPOSE RESULT-CODE {: table-code:n :}
-   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX SAFET:RELEASE
+   blk LOAD-TABLE-CELL cells + @ CELL>TABLE TABLE-DISPOSE RESULT-CODE {: table-code:n :}
+   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX RELEASE
    blk RELEASE-PREPARED-BLOCK
    table-code 0 <> if table-code throw then ;
 
@@ -869,9 +910,9 @@ public
 : RETURN-TENSOR-INDEX ( GPT2LOAD:prepared-load -- SAFET:census )
    TAKE-PREPARED-BLOCK {: blk:ptr :}
    blk LOAD-TENSOR-INDEX-CELL cells + @ {: index-cell:n :}
-   blk LOAD-TABLE-CELL cells + @ CELL>TABLE WSTORE:TABLE-DISPOSE RESULT-CODE {: table-code:n :}
+   blk LOAD-TABLE-CELL cells + @ CELL>TABLE TABLE-DISPOSE RESULT-CODE {: table-code:n :}
    blk RELEASE-PREPARED-BLOCK
-   table-code 0 <> if index-cell CELL>TENSOR-INDEX SAFET:RELEASE table-code throw then
+   table-code 0 <> if index-cell CELL>TENSOR-INDEX RELEASE table-code throw then
    index-cell CELL>TENSOR-INDEX ;
 
 \ ---- check the load: compare, then move -------------------------------------------
@@ -890,27 +931,31 @@ public
 \ the public path: PREPARE rejects a parsed tensor index without checkpoint bytes
 \ and exposes no parsed-tensor-index accessor afterwards. CHECK-MAPPED still
 \ handles it before creating mapped-ready state.
+using GPT2LOAD-MAPPED--CHECK--RESULT
+
 : CHECK-MAPPED ( GPT2LOAD:prepared-load MDLCFG:mcfg -- mapped-check-result )
    OTHER-CONFIG? if
       drop
-      E-CONFIG-MISMATCH GPT2LOAD-MAPPED--CHECK--RESULT:REJECTED exit
+      E-CONFIG-MISMATCH REJECTED exit
    then
    drop                                         \ the configuration has answered
    TAKE-PREPARED-BLOCK {: blk:ptr :}
-   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX SAFET:DETACH-MAPPING
+   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX DETACH-MAPPING
    MATCH SAFET:map-take
       moved OF
-         swap SAFET:RELEASE
+         swap RELEASE
          MAPPING>CELL blk LOAD-MAPPING-CELL cells + !
          blk BLOCK>BYTE-POINTER BLOCK>MAPPED-READY
-         GPT2LOAD-MAPPED--CHECK--RESULT:READY
+         READY
       ENDOF
       empty OF
          TENSOR-INDEX>CELL drop
          blk BLOCK>BYTE-POINTER BLOCK>PREPARED
-         E-NO-CHECKPOINT-BYTES GPT2LOAD-MAPPED--CHECK--RESULT:REJECTED
+         E-NO-CHECKPOINT-BYTES REJECTED
       ENDOF
    ;MATCH ;
+
+;using
 
 \ ---- release mapped-ready state -----------------------------------------------
 \ The exit for mapped-ready state a holder decided not to load. Its parsed tensor index is already
@@ -924,8 +969,8 @@ public
 \ free that also failed. MERGE-RELEASE-CODES states which one wins and why.
 : DISCARD-MAPPED ( GPT2LOAD:mapped-ready -- )
    TAKE-MAPPED-BLOCK {: blk:ptr :}
-   blk LOAD-TABLE-CELL cells + @ CELL>TABLE WSTORE:TABLE-DISPOSE RESULT-CODE {: table-code:n :}
-   blk LOAD-MAPPING-CELL cells + @ CELL>MAPPING SAFET:UNMAP-MAPPING RESULT-CODE {: mapping-code:n :}
+   blk LOAD-TABLE-CELL cells + @ CELL>TABLE TABLE-DISPOSE RESULT-CODE {: table-code:n :}
+   blk LOAD-MAPPING-CELL cells + @ CELL>MAPPING UNMAP-MAPPING RESULT-CODE {: mapping-code:n :}
    blk RELEASE-PREPARED-BLOCK
    table-code mapping-code MERGE-RELEASE-CODES {: code:n :}
    code 0 <> if code throw then ;
@@ -949,9 +994,9 @@ public
    blk LOAD-MAPPING-CELL cells + @ {: mapping-cell:n :}
    blk LOAD-TABLE-CELL cells + @ {: table-cell:n :}
    blk RELEASE-PREPARED-BLOCK
-   mapping-cell CELL>MAPPING  table-cell CELL>TABLE  WSTORE-STORE:MAPPED  WSTORE:HOLD
+   mapping-cell CELL>MAPPING  table-cell CELL>TABLE  MAPPED  HOLD
    layer-count  r>  MAKE-MODEL-PROOF
-   GPT2LOAD-GPT2--MODEL:MAKE ;
+   MAKE ;
 
 \ ---- check copied storage: compare, and move nothing --------------------------
 \ The same question CHECK-MAPPED asks first, and here it is the ONLY question: was
@@ -963,24 +1008,30 @@ public
 \ The identity compare being FIRST is still the contract even with nothing to undo: the
 \ load downstream takes real memory, and a prepared-load for a different configuration must be rejected before any
 \ of that starts rather than after.
+using GPT2LOAD-COPY--CHECK--RESULT
+
 : CHECK-COPY ( GPT2LOAD:prepared-load MDLCFG:mcfg -- copy-check-result )
    OTHER-CONFIG? if
       drop
-      E-CONFIG-MISMATCH GPT2LOAD-COPY--CHECK--RESULT:REJECTED exit
+      E-CONFIG-MISMATCH REJECTED exit
    then
    drop                                         \ the configuration has answered
    TAKE-PREPARED-BLOCK BLOCK>BYTE-POINTER BLOCK>COPY-READY
-   GPT2LOAD-COPY--CHECK--RESULT:READY ;
+   READY ;
+
+;using
 
 \ ---- release copy-ready state -------------------------------------------------
 \ The exit for copy-ready state a holder decided not to load. CHECK-COPY moved
 \ nothing, so this state owns exactly what the prepared load owned.
 : DISCARD-COPY ( GPT2LOAD:copy-ready -- )
    TAKE-COPY-BLOCK {: blk:ptr :}
-   blk LOAD-TABLE-CELL cells + @ CELL>TABLE WSTORE:TABLE-DISPOSE RESULT-CODE {: table-code:n :}
-   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX SAFET:RELEASE
+   blk LOAD-TABLE-CELL cells + @ CELL>TABLE TABLE-DISPOSE RESULT-CODE {: table-code:n :}
+   blk LOAD-TENSOR-INDEX-CELL cells + @ CELL>TENSOR-INDEX RELEASE
    blk RELEASE-PREPARED-BLOCK
    table-code 0 <> if table-code throw then ;
+
+;using
 
 \ ---- the copied load -------------------------------------------------------------
 \ Copies the whole model into one packed buffer and returns a copied resident
@@ -1021,18 +1072,23 @@ public
       r> drop
       input-code RELEASE-COPY-TABLE MERGE-RELEASE-CODES RELEASE-COPY-BUFFER MERGE-RELEASE-CODES throw
    then
-   OWNED-COPY-BUFFER @ CELL>BUFFER  COPY-TABLE @ CELL>TABLE  WSTORE-STORE:ALLOCATED  WSTORE:HOLD
+   OWNED-COPY-BUFFER @ CELL>BUFFER  COPY-TABLE @ CELL>TABLE  ALLOCATED  HOLD
    layer-count  r>  MAKE-MODEL-PROOF
-   GPT2LOAD-GPT2--MODEL:MAKE ;
+   MAKE ;
+
+;using
 
 \ ---- the model's exit --------------------------------------------------------------
 \ The single way a loaded model's memory goes back: unwrap in-package and hand the
 \ residency to its owner. ok carries what WSTORE gave back - the checkpoint mapping's
 \ own byte length for a mapped model.
 : RELEASE-MODEL ( gpt2-model -- result<n,n> )
-   GPT2LOAD-GPT2--MODEL:UNMAKE {: proof:model-proof :}
+   UNMAKE {: proof:model-proof :}
    drop drop                                    \ the captured key, then the layer count
-   WSTORE:RESIDENT-DISPOSE ;
+   RESIDENT-DISPOSE ;
+
+;using
+;using
 
 \ ---- leak accounting (decides nothing; the WSTORE:LIVE pattern) -----------------
 \ Undisposed prepared-load blocks. The parsed tensor index and the table inside a prepared-load are raw cells the
