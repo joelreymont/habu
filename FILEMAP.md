@@ -1754,8 +1754,11 @@ points stay listed.
   `gpt2-model` is a linear `STRUCTURE` containing its weight storage, layer count,
   configuration key, and a private construction proof. `RELEASE-MODEL` is its
   public exit. `LIVE-PREPARED-LOADS` exposes leak accounting only. All raw
-  block/owner conversions are package-private, inventoried in `TRUSTED.md`, and
-  confined by `tools/refine-lint-core.f`. Owns error codes -5660..-5673.
+  block/owner conversions are package-private and inventoried in `TRUSTED.md`.
+  `tools/refine-lint-core.f` confines the inverse owner-restoring refinements
+  and model-proof maker to this file. Package privacy and outside-package
+  resolution tests protect the remaining forward block and pointer retypes.
+  Owns error codes -5660..-5673.
 - `maki/infer/gpt2-checkpoint-fixture.f` — shared GPT2LOAD test support. It
   generates a real small safetensors checkpoint from `GPT2TENSOR` names and
   shapes, loads it through the production parser and mapping path, exposes
