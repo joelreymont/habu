@@ -322,6 +322,7 @@ Define sealed nominal single-cell families:
 
 ```text
 ir-module-id
+ir-source-id
 ir-fun-id
 ir-block-id
 ir-op-id
@@ -333,6 +334,9 @@ ir-span-id
 ir-pool-offset
 ir-count
 ```
+
+`ir-module-key` is a separate opaque authority returned only by the module
+allocator; it is not an ordinary public ID or serialized identity.
 
 Raw index conversion is private to the owning package. The conversion authority should be concentrated in one generic indexed-arena implementation rather than repeated as trusted casts in every dialect.
 
@@ -1582,6 +1586,9 @@ formal/
     Tables.v
     Digest.v
     Trace.v
+    Memory.v
+    Separation.v
+    Arena.v
   Habu/
     Source.v
     HIR.v
@@ -1630,6 +1637,34 @@ validate-pass input output witness = true
 ```
 
 The end-to-end theorem composes these refinements.
+
+#### Memory, separation, and arena obligations
+
+`Common/Memory.v` models allocation identity, address space, typed contents,
+byte bounds, alignment, permissions, and lifetime, with executable
+load/store/allocate/free semantics. A pointer is valid only for the named live
+allocation, address space, range, alignment, and access permission.
+
+`Common/Separation.v` defines disjoint heap union, shared-read and unique-write
+permissions, operation footprints, and alias/effect composition. It proves
+locality and a frame theorem: an operation changes only its declared footprint,
+and disjoint framed memory remains unchanged. Compiler alias classes and effect
+summaries are sound only when they imply these footprint facts.
+
+`Common/Arena.v` applies the resource model to compiler contexts, builders,
+arenas, marks, growth, abort, freeze, and release. Mutable ownership is unique;
+growth preserves published identities; abort and release consume owned storage
+exactly once; freeze removes mutation authority and produces shareable
+read-only storage.
+
+Native lowering proves refinement from typed source/IR heap actions through the
+target memory model, including allocation identity, bounds, alignment, lifetime,
+and ABI-visible address behavior. GPU proofs keep global, shared, local, and
+parameter spaces distinct, index ownership by thread or block where required,
+and permit overlapping writes only through a declared atomic or reduction
+semantics. Barrier proofs state the ownership transfer across phases; every
+covered kernel proves disjoint writes or the declared synchronization rule and
+therefore race-freedom.
 
 ### 10.3 Refinement direction
 
@@ -2420,14 +2455,35 @@ These are the first bounded leaves. They deliberately stop before any source is 
 
 #### IR-0.1 — ID families
 
-Add nominal IDs and private raw conversion in one package.
+Add nominal IDs and private raw conversion in one package, `IR-ID`. The package
+declares an opaque `ir-module-key`, a public `ir-module-id`, nine packed
+referential ID families, and the scalar `ir-count`/`ir-pool-offset` roles. Its
+private window owns the exact 26 representation `CAST:` words; no `IR-RAW`
+package exists. Both `IR-ID` wordlists are protected after definition.
+
+`NEW-MODULE` is the sole public module-key constructor. It allocates one
+nonzero process-wide serial through an aligned atomic CAS cell and returns the
+key plus its observable module ID. Packing and owner/bound checks require the
+key; projections return only the public module ID or module-local index.
+Require replay does not reset or reuse the allocator.
 
 Acceptance:
 
-- valid refinement/projection round trip;
+- valid key-based pack/projection round trip for all nine referential families;
+- a fresh-process `READY`/`GO` task fixture proves concurrent allocation yields
+  unique nonzero owners; its private test-only erase projection cannot mint an
+  identity or enter a production compiler package, and removing the barrier
+  fails the overlap witness; its activation-failure case catches exact
+  `E-TASK-STATE` and then reuses all four task objects in the same child, so
+  deleting cleanup fails;
+- replay preserves the monotonic allocator;
 - wrong-family use rejected by the checker;
-- out-of-bound refinement throws a named code;
-- no per-dialect trusted cast.
+- negative/equal-to-bound/overflow local indices and foreign owners throw named
+  codes;
+- no public raw converter, key mint, legacy `IR-RAW`, or per-dialect cast;
+- `CAST:` declarations into resolved scalar-cell families, including
+  parametric `NEWTYPE` instances, are accepted only in the destination family's
+  declaring package; projection casts remain unrestricted.
 
 #### IR-0.2 — source registry and spans
 
