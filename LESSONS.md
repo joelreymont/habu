@@ -2569,3 +2569,8 @@ fits.
   reproduced on the current tool, so inspect every status mutation, normalize
   the changed file before publication, and keep the writer-fix dot open until
   a regression proves the bug cannot recur.
+- **A new Maki suite needs two registrations: the master list and one slice.**
+  Add it to `maki/test.f` and to exactly one of `maki/test-core.f`,
+  `maki/test-db.f`, `maki/test-eval.f`, or `maki/test-eval-emit.f`;
+  suite-coverage's “exactly once” rule applies among slices, not across both
+  levels.
