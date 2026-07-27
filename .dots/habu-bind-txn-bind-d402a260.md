@@ -5,12 +5,16 @@ priority: 2
 issue-type: task
 created-at: "2026-07-26T18:09:25.424095+02:00"
 blocks:
-  - habu-return-typed-mem-ac35e3c9
   - habu-add-wstore-scoped-e57e32e2
 ---
 
+The SAFET mapping prerequisite landed 2026-07-27 as e0b22bf2 "Make SAFET
+mapping detach total" and fa96f47f "Make mapping scope total", so
+habu-return-typed-mem-ac35e3c9 is closed and its blocker edge is removed here.
+The scoped weight-store read prerequisite remains.
+
 Redesign 2026-07-27: the candidate and its former claim are rejected evidence
-only. Resume only after both blockers land. BIND stays a thin exhaustive
+only. Resume only after the remaining blocker lands. BIND stays a thin exhaustive
 dispatcher over one `mcfg`; mapped CHECK uses allocation-free SAFET
 `moved|empty`, and both arms prove bytes through the committed model's
 `WSTORE:WITH-RESIDENT-SLOT` path and the real allocated table. No late mapping

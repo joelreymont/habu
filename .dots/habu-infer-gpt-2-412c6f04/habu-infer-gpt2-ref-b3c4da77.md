@@ -4,9 +4,14 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:40:20.853809+02:00"
-blocks:
-  - habu-infer-gpt2-tensor-f2ed655d
 ---
+
+The tensor role binding prerequisite is done and its dot is closed. It was
+habu-infer-gpt2-tensor-f2ed655d, superseded by 1746455e "Add GPT-2 tensor
+vocabulary (GPT2BIND)" and 5756381d "Add GPT2TX bind PREPARE and prep
+capability", both ancestors of master, so its blocker edge is removed here.
+Where the text below says "Prerequisites: tensor role binding", read those two
+commits.
 
 Why this exists:
 parity requires a reproducible external reference tied to the exact checkpoint and prompt inputs, not an opaque blob.

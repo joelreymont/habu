@@ -9,7 +9,6 @@ close-reason: "Implemented under the SAFET re-freeze, reviewed, merged: leaf A l
 blocks:
   - habu-make-json-reader-882769ff
   - habu-add-generic-bounded-359c0944
-  - habu-return-typed-mem-ac35e3c9
 ---
 
 Claim: released.

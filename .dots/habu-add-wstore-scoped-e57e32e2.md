@@ -1,10 +1,42 @@
 ---
 title: Add WSTORE scoped read over held resident
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T17:11:32.436417+02:00"
+blocks:
+  - habu-delete-resident-and-05c594cb
 ---
+
+OBSOLETE - DO NOT IMPLEMENT (2026-07-27, codex critical-path correction, ruled
+by the orchestrator). The interface described below is scheduled for deletion,
+so building it would manufacture an API that a queued leaf then removes. Two
+independent reasons, both measured rather than argued:
+
+First, the embedded-store chain retires the premise. `habu-embed-store-in-f8109695`
+already proves `gpt2-model` can own `WSTORE:store` directly, and its leaf
+`habu-delete-resident-and-05c594cb` explicitly deletes `WSTORE:resident`, `HOLD`,
+`RESIDENT-DISPOSE`, the park and unpark trusted erasures, and the pre-reserved
+HOLD cells - which is every part this contract's `WITH-RESIDENT-SLOT` was built
+on top of. That delete leaf already names closing this dot as part of its own
+work. It is recorded above as the blocker so this dot cannot be dispatched
+ahead of the deletion that supersedes it.
+
+Second, the slot scope strands its owner on a throwing user body: the checked
+probe proved the callback CAN carry caller state on the ambient return row (an
+earlier cannot-thread-state rationale was falsified by that probe and is
+withdrawn), but a body that throws leaves the held store stranded, and the
+first post-cutover weight consumer is a model-owned total EMBED operation, not
+a new resident API.
+
+The claim is released and no partial work lands: the worker was stopped with an
+uncommitted partial diff only. Status stays open rather than closed because the
+delete leaf owns the closure, and closing it here would take that step out of
+the leaf that has to prove the sweep. What replaces the capability is the
+model-owned row-polymorphic weight loan, scheduled after the resident deletion.
+
+The original contract is preserved below as history. Read it as the record of a
+design that was overtaken, not as work to pick up.
 
 Why: both slot tables inside a committed GPT-2 model are currently write-only.
 The forward pass will trust those rows for every weight, so a wrong offset can
@@ -18,8 +50,10 @@ the body result. This dot blocks `habu-bind-txn-bind-d402a260`.
 
 Dependencies: the WSTORE builder and disposal contracts
 `habu-add-wstore-builder-606aaa1c` and
-`habu-add-wstore-public-db6c70fe`, plus the total SAFET mapping contract
-`habu-return-typed-mem-ac35e3c9`.
+`habu-add-wstore-public-db6c70fe`, plus the total SAFET mapping contract, which
+has since landed and closed - it was `habu-return-typed-mem-ac35e3c9`, delivered
+as e0b22bf2 "Make SAFET mapping detach total" and fa96f47f "Make mapping scope
+total", both ancestors of master.
 
 Design: when `HOLD` still owns the mapped or allocated arm, cache that arm's
 immutable base pointer and full byte length in the resident table header. Keep
@@ -51,5 +85,3 @@ SHA-256, not a prefix. Double use and use after dispose reject statically.
 WSTORE and GPT-2 bind suites, the exact changed-file load paths, package and
 typed-local diff gates, trust/refine gates if touched, and the combined Maki
 gate pass.
-
-Claim: agent=wstore-scoped workspace=.jj-ws/habu-add-wstore-scoped-e57e32e2
