@@ -104,6 +104,19 @@ create OUT-BUF OUT-CAP allot
    s" IR-RAW" SB-APPEND
    SB$ ;
 
+: IR-RAW-PUBLIC-STRING$ ( -- ptr u8 n )
+   SB-RESET
+   s" package IR-RAW s" SB-APPEND DQ
+   s" public" SB-APPEND DQ
+   s" 2drop ;package" SB-APPEND
+   SB$ ;
+
+: IR-RAW-PUBLIC-COMMENT$ ( -- ptr u8 n )
+   SB-RESET
+   s" package IR-RAW \ public" SB-APPEND IR-NL
+   s" ;package" SB-APPEND
+   SB$ ;
+
 : IR-RAW-CONFINEMENT ( -- )
    \ The four frozen owner paths may reopen the private representation package.
    s" src/compiler/ir/id.f" s" package IR-RAW" RFL:COUNT-STR-AT 0 T=
@@ -117,12 +130,25 @@ create OUT-BUF OUT-CAP allot
    \ Duplicates are separate authority violations.
    s" test/other.f" s" package IR-RAW ;package package IR-RAW"
       RFL:COUNT-STR-AT 2 T=
+   \ IR-RAW can never publish, including in an otherwise allowed owner file.
+   s" src/compiler/ir/id.f" s" package IR-RAW public"
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f" s" package IR-RAW PuBlIc public ;package"
+      RFL:COUNT-STR-AT 2 T=
+   s" src/compiler/ir/id.f" s" package IR-RAW ;package public"
+      RFL:COUNT-STR-AT 0 T=
    \ Comments, strings, near names, reordering, and the wrong opener role do not fire.
    s" test/other.f" s" \ package IR-RAW" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" IR-RAW-STRING$ RFL:COUNT-STR-AT 0 T=
    s" test/other.f" s" package IR-RAWER" RFL:COUNT-STR-AT 0 T=
    s" test/other.f" s" IR-RAW package" RFL:COUNT-STR-AT 0 T=
-   s" test/other.f" s" using IR-RAW" RFL:COUNT-STR-AT 0 T= ;
+   s" test/other.f" s" using IR-RAW" RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f" IR-RAW-PUBLIC-STRING$
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f" IR-RAW-PUBLIC-COMMENT$
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f" s" package IR-RAW PUBLIC-X ;package"
+      RFL:COUNT-STR-AT 0 T= ;
 
 : CONFINE-POLICY ( -- )
    \ owner file is allowed

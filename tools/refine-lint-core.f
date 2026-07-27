@@ -79,6 +79,7 @@ variable LX
 variable LS
 variable LE
 variable PACKAGE-PENDING
+variable IR-RAW-ACTIVE
 
 : STR-A-FIELD ( -- ptr ptr u8 ) STR-A 0 ptr-field ;
 : FILE-A-FIELD ( -- ptr ptr u8 ) FILE-A 0 ptr-field ;
@@ -611,6 +612,12 @@ public
 : PACKAGE-TOK? ( -- bool )
    PAT-TOK$ s" package" LINT-STR=CI ;
 
+: PACKAGE-END-TOK? ( -- bool )
+   PAT-TOK$ s" ;package" LINT-STR=CI ;
+
+: PUBLIC-TOK? ( -- bool )
+   PAT-TOK$ s" public" LINT-STR=CI ;
+
 : IR-RAW-HIT ( -- )
    REPORT? @ if
       s" REFINE-PACKAGE " OUT
@@ -619,10 +626,26 @@ public
    then
    BAD+ ;
 
+: IR-RAW-PUBLIC-HIT ( -- )
+   REPORT? @ if
+      s" REFINE-PUBLIC " OUT
+      CUR$ OUT COLON C LINE @ U.
+      s" : public is forbidden inside package IR-RAW" OUT NL
+   then
+   BAD+ ;
+
 : MATCH-PACKAGE ( -- )
    PACKAGE-PENDING @ if
       0 PACKAGE-PENDING !
-      IR-RAW-TOK? if IR-RAW-PATH? 0= if IR-RAW-HIT then then
+      IR-RAW-TOK? if
+         LINT-TRUE IR-RAW-ACTIVE !
+         IR-RAW-PATH? 0= if IR-RAW-HIT then
+      then
+      exit
+   then
+   IR-RAW-ACTIVE @ if
+      PUBLIC-TOK? if IR-RAW-PUBLIC-HIT then
+      PACKAGE-END-TOK? if LINT-FALSE IR-RAW-ACTIVE ! then
    then
    PACKAGE-TOK? if LINT-TRUE PACKAGE-PENDING ! then ;
 
@@ -651,7 +674,8 @@ public
 
 : FOR-LINES ( ptr u8 n -- )
    LU ! LA!
-   0 LINE !  0 LX !  0 LS !  0 PACKAGE-PENDING !
+   0 LINE !  0 LX !  0 LS !
+   0 PACKAGE-PENDING !  0 IR-RAW-ACTIVE !
    begin LX @ LU @ < while
       LA@ LX @ + c@ LF = IF LX @ DO-LINE THEN
       LX @ 1+ LX !
