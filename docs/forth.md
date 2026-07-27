@@ -361,18 +361,19 @@ public
 
 `using NAME` is the consumer-side import: it makes package `NAME`'s **public**
 wordlist visible to bare, unqualified lookup in the current scope, without
-opening or reopening `NAME`. A whole-file consumer or entry file imports its
-public DSL once, calls its semantic words bare, and lets end-of-file close the
-import:
+opening or reopening `NAME`. A consumer-only entry, runner, or orchestration
+file that calls several public words from one package MUST use
+`using NAME ... ;using` and bare words. PREFER `NAME:WORD` for a one-off call or
+when qualification is needed to escape a collision or ambiguity.
 
 ```forth
 require test/run-lib.f
 
 using TEST-RUN
-
 PREPARE
-   \ phase words
+DAG-RUN-REST
 COMPLETE
+;using
 ```
 
 - `using NAME` consumes the next token, rejects a missing name and a name
@@ -388,12 +389,10 @@ COMPLETE
   inside a package, or at the end of the load file — whichever comes first.
   `;using` closes the most recent `using`; a `;using` with no open `using` is an
   error. Multiple concurrent usings are allowed up to a small fixed capacity
-  (`USE-MAX`, 16); a further `using` past the limit is rejected. Omit redundant
-  `;using` when the import owns the rest of the file; write it only when later
-  content must not see that import.
-- New lifecycle APIs should prefer a semantic block pair such as `RUN … ;RUN`,
-  so a consumer reads as one scoped action instead of a series of phase
-  mechanics.
+  (`USE-MAX`, 16); a further `using` past the limit is rejected. Consumer-only
+  files covered by the rule above close the scope explicitly with `;using`;
+  end-of-file closure remains a language boundary, not the preferred source
+  form for those files.
 - Lookup order for a bare tail is the open-package scope (private then own
   public) FIRST, then the global wordlist, then each used package's public
   wordlist. A tail found in the OPEN-PACKAGE scope silently wins over a used
