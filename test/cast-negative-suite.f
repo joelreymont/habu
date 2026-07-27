@@ -17,6 +17,7 @@
 \ failures surface as verdict 0. A failure prints F<index>; REPORT exits 1 on any.
 
 require test/checker-assert.f
+require src/habu/verify-source.f
 
 variable #FAIL
 variable #CASE
@@ -89,6 +90,88 @@ CHECKER-END-PACKAGE
 CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE !
 s" CNSP2" s" CNSP2 ( n -- CN:cnfam )"                 CN-CAST E-CAST-OWNER T=
 CHECKER-END-PACKAGE
+
+\ A forged parser package cannot own a declaration. The family, visibility,
+\ symbols, and later CAST authorization all follow the live engine namespace.
+package CN-SPOOF-A
+s" CN-SPOOF-B" CHECKER-PACKAGE
+CHECKER-PUBLIC
+public
+NEWTYPE spoof 0
+s" CNSA0" s" CNSA0 ( n -- CN-SPOOF-A:spoof )" CN-CAST -1 T=
+CHECKER-END-PACKAGE
+;package
+package CN-SPOOF-B
+s" CNSB0" s" CNSB0 ( n -- CN-SPOOF-A:spoof )" CN-CAST E-CAST-OWNER T=
+s" CNSB1" s" CNSB1 ( n -- CN-SPOOF-B:spoof )" CN-CAST E-CAST-FAM T=
+;package
+
+\ Visibility comes from the real current WID. A mirror-public declaration in a
+\ private engine section stays private; only its owner resolves it.
+package CN-VIS-PRI
+CHECKER-PUBLIC
+NEWTYPE hidden 0
+s" CN-VIS-FAKE" CHECKER-PACKAGE
+s" CNVP0" s" CNVP0 ( n -- hidden )" CN-CAST -1 T=
+CHECKER-END-PACKAGE
+;package
+package CN-VIS-FOREIGN
+s" CNVP1" s" CNVP1 ( n -- CN-VIS-PRI:hidden )" CN-CAST E-CAST-FAM T=
+s" CNVP2" s" CNVP2 ( n -- hidden )" CN-CAST E-CAST-FAM T=
+;package
+
+\ A mirror-private declaration in a public engine section stays public. Foreign
+\ code resolves it but still cannot introduce the owner-only cell family.
+package CN-VIS-PUB
+public
+CHECKER-PRIVATE
+NEWTYPE shown 0
+CHECKER-END-PACKAGE
+;package
+package CN-VIS-FOREIGN
+s" CNVU0" s" CNVU0 ( CN-VIS-PUB:shown -- n )" CN-CAST -1 T=
+s" CNVU1" s" CNVU1 ( n -- CN-VIS-PUB:shown )" CN-CAST E-CAST-OWNER T=
+;package
+
+\ EXPORT records the actual package target even when the parser mirror names a
+\ different package.
+package CN-EXP-SRC-PKG
+public
+: CN-EXP-SRC ( n -- n ) ;
+;package
+package CN-EXP-A
+public
+s" CN-EXP-B" CHECKER-PACKAGE
+EXPORT CN-EXP-SRC-PKG:CN-EXP-SRC
+CHECKER-END-PACKAGE
+;package
+s" CNEX0 ( n -- n ) CN-EXP-A:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! -1 T=
+s" CNEX1 ( n -- n ) CN-EXP-B:CN-EXP-SRC" CHECK-QUIET-CANDIDATE! 1 T=
+
+\ Offline verification is the sole scoped mirror authority. A normal simulated
+\ package verifies, restores the live provider, and leaves no family behind.
+package CN-CAST-TEST
+public
+: CN-VRF-VERIFY ( -- )
+   s" package CN-VRF public NEWTYPE vfam 0 ;package : CN-VRF-USE ( CN-VRF:vfam -- CN-VRF:vfam ) ;"
+   VERIFY:SOURCE-BUF ;
+
+: CN-VRF-FAIL ( -- )
+   s" package CN-VRF-ERR public NEWTYPE efam 0 NEWTYPE efam 0 ;package"
+   VERIFY:SOURCE-BUF ;
+;package
+
+' CN-CAST-TEST:CN-VRF-VERIFY catch 0 T=
+s" CNVR0" s" CNVR0 ( n -- CN-VRF:vfam )" CN-CAST E-CAST-FAM T=
+
+' CN-CAST-TEST:CN-VRF-FAIL catch 7102 T=
+package CN-VRF-LIVE
+NEWTYPE live 0
+s" CN-VRF-POISON" CHECKER-PACKAGE
+s" CNVR1" s" CNVR1 ( n -- CN-VRF-LIVE:live )" CN-CAST -1 T=
+CHECKER-END-PACKAGE
+;package
+
 \ net-stack-effect body: the ( in -- in ) identity certification rejects.
 package CN
 s" CNS1"  s" CNS1 ( n -- CN:cnfam ) dup"             CN-CAST 0 T=

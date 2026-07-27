@@ -649,7 +649,7 @@ private
    a u s" IR-RAW" LINT-STR=CI if PKG-IR-RAW exit then
    PKG-OTHER ;
 
-: COMPILER-API-PKG? ( n -- bool )
+: IR-API-PKG? ( n -- bool )
    dup PKG-IR-ID >= swap PKG-IR-PASS <= and ;
 
 : COMPILER-PKG? ( ptr u8 n -- bool )
@@ -872,6 +872,19 @@ private
    CUR$ s" src/compiler/ir/id.f" FS-PATH= 0= if LINT-FALSE exit then
    PACKAGE-KIND @ PKG-IR-ID = PACKAGE-PUBLIC @ 0= and ;
 
+: RAW-ALIAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u COLON LINT-COUNT-CHAR
+   dup 0= if drop a u RAW-NAME? exit then
+   1 <> if LINT-FALSE exit then
+   a u COLON LINT-INDEX-OF
+   MATCH option
+      none OF LINT-FALSE ENDOF
+      some OF {: i:n :}
+         i 0= i u 1- = or if LINT-FALSE exit then
+         a i 1+ + u i - 1- RAW-NAME?
+      ENDOF
+   ;MATCH ;
+
 : START-DEFINITION ( n bool -- ) {: kind:n cast:bool :}
    TOK-I @ LINT-DEF:NAME-I
    MATCH option
@@ -883,32 +896,20 @@ private
          namei LINT-LEX:LINE@ LINE !
          MATCH-TOKEN
          TOK$ QUALIFIED-RAW? if RAW-AUTHORITY-HIT then
-         cast PACKAGE-KIND @ PKG-IR-ID = and if
-            RAW-DEFINITION-ALLOWED? TOK$ RAW-NAME? and 0=
-            if RAW-AUTHORITY-HIT then
-         else PACKAGE-KIND @ COMPILER-API-PKG? if
+         PACKAGE-KIND @ IR-API-PKG? if
             TOK$ RAW-NAME? if
-               RAW-DEFINITION-ALLOWED? 0= if RAW-AUTHORITY-HIT then
+               cast RAW-DEFINITION-ALLOWED? and 0=
+               if RAW-AUTHORITY-HIT then
+            else
+               cast PACKAGE-KIND @ PKG-IR-ID = and
+               if RAW-AUTHORITY-HIT then
             then
-         then then
+         then
          kind LINT-DEF:DATA <> if
             kind DEF-KIND !
             LINE @ DEF-LINE !
             LINT-TRUE DEF-OPEN !
          then
-      ENDOF
-   ;MATCH ;
-
-: RAW-ALIAS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u COLON LINT-COUNT-CHAR
-   dup 0= if drop a u RAW-NAME? exit then
-   1 <> if LINT-FALSE exit then
-   a u COLON LINT-INDEX-OF
-   MATCH option
-      none OF LINT-FALSE ENDOF
-      some OF {: i:n :}
-         i 0= i u 1- = or if LINT-FALSE exit then
-         a i 1+ + u i - 1- RAW-NAME?
       ENDOF
    ;MATCH ;
 
@@ -924,7 +925,7 @@ private
          TOK$ QUALIFIED-RAW? if
             RAW-AUTHORITY-HIT
          else
-            PACKAGE-KIND @ COMPILER-API-PKG? if
+            PACKAGE-KIND @ IR-API-PKG? if
                TOK$ RAW-ALIAS? if RAW-AUTHORITY-HIT then
             then
          then

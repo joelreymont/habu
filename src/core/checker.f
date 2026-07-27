@@ -462,7 +462,7 @@ defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared 
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
 defer TFAM-PKG-XT ( n -- ptr u8 n )                     \ family id -> declaring package
-defer CAST-PKG-OWNER-XT ( ptr u8 n -- bool )             \ declaring package is the engine's real definition target
+defer PKG-LIVE-XT ( -- ptr u8 n n bool )                \ authenticated engine package name + mode
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
@@ -516,14 +516,116 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
-\ Engine-owned package state. checker.f loads before layout.f, so these mirror
-\ the fixed DATA offsets named there. The default owner gate admits only the
-\ exact global-family/global-wordlist case needed before xref.f installs the
-\ namespace-record check. A package-family cast therefore fails closed during
-\ that prefix window, and mutable CHECKER-PACKAGE-* mirror state is irrelevant.
+\ The mirror above records parser state and is rollback-aware. It is authority
+\ only while the private verifier scope is active. Normal checking reads the
+\ engine's protected package record/WIDs/current target through PKG-LIVE-XT.
+\ checker.f loads before layout.f, so the boot provider mirrors its fixed DATA
+\ offsets; xref.f replaces it with full record validation before user source.
 $78 constant CK-PKG-PUB-OFF
 $80 constant CK-PKG-PRI-OFF
 $90 constant CK-PKG-REC-OFF
+7136 constant E-PKG-CONTEXT
+variable CHECKER-VERIFY-PKG-DEPTH
+0 CHECKER-VERIFY-PKG-DEPTH !
+create VPKG-NAME CHECKER-PACKAGE-CAP allot
+variable VPKG-U
+variable VPKG-MODE
+
+: VPKG-SAVE ( ptr u8 n n -- ) {: a:ptr u:n mode:n :}
+   0 BEGIN dup u < WHILE
+      a over + c@ VPKG-NAME over + c!
+      1+
+   REPEAT drop
+   u VPKG-U !
+   mode VPKG-MODE ! ;
+
+: VPKG-RESTORE ( -- )
+   0 BEGIN dup VPKG-U @ < WHILE
+      VPKG-NAME over + c@ CHECKER-PACKAGE-NAME over + c!
+      1+
+   REPEAT drop
+   VPKG-U @ CHECKER-PACKAGE-U !
+   VPKG-MODE @ CHECKER-PACKAGE-MODE ! ;
+
+: CHECKER-PKG-MIRROR ( -- ptr u8 n n bool )
+   CHECKER-PACKAGE-MODE @ {: mode:n :}
+   mode CHECKER-PACKAGE-NONE = IF
+      CHECKER-PACKAGE-U @ 0= IF s" " mode 0 0= ELSE s" " mode 0 0= 0= THEN
+      EXIT
+   THEN
+   mode CHECKER-PACKAGE-PRIVATE <>
+   mode CHECKER-PACKAGE-PUBLIC <> and IF
+      s" " mode 0 0= 0= EXIT
+   THEN
+   CHECKER-PACKAGE-U @ dup 0= swap CHECKER-PACKAGE-CAP >= or IF
+      s" " mode 0 0= 0= EXIT
+   THEN
+   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ mode 0 0= ;
+
+: CHECKER-PKG-BOOT-LIVE ( -- ptr u8 n n bool )
+   data-base CK-PKG-REC-OFF + @ {: rec:n :}
+   data-base CK-PKG-PUB-OFF + @ {: pub:n :}
+   data-base CK-PKG-PRI-OFF + @ {: pri:n :}
+   get-current {: cur:n :}
+   rec 0= pub 0= and pri 0= and cur 0= and IF
+      s" " CHECKER-PACKAGE-NONE 0 0= EXIT
+   THEN
+   rec 0= pub 0= or pri 0= or pub pri = or IF
+      s" " CHECKER-PACKAGE-NONE 0 0= 0= EXIT
+   THEN
+   cur pub = IF
+      CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PUBLIC <> IF
+         s" " CHECKER-PACKAGE-PUBLIC 0 0= 0= EXIT
+      THEN
+      CHECKER-PKG-MIRROR EXIT
+   THEN
+   cur pri = IF
+      CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-PRIVATE <> IF
+         s" " CHECKER-PACKAGE-PRIVATE 0 0= 0= EXIT
+      THEN
+      CHECKER-PKG-MIRROR EXIT
+   THEN
+   s" " CHECKER-PACKAGE-NONE 0 0= 0= ;
+
+: CHECKER-PKG-LIVE-DEFAULT ( -- )
+   [: CHECKER-PKG-BOOT-LIVE ;] is PKG-LIVE-XT ;
+CHECKER-PKG-LIVE-DEFAULT
+
+: CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF
+      CHECKER-PKG-MIRROR
+   ELSE
+      PKG-LIVE-XT
+   THEN
+   0= IF E-PKG-CONTEXT throw THEN ;
+
+: CHECKER-AUTH-PACKAGE$ ( -- ptr u8 n )
+   CHECKER-PKG-CONTEXT drop ;
+
+: CHECKER-AUTH-PACKAGE-MODE@ ( -- n )
+   CHECKER-PKG-CONTEXT >r 2drop r> ;
+
+: CHECKER-AUTH-PACKAGE-ACTIVE? ( -- bool )
+   CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-NONE <> ;
+
+\ These two names stay checker-internal: verify-source and the check driver's
+\ fixed scanners compile direct calls from named TRUSTED boundaries. Checked
+\ user code has no effect row with which to activate the mirror provider.
+: CHECKER-VERIFY-PKG-START ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF E-PKG-CONTEXT throw THEN
+   PKG-LIVE-XT 0= IF E-PKG-CONTEXT throw THEN
+   {: livea:ptr liveu:n livemode:n :}
+   CHECKER-PKG-MIRROR 0= IF E-PKG-CONTEXT throw THEN
+   {: mira:ptr miru:n mirmode:n :}
+   livemode mirmode <> IF E-PKG-CONTEXT throw THEN
+   livea liveu mira miru CORE-STR=CI 0= IF E-PKG-CONTEXT throw THEN
+   mira miru mirmode VPKG-SAVE
+   1 CHECKER-VERIFY-PKG-DEPTH ! ;
+
+: CHECKER-VERIFY-PKG-DONE ( -- )
+   CHECKER-VERIFY-PKG-DEPTH @ 1 <> IF E-PKG-CONTEXT throw THEN
+   VPKG-RESTORE
+   0 CHECKER-VERIFY-PKG-DEPTH ! ;
 
 0 constant UK-EXACT
 1 constant UK-INPUT
@@ -607,14 +709,6 @@ SPA-BOOT SPA-P !   MAXPUSH-INIT SPA-CAP !
 : RES-FALSE ( -- bool )
    0 0= 0= ;
 
-: CAST-GLOBAL-OWNER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a drop
-   u 0 <> IF RES-FALSE EXIT THEN
-   data-base CK-PKG-REC-OFF + @ 0 <> IF RES-FALSE EXIT THEN
-   data-base CK-PKG-PUB-OFF + @ 0 <> IF RES-FALSE EXIT THEN
-   data-base CK-PKG-PRI-OFF + @ 0 <> IF RES-FALSE EXIT THEN
-   get-current 0 = ;
-
 \ --- BTC-7 extent-role product/factorization role registry (dot
 \ habu-extent-role-product-8e364885, docs/extent-substrate.md §Decision, BTC-7).
 \ EXT-PROD-FAM / EXT-REDX-FAM are the built-in `extprod`/`redx` family ids,
@@ -667,7 +761,6 @@ variable EXT-FREE-N   0 EXT-FREE-N !
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
    [: drop s" " ;] is TFAM-PKG-XT
-   [: CAST-GLOBAL-OWNER? ;] is CAST-PKG-OWNER-XT
    [: drop 1 ;] is TFAM-WIDTH-XT
    [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
@@ -2644,10 +2737,7 @@ variable SIG-RAW-MODE   0 SIG-RAW-MODE !
 \ `PKG:tail` tokens, case validation, hidden `@` names, and ambiguity handling
 \ live in the installed resolver (type-family.f TFAM-SIG-RESOLVE).
 : SIG-FAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   CHECKER-PACKAGE-ACTIVE? IF
-      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-RESOLVE* EXIT
-   THEN
-   s" " a u TFAM-RESOLVE* ;
+   CHECKER-AUTH-PACKAGE$ a u TFAM-RESOLVE* ;
 \ EXT-MARK-FREE-TAIL ( ptr u8 n -- ) : BTC-7 — mark an extent family FREE by its
 \ lowercase tail, resolved through the SAME scope SIG-FAM? uses so the recorded id
 \ is exactly the one SIG-END-PARAM reads off a redx<..> arg. EXTPROD: (maki/extent.f)
@@ -4945,6 +5035,9 @@ PRIM: CHECKER-UNDEFINE PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-UNDEFINE-GUARD PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-EXPORT PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-PACKAGE-ACTIVE? PE-F PE-OUT PRIM;
+PRIM: CHECKER-AUTH-PACKAGE$ PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: CHECKER-AUTH-PACKAGE-MODE@ PE-N PE-OUT PRIM;
+PRIM: CHECKER-AUTH-PACKAGE-ACTIVE? PE-F PE-OUT PRIM;
 PRIM: CHECKER-DEFLINEAR PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFRECORD PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: CHECKER-DEFFAMILY PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
@@ -5491,17 +5584,17 @@ $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 : CHECKER-RECORD-SYM ( ptr u8 n -- n ) {: a u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
-   CHECKER-PACKAGE-ACTIVE? IF
-      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ CHECKER-PACKAGE-MODE @ a u CHECKER-PKG-SYM EXIT
-   THEN
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n vis:n :}
+   vis CHECKER-PACKAGE-NONE <> IF pkg pkgu vis a u CHECKER-PKG-SYM EXIT THEN
    a u CHECKER-GLOBAL-SYM ;
 
 : CHECKER-FIND-ACTIVE-SYM ( ptr u8 n -- n ) {: a:ptr u:n :}
    a u CHECKER-QUALIFIED? IF CHECKER-QPKG$ CHECKER-QTAIL$ CHECKER-PUBLIC-SYM? EXIT THEN
    CHECKER-QBAD-TOK @ IF 0 EXIT THEN
-   CHECKER-PACKAGE-ACTIVE? IF
-      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PRIVATE a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
-      CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ SYM-PUBLIC a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
+   CHECKER-PKG-CONTEXT {: pkg:ptr pkgu:n mode:n :}
+   mode CHECKER-PACKAGE-NONE <> IF
+      pkg pkgu SYM-PRIVATE a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
+      pkg pkgu SYM-PUBLIC a u CHECKER-PKG-SYM? dup 0 <> IF EXIT THEN drop
    THEN
    a u CHECKER-GLOBAL-SYM? dup 0 <> IF
       dup >r a u r> CHECKER-USED-SHADOW      \ throws if a live used public also exports this bare tail
@@ -6491,7 +6584,7 @@ variable UNSAFE-SYM-N
    ctl 0 <> IF a u EXPORT-TAIL$ ctl NORET-ADD THEN ;
 
 : CHECKER-EXPORT ( ptr u8 n -- ) {: a:ptr u:n :}
-   CHECKER-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF E-EXPORT-NO-PACKAGE throw THEN
    a u EXPORT-SEAL-GUARD
    a u EXPORT-RESOLVE
    NEW
@@ -9533,7 +9626,7 @@ variable CAST-PEND-A   variable CAST-PEND-U   0 CAST-PEND-U !
 \ real global scope. CHECKER-PACKAGE-* is a parser mirror, never authority.
 : CAST-OWNER? ( n -- bool ) {: t0:n :}
    t0 T-RES dup NP-CELLFAM? 0= IF drop RES-TRUE EXIT THEN
-   PARAM>FAM TFAM-PKG$* CAST-PKG-OWNER-XT ;
+   PARAM>FAM TFAM-PKG$* CHECKER-AUTH-PACKAGE$ CORE-STR=CI ;
 \ CAST-CERTIFY : the matched-window certification. Throw the named reject when the
 \ declared retype is illegal, else certify the body output against SGIN (the
 \ identity ( in -- in ) flow); the shared tail then records the declared row.

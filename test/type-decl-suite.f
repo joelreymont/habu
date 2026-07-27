@@ -1214,10 +1214,10 @@ s" TPC-MEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-MEM-STORED" CHECK-QUIET
 \ Prose row rendering and JSON arity diagnostics keep the package qualifier.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TPC-JSON-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"MEM:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-JSON-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" TDT-CONTAINS? -1 T=
@@ -2274,10 +2274,12 @@ DIAG-BUFFER$ s" expected: n actual: tdlnom<> " TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR3 ( tdlp -- n ) {: q:tdlv :} q dup drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" expected: tdlv<> actual: tdlp<> " TDT-CONTAINS? -1 T=
-\ foreign-package family: the interned name renders qualified pkg:tail.
-s" tdlrpk" CHECKER-PACKAGE   CHECKER-PUBLIC
+\ foreign-package family: the interned name renders qualified pkg:tail. Use the
+\ real package path; checker mirror mutation is not namespace authority.
+package tdlrpk
+public
 NEWTYPE tdlrfam 0
-CHECKER-END-PACKAGE
+;package
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam<> " TDT-CONTAINS? -1 T=
@@ -2291,9 +2293,10 @@ DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam<> " TDT-CONTAINS? -1 T=
 \ hint fires through TERM-FAM/LAYOUT-PARAM?, so both fixtures are SUMTYPEs.
 \ ---------------------------------------------------------------------------
 SUMTYPE tdlrjg 0 VARIANT keep n ;VARIANT ;SUMTYPE
-s" tdlrjp" CHECKER-PACKAGE   CHECKER-PUBLIC
+package tdlrjp
+public
 SUMTYPE tdlrjs 0 VARIANT keep n ;VARIANT ;SUMTYPE
-CHECKER-END-PACKAGE
+;package
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TDLRJ1 ( n -- tdlrjg )" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"family\":\"tdlrjg\"" TDT-CONTAINS? -1 T=

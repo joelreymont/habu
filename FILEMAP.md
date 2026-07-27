@@ -65,11 +65,13 @@ points stay listed.
 - `src/core/engine-error.f` — authoritative package-scoped engine failure ABI.
 - `src/core/engine-error-effects.f` — checker rows installed after the early engine failure package.
 - `src/core/checker.f` — native stack-effect checker and verifier, including
-  destination-package ownership for resolved scalar-cell family `CAST:`
-  declarations.
+  one authenticated package context for family lookup, visibility, export, and
+  resolved scalar-cell `CAST:` ownership. Normal reads use the installed live
+  namespace provider; only validated private replay scopes may read the parser
+  mirror.
 - `src/core/lower-cert-base.f` — boot-safe, package-scoped lowering-certificate ABI and fail-closed producer dispatcher loaded immediately after the checker.
 - `src/core/type-schema.f` — persistent type-schema node arena (package TFAM) referenced by families/variants/fields as schema roots.
-- `src/core/type-family.f` — package-scoped TFAM/SUMV/layout registries and the shared transactional field-schema arena with canonical STACK/PACKED validation, committed public reflection, token-scoped owner-only provisional schema access, and publish/finalize/rollback integration.
+- `src/core/type-family.f` — package-scoped TFAM/SUMV/layout registries and the shared transactional field-schema arena with canonical STACK/PACKED validation, authenticated package ownership, committed public reflection, token-scoped owner-only provisional schema access, and publish/finalize/rollback integration.
 - `src/core/render.f` — human/JSON diagnostics and signature recording.
 - `src/core/sumtype.f` — NEWTYPE/SUMTYPE/PRODUCT declaration grammar registering package-aware families, variants, and atomic shared field schemas.
 - `src/core/declaration-transaction.f` — reusable ordered transaction coordinator with one aggregate participant-row arena per growth, immutable sealing, exact callback-depth validation, reverse rollback, primary-error preservation, rollback poisoning, a total uncaught reverse release phase that runs only after every reversible commit succeeded, and per-instance telemetry and allocator/diagnostic controls.
@@ -148,7 +150,9 @@ points stay listed.
   next engine from current source.
 - `src/habu/treeshake.f` — build-time primitive tree shaker for `hb-build`
   makers.
-- `src/habu/verify-source.f` — pre-compile checked source verifier.
+- `src/habu/verify-source.f` — pre-compile checked source verifier; its
+  catch-safe private run boundary selects the package parser mirror only after
+  it matches live authority and restores the live provider on every exit.
 - `src/habu/bundle-argv.f` — standalone bundle script argument convention.
 - `src/arch/arm64/asm.f` / `src/arch/arm64/icode.f` / `src/arch/arm64/mnem.f`
   — standalone ARM64 instruction encoders, the minimal single-pass assembler,
@@ -252,9 +256,9 @@ points stay listed.
   before reloading common engine source.
 - `src/habu/xref.f` — baked live dictionary lifecycle/inspection words:
   `undefine`, `LATEST`, `XREF-FIND`, `XREF.`, `XREF`, `SEE`, and `WORDS`; it
-  installs the scalar-family CAST owner query over the live namespace record
-  and actual definition WID, then retires every owner-query rebinding seam
-  before sealing.
+  installs the sole package-authority provider over the live namespace record
+  and actual definition WID, then retires every provider, mirror-selection,
+  and family-owner rebinding seam before sealing.
 - `src/core/generated-declaration-dictionary.f` — generated-declaration participant retaining native dictionary record, code, and data high-waters across nested success so an outer rollback removes every provisional word and package allocation.
 - `src/core/generated-declaration-protection.f` — final generated-declaration participant that stages constructor wordlists, preflights the immutable protection registry, publishes only at the outer commit, and seals the production participant set.
 - `src/arch/ptx/emit.f` — checked PTX text encoder for the sm_87 SAXPY M3
@@ -379,7 +383,9 @@ points stay listed.
 - `tools/seed-test.f` — focused coverage for seed SHA, install, signing, and smoke helpers.
 - `tools/build-fixpoint.f` — checked native stage/stdin build driver; explicit
   `snap` builds snapshot candidates for cache/debug paths.
-- `tools/check-core.f` — reusable Habu-native checked engine runner core.
+- `tools/check-core.f` — reusable Habu-native checked engine runner core; its
+  catch-safe nominal replay boundary uses the same validated private package
+  mirror scope as source verification.
 - `tools/check.f` — thin CLI entrypoint for the checked engine runner.
 - `tools/check-main.f` — no-include checked engine entry for checker CLI reuse.
 - `tools/check-test-lib.f` — reusable checked fixture library for check runner semantics.
@@ -2761,7 +2767,12 @@ points stay listed.
 - `test/deftype-suite.f` — behavior contract for the `DEFTYPE` surface (lib/type/deftype.f): same-nominal accept, other-nominal/generic-int reject, explicit converters, converter no-launder, demanded-input direction, package scoping (same name in two packages stays distinct), and snapshot-persist survival.
 - `test/deftype-dup-bad.f` — child-process negative fixture: a duplicate `DEFTYPE` in one package is refused fail-closed (exit 67, "duplicate family").
 - `test/cast-suite.f` — positive behavior contract for the `CAST:` checked retype declarer (src/core/roles.f + checker.f CAST-PEND window): empty-body and guarded nominal casts, runtime value pass-through, guard throw, parametric round-trip and generic projection, and checked-caller certification against the published row.
-- `test/cast-negative-suite.f` — reject contract for `CAST:`: E-CAST-ARITY/E-CAST-CLASS/E-CAST-FAM/E-CAST-OWNER named rejects; real same-owner and foreign-owner arity-0/parametric scalar-cell family cases; callable and direct-cell checker-package mirror spoofs; unrestricted foreign projections; identity-certification failures (net-stack and input-consuming bodies); and the unsafe-token reject of `cast:` inside a checked body.
+- `test/cast-negative-suite.f` — reject contract for `CAST:`:
+  E-CAST-ARITY/E-CAST-CLASS/E-CAST-FAM/E-CAST-OWNER named rejects; real
+  same-owner and foreign-owner arity-0/parametric scalar-cell families;
+  A-as-B, visibility, foreign-private, poisoned-mirror, and offline-replay
+  authority cases; unrestricted foreign projections; identity-certification
+  failures; and the unsafe-token reject of `cast:` inside a checked body.
 - `test/type-ctor-suite.f` — behavior suite for generated sum constructors (arity-0 publication, payload rejects, parametric/linear gating, package restore).
 - `test/using-test.f` — behavior suite for `using NAME … ;using` package import (top-level and in-package resolution, private isolation, inner-scope-wins, compile-time resolution, and the missing-name/colon/unknown/overflow/unbalanced/ambiguous/leak rejects).
 - `test/type-linear-suite.f` — whole-bundle linear accounting suite (linear construction/minting/flow accepts; copy/drop/transport/local/unconsumed rejects).
@@ -2808,5 +2819,5 @@ points stay listed.
 - `test/enum-decl-suite.f` — behavior + rollback suite for the ENUM typed-declaration front end (`src/core/enum-decl.f`, `ENUM-DECL:ED-RUN`): a full declaration publishes a `TK-SUM` family with named variants and named FIELD payloads reaching `TYPE-FIELD` reflection keyed (family, variant-id) with `SV.SCH-COUNT=0`; a compact declaration publishes payloadless `TK-ENUM` variants matching legacy-compact registry semantics; POLICY and DERIVE headers reach the family record and the event stream; the shared field/variant events sequence correctly; every reject anchor (mixed mode, arity-then-compact, compact header/payload, missing `;VARIANT`/`;ENUM`, malformed arity, duplicate variant, and the field record's dup/reserved/case/schema gate) fires at the offending token; a mid-declaration reject leaves every registry cursor byte-identical; and the snapshot identity is deterministic for an identical declaration against a fresh registry.
 - `test/decl-replay-verify-source.f` — parity suite proving `src/habu/verify-source.f` rebuilds the same registry a real declaration builds. The same declaration text is registered twice, once by executing it and once through `VERIFY:SOURCE-BUF-IN-SCOPE`, and every field the registry exposes is compared between the two families: kind, arity, width, layout policy, derive flags, variant and field counts, each variant's name, tag, and constructor package, and each field row's name, schema root, slot, and cell width. The one asserted asymmetry is the constructor symbol — executing a declaration renders its constructor words, replaying one must not — which is what makes the replay safe inside a tool that reads source rather than building a program. Covers the migrated `RECORD-ENUM` arm and the new `RECORD-STRUCTURE-DECL` arm, including a STRUCTURE family named as a later declaration's payload type, and pins the two properties that make the replay safe to feed: a body the capture buffer cannot hold RAISES `7118` and registers nothing (it used to drop the one over-long token and keep going, replaying 1142 of 1302 variants with rc 0), and comments are not laundered out of a declaration body, so `\` and `( )` inside one reject with the same code the live front end gives.
 - `test/enum-ctor-collide-bad.f` — KNOWN-FAIL-HARD negative fixture: a generated constructor name that collides with an existing word reaches sumtype.f's `TDPLAN-NAME+` duplicate guard, which answers with `76 die` — a process exit that no `catch` observes and no declaration transaction rolls back. Pins today's exit code and diagnostic, and its parity with the legacy definer, until the queued sumtype.f change turns that die into a catchable declaration-time throw.
-- `test/type-export-suite.f` — checker-level EXPORT alias suite (CHECKER-EXPORT): cross-package alias fidelity, defer/control-flag copy, every reject class, scope/candidate rollback of alias rows.
+- `test/type-export-suite.f` — checker-level EXPORT alias suite (CHECKER-EXPORT): real engine packages provide authenticated package context for cross-package alias fidelity, defer/control-flag copy, every reject class, and scope/candidate rollback of alias rows.
 - `test/export-package.f` — EXPORT keyword engine-contract regressions: child forges pin dual-name execution, the top-level hb-build directive no-op, generated-ctor re-export, DNAME-WIDE parity, and every reject exit status.

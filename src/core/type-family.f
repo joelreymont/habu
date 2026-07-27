@@ -378,7 +378,7 @@ variable TFAM-N   0 TFAM-N !   REG-PROTECT
 
 \ --- matching and lookup.
 : TFAM-PKG-MATCH? ( ptr u8 n n -- bool ) {: pa:ptr pu:n id:n :}
-   id TFAM-PKG$ pa pu CORE-STR= ;
+   id TFAM-PKG$ pa pu CORE-STR=CI ;
 : TFAM-NAME-MATCH? ( ptr u8 n n -- bool ) {: na:ptr nu:n id:n :}
    id TFAM-NAME$ na nu CORE-STR= ;
 
@@ -1325,8 +1325,8 @@ private
 
 : FAMILY-TAKEN? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    s" " a u TFAM-FIND-IN nip IF RES-TRUE EXIT THEN
-   CHECKER-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
-   CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ a u TFAM-FIND-IN nip ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? 0= IF RES-FALSE EXIT THEN
+   CHECKER-AUTH-PACKAGE$ a u TFAM-FIND-IN nip ;
 
 public
 
@@ -2185,7 +2185,7 @@ variable TFQ-COLON
    TFQ-BUF TFQ-U @ TFQ-TA @ TFQ-TU @ TFAM-FIND-IN 0= IF drop 0 RES-FALSE EXIT THEN
    {: id:n :}
    id TFAM-PUBLIC? IF id RES-TRUE EXIT THEN
-   TFQ-BUF TFQ-U @ pa pu CORE-STR= IF id RES-TRUE EXIT THEN   \ own private rows
+   TFQ-BUF TFQ-U @ pa pu CORE-STR=CI IF id RES-TRUE EXIT THEN   \ own private rows
    0 RES-FALSE ;
 
 \ TFAM-RESOLVE may throw E-TFAM-AMBIG; a checked `catch` needs a stack-neutral
@@ -2398,9 +2398,8 @@ TFC-QUOT-ROW-INSTALL
    extra 0 > IF 0 vid SUMV-FAM@ 0 extra WF-XPAD-FLAG WF-ADD-FULL EXIT THEN
    extra 0 < IF TFC-XPAD-NARROW-REJECT THEN ;   \ genuinely narrower-than-declared arm: declared-width unpack would skip a pad the bundle lacks (until signed pass-2, dot habu-signed-pass-2-4fc2b960)
 
-: TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ active checker package ("" at top level)
-   CHECKER-PACKAGE-ACTIVE? IF CHECKER-PACKAGE-NAME CHECKER-PACKAGE-U @ EXIT THEN
-   s" " ;
+: TFAM-ACTIVE-PKG$ ( -- ptr u8 n )        \ authenticated package ("" at top level)
+   CHECKER-AUTH-PACKAGE$ ;
 
 : TFAM-CONSTRUCT-FAM ( ptr u8 n -- n bool ) {: na:ptr nu:n :}   \ folded family token -> id
    TFAM-ACTIVE-PKG$ na nu TFAM-FIND-IN 0= IF drop MD-CON-FAM MDIAG! 0 RES-FALSE EXIT THEN

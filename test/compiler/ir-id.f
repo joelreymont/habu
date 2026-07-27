@@ -39,6 +39,7 @@ private
 $FFFFFFFF constant LOCAL-MAX
 $1000 constant SUBJECT-CAP
 2000 constant SUBJECT-MS
+70 constant INTERNAL-RC
 
 create SUBJECT-OUT SUBJECT-CAP allot
 create SUBJECT-ERR SUBJECT-CAP allot
@@ -224,6 +225,19 @@ create SUBJECT-ERR SUBJECT-CAP allot
    outu 0 T=
    SUBJECT-ERR erru needle needleu CONTAINS? TTRUE ;
 
+: CONTEXT-SEAL-CASE ( ptr u8 n -- )
+   SUBJECT-RUN ENGINE-ERROR:SEAL-VIOLATION T-OUTCOME-EXITED=
+   LEN>N drop
+   LEN>N drop ;
+
+: INTERNAL-AUTH-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SUBJECT-RUN INTERNAL-RC T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   SUBJECT-ERR erru s" hb: internal engine word: " CONTAINS? TTRUE
+   SUBJECT-ERR erru a u CONTAINS? TTRUE ;
+
 : OWNER-CAST-REJECT ( ptr u8 n -- )
    SUBJECT-RUN UNCAUGHT-RC T-OUTCOME-EXITED=
    LEN>N {: erru:n :}
@@ -256,8 +270,28 @@ create SUBJECT-ERR SUBJECT-CAP allot
    SB$ ;
 
 : AUTHORITY-CASES ( -- )
-   s" cast owner hook is not addressable" T-LABEL
-   s" CAST-PKG-OWNER-XT" XREF-FIND XREF-FOUND? TFALSE
+   s" package context hook is not addressable" T-LABEL
+   s" PKG-LIVE-XT" XREF-FIND XREF-FOUND? TFALSE
+   s" boot package provider is not addressable" T-LABEL
+   s" CHECKER-PKG-LIVE-DEFAULT" XREF-FIND XREF-FOUND? TFALSE
+   s" package context selector is not addressable" T-LABEL
+   s" CHECKER-PKG-CONTEXT" XREF-FIND XREF-FOUND? TFALSE
+   s" verifier package scope cell is not addressable" T-LABEL
+   s" CHECKER-VERIFY-PKG-DEPTH" XREF-FIND XREF-FOUND? TFALSE
+   s" verifier package snapshot name is not addressable" T-LABEL
+   s" VPKG-NAME" XREF-FIND XREF-FOUND? TFALSE
+   s" verifier package snapshot length is not addressable" T-LABEL
+   s" VPKG-U" XREF-FIND XREF-FOUND? TFALSE
+   s" verifier package snapshot mode is not addressable" T-LABEL
+   s" VPKG-MODE" XREF-FIND XREF-FOUND? TFALSE
+   s" verifier package snapshot save is not addressable" T-LABEL
+   s" VPKG-SAVE" XREF-FIND XREF-FOUND? TFALSE
+   s" verifier package snapshot restore is not addressable" T-LABEL
+   s" VPKG-RESTORE" XREF-FIND XREF-FOUND? TFALSE
+   s" verifier mirror start is engine-internal" T-LABEL
+   s" CHECKER-VERIFY-PKG-START" INTERNAL-AUTH-CASE
+   s" verifier mirror close is engine-internal" T-LABEL
+   s" CHECKER-VERIFY-PKG-DONE" INTERNAL-AUTH-CASE
    s" family package hook is not addressable" T-LABEL
    s" TFAM-PKG-XT" XREF-FIND XREF-FOUND? TFALSE
    s" family package wrapper is not addressable" T-LABEL
@@ -278,6 +312,14 @@ create SUBJECT-ERR SUBJECT-CAP allot
    OWNER-CAST-SPOOF
    s" direct checker mirror mutation cannot authorize cast" T-LABEL
    OWNER-MIRROR-SPOOF
+   s" stale namespace record cannot be installed" T-LABEL
+   s" dbase@ data-base $90 + !" CONTEXT-SEAL-CASE
+   s" public WID cannot diverge from its namespace" T-LABEL
+   s" 1 data-base $78 + !" CONTEXT-SEAL-CASE
+   s" private WID cannot diverge from its namespace" T-LABEL
+   s" 1 data-base $80 + !" CONTEXT-SEAL-CASE
+   s" current WID cannot diverge from its package" T-LABEL
+   s" 1 data-base $28 + !" CONTEXT-SEAL-CASE
    s" module serial survives require replay" T-LABEL
    RELOAD-STABLE$ SUBJECT-RUN 0 T-OUTCOME-EXITED=
    LEN>N {: erru:n :}

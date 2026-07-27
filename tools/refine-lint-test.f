@@ -227,12 +227,13 @@ create RAW-NAME-BUF 64 allot
       E-TBL-BOUNDS throw
    endcase ;
 
-: PRIVATE-FORM$ ( ptr u8 n n -- ptr u8 n )
-   {: pa:ptr pu:n form:n :}
+: FORM$ ( ptr u8 n ptr u8 n n bool -- ptr u8 n )
+   {: pa:ptr pu:n na:ptr nu:n form:n pub:bool :}
    SB-RESET
    s" package " SB-APPEND pa pu SB-APPEND
-   s"  private " SB-APPEND form DEF-FORM$ SB-APPEND
-   s"  MINT-MODULE" SB-APPEND
+   pub if s"  public " else s"  private " then SB-APPEND
+   form DEF-FORM$ SB-APPEND
+   32 SB-APPEND-C na nu SB-APPEND
    form DEF-KIND dup LINT-DEF:DATA <> if
       32 SB-APPEND-C DEF-CLOSE$ SB-APPEND
    else
@@ -240,6 +241,12 @@ create RAW-NAME-BUF 64 allot
    then
    s"  ;package" SB-APPEND
    SB$ ;
+
+: PRIVATE-FORM$ ( ptr u8 n ptr u8 n n -- ptr u8 n )
+   LINT-FALSE FORM$ ;
+
+: PUBLIC-FORM$ ( ptr u8 n ptr u8 n n -- ptr u8 n )
+   LINT-TRUE FORM$ ;
 
 : PUBLIC-MUTATION$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: pa:ptr pu:n na:ptr nu:n :}
@@ -279,9 +286,40 @@ create RAW-NAME-BUF 64 allot
    s" test/compiler-ir-mutation.f"
       s" IR" RAW-NAME-BUF nu PRIVATE-MUTATION$ RFL:COUNT-STR-AT 1 T= ;
 
-: RAW-TABLE-CASE ( ptr u8 n -- )
-   2dup RFL:RAW-NAME? TTRUE
-   RAW-PRIVATE-FAILS ;
+: RAW-TABLE-CASE ( ptr u8 n -- ) {: na:ptr nu:n :}
+   na RAW-NAME-BUF nu BYTE-COPY
+   RAW-NAME-BUF nu RFL:RAW-NAME? TTRUE
+   RAW-NAME-BUF nu RAW-PRIVATE-FAILS
+   s" src/compiler/ir/id.f"
+      s" IR-ID" RAW-NAME-BUF nu 5 PRIVATE-FORM$
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f"
+      s" IR-ID" RAW-NAME-BUF nu 0 PRIVATE-FORM$
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f"
+      s" IR-ID" RAW-NAME-BUF nu 3 PRIVATE-FORM$
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f"
+      s" IR-ID" RAW-NAME-BUF nu 16 PRIVATE-FORM$
+      RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f"
+      s" IR-ID" RAW-NAME-BUF nu 5 PRIVATE-FORM$
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f"
+      s" IR" RAW-NAME-BUF nu 5 PRIVATE-FORM$
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f"
+      s" IR-ID" RAW-NAME-BUF nu 5 PUBLIC-FORM$
+      RFL:COUNT-STR-AT 1 T=
+   s" src/compiler/ir/id.f"
+      s" OTHER" RAW-NAME-BUF nu QUALIFIED-MUTATION$
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f"
+      s" OTHER" RAW-NAME-BUF nu 0 PRIVATE-FORM$
+      RFL:COUNT-STR-AT 0 T=
+   s" src/compiler/ir/id.f"
+      s" IR-ID" RAW-NAME-BUF nu EXPORT-MUTATION$
+      RFL:COUNT-STR-AT 1 T= ;
 
 : RAW-TABLE-COVERAGE ( -- )
    RFL:RAW-NAME-COUNT 26 T=
@@ -311,8 +349,18 @@ create RAW-NAME-BUF 64 allot
    IR-PUBLIC-PKG# 0 ?do
       DEF-FORM# 0 ?do
          s" test/compiler-ir-mutation.f"
-            j IR-PUBLIC-PKG$ i PRIVATE-FORM$
+            j IR-PUBLIC-PKG$ s" MINT-MODULE" i PRIVATE-FORM$
             RFL:COUNT-STR-AT 1 T=
+      loop
+   loop ;
+
+: OWNER-FORM-MUTATIONS ( -- )
+   IR-PUBLIC-PKG# 0 ?do
+      DEF-FORM# 0 ?do
+         s" src/compiler/ir/id.f"
+            j IR-PUBLIC-PKG$ s" MINT-MODULE" i PRIVATE-FORM$
+            RFL:COUNT-STR-AT
+            j 0= i 5 = and if 0 else 1 then T=
       loop
    loop ;
 
@@ -603,6 +651,7 @@ public
    NO-FALSE-POSITIVE
    RAW-TABLE-COVERAGE
    PRIVATE-FORM-MUTATIONS
+   OWNER-FORM-MUTATIONS
    EXPORT-MUTATIONS
    PUBLICATION-MUTATIONS
    IR-AUTHORITY-CONFINEMENT

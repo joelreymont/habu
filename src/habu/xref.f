@@ -143,36 +143,70 @@ variable XREF-NV
    XREF-U ! XREF-A!
    XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
 
-package CAST-OWNER
+package PKG-AUTH
 private
 
-: TARGET? ( ptr a -- bool ) {: rec:ptr :}
-   rec XREF-START {: pub:n :}
-   rec XREF-LEN {: pri:n :}
-   pub data-base PKG-PUB-CELL + @ <> if XREF-FALSE exit then
-   pri data-base PKG-PRI-CELL + @ <> if XREF-FALSE exit then
-   get-current dup pub = swap pri = or ;
+0 constant MODE-NONE
+1 constant MODE-PRI
+2 constant MODE-PUB
 
-\ CAST introductions are owned by the engine's live namespace record, not the
-\ checker's parser mirror. For a package family, prove the record class/name,
-\ both live WIDs, and the actual definition target. For a global family, require
-\ the exact record-free global state. PKG-REC and its companion cells are
-\ engine-owned and protected after cold load.
-: OWNER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   data-base PKG-REC-CELL + @ XREF-N>REC {: rec:ptr :}
-   u 0= if
-      rec XREF-FOUND? if XREF-FALSE exit then
-      data-base PKG-PUB-CELL + @ 0 <> if XREF-FALSE exit then
-      data-base PKG-PRI-CELL + @ 0 <> if XREF-FALSE exit then
-      get-current 0 = exit
+: NAME-OUT ( ptr a n -- ptr u8 n n bool ) {: rec:ptr mode:n :}
+   rec XREF-NAME$ dup 0= if
+      2drop s" " MODE-NONE XREF-FALSE exit
    then
-   rec XREF-FOUND? 0= if XREF-FALSE exit then
-   rec XREF-WORDLIST XREF-NAMESPACE-WL <> if XREF-FALSE exit then
-   rec XREF-NAME$ a u XREF-STR=CI 0= if XREF-FALSE exit then
-   rec TARGET? ;
+   mode XREF-TRUE ;
+
+\ A package record is live only when its address is an exact DREC slot below
+\ ndict@. This rejects stale snapshots, unaligned pointers, and foreign data
+\ before any record field is read.
+: REC-LIVE? ( n -- bool ) {: addr:n :}
+   addr dbase@ < if XREF-FALSE exit then
+   addr dbase@ -
+   dup DREC mod 0 <> if drop XREF-FALSE exit then
+   DREC / ndict@ < ;
+
+\ Return the one authenticated package context. The global context is the exact
+\ all-zero tuple. A package context must name a live namespace record whose two
+\ WIDs equal the protected engine cells; get-current selects its visibility.
+: LIVE-PKG ( n n n n -- ptr u8 n n bool )
+   {: recn:n pub:n pri:n cur:n :}
+   recn 0= if
+      pub 0= pri 0= and cur 0= and if
+         s" " MODE-NONE XREF-TRUE
+      else
+         s" " MODE-NONE XREF-FALSE
+      then
+      exit
+   then
+   pub 0= pri 0= or pub pri = or if
+      s" " MODE-NONE XREF-FALSE exit
+   then
+   recn REC-LIVE? 0= if
+      s" " MODE-NONE XREF-FALSE exit
+   then
+   recn XREF-N>REC
+   dup XREF-WORDLIST XREF-NAMESPACE-WL <> if
+      drop s" " MODE-NONE XREF-FALSE exit
+   then
+   dup XREF-START pub <> if
+      drop s" " MODE-NONE XREF-FALSE exit
+   then
+   dup XREF-LEN pri <> if
+      drop s" " MODE-NONE XREF-FALSE exit
+   then
+   cur pub = if MODE-PUB NAME-OUT exit then
+   cur pri = if MODE-PRI NAME-OUT exit then
+   drop s" " MODE-NONE XREF-FALSE ;
+
+: LIVE ( -- ptr u8 n n bool )
+   data-base PKG-REC-CELL + @
+   data-base PKG-PUB-CELL + @
+   data-base PKG-PRI-CELL + @
+   get-current
+   LIVE-PKG ;
 
 : INSTALL ( -- )
-   [: OWNER? ;] is CAST-PKG-OWNER-XT ;
+   [: LIVE ;] is PKG-LIVE-XT ;
 INSTALL
 
 ;package
@@ -418,16 +452,30 @@ variable XREF-FORGET-CP
       1+
    repeat drop cr ;
 
-\ The installed CAST owner quotation holds direct code references. Retire every
-\ source-level rebinding seam before the engine-prefix seal so user source cannot
-\ replace the real package identity check.
-undefine CAST-PKG-OWNER-XT
+\ The installed provider holds direct code references. Retire every source-level
+\ rebinding seam and mutable provider cell before the engine-prefix seal.
+undefine PKG-LIVE-XT
+undefine CHECKER-PKG-LIVE-DEFAULT
+undefine CHECKER-PKG-BOOT-LIVE
+undefine CHECKER-PKG-MIRROR
+undefine CHECKER-PKG-CONTEXT
+undefine CHECKER-VERIFY-PKG-DEPTH
+undefine VPKG-NAME
+undefine VPKG-U
+undefine VPKG-MODE
+undefine VPKG-SAVE
+undefine VPKG-RESTORE
 undefine TFAM-PKG-XT
 undefine TFAM-PKG$*
-package CAST-OWNER
+package PKG-AUTH
 undefine INSTALL
-undefine OWNER?
-undefine TARGET?
+undefine LIVE
+undefine LIVE-PKG
+undefine REC-LIVE?
+undefine NAME-OUT
+undefine MODE-PUB
+undefine MODE-PRI
+undefine MODE-NONE
 private
 get-current prot-wid-add
 public

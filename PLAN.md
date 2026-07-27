@@ -315,20 +315,37 @@ src/compiler/ir/id.f
 test/compiler/ir-id-concurrency.f
 test/compiler/ir-id.f
 lib/errors.f
-FILEMAP.md
-LESSONS.md
 docs/compiler-ir-design.md
-docs/forth.md
-src/core/checker.f
-src/core/type-family.f
-src/habu/xref.f
-test/cast-negative-suite.f
-tools/refine-lint-core.f
-tools/refine-lint-test.f
 ```
 
-No task, manifest, loader, fixpoint, AOT, public-signature, or shared structural
-lint source is changed by this leaf.
+The active prerequisite `habu-cast-v2-family-741e7bae` owns the shared
+package-authority repair and its gates:
+
+```text
+src/core/checker.f
+src/core/enum-decl.f
+src/core/structure-decl.f
+src/core/sumtype.f
+src/core/type-family.f
+src/habu/verify-source.f
+src/habu/xref.f
+test/cast-negative-suite.f
+test/type-decl-suite.f
+test/type-export-suite.f
+tools/check-core.f
+tools/refine-lint-core.f
+tools/refine-lint-test.f
+TRUSTED.md
+docs/forth.md
+```
+
+`PLAN.md`, `FILEMAP.md`, `LESSONS.md`, and the two dot records are shared
+integration records updated only after both contracts are reconciled.
+
+IR-0.1 changes no task, manifest, loader, fixpoint, AOT, or public-signature
+source. Its CAST prerequisite changes the shared checker, declaration,
+verification, and structural-lint sources listed above; those changes are not
+owned by the ID implementation leaf.
 
 It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
 `ir-module-key`, `ir-module-id`, `ir-source-id`, `ir-fun-id`, `ir-block-id`,
@@ -429,9 +446,12 @@ Acceptance:
   `CHECKER-PACKAGE` and direct checker-mirror mutation cannot authorize a mint;
 - canonical local projection excludes the runtime owner;
 - no public raw converter or dialect-specific cast resolves;
-- all 26 raw tails belong only to the private `IR-ID` dictionary window;
-- `refine-lint` rejects direct definitions and `EXPORT` aliases of raw tails in
-  all 19 compiler API packages;
+- the 26 package-qualified raw authority tails are definable only as private
+  `CAST:` words in `src/compiler/ir/id.f`'s `IR-ID` window; unrelated/global
+  same-tail role APIs such as global `COUNT>N ( count -- n )` remain distinct;
+- `refine-lint` rejects direct definitions and `EXPORT` aliases of those raw
+  tails in all 19 compiler API packages, plus compiler-qualified raw references
+  outside the owner;
 - both `IR-ID` wordlists reject reopen, qualified publication, direct WID
   publication, and source replay;
 - every cast is checker-certified and confined by `refine-lint`;

@@ -651,7 +651,7 @@ variable STG-START
 : RECORD-EXPORT ( -- )
    NEXT-SCAN {: name:ptr nameu:n :}
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
-   CHECKER-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
+   CHECKER-AUTH-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
 \ A package primitive row has two closers, and this verifier models them exactly
 \ as the ratchet parser does (tools/primitive-effect-inventory.f PRIVATE-CLOSE?):
@@ -791,8 +791,11 @@ variable STG-START
    dup 0= IF drop exit THEN
    throw ;
 
-: RUN ( -- )
-   [: VERIFY-SOURCE ;] catch THROW-RESULT ;
+TRUSTED: RUN ( -- )
+   CHECKER-VERIFY-PKG-START
+   [: VERIFY-SOURCE ;] catch
+   CHECKER-VERIFY-PKG-DONE
+   THROW-RESULT ;
 
 public
 
