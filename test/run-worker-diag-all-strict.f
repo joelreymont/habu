@@ -25,9 +25,9 @@ require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 require test/gate-diagnostics-all-strict-lib.f
 
-TEST-RUN:TRW-LOAD-DONE
+TEST:TRW-LOAD-DONE
 
-package TEST-RUN
+package TEST
 
 variable FORK-ID
 
@@ -55,8 +55,8 @@ variable FORK-ID
 
 : START-FORK ( idx -- ) {: idx:idx :}
    idx IDX>N FORK-ID !
-   idx CHILD-LABEL idx TEST-RUN:TRW-CHILD-TEST
-   idx CHILD-LABEL TEST-RUN:TIMEOUT-MS [: FORK-RUN ;] GT-POOL-START-FORK ;
+   idx CHILD-LABEL idx TRW-CHILD-TEST
+   idx CHILD-LABEL TIMEOUT-MS [: FORK-RUN ;] GT-POOL-START-FORK ;
 
 : DIAG-ALL ( -- )
    GT-POOL-RESET

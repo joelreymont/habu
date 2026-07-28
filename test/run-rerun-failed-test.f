@@ -4,7 +4,9 @@
 require test/run-lib.f
 require lib/test.f
 
-package TEST-RUN
+package TEST
+
+private
 
 6 constant PH-DEBUG
 9 constant PH-FIXTURES
@@ -12,7 +14,7 @@ package TEST-RUN
 : T-CONTAINS ( ptr u8 n ptr u8 n -- )
    CONTAINS? TTRUE ;
 
-: SETUP ( -- )
+: RERUN-SETUP ( -- )
    CLEANUP-RESET
    s" habu-rerun" TMPDIR-MKDIR {: a:ptr u:n :}
    a u CLEANUP-TREE+
@@ -64,7 +66,7 @@ package TEST-RUN
 
 \ PERSIST! copies a caller's bytes into a fixed FS-PATH-CAP region, so the
 \ length is what stands between a caller and the data next to that buffer. The
-\ refusal is proven through the REAL entry - this file reopens TEST-RUN, so the
+\ refusal is proven through the REAL entry - this file reopens TEST, so the
 \ word called here is the production one, not a copy - and at the exact edge:
 \ FS-PATH-CAP is accepted and FS-PATH-CAP+1 throws. A truncating PERSIST! would
 \ pass the first case and silently fail the second.
@@ -86,7 +88,7 @@ create OVER-PATH FS-PATH-CAP 1 + allot
 
 : MAIN ( -- )
    T-RESET
-   SETUP
+   RERUN-SETUP
    LABEL-ROUNDTRIP
    LINE-CONTENT
    ROUNDTRIP

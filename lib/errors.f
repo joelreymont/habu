@@ -282,7 +282,7 @@ public
 -6403 constant E-JRPP-MISMATCH   \ a phase fixture read a value other than the one it required
 -6404 constant E-JRPP-REPEAT     \ the ratchet phase was started twice in one gate process
 
-\ Native gate runner (package TEST-RUN): -6500..-6599
+\ Native test runner (package TEST): -6500..-6599
 -6500 constant E-TR-FIRST
 -6599 constant E-TR-LAST
 -6500 constant E-TR-PATH-LEN    \ a persistent-root path longer than the runner's buffer

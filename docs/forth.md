@@ -375,18 +375,20 @@ this staged rule does not claim they are already converted. PREFER `NAME:WORD`
 for a one-off call or when qualification is needed to escape a collision or
 ambiguity.
 
+The native test entry qualifies its TEST calls because global `RESET` collides
+with `TEST:RESET`, and `DAG-RUN-REST` later loads child files that own `RUN`; a
+broad import would make those references ambiguous.
+
 ```forth
 require test/run-lib.f
 require test/json-read-perf-phase.f
 
-using TEST-RUN
-PREPARE
-EARLY-EXTERNAL-START
+TEST:PREPARE
+TEST:EARLY-EXTERNAL-START
 require test/run-resident.f
-DAG-RUN-REST
+TEST:DAG-RUN-REST
 JSON-READ-PERF-PHASE:START
-COMPLETE
-;using
+TEST:COMPLETE
 ```
 
 - `using NAME` consumes the next token, rejects a missing name and a name

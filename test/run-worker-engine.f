@@ -7,7 +7,7 @@ require tools/build-fixpoint.f
 require test/gate-common-lib.f
 require test/gate-engine-lib.f
 
-package TEST-RUN
+package TEST
 private
 
 TRW-LOAD-DONE

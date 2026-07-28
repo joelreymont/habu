@@ -3,7 +3,7 @@
 \ Loaded inside a forked worker after test/run-resident.f stores the resident phase id.
 
 
-package TEST-RUN
+package TEST
 private
 variable TRW-LOAD-START-NS
 variable TRW-PATH-A

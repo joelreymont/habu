@@ -20,12 +20,14 @@ require lib/fmt.f
 require lib/test.f
 require test/run-lib.f
 
-package TEST-RUN
+package TEST
+
+private
 
 : SPARK ( -- )                               \ pin the runner to the spark profile
    PROFILE-DGX-SPARK-10X2 PROFILE! ;
 
-: RUN ( -- )
+: RUN-LIB-TEST ( -- )
    \ ---- host-independent profile mapping ----------------------------------
    PROFILE-DGX-SPARK-10X2 4 T=
    CAL-REF-SPARK-MS 87 T=
@@ -55,6 +57,6 @@ package TEST-RUN
    T-REPORT
    s" run-lib-test: ok" type cr ;
 
-RUN
+RUN-LIB-TEST
 
 ;package

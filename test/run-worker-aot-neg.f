@@ -6,6 +6,6 @@ require tools/gate-json-assert-core.f
 require test/gate-common-lib.f
 require test/gate-aot-negative-lib.f
 
-TEST-RUN:TRW-LOAD-DONE
+TEST:TRW-LOAD-DONE
 
 AOT-NEGATIVE:RUN

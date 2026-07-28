@@ -390,7 +390,7 @@ variable GPT-GEN-SAVE-U
    GPT-GEN-SAVE GPT-GEN-SAVE-U @ GS-GEN! ;
 
 \ The genuine label-collision mis-fire this dot prevents: a fork child that is
-\ ITSELF a nested pool parent (the TEST-RUN:TRWE-POST-CANDIDATE shape) emits its nested
+\ ITSELF a nested pool parent (the TEST:TRWE-POST-CANDIDATE shape) emits its nested
 \ slot's authoritative pass-hook span through the same GS-SPAN entry its own
 \ self-suppression watches. When the nested slot's label bytes equal the
 \ child's own slot label, byte-matching suppression swallows an authoritative
@@ -514,8 +514,8 @@ variable GPT-SG-PATH-U
    GPT-ROOT-RESTORE ;
 
 \ Child driver for the kept-root e2e: reproduce the real red-gate completion so
-\ TEST-RUN:COMPLETE routes a red phase to TEST-RUN:RED-COMPLETE, which prints the red list
-\ plus TEST-RUN:KEPT-ROOT-LINE and dies without GT-CLEANUP, leaving the capture root
+\ TEST:COMPLETE routes a red phase to TEST:RED-COMPLETE, which prints the red list
+\ plus TEST:KEPT-ROOT-LINE and dies without GT-CLEANUP, leaving the capture root
 \ (and its pool-*-out.log files) on disk for the parent to inspect.
 : GPT-KEPT-ROOT-CHILD ( -- )
    s" gpt-kept-root" GT-START
@@ -525,7 +525,7 @@ variable GPT-SG-PATH-U
    GT-POOL-RED-RESET
    s" kept-root worker" GPT-TIMEOUT-MS [: GPT-SOFT-ONE ;] GT-POOL-START-FORK
    GT-POOL-DRAIN-SOFT
-   TEST-RUN:COMPLETE ;
+   TEST:COMPLETE ;
 
 : GPT-KR-MARK$ ( -- ptr u8 n )
    s" capture root kept: " ;

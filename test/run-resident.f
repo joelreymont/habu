@@ -1,7 +1,7 @@
 \ run-resident.f - late-loaded resident test suite dispatch.
 
 
-package TEST-RUN
+package TEST
 private
 variable TR-R-SETUP-START-NS
 

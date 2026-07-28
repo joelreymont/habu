@@ -4,7 +4,7 @@
 \ when nothing else on the box is competing for the cores, so they cannot run
 \ beside the parallel test groups. This package owns the one place in the gate
 \ where they do run: START, called from test/run.f after every scheduled phase
-\ has drained and before TEST-RUN:COMPLETE decides the run.
+\ has drained and before TEST:COMPLETE decides the run.
 \
 \ START admits itself by construction rather than by convention. A gate-pool
 \ fork child stamps its own slot identity (test/gate-pool.f GT-POOL-FORK-CHILD
@@ -52,7 +52,7 @@ require lib/test/runner.f
 require test/cal-spin-lib.f
 require test/gate-stats.f
 require test/gate-pool.f
-require test/run-lib.f                \ TEST-RUN:CAL-REF-MS: the owner of the per-profile spin reference
+require test/run-lib.f                \ TEST:CAL-REF-MS: the owner of the per-profile spin reference
 require lib/json-read-perf-test.f
 
 package JSON-READ-PERF-PHASE
@@ -102,7 +102,7 @@ defer PROBE-MS ( -- n )               \ one fixed calibration spin, wall ms
 PROBE-MS-DEFAULT!
 
 \ The factor has to come from the SAME per-profile reference the gate driver
-\ calibrates against - test/run-lib.f TEST-RUN:CAL-REF-MS, which owns the committed
+\ calibrates against - test/run-lib.f TEST:CAL-REF-MS, which owns the committed
 \ GB10 performance-core figure - and NOT from lib/test/budget.f's reference,
 \ which is 0 anywhere but macOS. With that one every Linux and Spark factor
 \ collapsed to the 100% floor, so this word measured the spin and then threw the
@@ -111,12 +111,12 @@ PROBE-MS-DEFAULT!
 \ gate. T-BUDGET-CAL-PCT still owns the arithmetic and the 100..300 clamp, so
 \ neither the reference nor the clamp is copied here.
 \
-\ TEST-RUN:PREPARE already installed the driver's own factor before this phase runs.
+\ TEST:PREPARE already installed the driver's own factor before this phase runs.
 \ Replacing it is the point: the driver measured once at gate start, in the
 \ driver process, while this measures in the worker that is about to run the
 \ workloads, on the core it is about to run them on.
 : FACTOR ( n -- n )                   \ spin ms -> this host's budget factor, percent
-   TEST-RUN:CAL-REF-MS T-BUDGET-CAL-PCT ;
+   TEST:CAL-REF-MS T-BUDGET-CAL-PCT ;
 
 \ ---- machine load samples --------------------------------------------------
 \ These are AUDIT CONTEXT, not the admissibility decision. The one-minute load

@@ -8,7 +8,7 @@ require test/run-support.f
 require test/run-files.f
 require test/run-result-cache.f
 
-package TEST-RUN
+package TEST
 private
 
 64 constant TR-USAGE-RC
@@ -41,7 +41,7 @@ public
 ;package
 
 
-package TEST-RUN
+package TEST
 private
 
 \ Host calibration. A startup spin probe measures this run's speed against the
@@ -1571,7 +1571,7 @@ public
 : TR-BO>RAW ( CAD-NUM:byte-off -- n ) BYTE-OFF>N ;
 ;package
 
-package TEST-RUN
+package TEST
 private
 
 \ Typed STR:SPLIT-NEXT with the raw-shaped result TR-RERUN-LINES consumes:
@@ -1885,7 +1885,7 @@ public
 \ ---- what genuinely crosses an owner boundary ------------------------------
 \ Everything the runner's own family needs it reaches as package members: the
 \ worker bodies, the resident dispatcher and the white-box tests all live in or
-\ reopen TEST-RUN, so they use the state directly and need no public surface at
+\ reopen TEST, so they use the state directly and need no public surface at
 \ all. What is left below crosses a REAL boundary - test/json-read-perf-phase.f
 \ and its test own a different package - and each one is a question or a
 \ validated operation, never a store.

@@ -53,8 +53,10 @@ private
 \ a broken budget wiring. Pin the committed Spark profile so the reference is a
 \ known nonzero number and two different spin readings must produce two
 \ different budgets.
+using TEST
+
 : PROFILE-PIN! ( -- )
-   TEST-RUN:PROFILE-DGX-SPARK-10X2 TEST-RUN:PROFILE! ;
+   PROFILE-DGX-SPARK-10X2 PROFILE! ;
 
 1000 constant PROBE-BASE              \ a round base, so the factor reads straight off the budget
 
@@ -177,7 +179,7 @@ variable SCRIPT-I
 \ worthless. Pure, so it needs no measurement.
 : CASE-SATURATION ( -- )
    PROFILE-PIN!
-   TEST-RUN:CAL-REF-MS {: ref:n :}
+   CAL-REF-MS {: ref:n :}
    s" an idle bracket is admissible" T-LABEL
    ref ref ADMISSIBLE? TTRUE
    s" a stable bracket on a box past the compensation clamp is refused" T-LABEL
@@ -311,13 +313,15 @@ MEM-64K constant FENCE-SPAN
 \ again, and both readings collapse to the same number and this worker dies.
 : BUDGET-WORKER ( -- )
    PROFILE-PIN!
-   TEST-RUN:CAL-REF-MS {: ref:n :}          \ the committed performance-core spin time
+   CAL-REF-MS {: ref:n :}                   \ the committed performance-core spin time
    SCRIPT-INSTALL!
    ref  ref  ref 2 *  ref 2 *  SCRIPT!
    ATTEMPT drop                       \ bracket one: the box is at the reference speed
    PROBE-BASE TEST-BUDGET:PERF-MS PROBE-BASE EXPECT-EQ
    ATTEMPT drop                       \ bracket two: the box reads half as fast
    PROBE-BASE TEST-BUDGET:PERF-MS PROBE-BASE 2 * EXPECT-EQ ;
+
+;using
 
 : CASE-WORKERS ( -- )
    GT-POOL-FIND-FREE {: retry:idx :}

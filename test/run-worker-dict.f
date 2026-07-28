@@ -10,13 +10,13 @@ require tools/check-all-errors-core.f
 require test/gate-common-lib.f
 require test/gate-dictionary-lib.f
 
-TEST-RUN:TRW-LOAD-DONE
+TEST:TRW-LOAD-DONE
 
-package TEST-RUN
+package TEST
 
 : UNDER! ( -- )
    TR-UNDER-READY @ 0= if exit then
-   TEST-RUN:UNDER$ GE-HB! ;
+   UNDER$ GE-HB! ;
 
 : DICT ( -- )
    UNDER!

@@ -24,9 +24,9 @@ require tools/check-core.f
 require test/gate-common-lib.f
 require test/gate-diagnostics-lib.f
 
-TEST-RUN:TRW-LOAD-DONE
+TEST:TRW-LOAD-DONE
 
-package TEST-RUN
+package TEST
 
 : DIAG ( -- )
    TR-RESIDENT-ID @ case
