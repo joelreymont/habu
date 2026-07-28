@@ -1694,6 +1694,88 @@ variable GE-DFULL-I                 \ copy/definition loop index
       s" hb eval orphan-repeat catch" GE-EVAL-DEF-REJECT-1
    s" PASS: orphan control-flow closers fail closed rc70 (no SIGBUS)" type cr ;
 
+\ The loop family's own opener battery. It is a package rather than four more
+\ bare GE- globals because the file's newer test surfaces (RUNTIME-RUNNER,
+\ RUNTIME-CHECKS, RUNTIME-SUBJECT) already own their words that way, and the
+\ package gate reports a new unpackaged global here like it does anywhere else.
+package LOOP-OPENER
+private
+
+: REJECT ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: open:ptr openu:n tok:ptr toku:n label:ptr labelu:n :}
+   \ Plain stdin: a loop-family word (LOOP / +LOOP / LEAVE) whose innermost open
+   \ control-flow frame is not a `do` frame -- or which has no open frame at all --
+   \ must fail closed rc 70 with the named engine diagnostic and the offending
+   \ token, NEVER a register dump (rc 134). Root cause (dot habu-fix-loop-closer-
+   \ 9e5d012e): the DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level
+   \ arrays) is the loop family's opener record and LCFPOP's orphan guard does not
+   \ cover it. With an IF or BEGIN frame open, LOOP/+LOOP still popped the CF stack
+   \ happily and then indexed level -1 of the level stack; LVH's cell -1 IS
+   \ LVD-CELL itself, so LBCHAIN was handed a junk chain head and dereferenced it.
+   \ J-LVREQUIRE now proves a level is open in every consumer of that stack.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : XM ( -- ) " GE-SRC+
+   open openu GE-SRC+
+   s"  " GE-SRC+
+   tok toku GE-SRC+
+   s"  ;" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   70 label labelu GE-EXPECT-RC
+   s" control-flow closer without opener" label labelu GE-EXPECT-ERR-HAS
+   tok toku label labelu GE-EXPECT-ERR-HAS
+   s" habu-crash" label labelu GE-EXPECT-ERR-LACKS ;
+
+: FORGE ( -- )
+   \ A stray LEAVE used to STORE a code offset into LVH level -1, which aliases
+   \ LVD-CELL: that forged a non-zero open-level count out of nothing, so a later
+   \ LOOP would sail past any count-only check and walk a bogus LEAVE chain.
+   \ Guarding LEAVE closes the forge at its source, which is what makes the
+   \ LOOP/+LOOP guard an existence check on a sole-writer count rather than a
+   \ value test. The definition is therefore rejected at LEAVE, not at LOOP.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : XMF ( -- ) 1 IF LEAVE drop LOOP ;" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   70 s" hb mispair leave-forge rc" GE-EXPECT-RC
+   s" control-flow closer without opener" s" hb mispair leave-forge diag" GE-EXPECT-ERR-HAS
+   s" LEAVE" s" hb mispair leave-forge token" GE-EXPECT-ERR-HAS
+   s" habu-crash" s" hb mispair leave-forge no-crash" GE-EXPECT-ERR-LACKS ;
+
+: LEGAL ( -- )
+   \ The guard must not touch legal use: a plain DO/LOOP, a ?DO (whose own skip
+   \ branch goes through the same LEAVE-chain code), a +LOOP, and a LEAVE nested
+   \ inside a DO all still compile and run.
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" : XMOK ( -- ) 3 0 do i drop loop  6 0 ?do i drop 2 +loop" GE-SRC+
+   s"  9 0 do i 2 = if leave then loop  4242 . cr ;" GE-SRC-LINE
+   s" XMOK" GE-SRC-LINE
+   RUNTIME-RUNNER:BUFFER
+   s" hb mispair-loop legal" GE-EXPECT-OK
+   s" 4242" s" hb mispair-loop legal output" GE-EXPECT-OUT-HAS ;
+
+public
+
+: RUN ( -- )
+   \ Every loop-family word against an IF frame, a BEGIN frame, and no frame at
+   \ all. The IF and BEGIN rows were rc 134 register dumps for LOOP/+LOOP and a
+   \ silent LVD-CELL corruption for LEAVE before the guard.
+   s" 1 IF drop"    s" LOOP"   s" hb mispair if-loop"     REJECT
+   s" 1 IF drop"    s" +LOOP"  s" hb mispair if-+loop"    REJECT
+   s" 1 IF"         s" LEAVE"  s" hb mispair if-leave"    REJECT
+   s" 1 BEGIN drop" s" LOOP"   s" hb mispair begin-loop"  REJECT
+   s" 1 BEGIN drop" s" +LOOP"  s" hb mispair begin-+loop" REJECT
+   s" 1 BEGIN"      s" LEAVE"  s" hb mispair begin-leave" REJECT
+   s" "             s" LOOP"   s" hb mispair bare-loop"   REJECT
+   s" "             s" +LOOP"  s" hb mispair bare-+loop"  REJECT
+   s" "             s" LEAVE"  s" hb mispair bare-leave"  REJECT
+   FORGE
+   LEGAL
+   s" PASS: loop family over a wrong/absent DO opener fails closed rc70 (no SIGSEGV)" type cr ;
+
+;package
+
 : GE-SET-CHECK-NEG ( -- )
    \ set-check is fail-closed at install (dot habu-stdlib-check-hook-fd883aea): a
    \ non-zero argument outside the live JIT code window [DBASE, CP) dies with a
@@ -2041,6 +2123,7 @@ public
    GE-EVAL-INTERP-ERR-RECOVER
    GE-EVAL-DEF-REJECT-CATCH
    GE-ORPHAN-CLOSER
+   LOOP-OPENER:RUN
    GE-CF-DEPTH-CAP
    GE-RAWEXIT-RECOVER
    GE-RAWEXIT-RESIDUAL

@@ -71,7 +71,13 @@ public
         fa  bl CAD-NUM:SAB-BL>RAW  bo CAD-NUM:SAB-BO>RAW  STR-TRUE ENDOF
    ;MATCH ;
 
-$40000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~137 KB + headroom)
+\ Mirror scan buffer. This was first sized as "forth.fs ~137 KB + headroom"; the
+\ mirror has since grown to about 257 KB and had 289 bytes of headroom left, so
+\ the next ordinary edit to forth.fs made READ-ALL throw a bare E-FS-CAPACITY
+\ (-2106) with no message and no clue which file or limit was involved. The
+\ buffer is doubled to restore real headroom, and SAB-LOAD-FORTH now names the
+\ overflow instead of letting it surface as a raw throw code.
+$80000 constant SAB-CAP                 \ mirror scan buffer (forth.fs ~257 KB + headroom)
 $800 constant SAB-NAMES-CAP             \ packed absent-name table capacity (bytes)
 92 constant SAB-BSLASH                  \ ASCII '\' — the line-comment introducer
 11 constant SAB-GUARD-PINS              \ GUARD-SPAN definition + bounded/runtime sink lines (incl. BMUNMAP)
@@ -213,7 +219,16 @@ variable SAB-READY
    SAB-ALLOC
    SAB-BUF-A-FIELD @ ;
 
+: SAB-MIRROR-FITS ( -- )                \ name the overflow before READ-ALL throws a bare code
+   s" bootstrap/cg/forth.fs" FILE-SIZE {: flen:n :}
+   flen SAB-CAP <= if exit then
+   s" seal-absence: bootstrap/cg/forth.fs is " type flen .
+   s" bytes and outgrew the SAB-CAP scan buffer (" type SAB-CAP .
+   s" bytes) - raise SAB-CAP in test/seal-absence.f" type cr
+   E-FS-CAPACITY throw ;
+
 : SAB-LOAD-FORTH ( -- )
+   SAB-MIRROR-FITS
    s" bootstrap/cg/forth.fs" SAB-BUF SAB-CAP READ-ALL SAB-FLEN ! ;
 
 : SAB-FORTH$ ( -- ptr u8 n )

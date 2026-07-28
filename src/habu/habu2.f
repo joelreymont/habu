@@ -1511,7 +1511,30 @@ here RESTAB-BUF - constant RESTAB-LEN
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
+\ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level arrays) is the
+\ loop family's opener record: `do`/`?do` open a level in J-LVOPEN, `loop`/
+\ `+loop` close one in J-LOOPEND, and `leave` chains onto the innermost open
+\ one. LCFPOP's orphan guard covers only the CF stack, so it does not see this
+\ stack at all: a loop-family word with no open `do` indexed level -1, and
+\ LVH-OFF's cell -1 IS LVD-CELL itself (they are adjacent, $578/$580). `loop`
+\ and `+loop` then handed that junk head offset to LBCHAIN, which dereferenced
+\ DBASE + junk and took SIGSEGV (rc 134); `leave` silently stored a code offset
+\ into LVD-CELL, forging a non-zero "open level" count out of nothing. Every
+\ consumer of the level stack now proves a level exists BEFORE reading or
+\ writing it, and otherwise takes the shared closer-without-opener reject, the
+\ exact sibling of LCFPOP's underflow guard (dot habu-fix-loop-closer-9e5d012e).
+\ Guarding `leave` is what keeps LVD-CELL a sole-writer count of open `do`
+\ levels, so the `loop`/`+loop` guard is an existence check and not a value
+\ test an earlier stray `leave` could defeat.
+\ Clobbers x9 only; every call site reloads or overwrites x9 immediately after.
+: J-LVREQUIRE ( -- )                            \ reject a loop-family word with no open DO level
+   LBL {: ok:label :}
+   9 DATA LVD-CELL LDR,  9 ok CBNZ,
+      LORPHAN LABEL@ B,                  \ TKA/TKL still hold the offending token
+   ok LBL, ;
+
 : J-LVLEAVE ( -- )                              \ chain a B placeholder on the current level
+   J-LVREQUIRE
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    14 10 0 LDR,  15 DATA LOCF-CELL LDR,  12 15 14 SUB,  C-EMIT-DROP-X12
@@ -1544,6 +1567,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LBCHAIN LABEL@ BL, ;
 
 : J-LOOP ( -- )
+   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP LABEL@ BL,
@@ -1552,6 +1576,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    J-LOOPEND ;
 
 : J-+LOOP ( -- )                                \ index += n; loop while (old-limit) and
+   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ (new-limit) agree in sign (ANS crossing)
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index

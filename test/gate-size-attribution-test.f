@@ -153,9 +153,24 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 2026-07-21 ENUM front end landed (src/core/enum-decl.f): parser source is
 \ prelude-loaded from disk; the +40 baked delta is its habu2.f label wiring.
 \ Candidate ratchet measured 114484.
-114484 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-28 loop-family opener guard landed (src/habu/habu2.f, dot
+\ habu-fix-loop-closer-9e5d012e), composed with the macOS re-measure this row was
+\ owed. Two separate amounts make up the +492, and they are not the same lane's
+\ work. 444 of it arrived before this change: the lanes that landed between the
+\ ENUM front-end row above and this one were measured on Linux and left the macOS
+\ row stale, which the reconstruction proves - the committed MACOS-TOTAL 148855
+\ already counted those bytes, so the old 114484 row modelled the file 444 short.
+\ The remaining 48 belong to this change: the `J-LVREQUIRE` guard emitted at the
+\ three loop-family compile sites, all of it inside `compile/keywords`, which the
+\ live map shows moving 9680 -> 9728. Nothing else moves. The __TEXT pad absorbs
+\ the whole 492 (container/text-pad 12048 -> 12000), so the file stays inside the
+\ same 16 KiB page and MACOS-SIGNATURE, MACOS-DATA-CONST, MACOS-LINKEDIT and
+\ MACOS-TOTAL are unchanged; with the new row the model sum reconstructs 148855
+\ exactly. Candidate ratchet measured 114976, floor 3892 -> 4384. The linux row
+\ below is owed a linux-host re-measure for the 48-byte guard.
+114976 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-3892 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+4384 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

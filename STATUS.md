@@ -44,7 +44,7 @@ elapsed-ms is informational only; per-phase timeouts remain as hang guards.
 Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
 gap (habu-add-pinned-engine-90090800).
 Certified (linux-arm64): 4194  Uncheckable: 0  Rejected: 0
-Certified (macos-arm64): 4220
+Certified (macos-arm64): 4221
 Host-script workflow hooks: retired and gated
 
 Attribution for the current linux-arm64 row, which is the count this tree
@@ -199,6 +199,16 @@ measures today:
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a
 predicted count.
+
+The loop-family opener guard adds one to the macos-arm64 row, reaching 4221. The
+one new definition is `J-LVREQUIRE` in `src/habu/habu2.f`: the emitter that every
+compile-time loop-family word now calls to prove a `do` level is open before it
+touches the DO/LEAVE level stack. Its three callers `J-LVLEAVE`, `J-LOOP` and
+`J-+LOOP` already existed and only gained that call. The matching edit in
+`bootstrap/cg/forth.fs` and the new engine gate battery in
+`test/gate-engine-lib.f` are not part of the assembled stage2 engine source and
+count nothing. The linux-arm64 row is owed the same single addition and is
+re-measured on that host.
 
 The checker declaration-frame tagging does add engine text: the four
 `CHECKER-DECL-FRAME` primitive axiom rows grow the ahead-of-time seed by 16

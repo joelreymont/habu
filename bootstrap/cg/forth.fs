@@ -2598,7 +2598,27 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    12 DATA LOCF-CELL LDR,  12 10 0 STR,
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
+\ Recovery-seed mirror of the native J-LVREQUIRE (dot habu-fix-loop-closer-
+\ 9e5d012e). The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level
+\ arrays) is the loop family's opener record, and LCFPOP's orphan guard does
+\ not cover it: with no open `do` the family indexed level -1, and LVH-OFF's
+\ cell -1 IS LVD-CELL itself (adjacent, $578/$580). `loop`/`+loop` then handed
+\ that junk head offset to LBCHAIN and took SIGSEGV; `leave` silently stored a
+\ code offset into LVD-CELL, forging an open-level count out of nothing.
+\ Guarding `leave` as well is what keeps LVD-CELL a sole-writer count of open
+\ `do` levels, so the loop guard is an existence check rather than a value test
+\ a stray earlier `leave` could defeat. Fail closed on the offending token
+\ exactly like the inline LCFPOP orphan reject above.
+: J-LVREQUIRE ( -- )                    \ reject a loop-family word with no open DO level
+   LBL {: lvok :}   \ typed-local-lint: allow-bare-local (gforth-hosted control-flow label id, like cfok in LCFPOP)
+   9 DATA LVD-CELL LDR,  9 lvok CBNZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,   \ write the offending token
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   lvok LBL, ;
+
 : J-LVLEAVE ( -- )                      \ chain a B placeholder on the current level
+   J-LVREQUIRE
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    14 10 0 LDR,  15 DATA LOCF-CELL LDR,  12 15 14 SUB,  C-EMIT-DROP-X12
@@ -2631,6 +2651,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LBCHAIN @ BL, ;
 
 : J-LOOP ( -- )
+   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP @ BL,                                        \ x9 = loop-top
@@ -2639,6 +2660,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    J-LOOPEND ;
 
 : J-+LOOP ( -- )                   \ index += n; loop while (old-limit) and
+   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ (new-limit) agree in sign (ANS crossing)
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
