@@ -127,6 +127,7 @@ require lib/errors.f                     \ E-FS-*, E-MEM-MAP/E-MEM-UNMAP, E-JR-F
 require lib/fs.f                          \ FILE-SIZE, FS-PATHZ, FS-U64@, EXISTS?, FILE?
 require lib/string.f                      \ STR=, BYTE+, BYTE-COPY
 require lib/memory.f                      \ MEM: block allocation for one session
+require lib/cad-num-arithmetic.f          \ CAD-NUM: the byte-offset/extent algebra the bounded read runs in
 require lib/adt/option.f                  \ option<n> for every id-addressed reader
 require lib/adt/result.f                  \ result<n,n> for UNMAP-MAPPING's cleanup outcome
 require lib/json-read.f                   \ JR: streaming JSON pull reader
@@ -453,6 +454,63 @@ variable LIVE-N
    base len SAFET-MAP:UNMAP
    base len ;
 
+\ ---- bounded fixed-width reads over a mapping ------------------------------
+\ The bound is the length the RECORD carries, not the census's copy: CLEAR-IMG
+\ zeroes that copy when the mapping leaves, and a mapping still has to know
+\ where it ends afterwards.
+4 constant U32-BYTES           \ wire width of a little-endian u32
+8  constant SH-B1              \ where each successive byte lands in the result
+16 constant SH-B2
+24 constant SH-B3
+
+\ Only `ok` is reachable: READ-HEADER refuses an image under 8 bytes before any
+\ record is reserved, and E-HEADER is that same image-geometry invariant's code.
+: OK-EXTENT ( CAD-NUM:numeric-result<CAD-NUM:byte-len> -- CAD-NUM:byte-len )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                          negative OF E-HEADER throw ENDOF
+      zero OF E-HEADER throw ENDOF          overflow OF E-HEADER throw ENDOF
+      underflow OF E-HEADER throw ENDOF     bad-alignment OF E-HEADER throw ENDOF
+      misaligned OF E-HEADER throw ENDOF
+   ;MATCH ;
+
+\ These three words are the whole of this module's offset algebra, so CAD-NUM is
+\ imported once for them and closed again straight after. Type names stay
+\ qualified: `using` imports words, and a family spelling is not one.
+using CAD-NUM
+
+: MR-EXTENT ( ptr n -- CAD-NUM:byte-len ) {: mr:ptr :}   \ the record's own length
+   mr MR-LEN-OFF + @ BYTE-LEN OK-EXTENT ;
+
+: U32-REACH ( -- CAD-NUM:byte-len )   \ first byte -> last byte of one u32 read
+   U32-BYTES 1- BYTE-LEN OK-EXTENT ;
+
+\ The window's start offset, still a role, or NONE. Both ordinal questions are
+\ settled here and only here: the advance proves the last byte is representable,
+\ then the extent test proves it is inside this mapping. Nothing is erased and no
+\ address is formed - answering `some` is what earns the caller the right to
+\ advance a pointer by this offset.
+: WINDOW? ( ptr n CAD-NUM:byte-off -- option<CAD-NUM:byte-off> )
+   {: mr:ptr off:CAD-NUM:byte-off :}
+   off U32-REACH ADVANCE-BYTE-OFF
+   MATCH CAD-NUM:numeric-result
+      ok OF mr MR-EXTENT BYTE-OFF-IN-LEN?
+            if off OPTION:SOME else OPTION:NONE then ENDOF
+      negative OF OPTION:NONE ENDOF        zero OF OPTION:NONE ENDOF
+      overflow OF OPTION:NONE ENDOF        underflow OF OPTION:NONE ENDOF
+      bad-alignment OF OPTION:NONE ENDOF   misaligned OF OPTION:NONE ENDOF
+   ;MATCH ;
+
+;using
+
+\ The width is a wire constant, not a parameter, so the four byte positions are
+\ written out rather than counted. It takes the already-advanced pointer, so no
+\ offset role reaches it and none has to be erased for it.
+: U32-AT ( ptr u8 -- n ) {: a:ptr :}           \ four bytes, least significant first
+   a 0 BYTE@
+   a 1 BYTE@ SH-B1 lshift or
+   a 2 BYTE@ SH-B2 lshift or
+   a 3 BYTE@ SH-B3 lshift or ;
+
 \ ---- error remap: JR structural faults -> one loader surface ---------------
 : JR-ERR? ( n -- bool )
    dup E-JR-LAST >= swap E-JR-FIRST <= and ;   \ code in [-3999,-3900]
@@ -748,6 +806,21 @@ public
    mr MR-LEN-OFF + @ {: len:n :}
    mr MR-BASE-IDX ptr-field @ len body execute
    len ;
+
+\ Four little-endian bytes at a MAP-OFFSET? offset (mapping base = file byte 0),
+\ NOT the data-section frame BEGIN? reports. SOME carries the raw bits as stored;
+\ decoding them belongs to package F32. NONE when that four-byte window is not
+\ wholly inside this mapping.
+: U32-LE@? ( SAFET:mapping CAD-NUM:byte-off -- SAFET:mapping option<n> )
+   {: off:CAD-NUM:byte-off :}
+   MAPPING>REC {: mr:ptr :}
+   mr off WINDOW?
+   MATCH option
+      none OF OPTION:NONE ENDOF
+      some OF {: at:CAD-NUM:byte-off :}
+              mr MR-BASE-IDX ptr-field @ at CAD-NUM:BYTE+ U32-AT OPTION:SOME
+      ENDOF
+   ;MATCH ;
 
 \ Ends a mapping's life and reports the outcome as a value instead of a throw.
 \ SAFET-MAP:UNMAP stays throw-based like every other syscall wrapper in that

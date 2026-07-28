@@ -29,6 +29,7 @@ require lib/test.f
 require test/checker-assert.f
 require lib/test/outcome.f
 require lib/test/subject.f
+require lib/cad-num-arithmetic.f                \ CAD-NUM:BYTE-OFF, called directly below
 require maki/infer/safetensors.f
 
 package SAFET-TEST
@@ -41,6 +42,9 @@ package SAFET-TEST
 125 constant RBRACE
 10 constant TEN
 
+-7699 constant E-FIX                            \ fixture invariant broke (never expected)
+
+$7FFFFFFFFFFFFFFF constant MAX-N                \ off + 3 is not representable here
 5000 constant CHILD-MS                          \ a child re-runs nothing, but forks the image
 $400 constant SUBJ-CAP                          \ capture buffer size for one child's output
 
@@ -129,6 +133,18 @@ variable SEEN-MAP-LEN
       ok  OF want T= ENDOF
       err OF CLEANUP-ERR ENDOF
    ;MATCH ;
+
+\ ---- validated-role makers: every offset here is a literal or a length, so a
+\ non-ok arm is a fixture fault, never an expected loader outcome ------------
+: FIX-BOFF ( CAD-NUM:numeric-result<CAD-NUM:byte-off> -- CAD-NUM:byte-off )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                            negative OF E-FIX throw ENDOF
+      zero OF E-FIX throw ENDOF               overflow OF E-FIX throw ENDOF
+      underflow OF E-FIX throw ENDOF          bad-alignment OF E-FIX throw ENDOF
+      misaligned OF E-FIX throw ENDOF
+   ;MATCH ;
+
+: >BOFF ( n -- CAD-NUM:byte-off )   CAD-NUM:BYTE-OFF FIX-BOFF ;
 
 : ID-OF ( SAFET:census ptr u8 n -- SAFET:census n )
    SAFET:FIND OPT-VAL ;
@@ -725,6 +741,60 @@ variable BIG-LEN
    NO-LEAK
    CLEANUP ;
 
+\ ---- bounded four-byte little-endian reads ---------------------------------
+\ The VALUES are fixed: BUILD writes data byte i as the value i, so the bytes at
+\ each offset are known in advance, and they were read off both files with `od`
+\ before being written here. An oracle that assembled them the same way the
+\ reader does would cancel a shared endianness or byte-position mistake; these
+\ constants cannot. The LENGTHS are NOT written here - they are measured from the
+\ fixture BUILD-A just wrote and every boundary offset is derived from that, so
+\ editing a fixture header cannot leave a probe aimed at the wrong window. The
+\ aligned and unaligned oracle offsets 152 and 153 stay fixed on purpose: they
+\ are the mapping-frame positions CHECK-MAP-OFFSETS independently pins.
+4 constant U32W                                 \ the read's own width, not a fixture fact
+$03020100 constant AT-152                       \ data bytes 00 01 02 03, aligned
+$04030201 constant AT-153                       \ one byte in: 01 02 03 04
+$17161514 constant AT-LONG-LAST                 \ the long file's last window: 14 15 16 17
+$0F0E0D0C constant AT-SHORT-LAST                \ the short file's last window: 0c 0d 0e 0f
+
+: U32-AT= ( SAFET:mapping n n -- SAFET:mapping ) \ SOME, and exactly these bits
+   {: off:n want:n :}
+   off >BOFF SAFET:U32-LE@? want OPT= ;
+
+: U32-NONE ( SAFET:mapping n -- SAFET:mapping ) \ out of range, and no value at all
+   >BOFF SAFET:U32-LE@? OPT-NONE ;
+
+\ Reads happen after RELEASE, so the only length left anywhere is the mapping
+\ record's own. 152 is tensor a's mapping-frame offset, the one
+\ CHECK-MAP-OFFSETS pins.
+: TEST-U32-READ ( -- )
+   s" a mapping reads four little-endian bytes bounded by its own length" T-LABEL
+   BUILD-SYNTH
+   LEN-A @ {: long:n :}                         \ measured from what BUILD-A just wrote
+   SYNTH-PATH SAFET:LOAD                        \ ( c ) through the real mmap path
+   SAFET:DETACH-MAPPING TAKE-MOVED              \ ( c m )
+   swap SAFET:RELEASE                           \ ( m ) the census leaves first
+   152 AT-152 U32-AT=                           \ aligned, on the live mapping
+   153 AT-153 U32-AT=                           \ unaligned, on the live mapping
+   long U32W - AT-LONG-LAST U32-AT=             \ the last window that fits
+   long U32W 1- - U32-NONE                      \ the first that straddles the end
+   long U32-NONE                                \ one past the last byte
+   MAX-N U32-NONE                               \ and one whose window cannot exist
+   SAFET:UNMAP-MAPPING long RES-OK=             \ the revoke itself is checked, not dropped
+   NO-LEAK
+   s" a shorter file moves both boundaries with it" T-LABEL
+   J-ALPHA 16 BUILD-A                           \ same path, a different length
+   SYNTH-PATH A$ WRITE-ALL
+   LEN-A @ long < TTRUE                         \ it really is the shorter one
+   SYNTH-PATH SAFET:LOAD
+   SAFET:DETACH-MAPPING TAKE-MOVED
+   swap SAFET:RELEASE                           \ ( m )
+   LEN-A @ U32W - AT-SHORT-LAST U32-AT=         \ this file's own last window
+   long U32W - U32-NONE                         \ valid in the long file, not in this one
+   SAFET:UNMAP-MAPPING LEN-A @ RES-OK=
+   NO-LEAK
+   CLEANUP ;
+
 \ ---- the package seal ------------------------------------------------------
 \ Non-resolution says a private name is not VISIBLE. It says nothing about
 \ CONFINEMENT: a wordlist that can be reopened can be drained, so a later file
@@ -775,6 +845,60 @@ private
    s" and neither PUBLIC wordlist accepts a qualified one" T-LABEL
    s" : SAFET:STT-FORGE ;" SEALED-DIES
    s" : SAFET-MAP:STT-FORGE ;" SEALED-DIES ;
+
+\ ---- the released page -----------------------------------------------------
+\ Every NONE above says the reader ANSWERED nothing; none of them says it READ
+\ nothing. These checkpoints are a few dozen bytes inside one page, so a reader
+\ that loads its four bytes and discards them after the length check satisfies
+\ every value assertion in this file. Nothing has to be allocated to tell the two
+\ apart: the module already owns a fault surface, because SAFET-MAP:UNMAP hands
+\ the pages back to the kernel and reading them afterwards faults instead of
+\ answering.
+\
+\ SUBJECT forks the running image, so each child below is one already-compiled
+\ word and the child's exit status is the whole assertion. The probes hand their
+\ SAFET:mapping back rather than disposing of it: the child holds the sole owner
+\ token and then exits, which is what releases everything - an unconditional
+\ UNMAP-MAPPING tail would munmap a range the body already released.
+\
+\ The child asks the reader for two windows it must refuse and must exit clean,
+\ which it can only do by never touching those pages. Nothing here has to prove
+\ the pages are really gone by reading them: an eager-read mutation of the reader
+\ faults at every invalid offset, and that failure IS the control - a dedicated
+\ exploit child would only re-assert what the mutation already demonstrates.
+: DETACHED ( -- SAFET:mapping )                 \ the synthetic file's mapping, census gone
+   SYNTH-PATH SAFET:LOAD
+   SAFET:DETACH-MAPPING TAKE-MOVED
+   swap SAFET:RELEASE ;
+
+: RELEASE-ONLY ( SAFET:mapping ptr u8 n -- SAFET:mapping ) {: a:ptr u:n :}
+   a u SAFET-MAP:UNMAP ;
+
+\ A child cannot report through T-LABEL - nothing collects it - so a refusal that
+\ does not happen has to leave by the exit status.
+: REFUSE! ( SAFET:mapping n -- SAFET:mapping )
+   >BOFF SAFET:U32-LE@?
+   MATCH option
+      none OF ENDOF
+      some OF drop E-FIX throw ENDOF
+   ;MATCH ;
+
+public
+
+\ The straddle offset comes from WITH-MAPPING's own reported length, so this
+\ probe carries no length of its own to fall out of step with the fixture.
+: PROBE-REFUSE ( -- SAFET:mapping )             \ must exit clean
+   DETACHED [: RELEASE-ONLY ;] SAFET:WITH-MAPPING {: len:n :}
+   len U32W 1- - REFUSE!                        \ first window that runs past the extent
+   MAX-N REFUSE! ;                              \ and one that cannot be represented
+
+private
+
+: TEST-RELEASED-PAGE ( -- )
+   BUILD-SYNTH                                  \ the children fork after this file exists
+   s" the reader refuses both windows without reading them" T-LABEL
+   s" SAFET-TEST:PROBE-REFUSE" 0 SUBJECT-EXITS
+   CLEANUP ;
 
 \ ---- checker-enforced lifetime rules ---------------------------------------
 : TEST-LINEAR-OWNERSHIP ( -- )
@@ -842,6 +966,11 @@ private
    s" an offset reader returns option, never a -1 sentinel" T-LABEL
    s" STT-BAD-MAP-OFFSET-RAW ( SAFET:census n -- SAFET:census n ) SAFET:MAP-OFFSET?" REJECTED
    s" STT-BAD-MAP-OFFSET-SENTINEL ( SAFET:census n -- SAFET:census bool ) SAFET:MAP-OFFSET? -1 =" REJECTED ;
+
+: TEST-U32-TYPING ( -- )
+   s" the bounded read resolves, and only at its own offset role" T-LABEL
+   s" STT-OK-U32 ( SAFET:mapping CAD-NUM:byte-off -- SAFET:mapping option<n> ) SAFET:U32-LE@?" ACCEPTED
+   s" STT-BAD-U32-BLEN ( SAFET:mapping CAD-NUM:byte-len -- SAFET:mapping option<n> ) SAFET:U32-LE@?" REJECTED ;
 
 : TEST-NO-AMBIENT-STATE ( -- )
    s" no census reader answers without its census" T-LABEL
@@ -929,9 +1058,12 @@ public
    TEST-DETACH-TWICE      NO-LEAK
    TEST-DETACH-ADOPTED    NO-LEAK
    TEST-DETACH-FAILED     NO-LEAK
+   TEST-U32-READ          NO-LEAK
    TEST-LINEAR-OWNERSHIP
    TEST-MAPPING-OWNERSHIP
+   TEST-U32-TYPING
    TEST-SEALED
+   TEST-RELEASED-PAGE
    TEST-NO-AMBIENT-STATE
    TEST-SEALED-REPRESENTATION
    TEST-OPTION-DISCIPLINE
