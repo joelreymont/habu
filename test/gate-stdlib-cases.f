@@ -228,6 +228,42 @@ SUITE compiler-ir-schema
    test/compiler/ir-schema.f
 ;SUITE
 
+SUITE compiler-ir-arena
+   test/compiler/ir-arena.f
+;SUITE
+
+SUITE compiler-ir-attr
+   test/compiler/ir-attr.f
+;SUITE
+
+SUITE compiler-ir-context
+   test/compiler/ir-context.f
+;SUITE
+
+SUITE compiler-ir-source
+   test/compiler/ir-source.f
+;SUITE
+
+SUITE compiler-ir-symbol
+   test/compiler/ir-symbol.f
+;SUITE
+
+SUITE compiler-ir-type
+   test/compiler/ir-type.f
+;SUITE
+
+\ The identity parity gate compiles formal/Common with the Rocq proof assistant
+\ and spawns child engines, so it runs here in the standalone stdlib gate and is
+\ documented manual-gate in tools/suite-coverage-lint-core.f, not mirrored into
+\ the resident fast tier.
+SUITE compiler-ir-id-proof
+   test/compiler/ir-id-proof.f
+;SUITE
+
+SUITE raw-storage-load-seal
+   test/raw-storage-load-seal-test.f
+;SUITE
+
 SUITE object-record-codec
    lib/object-test.f
 ;SUITE

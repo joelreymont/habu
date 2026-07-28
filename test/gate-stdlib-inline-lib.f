@@ -447,8 +447,15 @@ public
    s" test/compiler/ir-id-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-schema.f" GSI-FORK-INCLUDE
    s" test/compiler/target-policy.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-arena.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-attr.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-context.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-source.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-symbol.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-type.f" GSI-FORK-INCLUDE
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
    s" test/typed-storage-test.f" GSI-FORK-INCLUDE
+   s" test/raw-storage-load-seal-test.f" GSI-FORK-INCLUDE
    s" lib/fs-test.f" GSI-FORK-INCLUDE
    s" tools/bootstrap-codegen-test.f" GSI-FORK-INCLUDE
    s" tools/asm-src-test.f" GSI-FORK-INCLUDE

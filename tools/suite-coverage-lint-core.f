@@ -20,6 +20,13 @@
 \       here, cross-checked for staleness, so adding a suite/file forces a
 \       conscious decision (a new unrouted member goes red).
 \
+\ Checks (a)-(c) all read the registry in ONE direction: they start from a name a
+\ gate file already wrote down and ask whether something runs it. That direction
+\ cannot see a test file nobody wrote down anywhere, which is how eight finished
+\ compiler-IR and raw-storage suites landed complete and ran in no gate at all
+\ (dot habu-schedule-unscheduled-compiler-b36ff91b). Check (e) below closes the
+\ other direction: it starts from the files that exist on disk.
+\
 \ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/vector.f, lib/fs.f,
 \ tools/lint/text.f, tools/lint/intern.f, tools/lint/token.f, tools/lint/lib.f.
 
@@ -36,10 +43,13 @@ require tools/lint/lib.f
 package SUITE-COVERAGE-LINT
 
 $8000 constant SC-CASES-CAP        \ test/gate-stdlib-cases.f source (resident)
-$20000 constant SC-SCAN-CAP        \ reused GSI-file scan buffer; grown 64K->128K as test/gate-engine-lib.f (the authoritatively scanned engine gate) passed the old cap
+$30000 constant SC-SCAN-CAP        \ reused file scan buffer; grown 64K->128K as test/gate-engine-lib.f (the authoritatively scanned engine gate) passed the old cap, then 128K->192K when check (e) started scanning every file under test/ (test/engine-suite.f is 145K)
 $800 constant SC-PTX-BUF-CAP       \ copied inprocess ptx-toolchain file names
+$4000 constant SC-TF-BUF-CAP       \ copied test/-tree file paths; 213 live paths are ~6K
 320 constant SC-CASE-MAX           \ (label,file) member rows; 167 live + headroom
 48 constant SC-PTX-MAX             \ inprocess ptx-toolchain files
+384 constant SC-TF-MAX             \ .f files under test/; 213 live + headroom
+16 constant SC-MF-MAX              \ gate manifests the lint parses itself
 34 constant SC-DQUOTE
 16 constant SC-USE-MAX              \ mirror engine USE-MAX: concurrent `using` scopes tracked while linting
 
@@ -56,10 +66,26 @@ create SC-CF-U SC-CASE-MAX cells allot    \ file len
 create SC-PTX-OFF SC-PTX-MAX cells allot  \ inprocess ptx file offset into SC-PTX-BUF
 create SC-PTX-LEN SC-PTX-MAX cells allot  \ inprocess ptx file len
 
+\ check (e) test-tree rows: one row per .f file found under test/
+create SC-TF-BUF SC-TF-BUF-CAP allot      \ copied paths (SC-SCAN-BUF is reused per file)
+create SC-TF-OFF SC-TF-MAX cells allot    \ path offset into SC-TF-BUF
+create SC-TF-LEN SC-TF-MAX cells allot    \ path len
+create SC-TF-RUNS SC-TF-MAX cells allot   \ nonzero: the file executes T-REPORT, so it is a self-running test
+create SC-TF-NAMED SC-TF-MAX cells allot  \ nonzero: some other test/ file names it outside the gate manifests
+
+\ the gate manifests this lint parses itself: their file names are SCHEDULING,
+\ read by the (a)/(b) parsers, and must not also count as "some other file loads it"
+create SC-MF-A SC-MF-MAX cells allot
+create SC-MF-U SC-MF-MAX cells allot
+
 variable SC-CASE#
 variable SC-SUITE#
 variable SC-PTX#
 variable SC-PTX-USED
+variable SC-TF#
+variable SC-TF-USED
+variable SC-TF-SELF            \ row index of the test/ file currently being scanned
+variable SC-MF#
 variable SC-FIND
 variable SC-REPORT?
 variable SC-INBLOCK
@@ -136,6 +162,55 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
       1+
    repeat drop LINT-FALSE ;
 
+\ ---- test/-tree row store (check (e)) ---------------------------------------
+: SC-TF+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   SC-TF# @ SC-TF-MAX >= if E-TBL-BOUNDS throw then
+   SC-TF-USED @ u + SC-TF-BUF-CAP > if E-TBL-BOUNDS throw then
+   a  SC-TF-BUF SC-TF-USED @ +  u LINT-BMOVE
+   SC-TF-USED @ SC-TF-OFF SC-TF# @ cells + !
+   u SC-TF-LEN SC-TF# @ cells + !
+   0 SC-TF-RUNS SC-TF# @ cells + !
+   0 SC-TF-NAMED SC-TF# @ cells + !
+   SC-TF-USED @ u + SC-TF-USED !
+   SC-TF# @ 1+ SC-TF# ! ;
+
+: SC-TF$ ( n -- ptr u8 n ) {: k:n :}
+   SC-TF-BUF SC-TF-OFF k cells + @ +  SC-TF-LEN k cells + @ ;
+
+: SC-TF-FIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 begin dup SC-TF# @ < while
+      dup SC-TF$ a u LINT-STR= if exit then
+      1+
+   repeat drop -1 ;
+
+: SC-TF-RUNS? ( n -- bool ) {: k:n :}
+   SC-TF-RUNS k cells + @ 0 <> ;
+
+: SC-TF-NAMED? ( n -- bool ) {: k:n :}
+   SC-TF-NAMED k cells + @ 0 <> ;
+
+\ ---- gate-manifest registry (check (e)) --------------------------------------
+\ Populated by the loaders below as each manifest is read, so a manifest added to
+\ SC-LOAD cannot drift out of this set. `s"` literals live in the dictionary, so
+\ the recorded pointers stay valid for the whole run.
+: SC-MF-A-FIELD ( n -- ptr ptr u8 ) cells SC-MF-A + 0 ptr-field ;
+
+: SC-MF$ ( n -- ptr u8 n ) {: k:n :}
+   k SC-MF-A-FIELD @  k cells SC-MF-U + @ ;
+
+: SC-MF? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup SC-MF# @ < while
+      dup SC-MF$ a u LINT-STR= if drop LINT-TRUE exit then
+      1+
+   repeat drop LINT-FALSE ;
+
+: SC-MF+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SC-MF? if exit then
+   SC-MF# @ SC-MF-MAX >= if E-TBL-BOUNDS throw then
+   a SC-MF# @ SC-MF-A-FIELD !
+   u SC-MF# @ cells SC-MF-U + !
+   SC-MF# @ 1+ SC-MF# ! ;
+
 \ ---- scheduled set (the interner) ------------------------------------------
 : SC-SCHED+ ( ptr u8 n -- ) INTERN drop ;
 : SC-SCHEDULED? ( ptr u8 n -- bool ) INTERN? ;
@@ -209,6 +284,13 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ (bin/hb --load test/pre-trust-defer.f); measured too costly for the
    \ fast-tier fork groups.
    s" test/pre-trust-defer.f" q execute
+   \ compiler identity parity gate: compiles the four files under formal/Common
+   \ with the Rocq proof assistant and spawns child engines for the replay
+   \ fixture (~13s, and it fails outright where `rocq` is not on PATH). Runs
+   \ spawned in the standalone stdlib gate; putting it in the resident fast tier
+   \ would make every test/run.f a Rocq-toolchain requirement. Giving it a
+   \ capability probe that records a skip when `rocq` is absent is open work.
+   s" test/compiler/ir-id-proof.f" q execute
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute
@@ -338,6 +420,9 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
 \ ============================================================================
 \ Parsers - policy derived from the live gate files each run.
 \ ----------------------------------------------------------------------------
+: SC-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   READ-FILE ;
+
 : SC-STRIP-Q ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    u 0 > a u 1- + c@ SC-DQUOTE = and if a u 1- exit then
    a u ;
@@ -588,6 +673,162 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" tools/lint" [: SC-LINT-REG-VISIT ;] WALK-FILES ;
 
 \ ============================================================================
+\ (e) test-tree routing: fail closed on a self-running test file no gate runs
+\ ----------------------------------------------------------------------------
+\ Checks (a)-(d) all read a name a gate file already wrote down. Nothing read the
+\ tree itself, so a finished suite that was never added to any list simply did not
+\ run, and the gate stayed green while the code it guards went unguarded.
+\
+\ This check walks the live `test/` tree and asks the opposite question of every
+\ file it finds. Two facts are derived per file, both from the token stream, so a
+\ mention inside a `\` or `( )` comment is invisible to both:
+\
+\   RUNS   - the file executes `T-REPORT`. That is the shared harness verdict
+\            word: it prints `test: ok` or dies with the failure count, so a file
+\            that names it is a self-running test whose result a gate can read.
+\            Helper libraries (test/checker-assert.f), pure fixtures
+\            (test/deftype-dup-bad.f) and inventories (test/run-files.f) do not
+\            name it and are therefore not candidates - the exclusion is the
+\            harness contract, not a filename convention.
+\   NAMED  - some OTHER file under test/ writes this path in code, i.e. requires
+\            it, includes it, or hands it to a child process as an argument. That
+\            is the "included by another test" case: the parent owns the run, and
+\            when the parent is itself unrouted the parent is the finding, so
+\            fixing the root covers the chain.
+\
+\ A file that RUNS and is not NAMED must then be named by the gate itself: a
+\ TEST:SUITE member of test/gate-stdlib-cases.f, or scheduled into a group
+\ (GSI-INCLUDE / GSI-FORK-INCLUDE / GSI-REQUIRE / GE-SRC-FILE+ / candidate
+\ RUN-CASE), or documented host-gated below. Otherwise it is TEST-UNROUTED.
+\
+\ The gate manifests the lint parses itself are excluded from NAMED (see SC-MF+):
+\ their entries ARE the scheduling, already modelled by SC-CASE-MEMBER? and
+\ SC-SCHEDULED?, and counting them twice would make deleting a scheduling entry
+\ invisible to this check.
+: SC-TF-VISIT ( ptr u8 n -- )
+   2dup s" .f" HAS-EXT? if SC-TF+ else 2drop then ;
+
+: SC-TF-COLLECT ( -- )
+   s" test" [: SC-TF-VISIT ;] WALK-FILES ;
+
+: SC-TF-MARK-RUNS ( -- )
+   1 SC-TF-RUNS SC-TF-SELF @ cells + ! ;
+
+: SC-TF-MARK-NAMED ( n -- ) {: k:n :}
+   k SC-TF-SELF @ = if exit then          \ a file naming itself schedules nothing
+   1 SC-TF-NAMED k cells + ! ;
+
+\ The token closes a string literal, so the literal is exactly this one word.
+: SC-CLOSED-LITERAL? ( n -- bool ) {: k:n :}
+   k TOK {: a:ptr u:n :}
+   u 0= if LINT-FALSE exit then
+   a u 1- + c@ SC-DQUOTE = ;
+
+\ A path token only counts as a load when the file really hands it to the loader:
+\ `require <path>` / `include <path>`, or a whole one-word string literal
+\ (`s" <path>"`) such as the argument every child-process spawn builds. A path
+\ that merely appears inside a longer literal is prose - the generated Rocq header
+\ in test/compiler/ir-id-obligations.f names test/compiler/ir-id-proof.f that way,
+\ and reading it as a load would have hidden that gate's own absence from the gate.
+: SC-TF-LOAD-REF? ( n -- bool ) {: k:n :}
+   k 0= if LINT-FALSE exit then
+   k 1- TOK s" require" LINT-STR= if LINT-TRUE exit then
+   k 1- TOK s" include" LINT-STR= if LINT-TRUE exit then
+   k 1- TOK LINT-NORMAL-STRING-OPENER? 0= if LINT-FALSE exit then
+   k SC-CLOSED-LITERAL? ;
+
+: SC-TF-TOK ( n -- ) {: k:n :}
+   k TOK s" T-REPORT" LINT-STR= if SC-TF-MARK-RUNS exit then
+   k SC-TF-LOAD-REF? 0= if exit then
+   k TOK SC-STRIP-Q 2dup s" .f" HAS-EXT? 0= if 2drop exit then
+   SC-TF-FIND dup 0 < if drop exit then
+   SC-TF-MARK-NAMED ;
+
+: SC-TF-SCAN$ ( ptr u8 n -- )
+   LINT-TRUE PARENS? ! TOKENIZE
+   0 begin dup TN# @ < while
+      dup SC-TF-TOK
+      1+
+   repeat drop ;
+
+\ A gate manifest is not a loader: every path in it is a scheduling entry that the
+\ (a)/(b) parsers already read, so the row is skipped rather than scanned here.
+: SC-TF-LOADER-ROW? ( n -- bool ) {: k:n :}
+   k SC-TF$ SC-MF? 0= ;
+
+: SC-TF-SCAN-I ( n -- ) {: k:n :}
+   k SC-TF-SELF !
+   k SC-TF-LOADER-ROW? 0= if exit then
+   k SC-TF$ SC-SCAN-BUF SC-SCAN-CAP SC-READ SC-TF-SCAN$ ;
+
+: SC-TF-SCAN-ALL ( -- )
+   0 begin dup SC-TF# @ < while dup SC-TF-SCAN-I 1+ repeat drop ;
+
+\ ---- documented host-gated tests --------------------------------------------
+\ Self-running suites under test/ that cannot pass on every gate host, so no gate
+\ group can schedule them until they carry a host probe. Each row is a conscious
+\ decision, not a silent skip: the staleness check below rejects a row that is not
+\ a self-running test/ file or that something already runs, so a row cannot outlive
+\ its reason. Both rows below want the same fix - the printed host-skip that
+\ test/gate-env-stdin-tty-test.f already uses - after which they become ordinary
+\ scheduled members and their rows here go stale and red.
+\ typed-local-lint: allow-bare-local - q carries the quotation effect from the
+\ stack signature; it names each documented file to the caller-supplied action.
+: SC-HOST-GATED-TABLE ( [ ptr u8 n -- ] -- ) {: q :}
+   \ Linux-only: tools/nested-validation-rca-core.f reads /proc/self/stat for the
+   \ process-group evidence and dies with exit 64 on any other host.
+   s" test/nested-validation-rca-test.f" q execute
+   \ DGX Spark host profile: the detection asserts read the host profile file and
+   \ the run exits 66 where that file is absent, and the suite additionally needs
+   \ stdin closed.
+   s" test/run-lib-test.f" q execute ;
+
+: SC-HOST-GATED? ( ptr u8 n -- bool )
+   SC-QF!
+   [: SC-QF-MATCH ;] SC-HOST-GATED-TABLE
+   SC-QF-HIT @ 0 <> ;
+
+: SC-TEST-UNROUTED ( ptr u8 n -- ) {: fp:ptr fu:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: TEST-UNROUTED " type fp fu type
+      s"  runs T-REPORT under test/ but no TEST:SUITE, gate group, or other test file runs it" type SC-NL
+   then SC-FIND+ ;
+
+: SC-HOST-STALE ( ptr u8 n ptr u8 n -- ) {: fp:ptr fu:n rp:ptr ru:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: HOST-GATED-STALE " type fp fu type
+      s"  " type rp ru type SC-NL
+   then SC-FIND+ ;
+
+: SC-ROUTED? ( n -- bool ) {: k:n :}
+   k SC-TF-NAMED? if LINT-TRUE exit then
+   k SC-TF$ SC-CASE-MEMBER? if LINT-TRUE exit then
+   k SC-TF$ SC-SCHEDULED? ;
+
+: SC-CHECK-TEST-ROUTE-I ( n -- ) {: k:n :}
+   k SC-TF-RUNS? 0= if exit then
+   k SC-ROUTED? if exit then
+   k SC-TF$ SC-HOST-GATED? if exit then
+   k SC-TF$ SC-TEST-UNROUTED ;
+
+: SC-CHECK-TEST-ROUTE ( -- )
+   0 begin dup SC-TF# @ < while dup SC-CHECK-TEST-ROUTE-I 1+ repeat drop ;
+
+: SC-HOST-STALE-ROW ( n ptr u8 n -- ) {: k:n a:ptr u:n :}
+   k SC-TF-RUNS? 0= if
+      a u s" is documented host-gated but does not run T-REPORT" SC-HOST-STALE exit then
+   k SC-ROUTED? if
+      a u s" is documented host-gated but something already runs it" SC-HOST-STALE then ;
+
+: SC-HOST-STALE-CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SC-TF-FIND {: k:n :}
+   k 0 < if a u s" is documented host-gated but is not a .f file under test/" SC-HOST-STALE exit then
+   k a u SC-HOST-STALE-ROW ;
+
+: SC-CHECK-HOST-GATED ( -- )
+   [: SC-HOST-STALE-CHECK ;] SC-HOST-GATED-TABLE ;
+
+\ ============================================================================
 \ maki slice partition (dot habu-split-monolithic-maki-fccca4ea)
 \ ----------------------------------------------------------------------------
 \ The monolithic maki/test.f was split into four parallel gate slices
@@ -682,6 +923,7 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    0 SC-CASE# !  0 SC-SUITE# !  0 SC-PTX# !  0 SC-PTX-USED !
    0 SC-FIND !  0 SC-INBLOCK !  0 SC-INDEF !
    0 SC-MK# !  0 SC-MK-MODE !  0 SC-MK-AFTER-SUITE !
+   0 SC-TF# !  0 SC-TF-USED !  0 SC-TF-SELF !  0 SC-MF# !
    SC-USE-RESET
    INTERN-RESET ;
 
@@ -690,7 +932,9 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    SC-CHECK-PTX
    SC-CHECK-TABLES
    SC-CHECK-LINT-REG
-   SC-CHECK-MAKI ;
+   SC-CHECK-MAKI
+   SC-CHECK-TEST-ROUTE
+   SC-CHECK-HOST-GATED ;
 
 : SC-SUMMARY ( -- )
    s" suite-coverage-lint: " type SC-SUITE# @ SC-U.
@@ -698,21 +942,24 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    s"  finding(s)" type SC-NL ;
 
 \ ---- live load: derive every list from the real gate files -----------------
-: SC-READ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   READ-FILE ;
+\ Reading a gate manifest also records it: check (e) must read its entries as
+\ scheduling, never as "another test file happens to load this".
+: SC-MF-READ ( ptr u8 n ptr u8 n -- ptr u8 n ) {: pa:ptr pu:n ba:ptr bc:n :}
+   pa pu SC-MF+
+   pa pu ba bc SC-READ ;
 
 : SC-LOAD-CASES ( -- )
-   s" test/gate-stdlib-cases.f" SC-CASES-BUF SC-CASES-CAP SC-READ SC-CASES-SCAN$ ;
+   s" test/gate-stdlib-cases.f" SC-CASES-BUF SC-CASES-CAP SC-MF-READ SC-CASES-SCAN$ ;
 
 : SC-LOAD-SCHED-FILE ( ptr u8 n -- )
-   SC-SCAN-BUF SC-SCAN-CAP SC-READ SC-SCHED-SCAN$ ;
+   SC-SCAN-BUF SC-SCAN-CAP SC-MF-READ SC-SCHED-SCAN$ ;
 
 : SC-LOAD-SCHED ( -- )
    s" test/gate-stdlib-inline-lib.f" SC-LOAD-SCHED-FILE
    s" test/gate-stdlib-lint-tools.f" SC-LOAD-SCHED-FILE
    s" test/run-worker-stdlib.f" SC-LOAD-SCHED-FILE
    s" test/gate-engine-lib.f" SC-LOAD-SCHED-FILE
-   s" test/candidate-validation.f" SC-SCAN-BUF SC-SCAN-CAP SC-READ SC-CAND-SCAN$
+   s" test/candidate-validation.f" SC-SCAN-BUF SC-SCAN-CAP SC-MF-READ SC-CAND-SCAN$
    SC-SCHED-CLOSURE-CORES ;
 
 : SC-LOAD-PTX ( -- )
@@ -737,12 +984,17 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    SC-LOAD-MAKI-MASTER
    SC-LOAD-MAKI-SLICES ;
 
+: SC-LOAD-TESTS ( -- )
+   SC-TF-COLLECT
+   SC-TF-SCAN-ALL ;
+
 : SC-LOAD ( -- )
    SC-RESET
    SC-LOAD-CASES
    SC-LOAD-SCHED
    SC-LOAD-PTX
-   SC-LOAD-MAKI ;
+   SC-LOAD-MAKI
+   SC-LOAD-TESTS ;
 
 public
 

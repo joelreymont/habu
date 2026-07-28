@@ -228,6 +228,123 @@ variable SCT-GX-U
    s" tools/lint/unregistered-test.f" SC-LINT-REG-VISIT
    SC-FIND @ 1 T= ;
 
+\ ---- (e) test-tree routing ---------------------------------------------------
+\ The rows normally come from a walk of test/; here they are pushed directly so
+\ the classifier is exercised without touching the live tree.
+: SCT-ROUTE-ROWS ( -- )
+   SCT-QUIET SC-RESET
+   s" test/alpha.f" SC-TF+          \ row 0: self-running, loaded by nobody
+   s" test/beta.f" SC-TF+           \ row 1: self-running, loaded by row 3
+   s" test/helper.f" SC-TF+         \ row 2: no verdict word, so not a test
+   s" test/parent.f" SC-TF+ ;       \ row 3: self-running and a cases member
+
+\ Scan one row's source with that row selected, exactly as the walk does: the
+\ same manifest-skip predicate decides whether the row is read as a loader.
+: SCT-SCAN-ROW ( n ptr u8 n -- ) {: k:n a:ptr u:n :}
+   k SC-TF-SELF !
+   k SC-TF-LOADER-ROW? 0= if exit then
+   a u SC-TF-SCAN$ ;
+
+\ Fixtures for check (e) carry real double quotes, which a single-line s" literal
+\ cannot, so they are assembled token by token in the scratch buffer.
+: SCT-GX-SP ( -- ) 32 SCT-GX-BUF SCT-CAP STR:LENGTH SCT-GX-U STR:BUF-APPEND-C ;
+: SCT-GX-Q ( -- ) SC-DQUOTE SCT-GX-BUF SCT-CAP STR:LENGTH SCT-GX-U STR:BUF-APPEND-C ;
+: SCT-GX-TOK+ ( ptr u8 n -- ) SCT-GX-SP SCT-GX+ ;
+: SCT-GX-OPENER ( -- ) s" s" SCT-GX-TOK+ SCT-GX-Q ;      \ the token s"
+: SCT-GX-CLOSED ( ptr u8 n -- ) SCT-GX-TOK+ SCT-GX-Q ;   \ a token that closes the literal
+
+: SCT-TEST-UNROUTED ( -- )
+   SCT-ROUTE-ROWS
+   SCT-CASE-RESET
+   s" TEST:SUITE demo" SCT-CASE-LINE
+   s" test/parent.f" SCT-CASE-LINE
+   s" TEST:;SUITE" SCT-CASE-LINE
+   SCT-CASE$ SC-CASES-SCAN$
+   \ alpha runs a verdict and names nothing
+   0 s" : RUN T-REPORT ;" SCT-SCAN-ROW
+   \ beta likewise
+   1 s" : RUN T-REPORT ;" SCT-SCAN-ROW
+   \ helper defines words only: no verdict word, so it is not a candidate
+   2 s" : HELP 1 ;" SCT-SCAN-ROW
+   \ parent runs a verdict, requires beta, and spawns nothing else
+   3 s" require test/beta.f : RUN T-REPORT ;" SCT-SCAN-ROW
+   0 SC-TF-RUNS? TTRUE
+   2 SC-TF-RUNS? TFALSE
+   1 SC-TF-NAMED? TTRUE
+   0 SC-TF-NAMED? TFALSE
+   SC-CHECK-TEST-ROUTE
+   \ beta is loaded by parent, parent is a cases member, helper is not a test:
+   \ only alpha is unrouted
+   SC-FIND @ 1 T= ;
+
+\ A path inside a longer string literal is prose, not a load: the generated Rocq
+\ header naming test/compiler/ir-id-proof.f is why this distinction exists.
+: SCT-ROUTE-PROSE ( -- )
+   SCT-ROUTE-ROWS
+   0 s" : RUN T-REPORT ;" SCT-SCAN-ROW
+   \ parent mentions alpha in the MIDDLE of a literal: ` : NOTE s" see <path> rest" TYPE ;`
+   SCT-GX-RESET
+   s" : NOTE" SCT-GX-TOK+
+   SCT-GX-OPENER
+   s" see" SCT-GX-TOK+
+   s" test/alpha.f" SCT-GX-TOK+
+   s" rest" SCT-GX-CLOSED
+   s" TYPE ; : RUN T-REPORT ;" SCT-GX-TOK+
+   3 SCT-GX$ SCT-SCAN-ROW
+   0 SC-TF-NAMED? TFALSE
+   SC-CHECK-TEST-ROUTE
+   \ alpha AND parent are both unrouted here: prose exempts neither
+   SC-FIND @ 2 T= ;
+
+\ A whole one-word string literal IS a load: it is the argument every child
+\ process spawn builds.
+: SCT-ROUTE-SPAWN ( -- )
+   SCT-ROUTE-ROWS
+   0 s" : RUN T-REPORT ;" SCT-SCAN-ROW
+   \ parent spawns alpha: ` : CHILD s" <path>" RUN-FILE ;`
+   SCT-GX-RESET
+   s" : CHILD" SCT-GX-TOK+
+   SCT-GX-OPENER
+   s" test/alpha.f" SCT-GX-CLOSED
+   s" RUN-FILE ; : RUN T-REPORT ;" SCT-GX-TOK+
+   3 SCT-GX$ SCT-SCAN-ROW
+   0 SC-TF-NAMED? TTRUE ;
+
+\ A file naming itself proves nothing.
+: SCT-ROUTE-SELF ( -- )
+   SCT-ROUTE-ROWS
+   0 s" require test/alpha.f : RUN T-REPORT ;" SCT-SCAN-ROW
+   0 SC-TF-NAMED? TFALSE ;
+
+\ The gate manifests are read as scheduling, never as "another file loads it",
+\ so deleting a scheduling entry cannot be hidden by the manifest's own text.
+: SCT-ROUTE-MANIFEST ( -- )
+   SCT-ROUTE-ROWS
+   s" test/gate-demo-cases.f" SC-TF+          \ row 4
+   s" test/gate-demo-cases.f" SC-MF+
+   \ the manifest schedules alpha: ` s" <path>" GSI-FORK-INCLUDE`
+   SCT-GX-RESET
+   SCT-GX-OPENER
+   s" test/alpha.f" SCT-GX-CLOSED
+   s" GSI-FORK-INCLUDE" SCT-GX-TOK+
+   4 SCT-GX$ SCT-SCAN-ROW
+   \ the manifest row is skipped by the walk, so alpha stays unnamed
+   0 SC-TF-NAMED? TFALSE ;
+
+\ (e) table hygiene: a documented host-gated row something already runs is stale.
+: SCT-HOST-GATED-STALE ( -- )
+   SCT-ROUTE-ROWS
+   0 s" : RUN T-REPORT ;" SCT-SCAN-ROW
+   s" test/alpha.f" SC-HOST-STALE-CHECK
+   \ self-running and unrouted: a legitimate host-gated row, no finding
+   SC-FIND @ 0 T=
+   s" test/helper.f" SC-HOST-STALE-CHECK
+   \ documented host-gated but runs no verdict word -> one HOST-GATED-STALE
+   SC-FIND @ 1 T=
+   s" test/not-a-file.f" SC-HOST-STALE-CHECK
+   \ documented host-gated but not a file under test/ -> a second finding
+   SC-FIND @ 2 T= ;
+
 : SCT-MAIN ( -- )
    T-RESET
    SCT-LIVE-GREEN
@@ -244,6 +361,12 @@ variable SCT-GX-U
    SCT-MANUAL-STALE
    SCT-SPAWN-STALE
    SCT-LINT-UNREGISTERED
+   SCT-TEST-UNROUTED
+   SCT-ROUTE-PROSE
+   SCT-ROUTE-SPAWN
+   SCT-ROUTE-SELF
+   SCT-ROUTE-MANIFEST
+   SCT-HOST-GATED-STALE
    T-REPORT ;
 
 SCT-MAIN
