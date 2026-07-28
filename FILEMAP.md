@@ -2804,6 +2804,10 @@ points stay listed.
 - `test/gate-hb-build-repl.f` — checked runner for `hb-build --repl` checks.
 - `test/boot-pin-test.f` — regression: boot-prefix digest determinism, drift detection, CLI verify, and path-list consistency with habu2.f.
 - `test/pointer-storage-test.f` — focused pointer-cell initialization, typed address, round-trip, verifier-effect, and source-isolation regressions.
+- `test/raw-storage-load-seal-test.f` — the raw-storage nominal seal on the
+  native engine load path: cells made by `variable`, `create`, `constant`,
+  `PTR-VARIABLE`, and a user `create ... does>` definer refuse to hand a
+  nominal family back out, while plain scalar round-trips still certify.
 - `test/icode-fixup-test.f` — checked ARM64 label-chain and reusable fixup-slot
   regressions covering mixed relocation kinds, interleaved labels, historical
   reuse beyond capacity, exact simultaneous capacity, and overflow diagnostics.

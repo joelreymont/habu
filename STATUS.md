@@ -43,8 +43,8 @@ verdict; retry exhaustion exits with its own distinct code. Whole-gate
 elapsed-ms is informational only; per-phase timeouts remain as hang guards.
 Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
 gap (habu-add-pinned-engine-90090800).
-Certified (linux-arm64): 4194  Uncheckable: 0  Rejected: 0
-Certified (macos-arm64): 4221
+Certified (linux-arm64): 4197  Uncheckable: 0  Rejected: 0
+Certified (macos-arm64): 4224
 Host-script workflow hooks: retired and gated
 
 Attribution for the current linux-arm64 row, which is the count this tree
@@ -195,6 +195,21 @@ measures today:
   to one shared close-time family query — `habu-reject-bad-pointers-7c6a5d6e`
   for `ED-CLOSE` and `habu-reject-bad-pointers-230fa9c9` for `SD-CLOSE` — so
   this row is measured and re-ledgered again when that train lands.
+- Sealing raw storage on the load path adds three, reaching 4197. Two are in
+  `src/core/checker.f`: `TRUST-RAW`, the effect-declaration word that mints the
+  type variables of a raw storage cell's effect as `TVK-RAW`, and
+  `TRUST-USIG!`, the registration that it and `TRUST` now share. One is
+  `C-FIND-TRUST-RAW` in `src/habu/habu2.f`, which resolves `trust-raw` for the
+  three created-word publication sites. All three are ordinary colon
+  definitions in the assembled stage2 engine source, and none of them is
+  conditional on the host, so the count moves by the same three on both rows.
+  So 4194 + 3 = 4197. The macos-arm64 row above is the measurement this tree
+  took on that host, 4220 + 3 = 4223; the linux-arm64 number is carried over
+  from the same three shared definitions and is owed a real measurement the
+  next time the gate runs on that host. The change also edits
+  `docs/effects.md`, `FILEMAP.md`, and the new
+  `test/raw-storage-load-seal-test.f`, none of which is part of the assembled
+  stage2 engine source, so none of them counts.
 
 The census ratchet in `test/gate-engine-lib.f` requires this row to equal what
 the tree measures, so each commit records its own measurement rather than a

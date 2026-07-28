@@ -1316,6 +1316,11 @@ variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-
 variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
+
+\ Keyword string data section: the baked name table every LKW*/LCHK* label
+\ points into, plus the sealed reserved-name table it embeds.
+package KWDATA
+
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
 \ This ONE native table is the reserved-name set: the guards fold each candidate
@@ -1340,7 +1345,15 @@ create RESTAB-BUF
    0 c,                                           \ terminator
 here RESTAB-BUF - constant RESTAB-LEN
 
-: EMIT-KWDATA ( -- )
+public
+
+\ Label cell for the baked `trust-raw` keyword string. Declared here rather
+\ than in the habu1.f global label chain because the raw-storage seal is a
+\ habu2.f concern: the keyword row below bakes the string, LASTC-TRUST:FIND-RAW
+\ resolves it, and the LABELS allocator mints its id.
+variable LKWTRUSTRAW
+
+: EMIT ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
    LKWELSE LABEL@ LBL,   s" else"   BYTES,    LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
    LKWUNTIL LABEL@ LBL,  s" until"  BYTES,    LKWAGAIN LABEL@ LBL,  s" again"  BYTES,
@@ -1370,7 +1383,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LKWDOES LABEL@ LBL,  s" does>" BYTES,
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
-   LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
+   LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWTRUSTRAW LABEL@ LBL, s" trust-raw" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
    LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
@@ -1382,6 +1395,8 @@ here RESTAB-BUF - constant RESTAB-LEN
    s" ' CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
    NL-KW 1 BYTES,
    PFX-PATH-FILES ;
+
+;package
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-EMITW ( n -- ) {: w:n :}  9 w LIT64,  LCEMIT LABEL@ BL, ;
@@ -1503,7 +1518,13 @@ here RESTAB-BUF - constant RESTAB-LEN
    4181780107 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4177527177 C-EMITW  4177528202 C-EMITW  2432697707 C-EMITW  4177585803 C-EMITW ;
 
-: J-LVOPEN ( -- )                               \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
+\ The loop-emit family: the DO/LEAVE level stack (open a level, prove one is
+\ open, chain a LEAVE placeholder onto the innermost one) and the loop keyword
+\ handlers built on it. The loop keyword dispatch rows reopen this package
+\ further down so they resolve the handlers bare.
+package LOOP-EMIT
+
+: LVOPEN ( -- )                                 \ open a LEAVE-chain level: LVH[LVD]=0, LVD++
    9 DATA LVD-CELL LDR,
    10 9 3 LSLI,  10 10 LVH-OFF ADDI,  10 DATA 10 ADD,
    12 0 MOVZ,  12 10 0 STR,
@@ -1512,7 +1533,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    9 9 1 ADDI,  9 DATA LVD-CELL STR, ;
 
 \ The DO/LEAVE level stack (LVD-CELL depth + the LVH/LVF level arrays) is the
-\ loop family's opener record: `do`/`?do` open a level in J-LVOPEN, `loop`/
+\ loop family's opener record: `do`/`?do` open a level in LVOPEN, `loop`/
 \ `+loop` close one in J-LOOPEND, and `leave` chains onto the innermost open
 \ one. LCFPOP's orphan guard covers only the CF stack, so it does not see this
 \ stack at all: a loop-family word with no open `do` indexed level -1, and
@@ -1527,14 +1548,14 @@ here RESTAB-BUF - constant RESTAB-LEN
 \ levels, so the `loop`/`+loop` guard is an existence check and not a value
 \ test an earlier stray `leave` could defeat.
 \ Clobbers x9 only; every call site reloads or overwrites x9 immediately after.
-: J-LVREQUIRE ( -- )                            \ reject a loop-family word with no open DO level
+: LVREQUIRE ( -- )                              \ reject a loop-family word with no open DO level
    LBL {: ok:label :}
    9 DATA LVD-CELL LDR,  9 ok CBNZ,
       LORPHAN LABEL@ B,                  \ TKA/TKL still hold the offending token
    ok LBL, ;
 
-: J-LVLEAVE ( -- )                              \ chain a B placeholder on the current level
-   J-LVREQUIRE
+: LVLEAVE ( -- )                                \ chain a B placeholder on the current level
+   LVREQUIRE
    9 DATA LVD-CELL LDR,  9 9 1 SUBI,
    10 9 3 LSLI,  10 10 LVF-OFF ADDI,  10 DATA 10 ADD,
    14 10 0 LDR,  15 DATA LOCF-CELL LDR,  12 15 14 SUB,  C-EMIT-DROP-X12
@@ -1545,16 +1566,16 @@ here RESTAB-BUF - constant RESTAB-LEN
    LCEMIT LABEL@ BL, ;
 
 : J-DO ( -- )
-   J-FRAME  J-LVOPEN  C-PUSHCP ;
+   J-FRAME  LVOPEN  C-PUSHCP ;
 
 : J-?DO ( -- )                                  \ DO, but skip the loop when limit = start
-   J-FRAME  J-LVOPEN
+   J-FRAME  LVOPEN
    $EB0A013F C-EMITW                     \ cmp x9,x10  (start/limit still live)
    $54000041 C-EMITW                     \ b.ne +8 (over the skip placeholder)
-   J-LVLEAVE
+   LVLEAVE
    C-PUSHCP ;
 
-: J-LEAVE ( -- )  J-LVLEAVE ;
+: J-LEAVE ( -- )  LVLEAVE ;
 
 : J-UNLOOP ( -- )                               \ pop one loop frame, no branch
    4181780107 C-EMITW  3506439531 C-EMITW  4177585803 C-EMITW ;
@@ -1567,7 +1588,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LBCHAIN LABEL@ BL, ;
 
 : J-LOOP ( -- )
-   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
+   LVREQUIRE                             \ no open DO level: reject before emitting or popping
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    4181721481 C-EMITW  4181722506 C-EMITW  2432697641 C-EMITW  4177527177 C-EMITW  3943301439 C-EMITW
    LCFPOP LABEL@ BL,
@@ -1576,7 +1597,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    J-LOOPEND ;
 
 : J-+LOOP ( -- )                                \ index += n; loop while (old-limit) and
-   J-LVREQUIRE                           \ no open DO level: reject before emitting or popping
+   LVREQUIRE                             \ no open DO level: reject before emitting or popping
    $D1002273 C-EMITW  $F9400269 C-EMITW  \ (new-limit) agree in sign (ANS crossing)
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
    $F940018D C-EMITW                     \ ldr x13,[x12]      index
@@ -1591,6 +1612,8 @@ here RESTAB-BUF - constant RESTAB-LEN
    10 9 CP SUB,  10 10 2 ASRI,  5 $7FFFF LIT64,  10 10 5 AND,  10 10 5 LSLI,
    9 $5400000A LIT64,  9 9 10 ORR,  LCEMIT LABEL@ BL,       \ b.ge loop-top
    J-LOOPEND ;
+
+;package
 
 : J-I ( -- )
    4181780107 C-EMITW  3506439531 C-EMITW  3548179820 C-EMITW  2434269580 C-EMITW  2333344140 C-EMITW
@@ -1672,34 +1695,67 @@ s" c-task-live-guard" s" --" TRUST
    TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED ;
 
-: C-CALL-TRUST-LASTC ( -- )
+\ ---- created-word effect publication -----------------------------------------
+\ The three public words below are every place the engine gives a defining
+\ word's creation an effect the checker will believe. All three publish a cell
+\ of raw dictionary storage, so all three register through `trust-raw`: the
+\ type variables in the published effect are minted raw and cannot bind a
+\ nominal family, which is what stops a plain integer stored into the cell from
+\ being read back out as a sealed nominal with no converter in between.
+\
+\ LASTC-TRUST:PUBLISH publishes the runtime effect a `does>` clause declared
+\ for the words its defining word creates, so it covers user-written defining
+\ words as well as PTR-VARIABLE. LASTC-TRUST:PUBLISH-PTR-A publishes `-- ptr a`
+\ for create and variable, and LASTC-TRUST:PUBLISH-A publishes `-- a` for
+\ constant.
+package LASTC-TRUST
+
+\ Resolve `trust-raw`, the checker's raw-storage effect registrar (checker.f
+\ TRUST-RAW). Every word the engine publishes from a defining word owns a cell
+\ of raw dictionary storage, so its effect must be registered with raw type
+\ variables that cannot bind a nominal family; the publish words below all
+\ route here instead of at `trust`. Same fail-closed shape as C-FIND-TRUST: a
+\ missing registrar names itself on fd 2 and exits 70 rather than publishing
+\ the word unsealed.
+: FIND-RAW ( -- )  LBL {: ok:label :}
+   9 KWDATA:LKWTRUSTRAW LABEL@ ADR,  10 9 MOVZ,  LFIND LABEL@ BL,
+   13 ok CBNZ,
+      0 2 MOVZ,  1 KWDATA:LKWTRUSTRAW LABEL@ ADR,  2 9 MOVZ,  NR-WRITE SYS,
+      0 70 MOVZ,  NR-EXIT-GROUP SYS,
+   ok LBL, ;
+
+public
+
+: PUBLISH ( -- )
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST
+   FIND-RAW
    C-PUSH-DREC-NAME
    CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG
    C-CALL-X11-SAVED
    nohook LBL, ;
 
-: C-CALL-TRUST-LASTC-PTR-A ( -- )
+: PUBLISH-PTR-A ( -- )
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST
+   FIND-RAW
    C-PUSH-DREC-NAME
    9 LSIGPTRA LABEL@ ADR,  9 G-PUSH
    9 8 MOVZ,  9 G-PUSH
    C-CALL-X11-SAVED
    nohook LBL, ;
 
-: C-CALL-TRUST-LASTC-A ( -- )
+: PUBLISH-A ( -- )
    LBL {: nohook:label :}
    9 DATA HOOK-CELL LDR,  9 nohook CBZ,
-   C-FIND-TRUST
+   FIND-RAW
    C-PUSH-DREC-NAME
    9 LSIGA LABEL@ ADR,  9 G-PUSH
    9 4 MOVZ,  9 G-PUSH
    C-CALL-X11-SAVED
    nohook LBL, ;
+
+;package
 
 : C-FIND-GLOBAL? ( ptr n n -- ) {: name:ptr len:n :}
    SP SP 16 SUBI,
@@ -1963,7 +2019,13 @@ s" c-call-checker-defer" s" --" TRUST
    11 DATA QENT-CELL LDR,  C-CODE-ADDR             \ push the xt in the outer word (relocatable code addr)
    12 0 MOVZ,  12 DATA QPATCH-CELL STR, ;
 
-: EMIT-DOESPATCH ( -- )
+\ The does>-patch runtime routine emitter (LDOESPATCH): patches the created
+\ word's RET into a branch and publishes the declared runtime effect.
+package DOESPATCH
+
+public
+
+: EMIT ( -- )
    LBL {: nocr :}
    LDOESPATCH LABEL@ LBL,
    SP SP 32 SUBI,  30 SP 0 STR,  10 SP 8 STR,
@@ -1980,10 +2042,12 @@ s" c-call-checker-defer" s" --" TRUST
    12 SP 16 LDR,
    12 DCCVAU,  DSB-ISH,  12 ICIVAU,  DSB-ISH,  ISB,      \ flush the patched line
    9 DATA CRSIG-U-CELL LDR,  9 nocr CBZ,
-      C-CALL-TRUST-LASTC
+      LASTC-TRUST:PUBLISH
       C-RUNTIME-CRSIG-CLEAR
    nocr LBL,
    30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+;package
 
 \ ---- interpret-mode defining words ----
 \ record defining words for the checker: append the kind token + run the hook
@@ -2316,16 +2380,20 @@ s" c-store-def-name" s" --" TRUST
    nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 
+\ Interpret-mode defining-word handlers. The interpret define-keyword dispatch
+\ rows reopen this package further down and resolve them bare.
+package INTERP-EMIT
+
 : C-CREATE ( -- )
    C-TASK-LIVE-GUARD
    15 1 MOVZ,  LCREATE LABEL@ BL,
-   C-CALL-TRUST-LASTC-PTR-A ;
+   LASTC-TRUST:PUBLISH-PTR-A ;
 
 : C-VARIABLE ( -- )  C-CREATE
    7 DATA 0 LDR,  7 7 8 ADDI,  7 DP-CHECK  7 DATA 0 STR, ;
 
 \ `constant` pops ONE physical cell and records the one-cell `-- a` trust
-\ (C-CALL-TRUST-LASTC-A) — the permanent contract (TFAM 12 verdict 2026-07-09):
+\ (LASTC-TRUST:PUBLISH-A) — the permanent contract (TFAM 12 verdict 2026-07-09):
 \ the interpret stack is untyped, so no shape source exists here, and a
 \ wider-than-cell layout value never lands on it (DNAME-WIDE dispatch gate).
 \ Parity with verify-source / public-signatures / all-errors is locked by the
@@ -2347,7 +2415,9 @@ s" c-store-def-name" s" --" TRUST
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,  9 9 0 LDR,   \ publish record NDICT-1; x9 = body start for the flush
    2 5 MOVZ,  LPROT LABEL@ BL,  LFLUSH LABEL@ BL,
    LKWCONST 8 C-DEFHOOK
-   C-CALL-TRUST-LASTC-A ;
+   LASTC-TRUST:PUBLISH-A ;
+
+;package
 
 : C-CLEAR-TRUSTED-STATE ( -- )
    9 0 MOVZ,
@@ -4890,6 +4960,10 @@ s" c-export-tail!" s" --" TRUST
    done LBL, ;
 s" c-export" s" --" TRUST
 
+\ Interpret-state dispatch assembly: the keyword/number/find emitters and the
+\ EM-INTERPRET entry that EMIT-MAIN wires into the main loop.
+package INTERP-EMIT
+
 : EM-INTERPRET-DEFINE-KEYWORDS ( -- )
    s" package" KEEP? IF LMAIN LABEL@ LKWPACKAGE 7 ['] C-PACKAGE CF-ENTRY THEN
    s" public" KEEP? IF LMAIN LABEL@ LKWPUBLIC 6 ['] C-PUBLIC CF-ENTRY THEN
@@ -4955,11 +5029,15 @@ s" em-interpret-find" s" --" TRUST
    EM-INTERPRET-FIND          s" interpret/find" ENGINE-SIZE:MARK ;
 s" em-interpret-words" s" --" TRUST
 
+public
+
 : EM-INTERPRET ( -- )
    LBL {: lnotcolon :}
    lnotcolon EM-INTERPRET-COLON s" interpret/colon" ENGINE-SIZE:MARK
    EM-INTERPRET-WORDS ;
 s" em-interpret" s" --" TRUST
+
+;package
 
 : EM-COMPILE-DROP-LOCALS ( -- )
    LBL {: done :}
@@ -5961,6 +6039,11 @@ s" em-compile-string-keywords" s" --" TRUST
    s" ;]" KEEP? IF LMAIN LABEL@ LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY THEN ;
 s" em-compile-meta-keywords" s" --" TRUST
 
+\ The loop keyword dispatch rows belong to the loop-emit family above: they
+\ resolve its handlers bare, so the package is reopened here.
+package LOOP-EMIT
+public
+
 : EM-COMPILE-LOOP-KEYWORDS ( -- )
    s" do" KEEP? IF LMAIN LABEL@ LKWDO     2 ['] J-DO     CF-ENTRY THEN
    s" loop" KEEP? IF LMAIN LABEL@ LKWLOOP   4 ['] J-LOOP   CF-ENTRY THEN
@@ -5978,13 +6061,21 @@ s" em-compile-meta-keywords" s" --" TRUST
    s" {:" KEEP? IF LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CF-ENTRY THEN ;
 s" em-compile-loop-keywords" s" --" TRUST
 
+;package
+
+\ Compile-state dispatch assembly: the keyword-table aggregator and the
+\ EM-COMPILE entry that EMIT-MAIN wires into the main loop (reopened below).
+package COMPILE-EMIT
+
 : EM-COMPILE-KEYWORDS ( -- )
    LBCAP LABEL@ BL,
    EM-COMPILE-CONTROL-KEYWORDS
    EM-COMPILE-STRING-KEYWORDS
    EM-COMPILE-META-KEYWORDS
-   EM-COMPILE-LOOP-KEYWORDS ;
+   LOOP-EMIT:EM-COMPILE-LOOP-KEYWORDS ;
 s" em-compile-keywords" s" --" TRUST
+
+;package
 
 : EM-COMPILE-LOCAL ( -- )
    LBL {: notloc :}
@@ -6734,6 +6825,9 @@ s" em-adt-match-of" s" --" TRUST
    s5 LBL,  EM-ADT-MATCH-OF
    off LBL, ;
 s" em-compile-adt-mode" s" --" TRUST
+package COMPILE-EMIT
+public
+
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
@@ -6751,14 +6845,22 @@ s" em-compile-adt-mode" s" --" TRUST
    EM-EVAL-THROW-RECOVER      s" compile/eval-recover" ENGINE-SIZE:MARK ;
 s" em-compile" s" --" TRUST
 
+;package
+
+\ The main-loop emitter entry belongs to the build sequencing package: its
+\ caller EMIT-CODE-SECTIONS resolves it bare in the reopened block below.
+package ENGINE-BUILD
+
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
    EM-STARTUP                 s" main/startup" ENGINE-SIZE:MARK
    EM-COMMENT                 s" main/comment" ENGINE-SIZE:MARK
-   EM-INTERPRET
-   EM-COMPILE
+   INTERP-EMIT:EM-INTERPRET
+   COMPILE-EMIT:EM-COMPILE
    EM-INTERPRET-UNDERFLOW     s" main/underflow" ENGINE-SIZE:MARK ;
 s" emit-main" s" --" TRUST
+
+;package
 
 \ Pre-execution arity guard (LARITY). A deref/execute/dispatch primitive (@ !
 \ +! c@ c! atomic@ atomic! atomic-add atomic-cas count type execute
@@ -6800,7 +6902,11 @@ s" SRCA@" s" -- ptr u8" TRUST
    SRCN !  SRCA !
    ASM-INIT  0 #PL !  0 PNP ! ;
 
-: EMIT-LABEL-CORE ( -- )
+\ Label allocation for the emitter: one private allocator per engine region,
+\ one public entry that reserves every label a build uses.
+package LABELS
+
+: CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
@@ -6815,7 +6921,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LAOTWIDGATE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
 
-: EMIT-LABEL-CONTROL ( -- )
+: CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
    LBL LKWCASE !  LBL LKWOF !  LBL LKWENDOF !  LBL LKWENDCASE !
@@ -6830,7 +6936,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWQDO !  LBL LKWPLOOP !  LBL LKWJ !  LBL LKWLEAVE !  LBL LKWUNLOOP !
    LBL LKWCHAR !  LBL LKWBCHAR !
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
-   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
+   LBL LKWTRUSTED !  LBL LKWTRUST !  LBL KWDATA:LKWTRUSTRAW !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
@@ -6843,7 +6949,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LTFLCONFAM !  LBL LTFLCVAR !
    LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
 
-: EMIT-LABEL-RUNTIME ( -- )
+: RUNTIME ( -- )
    LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LEX0 !  LBL LUN0 !  LBL LEVALREC !
@@ -6867,7 +6973,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LFLAGMATCH !  LBL LSRCBADFLAG !  LBL LFLAGTAB !
    LBL LBADFLAG !  LBL LUSAGE1 !  LBL LUSAGE2 !  LBL LSPC ! ;
 
-: EMIT-LABEL-SOURCES ( -- )
+: SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
    LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
@@ -6883,7 +6989,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !  LBL LCHKSNAPTOKEN ! ;
 
-: EMIT-LABEL-JIT ( -- )
+: JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !
    LBL LVSPILL !  LBL LVLITPUSH !  LBL LVPUSHC !
    LBL LVTOP2C !  LBL LVFOLDPUT !
@@ -6893,7 +6999,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LVDROP !  LBL LVSWAPX !  LBL LVNIPX !  LBL LVCOPY !
    LBL LVSNAP !  LBL LVRECON ! ;
 
-: EMIT-LABEL-OPS ( -- )
+: OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
    LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
    LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
@@ -6903,7 +7009,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWINC !  LBL LKWDEC !  LBL LKWZEQ !
    LBL LKWZLT !  LBL LKWNEG2 !  LBL LKWINV2 ! ;
 
-: EMIT-LABEL-P2 ( -- )
+: P2 ( -- )
    LBL LCERTBYTES !  LBL LP2CWAT !  LBL LP2CDESC !
    LBL LKWTUCK3 !  LBL LKWROT3 !  LBL LKWMROT3 !
    LBL LKW2DUP3 !  LBL LKW2DROP3 !  LBL LKW2SWAP3 !  LBL LKW2OVER3 !
@@ -6915,14 +7021,18 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LOWER-TXN-CODE:FULL !  LBL LOWER-TXN-CODE:DRIFT !
    LBL LOWER-TXN-CODE:VDESC !  LBL LOWER-TXN-CODE:DRIFT-FAIL ! ;
 
-: EMIT-LABELS ( -- )
-   EMIT-LABEL-CORE
-   EMIT-LABEL-CONTROL
-   EMIT-LABEL-RUNTIME
-   EMIT-LABEL-SOURCES
-   EMIT-LABEL-JIT
-   EMIT-LABEL-OPS
-   EMIT-LABEL-P2 ;
+public
+
+: INIT ( -- )
+   CORE
+   CONTROL
+   RUNTIME
+   SOURCES
+   JIT
+   OPS
+   P2 ;
+
+;package
 
 \ ---- AOT M2: N-word capture buffers (host-only build scratch; `allot` DATA, NOT
 \ baked into bin/hb). aot-capture.f fills them from the metabuild host's compiled
@@ -7087,6 +7197,10 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    9 13 2 ANDI,
    A G-PUSH ;
 
+\ Build sequencing: the section emitters and EMIT-FORTH belong to the engine
+\ build package; BUILD below resolves EMIT-FORTH bare across reopened blocks.
+package ENGINE-BUILD
+
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS  OWNER-WID-EMIT:PRIMS s" primitives/base" ENGINE-SIZE:MARK
    EMIT-ARITY-GUARD             s" primitives/arity" ENGINE-SIZE:MARK
@@ -7113,11 +7227,11 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
-   EMIT-DOESPATCH
+   DOESPATCH:EMIT
    EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
    EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE
    EMIT-LOC-FIND
-   EMIT-KWDATA
+   KWDATA:EMIT
    EMIT-FOLDKW
    EMIT-SHUFKW
    EMIT-CMPKW
@@ -7148,6 +7262,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
 
+public
+
 \ Records one region row per emitter phase; the container rows (header, page pad,
 \ and the target tail) and the HABU_ENGINE_SIZE_MAP report are added post-sign by
 \ src/habu/driver-io.f DRV-SIZE-MAP, once the image length is final and the map
@@ -7155,10 +7271,12 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 : EMIT-FORTH ( ptr u8 n -- )
    ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
-   EMIT-LABELS
+   LABELS:INIT
    EMIT-CODE-SECTIONS
    EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK ;
 s" emit-forth" s" ptr u8 n --" TRUST
+
+;package
 
 package ENGINE-BUILD
 public

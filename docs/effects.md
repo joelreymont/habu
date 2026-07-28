@@ -479,16 +479,31 @@ later callers; use `TRUST` only when the body itself cannot be checked.
   fencing those out as well needs that role/xt scratch migrated to typed cells
   first (tracked follow-on).
 
-  **The two definer groups are sealed by different mechanisms, and they do not
-  currently have the same reach.** `here` is sealed by a baked primitive effect,
-  so it holds on every path: `: N>ID2 ( n -- CAD-KIND:region ) here ! here @ ;`
-  rejects with `expected: CAD-KIND:region<> actual: a` under a plain
-  `bin/hb --load`. `create`, `variable`, `constant`, and `PTR-VARIABLE` are
-  sealed through the **verify-source** definer registration (`RAW-TRUST-NEXT`,
-  `src/habu/verify-source.f`), which the ordinary `--load` path does not run —
-  so on `--load` the same forge through a `variable`,
-  `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;`, still certifies. Do not read the
-  `variable` seal as an end-to-end guarantee until that gap closes.
+  **The seal holds on every path, because it is applied where the cell is
+  defined.** `here` is sealed by a baked primitive effect, so it has always held
+  everywhere: `: N>ID2 ( n -- CAD-KIND:region ) here ! here @ ;` rejects with
+  `expected: CAD-KIND:region<> actual: a` under a plain `bin/hb --load`. The
+  defining words are now sealed the same way. Whenever the engine publishes a
+  word that owns a cell of raw dictionary storage it registers that word's
+  effect through `trust-raw` (`TRUST-RAW`, `src/core/checker.f`) instead of
+  `trust`, and `TRUST-RAW` parses the effect in raw-definer mode so every type
+  variable in it is minted `TVK-RAW`. That covers all three publication sites in
+  `src/habu/habu2.f`: `-- ptr a` for `create` and `variable`
+  (`C-CALL-TRUST-LASTC-PTR-A`), `-- a` for `constant` (`C-CALL-TRUST-LASTC-A`),
+  and the `does>`-declared created-word effect (`C-CALL-TRUST-LASTC`), which is
+  what seals `PTR-VARIABLE` and every user-written `create ... does>` definer.
+  So `: N>ID ( n -- CAD-KIND:region ) V ! V @ ;` over a `variable V` rejects
+  under `bin/hb --load` with `expected: CAD-KIND:region<> actual: a`, and so
+  does the same forge through `create`, `constant`, or a definer whose `does>`
+  clause declares a free type variable such as `( -- a )`.
+
+  The point of moving the seal into the registration word is that it can no
+  longer depend on which front end ran. It used to be the caller's job: the
+  shared source pre-verifier bracketed its own registration with the raw mode
+  (`RAW-TRUST-NEXT`, `src/habu/verify-source.f`), and the native `--load` path,
+  which is the path every tool and gate actually uses, published created words
+  unsealed. `RAW-TRUST-NEXT` still brackets its registration, so it now confirms
+  the seal a second time rather than being the only thing that applies it.
 - **`xt<effect>` storage cells are the typed alternative to raw xt scratch.**
   `TYPED-VARIABLE HK [ in -- out ]` (and `n TYPED-BUFFER HK [ in -- out ]`)
   declares a persistent monomorphic *code cell*: the generated accessor's declared

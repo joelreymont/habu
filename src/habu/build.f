@@ -49,6 +49,8 @@ s" BLD-PB@" s" -- ptr u8" TRUST
 : READ-CHECK  BLD-CHK READ-PATH ;
 : READ-PROG   BLD-IN  READ-PATH ;
 
+package BUILD-DRV
+
 : GO ( -- )
    BLD-RUNTIME-ARGS
    READ-CHECK
@@ -56,7 +58,7 @@ s" BLD-PB@" s" -- ptr u8" TRUST
    READ-PROG
    BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 0= 0= STDIN? !
-   BLD-PB@ PN @ EMIT-FORTH
+   BLD-PB@ PN @ ENGINE-BUILD:EMIT-FORTH
    s" hb-prog" BLD-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently
@@ -68,3 +70,5 @@ s" BLD-PB@" s" -- ptr u8" TRUST
    DRV-FAIL ;
 
 BLD-RUN
+
+;package

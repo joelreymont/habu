@@ -10,9 +10,9 @@
 \ empty registry.
 \
 \ How the registry is injected without editing production source: the stdin
-\ metabuild driver src/habu/stdin.f ends with a single top-level `GO` call. This
-\ builder reads that file, verifies it still ends with that `GO` call (and dies
-\ with a clear message if the tail ever drifts), drops the `GO` call, and appends
+\ metabuild driver src/habu/stdin.f ends with a single top-level `STDIN-DRV:GO`
+\ call. This builder reads that file, verifies it still ends with that call (and
+\ dies with a clear message if the tail ever drifts), drops the call, and appends
 \ a `PWID-GO` that mirrors `GO` but writes two protected word-list ids into the
 \ capture buffer between capturing the REPL and emitting the image. The rest of
 \ the build reuses tools/build-fixpoint.f exactly as the normal stdin build does.
@@ -70,17 +70,19 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    repeat ;
 
 : TAIL-BAD ( -- )
-   s" aot-wid-build: src/habu/stdin.f no longer ends with a top-level GO call" BF-BUILD-RC die ;
+   s" aot-wid-build: src/habu/stdin.f no longer ends with a top-level STDIN-DRV:GO call" BF-BUILD-RC die ;
 
-\ Length of stdin.f to keep: everything up to (not including) the trailing `GO`.
-\ Fail closed if the file does not end with a standalone `GO` token.
+: GO-TAIL$ ( -- ptr u8 n ) s" STDIN-DRV:GO" ;
+
+\ Length of stdin.f to keep: everything up to (not including) the trailing
+\ `STDIN-DRV:GO`. Fail closed if the file does not end with that standalone token.
 : GO-KEEP ( -- n )
    SRC-LAST {: l:n :}
-   l 1 < if TAIL-BAD then
-   l SRC-BUF + c@ [char] O <> if TAIL-BAD then
-   l 1- SRC-BUF + c@ [char] G <> if TAIL-BAD then
-   l 2 >= if l 2 - SRC-BUF + c@ WS? 0= if TAIL-BAD then then
-   l 1- ;
+   GO-TAIL$ {: t:ptr tu:n :}
+   l 1+ tu < if TAIL-BAD then
+   l 1+ tu - SRC-BUF + tu t tu STR= 0= if TAIL-BAD then
+   l 1+ tu > if l tu - SRC-BUF + c@ WS? 0= if TAIL-BAD then then
+   l 1+ tu - ;
 
 : DRV-RESET ( -- )
    0 DRV-U ! ;
@@ -98,7 +100,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 \ EM-AOT-RELOC-DATA advances DP by the baked LAOTDATASIZE span read straight from
 \ the image; test/aot-data-span-forge.f probes that guard by baking a forged span.
 \ When HABU_AOT_SPAN is set to a decimal, that value overwrites the captured span
-\ AFTER CAPTURE-REPL and BEFORE EMIT-FORTH, so LAOTDATASIZE carries the forged value
+\ AFTER CAPTURE-REPL and BEFORE ENGINE-BUILD:EMIT-FORTH, so LAOTDATASIZE carries the forged value
 \ (the forge test passes 2*DATA-SIZE, unambiguously past the seed headroom). No env
 \ leaves the real capture untouched (the plain protected-WID build path).
 : SPAN-FORGE-LINE ( -- )
@@ -118,7 +120,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    s"    300 0 ACAP-PWID-PUT   70000 1 ACAP-PWID-PUT   2 AOT-PWID-N !" DRV+ DRV-NL
    SPAN-FORGE-LINE
    s"    0 0= STDIN? !" DRV+ DRV-NL
-   s"    HB@ 0 EMIT-FORTH" DRV+ DRV-NL
+   s"    HB@ 0 ENGINE-BUILD:EMIT-FORTH" DRV+ DRV-NL
    S\"    s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV+ DRV-NL
    s"    DRV-EXIT-OK ;" DRV+ DRV-NL
    s" PWID-GO" DRV+ DRV-NL ;

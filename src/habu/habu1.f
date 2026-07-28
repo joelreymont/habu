@@ -2605,8 +2605,8 @@ SOURCE-INIT
 \ The shared runtime lowering guard body ( x10=address, x11=byte length ). It is
 \ registered as the sealed (PROT-SPAN) engine helper so a guarded primitive that
 \ reaches it by a direct branch is carried into an ahead-of-time image and
-\ relocated. The label is reserved in EMIT-LABEL-CORE so the record spans exactly
-\ [start, end).
+\ relocated. The label is reserved in the habu2.f LABELS allocator (its CORE
+\ block) so the record spans exactly [start, end).
 : EMIT-PROT-SPAN ( -- )
    LPROTSPAN LABEL@ {: start:label :}
    LBL {: end:label :}

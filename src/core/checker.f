@@ -5072,6 +5072,13 @@ PRIM: CAST-PEND! PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ habu-hb-crash-bare-c5be6634); UNSAFE-TOK? still rejects `trust` inside
 \ checked bodies, so the axiom adds no checked-code capability.
 PRIM: TRUST PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
+\ TRUST-RAW ( name$ effect$ -- ) is TRUST for a raw storage cell: same
+\ registration, every type variable in the effect minted TVK-RAW. The native
+\ engine calls it by name from each created-word publish site, so it needs the
+\ same axiom as TRUST to survive the seal-time internal-word marking pass and
+\ stay executable at top level; UNSAFE-TOK? rejects `trust-raw` inside checked
+\ bodies exactly like `trust`, so the axiom adds no checked-code capability.
+PRIM: TRUST-RAW PE-PTR-U8 PE-IN PE-N PE-IN PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 \ PTX-BARRIER! ( name$ -- ) is the top-level explicit barrier-declaration word
 \ (M5b): it marks a named word a block-uniform barrier so a call reached under
 \ divergent control rejects. The axiom keeps it checker-known so the seal-time
@@ -6383,6 +6390,7 @@ variable CURSYM
 : UNSAFE-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" evaluate" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" trust" CORE-STR=CI IF RES-TRUE EXIT THEN
+   a u s" trust-raw" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" ptx-barrier!" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" defer-layout-buffer" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -8589,12 +8597,52 @@ variable DOS-OFF  variable DOS-LN  variable DOS-CL  variable DOS-P
 s" <input>" DIAG-FILE!
 1 1 0 DIAG-ORIGIN!
 
+\ The registration the two declaration words share. It is factored out rather than
+\ copied because TRUST and TRUST-RAW must record the same row from the same
+\ code; the only thing that differs between them is whether the signature
+\ parser is in raw-definer mode while it runs. TRUST-RAW cannot reach the
+\ registration by calling TRUST, because `trust` is one of the tokens refused
+\ inside a checked body (UNSAFE-TOK?) and these bodies are themselves checked.
+\ Like CHECKER-USIG-ADD below it, this helper is an ordinary checker-internal
+\ definition with no primitive axiom, so user code cannot resolve it at all —
+\ the effect-declaration capability stays exactly where it was, behind `trust`
+\ and `trust-raw` at top level.
+: TRUST-USIG! ( ptr u8 n ptr u8 n -- ) {: na:ptr nu:n sa:ptr su:n :}
+   na nu TOKFOLD drop
+   sa su  TKF TKFU @  CHECKER-USIG-ADD ;
+
 \ TRUST: declare a word's effect without checking its body — the native escape
 \ hatch (PLAN's TRUSTED:). Callers are checked against the declared sig.
 \ Usage:  s" myword" s" n n -- n" trust
-: TRUST {: na nu sa su :}
-   na nu TOKFOLD drop
-   sa su  TKF TKFU @  CHECKER-USIG-ADD ;
+: TRUST {: na:ptr nu:n sa:ptr su:n :}
+   na nu sa su TRUST-USIG! ;
+
+\ TRUST-RAW: the raw-dictionary-storage form of TRUST, and the single authority
+\ that seals a storage cell at the moment its definer publishes it.
+\
+\ It registers exactly the effect TRUST would, except that the signature parser
+\ runs in raw-definer mode, so every type variable in that effect is minted
+\ TVK-RAW instead of TVK-ANY. A TVK-RAW variable admits plain scalars and
+\ refuses to bind a nominal family, so reading the cell back can never
+\ manufacture a nominal identity that nothing ever converted into one.
+\
+\ WHY THIS WORD EXISTS. The seal used to be applied by the caller: the shared
+\ source pre-verifier (verify-source RAW-TRUST-NEXT) bracketed its own call to
+\ the signature parser with SIG-RAW-DEFINER!. That made the seal a property of
+\ which front end happened to run, and the native `bin/hb --load` path -- the
+\ one every tool and gate uses -- published created words through plain TRUST
+\ and so published them unsealed. Bracketing is now inside the registration
+\ word, so a definer cannot register a raw cell and forget to seal it: the only
+\ way to publish a created word is to call this, and calling it seals.
+\
+\ The mode is restored to off rather than to its previous value on purpose.
+\ Raw registration is a top-level definer act; it never nests inside another
+\ signature parse, and leaving the mode latched on would silently seal ordinary
+\ signatures registered afterwards.
+: TRUST-RAW {: na:ptr nu:n sa:ptr su:n :}
+   RES-TRUE SIG-RAW-DEFINER!
+   na nu sa su TRUST-USIG!
+   RES-FALSE SIG-RAW-DEFINER! ;
 
 \ Pre-trust defer capability (dot habu-engine-pre-trust-77410827): `trust` (above)
 \ and `checker-defer` (5208) are both defined now — the earliest safe point — so

@@ -168,9 +168,19 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ MACOS-TOTAL are unchanged; with the new row the model sum reconstructs 148855
 \ exactly. Candidate ratchet measured 114976, floor 3892 -> 4384. The linux row
 \ below is owed a linux-host re-measure for the 48-byte guard.
-114976 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+\ 2026-07-28 raw-storage load-path seal landed (dot habu-seal-raw-storage): the
+\ engine now registers every created word's effect through `trust-raw`, which
+\ adds the C-FIND-TRUST-RAW resolver, its `trust-raw` keyword string, and the
+\ three rewritten publication call sites to baked __text. On its own base it
+\ measured +456 over the 114484 row - that is the 444-byte stale-row
+\ correction the loop entry above documents plus 12 bytes of its own. Merged
+\ here with the loop-family opener guard (+48), the fixpoint measures 114988
+\ (floor 4384 -> 4396); the __TEXT pad absorbs the 12. Whole file,
+\ signature, and page count unchanged; the linux row below is owed a
+\ linux-host re-measure for both deltas.
+114988 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
-4384 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
+4396 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
 148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX

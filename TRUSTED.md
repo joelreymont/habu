@@ -1981,6 +1981,9 @@ prim - checker-undefine - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-undefine-guard - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-export - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-package-active? - pe-f pe-out
+prim - checker-auth-package$ - pe-ptr-u8 pe-out pe-n pe-out
+prim - checker-auth-package-mode@ - pe-n pe-out
+prim - checker-auth-package-active? - pe-f pe-out
 prim - checker-deflinear - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defrecord - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-deffamily - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
@@ -1996,6 +1999,7 @@ prim - checker-lbuf-name-guard - pe-ptr-u8 pe-in pe-n pe-in
 prim - checker-defined? - pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
 prim - cast-pend! - pe-ptr-u8 pe-in pe-n pe-in
 prim - trust - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
+prim - trust-raw - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
 prim - ptx-barrier! - pe-ptr-u8 pe-in pe-n pe-in
 prim - tfam-n@ - pe-n pe-out
 prim - tfam-width@ - pe-n pe-in pe-n pe-out
