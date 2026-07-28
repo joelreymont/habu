@@ -298,3 +298,10 @@ public
 -6604 constant E-IR-OWNER
 -6605 constant E-IR-SCALAR-RANGE
 -6606 constant E-IR-MODULE-EXHAUSTED
+
+\ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
+-6700 constant E-CID-FIRST
+-6799 constant E-CID-LAST
+-6700 constant E-CID-FAMILY   \ the live checker type-family registry does not match the frozen identity family manifest
+-6701 constant E-CID-TOKEN    \ a canonical manifest token holds a byte outside the printable non-space alphabet
+-6702 constant E-CID-ROW      \ a schema vector row index or table slot is outside its declared table

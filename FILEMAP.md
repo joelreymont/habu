@@ -117,6 +117,22 @@ points stay listed.
   barrier; a private erase-only observer writes validated owners to shared raw
   test storage, caught parent failures attempt to release every task, and an
   exact activation-error case reruns all four task objects to prove cleanup.
+- `test/compiler/ir-id-schema.f` — `package COMPILER-ID-PROOF`: the frozen
+  canonical description of the IR-0.1 identity design and the artifact the Rocq
+  parity gate will consume. It emits canonical bytes for the schema version,
+  packing widths and bounds, the thirteen families read back from the live
+  checker type-family registry across its one `require` of the production
+  source, the two projection rules, and every guard with its error code, owning
+  word, and reachability; hashes exactly those bytes with SHA-256 against a
+  committed frozen digest; carries the ordered valid and hostile numeric pack,
+  check, and scalar vectors inside those same bytes; and exposes the checked
+  words that run one vector row through the public `IR-ID` surface.
+- `test/compiler/ir-id-manifest.f` — focused test for that schema: rebuild
+  determinism of the bytes and digest, the committed digest, thirteen distinct
+  families in declaration order, every numeric vector row run through the
+  production identity words, scalar round-trip identity that tells a plain
+  number from a packed identity above bit 32, and guard coverage matching the
+  manifest's own reachability marks.
 - `test/compiler/ir-id.f` — key-based identity round-trip, reachable
   local/scalar guards, owner, bound, wrong-family, nonzero concurrent serials,
   barrier-removal and cleanup-reuse mutations, replay, package sealing, private

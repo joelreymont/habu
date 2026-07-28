@@ -220,6 +220,10 @@ SUITE compiler-ir-id
    test/compiler/ir-id.f
 ;SUITE
 
+SUITE compiler-ir-id-manifest
+   test/compiler/ir-id-manifest.f
+;SUITE
+
 SUITE object-record-codec
    lib/object-test.f
 ;SUITE
