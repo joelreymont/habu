@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -10,6 +10,34 @@ with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
 and in git history. One tight bullet per lesson; add a section only if none
 fits.
 
+- **A worker's honest account of what it did NOT cover is a work item, not a
+  deliverable.** The first control-flow model reported clearly that it covered
+  "branches, `begin` loops, early return and quotation application" but not
+  `?do`/`loop`, `case`, `match`, `throw`, `die`, `leave`, locals or linear
+  types — and named two places where it was more permissive than the checker
+  (`Q>XDEAD` quotation deadness at checker.f:2018/2051, and the 33-frame
+  `UNCK` bound at checker.f:7652). Relaying that candour as if the candour
+  discharged the obligation is a failure of review. Accurate self-assessment
+  earns a follow-up dot and a re-dispatch, never a pass. Grade against the
+  goal, not against the report's honesty.
+- **Model the compiler from `src/core/checker.f`, never from `docs/`.**
+  Scoping the first effect model from `docs/effects.md` omitted control flow
+  entirely, because that document specifies signature syntax rather than how a
+  body is walked. Worse, the document is wrong where it does speak: its
+  top-level return-clause grammar at `docs/effects.md:13` PARSES SILENTLY and
+  means something else — `( R a -- R | S -- S a )` loads with exit 0 and the
+  use site then fails with exit 70, while the real shape is
+  `( Din | Rin -- Dout | Rout )`. Read the code; measure every rule against
+  `bin/hb`; treat each divergence as a finding (dot
+  habu-correct-effects-grammar-195dae7e).
+- **A fresh Jujutsu workspace has no `bin/hb`; seed it and run the NATIVE
+  refresh.** Copy a working binary into `<ws>/bin/hb`, then
+  `bin/hb --load tools/build-fixpoint-refresh.f -- install` (~1 min, ends
+  `bin/hb refresh OK: compiler fixpoint`). Habu bootstraps Habu.
+  `tools/bootstrap.sh` is the gforth no-binary RECOVERY route only, and it
+  currently fails on an unrelated stage0 mirror defect
+  (habu-fix-stage0-pre-88a4297e) — reaching for it wastes hours diagnosing a
+  path the project does not use.
 - **Re-prove a frozen contract's package owner against the live tree at
   dispatch (`rg 'package NAME'`).** The S5a "sealed package MODEL" contract
   collided with the CAD typestate stage package `MODEL` (maki/typestate.f);
