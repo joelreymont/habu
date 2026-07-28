@@ -14,10 +14,16 @@ require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require tools/lint/source-lex.f
 require tools/error-code-lint-core.f
 
-: ECL-MAIN ( -- )
-   [: ERROR-CODE-LINT-STRICT ;] catch {: code:n :}
+package ERROR-CODE-LINT-CLI
+private
+
+: MAIN ( -- )
+   [: ERROR-CODE-LINT:STRICT ;] catch {: code:n :}
    s" error-code-lint" code LINT-MAIN ;
 
-ECL-MAIN
+MAIN
+
+;package

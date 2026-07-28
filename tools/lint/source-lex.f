@@ -4,6 +4,7 @@
 \
 \ Public surface (all reads; the package owns every cell):
 \   WORD COMMENT REGISTRY              token kinds returned by KIND@
+\   (COMMENT covers both `( ... )` and the printing comment `.( ... )`)
 \   UNTERMINATED-QUOTE MALFORMED-REGISTRY   diagnostic kinds from ERROR-KIND@
 \   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
@@ -144,7 +145,7 @@ create CLEN-V VEC-HEADER-CELLS cells allot
 public
 
 1 constant WORD                 \ KIND@: whitespace-delimited word token
-2 constant COMMENT              \ KIND@: `( ... )` comment token, body read via CONTENT
+2 constant COMMENT              \ KIND@: `( ... )` or `.( ... )` comment, body read via CONTENT
 3 constant REGISTRY             \ KIND@: one complete PRIM:/PPRIM: primitive-axiom row
 
 1 constant UNTERMINATED-QUOTE   \ ERROR-KIND@: a string literal ran past end of input
@@ -262,6 +263,27 @@ private
 
 : PAREN-COMMENT ( -- )
    ADV drop
+   POS @ CSTART !
+   TO-PAREN
+   POS @ CSTART @ - CLEN !
+   END? 0= if ADV drop then
+   COMMENT CUR$ START @ START-LINE @ START-COL @
+   BODY-A BODY-U ADD ;
+
+\ `.(` is the standard printing comment: everything up to the first `)` is text
+\ the engine prints while loading, and none of it is code. It cannot reach the
+\ paren-comment dispatch above, because the byte at the token start is `.` and
+\ not `(`, so it arrives on the word path and is recognised there by its exact
+\ spelling. Its body is inert source exactly like a `( ... )` body, so it becomes
+\ a COMMENT token whose CONTENT is that body; the printing is a runtime effect no
+\ lexer models. Without this rule a word-at-a-time reader hands the body out as
+\ ordinary tokens, and a consumer that counts declarations reads a declaration
+\ the engine never performs.
+: PRINT-OPEN? ( ptr u8 n -- bool )
+   s" .(" LINT-STR= ;
+
+\ The opening `.(` is already consumed by the word scan, so the body starts here.
+: PRINT-COMMENT ( -- )
    POS @ CSTART !
    TO-PAREN
    POS @ CSTART @ - CLEN !
@@ -464,6 +486,7 @@ private
       CUR$ PPRIM-OPEN? if ROW-PKG else ROW-BARE then SCAN-ROW
       exit
    then
+   CUR$ PRINT-OPEN? if PRINT-COMMENT exit then
    WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD
    COUNT 1- dup TOKEN LINT-ESC-STRING-OPENER? if
       SKIP-ESC-QUOTE 0= if dup MARK-UNTERM then

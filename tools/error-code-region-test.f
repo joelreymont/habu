@@ -28,6 +28,7 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
+require tools/lint/source-lex.f
 require tools/error-code-lint-core.f
 
 package ECL-REGION-TEST
@@ -60,28 +61,21 @@ variable SRC#
    BOUNDS$ KEEP
    SB-RESET
    KEPT$ SB-APPEND  s"   " SB-APPEND  code MEMBER+
-   SB$ ECL-COUNT ;
+   SB$ ERROR-CODE-LINT:COUNT ;
 
 : FOREIGN ( n -- n ) {: code:n :}   \ findings when another file mints the code
    BOUNDS$ KEEP
-   KEPT$ code MEMBER$ ECL-COUNT2 ;
+   KEPT$ code MEMBER$ ERROR-CODE-LINT:COUNT2 ;
 
 : MID ( -- n )    E-COMP-FIRST E-COMP-LAST + 2 / ;
 
 : WIDTH ( -- n )  E-COMP-FIRST E-COMP-LAST - 1+ ;   \ codes the region holds
 
 : ROWS ( -- n )   \ live reservations whose two bounds are the region's bounds
-   0  0 begin dup ECL-RES# @ < while
-      dup ECL-RES-FIRST@ E-COMP-FIRST =
-      over ECL-RES-LAST@ E-COMP-LAST = and if swap 1+ swap then
-      1+
-   repeat drop ;
+   E-COMP-FIRST E-COMP-LAST ERROR-CODE-LINT:RESERVATIONS ;
 
 : CLAIMS ( -- n )   \ live E- codes claimed inside the region
-   0  0 begin dup ECL-CLAIM# @ < while
-      dup ECL-CODE@ E-COMP-FIRST E-COMP-LAST ECL-INRANGE? if swap 1+ swap then
-      1+
-   repeat drop ;
+   E-COMP-FIRST E-COMP-LAST ERROR-CODE-LINT:CLAIMS-IN ;
 
 : USABLE ( -- )
    \ the owning file may mint at either bound and anywhere between them
@@ -105,8 +99,7 @@ variable SRC#
    \ codes in the middle of the subsystem is what forced this second region to
    \ exist, so this fails while there is still room to react rather than after
    \ the next stage has nowhere to mint.
-   ECL-REPORT? @ {: report:bool :}
-   ECL-REPORT-OFF  ECL-RUN  report ECL-REPORT!
+   ERROR-CODE-LINT:SCAN
    ROWS 1 T=
    CLAIMS WIDTH < TTRUE ;
 

@@ -430,6 +430,30 @@ variable REG-I
    1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 1 LINT-LEX:TOKEN s" (" ASSERT$
    1 LINT-LEX:CONTENT nip 0 ASSERT= ;
 
+\ `.( ... )` is the printing comment. Its body is text the engine prints while
+\ loading and is never code, so the whole span is one COMMENT token whose CONTENT
+\ is the body: a reader that hands `constant E-XA` back as ordinary words would
+\ record a declaration the engine never performs. `.(` must stand alone to open
+\ one, so `.(X)` is an ordinary word, and an unclosed opener still ends the span
+\ at end of input rather than dropping it.
+: TEST-LEXER-PRINT-COMMENT ( -- )
+   s" .( -9001 constant E-XA ) dup" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   0 LINT-LEX:TOKEN s" .( -9001 constant E-XA )" ASSERT$
+   0 LINT-LEX:CONTENT s"  -9001 constant E-XA " ASSERT$
+   0 LINT-LEX:BYTE@ 0 ASSERT=  0 LINT-LEX:LINE@ 1 ASSERT=  0 LINT-LEX:COL@ 1 ASSERT=
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=  1 LINT-LEX:TOKEN s" dup" ASSERT$
+   s" .(X) dup" LINT-LEX:SOURCE
+   LINT-LEX:COUNT 2 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=  0 LINT-LEX:TOKEN s" .(X)" ASSERT$
+   s" dup .( open" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   1 LINT-LEX:CONTENT s"  open" ASSERT$ ;
+
 \ Escaped-quote spans: the S\" opener treats \" as literal text, the plain s"
 \ opener does not. The token that follows each literal pins where it closed, so
 \ neither can be satisfied by counting quotes.
@@ -814,6 +838,7 @@ variable REG-I
    TEST-LEXER
    TEST-LEXER-NO-ERROR
    TEST-LEXER-PAREN-WORD
+   TEST-LEXER-PRINT-COMMENT
    TEST-LEXER-ESC-QUOTE
    TEST-LEXER-UNTERM-QUOTE
    TEST-LEXER-REUSE-AFTER-ERROR

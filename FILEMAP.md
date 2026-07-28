@@ -2418,9 +2418,9 @@ points stay listed.
 - `tools/namespace-lint-core.f` — flags maki definitions at global scope (outside any subsystem package): case-insensitive definer/package matching (the dictionary is case-insensitive) including `KERNEL:`, whitelisting E-* constants, the documented ARRAY substrate, and legacy BEGIN-/END- pairs; the active maki-namespace guard (subsumed the retired maki-ns-lint, dot habu-maki-ns-lint-reconcile).
 - `tools/namespace-lint.f` — CLI wrapper for the maki namespace lint (enforcing: throws on any global-def finding).
 - `tools/namespace-lint-test.f` — checked fixture coverage for the maki namespace lint (detection, case-insensitivity, scope, whitelist, live strict sweep).
-- `tools/error-code-lint-core.f` — global E- throw-code uniqueness lint: flags a negative code claimed by two different E- names across src/ lib/ tools/ test/ maki/.
-- `tools/error-code-lint.f` — CLI wrapper for the E- throw-code uniqueness lint (enforcing).
-- `tools/error-code-lint-test.f` — checked fixture coverage for the E- throw-code uniqueness lint.
+- `tools/error-code-lint-core.f` — package `ERROR-CODE-LINT`; global E- throw-code uniqueness lint: flags a negative code claimed by two different E- names across src/ lib/ tools/ test/ maki/. Reads its tokens from the shared `LINT-LEX` lexer, so comment, print-paren and string bodies are never mistaken for claims.
+- `tools/error-code-lint.f` — package `ERROR-CODE-LINT-CLI`; CLI wrapper for the E- throw-code uniqueness lint (enforcing).
+- `tools/error-code-lint-test.f` — package `ERROR-CODE-LINT-TEST`; checked fixture coverage for the E- throw-code uniqueness lint, including the hostile quote, print-paren, escaped-opener and split-claim cases.
 - `tools/error-code-region-test.f` — package `ECL-REGION-TEST`; proves the compiler growth region `E-COMP-FIRST..E-COMP-LAST` is mintable by lib/errors.f, closed to every other file, and still reserved with free codes in the live ledger.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/utf8-scalar.f` — package `UTF8` strict scalar decoder over an explicit counted-span cursor; returns a typed scalar or exact one-byte fallback and owns no mutable scanner state.

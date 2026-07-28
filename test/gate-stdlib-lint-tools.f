@@ -121,7 +121,7 @@ REQUIRE-HARNESS
    s" tools/package-diff-lint-test.f" GSI-INCLUDE ;
 
 : ERROR-CODE ( -- )
-   s" error-code-lint" [: ERROR-CODE-LINT-STRICT ;] GSI-RUN
+   s" error-code-lint" [: ERROR-CODE-LINT:STRICT ;] GSI-RUN
    s" tools/error-code-lint-test.f" GSI-INCLUDE
    s" tools/error-code-region-test.f" GSI-INCLUDE ;
 

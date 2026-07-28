@@ -8,6 +8,19 @@
 \ `-NNNN constant E-*` claims and flags any numeric code owned by two
 \ different E- names.
 \
+\ Which bytes are code is decided by the one shared source lexer, package
+\ LINT-LEX in tools/lint/source-lex.f. It consumes `\` line comments, `( ... )`
+\ and `.( ... )` comment bodies, and every string literal body - the plain
+\ `s" c" ."` openers and the escaped `s\" c\" .\"` openers alike - so none of
+\ that text ever reaches this scan as a token. This lint used to decide string
+\ membership itself, by counting `"` bytes per token and toggling an in-string
+\ flag on an odd count. That is a value heuristic standing in for a structural
+\ fact, and it failed in both directions: one bare `[char] "` blinded the rest
+\ of a file, a `.( ... )` body was read as code, and a `\` written INSIDE a
+\ string body made the old tokenizer strip that string's closing quote, which
+\ inverted the flag for the remainder of the file. The gate then skipped every
+\ later claim in that source while still printing `0 finding(s)`.
+\
 \ Scope and allowances (each deliberate):
 \ - Negative codes only: positive `NN constant E-*` values are sysexits-style
 \   process exit codes (64/70/74/76...), shared across tools by design.
@@ -22,350 +35,446 @@
 \ - bootstrap/ is not walked: the frozen recovery seed is a pinned corpus in
 \   its own process space; renumbering it would break the audited seed.
 \
-\ ERROR-CODE-LINT prints the ledger without throwing; ERROR-CODE-LINT-STRICT
-\ throws on any finding and is the gate entrypoint.
-\
-\ Load after lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
-\ tools/lint/text.f, tools/lint/intern.f, and tools/lint/token.f.
+\ LEDGER prints the ledger without throwing; STRICT throws on any finding and is
+\ the gate entrypoint. SCAN, RESERVATIONS and CLAIMS-IN expose the live ledger to
+\ tools/error-code-region-test.f without letting a caller reach the tables.
 
-$80000 constant ECL-CAP   \ >= largest scanned source (checker.f grew past $40000)
-512 constant ECL-PCAP
-1024 constant ECL-MAX-CLAIMS
-48 constant ECL-ZERO
-36 constant ECL-DOLLAR
-45 constant ECL-MINUS
+require lib/errors.f
+require lib/string.f
+require lib/memory.f
+require lib/vector.f
+require lib/fs.f
+require tools/lint/text.f
+require tools/lint/intern.f
+require tools/lint/token.f
+require tools/lint/source-lex.f
 
-create ECL-BUF  ECL-CAP allot
-create ECL-PATH ECL-PCAP allot
-create ECL-NBUF 32 allot
+package ERROR-CODE-LINT
+public
 
-create ECL-CODES ECL-MAX-CLAIMS cells allot   \ claimed negative codes
-create ECL-NAMES ECL-MAX-CLAIMS cells allot   \ claimant name intern ids
-create ECL-FILEIDS ECL-MAX-CLAIMS cells allot \ claimant file intern ids
+\ ---- source-defect codes ----------------------------------------------------
+\ A lexer diagnostic truncates the token table at the defect, so every later
+\ claim in that source is invisible. Continuing would certify a ledger built
+\ from a partial file: exactly the blindness this lint exists to prevent. Each
+\ defect gets its own name, the way tools/lint/shadow-lint.f splits
+\ E-SHADOW-UNTERM from E-SHADOW-REGISTRY. They are public so a caller (and the
+\ fixture that pins the refusal) can name which defect stopped a scan instead of
+\ matching a bare number. Negative, so this lint keeps them globally unique.
+\ -4808..-4810 continue the unclaimed lint-tool gap that holds E-SHADOW-UNTERM
+\ (-4800) through E-PKGDIFF-NONAME (-4807); the gap ends before lib/errors.f's
+\ reserved E-REPORT block at -4900.
+-4808 constant E-QUOTE   \ a string literal ran past end of input
+-4809 constant E-ROW     \ a `PRIM:`/`PPRIM:` axiom row lacked a header or its closer
+\ The residual arm: a diagnostic or token kind added to LINT-LEX after this
+\ consumer was written. It must reach a named refusal rather than borrow one of
+\ the two labels above, and it must never pass in silence.
+-4810 constant E-LEX     \ a lexer diagnostic or token kind this lint was never taught
 
-1024 constant ECL-MAX-RES
-create ECL-RES-STEM  ECL-MAX-RES cells allot   \ block stem intern id (E-FS)
-create ECL-RES-FILE  ECL-MAX-RES cells allot   \ declaring/owning file intern id
-create ECL-RES-FIRST ECL-MAX-RES cells allot   \ FIRST value (0 = not yet seen)
-create ECL-RES-LAST  ECL-MAX-RES cells allot   \ LAST value  (0 = not yet seen)
-variable ECL-RES#
+private
 
-variable ECL-PATHU
-variable ECL-INSTR                      \ inside an s" ... " string literal body
-variable ECL-CLAIM#
-variable ECL-BAD                        \ collision findings (claim pairs)
-variable ECL-FILES#
-variable ECL-REPORT?
-variable ECL-ND#
-variable ECL-QI
-variable ECL-NV
-variable ECL-I
-variable ECL-J
+$80000 constant SRC-CAP   \ >= largest scanned source (checker.f grew past $40000)
+512 constant PATH-CAP
+1024 constant MAX-CLAIMS
+1024 constant MAX-RES
+48 constant ZERO-C
+36 constant DOLLAR-C
+45 constant MINUS-C
 
-: ECL-NL ( -- ) 10 emit ;
+create BUF  SRC-CAP allot
+create PATH PATH-CAP allot
+create DIGITS 32 allot
 
-: ECL-REPORT! ( bool -- )  ECL-REPORT? ! ;
-: ECL-REPORT-ON  ( -- )  LINT-TRUE  ECL-REPORT! ;
-: ECL-REPORT-OFF ( -- )  LINT-FALSE ECL-REPORT! ;
+create CODES  MAX-CLAIMS cells allot   \ claimed negative codes
+create NAMES  MAX-CLAIMS cells allot   \ claimant name intern ids
+create OWNERS MAX-CLAIMS cells allot   \ claimant file intern ids
+
+create RES-STEM  MAX-RES cells allot   \ block stem intern id (E-FS)
+create RES-OWNER MAX-RES cells allot   \ declaring/owning file intern id
+create RES-LO    MAX-RES cells allot   \ FIRST value (0 = not yet seen)
+create RES-HI    MAX-RES cells allot   \ LAST value  (0 = not yet seen)
+variable RES#
+
+variable PATH-U
+variable CLAIM#
+variable BAD                            \ collision findings (claim pairs)
+variable FILE#
+variable SHOW?
+variable ND#
+variable NV
+variable IX
+variable JX
+
+: NL ( -- ) 10 emit ;
+
+: SHOW! ( bool -- )  SHOW? ! ;
+: SHOW-ON  ( -- )  LINT-TRUE  SHOW! ;
+: SHOW-OFF ( -- )  LINT-FALSE SHOW! ;
 
 \ unsigned decimal (digit-buffer print, as maki-dep/namespace lint)
-: ECL-U. ( n -- )
-   0 ECL-ND# !
-   dup 0= if drop ECL-ZERO emit exit then
+: EMIT-U ( n -- )
+   0 ND# !
+   dup 0= if drop ZERO-C emit exit then
    begin dup 0 > while
-      dup 10 mod ECL-ZERO + ECL-NBUF ECL-ND# @ + c!
-      10 / ECL-ND# @ 1+ ECL-ND# !
+      dup 10 mod ZERO-C + DIGITS ND# @ + c!
+      10 / ND# @ 1+ ND# !
    repeat drop
-   begin ECL-ND# @ 0 > while
-      ECL-ND# @ 1- ECL-ND# !
-      ECL-NBUF ECL-ND# @ + c@ emit
+   begin ND# @ 0 > while
+      ND# @ 1- ND# !
+      DIGITS ND# @ + c@ emit
    repeat ;
 
 \ signed decimal (codes are negative)
-: ECL-N. ( n -- )
-   dup 0 < if ECL-MINUS emit 0 swap - then
-   ECL-U. ;
-
-\ odd number of `"` bytes -> the token flips the in-string state
-: ECL-QUOTES-ODD? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0  0 ECL-QI !
-   begin ECL-QI @ u < while
-      a ECL-QI @ BYTE@ 34 = if 1+ then
-      ECL-QI @ 1+ ECL-QI !
-   repeat
-   1 and 0= 0= ;
+: EMIT-N ( n -- )
+   dup 0 < if MINUS-C emit 0 swap - then
+   EMIT-U ;
 
 \ ---- numeric-literal parse --------------------------------------------------
-: ECL-DEC? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: DEC? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u 0= if 0 LINT-FALSE exit then
-   0 ECL-NV !
+   0 NV !
    0 begin dup u < while
       dup a + c@
       dup 48 < over 57 > or if 2drop 0 LINT-FALSE exit then
-      ECL-NV @ 10 * + 48 - ECL-NV !
+      NV @ 10 * + 48 - NV !
       1+
    repeat drop
-   ECL-NV @ LINT-TRUE ;
+   NV @ LINT-TRUE ;
 
-: ECL-HEXDIG ( n -- n )   \ -1 when not a hex digit
+: HEXDIG ( n -- n )   \ -1 when not a hex digit
    dup 48 >= over 57 <= and if 48 - exit then
    dup 65 >= over 70 <= and if 55 - exit then
    dup 97 >= over 102 <= and if 87 - exit then
    drop -1 ;
 
-: ECL-HEX? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: HEX? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u 0= if 0 LINT-FALSE exit then
-   0 ECL-NV !
+   0 NV !
    0 begin dup u < while
-      dup a + c@ ECL-HEXDIG
+      dup a + c@ HEXDIG
       dup 0 < if 2drop 0 LINT-FALSE exit then
-      ECL-NV @ 16 * + ECL-NV !
+      NV @ 16 * + NV !
       1+
    repeat drop
-   ECL-NV @ LINT-TRUE ;
+   NV @ LINT-TRUE ;
 
-: ECL-MAG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}   \ decimal or $hex magnitude
+: MAG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}   \ decimal or $hex magnitude
    u 0= if 0 LINT-FALSE exit then
-   a c@ ECL-DOLLAR = if a 1 + u 1- ECL-HEX? exit then
-   a u ECL-DEC? ;
+   a c@ DOLLAR-C = if a 1 + u 1- HEX? exit then
+   a u DEC? ;
 
 \ negative numeric literal (-NNNN or -$HH) -> its value
-: ECL-NEG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+: NEG? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
    u 2 < if 0 LINT-FALSE exit then
-   a c@ ECL-MINUS <> if 0 LINT-FALSE exit then
-   a 1 + u 1- ECL-MAG? {: v:n ok:bool :}
+   a c@ MINUS-C <> if 0 LINT-FALSE exit then
+   a 1 + u 1- MAG? {: v:n ok:bool :}
    ok 0= if 0 LINT-FALSE exit then
    0 v - LINT-TRUE ;
 
 \ ---- claim table ------------------------------------------------------------
-: ECL-SENTINEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+: SENTINEL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" -FIRST" LINT-ENDS-WITH?  a u s" -LAST" LINT-ENDS-WITH? or ;
 
-: ECL-CODE@ ( n -- n )  cells ECL-CODES + @ ;
-: ECL-NAME@ ( n -- n )  cells ECL-NAMES + @ ;
-: ECL-FILE@ ( n -- n )  cells ECL-FILEIDS + @ ;
+: CODE@  ( n -- n )  cells CODES + @ ;
+: NAME@  ( n -- n )  cells NAMES + @ ;
+: OWNER@ ( n -- n )  cells OWNERS + @ ;
 
 \ exact (code, name) already recorded -> re-registration, not a new claim
-: ECL-CLAIM-DUP? ( n n -- bool ) {: code:n name:n :}
-   0 begin dup ECL-CLAIM# @ < while
-      dup ECL-CODE@ code =
-      over ECL-NAME@ name = and if drop LINT-TRUE exit then
+: CLAIM-DUP? ( n n -- bool ) {: code:n name:n :}
+   0 begin dup CLAIM# @ < while
+      dup CODE@ code =
+      over NAME@ name = and if drop LINT-TRUE exit then
       1+
    repeat drop
    LINT-FALSE ;
 
-: ECL-CLAIM+ ( n n n -- ) {: code:n name:n file:n :}
-   code name ECL-CLAIM-DUP? if exit then
-   ECL-CLAIM# @ ECL-MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
-   code ECL-CLAIM# @ cells ECL-CODES + !
-   name ECL-CLAIM# @ cells ECL-NAMES + !
-   file ECL-CLAIM# @ cells ECL-FILEIDS + !
-   ECL-CLAIM# @ 1+ ECL-CLAIM# ! ;
+: CLAIM+ ( n n n -- ) {: code:n name:n file:n :}
+   code name CLAIM-DUP? if exit then
+   CLAIM# @ MAX-CLAIMS >= if s" error-code-lint: claim table full" 1 die then
+   code CLAIM# @ cells CODES + !
+   name CLAIM# @ cells NAMES + !
+   file CLAIM# @ cells OWNERS + !
+   CLAIM# @ 1+ CLAIM# ! ;
 
-: ECL-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u ECL-PCAP > if s" error-code-lint: path too long" 1 die then
-   a ECL-PATH u LINT-BMOVE  u ECL-PATHU ! ;
+: PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
+   u PATH-CAP > if s" error-code-lint: path too long" 1 die then
+   a PATH u LINT-BMOVE  u PATH-U ! ;
+
+: PATH$ ( -- ptr u8 n )  PATH PATH-U @ ;
 
 \ ---- reservation table (E-*-FIRST/E-*-LAST range blocks) --------------------
 \ A FIRST/LAST pair reserves the inclusive numeric range between its two member
 \ codes for the file that declares it (lib/errors.f owns every stdlib block).
 \ Pairs are keyed by shared stem (E-FS-FIRST/E-FS-LAST -> E-FS) and declaring
 \ file, so two files can each own a same-named block.
-: ECL-RES-STEM@  ( n -- n )  cells ECL-RES-STEM + @ ;
-: ECL-RES-FILE@  ( n -- n )  cells ECL-RES-FILE + @ ;
-: ECL-RES-FIRST@ ( n -- n )  cells ECL-RES-FIRST + @ ;
-: ECL-RES-LAST@  ( n -- n )  cells ECL-RES-LAST + @ ;
+: RES-STEM@  ( n -- n )  cells RES-STEM + @ ;
+: RES-OWNER@ ( n -- n )  cells RES-OWNER + @ ;
+: RES-LO@    ( n -- n )  cells RES-LO + @ ;
+: RES-HI@    ( n -- n )  cells RES-HI + @ ;
 
-\ name minus its -FIRST / -LAST suffix (caller guarantees ECL-SENTINEL?)
-: ECL-STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
+\ name minus its -FIRST / -LAST suffix (caller guarantees SENTINEL?)
+: STEM$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a u s" -FIRST" LINT-ENDS-WITH? if a u 6 - exit then
    a u 5 - ;
 
-: ECL-RES-FIRST-TOK? ( ptr u8 n -- bool )  s" -FIRST" LINT-ENDS-WITH? ;
+: FIRST-TOK? ( ptr u8 n -- bool )  s" -FIRST" LINT-ENDS-WITH? ;
 
-: ECL-RES-FIND ( n n -- n ) {: stem:n file:n :}   \ row for (stem,file) or -1
-   0 begin dup ECL-RES# @ < while
-      dup ECL-RES-STEM@ stem =
-      over ECL-RES-FILE@ file = and if exit then
+: RES-FIND ( n n -- n ) {: stem:n file:n :}   \ row for (stem,file) or -1
+   0 begin dup RES# @ < while
+      dup RES-STEM@ stem =
+      over RES-OWNER@ file = and if exit then
       1+
    repeat drop -1 ;
 
-: ECL-RES-NEW ( n n -- n ) {: stem:n file:n :}    \ append an empty row, return idx
-   ECL-RES# @ ECL-MAX-RES >= if s" error-code-lint: reservation table full" 1 die then
-   ECL-RES# @ {: k:n :}
-   stem k cells ECL-RES-STEM + !
-   file k cells ECL-RES-FILE + !
-   0 k cells ECL-RES-FIRST + !
-   0 k cells ECL-RES-LAST + !
-   k 1+ ECL-RES# !
+: RES-NEW ( n n -- n ) {: stem:n file:n :}    \ append an empty row, return idx
+   RES# @ MAX-RES >= if s" error-code-lint: reservation table full" 1 die then
+   RES# @ {: k:n :}
+   stem k cells RES-STEM + !
+   file k cells RES-OWNER + !
+   0 k cells RES-LO + !
+   0 k cells RES-HI + !
+   k 1+ RES# !
    k ;
 
-: ECL-RES-ROW ( n n -- n ) {: stem:n file:n :}    \ find-or-create (stem,file) row
-   stem file ECL-RES-FIND dup 0 >= if exit then drop
-   stem file ECL-RES-NEW ;
+: RES-ROW ( n n -- n ) {: stem:n file:n :}    \ find-or-create (stem,file) row
+   stem file RES-FIND dup 0 >= if exit then drop
+   stem file RES-NEW ;
 
 \ record one FIRST/LAST sentinel into its (stem,file) reservation row
-: ECL-RES+ ( n ptr u8 n -- ) {: code:n a:ptr u:n :}
-   a u ECL-STEM$ INTERN {: stem:n :}
-   ECL-PATH ECL-PATHU @ INTERN {: file:n :}
-   stem file ECL-RES-ROW {: k:n :}
-   a u ECL-RES-FIRST-TOK? if code k cells ECL-RES-FIRST + !
-                          else code k cells ECL-RES-LAST + ! then ;
+: RES+ ( n ptr u8 n -- ) {: code:n a:ptr u:n :}
+   a u STEM$ INTERN {: stem:n :}
+   PATH$ INTERN {: file:n :}
+   stem file RES-ROW {: k:n :}
+   a u FIRST-TOK? if code k cells RES-LO + !
+                  else code k cells RES-HI + ! then ;
 
 \ ---- token walk -------------------------------------------------------------
-\ token i as `<negative-number> constant E-NAME` claim (outside strings)
-: ECL-TOK-CLAIM ( n -- ) {: i:n :}
-   i 2 + TN# @ >= if exit then
-   i 1+ TOK s" constant" LINT-STR=CI 0= if exit then
-   i 2 + TOK {: nptr:ptr nu:n :}
-   nptr nu s" E-" LINT-PREFIX? 0= if exit then
-   i TOK ECL-NEG? {: code:n ok:bool :}
+: WORD? ( n -- bool ) {: k:n :}
+   k LINT-LEX:KIND@ LINT-LEX:WORD = ;
+
+\ Kinds this scan understands. A WORD is code. A `( ... )` or `.( ... )` comment
+\ and a complete `PRIM:`/`PPRIM:` axiom row are inert spans that declare no
+\ constant, so they are stepped over whole. Any other kind is one this lint was
+\ never taught, and skipping it in silence is how a scanner goes blind: the token
+\ would span source the scan never reads while the ledger still reports zero
+\ findings.
+: KNOWN-KIND? ( n -- bool ) {: k:n :}
+   k LINT-LEX:KIND@ {: kind:n :}
+   kind LINT-LEX:WORD = if LINT-TRUE exit then
+   kind LINT-LEX:COMMENT = if LINT-TRUE exit then
+   kind LINT-LEX:REGISTRY = ;
+
+\ Index of the next WORD token at or after k, or the token count when the source
+\ has no word left. A comment sits between words without being code, so
+\ `-9001 constant ( note ) E-XA` is still one claim.
+: NEXT-WORD ( n -- n ) {: k:n :}
+   k begin dup LINT-LEX:COUNT < while
+      dup WORD? if exit then
+      1+
+   repeat ;
+
+\ token k as a `<negative-number> constant E-NAME` claim
+: CLAIM-AT ( n -- ) {: k:n :}
+   k 1+ NEXT-WORD {: ki:n :}
+   ki LINT-LEX:COUNT >= if exit then
+   ki LINT-LEX:TOKEN s" constant" LINT-STR=CI 0= if exit then
+   ki 1+ NEXT-WORD {: ni:n :}
+   ni LINT-LEX:COUNT >= if exit then
+   ni LINT-LEX:TOKEN {: na:ptr nu:n :}
+   na nu s" E-" LINT-PREFIX? 0= if exit then
+   k LINT-LEX:TOKEN NEG? {: code:n ok:bool :}
    ok 0= if exit then
-   nptr nu ECL-SENTINEL? if code nptr nu ECL-RES+ exit then
-   code  nptr nu INTERN  ECL-PATH ECL-PATHU @ INTERN  ECL-CLAIM+ ;
+   na nu SENTINEL? if code na nu RES+ exit then
+   code  na nu INTERN  PATH$ INTERN  CLAIM+ ;
 
-: ECL-STEP ( n -- n ) {: i:n :}
-   i TOK {: tp:ptr tu:n :}
-   ECL-INSTR @ if                                    \ skip string bodies wholesale
-      tp tu ECL-QUOTES-ODD? if ECL-INSTR @ 0= ECL-INSTR ! then
-      i 1+ exit then
-   i ECL-TOK-CLAIM
-   tp tu ECL-QUOTES-ODD? if ECL-INSTR @ 0= ECL-INSTR ! then
-   i 1+ ;
+: UNKNOWN-KIND ( n -- ) {: k:n :}
+   s" error-code-lint: " type PATH$ type
+   s"  token " type k EMIT-U
+   s" : unknown lexer token kind " type k LINT-LEX:KIND@ EMIT-U NL
+   E-LEX throw ;
 
-: ECL-SCAN-TOKENS ( -- )
-   0 ECL-INSTR !
-   0 begin dup TN# @ < while ECL-STEP repeat drop ;
+: SCAN-TOKENS ( -- )
+   0 begin dup LINT-LEX:COUNT < while
+      dup KNOWN-KIND? 0= if dup UNKNOWN-KIND then
+      dup WORD? if dup CLAIM-AT then
+      1+
+   repeat drop ;
 
-: ECL-SCAN-STR ( ptr u8 n -- ) {: a:ptr u:n :}
-   LINT-TRUE PARENS? !
-   a u TOKENIZE
-   ECL-SCAN-TOKENS ;
+: DEFECT-SITE ( -- )
+   s" error-code-lint: " type PATH$ type
+   s" :" type LINT-LEX:ERROR-LINE@ EMIT-U
+   s" :" type LINT-LEX:ERROR-COL@ EMIT-U
+   s" : " type ;
+
+\ Fail-closed: a lexer diagnostic stops the scan at the defect, so every claim
+\ after it in that source is unreadable. Name the file, the site and the defect,
+\ then throw a catchable code rather than build the ledger from a partial file.
+: LEX-DEFECT ( -- )
+   DEFECT-SITE
+   LINT-LEX:ERROR-KIND@ {: kind:n :}
+   kind LINT-LEX:UNTERMINATED-QUOTE = if
+      s" unterminated string literal" type NL  E-QUOTE throw
+   then
+   kind LINT-LEX:MALFORMED-REGISTRY = if
+      s" malformed primitive-axiom row" type NL  E-ROW throw
+   then
+   s" unknown lexer diagnostic" type NL  E-LEX throw ;
+
+: SCAN-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u LINT-LEX:SOURCE
+   LINT-LEX:ERROR? if LEX-DEFECT then
+   SCAN-TOKENS ;
 
 \ ---- findings ---------------------------------------------------------------
-: ECL-HIT ( n n -- ) {: i:n j:n :}
-   ECL-REPORT? @ if
-      s" ERROR-CODE " type i ECL-CODE@ ECL-N.
-      s"  claimed by '" type i ECL-NAME@ INTERN$ type
-      s" ' (" type i ECL-FILE@ INTERN$ type
-      s" ) and '" type j ECL-NAME@ INTERN$ type
-      s" ' (" type j ECL-FILE@ INTERN$ type
-      s" )" type ECL-NL
+: HIT ( n n -- ) {: i:n j:n :}
+   SHOW? @ if
+      s" ERROR-CODE " type i CODE@ EMIT-N
+      s"  claimed by '" type i NAME@ INTERN$ type
+      s" ' (" type i OWNER@ INTERN$ type
+      s" ) and '" type j NAME@ INTERN$ type
+      s" ' (" type j OWNER@ INTERN$ type
+      s" )" type NL
    then
-   ECL-BAD @ 1+ ECL-BAD ! ;
+   BAD @ 1+ BAD ! ;
 
-: ECL-COLLIDE? ( n n -- bool ) {: i:n j:n :}
-   i ECL-CODE@ j ECL-CODE@ =
-   i ECL-NAME@ j ECL-NAME@ <> and ;
+: COLLIDE? ( n n -- bool ) {: i:n j:n :}
+   i CODE@ j CODE@ =
+   i NAME@ j NAME@ <> and ;
 
 \ one finding per colliding claim pair
-: ECL-FINDINGS ( -- )
-   0 ECL-I !
-   begin ECL-I @ ECL-CLAIM# @ < while
-      ECL-I @ 1+ ECL-J !
-      begin ECL-J @ ECL-CLAIM# @ < while
-         ECL-I @ ECL-J @ ECL-COLLIDE? if ECL-I @ ECL-J @ ECL-HIT then
-         ECL-J @ 1+ ECL-J !
+: FINDINGS ( -- )
+   0 IX !
+   begin IX @ CLAIM# @ < while
+      IX @ 1+ JX !
+      begin JX @ CLAIM# @ < while
+         IX @ JX @ COLLIDE? if IX @ JX @ HIT then
+         JX @ 1+ JX !
       repeat
-      ECL-I @ 1+ ECL-I !
+      IX @ 1+ IX !
    repeat ;
 
 \ ---- foreign-range findings -------------------------------------------------
-: ECL-MINMAX ( n n -- n n )   \ order two bounds ascending
+: ORDER ( n n -- n n )   \ order two bounds ascending
    2dup > if swap then ;
 
-: ECL-INRANGE? ( n n n -- bool ) {: code:n first:n last:n :}
-   first last ECL-MINMAX {: lo:n hi:n :}
+: IN-RANGE? ( n n n -- bool ) {: code:n first:n last:n :}
+   first last ORDER {: lo:n hi:n :}
    code lo >= code hi <= and ;
 
 \ claim ci falls inside a COMPLETE reservation ri owned by another file
-: ECL-CLAIM-FOREIGN? ( n n -- bool ) {: ci:n ri:n :}
-   ri ECL-RES-FIRST@ {: first:n :}
-   ri ECL-RES-LAST@ {: last:n :}
+: FOREIGN? ( n n -- bool ) {: ci:n ri:n :}
+   ri RES-LO@ {: first:n :}
+   ri RES-HI@ {: last:n :}
    first 0= last 0= or if LINT-FALSE exit then
-   ci ECL-CODE@ first last ECL-INRANGE? 0= if LINT-FALSE exit then
-   ci ECL-FILE@ ri ECL-RES-FILE@ <> ;
+   ci CODE@ first last IN-RANGE? 0= if LINT-FALSE exit then
+   ci OWNER@ ri RES-OWNER@ <> ;
 
-: ECL-RES-HIT ( n n -- ) {: ci:n ri:n :}
-   ECL-REPORT? @ if
-      s" ERROR-CODE " type ci ECL-CODE@ ECL-N.
-      s"  claimed by '" type ci ECL-NAME@ INTERN$ type
-      s" ' (" type ci ECL-FILE@ INTERN$ type
-      s" ) inside reserved range " type ri ECL-RES-STEM@ INTERN$ type
-      s" -FIRST..-LAST owned by (" type ri ECL-RES-FILE@ INTERN$ type
-      s" )" type ECL-NL
+: RES-HIT ( n n -- ) {: ci:n ri:n :}
+   SHOW? @ if
+      s" ERROR-CODE " type ci CODE@ EMIT-N
+      s"  claimed by '" type ci NAME@ INTERN$ type
+      s" ' (" type ci OWNER@ INTERN$ type
+      s" ) inside reserved range " type ri RES-STEM@ INTERN$ type
+      s" -FIRST..-LAST owned by (" type ri RES-OWNER@ INTERN$ type
+      s" )" type NL
    then
-   ECL-BAD @ 1+ ECL-BAD ! ;
+   BAD @ 1+ BAD ! ;
 
 \ one finding per (claim, foreign reservation) pair
-: ECL-RES-FINDINGS ( -- )
-   0 ECL-I !
-   begin ECL-I @ ECL-CLAIM# @ < while
-      0 ECL-J !
-      begin ECL-J @ ECL-RES# @ < while
-         ECL-I @ ECL-J @ ECL-CLAIM-FOREIGN? if ECL-I @ ECL-J @ ECL-RES-HIT then
-         ECL-J @ 1+ ECL-J !
+: RES-FINDINGS ( -- )
+   0 IX !
+   begin IX @ CLAIM# @ < while
+      0 JX !
+      begin JX @ RES# @ < while
+         IX @ JX @ FOREIGN? if IX @ JX @ RES-HIT then
+         JX @ 1+ JX !
       repeat
-      ECL-I @ 1+ ECL-I !
+      IX @ 1+ IX !
    repeat ;
 
+: RESET-LEDGER ( -- )
+   0 BAD !  0 CLAIM# !  0 RES# ! ;
+
+\ ---- file walk --------------------------------------------------------------
+: FORTH? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u s" .f" HAS-EXT?  a u s" .fs" HAS-EXT? or ;
+
+: SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u FORTH? 0= if exit then
+   a u PATH!
+   FILE# @ 1+ FILE# !
+   a u BUF SRC-CAP READ-FILE SCAN-TEXT ;
+
+: ROOT ( ptr u8 n -- )
+   [: SCAN-FILE ;] WALK-FILES ;
+
+: WALK ( -- )
+   RESET-LEDGER  0 FILE# !
+   s" src/" ROOT
+   s" lib/" ROOT
+   s" tools/" ROOT
+   s" test/" ROOT
+   s" maki/" ROOT
+   FINDINGS RES-FINDINGS ;
+
+: SUMMARY ( -- )
+   s" error-code-lint: " type
+   FILE# @ EMIT-U s"  file(s), " type
+   CLAIM# @ EMIT-U s"  claim(s), " type
+   RES#   @ EMIT-U s"  reservation(s), " type
+   BAD    @ EMIT-U s"  finding(s)" type NL ;
+
+public
+
 \ findings from scanning one string in isolation (reset -> scan -> pair count)
-: ECL-COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
-   ECL-REPORT? @ {: report:bool :}
-   ECL-REPORT-OFF
-   0 ECL-BAD !  0 ECL-CLAIM# !  0 ECL-RES# !
-   s" <test>" ECL-PATH!
-   a u ECL-SCAN-STR
-   ECL-FINDINGS ECL-RES-FINDINGS
-   report ECL-REPORT!
-   ECL-BAD @ ;
+: COUNT ( ptr u8 n -- n ) {: a:ptr u:n :}
+   SHOW? @ {: show:bool :}
+   SHOW-OFF
+   RESET-LEDGER
+   s" <test>" PATH!
+   a u SCAN-TEXT
+   FINDINGS RES-FINDINGS
+   show SHOW!
+   BAD @ ;
 
 \ two-file finding count: OWNER source declares the block, FOREIGN source mints
 \ its claims under a different path, so a cross-file range claim can be tested.
-: ECL-COUNT2 ( ptr u8 n ptr u8 n -- n ) {: ao:ptr auo:n af:ptr auf:n :}
-   ECL-REPORT? @ {: report:bool :}
-   ECL-REPORT-OFF
-   0 ECL-BAD !  0 ECL-CLAIM# !  0 ECL-RES# !
-   s" owner.f" ECL-PATH!    ao auo ECL-SCAN-STR
-   s" foreign.f" ECL-PATH!  af auf ECL-SCAN-STR
-   ECL-FINDINGS ECL-RES-FINDINGS
-   report ECL-REPORT!
-   ECL-BAD @ ;
+: COUNT2 ( ptr u8 n ptr u8 n -- n ) {: ao:ptr auo:n af:ptr auf:n :}
+   SHOW? @ {: show:bool :}
+   SHOW-OFF
+   RESET-LEDGER
+   s" owner.f" PATH!    ao auo SCAN-TEXT
+   s" foreign.f" PATH!  af auf SCAN-TEXT
+   FINDINGS RES-FINDINGS
+   show SHOW!
+   BAD @ ;
 
-\ ---- file walk --------------------------------------------------------------
-: ECL-SRC? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u s" .f" HAS-EXT?  a u s" .fs" HAS-EXT? or ;
+\ build the live ledger for the whole tree without printing anything
+: SCAN ( -- )
+   SHOW? @ {: show:bool :}
+   SHOW-OFF  WALK  show SHOW! ;
 
-: ECL-SCAN-FILE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u ECL-SRC? 0= if exit then
-   a u ECL-PATH!
-   ECL-FILES# @ 1+ ECL-FILES# !
-   a u ECL-BUF ECL-CAP READ-FILE ECL-SCAN-STR ;
+\ live reservation rows whose two bounds are exactly first/last
+: RESERVATIONS ( n n -- n ) {: first:n last:n :}
+   0  0 begin dup RES# @ < while
+      dup RES-LO@ first =
+      over RES-HI@ last = and if swap 1+ swap then
+      1+
+   repeat drop ;
 
-: ECL-ROOT ( ptr u8 n -- )
-   [: ECL-SCAN-FILE ;] WALK-FILES ;
-
-: ECL-RUN ( -- )
-   0 ECL-BAD !  0 ECL-FILES# !  0 ECL-CLAIM# !  0 ECL-RES# !
-   s" src/" ECL-ROOT
-   s" lib/" ECL-ROOT
-   s" tools/" ECL-ROOT
-   s" test/" ECL-ROOT
-   s" maki/" ECL-ROOT
-   ECL-FINDINGS ECL-RES-FINDINGS ;
-
-: ECL-SUMMARY ( -- )
-   s" error-code-lint: " type
-   ECL-FILES# @ ECL-U. s"  file(s), " type
-   ECL-CLAIM# @ ECL-U. s"  claim(s), " type
-   ECL-RES#   @ ECL-U. s"  reservation(s), " type
-   ECL-BAD    @ ECL-U. s"  finding(s)" type ECL-NL ;
+\ live claims whose code falls inside the inclusive range
+: CLAIMS-IN ( n n -- n ) {: first:n last:n :}
+   0  0 begin dup CLAIM# @ < while
+      dup CODE@ first last IN-RANGE? if swap 1+ swap then
+      1+
+   repeat drop ;
 
 \ report view: prints the ledger without throwing
-: ERROR-CODE-LINT ( -- )
-   ECL-REPORT-ON  ECL-RUN  ECL-SUMMARY ;
+: LEDGER ( -- )
+   SHOW-ON  WALK  SUMMARY ;
 
 \ gate entry (enforcing): any code claimed by two different E- names fails
-: ERROR-CODE-LINT-STRICT ( -- )
-   ERROR-CODE-LINT
-   ECL-BAD @ 0 > if 1 throw then ;
+: STRICT ( -- )
+   LEDGER
+   BAD @ 0 > if 1 throw then ;
+
+;package
