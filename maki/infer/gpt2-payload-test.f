@@ -98,6 +98,11 @@ ENUM plain-payload 0
 
 private
 
+using SAFET
+using GPT2LOAD
+using SAFET-MAP
+using WSTORE
+
 \ ---- the pinned artifact and the configuration it was exported from -------------
 \ The exact file size is the assertion that matters at the end of the cycle: a mapped
 \ model's release reports the byte count WSTORE gave back, so pinning it proves the value
@@ -108,6 +113,8 @@ private
 548105171 constant FILE-BYTES                   \ the pinned checkpoint's exact file size
 
 : CHECKPOINT-PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
+
+: CHECKPOINT-PRESENT? ( -- bool )  CHECKPOINT-PATH PRESENT? ;
 
 : MODEL-CONFIG ( -- MDLCFG:mcfg )                        \ the real 124M geometry
    0.00001 true MDLCFG-ARCH:GPT2
@@ -132,15 +139,18 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
 
 : BASELINE! ( -- )
    SAFET-MAP:LIVE BASE-MAPPING !
-   SAFET:LIVE-OWNERS BASE-OWNER !
+   LIVE-OWNERS BASE-OWNER !
    WSTORE:LIVE BASE-STORE !
-   GPT2LOAD:LIVE-PREPARED-LOADS BASE-PREPARED-LOADS ! ;
+   LIVE-PREPARED-LOADS BASE-PREPARED-LOADS ! ;
 
 : COUNTERS ( n n n n -- ) {: mapping:n owner:n store:n prepared:n :}
    SAFET-MAP:LIVE BASE-MAPPING @ - mapping T=
-   SAFET:LIVE-OWNERS BASE-OWNER @ - owner T=
+   LIVE-OWNERS BASE-OWNER @ - owner T=
    WSTORE:LIVE BASE-STORE @ - store T=
-   GPT2LOAD:LIVE-PREPARED-LOADS BASE-PREPARED-LOADS @ - prepared T= ;
+   LIVE-PREPARED-LOADS BASE-PREPARED-LOADS @ - prepared T= ;
+
+;using
+;using
 
 \ The ok payload of a release outcome. Reading it is the difference between "the exit
 \ reported success" and "the exit gave back the bytes it was holding".
@@ -166,7 +176,7 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
          s" the counters do not move when MATCH hands the model back out" T-LABEL
          1 1 1 0 COUNTERS
          s" and the model still owns the whole checkpoint mapping, to the byte" T-LABEL
-         GPT2LOAD:RELEASE-MODEL RESULT-VALUE FILE-BYTES T=
+         RELEASE-MODEL RESULT-VALUE FILE-BYTES T=
       ENDOF
       rejected OF
          s" the wrapped model came back as the rejected variant" T-LABEL
@@ -175,7 +185,7 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
    ;MATCH ;
 
 : CHECK-PAYLOAD-OWNER ( GPT2LOAD:mapped-ready -- )
-   GPT2LOAD:LOAD-MAPPED
+   LOAD-MAPPED
    s" the real checkpoint loads to a mapped model" T-LABEL
    1 1 1 0 COUNTERS
    GPT2PAYLOAD-MODEL--PAYLOAD:MODEL
@@ -186,7 +196,7 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
    0 0 0 0 COUNTERS ;
 
 : CHECK-MAPPED-PAYLOAD ( GPT2LOAD:prepared-load -- )
-   MODEL-CONFIG GPT2LOAD:CHECK-MAPPED
+   MODEL-CONFIG CHECK-MAPPED
    MATCH GPT2LOAD:mapped-check-result
       ready OF CHECK-PAYLOAD-OWNER ENDOF
       rejected OF
@@ -194,7 +204,7 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
          s" the real checkpoint was rejected by its matching configuration, code" T-LABEL
          code . cr
          false TTRUE
-         GPT2LOAD:DISCARD-PREPARED
+         DISCARD-PREPARED
       ENDOF
    ;MATCH ;
 
@@ -202,7 +212,7 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
    s" a real loaded GPT-2 model is stored in a declared linear payload field" T-LABEL
    BASELINE!
    0 0 0 0 COUNTERS
-   CHECKPOINT-PATH SAFET:LOAD MODEL-CONFIG GPT2LOAD:PREPARE
+   CHECKPOINT-PATH LOAD MODEL-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF CHECK-MAPPED-PAYLOAD ENDOF
       rejected OF
@@ -210,10 +220,12 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
          s" the real checkpoint did not prepare, code" T-LABEL
          code . cr
          false TTRUE
-         SAFET:RELEASE
+         RELEASE
       ENDOF
    ;MATCH
    0 0 0 0 COUNTERS ;
+
+;using
 
 \ ---- family identity for the registry readers ----------------------------------
 \ A family is identified by its tail PLUS the constructor package its variants carry, so
@@ -224,6 +236,8 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
 : PLAIN-PAYLOAD-IDENTITY ( -- ptr u8 n ptr u8 n )
    s" plain-payload" s" GPT2PAYLOAD-PLAIN--PAYLOAD" ;
 
+;using
+
 \ ---------------------------------------------------------------------------------
 \ What the registry recorded. These are top-level lines rather than the body of a word
 \ because TK-SUM is an engine registry constant the checker does not publish into user
@@ -232,27 +246,31 @@ variable BASE-PREPARED-LOADS                   \ live GPT2LOAD prepared loads
 \ ---------------------------------------------------------------------------------
 T-RESET
 
+using REFLECT
+
 s" model-payload is one public arity-0 payload-bearing ENUM" T-LABEL
-MODEL-PAYLOAD-IDENTITY REFLECT:FAMS 1 T=
-MODEL-PAYLOAD-IDENTITY REFLECT:ARITY 0 T=
-MODEL-PAYLOAD-IDENTITY REFLECT:VIS 1 T=
-MODEL-PAYLOAD-IDENTITY REFLECT:KIND TK-SUM T=             \ internal kind for payload-bearing ENUM
-MODEL-PAYLOAD-IDENTITY REFLECT:KIND TK-ENUM = 0 T=          \ not a payloadless enum
-MODEL-PAYLOAD-IDENTITY REFLECT:VARS 2 T=
+MODEL-PAYLOAD-IDENTITY FAMS 1 T=
+MODEL-PAYLOAD-IDENTITY ARITY 0 T=
+MODEL-PAYLOAD-IDENTITY VIS 1 T=
+MODEL-PAYLOAD-IDENTITY KIND TK-SUM T=             \ internal kind for payload-bearing ENUM
+MODEL-PAYLOAD-IDENTITY KIND TK-ENUM = 0 T=          \ not a payloadless enum
+MODEL-PAYLOAD-IDENTITY VARS 2 T=
 s" its cases are in declaration order, under this suite's constructor package" T-LABEL
-MODEL-PAYLOAD-IDENTITY 0 REFLECT:ARM$ s" model" T$=
-MODEL-PAYLOAD-IDENTITY 1 REFLECT:ARM$ s" rejected" T$=
-MODEL-PAYLOAD-IDENTITY 0 REFLECT:ARM-CTOR$ s" GPT2PAYLOAD-MODEL--PAYLOAD" T$=
+MODEL-PAYLOAD-IDENTITY 0 ARM$ s" model" T$=
+MODEL-PAYLOAD-IDENTITY 1 ARM$ s" rejected" T$=
+MODEL-PAYLOAD-IDENTITY 0 ARM-CTOR$ s" GPT2PAYLOAD-MODEL--PAYLOAD" T$=
 s" the model occupies one named payload field, seven cells wide, at slot 0" T-LABEL
-MODEL-PAYLOAD-IDENTITY 0 REFLECT:ARM-FLDS 1 T=
-MODEL-PAYLOAD-IDENTITY 0 s" model" REFLECT:ARM-SLOT 0 T=
-MODEL-PAYLOAD-IDENTITY 0 s" model" REFLECT:ARM-CELLS 7 T=
+MODEL-PAYLOAD-IDENTITY 0 ARM-FLDS 1 T=
+MODEL-PAYLOAD-IDENTITY 0 s" model" ARM-SLOT 0 T=
+MODEL-PAYLOAD-IDENTITY 0 s" model" ARM-CELLS 7 T=
 s" so the family is a tag cell plus that payload: eight cells" T-LABEL
-MODEL-PAYLOAD-IDENTITY REFLECT:WIDTH 8 T=
+MODEL-PAYLOAD-IDENTITY WIDTH 8 T=
 s" and the non-linear control is eight cells wide too, from four declared fields" T-LABEL
-PLAIN-PAYLOAD-IDENTITY REFLECT:FAMS 1 T=
-PLAIN-PAYLOAD-IDENTITY REFLECT:WIDTH 8 T=
-PLAIN-PAYLOAD-IDENTITY 0 REFLECT:ARM-FLDS 4 T=
+PLAIN-PAYLOAD-IDENTITY FAMS 1 T=
+PLAIN-PAYLOAD-IDENTITY WIDTH 8 T=
+PLAIN-PAYLOAD-IDENTITY 0 ARM-FLDS 4 T=
+
+;using
 
 \ ---------------------------------------------------------------------------------
 \ The model-payload value is ONE linear unit. Paired plain-payload controls isolate
@@ -412,7 +430,7 @@ s" MODEL-PAYLOAD-RELEASE-THEN-THROW ( model-payload -- n ) MATCH model-payload m
 \ gpt2-copy-test.f), so a host without the 548 MB artifact reports the skip loudly
 \ instead of failing. Everything above runs unconditionally.
 : RUN ( -- )
-   CHECKPOINT-PATH SAFET:PRESENT? if
+   CHECKPOINT-PRESENT? if
       T-REAL-PAYLOAD
    else
       s" gpt2-payload: gpt2-model/model.safetensors absent -> real-model test SKIPPED" type cr
