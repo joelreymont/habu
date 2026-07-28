@@ -361,9 +361,12 @@ public
 
 `using NAME` is the consumer-side import: it makes package `NAME`'s **public**
 wordlist visible to bare, unqualified lookup in the current scope, without
-opening or reopening `NAME`. Every new or changed temporary, generated, or
-committed consumer that calls two or more public words from one required
-package MUST import it once with `using NAME ... ;using` and call them bare.
+opening or reopening `NAME`. `require` loads the package source; it does not
+import that namespace or justify repeating `NAME:WORD`. Every new or changed
+consumer that calls two or more public words from one required package MUST
+import it once with `using NAME ... ;using` and call them bare. This includes
+`/tmp` scratch files, reproducers, performance scripts, generated files, and
+committed files; scratch files are not exempt.
 Untouched legacy consumers remain explicit debt until owner-scoped migration;
 this staged rule does not claim they are already converted. PREFER `NAME:WORD`
 for a one-off call or when qualification is needed to escape a collision or
