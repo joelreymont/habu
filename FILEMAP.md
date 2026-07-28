@@ -123,6 +123,20 @@ points stay listed.
   forged-span rejects, foreign key/id/context rejects, root/self/three-node
   origin-cycle rejects with terminating walks, capacity and teardown behavior,
   frozen-view reads with rejected mutation, and checker-seal candidates.
+- `src/compiler/ir/type.f` — `package IR-TYPE`: the per-module type table
+  (design IR-0.4) on two context-owned IR-ARENA arenas (fixed four-cell rows
+  plus a function-type list pool): closed ENUM constructor vocabularies,
+  structural interning where id equality is structural equality by induction
+  over ordinals, references validated same-table and strictly earlier so
+  cycles and forward references are impossible, target legality consumed from
+  the context binding, a staged FN-BEGIN/FN-PARAM/FN-RESULT/QUOT/CODE-REF
+  list protocol, and a deterministic diagnostic renderer.
+- `test/compiler/ir-type.f` — acceptance suite for the type table: interning
+  across constructors and construction orders, function-type list equality,
+  the rejected scalar combination, target-legality rejects against AArch64
+  and PTX bindings, forward/foreign/cross-context reference rejects, stage
+  misuse, capacity, reader projections, render fixtures, forged-row rejects,
+  frozen-view reads, teardown, and checker-seal candidates.
 - `src/compiler/digest.f` — `package CDIGEST`: the canonical preimage encoding
   (eight-byte little-endian slots, slot 0 a domain-separation tag owned here,
   slot 1 the producer's schema version) and the SHA-256 over it that gives every

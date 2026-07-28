@@ -354,6 +354,19 @@ public
 -6675 constant E-IR-SYM-LEN       \ a negative symbol byte length at intern
 -6676 constant E-IR-SYM-RANGE     \ a destination span smaller than the symbol being copied
 
+\ Compiler type table (package IR-TYPE): -6680..-6699
+-6680 constant E-IR-TYPE-STATE    \ a type store failed its header, row-shape, span, or stored-reference recheck
+-6681 constant E-IR-TYPE-OWNER    \ a module key, type-id, or store pairing this type table does not own
+-6682 constant E-IR-TYPE-BOUND    \ a type reference at or past the constructed count: forward references are impossible
+-6683 constant E-IR-TYPE-CAP      \ a row capacity outside the accepted range, or a construction past it
+-6684 constant E-IR-TYPE-LIST     \ a list-pool capacity outside the accepted range, or a function-type list past it
+-6685 constant E-IR-TYPE-SCALAR   \ a scalar width/signedness combination no dialect defines
+-6686 constant E-IR-TYPE-TARGET   \ a float format or address space the bound target contract rejects
+-6687 constant E-IR-TYPE-STAGE    \ function-type stage misuse: an end without a begin, or a begin while one is open
+-6688 constant E-IR-TYPE-ARITY    \ a staged parameter or result list past the committed arity ceiling
+-6689 constant E-IR-TYPE-KIND     \ a field reader applied to a type of a different kind
+-6690 constant E-IR-TYPE-RANGE    \ a render span smaller than the rendered type text
+
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST
 -6799 constant E-CID-LAST
