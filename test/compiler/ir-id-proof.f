@@ -32,7 +32,14 @@
 \   - a replay reset, through a real child load of the replay fixture;
 \   - an unexpected or missing assumption, an unbound theorem, or an `Admitted`,
 \     through the committed manifest compared as a whole and the structural
-\     inventory of what the four proof files actually declare.
+\     inventory of what the four proof files actually declare;
+\   - a rewritten theorem statement, through the statement each manifest row
+\     pins. The row's type is ascribed to a generated definition whose body is
+\     the theorem, so Rocq itself has to accept the proved statement as the one
+\     the committed manifest wrote down. Nothing reads a statement out of a
+\     proof file, so editing a proof file cannot move its own target. A
+\     manifest that names a theorem and leaves its statement unwritten is
+\     refused when the manifest is read, before anything is asked of Rocq.
 \
 \ Focused command: compile the four files under `formal/Common`, then
 \ `bin/hb --load test/compiler/ir-id-proof.f`. The gate compiles them itself, so
@@ -53,6 +60,7 @@ package COMPILER-ID-PROOF
 private
 
 $8000 constant AX-CAP
+$4000 constant TY-CAP
 $1000 constant REP-CAP
 $100 constant PATH-CAP
 128 constant TH-MAX
@@ -66,10 +74,13 @@ $23 constant HASH
 create AX-RAW AX-CAP allot
 create AX-WANT AX-CAP allot
 create AX-GOT AX-CAP allot
+create TY-RAW TY-CAP allot
 create REP-WANT REP-CAP allot
 create REP-GOT REP-CAP allot
 create TH-OFF TH-MAX cells allot
 create TH-LEN TH-MAX cells allot
+create TYPE-OFF TH-MAX cells allot
+create TYPE-LEN TH-MAX cells allot
 create AXIOM-OFF AXIOM-MAX cells allot
 create AXIOM-LEN AXIOM-MAX cells allot
 create VPATH PATH-CAP allot
@@ -77,10 +88,13 @@ create VPATH PATH-CAP allot
 variable AX-RAW-U
 variable AX-WANT-U
 variable AX-GOT-U
+variable TY-U
 variable REP-WANT-U
 variable REP-GOT-U
 variable VPATH-U
 variable TH-N
+variable TYPE-N
+variable PEND
 variable AXIOM-N
 variable CLOSED-N
 variable BEARING-N
@@ -113,6 +127,9 @@ variable SRC-INIT
 
 : GOT+ ( ptr u8 n -- )
    AX-GOT AX-CAP AX-GOT-U SINK+ ;
+
+: TY+ ( ptr u8 n -- )
+   TY-RAW TY-CAP TY-U SINK+ ;
 
 : GOT-NL ( -- )
    LF AX-GOT AX-CAP AX-GOT-U SINK-C+ ;
@@ -154,7 +171,7 @@ variable SRC-INIT
    a start +
    a u start TRIM-TAIL start - ;
 
-\ ---- the committed expected-assumption manifest -------------------------------
+\ ---- the committed manifest: statements and assumptions ----------------------
 
 : MANIFEST-PATH$ ( -- ptr u8 n )
    s" test/compiler/ir-id-axioms.txt" ;
@@ -163,8 +180,25 @@ variable SRC-INIT
    u 0= if true exit then
    a c@ HASH = ;
 
+\ The two row tags, and the widths that skip them, from one text each, so a row
+\ cannot be recognised by one spelling and stripped by another.
+: THEOREM-TAG$ ( -- ptr u8 n )
+   s" theorem " ;
+
+: TYPE-TAG$ ( -- ptr u8 n )
+   s" type " ;
+
+: THEOREM-TAG ( -- n )
+   THEOREM-TAG$ nip ;
+
+: TYPE-TAG ( -- n )
+   TYPE-TAG$ nip ;
+
 : THEOREM-LINE? ( ptr u8 n -- bool )
-   s" theorem " STARTS-WITH? ;
+   THEOREM-TAG$ STARTS-WITH? ;
+
+: TYPE-LINE? ( ptr u8 n -- bool )
+   TYPE-TAG$ STARTS-WITH? ;
 
 : THEOREM+ ( n n -- ) {: off:n u:n :}
    TH-N @ TH-MAX >= if E-CID-AXIOM throw then
@@ -172,31 +206,75 @@ variable SRC-INIT
    u TH-N @ cells TH-LEN + !
    TH-N @ 1+ TH-N ! ;
 
+\ The statement the manifest says the pending theorem makes. `PEND` carries the
+\ index of the theorem still waiting for its statement, and clearing it is what
+\ makes a statement belong to the theorem row directly above it: a `type` row
+\ with no theorem waiting, which covers both an orphan row and a second row for
+\ one theorem, is refused here.
+: TYPE+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   PEND @ 0 < if E-CID-AXIOM throw then
+   TY-U @ PEND @ cells TYPE-OFF + !
+   u PEND @ cells TYPE-LEN + !
+   a u TY+
+   TYPE-N @ 1+ TYPE-N !
+   -1 PEND ! ;
+
 \ A manifest row that names a theorem also records where its name sits in the
 \ stripped body, so the generated Rocq file asks for exactly these names in
-\ exactly this order.
+\ exactly this order, and opens the requirement that the next row pin what that
+\ theorem states.
+: MANIFEST-THEOREM ( ptr u8 n -- ) {: a:ptr u:n :}
+   PEND @ 0 >= if E-CID-AXIOM throw then
+   a u WANT+ WANT-NL
+   AX-WANT-U @ u 1+ - THEOREM-TAG + u THEOREM-TAG - THEOREM+
+   TH-N @ 1- PEND ! ;
+
+\ Every other row is an assumption row, compared byte for byte against what Rocq
+\ reported. One may not stand between a theorem row and its type row, so a
+\ theorem whose statement is left unpinned fails the read rather than the
+\ comparison.
+: MANIFEST-ASSUMPTION ( ptr u8 n -- ) {: a:ptr u:n :}
+   PEND @ 0 >= if E-CID-AXIOM throw then
+   a u WANT+ WANT-NL ;
+
 : MANIFEST-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
    a u COMMENT-LINE? if exit then
-   a u WANT+ WANT-NL
-   a u THEOREM-LINE? 0= if exit then
-   AX-WANT-U @ u 1+ - 8 + u 8 - THEOREM+ ;
+   a u TYPE-LINE? if a TYPE-TAG + u TYPE-TAG - TYPE+ exit then
+   a u THEOREM-LINE? if a u MANIFEST-THEOREM exit then
+   a u MANIFEST-ASSUMPTION ;
+
+: MANIFEST-RESET ( -- )
+   0 AX-WANT-U !
+   0 TY-U !
+   0 TH-N !
+   0 TYPE-N !
+   -1 PEND ! ;
+
+\ The manifest grammar, over bytes rather than over the committed file, so the
+\ shape rules above can be shown to refuse a malformed manifest.
+: MANIFEST-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
+   MANIFEST-RESET
+   0 CUR !
+   begin CUR @ u < while
+      a u CUR @ LINE-END {: stop:n :}
+      a CUR @ + stop CUR @ - MANIFEST-LINE
+      stop 1+ CUR !
+   repeat
+   PEND @ 0 >= if E-CID-AXIOM throw then ;
 
 : READ-MANIFEST ( -- )
    MANIFEST-PATH$ 2dup FILE-SIZE {: a:ptr u:n size:n :}
    size AX-CAP > if E-STR-CAPACITY throw then
    a u AX-RAW AX-CAP READ-ALL AX-RAW-U !
-   0 AX-WANT-U !
-   0 TH-N !
-   0 CUR !
-   begin CUR @ AX-RAW-U @ < while
-      AX-RAW AX-RAW-U @ CUR @ LINE-END {: stop:n :}
-      AX-RAW CUR @ + stop CUR @ - MANIFEST-LINE
-      stop 1+ CUR !
-   repeat ;
+   AX-RAW AX-RAW-U @ MANIFEST-TEXT ;
 
 : THEOREM$ ( n -- ptr u8 n ) {: k:n :}
    k 0 < k TH-N @ >= or if E-CID-AXIOM throw then
    AX-WANT k cells TH-OFF + @ + k cells TH-LEN + @ ;
+
+: TYPE$ ( n -- ptr u8 n ) {: k:n :}
+   k 0 < k TYPE-N @ >= or if E-CID-AXIOM throw then
+   TY-RAW k cells TYPE-OFF + @ + k cells TYPE-LEN + @ ;
 
 \ ---- rendering what Rocq answered --------------------------------------------
 
@@ -558,7 +636,69 @@ private
 package COMPILER-ID-PROOF
 private
 
-\ ---- phase 6: what the proof files actually declare --------------------------
+\ ---- phase 6: the manifest's own shape, under hostile manifests --------------
+
+\ A theorem row and its type row are the pin. If a manifest could name a theorem
+\ and leave its statement unwritten, or write a statement no theorem row claims,
+\ the pin would be optional and a row could quietly lose it. These fixtures are
+\ how that is refused rather than assumed.
+
+: HOSTILE-TYPE-ORPHAN ( -- )
+   s" a statement with no theorem row above it is refused" T-LABEL
+   [: S\" type cell_min = -9223372036854775808\nclosed" MANIFEST-TEXT ;]
+      E-CID-AXIOM TTHROWSQ ;
+
+: HOSTILE-TYPE-TWICE ( -- )
+   s" a second statement for one theorem is refused" T-LABEL
+   [: S\" theorem Habu.Common.Ids.cell_min_exact\ntype cell_min = 1\ntype cell_min = 2\nclosed"
+      MANIFEST-TEXT ;]
+      E-CID-AXIOM TTHROWSQ ;
+
+\ The statement belongs between the theorem row and its assumption rows. A
+\ manifest that writes it after them still pins every theorem exactly once, so
+\ only the row order refuses it, and this is the case that says the order is a
+\ rule rather than a habit.
+: HOSTILE-TYPE-LATE ( -- )
+   s" a statement written after its assumption rows is refused" T-LABEL
+   [: S\" theorem Habu.Common.Ids.cell_min_exact\nclosed\ntype cell_min = -9223372036854775808"
+      MANIFEST-TEXT ;]
+      E-CID-AXIOM TTHROWSQ ;
+
+: HOSTILE-TYPE-TRAILING ( -- )
+   s" a theorem left unpinned at the end of the file is refused" T-LABEL
+   [: S\" theorem Habu.Common.Ids.cell_min_exact" MANIFEST-TEXT ;]
+      E-CID-AXIOM TTHROWSQ ;
+
+: HOSTILE-THEOREM-UNPINNED ( -- )
+   s" a second theorem row before the first is pinned is refused" T-LABEL
+   [: S\" theorem Habu.Common.Ids.cell_min_exact\ntheorem Habu.Common.Ids.cell_max_exact\ntype cell_max = 1\nclosed"
+      MANIFEST-TEXT ;]
+      E-CID-AXIOM TTHROWSQ ;
+
+\ Commentary may sit between a theorem row and its type row; it is commentary
+\ everywhere else in the file, and this says so on purpose rather than by
+\ accident.
+: MANIFEST-PAIR ( -- )
+   S\" theorem Habu.Common.Ids.cell_min_exact\n# a note\ntype cell_min = -9223372036854775808\nclosed"
+   MANIFEST-TEXT
+   s" a well-formed row names one theorem" T-LABEL
+   TH-N @ 1 T=
+   s" a well-formed row pins one statement" T-LABEL
+   TYPE-N @ 1 T=
+   s" the theorem row still answers with its qualified name" T-LABEL
+   0 THEOREM$ s" Habu.Common.Ids.cell_min_exact" T$=
+   s" the pinned statement is exactly the type row's text" T-LABEL
+   0 TYPE$ s" cell_min = -9223372036854775808" T$= ;
+
+: PHASE-MANIFEST ( -- )
+   HOSTILE-TYPE-ORPHAN
+   HOSTILE-TYPE-TWICE
+   HOSTILE-TYPE-LATE
+   HOSTILE-TYPE-TRAILING
+   HOSTILE-THEOREM-UNPINNED
+   MANIFEST-PAIR ;
+
+\ ---- phase 7: what the proof files actually declare --------------------------
 
 : DECL-HEAD? ( n -- bool ) {: k:n :}
    k COMPILER-ID-SRC:TOKEN$ s" Theorem" STR= if true exit then
@@ -601,6 +741,8 @@ private
    PROOF-FILES 0 ?do i DECL-FILE loop
    s" the manifest names every proved statement and no others" T-LABEL
    DECL-N @ TH-N @ T=
+   s" every named statement also has its type pinned" T-LABEL
+   TYPE-N @ TH-N @ T=
    s" no statement in the identity proofs is admitted" T-LABEL
    ADMITTED-N @ 0 T= ;
 
@@ -609,16 +751,22 @@ private
 package COMPILER-ID-PROOF
 private
 
-\ ---- phase 7: making Rocq answer ---------------------------------------------
+\ ---- phase 8: making Rocq answer ---------------------------------------------
 
 : SCRATCH-DIR ( -- ptr u8 n )
    s" habu-ir-id-parity" TMPDIR-MKDIR ;
+
+\ What one manifest row asks Rocq: prove that this name still states this, and
+\ then report what that proof rests on.
+: OBLIGATION-ROW ( n -- ) {: k:n :}
+   k THEOREM$ k TYPE$ COMPILER-ID-ROCQ:STATEMENT+
+   k THEOREM$ COMPILER-ID-ROCQ:ASSUMPTION+ ;
 
 : EMIT-OBLIGATIONS ( -- )
    SRC-SERIAL-MAX @ SRC-LOCAL-MAX @ SRC-LOCAL-BITS @ SRC-INIT @
       COMPILER-ID-ROCQ:SOURCE-FACTS!
    COMPILER-ID-ROCQ:START
-   TH-N @ 0 ?do i THEOREM$ COMPILER-ID-ROCQ:ASSUMPTION+ loop ;
+   TH-N @ 0 ?do i OBLIGATION-ROW loop ;
 
 : WRITE-OBLIGATIONS ( ptr u8 n -- ) {: dir:ptr diru:n :}
    dir diru s" IdParity.v" VPATH JOIN-PATH VPATH-U !
@@ -635,7 +783,7 @@ private
    PROC-CMD:OUT$ RENDER
    CLEANUP-RUN ;
 
-\ ---- phase 8: the assumption set ---------------------------------------------
+\ ---- phase 9: the assumption set ---------------------------------------------
 
 : PHASE-ASSUMPTIONS ( -- )
    s" the reported assumption set is the committed manifest, entire" T-LABEL
@@ -646,7 +794,7 @@ private
 package COMPILER-ID-PROOF
 private
 
-\ ---- phase 9: the committed report -------------------------------------------
+\ ---- phase 10: the committed report ------------------------------------------
 
 : REPORT-PATH$ ( -- ptr u8 n )
    s" docs/compiler-id-assumptions.md" ;
@@ -670,7 +818,7 @@ private
    REP-NL
    s" Frozen schema digest: " REP+ DIGEST-HEX$ REP+ REP-NL
    REP-NL
-   s" Statements bound by name: " TH-N @ REPORT-COUNT
+   s" Statements bound by name and pinned type: " TH-N @ REPORT-COUNT
    s" Closed under the global context: " CLOSED-N @ REPORT-COUNT
    s" Resting on an external assumption: " BEARING-N @ REPORT-COUNT
    s" Admitted: " ADMITTED-N @ REPORT-COUNT
@@ -685,7 +833,12 @@ private
    s" point. Every `host_*` refinement theorem is proved from that law alone, so" REP+ REP-NL
    s" nothing else about the host operation is assumed anywhere. The exact" REP+ REP-NL
    s" per-statement expectation lives in `test/compiler/ir-id-axioms.txt`; this" REP+ REP-NL
-   s" file is the reviewed summary of it." REP+ REP-NL ;
+   s" file is the reviewed summary of it." REP+ REP-NL
+   REP-NL
+   s" That file also carries a written copy of what each bound statement says," REP+ REP-NL
+   s" and the gate makes Rocq accept every proved statement at exactly that" REP+ REP-NL
+   s" type, so a theorem cannot be rewritten to say less while keeping its name" REP+ REP-NL
+   s" and its assumption set." REP+ REP-NL ;
 
 : READ-REPORT ( -- )
    REPORT-PATH$ 2dup FILE-SIZE {: a:ptr u:n size:n :}
@@ -698,7 +851,7 @@ private
    s" the committed assumptions report is what this run produces" T-LABEL
    REP-GOT REP-GOT-U @ REP-WANT REP-WANT-U @ T$= ;
 
-\ ---- phase 10: the replay fixture --------------------------------------------
+\ ---- phase 11: the replay fixture --------------------------------------------
 
 : PHASE-REPLAY ( -- )
    s" the module allocator survives a require replay in a child load" T-LABEL
@@ -716,6 +869,7 @@ public
    PHASE-SOURCE
    PHASE-VECTORS
    PHASE-WRONG-FAMILY
+   PHASE-MANIFEST
    PHASE-DECLARATIONS
    PHASE-ROCQ
    PHASE-ASSUMPTIONS

@@ -7,7 +7,7 @@ run that disagrees with this file fails.
 
 Frozen schema digest: e085bfac3fce293bbf7c02708b48ab5134177efd7e9bb7ac2a6acace05a0d013
 
-Statements bound by name: 93
+Statements bound by name and pinned type: 93
 Closed under the global context: 84
 Resting on an external assumption: 9
 Admitted: 0
@@ -24,3 +24,8 @@ point. Every `host_*` refinement theorem is proved from that law alone, so
 nothing else about the host operation is assumed anywhere. The exact
 per-statement expectation lives in `test/compiler/ir-id-axioms.txt`; this
 file is the reviewed summary of it.
+
+That file also carries a written copy of what each bound statement says,
+and the gate makes Rocq accept every proved statement at exactly that
+type, so a theorem cannot be rewritten to say less while keeping its name
+and its assumption set.
