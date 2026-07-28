@@ -1,9 +1,11 @@
 ---
 title: Reject non-GPT2 bind configuration
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:40:20.837945+02:00"
+closed-at: "2026-07-28T17:03:06+02:00"
+close-reason: Source commit 00ff5251a93ebb99847c246c5afa9e9f20810d58 is on master; the current GPT2LOAD implementation checks the authoritative model family before tensor validation, returns E-MODEL-FAMILY without consuming the parsed tensor index, preserves the rejection sentinels and owner counts, and reuses the same index successfully. The prepare, mapped, copy, and error-code checks passed on master@origin 2ec1ce4240f083445d548dbfcbdcf29fcdaef5c5.
 ---
 
 Why: `GPT2TX:PREPARE` currently accepts an otherwise valid Llama
@@ -48,5 +50,3 @@ measured work and the same census remains reusable. Run the GPT-2 bind, check,
 and allocated suites; exact-diff typed-local and package lints;
 `tools/error-code-lint.f`; then `maki/test.f`. Independently review the
 implementation and its production-path proof before integration.
-
-Claim: agent=codex-gpt2-family workspace=.jj-ws/habu-infer-gpt2-checked-54b99423
