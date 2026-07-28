@@ -10,12 +10,6 @@ package OPTION-TEST
 
 using REFLECT
 
-public
-
-\ Candidate signatures need public nominal fixtures; RUN is the sole public runner.
-NEWTYPE left 0
-NEWTYPE right 0
-
 private
 
 : YES ( ptr u8 n -- ) CHECK-QUIET-CANDIDATE! -1 T= ;
@@ -78,12 +72,12 @@ FAM$ KIND TK-ENUM = TFALSE
    s" OPT-NONE-N ( -- option<n> ) OPTION:NONE" YES
    s" OPT-NONE-R ( -- option<r> ) OPTION:NONE" YES
    s" OPT-SOME-N ( n -- option<n> ) OPTION:SOME" YES
-   s" OPT-SOME-L ( OPTION-TEST:left -- option<OPTION-TEST:left> ) OPTION:SOME" YES
+   s" OPT-SOME-I ( idx -- option<idx> ) OPTION:SOME" YES
    s" OPT-X-NAME ( -- option<n> ) OPTION:NOTHING" UNRES
    s" OPT-X-NONE ( n -- option<n> ) OPTION:NONE" NO
    s" OPT-X-SOME ( -- option<n> ) OPTION:SOME" NO
-   s" OPT-X-ROLE ( OPTION-TEST:right -- option<OPTION-TEST:left> ) OPTION:SOME" NO
-   s" OPT-X-INST ( OPTION-TEST:left -- option<OPTION-TEST:right> ) OPTION:SOME" NO ;
+   s" OPT-X-ROLE ( len -- option<idx> ) OPTION:SOME" NO
+   s" OPT-X-INST ( idx -- option<len> ) OPTION:SOME" NO ;
 
 : REBUILD ( option<n> -- option<n> )
    MATCH option
