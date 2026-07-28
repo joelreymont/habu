@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -2600,3 +2600,39 @@ fits.
   `gio trash "$candidate_file"` trashed the current directory. Stop when target
   creation fails; cleanup only an explicit, nonempty path proven inside the
   intended temporary root.
+- **A claim from the other orchestrator is still a claim; verify it before
+  freezing it.** A design document named a corrective leaf for a "double
+  `TV-VFIELDS!` write" in `TV-NEW-VIEW` that came verbatim from a blackboard
+  message. The code writes it once (`maki/tensor-value.f:456`), and the other
+  orchestrator's own fresh reviewer caught the invented leaf. Coordination
+  messages carry hypotheses, not evidence; read the line before it becomes a
+  contract.
+- **Absence must be proved in every scope a reintroduction can hide in.** A
+  retirement suite proved deleted names unresolvable from outside their
+  package and called them absent. Reintroducing them *inside* the package's
+  private section left the suite green, because checker probes outside a
+  package cannot see its private definitions. Prove membership against each
+  real word list (global, package-exported, package-private), give each list a
+  production witness so a misbound list fails its own control, and mutate in
+  every scope — the attack that only reaches the visible scope proves nothing
+  about the hidden one.
+- **A lint or checker probe is not visibility evidence.** Package-diff lints
+  read diff text and checker probes read resolvability; neither observes the
+  dictionary the running image actually built. Publication and retirement
+  leaves need runtime word-list assertions, and the contract should freeze
+  them up front rather than discovering the gap in review.
+- **Apply the duplicate-authority test to the candidate you favour.** A design
+  rejected a new span registry for duplicating the tensor authority, then
+  proposed a storage owner without naming what it displaced — recreating the
+  same duplication one level down, where the existing owner (`WSTORE`) already
+  held the model's memory. Whenever a design adds an owner, the frozen answer
+  to "what stops owning this, and when" is part of the design, not follow-on
+  work.
+- **`private` is a convention, not a boundary.** Any file may reopen
+  `package NAME private` and call its internals; a proof run drove the single
+  fatal `munmap` sink with a raw pointer from outside its package. Designs may
+  not claim "no other constructor exists" from package privacy alone until a
+  sealing capability lands.
+- **Give each lane a private scratch subdirectory.** Two workers wrote generic
+  artifact names into the shared scratchpad and one clobbered the other's
+  evidence mid-run. Name the directory after the lane in the brief.
