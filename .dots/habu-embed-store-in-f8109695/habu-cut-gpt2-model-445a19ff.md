@@ -1,9 +1,11 @@
 ---
 title: Cut gpt2-model over to embedded store
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:59:20.791150+02:00"
+closed-at: "2026-07-28T17:04:53.129893+02:00"
+close-reason: "Landed at fc2805cd on verified master@origin: GPT2LOAD:gpt2-model embeds WSTORE:store directly in both mapped and allocated commit arms; RELEASE-MODEL consumes it through WSTORE:DISPOSE; mapped, copied, and payload suites, both exact-diff lints, and independent destruction review passed; no model-path WSTORE:resident, WSTORE:HOLD, or WSTORE:RESIDENT-DISPOSE remains."
 ---
 
 Why: `GPT2LOAD:gpt2-model` still wraps its validated `WSTORE:store` in the
@@ -48,5 +50,3 @@ review pass. The result is one store owner and one disposal path, with no shim.
 This leaf deliberately stops before model-owned weight reads. A separate frozen
 scope must thread caller state through `WSTORE:WITH-SLOT` and restore the owner
 on every exit before forward code can consume the embedded store.
-
-Claim: agent=codex-gpt2-store-r2 workspace=.jj-ws/habu-cut-gpt2-model-r2
