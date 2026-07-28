@@ -2663,3 +2663,22 @@ fits.
   dropped manifest rows master had gained. Both verdicts were right about
   different axes. Any review that could precede a merge must also check base
   currency, since master-always-green is a property of the exact rebased tree.
+- **Freeze an interface only after a checked candidate compiles and runs
+  through the owning path.** A design named five words for its size pipeline.
+  All five existed; the design was still unimplementable, because two of them
+  sat inside their packages' private sections and the owning package could
+  only reach them by illegally reopening those packages. Three review rounds
+  ran the same shape: existence verified, then units, then callability — each
+  round checking only the property the previous rejection had taught me to
+  check. A grep proves a name is spelled somewhere. It does not prove the
+  word is public, that its argument roles match, or that the sequence
+  type-checks. Write the twenty-line probe in a foreign package and run it
+  under `bin/hb` before the interface is frozen, not after it is rejected.
+- **The checker refuses nominal roles in raw storage, so a typed value must
+  carry them to the boundary.** Storing a `CAD-NUM` role through `!` is
+  rejected — probed: `: STORE-ROLE ( ptr a CAD-NUM:alloc-byte-len -- )
+  swap ! ;` gives `E-NONPARAMETRIC-EFFECT` and the load fails closed at exit
+  70. A design that plans to keep validated sizes and offsets in a raw header
+  must carry them in a typed value through every validation step and erase
+  them exactly once, inside a single audited mint, rather than re-deriving
+  them in raw `n` on the far side.
