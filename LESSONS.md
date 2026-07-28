@@ -2664,3 +2664,14 @@ fits.
   (source→arena, types→symbols). Two rules: grep the documented convention
   before editing dependency metadata, and when a worker agrees with a claim
   that originated in my own instructions, treat it as unverified.
+
+- **A passing test is not a scheduled test.** Every compiler substrate lane
+  this session reported its suite green, and I re-ran each one myself and saw
+  exit 0 — but twelve of those test files are listed in no suite in
+  `test/gate-stdlib-cases.f`, so they never execute in a full run. Six
+  modules and the raw-storage seal regression landed unprotected: passing by
+  hand, invisible to the gate. `suite-coverage-lint` did not catch it because
+  it only checks that suite members exist, never that a test file is
+  scheduled. When accepting a lane that adds a test file, verify the file
+  appears in a suite AND that a full run executes it — "I ran it and it
+  passed" is evidence about the code, not about the gate.
