@@ -5,50 +5,47 @@ priority: 1
 issue-type: task
 created-at: "2026-07-27T19:03:12.621200+02:00"
 blocks:
-  - habu-make-owned-release-79de2b5c
+  - habu-add-model-owned-7423a1e3
 ---
 
 Why: GPT-2 compute must decode F32 checkpoint elements without reading beyond
-a validated tensor extent. Habu exposes byte `c@` and cell `@`; cell `@` is
-invalid for the final four-byte element because it reads eight bytes.
+a validated tensor extent, and it must read them from a loaded model, not a
+raw span. Habu exposes byte `c@` and cell `@`; cell `@` is invalid for the
+final four-byte element because it reads eight bytes.
 
-Owner and interface: new package `GPT2` in `maki/infer/gpt2.f` owns private
-`F32@? ( ptr u8 CAD-NUM:byte-len CAD-NUM:index -- option<r> )`. It derives the
-complete element count with `CAD-NUM:DIV-BYTES-FLOOR`, tests the index with
-`CAD-NUM:INDEX-IN-COUNT?`, and derives the byte offset with
-`CAD-NUM:INDEX-BYTE-OFF` before touching the pointer. Only the final pointer
-addition may privately project `CAD-NUM:byte-off` to `n`; no length or index is
-erased. The reader then assembles exactly four little-endian bytes with `c@`
-and returns `F32:WIDEN` inside `OPTION:SOME`. Lengths below four, trailing
-partial bytes, and very large indexes return `OPTION:NONE` without a throw or
-address computation.
+This controller was refrozen twice after review. The original single-leaf
+design (a raw `ptr u8` reader in a new `GPT2` package with `MEM:WITH-BYTES`
+seams and guard-page fixtures) predated the landed bounded-read chain and the
+store-owned model. A five-leaf replacement that row-generalized the scoped
+callback combinators was then proven unsound through the real checker: a
+checked body may legally return the scoped pointer through the polymorphic
+result row, so scoped-span callbacks cannot truthfully pin a pointer-escape
+rejection, and generalizing them would open a public raw-pointer channel. The
+sound composition is value-level - the store answers bounded value queries
+and no span crosses any package boundary. Do not implement this controller
+directly. The work is four child leaves:
 
-No public raw-pointer word, nominal-to-raw conversion, type, span, native load
-primitive, global scratch, PTX change, or change to scalar `F32`. The one
-private byte-offset projection is the audited machine-address sink. Write set:
-`maki/infer/gpt2.f`, `maki/infer/gpt2-test.f`, `maki/test.f`,
-`maki/test-core.f`, and `FILEMAP.md`. Register the inference suite in the
-master `maki/test.f` list and in exactly one parallel slice,
-`maki/test-core.f`.
+1. `habu-return-typed-idx-6811f99f` - `GPT2TENSOR:SLOT` returns
+   `CAD-NUM:index`; public `CAD-NUM:INDEX=`; exact SLOT consumers migrate;
+   no cast anywhere downstream. Deliberately leaves WSTORE untouched.
+2. `habu-carry-model-config-c9085fa1` - `gpt2-model` carries the validated
+   `MDLCFG:mcfg` through `mapped-check-result.ready` and
+   `copy-check-result.ready`; public `MODEL-CONFIG`; scalar copies deleted.
+3. `habu-add-bounded-u32-9bd95c8c` - one atomic WSTORE commit: retypes
+   `SLOT!`, its callers, and the row helpers to `CAD-NUM:index`; deletes
+   `WITH-SLOT`, the parked-frame plumbing, and their `TRUSTED.md` rows; adds
+   public `WSTORE:U32-LE@?` taking the typed slot index and a slot-relative
+   offset; mapped arm delegates to `SAFET:U32-LE@?`, allocated arm uses
+   `CAD-NUM:BYTE+` plus four `c@`.
+4. `habu-add-model-owned-7423a1e3` - public `GPT2LOAD:TENSOR-F32@?` joining
+   them: typed slot and element offset derived while the model is intact,
+   one UNMAKE, `WSTORE:U32-LE@?`, one rebuild, `F32:WIDEN`; typed refusals;
+   non-skipping fixture proof.
 
-Production seam and checkpoint: the focused test reopens `GPT2` and calls the
-actual private reader inside real `MEM:WITH-BYTES`; before implementation the
-exact private word is unresolved. Stop on the first representative definition
-if typed CAD arithmetic, the package gate, or the actual candidate checker path
-requires an unplanned cast or public interface. QKV and public-forward leaves
-must later re-prove this helper through their published paths.
-
-Acceptance: offsets 0, 1, 2, and 3; `len=8,index=1` succeeds;
-`len=7,index=1` and `len=8,index=2^62` return `NONE`; byte-position mutations
-change exactly their expected bits; signed zero, normal, infinity, and NaN bit
-patterns pass through `F32:WIDEN`. Child-isolated left- and right-guard-page
-fixtures use the real `MEM:UNMAP(ptr, byte-len)` range interface and prove the
-reader touches neither byte outside its four-byte element. Candidate-routed
-checker fixtures load the real `gpt2.f`, accept only the exact typed call, and
-reject raw lengths/indexes, swapped roles, `alloc-byte-len` substitution, and a
-raw pointer role. Comments, strings, or a copied validator cannot satisfy any
-proof. Run the focused suite, exact owning load, both diff lints, file-map,
-suite-coverage, and refine gates, then `maki/test.f`. Independent destruction
-review is required before integration. Rejected commit `578c3ff4` is evidence
-only; it erased CAD roles and forged allocation provenance in its guard test.
-No claim is active.
+Leaves 1 and 2 run in parallel; leaf 3 follows leaf 1; leaf 4 joins 3 and 2
+(leaf 1 transitive) and closes this controller.
+`SAFET:WITH-MAPPING` stays unchanged; its pointer-lifetime debt
+(`habu-checker-ptr-lifetime-f59d1e9d`) remains outside this critical path.
+`maki/infer/gpt2.f` stays reserved for the forward pass. Evidence note kept:
+rejected commit `578c3ff4` erased CAD roles and forged allocation provenance
+in its guard test; it remains evidence only. No claim is active.
