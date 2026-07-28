@@ -6,6 +6,55 @@ issue-type: task
 created-at: "2026-07-28T01:34:31.462188+02:00"
 ---
 
-Problem: the checked GPT-2 F32 reader cannot express index below item count or index times element width without erasing nominal values. Owner and exact interface: package CAD-NUM in lib/cad-num-arithmetic.f owns INDEX-IN-COUNT? ( CAD-NUM:index CAD-NUM:item-count -- bool ), INDEX-BYTE-OFF ( CAD-NUM:index CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-off> ), and BYTE-OFF-IN-LEN? ( CAD-NUM:byte-off CAD-NUM:byte-len -- bool ). Comparison is strict. The product returns ok only when representable and overflow otherwise. Implementation reuses only CAD-NUM private projections and numeric-result constructors; the existing DIV-BYTES-FLOOR and ADVANCE-BYTE-OFF remain the other F32 composition operations. It adds no TRUSTED word, nominal role, public raw projection, generic n arithmetic, pointer, MEM, or GPT-2 code. Dependency: none. Checkpoint: compile the exact checked F32 bounds and offset shape through bin/hb and record that the three nominal operations are unavailable; prove CAD-NUM package ownership on the first representative diff. Tests in lib/cad-num-arithmetic-test.f cover zero, one, equality boundaries, maximum values, first overflow, zero and unit scales, result arms and nominal role swaps, plus zcheck properties for comparison truth, representable multiplication, overflow, and result roles. Mutations accepting index equal to count or byte offset equal to length, wrapping the product, swapping roles, or exposing raw public values must fail. Files: lib/cad-num-arithmetic.f, lib/cad-num-arithmetic-test.f, lib/std.manifest, and FILEMAP.md only. Acceptance: focused arithmetic suite, exact owning load, typed-local, package, manifest, file-map, trust, and owning standard-library gates pass. Smallest owning-path check: the checked F32 offset candidate certifies without any cast when these three operations combine with the existing division and offset-advance operations.
+Problem: the checked GPT-2 F32 reader cannot compare a nominal index with an
+item count or turn an index and element width into a byte offset without
+erasing their roles.
+
+Owner and interface: package `CAD-NUM` in `lib/cad-num-arithmetic.f` owns:
+
+- `INDEX-IN-COUNT? ( index item-count -- bool )`;
+- `INDEX-BYTE-OFF ( index byte-len -- numeric-result<byte-off> )`;
+- `BYTE-OFF-IN-LEN? ( byte-off byte-len -- bool )`.
+
+Both comparisons are strict. The product returns `ok` only when representable
+and `overflow` otherwise. Reuse only CAD-NUM's private projections, existing
+numeric-result constructors, `DIV-BYTES-FLOOR`, and `ADVANCE-BYTE-OFF`. Add no
+TRUSTED word, nominal role, public raw projection, generic `n` arithmetic,
+pointer, MEM, or GPT-2 code.
+
+Tests cover zero, one, equality, maximum values, maximum-safe and first-
+overflow products in both operand orientations, far wrap including maximum
+times maximum, exact result arms and values, and nominal role swaps. Full-cell
+properties use an independently commuted quotient oracle, prove every generated
+bit takes both values, and exercise lower, upper, and cross-band pairs. Reuse
+the existing exhaustive `BO-CODE` result classifier; do not duplicate its
+MATCH. Mutations accepting equality, masking an operand, checking a wrapped
+product or its sign, swapping roles, dropping any generator limb, returning the
+wrong arm, or exposing a raw projection must fail. Register the focused suite
+in the standard-library gate and its derived manual schedule.
+
+Design authority: amend `MODEL-CAD-V2-PLAN.md` B5.2 with the three exact rows
+and boundary classes. Admit only index times element-byte-width from the prior
+blanket multiplication ban. State that both predicates return booleans, not
+persistent bounded-index evidence.
+
+Authority correction: the exact tree already loads this arithmetic from
+`lib/memory.f` and inference modules, so inherited claims that CAD-NUM has no
+production loader or that its type test is its sole consumer are false. Correct
+those statements in `lib/cad-num-types.f`, `lib/cad-num-types-test.f`,
+`FILEMAP.md`, and the two module rows in `lib/std.manifest`; make no other
+change to the type slice.
+
+Files: `lib/cad-num-arithmetic.f`, `lib/cad-num-arithmetic-test.f`,
+`lib/cad-num-types.f`, `lib/cad-num-types-test.f`, `lib/std.manifest`,
+`FILEMAP.md`, `test/gate-stdlib-cases.f`,
+`tools/suite-coverage-lint-core.f`, and `MODEL-CAD-V2-PLAN.md` only.
+
+Acceptance: focused arithmetic suite, exact owning load, typed-local, package,
+manifest, file-map, trust, suite-coverage, owning standard-library gates, and
+an exact source/plan/manifest interface census pass. The standard-library gate
+must execute the focused suite, whose checked F32 composition certifies without
+a cast. The final tree must contain no false no-production-loader or sole-
+consumer claim for either CAD-NUM slice.
 
 Claim: agent=cad-index-bytes workspace=.jj-ws/habu-add-typed-idx-314cc618

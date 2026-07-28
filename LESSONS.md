@@ -2585,3 +2585,8 @@ fits.
   `maki/test-db.f`, `maki/test-eval.f`, or `maki/test-eval-emit.f`;
   suite-coverage's “exactly once” rule applies among slices, not across both
   levels.
+- **Destructive cleanup requires a validated target.** An unsupported
+  `jj diff --check` left a temporary-path variable empty, so unconditional
+  `gio trash "$candidate_file"` trashed the current directory. Stop when target
+  creation fails; cleanup only an explicit, nonempty path proven inside the
+  intended temporary root.
