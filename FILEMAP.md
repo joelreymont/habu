@@ -122,6 +122,61 @@ points stay listed.
   barrier-removal and cleanup-reuse mutations, replay, package sealing, private
   allocator-helper absence, later allocator-proof ownership, and exact private
   dictionary ownership coverage for all 26 production raw casts.
+- `formal/` — Rocq machine-checked model of that identity design, kept beside
+  the Habu tests as the proof-level companion. Everything under it is built by
+  one entry point and no build output is committed.
+- `formal/Makefile` — the single build entry point, `make -C formal`. It asks
+  `rocq makefile` to turn the project file into real build rules and then runs
+  them, so the generated makefile is itself a build output; the `clean` target
+  removes every generated file.
+- `formal/_CoqProject` — data-only build declaration: it maps the `formal`
+  directory to the `Habu` logical namespace and lists the four proof sources in
+  dependency order. Adding or reordering a proof file is an edit here and
+  nowhere else.
+- `formal/Common/Ids.v` — the IR-0.1 identity vocabulary. Fixes the cell,
+  serial, and local index widths; defines the inclusive range predicates and
+  the packed layout that puts a 31-bit module serial above a 32-bit local
+  index; gives the checked constructor `try_pack`, the projections `owner` and
+  `local`, and the ownership-and-bound test `checkb`. Thirteen one-field
+  structures stand in for the nominal identity families, a generic layer
+  (`pack_id`, `id_owner`, `id_local`, `id_checkb`) is instantiated once per
+  family, and computed examples pin the exact boundary constants. The last line
+  is a `Fail` check: passing a function identity where a source identity is
+  expected must not typecheck.
+- `formal/Common/IdAllocator.v` — the process-wide module-serial allocator as a
+  state machine. A cell-aligned one-word location, compare-and-swap taken at
+  its linearization point, and `next_serial`, which tests the bound before it
+  adds so exhaustion can neither increment nor wrap. Each attempt yields
+  `Issued`, `Retry`, or `Exhausted`. Threads keep their own possibly stale view
+  of the cell, and `step` and `run` interleave those threads over the single
+  shared cell. This file also declares the only two things assumed rather than
+  proved — the host operation `host_atomic_cas` and its one law
+  `atomic_cas_linearizable`, which says the host operation agrees with the
+  modelled compare-and-swap — and instantiates a pure and a host allocator from
+  the same definitions.
+- `formal/Common/IdLaws.v` — the representation laws over the identity
+  vocabulary. Packing a valid pair is exactly `serial * 2^32 + index` and stays
+  inside the signed cell range; `owner` and `local` invert packing; packing is
+  injective, so both round-trips hold and two distinct valid owners can never
+  produce the same word; `try_pack` refuses a negative or overflowing index;
+  and `checkb` refuses an index equal to the bound and refuses a foreign owner.
+  It then falsifies each design choice with an executable counterexample:
+  narrowing a width, changing the shift or the mask, dropping the owner
+  equality, or relaxing the strict bound each breaks a stated law, and
+  truncating a scalar constructor silently turns a large value into zero. It
+  closes with `Print Assumptions` on all sixteen results.
+- `formal/Common/IdAllocatorLaws.v` — the allocator laws. Every issued serial
+  is strictly greater than the value the cell held, becomes the new cell value,
+  is never zero, and stays inside the serial range; a retry leaves the cell and
+  the observed value untouched; an attempt at the maximum serial is a no-op. A
+  whole run's issued serials are strictly increasing and therefore contain no
+  duplicates. The host allocator is then proved to refine the pure one using
+  only the single compare-and-swap law, which carries uniqueness, the domain
+  bound, and the exhaustion behaviour over to the host. Counterexamples show
+  what breaks if the domain guard is widened, if compare-and-swap reports
+  success without writing, if a retry loses the value it observed, or if the
+  successor wraps instead of stopping. `Print Assumptions` on the ten headline
+  results reports the two compare-and-swap assumptions and nothing else.
 
 ## Native Engine And Builders
 
