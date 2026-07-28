@@ -354,6 +354,15 @@ public
 : LIVE? ( IR-CTX:ctx -- bool )
    CTX>N FIND-SLOT 0 < 0= ;
 
+\ Liveness observed through a raw serial. Child modules that outlive a single
+\ call (the IR arena) can persist their owner only as the context serial,
+\ because handles are sealed nominals a stored raw cell cannot re-mint; they
+\ still must observe owner teardown fail-closed before touching context-owned
+\ storage. A boolean probe mints no handle and exposes no pointer, so it adds
+\ no forging or access power beyond what LIVE? already publishes.
+: SERIAL-LIVE? ( n -- bool )
+   FIND-SLOT 0 < 0= ;
+
 \ ---- bound target and policy -------------------------------------------------
 : BINDING@ ( IR-CTX:ctx -- CBIND:binding )
    RESOLVE HF-CODE0 CODES-AT CODES-BINDING@ ;

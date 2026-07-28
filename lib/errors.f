@@ -323,6 +323,18 @@ public
 -6646 constant E-IR-CTX-SIZE      \ a scratch request of zero or negative bytes
 -6647 constant E-IR-CTX-STATE     \ persisted context state failed its consistency recheck
 
+\ Compiler IR arena (package IR-ARENA): -6650..-6659
+-6650 constant E-IR-ARENA-STALE   \ an arena handle was used after abort or after its context's teardown
+-6651 constant E-IR-ARENA-OWNER   \ an index, mark, or context was presented to an arena that did not mint it
+-6652 constant E-IR-ARENA-FULL    \ an append reached the arena's committed cell ceiling
+-6653 constant E-IR-ARENA-FROZEN  \ a mutation word ran against a frozen arena
+-6654 constant E-IR-ARENA-MARK    \ a rollback target outside the arena's live appended range
+-6655 constant E-IR-ARENA-BOUND   \ an arena index at or past the readable cell count
+-6656 constant E-IR-ARENA-CEIL    \ an arena-creation cell ceiling outside the accepted range
+-6657 constant E-IR-ARENA-SLOTS   \ the live-arena registry has no free slot
+-6658 constant E-IR-ARENA-SERIALS \ arena generation serials reached their ceiling
+-6659 constant E-IR-ARENA-STATE   \ persisted arena state failed its consistency recheck
+
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST
 -6799 constant E-CID-LAST
