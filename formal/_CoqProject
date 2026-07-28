@@ -8,3 +8,4 @@ Common/IdAllocator.v
 Common/IdLaws.v
 Common/IdAllocatorLaws.v
 Common/Effects.v
+Common/Control.v
