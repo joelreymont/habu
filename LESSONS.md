@@ -2636,3 +2636,30 @@ fits.
 - **Give each lane a private scratch subdirectory.** Two workers wrote generic
   artifact names into the shared scratchpad and one clobbered the other's
   evidence mid-run. Name the directory after the lane in the brief.
+- **Ask what breaks if the check is violated, before making the check
+  rigorous.** An AOT gate asserted that exactly 69 named definitions lived in
+  a module, comparing a literal against a counter those same rows incremented
+  — self-satisfying. The fix looked like proving a real bijection over the
+  live dictionary interval, and that revision was sound. It was also the wrong
+  artifact: adding a private helper to a private package violates nothing the
+  lexical wrapper, the ownership gate, the public-surface test and the AOT
+  gates do not already cover. The census protected a MIGRATION invariant
+  ("everything moved into the package"), true the day packaging landed and
+  baggage every day after. Deletion was the fix. Before strengthening any
+  census-shaped check, ask what breaks when it fails; if the answer is
+  "nothing that is not already caught structurally", delete it however sound
+  its arithmetic.
+- **Search for an existing frozen design before writing a new one.** A tensor
+  ownership design was drafted, reviewed, and rejected twice before a survey
+  found that `.blackboard/gpt2-forward-leaf-design-20260727.md` had already
+  frozen the answer for weights — a linear owner with non-linear views into
+  it, and a byte-owner copy word because quotations are not closures and
+  cannot transport a destination. The genuine residue was activations, a much
+  narrower question. The pre-mint search gate must cover frozen design
+  documents in `.blackboard`, not only dots and code.
+- **A review answers the question it was given.** An implementation was
+  accepted against "does this preserve the accepted behavior" while being
+  simultaneously unmergeable, because its stack had drifted from master and
+  dropped manifest rows master had gained. Both verdicts were right about
+  different axes. Any review that could precede a merge must also check base
+  currency, since master-always-green is a property of the exact rebased tree.
