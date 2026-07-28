@@ -34,6 +34,9 @@ formal/**/*.vos
 formal/**/*.glob
 formal/**/*.aux
 formal/.lia.cache
+# `lia` writes its cache into the working directory; the parity gate in
+# test/compiler/ir-id-proof.f compiles the proofs from the repository root.
+/.lia.cache
 formal/Makefile.rocq
 formal/Makefile.rocq.conf
 formal/.Makefile.rocq.d

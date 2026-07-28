@@ -319,3 +319,9 @@ public
 -6700 constant E-CID-FAMILY   \ the live checker type-family registry does not match the frozen identity family manifest
 -6701 constant E-CID-TOKEN    \ a canonical manifest token holds a byte outside the printable non-space alphabet
 -6702 constant E-CID-ROW      \ a schema vector row index or table slot is outside its declared table
+-6703 constant E-CID-LEX      \ the shared source lexer refused the identity source it was asked to read
+-6704 constant E-CID-DEF      \ a named identity definition is missing, duplicated, or unterminated in that source
+-6705 constant E-CID-CONST    \ a named identity constant is missing, duplicated, or not a literal in that source
+-6706 constant E-CID-ROCQ     \ the generated Rocq obligation run did not complete cleanly
+-6707 constant E-CID-AXIOM    \ the observed Rocq assumption set is not the committed expected external-axiom manifest
+-6708 constant E-CID-REPLAY   \ a require replay handed back a module identity the allocator had already issued

@@ -160,6 +160,47 @@ points stay listed.
   barrier-removal and cleanup-reuse mutations, replay, package sealing, private
   allocator-helper absence, later allocator-proof ownership, and exact private
   dictionary ownership coverage for all 26 production raw casts.
+- `test/compiler/ir-id-source.f` — `package COMPILER-ID-SRC`: the structural
+  reader the parity gate uses on a source file. It answers what body a named
+  definition has, what literal a named constant carries, and how often a token
+  run occurs, over the one shared source lexer (`package LINT-LEX`) so a line
+  comment, a parenthesised comment, or a quoted literal can never be read as
+  code; every lookup is exact-or-throw on missing, duplicated, or unterminated
+  input, and it also exposes the raw word tokens for the Rocq declaration
+  inventory.
+- `test/compiler/ir-id-obligations.f` — `package COMPILER-ID-ROCQ`: writes the
+  Rocq obligation source the parity gate makes Rocq prove, out of the frozen
+  schema, the constants read structurally from the production source, and the
+  theorem names in the committed axiom manifest. Each vector row becomes a
+  decision and the exact predicate a rejected row must fail on; the arithmetic
+  and logical readings of the frozen discriminator cell are both recorded with
+  two lemmas confining their disagreement to cells the packer cannot produce;
+  and the allocator's guard-before-add, compare-and-swap and retry transitions
+  are pinned. Nothing in it is transcribed, so the two sides read one artifact.
+- `test/compiler/ir-id-proof.f` — the compiler identity parity gate, reopening
+  `package COMPILER-ID-PROOF`. It checks the committed digest, runs the
+  structural reader against hostile sources, freezes the production allocator,
+  packing and scalar bodies and constants, runs every vector row through the
+  public `IR-ID` words, drives the checker's wrong-family refusals, inventories
+  what the four proof files declare, compiles the proofs and the generated
+  obligations, compares the reported assumption set against the committed
+  manifest as a whole, rebuilds the committed assumptions report, and runs the
+  replay fixture in both its arms.
+- `test/compiler/ir-id-replay.f` — child load-path fixture for require replay:
+  it keeps the first module identity, replays the require across an include-state
+  reset, and refuses any later identity that repeats it. With
+  `HABU_IR_ID_REPLAY_FORCE` set it also asks for the production source outright,
+  which the package seal must refuse.
+- `test/compiler/ir-id-axioms.txt` — the committed expected external-assumption
+  manifest: one row per proved statement in the four identity proof files, in
+  declaration and build order, with `closed` or the exact axiom lines Rocq
+  prints. The gate reads the theorem names from it and compares Rocq's answer
+  against it entire, not as a subset.
+- `docs/compiler-id-assumptions.md` — the committed compiler-identity
+  assumptions report: the frozen digest, how many statements are bound, how many
+  are closed, how many rest on an external assumption, how many are admitted,
+  and the whole external assumption set with what it means. The gate rebuilds it
+  and compares byte for byte.
 - `formal/` — Rocq machine-checked model of that identity design, kept beside
   the Habu tests as the proof-level companion. Everything under it is built by
   one entry point and no build output is committed.

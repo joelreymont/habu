@@ -1,0 +1,213 @@
+# Expected external assumptions for the compiler identity proofs.
+#
+# One row per proved statement in formal/Common/Ids.v, IdAllocator.v, IdLaws.v
+# and IdAllocatorLaws.v, in the order those files declare them and in the order
+# formal/_CoqProject builds them. `closed` is Rocq reporting "Closed under the
+# global context". An `axiom` row is one external assumption, written exactly as
+# Rocq prints it.
+#
+# The parity gate in test/compiler/ir-id-proof.f uses this file twice. It reads
+# the theorem names out of it and asks Rocq for the assumptions of each, then
+# compares what Rocq answered against this file as a whole - not as a subset,
+# and in this order. It also walks the four proof sources structurally and
+# requires the statements declared there to be exactly these names, so a new
+# theorem cannot arrive unbound and a removed one cannot go unnoticed.
+#
+# Lines starting with `#`, and blank lines, are commentary. Everything else is
+# compared byte for byte.
+
+theorem Habu.Common.Ids.cell_min_exact
+closed
+theorem Habu.Common.Ids.cell_max_exact
+closed
+theorem Habu.Common.Ids.serial_max_exact
+closed
+theorem Habu.Common.Ids.local_max_exact
+closed
+theorem Habu.Common.Ids.width_constants_exact
+closed
+theorem Habu.Common.Ids.cell_bounds_decide
+closed
+theorem Habu.Common.Ids.serial_bounds_decide
+closed
+theorem Habu.Common.Ids.local_bounds_decide
+closed
+theorem Habu.Common.Ids.scalar_bounds_decide
+closed
+theorem Habu.Common.Ids.scalar_constructors_decide
+closed
+theorem Habu.Common.Ids.pack_word_bounds
+closed
+theorem Habu.Common.Ids.pack_inputs_decide
+closed
+theorem Habu.Common.Ids.projections_decide
+closed
+theorem Habu.Common.Ids.packed_values_decide
+closed
+theorem Habu.Common.Ids.checks_decide
+closed
+theorem Habu.Common.Ids.typed_source_decide
+closed
+theorem Habu.Common.IdAllocator.cell_is_aligned
+closed
+theorem Habu.Common.IdAllocator.zero_is_initial_not_serial
+closed
+theorem Habu.Common.IdAllocator.serial_edges
+closed
+theorem Habu.Common.IdAllocator.bad_cells_reject
+closed
+theorem Habu.Common.IdAllocator.cas_hit
+closed
+theorem Habu.Common.IdAllocator.cas_miss
+closed
+theorem Habu.Common.IdAllocator.initial_issue
+closed
+theorem Habu.Common.IdAllocator.stale_retry
+closed
+theorem Habu.Common.IdAllocator.exhausted_before_add
+closed
+theorem Habu.Common.IdAllocator.out_of_domain_has_no_next
+closed
+theorem Habu.Common.IdAllocator.stale_interleaving
+closed
+theorem Habu.Common.IdLaws.serial_valid_bounds
+closed
+theorem Habu.Common.IdLaws.local_valid_bounds
+closed
+theorem Habu.Common.IdLaws.scalar_in_range
+closed
+theorem Habu.Common.IdLaws.count_scalar_id
+closed
+theorem Habu.Common.IdLaws.pool_off_scalar_id
+closed
+theorem Habu.Common.IdLaws.count_roundtrip
+closed
+theorem Habu.Common.IdLaws.pool_off_roundtrip
+closed
+theorem Habu.Common.IdLaws.local_mask_identity
+closed
+theorem Habu.Common.IdLaws.shifted_local_mask_zero
+closed
+theorem Habu.Common.IdLaws.shifted_local_disjoint
+closed
+theorem Habu.Common.IdLaws.pack_as_sum
+closed
+theorem Habu.Common.IdLaws.pack_within_signed_cell
+closed
+theorem Habu.Common.IdLaws.owner_pack
+closed
+theorem Habu.Common.IdLaws.local_pack
+closed
+theorem Habu.Common.IdLaws.pack_injective
+closed
+theorem Habu.Common.IdLaws.pack_projection_roundtrip
+closed
+theorem Habu.Common.IdLaws.owner_as_div
+closed
+theorem Habu.Common.IdLaws.local_as_mod
+closed
+theorem Habu.Common.IdLaws.projection_pack_roundtrip
+closed
+theorem Habu.Common.IdLaws.distinct_valid_owners_separate
+closed
+theorem Habu.Common.IdLaws.try_pack_rejects_negative
+closed
+theorem Habu.Common.IdLaws.try_pack_rejects_overflow
+closed
+theorem Habu.Common.IdLaws.check_rejects_equal_bound
+closed
+theorem Habu.Common.IdLaws.check_rejects_foreign_owner
+closed
+theorem Habu.Common.IdLaws.negative_local_rejects_exact
+closed
+theorem Habu.Common.IdLaws.equal_bound_rejects_exact
+closed
+theorem Habu.Common.IdLaws.overflow_local_rejects_exact
+closed
+theorem Habu.Common.IdLaws.foreign_owner_rejects_exact
+closed
+theorem Habu.Common.IdLaws.mutation_cell_width_falsifies_max_pack_fit
+closed
+theorem Habu.Common.IdLaws.mutation_serial_width_falsifies_max_serial_fit
+closed
+theorem Habu.Common.IdLaws.mutation_local_width_falsifies_max_local_fit
+closed
+theorem Habu.Common.IdLaws.mutation_shift_falsifies_owner_projection
+closed
+theorem Habu.Common.IdLaws.mutation_mask_falsifies_local_projection
+closed
+theorem Habu.Common.IdLaws.mutation_owner_eq_falsifies_foreign_rejection
+closed
+theorem Habu.Common.IdLaws.mutation_strict_bound_falsifies_equal_rejection
+closed
+theorem Habu.Common.IdLaws.count_trunc_fails
+closed
+theorem Habu.Common.IdLaws.pool_off_trunc_fails
+closed
+theorem Habu.Common.IdAllocatorLaws.serial_ok_spec
+closed
+theorem Habu.Common.IdAllocatorLaws.next_serial_some
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_transition
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_success_strict
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_issued_in_domain
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_retry_preserved
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_attempt_exhausted_unchanged
+closed
+theorem Habu.Common.IdAllocatorLaws.exhaustion_before_addition
+closed
+theorem Habu.Common.IdAllocatorLaws.exhaustion_preserves_max_state
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_step_transition
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_step_success_strict
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_trace_laws
+closed
+theorem Habu.Common.IdAllocatorLaws.strictly_sorted_no_duplicates
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_issues_strictly_increase
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_every_issue_in_domain
+closed
+theorem Habu.Common.IdAllocatorLaws.pure_run_unique
+closed
+theorem Habu.Common.IdAllocatorLaws.host_attempt_refines
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_step_refines
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_run_refines
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_attempt_success_strict
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_attempt_retry_preserved
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_step_success_strict
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_run_unique
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_run_every_issue_in_domain
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.host_exhaustion_preserves_max_state
+axiom host_atomic_cas : cas_impl
+axiom atomic_cas_linearizable : cas_linear host_atomic_cas
+theorem Habu.Common.IdAllocatorLaws.weakened_domain_mutation_counterexample
+closed
+theorem Habu.Common.IdAllocatorLaws.success_transition_mutation_counterexample
+closed
+theorem Habu.Common.IdAllocatorLaws.retry_preservation_mutation_counterexample
+closed
+theorem Habu.Common.IdAllocatorLaws.exhaustion_guard_mutation_counterexample
+closed
