@@ -142,7 +142,47 @@ The same two patches applied through `test/pre-trust-defer.f`, which boots child
 engines from an installed `bin/hb`, pass — that contrast is the evidence that the
 defect is in the mirror and not in the checker, the prefix source, or `is`.
 
+### Censusing what the checker actually learned
+
+`is NAME` needs two separate checker rows: the deferred-word row that
+`CHECKER-FIND-ACTIVE-DEFER` reports, and the signature row that
+`CHECKER-DEFINED?` reports. `DRAIN-PRETRUST` is supposed to produce the first
+through `checker-defer` and the second through `trust`. Ask for both by name
+immediately after the bare `DRAIN-PRETRUST` token in `src/core/checker.f`:
+
+    s" NAME dfr=" type s" NAME" CHECKER-FIND-ACTIVE-DEFER .
+    s" sig="      type s" NAME" CHECKER-DEFINED? .
+
+Use the lower-case spelling; the lookup folds the token. Run the same census
+under both engines and compare — an installed `bin/hb` re-reads the prefix from
+disk at boot, so patching `src/core/checker.f` and running any
+`bin/hb --load <file>` prints the native answer without a rebuild.
+
+On 2026-07-28 that census read `dfr=-1 sig=-1` for every pre-trust deferred word
+under the native engine, and under the mirror read `sig=0` for all of them plus
+`dfr=0` for those declared before `: CHECKER-DEFER`. So the mirror's replay of
+`trust` never produces a signature row, while the same `trust` reached from
+`C-CALL-TRUST-PEND` on the ordinary declaration path does. Splitting the two rows
+is what localises the defect to one half of the replay loop; asking only
+`CHECKER-FIND-ACTIVE-DEFER` gives a partial answer that looks like a
+declaration-order rule and is not one.
+
 ### Reading the replay from inside the engine
+
+Instrumenting `src/core/checker.f` changes what `test/bootstrap-wide-memory.fs`
+measures, so `tools/bootstrap.sh` then stops in its first gate with `bootstrap
+wide memory mismatch` and never reaches the stage0 run. Instrumented runs must
+therefore skip the launcher and build the seed directly. The seed is exactly the
+file `tools/bootstrap.sh` writes to `$HB_TMP/stage2-src`, minus the boot-hide
+prologue that its native-mode pass prepends — drop every line through
+`s" IMK-NDICT0" s" SEQ" BOOT-HIDE-DICT-FROM-EARLIEST`. Build and boot it with:
+
+    HABU_TARGET=<target> gforth -e 'require test/nf.fs s" <seed>" slurp-file s" <out>" FORTH-BUILD-EXE bye'
+    HB_TMP=<dir> <out> -- <dir>
+
+A boot that reaches `stage2: cannot open source` (exit 74) got through the whole
+prefix; that message is success for this purpose.
+
 
 The pending table and its replay are assembly in both engines, so ordinary
 `type`/`.` probes cannot reach them. Two techniques cover it without
