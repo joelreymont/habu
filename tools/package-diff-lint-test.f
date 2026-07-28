@@ -497,6 +497,71 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-OLD-SIDE-ROW
    TEST-ROW-QUOTE-DEFECT ;
 
+\ ---- paren-named definitions and nameless definers ---------------------------
+\ A word may legitimately be NAMED with a leading paren - src/habu/habu1.f
+\ defines `: (CMP) ( n -- ) ... ;` - so the lexer hands `(CMP)` over as the
+\ definition name and a packaged paren-named definition lints clean. Before the
+\ standalone-`(` rule the name lexed as a comment, the definer had no name, and
+\ every diff touching that file was refused as a broken artifact.
+: TEST-PAREN-NAMED-DEFINITION ( -- )
+   TEST-SOURCE-RESET
+   s" package PARENPKG" TEST-SOURCE-LINE
+   s" : (CMP) ( n -- ) drop ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/paren-name.f" TEST-ADD-SOURCE-SECTION
+   s" a definition named with a leading paren keeps its package owner" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+\ A definer whose name never arrives - the definer stands at the end of the
+\ scan, or a comment follows it - is a defect of the FILE, not of the diff
+\ artifact, so it must carry its own source-defect code and never the artifact
+\ code E-DIFF-SYNTAX.
+: TEST-NONAME-AT-END ( -- )
+   TEST-SOURCE-RESET
+   s" package NONAME" TEST-SOURCE-LINE
+   s" : OK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" :" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/noname-end.f" TEST-ADD-SOURCE-SECTION
+   s" a definer at the end of the scan is a named source defect" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-NONAME TTHROWSQ ;
+
+: TEST-NONAME-BEFORE-COMMENT ( -- )
+   TEST-SOURCE-RESET
+   s" : ( n -- ) drop ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" test/noname-comment.f" TEST-ADD-SOURCE-SECTION
+   s" a definer followed by a comment is a named source defect" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-NONAME TTHROWSQ ;
+
+: TEST-WRITE-NONAME-OLD-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" package NONAME" TEST-SOURCE-LINE
+   s" : OK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" test/noname-old.f" TEST-WRITE-SOURCE ;
+
+\ The deleted nameless definer exists only in the reconstructed old source, so
+\ this reaches OLD-START-DEFINITION and never START-DEFINITION.
+: TEST-NONAME-OLD-DIFF ( -- )
+   s" test/noname-old.f" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,3 @@" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" package NONAME" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" : OK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   TEST-SPACE-C TEST-DIFF-C s" ;package" TEST-DIFF+ TEST-LF
+   TEST-MINUS-C TEST-DIFF-C s" : ( -- n )" TEST-DIFF+ TEST-LF ;
+
+: TEST-OLD-SIDE-NONAME ( -- )
+   TEST-WRITE-NONAME-OLD-SOURCE
+   TEST-DIFF-RESET TEST-NONAME-OLD-DIFF
+   s" a nameless definer in the reconstructed old source rejects too" T-LABEL
+   [: TEST-RUN-DIRECT ;] E-PKGDIFF-NONAME TTHROWSQ ;
+
+: TEST-PAREN-NAMES ( -- )
+   TEST-PAREN-NAMED-DEFINITION
+   TEST-NONAME-AT-END
+   TEST-NONAME-BEFORE-COMMENT
+   TEST-OLD-SIDE-NONAME ;
+
 : TEST-ADD-WHOLE-CORE-EXEMPTION ( ptr u8 n ptr u8 n -- ) {: name:ptr nameu:n path:ptr pathu:n :}
    name nameu TEST-GLOBAL-SOURCE
    path pathu TEST-ADD-SOURCE-SECTION ;
@@ -1627,6 +1692,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DEFINER-INVENTORY
    TEST-REGISTRY-LANGUAGE
    TEST-REGISTRY-ROWS
+   TEST-PAREN-NAMES
    TEST-CORE-EXEMPTIONS
    TEST-OPTION-GLOBAL
    TEST-GRAMMAR-FIXTURES

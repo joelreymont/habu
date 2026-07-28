@@ -401,6 +401,35 @@ variable REG-I
    0 LINT-LEX:TOKEN s" :" ASSERT$
    6 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
+\ Standard Forth opens a `( ... )` comment only at a standalone `(` word: the
+\ byte after the `(` is whitespace or end of input. A word whose name merely
+\ STARTS with a paren - `(CMP)` in src/habu/habu1.f - is an ordinary WORD, in
+\ definition-name position and in call position alike. A bare `(` with nothing
+\ after it is still a comment opener that ends at end of input. This mirrors
+\ src/habu/verify-source.f NEXT, which opens a comment only for the length-1
+\ token `(`.
+: TEST-LEXER-PAREN-WORD ( -- )
+   s" : (CMP) ( n -- ) drop ;" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    0 LINT-LEX:TOKEN s" :" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    1 LINT-LEX:TOKEN s" (CMP)" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  n -- " ASSERT$
+   3 LINT-LEX:TOKEN s" drop" ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   s" (SQ) dup ((X) over" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 4 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    0 LINT-LEX:TOKEN s" (SQ)" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    2 LINT-LEX:TOKEN s" ((X)" ASSERT$
+   3 LINT-LEX:TOKEN s" over" ASSERT$
+   s" dup (" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 LINT-LEX:TOKEN s" dup" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 1 LINT-LEX:TOKEN s" (" ASSERT$
+   1 LINT-LEX:CONTENT nip 0 ASSERT= ;
+
 \ Escaped-quote spans: the S\" opener treats \" as literal text, the plain s"
 \ opener does not. The token that follows each literal pins where it closed, so
 \ neither can be satisfied by counting quotes.
@@ -546,6 +575,17 @@ variable REG-I
    4 LINT-LEX:TOKEN s" ;" ASSERT$
    OPENER-IN-COMMENT-ROW$ LINT-LEX:SOURCE
    ASSERT-ONE-ROW ;
+
+\ The standalone-`(` rule holds inside a row body too: a field that merely
+\ starts with a paren is a field, not an inert comment. The first fixture is
+\ the differential - a lexer that opened a comment at `(X` would run to end of
+\ input looking for `)` and report the row malformed. The second pins that a
+\ real standalone `( ... )` in a row body stays inert.
+: TEST-ROW-PAREN-FIELD ( -- )
+   ROW-RESET  s" PRIM: FOO (X PE-N PRIM;" ROW+
+   LEX-ROW  ASSERT-ONE-ROW
+   ROW-RESET  s" PRIM: FOO ( inert ) PE-N PRIM;" ROW+
+   LEX-ROW  ASSERT-ONE-ROW ;
 
 \ Openers and closers spelled in a top-level comment or string body never reach
 \ the row scanner at all, so no registry token appears and the paren comment
@@ -706,13 +746,15 @@ variable REG-I
 \ the `ENUM` row leaves 3. Both deletions have the same cause: the global ENUM
 \ keyword is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN now, so
 \ it needs no axiom of its own, and the metadata-only `checker-defenum` entry it
-\ used went with it.
+\ used went with it. The three `CHECKER-AUTH-PACKAGE*` package-authority axioms
+\ (commit "Harden package authority") and the `TRUST-RAW` axiom (the raw-storage
+\ seal) then moved src/core/checker.f from 333 to 337.
 : TEST-REAL-REGISTRY-FILES ( -- )
    s" src/core/checker.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   REG-COUNT 333 ASSERT=
+   REG-COUNT 337 ASSERT=
    \ Line 5116's `PRIM: s"` row is the one that broke the old lexer: its name is a
    \ live string opener, so the word path consumed source through the quote in the
    \ next row. Name that row and pin that it is one token ending at its own closer.
@@ -771,6 +813,7 @@ variable REG-I
    TEST-SIGS
    TEST-LEXER
    TEST-LEXER-NO-ERROR
+   TEST-LEXER-PAREN-WORD
    TEST-LEXER-ESC-QUOTE
    TEST-LEXER-UNTERM-QUOTE
    TEST-LEXER-REUSE-AFTER-ERROR
@@ -778,6 +821,7 @@ variable REG-I
    TEST-ROW-STRING-BODY
    TEST-ROW-PARSED-OPERAND
    TEST-ROW-COMMENTS-INERT
+   TEST-ROW-PAREN-FIELD
    TEST-ROW-FAKE-IN-COMMENT-AND-STRING
    TEST-ROW-PRIVATE-CLOSER
    TEST-ROW-CASE-FOLD

@@ -174,8 +174,12 @@ private
    s" PRIM: HIDDEN PE-N PE-IN PRIM;" LINT-LEX:SOURCE ALL-INERT
    s" :" LINT-LEX:SOURCE
    0 LINT-DEF:NAME-I NONE?
-   s" : (COMMENT-NAME) ;" LINT-LEX:SOURCE
+   \ A standalone `(` after the definer is a comment, so the name is missing;
+   \ a word merely NAMED with a leading paren (habu1.f's `(CMP)`) is the name.
+   s" : ( n -- ) ;" LINT-LEX:SOURCE
    0 LINT-DEF:NAME-I NONE?
+   s" : (PAREN-NAME) ;" LINT-LEX:SOURCE
+   0 LINT-DEF:NAME-I 1 SOME=
    s" : NEAR ;" LINT-LEX:SOURCE
    0 LINT-DEF:DIRECT-KIND LINT-DEF:COLON T=
    2 LINT-DEF:SUMTYPE LINT-DEF:CLOSE? TFALSE

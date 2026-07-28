@@ -515,8 +515,13 @@ create RAW-NAME-BUF 64 allot
       RFL:COUNT-STR-AT 1 T=
    s" test/compiler-ir-mutation.f" s" package"
       RFL:COUNT-STR-AT 1 T=
-   s" test/compiler-ir-mutation.f" s" package IR private : (COMMENT-NAME) ; ;package"
+   \ A standalone `(` after the definer is a comment, so the definer lacks its
+   \ atomic name operand; a word merely NAMED with a leading paren (habu1.f's
+   \ `(CMP)`) IS that operand, so the paren-named definition is well-formed.
+   s" test/compiler-ir-mutation.f" s" package IR private : ( n -- ) ; ;package"
       RFL:COUNT-STR-AT 1 T=
+   s" test/compiler-ir-mutation.f" s" package IR private : (COMMENT-NAME) ; ;package"
+      RFL:COUNT-STR-AT 0 T=
    s" test/compiler-ir-mutation.f" s" package IR ( unterminated"
       RFL:COUNT-STR-AT 1 T= ;
 

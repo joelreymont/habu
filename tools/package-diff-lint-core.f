@@ -67,6 +67,11 @@ private
 \ stop the load rather than silently drop the row and quietly stop admitting the
 \ suite it belongs to.
 -4806 constant E-PKGDIFF-ROWTAB  \ a fixture row, or a row index, fell outside the table
+\ A definer whose name never arrives - the definer token stands at the end of
+\ the scan, or the next token is not a WORD (a comment, say) - is a defect of
+\ the FILE being linted, not of the diff artifact, so it must not be reported
+\ as E-DIFF-SYNTAX either.
+-4807 constant E-PKGDIFF-NONAME  \ a definition-opening token has no name word after it
 
 create NUM NUM-CAP allot
 create ONE 1 allot
@@ -831,7 +836,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 : START-DEFINITION ( n n -- ) {: k:n kind:n :}
    k LINT-DEF:NAME-I
    MATCH option
-      none OF E-DIFF-SYNTAX throw ENDOF
+      none OF E-PKGDIFF-NONAME throw ENDOF
       some OF {: namei:n :}
          kind DEF-KIND !
          k DEF-DEFINER-I !
@@ -928,7 +933,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 : OLD-START-DEFINITION ( n n -- ) {: k:n kind:n :}
    k LINT-DEF:NAME-I
    MATCH option
-      none OF E-DIFF-SYNTAX throw ENDOF
+      none OF E-PKGDIFF-NONAME throw ENDOF
       some OF {: namei:n :}
          kind LINT-DEF:DATA = if
             namei 1+ LEX-I !

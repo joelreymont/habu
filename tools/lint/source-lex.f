@@ -246,6 +246,20 @@ private
 : CUR$ ( -- ptr u8 n )
    SRC@ START @ + POS @ START @ - ;
 
+: NEXT-END? ( -- bool )
+   POS @ 1+ SRC-U @ >= ;
+
+: NEXT-C ( -- n )
+   SRC@ POS @ 1+ + c@ ;
+
+\ Standard Forth recognises `(` as the comment word only when it stands alone:
+\ the byte after it is whitespace or end of input. A word legitimately NAMED
+\ with a leading paren, such as `(CMP)`, is an ordinary WORD token.
+: PAREN-OPEN? ( -- bool )
+   CUR 40 <> if LINT-FALSE exit then
+   NEXT-END? if LINT-TRUE exit then
+   NEXT-C LINT-WS? ;
+
 : PAREN-COMMENT ( -- )
    ADV drop
    POS @ CSTART !
@@ -291,6 +305,13 @@ private
    TO-PAREN
    END? 0= if ADV drop then ;
 
+\ The standalone-`(` rule again, but with the engine delimiter set: row fields
+\ separate on every byte below 33, so that is what makes a row-body `(` alone.
+: ROW-PAREN? ( -- bool )
+   CUR 40 <> if LINT-FALSE exit then
+   NEXT-END? if LINT-TRUE exit then
+   NEXT-C RAW-WS? ;
+
 \ A row body is interpreted text, so `\` and `( ... )` inside it are comments and
 \ a closer spelled inside one is not a closer.
 : SKIP-INERT ( -- )
@@ -298,7 +319,7 @@ private
       SKIP-RAW-WS
       END? if exit then
       CUR 92 = if LINE-COMMENT else
-         CUR 40 = if ROW-PAREN else exit then
+         ROW-PAREN? if ROW-PAREN else exit then
       then
    again ;
 
@@ -463,7 +484,7 @@ public
       else
          POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
          CUR 92 = if LINE-COMMENT
-         else CUR 40 = if PAREN-COMMENT
+         else PAREN-OPEN? if PAREN-COMMENT
          else SCAN-WORD then then
       then
    repeat ;
