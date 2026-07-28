@@ -354,7 +354,7 @@ public
 -6675 constant E-IR-SYM-LEN       \ a negative symbol byte length at intern
 -6676 constant E-IR-SYM-RANGE     \ a destination span smaller than the symbol being copied
 
-\ Compiler type table (package IR-TYPE): -6680..-6699
+\ Compiler type table (package IR-TYPE): -6680..-6690
 -6680 constant E-IR-TYPE-STATE    \ a type store failed its header, row-shape, span, or stored-reference recheck
 -6681 constant E-IR-TYPE-OWNER    \ a module key, type-id, or store pairing this type table does not own
 -6682 constant E-IR-TYPE-BOUND    \ a type reference at or past the constructed count: forward references are impossible
@@ -366,6 +366,18 @@ public
 -6688 constant E-IR-TYPE-ARITY    \ a staged parameter or result list past the committed arity ceiling
 -6689 constant E-IR-TYPE-KIND     \ a field reader applied to a type of a different kind
 -6690 constant E-IR-TYPE-RANGE    \ a render span smaller than the rendered type text
+
+\ Compiler attribute table (package IR-ATTR): -6691..-6699, completing the
+\ -6600..-6699 shared compiler IR block.
+-6691 constant E-IR-ATTR-STATE    \ an attribute store failed its header, row-shape, payload, window, or stored-reference recheck
+-6692 constant E-IR-ATTR-OWNER    \ a module key, attr-id, referenced id, or store pairing this attribute table does not own
+-6693 constant E-IR-ATTR-BOUND    \ an attribute reference or element index at or past the constructed count
+-6694 constant E-IR-ATTR-CAP      \ a row or pool capacity outside the accepted range, or a construction past a committed ceiling
+-6695 constant E-IR-ATTR-KIND     \ a field reader applied to an attribute of a different kind or enum family
+-6696 constant E-IR-ATTR-STAGE    \ staged-list misuse: a wrong or missing begin/end pairing, or a staged list past the ceiling
+-6697 constant E-IR-ATTR-VALUE    \ a malformed payload: a negative string length or a duplicate record key
+-6698 constant E-IR-ATTR-TARGET   \ an enum attribute stating a target fact the bound contract contradicts
+-6699 constant E-IR-ATTR-RANGE    \ a destination span smaller than the copied or rendered text
 
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST

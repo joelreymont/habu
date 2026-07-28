@@ -137,6 +137,23 @@ points stay listed.
   and PTX bindings, forward/foreign/cross-context reference rejects, stage
   misuse, capacity, reader projections, render fixtures, forged-row rejects,
   frozen-view reads, teardown, and checker-seal candidates.
+- `src/compiler/ir/attr.f` — `package IR-ATTR`: the per-module attribute table
+  (design section 6.3) on two context-owned IR-ARENA arenas (fixed five-cell
+  rows plus a payload pool for string bytes, list cells, and record pairs): a
+  closed ENUM of the design's attribute kinds, payloads validated at
+  construction against the module's own symbol interner and type table,
+  numeric-policy and target enum attributes owned by CNUM's vocabulary and the
+  context's bound contract, structural interning on the complete field set,
+  canonically sorted record keys with duplicate rejection, staged integer-list
+  and record protocols, and a deterministic diagnostic renderer.
+- `test/compiler/ir-attr.f` — acceptance suite for the attribute table:
+  per-kind interning with one fixture varying exactly one field, construction
+  order independence, payload and duplicate-key rejects, symbol/type/value
+  reference validation, foreign-module and cross-context rejects, target
+  attributes rejected against a contradicting binding and accepted on the
+  binding that states them, stage misuse, capacity, reader projections, render
+  fixtures, forged-row rejects, frozen-view reads, teardown, and checker-seal
+  candidates.
 - `src/compiler/digest.f` — `package CDIGEST`: the canonical preimage encoding
   (eight-byte little-endian slots, slot 0 a domain-separation tag owned here,
   slot 1 the producer's schema version) and the SHA-256 over it that gives every
