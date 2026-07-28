@@ -45,3 +45,5 @@ exports, while unrelated or global same-tail role APIs such as global
 `COUNT>N` remain distinct. No `IR-RAW` package is introduced.
 
 Claim: agent=ir0 workspace=.jj-ws/habu-add-compiler-ir-21e976fc branch=ir0
+
+Update 2026-07-28 (orchestrator, suite-red mapping): the live E-CAST-OWNER 7135 rejection currently reds three maki suite phases via maki/extent.f:71 (CAST: IX>N) and :242 (CAST: >RED) inside package MAKI — maki/sampling-test.f, maki/db/artifact-test.f, and maki/eval/train.f all die rc=7135. The downstream maki cast-declaration repair (making extent.f's family casts satisfy the declaring-package authentication, or moving the cast declarations to the family's declaring package) is part of this dot's acceptance: the three maki phases must be green before it closes.
