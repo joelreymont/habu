@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -2700,3 +2700,22 @@ fits.
   changing the tree will manufacture a green composition out of nothing;
   verify by content, never by exit status, when applying a patch across
   workspaces.
+- **When you find one untested copy path, sweep for its siblings.** A review
+  pass found that the type-family record's growth path copied a newly added
+  cell with no test — the one-cell-short mutation survived green — and fixed
+  it. An independent reviewer then found the *same* defect one layer over: the
+  rollback-frame arena has its own growth path, its own newly added last cell
+  (`TFRB.OWNLO`), and the same untested copy, and its one-cell-short mutant
+  also survived both suites. Two arenas, two growth paths, one habit of
+  checking only the one that failed first. Adding a cell to any record means
+  auditing every path that copies that record — growth, persistence, snapshot,
+  rollback — not just the path whose absence happened to be noticed.
+- **A cleanup that deletes a gate must delete the instructions requiring it,
+  in the same change.** Removing a lint and its manual index left the
+  operating contract naming that gate as blocking for every master merge, so
+  the documented merge procedure became unperformable while every test stayed
+  green. Stale prose is usually a hygiene item; prose that *instructs* is part
+  of the contract, and a deletion that leaves it behind is not atomic no
+  matter how clean the code side looks. Note also that the agent instruction
+  files may be symlinks to one another — check before "also updating" the
+  other one, since that is the same write and can replace a link with a file.
