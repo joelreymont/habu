@@ -345,6 +345,15 @@ public
 -6666 constant E-IR-SRC-LEN       \ a negative source byte length at registration
 -6667 constant E-IR-SRC-ROOT      \ an origin read on a root source, which has none
 
+\ Compiler symbol interner (package IR-SYM): -6670..-6679
+-6670 constant E-IR-SYM-STATE     \ a symbol store failed its header, row-shape, or byte-span recheck
+-6671 constant E-IR-SYM-OWNER     \ a module key, symbol-id, or store pairing this interner does not own
+-6672 constant E-IR-SYM-BOUND     \ a symbol-id whose ordinal is at or past the interned count
+-6673 constant E-IR-SYM-CAP       \ a symbol capacity outside the accepted range, or an intern past it
+-6674 constant E-IR-SYM-BYTES     \ a byte capacity outside the accepted range, or bytes past the committed ceiling
+-6675 constant E-IR-SYM-LEN       \ a negative symbol byte length at intern
+-6676 constant E-IR-SYM-RANGE     \ a destination span smaller than the symbol being copied
+
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST
 -6799 constant E-CID-LAST
