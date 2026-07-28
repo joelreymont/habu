@@ -1,9 +1,11 @@
 ---
 title: Seal SAFET and SAFET-MAP wordlists
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T15:14:19.159166+02:00"
+closed-at: "2026-07-28T17:14:27.164299+02:00"
+close-reason: "Landed in source commit 0f0e75fbfbf039d6841ba67dfc549a203e9886f7 on master: both SAFET and SAFET-MAP wordlists protected with six independent child probes (private set-current, bare package open, qualified publication per package) and a one-to-one protection-line mutation matrix; verified by independent review and destruction review."
 ---
 
 Problem: SAFET and SAFET-MAP remain mutable after publication because their
@@ -44,5 +46,3 @@ second commit may then add the bounded read against packages whose publication
 boundary is already closed.
 
 Verify: `bin/hb --load maki/infer/safetensors-test.f`.
-
-Claim: agent=claude workspace=.jj-ws/habu-add-bounded-little-189c4aa9
