@@ -319,6 +319,10 @@ SUITE array-helpers
    lib/array-test.f
 ;SUITE
 
+SUITE adt-option
+   lib/adt/option-test.f
+;SUITE
+
 SUITE adt-result
    lib/adt/result-test.f
 ;SUITE

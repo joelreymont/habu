@@ -23,7 +23,7 @@
 \ option<ptr a> is an instantiation of that one family, so it stays well under
 \ the protected-WID public-family cap.
 
-SUMTYPE option 1
-  VARIANT none    ;VARIANT
-  VARIANT some a  ;VARIANT
-;SUMTYPE
+ENUM option 1
+  VARIANT none ;VARIANT
+  VARIANT some FIELD value a ;VARIANT
+;ENUM

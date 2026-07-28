@@ -191,11 +191,14 @@ deleted or moved boundary still loses ownership; adding a complete block whose
 opener and closer both arrive together moves nothing in or out of a package and
 stays clean.
 
-Two packaged implementation files each receive one narrower name exception:
-only `DEFTYPE` may be global in `lib/type/deftype.f`, and only `STRUCTURE` may be
-global in `src/core/structure-decl.f`. Any unrelated global definition in those
-files still fails. The hostile fixtures pin every exception and also prove that
-a nearby core path is not implicitly exempt.
+Four declarations receive narrower exact-definition exceptions: only `DEFTYPE`
+may be global in `lib/type/deftype.f`, only `STRUCTURE` may be global in
+`src/core/structure-decl.f`, only `ENUM` may be global in
+`src/core/enum-decl.f`, and only the unified `ENUM option` declaration may be
+global in `lib/adt/option.f`. The OPTION exception matches the exact path,
+definer, and family name; a legacy `SUMTYPE option`, another family in that file,
+or the same declaration in a neighboring file still fails. Hostile fixtures pin
+every exception and prove that nearby paths are not implicitly exempt.
 
 ```forth
 package HB

@@ -2373,7 +2373,8 @@ points stay listed.
 - `lib/vector-test.f` — focused coverage for vector growth, bounds, typed pointer storage, and iteration.
 - `lib/layout/box.f` — boxed-layout record arena (TFAM 16): bump-allocated tag+payload heap records over the mmap allocator, arena free-all ownership.
 - `lib/layout/box-test.f` — focused coverage for box record alloc, tag/payload round-trip, chunk growth, and arena reset.
-- `lib/adt/option.f` — the shared `option<T>` sum family (some value / none), the checked replacement for -1/sentinel returns (switchover wave A); require before consumers.
+- `lib/adt/option.f` — the shared global `option<T>` family, declared through unified full `ENUM` with declaration-order tags `none=0` and `some=1` plus the named `value` payload field; preserves the `OPTION:NONE` and `OPTION:SOME` constructors used by sentinel-free consumers.
+- `lib/adt/option-test.f` — package `OPTION-TEST`: exact constructor-wordlist and checked-effect coverage, live registry shape and role rejection, plus compiled `MATCH` and payload round-trip proof for `option<T>`.
 - `lib/adt/result.f` — the shared `result<ok,err>` sum family (ok value / err value), the checked replacement for value+flag/rc-plus-value returns where the flag distinguishes DIFFERENT errors (switchover wave B); require before consumers.
 - `lib/adt/result-test.f` — focused proof that result<ok,err> constructs (RESULT:OK/ERR), MATCHes both arms, and rejects swapped ok/err payload types.
 - `lib/cad-num-types.f` — package CAD-NUM scalar nominal numeric roles (byte-len, item-count, cell-count, index, byte-off, cell-off, alignment, positive-divisor, alloc-byte-len, alloc-cell-count) plus the on-stack `numeric-result<a>` sum; public checked validators wrap private audited `TRUSTED:` mints (MODEL-CAD-V2-PLAN.md B5.1). UNSEALED: no production entry loads it; sealing/arithmetic are separate dots.

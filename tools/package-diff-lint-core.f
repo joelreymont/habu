@@ -899,6 +899,10 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
    ERR-VOCAB? if true exit then
+   FILE$ s" lib/adt/option.f" LINT-STR= if
+      DEF-DEFINER-I @ s" ENUM" TOK=CI
+      DEF-NAME-I @ s" option" TOK=CI and exit
+   then
    FILE$ s" lib/type/deftype.f" LINT-STR= if
       DEF-NAME-I @ s" DEFTYPE" TOK=CI exit
    then

@@ -151,6 +151,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
 \ stack signature; it names each documented file to the caller-supplied action.
 : SC-MANUAL-TABLE ( [ ptr u8 n -- ] -- ) {: q :}
    \ pure library/unit suites not mirrored into the resident fast tier
+   s" lib/adt/option-test.f" q execute
    s" lib/adt/result-test.f" q execute
    s" lib/engine-id-test.f" q execute
    s" lib/ffi-test.f" q execute

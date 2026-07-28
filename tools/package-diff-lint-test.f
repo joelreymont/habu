@@ -180,6 +180,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" lib/type" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" lib/adt" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" tools" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
@@ -532,6 +534,35 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    1 TEST-EXPECT-FINDINGS
    s" NEARBY-GLOBAL" TEST-GLOBAL-SOURCE
    TEST-DIFF-RESET s" src/core/enum-decl.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-OPTION-SOURCE ( ptr u8 n -- )
+   TEST-SOURCE-RESET
+   s" ENUM " TEST-SOURCE+ TEST-SOURCE+ s"  1" TEST-SOURCE-LINE
+   s"   VARIANT none ;VARIANT" TEST-SOURCE-LINE
+   s"   VARIANT some FIELD value a ;VARIANT" TEST-SOURCE-LINE
+   s" ;ENUM" TEST-SOURCE-LINE ;
+
+: TEST-OPTION-GLOBAL ( -- )
+   s" option" TEST-OPTION-SOURCE
+   TEST-DIFF-RESET s" lib/adt/option.f" TEST-ADD-SOURCE-SECTION
+   s" OPTION is admitted only at its standard-library path" T-LABEL
+   TEST-EXPECT-CLEAN
+   s" optional" TEST-OPTION-SOURCE
+   TEST-DIFF-RESET s" lib/adt/option.f" TEST-ADD-SOURCE-SECTION
+   s" the OPTION path does not admit another ENUM" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" option" TEST-OPTION-SOURCE
+   TEST-DIFF-RESET s" lib/adt/option-neighbor.f" TEST-ADD-SOURCE-SECTION
+   s" a neighboring path does not inherit OPTION admission" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   TEST-SOURCE-RESET
+   s" SUMTYPE option 1" TEST-SOURCE-LINE
+   s"   VARIANT none ;VARIANT" TEST-SOURCE-LINE
+   s"   VARIANT some a ;VARIANT" TEST-SOURCE-LINE
+   s" ;SUMTYPE" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/adt/option.f" TEST-ADD-SOURCE-SECTION
+   s" only the unified OPTION declaration is admitted" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
 \ ---- declaration-grammar fixture suites -------------------------------------
@@ -1597,6 +1628,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-REGISTRY-LANGUAGE
    TEST-REGISTRY-ROWS
    TEST-CORE-EXEMPTIONS
+   TEST-OPTION-GLOBAL
    TEST-GRAMMAR-FIXTURES
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
