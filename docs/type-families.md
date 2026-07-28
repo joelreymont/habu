@@ -1,23 +1,32 @@
 # Habu Type Families and Algebraic Data Types
 
 **Proposed repository path:** `docs/type-families.md`  
-**Status:** PLANNED design — not yet implemented (owning epic `habu-epic-one-structure-04f9804f`)  
+**Status:** PARTLY IMPLEMENTED — the `STRUCTURE`/`ENUM` openers ship; the removals and tombstones do not (owning epic `habu-epic-one-structure-04f9804f`)  
 **Primary goal:** implement generic, efficient, checked algebraic data types in Habu without turning `Result` into a one-off special case.
 
-> **This document is a design specification for a surface that does not yet
-> exist in the shipped engine.** It describes the planned MODEL-CAD-V2 unified
+> **This document is a design specification that the shipped engine has only
+> partly caught up with.** It describes the MODEL-CAD-V2 unified
 > `STRUCTURE … ;STRUCTURE` / `ENUM … ;ENUM` grammar and its
-> `E-REMOVED-TYPE-SYNTAX` tombstones. Neither ships today: loading a `STRUCTURE`
-> declaration fails `E-UNDEFINED: STRUCTURE` (exit 70), and
-> `E-REMOVED-TYPE-SYNTAX` appears nowhere in `src/`. The live composite-type
-> surface is still `NEWTYPE`, `SUMTYPE`, `PRODUCT`, `ENUM`, `VALUE-RECORD`,
-> and `BEGIN-STRUCTURE`; none of them is removed. The single source of truth for
-> what actually ships — including the real error codes and the positional
-> `SUMTYPE` / bare-names `ENUM` split — is [`docs/forth.md`](forth.md)
-> § Structures And Enums. The cutover is owned by epic
-> `habu-epic-one-structure-04f9804f` (implementation chain in
-> `MODEL-CAD-V2-PLAN.md` § 3.1). Everything below specifies that target design in
-> normative voice; read it as "will", not "does".
+> `E-REMOVED-TYPE-SYNTAX` tombstones.
+>
+> The **declaration openers now ship.** `STRUCTURE` is defined in
+> `src/core/structure-decl.f` and `ENUM` in `src/core/enum-decl.f`; the tree
+> holds roughly 71 `STRUCTURE` and 207 `ENUM` declaration sites, and a
+> declaration such as
+> `ENUM zcolor DERIVE eq red green ;ENUM` / `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE`
+> loads clean (exit 0). An earlier version of this banner said loading a
+> `STRUCTURE` declaration fails `E-UNDEFINED: STRUCTURE`; that is no longer true.
+>
+> The **tombstones still do not ship**: `E-REMOVED-TYPE-SYNTAX` appears nowhere
+> in `src/`, and the older composite-type surface — `NEWTYPE`, `SUMTYPE`,
+> `PRODUCT`, `VALUE-RECORD`, and `BEGIN-STRUCTURE` — is all still live and
+> defined. Nothing has been removed. So the cutover described below is partly
+> done: read the grammar sections as current and the removal/tombstone sections
+> as "will", not "does". The single source of truth for what actually ships —
+> including the real error codes and the positional `SUMTYPE` / bare-names `ENUM`
+> split — is [`docs/forth.md`](forth.md) § Structures And Enums. The remaining
+> cutover is owned by epic `habu-epic-one-structure-04f9804f` (implementation
+> chain in `MODEL-CAD-V2-PLAN.md` § 3.1).
 
 ---
 

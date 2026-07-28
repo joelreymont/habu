@@ -522,13 +522,14 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
 - Type, field, and variant names are lowercase; generated and project-defined
   words are uppercase.
 
-No unified `STRUCTURE … ;STRUCTURE` opener exists in the shipped engine. It is
-the planned MODEL-CAD-V2 replacement described in
-[type-families.md](type-families.md) and `MODEL-CAD-V2-PLAN.md`, and is **not yet
-implemented**: loading a `STRUCTURE` declaration fails with
-`E-UNDEFINED: STRUCTURE` (exit 70), not a tombstone. The `E-REMOVED-TYPE-SYNTAX`
-code named by those plan docs exists nowhere in the engine, and none of the
-words above are removed.
+The unified `STRUCTURE … ;STRUCTURE` and `ENUM … ;ENUM` openers **do ship**
+(`src/core/structure-decl.f`, `src/core/enum-decl.f`), and the tree uses them
+widely — around 71 `STRUCTURE` and 207 `ENUM` declaration sites. A declaration
+such as `STRUCTURE zpoint 0 FIELD x n ;STRUCTURE` loads clean. What has *not*
+happened is the removal half of the MODEL-CAD-V2 plan described in
+[type-families.md](type-families.md) and `MODEL-CAD-V2-PLAN.md`: the
+`E-REMOVED-TYPE-SYNTAX` code named by those plan docs exists nowhere in the
+engine, and none of the older words above are removed.
 
 - `PTR-VARIABLE` creates a pointer-valued cell with runtime effect
   `( -- ptr ptr a )`; use it instead of `variable` plus `0 ptr-field` wrappers
