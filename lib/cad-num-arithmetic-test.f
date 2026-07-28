@@ -519,12 +519,35 @@ variable ZERO-BITS
    0 OKIDX 8 OKBL 0 OKBL F32-COMPOSE TTRUE TTRUE TFALSE
    T-MAX-N OKIDX T-MAX-N OKBL 2 OKBL F32-COMPOSE TFALSE TFALSE TFALSE ;
 
+\ ---- pointer advance -----------------------------------------------------------
+\ The advance is called QUALIFIED throughout: `using CAD-NUM` is in scope here and
+\ the raw `BYTE+` primitive shares the tail, so a bare call would be ambiguous.
+\ Byte i of the buffer carries the value i, so the byte read back after advancing
+\ by i IS the offset that was advanced by - a wrong or ignored offset shows up as
+\ a wrong byte rather than as a crash.
+create BP-BUF 16 allot
+
+: BP-FILL ( -- )
+   16 0 ?do  i BP-BUF i + c!  loop ;
+
+: BP-AT ( n -- n ) {: off:n :}
+   BP-BUF off OKBO CAD-NUM:BYTE+ c@ ;
+
+: POINTER-ADVANCE ( -- )
+   BP-FILL
+   0 BP-AT 0 T=                                 \ a zero advance stays put
+   1 BP-AT 1 T=
+   7 BP-AT 7 T=
+   15 BP-AT 15 T= ;                             \ the last byte of the buffer
+
 : STATIC-GOOD ( -- )
    s" GOOD-INDEX-BOUND ( CAD-NUM:index CAD-NUM:item-count -- bool ) CAD-NUM:INDEX-IN-COUNT?"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-INDEX-OFF ( CAD-NUM:index CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-off> ) CAD-NUM:INDEX-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" GOOD-BYTE-BOUND ( CAD-NUM:byte-off CAD-NUM:byte-len -- bool ) CAD-NUM:BYTE-OFF-IN-LEN?"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" GOOD-BYTE-ADVANCE ( ptr u8 CAD-NUM:byte-off -- ptr u8 ) CAD-NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! -1 T= ;
 
 : STATIC-BAD ( -- )
@@ -537,6 +560,16 @@ variable ZERO-BITS
    s" BAD-INDEX-OFF-RESULT ( CAD-NUM:index CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) CAD-NUM:INDEX-BYTE-OFF"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" BAD-INDEX-OFF-RAW ( n n -- CAD-NUM:numeric-result<CAD-NUM:byte-off> ) CAD-NUM:INDEX-BYTE-OFF"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-ADVANCE-RAW-OFF ( ptr u8 n -- ptr u8 ) CAD-NUM:BYTE+"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-ADVANCE-BYTE-LEN ( ptr u8 CAD-NUM:byte-len -- ptr u8 ) CAD-NUM:BYTE+"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-ADVANCE-INDEX ( ptr u8 CAD-NUM:index -- ptr u8 ) CAD-NUM:BYTE+"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-ADVANCE-CELL-OFF ( ptr u8 CAD-NUM:cell-off -- ptr u8 ) CAD-NUM:BYTE+"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-ADVANCE-RAW-PTR ( n CAD-NUM:byte-off -- ptr u8 ) CAD-NUM:BYTE+"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 : STATIC-PRIVATE ( -- )
@@ -547,7 +580,7 @@ variable ZERO-BITS
 
 : RUN ( -- )
    T-RESET
-   INDEX-BOUNDS OFFSET-BOUNDS INDEX-OFFSETS PROPERTIES F32-SHAPE
+   INDEX-BOUNDS OFFSET-BOUNDS INDEX-OFFSETS POINTER-ADVANCE PROPERTIES F32-SHAPE
    STATIC-GOOD STATIC-BAD STATIC-PRIVATE
    T-REPORT ;
 

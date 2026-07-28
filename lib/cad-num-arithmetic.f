@@ -272,6 +272,24 @@ public
    {: v:byte-off a:alignment :}
    v BYTE-OFF>N a ALIGNMENT>N ROUND-UP if drop A-OVER else BYTE-OFF then ;
 
+\ ---- pointer advance over a validated offset -----------------------------------
+\ The one public word here that touches a pointer. Every other CAD-NUM word is
+\ pure arithmetic on roles; this one exists because the byte primitives are
+\ axiomatised on raw numbers (`BYTE+`, `BYTE@`, `BYTE-COPY` all take a bare `n`),
+\ so without it every caller must erase a validated offset through a projection
+\ of its own just to form an address. Publishing the advance here keeps the role
+\ at the boundary and keeps the erasure inside CAD-NUM, next to the algebra that
+\ produced the offset.
+\
+\ IT DOES NOT PROVE BOUNDS. Advancing is not permission to read: nothing in this
+\ word knows the extent the pointer belongs to, and the offset role carries no
+\ extent. The caller must still settle the ordinal question FIRST - typically
+\ ADVANCE-BYTE-OFF for representability then BYTE-OFF-IN-LEN? against the owning
+\ extent - and only advance once that answered yes. The name mirrors the raw
+\ `BYTE+` primitive on purpose: same operation, offset role preserved.
+: BYTE+ ( ptr u8 byte-off -- ptr u8 )
+   BYTE-OFF>N + ;
+
 \ ---- alignment predicates (no overflow/underflow class) -----------------------
 : BYTES-ALIGNED? ( byte-len alignment -- bool )
    {: v:byte-len a:alignment :}
