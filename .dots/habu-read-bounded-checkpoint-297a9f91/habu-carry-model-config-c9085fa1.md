@@ -1,9 +1,11 @@
 ---
 title: Carry model config in gpt2-model
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-28T17:13:41.372373+02:00"
 ---
 
 Why: gpt2-model carries layer-count and config-key copies while every deriving fact lives in the validated MDLCFG:mcfg; GPT2TENSOR:SLOT needs the full mcfg, so tensor reads from a model are impossible without duplicating geometry authority. Exact result, one atomic commit on the landed store cut: gpt2-model becomes { weights WSTORE:store, cfg MDLCFG:mcfg, proof model-proof }; public MODEL-CONFIG ( gpt2-model -- gpt2-model MDLCFG:mcfg ) (mcfg is non-linear and copies exactly as the cfgkey does today); MODEL-LAYER-COUNT and MODEL-CONFIG-KEY are deleted and every caller migrates in the same commit - no derive-or-delete choice and no duplicate geometry or key authority remains. Config transport is frozen: on successful CHECK-MAPPED and CHECK-COPY the already-validated input MDLCFG:mcfg is added to the exact enum payloads mapped-check-result.ready and copy-check-result.ready, and LOAD-MAPPED and LOAD-COPIED consume that mcfg with the ready owner and place it in gpt2-model - the mcfg is never stored in the raw prepared block, never rebuilt from scalars, and no trust is added; every ready MATCH, discard, and load arm migrates atomically in the same commit - a discard arm drops only the non-linear mcfg and releases the owner; the carried config is validated at construction but not semantically unforgeable while sealed destructuring (habu-checker-sealed-destructure-d967fc03) remains open, and this leaf claims no more than that; RELEASE-MODEL's field drops, the four static MAKE/UNMAKE shape pins in gpt2-mapped-test.f, the arity-sensitive UNMAKE in gpt2-payload-test.f, and gpt2-checkpoint-fixture's SAVE-MODEL-CONFIG-KEY all update in the same commit. Owner: package GPT2LOAD in maki/infer/gpt2-load.f. Acceptance: mapped, copied, payload, weight-store suites and both diff lints; a checker negative that the old accessors no longer resolve; model construction impossible without a validated mcfg. Forbidden: keeping either scalar field, a second config authority, public raw accessors, UNMAKE-based scalar rebuild survivals for the deleted accessors.
+
+Claim: agent=claude-gpt2-config workspace=.jj-ws/habu-carry-model-config-c9085fa1
