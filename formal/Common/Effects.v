@@ -18,9 +18,10 @@
      - T-ATOM rigid host identities (region / extent / generation),
      - type families of arity > 0 (layouts, sums, products, `uniform<T>`),
        and with them the hidden-field / logical-bundle machinery,
-     - VALUE-RECORD field cells and their coercion,
-     - the linear-once conservation pass,
-     - control flow, throw edges, and quotation application rules.
+     - VALUE-RECORD field cells and their coercion.
+   Control flow, throw edges, the quotation APPLICATION rules, and the
+   linear-once conservation pass are modelled in `Habu.Common.Control`, which
+   is why `TQuot` below carries the two control flags those rules read.
    Arity-0 nominal families (what `DEFTYPE` mints) ARE modelled, because they
    are named by the signature grammar.
 
@@ -236,12 +237,38 @@ Inductive ty : Type :=
      the bare name docs/effects.md:70 promises. *)
   | TFam : nat -> ty
   | TPtr : ty -> ty                   (* T-PTR:   `ptr t` *)
-  | TQuot : eff -> ty                 (* T-QUOT:  `[ in -- out ]` *)
+  (* T-QUOT: `[ in -- out ]`.  A quotation term is NOT just four rows.
+     `MK-QUOT` (checker.f:293-302) allocates four row slots AND four control
+     slots, and `QX!` (checker.f:310-314) fills them at `;]`:
+       `Q>XHAS`  (checker.f:306) — the body has a throw edge;
+       `Q>XDEAD` (checker.f:307) — the body has NO normal return;
+       `Q>XDOUT` / `Q>XROUT` (checker.f:308-309) — the rows at the first throw.
+     The two BOOLEANS decide programs: `RSEXEC` (checker.f:2015-2021) raises the
+     caller's throw edge on `Q>XHAS` and KILLS the caller's path on `Q>XDEAD`
+     INSTEAD of installing the quotation's output rows, and `RSCATCH`
+     (checker.f:2051-2052) uses both to decide whether a throw code is pushed
+     at all.  Carrying only the rows makes a model of `execute` unsound in the
+     accepting direction, so they live here.  The two ROWS decide nothing: they
+     are read only by the image serialisers (checker.f:2433-2434, 4197-4198),
+     so they are deliberately not carried.
+     Flag order: xhas, then xdead. *)
+  | TQuot : bool -> bool -> eff -> ty
 with eff : Type :=
   | Eff : stack -> stack -> stack -> stack -> eff   (* Din Dout Rin Rout *)
 with stack : Type :=
   | SRow : rowvar -> stack
   | SPush : ty -> stack -> stack.
+
+(* The overwhelmingly common quotation: a body with a normal return and no
+   throw edge.  Every quotation `MK-QUOT` builds starts this way (checker.f:297-
+   298 zero both flag cells) and only `QX!` at `;]` can set them. *)
+Definition quot (e : eff) : ty := TQuot false false e.
+
+Definition q_xhas (t : ty) : bool :=
+  match t with TQuot h _ _ => h | _ => false end.
+
+Definition q_xdead (t : ty) : bool :=
+  match t with TQuot _ d _ => d | _ => false end.
 
 Definition eff_din (e : eff) : stack := match e with Eff d _ _ _ => d end.
 Definition eff_dout (e : eff) : stack := match e with Eff _ d _ _ => d end.
@@ -273,7 +300,7 @@ Fixpoint ty_size (t : ty) : nat :=
   | TCon _ => 1
   | TFam _ => 1
   | TPtr u => S (ty_size u)
-  | TQuot e => S (eff_size e)
+  | TQuot _ _ e => S (eff_size e)
   end
 with eff_size (e : eff) : nat :=
   match e with
@@ -293,7 +320,12 @@ Fixpoint ty_eqb (a b : ty) : bool :=
   | TCon x, TCon y => con_eqb x y
   | TFam x, TFam y => Nat.eqb x y
   | TPtr x, TPtr y => ty_eqb x y
-  | TQuot x, TQuot y => eff_eqb x y
+  (* Structural equality of TERMS, so the control flags are part of it: two
+     quotations with the same rows and different flags are different terms.
+     `U-TYPE`'s fast path is `2dup =`, pointer identity of arena entries
+     (checker.f:1586), which likewise separates them. *)
+  | TQuot h1 d1 x, TQuot h2 d2 y =>
+      Bool.eqb h1 h2 && Bool.eqb d1 d2 && eff_eqb x y
   | _, _ => false
   end
 with eff_eqb (a b : eff) : bool :=
@@ -421,9 +453,9 @@ Fixpoint zonk_ty_fuel (fuel : nat) (s : subst) (t : ty) : ty :=
       | TCon c => TCon c
       | TFam n => TFam n
       | TPtr u => TPtr (zonk_ty_fuel f s u)
-      | TQuot (Eff a b c d) =>
-          TQuot (Eff (zonk_row_fuel f s a) (zonk_row_fuel f s b)
-                     (zonk_row_fuel f s c) (zonk_row_fuel f s d))
+      | TQuot h dd (Eff a b c d) =>
+          TQuot h dd (Eff (zonk_row_fuel f s a) (zonk_row_fuel f s b)
+                          (zonk_row_fuel f s c) (zonk_row_fuel f s d))
       end
   end
 with zonk_row_fuel (fuel : nat) (s : subst) (x : stack) : stack :=
@@ -461,7 +493,7 @@ Fixpoint ty_occ_fuel (fuel : nat) (s : subst) (v : tyvar) (t : ty) : bool :=
       | TCon _ => false
       | TFam _ => false
       | TPtr u => ty_occ_fuel f s v u
-      | TQuot (Eff a b c d) =>
+      | TQuot _ _ (Eff a b c d) =>
           ty_occ_row_fuel f s v a || ty_occ_row_fuel f s v b
           || ty_occ_row_fuel f s v c || ty_occ_row_fuel f s v d
       end
@@ -485,7 +517,7 @@ Fixpoint row_occ_ty_fuel (fuel : nat) (s : subst) (r : rowvar) (t : ty) : bool :
   | S f =>
       match resolve_ty s t with
       | TPtr u => row_occ_ty_fuel f s r u
-      | TQuot (Eff a b c d) =>
+      | TQuot _ _ (Eff a b c d) =>
           row_occ_fuel f s r a || row_occ_fuel f s r b
           || row_occ_fuel f s r c || row_occ_fuel f s r d
       | _ => false
@@ -521,7 +553,7 @@ Fixpoint raw_ok_fuel (fuel : nat) (s : subst) (t : ty) : option subst :=
       | TFam _ => None
       | TCon c => if linear_conb c then None else Some s
       | TPtr u => raw_ok_fuel f s u
-      | TQuot _ => Some s        (* the engine legitimately raw-stores xts *)
+      | TQuot _ _ _ => Some s    (* the engine legitimately raw-stores xts *)
       end
   end.
 
@@ -553,7 +585,10 @@ Definition u_ty (k : ukind) (s : subst) (strict : bool) (a b : ty)
   if ty_eqb ra rb then Some (s, [])
   else
     match ra, rb with
-    | TQuot (Eff d1 o1 r1 q1), TQuot (Eff d2 o2 r2 q2) =>
+    (* `U-TYPE`'s quotation arm pairs the four ROWS and nothing else
+       (checker.f:1587-1591): the control flags are not unified, so a quotation
+       variable bound to a throwing quotation keeps THAT term's flags. *)
+    | TQuot _ _ (Eff d1 o1 r1 q1), TQuot _ _ (Eff d2 o2 r2 q2) =>
         Some (s, [URow strict q1 q2; URow strict r1 r2;
                   URow strict o1 o2; URow strict d1 d2])
     (* PAIR-STRICT: a pointee never widens, at any nesting depth. *)
@@ -643,7 +678,7 @@ Fixpoint shift_ty (d : nat) (t : ty) : ty :=
   | TCon c => TCon c
   | TFam f => TFam f
   | TPtr u => TPtr (shift_ty d u)
-  | TQuot e => TQuot (shift_eff d e)
+  | TQuot h dd e => TQuot h dd (shift_eff d e)
   end
 with shift_eff (d : nat) (e : eff) : eff :=
   match e with
@@ -661,7 +696,7 @@ Fixpoint max_ty (t : ty) : nat :=
   | TCon _ => 0
   | TFam _ => 0
   | TPtr u => max_ty u
-  | TQuot e => max_eff e
+  | TQuot _ _ e => max_eff e
   end
 with max_eff (e : eff) : nat :=
   match e with
@@ -1014,15 +1049,15 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 Example occurs_check_sees_through_quotations :
   unify_stack UkExact empty_subst
     (SRow 0)
-    (SPush (TQuot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))) (SRow 3)) = None.
+    (SPush (quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))) (SRow 3)) = None.
 Proof. vm_compute; reflexivity. Qed.
 
 (* Quotation cells unify structurally, through all four of their rows. *)
 Example quotation_rows_unify_pairwise :
   match unify_stack UkExact empty_subst
-          (stack_of 0 [TQuot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt])
+          (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt])
                                   (SRow 2) (SRow 2))])
-          (stack_of 0 [TQuot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4])
+          (stack_of 0 [quot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4])
                                   (SRow 2) (SRow 2))]) with
   | Some s =>
       ty_eqb (resolve_ty s (TVar 3)) i64 = true
@@ -1034,15 +1069,15 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 (* Deep resolution recovers the whole quotation effect, not just its head. *)
 Example zonk_recovers_a_whole_quotation :
   match unify_stack UkExact empty_subst
-          (stack_of 0 [TQuot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt])
+          (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt])
                                   (SRow 2) (SRow 2))])
-          (stack_of 0 [TQuot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4])
+          (stack_of 0 [quot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4])
                                   (SRow 2) (SRow 2))]) with
   | Some s =>
       ty_eqb
-        (zonk_ty s (TQuot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4])
+        (zonk_ty s (quot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4])
                                (SRow 2) (SRow 2))))
-        (TQuot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2)))
+        (quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2)))
       = true
   | None => False
   end.
@@ -1050,10 +1085,33 @@ Proof. vm_compute; reflexivity. Qed.
 
 Example quotation_effect_mismatch_rejects :
   unify_stack UkExact empty_subst
-    (stack_of 0 [TQuot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2))])
-    (stack_of 0 [TQuot (Eff (stack_of 1 [i64]) (stack_of 1 [strt]) (SRow 2) (SRow 2))])
+    (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2))])
+    (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [strt]) (SRow 2) (SRow 2))])
   = None.
 Proof. vm_compute; reflexivity. Qed.
+
+(* The control flags are part of the TERM but not part of the UNIFICATION.
+   `U-TYPE`'s quotation arm (checker.f:1587-1591) pairs the four rows and
+   nothing else, so a quotation variable happily accepts a throwing quotation —
+   and then RESOLVES to that term, flags and all.  That is exactly why
+   `Control.do_exec` can read them off the resolved term. *)
+Definition thrower : ty :=
+  TQuot true true (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2)).
+Definition plain_quot : ty :=
+  quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2)).
+
+Example control_flags_are_carried_not_unified :
+  (* different terms *)
+  ty_eqb thrower plain_quot = false
+  (* yet the rows unify, at every kind *)
+  /\ unifiesb (unify_ty UkExact empty_subst thrower plain_quot) = true
+  (* and a variable bound to the throwing quotation resolves to IT *)
+  /\ match unify_ty UkExact empty_subst (TVar 5) thrower with
+     | Some s => q_xdead (resolve_ty s (TVar 5)) = true
+                 /\ q_xhas (resolve_ty s (TVar 5)) = true
+     | None => False
+     end.
+Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* An arity-0 nominal family (what `DEFTYPE` mints) is identified by family id
    and never meets a table type. *)
