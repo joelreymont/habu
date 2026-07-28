@@ -2,9 +2,8 @@
 \ rejection matrix (dot habu-implement-cad-num-cb413b2a). Run:
 \   bin/hb --load lib/cad-num-arithmetic-test.f
 \
-\ Direct-loaded gate home, like lib/cad-num-types-test.f: CAD-NUM is unsealed and
-\ no production entry loads it, so this test is intentionally not in
-\ test/gate-stdlib-cases.f and suite-coverage-lint has nothing to schedule.
+\ Direct-loaded gate home, like lib/cad-num-types-test.f. Production modules load
+\ the library directly; this file owns its focused B5.2 boundary and property matrix.
 \
 \ Every B5.2 row is exercised at the exact boundary cases named in its table row
 \ (zero / safe-max / first-overflow / underflow / misalignment). `numeric-result`
@@ -18,6 +17,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/test.f
+require lib/property.f
 require test/checker-assert.f
 require lib/cad-num-types.f
 require lib/cad-num-arithmetic.f
@@ -327,3 +327,167 @@ RT
       CHECK-QUIET-CANDIDATE! 0 T=
    T-REPORT ;
 STAT
+
+\ ---- GPT-2 F32 typed index/offset seam ----------------------------------------
+package CAD-NUM-ARITH-TEST
+using CAD-NUM
+using PROP
+private
+
+: INDEX-BOUNDS ( -- )
+   0 OKIDX 0 OKIC INDEX-IN-COUNT? TFALSE
+   0 OKIDX 1 OKIC INDEX-IN-COUNT? TTRUE
+   1 OKIDX 1 OKIC INDEX-IN-COUNT? TFALSE
+   T-MAX-N 1- OKIDX T-MAX-N OKIC INDEX-IN-COUNT? TTRUE
+   T-MAX-N OKIDX T-MAX-N OKIC INDEX-IN-COUNT? TFALSE ;
+
+: OFFSET-BOUNDS ( -- )
+   0 OKBO 0 OKBL BYTE-OFF-IN-LEN? TFALSE
+   0 OKBO 1 OKBL BYTE-OFF-IN-LEN? TTRUE
+   1 OKBO 1 OKBL BYTE-OFF-IN-LEN? TFALSE
+   T-MAX-N 1- OKBO T-MAX-N OKBL BYTE-OFF-IN-LEN? TTRUE
+   T-MAX-N OKBO T-MAX-N OKBL BYTE-OFF-IN-LEN? TFALSE ;
+
+: INDEX-OFFSETS ( -- )
+   0 OKIDX T-MAX-N OKBL INDEX-BYTE-OFF BO-CODE 0 T=
+   T-MAX-N OKIDX 0 OKBL INDEX-BYTE-OFF BO-CODE 0 T=
+   1 OKIDX T-MAX-N OKBL INDEX-BYTE-OFF BO-CODE T-MAX-N T=
+   T-MAX-N OKIDX 1 OKBL INDEX-BYTE-OFF BO-CODE T-MAX-N T=
+   2 OKIDX 65537 OKBL INDEX-BYTE-OFF BO-CODE 131074 T=
+   T-MAX-N 2 / OKIDX 2 OKBL INDEX-BYTE-OFF BO-CODE T-MAX-N 1- T=
+   T-MAX-N 2 / 1+ OKIDX 2 OKBL INDEX-BYTE-OFF BO-CODE E-CADNUM-OVERFLOW T= ;
+
+: CMP-PROP-ROW ( n n -- )
+   {: x:n y:n :}
+   x y < if
+      x OKIDX y OKIC INDEX-IN-COUNT? TTRUE
+      x OKBO y OKBL BYTE-OFF-IN-LEN? TTRUE
+   else
+      x OKIDX y OKIC INDEX-IN-COUNT? TFALSE
+      x OKBO y OKBL BYTE-OFF-IN-LEN? TFALSE
+   then ;
+
+: MUL-PROP-ROW ( n n -- )
+   {: idx:n width:n :}
+   idx OKIDX width OKBL INDEX-BYTE-OFF BO-CODE idx width * T= ;
+
+\ PROP:RND supplies 31 bits; one high bit plus two chunks spans 0..T-MAX-N.
+: RND-N ( -- n )
+   2 RND% 0<> if T-LARGEST-POW2 else 0 then
+   RND 31 lshift or
+   RND or ;
+
+: RND-POS ( -- n )
+   RND-N dup 0= if drop 1 then ;
+
+\ floor(sample/width)*width is safe and ranges below the overflow boundary.
+: SAFE-MUL-PROP-ROW ( n n -- )
+   {: sample:n width:n :}
+   sample width / width MUL-PROP-ROW ;
+
+: MAX-MUL-PROP-ROW ( n -- )
+   T-MAX-N swap SAFE-MUL-PROP-ROW ;
+
+: LARGE-MUL-PROP-ROW ( n -- )
+   {: quotient:n :}
+   T-MAX-N quotient / MAX-MUL-PROP-ROW ;
+
+: OVF-PROP-ROW ( n -- )
+   {: width:n :}
+   T-MAX-N width / 1+ OKIDX
+   width OKBL INDEX-BYTE-OFF BO-CODE E-CADNUM-OVERFLOW T= ;
+
+: PROPERTIES ( -- )
+   314159 512 RUN-RESET
+   COUNT@ 0 ?do
+      $10000 RND% $10000 RND% CMP-PROP-ROW
+      $10000 RND% $10000 RND% MUL-PROP-ROW
+      RND-N RND-POS SAFE-MUL-PROP-ROW
+      RND-POS MAX-MUL-PROP-ROW
+      $10000 RND% 2 + LARGE-MUL-PROP-ROW
+      $FFFF RND% 2 + OVF-PROP-ROW
+   loop ;
+
+: NO ( -- bool )
+   0 0= 0= ;
+
+: DROP-INDEX-NO ( index -- bool )
+   drop NO ;
+
+: NO-NO ( -- bool bool )
+   NO NO ;
+
+: COUNT-INDEXED? ( index numeric-result<item-count> -- bool )
+   MATCH numeric-result
+      ok OF INDEX-IN-COUNT? ENDOF
+      negative OF DROP-INDEX-NO ENDOF zero OF DROP-INDEX-NO ENDOF
+      overflow OF DROP-INDEX-NO ENDOF underflow OF DROP-INDEX-NO ENDOF
+      bad-alignment OF DROP-INDEX-NO ENDOF misaligned OF DROP-INDEX-NO ENDOF
+   ;MATCH ;
+
+: OFFSET-RESULT-OK? ( numeric-result<byte-off> -- bool )
+   MATCH numeric-result
+      ok OF drop 0 0= ENDOF
+      negative OF NO ENDOF zero OF NO ENDOF
+      overflow OF NO ENDOF underflow OF NO ENDOF
+      bad-alignment OF NO ENDOF misaligned OF NO ENDOF
+   ;MATCH ;
+
+: OFFSET-CHECKS ( numeric-result<byte-off> byte-len byte-len -- bool bool )
+   {: len:byte-len step:byte-len :}
+   MATCH numeric-result
+      ok OF
+         dup len BYTE-OFF-IN-LEN?
+         swap step ADVANCE-BYTE-OFF OFFSET-RESULT-OK?
+      ENDOF
+      negative OF NO-NO ENDOF zero OF NO-NO ENDOF
+      overflow OF NO-NO ENDOF underflow OF NO-NO ENDOF
+      bad-alignment OF NO-NO ENDOF misaligned OF NO-NO ENDOF
+   ;MATCH ;
+
+: F32-COMPOSE ( index byte-len byte-len -- bool bool bool )
+   {: idx:index len:byte-len width:byte-len :}
+   idx len width DIV-BYTES-FLOOR COUNT-INDEXED?
+   idx width INDEX-BYTE-OFF len width OFFSET-CHECKS ;
+
+: F32-SHAPE ( -- )
+   1 OKIDX 8 OKBL 4 OKBL F32-COMPOSE TTRUE TTRUE TTRUE
+   0 OKIDX 8 OKBL 0 OKBL F32-COMPOSE TTRUE TTRUE TFALSE
+   T-MAX-N OKIDX T-MAX-N OKBL 2 OKBL F32-COMPOSE TFALSE TFALSE TFALSE ;
+
+: STATIC-GOOD ( -- )
+   s" GOOD-INDEX-BOUND ( CAD-NUM:index CAD-NUM:item-count -- bool ) CAD-NUM:INDEX-IN-COUNT?"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" GOOD-INDEX-OFF ( CAD-NUM:index CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-off> ) CAD-NUM:INDEX-BYTE-OFF"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" GOOD-BYTE-BOUND ( CAD-NUM:byte-off CAD-NUM:byte-len -- bool ) CAD-NUM:BYTE-OFF-IN-LEN?"
+      CHECK-QUIET-CANDIDATE! -1 T= ;
+
+: STATIC-BAD ( -- )
+   s" BAD-INDEX-BOUND-SWAP ( CAD-NUM:item-count CAD-NUM:index -- bool ) CAD-NUM:INDEX-IN-COUNT?"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-INDEX-OFF-SWAP ( CAD-NUM:byte-len CAD-NUM:index -- CAD-NUM:numeric-result<CAD-NUM:byte-off> ) CAD-NUM:INDEX-BYTE-OFF"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-BYTE-BOUND-SWAP ( CAD-NUM:byte-len CAD-NUM:byte-off -- bool ) CAD-NUM:BYTE-OFF-IN-LEN?"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-INDEX-OFF-RESULT ( CAD-NUM:index CAD-NUM:byte-len -- CAD-NUM:numeric-result<CAD-NUM:byte-len> ) CAD-NUM:INDEX-BYTE-OFF"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" BAD-INDEX-OFF-RAW ( n n -- CAD-NUM:numeric-result<CAD-NUM:byte-off> ) CAD-NUM:INDEX-BYTE-OFF"
+      CHECK-QUIET-CANDIDATE! 0 T= ;
+
+: STATIC-PRIVATE ( -- )
+   s" PRIVATE-INDEX-PROJ ( CAD-NUM:index -- n ) CAD-NUM:INDEX>N"
+      CHECK-QUIET-CANDIDATE! 1 T=
+   s" PRIVATE-BYTE-OFF-PROJ ( CAD-NUM:byte-off -- n ) CAD-NUM:BYTE-OFF>N"
+      CHECK-QUIET-CANDIDATE! 1 T= ;
+
+: RUN ( -- )
+   T-RESET
+   INDEX-BOUNDS OFFSET-BOUNDS INDEX-OFFSETS PROPERTIES F32-SHAPE
+   STATIC-GOOD STATIC-BAD STATIC-PRIVATE
+   T-REPORT ;
+
+RUN
+;using
+;using
+;package
