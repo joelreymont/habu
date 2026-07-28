@@ -2675,3 +2675,15 @@ fits.
   scheduled. When accepting a lane that adds a test file, verify the file
   appears in a suite AND that a full run executes it — "I ran it and it
   passed" is evidence about the code, not about the gate.
+
+- **Never rewrite history while workers are running.** Rebasing the whole
+  chain onto a new upstream while three agents held live workspaces cost two
+  of them their work: one recovered on its own by re-parenting, two were
+  killed mid-recovery and their commits survived only as unreachable
+  conflicted objects that had to be excavated by hand. Concurrent jj
+  operations also left the repository reconciling divergent operations and
+  briefly reporting the bookmark as conflicted. Either drain the workers
+  first, or rebase only after every lane has committed. When it does happen,
+  the commits are still in the object store: find them with a revset over
+  `files(...)`, extract the clean files, and rebuild the workspace rather
+  than trying to repair it in place.
