@@ -1,12 +1,12 @@
 ---
 title: Merge native test run into TEST
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T13:29:27.906090+02:00"
+closed-at: "2026-07-28T15:56:39.647743+02:00"
+close-reason: "Completed: verified source commit e87ec4fcfef406c3c21c07a15a9431de674f8833 landed at master@origin; TEST is the sole package owner and namespace for test execution and assertions."
 ---
-
-Claim: agent=codex-test workspace=.jj-ws/codex-test-land
 
 Why: TEST is the sole package owner for test definitions and execution. TEST-RUN is an artificial split with no distinct resource or invariant, and TEST-RUNNER must not replace it. Exact result: every current package TEST-RUN declaration reopens TEST; every live source and documentation package reference uses TEST; no TEST-RUN or TEST-RUNNER package name remains. Preserve the existing public runner operations and behavior. Resolve the only measured TEST namespace collisions without aliases: rename the white-box run-lib test entry RUN to RUN-LIB-TEST, rename its execution site, rename the rerun fixture SETUP to RERUN-SETUP, and keep fixture helpers private. Owner: package TEST. Dependencies: none. Forbidden: compatibility aliases, forwarding words, another test package, behavior changes, phase reorderings, broadened visibility, copied runner logic, or changes to unrelated gate plumbing. Acceptance: rg finds no live `package TEST-RUN`, `using TEST-RUN`, `TEST-RUN:`, or proposed TEST-RUNNER package syntax; unrelated test-word names containing TEST-RUN or TEST-RUNNER stay unchanged. Package and typed-local diff checks pass; test/run-lib-test.f, test/run-rerun-failed-test.f, test/run.f, resident worker paths, lib/test/suite-test.f, and the native test suite preserve exact results. The smallest pre-change structural proof is that test/run.f imports TEST-RUN and the package declarations create a second owner for test execution.
 
