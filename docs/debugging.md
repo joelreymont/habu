@@ -82,6 +82,85 @@ search. `src/habu/xref.f` is baked into `bin/hb` and exposes `LATEST`,
 when debugging dictionary ownership. `XREF word-name` prints the latest matching
 record name, start, length, flags, and wordlist.
 
+## Stage0 mirror vs native engine — which engine is actually running
+
+Two independent engines compile the prefix, and a defect can live in one and be
+invisible to the other. `src/habu/habu2.f` is the native engine, baked into an
+installed `bin/hb`. `bootstrap/cg/forth.fs` is the Gforth-hosted mirror that
+builds `hb-stage0` during recovery. The mirror is meant to stay byte-for-byte
+equivalent to the native engine, and nothing currently proves that it does.
+
+This matters because `tools/bootstrap.sh` builds `hb-stage0` with the mirror at
+line 315 and runs it at line 318. That run is the first time a native binary
+loads the prefix, and it happens before any natively built engine exists. So a
+mirror-only defect stops the bootstrap outright, while every test that boots a
+child engine from an installed `bin/hb` keeps passing — those tests exercise the
+native engine and structurally cannot see the mirror.
+
+When a failure appears during `tools/bootstrap.sh` but the matching test suite is
+green, suspect this split before suspecting the checker. Identify the engine by
+where the failure lands: a diagnostic printed by `hb-stage0` (bootstrap.sh line
+318, before any `stage2:` message) is the mirror; the same source failing under
+`bin/hb --load` is the native engine.
+
+### Reproducing a mirror-only prefix defect
+
+Patch the working tree and let `tools/bootstrap.sh` drive it. No separate seed
+builder is needed — the script already assembles the prefix in the right order,
+and the failure surfaces about five seconds in, at the `hb-stage0` run.
+
+The worked example below is the pre-trust deferred-word replay (dot
+`habu-fix-stage0-pre-88a4297e`). A `defer` declared before `: TRUST` in
+`src/core/checker.f` is copied into the pending table described in
+`src/habu/layout.f` (the `PD-*` constants) and replayed by `DRAIN-PRETRUST`. The
+replay is what teaches the checker the name, so a later checked `is` on that
+deferred word can compare the quotation against the declared effect.
+
+Append a pre-trust deferred word to `src/core/exec-vector.f`, the earliest
+prefix file where a `defer` is legal:
+
+    defer ZZ-PRETRUST-XT ( -- n )
+
+and a checked round-trip to the end of `src/core/check-hook.f`, which is the
+first file that compiles with the check hook installed:
+
+    : ZZ-PRETRUST-SELFTEST ( -- )
+       [: 42 ;] is ZZ-PRETRUST-XT
+       ZZ-PRETRUST-XT 42 <> IF s" zz: pre-trust round-trip failed" 76 die THEN ;
+    ZZ-PRETRUST-SELFTEST
+
+Then run the recovery launcher and restore the two files afterwards:
+
+    HABU_ALLOW_BOOTSTRAP=1 GFORTH=/path/to/gforth tools/bootstrap.sh
+
+Under a working mirror this completes with `bootstrap OK: bin/hb`. While the
+mirror replay is broken it exits 70 in about five seconds with
+
+    hook: non-certified definition: zz-pretrust-selftest at 'is'
+
+The same two patches applied through `test/pre-trust-defer.f`, which boots child
+engines from an installed `bin/hb`, pass — that contrast is the evidence that the
+defect is in the mirror and not in the checker, the prefix source, or `is`.
+
+### Reading the replay from inside the engine
+
+The pending table and its replay are assembly in both engines, so ordinary
+`type`/`.` probes cannot reach them. Two techniques cover it without
+print-bisecting:
+
+- Instrument the checker end in Habu. Add a `type` of the name to `: TRUST` and
+  to `: CHECKER-DEFER` in `src/core/checker.f`, then bracket the bare
+  `DRAIN-PRETRUST` token with markers. If the markers print with nothing between
+  them, the replay never reached the checker.
+- Instrument the engine end by making an existing fail-closed exit fire where you
+  want a probe. Calling `C-PD-DIE-FULL` at the top of `C-PD-CAPTURE` proves the
+  capture branch was taken and names the deferred word; the same call inside the
+  `BDRAINPRETRUST` loop body proves the table was non-empty at replay time. Both
+  print the current token and exit 72, so they need no new string labels.
+
+Copy `bootstrap/` and `test/nf.fs` into a scratch directory before instrumenting
+the mirror, and point Gforth at the copy, so the repository tree stays clean.
+
 ## External disassembly — last resort
 Use external disassemblers only when the native disassembler lacks an encoding.
 On Linux, `objdump -d` or `readelf -l` can inspect ELF text and load segments.
