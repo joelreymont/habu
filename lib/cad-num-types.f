@@ -39,12 +39,13 @@
 \ AS-ALLOC-CELL-COUNT additionally returns `overflow` for a count above
 \ MAX-CELL-N / CELL-BYTES, before any allocation primitive is reachable.
 \
-\ UNSEALED / not authoritative here (B5.1, B5.5 slice 1): CAD-NUM is reopenable
-\ while its constituent files are assembled, so the private mints are not yet
-\ unforgeable. Permanent sealing and the first production authority belong to
-\ lib/cad-num.f (dot habu-seal-cad-num-36dbeec6); the closed B5.2 arithmetic is
-\ lib/cad-num-arithmetic.f (dot habu-implement-cad-num-cb413b2a). NO production
-\ entry point loads this file; the sole consumer is lib/cad-num-types-test.f.
+\ UNSEALED (B5.1, B5.5 slice 1): these canonical roles and validators already
+\ reach production through lib/cad-num-arithmetic.f, including lib/memory.f and
+\ inference consumers. CAD-NUM remains reopenable while its constituent files
+\ are assembled, so its private mints are not yet unforgeable. lib/cad-num.f
+\ (dot habu-seal-cad-num-36dbeec6) will close that namespace authority; the
+\ closed B5.2 arithmetic is lib/cad-num-arithmetic.f (dot
+\ habu-implement-cad-num-cb413b2a).
 \ The mints remain audited boundaries until the TVK-RAW checker capability (dot
 \ habu-nominal-storage-raw-a3430ef2) closes generic raw-value laundering.
 \

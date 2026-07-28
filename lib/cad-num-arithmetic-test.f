@@ -377,8 +377,9 @@ private
    RND 31 lshift or
    RND or ;
 
-: RND-POS ( -- n )
-   RND-N dup 0= if drop 1 then ;
+\ Every width in 2..T-MAX-N is reachable.
+: RND-WIDTH ( -- n )
+   RND-N dup 2 < if drop 2 then ;
 
 \ floor(sample/width)*width is safe and ranges below the overflow boundary.
 : SAFE-MUL-PROP-ROW ( n n -- )
@@ -388,10 +389,6 @@ private
 : MAX-MUL-PROP-ROW ( n -- )
    T-MAX-N swap SAFE-MUL-PROP-ROW ;
 
-: LARGE-MUL-PROP-ROW ( n -- )
-   {: quotient:n :}
-   T-MAX-N quotient / MAX-MUL-PROP-ROW ;
-
 : OVF-PROP-ROW ( n -- )
    {: width:n :}
    T-MAX-N width / 1+ OKIDX
@@ -399,13 +396,14 @@ private
 
 : PROPERTIES ( -- )
    314159 512 RUN-RESET
+   65537 OVF-PROP-ROW
+   T-MAX-N OVF-PROP-ROW
    COUNT@ 0 ?do
       $10000 RND% $10000 RND% CMP-PROP-ROW
       $10000 RND% $10000 RND% MUL-PROP-ROW
-      RND-N RND-POS SAFE-MUL-PROP-ROW
-      RND-POS MAX-MUL-PROP-ROW
-      $10000 RND% 2 + LARGE-MUL-PROP-ROW
-      $FFFF RND% 2 + OVF-PROP-ROW
+      RND-N RND-WIDTH SAFE-MUL-PROP-ROW
+      RND-WIDTH MAX-MUL-PROP-ROW
+      RND-WIDTH OVF-PROP-ROW
    loop ;
 
 : NO ( -- bool )

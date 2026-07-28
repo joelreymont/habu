@@ -2,13 +2,12 @@
 \ (dot habu-implement-cad-num-962bf5d9). Run:
 \   bin/hb --load lib/cad-num-types-test.f
 \
-\ This is the SOLE consumer of lib/cad-num-types.f (the package is unsealed and
-\ no production entry loads it). Permanent sealing is dot
+\ Focused direct-loaded gate home for the B5.1 contract. Production modules load
+\ these types transitively through lib/cad-num-arithmetic.f; this file owns the
+\ validator boundary matrix, not library authority. Permanent sealing is dot
 \ habu-seal-cad-num-36dbeec6; the MODEL-CAD-V2-PLAN.md B5.5 final-integration dot
-\ (ba510e2e) registers these files and wires this test into a scheduled gate
-\ suite. Until then this test is intentionally direct-loaded (its gate home) and
-\ is not in test/gate-stdlib-cases.f, so suite-coverage-lint has nothing to
-\ schedule for it.
+\ (ba510e2e) wires this test into a scheduled gate suite. Until then it is not in
+\ test/gate-stdlib-cases.f, so suite-coverage-lint has nothing to schedule.
 \
 \ numeric-result<a> has no polymorphic eliminator yet (whole-bundle MATCH, dot
 \ habu-typestate-result-drop-5ae048a7), so a caller MATCHes the concrete
