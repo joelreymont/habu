@@ -7,5 +7,6 @@ Common/Ids.v
 Common/IdAllocator.v
 Common/IdLaws.v
 Common/IdAllocatorLaws.v
+Common/Interning.v
 Common/Effects.v
 Common/Control.v
