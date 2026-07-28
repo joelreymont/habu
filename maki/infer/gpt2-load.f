@@ -312,10 +312,28 @@ variable LIVE-PREPARED-COUNT                                 \ undisposed prepar
       misaligned OF E-BYTE-SIZE throw ENDOF
    ;MATCH ;
 
+: REQUIRE-INDEX ( CAD-NUM:numeric-result<CAD-NUM:index> -- CAD-NUM:index )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                            negative OF E-TENSOR-SLOT throw ENDOF
+      zero OF E-TENSOR-SLOT throw ENDOF      overflow OF E-TENSOR-SLOT throw ENDOF
+      underflow OF E-TENSOR-SLOT throw ENDOF bad-alignment OF E-TENSOR-SLOT throw ENDOF
+      misaligned OF E-TENSOR-SLOT throw ENDOF
+   ;MATCH ;
+
+: REQUIRE-COUNT ( CAD-NUM:numeric-result<CAD-NUM:item-count> -- CAD-NUM:item-count )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                            negative OF E-TENSOR-SLOT throw ENDOF
+      zero OF E-TENSOR-SLOT throw ENDOF      overflow OF E-TENSOR-SLOT throw ENDOF
+      underflow OF E-TENSOR-SLOT throw ENDOF bad-alignment OF E-TENSOR-SLOT throw ENDOF
+      misaligned OF E-TENSOR-SLOT throw ENDOF
+   ;MATCH ;
+
 using CAD-NUM
 
 : CHECKED-OFFSET ( n -- CAD-NUM:byte-off )   BYTE-OFF REQUIRE-OFFSET ;
 : CHECKED-LENGTH ( n -- CAD-NUM:byte-len )   BYTE-LEN REQUIRE-LENGTH ;
+: CHECKED-INDEX ( n -- CAD-NUM:index )       INDEX REQUIRE-INDEX ;
+: CHECKED-COUNT ( n -- CAD-NUM:item-count )  ITEM-COUNT REQUIRE-COUNT ;
 
 ;using
 
@@ -390,10 +408,14 @@ using GPT2TENSOR
 \ The equality test carries the information a fixture can reach: it
 \ round-trips the slot formula, so an off-by-one on either side is a rejection instead
 \ of a weight silently filed under the wrong role.
+using CAD-NUM
+
 : CHECK-SLOT ( MDLCFG:mcfg n n -- MDLCFG:mcfg ) {: slot:n count:n :}
-   slot TENSOR-ID-FOR-SLOT GPT2TENSOR:SLOT {: got:n :}
-   got 0 <  got count >=  or if E-TENSOR-SLOT throw then
-   got slot <> if E-TENSOR-SLOT throw then ;
+   slot TENSOR-ID-FOR-SLOT GPT2TENSOR:SLOT
+   dup count CHECKED-COUNT INDEX-IN-COUNT? 0= if E-TENSOR-SLOT throw then
+   slot CHECKED-INDEX INDEX= 0= if E-TENSOR-SLOT throw then ;
+
+;using
 
 \ The tensor ID for a role's exact checkpoint tensor name, rendered through the
 \ public copy-out.

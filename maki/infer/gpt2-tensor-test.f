@@ -45,6 +45,7 @@
 
 require lib/prelude.f
 require lib/adt/option.f
+require lib/cad-num-arithmetic.f
 require lib/test.f
 require test/checker-assert.f
 require maki/infer/gpt2-tensor.f
@@ -195,12 +196,29 @@ create NAME-BUF-2 NAME-CAP allot
    {: br:GPT2TENSOR:layer-role :}
    GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SHAPE ;
 
-: GLOBAL-SLOT ( MDLCFG:mcfg GPT2TENSOR:global-role -- MDLCFG:mcfg n )
+: GLOBAL-SLOT ( MDLCFG:mcfg GPT2TENSOR:global-role -- MDLCFG:mcfg CAD-NUM:index )
    GPT2TENSOR-TENSOR--ID:GLOBAL GPT2TENSOR:SLOT ;
 
-: LAYER-SLOT ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg n )
+: LAYER-SLOT ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg CAD-NUM:index )
    {: br:GPT2TENSOR:layer-role :}
    GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT ;
+
+using CAD-NUM
+
+: TEST-INDEX ( n -- CAD-NUM:index )
+   INDEX
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                            negative OF GPT2TENSOR:E-SIZE throw ENDOF
+      zero OF GPT2TENSOR:E-SIZE throw ENDOF  overflow OF GPT2TENSOR:E-SIZE throw ENDOF
+      underflow OF GPT2TENSOR:E-SIZE throw ENDOF
+      bad-alignment OF GPT2TENSOR:E-SIZE throw ENDOF
+      misaligned OF GPT2TENSOR:E-SIZE throw ENDOF
+   ;MATCH ;
+
+: SLOT= ( CAD-NUM:index n -- )
+   TEST-INDEX INDEX= TTRUE ;
+
+;using
 
 : GLOBAL-ORIENTATION ( GPT2TENSOR:global-role -- GPT2TENSOR:orientation )
    GPT2TENSOR-TENSOR--ID:GLOBAL GPT2TENSOR:ORIENTATION ;
@@ -390,34 +408,23 @@ create NAME-BUF-2 NAME-CAP allot
    [: REJECT-NEGATIVE-LAYER ;] GPT2TENSOR:E-LAYER TTHROWSQ
    [: REJECT-LARGE-LAYER ;] GPT2TENSOR:E-LAYER TTHROWSQ
    CFG-A
-   0 GPT2TENSOR-LAYER--ROLE:LN1-G LAYER-SLOT 4 T=
-   1 GPT2TENSOR-LAYER--ROLE:MPROJ-B LAYER-SLOT 29 T=
+   0 GPT2TENSOR-LAYER--ROLE:LN1-G LAYER-SLOT 4 SLOT=
+   1 GPT2TENSOR-LAYER--ROLE:MPROJ-B LAYER-SLOT 29 SLOT=
    drop ;
 
 \ ---- 6. slot layout + bijectivity on the tiny geometry ------------------------------
 30 constant TINY-CENSUS
-create HITS TINY-CENSUS cells allot
 variable HIT-I
 
-: HITS-RESET ( -- )
-   0 HIT-I !
-   begin HIT-I @ TINY-CENSUS < while
-      0 HITS HIT-I @ cells + !
-      HIT-I @ 1 + HIT-I !
-   repeat ;
+: SLOTS-RESET ( -- )
+   0 HIT-I ! ;
 
-: MARK ( n -- ) {: s:n :}
-   s 0 >= s TINY-CENSUS < and TTRUE
-   s 0 < if exit then
-   s TINY-CENSUS >= if exit then
-   HITS s cells + dup @ 1 + swap ! ;
+: MARK ( CAD-NUM:index -- )
+   HIT-I @ SLOT=
+   1 HIT-I +! ;
 
-: HITS-ONES ( -- )
-   0 HIT-I !
-   begin HIT-I @ TINY-CENSUS < while
-      HITS HIT-I @ cells + @ 1 T=
-      HIT-I @ 1 + HIT-I !
-   repeat ;
+: SLOTS-COMPLETE ( -- )
+   HIT-I @ TINY-CENSUS T= ;
 
 : MARK-GLOBAL ( MDLCFG:mcfg GPT2TENSOR:global-role -- MDLCFG:mcfg )
    GLOBAL-SLOT MARK ;
@@ -442,19 +449,19 @@ variable HIT-I
 
 : T-SLOTS ( -- )
    CFG-A
-   GPT2TENSOR-GLOBAL--ROLE:WTE GLOBAL-SLOT 0 T=
-   GPT2TENSOR-GLOBAL--ROLE:WPE GLOBAL-SLOT 1 T=
-   GPT2TENSOR-GLOBAL--ROLE:LNF-G GLOBAL-SLOT 2 T=
-   GPT2TENSOR-GLOBAL--ROLE:LNF-B GLOBAL-SLOT 3 T=
-   0 GPT2TENSOR-LAYER--ROLE:MPROJ-B LAYER-SLOT 16 T=
-   1 GPT2TENSOR-LAYER--ROLE:LN1-G LAYER-SLOT 17 T=
-   1 GPT2TENSOR-LAYER--ROLE:QKV-W LAYER-SLOT 20 T=
+   GPT2TENSOR-GLOBAL--ROLE:WTE GLOBAL-SLOT 0 SLOT=
+   GPT2TENSOR-GLOBAL--ROLE:WPE GLOBAL-SLOT 1 SLOT=
+   GPT2TENSOR-GLOBAL--ROLE:LNF-G GLOBAL-SLOT 2 SLOT=
+   GPT2TENSOR-GLOBAL--ROLE:LNF-B GLOBAL-SLOT 3 SLOT=
+   0 GPT2TENSOR-LAYER--ROLE:MPROJ-B LAYER-SLOT 16 SLOT=
+   1 GPT2TENSOR-LAYER--ROLE:LN1-G LAYER-SLOT 17 SLOT=
+   1 GPT2TENSOR-LAYER--ROLE:QKV-W LAYER-SLOT 20 SLOT=
    drop
-   CFG-REAL 11 GPT2TENSOR-LAYER--ROLE:MPROJ-B LAYER-SLOT 159 T=
+   CFG-REAL 11 GPT2TENSOR-LAYER--ROLE:MPROJ-B LAYER-SLOT 159 SLOT=
    drop ;
 
 : T-BIJECT ( -- )
-   HITS-RESET
+   SLOTS-RESET
    CFG-A
    GPT2TENSOR-GLOBAL--ROLE:WTE MARK-GLOBAL
    GPT2TENSOR-GLOBAL--ROLE:WPE MARK-GLOBAL
@@ -464,7 +471,7 @@ variable HIT-I
    1 MARK-LAYER
    GPT2TENSOR:COUNT TINY-CENSUS T=
    drop
-   HITS-ONES ;
+   SLOTS-COMPLETE ;
 
 \ ---- 7. THE IDENTITY FIXTURE ---------------------------------------------------------
 \ A layer-id minted against config A, resolved against same-nlayer config B.
@@ -489,8 +496,8 @@ variable HIT-I
    [: REJECT-FOREIGN-MIDDLE ;] GPT2TENSOR:E-CONFIG TTHROWSQ
    [: REJECT-FOREIGN-LOW ;] GPT2TENSOR:E-CONFIG TTHROWSQ
    \ positive control: the same layer IDs resolve on their OWN config.
-   CFG-A CFG-A-LAYER-ID-1 GPT2TENSOR-LAYER--ROLE:QKV-W GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT 20 T=
-   CFG-A-LAYER-ID-0 GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT 4 T=
+   CFG-A CFG-A-LAYER-ID-1 GPT2TENSOR-LAYER--ROLE:QKV-W GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT 20 SLOT=
+   CFG-A-LAYER-ID-0 GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT 4 SLOT=
    drop ;
 
 \ ---- 8. the re-MAKE forgery caveat ----------------------------------------------------
@@ -536,6 +543,9 @@ T-FOREIGN
 T-FORGED
 
 \ ---- 9. checker negatives -------------------------------------------------------
+\ SLOT preserves the nominal index role through the public boundary.
+s" SLOT-OK ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg CAD-NUM:index ) GPT2TENSOR:SLOT" YES
+s" SLOT-RAW ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg n ) GPT2TENSOR:SLOT" NO
 \ a global tensor-id takes exactly a global-role; a layer cannot ride along...
 s" GLOBAL-OK ( GPT2TENSOR:global-role -- GPT2TENSOR:tensor-id ) GPT2TENSOR-TENSOR--ID:GLOBAL" YES
 s" GLOBAL-WITH-LAYER ( GPT2TENSOR:layer-id GPT2TENSOR:global-role -- GPT2TENSOR:tensor-id ) GPT2TENSOR-TENSOR--ID:GLOBAL" NO

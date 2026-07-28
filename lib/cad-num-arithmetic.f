@@ -117,6 +117,10 @@ TRUSTED: POSITIVE-DIVISOR>N ( positive-divisor -- n ) ;
 public
 
 \ ---- strict bounds and index -> byte offset -----------------------------------
+: INDEX= ( index index -- bool )
+   {: a:index b:index :}
+   a INDEX>N b INDEX>N = ;
+
 : INDEX-IN-COUNT? ( index item-count -- bool )
    {: idx:index count:item-count :}
    idx INDEX>N count ITEM-COUNT>N < ;

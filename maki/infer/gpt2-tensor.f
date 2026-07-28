@@ -91,6 +91,7 @@
 
 require lib/prelude.f
 require lib/adt/option.f
+require lib/cad-num-types.f
 require maki/infer/model-types.f
 require maki/infer/model-config.f
 
@@ -378,6 +379,15 @@ private
    >r COUNT drop r>
    LAYER-ROLE-COUNT * br LAYER-ORD + GLOBAL-COUNT + ;
 
+: SLOT-INDEX ( n -- CAD-NUM:index )
+   CAD-NUM:INDEX
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                            negative OF E-SIZE throw ENDOF
+      zero OF E-SIZE throw ENDOF             overflow OF E-SIZE throw ENDOF
+      underflow OF E-SIZE throw ENDOF        bad-alignment OF E-SIZE throw ENDOF
+      misaligned OF E-SIZE throw ENDOF
+   ;MATCH ;
+
 : LAYER-ORIENTATION ( layer-id layer-role -- orientation ) {: br:layer-role :}
    drop br
    MATCH layer-role
@@ -427,10 +437,11 @@ public
 \ ---- dense slot: globals 0..3, then 4 + layer*13 + role ordinal ---------------------
 \ The layer arm asserts identity (E-CONFIG) BEFORE any slot arithmetic,
 \ then revalidates the embedded index (E-LAYER; see header).
-: SLOT ( MDLCFG:mcfg tensor-id -- MDLCFG:mcfg n )
+: SLOT ( MDLCFG:mcfg tensor-id -- MDLCFG:mcfg CAD-NUM:index )
    MATCH tensor-id
       global OF SLOT-GLOBAL ENDOF
       layer  OF SLOT-LAYER ENDOF
-   ;MATCH ;
+   ;MATCH
+   SLOT-INDEX ;
 
 ;package
