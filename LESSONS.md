@@ -2653,3 +2653,14 @@ fits.
   "nondeterministic lint" until a loop with `rc=$?` captured first exposed
   the real, deterministic failure. Capture `rc=$?` on its own line before
   any other command runs.
+
+- **Read the convention before "fixing" metadata, and never count a worker
+  echo as confirmation.** `docs/critical-path.md:13` states that a dot's
+  `blocks:` list names its **prerequisites** — the dots that must land first.
+  I assumed the opposite, told a worker its correct edge was "stale", and
+  deleted it; a later worker reported the same reading back to me as its own
+  finding and I deleted a second correct edge. The echo was not independent
+  evidence: I had put the framing in its prompt. Both edges are restored
+  (source→arena, types→symbols). Two rules: grep the documented convention
+  before editing dependency metadata, and when a worker agrees with a claim
+  that originated in my own instructions, treat it as unverified.
