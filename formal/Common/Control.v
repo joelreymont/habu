@@ -74,15 +74,20 @@
    which a soundness proof built on this file would therefore not cover:
      - `uniform<bool>` block-uniform branches (`COND-UNIFORM?`,
        checker.f:7778-7799) and the block-collective barrier rule
-       (`ALL-CF-UNIFORM?`, checker.f:7681), which need arity-1 type families;
-     - the layout / hidden-field machinery, which `Effects.v` does not model.
-       `MATCH`'s scrutinee is therefore abstracted: the checker requires a
-       width-expanded hidden-field BUNDLE on top of the row and walks it cell
-       by cell (`MATCH-SCRUT?`, checker.f:8236-8246), while the model requires
-       one arity-0 `TFam` cell.  Every rule ABOVE that pop — payload
-       refinement, the branch join, exhaustiveness — is modelled exactly;
+       (`ALL-CF-UNIFORM?`, checker.f:7681).  `Effects.v` now models the
+       arity-1 families these need; what is still missing is the `CF.UNI`
+       frame slot, the `PTX-TILE-FAM` / `PTX-UNIFORM-FAM` recognition and the
+       barrier control flag — none of it representational;
+     - `MATCH`'s SCRUTINEE POP, which stays abstracted here.  The checker
+       walks a width-expanded hidden-field bundle cell by cell
+       (`MATCH-SCRUT?`, checker.f:8236-8246); `match_scrut` below requires one
+       arity-0 logical `TFam` cell.  `Effects.v` now has everything that pop
+       needs — `t_width`, `fam_hid`, `layout_push_fields` — so this is undone
+       work rather than a missing representation.  Every rule ABOVE the pop —
+       payload refinement, the branch join, `MD-JOIN`, exhaustiveness — is
+       modelled exactly;
      - `construct` (`CONM`), the field projection window, and the transport
-       ops, which are row surgery over the same omitted layout machinery;
+       ops, which are row surgery over `Effects.v`'s layout machinery;
      - `Q>XDOUT` / `Q>XROUT`, the rows captured at a quotation's first throw.
        They are written by `QX!` (checker.f:310-314) and read only by the image
        serialisers (checker.f:2433-2434, 4197-4198); no rule consults them, so
@@ -264,6 +269,13 @@ Record mframe : Type := MkMF {
 (* ------------------------------------------------------------------ *)
 
 Record st : Type := MkSt {
+  (* The TFAM registry (`Effects.fenv`).  It is not a checker REGISTER — it is
+     the global type-family table the checker reads through its deferred hooks
+     (checker.f:460-477) and it does not change while one definition is
+     scanned.  It rides here because the rules that read it are reached from
+     everywhere: every unification (`LAYOUT-BLOCK?`, the LOGHID row arm) and
+     the linear count (`LIN-TYPE-COUNT`'s T-PARAM arm) need it. *)
+  st_fenv    : fenv;
   st_sub     : subst;
   st_fv      : nat;
   st_dcur    : stack;
@@ -313,84 +325,84 @@ Definition qdepth (s : st) : nat :=
    changes; every other slot is carried through by name. *)
 
 Definition put_sub (s : st) (x : subst) : st :=
-  let '(MkSt _ fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt x fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv _ fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv x fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_fv (s : st) (n : nat) : st :=
-  let '(MkSt sub _ dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub n dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub _ dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub n dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_d (s : st) (d : stack) : st :=
-  let '(MkSt sub fv _ rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv d rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv _ rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv d rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_r (s : st) (r : stack) : st :=
-  let '(MkSt sub fv dcur _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_dr (s : st) (d : stack) (r : stack) : st :=
-  let '(MkSt sub fv _ _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv d r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv _ _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv d r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_base (s : st) (b : stack) (rb : stack) : st :=
-  let '(MkSt sub fv dcur rcur _ _ xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur b rb xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur _ _ xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur b rb xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_x (s : st) (xs : bool) (xd : stack) (xr : stack) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow _ _ _ thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xs xd xr thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow _ _ _ thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xs xd xr thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_thset (s : st) (b : bool) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow _ dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow b dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow _ dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow b dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_dead (s : st) (b : bool) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset _ cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset b cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset _ cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset b cfs loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_cfs (s : st) (l : list frame) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead _ loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead l loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead _ loc mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead l loc mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_loc (s : st) (l : list ty) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs _ mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs l mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs _ mm mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs l mm mpend mf taint ok unck failset mdiag hard.
 
 Definition put_mm (s : st) (n : nat) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc _ mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc n mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc _ mpend mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc n mpend mf taint ok unck failset mdiag hard.
 
 Definition put_mpend (s : st) (o : option nat) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm _ mf taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm o mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm _ mf taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm o mf taint ok unck failset mdiag hard.
 
 Definition put_mf (s : st) (l : list mframe) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend _ taint ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend l taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend _ taint ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend l taint ok unck failset mdiag hard.
 
 Definition put_taint (s : st) (l : list tyvar) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf _ ok unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf l ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf _ ok unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf l ok unck failset mdiag hard.
 
 (* `CF-FAIL` (checker.f:7689) and every `0 OK !` site: OK is a LATCH.  The
    checker keeps scanning after a failure, so this must not stop the machine. *)
 Definition fail (s : st) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck failset mdiag hard.
 
 (* `-1 UNCK !`: uncheckable, which `CHECK-VERDICT` ranks ABOVE a plain OK=0
    and BELOW every hard latch (checker.f:9666-9668). *)
 Definition set_unck (s : st) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok _ failset mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok true failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok _ failset mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok true failset mdiag hard.
 
 Definition put_failset (s : st) (b : bool) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck _ mdiag hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck b mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck _ mdiag hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck b mdiag hard.
 
 Definition put_mdiag (s : st) (n : nat) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset _ hard) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset n hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset _ hard) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset n hard.
 
 (* The hard structural latches this fragment can raise: `MREJ`
    (`MATCH-REJECT`, checker.f:8177), `LOCALBAD` (`LOC-REJECT`,
@@ -399,8 +411,8 @@ Definition put_mdiag (s : st) (n : nat) : st :=
    ORs them into one reject that outranks UNCK — so one field is enough,
    and nothing downstream can tell them apart either. *)
 Definition set_hard (s : st) : st :=
-  let '(MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck _ mdiag _) := s in
-  MkSt sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck true mdiag true.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck _ mdiag _) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck true mdiag true.
 
 (* --- fresh variables (`FRESH`, checker.f:1687) ---------------------- *)
 
@@ -437,36 +449,51 @@ Definition fresh_id (s : st) : nat * st := (st_fv s, put_fv s (S (st_fv s))).
 (* resolve linear — so the model always runs the pass.                 *)
 (* ------------------------------------------------------------------ *)
 
-(* `LIN-TYPE-COUNT*`, checker.f:1842-1861.  Over the fragment `Effects.v`
-   models this is not recursive: a pointer, a quotation and an atom all count
-   0 by their own arms, a variable falls to the `endcase` default, and only a
-   resolved linear con counts.  The omitted arms are the layout ones. *)
-Definition lin_ty (s : subst) (t : ty) : nat :=
+(* `LIN-TYPE-COUNT*`, checker.f:1842-1861.  A pointer, a quotation and an atom
+   all count 0 by their own arms, a variable falls to the `endcase` default,
+   and a resolved linear con counts one.
+
+   The T-PARAM arm (checker.f:1848-1858) is the one that needs the family
+   registry, and it is careful in a way worth spelling out.  A layout value
+   that expanded is now W CELLS on the row, so counting each cell would
+   multiply the resource by its width; the arm therefore counts a HIDDEN field
+   only at the TAG — slot W-1, the top of the group — and a still-LOGICAL
+   layout cell exactly once.  Every other slot of a bundle counts 0. *)
+Definition lin_ty (e : fenv) (s : subst) (t : ty) : nat :=
   match resolve_ty s t with
   | TCon c => if linear_conb c then 1 else 0
+  | TFam _ _ _ as p =>
+      let r := resolve_ty s p in
+      if hidden_paramb r
+      then (if Nat.eqb (hidden_slot r) (pred (t_width e s r))
+            then layout_linear_count e s r else 0)
+      else if layout_paramb e s r then layout_linear_count e s r
+      else 0
   | _ => 0
   end.
 
 (* `LIN-ROW-COUNT`, checker.f:1864-1872: walk the spine, resolving as it goes. *)
-Fixpoint lin_row_fuel (fuel : nat) (s : subst) (x : stack) : nat :=
+Fixpoint lin_row_fuel (fuel : nat) (e : fenv) (s : subst) (x : stack) : nat :=
   match fuel with
   | 0 => 0
   | S f =>
       match resolve_row s x with
       | SRow _ => 0
-      | SPush t rest => lin_ty s t + lin_row_fuel f s rest
+      | SPush t rest => lin_ty e s t + lin_row_fuel f e s rest
       end
   end.
 
-Definition lin_row (s : subst) (x : stack) : nat :=
-  lin_row_fuel (walk_budget s (stack_size x)) s x.
+Definition lin_row (e : fenv) (s : subst) (x : stack) : nat :=
+  lin_row_fuel (walk_budget s (stack_size x)) e s x.
 
 (* `LIN-TOTAL`, checker.f:1873. *)
-Definition lin_total (s : subst) (a b : stack) : nat := lin_row s a + lin_row s b.
+Definition lin_total (e : fenv) (s : subst) (a b : stack) : nat :=
+  lin_row e s a + lin_row e s b.
 
 (* `LIN-SNAPSHOT`, checker.f:1876: the live rows, under the substitution as it
    stands BEFORE the step runs. *)
-Definition lin_snapshot (s : st) : nat := lin_total (st_sub s) (st_dcur s) (st_rcur s).
+Definition lin_snapshot (s : st) : nat :=
+  lin_total (st_fenv s) (st_sub s) (st_dcur s) (st_rcur s).
 
 (* `LIN-CHECK`, checker.f:1882.  Gated on OK, as at every call site. *)
 Definition lin_check (s : st) (before : nat) : st :=
@@ -474,8 +501,8 @@ Definition lin_check (s : st) (before : nat) : st :=
   else if Nat.eqb (lin_snapshot s) before then s else fail s.
 
 (* `LIN-EXPLICIT?`, checker.f:1879. *)
-Definition lin_explicitb (s : subst) (a b : stack) : bool :=
-  negb (Nat.eqb (lin_total s a b) 0).
+Definition lin_explicitb (e : fenv) (s : subst) (a b : stack) : bool :=
+  negb (Nat.eqb (lin_total e s a b) 0).
 
 (* `LIN-TAINT-SCAN`, checker.f:1826-1834: any watched variable that has since
    resolved to a linear con laundered one. *)
@@ -509,11 +536,18 @@ Fixpoint mv_ty (v : tyvar) (pol : bool) (t : ty) : mpair :=
   match t with
   | TVar w => if Nat.eqb w v then (if pol then (0, 1) else (1, 0)) else mnil
   | TCon _ => mnil
-  | TFam _ => mnil
+  (* `EN-PARAM`, checker.f:4585-4591: the argument run is walked at the SAME
+     polarity — a family application is not a quotation, so nothing flips. *)
+  | TFam _ _ args => mv_args v pol args
   | TPtr u => mv_ty v pol u
   | TQuot _ _ (Eff a b c d) =>
       madd (madd (mv_row v (negb pol) a) (mv_row v pol b))
            (madd (mv_row v (negb pol) c) (mv_row v pol d))
+  end
+with mv_args (v : tyvar) (pol : bool) (l : tys) : mpair :=
+  match l with
+  | TNil => mnil
+  | TCons u rest => madd (mv_ty v pol u) (mv_args v pol rest)
   end
 with mv_row (v : tyvar) (pol : bool) (x : stack) : mpair :=
   match x with
@@ -539,11 +573,15 @@ Fixpoint vars_ty (t : ty) (acc : list tyvar) : list tyvar :=
   match t with
   | TVar w => if mem_nat w acc then acc else w :: acc
   | TCon _ => acc
-  | TFam _ => acc
+  (* A family argument is an ordinary effect variable position: `E-COPY`
+     collects it and `EI-TV` therefore holds it. *)
+  | TFam _ _ args => vars_args args acc
   | TPtr u => vars_ty u acc
   | TQuot _ _ (Eff a b c d) =>
       vars_row a (vars_row b (vars_row c (vars_row d acc)))
   end
+with vars_args (l : tys) (acc : list tyvar) : list tyvar :=
+  match l with TNil => acc | TCons u rest => vars_ty u (vars_args rest acc) end
 with vars_row (x : stack) (acc : list tyvar) : list tyvar :=
   match x with
   | SRow _ => acc
@@ -583,7 +621,7 @@ Definition lin_eff_pass (s : st) (w : word_eff) : st :=
    substitution.  OK is already latched false at that point, so the VERDICT is
    unaffected; only the bindings a later token would see differ. *)
 Definition uni (k : ukind) (s : st) (got want : stack) : st :=
-  match unify_stack k (st_sub s) got want with
+  match unify_stack (st_fenv s) k (st_sub s) got want with
   | Some s' => put_sub s s'
   | None => fail s
   end.
@@ -594,7 +632,7 @@ Definition uni (k : ukind) (s : st) (got want : stack) : st :=
    is exactly how a `match` join mismatch keeps `MD-JOIN` and a plain type
    clash inside a branch does not. *)
 Definition uni_pin (k : ukind) (s : st) (got want : stack) : st :=
-  match unify_stack k (st_sub s) got want with
+  match unify_stack (st_fenv s) k (st_sub s) got want with
   | Some s' => put_sub s s'
   | None =>
       if st_ok s && negb (st_failset s)
@@ -627,7 +665,7 @@ Definition rsuni_in (s : st) (want : stack) : st := uni_pin UkInput s (st_rcur s
    declared output — unconditionally, the checker does it even when the
    unification failed — and then re-check the linear count. *)
 Definition checker_step (s : st) (din dout : stack) : st :=
-  let explicit := lin_explicitb (st_sub s) din dout in
+  let explicit := lin_explicitb (st_fenv s) (st_sub s) din dout in
   let before := lin_snapshot s in
   let s := suni_in s din in
   let s := put_d s dout in
@@ -719,6 +757,8 @@ Definition dead_closer (t : tok) : bool :=
 (* ------------------------------------------------------------------ *)
 
 Record cfg : Type := MkCfg {
+  (* The live TFAM registry; see `st_fenv`. *)
+  cfg_fenv : fenv;
   cfg_decl : decl;
   cfg_brow : rowvar;
   cfg_sig  : bool
@@ -1200,7 +1240,8 @@ Definition match_scrut (s : st) (f : fam) : option stack :=
   match resolve_row (st_sub s) (st_dcur s) with
   | SPush t rest =>
       match resolve_ty (st_sub s) t with
-      | TFam k => if Nat.eqb k (fam_id f) then Some rest else None
+      (* The abstraction: ONE arity-0 logical family cell, matched by id. *)
+      | TFam k 0 TNil => if Nat.eqb k (fam_id f) then Some rest else None
       | _ => None
       end
   | SRow _ => None
@@ -1367,8 +1408,8 @@ Definition throw_edge (s : st) : st := put_thset s true.
    `: T4 ( i64 -- i64 ) MK-N throw STEP1 ;` is refused with `at 'STEP1' after
    'throw'`, and `: T5 ( i64 -- cell ) MK-BOOL IF MK-N throw THEN DROP1
    MK-CELL ;` certifies because `THEN` excludes the dead arm. *)
-Definition throw_prim : word_eff := prim 1 [nt] [].
-Definition die_prim : word_eff := prim 1 [TPtr u8; nt; nt] [].
+Definition throw_prim : word_eff := prim [] 1 [nt] [].
+Definition die_prim : word_eff := prim [] 1 [TPtr u8; nt; nt] [].
 
 Definition after_ctl (s : st) (dead throw : bool) : st :=
   let s := if st_ok s && throw then throw_edge s else s in
@@ -1490,8 +1531,8 @@ Definition do_exec (s : st) : st :=
   let (t, s) := pop_xt s in
   match t with
   | TQuot xhas xdead (Eff qd qo qr qro) =>
-      let explicit := lin_explicitb (st_sub s) qd qo
-                      || lin_explicitb (st_sub s) qr qro in
+      let explicit := lin_explicitb (st_fenv s) (st_sub s) qd qo
+                      || lin_explicitb (st_fenv s) (st_sub s) qr qro in
       let before := lin_snapshot s in
       let s := suni_in s qd in
       let s := rsuni_in s qr in
@@ -1755,7 +1796,7 @@ Definition init (c : cfg) : st :=
   let base :=
     S (Nat.max (max_eff (we_eff e))
                (Nat.max (decl_dbase d) (Nat.max (decl_rbrow d) (cfg_brow c)))) in
-  MkSt empty_subst base
+  MkSt (cfg_fenv c) empty_subst base
        (if cfg_sig c then we_din e else SRow (cfg_brow c))
        (if cfg_sig c && we_hasr e then we_rin e else SRow (decl_rbrow d))
        (SRow (cfg_brow c)) (SRow (decl_rbrow d))
@@ -1865,19 +1906,27 @@ Definition ctl_throw (c : cfg) (ts : list tok) : bool :=
 (* ------------------------------------------------------------------ *)
 
 (* The callee effects, one per prelude word, over their own row letter. *)
-Definition wStep1 : word_eff := prim 1 [i64] [i64].
-Definition wMkU8 : word_eff := prim 1 [] [u8].
-Definition wMkCell : word_eff := prim 1 [] [cellt].
-Definition wMkI64 : word_eff := prim 1 [] [i64].
-Definition wMkBool : word_eff := prim 1 [] [boolt].
-Definition wDup1 : word_eff := prim 1 [i64] [i64; i64].
-Definition wDrop1 : word_eff := prim 1 [i64] [].
-Definition wMkN : word_eff := prim 1 [] [nt].
-Definition wDropN : word_eff := prim 1 [nt] [].
+Definition wStep1 : word_eff := prim [] 1 [i64] [i64].
+Definition wMkU8 : word_eff := prim [] 1 [] [u8].
+Definition wMkCell : word_eff := prim [] 1 [] [cellt].
+Definition wMkI64 : word_eff := prim [] 1 [] [i64].
+Definition wMkBool : word_eff := prim [] 1 [] [boolt].
+Definition wDup1 : word_eff := prim [] 1 [i64] [i64; i64].
+Definition wDrop1 : word_eff := prim [] 1 [i64] [].
+Definition wMkN : word_eff := prim [] 1 [] [nt].
+Definition wDropN : word_eff := prim [] 1 [nt] [].
 
 (* Signature letters: 0 is the declaration's implicit data row, 8 is `BROW`,
    9 is `RBROW`. *)
-Definition sig (din dout : list ty) : cfg := MkCfg (decl_plain 0 9 din dout) 8 true.
+Definition sig_in (e : fenv) (din dout : list ty) : cfg :=
+  MkCfg e (decl_plain e 0 9 din dout) 8 true.
+
+(* Most examples here need no registered family at all: the `MATCH` scrutinee
+   is abstracted to one arity-0 cell and no other control rule looks at a
+   layout.  `sig` is therefore the empty registry, in which every family id
+   answers the registry-not-loaded defaults, and `sig_in` is used where a
+   family's shape decides the example. *)
+Definition sig (din dout : list ty) : cfg := sig_in [] din dout.
 
 (* --- 1. A branch whose arms join ------------------------------------ *)
 
@@ -2100,7 +2149,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 (* --- 5. `case` ------------------------------------------------------ *)
 
 (* The polymorphic `drop`, used by the default arm below. *)
-Definition wDropAny : word_eff := prim 1 [TVar 2] [].
+Definition wDropAny : word_eff := prim [] 1 [TVar 2] [].
 
 (* The selector lives on the row for the whole form: `of` consumes the test
    value AND the selector, `endof` puts the selector back for the next test,
@@ -2203,7 +2252,7 @@ Definition fmres : fam := MkFam 100 [[nt]; [nt]].
 Definition fmthree : fam := MkFam 101 [[nt]; [nt]; [nt]].
 Definition fmbool : fam := MkFam 102 [[boolt]; [nt]].
 
-Definition wDropBool : word_eff := prim 1 [boolt] [].
+Definition wDropBool : word_eff := prim [] 1 [boolt] [].
 
 (* Every example in this section was run through `CHECK-CANDIDATE!`, because
    the ENGINE refuses several of these texts before the checker sees them.
@@ -2214,14 +2263,14 @@ Definition wDropBool : word_eff := prim 1 [boolt] [].
    T6 ( mthree -- n ) MATCH mthree one OF ENDOF two OF ENDOF ;MATCH -> 0,
        `at ';MATCH' bad match: missing variants: three` *)
 Example match_must_be_exhaustive :
-  check_ctl (sig [TFam 100] [nt])
+  check_ctl (sig [fam0 100] [nt])
             [TMatch; TFamTok fmres;
              TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
-  /\ check_ctl (sig [TFam 100] [nt])
+  /\ check_ctl (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_reason (sig [TFam 100] [nt])
+  /\ check_reason (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_NONEXH
-  /\ check_ctl (sig [TFam 101] [nt])
+  /\ check_ctl (sig [fam0 101] [nt])
        [TMatch; TFamTok fmthree;
         TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
@@ -2237,10 +2286,10 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    T8 ( mbool -- n ) MATCH mbool yes OF DROP-BOOL MK-N ENDOF no OF ENDOF ;MATCH
        -> -1 *)
 Example match_branches_are_refined_by_their_payload :
-  check_ctl (sig [TFam 102] [nt])
+  check_ctl (sig [fam0 102] [nt])
             [TMatch; TFamTok fmbool;
              TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_ctl (sig [TFam 102] [nt])
+  /\ check_ctl (sig [fam0 102] [nt])
        [TMatch; TFamTok fmbool;
         TVarTok 0; TOf; TCall wDropBool; TCall wMkN; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = VCert.
@@ -2251,7 +2300,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    that failed.  An `if`/`else`/`then` disagreement — the join it is usually
    attributed to — raises no reason code at all.  Both halves measured above. *)
 Example md_join_is_the_match_join_not_the_if_join :
-  check_reason (sig [TFam 102] [nt])
+  check_reason (sig [fam0 102] [nt])
                [TMatch; TFamTok fmbool;
                 TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch]
     = MD_JOIN
@@ -2266,7 +2315,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    latched only when the failure pin was still open when the join ran.  That
    guard is the whole reason `FAILSET` is modelled. *)
 Example md_join_does_not_steal_an_earlier_failure :
-  check_reason (sig [TFam 102] [nt])
+  check_reason (sig [fam0 102] [nt])
                [TMatch; TFamTok fmbool;
                 TVarTok 0; TOf; TCall wStep1; TEndof;
                 TVarTok 1; TOf; TEndof; TSemiMatch] = 0.
@@ -2284,19 +2333,19 @@ Proof. vm_compute; reflexivity. Qed.
        `at 'zork' bad match: unknown variant`
    U5 ( mres -- n ) ;MATCH -> 0, `at ';MATCH' bad match: misplaced match token` *)
 Example match_form_shape_is_enforced :
-  check_reason (sig [TFam 100] [nt])
+  check_reason (sig [fam0 100] [nt])
                [TMatch; TFamTok fmres; TVarTok 0; TCall wDropN; TOf; TEndof;
                 TVarTok 1; TOf; TEndof; TSemiMatch] = MD_MISSING_OF
-  /\ check_ctl (sig [TFam 100] [nt])
+  /\ check_ctl (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 0; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_reason (sig [TFam 100] [nt])
+  /\ check_reason (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 0; TOf; TEndof; TSemiMatch] = MD_VAR_DUP
-  /\ check_reason (sig [TFam 100] [nt])
+  /\ check_reason (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 5; TOf; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = MD_VAR_UNKNOWN
-  /\ check_reason (sig [TFam 100] [nt]) [TSemiMatch] = MD_STRAY.
+  /\ check_reason (sig [fam0 100] [nt]) [TSemiMatch] = MD_STRAY.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* A `match` left unterminated at `;` is `MD-TRUNC` (checker.f:9679), and the
@@ -2305,10 +2354,10 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    U4 ( mres -- n ) MATCH mres ok OF ENDOF err OF ENDOF -> 0,
        `at 'ENDOF' bad match: unterminated match expected: n actual:` *)
 Example an_unterminated_match_is_truncation :
-  check_ctl (sig [TFam 100] [nt])
+  check_ctl (sig [fam0 100] [nt])
             [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
              TVarTok 1; TOf; TEndof] = VReject
-  /\ check_reason (sig [TFam 100] [nt])
+  /\ check_reason (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 1; TOf; TEndof] = MD_TRUNC.
 Proof. repeat split; vm_compute; reflexivity. Qed.
@@ -2321,13 +2370,13 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    TB ( mres -- n ) MATCH mres ok OF EXIT ENDOF err OF EXIT ENDOF ;MATCH -> -1
    TC ( mres -- n ) MATCH mres ok OF MK-N throw ENDOF err OF ENDOF ;MATCH -> -1 *)
 Example a_dead_match_branch_is_excluded :
-  check_ctl (sig [TFam 100] [nt])
+  check_ctl (sig [fam0 100] [nt])
             [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof;
              TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
-  /\ check_ctl (sig [TFam 100] [nt])
+  /\ check_ctl (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof;
         TVarTok 1; TOf; TExit; TEndof; TSemiMatch] = VCert
-  /\ check_ctl (sig [TFam 100] [nt])
+  /\ check_ctl (sig [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wMkN; TThrow; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = VCert.
 Proof. repeat split; vm_compute; reflexivity. Qed.
@@ -2346,13 +2395,13 @@ Example the_scrutinee_must_be_the_matched_family :
   check_ctl (sig [nt] [nt])
             [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
              TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_ctl (sig [TFam 100] [nt])
+  /\ check_ctl (sig [fam0 100] [nt])
        [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
   /\ check_reason (sig [nt] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = MD_SCRUT
-  /\ check_reason (sig [TFam 100] [nt])
+  /\ check_reason (sig [fam0 100] [nt])
        [TOpenQ; TMatch; TFamTok fmres] = MD_QUOT.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
@@ -2471,8 +2520,8 @@ Proof. vm_compute; reflexivity. Qed.
 Example throw_and_die_differ_only_in_the_edge :
   ctl_throw (sig [i64] [i64]) [TCall wMkN; TThrow] = true
   /\ ctl_dead (sig [i64] [i64]) [TCall wMkN; TThrow] = true
-  /\ ctl_throw (sig [] []) [TCall (prim 1 [] [TPtr u8; nt; nt]); TDie] = false
-  /\ ctl_dead (sig [] []) [TCall (prim 1 [] [TPtr u8; nt; nt]); TDie] = true
+  /\ ctl_throw (sig [] []) [TCall (prim [] 1 [] [TPtr u8; nt; nt]); TDie] = false
+  /\ ctl_dead (sig [] []) [TCall (prim [] 1 [] [TPtr u8; nt; nt]); TDie] = true
   (* an ordinary body records neither, and an `exit` is a RETURN, not deadness *)
   /\ ctl_dead (sig [i64] [i64]) [TCall wStep1] = false
   /\ ctl_dead (sig [i64] [i64]) [TExit] = false.
@@ -2490,7 +2539,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
        `at 'STEP1' after 'NORET'`
    : N5 ( i64 -- i64 ) MK-N DROP-N STEP1 ;            -> exit 0  (no flags)
    : N4 ( bool -- cell ) IF MK-N NORET THEN MK-CELL ; -> exit 0 *)
-Definition wNoReturn : word_eff := prim 1 [nt] [].
+Definition wNoReturn : word_eff := prim [] 1 [nt] [].
 
 Example inherited_control_flags_kill_the_callers_path :
   check_ctl (sig [i64] [i64])
@@ -2663,7 +2712,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    : C26 RECURSE ;                    -> exit 70, `at 'RECURSE'` (bare pin)
    : C27 ( i64 -- i64 ) RECURSE ;     -> exit 0 *)
 Example recurse_without_a_signature_is_uncheckable :
-  check_ctl (MkCfg (decl_plain 0 9 [] []) 8 false) [TRecurse] = VUncheckable
+  check_ctl (MkCfg [] (decl_plain [] 0 9 [] []) 8 false) [TRecurse] = VUncheckable
   /\ check_ctl (sig [i64] [i64]) [TRecurse] = VCert.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
@@ -2736,8 +2785,8 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    so the variant tokens that follow become unknown words and their latch wins
    the render.  The VERDICT is the hard reject `MD-DEPTH` asks for.) *)
 Example match_refuses_before_the_overflow :
-  check_ctl (sig [TFam 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject
-  /\ check_reason (sig [TFam 100] [nt])
+  check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject
+  /\ check_reason (sig [fam0 100] [nt])
        (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
@@ -2836,9 +2885,9 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 
    all four of which certify on their own. *)
 Definition ltok : ty := TCon (CLinear 0).
-Definition wDupAny : word_eff := prim 1 [TVar 2] [TVar 2; TVar 2].
-Definition wKeepAny : word_eff := prim 1 [TVar 2] [TVar 2].
-Definition wSwapAny : word_eff := prim 1 [TVar 2; TVar 3] [TVar 3; TVar 2].
+Definition wDupAny : word_eff := prim [] 1 [TVar 2] [TVar 2; TVar 2].
+Definition wKeepAny : word_eff := prim [] 1 [TVar 2] [TVar 2].
+Definition wSwapAny : word_eff := prim [] 1 [TVar 2; TVar 3] [TVar 3; TVar 2].
 
 (* (a) CONCRETE COUNT CONSERVATION.  A step whose declared rows do not
    themselves name a linear may not change how many linear cons are live.
@@ -2912,6 +2961,71 @@ Example polymorphic_laundering_is_caught :
        [TOpenQ; TCall wDupAny; TCall wDropAny; TCloseQ; TExec] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
+(* (c) A LAYOUT BUNDLE IS ONE LINEAR UNIT.  This is the arm that made
+   `Effects.v`'s widening reach into this file: before it, every family term
+   counted 0, so a body that dropped a bundle holding a linear conserved
+   trivially and the model certified it.
+
+   `LIN-TYPE-COUNT`'s T-PARAM arm (checker.f:1848-1858) counts a bundle ONCE.
+   An expanded bundle is W cells on the row and counting each of them would
+   multiply the resource by its width, so the arm counts a hidden field only
+   at the TAG — slot W-1 — and every other slot at 0.  A still-logical layout
+   cell counts once on its own account.
+
+   Measured with `CHECK-CANDIDATE!` (-1 certified / 0 rejected) over
+
+     deflinear ltok
+     require lib/adt/option.f
+
+   which makes `option<ltok>` a two-cell bundle carrying one linear unit:
+
+     ( option<ltok> -- option<ltok> )                       -> -1
+     ( option<ltok> -- ) drop                               ->  0
+     ( option<ltok> -- option<ltok> option<ltok> ) dup      ->  0
+     ( option<n> -- option<n> option<n> ) dup               -> -1
+
+   The last line is the control: the same `dup`, the same bundle shape, and it
+   certifies — so what the checker refused was the LINEAR, not the layout.
+
+   No TOKEN in this file's fragment can drop or copy a bundle: `drop` and
+   `dup` over a hidden group are whole-bundle TRANSPORT ops (`XPORT-STEP?`,
+   checker.f:7215), which are a separate leaf.  So the rejects above are
+   measured against `bin/hb` and what the example pins is the COUNT that
+   decides them. *)
+Definition f_lbox : nat := 110.
+Definition d_lbox : famdef :=
+  MkFamDef 1 TkSum false 1 false [[]; [SchParam 0]] [].
+Definition lin_env : fenv := [(f_lbox, d_lbox)].
+
+Definition lbox_ltok : ty := fam_app f_lbox [ltok].
+Definition lbox_n : ty := fam_app f_lbox [nt].
+
+Example a_layout_bundle_counts_its_linear_once :
+  (* the bundle is two cells, and it carries one linear unit *)
+  t_width lin_env empty_subst lbox_ltok = 2
+  /\ layout_linear_count lin_env empty_subst lbox_ltok = 1
+  (* counted at the TAG, and nowhere else *)
+  /\ lin_ty lin_env empty_subst (fam_hid f_lbox 1 [ltok]) = 1
+  /\ lin_ty lin_env empty_subst (fam_hid f_lbox 0 [ltok]) = 0
+  (* an unexpanded logical cell counts once on its own account *)
+  /\ lin_ty lin_env empty_subst lbox_ltok = 1
+  (* and a non-linear instantiation of the same family counts nothing *)
+  /\ lin_ty lin_env empty_subst (fam_hid f_lbox 1 [nt]) = 0
+  /\ layout_linear_count lin_env empty_subst lbox_n = 0
+  (* so a whole expanded bundle on a row is worth exactly one *)
+  /\ lin_row lin_env empty_subst
+       (push_logical lin_env empty_subst lbox_ltok (SRow 0)) = 1
+  /\ lin_row lin_env empty_subst
+       (push_logical lin_env empty_subst lbox_n (SRow 0)) = 0
+  (* and the declaration really does put both cells on the row, because
+     `decl_plain` folds its types through `PUSH-LOGICAL` exactly as `PSTACK`
+     does — a `( option<ltok> -- option<ltok> )` word starts two cells deep *)
+  /\ we_din (decl_eff (cfg_decl (sig_in lin_env [lbox_ltok] [lbox_ltok])))
+     = push_logical lin_env empty_subst lbox_ltok (SRow 0)
+  /\ check_ctl (sig_in lin_env [lbox_ltok] [lbox_ltok]) [] = VCert
+  /\ check_ctl (sig_in lin_env [lbox_n] [lbox_n]) [] = VCert.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
 (* A linear may not be bound to a local at all: a reference re-pushes the
    binding without any step for the conservation check to see, so the copy or
    the leak would be invisible.  This is a HARD reject.
@@ -2930,12 +3044,12 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    point of the seal being post-hoc is that control flow does not touch it.
    `declared_empty`, `trusted_img` and `balanced_word` are Effects.v's. *)
 Example agrees_with_the_straight_line_model :
-  check_ctl (MkCfg declared_empty 8 true) [TCall trusted_img]
+  check_ctl (MkCfg [] declared_empty 8 true) [TCall trusted_img]
     = VReject
-  /\ check_body declared_empty [trusted_img] = false
-  /\ check_ctl (MkCfg declared_empty 8 true) [TCall balanced_word]
+  /\ check_body [] declared_empty [trusted_img] = false
+  /\ check_ctl (MkCfg [] declared_empty 8 true) [TCall balanced_word]
     = VCert
-  /\ check_body declared_empty [balanced_word] = true.
+  /\ check_body [] declared_empty [balanced_word] = true.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* And the seal still rejects a body that underflows inside a branch: the arm
@@ -2943,7 +3057,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    agreeing, the output row joins the declaration — and the definition is
    rejected anyway, because the base row came back bound to a spine. *)
 Example the_seal_still_catches_underflow_inside_a_branch :
-  check_ctl (MkCfg declared_empty 8 true)
+  check_ctl (MkCfg [] declared_empty 8 true)
             [TCall wMkBool; TIf; TCall trusted_img; TElse; TCall trusted_img; TThen]
   = VReject.
 Proof. vm_compute; reflexivity. Qed.
@@ -2958,9 +3072,9 @@ Proof. vm_compute; reflexivity. Qed.
    : UF1 ( -- ) MK-N MK-N do TIMG loop ;      -> exit 70, `at 'loop'`
    : UF3 ( img -- img ) MK-N MK-N do TIMG loop ;  -> exit 0 *)
 Example the_loop_rule_is_silent_about_underflow :
-  check_ctl (MkCfg declared_empty 8 true)
+  check_ctl (MkCfg [] declared_empty 8 true)
             [TBegin; TCall trusted_img; TCall wMkBool; TUntil] = VReject
-  /\ check_ctl (MkCfg declared_empty 8 true)
+  /\ check_ctl (MkCfg [] declared_empty 8 true)
        [TCall wMkN; TCall wMkN; TDo; TCall trusted_img; TLoop] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
