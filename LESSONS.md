@@ -2682,3 +2682,21 @@ fits.
   must carry them in a typed value through every validation step and erase
   them exactly once, inside a single audited mint, rather than re-deriving
   them in raw `n` on the far side.
+- **A composition brief must name the whole stack and the expected baseline,
+  not one commit.** A worker was told to "compose with commit X" and did
+  exactly that. X was the package child of the accepted payload, so its own
+  diff omitted the fix that lived in the parent, and every tree in the
+  resulting four-way isolation lacked it. Four identical reds read like a
+  strong signal and were four instances of one omission — reported as a
+  discovered blocker until the other orchestrator asked whether the payload
+  layer had been included. Name the full range as explicit layers
+  (`base..payload`, then `payload..package`), say what the composed tree must
+  CONTAIN rather than which commit to apply, and state the expected
+  pre-composition result so a predicted red cannot be mistaken for a finding.
+- **`git apply` inside a jj workspace silently does nothing.** It resolves to
+  the parent git directory, returns exit 0, and writes no file. A worker
+  caught it only by hashing the target afterward rather than trusting the exit
+  code, and switched to `patch -p1`. Any tool that reports success without
+  changing the tree will manufacture a green composition out of nothing;
+  verify by content, never by exit status, when applying a patch across
+  workspaces.
