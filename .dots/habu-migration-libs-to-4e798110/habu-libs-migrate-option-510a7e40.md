@@ -1,6 +1,6 @@
 ---
 title: Migrate OPTION to unified ENUM
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-13T17:16:48.654673+02:00"
@@ -39,3 +39,5 @@ lints, exact 125-file unchanged census, and scratch mutation kills for arm
 order, field name, compact mode, and generator-domain drift. Smallest owning
 path: the standard-library gate executes the new suite through the real OPTION
 constructors and `MATCH` implementation.
+
+Claim: agent=option-enum workspace=.jj-ws/habu-libs-migrate-option-510a7e40
