@@ -7,8 +7,8 @@
 \ and test/type-linear-suite.f pins what the CHECKER does with such a value on a row.
 \ Both of those work over small stand-in owners - a one-cell DEFLINEAR token wrapped in
 \ a two-cell record. The consumer the capability was built for is not that shape: it is
-\ GPT2LOAD:gpt2-model, a seven-cell record whose linearity arrives through a nested
-\ WSTORE:resident, carrying a four-cell configuration identity and a private construction proof
+\ GPT2LOAD:gpt2-model, a nine-cell record whose linearity arrives through an embedded
+\ three-cell WSTORE:store, carrying a four-cell configuration identity and a private construction proof
 \ beside it. Nothing before this file put that type through a declared payload slot, so
 \ "it works for the real model" was an inference from two smaller cases rather than a
 \ measurement. This suite makes it a measurement.
@@ -36,7 +36,7 @@
 \ and this suite goes red rather than quiet.
 \
 \ THE WIDTH-IDENTICAL CONTROL. `model-payload` and `plain-payload`
-\ are both eight cells wide - a tag cell plus a seven-cell payload - and they differ in
+\ are both ten cells wide - a tag cell plus a nine-cell payload - and they differ in
 \ exactly one thing: `model-payload`'s payload owns a linear value and `plain-payload`'s does not. A
 \ rejection on its own proves nothing, because it could be answering payload width,
 \ nesting level, declared arity, return-stack balance, or a multi-cell value the operation simply
@@ -88,11 +88,12 @@ ENUM model-payload 0
    VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
 
-\ The control: the same eight cells, no linear value anywhere. MDLCFG:cfgkey is four
-\ cells and the three scalars make seven, so plain-payload matches model-payload
+\ The control: the same ten cells, no linear value anywhere. MDLCFG:cfgkey is four
+\ cells and the five scalars make nine, so plain-payload matches model-payload
 \ cell for cell.
 ENUM plain-payload 0
-   VARIANT key   FIELD k MDLCFG:cfgkey FIELD a n FIELD b n FIELD c n ;VARIANT
+   VARIANT key   FIELD k MDLCFG:cfgkey
+      FIELD a n FIELD b n FIELD c n FIELD d n FIELD e n ;VARIANT
    VARIANT rejected FIELD code n ;VARIANT
 ;ENUM
 
@@ -259,16 +260,16 @@ s" its cases are in declaration order, under this suite's constructor package" T
 MODEL-PAYLOAD-IDENTITY 0 ARM$ s" model" T$=
 MODEL-PAYLOAD-IDENTITY 1 ARM$ s" rejected" T$=
 MODEL-PAYLOAD-IDENTITY 0 ARM-CTOR$ s" GPT2PAYLOAD-MODEL--PAYLOAD" T$=
-s" the model occupies one named payload field, seven cells wide, at slot 0" T-LABEL
+s" the model occupies one named payload field, nine cells wide, at slot 0" T-LABEL
 MODEL-PAYLOAD-IDENTITY 0 ARM-FLDS 1 T=
 MODEL-PAYLOAD-IDENTITY 0 s" model" ARM-SLOT 0 T=
-MODEL-PAYLOAD-IDENTITY 0 s" model" ARM-CELLS 7 T=
-s" so the family is a tag cell plus that payload: eight cells" T-LABEL
-MODEL-PAYLOAD-IDENTITY WIDTH 8 T=
-s" and the non-linear control is eight cells wide too, from four declared fields" T-LABEL
+MODEL-PAYLOAD-IDENTITY 0 s" model" ARM-CELLS 9 T=
+s" so the family is a tag cell plus that payload: ten cells" T-LABEL
+MODEL-PAYLOAD-IDENTITY WIDTH 10 T=
+s" and the non-linear control is ten cells wide too, from six declared fields" T-LABEL
 PLAIN-PAYLOAD-IDENTITY FAMS 1 T=
-PLAIN-PAYLOAD-IDENTITY WIDTH 8 T=
-PLAIN-PAYLOAD-IDENTITY 0 ARM-FLDS 4 T=
+PLAIN-PAYLOAD-IDENTITY WIDTH 10 T=
+PLAIN-PAYLOAD-IDENTITY 0 ARM-FLDS 6 T=
 
 ;using
 
@@ -315,7 +316,7 @@ s" PLAIN-PAYLOAD-MEMORY-STORE ( plain-payload ptr n -- ) !" REJECTED
 \ NOT LINEARITY: a typed local capturing model-payload rejects plain-payload too, so this is
 \ about capturing a multi-cell layout value in a local. The one-cell control shows typed
 \ locals themselves are fine, which is what makes the pair readable.
-s" a typed local cannot capture either eight-cell payload (locals, not linearity)" T-LABEL
+s" a typed local cannot capture either ten-cell payload (locals, not linearity)" T-LABEL
 s" MODEL-PAYLOAD-LOCAL ( model-payload -- model-payload ) {: v:model-payload :} v" REJECTED
 s" PLAIN-PAYLOAD-LOCAL ( plain-payload -- plain-payload ) {: v:plain-payload :} v" REJECTED
 s" SCALAR-LOCAL ( n -- n ) {: v:n :} v" ACCEPTED
@@ -342,14 +343,14 @@ s" MODEL-PAYLOAD-FROM-MODEL-INLINE ( GPT2LOAD:gpt2-model -- model-payload ) cons
 s" MODEL-PAYLOAD-FROM-REJECTION ( n -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:REJECTED" ACCEPTED
 
 \ Wrong roles: the payload slot is nominal, so neither variant will take the other's
-\ argument, the two eight-cell families do not substitute for each other, and a MATCH
+\ argument, the two ten-cell families do not substitute for each other, and a MATCH
 \ naming the wrong family rejects rather than reading the tag it happens to share.
 s" the two variants' payloads cannot cross, and neither can the two families" T-LABEL
 s" MODEL-PAYLOAD-WRONG-MODEL-CELL ( n -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:MODEL" REJECTED
 s" MODEL-PAYLOAD-WRONG-REJECTION-MODEL ( GPT2LOAD:gpt2-model -- model-payload ) GPT2PAYLOAD-MODEL--PAYLOAD:REJECTED" REJECTED
 s" PLAIN-PAYLOAD-WRONG-MODEL ( GPT2LOAD:gpt2-model -- plain-payload ) GPT2PAYLOAD-PLAIN--PAYLOAD:KEY" REJECTED
 s" MODEL-PAYLOAD-AS-PLAIN-PAYLOAD ( model-payload -- plain-payload )" REJECTED
-s" MODEL-PAYLOAD-MATCH-WRONG-FAMILY ( model-payload -- n ) MATCH plain-payload key OF drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
+s" MODEL-PAYLOAD-MATCH-WRONG-FAMILY ( model-payload -- n ) MATCH plain-payload key OF drop drop drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
 s" losing, copying or re-using the model at construction is rejected" T-LABEL
 s" MODEL-PAYLOAD-CONSTRUCT-DROPS-MODEL ( GPT2LOAD:gpt2-model n -- model-payload ) nip GPT2PAYLOAD-MODEL--PAYLOAD:REJECTED" REJECTED
@@ -370,7 +371,7 @@ s" MODEL-PAYLOAD-MATCH-REWRAP ( model-payload -- model-payload ) MATCH model-pay
 
 s" dropping the payload inside the branch is rejected, and plain-payload drops freely" T-LABEL
 s" MODEL-PAYLOAD-MATCH-DROP ( model-payload -- n ) MATCH model-payload model OF drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
-s" PLAIN-PAYLOAD-MATCH-DROP ( plain-payload -- n ) MATCH plain-payload key OF drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
+s" PLAIN-PAYLOAD-MATCH-DROP ( plain-payload -- n ) MATCH plain-payload key OF drop drop drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
 
 s" copying the payload to release it twice is rejected" T-LABEL
 s" MODEL-PAYLOAD-MATCH-RELEASE-TWICE ( model-payload -- n ) MATCH model-payload model OF dup GPT2LOAD:RELEASE-MODEL drop GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
@@ -382,14 +383,14 @@ s" MODEL-PAYLOAD-MATCH-KEEP-PAYLOAD ( model-payload -- n ) MATCH model-payload m
 s" MODEL-PAYLOAD-MATCH-RSTACK-ESCAPE ( model-payload -- n ) MATCH model-payload model OF >r 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 s" MODEL-PAYLOAD-MATCH-EARLY-EXIT ( model-payload -- n ) MATCH model-payload model OF exit ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
-s" unpacking the model inside the branch keeps the obligation on its residency" T-LABEL
+s" unpacking the model inside the branch keeps the obligation on its store" T-LABEL
 s" MODEL-PAYLOAD-MATCH-UNMAKE-MODEL ( model-payload -- n ) MATCH model-payload model OF GPT2LOAD-GPT2--MODEL:UNMAKE drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
 \ NOT LINEARITY: MATCH consumes what it matches for every family, so keeping the
 \ matched input value is rejected for plain-payload as well.
 s" a model-payload value cannot survive its own MATCH (MATCH consumes, not linearity)" T-LABEL
 s" MODEL-PAYLOAD-MATCH-KEEP-INPUT ( model-payload -- model-payload n ) MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
-s" PLAIN-PAYLOAD-MATCH-KEEP-INPUT ( plain-payload -- plain-payload n ) MATCH plain-payload key OF drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
+s" PLAIN-PAYLOAD-MATCH-KEEP-INPUT ( plain-payload -- plain-payload n ) MATCH plain-payload key OF drop drop drop drop drop drop 0 ENDOF rejected OF ENDOF ;MATCH" REJECTED
 
 \ ---------------------------------------------------------------------------------
 \ KNOWN GAP: `throw` abandons a linear value owned by a MATCH branch.
@@ -421,7 +422,7 @@ s" MODEL-PAYLOAD-THROW-GAP ( model-payload -- n ) MATCH model-payload model OF -
 s" KNOWN GAP: a catch inside the branch resumes past the throw while the branch still owns the model" T-LABEL
 s" MODEL-PAYLOAD-CATCH-GAP ( model-payload -- n ) MATCH model-payload model OF [: -5699 throw ;] catch drop GPT2LOAD:RELEASE-MODEL drop 0 ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
 s" CONTROL: plain-payload accepts the throw edge, so the gap is the abandoned owner" T-LABEL
-s" PLAIN-PAYLOAD-THROW ( plain-payload -- n ) MATCH plain-payload key OF drop drop drop drop -5699 throw ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
+s" PLAIN-PAYLOAD-THROW ( plain-payload -- n ) MATCH plain-payload key OF drop drop drop drop drop drop -5699 throw ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
 s" CONTROL: a branch that releases before it throws is legitimate, not a gap" T-LABEL
 s" MODEL-PAYLOAD-RELEASE-THEN-THROW ( model-payload -- n ) MATCH model-payload model OF GPT2LOAD:RELEASE-MODEL drop -5699 throw ENDOF rejected OF ENDOF ;MATCH" ACCEPTED
 

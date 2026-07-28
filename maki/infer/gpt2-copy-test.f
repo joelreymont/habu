@@ -13,8 +13,8 @@
 \ COPY-OFFSET is where it decided each slot goes, so reading those bytes back and
 \ comparing them with what the parsed tensor index itself copies out is a comparison between the
 \ load's output and the file. It has to be done this way today because there is no
-\ way to read a slot back through a loaded model - that needs the scoped access over a
-\ resident value, which the linear-scope capability provides.
+\ way to read a slot back through a loaded model - that needs model-owned scoped
+\ access that returns the embedded store on every exit.
 
 require maki/infer/gpt2-checkpoint-fixture.f
 

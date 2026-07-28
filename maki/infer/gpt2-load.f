@@ -35,8 +35,8 @@
 \ linear-scope and pointer-lifetime dots own removal of these boundaries.
 \
 \ The copied table is validated structurally during construction, but a model
-\ cannot yet expose scoped reads from its WSTORE:resident. The resident-read
-\ capability must land before forward execution can consume either storage path.
+\ cannot yet expose scoped reads from its embedded WSTORE:store. The model-owned
+\ read capability must land before forward execution can consume either storage path.
 \
 \ maki -> habu only. Owns -5660..-5673.
 
@@ -125,7 +125,7 @@ NEWTYPE model-proof 0
 \ known checker gap. It retires with the sealed-destructure capability tracked
 \ by habu-checker-sealed-destructure-d967fc03.
 STRUCTURE gpt2-model 0
-   FIELD weights WSTORE:resident
+   FIELD weights WSTORE:store
    FIELD layer-count n
    FIELD config-key MDLCFG:cfgkey
    FIELD proof model-proof
@@ -475,7 +475,7 @@ using GPT2TENSOR
 \ its image through SAFET:DETACH-MAPPING keeps answering every reader this pass
 \ consults: its count, its dtypes, its shapes, and MAP-OFFSET?, which is arithmetic on
 \ the header geometry rather than access to any bytes. So a parsed tensor index without checkpoint bytes passes
-\ every row - and the model built from it would own a residency of zero bytes, with the
+\ every row - and the model built from it would own a mapped store of zero bytes, with the
 \ fault surfacing at the first weight read as E-EXTENT, by which time the mapping and
 \ the table have been deconstructed and no catch can restore them. Refusing it here
 \ costs a caller nothing: the parsed tensor index comes back exactly as it arrived, still answering
@@ -681,7 +681,7 @@ using MEM
    >r swap r> ;                                 \ ( prepared-load configuration bool )
 
 \ ---- reading a loaded model -----------------------------------------------------
-\ A model holds a linear resident, so the record is linear by containment and `dup` is
+\ A model holds a linear store, so the record is linear by containment and `dup` is
 \ a checker reject: there is no non-consuming read. Each reader therefore UNMAKEs and
 \ rebuilds without allocation or release, and the rebuilt record carries a fresh proof - the
 \ proof asserts "created inside this package", which is exactly as true of the rebuild.
@@ -994,7 +994,7 @@ using GPT2LOAD-MAPPED--CHECK--RESULT
    blk LOAD-MAPPING-CELL cells + @ {: mapping-cell:n :}
    blk LOAD-TABLE-CELL cells + @ {: table-cell:n :}
    blk RELEASE-PREPARED-BLOCK
-   mapping-cell CELL>MAPPING  table-cell CELL>TABLE  MAPPED  HOLD
+   mapping-cell CELL>MAPPING  table-cell CELL>TABLE  MAPPED
    layer-count  r>  MAKE-MODEL-PROOF
    MAKE ;
 
@@ -1034,8 +1034,8 @@ using GPT2LOAD-COPY--CHECK--RESULT
 ;using
 
 \ ---- the copied load -------------------------------------------------------------
-\ Copies the whole model into one packed buffer and returns a copied resident
-\ store. Unlike LOAD-MAPPED, this word allocates memory and can fail. Its
+\ Copies the whole model into one packed buffer and embeds the allocated store
+\ directly. Unlike LOAD-MAPPED, this word allocates memory and can fail. Its
 \ allocation-failure tests prove cleanup when each release succeeds. They do not
 \ prove cleanup after E-MEM-UNMAP: any release below may interrupt later cleanup.
 \ habu-make-owned-release-79de2b5c owns that total-release correction.
@@ -1072,7 +1072,7 @@ using GPT2LOAD-COPY--CHECK--RESULT
       r> drop
       input-code RELEASE-COPY-TABLE MERGE-RELEASE-CODES RELEASE-COPY-BUFFER MERGE-RELEASE-CODES throw
    then
-   OWNED-COPY-BUFFER @ CELL>BUFFER  COPY-TABLE @ CELL>TABLE  ALLOCATED  HOLD
+   OWNED-COPY-BUFFER @ CELL>BUFFER  COPY-TABLE @ CELL>TABLE  ALLOCATED
    layer-count  r>  MAKE-MODEL-PROOF
    MAKE ;
 
@@ -1080,12 +1080,12 @@ using GPT2LOAD-COPY--CHECK--RESULT
 
 \ ---- the model's exit --------------------------------------------------------------
 \ The single way a loaded model's memory goes back: unwrap in-package and hand the
-\ residency to its owner. ok carries what WSTORE gave back - the checkpoint mapping's
+\ store to its owner. ok carries what WSTORE gave back - the checkpoint mapping's
 \ own byte length for a mapped model.
 : RELEASE-MODEL ( gpt2-model -- result<n,n> )
    UNMAKE {: proof:model-proof :}
    drop drop                                    \ the captured key, then the layer count
-   RESIDENT-DISPOSE ;
+   DISPOSE ;
 
 ;using
 ;using

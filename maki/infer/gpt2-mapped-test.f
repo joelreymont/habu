@@ -96,15 +96,15 @@ using SAFET
          MATCH GPT2LOAD:mapped-check-result
             ready OF
                LOAD-MAPPED
-               s" the prepared-load block is gone and the model owns the residency" T-LABEL
+               s" the prepared-load block is gone and the model owns the store" T-LABEL
                EXPECT-MAPPED-MODEL-RESOURCES
                s" the model carries the layer count the prepared load validated" T-LABEL
                MODEL-LAYER-COUNT LAYER-COUNT T=
                s" and the identity the prepared-load captured, cell for cell" T-LABEL
                SAVE-MODEL-CONFIG-KEY
                KEY-MATCHES-CONFIG
-               s" and the model's exit gives every owner back" T-LABEL
-               RELEASE-MODEL RESULT-CODE 0 T=
+               s" and the model's exit gives back the whole mapped image" T-LABEL
+               RELEASE-MODEL RESULT-VALUE IMAGE-LENGTH @ T=
             ENDOF
             rejected OF
                {: code:n :}
@@ -158,7 +158,7 @@ using SAFET
                      SAVE-MODEL-CONFIG-KEY
                      KEY-MATCHES-CONFIG
                      EXPECT-MAPPED-MODEL-RESOURCES
-                     RELEASE-MODEL RESULT-CODE 0 T=
+                     RELEASE-MODEL RESULT-VALUE IMAGE-LENGTH @ T=
                   ENDOF
                   rejected OF
                      {: code:n :}
@@ -196,9 +196,9 @@ variable MAPPED-OFFSET
 \ the file mapped read-only, those are the file's bytes at that offset.
 \
 \ It stops one link short of reading through the loaded model, and the reason is
-\ structural rather than an omission: reading a slot through a resident value needs a
-\ scoped access that disposes its owner on the throw path (WSTORE:WITH-SLOT throws
-\ E-TENSOR-SLOT/E-EXTENT, and a resident cannot be rebuilt around a throw), which is the
+\ structural rather than an omission: reading a slot through the embedded store needs a
+\ scoped access that returns its owner on the throw path (WSTORE:WITH-SLOT throws
+\ E-SLOT/E-EXTENT, and the model cannot be rebuilt around a throw), which is the
 \ linear-scope capability and belongs to the forward pass. The remaining link -
 \ that WITH-SLOT over a mapped store returns the bytes at base+offset - is already
 \ pinned by byte-equality tests in weight-store-test.f over both variants.
@@ -315,7 +315,7 @@ variable MAPPED-OFFSET
    s" LOAD-BAD-READY-PREPARED ( GPT2LOAD:prepared-load -- GPT2LOAD:mapped-check-result ) GPT2LOAD-MAPPED--CHECK--RESULT:READY" EXPECT-CHECKER-REJECTION
    s" LOAD-BAD-REJECTED-MAPPED-READY ( GPT2LOAD:mapped-ready n -- GPT2LOAD:mapped-check-result ) GPT2LOAD-MAPPED--CHECK--RESULT:REJECTED" EXPECT-CHECKER-REJECTION
    s" LOAD-BAD-CHECK-MAPPED-RESULT-DROPPED ( GPT2LOAD:prepared-load MDLCFG:mcfg -- ) GPT2LOAD:CHECK-MAPPED" EXPECT-CHECKER-REJECTION
-   \ A model owns a linear residency, so the RECORD is linear by containment: the
+   \ A model owns a linear store, so the RECORD is linear by containment: the
    \ checker rejects copying or discarding it, which makes the checkpoint mapping
    \ impossible to leak or to free twice.
    s" a loaded model is linear by containment and cannot be built from a raw cell" T-LABEL
@@ -323,14 +323,14 @@ variable MAPPED-OFFSET
    s" LOAD-BAD-MODEL-DROP ( GPT2LOAD:gpt2-model -- ) drop" EXPECT-CHECKER-REJECTION
    s" LOAD-BAD-MODEL-STORE ( GPT2LOAD:gpt2-model ptr n -- ) !" EXPECT-CHECKER-REJECTION
    s" LOAD-BAD-MODEL-RAW-CELL ( n -- GPT2LOAD:gpt2-model ) " EXPECT-CHECKER-REJECTION
-   s" LOAD-BAD-MODEL-PROOF-RAW ( WSTORE:resident n MDLCFG:cfgkey n -- GPT2LOAD:gpt2-model ) GPT2LOAD-GPT2--MODEL:MAKE" EXPECT-CHECKER-REJECTION
+   s" LOAD-BAD-MODEL-PROOF-RAW ( WSTORE:store n MDLCFG:cfgkey n -- GPT2LOAD:gpt2-model ) GPT2LOAD-GPT2--MODEL:MAKE" EXPECT-CHECKER-REJECTION
    s" the model's exit consumes it exactly once" T-LABEL
    s" LOAD-BAD-RELEASE-MODEL-TWICE ( GPT2LOAD:gpt2-model -- result<n,n> result<n,n> ) GPT2LOAD:RELEASE-MODEL GPT2LOAD:RELEASE-MODEL" EXPECT-CHECKER-REJECTION
    s" LOAD-BAD-RELEASE-MODEL-RETURNS-CONSUMED-VALUE ( GPT2LOAD:gpt2-model -- GPT2LOAD:gpt2-model result<n,n> ) GPT2LOAD:RELEASE-MODEL" EXPECT-CHECKER-REJECTION
    s" LOAD-BAD-RELEASE-MODEL-DROPPED ( GPT2LOAD:gpt2-model -- ) GPT2LOAD:RELEASE-MODEL" EXPECT-CHECKER-REJECTION
-   s" LOAD-BAD-RELEASE-MODEL-RESIDENT ( WSTORE:resident -- result<n,n> ) GPT2LOAD:RELEASE-MODEL" EXPECT-CHECKER-REJECTION
-   s" and the residency inside a model cannot be reached around it" T-LABEL
-   s" LOAD-BAD-MODEL-RESIDENT-DISPOSE ( GPT2LOAD:gpt2-model -- result<n,n> ) WSTORE:RESIDENT-DISPOSE" EXPECT-CHECKER-REJECTION
+   s" LOAD-BAD-RELEASE-MODEL-STORE ( WSTORE:store -- result<n,n> ) GPT2LOAD:RELEASE-MODEL" EXPECT-CHECKER-REJECTION
+   s" and a model cannot substitute for the store its generated UNMAKE returns" T-LABEL
+   s" LOAD-BAD-MODEL-DISPOSE ( GPT2LOAD:gpt2-model -- result<n,n> ) WSTORE:DISPOSE" EXPECT-CHECKER-REJECTION
    \ The owner-to-cell conversions are the whole soundness cost of this module, so their confinement
    \ is asserted, not assumed. A candidate names them qualified, the way a different configuration
    \ file would have to; each is unresolvable, which is what package-private means
@@ -378,7 +378,7 @@ RUN-MAPPED
 \ WHAT THE PROOF DOES AND DOES NOT BUY. `model-proof` makes a model unforgeable from
 \ nothing: no outside file can conjure the proof, so no outside file can MAKE a model
 \ out of thin air. It does not make a REAL model tamper-proof, because the generated
-\ UNMAKE is public: a holder of a genuine model can take the residency straight out of
+\ UNMAKE is public: a holder of a genuine model can take the store straight out of
 \ it, release it behind the model's back, or rebuild the record with an invalid layer count and
 \ the original proof. The three pins below are written as ACCEPT deliberately - they
 \ record what compiles TODAY. When the sealed-destructure capability
@@ -397,17 +397,17 @@ package GPT2LOAD-OUTSIDE-TEST
    CHECK-QUIET-CANDIDATE! 1 T= ;
 
 : T-KNOWN-GAP ( -- )
-   s" KNOWN GAP: the generated UNMAKE extracts a real model's residency TODAY" T-LABEL
-   s" LOAD-GAP-UNMAKE ( GPT2LOAD:gpt2-model -- WSTORE:resident n MDLCFG:cfgkey GPT2LOAD:model-proof ) GPT2LOAD-GPT2--MODEL:UNMAKE"
+   s" KNOWN GAP: the generated UNMAKE extracts a real model's store TODAY" T-LABEL
+   s" LOAD-GAP-UNMAKE ( GPT2LOAD:gpt2-model -- WSTORE:store n MDLCFG:cfgkey GPT2LOAD:model-proof ) GPT2LOAD-GPT2--MODEL:UNMAKE"
       ACCEPTED
-   s" KNOWN GAP: so the residency can be released behind the model's back" T-LABEL
-   s" LOAD-GAP-RELEASE-INNER-RESIDENT ( GPT2LOAD:gpt2-model -- result<n,n> ) GPT2LOAD-GPT2--MODEL:UNMAKE drop drop drop WSTORE:RESIDENT-DISPOSE"
+   s" KNOWN GAP: so the store can be released behind the model's back" T-LABEL
+   s" LOAD-GAP-RELEASE-INNER-STORE ( GPT2LOAD:gpt2-model -- result<n,n> ) GPT2LOAD-GPT2--MODEL:UNMAKE drop drop drop WSTORE:DISPOSE"
       ACCEPTED
    s" KNOWN GAP: a real model can be rebuilt with an invalid layer count" T-LABEL
    s" LOAD-GAP-INVALID-LAYER-COUNT ( GPT2LOAD:gpt2-model -- GPT2LOAD:gpt2-model ) GPT2LOAD-GPT2--MODEL:UNMAKE >r >r drop 99 r> r> GPT2LOAD-GPT2--MODEL:MAKE"
       ACCEPTED
    s" the proof still rejects a model built from nothing, which is what it is for" T-LABEL
-   s" LOAD-GAP-RAW-MODEL ( WSTORE:resident n MDLCFG:cfgkey n -- GPT2LOAD:gpt2-model ) GPT2LOAD-GPT2--MODEL:MAKE"
+   s" LOAD-GAP-RAW-MODEL ( WSTORE:store n MDLCFG:cfgkey n -- GPT2LOAD:gpt2-model ) GPT2LOAD-GPT2--MODEL:MAKE"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" CONTROL: the package's own readers are unreachable from outside it, so the" T-LABEL
    s" three gaps above are in the generated surface, not package scope" T-LABEL

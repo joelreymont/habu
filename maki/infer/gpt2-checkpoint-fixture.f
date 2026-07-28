@@ -382,7 +382,7 @@ variable START-PREPARED-COUNT
    LIVE-PREPARED-LOADS START-PREPARED-COUNT @ 1 + T= ;
 
 \ What a loaded model owns: the prepared-load block is gone, and the table block and the
-\ checkpoint mapping have moved into the residency the model holds.
+\ checkpoint mapping have moved into the store the model holds.
 : EXPECT-MAPPED-MODEL-RESOURCES ( -- )
    SAFET-MAP:LIVE START-MAPPING-COUNT @ 1 + T=
    LIVE-OWNERS START-OWNER-COUNT @ 1 + T=
