@@ -30,17 +30,24 @@ tails and one public runner invoked after package close. Prove that the OPTION
 public wordlist contains exactly `NONE` and `SOME` with the unchanged effects;
 both-arm construction, `MATCH`, payload round trip, tags, reflection kind
 `TK-SUM`, arity one, and field name `value`; and nominal payload rejection.
+Use the existing distinct `idx` and `len` signature roles for that rejection;
+do not publish test-only type families.
 
 Exact files: `lib/adt/option.f`, `lib/adt/option-test.f`, `docs/forth.md`,
 `tools/package-diff-lint-core.f`, `tools/package-diff-lint-test.f`,
 `test/gate-stdlib-cases.f`, `tools/suite-coverage-lint-core.f`, and `FILEMAP.md`.
-Do not edit `lib/std.manifest`, enum-census source or baseline, RESULT, or any
-consumer. Acceptance: focused OPTION suite, exact owning standard-library
-suite, typed-local and package exact-diff lints, suite-coverage and file-map
-lints, an exact census proving 124 unchanged consumers and only the declaration
-changed in the 125-file universe, and scratch mutation kills for arm
-order, field name, compact mode, and generator-domain drift. Smallest owning
-path: the standard-library gate executes the new suite through the real OPTION
-constructors and `MATCH` implementation.
+The new test file raises the enum census's walked-file count from 1,266 to
+1,267, so the exact write set also includes `tools/enum-census-core.f` solely
+for that ratchet. Its declaration baseline stays unchanged at 111 plain and 88
+full sites. Do not edit `lib/std.manifest`, the enum-census baseline, RESULT, or
+any consumer. Acceptance: focused OPTION suite, exact owning standard-library
+suite including enum census, typed-local and package exact-diff lints,
+suite-coverage and file-map lints, an exact census proving 1,267 walked files
+with 111 plain and 88 full sites, an exact census proving 124 unchanged
+consumers and only the declaration changed in the 125-file universe, and
+scratch mutation kills for arm order, field name, compact mode, and
+generator-domain drift. Smallest owning path: the standard-library gate
+executes the new suite through the real OPTION constructors and `MATCH`
+implementation.
 
 Claim: agent=option-enum workspace=.jj-ws/habu-libs-migrate-option-510a7e40
