@@ -313,6 +313,16 @@ public
 -6630 constant E-CBIND-CONTRACT   \ contraction is allowed but the target has no fused multiply-add
 -6631 constant E-CBIND-PREIMAGE   \ a component preimage does not fit the binding preimage buffer
 
+\ Compiler context ownership (package IR-CTX): -6640..-6649
+-6640 constant E-IR-CTX-STALE     \ a context handle was used after its context tore down
+-6641 constant E-IR-CTX-DEPTH     \ context nesting exceeded the registry capacity
+-6642 constant E-IR-CTX-UNBOUND   \ a context slot whose owning module has not landed was used
+-6643 constant E-IR-CTX-SERIALS   \ serial allocation reached its committed ceiling
+-6644 constant E-IR-CTX-SCRATCH   \ a scratch request does not fit the context mapping
+-6645 constant E-IR-CTX-CEILING   \ a context-creation serial ceiling outside the accepted range
+-6646 constant E-IR-CTX-SIZE      \ a scratch request of zero or negative bytes
+-6647 constant E-IR-CTX-STATE     \ persisted context state failed its consistency recheck
+
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST
 -6799 constant E-CID-LAST
