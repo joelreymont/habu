@@ -20,9 +20,12 @@
 \ whole, at a cost of at most seven padding bytes per symbol; the committed
 \ byte capacity is therefore accounted in whole cells. The row table stores
 \ one three-cell row per symbol: content filter, starting pool data cell, and
-\ byte length. Every row access rechecks shape and span fail-closed
-\ (E-IR-SYM-STATE), so a holder who bypasses this package and appends raw
-\ cells cannot make a reader touch cells outside the pool's live range.
+\ byte length. Every row access rechecks the header shape and revalidates that
+\ row's start and length against the pool's live cells fail-closed
+\ (SPAN-CK-N, E-IR-SYM-STATE), so a holder who bypasses this package and
+\ appends raw cells cannot make a reader touch cells outside the pool's live
+\ range. The third cell, the content filter, is not rechecked; see THE FILTER
+\ CELL IS TRUSTED below.
 \
 \ INTERNING IS BYTE EQUALITY. INTERN answers the existing identity when the
 \ presented bytes equal a stored symbol's bytes, and mints the next
@@ -35,6 +38,25 @@
 \ nothing and therefore does not consult the context: the ctx argument is
 \ allocation authority for the miss path, exactly as the readers below take
 \ no ctx at all.
+\
+\ THE FILTER CELL IS TRUSTED. Of a row's three cells only the start and the
+\ length are revalidated on access. Nothing ever recomputes the stored filter
+\ from the bytes it stands for, so ROW-MATCH? reads that cell on faith, and it
+\ is the one row cell whose protection is IR-ARENA ownership - only ROW-ADD
+\ writes it, into an arena checked code cannot forge cells into - rather than
+\ a recheck at read time. The consequence splits in two, and
+\ formal/Common/Interning.v proves the halves separately. Soundness does not
+\ depend on the cell: Symbols.sym_row_match_sound holds for an arbitrary
+\ stored filter value, because the byte comparison runs behind the filter
+\ test, so two different symbols never merge into one identity however wrong
+\ that cell is. Completeness does depend on it:
+\ Symbols.sym_row_match_is_byte_equality needs the stored cell to be the
+\ honest filter of the stored bytes before the three-part test is byte
+\ equality. A wrong cell makes the scan walk past a row that does hold the
+\ presented bytes and mint a second identity for them, and duplicate rows
+\ would also break the induction over ordinals type.f relies on, which assumes
+\ two rows of one table are structurally equal exactly when they are the same
+\ row.
 \
 \ OWNERSHIP. The same possession discipline as source.f: holding the context,
 \ the two store handles, and the module key IS interner ownership, and each is

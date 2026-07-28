@@ -74,9 +74,35 @@
 \ "[ p... -- r... ]" for quotations, "( p... -- r... )" for code references,
 \ "token<domain>", "mask", "opaque". It depends only on the structural
 \ content, never on interning history or ordinals, and is never parsed by the
-\ compiler (design section 6.6). Insertion-ordered ordinals are stable but
-\ not canonical; the section 6.6 encoder orders structurally, exactly as for
-\ symbols.
+\ compiler (design section 6.6).
+\
+\ CANONICAL ORDER MUST RENUMBER STORED REFERENCES. Insertion-ordered ordinals
+\ are stable but not canonical, so the section 6.6 encoder is free to emit the
+\ rows in a structural order of its own choosing. That is strictly more work
+\ here than it is for symbols. A symbol row's identity-bearing content is its
+\ bytes, and bytes do not move when the row order moves, so for the symbol
+\ table a permutation of the rows is the whole job. A type row can store
+\ another row's module-local ordinal instead: POINTER stores its pointee's
+\ ordinal, and a function type's row names a window of ordinals in the list
+\ pool. Permuting this table therefore changes stored row content, and a
+\ canonical type encoder must sort structurally AND renumber every embedded
+\ reference under the permutation it chose. Sorting the rows and emitting them
+\ unchanged is not canonicalization. What two orders agree on is the
+\ denotation of a row - the row unfolded into the structure it references -
+\ never the row content itself, and the denotation is what an encoder has to
+\ preserve. This is machine-checked in formal/Common/Interning.v:
+\ Types.ty_both_orders_admissible builds i8, i16 and pointer-to-i8 in the two
+\ admissible orders and gets the row lists [i8; i16; ptr->0] and
+\ [i16; i8; ptr->1]; Types.structural_rows_not_permutation proves those two
+\ lists are not a permutation of each other; and
+\ Types.ty_denotation_order_independent shows their denotations agree.
+\
+\ One premise of that statement is easy to miss: not every build order exists.
+\ Because POINTER rejects a pointee ordinal that is not already below the live
+\ count (the acyclicity paragraph above), a type can only be interned after
+\ everything it references. The admissible build orders are exactly the
+\ topological orders of the reference graph, so "any two build orders" means
+\ "any two topological orders" for this table.
 
 require lib/prelude.f
 require lib/errors.f

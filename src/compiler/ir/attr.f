@@ -93,12 +93,34 @@
 \ enough to make identity presentation-independent inside one module but is
 \ not yet the design line 479 canonical order, because symbol ordinals are
 \ themselves insertion-ordered; the section 6.6 encoder sorts symbols by
-\ their bytes and emits its own permutation, exactly as it does for the
-\ symbol and type tables. Record values must already be constructed, so a
-\ value ordinal is strictly below its record's; a forward reference dies
-\ E-IR-ATTR-BOUND before anything is written, cycles are impossible by
-\ construction, and the renderer re-verifies the strict decrease on every
-\ stored reference, so recursive walks terminate on any table state.
+\ their bytes and emits its own permutation, which is one of the permutations
+\ the next paragraph has to renumber under. Record values must already be
+\ constructed, so a value ordinal is strictly below its record's; a forward
+\ reference dies E-IR-ATTR-BOUND before anything is written, cycles are
+\ impossible by construction, and the renderer re-verifies the strict decrease
+\ on every stored reference, so recursive walks terminate on any table state.
+\
+\ CANONICAL ORDER MUST RENUMBER STORED REFERENCES, INCLUDING FOREIGN ONES.
+\ Insertion-ordered ordinals are stable but not canonical, so the section 6.6
+\ encoder may emit the rows in a structural order of its own choosing, and
+\ sorting them is not enough. An attribute row can store another row's
+\ module-local ordinal: a symbol attribute stores a symbol ordinal, a type
+\ attribute stores a type ordinal, and a record pair stores a key symbol
+\ ordinal beside a value attribute ordinal (ORD-OK below admits exactly these
+\ foreign-table ordinals). Permuting the attribute table changes stored row
+\ content, and so does permuting the symbol table or the type table underneath
+\ it. A canonical attribute encoder must therefore renumber every embedded
+\ reference under all three permutations it chose - its own, the symbol
+\ table's and the type table's - and emitting sorted rows unchanged is not
+\ canonicalization. What two orders agree on is the denotation of a row, never
+\ its stored content. The same obligation is machine-checked for the type
+\ table in formal/Common/Interning.v (Types.ty_both_orders_admissible,
+\ Types.structural_rows_not_permutation and
+\ Types.ty_denotation_order_independent, with the general statement restricted
+\ to reference-free keys by MODEL GAP 8); this table stores ordinals the same
+\ way, so it carries the same obligation. As there, the build orders that
+\ exist at all are exactly the topological orders of the reference graph,
+\ because a record value must already be constructed when its record is.
 \
 \ FOREIGN ORDINALS ARE VALIDATED WHERE THEY ARE OWNED. A symbol or type
 \ reference is checked against its owning table at construction, and a reader
