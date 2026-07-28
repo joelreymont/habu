@@ -47,10 +47,33 @@ Three private `TRUSTED:` words, the shape `WSTORE` already uses
 (`MINT-TBUILDER` / `TAKE-TABLE`, `maki/infer/weight-store.f:221-231`):
 
 ```
-TRUSTED: MINT-WORKSPACE ( ptr u8 -- workspace )        \ base -> token
-TRUSTED: WS-BASE  ( workspace -- workspace ptr u8 )    \ non-consuming read
+TRUSTED: MINT-WORKSPACE ( ptr u8 CAD-NUM:alloc-byte-len layout -- workspace )
+TRUSTED: WS-CELLS ( workspace -- workspace ptr a )     \ non-consuming, CELL pointer
 TRUSTED: WS-TAKE  ( workspace -- ptr u8 )              \ consuming, release only
 ```
+
+`MINT-WORKSPACE` is the single audited boundary that writes the raw header:
+it takes the allocation base, the exact length, and the private typed
+`layout` value, writes the typed sizes and offsets and the exact length into
+the raw cells, and returns the token. Validated arithmetic is never redone in
+raw `n` on the other side of it.
+
+**Why the layout must be a typed value until that moment, proven not
+assumed:** the checker's raw-storage discipline refuses to store a nominal
+role in a raw cell. Probed on this tree — `: STORE-ROLE ( ptr a
+CAD-NUM:alloc-byte-len -- ) swap ! ;` is rejected with
+`E-NONPARAMETRIC-EFFECT` ("declared type variable 'a' is specialized to
+family 'cad-num:alloc-byte-len'") and the load fails closed at exit 70. So
+`cell-count`, the offsets, and `alloc-byte-len` cannot live in the header as
+themselves; they are carried in a private typed `layout` value through every
+validation step and erased exactly once, inside `MINT-WORKSPACE`.
+
+`WS-CELLS` returns a **cell** pointer, not a byte pointer: every internal
+read — the header and every region view — is cell-addressed, so the crossing
+that serves them must produce `ptr a` directly. Returning `ptr u8` here would
+force an unlisted byte-to-cell cast at each use and the three listed
+crossings would not be sufficient. `WS-TAKE` keeps `ptr u8` because
+`MEM:RELEASE-BYTES` consumes exactly that.
 
 No other word converts between the token and an address. The header
 constructors and the layout arithmetic are private. `MINT-WORKSPACE` is
@@ -80,30 +103,69 @@ it does and is false; measured and frozen in
 
 ### Failure ordering
 
-1. reject non-positive T, E, H, V; reject requested T above the config's
+1. **reject every non-GPT-2 architecture arm.** `MATCH` the config's `arch`
+   and refuse anything but `gpt2` with a named code, *before* `F = 4E` is
+   applied anywhere. A valid Llama config carries its own `ffn-dim`
+   (`maki/infer/model-config.f:72`); silently imposing 4E on it would
+   allocate a layout that does not match the model
+2. reject non-positive T, E, H, V; reject requested T above the config's
    context length
-2. reject H that does not divide E
-3. reject a non-F32 dtype and untied embeddings, per the frozen design's
+3. reject H that does not divide E
+4. reject a non-F32 dtype and untied embeddings, per the frozen design's
    config semantics
-4. compute every region size, offset, and the total through the landed
+5. compute every region size, offset, and the total through the landed
    overflow-checked CAD operations — `CAD-NUM:MUL-ITEMS`, `SCALE-CELLS`,
    `ADD-CELLS` (`lib/cad-num-arithmetic.f:206-217`) — which return
    `numeric-result<role>`, so an overflow is a value and never a wrapped
    number; any `overflow` arm throws a named code
-5. narrow the total to `CAD-NUM:alloc-byte-len` (`MEM:BYTES-ALLOC-LEN`
-   throws `E-MEM-SIZE` on zero, negative, or overflow)
-6. allocate once via `MEM:ALLOC-BYTES`; on failure it throws `E-MEM-MAP` with
+6. convert the total, which is a `CAD-NUM:cell-count`, to an allocation
+   length along the size pipeline below
+7. allocate once via `MEM:ALLOC-BYTES`; on failure it throws `E-MEM-MAP` with
    nothing allocated and no token in existence
-7. write the header: the exact returned length, the validated geometry, the
-   validated offsets
-8. `MINT-WORKSPACE` — the first moment a workspace exists
+8. `MINT-WORKSPACE` writes the header from the typed `layout` and the exact
+   returned length, and returns the token — the first moment a workspace
+   exists
+
+### The size pipeline, proven callable
+
+Every word below is public and reachable from `GPT2-FORWARD`; the two
+extractors are the package's own:
+
+```
+MEM:CELLS>BYTES              ( cell-count -- numeric-result<byte-len> )
+OK-BYTES                     ( numeric-result<byte-len> -- byte-len )        \ private, ours
+CAD-NUM:AS-ALLOC-BYTE-LEN    ( byte-len -- numeric-result<alloc-byte-len> )
+OK-ALLOC                     ( numeric-result<alloc-byte-len> -- alloc-byte-len )  \ private, ours
+MEM:ALLOC-BYTES              ( alloc-byte-len -- ptr u8 alloc-byte-len )
+```
+
+`OK-BYTES` and `OK-ALLOC` `MATCH CAD-NUM:numeric-result` and turn every
+non-`ok` arm — `negative`, `zero`, `overflow`, `underflow`, `bad-alignment`,
+`misaligned` — into the named workspace size error.
+
+An earlier revision of this document named `CAD-NUM:OK-BYTE-LEN` and
+`MEM:SIZE-ALLOC-BYTE-LEN` here. Both exist but **both are private to their
+packages** (`lib/cad-num-arithmetic.f:92`, inside the private section opened
+at `:45`; `lib/memory.f:132`, inside the one opened at `:92`), so
+`GPT2-FORWARD` could only reach them by illegally reopening those packages.
+Checking that a word exists is not checking that it is callable from the
+owning package.
+
+This pipeline is proven, not asserted: a checked probe in a foreign package
+running the exact sequence above allocates and releases successfully through
+`bin/hb` at exit 0.
+
+**Not `MEM:BYTES-ALLOC-LEN`** anywhere in this path — it takes a raw `n` and
+reads it as bytes, so handing it a cell count would allocate one byte per
+cell and under-allocate the arena eightfold.
 
 ### Release
 
-`WORKSPACE-RELEASE` consumes the token via `WS-TAKE`, reads the exact length
-**from header cell 0**, and calls `MEM:RELEASE-BYTES`. It never reconstructs
-a length from geometry and never touches a caller-visible value, so the span
-released is always exactly the span allocated.
+`WORKSPACE-RELEASE` reads the exact length **from header cell 0** (through
+`WS-CELLS`, revalidating the stored raw length with `MEM:BYTES-ALLOC-LEN`),
+then consumes the token via `WS-TAKE` and calls `MEM:RELEASE-BYTES`. It never
+reconstructs a length from geometry and never touches a caller-visible value,
+so the span released is always exactly the span allocated.
 
 It is **total**: after `habu-make-owned-release-79de2b5c`,
 `MEM:RELEASE-BYTES` cannot return a recoverable failure. This leaf therefore
@@ -192,13 +254,13 @@ numbering, and its dependencies are otherwise unchanged.
 
 | # | leaf | owned result | depends |
 |---|---|---|---|
-| 8a | pure checked layout | the pure functions from `(T,E,H,V)` to every region size, every offset, the header size, and the total, on the overflow-checked CAD operations, with `logits` as [1,V]. No allocation, no owner, no address. Tests: zero and negative extents, H not dividing E, T above context length, product overflow, maximum accepted total and maximum-plus-one | MDLCFG accessors |
-| 8b | one allocation, header, linear mint and release | `DEFLINEAR workspace`; the 27-cell header; the three private crossings; `WORKSPACE-NEW` with the throw-ordered failure sequence; total `WORKSPACE-RELEASE` reading the stored exact length | 8a; `habu-make-owned-release-79de2b5c` |
+| 8a | pure checked layout | the private typed `layout` value; the pure functions from `(T,E,H,V)` to every region size, every offset, the header size, and the total, on the overflow-checked CAD operations, with `logits` as [1,V]; the two private `numeric-result` extractors and the size pipeline. No allocation, no owner, no address. Tests: zero and negative extents, H not dividing E, T above context length, product overflow, maximum accepted total and maximum-plus-one, and one test per non-`ok` arm reaching the named size error | MDLCFG accessors |
+| 8b | one allocation, header, linear mint and release | `DEFLINEAR workspace`; the 27-cell header; the three private crossings with `MINT-WORKSPACE` erasing the typed `layout` exactly once; `WORKSPACE-NEW` with the throw-ordered failure sequence; total `WORKSPACE-RELEASE` reading the stored exact length | 8a; `habu-make-owned-release-79de2b5c` |
 | 8c | private bounded views | `region-id`, `VIEW`, the per-head pane derivation, and the private row loops that consume them | 8b |
 
 ### Negative checks required
 
-- `MINT-WORKSPACE`, `WS-BASE`, `WS-TAKE`, `VIEW`, and every header word
+- `MINT-WORKSPACE`, `WS-CELLS`, `WS-TAKE`, `VIEW`, and every header word
   reject from outside the package, bare and qualified, in the global,
   package-public, and package-private word lists — the three-list runtime
   matrix, since a checker probe outside a package cannot see its private
@@ -213,5 +275,6 @@ duplicate, or release twice, and makes use-after-release of the *token*
 impossible. It does not prevent a raw pointer obtained from `VIEW` earlier in
 a word from being used after a release in that same word body. That is
 intra-package discipline today, bounded by the fact that no view escapes the
-package, and it closes with the region/lifetime checker capability the
-advisory-span dots already track.
+package, and it closes with `habu-checker-ptr-lifetime-f59d1e9d` — the
+checker capability that binds a pointer to the region that produced it and
+forbids a span from escaping the effect that made it.
