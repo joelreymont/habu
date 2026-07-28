@@ -411,6 +411,13 @@ The exact block and named errors reserved in `lib/errors.f` are:
 -6606 E-IR-MODULE-EXHAUSTED
 ```
 
+That block is now full and closed: its last free code went to the attribute
+table. Every compiler stage from the dialect schemas onward mints from the
+compiler growth region, `-8000 E-COMP-FIRST` to `-8999 E-COMP-LAST`, whose
+sub-block map lives at the end of `lib/errors.f`. A lane takes the 20-code
+sub-block named for its stage and records the codes it mints under it. Nothing
+in `-6600..-6699` moves.
+
 Acceptance:
 
 - `NEW-MODULE` yields a nonforgeable key plus matching public module ID;

@@ -122,7 +122,8 @@ REQUIRE-HARNESS
 
 : ERROR-CODE ( -- )
    s" error-code-lint" [: ERROR-CODE-LINT-STRICT ;] GSI-RUN
-   s" tools/error-code-lint-test.f" GSI-INCLUDE ;
+   s" tools/error-code-lint-test.f" GSI-INCLUDE
+   s" tools/error-code-region-test.f" GSI-INCLUDE ;
 
 : HOST ( -- )
    s" tools/host-lint-test.f" GSI-INCLUDE ;

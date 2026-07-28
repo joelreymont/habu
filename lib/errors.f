@@ -1,7 +1,12 @@
 \ errors.f - canonical stdlib throw codes.
 \
-\ Each library owns one inclusive 100-code block. FIRST is the first assigned
-\ code in the block; LAST is the most negative reserved code in that block.
+\ A library owns an inclusive block of codes, usually 100 wide. FIRST and LAST
+\ are the block's two bounds, and they reserve the whole range between them for
+\ the file that declares them, whether or not every code in it has been minted
+\ yet: tools/error-code-lint.f reports any other file that claims a code inside
+\ someone else's declared range. A subsystem that outgrows one block takes a
+\ second, separately named region rather than renumbering the codes it already
+\ ships; the compiler at -6600..-6699 and -8000..-8999 is the first such case.
 
 \ Arrays: -2000..-2099
 -2000 constant E-A-FIRST
@@ -288,7 +293,11 @@ public
 -6500 constant E-TR-PATH-LEN    \ a persistent-root path longer than the runner's buffer
 -6501 constant E-TR-PROFILE     \ a host-profile id outside the runner's known profiles
 
-\ Shared compiler IR representation: -6600..-6699
+\ Shared compiler IR representation: -6600..-6699. This block is FULL and
+\ closed: the attribute table took the last free code (-6699). Later compiler
+\ stages mint from the compiler growth region at -8000..-8999, declared at the
+\ end of this file. The codes below keep their exact values forever; tests and
+\ diagnostics already name them.
 -6600 constant E-IR-FIRST
 -6699 constant E-IR-LAST
 -6600 constant E-IR-MODULE-ZERO
@@ -391,3 +400,44 @@ public
 -6706 constant E-CID-ROCQ     \ the generated Rocq obligation run did not complete cleanly
 -6707 constant E-CID-AXIOM    \ the observed Rocq assumption set is not the committed expected external-axiom manifest
 -6708 constant E-CID-REPLAY   \ a require replay handed back a module identity the allocator had already issued
+
+\ Compiler growth region: -8000..-8999.
+\
+\ Why a second region. The compiler's first block, -6600..-6699, is full. Ten
+\ owners (IR ids, target contract, numeric policy, target binding, context,
+\ arena, source registry, symbol interner, type table, attribute table) spent
+\ all 100 codes, and the subsystem still has to build dialect schemas,
+\ operation and value pools, control structure, the freeze lifecycle, the
+\ verifier, canonical tables, the renderer, the codec, pass results, the
+\ facade, eight dialect packages, and the native and GPU back ends. The block
+\ itself cannot be widened: -6700..-6799 is the frozen identity schema right
+\ below it. The next gap, -6800..-6999, was rejected on size: 200 codes is ten
+\ sub-blocks, it is fenced in by a codegen test's caller sentinels at
+\ -7001/-7002 and the JSON tool at -7100, and owners run on down to -7807, so
+\ taking it would put the subsystem back in this exact position within the
+\ campaign. -8000..-8999 is the one thousand-code range no source in the tree
+\ claims, and it is large enough for every compiler owner that is planned, so
+\ the subsystem never has to move again. Nothing in -6600..-6699 is renumbered.
+\
+\ How to take codes here. Sub-blocks are 20 codes wide, not 10: the type table
+\ needed 11 and had to borrow from the attribute table's decade, which is how
+\ the first block ran out. A stage that outgrows its 20 codes takes the next
+\ unassigned sub-block instead of spilling into its neighbour, and records that
+\ here. The map below is the whole agreement between parallel compiler lanes:
+\ read your line, mint inside it, and add your names under it.
+\
+\   -8000..-8019  dialect schema records (package IR-SCHEMA)
+\   -8020..-8039  operation, value, operand, result, and successor pools
+\   -8040..-8059  function and block structure, parents, and windows
+\   -8060..-8079  builder, abort, and freeze lifecycle (package IR-BUILD)
+\   -8080..-8099  structural freeze verifier (package IR-VERIFY)
+\   -8100..-8119  canonical table reindexing and reference remap
+\   -8120..-8139  deterministic renderer and structural diff
+\   -8140..-8159  canonical wire codec and digest (package IR-CODEC)
+\   -8160..-8179  pass results and witness headers (package IR-PASS)
+\   -8180..-8199  IR facade assembly and package protection (package IR)
+\   -8200..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
+\                 the GPU stages) and the native and GPU back ends take
+\                 sub-blocks from here, each named above its codes.
+-8000 constant E-COMP-FIRST
+-8999 constant E-COMP-LAST

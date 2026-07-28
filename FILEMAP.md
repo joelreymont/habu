@@ -2421,6 +2421,7 @@ points stay listed.
 - `tools/error-code-lint-core.f` — global E- throw-code uniqueness lint: flags a negative code claimed by two different E- names across src/ lib/ tools/ test/ maki/.
 - `tools/error-code-lint.f` — CLI wrapper for the E- throw-code uniqueness lint (enforcing).
 - `tools/error-code-lint-test.f` — checked fixture coverage for the E- throw-code uniqueness lint.
+- `tools/error-code-region-test.f` — package `ECL-REGION-TEST`; proves the compiler growth region `E-COMP-FIRST..E-COMP-LAST` is mintable by lib/errors.f, closed to every other file, and still reserved with free codes in the live ledger.
 - `lib/string-test.f` — focused coverage for checked string helpers.
 - `lib/utf8-scalar.f` — package `UTF8` strict scalar decoder over an explicit counted-span cursor; returns a typed scalar or exact one-byte fallback and owns no mutable scanner state.
 - `lib/utf8-scalar-test.f` — scalar-boundary, malformed/truncated, canary, nested, interleaved-state, and randomized property coverage for `UTF8:NEXT`.
