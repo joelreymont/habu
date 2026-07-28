@@ -59,6 +59,8 @@ STRUCTURE digest 0 DERIVE eq
 1 constant TAG-TARGET
 2 constant TAG-NUMERIC
 3 constant TAG-BINDING
+4 constant TAG-SCHEMA        \ one dialect operation schema record
+5 constant TAG-SCHEMA-TABLE  \ a dialect's whole schema table, chained over its record digests
 
 private
 

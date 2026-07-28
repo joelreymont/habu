@@ -441,3 +441,20 @@ public
 \                 sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
 -8999 constant E-COMP-LAST
+
+\ Compiler dialect schema records (package IR-SCHEMA): -8000..-8019
+-8000 constant E-IR-SCHEMA-STATE   \ a schema store failed its header, row-shape, window, or stored-code recheck
+-8001 constant E-IR-SCHEMA-OWNER   \ a module key, symbol id, type id, or store pairing this schema table does not own
+-8002 constant E-IR-SCHEMA-BOUND   \ a schema list index at or past the length the row records
+-8003 constant E-IR-SCHEMA-CAP     \ a row or pool capacity outside the accepted range, or a definition past a committed ceiling
+-8004 constant E-IR-SCHEMA-STAGE   \ schema-stage misuse: a begin while one is open, an end without a begin, or a field declared twice
+-8005 constant E-IR-SCHEMA-FIELD   \ a required schema field was never declared before the definition closed
+-8006 constant E-IR-SCHEMA-ARITY   \ an operand, result, successor, or region count outside its ceiling, or a variadic tail that is not last
+-8007 constant E-IR-SCHEMA-EFFECT  \ an effect class, domain, memory space, and alias combination no operation can have
+-8008 constant E-IR-SCHEMA-TERM    \ a terminator rule violated: successors on a non-terminator, or results on a terminator
+-8009 constant E-IR-SCHEMA-TARGET  \ required target capabilities the bound contract does not provide
+-8010 constant E-IR-SCHEMA-DUP     \ an opcode name this dialect's schema table already defines
+-8011 constant E-IR-SCHEMA-OPCODE  \ an opcode name no schema in this dialect's table defines
+-8012 constant E-IR-SCHEMA-KIND    \ a field reader applied to a schema whose effect shape does not carry that field
+-8013 constant E-IR-SCHEMA-DIGEST  \ a presented schema-table digest does not match the recomputed one
+-8014 constant E-IR-SCHEMA-VERSION \ a schema major or minor version outside the accepted range
