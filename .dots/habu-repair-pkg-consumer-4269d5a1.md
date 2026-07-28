@@ -1,9 +1,11 @@
 ---
 title: Repair package consumer import truth
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T01:29:44.375875+02:00"
+closed-at: "2026-07-28T02:03:15.176993+02:00"
+close-reason: implemented by f72580a3, independently destruction-reviewed, integrated as 13686cc6; exact production and final master gates own publication proof
 ---
 
 Claim: agent=repair-using-impl workspace=.jj-ws/habu-repair-pkg-consumer-4269d5a1.
