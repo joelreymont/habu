@@ -18,3 +18,12 @@ Resequenced per ruling 20260727-162213.078-codex-1228, proven diff frozen in .jj
 That ruling puts this rename behind the nominal vector owner and package rebuild rather than in front of it, so the second blocker above is habu-own-nominal-linear-491d11e4 and this dot lands after that design and the raw-vector retirement it gates. No allowlist and no temporary package boundary around the old vector surface is acceptable in the meantime. The completed rename diff is held uncommitted in its isolated workspace as evidence; a matching copy sits in .jj-ws/habu-rename-release, which is the workspace path the paragraph above recorded when the work was done.
 
 Claim: RELEASED 2026-07-27. The relrename worker is reassigned per the same ruling; the frozen diff is evidence, not an in-flight change.
+
+EVIDENCE LOST 2026-07-28 (orchestrator audit): the frozen rename diff no longer
+exists. Both .jj-ws/rename-owned-release and .jj-ws/habu-rename-release are
+gone, their workspace records are gone, and a full search of every repository
+head plus every commit touching lib/memory.f found no commit containing the
+rename — the diff was held uncommitted and a cleanup pass deleted the only
+copies. When this dot is unblocked, the rename must be REDONE from scratch: the
+mechanical procedure, the boundary rules, and the acceptance bar are all
+recorded above and remain valid. Nothing else in this dot changes.
