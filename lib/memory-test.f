@@ -7,6 +7,7 @@ require test/checker-assert.f
 require lib/memory.f
 require lib/test/outcome.f
 require lib/process-fork.f
+require lib/test/subject.f
 
 64 constant MEMT-BUFS
 16 constant MEMT-SPAN-BUFS
@@ -248,33 +249,155 @@ public
    MEM-64K 1 + MEMT-64K-COUNT 2 T=
    MEM-MAX-N MEMT-64K-COUNT MEM-MAX-64K-BUFFERS 1 + T= ;
 
-\ ---- RELEASE-BYTES: the typed munmap inverse of ALLOC-BYTES -------------------
-\ Allocate a real mapping, write + read both ends, then release it; a clean return
-\ (munmap rc 0, no throw) is the positive proof. A one-byte-misaligned address is a
-\ forged pointer the kernel rejects, so RELEASE-BYTES propagates E-MEM-UNMAP. A
-\ zero/negative release length never narrows to an alloc role, so it is refused
-\ with E-MEM-SIZE at the typed boundary, before any munmap.
+\ ---- typed release and range unmap ---------------------------------------------
 \ White-box suite block: these fixtures and their runner live inside package MEM
 \ beside the WITH-BYTES fixtures below, so package words are called bare and the
 \ suite owns a real package tail instead of a raw global stem.
 package MEM
 private
 
-: RBT-ROUNDTRIP ( -- )
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES     \ ptr-u8 alloc-byte-len
-   over MEMT-MARK-A swap c!                \ first byte
-   over MEM-64K 1 - + MEMT-MARK-Z swap c!  \ last byte
-   over c@ MEMT-MARK-A T=
-   over MEM-64K 1 - + c@ MEMT-MARK-Z T=
-   RELEASE-BYTES ;
-: RBT-FORGED ( -- )
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES     \ ptr-u8 alloc-byte-len
-   swap 1 + swap                           \ misalign the address by one byte
-   RELEASE-BYTES ;
-: RBT-ZERO ( -- )
-   ALLOC-64K drop  0 BYTES-ALLOC-LEN RELEASE-BYTES ;
-: RBT-NEG ( -- )
-   ALLOC-64K drop -1 BYTES-ALLOC-LEN RELEASE-BYTES ;
+$86 constant MEMT-FAULT-RC
+$1000 constant RBT-CAP
+1000 constant RBT-TIMEOUT-MS
+-7777 constant E-PRIMARY
+
+create RBT-OUT RBT-CAP allot
+create RBT-ERR RBT-CAP allot
+
+: RBT-LEN ( n -- CAD-NUM:byte-len )
+   CAD-NUM:BYTE-LEN SIZE-BYTE-LEN ;
+
+: MEMT-EXIT0 ( -- )
+   s" " 0 die ;
+
+: MEMT-FORK ( [ -- ] -- outcome )
+   {: body :} \ typed-local-lint: allow-bare-local - body keeps the quotation effect.
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if
+      body execute
+      MEMT-EXIT0
+   then
+   pid PROC-WAIT-OUTCOME ;
+
+: RBT-RELEASED-BASE ( -- ptr u8 )
+   MEM-64K 2 * BYTES-ALLOC-LEN ALLOC-BYTES
+   over {: base:ptr :}
+   MEMT-MARK-A base c!
+   MEMT-MARK-Z base MEM-64K 2 * 1 - + c!
+   RELEASE-BYTES
+   base ;
+
+: RBT-RELEASE-FIRST ( -- )
+   RBT-RELEASED-BASE c@ drop ;
+
+: RBT-RELEASE-LAST ( -- )
+   RBT-RELEASED-BASE MEM-64K 2 * 1 - + c@ drop ;
+
+: RBT-RELEASE-OUTERS ( ptr u8 -- ) {: base:ptr :}
+   base MEM-64K RBT-LEN UNMAP
+   base MEM-64K 3 * + MEM-64K RBT-LEN UNMAP ;
+
+: RBT-ONE-CLEANUP ( ptr u8 -- ) {: base:ptr :}
+   base MEM-64K RBT-LEN UNMAP
+   base MEM-64K 2 * + MEM-64K RBT-LEN UNMAP ;
+
+: RBT-ONE-MAP ( -- ptr u8 )
+   MEM-64K 3 * BYTES-ALLOC-LEN ALLOC-BYTES
+   drop {: base:ptr :}
+   MEMT-MARK-A base MEM-64K 1 - + c!
+   MEMT-MARK-Z base MEM-64K 2 * + c!
+   base MEM-64K + MEM-64K RBT-LEN UNMAP
+   base ;
+
+: RBT-ONE-GUARDS ( -- )
+   RBT-ONE-MAP {: base:ptr :}
+   base MEM-64K 1 - + c@ MEMT-MARK-A <> if E-PRIMARY throw then
+   base MEM-64K 2 * + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
+   base RBT-ONE-CLEANUP ;
+
+: RBT-ONE-FAULT ( -- )
+   RBT-ONE-MAP MEM-64K + c@ drop ;
+
+: RBT-UNMAP-MID ( -- ptr u8 )
+   MEM-64K 4 * BYTES-ALLOC-LEN ALLOC-BYTES
+   drop {: base:ptr :}
+   MEMT-MARK-A base MEM-64K 1 - + c!
+   MEMT-MARK-Z base MEM-64K 3 * + c!
+   base MEM-64K + MEM-64K 2 * RBT-LEN UNMAP
+   base ;
+
+: RBT-UNMAP-LEFT ( -- )
+   RBT-UNMAP-MID {: base:ptr :}
+   base MEM-64K 1 - + c@ MEMT-MARK-A <> if E-PRIMARY throw then
+   base RBT-RELEASE-OUTERS ;
+
+: RBT-UNMAP-RIGHT ( -- )
+   RBT-UNMAP-MID {: base:ptr :}
+   base MEM-64K 3 * + c@ MEMT-MARK-Z <> if E-PRIMARY throw then
+   base RBT-RELEASE-OUTERS ;
+
+: RBT-UNMAPPED-BASE ( -- ptr u8 )
+   RBT-UNMAP-MID
+   dup RBT-RELEASE-OUTERS ;
+
+: RBT-UNMAP-FIRST ( -- )
+   RBT-UNMAPPED-BASE MEM-64K + c@ drop ;
+
+: RBT-UNMAP-LAST ( -- )
+   RBT-UNMAPPED-BASE MEM-64K 3 * 1 - + c@ drop ;
+
+: RBT-RELEASE-FIRST-SRC ( -- ptr u8 n )
+   s" package MEM RBT-RELEASE-FIRST ;package" ;
+
+: RBT-RELEASE-LAST-SRC ( -- ptr u8 n )
+   s" package MEM RBT-RELEASE-LAST ;package" ;
+
+: RBT-UNMAP-FIRST-SRC ( -- ptr u8 n )
+   s" package MEM RBT-UNMAP-FIRST ;package" ;
+
+: RBT-UNMAP-LAST-SRC ( -- ptr u8 n )
+   s" package MEM RBT-UNMAP-LAST ;package" ;
+
+: RBT-UNMAP-LEFT-SRC ( -- ptr u8 n )
+   s" package MEM RBT-UNMAP-LEFT ;package" ;
+
+: RBT-UNMAP-RIGHT-SRC ( -- ptr u8 n )
+   s" package MEM RBT-UNMAP-RIGHT ;package" ;
+
+: RBT-ONE-GUARDS-SRC ( -- ptr u8 n )
+   s" package MEM RBT-ONE-GUARDS ;package" ;
+
+: RBT-ONE-FAULT-SRC ( -- ptr u8 n )
+   s" package MEM RBT-ONE-FAULT ;package" ;
+
+: RBT-EXPECT-FAULT ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
+   RBT-TIMEOUT-MS >MS SUBJECT:RUN
+   MEMT-FAULT-RC T-OUTCOME-EXITED=
+   LEN>N 0 > TTRUE
+   LEN>N 0 T= ;
+
+: RBT-EXPECT-CLEAN ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu RBT-OUT RBT-CAP >LEN RBT-ERR RBT-CAP >LEN
+   RBT-TIMEOUT-MS >MS SUBJECT:RUN
+   0 T-OUTCOME-EXITED=
+   LEN>N 0 T=
+   LEN>N 0 T= ;
+
+: RBT-EXACT-SPANS ( -- )
+   T-RESET
+   RBT-RELEASE-FIRST-SRC RBT-EXPECT-FAULT
+   RBT-RELEASE-LAST-SRC RBT-EXPECT-FAULT
+   RBT-UNMAP-LEFT-SRC RBT-EXPECT-CLEAN
+   RBT-UNMAP-RIGHT-SRC RBT-EXPECT-CLEAN
+   RBT-UNMAP-FIRST-SRC RBT-EXPECT-FAULT
+   RBT-UNMAP-LAST-SRC RBT-EXPECT-FAULT
+   RBT-ONE-GUARDS-SRC RBT-EXPECT-CLEAN
+   RBT-ONE-FAULT-SRC RBT-EXPECT-FAULT
+   T-REPORT ;
+
+: RBT-ACTION ( -- [ -- ] )
+   [: RBT-EXACT-SPANS ;] ;
 
 : TEST-ALLOC-ROLES ( -- )
    T-RESET
@@ -301,49 +424,71 @@ private
    [: 0 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    [: -1 CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
    [: MEM-MAX-CELLS 1 + CELLS-ALLOC-COUNT drop ;] E-MEM-SIZE TTHROWSQ
-   \ typed release round-trips a real mapping; a forged address propagates
-   \ E-MEM-UNMAP; a zero/negative length refuses at the typed boundary before munmap
-   RBT-ROUNDTRIP
-   [: RBT-FORGED ;] E-MEM-UNMAP TTHROWSQ
-   [: RBT-ZERO ;] E-MEM-SIZE TTHROWSQ
-   [: RBT-NEG ;] E-MEM-SIZE TTHROWSQ
    T-REPORT ;
 
 TEST-ALLOC-ROLES
+RBT-ACTION
 
 ;package
+
+execute
+
+\ Fatal syscall failures bypass catch and cannot print the survival byte.
+package MEM-FATAL-TEST
+
+$100 constant CAP
+1000 constant TIMEOUT-MS
+$47 constant FATAL-RC
+
+create CAP-OUT CAP allot
+create CAP-ERR CAP allot
+
+: EXPECT-FATAL ( ptr u8 n -- ) {: src:ptr srcu:n :}
+   src srcu CAP-OUT CAP >LEN CAP-ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
+   FATAL-RC T-OUTCOME-EXITED=
+   LEN>N {: erru:n :}
+   LEN>N {: outu:n :}
+   outu 0 T=
+   CAP-ERR erru s" memory: unmap failed" T$= ;
+
+: RELEASE-SRC ( -- ptr u8 n )
+   s" package MFR : RUN ( -- ) MEM:ALLOC-64K swap 1 + swap MEM:RELEASE-BYTES ; ' RUN ;package catch $53 emit" ;
+
+: UNMAP-SRC ( -- ptr u8 n )
+   s" package MFU : RUN ( -- ) MEM:ALLOC-64K drop 1 + MEM-64K STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
+
+: ZERO-SRC ( -- ptr u8 n )
+   s" package MFZ : RUN ( -- ) MEM:ALLOC-64K drop 0 STR:LENGTH MEM:UNMAP ; ' RUN ;package catch $53 emit" ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   RELEASE-SRC EXPECT-FATAL
+   UNMAP-SRC EXPECT-FATAL
+   ZERO-SRC EXPECT-FATAL
+   T-REPORT ;
+
+;package
+
+MEM-FATAL-TEST:RUN
 
 \ ---- MEM:WITH-BYTES: quotation-scoped mapped memory (RAII) --------------------
 \ Child processes prove release through OS-enforced mapping accessibility.
 package MEM
 private
-
--7777 constant E-PRIMARY
-134 constant WBT-CRASH-EXIT
 PTR-VARIABLE WBT-SAVED
 PTR-VARIABLE WBT-OUTER
-
-: WBT-EXIT0 ( -- )
-   s" " 0 die ;
 
 : WBT-PROBE-RELEASED ( -- )
    2 close
    WBT-SAVED @ c@ drop
-   WBT-EXIT0 ;
-
-: WBT-FORK ( [ -- ] -- outcome )
-   {: body :} \ typed-local-lint: allow-bare-local - body keeps the quotation effect.
-   PROC-FORK:CHECKED {: pid:pid :}
-   pid PID>N 0= if
-      body execute
-      WBT-EXIT0
-   then
-   pid PROC-WAIT-OUTCOME ;
+   MEMT-EXIT0 ;
 
 : WBT-RELEASED ( -- )
-   [: WBT-PROBE-RELEASED ;] WBT-FORK
+   [: WBT-PROBE-RELEASED ;] MEMT-FORK
    MATCH outcome
-      exited OF WBT-CRASH-EXIT <> if E-PRIMARY throw then ENDOF
+      exited OF MEMT-FAULT-RC <> if E-PRIMARY throw then ENDOF
       signaled OF drop E-PRIMARY throw ENDOF
       timeout OF E-PRIMARY throw ENDOF
    ;MATCH ;
@@ -358,19 +503,6 @@ PTR-VARIABLE WBT-OUTER
    drop {: buf:ptr :}
    buf WBT-SAVED !
    E-PRIMARY throw ;
-
-\ Force RELEASE-BYTES refusal without a production hook; the child owns the leak.
-: WBT-ZERO-REL ( ptr u8 CAD-NUM:alloc-byte-len -- )
-   2drop
-   0 WB-CUR-LEN ! ;
-
-: WBT-ZERO-REL-THROW ( ptr u8 CAD-NUM:alloc-byte-len -- )
-   WBT-ZERO-REL
-   E-PRIMARY throw ;
-
-: WBT-INSTALL-OWNER ( ptr u8 CAD-NUM:alloc-byte-len -- )
-   ALLOC-BYTES>N WB-CUR-LEN !
-   WB-CUR-BUF ! ;
 
 : WBT-SAVE-INNER ( ptr u8 CAD-NUM:alloc-byte-len -- )
    drop {: buf:ptr :}
@@ -403,59 +535,24 @@ PTR-VARIABLE WBT-OUTER
 : WBT-THROW ( -- )
    MEM-64K BYTES-ALLOC-LEN [: WBT-THROW-BODY ;] WITH-BYTES ;
 
-: WBT-CLEANUP-ONLY ( -- )
-   MEM-64K BYTES-ALLOC-LEN [: WBT-ZERO-REL ;] WITH-BYTES ;
-
-: WBT-PRIMARY-CLEANUP ( -- )
-   MEM-64K BYTES-ALLOC-LEN [: WBT-ZERO-REL-THROW ;] WITH-BYTES ;
-
 : WBT-NORMAL-CHILD ( -- )
    WBT-RESULT MEMT-MARK-A <> if E-PRIMARY throw then
    WBT-RELEASED
-   WBT-EXIT0 ;
+   MEMT-EXIT0 ;
 
 : WBT-THROW-CHILD ( -- )
    [: WBT-THROW ;] catch E-PRIMARY <> if E-PRIMARY throw then
    WBT-RELEASED
-   WBT-EXIT0 ;
+   MEMT-EXIT0 ;
 
 : WBT-INNER-CHILD ( -- )
    MEM-64K BYTES-ALLOC-LEN [: WBT-INNER-RELEASE ;] WITH-BYTES
-   WBT-EXIT0 ;
+   MEMT-EXIT0 ;
 
 : WBT-OUTER-CHILD ( -- )
    MEM-64K BYTES-ALLOC-LEN [: WBT-OUTER-RELEASE ;] WITH-BYTES
    WBT-RELEASED
-   WBT-EXIT0 ;
-
-: WBT-CLEANUP-CHILD ( -- )
-   [: WBT-CLEANUP-ONLY ;] catch
-   E-MEM-UNMAP <> if E-PRIMARY throw then
-   WBT-EXIT0 ;
-
-: WBT-PRIMARY-CLEANUP-CHILD ( -- )
-   [: WBT-PRIMARY-CLEANUP ;] catch
-   E-PRIMARY <> if E-PRIMARY throw then
-   WBT-EXIT0 ;
-
-: WBT-DUP-REL-CHILD ( -- )
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES WBT-INSTALL-OWNER
-   WB-REL-CUR
-   [: WB-REL-CUR ;] catch
-   E-MEM-UNMAP <> if E-PRIMARY throw then
-   WBT-EXIT0 ;
-
-: WBT-RETRY-REL-CHILD ( -- )
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
-   drop {: buf:ptr :}
-   buf WBT-SAVED !  buf WB-CUR-BUF !  0 WB-CUR-LEN !
-   [: WB-REL-CUR ;] catch
-   E-MEM-UNMAP <> if E-PRIMARY throw then
-   WB-CUR-BUF @ WBT-SAVED @ <> if E-PRIMARY throw then
-   WB-CUR-LEN @ 0 <> if E-PRIMARY throw then
-   MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES>N WB-CUR-LEN !
-   WB-REL-CUR
-   WBT-EXIT0 ;
+   MEMT-EXIT0 ;
 
 : WBT-RETAINED-CHILD ( -- )
    MEM-64K BYTES-ALLOC-LEN ALLOC-BYTES
@@ -466,15 +563,11 @@ PTR-VARIABLE WBT-OUTER
 
 : TEST-WITH-BYTES ( -- )
    T-RESET
-   [: WBT-NORMAL-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-THROW-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-INNER-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-OUTER-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-CLEANUP-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-PRIMARY-CLEANUP-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-DUP-REL-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-RETRY-REL-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
-   [: WBT-RETAINED-CHILD ;] WBT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-NORMAL-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-THROW-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-INNER-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-OUTER-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
+   [: WBT-RETAINED-CHILD ;] MEMT-FORK 0 T-OUTCOME-EXITED=
    T-REPORT ;
 
 TEST-WITH-BYTES
@@ -531,6 +624,18 @@ private
    s" B-RELEASE-ZEROABLE-LEN ( ptr u8 CAD-NUM:byte-len -- ) MEM:RELEASE-BYTES"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" B-RELEASE-CELL-LEN ( ptr u8 CAD-NUM:alloc-cell-count -- ) MEM:RELEASE-BYTES"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   \ UNMAP accepts a mapped byte extent, not an allocation owner, raw length,
+   \ cell length, or cell pointer.
+   s" G-UNMAP ( ptr u8 CAD-NUM:byte-len -- ) MEM:UNMAP"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" B-UNMAP-BOOL-PTR ( ptr bool CAD-NUM:byte-len -- ) MEM:UNMAP"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-UNMAP-RAW-LEN ( ptr u8 n -- ) MEM:UNMAP"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-UNMAP-ALLOC-LEN ( ptr u8 CAD-NUM:alloc-byte-len -- ) MEM:UNMAP"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" B-UNMAP-CELL-LEN ( ptr u8 CAD-NUM:cell-count -- ) MEM:UNMAP"
       CHECK-QUIET-CANDIDATE! 0 T=
    \ WITH-BYTES types the quotation body row: the frozen signature (row-polymorphic S
    \ threaded from the body) resolves, while a raw-n length or a cell-count role in the

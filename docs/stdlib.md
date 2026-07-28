@@ -785,7 +785,19 @@ MEM-ALLOC-CELLS       ( count -- ptr a )
 MEM-ALLOC-64K-BUFFERS ( n -- ptr u8 n )
 MEM-ALLOC-64K-SPAN    ( n -- ptr u8 n )
 MEM-ALLOC-64K         ( -- ptr u8 n )
+
+MEM:ALLOC-BYTES       ( CAD-NUM:alloc-byte-len -- ptr u8 CAD-NUM:alloc-byte-len )
+MEM:RELEASE-BYTES     ( ptr u8 CAD-NUM:alloc-byte-len -- )
+MEM:UNMAP             ( ptr u8 CAD-NUM:byte-len -- )
+MEM:WITH-BYTES        ( R CAD-NUM:alloc-byte-len [ R ptr u8 CAD-NUM:alloc-byte-len -- S ] -- S )
 ```
+
+`MEM:RELEASE-BYTES` consumes the exact extent returned by `MEM:ALLOC-BYTES`.
+`MEM:UNMAP` releases a validated mapped byte range without fabricating an
+allocation extent. Both use one private `munmap` sink; kernel refusal writes
+`memory: unmap failed` to standard error and exits 71, bypassing `catch`.
+`MEM:WITH-BYTES` releases after normal return or a body throw, restores its
+outer frame after successful release, then rethrows the body code.
 
 `MEM-MAP-SHARED` is the named shared-mapping flag for checked device or file
 mappings that use the raw `mmap` primitive directly.
