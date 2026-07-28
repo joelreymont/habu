@@ -1,16 +1,61 @@
 ---
 title: Make owned release uncatchably fatal
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:16:26.896717+02:00"
-blocks:
-  - habu-add-forked-mem-423076fc
-  - habu-rename-owned-release-5736ed92
 ---
 
-Why: the frozen disposal contract (pillar A, txn-v2 plan) classifies a failed whole-range release of owned bytes as a violated owned invariant with no sound continuation; today MEM:RELEASE (post-rename) throws E-MEM-UNMAP catchably, so callers can resume after ownership is gone - the false-recoverability hybrid two reviews rejected, and the explicit blocker for the codex transactional loader leaf.
+Why: a failed kernel unmap violates memory ownership. Today
+`MEM:RELEASE-BYTES` throws `E-MEM-UNMAP`, so `catch` can resume after release
+failed and callers can already have discarded the owner. GPT-2 also needs a
+typed range-unmap operation for mapped checkpoint extents; treating that extent
+as an allocation length would conflate two domains.
 
-Behavior, the semantic flip ONLY (the rename and provenance audit land first in habu-rename-owned-release-5736ed92): same stack effect ( ptr u8 CAD-NUM:alloc-byte-len -- ); success returns having released; a negative munmap emits ONE allocation-free diagnostic (fixed byte string plus base and length rendered from stack scalars, single write to stderr, no allocator, no formatting machinery) then terminates through the direct exit path bypassing throw and catch (the fatal branch lives at the private MEM vector UNMAP that the injector leaf introduces - MAP/UNMAP tails, not MMAP/MUNMAP, which case-insensitively shadow the core primitives and self-bind), with a named exit-code constant minted beside the MEM error block, distinct from engine compile-fault codes, gate codes, and every E-* value. No third outcome. This leaf EXPLICITLY removes WB-COMBINE and the caught cleanup leg from MEM:WITH-BYTES - a direct fatal release cannot retain or combine a cleanup error, so the caught leg and its error-combination logic are deleted, not guarded, and WITH-BYTES becomes straight-line around a total cleanup. Forbidden: catchable wrappers, result shapes, cleanup coordinators, retained-state guards at callers.
+Owner and interfaces: package `MEM` keeps
+`RELEASE-BYTES ( ptr u8 CAD-NUM:alloc-byte-len -- )` as the exact inverse of
+`ALLOC-BYTES`, and adds
+`UNMAP ( ptr u8 CAD-NUM:byte-len -- )` for a validated mapped range. They are
+distinct public operations, not aliases. Each privately projects its own length
+role and delegates to one private raw syscall sink. A negative `munmap` result
+performs one allocation-free stderr write of exactly `memory: unmap failed`
+and exits with code 71 through `die`; it never throws or returns. Zero
+`byte-len` reaches the same fatal invariant boundary. Success returns normally.
 
-Owner: lib/memory.f (MEM). Dependencies: habu-rename-owned-release-5736ed92 (mechanical rename plus provenance audit) and habu-add-forked-mem-423076fc (the proof machinery). Acceptance: fork-based fixture through MEM:WITH-RELEASE-FAULT (the reopened-package qualified surface) asserts the child exit code and exact stderr diagnostic; catch-bypass proof - the parent wraps the disposal in catch and measures it cannot intercept; WITH-BYTES fixtures prove the cleanup leg is gone (no combined error path remains, straight-line total cleanup); focused memory suite green; both diff lints clean. Real pre-change failure: a caught E-MEM-UNMAP after BUF-FREE leaves mapped bytes with no owner and execution continuing - measured in the landed disposal review.
+`WITH-BYTES` still catches its body so it can release on both normal and throw
+paths. It calls release directly, restores the outer frame after successful
+release, and then rethrows the body code. Delete the cleanup `catch`,
+`WB-COMBINE`, retry state, and every test for a catchable cleanup result.
+
+Exact write set: `lib/memory.f`, `lib/memory-test.f`, `lib/std.manifest`,
+`docs/stdlib.md`, and `TRUSTED.md`. Keep `E-MEM-UNMAP` until the later SAFET and
+WSTORE closure removes its final user.
+
+Forbidden: no syscall defer, injector, mutable hook, environment or mode flag,
+public role-to-`n` conversion, public raw release, allocation-length coercion for
+a mapped range, result union, catchable wrapper, retry guard, duplicate
+diagnostic, scalar formatter, alias, or compatibility word.
+
+Checkpoint: run the focused memory suite; show the real misaligned-pointer
+kernel rejection and the existing caught cleanup path; change the private sink
+plus `RELEASE-BYTES`, then run both diff lints on that representative change.
+Stop if the package gate rejects the complete caller chain or if the fatal path
+does not bypass `catch`.
+
+Acceptance: positive owned release and positive subrange unmap both use real OS
+mappings. `SUBJECT:RUN` child fixtures call each public operation on a
+misaligned real mapping inside `catch`; each must exit 71, emit no survival
+marker, and produce exactly `memory: unmap failed` on stderr. Checked candidate
+fixtures reject raw lengths, swapped `byte-len`/`alloc-byte-len`, and wrong
+pointer roles. Left and right range release preserve the requested untouched
+page. Existing normal, throwing-body, and nested `WITH-BYTES` tests still prove
+release and outer-frame restoration; obsolete cleanup-error fixtures are
+deleted and named in the report. Run the focused memory suite, exact owning
+load, both diff lints, manifest/trust checks, and independent destruction review.
+
+Long-term result: one fatal kernel sink, two truthful nominal interfaces, and no
+recoverable state after ownership failure. The later hard rename to
+`MEM:RELEASE` is behavior-identical and remains blocked only by raw-vector
+package migration; this leaf adds no alias.
+
+Claim: agent=codex-mem-fatal-r2 workspace=.jj-ws/habu-mem-fatal-r2

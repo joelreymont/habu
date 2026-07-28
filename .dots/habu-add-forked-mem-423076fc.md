@@ -1,14 +1,23 @@
 ---
-title: Add forked memory fault injector
-status: active
+title: Design allocation fault proof
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:16:01.349558+02:00"
 ---
 
+Why: allocation-failure branches still need an honest production-path proof,
+but release failure does not need an injector: a real misaligned mapping already
+forces kernel rejection in an isolated child.
 
-Why: two accepted MAJOR reviews and the frozen fatal-release contract all require forcing memory allocation and release failures honestly; no injector exists (gpt2-alloc-test.f:96 admits it). The mechanism survey (2026-07-26) proved name interposition is refused fail-closed at three engine layers by design and MEM's OS route is two primitives with no seam, so the seam is created deliberately, using the tree's sanctioned execution-vector pattern (docs/forth.md: typed defer words; production precedent lib/process.f PROC-REAP-ARM).
+This parked dot owns only a future design for allocation-failure testing after
+the inference critical path. Rejected commit `f08261db` is evidence, not a base:
+its mutable production syscall defers add 484 lines and permanent indirection to
+solve a test problem. This dot does not block fatal release, typed range unmap,
+SAFET, WSTORE, or GPT-2 work.
 
-Design (package shape corrected 2026-07-26, codex preflight): the two typed defers are PRIVATE inside package MEM in lib/memory.f - private MMAP ( n n n n n n -- n ) and MUNMAP ( ptr u8 n -- n ), installed once at load with the real primitives; the PACKAGED allocation and release words route through them; the legacy GLOBAL allocation path (MEM-MMAP-RC, MEM-ALLOC-*) is NOT changed or extended, because editing legacy globals fails the exact package gate and the injector's consumers use the packaged surface; cost one indirect branch per syscall. The unarmed default IS the real primitive, fixture-proven. FROZEN INTERFACE: lib/test/mem-fault.f REOPENS package MEM (the white-box idiom, load-position rule respected) and publishes two test-only wrappers there - qualified surface MEM:WITH-ALLOC-FAULT and MEM:WITH-RELEASE-FAULT, present only when the test boundary is loaded and unresolved otherwise, which is itself the arming-outside proof; the reopen reaches the private vectors and counters with NO raw bridge exported. The wrappers match SUBJECT:RUN with nth prepended - WITH-ALLOC-FAULT ( nth src/u8 out/cap err/cap timeout -- out-len err-len outcome ) and WITH-RELEASE-FAULT with the identical shape. Each arms the defer, calls SUBJECT:RUN (lib/test/subject.f - forked child with cleared handler cells, the catch-bypass shape), RESTORES the real primitive on every parent exit path, and never returns an unowned stderr pointer; outcome asserts via lib/test/outcome.f. Arming lives ONLY in that boundary file, referenced by no production load list; arming from outside the boundary fails closed, fixture-proven. Forbidden: conditionals, env flags, or mode flags anywhere in production MEM words - the one unconditional typed execution vector pair IS the permitted design; value heuristics; a scoped primitive-interposition compiler capability (rejected - it reopens the spoof vector the engine defends at three layers).
-
-Acceptance: forcing allocation failure observes a real caller error path through a production entry (WSTORE:BUFFER-NEW's RB-STEP leg, weight-store.f:513 - the branch the file's own comment admits no test can force); forcing release failure observes today's propagated throw, labeled to flip to the fatal exit when habu-make-owned-release-79de2b5c lands (the MEM-MUNMAP vector is where its fatal branch will live - keep the failure path structured so the flip is a small local change); arming-outside-boundary fixture fails closed; unarmed-default-is-primitive fixture; engine byte-identity proven by fixpoint rebuild sha compare; focused suites green; both diff lints; TRUSTED.md rows in the same commit. Claim: agent=meminj workspace=.jj-ws/habu-mem-injector
+Before activation, freeze one small test boundary that proves a real production
+allocator caller's failure branch without an environment flag, mode flag,
+value heuristic, public raw hook, mutable production defer, or silent fallback.
+The contract must name the exact caller, owner, interface, and child-observable
+failure before implementation. No claim is active.
