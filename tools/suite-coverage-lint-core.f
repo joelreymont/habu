@@ -153,6 +153,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ pure library/unit suites not mirrored into the resident fast tier
    s" lib/adt/option-test.f" q execute
    s" lib/adt/result-test.f" q execute
+   s" lib/cad-num-arithmetic-test.f" q execute
    s" lib/engine-id-test.f" q execute
    s" lib/ffi-test.f" q execute
    s" lib/float-test.f" q execute

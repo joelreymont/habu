@@ -1143,6 +1143,9 @@ for example, `byte-len` means `CAD-NUM:byte-len`, not a global checker token.
 | `CAD-NUM:RETREAT-BYTE-OFF` | `( byte-off byte-len -- R<byte-off> )` | zero distance; exact-to-zero; first underflow |
 | `CAD-NUM:RETREAT-CELL-OFF` | `( cell-off cell-count -- R<cell-off> )` | zero distance; exact-to-zero; first underflow |
 | `CAD-NUM:RETREAT-INDEX` | `( index item-count -- R<index> )` | zero distance; exact-to-zero; first underflow |
+| `CAD-NUM:INDEX-IN-COUNT?` | `( index item-count -- bool )` | zero count is false; zero index below a positive count is true; equality is false; maximum-minus-one below maximum is true |
+| `CAD-NUM:INDEX-BYTE-OFF` | `( index byte-len -- R<byte-off> )` | zero in either position; unit and maximum-safe products; first overflow; far-wrap overflow |
+| `CAD-NUM:BYTE-OFF-IN-LEN?` | `( byte-off byte-len -- bool )` | zero length is false; zero offset below a positive length is true; equality is false; maximum-minus-one below maximum is true |
 | `CAD-NUM:BYTE-DISTANCE` | `( byte-off byte-off -- R<byte-len> )` | equal gives zero; positive distance; reversed underflow |
 | `CAD-NUM:CELL-DISTANCE` | `( cell-off cell-off -- R<cell-count> )` | equal gives zero; positive distance; reversed underflow |
 | `CAD-NUM:INDEX-DISTANCE` | `( index index -- R<item-count> )` | equal gives zero; positive distance; reversed underflow |
@@ -1166,9 +1169,14 @@ for example, `byte-len` means `CAD-NUM:byte-len`, not a global checker token.
 
 The table intentionally rejects `index + index`, `offset + offset`,
 `length + offset` in reversed order, alignment arithmetic, cross-unit add/sub,
-and multiplication or division of indexes or offsets. It also rejects generic
-raw-`n` arithmetic. New combinations require a consumer, unit proof, boundary
-matrix, and a plan amendment; they are not inferred from representation size.
+division of indexes or offsets, and every multiplication of indexes or offsets
+except the single dimensioned index-times-element-byte-width to byte-offset
+operation admitted by `CAD-NUM:INDEX-BYTE-OFF`. It also rejects generic raw-`n`
+arithmetic. New combinations require a consumer, unit proof, boundary matrix,
+and a plan amendment; they are not inferred from representation size.
+
+`CAD-NUM:INDEX-IN-COUNT?` and `CAD-NUM:BYTE-OFF-IN-LEN?` return ordinary
+booleans. They mint no persistent bounded-index, owner, or generation evidence.
 
 A successful typed result proves that this operation completed without the
 named numeric failure. It does not prove a general value equation between

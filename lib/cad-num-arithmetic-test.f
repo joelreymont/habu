@@ -2,8 +2,8 @@
 \ rejection matrix (dot habu-implement-cad-num-cb413b2a). Run:
 \   bin/hb --load lib/cad-num-arithmetic-test.f
 \
-\ Direct-loaded gate home, like lib/cad-num-types-test.f. Production modules load
-\ the library directly; this file owns its focused B5.2 boundary and property matrix.
+\ Suite `cad-num-arithmetic` in the standard-library gate; direct-load this file
+\ for the focused B5.2 boundary and property matrix.
 \
 \ Every B5.2 row is exercised at the exact boundary cases named in its table row
 \ (zero / safe-max / first-overflow / underflow / misalignment). `numeric-result`
@@ -338,6 +338,8 @@ private
    0 OKIDX 0 OKIC INDEX-IN-COUNT? TFALSE
    0 OKIDX 1 OKIC INDEX-IN-COUNT? TTRUE
    1 OKIDX 1 OKIC INDEX-IN-COUNT? TFALSE
+   $10000 OKIDX 1 OKIC INDEX-IN-COUNT? TFALSE
+   1 OKIDX $10000 OKIC INDEX-IN-COUNT? TTRUE
    T-MAX-N 1- OKIDX T-MAX-N OKIC INDEX-IN-COUNT? TTRUE
    T-MAX-N OKIDX T-MAX-N OKIC INDEX-IN-COUNT? TFALSE ;
 
@@ -345,17 +347,54 @@ private
    0 OKBO 0 OKBL BYTE-OFF-IN-LEN? TFALSE
    0 OKBO 1 OKBL BYTE-OFF-IN-LEN? TTRUE
    1 OKBO 1 OKBL BYTE-OFF-IN-LEN? TFALSE
+   $10000 OKBO 1 OKBL BYTE-OFF-IN-LEN? TFALSE
+   1 OKBO $10000 OKBL BYTE-OFF-IN-LEN? TTRUE
    T-MAX-N 1- OKBO T-MAX-N OKBL BYTE-OFF-IN-LEN? TTRUE
    T-MAX-N OKBO T-MAX-N OKBL BYTE-OFF-IN-LEN? TFALSE ;
 
-: INDEX-OFFSETS ( -- )
-   0 OKIDX T-MAX-N OKBL INDEX-BYTE-OFF BO-CODE 0 T=
-   T-MAX-N OKIDX 0 OKBL INDEX-BYTE-OFF BO-CODE 0 T=
-   1 OKIDX T-MAX-N OKBL INDEX-BYTE-OFF BO-CODE T-MAX-N T=
-   T-MAX-N OKIDX 1 OKBL INDEX-BYTE-OFF BO-CODE T-MAX-N T=
-   2 OKIDX 65537 OKBL INDEX-BYTE-OFF BO-CODE 131074 T=
-   T-MAX-N 2 / OKIDX 2 OKBL INDEX-BYTE-OFF BO-CODE T-MAX-N 1- T=
-   T-MAX-N 2 / 1+ OKIDX 2 OKBL INDEX-BYTE-OFF BO-CODE E-CADNUM-OVERFLOW T= ;
+variable LOWER-PAIR-N
+variable UPPER-PAIR-N
+variable CROSS-PAIR-N
+variable ONE-BITS
+variable ZERO-BITS
+
+: COVERAGE-RESET ( -- )
+   0 LOWER-PAIR-N !
+   0 UPPER-PAIR-N !
+   0 CROSS-PAIR-N !
+   0 ONE-BITS !
+   0 ZERO-BITS ! ;
+
+: HIGH-BAND? ( n -- bool )
+   T-LARGEST-POW2 >= ;
+
+: NOTE-PAIR-BAND ( n n -- )
+   {: x:n y:n :}
+   x HIGH-BAND? if
+      y HIGH-BAND? if
+         1 UPPER-PAIR-N +!
+      else
+         1 CROSS-PAIR-N +!
+      then
+   else
+      y HIGH-BAND? if
+         1 CROSS-PAIR-N +!
+      else
+         1 LOWER-PAIR-N +!
+      then
+   then ;
+
+: NOTE-BIT-COVERAGE ( n -- )
+   {: value:n :}
+   value ONE-BITS @ or ONE-BITS !
+   value T-MAX-N xor ZERO-BITS @ or ZERO-BITS ! ;
+
+: COVERAGE-CHECK ( -- )
+   LOWER-PAIR-N @ 0 > TTRUE
+   UPPER-PAIR-N @ 0 > TTRUE
+   CROSS-PAIR-N @ 0 > TTRUE
+   ONE-BITS @ T-MAX-N T=
+   ZERO-BITS @ T-MAX-N T= ;
 
 : CMP-PROP-ROW ( n n -- )
    {: x:n y:n :}
@@ -367,44 +406,71 @@ private
       x OKBO y OKBL BYTE-OFF-IN-LEN? TFALSE
    then ;
 
+: MUL-ORACLE-OVERFLOW? ( n n -- bool )
+   {: idx:n width:n :}
+   idx 0= if
+      0 0= 0=
+      exit
+   then
+   width T-MAX-N idx / > ;
+
 : MUL-PROP-ROW ( n n -- )
    {: idx:n width:n :}
-   idx OKIDX width OKBL INDEX-BYTE-OFF BO-CODE idx width * T= ;
+   idx width MUL-ORACLE-OVERFLOW? if
+      idx OKIDX width OKBL INDEX-BYTE-OFF BO-CODE E-CADNUM-OVERFLOW T=
+   else
+      idx width * {: want:n :}
+      idx OKIDX width OKBL INDEX-BYTE-OFF BO-CODE want T=
+   then ;
 
-\ PROP:RND supplies 31 bits; one high bit plus two chunks spans 0..T-MAX-N.
+: MUL-ZERO-CASES ( -- )
+   0 0 MUL-PROP-ROW
+   0 T-MAX-N MUL-PROP-ROW
+   T-MAX-N 0 MUL-PROP-ROW ;
+
+: MUL-SAFE-CASES ( -- )
+   1 T-MAX-N MUL-PROP-ROW
+   T-MAX-N 1 MUL-PROP-ROW
+   2 $10001 MUL-PROP-ROW
+   T-MAX-N 2 / 2 MUL-PROP-ROW ;
+
+: MUL-FIRST-OVERFLOW-CASES ( -- )
+   T-MAX-N 2 / 1+ 2 MUL-PROP-ROW
+   2 T-MAX-N 2 / 1+ MUL-PROP-ROW ;
+
+: MUL-FAR-WRAP-CASES ( -- )
+   T-MAX-N T-MAX-N MUL-PROP-ROW
+   T-MAX-N 1- T-MAX-N 1- MUL-PROP-ROW
+   T-LARGEST-POW2 4 MUL-PROP-ROW
+   $10001 T-LARGEST-POW2 MUL-PROP-ROW ;
+
+: INDEX-OFFSETS ( -- )
+   MUL-ZERO-CASES
+   MUL-SAFE-CASES
+   MUL-FIRST-OVERFLOW-CASES
+   MUL-FAR-WRAP-CASES ;
+
+\ Three 31-bit draws span 0..T-MAX-N. The third draw's high bit supplies
+\ cell bit 62; the alternating low bit is not used.
 : RND-N ( -- n )
-   2 RND% 0<> if T-LARGEST-POW2 else 0 then
+   RND
    RND 31 lshift or
-   RND or ;
+   RND 32 lshift T-LARGEST-POW2 and or
+   dup NOTE-BIT-COVERAGE ;
 
-\ Every width in 2..T-MAX-N is reachable.
-: RND-WIDTH ( -- n )
-   RND-N dup 2 < if drop 2 then ;
-
-\ floor(sample/width)*width is safe and ranges below the overflow boundary.
-: SAFE-MUL-PROP-ROW ( n n -- )
-   {: sample:n width:n :}
-   sample width / width MUL-PROP-ROW ;
-
-: MAX-MUL-PROP-ROW ( n -- )
-   T-MAX-N swap SAFE-MUL-PROP-ROW ;
-
-: OVF-PROP-ROW ( n -- )
-   {: width:n :}
-   T-MAX-N width / 1+ OKIDX
-   width OKBL INDEX-BYTE-OFF BO-CODE E-CADNUM-OVERFLOW T= ;
+: PROPERTY-ROW ( -- )
+   RND-N RND-N {: x:n y:n :}
+   x y NOTE-PAIR-BAND
+   x y CMP-PROP-ROW
+   x y MUL-PROP-ROW ;
 
 : PROPERTIES ( -- )
    314159 512 RUN-RESET
-   65537 OVF-PROP-ROW
-   T-MAX-N OVF-PROP-ROW
+   COVERAGE-RESET
    COUNT@ 0 ?do
-      $10000 RND% $10000 RND% CMP-PROP-ROW
-      $10000 RND% $10000 RND% MUL-PROP-ROW
-      RND-N RND-WIDTH SAFE-MUL-PROP-ROW
-      RND-WIDTH MAX-MUL-PROP-ROW
-      RND-WIDTH OVF-PROP-ROW
-   loop ;
+      PROPERTY-ROW
+   loop
+   COVERAGE-CHECK ;
 
 : NO ( -- bool )
    0 0= 0= ;

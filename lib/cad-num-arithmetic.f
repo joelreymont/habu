@@ -116,6 +116,18 @@ TRUSTED: POSITIVE-DIVISOR>N ( positive-divisor -- n ) ;
 
 public
 
+\ ---- strict bounds and index -> byte offset -----------------------------------
+: INDEX-IN-COUNT? ( index item-count -- bool )
+   {: idx:index count:item-count :}
+   idx INDEX>N count ITEM-COUNT>N < ;
+: INDEX-BYTE-OFF ( index byte-len -- numeric-result<byte-off> )
+   {: idx:index width:byte-len :}
+   idx INDEX>N width BYTE-LEN>N {: i:n w:n :}
+   i w PROD-OVF? if A-OVER else i w * BYTE-OFF then ;
+: BYTE-OFF-IN-LEN? ( byte-off byte-len -- bool )
+   {: off:byte-off len:byte-len :}
+   off BYTE-OFF>N len BYTE-LEN>N < ;
+
 \ ---- extent + extent (overflow-checked) ---------------------------------------
 : ADD-BYTES ( byte-len byte-len -- numeric-result<byte-len> )
    {: a:byte-len b:byte-len :}

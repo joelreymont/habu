@@ -327,6 +327,10 @@ SUITE adt-result
    lib/adt/result-test.f
 ;SUITE
 
+SUITE cad-num-arithmetic
+   lib/cad-num-arithmetic-test.f
+;SUITE
+
 SUITE table-stdlib
    lib/table-test.f
 ;SUITE
