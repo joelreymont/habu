@@ -10,6 +10,14 @@ with all falsification detail is archived in `docs/archive/lessons-2026h1.md`
 and in git history. One tight bullet per lesson; add a section only if none
 fits.
 
+- **A hostile fixture can pass for the wrong reason; falsify each guard by
+  deletion.** Found while adding manifest-shape fixtures to the identity parity
+  gate: the "unpinned theorem" fixture passed because the END-OF-FILE check
+  caught it, so the row-order guard it was written for was never tested.
+  Delete each guard a fixture is supposed to test, one at a time, and confirm a
+  SPECIFIC fixture goes red - otherwise you have tested a guard you did not
+  mean to. Same discipline as mutation-testing the implementation, applied to
+  the test suite itself.
 - **A worker's honest account of what it did NOT cover is a work item, not a
   deliverable.** The first control-flow model reported clearly that it covered
   "branches, `begin` loops, early return and quotation application" but not
@@ -2637,3 +2645,11 @@ fits.
   wordlist, and bind `CAST:` authorization to the engine's live namespace
   record and actual definition wordlist, never a mutable checker scope mirror;
   a second raw-authority package only splits ownership.
+
+- **Never put `$(...)` before `$?` in the same echo.** In zsh the command
+  substitution runs first and overwrites `$?`, so `echo "$(basename $p)
+  exit=$?"` reports basename's 0, not the command under test. Two whole
+  bisect loops returned all-green this way and manufactured a phantom
+  "nondeterministic lint" until a loop with `rc=$?` captured first exposed
+  the real, deterministic failure. Capture `rc=$?` on its own line before
+  any other command runs.
