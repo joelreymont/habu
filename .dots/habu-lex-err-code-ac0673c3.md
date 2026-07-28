@@ -32,9 +32,18 @@ detected: a false negative in a BLOCKING global-uniqueness gate that still
 reports `0 finding(s)`.
 
 tools/error-code-lint-test.f:57 already contains exactly that shape
-(`s" \ -9001 constant E-XA ..."`), so the live ledger carries phantom claims and
-a phantom reservation of -9100..-9199 attributed to that test file, and is
-blind to any real claim later in it. Raise the priority accordingly.
+(`s" \ -9001 constant E-XA ..."`), so the live ledger carries a phantom claim
+and is blind to any real claim later in that file. Raise the priority
+accordingly.
+
+CORRECTION to the paragraph above (2026-07-28, measured by the implementing
+lane): the claim that a phantom RESERVATION of -9100..-9199 was attributed to
+that test file is FALSE — I asserted it without checking. Reservations measure
+35 both before and after the fix, and neither ledger has any reservation row
+owned by tools/error-code-lint-test.f; the E-X-FIRST/E-FOO-FIRST fixtures sit
+inside quote-balanced lines. Exactly one phantom row existed: a claim named
+`E-XB"` (with a quote in its name) from that file. Both ledgers were dumped and
+compared row by row to establish this.
 
 Add to acceptance: a fixture for a `\` inside a string body, and a fixture
 proving a real claim AFTER such a line is still counted. Note for whoever fixes
