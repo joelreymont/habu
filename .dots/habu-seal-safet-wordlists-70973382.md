@@ -18,22 +18,26 @@ Contract: before each existing `;package`, protect both that package's private
 wordlist and its public wordlist. Do not change any existing public word,
 visibility, or behavior.
 
-Acceptance: `maki/infer/safetensors-test.f` runs exactly four independent
-production-loaded child probes, one for each protected wordlist:
+Acceptance: `maki/infer/safetensors-test.f` runs exactly six distinct
+production-loaded child probes:
 
 1. Publish into SAFET's private wordlist through XREF and `set-current`.
 2. Publish into SAFET-MAP's private wordlist through XREF and `set-current`.
-3. Publish a qualified public word into SAFET.
-4. Publish a qualified public word into SAFET-MAP.
+3. Open SAFET with a bare `package SAFET`.
+4. Open SAFET-MAP with a bare `package SAFET-MAP`.
+5. Publish a qualified public word into SAFET.
+6. Publish a qualified public word into SAFET-MAP.
 
-Each child exits with `ENGINE-ERROR:SEAL-PACKAGE` when its own protection line
-is present and changes by itself to clean publication when only that protection
-line is removed. One shared private `SUBJECT-EXITS` helper owns child execution
-and outcome cleanup.
+Each publication child exits with `ENGINE-ERROR:SEAL-PACKAGE` when its target
+wordlist is protected and changes by itself to clean publication when only that
+protection line is removed. Each bare-open child exits with the same error and
+changes by itself to a clean open when only the package-open guard is disabled.
+One shared private `SUBJECT-EXITS` helper owns child execution and outcome
+cleanup.
 
-Forbidden: bounded-reader code; API or visibility changes; duplicated package
-reopen or leak probes; compatibility surface; a separate guard module; FILEMAP,
-census, or governance work.
+Forbidden: bounded-reader code; API or visibility changes; redundant
+leak-specific probes that duplicate the six structural probes; compatibility
+surface; a separate guard module; FILEMAP, census, or governance work.
 
 Source order: this generic seal is the first of two serial source commits. The
 second commit may then add the bounded read against packages whose publication

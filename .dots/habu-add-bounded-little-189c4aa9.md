@@ -27,11 +27,10 @@ or misaligned numeric outcomes, and every out-of-range valid offset, return
 both directly require CAD-NUM; production has one bounded import of it.
 
 Acceptance: fixed byte constants independent of the reader prove aligned and
-unaligned values. A real file-backed `SAFET:LOAD` matrix detaches the mapping and
-runs child probes showing that reading a raw-unmapped base faults, reading the
-live base succeeds, and both the first straddling offset and `MAX-N` return
-`none` without touching revoked pages. Eager-read mutations at every invalid
-offset fail. The SAFET test entry passes through the production load path.
+unaligned values from a real file-backed `SAFET:LOAD` mapping. A revoked-page
+child proves that both the first straddling offset and `MAX-N` return `none`
+without touching the revoked pages. Eager-read mutations at both invalid
+offsets fail. The SAFET test entry passes through the production load path.
 
 Forbidden: an extent or pointer accessor; F32 decode; a raw pointer API;
 PRODUCT, SUMTYPE, or another legacy type; a magic fixture length; generated
