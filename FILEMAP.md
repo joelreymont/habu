@@ -112,6 +112,28 @@ points stay listed.
   the sole private checked module-key, packed-reference, count, and pool-offset
   representation authority; its aligned atomic allocator issues monotonic
   nonzero process-wide module serials and both package wordlists are protected.
+- `src/compiler/digest.f` — `package CDIGEST`: the canonical preimage encoding
+  (eight-byte little-endian slots, slot 0 a domain-separation tag owned here,
+  slot 1 the producer's schema version) and the SHA-256 over it that gives every
+  compiler contract record its identity.
+- `src/compiler/target.f` — `package CTARGET`: the immutable target contract
+  (architecture, ABI, byte order, pointer width, nominal feature set), the
+  coherence rules that reject a combination no single machine could satisfy, and
+  the contract's canonical preimage and digest.
+- `src/compiler/numeric-policy.f` — `package CNUM`: the explicit numerical
+  policy (integer overflow, floating-point model, contraction, rewrite licence,
+  comparison policy), the rule that a bit-exact licence cannot allow
+  contraction, and the policy's canonical preimage and digest.
+- `src/compiler/binding.f` — `package CBIND`: the target contract bound to a
+  numerical policy, the pair rule that contraction needs a fused multiply-add in
+  the target, and the binding digest taken over both component preimages so a
+  component schema change flows into it automatically.
+- `test/compiler/target-policy.f` — acceptance suite for the binding: checker
+  refusals for missing and role-swapped fields, one exact named throw per
+  coherence rule, forged-record rejection, pinned wire codes and preimage
+  layout, and pairwise-distinct digests over the entire legal domain (352 target
+  contracts, 60 numerical policies) with digest equality proved to hold exactly
+  where the structural comparison holds.
 - `test/compiler/ir-id-concurrency.f` — fresh-process task fixture proving the
   module allocator yields nonzero unique serials after a `READY`/`GO` overlap
   barrier; a private erase-only observer writes validated owners to shared raw

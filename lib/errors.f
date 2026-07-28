@@ -298,6 +298,20 @@ public
 -6604 constant E-IR-OWNER
 -6605 constant E-IR-SCALAR-RANGE
 -6606 constant E-IR-MODULE-EXHAUSTED
+\ Compiler target contract (package CTARGET): -6610..-6619
+-6610 constant E-CTGT-ABI         \ the ABI is not one the architecture can run
+-6611 constant E-CTGT-ENDIAN      \ the byte order is not one the ABI is defined for
+-6612 constant E-CTGT-PTR         \ the pointer width is not one the ABI is defined for
+-6613 constant E-CTGT-FEATURE-BITS \ the raw feature mask holds a bit outside the vocabulary
+-6614 constant E-CTGT-FEATURE     \ the feature set holds a feature the architecture has not
+-6615 constant E-CTGT-BASE        \ the baseline instruction-set feature is absent
+
+\ Compiler numerical policy (package CNUM): -6620..-6629
+-6620 constant E-CNUM-CONTRACT    \ contraction is allowed under a bit-exact rewrite licence
+
+\ Compiler target/policy binding (package CBIND): -6630..-6639
+-6630 constant E-CBIND-CONTRACT   \ contraction is allowed but the target has no fused multiply-add
+-6631 constant E-CBIND-PREIMAGE   \ a component preimage does not fit the binding preimage buffer
 
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST
