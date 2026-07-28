@@ -209,7 +209,7 @@ points stay listed.
   them, so the generated makefile is itself a build output; the `clean` target
   removes every generated file.
 - `formal/_CoqProject` — data-only build declaration: it maps the `formal`
-  directory to the `Habu` logical namespace and lists the four proof sources in
+  directory to the `Habu` logical namespace and lists the proof sources in
   dependency order. Adding or reordering a proof file is an edit here and
   nowhere else.
 - `formal/Common/Ids.v` — the IR-0.1 identity vocabulary. Fixes the cell,
