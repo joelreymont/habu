@@ -185,6 +185,14 @@ public
    drop
    -1 LIVE-N +! ;
 
+\ Seal BOTH wordlists. Without this a later file could execute `package
+\ SAFET-MAP` and republish N>PTR, handing out a raw pointer built from the mmap
+\ result - non-resolution from outside proves only that the name is not visible,
+\ never that the package cannot be reopened and drained.
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
 ;package
 
 \ ---------------------------------------------------------------------------
@@ -903,4 +911,12 @@ public
    st id TENSOR-AT nb body execute
    nb OPTION:SOME ;
 
+\ Seal BOTH wordlists, for the same reason SAFET-MAP does. Reopening SAFET would
+\ otherwise republish MAPPING>REC or the block leaves, and a caller could take a
+\ mapping's base address and read it with no bounds check at all - exactly what
+\ the WITH- spans and the copying readers exist to prevent.
+private
+get-current prot-wid-add
+public
+get-current prot-wid-add
 ;package

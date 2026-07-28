@@ -27,6 +27,8 @@
 
 require lib/test.f
 require test/checker-assert.f
+require lib/test/outcome.f
+require lib/test/subject.f
 require maki/infer/safetensors.f
 
 package SAFET-TEST
@@ -39,11 +41,16 @@ package SAFET-TEST
 125 constant RBRACE
 10 constant TEN
 
+5000 constant CHILD-MS                          \ a child re-runs nothing, but forks the image
+$400 constant SUBJ-CAP                          \ capture buffer size for one child's output
+
 1024 constant IMG-CAP
 create IMG-A IMG-CAP allot   variable LEN-A
 create IMG-B IMG-CAP allot   variable LEN-B
 create NAME-BUF 64 allot
 create DATA-BUF 64 allot
+create SUBJ-OUT SUBJ-CAP allot
+create SUBJ-ERR SUBJ-CAP allot
 
 variable SEEN-LEN
 variable SEEN-B0
@@ -718,6 +725,57 @@ variable BIG-LEN
    NO-LEAK
    CLEANUP ;
 
+\ ---- the package seal ------------------------------------------------------
+\ Non-resolution says a private name is not VISIBLE. It says nothing about
+\ CONFINEMENT: a wordlist that can be reopened can be drained, so a later file
+\ could execute `package SAFET`, republish the block leaves or a mapping's raw
+\ base, and every "no public word returns a pointer" claim here would be void.
+\ Each subject below is a real source file run in a forked child; the seal is
+\ what turns it into an exit-84 refusal.
+
+\ The one child-run shape in this file: every subject, whatever it is proving,
+\ runs the same way and differs only in the exit status it must produce.
+: SUBJECT-EXITS ( ptr u8 n n -- )               \ run one child; pin its exit status
+   {: want:n :}
+   SUBJ-OUT SUBJ-CAP >LEN SUBJ-ERR SUBJ-CAP >LEN CHILD-MS >MS SUBJECT:RUN
+   want T-OUTCOME-EXITED=
+   LEN>N drop
+   LEN>N drop ;
+
+: SEALED-DIES ( ptr u8 n -- )                   \ a subject the seal must refuse
+   ENGINE-ERROR:SEAL-PACKAGE SUBJECT-EXITS ;
+
+\ `package NAME` checks the PUBLIC wordlist first and stops there, so a reopen
+\ probe alone never reaches the private one. These two aim the current wordlist
+\ straight at a private WID through its namespace record; the definition that
+\ follows in the child is then a direct publication attempt into it. The name
+\ lookup lives in a compiled word because a subject source cannot carry a nested
+\ string literal.
+public
+
+: AIM-SAFET-PRIVATE ( -- )
+   s" SAFET" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current ;
+
+: AIM-MAP-PRIVATE ( -- )
+   s" SAFET-MAP" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current ;
+
+private
+
+\ Two enforcement points, two kinds of probe. A bare `package NAME` carries no
+\ definition at all, so nothing is published and only the package-OPEN guard can
+\ reject it; the four below publish, and reach the protected-wordlist registry at
+\ definition time. Neither kind can stand in for the other.
+: TEST-SEALED ( -- )
+   s" neither package can be reopened at all" T-LABEL
+   s" package SAFET ;package" SEALED-DIES
+   s" package SAFET-MAP ;package" SEALED-DIES
+   s" neither PRIVATE wordlist accepts a direct publication" T-LABEL
+   s" SAFET-TEST:AIM-SAFET-PRIVATE : STT-FORGE ;" SEALED-DIES
+   s" SAFET-TEST:AIM-MAP-PRIVATE : STT-FORGE ;" SEALED-DIES
+   s" and neither PUBLIC wordlist accepts a qualified one" T-LABEL
+   s" : SAFET:STT-FORGE ;" SEALED-DIES
+   s" : SAFET-MAP:STT-FORGE ;" SEALED-DIES ;
+
 \ ---- checker-enforced lifetime rules ---------------------------------------
 : TEST-LINEAR-OWNERSHIP ( -- )
    s" a session cannot be duplicated, dropped, or stored" T-LABEL
@@ -849,6 +907,8 @@ variable BIG-LEN
    CHECK-REAL
    SAFET:RELEASE ;
 
+public
+
 : RUN ( -- )
    T-RESET
 \ NO-LEAK after every leg that owns something: a leg that forgets a mapping or an
@@ -871,6 +931,7 @@ variable BIG-LEN
    TEST-DETACH-FAILED     NO-LEAK
    TEST-LINEAR-OWNERSHIP
    TEST-MAPPING-OWNERSHIP
+   TEST-SEALED
    TEST-NO-AMBIENT-STATE
    TEST-SEALED-REPRESENTATION
    TEST-OPTION-DISCIPLINE
@@ -879,6 +940,9 @@ variable BIG-LEN
    NO-LEAK
    T-REPORT ;
 
-RUN
-
 ;package
+
+\ Runs AFTER ;package (the weight-store-test arrangement): each seal subject
+\ forks from this process, and a fork taken inside an open package would make
+\ the child reject `package SAFET` as a nested opener instead of as a seal.
+SAFET-TEST:RUN
