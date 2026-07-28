@@ -1,9 +1,11 @@
 ---
 title: Return typed index from tensor SLOT
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T17:50:23.659114+02:00"
+closed-at: "2026-07-28T18:47:51.587088+02:00"
+close-reason: "Landed b37b649f: GPT2TENSOR:SLOT now returns CAD-NUM:index; canonical CAD-NUM:INDEX= and all live consumers, manifest entry, checker negatives, focused suites, diff lints, full Maki, independent review, and destruction re-review passed; verified on master@origin."
 ---
 
 Why: GPT2TENSOR:SLOT returns a raw n slot ordinal, so a typed store reader taking CAD-NUM:index would force a cast at the model reader - the role must originate at the authority. Exact result: GPT2TENSOR:SLOT ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg CAD-NUM:index ) returns the typed slot index; the internal ordinal arithmetic stays as is with one role construction at the return, handling the numeric-result arms explicitly. This leaf deliberately does NOT touch WSTORE:SLOT! or WSTORE's row helpers - retyping them while the legacy WITH-SLOT frame survives would be a temporary migration deleted one commit later; the U32 store leaf owns that atomic retype. This leaf owns exactly: public CAD-NUM:INDEX= with its own focused tests, the GPT2TENSOR:SLOT signature, and the exact GPT2TENSOR:SLOT consumers. Exact callers migrated in the same commit: CHECK-SLOT in maki/infer/gpt2-load.f (its range and round-trip comparisons move to checked CAD-NUM index operations with no erasure, using canonical CAD-NUM:INDEX=, never a private or raw equality at the caller) and the gpt2-tensor-test.f helpers GLOBAL-SLOT and LAYER-SLOT plus every slot-comparing pin in that suite. No other public GPT2TENSOR effect changes. Complete write set: lib/cad-num-arithmetic.f and its test (public INDEX=), lib/std.manifest (the required manifest row for the new public word, proven by tools/stdlib-manifest-test.f), maki/infer/gpt2-tensor.f and gpt2-tensor-test.f, and the affected callers in maki/infer/gpt2-load.f. Owners: package GPT2TENSOR in maki/infer/gpt2-tensor.f and package CAD-NUM for INDEX=. Acceptance: checker negatives prove a raw n call of SLOT no longer type-checks while the exact typed call is accepted; SLOT bijectivity and identity/E-LAYER/E-CONFIG behavior byte-identical; gpt2-tensor, gpt2-load-affected (prepare/mapped/copy), and full maki suites; both diff lints. Forbidden: casts at call sites, raw n survivals in any SLOT consumer, second slot authority, behavior change.
