@@ -753,6 +753,11 @@ fits.
   the source buffer cut a repo scan 33s→0.9s
   / a 400KB stage2 file 40s→2s, byte-identical output; use raw `parse-name` for definer
   payloads so `(CMP)` isn't mistaken for a comment.
+- **Engine-parity lexers need one delimiter predicate.** Native `parse-name`
+  splits every byte at or below space; using the narrower lint whitespace set
+  let a vertical tab merge top-level words and expose a false `PRIM;` inside a
+  row comment. Share the engine predicate across word, comment, and row scans,
+  and test every control delimiter the narrower set omits.
 - **Token equality is not site classification.** Source-lex records kill comment/string
   false positives, but name-position refs still count (`: TRUSTED:` needed a
   definer-ref filter). Token lints must match dictionary-significant words

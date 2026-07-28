@@ -246,6 +246,16 @@ private
 : CUR$ ( -- ptr u8 n )
    SRC@ START @ + POS @ START @ - ;
 
+\ `parse-name` and the engine token loop delimit on every byte at or below space.
+: ENGINE-DELIM? ( n -- bool )
+   $20 <= ;
+
+\ Engine parity: `(` opens a comment only as a standalone token (followed by
+\ an engine delimiter or EOF). A `(`-initial token such as `(CMP)` is one word.
+: PAREN-STANDALONE? ( -- bool )
+   POS @ 1+ SRC-U @ >= if LINT-TRUE exit then
+   SRC@ POS @ 1+ + c@ ENGINE-DELIM? ;
+
 : PAREN-COMMENT ( -- )
    ADV drop
    POS @ CSTART !
@@ -267,14 +277,11 @@ private
 \ word path. The row model is src/habu/verify-source.f RECORD-PRIM-ROW, the
 \ authoritative source replay of the same engine text: header fields raw, then
 \ body fields where comments are inert and a parsing word consumes its operand.
-\ Row fields use the engine delimiter rule (every byte below 33 separates) rather
-\ than the lexer's LINT-WS? set, because `parse-name` is what the engine runs.
-
-: RAW-WS? ( n -- bool )
-   33 < ;
+\ Row fields share the engine delimiter rule with top-level tokenization because
+\ `parse-name` is what the engine runs.
 
 : SKIP-RAW-WS ( -- )
-   begin END? 0= CUR RAW-WS? and while ADV drop repeat ;
+   begin END? 0= CUR ENGINE-DELIM? and while ADV drop repeat ;
 
 : F$ ( -- ptr u8 n )
    SRC@ FOFF @ + FLEN @ ;
@@ -283,7 +290,7 @@ private
 : NEXT-FIELD ( -- )
    SKIP-RAW-WS
    POS @ FOFF !
-   begin END? 0= CUR RAW-WS? 0= and while ADV drop repeat
+   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
    POS @ FOFF @ - FLEN ! ;
 
 : ROW-PAREN ( -- )
@@ -298,7 +305,7 @@ private
       SKIP-RAW-WS
       END? if exit then
       CUR 92 = if LINE-COMMENT else
-         CUR 40 = if ROW-PAREN else exit then
+         CUR 40 = PAREN-STANDALONE? and if ROW-PAREN else exit then
       then
    again ;
 
@@ -438,7 +445,7 @@ private
    NAME-POS? LINT-NOT ;
 
 : SCAN-WORD ( -- )
-   begin END? 0= CUR LINT-WS? 0= and while ADV drop repeat
+   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
    ROW-START? if
       CUR$ PPRIM-OPEN? if ROW-PKG else ROW-BARE then SCAN-ROW
       exit
@@ -459,11 +466,11 @@ public
    CLEAR-ERROR
    RESET-TABLES
    begin END? 0= HALTED @ 0= and while
-      CUR LINT-WS? if ADV drop
+      CUR ENGINE-DELIM? if ADV drop
       else
          POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
          CUR 92 = if LINE-COMMENT
-         else CUR 40 = if PAREN-COMMENT
+         else CUR 40 = PAREN-STANDALONE? and if PAREN-COMMENT
          else SCAN-WORD then then
       then
    repeat ;
