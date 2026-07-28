@@ -19,12 +19,13 @@
 require maki/infer/gpt2-checkpoint-fixture.f
 
 package GPT2LOAD
+using SAFET
 
 \ ---- the copied-storage path's gate: compare and retype, nothing moves -----------------
 : T-CHECK-COPY ( -- )
    s" CHECK-COPY rejects a prepared-load for a different configuration and moves nothing" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          OTHER-IDENTITY-CONFIG CHECK-COPY
@@ -44,7 +45,7 @@ package GPT2LOAD
       ENDOF
       rejected OF
          s" CHECK-COPY test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
@@ -83,10 +84,10 @@ variable TAIL-LEN
 : CHECK-COPIED-SPAN ( SAFET:census n n n -- SAFET:census )
    {: id:n aoff:n len:n :}
    len COPY-PROBE-CAPACITY > if COPY-PROBE-CAPACITY else len then {: take:n :}
-   id COPY-FILE-BUFFER take SAFET:COPY-DATA? OPTION-VALUE take T=
+   id COPY-FILE-BUFFER take COPY-DATA? OPTION-VALUE take T=
    aoff take COPY-BUFFER-BYTES
    COPY-FILE-BUFFER take COPY-BUFFER-PROBE take ASSERT-BYTES-EQUAL
-   id [: COPY-TAIL ;] SAFET:WITH-TENSOR OPTION-VALUE drop
+   id [: COPY-TAIL ;] WITH-TENSOR OPTION-VALUE drop
    TAIL-LEN @ {: tn:n :}
    aoff len + tn -  tn COPY-BUFFER-BYTES
    COPY-FILE-BUFFER tn COPY-BUFFER-PROBE tn ASSERT-BYTES-EQUAL ;
@@ -125,12 +126,12 @@ variable TAIL-LEN
 \ runs the real load. Reaching RELEASE-MODEL means LOAD-COPIED did not throw;
 \ TTHROWSQ detects that error.
 : CHECK-FIXTURE-COPY ( -- GPT2LOAD:copy-check-result )
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF MATCHING-CONFIG CHECK-COPY ENDOF
       rejected OF
          s" forced-failure test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          E-BAD-FIXTURE throw
       ENDOF
    ;MATCH ;
@@ -181,17 +182,17 @@ variable COPY-ATTENTION-WEIGHT-LENGTH
 : ID-FOR-SLOT ( SAFET:census n -- SAFET:census n ) {: slot:n :}
    MATCHING-CONFIG slot ROLE-NAME-LENGTH {: name-len:n :}
    drop                                         \ the configuration copy
-   ROLE-NAME-BUFFER name-len SAFET:FIND OPTION-VALUE ;
+   ROLE-NAME-BUFFER name-len FIND OPTION-VALUE ;
 
 : CHECK-COPY-SPANS ( -- )
-   FIXTURE-PATH SAFET:LOAD
+   FIXTURE-PATH LOAD
    VECTOR-SLOT ID-FOR-SLOT {: vid:n :}
    ATTENTION-WEIGHT-SLOT ID-FOR-SLOT {: cid:n :}
    s" the rank-1 vector span is the file's own bytes at its copy-buffer offset" T-LABEL
    vid  COPY-VECTOR-OFFSET @  COPY-VECTOR-LENGTH @  CHECK-COPIED-SPAN
    s" and so is the Conv1D matrix the forward pass reads" T-LABEL
    cid  COPY-ATTENTION-WEIGHT-OFFSET @  COPY-ATTENTION-WEIGHT-LENGTH @  CHECK-COPIED-SPAN
-   SAFET:RELEASE ;
+   RELEASE ;
 
 \ Find which slot carries a tensor ID. The real checkpoint test names a tensor,
 \ resolves the name to its tensor ID, and finds
@@ -248,30 +249,30 @@ variable LAYOUT-ERROR
 \ file, so what they agree with is the file on disk and not any number the load derived.
 : SAVE-REAL-SPANS ( GPT2LOAD:copy-ready -- GPT2LOAD:copy-ready )
    TAKE-COPY-BLOCK {: blk:ptr :}
-   REAL-CHECKPOINT-PATH SAFET:LOAD
-   s" h.0.ln_1.weight" SAFET:FIND OPTION-VALUE {: vid:n :}
-   s" h.0.attn.c_attn.weight" SAFET:FIND OPTION-VALUE {: cid:n :}
-   SAFET:RELEASE
+   REAL-CHECKPOINT-PATH LOAD
+   s" h.0.ln_1.weight" FIND OPTION-VALUE {: vid:n :}
+   s" h.0.attn.c_attn.weight" FIND OPTION-VALUE {: cid:n :}
+   RELEASE
    vid REAL-VECTOR-ID !  cid REAL-ATTENTION-WEIGHT-ID !
    blk vid REAL-VECTOR-OFF REAL-VECTOR-LEN SAVE-REAL-SPAN
    blk cid REAL-ATTENTION-WEIGHT-OFFSET REAL-ATTENTION-WEIGHT-LENGTH SAVE-REAL-SPAN
    blk BLOCK>BYTE-POINTER BLOCK>COPY-READY ;
 
 : CHECK-REAL-SPANS ( -- )
-   REAL-CHECKPOINT-PATH SAFET:LOAD
+   REAL-CHECKPOINT-PATH LOAD
    s" the real rank-1 vector is the file's own bytes at its copy-buffer offset" T-LABEL
    REAL-VECTOR-ID @ REAL-VECTOR-OFF @ REAL-VECTOR-LEN @ CHECK-COPIED-SPAN
    s" and so is the real Conv1D matrix the forward pass reads" T-LABEL
    REAL-ATTENTION-WEIGHT-ID @ REAL-ATTENTION-WEIGHT-OFFSET @ REAL-ATTENTION-WEIGHT-LENGTH @ CHECK-COPIED-SPAN
-   SAFET:RELEASE ;
+   RELEASE ;
 
 : T-REAL-COPIED ( -- )
-   REAL-CHECKPOINT-PATH SAFET:PRESENT? 0= if
+   REAL-CHECKPOINT-PATH PRESENT? 0= if
       s" gpt2-copy: real-artifact copied test SKIPPED" type cr exit
    then
    s" the real checkpoint loads to a copied model that owns its copy buffer" T-LABEL
    REAL-MODEL-CONFIG SAVE-CONFIG-KEY
-   REAL-CHECKPOINT-PATH SAFET:LOAD REAL-MODEL-CONFIG PREPARE
+   REAL-CHECKPOINT-PATH LOAD REAL-MODEL-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          PREPARED-TOTAL-BYTES {: want:n :}
@@ -294,7 +295,7 @@ variable LAYOUT-ERROR
       ENDOF
       rejected OF
          s" real copied-model test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH ;
@@ -303,7 +304,7 @@ variable LAYOUT-ERROR
    s" a copy-ready load becomes a copied model that owns its copy buffer" T-LABEL
    RESET-FIXTURE  WRITE-CHECKPOINT
    MATCHING-CONFIG SAVE-CONFIG-KEY
-   FIXTURE-PATH SAFET:LOAD MATCHING-CONFIG PREPARE
+   FIXTURE-PATH LOAD MATCHING-CONFIG PREPARE
    MATCH GPT2LOAD:prepare-result
       prepared OF
          PREPARED-TOTAL-BYTES {: want:n :}
@@ -328,11 +329,13 @@ variable LAYOUT-ERROR
       ENDOF
       rejected OF
          s" copied-load test could not prepare" T-LABEL
-         . cr SAFET:RELEASE
+         . cr RELEASE
          0 0= 0= TTRUE
       ENDOF
    ;MATCH
    EXPECT-NO-LEAK ;
+
+;using
 
 : T-COPY-LOAD-FAILURES ( -- )
    s" an impossible copy-buffer size releases ordinary resources after allocation fails" T-LABEL
