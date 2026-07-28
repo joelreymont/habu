@@ -112,6 +112,17 @@ points stay listed.
   the sole private checked module-key, packed-reference, count, and pool-offset
   representation authority; its aligned atomic allocator issues monotonic
   nonzero process-wide module serials and both package wordlists are protected.
+- `src/compiler/ir/source.f` — `package IR-SOURCE`: the per-module source
+  registry (design IR-0.2) on one context-owned IR-ARENA arena: registration
+  digests bytes (retaining none) and mints `ir-source-id` ordinals under the
+  module key, origins must name earlier sources so chains are acyclic by
+  construction, byte spans validate as encoding-agnostic ranges, and frozen
+  modules serve rows through the arena view.
+- `test/compiler/ir-source.f` — acceptance suite for the source registry:
+  distinct local ids with stable order-independent digests, span range and
+  forged-span rejects, foreign key/id/context rejects, root/self/three-node
+  origin-cycle rejects with terminating walks, capacity and teardown behavior,
+  frozen-view reads with rejected mutation, and checker-seal candidates.
 - `src/compiler/digest.f` — `package CDIGEST`: the canonical preimage encoding
   (eight-byte little-endian slots, slot 0 a domain-separation tag owned here,
   slot 1 the producer's schema version) and the SHA-256 over it that gives every

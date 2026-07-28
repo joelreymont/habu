@@ -335,6 +335,16 @@ public
 -6658 constant E-IR-ARENA-SERIALS \ arena generation serials reached their ceiling
 -6659 constant E-IR-ARENA-STATE   \ persisted arena state failed its consistency recheck
 
+\ Compiler source registry (package IR-SOURCE): -6660..-6669
+-6660 constant E-IR-SRC-STATE     \ a registry arena failed its header or row-shape recheck
+-6661 constant E-IR-SRC-OWNER     \ a module key or source-id presented to a registry that does not own it
+-6662 constant E-IR-SRC-BOUND     \ a source-id whose ordinal is at or past the registered count
+-6663 constant E-IR-SRC-ORIGIN    \ an origin that is not an already-registered source; every cycle attempt lands here
+-6664 constant E-IR-SRC-SPAN      \ a byte span with a negative bound or one crossing its source's end
+-6665 constant E-IR-SRC-CAP       \ a registry capacity outside the accepted range, or a registration past it
+-6666 constant E-IR-SRC-LEN       \ a negative source byte length at registration
+-6667 constant E-IR-SRC-ROOT      \ an origin read on a root source, which has none
+
 \ Frozen compiler identity schema (package COMPILER-ID-PROOF): -6700..-6799
 -6700 constant E-CID-FIRST
 -6799 constant E-CID-LAST
