@@ -1,6 +1,6 @@
 # habu — Status
 
-Last verified: 2026-07-28
+Last verified: 2026-07-29
 Verification context: repair-control exact-tree verification, DGX Spark linux-arm64.
 
 ## What is running and what is next
