@@ -191,11 +191,27 @@ emit_decl_src() {
 emit_src() {
   local out="$1"
   local driver="$2"
-  local mode="${3:-seed}"
   : > "$out"
-  if [[ "$mode" == "native" ]]; then
-    emit_boot_hide "$out"
-  fi
+  # Every engine built from this file re-reads the boot prefix from disk when it
+  # starts, and then interprets this file, which loads the whole prefix a second
+  # time. The second load must not inherit the first load's words. If it does,
+  # `trust` and `checker-defer` from the startup load are still resolvable while
+  # this file is being read, so a `defer NAME` declared before this file's own
+  # `: TRUST` registers its effect row and its defer row into the startup load's
+  # checker -- the one this file is in the middle of replacing. Those rows are
+  # then invisible, the pending pre-trust defer table stays empty, and
+  # DRAIN-PRETRUST has nothing to replay, so a later checked `is NAME` on that
+  # defer cannot certify.
+  #
+  # The prologue below hides the startup load's dictionary and clears its
+  # recorded effects, which is what makes the second load capture its pre-trust
+  # defers and replay them into the checker that is actually live. It used to be
+  # emitted only for the stage builds; the recovery seed that Gforth compiles
+  # into hb-stage0 went without it, so the whole no-binary recovery path died at
+  # src/habu/xref.f INSTALL with `hook: non-certified definition: install at
+  # 'is'` and exit 70. There is one compiler source, so there is one prologue:
+  # every consumer of this function gets it.
+  emit_boot_hide "$out"
   printf "0 set-check\n" >> "$out"
   cat src/core/util.f >> "$out"
   printf '\n' >> "$out"
@@ -366,10 +382,11 @@ bootstrap_using_gate() {
 
 bootstrap_using_gate
 
+# One emission serves both steps: Gforth compiles this text into hb-stage0, and
+# hb-stage0 then compiles the same text into the first native stage.
 emit_src "$T/stage2-src" src/habu/stage2.f
 "$GF" -e "require $ROOT/test/nf.fs s\" $T/stage2-src\" slurp-file s\" $T/hb-stage0\" FORTH-BUILD-EXE bye"
 
-emit_src "$T/stage2-src" src/habu/stage2.f native
 env HB_TMP="$T" "$T/hb-stage0" -- "$T"
 test -f "$T/stage2-got"
 mv "$T/stage2-got" "$T/hb-stage"
@@ -393,7 +410,7 @@ if [[ "$found" != "1" ]]; then
   exit 74
 fi
 
-emit_src "$T/stage2-src" src/habu/stdin.f native
+emit_src "$T/stage2-src" src/habu/stdin.f
 rm -f "$T/stage2-got" "$T/hb-stdin-got"
 env HB_TMP="$T" "$T/hb-stage" -- "$T"
 test -f "$T/stage2-got"

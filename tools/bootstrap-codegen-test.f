@@ -1232,6 +1232,36 @@ public
    s" BOOT-HIDE-DICT-FROM-EARLIEST" BCG-MUST-HAVE
    s" T-CON" BCG-MUST-LACK ;
 
+\ Every engine built from the emitted compiler source loads the boot prefix from
+\ disk when it starts and then interprets that source, which loads the prefix a
+\ second time. The hide prelude above is what stops the second load from
+\ inheriting the first load's words. Without it the startup load's `trust` and
+\ `checker-defer` stay resolvable while src/core/checker.f is being re-read, so a
+\ `defer` declared before that file's own `: TRUST` publishes its effect row and
+\ its defer row into the checker being replaced, the pending pre-trust defer
+\ table is never filled, DRAIN-PRETRUST replays nothing, and the first checked
+\ `is` on such a defer (src/habu/xref.f INSTALL, `is PKG-LIVE-XT`) cannot
+\ certify: `hook: non-certified definition: install at 'is'`, exit 70. That is
+\ how the whole no-binary recovery path died while the prelude was emitted for
+\ the stage builds only and the Gforth-compiled recovery seed went without it
+\ (dot habu-fix-stage0-pre-88a4297e).
+\
+\ So the prelude is not merely present in the script, it is emitted by every
+\ caller of emit_src and it comes before the first source file. This checks the
+\ structure rather than counting words: the prelude call must sit inside
+\ emit_src's own head, that head must contain no conditional that could gate it
+\ again, no mode variable may survive, and no call site may ask for a mode.
+: BCG-TEST-BOOTSTRAP-PROLOGUE-UNCONDITIONAL ( -- )
+   s" tools/bootstrap.sh" BCG-LOAD
+   s" emit_src() {" BCG-POS-FOUND {: head:n :}
+   head S\" printf \"0 set-check\\n\" >> \"$out\"" BCG-AFTER-FOUND {: body:n :}
+   head body S\" emit_boot_hide \"$out\"" BCG-MUST-FIND-BEFORE
+   head body s" if [[" BCG-MUST-NOT-FIND-BEFORE
+   s" local mode=" BCG-MUST-LACK
+   S\" emit_boot_hide \"$out\"" s" cat src/core/util.f" BCG-MUST-BEFORE
+   s" src/habu/stage2.f native" BCG-MUST-LACK
+   s" src/habu/stdin.f native" BCG-MUST-LACK ;
+
 \ --- earliest-marker hide behavior ---
 \ tools/bootstrap.sh's BOOT-* hide prelude mirrors src/habu/hide.f's BFR-*
 \ words, so the native mirror is the executable spec and is driven directly
@@ -1513,6 +1543,7 @@ public
    BCG-TEST-PUBLISH-HOOK-SPLIT
    BCG-TEST-BOOTSTRAP-LOCAL-SHADOW
    BCG-TEST-BOOTSTRAP-HIDE-PRELUDE
+   BCG-TEST-BOOTSTRAP-PROLOGUE-UNCONDITIONAL
    BCG-TEST-HIDE-EARLIEST-MARKER
    BCG-TEST-HIDE-FIRST-RECORD
    BCG-TEST-HIDE-MISSING-FALLBACK

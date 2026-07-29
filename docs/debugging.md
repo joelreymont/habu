@@ -159,13 +159,13 @@ disk at boot, so patching `src/core/checker.f` and running any
 `bin/hb --load <file>` prints the native answer without a rebuild.
 
 On 2026-07-28 that census read `dfr=-1 sig=-1` for every pre-trust deferred word
-under the native engine, and under the mirror read `sig=0` for all of them plus
-`dfr=0` for those declared before `: CHECKER-DEFER`. So the mirror's replay of
-`trust` never produces a signature row, while the same `trust` reached from
-`C-CALL-TRUST-PEND` on the ordinary declaration path does. Splitting the two rows
-is what localises the defect to one half of the replay loop; asking only
-`CHECKER-FIND-ACTIVE-DEFER` gives a partial answer that looks like a
-declaration-order rule and is not one.
+under the native engine and `dfr=0 sig=0` under the mirror. The conclusion drawn
+at the time — that the mirror's replay of `trust` produces no signature row —
+was WRONG, and it cost a lane. Both halves of the replay run and both reach the
+checker; what differed was WHICH checker they reached. Read the next section
+before trusting a census: a recovery engine loads `src/core/checker.f` twice in
+one process, so a census printed right after `DRAIN-PRETRUST` answers about
+whichever load is running, and the two loads give opposite answers.
 
 ### Reading the replay from inside the engine
 
@@ -173,15 +173,47 @@ Instrumenting `src/core/checker.f` changes what `test/bootstrap-wide-memory.fs`
 measures, so `tools/bootstrap.sh` then stops in its first gate with `bootstrap
 wide memory mismatch` and never reaches the stage0 run. Instrumented runs must
 therefore skip the launcher and build the seed directly. The seed is exactly the
-file `tools/bootstrap.sh` writes to `$HB_TMP/stage2-src`, minus the boot-hide
-prologue that its native-mode pass prepends — drop every line through
-`s" IMK-NDICT0" s" SEQ" BOOT-HIDE-DICT-FROM-EARLIEST`. Build and boot it with:
+file `tools/bootstrap.sh` writes to `$HB_TMP/stage2-src`, used as written —
+`emit_src` gives every consumer the same text, boot-hide prologue included, and
+that prologue is load-bearing: strip it and the boot dies at exit 70 before you
+see any of your instrumentation (see below). Build and boot it with:
 
     HABU_TARGET=<target> gforth -e 'require test/nf.fs s" <seed>" slurp-file s" <out>" FORTH-BUILD-EXE bye'
     HB_TMP=<dir> <out> -- <dir>
 
 A boot that reaches `stage2: cannot open source` (exit 74) got through the whole
 prefix; that message is success for this purpose.
+
+### The recovery engine reads the prefix twice
+
+This is the fact that made the 2026-07-28 census misleading, so keep it in mind
+for any probe placed in the boot prefix. The emitted engine reads every prefix
+file from disk when it starts — `PFX-LOAD-CHECKER-FILES` and its siblings in
+`bootstrap/cg/forth.fs` emit `LSRCRD` calls on baked path strings — and then
+interprets its baked program, which for a `FORTH-BUILD-EXE` binary is the whole
+prefix again plus a driver. So every top-level action in `src/core/checker.f`
+happens twice, in two different checker instances. Two markers tell the loads
+apart in a trace: only the startup load runs `src/core/include.f`, and only the
+baked program runs `src/habu/habu1.f`.
+
+The second load must not inherit the first load's words. That is the job of the
+boot-hide prologue `emit_boot_hide` in `tools/bootstrap.sh`, which hides the
+startup load's dictionary and clears its recorded effects, and it is why
+instrumented seeds built by hand (above) drop it deliberately. When it is
+missing, `trust` and `checker-defer` from the startup load are still resolvable
+while `checker.f` is being re-read, so `C-PRETRUST-READY?` says "ready" and
+every defer declared before `: TRUST` publishes into the checker that is being
+replaced; nothing is captured, the drain replays nothing, and the first checked
+`is` on such a defer fails with `hook: non-certified definition: ... at 'is'`
+and exit 70 (dot habu-fix-stage0-pre-88a4297e).
+
+To see this directly, put the engine-side probe and the checker-side probe on
+the SAME file descriptor so their order is evidence: write the slot name from
+inside the `BDRAINPRETRUST` loop to fd 1, and `type` the name at the head of
+`: TRUST` and `: CHECKER-DEFER`. Interleaved output of the form
+`[NAME><tr:NAME><cd:NAME>]` proves the replay reached the checker; a second
+`is NAME` later in the same stream answering differently from the first proves
+you are looking at two loads, not at a broken replay.
 
 
 The pending table and its replay are assembly in both engines, so ordinary

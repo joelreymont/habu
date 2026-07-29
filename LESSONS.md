@@ -3016,6 +3016,44 @@ fits.
   anywhere, which for an agent workspace means it was `rm -rf`'d before any jj
   command snapshotted it.
 
+- **The recovery engine loads the boot prefix twice, and the second load must
+  shadow the first.** A Gforth-built stage0 engine reads every prefix file from
+  disk at startup (`PFX-LOAD-*` in bootstrap/cg/forth.fs emits `LSRCRD` calls on
+  baked paths) and THEN interprets its baked program, which is the prefix all
+  over again plus a driver. So `src/core/checker.f` is read twice in one process.
+  You can tell the two loads apart in a trace: only the startup load runs
+  src/core/include.f, and only the baked program runs src/habu/habu1.f.
+  The prologue `emit_boot_hide` in tools/bootstrap.sh is what keeps the second
+  load from inheriting the first's dictionary and effect rows, and it was
+  emitted only for the stage builds. Without it, `trust` and `checker-defer`
+  from the startup load stay resolvable while checker.f is being re-read, so
+  every `defer` declared before checker.f's own `: TRUST` published into the
+  checker that was being replaced, nothing landed in the pending pre-trust
+  table, `DRAIN-PRETRUST` replayed nothing, and the first checked `is` on such
+  a defer (src/habu/xref.f `is PKG-LIVE-XT`) could not certify: exit 70, which
+  reddened the whole no-binary recovery path. Lesson for next time: when a
+  registration "happens" and is then invisible, ask which INSTANCE of the
+  registry received it before suspecting the code that registers.
+
+- **Interleave the two probes on one stream, and distrust an inherited
+  diagnosis.** The dot for that bug recorded, from an earlier lane, that the
+  replayed `trust` and `checker-defer` calls never entered their definitions.
+  They entered every time, for all 31 slots. What settled it was putting the
+  engine-side probe (write the slot name from the replay loop) and the
+  checker-side probe (`type` the name at the head of `: TRUST` and
+  `: CHECKER-DEFER`) on the SAME file descriptor, so their order was real
+  evidence instead of two logs to correlate. Ten minutes of that replaced a
+  week of "the faulty instruction is not yet pinned". Inherited findings are
+  leads, not facts; re-measure the one the whole diagnosis rests on.
+
+- **Readiness answered by existence is a proxy, and proxies go stale.**
+  `C-PRETRUST-READY?` asks "is a word named `trust` resolvable" when it means
+  "is this load's checker live". Any older instance satisfies the proxy. Fixing
+  the situation that produced a stale instance is a real fix and can be the
+  right one to land, but it is not the same as fixing the proxy, and saying so
+  out loud is what keeps the second one from being forgotten (dot
+  habu-make-pre-trust-f18dd43a).
+
 - **A sealed handle can be stored without a forging cast.** The IR builder has
   to keep fifteen `IR-ARENA:arena` handles and a module key alive between
   calls, and the obvious way — stash the raw cells and re-mint them with a
