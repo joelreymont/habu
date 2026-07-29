@@ -4,6 +4,8 @@ status: active
 priority: 2
 issue-type: task
 created-at: "\"2026-07-29T21:34:38.637859+02:00\""
+blocks:
+  - habu-add-using-to-d815f0ab
 ---
 
 Full context: the snapshot relocation step-2 work (preserved as WIP commit e50fb3ec in .jj-ws/habu-relocate-snapshot-region-752042fe) is blocked because tools/package-diff-lint.f rejects its edits to src/habu/layout.f and src/habu/snap-lib.f: those files define global constants with no package owner. The long-term-correct fix is to give each file a real package (short name, package-local tails, cross-package calls qualified), NOT an exact-path exemption like the one habu2.f received in commit a943eb40 - habu2.f is the engine trunk with hundreds of pre-package globals, while layout.f and snap-lib.f are small constant tables that CAN be packaged in under 30 minutes. Acceptance: package-diff-lint passes on a representative diff touching each file with no new exemption added; existing callers updated; engine rebuilds to fixpoint; gate-stdlib red-phase set unchanged. If packaging genuinely breaks the bootstrap ordering (constants consumed before the package machinery loads), record that proof in this dot and only then fall back to an exemption with the proof attached.
@@ -117,3 +119,18 @@ Why src/habu/layout.f cannot be packaged inside this leaf.
   tools/build-fixpoint-test.f. Until (a) lands, any diff that adds or changes a
   constant in layout.f still fails the package gate, so the snapshot relocation
   step-2 work stays blocked on this decision.
+
+ORCHESTRATOR REVIEW 2026-07-30: the snap-lib.f half is reviewed hunk-by-hunk
+and landed on the proofs branch (commit dbf52aaa, rebased from the lane).
+Independent re-run of package-diff-lint, typed-local-diff-lint, and
+error-code-lint on the rebased tree: all exit 0. The layout.f half is BLOCKED
+on a proven capability gap, now tracked as the prerequisite in this dot's
+blocks list: the stage0 recovery compiler lacks the using keyword
+(habu-add-using-to-d815f0ab), and requalifying ~2500 bare references instead
+is an engine-wide migration, not this leaf. Three more findings from the lane
+were minted as their own dots: habu-pkg-snap-f-5f43d7af (snap.f and
+build-fixpoint-test.f packaging plus the SNAPGO respelling),
+habu-verify-emitted-images-cf0fbf79 (INSTALL-HOOK has no caller anywhere -
+possible missing verify hook in restored images), and
+habu-path-qualify-the-823d7e8e (name-only hook allowlist, pre-existing).
+This dot stays active until the layout.f half lands behind the stage0 work.
