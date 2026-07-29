@@ -193,6 +193,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-ROOT$ s" test/test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/core" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" src/habu" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS ;
 
 : TEST-GLOBAL-SOURCE ( ptr u8 n -- )
@@ -1247,6 +1249,114 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deleted package boundary in render.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- src/habu/habu2.f: the engine emitter's body-edit admission ----
+\ This is the narrowest of the three principled categories, so its fixtures pin
+\ BOTH halves: the one shape it admits, and the shape it must keep reporting.
+\ The positive is the exact probe that measured the problem -- one trailing
+\ comment on an existing global body -- and the first negative is the new global
+\ word, which the checker and render entries DO admit and this one must not.
+
+: TEST-WRITE-ENGINE-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : EM-SNAPSHOT-RX-FLUSH ( -- )" TEST-SOURCE-LINE
+   s"    LPROT-RX   \ gate probe comment" TEST-SOURCE-LINE
+   s" ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-BODY-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : EM-SNAPSHOT-RX-FLUSH ( -- )" TEST-DIFF+ TEST-LF
+   s" -   LPROT-RX" TEST-DIFF+ TEST-LF
+   s" +   LPROT-RX   \ gate probe comment" TEST-DIFF+ TEST-LF
+   s"  ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-ENGINE-BODY-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-ENGINE-BODY
+   TEST-DIFF-RESET path pathu TEST-ENGINE-BODY-DIFF ;
+
+: TEST-WRITE-ENGINE-NEW-GLOBAL ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-SOURCE-LINE
+   s" : EM-SMUGGLED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-NEW-GLOBAL-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1,2 @@" TEST-DIFF+ TEST-LF
+   s"  : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-DIFF+ TEST-LF
+   s" +: EM-SMUGGLED ( -- n ) 1 ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-ENGINE-NEW-GLOBAL-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-ENGINE-NEW-GLOBAL
+   TEST-DIFF-RESET path pathu TEST-ENGINE-NEW-GLOBAL-DIFF ;
+
+: TEST-WRITE-ENGINE-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : LOOP-EMIT-TAIL ( -- ) ;" TEST-SOURCE-LINE
+   s" src/habu/habu2.f" TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-OWNER-LOSS-DIFF ( -- )
+   s" src/habu/habu2.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package LOOP-EMIT" TEST-DIFF+ TEST-LF
+   s"  : LOOP-EMIT-TAIL ( -- ) ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-WRITE-ENGINE-ARRIVAL ( -- )
+   TEST-SOURCE-RESET
+   s" : EM-ARRIVED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" src/habu/habu2.f" TEST-WRITE-SOURCE ;
+
+: TEST-ENGINE-ARRIVAL-DIFF ( -- )
+   s" diff --git a/src/habu/engine-old.f b/src/habu/habu2.f" TEST-DIFF+ TEST-LF
+   s" similarity index 100%" TEST-DIFF+ TEST-LF
+   s" rename from src/habu/engine-old.f" TEST-DIFF+ TEST-LF
+   s" rename to src/habu/habu2.f" TEST-DIFF+ TEST-LF ;
+
+: TEST-ENGINE-EXEMPTION ( -- )
+   \ Positive: the measured control probe.  Before this entry, one trailing
+   \ comment on an existing global body in src/habu/habu2.f reported
+   \ E-PACKAGE-OWNERSHIP, so no change at all to the native engine emitter could
+   \ pass the commit gate.
+   s" src/habu/habu2.f" TEST-ENGINE-BODY-CASE
+   s" engine emitter exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a genuinely new global word added beside an existing one is still
+   \ reported.  This is where the engine entry is narrower than the checker and
+   \ render entries, which admit new globals: habu2.f already carries real
+   \ packages, so a new engine word has an owner to join.
+   s" src/habu/habu2.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in the engine emitter still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling whose name carries the allowlist path as a prefix is not
+   \ an exact match, so its body edit must still fail (not a startswith match).
+   s" src/habu/habu2-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/habu2-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the allowlist path
+   \ as a suffix but is not exact, so it must still fail (full path, not suffix).
+   s" lib/habu2.f" TEST-ENGINE-BODY-CASE
+   s" lib/habu2.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package/;package boundary inside the
+   \ allowlisted engine file still reports lost ownership.  FINISH-DEFINITION
+   \ checks SCOPE-DELTA before it consults the admission, so an engine word
+   \ pushed out of LOOP-EMIT is reported even though its own body line is
+   \ unchanged.
+   TEST-WRITE-ENGINE-OWNER-LOSS
+   TEST-DIFF-RESET TEST-ENGINE-OWNER-LOSS-DIFF
+   s" deleted package boundary in habu2.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (hostile): a pure rename that makes some OTHER file arrive at
+   \ src/habu/habu2.f marks no line as added, so the added-head test alone would
+   \ admit every global in it.  A whole-file change is not a body edit of an
+   \ existing engine word and is reported.
+   TEST-WRITE-ENGINE-ARRIVAL
+   TEST-DIFF-RESET TEST-ENGINE-ARRIVAL-DIFF
+   s" file renamed onto habu2.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 : TEST-WRITE-OUTSIDE-HUNK-SOURCE ( -- )
    TEST-SOURCE-RESET
    s" package SHARED" TEST-SOURCE-LINE
@@ -1806,6 +1916,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION
+   TEST-ENGINE-EXEMPTION
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES
    TEST-PAREN-NAME-REPLAY

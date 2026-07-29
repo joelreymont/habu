@@ -803,10 +803,53 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    bit 0= if false exit then
    allowed bit and 0<> ;
 
+\ The native engine emitter, src/habu/habu2.f, is the third principled category
+\ and the narrowest of the three.  It is admitted for exactly one shape: a change
+\ to the BODY of a global word that already exists.  Adding a new global word to
+\ that file is still reported, which is what separates this entry from the
+\ interim entries in GLOBAL-IMPLEMENTATION? above.
+\
+\ Why the file needs an entry at all.  habu2.f is about 7,300 lines of code that
+\ emits the machine code of the engine itself.  Almost all of it is global by
+\ construction: it runs while the engine is being built, before any package
+\ exists, and the assembler words, register names, label helpers and emit passes
+\ resolve each other bare in one flat namespace.  Measured on 2026-07-29: adding
+\ a single trailing comment to the body of EM-SNAPSHOT-RX-FLUSH -- defining no
+\ new word and changing no behaviour -- reported
+\ `E-PACKAGE-OWNERSHIP src/habu/habu2.f:4134:3`, so as configured the gate
+\ rejected every possible change to the engine emitter, including the repair of
+\ the snapshot relocation regression that found this.
+\
+\ Why it is narrower than the core-surface entries.  Unlike checker.f and
+\ render.f, habu2.f is not a growing language surface; it is a body of existing
+\ code being packaged file-region by file-region.  The packaging seams are real
+\ and already present -- OWNER-WID-EMIT, KWDATA, LOOP-EMIT, LASTC-TRUST,
+\ DOESPATCH, INTERP-EMIT, COMPILE-EMIT, LABELS, ENGINE-BUILD, LOWER-TXN and the
+\ rest all open in this same file -- so a genuinely new engine word has a package
+\ to join and must join one.  The distinction is structural, not a value guess:
+\ DEF-TAIL-ADDED records whether the definition's own opener or name line was
+\ ADDED by this diff, so a new definition is admitted by no rule here and a body
+\ edit of a definition whose head the diff did not touch is.
+\
+\ Retirement condition.  This entry is removed when the continuing habu2
+\ packaging work (dot habu-cont-habu2-emitter-493363e7) extends those seams over
+\ the remaining global surface, exactly as the checker and render entries are
+\ removed by their own sealing dots.  FINISH-DEFINITION checks SCOPE-DELTA before
+\ it consults this admission, so adding or deleting a package boundary around an
+\ engine word is still reported here like anywhere else.  A rename or copy that
+\ makes some other file arrive AT this path is not a body edit of an existing
+\ engine word -- every definition in it is new here even though no line of it is
+\ marked added -- so WHOLE-CHANGED closes that hole and reports the whole file.
+: ENGINE-BODY-EDIT? ( -- bool )
+   FILE$ s" src/habu/habu2.f" LINT-STR= 0= if false exit then
+   WHOLE-CHANGED @ if false exit then
+   DEF-TAIL-ADDED @ 0= ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
    ERR-VOCAB? if true exit then
+   ENGINE-BODY-EDIT? if true exit then
    FILE$ s" lib/adt/option.f" LINT-STR= if
       DEF-DEFINER-I @ s" ENUM" TOK=CI
       DEF-NAME-I @ s" option" TOK=CI and exit
