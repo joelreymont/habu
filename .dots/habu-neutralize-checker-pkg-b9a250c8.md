@@ -25,3 +25,26 @@ Files: src/core/checker.f, tools/check-core.f, tools/check-all-errors-core.f, TR
 Claim: agent=pkg-neutral workspace=.jj-ws/habu-neutralize-checker-pkg-b9a250c8
 
 Update 2026-07-28 (orchestrator, suite-red mapping): after the CHECKER-AUTH-PACKAGE fail-closed plumbing landed, the observed failure code at these sites is now an uncaught/asserted 7136 E-PKG-CONTEXT (src/core/checker.f:527), not exit 78. Confirmed live on the proofs branch in four suite phases sharing this root: the engine repair slice (tools/check-repair-hints-test.f case repair-batch expects 70, gets 7136), stdlib/tool-doc (tools/repair-schema-doc-test.f + tools/examples-test.f, assert 90 then 92-118 cascade), stdlib/tool-repair (tools/check-all-errors-test.f case package-caller-export, asserts 65/67), and test/xt-cell-test.f (fork-worker throw 7136). Same invariant as written above: the checker owns package-neutral replay scope. Re-derive the pre-change reds against 7136.
+
+CORRECTIONS from the implementing lane (2026-07-29) — this record has now been
+wrong twice, so treat its analysis with suspicion:
+1. The three tools/check-core.f sites are NOT independently latent. They NEST,
+   and the neutral declaration propagates inward, so neutrality at any
+   enclosing scope covers the inner ones. Only CHK-RUN-NOMINAL-LINTS (red 70,
+   a top-level NEWTYPE filed under the caller's package) and CHK-RUN-PREVERIFY
+   (red 78, a top-level EXPORT read as an in-package re-export) have isolating
+   regressions. CHK-RUN-SCOPED has none that can exist today; the lane refused
+   to claim one.
+2. test/xt-cell-test.f does NOT share this root — only the SYMPTOM (7136).
+   Its actual cause was an out-of-bounds write: VPKG-SAVE/VPKG-RESTORE kept
+   the loop index on the data stack and read it back with `over` AFTER the
+   destination address was pushed, so `over` reached the FETCHED BYTE and every
+   byte was written at an offset equal to its own character code. Minimal
+   reproducer: any SECOND VERIFY:SOURCE-BUF-IN-SCOPE call from inside an open
+   package throws 7136; the first looks healthy only because the mirror
+   already holds the right name. Fixed with a named VPKG-COPY over an explicit
+   cursor and pinned by test/checker-verify-pkg-scope.f.
+3. Line numbers throughout this record are stale: the PRIM: block is near 5019
+   not 4906, RBF-PUSH near 9912 not 9633, and the three call sites near
+   1327/1370/1399.
+
