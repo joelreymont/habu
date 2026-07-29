@@ -33,4 +33,4 @@ load order and generated engine bytes. Files: `tools/stdin-closure-lib.f`,
 fixtures, candidate cache miss/hit behavior, native fixpoint twice, and the full
 native gate.
 
-Claim: agent=decl_event_manifest workspace=.jj-ws/habu-add-decl-event-a50e4104
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `decl_event_manifest` and workspace `.jj-ws/habu-add-decl-event-a50e4104` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `tools/build-fixpoint.f` still hardcodes the four declaration source literals in `BF-APPEND-DECL-FILES`. The dot stays active and is free to claim.

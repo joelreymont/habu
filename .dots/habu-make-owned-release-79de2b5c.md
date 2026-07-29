@@ -58,4 +58,4 @@ recoverable state after ownership failure. The later hard rename to
 `MEM:RELEASE` is behavior-identical and remains blocked only by raw-vector
 package migration; this leaf adds no alias.
 
-Claim: agent=codex-mem-fatal-r2 workspace=.jj-ws/habu-mem-fatal-r2
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-mem-fatal-r2` and workspace `.jj-ws/habu-mem-fatal-r2` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `lib/memory.f:202` still throws `E-MEM-UNMAP` instead of failing fatally, and no `MEM:UNMAP` word exists anywhere. The dot stays active and is free to claim.

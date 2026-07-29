@@ -47,4 +47,4 @@ pass; the standalone, diagnostics, standard-library-manifest, host, file-map,
 typed-local, and package gates pass. The long-term solution is package
 ownership with one command boundary, not a namespace veneer.
 
-Claim: agent=claude-pubsig-r2 workspace=.jj-ws/habu-pubsig-r2
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `claude-pubsig-r2` and workspace `.jj-ws/habu-pubsig-r2` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `rg PUBSIG tools test` returns nothing and `tools/public-signatures-core.f` still defines its `PS-` words at global scope with no `package` line. The dot stays active and is free to claim.

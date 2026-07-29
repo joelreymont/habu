@@ -26,4 +26,4 @@ host-lint, filemap-lint, typed-local diff lint, and package diff lint all pass
 through native `bin/hb`. The namespace rename is one coherent commit and the
 workspace is clean.
 
-Claim: agent=codex-decl-tx-rename workspace=.jj-ws/habu-rename-declaration-pkg-68e009c5
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-decl-tx-rename` and workspace `.jj-ws/habu-rename-declaration-pkg-68e009c5` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `src/core/declaration-transaction.f:20` still reads `package DECLARATION-TRANSACTION` and callers such as `tools/release-inventory.f:571` still use the long prefix. The dot stays active and is free to claim.

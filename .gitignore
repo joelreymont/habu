@@ -33,6 +33,13 @@ formal/**/*.vok
 formal/**/*.vos
 formal/**/*.glob
 formal/**/*.aux
+# The generated makefile's `cleanall` also removes these: per-file timing
+# reports and the native-compilation output directory.
+formal/**/*.timing
+formal/**/*.timing.diff
+formal/**/*.before-timing
+formal/**/*.after-timing
+formal/**/.coq-native/
 formal/.lia.cache
 # `lia` writes its cache into the working directory; the parity gate in
 # test/compiler/ir-id-proof.f compiles the proofs from the repository root.

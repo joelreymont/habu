@@ -37,4 +37,4 @@ Acceptance: the enum declaration suite, shared family suite, `DECL-EVENT`
 suite, linearity matrix, candidate validation, both diff lints, and the native
 gate pass. Land with the STRUCTURE close leaf.
 
-Claim: agent=famschema5 workspace=.jj-ws/habu-validate-family-schema (three-commit revision on 5acf8157 per the landed contracts; prior stack 331311f3/d64e51b8/8223af92 retained as reference evidence only)
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `famschema5` and workspace `.jj-ws/habu-validate-family-schema` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `src/core/enum-decl.f:291` still holds the parse-time `REQUIRE-POINTEE` guard called from `RESOLVE-TYPE`, and `ED-CLOSE` calls no shared family query. The reference stack named in the old claim is also gone: only base `5acf8157cb3c` "Freeze repair control contracts" still exists, while `331311f3`, `d64e51b8` and `8223af92` all report "Revision doesn't exist". The dot stays active and is free to claim.

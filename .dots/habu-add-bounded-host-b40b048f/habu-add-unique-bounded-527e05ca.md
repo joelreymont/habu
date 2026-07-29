@@ -32,4 +32,4 @@ bool scalar token. The generated MAKE effect therefore changes that parameter
 to bool. This leaf waits on habu-use-non-reserved-67821d1c; a MEM-local trusted
 constructor or retagging shim is forbidden.
 
-Claim: agent=mem-region workspace=.jj-ws/habu-add-unique-bounded-527e05ca
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `mem-region` and workspace `.jj-ws/habu-add-unique-bounded-527e05ca` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `lib/memory-region.f` does not exist and `rg 'WITH-REGION'` finds nothing outside the dots. The dot stays active and is free to claim.

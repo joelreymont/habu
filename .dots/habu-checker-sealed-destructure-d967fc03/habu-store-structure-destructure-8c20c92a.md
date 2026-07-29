@@ -52,4 +52,4 @@ Rejected commits `5fa4a6763dab` and `321b9fb1bdd0` are evidence only. A revision
 must correct their fail-open zero encoding, parent-frame write authority, and
 boundary-row proof gaps rather than preserving them.
 
-Claim: agent=codex-destruct-registry workspace=.jj-ws/habu-store-structure-destructure-8c20c92a
+Claim: RELEASED 2026-07-29 by the stale-claim audit. Agent `codex-destruct-registry` and workspace `.jj-ws/habu-store-structure-destructure-8c20c92a` are both gone: the directory does not exist and `jj workspace list` has no record of it. The work has not landed - `rg -i destructure src/core/type-family.f` returns nothing, so no destructure-policy cell was stored. The dot stays active and is free to claim.
