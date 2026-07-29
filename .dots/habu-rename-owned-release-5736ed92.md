@@ -27,3 +27,16 @@ rename — the diff was held uncommitted and a cleanup pass deleted the only
 copies. When this dot is unblocked, the rename must be REDONE from scratch: the
 mechanical procedure, the boundary rules, and the acceptance bar are all
 recorded above and remain valid. Nothing else in this dot changes.
+
+CORRECTION 2026-07-29 (orchestrator): the EVIDENCE LOST note above overstated
+what was checked. Verified now with a working method: no commit in this
+repository's history carries the completed rename — every revision of
+lib/memory.f was inspected and none defines `MEM:RELEASE`. That is consistent
+with the diff having been held UNCOMMITTED in a workspace working copy (as the
+dot itself says) and with that workspace being removed before any jj command
+snapshotted it, or with the lane having run on another machine. It is NOT
+evidence that jj discarded committed work; jj retains abandoned commits and
+they remain reachable via `jj --at-op`. If a spark-side copy exists, it is
+recoverable there. The procedure and acceptance bar above remain valid for a
+redo.
+

@@ -2873,3 +2873,22 @@ fits.
   block, two values claiming one block-argument identity, a rollback that
   revalidates a stale index, a liveness probe that lies after a throw. Tests
   spot-check and pass exactly where those fail. Keep fewer, sharper statements.
+
+- **jj loses nothing; my search did.** I twice reported work as "destroyed" —
+  four task records after an `op restore`, and a worker's commits after a
+  rebase. Both claims were false. All four records were sitting in commit
+  `04db5383a788`, reachable from the current operation, and I recreated them
+  from scratch for nothing. The cause was a broken search: `jj file list -r
+  'all()'` **errors** ("resolved to more than one revision") and my loop
+  swallowed it as "0 matches", and `files("glob:...")` silently matches
+  nothing while `files(glob:"...")` works. So a sweep across 500 operations
+  reported clean while checking literally nothing — the same
+  gate-that-checks-nothing failure I had spent the day finding in other
+  people's tools, committed by me, against my own history.
+  Rules: validate a search on a case known to be POSITIVE before trusting any
+  negative result from it; a command inside `$( )` in a loop condition hides
+  its exit status, so check rc explicitly; and before declaring anything lost,
+  search with a validated method across `jj op log` — abandoned commits stay
+  reachable via `--at-op`. Genuinely unrecoverable means never committed
+  anywhere, which for an agent workspace means it was `rm -rf`'d before any jj
+  command snapshotted it.
