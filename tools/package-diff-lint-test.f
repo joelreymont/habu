@@ -1383,6 +1383,212 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" lib/layout.f basename collision still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- one-line definitions, where line position decides nothing ----------------
+\ Every fixture above changes a colon word, whose head and body sit on different
+\ lines.  A `constant` puts the definer, the name and the value on ONE line, so
+\ every edit to it touches the head line and a value change is byte for byte the
+\ same shape as a brand-new constant.  layout.f is nothing but constants, which
+\ is why these are the cases the entry was minted for and the cases no rule about
+\ WHICH LINES CHANGED can decide.  What decides them is whether the file already
+\ defined the name, so each fixture below varies exactly that: same shape, same
+\ line, one name that the pre-image had and one it did not.  The subject is read
+\ back by name every time a finding is expected, because a count alone cannot
+\ tell a report about the intended constant from one about its neighbour.
+
+: TEST-WRITE-CONST-VALUE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" 5 constant SNAP-FORMAT-VERSION" TEST-SOURCE-LINE
+   s" 0 constant DATA-START" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-CONST-VALUE-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,2 +1,2 @@" TEST-DIFF+ TEST-LF
+   s" -4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +5 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s"  0 constant DATA-START" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-VALUE-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-CONST-VALUE
+   TEST-DIFF-RESET path pathu TEST-CONST-VALUE-DIFF ;
+
+: TEST-WRITE-CONST-NEW ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" 4 constant SNAP-FORMAT-VERSION" TEST-SOURCE-LINE
+   s" 64 constant SNAP-SMUGGLED-BAND" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-CONST-NEW-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1,2 @@" TEST-DIFF+ TEST-LF
+   s"  4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +64 constant SNAP-SMUGGLED-BAND" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-NEW-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-CONST-NEW
+   TEST-DIFF-RESET path pathu TEST-CONST-NEW-DIFF ;
+
+\ A rename in place: one constant leaves under its old name and arrives under a
+\ new one, so the file's definition COUNT is unchanged and nothing but the name
+\ itself distinguishes this from the value change above.
+: TEST-WRITE-CONST-RENAME ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" 4 constant SNAP-VERSION" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-CONST-RENAME-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
+   s" -4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +4 constant SNAP-VERSION" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-RENAME-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-CONST-RENAME
+   TEST-DIFF-RESET path pathu TEST-CONST-RENAME-DIFF ;
+
+\ The name existed in the old file, but inside a package.  Moving it out to top
+\ level grows the file's GLOBAL surface, which is the surface this entry guards,
+\ so it must be reported even though the spelling is not new to the file.
+: TEST-WRITE-CONST-PROMOTED ( -- )
+   TEST-SOURCE-RESET
+   s" 96 constant XTCELL-END" TEST-SOURCE-LINE
+   s" package SNAP-RELOC" TEST-SOURCE-LINE
+   s" 4 constant XTCELL-N" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" src/habu/layout.f" TEST-WRITE-SOURCE ;
+
+: TEST-CONST-PROMOTED-DIFF ( -- )
+   s" src/habu/layout.f" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,4 @@" TEST-DIFF+ TEST-LF
+   s" +96 constant XTCELL-END" TEST-DIFF+ TEST-LF
+   s"  package SNAP-RELOC" TEST-DIFF+ TEST-LF
+   s"  4 constant XTCELL-N" TEST-DIFF+ TEST-LF
+   s" -96 constant XTCELL-END" TEST-DIFF+ TEST-LF
+   s"  ;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-VALUE-DIRECTIONS ( -- )
+   \ Positive: the measured case.  Bumping an existing layout constant's value
+   \ reported E-PACKAGE-OWNERSHIP on SNAP-FORMAT-VERSION before the name key
+   \ existed, so the snapshot format could not be versioned at all.
+   s" src/habu/layout.f" TEST-CONST-VALUE-CASE
+   s" layout exempts a value change to an existing constant" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ The same shape on the other trunk row, because both rows are admitted by the
+   \ one predicate and must move together.
+   s" src/habu/habu2.f" TEST-CONST-VALUE-CASE
+   s" the engine emitter exempts the same value change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so the identical value change still fails there.
+   s" src/habu/layout-extra.f" TEST-CONST-VALUE-CASE
+   s" sibling layout-extra.f still fails a constant value change" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-FORMAT-VERSION" TEST-NAMES
+   \ Negative: the same basename elsewhere carries the row's path as a suffix and
+   \ is not exact, so it still fails.
+   s" lib/layout.f" TEST-CONST-VALUE-CASE
+   s" lib/layout.f still fails a constant value change" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-FORMAT-VERSION" TEST-NAMES ;
+
+: TEST-CONST-NEW-DIRECTIONS ( -- )
+   \ Negative: a brand-new constant beside an existing one is reported by name in
+   \ both trunk rows.  This is what keeps the entry from becoming a licence to
+   \ grow the file's global surface: new layout bands open a package.
+   s" src/habu/layout.f" TEST-CONST-NEW-CASE
+   s" a new constant in layout still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-SMUGGLED-BAND" TEST-NAMES
+   s" src/habu/habu2.f" TEST-CONST-NEW-CASE
+   s" a new constant in the engine emitter still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-SMUGGLED-BAND" TEST-NAMES ;
+
+: TEST-CONST-RENAME-DIRECTIONS ( -- )
+   \ Negative: a rename keeps the definition count and touches one line, exactly
+   \ like the admitted value change, and differs only in that the arriving name
+   \ is one this file never defined.  It is a new global word and is reported.
+   s" src/habu/layout.f" TEST-CONST-RENAME-CASE
+   s" renaming a layout constant in place still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-VERSION" TEST-NAMES
+   s" src/habu/habu2.f" TEST-CONST-RENAME-CASE
+   s" renaming an engine constant in place still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" SNAP-VERSION" TEST-NAMES ;
+
+: TEST-CONST-PROMOTED-DIRECTION ( -- )
+   TEST-WRITE-CONST-PROMOTED
+   TEST-DIFF-RESET TEST-CONST-PROMOTED-DIFF
+   s" a package-local constant moved to top level fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" XTCELL-END" TEST-NAMES ;
+
+\ Forth word identity, not byte identity: `bin/hb` resolves `foo` to `FOO`, so
+\ respelling an existing global in another case publishes no name the file did
+\ not already have and is a body edit like any other.  An exact-byte lookup would
+\ report this as a new global word, which is a claim about the dictionary that
+\ the dictionary does not make.
+: TEST-WRITE-CONST-SPELLING ( -- )
+   TEST-SOURCE-RESET
+   s" 4 constant snap-format-version" TEST-SOURCE-LINE
+   s" src/habu/layout.f" TEST-WRITE-SOURCE ;
+
+: TEST-CONST-SPELLING-DIFF ( -- )
+   s" src/habu/layout.f" TEST-MODIFY-HEAD
+   s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
+   s" -4 constant SNAP-FORMAT-VERSION" TEST-DIFF+ TEST-LF
+   s" +4 constant snap-format-version" TEST-DIFF+ TEST-LF ;
+
+: TEST-CONST-SPELLING-DIRECTION ( -- )
+   TEST-WRITE-CONST-SPELLING
+   TEST-DIFF-RESET TEST-CONST-SPELLING-DIFF
+   s" respelling a layout constant's case defines no new word" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+\ The hostile that decides the key.  In the old file this definition sits inside
+\ a `( ... )` comment, so the file never defined the word; the diff uncomments it
+\ and edits one line of its body.  The definition therefore has a changed line
+\ and is judged, but its own opener and name line are untouched, so a key that
+\ asked "was the head line touched?" reads it as a body edit and admits a global
+\ word this file has never had.  Nothing here is a body edit of an existing
+\ engine word, and the report must say so by name.
+: TEST-WRITE-UNCOMMENTED ( -- )
+   TEST-SOURCE-RESET
+   s" \ disabled block" TEST-SOURCE-LINE
+   s" : EM-UNCOMMENTED ( -- n )" TEST-SOURCE-LINE
+   s"    1 ;" TEST-SOURCE-LINE
+   s" \ )" TEST-SOURCE-LINE
+   s" : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-SOURCE-LINE
+   s" src/habu/habu2.f" TEST-WRITE-SOURCE ;
+
+: TEST-UNCOMMENTED-DIFF ( -- )
+   s" src/habu/habu2.f" TEST-MODIFY-HEAD
+   s" @@ -1,5 +1,5 @@" TEST-DIFF+ TEST-LF
+   s" -( disabled block" TEST-DIFF+ TEST-LF
+   s" +\ disabled block" TEST-DIFF+ TEST-LF
+   s"  : EM-UNCOMMENTED ( -- n )" TEST-DIFF+ TEST-LF
+   s" -   0 ;" TEST-DIFF+ TEST-LF
+   s" +   1 ;" TEST-DIFF+ TEST-LF
+   s" -)" TEST-DIFF+ TEST-LF
+   s" +\ )" TEST-DIFF+ TEST-LF
+   s"  : EM-SNAPSHOT-RX-FLUSH ( -- ) LPROT-RX ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-UNCOMMENTED-DIRECTION ( -- )
+   TEST-WRITE-UNCOMMENTED
+   TEST-DIFF-RESET TEST-UNCOMMENTED-DIFF
+   s" a commented-out engine word arriving as a global fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" EM-UNCOMMENTED" TEST-NAMES ;
+
+: TEST-CONST-DEFINITIONS ( -- )
+   TEST-CONST-VALUE-DIRECTIONS
+   TEST-CONST-NEW-DIRECTIONS
+   TEST-CONST-RENAME-DIRECTIONS
+   TEST-CONST-PROMOTED-DIRECTION
+   TEST-CONST-SPELLING-DIRECTION
+   TEST-UNCOMMENTED-DIRECTION ;
+
 : TEST-WRITE-OUTSIDE-HUNK-SOURCE ( -- )
    TEST-SOURCE-RESET
    s" package SHARED" TEST-SOURCE-LINE
@@ -1665,7 +1871,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DIFF-RESET TEST-STALE-DIFF
    [: TEST-RUN-DIRECT ;] E-DIFF-SYNTAX TTHROWSQ
    LIVE-MAPPING# 0 T=
-   MAPPING-PEAK @ 3 T=
+   \ new source, mark table, reconstructed old source, old-side name table
+   MAPPING-PEAK @ 4 T=
    TEST-REUSE-AFTER-ERROR ;
 
 : TEST-MALFORMED-REUSE ( -- )
@@ -1710,6 +1917,45 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    [: TEST-RUN-TWO-ALLOCATION-FAULT ;] E-MEM-SIZE TTHROWSQ
    LIVE-MAPPING# 0 T=
    MAPPING-PEAK @ 2 T=
+   TEST-REUSE-AFTER-ERROR ;
+
+: TEST-RUN-THREE-ALLOCATION-FAULT ( -- )
+   PACKAGE-DIFF:RESET
+   TEST-ROOT$ PACKAGE-DIFF:ROOT!
+   true FAIL-NEXT-NAME-ALLOC !
+   TEST-DIFF$ PACKAGE-DIFF:SOURCE
+   PACKAGE-DIFF:FINISH ;
+
+: TEST-THREE-ALLOCATION-REUSE ( -- )
+   TEST-SOURCE-RESET
+   s" package NEVER" TEST-SOURCE-LINE
+   s" : WORD ( -- ) ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" tools/name-allocation-fault.f" TEST-ADD-SOURCE-SECTION
+   [: TEST-RUN-THREE-ALLOCATION-FAULT ;] E-MEM-SIZE TTHROWSQ
+   LIVE-MAPPING# 0 T=
+   MAPPING-PEAK @ 3 T=
+   TEST-REUSE-AFTER-ERROR ;
+
+\ The name table is sized so that a well-formed source cannot fill it, so this
+\ fixture lowers the bound to make the full table happen on purpose.  What is
+\ under test is the refusal: the run must stop with the table's own code, and it
+\ must stop even though the file it is reading is a perfectly ordinary global
+\ body edit that the entry would otherwise admit.  A table that truncated instead
+\ would answer "this name is new" and turn the admission into a report -- or, on
+\ the next diff, hide a global behind a name it failed to record.
+: TEST-RUN-NAME-OVERFLOW ( -- )
+   PACKAGE-DIFF:RESET
+   TEST-ROOT$ PACKAGE-DIFF:ROOT!
+   1 FORCE-NAME-LIMIT !
+   TEST-DIFF$ PACKAGE-DIFF:SOURCE
+   PACKAGE-DIFF:FINISH ;
+
+: TEST-NAME-OVERFLOW ( -- )
+   s" src/habu/layout.f" TEST-CONST-VALUE-CASE
+   s" a full old-side name table stops the scan by name" T-LABEL
+   [: TEST-RUN-NAME-OVERFLOW ;] E-PKGDIFF-NAMETAB TTHROWSQ
+   LIVE-MAPPING# 0 T=
    TEST-REUSE-AFTER-ERROR ;
 
 \ ---- lib/errors.f error-vocabulary admission ------------------------------
@@ -1943,6 +2189,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION
    TEST-ENGINE-EXEMPTION
+   TEST-CONST-DEFINITIONS
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES
    TEST-PAREN-NAME-REPLAY
@@ -1958,6 +2205,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-MALFORMED-REUSE
    TEST-ONE-ALLOCATION-REUSE
    TEST-TWO-ALLOCATION-REUSE
+   TEST-THREE-ALLOCATION-REUSE
+   TEST-NAME-OVERFLOW
    CLEANUP-RUN
    TEST-ROOT$ EXISTS? TFALSE
    T-REPORT

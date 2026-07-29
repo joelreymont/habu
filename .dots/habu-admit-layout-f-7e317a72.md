@@ -79,3 +79,119 @@ long-term: it is one predicate over a row table, narrow in the same way the
 habu2.f entry was, pinned in both directions and falsified by mutation. The part
 that did not land was stopped precisely because the only way to finish it as
 specified would have been a weakening.
+
+MEASURED 2026-07-30 (agent=admitkey). The re-cut leaf is done and both real
+findings are gone. What follows is what was built, one deliberate departure from
+the design this leaf was handed, the falsification matrix, and the gaps.
+
+What was built. tools/package-diff-lint-core.f now keeps a side table of the
+names the file's pre-image defined at global scope. SCAN-OLD-BOUNDARIES already
+walked the reconstructed old source before the new-side scan starts, so
+OLD-START-DEFINITION copies each global definition's name into that table as it
+passes it; the two scans share one lexer, so the old text genuinely cannot be
+re-read later. Records are the name bytes followed by one newline, which needs no
+escape because a definition name is always a whitespace-delimited word token.
+The table is sized to the length of the reconstructed old source, and that is a
+proven bound rather than a guess: in the old text every definition contributes
+its own name plus at least the one delimiter byte in front of it, and those
+stretches cannot overlap, so the total the table needs is at most the text's own
+length. The capacity test is still there and it throws E-PKGDIFF-NAMETAB (-4811,
+because -4808 to -4810 were taken by the error-code lint while this was being
+written); nothing is ever silently dropped. The table gets its own allocation,
+its own release in the shared cleanup path, and its own injected-failure fixture,
+exactly like the three mappings that were already there.
+
+ENGINE-BODY-EDIT? now asks: is this an engine-trunk path, is this not a
+whole-file arrival, and did this file already define this NAME at global scope?
+The lookup compares whole names and ignores letter case, because that is what
+"the same word" means to the dictionary being described -- bin/hb resolves `foo`
+to `FOO`, so respelling an existing global in another case publishes no name the
+file did not already have. That is not the case fold the row-table comment warns
+about; that warning is about exact FILE PATHS, where the engine has no identity
+relation to appeal to.
+
+The departure. This leaf was specified as "the head line was not added OR the
+name is in the old table". It landed as the name test alone, and the reason is
+measured rather than stylistic. The head-line test admits nothing the name test
+rejects except one shape, and it decides that shape wrongly: take a definition
+the old file kept inside a `( ... )` comment, have the diff uncomment it and edit
+one line of its body, and the definition's own opener line is never touched. The
+head-line test therefore reads a word the file has never defined as a body edit
+and admits it, while the name test reports it. Keeping a disjunct whose only
+distinguishing case is one it gets wrong would have widened the entry for no
+gain, so it is gone and the shape is pinned as a fixture. Restoring the disjunct
+flips that fixture from one finding to zero, which is the evidence.
+
+Falsification matrix, all through the real lint entry on constructed artifacts
+(bin/hb --load tools/package-diff-lint-test.f):
+
+  - existing layout.f constant's value changed, name unchanged -> clean. Same
+    fixture on habu2.f -> clean; on the prefix sibling layout-extra.f and the
+    suffix collision lib/layout.f -> one finding each, naming the constant.
+  - a new constant added beside an existing one, both trunk rows -> one finding
+    each, naming SNAP-SMUGGLED-BAND.
+  - a constant renamed in place, definition count unchanged, both trunk rows ->
+    one finding each, naming the arriving name SNAP-VERSION.
+  - a constant that lived inside a package moved out to top level -> one
+    finding, naming XTCELL-END. This is the pin on recording only global names.
+  - the same constant respelled in lower case -> clean, because that is the
+    same word.
+  - a commented-out engine word uncommented with one body line edited -> one
+    finding, naming EM-UNCOMMENTED. This is the pin that decides the key.
+  - the four earlier engine-trunk directions (comment-only body edit passes, new
+    global fails, prefix sibling fails, suffix collision fails) all still hold.
+  - injected allocation failure for the name table -> E-MEM-SIZE, no mapping
+    left behind, peak of three mappings; the reconstructed-old-source failure
+    still stops at two and the mark-table failure at one.
+  - the name table forced full -> E-PKGDIFF-NAMETAB, no mapping left behind,
+    even though the file being read is an ordinary admitted body edit.
+
+Mutations run against those pins, each restored afterwards; the restored core
+file hashes byte-identical to the pre-probe copy (sha256
+ca0e9130b5fc4e7ba1b35e328d212b8d999b6a73e1f7bdc9e7cc92a7092cca5d):
+
+  - make the old-name lookup always true -> 22 failures: every new-constant,
+    rename, promotion and new-global negative flips to zero findings.
+  - record package-local names too -> the promotion case flips to zero findings.
+  - compare names byte for byte instead of by word identity -> the lower-case
+    respelling flips to one finding.
+  - drop the overflow refusal and truncate instead -> the forced-full fixture
+    stops throwing.
+  - restore the head-line disjunct -> the uncommented-word hostile flips to zero
+    findings.
+
+Gates, all on the two-commit artifact (jj diff --git -r 2511e0a2..@) with a
+bin/hb refreshed to the parent commit's engine: package-diff-lint exit 0 with
+zero findings (both original layout.f findings cleared), package-diff-lint-test
+exit 0, typed-local-diff-lint exit 0, error-code-lint 0 findings,
+suite-coverage-lint 0 findings, host-lint 0 findings, and the parent commit's
+test/snapshot-xt-cell-decl.f exit 0.
+
+Gaps left open, none of them blocking this leaf:
+  - Registering tools/package-diff-lint-test.f as a suite is not the same as
+    scheduling it in every slice. It runs in the full gate and in the resident
+    lint-tools group body, but its label is missing from the lint-tools slice
+    filter in test/gate-stdlib-lib.f, so `test/gate-stdlib.f -- lint-tools` skips
+    it. Pre-existing, and worth its own dot.
+  - The overflow refusal can only be reached by the injected bound, because the
+    real bound is proven sufficient. That is a guard against a future change to
+    the recorder, not against any input.
+  - The lookup is a linear walk of the table. It runs only for trunk-path
+    definitions the diff actually changed, so a real artifact does a handful of
+    walks; a file with thousands of changed definitions would notice.
+  - The entry still retires whole when its two sealing dots land
+    (habu-cont-habu2-emitter-493363e7, habu-give-layout-f-315df2ca).
+
+Is this the best long-term solution or a patch? Long-term. The admission now
+rests on an existence fact the lint reconstructs from the diff itself -- this
+file defined this word before -- rather than on a line-position proxy for that
+fact, and the departure above moved it further in that direction rather than
+less. It fails closed on every failure of the table, it is narrower than what
+was specified, and each clause is falsified by a mutation that flips a named
+fixture. The one judgement call worth a reviewer's attention is admitting a
+delete-and-redefine of an existing name as a body edit: that is correct for these
+two files, because what this entry guards is the set of global names the trunk
+file publishes, and rewriting a definition of a name the file already published
+does not grow that set. A file that should not carry two definitions of one word
+has a redefinition problem, which is a different question from who owns the name
+and is not one this ownership lint can answer.

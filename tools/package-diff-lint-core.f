@@ -72,6 +72,16 @@ private
 \ the FILE being linted, not of the diff artifact, so it must not be reported
 \ as E-DIFF-SYNTAX either.
 -4807 constant E-PKGDIFF-NONAME  \ a definition-opening token has no name word after it
+\ The old-side name table (see "the old file's global definition names" below)
+\ is sized from the reconstructed pre-image by a bound that holds for every
+\ well-formed source, so it should never fill.  If it ever does, or if a record
+\ turns up without its terminator, the table no longer describes the old file,
+\ and a table that quietly stopped recording would start answering "this name is
+\ new" for words the file already had -- which is the one answer that admits a
+\ new global.  So it stops instead.
+\ -4808..-4810 went to tools/error-code-lint-core.f while this block was being
+\ written, so this code continues after them rather than beside its neighbours.
+-4811 constant E-PKGDIFF-NAMETAB \ the old-side name table overflowed or lost a record
 
 create NUM NUM-CAP allot
 create ONE 1 allot
@@ -90,6 +100,10 @@ variable SOURCE-CAP
 variable OLD-A
 variable OLD-U
 variable OLD-CAP
+variable NAME-A
+variable NAME-U
+variable NAME-CAP                  \ the mapped span, which only the release uses
+variable NAME-LIMIT                \ the proven bound the recorder may fill
 variable MARK-A
 variable MARK-CAP
 variable MARK-U
@@ -98,6 +112,8 @@ variable OLD-SLOTS
 variable MAPPING-PEAK
 variable FAIL-NEXT-MARK-ALLOC
 variable FAIL-NEXT-OLD-ALLOC
+variable FAIL-NEXT-NAME-ALLOC
+variable FORCE-NAME-LIMIT          \ lowers the next name-table bound, for the overflow fixture
 variable BAD
 variable SECTION-ACTIVE
 variable SECTION-SEEN
@@ -142,6 +158,9 @@ variable FILE-USED
 : OLD-PTR ( -- ptr ptr u8 )
    OLD-A PTR-SLOT ;
 
+: NAME-PTR ( -- ptr ptr u8 )
+   NAME-A PTR-SLOT ;
+
 : INPUT-PTR ( -- ptr ptr u8 )
    INPUT-A PTR-SLOT ;
 
@@ -153,6 +172,9 @@ variable FILE-USED
 
 : OLD-A@ ( -- ptr u8 )
    OLD-PTR @ ;
+
+: NAME-A@ ( -- ptr u8 )
+   NAME-PTR @ ;
 
 : ROOT$ ( -- ptr u8 n )
    ROOT-BUF ROOT-U @ ;
@@ -179,7 +201,8 @@ variable FILE-USED
    0
    SOURCE-CAP @ 0<> if 1+ then
    MARK-CAP @ 0<> if 1+ then
-   OLD-CAP @ 0<> if 1+ then ;
+   OLD-CAP @ 0<> if 1+ then
+   NAME-CAP @ 0<> if 1+ then ;
 
 : NOTE-MAPPING-PEAK ( -- )
    LIVE-MAPPING# MAPPING-PEAK @ max MAPPING-PEAK ! ;
@@ -455,6 +478,26 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    SOURCE-ALLOC-NEED MEM-ALLOC-64K-SPAN OLD-CAP ! OLD-PTR !
    NOTE-MAPPING-PEAK ;
 
+\ The recorder is bounded by the requested size, not by the span the allocator
+\ rounded it up to: the request is the bound the table's correctness argument is
+\ written against, and the rounding is an accident of the allocator.  Keeping the
+\ two apart also lets the overflow fixture lower the bound without ever putting a
+\ write outside the mapping, and leaves the release with the real span.
+: NAME-ALLOC ( n -- ) {: need:n :}
+   FAIL-NEXT-NAME-ALLOC @ if
+      false FAIL-NEXT-NAME-ALLOC !
+      E-MEM-SIZE throw
+   then
+   need SOURCE-ALLOC-NEED {: want:n :}
+   want MEM-ALLOC-64K-SPAN NAME-CAP ! NAME-PTR !
+   want NAME-LIMIT !
+   FORCE-NAME-LIMIT @ {: forced:n :}
+   forced 0 > if
+      0 FORCE-NAME-LIMIT !
+      forced want < if forced NAME-LIMIT ! then
+   then
+   NOTE-MAPPING-PEAK ;
+
 : SOURCE-RELEASE ( -- )
    SOURCE-CAP @ 0= if exit then
    SOURCE-A@ {: a:ptr :}
@@ -476,6 +519,14 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    0 OLD-CAP !
    a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
 
+: NAME-RELEASE ( -- )
+   NAME-CAP @ 0= if exit then
+   NAME-A@ {: a:ptr :}
+   NAME-CAP @ {: cap:n :}
+   0 NAME-CAP !
+   0 NAME-LIMIT !
+   a cap MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
 : CLEANUP-COMBINE ( n n -- n )
    over 0 <> if drop exit then nip ;
 
@@ -484,6 +535,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    [: SOURCE-RELEASE ;] catch CLEANUP-COMBINE
    [: MARK-RELEASE ;] catch CLEANUP-COMBINE
    [: OLD-RELEASE ;] catch CLEANUP-COMBINE
+   [: NAME-RELEASE ;] catch CLEANUP-COMBINE
    dup 0 <> if throw then drop ;
 
 : MARK-CLEAR ( n -- ) {: need:n :}
@@ -502,6 +554,65 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    dup MEM-MAX-N 2 / > if drop E-MEM-SIZE throw then
    2 * ;
 
+\ ---- the old file's global definition names ----------------------------------
+\ ENGINE-BODY-EDIT? below has to answer "did this file already define this name
+\ at global scope?", and the only place that fact exists is the pre-image the
+\ lint reconstructs into OLD$.  SCAN-OLD-BOUNDARIES walks that pre-image before
+\ SCAN-DEFINITIONS starts and the two scans share one lexer, so by the time a
+\ definition is judged the old token table is gone and the old text cannot be
+\ re-lexed.  The old-side scan therefore copies each global definition's name
+\ into this table as it passes it.
+\
+\ A record is the name bytes followed by one LF.  A definition name is a WORD
+\ token and nothing else (tools/lint/def.f NAME-I admits no other kind), and a
+\ WORD token is whitespace-delimited, so an LF can never occur inside a record:
+\ the delimiter needs no escape and no length field.
+\
+\ The bound is proven, not guessed.  In the old text each definition contributes
+\ its own name token plus at least the one delimiter byte in front of it; those
+\ spans are disjoint across definitions, because two distinct tokens cannot begin
+\ at the same offset and a name holds no whitespace.  So the sum of (name + 1)
+\ over all definitions is at most the old text's length, which is what the table
+\ is sized to.  The capacity test still stands and it throws, because a table
+\ that silently stopped recording would report every later definition as new.
+\
+\ Only definitions at global scope are recorded.  The question is about the
+\ file's GLOBAL surface, so a name that used to sit inside a package and now
+\ stands at top level is new to that surface and must be reported.
+: OLD-NAME+ ( n -- ) {: namei:n :}
+   namei LINT-LEX:TOKEN {: a:ptr u:n :}
+   NAME-U @ u ADD-SIZE 1 ADD-SIZE NAME-LIMIT @ > if E-PKGDIFF-NAMETAB throw then
+   a NAME-A@ NAME-U @ + u BYTE-COPY
+   LF-C NAME-A@ NAME-U @ + u + c!
+   NAME-U @ u + 1+ NAME-U ! ;
+
+\ Offset of the LF that ends the record starting here.  Every record is written
+\ with its terminator, so a record without one means the table is not the thing
+\ this scan wrote and no answer read out of it can be trusted.
+: NAME-REC-END ( n -- n ) {: start:n :}
+   start begin dup NAME-U @ < while
+      NAME-A@ over + c@ LF-C = if exit then
+      1+
+   repeat drop E-PKGDIFF-NAMETAB throw ;
+
+\ Whole name, and case-insensitively, because that is what "the same word" means
+\ to the dictionary being described: `bin/hb` resolves `foo` to `FOO`, so
+\ respelling an existing global in another case publishes no name the file did
+\ not already have.  This is NOT the case fold the row table below warns about --
+\ that one would loosen an exact FILE PATH, which is not an identity relation the
+\ engine has any opinion about.  A name that differs by anything other than case
+\ is a different word and is not found here.
+: NAME-REC= ( n n ptr u8 n -- bool ) {: start:n end:n a:ptr u:n :}
+   end start - u <> if false exit then
+   NAME-A@ start + u a u LINT-STR=CI ;
+
+: OLD-GLOBAL? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   0 begin dup NAME-U @ < while
+      dup NAME-REC-END
+      2dup a u NAME-REC= if 2drop true exit then
+      nip 1+
+   repeat drop false ;
+
 : BUILD-FULL-PATH ( -- )
    ROOT$ FILE$ FULL-BUF JOIN-PATH FULL-U ! ;
 
@@ -517,7 +628,9 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    SOURCE-U @ size <> if E-DIFF-SYNTAX throw then
    MARK-U @ dup MARK-ALLOC MARK-CLEAR
    OLD-SLOTS @ 2 - OLD-ALLOC
-   0 OLD-U ! ;
+   0 OLD-U !
+   OLD-SLOTS @ 2 - NAME-ALLOC
+   0 NAME-U ! ;
 
 : LINE-OFF ( n -- n ) {: line:n :}
    line 0 <= if E-DIFF-SYNTAX throw then
@@ -828,9 +941,8 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 \ DOESPATCH, INTERP-EMIT, COMPILE-EMIT, LABELS, ENGINE-BUILD, LOWER-TXN and the
 \ rest all open in this same file -- so a genuinely new engine word has a package
 \ to join and must join one.  The distinction is structural, not a value guess:
-\ DEF-TAIL-ADDED records whether the definition's own opener or name line was
-\ ADDED by this diff, so a new definition is admitted by no rule here and a body
-\ edit of a definition whose head the diff did not touch is.
+\ what separates the two shapes is whether the file already defined this NAME at
+\ global scope, and that is a fact read out of the diff's own pre-image.
 \
 \ Why src/habu/layout.f is the second member.  It is the same kind of file for
 \ the same reason: about 240 constants that name the image, dictionary and DATA
@@ -842,6 +954,41 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 \ deriving DATA-START from the new relocation bands reported E-PACKAGE-OWNERSHIP
 \ on both, so the snapshot format could not be versioned at all.  New layout
 \ constants still have to join a package, which is what the relocation bands did.
+\
+\ The key, and the one it replaced.  This entry first asked whether the diff had
+\ touched the line the definition's opener or name sits on (DEF-TAIL-ADDED, which
+\ CHECK-PREFIX still uses).  For a colon word that separates a body edit from a
+\ new definition exactly, because the body is on other lines.  For a `constant`
+\ it cannot: the definer, the name and the value share one line, so changing the
+\ VALUE necessarily marks the head as added, and `4 constant SNAP-FORMAT-VERSION`
+\ becoming `5 constant SNAP-FORMAT-VERSION` looks byte for byte like a brand-new
+\ constant.  layout.f is nothing but constants, so keyed on that this entry
+\ admitted nothing it was minted for: both real findings above survived it.
+\
+\ The key is now the fact that question was standing in for -- was this NAME
+\ already defined at global scope in this file's pre-image (OLD-GLOBAL? above).
+\ It is one structural fact rather than a line-position proxy, and it is strictly
+\ narrower than "the head line is unchanged OR the name is old".  Measured: the
+\ head-line test admits nothing the name test rejects EXCEPT one shape, and it
+\ decides that shape wrongly.  A definition the old file kept inside a `( ... )`
+\ comment becomes a real global word the moment the diff changes the comment's
+\ opening line, without one byte of the definition's own line changing: the
+\ head-line test sees an untouched head and admits a word the file never had,
+\ and the name test reports it.  A disjunct whose only distinguishing case is one
+\ it gets wrong is not a second opinion, so it is gone rather than kept for
+\ safety.  tools/package-diff-lint-test.f pins that shape.
+\
+\ Three consequences are deliberate.  A definition of an EXISTING global name
+\ whose head line was deleted and rewritten -- moved within the file, resplit, or
+\ retyped from `:` to `CHECKED:` -- is admitted, because afterwards the file's
+\ global surface is the same set of names, and that surface is precisely what
+\ this entry guards.  A SECOND definition of a name the file already defines is
+\ admitted for the same reason: it publishes no name the file did not already
+\ publish.  Whether a trunk file should carry two definitions of one word is a
+\ real question, but it is a question about redefinition, not about who owns the
+\ name.  And a rename is admitted in neither direction: the arriving spelling is
+\ a name this file never had, so it is reported, while the departing one's
+\ deletion is the packaging dot's business rather than this entry's.
 \
 \ Retirement condition.  The habu2.f half is removed when the continuing habu2
 \ packaging work (dot habu-cont-habu2-emitter-493363e7) extends those seams over
@@ -875,7 +1022,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 : ENGINE-BODY-EDIT? ( -- bool )
    ENGINE-TRUNK-PATH? 0= if false exit then
    WHOLE-CHANGED @ if false exit then
-   DEF-TAIL-ADDED @ 0= ;
+   DEF-NAME-I @ LINT-LEX:TOKEN OLD-GLOBAL? ;
 
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
@@ -1029,11 +1176,16 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    then
    false ;
 
+\ The old scan's second job: every definition it passes at global scope leaves its
+\ name in the table ENGINE-BODY-EDIT? reads.  PACKAGE-OPEN is the old side's own
+\ scope, tracked by OLD-PACKAGE-TOKEN, so a definition that was owned then does
+\ not count as part of the old global surface now.
 : OLD-START-DEFINITION ( n n -- ) {: k:n kind:n :}
    k LINT-DEF:NAME-I
    MATCH option
       none OF E-PKGDIFF-NONAME throw ENDOF
       some OF {: namei:n :}
+         PACKAGE-OPEN @ 0= if namei OLD-NAME+ then
          kind LINT-DEF:DATA = if
             namei 1+ LEX-I !
          else
@@ -1209,6 +1361,8 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    false SECTION-ACTIVE !
    false FAIL-NEXT-MARK-ALLOC !
    false FAIL-NEXT-OLD-ALLOC !
+   false FAIL-NEXT-NAME-ALLOC !
+   0 FORCE-NAME-LIMIT !
    DIFF:RESET
    rc RELEASE-BUFFERS ;
 
@@ -1257,6 +1411,8 @@ public
    0 MAPPING-PEAK !
    false FAIL-NEXT-MARK-ALLOC !
    false FAIL-NEXT-OLD-ALLOC !
+   false FAIL-NEXT-NAME-ALLOC !
+   0 FORCE-NAME-LIMIT !
    0 FILE-U !
    false FILE-USED !
    false SECTION-ACTIVE ! ;
