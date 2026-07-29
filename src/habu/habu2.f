@@ -4203,8 +4203,9 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       3 2 DNAME-EXT ANDI,  3 name-inline CBZ,
          0 DNAME-INL CMPI,  C-LE bad BCOND,
          21 1 24 LDR,
-         21 DBASE CMP,  C-LT bad BCOND,
-         21 21 DBASE SUB,  21 21 25 ADD,
+         13 RBASE-VA LIT64,                              \ BSNAPREBASE canonicalized region pointers to RBASE-VA, not to the live DBASE
+         21 13 CMP,  C-LT bad BCOND,
+         21 21 13 SUB,  21 21 25 ADD,
          21 25 CMP,  C-LT bad BCOND,  21 10 CMP,  C-HI bad BCOND,
          2 10 21 SUB,  0 2 CMP,  C-HI bad BCOND,
          name-ready B,
@@ -4226,8 +4227,9 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
          2 3 DNAME-EXT ANDI,  2 pkg-inline CBZ,
             0 DNAME-INL CMPI,  C-LE bad BCOND,
             4 22 24 LDR,
-            4 DBASE CMP,  C-LT bad BCOND,
-            4 4 DBASE SUB,  4 4 25 ADD,
+            13 RBASE-VA LIT64,                           \ same canonical base as the owner-record name above
+            4 13 CMP,  C-LT bad BCOND,
+            4 4 13 SUB,  4 4 25 ADD,
             4 25 CMP,  C-LT bad BCOND,  4 10 CMP,  C-HI bad BCOND,
             2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
             pkg-ready B,
