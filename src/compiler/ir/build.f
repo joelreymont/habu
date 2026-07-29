@@ -814,11 +814,13 @@ public
    b SERIAL OP-MINE
    blk IR-OP:ADD-SUCCESSOR ;
 
-: ADD-ATTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-attr-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ID:ir-attr-id :}
+\ One attribute this operation carries, under the key it answers: the schema
+\ declares keys, so an operation has to name one (design line 479).
+: ADD-ATTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id IR-ID:ir-attr-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-symbol-id a:IR-ID:ir-attr-id :}
    c b USE drop
    b SERIAL OP-MINE
-   a IR-OP:ADD-ATTR ;
+   k a IR-OP:ADD-ATTR ;
 
 : SET-OP-SPAN ( IR-CTX:ctx IR-BUILD:builder IR-SOURCE:span -- )
    IR--SOURCE-SPAN:UNMAKE

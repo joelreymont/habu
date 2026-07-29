@@ -60,6 +60,16 @@
 \     every step declares the one span the store requires and carries no
 \     attribute. Those are Habu.Common.Interning's and Habu.Common.IdLaws'
 \     subjects.
+\   - An attribute entry is a key and a value, so it occupies two pool cells
+\     while the other three window kinds occupy one cell per entry. The model's
+\     `wlen` is a length in POOL CELLS, and the row stores exactly that, so the
+\     stride never reaches the tiling: `TILE-CK` and `FTILE-CK` below are the
+\     same arithmetic they were before attributes were keyed, and `ROW-ADD`
+\     writes `L-AT SN@ AT-CELLS *` because that is the window's cell length.
+\     `ROOM-CK` counts the same product through `STAGED-CELLS`, which is what
+\     keeps the written length inside the pool. Storing the entry count instead
+\     would have made the stored field mean something different from every other
+\     window and made the model's contiguity claim false of the shipped row.
 \
 \ Consumers: `test/compiler/ir-structure-cases.f`,
 \ `test/compiler/ir-structure-obligations.f`.
@@ -419,7 +429,7 @@ public
       2 of s" {: p:IR-ARENA:arena r:IR-ARENA:arena l:n :} l 0= if 0 else r l 1- ROW-END then {: at:n :} at r l OFF-OPST RC@ STEP-CK at r l OFF-OPN RC@ LEN-OK + {: a1:n :} a1 r l OFF-RSST RC@ STEP-CK a1 r l OFF-RSN RC@ LEN-OK + {: a2:n :} a2 r l OFF-SCST RC@ STEP-CK a2 r l OFF-SCN RC@ LEN-OK + {: a3:n :} a3 r l OFF-ATST RC@ STEP-CK a3 r l OFF-ATN RC@ LEN-OK + p PCELLS > if E-IR-OP-STATE throw then" endof
       3 of s" {: p:IR-ARENA:view r:IR-ARENA:view l:n :} l 0= if 0 else r l 1- FROW-END then {: at:n :} at r l OFF-OPST FRC@ STEP-CK at r l OFF-OPN FRC@ LEN-OK + {: a1:n :} a1 r l OFF-RSST FRC@ STEP-CK a1 r l OFF-RSN FRC@ LEN-OK + {: a2:n :} a2 r l OFF-SCST FRC@ STEP-CK a2 r l OFF-SCN FRC@ LEN-OK + {: a3:n :} a3 r l OFF-ATST FRC@ STEP-CK a3 r l OFF-ATN FRC@ LEN-OK + p FPCELLS > if E-IR-OP-STATE throw then" endof
       4 of s" {: st:n :} st st L-OP SN@ + st L-OP SN@ + L-RS SN@ + st L-OP SN@ + L-RS SN@ + L-SC SN@ +" endof
-      5 of s" {: c:IR-CTX:ctx r:IR-ARENA:arena st:n :} st WIN-STARTS {: sop:n srs:n ssc:n sat:n :} c r STG-OPC @ CELL+ c r sop CELL+ c r L-OP SN@ CELL+ c r srs CELL+ c r L-RS SN@ CELL+ c r ssc CELL+ c r L-SC SN@ CELL+ c r sat CELL+ c r L-AT SN@ CELL+ c r STG-SRC @ CELL+ c r STG-SBEG @ CELL+ c r STG-SLEN @ CELL+" endof
+      5 of s" {: c:IR-CTX:ctx r:IR-ARENA:arena st:n :} st WIN-STARTS {: sop:n srs:n ssc:n sat:n :} c r STG-OPC @ CELL+ c r sop CELL+ c r L-OP SN@ CELL+ c r srs CELL+ c r L-RS SN@ CELL+ c r ssc CELL+ c r L-SC SN@ CELL+ c r sat CELL+ c r L-AT SN@ AT-CELLS * CELL+ c r STG-SRC @ CELL+ c r STG-SBEG @ CELL+ c r STG-SLEN @ CELL+" endof
       6 of s" {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :} r CNT r HC-CAP LCELL@ >= if E-IR-OP-CAP throw then v VCNT L-RS SN@ + v HC-CAP LCELL@ > if E-IR-OP-CAP throw then p PCELLS STAGED-CELLS + p HC-CAP LCELL@ > if E-IR-OP-CAP throw then" endof
       7 of s" <> if E-IR-FUN-WINDOW throw then" endof
       8 of s" {: b:IR-ARENA:arena l:n :} l 0= if 0 else b l 1- BOP-END then b l OFF-OPST BC@ STEP-CK" endof

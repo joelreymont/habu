@@ -94,21 +94,34 @@
 \ the tail type describes every further entry and may describe none. A
 \ terminator's successor count is an exact match, since the schema records it as
 \ a plain count. Attribute counts are not constrained here: the schema records
-\ required attribute KEYS while an operation carries attribute VALUES, and
-\ matching one against the other needs the attribute table's key reader, which
-\ is the section 6.5 freeze verifier's job together with the operand and result
-\ type rules.
+\ which attribute keys an opcode requires and whether it admits keys outside
+\ that list, and deciding an operation's keys against that list is the section
+\ 6.5 freeze verifier's job together with the operand and result type rules.
+\
+\ AN ATTRIBUTE IS A KEY AND A VALUE (design lines 479 and 484). The schema
+\ declares the attribute KEYS an opcode requires, so an operation has to say
+\ which key each attribute it carries answers; an unkeyed attribute names
+\ nothing the schema can be asked about, and "attributes are canonical and legal
+\ for the opcode" would be undecidable for it. ADD-ATTR therefore takes the key
+\ symbol together with the attribute, and the attribute window stores the pair.
+\ The key is owner-checked and non-negative here and its existence is left to
+\ the freeze verifier, which holds the symbol table - the same division this
+\ file already makes for a successor's block.
 \
 \ WINDOWS TILE THE POOL EXACTLY. All four windows live in one cell pool, and an
 \ append writes them in a fixed order: operands, results, successors, then
-\ attributes. Every row's windows therefore continue exactly where the row
-\ before it ended, with no gap and no overlap, and that tiling is what every
-\ window read revalidates: the first window must start where the previous row
-\ finished, each following window must start where the previous one finished,
-\ and the last must end inside the live pool. Non-overlap becomes a constant-cost
-\ check on the row itself instead of a search over every other row, and a row
-\ appended past this package's constructors cannot claim a window that overlaps
-\ another operation's or reaches past the cells the pool holds.
+\ attributes. The first three store one cell per entry and the attribute window
+\ stores two - the key symbol ordinal then the attribute ordinal - and all four
+\ store their length in POOL CELLS, so the tiling below is the same arithmetic
+\ it always was and the stride shows up only where an entry is addressed. Every
+\ row's windows therefore continue exactly where the row before it
+\ ended, with no gap and no overlap, and that tiling is what every window read
+\ revalidates: the first window must start where the previous row finished, each
+\ following window must start where the previous one finished, and the last must
+\ end inside the live pool. Non-overlap becomes a constant-cost check on the row
+\ itself instead of a search over every other row, and a row appended past this
+\ package's constructors cannot claim a window that overlaps another operation's
+\ or reaches past the cells the pool holds.
 \
 \ STORE SHAPES. Three IR-ARENA arenas owned by the compilation context: the cell
 \ pool, the value row table, and the operation row table. Each carries the usual
@@ -182,11 +195,21 @@ $4F505231 constant OPR-MAGIC         \ "OPR1": the operation-table header format
 5 constant OFF-SCST                  \ design line 422: the successor window
 6 constant OFF-SCN
 7 constant OFF-ATST                  \ design line 421: the attribute window
-8 constant OFF-ATN
+8 constant OFF-ATN                   \ in pool cells, so the window tiling is
+                                     \ arithmetic on cells like the other three
 9 constant OFF-SRC                   \ design line 423: the source span
 10 constant OFF-SBEG
 11 constant OFF-SLEN
 12 constant ROW-CELLS
+
+\ One attribute entry is two pool cells, in this order. The window stores its
+\ length in cells, not in entries, so every window in this row means the same
+\ thing - a run of pool cells - and the tiling arithmetic is untouched by the
+\ stride. The entry count is the reader's division, and an odd stored length is
+\ a forged row rather than a half entry.
+0 constant AT-KEY                    \ the key symbol ordinal
+1 constant AT-VAL                    \ the attribute ordinal
+2 constant AT-CELLS
 
 0 constant OFF-VTYP                  \ design line 433: the value's type
 1 constant OFF-VKIND                 \ design line 434: block argument or result
@@ -491,6 +514,30 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    i 0 < i ln >= or if E-IR-OP-BOUND throw then
    p  r l stoff FRC@ i +  FPC@ ORD-OK ;
 
+\ How many attributes a stored cell length holds. A length that is not a whole
+\ number of entries is a forged or corrupted row, so it is refused rather than
+\ rounded down to something readable.
+: AT-N ( n -- n )
+   dup AT-CELLS mod 0 <> if E-IR-OP-STATE throw then
+   AT-CELLS / ;
+
+\ One cell of the i-th attribute entry: k is AT-KEY or AT-VAL. The bound is the
+\ entry count, so a caller cannot address the far cell of an entry past the
+\ window by doubling its own index.
+: ATWIN@ ( IR-ARENA:arena IR-ARENA:arena n n n -- n )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena l:n i:n k:n :}
+   p r l TILE-CK
+   r l OFF-ATN RC@ LEN-OK AT-N {: n:n :}
+   i 0 < i n >= or if E-IR-OP-BOUND throw then
+   p  r l OFF-ATST RC@ i AT-CELLS * + k +  PC@ ORD-OK ;
+
+: FATWIN@ ( IR-ARENA:view IR-ARENA:view n n n -- n )
+   {: p:IR-ARENA:view r:IR-ARENA:view l:n i:n k:n :}
+   p r l FTILE-CK
+   r l OFF-ATN FRC@ LEN-OK AT-N {: n:n :}
+   i 0 < i n >= or if E-IR-OP-BOUND throw then
+   p  r l OFF-ATST FRC@ i AT-CELLS * + k +  FPC@ ORD-OK ;
+
 \ ---- the staged operation ----------------------------------------------------
 \ One package-owned stage under the single-task compilation discipline, in the
 \ shape IR-TYPE, IR-ATTR, and IR-SCHEMA established: BEGIN-OP opens it, the ADD-
@@ -505,11 +552,12 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 \ a fixed segment base, because a Habu word cannot take a storage array as an
 \ argument: one indexed pair keeps the append and validate helpers shared
 \ instead of written out four times.
-4 constant LIST#
+5 constant LIST#
 0 constant L-OP                      \ operand value ordinals
 1 constant L-RS                      \ result type ordinals
 2 constant L-SC                      \ successor block ordinals
 3 constant L-AT                      \ attribute ordinals
+4 constant L-AK                      \ attribute key symbol ordinals
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable STG-MODE
@@ -592,12 +640,17 @@ create STG-N LIST# cells allot
       tr key L-RS SEG i + SV@ IR-ID:PACK-TYPE IR-TYPE:KIND@ drop
    loop ;
 
-\ Every staged attribute is a real attribute of this module's attribute table.
+\ Every staged attribute is a real attribute of this module's attribute table,
+\ under a key symbol of this module. Whether that key is one the opcode declares
+\ is the freeze verifier's question, and so is the key's existence: this file
+\ holds no symbol table, exactly as it holds no block table for a successor.
 : ATTRS-CK ( IR-ARENA:arena IR-ID:ir-module-key -- )
    {: ar:IR-ARENA:arena key:IR-ID:ir-module-key :}
    L-AT SN@ 0 ?do
       key KEY-SERIAL L-AT SEG i + SO@ OWNED-CK
       ar key L-AT SEG i + SV@ IR-ID:PACK-ATTR IR-ATTR:KIND@ drop
+      key KEY-SERIAL L-AK SEG i + SO@ OWNED-CK
+      L-AK SEG i + SV@ 0 < if E-IR-OP-BOUND throw then
    loop ;
 
 \ A successor names a block of this module. Its existence is the block table's
@@ -641,7 +694,7 @@ create STG-N LIST# cells allot
 
 \ ---- room and append ---------------------------------------------------------
 : STAGED-CELLS ( -- n )
-   L-OP SN@ L-RS SN@ + L-SC SN@ + L-AT SN@ + ;
+   L-OP SN@ L-RS SN@ + L-SC SN@ + L-AT SN@ AT-CELLS * + ;
 
 : ROOM-CK ( IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena -- )
    {: p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -666,6 +719,15 @@ create STG-N LIST# cells allot
       c p base i + CELL+
    loop ;
 
+\ The attribute window is written as key/value pairs, in the AT-KEY then AT-VAL
+\ order the readers address.
+: ATTRS-ADD ( IR-CTX:ctx IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx p:IR-ARENA:arena :}
+   L-AT SN@ 0 ?do
+      c p L-AK SEG i + SV@ CELL+
+      c p L-AT SEG i + SV@ CELL+
+   loop ;
+
 \ The four window starts of a row whose cells begin at st, in the order the
 \ append writes them. This is the tiling TILE-CK later revalidates.
 : WIN-STARTS ( n -- n n n n )
@@ -682,7 +744,7 @@ create STG-N LIST# cells allot
    c r sop CELL+   c r L-OP SN@ CELL+
    c r srs CELL+   c r L-RS SN@ CELL+
    c r ssc CELL+   c r L-SC SN@ CELL+
-   c r sat CELL+   c r L-AT SN@ CELL+
+   c r sat CELL+   c r L-AT SN@ AT-CELLS * CELL+
    c r STG-SRC @ CELL+
    c r STG-SBEG @ CELL+
    c r STG-SLEN @ CELL+ ;
@@ -772,10 +834,14 @@ public
    STG-OPEN-CK
    L-SC b IR-ID:BLOCK-LOCAL b BLK-OWNER ORD+ ;
 
-\ Design line 513: one attribute this operation carries.
-: ADD-ATTR ( IR-ID:ir-attr-id -- )
-   {: a:IR-ID:ir-attr-id :}
+\ Design line 513 with design line 479: one attribute this operation carries,
+\ under the key it answers. The two lists are pushed together and are therefore
+\ always the same length: the key push runs first, and it is refused at exactly
+\ the entry count that would refuse the value push.
+: ADD-ATTR ( IR-ID:ir-symbol-id IR-ID:ir-attr-id -- )
+   {: k:IR-ID:ir-symbol-id a:IR-ID:ir-attr-id :}
    STG-OPEN-CK
+   L-AK k SYM-ORD k SYM-OWNER ORD+
    L-AT a IR-ID:ATTR-LOCAL a ATTR-OWNER ORD+ ;
 
 \ Design line 518: where this operation came from.
@@ -815,7 +881,7 @@ public
    c p L-OP LIST-ADD
    c p base RESULTS-ADD
    c p L-SC LIST-ADD
-   c p L-AT LIST-ADD
+   c p ATTRS-ADD
    c r st ROW-ADD
    c v l VROWS-ADD
    key l IR-ID:PACK-OP ;
@@ -889,7 +955,7 @@ public
    OFF-SCN FLD LEN-OK ;
 
 : ATTRS ( IR-ARENA:arena IR-ID:ir-op-id -- n )
-   OFF-ATN FLD LEN-OK ;
+   OFF-ATN FLD LEN-OK AT-N ;
 
 \ The span this operation came from. A span is a value, so the consumer
 \ revalidates it against the registry it names with IR-SOURCE:SPAN-CK, exactly
@@ -921,7 +987,14 @@ public
 : ATTR@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-attr-id )
    {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
    p r key PR-CK
-   key p r  r id ROW-AT  OFF-ATST OFF-ATN i WIN@ IR-ID:PACK-ATTR ;
+   key p r  r id ROW-AT  i AT-VAL ATWIN@ IR-ID:PACK-ATTR ;
+
+\ The key this attribute answers. Whether the opcode declares it is the freeze
+\ verifier's question; this reader only says which key was recorded.
+: ATTR-KEY@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   p r key PR-CK
+   key p r  r id ROW-AT  i AT-KEY ATWIN@ IR-ID:PACK-SYMBOL ;
 
 \ ---- value readers -----------------------------------------------------------
 : VALUE-KIND@ ( IR-ARENA:arena IR-ID:ir-value-id -- IR-OP:def-kind )
@@ -1006,7 +1079,7 @@ public
    OFF-SCN FFLD LEN-OK ;
 
 : FATTRS ( IR-ARENA:view IR-ID:ir-op-id -- n )
-   OFF-ATN FFLD LEN-OK ;
+   OFF-ATN FFLD LEN-OK AT-N ;
 
 : FSPAN@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id -- IR-SOURCE:span )
    {: r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id :}
@@ -1035,7 +1108,12 @@ public
 : FATTR@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-attr-id )
    {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
    p r key FPR-CK
-   key p r  r id FROW-AT  OFF-ATST OFF-ATN i FWIN@ IR-ID:PACK-ATTR ;
+   key p r  r id FROW-AT  i AT-VAL FATWIN@ IR-ID:PACK-ATTR ;
+
+: FATTR-KEY@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-op-id n -- IR-ID:ir-symbol-id )
+   {: p:IR-ARENA:view r:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n :}
+   p r key FPR-CK
+   key p r  r id FROW-AT  i AT-KEY FATWIN@ IR-ID:PACK-SYMBOL ;
 
 : FVALUE-KIND@ ( IR-ARENA:view IR-ID:ir-value-id -- IR-OP:def-kind )
    OFF-VKIND FVFLD N>KIND ;

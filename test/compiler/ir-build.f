@@ -144,6 +144,53 @@ private
    c b BLK-BODY
    c b IR-BUILD:END-FUN ;
 
+\ ---- an operation that carries a keyed attribute -----------------------------
+\ Design line 479: an operation names the key each attribute it carries answers,
+\ so the freeze verifier can decide that key against the ones the opcode
+\ declares. This second module keeps its own function so the counts the
+\ publication fixtures above assert stay untouched.
+: ATT-KEY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" hir.value" IR-BUILD:INTERN-SYMBOL ;
+
+: ATT-OP+ ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-op-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b  c b K-CONST OPC-SYM  IR-BUILD:BEGIN-OP
+   c b  c b A-SPAN  IR-BUILD:SET-OP-SPAN
+   c b  c b I64  IR-BUILD:ADD-RESULT
+   c b  c b ATT-KEY  c b 7 IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
+   c b IR-BUILD:END-OP ;
+
+: ATT-BLK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-op-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b IR-BUILD:BEGIN-BLOCK
+   c b  c b A-SPAN  IR-BUILD:SET-BLOCK-SPAN
+   c b ATT-OP+ {: o:IR-ID:ir-op-id :}
+   c b K-RET OP+ drop
+   c b IR-BUILD:END-BLOCK drop
+   o ;
+
+: ATT-BODY ( IR-CTX:ctx -- n bool bool )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   c b FN-OPEN
+   c b ATT-BLK {: o:IR-ID:ir-op-id :}
+   c b IR-BUILD:END-FUN drop
+   c b ATT-KEY {: k:IR-ID:ir-symbol-id :}
+   b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FKEY {: key:IR-ID:ir-module-key :}
+   m IR-BUILD:FOP-ROWS o IR-OP:FATTRS
+   m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS key o 0 IR-OP:FATTR-KEY@
+      IR-ID:SYMBOL-LOCAL k IR-ID:SYMBOL-LOCAL =
+   m IR-BUILD:FATTR-ROWS
+   m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS key o 0 IR-OP:FATTR@
+   IR-ATTR:FINT@ 7 = ;
+
+: ATT-CASE ( -- )
+   s" an operation carries its attribute under the key it answers" T-LABEL
+   BND [: ATT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 1 T= ;
+
 \ ---- creation ----------------------------------------------------------------
 : CRT-BODY ( IR-CTX:ctx -- bool n n n n n )
    {: c:IR-CTX:ctx :}
@@ -800,7 +847,8 @@ create VW-BUF VW-CAP allot
 : HARNESS-VIEWS ( IR-CTX:ctx -- )
    drop
    VW-A-CASE
-   VW-B-CASE ;
+   VW-B-CASE
+   ATT-CASE ;
 
 : HARNESS-FROZEN-A ( IR-CTX:ctx -- )
    drop

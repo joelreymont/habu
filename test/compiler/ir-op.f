@@ -242,10 +242,19 @@ private
       c tp tr key I64 IR-OP:ADD-RESULT
    loop ;
 
-: STG-ATT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
-   {: c:IR-CTX:ctx ap:IR-ARENA:arena ar:IR-ARENA:arena key:IR-ID:ir-module-key s:n :}
+\ The key every attribute fixture answers. This store only records the key it
+\ was given; deciding it against the opcode's declared keys belongs to the
+\ section 6.5 freeze verifier, which is the package that holds a symbol table.
+: ATT-KEY ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena key:IR-ID:ir-module-key :}
+   c sp sr key s" hir.value" IR-SYM:INTERN ;
+
+: STG-ATT ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena key:IR-ID:ir-module-key s:n :}
    s SC-ATN 0 ?do
-      c ap ar key 42 IR-ATTR:INT IR-OP:ADD-ATTR
+      c sp sr key ATT-KEY
+      c ap ar key 42 IR-ATTR:INT
+      IR-OP:ADD-ATTR
    loop ;
 
 \ Stage and append one scenario against the rigged module.
@@ -254,11 +263,11 @@ private
    c sp sr key sa s STG-OPEN
    key s STG-VALS
    c tp tr key s STG-RES
-   c ap ar key s STG-ATT
+   c sp sr ap ar key s STG-ATT
    c p v r key qr tr ar sa IR-OP:END-OP ;
 
 \ ---- reading one appended operation back -------------------------------------
-: READ-BODY ( IR-CTX:ctx -- n n n n n n bool bool bool bool )
+: READ-BODY ( IR-CTX:ctx -- n n n n n n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
    {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -275,13 +284,18 @@ private
    p r key o2 1 IR-OP:OPERAND@ IR-ID:VALUE-LOCAL 1 =
    p r key o2 0 IR-OP:ATTR@ IR-ID:ATTR-LOCAL
       c ap ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL =
+   p r key o2 0 IR-OP:ATTR-KEY@ IR-ID:SYMBOL-LOCAL
+      c sp sr key ATT-KEY IR-ID:SYMBOL-LOCAL =
    r key o2 IR-OP:OPCODE@ IR-ID:SYMBOL-LOCAL
       c sp sr key K-ADD OPC-SYM IR-ID:SYMBOL-LOCAL = ;
 
+\ Seven pool cells, not six: the two seeded constants take one result cell each,
+\ and the attributed hir.add takes two operand cells plus the two cells of its
+\ one key/value attribute entry.
 : READ-CASE ( -- )
    s" an appended operation reads back the shape it was given" T-LABEL
    BND [: READ-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE 1 T= 1 T= 2 T= 6 T= 3 T= 3 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 1 T= 1 T= 2 T= 7 T= 3 T= 3 T= ;
 
 : VALUE-BODY ( IR-CTX:ctx -- bool bool n bool bool bool )
    {: c:IR-CTX:ctx :}
@@ -773,7 +787,17 @@ private
       c sp sr key K-CONST OPC-SYM IR-OP:BEGIN-OP
       c tp tr key I64 IR-OP:ADD-RESULT
       c other ATT-NEW {: ap2:IR-ARENA:arena ar2:IR-ARENA:arena :}
-      c ap2 ar2 other 42 IR-ATTR:INT IR-OP:ADD-ATTR
+      c sp sr key ATT-KEY
+      c ap2 ar2 other 42 IR-ATTR:INT
+      IR-OP:ADD-ATTR
+   then
+   k 4 = if
+      c sp sr key K-CONST OPC-SYM IR-OP:BEGIN-OP
+      c tp tr key I64 IR-OP:ADD-RESULT
+      c other SYM-NEW {: sp2:IR-ARENA:arena sr2:IR-ARENA:arena :}
+      c sp2 sr2 other ATT-KEY
+      c ap ar key 42 IR-ATTR:INT
+      IR-OP:ADD-ATTR
    then
    c sa key A-SPAN IR-OP:SET-SPAN
    c p v r key qr tr ar sa IR-OP:END-OP drop ;
@@ -805,6 +829,8 @@ private
 : OWNER-CASES-C ( -- )
    s" another module's attribute rejects" T-LABEL
    [: 3 FTAB-RUN ;] E-IR-OP-OWNER TTHROWSQ
+   s" another module's attribute key symbol rejects" T-LABEL
+   [: 4 FTAB-RUN ;] E-IR-OP-OWNER TTHROWSQ
    s" a key minted by another context does not open this store" T-LABEL
    [: FCTX-RUN ;] E-IR-OP-OWNER TTHROWSQ ;
 
@@ -838,7 +864,7 @@ private
    c sp sr key sa S-SEED STG-OPEN
    key S-SEED STG-VALS
    c tp tr key S-SEED STG-RES
-   c ap ar key S-SEED STG-ATT
+   c sp sr ap ar key S-SEED STG-ATT
    c p v r key qr tr ar sa [: OVF-TRY ;] catch
    {: c2:IR-CTX:ctx p2:IR-ARENA:arena v2:IR-ARENA:arena r2:IR-ARENA:arena key2:IR-ID:ir-module-key qr2:IR-ARENA:arena tr2:IR-ARENA:arena ar2:IR-ARENA:arena sa2:IR-ARENA:arena rc:n :}
    rc
@@ -899,13 +925,14 @@ private
 
 \ The remaining frozen readers, over an operation that carries an attribute and
 \ a terminator that carries a successor.
-: FZ2-BODY ( IR-CTX:ctx -- n n n bool bool bool bool bool )
+: FZ2-BODY ( IR-CTX:ctx -- n n n bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c 16 16 128 RIG
    {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
    c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND {: o0:IR-ID:ir-op-id :}
    c key sp sr tp tr ap ar sa qr p v r S-BR-ATTR APPEND {: o1:IR-ID:ir-op-id :}
    c ap ar key 42 IR-ATTR:INT IR-ID:ATTR-LOCAL {: at:n :}
+   c sp sr key ATT-KEY IR-ID:SYMBOL-LOCAL {: ak:n :}
    c tp tr key I64 IR-ID:TYPE-LOCAL {: ty:n :}
    c sp sr key K-BR OPC-SYM IR-ID:SYMBOL-LOCAL {: br:n :}
    p IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
@@ -915,6 +942,7 @@ private
    rv o1 IR-OP:FATTRS
    rv o1 IR-OP:FSUCCESSORS
    pv rv key o1 0 IR-OP:FATTR@ IR-ID:ATTR-LOCAL at =
+   pv rv key o1 0 IR-OP:FATTR-KEY@ IR-ID:SYMBOL-LOCAL ak =
    pv rv key o1 0 IR-OP:FSUCCESSOR@ IR-ID:BLOCK-LOCAL 0 =
    rv key o1 IR-OP:FOPCODE@ IR-ID:SYMBOL-LOCAL br =
    rv key o0 IR-OP:FSPAN@ IR-SOURCE:SPAN-LEN 4 =
@@ -923,7 +951,7 @@ private
 : FZ2-CASE ( -- )
    s" every remaining frozen reader answers through the views" T-LABEL
    BND [: FZ2-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE 1 T= 1 T= 0 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 1 T= 1 T= 0 T= ;
 
 : FZ3-BODY ( IR-CTX:ctx -- n bool )
    {: c:IR-CTX:ctx :}
