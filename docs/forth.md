@@ -191,6 +191,35 @@ deleted or moved boundary still loses ownership; adding a complete block whose
 opener and closer both arrive together moves nothing in or out of a package and
 stays clean.
 
+The stage0 recovery fixtures carry a global surface on the same terms — by exact
+path plus declaration shape, not by whole file. `tools/bootstrap.sh` builds these
+sources for its `using` gate by handing each one to Gforth, which compiles it
+with the recovery emitter in `bootstrap/cg/forth.fs` into a standalone binary;
+the script then runs that binary and compares the whole of stdout and the first
+stderr line against exact expected text. `bin/hb` never loads them, so the
+fixture is the gate's own input and the whole-stream comparison is its
+correctness authority. Two of them need a word at genuine global top level, and
+a package there would delete the proof rather than satisfy the rule:
+
+- `test/bootstrap-using-checker-hook-src.f` defines a stand-in `CHECKER-USING`.
+  The emitter looks that hook up by the bare 13-byte name `checker-using`, the
+  same way the real global `CHECKER-USING` in `src/core/checker.f` is found. In a
+  package the tail would be invisible to that bare lookup, the mirror call would
+  find nothing, and the case would stop testing the mirror.
+- `test/bootstrap-using-src.f` defines `BUS-SHADOW` and `BUS-CALLER` at top level
+  because top-level bare visibility is the property under test. `BUS-SHADOW` is
+  the name that must already resolve before `using BUS-A` opens; `BUS-CALLER` is
+  compiled while the import is open, from the real top-level position a recovery
+  build's own source occupies.
+
+Only the plain lower-case `:` definer is admitted there, and only at those two
+exact paths, which additionally must start with `test/` and end with `-src.f`. A
+global `variable`, `create`, `constant`, `CHECKED:`, `TRUSTED:` or type
+declaration in a listed fixture still reports, and so does a global colon word in
+any fixture that is not listed. Unlike the interim core-surface entries this
+category has no retirement condition: while `using` exists in the stage0 engine
+the recovery gate has to keep proving what a real top-level user program sees.
+
 Four declarations receive narrower exact-definition exceptions: only `DEFTYPE`
 may be global in `lib/type/deftype.f`, only `STRUCTURE` may be global in
 `src/core/structure-decl.f`, only `ENUM` may be global in

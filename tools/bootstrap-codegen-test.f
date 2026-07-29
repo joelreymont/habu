@@ -1,5 +1,15 @@
 \ bootstrap-codegen-test.f - native source regression for bootstrap codegen hard cutover.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/fs.f tools/bootstrap-codegen-test.f
+\
+\ Package layout.  BCG is short for "bootstrap codegen", the subject of this
+\ regression.  Package BCG owns the source-under-test buffer, the substring
+\ assertion vocabulary its public section exports, and the individual checks plus
+\ the MAIN entry the file runs at the end.  The narrower sub-concerns keep the
+\ sibling packages they already had - BCG-CAP for the shared arena constants,
+\ BCG-MANIFEST for the prefix/manifest row capture, BCG-PREFLIGHT for the compile
+\ preflight hook, BCG-USING for the `using` band and keywords, and BCG-HIDE for
+\ the earliest-marker hide behaviour - and each of them imports BCG's assertion
+\ words once with `using BCG`.
 
 require lib/errors.f
 require lib/string.f
@@ -13,50 +23,97 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
 
-\ habu2.f is 262,867 bytes on the ENGINE-ERROR cutover tree; 25% headroom is
-\ 328,584 bytes, so the next power-of-two arena is $80000.
-$80000 constant BCG-CAP
-
-create BCG-BUF BCG-CAP allot
-variable BCG-LEN
-
-: BCG-SOURCE ( -- ptr u8 n )
-   BCG-BUF BCG-LEN @ ;
-
-: BCG-LOAD ( ptr u8 n -- )
-   BCG-BUF BCG-CAP READ-ALL BCG-LEN ! ;
-
-: BCG-HAS? ( ptr u8 n -- bool )
-   BCG-SOURCE 2swap CONTAINS? ;
-
-: BCG-MUST-HAVE ( ptr u8 n -- )
-   BCG-HAS? TTRUE ;
-
-: BCG-MUST-LACK ( ptr u8 n -- )
-   BCG-HAS? 0= TTRUE ;
-
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
 \ project the option<CAD-NUM:index> result back to the switchover option<idx>.
 package CAD-NUM
 public
 : BCG-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
 ;package
-: BCG-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
+
+package BCG
+private
+
+\ habu2.f is 262,867 bytes on the ENGINE-ERROR cutover tree; 25% headroom is
+\ 328,584 bytes, so the next power-of-two arena is $80000.
+$80000 constant SRC-CAP
+
+create SRC-BUF SRC-CAP allot
+variable SRC-LEN
+
+public
+
+: SRC ( -- ptr u8 n )
+   SRC-BUF SRC-LEN @ ;
+
+: LOAD ( ptr u8 n -- )
+   SRC-BUF SRC-CAP READ-ALL SRC-LEN ! ;
+
+: HAS? ( ptr u8 n -- bool )
+   SRC 2swap CONTAINS? ;
+
+: MUST-HAVE ( ptr u8 n -- )
+   HAS? TTRUE ;
+
+: MUST-LACK ( ptr u8 n -- )
+   HAS? 0= TTRUE ;
+
+: FIND-IN ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
      some OF CAD-NUM:BCG-IX>N >IDX OPTION:SOME ENDOF
    ;MATCH ;
 
-: BCG-POS ( ptr u8 n -- option<idx> )
-   BCG-SOURCE 2swap BCG-FIND ;
+: POS ( ptr u8 n -- option<idx> )
+   SRC 2swap FIND-IN ;
 
-: BCG-POS-FOUND ( ptr u8 n -- n )
-   BCG-POS MATCH option
+: POS-FOUND ( ptr u8 n -- n )
+   POS MATCH option
      none OF STR-FALSE TTRUE -1 ENDOF
      some OF STR-TRUE TTRUE IDX>N ENDOF
    ;MATCH ;
 
+: FIND-AFTER ( n ptr u8 n -- option<idx> ) {: start:n needle:ptr nu:n :}
+   SRC {: src:ptr srcu:n :}
+   start 0 < if OPTION:NONE exit then
+   start srcu >= if OPTION:NONE exit then
+   src start + srcu start - needle nu FIND-IN MATCH option
+     none OF OPTION:NONE ENDOF
+     some OF IDX>N start + >IDX OPTION:SOME ENDOF
+   ;MATCH ;
+
+private
+
+: MUST-BEFORE ( ptr u8 n ptr u8 n -- ) {: earlier:ptr earlieru:n later:ptr lateru:n :}
+   earlier earlieru POS-FOUND
+   later lateru POS-FOUND
+   < TTRUE ;
+
+: AFTER-FOUND ( n ptr u8 n -- n )                  \ assert found after start; found index
+   FIND-AFTER MATCH option
+     none OF STR-FALSE TTRUE -1 ENDOF
+     some OF STR-TRUE TTRUE IDX>N ENDOF
+   ;MATCH ;
+
+: MUST-NOT-FIND-BEFORE ( n n ptr u8 n -- ) {: start:n end:n needle:ptr nu:n :}
+   start needle nu FIND-AFTER MATCH option
+     none OF exit ENDOF
+     some OF IDX>N ENDOF
+   ;MATCH {: pos:n :}
+   pos end >= TTRUE ;
+
+: MUST-FIND-BEFORE ( n n ptr u8 n -- )
+   {: start:n end:n needle:ptr nu:n :}
+   start needle nu FIND-AFTER MATCH option
+     none OF STR-FALSE TTRUE ENDOF
+     some OF STR-TRUE TTRUE IDX>N end < TTRUE ENDOF
+   ;MATCH ;
+
+;package
+
+\ The shared arena constants: the emitters, the fixpoint driver and the maker must
+\ all name the same source-arena capacity and headroom percentage.
 package BCG-CAP
+using BCG
 
 32 constant TOK-CAP
 
@@ -82,7 +139,7 @@ variable DEF-N
    idx 1 + name nameu TOK=CI ;
 
 : DEF-SCAN ( ptr u8 n -- ) {: name:ptr nameu:n :}
-   BCG-SOURCE LINT-LEX:SOURCE
+   SRC LINT-LEX:SOURCE
    -1 DEF-I !
    0 DEF-N !
    0 begin dup LINT-LEX:COUNT < while
@@ -130,54 +187,23 @@ public
 : TEST ( -- )
    SOURCE-HEADROOM-PCT 25 T=
    SOURCE-ARENA-CAP IBUFSZ T=
-   s" src/habu/layout.f" BCG-LOAD
+   s" src/habu/layout.f" LOAD
    OWNER
    SAVE-TOKENS
-   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" bootstrap/cg/forth.fs" LOAD
    OWNER
    CHECK-TOKENS
-   s" src/habu/stage2.f" BCG-LOAD
+   s" src/habu/stage2.f" LOAD
    s" S2-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$=
-   s" src/habu/maker.f" BCG-LOAD
+   s" src/habu/maker.f" LOAD
    s" MK-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$= ;
 
 ;package
 
-: BCG-MUST-BEFORE ( ptr u8 n ptr u8 n -- ) {: earlier:ptr earlieru later:ptr lateru :}
-   earlier earlieru BCG-POS-FOUND
-   later lateru BCG-POS-FOUND
-   < TTRUE ;
-
-: BCG-FIND-AFTER ( n ptr u8 n -- option<idx> ) {: start:n needle:ptr nu:n :}
-   BCG-SOURCE {: src:ptr srcu :}
-   start 0 < if OPTION:NONE exit then
-   start srcu >= if OPTION:NONE exit then
-   src start + srcu start - needle nu BCG-FIND MATCH option
-     none OF OPTION:NONE ENDOF
-     some OF IDX>N start + >IDX OPTION:SOME ENDOF
-   ;MATCH ;
-
-: BCG-AFTER-FOUND ( n ptr u8 n -- n )              \ assert found after start; found index
-   BCG-FIND-AFTER MATCH option
-     none OF STR-FALSE TTRUE -1 ENDOF
-     some OF STR-TRUE TTRUE IDX>N ENDOF
-   ;MATCH ;
-
-: BCG-MUST-NOT-FIND-BEFORE ( n n ptr u8 n -- ) {: start end needle:ptr nu :}
-   start needle nu BCG-FIND-AFTER MATCH option
-     none OF exit ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH {: pos:n :}
-   pos end >= TTRUE ;
-
-: BCG-MUST-FIND-BEFORE ( n n ptr u8 n -- )
-   {: start end needle:ptr nu :}
-   start needle nu BCG-FIND-AFTER MATCH option
-     none OF STR-FALSE TTRUE ENDOF
-     some OF STR-TRUE TTRUE IDX>N end < TTRUE ENDOF
-   ;MATCH ;
-
+\ The prefix/manifest row capture: both emitters, the recovery script and the
+\ fixpoint driver must list exactly the same source files in the same order.
 package BCG-MANIFEST
+using BCG
 
 $4000 constant CAP
 0 constant MODE-FORTH
@@ -244,8 +270,8 @@ create LF $0A c,
 
 \ typed-local-lint: allow-bare-local - needle preserves its ptr u8 role.
 : UNIQUE-POS ( ptr u8 n -- n ) {: needle nu:n :}
-   needle nu BCG-POS-FOUND {: pos:n :}
-   pos 1+ needle nu BCG-FIND-AFTER MATCH option
+   needle nu POS-FOUND {: pos:n :}
+   pos 1+ needle nu FIND-AFTER MATCH option
      none OF ENDOF
      some OF drop STR-FALSE TTRUE ENDOF
    ;MATCH
@@ -256,7 +282,7 @@ create LF $0A c,
    first fu UNIQUE-POS {: start:n :}
    after au UNIQUE-POS {: end:n :}
    start end < TTRUE
-   BCG-SOURCE {: src:ptr srcu:n :}
+   SRC {: src:ptr srcu:n :}
    end srcu <= TTRUE
    src start + end start - ;
 
@@ -496,15 +522,15 @@ create LF $0A c,
    CAPTURE-PREFIX
    EXPECT-NATIVE
    45 ASSERT-EQUAL
-   s" src/core/structures-effects.f" BCG-MUST-LACK
-   s" LPSTRUCTEFF" BCG-MUST-LACK ;
+   s" src/core/structures-effects.f" MUST-LACK
+   s" LPSTRUCTEFF" MUST-LACK ;
 
 : GFORTH-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-GFORTH
    42 ASSERT-EQUAL
-   s" src/core/structures-effects.f" BCG-MUST-LACK
-   s" LPSTRUCTEFF" BCG-MUST-LACK ;
+   s" src/core/structures-effects.f" MUST-LACK
+   s" LPSTRUCTEFF" MUST-LACK ;
 
 : EXPECT-FILE ( ptr u8 n -- )
    EXPECT+  LF 1 EXPECT+ ;
@@ -647,11 +673,11 @@ variable COUNT-N
 \ typed-local-lint: allow-bare-local - source/needles remain byte spans.
 : BEFORE ( ptr u8 n ptr u8 n ptr u8 n -- )
    {: src su:n left lu:n right ru:n :}
-   src su left lu BCG-FIND MATCH option
+   src su left lu FIND-IN MATCH option
       none OF STR-FALSE TTRUE -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH
-   src su right ru BCG-FIND MATCH option
+   src su right ru FIND-IN MATCH option
       none OF STR-FALSE TTRUE -1 ENDOF
       some OF IDX>N ENDOF
    ;MATCH < TTRUE ;
@@ -952,221 +978,228 @@ public
 
 ;package
 
-: BCG-TEST-INSTALL-FAIL-CLOSED ( -- )
-   s" bootstrap/cg/install.fs" BCG-LOAD
-   s" : BODY-ARITY ( -- n )  ['] TRY-ARITY CG-CATCH ;" BCG-MUST-HAVE
-   s" ['] TRY-EFFECT CG-CATCH" BCG-MUST-HAVE
-   s" catch if 1" BCG-MUST-LACK
-   s" catch if 0" BCG-MUST-LACK
-   s" NM@ CAP$ BODY-ARITY EFFECT-FLAGS CG-RECORD" BCG-MUST-HAVE ;
+\ The individual checks. They are BCG's own private bodies, so they call the
+\ assertion words above by their bare names; MAIN at the end of the file is the
+\ only export. The block reopens twice below because the hide fixtures and the
+\ narrower sibling packages have to be declared at genuine top level.
+package BCG
+private
 
-: BCG-TEST-FORTH-SDQ-COMMENT ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" C-ADR PC-relative" BCG-MUST-HAVE
-   s" push abs-addr" BCG-MUST-LACK
-   s" absolute address is known" BCG-MUST-LACK ;
+: INSTALL-FAIL-CLOSED ( -- )
+   s" bootstrap/cg/install.fs" LOAD
+   s" : BODY-ARITY ( -- n )  ['] TRY-ARITY CG-CATCH ;" MUST-HAVE
+   s" ['] TRY-EFFECT CG-CATCH" MUST-HAVE
+   s" catch if 1" MUST-LACK
+   s" catch if 0" MUST-LACK
+   s" NM@ CAP$ BODY-ARITY EFFECT-FLAGS CG-RECORD" MUST-HAVE ;
 
-: BCG-TEST-PREFIX-LIST-COMMON ( -- )
-   s" PFX-LOAD-FILES" BCG-MUST-HAVE
-   s" PFX-PATH-FILES" BCG-MUST-HAVE
-   s" PFX-FILES" BCG-MUST-LACK
-   s" PFX-ROW" BCG-MUST-LACK
-   s" PFX-LINUX  LPLINUXTARGET" BCG-MUST-HAVE
-   s" PFX-MACOS  LPMACOSTARGET" BCG-MUST-HAVE
-   s" a u ZBYTES," BCG-MUST-HAVE
-   s" LPUTIL @ ADR" BCG-MUST-LACK
-   s" LSRCRD @ BL then" BCG-MUST-LACK
-   s" a u ZBYTES ;" BCG-MUST-LACK
-   s" LPLINUXTARGET @ LBL, s" BCG-MUST-LACK ;
+: FORTH-SDQ-COMMENT ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" C-ADR PC-relative" MUST-HAVE
+   s" push abs-addr" MUST-LACK
+   s" absolute address is known" MUST-LACK ;
 
-: BCG-TEST-PREFIX-LIST-BOOTSTRAP ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   BCG-TEST-PREFIX-LIST-COMMON
+: PREFIX-LIST-COMMON ( -- )
+   s" PFX-LOAD-FILES" MUST-HAVE
+   s" PFX-PATH-FILES" MUST-HAVE
+   s" PFX-FILES" MUST-LACK
+   s" PFX-ROW" MUST-LACK
+   s" PFX-LINUX  LPLINUXTARGET" MUST-HAVE
+   s" PFX-MACOS  LPMACOSTARGET" MUST-HAVE
+   s" a u ZBYTES," MUST-HAVE
+   s" LPUTIL @ ADR" MUST-LACK
+   s" LSRCRD @ BL then" MUST-LACK
+   s" a u ZBYTES ;" MUST-LACK
+   s" LPLINUXTARGET @ LBL, s" MUST-LACK ;
+
+: PREFIX-LIST-BOOTSTRAP ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   PREFIX-LIST-COMMON
    BCG-MANIFEST:GFORTH
-   s" LSRCRD @ BL," BCG-MUST-HAVE
-   s" LSRCRD LABEL@ BL," BCG-MUST-LACK ;
+   s" LSRCRD @ BL," MUST-HAVE
+   s" LSRCRD LABEL@ BL," MUST-LACK ;
 
-: BCG-TEST-PREFIX-LIST-NATIVE ( -- )
-   s" src/habu/habu2.f" BCG-LOAD
-   BCG-TEST-PREFIX-LIST-COMMON
+: PREFIX-LIST-NATIVE ( -- )
+   s" src/habu/habu2.f" LOAD
+   PREFIX-LIST-COMMON
    BCG-MANIFEST:NATIVE
-   s" LSRCRD LABEL@ BL," BCG-MUST-HAVE ;
+   s" LSRCRD LABEL@ BL," MUST-HAVE ;
 
-: BCG-TEST-PREFIX-LIST ( -- )
-   BCG-TEST-PREFIX-LIST-BOOTSTRAP
-   BCG-TEST-PREFIX-LIST-NATIVE ;
+: PREFIX-LIST ( -- )
+   PREFIX-LIST-BOOTSTRAP
+   PREFIX-LIST-NATIVE ;
 
-: BCG-TEST-TOK-IMM-MIRROR ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" : BTOKIMM ( -- )" BCG-MUST-HAVE
-   s" LFIND @ BL," BCG-MUST-HAVE
-   s" 9 13 2 ANDI," BCG-MUST-HAVE
-   s" ['] BTOKIMM FPRIM" BCG-MUST-HAVE
-   s" src/habu/habu2.f" BCG-LOAD
-   s" : BTOKIMM ( -- )" BCG-MUST-HAVE
-   s" LFIND LABEL@ BL," BCG-MUST-HAVE
-   s" 9 13 2 ANDI," BCG-MUST-HAVE
-   s" ['] BTOKIMM 2 GDEREF-F" BCG-MUST-HAVE ;
+: TOK-IMM-MIRROR ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" : BTOKIMM ( -- )" MUST-HAVE
+   s" LFIND @ BL," MUST-HAVE
+   s" 9 13 2 ANDI," MUST-HAVE
+   s" ['] BTOKIMM FPRIM" MUST-HAVE
+   s" src/habu/habu2.f" LOAD
+   s" : BTOKIMM ( -- )" MUST-HAVE
+   s" LFIND LABEL@ BL," MUST-HAVE
+   s" 9 13 2 ANDI," MUST-HAVE
+   s" ['] BTOKIMM 2 GDEREF-F" MUST-HAVE ;
 
-: BCG-TEST-PROTWID-LEAFNESS ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" ['] BPROTWIDADD FPRIM-L" BCG-MUST-LACK
-   s" ['] BPROTWIDADD FPRIM" BCG-MUST-HAVE ;
+: PROTWID-LEAFNESS ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" ['] BPROTWIDADD FPRIM-L" MUST-LACK
+   s" ['] BPROTWIDADD FPRIM" MUST-HAVE ;
 
-: BCG-TEST-CELL-RUNTIME ( -- )
+: CELL-RUNTIME ( -- )
    CELL-WIDTH-CHECK
    CELL 1 cells T= ;
 
-: BCG-TEST-ENGINE-ERROR ( -- )
-   s" src/core/engine-error.f" BCG-LOAD
-   s" package ENGINE-ERROR" BCG-MUST-HAVE
-   s" 83 constant SEAL-VIOLATION" BCG-MUST-HAVE
-   s" 84 constant SEAL-PACKAGE" BCG-MUST-HAVE
-   s" 85 constant BAD-TAG" BCG-MUST-HAVE
-   s" 86 constant CALLABLE-ABI" BCG-MUST-HAVE
-   s" 87 constant CATCH-STACK" BCG-MUST-HAVE
-   s" 88 constant CODE-CERT" BCG-MUST-HAVE
-   s" constant E-SEAL-VIOLATION" BCG-MUST-LACK
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" 83 constant ENGINE-ERROR:SEAL-VIOLATION" BCG-MUST-HAVE
-   s" 84 constant ENGINE-ERROR:SEAL-PACKAGE" BCG-MUST-HAVE
-   s" 85 constant ENGINE-ERROR:BAD-TAG" BCG-MUST-HAVE
-   s" 86 constant ENGINE-ERROR:CALLABLE-ABI" BCG-MUST-HAVE
-   s" 87 constant ENGINE-ERROR:CATCH-STACK" BCG-MUST-HAVE
-   s" 88 constant ENGINE-ERROR:CODE-CERT" BCG-MUST-HAVE
-   s" : C-P2-FIND-GLOBAL?" BCG-MUST-HAVE
-   s" : C-P2-FIND-CHECKER" BCG-MUST-HAVE
-   s" FRIEND-LATCH-CELL LDR,  9 done CBZ," BCG-MUST-HAVE
-   s" src/habu/habu2.f" BCG-LOAD
-   s" : C-FIND-GLOBAL?" BCG-MUST-HAVE
-   s" : C-FIND-CHECKER" BCG-MUST-HAVE
-   s" FRIEND-LATCH-CELL LDR,  9 done CBZ," BCG-MUST-HAVE
-   s" src/core/engine-error-effects.f" BCG-LOAD
-   s" package ENGINE-ERROR" BCG-MUST-HAVE
-   S\" s\" SEAL-VIOLATION\" s\" -- n\" TRUST" BCG-MUST-HAVE
-   S\" s\" CODE-CERT\" s\" -- n\" TRUST" BCG-MUST-HAVE
-   s" tools/bootstrap.sh" BCG-LOAD
-   s" test/engine-error-package.f" BCG-MUST-HAVE ;
+: ENGINE-ERROR-CODES ( -- )
+   s" src/core/engine-error.f" LOAD
+   s" package ENGINE-ERROR" MUST-HAVE
+   s" 83 constant SEAL-VIOLATION" MUST-HAVE
+   s" 84 constant SEAL-PACKAGE" MUST-HAVE
+   s" 85 constant BAD-TAG" MUST-HAVE
+   s" 86 constant CALLABLE-ABI" MUST-HAVE
+   s" 87 constant CATCH-STACK" MUST-HAVE
+   s" 88 constant CODE-CERT" MUST-HAVE
+   s" constant E-SEAL-VIOLATION" MUST-LACK
+   s" bootstrap/cg/forth.fs" LOAD
+   s" 83 constant ENGINE-ERROR:SEAL-VIOLATION" MUST-HAVE
+   s" 84 constant ENGINE-ERROR:SEAL-PACKAGE" MUST-HAVE
+   s" 85 constant ENGINE-ERROR:BAD-TAG" MUST-HAVE
+   s" 86 constant ENGINE-ERROR:CALLABLE-ABI" MUST-HAVE
+   s" 87 constant ENGINE-ERROR:CATCH-STACK" MUST-HAVE
+   s" 88 constant ENGINE-ERROR:CODE-CERT" MUST-HAVE
+   s" : C-P2-FIND-GLOBAL?" MUST-HAVE
+   s" : C-P2-FIND-CHECKER" MUST-HAVE
+   s" FRIEND-LATCH-CELL LDR,  9 done CBZ," MUST-HAVE
+   s" src/habu/habu2.f" LOAD
+   s" : C-FIND-GLOBAL?" MUST-HAVE
+   s" : C-FIND-CHECKER" MUST-HAVE
+   s" FRIEND-LATCH-CELL LDR,  9 done CBZ," MUST-HAVE
+   s" src/core/engine-error-effects.f" LOAD
+   s" package ENGINE-ERROR" MUST-HAVE
+   S\" s\" SEAL-VIOLATION\" s\" -- n\" TRUST" MUST-HAVE
+   S\" s\" CODE-CERT\" s\" -- n\" TRUST" MUST-HAVE
+   s" tools/bootstrap.sh" LOAD
+   s" test/engine-error-package.f" MUST-HAVE ;
 
-: BCG-TEST-CELL-SOURCE ( -- )
-   s" src/core/cell.f" BCG-LOAD
-   s" $8 constant CELL" BCG-MUST-HAVE
-   s" $4C constant CORE-LAYOUT-RC" BCG-MUST-HAVE
-   s" 1 cells CELL <>" BCG-MUST-HAVE
-   s" CORE-LAYOUT-RC die" BCG-MUST-HAVE ;
+: CELL-SOURCE ( -- )
+   s" src/core/cell.f" LOAD
+   s" $8 constant CELL" MUST-HAVE
+   s" $4C constant CORE-LAYOUT-RC" MUST-HAVE
+   s" 1 cells CELL <>" MUST-HAVE
+   s" CORE-LAYOUT-RC die" MUST-HAVE ;
 
-: BCG-TEST-CELL-BOOTSTRAP ( -- )
-   s" tools/bootstrap.sh" BCG-LOAD
+: CELL-BOOTSTRAP ( -- )
+   s" tools/bootstrap.sh" LOAD
    BCG-MANIFEST:RECOVERY
-   s" cat src/core/structures-effects.f" BCG-MUST-LACK ;
+   s" cat src/core/structures-effects.f" MUST-LACK ;
 
-: BCG-TEST-CELL-FIXPOINT ( -- )
-   s" tools/build-fixpoint.f" BCG-LOAD
+: CELL-FIXPOINT ( -- )
+   s" tools/build-fixpoint.f" LOAD
    BCG-MANIFEST:FIXPOINT
-   s" src/core/structures-effects.f" BCG-MUST-LACK ;
+   s" src/core/structures-effects.f" MUST-LACK ;
 
-: BCG-TEST-CELL-PARITY ( -- )
-   BCG-TEST-CELL-RUNTIME
-   BCG-TEST-CELL-SOURCE
-   BCG-TEST-CELL-BOOTSTRAP
-   BCG-TEST-CELL-FIXPOINT ;
+: CELL-PARITY ( -- )
+   CELL-RUNTIME
+   CELL-SOURCE
+   CELL-BOOTSTRAP
+   CELL-FIXPOINT ;
 
-: BCG-TEST-BAKED-SOURCE-PREFIX-CURRENT ( -- )
-   s" : C-SOURCE-BAKED" BCG-POS-FOUND {: start :}
-   start s" : EMIT-SOURCE" BCG-AFTER-FOUND {: end:n :}
-   start end s" EMIT-COLD-PREFIX" BCG-MUST-FIND-BEFORE ;
+: BAKED-PREFIX-CURRENT ( -- )
+   s" : C-SOURCE-BAKED" POS-FOUND {: start:n :}
+   start s" : EMIT-SOURCE" AFTER-FOUND {: end:n :}
+   start end s" EMIT-COLD-PREFIX" MUST-FIND-BEFORE ;
 
-: BCG-TEST-BAKED-SOURCE-PREFIX ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   BCG-TEST-BAKED-SOURCE-PREFIX-CURRENT
-   s" src/habu/habu2.f" BCG-LOAD
-   BCG-TEST-BAKED-SOURCE-PREFIX-CURRENT ;
+: BAKED-PREFIX ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   BAKED-PREFIX-CURRENT
+   s" src/habu/habu2.f" LOAD
+   BAKED-PREFIX-CURRENT ;
 
-: BCG-TEST-TRUST-CALLS-CURRENT ( -- )
-   s" : C-PUSH-DATA-CELL ( n -- )" BCG-MUST-HAVE
-   s" : C-PUSH-TRUST-SIG ( n n -- )" BCG-MUST-HAVE
-   s" : C-CALL-X11-SAVED ( -- )" BCG-MUST-HAVE
-   s" CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG" BCG-MUST-HAVE
-   s" 9 DATA CRSIG-A-CELL LDR,  9 G-PUSH" BCG-MUST-LACK
-   s" 9 DATA CRSIG-U-CELL LDR,  9 G-PUSH" BCG-MUST-LACK ;
+: TRUST-CALLS-CURRENT ( -- )
+   s" : C-PUSH-DATA-CELL ( n -- )" MUST-HAVE
+   s" : C-PUSH-TRUST-SIG ( n n -- )" MUST-HAVE
+   s" : C-CALL-X11-SAVED ( -- )" MUST-HAVE
+   s" CRSIG-A-CELL CRSIG-U-CELL C-PUSH-TRUST-SIG" MUST-HAVE
+   s" 9 DATA CRSIG-A-CELL LDR,  9 G-PUSH" MUST-LACK
+   s" 9 DATA CRSIG-U-CELL LDR,  9 G-PUSH" MUST-LACK ;
 
-: BCG-TEST-TRUST-CALLS ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   BCG-TEST-TRUST-CALLS-CURRENT
-   s" src/habu/habu2.f" BCG-LOAD
-   BCG-TEST-TRUST-CALLS-CURRENT
-   s" TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG" BCG-MUST-HAVE
-   s" 9 DATA TSIG-A-CELL LDR,  9 G-PUSH" BCG-MUST-LACK
-   s" 9 DATA TSIG-U-CELL LDR,  9 G-PUSH" BCG-MUST-LACK ;
+: TRUST-CALLS ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   TRUST-CALLS-CURRENT
+   s" src/habu/habu2.f" LOAD
+   TRUST-CALLS-CURRENT
+   s" TSIG-A-CELL TSIG-U-CELL C-PUSH-TRUST-SIG" MUST-HAVE
+   s" 9 DATA TSIG-A-CELL LDR,  9 G-PUSH" MUST-LACK
+   s" 9 DATA TSIG-U-CELL LDR,  9 G-PUSH" MUST-LACK ;
 
-: BCG-TEST-IMAGE-BUFFER-CURRENT ( -- )
-   s" require image.fs" BCG-MUST-HAVE
-   s" $90000 constant MSIZE" BCG-MUST-LACK
-   s" create MBUF MSIZE allot" BCG-MUST-LACK
-   s" variable MP" BCG-MUST-LACK
-   s" variable MLEN" BCG-MUST-LACK
-   s" : M8" BCG-MUST-LACK
-   s" : M16" BCG-MUST-LACK
-   s" : M32" BCG-MUST-LACK
-   s" : M64" BCG-MUST-LACK
-   s" SCODE CODELEN @ M-BYTES" BCG-MUST-HAVE ;
+: IMAGE-BUFFER-CURRENT ( -- )
+   s" require image.fs" MUST-HAVE
+   s" $90000 constant MSIZE" MUST-LACK
+   s" create MBUF MSIZE allot" MUST-LACK
+   s" variable MP" MUST-LACK
+   s" variable MLEN" MUST-LACK
+   s" : M8" MUST-LACK
+   s" : M16" MUST-LACK
+   s" : M32" MUST-LACK
+   s" : M64" MUST-LACK
+   s" SCODE CODELEN @ M-BYTES" MUST-HAVE ;
 
-: BCG-TEST-IMAGE-BUFFER ( -- )
-   s" bootstrap/cg/image.fs" BCG-LOAD
-   s" create MBUF MSIZE allot" BCG-MUST-HAVE
-   s" : M-BYTES ( addr u -- )" BCG-MUST-HAVE
-   s" : M-NAME16 ( addr u -- )" BCG-MUST-HAVE
-   s" bootstrap/cg/elf.fs" BCG-LOAD
-   BCG-TEST-IMAGE-BUFFER-CURRENT
-   s" bootstrap/cg/macho.fs" BCG-LOAD
-   BCG-TEST-IMAGE-BUFFER-CURRENT ;
+: IMAGE-BUFFER ( -- )
+   s" bootstrap/cg/image.fs" LOAD
+   s" create MBUF MSIZE allot" MUST-HAVE
+   s" : M-BYTES ( addr u -- )" MUST-HAVE
+   s" : M-NAME16 ( addr u -- )" MUST-HAVE
+   s" bootstrap/cg/elf.fs" LOAD
+   IMAGE-BUFFER-CURRENT
+   s" bootstrap/cg/macho.fs" LOAD
+   IMAGE-BUFFER-CURRENT ;
 
-: BCG-TEST-ASM-CHECKED ( -- )
-   s" bootstrap/cg/asm-checked.fs" BCG-LOAD
-   s" : A-RRR16 ( reg reg n n -- n )" BCG-MUST-HAVE
-   s" : A-RRI10 ( reg reg n n -- n )" BCG-MUST-HAVE
-   s" : A-MOVW ( reg n n n -- n )" BCG-MUST-HAVE
-   s" : A-LS-UOFF ( reg reg off n -- n )" BCG-MUST-HAVE
-   s" 2332033024 A-RRR16" BCG-MUST-HAVE
-   s" $9AC00C00 A-RRR16" BCG-MUST-HAVE
-   s" $D63F0000 A-R1-5" BCG-MUST-HAVE
-   s" 16 lshift swap 5 lshift or swap or" BCG-MUST-LACK
-   s" 10 lshift swap 5 lshift or swap or" BCG-MUST-LACK ;
+: ASM-CHECKED ( -- )
+   s" bootstrap/cg/asm-checked.fs" LOAD
+   s" : A-RRR16 ( reg reg n n -- n )" MUST-HAVE
+   s" : A-RRI10 ( reg reg n n -- n )" MUST-HAVE
+   s" : A-MOVW ( reg n n n -- n )" MUST-HAVE
+   s" : A-LS-UOFF ( reg reg off n -- n )" MUST-HAVE
+   s" 2332033024 A-RRR16" MUST-HAVE
+   s" $9AC00C00 A-RRR16" MUST-HAVE
+   s" $D63F0000 A-R1-5" MUST-HAVE
+   s" 16 lshift swap 5 lshift or swap or" MUST-LACK
+   s" 10 lshift swap 5 lshift or swap or" MUST-LACK ;
 
-: BCG-TEST-GFORTH-LOCALS ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" done:label" BCG-MUST-LACK
-   s" qexit:label" BCG-MUST-LACK
-   s" qlok:label" BCG-MUST-LACK ;
+: GFORTH-LOCALS ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" done:label" MUST-LACK
+   s" qexit:label" MUST-LACK
+   s" qlok:label" MUST-LACK ;
 
-: BCG-TEST-GFORTH-LOCAL-CAPTURE ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" : EMIT-COMPILE-LOCAL" BCG-POS-FOUND {: start:n :}
-   start s" : EMIT-COMPILE-LITERAL" BCG-AFTER-FOUND {: end:n :}
-   start end s" LBCAP @ BL" BCG-MUST-FIND-BEFORE
-   start end s" QPATCH-CELL" BCG-MUST-FIND-BEFORE
-   start end s" LVRALLOC" BCG-MUST-FIND-BEFORE ;
+: GFORTH-LOCAL-CAPTURE ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" : EMIT-COMPILE-LOCAL" POS-FOUND {: start:n :}
+   start s" : EMIT-COMPILE-LITERAL" AFTER-FOUND {: end:n :}
+   start end s" LBCAP @ BL" MUST-FIND-BEFORE
+   start end s" QPATCH-CELL" MUST-FIND-BEFORE
+   start end s" LVRALLOC" MUST-FIND-BEFORE ;
 
-: BCG-TEST-LINUX-SPAWN-SCOPED-LABELS ( -- )
-   s" src/habu/habu1.f" BCG-LOAD
-   s" : LINUX-SPAWN-PREP-W" BCG-POS-FOUND {: start:n :}
-   start s" : BRUNRC" BCG-AFTER-FOUND {: end:n :}
-   start end s" LNX-DONE LABEL@ B" BCG-MUST-NOT-FIND-BEFORE
-   start end s" LNX-DONE LABEL@ LBL" BCG-MUST-NOT-FIND-BEFORE
-   start end s" LNX-FAIL LABEL@ B" BCG-MUST-NOT-FIND-BEFORE
-   start end s" LNX-FAIL LABEL@ LBL" BCG-MUST-NOT-FIND-BEFORE
-   start end s" LNX-OK LABEL@ B" BCG-MUST-NOT-FIND-BEFORE
-   start end s" LNX-OK LABEL@ LBL" BCG-MUST-NOT-FIND-BEFORE
-   start end s" child:label" BCG-MUST-FIND-BEFORE
-   start end s" done:label" BCG-MUST-FIND-BEFORE ;
+: SPAWN-SCOPED-LABELS ( -- )
+   s" src/habu/habu1.f" LOAD
+   s" : LINUX-SPAWN-PREP-W" POS-FOUND {: start:n :}
+   start s" : BRUNRC" AFTER-FOUND {: end:n :}
+   start end s" LNX-DONE LABEL@ B" MUST-NOT-FIND-BEFORE
+   start end s" LNX-DONE LABEL@ LBL" MUST-NOT-FIND-BEFORE
+   start end s" LNX-FAIL LABEL@ B" MUST-NOT-FIND-BEFORE
+   start end s" LNX-FAIL LABEL@ LBL" MUST-NOT-FIND-BEFORE
+   start end s" LNX-OK LABEL@ B" MUST-NOT-FIND-BEFORE
+   start end s" LNX-OK LABEL@ LBL" MUST-NOT-FIND-BEFORE
+   start end s" child:label" MUST-FIND-BEFORE
+   start end s" done:label" MUST-FIND-BEFORE ;
 
-: BCG-TEST-BOOTSTRAP-DATA-SIZE ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" $2000000 constant DATA-SIZE" BCG-MUST-HAVE
-   s" $300000 constant DATA-SIZE" BCG-MUST-LACK
-   s" src/os/linux/layout.f" BCG-LOAD
-   s" $2000000 constant DATA-SIZE" BCG-MUST-HAVE
-   s" $300000 constant DATA-SIZE" BCG-MUST-LACK ;
+: DATA-SIZE-MIRROR ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" $2000000 constant DATA-SIZE" MUST-HAVE
+   s" $300000 constant DATA-SIZE" MUST-LACK
+   s" src/os/linux/layout.f" LOAD
+   s" $2000000 constant DATA-SIZE" MUST-HAVE
+   s" $300000 constant DATA-SIZE" MUST-LACK ;
 
 \ The profiler counter band is sized from DICT-CAP (one 64-bit counter per dict
 \ slot) and reserved high in the DATA region: PROF-CNT-BYTES = DICT-CAP cells, and
@@ -1174,19 +1207,19 @@ public
 \ ($10000 - ...) nor a hardcoded absolute base ($1F0000) may return, so the band
 \ can never fall short of the NDICT<=DICT-CAP slots BPROF-ON zeroes and EMIT-PROF
 \ indexes (dot habu-bound-profiler-counter-235c5f48). Native and bootstrap mirror.
-: BCG-TEST-PROF-CNT-HIGH ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" DICT-CAP cells constant PROF-CNT-BYTES" BCG-MUST-HAVE
-   s" bootstrap/cg/prof.fs" BCG-LOAD
-   s" DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT" BCG-MUST-HAVE
-   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-LACK
-   s" $1F0000 constant PROF-CNT" BCG-MUST-LACK
-   s" src/habu/layout.f" BCG-LOAD
-   s" DICT-CAP cells constant PROF-CNT-BYTES" BCG-MUST-HAVE
-   s" src/habu/prof.f" BCG-LOAD
-   s" DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT" BCG-MUST-HAVE
-   s" DATA-SIZE $10000 - constant PROF-CNT" BCG-MUST-LACK
-   s" $1F0000 constant PROF-CNT" BCG-MUST-LACK ;
+: PROF-CNT-HIGH ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" DICT-CAP cells constant PROF-CNT-BYTES" MUST-HAVE
+   s" bootstrap/cg/prof.fs" LOAD
+   s" DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT" MUST-HAVE
+   s" DATA-SIZE $10000 - constant PROF-CNT" MUST-LACK
+   s" $1F0000 constant PROF-CNT" MUST-LACK
+   s" src/habu/layout.f" LOAD
+   s" DICT-CAP cells constant PROF-CNT-BYTES" MUST-HAVE
+   s" src/habu/prof.f" LOAD
+   s" DATA-SIZE PROF-CNT-BYTES - constant PROF-CNT" MUST-HAVE
+   s" DATA-SIZE $10000 - constant PROF-CNT" MUST-LACK
+   s" $1F0000 constant PROF-CNT" MUST-LACK ;
 
 \ DP-CHECK (habu1.f + bootstrap mirror) caps the user heap below the profiler counter
 \ band: the high bound is DATA-SIZE - PROF-CNT-BYTES, not the bare DATA-SIZE region top,
@@ -1194,43 +1227,43 @@ public
 \ habu-bound-profiler-counter-235c5f48). Red-first: the unfixed DP-CHECK loads a bare
 \ `5 DATA-SIZE LIT64,` high bound; the fix subtracts PROF-CNT-BYTES. Native and bootstrap
 \ mirror the same cap.
-: BCG-TEST-DP-CHECK-BAND-CAP ( -- )
-   s" src/habu/habu1.f" BCG-LOAD
-   s" : DP-CHECK" BCG-POS-FOUND {: hstart:n :}
-   hstart s" : BALLOT" BCG-AFTER-FOUND {: hend:n :}
-   hstart hend s" DATA-SIZE PROF-CNT-BYTES - LIT64," BCG-MUST-FIND-BEFORE
-   hstart hend s" 5 DATA-SIZE LIT64," BCG-MUST-NOT-FIND-BEFORE
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" : DP-CHECK" BCG-POS-FOUND {: bstart:n :}
-   bstart s" : BALLOT" BCG-AFTER-FOUND {: bend:n :}
-   bstart bend s" DATA-SIZE PROF-CNT-BYTES - LIT64," BCG-MUST-FIND-BEFORE
-   bstart bend s" 5 DATA-SIZE LIT64," BCG-MUST-NOT-FIND-BEFORE ;
+: DP-CHECK-BAND-CAP ( -- )
+   s" src/habu/habu1.f" LOAD
+   s" : DP-CHECK" POS-FOUND {: hstart:n :}
+   hstart s" : BALLOT" AFTER-FOUND {: hend:n :}
+   hstart hend s" DATA-SIZE PROF-CNT-BYTES - LIT64," MUST-FIND-BEFORE
+   hstart hend s" 5 DATA-SIZE LIT64," MUST-NOT-FIND-BEFORE
+   s" bootstrap/cg/forth.fs" LOAD
+   s" : DP-CHECK" POS-FOUND {: bstart:n :}
+   bstart s" : BALLOT" AFTER-FOUND {: bend:n :}
+   bstart bend s" DATA-SIZE PROF-CNT-BYTES - LIT64," MUST-FIND-BEFORE
+   bstart bend s" 5 DATA-SIZE LIT64," MUST-NOT-FIND-BEFORE ;
 
-: BCG-TEST-PUBLISH-HOOK-SPLIT ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" : EMIT-COMPILE-PUBLISH-TRUSTED" BCG-MUST-HAVE
-   s" : EMIT-COMPILE-PUBLISH-HOOKED" BCG-MUST-HAVE
-   s" : EMIT-COMPILE-PUBLISH ( n -- )" BCG-MUST-HAVE
-   s" BODYBUF-OFF ADDI,  10 G-PUSH" BCG-MUST-HAVE
-   s" C-CALL-TRUST-PEND-MAYBE" BCG-MUST-LACK ;
+: PUBLISH-HOOK-SPLIT ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" : EMIT-COMPILE-PUBLISH-TRUSTED" MUST-HAVE
+   s" : EMIT-COMPILE-PUBLISH-HOOKED" MUST-HAVE
+   s" : EMIT-COMPILE-PUBLISH ( n -- )" MUST-HAVE
+   s" BODYBUF-OFF ADDI,  10 G-PUSH" MUST-HAVE
+   s" C-CALL-TRUST-PEND-MAYBE" MUST-LACK ;
 
-: BCG-TEST-BOOTSTRAP-LOCAL-SHADOW ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" lmain EMIT-COMPILE-LOCAL" s" lmain EMIT-COMPILE-KEYWORDS" BCG-MUST-BEFORE
-   s" : J-CASE ( -- )" BCG-MUST-HAVE
-   s" : J-OF ( -- )" BCG-MUST-HAVE
-   s" : J-ENDOF ( -- )" BCG-MUST-HAVE
-   s" : J-ENDCASE ( -- )" BCG-MUST-HAVE
-   s" : J-MATCH ( -- )" BCG-MUST-HAVE
-   s" : C-DIE-BAD-TAG ( -- )" BCG-MUST-HAVE ;
+: LOCAL-SHADOW ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" lmain EMIT-COMPILE-LOCAL" s" lmain EMIT-COMPILE-KEYWORDS" MUST-BEFORE
+   s" : J-CASE ( -- )" MUST-HAVE
+   s" : J-OF ( -- )" MUST-HAVE
+   s" : J-ENDOF ( -- )" MUST-HAVE
+   s" : J-ENDCASE ( -- )" MUST-HAVE
+   s" : J-MATCH ( -- )" MUST-HAVE
+   s" : C-DIE-BAD-TAG ( -- )" MUST-HAVE ;
 
-: BCG-TEST-BOOTSTRAP-HIDE-PRELUDE ( -- )
-   s" tools/bootstrap.sh" BCG-LOAD
-   s" BOOT-USIGS-RESET" BCG-MUST-HAVE
-   s" SEQ" BCG-MUST-HAVE
-   s" IMK-NDICT0" BCG-MUST-HAVE                \ replay hides from util.f's FIRST record (the int-mark watermark), mirroring BFR-HIDE-DICT-FROM-EARLIEST
-   s" BOOT-HIDE-DICT-FROM-EARLIEST" BCG-MUST-HAVE
-   s" T-CON" BCG-MUST-LACK ;
+: HIDE-PRELUDE ( -- )
+   s" tools/bootstrap.sh" LOAD
+   s" BOOT-USIGS-RESET" MUST-HAVE
+   s" SEQ" MUST-HAVE
+   s" IMK-NDICT0" MUST-HAVE                \ replay hides from util.f's FIRST record (the int-mark watermark), mirroring BFR-HIDE-DICT-FROM-EARLIEST
+   s" BOOT-HIDE-DICT-FROM-EARLIEST" MUST-HAVE
+   s" T-CON" MUST-LACK ;
 
 \ Every engine built from the emitted compiler source loads the boot prefix from
 \ disk when it starts and then interprets that source, which loads the prefix a
@@ -1251,16 +1284,18 @@ public
 \ structure rather than counting words: the prelude call must sit inside
 \ emit_src's own head, that head must contain no conditional that could gate it
 \ again, no mode variable may survive, and no call site may ask for a mode.
-: BCG-TEST-BOOTSTRAP-PROLOGUE-UNCONDITIONAL ( -- )
-   s" tools/bootstrap.sh" BCG-LOAD
-   s" emit_src() {" BCG-POS-FOUND {: head:n :}
-   head S\" printf \"0 set-check\\n\" >> \"$out\"" BCG-AFTER-FOUND {: body:n :}
-   head body S\" emit_boot_hide \"$out\"" BCG-MUST-FIND-BEFORE
-   head body s" if [[" BCG-MUST-NOT-FIND-BEFORE
-   s" local mode=" BCG-MUST-LACK
-   S\" emit_boot_hide \"$out\"" s" cat src/core/util.f" BCG-MUST-BEFORE
-   s" src/habu/stage2.f native" BCG-MUST-LACK
-   s" src/habu/stdin.f native" BCG-MUST-LACK ;
+: PROLOGUE-UNCONDITIONAL ( -- )
+   s" tools/bootstrap.sh" LOAD
+   s" emit_src() {" POS-FOUND {: head:n :}
+   head S\" printf \"0 set-check\\n\" >> \"$out\"" AFTER-FOUND {: body:n :}
+   head body S\" emit_boot_hide \"$out\"" MUST-FIND-BEFORE
+   head body s" if [[" MUST-NOT-FIND-BEFORE
+   s" local mode=" MUST-LACK
+   S\" emit_boot_hide \"$out\"" s" cat src/core/util.f" MUST-BEFORE
+   s" src/habu/stage2.f native" MUST-LACK
+   s" src/habu/stdin.f native" MUST-LACK ;
+
+;package
 
 \ --- earliest-marker hide behavior ---
 \ tools/bootstrap.sh's BOOT-* hide prelude mirrors src/habu/hide.f's BFR-*
@@ -1268,108 +1303,145 @@ public
 \ below; no shell is spawned (that would add host-glue surface), so the script
 \ body itself stays pinned by the substring assertions above. hide.f is baked
 \ into the engine prelude and truncated away after use, so `require` would be
-\ skipped as already provided; include reloads the BFR-* words here.
+\ skipped as already provided; include reloads the BFR-* words here. The include
+\ publishes those BFR-* words globally, so it stays outside every package.
 include src/habu/hide.f
 
-variable BCGH-MID                            \ ndict watermark between the duplicate fixture records
+\ The watermark has to be read at top level BETWEEN the two duplicate fixture
+\ records, and packages do not nest, so BCG-HIDE opens once to publish the
+\ recording word and reopens below for the checks that read it.
+package BCG-HIDE
+private
 
-package BCGH-EARLY
+variable MID                            \ ndict watermark between the duplicate fixture records
+
 public
-: BCGH-DUP-MARK ( -- ) ;
+
+: MARK-MID ( -- )
+   ndict@ MID ! ;
+
 ;package
 
-ndict@ BCGH-MID !
-
-package BCGH-LATE
+\ Two packages export the same tail on purpose: the earlier record must win.
+package BCG-DUP-EARLY
 public
-: BCGH-DUP-MARK ( -- ) ;
+: DUP-MARK ( -- ) ;
 ;package
 
-: BCGH-FIND ( ptr u8 n -- n )
+BCG-HIDE:MARK-MID
+
+package BCG-DUP-LATE
+public
+: DUP-MARK ( -- ) ;
+;package
+
+package BCG-HIDE
+private
+
+: REC ( ptr u8 n -- n )
    BFR-FIND-FIRST-INDEX ;
 
-: BCGH-IMK ( -- n )
-   s" IMK-NDICT0" BCGH-FIND ;
+: IMK-REC ( -- n )
+   s" IMK-NDICT0" REC ;
 
-: BCGH-SEQ ( -- n )
-   s" SEQ" BCGH-FIND ;
+: SEQ-REC ( -- n )
+   s" SEQ" REC ;
 
 \ The production markers exist in the live dictionary with IMK-NDICT0 (util.f's
 \ first record) earlier than SEQ; the hide index must pick the earlier record
 \ in either argument order.
-: BCG-TEST-HIDE-EARLIEST-MARKER ( -- )
-   BCGH-IMK 0 >= TTRUE
-   BCGH-SEQ 0 >= TTRUE
-   BCGH-IMK BCGH-SEQ < TTRUE
-   s" IMK-NDICT0" s" SEQ" BFR-MARKER-INDEX BCGH-IMK T=
-   s" SEQ" s" IMK-NDICT0" BFR-MARKER-INDEX BCGH-IMK T= ;
+: EARLIEST-MARKER ( -- )
+   IMK-REC 0 >= TTRUE
+   SEQ-REC 0 >= TTRUE
+   IMK-REC SEQ-REC < TTRUE
+   s" IMK-NDICT0" s" SEQ" BFR-MARKER-INDEX IMK-REC T=
+   s" SEQ" s" IMK-NDICT0" BFR-MARKER-INDEX IMK-REC T= ;
 
-\ Earliest-hide depends on FIND-FIRST returning the FIRST record of a name:
-\ the duplicate fixture record defined before the BCGH-MID watermark must win,
-\ and the match must fold case like the shell's BOOT-XREF-STR=CI.
-: BCG-TEST-HIDE-FIRST-RECORD ( -- )
-   s" BCGH-DUP-MARK" BCGH-FIND 0 >= TTRUE
-   s" BCGH-DUP-MARK" BCGH-FIND BCGH-MID @ < TTRUE
-   s" bcgh-dup-mark" BCGH-FIND s" BCGH-DUP-MARK" BCGH-FIND T= ;
+\ Earliest-hide depends on FIND-FIRST returning the FIRST record of a name: the
+\ duplicate fixture record published before the MID watermark must win, and the
+\ match must fold case like the shell's BOOT-XREF-STR=CI. The dictionary record
+\ of a package word stores its bare tail, so the searched name is `DUP-MARK`.
+\ Naming both fixture words keeps the duplicate load-bearing: if either package
+\ stopped publishing the tail, the file would fail to load here instead of
+\ leaving the index assertions below trivially satisfiable by a single record.
+: FIRST-RECORD ( -- )
+   BCG-DUP-EARLY:DUP-MARK
+   BCG-DUP-LATE:DUP-MARK
+   s" DUP-MARK" REC 0 >= TTRUE
+   s" DUP-MARK" REC MID @ < TTRUE
+   s" dup-mark" REC s" DUP-MARK" REC T= ;
 
 \ One marker missing falls back to the found one; both missing is asserted at
 \ the component level (FIND -> NOT-FOUND, MIN-FOUND keeps NOT-FOUND) because
 \ BFR-MARKER-INDEX's both-missing path is a process exit (die 76) by design.
-: BCG-TEST-HIDE-MISSING-FALLBACK ( -- )
-   s" IMK-NDICT0" s" BCGH-ABSENT-MARKER" BFR-MARKER-INDEX BCGH-IMK T=
-   s" BCGH-ABSENT-MARKER" s" IMK-NDICT0" BFR-MARKER-INDEX BCGH-IMK T=
-   s" BCGH-ABSENT-MARKER" BCGH-FIND BFR-NOT-FOUND T=
+: MISSING-FALLBACK ( -- )
+   s" IMK-NDICT0" s" BCG-NO-SUCH-MARKER" BFR-MARKER-INDEX IMK-REC T=
+   s" BCG-NO-SUCH-MARKER" s" IMK-NDICT0" BFR-MARKER-INDEX IMK-REC T=
+   s" BCG-NO-SUCH-MARKER" REC BFR-NOT-FOUND T=
    BFR-NOT-FOUND BFR-NOT-FOUND BFR-MIN-FOUND BFR-NOT-FOUND T=
    5 BFR-REQUIRE-INDEX 5 T= ;
 
-: BCG-TEST-BOOTSTRAP-SMALL-BIN ( -- )
-   s" tools/bootstrap.sh" BCG-LOAD
-   s" hb-new" BCG-MUST-LACK
-   s" hb-snap-src" BCG-MUST-LACK
-   s" hb-snap0" BCG-MUST-LACK
-   s" bootstrap check OK: %s/hb-stdin" BCG-MUST-HAVE
-   S\" env HABU_UNDER_TEST=\q$T/hb-stdin\q \q$T/hb-stdin\q --load test/top-row-hook-test.f" BCG-MUST-HAVE
-   s" mv " BCG-MUST-HAVE
-   s" bin/hb" BCG-MUST-HAVE ;
+public
 
-: BCG-TEST-OWNER-PERSIST ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" 3 constant SNAP-FORMAT-VERSION" BCG-MUST-HAVE
-   s" 1 constant OWNER-API-PUB-WID" BCG-MUST-HAVE
-   s" 2 constant OWNER-API-PRI-WID" BCG-MUST-HAVE
-   s" 3 constant FIRST-DYNAMIC-WID" BCG-MUST-HAVE
-   s" 256 constant RSTK-CELLS" BCG-MUST-HAVE
-   s" $47C0 constant OWNER-WID-N-CELL" BCG-MUST-HAVE
-   s" create PWID PRIM-CAP cells allot" BCG-MUST-HAVE
-   S\" s\" FINALIZE\" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID" BCG-MUST-HAVE
-   s" LNCOUNT @ LBL,  #PL @ 1+ DCQ," BCG-MUST-HAVE
-   s" OWNER-API-PUB-WID DCQ," BCG-MUST-HAVE
-   s" OWNER-API-PRI-WID DCQ," BCG-MUST-HAVE
-   s" : EMIT-SNAPSHOT-VALIDATE-WIDS" BCG-MUST-HAVE
-   s" 13 9 40 LDR,  14 0 MOVN,  13 14 CMP,  C-EQ sds2 BCOND," BCG-MUST-HAVE
-   s" 22 22 48 SUBI," BCG-MUST-HAVE
-   s" 14 5 CMP,  C-NE snbadver BCOND," BCG-MUST-HAVE
-   s" 6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND," BCG-MUST-HAVE
-   s" 13 LSRC @ ADR,  14 13 25 SUB," BCG-MUST-HAVE
-   s" C-GT snpresent BCOND," BCG-MUST-HAVE
-   s" 4 4 DBASE SUB,  4 4 25 ADD," BCG-MUST-HAVE
-   s" 9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR," BCG-MUST-HAVE ;
+: TEST ( -- )
+   EARLIEST-MARKER
+   FIRST-RECORD
+   MISSING-FALLBACK ;
 
-: BCG-TEST-OWNER-PUBLISH ( -- )
-   s" src/habu/habu1.f" BCG-LOAD
-   s" 14 15 LDAR," BCG-MUST-HAVE
-   s" 14 15 STLR," BCG-MUST-HAVE
-   s" src/habu/habu2.f" BCG-LOAD
-   s" 11 5 STLR," BCG-MUST-HAVE
-   s" src/habu/aot-capture.f" BCG-LOAD
-   s" AOT-LIVE-DATA PROT-WID-N-CELL + atomic@" BCG-MUST-HAVE
-   s" AOT-LIVE-DATA PROT-WID-N-CELL + AOT-CELL@" BCG-MUST-LACK
-   s" AOT-LIVE-DATA OWNER-WID-N-CELL + atomic@" BCG-MUST-HAVE
-   s" variable OWNER-PACKAGE-K" BCG-MUST-HAVE
-   s" variable OWNER-PACKAGE-REC" BCG-MUST-LACK
-   s" tools/build-fixpoint.f" BCG-LOAD
-   s" PTR-VARIABLE KEEP-A" BCG-MUST-HAVE
-   s" variable KEEP-A" BCG-MUST-LACK ;
+;package
+
+\ Back into BCG for the remaining checks.
+package BCG
+private
+
+: SMALL-BIN ( -- )
+   s" tools/bootstrap.sh" LOAD
+   s" hb-new" MUST-LACK
+   s" hb-snap-src" MUST-LACK
+   s" hb-snap0" MUST-LACK
+   s" bootstrap check OK: %s/hb-stdin" MUST-HAVE
+   S\" env HABU_UNDER_TEST=\q$T/hb-stdin\q \q$T/hb-stdin\q --load test/top-row-hook-test.f" MUST-HAVE
+   s" mv " MUST-HAVE
+   s" bin/hb" MUST-HAVE ;
+
+: OWNER-PERSIST ( -- )
+   s" bootstrap/cg/forth.fs" LOAD
+   s" 3 constant SNAP-FORMAT-VERSION" MUST-HAVE
+   s" 1 constant OWNER-API-PUB-WID" MUST-HAVE
+   s" 2 constant OWNER-API-PRI-WID" MUST-HAVE
+   s" 3 constant FIRST-DYNAMIC-WID" MUST-HAVE
+   s" 256 constant RSTK-CELLS" MUST-HAVE
+   s" $47C0 constant OWNER-WID-N-CELL" MUST-HAVE
+   s" create PWID PRIM-CAP cells allot" MUST-HAVE
+   S\" s\" FINALIZE\" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID" MUST-HAVE
+   s" LNCOUNT @ LBL,  #PL @ 1+ DCQ," MUST-HAVE
+   s" OWNER-API-PUB-WID DCQ," MUST-HAVE
+   s" OWNER-API-PRI-WID DCQ," MUST-HAVE
+   s" : EMIT-SNAPSHOT-VALIDATE-WIDS" MUST-HAVE
+   s" 13 9 40 LDR,  14 0 MOVN,  13 14 CMP,  C-EQ sds2 BCOND," MUST-HAVE
+   s" 22 22 48 SUBI," MUST-HAVE
+   s" 14 5 CMP,  C-NE snbadver BCOND," MUST-HAVE
+   s" 6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND," MUST-HAVE
+   s" 13 LSRC @ ADR,  14 13 25 SUB," MUST-HAVE
+   s" C-GT snpresent BCOND," MUST-HAVE
+   s" 4 4 DBASE SUB,  4 4 25 ADD," MUST-HAVE
+   s" 9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR," MUST-HAVE ;
+
+: OWNER-PUBLISH ( -- )
+   s" src/habu/habu1.f" LOAD
+   s" 14 15 LDAR," MUST-HAVE
+   s" 14 15 STLR," MUST-HAVE
+   s" src/habu/habu2.f" LOAD
+   s" 11 5 STLR," MUST-HAVE
+   s" src/habu/aot-capture.f" LOAD
+   s" AOT-LIVE-DATA PROT-WID-N-CELL + atomic@" MUST-HAVE
+   s" AOT-LIVE-DATA PROT-WID-N-CELL + AOT-CELL@" MUST-LACK
+   s" AOT-LIVE-DATA OWNER-WID-N-CELL + atomic@" MUST-HAVE
+   s" variable OWNER-PACKAGE-K" MUST-HAVE
+   s" variable OWNER-PACKAGE-REC" MUST-LACK
+   s" tools/build-fixpoint.f" LOAD
+   s" PTR-VARIABLE KEEP-A" MUST-HAVE
+   s" variable KEEP-A" MUST-LACK ;
 
 \ Fixed-VA region mmap failures at boot must NOT be silent (dot
 \ habu-diagnose-fixed-va-ed649528). A forced fixed-VA collision is not reliably
@@ -1379,57 +1451,62 @@ public
 \ present, the native length constants are exact, and each failure path names the
 \ fault on fd 2 before its exit 78. The bytes live in the loaded __text image, so
 \ the write is valid even though the region being mapped does not exist yet.
-: BCG-TEST-MMAP-DIAG ( -- )
-   s" src/habu/habu2.f" BCG-LOAD
-   s" hb: cannot map fixed code region" BCG-MUST-HAVE
-   s" hb: cannot map fixed data region" BCG-MUST-HAVE
-   s" 33 constant MMAPCODE-MSG-LEN" BCG-MUST-HAVE
-   s" 33 constant MMAPDATA-MSG-LEN" BCG-MUST-HAVE
-   s" : EM-MMAP-CODE-REGION" BCG-POS-FOUND {: ncstart:n :}
-   ncstart s" rvok LBL, ;" BCG-AFTER-FOUND {: ncend:n :}
-   ncstart ncend s" LMMAPCODE LABEL@ ADR" BCG-MUST-FIND-BEFORE
-   ncstart ncend s" MMAPCODE-MSG-LEN MOVZ" BCG-MUST-FIND-BEFORE
-   ncstart ncend s" 78 MOVZ" BCG-MUST-FIND-BEFORE
-   s" : EM-MMAP-DATA-REGION" BCG-POS-FOUND {: ndstart:n :}
-   ndstart s" dvok LBL, ;" BCG-AFTER-FOUND {: ndend:n :}
-   ndstart ndend s" LMMAPDATA LABEL@ ADR" BCG-MUST-FIND-BEFORE
-   ndstart ndend s" MMAPDATA-MSG-LEN MOVZ" BCG-MUST-FIND-BEFORE
-   ndstart ndend s" 78 MOVZ" BCG-MUST-FIND-BEFORE
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" hb: cannot map fixed code region" BCG-MUST-HAVE
-   s" hb: cannot map fixed data region" BCG-MUST-HAVE
-   s" : EMIT-MMAP-CODE-REGION" BCG-POS-FOUND {: mcstart:n :}
-   mcstart s" rvok LBL," BCG-AFTER-FOUND {: mcend:n :}
-   mcstart mcend s" hb: cannot map fixed code region" BCG-MUST-FIND-BEFORE
-   mcstart mcend s" C-EXIT-DIAG" BCG-MUST-FIND-BEFORE
-   s" : EMIT-MMAP-DATA-REGION" BCG-POS-FOUND {: mdstart:n :}
-   mdstart s" dvok LBL, ;" BCG-AFTER-FOUND {: mdend:n :}
-   mdstart mdend s" hb: cannot map fixed data region" BCG-MUST-FIND-BEFORE
-   mdstart mdend s" C-EXIT-DIAG" BCG-MUST-FIND-BEFORE ;
+: MMAP-DIAG ( -- )
+   s" src/habu/habu2.f" LOAD
+   s" hb: cannot map fixed code region" MUST-HAVE
+   s" hb: cannot map fixed data region" MUST-HAVE
+   s" 33 constant MMAPCODE-MSG-LEN" MUST-HAVE
+   s" 33 constant MMAPDATA-MSG-LEN" MUST-HAVE
+   s" : EM-MMAP-CODE-REGION" POS-FOUND {: ncstart:n :}
+   ncstart s" rvok LBL, ;" AFTER-FOUND {: ncend:n :}
+   ncstart ncend s" LMMAPCODE LABEL@ ADR" MUST-FIND-BEFORE
+   ncstart ncend s" MMAPCODE-MSG-LEN MOVZ" MUST-FIND-BEFORE
+   ncstart ncend s" 78 MOVZ" MUST-FIND-BEFORE
+   s" : EM-MMAP-DATA-REGION" POS-FOUND {: ndstart:n :}
+   ndstart s" dvok LBL, ;" AFTER-FOUND {: ndend:n :}
+   ndstart ndend s" LMMAPDATA LABEL@ ADR" MUST-FIND-BEFORE
+   ndstart ndend s" MMAPDATA-MSG-LEN MOVZ" MUST-FIND-BEFORE
+   ndstart ndend s" 78 MOVZ" MUST-FIND-BEFORE
+   s" bootstrap/cg/forth.fs" LOAD
+   s" hb: cannot map fixed code region" MUST-HAVE
+   s" hb: cannot map fixed data region" MUST-HAVE
+   s" : EMIT-MMAP-CODE-REGION" POS-FOUND {: mcstart:n :}
+   mcstart s" rvok LBL," AFTER-FOUND {: mcend:n :}
+   mcstart mcend s" hb: cannot map fixed code region" MUST-FIND-BEFORE
+   mcstart mcend s" C-EXIT-DIAG" MUST-FIND-BEFORE
+   s" : EMIT-MMAP-DATA-REGION" POS-FOUND {: mdstart:n :}
+   mdstart s" dvok LBL, ;" AFTER-FOUND {: mdend:n :}
+   mdstart mdend s" hb: cannot map fixed data region" MUST-FIND-BEFORE
+   mdstart mdend s" C-EXIT-DIAG" MUST-FIND-BEFORE ;
 
+;package
+
+\ The compile preflight hook: both emitters must carry the missing-hook
+\ diagnostic and the package resynchronisation path.
 package BCG-PREFLIGHT
+using BCG
 
 : RECOVERY ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" 35 constant PREFMISSMSG-LEN" BCG-MUST-HAVE
-   S\" LPREFMISSMSG @ LBL, S\\\" hb: compile preflight hook missing\\n\" BYTES," BCG-MUST-HAVE
-   s" 9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS @ CBZ" BCG-MUST-HAVE
-   s" 2 PREFMISSMSG-LEN MOVZ" BCG-MUST-HAVE
-   s" : EMIT-PREFMISS-RECOVER" BCG-MUST-HAVE
-   s" 12 PKGSNAP-OFF LIT64," BCG-MUST-HAVE
-   s" $27C0 constant PKGRESYNC-CELL" BCG-MUST-HAVE
-   s" : EMIT-PKG-RESYNC" BCG-MUST-HAVE
-   s" 9 DATA PKGRESYNC-CELL LDR," BCG-MUST-HAVE
-   s" LCHKENDPKG 19 C-PACKAGE-CHECK-CALL" BCG-MUST-HAVE
-   s" 12 1 MOVZ,  12 DATA PKGRESYNC-CELL STR," BCG-MUST-HAVE
-   s" LTHROWDISPATCH @ B," BCG-MUST-HAVE ;
+   s" bootstrap/cg/forth.fs" LOAD
+   s" 35 constant PREFMISSMSG-LEN" MUST-HAVE
+   S\" LPREFMISSMSG @ LBL, S\\\" hb: compile preflight hook missing\\n\" BYTES," MUST-HAVE
+   s" 9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS @ CBZ" MUST-HAVE
+   s" 2 PREFMISSMSG-LEN MOVZ" MUST-HAVE
+   s" : EMIT-PREFMISS-RECOVER" MUST-HAVE
+   s" 12 PKGSNAP-OFF LIT64," MUST-HAVE
+   s" $27C0 constant PKGRESYNC-CELL" MUST-HAVE
+   s" : EMIT-PKG-RESYNC" MUST-HAVE
+   s" 9 DATA PKGRESYNC-CELL LDR," MUST-HAVE
+   s" LCHKENDPKG 19 C-PACKAGE-CHECK-CALL" MUST-HAVE
+   s" 12 1 MOVZ,  12 DATA PKGRESYNC-CELL STR," MUST-HAVE
+   s" LTHROWDISPATCH @ B," MUST-HAVE ;
 
 : NATIVE ( -- )
-   s" src/habu/habu2.f" BCG-LOAD
-   s" 35 constant PREFMISSMSG-LEN" BCG-MUST-HAVE
-   S\" LPREFMISSMSG LABEL@ LBL, S\\\" hb: compile preflight hook missing\\n\" BYTES," BCG-MUST-HAVE
-   s" 9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ" BCG-MUST-HAVE
-   s" 2 PREFMISSMSG-LEN MOVZ" BCG-MUST-HAVE ;
+   s" src/habu/habu2.f" LOAD
+   s" 35 constant PREFMISSMSG-LEN" MUST-HAVE
+   S\" LPREFMISSMSG LABEL@ LBL, S\\\" hb: compile preflight hook missing\\n\" BYTES," MUST-HAVE
+   s" 9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ" MUST-HAVE
+   s" 2 PREFMISSMSG-LEN MOVZ" MUST-HAVE ;
 
 public
 
@@ -1445,68 +1522,69 @@ public
 \ through a hard-coded DATA offset (CK-USE-DEPTH-OFF), so the band offsets are a
 \ cross-file contract, not a local layout choice.
 package BCG-USING
+using BCG
 
 : BAND ( -- )   \ the four band offsets, shared by both engines and the checker
-   s" 40 constant PKGSNAP-USE" BCG-MUST-HAVE
-   s" 16 constant USE-MAX" BCG-MUST-HAVE
-   s" PKGSNAP-END constant USE-BAND-OFF" BCG-MUST-HAVE
-   s" constant USE-DEPTH-CELL" BCG-MUST-HAVE
-   s" constant USE-PKG-SAVE-CELL" BCG-MUST-HAVE
-   s" constant USE-WIDS-OFF" BCG-MUST-HAVE
-   s" USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END" BCG-MUST-HAVE
-   s" USE-BAND-END constant DATA-START" BCG-MUST-HAVE ;
+   s" 40 constant PKGSNAP-USE" MUST-HAVE
+   s" 16 constant USE-MAX" MUST-HAVE
+   s" PKGSNAP-END constant USE-BAND-OFF" MUST-HAVE
+   s" constant USE-DEPTH-CELL" MUST-HAVE
+   s" constant USE-PKG-SAVE-CELL" MUST-HAVE
+   s" constant USE-WIDS-OFF" MUST-HAVE
+   s" USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END" MUST-HAVE
+   s" USE-BAND-END constant DATA-START" MUST-HAVE ;
 
 : KEYWORDS ( -- )   \ the emitters both engines carry
-   s" : C-USING-NAME-GUARD" BCG-MUST-HAVE
-   s" : C-USING-WID" BCG-MUST-HAVE
-   s" : C-USING-PUSH" BCG-MUST-HAVE
-   s" : C-USING (" BCG-MUST-HAVE
-   s" : C-END-USING" BCG-MUST-HAVE
-   s" : EMIT-FIND-USED" BCG-MUST-HAVE
-   s" hb: using: missing package name" BCG-MUST-HAVE
-   s" hb: using: unknown package: " BCG-MUST-HAVE
-   s" hb: using: too many concurrent usings: " BCG-MUST-HAVE
-   s" hb: ;using without an open using" BCG-MUST-HAVE
-   s" hb: ambiguous bare word resolves in multiple used packages: " BCG-MUST-HAVE ;
+   s" : C-USING-NAME-GUARD" MUST-HAVE
+   s" : C-USING-WID" MUST-HAVE
+   s" : C-USING-PUSH" MUST-HAVE
+   s" : C-USING (" MUST-HAVE
+   s" : C-END-USING" MUST-HAVE
+   s" : EMIT-FIND-USED" MUST-HAVE
+   s" hb: using: missing package name" MUST-HAVE
+   s" hb: using: unknown package: " MUST-HAVE
+   s" hb: using: too many concurrent usings: " MUST-HAVE
+   s" hb: ;using without an open using" MUST-HAVE
+   s" hb: ambiguous bare word resolves in multiple used packages: " MUST-HAVE ;
 
 : RECOVERY ( -- )
-   s" bootstrap/cg/forth.fs" BCG-LOAD
+   s" bootstrap/cg/forth.fs" LOAD
    BAND
    KEYWORDS
-   s" LKWUSING @ LBL," BCG-MUST-HAVE
-   s" LCHKUSING @ LBL," BCG-MUST-HAVE
-   s" LBL LKWUSING !" BCG-MUST-HAVE
-   s" LBL LFINDUSED !" BCG-MUST-HAVE
-   s" lmain LKWUSING 5 " BCG-MUST-HAVE
-   s" lmain LKWSEMIUSING 6 " BCG-MUST-HAVE
-   s" LFINDUSED @ BL," BCG-MUST-HAVE
-   s" 89 constant ENGINE-ERROR:USING-NO-NAME" BCG-MUST-HAVE
-   s" 94 constant ENGINE-ERROR:USING-AMBIGUOUS" BCG-MUST-HAVE
+   s" LKWUSING @ LBL," MUST-HAVE
+   s" LCHKUSING @ LBL," MUST-HAVE
+   s" LBL LKWUSING !" MUST-HAVE
+   s" LBL LFINDUSED !" MUST-HAVE
+   s" lmain LKWUSING 5 " MUST-HAVE
+   s" lmain LKWSEMIUSING 6 " MUST-HAVE
+   s" LFINDUSED @ BL," MUST-HAVE
+   s" 89 constant ENGINE-ERROR:USING-NO-NAME" MUST-HAVE
+   s" 94 constant ENGINE-ERROR:USING-AMBIGUOUS" MUST-HAVE
    \ stage0 takes no REPL-line package/using snapshot, so it must not claim the
    \ native cell that restores one; the offset stays reserved instead.
-   s" USE-RPKG-SAVE-CELL" BCG-MUST-LACK ;
+   s" USE-RPKG-SAVE-CELL" MUST-LACK ;
 
 : NATIVE ( -- )
-   s" src/habu/habu2.f" BCG-LOAD
+   s" src/habu/habu2.f" LOAD
    KEYWORDS
-   s" LKWUSING LABEL@ LBL," BCG-MUST-HAVE
-   s" LFINDUSED LABEL@ BL," BCG-MUST-HAVE
-   s" src/habu/layout.f" BCG-LOAD
+   s" LKWUSING LABEL@ LBL," MUST-HAVE
+   s" LFINDUSED LABEL@ BL," MUST-HAVE
+   s" src/habu/layout.f" LOAD
    BAND
-   s" src/core/engine-error.f" BCG-LOAD
-   s" 89 constant USING-NO-NAME" BCG-MUST-HAVE
-   s" 94 constant USING-AMBIGUOUS" BCG-MUST-HAVE
-   s" src/core/checker.f" BCG-LOAD
-   s" $9C08 constant CK-USE-DEPTH-OFF" BCG-MUST-HAVE ;
+   s" src/core/engine-error.f" LOAD
+   s" 89 constant USING-NO-NAME" MUST-HAVE
+   s" 94 constant USING-AMBIGUOUS" MUST-HAVE
+   s" src/core/checker.f" LOAD
+   s" $9C08 constant CK-USE-DEPTH-OFF" MUST-HAVE ;
 
 : FIXTURES ( -- )   \ the recovery run executes stage0 on real using sources
-   s" tools/bootstrap.sh" BCG-LOAD
-   s" bootstrap_using_gate" BCG-MUST-HAVE
-   s" bootstrap_using_case bootstrap-using 0" BCG-MUST-HAVE
-   s" bootstrap_using_case bootstrap-using-unknown 91" BCG-MUST-HAVE
-   s" bootstrap_using_case bootstrap-using-ambiguous 94" BCG-MUST-HAVE
-   s" bootstrap_using_case bootstrap-using-scope 70" BCG-MUST-HAVE
-   s" bootstrap_using_case bootstrap-using-checker-hook 0" BCG-MUST-HAVE ;
+   s" tools/bootstrap.sh" LOAD
+   s" bootstrap_using_gate" MUST-HAVE
+   s" bootstrap_using_case bootstrap-using 0" MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-unknown 91" MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-ambiguous 94" MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-scope 70" MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-checker-hook 0" MUST-HAVE ;
 
 public
 
@@ -1517,40 +1595,44 @@ public
 
 ;package
 
-: BCG-MAIN ( -- )
+\ The entry point, and the only word this file exports to top level.
+package BCG
+public
+
+: MAIN ( -- )
    T-RESET
-   BCG-TEST-MMAP-DIAG
+   MMAP-DIAG
    BCG-PREFLIGHT:TEST
    BCG-USING:TEST
-   BCG-TEST-INSTALL-FAIL-CLOSED
-   BCG-TEST-FORTH-SDQ-COMMENT
-   BCG-TEST-PREFIX-LIST
-   BCG-TEST-TOK-IMM-MIRROR
-   BCG-TEST-PROTWID-LEAFNESS
-   BCG-TEST-ENGINE-ERROR
-   BCG-TEST-CELL-PARITY
+   INSTALL-FAIL-CLOSED
+   FORTH-SDQ-COMMENT
+   PREFIX-LIST
+   TOK-IMM-MIRROR
+   PROTWID-LEAFNESS
+   ENGINE-ERROR-CODES
+   CELL-PARITY
    BCG-CAP:TEST
-   BCG-TEST-BAKED-SOURCE-PREFIX
-   BCG-TEST-TRUST-CALLS
-   BCG-TEST-IMAGE-BUFFER
-   BCG-TEST-ASM-CHECKED
-   BCG-TEST-GFORTH-LOCALS
-   BCG-TEST-GFORTH-LOCAL-CAPTURE
-   BCG-TEST-LINUX-SPAWN-SCOPED-LABELS
-   BCG-TEST-BOOTSTRAP-DATA-SIZE
-   BCG-TEST-PROF-CNT-HIGH
-   BCG-TEST-DP-CHECK-BAND-CAP
-   BCG-TEST-PUBLISH-HOOK-SPLIT
-   BCG-TEST-BOOTSTRAP-LOCAL-SHADOW
-   BCG-TEST-BOOTSTRAP-HIDE-PRELUDE
-   BCG-TEST-BOOTSTRAP-PROLOGUE-UNCONDITIONAL
-   BCG-TEST-HIDE-EARLIEST-MARKER
-   BCG-TEST-HIDE-FIRST-RECORD
-   BCG-TEST-HIDE-MISSING-FALLBACK
-   BCG-TEST-OWNER-PERSIST
-   BCG-TEST-OWNER-PUBLISH
-   BCG-TEST-BOOTSTRAP-SMALL-BIN
+   BAKED-PREFIX
+   TRUST-CALLS
+   IMAGE-BUFFER
+   ASM-CHECKED
+   GFORTH-LOCALS
+   GFORTH-LOCAL-CAPTURE
+   SPAWN-SCOPED-LABELS
+   DATA-SIZE-MIRROR
+   PROF-CNT-HIGH
+   DP-CHECK-BAND-CAP
+   PUBLISH-HOOK-SPLIT
+   LOCAL-SHADOW
+   HIDE-PRELUDE
+   PROLOGUE-UNCONDITIONAL
+   BCG-HIDE:TEST
+   OWNER-PERSIST
+   OWNER-PUBLISH
+   SMALL-BIN
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 
-BCG-MAIN
+;package
+
+BCG:MAIN

@@ -185,6 +185,10 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" tools" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ holds the stage0 hostile that ends in a listed path from outside test/,
+   \ tools/test/<name>
+   TEST-ROOT$ s" tools/test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" test/lib" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
@@ -1072,6 +1076,131 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" test/internal-word-gate.f" TEST-FIXTURE-AT
    1 TEST-EXPECT-FINDINGS
    s" pdlfam" TEST-NAMES ;
+
+\ ---- stage0 recovery fixtures -------------------------------------------------
+\ The fourth principled category, and the narrowest path list in the lint.  A
+\ stage0 recovery fixture is a source tools/bootstrap.sh hands to Gforth, which
+\ compiles it with the recovery emitter into a standalone binary the script then
+\ runs and compares whole-stream against exact expected output.  Two of those
+\ fixtures need a word at genuine global top level - one so the emitter's bare
+\ 13-byte `checker-using` lookup can find the stand-in hook, one because
+\ top-level bare visibility around `using` is the property under test - so a
+\ package there would delete the proof instead of satisfying the rule.
+\
+\ The pins below fix the row list, fix the admitted shape, and prove the category
+\ cannot spread in either direction.  Admission needs three things: the exact
+\ path, a path under test/ ending in -src.f, and the plain lower-case `:`
+\ definer.  The last two constrain a FUTURE row rather than today's two paths, so
+\ they are pinned by hostile paths that a weakened comparison would let through.
+2 constant TEST-STAGE0-PATH#     \ rows in the stage0 fixture path table
+
+: TEST-STAGE0-PATH$ ( n -- ptr u8 n ) {: p:n :}
+   p 0 = if s" test/bootstrap-using-src.f" exit then
+   s" test/bootstrap-using-checker-hook-src.f" ;
+
+: TEST-STAGE0-COLON-AT ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   s" PDL-STAGE0" TEST-GLOBAL-SOURCE
+   TEST-DIFF-RESET path pathu TEST-ADD-SOURCE-SECTION ;
+
+\ The production row table is pinned directly, its length against the expected
+\ count and every row's path against this suite's own literal, so a wrong edit on
+\ either side cannot quietly agree with itself.
+: TEST-STAGE0-ROW? ( n -- bool ) {: p:n :}
+   p STAGE0-PATH$ p TEST-STAGE0-PATH$ LINT-STR= ;
+
+: TEST-STAGE0-TABLE ( -- )
+   s" the stage0 row table holds exactly the rows this suite pins" T-LABEL
+   STAGE0-ROW# @ TEST-STAGE0-PATH# T=
+   0 TEST-ROW-BAD !
+   0 begin dup TEST-STAGE0-PATH# < while
+      dup TEST-STAGE0-ROW? 0= if TEST-ROW-BAD @ 1+ TEST-ROW-BAD ! then
+      1+
+   repeat drop
+   s" every stage0 row carries this suite's own path" T-LABEL
+   TEST-ROW-BAD @ 0 T= ;
+
+: TEST-STAGE0-LIST ( -- )
+   s" both listed stage0 fixtures admit a global colon word" T-LABEL
+   TEST-DIFF-RESET
+   s" PDL-STAGE0" TEST-GLOBAL-SOURCE
+   0 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN ;
+
+\ The narrowing.  The five ordinary globals stand in a LISTED stage0 fixture and
+\ exactly one of them - the plain colon word - is admitted; the other four report
+\ by name.  Under a file-wide admission all five would pass.
+: TEST-STAGE0-NARROW ( -- )
+   s" only the plain colon word is admitted in a listed fixture" T-LABEL
+   TEST-SOURCE-RESET TEST-ADD-ORDINARY-GLOBALS
+   TEST-DIFF-RESET 0 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   4 TEST-EXPECT-FINDINGS
+   s" PDL-WRAPPER" TEST-NAMES
+   s" PDL-STATE" TEST-NAMES
+   s" PDL-LIMIT" TEST-NAMES
+   s" PDL-CELL" TEST-NAMES
+   s" PDL-HELPER" TEST-NOT-NAMES
+   s" a CHECKED: global in a listed fixture is not a plain colon word" T-LABEL
+   TEST-SOURCE-RESET
+   s" CHECKED: PDL-CHECKED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET 1 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   s" PDL-CHECKED" TEST-NAMES
+   s" a stage0 row does not inherit the grammar category's openers" T-LABEL
+   s" pdlfam" TEST-FIXTURE-FAMILY-SOURCE
+   TEST-DIFF-RESET 0 TEST-STAGE0-PATH$ TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   s" pdlfam" TEST-NAMES ;
+
+: TEST-STAGE0-HOSTILE ( -- )
+   s" an unlisted fixture of the same family still reports its global" T-LABEL
+   s" test/bootstrap-using-scope-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" PDL-STAGE0" TEST-NAMES
+   s" a listed basename under another directory is not the listed path" T-LABEL
+   s" tools/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a listed basename in a deeper directory is not the listed path" T-LABEL
+   s" test/lib/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   \ These two carry the listed path as a whole trailing SUFFIX, which is what a
+   \ suffix or basename comparison would accept.  The nested one satisfies both
+   \ narrowing guards, so only the exact comparison keeps it reported; the second
+   \ is what the `test/` guard alone refuses once that comparison is weakened.
+   s" a listed path nested under a repeated test/ is not the listed path" T-LABEL
+   s" test/test/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a path ending in the listed path from outside test/ is not admitted" T-LABEL
+   s" tools/test/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   \ The path list matches case-sensitively while the definer list does not: a
+   \ path is a filename, a definer is a Forth word.  This hostile varies case only
+   \ BETWEEN the guarded `test/` head and the guarded `-src.f` tail, because those
+   \ two guards compare case-sensitively themselves and would otherwise refuse the
+   \ path for the wrong reason and hide a case-folded row comparison.
+   s" a listed path spelled in another case is not the listed path" T-LABEL
+   s" test/Bootstrap-Using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a listed path extended past its -src.f tail is not the listed path" T-LABEL
+   s" test/bootstrap-using-src.fs" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   \ The other direction: a path that BEGINS with a listed path and still satisfies
+   \ both narrowing guards, so only the exact comparison keeps it reported.
+   s" a listed path extended into a longer -src.f name is not admitted" T-LABEL
+   s" test/bootstrap-using-src.f-more-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" the category never admits a library source, however it is spelled" T-LABEL
+   s" lib/bootstrap-using-src.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS
+   s" a global colon word in an ordinary test file still reports" T-LABEL
+   s" test/bootstrap-plain.f" TEST-STAGE0-COLON-AT
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-STAGE0-FIXTURES ( -- )
+   TEST-STAGE0-TABLE
+   TEST-STAGE0-LIST
+   TEST-STAGE0-NARROW
+   TEST-STAGE0-HOSTILE ;
 
 : TEST-GRAMMAR-FIXTURES ( -- )
    TEST-TABLE
@@ -2356,6 +2485,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-CORE-EXEMPTIONS
    TEST-OPTION-GLOBAL
    TEST-GRAMMAR-FIXTURES
+   TEST-STAGE0-FIXTURES
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION

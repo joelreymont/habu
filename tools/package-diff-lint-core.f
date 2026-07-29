@@ -925,6 +925,112 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 \ one shape: a change to the BODY of a global word that already exists.  Adding a
 \ new global word to either file is still reported, which is what separates this
 \ entry from the interim entries in GLOBAL-IMPLEMENTATION? above.
+\ the whole of stdout and the first stderr line against exact expected text.  The
+\ fixture is the gate's own input and its correctness authority is that
+\ whole-stream comparison, not a load through a package boundary.
+\
+\ Why packaging these two would delete the proof instead of satisfying the rule.
+\ Both reasons are engine contracts and both were measured before this entry was
+\ written.
+\
+\ test/bootstrap-using-checker-hook-src.f defines a stand-in CHECKER-USING so the
+\ engine's mirror call is observable.  The emitter's C-USING-CHECK-CALL looks that
+\ hook up by the bare 13-byte name `checker-using`, the same way the real global
+\ CHECKER-USING in src/core/checker.f is found, and calls it with the package-name
+\ token.  A package would put the tail in that package's wordlist, where a bare
+\ lookup cannot see it: the mirror call would find nothing, the fixture's
+\ `checker-using: BUS-A` line would disappear, and the case would stop testing the
+\ mirror.
+\
+\ test/bootstrap-using-src.f defines BUS-SHADOW and BUS-CALLER at top level
+\ because top-level bare visibility is the property under test.  BUS-SHADOW is the
+\ name that must already resolve before `using BUS-A` opens, so the fixture can
+\ prove an import never shadows a name that already resolves; from inside a
+\ package nothing would resolve bare at the use site and the check would be
+\ vacuous.  BUS-CALLER is compiled while the import is open, from the real
+\ top-level position a recovery build's own source occupies; wrapping it in a
+\ package would quietly change the subject to whether an outer import survives
+\ into a newly opened package, which is a different question this fixture does not
+\ answer.
+\
+\ The category is narrow in three structural ways.  Entries are exact whole paths,
+\ so a global in any other fixture still reports.  Admission is also by shape:
+\ only the plain lower-case `:` definer, because what these fixtures need is a
+\ word the stage0 engine resolves by bare lookup.  A global `variable`, `create`,
+\ `constant`, `CHECKED:`, `TRUSTED:` or type declaration in a listed fixture
+\ reports like any other unpackaged global.  FINISH-DEFINITION checks SCOPE-DELTA
+\ before this admission, so adding or deleting a package boundary around one of
+\ these words is still reported.
+\
+\ The third narrowing is the pair of guards below: the path must start with `test/`
+\ and end with `-src.f`, which is exactly how tools/bootstrap.sh composes the path
+\ it builds (`test/$name-src.f`).  Be honest about what they do.  Against the exact
+\ comparison and today's two rows they are redundant - removing either one alone
+\ changes no verdict.  They exist for the edits that come later: they keep a future
+\ row from admitting a library, tool or engine source, and they are what refuses a
+\ hostile sibling if the path comparison itself is ever weakened.  Measured on
+\ 2026-07-30: weaken STAGE0-PATH= to a suffix, prefix or case-folded comparison and
+\ each of those weakenings is refused by one of these guards or reported by a named
+\ hostile in tools/package-diff-lint-test.f; weaken the comparison AND drop the
+\ matching guard and the hostile flips, which is how the unit test proves each
+\ guard carries real weight rather than decoration.
+\
+\ There is no retirement condition.  Unlike the interim core-surface entries above
+\ this is not debt waiting for a sealing pass: the recovery gate has to keep
+\ proving what a real top-level user program sees, so while `using` exists in the
+\ stage0 engine these fixtures have to define at top level.
+4 constant STAGE0-ROW-CAP        \ headroom for the next fixture that needs a top-level word
+256 constant STAGE0-TEXT-CAP     \ arena holding the row paths
+create STAGE0-TEXT STAGE0-TEXT-CAP allot
+create STAGE0-PATH-A STAGE0-ROW-CAP cells allot
+create STAGE0-PATH-U STAGE0-ROW-CAP cells allot
+variable STAGE0-ROW#
+variable STAGE0-TEXT-U
+
+: STAGE0-PATH$ ( n -- ptr u8 n ) {: i:n :}
+   i 0 < i STAGE0-ROW# @ >= or if E-PKGDIFF-ROWTAB throw then
+   i cells STAGE0-PATH-A + @   i cells STAGE0-PATH-U + @ ;
+
+\ Rows are appended once at load time.  The path bytes are copied into the arena
+\ because a source string literal is transient; storing its address would leave
+\ every row pointing at whatever text was parsed last.
+: STAGE0-ROW+ ( ptr u8 n -- ) {: a:ptr u:n :}
+   STAGE0-ROW# @ STAGE0-ROW-CAP >= if E-PKGDIFF-ROWTAB throw then
+   STAGE0-TEXT-U @ u + STAGE0-TEXT-CAP > if E-PKGDIFF-ROWTAB throw then
+   STAGE0-TEXT STAGE0-TEXT-U @ + {: dst:ptr :}
+   a dst u BYTE-COPY
+   dst STAGE0-ROW# @ cells STAGE0-PATH-A + !
+   u STAGE0-ROW# @ cells STAGE0-PATH-U + !
+   STAGE0-TEXT-U @ u + STAGE0-TEXT-U !
+   STAGE0-ROW# @ 1+ STAGE0-ROW# ! ;
+
+\ THE path comparison for this category.  Every row is admitted or refused by
+\ this one word, so "is this the listed fixture?" is decided in a single place:
+\ whole path, exact bytes, no suffix match and no case folding.
+: STAGE0-PATH= ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
+   a u i STAGE0-PATH$ LINT-STR= ;
+
+: STAGE0-LISTED? ( -- bool )
+   0 begin dup STAGE0-ROW# @ < while
+      dup FILE$ STAGE0-PATH= if drop true exit then
+      1+
+   repeat drop false ;
+
+\ One line per fixture that needs a word at global top level.
+s" test/bootstrap-using-src.f" STAGE0-ROW+
+s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
+
+: STAGE0-FIXTURE? ( -- bool )
+   FILE$ s" test/" LINT-STARTS-WITH? 0= if false exit then
+   FILE$ s" -src.f" LINT-ENDS-WITH? 0= if false exit then
+   STAGE0-LISTED? 0= if false exit then
+   DEF-DEFINER-I @ s" :" TOK= ;
+
+\ The native engine emitter, src/habu/habu2.f, is the third principled category
+\ and the narrowest of the three.  It is admitted for exactly one shape: a change
+\ to the BODY of a global word that already exists.  Adding a new global word to
+\ that file is still reported, which is what separates this entry from the
+\ interim entries in GLOBAL-IMPLEMENTATION? above.
 \
 \ Why the file needs an entry at all.  habu2.f is about 7,300 lines of code that
 \ emits the machine code of the engine itself.  Almost all of it is global by
@@ -1119,6 +1225,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
+   STAGE0-FIXTURE? if true exit then
    ERR-VOCAB? if true exit then
    ENGINE-BODY-EDIT? if true exit then
    MIRROR-EDIT? if true exit then
