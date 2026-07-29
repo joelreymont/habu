@@ -1,6 +1,6 @@
 ---
 title: Store compiler operations
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-26T22:54:58.866674+02:00"
@@ -15,3 +15,5 @@ creation-time constant (MAP-BYTES in src/compiler/ir/context.f) and IR-ARENA
 sizes ceilings as creation parameters. Real function/op tables must pick named
 ceiling constants here and may need the context mapping enlarged or chunked;
 that sizing decision belongs to this table layer, not to the arena.
+
+Claim: agent=ir-ops workspace=.jj-ws/habu-store-compiler-ops-10440e3e

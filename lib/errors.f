@@ -458,3 +458,15 @@ public
 -8012 constant E-IR-SCHEMA-KIND    \ a field reader applied to a schema whose effect shape does not carry that field
 -8013 constant E-IR-SCHEMA-DIGEST  \ a presented schema-table digest does not match the recomputed one
 -8014 constant E-IR-SCHEMA-VERSION \ a schema major or minor version outside the accepted range
+
+\ Compiler operation and value store (package IR-OP): -8020..-8039
+-8020 constant E-IR-OP-STATE     \ an operation store failed its header, row-shape, window, or stored-code recheck
+-8021 constant E-IR-OP-OWNER     \ a module key, symbol, value, type, attribute, block id, or store pairing this table does not own
+-8022 constant E-IR-OP-BOUND     \ an operation id, value id, or list index at or past the count the table records
+-8023 constant E-IR-OP-CAP       \ a row or pool capacity outside the accepted range, or an append past a committed ceiling
+-8024 constant E-IR-OP-STAGE     \ operation-stage misuse: a begin while one is open, an end without a begin, or a field declared twice
+-8025 constant E-IR-OP-FIELD     \ a required operation field was never declared before the append closed
+-8026 constant E-IR-OP-ARITY     \ an operand, result, or successor count the opcode's schema does not allow, or a staged list past its ceiling
+-8027 constant E-IR-OP-SSA       \ an operand naming a value that is not already defined; every forward reference and cycle lands here
+-8028 constant E-IR-OP-WINDOW    \ a stored window that does not continue exactly where the record before it ended
+-8029 constant E-IR-OP-KIND      \ a field reader applied to a value whose definition kind does not carry that field
