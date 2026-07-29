@@ -48,13 +48,14 @@
 \      verdict both must answer. The two encodings are necessarily different -
 \      one is text for a token scanner, the other is an already-scanned token
 \      list - but they live in one row and the verdict is written once, so a
-\      row cannot be satisfied by editing only one side. The last eight rows
-\      hold four decisions nothing else here reaches: the widening lattice, the
-\      control-frame ceiling, `MATCH`'s own depth guard, and the per-step linear
-\      conservation count. Before they existed, halving the ceiling, lowering or
-\      deleting the depth guard, making the conservation count a no-op, or
-\      letting any two same-class types stand in for each other each left the
-\      whole gate green.
+\      row cannot be satisfied by editing only one side. The last sixteen rows
+\      hold five decisions nothing else here reaches: the widening lattice, the
+\      control-frame ceiling, `MATCH`'s own depth guard, the per-step linear
+\      conservation count, and `construct`. Before they existed, halving the
+\      ceiling, lowering or deleting the depth guard, making the conservation
+\      count a no-op, letting any two same-class types stand in for each other,
+\      or dropping the unterminated-`construct` test at the definition boundary
+\      each left the whole gate green.
 \
 \ Where the two sides are not literally the same shape, and why that is sound:
 \
@@ -329,7 +330,9 @@ variable VEC-N
 \ The tokens the model knows that `CF-TOK?` does not dispatch: an ordinary call
 \ and a call to a word with recorded control flags, `throw` and `die` (named in
 \ `THROW-CUR?` / `DEAD-CUR?`), `match` and its family and variant tokens
-\ (intercepted by `MATCH-TOK` while `MM` is non-zero), `execute` and `catch`
+\ (intercepted by `MATCH-TOK` while `MM` is non-zero), `construct` (intercepted
+\ by `CONSTRUCT-TOK` while `CONM` is non-zero, and reusing the same family and
+\ variant tokens for its two operands), `execute` and `catch`
 \ (`RSEXEC` / `RSCATCH`), the locals binder and a local reference, and the two
 \ return-stack transfers. The obligations file writes the whole constructor set
 \ out as one exhaustive match, so a constructor added to `Control.tok` and not
@@ -351,6 +354,7 @@ variable OFF-N
    s" TMatch"            OFF-ROW
    s" TFamTok _"         OFF-ROW
    s" TVarTok _"         OFF-ROW
+   s" TConstruct"        OFF-ROW
    s" TExec"             OFF-ROW
    s" TCatch"            OFF-ROW
    s" TLocals _"         OFF-ROW
@@ -554,6 +558,77 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" CMV18 ( i64 -- i64 ) CHECKER-MODEL-CASES:TO-R-WORD r>"
       s" sig [i64] [i64]" s" [TCall wToRAsWord; TFromR]" V-CERT VEC-ROW ;
 
+\ Eight rows about `construct`, which nothing else here reaches. `construct` is
+\ a three-token form and a small state machine, not a word call, so the rules
+\ that decide it are the capture, the truncation test at the definition
+\ boundary, and the inline step that turns a variant payload into the family's
+\ bundle.
+\
+\ The first pair is the step: the same form certifies with its payload on the
+\ row and is refused without it, so a step that consumed nothing would fail the
+\ second row. The second pair is the CAPTURE, and it is the sharpest thing here
+\ because the two verdicts differ in CLASS. `construct` takes its two operands
+\ whatever they spell (`CONSTRUCT-TOK`, src/core/checker.f), so an operand that
+\ names no variant is a REFUSAL; the very same token outside the form is just a
+\ word the checker has never heard of, which is merely uncheckable. A checker
+\ that let the trailing operand fall through to the ordinary word lookup would
+\ answer uncheckable for both. The third pair is the payload's OWNER: two
+\ variants of one family differing only in what they carry, so the same input
+\ certifies for one and is refused for the other. The last row is the round
+\ trip: `construct` and `MATCH` are each other's inverse, so building a variant
+\ and immediately matching it returns the payload that was put in, and that row
+\ is the one that fails if either half stops agreeing with the other about what
+\ a bundle is.
+\
+\ Measured, by mutating the shipped checker, rebuilding the fixpoint and rerunning
+\ this gate. Dropping the `CONM` clause from `CHECK`'s open-form test turns
+\ exactly the unterminated row red and nothing else. Deleting the inline step
+\ from `CONSTRUCT-TOK` turns the first, the captured, the payload-owner and the
+\ round-trip rows red. Making the family operand close the form instead of
+\ opening the variant slot - so the third token is no longer captured - turns
+\ every row here red except the uncheckable control. Each mutation was restored
+\ byte-for-byte afterwards.
+\
+\ Scope note, and it is why the gate runs where it does. `TFAM-CONSTRUCT-FAM`
+\ (src/core/type-family.f) resolves a construct family in the ACTIVE package
+\ only, so these programs certify only when the checker is asked from inside the
+\ package that declared the family. `test/compiler/checker-model-proof.f` runs
+\ the whole gate inside `package CHECKER-MODEL-CASES` for that reason.
+: BUILD-CONSTRUCT-VECTORS ( -- )
+   s" construct_builds_the_bundle_from_the_variant_payload"
+      s" CMV19 ( n -- cmres ) construct cmres cmok"
+      s" sig [nt] [fam0 100]"
+      s" [TConstruct; TFamTok fmres; TVarTok 0]" V-CERT VEC-ROW
+   s" construct_without_its_payload_underflows"
+      s" CMV20 ( -- cmres ) construct cmres cmok"
+      s" sig [] [fam0 100]"
+      s" [TConstruct; TFamTok fmres; TVarTok 0]" V-REJECT VEC-ROW
+   s" an_unterminated_construct_is_refused_at_the_boundary"
+      s" CMV21 ( cmres -- cmres ) construct cmres"
+      s" sig [fam0 100] [fam0 100]"
+      s" [TConstruct; TFamTok fmres]" V-REJECT VEC-ROW
+   s" a_construct_operand_is_captured_whatever_it_spells"
+      s" CMV22 ( cmres -- cmres ) construct cmres CMNOVAR"
+      s" sig [fam0 100] [fam0 100]"
+      s" [TConstruct; TFamTok fmres; TVarTok 9]" V-REJECT VEC-ROW
+   s" the_same_operand_outside_the_form_is_only_uncheckable"
+      s" CMV23 ( cmres -- cmres ) CMNOVAR"
+      s" sig [fam0 100] [fam0 100]"
+      s" [TVarTok 9]" V-UNCK VEC-ROW
+   s" the_payload_is_the_variants_and_not_the_familys"
+      s" CMV24 ( n -- cmbres ) construct cmbres cmbn"
+      s" sig [nt] [fam0 102]"
+      s" [TConstruct; TFamTok fmbool; TVarTok 1]" V-CERT VEC-ROW
+   s" a_sibling_variant_of_the_same_family_wants_its_own_payload"
+      s" CMV25 ( n -- cmbres ) construct cmbres cmbf"
+      s" sig [nt] [fam0 102]"
+      s" [TConstruct; TFamTok fmbool; TVarTok 0]" V-REJECT VEC-ROW
+   s" construct_then_match_returns_the_payload_it_was_given"
+      s" CMV26 ( n -- n ) construct cmres cmok MATCH cmres cmok OF ENDOF cmerr OF ENDOF ;MATCH"
+      s" sig [nt] [nt]"
+      s" [TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch]"
+      V-CERT VEC-ROW ;
+
 : BUILD-VECTORS ( -- )
    s" straight_line"
       s" CMV1 ( i64 -- i64 ) CHECKER-MODEL-CASES:STEP1"
@@ -594,7 +669,8 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    BUILD-WIDENING-VECTORS
    BUILD-FRAME-CAP-VECTORS
    BUILD-MATCH-DEPTH-VECTORS
-   BUILD-LINEAR-TRANSFER-VECTORS ;
+   BUILD-LINEAR-TRANSFER-VECTORS
+   BUILD-CONSTRUCT-VECTORS ;
 
 : BUILD-ALL ( -- )
    0 POOL-U !  0 STR-N !

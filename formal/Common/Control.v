@@ -67,8 +67,10 @@
    `die` and the throw edge they raise; `recurse`; `[:` / `;]`; `execute` and
    `catch`, both reading the quotation's control flags; `>r` and `r>`, which
    are their own rules and not calls; locals and their branch scoping; the
-   per-step linear-once conservation pass and its deferred taint; and an
-   ordinary call, with or without inherited control flags.
+   per-step linear-once conservation pass and its deferred taint; `construct`,
+   the three-token introduction form that `MATCH` eliminates, with its operand
+   capture, its truncation test at the definition boundary and its inline step;
+   and an ordinary call, with or without inherited control flags.
 
    DELIBERATE OMISSIONS, each of which the checker also decides and each of
    which a soundness proof built on this file would therefore not cover:
@@ -86,8 +88,18 @@
        work rather than a missing representation.  Every rule ABOVE the pop —
        payload refinement, the branch join, `MD-JOIN`, exhaustiveness — is
        modelled exactly;
-     - `construct` (`CONM`), the field projection window, and the transport
-       ops, which are row surgery over `Effects.v`'s layout machinery;
+     - the field projection window and the transport ops, which are row surgery
+       over `Effects.v`'s layout machinery;
+     - WHICH PACKAGE OWNS A FAMILY.  `construct` is modelled, but the rule that
+       a family resolves in the ACTIVE package only lives in the registry hook
+       (`TFAM-CONSTRUCT-FAM`, type-family.f:2414-2418), not in
+       `src/core/checker.f`, and this file models the checker.  So an operand
+       that named nothing, an operand that named a family of the wrong kind,
+       and an operand that named a family belonging to another package are ONE
+       case here — which is faithful in the only way that matters, since all
+       three clear `OK`, latch a reason and let the form run on to consume its
+       second operand, and nothing downstream can tell them apart.  The same
+       abstraction was already in place for `MATCH`'s family token;
      - `Q>XDOUT` / `Q>XROUT`, the rows captured at a quotation's first throw.
        They are written by `QX!` (checker.f:310-314) and read only by the image
        serialisers (checker.f:2433-2434, 4197-4198); no rule consults them, so
@@ -173,6 +185,14 @@ Inductive tok : Type :=
   | TFamTok : fam -> tok      (* MATCH-FAM-TOK, checker.f:8252 *)
   | TVarTok : nat -> tok      (* MATCH-VARIANT-TOK, checker.f:8318 *)
   | TSemiMatch                (* MATCH-SEMI, checker.f:8296 *)
+  (* `construct`: CONSTRUCT-BEGIN, checker.f:9101.  Its two operands are
+     `TFamTok` and `TVarTok`, the same two tokens `MATCH` names its family
+     and its variant with, because the checker resolves them through the same
+     registry hooks.  A DIFFERENT token in either operand position is the
+     model's way of writing "this operand resolved nothing", which is what an
+     unknown name, a non-sum family and a family owned by another package all
+     come to at this abstraction. *)
+  | TConstruct                (* CONSTRUCT-BEGIN, checker.f:9101 *)
   | TExit                     (* CF-EXIT,    checker.f:7887 *)
   | TRecurse                  (* CF-RECURSE, checker.f:7758 *)
   | TOpenQ                    (* CF-QUOT  `[:`, checker.f:7971 *)
@@ -241,6 +261,23 @@ Record mframe : Type := MkMF {
 }.
 
 (* ------------------------------------------------------------------ *)
+(* The `construct` sub-mode (`CONM` / `CONFAM`, checker.f:9098-9099).   *)
+(*                                                                     *)
+(* `CONM` is 0 off, 1 expecting the family token, 2 expecting the       *)
+(* variant token, and `CONFAM` is the resolved family — which the       *)
+(* checker's own comment says is only meaningful while `CONM` is 2, and *)
+(* which it POISONS to -1 when the family token resolved nothing        *)
+(* (checker.f:9110).  One field carries both, so an unreachable pairing *)
+(* (a resolved family while the family token is still awaited, say)     *)
+(* cannot be written down at all.                                       *)
+(* ------------------------------------------------------------------ *)
+
+Inductive conm : Type :=
+  | CmOff                        (* CONM = 0 *)
+  | CmFam                        (* CONM = 1 *)
+  | CmVar : option fam -> conm.  (* CONM = 2; None is the poisoned CONFAM = -1 *)
+
+(* ------------------------------------------------------------------ *)
 (* The checker's registers while it scans one definition.              *)
 (*                                                                     *)
 (* `DCUR`/`RCUR` are the current data and return rows.  `BROW`/`RBROW` *)
@@ -297,7 +334,8 @@ Record st : Type := MkSt {
   st_unck    : bool;          (* UNCK *)
   st_failset : bool;          (* FAILSET *)
   st_mdiag   : nat;           (* MDIAG *)
-  st_hard    : bool           (* MREJ / LOCALBAD / LINLOCBAD *)
+  st_hard    : bool;          (* MREJ / LOCALBAD / LINLOCBAD *)
+  st_con     : conm           (* CONM + CONFAM: the open `construct` form *)
 }.
 
 (* `MDIAG` reason codes, checker.f:8150-8175.  Only the ones this fragment
@@ -312,6 +350,9 @@ Definition MD_TRUNC : nat := 10.
 Definition MD_DEPTH : nat := 11.
 Definition MD_QUOT : nat := 12.
 Definition MD_JOIN : nat := 14.
+Definition MD_CON_FAM : nat := 15.
+Definition MD_CON_VAR : nat := 17.
+Definition MD_CON_TRUNC : nat := 18.
 
 (* `QDEPTH`, raised by `CF-QUOT` (checker.f:7981) and lowered by `CF-SEMIQ`
    (checker.f:7999).  It gates `MATCH`'s scrutinee (`MATCH-SCRUT-DIAG`,
@@ -325,84 +366,88 @@ Definition qdepth (s : st) : nat :=
    changes; every other slot is carried through by name. *)
 
 Definition put_sub (s : st) (x : subst) : st :=
-  let '(MkSt fenv _ fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv x fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv _ fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv x fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_fv (s : st) (n : nat) : st :=
-  let '(MkSt fenv sub _ dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub n dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub _ dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub n dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_d (s : st) (d : stack) : st :=
-  let '(MkSt fenv sub fv _ rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv d rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv _ rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv d rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_r (s : st) (r : stack) : st :=
-  let '(MkSt fenv sub fv dcur _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_dr (s : st) (d : stack) (r : stack) : st :=
-  let '(MkSt fenv sub fv _ _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv d r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv _ _ brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv d r brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_base (s : st) (b : stack) (rb : stack) : st :=
-  let '(MkSt fenv sub fv dcur rcur _ _ xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur b rb xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur _ _ xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur b rb xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_x (s : st) (xs : bool) (xd : stack) (xr : stack) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow _ _ _ thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xs xd xr thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow _ _ _ thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xs xd xr thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_thset (s : st) (b : bool) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow _ dead cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow b dead cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow _ dead cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow b dead cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_dead (s : st) (b : bool) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset _ cfs loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset b cfs loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset _ cfs loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset b cfs loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_cfs (s : st) (l : list frame) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead _ loc mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead l loc mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead _ loc mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead l loc mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_loc (s : st) (l : list ty) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs _ mm mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs l mm mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs _ mm mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs l mm mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_mm (s : st) (n : nat) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc _ mpend mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc n mpend mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc _ mpend mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc n mpend mf taint ok unck failset mdiag hard con.
 
 Definition put_mpend (s : st) (o : option nat) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm _ mf taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm o mf taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm _ mf taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm o mf taint ok unck failset mdiag hard con.
 
 Definition put_mf (s : st) (l : list mframe) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend _ taint ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend l taint ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend _ taint ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend l taint ok unck failset mdiag hard con.
 
 Definition put_taint (s : st) (l : list tyvar) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf _ ok unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf l ok unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf _ ok unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf l ok unck failset mdiag hard con.
+
+Definition put_con (s : st) (c : conm) : st :=
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard _) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset mdiag hard c.
 
 (* `CF-FAIL` (checker.f:7689) and every `0 OK !` site: OK is a LATCH.  The
    checker keeps scanning after a failure, so this must not stop the machine. *)
 Definition fail (s : st) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck failset mdiag hard con.
 
 (* `-1 UNCK !`: uncheckable, which `CHECK-VERDICT` ranks ABOVE a plain OK=0
    and BELOW every hard latch (checker.f:9666-9668). *)
 Definition set_unck (s : st) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok _ failset mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok true failset mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok _ failset mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok true failset mdiag hard con.
 
 Definition put_failset (s : st) (b : bool) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck _ mdiag hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck b mdiag hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck _ mdiag hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck b mdiag hard con.
 
 Definition put_mdiag (s : st) (n : nat) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset _ hard) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset n hard.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset _ hard con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint ok unck failset n hard con.
 
 (* The hard structural latches this fragment can raise: `MREJ`
    (`MATCH-REJECT`, checker.f:8177), `LOCALBAD` (`LOC-REJECT`,
@@ -411,8 +456,8 @@ Definition put_mdiag (s : st) (n : nat) : st :=
    ORs them into one reject that outranks UNCK — so one field is enough,
    and nothing downstream can tell them apart either. *)
 Definition set_hard (s : st) : st :=
-  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck _ mdiag _) := s in
-  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck true mdiag true.
+  let '(MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint _ unck _ mdiag _ con) := s in
+  MkSt fenv sub fv dcur rcur brow rbrow xset xrow xrrow thset dead cfs loc mm mpend mf taint false unck true mdiag true con.
 
 (* --- fresh variables (`FRESH`, checker.f:1687) ---------------------- *)
 
@@ -1370,6 +1415,86 @@ Definition do_semimatch (s : st) : st :=
   end.
 
 (* ------------------------------------------------------------------ *)
+(* `construct` (`CONM`, checker.f:9098-9118).                          *)
+(*                                                                     *)
+(* `construct` is the introduction form `MATCH` eliminates, and it is a *)
+(* THREE-TOKEN form, not a word call: `construct <family> <variant>`.   *)
+(* Three things about it decide real programs and none of them are a    *)
+(* word effect.                                                        *)
+(*                                                                     *)
+(*   - CAPTURE.  `DO-TOK1` tests `CONM` BEFORE the `MATCH` interception *)
+(*     and before the control dispatch (checker.f:9172), so while the   *)
+(*     form is open every token is taken as an operand whatever it      *)
+(*     spells.  The checker's own comment (checker.f:9105-9108) gives   *)
+(*     the reason: without it a trailing operand that named nothing     *)
+(*     would fall through to the word lookup and blur a refusal into an *)
+(*     uncheckable-undefined verdict.  So capture is not a convenience, *)
+(*     it is what keeps the failure a REFUSAL.                          *)
+(*   - TRUNCATION.  A form left open at the end of the definition is    *)
+(*     refused by `CHECK` (checker.f:9762, 9784), the same test that    *)
+(*     refuses an open control frame or an open `match`.                *)
+(*   - THE STEP.  The variant's payload is consumed and the family's    *)
+(*     bundle is produced, through `PUSH-LOGICAL`                       *)
+(*     (`TFC-CONSTRUCT-STEP-VID`, type-family.f:2428-2442), which makes *)
+(*     `construct` the exact inverse of `MATCH`'s scrutinee pop and     *)
+(*     payload refinement.                                             *)
+(*                                                                     *)
+(* WHAT IS ABSTRACTED, and it is the same abstraction `MATCH` already   *)
+(* makes.  The two operands arrive here already resolved: `TFamTok f`   *)
+(* means the family token named `f`, and any other token in that        *)
+(* position means it named nothing.  Three checker rejections collapse  *)
+(* into that one case — an unknown name, a family that is not a sum or  *)
+(* an enum (`MD-CON-KIND`), and a family owned by ANOTHER package, since *)
+(* `TFAM-CONSTRUCT-FAM` (type-family.f:2414-2418) resolves in the       *)
+(* active package only.  All three latch a reason, clear `OK`, and let  *)
+(* the form run on to consume its second operand, so the three are      *)
+(* indistinguishable downstream; the model keeps the first reason code, *)
+(* `MD-CON-FAM`.  Package ownership itself is not represented — that    *)
+(* rule lives in the registry hook, not in `src/core/checker.f` — and   *)
+(* it is named in this file's own omission list at the top.             *)
+(* ------------------------------------------------------------------ *)
+
+(* `CONSTRUCT-BEGIN`, checker.f:9101-9102. *)
+Definition do_construct (s : st) : st := put_con s CmFam.
+
+(* `TFC-CONSTRUCT-STEP-VID`, type-family.f:2428-2442, at this file's arity-0
+   abstraction: no family parameters to mint, so no argument recovery, and the
+   step is the payload row in and the family bundle out.  `push_logical` is
+   `Effects.v`'s, unchanged — which is the whole point, since it is also what
+   a declared signature pushes a family through.  With no registry entry the
+   bundle is one logical cell; register the family and the SAME definition
+   expands to its width on both sides of the step. *)
+Definition construct_step (s : st) (f : fam) (v : nat) : st :=
+  let (r, s) := fresh_id s in
+  let base := SRow r in
+  let din := push_list base (nth v (fam_pay f) []) in
+  let dout := push_logical (st_fenv s) (st_sub s) (fam0 (fam_id f)) base in
+  checker_step s din dout.
+
+(* `CONSTRUCT-TOK`, checker.f:9109-9118.  One token, whatever it spells.
+   In `CmFam` the token is the family operand; in `CmVar` it is the variant
+   operand, and a poisoned family skips the step but still consumes it. *)
+Definition step_construct (s : st) (t : tok) : st :=
+  match st_con s with
+  | CmOff => s   (* unreachable: `step` only comes here while a form is open *)
+  | CmFam =>
+      match t with
+      | TFamTok f => put_con s (CmVar (Some f))
+      | _ => put_con (fail (mdiag_set s MD_CON_FAM)) (CmVar None)
+      end
+  | CmVar None => put_con s CmOff
+  | CmVar (Some f) =>
+      let s := match t with
+               | TVarTok v =>
+                   if Nat.leb (fam_vcnt f) v
+                   then fail (mdiag_set s MD_CON_VAR)
+                   else construct_step s f v
+               | _ => fail (mdiag_set s MD_CON_VAR)
+               end in
+      put_con s CmOff
+  end.
+
+(* ------------------------------------------------------------------ *)
 (* Early return, the throw edge, and no-return words.                  *)
 (* ------------------------------------------------------------------ *)
 
@@ -1728,6 +1853,7 @@ Definition step_ctl (c : cfg) (s : st) (t : tok) : st :=
   | TFamTok _ => set_unck s
   | TVarTok _ => set_unck s
   | TSemiMatch => match_reject (mdiag_set s MD_STRAY)
+  | TConstruct => do_construct s
   | TExit => do_exit s
   | TRecurse => do_recurse c s
   | TOpenQ => do_quot s
@@ -1760,10 +1886,13 @@ Definition step_match (s : st) (t : tok) : st :=
        | _ => do_of_match s false
        end.
 
-(* `DO-TOK1`, checker.f:9060-9110, in its own order: the dead-path gate first
+(* `DO-TOK1`, checker.f:9160-9200, in its own order: the dead-path gate first
    (a token that is not allowed on a dead path is rejected and NOT processed),
-   then the match interception, then the ordinary dispatch — and then, always,
-   the deferred linear taint scan and the failure-pin latch. *)
+   then the `construct` interception, then the match interception, then the
+   ordinary dispatch — and then, always, the deferred linear taint scan and the
+   failure-pin latch.  `construct` comes BEFORE `match` in that chain
+   (checker.f:9172-9173), which is what lets a `construct` operand swallow the
+   `match` spelling and not the other way round. *)
 Definition post_tok (s : st) : st :=
   let s := lin_taint_scan s in
   if (negb (st_ok s) || st_unck s) && negb (st_failset s)
@@ -1772,8 +1901,10 @@ Definition post_tok (s : st) : st :=
 Definition step (c : cfg) (s : st) (t : tok) : st :=
   post_tok
     (if st_dead s && negb (dead_closer t) then fail s
-     else if Nat.eqb (st_mm s) 0 then step_ctl c s t
-     else step_match s t).
+     else match st_con s with
+          | CmOff => if Nat.eqb (st_mm s) 0 then step_ctl c s t else step_match s t
+          | _ => step_construct s t
+          end).
 
 Fixpoint run (c : cfg) (s : st) (ts : list tok) : st :=
   match ts with
@@ -1802,7 +1933,7 @@ Definition init (c : cfg) : st :=
        (SRow (cfg_brow c)) (SRow (decl_rbrow d))
        false (SRow 0) (SRow 0)   (* XROW/XRROW are never read while XSET is 0 *)
        false false [] [] 0 None [] []
-       true false false 0 false.
+       true false false 0 false CmOff.
 
 (* `CHECK-VERDICT`, checker.f:9666-9668.  Three outcomes, ranked: any hard
    structural latch is a REJECT whatever else happened, then UNCHECKABLE
@@ -1820,10 +1951,13 @@ Definition certifiedb (v : verdict) : bool :=
 (* `CHECK`, checker.f:9670-9695, in its own order:
 
      1. fold the early returns into the output row;
-     2. latch `MD-TRUNC` for an unterminated `match` form;
+     2. latch `MD-CON-TRUNC` for an unterminated `construct` form, then
+        `MD-TRUNC` for an unterminated `match` form — in that order, so a
+        definition that leaves both open is named by the construct;
      3. `CHECK-NO-BORROW` — the implicit-row seal, unchanged from Effects.v;
      4. join the reached output against the declared one, at `UK-COERCE`;
-     5. reject if any control frame or `match` form is still open;
+     5. reject if any control frame, `construct` form or `match` form is still
+        open;
      6. return-row balance, or the declared return output at `UK-COERCE`.
 
    Effects.v's `check_body` cites `CHECK-DOES!` (checker.f:10126-10133) and
@@ -1835,6 +1969,10 @@ Definition finish_st (c : cfg) (s : st) : st :=
   let d := cfg_decl c in
   let e := decl_eff d in
   let s := fold_exits s in
+  let s := match st_con s with
+           | CmOff => s
+           | _ => mdiag_set s MD_CON_TRUNC
+           end in
   let s := if negb (Nat.eqb (st_mm s) 0) || negb (Nat.eqb (length (st_mf s)) 0)
            then mdiag_set s MD_TRUNC else s in
   let s := if cfg_sig c
@@ -1842,6 +1980,7 @@ Definition finish_st (c : cfg) (s : st) : st :=
            else s in
   let s := if cfg_sig c then uni UkCoerce s (st_dcur s) (we_dout e) else s in
   let s := match st_cfs s with [] => s | _ :: _ => fail s end in
+  let s := match st_con s with CmOff => s | _ => fail s end in
   let s := if Nat.eqb (st_mm s) 0 then s else fail s in
   let s := if we_hasr e
            then (if cfg_sig c then uni UkCoerce s (st_rcur s) (we_rout e) else s)
@@ -2413,6 +2552,88 @@ Example the_scrutinee_must_be_the_matched_family :
         TVarTok 1; TOf; TEndof; TSemiMatch] = MD_SCRUT
   /\ check_reason (sig [fam0 100] [nt])
        [TOpenQ; TMatch; TFamTok fmres] = MD_QUOT.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* --- 6b. construct --------------------------------------------------- *)
+
+(* The introduction form for the same families `MATCH` eliminates.  Every
+   statement below was measured against the shipped checker through
+   `CHECK-QUIET-CANDIDATE!`, asked from inside the package that declares the
+   family, and the same programs are frozen as shared vectors in
+   `test/compiler/checker-model-schema.f`.
+
+   : CMV19 ( n -- cmres ) construct cmres cmok ;  -> certified
+   : CMV20 ( -- cmres ) construct cmres cmok ;    -> refused *)
+Example construct_consumes_the_payload_and_produces_the_bundle :
+  check_ctl (sig [nt] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VCert
+  /\ check_ctl (sig [] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VReject.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* The form is three tokens and `CHECK` refuses a definition that ends inside
+   one, exactly as it refuses an open control frame.  The third clause is the
+   control: the same signature with an EMPTY body certifies, so what the first
+   clause records is the open form and not the rows.
+
+   : CMV21 ( cmres -- cmres ) construct cmres ;   -> refused,
+       `at 'cmres' bad construct: missing family or variant token` *)
+Example an_unterminated_construct_is_refused_at_the_boundary :
+  check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = VReject
+  /\ check_reason (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres]
+       = MD_CON_TRUNC
+  /\ check_ctl (sig [fam0 100] [fam0 100]) [] = VCert.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* CAPTURE, and it is the sharpest thing in this section because the two
+   verdicts differ in CLASS.  An operand that names no variant is taken by the
+   open form and REFUSED; the very same token outside the form is just a word
+   the checker has never heard of, which is merely uncheckable.  A checker whose
+   trailing operand fell through to the ordinary word lookup would answer
+   uncheckable for both — which is precisely what `CONSTRUCT-TOK`'s comment
+   (checker.f:9105-9108) says the capture exists to prevent.
+
+   : CMV22 ( cmres -- cmres ) construct cmres CMNOVAR ;  -> refused,
+       `at 'CMNOVAR' bad construct: unknown variant`
+   : CMV23 ( cmres -- cmres ) CMNOVAR ;                  -> uncheckable *)
+Example a_construct_operand_is_captured_whatever_it_spells :
+  check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9]
+    = VReject
+  /\ check_ctl (sig [fam0 100] [fam0 100]) [TVarTok 9] = VUncheckable
+  /\ check_reason (sig [fam0 100] [fam0 100])
+       [TConstruct; TFamTok fmres; TVarTok 9] = MD_CON_VAR.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* The payload is the VARIANT's, not the family's.  `fmbool`'s two variants
+   differ only in what they carry, so one input certifies for one of them and is
+   refused for the other; a step that read the payload off the family would
+   answer the same for both.
+
+   : CMV24 ( n -- cmbres ) construct cmbres cmbn ;  -> certified
+   : CMV25 ( n -- cmbres ) construct cmbres cmbf ;  -> refused *)
+Example the_payload_belongs_to_the_variant_not_the_family :
+  check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 1] = VCert
+  /\ check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 0]
+       = VReject.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* The round trip, which is the reason to model `construct` here rather than
+   anywhere else: it is `MATCH`'s inverse.  Building a variant and immediately
+   matching it hands the payload back, so the bundle `construct` produces is
+   exactly the bundle the scrutinee pop consumes.  The second clause is the
+   negative that gives the first one content: build one variant and match a
+   family whose payloads differ, and the branch join no longer meets the
+   declared output.
+
+   : CMV26 ( n -- n ) construct cmres cmok
+       MATCH cmres cmok OF ENDOF cmerr OF ENDOF ;MATCH ;  -> certified *)
+Example construct_and_match_are_inverse :
+  check_ctl (sig [nt] [nt])
+            [TConstruct; TFamTok fmres; TVarTok 0;
+             TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
+             TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
+  /\ check_ctl (sig [nt] [nt])
+               [TConstruct; TFamTok fmbool; TVarTok 1;
+                TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof;
+                TVarTok 1; TOf; TEndof; TSemiMatch] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* --- 7. EXIT -------------------------------------------------------- *)

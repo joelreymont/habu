@@ -256,6 +256,21 @@ closed
 theorem Habu.Common.Control.the_scrutinee_must_be_the_matched_family
 type check_ctl (sig [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_SCRUT /\ check_reason (sig [fam0 100] [nt]) [TOpenQ; TMatch; TFamTok fmres] = MD_QUOT
 closed
+theorem Habu.Common.Control.construct_consumes_the_payload_and_produces_the_bundle
+type check_ctl (sig [nt] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VCert /\ check_ctl (sig [] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VReject
+closed
+theorem Habu.Common.Control.an_unterminated_construct_is_refused_at_the_boundary
+type check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = VReject /\ check_reason (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = MD_CON_TRUNC /\ check_ctl (sig [fam0 100] [fam0 100]) [] = VCert
+closed
+theorem Habu.Common.Control.a_construct_operand_is_captured_whatever_it_spells
+type check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9] = VReject /\ check_ctl (sig [fam0 100] [fam0 100]) [TVarTok 9] = VUncheckable /\ check_reason (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9] = MD_CON_VAR
+closed
+theorem Habu.Common.Control.the_payload_belongs_to_the_variant_not_the_family
+type check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 1] = VCert /\ check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 0] = VReject
+closed
+theorem Habu.Common.Control.construct_and_match_are_inverse
+type check_ctl (sig [nt] [nt]) [TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [nt] [nt]) [TConstruct; TFamTok fmbool; TVarTok 1; TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
+closed
 theorem Habu.Common.Control.exit_matches_and_fails_the_declared_output
 type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wDrop1; TCall wMkI64; TExit; TThen; TCall wStep1] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wDrop1; TCall wMkBool; TExit] = VReject
 closed

@@ -26,8 +26,11 @@
        registers are the ONLY thing that opens `LAYOUT-BLOCK?`.  This file
        models the ORDINARY window, in which both are clear, because that is
        what every call site, every join and the definition boundary see,
-     - `construct` (`CONM`) and field projection, which are row surgery over
-       the same layout machinery.
+     - field projection, which is row surgery over the same layout machinery.
+   `construct` (`CONM`) used to be on that list and no longer is: it is
+   modelled in `Habu.Common.Control`, because it is a three-token form and a
+   state machine rather than a type rule, and its step is written in terms of
+   `push_logical` below.
    Type families of arity > 0 — layouts, sums, products, `uniform<T>` — ARE
    modelled here, together with layout width expansion and the hidden-field /
    logical-bundle machinery, because those decide ordinary programs: a

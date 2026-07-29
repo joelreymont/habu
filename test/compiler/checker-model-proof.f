@@ -61,20 +61,21 @@
 \ What it does NOT refuse, stated plainly so nobody reads more into a green run
 \ than is there. The models cover a FRAGMENT, and both name their omissions in
 \ their own headers - `T-ATOM`'s rigid host identities, VALUE-RECORD field
-\ coercion, the transport ops and the generated-accessor window, `construct` and
-\ field projection, block-uniform branches, and `MATCH`'s scrutinee pop. This
+\ coercion, the transport ops and the generated-accessor window, field
+\ projection, block-uniform branches, and `MATCH`'s scrutinee pop. This
 \ gate holds the modelled fragment to the checker; it cannot notice a change
 \ inside an unmodelled one. It also compares BEHAVIOUR only on the frozen
-\ vectors: two machines that agree on those eighteen programs may still disagree
-\ on the nineteenth, and only a soundness proof - which neither model states yet
-\ - would close that. That is not a small caveat. Both models publish more than
-\ a hundred concrete results, and only the decisions a vector reaches are
-\ actually held to the checker; the rest are held to the reader's care in
-\ keeping the model faithful. Measured: halving `CF-PUSH`'s frame ceiling,
-\ letting `INT-WIDENS?` pass any same-class pair, lowering or deleting
-\ `MATCH`'s depth guard, and turning the per-step linear conservation count
-\ into a no-op each left this gate green before the vectors that reach those
-\ four decisions were added. Growing the vector table is what closes that, one
+\ vectors: two machines that agree on those twenty-six programs may still
+\ disagree on the twenty-seventh, and only a soundness proof - which neither
+\ model states yet - would close that. That is not a small caveat. Both models
+\ publish more than a hundred concrete results, and only the decisions a vector
+\ reaches are actually held to the checker; the rest are held to the reader's
+\ care in keeping the model faithful. Measured: halving `CF-PUSH`'s frame
+\ ceiling, letting `INT-WIDENS?` pass any same-class pair, lowering or deleting
+\ `MATCH`'s depth guard, turning the per-step linear conservation count into a
+\ no-op, and dropping the unterminated-`construct` test from `CHECK`'s open-form
+\ check each left this gate green before the vectors that reach those five
+\ decisions were added. Growing the vector table is what closes that, one
 \ decision at a time.
 \
 \ Focused command: `bin/hb --load test/compiler/checker-model-proof.f`. The gate
@@ -293,4 +294,13 @@ public
 ;using
 ;package
 
+\ The gate runs INSIDE the package that declares the vectors' sum families.
+\ `construct` resolves its family in the active package only
+\ (`TFAM-CONSTRUCT-FAM`, src/core/type-family.f), so a construct vector can only
+\ be asked where the family is owned: asked from top level the very same text is
+\ refused for a reason that has nothing to do with the rule under test. No other
+\ row here depends on the package, and every one of them answers the same either
+\ way; this is the one question that has a place to be asked from.
+package CHECKER-MODEL-CASES
 CHECKER-MODEL-GATE:RUN
+;package

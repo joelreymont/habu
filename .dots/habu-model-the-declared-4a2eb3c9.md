@@ -38,3 +38,26 @@ only a named TRUSTED forwarder gets in, as test/field-proj-suite.f:43 does. Also
 worth recording: the generated-accessor window is named in the Effects.v header
 alongside the TRANSPORT ops, not alongside construct, so the transport leaf and
 the field-projection leaf each say which of them takes it.
+
+MEASURED. One of the seven leaves, habu-model-construct-row-bcdd5ef6, is
+implemented in this workspace in the commit after the split; the other six are
+open and unclaimed. construct is now modelled in formal/Common/Control.v with
+five proved results and eight shared vectors, the construct clause is removed
+from both model headers, and the parity gate is green. The full falsification
+matrix, the honest gap list, and the long-term-versus-patch answer live in that
+leaf's own dot. Two things learned there that the remaining leaves should read
+before they start:
+
+- The gate can only ask a question the checker's scope rules allow it to ask.
+  construct resolves its family in the active package only, so
+  test/compiler/checker-model-proof.f now runs the whole gate inside
+  package CHECKER-MODEL-CASES. habu-model-field-projection-d0c89b80 and
+  habu-model-block-uniform-6830ddce both face the same kind of problem (a sealed
+  armed window, and two registered family ids) and should settle it before
+  writing vectors.
+- Mutating the shipped checker to falsify a row means rebuilding the fixpoint,
+  because the behavioural vectors go through the checker baked into bin/hb and
+  not through the source the structural walks read. That is
+  bin/hb --load tools/build-fixpoint-refresh.f -- install --force, about fifteen
+  seconds. A mutation that stops lib/ certifying cannot be used at all, because
+  the fixpoint self-check refuses the build before the gate runs.

@@ -62,6 +62,16 @@ SUMTYPE cmres 0
   VARIANT cmerr n ;VARIANT
 ;SUMTYPE
 
+\ A second sum family whose two variants carry DIFFERENT payloads. It is the
+\ model's `fmbool`, and the construct vectors use it for the one question a
+\ single-payload family cannot ask: whether the payload a construct consumes
+\ comes from the variant or merely from the family. A step that read the family
+\ would answer the same for both variants; these two answer differently.
+SUMTYPE cmbres 0
+  VARIANT cmbf bool ;VARIANT
+  VARIANT cmbn n ;VARIANT
+;SUMTYPE
+
 : STEP1 ( i64 -- i64 ) ;
 : MK-CELL ( -- cell ) 0 ;
 : MK-BOOL ( -- bool ) 0 0< ;
