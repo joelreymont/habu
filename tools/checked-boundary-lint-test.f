@@ -12,6 +12,7 @@ require lib/test/outcome.f
 require tools/cli-run.f
 require tools/lint/text.f
 require tools/lint/json-writer.f
+require tools/hook-sites.f
 require tools/checked-boundary-lint-core.f
 
 require tools/checked-boundary-lint-test-lib.f
