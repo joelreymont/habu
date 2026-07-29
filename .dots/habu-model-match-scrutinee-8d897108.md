@@ -1,9 +1,9 @@
 ---
 title: Model MATCH scrutinee pop
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-30T00:05:03.636384+02:00"
+created-at: "\"2026-07-30T00:05:03.636384+02:00\""
 ---
 
 Full context: one of the omission leaves split out of habu-model-the-declared-4a2eb3c9.
@@ -19,3 +19,5 @@ The vector shape that would bind it. A verdict-class-changing pair of shared pro
 The mutation that must go red. Make MATCH-SCRUT-CELL? (checker.f:8284) ignore the family id and check only the cell count; the same-width different-family row must flip from refused to certified. Restore src/core/checker.f byte-identically and record the matrix.
 
 Blocked by nothing, but the certifying deep-match row also wants habu-model-construct-row-bcdd5ef6 landed, because construct is how a body mints a family value of a known variant.
+
+Claim: agent=scrutinee workspace=.jj-ws/habu-model-match-scrutinee-8d897108
