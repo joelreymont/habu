@@ -1531,8 +1531,20 @@ using BCG
    s" constant USE-DEPTH-CELL" MUST-HAVE
    s" constant USE-PKG-SAVE-CELL" MUST-HAVE
    s" constant USE-WIDS-OFF" MUST-HAVE
-   s" USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END" MUST-HAVE
+   s" USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END" MUST-HAVE ;
+
+\ The two engines legitimately diverge at the band that consumes USE-BAND-END.
+\ The native engine chains through the snapshot relocation bands (the call map
+\ anchors on USE-BAND-END and DATA-START derives from the relocation band end),
+\ while the Gforth-built stage0 engine deliberately carries no relocation bands
+\ - each build path keeps its own snapshot wire format - so its DATA-START
+\ still anchors directly on USE-BAND-END. Each engine pins its own consumer;
+\ when either chain changes, its pin changes with it.
+: BAND-RECOVERY-END ( -- )
    s" USE-BAND-END constant DATA-START" MUST-HAVE ;
+
+: BAND-NATIVE-END ( -- )
+   s" USE-BAND-END constant CALLMAP-OFF" MUST-HAVE ;
 
 : KEYWORDS ( -- )   \ the emitters both engines carry
    s" : C-USING-NAME-GUARD" MUST-HAVE
@@ -1550,6 +1562,7 @@ using BCG
 : RECOVERY ( -- )
    s" bootstrap/cg/forth.fs" LOAD
    BAND
+   BAND-RECOVERY-END
    KEYWORDS
    s" LKWUSING @ LBL," MUST-HAVE
    s" LCHKUSING @ LBL," MUST-HAVE
@@ -1571,6 +1584,7 @@ using BCG
    s" LFINDUSED LABEL@ BL," MUST-HAVE
    s" src/habu/layout.f" LOAD
    BAND
+   BAND-NATIVE-END
    s" src/core/engine-error.f" LOAD
    s" 89 constant USING-NO-NAME" MUST-HAVE
    s" 94 constant USING-AMBIGUOUS" MUST-HAVE
