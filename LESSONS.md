@@ -2777,3 +2777,29 @@ fits.
   it costs more trust than pushing without comment would have. If the window is
   real, wait for an answer; if the change genuinely cannot wait, say that
   instead and own it.
+- **Proving you did not cause a failure is not proving the tree passes, and
+  choosing your own gate subset is how a red tip gets published.** I moved
+  master to a metadata-only chain after running four gates I picked myself, and
+  reasoned that a change touching no `.f` file could not affect a source gate.
+  The reasoning was sound and the conclusion was still wrong, because the rule
+  is "master is always green", not "master is no worse than I found it". Those
+  are different propositions and only the first one is the rule. The tip was
+  red on two gates I never ran. Worse, I already knew one of them was failing —
+  I had run it that morning and built an entire deletion contract around its
+  failure — but I had it filed as "the check I am removing" rather than "a red
+  gate on the tree I am about to publish", and a fact can sit vivid in one
+  mental slot while being invisible in the slot that would have stopped me. The
+  guard is mechanical, not attentional: run the full owning gate set on the
+  exact tree, and check whether any active tracker entry blocks the bookmark,
+  before the bookmark moves. Both of those would have caught it; neither
+  depends on noticing anything.
+- **Freeze a write set from the callers a change forces, not from the change
+  you picture.** Three contracts in two days named a file set that the delivered
+  work had to exceed, and every time the gap was a caller rather than a
+  surprise: deleting a word migrates whoever calls it. In the worst case I wrote
+  "owner: these three files only", then reviewed and accepted a four-file diff
+  whose fourth file was the deleted word's only external caller, and never
+  compared the diff against the ownership line I had written myself. Derive the
+  write set by asking what breaks when each named definition disappears, and
+  when a review shows the delivered file set exceeding the contract, that is the
+  contract failing its own review — not a scope question for the worker.
