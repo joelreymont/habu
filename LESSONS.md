@@ -1307,6 +1307,24 @@ fits.
 
 ## Runtime, Codegen & AOT
 
+- **A new keyword in `bootstrap/cg/forth.fs` needs its label allocated in an
+  `EMIT-LABEL-*` group, or the engine dies at startup with `hb: snapshot trailer
+  corrupt` (79).** The label variables (`variable LKWUSING …`) start at 0, and 0
+  is a VALID label id, so `LKWUSING @ LBL,` silently re-places an existing label
+  instead of failing with `cg: undefined label`. The image then carries a wrong
+  `LSRC` position, and the startup snapshot-presence test (text size vs
+  `LSRC`+padded source length) reports a corrupt trailer — a startup error that
+  names nothing about keywords. Declaring the variable and emitting its bytes in
+  `EMIT-KWDATA` are only two of the three edits; the `LBL LKWFOO !` line in
+  `EMIT-LABEL-CONTROL` (or `-CORE` for routine labels) is the one with no
+  diagnostic of its own.
+- **Compare whole streams in shell gates: the engine's undefined-word diagnostic
+  has NO trailing newline.** `if ! IFS= read -r diag < "$err"; then diag=""; fi`
+  (the idiom in `tools/bootstrap.sh`'s older gates) turns `BUS-VALUE` into the
+  empty string, because `read` returns failure at EOF-without-newline and the
+  idiom then discards what it read. A gate written that way passes on
+  newline-terminated diagnostics and fails only on the token-only ones. Use
+  `diag="$(cat "$err")"`, which strips trailing newlines from both shapes.
 - **Fixed engine DATA cells require a LIBRARY-wide offset audit, not just `layout.f`.**
   `layout.f` is not the sole owner: `regalloc.f` (float-pool bitmask), `debug.f`, `lib/task.f`
   (`TASK-USER-BASE`), and `lib/ffi-abi.f` (`FFI-BUF-OFF $3A00..$3C80`) all define cells outside it;

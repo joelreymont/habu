@@ -1409,10 +1409,89 @@ public
 
 ;package
 
+\ `using NAME` / `;using` must exist in BOTH engines with the same data band, the
+\ same emitters and the same recovery fixtures. The Gforth stage0 engine compiles
+\ src/core/checker.f during recovery, and the checker reads the live using depth
+\ through a hard-coded DATA offset (CK-USE-DEPTH-OFF), so the band offsets are a
+\ cross-file contract, not a local layout choice.
+package BCG-USING
+
+: BAND ( -- )   \ the four band offsets, shared by both engines and the checker
+   s" 40 constant PKGSNAP-USE" BCG-MUST-HAVE
+   s" 16 constant USE-MAX" BCG-MUST-HAVE
+   s" PKGSNAP-END constant USE-BAND-OFF" BCG-MUST-HAVE
+   s" constant USE-DEPTH-CELL" BCG-MUST-HAVE
+   s" constant USE-PKG-SAVE-CELL" BCG-MUST-HAVE
+   s" constant USE-WIDS-OFF" BCG-MUST-HAVE
+   s" USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END" BCG-MUST-HAVE
+   s" USE-BAND-END constant DATA-START" BCG-MUST-HAVE ;
+
+: KEYWORDS ( -- )   \ the emitters both engines carry
+   s" : C-USING-NAME-GUARD" BCG-MUST-HAVE
+   s" : C-USING-WID" BCG-MUST-HAVE
+   s" : C-USING-PUSH" BCG-MUST-HAVE
+   s" : C-USING (" BCG-MUST-HAVE
+   s" : C-END-USING" BCG-MUST-HAVE
+   s" : EMIT-FIND-USED" BCG-MUST-HAVE
+   s" hb: using: missing package name" BCG-MUST-HAVE
+   s" hb: using: unknown package: " BCG-MUST-HAVE
+   s" hb: using: too many concurrent usings: " BCG-MUST-HAVE
+   s" hb: ;using without an open using" BCG-MUST-HAVE
+   s" hb: ambiguous bare word resolves in multiple used packages: " BCG-MUST-HAVE ;
+
+: RECOVERY ( -- )
+   s" bootstrap/cg/forth.fs" BCG-LOAD
+   BAND
+   KEYWORDS
+   s" LKWUSING @ LBL," BCG-MUST-HAVE
+   s" LCHKUSING @ LBL," BCG-MUST-HAVE
+   s" LBL LKWUSING !" BCG-MUST-HAVE
+   s" LBL LFINDUSED !" BCG-MUST-HAVE
+   s" lmain LKWUSING 5 " BCG-MUST-HAVE
+   s" lmain LKWSEMIUSING 6 " BCG-MUST-HAVE
+   s" LFINDUSED @ BL," BCG-MUST-HAVE
+   s" 89 constant ENGINE-ERROR:USING-NO-NAME" BCG-MUST-HAVE
+   s" 94 constant ENGINE-ERROR:USING-AMBIGUOUS" BCG-MUST-HAVE
+   \ stage0 takes no REPL-line package/using snapshot, so it must not claim the
+   \ native cell that restores one; the offset stays reserved instead.
+   s" USE-RPKG-SAVE-CELL" BCG-MUST-LACK ;
+
+: NATIVE ( -- )
+   s" src/habu/habu2.f" BCG-LOAD
+   KEYWORDS
+   s" LKWUSING LABEL@ LBL," BCG-MUST-HAVE
+   s" LFINDUSED LABEL@ BL," BCG-MUST-HAVE
+   s" src/habu/layout.f" BCG-LOAD
+   BAND
+   s" src/core/engine-error.f" BCG-LOAD
+   s" 89 constant USING-NO-NAME" BCG-MUST-HAVE
+   s" 94 constant USING-AMBIGUOUS" BCG-MUST-HAVE
+   s" src/core/checker.f" BCG-LOAD
+   s" $9C08 constant CK-USE-DEPTH-OFF" BCG-MUST-HAVE ;
+
+: FIXTURES ( -- )   \ the recovery run executes stage0 on real using sources
+   s" tools/bootstrap.sh" BCG-LOAD
+   s" bootstrap_using_gate" BCG-MUST-HAVE
+   s" bootstrap_using_case bootstrap-using 0" BCG-MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-unknown 91" BCG-MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-ambiguous 94" BCG-MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-scope 70" BCG-MUST-HAVE
+   s" bootstrap_using_case bootstrap-using-checker-hook 0" BCG-MUST-HAVE ;
+
+public
+
+: TEST ( -- )
+   RECOVERY
+   NATIVE
+   FIXTURES ;
+
+;package
+
 : BCG-MAIN ( -- )
    T-RESET
    BCG-TEST-MMAP-DIAG
    BCG-PREFLIGHT:TEST
+   BCG-USING:TEST
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST
