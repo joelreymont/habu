@@ -2841,3 +2841,19 @@ fits.
   replacements were smaller than what they deleted. When a check must
   reimplement the semantics of the thing it checks, that is the signal to
   delete it, not to narrow it again.
+
+- **A locally-absent workspace does not mean the work is unowned.** Two lanes
+  were wasted today duplicating work another orchestrator was already doing:
+  the FILEMAP/census removal and the lint-lexer paren fix. Both were dispatched
+  after checking that the work existed nowhere — true at the moment I checked,
+  false by the time the workers finished. The deeper error was in the stale-claim
+  audit: it classified a claim as dead because its workspace directory was
+  missing *on this machine*, and I acted on that for claims naming another
+  orchestrator's agents (`codex-*`). The audit itself got this right for claims
+  tagged `machine=spark` and refused to release them; I did not extend the same
+  caution to a peer session's claims on shared infrastructure. Two rules:
+  before dispatching anything cross-cutting (shared tooling, a subsystem
+  removal, a lint every lane runs), `jj git fetch` immediately beforehand and
+  re-check — not once at the start of a stretch; and never release a claim
+  naming another orchestrator's agent on local absence alone. Ask, or leave it
+  claimed.
