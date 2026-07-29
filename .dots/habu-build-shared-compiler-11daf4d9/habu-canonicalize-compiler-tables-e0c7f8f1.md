@@ -1,9 +1,9 @@
 ---
 title: Canonicalize compiler tables
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-26T22:55:16.430122+02:00"
+created-at: "\"2026-07-26T22:55:16.430122+02:00\""
 blocks:
   - habu-verify-frozen-compiler-224d78ad
 ---
@@ -32,3 +32,5 @@ so the admissible build orders are exactly the topological orders of the
 reference DAG. "Any two orders" means "any two topological orders" for the type
 and attribute tables.
 
+
+Claim: agent=ircanon workspace=.jj-ws/habu-canonicalize-compiler-tables-e0c7f8f1
