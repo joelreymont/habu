@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-22T09:40:20.859444+02:00"
 blocks:
   - habu-infer-gpt2-full-0d5c61d8
-  - habu-infer-gpt2-ref-b3c4da77
 ---
 
 Why this exists:

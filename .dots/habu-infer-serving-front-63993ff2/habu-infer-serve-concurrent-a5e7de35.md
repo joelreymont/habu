@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-22T10:07:44.232595+02:00"
 blocks:
   - habu-infer-serve-http-4fb09e9a
-  - habu-infer-scheduler-churn-896201fe
 ---
 
 Why this exists:

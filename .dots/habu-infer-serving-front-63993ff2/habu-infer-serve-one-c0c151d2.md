@@ -7,7 +7,6 @@ created-at: "2026-07-22T10:07:44.376529+02:00"
 blocks:
   - habu-infer-serve-line-80a4c28d
   - habu-infer-serve-concurrent-a5e7de35
-  - habu-infer-dense-safe-3b25bdfa
 ---
 
 Why this exists:

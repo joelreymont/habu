@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-22T09:43:30.715844+02:00"
 blocks:
   - habu-infer-sampler-deterministic-15d6915b
-  - habu-infer-engine-steady-3fe9348e
 ---
 
 Why this exists:

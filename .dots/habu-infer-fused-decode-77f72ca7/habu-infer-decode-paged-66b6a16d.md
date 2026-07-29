@@ -5,7 +5,6 @@ priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.390536+02:00"
 blocks:
-  - habu-infer-decode-select-64203c11
   - habu-infer-decode-real-c0fcdcf4
   - habu-infer-kv-snapshot-1cdc055a
 ---

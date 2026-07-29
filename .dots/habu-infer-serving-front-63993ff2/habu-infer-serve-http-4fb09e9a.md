@@ -5,9 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-07-22T10:07:44.072966+02:00"
 blocks:
-  - habu-infer-serve-http-7f1f6959
   - habu-infer-serve-openai-1dca13cd
-  - habu-infer-serve-client-6fb4998e
 ---
 
 Why this exists:

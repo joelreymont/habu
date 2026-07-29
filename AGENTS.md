@@ -121,6 +121,22 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   the implementation. Trace every rejected global caller before continuing;
   adding an exception or public forwarding shim is not a fix.
 
+## First Consumer (BLOCKING)
+
+- No leaf ships machinery without its first real consumer: any new public word,
+  type, package, or subsystem must be called from production code that lands in
+  the same leaf or is already on master. A test is not a consumer.
+- The dot contract must name that first consumer (file and word). A contract
+  that cannot name one is describing speculative machinery; do not freeze or
+  dispatch it — record the capability as a dependency of the leaf that will
+  actually consume it.
+- Reviewers reject any diff whose new public surface has no caller in the tree
+  it lands on. Measured basis: this repository accumulated ~1,400 implementation
+  lines of finished, tested subsystems (KV cache, model provenance, residency
+  probe, owner-WID registry) with zero non-test consumers, while the one
+  operation production needed (a weight read) was never written. Build the road
+  before the fortress.
+
 ## Test Integrity (BLOCKING)
 
 - A regression must execute the production entry point and real provider/build

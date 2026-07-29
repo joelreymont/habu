@@ -6,10 +6,8 @@ issue-type: task
 created-at: "\"2026-07-21T15:57:38.309268+02:00\""
 blocks:
   - habu-infer-kv-atomic-cdfb00cb
-  - habu-infer-kv-atomic-9b4a0da3
   - habu-infer-kv-retryable-b548fcd2
   - habu-lease-kv-snapshot-9ef40f19
-  - habu-infer-kv-measure-1c32a847
 ---
 
 This is the paged key/value-cache campaign record. Do not dispatch it as implementation work. Commit 1835f711 landed the base allocator. The leaves now own fixed tables, declared maximum admission, atomic append, fork and cancellation, retryable disposal, exact metrics, immutable device publication, and measured page geometry.

@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-22T10:07:45.601423+02:00"
 blocks:
   - habu-infer-ops-metric-fa3ebf5e
-  - habu-infer-serve-client-6fb4998e
 ---
 
 Why this exists:

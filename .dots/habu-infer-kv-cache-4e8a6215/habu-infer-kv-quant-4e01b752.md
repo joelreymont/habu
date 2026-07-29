@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-22T10:07:44.641264+02:00"
 blocks:
   - habu-infer-kv-quant-246e57d2
-  - habu-infer-kv-exact-a989783c
 ---
 
 Why this exists:

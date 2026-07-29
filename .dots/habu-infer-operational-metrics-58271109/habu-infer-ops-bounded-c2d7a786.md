@@ -7,7 +7,6 @@ created-at: "2026-07-22T10:07:45.826648+02:00"
 blocks:
   - habu-infer-serve-one-c0c151d2
   - habu-infer-ops-scrape-b40bd2ef
-  - habu-infer-scheduler-churn-896201fe
   - habu-infer-m0-adapter-2965b6c9
 ---
 

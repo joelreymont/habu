@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-22T09:43:30.761923+02:00"
 blocks:
   - habu-infer-batch-decode-a7520e15
-  - habu-infer-decode-select-64203c11
 ---
 
 Why this exists:

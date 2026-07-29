@@ -7,7 +7,6 @@ created-at: "2026-07-22T09:43:30.823651+02:00"
 blocks:
   - habu-infer-scheduler-fifo-88f80a53
   - habu-infer-scheduler-strict-68f555aa
-  - habu-infer-scheduler-conservative-80ce81be
   - habu-infer-batch-decode-a7520e15
 ---
 

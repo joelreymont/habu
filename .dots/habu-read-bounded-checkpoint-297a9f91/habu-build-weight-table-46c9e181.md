@@ -1,0 +1,9 @@
+---
+title: Build weight table atomically
+status: active
+priority: 2
+issue-type: task
+created-at: "2026-07-29T20:31:06.640317+02:00"
+---
+
+Problem: maki/infer/weight-store.f publicly exposes WSTORE:tbuilder through TABLE-NEW, SLOT!, and SEAL even though GPT2LOAD already holds every validated slot pair before table construction; callers can omit a slot, and UNPARK-TABLE already bypasses completeness by retyping a builder. Result: package WSTORE exports TABLE-FROM-PAIRS ( ptr n -- WSTORE:table ), where ptr names exactly n validated offset-length pairs. It preflights pair-count, multiplication, every offset-plus-length, table geometry, and allocation before publication; then writes exactly n slots and returns the sealed table. Delete tbuilder, MINT-TBUILDER, TABLE-NEW, SLOT!, SEAL, TB>BLOCK, TB>TABLE, and every bypass. Migrate both GPT2LOAD mapped and copied production builders atomically. Preserve byte-identical table layout, slot order, named failure codes, WSTORE ownership, and existing table readers. No new type, compatibility word, second registry, raw source span API, or unrelated resident cleanup. Dependencies: none. Owner: maki/infer/weight-store.f table construction and its two GPT2LOAD callers only. Production red: the current public three-step API permits an incomplete intermediate builder and UNPARK-TABLE obtains a table without SEAL. Acceptance: an incomplete-pair fixture rejects before publication; valid mapped and copied GPT-2 fixtures load through GPT2LOAD and produce byte-identical tables; overflow and allocation failures publish nothing; deleted words do not resolve; focused WSTORE/GPT2LOAD suites, exact owning load, typed-local and package diff gates pass. Verify: bin/hb --load maki/infer/weight-store-test.f and the mapped/copied GPT2LOAD owning suites. Claim: agent=claude-wstore workspace=.jj-ws/wstore-fix.
