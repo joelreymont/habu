@@ -49,3 +49,25 @@ Claim RELEASED 2026-07-29: the ir0 agent is long gone (previous session) and its
 Update 2026-07-28 (orchestrator, suite-red mapping): the live E-CAST-OWNER 7135 rejection currently reds three maki suite phases via maki/extent.f:71 (CAST: IX>N) and :242 (CAST: >RED) inside package MAKI — maki/sampling-test.f, maki/db/artifact-test.f, and maki/eval/train.f all die rc=7135. The downstream maki cast-declaration repair (making extent.f's family casts satisfy the declaring-package authentication, or moving the cast declarations to the family's declaring package) is part of this dot's acceptance: the three maki phases must be green before it closes.
 
 Claim: agent=cast-owner workspace=.jj-ws/habu-cast-v2-family-741e7bae
+
+CORRECTIONS from the implementing lane (2026-07-29):
+1. The CHECKER-SIDE HALF WAS ALREADY LANDED AND CORRECT. None of the files this
+   record claims to own (checker.f, sumtype.f, structure-decl.f, enum-decl.f,
+   verify-source.f, xref.f, tools/check-core.f) needed a line. CHECKER-AUTH-PACKAGE,
+   the live-record provider installed by xref.f, the verifier-scope mirror proofs
+   and CAST-OWNER? were all in place, and test/cast-negative-suite.f already
+   covered owner spoofing, visibility spoofing, foreign private lookup, poisoned
+   mirrors, stale records and sealed provider state. The ONE uncovered case was a
+   family registered by the ENGINE in the global package — exactly what the live
+   maki failure hit.
+2. maki/extent.f CAST: IX>N never failed. Its output is a plain n, i.e. a
+   PROJECTION, which CAST-OWNER? permits on its first line. Only >RED threw.
+3. Moving >RED alone was IMPOSSIBLE: its input ix<e> lived in package MAKI while
+   its output redx is core-registered, so the cast had no legal home in either
+   package. The real defect was that one three-family substrate (ix, extprod,
+   redx) had two owners. The repair unifies ownership: ix joins its siblings in
+   the engine registration and the converter pair lives at global scope in
+   lib/type/extent-role.f.
+4. The process exit code for these failures is 67 (uncaught throw), not 7135;
+   7135 is the throw code.
+
