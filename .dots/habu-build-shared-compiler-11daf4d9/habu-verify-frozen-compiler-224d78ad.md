@@ -29,3 +29,27 @@ freeze verifier because design line 538 assigns them here:
   a successor naming no block, and a value row whose defining operation
   disowns it.
 
+Further obligations handed over by the function/block lane (landed 2026-07-29).
+IR-FUN deliberately stores neither predecessor-count nor successor-count
+(design lines 404-405) because line 410 says those tables are DERIVED at freeze
+rather than maintained through builder mutation — a stored count would be wrong
+for as long as any branch to the block is unwritten. This verifier must:
+- Walk every terminator's successor window, build the predecessor and successor
+  tables, and record the counts.
+- Check COVERAGE. IR-FUN's window tiling proves every operation up to the last
+  block's end belongs to exactly one block, and every block up to the last
+  function's window end belongs to exactly one function. Operations appended
+  AFTER the last block, and blocks appended for a function later abandoned, lie
+  outside every window; only comparing total coverage against IR-OP:OPS and
+  IR-FUN:BLOCKS at freeze catches them.
+- Check BLOCK ARGUMENT DEFINITIONS. ADD-BLOCK-ARG must mint a value row before
+  the block's own row can exist, so a rejected END-BLOCK leaves argument values
+  naming a block that does not exist (the design's answer is builder ABORT,
+  section 6.2). Reject any blk-arg value whose block does not exist or whose
+  block's argument window does not contain it — section 6.5's "every value has
+  exactly one definition", made concrete for block arguments.
+- Check SUCCESSOR EXISTENCE AND ARGUMENT AGREEMENT (carried from the operation
+  lane, now possible): every successor must name an existing block, and
+  successor argument counts and types must match the destination block's
+  arguments. IR-FUN supplies BLOCK-COUNT and ARG@ for both.
+
