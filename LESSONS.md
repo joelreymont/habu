@@ -3133,3 +3133,23 @@ fits.
   index, so predecessor lists were written against the wrong block. `j` is the
   outer index inside a nested loop. A four-block diamond fixture found both;
   a single-block fixture would have passed.
+
+- **An order-independence fixture proves nothing until every reference class
+  really moves.** The first canonicalization fixture built the same module along
+  two intern orders and passed; then mutating the canonicalizer to leave a
+  reference unrewritten kept it green in eight of fifteen classes. In each case
+  the referent's insertion ordinal happened to be the same in both builds - the
+  function name was interned at the same point, the pointer landed in the middle
+  of a five-item list that reverses onto itself, and a source registered per span
+  gave both builds the same row. The repair was to make each reversed group an
+  even-length list walked forwards or backwards so no member keeps its ordinal,
+  and to have the fixture assert that four of those ordinals actually differ
+  between the two builds. Reversing an insertion order is not the same as moving
+  the numbers the code has to rewrite.
+
+- **A word cannot see a `variable` whose name a local shadows.** A test kept a
+  build-order flag in `variable REV` and read it inside a word with a local
+  `rev`; name lookup is case-insensitive, so `REV @` read the local and the
+  checker reported `expected: a ptr a actual: n n` at the store. Naming the cell
+  `REV-CELL` fixed it. The package-wide cells in this substrate are already
+  spelled `*-CELL` for the same reason.

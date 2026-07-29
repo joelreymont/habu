@@ -230,6 +230,10 @@ SUITE compiler-ir-verify
    test/compiler/ir-verify.f
 ;SUITE
 
+SUITE compiler-ir-canon
+   test/compiler/ir-canon.f
+;SUITE
+
 SUITE compiler-ir-arena
    test/compiler/ir-arena.f
 ;SUITE

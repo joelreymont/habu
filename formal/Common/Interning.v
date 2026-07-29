@@ -137,6 +137,24 @@
       would be provable here of an implementation that reads a clock.  Stating
       it would need the ambient state as a parameter.  Nothing below publishes
       it.
+
+  12. Canonicalisation is modelled for the type table only, and its order
+      independence is an INSTANCE.  `Types.canonize` is the model of
+      src/compiler/ir/canon.f's selection rule - repeatedly take the smallest
+      canonical key among the rows whose references are already numbered - and
+      `Types.ty_canonize_needs_renumbering` proves that dropping the
+      renumbering costs the module its canonical form.  What is proved about
+      agreement is `Types.ty_canonize_orders_agree`, which is the
+      counterexample instance and not the general statement "any two
+      topological orders of any reference graph canonicalise alike"; that
+      general statement is unproved here and is the reason
+      test/compiler/ir-canon.f measures whole modules through the shipped
+      IR-CANON instead.  Three further parts of the shipped stage are outside
+      this model: the attribute table's renumbering under three permutations at
+      once, the source table's content merge (two registrations of the same
+      bytes share one canonical ordinal, which makes the canonical map
+      non-injective there), and the canonical cell stream itself, which is
+      IR-CANON's product and the encoder's input.
    ------------------------------------------------------------------------
    BINDING GAPS
 
@@ -1641,6 +1659,142 @@ Example ty_denotation_order_independent :
   /\ denote [i16; i8; TPtr 0 1] 3 2 = Some (TmPtr 0 (TmInt 8 1)).
 Proof. split; vm_compute; reflexivity. Qed.
 
+(* ---- what canonicalisation has to compute ------------------------------ *)
+
+(* src/compiler/ir/canon.f is the stage that answers the FINDING above: it
+   numbers a frozen module's rows in a canonical order and rewrites every
+   stored reference under that numbering.  What follows models both halves of
+   that job, and shows that the second half cannot be dropped.
+
+   A row's canonical key under a partial numbering `m` is its own content with
+   every reference replaced by the referent's CANONICAL ordinal.  A row whose
+   pointee has no canonical ordinal yet has no key yet, which is how the model
+   states readiness: IR-CANON:TY-READY? and IR-CANON:TY-CMP are two words there
+   and one function here. *)
+Definition canon_key (m : list (option nat)) (k : ty) : option ty :=
+  match k with
+  | TInt w s => Some (TInt w s)
+  | TPtr space pointee =>
+      match nth_error m pointee with
+      | Some (Some c) => Some (TPtr space c)
+      | _ => None
+      end
+  end.
+
+(* The same function with the renumbering removed and nothing else changed: a
+   row is still emitted only once its pointee is numbered, but it keeps the
+   ordinal it was stored with.  This is the "sort the rows and emit them"
+   encoder the FINDING above rejects, and it is here so that rejection can be a
+   theorem instead of a warning. *)
+Definition stored_key (m : list (option nat)) (k : ty) : option ty :=
+  match k with
+  | TInt w s => Some (TInt w s)
+  | TPtr space pointee =>
+      match nth_error m pointee with
+      | Some (Some _) => Some (TPtr space pointee)
+      | _ => None
+      end
+  end.
+
+(* A total order on keys: integer rows before pointer rows, then field by
+   field.  This is IR-CANON:TY-CMP's order - the kind's wire code first, then
+   the fields with references already in canonical numbering. *)
+Definition ty_ltb (a b : ty) : bool :=
+  match a, b with
+  | TInt w1 s1, TInt w2 s2 =>
+      if Nat.eqb w1 w2 then Nat.ltb s1 s2 else Nat.ltb w1 w2
+  | TInt _ _, TPtr _ _ => true
+  | TPtr _ _, TInt _ _ => false
+  | TPtr p1 e1, TPtr p2 e2 =>
+      if Nat.eqb p1 p2 then Nat.ltb e1 e2 else Nat.ltb p1 p2
+  end.
+
+Definition assign (m : list (option nat)) (i c : nat) : list (option nat) :=
+  firstn i m ++ Some c :: skipn (S i) m.
+
+(* One round of IR-CANON:PICK-READY: the smallest key among the rows that are
+   not numbered yet and whose references already are. *)
+Definition pick (key : list (option nat) -> ty -> option ty)
+                (rws : list ty) (m : list (option nat)) : option (nat * ty) :=
+  fold_left
+    (fun acc i =>
+       match nth_error m i, nth_error rws i with
+       | Some None, Some k =>
+           match key m k with
+           | None => acc
+           | Some ck =>
+               match acc with
+               | None => Some (i, ck)
+               | Some (_, bk) => if ty_ltb ck bk then Some (i, ck) else acc
+               end
+           end
+       | _, _ => acc
+       end)
+    (seq 0 (length rws)) None.
+
+(* IR-CANON:ORDER: one round per row, and no ready row left with rows still
+   unnumbered is IR-CANON's E-IR-CANON-ORDER refusal rather than a partial
+   answer. *)
+Fixpoint canon_rounds (key : list (option nat) -> ty -> option ty)
+                      (rws : list ty) (fuel : nat)
+                      (m : list (option nat)) (next : nat)
+                      (out : list ty) : option (list ty) :=
+  match fuel with
+  | 0 => Some (rev out)
+  | S f =>
+      match pick key rws m with
+      | None => None
+      | Some (i, ck) =>
+          canon_rounds key rws f (assign m i next) (S next) (ck :: out)
+      end
+  end.
+
+Definition canonize_with (key : list (option nat) -> ty -> option ty)
+                         (rws : list ty) : option (list ty) :=
+  canon_rounds key rws (length rws) (repeat None (length rws)) 0 [].
+
+Definition canonize : list ty -> option (list ty) := canonize_with canon_key.
+
+Definition canonize_stored : list ty -> option (list ty) :=
+  canonize_with stored_key.
+
+(* The stored rows of the two admissible orders, named rather than transcribed:
+   the example below binds them to what the two builds actually produce. *)
+Definition rows_a : list ty := [i8; i16; TPtr 0 0].
+Definition rows_b : list ty := [i16; i8; TPtr 0 1].
+
+Example ty_rows_are_the_built_tables :
+  build order_a (empty 8) = Some (MkTable rows_a 8)
+  /\ build order_b (empty 8) = Some (MkTable rows_b 8).
+Proof. split; vm_compute; reflexivity. Qed.
+
+(* The two admissible orders canonicalise to one row list, references and all.
+   This is the property src/compiler/ir/canon.f claims and the one
+   test/compiler/ir-canon.f measures over a whole module. *)
+Example ty_canonize_orders_agree :
+  canonize rows_a = Some rows_a /\ canonize rows_b = Some rows_a.
+Proof. split; vm_compute; reflexivity. Qed.
+
+(* And the canonical rows denote what the source rows denoted: the pointer is
+   the last row of both tables and keeps canonical ordinal 2, so its denotation
+   is comparable at the same index. *)
+Example ty_canonize_preserves_denotation :
+  match canonize rows_b with
+  | Some rws => denote rws 3 2 = denote rows_b 3 2
+  | None => False
+  end.
+Proof. vm_compute. reflexivity. Qed.
+
+(* The renumbering is load-bearing, not bookkeeping.  Drop it - keep the
+   canonical ORDER and emit the stored ordinal - and the same module built
+   along the two admissible orders no longer has one canonical form.  This is
+   the machine-checked form of the mutation the Habu test carries: leaving a
+   pointer's pointee unrewritten in IR-CANON:PUT-TYPE turns the
+   two-build-orders fixture red. *)
+Theorem ty_canonize_needs_renumbering :
+  canonize_stored rows_a <> canonize_stored rows_b.
+Proof. vm_compute. discriminate. Qed.
+
 End Types.
 
 (* ------------------------------------------------------------------ *)
@@ -1678,3 +1832,4 @@ Print Assumptions Types.ty_intern_preserves_refs_below.
 Print Assumptions Types.ty_walks_terminate.
 Print Assumptions Types.structural_rows_not_permutation.
 Print Assumptions Types.denote_total.
+Print Assumptions Types.ty_canonize_needs_renumbering.

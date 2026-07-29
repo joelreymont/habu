@@ -110,3 +110,6 @@ closed
 theorem Habu.Common.Interning.Types.denote_total
 type forall t : table Types.ty, Types.ty_refs_below t -> forall fuel i : nat, i < fuel -> i < count t -> Types.denote (rows t) fuel i <> None
 closed
+theorem Habu.Common.Interning.Types.ty_canonize_needs_renumbering
+type Types.canonize_stored Types.rows_a <> Types.canonize_stored Types.rows_b
+closed
