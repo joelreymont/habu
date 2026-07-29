@@ -1,6 +1,6 @@
 ---
 title: Store compiler control structure
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-26T22:54:58.876373+02:00"
@@ -26,3 +26,4 @@ Notes from the operation/value pool lane (landed 2026-07-29):
   construction. Existence is a freeze-time check (design section 6.5); do not
   add it here.
 
+Claim: agent=ir-ctl workspace=.jj-ws/habu-store-compiler-control-e652c33a

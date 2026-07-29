@@ -236,6 +236,10 @@ SUITE compiler-ir-op
    test/compiler/ir-op.f
 ;SUITE
 
+SUITE compiler-ir-fun
+   test/compiler/ir-fun.f
+;SUITE
+
 SUITE compiler-ir-arena
    test/compiler/ir-arena.f
 ;SUITE

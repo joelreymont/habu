@@ -51,11 +51,21 @@
 \ WHAT A VALUE ROW RECORDS (design lines 428-438). Its type, its definition
 \ kind, the identity that defined it, and the position within that definition.
 \ Section 6.3 fixes the two definition kinds - block argument or operation
-\ result - so they are a closed ENUM here. Only the operation-result kind has a
-\ minting path in this stage, because a block argument cannot exist before the
-\ block table does; the block-argument code is stored, decoded, and rejected by
-\ the operation-result readers with E-IR-OP-KIND, in the same shape IR-SCHEMA
-\ uses for a field its effect shape does not carry.
+\ result - so they are a closed ENUM here. Both kinds are minted here, because
+\ the value store owns value rows whoever defines them: an operation's results
+\ are minted by END-OP, and a block's arguments by MINT-ARG, which the block
+\ table calls while it builds a block. Each kind has its own pair of readers for
+\ the definition identity and position, and the other kind's reader rejects with
+\ E-IR-OP-KIND, in the same shape IR-SCHEMA uses for a field its effect shape
+\ does not carry.
+\
+\ A BLOCK ARGUMENT'S BLOCK IS NOT CHECKED FOR EXISTENCE HERE, for the same
+\ reason a successor's block is not, and one more: an argument value must exist
+\ before the operations that take it as an operand, and those operations must
+\ exist before their block's row can record its operation window. So the block
+\ row is always appended after its arguments. The block table validates the
+\ identity against its own count when it reads the value back, and the section
+\ 6.5 freeze verifier owns the whole-module check.
 \
 \ APPENDING IS ALL-OR-NOTHING. Every check - the stores' headers and module
 \ binding, the staged fields, the opcode's schema, the arity rules, the SSA rule,
@@ -810,6 +820,29 @@ public
    c v l VROWS-ADD
    key l IR-ID:PACK-OP ;
 
+\ ---- block arguments ---------------------------------------------------------
+\ Design line 434's other definition kind. A block argument is a value its block
+\ defines at an argument position; it is minted whole here because the value
+\ store owns value rows, while the block table records the window those values
+\ fill. The block identity is owner-checked but not existence-checked: a block's
+\ arguments are always minted before the block's own row exists. Every check
+\ runs before the first cell is written, so this append also lands whole or
+\ changes nothing.
+: MINT-ARG ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-block-id IR-ID:ir-type-id n -- IR-ID:ir-value-id )
+   {: c:IR-CTX:ctx v:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key blk:IR-ID:ir-block-id t:IR-ID:ir-type-id pos:n :}
+   v key VKEY-CK
+   key KEY-SERIAL blk BLK-OWNER OWNED-CK
+   key KEY-SERIAL t TYP-OWNER OWNED-CK
+   tr t IR-TYPE:KIND@ drop
+   pos 0 < if E-IR-OP-BOUND throw then
+   v VCNT v HC-CAP LCELL@ >= if E-IR-OP-CAP throw then
+   v VCNT {: l:n :}
+   c v t IR-ID:TYPE-LOCAL CELL+
+   c v IR--OP-DEF--KIND:BLK-ARG KIND-CODE CELL+
+   c v blk IR-ID:BLOCK-LOCAL CELL+
+   c v pos CELL+
+   key l IR-ID:PACK-VALUE ;
+
 \ ---- table readers -----------------------------------------------------------
 : OPS ( IR-ARENA:arena -- n )
    CNT ;
@@ -909,6 +942,10 @@ private
    N>KIND IR--OP-DEF--KIND:OP-RESULT IR--OP-DEF--KIND:EQ
    0= if E-IR-OP-KIND throw then ;
 
+: ARG-KIND-CK ( n -- )
+   N>KIND IR--OP-DEF--KIND:BLK-ARG IR--OP-DEF--KIND:EQ
+   0= if E-IR-OP-KIND throw then ;
+
 public
 
 \ The operation that defined this value, checked against the operation table
@@ -926,6 +963,20 @@ public
 : VALUE-POS@ ( IR-ARENA:arena IR-ID:ir-value-id -- n )
    {: v:IR-ARENA:arena id:IR-ID:ir-value-id :}
    v id OFF-VKIND VFLD RESULT-KIND-CK
+   v id OFF-VPOS VFLD LEN-OK ;
+
+\ The block that defined this value. The identity is owner-checked here and
+\ bound-checked by the block table that owns it, exactly as for a successor.
+: VALUE-BLOCK@ ( IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-block-id )
+   {: v:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   v key VKEY-CK
+   v id OFF-VKIND VFLD ARG-KIND-CK
+   key v id OFF-VDEF VFLD ORD-OK IR-ID:PACK-BLOCK ;
+
+\ Which argument of that block this value is.
+: VALUE-ARG@ ( IR-ARENA:arena IR-ID:ir-value-id -- n )
+   {: v:IR-ARENA:arena id:IR-ID:ir-value-id :}
+   v id OFF-VKIND VFLD ARG-KIND-CK
    v id OFF-VPOS VFLD LEN-OK ;
 
 \ ---- frozen readers ----------------------------------------------------------
@@ -1006,6 +1057,17 @@ public
 : FVALUE-POS@ ( IR-ARENA:view IR-ID:ir-value-id -- n )
    {: v:IR-ARENA:view id:IR-ID:ir-value-id :}
    v id OFF-VKIND FVFLD RESULT-KIND-CK
+   v id OFF-VPOS FVFLD LEN-OK ;
+
+: FVALUE-BLOCK@ ( IR-ARENA:view IR-ID:ir-module-key IR-ID:ir-value-id -- IR-ID:ir-block-id )
+   {: v:IR-ARENA:view key:IR-ID:ir-module-key id:IR-ID:ir-value-id :}
+   v key FVKEY-CK
+   v id OFF-VKIND FVFLD ARG-KIND-CK
+   key v id OFF-VDEF FVFLD ORD-OK IR-ID:PACK-BLOCK ;
+
+: FVALUE-ARG@ ( IR-ARENA:view IR-ID:ir-value-id -- n )
+   {: v:IR-ARENA:view id:IR-ID:ir-value-id :}
+   v id OFF-VKIND FVFLD ARG-KIND-CK
    v id OFF-VPOS FVFLD LEN-OK ;
 
 private

@@ -481,3 +481,19 @@ public
 -8027 constant E-IR-OP-SSA       \ an operand naming a value that is not already defined; every forward reference and cycle lands here
 -8028 constant E-IR-OP-WINDOW    \ a stored window that does not continue exactly where the record before it ended
 -8029 constant E-IR-OP-KIND      \ a field reader applied to a value whose definition kind does not carry that field
+
+\ Compiler function and block structure (package IR-FUN): -8040..-8059
+-8040 constant E-IR-FUN-STATE    \ a function or block store failed its header, row-shape, window, or stored-code recheck
+-8041 constant E-IR-FUN-OWNER    \ a module key, symbol, type, attribute, value, block, operation id, or store pairing this table does not own
+-8042 constant E-IR-FUN-BOUND    \ a function id, block id, or list index at or past the count the table records
+-8043 constant E-IR-FUN-CAP      \ a row or pool capacity outside the accepted range, or an append past a committed ceiling
+-8044 constant E-IR-FUN-STAGE    \ function or block stage misuse: a begin while one is open, an end without a begin, a field declared twice, or an end out of nesting order
+-8045 constant E-IR-FUN-FIELD    \ a required function or block field was never declared before the append closed
+-8046 constant E-IR-FUN-WINDOW   \ a stored window that does not continue exactly where the record before it ended
+-8047 constant E-IR-FUN-PARENT   \ a block whose parent function is not the function whose block window names it
+-8048 constant E-IR-FUN-ARG      \ a value in a block's argument window that is not that block's argument at that position
+-8049 constant E-IR-FUN-TERM     \ a block that does not end in exactly one terminator operation
+-8050 constant E-IR-FUN-LINKAGE  \ a linkage, visibility, and body combination no function can have
+-8051 constant E-IR-FUN-DUP      \ a symbol this module's function table already defines
+-8052 constant E-IR-FUN-SIG      \ a function signature type that is not a code reference
+-8053 constant E-IR-FUN-TARGET   \ a calling convention the bound target contract does not provide

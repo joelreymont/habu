@@ -304,6 +304,99 @@ private
    BND [: VALUE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE 0 T= TTRUE TTRUE ;
 
+\ ---- block arguments ---------------------------------------------------------
+\ The other definition kind of design line 434. A block argument is minted here
+\ and named by a block identity, which is owner-checked but not existence-
+\ checked: the block's own row cannot exist until the operations that take its
+\ arguments do.
+: ARG-BODY ( IR-CTX:ctx -- n n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c 16 16 128 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c v tr key  key 3 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG
+   {: a0:IR-ID:ir-value-id :}
+   c v tr key  key 3 IR-ID:PACK-BLOCK  c tp tr key I64  1 IR-OP:MINT-ARG
+   {: a1:IR-ID:ir-value-id :}
+   v IR-OP:VALUES
+   v a1 IR-OP:VALUE-ARG@
+   v key a1 IR-OP:VALUE-BLOCK@ IR-ID:BLOCK-LOCAL 3 =
+   v a1 IR-OP:VALUE-KIND@ IR--OP-DEF--KIND:BLK-ARG IR--OP-DEF--KIND:EQ
+   v key a0 IR-OP:VALUE-TYPE@ IR-ID:TYPE-LOCAL
+      c tp tr key I64 IR-ID:TYPE-LOCAL = ;
+
+: ARG-CASE ( -- )
+   s" a block argument reads back its block, its index, and its type" T-LABEL
+   BND [: ARG-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE 1 T= 2 T= ;
+
+: FARG-BODY ( IR-CTX:ctx -- n bool )
+   {: c:IR-CTX:ctx :}
+   c 16 16 128 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c v tr key  key 2 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG
+   {: a0:IR-ID:ir-value-id :}
+   v IR-ARENA:FREEZE {: vv:IR-ARENA:view :}
+   vv a0 IR-OP:FVALUE-ARG@
+   vv key a0 IR-OP:FVALUE-BLOCK@ IR-ID:BLOCK-LOCAL 2 = ;
+
+: FARG-CASE ( -- )
+   s" a frozen block argument answers through the view" T-LABEL
+   BND [: FARG-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 0 T= ;
+
+: ARGNEG-BODY ( n IR-CTX:ctx -- )
+   {: k:n c:IR-CTX:ctx :}
+   c 16 16 128 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c IR-CTX:NEW-MODULE drop {: other:IR-ID:ir-module-key :}
+   k 1 = if
+      c v tr key  other 0 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG drop
+   then
+   k 2 = if
+      c other TYP-NEW {: tp2:IR-ARENA:arena tr2:IR-ARENA:arena :}
+      c v tr key  key 0 IR-ID:PACK-BLOCK  c tp2 tr2 other I64  0 IR-OP:MINT-ARG drop
+   then
+   k 3 = if
+      c v tr key  key 0 IR-ID:PACK-BLOCK  c tp tr key I64  -1 IR-OP:MINT-ARG drop
+   then
+   k 4 = if
+      c key sp sr tp tr ap ar sa qr p v r S-SEED APPEND drop
+      v key  key 0 IR-ID:PACK-VALUE  IR-OP:VALUE-BLOCK@ drop
+   then
+   k 5 = if
+      c v tr key  key 0 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG drop
+      v r key  key 0 IR-ID:PACK-VALUE  IR-OP:VALUE-OP@ drop
+   then ;
+
+: ARGNEG-RUN ( n -- )
+   BND [: ARGNEG-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: ARGCAP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 16 1 128 RIG
+   {: key:IR-ID:ir-module-key sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena ap:IR-ARENA:arena ar:IR-ARENA:arena sa:IR-ARENA:arena qr:IR-ARENA:arena p:IR-ARENA:arena v:IR-ARENA:arena r:IR-ARENA:arena :}
+   c v tr key  key 0 IR-ID:PACK-BLOCK  c tp tr key I64  0 IR-OP:MINT-ARG drop
+   c v tr key  key 0 IR-ID:PACK-BLOCK  c tp tr key I64  1 IR-OP:MINT-ARG drop ;
+
+: ARGCAP-RUN ( -- )
+   BND [: ARGCAP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: ARG-CASES ( -- )
+   s" a block argument naming another module's block rejects" T-LABEL
+   [: 1 ARGNEG-RUN ;] E-IR-OP-OWNER TTHROWSQ
+   s" a block argument of another module's type rejects" T-LABEL
+   [: 2 ARGNEG-RUN ;] E-IR-OP-OWNER TTHROWSQ
+   s" a negative argument position rejects" T-LABEL
+   [: 3 ARGNEG-RUN ;] E-IR-OP-BOUND TTHROWSQ ;
+
+: ARG-CASES-B ( -- )
+   s" an operation result refuses the block-argument reader" T-LABEL
+   [: 4 ARGNEG-RUN ;] E-IR-OP-KIND TTHROWSQ
+   s" a block argument refuses the operation-result reader" T-LABEL
+   [: 5 ARGNEG-RUN ;] E-IR-OP-KIND TTHROWSQ
+   s" a block argument past the value ceiling rejects" T-LABEL
+   [: ARGCAP-RUN ;] E-IR-OP-CAP TTHROWSQ ;
+
 \ A span is a value, so the reader hands one back and the consumer revalidates
 \ it against the registry it names - which is exactly what IR-SOURCE demands.
 : SPAN-BODY ( IR-CTX:ctx -- n n bool )
@@ -939,6 +1032,8 @@ private
 : HARNESS-OWNER-C ( IR-CTX:ctx -- )   drop  OWNER-CASES-C ;
 : HARNESS-CAP ( IR-CTX:ctx -- )       drop  CAP-CASES ;
 : HARNESS-FROZEN ( IR-CTX:ctx -- )    drop  FROZEN-CASES ;
+: HARNESS-ARG ( IR-CTX:ctx -- )       drop  ARG-CASES ;
+: HARNESS-ARG-B ( IR-CTX:ctx -- )     drop  ARG-CASES-B ;
 
 public
 
@@ -946,6 +1041,8 @@ public
    T-RESET
    READ-CASE
    VALUE-CASE
+   ARG-CASE
+   FARG-CASE
    SPAN-CASE
    SUCC-CASE
    TAIL-CASE
@@ -968,6 +1065,8 @@ public
    BND [: HARNESS-OWNER-D ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-CAP ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-FROZEN ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-ARG ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-ARG-B ;] IR-CTX:WITH-CONTEXT
    TD-FRESH-CASE
    CHECKER-CASES
    T-REPORT ;
