@@ -23,7 +23,12 @@
 \     must write nothing.
 \
 \   - every build sequence, run through the real `IR-OP` and `IR-FUN` builder
-\     words. The same rows become Rocq obligations in
+\     words, and then read back: each accepted operation's operands are asked
+\     for again through `IR-OP:OPERAND@`, which revalidates the row's window
+\     tiling before it reads a cell, and must hand back the very ordinals the
+\     sequence gave it. That read is what binds the two words that lay the
+\     windows down to behaviour rather than to their frozen text. The same
+\     rows become Rocq obligations in
 \     `test/compiler/ir-structure-obligations.f`; this file never restates them.
 \
 \   - the coverage of the sequence table itself, so a role or a store that stops
@@ -360,6 +365,39 @@ private
 
 \ ---- one value-store sequence ------------------------------------------------
 
+\ Every accepted step's operands were laid into the cell pool by
+\ `IR-OP:WIN-STARTS` and `IR-OP:ROW-ADD`, and they come back out through
+\ `IR-OP:OPERAND@`, which revalidates the whole row's tiling with `TILE-CK`
+\ before it reads a single cell. The shared row already records those ordinals,
+\ so asking the shipped store to hand them back drives the operand window
+\ itself: a start that lands on the wrong cell, or an operand arm of the tiling
+\ that stopped comparing, changes what comes back. Reading happens after the
+\ last step so the row is read against the finished table.
+: OPERAND-TRY ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n n -- IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n n )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n slot:n :}
+   p r key id i  p r key id i IR-OP:OPERAND@ IR-ID:VALUE-LOCAL ;
+
+: OPERAND-GET ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n -- n n )
+   -1 [: OPERAND-TRY ;] catch {: rc:n :}
+   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n got:n :}
+   rc got ;
+
+: OPERAND-BACK ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key IR-ID:ir-op-id n n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key id:IR-ID:ir-op-id i:n want:n :}
+   p r key id i OPERAND-GET {: rc:n got:n :}
+   s" reading an operand of an accepted operation back is accepted" T-LABEL
+   rc 0 T=
+   s" the operand window hands back the ordinal the shared row records" T-LABEL
+   got want T= ;
+
+: OPERANDS-BACK ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key st:n :}
+   st SS-CLASS@ 0 <> if exit then
+   key st SS-ORD@ IR-ID:PACK-OP {: id:IR-ID:ir-op-id :}
+   st SS-OPN@ 0 ?do
+      p r key id i st SS-OPB@ i + OPD@ OPERAND-BACK
+   loop ;
+
 : SSA-SEQ ( IR-CTX:ctx -- ) {: c:IR-CTX:ctx :}
    CUR @ {: s:n :}
    c s SCN-OCAP@ s SCN-VCAP@ s SCN-PCAP@ RIG
@@ -368,6 +406,9 @@ private
       s SCN-BASE@ i + {: st:n :}
       c key sp sr tp tr ar sa qr p v r st SSA-STEP {: rc:n got:n :}
       st SS-CLASS@ st SS-ORD@ rc got STEP-ANSWER
+   loop
+   s SCN-LEN@ 0 ?do
+      p r key s SCN-BASE@ i + OPERANDS-BACK
    loop
    s" the sequence ends holding the operation count the shared row records" T-LABEL
    r IR-OP:OPS s SCN-FINAL-A@ T=

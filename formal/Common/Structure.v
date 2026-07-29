@@ -120,12 +120,38 @@
 
    Measured by mutating src/compiler/ir/{op,fun}.f and rerunning
    test/compiler/ir-structure-proof.f.  The operand bound, the row ceiling and
-   the block's STEP-CK are all caught by a vector row.  Three are caught only
-   by the frozen guard bodies, which notice any edit to those words but no
-   behaviour: giving the result window the operand window's start
-   (IR-OP:WIN-STARTS), dropping the operand-window arm of IR-OP:TILE-CK, and
-   dropping the "this block" arm of IR-FUN:ARGS-CK.  So the tiling results and
-   `args_ck_sound` rest on pinned text rather than on a driven row.
+   the block's STEP-CK are all caught by a vector row.
+
+   The two window gaps are CLOSED.  Every accepted step of a value-store
+   sequence now has its operands read back out of the cell pool through
+   IR-OP:OPERAND@, which revalidates the whole row's tiling with TILE-CK before
+   it touches a cell, and compares what comes back with the operand ordinals
+   the shared row already records.  Both mutations were re-applied with their
+   frozen guard text updated to match, so that only behaviour could catch
+   them, and both went red:
+
+     - giving the result window the operand window's start
+       (IR-OP:WIN-STARTS) makes the result start disagree with the operand
+       window's end, and the read is refused with E-IR-OP-WINDOW;
+     - shifting the operand window's own start by one cell AND dropping the
+       operand-window arm of IR-OP:TILE-CK together leave the remaining arms
+       satisfied, and the read then hands back the next row's cell instead of
+       the operand, which the recorded ordinal catches.
+
+   The ARGS-CK gap is still open, and it is not the same kind of gap.  Its
+   "this block" arm compares the value row's block against `b BCNT`, and the
+   only writer of that field is IR-FUN:ADD-BLOCK-ARG, which writes the very
+   same `b BCNT`.  Between the two, nothing can move the block count: only
+   IR-FUN:END-BLOCK appends a block row, and only one block can be staged at a
+   time.  So on every path the builder can take, the two sides agree by
+   construction, exactly like the stored terminator ordinal in FINDING F2
+   below.  A row driving it would have to hand ADD-BLOCK-ARG and END-BLOCK two
+   DIFFERENT block tables of the same module, which is caller misuse rather
+   than a design path.  What is still worth driving, and is not driven yet, is
+   ARGS-CK's kind arm: an argument window that a minted operation result falls
+   inside must be refused with E-IR-FUN-ARG.  Reaching it needs block
+   arguments in the build sequence vocabulary, which the block steps do not
+   have yet, so `args_ck_sound` still rests on pinned text.
 
    ------------------------------------------------------------------------
    FINDINGS
