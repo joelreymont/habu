@@ -119,6 +119,15 @@ REG-SCRATCH-SNAP-INSTALL
 : RSTR ( ptr u8 n -- ) {: a:ptr u:n :}
    0 BEGIN dup u < WHILE dup a + c@ EMIT1 1 + REPEAT drop ;
 
+\ RFOLD is RSTR for a name whose stored capitalisation is incidental: it emits
+\ the canonical case-folded spelling. Diagnostics name identifiers folded — the
+\ rejected word renders as its folded symbol tail, and the used-package
+\ collision row prints a package the checker already folded on the way in
+\ (checker.f CHECKER-USING). Only a declaring-package name reaches the renderer
+\ unfolded, because TFAM-DECL interns whatever the source `package` line typed.
+: RFOLD ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE dup a + c@ CORE-FOLD-C EMIT1 1 + REPEAT drop ;
+
 : CON-OUT ( n -- ) {: p:n :}
    p 2 = IF 102 EMIT1 ELSE
    p 0 > p CTN @ < and IF                 \ any registered type (built-in OR user-declared CT type)
@@ -147,6 +156,25 @@ REG-SCRATCH-SNAP-INSTALL
 \ repurposes a still-in-range slot renders the new occupant's name — no crash,
 \ wrong spelling, and unreachable on the command path because a mismatch
 \ diagnostic renders inline, before any rollback.
+\
+\ The package half of that qualified name renders case-folded (RFOLD). The tail
+\ half is already canonical lowercase because TFAM-DECL runs TF-REQUIRE-CANON,
+\ but the declaring package name is interned exactly as the source `package`
+\ line typed it, and that capitalisation carries no meaning: a package is
+\ identified case-insensitively everywhere it is compared (TFAM-PKG-MATCH?,
+\ TFQ-FOLD-COPY on a signature's `PKG:tail` qualifier, TFAM-QUAL-RESOLVE,
+\ SYM-STR=CI, the checker's CAST-OWNER?). Folding on output is what makes one
+\ family render one way no matter which file's `package` line the reader is
+\ looking at, and it matches how the renderer already spells every other
+\ identifier: the rejected word prints as its folded tail, and the used-package
+\ collision row prints an already-folded package. The printed `pkg:tail` still
+\ names the family back exactly, since the qualifier folds on the way in. Raw
+\ source echoes are a different thing and stay verbatim: `token`,
+\ `definition_source` and `declared_effect_source` quote what the author wrote.
+\ FAM-FOREIGN? below still compares exactly, and that is not an inconsistency:
+\ the engine canonicalises a package to its first-registered spelling, so
+\ reopening `package MEM` as `package mem` reports `MEM` either way and both
+\ sides of this compare read the one interned string.
 : FAM-INTERNED? ( n -- f ) {: fam:n :}
    fam 0 >=  fam TFAM-N@ <  and ;
 : FAM-FOREIGN? ( n -- f ) {: fam:n :}
@@ -154,8 +182,8 @@ REG-SCRATCH-SNAP-INSTALL
    pu 0 = IF RES-FALSE EXIT THEN
    pa pu s" @" CORE-STR= IF RES-FALSE EXIT THEN
    pa pu TFAM-ACTIVE-PKG$ CORE-STR= 0= ;
-: FAM-QNAME-REND ( n -- ) {: fam:n :}    \ interned qualified name: pkg:tail if foreign, else bare tail
-   fam FAM-FOREIGN? IF fam TFAM-PKG$ RSTR 58 EMIT1 THEN
+: FAM-QNAME-REND ( n -- ) {: fam:n :}    \ interned qualified name: folded pkg:tail if foreign, else bare tail
+   fam FAM-FOREIGN? IF fam TFAM-PKG$ RFOLD 58 EMIT1 THEN
    fam TFAM-NAME$ RSTR ;
 : FAM-NAME-REND ( n -- ) {: t:n :}
    t PARAM>FAM {: fam:n :}

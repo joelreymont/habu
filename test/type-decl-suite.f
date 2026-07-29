@@ -1211,13 +1211,20 @@ s" TPC-PUBLIC-QUAL ( OTHER:tier<n,n> -- OTHER:tier<n,n> )" CHECK-QUIET-CANDIDATE
 s" TPC-MEM-REPLAY ( MEM:span<n,n,n,n,n,n> -- MEM:span<n,n,n,n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPC-MEM-REPLAY-BAD ( span<n,n,n> -- span<n,n,n> ) TPC-MEM-STORED" CHECK-QUIET-CANDIDATE! 0 T=
 
-\ Prose row rendering and JSON arity diagnostics keep the package qualifier.
+\ Prose row rendering and JSON arity diagnostics keep the package qualifier, and
+\ render it case-folded: the declaring package was written `package MEM`, but a
+\ rendered family name is spelled canonically (render.f FAM-QNAME-REND), the way
+\ word names and the used-package row already are. `token` is the opposite kind
+\ of field — a raw echo of what the author typed — so it keeps `MEM:span`. The
+\ folded row still names the family back, because a signature's qualifier folds
+\ before lookup.
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: mem:span<n,n,n,n,n,n> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: MEM:span<n,n,n,n,n,n> " TDT-CONTAINS? 0 T=
 TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
 s" TPC-JSON-RENDER ( MEM:span<n,n,n,n,n,n> -- n )" CHECK-CANDIDATE! 0 T=
-DIAG-BUFFER$ s\" \"actual\":\"MEM:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"actual\":\"mem:span<n,n,n,n,n,n> \"" TDT-CONTAINS? -1 T=
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TPC-JSON-ARITY ( MEM:span<n,n,n> -- ) drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s\" \"token\":\"MEM:span\"" TDT-CONTAINS? -1 T=
@@ -2283,6 +2290,45 @@ NEWTYPE tdlrfam 0
 TDIAG-BUF 8192 DIAG-BUFFER!
 s" TDLR4 ( tdlrpk:tdlrfam -- n ) {: q:tdlrpk:tdlrfam :} q dup drop" CHECK-CANDIDATE! 0 T=
 DIAG-BUFFER$ s" expected: n actual: tdlrpk:tdlrfam<> " TDT-CONTAINS? -1 T=
+
+\ Same row, but the package was declared in UPPER case. TDLR4 above cannot see
+\ the difference — `tdlrpk` is already lowercase — so the renderer used to echo
+\ the interned package verbatim and nothing caught it (dot
+\ habu-fold-diagnostic-renderer). The package name a family stores is whatever
+\ the source `package` line typed, while a package is identified
+\ case-insensitively everywhere it is compared, so the rendered qualifier is
+\ folded and the verbatim spelling must NOT appear. Both a locals-sourced term
+\ (TDLR5) and a signature-sourced one (TDLR6) pin the same row, and the JSON
+\ family hint (TDLR7) carries the same folded spelling.
+package TDLRPKU
+public
+NEWTYPE tdlrfamu 0
+;package
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLR5 ( TDLRPKU:tdlrfamu -- n ) {: q:TDLRPKU:tdlrfamu :} q dup drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu<> " TDT-CONTAINS? 0 T=
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLR6 ( TDLRPKU:tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: TDLRPKU:tdlrfamu<> " TDT-CONTAINS? 0 T=
+\ the folded qualifier still names the family back: a signature may spell it either way.
+s" TDLR6R ( tdlrpku:tdlrfamu -- TDLRPKU:tdlrfamu )" CHECK-QUIET-CANDIDATE! -1 T=
+TDIAG-BUF 8192 DIAG-BUFFER!  -1 DIAG-JSON!
+s" TDLR7 ( n -- TDLRPKU:tdlrfamu )" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s\" \"expected\":\"tdlrpku:tdlrfamu<> \"" TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s\" \"expected\":\"TDLRPKU:tdlrfamu<> \"" TDT-CONTAINS? 0 T=
+0 DIAG-JSON!
+\ a package reopened under different capitalisation is the SAME package: the
+\ engine reports the first-registered spelling, so the family renders bare
+\ inside it rather than picking up a self-qualifier.
+package tdlrpku
+TDIAG-BUF 8192 DIAG-BUFFER!
+s" TDLR8 ( tdlrfamu -- n ) dup drop" CHECK-CANDIDATE! 0 T=
+DIAG-BUFFER$ s" expected: n actual: tdlrfamu<> " TDT-CONTAINS? -1 T=
+DIAG-BUFFER$ s" actual: tdlrpku:tdlrfamu<> " TDT-CONTAINS? 0 T=
+;package
+TDIAG-BUF 8192 DIAG-BUFFER!
 
 \ ---------------------------------------------------------------------------
 \ E-MISMATCH JSON 'family' hint (dot habu-checker-json-family): the machine

@@ -1205,6 +1205,48 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deleted package boundary in checker.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+: TEST-WRITE-RENDER-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : FAM-QNAME-REND ( n -- ) drop ;" TEST-SOURCE-LINE
+   s" src/core/render.f" TEST-WRITE-SOURCE ;
+
+: TEST-RENDER-OWNER-LOSS-DIFF ( -- )
+   s" src/core/render.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package RENDER-DIAG" TEST-DIFF+ TEST-LF
+   s"  : FAM-QNAME-REND ( n -- ) drop ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-RENDER-EXEMPTION ( -- )
+   \ Positive: the renderer is the checker's other half and is admitted the same
+   \ way.  Before this entry a comment-only change to an existing global body in
+   \ render.f red the gate, so no change to the diagnostic renderer could land.
+   s" src/core/render.f" TEST-CHECKER-COMMENT-CASE
+   s" render core surface exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global word in the renderer is admitted too (RFOLD, the
+   \ case-folding emitter, is exactly this shape).
+   s" src/core/render.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" render core surface exempts a new global definition" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying the allowlist path as a prefix is not an exact
+   \ match and must still fail (not a startswith match).
+   s" src/core/render-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/core/render-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename elsewhere carries the allowlist path as a suffix
+   \ but is not exact, so it must still fail (full path, not suffix).
+   s" lib/render.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/render.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package/;package boundary inside the
+   \ allowlisted render.f still reports lost ownership.  The exemption suppresses
+   \ a plain global body or definition change, never a scope change.
+   TEST-WRITE-RENDER-OWNER-LOSS
+   TEST-DIFF-RESET TEST-RENDER-OWNER-LOSS-DIFF
+   s" deleted package boundary in render.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 : TEST-WRITE-OUTSIDE-HUNK-SOURCE ( -- )
    TEST-SOURCE-RESET
    s" package SHARED" TEST-SOURCE-LINE
@@ -1763,6 +1805,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-GRAMMAR-FIXTURES
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
+   TEST-RENDER-EXEMPTION
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES
    TEST-PAREN-NAME-REPLAY

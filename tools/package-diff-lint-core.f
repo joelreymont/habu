@@ -236,6 +236,17 @@ variable FILE-USED
 \ exists -- so it is admitted the way sumtype.f, roles.f, structures.f and
 \ enums.f are, and it must be removed once the checker sealing work (dot
 \ habu-seal-the-checker-5314c0ab) gives those seams real package owners.
+\ src/core/render.f is the third interim entry, admitted on exactly the same
+\ terms and for the same subsystem: by its own header it is "the render half of
+\ the native sigparse/checker", split out only to keep one concern per file. It
+\ contains no `package` at all, it loads as part of the compiler prefix before
+\ any package exists, and checker.f resolves the words it defines (EMIT1, RSTR,
+\ DIAG-BUFFER!, FAM-QNAME-REND) bare. Measured: with no entry here, changing one
+\ line of an existing global body in render.f reds the gate, so the gate
+\ rejected every possible change to the diagnostic renderer. Packaging one new
+\ word while its ~100 neighbours stay global would split the surface rather than
+\ seal it, so this entry is interim and is retired by the render sealing dot
+\ alongside the checker sealing work.
 \ Package-boundary changes are still reported for every file here
 \ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
 \ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
@@ -248,6 +259,7 @@ variable FILE-USED
    FILE$ s" src/core/structures.f" LINT-STR= if true exit then
    FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header
    FILE$ s" src/core/checker.f" LINT-STR= if true exit then      \ core surface, interim; see header
+   FILE$ s" src/core/render.f" LINT-STR= if true exit then       \ checker's render half, interim; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
 \ Declaration-grammar fixture suites.  The second principled category, built on
