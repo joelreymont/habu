@@ -751,8 +751,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | STB@ | `-- ptr u8` | Reads the snapshot source text base pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap-lib.f | 2026-06-26 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | STB-CELL@ | `-- ptr n` | Reads the snapshot source text base pointer as a cell-address for executable-header size lookup. | `test/run.f`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-06-26 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | SDB@ | `-- ptr u8` | Reads the snapshot dictionary/data-region pointer stored in a raw variable. | `test/run.f`, `tools/build-fixpoint.f snap` | src/habu/snap-lib.f | 2026-06-26 | builder-emit | habu-builder-trust-rows-c5d41af6 |
-| SNAP-CHECK-HOOK | `ptr u8 n -- n` | Snapshot image installs the fail-closed checker hook into emitted images that need a fresh hook; recursive `CHECK!` hook bodies are trusted boundaries. | `test/run.f`, `test/gate-debug.f` | src/habu/snap-lib.f | 2026-06-26 |  |  |
-| SNAP-INSTALL-HOOK | `--` | Snapshot image rearms the canonical compile preflight before installing its fail-closed snapshot checker hook. | `test/run.f`, `test/gate-debug.f` | src/habu/snap-lib.f | 2026-07-17 | builder-emit | habu-builder-trust-rows-c5d41af6 |
+| CHECK-HOOK | `ptr u8 n -- n` | Snapshot image installs the fail-closed checker hook into emitted images that need a fresh hook; recursive `CHECK!` hook bodies are trusted boundaries. | `test/run.f`, `test/gate-debug.f` | src/habu/snap-lib.f | 2026-06-26 |  |  |
+| INSTALL-HOOK | `--` | Snapshot image rearms the canonical compile preflight before installing its fail-closed snapshot checker hook. | `test/run.f`, `test/gate-debug.f` | src/habu/snap-lib.f | 2026-07-17 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | SNC-PTR | `-- ptr u8` | Scratch snapshot region view over a raw anonymous mmap; canonical-base writer scratch. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | SNC-TEXT-N | `-- n` | Reads the saved text base cell as a plain integer for relocation band math. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | SND-PTR | `-- ptr u8` | Scratch snapshot data view over a raw anonymous mmap; live-cell zeroing target. | `test/run.f snap`, `tools/build-fixpoint-test.f` | src/habu/snap-lib.f | 2026-07-02 | builder-emit | habu-builder-trust-rows-c5d41af6 |
@@ -1738,7 +1738,7 @@ test/prop-test-core.f:RUN-MEAS test-metaprog habu-typed-depth-introspection-18f0
 test/prop-test-core.f:REND-SIG$ test-metaprog habu-typed-depth-introspection-18f0efda
 test/prop-test-core.f:CONFIRM-FR? test-metaprog habu-typed-depth-introspection-18f0efda
 tools/codegen-role.f test-metaprog habu-seal-set-check-b3676b33 1
-src/habu/snap-lib.f:SNAP-CHECK-HOOK builder-emit cap:checker-hook-identity
+src/habu/snap-lib.f:CHECK-HOOK builder-emit cap:checker-hook-identity
 test/engine-suite.f:ES-VERDICT-HOOK test-metaprog cap:checker-hook-identity
 test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity
 tools/codegen-role.f:CGR-HOOK test-metaprog cap:checker-hook-identity

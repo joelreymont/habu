@@ -26,6 +26,11 @@
 
 require src/habu/snap-lib.f
 
+\ The image writer lives in package SNAP (src/habu/snap-lib.f). Import its
+\ public wordlist for the rest of this file so the driver below can call
+\ SNAPGO by its plain name; the import ends with this load file.
+using SNAP
+
 \ Seal the test-only final-close fault seam: a snapshot suite arms it by
 \ injecting its source ahead of this driver, so the arm has already happened by
 \ the time this line runs. Undefine the install entry here so no normal or

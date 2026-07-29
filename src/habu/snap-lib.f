@@ -2,10 +2,25 @@
 \
 \ Load after target image emission words (`BUILD-SNAP-HDR`, `SNAP-DROP`,
 \ `SNAP-EXTRA-PTR`, `SNAP-EXTRA-SIZE`) and driver I/O. Entry files decide when
-\ to prepare checker/include state and call SNAPGO.
+\ to prepare checker/include state and call the writer's `SNAPGO`.
+\
+\ Everything here belongs to package SNAP. The only word an entry file needs is
+\ the public `SNAP:SNAPGO`; `SNAP:INSTALL-HOOK` is the audited trusted entry
+\ that freezes the verify-on-definition hook into an emitted image. The writer
+\ state and the scratch-copy machinery stay package-private.
+\
+\ The public entry keeps its historic spelling `SNAPGO` rather than a shorter
+\ tail: src/habu/snap.f still defines global words, so renaming the call site
+\ would make its driver a changed global definition and pull that file (and the
+\ build-fixpoint test that pins its emitted text) into this change. Those files
+\ get their own package owners under a separate dot; snap.f imports this
+\ package with `using SNAP` in the meantime.
+
+package SNAP
 
 \ output path — the single knob; build-fixpoint owns/moves the artifact
-: SNAP-OUT s" hb-snap0" TMP-PATH ;
+: OUT-PATH ( -- ptr u8 n )
+   s" hb-snap0" TMP-PATH ;
 
 \ Snapshot trailer format version (item 12 slice 3b, dot
 \ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
@@ -32,36 +47,36 @@ s" STB-CELL@" s" -- ptr n" TRUST
 : SDB@ SDB @ ;
 s" SDB@" s" -- ptr u8" TRUST
 
-: SNAP-SIZE! ( -- )
+: SIZE! ( -- )
    STSZ @ SCL @ + SDL @ + 48 + SNL ! ;   \ +48: 48-byte format-versioned trailer
 
-: SNAP-HDR! ( -- snap )
+: HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
 
-: SNAP-PAD! ( -- snap )
-   SNAP-HDR!
+: PAD! ( -- snap )
+   HDR!
    SFTS @ CODE-OFF - SNL @ - SPAD ! ;
 
-: SNAP-STALE ( snap -- )
+: STALE ( snap -- )
    SNAP-DROP ;
 
-: SNAP-ABSORB-PAD ( -- snap )
-   SNAP-SIZE!
-   SNAP-PAD! SNAP-STALE
+: ABSORB-PAD ( -- snap )
+   SIZE!
+   PAD! STALE
    SDL @ SPAD @ + SDL !
-   SNAP-SIZE!
+   SIZE!
    SDL @ DATA-SIZE > if s" snap: data payload exceeds image DATA" 74 die then
-   SNAP-HDR! ;
+   HDR! ;
 
-: SNAP-RESET-IMAGE-BUFFER ( -- )
+: RESET-BUF ( -- )
    \ MBUF-A is a process-local mmap pointer; restored images must allocate
    \ their own buffer before emitting a fresh ELF/snapshot header.
    0 MBUF-A !
    0 MP !
    0 MLEN! ;
 
-: SNAP-HDR ( -- snap )
-   SNAP-RESET-IMAGE-BUFFER
+: HDR ( -- snap )
+   RESET-BUF
    \ The builder's x20 register constant is XREG-RBASE so it does not shadow
    \ the `rbase` primitive; read the saved text base straight from its cell.
    data-base RBASE-CELL + @ STB !         \ text CONTENT base
@@ -69,7 +84,7 @@ s" SDB@" s" -- ptr u8" TRUST
    dbase@ SDB !
    cp@ SDB @ - SCL !                      \ region payload (dict + compiled code)
    here data-base - SDL !                 \ data payload (through DP)
-   SNAP-ABSORB-PAD ;
+   ABSORB-PAD ;
 
 
 \ ---- canonical-base persistence ----
@@ -203,23 +218,25 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
       i SND-QUARANTINE@ SND-ZERO-SPAN-CELL
    loop ;
 
-: SNAP-CANON-DATA ( -- )
+: CANON-DATA ( -- )
    SND-ALLOC
    SND-COPY
    SND-ZERO-LIVE
    SND-ZERO-QUARANTINE ;
 
-: SNAP-CANON-REGION ( -- )
+: CANON-REGION ( -- )
    SNC-ALLOC
    SNC-COPY
    SNC-CANON ;
+
+;package
 
 \ ---- test-only final-close fault seam ----
 \ snap-lib.f is builder-only: SNAP-RETIRE-GO forgets this whole tail before the
 \ snapshot header is written, so nothing here reaches a shipped image. The seam
 \ lets the owner-WID snapshot suite force the final close to fail and prove
-\ SNAP-WRITE-BYTES fails closed (rc 74) instead of accepting a half-written
-\ image. BEFORE defaults to a no-op; only a test source injected ahead of the
+\ the writer's WRITE-BYTES fails closed (rc 74) instead of accepting a
+\ half-written image. BEFORE defaults to a no-op; only a test source injected ahead of the
 \ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
 \ every build so no normal or shipping path can reach it.
 package SNAP-CLOSE-SEAM
@@ -244,7 +261,9 @@ public
 
 ;package
 
-: SNAP-WRITE-BYTES ( -- )
+package SNAP
+
+: WRITE-BYTES ( -- )
    \ trailer (48 bytes): magic, CANONICAL text base (0), dict count, region
    \ length, data length, format version - the region stream below is the
    \ canonicalized copy. Version at +40 is the last field so the magic/field
@@ -252,11 +271,11 @@ public
    SNAP-MAGIC TRL !  0 TRL 8 + !  ndict@ TRL 16 + !
    SCL @ TRL 24 + !  SDL @ TRL 32 + !  SNAP-FORMAT-VERSION TRL 40 + !
    \ stream: header, engine text, region, data, trailer, zero pad
-   SNAP-OUT PATH0 1537 493 open SFD !
+   OUT-PATH PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
    MBUF {: hdr:ptr :}
    SNAP-EXTRA-PTR {: extra:ptr :}
-   SNAP-RESET-IMAGE-BUFFER
+   RESET-BUF
    SFD @ hdr CODE-OFF DRV-WALL
    SFD @ STB@ STSZ @ DRV-WALL
    SFD @ SNC-PTR SCL @ DRV-WALL
@@ -266,21 +285,26 @@ public
    SFD @ SNAP-CLOSE-SEAM:RUN
    SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;
 
-: SNAP-WRITE ( snap -- )
+: WRITE-IMAGE ( snap -- )
    SNAP-DROP
-   SNAP-WRITE-BYTES ;
-
-: SNAPGO ( -- )
-   SNAP-HDR
-   SNAP-CANON-REGION
-   SNAP-CANON-DATA
-   SNAP-WRITE
-   DRV-EXIT-OK ;
+   WRITE-BYTES ;
 
 \ Freeze the verify-on-definition hook into the emitted image: hb is fully
 \ loaded, so a typed def in its REPL is checked against its sig.
-TRUSTED: SNAP-CHECK-HOOK ( ptr u8 n -- n )
+TRUSTED: CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> IF 70 throw THEN ;
-TRUSTED: SNAP-INSTALL-HOOK ( -- )
+
+public
+
+: SNAPGO ( -- )
+   HDR
+   CANON-REGION
+   CANON-DATA
+   WRITE-IMAGE
+   DRV-EXIT-OK ;
+
+TRUSTED: INSTALL-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
-   ['] SNAP-CHECK-HOOK set-check ;
+   ['] CHECK-HOOK set-check ;
+
+;package

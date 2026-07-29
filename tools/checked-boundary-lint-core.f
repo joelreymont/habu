@@ -290,7 +290,7 @@ private
 : UB-HOOK-ALLOWED? ( -- bool )
    s" HOOK" UB-PREV=CI
    s" USER-HOOK" UB-PREV=CI or
-   s" SNAP-CHECK-HOOK" UB-PREV=CI or
+   s" CHECK-HOOK" UB-PREV=CI or
    s" CHK-CHECK-HOOK" UB-PREV=CI or
    s" LINT-CHECK-HOOK" UB-PREV=CI or
    s" ES-VERDICT-HOOK" UB-PREV=CI or
