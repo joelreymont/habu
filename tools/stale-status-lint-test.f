@@ -3,7 +3,6 @@
 \ The require list below is the load path; naming the same libraries again on
 \ the command line loads them twice and dies with a duplicate definition.
 
-require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/test.f
@@ -21,7 +20,6 @@ package STALE-STATUS-LINT-TEST
 private
 
 4096 constant CAP
-32 constant DATE-CAP
 1050 constant LONG-LINES
 10 constant LF-C
 
@@ -33,7 +31,6 @@ variable JJ-U
 variable JJ-DIR-U
 variable MAKI-DIR-U
 variable MAKI-STATUS-U
-variable TODAY-U
 variable SUB-U
 variable COUNT
 
@@ -45,7 +42,6 @@ create JJ-BUF FS-PATH-CAP allot
 create JJ-DIR-BUF FS-PATH-CAP allot
 create MAKI-DIR-BUF FS-PATH-CAP allot
 create MAKI-STATUS-BUF FS-PATH-CAP allot
-create TODAY-BUF DATE-CAP allot
 create SUB-BUF FS-PATH-CAP allot
 create OUT-BUF CAP allot
 create ERR-BUF CAP allot
@@ -81,9 +77,6 @@ create ERR-BUF CAP allot
 
 : MAKI-STATUS ( -- ptr u8 n )
    MAKI-STATUS-BUF MAKI-STATUS-U @ ;
-
-: TODAY-STR ( -- ptr u8 n )
-   TODAY-BUF TODAY-U @ ;
 
 : SUB$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ path under the fixture root
    ROOT a u SUB-BUF JOIN-PATH SUB-U !
@@ -191,6 +184,8 @@ create ERR-BUF CAP allot
    STATUS-MD 2swap STATUS$ WRITE-ALL ;
 
 : RESET-FILES ( -- )
+   \ A deliberately stale date: the lint no longer reads it, so every fixture
+   \ below stays green no matter what day the suite runs. Do not "refresh" it.
    s" 2026-06-16" WRITE-STATUS
    LESSONS-MD LESSONS$ WRITE-ALL
    README-MD GOOD$ WRITE-ALL ;
@@ -209,28 +204,18 @@ create ERR-BUF CAP allot
    ROOT s" maki/STATUS.md" MAKI-STATUS-BUF MAKI-STATUS-U PATH!
    RESET-FILES ;
 
-: TODAY-STR! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u DATE-CAP > if E-FS-PATH throw then
-   a TODAY-BUF u BYTE-COPY
-   u TODAY-U ! ;
-
 : RUN-ACT ( -- )
    ROOT STALE-STATUS-LINT:ROOT!
-   TODAY-STR STALE-STATUS-LINT:PARSE-TODAY STALE-STATUS-LINT:TODAY!
    STALE-STATUS-LINT:RUN dup COUNT !
    0 > IF 1 throw THEN ;
 
-: CAPTURE ( ptr u8 n -- n n n )
-   TODAY-STR!
+: CAPTURE ( -- n n n )
    0 COUNT !
    OUT-BUF CAP STALE-STATUS-LINT:OUT-BUFFER!
    ERR-BUF CAP STALE-STATUS-LINT:ERR-BUFFER!
    [: RUN-ACT ;] catch {: rc:n :}
    STALE-STATUS-LINT:OUT$ nip STALE-STATUS-LINT:ERR$ nip rc
    STALE-STATUS-LINT:BUFFERS-OFF ;
-
-: CAPTURE-DEFAULT ( -- n n n )
-   s" 2026-06-16" CAPTURE ;
 
 : EXPECT-EXIT ( n n n n -- n n ) {: outu:n erru:n code:n expect:n :}
    code expect T=
@@ -241,30 +226,27 @@ create ERR-BUF CAP allot
    outu erru ;
 
 : EXPECT-CLEAN ( -- )   \ no findings, and the run reported the count as zero
-   CAPTURE-DEFAULT 0 EXPECT-EXIT {: outu:n erru:n :}
+   CAPTURE 0 EXPECT-EXIT {: outu:n erru:n :}
    OUT-BUF outu GOOD-OUT$ T$=
    ERR-BUF erru EMPTY$ T$=
    COUNT @ 0 T= ;
 
 : EXPECT-DIRTY ( -- )   \ at least one finding, reported through the count
-   CAPTURE-DEFAULT EXPECT-EXIT-NZ {: outu:n erru:n :}
+   CAPTURE EXPECT-EXIT-NZ {: outu:n erru:n :}
    outu 0 T<>
    erru 0 T=
    COUNT @ 0 > TTRUE ;
 
 : EXPECT-OK ( -- )
-   CAPTURE-DEFAULT 0 EXPECT-EXIT {: outu:n erru:n :}
+   CAPTURE 0 EXPECT-EXIT {: outu:n erru:n :}
    OUT-BUF outu GOOD-OUT$ T$=
    ERR-BUF erru EMPTY$ T$= ;
 
-: EXPECT-BAD-TODAY ( ptr u8 n ptr u8 n ptr u8 n -- ) {: today:ptr todayu:n code:ptr codeu:n needle:ptr needleu:n :}
-   today todayu CAPTURE EXPECT-EXIT-NZ {: outu:n erru:n :}
+: EXPECT-BAD ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n needle:ptr needleu:n :}
+   CAPTURE EXPECT-EXIT-NZ {: outu:n erru:n :}
    erru 0 T=
    OUT-BUF outu code codeu CONTAINS? TTRUE
    needleu 0 > if OUT-BUF outu needle needleu CONTAINS? TTRUE then ;
-
-: EXPECT-BAD ( ptr u8 n ptr u8 n -- ) {: code:ptr codeu:n needle:ptr needleu:n :}
-   s" 2026-06-16" code codeu needle needleu EXPECT-BAD-TODAY ;
 
 : EXPECT-ONE ( ptr u8 n -- ) {: needle:ptr needleu:n :}   \ exactly one finding, at this path and line
    s" STALE-STATUS" needle needleu EXPECT-BAD
@@ -274,19 +256,10 @@ create ERR-BUF CAP allot
    RESET-FILES
    EXPECT-OK ;
 
-: TEST-STALE-DATE ( -- )
+: TEST-STALE-DATE-IGNORED ( -- )   \ a long-past date is no longer a finding
    RESET-FILES
-   s" 2026-06-15" WRITE-STATUS
-   s" STALE-STATUS" s" Last verified is 2026-06-15, expected 2026-06-16" EXPECT-BAD ;
-
-: TEST-BAD-STATUS-DATE ( -- )
-   RESET-FILES
-   s" 2026-02-29" WRITE-STATUS
-   EXPECT-DIRTY ;
-
-: TEST-BAD-TODAY ( -- )
-   RESET-FILES
-   s" 2026-02-29" s" BAD-TODAY" s" today argument invalid `2026-02-29`" EXPECT-BAD-TODAY ;
+   s" 2020-01-01" WRITE-STATUS
+   EXPECT-CLEAN ;
 
 : TEST-COUNT-PROSE ( -- )
    RESET-FILES
@@ -383,9 +356,7 @@ create ERR-BUF CAP allot
    T-RESET
    PREPARE
    TEST-CLEAN
-   TEST-STALE-DATE
-   TEST-BAD-STATUS-DATE
-   TEST-BAD-TODAY
+   TEST-STALE-DATE-IGNORED
    TEST-COUNT-PROSE
    TEST-COUNT-TRIPLE
    TEST-COUNT-UNCHECKABLE
