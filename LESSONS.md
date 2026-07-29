@@ -2730,3 +2730,13 @@ fits.
   not the same as verifying what the change must handle. The freeze itself is
   an artifact that earns a review pass, and that pass is far cheaper than the
   worker discovering the gaps at line 500.
+- **A numeric coincidence is not a cause; attribute by differential
+  measurement.** A leaf added eight new checked definitions to the engine, and
+  two size ratchets drifted by exactly eight bytes. That was reported as the
+  leaf's cost and repeated downstream as established fact. Independent
+  measurement of the intermediate tips proved the leaf moves ZERO engine
+  bytes: the eight belonged to an unrelated commit, and the region map showed
+  one region up eight with a compensating pad down eight. The matching number
+  made the inference feel verified when nothing had been measured. Attribute a
+  size or performance delta by building and mapping the exact tips on either
+  side of each candidate, never by counting what a change happens to add.
