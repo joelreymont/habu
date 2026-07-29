@@ -21,7 +21,7 @@
 \ refusal, while Habu names a throw code. The row carries the throw code, so the
 \ two sides stay bound at the row rather than only agreeing that something failed.
 \ On a refusal the runner carries the UNCHANGED table forward, which is the
-\ model's `intern_failure_atomic`, and is what lets one sequence show a full table
+\ model's `ceiling_fail_closed`, and is what lets one sequence show a full table
 \ refusing a new key and still answering a duplicate.
 \
 \ The forced filter collision gets a second obligation of its own. The Habu side

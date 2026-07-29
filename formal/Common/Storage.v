@@ -90,6 +90,34 @@
       cannot represent, so that half of each guard is invisible here.
 
    ------------------------------------------------------------------------
+   BINDING GAPS
+
+   What the parity gate does and does not notice, measured by mutating
+   src/compiler/ir/{arena,context}.f and rerunning
+   test/compiler/ir-storage-proof.f.  Every published result below survives
+   only because the gate ties the model to the shipped words; where that tie
+   is weak, the theorem is still a claim about the design but the gate would
+   not catch the code drifting away from it.
+
+   B1. IR-ARENA:ABORT is not exercised at all.  Deleting the `0 slot AGEN!`
+       that retires the slot leaves the gate GREEN, so nothing binds
+       `arena_abort_kills_every_index` to the code.  There is no abort step in
+       the arena vector vocabulary in test/compiler/ir-storage-schema.f, and
+       ABORT is not one of the frozen guard bodies.
+
+   B2. IR-CTX:DEPTH-ROOM is not exercised.  Raising its bound past DEPTH-MAX
+       leaves the gate GREEN, so `ctx_depth_bounded` and
+       `ctx_enter_keeps_depth_bounded` are bound only through the pinned
+       DEPTH-MAX literal, not through a nesting that actually reaches it.
+
+   B3. Some rows are pinned structurally rather than behaviourally.  Removing
+       the generation compare from IR-ARENA:ROLLBACK reds the gate only on the
+       frozen guard body, not on a vector row, because no row rolls one arena
+       back with the other arena's mark.  So
+       `arena_rollback_foreign_mark_rejected` and
+       `arena_foreign_mark_corrupts_cursor` are guarded by frozen text alone.
+
+   ------------------------------------------------------------------------
    FINDINGS — three claims in the source comments that these proofs do not
    support.  Each is exhibited as an executable example below.
 
@@ -341,16 +369,11 @@ Qed.
 
 (* Appending never changes an existing cell: the old cells are a prefix of the
    new ones.  IR-ARENA:PUSH writes at the cursor and then advances it
-   (arena.f:286-287); no word in the package overwrites a published ordinal. *)
-Theorem arena_push_appends :
-  forall owner a v a' i,
-    apush owner a v = Some (a', i) -> cells a' = cells a ++ [v].
-Proof.
-  intros owner a v a' i Hpush.
-  destruct (apush_cases owner a v a' i Hpush)
-    as [_ [_ [_ [Hcells _]]]].
-  exact Hcells.
-Qed.
+   (arena.f:286-287); no word in the package overwrites a published ordinal.
+   That the new cell list is the old one with `v` appended is one clause of
+   `apush_cases`, which is the unfolding of `apush` itself, so it is machinery
+   rather than a published result: what is observable, and what the theorems
+   below publish, is that every earlier index still reads its own cell. *)
 
 Theorem arena_push_answers_the_cursor :
   forall owner a v a' i,
@@ -488,31 +511,15 @@ Proof.
     exact Hfilled.
 Qed.
 
-(* The general form: whenever a push fails, for any reason, the arena that
-   survives is the arena that went in. *)
-Theorem arena_push_failure_atomic :
-  forall owner a v,
-    apush owner a v = None -> apush_step owner a v = (a, None).
-Proof.
-  intros owner a v Hnone.
-  unfold apush_step.
-  rewrite Hnone.
-  reflexivity.
-Qed.
-
-(* A full arena still reads.  arena.f:32-33: "its contents, marks, and indices
-   remain valid and FREEZE still publishes them.  Exhaustion never kills the
-   arena." *)
-Theorem arena_full_still_reads :
-  forall owner a v a0 x n,
-    apush_step owner a v = (a0, None) -> aread a x = Some n -> aread a0 x = Some n.
-Proof.
-  intros owner a v a0 x n Hstep Hread.
-  unfold apush_step in Hstep.
-  destruct (apush owner a v) as [[a' i] |]; [discriminate |].
-  inversion Hstep; subst a0.
-  exact Hread.
-Qed.
+(* "Whenever a push fails the arena that survives is the arena that went in"
+   is NOT published here.  `apush_step` is DEFINED to answer `(a, None)` on a
+   `None`, so that statement holds of any push whatever, including one that
+   corrupts the arena before refusing.  What carries the claim is
+   `arena_push_at_ceiling_fail_closed` above, which names the arena the caller
+   started with, and `arena_write_first_leaves_partial_row` below, which shows
+   a push that checks late does NOT satisfy it.  For the same reason "a full
+   arena still reads" is not published: it is that same definitional identity
+   composed with `aread`. *)
 
 (* The invariant survives every accepted push, so no arena this package can
    build ever holds more cells than its committed ceiling. *)
@@ -536,11 +543,25 @@ Proof.
     apply Nat.le_min_r.
 Qed.
 
-Theorem arena_count_never_exceeds_ceiling :
+Lemma arena_count_never_exceeds_ceiling :
   forall a, arena_wf a -> acount a <= aceil a.
 Proof.
   intros a [_ [_ [Hcursor Hspan]]].
   lia.
+Qed.
+
+(* The published form is about the push rather than about the invariant on its
+   own: an accepted append can never leave the cursor above the ceiling the
+   caller committed to.  Stated this way it rules out a growth step that
+   doubles past the ceiling instead of capping at it, which the invariant
+   alone, being a hypothesis, does not. *)
+Theorem arena_push_keeps_count_under_ceiling :
+  forall owner a v a' i,
+    arena_wf a -> apush owner a v = Some (a', i) -> acount a' <= aceil a'.
+Proof.
+  intros owner a v a' i Hwf Hpush.
+  apply arena_count_never_exceeds_ceiling.
+  apply (arena_push_preserves_wf owner a v a' i Hwf Hpush).
 Qed.
 
 (* The write-before-check mutation, to show the ordering inside IR-ARENA:GROW
@@ -857,7 +878,10 @@ Proof.
   lia.
 Qed.
 
-Theorem ctx_gen_strictly_monotone :
+(* Machinery: the counter's step is strictly increasing.  The published form
+   of "never reused" is `ctx_enter_raises_counter` and `ctx_gen_never_reused`,
+   which say it of an entered context rather than of the bare successor. *)
+Lemma ctx_gen_strictly_monotone :
   forall c g, ctake_gen c = Some g -> c < g.
 Proof.
   intros c g Htake.
@@ -943,7 +967,12 @@ Qed.
 Definition cresolve (s : cstate) (c : ctx) : option nat :=
   if cserial_live s (cgen c) then Some (cbase c) else None.
 
-Theorem ctx_stale_handle_rejected :
+(* Machinery, not a published result: `cresolve` is DEFINED to answer `None`
+   off a dead serial, so on its own this says nothing about IR-CTX.  The
+   published statement is `ctx_leave_kills_the_mapping_handle` below, which
+   composes it with the teardown and so names a handle a caller could actually
+   still be holding. *)
+Lemma ctx_stale_handle_rejected :
   forall s c, cserial_live s (cgen c) = false -> cresolve s c = None.
 Proof.
   intros s c Hdead.
@@ -979,15 +1008,13 @@ Qed.
 (* Leaving truncates the registry to the depth saved at entry, so every context
    registered at or beyond that depth — this one and every child — becomes
    stale in one step.  This is the whole-range release described in
-   context.f:26-28. *)
-Theorem ctx_leave_truncates :
-  forall s d, reg (cleave s d) = firstn d (reg s).
-Proof.
-  intros s d.
-  reflexivity.
-Qed.
+   context.f:26-28.
 
-Theorem ctx_leave_kills_from_depth :
+   That the registry after a leave IS `firstn d` of the registry before it is
+   the body of `cleave`, so it is not published; what is published is what a
+   caller can observe through it — that nothing at or beyond the saved depth
+   answers a liveness probe or resolves to a mapping any more. *)
+Lemma ctx_leave_kills_from_depth :
   forall s d c i,
     nth_error (reg s) i = Some c ->
     d <= i ->
@@ -1037,6 +1064,24 @@ Proof.
   intros Heq.
   pose proof (Hdistinct j i c' c Hj Hnth Heq) as Hji.
   lia.
+Qed.
+
+(* And therefore the handle stops answering with a mapping base, which is the
+   fact the layer actually rests on: IR-CTX:RESOLVE throws E-IR-CTX-STALE
+   rather than handing back a pointer into storage the leave released
+   (context.f:164-167).  Neither `ctx_stale_handle_rejected` nor
+   `ctx_no_handle_survives_owner_exit` says this on its own — the first is the
+   definition of `cresolve` and the second stops at the liveness bit. *)
+Theorem ctx_leave_kills_the_mapping_handle :
+  forall s d c i,
+    cgens_distinct s ->
+    nth_error (reg s) i = Some c ->
+    d <= i ->
+    cresolve (cleave s d) c = None.
+Proof.
+  intros s d c i Hdistinct Hnth Hdepth.
+  apply ctx_stale_handle_rejected.
+  apply (ctx_no_handle_survives_owner_exit s d c i Hdistinct Hnth Hdepth).
 Qed.
 
 (* Entering is bounded: IR-CTX:DEPTH-ROOM throws E-IR-CTX-DEPTH rather than
@@ -1103,7 +1148,8 @@ Definition scratch_take (off need : nat) : option (nat * nat) :=
   else if Nat.ltb map_bytes (off + align8 need) then None
   else Some (off, off + align8 need).
 
-Theorem scratch_take_advances :
+(* Machinery: the two published span facts below are what a caller can see. *)
+Lemma scratch_take_advances :
   forall off need start off',
     scratch_take off need = Some (start, off') ->
     start = off /\ off + need <= off'.
@@ -1133,8 +1179,10 @@ Proof.
 Qed.
 
 (* The cursor never leaves the mapping, and neither does the span it hands
-   back. *)
-Theorem scratch_cursor_within_mapping :
+   back.  Only the span statement is published: the cursor bound is the
+   `Nat.ltb map_bytes` test read straight back off `scratch_take`, while the
+   span bound is what a caller who writes into the span depends on. *)
+Lemma scratch_cursor_within_mapping :
   forall off need start off',
     scratch_take off need = Some (start, off') -> off' <= map_bytes.
 Proof.
@@ -1429,7 +1477,6 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 (* the compare-and-swap boundary and are not used here.                *)
 (* ================================================================== *)
 
-Print Assumptions arena_push_appends.
 Print Assumptions arena_push_answers_the_cursor.
 Print Assumptions arena_push_preserves_reads.
 Print Assumptions arena_push_index_stays_valid.
@@ -1438,10 +1485,8 @@ Print Assumptions arena_grow_preserves_count.
 Print Assumptions arena_reads_ignore_capacity.
 Print Assumptions arena_grow_ceiling_fail_closed.
 Print Assumptions arena_push_at_ceiling_fail_closed.
-Print Assumptions arena_push_failure_atomic.
-Print Assumptions arena_full_still_reads.
 Print Assumptions arena_push_preserves_wf.
-Print Assumptions arena_count_never_exceeds_ceiling.
+Print Assumptions arena_push_keeps_count_under_ceiling.
 Print Assumptions arena_mark_is_own_cursor.
 Print Assumptions arena_rollback_truncates.
 Print Assumptions arena_rollback_keeps_below_mark.
@@ -1455,20 +1500,15 @@ Print Assumptions arena_freeze_retires_live_reader.
 Print Assumptions arena_cross_owner_rejects.
 Print Assumptions arena_abort_kills_every_index.
 Print Assumptions ctx_gen_nonzero.
-Print Assumptions ctx_gen_strictly_monotone.
 Print Assumptions ctx_enter_raises_counter.
 Print Assumptions ctx_enter_preserves_wf.
 Print Assumptions ctx_gen_never_reused.
-Print Assumptions ctx_stale_handle_rejected.
 Print Assumptions ctx_enter_registers_live.
-Print Assumptions ctx_leave_truncates.
-Print Assumptions ctx_leave_kills_from_depth.
 Print Assumptions ctx_no_handle_survives_owner_exit.
+Print Assumptions ctx_leave_kills_the_mapping_handle.
 Print Assumptions ctx_depth_bounded.
 Print Assumptions ctx_enter_keeps_depth_bounded.
-Print Assumptions scratch_take_advances.
 Print Assumptions scratch_spans_disjoint.
-Print Assumptions scratch_cursor_within_mapping.
 Print Assumptions scratch_span_within_mapping.
 Print Assumptions scratch_exhaustion_fail_closed.
 Print Assumptions scratch_zero_size_rejected.

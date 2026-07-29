@@ -2874,6 +2874,21 @@ fits.
   revalidates a stale index, a liveness probe that lies after a throw. Tests
   spot-check and pass exactly where those fail. Keep fewer, sharper statements.
 
+- **Mutating the code sorts vacuous proofs from load-bearing ones, and reading
+  them does not.** Auditing the three substrate models against the worth test,
+  the results that read most trivially split two ways. `arena_reads_ignore_capacity`
+  is one line of `reflexivity` and looked like a restatement — but bounding
+  `IR-ARENA:IDX-AT` against `ACAP@` instead of `ACOUNT@` reds a vector row, so a
+  faithful model would have to make reads depend on the span and the statement
+  would be false. `intern_deterministic` reads like a real property and is not
+  one: every Rocq definition is a function of its arguments, so it is provable
+  of an implementation that reads a clock. The discriminator is whether a code
+  edit exists at all, not how the proof script looks. The same runs also
+  measure the GATE: three code mutations left the parity gates fully green
+  (IR-ARENA:ABORT never retiring its slot, IR-CTX:DEPTH-ROOM's bound raised),
+  which is a binding gap, not proof vacuity — the theorem is fine and the
+  vector table is missing a row. Write both down separately.
+
 - **jj loses nothing; my search did.** I twice reported work as "destroyed" —
   four task records after an `op restore`, and a worker's commits after a
   rebase. Both claims were false. All four records were sitting in commit

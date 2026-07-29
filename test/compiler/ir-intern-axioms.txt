@@ -35,17 +35,11 @@
 # Lines starting with `#`, and blank lines, are commentary. A `type` row is
 # handed to Rocq. Every other row is compared byte for byte.
 
-theorem Habu.Common.Interning.intern_deterministic
-type forall (K : Type) (eqb : K -> K -> bool) (t : table K) (k : K) (r1 r2 : option (table K * nat)), intern eqb t k = r1 -> intern eqb t k = r2 -> r1 = r2
-closed
 theorem Habu.Common.Interning.intern_idempotent
 type forall (K : Type) (eqb : K -> K -> bool), (forall a : K, eqb a a = true) -> forall (t : table K) (k : K) (t' : table K) (i : nat), intern eqb t k = Some (t', i) -> intern eqb t' k = Some (t', i)
 closed
 theorem Habu.Common.Interning.intern_wf
 type forall (K : Type) (eqb : K -> K -> bool), (forall a : K, eqb a a = true) -> forall (t : table K) (k : K) (t' : table K) (i : nat), table_wf t -> intern eqb t k = Some (t', i) -> table_wf t'
-closed
-theorem Habu.Common.Interning.intern_preserves_ceiling
-type forall (K : Type) (eqb : K -> K -> bool) (t : table K) (k : K) (t' : table K) (i : nat), intern eqb t k = Some (t', i) -> ceiling t' = ceiling t
 closed
 theorem Habu.Common.Interning.intern_roundtrip
 type forall (K : Type) (eqb : K -> K -> bool), (forall a b : K, eqb a b = true -> a = b) -> forall (t : table K) (k : K) (t' : table K) (i : nat), intern eqb t k = Some (t', i) -> key_at t' i = Some k
@@ -65,41 +59,14 @@ closed
 theorem Habu.Common.Interning.intern_answer_stable
 type forall (K : Type) (eqb : K -> K -> bool), (forall a : K, eqb a a = true) -> forall (t : table K) (k : K) (t' u : table K) (i : nat), intern eqb t k = Some (t', i) -> extends t' u -> intern eqb u k = Some (u, i)
 closed
-theorem Habu.Common.Interning.intern_ordinal_stays_valid
-type forall (K : Type) (t u : table K) (i : nat), extends t u -> i < count t -> i < count u
-closed
-theorem Habu.Common.Interning.ceiling_rejects
-type forall (K : Type) (eqb : K -> K -> bool) (t : table K) (k : K), find eqb (rows t) k = None -> ceiling t <= count t -> intern eqb t k = None
-closed
 theorem Habu.Common.Interning.ceiling_fail_closed
 type forall (K : Type) (eqb : K -> K -> bool) (t : table K) (k : K), find eqb (rows t) k = None -> ceiling t <= count t -> intern_step eqb t k = (t, None)
-closed
-theorem Habu.Common.Interning.intern_failure_atomic
-type forall (K : Type) (eqb : K -> K -> bool) (t : table K) (k : K), intern eqb t k = None -> intern_step eqb t k = (t, None)
-closed
-theorem Habu.Common.Interning.full_table_still_answers_hits
-type forall (K : Type) (eqb : K -> K -> bool) (t : table K) (k : K) (i : nat), find eqb (rows t) k = Some i -> intern eqb t k = Some (t, i)
 closed
 theorem Habu.Common.Interning.order_independent
 type forall (K : Type) (eqb : K -> K -> bool), (forall a b : K, eqb a b = true -> a = b) -> (forall a : K, eqb a a = true) -> forall (t0 : table K) (ks1 ks2 : list K) (u1 u2 : table K), table_wf t0 -> rows t0 = [] -> intern_all eqb t0 ks1 = Some u1 -> intern_all eqb t0 ks2 = Some u2 -> (forall x : K, In x ks1 <-> In x ks2) -> Permutation (rows u1) (rows u2)
 closed
 theorem Habu.Common.Interning.order_independent_permuted_input
 type forall (K : Type) (eqb : K -> K -> bool), (forall a b : K, eqb a b = true -> a = b) -> (forall a : K, eqb a a = true) -> forall (t0 : table K) (ks1 ks2 : list K) (u1 u2 : table K), table_wf t0 -> rows t0 = [] -> Permutation ks1 ks2 -> intern_all eqb t0 ks1 = Some u1 -> intern_all eqb t0 ks2 = Some u2 -> Permutation (rows u1) (rows u2)
-closed
-theorem Habu.Common.Interning.reindex_preserves_key
-type forall (K : Type) (eqb : K -> K -> bool), (forall a b : K, eqb a b = true -> a = b) -> (forall a : K, eqb a a = true) -> forall (t u : table K) (i : nat), (forall x : K, In x (rows t) <-> In x (rows u)) -> i < count t -> key_at u (reindex eqb u t i) = key_at t i
-closed
-theorem Habu.Common.Interning.reindex_in_range
-type forall (K : Type) (eqb : K -> K -> bool), (forall a b : K, eqb a b = true -> a = b) -> (forall a : K, eqb a a = true) -> forall (t u : table K) (i : nat), (forall x : K, In x (rows t) <-> In x (rows u)) -> i < count t -> reindex eqb u t i < count u
-closed
-theorem Habu.Common.Interning.reindex_inverse
-type forall (K : Type) (eqb : K -> K -> bool), (forall a b : K, eqb a b = true -> a = b) -> (forall a : K, eqb a a = true) -> forall (t u : table K) (i : nat), table_wf t -> (forall x : K, In x (rows t) <-> In x (rows u)) -> i < count t -> reindex eqb t u (reindex eqb u t i) = i
-closed
-theorem Habu.Common.Interning.lookup_total
-type forall (K : Type) (t : table K) (i : nat), i < count t -> exists k : K, key_at t i = Some k
-closed
-theorem Habu.Common.Interning.lookup_unique
-type forall (K : Type) (t : table K) (k : K), table_wf t -> In k (rows t) -> exists ! i : nat, key_at t i = Some k
 closed
 theorem Habu.Common.Interning.intern_ref_preserves_refs_below
 type forall (K : Type) (eqb : K -> K -> bool) (refs : K -> list nat) (t : table K) (k : K) (t' : table K) (i : nat), refs_below refs t -> intern_ref eqb refs t k = Some (t', i) -> refs_below refs t'

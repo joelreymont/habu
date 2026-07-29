@@ -31,9 +31,6 @@
 # Lines starting with `#`, and blank lines, are commentary. A `type` row is
 # handed to Rocq. Every other row is compared byte for byte.
 
-theorem Habu.Common.Storage.arena_push_appends
-type forall owner a v a' i, apush owner a v = Some (a', i) -> cells a' = cells a ++ [v]
-closed
 theorem Habu.Common.Storage.arena_push_answers_the_cursor
 type forall owner a v a' i, apush owner a v = Some (a', i) -> i = acount a
 closed
@@ -58,17 +55,11 @@ closed
 theorem Habu.Common.Storage.arena_push_at_ceiling_fail_closed
 type forall owner a v, afrozen a = false -> owner = aowner a -> acap a <= acount a -> aceil a <= acap a -> apush_step owner a v = (a, None)
 closed
-theorem Habu.Common.Storage.arena_push_failure_atomic
-type forall owner a v, apush owner a v = None -> apush_step owner a v = (a, None)
-closed
-theorem Habu.Common.Storage.arena_full_still_reads
-type forall owner a v a0 x n, apush_step owner a v = (a0, None) -> aread a x = Some n -> aread a0 x = Some n
-closed
 theorem Habu.Common.Storage.arena_push_preserves_wf
 type forall owner a v a' i, arena_wf a -> apush owner a v = Some (a', i) -> arena_wf a'
 closed
-theorem Habu.Common.Storage.arena_count_never_exceeds_ceiling
-type forall a, arena_wf a -> acount a <= aceil a
+theorem Habu.Common.Storage.arena_push_keeps_count_under_ceiling
+type forall owner a v a' i, arena_wf a -> apush owner a v = Some (a', i) -> acount a' <= aceil a'
 closed
 theorem Habu.Common.Storage.arena_mark_is_own_cursor
 type forall a m, amark_of a = Some m -> mk_gen m = agen a /\ mk_cur m = acount a
@@ -109,9 +100,6 @@ closed
 theorem Habu.Common.Storage.ctx_gen_nonzero
 type forall c g, ctake_gen c = Some g -> g <> 0
 closed
-theorem Habu.Common.Storage.ctx_gen_strictly_monotone
-type forall c g, ctake_gen c = Some g -> c < g
-closed
 theorem Habu.Common.Storage.ctx_enter_raises_counter
 type forall s base s' c, center s base = Some (s', c) -> counter s < counter s' /\ cgen c = counter s'
 closed
@@ -121,20 +109,14 @@ closed
 theorem Habu.Common.Storage.ctx_gen_never_reused
 type forall s base s' c, cstate_wf s -> center s base = Some (s', c) -> cserial_live s (cgen c) = false
 closed
-theorem Habu.Common.Storage.ctx_stale_handle_rejected
-type forall s c, cserial_live s (cgen c) = false -> cresolve s c = None
-closed
 theorem Habu.Common.Storage.ctx_enter_registers_live
 type forall s base s' c, center s base = Some (s', c) -> cserial_live s' (cgen c) = true
 closed
-theorem Habu.Common.Storage.ctx_leave_truncates
-type forall s d, reg (cleave s d) = firstn d (reg s)
-closed
-theorem Habu.Common.Storage.ctx_leave_kills_from_depth
-type forall s d c i, nth_error (reg s) i = Some c -> d <= i -> (forall c', In c' (firstn d (reg s)) -> cgen c' <> cgen c) -> cserial_live (cleave s d) (cgen c) = false
-closed
 theorem Habu.Common.Storage.ctx_no_handle_survives_owner_exit
 type forall s d c i, cgens_distinct s -> nth_error (reg s) i = Some c -> d <= i -> cserial_live (cleave s d) (cgen c) = false
+closed
+theorem Habu.Common.Storage.ctx_leave_kills_the_mapping_handle
+type forall s d c i, cgens_distinct s -> nth_error (reg s) i = Some c -> d <= i -> cresolve (cleave s d) c = None
 closed
 theorem Habu.Common.Storage.ctx_depth_bounded
 type forall s base, depth_max <= length (reg s) -> center s base = None
@@ -142,14 +124,8 @@ closed
 theorem Habu.Common.Storage.ctx_enter_keeps_depth_bounded
 type forall s base s' c, center s base = Some (s', c) -> length (reg s') <= depth_max
 closed
-theorem Habu.Common.Storage.scratch_take_advances
-type forall off need start off', scratch_take off need = Some (start, off') -> start = off /\ off + need <= off'
-closed
 theorem Habu.Common.Storage.scratch_spans_disjoint
 type forall off need1 start1 off1 need2 start2 off2, scratch_take off need1 = Some (start1, off1) -> scratch_take off1 need2 = Some (start2, off2) -> start1 + need1 <= start2
-closed
-theorem Habu.Common.Storage.scratch_cursor_within_mapping
-type forall off need start off', scratch_take off need = Some (start, off') -> off' <= map_bytes
 closed
 theorem Habu.Common.Storage.scratch_span_within_mapping
 type forall off need start off', scratch_take off need = Some (start, off') -> start + need <= map_bytes

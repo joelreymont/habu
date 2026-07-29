@@ -92,20 +92,20 @@ variable ADMITTED-N
 : HOSTILE-AXIOM-ROW ( -- )
    s" an assumption row cannot be written into a manifest held at empty" T-LABEL
    [: false PROOF-MANIFEST:AXIOMS-ALLOWED!
-      S\" theorem Habu.Common.Storage.arena_push_appends\ntype True\naxiom host_atomic_cas : cas_impl"
+      S\" theorem Habu.Common.Storage.arena_push_preserves_reads\ntype True\naxiom host_atomic_cas : cas_impl"
       PROOF-MANIFEST:TEXT ;]
       E-CID-AXIOM TTHROWSQ ;
 
 : HOSTILE-AXIOM-AFTER-CLOSED ( -- )
    s" an assumption row after a closed row is refused just the same" T-LABEL
    [: false PROOF-MANIFEST:AXIOMS-ALLOWED!
-      S\" theorem Habu.Common.Storage.arena_push_appends\ntype True\nclosed\naxiom whatever : Prop"
+      S\" theorem Habu.Common.Storage.arena_push_preserves_reads\ntype True\nclosed\naxiom whatever : Prop"
       PROOF-MANIFEST:TEXT ;]
       E-CID-AXIOM TTHROWSQ ;
 
 : MANIFEST-CLOSED-PAIR ( -- )
    false PROOF-MANIFEST:AXIOMS-ALLOWED!
-   S\" theorem Habu.Common.Storage.arena_push_appends\n# a note\ntype True\nclosed"
+   S\" theorem Habu.Common.Storage.arena_push_preserves_reads\n# a note\ntype True\nclosed"
    PROOF-MANIFEST:TEXT
    s" a manifest held at empty still reads a theorem and its statement" T-LABEL
    PROOF-MANIFEST:THEOREMS 1 T=

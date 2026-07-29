@@ -128,6 +128,25 @@
       the capacities are bounded by IR-SYM:CAP-MAX / IR-TYPE:CAP-MAX
       (symbol.f:90, type.f:163); overflow of an ordinal is out of scope here
       and is bounded by IdLaws' `local_validb` range instead.
+
+  11. Determinism is outside the model.  IR-SYM:INTERN's real claim is that it
+      reads only (a, r, key, p, u) and nothing else — no clock, no allocation
+      counter, no pointer identity (symbol.f:26-37).  A model whose `intern`
+      takes only a table and a key cannot state that: every Rocq definition is
+      already a function of its arguments, so "interning is deterministic"
+      would be provable here of an implementation that reads a clock.  Stating
+      it would need the ambient state as a parameter.  Nothing below publishes
+      it.
+   ------------------------------------------------------------------------
+   BINDING GAPS
+
+   Measured by mutating src/compiler/ir/{symbol,type}.f and rerunning
+   test/compiler/ir-intern-proof.f.  The scan, the byte verify, the row
+   ceiling and the reference bound are all caught by a vector row.  What is
+   NOT separately exercised is the committed ceiling's immutability: no row
+   observes the header capacity after an intern, so nothing would notice a
+   ROW-ADD that rewrote it.  That is why `intern_preserves_ceiling` is an
+   internal lemma below rather than a published result.
    ------------------------------------------------------------------------ *)
 
 From Stdlib Require Import Bool List Lia Arith Permutation Wf_nat.
@@ -432,18 +451,13 @@ Qed.
 
 (* ---- 1. FUNCTIONALITY ------------------------------------------------ *)
 
-(* Interning is a function of the table and the key, so two interns of the
-   same key in the same state cannot disagree.  Models the fact that
-   IR-SYM:INTERN reads only (a, r, key, p, u) — no clock, no allocation
-   counter, no pointer identity (symbol.f:26-37). *)
-Theorem intern_deterministic :
-  forall t k r1 r2,
-    intern t k = r1 -> intern t k = r2 -> r1 = r2.
-Proof.
-  intros t k r1 r2 H1 H2.
-  rewrite <- H1, <- H2.
-  reflexivity.
-Qed.
+(* "Interning is a function of the table and the key" is NOT published here.
+   Every Rocq definition is a function, so that statement is provable of any
+   `intern` whatever — including one that reads a clock — and says nothing
+   about symbol.f:26-37.  The determinism the Habu code really has is that
+   IR-SYM:INTERN reads only (a, r, key, p, u); expressing it would need a
+   model with the state it might have read, which this one does not have.
+   MODEL GAP 11 records that. *)
 
 Lemma intern_finds :
   forall t k t' i,
@@ -500,7 +514,11 @@ Proof.
       lia.
 Qed.
 
-Theorem intern_preserves_ceiling :
+(* The committed ceiling carries through an intern unchanged.  Not published:
+   `intern` copies the field verbatim in both branches, so this is the
+   definition read back.  What a ceiling is FOR is published as
+   `ceiling_fail_closed`. *)
+Lemma intern_preserves_ceiling :
   forall t k t' i,
     intern t k = Some (t', i) -> ceiling t' = ceiling t.
 Proof.
@@ -641,7 +659,10 @@ Proof.
   reflexivity.
 Qed.
 
-Theorem intern_ordinal_stays_valid :
+(* "An ordinal in range stays in range" is not published: it is `count_stable`
+   plus arithmetic, and it is strictly weaker than `intern_key_stable` just
+   above, which says the ordinal still denotes the SAME key. *)
+Lemma intern_ordinal_stays_valid :
   forall (t u : table K) i,
     extends t u -> i < count t -> i < count u.
 Proof.
@@ -659,7 +680,7 @@ Qed.
    four pushes at 523-526; IR-ATTR:INTERN5 calls ROOM-CK at attr.f:683
    before ROW-ADD5.  IR-TYPE:FN-END checks BOTH ceilings (type.f:621-622)
    before the first pool push at 625. *)
-Theorem ceiling_rejects :
+Lemma ceiling_rejects :
   forall t k,
     find (rows t) k = None ->
     ceiling t <= count t ->
@@ -687,30 +708,19 @@ Proof.
   reflexivity.
 Qed.
 
-(* The general form: whenever interning fails, the table that survives is
-   bit-for-bit the table that went in. *)
-Theorem intern_failure_atomic :
-  forall t k,
-    intern t k = None -> intern_step t k = (t, None).
-Proof.
-  intros t k Hnone.
-  unfold intern_step.
-  rewrite Hnone.
-  reflexivity.
-Qed.
-
-(* A full table still answers duplicates.  IR-TYPE:INTERN4's comment says
-   "a full table stays usable and duplicate construction still answers"
-   (type.f:514-515); this is that sentence. *)
-Theorem full_table_still_answers_hits :
-  forall t k i,
-    find (rows t) k = Some i -> intern t k = Some (t, i).
-Proof.
-  intros t k i Hfind.
-  unfold intern.
-  rewrite Hfind.
-  reflexivity.
-Qed.
+(* Two statements that used to be published here are not, because neither can
+   be false of any `intern` at all:
+     - "whenever interning fails the table that survives is the table that
+       went in" is the definition of `intern_step`, which answers `(t, None)`
+       on a `None` however badly `intern` behaved before refusing.  The claim
+       with content is `ceiling_fail_closed` above, which names the table the
+       caller started with under the ceiling hypothesis, and
+       `ceiling_write_order_counterexample` below, which shows a write-first
+       intern failing it.
+     - "a full table still answers duplicates" (type.f:514-515) is the first
+       branch of `intern` read back.  What makes it true of the Habu code is
+       that SCAN runs before ROOM-CK, and that ordering is published as
+       `intern_idempotent`, which is derived rather than definitional. *)
 
 (* The write-before-check mutation, to show the ordering in IR-SYM:ROOM-CK
    and IR-TYPE:FN-END is load-bearing rather than stylistic: this variant
@@ -897,7 +907,14 @@ Definition reindex (u t : table K) (i : nat) : nat :=
   | None => count u
   end.
 
-Theorem reindex_preserves_key :
+(* The three `reindex` results are machinery, not published coverage.  No word
+   in IR-SYM or IR-TYPE computes a renumbering; and given their hypotheses —
+   distinct rows, and two tables with the same elements — they are facts about
+   lists that hold whatever the Habu scan does.  They are kept because they
+   are the positive counterpart of `structural_rows_not_permutation` below:
+   they say what a canonical encoder would have to compute, and MODEL GAP 8
+   says why a type encoder cannot skip it. *)
+Lemma reindex_preserves_key :
   forall (t u : table K) i,
     (forall x, In x (rows t) <-> In x (rows u)) ->
     i < count t ->
@@ -922,7 +939,7 @@ Proof.
   exact Hj.
 Qed.
 
-Theorem reindex_in_range :
+Lemma reindex_in_range :
   forall (t u : table K) i,
     (forall x, In x (rows t) <-> In x (rows u)) ->
     i < count t ->
@@ -947,7 +964,7 @@ Proof.
   exact Hj.
 Qed.
 
-Theorem reindex_inverse :
+Lemma reindex_inverse :
   forall (t u : table K) i,
     table_wf t ->
     (forall x, In x (rows t) <-> In x (rows u)) ->
@@ -967,8 +984,14 @@ Proof.
   reflexivity.
 Qed.
 
-(* Lookup is a bijection between the live ordinals and the stored keys. *)
-Theorem lookup_total :
+(* Lookup is a bijection between the live ordinals and the stored keys.  Both
+   halves used to be published and neither is now:
+     - totality ("every ordinal below the count reads back") is
+       `nth_error_Some`, true of every list there is, and it is already the
+       thing `intern_ordinal_in_range` establishes for a minted ordinal.
+     - uniqueness is `key_injective` above with the quantifiers rearranged.
+   Uniqueness is kept as a lemma because it is the shape a reader wants. *)
+Lemma lookup_total :
   forall (t : table K) i, i < count t -> exists k, key_at t i = Some k.
 Proof.
   intros t i Hlt.
@@ -981,7 +1004,7 @@ Proof.
     contradiction.
 Qed.
 
-Theorem lookup_unique :
+Lemma lookup_unique :
   forall (t : table K) (k : K),
     table_wf t ->
     In k (rows t) ->
@@ -1630,28 +1653,17 @@ End Types.
 (* are not needed by anything here.                                     *)
 (* ------------------------------------------------------------------ *)
 
-Print Assumptions intern_deterministic.
 Print Assumptions intern_idempotent.
 Print Assumptions intern_wf.
-Print Assumptions intern_preserves_ceiling.
 Print Assumptions intern_roundtrip.
 Print Assumptions intern_ordinal_in_range.
 Print Assumptions key_injective.
 Print Assumptions intern_id_iff_key.
 Print Assumptions intern_key_stable.
 Print Assumptions intern_answer_stable.
-Print Assumptions intern_ordinal_stays_valid.
-Print Assumptions ceiling_rejects.
 Print Assumptions ceiling_fail_closed.
-Print Assumptions intern_failure_atomic.
-Print Assumptions full_table_still_answers_hits.
 Print Assumptions order_independent.
 Print Assumptions order_independent_permuted_input.
-Print Assumptions reindex_preserves_key.
-Print Assumptions reindex_in_range.
-Print Assumptions reindex_inverse.
-Print Assumptions lookup_total.
-Print Assumptions lookup_unique.
 Print Assumptions intern_ref_preserves_refs_below.
 Print Assumptions intern_ref_wf.
 Print Assumptions ref_rel_decreasing.

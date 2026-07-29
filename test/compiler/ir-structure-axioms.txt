@@ -35,12 +35,6 @@
 theorem Habu.Common.Structure.tiling_no_overlap
 type forall (base : nat) (ws : list win), contig base ws -> no_overlap ws
 closed
-theorem Habu.Common.Structure.tiling_no_gap
-type forall (base : nat) (ws : list win), contig base ws -> no_gap base (span base ws) ws
-closed
-theorem Habu.Common.Structure.tiling_in_range
-type forall (base : nat) (ws : list win), contig base ws -> in_range base (span base ws) ws
-closed
 theorem Habu.Common.Structure.tiling_partition
 type forall (base : nat) (ws : list win), contig base ws -> (forall i : nat, base <= i -> i < span base ws -> exists ! k : nat, owner ws k i) /\ in_range base (span base ws) ws
 closed
@@ -68,9 +62,6 @@ closed
 theorem Habu.Common.Structure.coverage_is_necessary
 type forall (base : nat) (ws : list win) (top : nat), contig base ws -> base <= top -> (forall i : nat, base <= i -> i < top -> exists k : nat, owner ws k i) -> (forall k i : nat, owner ws k i -> i < top) -> span base ws = top
 closed
-theorem Habu.Common.Structure.contig_snoc
-type forall (base : nat) (ws : list win) (w : win), contig base ws -> wst w = span base ws -> contig base (ws ++ [w])
-closed
 theorem Habu.Common.Structure.op_row_windows_tile
 type forall (base : nat) (r : oprow), contig base (row_wins base r)
 closed
@@ -82,12 +73,6 @@ type forall (rs : list oprow) (base i : nat), base <= i -> i < span base (pool_w
 closed
 theorem Habu.Common.Structure.non_tiling_admits_double_ownership
 type covers (nthw overlapping_pool 0) 1 /\ covers (nthw overlapping_pool 1) 1 /\ ~ contig 0 overlapping_pool /\ ~ no_overlap overlapping_pool
-closed
-theorem Habu.Common.Structure.end_op_all_or_nothing
-type forall (c : ocaps) (st : ostate) (o : op) (st' : ostate), end_op c st o = Some st' -> ops st' = ops st ++ [o] /\ nvals st' = nvals st + nres o /\ pcells st' = pcells st + op_cells o
-closed
-theorem Habu.Common.Structure.end_op_failure_atomic
-type forall (c : ocaps) (st : ostate) (o : op), end_op c st o = None -> end_op_step c st o = (st, false)
 closed
 theorem Habu.Common.Structure.ceiling_fail_closed
 type forall (c : ocaps) (st : ostate) (o : op), room_ok c st o = false -> end_op_step c st o = (st, false)
@@ -104,17 +89,8 @@ closed
 theorem Habu.Common.Structure.op_cannot_take_own_result
 type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall k u : nat, k < length os -> In u (uses (nth k os opnil)) -> ~ defines v0 os k u
 closed
-theorem Habu.Common.Structure.use_rel_decreasing
-type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall u v : nat, use_rel v0 os u v -> u < v
-closed
 theorem Habu.Common.Structure.use_well_founded
 type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> well_founded (use_rel v0 os)
-closed
-theorem Habu.Common.Structure.no_self_use
-type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall v : nat, ~ use_rel v0 os v v
-closed
-theorem Habu.Common.Structure.use_path_decreasing
-type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall u v : nat, use_path v0 os u v -> u < v
 closed
 theorem Habu.Common.Structure.no_definitional_cycle
 type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall v : nat, ~ use_path v0 os v v

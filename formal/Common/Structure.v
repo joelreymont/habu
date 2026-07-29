@@ -116,6 +116,18 @@
       decisions on one staged row and neither touches a window, a value
       ordinal or a parent.
    ------------------------------------------------------------------------
+   BINDING GAPS
+
+   Measured by mutating src/compiler/ir/{op,fun}.f and rerunning
+   test/compiler/ir-structure-proof.f.  The operand bound, the row ceiling and
+   the block's STEP-CK are all caught by a vector row.  Three are caught only
+   by the frozen guard bodies, which notice any edit to those words but no
+   behaviour: giving the result window the operand window's start
+   (IR-OP:WIN-STARTS), dropping the operand-window arm of IR-OP:TILE-CK, and
+   dropping the "this block" arm of IR-FUN:ARGS-CK.  So the tiling results and
+   `args_ck_sound` rest on pinned text rather than on a driven row.
+
+   ------------------------------------------------------------------------
    FINDINGS
 
    Three facts fall out of the proofs that the Habu headers do not state.
@@ -306,7 +318,7 @@ Proof.
 Qed.
 
 (* No gap: every cell from the base up to the total span has an owner. *)
-Theorem tiling_no_gap :
+Lemma tiling_no_gap :
   forall base ws, contig base ws -> no_gap base (span base ws) ws.
 Proof.
   intros base ws. revert base.
@@ -326,7 +338,7 @@ Proof.
 Qed.
 
 (* Nothing outside the base-to-span range is owned. *)
-Theorem tiling_in_range :
+Lemma tiling_in_range :
   forall base ws, contig base ws -> in_range base (span base ws) ws.
 Proof.
   intros base ws Hcontig k i Hk Hcov.
@@ -552,7 +564,7 @@ Proof.
       rewrite Heq in Hys. exact Hys.
 Qed.
 
-Corollary contig_snoc :
+Lemma contig_snoc :
   forall base ws w,
     contig base ws -> wst w = span base ws -> contig base (ws ++ [w]).
 Proof.
@@ -746,7 +758,7 @@ Fixpoint build (c : ocaps) (st : ostate) (os : list op) : option ostate :=
 
 (* ---- atomicity and fail-closed ----------------------------------- *)
 
-Theorem end_op_all_or_nothing :
+Lemma end_op_all_or_nothing :
   forall c st o st',
     end_op c st o = Some st' ->
     ops st' = ops st ++ [o]
@@ -758,7 +770,7 @@ Proof.
   inversion Hend. simpl. repeat split.
 Qed.
 
-Theorem end_op_failure_atomic :
+Lemma end_op_failure_atomic :
   forall c st o, end_op c st o = None -> end_op_step c st o = (st, false).
 Proof.
   intros c st o Hnone. unfold end_op_step. rewrite Hnone. reflexivity.
@@ -896,7 +908,7 @@ Definition use_rel (v0 : nat) (os : list op) (u v : nat) : Prop :=
             /\ defines v0 os k v
             /\ In u (uses (nth k os opnil)).
 
-Theorem use_rel_decreasing :
+Lemma use_rel_decreasing :
   forall c v0 os st,
     build c (MkOState [] v0 0) os = Some st ->
     forall u v, use_rel v0 os u v -> u < v.
@@ -919,14 +931,10 @@ Proof.
   apply (use_rel_decreasing c v0 os st Hbuild x y Hrel).
 Qed.
 
-Theorem no_self_use :
-  forall c v0 os st,
-    build c (MkOState [] v0 0) os = Some st ->
-    forall v, ~ use_rel v0 os v v.
-Proof.
-  intros c v0 os st Hbuild v Hrel.
-  pose proof (use_rel_decreasing c v0 os st Hbuild v v Hrel). lia.
-Qed.
+(* "No value uses itself" is not published on its own: it is the one-step case
+   of `no_definitional_cycle` below, which quantifies over chains of any
+   length, and `op_cannot_take_own_result` above already states it at the
+   operation.  Publishing all three would report one fact three times. *)
 
 (* A definitional chain of any length. *)
 Inductive use_path (v0 : nat) (os : list op) : nat -> nat -> Prop :=
@@ -936,7 +944,7 @@ Inductive use_path (v0 : nat) (os : list op) : nat -> nat -> Prop :=
     forall u w v,
       use_rel v0 os w v -> use_path v0 os u w -> use_path v0 os u v.
 
-Theorem use_path_decreasing :
+Lemma use_path_decreasing :
   forall c v0 os st,
     build c (MkOState [] v0 0) os = Some st ->
     forall u v, use_path v0 os u v -> u < v.
@@ -1622,8 +1630,6 @@ Qed.
 (* ================================================================== *)
 
 Print Assumptions tiling_no_overlap.
-Print Assumptions tiling_no_gap.
-Print Assumptions tiling_in_range.
 Print Assumptions tiling_partition.
 Print Assumptions neighbour_check_is_contiguity.
 Print Assumptions neighbour_check_gives_non_overlap.
@@ -1633,22 +1639,16 @@ Print Assumptions tiling_says_nothing_past_the_span.
 Print Assumptions coverage_check_is_last_row_end.
 Print Assumptions coverage_closes_the_gap.
 Print Assumptions coverage_is_necessary.
-Print Assumptions contig_snoc.
 Print Assumptions op_row_windows_tile.
 Print Assumptions op_pool_windows_tile.
 Print Assumptions op_pool_cell_has_one_owner.
 Print Assumptions non_tiling_admits_double_ownership.
-Print Assumptions end_op_all_or_nothing.
-Print Assumptions end_op_failure_atomic.
 Print Assumptions ceiling_fail_closed.
 Print Assumptions ssa_violation_fail_closed.
 Print Assumptions write_order_is_load_bearing.
 Print Assumptions operand_strictly_below_own_results.
 Print Assumptions op_cannot_take_own_result.
-Print Assumptions use_rel_decreasing.
 Print Assumptions use_well_founded.
-Print Assumptions no_self_use.
-Print Assumptions use_path_decreasing.
 Print Assumptions no_definitional_cycle.
 Print Assumptions off_by_one_admits_self_definition.
 Print Assumptions no_check_admits_definitional_cycle.
