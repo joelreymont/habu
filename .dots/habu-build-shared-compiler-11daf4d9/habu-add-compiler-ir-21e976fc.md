@@ -52,4 +52,4 @@ source, builder, codec, dialect schema, operation, or shared structural lint
 source. Before integration or push, root coordinates fetch/rebase, reconciles
 active lanes, verifies ownership, and runs combined publication gates.
 
-Claim: agent=ir0 workspace=.jj-ws/habu-add-compiler-ir-21e976fc branch=ir0
+Claim RELEASED 2026-07-29: work landed (src/compiler/ir/id.f and its suites are on the proofs branch); the agent and its workspace are retired. Dot stays active only until the branch is pushed and verified at the remote, per closure procedure.
