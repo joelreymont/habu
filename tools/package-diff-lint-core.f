@@ -102,6 +102,7 @@ variable BAD
 variable SECTION-ACTIVE
 variable SECTION-SEEN
 variable WHOLE-CHANGED
+variable TRUNK-HIT                 \ engine-trunk path match, accumulated over the row table
 variable SOURCE-LINE
 variable SOURCE-OFF
 variable NEW-LINE
@@ -803,11 +804,11 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    bit 0= if false exit then
    allowed bit and 0<> ;
 
-\ The native engine emitter, src/habu/habu2.f, is the third principled category
-\ and the narrowest of the three.  It is admitted for exactly one shape: a change
-\ to the BODY of a global word that already exists.  Adding a new global word to
-\ that file is still reported, which is what separates this entry from the
-\ interim entries in GLOBAL-IMPLEMENTATION? above.
+\ The engine trunk -- src/habu/habu2.f and src/habu/layout.f -- is the third
+\ principled category and the narrowest of the three.  It is admitted for exactly
+\ one shape: a change to the BODY of a global word that already exists.  Adding a
+\ new global word to either file is still reported, which is what separates this
+\ entry from the interim entries in GLOBAL-IMPLEMENTATION? above.
 \
 \ Why the file needs an entry at all.  habu2.f is about 7,300 lines of code that
 \ emits the machine code of the engine itself.  Almost all of it is global by
@@ -831,17 +832,48 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 \ ADDED by this diff, so a new definition is admitted by no rule here and a body
 \ edit of a definition whose head the diff did not touch is.
 \
-\ Retirement condition.  This entry is removed when the continuing habu2
+\ Why src/habu/layout.f is the second member.  It is the same kind of file for
+\ the same reason: about 240 constants that name the image, dictionary and DATA
+\ layout, all global by construction because every engine source reads them bare
+\ while the engine is being built, and its packaging is blocked on the stage0
+\ recovery compiler learning the `using` keyword (dot habu-add-using-to-d815f0ab).
+\ Without this entry the gate rejects any change to an existing layout constant's
+\ value -- measured 2026-07-29: bumping SNAP-FORMAT-VERSION from 4 to 5 and
+\ deriving DATA-START from the new relocation bands reported E-PACKAGE-OWNERSHIP
+\ on both, so the snapshot format could not be versioned at all.  New layout
+\ constants still have to join a package, which is what the relocation bands did.
+\
+\ Retirement condition.  The habu2.f half is removed when the continuing habu2
 \ packaging work (dot habu-cont-habu2-emitter-493363e7) extends those seams over
-\ the remaining global surface, exactly as the checker and render entries are
-\ removed by their own sealing dots.  FINISH-DEFINITION checks SCOPE-DELTA before
-\ it consults this admission, so adding or deleting a package boundary around an
-\ engine word is still reported here like anywhere else.  A rename or copy that
-\ makes some other file arrive AT this path is not a body edit of an existing
-\ engine word -- every definition in it is new here even though no line of it is
-\ marked added -- so WHOLE-CHANGED closes that hole and reports the whole file.
+\ the remaining global surface, and the layout.f half when dot
+\ habu-give-layout-f-315df2ca finishes packaging that file, exactly as the checker
+\ and render entries are removed by their own sealing dots.  FINISH-DEFINITION
+\ checks SCOPE-DELTA before it consults this admission, so adding or deleting a
+\ package boundary around an engine word is still reported here like anywhere
+\ else.  A rename or copy that makes some other file arrive AT one of these paths
+\ is not a body edit of an existing engine word -- every definition in it is new
+\ here even though no line of it is marked added -- so WHOLE-CHANGED closes that
+\ hole and reports the whole file.
+\
+\ The two paths are rows reached through ONE comparison site, for the reason the
+\ fixture row table below gives: a weakening -- a suffix match, a case fold, a
+\ prefix test -- then has exactly one place to live and changes both rows at once,
+\ so the hostile fixtures kill it on both.
+2 constant ENGINE-TRUNK-N
+
+: ENGINE-TRUNK-AT ( n -- ptr u8 n ) {: row:n :}
+   row 0= if s" src/habu/habu2.f" exit then
+   s" src/habu/layout.f" ;
+
+: ENGINE-TRUNK-PATH? ( -- bool )
+   0 TRUNK-HIT !
+   ENGINE-TRUNK-N 0 ?do
+      FILE$ i ENGINE-TRUNK-AT LINT-STR= if 1 TRUNK-HIT ! then
+   loop
+   TRUNK-HIT @ 0 <> ;
+
 : ENGINE-BODY-EDIT? ( -- bool )
-   FILE$ s" src/habu/habu2.f" LINT-STR= 0= if false exit then
+   ENGINE-TRUNK-PATH? 0= if false exit then
    WHOLE-CHANGED @ if false exit then
    DEF-TAIL-ADDED @ 0= ;
 

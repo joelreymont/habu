@@ -29,7 +29,16 @@ $48425350414E5321 constant SNAP-MAGIC
 \ the loader rebases them to the live region base. A pre-4 engine maps the region at
 \ the old fixed VA and cannot relocate a v4 image's region pointers, so it fails
 \ closed rc 80.
-4 constant SNAP-FORMAT-VERSION
+\ Version 5: the region no longer has to land at a particular address at all. The
+\ loader accepts whatever base the kernel gives it and relocates every recorded
+\ region-to-text call displacement, and every persisted data cell that was
+\ declared to hold a region address (both tables live in the SNAP-RELOC band near
+\ the end of this file). A version 5 image therefore stores its call immediates in
+\ the canonical "region sits exactly REGION-OFF above __text" form, and its
+\ declared address cells relative to the RBASE-VA sentinel, rather than in the
+\ writing run's own form. A version 4 engine would read both as live values and
+\ jump to wild addresses, so it must fail closed rc 80 instead.
+5 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
@@ -564,9 +573,80 @@ USE-BAND-OFF 16 +     constant USE-RPKG-SAVE-CELL  \ depth saved at REPL line st
 USE-BAND-OFF 24 +     constant USE-WIDS-OFF        \ public-wid array base (USE-MAX u64 cells)
 USE-WIDS-OFF USE-MAX cells + constant USE-BAND-END
 
+\ --- snapshot relocation bookkeeping (dot habu-relocate-snapshot-region-752042fe) ---
+\ Two tables that let a snapshot image be restored at a region address the
+\ writing run never saw. Both live in the engine-reserved DATA band below
+\ DATA-START, so the ordinary snapshot DATA copy carries them with no new image
+\ section, and both are keyed by an OFFSET rather than an address, so their own
+\ contents are the same in every run and never need canonicalising.
+\ The engine half of this subsystem reopens this package in src/habu/habu2.f and
+\ the snapshot writer's half reopens it in src/habu/snap-lib.f.
+package SNAP-RELOC
+public
+
+\ Exit status for a corrupt call map: the loader found a recorded region-to-text
+\ call site that does not hold a call instruction, so the image's region bytes and
+\ its call map come from different builds or one of them is damaged. Relocating it
+\ anyway would write a wild branch into live code, so the image is refused. It
+\ lives here beside BL-RANGE-RC and AOT-OWNER-RC rather than in the
+\ src/core/engine-error.f registry for the same reason those two do: the engine
+\ emitter reads its exit statuses from this file while it is being compiled, one
+\ generation before a new src/core constant would be reachable. 95 is the next
+\ free status above that registry's last entry (94), and 96 follows it.
+95 constant CALLMAP-RC
+\ Exit status for an overfull address-cell table: more cells were declared to hold
+\ a region address than XTCELL-CAP has room for. Continuing would silently drop a
+\ cell and leave a stale writer-run address in a restored image, so the engine
+\ stops instead.
+96 constant XTCELL-RC
+
+\ Call-site map: one bit per four-byte word of the JIT region, recording every
+\ call site whose callee lives in the engine's loaded __text instead of inside the
+\ region. Those calls are the only instructions whose displacement is not the same
+\ in the run that wrote a snapshot image and the run that restores it. A call from
+\ one region address to another keeps its distance wherever the region is mapped;
+\ a call from the region into __text does not, because the kernel picks the region
+\ base and the loader picks the image base independently.
+\ A site is recorded when the call is created, at the single call-emit chokepoint
+\ (habu2.f EMIT-CEMITBL) and at the AOT call-site patcher (EM-AOT-PATCH-SITES), so
+\ nothing ever has to recognise a call again by decoding region bytes -- which
+\ could not be done soundly, because a compiled word may carry inline
+\ non-instruction data.
+\ The snapshot writer rewrites every recorded site to the displacement it would
+\ have if the region sat exactly REGION-OFF above __text, and the loader rewrites
+\ it again for the distance this run actually got.
+\ The size is fixed and derived from REGION, so the map cannot overflow and needs
+\ no capacity check: grow REGION and the map grows with it.
+REGION 32 / constant CALLMAP-BYTES        \ one bit per region word (REGION / 4 / 8)
+USE-BAND-END constant CALLMAP-OFF
+CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
+
+\ Address-cell table: the DATA offset of every persisted cell that was DECLARED to
+\ hold a JIT-region address. Region code moves between the run that writes an
+\ image and the run that restores it, but DATA is mapped at a fixed address, so a
+\ cell in DATA that points into the region is stale the moment the image is
+\ restored somewhere else -- the crash is an immediate jump to the writing run's
+\ address on the first deferred call.
+\ Membership is recorded where the cell's kind is decided, never inferred from
+\ what the cell happens to contain: the `defer` handler registers a dispatch cell
+\ when it allocates it, the `is` handler registers the cell it is about to store
+\ into, and the three engine hook cells are registered by name at cold boot
+\ (habu2.f). Scanning DATA for values that fall in some address band would be a
+\ guess -- an ordinary integer can hold any value at all -- and is deliberately
+\ not what this does.
+\ Layout: a count cell followed by XTCELL-CAP offset cells. The engine appends
+\ only offsets that are not already present, so a cell registered by both `defer`
+\ and `is` is listed once and is relocated once.
+4096 constant XTCELL-CAP                  \ declared address cells one image may carry
+CALLMAP-END constant XTCELL-N-CELL        \ live count of used rows
+XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
+XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
+
+;package
+
 \ DATA-START: first offset of the user DP heap (allot/,/c,); everything below is
 \ engine-reserved state (snapshot saves [0,DATA-START); DP-CHECK bounds the heap
 \ >= DATA-START; task-user cells stop at EVAL-FRAME and sixteen evaluator
 \ frames occupy $43C0..$47C0. The lowering state ends at $8000; the pre-trust defer
 \ pending band follows, then the immutable lowering blob lives outside DATA.
-USE-BAND-END constant DATA-START
+SNAP-RELOC:XTCELL-END constant DATA-START

@@ -155,3 +155,4 @@ lldb shows defer cells (including HOOK-CELL) hold writer-run region addresses,
 so without that third piece a relocated image still crashes on the first
 deferred call.
 
+Claim: agent=snapreloc workspace=.jj-ws/habu-relocate-snapshot-region-752042fe

@@ -202,13 +202,22 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 \ the two-build byte-compare in the snap flow fails closed on any drift,
 \ and the owning-field fixes are tracked by the dot above. Keep entries
 \ sorted; every change needs the compare green on the exact tree.
+\ Every one of these cells lives in the DP heap, so each is written as its
+\ distance from DATA-START rather than as a raw DATA offset. They used to be raw
+\ offsets, and adding a band below DATA-START then silently moved all twenty of
+\ them off their cells -- the region-to-text call map went there (dot
+\ habu-relocate-snapshot-region-752042fe). Written this way, growing the
+\ engine-reserved area moves the heap and these entries together, and only a
+\ change to the heap's own contents can invalidate them.
 create SND-QUARANTINE
-   $17CF50 , $17CF68 , $17CF70 , $17D090 , $17D098 ,
-   $31D138 , $31D158 , $32EC98 ,
-   $51DB60 , $51DB78 , $51DB80 , $51DCA0 ,
-   $6CF8A8 , $743ED0 ,
-   $757148 , $757150 , $757160 ,
-   $75AB80 , $75ABF0 , $75ABF8 ,
+   DATA-START $1732B0 + , DATA-START $1732C8 + , DATA-START $1732D0 + ,
+   DATA-START $1733F0 + , DATA-START $1733F8 + ,
+   DATA-START $313498 + , DATA-START $3134B8 + , DATA-START $324FF8 + ,
+   DATA-START $513EC0 + , DATA-START $513ED8 + , DATA-START $513EE0 + ,
+   DATA-START $514000 + ,
+   DATA-START $6C5C08 + , DATA-START $73A230 + ,
+   DATA-START $74D4A8 + , DATA-START $74D4B0 + , DATA-START $74D4C0 + ,
+   DATA-START $750EE0 + , DATA-START $750F50 + , DATA-START $750F58 + ,
 20 constant SND-QUARANTINE#
 
 TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
@@ -218,11 +227,53 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
       i SND-QUARANTINE@ SND-ZERO-SPAN-CELL
    loop ;
 
+\ ---- persisted cells that hold a JIT-region address --------------------------
+\ Everything inside the region copy is already canonicalised: pointers into the
+\ region are folded to the RBASE-VA sentinel and call displacements to the
+\ canonical REGION-OFF distance. Some cells in DATA hold region addresses too --
+\ every deferred word's dispatch cell, and the three engine hook cells -- and DATA
+\ is copied verbatim, so before this they arrived at a restoring run still
+\ pointing at the writing run's region.
+\ That was survivable only while the region had a fixed address. It is not now:
+\ the loader takes whatever base the kernel gives it (dot
+\ habu-relocate-snapshot-region-752042fe), so a stale cell is wrong in every run.
+\ Measured under lldb on a restored image before this: `ldr x16,[x9]` then
+\ `blr x16` in a compiled deferred call jumped to 0x105a1dd30, the writing run's
+\ address for the target, with the live region at 0x103550000 -- an immediate
+\ SIGSEGV on the first deferred call.
+\ Which cells those are is never guessed from what a cell contains: an ordinary
+\ integer may hold any value, including one that looks exactly like a region
+\ address. The engine declares each cell where its kind is decided -- `defer` when
+\ it allocates a dispatch cell, `is` when it stores into one, and cold boot for
+\ the three hook cells -- and records the DATA offset in the table this pass
+\ walks. The loader (habu2.f EM-SNAPSHOT-RESTORE) inverts exactly this list from
+\ exactly the same table.
+\ These four words belong to this package, the snapshot writer, rather than to
+\ SNAP-RELOC: the engine owns the declaring and the restoring, and the writer owns
+\ the one pass that runs over its own scratch copy. They read the table's shape
+\ from SNAP-RELOC and nothing else.
+TRUSTED: SND-XT-CELL@ ( n -- n ) SND-N @ + @ ;
+TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
+
+: SND-XT-ROW ( n -- n ) {: row:n :}
+   SNAP-RELOC:XTCELL-ROWS-OFF row cells + SND-XT-CELL@ ;
+
+: SND-CANON-XT-CELL ( n -- ) {: cell:n :}
+   cell SND-XT-CELL@ {: xt:n :}
+   xt 0= if exit then
+   xt dbase@ - RBASE-VA +  cell SND-XT-CELL! ;
+
+: SND-CANON-XT-CELLS ( -- )
+   SNAP-RELOC:XTCELL-N-CELL SND-XT-CELL@ 0 ?do
+      i SND-XT-ROW SND-CANON-XT-CELL
+   loop ;
+
 : CANON-DATA ( -- )
    SND-ALLOC
    SND-COPY
    SND-ZERO-LIVE
-   SND-ZERO-QUARANTINE ;
+   SND-ZERO-QUARANTINE
+   SND-CANON-XT-CELLS ;
 
 : CANON-REGION ( -- )
    SNC-ALLOC

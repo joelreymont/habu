@@ -1355,6 +1355,32 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-WRITE-ENGINE-ARRIVAL
    TEST-DIFF-RESET TEST-ENGINE-ARRIVAL-DIFF
    s" file renamed onto habu2.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ The second engine-trunk row, src/habu/layout.f, is pinned in both directions
+   \ by the same fixtures, because it is admitted by the same rule and must be
+   \ narrow in the same way.  The positive is the measured probe: changing the
+   \ value of an existing layout constant reported E-PACKAGE-OWNERSHIP before
+   \ this row, so the snapshot format version could not be bumped at all.
+   s" src/habu/layout.f" TEST-ENGINE-BODY-CASE
+   s" layout exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a new unpackaged constant in layout.f is still reported by name,
+   \ which is what keeps the row from becoming a licence to grow the file's
+   \ global surface -- new layout bands have to open a package.
+   s" src/habu/layout.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in layout still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so its body edit still fails.
+   s" src/habu/layout-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/layout-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the row's path as
+   \ a suffix but is not exact, so it still fails.  The per-target layout files
+   \ src/os/macos/layout.f and src/os/linux/layout.f are the real words this
+   \ guards: they are NOT engine trunk and must keep reporting.
+   s" lib/layout.f" TEST-ENGINE-BODY-CASE
+   s" lib/layout.f basename collision still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
 : TEST-WRITE-OUTSIDE-HUNK-SOURCE ( -- )

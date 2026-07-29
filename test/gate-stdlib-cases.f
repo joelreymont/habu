@@ -740,6 +740,10 @@ SUITE pre-trust-defer
    test/pre-trust-defer.f
 ;SUITE
 
+SUITE snapshot-xt-cell-decl
+   test/snapshot-xt-cell-decl.f
+;SUITE
+
 SUITE catch-frame
    test/catch-frame.f
 ;SUITE
