@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-28
+Last updated: 2026-07-29
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -965,6 +965,30 @@ fits.
 
 ## Gate Harness, Scheduling & Caching
 
+- **A regression that pins ONE fail-closed exit code stops testing what it
+  names the moment an earlier fail-closed boundary appears, and nothing goes
+  red to say so.** `test/pre-trust-defer.f` blanks the drain and asserts exit
+  73 from the `SEAL-CAPTURE` backstop. Commit `e8c27f225303` added a pre-trust
+  `defer PKG-LIVE-XT` (`src/core/checker.f:465`) and a checked
+  `is PKG-LIVE-XT` at `src/habu/xref.f:209`, which is 283 lines ABOVE the
+  baseline `SEAL-CAPTURE` token at `xref.f:492`, so the check hook now rejects
+  at exit 70 first and the backstop is never reached. The backstop still works
+  — neutralising that one `is` restores exit 73 — but its only coverage was
+  gone. Order between two fail-closed boundaries in the boot prefix is implicit
+  source order with no gate; when a test asserts a specific code, either assert
+  the first boundary explicitly and cover the later one separately, or add a
+  static gate on the ordering.
+- **A guard that proves a STATIC property with a wall-clock budget cannot tell
+  slow from broken.** `test/lint-cli-standalone-load.f` proves each
+  `tools/<name>-lint.f` requires its own dependency closure by spawning it and
+  asserting the child exits on its own inside `TIMEOUT-MS` (20000).
+  `tools/refine-lint.f` loads in 2.1 s and then scans the whole repository,
+  taking 16.5 s to 65.7 s wall on the same idle machine, so it trips the budget
+  and reports a bare `expected true got false` with no exit code and no
+  elapsed time. Raising the budget to 120000 in a scratch copy greens the file
+  — proof that the guard is timing the lint's work, not its load. Make the
+  probe stop after the requires, or at minimum report timeout and dead load as
+  two distinct named verdicts.
 - **SUBJECT:RUN forks the live test process, so call it with NO package open,
   and never gate a CLI file that parses argv.** A suite whose RUN executes
   inside its own package makes the forked child's `package X` a NESTED-package
@@ -1639,6 +1663,28 @@ fits.
 
 ## Diagnostics & Benchmarks
 
+- **A matching diagnostic string is a lead, never an attribution — reproduce on
+  the exact engine and path before you inherit someone else's dot.** The
+  pre-trust-defer red printed `hook: non-certified definition: install at 'is'`,
+  the verbatim signature of the Gforth stage0 mirror replay defect written up in
+  `docs/debugging.md` and owned by dot `habu-fix-stage0-pre-88a4297e`, so the
+  red was filed as that defect. It is not: the whole failure reproduces under
+  the NATIVE engine on a plain `bin/hb --load` child boot, with no gforth and
+  without `tools/bootstrap.sh`. That message is the generic consequence of a
+  pre-trust deferred word that has no checker rows, and both engines emit it.
+  The falsification that settled it took one run: copy `src/` to a private root,
+  patch the copy, boot a child with that root as its working directory (the
+  engine re-reads its prefix from source at boot), and see which engine is
+  actually speaking.
+- **When an opaque exit code names no site, mutate one candidate site's code to
+  a unique number and re-run on the real load path.** Exit 67 with
+  `hb: uncaught throw code 7136` says only that `E-PKG-CONTEXT` escaped, and
+  `src/core/checker.f` throws it from nine places. Copying `src/`, changing
+  exactly one of them to `7911` (padded to the same byte length so no offsets
+  move) and booting a child engine against the copy printed
+  `hb: uncaught throw code 7911` and pinned the site to `checker.f:634` in one
+  step. Cheaper and more certain than reading nine call paths, and it works for
+  any engine constant that reaches stderr.
 - **Diagnostics are an API.** JSON errors carry `schema_version:1`, source spans, verdict, word,
   token, expected, actual; wrappers keep valid JSON object lines and fail nonzero on rejection. Source
   origins are wrapper-owned (definition-relative spans; inject origin markers, keep them out of user
