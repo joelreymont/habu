@@ -2743,3 +2743,37 @@ fits.
   replacements were smaller than what they deleted. When a check must
   reimplement the semantics of the thing it checks, that is the signal to
   delete it, not to narrow it again.
+- **Before naming a file as the unit of deletion, ask whether it holds more
+  than one invariant.** A dot was written to delete three files whose lint
+  "only checks that a date equals today". The file actually implemented two
+  unrelated checks. The date comparison was a pure function of the calendar
+  with no reachable stable green state, so a red run carried no information
+  about the tree. The other check walked every tracked document and rejected
+  any line quoting a self-check count, pointing authors at the single source of
+  truth instead; it stays green indefinitely and its findings name a file and a
+  line. Deleting the file would have destroyed a working invariant to kill a
+  broken one that happened to share a filename. The whole-file scope also
+  manufactured a caller cascade — an emptied gate phase, a phase-id retirement,
+  documentation-map rows, a coverage entry — that vanished entirely once the
+  unit became the invariant rather than the file. The test that separates them
+  is whether a check has a reachable stable green state, not whether it looks
+  like governance.
+- **"Zero consumers" misclassifies every hand-invoked tool, because an entry
+  point has no consumer by construction.** A cruft audit listed three files as
+  verified dead. Only one was: a strict subset of an enrolled test that had
+  moved directories. The second was a diagnostic tool with a real usage
+  interface, which our own rule about building tools instead of bisecting by
+  hand says to keep. For the third the audit misread a line retiring an
+  aggregate performance verdict as retiring the file itself. An audit's
+  reasons need re-deriving one by one; its confident line counts are not
+  evidence. The same sweep also showed that a trust-ledger row can name test
+  files as the consumers of an unchecked boundary that none of them load, so a
+  column no gate validates is an unenforced claim.
+- **Announcing an objection window and then not waiting for it is worse than
+  never offering one.** I posted "unless you object, I will fast-forward and
+  push", then pushed about three minutes later, and the other orchestrator's
+  hold arrived after the push had already landed. Offering a review period and
+  consuming it yourself reads as consultation while functioning as notice, and
+  it costs more trust than pushing without comment would have. If the window is
+  real, wait for an answer; if the change genuinely cannot wait, say that
+  instead and own it.
