@@ -3,6 +3,10 @@ title: Relocate snapshot region-to-text calls
 status: active
 priority: 2
 issue-type: task
+blocks:
+  - habu-give-layout-f-315df2ca
+  - habu-pkg-the-six-e46d0450
+  - habu-relocate-persisted-defer-7aa681c4
 created-at: "2026-07-29T19:58:29.544526+02:00"
 ---
 
@@ -120,4 +124,34 @@ collision cause and the prescribed fix above):
    range check; exit 78 disappears; (d) bump SNAP-FORMAT-VERSION and mirror the
    pass in bootstrap/cg/forth.fs.
 The 200-consecutive-clean-boot acceptance stands unchanged.
+
+ROUND-3 CORRECTIONS 2026-07-29 (review of the implementing lane's step-2 work,
+supersedes points above where they conflict):
+1. Point (d) above is WRONG about the mirror: EM-SNAPSHOT-REBASE-CALLS in
+   bootstrap/cg/forth.fs relocates the OLD absolute-call wire format
+   (movz/movk/movk/blr), which the Gforth-built image still uses. The new
+   BL-format pass must NOT be copied there — each build path relocates its own
+   wire format, and forcing parity would relocate instructions that do not
+   exist in the mirror's output.
+2. Point (b) is INCOMPLETE: LCEMITBL is not the sole producer of region-to-text
+   call sites. EM-AOT-PATCH-SITES also patches BL sites after emission, so the
+   emit-time site table must be fed from both places or it silently misses the
+   patched sites.
+3. The baseline is worse than measured above: re-measured on the current tree,
+   0 of 200 bare runs boot clean (not 13). The 13 apparent successes in the
+   earlier histogram predate the current tree state.
+4. SND-QUARANTINE coupled its window to DATA-START by absolute address; fixed
+   in the WIP as DATA-START plus an explicit delta so relocation moves the
+   window with the region.
+
+STEP-2 STATE 2026-07-29: the write/restore rebase implementation exists as WIP
+commit e50fb3ec in .jj-ws/habu-relocate-snapshot-region-752042fe (touches
+habu2.f, layout.f, snap-lib.f, bootstrap-codegen-test.f). It cannot commit
+until its three prerequisites in this dot's blocks list land: package owners
+for layout.f and snap-lib.f (habu-give-layout-f-315df2ca), a package owner for
+the six new engine words (habu-pkg-the-six-e46d0450), and declared-kind
+relocation of persisted defer cells (habu-relocate-persisted-defer-7aa681c4) —
+lldb shows defer cells (including HOOK-CELL) hold writer-run region addresses,
+so without that third piece a relocated image still crashes on the first
+deferred call.
 
