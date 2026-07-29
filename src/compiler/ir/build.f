@@ -96,6 +96,7 @@ require src/compiler/ir/attr.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
+require src/compiler/ir/verify.f
 
 package IR-BUILD
 public
@@ -134,7 +135,9 @@ $7FFFFFFF constant BGEN-MAX          \ builder generation ceiling
 12 constant T-FP                     \ function attribute pool
 13 constant T-FR                     \ function rows
 14 constant T-BR                     \ block rows
-15 constant TABLES#
+15 constant T-EP                     \ derived predecessor pool
+16 constant T-ER                     \ derived block-edge rows
+17 constant TABLES#
 
 \ ---- the committed ceiling plan ----------------------------------------------
 \ One field per number the fifteen tables are created with. A plan is staged by
@@ -580,6 +583,18 @@ private
    f slot T-FR TAB!
    b slot T-BR TAB! ;
 
+\ The derived block-edge table the freeze verifier fills. It is created here with
+\ the module's other tables so verification allocates nothing of its own at
+\ freeze time, and its ceilings are read off the same committed plan: one row per
+\ block, and one predecessor cell per operand pool cell, which bounds the edges
+\ because every successor a terminator names occupies one of those cells.
+: EDGE-TABLES ( IR-CTX:ctx n -- )
+   {: c:IR-CTX:ctx slot:n :}
+   c slot KEY@ slot P-BLKS BCEIL@ slot P-OPOOL BCEIL@ IR-VERIFY:NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   p slot T-EP TAB!
+   r slot T-ER TAB! ;
+
 \ Build all fifteen tables into one slot. The symbol interner comes first
 \ because the dialect name is a symbol of this module, and the schema table
 \ cannot be created without it.
@@ -592,7 +607,8 @@ private
    c  slot T-SP TAB@  slot T-SR TAB@  slot KEY@  p u IR-SYM:INTERN {: dia:IR-ID:ir-symbol-id :}
    c slot dia major minor SCHEMA-TABLES
    c slot OP-TABLES
-   c slot FUN-TABLES ;
+   c slot FUN-TABLES
+   c slot EDGE-TABLES ;
 
 public
 
@@ -1024,6 +1040,19 @@ private
       slot i TAB@ IR-ARENA:ABORT
    loop ;
 
+\ Design section 6.5's whole-module verification, run as the last refusal arm
+\ before any table is frozen. The verifier is its own authority: this file hands
+\ it the module's tables and its own derived table and repeats none of its logic.
+: VERIFY-CK ( IR-CTX:ctx n -- )
+   {: c:IR-CTX:ctx slot:n :}
+   c  slot KEY@
+   slot T-OP TAB@  slot T-OV TAB@  slot T-OR TAB@
+   slot T-FP TAB@  slot T-FR TAB@  slot T-BR TAB@
+   slot T-QP TAB@  slot T-QR TAB@  slot T-SR TAB@
+   slot T-TR TAB@  slot T-AR TAB@  slot T-SA TAB@
+   slot T-EP TAB@  slot T-ER TAB@
+   IR-VERIFY:VERIFY ;
+
 public
 
 \ ---- freeze and abort (design lines 505-507) ---------------------------------
@@ -1045,10 +1074,12 @@ public
 \ allocates nothing: retiring an arena needs no allocator, so it keeps the
 \ narrower signature.
 : FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
-   USE {: slot:n :}
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b USE {: slot:n :}
    slot BGEN@ STG-CLEAR-CK
    slot CEILINGS-CK
    slot TABLES-LIVE-CK
+   c slot VERIFY-CK
    slot TABLES-FREEZE
    ST-FROZEN slot BSTATE!
    slot BGEN@ MINT-M ;
@@ -1119,6 +1150,16 @@ public
 
 : FBLOCK-ROWS ( IR-BUILD:module -- IR-ARENA:view )
    FROZEN-SLOT T-BR VIEW@ ;
+
+\ The predecessor and successor facts the freeze verifier derived. They are
+\ published as a module table rather than returned to whoever called FREEZE,
+\ because a later pass needs them from the module it was handed and not from a
+\ cache that could disagree with it. IR-VERIFY's frozen readers serve them.
+: FEDGE-POOL ( IR-BUILD:module -- IR-ARENA:view )
+   FROZEN-SLOT T-EP VIEW@ ;
+
+: FEDGE-ROWS ( IR-BUILD:module -- IR-ARENA:view )
+   FROZEN-SLOT T-ER VIEW@ ;
 
 private
 get-current prot-wid-add

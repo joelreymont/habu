@@ -453,6 +453,7 @@ public
    s" test/compiler/ir-op.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-fun.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-build.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-verify.f" GSI-FORK-INCLUDE
    s" test/compiler/target-policy.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-arena.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-attr.f" GSI-FORK-INCLUDE

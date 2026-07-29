@@ -547,3 +547,25 @@ public
 -8068 constant E-IR-BUILD-SLOTS   \ the builder registry has no free slot
 -8069 constant E-IR-BUILD-SERIALS \ builder generation serials reached their ceiling
 -8070 constant E-IR-BUILD-STATE   \ persisted builder registry state failed its consistency recheck
+
+\ Compiler structural freeze verification (package IR-VERIFY): -8080..-8099
+-8080 constant E-IR-VERIFY-STATE   \ a derived edge store failed its header, row-shape, or window recheck
+-8081 constant E-IR-VERIFY-OWNER   \ a table or module key presented to the verifier that this module does not own
+-8082 constant E-IR-VERIFY-BOUND   \ a stored identity or window index at or past the count its table records
+-8083 constant E-IR-VERIFY-CAP     \ a module with more blocks or control-flow edges than the verifier's committed working set
+-8084 constant E-IR-VERIFY-COVER   \ an operation outside every block window, or a block outside every function window
+-8085 constant E-IR-VERIFY-PARENT  \ a block and the function whose window claims it disagree about the parent
+-8086 constant E-IR-VERIFY-TERM    \ a block that does not end in exactly one terminator operation
+-8087 constant E-IR-VERIFY-SUCC    \ a successor naming a block this module never defined
+-8088 constant E-IR-VERIFY-SUCCARG \ successor arguments that do not match the destination block's arguments in count or type
+-8089 constant E-IR-VERIFY-DEF     \ a value whose defining operation does not claim it at that result position
+-8090 constant E-IR-VERIFY-ARGDEF  \ a block-argument value whose block does not exist or whose argument window does not contain it
+-8091 constant E-IR-VERIFY-DOM     \ an operand naming a value whose defining block does not dominate the using block
+-8092 constant E-IR-VERIFY-SCOPE   \ an operand naming a value defined in another function
+-8093 constant E-IR-VERIFY-OPTYPE  \ an operand whose value type is not the type the opcode's schema declares
+-8094 constant E-IR-VERIFY-RESTYPE \ a result whose declared type is not the type the opcode's schema declares
+-8095 constant E-IR-VERIFY-ATTRKEY \ a required attribute key the operation omits, a key repeated, or an undeclared key on an opcode without the extension set
+-8096 constant E-IR-VERIFY-EFFECT  \ an operation whose effect class disagrees with the opcode's schema
+-8097 constant E-IR-VERIFY-SYMBOL  \ a symbol a record names that this module's interner never interned, or a function name defined twice
+-8098 constant E-IR-VERIFY-SPAN    \ a source span that is not a valid slice of a registered source
+-8099 constant E-IR-VERIFY-TARGET  \ an operation the context's bound target contract cannot execute

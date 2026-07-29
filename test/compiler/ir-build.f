@@ -8,7 +8,7 @@
 \ for an open record publishes nothing at all, leaving the context's module
 \ count, its scratch cursor, the table counts and the builder itself exactly as
 \ they were, so the caller can finish the record and freeze again; a successful
-\ freeze transfers the fifteen tables to the context as read-only views and
+\ freeze transfers the seventeen tables to the context as read-only views and
 \ takes every mutation word away from the old handle; abort releases all
 \ provisional storage, shown by building and abandoning far more modules than
 \ the arena registry has slots for; and each way of misusing a handle -
@@ -26,7 +26,7 @@ private
 
 16 constant TSLOTS                   \ pins the builder registry capacity
 64 constant TARENA-SLOTS             \ pins the arena registry capacity
-15 constant TTABLES                  \ pins the tables one module is made of
+17 constant TTABLES                  \ pins the tables one module is made of
 
 \ ---- bindings ----------------------------------------------------------------
 \ An AArch64 Darwin contract with the baseline instruction set and plain
@@ -41,7 +41,7 @@ private
 
 \ ---- the ceiling plan every fixture builds against ---------------------------
 \ Test-scale ceilings: small enough that many modules fit one context mapping,
-\ large enough for the two-opcode dialect and the one function below.
+\ large enough for the three-opcode dialect and the one function below.
 : PLAN-SMALL ( -- )
    IR-BUILD:PLAN-BEGIN
    16 256 IR-BUILD:PLAN-SYMBOLS
@@ -56,14 +56,22 @@ private
    PLAN-SMALL s" hir" 1 0 IR-BUILD:NEW-BUILDER ;
 
 \ ---- the dialect this module declares ----------------------------------------
-\ Two opcodes: one ordinary value-producing operation and one terminator.
+\ Three opcodes: an ordinary value-producing operation, one that also declares
+\ an attribute key, and a terminator.
 0 constant K-CONST
 1 constant K-RET
+2 constant K-TAGGED                  \ the one opcode that declares an attribute key
 
 : OPC-SYM ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-symbol-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder k:n :}
    k K-CONST = if c b s" hir.const" IR-BUILD:INTERN-SYMBOL exit then
+   k K-TAGGED = if c b s" hir.tagged" IR-BUILD:INTERN-SYMBOL exit then
    c b s" hir.ret" IR-BUILD:INTERN-SYMBOL ;
+
+\ The attribute key hir.tagged requires. An operation has to answer a key its
+\ opcode declares, so the schema and the operation name the same symbol.
+: ATT-KEY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" hir.value" IR-BUILD:INTERN-SYMBOL ;
 
 : I64 ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT ;
@@ -89,6 +97,12 @@ private
       false 0 0 IR-SCHEMA:SET-CONTROL
       exit
    then
+   k K-TAGGED = if
+      c b I64 IR-SCHEMA:ADD-RESULT
+      c b ATT-KEY IR-SCHEMA:ADD-ATTR
+      false 0 0 IR-SCHEMA:SET-CONTROL
+      exit
+   then
    true 0 0 IR-SCHEMA:SET-CONTROL ;
 
 : SCH-DEF ( IR-CTX:ctx IR-BUILD:builder n -- )
@@ -105,6 +119,7 @@ private
 : SCH-ALL ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b K-CONST SCH-DEF
+   c b K-TAGGED SCH-DEF
    c b K-RET SCH-DEF ;
 
 \ ---- appending one operation through the builder -----------------------------
@@ -149,12 +164,9 @@ private
 \ so the freeze verifier can decide that key against the ones the opcode
 \ declares. This second module keeps its own function so the counts the
 \ publication fixtures above assert stay untouched.
-: ATT-KEY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
-   s" hir.value" IR-BUILD:INTERN-SYMBOL ;
-
 : ATT-OP+ ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-op-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b  c b K-CONST OPC-SYM  IR-BUILD:BEGIN-OP
+   c b  c b K-TAGGED OPC-SYM  IR-BUILD:BEGIN-OP
    c b  c b A-SPAN  IR-BUILD:SET-OP-SPAN
    c b  c b I64  IR-BUILD:ADD-RESULT
    c b  c b ATT-KEY  c b 7 IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
@@ -301,15 +313,15 @@ private
    b IR-BUILD:FUNS
    b IR-BUILD:BLOCKS ;
 
-\ Six symbols: the dialect name, two opcode names, the rule and renderer names,
-\ and the function name. Two types: the integer and the code reference. Three
-\ values: the block argument and one result each for the two operations - the
-\ terminator produces none, so the count is the argument plus the constant's
-\ result plus nothing.
+\ Eight symbols: the dialect name, three opcode names, the attribute key the
+\ tagged opcode declares, the rule and renderer names, and the function name.
+\ Two types: the integer and the code reference. Two values: the block argument
+\ and the constant's one result - the terminator produces none. Three schemas,
+\ one per opcode, and four sources, one per span the module records.
 : APPEND-CASE ( -- )
    s" every append word lands in the table its authority owns" T-LABEL
    BND [: APP-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= 2 T= 2 T= 2 T= 4 T= 2 T= 6 T= ;
+   1 T= 1 T= 2 T= 2 T= 3 T= 4 T= 2 T= 8 T= ;
 
 \ ---- the interning words -----------------------------------------------------
 \ Interning is by value, so the same bytes twice are one identity and the same
@@ -350,7 +362,7 @@ private
 : FREEZE-CASE ( -- )
    s" a frozen module publishes every table as a read-only view" T-LABEL
    BND [: FZ-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= 2 T= 6 T= TFALSE TTRUE ;
+   1 T= 1 T= 2 T= 8 T= TFALSE TTRUE ;
 
 \ The published views serve the records the builder appended, read back through
 \ each table's own frozen reader.
@@ -370,7 +382,7 @@ private
    TTRUE TTRUE TTRUE ;
 
 \ ---- every published view reaches its table ----------------------------------
-\ Fifteen views are published, and a reader of the wrong one would either fail
+\ Seventeen views are published, and a reader of the wrong one would either fail
 \ its header check or answer about another table, so reading one record or one
 \ count through each is what proves the publication is wired correctly.
 32 constant VW-CAP
