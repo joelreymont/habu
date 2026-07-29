@@ -2719,3 +2719,14 @@ fits.
   matter how clean the code side looks. Note also that the agent instruction
   files may be symlinks to one another — check before "also updating" the
   other one, since that is the same write and can replace a link with a file.
+- **A frozen contract is not dispatch-ready until someone reviews the freeze.**
+  A leaf contract was anchored by reading every insertion point, verified
+  against the tree, and declared ready. A preflight review then rejected it
+  before any code was written, for things reading the insertion points could
+  not surface: a consumed structural token had to be pushed back so the
+  all-errors resync could not swallow the following declaration, an event tag
+  had to be appended without renumbering, specific diagnostic codes had to be
+  mapped, and a keyword had to be reserved. Verifying where a change goes is
+  not the same as verifying what the change must handle. The freeze itself is
+  an artifact that earns a review pass, and that pass is far cheaper than the
+  worker discovering the gaps at line 500.
