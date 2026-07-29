@@ -388,6 +388,64 @@ variable REG-I
    0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
    0 LINT-LEX:CONTENT nip 0 ASSERT= ;
 
+\ A parenthesized name lexes as one WORD wherever it stands, not only where a
+\ definer just parsed it. In call position nothing precedes it, so only the
+\ attached-paren rule itself keeps `(X)` out of the comment path.
+: TEST-LEXER-PAREN-CALL ( -- )
+   s" : USE (CMP) (X) 2drop ;" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 6 ASSERT=
+   0 LINT-LEX:TOKEN s" :" ASSERT$
+   1 LINT-LEX:TOKEN s" USE" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   2 LINT-LEX:TOKEN s" (CMP)" ASSERT$
+   3 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   3 LINT-LEX:TOKEN s" (X)" ASSERT$
+   4 LINT-LEX:TOKEN s" 2drop" ASSERT$
+   5 LINT-LEX:TOKEN s" ;" ASSERT$ ;
+
+\ `.( ... )` is the printing comment. Its body is text the engine prints, never
+\ code, so the whole span is one inert COMMENT token and the declaration spelled
+\ inside it must not reach a consumer - the exact case tools/error-code-lint.f
+\ depends on. `.(X)` has no delimiter after the opener, so `parse-name` returns
+\ one ordinary word instead, and an opener that never closes ends at end of input.
+: TEST-LEXER-PRINT-PAREN ( -- )
+   s" .( -9001 constant E-XA )  -9001 constant E-XB" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 4 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   0 LINT-LEX:TOKEN s" .( -9001 constant E-XA )" ASSERT$
+   0 LINT-LEX:CONTENT s"  -9001 constant E-XA " ASSERT$
+   0 LINT-LEX:BYTE@ 0 ASSERT=  0 LINT-LEX:LINE@ 1 ASSERT=  0 LINT-LEX:COL@ 1 ASSERT=
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   1 LINT-LEX:TOKEN s" -9001" ASSERT$
+   2 LINT-LEX:TOKEN s" constant" ASSERT$
+   3 LINT-LEX:TOKEN s" E-XB" ASSERT$
+   s" .(X) drop" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=   0 LINT-LEX:TOKEN s" .(X)" ASSERT$
+   1 LINT-LEX:TOKEN s" drop" ASSERT$
+   s" dup .(" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 2 ASSERT=
+   0 LINT-LEX:TOKEN s" dup" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   1 LINT-LEX:TOKEN s" .(" ASSERT$
+   1 LINT-LEX:CONTENT nip 0 ASSERT= ;
+
+\ After a definer the engine parses the next word as a name and never executes
+\ it, so `: .( ( -- ) cr ;` DEFINES a word spelled `.(` and the `( -- )` after it
+\ is that definition's own stack comment. The later `.( hi )` still prints.
+: TEST-LEXER-PRINT-NAME-POS ( -- )
+   s" : .( ( -- ) cr ; .( hi ) dup" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 7 ASSERT=
+   0 LINT-LEX:TOKEN s" :" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    1 LINT-LEX:TOKEN s" .(" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  -- " ASSERT$
+   3 LINT-LEX:TOKEN s" cr" ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   5 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 5 LINT-LEX:CONTENT s"  hi " ASSERT$
+   6 LINT-LEX:TOKEN s" dup" ASSERT$ ;
+
 : TEST-ONE-ENGINE-DELIM ( n -- ) {: c:n :}
    ROW-RESET
    s" LEFT" ROW+  c ROW-C+
@@ -623,6 +681,26 @@ variable REG-I
    2 LINT-LEX:TOKEN s" REAL" ASSERT$
    4 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
+\ A row body is interpreted, so a `.( ... )` there parses its own text just like
+\ `s" ... "` does. The closer spelled inside the print body is that text, and the
+\ row must run on to the later real closer. A print body that never closes means
+\ the row can never close either, which is the malformed-row diagnostic.
+: TEST-ROW-PRINT-BODY ( -- )
+   ROW-RESET
+   s" PRIM: FOO .( PRIM; package FAKE ) PE-N PRIM;" ROW+
+   ROW$ nip {: rowu:n :}
+   ROW-NL  s" : REAL dup ;" ROW+
+   LEX-ROW
+   LINT-LEX:ERROR? LINT-NOT ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   REG-COUNT 1 ASSERT=
+   0 LINT-LEX:TOKEN nip rowu ASSERT=
+   1 LINT-LEX:TOKEN s" :" ASSERT$
+   2 LINT-LEX:TOKEN s" REAL" ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   ROW-RESET  s" PRIM: FOO .( PE-N PRIM;" ROW+
+   LEX-ROW  0 1 1 ASSERT-BAD-AT  LINT-LEX:COUNT 0 ASSERT= ;
+
 \ Openers and closers spelled in a top-level comment or string body never reach
 \ the row scanner at all, so no registry token appears and the paren comment
 \ stays one COMMENT token.
@@ -847,6 +925,9 @@ variable REG-I
    TEST-SIGS
    TEST-LEXER
    TEST-LEXER-PAREN-NAME
+   TEST-LEXER-PAREN-CALL
+   TEST-LEXER-PRINT-PAREN
+   TEST-LEXER-PRINT-NAME-POS
    TEST-LEXER-ENGINE-DELIMS
    TEST-LEXER-NO-ERROR
    TEST-LEXER-ESC-QUOTE
@@ -858,6 +939,7 @@ variable REG-I
    TEST-ROW-COMMENTS-INERT
    TEST-ROW-ATTACHED-PAREN
    TEST-ROW-CONTROL-COMMENT
+   TEST-ROW-PRINT-BODY
    TEST-ROW-FAKE-IN-COMMENT-AND-STRING
    TEST-ROW-PRIVATE-CLOSER
    TEST-ROW-CASE-FOLD

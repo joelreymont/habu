@@ -1,6 +1,6 @@
 ---
 title: Reconcile duplicate paren-lexer fixes
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-29T18:20:48.532645+02:00"
@@ -19,3 +19,4 @@ lexed as ordinary words and the trailing quote handling breaks. Re-adding
 print-paren support on top of master's shape is therefore required to get the
 suite green again, not merely desirable.
 
+Claim: agent=parenrec workspace=.jj-ws/habu-reconcile-duplicate-paren-cff46368
