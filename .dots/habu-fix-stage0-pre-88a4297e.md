@@ -1,9 +1,9 @@
 ---
 title: Fix stage0 pre-trust defer replay
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-28T10:38:57.712053+02:00"
+created-at: "\"2026-07-28T10:38:57.712053+02:00\""
 ---
 
 Claim released 2026-07-28 during the anonymous-head harvest (dot
@@ -30,3 +30,5 @@ the stage0 using implementation (commit b9d5fca5 in
 .jj-ws/habu-add-using-to-d815f0ab) added a checker-using scope mirror whose
 real-checker leg cannot be proven until this dot closes, because a recovery
 build cannot yet compile a checked region at all.
+
+Claim: agent=stage0replay workspace=.jj-ws/habu-add-using-to-d815f0ab
