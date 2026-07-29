@@ -48,10 +48,13 @@
 \      verdict both must answer. The two encodings are necessarily different -
 \      one is text for a token scanner, the other is an already-scanned token
 \      list - but they live in one row and the verdict is written once, so a
-\      row cannot be satisfied by editing only one side. The last four rows are
-\      the ones that hold the widening lattice and the control-frame ceiling to
-\      the checker; before they existed, halving the ceiling or letting any two
-\      same-class types stand in for each other left the whole gate green.
+\      row cannot be satisfied by editing only one side. The last eight rows
+\      hold four decisions nothing else here reaches: the widening lattice, the
+\      control-frame ceiling, `MATCH`'s own depth guard, and the per-step linear
+\      conservation count. Before they existed, halving the ceiling, lowering or
+\      deleting the depth guard, making the conservation count a no-op, or
+\      letting any two same-class types stand in for each other each left the
+\      whole gate green.
 \
 \ Where the two sides are not literally the same shape, and why that is sound:
 \
@@ -474,6 +477,83 @@ private
    s" one_frame_past_the_ceiling_is_unresolvable"
       s" CMV14 ( i64 -- i64 )" FRAME-CEIL 1+ V-UNCK FRAME-CAP-ROW ;
 
+\ `MATCH`'s OWN depth guard, which is a different rule from the ceiling above.
+\ A match form opens two frames of its own - one for the form, one for the
+\ branch - and `MATCH-FAM-TOK` (src/core/checker.f) refuses outright, as a HARD
+\ reject, once the frame stack is deeper than the number below, precisely so a
+\ match can never install one of its two frames and then overflow on the other.
+\ That number is therefore the deepest stack at which a match still fits, and
+\ the sharpest pair of programs is a match at exactly that depth against one a
+\ single frame deeper:
+\
+\   - at the depth below, the form takes the last two slots the ceiling has, so
+\     the very next opener is one too many and the definition stops being
+\     checkable;
+\   - one deeper, the guard refuses before any of that, and a hard reject
+\     outranks an uncheckable, so the verdict changes class.
+\
+\ Together they pin the number itself: lower the guard and the first row's
+\ verdict becomes a refusal, raise it or remove it and the second row's becomes
+\ an uncheckable. Both texts are BUILT from the number rather than spelled out.
+\ Before these rows existed, lowering the guard left the whole gate green.
+\
+\ The number is DERIVED from the ceiling rather than written down a second
+\ time, because that is the relation the checker's two literals stand in: the
+\ match guard is the frame ceiling less the frames a match form opens. A
+\ ceiling moved on one side only is then a row that no longer holds, rather
+\ than two independent numbers that happen to disagree.
+
+2 constant MATCH-FRAMES               \ the form's frame, and one branch's
+FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
+
+: MATCH-SRC$ ( ptr u8 n n ptr u8 n -- ptr u8 n ) {: ha:ptr hu:n opens:n ta:ptr tu:n :}
+   SB-RESET ha hu SB-APPEND opens +OPENERS s"  " SB-APPEND ta tu SB-APPEND SB$ ;
+
+: MATCH-TOKS$ ( n ptr u8 n -- ptr u8 n ) {: opens:n ta:ptr tu:n :}
+   SB-RESET s" (opens " SB-APPEND opens FMT:SB-INT
+   s"  ++ " SB-APPEND ta tu SB-APPEND s" )" SB-APPEND SB$ ;
+
+: MATCH-DEPTH-ROW ( ptr u8 n ptr u8 n n ptr u8 n ptr u8 n n -- )
+   {: na:ptr nu:n sa:ptr su:n opens:n ha:ptr hu:n ma:ptr mu:n verd:n :}
+   na nu STR+ VEC-NAME VEC-N @ COL!
+   sa su opens ha hu MATCH-SRC$ STR+ VEC-SRC VEC-N @ COL!
+   s" sig [fam0 100] [nt]" STR+ VEC-CFG VEC-N @ COL!
+   opens ma mu MATCH-TOKS$ STR+ VEC-TOKS VEC-N @ COL!
+   verd VEC-VERD VEC-N @ COL!
+   VEC-N @ 1+ VEC-N ! ;
+
+: BUILD-MATCH-DEPTH-VECTORS ( -- )
+   s" a_match_at_the_deepest_frame_that_fits_takes_both_frames"
+      s" CMV15 ( cmres -- n )" MATCH-DEPTH-MAX
+      s" MATCH cmres cmok OF begin"
+      s" [TMatch; TFamTok fmres; TVarTok 0; TOf; TBegin]"
+      V-UNCK MATCH-DEPTH-ROW
+   s" a_match_one_frame_deeper_is_refused_before_the_overflow"
+      s" CMV16 ( cmres -- n )" MATCH-DEPTH-MAX 1+
+      s" MATCH cmres cmok OF"
+      s" [TMatch; TFamTok fmres; TVarTok 0; TOf]"
+      V-REJECT MATCH-DEPTH-ROW ;
+
+\ Two rows about the per-step linear conservation count, which the three
+\ linear rows above do NOT reach: those are all decided by the deferred-taint
+\ rule, which rejects a polymorphic copy or drop the moment the variable it
+\ laundered resolves linear, and they answer the same either way if the count
+\ check itself stops deciding anything. The count is over the data row AND the
+\ return row together, so the case that only the count can decide is a value
+\ that is on NEITHER row at the moment the check runs. `>r` never produces one -
+\ it is its own rule and snapshots the whole transfer - but an ORDINARY word
+\ declared with the same effect does, because a call checks the count inside the
+\ data-row step, before the return rows move. The second row is the control: the
+\ same word and the same tokens with nothing linear in play certify, so what the
+\ first row records is the linear, not the transfer.
+: BUILD-LINEAR-TRANSFER-VECTORS ( -- )
+   s" a_linear_on_neither_row_when_the_step_is_checked"
+      s" CMV17 ( cmltok -- cmltok ) CHECKER-MODEL-CASES:TO-R-WORD r>"
+      s" sig [ltok] [ltok]" s" [TCall wToRAsWord; TFromR]" V-REJECT VEC-ROW
+   s" the_same_transfer_with_nothing_linear_certifies"
+      s" CMV18 ( i64 -- i64 ) CHECKER-MODEL-CASES:TO-R-WORD r>"
+      s" sig [i64] [i64]" s" [TCall wToRAsWord; TFromR]" V-CERT VEC-ROW ;
+
 : BUILD-VECTORS ( -- )
    s" straight_line"
       s" CMV1 ( i64 -- i64 ) CHECKER-MODEL-CASES:STEP1"
@@ -512,7 +592,9 @@ private
       s" sig [i64] [i64]" s" [TCall wMkBool; TIf; TCall wStep1]"
       V-REJECT VEC-ROW
    BUILD-WIDENING-VECTORS
-   BUILD-FRAME-CAP-VECTORS ;
+   BUILD-FRAME-CAP-VECTORS
+   BUILD-MATCH-DEPTH-VECTORS
+   BUILD-LINEAR-TRANSFER-VECTORS ;
 
 : BUILD-ALL ( -- )
    0 POOL-U !  0 STR-N !

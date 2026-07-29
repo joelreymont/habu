@@ -329,7 +329,7 @@ theorem Habu.Common.Control.frame_depth_is_bounded
 type check_ctl (sig [i64] [i64]) (opens 32) = VReject /\ check_ctl (sig [i64] [i64]) (opens 33) = VUncheckable /\ length (st_cfs (run (sig [i64] [i64]) (init (sig [i64] [i64])) (opens 33))) = cfs_cap
 closed
 theorem Habu.Common.Control.match_refuses_before_the_overflow
-type check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject /\ check_reason (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH
+type check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject /\ check_reason (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH /\ check_ctl (sig [fam0 100] [nt]) (opens 30 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf; TBegin]) = VUncheckable /\ check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf]) = VReject
 closed
 theorem Habu.Common.Control.a_certifying_body_becomes_uncheckable_at_33_frames
 type check_ctl (sig [i64] [i64]) (nest_until 32) = VCert /\ check_ctl (sig [i64] [i64]) (nest_until 33) = VUncheckable

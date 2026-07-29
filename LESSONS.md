@@ -2936,6 +2936,23 @@ fits.
   ask "which clause of the gate goes red if I break this in the code?", and if
   the answer is none, the statement is documentation, not verification.
 
+- **A guard that only ever rejects is not bound by a program it rejects.**
+  Closing the last two gaps of that audit, the obvious vector for `MATCH`'s
+  depth guard — 31 nested `begin`s and then a match, which the checker refuses —
+  turned out to bind nothing at all: the body is unbalanced, so it is refused
+  whatever the guard's number is, and it is refused just the same when the guard
+  is deleted outright. The vector that binds a guard is a PAIR straddling it
+  whose verdict changes CLASS. Here it is a match at depth 30, where the form's
+  two frames take the last two slots so the next opener overflows and the body
+  becomes UNCHECKABLE, against the same shape at depth 31, where the guard's
+  hard reject fires first and outranks that: lower the guard and the first flips
+  to a refusal, delete it and the second flips to an uncheckable. Same shape for
+  the linear conservation count: all three existing linear vectors answered
+  identically with the count check made a no-op, because the deferred-taint rule
+  was deciding them. The count only decides when the value is on NEITHER row,
+  which is an ordinary word carrying a to-r effect — the model's own prose had
+  already written that case down, and nobody had turned it into a vector.
+
 - **Duplication with a generated obligation is its own kind of padding.** Nine
   of eleven published `IdAllocator.v` examples were emitted verbatim by
   `test/compiler/ir-id-obligations.f`, which builds them from the frozen schema

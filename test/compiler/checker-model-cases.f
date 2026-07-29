@@ -52,6 +52,16 @@ public
 \ spelled distinctly for that reason.
 deflinear cmltok
 
+\ The sum family the MATCH depth vectors eliminate. It is the model's `fmres`:
+\ two variants in declaration order, each carrying one `n` of payload. A family
+\ is registered in one global type registry, like a linear type, so the name is
+\ reachable unqualified from a candidate signature however the declaration is
+\ scoped; it is spelled distinctly for that reason.
+SUMTYPE cmres 0
+  VARIANT cmok  n ;VARIANT
+  VARIANT cmerr n ;VARIANT
+;SUMTYPE
+
 : STEP1 ( i64 -- i64 ) ;
 : MK-CELL ( -- cell ) 0 ;
 : MK-BOOL ( -- bool ) 0 0< ;
@@ -61,6 +71,14 @@ deflinear cmltok
 : DUP-POLY ( a -- a a ) dup ;
 : DROP-POLY ( a -- ) drop ;
 : KEEP-POLY ( a -- a ) ;
+
+\ An ORDINARY word that moves its argument to the return row, which `>r` also
+\ does. The two are not interchangeable and that is the point: `>r` is its own
+\ rule and takes ONE linear snapshot around the whole transfer, while a call
+\ runs the conservation check inside the data-row step, before the return rows
+\ move - so at the moment the check runs the value is on neither row. This is
+\ the model's `wToRAsWord`.
+: TO-R-WORD ( a | -- | a ) >r ;
 
 private
 

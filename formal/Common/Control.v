@@ -2793,11 +2793,33 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    BL3 ( mres -- n ) BEGIN x31  MATCH mres ok OF ENDOF err OF ENDOF ;MATCH -> 0
    (the rendered prose is `undefined word 'mres'`: `MATCH-REJECT` clears `MM`,
    so the variant tokens that follow become unknown words and their latch wins
-   the render.  The VERDICT is the hard reject `MD-DEPTH` asks for.) *)
+   the render.  The VERDICT is the hard reject `MD-DEPTH` asks for.)
+
+   The last two conjuncts are what pin the NUMBER 30 rather than merely the
+   existence of some guard.  A match form opens two frames, so 30 is exactly
+   the deepest stack at which both still fit under the 32-frame ceiling: at 30
+   the form takes the last two slots and the very next opener is one too many,
+   which is an UNCHECKABLE, while at 31 the guard refuses first and the hard
+   reject outranks it.  Lower the guard and the third conjunct becomes a
+   refusal; raise it or delete it and the fourth becomes an uncheckable.
+   Measured through `CHECK-QUIET-CANDIDATE!` over `SUMTYPE cmres 0 VARIANT cmok
+   n VARIANT cmerr n`:
+
+     CMV15 ( cmres -- n ) BEGIN x30  MATCH cmres cmok OF BEGIN  ->  1
+     CMV16 ( cmres -- n ) BEGIN x31  MATCH cmres cmok OF        ->  0
+
+   and one shallower, `BEGIN x29 MATCH cmres cmok OF BEGIN`, answers 0: the
+   extra opener still fits, so the body is merely unbalanced.  Both of the two
+   above are frozen vectors of the parity gate. *)
 Example match_refuses_before_the_overflow :
   check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject
   /\ check_reason (sig [fam0 100] [nt])
-       (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH.
+       (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH
+  /\ check_ctl (sig [fam0 100] [nt])
+       (opens 30 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf; TBegin])
+     = VUncheckable
+  /\ check_ctl (sig [fam0 100] [nt])
+       (opens 31 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf]) = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* The stronger statement, and the expensive one: a body that CERTIFIES at 32
