@@ -2687,3 +2687,14 @@ fits.
   the commits are still in the object store: find them with a revset over
   `files(...)`, extract the clean files, and rebuild the workspace rather
   than trying to repair it in place.
+
+- **A structural gate must classify closed under calls, not per-body.** The
+  interning parity gate had to assert that every capacity check precedes the
+  first arena write. Written as a token scan over each intern word's own body
+  it would have passed vacuously forever: `IR-SYM:INTERN` and
+  `IR-ATTR:INTERN5` contain no `IR-ARENA:PUSH` token at all — they write
+  through `POOL-ADD`/`ROW-ADD`/`ROW-ADD5`. The gate classifies a definition as
+  a writer if it pushes *or calls a writer*, and additionally asserts the
+  writer and checker counts are both non-zero, so the ordering claim cannot be
+  true because it found nothing. Any gate that says "X happens before Y" must
+  prove it found an X and a Y.
