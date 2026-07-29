@@ -105,3 +105,40 @@ of design section 6.5 (dominance, derived predecessor and successor tables,
 attribute canonicalisation, span validity) belongs to the neighbouring dot
 habu-verify-frozen-compiler-224d78ad and is not duplicated here; when it lands
 it becomes one more refusal arm in front of the arena freezing.
+
+## Interface change recorded after the fact (irverify, 2026-07-30)
+
+Two things this dot's record described have since changed, in the lane for
+habu-verify-frozen-compiler-224d78ad. Both were reviewed and approved before
+implementation; this note keeps the freeze dot's record matching what ships.
+
+**`FREEZE` takes the compilation context.** It is now
+`FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )` and passes the same
+`USE` gate every append word passes, rather than only checking that the builder
+is live. Two independent reasons. Section 6.5's freeze validation has to consult
+the bound target contract and needs an allocator for the tables it derives, and
+both live in the context, which this package deliberately does not store.
+Separately, publication was the one state change IR-BUILD made without proving
+the caller owns the compilation, so a builder handle that escaped into another
+compilation could have published a module its context never agreed to. A new
+fixture in `test/compiler/ir-build.f` proves that a live but foreign context is
+refused with `E-IR-BUILD-OWNER`. All 21 call sites in that file were migrated,
+including the checker-sealing fixture that spells the effect literally.
+`ABORT` keeps its narrower signature: it publishes nothing and retiring an arena
+needs no allocator.
+
+**A module is seventeen tables, not fifteen.** `NEW-BUILDER` also creates the
+derived block-edge table the freeze verifier fills - a predecessor pool and one
+row per block - with ceilings read off the same committed plan, so verification
+allocates nothing of its own at freeze time. They are published as
+`FEDGE-POOL` and `FEDGE-ROWS`. The `TTABLES` pin and the fifteen-table prose in
+the test were updated with it. The capacity consequence is recorded honestly:
+seventeen arenas per module against IR-ARENA's sixty-four registry slots means
+three modules can be live at one time rather than four, both limits are named
+refusals, and raising the arena registry is dot habu-raise-ir-arena-5efcde65.
+
+**The structural verifier has landed.** This dot's closing note said the section
+6.5 verification "becomes one more refusal arm in front of the arena freezing
+when it lands". It has: `FREEZE` calls one public `IR-VERIFY:VERIFY` after the
+ceiling and liveness arms and before `TABLES-FREEZE`, and `build.f` holds no
+verifier logic of its own.
