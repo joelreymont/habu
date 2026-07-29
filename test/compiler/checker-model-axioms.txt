@@ -232,44 +232,59 @@ closed
 theorem Habu.Common.Control.case_frames_are_matched_by_kind
 type check_ctl (sig [nt] [nt]) [TOf] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndcase] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TThen] = VReject
 closed
+theorem Habu.Common.Control.the_scrutinee_pop_undoes_the_bundle_push
+type forall (e : fenv) (s : subst) (f : fam) (args : tys) (k : nat) (row : stack), t_width e s (TFam (fam_id f) 0 args) = S k -> match_scrut_row e s (layout_push_fields e s (TFam (fam_id f) 0 args) row) (fam_id f) = Some row
+closed
+theorem Habu.Common.Control.a_bundle_of_another_family_is_never_a_scrutinee
+type forall (e : fenv) (s : subst) (f : fam) (g : nat) (args : tys) (k : nat) (row : stack), Nat.eqb g (fam_id f) = false -> t_width e s (TFam g 0 args) = S k -> match_scrut_row e s (layout_push_fields e s (TFam g 0 args) row) (fam_id f) = None
+closed
+theorem Habu.Common.Control.a_refused_scrutinee_leaves_the_rows_untouched
+type forall (s : st) (f : fam), match_scrut s f = None -> st_dcur (do_fam_tok s f) = st_dcur s /\ st_rcur (do_fam_tok s f) = st_rcur s /\ st_mf (do_fam_tok s f) = st_mf s /\ st_cfs (do_fam_tok s f) = st_cfs s /\ st_hard (do_fam_tok s f) = true
+closed
+theorem Habu.Common.Control.a_popped_scrutinee_becomes_the_branch_base
+type forall (s : st) (f : fam) (base : stack), Nat.ltb 30 (length (st_cfs s)) = false -> match_scrut s f = Some base -> st_dcur (do_fam_tok s f) = base /\ match st_mf (do_fam_tok s f) with | [] => False | m :: rest => mf_fam m = f /\ mf_base m = base /\ rest = st_mf s end /\ match st_cfs (do_fam_tok s f) with | [] => False | fr :: rest => fr_knd fr = 9 /\ rest = st_cfs s end
+closed
 theorem Habu.Common.Control.match_must_be_exhaustive
-type check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_NONEXH /\ check_ctl (sig [fam0 101] [nt]) [TMatch; TFamTok fmthree; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
+type check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_NONEXH /\ check_ctl (sig_fam [fam0 101] [nt]) [TMatch; TFamTok fmthree; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
 closed
 theorem Habu.Common.Control.match_branches_are_refined_by_their_payload
-type check_ctl (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_ctl (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TCall wDropBool; TCall wMkN; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
+type check_ctl (sig_fam [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_ctl (sig_fam [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TCall wDropBool; TCall wMkN; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
 closed
 theorem Habu.Common.Control.md_join_is_the_match_join_not_the_if_join
-type check_reason (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_JOIN /\ check_reason (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TCall wDrop1; TCall wMkCell; TThen] = 0 /\ check_reason (sig [i64] [i64]) [TBegin; TCall wDup1; TCall wMkBool; TUntil] = 0
+type check_reason (sig_fam [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_JOIN /\ check_reason (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TCall wDrop1; TCall wMkCell; TThen] = 0 /\ check_reason (sig [i64] [i64]) [TBegin; TCall wDup1; TCall wMkBool; TUntil] = 0
 closed
 theorem Habu.Common.Control.md_join_does_not_steal_an_earlier_failure
-type check_reason (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TCall wStep1; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = 0
+type check_reason (sig_fam [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TCall wStep1; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = 0
 closed
 theorem Habu.Common.Control.match_form_shape_is_enforced
-type check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TCall wDropN; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_MISSING_OF /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_VAR_DUP /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 5; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_VAR_UNKNOWN /\ check_reason (sig [fam0 100] [nt]) [TSemiMatch] = MD_STRAY
+type check_reason (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TCall wDropN; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_MISSING_OF /\ check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_VAR_DUP /\ check_reason (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 5; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_VAR_UNKNOWN /\ check_reason (sig_fam [fam0 100] [nt]) [TSemiMatch] = MD_STRAY
 closed
 theorem Habu.Common.Control.an_unterminated_match_is_truncation
-type check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof] = VReject /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof] = MD_TRUNC
+type check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof] = VReject /\ check_reason (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof] = MD_TRUNC
 closed
 theorem Habu.Common.Control.a_dead_match_branch_is_excluded
-type check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof; TVarTok 1; TOf; TExit; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wMkN; TThrow; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
+type check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof; TVarTok 1; TOf; TExit; TEndof; TSemiMatch] = VCert /\ check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wMkN; TThrow; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
 closed
 theorem Habu.Common.Control.the_scrutinee_must_be_the_matched_family
-type check_ctl (sig [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_SCRUT /\ check_reason (sig [fam0 100] [nt]) [TOpenQ; TMatch; TFamTok fmres] = MD_QUOT
+type check_ctl (sig_fam [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_ctl (sig_fam [fam0 100] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig_fam [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_SCRUT /\ check_reason (sig_fam [fam0 104; fam0 103] [fam0 104; nt]) [TMatch; TFamTok fmtwin] = MD_FAM_MISMATCH /\ check_reason (sig_fam [fam0 104; fam0 103] [fam0 104; nt]) [TMatch; TFamTok fmwide] = MD_TRUNC /\ check_reason (sig_fam [fam0 100] [nt]) [TOpenQ; TMatch; TFamTok fmres] = MD_QUOT
+closed
+theorem Habu.Common.Control.a_same_width_bundle_of_another_family_is_refused
+type check_ctl (sig_fam [fam0 104; fam0 103] [fam0 104; nt]) [TMatch; TFamTok fmwide; TVarTok 0; TOf; TCall wDropN; TEndof; TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch] = VCert /\ check_ctl (sig_fam [fam0 104; fam0 103] [fam0 104; nt]) [TMatch; TFamTok fmtwin; TVarTok 0; TOf; TCall wDropN; TEndof; TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch] = VReject /\ t_width fam_env empty_subst (fam0 103) = t_width fam_env empty_subst (fam0 104)
 closed
 theorem Habu.Common.Control.construct_consumes_the_payload_and_produces_the_bundle
-type check_ctl (sig [nt] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VCert /\ check_ctl (sig [] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VReject
+type check_ctl (sig_fam [nt] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VCert /\ check_ctl (sig_fam [] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VReject
 closed
 theorem Habu.Common.Control.an_unterminated_construct_is_refused_at_the_boundary
-type check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = VReject /\ check_reason (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = MD_CON_TRUNC /\ check_ctl (sig [fam0 100] [fam0 100]) [] = VCert
+type check_ctl (sig_fam [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = VReject /\ check_reason (sig_fam [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = MD_CON_TRUNC /\ check_ctl (sig_fam [fam0 100] [fam0 100]) [] = VCert
 closed
 theorem Habu.Common.Control.a_construct_operand_is_captured_whatever_it_spells
-type check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9] = VReject /\ check_ctl (sig [fam0 100] [fam0 100]) [TVarTok 9] = VUncheckable /\ check_reason (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9] = MD_CON_VAR
+type check_ctl (sig_fam [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9] = VReject /\ check_ctl (sig_fam [fam0 100] [fam0 100]) [TVarTok 9] = VUncheckable /\ check_reason (sig_fam [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9] = MD_CON_VAR
 closed
 theorem Habu.Common.Control.the_payload_belongs_to_the_variant_not_the_family
-type check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 1] = VCert /\ check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 0] = VReject
+type check_ctl (sig_fam [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 1] = VCert /\ check_ctl (sig_fam [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 0] = VReject
 closed
 theorem Habu.Common.Control.construct_and_match_are_inverse
-type check_ctl (sig [nt] [nt]) [TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [nt] [nt]) [TConstruct; TFamTok fmbool; TVarTok 1; TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
+type check_ctl (sig_fam [nt] [nt]) [TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig_fam [nt] [nt]) [TConstruct; TFamTok fmbool; TVarTok 1; TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
 closed
 theorem Habu.Common.Control.exit_matches_and_fails_the_declared_output
 type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wDrop1; TCall wMkI64; TExit; TThen; TCall wStep1] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wDrop1; TCall wMkBool; TExit] = VReject
@@ -344,10 +359,13 @@ theorem Habu.Common.Control.frame_depth_is_bounded
 type check_ctl (sig [i64] [i64]) (opens 32) = VReject /\ check_ctl (sig [i64] [i64]) (opens 33) = VUncheckable /\ length (st_cfs (run (sig [i64] [i64]) (init (sig [i64] [i64])) (opens 33))) = cfs_cap
 closed
 theorem Habu.Common.Control.match_refuses_before_the_overflow
-type check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject /\ check_reason (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH /\ check_ctl (sig [fam0 100] [nt]) (opens 30 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf; TBegin]) = VUncheckable /\ check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf]) = VReject
+type check_ctl (sig_fam [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject /\ check_reason (sig_fam [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH /\ check_ctl (sig_fam [fam0 100] [nt]) (opens 30 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf; TBegin]) = VUncheckable /\ check_ctl (sig_fam [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf]) = VReject
 closed
 theorem Habu.Common.Control.a_certifying_body_becomes_uncheckable_at_33_frames
 type check_ctl (sig [i64] [i64]) (nest_until 32) = VCert /\ check_ctl (sig [i64] [i64]) (nest_until 33) = VUncheckable
+closed
+theorem Habu.Common.Control.a_match_at_the_deepest_frame_that_fits_certifies
+type check_ctl (sig_fam [fam0 100] [fam0 100]) (nest_match 30) = VCert /\ check_ctl (sig_fam [fam0 100] [fam0 100]) (nest_match 31) = VReject /\ check_reason (sig_fam [fam0 100] [fam0 100]) (nest_match 31) = MD_DEPTH /\ check_ctl (sig_fam [fam0 100] [fam0 100]) (nest_match 0) = VCert
 closed
 theorem Habu.Common.Control.locals_are_scoped_to_their_frame
 type check_ctl (sig [i64] [i64]) [TLocals 1; TLocRef 0] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TElse; TCall wStep1; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TLocals 1; TCall wMkBool; TIf; TLocRef 0; TElse; TLocRef 0; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TThen; TLocRef 0] = VUncheckable /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TElse; TLocRef 0; TThen] = VUncheckable

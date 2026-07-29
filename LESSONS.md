@@ -3080,6 +3080,30 @@ fits.
   negative cases. A claim with no reclamation path is a leak with a good
   excuse.
 
+- **A model example that names a type family has to supply the registry that
+  family is declared in.** Until the `MATCH` scrutinee pop was modelled, the
+  checker-model examples matched on `fmres` under `sig` — the EMPTY family
+  registry — and answered the same verdict as the real checker for a reason the
+  real checker never had: with no registry entry the declared family is one
+  unexpanded logical cell, while the shipped `SUMTYPE cmres` is a two-cell
+  bundle. Both machines said "certified" about two different programs. Modelling
+  the pop made the width load-bearing and forced every one of those examples,
+  and the frozen vectors under them, into a real registry (`sig_fam`). The
+  general lesson: when a model abstracts a value's SHAPE, examples that use it
+  stop being about the same program, and the agreement they show is worth
+  nothing. Model the shape, then the examples have to say which shape they meant.
+
+- **A falsifying mutation that touches something `lib/` depends on never
+  reaches the gate.** Truncating the `MATCH` scrutinee walk to two cells — the
+  intended way to show the multi-cell row does work — stopped
+  `FIND-EXECUTABLE-IN-PATH` (lib/process-env.f) certifying, because it matches
+  an `option` whose payload is itself a multi-cell layout, so the fixpoint
+  self-check refused the build and no vector was ever asked. The usable mutation
+  had to name a width nothing in `lib/` uses (three cells). That refusal is
+  itself evidence worth recording: the shipped library cannot be built if the
+  walk stops early, which is a stronger statement than a red row. When a
+  mutation cannot be built, say what it broke instead of weakening the row.
+
 - **`catch` restores the stack depth, not the values a locals frame consumed.**
   A fixture that needs its arguments back after a refusal must keep them on the
   data stack (`2dup WORD`), not bind them with `{: :}` and push them again: on

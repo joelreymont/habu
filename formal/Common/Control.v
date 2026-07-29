@@ -9,7 +9,7 @@
 
    Ground truth is `src/core/checker.f`, not `docs/effects.md`.  The checker's
    control-flow words are dispatched from `CF-TOK?` (checker.f:8356-8390) and
-   live at checker.f:7794-8000; `MATCH` lives at checker.f:8258-8352; the frame
+   live at checker.f:7794-8000; `MATCH` lives at checker.f:8276-8413; the frame
    stack `CFS` and its accessors are at checker.f:7573-7677; the dead-path gate
    is `LIVE-TOKEN?` (checker.f:8534); the definition boundary is `CHECK`
    (checker.f:9670-9695).  Every definition below names the checker word it
@@ -63,7 +63,9 @@
    MODELLED FRAGMENT.  `if` / `else` / `then`; `begin` with `until`, `again`,
    and `while` / `repeat`; `do` / `?do` with `loop`, `+loop`, `i`, `j`,
    `leave`, `unloop`; `case` / `of` / `endof` / `endcase`; `match` /
-   `of` / `endof` / `;match` with variant exhaustiveness; `exit`; `throw` and
+   `of` / `endof` / `;match` with variant exhaustiveness and the scrutinee pop,
+   which walks the family's width-expanded hidden-field bundle off the row;
+   `exit`; `throw` and
    `die` and the throw edge they raise; `recurse`; `[:` / `;]`; `execute` and
    `catch`, both reading the quotation's control flags; `>r` and `r>`, which
    are their own rules and not calls; locals and their branch scoping; the
@@ -80,14 +82,6 @@
        arity-1 families these need; what is still missing is the `CF.UNI`
        frame slot, the `PTX-TILE-FAM` / `PTX-UNIFORM-FAM` recognition and the
        barrier control flag — none of it representational;
-     - `MATCH`'s SCRUTINEE POP, which stays abstracted here.  The checker
-       walks a width-expanded hidden-field bundle cell by cell
-       (`MATCH-SCRUT?`, checker.f:8236-8246); `match_scrut` below requires one
-       arity-0 logical `TFam` cell.  `Effects.v` now has everything that pop
-       needs — `t_width`, `fam_hid`, `layout_push_fields` — so this is undone
-       work rather than a missing representation.  Every rule ABOVE the pop —
-       payload refinement, the branch join, `MD-JOIN`, exhaustiveness — is
-       modelled exactly;
      - the field projection window and the transport ops, which are row surgery
        over `Effects.v`'s layout machinery;
      - WHICH PACKAGE OWNS A FAMILY.  `construct` is modelled, but the rule that
@@ -117,7 +111,7 @@
    frame BELOW; the model writes nothing at all.  `UNCK` is latched at that
    point and outranks `OK = 0` (`CHECK-VERDICT`, checker.f:9666-9668), and the
    only hard-reject latch this fragment can still raise afterwards is
-   `MATCH`'s, which refuses at `#CFC @ 30 >` (checker.f:8255) before it can
+   `MATCH`'s, which refuses at `#CFC @ 30 >` (checker.f:8316) before it can
    ever observe a corrupted frame.  So both machines answer UNCHECKABLE. *)
 
 From Stdlib Require Import Bool List PeanoNat.
@@ -341,6 +335,7 @@ Record st : Type := MkSt {
 (* `MDIAG` reason codes, checker.f:8150-8175.  Only the ones this fragment
    can raise are named. *)
 Definition MD_SCRUT : nat := 3.
+Definition MD_FAM_MISMATCH : nat := 4.
 Definition MD_VAR_UNKNOWN : nat := 5.
 Definition MD_VAR_DUP : nat := 6.
 Definition MD_MISSING_OF : nat := 7.
@@ -349,6 +344,7 @@ Definition MD_STRAY : nat := 9.
 Definition MD_TRUNC : nat := 10.
 Definition MD_DEPTH : nat := 11.
 Definition MD_QUOT : nat := 12.
+Definition MD_OPEN_ARGS : nat := 13.
 Definition MD_JOIN : nat := 14.
 Definition MD_CON_FAM : nat := 15.
 Definition MD_CON_VAR : nat := 17.
@@ -356,7 +352,7 @@ Definition MD_CON_TRUNC : nat := 18.
 
 (* `QDEPTH`, raised by `CF-QUOT` (checker.f:7981) and lowered by `CF-SEMIQ`
    (checker.f:7999).  It gates `MATCH`'s scrutinee (`MATCH-SCRUT-DIAG`,
-   checker.f:8249) and every locals operation (`LOC-BEGIN`, checker.f:7484;
+   checker.f:8305) and every locals operation (`LOC-BEGIN`, checker.f:7484;
    `LOC-REF?`, checker.f:7511). *)
 Definition qdepth (s : st) : nat :=
   length (filter (fun f => Nat.eqb (fr_knd f) 6) (st_cfs s)).
@@ -1256,7 +1252,7 @@ Definition do_endcase (s : st) : st :=
 (*     reason code (`MATCH-ACCUM`, checker.f:8278).                      *)
 (*                                                                     *)
 (* Every structural failure latches `MREJ`, a HARD reject that outranks *)
-(* `UNCK` — and the depth guard at checker.f:8255 refuses at `#CFC > 30` *)
+(* `UNCK` — and the depth guard at checker.f:8316 refuses at `#CFC > 30` *)
 (* precisely so a `match` can never reach `CF-PUSH`'s uncheckable       *)
 (* overflow with only one of its two frames installed.                  *)
 (* ------------------------------------------------------------------ *)
@@ -1276,32 +1272,113 @@ Definition match_reject (s : st) : st := put_mm (set_hard s) 0.
 (* `MATCH-BEGIN`, checker.f:8180. *)
 Definition do_match (s : st) : st := put_mm s 1.
 
-(* `MATCH-SCRUT?`, checker.f:8236-8246, ABSTRACTED.  The checker walks a
-   width-expanded hidden-field bundle of the family cell by cell and answers
-   the row below it; `Effects.v` has no layouts, so the model requires one
-   arity-0 `TFam` cell of the family and answers the row below THAT.  Every
-   rule above this pop is modelled exactly. *)
-Definition match_scrut (s : st) (f : fam) : option stack :=
-  match resolve_row (st_sub s) (st_dcur s) with
+(* THE SCRUTINEE POP.  `MATCH-SCRUT-CELL?` and `MATCH-SCRUT?`,
+   checker.f:8284-8302.  A scrutinee is not one cell: it is the family's
+   width-expanded hidden-field bundle (`Effects.layout_push_fields`, which is
+   what a declared signature and `construct` both push), and the checker walks
+   it off the row cell by cell, top down, answering the row below the whole
+   bundle.  Four facts make the walk what it is.
+
+     - The WIDTH comes from the cell on TOP (`node P>TYPE T-WIDTH`,
+       checker.f:8297), which for a well-formed bundle is the tag.  `T-WIDTH`
+       reads the family and its arguments and ignores the hidden slot, so the
+       tag reports the width of the whole bundle it caps.
+     - Each cell must be a HIDDEN physical field OF THE MATCHED FAMILY at the
+       expected slot, and the expected slot is `w - 1 - j` with `j` ascending
+       from zero (checker.f:8289).  The walk starts with `j = 0` and `w` cells
+       still to come, so that expression is always ONE LESS THAN THE NUMBER OF
+       CELLS STILL TO COME: the countdown below carries the slot itself and
+       needs no second index, which is the checker's arithmetic with nothing
+       left to drift.
+     - The family test is what makes this more than a width test.  Two
+       families of the SAME width are different scrutinees, and only the
+       family id told apart tells them apart.
+     - A cell that fails abandons the walk, so a half-popped bundle can never
+       be answered: the answer is either the row below all `w` cells or
+       nothing.
+
+   What the walk does NOT ask, and the model must not either: the cells'
+   ARGUMENT runs.  Only the family id and the slot are compared; keeping a
+   hidden field from pairing with anything else is `PARAM-HID-OK?`'s job
+   (checker.f:1444), not this rule's.
+
+   Also not asked here, and abstracted exactly as `MATCH`'s family token
+   already is: `MTCH-TAGT` (`MF.TERM`, checker.f:8322) saves the tag term so
+   that `MATCH-PAY-XT` can instantiate the variant's payload against the
+   scrutinee's arguments.  This file's `fam` record carries the payload
+   ALREADY instantiated, so the tag term has nothing left to do. *)
+Definition match_scrut_cell (s : subst) (f slot : nat) (row : stack)
+  : option stack :=
+  match resolve_row s row with
   | SPush t rest =>
-      match resolve_ty (st_sub s) t with
-      (* The abstraction: ONE arity-0 logical family cell, matched by id. *)
-      | TFam k 0 TNil => if Nat.eqb k (fam_id f) then Some rest else None
-      | _ => None
-      end
+      let u := resolve_ty s t in
+      if hidden_paramb u
+         && (match param_famb u with
+             | Some g => Nat.eqb g f
+             | None => false end)
+         && Nat.eqb (hidden_slot u) slot
+      then Some rest
+      else None
   | SRow _ => None
   end.
 
-(* `MATCH-FAM-TOK`, checker.f:8252-8270. *)
+(* The loop, checker.f:8299-8302, counting the cells still to come rather than
+   the ones already taken, so `n - 1` IS the checker's `w - 1 - j`. *)
+Fixpoint match_scrut_cells (s : subst) (f n : nat) (row : stack)
+  : option stack :=
+  match n with
+  | 0 => Some row
+  | S k =>
+      match match_scrut_cell s f k row with
+      | None => None
+      | Some rest => match_scrut_cells s f k rest
+      end
+  end.
+
+(* `MATCH-SCRUT?`, checker.f:8294-8302, over an explicit row. *)
+Definition match_scrut_row (e : fenv) (s : subst) (row : stack) (f : nat)
+  : option stack :=
+  match resolve_row s row with
+  | SPush t _ => match_scrut_cells s f (t_width e s t) row
+  | SRow _ => None
+  end.
+
+Definition match_scrut (s : st) (f : fam) : option stack :=
+  match_scrut_row (st_fenv s) (st_sub s) (st_dcur s) (fam_id f).
+
+(* `MATCH-SCRUT-DIAG`, checker.f:8304-8311: which reason a failed scrutinee is
+   given.  It re-examines the TOP cell only, in this order, and every arm that
+   is not one of the two specific ones falls back to `MD-SCRUT`.  Inside a
+   quotation nothing else is even asked, because a quotation's fresh rows carry
+   no scrutinee at all.
+
+   `MD-OPEN-ARGS` is the one arm this file cannot reach: it is a LOGICAL layout
+   cell of the right family, which `PUSH-LOGICAL` leaves unexpanded only when
+   an argument is still an unresolved variable, and the `fam` record above is
+   arity 0.  It is modelled because the checker decides it; reaching it needs
+   the arity-1 families `Effects.v` has and this file's `fam` does not. *)
+Definition match_scrut_diag (s : st) (f : fam) : nat :=
+  if Nat.ltb 0 (qdepth s) then MD_QUOT
+  else match resolve_row (st_sub s) (st_dcur s) with
+       | SRow _ => MD_SCRUT
+       | SPush t _ =>
+           let u := resolve_ty (st_sub s) t in
+           if negb (layout_paramb (st_fenv s) (st_sub s) u) then MD_SCRUT
+           else if negb (match param_famb u with
+                         | Some g => Nat.eqb g (fam_id f)
+                         | None => false end)
+                then MD_FAM_MISMATCH
+           else if negb (hidden_paramb u) then MD_OPEN_ARGS
+           else MD_SCRUT
+       end.
+
+(* `MATCH-FAM-TOK`, checker.f:8313-8331. *)
 Definition do_fam_tok (s : st) (f : fam) : st :=
   if Nat.ltb 30 (length (st_cfs s))
   then match_reject (mdiag_set s MD_DEPTH)
   else
     match match_scrut s f with
-    | None =>
-        (* MATCH-SCRUT-DIAG, checker.f:8241-8249 *)
-        let code := if Nat.ltb 0 (qdepth s) then MD_QUOT else MD_SCRUT in
-        match_reject (mdiag_set s code)
+    | None => match_reject (mdiag_set s (match_scrut_diag s f))
     | Some base =>
         let s := put_mf s (MkMF f base (st_rcur s) base (st_rcur s) false [] :: st_mf s) in
         let s := put_d s base in
@@ -2389,19 +2466,215 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* --- 6. The `MATCH` eliminator -------------------------------------- *)
 
-(* The three families measured, declared in the fixture as
+(* The families measured, declared in the fixture as
 
      SUMTYPE mres 0    VARIANT ok  n ;VARIANT   VARIANT err n ;VARIANT   ;SUMTYPE
      SUMTYPE mthree 0  VARIANT one n ;VARIANT   VARIANT two n ;VARIANT
                        VARIANT three n ;VARIANT                          ;SUMTYPE
      SUMTYPE mbool 0   VARIANT yes bool ;VARIANT VARIANT no n ;VARIANT   ;SUMTYPE
+     SUMTYPE mwide 0   VARIANT wa n n ;VARIANT  VARIANT wb n n ;VARIANT  ;SUMTYPE
+     SUMTYPE mtwin 0   VARIANT ta n n ;VARIANT  VARIANT tb n n ;VARIANT  ;SUMTYPE
 
-   Variant ids are declaration order, which is what `MSEEN` indexes. *)
+   Variant ids are declaration order, which is what `MSEEN` indexes.
+
+   The last two exist for the scrutinee pop and nothing else.  `mwide` carries
+   TWO cells in each variant, so its bundle is three cells and a walk that
+   stopped early would leave part of it on the row; `mtwin` has exactly the same
+   shape and a different identity, so it is the same WIDTH and a different
+   scrutinee.  A pop that compared only cell counts would accept one for the
+   other, which is what the two vectors below are about. *)
 Definition fmres : fam := MkFam 100 [[nt]; [nt]].
 Definition fmthree : fam := MkFam 101 [[nt]; [nt]; [nt]].
 Definition fmbool : fam := MkFam 102 [[boolt]; [nt]].
+Definition fmwide : fam := MkFam 103 [[nt; nt]; [nt; nt]].
+Definition fmtwin : fam := MkFam 104 [[nt; nt]; [nt; nt]].
+
+(* THE REGISTRY THOSE FAMILIES ARE DECLARED IN, which the scrutinee pop makes
+   load-bearing: the pop's width comes from `Effects.t_width`, so a `match` on a
+   family the registry has never heard of pops nothing and is refused — exactly
+   as the checker refuses it, since a family that is not in the registry has no
+   `MATCH-FAM-XT` entry either.
+
+   The entry is DERIVED from the payload the `fam` record already carries rather
+   than written down a second time: one declared slot per cell the widest
+   variant holds, and one schema cell per payload cell.  A `SUMTYPE` declaration
+   is one thing read two ways — the branch payloads `MATCH-PAY-XT` refines with,
+   and the width `TFAM-WIDTH@` reports — and deriving one from the other is what
+   keeps them from drifting.  `SUMTYPE cmres 0 VARIANT cmok n VARIANT cmerr n`
+   is then arity 0, `TK-SUM`, one slot, width 2: the payload slot and the tag,
+   which is what `REFLECT:WIDTH` reports for it. *)
+Definition fam_slots (f : fam) : nat :=
+  fold_left (fun acc v => Nat.max acc (length v)) (fam_pay f) 0.
+
+Definition famdef_of (f : fam) : famdef :=
+  MkFamDef 0 TkSum false (fam_slots f) false
+           (map (fun v => map (fun _ => SchCell) v) (fam_pay f)) [].
+
+Definition fam_env : fenv :=
+  map (fun f => (fam_id f, famdef_of f)) [fmres; fmthree; fmbool; fmwide; fmtwin].
+
+(* Every `MATCH` and `construct` example below is asked in that registry.  Its
+   own `sig` — the empty one — could not ask them at all now: with no entry the
+   declared family is one unexpanded logical cell and the pop, which is a walk
+   over hidden fields, refuses it. *)
+Definition sig_fam (din dout : list ty) : cfg := sig_in fam_env din dout.
 
 Definition wDropBool : word_eff := prim [] 1 [boolt] [].
+
+(* THE POP AS A LAW, before the programs.  Everything else in this section is a
+   program run through both machines; the four statements here are laws of the
+   walk, proved by induction over it rather than computed on one example,
+   because what the pop has to get right is not any one program.  It has to
+   undo exactly what pushed the bundle, match on IDENTITY and not on width, and
+   never answer a row with part of a bundle still on it.  The lemmas under them
+   are facts about resolution, width and the push order that the laws need and
+   that state nothing on their own. *)
+
+Lemma resolve_row_push : forall (s : subst) (t : ty) (r : stack),
+  resolve_row s (SPush t r) = SPush t r.
+Proof. intros; unfold resolve_row, res_budget; reflexivity. Qed.
+
+Lemma resolve_ty_fam : forall (s : subst) (g h : nat) (args : tys),
+  resolve_ty s (TFam g h args) = TFam g h args.
+Proof. intros; unfold resolve_ty, res_budget; reflexivity. Qed.
+
+(* `T-WIDTH` (checker.f:1382-1388) reads the family and its arguments and never
+   the hidden slot, which is what lets the walk take the bundle's width off the
+   TAG cell it is about to consume. *)
+Lemma t_width_ignores_the_hidden_slot :
+  forall (e : fenv) (s : subst) (g h h' : nat) (args : tys),
+    t_width e s (TFam g h args) = t_width e s (TFam g h' args).
+Proof.
+  intros. unfold t_width. cbn [ty_size].
+  destruct (walk_budget s (S (args_size args))) as [|n]; [reflexivity|].
+  cbn [t_width_fuel]. rewrite !resolve_ty_fam. reflexivity.
+Qed.
+
+(* The cell a `W`-slot push leaves on TOP is the tag, slot `W - 1`, and under it
+   is the push of the slots below it. *)
+Lemma push_slots_head :
+  forall (n : nat) (s : subst) (g : nat) (args : tys) (row : stack),
+    resolve_row s
+      (fold_left (fun r slot => SPush (mk_hidden (TFam g 0 args) slot) r)
+                 (seq 0 (S n)) row)
+    = SPush (TFam g (S n) args)
+            (fold_left (fun r slot => SPush (mk_hidden (TFam g 0 args) slot) r)
+                       (seq 0 n) row).
+Proof.
+  intros. rewrite seq_S, fold_left_app. cbn [fold_left mk_hidden].
+  rewrite Nat.add_0_l. apply resolve_row_push.
+Qed.
+
+(* The walk of `n` cells against the push of the same `n` slots.  The push runs
+   slot 0 first so the tag ends on top; the walk runs top down and expects the
+   slot to be one less than the number of cells still to come.  This lemma is
+   where those two orders meet. *)
+Lemma match_scrut_cells_undo_the_push :
+  forall (n : nat) (s : subst) (g : nat) (args : tys) (row : stack),
+    match_scrut_cells s g n
+      (fold_left (fun r slot => SPush (mk_hidden (TFam g 0 args) slot) r)
+                 (seq 0 n) row)
+    = Some row.
+Proof.
+  induction n as [|n IH]; intros; [reflexivity|].
+  cbn [match_scrut_cells]. unfold match_scrut_cell.
+  rewrite push_slots_head, resolve_ty_fam.
+  cbn [hidden_paramb param_famb hidden_slot].
+  rewrite !Nat.eqb_refl. cbn [andb].
+  apply IH.
+Qed.
+
+(* LAW 1.  The pop is the exact inverse of the bundle push: hand it the row a
+   declared signature or a `construct` built (`Effects.layout_push_fields`) and
+   it answers the row that was underneath, with nothing of the bundle left.
+   The width hypothesis says only that the family occupies at least one cell,
+   which every sum and enum does — its tag. *)
+Theorem the_scrutinee_pop_undoes_the_bundle_push :
+  forall (e : fenv) (s : subst) (f : fam) (args : tys) (k : nat) (row : stack),
+    t_width e s (TFam (fam_id f) 0 args) = S k ->
+    match_scrut_row e s
+      (layout_push_fields e s (TFam (fam_id f) 0 args) row) (fam_id f)
+    = Some row.
+Proof.
+  intros e s f args k row Hw.
+  unfold layout_push_fields, match_scrut_row.
+  rewrite resolve_ty_fam, Hw, push_slots_head.
+  rewrite (t_width_ignores_the_hidden_slot e s (fam_id f) (S k) 0 args), Hw.
+  apply match_scrut_cells_undo_the_push.
+Qed.
+
+(* LAW 2.  Identity, not shape.  A bundle of any OTHER family is refused, at
+   any width the registry gives either of them and whatever arguments they
+   carry — so in particular a family of exactly the same width is refused, and
+   a walk that counted cells without reading the family id would accept it.
+   That is the case the two vectors below put to the real checker. *)
+Theorem a_bundle_of_another_family_is_never_a_scrutinee :
+  forall (e : fenv) (s : subst) (f : fam) (g : nat) (args : tys) (k : nat)
+         (row : stack),
+    Nat.eqb g (fam_id f) = false ->
+    t_width e s (TFam g 0 args) = S k ->
+    match_scrut_row e s (layout_push_fields e s (TFam g 0 args) row) (fam_id f)
+    = None.
+Proof.
+  intros e s f g args k row Hg Hw.
+  unfold layout_push_fields, match_scrut_row.
+  rewrite resolve_ty_fam, Hw, push_slots_head.
+  rewrite (t_width_ignores_the_hidden_slot e s g (S k) 0 args), Hw.
+  cbn [match_scrut_cells]. unfold match_scrut_cell.
+  rewrite push_slots_head, resolve_ty_fam.
+  cbn [hidden_paramb param_famb]. rewrite Hg.
+  cbn [andb]. reflexivity.
+Qed.
+
+(* LAW 3.  A refused scrutinee changes nothing but the verdict.  Neither row
+   moves, no `MF` record is opened and no control frame is installed — which is
+   the same property the depth guard exists to protect, stated where the pop
+   itself can break it, and it is why a half-popped bundle cannot be left
+   behind for the branches to read. *)
+Theorem a_refused_scrutinee_leaves_the_rows_untouched :
+  forall (s : st) (f : fam),
+    match_scrut s f = None ->
+    st_dcur (do_fam_tok s f) = st_dcur s
+    /\ st_rcur (do_fam_tok s f) = st_rcur s
+    /\ st_mf (do_fam_tok s f) = st_mf s
+    /\ st_cfs (do_fam_tok s f) = st_cfs s
+    /\ st_hard (do_fam_tok s f) = true.
+Proof.
+  intros s f H. unfold do_fam_tok.
+  destruct (Nat.ltb 30 (length (st_cfs s)));
+    [ | rewrite H ];
+    unfold match_reject, mdiag_set;
+    destruct (negb (Nat.eqb (st_mdiag s) 0)); try destruct (st_failset s);
+    destruct s; cbn; repeat split; reflexivity.
+Qed.
+
+(* LAW 4.  A pop that succeeded is the branches' base: the row the walk
+   answered becomes `DCUR`, the SAME row is what the `MF` record hands every
+   branch at its `of` (`MF.BASE`), and the kind-9 frame goes on top of the
+   stack the pop found — one frame, over the frames that were already there. *)
+Theorem a_popped_scrutinee_becomes_the_branch_base :
+  forall (s : st) (f : fam) (base : stack),
+    Nat.ltb 30 (length (st_cfs s)) = false ->
+    match_scrut s f = Some base ->
+    st_dcur (do_fam_tok s f) = base
+    /\ match st_mf (do_fam_tok s f) with
+       | [] => False
+       | m :: rest => mf_fam m = f /\ mf_base m = base /\ rest = st_mf s
+       end
+    /\ match st_cfs (do_fam_tok s f) with
+       | [] => False
+       | fr :: rest => fr_knd fr = 9 /\ rest = st_cfs s
+       end.
+Proof.
+  intros s f base Hd H.
+  assert (Hcap : Nat.leb cfs_cap (length (st_cfs s)) = false).
+  { apply Nat.ltb_ge in Hd. apply Nat.leb_gt. unfold cfs_cap.
+    apply Nat.le_lt_trans with (m := 30); [exact Hd|].
+    apply Nat.leb_le. reflexivity. }
+  unfold do_fam_tok. rewrite Hd, H.
+  unfold cf_push, put_mm, put_d, put_mf, put_cfs, mkf.
+  destruct s; cbn in *; rewrite Hcap; cbn; repeat split; reflexivity.
+Qed.
 
 (* Every example in this section was run through `CHECK-CANDIDATE!`, because
    the ENGINE refuses several of these texts before the checker sees them.
@@ -2412,14 +2685,14 @@ Definition wDropBool : word_eff := prim [] 1 [boolt] [].
    T6 ( mthree -- n ) MATCH mthree one OF ENDOF two OF ENDOF ;MATCH -> 0,
        `at ';MATCH' bad match: missing variants: three` *)
 Example match_must_be_exhaustive :
-  check_ctl (sig [fam0 100] [nt])
+  check_ctl (sig_fam [fam0 100] [nt])
             [TMatch; TFamTok fmres;
              TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
-  /\ check_ctl (sig [fam0 100] [nt])
+  /\ check_ctl (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_reason (sig [fam0 100] [nt])
+  /\ check_reason (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_NONEXH
-  /\ check_ctl (sig [fam0 101] [nt])
+  /\ check_ctl (sig_fam [fam0 101] [nt])
        [TMatch; TFamTok fmthree;
         TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
@@ -2435,10 +2708,10 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    T8 ( mbool -- n ) MATCH mbool yes OF DROP-BOOL MK-N ENDOF no OF ENDOF ;MATCH
        -> -1 *)
 Example match_branches_are_refined_by_their_payload :
-  check_ctl (sig [fam0 102] [nt])
+  check_ctl (sig_fam [fam0 102] [nt])
             [TMatch; TFamTok fmbool;
              TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_ctl (sig [fam0 102] [nt])
+  /\ check_ctl (sig_fam [fam0 102] [nt])
        [TMatch; TFamTok fmbool;
         TVarTok 0; TOf; TCall wDropBool; TCall wMkN; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = VCert.
@@ -2449,7 +2722,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    that failed.  An `if`/`else`/`then` disagreement — the join it is usually
    attributed to — raises no reason code at all.  Both halves measured above. *)
 Example md_join_is_the_match_join_not_the_if_join :
-  check_reason (sig [fam0 102] [nt])
+  check_reason (sig_fam [fam0 102] [nt])
                [TMatch; TFamTok fmbool;
                 TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch]
     = MD_JOIN
@@ -2464,7 +2737,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    latched only when the failure pin was still open when the join ran.  That
    guard is the whole reason `FAILSET` is modelled. *)
 Example md_join_does_not_steal_an_earlier_failure :
-  check_reason (sig [fam0 102] [nt])
+  check_reason (sig_fam [fam0 102] [nt])
                [TMatch; TFamTok fmbool;
                 TVarTok 0; TOf; TCall wStep1; TEndof;
                 TVarTok 1; TOf; TEndof; TSemiMatch] = 0.
@@ -2482,19 +2755,19 @@ Proof. vm_compute; reflexivity. Qed.
        `at 'zork' bad match: unknown variant`
    U5 ( mres -- n ) ;MATCH -> 0, `at ';MATCH' bad match: misplaced match token` *)
 Example match_form_shape_is_enforced :
-  check_reason (sig [fam0 100] [nt])
+  check_reason (sig_fam [fam0 100] [nt])
                [TMatch; TFamTok fmres; TVarTok 0; TCall wDropN; TOf; TEndof;
                 TVarTok 1; TOf; TEndof; TSemiMatch] = MD_MISSING_OF
-  /\ check_ctl (sig [fam0 100] [nt])
+  /\ check_ctl (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 0; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_reason (sig [fam0 100] [nt])
+  /\ check_reason (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 0; TOf; TEndof; TSemiMatch] = MD_VAR_DUP
-  /\ check_reason (sig [fam0 100] [nt])
+  /\ check_reason (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 5; TOf; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = MD_VAR_UNKNOWN
-  /\ check_reason (sig [fam0 100] [nt]) [TSemiMatch] = MD_STRAY.
+  /\ check_reason (sig_fam [fam0 100] [nt]) [TSemiMatch] = MD_STRAY.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* A `match` left unterminated at `;` is `MD-TRUNC` (checker.f:9679), and the
@@ -2503,10 +2776,10 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    U4 ( mres -- n ) MATCH mres ok OF ENDOF err OF ENDOF -> 0,
        `at 'ENDOF' bad match: unterminated match expected: n actual:` *)
 Example an_unterminated_match_is_truncation :
-  check_ctl (sig [fam0 100] [nt])
+  check_ctl (sig_fam [fam0 100] [nt])
             [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
              TVarTok 1; TOf; TEndof] = VReject
-  /\ check_reason (sig [fam0 100] [nt])
+  /\ check_reason (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 1; TOf; TEndof] = MD_TRUNC.
 Proof. repeat split; vm_compute; reflexivity. Qed.
@@ -2519,39 +2792,90 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    TB ( mres -- n ) MATCH mres ok OF EXIT ENDOF err OF EXIT ENDOF ;MATCH -> -1
    TC ( mres -- n ) MATCH mres ok OF MK-N throw ENDOF err OF ENDOF ;MATCH -> -1 *)
 Example a_dead_match_branch_is_excluded :
-  check_ctl (sig [fam0 100] [nt])
+  check_ctl (sig_fam [fam0 100] [nt])
             [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof;
              TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
-  /\ check_ctl (sig [fam0 100] [nt])
+  /\ check_ctl (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof;
         TVarTok 1; TOf; TExit; TEndof; TSemiMatch] = VCert
-  /\ check_ctl (sig [fam0 100] [nt])
+  /\ check_ctl (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wMkN; TThrow; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = VCert.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* The scrutinee must be a value of the matched family.  The checker's rule is
-   a width-expanded hidden-field bundle and the model's is one `TFam` cell, so
-   only the VERDICT is claimed here, not the rendered prose: in both measured
-   cases the pin lands on the family token and a later undefined-word latch
-   supplies the message text.
+(* The scrutinee must be a value of the matched family, and each way of failing
+   that gets its own reason code from `MATCH-SCRUT-DIAG`: a top of stack that is
+   no family value at all is `MD-SCRUT`, a bundle of another family is
+   `MD-FAM-MISMATCH`, and inside a quotation nothing else is asked, because a
+   quotation's fresh rows carry no scrutinee.
 
    U1 ( n -- n ) MATCH mres ok OF ENDOF err OF ENDOF ;MATCH  -> 0
    U6 ( mres -- n ) MATCH mbool ok OF ... ;MATCH             -> 0
    U2 ( mres -- n ) [: MATCH mres ... ;MATCH ;] drop MK-N    -> 0
-       (a quotation's rows carry no scrutinee at all: `MD-QUOT`) *)
+       (a quotation's rows carry no scrutinee at all: `MD-QUOT`)
+
+   The two reasons were measured on the shortest texts that let them be SEEN.
+   Where a failed `match` is followed by its variant tokens, `MATCH-REJECT`
+   clears `MM` and those tokens become unknown words whose latch supplies the
+   message, so the text is truncated right after the family token instead:
+
+     MXA ( n -- n ) MATCH cmwide                              -> 0,
+         `at 'cmwide' bad match: expected sum or enum value on stack`
+     MX8 ( cmtwin cmwide -- cmtwin n ) MATCH cmtwin           -> 0,
+         `at 'cmtwin' bad match: family mismatch`
+     MX9 ( cmtwin cmwide -- cmtwin n ) MATCH cmwide           -> 0,
+         `at 'cmwide' bad match: unterminated match
+          expected: cmtwin<> n actual: cmtwin<>`
+
+   MX9 is the pop itself in the diagnostic: the right family, and what is left
+   on the row is the `cmtwin` underneath, all three cells of the `cmwide` bundle
+   gone. *)
 Example the_scrutinee_must_be_the_matched_family :
-  check_ctl (sig [nt] [nt])
+  check_ctl (sig_fam [nt] [nt])
             [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
              TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_ctl (sig [fam0 100] [nt])
+  /\ check_ctl (sig_fam [fam0 100] [nt])
        [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
-  /\ check_reason (sig [nt] [nt])
+  /\ check_reason (sig_fam [nt] [nt])
        [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
         TVarTok 1; TOf; TEndof; TSemiMatch] = MD_SCRUT
-  /\ check_reason (sig [fam0 100] [nt])
+  /\ check_reason (sig_fam [fam0 104; fam0 103] [fam0 104; nt])
+       [TMatch; TFamTok fmtwin] = MD_FAM_MISMATCH
+  /\ check_reason (sig_fam [fam0 104; fam0 103] [fam0 104; nt])
+       [TMatch; TFamTok fmwide] = MD_TRUNC
+  /\ check_reason (sig_fam [fam0 100] [nt])
        [TOpenQ; TMatch; TFamTok fmres] = MD_QUOT.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* THE POP, ON A BUNDLE WIDE ENOUGH FOR THE WALK TO MATTER, and against a
+   family of exactly the same width.  `mwide` carries two cells in each variant,
+   so its bundle is three cells and a branch starts with two `n` on the row; the
+   pair below is the same text twice with only the family token and the variant
+   names changed, and the verdicts differ.  `mtwin` has the same width, the same
+   variant count and the same payloads, so nothing but the family IDENTITY tells
+   the two apart — which is exactly what a walk that only counted cells would
+   miss.  Both are frozen as shared vectors in
+   `test/compiler/checker-model-schema.f`.
+
+   : CMV27 ( cmtwin cmwide -- cmtwin n )
+       MATCH cmwide cmwa OF DROP-N ENDOF cmwb OF DROP-N ENDOF ;MATCH  -> -1
+   : CMV28 ( cmtwin cmwide -- cmtwin n )
+       MATCH cmtwin cmta OF DROP-N ENDOF cmtb OF DROP-N ENDOF ;MATCH  -> 0
+
+   Both families are named in the signature because `MATCH`'s family token
+   resolves the way a signature type name does (`TFAM-MATCH-FAM` ->
+   `TFAM-SIG-RESOLVE`, src/core/type-family.f); the deep row is the second
+   family's only reason to be on the row at all. *)
+Example a_same_width_bundle_of_another_family_is_refused :
+  check_ctl (sig_fam [fam0 104; fam0 103] [fam0 104; nt])
+            [TMatch; TFamTok fmwide; TVarTok 0; TOf; TCall wDropN; TEndof;
+             TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch] = VCert
+  /\ check_ctl (sig_fam [fam0 104; fam0 103] [fam0 104; nt])
+       [TMatch; TFamTok fmtwin; TVarTok 0; TOf; TCall wDropN; TEndof;
+        TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch] = VReject
+  /\ t_width fam_env empty_subst (fam0 103)
+     = t_width fam_env empty_subst (fam0 104).
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* --- 6b. construct --------------------------------------------------- *)
@@ -2565,8 +2889,8 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    : CMV19 ( n -- cmres ) construct cmres cmok ;  -> certified
    : CMV20 ( -- cmres ) construct cmres cmok ;    -> refused *)
 Example construct_consumes_the_payload_and_produces_the_bundle :
-  check_ctl (sig [nt] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VCert
-  /\ check_ctl (sig [] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VReject.
+  check_ctl (sig_fam [nt] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VCert
+  /\ check_ctl (sig_fam [] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 0] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* The form is three tokens and `CHECK` refuses a definition that ends inside
@@ -2577,10 +2901,10 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    : CMV21 ( cmres -- cmres ) construct cmres ;   -> refused,
        `at 'cmres' bad construct: missing family or variant token` *)
 Example an_unterminated_construct_is_refused_at_the_boundary :
-  check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = VReject
-  /\ check_reason (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres]
+  check_ctl (sig_fam [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres] = VReject
+  /\ check_reason (sig_fam [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres]
        = MD_CON_TRUNC
-  /\ check_ctl (sig [fam0 100] [fam0 100]) [] = VCert.
+  /\ check_ctl (sig_fam [fam0 100] [fam0 100]) [] = VCert.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* CAPTURE, and it is the sharpest thing in this section because the two
@@ -2595,10 +2919,10 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
        `at 'CMNOVAR' bad construct: unknown variant`
    : CMV23 ( cmres -- cmres ) CMNOVAR ;                  -> uncheckable *)
 Example a_construct_operand_is_captured_whatever_it_spells :
-  check_ctl (sig [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9]
+  check_ctl (sig_fam [fam0 100] [fam0 100]) [TConstruct; TFamTok fmres; TVarTok 9]
     = VReject
-  /\ check_ctl (sig [fam0 100] [fam0 100]) [TVarTok 9] = VUncheckable
-  /\ check_reason (sig [fam0 100] [fam0 100])
+  /\ check_ctl (sig_fam [fam0 100] [fam0 100]) [TVarTok 9] = VUncheckable
+  /\ check_reason (sig_fam [fam0 100] [fam0 100])
        [TConstruct; TFamTok fmres; TVarTok 9] = MD_CON_VAR.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
@@ -2610,8 +2934,8 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    : CMV24 ( n -- cmbres ) construct cmbres cmbn ;  -> certified
    : CMV25 ( n -- cmbres ) construct cmbres cmbf ;  -> refused *)
 Example the_payload_belongs_to_the_variant_not_the_family :
-  check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 1] = VCert
-  /\ check_ctl (sig [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 0]
+  check_ctl (sig_fam [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 1] = VCert
+  /\ check_ctl (sig_fam [nt] [fam0 102]) [TConstruct; TFamTok fmbool; TVarTok 0]
        = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
@@ -2626,11 +2950,11 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    : CMV26 ( n -- n ) construct cmres cmok
        MATCH cmres cmok OF ENDOF cmerr OF ENDOF ;MATCH ;  -> certified *)
 Example construct_and_match_are_inverse :
-  check_ctl (sig [nt] [nt])
+  check_ctl (sig_fam [nt] [nt])
             [TConstruct; TFamTok fmres; TVarTok 0;
              TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof;
              TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
-  /\ check_ctl (sig [nt] [nt])
+  /\ check_ctl (sig_fam [nt] [nt])
                [TConstruct; TFamTok fmbool; TVarTok 1;
                 TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof;
                 TVarTok 1; TOf; TEndof; TSemiMatch] = VReject.
@@ -3008,7 +3332,7 @@ Example frame_depth_is_bounded :
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* And a `match` never reaches that overflow: it refuses at `#CFC > 30`
-   (checker.f:8255) with a HARD reject, precisely so it can never install one
+   (checker.f:8316) with a HARD reject, precisely so it can never install one
    of its two frames and not the other.
 
    BL3 ( mres -- n ) BEGIN x31  MATCH mres ok OF ENDOF err OF ENDOF ;MATCH -> 0
@@ -3033,13 +3357,13 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
    extra opener still fits, so the body is merely unbalanced.  Both of the two
    above are frozen vectors of the parity gate. *)
 Example match_refuses_before_the_overflow :
-  check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject
-  /\ check_reason (sig [fam0 100] [nt])
+  check_ctl (sig_fam [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject
+  /\ check_reason (sig_fam [fam0 100] [nt])
        (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH
-  /\ check_ctl (sig [fam0 100] [nt])
+  /\ check_ctl (sig_fam [fam0 100] [nt])
        (opens 30 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf; TBegin])
      = VUncheckable
-  /\ check_ctl (sig [fam0 100] [nt])
+  /\ check_ctl (sig_fam [fam0 100] [nt])
        (opens 31 ++ [TMatch; TFamTok fmres; TVarTok 0; TOf]) = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
@@ -3051,6 +3375,44 @@ Definition nest_until (n : nat) : list tok :=
 Example a_certifying_body_becomes_uncheckable_at_33_frames :
   check_ctl (sig [i64] [i64]) (nest_until 32) = VCert
   /\ check_ctl (sig [i64] [i64]) (nest_until 33) = VUncheckable.
+Proof. repeat split; vm_compute; reflexivity. Qed.
+
+(* And the same stronger statement for the `match` guard: at the deepest frame
+   that fits, a `match` does not merely escape the guard — it CERTIFIES.  The
+   two rows above leave that open, because both of their bodies are refused or
+   unresolvable for reasons of their own.
+
+   The body has to be row-NEUTRAL to sit inside a loop, and a `match` consumes a
+   bundle and leaves a payload, so the arms put the value back with `construct`:
+   that is the round trip of section 6b, run at the bottom of thirty loops.
+   Measured through `CHECK-CANDIDATE!`, over the same `cmres`:
+
+     MXDEEP ( cmres -- cmres ) BEGIN x30
+         MATCH cmres cmok OF construct cmres cmok ENDOF
+                    cmerr OF construct cmres cmerr ENDOF ;MATCH
+         (MK-BOOL UNTIL) x30                              -> -1
+     the same body at 31 opens                            ->  0
+     the same body at 29 opens                            -> -1
+     the same body at 0 opens                             -> -1
+
+   This is not a frozen vector: the schema file builds a vector's Habu text
+   through the shared 1 KB string builder and this body is larger than that, so
+   the row needs `SB-CAP` raised, which is a `lib/string.f` change of its own
+   (dot habu-freeze-the-deep-e120e19c). *)
+Definition match_rebuild : list tok :=
+  [TMatch; TFamTok fmres;
+   TVarTok 0; TOf; TConstruct; TFamTok fmres; TVarTok 0; TEndof;
+   TVarTok 1; TOf; TConstruct; TFamTok fmres; TVarTok 1; TEndof;
+   TSemiMatch].
+
+Definition nest_match (n : nat) : list tok :=
+  repeat TBegin n ++ match_rebuild ++ concat (repeat [TCall wMkBool; TUntil] n).
+
+Example a_match_at_the_deepest_frame_that_fits_certifies :
+  check_ctl (sig_fam [fam0 100] [fam0 100]) (nest_match 30) = VCert
+  /\ check_ctl (sig_fam [fam0 100] [fam0 100]) (nest_match 31) = VReject
+  /\ check_reason (sig_fam [fam0 100] [fam0 100]) (nest_match 31) = MD_DEPTH
+  /\ check_ctl (sig_fam [fam0 100] [fam0 100]) (nest_match 0) = VCert.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* --- 14. Branch-scoped locals --------------------------------------- *)

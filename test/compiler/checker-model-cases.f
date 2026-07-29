@@ -72,12 +72,29 @@ SUMTYPE cmbres 0
   VARIANT cmbn n ;VARIANT
 ;SUMTYPE
 
+\ The two families the scrutinee-pop vectors need, and the only ones here whose
+\ bundle is more than two cells. Each variant carries TWO cells, so the bundle is
+\ three: two payload slots and the tag. `cmtwin` is `cmwide` again under another
+\ name - same variant count, same payloads, same width - so nothing but the
+\ family identity distinguishes the two, which is what those vectors are about.
+\ They are the model's `fmwide` and `fmtwin`.
+SUMTYPE cmwide 0
+  VARIANT cmwa n n ;VARIANT
+  VARIANT cmwb n n ;VARIANT
+;SUMTYPE
+
+SUMTYPE cmtwin 0
+  VARIANT cmta n n ;VARIANT
+  VARIANT cmtb n n ;VARIANT
+;SUMTYPE
+
 : STEP1 ( i64 -- i64 ) ;
 : MK-CELL ( -- cell ) 0 ;
 : MK-BOOL ( -- bool ) 0 0< ;
 : DUP1 ( i64 -- i64 i64 ) dup ;
 : DROP1 ( i64 -- ) drop ;
 : MK-N ( -- n ) 0 ;
+: DROP-N ( n -- ) drop ;
 : DUP-POLY ( a -- a a ) dup ;
 : DROP-POLY ( a -- ) drop ;
 : KEEP-POLY ( a -- a ) ;

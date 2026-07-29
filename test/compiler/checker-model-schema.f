@@ -48,14 +48,15 @@
 \      verdict both must answer. The two encodings are necessarily different -
 \      one is text for a token scanner, the other is an already-scanned token
 \      list - but they live in one row and the verdict is written once, so a
-\      row cannot be satisfied by editing only one side. The last sixteen rows
-\      hold five decisions nothing else here reaches: the widening lattice, the
+\      row cannot be satisfied by editing only one side. The last eighteen rows
+\      hold six decisions nothing else here reaches: the widening lattice, the
 \      control-frame ceiling, `MATCH`'s own depth guard, the per-step linear
-\      conservation count, and `construct`. Before they existed, halving the
-\      ceiling, lowering or deleting the depth guard, making the conservation
-\      count a no-op, letting any two same-class types stand in for each other,
-\      or dropping the unterminated-`construct` test at the definition boundary
-\      each left the whole gate green.
+\      conservation count, `construct`, and `MATCH`'s scrutinee pop. Before they
+\      existed, halving the ceiling, lowering or deleting the depth guard, making
+\      the conservation count a no-op, letting any two same-class types stand in
+\      for each other, dropping the unterminated-`construct` test at the
+\      definition boundary, or letting the scrutinee pop take a bundle of any
+\      family of the right width each left the whole gate green.
 \
 \ Where the two sides are not literally the same shape, and why that is sound:
 \
@@ -397,9 +398,9 @@ variable OFF-N
    8  s" CF-OF"         s" 8 CF@A 0 CF@RA 0 CF-PUSH"
       s" sig [] []"        s" [TCall wMkN; TCase; TCall wMkN; TOf]"       FRK-ROW
    9  s" MATCH-FAM-TOK" s" 9 DCUR @ 0 RCUR @ 0 CF-PUSH"
-      s" sig [fam0 100] [nt]" s" [TMatch; TFamTok fmres]"                 FRK-ROW
+      s" sig_fam [fam0 100] [nt]" s" [TMatch; TFamTok fmres]"             FRK-ROW
    10 s" MATCH-OF-TOK"  s" 10 r MF.BASE @ 0 r MF.RBASE @ 0 CF-PUSH"
-      s" sig [fam0 100] [nt]"
+      s" sig_fam [fam0 100] [nt]"
       s" [TMatch; TFamTok fmres; TVarTok 0; TOf]"                         FRK-ROW ;
 
 \ ---- 6. the shared program vectors -------------------------------------------
@@ -521,7 +522,7 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    {: na:ptr nu:n sa:ptr su:n opens:n ha:ptr hu:n ma:ptr mu:n verd:n :}
    na nu STR+ VEC-NAME VEC-N @ COL!
    sa su opens ha hu MATCH-SRC$ STR+ VEC-SRC VEC-N @ COL!
-   s" sig [fam0 100] [nt]" STR+ VEC-CFG VEC-N @ COL!
+   s" sig_fam [fam0 100] [nt]" STR+ VEC-CFG VEC-N @ COL!
    opens ma mu MATCH-TOKS$ STR+ VEC-TOKS VEC-N @ COL!
    verd VEC-VERD VEC-N @ COL!
    VEC-N @ 1+ VEC-N ! ;
@@ -597,37 +598,86 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
 : BUILD-CONSTRUCT-VECTORS ( -- )
    s" construct_builds_the_bundle_from_the_variant_payload"
       s" CMV19 ( n -- cmres ) construct cmres cmok"
-      s" sig [nt] [fam0 100]"
+      s" sig_fam [nt] [fam0 100]"
       s" [TConstruct; TFamTok fmres; TVarTok 0]" V-CERT VEC-ROW
    s" construct_without_its_payload_underflows"
       s" CMV20 ( -- cmres ) construct cmres cmok"
-      s" sig [] [fam0 100]"
+      s" sig_fam [] [fam0 100]"
       s" [TConstruct; TFamTok fmres; TVarTok 0]" V-REJECT VEC-ROW
    s" an_unterminated_construct_is_refused_at_the_boundary"
       s" CMV21 ( cmres -- cmres ) construct cmres"
-      s" sig [fam0 100] [fam0 100]"
+      s" sig_fam [fam0 100] [fam0 100]"
       s" [TConstruct; TFamTok fmres]" V-REJECT VEC-ROW
    s" a_construct_operand_is_captured_whatever_it_spells"
       s" CMV22 ( cmres -- cmres ) construct cmres CMNOVAR"
-      s" sig [fam0 100] [fam0 100]"
+      s" sig_fam [fam0 100] [fam0 100]"
       s" [TConstruct; TFamTok fmres; TVarTok 9]" V-REJECT VEC-ROW
    s" the_same_operand_outside_the_form_is_only_uncheckable"
       s" CMV23 ( cmres -- cmres ) CMNOVAR"
-      s" sig [fam0 100] [fam0 100]"
+      s" sig_fam [fam0 100] [fam0 100]"
       s" [TVarTok 9]" V-UNCK VEC-ROW
    s" the_payload_is_the_variants_and_not_the_familys"
       s" CMV24 ( n -- cmbres ) construct cmbres cmbn"
-      s" sig [nt] [fam0 102]"
+      s" sig_fam [nt] [fam0 102]"
       s" [TConstruct; TFamTok fmbool; TVarTok 1]" V-CERT VEC-ROW
    s" a_sibling_variant_of_the_same_family_wants_its_own_payload"
       s" CMV25 ( n -- cmbres ) construct cmbres cmbf"
-      s" sig [nt] [fam0 102]"
+      s" sig_fam [nt] [fam0 102]"
       s" [TConstruct; TFamTok fmbool; TVarTok 0]" V-REJECT VEC-ROW
    s" construct_then_match_returns_the_payload_it_was_given"
       s" CMV26 ( n -- n ) construct cmres cmok MATCH cmres cmok OF ENDOF cmerr OF ENDOF ;MATCH"
-      s" sig [nt] [nt]"
+      s" sig_fam [nt] [nt]"
       s" [TConstruct; TFamTok fmres; TVarTok 0; TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch]"
       V-CERT VEC-ROW ;
+
+\ Two rows about `MATCH`'s SCRUTINEE POP, which is the walk that takes the
+\ scrutinee's whole width-expanded bundle off the row before any branch starts
+\ (`MATCH-SCRUT?`, src/core/checker.f). Nothing else here reaches it, because
+\ every other family in this file is two cells wide - one payload slot and the
+\ tag - and two decisions only show up above that.
+\
+\ The families the two rows use are `cmwide`, whose variants carry TWO cells
+\ each so its bundle is three, and `cmtwin`, which has the same width, the same
+\ variant count and the same payloads and only a different identity. The two
+\ programs are then the same text with the family token and the variant names
+\ changed, and their verdicts differ:
+\
+\   - the first pops a three-cell bundle whole and certifies, so a walk that
+\     stopped short would leave the rest of the bundle on the row and fail it;
+\   - the second names a family of exactly the same width, and is REFUSED. A
+\     pop that compared cell counts and not the family id would certify it,
+\     which is why same-width is the sharp case rather than merely a different
+\     family.
+\
+\ Both families are named in the signature because a `MATCH` family token
+\ resolves the way a signature type name does (`TFAM-MATCH-FAM`,
+\ src/core/type-family.f); carrying `cmtwin` on the row underneath is how the
+\ second row gets to name it at all.
+\
+\ Measured, by mutating the shipped checker, rebuilding the fixpoint and
+\ rerunning this gate; the checker was restored byte-for-byte after each.
+\
+\   - dropping the family test from `MATCH-SCRUT-CELL?` turns the second row
+\     from a refusal into a certification, and it is the ONLY row that moves;
+\   - walking a three-cell bundle as two turns the first row from a
+\     certification into a refusal, and it is the only row that moves;
+\   - walking EVERY bundle as two never reaches this gate at all: the fixpoint
+\     self-check refuses the build, because `FIND-EXECUTABLE-IN-PATH`
+\     (lib/process-env.f) matches an `option` whose payload is itself a
+\     multi-cell layout and stops certifying. The shipped library depends on
+\     this walk, which is why the second mutation above has to name a width
+\     nothing in `lib/` uses.
+: BUILD-SCRUTINEE-VECTORS ( -- )
+   s" a_multi_cell_bundle_is_popped_whole"
+      s" CMV27 ( cmtwin cmwide -- cmtwin n ) MATCH cmwide cmwa OF CHECKER-MODEL-CASES:DROP-N ENDOF cmwb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"
+      s" sig_fam [fam0 104; fam0 103] [fam0 104; nt]"
+      s" [TMatch; TFamTok fmwide; TVarTok 0; TOf; TCall wDropN; TEndof; TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch]"
+      V-CERT VEC-ROW
+   s" a_same_width_bundle_of_another_family_is_refused"
+      s" CMV28 ( cmtwin cmwide -- cmtwin n ) MATCH cmtwin cmta OF CHECKER-MODEL-CASES:DROP-N ENDOF cmtb OF CHECKER-MODEL-CASES:DROP-N ENDOF ;MATCH"
+      s" sig_fam [fam0 104; fam0 103] [fam0 104; nt]"
+      s" [TMatch; TFamTok fmtwin; TVarTok 0; TOf; TCall wDropN; TEndof; TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch]"
+      V-REJECT VEC-ROW ;
 
 : BUILD-VECTORS ( -- )
    s" straight_line"
@@ -670,7 +720,8 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    BUILD-FRAME-CAP-VECTORS
    BUILD-MATCH-DEPTH-VECTORS
    BUILD-LINEAR-TRANSFER-VECTORS
-   BUILD-CONSTRUCT-VECTORS ;
+   BUILD-CONSTRUCT-VECTORS
+   BUILD-SCRUTINEE-VECTORS ;
 
 : BUILD-ALL ( -- )
    0 POOL-U !  0 STR-N !
