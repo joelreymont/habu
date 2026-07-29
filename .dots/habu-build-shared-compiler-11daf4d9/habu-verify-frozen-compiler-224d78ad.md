@@ -1,9 +1,9 @@
 ---
 title: Verify frozen compiler IR
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-07-26T22:55:16.416248+02:00"
+created-at: "\"2026-07-26T22:55:16.416248+02:00\""
 blocks:
   - habu-freeze-compiler-ir-6f706100
 ---
@@ -53,3 +53,5 @@ for as long as any branch to the block is unwritten. This verifier must:
   successor argument counts and types must match the destination block's
   arguments. IR-FUN supplies BLOCK-COUNT and ARG@ for both.
 
+
+Claim: agent=irverify workspace=.jj-ws/habu-verify-frozen-compiler-224d78ad
