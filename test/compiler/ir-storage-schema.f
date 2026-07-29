@@ -615,6 +615,11 @@ variable DSCN-N
 \ answer nothing where a refusal was recorded, and lowering it makes the first
 \ row answer a refusal where an acceptance was recorded, so the pair pins the
 \ limit rather than any one side of it.
+\
+\ The two depths are written down rather than computed from DEPTH-MAX on
+\ purpose. A row derived from the production constant would agree with any
+\ renumbering of it and so would ask nothing; a renumbering is what the pinned
+\ capacity row above is for.
 
 : DROW+ ( n n -- ) {: depth:n class:n :}
    DSCN-N @ SCN-CAP >= if E-CST-ROW throw then
