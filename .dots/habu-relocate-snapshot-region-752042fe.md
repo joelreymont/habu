@@ -1,0 +1,9 @@
+---
+title: Relocate snapshot region-to-text calls
+status: open
+priority: 2
+issue-type: task
+created-at: "2026-07-29T19:58:29.544526+02:00"
+---
+
+Full context: PRIORITY 1 design regression; blocks habu-fix-owner-wid-e2bc360c and every master fast-forward. SNAP format v4 moved the live JIT region from the fixed RBASE-VA to text plus REGION-OFF, but restored region code still contains direct BL instructions into engine text and NOTHING relocates them: EM-SNAPSHOT-REBASE-DICT (src/habu/habu2.f:4069-4086) rewrites only dictionary record fields 0 and 24. The displacement is not a run invariant, because align64k(content_base + REGION-OFF) in EM-MMAP-CODE-REGION (src/habu/habu2.f:3513) rounds to 64 KiB while the macOS ASLR slide is 16 KiB granular — four possible displacements selected by image_base mod 0x10000. Proven on a real artifact: the BL word at region offset 0x3377a0 is 0x97b322fa; solving for the callee under each candidate writer residue and inspecting the image shows only residue 0x4000 lands on a real prim entry (preceded by ret), so a reader with any other residue mis-calls by a multiple of 0x4000 and takes EXC_BAD_ACCESS. Also: the mapping hint itself collides with dyld — 51 of 60 bare runs exit 78 at EM-MMAP-CODE-REGION because REGION-OFF (16 MiB) leaves only 1.66 MiB of clearance over a 14.34 MiB image and dyld lands in that window. Fix by making region-to-text calls position independent across runs — an indirection table in the fixed-VA DATA region, or recorded far-call sites relocated at restore — then drop the exact-hint requirement. Do NOT widen REGION-OFF or accept the kernel's returned address: the first is a magic clearance constant over a growing image, the second makes the displacement vary freely instead of over four values, which is strictly worse. Acceptance: a snapshot image boots to exit 0 in 200 consecutive bare runs on macOS.
