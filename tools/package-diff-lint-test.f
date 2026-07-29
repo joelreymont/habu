@@ -195,6 +195,13 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-ROOT$ s" src/core" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/habu" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ the Gforth recovery mirror's own directory, plus a same-basename neighbour
+   \ one level up and a copy of the whole path under test/, which is what a
+   \ suffix comparison would wrongly admit
+   TEST-ROOT$ s" bootstrap/cg" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" test/bootstrap/cg" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS ;
 
 : TEST-GLOBAL-SOURCE ( ptr u8 n -- )
@@ -1383,6 +1390,170 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" lib/layout.f basename collision still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- bootstrap/cg/forth.fs: the Gforth recovery mirror ------------------------
+\ This is the one category where the ownership rule cannot be satisfied at all.
+\ The file is compiled by Gforth, which has no `package` word, so writing one
+\ would abort the no-binary recovery.  Both definition directions are therefore
+\ admitted, and every negative below is about the PATH rather than about the shape
+\ of the definition -- which is the exact opposite of the engine-trunk fixtures
+\ above, where the shape is what decides.
+\
+\ The positive is the measured probe: adding one trailing comment to the existing
+\ global BCOUNT reported `E-PACKAGE-OWNERSHIP bootstrap/cg/forth.fs:811:3` before
+\ this row existed, so no change at all to the recovery emitter could pass the
+\ commit gate.  The fixtures use the mirror's own idiom (bare register words and
+\ an emitter body) so the source they lex is the kind of text the real file holds.
+
+: TEST-WRITE-MIRROR-BODY ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : BCOUNT ( -- )" TEST-SOURCE-LINE
+   s"    A G-POP  B A 0 LDRB   \ gate probe comment" TEST-SOURCE-LINE
+   s" ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-BODY-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : BCOUNT ( -- )" TEST-DIFF+ TEST-LF
+   s" -   A G-POP  B A 0 LDRB" TEST-DIFF+ TEST-LF
+   s" +   A G-POP  B A 0 LDRB   \ gate probe comment" TEST-DIFF+ TEST-LF
+   s"  ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-MIRROR-BODY-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-MIRROR-BODY
+   TEST-DIFF-RESET path pathu TEST-MIRROR-BODY-DIFF ;
+
+\ The direction the engine trunk reports and this category admits: a brand-new
+\ global word beside an existing one.  `BUSING` is the real shape the stage-0
+\ `using` work adds -- a new keyword handler in the emitter.
+: TEST-WRITE-MIRROR-NEW ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   TEST-SOURCE-RESET
+   s" : BCOUNT ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   s" : BUSING ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   path pathu TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-NEW-DIFF ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-MODIFY-HEAD
+   s" @@ -1 +1,2 @@" TEST-DIFF+ TEST-LF
+   s"  : BCOUNT ( -- ) A G-POP ;" TEST-DIFF+ TEST-LF
+   s" +: BUSING ( -- ) A G-POP ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-MIRROR-NEW-CASE ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   path pathu TEST-WRITE-MIRROR-NEW
+   TEST-DIFF-RESET path pathu TEST-MIRROR-NEW-DIFF ;
+
+: TEST-WRITE-MIRROR-ARRIVAL ( -- )
+   TEST-SOURCE-RESET
+   s" : BARRIVED ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-ARRIVAL-DIFF ( -- )
+   s" diff --git a/bootstrap/cg/mirror-old.fs b/bootstrap/cg/forth.fs"
+   TEST-DIFF+ TEST-LF
+   s" similarity index 100%" TEST-DIFF+ TEST-LF
+   s" rename from bootstrap/cg/mirror-old.fs" TEST-DIFF+ TEST-LF
+   s" rename to bootstrap/cg/forth.fs" TEST-DIFF+ TEST-LF ;
+
+\ Gforth would refuse this file, so the shape cannot occur in the real mirror.
+\ It is pinned anyway: the admission must sit behind FINISH-DEFINITION's
+\ SCOPE-DELTA test like every other category, so that a boundary appearing or
+\ disappearing in the mirror is reported instead of quietly admitted.
+: TEST-WRITE-MIRROR-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : BCOUNT ( -- ) A G-POP ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-MIRROR-OWNER-LOSS-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package BCG" TEST-DIFF+ TEST-LF
+   s"  : BCOUNT ( -- ) A G-POP ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-MIRROR-ADMITTED ( -- )
+   \ Positive: the measured control probe, a comment-only change to an existing
+   \ global emitter body.
+   s" bootstrap/cg/forth.fs" TEST-MIRROR-BODY-CASE
+   s" the Gforth mirror exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive, and the direction that separates this category from the engine
+   \ trunk: a genuinely new global word is admitted too.  The trunk reports it
+   \ because habu2.f and layout.f are compiled by `bin/hb` and already open real
+   \ packages, so a new engine word has an owner to join.  The mirror has none and
+   \ can have none while Gforth compiles it, so reporting here would report a
+   \ fault whose only repair breaks the recovery path.
+   s" bootstrap/cg/forth.fs" TEST-MIRROR-NEW-CASE
+   s" the Gforth mirror exempts a new global definition too" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-MIRROR-OTHER-PATHS ( -- )
+   \ Negative: a sibling in the same directory whose stem carries the row's stem
+   \ as a prefix is not an exact match and still fails.
+   s" bootstrap/cg/forth-extra.fs" TEST-MIRROR-BODY-CASE
+   s" sibling bootstrap/cg/forth-extra.fs still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: the same basename one directory up shares only the last component
+   \ and still fails.
+   s" bootstrap/forth.fs" TEST-MIRROR-BODY-CASE
+   s" bootstrap/forth.fs basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative, and the case a suffix comparison would wrongly admit: the whole
+   \ row path repeated under test/.  Nothing but a whole-path comparison rejects
+   \ this one, so it is the fixture that dies first if the comparison is loosened.
+   s" test/bootstrap/cg/forth.fs" TEST-MIRROR-BODY-CASE
+   s" test/bootstrap/cg/forth.fs path suffix still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: the same stem with the habu extension.  The key is the exact path,
+   \ never the `.fs` extension: a `.f` twin is compiled by `bin/hb`, can open a
+   \ package, and must.
+   s" bootstrap/cg/forth.f" TEST-MIRROR-BODY-CASE
+   s" the .f twin bootstrap/cg/forth.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: a differently-cased spelling of the row path.  A case-insensitive
+   \ path comparison would admit it; file paths are bytes and this is a different
+   \ file.
+   s" bootstrap/cg/FORTH.fs" TEST-MIRROR-BODY-CASE
+   s" bootstrap/cg/FORTH.fs case variant still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES
+   \ Negative: a sibling Gforth mirror source.  Every one of the 63 other
+   \ Gforth-hosted `.fs` files in the tree was measured to report, and they are
+   \ left reporting on purpose: a row is added only when a real change is blocked
+   \ and that file's own compensating parity authority can be named.
+   s" bootstrap/cg/jit.fs" TEST-MIRROR-NEW-CASE
+   s" sibling mirror bootstrap/cg/jit.fs still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BUSING" TEST-NAMES ;
+
+: TEST-MIRROR-STRUCTURAL ( -- )
+   \ Negative (hostile): a pure rename that makes some OTHER file arrive at the
+   \ mirror path marks no line as added, so without WHOLE-CHANGED every global in
+   \ the arriving file would ride in unread.  The mirror is one committed file
+   \ whose content the parity gates know, and a wholesale replacement of it is
+   \ exactly where that authority has not looked yet, so it is reported -- the
+   \ same decision the engine trunk makes.
+   TEST-WRITE-MIRROR-ARRIVAL
+   TEST-DIFF-RESET TEST-MIRROR-ARRIVAL-DIFF
+   s" a file renamed onto the mirror path still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BARRIVED" TEST-NAMES
+   \ Negative (structural): the admission sits behind SCOPE-DELTA, so a deleted
+   \ package boundary is reported in the mirror like anywhere else.
+   TEST-WRITE-MIRROR-OWNER-LOSS
+   TEST-DIFF-RESET TEST-MIRROR-OWNER-LOSS-DIFF
+   s" a deleted package boundary in the mirror still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   s" BCOUNT" TEST-NAMES ;
+
+: TEST-MIRROR-EXEMPTION ( -- )
+   TEST-MIRROR-ADMITTED
+   TEST-MIRROR-OTHER-PATHS
+   TEST-MIRROR-STRUCTURAL ;
+
 \ ---- one-line definitions, where line position decides nothing ----------------
 \ Every fixture above changes a colon word, whose head and body sit on different
 \ lines.  A `constant` puts the definer, the name and the value on ONE line, so
@@ -2189,6 +2360,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION
    TEST-ENGINE-EXEMPTION
+   TEST-MIRROR-EXEMPTION
    TEST-CONST-DEFINITIONS
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES

@@ -65,7 +65,9 @@ private
 \ The grammar-fixture row table is built once at load time from fixed rows, so
 \ overflowing it means a row was added without raising its capacity.  That must
 \ stop the load rather than silently drop the row and quietly stop admitting the
-\ suite it belongs to.
+\ suite it belongs to.  The engine-trunk and Gforth-mirror tables further down
+\ are read by index too, and an index past the end of either one would answer
+\ with some other row's path, so they raise this same code.
 -4806 constant E-PKGDIFF-ROWTAB  \ a fixture row, or a row index, fell outside the table
 \ A definer whose name never arrives - the definer token stands at the end of
 \ the scan, or the next token is not a WORD (a comment, say) - is a defect of
@@ -119,6 +121,7 @@ variable SECTION-ACTIVE
 variable SECTION-SEEN
 variable WHOLE-CHANGED
 variable TRUNK-HIT                 \ engine-trunk path match, accumulated over the row table
+variable MIRROR-HIT                \ gforth-mirror path match, accumulated the same way
 variable SOURCE-LINE
 variable SOURCE-OFF
 variable NEW-LINE
@@ -1024,11 +1027,101 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    WHOLE-CHANGED @ if false exit then
    DEF-NAME-I @ LINT-LEX:TOKEN OLD-GLOBAL? ;
 
+\ The Gforth recovery mirror -- bootstrap/cg/forth.fs -- is the fourth principled
+\ category, and the only one where satisfying the ownership rule is not merely
+\ inconvenient but impossible.
+\
+\ What the file is.  It is the stage-0 code generator that emits a standalone
+\ native Forth without any habu binary, and it is compiled by GFORTH, not by
+\ `bin/hb`.  `package`, `public`, `private` and `;package` are habu engine words:
+\ Gforth does not have them, so a `package NAME` line in this file would abort the
+\ no-binary recovery documented in docs/bootstrap.md before it emitted anything.
+\ Every definition in it is therefore global by necessity.  The one occurrence of
+\ the bytes `;package` in the file is a string literal in the keyword table this
+\ emitter WRITES for the engine it builds, which is the opposite of the file
+\ opening a scope of its own.
+\
+\ Why the file needs an entry at all.  Measured 2026-07-30: adding a single
+\ trailing comment to the body of the existing global BCOUNT -- defining no new
+\ word and changing no behaviour -- reported
+\ `E-PACKAGE-OWNERSHIP bootstrap/cg/forth.fs:811:3`, so as configured the gate
+\ rejected every possible change to the recovery emitter.  The stage-0 `using`
+\ work (dot habu-add-using-to-d815f0ab) is the live consumer: 40 of the 44
+\ findings on that commit are this one gap.
+\
+\ Why BOTH directions are admitted, unlike the engine trunk.  ENGINE-BODY-EDIT?
+\ above admits a body edit and still reports a NEW global, and that asymmetry is
+\ earned by a fact about the trunk files: habu2.f and layout.f are compiled by
+\ `bin/hb` and already open real packages, so a genuinely new engine word has an
+\ owner it CAN join and must join.  Here there is no such owner and there never
+\ will be while the file is Gforth-hosted, so reporting a new global would be
+\ reporting a fault whose only repair breaks the recovery path.  The category
+\ therefore admits changed and new definitions alike.
+\
+\ What owns the mirror's correctness instead.  Not package scope -- the parity
+\ gates.  tools/bootstrap-codegen-test.f loads this exact path and asserts over
+\ its text at eighteen sites, tools/bootstrap-mirror-lint.f names it as the file
+\ whose absent width-aware pass makes the src/ declaration boundary a red gate,
+\ and the recovery fixtures driven by tools/bootstrap.sh run it end to end.  A
+\ definition added here is reviewed by those gates, which read what the emitter
+\ produces, and that is a stronger statement about this file than a wordlist name
+\ would be.
+\
+\ Why this exact path and not its neighbours.  There are 63 other Gforth-hosted
+\ `.fs` sources in the tree (bootstrap/cg, bootstrap/src, the bootstrap load
+\ drivers, and the two Gforth test harnesses test/nf.fs and
+\ test/bootstrap-wide-memory.fs), and all 64 were measured on 2026-07-30 by
+\ appending one global definition to each and running this lint: every one of them
+\ reports E-PACKAGE-OWNERSHIP, so the gate does scan them and none of them is
+\ admitted by accident.  They are left reporting on purpose.  The argument above
+\ has two halves -- packaging is impossible, AND named parity gates own the file's
+\ correctness instead -- and only bootstrap/cg/forth.fs has the second half today.
+\ A row is added for a sibling when a real change to it is blocked and its own
+\ compensating authority can be named, one measurement per row, which is what the
+\ exact-path rule in docs/forth.md is for.  The extension is deliberately NOT the
+\ key: `.fs` alone would admit any future file that happened to be named that way.
+\
+\ A rename or copy that makes some other file arrive AT this path is reported, the
+\ same way the trunk reports it.  The mirror is one committed file whose content
+\ the parity gates know; a wholesale replacement arriving at its path is exactly
+\ the event where that authority has not yet looked, and WHOLE-CHANGED marks no
+\ line as added, so without this the whole arriving file would ride in unread.
+\ FINISH-DEFINITION also checks SCOPE-DELTA before it consults this admission, so
+\ the impossible-but-attempted case of a `package` boundary appearing in the
+\ mirror is still reported.
+\
+\ Retirement condition.  Unlike the interim entries above this one has no
+\ packaging dot to wait for, because there is nothing to package: it retires when
+\ the recovery path stops being Gforth-hosted, that is, when bootstrap/cg/forth.fs
+\ is replaced by checked habu source that `bin/hb` compiles.
+\
+\ The path is a row table reached through ONE comparison site, for the reason the
+\ fixture row table gives: a weakening -- a suffix match, a case fold, a prefix
+\ test -- then has exactly one place to live and moves every row at once, so the
+\ hostile fixtures in tools/package-diff-lint-test.f kill it.
+1 constant MIRROR-N
+
+: MIRROR-AT ( n -- ptr u8 n ) {: row:n :}
+   row 0 < row MIRROR-N >= or if E-PKGDIFF-ROWTAB throw then
+   s" bootstrap/cg/forth.fs" ;
+
+: MIRROR-PATH? ( -- bool )
+   0 MIRROR-HIT !
+   MIRROR-N 0 ?do
+      FILE$ i MIRROR-AT LINT-STR= if 1 MIRROR-HIT ! then
+   loop
+   MIRROR-HIT @ 0 <> ;
+
+: MIRROR-EDIT? ( -- bool )
+   MIRROR-PATH? 0= if false exit then
+   WHOLE-CHANGED @ 0= ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
    ERR-VOCAB? if true exit then
    ENGINE-BODY-EDIT? if true exit then
+   MIRROR-EDIT? if true exit then
    FILE$ s" lib/adt/option.f" LINT-STR= if
       DEF-DEFINER-I @ s" ENUM" TOK=CI
       DEF-NAME-I @ s" option" TOK=CI and exit
