@@ -2825,3 +2825,15 @@ fits.
   masquerading as structural evidence, which the rules already forbid and which I
   reached for anyway because it was the quicker query. Both errors were invisible
   in the number itself: it looked like a census and was one, of the wrong thing.
+- **Being handed a problem is not being handed the lane it lives in; re-read the
+  claim at dispatch, not at planning time.** Told to drive a stop-line incident to
+  a reviewable candidate, I put a worker straight into that incident's registered
+  workspace. The claim on it named the other orchestrator's agent. I had read that
+  claim earlier the same day and quoted it back to them, so this was not ignorance
+  — "you own this problem" silently became "you own this lane" somewhere between
+  reading the assignment and writing the dispatch. Their worker was announced into
+  the same workspace five minutes later; two workers editing one tree would have
+  corrupted the only working repair for a red master. The guard is mechanical and
+  costs one command: before any dispatch, read the target dot's `Claim:` line and
+  confirm the agent name is yours. An assignment changes who is responsible for an
+  outcome, never who may write in a workspace.
