@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-07-29T19:58:29.556568+02:00"
 ---
 
-Full context: PRIORITY 1, blocks habu-fix-owner-wid-e2bc360c. EM-SNAPSHOT-COPY-DATA (src/habu/habu2.f:4057-4063) restores the DATA payload verbatim, and only RBASE-CELL, S0-CELL, ARGC/ARGV/ENVP, NDICT and CP are re-stored afterwards. Any other DATA cell holding a live region pointer keeps the WRITER's address — harmless while the region lived at a fixed VA, broken under SNAP v4. Evidence: with the region-to-text displacement matched between writer and reader, a plain snapshot image STILL crashes, indicating at least one further un-canonicalised class. Audit every DATA cell that can hold a region address, canonicalise it to the RBASE-VA sentinel on write and rebase it on restore, and add a checked regression that boots a snapshot image and asserts each such cell points inside the live region bounds.
+Full context: LATENT SOUNDNESS ITEM — demoted from priority 1 on 2026-07-29; it does NOT block habu-fix-owner-wid-e2bc360c. EM-SNAPSHOT-COPY-DATA (src/habu/habu2.f:4057-4063) restores the DATA payload verbatim, and only RBASE-CELL, S0-CELL, ARGC/ARGV/ENVP, NDICT and CP are re-stored afterwards. Any other DATA cell holding a live region pointer keeps the WRITER's address — harmless while the region lived at a fixed VA, broken under SNAP v4. Evidence: with the region-to-text displacement matched between writer and reader, a plain snapshot image STILL crashes, indicating at least one further un-canonicalised class. Audit every DATA cell that can hold a region address, canonicalise it to the RBASE-VA sentinel on write and rebase it on restore, and add a checked regression that boots a snapshot image and asserts each such cell points inside the live region bounds.
 
 Claim: agent=snaprel workspace=.jj-ws/habu-relocate-snapshot-region-752042fe
 
@@ -35,3 +35,14 @@ point they are stored, the same principle prereq A of the direct-BL campaign
 regression this dot already asks for - boot a snapshot image and assert each such
 cell points inside the live region bounds - since that is what would have
 falsified the original claim.
+
+EVIDENCE CORRECTION 2026-07-29 (implementing lane, measured): the claim above
+that a displacement-matched image STILL crashes is FALSE. The text base is
+randomised every run, so a stale DATA cell pointing into the writer's region
+would be wrong in ALL 200 runs — yet 13 of 200 boot cleanly. Therefore no DATA
+cell holding a region pointer is dereferenced on the boot path today. The
+structural statement stands (verbatim DATA restore with only six cells
+re-stored is unsound by construction); the priority does not. When fixing, use
+a declared relocation kind at the store site, not a value-band scan of DATA —
+the scan is a magic-range heuristic the review gate rejects.
+

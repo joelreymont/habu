@@ -25,3 +25,12 @@ has exactly the same six red phases before and after, so the change adds no new
 failure. As this dot already said, the fix alone does not turn
 `owner-wid-internal` green: the residual failures are the mapping collision
 (exit 78) owned by habu-relocate-snapshot-region-752042fe.
+
+LANDED 2026-07-29 on the proofs branch as commit f8ca30d4 (Validate snapshot
+names against RBASE-VA): both DBASE uses replaced with RBASE-VA, x13 verified
+free at both points. Measured on the real child path: the spurious exit-79
+(trailer corrupt on a valid image) and exit-29 classes are GONE; the residual
+failures are the probabilistic mapping collision owned by
+habu-relocate-snapshot-region-752042fe. Dot stays active until the branch is
+pushed and verified per closure procedure.
+

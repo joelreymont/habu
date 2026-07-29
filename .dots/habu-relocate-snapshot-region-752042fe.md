@@ -86,3 +86,38 @@ relocation in the BL wire format, and then stop demanding an exact address:
   4. This changes the meaning of persisted region bytes, so bump
      SNAP-FORMAT-VERSION and mirror the new pass in bootstrap/cg/forth.fs.
 Acceptance stands: a snapshot image boots to exit 0 in 200 consecutive bare runs.
+
+CORRECTED ANALYSIS 2026-07-29 (implementing lane, measured — supersedes the
+collision cause and the prescribed fix above):
+1. The collision cause above is WRONG. The hint does NOT sit too close to the
+   image: it clears the image end by ~1.7 MiB. lldb VM-map probes across six
+   runs show the runtime places a ~1.1 MiB cluster of its own mappings (shared
+   memory, malloc zone metadata, guard pages) at a RANDOMISED offset after the
+   image — measured starts +0xE90000..+0x1214000 against a hint at ~+0x100B000.
+   Collision iff the cluster lands at/above the hint. 200-run histogram: 169
+   exit 78, 18 SIGBUS, 13 clean. NO fixed offset from __TEXT is safe, which is
+   a stronger argument against widening REGION-OFF than the one above.
+2. The REGRESSION IS LOCATED: bootstrap/cg/forth.fs:4138 still carries
+   EMIT-SNAPSHOT-REBASE-CALLS — the relocation pass that walked region code,
+   matched the movz/movk/movk/blr absolute-call sequence, and rebased the
+   literal. The direct-BL campaign (habu-aot-repl-bl-a71440da, commit 1e9a3926)
+   replaced those 16-byte chains with 4-byte BLs and DELETED the relocation
+   without a BL-shaped replacement. The Gforth mirror is the surviving copy of
+   the working design.
+3. The fix prescribed above (fixed-VA region / indirection table) is REJECTED:
+   it would undo the direct-BL campaign's measured 13 percent live-code
+   reduction and reintroduce an indirect call on every prim call. The correct
+   fix, from the invariant: (a) add EM-SNAPSHOT-REBASE-CALLS to habu2.f in the
+   BL wire format — canonicalise each region-to-text BL immediate at write to
+   the distance it would have if the region sat exactly REGION-OFF above text,
+   rewrite for the live distance at restore; region-internal BLs need nothing,
+   and the two classes separate WITHOUT a value guess (canonical region-internal
+   target = non-negative region offset, canonical text target = negative);
+   (b) identify sites exactly via an emit-time site table — LCEMITBL is the
+   single emit chokepoint (three callers: C-CALL, EMIT-P2-VALID-EMIT,
+   EMIT-P2-STORE); (c) with immediates relocated, ACCEPT the kernel's returned
+   address and keep the existing BL-REACH boot assertion as the fail-closed
+   range check; exit 78 disappears; (d) bump SNAP-FORMAT-VERSION and mirror the
+   pass in bootstrap/cg/forth.fs.
+The 200-consecutive-clean-boot acceptance stands unchanged.
+
