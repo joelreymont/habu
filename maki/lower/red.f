@@ -94,7 +94,10 @@ private
 256  constant LRED-BLOCK       \ launch block size (one block per row; k <= block)
 1024 constant LRED-SMEM-BYTES  \ block reduction shared bytes (LRED-BLOCK * 4)
 
-create LRED-INS     LRED-MAX-IN cells allot   \ ordered external-input operand refs
+\ ordered external-input operand refs. A typed layout buffer, not a raw `create`
+\ array: an operand ref is a nominal cell (MIR:operand-ref), and the checker only
+\ lets a nominal reach memory through storage whose element type is that nominal.
+LRED-MAX-IN LAYOUT-BUFFER LRED-INS MIR:operand-ref
 create LRED-IN-REG  LRED-MAX-IN cells allot   \ loaded %f tile register per external input
 create LRED-IN-BC   LRED-MAX-IN cells allot   \ broadcast class per external input (maki/bcast.f)
 create LRED-NODE-REG LRED-NCAP cells allot    \ result %f register per region-member node
@@ -102,8 +105,8 @@ variable LRED-NIN                              \ region input count
 1 LAYOUT-BUFFER LRED-OUTNODE CAD-KIND:node-id  \ the single materialized region-output node (typed 1-slot cell)
 1 LAYOUT-BUFFER LRED-RID CAD-KIND:region       \ region id being lowered (typed 1-slot cell)
 
-: LRED-REF! ( MIR:operand-ref n -- )  cells LRED-INS + ! ;
-: LRED-REF@ ( n -- MIR:operand-ref )  cells LRED-INS + @ ;
+: LRED-REF! ( MIR:operand-ref n -- )  LRED-INS ! ;
+: LRED-REF@ ( n -- MIR:operand-ref )  LRED-INS @ ;
 : LRED-OUTNODE! ( CAD-KIND:node-id -- )  0 LRED-OUTNODE ! ;
 : LRED-OUTNODE@ ( -- CAD-KIND:node-id )  0 LRED-OUTNODE @ ;
 

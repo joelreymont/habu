@@ -47,3 +47,5 @@ exports, while unrelated or global same-tail role APIs such as global
 Claim RELEASED 2026-07-29: the ir0 agent is long gone (previous session) and its workspace was empty and idle on a commit predating the current chain. Its primary work (habu-add-compiler-ir-21e976fc, src/compiler/ir/id.f) is landed; this cast dot's work is NOT — the three maki suites still fail with 7135 E-CAST-OWNER. Free to claim.
 
 Update 2026-07-28 (orchestrator, suite-red mapping): the live E-CAST-OWNER 7135 rejection currently reds three maki suite phases via maki/extent.f:71 (CAST: IX>N) and :242 (CAST: >RED) inside package MAKI — maki/sampling-test.f, maki/db/artifact-test.f, and maki/eval/train.f all die rc=7135. The downstream maki cast-declaration repair (making extent.f's family casts satisfy the declaring-package authentication, or moving the cast declarations to the family's declaring package) is part of this dot's acceptance: the three maki phases must be green before it closes.
+
+Claim: agent=cast-owner workspace=.jj-ws/habu-cast-v2-family-741e7bae

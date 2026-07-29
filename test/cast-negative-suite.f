@@ -78,6 +78,29 @@ s" CNG1"  s" CNG1 ( n -- CN:cncell<n> )"             CN-CAST E-CAST-OWNER T=
 s" CNP1"  s" CNP1 ( CN:cnfam -- n )"                 CN-CAST -1 T=
 s" CNP2"  s" CNP2 ( CN:cncell<n> -- n )"             CN-CAST -1 T=
 ;package
+
+\ The families the ENGINE registers (src/core/type-family.f) are declared in the
+\ global, empty package, so the global scope is their owner and no package may
+\ mint one. This is the shape the live regression had: maki/extent.f declared
+\ `CAST: >RED ( ix<e> -- redx<e> )` inside `package MAKI`, minting the engine's
+\ `redx`, and every load of the file died with this reject. The repair moved the
+\ declaration to global scope (lib/type/extent-role.f) and moved `ix` into the
+\ same engine registration as its `extprod` and `redx` siblings.
+\ `redx` is a parametric engine family; `attn-stage-q` is an arity-0 one.
+s" CNE0"  s" CNE0 ( n -- redx<n> )"                  CN-CAST -1 T=
+s" CNE1"  s" CNE1 ( n -- attn-stage-q )"             CN-CAST -1 T=
+package CN-ENG
+s" CNE2"  s" CNE2 ( n -- redx<n> )"                  CN-CAST E-CAST-OWNER T=
+s" CNE3"  s" CNE3 ( n -- attn-stage-q )"             CN-CAST E-CAST-OWNER T=
+s" CNE4"  s" CNE4 ( redx<n> -- n )"                  CN-CAST -1 T=
+s" CNE5"  s" CNE5 ( attn-stage-q -- n )"             CN-CAST -1 T=
+\ ...and the parser mirror cannot buy that ownership back. Ending the mirror's
+\ package makes it claim top level - the engine's own definition wordlist is
+\ still CN-ENG's, so the engine family stays out of reach.
+CHECKER-END-PACKAGE
+s" CNE6"  s" CNE6 ( n -- redx<n> )"                  CN-CAST E-CAST-OWNER T=
+CHECKER-PUBLIC
+;package
 \ CHECKER-PACKAGE is a callable parser mirror, not package authority. Spoofing
 \ its supported mutator while the engine remains in the global wordlist rejects.
 s" CN" CHECKER-PACKAGE

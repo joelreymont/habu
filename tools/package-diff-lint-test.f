@@ -580,6 +580,24 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE
    TEST-DIFF-RESET s" lib/type/deftype.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS
+   \ The extent-index converter surface carries a TWO-name exception in its own
+   \ file: both converters are exempt there, a third global beside them is not,
+   \ and neither name is exempt anywhere else.
+   TEST-SOURCE-RESET
+   s" : IX>N ( -- ) ;" TEST-SOURCE-LINE
+   s" : >RED ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/type/extent-role.f" TEST-ADD-SOURCE-SECTION
+   s" the extent-index converters are admitted at their own path" T-LABEL
+   TEST-EXPECT-CLEAN
+   TEST-SOURCE-RESET
+   s" : IX>N ( -- ) ;" TEST-SOURCE-LINE
+   s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/type/extent-role.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   TEST-SOURCE-RESET
+   s" : >RED ( -- ) ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" lib/type/deftype.f" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
    TEST-SOURCE-RESET
    s" : STRUCTURE ( -- ) ;" TEST-SOURCE-LINE
    s" : UNRELATED ( -- ) ;" TEST-SOURCE-LINE

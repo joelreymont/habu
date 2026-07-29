@@ -802,6 +802,18 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    FILE$ s" lib/type/deftype.f" LINT-STR= if
       DEF-NAME-I @ s" DEFTYPE" TOK=CI exit
    then
+   \ Same shape and same reason as DEFTYPE above, forced by the checker rather
+   \ than chosen: `ix`, `extprod` and `redx` are engine-registered cell families
+   \ (src/core/type-family.f) declared in the global, empty package, and a CHECKED
+   \ cast that INTRODUCES a value into a cell family is authorized only from that
+   \ family's declaring package (src/core/checker.f CAST-OWNER?). The converter
+   \ pair for those families therefore cannot live in a package at all. These are
+   \ the only two names the file defines; a third global added beside them is
+   \ still reported.
+   FILE$ s" lib/type/extent-role.f" LINT-STR= if
+      DEF-NAME-I @ s" IX>N" TOK=CI
+      DEF-NAME-I @ s" >RED" TOK=CI or exit
+   then
    FILE$ s" src/core/structure-decl.f" LINT-STR= if
       DEF-NAME-I @ s" STRUCTURE" TOK=CI exit
    then

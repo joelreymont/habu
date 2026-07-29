@@ -2106,6 +2106,16 @@ s" rowidx"     1 TFAM-REG-CELL
 \ redx<e> is an axis marked for summation. The checker's free-vs-inner rule
 \ (checker.f EXT-REDX-BAD-ARG? at SIG-END-PARAM) rejects redx over a free factor,
 \ which is what makes the cross-sequence contraction leak unrepresentable.
+\ `ix` is the arity-1 index family the other two are written in terms of: a value
+\ of ix<e> is one cell whose phantom argument names the extent it indexes. All
+\ three belong to the SAME core-owned substrate and are registered together here.
+\ They have to be: the checked retype ix<e> -> redx<e> (lib/type/extent-role.f
+\ `>RED`) is an
+\ INTRODUCTION into redx, and the checker only authorizes an introduction from
+\ the destination family's declaring package (checker.f CAST-OWNER?). While `ix`
+\ was declared by `package MAKI` and `redx` by the core, that retype had no legal
+\ home in either package and every load of maki/extent.f threw E-CAST-OWNER.
+s" ix"         1 TFAM-REG-CELL
 s" extprod"    2 TFAM-REG-CELL
 s" redx"       1 TFAM-REG-CELL
 
