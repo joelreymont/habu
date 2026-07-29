@@ -2857,3 +2857,19 @@ fits.
   re-check — not once at the start of a stretch; and never release a claim
   naming another orchestrator's agent on local absence alone. Ask, or leave it
   claimed.
+
+- **A proof that restates its own definition proves nothing.** Measured across
+  the three compiler-substrate models: 176 published results, of which 43 are
+  explicit counterexamples or negative statements — those cannot be vacuous.
+  But some are near-restatements: `arena_push_appends` proves the push appends
+  when the model *defines* it as appending. That is scaffolding wearing the
+  costume of a result. The test for worth is: holding the model faithful, could
+  a plausible change to the Habu code falsify this? Mutate the CODE, not the
+  model. If nothing in the implementation can break it, demote it to an internal
+  lemma or delete it — publishing it in a manifest inflates apparent coverage.
+  The real value this session came from statements that could NOT be proved:
+  every one of the seven defects was found when a worker tried to state a
+  universal property and the code refused it — an operation belonging to no
+  block, two values claiming one block-argument identity, a rollback that
+  revalidates a stale index, a liveness probe that lies after a throw. Tests
+  spot-check and pass exactly where those fail. Keep fewer, sharper statements.
