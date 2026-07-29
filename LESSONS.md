@@ -3023,3 +3023,33 @@ fits.
   gets a harness context of its own, the way `ir-fun.f` already splits its
   negative cases. A claim with no reclamation path is a leak with a good
   excuse.
+
+- **`catch` restores the stack depth, not the values a locals frame consumed.**
+  A fixture that needs its arguments back after a refusal must keep them on the
+  data stack (`2dup WORD`), not bind them with `{: :}` and push them again: on
+  the throw path the locals frame is gone and `catch` hands back whatever
+  happened to be at that depth, which reads as a stale handle several fixtures
+  later. The working pattern was already in the file next to the broken one.
+
+- **A frozen-body proof fixture is a design review, not a diff nuisance.**
+  Keying operation attributes needed two pool cells per attribute, and the first
+  shape stored the ENTRY count in the window-length field and multiplied by the
+  stride inside `TILE-CK`. `ir-structure-proof.f` refused it, because
+  `formal/Common/Structure.v` is proved against those exact bodies and its
+  window length means POOL CELLS. Storing the entry count would have made the
+  model's contiguity claim false of the shipped row while every runtime test
+  stayed green. Storing the cell length instead left all four tiling bodies
+  byte-identical and moved the stride to the one place that addresses an entry.
+  When a pinned body fails, ask which of the two the model wanted before
+  reaching for the pinned string.
+
+- **Locals are single-assignment; a running accumulator needs a named cell.**
+  There is no `to` for `{: :}` locals. Three walks in the verifier carry one -
+  the window tilings, the dominator rounds, the block bisection - and each keeps
+  it in its own `variable` with a comment saying why they cannot overlap.
+
+- **In nested `?do` loops the inner index shadows the outer.** Two verifier bugs
+  were the same slip: `i` used for the outer block while `i` was the inner edge
+  index, so predecessor lists were written against the wrong block. `j` is the
+  outer index inside a nested loop. A four-block diamond fixture found both;
+  a single-block fixture would have passed.
