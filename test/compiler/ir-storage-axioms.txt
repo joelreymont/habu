@@ -1,0 +1,168 @@
+# What the compiler storage and lifetime proofs state, and what they rest on.
+#
+# One `theorem` row per published result in formal/Common/Storage.v - every
+# `Theorem` and `Corollary` it declares - in the order the file declares them,
+# which is also the order the file's own `Print Assumptions` commands query
+# them. Every `theorem` row is followed by exactly one `type` row and then by
+# its assumption rows.
+#
+# There is one assumption row per result and it is always `closed`, which is
+# Rocq reporting "Closed under the global context". The storage proofs rest on
+# nothing at all, so the gate in test/compiler/ir-storage-proof.f reads this
+# manifest with assumption rows FORBIDDEN: an `axiom` row cannot be written
+# here, and the empty set is checked a second time against what Rocq printed.
+# This is the same strength the interning manifest asks for, and stricter than
+# the identity manifest, which names the two assumptions of the host
+# compare-and-swap boundary.
+#
+# A `type` row is this file's copy of what that result states, written in the
+# environment the generated obligations file sets up: Stdlib Bool, List, Lia and
+# Arith imported, list notations imported, and Habu.Common.Storage imported last
+# so a bare name resolves to the model's own. The parity gate turns each row
+# into `Definition pinned_statement_<k> : <type row> := @<theorem name>.` in the
+# file it asks Rocq to compile, so Rocq's own type checker decides whether the
+# statement in the proof file still is the statement written here. It decides
+# that up to conversion, so renaming a bound variable is not a change but
+# weakening, strengthening, or trivialising a statement is. These rows are the
+# authority: the generated file is a build output and never reads a statement
+# out of the proof source, so changing the proof file alone cannot move the
+# target it is checked against.
+#
+# Lines starting with `#`, and blank lines, are commentary. A `type` row is
+# handed to Rocq. Every other row is compared byte for byte.
+
+theorem Habu.Common.Storage.arena_push_appends
+type forall owner a v a' i, apush owner a v = Some (a', i) -> cells a' = cells a ++ [v]
+closed
+theorem Habu.Common.Storage.arena_push_answers_the_cursor
+type forall owner a v a' i, apush owner a v = Some (a', i) -> i = acount a
+closed
+theorem Habu.Common.Storage.arena_push_preserves_reads
+type forall owner a v a' i x n, apush owner a v = Some (a', i) -> aread a x = Some n -> aread a' x = Some n
+closed
+theorem Habu.Common.Storage.arena_push_index_stays_valid
+type forall owner a v a' i k x, apush owner a v = Some (a', i) -> amint a k = Some x -> amint a' k = Some x
+closed
+theorem Habu.Common.Storage.arena_grow_preserves_reads
+type forall a a' x, agrow a = Some a' -> aread a' x = aread a x
+closed
+theorem Habu.Common.Storage.arena_grow_preserves_count
+type forall a a', agrow a = Some a' -> acount a' = acount a
+closed
+theorem Habu.Common.Storage.arena_reads_ignore_capacity
+type forall g owner cs cap1 cap2 ceil1 ceil2 fz x, aread (MkArena g owner cs cap1 ceil1 fz) x = aread (MkArena g owner cs cap2 ceil2 fz) x
+closed
+theorem Habu.Common.Storage.arena_grow_ceiling_fail_closed
+type forall a, aceil a <= acap a -> agrow a = None
+closed
+theorem Habu.Common.Storage.arena_push_at_ceiling_fail_closed
+type forall owner a v, afrozen a = false -> owner = aowner a -> acap a <= acount a -> aceil a <= acap a -> apush_step owner a v = (a, None)
+closed
+theorem Habu.Common.Storage.arena_push_failure_atomic
+type forall owner a v, apush owner a v = None -> apush_step owner a v = (a, None)
+closed
+theorem Habu.Common.Storage.arena_full_still_reads
+type forall owner a v a0 x n, apush_step owner a v = (a0, None) -> aread a x = Some n -> aread a0 x = Some n
+closed
+theorem Habu.Common.Storage.arena_push_preserves_wf
+type forall owner a v a' i, arena_wf a -> apush owner a v = Some (a', i) -> arena_wf a'
+closed
+theorem Habu.Common.Storage.arena_count_never_exceeds_ceiling
+type forall a, arena_wf a -> acount a <= aceil a
+closed
+theorem Habu.Common.Storage.arena_mark_is_own_cursor
+type forall a m, amark_of a = Some m -> mk_gen m = agen a /\ mk_cur m = acount a
+closed
+theorem Habu.Common.Storage.arena_rollback_truncates
+type forall a m a', arollback a m = Some a' -> acount a' = mk_cur m
+closed
+theorem Habu.Common.Storage.arena_rollback_keeps_below_mark
+type forall a m a' x n, arollback a m = Some a' -> idx_ord x < mk_cur m -> aread a x = Some n -> aread a' x = Some n
+closed
+theorem Habu.Common.Storage.arena_rollback_kills_above_mark
+type forall a m a' x, arollback a m = Some a' -> mk_cur m <= idx_ord x -> aread a' x = None
+closed
+theorem Habu.Common.Storage.arena_rollback_foreign_mark_rejected
+type forall a m, mk_gen m <> agen a -> arollback a m = None
+closed
+theorem Habu.Common.Storage.arena_rollback_stale_mark_rejected
+type forall a m, acount a < mk_cur m -> arollback a m = None
+closed
+theorem Habu.Common.Storage.arena_freeze_preserves_reads
+type forall a a' x, afreeze a = Some a' -> aat a' x = apeek a x
+closed
+theorem Habu.Common.Storage.arena_freeze_preserves_count
+type forall a a', afreeze a = Some a' -> acount a' = acount a
+closed
+theorem Habu.Common.Storage.arena_freeze_blocks_mutation
+type forall a a', afreeze a = Some a' -> (forall owner v, apush owner a' v = None) /\ (forall m, arollback a' m = None) /\ amark_of a' = None /\ afreeze a' = None /\ aabort a' = None
+closed
+theorem Habu.Common.Storage.arena_freeze_retires_live_reader
+type forall a a' x, afreeze a = Some a' -> apeek a' x = None
+closed
+theorem Habu.Common.Storage.arena_cross_owner_rejects
+type forall a b k x, agen b <> agen a -> amint a k = Some x -> aread b x = None
+closed
+theorem Habu.Common.Storage.arena_abort_kills_every_index
+type forall a a' k x, arena_wf a -> amint a k = Some x -> aabort a = Some a' -> aread a' x = None
+closed
+theorem Habu.Common.Storage.ctx_gen_nonzero
+type forall c g, ctake_gen c = Some g -> g <> 0
+closed
+theorem Habu.Common.Storage.ctx_gen_strictly_monotone
+type forall c g, ctake_gen c = Some g -> c < g
+closed
+theorem Habu.Common.Storage.ctx_enter_raises_counter
+type forall s base s' c, center s base = Some (s', c) -> counter s < counter s' /\ cgen c = counter s'
+closed
+theorem Habu.Common.Storage.ctx_enter_preserves_wf
+type forall s base s' c, cstate_wf s -> center s base = Some (s', c) -> cstate_wf s'
+closed
+theorem Habu.Common.Storage.ctx_gen_never_reused
+type forall s base s' c, cstate_wf s -> center s base = Some (s', c) -> cserial_live s (cgen c) = false
+closed
+theorem Habu.Common.Storage.ctx_stale_handle_rejected
+type forall s c, cserial_live s (cgen c) = false -> cresolve s c = None
+closed
+theorem Habu.Common.Storage.ctx_enter_registers_live
+type forall s base s' c, center s base = Some (s', c) -> cserial_live s' (cgen c) = true
+closed
+theorem Habu.Common.Storage.ctx_leave_truncates
+type forall s d, reg (cleave s d) = firstn d (reg s)
+closed
+theorem Habu.Common.Storage.ctx_leave_kills_from_depth
+type forall s d c i, nth_error (reg s) i = Some c -> d <= i -> (forall c', In c' (firstn d (reg s)) -> cgen c' <> cgen c) -> cserial_live (cleave s d) (cgen c) = false
+closed
+theorem Habu.Common.Storage.ctx_no_handle_survives_owner_exit
+type forall s d c i, cgens_distinct s -> nth_error (reg s) i = Some c -> d <= i -> cserial_live (cleave s d) (cgen c) = false
+closed
+theorem Habu.Common.Storage.ctx_depth_bounded
+type forall s base, depth_max <= length (reg s) -> center s base = None
+closed
+theorem Habu.Common.Storage.ctx_enter_keeps_depth_bounded
+type forall s base s' c, center s base = Some (s', c) -> length (reg s') <= depth_max
+closed
+theorem Habu.Common.Storage.scratch_take_advances
+type forall off need start off', scratch_take off need = Some (start, off') -> start = off /\ off + need <= off'
+closed
+theorem Habu.Common.Storage.scratch_spans_disjoint
+type forall off need1 start1 off1 need2 start2 off2, scratch_take off need1 = Some (start1, off1) -> scratch_take off1 need2 = Some (start2, off2) -> start1 + need1 <= start2
+closed
+theorem Habu.Common.Storage.scratch_cursor_within_mapping
+type forall off need start off', scratch_take off need = Some (start, off') -> off' <= map_bytes
+closed
+theorem Habu.Common.Storage.scratch_span_within_mapping
+type forall off need start off', scratch_take off need = Some (start, off') -> start + need <= map_bytes
+closed
+theorem Habu.Common.Storage.scratch_exhaustion_fail_closed
+type forall off need, map_bytes < off + align8 need -> scratch_take off need = None
+closed
+theorem Habu.Common.Storage.scratch_zero_size_rejected
+type forall off, scratch_take off 0 = None
+closed
+theorem Habu.Common.Storage.mint_take_bounded
+type forall minted ceil minted', minted <= ceil -> mint_take minted ceil = Some minted' -> minted' <= ceil
+closed
+theorem Habu.Common.Storage.mint_take_at_ceiling_rejected
+type forall minted ceil, ceil <= minted -> mint_take minted ceil = None
+closed

@@ -304,6 +304,14 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ the same binding has no such dependency and does run resident, as
    \ test/compiler/ir-structure-manifest.f.
    s" test/compiler/ir-structure-proof.f" q execute
+   \ compiler storage and lifetime parity gate: the third gate of the same
+   \ shape and the same Rocq dependency - it compiles formal/Common/Storage.v
+   \ and then a generated obligations file, so it fails outright where `rocq` is
+   \ not on PATH. Runs spawned in the standalone stdlib gate; the resident tier
+   \ stays free of the Rocq toolchain. The Habu half of the same binding has no
+   \ such dependency and does run resident, as
+   \ test/compiler/ir-storage-manifest.f.
+   s" test/compiler/ir-storage-proof.f" q execute
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute

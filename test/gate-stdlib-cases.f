@@ -286,6 +286,13 @@ SUITE compiler-ir-structure-proof
    test/compiler/ir-structure-proof.f
 ;SUITE
 
+\ The storage and lifetime parity gate compiles formal/Common/Storage.v with the
+\ Rocq proof assistant for the same reason, so it runs here and is documented
+\ manual-gate in tools/suite-coverage-lint-core.f alongside its two siblings.
+SUITE compiler-ir-storage-proof
+   test/compiler/ir-storage-proof.f
+;SUITE
+
 SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
 ;SUITE

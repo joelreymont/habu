@@ -407,6 +407,7 @@ public
 \ interners in src/compiler/ir. Its manifest failures are the shared
 \ E-CID-AXIOM, because both gates read one manifest grammar. Twenty codes; the
 \ next block, -6820..-6839, is the structure gate below.
+\ rest of -6860..-6999 stays unclaimed.
 -6800 constant E-CIN-FIRST
 -6819 constant E-CIN-LAST
 -6800 constant E-CIN-ROW      \ a shared interning vector index or table slot is outside its declared table
@@ -423,6 +424,17 @@ public
 -6839 constant E-CIS-LAST
 -6820 constant E-CIS-ROW      \ a shared structure vector index or table slot is outside its declared table
 -6821 constant E-CIS-STRUCT   \ a frozen structure guard - the strictly-below operand rule, a window tiling check, a call-closed guard row, or the derived terminator field - is not what the source carries
+
+\ Frozen compiler storage and lifetime parity gate (package COMPILER-STORE-PROOF):
+\ -6820..-6839. The third gate in this run of three: it binds
+\ formal/Common/Storage.v to the arena and context modules the whole compiler IR
+\ rests on, src/compiler/ir/arena.f and src/compiler/ir/context.f. Like its two
+\ neighbours its manifest failures are the shared E-CID-AXIOM, because all three
+\ gates read one manifest grammar. Twenty codes.
+-6840 constant E-CST-FIRST
+-6859 constant E-CST-LAST
+-6840 constant E-CST-ROW      \ a shared storage vector index or table slot is outside its declared table
+-6841 constant E-CST-STRUCT   \ a frozen storage structure - a pinned capacity constant, a check-before-write ordering, or a lifetime guard body - is not what the source carries
 
 \ Compiler growth region: -8000..-8999.
 \

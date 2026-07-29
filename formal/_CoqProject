@@ -9,5 +9,6 @@ Common/IdLaws.v
 Common/IdAllocatorLaws.v
 Common/Interning.v
 Common/Structure.v
+Common/Storage.v
 Common/Effects.v
 Common/Control.v
