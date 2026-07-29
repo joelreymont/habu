@@ -133,10 +133,16 @@ variable PIN-N
    s" Definition aputv (m : avm) (v : arena) : avm :=" +$ +NL
    s"   MkAVM (vA m) (vB m) (vM0 m) (vM1 m) (vX m) v (vOwner m)." +$ +NL ;
 
+\ Every step resolves its arena first, exactly as IR-ARENA:RESOLVE does, and a
+\ retired slot - generation zero, which is what IR-ARENA:ABORT writes - refuses
+\ the step whatever it was. That is the model of the handle going stale, and it
+\ is why an abort step in a row makes every later step on that arena refuse
+\ rather than only the reads of an index.
 : EMIT-ARENA-STEP ( -- )
    s" Definition astep (m : avm) (w op arg : nat) : avm * option nat :=" +$ +NL
    s"   let a := asel m w in" +$ +NL
-   s"   if Nat.eqb op 0 then" +$ +NL
+   s"   if negb (alive a) then (m, None)" +$ +NL
+   s"   else if Nat.eqb op 0 then" +$ +NL
    s"     match apush (vOwner m) a arg with" +$ +NL
    s"     | Some (a', i) => (aput m w a', Some i)" +$ +NL
    s"     | None => (m, None) end" +$ +NL
@@ -170,7 +176,11 @@ variable PIN-N
    s"      else match amint a arg with" +$ +NL
    s"           | Some x => (aputx m x, Some (idx_ord x))" +$ +NL
    s"           | None => (m, None) end)" +$ +NL
-   s"   else (m, apeek a (vX m))." +$ +NL
+   s"   else if Nat.eqb op 8 then (m, apeek a (vX m))" +$ +NL
+   s"   else" +$ +NL
+   s"     match aabort a with" +$ +NL
+   s"     | Some a' => (aput m w a', Some 0)" +$ +NL
+   s"     | None => (m, None) end." +$ +NL
    s" Fixpoint arun (m : avm) (steps : list (nat * nat * nat))" +$ +NL
    s"   : list (option nat) :=" +$ +NL
    s"   match steps with" +$ +NL
@@ -275,6 +285,41 @@ variable PIN-N
 : EMIT-CROWS ( -- )
    CSCENARIOS 0 ?do i EMIT-CROW loop ;
 
+\ ---- one nesting depth row ---------------------------------------------------
+\ The nesting itself is `Habu.Common.Storage`'s own `dnest` and `dprobe`, not a
+\ machine written here: `dnest` opens the row's number of contexts one inside
+\ another and answers nothing at all if any of them is refused, so `dprobe n =
+\ Some b` already carries the claim that all n went in, and b is what the entry
+\ after them does.
+\
+\ The row's proof runs through `ctx_nesting_stops_at_depth_max` rather than by
+\ computation. That is not a convenience: `nat` is unary and the model's
+\ generation ceiling is two billion, so any tactic that forces the ceiling into
+\ constructor form takes over a minute per row. The theorem keeps the ceiling
+\ symbolic, which is why it also carries `depth_max < gen_max` - stated on the
+\ row as well, and recorded as MODEL GAP 11 in the model itself. Both numbers
+\ are pinned to the shipped source by the capacity rows above.
+\
+\ The tactic never decides the answer: it rewrites the row's left side into
+\ `Some (Nat.ltb <depth> depth_max)` and then the comparison with what the row
+\ recorded is what has to hold. A row that recorded the wrong side of the limit,
+\ or a depth past it, fails here.
+
+: EMIT-DROW ( n -- ) {: s:n :}
+   s" Example context_depth_" +$ s +N s"  :" +$ +NL
+   s"   depth_max < gen_max -> dprobe " +$ s DSCN-DEPTH@ +N s"  = Some " +$
+   s DSCN-CLASS@ 0 = if s" true" +$ else s" false" +$ then
+   s" ." +$ +NL
+   s" Proof." +$ +NL
+   s"   intros Hroom." +$ +NL
+   s"   rewrite ctx_nesting_stops_at_depth_max" +$ +NL
+   s"     by (unfold depth_max in *; lia)." +$ +NL
+   s"   reflexivity." +$ +NL
+   s" Qed." +$ +NL ;
+
+: EMIT-DROWS ( -- )
+   DSCENARIOS 0 ?do i EMIT-DROW loop ;
+
 public
 
 : START ( -- )
@@ -287,7 +332,8 @@ public
    EMIT-ARENA-INIT
    EMIT-CTX-MACHINE
    EMIT-ROWS
-   EMIT-CROWS ;
+   EMIT-CROWS
+   EMIT-DROWS ;
 
 \ One theorem from the committed manifest, pinned to the statement the manifest
 \ says it makes. The manifest's `type` row is written out as the ascribed type of

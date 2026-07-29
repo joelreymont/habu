@@ -89,6 +89,17 @@
       also reject a NEGATIVE counter (context.f:139, arena.f:145), which `nat`
       cannot represent, so that half of each guard is invisible here.
 
+  11. `depth_max < gen_max` is assumed, not computed.  `nat` is unary and
+      `gen_max` is 2147483647, so any computation that forces the generation
+      ceiling into constructor form takes over a minute; every other proof in
+      this file keeps the ceiling symbolic, which is why they are all fast.
+      The nesting results below therefore take `depth_max < gen_max` as a
+      hypothesis.  The two numbers are 64 and 2147483647 and both are pinned to
+      the shipped source by the capacity rows in
+      test/compiler/ir-storage-schema.f, so the hypothesis is a true fact about
+      two checked constants; it is simply not one this representation can be
+      asked to decide.
+
    ------------------------------------------------------------------------
    BINDING GAPS
 
@@ -99,23 +110,29 @@
    is weak, the theorem is still a claim about the design but the gate would
    not catch the code drifting away from it.
 
-   B1. IR-ARENA:ABORT is not exercised at all.  Deleting the `0 slot AGEN!`
-       that retires the slot leaves the gate GREEN, so nothing binds
-       `arena_abort_kills_every_index` to the code.  There is no abort step in
-       the arena vector vocabulary in test/compiler/ir-storage-schema.f, and
-       ABORT is not one of the frozen guard bodies.
+   All three gaps recorded here before have since been closed by rows, and each
+   closure was checked the same way it was found: break the code, watch the gate
+   go red on the new row, put the code back, watch it go green again.
 
-   B2. IR-CTX:DEPTH-ROOM is not exercised.  Raising its bound past DEPTH-MAX
-       leaves the gate GREEN, so `ctx_depth_bounded` and
-       `ctx_enter_keeps_depth_bounded` are bound only through the pinned
-       DEPTH-MAX literal, not through a nesting that actually reaches it.
+   B1. CLOSED.  IR-ARENA:ABORT is driven by the `abort` row.  It pushes a cell,
+       keeps its index, reads it, aborts the arena and reads the same index
+       again, which must now be refused, while the second arena carries on
+       working.  Deleting the `0 slot AGEN!` that retires the slot now makes
+       that read answer the cell again and the row fails.
 
-   B3. Some rows are pinned structurally rather than behaviourally.  Removing
-       the generation compare from IR-ARENA:ROLLBACK reds the gate only on the
-       frozen guard body, not on a vector row, because no row rolls one arena
-       back with the other arena's mark.  So
-       `arena_rollback_foreign_mark_rejected` and
-       `arena_foreign_mark_corrupts_cursor` are guarded by frozen text alone.
+   B2. CLOSED.  IR-CTX:DEPTH-ROOM is driven by the two nesting depth rows.  One
+       opens 63 contexts inside one another and requires the next entry to be
+       accepted; the other opens 64 and requires the next entry to be refused
+       with E-IR-CTX-DEPTH.  Raising the bound fails the second row and lowering
+       it fails the first, so the limit is pinned from both sides rather than
+       only through the DEPTH-MAX literal.
+
+   B3. CLOSED for the mark comparison.  The `foreign_mark` row rolls one arena
+       back with a mark the other arena minted, requires E-IR-ARENA-OWNER, and
+       then shows the first arena's cursor and cells untouched and its own mark
+       still accepted.  Removing the generation compare from IR-ARENA:ROLLBACK
+       now fails that row on behaviour, not only the frozen guard body: with the
+       compare gone the first arena truncates to the other one's cursor.
 
    ------------------------------------------------------------------------
    FINDINGS — three claims in the source comments that these proofs do not
@@ -203,6 +220,16 @@ Record arena : Type := MkArena {
 }.
 
 Definition acount (a : arena) : nat := length (cells a).
+
+(* Whether the registry slot behind this arena is still installed.  A retired
+   slot holds generation zero (arena.f:346, and arena.f:176-177 for a slot whose
+   owner died), and IR-ARENA:RESOLVE throws E-IR-ARENA-STALE on it before any
+   word looks at a cursor or a pointer.  This is the decidable form of the live
+   clause of `arena_wf`, and it is what the generated vector machine in
+   test/compiler/ir-storage-obligations.f consults before every step, so that an
+   aborted arena refuses everything on the model side exactly as the shipped
+   word does. *)
+Definition alive (a : arena) : bool := negb (Nat.eqb (agen a) 0).
 
 (* A minted index and a mark.  Both are (generation, ordinal) pairs that name
    the arena that minted them: IR-ARENA:MINT-IDX (arena.f:206) and
@@ -1114,6 +1141,122 @@ Proof.
   lia.
 Qed.
 
+(* ---- the nesting the depth vector rows drive --------------------------- *)
+
+(* Opening one context inside another, starting from an empty registry.
+   `dnest` answers nothing at all if any entry on the way in is refused, so
+   `dprobe n = Some b` already carries the claim that all n entries were
+   accepted, and b is what the entry after them does.  These are the shape
+   test/compiler/ir-storage-obligations.f asks Rocq about, on the same frozen
+   rows test/compiler/ir-storage-cases.f opens for real through
+   IR-CTX:WITH-CONTEXT. *)
+Fixpoint dnest (s : cstate) (n : nat) : option cstate :=
+  match n with
+  | 0 => Some s
+  | S k =>
+      match center s 0 with
+      | Some (s', _) => dnest s' k
+      | None => None
+      end
+  end.
+
+Definition dprobe (n : nat) : option bool :=
+  match dnest (MkCState 0 []) n with
+  | None => None
+  | Some s =>
+      match center s 0 with
+      | Some _ => Some true
+      | None => Some false
+      end
+  end.
+
+(* Below the registry depth every entry still has a generation to take.  The
+   generation ceiling is two billion and this model counts in `nat`, so
+   `depth_max < gen_max` is carried as a hypothesis rather than computed; see
+   MODEL GAP 11. *)
+Lemma ctake_gen_below_depth :
+  forall c, depth_max < gen_max -> c <= depth_max -> ctake_gen c = Some (S c).
+Proof.
+  intros c Hroom Hle.
+  unfold ctake_gen.
+  replace (Nat.ltb c gen_max) with true; [reflexivity |].
+  symmetry.
+  apply Nat.ltb_lt.
+  lia.
+Qed.
+
+(* Machinery: below the registry depth every entry is accepted, and each one
+   spends exactly one generation and one registry slot. *)
+Lemma dnest_shape :
+  forall n s,
+    depth_max < gen_max ->
+    length (reg s) + n <= depth_max ->
+    counter s + n <= depth_max ->
+    exists s', dnest s n = Some s'
+               /\ counter s' = counter s + n
+               /\ length (reg s') = length (reg s) + n.
+Proof.
+  induction n as [| k IH]; intros s Hroom Hlen Hcnt.
+  - exists s.
+    simpl.
+    repeat split; lia.
+  - simpl.
+    unfold center.
+    destruct (Nat.leb depth_max (length (reg s))) eqn:Hfull.
+    + apply Nat.leb_le in Hfull.
+      lia.
+    + rewrite ctake_gen_below_depth by lia.
+      destruct (IH (MkCState (S (counter s))
+                             (reg s ++ [MkCtx (S (counter s)) 0])))
+        as [s' [H1 [H2 H3]]].
+      * exact Hroom.
+      * simpl.
+        rewrite length_app.
+        simpl.
+        lia.
+      * simpl.
+        lia.
+      * exists s'.
+        simpl in H2, H3.
+        rewrite length_app in H3.
+        simpl in H3.
+        rewrite H1.
+        repeat split; lia.
+Qed.
+
+(* The published form: nesting from empty never stalls before the registry
+   depth, and the entry that follows exactly `n` of them is accepted precisely
+   while n is still below that depth.  IR-CTX:DEPTH-ROOM is the whole content
+   here, so this is the statement the two depth vector rows instantiate. *)
+Theorem ctx_nesting_stops_at_depth_max :
+  forall n,
+    depth_max < gen_max ->
+    n <= depth_max ->
+    dprobe n = Some (Nat.ltb n depth_max).
+Proof.
+  intros n Hroom Hle.
+  unfold dprobe.
+  destruct (dnest_shape n (MkCState 0 []) Hroom) as [s [H1 [H2 H3]]];
+    simpl; try lia.
+  simpl in H2, H3.
+  rewrite H1.
+  unfold center.
+  rewrite H3.
+  destruct (Nat.leb depth_max n) eqn:Hfull.
+  - apply Nat.leb_le in Hfull.
+    replace (Nat.ltb n depth_max) with false; [reflexivity |].
+    symmetry.
+    apply Nat.ltb_ge.
+    exact Hfull.
+  - apply Nat.leb_gt in Hfull.
+    rewrite H2.
+    rewrite ctake_gen_below_depth by lia.
+    replace (Nat.ltb n depth_max) with true; [reflexivity |].
+    symmetry.
+    apply Nat.ltb_lt.
+    exact Hfull.
+Qed.
+
 (* ---- 10. SCRATCH MONOTONICITY ----------------------------------------- *)
 
 (* IR-CTX:ALIGN8 (context.f:397-398).  The cursor always advances by at least
@@ -1508,6 +1651,7 @@ Print Assumptions ctx_no_handle_survives_owner_exit.
 Print Assumptions ctx_leave_kills_the_mapping_handle.
 Print Assumptions ctx_depth_bounded.
 Print Assumptions ctx_enter_keeps_depth_bounded.
+Print Assumptions ctx_nesting_stops_at_depth_max.
 Print Assumptions scratch_spans_disjoint.
 Print Assumptions scratch_span_within_mapping.
 Print Assumptions scratch_exhaustion_fail_closed.

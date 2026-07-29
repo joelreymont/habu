@@ -5,7 +5,7 @@
 \ (src/compiler/ir/arena.f) and `IR-CTX` (src/compiler/ir/context.f) - and the
 \ machine-checked model of that layer in `formal/Common/Storage.v`.
 \
-\ It holds data and nothing else. Five tables:
+\ It holds data and nothing else. Six tables:
 \
 \   1. The pinned capacity constants. The model states the seed span, the
 \      mapping size, the registry depth, the generation ceiling and the slot
@@ -41,6 +41,13 @@
 \
 \   5. The context vector rows. The same idea for the scratch bump allocator and
 \      the module-serial budget.
+\
+\   6. The nesting depth rows. A row names how many contexts to open one inside
+\      another and what the next entry after them must do: be accepted, or be
+\      refused with an exact throw code. Two rows put the registry's depth limit
+\      between them, so raising or lowering that limit makes one of them
+\      disagree. The cases file opens the contexts for real, and the obligations
+\      file asks Rocq the same question about the model's own nesting.
 \
 \ Where the two sides are not literally the same shape, and why that is sound:
 \
@@ -279,7 +286,8 @@ public
 6 constant OP-AT            \ read through the frozen view
 7 constant OP-KEEP          \ mint and keep the index at the argument ordinal
 8 constant OP-READ          \ read the kept index in this arena
-9 constant OP-COUNT
+9 constant OP-ABORT         \ consume the builder without publishing; answers 0
+10 constant OP-COUNT
 
 0 constant COP-SCRATCH      \ bump-allocate the argument bytes; answers the used total
 1 constant COP-MINT         \ mint one module identity; answers the minted total
@@ -299,7 +307,10 @@ public
 4 constant ROLE-CROSS       \ an index minted by one arena is refused by the other
 5 constant ROLE-SCRATCH     \ bump allocation is monotone and bounded by the mapping
 6 constant ROLE-BUDGET      \ the module-serial budget is spent exactly once
-7 constant ROLE-COUNT
+7 constant ROLE-ABORT       \ aborting retires the arena, and every index dies with it
+8 constant ROLE-FMARK       \ one arena refuses a mark another arena minted
+9 constant ROLE-DEPTH       \ nesting contexts stops exactly at the registry depth
+10 constant ROLE-COUNT
 
 : ROLE-NAME$ ( n -- ptr u8 n )
    case
@@ -310,6 +321,9 @@ public
       4 of s" cross_owner" endof
       5 of s" scratch" endof
       6 of s" budget" endof
+      7 of s" abort" endof
+      8 of s" foreign_mark" endof
+      9 of s" depth" endof
       E-CST-ROW throw
    endcase ;
 
@@ -349,6 +363,11 @@ variable CSTEP-N
 variable CSCN-N
 variable COPEN-BASE
 
+create DSCN-DEPTH SCN-CAP cells allot
+create DSCN-CLASS SCN-CAP cells allot
+
+variable DSCN-N
+
 : STEP-RANGE ( n -- ) {: i:n :}
    i 0 < i STEP-N @ >= or if E-CST-ROW throw then ;
 
@@ -360,6 +379,9 @@ variable COPEN-BASE
 
 : CSCN-RANGE ( n -- ) {: i:n :}
    i 0 < i CSCN-N @ >= or if E-CST-ROW throw then ;
+
+: DSCN-RANGE ( n -- ) {: i:n :}
+   i 0 < i DSCN-N @ >= or if E-CST-ROW throw then ;
 
 \ ---- arena table builders ----------------------------------------------------
 \ One step: which arena it addresses, the operation, its argument, the answer it
@@ -476,6 +498,38 @@ variable COPEN-BASE
       OP-USED 0 1 B-OK
    ROLE-CROSS 8 ;SEQ ;
 
+\ Aborting consumes the builder and retires its registry slot at once, so the
+\ index kept before the abort stops resolving and the handle itself is stale. The
+\ other arena is untouched, which is what makes this the arena's own death and
+\ not the whole registry's.
+: ABORT-ROW ( -- )
+   SEQ
+      OP-PUSH 11 0 A-OK
+      OP-KEEP 0 0 A-OK
+      OP-READ 0 11 A-OK
+      OP-ABORT 0 0 A-OK
+      OP-READ 0 E-IR-ARENA-STALE A-NO
+      OP-PUSH 21 0 B-OK
+      OP-USED 0 1 B-OK
+   ROLE-ABORT 8 ;SEQ ;
+
+\ A mark names the arena that minted it. Arena A refuses arena B's mark before
+\ the cursor moves, and A's own cursor and cells are exactly what they were; then
+\ A's own mark is accepted, so the refusal is the mark's owner and not the arena
+\ having stopped accepting rollbacks.
+: FMARK-ROW ( -- )
+   SEQ
+      OP-PUSH 11 0 A-OK
+      OP-PUSH 12 1 A-OK
+      OP-PUSH 21 0 B-OK
+      OP-MARK 1 1 B-OK
+      OP-ROLL 1 E-IR-ARENA-OWNER A-NO
+      OP-USED 0 2 A-OK
+      OP-PEEK 1 12 A-OK
+      OP-MARK 0 2 A-OK
+      OP-ROLL 0 2 A-OK
+   ROLE-FMARK 8 ;SEQ ;
+
 : BUILD-ARENA-ROWS ( -- )
    0 STEP-N !
    0 SCN-N !
@@ -483,7 +537,9 @@ variable COPEN-BASE
    CEILING-ROW
    ROLLBACK-ROW
    FREEZE-ROW
-   CROSS-ROW ;
+   CROSS-ROW
+   ABORT-ROW
+   FMARK-ROW ;
 
 \ ---- context table builders --------------------------------------------------
 
@@ -551,8 +607,29 @@ variable COPEN-BASE
    SCRATCH-ROW
    BUDGET-ROW ;
 
+\ ---- the nesting depth rows --------------------------------------------------
+\ A row is a number of contexts to open one inside another, and what the entry
+\ after them must do. The two rows below sit either side of the registry's depth
+\ limit: at one context below the limit the next entry is still accepted, and at
+\ the limit itself it is refused by name. Raising the limit makes the second row
+\ answer nothing where a refusal was recorded, and lowering it makes the first
+\ row answer a refusal where an acceptance was recorded, so the pair pins the
+\ limit rather than any one side of it.
+
+: DROW+ ( n n -- ) {: depth:n class:n :}
+   DSCN-N @ SCN-CAP >= if E-CST-ROW throw then
+   depth DSCN-DEPTH DSCN-N @ cells + !
+   class DSCN-CLASS DSCN-N @ cells + !
+   DSCN-N @ 1+ DSCN-N ! ;
+
+: BUILD-DEPTH-ROWS ( -- )
+   0 DSCN-N !
+   63 0 DROW+
+   64 E-IR-CTX-DEPTH DROW+ ;
+
 BUILD-ARENA-ROWS
 BUILD-CTX-ROWS
+BUILD-DEPTH-ROWS
 
 public
 
@@ -582,5 +659,10 @@ public
 : CSTEP-ARG@ ( n -- n )     dup CSTEP-RANGE cells CSTEP-ARG + @ ;
 : CSTEP-ANS@ ( n -- n )     dup CSTEP-RANGE cells CSTEP-ANS + @ ;
 : CSTEP-CLASS@ ( n -- n )   dup CSTEP-RANGE cells CSTEP-CLASS + @ ;
+
+: DSCENARIOS ( -- n )       DSCN-N @ ;
+
+: DSCN-DEPTH@ ( n -- n )    dup DSCN-RANGE cells DSCN-DEPTH + @ ;
+: DSCN-CLASS@ ( n -- n )    dup DSCN-RANGE cells DSCN-CLASS + @ ;
 
 ;package

@@ -33,7 +33,9 @@
 \     a kept index must follow the keep, and a rollback must follow the mark it
 \     names. Without those a row could quietly ask nothing.
 \
-\   - every vector row, driven through the real `IR-CTX` and `IR-ARENA` words.
+\   - every vector row, driven through the real `IR-CTX` and `IR-ARENA` words:
+\     the arena and context step rows, and the nesting depth rows, which open
+\     real contexts one inside another until the registry's limit is in sight.
 \     The same rows become Rocq obligations in
 \     `test/compiler/ir-storage-obligations.f`; this file never restates them.
 \
@@ -306,7 +308,7 @@ private
    CSCENARIOS 0 ?do
       i CSCN-ROLE@ role = if true unloop exit then
    loop
-   false ;
+   role ROLE-DEPTH = DSCENARIOS 0 > and ;
 
 : OP-USED-BY-ROW? ( n -- bool ) {: op:n :}
    STEPS 0 ?do
@@ -446,8 +448,9 @@ private
    op OP-FREEZE = if t FREEZE-DO exit then
    op OP-AT = if st AT-DO exit then
    op OP-KEEP = if t st KEEP-DO exit then
-   op OP-READ <> if E-CST-ROW throw then
-   t IX @ IR-ARENA:PEEK ;
+   op OP-READ = if t IX @ IR-ARENA:PEEK exit then
+   op OP-ABORT <> if E-CST-ROW throw then
+   t IR-ARENA:ABORT 0 ;
 
 \ A caught quotation cannot read the enclosing word's locals, so the step carries
 \ everything it needs on the data stack and hands its answer back in the slot it
@@ -526,6 +529,55 @@ private
       c s CSCN-BASE@ i + CROW-STEP
    loop ;
 
+\ ---- the nesting depth rows --------------------------------------------------
+\ Entering a context is a scoped combinator, so reaching a given nesting depth
+\ means nesting that many times rather than looping. The nester reaches itself
+\ through a forward reference and hands the innermost frame to the probe. Only
+\ the probe catches, so an entry refused at a shallower depth escapes the whole
+\ nest and is reported as such instead of being read as the probe's answer, and
+\ the probe records that it ran at all, so a row cannot pass by never arriving.
+
+variable NEST-LEFT
+variable PROBE-RC
+variable PROBE-HIT
+
+: IDLE ( IR-CTX:ctx -- )
+   drop ;
+
+: ENTER-ONE ( -- )
+   BND [: IDLE ;] IR-CTX:WITH-CONTEXT ;
+
+: PROBE ( -- )
+   [: ENTER-ONE ;] catch PROBE-RC !
+   1 PROBE-HIT ! ;
+
+defer NEST-XT ( -- )
+
+: DEEPER ( IR-CTX:ctx -- )
+   drop NEST-XT ;
+
+: NEST-ONE ( -- )
+   NEST-LEFT @ 0= if PROBE exit then
+   NEST-LEFT @ 1- NEST-LEFT !
+   BND [: DEEPER ;] IR-CTX:WITH-CONTEXT ;
+
+: NEST-INSTALL ( -- )
+   [: NEST-ONE ;] is NEST-XT ;
+
+NEST-INSTALL
+
+: DEPTH-ROW ( n -- ) {: row:n :}
+   row DSCN-DEPTH@ NEST-LEFT !
+   0 PROBE-HIT !
+   -1 PROBE-RC !
+   [: NEST-ONE ;] catch {: rc:n :}
+   s" opening the frozen number of nested contexts throws nothing itself" T-LABEL
+   rc 0 T=
+   s" the innermost entry attempt actually ran" T-LABEL
+   PROBE-HIT @ 1 T=
+   s" one more context entry answers what the shared depth row records" T-LABEL
+   PROBE-RC @ row DSCN-CLASS@ T= ;
+
 public
 
 : VECTORS ( -- )
@@ -536,7 +588,8 @@ public
    CSCENARIOS 0 ?do
       i CCUR !
       BND i CSCN-CEIL@ [: CROW-BODY ;] IR-CTX:WITH-CONTEXT-BOUND
-   loop ;
+   loop
+   DSCENARIOS 0 ?do i DEPTH-ROW loop ;
 
 : HABU-SIDE ( -- )
    CONSTANTS

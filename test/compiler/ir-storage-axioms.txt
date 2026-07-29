@@ -124,6 +124,9 @@ closed
 theorem Habu.Common.Storage.ctx_enter_keeps_depth_bounded
 type forall s base s' c, center s base = Some (s', c) -> length (reg s') <= depth_max
 closed
+theorem Habu.Common.Storage.ctx_nesting_stops_at_depth_max
+type forall n, depth_max < gen_max -> n <= depth_max -> dprobe n = Some (Nat.ltb n depth_max)
+closed
 theorem Habu.Common.Storage.scratch_spans_disjoint
 type forall off need1 start1 off1 need2 start2 off2, scratch_take off need1 = Some (start1, off1) -> scratch_take off1 need2 = Some (start2, off2) -> start1 + need1 <= start2
 closed
