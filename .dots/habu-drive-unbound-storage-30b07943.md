@@ -122,16 +122,19 @@ model's `args_ck`. It should be dotted.
 
 ### The wider suite
 
-`./bin/hb --load test/gate-stdlib.f` was run before and after. It reports red
-phases rather than a fixed set of six: the run taken as the baseline for this
-work had one red phase, `compiler-ir-id`; the run after the changes had two,
-`compiler-ir-id` and `check-cli-boundary`. Neither is in a file this work
-touched, and both pass on their own — `./bin/hb --load test/compiler/ir-id.f`
-and `./bin/hb --load tools/check-test.f` are green, twice each. They fail only
-inside the parallel pool, and `check-cli-boundary` had already taken 80
-seconds to pass in the baseline pool run against 50 seconds standalone, so
-these are timing flakes in the pool rather than a change in what the suite
-proves. This is reported as measured rather than smoothed over.
+`./bin/hb --load test/gate-stdlib.f` reports red phases rather than a fixed
+set of six. The red set is UNCHANGED by this work, and that was measured
+directly rather than inferred: the suite was run twice on the finished tree
+and once on the unmodified parent change (checked out on its own, then put
+back), and all three runs gave exactly the same two red phases,
+`check-cli-boundary` and `compiler-ir-id`.
+
+Neither is in a file this work touches, and both pass on their own —
+`./bin/hb --load test/compiler/ir-id.f` and `./bin/hb --load tools/check-test.f`
+are green when run directly. They fail only inside the parallel pool, and
+`check-cli-boundary` takes 80 seconds there against 50 seconds standalone, so
+they look like timing flakes under pool load. They are pre-existing and not
+mine to fix here, but they are worth a dot of their own.
 
 Also green on the final tree: `test/compiler/ir-storage-proof.f`,
 `test/compiler/ir-storage-manifest.f`, `test/compiler/ir-structure-proof.f`,
