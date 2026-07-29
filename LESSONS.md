@@ -409,7 +409,7 @@ fits.
   compiler: mirror load/path/provide/label rows in `bootstrap/cg/forth.fs`, concatenate
   in `tools/bootstrap.sh` (SRC_COMMON), and update `build-fixpoint.f` (CHECKER-BOOT/
   COMMON/SNAP-KEEP), `boot-pin.f`, `diagnose-hb-core.f` (+ count in its test),
-  `hb-build-lib.f` key list, `test/run-files.f`, `FILEMAP.md`, and pinned row counts
+  `hb-build-lib.f` key list, `test/run-files.f`, and pinned row counts
   (`boot-pin-test.f` PFX-LOAD-ROW, `diagnose-hb-test.f` common-source, `bootstrap-codegen-test.f`).
   The codegen test's expected rows are the order proof, not bookkeeping: update its
   exact native, recovery, and fixpoint sequences whenever a prefix owner is added.
@@ -692,10 +692,8 @@ fits.
 - **Repo lints, the lint tokenizer, and whole-source readers all carry a
   largest-file capacity watermark, and an uncaught positive throw dies SILENT.**
   Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint, trust-lint, trusted-inventory,
-  maki-dep-lint, error-code-lint), the tokenizer `TMAX` ($6000→$8000), and `filemap-lint`
-  `FM-BUF-CAP` all trip "file exceeds buffer" as `checker.f` grows (it is the largest).
-  `filemap-lint` `INTERN-MAX` ($200) sat below FILEMAP.md's backticked-path count → rc 76,
-  ZERO output, a bogus downstream artifact, masked by any `| tail; echo $?` pipe. Rules:
+  maki-dep-lint, error-code-lint) and the tokenizer `TMAX` ($6000→$8000) all trip
+  "file exceeds buffer" as `checker.f` grows (it is the largest). Rules:
   size caps from the real corpus with the driver NAMED in a comment; sweep EVERY READ-FILE
   cap in one pass when a named file trips one; route lint CLIs through `LINT-MAIN` (catch,
   print `tool: threw <code> (<name>)`, re-throw); the shared `LINT-READ-DIE` prints the
@@ -740,16 +738,14 @@ fits.
   MAIN-CHECKOUT-ONLY latent red workers never see (their trees contain no `.jj-ws`). Fixed
   at the root (`lib/fs.f` skip list); add new conventional untracked dirs there when
   introduced.
-- **Stdlib files have three registry points (source file, `lib/std.manifest`,
-  `FILEMAP.md`) plus `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
+- **Stdlib files need their source file and a `lib/std.manifest` row, plus
+  `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
   `tools/public-signatures.f` output EXACTLY (`TRUSTED:`/constants get no row; effect must
   sit immediately after the word name, before `{: :}` locals, or it is invisible). Keep an
   unavoidable trusted seam private behind an ordinary checked public wrapper so the general
   signature drift gate owns the public manifest row and `TRUSTED.md` owns only the raw seam.
-  Miss the
-  manifest → direct manifest gate fails; miss FILEMAP.md → derived filemap-lint fails (every
-  .f/.fs under src/tools/test/lib must be listed or a committed exclusion). The lint-manifest
-  slice is the OWNING gate a new-lib lane must run (host/filemap/trust/coverage do NOT cover
+  Miss the manifest and the direct manifest gate fails. The lint-manifest
+  slice is the OWNING gate a new-lib lane must run (host/trust/coverage do NOT cover
   it). `lib/` subdirs (`lib/ptx/`) are research sub-libraries: gate `SMT-COLLECT-LIB-FILE`
   on `SMT-LIB-FILE?` (flat `lib/<module>.f` only) so coverage tracks flat modules; nested
   dirs stay trust-audited + `-test.f` + gate-covered but out of the curated manifest
@@ -789,6 +785,11 @@ fits.
   the source buffer cut a repo scan 33s→0.9s
   / a 400KB stage2 file 40s→2s, byte-identical output; use raw `parse-name` for definer
   payloads so `(CMP)` isn't mistaken for a comment.
+- **Engine-parity lexers need one delimiter predicate.** Native `parse-name`
+  splits every byte at or below space; using the narrower lint whitespace set
+  let a vertical tab merge top-level words and expose a false `PRIM;` inside a
+  row comment. Share the engine predicate across word, comment, and row scans,
+  and test every control delimiter the narrower set omits.
 - **Token equality is not site classification.** Source-lex records kill comment/string
   false positives, but name-position refs still count (`: TRUSTED:` needed a
   definer-ref filter). Token lints must match dictionary-significant words
@@ -916,9 +917,9 @@ fits.
   `E-CUDA`) the moment a device appeared. A device suite is proven only by an on-device run;
   every device tool's top-level entry probes `CUDA:OPEN?`, prints a recorded SKIP line, exits
   (the GB-ALL shape) so it composes into host suites; prefer self-emit + fail-closed throws
-  over prebuilt /tmp artifacts, and key device legs on the probed device-FFI capability. A
-  new `maki/*-device-test.f` needs NO lint registration (filemap-lint walks src/tools/test/lib
-  only) — keep it OUT of `maki/test.f` (needs CUDA) and device-PROVEN before adding anywhere.
+  over prebuilt /tmp artifacts, and key device legs on the probed device-FFI capability. Keep
+  a new `maki/*-device-test.f` OUT of `maki/test.f` (needs CUDA) and device-PROVEN
+  before adding it anywhere.
 - **PTX/emitter shape tests are NOT assembler proof.** `ptxas` rejects undeclared predicates
   above `%p15` and stale resource pools (`%p<8>` when the emitter now needs `%p21`); a text
   fixture rendered plausible text that never assembled. Keep the text fixture, then assemble
@@ -969,17 +970,7 @@ fits.
   inside its own package makes the forked child's `package X` a NESTED-package
   reject (exit 75) instead of the behavior under test (weight-store's seal probe
   expected SEAL-PACKAGE 84); close the package and call `PKG:RUN` from top level
-  (the json-read-test arrangement). Same fork-inheritance class: a gate child
-  inherits the pool's argv, so a gate row that GSI-INCLUDEs a strict-argv CLI
-  file (`tools/enum-census.f` under `--pool-slots 1`) dies on usage before doing
-  any work — gates call an argv-free library word (`ENUM-CENSUS:VERIFY-COMMITTED`)
-  and leave CLI files to humans.
-- **The plain-ENUM census is a change-time ratchet: adding any `.f` file bumps
-  `WALKED-FILES`, adding a plain ENUM re-records the baseline.** Re-record to a
-  scratch path, then prove the change is only yours with an ordinal-normalized
-  diff — the report keys sites by a walk-order scratch package (`ctor=ECn-…`),
-  so inserting one file renumbers every later site and the RAW diff looks like a
-  mass divergence when the real delta is one line.
+  (the json-read-test arrangement).
 
 - **A new file / TRUSTED word / candidate case each trips a specific manifest the
   focused suite never shows — only `test/run.f` does.** (1) A **flat `lib/*.f`**
@@ -994,9 +985,8 @@ fits.
   (`prim-axiom …`). (3) New **`test/candidate-validation.f`** cases must bump the
   whitebox counts in `test/candidate-validation-test.f` (`s" test/` total, and the
   `construct case-kind positive|negative` counts) and add PATH-PIN + DIRECT-PIN
-  rows. (4) Any walked-root `.f` (src/tools/test/lib/bootstrap) needs a
-  `FILEMAP.md` row (`filemap-lint`). Run `test/run.f` before claiming green; a
-  clean focused suite hides all four.
+  rows. Run `test/run.f` before claiming green; a clean focused suite hides all
+  three.
 - **A property test pinning a TRANSITIONAL invariant must be revisited the moment
   the capability it anticipates starts being used for real.** `test/pre-trust-defer.f`
   COMPAT-MISS-CASE asserted that an engine lacking the DRAIN-PRETRUST prim BOOTS
@@ -1876,7 +1866,7 @@ fits.
   create operations: `jj new <rev>` may report success while the on-disk files
   still hold the previous tree, and an expensive step then runs against the
   wrong sources. This produced a fixpoint "proof" that exactly reproduced the
-  PREVIOUS engine hash (the giveaway) and a gate run whose filemap path count
+  PREVIOUS engine hash (the giveaway) and a gate run whose path count
   matched the old tree. Before any expensive gate or install, verify the tree
   by CONTENT — a sentinel search for a string the change introduces (e.g.
   `rg -c PROT-GUARD:CALL src/habu/habu1.f`) — not just by `jj log` position,
@@ -2698,3 +2688,156 @@ fits.
   writer and checker counts are both non-zero, so the ordering claim cannot be
   true because it found nothing. Any gate that says "X happens before Y" must
   prove it found an X and a Y.
+- **A claim from the other orchestrator is still a claim; verify it before
+  freezing it.** A design document named a corrective leaf for a "double
+  `TV-VFIELDS!` write" in `TV-NEW-VIEW` that came verbatim from a blackboard
+  message. The code writes it once (`maki/tensor-value.f:456`), and the other
+  orchestrator's own fresh reviewer caught the invented leaf. Coordination
+  messages carry hypotheses, not evidence; read the line before it becomes a
+  contract.
+- **Absence must be proved in every scope a reintroduction can hide in.** A
+  retirement suite proved deleted names unresolvable from outside their
+  package and called them absent. Reintroducing them *inside* the package's
+  private section left the suite green, because checker probes outside a
+  package cannot see its private definitions. Prove membership against each
+  real word list (global, package-exported, package-private), give each list a
+  production witness so a misbound list fails its own control, and mutate in
+  every scope — the attack that only reaches the visible scope proves nothing
+  about the hidden one.
+- **A lint or checker probe is not visibility evidence.** Package-diff lints
+  read diff text and checker probes read resolvability; neither observes the
+  dictionary the running image actually built. Publication and retirement
+  leaves need runtime word-list assertions, and the contract should freeze
+  them up front rather than discovering the gap in review.
+- **Apply the duplicate-authority test to the candidate you favour.** A design
+  rejected a new span registry for duplicating the tensor authority, then
+  proposed a storage owner without naming what it displaced — recreating the
+  same duplication one level down, where the existing owner (`WSTORE`) already
+  held the model's memory. Whenever a design adds an owner, the frozen answer
+  to "what stops owning this, and when" is part of the design, not follow-on
+  work.
+- **`private` is a convention, not a boundary.** Any file may reopen
+  `package NAME private` and call its internals; a proof run drove the single
+  fatal `munmap` sink with a raw pointer from outside its package. Designs may
+  not claim "no other constructor exists" from package privacy alone until a
+  sealing capability lands.
+- **Give each lane a private scratch subdirectory.** Two workers wrote generic
+  artifact names into the shared scratchpad and one clobbered the other's
+  evidence mid-run. Name the directory after the lane in the brief.
+- **Ask what breaks if the check is violated, before making the check
+  rigorous.** An AOT gate asserted that exactly 69 named definitions lived in
+  a module, comparing a literal against a counter those same rows incremented
+  — self-satisfying. The fix looked like proving a real bijection over the
+  live dictionary interval, and that revision was sound. It was also the wrong
+  artifact: adding a private helper to a private package violates nothing the
+  lexical wrapper, the ownership gate, the public-surface test and the AOT
+  gates do not already cover. The census protected a MIGRATION invariant
+  ("everything moved into the package"), true the day packaging landed and
+  baggage every day after. Deletion was the fix. Before strengthening any
+  census-shaped check, ask what breaks when it fails; if the answer is
+  "nothing that is not already caught structurally", delete it however sound
+  its arithmetic.
+- **Search for an existing frozen design before writing a new one.** A tensor
+  ownership design was drafted, reviewed, and rejected twice before a survey
+  found that `.blackboard/gpt2-forward-leaf-design-20260727.md` had already
+  frozen the answer for weights — a linear owner with non-linear views into
+  it, and a byte-owner copy word because quotations are not closures and
+  cannot transport a destination. The genuine residue was activations, a much
+  narrower question. The pre-mint search gate must cover frozen design
+  documents in `.blackboard`, not only dots and code.
+- **A review answers the question it was given.** An implementation was
+  accepted against "does this preserve the accepted behavior" while being
+  simultaneously unmergeable, because its stack had drifted from master and
+  dropped manifest rows master had gained. Both verdicts were right about
+  different axes. Any review that could precede a merge must also check base
+  currency, since master-always-green is a property of the exact rebased tree.
+- **Freeze an interface only after a checked candidate compiles and runs
+  through the owning path.** A design named five words for its size pipeline.
+  All five existed; the design was still unimplementable, because two of them
+  sat inside their packages' private sections and the owning package could
+  only reach them by illegally reopening those packages. Three review rounds
+  ran the same shape: existence verified, then units, then callability — each
+  round checking only the property the previous rejection had taught me to
+  check. A grep proves a name is spelled somewhere. It does not prove the
+  word is public, that its argument roles match, or that the sequence
+  type-checks. Write the twenty-line probe in a foreign package and run it
+  under `bin/hb` before the interface is frozen, not after it is rejected.
+- **The checker refuses nominal roles in raw storage, so a typed value must
+  carry them to the boundary.** Storing a `CAD-NUM` role through `!` is
+  rejected — probed: `: STORE-ROLE ( ptr a CAD-NUM:alloc-byte-len -- )
+  swap ! ;` gives `E-NONPARAMETRIC-EFFECT` and the load fails closed at exit
+  70. A design that plans to keep validated sizes and offsets in a raw header
+  must carry them in a typed value through every validation step and erase
+  them exactly once, inside a single audited mint, rather than re-deriving
+  them in raw `n` on the far side.
+- **A composition brief must name the whole stack and the expected baseline,
+  not one commit.** A worker was told to "compose with commit X" and did
+  exactly that. X was the package child of the accepted payload, so its own
+  diff omitted the fix that lived in the parent, and every tree in the
+  resulting four-way isolation lacked it. Four identical reds read like a
+  strong signal and were four instances of one omission — reported as a
+  discovered blocker until the other orchestrator asked whether the payload
+  layer had been included. Name the full range as explicit layers
+  (`base..payload`, then `payload..package`), say what the composed tree must
+  CONTAIN rather than which commit to apply, and state the expected
+  pre-composition result so a predicted red cannot be mistaken for a finding.
+- **`git apply` inside a jj workspace silently does nothing.** It resolves to
+  the parent git directory, returns exit 0, and writes no file. A worker
+  caught it only by hashing the target afterward rather than trusting the exit
+  code, and switched to `patch -p1`. Any tool that reports success without
+  changing the tree will manufacture a green composition out of nothing;
+  verify by content, never by exit status, when applying a patch across
+  workspaces.
+- **When you find one untested copy path, sweep for its siblings.** A review
+  pass found that the type-family record's growth path copied a newly added
+  cell with no test — the one-cell-short mutation survived green — and fixed
+  it. An independent reviewer then found the *same* defect one layer over: the
+  rollback-frame arena has its own growth path, its own newly added last cell
+  (`TFRB.OWNLO`), and the same untested copy, and its one-cell-short mutant
+  also survived both suites. Two arenas, two growth paths, one habit of
+  checking only the one that failed first. Adding a cell to any record means
+  auditing every path that copies that record — growth, persistence, snapshot,
+  rollback — not just the path whose absence happened to be noticed.
+- **A cleanup that deletes a gate must delete the instructions requiring it,
+  in the same change.** Removing a lint and its manual index left the
+  operating contract naming that gate as blocking for every master merge, so
+  the documented merge procedure became unperformable while every test stayed
+  green. Stale prose is usually a hygiene item; prose that *instructs* is part
+  of the contract, and a deletion that leaves it behind is not atomic no
+  matter how clean the code side looks. Note also that the agent instruction
+  files may be symlinks to one another — check before "also updating" the
+  other one, since that is the same write and can replace a link with a file.
+- **A frozen contract is not dispatch-ready until someone reviews the freeze.**
+  A leaf contract was anchored by reading every insertion point, verified
+  against the tree, and declared ready. A preflight review then rejected it
+  before any code was written, for things reading the insertion points could
+  not surface: a consumed structural token had to be pushed back so the
+  all-errors resync could not swallow the following declaration, an event tag
+  had to be appended without renumbering, specific diagnostic codes had to be
+  mapped, and a keyword had to be reserved. Verifying where a change goes is
+  not the same as verifying what the change must handle. The freeze itself is
+  an artifact that earns a review pass, and that pass is far cheaper than the
+  worker discovering the gaps at line 500.
+- **A numeric coincidence is not a cause; attribute by differential
+  measurement.** A leaf added eight new checked definitions to the engine, and
+  two size ratchets drifted by exactly eight bytes. That was reported as the
+  leaf's cost and repeated downstream as established fact. Independent
+  measurement of the intermediate tips proved the leaf moves ZERO engine
+  bytes: the eight belonged to an unrelated commit, and the region map showed
+  one region up eight with a compensating pad down eight. The matching number
+  made the inference feel verified when nothing had been measured. Attribute a
+  size or performance delta by building and mapping the exact tips on either
+  side of each candidate, never by counting what a change happens to add.
+- **A proof that models another system will lose to it; observe the system
+  instead.** Two proof mechanisms died this way in one session. A 1,070-line
+  source analyser inferred what the compiler would bind, and five successive
+  narrowings still lost to `EXPORT`, `undefine`, `using`, and local shadowing —
+  a wrapper exported into the target package ran fifteen times while the check
+  reported zero findings. A 243-line lexical scanner counted rows in source to
+  prove a case was enrolled, and lost to a dormant conditional, a two-iteration
+  loop, and an unreachable decoy dispatcher, because a lexical count is not an
+  execution count. Both were replaced by observing the real artifact — the
+  compiled call graph in one case, recorded execution in the other — and both
+  replacements were smaller than what they deleted. When a check must
+  reimplement the semantics of the thing it checks, that is the signal to
+  delete it, not to narrow it again.

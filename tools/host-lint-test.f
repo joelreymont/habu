@@ -4,6 +4,8 @@
 
 require tools/host-lint.f
 
+package HOST-LINT-TEST
+
 variable HLT-N
 
 : HLT-ASSERT ( bool -- )
@@ -21,7 +23,7 @@ variable HLT-N
 : HLT-CONTENT-POLICY ( -- )
    s" ./tools/new-host.sh" HOST-SCAN-CONTENT? HLT-ASSERT
    s" ./tools/check.f" HOST-SCAN-CONTENT? 0= HLT-ASSERT
-   s" ./FILEMAP.md" HOST-SCAN-CONTENT? 0= HLT-ASSERT ;
+   s" ./README.md" HOST-SCAN-CONTENT? 0= HLT-ASSERT ;
 
 : HLT-RETIRED-SHELL-POLICY ( -- )
    s" ./tools/seed.sh" HOST-RETIRED-SHELL? HLT-ASSERT
@@ -35,3 +37,5 @@ variable HLT-N
    s" host-lint-test: ok (" type HLT-N @ 1- . s"  assertions)" type cr ;
 
 HLT-MAIN
+
+;package

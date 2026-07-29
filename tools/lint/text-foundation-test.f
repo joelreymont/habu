@@ -206,6 +206,8 @@ variable BIG-LEX-U
 \ ROW-BS a backslash and ROW-NL a newline, so every fixture below is exact bytes
 \ rather than something the reader has to escape in their head.
 $400 constant ROW-CAP
+$0B constant ROW-VT-C
+$28 constant ROW-LPAREN-C
 create ROW-FIX ROW-CAP allot     variable ROW-LEN
 
 : ROW-RESET  ( -- )  ROW-LEN STR:BUF-RESET ;
@@ -365,6 +367,53 @@ variable REG-I
    6 LINT-LEX:TOKEN s" ;" ASSERT$
    6 LINT-LEX:BYTE@ 54 ASSERT=  6 LINT-LEX:LINE@ 2 ASSERT=  6 LINT-LEX:COL@ 7 ASSERT= ;
 
+\ A left parenthesis attached to the rest of a token is a Forth name, while a
+\ standalone parenthesis still opens an inert comment.  The fake definers in
+\ the trailing comment prove they never reach a structural lint consumer.
+: TEST-LEXER-PAREN-NAME ( -- )
+   s" : (CMP) ( n -- n ) dup ; ( : FORGED ; TRUSTED: BAD ; )" LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 6 ASSERT=
+   0 LINT-LEX:TOKEN s" :" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=
+   1 LINT-LEX:TOKEN s" (CMP)" ASSERT$
+   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   2 LINT-LEX:CONTENT s"  n -- n " ASSERT$
+   3 LINT-LEX:TOKEN s" dup" ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$
+   5 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   5 LINT-LEX:CONTENT s"  : FORGED ; TRUSTED: BAD ; " ASSERT$
+   s" (" LINT-LEX:SOURCE
+   LINT-LEX:COUNT 1 ASSERT=
+   0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   0 LINT-LEX:CONTENT nip 0 ASSERT= ;
+
+: TEST-ONE-ENGINE-DELIM ( n -- ) {: c:n :}
+   ROW-RESET
+   s" LEFT" ROW+  c ROW-C+
+   ROW-LPAREN-C ROW-C+  c ROW-C+  s" hidden )" ROW+
+   c ROW-C+  s" RIGHT" ROW+
+   LEX-ROW
+   LINT-LEX:ERROR? LINT-NOT ASSERT
+   LINT-LEX:COUNT 3 ASSERT=
+   0 LINT-LEX:TOKEN s" LEFT" ASSERT$
+   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
+   1 LINT-LEX:CONTENT drop c@ c ASSERT=
+   2 LINT-LEX:TOKEN s" RIGHT" ASSERT$ ;
+
+: TEST-DELIM-RANGE ( n n -- ) {: lo:n hi:n :}
+   lo begin dup hi < while
+      dup TEST-ONE-ENGINE-DELIM
+      1+
+   repeat drop ;
+
+\ Every engine-only control delimiter must separate top-level words and make a
+\ following parenthesis a standalone comment opener.
+: TEST-LEXER-ENGINE-DELIMS ( -- )
+   0 $09 TEST-DELIM-RANGE
+   $0B $0D TEST-DELIM-RANGE
+   $0E $20 TEST-DELIM-RANGE ;
+
 \ A clean scan must leave the generic diagnostic record at its cleared state, so
 \ ERROR-KIND@ alone distinguishes "no diagnostic" from a real one.
 : TEST-LEXER-NO-ERROR ( -- )
@@ -400,59 +449,6 @@ variable REG-I
    LINT-LEX:COUNT 7 ASSERT=
    0 LINT-LEX:TOKEN s" :" ASSERT$
    6 LINT-LEX:TOKEN s" ;" ASSERT$ ;
-
-\ Standard Forth opens a `( ... )` comment only at a standalone `(` word: the
-\ byte after the `(` is whitespace or end of input. A word whose name merely
-\ STARTS with a paren - `(CMP)` in src/habu/habu1.f - is an ordinary WORD, in
-\ definition-name position and in call position alike. A bare `(` with nothing
-\ after it is still a comment opener that ends at end of input. This mirrors
-\ src/habu/verify-source.f NEXT, which opens a comment only for the length-1
-\ token `(`.
-: TEST-LEXER-PAREN-WORD ( -- )
-   s" : (CMP) ( n -- ) drop ;" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 5 ASSERT=
-   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    0 LINT-LEX:TOKEN s" :" ASSERT$
-   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    1 LINT-LEX:TOKEN s" (CMP)" ASSERT$
-   2 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 2 LINT-LEX:CONTENT s"  n -- " ASSERT$
-   3 LINT-LEX:TOKEN s" drop" ASSERT$
-   4 LINT-LEX:TOKEN s" ;" ASSERT$
-   s" (SQ) dup ((X) over" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 4 ASSERT=
-   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    0 LINT-LEX:TOKEN s" (SQ)" ASSERT$
-   2 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=    2 LINT-LEX:TOKEN s" ((X)" ASSERT$
-   3 LINT-LEX:TOKEN s" over" ASSERT$
-   s" dup (" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 2 ASSERT=
-   0 LINT-LEX:TOKEN s" dup" ASSERT$
-   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT= 1 LINT-LEX:TOKEN s" (" ASSERT$
-   1 LINT-LEX:CONTENT nip 0 ASSERT= ;
-
-\ `.( ... )` is the printing comment. Its body is text the engine prints while
-\ loading and is never code, so the whole span is one COMMENT token whose CONTENT
-\ is the body: a reader that hands `constant E-XA` back as ordinary words would
-\ record a declaration the engine never performs. `.(` must stand alone to open
-\ one, so `.(X)` is an ordinary word, and an unclosed opener still ends the span
-\ at end of input rather than dropping it.
-: TEST-LEXER-PRINT-COMMENT ( -- )
-   s" .( -9001 constant E-XA ) dup" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 2 ASSERT=
-   0 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
-   0 LINT-LEX:TOKEN s" .( -9001 constant E-XA )" ASSERT$
-   0 LINT-LEX:CONTENT s"  -9001 constant E-XA " ASSERT$
-   0 LINT-LEX:BYTE@ 0 ASSERT=  0 LINT-LEX:LINE@ 1 ASSERT=  0 LINT-LEX:COL@ 1 ASSERT=
-   1 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=  1 LINT-LEX:TOKEN s" dup" ASSERT$
-   s" .(X) dup" LINT-LEX:SOURCE
-   LINT-LEX:COUNT 2 ASSERT=
-   0 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=  0 LINT-LEX:TOKEN s" .(X)" ASSERT$
-   s" dup .( open" LINT-LEX:SOURCE
-   LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:COUNT 2 ASSERT=
-   1 LINT-LEX:KIND@ LINT-LEX:COMMENT ASSERT=
-   1 LINT-LEX:CONTENT s"  open" ASSERT$ ;
 
 \ Escaped-quote spans: the S\" opener treats \" as literal text, the plain s"
 \ opener does not. The token that follows each literal pins where it closed, so
@@ -600,16 +596,32 @@ variable REG-I
    OPENER-IN-COMMENT-ROW$ LINT-LEX:SOURCE
    ASSERT-ONE-ROW ;
 
-\ The standalone-`(` rule holds inside a row body too: a field that merely
-\ starts with a paren is a field, not an inert comment. The first fixture is
-\ the differential - a lexer that opened a comment at `(X` would run to end of
-\ input looking for `)` and report the row malformed. The second pins that a
-\ real standalone `( ... )` in a row body stays inert.
-: TEST-ROW-PAREN-FIELD ( -- )
-   ROW-RESET  s" PRIM: FOO (X PE-N PRIM;" ROW+
-   LEX-ROW  ASSERT-ONE-ROW
-   ROW-RESET  s" PRIM: FOO ( inert ) PE-N PRIM;" ROW+
-   LEX-ROW  ASSERT-ONE-ROW ;
+\ A parenthesized prefix attached to a closer is one row-body word.  Treating
+\ only `(X)` as a comment would expose the suffix as a false row closer.
+: TEST-ROW-ATTACHED-PAREN ( -- )
+   ROW-RESET
+   s" PRIM: FOO (X)PRIM;" ROW+
+   LEX-ROW
+   0 1 1 ASSERT-BAD-AT
+   LINT-LEX:COUNT 0 ASSERT= ;
+
+\ The first apparent closer is inside a comment whose opener is followed by a
+\ vertical tab.  The row must extend to the later real closer.
+: TEST-ROW-CONTROL-COMMENT ( -- )
+   ROW-RESET
+   s" PRIM: FOO " ROW+
+   ROW-LPAREN-C ROW-C+  ROW-VT-C ROW-C+  s" PRIM; package FAKE )" ROW+
+   ROW-VT-C ROW-C+  s" PE-N PRIM;" ROW+
+   ROW$ nip {: rowu:n :}
+   ROW-NL  s" : REAL dup ;" ROW+
+   LEX-ROW
+   LINT-LEX:ERROR? LINT-NOT ASSERT
+   LINT-LEX:COUNT 5 ASSERT=
+   REG-COUNT 1 ASSERT=
+   0 LINT-LEX:TOKEN nip rowu ASSERT=
+   1 LINT-LEX:TOKEN s" :" ASSERT$
+   2 LINT-LEX:TOKEN s" REAL" ASSERT$
+   4 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
 \ Openers and closers spelled in a top-level comment or string body never reach
 \ the row scanner at all, so no registry token appears and the paren comment
@@ -770,11 +782,7 @@ variable REG-I
 \ the `ENUM` row leaves 3. Both deletions have the same cause: the global ENUM
 \ keyword is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN now, so
 \ it needs no axiom of its own, and the metadata-only `checker-defenum` entry it
-\ used went with it. The three `CHECKER-AUTH-PACKAGE*` package-authority axioms
-\ (commit "Harden package authority") and the `TRUST-RAW` axiom (the raw-storage
-\ seal) then moved src/core/checker.f from 333 to 337, and the
-\ `CHECKER-SCOPE-START-NEUTRAL` axiom (the package-neutral replay scope, dot
-\ habu-neutralize-checker-pkg-b9a250c8) moved it to 338.
+\ used went with it.
 : TEST-REAL-REGISTRY-FILES ( -- )
    s" src/core/checker.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
@@ -838,9 +846,9 @@ variable REG-I
    TEST-SCANNERS
    TEST-SIGS
    TEST-LEXER
+   TEST-LEXER-PAREN-NAME
+   TEST-LEXER-ENGINE-DELIMS
    TEST-LEXER-NO-ERROR
-   TEST-LEXER-PAREN-WORD
-   TEST-LEXER-PRINT-COMMENT
    TEST-LEXER-ESC-QUOTE
    TEST-LEXER-UNTERM-QUOTE
    TEST-LEXER-REUSE-AFTER-ERROR
@@ -848,7 +856,8 @@ variable REG-I
    TEST-ROW-STRING-BODY
    TEST-ROW-PARSED-OPERAND
    TEST-ROW-COMMENTS-INERT
-   TEST-ROW-PAREN-FIELD
+   TEST-ROW-ATTACHED-PAREN
+   TEST-ROW-CONTROL-COMMENT
    TEST-ROW-FAKE-IN-COMMENT-AND-STRING
    TEST-ROW-PRIVATE-CLOSER
    TEST-ROW-CASE-FOLD

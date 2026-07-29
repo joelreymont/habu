@@ -1,0 +1,11 @@
+---
+title: "Own row addition as MAKI:ADD!"
+status: active
+priority: 1
+issue-type: task
+created-at: "2026-07-28T19:52:24.760108+02:00"
+---
+
+Why: the element-wise add-into primitive exists twice with identical checked signatures and opposite argument roles: unpackaged global T-ADD! ( ptr a ptr a n -- ) dst,src at maki/array.f:26 (the production residual add) and private ROW-ADD ( ptr a ptr a n -- ) src,dst at maki/embedding.f:62. A probe proved a wrong-order call certifies and runs, silently accumulating into the wrong buffer; and the surviving copy is a raw global in an unpackaged file. One formula, one argument order, one real owner. Exact result, one atomic commit: move the T-ADD! implementation byte-identical into a package-owned public MAKI:ADD! ( ptr a ptr a n -- ) dst,src in one concern file; delete global T-ADD!; delete private ROW-ADD; migrate every caller - the T-ADD! census is maki/mha.f (three sites), maki/mha-test.f, maki/array-test.f, maki/examples/nanogpt/adam-train-test.f, maki/examples/nanogpt/from-scratch-train.f, plus the docs/maki/tensors.md reference and every require that exists only for T-ADD!; migrate ROW-ADD's two embedding.f sites (lines 77 and 84, re-verify) with the argument order swapped. Zero behavior change anywhere. No alias, no forwarding word, no second loop. No loader contact. Owner: package MAKI; the concern file is the implementer's structural choice (array.f gaining a package block for its element ops, or a dedicated buffer-add file) - state the choice and why in the report. Acceptance: embedding, autograd, pos-embed, gradcheck, mha, array, and nanogpt example suites green UNCHANGED; a value test at each formerly-ROW-ADD site whose expected output fails under a swapped-argument mutation; structural probes that neither T-ADD! nor ROW-ADD resolves anywhere, bare or qualified (load success proves nothing - private and public wordlists coexist silently); MAKI:ADD! resolves qualified and bare inside the package; docs updated; both diff lints with the commit checked out. Forbidden: aliases, forwarding words, a second add formula, behavior change, loader types. The same-type role gap (identical signatures, swappable roles) is recorded for the typed-span/shaped-buffer checker capability design together with the MM-NT extent findings.
+
+Claim: agent=claude workspace=.jj-ws/habu-publish-in-place-d3b721db

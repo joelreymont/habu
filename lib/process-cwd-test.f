@@ -11,6 +11,8 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/process-cwd.f
 
+package PROCESS-CWD-TEST
+
 4096 constant PCT-CAP
 6 constant PCT-OK-U
 PROC-PATHZ-CAP 1 + constant PCT-LONG-U
@@ -71,7 +73,7 @@ variable PCT-I
    PCT-CAPTURE
    0 T= 0 T= PCT-OK-U T=
    PCT-OUT PCT-OK-U PCT-OK PCT-OK-U T$=
-   s" FILEMAP.md" FILE? TTRUE
+   s" README.md" FILE? TTRUE
    s" rel.txt" FILE? TFALSE
    PROC-ARGV-N @ 0 T=
    PROC-ENV-N @ 0 T=
@@ -130,3 +132,5 @@ variable PCT-I
    s" process-cwd-test: ok" type cr ;
 
 PROCESS-CWD-TEST-MAIN
+
+;package

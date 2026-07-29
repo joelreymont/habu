@@ -2,12 +2,8 @@
 \
 \ Load after GSI-LINT-TOOLS-SETUP.
 
-\ The census core loads in the PARENT so the enum-census row below compiles
-\ against ENUM-CENSUS:VERIFY-COMMITTED; its lexer dependencies are already in
-\ from GSI-TOOL-BASE, and require is include-once for the rest.
 require lib/vector.f
 require lib/fs-mutate.f
-require tools/enum-census-core.f
 
 package GATE-LINT-TOOLS
 private
@@ -66,15 +62,12 @@ REQUIRE-HARNESS
    \ The tool is REQUIRED, not INCLUDED, because its test file requires it too:
    \ GSI-INCLUDE loads through `included`, which never registers the file, so an
    \ INCLUDE here would load the tool a second time from the test's own `require`
-   \ and redefine PE-FB-CAP in the shared image. Same pairing as CLOBBER above and
-   \ filemap-lint below.
+   \ and redefine PE-FB-CAP in the shared image. This matches CLOBBER above.
    s" tools/lint/ptx-emitter-lint.f" GSI-REQUIRE
    s" tools/lint/ptx-emitter-lint-test.f" GSI-INCLUDE
    s" tools/host-lint.f" GSI-REQUIRE
    s" tools/process-primitive-lint.f" GSI-INCLUDE
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
-   s" tools/filemap-lint.f" GSI-REQUIRE
-   s" tools/filemap-lint-test.f" GSI-INCLUDE
    s" tools/stdin-closure-lint.f" GSI-REQUIRE ;
 
 : STATUS ( -- )
@@ -134,13 +127,6 @@ REQUIRE-HARNESS
 : PRIMITIVE-EFFECT-INVENTORY ( -- )
    s" tools/primitive-effect-inventory-test.f" GSI-INCLUDE ;
 
-\ The census verify runs as a WORD, never by including tools/enum-census.f: the
-\ gate child inherits the pool's argv (--pool-slots ...), which that file's
-\ strict CLI parse rightly refuses.
-: ENUM-CENSUS ( -- )
-   s" tools/enum-census-test.f" GSI-INCLUDE
-   s" enum-census-verify" [: ENUM-CENSUS:VERIFY-COMMITTED ;] GSI-RUN ;
-
 : BOOTSTRAP-MIRROR ( -- )
    s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
 
@@ -170,7 +156,6 @@ public
    s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: HOST ;] GT-POOL-START-FORK
    s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: TRUSTED-INVENTORY ;] GT-POOL-START-FORK
    s" lint-tools/primitive-effect-inventory" GSI-FORK-TIMEOUT-MS [: PRIMITIVE-EFFECT-INVENTORY ;] GT-POOL-START-FORK
-   s" lint-tools/enum-census" GSI-FORK-TIMEOUT-MS [: ENUM-CENSUS ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-refresh" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-REFRESH ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;

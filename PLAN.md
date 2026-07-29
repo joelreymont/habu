@@ -315,7 +315,6 @@ src/compiler/ir/id.f
 test/compiler/ir-id-concurrency.f
 test/compiler/ir-id.f
 lib/errors.f
-docs/compiler-ir-design.md
 ```
 
 The active prerequisite `habu-cast-v2-family-741e7bae` owns the shared
@@ -463,7 +462,7 @@ Acceptance:
   publication, and source replay;
 - every cast is checker-certified and confined by `refine-lint`;
 - `bin/hb --load test/compiler/ir-id.f` passes;
-- the existing `compiler-ir-id` suite schedule remains intact; error, refine,
+  dispatcher, and error, trust, refine, package, typed-local, and suite
   file-map, package, typed-local, and suite coverage gates pass.
 
 ## Dot and worker rules

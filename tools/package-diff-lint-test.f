@@ -29,6 +29,7 @@ $4000 constant TEST-OUT-CAP
 92 constant TEST-BACKSLASH-C
 96 constant TEST-TICK-C   \ backtick: the report's finding-subject delimiter
 115 constant TEST-S-C     \ the byte that turns a listed `.f` path into `.fs`
+$0B constant TEST-VT-C
 9 constant TEST-PATH#     \ rows in the grammar-fixture path table
 13 constant TEST-OPENER#  \ declaration openers the category knows
 5 constant TEST-PREFIX-U  \ length of the `test/` every listed path begins with
@@ -1257,6 +1258,52 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" +;package" TEST-DIFF+ TEST-LF
    s"  : LATER ( -- n ) 3 ;" TEST-DIFF+ TEST-LF ;
 
+: TEST-WRITE-PAREN-NAME-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" package PAREN-NAME" TEST-SOURCE-LINE
+   s" : (CMP) ( n -- ) ;" TEST-SOURCE-LINE
+   TEST-BACKSLASH-C TEST-SOURCE-C
+   s"  new comment" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" lib/paren-name.f" TEST-WRITE-SOURCE ;
+
+: TEST-PAREN-NAME-DIFF ( -- )
+   s" lib/paren-name.f" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,4 @@" TEST-DIFF+ TEST-LF
+   s"  package PAREN-NAME" TEST-DIFF+ TEST-LF
+   s"  : (CMP) ( n -- ) ;" TEST-DIFF+ TEST-LF
+   s" -" TEST-DIFF+  TEST-BACKSLASH-C TEST-DIFF-C
+   s"  old comment" TEST-DIFF+ TEST-LF
+   s" +" TEST-DIFF+  TEST-BACKSLASH-C TEST-DIFF-C
+   s"  new comment" TEST-DIFF+ TEST-LF
+   s"  ;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-PAREN-NAME-REPLAY ( -- )
+   TEST-WRITE-PAREN-NAME-SOURCE
+   TEST-DIFF-RESET
+   TEST-PAREN-NAME-DIFF
+   s" comment-only diff preserves parenthesized word name" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-WRITE-CONTROL-COMMENT-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" PRIM: FOO (" TEST-SOURCE+
+   TEST-VT-C TEST-SOURCE-C
+   s" PRIM; package FAKE ) PE-N PRIM;" TEST-SOURCE-LINE
+   s" : CONTROL-LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" PRIM: BAR (" TEST-SOURCE+
+   TEST-VT-C TEST-SOURCE-C
+   s" PRIM; ;package ) PE-N PRIM;" TEST-SOURCE-LINE ;
+
+\ Both fake package transitions sit inside control-whitespace comments in real
+\ registry rows.  They cannot surround and hide the changed global definition.
+: TEST-CONTROL-COMMENT-REPLAY ( -- )
+   TEST-WRITE-CONTROL-COMMENT-SOURCE
+   TEST-DIFF-RESET
+   s" lib/control-comment.f" TEST-ADD-SOURCE-SECTION
+   s" control-whitespace row comments cannot forge package scope" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 : TEST-POSITIVES ( -- )
    TEST-WRITE-OUTSIDE-HUNK-SOURCE
    TEST-DIFF-RESET
@@ -1718,6 +1765,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-CHECKER-EXEMPTION
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES
+   TEST-PAREN-NAME-REPLAY
+   TEST-CONTROL-COMMENT-REPLAY
    TEST-DELETED-OWNER
    TEST-ZERO-COUNT-OWNER-DELETION
    TEST-DELETION-TO-EMPTY

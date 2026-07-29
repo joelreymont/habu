@@ -18,7 +18,7 @@ get-current CPR-WID !
 
 ' CPR-HOOK set-check
 
-s" package CPR-NEST public : CPR-BAD ( -- ) include FILEMAP.md ; ;package"
+s" package CPR-NEST public : CPR-BAD ( -- ) include README.md ; ;package"
 CPR-EVAL 70 1 CPR-EXPECT
 
 get-current CPR-WID @ 2 CPR-EXPECT

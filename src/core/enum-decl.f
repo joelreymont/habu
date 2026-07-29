@@ -58,10 +58,8 @@
 \ `: ENUM ( -- ) ENUM-DECL:ED-RUN ;` at the end of this file is the sole global
 \ entry, written the way src/core/structure-decl.f writes `STRUCTURE`. The legacy
 \ compact parser and generator in src/core/sumtype.f, and its metadata-only
-\ CHECKER-DEFENUM entry, are deleted; a tool that has already lexed a declaration
-\ registers it through ED-REPLAY below. tools/enum-census.f re-declares every
-\ plain ENUM in the repository through this keyword and compares the registry
-\ against a baseline recorded before the cutover.
+\ CHECKER-DEFENUM entry, are deleted. ED-REPLAY below remains the checked entry
+\ for callers that have already lexed a declaration.
 \
 \ Loaded AFTER the checker hook and AFTER decl-event.f (it drives DECL-EVENT:*),
 \ in the post-hook DECL group after structure-decl.f.

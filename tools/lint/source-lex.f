@@ -4,7 +4,6 @@
 \
 \ Public surface (all reads; the package owns every cell):
 \   WORD COMMENT REGISTRY              token kinds returned by KIND@
-\   (COMMENT covers both `( ... )` and the printing comment `.( ... )`)
 \   UNTERMINATED-QUOTE MALFORMED-REGISTRY   diagnostic kinds from ERROR-KIND@
 \   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
@@ -145,7 +144,7 @@ create CLEN-V VEC-HEADER-CELLS cells allot
 public
 
 1 constant WORD                 \ KIND@: whitespace-delimited word token
-2 constant COMMENT              \ KIND@: `( ... )` or `.( ... )` comment, body read via CONTENT
+2 constant COMMENT              \ KIND@: `( ... )` comment token, body read via CONTENT
 3 constant REGISTRY             \ KIND@: one complete PRIM:/PPRIM: primitive-axiom row
 
 1 constant UNTERMINATED-QUOTE   \ ERROR-KIND@: a string literal ran past end of input
@@ -247,43 +246,18 @@ private
 : CUR$ ( -- ptr u8 n )
    SRC@ START @ + POS @ START @ - ;
 
-: NEXT-END? ( -- bool )
-   POS @ 1+ SRC-U @ >= ;
+\ `parse-name` and the engine token loop delimit on every byte at or below space.
+: ENGINE-DELIM? ( n -- bool )
+   $20 <= ;
 
-: NEXT-C ( -- n )
-   SRC@ POS @ 1+ + c@ ;
-
-\ Standard Forth recognises `(` as the comment word only when it stands alone:
-\ the byte after it is whitespace or end of input. A word legitimately NAMED
-\ with a leading paren, such as `(CMP)`, is an ordinary WORD token.
-: PAREN-OPEN? ( -- bool )
-   CUR 40 <> if LINT-FALSE exit then
-   NEXT-END? if LINT-TRUE exit then
-   NEXT-C LINT-WS? ;
+\ Engine parity: `(` opens a comment only as a standalone token (followed by
+\ an engine delimiter or EOF). A `(`-initial token such as `(CMP)` is one word.
+: PAREN-STANDALONE? ( -- bool )
+   POS @ 1+ SRC-U @ >= if LINT-TRUE exit then
+   SRC@ POS @ 1+ + c@ ENGINE-DELIM? ;
 
 : PAREN-COMMENT ( -- )
    ADV drop
-   POS @ CSTART !
-   TO-PAREN
-   POS @ CSTART @ - CLEN !
-   END? 0= if ADV drop then
-   COMMENT CUR$ START @ START-LINE @ START-COL @
-   BODY-A BODY-U ADD ;
-
-\ `.(` is the standard printing comment: everything up to the first `)` is text
-\ the engine prints while loading, and none of it is code. It cannot reach the
-\ paren-comment dispatch above, because the byte at the token start is `.` and
-\ not `(`, so it arrives on the word path and is recognised there by its exact
-\ spelling. Its body is inert source exactly like a `( ... )` body, so it becomes
-\ a COMMENT token whose CONTENT is that body; the printing is a runtime effect no
-\ lexer models. Without this rule a word-at-a-time reader hands the body out as
-\ ordinary tokens, and a consumer that counts declarations reads a declaration
-\ the engine never performs.
-: PRINT-OPEN? ( ptr u8 n -- bool )
-   s" .(" LINT-STR= ;
-
-\ The opening `.(` is already consumed by the word scan, so the body starts here.
-: PRINT-COMMENT ( -- )
    POS @ CSTART !
    TO-PAREN
    POS @ CSTART @ - CLEN !
@@ -303,14 +277,11 @@ private
 \ word path. The row model is src/habu/verify-source.f RECORD-PRIM-ROW, the
 \ authoritative source replay of the same engine text: header fields raw, then
 \ body fields where comments are inert and a parsing word consumes its operand.
-\ Row fields use the engine delimiter rule (every byte below 33 separates) rather
-\ than the lexer's LINT-WS? set, because `parse-name` is what the engine runs.
-
-: RAW-WS? ( n -- bool )
-   33 < ;
+\ Row fields share the engine delimiter rule with top-level tokenization because
+\ `parse-name` is what the engine runs.
 
 : SKIP-RAW-WS ( -- )
-   begin END? 0= CUR RAW-WS? and while ADV drop repeat ;
+   begin END? 0= CUR ENGINE-DELIM? and while ADV drop repeat ;
 
 : F$ ( -- ptr u8 n )
    SRC@ FOFF @ + FLEN @ ;
@@ -319,20 +290,13 @@ private
 : NEXT-FIELD ( -- )
    SKIP-RAW-WS
    POS @ FOFF !
-   begin END? 0= CUR RAW-WS? 0= and while ADV drop repeat
+   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
    POS @ FOFF @ - FLEN ! ;
 
 : ROW-PAREN ( -- )
    ADV drop
    TO-PAREN
    END? 0= if ADV drop then ;
-
-\ The standalone-`(` rule again, but with the engine delimiter set: row fields
-\ separate on every byte below 33, so that is what makes a row-body `(` alone.
-: ROW-PAREN? ( -- bool )
-   CUR 40 <> if LINT-FALSE exit then
-   NEXT-END? if LINT-TRUE exit then
-   NEXT-C RAW-WS? ;
 
 \ A row body is interpreted text, so `\` and `( ... )` inside it are comments and
 \ a closer spelled inside one is not a closer.
@@ -341,7 +305,7 @@ private
       SKIP-RAW-WS
       END? if exit then
       CUR 92 = if LINE-COMMENT else
-         ROW-PAREN? if ROW-PAREN else exit then
+         CUR 40 = PAREN-STANDALONE? and if ROW-PAREN else exit then
       then
    again ;
 
@@ -481,12 +445,11 @@ private
    NAME-POS? LINT-NOT ;
 
 : SCAN-WORD ( -- )
-   begin END? 0= CUR LINT-WS? 0= and while ADV drop repeat
+   begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
    ROW-START? if
       CUR$ PPRIM-OPEN? if ROW-PKG else ROW-BARE then SCAN-ROW
       exit
    then
-   CUR$ PRINT-OPEN? if PRINT-COMMENT exit then
    WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD
    COUNT 1- dup TOKEN LINT-ESC-STRING-OPENER? if
       SKIP-ESC-QUOTE 0= if dup MARK-UNTERM then
@@ -503,11 +466,11 @@ public
    CLEAR-ERROR
    RESET-TABLES
    begin END? 0= HALTED @ 0= and while
-      CUR LINT-WS? if ADV drop
+      CUR ENGINE-DELIM? if ADV drop
       else
          POS @ START !  LINE-N @ START-LINE !  COL-N @ START-COL !
          CUR 92 = if LINE-COMMENT
-         else PAREN-OPEN? if PAREN-COMMENT
+         else CUR 40 = PAREN-STANDALONE? and if PAREN-COMMENT
          else SCAN-WORD then then
       then
    repeat ;

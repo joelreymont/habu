@@ -16,8 +16,8 @@
 \          never a neighbouring registry row.
 \   R-*  : the record readers, which hang off NO-VARIANT rather than a case.
 \
-\ The fixtures are declared in the full ENUM form and as a STRUCTURE, so none of them is
-\ a compact enum site and the committed enum-census baseline does not move.
+\ Full ENUM and STRUCTURE fixtures exercise named payload layouts through the
+\ unified declaration path.
 
 require lib/prelude.f
 require lib/test.f

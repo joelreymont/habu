@@ -136,7 +136,7 @@ licensed row lands with a device measurement (the MMA lane), not here.
 4. **Delete**: `PARSE-SHAPE` (`cad.f:461`) and the positional shape-binding
    path; `SHP-LEGAL?` broadcast classes replaced by extent unification.
 5. **Rename**: `SPEC:` → the freed `MODEL:` spelling; `maki/spec.f` →
-   `maki/model.f`; suites, FILEMAP, docs. (Same choreography as the DEFTYPE
+   `maki/model.f`; suites and docs. (Same choreography as the DEFTYPE
    stage-C rename, e64b6b84.)
 
 Until stage 5, the two keywords coexist with the freeze already in force: the
