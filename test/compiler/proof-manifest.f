@@ -51,9 +51,13 @@ require lib/fs.f
 package PROOF-MANIFEST
 private
 
-$8000 constant AX-CAP
-$4000 constant TY-CAP
-128 constant TH-MAX
+\ Sized for the largest committed manifest, which is the checker parity gate's:
+\ 112 statements, whose `type` rows alone run to about 29 KB. The identity,
+\ interning and structure manifests are an order of magnitude smaller and are
+\ unaffected by the headroom.
+$18000 constant AX-CAP
+$C000 constant TY-CAP
+256 constant TH-MAX
 8 constant AXIOM-MAX
 $0A constant LF
 $23 constant HASH

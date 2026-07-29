@@ -190,6 +190,17 @@ variable BIG-LEX-U
    s"  c ;" ESC-FIX+
    ESC-FIX$ ;
 
+\ `: Q s" : FORGED ;" s" " dup ;` - two literals, the first holding text that
+\ would be a definition if it were ever tokenized and the second holding
+\ nothing at all.
+: PAYLOAD-FIX$  ( -- ptr u8 n )
+   ESC-FIX-RESET
+   s" : Q s" ESC-FIX+  DQUOTE ESC-FIX-C+
+   s"  : FORGED ;" ESC-FIX+  DQUOTE ESC-FIX-C+
+   s"  s" ESC-FIX+  DQUOTE ESC-FIX-C+  $20 ESC-FIX-C+  DQUOTE ESC-FIX-C+
+   s"  dup ;" ESC-FIX+
+   ESC-FIX$ ;
+
 : INIT-TOK-FIX  ( -- )
    TOK-LEN STR:BUF-RESET
    s" : X ( n -- n ) dup " STR:LENGTH TOK-FIX FIX-CAP STR:LENGTH TOK-LEN STR:BUF-APPEND
@@ -530,6 +541,30 @@ variable REG-I
    3 LINT-LEX:BYTE@ 11 ASSERT=  3 LINT-LEX:COL@ 12 ASSERT=
    4 LINT-LEX:TOKEN s" ;" ASSERT$
    4 LINT-LEX:BYTE@ 13 ASSERT= ;
+
+\ A string literal's payload is reported through CONTENT, the same reader a
+\ paren comment's body uses, and it is still not tokenized: the token count and
+\ the token after each literal pin that. Reporting the bytes is what lets a
+\ consumer reason about a quoted NAME - the checker's concrete type table is
+\ written that way - without falling back to substring search over the source.
+: TEST-LEXER-STRING-PAYLOAD ( -- )
+   PAYLOAD-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? 0= ASSERT
+   LINT-LEX:COUNT 6 ASSERT=
+   2 LINT-LEX:KIND@ LINT-LEX:WORD ASSERT=
+   2 LINT-LEX:CONTENT s" : FORGED ;" ASSERT$
+   3 LINT-LEX:CONTENT nip 0 ASSERT=
+   4 LINT-LEX:TOKEN s" dup" ASSERT$
+   4 LINT-LEX:CONTENT nip 0 ASSERT=
+   0 LINT-LEX:CONTENT nip 0 ASSERT=
+   ESC-OPENER$ LINT-LEX:SOURCE
+   2 LINT-LEX:CONTENT nip 5 ASSERT=
+   2 LINT-LEX:CONTENT drop c@ [char] a ASSERT=
+   PLAIN-OPENER$ LINT-LEX:SOURCE
+   2 LINT-LEX:CONTENT nip 2 ASSERT=
+   UNTERM-FIX$ LINT-LEX:SOURCE
+   LINT-LEX:ERROR? ASSERT
+   2 LINT-LEX:CONTENT nip 0 ASSERT= ;
 
 \ ---- primitive-axiom rows ---------------------------------------------------
 \ src/core/checker.f names primitives `s"`, `c"`, `."`, `s\"`, `c\"`, `.\"`, `[']`
@@ -931,6 +966,7 @@ variable REG-I
    TEST-LEXER-ENGINE-DELIMS
    TEST-LEXER-NO-ERROR
    TEST-LEXER-ESC-QUOTE
+   TEST-LEXER-STRING-PAYLOAD
    TEST-LEXER-UNTERM-QUOTE
    TEST-LEXER-REUSE-AFTER-ERROR
    TEST-ROW-QUOTE-NAMES

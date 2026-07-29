@@ -448,6 +448,7 @@ public
    s" test/compiler/ir-intern-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-structure-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-storage-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/checker-model-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-schema.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-op.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-fun.f" GSI-FORK-INCLUDE

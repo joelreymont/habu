@@ -1,0 +1,378 @@
+# What the checker models state, and what they rest on.
+#
+# One `theorem` row per published result in formal/Common/Effects.v and then in
+# formal/Common/Control.v - every `Example` each file declares - in the order
+# the files declare them, and in the order formal/_CoqProject builds them.
+# Every `theorem` row is followed by exactly one `type` row and then by its
+# assumption rows. The two files are read as one inventory because they are one
+# model: Control.v opens with `From Habu.Common Require Import Effects`, so a
+# statement in one can name anything in the other, and a single manifest asks
+# Rocq one question about both.
+#
+# `Example` rather than `Theorem` is not a weaker claim. Rocq's `Example` is
+# `Definition` with a proof script, so an `Example` closed with `Qed.` is a
+# constant of exactly the stated type, and the ascription this gate generates
+# type-checks against it the same way it does against a `Theorem`.
+#
+# There is one assumption row per result and it is always `closed`, which is
+# Rocq reporting "Closed under the global context". Both models rest on
+# nothing, so test/compiler/checker-model-proof.f reads this manifest with
+# assumption rows FORBIDDEN: an `axiom` row cannot be written here at all, and
+# the observed set is additionally compared against the committed one. That is
+# the same strength the interning manifest in test/compiler/ir-intern-axioms.txt
+# and the structure manifest in test/compiler/ir-structure-axioms.txt claim.
+#
+# A `type` row is this file's copy of what that result states, written as Rocq
+# prints the statement in the environment the generated obligations file sets
+# up: Stdlib Bool, List and PeanoNat imported, list notations imported, and
+# Habu.Common.Effects and Habu.Common.Control imported last so a bare name
+# resolves to the models' own. Rocq's printer breaks a long statement across
+# lines; a row is that statement with its line breaks turned into single
+# spaces, which changes nothing Rocq reads. The parity gate turns each row into
+# `Definition pinned_statement_<k> : <type row> := @<theorem name>.` in the file
+# it asks Rocq to compile, so Rocq's own type checker decides whether the
+# statement in the model still is the statement written here. It decides that
+# up to conversion, so renaming a bound variable is not a change but weakening,
+# strengthening, or trivialising a statement is. These rows are the authority:
+# the generated file is a build output and never reads a statement out of a
+# model, so changing a model alone cannot move the target it is checked against.
+#
+# Lines starting with `#`, and blank lines, are commentary. A `type` row is
+# handed to Rocq. Every other row is compared byte for byte.
+
+theorem Habu.Common.Effects.compose_two_concrete_effects
+type compose [] empty_subst dup_i64 add_i64 = Some (empty_subst, prim [] 1 [i64] [i64])
+closed
+theorem Habu.Common.Effects.compose_fresh_instantiates_the_callee
+type match compose_fresh [] empty_subst dup_i64 add_i64 with | Some (s, w) => stack_eqb (zonk_row s (we_din w)) (zonk_row s (we_dout w)) = true /\ match zonk_row s (we_din w) with | SRow _ => false | SPush t (SRow _) => ty_eqb t i64 | SPush t (SPush _ _) => false end = true | None => False end
+closed
+theorem Habu.Common.Effects.composition_needs_both_operands
+type dup_add_under_str = None
+closed
+theorem Habu.Common.Effects.row_var_captures_deeper_tail
+type match literal_then_compare with | Some (s, _) => row_openb s 1 = false /\ match resolve_row s (SRow 1) with | SRow _ => false | SPush t _ => ty_eqb (resolve_ty s t) i64 end = true | None => False end
+closed
+theorem Habu.Common.Effects.tyvar_binds_once
+type match unify_stack [] UkExact empty_subst (stack_of 0 [i64; i64]) (stack_of 1 [TVar 2; TVar 2]) with | Some s => ty_eqb (resolve_ty s (TVar 2)) i64 = true | None => False end
+closed
+theorem Habu.Common.Effects.same_letter_means_same_type
+type unify_stack [] UkExact empty_subst (stack_of 0 [i64; boolt]) (stack_of 1 [TVar 2; TVar 2]) = None
+closed
+theorem Habu.Common.Effects.different_letters_are_unconstrained
+type match unify_stack [] UkExact empty_subst (stack_of 0 [i64; boolt]) (stack_of 1 [TVar 2; TVar 3]) with | Some s => ty_eqb (resolve_ty s (TVar 2)) i64 = true /\ ty_eqb (resolve_ty s (TVar 3)) boolt = true | None => False end
+closed
+theorem Habu.Common.Effects.arity_mismatch_rejects
+type unify_stack [] UkExact empty_subst (stack_of 0 [i64]) (stack_of 0 [i64; i64]) = None
+closed
+theorem Habu.Common.Effects.different_rows_absorb_arity
+type match unify_stack [] UkExact empty_subst (stack_of 0 [i64]) (stack_of 1 [i64; i64]) with | Some s => row_openb s 0 = false | None => False end
+closed
+theorem Habu.Common.Effects.conflicting_cons_reject
+type unify_stack [] UkInput empty_subst (stack_of 0 [i64]) (stack_of 0 [strt]) = None /\ unify_stack [] UkInput empty_subst (stack_of 0 [boolt]) (stack_of 0 [i64]) = None
+closed
+theorem Habu.Common.Effects.roles_never_widen
+type unify_stack [] UkInput empty_subst (stack_of 0 [idxt]) (stack_of 0 [lent]) = None /\ unify_stack [] UkInput empty_subst (stack_of 0 [idxt]) (stack_of 0 [nt]) = None /\ unify_stack [] UkInput empty_subst (stack_of 0 [nt]) (stack_of 0 [idxt]) = None /\ unify_stack [] UkCoerce empty_subst (stack_of 0 [idxt]) (stack_of 0 [nt]) = None
+closed
+theorem Habu.Common.Effects.widening_is_input_only
+type unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [u8]) (stack_of 0 [cellt])) = true /\ unifiesb (unify_stack [] UkExact empty_subst (stack_of 0 [u8]) (stack_of 0 [cellt])) = false /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [cellt]) (stack_of 0 [u8])) = false /\ unifiesb (unify_stack [] UkExact empty_subst (stack_of 0 [nt]) (stack_of 0 [u8])) = true /\ unifiesb (unify_stack [] UkExact empty_subst (stack_of 0 [u8]) (stack_of 0 [nt])) = true
+closed
+theorem Habu.Common.Effects.addr_takes_n_but_not_a_narrower_int
+type unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [nt]) (stack_of 0 [addrt])) = true /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [u8]) (stack_of 0 [addrt])) = false /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [u32]) (stack_of 0 [addrt])) = false
+closed
+theorem Habu.Common.Effects.pointee_is_invariant
+type unify_stack [] UkInput empty_subst (stack_of 0 [TPtr u8]) (stack_of 0 [TPtr cellt]) = None /\ unify_stack [] UkInput empty_subst (stack_of 0 [TPtr (TPtr u8)]) (stack_of 0 [TPtr (TPtr cellt)]) = None
+closed
+theorem Habu.Common.Effects.occurs_check_sees_through_quotations
+type unify_stack [] UkExact empty_subst (SRow 0) (SPush (quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))) (SRow 3)) = None
+closed
+theorem Habu.Common.Effects.quotation_rows_unify_pairwise
+type match unify_stack [] UkExact empty_subst (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2))]) (stack_of 0 [quot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4]) (SRow 2) (SRow 2))]) with | Some s => ty_eqb (resolve_ty s (TVar 3)) i64 = true /\ ty_eqb (resolve_ty s (TVar 4)) boolt = true | None => False end
+closed
+theorem Habu.Common.Effects.zonk_recovers_a_whole_quotation
+type match unify_stack [] UkExact empty_subst (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2))]) (stack_of 0 [quot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4]) (SRow 2) (SRow 2))]) with | Some s => ty_eqb (zonk_ty s (quot (Eff (stack_of 1 [TVar 3]) (stack_of 1 [TVar 4]) (SRow 2) (SRow 2)))) (quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2))) = true | None => False end
+closed
+theorem Habu.Common.Effects.quotation_effect_mismatch_rejects
+type unify_stack [] UkExact empty_subst (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [boolt]) (SRow 2) (SRow 2))]) (stack_of 0 [quot (Eff (stack_of 1 [i64]) (stack_of 1 [strt]) (SRow 2) (SRow 2))]) = None
+closed
+theorem Habu.Common.Effects.control_flags_are_carried_not_unified
+type ty_eqb thrower plain_quot = false /\ unifiesb (unify_ty [] UkExact empty_subst thrower plain_quot) = true /\ match unify_ty [] UkExact empty_subst (TVar 5) thrower with | Some s => q_xdead (resolve_ty s (TVar 5)) = true /\ q_xhas (resolve_ty s (TVar 5)) = true | None => False end
+closed
+theorem Habu.Common.Effects.declared_nominals_are_distinct
+type unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [fam0 7]) (stack_of 0 [fam0 8])) = false /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [fam0 7]) (stack_of 0 [nt])) = false /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [nt]) (stack_of 0 [fam0 7])) = false /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [fam0 7]) (stack_of 0 [fam0 7])) = true
+closed
+theorem Habu.Common.Effects.raw_cell_refuses_a_nominal
+type let s := {| sub_ty := []; sub_row := []; sub_raw := [2] |} in unifiesb (unify_stack [] UkInput s (stack_of 0 [TVar 2]) (stack_of 0 [fam0 7])) = false /\ unifiesb (unify_stack [] UkInput s (stack_of 0 [TVar 2]) (stack_of 0 [nt])) = true /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [TVar 2]) (stack_of 0 [fam0 7])) = true
+closed
+theorem Habu.Common.Effects.linear_cons_are_nominal
+type unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [TCon (CLinear 0)]) (stack_of 0 [TCon (CLinear 1)])) = false /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [TCon (CLinear 0)]) (stack_of 0 [nt])) = false /\ unifiesb (unify_stack [] UkInput empty_subst (stack_of 0 [TCon (CLinear 0)]) (stack_of 0 [TCon (CLinear 0)])) = true /\ unifiesb (unify_stack [] UkInput {| sub_ty := []; sub_row := []; sub_raw := [2] |} (stack_of 0 [TVar 2]) (stack_of 0 [TCon (CLinear 0)])) = false
+closed
+theorem Habu.Common.Effects.unify_ty_agrees_with_unify_stack
+type unifiesb (unify_ty [] UkInput empty_subst (TPtr (TVar 1)) (TPtr i64)) = true /\ unifiesb (unify_ty [] UkInput empty_subst (TPtr u8) (TPtr cellt)) = false /\ unifiesb (unify_ty [] UkInput empty_subst u8 cellt) = true
+closed
+theorem Habu.Common.Effects.hidden_underflow_unifies_but_fails_the_seal
+type match run_calls [] empty_subst (id_eff (we_din (decl_eff declared_empty)) (we_rin (decl_eff declared_empty))) [trusted_img] with | Some (s, cur) => seal_okb s declared_empty = false /\ unifiesb (unify_stack [] UkCoerce s (we_dout cur) (we_dout (decl_eff declared_empty))) = true | None => False end
+closed
+theorem Habu.Common.Effects.sealed_row_rejects_hidden_underflow
+type check_body [] declared_empty [trusted_img] = false
+closed
+theorem Habu.Common.Effects.sealed_row_admits_a_preserving_callee
+type check_body [] declared_empty [balanced_word] = true /\ check_body [] declared_empty [balanced_word; balanced_word] = true
+closed
+theorem Habu.Common.Effects.preserving_callee_may_rename_the_row
+type match run_calls [] empty_subst (id_eff (we_din (decl_eff declared_empty)) (we_rin (decl_eff declared_empty))) [balanced_word] with | Some (s, _) => row_openb s 0 = true | None => False end
+closed
+theorem Habu.Common.Effects.declared_input_is_not_underflow
+type check_body [] declared_img [trusted_img] = true
+closed
+theorem Habu.Common.Effects.output_join_still_applies
+type check_body [] (decl_plain [] 0 9 [] []) [producer] = false /\ check_body [] (decl_plain [] 0 9 [] [i64]) [producer] = true
+closed
+theorem Habu.Common.Effects.return_row_round_trips
+type match compose_fresh [] empty_subst (id_eff (stack_of 0 [i64]) (SRow 5)) to_r with | Some (s, w) => stack_eqb (zonk_row s (we_dout w)) (zonk_row s (SRow 0)) = true /\ match compose_fresh [] s w from_r with | Some (s', w') => stack_eqb (zonk_row s' (we_dout w')) (SPush i64 (zonk_row s' (SRow 0))) | None => false end = true | None => False end
+closed
+theorem Habu.Common.Effects.callee_without_a_return_clause_leaves_it_alone
+type match compose_fresh [] empty_subst (id_eff (SRow 0) (SRow 5)) balanced_word with | Some (s, w) => stack_eqb (resolve_row s (we_rout w)) (SRow 5) = true | None => False end
+closed
+theorem Habu.Common.Effects.return_base_row_is_sealed_too
+type match run_calls [] empty_subst (id_eff (we_din (decl_eff declared_with_return)) (we_rin (decl_eff declared_with_return))) [from_r] with | Some (s, _) => seal_okb s declared_with_return = false | None => False end
+closed
+theorem Habu.Common.Effects.declared_widths_match_the_registry
+type (fam_arity adts f_option, fam_width adts f_option) = (1, 2) /\ (fam_arity adts f_result, fam_width adts f_result) = (2, 2) /\ (fam_arity adts f_pair, fam_width adts f_pair) = (1, 2) /\ (fam_arity adts f_serial, fam_width adts f_serial) = (0, 1)
+closed
+theorem Habu.Common.Effects.a_layout_value_is_more_than_one_cell
+type t_width adts empty_subst optn = 2 /\ t_width adts empty_subst pairn = 2 /\ t_width adts empty_subst serial = 1 /\ t_width adts empty_subst nt = 1 /\ t_width adts empty_subst (TPtr optn) = 1
+closed
+theorem Habu.Common.Effects.a_layout_argument_widens_the_bundle
+type t_width adts empty_subst optopt = 3 /\ t_width adts empty_subst (fam_app f_pair [optn]) = 3 /\ t_width adts empty_subst optidx = fam_width adts f_option /\ t_width adts empty_subst pairn = fam_width adts f_pair
+closed
+theorem Habu.Common.Effects.push_logical_expands_a_closed_layout
+type push_logical adts empty_subst optn (SRow 0) = SPush (fam_hid f_option 1 [nt]) (SPush (fam_hid f_option 0 [nt]) (SRow 0)) /\ push_logical adts empty_subst serial (SRow 0) = SPush serial (SRow 0) /\ push_logical adts empty_subst nt (SRow 0) = SPush nt (SRow 0) /\ push_logical adts empty_subst (TPtr optn) (SRow 0) = SPush (TPtr optn) (SRow 0)
+closed
+theorem Habu.Common.Effects.an_open_argument_is_not_expanded
+type layout_args_openb empty_subst opta = true /\ layout_args_openb empty_subst optn = false /\ push_logical adts empty_subst opta (SRow 0) = SPush opta (SRow 0) /\ (let s := {| sub_ty := [(2, nt)]; sub_row := []; sub_raw := [] |} in layout_args_openb s opta = false /\ push_logical adts s opta (SRow 0) = SPush (fam_hid f_option 1 [TVar 2]) (SPush (fam_hid f_option 0 [TVar 2]) (SRow 0)))
+closed
+theorem Habu.Common.Effects.a_layout_cell_never_binds_a_variable
+type unifiesb (unify_ty adts UkInput empty_subst (fam_hid f_option 1 [nt]) (TVar 5)) = false /\ unifiesb (unify_ty adts UkInput empty_subst (fam_hid f_option 0 [nt]) (TVar 5)) = false /\ unifiesb (unify_ty adts UkInput empty_subst optn (TVar 5)) = false /\ unifiesb (unify_ty adts UkInput empty_subst opta (TVar 5)) = false /\ unifiesb (unify_ty adts UkInput empty_subst (TVar 5) optn) = false /\ unifiesb (unify_ty adts UkInput empty_subst serial (TVar 5)) = true
+closed
+theorem Habu.Common.Effects.hidden_fields_pair_only_at_the_same_slot
+type unifiesb (unify_ty adts UkExact empty_subst (fam_hid f_option 0 [nt]) (fam_hid f_option 0 [TVar 2])) = true /\ unifiesb (unify_ty adts UkExact empty_subst (fam_hid f_option 0 [nt]) (fam_hid f_option 1 [nt])) = false /\ unifiesb (unify_ty adts UkExact empty_subst (fam_hid f_option 0 [nt]) optn) = false /\ unifiesb (unify_ty adts UkExact empty_subst optn (fam_hid f_option 0 [nt])) = false /\ unifiesb (unify_ty adts UkExact empty_subst (fam_hid f_option 0 [nt]) (fam_hid f_result 0 [nt; nt])) = false
+closed
+theorem Habu.Common.Effects.family_identity_is_the_id_and_the_arguments
+type unifiesb (unify_ty adts UkExact empty_subst optn optidx) = false /\ unifiesb (unify_ty adts UkExact empty_subst optn (fam_app f_result [nt; nt])) = false /\ unifiesb (unify_ty adts UkExact empty_subst (fam_app f_result [nt; idxt]) (fam_app f_result [idxt; nt])) = false /\ unifiesb (unify_ty adts UkExact empty_subst (fam_app f_result [nt; idxt]) (fam_app f_result [nt; idxt])) = true /\ match unify_ty adts UkExact empty_subst optn opta with | Some s => ty_eqb (resolve_ty s (TVar 2)) nt = true | None => False end
+closed
+theorem Habu.Common.Effects.a_logical_cell_meets_a_width_expansion
+type loghid_atb adts empty_subst opt_expanded opt_logical = true /\ loghid_atb adts empty_subst (SPush (fam_hid f_option 0 [nt]) (SRow 0)) opt_logical = false /\ match unify_stack adts UkInput empty_subst opt_expanded opt_logical with | Some s => ty_eqb (resolve_ty s (TVar 2)) nt = true | None => False end /\ unifiesb (unify_stack adts UkInput empty_subst opt_logical opt_expanded) = true /\ unifiesb (unify_stack adts UkInput empty_subst opt_expanded (SPush (fam_app f_result [nt; nt]) (SRow 0))) = false
+closed
+theorem Habu.Common.Effects.a_pointee_may_not_absorb_a_nominal_scalar
+type nom_scalarb adts empty_subst serial = true /\ nom_scalarb adts empty_subst optn = false /\ nom_scalarb adts empty_subst (fam_hid f_option 0 [nt]) = false /\ unifiesb (unify_ty adts UkInput empty_subst serial (TVar 5)) = true /\ unifiesb (unify_ty adts UkInput empty_subst (TPtr serial) (TPtr (TVar 5))) = false /\ unifiesb (unify_ty adts UkInput empty_subst (TPtr (TVar 5)) (TPtr serial)) = false
+closed
+theorem Habu.Common.Effects.the_two_occurs_checks_disagree_about_arguments
+type unify_stack adts UkExact empty_subst (SRow 0) (SPush (quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))) (SRow 3)) = None /\ unifiesb (unify_stack adts UkExact empty_subst (SRow 0) (SPush (fam_app f_serial [quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))]) (SRow 3))) = true /\ ty_occurs empty_subst 9 (fam_app f_option [TVar 9]) = true /\ ty_occurs empty_subst 9 (fam_app f_option [nt]) = false
+closed
+theorem Habu.Common.Effects.failure_is_a_value
+type unify_stack [] UkExact empty_subst (stack_of 0 [i64]) (stack_of 0 [strt]) = None /\ check_body [] declared_empty [trusted_img] = false
+closed
+theorem Habu.Common.Control.branch_arms_join
+type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TCall wStep1; TThen] = VCert
+closed
+theorem Habu.Common.Control.branch_arms_disagree_reject
+type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TCall wDrop1; TCall wMkCell; TThen] = VReject
+closed
+theorem Habu.Common.Control.no_else_arm_must_be_neutral
+type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wDup1; TThen] = VReject
+closed
+theorem Habu.Common.Control.join_is_exact_but_the_boundary_coerces
+type check_ctl (sig [boolt] [cellt]) [TIf; TCall wMkU8; TElse; TCall wMkCell; TThen] = VReject /\ check_ctl (sig [] [cellt]) [TCall wMkU8] = VCert
+closed
+theorem Habu.Common.Control.a_flag_must_already_be_bool
+type check_ctl (sig [i64] [i64]) [TIf; TCall wStep1; TThen] = VReject
+closed
+theorem Habu.Common.Control.until_loop_must_be_neutral
+type check_ctl (sig [i64] [i64]) [TBegin; TCall wMkBool; TUntil] = VCert /\ check_ctl (sig [i64] [i64]) [TBegin; TCall wDup1; TCall wMkBool; TUntil] = VReject
+closed
+theorem Habu.Common.Control.while_repeat_loop_must_be_neutral
+type check_ctl (sig [i64] [i64]) [TBegin; TCall wMkBool; TWhile; TCall wStep1; TRepeat] = VCert /\ check_ctl (sig [i64] [i64]) [TBegin; TCall wMkBool; TWhile; TCall wDup1; TRepeat] = VReject
+closed
+theorem Habu.Common.Control.loop_exit_row_is_the_while_row
+type check_ctl (sig [i64] []) [TBegin; TCall wDrop1; TCall wMkBool; TWhile; TCall wMkI64; TRepeat] = VCert
+closed
+theorem Habu.Common.Control.again_closes_and_kills_the_path
+type check_ctl (sig [i64] [i64]) [TBegin; TCall wStep1; TAgain] = VCert /\ check_ctl (sig [i64] [i64]) [TBegin; TCall wStep1; TAgain; TCall wStep1] = VReject
+closed
+theorem Habu.Common.Control.do_loop_must_be_neutral
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TLoop] = VReject
+closed
+theorem Habu.Common.Control.do_takes_two_bounds_and_plus_loop_an_increment
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TDo; TCall wStep1; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TCall wMkN; TPlusLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TPlusLoop] = VReject
+closed
+theorem Habu.Common.Control.loop_indices_need_enclosing_do_frames
+type check_ctl (sig [] []) [TCall wMkN; TCall wMkN; TDo; TI; TCall wDropN; TLoop] = VCert /\ check_ctl (sig [] [nt]) [TCall wMkN; TCall wMkN; TDo; TI; TLoop] = VReject /\ check_ctl (sig [] []) [TI; TCall wDropN] = VReject /\ check_ctl (sig [] []) [TCall wMkN; TCall wMkN; TDo; TJ; TCall wDropN; TLoop] = VReject /\ check_ctl (sig [] []) [TCall wMkN; TCall wMkN; TDo; TCall wMkN; TCall wMkN; TDo; TJ; TCall wDropN; TLoop; TLoop] = VCert
+closed
+theorem Habu.Common.Control.leave_matches_the_loop_exit_row
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wMkBool; TIf; TLeave; TThen; TCall wStep1; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLeave; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TLeave; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TLeave] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLeave; TCall wStep1; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TUnloop; TLeave; TLoop] = VCert
+closed
+theorem Habu.Common.Control.the_loop_exit_is_always_live
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDrop1; TCall wMkI64; TExit; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TExit; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TPlusLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLoop; TCall wStep1] = VCert
+closed
+theorem Habu.Common.Control.loop_is_a_dead_closer_leave_is_not
+type dead_closer TLoop = true /\ dead_closer TPlusLoop = true /\ dead_closer TLeave = false /\ dead_closer TDo = false /\ dead_closer TUntil = false /\ dead_closer TSemiMatch = false
+closed
+theorem Habu.Common.Control.a_do_frame_is_closed_only_by_loop
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TThen] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TCall wMkBool; TUntil] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TRepeat] = VReject
+closed
+theorem Habu.Common.Control.case_arms_join_over_the_selector
+type check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TEndof; TCall wMkN; TOf; TCall wMkN; TEndof; TCall wMkN; TEndcase] = VCert /\ check_ctl (sig [nt] []) [TCase; TCall wMkN; TOf; TEndof; TEndcase] = VCert /\ check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TCall wMkN; TEndof; TCall wMkN; TEndcase] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TEndof; TEndcase] = VReject
+closed
+theorem Habu.Common.Control.an_of_test_must_be_neutral
+type check_ctl (sig [nt] [nt]) [TCase; TCall wDup1; TCall wMkN; TOf; TCall wMkN; TEndof; TCall wMkN; TEndcase] = VReject
+closed
+theorem Habu.Common.Control.case_arms_join_exactly
+type check_ctl (sig [nt] [cellt]) [TCase; TCall wMkN; TOf; TCall wMkU8; TEndof; TCall wMkN; TOf; TCall wMkCell; TEndof; TCall wDropAny; TCall wMkCell; TEndcase] = VReject
+closed
+theorem Habu.Common.Control.a_dead_case_arm_is_excluded
+type check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TExit; TEndof; TCall wMkN; TEndcase] = VCert /\ check_ctl (sig [nt] []) [TCase; TCall wMkN; TOf; TExit; TEndof; TEndcase] = VCert /\ check_ctl (sig [nt] [cellt]) [TCase; TCall wMkN; TOf; TCall wMkCell; TExit; TEndof; TCall wMkN; TOf; TCall wMkCell; TExit; TEndof; TCall wDropAny; TCall wMkCell; TExit; TEndcase] = VCert
+closed
+theorem Habu.Common.Control.case_frames_are_matched_by_kind
+type check_ctl (sig [nt] [nt]) [TOf] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndcase] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TThen] = VReject /\ dead_closer TEndof = true /\ dead_closer TEndcase = true
+closed
+theorem Habu.Common.Control.match_must_be_exhaustive
+type check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_NONEXH /\ check_ctl (sig [fam0 101] [nt]) [TMatch; TFamTok fmthree; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
+closed
+theorem Habu.Common.Control.match_branches_are_refined_by_their_payload
+type check_ctl (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_ctl (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TCall wDropBool; TCall wMkN; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
+closed
+theorem Habu.Common.Control.md_join_is_the_match_join_not_the_if_join
+type check_reason (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_JOIN /\ check_reason (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TCall wDrop1; TCall wMkCell; TThen] = 0 /\ check_reason (sig [i64] [i64]) [TBegin; TCall wDup1; TCall wMkBool; TUntil] = 0
+closed
+theorem Habu.Common.Control.md_join_does_not_steal_an_earlier_failure
+type check_reason (sig [fam0 102] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TCall wStep1; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = 0
+closed
+theorem Habu.Common.Control.match_form_shape_is_enforced
+type check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TCall wDropN; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_MISSING_OF /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_VAR_DUP /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 5; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_VAR_UNKNOWN /\ check_reason (sig [fam0 100] [nt]) [TSemiMatch] = MD_STRAY
+closed
+theorem Habu.Common.Control.an_unterminated_match_is_truncation
+type check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof] = VReject /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof] = MD_TRUNC
+closed
+theorem Habu.Common.Control.a_dead_match_branch_is_excluded
+type check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TExit; TEndof; TVarTok 1; TOf; TExit; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TCall wMkN; TThrow; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert
+closed
+theorem Habu.Common.Control.the_scrutinee_must_be_the_matched_family
+type check_ctl (sig [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmbool; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [nt] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = MD_SCRUT /\ check_reason (sig [fam0 100] [nt]) [TOpenQ; TMatch; TFamTok fmres] = MD_QUOT
+closed
+theorem Habu.Common.Control.exit_matches_and_fails_the_declared_output
+type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wDrop1; TCall wMkI64; TExit; TThen; TCall wStep1] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wDrop1; TCall wMkBool; TExit] = VReject
+closed
+theorem Habu.Common.Control.early_returns_join_each_other_exactly
+type check_ctl (sig [boolt] [cellt]) [TIf; TCall wMkU8; TExit; TThen; TCall wMkCell] = VReject /\ check_ctl (sig [boolt] [cellt]) [TIf; TCall wMkCell; TExit; TThen; TCall wMkCell] = VCert /\ check_ctl (sig [] [cellt]) [TCall wMkU8] = VCert
+closed
+theorem Habu.Common.Control.a_dead_arm_is_excluded_from_the_join
+type check_ctl (sig [boolt] [cellt]) [TIf; TCall wMkCell; TExit; TThen; TCall wMkCell] = VCert /\ check_ctl (sig [boolt] [cellt]) [TIf; TCall wMkCell; TThen; TCall wMkCell] = VReject
+closed
+theorem Habu.Common.Control.dead_code_after_exit
+type check_ctl (sig [i64] [i64]) [TExit; TCall wStep1] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TExit; TThen] = VCert
+closed
+theorem Habu.Common.Control.until_is_not_a_dead_closer
+type check_ctl (sig [i64] [i64]) [TBegin; TExit; TUntil] = VReject
+closed
+theorem Habu.Common.Control.throw_consumes_a_code_and_kills_the_path
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TThrow] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wDrop1; TCall wMkN; TThrow] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TThrow; TCall wStep1] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wDrop1; TCall wMkN; TThrow; TThen; TCall wStep1] = VCert /\ check_ctl (sig [i64] [cellt]) [TCall wMkBool; TIf; TCall wMkN; TThrow; TThen; TCall wDrop1; TCall wMkCell] = VCert
+closed
+theorem Habu.Common.Control.throw_relaxes_a_branch_join
+type check_ctl (sig [boolt] [cellt]) [TIf; TCall wMkN; TThrow; TThen; TCall wMkCell] = VCert
+closed
+theorem Habu.Common.Control.throw_and_die_differ_only_in_the_edge
+type ctl_throw (sig [i64] [i64]) [TCall wMkN; TThrow] = true /\ ctl_dead (sig [i64] [i64]) [TCall wMkN; TThrow] = true /\ ctl_throw (sig [] []) [TCall (prim [] 1 [] [TPtr u8; nt; nt]); TDie] = false /\ ctl_dead (sig [] []) [TCall (prim [] 1 [] [TPtr u8; nt; nt]); TDie] = true /\ ctl_dead (sig [i64] [i64]) [TCall wStep1] = false /\ ctl_dead (sig [i64] [i64]) [TExit] = false
+closed
+theorem Habu.Common.Control.inherited_control_flags_kill_the_callers_path
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCallCtl wNoReturn true true; TCall wStep1] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wNoReturn; TCall wStep1] = VCert /\ check_ctl (sig [boolt] [cellt]) [TIf; TCall wMkN; TCallCtl wNoReturn true true; TThen; TCall wMkCell] = VCert
+closed
+theorem Habu.Common.Control.quotation_application
+type check_ctl (sig [i64] [i64]) [TOpenQ; TCall wStep1; TCloseQ; TExec] = VCert /\ check_ctl (sig [i64] [i64]) [TOpenQ; TCall wDup1; TCloseQ; TExec] = VReject
+closed
+theorem Habu.Common.Control.an_applied_quotation_carries_its_effect
+type check_ctl (sig [] [i64]) [TOpenQ; TCall wStep1; TCloseQ; TExec] = VReject
+closed
+theorem Habu.Common.Control.catch_requires_a_stack_preserving_quotation
+type check_ctl (sig [i64] [i64; nt]) [TOpenQ; TCall wStep1; TCloseQ; TCatch] = VCert /\ check_ctl (sig [i64] [i64; i64; nt]) [TOpenQ; TCall wDup1; TCloseQ; TCatch] = VReject
+closed
+theorem Habu.Common.Control.exit_is_quotation_scoped
+type check_ctl (sig [] [i64]) [TOpenQ; TCall wMkI64; TExit; TCloseQ; TExec] = VCert
+closed
+theorem Habu.Common.Control.an_opaque_execution_token_rejects
+type check_ctl (sig [i64] []) [TExec] = VReject
+closed
+theorem Habu.Common.Control.xdead_quotation_does_not_install_its_output
+type check_ctl (sig [i64] [i64; i64]) qthrow_dup = VReject /\ check_ctl (sig [i64] [i64]) qthrow_dup = VCert /\ check_ctl (sig [i64] [i64]) [TOpenQ; TCall wMkN; TThrow; TCloseQ; TExec; TCall wStep1] = VReject
+closed
+theorem Habu.Common.Control.semiq_computes_the_control_flags
+type quot_flags [TCall wStep1] = (false, false) /\ quot_flags [TCall wMkN; TThrow] = (true, true) /\ quot_flags [TCall wMkI64; TExit] = (false, false) /\ quot_flags [TBegin; TCall wMkN; TCall wDropN; TAgain] = (false, true) /\ quot_flags [TCall wMkBool; TIf; TCall wMkN; TThrow; TThen] = (true, false)
+closed
+theorem Habu.Common.Control.execute_propagates_the_throw_edge_and_catch_does_not
+type check_ctl (sig [i64] [i64]) (qmay_throw ++ [TExec]) = VCert /\ check_ctl (sig [i64] [i64]) (qmay_throw ++ [TExec; TCall wStep1]) = VCert /\ ctl_throw (sig [i64] [i64]) (qmay_throw ++ [TExec]) = true /\ check_ctl (sig [i64] [i64]) (qmay_throw ++ [TCatch; TCall wDropN]) = VCert /\ ctl_throw (sig [i64] [i64]) (qmay_throw ++ [TCatch; TCall wDropN]) = false
+closed
+theorem Habu.Common.Control.catch_of_a_never_returning_quotation_pushes_no_code
+type check_ctl (sig [i64] [i64]) qthrow_dup_catch = VCert /\ check_ctl (sig [i64] [i64]) (qforever ++ [TCatch]) = VCert /\ check_ctl (sig [i64] [i64; nt]) (qforever ++ [TCatch]) = VReject /\ check_ctl (sig [i64] [i64]) (qforever ++ [TCatch; TCall wStep1]) = VReject
+closed
+theorem Habu.Common.Control.recurse_checks_against_the_declaration
+type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TRecurse; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wDrop1; TCall wMkBool; TRecurse] = VReject
+closed
+theorem Habu.Common.Control.recurse_without_a_signature_is_uncheckable
+type check_ctl {| cfg_fenv := []; cfg_decl := decl_plain [] 0 9 [] []; cfg_brow := 8; cfg_sig := false |} [TRecurse] = VUncheckable /\ check_ctl (sig [i64] [i64]) [TRecurse] = VCert
+closed
+theorem Habu.Common.Control.an_unclosed_frame_rejects
+type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf] = VReject
+closed
+theorem Habu.Common.Control.a_closer_without_an_opener_rejects
+type check_ctl (sig [] []) [TThen] = VReject /\ check_ctl (sig [] []) [TRepeat] = VReject /\ check_ctl (sig [] []) [TElse] = VReject /\ check_ctl (sig [] []) [TCloseQ] = VReject /\ check_ctl (sig [] []) [TLoop] = VReject
+closed
+theorem Habu.Common.Control.a_closer_must_match_its_opener
+type check_ctl (sig [] []) [TBegin; TThen] = VReject /\ check_ctl (sig [] []) [TCall wMkBool; TIf; TUntil] = VReject /\ check_ctl (sig [] []) [TBegin; TRepeat] = VReject
+closed
+theorem Habu.Common.Control.frame_depth_is_bounded
+type check_ctl (sig [i64] [i64]) (opens 32) = VReject /\ check_ctl (sig [i64] [i64]) (opens 33) = VUncheckable /\ length (st_cfs (run (sig [i64] [i64]) (init (sig [i64] [i64])) (opens 33))) = cfs_cap
+closed
+theorem Habu.Common.Control.match_refuses_before_the_overflow
+type check_ctl (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = VReject /\ check_reason (sig [fam0 100] [nt]) (opens 31 ++ [TMatch; TFamTok fmres]) = MD_DEPTH
+closed
+theorem Habu.Common.Control.a_certifying_body_becomes_uncheckable_at_33_frames
+type check_ctl (sig [i64] [i64]) (nest_until 32) = VCert /\ check_ctl (sig [i64] [i64]) (nest_until 33) = VUncheckable
+closed
+theorem Habu.Common.Control.locals_are_scoped_to_their_frame
+type check_ctl (sig [i64] [i64]) [TLocals 1; TLocRef 0] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TElse; TCall wStep1; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TLocals 1; TCall wMkBool; TIf; TLocRef 0; TElse; TLocRef 0; TThen] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TThen; TLocRef 0] = VUncheckable /\ check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TLocals 1; TLocRef 0; TElse; TLocRef 0; TThen] = VUncheckable
+closed
+theorem Habu.Common.Control.every_closer_restores_the_locals_mark
+type check_ctl (sig [i64] [i64]) [TBegin; TLocals 1; TLocRef 0; TCall wMkBool; TUntil; TLocRef 0] = VUncheckable /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLocals 1; TLocRef 0; TLoop; TLocRef 0] = VUncheckable /\ check_ctl (sig [i64] [i64]) [TBegin; TLocals 1; TLocRef 0; TCall wMkBool; TWhile; TLocRef 0; TCall wDrop1; TRepeat] = VCert
+closed
+theorem Habu.Common.Control.locals_are_refused_inside_a_quotation
+type check_ctl (sig [i64] [i64]) [TOpenQ; TLocals 1; TLocRef 0; TCloseQ; TExec] = VReject /\ check_ctl (sig [i64] [i64]) [TLocals 1; TOpenQ; TLocRef 0; TCloseQ; TCall wDropAny; TLocRef 0] = VReject
+closed
+theorem Habu.Common.Control.linear_count_is_conserved_per_step
+type check_ctl (sig [ltok] [ltok]) [] = VCert /\ check_ctl (sig [ltok] [ltok; ltok]) [TCall wDupAny] = VReject /\ check_ctl (sig [ltok] []) [TCall wDropAny] = VReject /\ check_ctl (sig [ltok; nt] [nt; ltok]) [TCall wSwapAny] = VCert /\ check_ctl (sig [ltok] [ltok]) [TCall wMkBool; TIf; TThen] = VCert /\ check_ctl (sig [ltok] [ltok]) [TOpenQ; TCloseQ; TExec] = VCert
+closed
+theorem Habu.Common.Control.linear_count_spans_both_rows
+type check_ctl (sig [ltok] [ltok]) [TToR; TFromR] = VCert /\ check_ctl (sig [ltok] [ltok]) [TCall wToRAsWord; TFromR] = VReject /\ check_ctl (sig [i64] [i64]) [TToR; TFromR] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wToRAsWord; TFromR] = VCert
+closed
+theorem Habu.Common.Control.return_row_round_trips_through_the_real_transfers
+type check_ctl (sig [i64] [i64]) [TToR; TFromR] = VCert /\ check_ctl (sig [i64] [cellt]) [TToR; TFromR] = VCert /\ check_ctl (sig [i64] [strt]) [TToR; TFromR] = VReject /\ check_ctl (sig [i64] []) [TToR] = VReject
+closed
+theorem Habu.Common.Control.polymorphic_laundering_is_caught
+type check_ctl (sig [ltok] [ltok]) [TCall wKeepAny] = VCert /\ check_ctl (sig [nt] [nt; nt]) [TCall wDupAny] = VCert /\ check_ctl (sig [ltok] [ltok; ltok]) [TCall wDupAny] = VReject /\ check_ctl (sig [ltok] []) [TCall wDropAny] = VReject /\ check_ctl (sig [ltok] [ltok]) [TCall wMkBool; TIf; TCall wDupAny; TCall wDropAny; TThen] = VReject /\ check_ctl (sig [ltok] [ltok]) [TOpenQ; TCall wDupAny; TCall wDropAny; TCloseQ; TExec] = VReject
+closed
+theorem Habu.Common.Control.a_layout_bundle_counts_its_linear_once
+type t_width lin_env empty_subst lbox_ltok = 2 /\ layout_linear_count lin_env empty_subst lbox_ltok = 1 /\ lin_ty lin_env empty_subst (fam_hid f_lbox 1 [ltok]) = 1 /\ lin_ty lin_env empty_subst (fam_hid f_lbox 0 [ltok]) = 0 /\ lin_ty lin_env empty_subst lbox_ltok = 1 /\ lin_ty lin_env empty_subst (fam_hid f_lbox 1 [nt]) = 0 /\ layout_linear_count lin_env empty_subst lbox_n = 0 /\ lin_row lin_env empty_subst (push_logical lin_env empty_subst lbox_ltok (SRow 0)) = 1 /\ lin_row lin_env empty_subst (push_logical lin_env empty_subst lbox_n (SRow 0)) = 0 /\ we_din (decl_eff (cfg_decl (sig_in lin_env [lbox_ltok] [lbox_ltok]))) = push_logical lin_env empty_subst lbox_ltok (SRow 0) /\ check_ctl (sig_in lin_env [lbox_ltok] [lbox_ltok]) [] = VCert /\ check_ctl (sig_in lin_env [lbox_n] [lbox_n]) [] = VCert
+closed
+theorem Habu.Common.Control.a_linear_may_not_become_a_local
+type check_ctl (sig [ltok] [ltok]) [TLocals 1; TLocRef 0] = VReject /\ check_ctl (sig [i64] [i64]) [TLocals 1; TLocRef 0] = VCert
+closed
+theorem Habu.Common.Control.agrees_with_the_straight_line_model
+type check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg_sig := true |} [TCall trusted_img] = VReject /\ check_body [] declared_empty [trusted_img] = false /\ check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg_sig := true |} [TCall balanced_word] = VCert /\ check_body [] declared_empty [balanced_word] = true
+closed
+theorem Habu.Common.Control.the_seal_still_catches_underflow_inside_a_branch
+type check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg_sig := true |} [TCall wMkBool; TIf; TCall trusted_img; TElse; TCall trusted_img; TThen] = VReject
+closed
+theorem Habu.Common.Control.the_loop_rule_is_silent_about_underflow
+type check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg_sig := true |} [TBegin; TCall trusted_img; TCall wMkBool; TUntil] = VReject /\ check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg_sig := true |} [TCall wMkN; TCall wMkN; TDo; TCall trusted_img; TLoop] = VReject
+closed
+theorem Habu.Common.Control.failure_is_a_value
+type certifiedb (check_ctl (sig [i64] [i64]) [TExit; TCall wStep1]) = false /\ certifiedb (check_ctl (sig [i64] [i64]) [TCall wStep1]) = true
+closed

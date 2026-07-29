@@ -275,6 +275,14 @@ SUITE compiler-ir-storage-proof
    test/compiler/ir-storage-proof.f
 ;SUITE
 
+\ The checker model parity gate compiles formal/Common/Effects.v and
+\ formal/Common/Control.v with the Rocq proof assistant for the same reason, so
+\ it runs here and is documented manual-gate in tools/suite-coverage-lint-core.f
+\ alongside its three siblings.
+SUITE checker-model-proof
+   test/compiler/checker-model-proof.f
+;SUITE
+
 SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
 ;SUITE

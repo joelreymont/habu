@@ -33,6 +33,22 @@ private
    s" formal" >LEN PROC-CMD:ARG+
    s" Habu" >LEN PROC-CMD:ARG+ ;
 
+\ A failed compile says WHICH proof or obligation broke, and only Rocq knows: it
+\ names the file, the line and the reason, on standard error. Without this a
+\ gate reports that the run did not exit 0 and stops, and the reader has to
+\ rebuild the generated file by hand to find out why - so the proof assistant's
+\ own diagnosis is printed at the failure instead of being dropped on the floor.
+: REPORT-FAILURE ( ptr u8 n -- ) {: a:ptr u:n :}
+   s" rocq refused " type a u type s" :" type cr
+   PROC-CMD:ERR$ type cr ;
+
+: EXITED-0? ( outcome -- bool )
+   MATCH outcome
+     exited OF 0 = ENDOF
+     signaled OF drop false ENDOF
+     timeout OF false ENDOF
+   ;MATCH ;
+
 public
 
 \ Compile one file and assert it compiled. The caller sets the label, because
@@ -41,7 +57,9 @@ public
 : COMPILE ( ptr u8 n -- ) {: a:ptr u:n :}
    ARGS
    a u >LEN PROC-CMD:ARG+
-   s" /usr/bin/env" >LEN ROCQ-MS >MS PROC-CMD:RUN-OUTCOME 0 T-OUTCOME-EXITED= ;
+   s" /usr/bin/env" >LEN ROCQ-MS >MS PROC-CMD:RUN-OUTCOME
+   dup EXITED-0? 0= if a u REPORT-FAILURE then
+   0 T-OUTCOME-EXITED= ;
 
 : OUT$ ( -- ptr u8 n )
    PROC-CMD:OUT$ ;

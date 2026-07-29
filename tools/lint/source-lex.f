@@ -7,7 +7,8 @@
 \   UNTERMINATED-QUOTE MALFORMED-REGISTRY   diagnostic kinds from ERROR-KIND@
 \   SOURCE ( ptr u8 n -- )             scan a buffer; clears all prior state first
 \   COUNT ( -- n )                     tokens produced by the last SOURCE
-\   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body span
+\   TOKEN CONTENT ( n -- ptr u8 n )    token span / paren-comment body or
+\                                      string-literal payload span
 \   KIND@ BYTE@ LINE@ COL@ ( n -- n )  kind, 0-based byte, 1-based line, 1-based column
 \   ERROR? ( -- bool )                 the last scan hit malformed input
 \   ERROR-KIND@ ERROR-BYTE@ ERROR-LINE@ ERROR-COL@ ( -- n )
@@ -481,6 +482,29 @@ private
    CUR$ PRINT-OPEN? 0= if LINT-FALSE exit then
    NAME-POS? LINT-NOT ;
 
+\ Swallow the literal and answer the bytes it held, together with whether it
+\ closed. The payload starts one byte past the opener, because the opener is
+\ followed by exactly one delimiter; it ends at the byte before the closing
+\ quote, which is where POS now sits minus one. An unterminated literal has no
+\ payload to report.
+: STRING-PAYLOAD ( bool -- ptr u8 n bool ) {: esc:bool :}
+   POS @ 1+ {: pstart:n :}
+   esc if SKIP-ESC-QUOTE else SKIP-QUOTE then {: closed:bool :}
+   closed 0= if SRC@ 0 closed exit then
+   SRC@ pstart + POS @ 1- pstart - closed ;
+
+: STRING-OPENER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u LINT-ESC-STRING-OPENER? if LINT-TRUE exit then
+   a u LINT-NORMAL-STRING-OPENER? ;
+
+\ A string-literal token carries its payload in CONTENT, exactly as a paren
+\ comment carries its body there. The payload is deliberately never tokenized -
+\ that is what stops a quoted word being mistaken for code - so without this a
+\ consumer that has to reason about a quoted NAME has no route to it but
+\ substring search over the raw source, which is the evasion route this lexer
+\ exists to close. The checker's own concrete type table is written that way
+\ (`s" n" CC-N CT-INT 64 CS-GENERIC CT-SET`), and the type names in it are only
+\ reachable here.
 : SCAN-WORD ( -- )
    begin END? 0= CUR ENGINE-DELIM? 0= and while ADV drop repeat
    ROW-START? if
@@ -489,14 +513,14 @@ private
    then
    \ `.(` is already consumed by the word scan, so the print body starts at POS.
    PRINT-START? if PAREN-BODY exit then
-   WORD CUR$ START @ START-LINE @ START-COL @ SRC@ 0 ADD
-   COUNT 1- dup TOKEN LINT-ESC-STRING-OPENER? if
-      SKIP-ESC-QUOTE 0= if dup MARK-UNTERM then
-   else
-      dup TOKEN LINT-NORMAL-STRING-OPENER? if
-         SKIP-QUOTE 0= if dup MARK-UNTERM then
-      then
-   then drop ;
+   CUR$ {: a:ptr u:n :}
+   START @ START-LINE @ START-COL @ {: byte:n line:n col:n :}
+   a u STRING-OPENER? 0= if
+      WORD a u byte line col SRC@ 0 ADD exit
+   then
+   a u LINT-ESC-STRING-OPENER? STRING-PAYLOAD {: pa:ptr pu:n closed:bool :}
+   WORD a u byte line col pa pu ADD
+   closed 0= if COUNT 1- MARK-UNTERM then ;
 
 public
 

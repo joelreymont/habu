@@ -245,6 +245,21 @@ public
    loop
    HITS @ ;
 
+\ How many `<literal> constant NAME` rows give their word a name beginning with
+\ this prefix. A consumer that has frozen a whole naming FAMILY - every `CC-`
+\ code the checker's concrete type table can name - asks this, because pinning
+\ each member one at a time says nothing about a member that was added.
+: CONSTS-PREFIXED ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0 HITS !
+   LINT-LEX:COUNT 1- 0 ?do
+      i s" constant" TOK-IS-CI? if
+         i 1+ WORD-TOK? if
+            i 1+ LINT-LEX:TOKEN a u STARTS-WITH? if HITS @ 1+ HITS ! then
+         then
+      then
+   loop
+   HITS @ ;
+
 \ The literal a `<literal> constant NAME` row carries, as a number.
 : CONST@ ( ptr u8 n -- n ) {: a:ptr u:n :}
    -1 FOUND !
@@ -289,6 +304,15 @@ public
 : TOKEN$ ( n -- ptr u8 n ) {: k:n :}
    k WORD-TOK? 0= if s" " exit then
    k LINT-LEX:TOKEN ;
+
+\ What a token CARRIES rather than what it spells: a string literal's payload,
+\ a paren comment's body. The shared lexer never turns those bytes into tokens,
+\ so a consumer that has to read a quoted NAME out of production source - the
+\ checker writes its concrete type table as `s" n" CC-N ... CT-SET` - reaches it
+\ only here, and never by searching the source text for the spelling.
+: TOKEN-CONTENT$ ( n -- ptr u8 n ) {: k:n :}
+   k 0 < k LINT-LEX:COUNT >= or if s" " exit then
+   k LINT-LEX:CONTENT ;
 
 \ Does the word-token stream carry this exact space-separated run starting at
 \ token k?

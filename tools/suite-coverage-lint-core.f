@@ -312,6 +312,14 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ such dependency and does run resident, as
    \ test/compiler/ir-storage-manifest.f.
    s" test/compiler/ir-storage-proof.f" q execute
+   \ checker model parity gate: the fourth gate of the same shape and the same
+   \ Rocq dependency - it compiles formal/Common/Effects.v and
+   \ formal/Common/Control.v and then a generated obligations file, so it fails
+   \ outright where `rocq` is not on PATH. Runs spawned in the standalone stdlib
+   \ gate; the resident tier stays free of the Rocq toolchain. The Habu half of
+   \ the same binding has no such dependency and does run resident, as
+   \ test/compiler/checker-model-manifest.f.
+   s" test/compiler/checker-model-proof.f" q execute
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute

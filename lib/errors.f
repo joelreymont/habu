@@ -436,6 +436,19 @@ public
 -6840 constant E-CST-ROW      \ a shared storage vector index or table slot is outside its declared table
 -6841 constant E-CST-STRUCT   \ a frozen storage structure - a pinned capacity constant, a check-before-write ordering, or a lifetime guard body - is not what the source carries
 
+\ Frozen checker model parity gate (package CHECKER-MODEL-PROOF): -6860..-6879.
+\ The next block after the storage gate, and the fifth of the same family: it
+\ binds formal/Common/Effects.v and formal/Common/Control.v to the checker
+\ itself, src/core/checker.f. Like its four neighbours its manifest failures are
+\ the shared E-CID-AXIOM, because all five gates read one manifest grammar.
+\ Twenty codes; the rest of -6880..-6999 stays unclaimed.
+-6860 constant E-CMP-FIRST
+-6879 constant E-CMP-LAST
+-6860 constant E-CMP-ROW      \ a shared checker-model vector index or table slot is outside its declared table
+-6861 constant E-CMP-VOCAB    \ the checker's concrete type vocabulary - a name, code, class, width, or sign row of CT-INIT, or the CC-MAX ceiling - is not what the frozen table carries
+-6862 constant E-CMP-CONTROL  \ the checker's control-flow dispatch table or a control frame kind is not what the frozen table carries
+-6863 constant E-CMP-POOL     \ the frozen schema's own string pool or table is full
+
 \ Compiler growth region: -8000..-8999.
 \
 \ Why a second region. The compiler's first block, -6600..-6699, is full. Ten
