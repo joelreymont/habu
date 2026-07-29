@@ -25,7 +25,10 @@ variable STRUCT-ACTIVE
 : PTR-FIELD: ( ptr a n -- ptr a n )
    STRUCT-REQUIRE-OPEN
    dup CELL mod 0 <> if s" structure: pointer field alignment" STRUCT-RC die then
-   create dup CELL / , CELL + does> ( ptr a -- ptr ptr a ) @ ptr-field ;
+   \ `ptr ptr b`, not `ptr ptr a`: the pointer a field HOLDS is independent of the
+   \ record's own element type, so a cell record can store a byte pointer. This
+   \ matches the `ptr-field` primitive, which is ( ptr a n -- ptr ptr b ).
+   create dup CELL / , CELL + does> ( ptr a -- ptr ptr b ) @ ptr-field ;
 
 : CFIELD: ( ptr a n -- ptr a n )
    STRUCT-REQUIRE-OPEN

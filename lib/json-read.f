@@ -158,7 +158,10 @@ STATE-CELLS cells constant CTX-OFF
 16 cells constant UMODE-OFF
 17 cells constant UMATCH-OFF
 
-CTX-OFF MAX-DEPTH + constant STORAGE-SIZE
+\ The container stack is one CELL per open container, not one byte: the whole
+\ storage block is a cell block (`ptr n`), so a byte-packed stack would need the
+\ block read back as `ptr u8` at a cell address, which the pointee rule refuses.
+CTX-OFF MAX-DEPTH cells + constant STORAGE-SIZE
 
 public
 
@@ -182,8 +185,8 @@ TRUSTED: READER>STATE ( JR:reader -- JR:reader ptr n ptr u8 )
 TRUSTED: CONSUME-READER ( JR:reader -- )
    drop ;
 
-: CTX-BYTE ( ptr n n -- ptr n )
-   CTX-OFF + + ;
+: CTX-SLOT ( ptr n n -- ptr n )   \ ( state depth -- cell address of that stack slot )
+   cells CTX-OFF + + ;
 
 : INIT-STATE ( ptr n ptr u8 n -- ) {: state:ptr source:ptr len:n :}
    source state SRC-IDX ptr-field !
@@ -263,14 +266,14 @@ private
 \ ---- container stack ------------------------------------------------------
 : PUSH ( ptr n n -- ) {: state:ptr kind:n :}
    state DEPTH-OFF + @ MAX-DEPTH >= if E-JR-DEPTH throw then
-   kind state state DEPTH-OFF + @ CTX-BYTE c!
+   kind state state DEPTH-OFF + @ CTX-SLOT !
    state DEPTH-OFF + dup @ 1+ swap ! ;
 
 : POP ( ptr n -- ) {: state:ptr :}
    state DEPTH-OFF + dup @ 1- swap ! ;
 
 : CUR-CTX ( ptr n -- n ) {: state:ptr :}
-   state state DEPTH-OFF + @ 1- CTX-BYTE c@ ;
+   state state DEPTH-OFF + @ 1- CTX-SLOT @ ;
 
 : AFTER-VALUE ( ptr n -- ) {: state:ptr :}
    state DEPTH-OFF + @ 0= if ST-DONE else ST-SEP then

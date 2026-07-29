@@ -310,9 +310,13 @@ variable START-NS
    s" CBI ( i64 -- i64 i64 ) [: 1+ ;] [: 2 * ;] BI" GE-SRC-CHECK-LINE
    s" CTRI ( i64 -- i64 i64 i64 ) [: 1+ ;] [: 2 * ;] [: 3 + ;] TRI" GE-SRC-CHECK-LINE
    s" CTIMES ( i64 -- i64 ) 5 [: 1+ ;] TIMES" GE-SRC-CHECK-LINE
-   s" CEACH ( i64 ptr i64 i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
-   s" CMAP ( ptr i64 i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
-   s" CFOLD ( ptr i64 i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
+   \ The array's element and the quotation's operand are ONE type in EACH/MAP/FOLD
+   \ (`ptr a` with `[ .. a .. ]`). `[: + ;]` and `[: 1+ ;]` are `n` arithmetic, so
+   \ the array is `ptr n`; `ptr i64` named a different element and only certified
+   \ while a pointee still admitted one integer type for another.
+   s" CEACH ( i64 ptr n i64 -- i64 ) [: + ;] EACH" GE-SRC-CHECK-LINE
+   s" CMAP ( ptr n i64 -- ) [: 1+ ;] MAP" GE-SRC-CHECK-LINE
+   s" CFOLD ( ptr n i64 i64 -- i64 ) [: + ;] FOLD" GE-SRC-CHECK-LINE
    s" hb combinator/iterator verdicts" GE-EVAL-RUN-STDIN
    SB-RESET
    s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE s" -1" GE-OUT-LINE

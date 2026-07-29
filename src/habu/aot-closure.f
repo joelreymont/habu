@@ -62,12 +62,36 @@ public
 : REC {: k:n :} ( n -- ptr a )
    AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:name-len|flags 24:name|ptr)
 : AOT-FOLD {: c:n :}  c 64 > c 91 < and IF c 32 + ELSE c THEN ;
+\ A dict record is one raw 48-byte block that holds BOTH cells (code address,
+\ code length, name-length|flags) and — for a short name — the name BYTES. A
+\ single pointer cannot be a cell pointer and a byte pointer at once, so each
+\ view is minted separately: the name accessors work from the record INDEX and
+\ call REC once per view. REC>IX recovers the index for the callers that carry a
+\ record pointer. `REC-NAME-PTR ( ptr a -- ptr a )` previously declared the name
+\ pointer to have the record's element type, which is what let a cell pointer be
+\ read with c@.
+package AOT-REC
+private
+
+: REC>IX {: r:ptr :} ( ptr a -- n )
+   r AOT-DBASE@ - 48 / ;
+: IX-NAME-LEN {: k:n :} ( n -- n )
+   k REC 16 + @ DNAME-LEN-MASK and ;
+: IX-NAME-PTR {: k:n :} ( n -- ptr u8 )
+   k REC 16 + @ DNAME-EXT and 0= IF k REC 24 + ELSE k REC 24 + AOT-PTR@ THEN ;
+
+public
+
 : REC-NAME-LEN {: r:ptr :} ( ptr a -- n )
-   r 16 + @ DNAME-LEN-MASK and ;
-: REC-NAME-PTR {: r:ptr :} ( ptr a -- ptr a )
-   r 16 + @ DNAME-EXT and 0= IF r 24 + ELSE r 24 + AOT-PTR@ THEN ;
-: REC-NAME@ {: r:ptr :} ( ptr a -- ptr a n )
+   r REC>IX IX-NAME-LEN ;
+: REC-NAME-PTR {: r:ptr :} ( ptr a -- ptr u8 )
+   r REC>IX IX-NAME-PTR ;
+: REC-NAME@ {: r:ptr :} ( ptr a -- ptr u8 n )
    r REC-NAME-PTR  r REC-NAME-LEN ;
+
+;package
+
+using AOT-REC
 : REC-NAME-C@ {: r:ptr idx:n :} ( ptr a n -- n )
    r REC-NAME-PTR idx + c@ ;
 

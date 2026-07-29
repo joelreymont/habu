@@ -567,6 +567,10 @@ SUITE pointer-storage
    test/pointer-storage-test.f
 ;SUITE
 
+SUITE ptr-elem
+   test/ptr-elem-test.f
+;SUITE
+
 SUITE typed-storage
    test/typed-storage-test.f
 ;SUITE

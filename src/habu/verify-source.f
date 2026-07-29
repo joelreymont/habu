@@ -715,7 +715,11 @@ variable STG-START
       NEXT-SCAN
       dup 0= IF s" verify-source: missing END-STRUCTURE" 74 die THEN
       2dup STRUCTURE-END? IF 2drop EXIT THEN
-      2dup STRUCTURE-PTR-FIELD? IF 2drop s" ptr a -- ptr ptr a" RECORD-STRUCTURE-FIELD ELSE
+      \ A pointer field's POINTEE is independent of the record's element type: a
+      \ cell record may hold a byte pointer. `ptr ptr a` tied the two together,
+      \ so a record read as cells forced every pointer field to point at cells —
+      \ the `ptr-field` primitive itself is `( ptr a n -- ptr ptr b )`.
+      2dup STRUCTURE-PTR-FIELD? IF 2drop s" ptr a -- ptr ptr b" RECORD-STRUCTURE-FIELD ELSE
       2dup STRUCTURE-CFIELD? IF 2drop s" ptr a -- ptr u8" RECORD-STRUCTURE-FIELD ELSE
       2dup STRUCTURE-CELL-FIELD? IF 2drop s" ptr a -- ptr a" RECORD-STRUCTURE-FIELD ELSE
       2drop

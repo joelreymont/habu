@@ -38,13 +38,19 @@ private
 192 constant PS-MAX           \ max paths in one set (WATCH 57, ratchet manifest ~113)
 $2000 constant PS-ARENA       \ per-set path-byte arena
 
-\ one set is a single arena block: [used][count][offs PS-MAX][lens PS-MAX][bytes]
-0                      constant PS.USED
-1 cells                constant PS.CNT
-2 cells                constant PS.OFFS
-PS.OFFS PS-MAX cells + constant PS.LENS
-PS.LENS PS-MAX cells + constant PS.BYTES
-PS.BYTES PS-ARENA +    constant PS-SIZE
+\ A set is TWO blocks, because it holds two different kinds of thing and a
+\ pointer has one element type. The INDEX block is cells - the arena bump, the
+\ live count, and the per-entry offset and length rows - so it is a `ptr n`. The
+\ ARENA block is the packed path bytes, so it is a `ptr u8`. They used to be one
+\ `ptr a` block, which forced every accessor to read cells and hand back a byte
+\ span through the same pointer; that only certified while a pointee still
+\ admitted one integer type for another.
+0                      constant PS.USED     \ index cell: bytes used in the arena
+1 cells                constant PS.CNT      \ index cell: live path count
+2 cells                constant PS.OFFS     \ index rows: arena offset per entry
+PS.OFFS PS-MAX cells + constant PS.LENS     \ index rows: byte length per entry
+PS.LENS PS-MAX cells + constant PS-INDEX-SIZE
+PS-ARENA               constant PS-ARENA-SIZE
 
 : TRUE ( -- bool )
    0 0= ;
@@ -54,48 +60,52 @@ PS.BYTES PS-ARENA +    constant PS-SIZE
 
 public
 
-: SET-BYTES ( -- n ) PS-SIZE ;
+\ Every entry point takes the set as its two blocks, in the same order: the
+\ index cells first, then the path arena.
+: INDEX-BYTES ( -- n ) PS-INDEX-SIZE ;
+: ARENA-BYTES ( -- n ) PS-ARENA-SIZE ;
 
-: PS-RESET ( ptr a -- ) {: s:ptr :}
-   0 s PS.USED + !   0 s PS.CNT + ! ;
+: PS-RESET ( ptr n -- ) {: ix:ptr :}
+   0 ix PS.USED + !   0 ix PS.CNT + ! ;
 
-: PS-N ( ptr a -- n )
+: PS-N ( ptr n -- n )
    PS.CNT + @ ;
 
-: PS-AT ( ptr a n -- ptr u8 n ) {: s:ptr i:n :}
-   s PS.BYTES +  s PS.OFFS + i cells + @ +
-   s PS.LENS + i cells + @ ;
+: PS-AT ( ptr n ptr u8 n -- ptr u8 n ) {: ix:ptr ar:ptr i:n :}
+   ar  ix PS.OFFS + i cells + @ +
+   ix PS.LENS + i cells + @ ;
 
-: PS-HAS? ( ptr a ptr u8 n -- bool ) {: s:ptr a:ptr u:n :}
-   0 begin dup s PS-N < while
-      s over PS-AT a u STR= if drop true exit then
-      1+
-   repeat drop false ;
+: PS-HAS? ( ptr n ptr u8 ptr u8 n -- bool ) {: ix:ptr ar:ptr a:ptr u:n :}
+   ix PS-N 0 ?do
+      ix ar i PS-AT a u STR= if true unloop exit then
+   loop false ;
 
-: PS-ADD ( ptr a ptr u8 n -- ) {: s:ptr a:ptr u:n :}
-   s a u PS-HAS? if E-WATCH-DUP throw then
-   s PS-N PS-MAX < 0= if E-WATCH-CAP throw then
-   s PS.USED + @ u + PS-ARENA > if E-WATCH-CAP throw then
-   a  s PS.BYTES + s PS.USED + @ +  u BYTE-COPY
-   s PS.USED + @   s PS.OFFS + s PS-N cells + !
-   u               s PS.LENS + s PS-N cells + !
-   s PS.USED + @ u +  s PS.USED + !
-   s PS-N 1+ s PS.CNT + ! ;
+: PS-ADD ( ptr n ptr u8 ptr u8 n -- ) {: ix:ptr ar:ptr a:ptr u:n :}
+   ix ar a u PS-HAS? if E-WATCH-DUP throw then
+   ix PS-N PS-MAX < 0= if E-WATCH-CAP throw then
+   ix PS.USED + @ u + PS-ARENA > if E-WATCH-CAP throw then
+   a  ar ix PS.USED + @ +  u BYTE-COPY
+   ix PS.USED + @   ix PS.OFFS + ix PS-N cells + !
+   u               ix PS.LENS + ix PS-N cells + !
+   ix PS.USED + @ u +  ix PS.USED + !
+   ix PS-N 1+ ix PS.CNT + ! ;
 
 private
 
-create WATCH   PS-SIZE allot
-create EXCLUDE PS-SIZE allot
+create WATCH-IX   PS-INDEX-SIZE allot
+create WATCH-AR   PS-ARENA-SIZE allot
+create EXCLUDE-IX PS-INDEX-SIZE allot
+create EXCLUDE-AR PS-ARENA-SIZE allot
 
 : +P ( ptr u8 n -- ) {: a:ptr u:n :}   \ add one canonical producer path
-   WATCH a u PS-ADD ;
+   WATCH-IX WATCH-AR a u PS-ADD ;
 
 : +X ( ptr u8 n -- ) {: a:ptr u:n :}   \ add one non-producer neighbour path
-   WATCH a u PS-HAS? if E-WATCH-DUP throw then
-   EXCLUDE a u PS-ADD ;
+   WATCH-IX WATCH-AR a u PS-HAS? if E-WATCH-DUP throw then
+   EXCLUDE-IX EXCLUDE-AR a u PS-ADD ;
 
 : BUILD-WATCH ( -- )
-   WATCH PS-RESET
+   WATCH-IX PS-RESET
    \ --- PTX text encoder + VJP table (src/arch/ptx) ---
    s" src/arch/ptx/emit.f" +P
    s" src/arch/ptx/vjp.f" +P
@@ -164,7 +174,7 @@ create EXCLUDE PS-SIZE allot
    s" tools/ptx/swiglu-cg.f" +P ;
 
 : BUILD-EXCLUDE ( -- )
-   EXCLUDE PS-RESET
+   EXCLUDE-IX PS-RESET
    s" lib/ptx/cuda-driver.f" +X          \ CUDA Driver API runtime bindings, not codegen
    s" lib/ptx/launch.f" +X               \ launch-contract validation, emits no PTX
    s" lib/ptx/sentinel.f" +X             \ device-readback poison fill, host-side, no PTX
@@ -185,10 +195,10 @@ public
 3 constant PW-UNKNOWN     \ path is an unclassified producer (ratchet failure)
 
 : PRODUCER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   WATCH a u PS-HAS? ;
+   WATCH-IX WATCH-AR a u PS-HAS? ;
 
 : NON-PRODUCER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   EXCLUDE a u PS-HAS? ;
+   EXCLUDE-IX EXCLUDE-AR a u PS-HAS? ;
 
 : TEST-PATH? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a *-test.f (covers -neg-test.f)
    a u s" -test.f" ENDS-WITH? ;
@@ -199,11 +209,14 @@ public
    a u NON-PRODUCER? if PW-EXCLUDED exit then
    PW-UNKNOWN ;
 
-: WATCH-SET ( -- ptr a ) WATCH ;
-: EXCLUDE-SET ( -- ptr a ) EXCLUDE ;
+\ The two blocks of each set, for a caller that walks it with PS-AT.
+: WATCH-INDEX ( -- ptr n ) WATCH-IX ;
+: WATCH-ARENA ( -- ptr u8 ) WATCH-AR ;
+: EXCLUDE-INDEX ( -- ptr n ) EXCLUDE-IX ;
+: EXCLUDE-ARENA ( -- ptr u8 ) EXCLUDE-AR ;
 
-: #PRODUCERS ( -- n ) WATCH PS-N ;
-: PRODUCER-PATH$ ( n -- ptr u8 n ) {: i:n :} WATCH i PS-AT ;
+: #PRODUCERS ( -- n ) WATCH-IX PS-N ;
+: PRODUCER-PATH$ ( n -- ptr u8 n ) {: i:n :} WATCH-IX WATCH-AR i PS-AT ;
 
 private
 

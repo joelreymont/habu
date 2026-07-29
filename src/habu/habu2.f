@@ -1963,7 +1963,9 @@ s" c-call-checker-defer" s" --" TRUST
 \ ---- interpret-mode defining words ----
 \ record defining words for the checker: append the kind token + run the hook
 \ (verdict ignored — create/variable/constant always publish).
-: C-DEFHOOK ( ptr u8 n -- )  LBL {: kwv klen nohk :}
+\ kwv is the keyword's LABEL CELL (LKWCREATE / LKWCONST), read by LABEL@, so its
+\ element type is a cell — not the keyword's bytes.
+: C-DEFHOOK ( ptr n n -- )  LBL {: kwv:ptr klen:n nohk:label :}
    11 kwv LABEL@ ADR,  12 klen MOVZ,  LBCS LABEL@ BL,
    9 DATA HOOK-CELL LDR,  9 nohk CBZ,
    10 DATA BODYBUF-OFF ADDI,  10 G-PUSH

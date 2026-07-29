@@ -444,6 +444,7 @@ public
    s" lib/vector-test.f" GSI-FORK-INCLUDE
    s" lib/byte-buffer-test.f" GSI-FORK-INCLUDE
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
+   s" test/ptr-elem-test.f" GSI-FORK-INCLUDE
    s" test/typed-storage-test.f" GSI-FORK-INCLUDE
    s" lib/fs-test.f" GSI-FORK-INCLUDE
    s" tools/bootstrap-codegen-test.f" GSI-FORK-INCLUDE
