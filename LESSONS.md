@@ -2874,6 +2874,33 @@ fits.
   revalidates a stale index, a liveness probe that lies after a throw. Tests
   spot-check and pass exactly where those fail. Keep fewer, sharper statements.
 
+- **A green parity gate does not mean the model is bound to the code.** Auditing
+  the checker and identity models, the sharpest tool was mutating
+  `src/core/checker.f` and `src/compiler/ir/id.f` and rerunning the owning gate.
+  Three mutations that should have been loud were silent: halving `CF-PUSH`'s
+  control-frame ceiling from 32 to 16, lowering `MATCH`'s depth guard from 30 to
+  10, and letting `INT-WIDENS?` accept any same-class pair so `idx` and `len`
+  become interchangeable. Each left `test/compiler/checker-model-proof.f` at
+  exit 0, even though `Control.v` publishes results about all three. The reason
+  is structural: that gate binds the model to the checker through frozen tables
+  and a handful of shared program vectors, and it was ten vectors. Everything
+  else the two models state was held only by a reader's promise to keep them
+  faithful. Two new vector pairs closed the widening and frame-ceiling gaps and
+  both mutations now turn the gate red. The lesson generalises: for every model
+  ask "which clause of the gate goes red if I break this in the code?", and if
+  the answer is none, the statement is documentation, not verification.
+
+- **Duplication with a generated obligation is its own kind of padding.** Nine
+  of eleven published `IdAllocator.v` examples were emitted verbatim by
+  `test/compiler/ir-id-obligations.f`, which builds them from the frozen schema
+  and from constants read structurally out of `src/compiler/ir/id.f` — so the
+  generated copy was the one bound to the code and the committed copy was a
+  second name for it. `zero_is_initial_not_serial` hardcoded 0 where the
+  generated `habu_next_serial_initial` reads `0 NEXT-SERIAL !` from the source;
+  changing that initial value turns the gate red at the generated row only.
+  Before publishing a concrete example, check whether the gate already generates
+  it, and whether the generated form is the stronger one.
+
 - **Mutating the code sorts vacuous proofs from load-bearing ones, and reading
   them does not.** Auditing the three substrate models against the worth test,
   the results that read most trivially split two ways. `arena_reads_ignore_capacity`

@@ -7,8 +7,8 @@ run that disagrees with this file fails.
 
 Frozen schema digest: e085bfac3fce293bbf7c02708b48ab5134177efd7e9bb7ac2a6acace05a0d013
 
-Statements bound by name and pinned type: 93
-Closed under the global context: 84
+Statements bound by name and pinned type: 74
+Closed under the global context: 65
 Resting on an external assumption: 9
 Admitted: 0
 

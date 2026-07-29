@@ -155,50 +155,37 @@ Definition host_step : world -> action -> world * event :=
 Definition host_run : world -> list action -> world * list event :=
   run host_atomic_cas.
 
-Example cell_is_aligned :
-  aligned (Cell 9 0) = true.
-Proof. reflexivity. Qed.
+(* What this file does NOT publish, and why.
 
-Example zero_is_initial_not_serial :
-  cell_ok (Cell 0 0) = true /\ serial_ok 0 = false.
-Proof. repeat split; reflexivity. Qed.
+   `aligned (Cell 9 0) = true` is true by construction: `slot` is a cell INDEX
+   and `addr` multiplies it by `cell_bytes`, so every representable cell is
+   aligned and no change to `src/compiler/ir/id.f` could make it otherwise.
+   `cas (Cell 3 0) 0 1 = (Cell 3 1, CasOk 0 1)` is `reflexivity` on the taken
+   arm of `cas`'s own two-arm definition, and `cas (Cell 3 1) 0 1` is the other
+   arm; `pure_attempt` at the same two inputs adds nothing beyond composing
+   `next_serial` with them.  Statements of that shape restate a definition.
 
-Example serial_edges :
-  serial_ok 1 = true /\
-  serial_ok Ids.serial_max = true /\
-  serial_ok (Ids.serial_max + 1) = false.
-Proof. repeat split; reflexivity. Qed.
+   Each of them is also what the identity parity gate ALREADY asks Rocq, from
+   the frozen schema and from the production source, and there it is the
+   generated obligation rather than a copy in this file that is bound to the
+   code: `allocator_cell_is_aligned`, `allocator_cas_issues`,
+   `allocator_stale_view_retries`, `allocator_guard_precedes_addition`,
+   `allocator_exhaustion_keeps_state`, and `habu_next_serial_initial` — the
+   last of which reads the initial value out of `0 NEXT-SERIAL !` in
+   `src/compiler/ir/id.f`, so changing it to `1` turns the gate red where a
+   hand-written `serial_ok 0 = false` here never would.  The serial domain's
+   own edges are `Ids.serial_bounds_decide`, and `serial_ok` is a definitional
+   alias of `Ids.serial_validb`, so restating them under the allocator's name
+   published one fact twice.  The universal exhaustion results live in
+   `IdAllocatorLaws`: `exhaustion_before_addition` and, for every slot,
+   `exhaustion_preserves_max_state`.
+
+   What remains below is what none of that covers: the negative half of
+   `cell_ok`'s domain, and a real interleaving. *)
 
 Example bad_cells_reject :
   cell_ok (Cell 0 (-1)) = false /\
   cell_ok (Cell 0 (Ids.serial_max + 1)) = false.
-Proof. repeat split; reflexivity. Qed.
-
-Example cas_hit :
-  cas (Cell 3 0) 0 1 = (Cell 3 1, CasOk 0 1).
-Proof. reflexivity. Qed.
-
-Example cas_miss :
-  cas (Cell 3 1) 0 1 = (Cell 3 1, CasMiss 0 1).
-Proof. reflexivity. Qed.
-
-Example initial_issue :
-  pure_attempt (Cell 3 0) 0 = (Cell 3 1, Issued 1).
-Proof. reflexivity. Qed.
-
-Example stale_retry :
-  pure_attempt (Cell 3 1) 0 = (Cell 3 1, Retry 0 1).
-Proof. reflexivity. Qed.
-
-Example exhausted_before_add :
-  next_serial Ids.serial_max = None /\
-  pure_attempt (Cell 3 Ids.serial_max) Ids.serial_max =
-    (Cell 3 Ids.serial_max, Exhausted Ids.serial_max).
-Proof. repeat split; reflexivity. Qed.
-
-Example out_of_domain_has_no_next :
-  next_serial (-1) = None /\
-  next_serial (Ids.serial_max + 1) = None.
 Proof. repeat split; reflexivity. Qed.
 
 Definition two_threads : list action :=

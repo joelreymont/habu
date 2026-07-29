@@ -2066,12 +2066,13 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* Everything above is decided by total functions.  Nothing here can raise,
    diverge, or be partial: unification returns `option subst` and the boundary
-   returns `bool`. *)
-
-Example failure_is_a_value :
-  unify_stack [] UkExact empty_subst (stack_of 0 [i64]) (stack_of 0 [strt]) = None
-  /\ check_body [] declared_empty [trusted_img] = false.
-Proof. repeat split; vm_compute; reflexivity. Qed.
+   returns `bool`.  Rocq enforces that by accepting this file at all, so there
+   is no statement to publish about it.  The previous revision published one,
+   and both of its halves were already published elsewhere in this file:
+   `unify_stack [] UkExact empty_subst (stack_of 0 [i64]) (stack_of 0 [strt])
+   = None` is the first conjunct of `conflicting_cons_reject`, and
+   `check_body [] declared_empty [trusted_img] = false` IS
+   `sealed_row_rejects_hidden_underflow`. *)
 
 (* A signature type is a term, not a string: nothing here can be built by
    spelling. *)

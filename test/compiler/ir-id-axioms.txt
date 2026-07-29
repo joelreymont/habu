@@ -33,21 +33,6 @@
 # Lines starting with `#`, and blank lines, are commentary. A `type` row is
 # handed to Rocq. Every other row is compared byte for byte.
 
-theorem Habu.Common.Ids.cell_min_exact
-type cell_min = -9223372036854775808
-closed
-theorem Habu.Common.Ids.cell_max_exact
-type cell_max = 9223372036854775807
-closed
-theorem Habu.Common.Ids.serial_max_exact
-type serial_max = 2147483647
-closed
-theorem Habu.Common.Ids.local_max_exact
-type local_max = 4294967295
-closed
-theorem Habu.Common.Ids.width_constants_exact
-type cell_bits = 64 /\ serial_bits = 31 /\ local_bits = 32 /\ local_shift = 32 /\ local_mask = 4294967295
-closed
 theorem Habu.Common.Ids.cell_bounds_decide
 type cell_validb cell_min = true /\ cell_validb cell_max = true /\ cell_validb (cell_min - 1) = false /\ cell_validb (cell_max + 1) = false
 closed
@@ -56,9 +41,6 @@ type serial_validb serial_min = true /\ serial_validb serial_max = true /\ seria
 closed
 theorem Habu.Common.Ids.local_bounds_decide
 type local_validb local_min = true /\ local_validb local_max = true /\ local_validb (-1) = false /\ local_validb (local_max + 1) = false
-closed
-theorem Habu.Common.Ids.scalar_bounds_decide
-type scalar_validb 0 = true /\ scalar_validb cell_max = true /\ scalar_validb (-1) = false /\ scalar_validb (cell_max + 1) = false
 closed
 theorem Habu.Common.Ids.scalar_constructors_decide
 type make_count 0 = Some {| count_raw := 0 |} /\ make_count cell_max = Some {| count_raw := cell_max |} /\ make_count (-1) = None /\ make_pool_offset 0 = Some {| pool_offset_raw := 0 |} /\ make_pool_offset cell_max = Some {| pool_offset_raw := cell_max |} /\ make_pool_offset (cell_max + 1) = None
@@ -81,35 +63,8 @@ closed
 theorem Habu.Common.Ids.typed_source_decide
 type pack_source {| module_key_raw := 7 |} 42 = Some {| source_id_raw := pack 7 42 |} /\ source_owner {| source_id_raw := pack 7 42 |} = {| module_id_raw := 7 |} /\ source_local {| source_id_raw := pack 7 42 |} = 42 /\ source_checkb {| module_key_raw := 7 |} {| count_raw := 43 |} {| source_id_raw := pack 7 42 |} = true
 closed
-theorem Habu.Common.IdAllocator.cell_is_aligned
-type aligned {| slot := 9; cur := 0 |} = true
-closed
-theorem Habu.Common.IdAllocator.zero_is_initial_not_serial
-type cell_ok {| slot := 0; cur := 0 |} = true /\ serial_ok 0 = false
-closed
-theorem Habu.Common.IdAllocator.serial_edges
-type serial_ok 1 = true /\ serial_ok serial_max = true /\ serial_ok (serial_max + 1) = false
-closed
 theorem Habu.Common.IdAllocator.bad_cells_reject
 type cell_ok {| slot := 0; cur := -1 |} = false /\ cell_ok {| slot := 0; cur := serial_max + 1 |} = false
-closed
-theorem Habu.Common.IdAllocator.cas_hit
-type cas {| slot := 3; cur := 0 |} 0 1 = ({| slot := 3; cur := 1 |}, CasOk 0 1)
-closed
-theorem Habu.Common.IdAllocator.cas_miss
-type cas {| slot := 3; cur := 1 |} 0 1 = ({| slot := 3; cur := 1 |}, CasMiss 0 1)
-closed
-theorem Habu.Common.IdAllocator.initial_issue
-type pure_attempt {| slot := 3; cur := 0 |} 0 = ({| slot := 3; cur := 1 |}, Issued 1)
-closed
-theorem Habu.Common.IdAllocator.stale_retry
-type pure_attempt {| slot := 3; cur := 1 |} 0 = ({| slot := 3; cur := 1 |}, Retry 0 1)
-closed
-theorem Habu.Common.IdAllocator.exhausted_before_add
-type next_serial serial_max = None /\ pure_attempt {| slot := 3; cur := serial_max |} serial_max = ({| slot := 3; cur := serial_max |}, Exhausted serial_max)
-closed
-theorem Habu.Common.IdAllocator.out_of_domain_has_no_next
-type next_serial (-1) = None /\ next_serial (serial_max + 1) = None
 closed
 theorem Habu.Common.IdAllocator.stale_interleaving
 type pure_run {| shared := {| slot := 3; cur := 0 |}; observed := [] |} two_threads = ({| shared := {| slot := 3; cur := 2 |}; observed := [] |}, [Saw 0%nat 0; Saw 1%nat 0; Tried 0%nat (Issued 1); Tried 1%nat (Retry 0 1); Saw 1%nat 1; Tried 1%nat (Issued 2)])
@@ -185,18 +140,6 @@ type forall serial bound : Z, serial_validb serial = true -> local_validb bound 
 closed
 theorem Habu.Common.IdLaws.check_rejects_foreign_owner
 type forall expected actual bound idx : Z, serial_validb expected = true -> serial_validb actual = true -> scalar_validb bound = true -> local_validb idx = true -> idx < bound -> expected <> actual -> checkb expected bound (pack actual idx) = false
-closed
-theorem Habu.Common.IdLaws.negative_local_rejects_exact
-type try_pack 1 (-1) = None
-closed
-theorem Habu.Common.IdLaws.equal_bound_rejects_exact
-type checkb 7 42 (pack 7 42) = false
-closed
-theorem Habu.Common.IdLaws.overflow_local_rejects_exact
-type try_pack 1 4294967296 = None
-closed
-theorem Habu.Common.IdLaws.foreign_owner_rejects_exact
-type checkb 8 43 (pack 7 42) = false
 closed
 theorem Habu.Common.IdLaws.mutation_cell_width_falsifies_max_pack_fit
 type cell_fits_at_widthb cell_bits (pack serial_max local_max) = true /\ cell_fits_at_widthb 63 (pack serial_max local_max) = false

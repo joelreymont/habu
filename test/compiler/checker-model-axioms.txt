@@ -169,9 +169,6 @@ closed
 theorem Habu.Common.Effects.the_two_occurs_checks_disagree_about_arguments
 type unify_stack adts UkExact empty_subst (SRow 0) (SPush (quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))) (SRow 3)) = None /\ unifiesb (unify_stack adts UkExact empty_subst (SRow 0) (SPush (fam_app f_serial [quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))]) (SRow 3))) = true /\ ty_occurs empty_subst 9 (fam_app f_option [TVar 9]) = true /\ ty_occurs empty_subst 9 (fam_app f_option [nt]) = false
 closed
-theorem Habu.Common.Effects.failure_is_a_value
-type unify_stack [] UkExact empty_subst (stack_of 0 [i64]) (stack_of 0 [strt]) = None /\ check_body [] declared_empty [trusted_img] = false
-closed
 theorem Habu.Common.Control.branch_arms_join
 type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TCall wStep1; TThen] = VCert
 closed
@@ -214,8 +211,8 @@ closed
 theorem Habu.Common.Control.the_loop_exit_is_always_live
 type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDrop1; TCall wMkI64; TExit; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wDup1; TExit; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TPlusLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TLoop; TCall wStep1] = VCert
 closed
-theorem Habu.Common.Control.loop_is_a_dead_closer_leave_is_not
-type dead_closer TLoop = true /\ dead_closer TPlusLoop = true /\ dead_closer TLeave = false /\ dead_closer TDo = false /\ dead_closer TUntil = false /\ dead_closer TSemiMatch = false
+theorem Habu.Common.Control.leave_and_do_are_not_dead_closers
+type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TLoop] = VCert /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TLeave; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TExit; TUnloop; TLoop] = VReject /\ check_ctl (sig [i64] [i64]) [TExit; TCall wMkN; TCall wMkN; TDo; TLoop] = VReject
 closed
 theorem Habu.Common.Control.a_do_frame_is_closed_only_by_loop
 type check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TThen] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TCall wMkBool; TUntil] = VReject /\ check_ctl (sig [i64] [i64]) [TCall wMkN; TCall wMkN; TDo; TCall wStep1; TRepeat] = VReject
@@ -233,7 +230,7 @@ theorem Habu.Common.Control.a_dead_case_arm_is_excluded
 type check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TExit; TEndof; TCall wMkN; TEndcase] = VCert /\ check_ctl (sig [nt] []) [TCase; TCall wMkN; TOf; TExit; TEndof; TEndcase] = VCert /\ check_ctl (sig [nt] [cellt]) [TCase; TCall wMkN; TOf; TCall wMkCell; TExit; TEndof; TCall wMkN; TOf; TCall wMkCell; TExit; TEndof; TCall wDropAny; TCall wMkCell; TExit; TEndcase] = VCert
 closed
 theorem Habu.Common.Control.case_frames_are_matched_by_kind
-type check_ctl (sig [nt] [nt]) [TOf] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndcase] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TThen] = VReject /\ dead_closer TEndof = true /\ dead_closer TEndcase = true
+type check_ctl (sig [nt] [nt]) [TOf] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TCall wMkN; TOf; TCall wMkN; TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndof] = VReject /\ check_ctl (sig [nt] [nt]) [TEndcase] = VReject /\ check_ctl (sig [nt] [nt]) [TCase; TThen] = VReject
 closed
 theorem Habu.Common.Control.match_must_be_exhaustive
 type check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VCert /\ check_ctl (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = VReject /\ check_reason (sig [fam0 100] [nt]) [TMatch; TFamTok fmres; TVarTok 0; TOf; TEndof; TSemiMatch] = MD_NONEXH /\ check_ctl (sig [fam0 101] [nt]) [TMatch; TFamTok fmthree; TVarTok 0; TOf; TEndof; TVarTok 1; TOf; TEndof; TSemiMatch] = VReject
@@ -372,7 +369,4 @@ type check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg
 closed
 theorem Habu.Common.Control.the_loop_rule_is_silent_about_underflow
 type check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg_sig := true |} [TBegin; TCall trusted_img; TCall wMkBool; TUntil] = VReject /\ check_ctl {| cfg_fenv := []; cfg_decl := declared_empty; cfg_brow := 8; cfg_sig := true |} [TCall wMkN; TCall wMkN; TDo; TCall trusted_img; TLoop] = VReject
-closed
-theorem Habu.Common.Control.failure_is_a_value
-type certifiedb (check_ctl (sig [i64] [i64]) [TExit; TCall wStep1]) = false /\ certifiedb (check_ctl (sig [i64] [i64]) [TCall wStep1]) = true
 closed

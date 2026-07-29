@@ -2122,12 +2122,21 @@ Example the_loop_exit_is_always_live :
        [TCall wMkN; TCall wMkN; TDo; TLoop; TCall wStep1] = VCert.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* `loop` and `+loop` ARE dead closers, `leave` and `do` are not.  So the
-   `EXIT` above closes at `loop` and the `STEP1` in L5 does not. *)
-Example loop_is_a_dead_closer_leave_is_not :
-  dead_closer TLoop = true /\ dead_closer TPlusLoop = true
-  /\ dead_closer TLeave = false /\ dead_closer TDo = false
-  /\ dead_closer TUntil = false /\ dead_closer TSemiMatch = false.
+(* `loop` closes a dead path; `leave`, `unloop` and `do` do not.  Reading that
+   off `dead_closer`'s own table would be `reflexivity` on this file's
+   definition, so it is stated where it decides a program instead: the same
+   `EXIT` reaches `loop` and certifies, and one more token in front of the
+   closer turns it into dead code.  That is why the `EXIT` in Z1 above closes
+   at `loop` while the `STEP1` in L5 does not. *)
+Example leave_and_do_are_not_dead_closers :
+  check_ctl (sig [i64] [i64])
+            [TCall wMkN; TCall wMkN; TDo; TExit; TLoop] = VCert
+  /\ check_ctl (sig [i64] [i64])
+       [TCall wMkN; TCall wMkN; TDo; TExit; TLeave; TLoop] = VReject
+  /\ check_ctl (sig [i64] [i64])
+       [TCall wMkN; TCall wMkN; TDo; TExit; TUnloop; TLoop] = VReject
+  /\ check_ctl (sig [i64] [i64])
+       [TExit; TCall wMkN; TCall wMkN; TDo; TLoop] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* A `do` frame is a frame like any other: a closer that does not match its
@@ -2221,8 +2230,10 @@ Example a_dead_case_arm_is_excluded :
                TCall wDropAny; TCall wMkCell; TExit; TEndcase] = VCert.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* `endof` and `endcase` ARE dead closers, so an arm may end in `EXIT`; and the
-   `case` frames are checked by KIND like every other frame.
+(* The `case` frames are checked by KIND like every other frame.  That `endof`
+   and `endcase` are dead closers is not restated off `dead_closer`'s table
+   here either; `a_dead_case_arm_is_excluded` above is where it decides a
+   program, once through each of them.
 
    : K15 ( n -- n ) of ;                                -> exit 70, `at 'of'`
    : K18 ( n -- n ) case MK-N of MK-N endof ;           -> exit 70, `at 'endof'`
@@ -2234,8 +2245,7 @@ Example case_frames_are_matched_by_kind :
        [TCase; TCall wMkN; TOf; TCall wMkN; TEndof] = VReject
   /\ check_ctl (sig [nt] [nt]) [TEndof] = VReject
   /\ check_ctl (sig [nt] [nt]) [TEndcase] = VReject
-  /\ check_ctl (sig [nt] [nt]) [TCase; TThen] = VReject
-  /\ dead_closer TEndof = true /\ dead_closer TEndcase = true.
+  /\ check_ctl (sig [nt] [nt]) [TCase; TThen] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* --- 6. The `MATCH` eliminator -------------------------------------- *)
@@ -3080,9 +3090,12 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* --- 17. Failure is still a value ------------------------------------ *)
 
-(* Nothing above can raise, diverge, or be partial.  `step` is total, `run` is
-   structural on the token list, and every verdict is one of three values. *)
-Example failure_is_a_value :
-  certifiedb (check_ctl (sig [i64] [i64]) [TExit; TCall wStep1]) = false
-  /\ certifiedb (check_ctl (sig [i64] [i64]) [TCall wStep1]) = true.
-Proof. repeat split; vm_compute; reflexivity. Qed.
+(* Nothing above can raise, diverge, or be partial: `step` is total, `run` is
+   structural on the token list, and every verdict is one of three values.
+   That is a property of how this file is written, not a claim about
+   `src/core/checker.f`, and Rocq enforces it by accepting the file at all —
+   a partial `run` would not have been accepted.  There is therefore nothing
+   here to publish.  The previous revision stated
+   `certifiedb (check_ctl ... [TExit; TCall wStep1]) = false`, which is
+   `certifiedb` applied to the verdict `dead_code_after_exit` already gives,
+   read through `certifiedb`'s own two-arm definition. *)

@@ -48,7 +48,10 @@
 \      verdict both must answer. The two encodings are necessarily different -
 \      one is text for a token scanner, the other is an already-scanned token
 \      list - but they live in one row and the verdict is written once, so a
-\      row cannot be satisfied by editing only one side.
+\      row cannot be satisfied by editing only one side. The last four rows are
+\      the ones that hold the widening lattice and the control-frame ceiling to
+\      the checker; before they existed, halving the ceiling or letting any two
+\      same-class types stand in for each other left the whole gate green.
 \
 \ Where the two sides are not literally the same shape, and why that is sound:
 \
@@ -71,11 +74,12 @@
 
 require lib/errors.f
 require lib/string.f
+require lib/fmt.f
 
 package CHECKER-MODEL-PROOF
 private
 
-$1000 constant POOL-CAP
+$2000 constant POOL-CAP
 $200 constant STR-MAX
 $40 constant ROW-MAX
 
@@ -421,6 +425,55 @@ private
    verd VEC-VERD VEC-N @ COL!
    VEC-N @ 1+ VEC-N ! ;
 
+\ Two rows about the widening lattice, which nothing else here reaches. The
+\ definition boundary joins at `UK-COERCE`, so `INT-WIDENS?` decides both: a
+\ narrow unsigned integer reaches a wider generic one and certifies, while two
+\ distinct nominal roles never meet however they are declared. A checker that
+\ let same-class types stand in for each other would certify the second row.
+: BUILD-WIDENING-VECTORS ( -- )
+   s" int_widens_into_the_declared_output"
+      s" CMV11 ( u8 -- cell )"
+      s" sig [u8] [cellt]" s" []" V-CERT VEC-ROW
+   s" a_role_never_reaches_a_sibling_role"
+      s" CMV12 ( idx -- len )"
+      s" sig [idxt] [lent]" s" []" V-REJECT VEC-ROW ;
+
+\ The control-frame ceiling. `CF-PUSH` (src/core/checker.f) turns the frame
+\ after the last one into an UNRESOLVABLE instead of pushing it, so the
+\ sharpest pair of programs is two runs of `begin` differing only in length: at
+\ the ceiling the definition is merely unbalanced and is refused, one deeper it
+\ stops being checkable at all and the verdict changes class. Both texts are
+\ BUILT from the ceiling below rather than spelled out, so a row cannot drift
+\ from the number it is about.
+
+32 constant FRAME-CEIL
+
+: +OPENERS ( n -- ) {: opens:n :}
+   opens 0 ?do s"  begin" SB-APPEND loop ;
+
+: OPENERS$ ( ptr u8 n n -- ptr u8 n ) {: a:ptr u:n opens:n :}
+   SB-RESET a u SB-APPEND opens +OPENERS SB$ ;
+
+: MODEL-OPENERS$ ( n -- ptr u8 n ) {: opens:n :}
+   SB-RESET s" (repeat TBegin " SB-APPEND
+   opens FMT:SB-INT
+   s" )" SB-APPEND SB$ ;
+
+: FRAME-CAP-ROW ( ptr u8 n ptr u8 n n n -- )
+   {: na:ptr nu:n sa:ptr su:n opens:n verd:n :}
+   na nu STR+ VEC-NAME VEC-N @ COL!
+   sa su opens OPENERS$ STR+ VEC-SRC VEC-N @ COL!
+   s" sig [i64] [i64]" STR+ VEC-CFG VEC-N @ COL!
+   opens MODEL-OPENERS$ STR+ VEC-TOKS VEC-N @ COL!
+   verd VEC-VERD VEC-N @ COL!
+   VEC-N @ 1+ VEC-N ! ;
+
+: BUILD-FRAME-CAP-VECTORS ( -- )
+   s" frames_at_the_ceiling_are_still_checked"
+      s" CMV13 ( i64 -- i64 )" FRAME-CEIL V-REJECT FRAME-CAP-ROW
+   s" one_frame_past_the_ceiling_is_unresolvable"
+      s" CMV14 ( i64 -- i64 )" FRAME-CEIL 1+ V-UNCK FRAME-CAP-ROW ;
+
 : BUILD-VECTORS ( -- )
    s" straight_line"
       s" CMV1 ( i64 -- i64 ) CHECKER-MODEL-CASES:STEP1"
@@ -457,7 +510,9 @@ private
    s" unclosed_frame"
       s" CMV10 ( i64 -- i64 ) CHECKER-MODEL-CASES:MK-BOOL if CHECKER-MODEL-CASES:STEP1"
       s" sig [i64] [i64]" s" [TCall wMkBool; TIf; TCall wStep1]"
-      V-REJECT VEC-ROW ;
+      V-REJECT VEC-ROW
+   BUILD-WIDENING-VECTORS
+   BUILD-FRAME-CAP-VECTORS ;
 
 : BUILD-ALL ( -- )
    0 POOL-U !  0 STR-N !

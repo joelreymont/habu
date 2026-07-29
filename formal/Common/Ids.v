@@ -293,29 +293,16 @@ Definition span_checkb
     (key : ir_module_key) (bound : ir_count) (id : ir_span_id) : bool :=
   id_checkb span_id_raw key bound id.
 
-Example cell_min_exact :
-  cell_min = -9223372036854775808.
-Proof. reflexivity. Qed.
-
-Example cell_max_exact :
-  cell_max = 9223372036854775807.
-Proof. reflexivity. Qed.
-
-Example serial_max_exact :
-  serial_max = 2147483647.
-Proof. reflexivity. Qed.
-
-Example local_max_exact :
-  local_max = 4294967295.
-Proof. reflexivity. Qed.
-
-Example width_constants_exact :
-  cell_bits = 64
-  /\ serial_bits = 31
-  /\ local_bits = 32
-  /\ local_shift = 32
-  /\ local_mask = 4294967295.
-Proof. repeat split; vm_compute. Qed.
+(* The widths and bounds above are NOT restated here.  A statement such as
+   `cell_bits = 64` is `reflexivity` on this file's own `Definition`, so no
+   change to `src/compiler/ir/id.f` could falsify it.  What does constrain the
+   code is the pair of generated obligations the identity parity gate writes:
+   `schema_cell_bits` .. `schema_local_mask` ask Rocq for each constant against
+   the frozen schema, and `habu_module_max`, `habu_local_max` and
+   `habu_local_bits` ask for the same constants against the numbers read
+   structurally out of `src/compiler/ir/id.f`.  Changing `MODULE-MAX` there
+   turns the identity gate red at `habu_module_max`; it never touched a
+   statement written in this file.  See test/compiler/ir-id-obligations.f. *)
 
 Example cell_bounds_decide :
   cell_validb cell_min = true
@@ -338,12 +325,10 @@ Example local_bounds_decide :
   /\ local_validb (local_max + 1) = false.
 Proof. repeat split; vm_compute. Qed.
 
-Example scalar_bounds_decide :
-  scalar_validb 0 = true
-  /\ scalar_validb cell_max = true
-  /\ scalar_validb (-1) = false
-  /\ scalar_validb (cell_max + 1) = false.
-Proof. repeat split; vm_compute. Qed.
+(* `scalar_validb` at its four edges is not stated here either: the identity
+   parity gate generates exactly that statement as `schema_scalar_domain`, from
+   the frozen `SCALAR-MIN` and `SCALAR-MAX`, so a hand copy of it here would be
+   the same claim under a second name. *)
 
 Example scalar_constructors_decide :
   make_count 0 = Some (MkCount 0)

@@ -448,21 +448,18 @@ Proof.
     congruence.
 Qed.
 
-Example negative_local_rejects_exact :
-  Ids.try_pack 1 (-1) = None.
-Proof. reflexivity. Qed.
-
-Example equal_bound_rejects_exact :
-  Ids.checkb 7 42 (Ids.pack 7 42) = false.
-Proof. vm_compute; reflexivity. Qed.
-
-Example overflow_local_rejects_exact :
-  Ids.try_pack 1 4294967296 = None.
-Proof. reflexivity. Qed.
-
-Example foreign_owner_rejects_exact :
-  Ids.checkb 8 43 (Ids.pack 7 42) = false.
-Proof. vm_compute; reflexivity. Qed.
+(* The four rejections above are stated once each, universally, and are not
+   restated at a chosen pair of numbers.  `Ids.try_pack 1 (-1) = None` is an
+   instance of `try_pack_rejects_negative`, `Ids.try_pack 1 4294967296 = None`
+   of `try_pack_rejects_overflow`, `Ids.checkb 7 42 (Ids.pack 7 42) = false` of
+   `check_rejects_equal_bound`, and `Ids.checkb 8 43 (Ids.pack 7 42) = false`
+   of `check_rejects_foreign_owner`; each instance follows from the theorem
+   above it and can fail only when that theorem does.  The same two check
+   rejections are already the accepting halves of
+   `mutation_owner_eq_falsifies_foreign_rejection` and
+   `mutation_strict_bound_falsifies_equal_rejection` below, and appear again in
+   `Ids.checks_decide`, so publishing them a third time counted one fact as
+   four results. *)
 
 Definition cell_fits_at_widthb (bits raw : Z) : bool :=
   Ids.betweenb (-(2 ^ (bits - 1))) (2 ^ (bits - 1) - 1) raw.
