@@ -294,11 +294,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" tools/suite-coverage-lint.f" SC-SCHED+
    s" tools/namespace-lint.f" SC-SCHED+
    s" tools/error-code-lint.f" SC-SCHED+
-   s" tools/nanogpt-inventory-lint.f" SC-SCHED+
-   \ census verify: scheduled as [: ENUM-CENSUS:VERIFY-COMMITTED ;] GSI-RUN in
-   \ the lint-tools group; the CLI file itself is never GSI-INCLUDEd because a
-   \ gate child's pool argv would trip its strict argv parse.
-   s" tools/enum-census.f" SC-SCHED+ ;
+   s" tools/nanogpt-inventory-lint.f" SC-SCHED+ ;
 
 \ ---- table membership ------------------------------------------------------
 : SC-QF! ( ptr u8 n -- ) {: a:ptr u:n :}

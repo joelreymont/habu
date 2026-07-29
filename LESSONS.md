@@ -373,7 +373,7 @@ fits.
   compiler: mirror load/path/provide/label rows in `bootstrap/cg/forth.fs`, concatenate
   in `tools/bootstrap.sh` (SRC_COMMON), and update `build-fixpoint.f` (CHECKER-BOOT/
   COMMON/SNAP-KEEP), `boot-pin.f`, `diagnose-hb-core.f` (+ count in its test),
-  `hb-build-lib.f` key list, `test/run-files.f`, `FILEMAP.md`, and pinned row counts
+  `hb-build-lib.f` key list, `test/run-files.f`, and pinned row counts
   (`boot-pin-test.f` PFX-LOAD-ROW, `diagnose-hb-test.f` common-source, `bootstrap-codegen-test.f`).
   The codegen test's expected rows are the order proof, not bookkeeping: update its
   exact native, recovery, and fixpoint sequences whenever a prefix owner is added.
@@ -656,10 +656,8 @@ fits.
 - **Repo lints, the lint tokenizer, and whole-source readers all carry a
   largest-file capacity watermark, and an uncaught positive throw dies SILENT.**
   Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint, trust-lint, trusted-inventory,
-  maki-dep-lint, error-code-lint), the tokenizer `TMAX` ($6000→$8000), and `filemap-lint`
-  `FM-BUF-CAP` all trip "file exceeds buffer" as `checker.f` grows (it is the largest).
-  `filemap-lint` `INTERN-MAX` ($200) sat below FILEMAP.md's backticked-path count → rc 76,
-  ZERO output, a bogus downstream artifact, masked by any `| tail; echo $?` pipe. Rules:
+  maki-dep-lint, error-code-lint) and the tokenizer `TMAX` ($6000→$8000) all trip
+  "file exceeds buffer" as `checker.f` grows (it is the largest). Rules:
   size caps from the real corpus with the driver NAMED in a comment; sweep EVERY READ-FILE
   cap in one pass when a named file trips one; route lint CLIs through `LINT-MAIN` (catch,
   print `tool: threw <code> (<name>)`, re-throw); the shared `LINT-READ-DIE` prints the
@@ -704,16 +702,14 @@ fits.
   MAIN-CHECKOUT-ONLY latent red workers never see (their trees contain no `.jj-ws`). Fixed
   at the root (`lib/fs.f` skip list); add new conventional untracked dirs there when
   introduced.
-- **Stdlib files have three registry points (source file, `lib/std.manifest`,
-  `FILEMAP.md`) plus `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
+- **Stdlib files need their source file and a `lib/std.manifest` row, plus
+  `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
   `tools/public-signatures.f` output EXACTLY (`TRUSTED:`/constants get no row; effect must
   sit immediately after the word name, before `{: :}` locals, or it is invisible). Keep an
   unavoidable trusted seam private behind an ordinary checked public wrapper so the general
   signature drift gate owns the public manifest row and `TRUSTED.md` owns only the raw seam.
-  Miss the
-  manifest → direct manifest gate fails; miss FILEMAP.md → derived filemap-lint fails (every
-  .f/.fs under src/tools/test/lib must be listed or a committed exclusion). The lint-manifest
-  slice is the OWNING gate a new-lib lane must run (host/filemap/trust/coverage do NOT cover
+  Miss the manifest and the direct manifest gate fails. The lint-manifest
+  slice is the OWNING gate a new-lib lane must run (host/trust/coverage do NOT cover
   it). `lib/` subdirs (`lib/ptx/`) are research sub-libraries: gate `SMT-COLLECT-LIB-FILE`
   on `SMT-LIB-FILE?` (flat `lib/<module>.f` only) so coverage tracks flat modules; nested
   dirs stay trust-audited + `-test.f` + gate-covered but out of the curated manifest
@@ -885,9 +881,9 @@ fits.
   `E-CUDA`) the moment a device appeared. A device suite is proven only by an on-device run;
   every device tool's top-level entry probes `CUDA:OPEN?`, prints a recorded SKIP line, exits
   (the GB-ALL shape) so it composes into host suites; prefer self-emit + fail-closed throws
-  over prebuilt /tmp artifacts, and key device legs on the probed device-FFI capability. A
-  new `maki/*-device-test.f` needs NO lint registration (filemap-lint walks src/tools/test/lib
-  only) — keep it OUT of `maki/test.f` (needs CUDA) and device-PROVEN before adding anywhere.
+  over prebuilt /tmp artifacts, and key device legs on the probed device-FFI capability. Keep
+  a new `maki/*-device-test.f` OUT of `maki/test.f` (needs CUDA) and device-PROVEN
+  before adding it anywhere.
 - **PTX/emitter shape tests are NOT assembler proof.** `ptxas` rejects undeclared predicates
   above `%p15` and stale resource pools (`%p<8>` when the emitter now needs `%p21`); a text
   fixture rendered plausible text that never assembled. Keep the text fixture, then assemble
@@ -938,17 +934,7 @@ fits.
   inside its own package makes the forked child's `package X` a NESTED-package
   reject (exit 75) instead of the behavior under test (weight-store's seal probe
   expected SEAL-PACKAGE 84); close the package and call `PKG:RUN` from top level
-  (the json-read-test arrangement). Same fork-inheritance class: a gate child
-  inherits the pool's argv, so a gate row that GSI-INCLUDEs a strict-argv CLI
-  file (`tools/enum-census.f` under `--pool-slots 1`) dies on usage before doing
-  any work — gates call an argv-free library word (`ENUM-CENSUS:VERIFY-COMMITTED`)
-  and leave CLI files to humans.
-- **The plain-ENUM census is a change-time ratchet: adding any `.f` file bumps
-  `WALKED-FILES`, adding a plain ENUM re-records the baseline.** Re-record to a
-  scratch path, then prove the change is only yours with an ordinal-normalized
-  diff — the report keys sites by a walk-order scratch package (`ctor=ECn-…`),
-  so inserting one file renumbers every later site and the RAW diff looks like a
-  mass divergence when the real delta is one line.
+  (the json-read-test arrangement).
 
 - **A new file / TRUSTED word / candidate case each trips a specific manifest the
   focused suite never shows — only `test/run.f` does.** (1) A **flat `lib/*.f`**
@@ -963,9 +949,8 @@ fits.
   (`prim-axiom …`). (3) New **`test/candidate-validation.f`** cases must bump the
   whitebox counts in `test/candidate-validation-test.f` (`s" test/` total, and the
   `construct case-kind positive|negative` counts) and add PATH-PIN + DIRECT-PIN
-  rows. (4) Any walked-root `.f` (src/tools/test/lib/bootstrap) needs a
-  `FILEMAP.md` row (`filemap-lint`). Run `test/run.f` before claiming green; a
-  clean focused suite hides all four.
+  rows. Run `test/run.f` before claiming green; a clean focused suite hides all
+  three.
 - **A property test pinning a TRANSITIONAL invariant must be revisited the moment
   the capability it anticipates starts being used for real.** `test/pre-trust-defer.f`
   COMPAT-MISS-CASE asserted that an engine lacking the DRAIN-PRETRUST prim BOOTS
@@ -1845,7 +1830,7 @@ fits.
   create operations: `jj new <rev>` may report success while the on-disk files
   still hold the previous tree, and an expensive step then runs against the
   wrong sources. This produced a fixpoint "proof" that exactly reproduced the
-  PREVIOUS engine hash (the giveaway) and a gate run whose filemap path count
+  PREVIOUS engine hash (the giveaway) and a gate run whose path count
   matched the old tree. Before any expensive gate or install, verify the tree
   by CONTENT — a sentinel search for a string the change introduces (e.g.
   `rg -c PROT-GUARD:CALL src/habu/habu1.f`) — not just by `jj log` position,

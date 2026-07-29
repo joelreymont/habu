@@ -2390,7 +2390,6 @@ A leaf that reveals an unplanned interface or dependency stops and is redesigned
 - No hidden fallback from new to old compiler.
 - No pass mutates its input module.
 - No optimization merges with its validator in the same opaque word.
-- Update `FILEMAP.md` for every new owning file.
 - Record durable lessons in `LESSONS.md`, not API descriptions.
 
 ### 17.4 Review rules

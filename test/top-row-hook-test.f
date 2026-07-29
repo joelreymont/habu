@@ -341,7 +341,7 @@ create TRH-EMPTY 1 allot
    s" package PREFLIGHT-MISSING-TEST" TRH-LINE
    s" : HOOK ( ptr u8 n -- n ) 2drop -1 ;" TRH-LINE
    s" ' HOOK set-check" TRH-LINE
-   s" : BAD ( -- ) include FILEMAP.md ;" TRH-LINE
+   s" : BAD ( -- ) include README.md ;" TRH-LINE
    s" ;package" TRH-LINE
    SB$ ;
 
@@ -352,7 +352,7 @@ create TRH-EMPTY 1 allot
    s" : HOOK ( ptr u8 n -- n ) CHECK! dup -1 <> if 70 throw then ;" TRH-LINE
    s" LOWER-CERT-HOOK:INSTALL" TRH-LINE
    s" ' HOOK set-check" TRH-LINE
-   s" : BAD ( -- ) include FILEMAP.md ;" TRH-LINE
+   s" : BAD ( -- ) include README.md ;" TRH-LINE
    s" ;package" TRH-LINE
    SB$ ;
 

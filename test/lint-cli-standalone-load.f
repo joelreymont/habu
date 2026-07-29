@@ -178,8 +178,6 @@ variable EXITED
       s" tools/signature-lint-test.f" SCHEDULES? TFALSE
    s" nested lint helper is not an entry" T-LABEL
       s" tools/lint/shadow-lint.f" SCHEDULES? TFALSE
-   s" non-lint tool is not an entry" T-LABEL
-      s" tools/enum-census.f" SCHEDULES? TFALSE
    \ A usage failure is not a dead load: the two statuses must stay distinct, or the
    \ verdict above would accept an entry that never finished loading.
    s" usage status differs from a dead load" T-LABEL

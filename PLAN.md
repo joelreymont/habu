@@ -294,7 +294,6 @@ Files:
 src/compiler/ir/id.f
 test/compiler/ir-id.f
 lib/errors.f
-FILEMAP.md
 tools/refine-lint-core.f
 tools/refine-lint-test.f
 test/gate-stdlib-cases.f
@@ -373,7 +372,7 @@ Acceptance:
 - every cast is checker-certified and confined by `refine-lint`;
 - `bin/hb --load test/compiler/ir-id.f` passes;
 - the `compiler-ir-id` suite is declared and scheduled by the inline stdlib
-  dispatcher, and error, trust, refine, file-map, package, typed-local, and suite
+  dispatcher, and error, trust, refine, package, typed-local, and suite
   coverage gates pass.
 
 ## Dot and worker rules

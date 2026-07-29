@@ -32,8 +32,8 @@ The target must be wired in exactly these source-list owners:
 - `src/habu/habu2.f` and `bootstrap/cg/forth.fs` for the runtime `--load`
   prefix.
 - `src/habu/stdin.f` and `tools/hb-build-lib.f` for baked REPL runtime sources.
-- `tools/srclist.f`, `tools/filemap-lint.f`, and `tools/lint/shadow-lint.f` for
-  discoverability and lint coverage.
+- `tools/srclist.f` for discoverability and `tools/lint/shadow-lint.f` for lint
+  coverage.
 
 No caller should pass a target prelude manually for normal tests. `bin/hb
 --load` selects the host prefix from the running binary.

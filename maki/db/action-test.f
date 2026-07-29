@@ -418,9 +418,7 @@ DR$ 4 REFLECT:ARM-CTOR$ s" ACTION-DISPATCH--RESULT" T$=
 \ The payload family is pinned the other way round, and that asymmetry is the point.
 \ Only the COMPACT form registers a family as an enum; a full-mode declaration - the
 \ arity-headed form with named payload FIELDs - is still recorded as a general SUM, the
-\ same kind the legacy SUMTYPE spelling produced. So register-result's recorded kind did
-\ NOT change in this migration, which is also why full-form sites stay out of the
-\ byte-compared enum census while compact sites enter it. Pinning TK-SUM here means a
+\ same kind the legacy SUMTYPE spelling produced. Pinning TK-SUM here means a
 \ later rewrite of register-result into the compact form - which would silently drop its
 \ ok payload - flips this to TK-ENUM and turns the suite red.
 RR$ REFLECT:FAMS 1 T=                           \ the payload family is registered, exactly once ...

@@ -47,12 +47,11 @@ the gate files are the source of truth.
 - Both-direction proof: new tests must fail on the unfixed base (run there,
   record it) and pass on your change.
 
-## Registration duties for new files
+## Test registration
 
-- New source or test files: add a FILEMAP.md entry; register new tests in
-  `test/gate-stdlib-cases.f` and `test/gate-stdlib-inline-lib.f`. Confirm with
-  the filemap and suite-coverage lints, reading the findings lines, not exit
-  codes (same for `tools/dot-dep-lint.f`).
+- Register new tests in `test/gate-stdlib-cases.f` and
+  `test/gate-stdlib-inline-lib.f`. Confirm with the suite-coverage lint, reading
+  the findings lines, not exit codes (same for `tools/dot-dep-lint.f`).
 
 ## Forth policy
 

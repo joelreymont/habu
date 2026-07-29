@@ -291,8 +291,7 @@ s" DX-7 ( -- CEVID:load-result ) CEVID-LOAD--RESULT:MISMATCH" UNRESOLVED
 \ Both families are registered in this process and share the tail, so these two blocks are
 \ the R7 proof: each identity resolves EXACTLY one family, and the two resolve DIFFERENT
 \ families - ARITY 0 vs 1 and VARS 3 vs 4 could not both hold if the pair-keying collapsed
-\ to the tail. Full-form families get no enum-census row, so these pins are the only
-\ case-order and payload-slot detector either family has.
+\ to the tail. These pins are the case-order and payload-slot detector either family has.
 LR$ REFLECT:FAMS 1 T=
 LR$ REFLECT:KIND TK-SUM T=              \ a payload family stays a general sum ...
 LR$ REFLECT:KIND TK-ENUM = 0 T=         \ ... and is NOT recorded as a compact enum

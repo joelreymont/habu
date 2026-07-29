@@ -28,8 +28,8 @@ chunk) is a planned task ahead of modern-dense serving.
 
 ## Gate state
 
-Correctness gates: maki/test.f (all suites), host-lint, filemap-lint,
-dot-dep-lint, stale-status-lint, enum-census verify, trusted-inventory
+Correctness gates: maki/test.f (all suites), host-lint,
+dot-dep-lint, stale-status-lint, trusted-inventory
 (strict + baseline), and the native gate `bin/hb --load test/run.f` — all green
 on master at every fast-forward; master only moves by verified-green
 fast-forward.
@@ -101,7 +101,7 @@ measures today:
   `src/core/enum-decl.f` gains no definition: `ED-CLOSE` calls the participant's
   own gate rather than declaring a second one. So 4133 + 17 = 4150, the number
   recorded above and the number the self-check measures on this tree. That change
-  also edits `TRUSTED.md`, `FILEMAP.md`, `tools/decl-gen-probe.f`,
+  also edits `TRUSTED.md`, `tools/decl-gen-probe.f`,
   `test/enum-ctor-collide-bad.f`, and five test files, none of which is part of
   the assembled stage2 engine source. The engine binary is byte-identical across
   the added gate clause, so the CODELEN and per-region rows below are unchanged
@@ -121,7 +121,7 @@ measures today:
   `src/core/structure-decl.f` gains `SD-RAW` (the pushback-honouring read that
   `SD-NEXT` now records the token around), `ARITY-WHY$`, and `SD-BODY`; and
   `src/core/enum-decl.f` gains `ED-RAW`, `ARITY-WHY$`, and `ED-BODY`. So
-  4150 + 28 = 4178. That change also edits `TRUSTED.md`, `FILEMAP.md`, and
+  4150 + 28 = 4178. That change also edits `TRUSTED.md` and
   three test files including the new `test/decl-diag-capture.f`, none of which
   is part of the assembled stage2 engine source.
 - The generation-free registration entry for replayed declarations adds 14,
@@ -140,7 +140,7 @@ measures today:
   4178 + 14 = 4192. `src/core/structure-make.f` splits its one `TRUSTED:`
   `SM-EMIT` into `SM-EMIT-ROWS` and `SM-EMIT-WORDS`, which are not colon
   definitions and leave the count unchanged. That change also edits
-  `tools/check-core.f`, `src/habu/verify-source.f`, `TRUSTED.md`, `FILEMAP.md`,
+  `tools/check-core.f`, `src/habu/verify-source.f`, `TRUSTED.md`,
   and four test files including the new `test/decl-replay-verify-source.f`, none
   of which is part of the assembled stage2 engine source.
 - Giving the control-word list a single owner removes one, reaching 4191.
@@ -233,7 +233,7 @@ against it; "Uncheckable" = effect not statically inferable and not trusted;
 "Rejected" = inferred effect contradicts the declaration. Native
 `tools/build-fixpoint-main.f -- install` refreshes `bin/hb` and runs the self-check;
 `bin/hb --load test/run.f` is the Habu-native
-test suite. That suite runs native parity/shadow/clobber/trust/status/filemap lints,
+test suite. That suite runs native parity, shadow, clobber, trust, and status lints,
 the retired host-script token lint, the rebuild fixpoint, JSON diagnostic
 assertions, property soundness smoke, PTY/process checks, and AOT/`--repl`
 builder checks. No-binary recovery uses `tools/bootstrap.sh`: Gforth creates

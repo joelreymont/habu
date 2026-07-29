@@ -31,11 +31,6 @@ SUITE host-lint
    tools/host-lint.f
 ;SUITE
 
-SUITE filemap-lint
-   tools/filemap-lint.f
-   tools/filemap-lint-test.f
-;SUITE
-
 SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint.f
    tools/lint/ptx-emitter-lint-test.f
@@ -132,19 +127,6 @@ SUITE host-lint-fixtures
 
 SUITE trusted-inventory
    tools/trusted-inventory-test.f
-;SUITE
-
-\ The census tool's own scanner fixtures. The production run over the real tree
-\ (tools/enum-census.f verify) is registered separately as `enum-census`.
-SUITE enum-census-fixtures
-   tools/enum-census-test.f
-;SUITE
-
-\ Every plain ENUM declaration in the repository, re-declared through the global
-\ ENUM keyword and compared against the baseline recorded before that keyword
-\ moved to the unified front end.
-SUITE enum-census
-   tools/enum-census.f
 ;SUITE
 
 SUITE primitive-effect-inventory

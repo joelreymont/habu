@@ -574,8 +574,8 @@ s" VX-8 ( -- OBLIG:decode-result ) DIFFSUITE-DECODE--RESULT:MALFORMED" NO
 
 \ ---- the recorded declaration shape, pair-keyed ---------------------------------
 \ The MATCH projections dispatch on case NAME, so they are blind to a case-order change,
-\ and full-form families get no enum-census row - these pins are the only case-order and
-\ payload-slot detector either family has. All five families on these two tails are
+\ so these pins are the case-order and payload-slot detector either family has. All five
+\ families on these two tails are
 \ registered in this process, so FAMS = 1 per identity is a real uniqueness assertion.
 BR$ REFLECT:FAMS 1 T=
 BR$ REFLECT:KIND TK-SUM T=              \ a payload family stays a general sum ...

@@ -202,7 +202,7 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   your OWN branch/bookmark (e.g. `maki-<topic>`), commit+push THERE freely, and only
   fast-forward `master` to it AFTER running the full owning gates and confirming they
   pass: the maki test suite (`bin/hb --load maki/test.f`), the ptx-stdlib + any touched native
-  gate slice, and `host-lint` + `filemap-lint` — all green, on the exact rebased tree
+  gate slice, and `host-lint` — all green, on the exact rebased tree
   you intend to merge. If any gate is red, skipped, or unrun, the merge does not
   happen; fix or dot the blocker first. A red master is a stop-the-line incident, not
   a "clean up later". Direct commits to `master` are forbidden; master only ever moves
@@ -292,7 +292,7 @@ codes, never silent; named constants; and a `T{ … -> … }T` test for every wo
   reconcile conflicts and shared-file semantics in one integration tree, then
   run the combined focused and publication gates on that exact tree.
   Before fast-forwarding `master`, run `maki/test.f`, ptx-stdlib plus touched
-  native slices, `host-lint`, `filemap-lint`, and the native dot gate on the exact
+  native slices, `host-lint`, and the native dot gate on the exact
   rebased tree; then push with
   `jj git push --bookmark master --remote origin`. A competing claim aborts the
   dispatch; preserve its owner and release the losing local claim. Verify the

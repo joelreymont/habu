@@ -187,7 +187,6 @@ private
    s" trust-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" stale-status-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint" SUITE-LABEL= if SUITE-TRUE exit then
-   s" filemap-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdin-closure-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
    s" dot-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
@@ -205,8 +204,6 @@ private
    s" error-code-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" trusted-inventory" SUITE-LABEL= if SUITE-TRUE exit then
-   s" enum-census" SUITE-LABEL= if SUITE-TRUE exit then
-   s" enum-census-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-LINT-ARTIFACTS-LABEL? ( -- bool )

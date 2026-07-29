@@ -270,8 +270,8 @@ s" hb-casestore-test" TMPDIR-MKDIR CASESTORE:ROOT!
 
 \ ---- what the declaration recorded --------------------------------------------------
 \ The MATCH projections above dispatch on case NAME, so they are blind to a case-order
-\ change, and full-form families get no enum-census row - these pins are the only
-\ case-order and payload-slot detector this family has. The identity is the family tail
+\ change, so these pins are the case-order and payload-slot detector this family has.
+\ The identity is the family tail
 \ PLUS the constructor package its variants carry, which matters unusually much here:
 \ maki/competitive-evidence-store.f declares its OWN `load-result`, so the bare tail is
 \ ambiguous repo-wide and only the pair names this family. FAMS = 1 is that assertion.
