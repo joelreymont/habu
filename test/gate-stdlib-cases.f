@@ -222,6 +222,10 @@ SUITE compiler-ir-fun
    test/compiler/ir-fun.f
 ;SUITE
 
+SUITE compiler-ir-build
+   test/compiler/ir-build.f
+;SUITE
+
 SUITE compiler-ir-arena
    test/compiler/ir-arena.f
 ;SUITE

@@ -2980,3 +2980,29 @@ fits.
   reachable via `--at-op`. Genuinely unrecoverable means never committed
   anywhere, which for an agent workspace means it was `rm -rf`'d before any jj
   command snapshotted it.
+
+- **A sealed handle can be stored without a forging cast.** The IR builder has
+  to keep fifteen `IR-ARENA:arena` handles and a module key alive between
+  calls, and the obvious way — stash the raw cells and re-mint them with a
+  private `CAST:` — would have given the package a forging window over another
+  package's sealed family, which is exactly what `arena.f` and `op.f` refuse to
+  do. `TYPED-BUFFER NAME <family>` (and `TYPED-VARIABLE`) store the nominal
+  itself, so the handles round-trip with no cast anywhere. Reach for typed
+  storage before inventing a converter; a stored handle is not a reason to
+  break a seal. The context handle is the exception and stays out of storage:
+  `IR-CTX`'s whole lifetime argument is that no context handle survives its
+  `WITH-CONTEXT` body, so the builder takes the context from its caller on
+  every mutating word and checks it against the owner serial instead.
+
+- **A per-process stage claim needs a way to be reclaimed, or one failed test
+  poisons every later one.** `IR-OP` and `IR-FUN` keep one open record each per
+  process, so the builder records which builder generation holds each stage.
+  The first version simply refused a second claimant — and then a fixture that
+  threw with a record open held that stage for the rest of the enclosing
+  context, because a context abandoned by a throw keeps its registry slot until
+  the nearest enclosing live context leaves normally, so its builder still
+  looked alive. Two fixes, both needed: the claim is reaped when its holder is
+  no longer a live builder, and every fixture that throws with a record open
+  gets a harness context of its own, the way `ir-fun.f` already splits its
+  negative cases. A claim with no reclamation path is a leak with a good
+  excuse.

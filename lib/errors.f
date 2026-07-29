@@ -534,3 +534,16 @@ public
 -8051 constant E-IR-FUN-DUP      \ a symbol this module's function table already defines
 -8052 constant E-IR-FUN-SIG      \ a function signature type that is not a code reference
 -8053 constant E-IR-FUN-TARGET   \ a calling convention the bound target contract does not provide
+
+\ Compiler builder, abort, and freeze lifecycle (package IR-BUILD): -8060..-8079
+-8060 constant E-IR-BUILD-STALE   \ a builder or frozen-module handle this registry never minted, or whose owning context has torn down
+-8061 constant E-IR-BUILD-FROZEN  \ a mutation, a reader, or a second freeze through a builder handle FREEZE already consumed
+-8062 constant E-IR-BUILD-ABORTED \ any use of a builder handle ABORT already retired
+-8063 constant E-IR-BUILD-OWNER   \ a builder presented together with a context that is not the one that created it
+-8064 constant E-IR-BUILD-OPEN    \ a freeze attempted while this builder still holds an open function, block, or operation stage
+-8065 constant E-IR-BUILD-STAGE   \ builder stage misuse: a begin while one is open, an end without a begin, or a stage another builder holds
+-8066 constant E-IR-BUILD-PLAN    \ a table-ceiling plan field outside the accepted range, declared twice, or missing when a builder was created
+-8067 constant E-IR-BUILD-CEILING \ a table holds more records than the ceiling this builder committed to
+-8068 constant E-IR-BUILD-SLOTS   \ the builder registry has no free slot
+-8069 constant E-IR-BUILD-SERIALS \ builder generation serials reached their ceiling
+-8070 constant E-IR-BUILD-STATE   \ persisted builder registry state failed its consistency recheck
