@@ -56,12 +56,13 @@
 \ decidable: FREEZE knows whether this builder left a record half-declared.
 \
 \ FREEZE IS ALL OR NOTHING. Every check runs before the first arena is frozen:
-\ the builder must be live, must own no open stage (design line 544's "no
-\ builder-only placeholder"), every table must hold no more records than the
-\ ceiling this builder committed to, and all fifteen arenas must still be live.
-\ Only then are the arenas frozen, the slot marked frozen and the module handle
-\ minted. A refusal therefore leaves the context, the tables and the builder
-\ exactly as they were, and the caller may fix the module and freeze again.
+\ the builder must be live and presented with its own context, must own no open
+\ stage (design line 544's "no builder-only placeholder"), every table must hold
+\ no more records than the ceiling this builder committed to, and all fifteen
+\ arenas must still be live. Only then are the arenas frozen, the slot marked
+\ frozen and the module handle minted. A refusal therefore leaves the context,
+\ the tables and the builder exactly as they were, and the caller may fix the
+\ module and freeze again.
 \
 \ WHAT FREEZE DOES NOT CHECK YET. Design section 6.5 also lists the structural
 \ verification of a whole module - dominance, use-before-def across blocks,
@@ -1032,8 +1033,19 @@ public
 \ and can be corrected and frozen again. On success the fifteen tables become
 \ read-only views owned by the context, the slot stops being a builder, and
 \ every mutation word rejects the old handle with E-IR-BUILD-FROZEN.
-: FREEZE ( IR-BUILD:builder -- IR-BUILD:module )
-   LIVE-SLOT {: slot:n :}
+\
+\ FREEZE TAKES THE CONTEXT, ABORT DOES NOT. Publication is the one state change
+\ this package makes that has to prove the caller owns the compilation, so it
+\ passes the same USE gate every append does rather than merely checking that
+\ the builder is live: a builder handle that escaped into another compilation
+\ could otherwise publish a module its context never agreed to. The context is
+\ also what section 6.5's validation needs - the bound target contract, and an
+\ allocator for the tables that validation derives - so the argument is the
+\ interface that check requires, not a courtesy. ABORT publishes nothing and
+\ allocates nothing: retiring an arena needs no allocator, so it keeps the
+\ narrower signature.
+: FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-BUILD:module )
+   USE {: slot:n :}
    slot BGEN@ STG-CLEAR-CK
    slot CEILINGS-CK
    slot TABLES-LIVE-CK

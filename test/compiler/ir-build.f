@@ -177,7 +177,7 @@ private
    c b ATT-BLK {: o:IR-ID:ir-op-id :}
    c b IR-BUILD:END-FUN drop
    c b ATT-KEY {: k:IR-ID:ir-symbol-id :}
-   b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m IR-BUILD:FKEY {: key:IR-ID:ir-module-key :}
    m IR-BUILD:FOP-ROWS o IR-OP:FATTRS
    m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS key o 0 IR-OP:FATTR-KEY@
@@ -339,7 +339,7 @@ private
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
    c b MODULE-BUILD {: f0:IR-ID:ir-fun-id :}
-   b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m IR-BUILD:FROZEN?
    b IR-BUILD:LIVE?
    m IR-BUILD:FSYM-ROWS IR-SYM:FSYMBOLS
@@ -358,7 +358,7 @@ private
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
    c b MODULE-BUILD {: f0:IR-ID:ir-fun-id :}
-   b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m IR-BUILD:FFUN-ROWS m IR-BUILD:FKEY f0 IR-FUN:FSYMBOL@ {: sym:IR-ID:ir-symbol-id :}
    m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS sym s" main" IR-SYM:FEQ?
    m IR-BUILD:FFUN-ROWS f0 IR-FUN:FBLOCK-COUNT 1 =
@@ -384,7 +384,7 @@ create VW-BUF VW-CAP allot
    c b SIGT {: sig:IR-ID:ir-type-id :}
    c b K-CONST OPC-SYM {: opc:IR-ID:ir-symbol-id :}
    c b s" note" IR-BUILD:INTERN-TEXT-ATTR {: at:IR-ID:ir-attr-id :}
-   b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m IR-BUILD:FKEY {: key:IR-ID:ir-module-key :}
    m IR-BUILD:FSYM-POOL m IR-BUILD:FSYM-ROWS opc s" hir.const" IR-SYM:FEQ?
    m IR-BUILD:FTYPE-POOL m IR-BUILD:FTYPE-ROWS key sig 0 IR-TYPE:FPARAM@
@@ -402,7 +402,7 @@ create VW-BUF VW-CAP allot
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
    c b MODULE-BUILD drop
-   b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m IR-BUILD:FSOURCES IR-SOURCE:FSOURCES
    m IR-BUILD:FOP-POOL IR-OP:FPOOL-CELLS
    m IR-BUILD:FVALUE-ROWS IR-OP:FVALUES
@@ -420,7 +420,7 @@ create VW-BUF VW-CAP allot
 : FZ-SYM-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
-   b IR-BUILD:FREEZE drop
+   c b IR-BUILD:FREEZE drop
    c b s" late" IR-BUILD:INTERN-SYMBOL drop ;
 
 : FZ-SYM ( -- )
@@ -431,7 +431,7 @@ create VW-BUF VW-CAP allot
    c MK {: b:IR-BUILD:builder :}
    c b SCH-ALL
    c b K-CONST OPC-SYM {: op:IR-ID:ir-symbol-id :}
-   b IR-BUILD:FREEZE drop
+   c b IR-BUILD:FREEZE drop
    c b op IR-BUILD:BEGIN-OP ;
 
 : FZ-OP ( -- )
@@ -441,7 +441,7 @@ create VW-BUF VW-CAP allot
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
    c b s" main" IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
-   b IR-BUILD:FREEZE drop
+   c b IR-BUILD:FREEZE drop
    c b sym IR-BUILD:BEGIN-FUN ;
 
 : FZ-FUN ( -- )
@@ -450,7 +450,7 @@ create VW-BUF VW-CAP allot
 : FZ-READER-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
-   b IR-BUILD:FREEZE drop
+   c b IR-BUILD:FREEZE drop
    b IR-BUILD:SYMBOLS drop ;
 
 : FZ-READER ( -- )
@@ -459,8 +459,8 @@ create VW-BUF VW-CAP allot
 : FZ-TWICE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
-   b IR-BUILD:FREEZE drop
-   b IR-BUILD:FREEZE drop ;
+   c b IR-BUILD:FREEZE drop
+   c b IR-BUILD:FREEZE drop ;
 
 : FZ-TWICE ( -- )
    BND [: FZ-TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -468,7 +468,7 @@ create VW-BUF VW-CAP allot
 : FZ-ABORT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
-   b IR-BUILD:FREEZE drop
+   c b IR-BUILD:FREEZE drop
    b IR-BUILD:ABORT ;
 
 : FZ-ABORT ( -- )
@@ -491,8 +491,12 @@ create VW-BUF VW-CAP allot
    [: FZ-ABORT ;] E-IR-BUILD-FROZEN TTHROWSQ ;
 
 \ ---- a refused freeze publishes nothing --------------------------------------
-: RF-FREEZE ( IR-BUILD:builder -- IR-BUILD:builder )
-   dup IR-BUILD:FREEZE drop ;
+\ The context and the builder stay on the data stack rather than being bound as
+\ locals, because CATCH restores the stack depth it saw and not the values a
+\ locals frame consumed: the fixture below needs both handles back after the
+\ refusal. This is the shape CEIL-THIRD already uses for the same reason.
+: RF-FREEZE ( IR-CTX:ctx IR-BUILD:builder -- IR-CTX:ctx IR-BUILD:builder )
+   2dup IR-BUILD:FREEZE drop ;
 
 \ An operation left open is design line 544's builder-only placeholder. The
 \ refusal is observed against every piece of state a publication could have
@@ -511,7 +515,7 @@ create VW-BUF VW-CAP allot
    c IR-CTX:SCRATCH-USED {: scr0:n :}
    b IR-BUILD:OPS {: ops0:n :}
    b IR-BUILD:SYMBOLS {: sym0:n :}
-   b [: RF-FREEZE ;] catch {: b2:IR-BUILD:builder rc:n :}
+   c b [: RF-FREEZE ;] catch {: c2:IR-CTX:ctx b2:IR-BUILD:builder rc:n :}
    rc
    c IR-CTX:MINTED mint0 -
    c IR-CTX:SCRATCH-USED scr0 -
@@ -522,7 +526,7 @@ create VW-BUF VW-CAP allot
    c b2 K-RET OP+ drop
    c b2 IR-BUILD:END-BLOCK drop
    c b2 IR-BUILD:END-FUN drop
-   b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
+   c2 b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
 
 : REFUSE-CASE ( -- )
    s" a freeze refused for an open record publishes nothing" T-LABEL
@@ -535,7 +539,7 @@ create VW-BUF VW-CAP allot
    c b SCH-ALL
    c b FN-OPEN
    c b IR-BUILD:BEGIN-BLOCK
-   b IR-BUILD:FREEZE drop ;
+   c b IR-BUILD:FREEZE drop ;
 
 : RF-BLOCK ( -- )
    BND [: RF-BLOCK-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -545,7 +549,7 @@ create VW-BUF VW-CAP allot
    c MK {: b:IR-BUILD:builder :}
    c b SCH-ALL
    c b FN-OPEN
-   b IR-BUILD:FREEZE drop ;
+   c b IR-BUILD:FREEZE drop ;
 
 : RF-FUN ( -- )
    BND [: RF-FUN-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -648,7 +652,7 @@ create VW-BUF VW-CAP allot
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
    b IR-BUILD:ABORT
-   b IR-BUILD:FREEZE drop ;
+   c b IR-BUILD:FREEZE drop ;
 
 : AB-FREEZE ( -- )
    BND [: AB-FREEZE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -681,7 +685,7 @@ create VW-BUF VW-CAP allot
    c b2 K-RET OP+ drop
    c b2 IR-BUILD:END-BLOCK drop
    c b2 IR-BUILD:END-FUN drop
-   b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
+   c b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
 
 : ABORT-CASES ( -- )
    s" reading an aborted builder rejects with its own name" T-LABEL
@@ -708,6 +712,22 @@ create VW-BUF VW-CAP allot
 : XC ( -- )
    BND [: XC-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ Publishing is a state change, so it proves the caller owns the compilation the
+\ same way an append does. A live builder presented with a live but foreign
+\ context is refused by name, and nothing is published.
+: XC-FREEZE-INNER ( IR-BUILD:builder IR-CTX:ctx -- )
+   swap IR-BUILD:FREEZE drop ;
+
+: XC-FREEZE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b MODULE-BUILD drop
+   b
+   BND [: XC-FREEZE-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: XC-FREEZE ( -- )
+   BND [: XC-FREEZE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : XC-SIBLING-INNER ( IR-CTX:ctx -- IR-BUILD:builder )
    MK ;
 
@@ -721,7 +741,9 @@ create VW-BUF VW-CAP allot
 
 : XCTX-CASES ( -- )
    s" a builder used with a foreign live context rejects" T-LABEL
-   [: XC ;] E-IR-BUILD-OWNER TTHROWSQ ;
+   [: XC ;] E-IR-BUILD-OWNER TTHROWSQ
+   s" freezing with a foreign live context rejects" T-LABEL
+   [: XC-FREEZE ;] E-IR-BUILD-OWNER TTHROWSQ ;
 
 \ ---- a builder dies with its context -----------------------------------------
 : ESC-BODY ( IR-CTX:ctx -- IR-BUILD:builder )
@@ -733,8 +755,15 @@ create VW-BUF VW-CAP allot
 : ST-READ ( -- )
    DEAD-BUILDER IR-BUILD:SYMBOLS drop ;
 
+\ Freezing needs a live context to present, so the dead builder is carried into
+\ a fresh one; the builder's own generation is what is stale, and it is refused
+\ before the context it was handed is ever compared.
+: ST-FREEZE-INNER ( IR-BUILD:builder IR-CTX:ctx -- )
+   swap IR-BUILD:FREEZE drop ;
+
 : ST-FREEZE ( -- )
-   DEAD-BUILDER IR-BUILD:FREEZE drop ;
+   DEAD-BUILDER
+   BND [: ST-FREEZE-INNER ;] IR-CTX:WITH-CONTEXT ;
 
 : ST-ABORT ( -- )
    DEAD-BUILDER IR-BUILD:ABORT ;
@@ -747,7 +776,7 @@ create VW-BUF VW-CAP allot
    BND [: ST-MUT-INNER ;] IR-CTX:WITH-CONTEXT ;
 
 : ESC-MOD-BODY ( IR-CTX:ctx -- IR-BUILD:module )
-   MK IR-BUILD:FREEZE ;
+   dup MK IR-BUILD:FREEZE ;
 
 : DEAD-MODULE ( -- IR-BUILD:module )
    BND [: ESC-MOD-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -795,7 +824,7 @@ create VW-BUF VW-CAP allot
    c b [: CEIL-THIRD ;] catch {: c2:IR-CTX:ctx b2:IR-BUILD:builder rc:n :}
    rc
    b2 IR-BUILD:SYMBOLS
-   b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
+   c2 b2 IR-BUILD:FREEZE IR-BUILD:FROZEN? ;
 
 : CEILING-CASE ( -- )
    s" a table at its committed ceiling refuses and stays freezable" T-LABEL
@@ -814,7 +843,7 @@ create VW-BUF VW-CAP allot
       CHECK-QUIET-CANDIDATE! 0 T=
    s" IRB-MOD-MUT ( IR-CTX:ctx IR-BUILD:module ptr u8 n -- IR-ID:ir-symbol-id ) IR-BUILD:INTERN-SYMBOL"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" IRB-MOD-FREEZE ( IR-BUILD:module -- IR-BUILD:module ) IR-BUILD:FREEZE"
+   s" IRB-MOD-FREEZE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ) IR-BUILD:FREEZE"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" IRB-BUILDER-VIEW ( IR-BUILD:builder -- IR-ARENA:view ) IR-BUILD:FSYM-ROWS"
       CHECK-QUIET-CANDIDATE! 0 T= ;
