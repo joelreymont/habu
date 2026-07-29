@@ -187,6 +187,15 @@ enforces it.
   smaller derived-table ceiling arm is covered indirectly by `ROOM-CK`.
 - `E-IR-VERIFY-STATE` and `E-IR-VERIFY-OWNER` on the derived table's frozen
   readers - a forged view cannot be spelled in checked code.
+- `E-IR-OP-STATE` for an attribute-window length that is not a whole number of
+  entries, added in commit A. Measured, not assumed: deleting that line leaves
+  `ir-op.f` and `ir-structure-proof.f` both green, so the arm is genuinely
+  uncovered. It cannot be isolated with the existing forge harness, because a
+  forged row's windows all start at the end of the live pool, so any positive
+  attribute length overflows the pool and is refused by the pool bound before
+  the parity of the length is ever examined. Covering it needs a forge harness
+  that can place a row with pool cells to spare after it; that is a test-support
+  capability, and the arm stays defense in depth until it exists.
 
 ### MODEL GAPS
 
@@ -240,6 +249,12 @@ Seven mutations of the verifier, each restored and green afterwards:
 - successor argument count comparison neutralised - suite red.
 - attribute pool written value-then-key instead of key-then-value - both
   `ir-op.f` and `ir-build.f` red.
+- `ROW-ADD` writing the attribute ENTRY count instead of the window's cell
+  length - `ir-op.f` red with an uncaught `E-IR-OP-STATE`, and
+  `ir-structure-proof.f` red on the frozen body. This is the mutation that
+  proves the representation decision is load-bearing in both directions.
+- the odd-attribute-length refusal deleted - nothing red. Recorded above as an
+  uncovered arm rather than reported as covered.
 
 Two real bugs were found this way and fixed before the commit: the derived
 pool writer and the predecessor filler each used the inner loop index where the
@@ -293,11 +308,19 @@ stdlib-process-fixtures, owner-wid-internal, build-fixpoint-fixtures) did not
 reproduce on this workspace at all: none of those six appeared in either run.
 The first pooled run reported three reds - `compiler-ir-structure-proof`,
 `compiler-ir-id` and `check-cli-boundary`. The first was mine and is fixed as
-described above. The other two pass standalone on this exact tree
-(`test/compiler/ir-id.f` exit 0 `test: ok`; `tools/check-test.f` exit 0
-`check-test: ok`), so they are contention artifacts of a pool running on a
-machine loaded with parallel agents, in the same class as the
-TIMEOUT-UNDER-LOAD reds the brief warned about even though these surfaced as
+described above; the second pooled run on the integrated tree reports two reds,
+the same two, and `compiler-ir-structure-proof` is green.
+
+Both remaining reds pass standalone on this exact tree (`test/compiler/ir-id.f`
+exit 0 `test: ok`; `tools/check-test.f` exit 0 `check-test: ok`) and both fail
+in the pool on cases that have nothing to do with this work.
+`compiler-ir-id` fails on `barrier-removal mutation fails overlap witness` and
+`activation cleanup permits same-process task reuse`, which are concurrency
+timing fixtures. `check-cli-boundary` fails inside the command-line capacity and
+missing-source paths with an uncaught -2502. Neither touches attributes, the
+freeze lifecycle, or the verifier. They are contention artifacts of a pool
+running on a machine loaded with parallel agents, in the same class as the
+TIMEOUT-UNDER-LOAD reds the brief warned about even though these surface as
 plain exit codes. I could not reproduce the brief's six-red baseline to compare
 against, so the honest statement is: no suite is red on this tree that is red
 because of this work, and the baseline the brief quoted does not describe this
