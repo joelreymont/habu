@@ -1,24 +1,17 @@
 ---
-title: "Infer batch decode: ragged kernel"
+title: Publish batched GPT-2 arm
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:43:30.761923+02:00"
 blocks:
   - habu-infer-batch-decode-a7520e15
+  - habu-batch-gpt-2-137b7fa3
+  - habu-batch-gpt-2-cf63de5a
 ---
 
-Why this exists:
-M3 stage C requires one launch over a bounded ragged batch without a host per-head loop.
+Why: row-indexed kernels become a product batch only when the closed GPT-2 model arm composes them and advertises the tested capacity.
 
-Required result:
-extend the selected paged recurrence across the batch descriptor with per-row lengths and GQA mapping.
+Result: extend only the GPT-2 model dispatch so its existing full forward composes the landed dense-row and paged-attention operations for the current RUN-ROWS descriptor, then advertise maximum batch exactly four. Stop rows are omitted before dispatch. Qwen continues to advertise one, and engine or scheduler admission rejects five or any larger requested batch. RUN-ROWS owns only KV, token-history, and logit commit; INFER:NEXT-MANY alone owns provisional sampling, random-state commit, detokenized-byte copy, and output publication after RUN-ROWS succeeds.
 
-Done when:
-each active row matches the single-sequence kernel, masked rows produce no output or state mutation, and unsupported batch/geometry rejects before launch.
-
-Expected touch points: new lib/ptx/cg-decode-batched.f, device test, perf-watch/FILEMAP rows.
-Smallest check: correctness-only GB10 parity.
-Prerequisites: ragged descriptor and selected page transfer path.
-Owned result: batched decode kernel only.
-Claim: unassigned.
+Add no per-row host loop, completion mask, second attention, cache, or descriptor, host fallback, commit, per-call allocation or compilation, benchmark framework, Qwen batching, or silent reduction. Owner: GPT-2 multi-row model dispatch and capability four only. Production red: completed row-indexed operations are not joined by the model arm. Acceptance: NEXT-MANY batches one, two, and four with mixed lengths, scattered pages, page edges, and one EOS-excluded row match independent runs; one, two, and four issue the same operation-launch count; five rejects before mutation; every injected operation failure is returned to RUN-ROWS with all committed state unchanged. Smallest owning check: bin/hb --load maki/infer/gpt2-device-batch-test.f on DGX Spark. Claim: unassigned.

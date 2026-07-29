@@ -1,24 +1,13 @@
 ---
-title: "Infer serve: HTTP connection lifecycle"
+title: Own completion connection state
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T10:07:44.072966+02:00"
 blocks:
-  - habu-infer-serve-openai-1dca13cd
+  - habu-frame-bounded-http-d677ca95
+  - habu-infer-scheduler-req-1ac1dac6
+  - habu-infer-scheduler-cancellation-523c6cb8
 ---
 
-Why this exists:
-A socket connection needs explicit ownership across accept, request framing, response writes, client cancellation, and shutdown.
-
-Required result:
-Drive one bounded HTTP connection from accepted descriptor through framing and OpenAI mapping to a client backpressure lease, closing every descriptor and request owner exactly once.
-
-Done when:
-Normal, keep-alive-disabled, malformed, slow-reader, disconnect, timeout, engine-error, and server-shutdown traces all release their owners and preserve other connections.
-
-Expected touch points: HTTP connection driver and focused socket lifecycle tests.
-Smallest check: the focused connection lifecycle test.
-Prerequisites: HTTP framing, OpenAI mapping, and client backpressure lease.
-Owned result: one HTTP connection lifecycle only.
-Claim: unassigned.
+Why: one accepted descriptor and its fixed storage need one linear lifetime independent from I/O and result transitions. Result: package SERVE-CONN:OPEN consumes the healthy SCHED scheduler, one checked nonblocking descriptor, caller-provided read/body/prompt/output/JSON/write spans, active model name, response id, and idle deadline. It obtains the scheduler id internally, validates all capacities, and returns opened(scheduler,connection) or refused(scheduler,descriptor,buffers,error); no caller supplies an id. The opaque connection stores that derived id and may hold at most one matching SCHED request handle. CLOSE attempts SCHED:CANCEL for a live handle only between ticks, then attempts socket close exactly once even when cancellation refuses. Its exact arms are closed(scheduler,buffers) when cancellation and close succeed; close-failed(scheduler,buffers,sock-error) when cancellation succeeds but close reports failure; and closed-with-errors(terminal,buffers,live-handle,error-set) when cancellation makes the scheduler terminal, with the error set recording whether close also failed. Every arm consumes the descriptor and connection. Public CLOSE-AFTER-SCHED-FAIL ( SCHED:terminal SERVE-CONN:conn -- SERVE-CONN:terminal-close-result ) first calls MATCH-TERMINAL with the stored id. Mismatch returns refused(terminal,conn,cross-scheduler) before close; match performs no cancellation, attempts socket close once, and returns closed(terminal,buffers,live-handle-or-none) or close-failed(terminal,buffers,live-handle-or-none,sock-error). Every completed arm contains no socket owner and threads scheduler state unchanged. FOOTPRINT reports owned bytes from validated spans. Owner: connection state layout, scheduler-derived binding, publication, footprint, ordinary close, and capability-guarded terminal close. Production red: caller-supplied identity could otherwise bind a connection to a scheduler that never admitted its request. Acceptance: OPEN exposes no id parameter; two schedulers yield distinct connection bindings; an authentic id cannot be swapped during OPEN; terminal from server A against idle or live connection B rejects before close with both owners intact; matching terminal closes exact and one-short, partial-open, idle, live, healthy-close-failure, cancellation-refusal, first-of-many, and two-server cases with every non-socket owner preserved; each successfully matched descriptor receives exactly one close attempt. Forbidden: caller-supplied or exposed scheduler id, unbound connection, unguarded close-only entry, cancellation through terminal, read or write transition, JSON decode or render, result application, scheduler tick, second request, heap buffer, socket retry, blocking I/O, thread, task, callback, lease, version, or compatibility mode. Smallest owning check: bin/hb --load maki/serve/connection-state-test.f. Claim: unassigned.

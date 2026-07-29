@@ -1,25 +1,12 @@
 ---
-title: "Infer dense: tensor and config binding"
+title: Bind Qwen tensor catalog
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.441007+02:00"
 blocks:
   - habu-infer-dense-pin-36c8e45c
-  - habu-infer-pack-tensor-93c2e949
+  - habu-parse-qwen-config-cd65019c
 ---
 
-Why this exists:
-normalized configuration and pack layout must bind the pinned checkpoint's embeddings, norms, Q/K/V/O, SwiGLU, and vocabulary head exactly once.
-
-Required result:
-define the model-family tensor-role table and validate layer counts, GQA geometry, RoPE parameters, and packed layouts before publication.
-
-Done when:
-pinned pack binds exactly; missing, duplicate, wrong-shape, wrong-dtype, and incompatible RoPE/GQA fields reject named.
-
-Expected touch points: new maki/infer/dense-model.f, focused binding test.
-Smallest check: focused model binding test.
-Prerequisites: pin product checkpoint, model-pack tensor layout catalog.
-Owned result: modern-model config and tensor binding only.
-Claim: unassigned.
+Why: the pinned checkpoint needs one exact role-to-slot authority before shard loading. Result: package QWENTENSOR owns checked construction of exactly 339 roles, fixed slot lookup, inverse slot lookup, and the catalog census. Separate leaves own name conversion and layout validation. Add no second configuration, dtype code, generic model role, string-key runtime lookup, packed layout, optional tensor, tied-head assumption, compatibility alias, or pack catalog. Owner: QWENTENSOR role construction and slot bijection only. Production red: no catalog can address the 339 pinned roles. Acceptance: every role maps to one slot and every slot maps back; missing, duplicate, extra, wrong layer, and one-over roles reject; mutating any role fails the focused census. Smallest owning check: bin/hb --load maki/infer/qwen-tensor-test.f. Claim: unassigned.

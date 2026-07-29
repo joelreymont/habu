@@ -6,7 +6,7 @@ issue-type: task
 created-at: "\"2026-07-22T15:51:34.318889+02:00\""
 blocks:
   - habu-type-dsl-prove-93da83c4
-  - habu-seal-owners-syntax-63051652
+  - habu-checker-sealed-destructure-d967fc03
 ---
 
 Problem: JSON-WRITE, model-pack, normalized-config, and safetensors callers all
@@ -43,7 +43,7 @@ package, type-linear, suite-coverage, host, and file-map gates pass.
 Files: lib/adt/copy.f, lib/adt/copy-test.f, the canonical type-linear suite
 inventory, and FILEMAP.md. Smallest real check: the enrolled type-linear slice
 running COPY:TO against a real destination buffer. Depends:
-habu-type-dsl-prove-93da83c4 and habu-seal-owners-syntax-63051652. Owned result:
+habu-type-dsl-prove-93da83c4 and habu-checker-sealed-destructure-d967fc03. Owned result:
 generic copied/required outcome and
 COPY:TO only; optional/absence policy remains consumer-owned. Claim: released;
 commits 7a2572b6 and 7b62d6af and workspace .jj-ws/copy-result-impl are rejected

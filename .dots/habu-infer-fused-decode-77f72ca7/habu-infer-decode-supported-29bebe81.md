@@ -5,20 +5,23 @@ priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.327832+02:00"
 blocks:
-  - habu-infer-gpt2-checked-54b99423
+  - habu-prove-gb10-inference-d43eecce
+  - habu-parse-gpt-2-c8baa4db
+  - habu-use-canonical-checkpoint-92eac785
+  - habu-add-kv-layer-41961bed
 ---
 
 Why this exists:
-decode variants need one fail-closed contract for target, dtype, head dimensions, page tokens, MHA/GQA/MQA head mapping, context regime, and batch bound before launch.
+the GPT-2 device executor needs one fail-closed contract for target, F32 dtype, head count, head dimension, page tokens, context length, and batch-one launch bounds before attention launches.
 
 Required result:
-define typed geometry and derive every stride and launch extent with checked arithmetic.
+package DECODEGEOM owns one typed geometry derived only from validated MDLCFG, the canonical checkpoint dtype, KV page geometry, and the probed GB10 target. Derive every stride, byte extent, mask bound, grid dimension, and launch extent with checked arithmetic. Do not add generic MHA/GQA/MQA selection; the later modern-model adapter extends this owner when its exact row is pinned.
 
 Done when:
-supported GPT-2 and pinned modern-model rows pass; invalid divisibility, dtype, page size, target, context, and overflow reject before emitter or launch.
+the real GPT-2 row passes; wrong family, non-F32 dtype, non-divisible heads, zero or oversized page/context, wrong target, and arithmetic overflow reject before emitter or launch.
 
-Expected touch points: new lib/ptx/decode-geometry.f, focused test, FILEMAP.md.
+Expected touch points: new lib/ptx/decode-geometry.f and focused test.
 Smallest check: bin/hb --load the focused geometry test.
-Prerequisites: GPT-2 checked geometry for its concrete row.
+Prerequisites: canonical GPT-2 configuration, dtype, and GB10 target.
 Owned result: decode geometry and legality only.
 Claim: unassigned.

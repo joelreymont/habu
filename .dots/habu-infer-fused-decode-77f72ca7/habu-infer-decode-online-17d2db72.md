@@ -12,13 +12,13 @@ Why this exists:
 contiguous and paged kernels need one numerically explicit online-softmax recurrence and high-precision oracle.
 
 Required result:
-implement the running max, rescaled sum, and value accumulator reference for one query with BF16/FP16 inputs and FP32 accumulation.
+package DECODE-REF implements the running maximum, rescaled sum, and value accumulator for one causal F32 query with F64 comparison accumulation. It consumes DECODEGEOM geometry and caller-owned Q/K/V buffers; it owns no model, cache, or device code.
 
 Done when:
 empty, one-token, masked, extreme-logit, and long-context fixtures agree with the high-precision reference under derived tolerance; no device code in this leaf.
 
-Expected touch points: new maki/infer/decode-reference.f, focused test and fixture.
-Smallest check: focused reference test.
+Expected touch points: new maki/infer/decode-reference.f and focused test.
+Smallest check: bin/hb --load the focused reference test.
 Prerequisites: supported geometry contract.
 Owned result: host online-softmax oracle only.
 Claim: unassigned.

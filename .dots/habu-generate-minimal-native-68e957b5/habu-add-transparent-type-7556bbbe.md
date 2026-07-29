@@ -4,8 +4,6 @@ status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-21T22:38:51.572324+02:00"
-blocks:
-  - habu-atomic-generated-declaration-4c1e8b7a
 ---
 
 Invariant: repeated structural types may have a short package-owned spelling without creating a new nominal identity or changing type checking. The language has no transparent alias surface. Long matrix and other structural signatures are therefore repeated in definitions and generated checked fixtures; TYPEFAMILY is nominal and would incorrectly make those spellings distinct types.

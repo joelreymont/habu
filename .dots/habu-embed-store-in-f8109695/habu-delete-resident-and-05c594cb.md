@@ -8,6 +8,6 @@ blocks:
   - habu-cut-gpt2-model-445a19ff
 ---
 
-After the cutover: delete WSTORE:resident, HOLD, the park/unpark trusted erasures, the pre-reserved HOLD cells in every table block, RESIDENT-DISPOSE, and their tests and TRUSTED.md rows, after a boundary-aware caller sweep proves zero references. Close the now-obsolete habu-add-wstore-scoped-e57e32e2 (its WITH-RESIDENT-SLOT capability has no consumer once the resident is gone); amend habu-add-wstore-resident-2ada0262 to landed-history status so it does not read as an active future direction. Acceptance: sweep table (zero references per deleted word); weight-store and bind suites green; TRUSTED.md rows retired; both diff lints.
+Why: after gpt2-model owns WSTORE:store directly, resident, HOLD, and the park/unpark erasures have no product owner. Result: delete WSTORE:resident, HOLD, RESIDENT-DISPOSE, the park/unpark trusted erasures, pre-reserved HOLD cells in every table block, their tests, and their TRUSTED.md rows. Owner: WSTORE resident lifetime deletion only. Production red: dead resident machinery keeps trusted owner erasures and table cells after the hard cut. Acceptance: a boundary-aware sweep finds no deleted word; weight-store and GPT2LOAD suites pass; TRUSTED.md rows are gone; package, trust, typed-local, and exact-diff gates pass. Forbidden: replacement resident, forwarding word, compatibility path, graph-history edit, or unrelated table API change.
 
 Claim: agent=claude workspace=.jj-ws/habu-delete-resident-and-05c594cb

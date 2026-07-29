@@ -4,6 +4,8 @@ status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-23T14:53:49.128448+02:00\""
+blocks:
+  - habu-prove-enum-kind-72434e47
 ---
 
 Why: full ENUM chooses TK-SUM before variants are known. Publication must

@@ -1,39 +1,17 @@
 ---
-title: "Checker: sealed destructure and linear UNMAKE"
+title: "Checker: owner-only product construction"
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-26T09:00:47.469920+02:00"
 blocks:
-  - habu-seal-validated-model-7cd84aa3
-  - habu-seal-gpt-2-def7cd75
-  - habu-seal-model-provenance-21258c22
+  - habu-prove-sealed-inference-1d007ad5
 ---
 
-Campaign only; do not dispatch this parent. Public `UNMAKE` exposes private proof
-tokens from validated configuration, layer identity, and provenance values.
-The children add explicit `DESTRUCT public|owner` family metadata, parse it with
-live/replay parity, implement the owner-only `destructure family` form, remove
-public `UNMAKE` publication for owner-policy structures, and migrate each
-affected inference authority separately. The form is a checker/compiler
-operation that resolves only the active owning package and lowers to the
-product-layout no-op; it is not a callable word or a caller-name heuristic.
-Close this parent only after all three real forgery fixtures reject and their
-production suites remain unchanged.
+Campaign only; do not dispatch. Public products always publish MAKE, so inference owners carry private proof fields and TRUSTED mint words solely to prevent foreign construction. Replace that ceremony with one compiler rule: a STRUCTURE may declare CONSTRUCT owner, recorded as one flag in the existing TF.DERIVE word. Unflagged products retain their ordinary public MAKE and UNMAKE. An owner product publishes no MAKE; its original package constructs it through the existing compiler form extended to products. UNMAKE remains ordinary because destructuring plain fields cannot mint the nominal value.
 
-Recorded gap, measured 2026-07-28, needing a decision before this parent
-closes: a FOURTH forgery surface exists in the tree with no migration leaf.
-`maki/infer/gpt2-mapped-test.f:399-415`, inside `package GPT2LOAD-OUTSIDE-TEST`,
-pins three deliberate ACCEPTs against `GPT2LOAD:gpt2-model` through the
-generated `GPT2LOAD-GPT2--MODEL:UNMAKE`: the destructor extracts a real model's
-store; the inner store can be released behind the model's back; and a real
-model can be rebuilt with an invalid layer count of 99. The candidate at
-`:409-411` is the rejected control proving the proof token still blocks a model
-built from nothing. The rationale block at `:378-389` says that when this
-capability lands those three tests fail, and that the failure is the signal to
-delete them and retire the caveat in the `gpt2-load.f` header — so the pins
-were written expecting coverage that the three named migration leaves (MDLCFG,
-GPT2TENSOR, MODELPROV) do not provide. Either a fourth leaf migrates
-`GPT2LOAD:gpt2-model` to `DESTRUCT owner`, or this parent's closure condition
-is amended to state why that surface is deliberately left open. Do not close
-the parent while the discrepancy stands.
+Once a package owns an owner-construction product, the compiler rejects reopening it. Raw wordlist operations become trusted-only so a saved numeric identifier cannot bypass the package form. Delete the production-empty OWNER-WID runtime registry, capacity, emit hooks, and trailer without replacement. Keep the live PROT-WID registry and protected-memory enforcement for compiler internals.
+
+Migrate each retained inference product by adding CONSTRUCT owner and deleting its proof field, NEWTYPE, TRUSTED mint, and proof plumbing in the same hard cut. No destructure policy, owner-WID, family-row growth, schema version, compatibility representation, public construction alias, or runtime protection survives. Candidate commits 5fa4a6763dab, 321b9fb1bdd0, 41afe26c, and 3c8bc494 are rejected; their old contracts remain recoverable at source commit 85a9646fd6b97e5d2cbb86d637bcf8d8ab2aece8.
+
+The campaign closes when owner construction works through the production compiler, public products are unchanged, owner packages cannot reopen, OWNER-WID is absent while PROT-WID remains green, inference proof-mint ceremony is deleted, foreign reconstruction rejects before lowering, and native fixpoint plus declaration and inference suites pass.

@@ -1,25 +1,24 @@
 ---
-title: "Infer engine: 64-token GPT2 oracle"
+title: "Run 64 GPT-2 tokens"
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.417979+02:00"
 blocks:
   - habu-infer-engine-sample-0f2a4ef4
-  - habu-infer-gpt2-greedy-b456d5b6
 ---
 
 Why this exists:
-M4 requires a complete prompt-to-token proof, not isolated stages.
+the first product milestone requires a complete real checkpoint prompt-to-output proof through INFER, not isolated kernels or another forward implementation.
 
 Required result:
-compose engine initialization, prefill, paged decode, greedy selection, and detokenization for the fixed GPT-2 prompts.
+add one production-path command/test that opens the pinned GPT-2 checkpoint and tokenizer assets, starts INFER with capacity one and the reference KV bound, opens one sequence from the exact committed prompt bytes, output maximum, and seed, prefills its stored tokens, performs 64 greedy batch-of-one NEXT-MANY transactions through the persistent GB10 model and paged cache, captures identifiers and emitted bytes in caller-owned row storage, then closes the sequence and stops the engine. GPT2-REFERENCE is comparison data only and never provides runtime values.
 
 Done when:
-at least 64 token identifiers match the trusted reference exactly, run twice is identical, every selected internal checkpoint is inspectable, and all owners return after completion and cancellation.
+all 64 token identifiers equal GPT2-REFERENCE exactly across page boundaries, emitted bytes equal the pinned reference, two complete runs are identical, and normal completion plus injected prefill/step/output cancellation return every cache, batch, sequence, source, and device owner. Device probes and logit parity remain exclusively in the GPT2DEV:LOGITS owning check; this public command adds no observer or raw-logit surface.
 
-Expected touch points: end-to-end engine test and canonical fixture.
-Smallest check: correctness-only GB10 64-token run and cleanup trace.
-Prerequisites: sample and detokenize step and GPT-2 greedy oracle loop.
-Owned result: M4 end-to-end correctness acceptance only.
+Expected touch points: one INFER command/test and existing canonical fixture.
+Smallest check: the real GB10 64-token command with ownership counters before and after.
+Prerequisites: INFER sampling/detokenization and committed GPT2-REFERENCE data.
+Owned result: first end-to-end GPT-2 product acceptance only.
 Claim: unassigned.

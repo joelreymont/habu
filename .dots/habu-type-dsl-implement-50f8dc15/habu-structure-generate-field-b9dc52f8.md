@@ -8,7 +8,6 @@ blocks:
   - habu-structure-generate-make-872a6e75
   - habu-checker-type-structure-d996215b
   - habu-record-field-visibility-7bb1f8a7
-  - habu-atomic-generated-declaration-4c1e8b7a
 ---
 
 Own typed field-accessor generation after field visibility/provenance and the

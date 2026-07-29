@@ -70,8 +70,8 @@ after the nomstore landing; all habu work consolidates under ONE Claude Code
   habu-v2-differential-suite-2d896ced (stale-active reconciled),
   habu-checker-capability-layout-9b8540bd (5 slices; slice 6 = optional p3
   habu-layout-slice-6-4bb1e4fb), habu-nominal-storage-migrate-47ee0f93.
-- Next-up queue per DRAIN PLAN v2 (recorded above): seal-owners chain
-  (habu-seal-owners-syntax-63051652 gates the first R8 leaf
+- Next-up queue per DRAIN PLAN v2 (recorded above): owner-construction chain
+  (habu-checker-sealed-destructure-d967fc03 gates the first R8 leaf
   habu-seal-cad-effect-49cac404); wave E trust discharges (owns the raw
   SPLIT-NEXT kernel note); Foundation A1 + TMA campaigns (successor's own
   line); device dots queue on Spark (habu-v2-dgx-spark-e88559f6, being

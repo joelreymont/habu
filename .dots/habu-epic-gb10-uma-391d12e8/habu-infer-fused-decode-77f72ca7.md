@@ -5,7 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-07-21T15:58:14.142912+02:00"
 blocks:
-  - habu-infer-decode-paged-66b6a16d
+  - habu-infer-decode-vector-e5ac69b3
 ---
 
-This is the decode-attention campaign record. Do not dispatch it as implementation work. Its leaves own the checked geometry, online-softmax oracle, contiguous kernel, paged iterator, transfer candidates, measured transfer selection, and real-model parity. The campaign closes when the paged real-model parity leaf lands with the selected transfer path.
+Campaign only; do not dispatch. Its leaves implement the one correctness-first attention path consumed by the persistent inference executor: checked GPT-2 geometry, the small DECODE-REF online-softmax oracle, address calculation over the KV batch descriptor, and one vector-load paged kernel. The later public 64-token INFER acceptance owns real-model paged proof; no duplicate direct-cache integration exists here. No full host GPT-2 forward, comparison kernel, transfer selector, Tensor Memory Accelerator path, asynchronous copy, performance table, snapshot/lease subsystem, quantization, or second attention implementation belongs here. Close when the device attention matches DECODE-REF across page boundaries.
