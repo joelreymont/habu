@@ -516,6 +516,19 @@ variable CHECKER-PACKAGE-MODE
 : CHECKER-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-PACKAGE-MODE @ CHECKER-PACKAGE-NONE <> ;
 
+\ A scope opened by CHECKER-SCOPE-START-NEUTRAL DECLARES its package context
+\ instead of inheriting the caller's: the source it replays is standalone, so
+\ its context is top level whatever package the caller happens to have open.
+\ This flag records that declaration. RBF-PUSH saves it and RBF-POP restores it
+\ with the rest of the package mirror, so the declaration cannot outlive the
+\ scope on either the clean or the throwing path, and nested scopes inside the
+\ replay inherit it.
+variable CHECKER-PACKAGE-NEUTRAL
+0 CHECKER-PACKAGE-NEUTRAL !
+
+: CHECKER-PACKAGE-NEUTRAL? ( -- bool )
+   CHECKER-PACKAGE-NEUTRAL @ 0 <> ;
+
 \ The mirror above records parser state and is rollback-aware. It is authority
 \ only while the private verifier scope is active. Normal checking reads the
 \ engine's protected package record/WIDs/current target through PKG-LIVE-XT.
@@ -531,19 +544,30 @@ create VPKG-NAME CHECKER-PACKAGE-CAP allot
 variable VPKG-U
 variable VPKG-MODE
 
+variable VPKG-I
+
+\ Byte copy over an explicit index cell. The earlier form kept the index on the
+\ data stack and read it back with `over`, but by the time the destination
+\ address was on the stack `over` reached the fetched BYTE instead of the index,
+\ so every byte was written at an offset equal to its own character code. The
+\ first save/restore round trip looked fine because the mirror already held the
+\ right name; the second one restored a scrambled package name and the verifier
+\ then refused to start (7136). USIGS-COPY does the same job but is defined far
+\ below this point, so the loop lives here with a named cursor.
+: VPKG-COPY ( ptr u8 ptr u8 n -- ) {: src:ptr dst:ptr n:n :}
+   0 VPKG-I !
+   BEGIN VPKG-I @ n < WHILE
+      src VPKG-I @ + c@ dst VPKG-I @ + c!
+      VPKG-I @ 1 + VPKG-I !
+   REPEAT ;
+
 : VPKG-SAVE ( ptr u8 n n -- ) {: a:ptr u:n mode:n :}
-   0 BEGIN dup u < WHILE
-      a over + c@ VPKG-NAME over + c!
-      1+
-   REPEAT drop
+   a VPKG-NAME u VPKG-COPY
    u VPKG-U !
    mode VPKG-MODE ! ;
 
 : VPKG-RESTORE ( -- )
-   0 BEGIN dup VPKG-U @ < WHILE
-      VPKG-NAME over + c@ CHECKER-PACKAGE-NAME over + c!
-      1+
-   REPEAT drop
+   VPKG-NAME CHECKER-PACKAGE-NAME VPKG-U @ VPKG-COPY
    VPKG-U @ CHECKER-PACKAGE-U !
    VPKG-MODE @ CHECKER-PACKAGE-MODE ! ;
 
@@ -591,8 +615,18 @@ variable VPKG-MODE
    [: CHECKER-PKG-BOOT-LIVE ;] is PKG-LIVE-XT ;
 CHECKER-PKG-LIVE-DEFAULT
 
+\ Which record answers "what package is this code in?". Ordinary checking reads
+\ the engine's protected package record, because the code really is being
+\ compiled where the engine says it is. Two situations replace that with the
+\ checker's own mirror: the private verifier scope, which is replaying recorded
+\ source rather than compiling it, and a package-neutral scope, which has
+\ declared the replayed source to be top level.
+: CHECKER-PKG-MIRROR-AUTHORITY? ( -- bool )
+   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF 0 0= EXIT THEN
+   CHECKER-PACKAGE-NEUTRAL? ;
+
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
-   CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF
+   CHECKER-PKG-MIRROR-AUTHORITY? IF
       CHECKER-PKG-MIRROR
    ELSE
       PKG-LIVE-XT
@@ -608,6 +642,22 @@ CHECKER-PKG-LIVE-DEFAULT
 : CHECKER-AUTH-PACKAGE-ACTIVE? ( -- bool )
    CHECKER-AUTH-PACKAGE-MODE@ CHECKER-PACKAGE-NONE <> ;
 
+\ Before the mirror becomes the replay's package authority it has to be proved
+\ against the context the enclosing scope claims, and both proofs are exact
+\ equalities rather than defaults. An inherited scope claims the caller's
+\ package, so the mirror must match the engine's live record name for name and
+\ mode for mode. A package-neutral scope claims top level, so the mirror must be
+\ exactly the empty top-level context.
+: VPKG-PROVE-INHERITED ( ptr u8 n n ptr u8 n n -- )
+   {: livea:ptr liveu:n livemode:n mira:ptr miru:n mirmode:n :}
+   livemode mirmode <> IF E-PKG-CONTEXT throw THEN
+   livea liveu mira miru CORE-STR=CI 0= IF E-PKG-CONTEXT throw THEN ;
+
+: VPKG-PROVE-NEUTRAL ( n n -- )
+   {: miru:n mirmode:n :}
+   mirmode CHECKER-PACKAGE-NONE <> IF E-PKG-CONTEXT throw THEN
+   miru 0 <> IF E-PKG-CONTEXT throw THEN ;
+
 \ These two names stay checker-internal: verify-source and the check driver's
 \ fixed scanners compile direct calls from named TRUSTED boundaries. Checked
 \ user code has no effect row with which to activate the mirror provider.
@@ -617,8 +667,11 @@ CHECKER-PKG-LIVE-DEFAULT
    {: livea:ptr liveu:n livemode:n :}
    CHECKER-PKG-MIRROR 0= IF E-PKG-CONTEXT throw THEN
    {: mira:ptr miru:n mirmode:n :}
-   livemode mirmode <> IF E-PKG-CONTEXT throw THEN
-   livea liveu mira miru CORE-STR=CI 0= IF E-PKG-CONTEXT throw THEN
+   CHECKER-PACKAGE-NEUTRAL? IF
+      miru mirmode VPKG-PROVE-NEUTRAL
+   ELSE
+      livea liveu livemode mira miru mirmode VPKG-PROVE-INHERITED
+   THEN
    mira miru mirmode VPKG-SAVE
    1 CHECKER-VERIFY-PKG-DEPTH ! ;
 
@@ -5017,6 +5070,7 @@ PRIM: DIAG-BUFFER!   PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 PRIM: DIAG-BUFFER-OFF PRIM;
 PRIM: DIAG-BUFFER$   PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PRIM: CHECKER-SCOPE-START PRIM;
+PRIM: CHECKER-SCOPE-START-NEUTRAL PRIM;
 PRIM: CHECKER-SCOPE-FINALIZE PRIM;
 PRIM: CHECKER-SCOPE-DONE PRIM;
 PRIM: CHECKER-SCOPE-DEPTH PE-N PE-OUT PRIM;
@@ -9802,7 +9856,8 @@ $70 constant RBF.PKGMODE-OFF
 $78 constant RBF.PKGU-OFF
 $80 constant RBF.DFEREND-OFF
 $88 constant RBF.COORD-OFF
-$90 constant RBF-REC
+$90 constant RBF.PKGNEU-OFF
+$98 constant RBF-REC
 $8 constant RBF-REC-ALIGN
 0 constant RBF-REC-PTR-MASK
 
@@ -9830,6 +9885,7 @@ $8 constant RBF-REC-ALIGN
 : RBF.PKGU ( ptr a -- ptr a ) RBF.PKGU-OFF + ;
 : RBF.DFEREND ( ptr a -- ptr a ) RBF.DFEREND-OFF + ;
 : RBF.COORD ( ptr a -- ptr a ) RBF.COORD-OFF + ;
+: RBF.PKGNEU ( ptr a -- ptr a ) RBF.PKGNEU-OFF + ;
 
 RBF.UEND-OFF 0 cells CHECKER-LAYOUT=
 RBF.NEND-OFF 1 cells CHECKER-LAYOUT=
@@ -9849,7 +9905,8 @@ RBF.PKGMODE-OFF 14 cells CHECKER-LAYOUT=
 RBF.PKGU-OFF 15 cells CHECKER-LAYOUT=
 RBF.DFEREND-OFF 16 cells CHECKER-LAYOUT=
 RBF.COORD-OFF 17 cells CHECKER-LAYOUT=
-RBF-REC 18 cells CHECKER-LAYOUT=
+RBF.PKGNEU-OFF 18 cells CHECKER-LAYOUT=
+RBF-REC 19 cells CHECKER-LAYOUT=
 RBF-REC-ALIGN CELL CHECKER-LAYOUT=
 RBF-REC RBF-REC-ALIGN mod 0 CHECKER-LAYOUT=
 RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
@@ -9871,6 +9928,7 @@ RBF-REC-PTR-MASK 0 CHECKER-LAYOUT=
 0 RBF.PKGU RBF.PKGU-OFF CHECKER-LAYOUT=
 0 RBF.DFEREND RBF.DFEREND-OFF CHECKER-LAYOUT=
 0 RBF.COORD RBF.COORD-OFF CHECKER-LAYOUT=
+0 RBF.PKGNEU RBF.PKGNEU-OFF CHECKER-LAYOUT=
 
 16 constant RBF-CAP-INIT
 variable RBF-CAP-V   RBF-CAP-INIT RBF-CAP-V !
@@ -9928,6 +9986,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    VSIG @ r RBF.VSIG !
    CHECKER-PACKAGE-MODE @ r RBF.PKGMODE !
    CHECKER-PACKAGE-U @ r RBF.PKGU !
+   CHECKER-PACKAGE-NEUTRAL @ r RBF.PKGNEU !
    DFER-END @ r RBF.DFEREND !
    RBF-NO-COORDINATOR r RBF.COORD !
    CHECKER-PACKAGE-NAME RBF-NAME-CUR CHECKER-PACKAGE-U @ USIGS-COPY
@@ -9961,6 +10020,7 @@ variable RBF-DEPTH   0 RBF-DEPTH !
    r RBF.VSIG @ VSIG !
    r RBF.PKGMODE @ CHECKER-PACKAGE-MODE !
    r RBF.PKGU @ CHECKER-PACKAGE-U !
+   r RBF.PKGNEU @ CHECKER-PACKAGE-NEUTRAL !
    RBF-NAME-CUR CHECKER-PACKAGE-NAME r RBF.PKGU @ USIGS-COPY
    r RBF.DFEREND @ DFER-END !
    DFER-TERM ;                        \ null-terminate the DFER scan at the restored end
@@ -10079,6 +10139,21 @@ TYPES-DEFAULTS
 
 : CHECKER-SCOPE-START ( -- )
    RBF-PUSH ;
+
+\ The scope opener for replaying STANDALONE source. CHECKER-SCOPE-START saves
+\ the caller's package mirror but leaves it live, which is right for a scope
+\ that continues checking the caller's own code. A tool that replays a separate
+\ file needs the opposite: that file's package context is whatever the file
+\ itself declares, so the scope starts at top level. Neutrality belongs here,
+\ in the one word that opens such a scope, rather than in a rule each call site
+\ has to remember. CHECKER-SCOPE-DONE closes both kinds of scope unchanged: the
+\ frame RBF-PUSH pushed carries the caller's package mode, length, name bytes
+\ and neutral declaration, and RBF-POP restores all of them on the clean and
+\ the throwing path alike.
+: CHECKER-SCOPE-START-NEUTRAL ( -- )
+   RBF-PUSH
+   CHECKER-END-PACKAGE
+   1 CHECKER-PACKAGE-NEUTRAL ! ;
 
 : CHECKER-SCOPE-FINALIZE ( -- )
    RBF-FINALIZE ;

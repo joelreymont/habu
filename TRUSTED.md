@@ -1015,6 +1015,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | CHECKER-DEFLINEAR | `ptr u8 n --` | Check driver models the checker primitive that publishes parsed linearity metadata in the child validation scope. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CHECKER-DEFRECORD | `ptr u8 n ptr u8 n --` | Check driver models the checker primitive that publishes one parsed record definition and its source descriptor. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CHECKER-SCOPE-START | `--` | Check driver opens the checker transaction that isolates generated dependency effects from the parent session. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
+| CHECKER-SCOPE-START-NEUTRAL | `--` | Check driver opens the same checker transaction as CHECKER-SCOPE-START and then declares the replayed source to be top level, so a package-owned caller cannot make a standalone file check as part of its package. | `tools/check-test.f`, `tools/check-all-errors-test.f`, `test/run.f` | tools/check-core.f | 2026-07-29 | prim-axiom | habu-neutralize-checker-pkg-b9a250c8 |
 | CHECKER-SCOPE-DONE | `--` | Check driver closes the checker transaction and rolls back generated dependency effects after the checked child verdict. | `tools/check-test.f`, `test/run.f` | tools/check-core.f | 2026-07-12 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | CHK-RUN-NOMINAL-AUTH | `--` | Brackets nominal dependency replay with the same private package-mirror authority scope as source verification and restores live authority through both normal return and `catch`. | `tools/check-test.f`, `test/cast-negative-suite.f`, `test/run.f` | tools/check-core.f | 2026-07-27 | builder-emit | habu-cast-v2-family-741e7bae |
 | EVAL | `--` | Forked subject runner dynamically evaluates generated checked test source; the checker cannot express `evaluate`. Confined to the COW child and tracked by the missing typed dynamic-evaluation capability dot `habu-type-isolated-dynamic-244c0e2c`. | `lib/test/subject-test.f`, `test/wide-store-seal.f`, `test/protection-span.f`, `test/lower-txn-protection.f`, `test/top-row-hook-test.f` | lib/test/subject.f | 2026-07-17 | test-metaprog | habu-batch-candidate-valid-517bfb6f |
@@ -1967,6 +1968,7 @@ prim - diag-buffer! - pe-ptr-u8 pe-in pe-n pe-in
 prim - diag-buffer-off - -
 prim - diag-buffer$ - pe-ptr-u8 pe-out pe-n pe-out
 prim - checker-scope-start - -
+prim - checker-scope-start-neutral - -
 prim - checker-scope-finalize - -
 prim - checker-scope-done - -
 prim - checker-scope-depth - pe-n pe-out

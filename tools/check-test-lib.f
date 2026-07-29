@@ -1845,9 +1845,94 @@ private
    TA-GLOBAL-MUTATION-REJECTED TTRUE
    TA-RETIRED-GLOBALS? TTRUE ;
 
+\ --- package-owned caller: the checker's replay scopes must start neutral ---
+\
+\ Every scope tools/check-core.f opens around a replay of the SUBJECT source
+\ has to start at neutral top level. If it inherited the caller's package
+\ instead, the subject file would be checked as if it were part of that
+\ package. The three runs below drive CHECK:RUN, the real entry point, and each
+\ one is shaped to fail at a different scope if that scope inherits:
+\
+\   NEU-FAMILY-SRC$  a top-level family declaration whose tail this package
+\                    already owns (the `NEWTYPE ckneub 0` line below). The
+\                    nominal pass is the first pass that registers
+\                    declarations, so an inherited CHK-RUN-NOMINAL-LINTS scope
+\                    files the subject's family under CHECK-TEST and collides
+\                    with the one already there; declared at top level, where
+\                    the subject really is, there is no collision at all.
+\   NEU-EXPORT-SRC$  a top-level EXPORT directive. The nominal pass ignores
+\                    EXPORT, so this one reaches CHK-RUN-PREVERIFY; an
+\                    inherited scope there reads the directive as an in-package
+\                    re-export of a word that package already has.
+\   BAD$SRC          a rejecting source, so the run leaves CHK-RUN-SCOPED by
+\                    the throwing path.
+\
+\ After the clean runs and after the throwing one, VERIFY:SOURCE-BUF proves the
+\ caller's package was put back exactly: it opens an INHERITING scope, which
+\ fails closed unless the checker's package mirror still matches the engine's
+\ live package record in mode, in length, and in name bytes.
+\
+\ These runs are made HERE, in the package body, because this is the only place
+\ where the checker's package really is CHECK-TEST's; a case word runs with no
+\ package open and cannot reproduce the fault. The case word below only asserts
+\ what these runs recorded.
+
+\ The tail the subject source below also declares, owned here by CHECK-TEST.
+NEWTYPE ckneub 0
+
+using CHECK
+
+: NEU-FAMILY-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" NEWTYPE ckneub 0" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-NEU-B ( ckneub -- ckneub ) ;" SB-APPEND
+   SB$ ;
+
+: NEU-EXPORT-SRC$ ( -- ptr u8 n )
+   SB-RESET
+   s" : CKT-NEU-A ( i64 -- i64 ) 1 + ;" SB-APPEND $0a SB-APPEND-C
+   s" EXPORT CKT-NEU-A" SB-APPEND $0a SB-APPEND-C
+   s" : CKT-NEU-A-USE ( i64 -- i64 ) CKT-NEU-A ;" SB-APPEND
+   SB$ ;
+
+variable NEU-FAMILY-RC
+variable NEU-EXPORT-RC
+variable NEU-THROW-RC
+variable NEU-CLEAN-PKG-RC
+variable NEU-THROW-PKG-RC
+
+: NEU-RUN ( ptr u8 n -- n ) {: a:ptr u:n :}
+   RESET
+   a u s" ckt-neutral.f" SOURCE
+   [: RUN-ACT ;] IN-PROC {: outu:n erru:n rc:n :}
+   rc ;
+
+: NEU-PKG-RESTORED ( -- n )   \ 0 only when the caller's package came back exact
+   [: GOOD$ VERIFY:SOURCE-BUF ;] catch ;
+
+: NEU-RECORD ( -- )
+   NEU-FAMILY-SRC$ NEU-RUN NEU-FAMILY-RC !
+   NEU-EXPORT-SRC$ NEU-RUN NEU-EXPORT-RC !
+   NEU-PKG-RESTORED NEU-CLEAN-PKG-RC !
+   BAD$SRC NEU-RUN NEU-THROW-RC !
+   NEU-PKG-RESTORED NEU-THROW-PKG-RC !
+   RESET ;
+
+PREPARE
+NEU-RECORD
+
+;using
+
+: TEST-NEUTRAL-SCOPE ( -- )
+   NEU-FAMILY-RC @ 0 T=
+   NEU-EXPORT-RC @ 0 T=
+   NEU-THROW-RC @ 70 T=
+   NEU-CLEAN-PKG-RC @ 0 T=
+   NEU-THROW-PKG-RC @ 0 T= ;
+
 : TEST-MAIN ( -- )
    T-RESET
-   PREPARE
+   s" check/package-caller-neutral" [: TEST-NEUTRAL-SCOPE ;] CASE-RUN
    s" check/public-api" [: TEST-CHECK-PUBLIC ;] CASE-RUN
    s" check/test-public-api" [: TEST-CHECK-TEST-PUBLIC ;] CASE-RUN
    s" check/retired-globals" [: TEST-RETIRED-GLOBALS ;] CASE-RUN

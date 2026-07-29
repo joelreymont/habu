@@ -440,18 +440,15 @@ variable CA-XSUP-BUF-CAP
    [: CA-CHECK-FULL-ACT ;] catch
    CA-DIAG-FINISH ;
 
-\ The rollback frame CHECKER-SCOPE-START pushes SAVES the caller's checker
-\ package mode, name, and length, but it does not clear them, so the replayed
-\ source would keep checking as if it were still inside the caller's package -
-\ a top-level EXPORT directive in that source then reads as an in-package
-\ re-export and the run exits DUP-RC. The replayed file is standalone source,
-\ so enter neutral top-level package state before the replay; the matching
+\ The replayed file is standalone source, so it is checked at neutral top level
+\ whatever package the caller had open - otherwise a top-level EXPORT directive
+\ in that source reads as an in-package re-export and the run fails. The
+\ neutrality is the scope opener's job, not this call site's; the matching
 \ CHECKER-SCOPE-DONE pops the frame and restores the caller's exact package on
 \ both the clean and the throwing path.
 : CA-CHECK-FULL-SCOPE ( -- n )
    0 CA-FULL-R !
-   CHECKER-SCOPE-START
-   CHECKER-END-PACKAGE
+   CHECKER-SCOPE-START-NEUTRAL
    [: CA-XSUP-REPLAY CA-CHECK-FULL CA-FULL-R ! ;] catch
    CHECKER-SCOPE-DONE
    dup 0= IF drop CA-FULL-R @ exit THEN ;

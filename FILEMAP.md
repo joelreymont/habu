@@ -2641,6 +2641,13 @@ points stay listed.
   public families sharing one tail must read back separately, two private families
   sharing one tail must be reported as ambiguous, and a wrong constructor package,
   unknown tail or out-of-range case index must answer the sentinel.
+- `test/checker-verify-pkg-scope.f` — the checker's verifier package scope must
+  hand the caller's package back byte for byte: repeated
+  `VERIFY:SOURCE-BUF-IN-SCOPE` replays from one open package, from a package
+  with a much longer name, from a reopened package and from top level, plus one
+  deliberately rejecting replay so the throwing path is covered too. A second
+  replay is the exact assertion, because entering the verifier window proves the
+  mirror still equals the engine's live package record before trusting it.
 - `test/decl-diag-capture.f` — shared declaration-diagnostic capture for the
   declaration suites (package `DECL-DIAG`): arms the prose or JSON leg through
   the same `DIAG-JSON!` / `DIAG-BUFFER!` pair `tools/check-core.f` uses, so a

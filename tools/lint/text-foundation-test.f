@@ -772,13 +772,15 @@ variable REG-I
 \ it needs no axiom of its own, and the metadata-only `checker-defenum` entry it
 \ used went with it. The three `CHECKER-AUTH-PACKAGE*` package-authority axioms
 \ (commit "Harden package authority") and the `TRUST-RAW` axiom (the raw-storage
-\ seal) then moved src/core/checker.f from 333 to 337.
+\ seal) then moved src/core/checker.f from 333 to 337, and the
+\ `CHECKER-SCOPE-START-NEUTRAL` axiom (the package-neutral replay scope, dot
+\ habu-neutralize-checker-pkg-b9a250c8) moved it to 338.
 : TEST-REAL-REGISTRY-FILES ( -- )
    s" src/core/checker.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   REG-COUNT 337 ASSERT=
+   REG-COUNT 338 ASSERT=
    \ Line 5116's `PRIM: s"` row is the one that broke the old lexer: its name is a
    \ live string opener, so the word path consumed source through the quote in the
    \ next row. Name that row and pin that it is one token ending at its own closer.

@@ -22,6 +22,7 @@ s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST
 s" CHECKER-DEFRECORD" s" ptr u8 n ptr u8 n --" TRUST
 s" CHECKER-SCOPE-START" s" --" TRUST
+s" CHECKER-SCOPE-START-NEUTRAL" s" --" TRUST
 s" CHECKER-SCOPE-DONE" s" --" TRUST
 
 package CHECK
@@ -1320,11 +1321,13 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-PREVERIFY-DIAG-FLUSH
    rc CHK-THROW ;
 
+\ The preverified files are standalone sources, not a continuation of whatever
+\ package this tool was called from, so the scope starts at neutral top level.
 : CHK-RUN-PREVERIFY ( -- )
    CHK-JSON @ {: old-json:bool :}
    CHK-PREVERIFY-DIAG-START
    LINT-TRUE CHK-JSON !
-   CHECKER-SCOPE-START
+   CHECKER-SCOPE-START-NEUTRAL
    [: CHK-RUN-PREVERIFY-ACT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    old-json CHK-JSON !
@@ -1360,8 +1363,11 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    then
    CHK-CHILD-RC @ CHK-THROW ;
 
+\ The nominal pass registers the declarations it finds in the subject source.
+\ Those declarations belong to the packages that source declares, so the scope
+\ starts at neutral top level instead of adopting the caller's package.
 : CHK-RUN-NOMINAL-LINTS ( -- )
-   CHECKER-SCOPE-START
+   CHECKER-SCOPE-START-NEUTRAL
    [:
       CHK-RUN-NOMINAL-AUTH
       CHK-RUN-RESERVED-NAMES
@@ -1386,8 +1392,11 @@ TRUSTED: CHK-RUN-NOMINAL-AUTH ( -- )
    CHK-RUN-HB
    CHK-HANDLE-HB ;
 
+\ Outermost boundary of one check run. Everything inside it is work on the
+\ subject source, so the whole run starts at neutral top level and the caller's
+\ package is restored when the run ends, however it ends.
 : CHK-RUN-SCOPED ( -- )
-   CHECKER-SCOPE-START
+   CHECKER-SCOPE-START-NEUTRAL
    [: CHK-RUN-CURRENT ;] catch {: rc:n :}
    CHECKER-SCOPE-DONE
    rc 0 <> if rc throw then ;

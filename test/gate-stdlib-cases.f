@@ -684,6 +684,10 @@ SUITE checker-assert
    test/checker-assert-test.f
 ;SUITE
 
+SUITE checker-verify-pkg-scope
+   test/checker-verify-pkg-scope.f
+;SUITE
+
 SUITE prim-link
    test/prim-link-test.f
 ;SUITE
