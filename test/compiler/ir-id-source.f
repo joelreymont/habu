@@ -204,6 +204,40 @@ public
    loop
    RUN-BUF RUN-U @ ;
 
+\ ---- definition spans --------------------------------------------------------
+\ The same walk `BODY$` uses, exposed as token indices instead of joined bytes.
+\ A consumer that has to reason about the ORDER of tokens inside one definition -
+\ "every capacity check runs before the first arena push" - cannot ask that of a
+\ joined string without falling back to substring search, so it asks for the span
+\ and reads the shared lexer's tokens through `TOKEN$`.
+
+: DEF-HEAD? ( n -- bool ) {: k:n :}
+   k WORD-TOK? 0= if false exit then
+   k LINT-DEF:DIRECT-KIND LINT-DEF:COLON <> if false exit then
+   k LINT-DEF:NAME-I MATCH option
+      none OF false ENDOF
+      some OF drop true ENDOF
+   ;MATCH ;
+
+\ The name the definition opening at k gives its word.
+: DEF-NAME-AT$ ( n -- ptr u8 n ) {: k:n :}
+   k DEF-HEAD? 0= if E-CID-DEF throw then
+   k LINT-DEF:NAME-I MATCH option
+      none OF E-CID-DEF throw ENDOF
+      some OF LINT-LEX:TOKEN ENDOF
+   ;MATCH ;
+
+\ The half-open token range of that definition's body: the token after the name
+\ up to, and not including, its closer.
+: DEF-SPAN-AT ( n -- n n ) {: k:n :}
+   k DEF-HEAD? 0= if E-CID-DEF throw then
+   k DEF-BODY-START {: b:n :}
+   b b DEF-CLOSE ;
+
+\ The same range for the definition named exactly once by this word.
+: BODY-SPAN ( ptr u8 n -- n n )
+   DEF-INDEX DEF-SPAN-AT ;
+
 : CONSTS ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 HITS !
    LINT-LEX:COUNT 0 ?do

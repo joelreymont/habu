@@ -291,6 +291,12 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ would make every test/run.f a Rocq-toolchain requirement. Giving it a
    \ capability probe that records a skip when `rocq` is absent is open work.
    s" test/compiler/ir-id-proof.f" q execute
+   \ compiler interning parity gate: same shape and same Rocq dependency - it
+   \ compiles formal/Common/Interning.v and then a generated obligations file.
+   \ Runs spawned in the standalone stdlib gate; the resident tier stays free of
+   \ the Rocq toolchain. The Habu half of the same binding has no such
+   \ dependency and does run resident, as test/compiler/ir-intern-manifest.f.
+   s" test/compiler/ir-intern-proof.f" q execute
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute

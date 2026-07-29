@@ -224,6 +224,10 @@ SUITE compiler-ir-id-manifest
    test/compiler/ir-id-manifest.f
 ;SUITE
 
+SUITE compiler-ir-intern-manifest
+   test/compiler/ir-intern-manifest.f
+;SUITE
+
 SUITE compiler-ir-schema
    test/compiler/ir-schema.f
 ;SUITE
@@ -262,6 +266,13 @@ SUITE compiler-ir-type
 \ the resident fast tier.
 SUITE compiler-ir-id-proof
    test/compiler/ir-id-proof.f
+;SUITE
+
+\ The interning parity gate compiles formal/Common/Interning.v with the Rocq
+\ proof assistant for the same reason, so it runs here and is documented
+\ manual-gate in tools/suite-coverage-lint-core.f alongside its sibling.
+SUITE compiler-ir-intern-proof
+   test/compiler/ir-intern-proof.f
 ;SUITE
 
 SUITE raw-storage-load-seal

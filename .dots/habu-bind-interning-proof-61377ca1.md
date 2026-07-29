@@ -1,9 +1,11 @@
 ---
 title: Bind interning proof to interner sources
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-28T22:15:51.906142+02:00"
 ---
 
 Full context: formal/Common/Interning.v proves the interning invariant shared by IR-SYM, IR-TYPE and IR-ATTR (36 theorems, zero axioms, all Closed under the global context), but nothing stops the Habu source and the model drifting apart. Add test/compiler/ir-intern-proof.f plus the schema/manifest/obligations files it needs, modelled on test/compiler/ir-id-proof.f. It must pin, each as a committed row that reddens when either side moves: (a) the manifest of theorem names with their statement TYPES ascribed, so a proof cannot be trivialised by rewriting its own statement; (b) the assumption set held at EMPTY — every top-level theorem must report Closed under the global context, and any new axiom is a gate failure (unlike the identity gate, which permits exactly two named axioms); (c) the scan-predicate field lists read structurally from the source: IR-SYM:ROW-MATCH? compares filter then length then BYTES-EQ; IR-TYPE:ROW4-MATCH? compares exactly OFF-KIND OFF-A OFF-B OFF-C; IR-ATTR:ROW5-MATCH? those four plus OFF-D — an added or dropped field silently changes what 'the same key' means; (d) the check-before-write ordering, by reading the bodies of IR-SYM:INTERN, IR-TYPE:INTERN4, IR-TYPE:FN-END and IR-ATTR:INTERN5 structurally and asserting every capacity check token precedes the first IR-ARENA:PUSH token (the model's ceiling_write_order_counterexample proves this is load-bearing); (e) the reference guard, that IR-TYPE:POINTER calls ID-CK on its pointee and STG-REF-CK bounds every staged element before the pool push; (f) a shared vector table of intern sequences run through both the real words and the generated Rocq obligations — duplicate intern answers the same id without moving the count, two orders of one key set, a table at its ceiling rejecting a new key while still answering a duplicate, a forced filter collision, and a forward/self reference. Neither side may hold a copy of the vectors.
+
+Claim: agent=intern-gate workspace=.jj-ws/habu-bind-interning-proof-61377ca1

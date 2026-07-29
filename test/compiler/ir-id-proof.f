@@ -54,59 +54,36 @@ require lib/test.f
 require lib/test/outcome.f
 require lib/process-command.f
 require test/checker-assert.f
+require test/compiler/proof-manifest.f
+require test/compiler/rocq-run.f
 require test/compiler/ir-id-obligations.f
 
 package COMPILER-ID-PROOF
 private
 
-$8000 constant AX-CAP
-$4000 constant TY-CAP
 $1000 constant REP-CAP
 $100 constant PATH-CAP
-128 constant TH-MAX
-8 constant AXIOM-MAX
 4 constant PROOF-FILES
-300000 constant ROCQ-MS
 60000 constant HB-MS
 $0A constant LF
-$23 constant HASH
 
-create AX-RAW AX-CAP allot
-create AX-WANT AX-CAP allot
-create AX-GOT AX-CAP allot
-create TY-RAW TY-CAP allot
 create REP-WANT REP-CAP allot
 create REP-GOT REP-CAP allot
-create TH-OFF TH-MAX cells allot
-create TH-LEN TH-MAX cells allot
-create TYPE-OFF TH-MAX cells allot
-create TYPE-LEN TH-MAX cells allot
-create AXIOM-OFF AXIOM-MAX cells allot
-create AXIOM-LEN AXIOM-MAX cells allot
 create VPATH PATH-CAP allot
 
-variable AX-RAW-U
-variable AX-WANT-U
-variable AX-GOT-U
-variable TY-U
 variable REP-WANT-U
 variable REP-GOT-U
 variable VPATH-U
-variable TH-N
-variable TYPE-N
-variable PEND
-variable AXIOM-N
-variable CLOSED-N
-variable BEARING-N
 variable ADMITTED-N
 variable DECL-N
-variable CUR
 variable SRC-SERIAL-MAX
 variable SRC-LOCAL-MAX
 variable SRC-LOCAL-BITS
 variable SRC-INIT
 
 \ ---- byte buffers ------------------------------------------------------------
+\ The report buffer this gate builds and compares against its committed file.
+\ The manifest's own buffers belong to `package PROOF-MANIFEST`.
 
 : SINK+ ( ptr u8 n ptr u8 n ptr a -- )
    {: src:ptr srcu:n dst:ptr cap:n lenv:ptr :}
@@ -119,21 +96,6 @@ variable SRC-INIT
    c dst lenv @ + c!
    lenv @ 1+ lenv ! ;
 
-: WANT+ ( ptr u8 n -- )
-   AX-WANT AX-CAP AX-WANT-U SINK+ ;
-
-: WANT-NL ( -- )
-   LF AX-WANT AX-CAP AX-WANT-U SINK-C+ ;
-
-: GOT+ ( ptr u8 n -- )
-   AX-GOT AX-CAP AX-GOT-U SINK+ ;
-
-: TY+ ( ptr u8 n -- )
-   TY-RAW TY-CAP TY-U SINK+ ;
-
-: GOT-NL ( -- )
-   LF AX-GOT AX-CAP AX-GOT-U SINK-C+ ;
-
 : REP+ ( ptr u8 n -- )
    REP-GOT REP-CAP REP-GOT-U SINK+ ;
 
@@ -143,212 +105,21 @@ variable SRC-INIT
 : REP-N+ ( n -- )
    SB-RESET FMT:SB-INT SB$ REP+ ;
 
-\ ---- lines -------------------------------------------------------------------
-
-: LINE-END ( ptr u8 n n -- n ) {: a:ptr u:n off:n :}
-   off
-   begin dup u < while
-      dup a + c@ LF = if exit then
-      1+
-   repeat ;
-
-: TRIM-LEAD ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0
-   begin dup u < while
-      dup a + c@ $20 <> if exit then
-      1+
-   repeat ;
-
-: TRIM-TAIL ( ptr u8 n n -- n ) {: a:ptr u:n start:n :}
-   u
-   begin dup start > while
-      dup 1- a + c@ $20 <> if exit then
-      1-
-   repeat ;
-
-: TRIMMED$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   a u TRIM-LEAD {: start:n :}
-   a start +
-   a u start TRIM-TAIL start - ;
-
 \ ---- the committed manifest: statements and assumptions ----------------------
+\ The grammar, the statement table and the normalizer are `package
+\ PROOF-MANIFEST`; this gate names its own manifest and states that the identity
+\ proofs are allowed to rest on named assumptions.
 
 : MANIFEST-PATH$ ( -- ptr u8 n )
    s" test/compiler/ir-id-axioms.txt" ;
 
-: COMMENT-LINE? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= if true exit then
-   a c@ HASH = ;
-
-\ The two row tags, and the widths that skip them, from one text each, so a row
-\ cannot be recognised by one spelling and stripped by another.
-: THEOREM-TAG$ ( -- ptr u8 n )
-   s" theorem " ;
-
-: TYPE-TAG$ ( -- ptr u8 n )
-   s" type " ;
-
-: THEOREM-TAG ( -- n )
-   THEOREM-TAG$ nip ;
-
-: TYPE-TAG ( -- n )
-   TYPE-TAG$ nip ;
-
-: THEOREM-LINE? ( ptr u8 n -- bool )
-   THEOREM-TAG$ STARTS-WITH? ;
-
-: TYPE-LINE? ( ptr u8 n -- bool )
-   TYPE-TAG$ STARTS-WITH? ;
-
-: THEOREM+ ( n n -- ) {: off:n u:n :}
-   TH-N @ TH-MAX >= if E-CID-AXIOM throw then
-   off TH-N @ cells TH-OFF + !
-   u TH-N @ cells TH-LEN + !
-   TH-N @ 1+ TH-N ! ;
-
-\ The statement the manifest says the pending theorem makes. `PEND` carries the
-\ index of the theorem still waiting for its statement, and clearing it is what
-\ makes a statement belong to the theorem row directly above it: a `type` row
-\ with no theorem waiting, which covers both an orphan row and a second row for
-\ one theorem, is refused here.
-: TYPE+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   PEND @ 0 < if E-CID-AXIOM throw then
-   TY-U @ PEND @ cells TYPE-OFF + !
-   u PEND @ cells TYPE-LEN + !
-   a u TY+
-   TYPE-N @ 1+ TYPE-N !
-   -1 PEND ! ;
-
-\ A manifest row that names a theorem also records where its name sits in the
-\ stripped body, so the generated Rocq file asks for exactly these names in
-\ exactly this order, and opens the requirement that the next row pin what that
-\ theorem states.
-: MANIFEST-THEOREM ( ptr u8 n -- ) {: a:ptr u:n :}
-   PEND @ 0 >= if E-CID-AXIOM throw then
-   a u WANT+ WANT-NL
-   AX-WANT-U @ u 1+ - THEOREM-TAG + u THEOREM-TAG - THEOREM+
-   TH-N @ 1- PEND ! ;
-
-\ Every other row is an assumption row, compared byte for byte against what Rocq
-\ reported. One may not stand between a theorem row and its type row, so a
-\ theorem whose statement is left unpinned fails the read rather than the
-\ comparison.
-: MANIFEST-ASSUMPTION ( ptr u8 n -- ) {: a:ptr u:n :}
-   PEND @ 0 >= if E-CID-AXIOM throw then
-   a u WANT+ WANT-NL ;
-
-: MANIFEST-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u COMMENT-LINE? if exit then
-   a u TYPE-LINE? if a TYPE-TAG + u TYPE-TAG - TYPE+ exit then
-   a u THEOREM-LINE? if a u MANIFEST-THEOREM exit then
-   a u MANIFEST-ASSUMPTION ;
-
-: MANIFEST-RESET ( -- )
-   0 AX-WANT-U !
-   0 TY-U !
-   0 TH-N !
-   0 TYPE-N !
-   -1 PEND ! ;
-
-\ The manifest grammar, over bytes rather than over the committed file, so the
-\ shape rules above can be shown to refuse a malformed manifest.
-: MANIFEST-TEXT ( ptr u8 n -- ) {: a:ptr u:n :}
-   MANIFEST-RESET
-   0 CUR !
-   begin CUR @ u < while
-      a u CUR @ LINE-END {: stop:n :}
-      a CUR @ + stop CUR @ - MANIFEST-LINE
-      stop 1+ CUR !
-   repeat
-   PEND @ 0 >= if E-CID-AXIOM throw then ;
-
 : READ-MANIFEST ( -- )
-   MANIFEST-PATH$ 2dup FILE-SIZE {: a:ptr u:n size:n :}
-   size AX-CAP > if E-STR-CAPACITY throw then
-   a u AX-RAW AX-CAP READ-ALL AX-RAW-U !
-   AX-RAW AX-RAW-U @ MANIFEST-TEXT ;
-
-: THEOREM$ ( n -- ptr u8 n ) {: k:n :}
-   k 0 < k TH-N @ >= or if E-CID-AXIOM throw then
-   AX-WANT k cells TH-OFF + @ + k cells TH-LEN + @ ;
-
-: TYPE$ ( n -- ptr u8 n ) {: k:n :}
-   k 0 < k TYPE-N @ >= or if E-CID-AXIOM throw then
-   TY-RAW k cells TYPE-OFF + @ + k cells TYPE-LEN + @ ;
-
-\ ---- rendering what Rocq answered --------------------------------------------
-
-: AXIOM-DISTINCT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   AXIOM-N @ 0 ?do
-      AX-GOT i cells AXIOM-OFF + @ + i cells AXIOM-LEN + @ a u STR= if
-         false unloop exit
-      then
-   loop
-   true ;
-
-: AXIOM-KEEP ( n n -- ) {: off:n u:n :}
-   AX-GOT off + u AXIOM-DISTINCT? 0= if exit then
-   AXIOM-N @ AXIOM-MAX >= if E-CID-AXIOM throw then
-   off AXIOM-N @ cells AXIOM-OFF + !
-   u AXIOM-N @ cells AXIOM-LEN + !
-   AXIOM-N @ 1+ AXIOM-N ! ;
-
-: RENDER-MARKER ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" theorem " GOT+
-   a 11 + u 11 - GOT+
-   GOT-NL ;
-
-: RENDER-AXIOM ( ptr u8 n -- ) {: a:ptr u:n :}
-   s" axiom " GOT+
-   AX-GOT AX-GOT-U @ + {: at:ptr :}
-   a u GOT+
-   GOT-NL
-   at AX-GOT - u AXIOM-KEEP ;
-
-: RENDER-LINE ( ptr u8 n -- ) {: raw:ptr rawu:n :}
-   raw rawu TRIMMED$ {: a:ptr u:n :}
-   u 0= if exit then
-   a u s" == theorem " STARTS-WITH? if a u RENDER-MARKER exit then
-   a u s" Closed under the global context" STR= if
-      s" closed" GOT+ GOT-NL
-      CLOSED-N @ 1+ CLOSED-N !
-      exit
-   then
-   a u s" Axioms:" STR= if
-      BEARING-N @ 1+ BEARING-N !
-      exit
-   then
-   a u RENDER-AXIOM ;
-
-: RENDER ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 AX-GOT-U !
-   0 AXIOM-N !
-   0 CLOSED-N !
-   0 BEARING-N !
-   0 CUR !
-   begin CUR @ u < while
-      a u CUR @ LINE-END {: stop:n :}
-      a CUR @ + stop CUR @ - RENDER-LINE
-      stop 1+ CUR !
-   repeat ;
+   true PROOF-MANIFEST:AXIOMS-ALLOWED!
+   MANIFEST-PATH$ PROOF-MANIFEST:READ ;
 
 \ ---- running a command -------------------------------------------------------
-
-: ROCQ-ARGS ( -- )
-   PROC-CMD:RESET
-   s" rocq" >LEN PROC-CMD:ARG+
-   s" compile" >LEN PROC-CMD:ARG+
-   s" -q" >LEN PROC-CMD:ARG+
-   s" -Q" >LEN PROC-CMD:ARG+
-   s" formal" >LEN PROC-CMD:ARG+
-   s" Habu" >LEN PROC-CMD:ARG+ ;
-
-\ `/usr/bin/env` is the path lookup: the proof assistant is a toolchain
-\ dependency on PATH, not a file at a fixed place in the tree.
-: ROCQ-RUN ( ptr u8 n -- ) {: a:ptr u:n :}
-   ROCQ-ARGS
-   a u >LEN PROC-CMD:ARG+
-   s" /usr/bin/env" >LEN ROCQ-MS >MS PROC-CMD:RUN-OUTCOME 0 T-OUTCOME-EXITED= ;
+\ The proof assistant is called through `package ROCQ-CMD`, which owns the one
+\ logical mapping both parity gates compile under.
 
 : PROOF-STEM$ ( n -- ptr u8 n )
    case
@@ -645,13 +416,13 @@ private
 
 : HOSTILE-TYPE-ORPHAN ( -- )
    s" a statement with no theorem row above it is refused" T-LABEL
-   [: S\" type cell_min = -9223372036854775808\nclosed" MANIFEST-TEXT ;]
+   [: S\" type cell_min = -9223372036854775808\nclosed" PROOF-MANIFEST:TEXT ;]
       E-CID-AXIOM TTHROWSQ ;
 
 : HOSTILE-TYPE-TWICE ( -- )
    s" a second statement for one theorem is refused" T-LABEL
    [: S\" theorem Habu.Common.Ids.cell_min_exact\ntype cell_min = 1\ntype cell_min = 2\nclosed"
-      MANIFEST-TEXT ;]
+      PROOF-MANIFEST:TEXT ;]
       E-CID-AXIOM TTHROWSQ ;
 
 \ The statement belongs between the theorem row and its assumption rows. A
@@ -661,18 +432,18 @@ private
 : HOSTILE-TYPE-LATE ( -- )
    s" a statement written after its assumption rows is refused" T-LABEL
    [: S\" theorem Habu.Common.Ids.cell_min_exact\nclosed\ntype cell_min = -9223372036854775808"
-      MANIFEST-TEXT ;]
+      PROOF-MANIFEST:TEXT ;]
       E-CID-AXIOM TTHROWSQ ;
 
 : HOSTILE-TYPE-TRAILING ( -- )
    s" a theorem left unpinned at the end of the file is refused" T-LABEL
-   [: S\" theorem Habu.Common.Ids.cell_min_exact" MANIFEST-TEXT ;]
+   [: S\" theorem Habu.Common.Ids.cell_min_exact" PROOF-MANIFEST:TEXT ;]
       E-CID-AXIOM TTHROWSQ ;
 
 : HOSTILE-THEOREM-UNPINNED ( -- )
    s" a second theorem row before the first is pinned is refused" T-LABEL
    [: S\" theorem Habu.Common.Ids.cell_min_exact\ntheorem Habu.Common.Ids.cell_max_exact\ntype cell_max = 1\nclosed"
-      MANIFEST-TEXT ;]
+      PROOF-MANIFEST:TEXT ;]
       E-CID-AXIOM TTHROWSQ ;
 
 \ Commentary may sit between a theorem row and its type row; it is commentary
@@ -680,15 +451,15 @@ private
 \ accident.
 : MANIFEST-PAIR ( -- )
    S\" theorem Habu.Common.Ids.cell_min_exact\n# a note\ntype cell_min = -9223372036854775808\nclosed"
-   MANIFEST-TEXT
+   PROOF-MANIFEST:TEXT
    s" a well-formed row names one theorem" T-LABEL
-   TH-N @ 1 T=
+   PROOF-MANIFEST:THEOREMS 1 T=
    s" a well-formed row pins one statement" T-LABEL
-   TYPE-N @ 1 T=
+   PROOF-MANIFEST:TYPES 1 T=
    s" the theorem row still answers with its qualified name" T-LABEL
-   0 THEOREM$ s" Habu.Common.Ids.cell_min_exact" T$=
+   0 PROOF-MANIFEST:THEOREM$ s" Habu.Common.Ids.cell_min_exact" T$=
    s" the pinned statement is exactly the type row's text" T-LABEL
-   0 TYPE$ s" cell_min = -9223372036854775808" T$= ;
+   0 PROOF-MANIFEST:TYPE$ s" cell_min = -9223372036854775808" T$= ;
 
 : PHASE-MANIFEST ( -- )
    HOSTILE-TYPE-ORPHAN
@@ -720,10 +491,10 @@ private
 
 : DECL-ROW ( n n -- ) {: file:n k:n :}
    s" every proved statement is bound by the committed manifest" T-LABEL
-   DECL-N @ TH-N @ < TTRUE
-   DECL-N @ TH-N @ < if
+   DECL-N @ PROOF-MANIFEST:THEOREMS < TTRUE
+   DECL-N @ PROOF-MANIFEST:THEOREMS < if
       s" the manifest binds that statement, at that position" T-LABEL
-      file k DECL-QUALIFIED$ DECL-N @ THEOREM$ T$=
+      file k DECL-QUALIFIED$ DECL-N @ PROOF-MANIFEST:THEOREM$ T$=
    then
    DECL-N @ 1+ DECL-N ! ;
 
@@ -740,9 +511,9 @@ private
    0 ADMITTED-N !
    PROOF-FILES 0 ?do i DECL-FILE loop
    s" the manifest names every proved statement and no others" T-LABEL
-   DECL-N @ TH-N @ T=
+   DECL-N @ PROOF-MANIFEST:THEOREMS T=
    s" every named statement also has its type pinned" T-LABEL
-   TYPE-N @ TH-N @ T=
+   PROOF-MANIFEST:TYPES PROOF-MANIFEST:THEOREMS T=
    s" no statement in the identity proofs is admitted" T-LABEL
    ADMITTED-N @ 0 T= ;
 
@@ -759,14 +530,14 @@ private
 \ What one manifest row asks Rocq: prove that this name still states this, and
 \ then report what that proof rests on.
 : OBLIGATION-ROW ( n -- ) {: k:n :}
-   k THEOREM$ k TYPE$ COMPILER-ID-ROCQ:STATEMENT+
-   k THEOREM$ COMPILER-ID-ROCQ:ASSUMPTION+ ;
+   k PROOF-MANIFEST:THEOREM$ k PROOF-MANIFEST:TYPE$ COMPILER-ID-ROCQ:STATEMENT+
+   k PROOF-MANIFEST:THEOREM$ COMPILER-ID-ROCQ:ASSUMPTION+ ;
 
 : EMIT-OBLIGATIONS ( -- )
    SRC-SERIAL-MAX @ SRC-LOCAL-MAX @ SRC-LOCAL-BITS @ SRC-INIT @
       COMPILER-ID-ROCQ:SOURCE-FACTS!
    COMPILER-ID-ROCQ:START
-   TH-N @ 0 ?do i OBLIGATION-ROW loop ;
+   PROOF-MANIFEST:THEOREMS 0 ?do i OBLIGATION-ROW loop ;
 
 : WRITE-OBLIGATIONS ( ptr u8 n -- ) {: dir:ptr diru:n :}
    dir diru s" IdParity.v" VPATH JOIN-PATH VPATH-U !
@@ -774,20 +545,20 @@ private
 
 : PHASE-ROCQ ( -- )
    s" every identity proof file compiles" T-LABEL
-   PROOF-FILES 0 ?do i PROOF-PATH$ ROCQ-RUN loop
+   PROOF-FILES 0 ?do i PROOF-PATH$ ROCQ-CMD:COMPILE loop
    EMIT-OBLIGATIONS
    CLEANUP-RESET
    SCRATCH-DIR 2dup CLEANUP-TREE+ WRITE-OBLIGATIONS
    s" every generated parity obligation is proved" T-LABEL
-   VPATH VPATH-U @ ROCQ-RUN
-   PROC-CMD:OUT$ RENDER
+   VPATH VPATH-U @ ROCQ-CMD:COMPILE
+   ROCQ-CMD:OUT$ PROOF-MANIFEST:RENDER
    CLEANUP-RUN ;
 
 \ ---- phase 9: the assumption set ---------------------------------------------
 
 : PHASE-ASSUMPTIONS ( -- )
    s" the reported assumption set is the committed manifest, entire" T-LABEL
-   AX-GOT AX-GOT-U @ AX-WANT AX-WANT-U @ T$= ;
+   PROOF-MANIFEST:GOT$ PROOF-MANIFEST:WANT$ T$= ;
 
 ;package
 
@@ -801,7 +572,7 @@ private
 
 : REPORT-AXIOM-ROW ( n -- ) {: k:n :}
    s" - " REP+
-   AX-GOT k cells AXIOM-OFF + @ + k cells AXIOM-LEN + @ REP+
+   k PROOF-MANIFEST:AXIOM$ REP+
    REP-NL ;
 
 : REPORT-COUNT ( ptr u8 n n -- ) {: label:ptr labelu:n value:n :}
@@ -818,14 +589,14 @@ private
    REP-NL
    s" Frozen schema digest: " REP+ DIGEST-HEX$ REP+ REP-NL
    REP-NL
-   s" Statements bound by name and pinned type: " TH-N @ REPORT-COUNT
-   s" Closed under the global context: " CLOSED-N @ REPORT-COUNT
-   s" Resting on an external assumption: " BEARING-N @ REPORT-COUNT
+   s" Statements bound by name and pinned type: " PROOF-MANIFEST:THEOREMS REPORT-COUNT
+   s" Closed under the global context: " PROOF-MANIFEST:CLOSED REPORT-COUNT
+   s" Resting on an external assumption: " PROOF-MANIFEST:BEARING REPORT-COUNT
    s" Admitted: " ADMITTED-N @ REPORT-COUNT
    REP-NL
    s" The whole external assumption set, and nothing else:" REP+ REP-NL
    REP-NL
-   AXIOM-N @ 0 ?do i REPORT-AXIOM-ROW loop
+   PROOF-MANIFEST:AXIOM-COUNT 0 ?do i REPORT-AXIOM-ROW loop
    REP-NL
    s" `host_atomic_cas` is the host compare-and-swap the module allocator calls," REP+ REP-NL
    s" left as a parameter rather than modelled. `atomic_cas_linearizable` is its" REP+ REP-NL

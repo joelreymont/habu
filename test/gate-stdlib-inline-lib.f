@@ -445,6 +445,7 @@ public
    s" lib/byte-buffer-test.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-id.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-id-manifest.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-intern-manifest.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-schema.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-op.f" GSI-FORK-INCLUDE
    s" test/compiler/target-policy.f" GSI-FORK-INCLUDE

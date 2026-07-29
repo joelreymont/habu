@@ -398,8 +398,19 @@ public
 -6704 constant E-CID-DEF      \ a named identity definition is missing, duplicated, or unterminated in that source
 -6705 constant E-CID-CONST    \ a named identity constant is missing, duplicated, or not a literal in that source
 -6706 constant E-CID-ROCQ     \ the generated Rocq obligation run did not complete cleanly
--6707 constant E-CID-AXIOM    \ the observed Rocq assumption set is not the committed expected external-axiom manifest
+-6707 constant E-CID-AXIOM    \ a proof-manifest row is malformed, claims an assumption a gate holds at empty, or does not match the assumption set Rocq reported (package PROOF-MANIFEST, shared by both parity gates)
 -6708 constant E-CID-REPLAY   \ a require replay handed back a module identity the allocator had already issued
+
+\ Frozen compiler interning parity gate (package COMPILER-INTERN-PROOF):
+\ -6800..-6819. The neighbouring block, because this gate is the interning twin
+\ of the identity gate above: it binds formal/Common/Interning.v to the three
+\ interners in src/compiler/ir. Its manifest failures are the shared
+\ E-CID-AXIOM, because both gates read one manifest grammar. Twenty codes; the
+\ rest of -6820..-6999 stays unclaimed.
+-6800 constant E-CIN-FIRST
+-6819 constant E-CIN-LAST
+-6800 constant E-CIN-ROW      \ a shared interning vector index or table slot is outside its declared table
+-6801 constant E-CIN-STRUCT   \ a frozen interner structure - a compared-field list, a check-before-write ordering, or a reference guard - is not what the source carries
 
 \ Compiler growth region: -8000..-8999.
 \

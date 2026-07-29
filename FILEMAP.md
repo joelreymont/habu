@@ -238,6 +238,49 @@ points stay listed.
   declaration and build order, with `closed` or the exact axiom lines Rocq
   prints. The gate reads the theorem names from it and compares Rocq's answer
   against it entire, not as a subset.
+- `test/compiler/proof-manifest.f` — `package PROOF-MANIFEST`: the committed
+  manifest grammar both Rocq parity gates read, so there is one copy of it. A
+  manifest row names a theorem, pins the statement that theorem makes, or records
+  one assumption; the shape rules are refusals raised when the file is read, not
+  conventions. A gate declares whether an assumption row may appear at all: the
+  identity gate allows two named ones, the interning gate refuses every one. The
+  module also normalizes a run of `Print Assumptions` output into the same row
+  vocabulary so the two texts can be compared whole.
+- `test/compiler/rocq-run.f` — `package ROCQ-CMD`: the one way a parity gate
+  calls the proof assistant, so both gates compile under the logical mapping
+  `formal/_CoqProject` declares rather than two copies of it.
+- `test/compiler/ir-intern-schema.f` — `package COMPILER-INTERN-PROOF`: the
+  shared frozen description of the interning contract that `IR-SYM`, `IR-TYPE`
+  and `IR-ATTR` share with `formal/Common/Interning.v`. It holds the intern
+  sequences - a table kind, a committed ceiling, and an ordered list of keys with
+  the ordinal each must answer or the exact throw code that must reject it - plus
+  the compared-field list of each scan predicate, the words whose write ordering
+  is checked, and the frozen reference-guard bodies.
+- `test/compiler/ir-intern-cases.f` — `package COMPILER-INTERN-CASES`: the Habu
+  half of that binding. It reads the compared-field list of each scan predicate
+  structurally, classifies every definition in an interner file as writing or
+  capacity-checking and closes both relations under calls so a push two calls
+  deep still counts, asserts no capacity check follows the first arena push,
+  freezes the reference guards, and drives every intern sequence through the real
+  `IR-SYM`, `IR-TYPE` and `IR-ATTR` words.
+- `test/compiler/ir-intern-manifest.f` — focused resident test that runs exactly
+  that Habu half, with nothing asked of the proof assistant.
+- `test/compiler/ir-intern-obligations.f` — `package COMPILER-INTERN-ROCQ`:
+  writes the Rocq obligation source the interning gate proves, out of the same
+  sequences and the committed manifest. Each sequence becomes a fold of the
+  model's `intern` over the same keys with the same expected answers, a refusal
+  carries the unchanged table forward, and the forced filter collision gets its
+  own obligation about a colliding filter. Nothing in it is transcribed.
+- `test/compiler/ir-intern-proof.f` — the compiler interning parity gate. It runs
+  the Habu half, refuses a manifest that tries to claim an assumption, inventories
+  what `formal/Common/Interning.v` declares and what it queries, compiles the
+  model and the generated obligations, and holds the assumption set at empty:
+  every published result must report closed under the global context, with no
+  assumption anywhere.
+- `test/compiler/ir-intern-axioms.txt` — the committed interning manifest: one
+  row per published result in `formal/Common/Interning.v`, in declaration order,
+  each with the statement it makes and `closed`. An assumption row cannot be
+  written into it; the gate reads it with assumptions forbidden.
 - `docs/compiler-id-assumptions.md` — the committed compiler-identity
   assumptions report: the frozen digest, how many statements are bound, how many
   are closed, how many rest on an external assumption, how many are admitted,
