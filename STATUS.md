@@ -44,7 +44,7 @@ elapsed-ms is informational only; per-phase timeouts remain as hang guards.
 Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
 gap (habu-add-pinned-engine-90090800).
 Certified (linux-arm64): 4197  Uncheckable: 0  Rejected: 0
-Certified (macos-arm64): 4231
+Certified (macos-arm64): 4232
 Host-script workflow hooks: retired and gated
 
 Attribution for the current linux-arm64 row, which is the count this tree
