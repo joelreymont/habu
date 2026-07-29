@@ -2803,3 +2803,25 @@ fits.
   write set by asking what breaks when each named definition disappears, and
   when a review shows the delivered file set exceeding the contract, that is the
   contract failing its own review — not a scope question for the worker.
+- **An acceptance that names a proof the system cannot perform is not an
+  acceptance.** Four of these shipped into contracts in one day, and each looked
+  rigorous while being unrunnable. A registry byte-identity comparison was
+  specified across two child processes, but the child's state dies with the
+  child, so there was nothing left to compare. Stderr was frozen as "one distinct
+  diagnostic code per failure", but the renderer emits a message form and cannot
+  produce codes. A package-reopen rejection was made an acceptance while four
+  live files legitimately reopened that package, so passing it required deleting
+  working code. Role-specific non-consuming borrows were required from a design
+  whose only exit from the owner consumed it, so no operation could construct
+  one. The check is mechanical and takes one pass: for every acceptance, name the
+  operation that produces the evidence and confirm the system can run it — not
+  that the property is desirable, that the measurement exists.
+- **Before counting, say what the count has to predict, then check the
+  population matches.** A census of "sites touching the migrated words" was
+  offered as the write set for sealing a package. Sealing does not break
+  consumers of a word; it breaks reopeners of the package, which is a different
+  set of files reached by a different query. The count was also taken with a
+  plain text search, so comments counted as callers — substring presence
+  masquerading as structural evidence, which the rules already forbid and which I
+  reached for anyway because it was the quicker query. Both errors were invisible
+  in the number itself: it looked like a census and was one, of the wrong thing.
