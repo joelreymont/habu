@@ -2740,3 +2740,16 @@ fits.
   made the inference feel verified when nothing had been measured. Attribute a
   size or performance delta by building and mapping the exact tips on either
   side of each candidate, never by counting what a change happens to add.
+- **A proof that models another system will lose to it; observe the system
+  instead.** Two proof mechanisms died this way in one session. A 1,070-line
+  source analyser inferred what the compiler would bind, and five successive
+  narrowings still lost to `EXPORT`, `undefine`, `using`, and local shadowing —
+  a wrapper exported into the target package ran fifteen times while the check
+  reported zero findings. A 243-line lexical scanner counted rows in source to
+  prove a case was enrolled, and lost to a dormant conditional, a two-iteration
+  loop, and an unreachable decoy dispatcher, because a lexical count is not an
+  execution count. Both were replaced by observing the real artifact — the
+  compiled call graph in one case, recorded execution in the other — and both
+  replacements were smaller than what they deleted. When a check must
+  reimplement the semantics of the thing it checks, that is the signal to
+  delete it, not to narrow it again.
