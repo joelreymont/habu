@@ -279,6 +279,13 @@ SUITE compiler-ir-intern-proof
    test/compiler/ir-intern-proof.f
 ;SUITE
 
+\ The structure parity gate compiles formal/Common/Structure.v with the Rocq
+\ proof assistant for the same reason, so it runs here and is documented
+\ manual-gate in tools/suite-coverage-lint-core.f alongside its two siblings.
+SUITE compiler-ir-structure-proof
+   test/compiler/ir-structure-proof.f
+;SUITE
+
 SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
 ;SUITE

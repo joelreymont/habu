@@ -1,0 +1,187 @@
+# What the compiler structure proofs state, and what they rest on.
+#
+# One `theorem` row per published result in formal/Common/Structure.v - every
+# `Theorem` and `Corollary` it declares - in the order the file declares them,
+# which is also the order the file's own assumption queries ask about them.
+# Every `theorem` row is followed by exactly one `type` row and then by its
+# assumption rows.
+#
+# There is one assumption row per result and it is always `closed`, which is
+# Rocq reporting "Closed under the global context". That is the whole point of
+# this file: the structure proofs rest on nothing, and the gate in
+# test/compiler/ir-structure-proof.f reads this manifest with assumption rows
+# FORBIDDEN, so an `axiom` row cannot be written here at all. This is the same
+# strength the interning manifest in test/compiler/ir-intern-axioms.txt claims,
+# and stricter than the identity manifest in test/compiler/ir-id-axioms.txt,
+# which names the two assumptions of the host compare-and-swap boundary.
+#
+# A `type` row is this file's copy of what that result states, written as Rocq
+# prints the statement in the environment the generated obligations file sets
+# up: Stdlib Bool, List, Lia, Arith, Permutation and Wf_nat imported, list
+# notations imported, and Habu.Common.Structure imported last so a bare name
+# resolves to the model's own. The parity gate turns each row into
+# `Definition pinned_statement_<k> : <type row> := @<theorem name>.` in the file
+# it asks Rocq to compile, so Rocq's own type checker decides whether the
+# statement in the proof file still is the statement written here. It decides
+# that up to conversion, so renaming a bound variable is not a change but
+# weakening, strengthening, or trivialising a statement is. These rows are the
+# authority: the generated file is a build output and never reads a statement
+# out of the proof source, so changing the proof file alone cannot move the
+# target it is checked against.
+#
+# Lines starting with `#`, and blank lines, are commentary. A `type` row is
+# handed to Rocq. Every other row is compared byte for byte.
+
+theorem Habu.Common.Structure.tiling_no_overlap
+type forall (base : nat) (ws : list win), contig base ws -> no_overlap ws
+closed
+theorem Habu.Common.Structure.tiling_no_gap
+type forall (base : nat) (ws : list win), contig base ws -> no_gap base (span base ws) ws
+closed
+theorem Habu.Common.Structure.tiling_in_range
+type forall (base : nat) (ws : list win), contig base ws -> in_range base (span base ws) ws
+closed
+theorem Habu.Common.Structure.tiling_partition
+type forall (base : nat) (ws : list win), contig base ws -> (forall i : nat, base <= i -> i < span base ws -> exists ! k : nat, owner ws k i) /\ in_range base (span base ws) ws
+closed
+theorem Habu.Common.Structure.neighbour_check_is_contiguity
+type forall (base : nat) (ws : list win), contig base ws <-> steps_ok base ws
+closed
+theorem Habu.Common.Structure.neighbour_check_gives_non_overlap
+type forall (base : nat) (ws : list win), steps_ok base ws -> no_overlap ws
+closed
+theorem Habu.Common.Structure.non_overlap_does_not_imply_neighbour_check
+type no_overlap descending /\ no_gap 0 (span 0 descending) descending /\ in_range 0 (span 0 descending) descending /\ ~ contig 0 descending
+closed
+theorem Habu.Common.Structure.single_row_check_is_not_enough
+type step_ok 0 one_late_check 2 /\ covers (nthw one_late_check 0) 1 /\ covers (nthw one_late_check 1) 1 /\ ~ no_overlap one_late_check
+closed
+theorem Habu.Common.Structure.tiling_says_nothing_past_the_span
+type forall (base : nat) (ws : list win) (i : nat), contig base ws -> span base ws <= i -> ~ (exists k : nat, owner ws k i)
+closed
+theorem Habu.Common.Structure.coverage_check_is_last_row_end
+type forall (base : nat) (ws : list win), contig base ws -> ws <> [] -> span base ws = wend (last ws w0)
+closed
+theorem Habu.Common.Structure.coverage_closes_the_gap
+type forall (base : nat) (ws : list win) (top : nat), contig base ws -> span base ws = top -> (forall i : nat, base <= i -> i < top -> exists ! k : nat, owner ws k i) /\ (forall i : nat, top <= i -> ~ (exists k : nat, owner ws k i))
+closed
+theorem Habu.Common.Structure.coverage_is_necessary
+type forall (base : nat) (ws : list win) (top : nat), contig base ws -> base <= top -> (forall i : nat, base <= i -> i < top -> exists k : nat, owner ws k i) -> (forall k i : nat, owner ws k i -> i < top) -> span base ws = top
+closed
+theorem Habu.Common.Structure.contig_snoc
+type forall (base : nat) (ws : list win) (w : win), contig base ws -> wst w = span base ws -> contig base (ws ++ [w])
+closed
+theorem Habu.Common.Structure.op_row_windows_tile
+type forall (base : nat) (r : oprow), contig base (row_wins base r)
+closed
+theorem Habu.Common.Structure.op_pool_windows_tile
+type forall (rs : list oprow) (base : nat), contig base (pool_wins base rs)
+closed
+theorem Habu.Common.Structure.op_pool_cell_has_one_owner
+type forall (rs : list oprow) (base i : nat), base <= i -> i < span base (pool_wins base rs) -> exists ! k : nat, owner (pool_wins base rs) k i
+closed
+theorem Habu.Common.Structure.non_tiling_admits_double_ownership
+type covers (nthw overlapping_pool 0) 1 /\ covers (nthw overlapping_pool 1) 1 /\ ~ contig 0 overlapping_pool /\ ~ no_overlap overlapping_pool
+closed
+theorem Habu.Common.Structure.end_op_all_or_nothing
+type forall (c : ocaps) (st : ostate) (o : op) (st' : ostate), end_op c st o = Some st' -> ops st' = ops st ++ [o] /\ nvals st' = nvals st + nres o /\ pcells st' = pcells st + op_cells o
+closed
+theorem Habu.Common.Structure.end_op_failure_atomic
+type forall (c : ocaps) (st : ostate) (o : op), end_op c st o = None -> end_op_step c st o = (st, false)
+closed
+theorem Habu.Common.Structure.ceiling_fail_closed
+type forall (c : ocaps) (st : ostate) (o : op), room_ok c st o = false -> end_op_step c st o = (st, false)
+closed
+theorem Habu.Common.Structure.ssa_violation_fail_closed
+type forall (c : ocaps) (st : ostate) (o : op), operands_ok st o = false -> end_op_step c st o = (st, false)
+closed
+theorem Habu.Common.Structure.write_order_is_load_bearing
+type end_op_step tiny full_store one_result = (full_store, false) /\ fst (end_op_write_first tiny full_store one_result) <> full_store
+closed
+theorem Habu.Common.Structure.operand_strictly_below_own_results
+type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall k u : nat, k < length os -> In u (uses (nth k os opnil)) -> u < vbase v0 os k
+closed
+theorem Habu.Common.Structure.op_cannot_take_own_result
+type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall k u : nat, k < length os -> In u (uses (nth k os opnil)) -> ~ defines v0 os k u
+closed
+theorem Habu.Common.Structure.use_rel_decreasing
+type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall u v : nat, use_rel v0 os u v -> u < v
+closed
+theorem Habu.Common.Structure.use_well_founded
+type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> well_founded (use_rel v0 os)
+closed
+theorem Habu.Common.Structure.no_self_use
+type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall v : nat, ~ use_rel v0 os v v
+closed
+theorem Habu.Common.Structure.use_path_decreasing
+type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall u v : nat, use_path v0 os u v -> u < v
+closed
+theorem Habu.Common.Structure.no_definitional_cycle
+type forall (c : ocaps) (v0 : nat) (os : list op) (st : ostate), build c {| ops := []; nvals := v0; pcells := 0 |} os = Some st -> forall v : nat, ~ use_path v0 os v v
+closed
+theorem Habu.Common.Structure.off_by_one_admits_self_definition
+type use_rel 0 self_program 0 0
+closed
+theorem Habu.Common.Structure.no_check_admits_definitional_cycle
+type use_rel 0 cyclic_program 1 0 /\ use_rel 0 cyclic_program 0 1 /\ use_path 0 cyclic_program 0 0
+closed
+theorem Habu.Common.Structure.strictly_below_check_is_load_bearing
+type build big empty_store self_program = None /\ lax_build big empty_store self_program <> None /\ build big empty_store cyclic_program = None /\ open_build big empty_store cyclic_program <> None
+closed
+theorem Habu.Common.Structure.end_block_preserves_tiling
+type forall (bs : list blk) (opst opn parent agst agn : nat) (b : blk), blocks_tile bs -> end_block bs opst opn parent agst agn = Some b -> blocks_tile (bs ++ [b])
+closed
+theorem Habu.Common.Structure.end_fun_preserves_tiling
+type forall (fs : list fnr) (bst bn atst atn : nat) (f : fnr), funs_tile fs -> end_fun fs bst bn atst atn = Some f -> funs_tile (fs ++ [f])
+closed
+theorem Habu.Common.Structure.op_belongs_to_exactly_one_block
+type forall (bs : list blk) (nops : nat), blocks_tile bs -> span 0 (map b_ops bs) = nops -> forall i : nat, i < nops -> exists ! k : nat, k < length bs /\ covers (b_ops (nthb bs k)) i
+closed
+theorem Habu.Common.Structure.orphan_op_outside_every_block
+type forall (bs : list blk) (nops : nat), blocks_tile bs -> span 0 (map b_ops bs) < nops -> exists i : nat, i < nops /\ (forall k : nat, k < length bs -> ~ covers (b_ops (nthb bs k)) i)
+closed
+theorem Habu.Common.Structure.orphan_block_outside_every_function
+type forall (fs : list fnr) (nblocks : nat), funs_tile fs -> span 0 (map f_blocks fs) < nblocks -> exists i : nat, i < nblocks /\ (forall k : nat, k < length fs -> ~ covers (f_blocks (nthf fs k)) i)
+closed
+theorem Habu.Common.Structure.orphan_op_counterexample_is_real
+type blocks_tile one_block /\ span 0 (map b_ops one_block) < 3 /\ (forall k : nat, k < length one_block -> ~ covers (b_ops (nthb one_block k)) 2)
+closed
+theorem Habu.Common.Structure.operation_parent_is_single_authority
+type forall bs : list blk, blocks_tile bs -> forall i j k : nat, j < length bs -> k < length bs -> covers (b_ops (nthb bs j)) i -> covers (b_ops (nthb bs k)) i -> j = k
+closed
+theorem Habu.Common.Structure.parents_forward_and_coverage_give_backward
+type forall (bs : list blk) (fs : list fnr), funs_tile fs -> span 0 (map f_blocks fs) = length bs -> parents_forward bs fs -> parents_backward bs fs
+closed
+theorem Habu.Common.Structure.parent_bound_check_does_not_imply_agreement
+type funs_tile orphan_parent_fs /\ blocks_tile orphan_parent_bs /\ parents_forward orphan_parent_bs orphan_parent_fs /\ b_parent (nthb orphan_parent_bs 1) < length orphan_parent_fs /\ ~ parents_backward orphan_parent_bs orphan_parent_fs /\ span 0 (map f_blocks orphan_parent_fs) <> length orphan_parent_bs
+closed
+theorem Habu.Common.Structure.term_ck_rejects_empty_block
+type forall (is_term : nat -> bool) (opst : nat), term_ck is_term opst 0 = false
+closed
+theorem Habu.Common.Structure.term_ck_sound
+type forall (is_term : nat -> bool) (opst opn : nat), term_ck is_term opst opn = true -> 0 < opn /\ is_term (opst + (opn - 1)) = true /\ (forall i : nat, i < opn - 1 -> is_term (opst + i) = false)
+closed
+theorem Habu.Common.Structure.term_ck_complete
+type forall (is_term : nat -> bool) (opst opn : nat), 0 < opn -> is_term (opst + (opn - 1)) = true -> (forall i : nat, i < opn - 1 -> is_term (opst + i) = false) -> term_ck is_term opst opn = true
+closed
+theorem Habu.Common.Structure.terminator_is_unique_and_last
+type forall (is_term : nat -> bool) (opst opn : nat), term_ck is_term opst opn = true -> forall i j : nat, i < opn -> j < opn -> is_term (opst + i) = true -> is_term (opst + j) = true -> i = j /\ i = opn - 1
+closed
+theorem Habu.Common.Structure.stored_terminator_is_derived
+type forall (bs : list blk) (opst opn parent agst agn : nat) (b : blk), end_block bs opst opn parent agst agn = Some b -> b_term b = wend (b_ops b) - 1 /\ 0 < wlen (b_ops b)
+closed
+theorem Habu.Common.Structure.args_ck_sound
+type forall (vs : list vrow) (l agst agn : nat), args_ck vs l agst agn = true -> forall i : nat, i < agn -> nth_error vs (agst + i) = Some {| v_kind := KArg; v_def := l; v_pos := i |}
+closed
+theorem Habu.Common.Structure.arg_values_are_not_shared
+type forall (vs : list vrow) (l1 a1 n1 l2 a2 n2 : nat), args_ck vs l1 a1 n1 = true -> args_ck vs l2 a2 n2 = true -> l1 <> l2 -> forall i j : nat, i < n1 -> j < n2 -> a1 + i <> a2 + j
+closed
+theorem Habu.Common.Structure.arg_identity_is_not_injective
+type args_ck duplicated_args 0 1 1 = true /\ nth_error duplicated_args 0 = Some {| v_kind := KArg; v_def := 0; v_pos := 0 |} /\ nth_error duplicated_args 1 = Some {| v_kind := KArg; v_def := 0; v_pos := 0 |} /\ 0 <> 1
+closed
+theorem Habu.Common.Structure.arg_ownership_forces_injectivity
+type forall (vs : list vrow) (bs : list blk), arg_rows_owned vs bs -> forall (v1 v2 : nat) (r1 r2 : vrow), nth_error vs v1 = Some r1 -> nth_error vs v2 = Some r2 -> is_arg r1 = true -> is_arg r2 = true -> v_def r1 = v_def r2 -> v_pos r1 = v_pos r2 -> v1 = v2
+closed
+theorem Habu.Common.Structure.duplicated_args_violate_ownership
+type ~ arg_rows_owned duplicated_args dup_arg_blocks
+closed

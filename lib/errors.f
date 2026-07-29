@@ -406,11 +406,23 @@ public
 \ of the identity gate above: it binds formal/Common/Interning.v to the three
 \ interners in src/compiler/ir. Its manifest failures are the shared
 \ E-CID-AXIOM, because both gates read one manifest grammar. Twenty codes; the
-\ rest of -6820..-6999 stays unclaimed.
+\ next block, -6820..-6839, is the structure gate below.
 -6800 constant E-CIN-FIRST
 -6819 constant E-CIN-LAST
 -6800 constant E-CIN-ROW      \ a shared interning vector index or table slot is outside its declared table
 -6801 constant E-CIN-STRUCT   \ a frozen interner structure - a compared-field list, a check-before-write ordering, or a reference guard - is not what the source carries
+
+\ Frozen compiler structure parity gate (package COMPILER-STRUCT-PROOF):
+\ -6820..-6839. The next block after the interning gate, because this gate is
+\ the third of the same family: it binds formal/Common/Structure.v to the
+\ operation and value store and the function and block store in
+\ src/compiler/ir. Its manifest failures are the shared E-CID-AXIOM, because
+\ all three gates read one manifest grammar. Twenty codes; the rest of
+\ -6840..-6999 stays unclaimed.
+-6820 constant E-CIS-FIRST
+-6839 constant E-CIS-LAST
+-6820 constant E-CIS-ROW      \ a shared structure vector index or table slot is outside its declared table
+-6821 constant E-CIS-STRUCT   \ a frozen structure guard - the strictly-below operand rule, a window tiling check, a call-closed guard row, or the derived terminator field - is not what the source carries
 
 \ Compiler growth region: -8000..-8999.
 \

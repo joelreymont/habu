@@ -297,6 +297,13 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ the Rocq toolchain. The Habu half of the same binding has no such
    \ dependency and does run resident, as test/compiler/ir-intern-manifest.f.
    s" test/compiler/ir-intern-proof.f" q execute
+   \ compiler structure parity gate: same shape and same Rocq dependency - it
+   \ compiles formal/Common/Structure.v and then a generated obligations file,
+   \ with no capability probe for `rocq`. Runs spawned in the standalone stdlib
+   \ gate; the resident tier stays free of the Rocq toolchain. The Habu half of
+   \ the same binding has no such dependency and does run resident, as
+   \ test/compiler/ir-structure-manifest.f.
+   s" test/compiler/ir-structure-proof.f" q execute
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute
