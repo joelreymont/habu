@@ -200,12 +200,14 @@ the census source):
 27. **One word for unproven effects; TRUSTED.md is deleted.** `PRIM:`,
     `PPRIM:`, and `TRUSTED:` are one mechanism — assert an effect the checker
     cannot prove — split three ways (global prim, packaged prim, trusted
-    Forth body). They collapse into `TRUSTED:` (the name reads true for both
-    uses: trusted machine code, trusted Forth body; `PRIM:` would misname
-    the hundreds of source-level sites), taking an optionally qualified name
+    Forth body). They collapse into `PRIM:` (Joel's ruling: it names the
+    thing — a primitive operation of the checked language, be it a syscall,
+    a machine op, or a retype axiom the type algebra cannot decompose —
+    where "trusted" names an attitude), taking an optionally qualified name
     and an optional body: an engine primitive is the word with no body, a
     laundering retype is the word with a body and a real confession.
-    `PRIM:` and `PPRIM:` are deleted. The justification and retirement note live AT THE DEFINITION
+    `PPRIM:` and `TRUSTED:` are deleted. A site too large to honestly call a
+    primitive is a smell its required justification exposes. The justification and retirement note live AT THE DEFINITION
     in a lint-checkable shape — not in a hand-maintained central ledger.
     TRUSTED.md is duplicate authority (source already declares everything;
     the lint today enforces agreement between two files, which is effort
