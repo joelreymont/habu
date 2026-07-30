@@ -93,6 +93,14 @@ SUITE package-diff-lint-fixtures
    tools/package-diff-lint-test.f
 ;SUITE
 
+SUITE render-parse-lint
+   tools/render-parse-lint.f
+;SUITE
+
+SUITE render-parse-lint-fixtures
+   tools/render-parse-lint-test.f
+;SUITE
+
 SUITE error-code-lint
    tools/error-code-lint.f
 ;SUITE
@@ -236,6 +244,14 @@ SUITE compiler-ir-canon
 
 SUITE compiler-ir-encode
    test/compiler/ir-encode.f
+;SUITE
+
+SUITE compiler-ir-render
+   test/compiler/ir-render.f
+;SUITE
+
+SUITE compiler-ir-diff
+   test/compiler/ir-diff.f
 ;SUITE
 
 SUITE compiler-ir-arena

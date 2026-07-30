@@ -113,6 +113,14 @@ REQUIRE-HARNESS
 : PACKAGE-OWNERSHIP ( -- )
    s" tools/package-diff-lint-test.f" GSI-INCLUDE ;
 
+\ Design section 6.6's renderer-output fence. Loading the CLI file IS the
+\ enforcing run over the live compiler tree - it throws on any finding - so this
+\ group needs no entry in the shared lint-core preload, and the fixtures that
+\ prove the fence bites follow it.
+: RENDER-PARSE ( -- )
+   s" tools/render-parse-lint.f" GSI-REQUIRE
+   s" tools/render-parse-lint-test.f" GSI-INCLUDE ;
+
 : ERROR-CODE ( -- )
    s" error-code-lint" [: ERROR-CODE-LINT:STRICT ;] GSI-RUN
    s" tools/error-code-lint-test.f" GSI-INCLUDE
@@ -153,6 +161,7 @@ public
    s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
    s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK
    s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: ERROR-CODE ;] GT-POOL-START-FORK
+   s" lint-tools/render-parse" GSI-FORK-TIMEOUT-MS [: RENDER-PARSE ;] GT-POOL-START-FORK
    s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: HOST ;] GT-POOL-START-FORK
    s" lint-tools/trusted-inventory" GSI-FORK-TIMEOUT-MS [: TRUSTED-INVENTORY ;] GT-POOL-START-FORK
    s" lint-tools/primitive-effect-inventory" GSI-FORK-TIMEOUT-MS [: PRIMITIVE-EFFECT-INVENTORY ;] GT-POOL-START-FORK

@@ -405,6 +405,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" tools/suite-coverage-lint.f" SC-SCHED+
    s" tools/namespace-lint.f" SC-SCHED+
    s" tools/error-code-lint.f" SC-SCHED+
+   s" tools/render-parse-lint.f" SC-SCHED+
    s" tools/nanogpt-inventory-lint.f" SC-SCHED+ ;
 
 \ ---- table membership ------------------------------------------------------

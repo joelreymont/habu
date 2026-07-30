@@ -480,7 +480,8 @@ public
 \   -8060..-8079  builder, abort, and freeze lifecycle (package IR-BUILD)
 \   -8080..-8099  structural freeze verifier (package IR-VERIFY)
 \   -8100..-8119  canonical table reindexing and reference remap (package IR-CANON)
-\   -8120..-8139  deterministic renderer and structural diff
+\   -8120..-8139  deterministic renderer (package IR-RENDER) and structural
+\                 diff (package IR-DIFF)
 \   -8140..-8159  canonical wire frame and digest (package IR-ENCODE), and the
 \                 decoder that rebuilds a module from a frame when it lands
 \   -8160..-8179  pass results and witness headers (package IR-PASS)
@@ -582,9 +583,26 @@ public
 -8107 constant E-IR-CANON-SLOTS    \ the canonical-table registry has no free slot
 -8108 constant E-IR-CANON-SERIALS  \ canonical-table generation serials reached their ceiling
 
+\ Compiler deterministic renderer and structural diff: -8120..-8139
+\ The map's renderer sub-block, taken by the two packages that stage is built
+\ from: src/compiler/ir/render.f (package IR-RENDER) turns one frozen module into
+\ diagnostic text with canonical names, and src/compiler/ir/diff.f (package
+\ IR-DIFF) compares two frozen modules and reports what differs. They are split
+\ because rendering one module and comparing two modules are different decisions,
+\ so the renderer takes -8120..-8129 and the diff takes -8130..-8139.
+-8120 constant E-IR-RENDER-STALE   \ a module presented to the renderer that is not a live frozen one
+-8121 constant E-IR-RENDER-ROOM    \ a destination byte span shorter than the text the presented module renders to
+-8122 constant E-IR-RENDER-CAP     \ a module with more interned rows, a longer name, or a wider keyed list than the renderer's committed working set
+-8123 constant E-IR-RENDER-STATE   \ a stored code or table selector outside the vocabulary the renderer spells
+
+-8130 constant E-IR-DIFF-STALE     \ a module presented to the diff that is not a live frozen one
+-8131 constant E-IR-DIFF-ROOM      \ a destination byte span shorter than the report the two presented modules differ by
+-8132 constant E-IR-DIFF-CAP       \ a module pair with more rows or a wider keyed list than the diff's committed working set
+-8133 constant E-IR-DIFF-STATE     \ a stored code outside the vocabulary the diff compares
+
 \ Compiler canonical wire frame and content digest (package IR-ENCODE): -8140..-8159
 \ This is the sub-block the map above already reserves for the wire codec and
-\ digest, so the renderer and diff stage keeps -8120..-8139 as reserved. The
+\ digest, and the renderer and diff stage above owns -8120..-8139. The
 \ package that took the block is IR-ENCODE, which is the encoding half of the
 \ codec the map named; a decoder that rebuilds a module from a frame is a
 \ separate stage and takes the rest of this sub-block when it lands.
