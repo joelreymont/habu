@@ -497,11 +497,11 @@ using CAD-NUM
 \ its image through SAFET:DETACH-MAPPING keeps answering every reader this pass
 \ consults: its count, its dtypes, its shapes, and MAP-OFFSET?, which is arithmetic on
 \ the header geometry rather than access to any bytes. So a parsed tensor index without checkpoint bytes passes
-\ every row - and the model built from it would own a mapped store of zero bytes, with the
-\ fault surfacing at the first weight read as E-EXTENT, by which time the mapping and
-\ the table have been deconstructed and no catch can restore them. Refusing it here
-\ costs a caller nothing: the parsed tensor index comes back exactly as it arrived, still answering
-\ its metadata and still disposable through SAFET:RELEASE.
+\ every row - and the model built from it would own a mapped store of zero bytes.
+\ Its first weight read would safely return NONE with the store preserved, but the
+\ loader would already have published a model that cannot execute. Refusing it here
+\ costs a caller nothing: the parsed tensor index comes back exactly as it arrived,
+\ still answering its metadata and still disposable through SAFET:RELEASE.
 using MODEL-FAMILY
 
 : CHECK-MODEL-FAMILY ( MDLCFG:mcfg -- MDLCFG:mcfg )
@@ -535,7 +535,7 @@ using MEM
 : BUILD-MAPPED-TABLE ( n -- WSTORE:table ) {: count:n :}
    count TABLE-NEW
    count 0 ?do
-      i  i STAGED-ROW-OFFSET STAGED-ROW-CELL CHECKED-OFFSET  i STAGED-ROW-LENGTH STAGED-ROW-CELL CHECKED-LENGTH  SLOT!
+      i CHECKED-INDEX  i STAGED-ROW-OFFSET STAGED-ROW-CELL CHECKED-OFFSET  i STAGED-ROW-LENGTH STAGED-ROW-CELL CHECKED-LENGTH  SLOT!
    loop
    SEAL ;
 
@@ -811,7 +811,7 @@ variable COPY-TABLE                                 \ the copy-offset table, as 
    COPY-BLOCK @ {: blk:ptr :}
    blk LOAD-ROW-COUNT-CELL cells + @ {: count:n :}
    count 0 ?do
-      i  blk i COPY-OFFSET CHECKED-OFFSET  blk i LOAD-ROW-LENGTH PREPARED-ROW-CELL @ CHECKED-LENGTH  SLOT!
+      i CHECKED-INDEX  blk i COPY-OFFSET CHECKED-OFFSET  blk i LOAD-ROW-LENGTH PREPARED-ROW-CELL @ CHECKED-LENGTH  SLOT!
    loop ;
 
 : BUILD-COPY-TABLE ( -- )

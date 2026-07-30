@@ -358,8 +358,9 @@ variable START-PREPARED-COUNT
 
 \ ---- leak accounting, as a delta against a suite's own entry -------------------
 \ The four counters are process-wide, and a combined run reaches these suites after
-\ other suites with known counter deltas (weight-store-test.f ends on 14
-\ live WSTORE blocks and 2 SAFET owners by design). Asserting absolute zero would
+\ other suites with known counter deltas (weight-store-test.f ends on 2
+\ live WSTORE blocks and 0 SAFET owners: only its two SEAL-refusal builders remain).
+\ Asserting absolute zero would
 \ therefore pass standalone and fail in maki/test.f while saying nothing about the
 \ suite under test. Every assertion below is a delta from the entry baseline, so it
 \ measures exactly what these fixtures took and gave back.

@@ -195,13 +195,10 @@ variable MAPPED-OFFSET
 \ computed offset inside the detached mapping, are the same bytes. Since the mapping IS
 \ the file mapped read-only, those are the file's bytes at that offset.
 \
-\ It stops one link short of reading through the loaded model, and the reason is
-\ structural rather than an omission: reading a slot through the embedded store needs a
-\ scoped access that returns its owner on the throw path (WSTORE:WITH-SLOT throws
-\ E-SLOT/E-EXTENT, and the model cannot be rebuilt around a throw), which is the
-\ linear-scope capability and belongs to the forward pass. The remaining link -
-\ that WITH-SLOT over a mapped store returns the bytes at base+offset - is already
-\ pinned by byte-equality tests in weight-store-test.f over both variants.
+\ It stops one link short of reading through the loaded model. The remaining
+\ WSTORE link is value-only and refusal-total: U32-LE@? returns the unchanged
+\ store with option<n>. Its mapped base+row+relative-offset arithmetic is pinned
+\ in weight-store-test.f against the allocated arm and fixed expected values.
 \ One tensor, named by its real checkpoint tensor name: copy its first bytes out of the parsed tensor index, note
 \ the mapping-offset base offset the table will carry, then read the mapping at exactly that
 \ offset and require the same bytes. Parameterized by key so the test can walk several

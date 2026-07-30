@@ -232,11 +232,11 @@ using SAFET
 \ metadata reader afterwards - count, dtypes, shapes, and MAP-OFFSET?, which is pure
 \ arithmetic on the header geometry it still holds. So a parsed tensor index without checkpoint bytes satisfies
 \ every per-row question PREPARE asks, and without this rejection it loads: the model that
-\ came out would own a residency of zero bytes, and the first weight read would throw
-\ E-EXTENT with the mapping and the table already deconstructed by the MATCH, where no
-\ catch can reach them. The fault has to be
-\ caught here, in the phase whose job is to ask every question that has a wrong
-\ answer while a rejection is still free.
+\ came out would own a residency of zero bytes. Its first value-level weight read
+\ would safely return NONE with the store preserved, but the loader would already
+\ have published a model that cannot execute. The missing bytes must be refused here,
+\ in the phase whose job is to ask every question that has a wrong answer while a
+\ rejection is still free.
 \
 \ For a parsed tensor index without checkpoint bytes, `rejected` returns the same
 \ owner and a code, as it does for every other

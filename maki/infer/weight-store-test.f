@@ -2,45 +2,29 @@
 \ (maki/infer/weight-store.f). Run standalone:
 \ bin/hb --load maki/infer/weight-store-test.f
 \
-\ The equality half is the point of the module: the SAME fixture bytes are
-\ served through BOTH residency arms and compared byte for byte. The mapped arm
-\ is built from a real SAFET session over a synthetic safetensors file on disk
-\ (OPEN / MAP-FILE / PARSE / DETACH / DETACH-MAPPING - the exact production
-\ path); the allocated arm is a MEM buffer filled from the same census with
-\ COPY-DATA? before the mapping leaves. Disposal is proved on both arms: the
-\ mapped DISPOSE gives the mapping back to the kernel (SAFET-MAP:LIVE drops) and
-\ the allocated DISPOSE releases the buffer (ok carries its byte count and
-\ WSTORE:LIVE drops).
+\ Fixed aligned, unaligned, boundary, and high-bit u32 expectations cover both
+\ residency arms through their production constructors.
 \
-\ The refusal half feeds every named throw its minimal trigger: bad slot count,
-\ out-of-range and negative slot, double-set slot, row-end overflow, unset-slot
-\ SEAL, out-of-range slot at access, a row past the arm's bytes on both arms,
-\ and a row past each residency arm's bytes. A throw unwinds past deconstructed
-\ linear owners, so each refusal leg asserts the exact leak-counter residue it
-\ leaves; the suite's final assertions pin the totals and prove no kernel mapping
-\ is leaked (the mapped refusal uses an adopted image).
+\ Reads return NONE for a far valid slot, numeric overflow, slot crossing, or
+\ arm crossing. The far slot would make unchecked table-row arithmetic overflow.
+\ The slot-crossing read starts inside a four-byte slot but ends in distinct
+\ bytes of its eight-byte backing. Forked children release each arm's backing
+\ page first, proving every refusal returns without reading it.
 \
-\ WHICH REFUSALS COST A BLOCK, AND WHY THAT SPLIT IS THE POINT. The four SLOT!
+\ WHICH REFUSALS COST A BLOCK, AND WHY THAT SPLIT IS THE POINT. The three SLOT!
 \ refusals run their population step as a stack-preserving quotation under `catch`,
 \ so the builder survives the refusal and the leg gives it back through
 \ BUILDER-DISPOSE - they cost nothing now, and the residue after them is 0. The two
 \ SEAL refusals cannot be written that way, because a `catch` over SEAL would have to
 \ hold a builder on one arm and a table on the other, so each still strands one
-\ builder; the access refusals still strand their arm owner and table, because MATCH
-\ had already deconstructed the store when the throw fired. Every number in the leak
-\ accounting is therefore a statement about a NAMED missing capability (the
-\ linear-scope combinator) rather than an accepted leak, and moving a block from one
-\ column to the other is what changes the totals.
+\ builder. Value-level read refusals preserve the store and add no stranded owners.
 \
 \ The static half feeds bad definitions to the checker itself: store, table,
 \ builder, and buffer linearity (no dup / drop / store / reuse), double DISPOSE,
-\ arm confusion in both constructor directions, SLOT! on a sealed table (the
-\ no-mutable-table proof), WITH-SLOT on an unsealed builder, a dropped or
-\ raw-read cleanup result, and the WITH-SLOT escape negative - a quotation
-\ declared to return the span pointer is rejected at check time, mirroring the
-\ SAFET fixtures. ACCEPTED controls prove the harness resolves this package;
-\ UNRESOLVED probes prove the representation leaves stay behind the seal, and a
-\ forked child proves the seal itself refuses new definitions into WSTORE.
+\ arm confusion in both constructor directions, nominal SLOT!/read roles, and
+\ dropped or raw cleanup results. ACCEPTED controls prove the harness resolves
+\ this package; UNRESOLVED probes prove the representation leaves stay behind
+\ the seal, and a forked child proves the seal itself refuses new definitions.
 \
 \ The sealed-table disposal test covers the case where no store is created: a caller
 \ seals a table and stops, so the table is the only thing it
@@ -90,8 +74,6 @@ $7FFFFFFFFFFFFFFF constant WT-MAX-N
 
 512 constant IMG-CAP
 create IMG IMG-CAP allot   variable LEN-I
-create GRAB-BUF 64 allot   variable GRAB-LEN
-create KEEP-BUF 64 allot
 create SUBJ-OUT $400 allot
 create SUBJ-ERR $400 allot
 
@@ -102,7 +84,23 @@ create SUBJ-ERR $400 allot
 24 constant DATA-N
 16 constant NB-A       8 constant NB-B
 0 constant BEG-A       16 constant BEG-B
-108 constant SUM-PAT                            \ 10+11+..+17, the MK-ASTORE pattern
+4 constant TEST-U32-BYTES
+NB-A TEST-U32-BYTES - constant LAST-A-U32
+LAST-A-U32 1+ constant FIRST-BAD-A-U32
+4 constant HIGH-REL
+BEG-B HIGH-REL + constant HIGH-DATA
+$55 constant HIGH-B0
+$66 constant HIGH-B1
+$77 constant HIGH-B2
+$88 constant HIGH-B3
+8 constant SMALL-ARM-BYTES
+4 constant SLOT-BYTES
+2 constant SLOT-CROSS-OFF
+SLOT-CROSS-OFF TEST-U32-BYTES + constant SLOT-CROSS-END
+$A5 constant CROSS-B0
+$5A constant CROSS-B1
+2 constant ARM-TAIL-BYTES
+SMALL-ARM-BYTES ARM-TAIL-BYTES - constant ARM-CROSS-OFF
 
 \ ---- the table block TABLE-DISPOSE gives back --------------------------------
 \ Mirrors the module's documented table layout: two header cells - slot count and
@@ -111,15 +109,24 @@ create SUBJ-ERR $400 allot
 \ change reds this leg instead of quietly agreeing with it.
 3 constant WT-ROW-CELLS
 2 constant WT-TBL-HDR-CELLS                     \ slot count + populated count
+WT-ROW-CELLS cells constant WT-ROW-BYTES
+WT-MAX-N WT-ROW-BYTES / 1+ constant FAR-SLOT
 
 : TBL-BYTES ( n -- n )                          \ block bytes for a table of n slots
-   WT-ROW-CELLS * WT-TBL-HDR-CELLS + cells ;
+   WT-ROW-BYTES * WT-TBL-HDR-CELLS cells + ;
 
 : SYNTH-PATH ( -- ptr u8 n )  s" /tmp/hb-wst-synth.safetensors" ;
 
 : CLEANUP ( -- )  SYNTH-PATH FS-PATHZ unlink drop ;
 
 \ ---- image builder (the safetensors-test BUILD shape) ------------------------
+: SYNTH-BYTE ( n -- n ) {: i:n :}
+   i HIGH-DATA     = if HIGH-B0 exit then
+   i HIGH-DATA 1 + = if HIGH-B1 exit then
+   i HIGH-DATA 2 + = if HIGH-B2 exit then
+   i HIGH-DATA 3 + = if HIGH-B3 exit then
+   i $FF and ;
+
 : BUILD ( ptr u8 n ptr u8 n n -- n )
    {: da:ptr dcap:n ja:ptr ju:n dcount:n :}
    8 ju + dcount + dcap > if E-STR-CAPACITY throw then
@@ -128,7 +135,7 @@ create SUBJ-ERR $400 allot
       da 8 i + + c!
    loop
    8 0 ?do  ju i 8 * rshift $FF and  da i +  c!  loop
-   dcount 0 ?do  i $FF and  da 8 ju + i + +  c!  loop
+   dcount 0 ?do  i SYNTH-BYTE  da 8 ju + i + +  c!  loop
    8 ju + dcount + ;
 
 : BUILD-IMG ( -- )
@@ -147,6 +154,12 @@ create SUBJ-ERR $400 allot
    MATCH option
       none OF MISSING ENDOF
       some OF want T= ENDOF
+   ;MATCH ;
+
+: OPT-NONE ( option<n> -- )
+   MATCH option
+      none OF 0 0= TTRUE ENDOF
+      some OF drop 0 0= 0= TTRUE ENDOF
    ;MATCH ;
 
 : OPT-VAL ( option<n> -- n )
@@ -208,25 +221,17 @@ create SUBJ-ERR $400 allot
       misaligned OF E-WST-FIX throw ENDOF
    ;MATCH ;
 
+: FIX-IDX ( CAD-NUM:numeric-result<CAD-NUM:index> -- CAD-NUM:index )
+   MATCH CAD-NUM:numeric-result
+      ok OF ENDOF                              negative OF E-WST-FIX throw ENDOF
+      zero OF E-WST-FIX throw ENDOF             overflow OF E-WST-FIX throw ENDOF
+      underflow OF E-WST-FIX throw ENDOF        bad-alignment OF E-WST-FIX throw ENDOF
+      misaligned OF E-WST-FIX throw ENDOF
+   ;MATCH ;
+
 : >BOFF ( n -- CAD-NUM:byte-off )   CAD-NUM:BYTE-OFF FIX-BOFF ;
 : >BLEN ( n -- CAD-NUM:byte-len )   CAD-NUM:BYTE-LEN FIX-BLEN ;
-
-public
-
-\ ---- quotation bodies (public so candidate strings can name them) -------------
-: SUM-BODY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   0 u 0 ?do a i + c@ + loop ;
-
-: GRAB-BODY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   u 64 > if E-WST-FIX throw then
-   a GRAB-BUF u BYTE-COPY
-   u GRAB-LEN !
-   u ;
-
-: ESC-BODY ( ptr u8 n -- ptr u8 )               \ tries to return the span pointer
-   drop ;
-
-private
+: >IDX  ( n -- CAD-NUM:index )      CAD-NUM:INDEX FIX-IDX ;
 
 \ ---- store builders -------------------------------------------------------------
 : MK-ABUF ( SAFET:census -- SAFET:census WSTORE:buffer )   \ both tensors at their data-section offsets
@@ -243,26 +248,31 @@ private
    ia SAFET:MAP-OFFSET? OPT-VAL {: moa:n :}
    ib SAFET:MAP-OFFSET? OPT-VAL {: mob:n :}
    2 WSTORE:TABLE-NEW
-   0 moa >BOFF NB-A >BLEN WSTORE:SLOT!
-   1 mob >BOFF NB-B >BLEN WSTORE:SLOT!
+   0 >IDX moa >BOFF NB-A >BLEN WSTORE:SLOT!
+   1 >IDX mob >BOFF NB-B >BLEN WSTORE:SLOT!
    WSTORE:SEAL ;
 
 : MK-ATBL ( -- WSTORE:table )                   \ rows at the buffer frame
    2 WSTORE:TABLE-NEW
-   0 BEG-A >BOFF NB-A >BLEN WSTORE:SLOT!
-   1 BEG-B >BOFF NB-B >BLEN WSTORE:SLOT!
+   0 >IDX BEG-A >BOFF NB-A >BLEN WSTORE:SLOT!
+   1 >IDX BEG-B >BOFF NB-B >BLEN WSTORE:SLOT!
    WSTORE:SEAL ;
 
-: GRAB-SLOT ( WSTORE:store n n -- WSTORE:store )   \ slot + expected length
-   {: want:n :}
-   [: GRAB-BODY ;] WSTORE:WITH-SLOT want T= ;
+: READ= ( WSTORE:store n n n -- WSTORE:store ) {: slot:n off:n want:n :}
+   slot >IDX off >BOFF WSTORE:U32-LE@? want OPT= ;
 
-: KEEP-GRAB ( -- )
-   GRAB-BUF KEEP-BUF 64 BYTE-COPY ;
+: READ-NONE ( WSTORE:store n n -- WSTORE:store ) {: slot:n off:n :}
+   slot >IDX off >BOFF WSTORE:U32-LE@? OPT-NONE ;
 
-\ ---- the acceptance core: byte equality across both arms -------------------------
+$03020100 constant LE-0123
+$04030201 constant LE-1234
+$0F0E0D0C constant LE-1215
+$13121110 constant LE-1619
+$88776655 constant LE-HIGH
+
+\ ---- fixed reads and slot boundary through both residency arms -------------------
 : T-EQUALITY ( -- )
-   s" both arms serve byte-identical slot bytes from one fixture" T-LABEL
+   s" both arms read fixed little-endian values through U32-LE@?" T-LABEL
    BUILD-SYNTH
    SAFET:OPEN SYNTH-PATH SAFET:MAP-FILE SAFET:PARSE SAFET:DETACH   \ ( c )
    SAFET-MAP:LIVE 1 T=
@@ -275,20 +285,21 @@ private
    swap MK-ATBL                                 \ ( mstore abuf atbl )
    WSTORE-STORE:ALLOCATED                       \ ( mstore astore )
    WSTORE:LIVE 3 T=                             \ two tables + one buffer record live
-   s" slot 0 bytes agree and are the source bytes" T-LABEL
-   0 NB-A GRAB-SLOT KEEP-GRAB                   \ allocated arm's slot 0
-   swap 0 NB-A GRAB-SLOT                        \ ( astore mstore ) mapped arm's slot 0
-   GRAB-BUF NB-A KEEP-BUF NB-A T$=
-   KEEP-BUF c@ 0 T=                             \ tensor a's first data byte is index 0
-   s" slot 1 bytes agree and are the source bytes" T-LABEL
-   1 NB-B GRAB-SLOT KEEP-GRAB                   \ mapped arm's slot 1
-   swap 1 NB-B GRAB-SLOT                        \ ( mstore astore )
-   GRAB-BUF NB-B KEEP-BUF NB-B T$=
-   KEEP-BUF c@ 16 T=                            \ tensor b's first data byte is index 16
-   s" checksums agree across arms" T-LABEL
-   1 [: SUM-BODY ;] WSTORE:WITH-SLOT {: sumb:n :}
-   sumb 156 T=                                  \ 16+17+..+23
-   swap 1 [: SUM-BODY ;] WSTORE:WITH-SLOT sumb T=   \ ( astore mstore )
+   s" allocated reads are aligned, unaligned, slot-relative, and bounded" T-LABEL
+   0 0 LE-0123 READ=
+   0 1 LE-1234 READ=
+   0 LAST-A-U32 LE-1215 READ=
+   0 FIRST-BAD-A-U32 READ-NONE
+   1 0 LE-1619 READ=
+   1 HIGH-REL LE-HIGH READ=
+   swap                                         \ ( astore mstore )
+   s" mapped reads have the same fixed expectations and boundary" T-LABEL
+   0 0 LE-0123 READ=
+   0 1 LE-1234 READ=
+   0 LAST-A-U32 LE-1215 READ=
+   0 FIRST-BAD-A-U32 READ-NONE
+   1 0 LE-1619 READ=
+   1 HIGH-REL LE-HIGH READ=
    s" mapped DISPOSE gives the mapping back to the kernel" T-LABEL
    WSTORE:DISPOSE LEN-I @ RES-OK=               \ ( astore )
    SAFET-MAP:LIVE 0 T=
@@ -337,7 +348,7 @@ private
    WSTORE:LIVE 0 T=
    s" a half-populated builder gives back the same block" T-LABEL
    2 WSTORE:TABLE-NEW
-   0 0 >BOFF 4 >BLEN WSTORE:SLOT!
+   0 >IDX 0 >BOFF TEST-U32-BYTES >BLEN WSTORE:SLOT!
    WSTORE:LIVE 1 T=
    WSTORE:BUILDER-DISPOSE 2 TBL-BYTES RES-OK=
    WSTORE:LIVE 0 T=
@@ -363,7 +374,7 @@ private
 : TN-ZERO ( -- )   0 WSTORE:TABLE-NEW WSTORE:SEAL TBL-BURN ;
 : TN-HUGE ( -- )   $10001 WSTORE:TABLE-NEW WSTORE:SEAL TBL-BURN ;   \ MAX-SLOTS + 1
 
-\ ---- the four SLOT! refusals, with the builder given back ----------------------------
+\ ---- the three SLOT! refusals, with the builder given back ---------------------------
 \ SLOT! is stack-preserving ( tbuilder -- tbuilder ), so the population step runs as a
 \ quotation under `catch` and a refusal leaves the builder exactly where it was - the
 \ SAFET:LOAD / GPT2LOAD:PREPARE discipline. Each test then hands the block back through
@@ -378,25 +389,21 @@ private
    code throw ;
 
 : SET-RANGE ( WSTORE:tbuilder -- WSTORE:tbuilder )   \ slot 2 of a two-slot table
-   2 0 >BOFF 4 >BLEN WSTORE:SLOT! ;
-
-: SET-NEG ( WSTORE:tbuilder -- WSTORE:tbuilder )
-   -1 0 >BOFF 4 >BLEN WSTORE:SLOT! ;
+   2 >IDX 0 >BOFF TEST-U32-BYTES >BLEN WSTORE:SLOT! ;
 
 : SET-DUP ( WSTORE:tbuilder -- WSTORE:tbuilder )     \ slot 0 written twice
-   0 0 >BOFF 4 >BLEN WSTORE:SLOT!
-   0 4 >BOFF 4 >BLEN WSTORE:SLOT! ;
+   0 >IDX 0 >BOFF TEST-U32-BYTES >BLEN WSTORE:SLOT!
+   0 >IDX TEST-U32-BYTES >BOFF TEST-U32-BYTES >BLEN WSTORE:SLOT! ;
 
 : SET-OVER ( WSTORE:tbuilder -- WSTORE:tbuilder )    \ row end overflows a cell
-   0 WT-MAX-N >BOFF 8 >BLEN WSTORE:SLOT! ;
+   0 >IDX WT-MAX-N >BOFF TEST-U32-BYTES >BLEN WSTORE:SLOT! ;
 
 : SL-RANGE ( -- )   2 WSTORE:TABLE-NEW [: SET-RANGE ;] catch 2 BUILDER-BACK ;
-: SL-NEG   ( -- )   2 WSTORE:TABLE-NEW [: SET-NEG ;]   catch 2 BUILDER-BACK ;
 : SL-DUP   ( -- )   1 WSTORE:TABLE-NEW [: SET-DUP ;]   catch 1 BUILDER-BACK ;
 : SL-OVER  ( -- )   1 WSTORE:TABLE-NEW [: SET-OVER ;]  catch 1 BUILDER-BACK ;
 
 \ ---- the two SEAL refusals, which still strand ---------------------------------------
-\ These cannot be written the way the four above are. SEAL is ( tbuilder -- table ), so
+\ These cannot be written the way the three above are. SEAL is ( tbuilder -- table ), so
 \ a `catch` over it would have to hold a BUILDER on the refusal arm and a TABLE on the
 \ success arm, and no stack effect can say that today. The missing piece is the
 \ linear-scope combinator (habu-checker-linear-scope-6218899c) - a scope that disposes
@@ -404,7 +411,7 @@ private
 \ strands its builder. That is the whole of the residue T-TABLE-ERRORS asserts.
 : SEAL-UNSET ( -- )
    2 WSTORE:TABLE-NEW
-   0 0 >BOFF 4 >BLEN WSTORE:SLOT!
+   0 >IDX 0 >BOFF TEST-U32-BYTES >BLEN WSTORE:SLOT!
    WSTORE:SEAL TBL-BURN ;
 
 : SEAL-EMPTY ( -- )
@@ -417,181 +424,199 @@ private
    WSTORE:LIVE 0 T=                             \ refused before any allocation
    s" a refused SLOT! gives its builder back instead of stranding it" T-LABEL
    [: SL-RANGE ;]   WSTORE:E-SLOT   TTHROWSQ
-   [: SL-NEG ;]     WSTORE:E-SLOT   TTHROWSQ
    [: SL-DUP ;]     WSTORE:E-SET    TTHROWSQ
    [: SL-OVER ;]    WSTORE:E-EXTENT TTHROWSQ
-   WSTORE:LIVE 0 T=                             \ all four disposed; nothing left over
+   WSTORE:LIVE 0 T=                             \ all three disposed; nothing left over
    s" a refused SEAL still strands its builder (the linear-scope gap)" T-LABEL
    [: SEAL-UNSET ;] WSTORE:E-UNSET  TTHROWSQ
    [: SEAL-EMPTY ;] WSTORE:E-UNSET  TTHROWSQ
    WSTORE:LIVE 2 T= ;                           \ exactly the two SEAL strands
 
-\ ---- refusal legs: access -------------------------------------------------------------
-: MK-ASTORE ( -- WSTORE:store )                 \ 8 pattern bytes 10..17 in slot 0
-   8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
-   8 0 ?do  i 10 +  base i BYTE+  c!  loop
-   base 8 MEM:BYTES-ALLOC-LEN WSTORE:BUFFER
+\ ---- value-level read refusals -------------------------------------------------------
+: SMALL-BYTE ( n -- n ) {: off:n :}
+   off SLOT-BYTES     = if CROSS-B0 exit then
+   off SLOT-BYTES 1 + = if CROSS-B1 exit then
+   off $10 + ;
+
+: SMALL-FILL ( ptr u8 -- ) {: base:ptr :}
+   SMALL-ARM-BYTES 0 ?do i SMALL-BYTE base i BYTE+ c! loop ;
+
+: CROSS-GUARD ( ptr u8 -- ) {: base:ptr :}
+   base SLOT-BYTES BYTE+ c@ CROSS-B0 <> if E-WST-FIX throw then
+   base SLOT-BYTES 1 + BYTE+ c@ CROSS-B1 <> if E-WST-FIX throw then ;
+
+: SMALL-TBL ( -- WSTORE:table )
    1 WSTORE:TABLE-NEW
-   0 0 >BOFF 8 >BLEN WSTORE:SLOT!
+   0 >IDX 0 >BOFF SLOT-BYTES >BLEN WSTORE:SLOT!
+   WSTORE:SEAL ;
+
+: MK-ASTORE ( -- WSTORE:store )                 \ four-byte slot in eight populated bytes
+   SMALL-ARM-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
+   base SMALL-FILL
+   base CROSS-GUARD
+   base SMALL-ARM-BYTES MEM:BYTES-ALLOC-LEN WSTORE:BUFFER
+   SMALL-TBL
+   WSTORE-STORE:ALLOCATED ;
+
+257 constant WIDE-SLOTS                         \ crosses the low byte of the slot ordinal
+WIDE-SLOTS 1- constant WIDE-LAST
+$123 constant WIDE-OFF                          \ crosses the low byte of the stored row offset
+$400 constant WIDE-BYTES
+$11 constant BYTE-RAMP
+1 constant WIDE-FIRST
+5 constant BASE-FIRST
+$44332211 constant WIDE-VALUE
+$88776655 constant BASE-VALUE
+
+: PATTERN! ( ptr u8 n n -- ) {: base:ptr off:n first:n :}
+   TEST-U32-BYTES 0 ?do
+      i first + BYTE-RAMP * base off i + >BOFF CAD-NUM:BYTE+ c!
+   loop ;
+
+: WIDE-DATA! ( ptr u8 -- )
+   dup 0 BASE-FIRST PATTERN!
+   WIDE-OFF WIDE-FIRST PATTERN! ;
+
+: WIDE-ROW-OFF ( n -- n )
+   WIDE-LAST = if WIDE-OFF else 0 then ;
+
+: MK-WIDE-STORE ( -- WSTORE:store )
+   WIDE-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
+   base WIDE-DATA!
+   base WIDE-BYTES MEM:BYTES-ALLOC-LEN WSTORE:BUFFER
+   WIDE-SLOTS WSTORE:TABLE-NEW
+   WIDE-SLOTS 0 ?do
+      i >IDX i WIDE-ROW-OFF >BOFF TEST-U32-BYTES >BLEN WSTORE:SLOT!
+   loop
    WSTORE:SEAL
    WSTORE-STORE:ALLOCATED ;
 
-: MK-ASTOREZ ( -- WSTORE:store )                \ slot 1 is a zero-extent row at the end
-   8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop {: base:ptr :}
-   8 0 ?do  i 10 +  base i BYTE+  c!  loop
-   base 8 MEM:BYTES-ALLOC-LEN WSTORE:BUFFER
-   2 WSTORE:TABLE-NEW
-   0 0 >BOFF 8 >BLEN WSTORE:SLOT!
-   1 8 >BOFF 0 >BLEN WSTORE:SLOT!
-   WSTORE:SEAL
-   WSTORE-STORE:ALLOCATED ;
+: T-WIDE-ROWS ( -- )
+   s" native table cells preserve high bytes in counts, indexes, and offsets" T-LABEL
+   MK-WIDE-STORE
+   0 0 BASE-VALUE READ=
+   WIDE-LAST 0 WIDE-VALUE READ=
+   WSTORE:DISPOSE WIDE-BYTES RES-OK=
+   WSTORE:LIVE 0 T= ;
 
-: MK-EXTSTORE ( -- WSTORE:store )               \ the row runs past the 8-byte buffer
-   8 MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES WSTORE:BUFFER
+: MK-EXTSTORE ( -- WSTORE:store )               \ row reaches past the allocated arm
+   SMALL-ARM-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES WSTORE:BUFFER
    1 WSTORE:TABLE-NEW
-   0 4 >BOFF 8 >BLEN WSTORE:SLOT!
+   0 >IDX ARM-CROSS-OFF >BOFF SMALL-ARM-BYTES >BLEN WSTORE:SLOT!
    WSTORE:SEAL
    WSTORE-STORE:ALLOCATED ;
 
-: WS-GOOD ( -- )
-   MK-ASTORE
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT SUM-PAT T=
-   WSTORE:DISPOSE 8 RES-OK=
-   WSTORE:LIVE 2 T= ;                           \ back to the two SEAL strands
-
-: WS-ZERO ( -- )
-   MK-ASTOREZ
-   1 [: SUM-BODY ;] WSTORE:WITH-SLOT 0 T=       \ zero-extent slot runs the body on 0 bytes
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT SUM-PAT T=
-   WSTORE:DISPOSE 8 RES-OK=
-   WSTORE:LIVE 2 T= ;
-
-: WS-RANGE ( -- )
-   MK-ASTORE
-   9 [: SUM-BODY ;] WSTORE:WITH-SLOT drop
-   WSTORE:DISPOSE RES-DROP ;
-
-: WS-EXTENT ( -- )
-   MK-EXTSTORE
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT drop
-   WSTORE:DISPOSE RES-DROP ;
-
-\ Adopted-image mapped stores: refusals on the mapped arm must not pin a kernel
-\ mapping, so these borrow IMG instead of mapping the synthetic file.
-: MK-FATROW ( -- WSTORE:store )                 \ a live borrowed mapping, row far past it
+: MK-MAP-EXTSTORE ( -- WSTORE:store )           \ row reaches past the mapped arm
    IMG LEN-I @ SAFET:LOAD-SPAN
    SAFET:DETACH-MAPPING TAKE-MOVED
-   swap SAFET:RELEASE                           \ ( m )
+   swap SAFET:RELEASE
    1 WSTORE:TABLE-NEW
-   0 8 >BOFF 10000 >BLEN WSTORE:SLOT!
+   0 >IDX LEN-I @ ARM-TAIL-BYTES - >BOFF SMALL-ARM-BYTES >BLEN WSTORE:SLOT!
    WSTORE:SEAL
    WSTORE-STORE:MAPPED ;
-
-: WS-FATROW ( -- )
-   MK-FATROW
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT drop
-   WSTORE:DISPOSE RES-DROP ;
-
-: MK-BORROWMAP ( -- WSTORE:store )              \ a live borrowed mapping, honest row
-   IMG LEN-I @ SAFET:LOAD-SPAN
-   SAFET:DETACH-MAPPING TAKE-MOVED
-   swap SAFET:RELEASE                           \ ( m )
-   1 WSTORE:TABLE-NEW
-   0 8 >BOFF 4 >BLEN WSTORE:SLOT!               \ mapping bytes 8.. open the header JSON
-   WSTORE:SEAL
-   WSTORE-STORE:MAPPED ;
-
-: WS-BORROW ( -- )                              \ the mapped arm over a borrowed image works
-   MK-BORROWMAP
-   0 [: GRAB-BODY ;] WSTORE:WITH-SLOT 4 T=
-   GRAB-BUF c@ $7B T=                           \ '{' - mapping byte 8 is the header's first byte
-   WSTORE:DISPOSE 0 RES-OK=                     \ borrowed: nothing given back, nothing leaked
-   SAFET:LIVE-OWNERS 0 T= ;
-
-\ ---- nested WITH-SLOT: a second store minted INSIDE a body ---------------------------
-\ A body cannot bring the outer store in, but it can mint one; these legs pin
-\ the module header's three ordering facts. The poison leg is the sharp one: the
-\ INNER call aborts with E-EXTENT (its serve never ran, so it left the parked
-\ ran-flag at 0) and the body catches it; the OUTER call must still report ITS
-\ body's result. Writing WS-RAN before the body ran - instead of after it
-\ returned - passes every plain leg and fails exactly here.
-288 constant SUM-HDR4                           \ mapping bytes 8..11 are {, ", a, "
-
-: INNER-ASUM ( -- n )                           \ allocated inner store, full life inside
-   MK-ASTORE
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT {: r:n :}
-   WSTORE:DISPOSE 8 RES-OK=
-   r ;
-
-: NEST-ABODY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   INNER-ASUM
-   0 u 0 ?do a i + c@ + loop + ;
-
-: INNER-MSUM ( -- n )                           \ mapped inner store, full life inside
-   MK-BORROWMAP
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT {: r:n :}
-   WSTORE:DISPOSE 0 RES-OK=
-   r ;
-
-: NEST-MBODY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   INNER-MSUM
-   0 u 0 ?do a i + c@ + loop + ;
-
-: NEST-AA ( -- )                                \ allocated outer, allocated inner
-   MK-ASTORE
-   0 [: NEST-ABODY ;] WSTORE:WITH-SLOT SUM-PAT SUM-PAT + T=
-   WSTORE:DISPOSE 8 RES-OK= ;
-
-: NEST-MA ( -- )                                \ mapped outer, allocated inner
-   MK-BORROWMAP
-   0 [: NEST-ABODY ;] WSTORE:WITH-SLOT SUM-HDR4 SUM-PAT + T=
-   WSTORE:DISPOSE 0 RES-OK= ;
-
-: NEST-MM ( -- )                                \ mapped outer, mapped inner
-   MK-BORROWMAP
-   0 [: NEST-MBODY ;] WSTORE:WITH-SLOT SUM-HDR4 SUM-HDR4 + T=
-   WSTORE:DISPOSE 0 RES-OK= ;
-
-: FAT-INNER ( -- )                              \ inner access that aborts with E-EXTENT
-   MK-EXTSTORE
-   0 [: SUM-BODY ;] WSTORE:WITH-SLOT drop
-   WSTORE:DISPOSE RES-DROP ;
-
-: PBODY ( ptr u8 n -- n ) {: a:ptr u:n :}
-   [: FAT-INNER ;] catch WSTORE:E-EXTENT <> if E-WST-FIX throw then
-   0 u 0 ?do a i + c@ + loop ;
-
-: NEST-POISON ( -- )                            \ strands the inner buffer + table
-   MK-ASTORE
-   0 [: PBODY ;] WSTORE:WITH-SLOT SUM-PAT T=
-   WSTORE:DISPOSE 8 RES-OK= ;
-
-: T-NESTED ( -- )
-   s" WITH-SLOT nests: a body can mint, read, and dispose a second store" T-LABEL
-   NEST-AA
-   NEST-MA
-   NEST-MM
-   SAFET:LIVE-OWNERS 1 T=                       \ nested mapped stores all disposed
-   s" an aborted inner WITH-SLOT does not poison the outer call's frame" T-LABEL
-   NEST-POISON
-   WSTORE:LIVE 9 T= ;                           \ + the poisoned inner's buffer and table
 
 : T-ACCESS ( -- )
+   s" bad slot, overflow, and slot crossing return NONE with the store" T-LABEL
+   SLOT-CROSS-END SLOT-BYTES > TTRUE
+   SLOT-CROSS-END SMALL-ARM-BYTES <= TTRUE
+   MK-ASTORE
+   FAR-SLOT 0 READ-NONE
+   0 WT-MAX-N READ-NONE
+   0 SLOT-CROSS-OFF READ-NONE
+   WSTORE:DISPOSE SMALL-ARM-BYTES RES-OK=
+   s" allocated and mapped arm crossings return NONE" T-LABEL
+   MK-EXTSTORE 0 0 READ-NONE WSTORE:DISPOSE SMALL-ARM-BYTES RES-OK=
    BUILD-IMG
-   s" WITH-SLOT serves and disposes cleanly on the happy paths" T-LABEL
-   WS-GOOD
-   WS-ZERO
+   MK-MAP-EXTSTORE 0 0 READ-NONE WSTORE:DISPOSE 0 RES-OK=
+   WSTORE:LIVE 2 T=
    SAFET:LIVE-OWNERS 0 T=
-   WS-BORROW
-   s" access refusals throw their named codes" T-LABEL
-   [: WS-RANGE ;]   WSTORE:E-SLOT   TTHROWSQ    \ strands buffer + table
-   [: WS-EXTENT ;]  WSTORE:E-EXTENT TTHROWSQ    \ strands buffer + table
-   [: WS-FATROW ;]  WSTORE:E-EXTENT TTHROWSQ    \ strands borrowed mapping + table
-   WSTORE:LIVE 7 T=                             \ 2 + 2 + 2 + 1 documented strands
-   SAFET:LIVE-OWNERS 1 T=                       \ the stranded borrowed mapping
-   SAFET-MAP:LIVE 0 T= ;                        \ and NO kernel mapping leaked anywhere
+   SAFET-MAP:LIVE 0 T= ;
 
-\ ---- static half: the checker enforces the ownership and escape rules ---------------
+\ ---- released backing pages: every NONE path must avoid the arm bytes ---------
+PTR-VARIABLE REV-BASE
+
+: REV-MTBL ( -- WSTORE:table )
+   2 WSTORE:TABLE-NEW
+   0 >IDX 0 >BOFF SLOT-BYTES >BLEN WSTORE:SLOT!
+   1 >IDX LEN-I @ ARM-TAIL-BYTES - >BOFF SMALL-ARM-BYTES >BLEN WSTORE:SLOT!
+   WSTORE:SEAL ;
+
+: MAP-IMAGE ( -- SAFET:mapping )
+   BUILD-IMG
+   LEN-I @ MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
+   dup REV-BASE !
+   IMG over LEN-I @ BYTE-COPY
+   LEN-I @ SAFET:LOAD-SPAN
+   SAFET:DETACH-MAPPING TAKE-MOVED
+   swap SAFET:RELEASE ;
+
+: REVOKE-MAP ( SAFET:mapping -- SAFET:mapping )
+   REV-BASE @ LEN-I @ MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+: REVOKED-MSTORE ( -- WSTORE:store )
+   MAP-IMAGE
+   REV-MTBL
+   swap REVOKE-MAP swap
+   WSTORE-STORE:MAPPED ;
+
+: REV-ATBL ( -- WSTORE:table )
+   2 WSTORE:TABLE-NEW
+   0 >IDX 0 >BOFF SLOT-BYTES >BLEN WSTORE:SLOT!
+   1 >IDX ARM-CROSS-OFF >BOFF SMALL-ARM-BYTES >BLEN WSTORE:SLOT!
+   WSTORE:SEAL ;
+
+: REVOKED-BUF ( -- WSTORE:buffer )
+   SMALL-ARM-BYTES MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop
+   dup REV-BASE !
+   dup SMALL-FILL
+   dup CROSS-GUARD
+   SMALL-ARM-BYTES MEM:BYTES-ALLOC-LEN WSTORE:BUFFER
+   REV-BASE @ SMALL-ARM-BYTES MEM:BYTES-ALLOC-LEN MEM:RELEASE-BYTES ;
+
+: REVOKED-ASTORE ( -- WSTORE:store )
+   REV-ATBL
+   REVOKED-BUF
+   swap WSTORE-STORE:ALLOCATED ;
+
+: REFUSE ( WSTORE:store n n -- WSTORE:store ) {: slot:n off:n :}
+   slot >IDX off >BOFF WSTORE:U32-LE@?
+   MATCH option
+      none OF ENDOF
+      some OF drop E-WST-FIX throw ENDOF
+   ;MATCH ;
+
+public
+
+: PROBE-M-BAD  ( -- ) REVOKED-MSTORE FAR-SLOT 0 REFUSE WSTORE:DISPOSE RES-DROP ;
+: PROBE-M-OVER ( -- ) REVOKED-MSTORE 0 WT-MAX-N REFUSE WSTORE:DISPOSE RES-DROP ;
+: PROBE-M-SLOT ( -- ) REVOKED-MSTORE 0 SLOT-CROSS-OFF REFUSE WSTORE:DISPOSE RES-DROP ;
+: PROBE-M-ARM  ( -- ) REVOKED-MSTORE 1 0 REFUSE WSTORE:DISPOSE RES-DROP ;
+: PROBE-A-BAD  ( -- ) REVOKED-ASTORE FAR-SLOT 0 REFUSE WSTORE:DISPOSE RES-DROP ;
+: PROBE-A-OVER ( -- ) REVOKED-ASTORE 0 WT-MAX-N REFUSE WSTORE:DISPOSE RES-DROP ;
+: PROBE-A-SLOT ( -- ) REVOKED-ASTORE 0 SLOT-CROSS-OFF REFUSE WSTORE:DISPOSE RES-DROP ;
+: PROBE-A-ARM  ( -- ) REVOKED-ASTORE 1 0 REFUSE WSTORE:DISPOSE RES-DROP ;
+
+private
+
+: SUBJECT-EXITS ( ptr u8 n -- )
+   SUBJ-OUT $400 >LEN SUBJ-ERR $400 >LEN 2000 >MS SUBJECT:RUN
+   0 T-OUTCOME-EXITED=
+   LEN>N drop
+   LEN>N drop ;
+
+: T-REVOKED ( -- )
+   s" every mapped refusal avoids its released backing page" T-LABEL
+   s" WSTORE-TEST:PROBE-M-BAD" SUBJECT-EXITS
+   s" WSTORE-TEST:PROBE-M-OVER" SUBJECT-EXITS
+   s" WSTORE-TEST:PROBE-M-SLOT" SUBJECT-EXITS
+   s" WSTORE-TEST:PROBE-M-ARM" SUBJECT-EXITS
+   s" every allocated refusal avoids its released backing page" T-LABEL
+   s" WSTORE-TEST:PROBE-A-BAD" SUBJECT-EXITS
+   s" WSTORE-TEST:PROBE-A-OVER" SUBJECT-EXITS
+   s" WSTORE-TEST:PROBE-A-SLOT" SUBJECT-EXITS
+   s" WSTORE-TEST:PROBE-A-ARM" SUBJECT-EXITS ;
+
+\ ---- static half: ownership and nominal read roles ----------------------------------
 : T-LINEAR ( -- )
    s" a store cannot be duplicated, dropped, or stored" T-LABEL
    s" WST-BAD-STORE-DUP ( WSTORE:store -- WSTORE:store WSTORE:store ) dup" REJECTED
@@ -608,19 +633,16 @@ private
    s" WST-BAD-SEAL-KEEPS ( WSTORE:tbuilder -- WSTORE:tbuilder WSTORE:table ) WSTORE:SEAL" REJECTED
    s" WST-BAD-SEAL-TWICE ( WSTORE:tbuilder -- WSTORE:table WSTORE:table ) WSTORE:SEAL WSTORE:SEAL" REJECTED
    s" a sealed table is immutable and a builder is not a table" T-LABEL
-   s" WST-BAD-MUTATE-SEALED ( WSTORE:table n CAD-NUM:byte-off CAD-NUM:byte-len -- WSTORE:table ) WSTORE:SLOT!" REJECTED
-   s" WST-BAD-BUILDER-ACCESS ( WSTORE:tbuilder n -- WSTORE:tbuilder n ) [: WSTORE-TEST:SUM-BODY ;] WSTORE:WITH-SLOT" REJECTED
+   s" WST-BAD-MUTATE-SEALED ( WSTORE:table CAD-NUM:index CAD-NUM:byte-off CAD-NUM:byte-len -- WSTORE:table ) WSTORE:SLOT!" REJECTED
    s" the two arms cannot be confused at construction" T-LABEL
    s" WST-BAD-CTOR-MA ( SAFET:mapping WSTORE:table -- WSTORE:store ) WSTORE-STORE:ALLOCATED" REJECTED
    s" WST-BAD-CTOR-AM ( WSTORE:buffer WSTORE:table -- WSTORE:store ) WSTORE-STORE:MAPPED" REJECTED
    s" DISPOSE consumes the store exactly once and its result is not droppable" T-LABEL
    s" WST-BAD-DOUBLE-DISPOSE ( WSTORE:store -- result<n,n> result<n,n> ) WSTORE:DISPOSE WSTORE:DISPOSE" REJECTED
    s" WST-BAD-DISPOSE-KEEPS ( WSTORE:store -- WSTORE:store result<n,n> ) WSTORE:DISPOSE" REJECTED
-   s" WST-BAD-USE-AFTER ( WSTORE:store -- result<n,n> WSTORE:store n ) WSTORE:DISPOSE 0 [: WSTORE-TEST:SUM-BODY ;] WSTORE:WITH-SLOT" REJECTED
+   s" WST-BAD-USE-AFTER ( WSTORE:store CAD-NUM:index CAD-NUM:byte-off -- result<n,n> WSTORE:store option<n> ) WSTORE:DISPOSE WSTORE:U32-LE@?" REJECTED
    s" WST-BAD-RESULT-DROPPED ( WSTORE:store -- ) WSTORE:DISPOSE" REJECTED
    s" WST-BAD-RESULT-RAW ( WSTORE:store -- n ) WSTORE:DISPOSE 1 +" REJECTED
-   s" no reader answers without its store" T-LABEL
-   s" WST-BAD-AMBIENT ( n -- n ) [: WSTORE-TEST:SUM-BODY ;] WSTORE:WITH-SLOT" REJECTED
    s" TABLE-DISPOSE consumes its table exactly once and yields a real union" T-LABEL
    s" WST-BAD-TD-TWICE ( WSTORE:table -- result<n,n> result<n,n> ) WSTORE:TABLE-DISPOSE WSTORE:TABLE-DISPOSE" REJECTED
    s" WST-BAD-TD-KEEPS ( WSTORE:table -- WSTORE:table result<n,n> ) WSTORE:TABLE-DISPOSE" REJECTED
@@ -666,12 +688,47 @@ private
    s" the record allocation stays behind the seal" T-LABEL
    s" WST-BAD-RB-STEP ( -- ) WSTORE:RB-STEP" UNRESOLVED ;
 
-: T-ESCAPE ( -- )
-   s" a quotation declared to return the span pointer rejects statically" T-LABEL
-   s" WST-BAD-ESC1 ( WSTORE:store n -- WSTORE:store n ) [: WSTORE-TEST:ESC-BODY ;] WSTORE:WITH-SLOT" REJECTED
-   s" WST-BAD-ESC2 ( WSTORE:store n -- WSTORE:store ptr u8 ) [: drop ;] WSTORE:WITH-SLOT" REJECTED
-   s" the conforming quotation certifies (control)" T-LABEL
-   s" WST-OK-ACCESS ( WSTORE:store n -- WSTORE:store n ) [: WSTORE-TEST:SUM-BODY ;] WSTORE:WITH-SLOT" ACCEPTED ;
+: T-READ-TYPES ( -- )
+   s" reads require a sealed store and both nominal roles" T-LABEL
+   s" WST-BAD-BUILDER-READ ( WSTORE:tbuilder CAD-NUM:index CAD-NUM:byte-off -- WSTORE:tbuilder option<n> ) WSTORE:U32-LE@?" REJECTED
+   s" WST-BAD-READ-AMBIENT ( CAD-NUM:index CAD-NUM:byte-off -- option<n> ) WSTORE:U32-LE@?" REJECTED
+   s" WST-BAD-READ-RAW-IDX ( WSTORE:store n CAD-NUM:byte-off -- WSTORE:store option<n> ) WSTORE:U32-LE@?" REJECTED
+   s" WST-BAD-READ-RAW-OFF ( WSTORE:store CAD-NUM:index n -- WSTORE:store option<n> ) WSTORE:U32-LE@?" REJECTED
+   s" WST-BAD-READ-SWAP ( WSTORE:store CAD-NUM:byte-off CAD-NUM:index -- WSTORE:store option<n> ) WSTORE:U32-LE@?" REJECTED ;
+
+variable PUB-WID
+variable PRI-WID
+
+: BIND-WIDS ( -- )
+   s" WSTORE" XREF-NAMESPACE-WL XREF-FIND-WL {: ns:ptr :}
+   s" package WSTORE has exported and private word lists" T-LABEL
+   ns XREF-FOUND? dup TTRUE
+   if ns XREF-START PUB-WID ! ns XREF-LEN PRI-WID ! then ;
+
+: IN-GLOBAL? ( ptr u8 n -- bool )   0 XREF-FIND-WL XREF-FOUND? ;
+: IN-EXPORTED? ( ptr u8 n -- bool ) PUB-WID @ XREF-FIND-WL XREF-FOUND? ;
+: IN-PRIVATE? ( ptr u8 n -- bool )  PRI-WID @ XREF-FIND-WL XREF-FOUND? ;
+
+: GONE ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u IN-GLOBAL? TFALSE
+   a u IN-EXPORTED? TFALSE
+   a u IN-PRIVATE? TFALSE ;
+
+: T-REMOVED ( -- )
+   BIND-WIDS
+   s" dictionary probes have live witnesses in all three word lists" T-LABEL
+   s" DEFLINEAR" IN-GLOBAL? TTRUE
+   s" DISPOSE" IN-EXPORTED? TTRUE
+   s" TBL-FREE" IN-PRIVATE? TTRUE
+   s" retired access and callback words are absent from every word list" T-LABEL
+   s" WITH-SLOT" GONE
+   s" PARK" GONE
+   s" RUN-PARKED" GONE
+   s" WS-BODY" GONE
+   s" WS-OFF" GONE
+   s" WS-LEN" GONE
+   s" WS-RES" GONE
+   s" WS-RAN" GONE ;
 
 : T-SURFACE ( -- )
    s" the public surface resolves (controls)" T-LABEL
@@ -679,7 +736,9 @@ private
    s" WST-OK-POLICY-A ( -- WSTORE:residency ) WSTORE-RESIDENCY:ALLOCATED" ACCEPTED
    s" WST-OK-CTOR-M ( SAFET:mapping WSTORE:table -- WSTORE:store ) WSTORE-STORE:MAPPED" ACCEPTED
    s" WST-OK-CTOR-A ( WSTORE:buffer WSTORE:table -- WSTORE:store ) WSTORE-STORE:ALLOCATED" ACCEPTED
-   s" WST-OK-SLOT ( WSTORE:tbuilder n CAD-NUM:byte-off CAD-NUM:byte-len -- WSTORE:tbuilder ) WSTORE:SLOT!" ACCEPTED
+   s" WST-OK-SLOT ( WSTORE:tbuilder CAD-NUM:index CAD-NUM:byte-off CAD-NUM:byte-len -- WSTORE:tbuilder ) WSTORE:SLOT!" ACCEPTED
+   s" WST-BAD-SLOT-RAW ( WSTORE:tbuilder n CAD-NUM:byte-off CAD-NUM:byte-len -- WSTORE:tbuilder ) WSTORE:SLOT!" REJECTED
+   s" WST-OK-U32 ( WSTORE:store CAD-NUM:index CAD-NUM:byte-off -- WSTORE:store option<n> ) WSTORE:U32-LE@?" ACCEPTED
    s" WST-OK-SEAL ( WSTORE:tbuilder -- WSTORE:table ) WSTORE:SEAL" ACCEPTED
    s" WST-OK-DISPOSE ( WSTORE:store -- result<n,n> ) WSTORE:DISPOSE" ACCEPTED
    s" WST-OK-TABLE-DISPOSE ( WSTORE:table -- result<n,n> ) WSTORE:TABLE-DISPOSE" ACCEPTED
@@ -697,8 +756,6 @@ private
    s" WST-BAD-TAKE-BUF ( WSTORE:buffer -- ptr n ) WSTORE:TAKE-BUFFER" UNRESOLVED
    s" WST-BAD-BLK-BYTES ( ptr n -- ptr u8 ) WSTORE:BLK>BYTES" UNRESOLVED
    s" WST-BAD-BLK-FREE ( ptr n -- n ) WSTORE:BLK-FREE" UNRESOLVED
-   s" WST-BAD-PARK ( -- ) WSTORE:PARK" UNRESOLVED
-   s" WST-BAD-RUN-PARKED ( ptr u8 n -- ) WSTORE:RUN-PARKED" UNRESOLVED
    s" WST-BAD-BOFF ( CAD-NUM:byte-off -- n ) WSTORE:BOFF>N" UNRESOLVED
    s" WST-BAD-BLEN ( CAD-NUM:byte-len -- n ) WSTORE:BLEN>N" UNRESOLVED
    s" WST-BAD-ABLEN ( CAD-NUM:alloc-byte-len -- n ) WSTORE:ABLEN>N" UNRESOLVED
@@ -723,19 +780,21 @@ public
 : RUN ( -- )
    T-RESET
    T-LINEAR
+   T-READ-TYPES
+   T-REMOVED
    T-BUFFER-NEW
-   T-ESCAPE
    T-SURFACE
    T-SEALED
    T-EQUALITY
+   T-WIDE-ROWS
    T-TABLE-DISPOSE
    T-OWNER-EXITS
    T-TABLE-ERRORS
    T-ACCESS
-   T-NESTED
+   T-REVOKED
    s" final leak accounting: only the documented throw strands remain" T-LABEL
-   WSTORE:LIVE 9 T=                             \ 2 SEAL + 5 access-throw + 2 poisoned inner
-   SAFET:LIVE-OWNERS 1 T=
+   WSTORE:LIVE 2 T=                             \ exactly the two SEAL refusals
+   SAFET:LIVE-OWNERS 0 T=
    SAFET-MAP:LIVE 0 T=
    T-REPORT ;
 
