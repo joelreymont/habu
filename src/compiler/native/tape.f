@@ -42,7 +42,7 @@
 \
 \ BUILD LIVE, READ FROZEN. Design rule 5.1 makes a pass input immutable. The
 \ tape is written once by the lexer and then published, so the only live
-\ operations are NEW, PUSH, PUSH-FROM and PUSHED; every reader, the structural
+\ operations are NEW, the four appends and PUSHED; every reader, the structural
 \ CHECK, and the digest take the frozen view SEAL answers. That is why there is
 \ no live/frozen pair of every reader: a tape that could still grow has no
 \ digest worth sharing.
@@ -73,6 +73,7 @@ require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
 require src/compiler/ir/source.f
 require src/compiler/ir/symbol.f
+require src/compiler/ir/build.f
 
 package NTAPE
 public
@@ -355,22 +356,28 @@ private
    og 0 < if E-NTAPE-ORIGIN throw then
    og 1- a CNT >= if E-NTAPE-ORIGIN throw then ;
 
-\ Revalidate a token that may have come from the open generated constructor,
-\ then append it. Every field is proved against the module's own tables before
-\ the first cell is written: the span against the source registry that owns
-\ byte ranges, the spelling against the symbol store that owns names, the
-\ literal against its kind's rule, and both identities against the module this
-\ tape is bound to.
-: ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n IR-ID:ir-source-id n n n -- n )
-   {: c:IR-CTX:ctx a:IR-ARENA:arena sr:IR-ARENA:arena sy:IR-ARENA:arena
-      k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
-      sid:IR-ID:ir-source-id st:n ln:n og:n :}
+\ Revalidate a token that may have come from the open generated constructor.
+\ These are the fields the tape alone can judge: both identities against the
+\ module this tape is bound to, the origin against the tokens already appended,
+\ and the literal against its kind's rule. It runs before the module's other
+\ tables are consulted, so a tape handed an arena that is not a tape still dies
+\ on its own header tag rather than inside another package's reader.
+: FIELD-CK ( IR-ARENA:arena NTAPE:kind IR-ID:ir-symbol-id n IR-ID:ir-source-id n -- )
+   {: a:IR-ARENA:arena k:NTAPE:kind id:IR-ID:ir-symbol-id v:n
+      sid:IR-ID:ir-source-id og:n :}
    a sid SRC-OWNER-CK
    a id SYM-OWNER-CK
    a og ORG-CK
-   k v LIT-CK
-   sr sid st ln IR--SOURCE-SPAN:MAKE IR-SOURCE:SPAN-CK
-   sy id IR-SYM:LEN@ drop
+   k v LIT-CK ;
+
+\ Write the row. The only word here that appends a cell, and it is reached only
+\ through the two fronts below, each of which has proved the whole token first:
+\ the fields above, the span against the source registry that owns byte ranges,
+\ and the spelling against the symbol store that owns names.
+: WRITE ( IR-CTX:ctx IR-ARENA:arena NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n IR-ID:ir-source-id n n n -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena
+      k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
+      sid:IR-ID:ir-source-id st:n ln:n og:n :}
    a ROOM-CK
    a CNT {: i:n :}
    c a k KIND-CODE IR-ARENA:PUSH drop
@@ -383,6 +390,35 @@ private
    c a og IR-ARENA:PUSH drop
    i ;
 
+\ ---- the two ways to reach the module a token belongs to ---------------------
+\ A token names a source and a spelling, and both have to be checked against the
+\ tables that own them. A tape of a module whose tables the caller holds hands
+\ those two tables over directly. A tape of a module still being built through
+\ src/compiler/ir/build.f cannot: that package holds its tables privately so it
+\ stays the module's only mutation route, and it answers the same two questions
+\ through its live readers instead. The two fronts differ in nothing else - each
+\ checks the token's own fields, then the span, then the spelling, then appends
+\ through the one WRITE above - which is why a tape and the IR module it was
+\ lexed into can now be two halves of one module rather than two modules that
+\ merely agree.
+: TABLE-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n IR-ID:ir-source-id n n n -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena sr:IR-ARENA:arena sy:IR-ARENA:arena
+      k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
+      sid:IR-ID:ir-source-id st:n ln:n og:n :}
+   a k id v sid og FIELD-CK
+   sr sid st ln IR--SOURCE-SPAN:MAKE IR-SOURCE:SPAN-CK
+   sy id IR-SYM:LEN@ drop
+   c a k m id v sid st ln og WRITE ;
+
+: LIVE-ADD ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena NTAPE:kind NTAPE:mode IR-ID:ir-symbol-id n IR-ID:ir-source-id n n n -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ARENA:arena
+      k:NTAPE:kind m:NTAPE:mode id:IR-ID:ir-symbol-id v:n
+      sid:IR-ID:ir-source-id st:n ln:n og:n :}
+   a k id v sid og FIELD-CK
+   c b  sid st ln IR--SOURCE-SPAN:MAKE  IR-BUILD:SPAN-CK
+   c b id IR-BUILD:SYMBOL-CK
+   c a k m id v sid st ln og WRITE ;
+
 public
 
 \ Append a directly lexed token and answer its tape-local ordinal. The three
@@ -390,14 +426,26 @@ public
 \ module's symbol rows; each rechecks its own header tag, so a pair swapped at
 \ the call site dies on the tag instead of reading a foreign row.
 : PUSH ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena NTAPE:token -- n )
-   NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE ORG-NONE ADD ;
+   NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE ORG-NONE TABLE-ADD ;
 
 \ Append a token produced by expanding an already appended token. The parent
 \ ordinal rides on top so the token beneath it can be taken apart in place.
 : PUSH-FROM ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena NTAPE:token n -- n )
    {: parent:n :}
    parent 0 < if E-NTAPE-ORIGIN throw then
-   NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE parent 1+ ADD ;
+   NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE parent 1+ TABLE-ADD ;
+
+\ The same two appends for a tape of a module that is still being built: the
+\ builder answers for the module's source registry and symbol interner, and
+\ refuses a foreign context, a frozen builder and an aborted one by their own
+\ names before this tape is touched.
+: PUSH-INTO ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena NTAPE:token -- n )
+   NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE ORG-NONE LIVE-ADD ;
+
+: PUSH-INTO-FROM ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena NTAPE:token n -- n )
+   {: parent:n :}
+   parent 0 < if E-NTAPE-ORIGIN throw then
+   NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE parent 1+ LIVE-ADD ;
 
 \ How many tokens have been appended so far. The only live reader: everything
 \ else reads the sealed view.

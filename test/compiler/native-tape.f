@@ -776,6 +776,134 @@ private
    s" a digest from another tape is refused" T-LABEL
    [: VFX ;] E-NTAPE-DIGEST TTHROWSQ ;
 
+\ ---- a tape of a module that is still being built -----------------------------
+\ src/compiler/ir/build.f holds a module's source registry and symbol interner
+\ privately, so a tape of such a module cannot be handed them. It asks the
+\ builder the same two questions instead. This is the join the elaborator needs:
+\ one module whose source tape and whose IR are built together rather than two
+\ modules that merely agree, and the proof is that the tape passes its own
+\ structural CHECK against that module's frozen registries afterwards - the same
+\ CHECK a tape built the other way passes.
+: BPLAN ( -- )
+   IR-BUILD:PLAN-BEGIN
+   16 256 IR-BUILD:PLAN-SYMBOLS
+   8 64 IR-BUILD:PLAN-TYPES
+   8 64 IR-BUILD:PLAN-ATTRS
+   4 IR-BUILD:PLAN-SOURCES
+   8 64 IR-BUILD:PLAN-SCHEMAS
+   8 8 64 IR-BUILD:PLAN-OPS
+   4 4 64 IR-BUILD:PLAN-FUNS ;
+
+: BMOD ( IR-CTX:ctx n -- IR-BUILD:builder IR-ARENA:arena )
+   {: c:IR-CTX:ctx cap:n :}
+   BPLAN
+   c s" hir" 1 0 IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   b  c b IR-BUILD:MODULE-KEY cap NTAPE:NEW ;
+
+: BJ-BODY ( IR-CTX:ctx -- n n bool bool )
+   {: c:IR-CTX:ctx :}
+   c 8 BMOD {: b:IR-BUILD:builder tp:IR-ARENA:arena :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b TEXT IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b s" SQUARE" IR-BUILD:INTERN-SYMBOL {: n0:IR-ID:ir-symbol-id :}
+   c b s" 2" IR-BUILD:INTERN-SYMBOL {: n1:IR-ID:ir-symbol-id :}
+   c b tp
+      b s0 2 6 IR-BUILD:ADD-SPAN n0 NTAPE-MODE:INTERPRETING NTAPE:NAME-TOKEN
+      NTAPE:PUSH-INTO {: t0:n :}
+   c b tp
+      b s0 9 1 IR-BUILD:ADD-SPAN n1 NTAPE-MODE:COMPILING 2 NTAPE:INT-TOKEN
+      NTAPE:PUSH-INTO drop
+   c b tp
+      b s0 9 1 IR-BUILD:ADD-SPAN n1 NTAPE-MODE:COMPILING 2 NTAPE:INT-TOKEN
+      t0 NTAPE:PUSH-INTO-FROM drop
+   tp NTAPE:SEAL {: v:IR-ARENA:view :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   v key m IR-BUILD:FSOURCES m IR-BUILD:FSYM-ROWS NTAPE:CHECK
+   v NTAPE:TOKENS
+   v 2 NTAPE:ORIGIN@
+   v key 1 NTAPE:SPELL@ IR-ID:SYMBOL-LOCAL n1 IR-ID:SYMBOL-LOCAL =
+   v 1 NTAPE:KIND@ NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ ;
+
+: BJ-CASE ( -- )
+   s" a tape built through a live builder checks against that module" T-LABEL
+   BND [: BJ-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE 0 T= 3 T= ;
+
+\ The span is assembled through the open generated constructor, which is the
+\ only way to name bytes outside a registered source.
+: BJ-SPAN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 4 BMOD {: b:IR-BUILD:builder tp:IR-ARENA:arena :}
+   c b TEXT IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b s" X" IR-BUILD:INTERN-SYMBOL {: n0:IR-ID:ir-symbol-id :}
+   c b tp
+      s0 5 99 IR--SOURCE-SPAN:MAKE n0 NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
+      NTAPE:PUSH-INTO drop ;
+
+: BJ-SPAN ( -- )
+   BND [: BJ-SPAN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A spelling of this module whose ordinal its interner never minted. It carries
+\ the right owning module, so only the interner itself can refuse it.
+: BJ-GHOST-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 4 BMOD {: b:IR-BUILD:builder tp:IR-ARENA:arena :}
+   c b TEXT IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b tp
+      b s0 0 1 IR-BUILD:ADD-SPAN
+      b IR-BUILD:MODULE-KEY b IR-BUILD:SYMBOLS IR-ID:PACK-SYMBOL
+      NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
+      NTAPE:PUSH-INTO drop ;
+
+: BJ-GHOST ( -- )
+   BND [: BJ-GHOST-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ Once the module is published its tape cannot grow behind it.
+: BJ-FROZEN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 4 BMOD {: b:IR-BUILD:builder tp:IR-ARENA:arena :}
+   c b TEXT IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b s" X" IR-BUILD:INTERN-SYMBOL {: n0:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE drop
+   c b tp
+      s0 0 1 IR--SOURCE-SPAN:MAKE n0 NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
+      NTAPE:PUSH-INTO drop ;
+
+: BJ-FROZEN ( -- )
+   BND [: BJ-FROZEN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ Appending to the tape of a live module is a use of that module, so it proves
+\ the caller owns the compilation exactly as an append to the module does.
+: BJ-XC-INNER ( IR-BUILD:builder IR-ARENA:arena IR-ID:ir-source-id IR-ID:ir-symbol-id IR-CTX:ctx -- )
+   {: b:IR-BUILD:builder tp:IR-ARENA:arena s0:IR-ID:ir-source-id
+      n0:IR-ID:ir-symbol-id c2:IR-CTX:ctx :}
+   c2 b tp
+      s0 0 1 IR--SOURCE-SPAN:MAKE n0 NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
+      NTAPE:PUSH-INTO drop ;
+
+: BJ-XC-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 4 BMOD {: b:IR-BUILD:builder tp:IR-ARENA:arena :}
+   c b TEXT IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b s" X" IR-BUILD:INTERN-SYMBOL {: n0:IR-ID:ir-symbol-id :}
+   b tp s0 n0
+   BND [: BJ-XC-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: BJ-XC ( -- )
+   BND [: BJ-XC-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: BJ-REFUSE-CASES-A ( -- )
+   s" a span outside its source cannot enter a live module's tape" T-LABEL
+   [: BJ-SPAN ;] E-IR-SRC-SPAN TTHROWSQ
+   s" a spelling the module's interner never minted is refused" T-LABEL
+   [: BJ-GHOST ;] E-IR-SYM-BOUND TTHROWSQ ;
+
+: BJ-REFUSE-CASES-B ( -- )
+   s" a published module's tape cannot be appended to" T-LABEL
+   [: BJ-FROZEN ;] E-IR-BUILD-FROZEN TTHROWSQ
+   s" appending with a foreign live context rejects" T-LABEL
+   [: BJ-XC ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
 \ ---- teardown ----------------------------------------------------------------
 : TD-BODY ( IR-CTX:ctx -- IR-ARENA:arena )
    {: c:IR-CTX:ctx :}
@@ -808,6 +936,12 @@ private
    s" NTLIT-BARE ( IR-ARENA:view -- n ) 0 NTAPE:LIT@"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" NTSEAL-LIVE ( IR-ARENA:view -- IR-ARENA:view ) NTAPE:SEAL"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" NTINTO-CTXLESS ( IR-BUILD:builder IR-ARENA:arena NTAPE:token -- n ) NTAPE:PUSH-INTO"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" NTINTO-FROZEN ( IR-CTX:ctx IR-BUILD:module IR-ARENA:arena NTAPE:token -- n ) NTAPE:PUSH-INTO"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" NTINTO-ARENAS ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena NTAPE:token -- n ) NTAPE:PUSH-INTO"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- run ---------------------------------------------------------------------
@@ -855,6 +989,18 @@ private
    VF-CASE
    VFX-CASE ;
 
+: GROUP-BUILT ( IR-CTX:ctx -- )
+   drop
+   BJ-CASE ;
+
+: GROUP-BUILT-REFUSE-A ( IR-CTX:ctx -- )
+   drop
+   BJ-REFUSE-CASES-A ;
+
+: GROUP-BUILT-REFUSE-B ( IR-CTX:ctx -- )
+   drop
+   BJ-REFUSE-CASES-B ;
+
 public
 
 : RUN ( -- )
@@ -866,6 +1012,9 @@ public
    BND [: GROUP-DIGEST ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DIGEST-FIELDS ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-VERIFY ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-BUILT ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-BUILT-REFUSE-A ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-BUILT-REFUSE-B ;] IR-CTX:WITH-CONTEXT
    TD-CASE
    CHECKER-CASES
    T-REPORT ;

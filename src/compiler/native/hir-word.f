@@ -43,19 +43,16 @@
 \ have is not a runtime check that can be forgotten - it is unwritable, and a
 \ stored code outside the five is refused by the decoder at first touch.
 \
-\ WHAT A DECLARATION CHECKS, AND WHAT IT CANNOT. Every symbol a row holds is
-\ checked to belong to this table's module, no word is declared twice, and both
-\ ceilings are committed at creation. What is not checked is that a presented
-\ symbol was really interned: IR-BUILD owns its module's symbol rows privately
-\ and hands out no live reader for them, so this table cannot ask the interner
-\ the way src/compiler/native/immediate.f can. It does not need to. A symbol id
-\ can only be forged through IR-ID:PACK-SYMBOL with this module's key, and a
-\ forged ordinal either matches no interned symbol - in which case no source
-\ token can ever spell it and the row is inert - or matches one, in which case
-\ the row is exactly the row an honest declaration of that symbol would have
-\ written. A forgery can therefore only do what a caller could already do
-\ honestly. Dot habu-expose-live-ir-f0eaed6b tracks the live IR-BUILD
-\ readers that would make the check direct anyway.
+\ WHAT A DECLARATION CHECKS. Every symbol a row holds is checked to belong to
+\ this table's module and to have really been interned by that module, no word
+\ is declared twice, and both ceilings are committed at creation. Belonging and
+\ existing are two different facts: an identity is arithmetic away from any
+\ other identity of the same module, so a row could otherwise name an ordinal
+\ the interner never minted and sit in the table for ever, matching no source
+\ token. There are two ways to reach a module's interner and each declarer takes
+\ one of them - the module's symbol rows, the way src/compiler/native/immediate.f
+\ does, or the builder that holds them privately while the module is still being
+\ built - and both end in the same IR-SYM refusal.
 \
 \ SPELLINGS ARE BYTES, AND THE LEXER OWNS THEIR CASE. REGISTER-WORDS interns the
 \ seven words of the subset exactly as `docs/forth.md` spells them: built-ins
@@ -74,6 +71,23 @@ require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 
 package HIR-WORD
+public
+
+\ A symbol this module's interner has answered for. Owning the right module is
+\ not the same as existing: an identity is arithmetic away from any other
+\ identity of the same module, so a row could otherwise name an ordinal the
+\ interner never minted, and no source token could ever spell it. ROW-ADD takes
+\ one of these, and the only two words that make one are the two ways to ask a
+\ module's interner, so no declarer in this file can write a row for a symbol
+\ nobody asked about. It carries the symbol rather than retyping it, because
+\ minting an IR-ID identity is IR-ID's alone and this type claims no such power;
+\ and it is public only because a generated constructor has to be. Making one
+\ outside this package proves nothing and buys nothing: every word that consumes
+\ one is private.
+STRUCTURE interned 0
+   FIELD sym IR-ID:ir-symbol-id
+;STRUCTURE
+
 private
 
 CAST: KEY-SERIAL ( IR-ID:ir-module-key -- n ) ;
@@ -200,6 +214,23 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
    r RHDR-CK
    r HC-SERIAL LCELL@ id IR-ID:SYMBOL-OWNER MID-SERIAL SERIAL-CK ;
 
+\ ---- symbols the module's interner has answered for --------------------------
+\ The module's symbol rows, held directly. IR-SYM refuses an identity of another
+\ module and an ordinal past the interned count, and the refusal is the
+\ interner's own, exactly as src/compiler/native/immediate.f asks it.
+: SYM-CK ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR-WORD:interned )
+   {: sy:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   sy id IR-SYM:LEN@ drop
+   id HIR--WORD-INTERNED:MAKE ;
+
+\ The same question about a module that is still being built, whose interner
+\ src/compiler/ir/build.f holds privately. It answers by asking IR-SYM, so a
+\ symbol refused here is refused for the same reason and under the same name.
+: BSYM-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- HIR-WORD:interned )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+   c b id IR-BUILD:SYMBOL-CK
+   id HIR--WORD-INTERNED:MAKE ;
+
 \ ---- row addressing ----------------------------------------------------------
 : ROW-CELL ( n n -- n )
    swap ROW-CELLS * HDR-CELLS + + ;
@@ -259,10 +290,12 @@ public
 private
 
 \ Append one validated row. Every declarer ends here, so the ownership, the
-\ duplicate rule and the ceiling are proved in one place.
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-symbol-id n n n n -- )
-   {: c:IR-CTX:ctx r:IR-ARENA:arena id:IR-ID:ir-symbol-id
-      mean:n a:n in:n n:n :}
+\ duplicate rule and the ceiling are proved in one place, and the symbol it
+\ takes has already been answered for by the module's interner.
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n n -- )
+   {: c:IR-CTX:ctx r:IR-ARENA:arena w:HIR-WORD:interned mean:n a:n
+      in:n n:n :}
+   w HIR--WORD-INTERNED:UNMAKE {: id:IR-ID:ir-symbol-id :}
    r id SYM-OWNER-CK
    id IR-ID:SYMBOL-LOCAL {: so:n :}
    r so FIND 0 < 0= if E-HIR-DUP throw then
@@ -273,23 +306,43 @@ private
    c r in IR-ARENA:PUSH drop
    c r n IR-ARENA:PUSH drop ;
 
-public
-
-\ Declare that a source word elaborates to one operation of this dialect.
-: DECLARE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
+\ The row an operation word writes, once its symbol has been answered for. The
+\ two declarers below differ only in which interner answered.
+: OP-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:opcode -- )
    {: o:HIR:opcode :}
    HIR-MEANING:OP MEAN-CODE
    o OPCODE-CODE
    UNUSED UNUSED
    ROW-ADD ;
 
+\ The same declaration for a module still being built: the builder answers for
+\ its own interner. This is how REGISTER-WORDS declares the subset's vocabulary
+\ into a module whose symbol rows no caller can hold.
+: BDECLARE-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id o:HIR:opcode :}
+   c r  c b id BSYM-CK  o OP-ROW ;
+
+public
+
+\ Declare that a source word elaborates to one operation of this dialect. The
+\ arena pair is this table's rows and the module's symbol rows: the second is
+\ the interner that has to have minted the word's spelling.
+: DECLARE-OP ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
+   {: c:IR-CTX:ctx r:IR-ARENA:arena sy:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id o:HIR:opcode :}
+   c r  sy id SYM-CK  o OP-ROW ;
+
 \ Declare a named boundary this dialect cannot compile. The reason symbol names
 \ the capability whose absence is why, so a refusal can say what has to land
-\ before the boundary can be retired.
-: DECLARE-UNMODELED ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- )
-   {: c:IR-CTX:ctx r:IR-ARENA:arena id:IR-ID:ir-symbol-id why:IR-ID:ir-symbol-id :}
+\ before the boundary can be retired. Both symbols are the module's, so both are
+\ asked of its interner.
+: DECLARE-UNMODELED ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- )
+   {: c:IR-CTX:ctx r:IR-ARENA:arena sy:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id why:IR-ID:ir-symbol-id :}
+   sy why SYM-CK drop
    r why SYM-OWNER-CK
-   c r id
+   c r  sy id SYM-CK
    HIR-MEANING:UNMODELED MEAN-CODE
    why IR-ID:SYMBOL-LOCAL 1+
    UNUSED UNUSED
@@ -326,6 +379,36 @@ create STG-PICK PICK-MAX cells allot
 : SP! ( n n -- )
    cells STG-PICK + ! ;
 
+\ The row a rename writes, once its stage is closed and its symbol has been
+\ answered for. The picks land in the pool before the row that points at them,
+\ so a refused declaration leaves the table without a row that names cells
+\ outside it.
+: RENAME-ROW ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena HIR-WORD:interned -- )
+   {: c:IR-CTX:ctx p:IR-ARENA:arena r:IR-ARENA:arena w:HIR-WORD:interned :}
+   w HIR--WORD-INTERNED:UNMAKE {: id:IR-ID:ir-symbol-id :}
+   p r PAIR-CK
+   r id SYM-OWNER-CK
+   id IR-ID:SYMBOL-LOCAL {: so:n :}
+   r so FIND 0 < 0= if E-HIR-DUP throw then
+   r ROW-ROOM-CK
+   p STG-N @ POOL-ROOM-CK
+   p PCELLS {: st:n :}
+   STG-N @ 0 ?do
+      c p i SP@ IR-ARENA:PUSH drop
+   loop
+   c r w
+   HIR-MEANING:RENAME MEAN-CODE
+   st STG-IN @ STG-N @
+   ROW-ADD ;
+
+\ The same declaration for a module still being built. The stage is consumed
+\ first either way, so a symbol the interner refuses leaves no rename open.
+: BDECLARE-RENAME ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
+   STG-TAKE
+   c p r  c b id BSYM-CK  RENAME-ROW ;
+
 public
 
 \ Open a rename that consumes `in` values off the top of the compile-time value
@@ -353,26 +436,14 @@ public
 : ABANDON-RENAME ( -- )
    STG-TAKE ;
 
-\ Close the staged rename and bind it to a source word. The picks land in the
-\ pool before the row that points at them, so a refused declaration leaves the
-\ table without a row that names cells outside it.
-: DECLARE-RENAME ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
-   {: c:IR-CTX:ctx p:IR-ARENA:arena r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+\ Close the staged rename and bind it to a source word. The arenas are this
+\ table's pick pool, its rows, and the module's symbol rows; the stage is
+\ consumed before anything else, so a refusal of any kind leaves no rename open.
+: DECLARE-RENAME ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- )
+   {: c:IR-CTX:ctx p:IR-ARENA:arena r:IR-ARENA:arena sy:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id :}
    STG-TAKE
-   p r PAIR-CK
-   r id SYM-OWNER-CK
-   id IR-ID:SYMBOL-LOCAL {: so:n :}
-   r so FIND 0 < 0= if E-HIR-DUP throw then
-   r ROW-ROOM-CK
-   p STG-N @ POOL-ROOM-CK
-   p PCELLS {: st:n :}
-   STG-N @ 0 ?do
-      c p i SP@ IR-ARENA:PUSH drop
-   loop
-   c r id
-   HIR-MEANING:RENAME MEAN-CODE
-   st STG-IN @ STG-N @
-   ROW-ADD ;
+   c p r  sy id SYM-CK  RENAME-ROW ;
 
 \ ---- reading -----------------------------------------------------------------
 : MODELED ( IR-ARENA:arena -- n )
@@ -489,9 +560,9 @@ private
 \ The three words this dialect has operations for.
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD DECLARE-OP
-   c r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB DECLARE-OP
-   c r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL DECLARE-OP ;
+   c b r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD BDECLARE-OP
+   c b r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB BDECLARE-OP
+   c b r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL BDECLARE-OP ;
 
 \ dup ( a -- a a ): consume the top value and put it back twice.
 : DEF-DUP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -499,13 +570,13 @@ private
    1 BEGIN-RENAME
    0 ADD-PICK
    0 ADD-PICK
-   c p r c b s" dup" IR-BUILD:INTERN-SYMBOL DECLARE-RENAME ;
+   c b p r c b s" dup" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
 \ drop ( a -- ): consume the top value and put nothing back.
 : DEF-DROP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    1 BEGIN-RENAME
-   c p r c b s" drop" IR-BUILD:INTERN-SYMBOL DECLARE-RENAME ;
+   c b p r c b s" drop" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
 \ swap ( a b -- b a ): consume two and put them back the other way round.
 : DEF-SWAP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -513,7 +584,7 @@ private
    2 BEGIN-RENAME
    0 ADD-PICK
    1 ADD-PICK
-   c p r c b s" swap" IR-BUILD:INTERN-SYMBOL DECLARE-RENAME ;
+   c b p r c b s" swap" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
 \ over ( a b -- a b a ): consume two and put back three, the lower one twice.
 : DEF-OVER ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -522,7 +593,7 @@ private
    1 ADD-PICK
    0 ADD-PICK
    1 ADD-PICK
-   c p r c b s" over" IR-BUILD:INTERN-SYMBOL DECLARE-RENAME ;
+   c b p r c b s" over" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
 public
 

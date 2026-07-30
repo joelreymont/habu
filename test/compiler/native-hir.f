@@ -364,12 +364,12 @@ private
 : FILL ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key -- )
    {: c:IR-CTX:ctx sp:IR-ARENA:arena sy:IR-ARENA:arena
       p:IR-ARENA:arena r:IR-ARENA:arena key:IR-ID:ir-module-key :}
-   c r  c sp sy key s" *" IR-SYM:INTERN  HIR-OPCODE:MUL HIR-WORD:DECLARE-OP
+   c r sy  c sp sy key s" *" IR-SYM:INTERN  HIR-OPCODE:MUL HIR-WORD:DECLARE-OP
    1 HIR-WORD:BEGIN-RENAME
    0 HIR-WORD:ADD-PICK
    0 HIR-WORD:ADD-PICK
-   c p r  c sp sy key s" dup" IR-SYM:INTERN  HIR-WORD:DECLARE-RENAME
-   c r
+   c p r sy  c sp sy key s" dup" IR-SYM:INTERN  HIR-WORD:DECLARE-RENAME
+   c r sy
       c sp sy key s" /" IR-SYM:INTERN
       c sp sy key s" habu-model-integer-division" IR-SYM:INTERN
    HIR-WORD:DECLARE-UNMODELED ;
@@ -464,7 +464,7 @@ private
    c MODEL
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
-   c r c sp sy key s" *" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+   c r sy c sp sy key s" *" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
 
 : DUP-DECL ( -- )
    BND [: DUP-DECL-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -496,7 +496,7 @@ private
    c 4 4 LIGHT
    {: sp2:IR-ARENA:arena sy2:IR-ARENA:arena p2:IR-ARENA:arena r2:IR-ARENA:arena
       key2:IR-ID:ir-module-key :}
-   c r c sp2 sy2 key2 s" rot" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+   c r sy2 c sp2 sy2 key2 s" rot" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
 
 : FOREIGN ( -- )
    BND [: FOREIGN-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -534,7 +534,7 @@ private
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
    c sp sy p r key FILL
-   c r c sp sy key s" rot" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+   c r sy c sp sy key s" rot" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
 
 : ROWFULL ( -- )
    BND [: ROWFULL-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -547,7 +547,7 @@ private
    2 HIR-WORD:BEGIN-RENAME
    1 HIR-WORD:ADD-PICK
    0 HIR-WORD:ADD-PICK
-   c p r c sp sy key s" swap" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
+   c p r sy c sp sy key s" swap" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
 
 : POOLFULL ( -- )
    BND [: POOLFULL-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -581,7 +581,7 @@ private
    c MODEL
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
-   c p r c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
+   c p r sy c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
 
 : STG-ENDLESS ( -- )
    BND [: STG-ENDLESS-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -594,7 +594,7 @@ private
    1 HIR-WORD:BEGIN-RENAME
    0 HIR-WORD:ADD-PICK
    HIR-WORD:ABANDON-RENAME
-   c p r c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
+   c p r sy c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
 
 : STG-ABANDONED ( -- )
    BND [: STG-ABANDONED-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -610,7 +610,7 @@ private
    2 HIR-WORD:BEGIN-RENAME
    0 HIR-WORD:ADD-PICK
    1 HIR-WORD:ADD-PICK
-   c p r c sp sy key s" dup" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
+   c p r sy c sp sy key s" dup" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
 
 : STG-REFUSED ( -- )
    BND [: STG-REFUSED-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -622,7 +622,7 @@ private
       key:IR-ID:ir-module-key :}
    1 HIR-WORD:BEGIN-RENAME
    0 HIR-WORD:ADD-PICK
-   c p r c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME
+   c p r sy c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME
    r c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:PICKS ;
 
 : STAGE-CASES ( -- )
@@ -767,7 +767,7 @@ private
    1 HIR-WORD:BEGIN-RENAME
    5 0 ?do 0 HIR-WORD:ADD-PICK loop
    c sp sy key s" 5dup" IR-SYM:INTERN {: w:IR-ID:ir-symbol-id :}
-   c p r w HIR-WORD:DECLARE-RENAME
+   c p r sy w HIR-WORD:DECLARE-RENAME
    p r w ;
 
 : SHAPED-OK-BODY ( IR-CTX:ctx -- n n )
@@ -984,6 +984,155 @@ private
    s" a character literal is a kind this subset does not model" T-LABEL
    [: TJ-CHAR ;] E-HIR-KIND TTHROWSQ ;
 
+\ ---- the schema table this dialect may fill ----------------------------------
+\ A schema table names its dialect and its schema version in its header, fixed
+\ when the module was created. HIR:NEW-BUILDER writes this dialect's own; a
+\ module created through IR-BUILD directly can be given any, and registering
+\ these opcodes into one of those is refused rather than quietly accepted.
+: OTHER-DIALECT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-DEFAULT
+   c s" ptx" HIR:MAJOR HIR:MINOR IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b HIR:REGISTER ;
+
+: OTHER-DIALECT ( -- )
+   BND [: OTHER-DIALECT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ The right dialect at a schema version these definitions were not written for.
+: OTHER-VERSION-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   IR-BUILD:PLAN-DEFAULT
+   c HIR:NAME HIR:MAJOR 1+ HIR:MINOR IR-BUILD:NEW-BUILDER {: b:IR-BUILD:builder :}
+   c b HIR:REGISTER ;
+
+: OTHER-VERSION ( -- )
+   BND [: OTHER-VERSION-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DIALECT-REFUSE-CASES ( -- )
+   s" a module of another dialect refuses this operation family" T-LABEL
+   [: OTHER-DIALECT ;] E-HIR-DIALECT TTHROWSQ
+   s" a module at another schema version refuses it too" T-LABEL
+   [: OTHER-VERSION ;] E-HIR-DIALECT TTHROWSQ ;
+
+\ ---- a declared symbol has to exist ------------------------------------------
+\ Belonging to this module and existing in it are two different facts. Each
+\ identity below carries the right owning module and names an ordinal the
+\ interner never minted, so only the interner itself can refuse it - which is
+\ what every declarer now asks it.
+: GHOST-SYM ( IR-ARENA:arena IR-ID:ir-module-key -- IR-ID:ir-symbol-id )
+   {: sy:IR-ARENA:arena key:IR-ID:ir-module-key :}
+   key sy IR-SYM:SYMBOLS IR-ID:PACK-SYMBOL ;
+
+: GHOST-OP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MODEL
+   {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
+      key:IR-ID:ir-module-key :}
+   c r sy  sy key GHOST-SYM  HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+
+: GHOST-OP ( -- )
+   BND [: GHOST-OP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: GHOST-WHY-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MODEL
+   {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
+      key:IR-ID:ir-module-key :}
+   c r sy
+      c sp sy key s" rot" IR-SYM:INTERN
+      sy key GHOST-SYM
+   HIR-WORD:DECLARE-UNMODELED ;
+
+: GHOST-WHY ( -- )
+   BND [: GHOST-WHY-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A rename asks the same question, and asks it after the stage is consumed: the
+\ clean-stage case that follows sees only its own picks.
+: GHOST-RENAME-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MODEL
+   {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
+      key:IR-ID:ir-module-key :}
+   2 HIR-WORD:BEGIN-RENAME
+   0 HIR-WORD:ADD-PICK
+   1 HIR-WORD:ADD-PICK
+   c p r sy  sy key GHOST-SYM  HIR-WORD:DECLARE-RENAME ;
+
+: GHOST-RENAME ( -- )
+   BND [: GHOST-RENAME-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ Another module's interner cannot answer for this one's symbol.
+: XSY-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MODEL
+   {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
+      key:IR-ID:ir-module-key :}
+   c 4 4 LIGHT
+   {: sp2:IR-ARENA:arena sy2:IR-ARENA:arena p2:IR-ARENA:arena r2:IR-ARENA:arena
+      key2:IR-ID:ir-module-key :}
+   c r sy2  c sp sy key s" rot" IR-SYM:INTERN  HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+
+: XSY ( -- )
+   BND [: XSY-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: INTERNER-CASES ( -- )
+   s" declaring an operation for a symbol nobody interned is refused" T-LABEL
+   [: GHOST-OP ;] E-IR-SYM-BOUND TTHROWSQ
+   s" a boundary whose capability nobody interned is refused" T-LABEL
+   [: GHOST-WHY ;] E-IR-SYM-BOUND TTHROWSQ
+   s" a rename for a symbol nobody interned is refused" T-LABEL
+   [: GHOST-RENAME ;] E-IR-SYM-BOUND TTHROWSQ
+   s" the rename after that refusal still sees only its own picks" T-LABEL
+   BND [: STG-CLEAN-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T=
+   s" another module's interner cannot answer for this table" T-LABEL
+   [: XSY ;] E-IR-SYM-OWNER TTHROWSQ ;
+
+\ ---- the tape and the word model on one module -------------------------------
+\ The elaborator holds both halves of one module at once: the source tape it
+\ walks and the word model it asks what each token means. Before IR-BUILD had
+\ live readers those two could not be the same module - a tape needed the
+\ module's source registry and symbol rows, and a module under construction
+\ hands out neither - so a fixture like this one had to build the tape against a
+\ hand-made module and the schema against a real one. Here the source, the
+\ spellings, the schema table, the word model and the tape all belong to a
+\ single IR-BUILD module, and the join is what makes the lookups below work: a
+\ token's spelling is an identity of the same interner the model declared its
+\ rows from.
+: JOINED-TAPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ARENA:view )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b IR-BUILD:MODULE-KEY 4 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   c b s" 1 dup *" IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b tp
+      b s0 0 1 IR-BUILD:ADD-SPAN
+      c b s" 1" IR-BUILD:INTERN-SYMBOL NTAPE-MODE:COMPILING 1 NTAPE:INT-TOKEN
+      NTAPE:PUSH-INTO drop
+   c b tp
+      b s0 2 3 IR-BUILD:ADD-SPAN
+      c b s" dup" IR-BUILD:INTERN-SYMBOL NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
+      NTAPE:PUSH-INTO drop
+   c b tp
+      b s0 6 1 IR-BUILD:ADD-SPAN
+      c b s" *" IR-BUILD:INTERN-SYMBOL NTAPE-MODE:COMPILING NTAPE:NAME-TOKEN
+      NTAPE:PUSH-INTO drop
+   tp NTAPE:SEAL ;
+
+: JOINED-BODY ( IR-CTX:ctx -- bool bool bool bool n )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b JOINED-TAPE {: v:IR-ARENA:view :}
+   v key r 0 HIR-WORD:ADMIT-TOKEN HIR-MEANING:LITERAL HIR-MEANING:EQ
+   v key r 1 HIR-WORD:ADMIT-TOKEN HIR-MEANING:RENAME HIR-MEANING:EQ
+   v key r 2 HIR-WORD:ADMIT-TOKEN HIR-MEANING:OP HIR-MEANING:EQ
+   r  v key 2 NTAPE:SPELL@  HIR-WORD:OPCODE@ HIR-OPCODE:MUL HIR-OPCODE:EQ
+   p r  v key 1 NTAPE:SPELL@  1 HIR-WORD:PICK@ ;
+
+: JOINED-CASE ( -- )
+   s" one module carries the source tape and the word model together" T-LABEL
+   BND [: JOINED-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= TTRUE TTRUE TTRUE TTRUE ;
+
 \ ---- the checker keeps the identities and the API sealed ---------------------
 : CHECKER-CASES ( -- )
    s" HRPOS ( IR-ARENA:arena -- n ) HIR-WORD:MODELED"
@@ -992,13 +1141,19 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    s" HRMEANFORGE ( n -- HIR:meaning )"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" HRDECL-CTXLESS ( IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- ) HIR-WORD:DECLARE-OP"
+   s" HRDECL-CTXLESS ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- ) HIR-WORD:DECLARE-OP"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" HRADMIT-RAW ( IR-ARENA:arena n -- HIR:meaning ) HIR-WORD:ADMIT"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" HRREASON-KEYLESS ( IR-ARENA:arena IR-ID:ir-symbol-id -- IR-ID:ir-symbol-id ) HIR-WORD:REASON@"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" HRREG-BUILDERLESS ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena -- ) HIR-WORD:REGISTER-WORDS"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" HRDECL-INTERNERLESS ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- ) HIR-WORD:DECLARE-OP"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" HRREN-INTERNERLESS ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id -- ) HIR-WORD:DECLARE-RENAME"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" HRREG-BUILDER-MODULE ( IR-CTX:ctx IR-BUILD:module -- ) HIR:REGISTER"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- run ---------------------------------------------------------------------
@@ -1060,6 +1215,18 @@ private
    TJ-CASE
    TJ-REFUSE-CASES ;
 
+: GROUP-DIALECT-REFUSE ( IR-CTX:ctx -- )
+   drop
+   DIALECT-REFUSE-CASES ;
+
+: GROUP-INTERNER ( IR-CTX:ctx -- )
+   drop
+   INTERNER-CASES ;
+
+: GROUP-JOINED ( IR-CTX:ctx -- )
+   drop
+   JOINED-CASE ;
+
 public
 
 : RUN ( -- )
@@ -1074,6 +1241,9 @@ public
    BND [: GROUP-STAGE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FORGE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TAPE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-DIALECT-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-INTERNER ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-JOINED ;] IR-CTX:WITH-CONTEXT
    CHECKER-CASES
    T-REPORT ;
 

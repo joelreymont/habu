@@ -53,11 +53,12 @@
 \ version are header fields of the module (design line 1714), fixed when the
 \ builder is created, and only the dialect knows them. NEW-BUILDER supplies
 \ them, so a module that is going to hold these opcodes is created with this
-\ dialect's own name and version instead of a caller's spelling of them. A
-\ caller that creates a builder through IR-BUILD directly and then registers
-\ here would name its table something else and still get these rows; making that
-\ structurally impossible needs a live dialect reader on IR-BUILD, which this
-\ leaf does not own. Dot habu-expose-live-ir-f0eaed6b tracks it.
+\ dialect's own name and version instead of a caller's spelling of them. That
+\ used to be all: a caller who created a builder through IR-BUILD directly, and
+\ named its table something else, could still register these rows into it, and
+\ nothing but the usage rule said not to. REGISTER now reads the table's own
+\ dialect and version back off the live module through IR-BUILD's live readers
+\ and refuses a table that is not this dialect's, so the rule is a check.
 
 require lib/prelude.f
 require lib/errors.f
@@ -240,6 +241,22 @@ private
    c b HIR-OPCODE:RETURN NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the table this dialect may fill -----------------------------------------
+\ Design line 229's closed world is per dialect, so an operation family may only
+\ be defined into the schema table of the dialect it belongs to. The table's
+\ dialect name and schema version are fixed when the module is created and
+\ nothing can change them afterwards, so reading them back off the live module
+\ decides it: the name is compared byte for byte through the module's own
+\ interner, which appends nothing, and the version has to be the exact version
+\ these definitions were written for. A module of another dialect, or of a later
+\ or earlier version of this one, is refused before the first opcode is defined.
+: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b  c b IR-BUILD:DIALECT@  NAME IR-BUILD:SYMBOL-IS?
+   0= if E-HIR-DIALECT throw then
+   c b IR-BUILD:SCHEMA-MAJOR@ MAJOR <> if E-HIR-DIALECT throw then
+   c b IR-BUILD:SCHEMA-MINOR@ MINOR <> if E-HIR-DIALECT throw then ;
+
 public
 
 \ ---- creation and registration -----------------------------------------------
@@ -251,14 +268,18 @@ public
    NAME MAJOR MINOR IR-BUILD:NEW-BUILDER ;
 
 \ Define the whole straight-line operation family into this builder's schema
-\ table. Every check belongs to IR-SCHEMA:DEFINE - the module owns each symbol
-\ and type, the target contract admits the requirement, no opcode is defined
-\ twice, the ceilings hold - so registering twice, or against a module or a
-\ target that cannot hold these schemas, is refused there and this word adds no
-\ check of its own. Definition is one opcode at a time, so a refusal leaves the
-\ opcodes that were already defined and defines no more.
+\ table. Nearly every check belongs to IR-SCHEMA:DEFINE - the module owns each
+\ symbol and type, the target contract admits the requirement, no opcode is
+\ defined twice, the ceilings hold - so registering twice, or against a module
+\ or a target that cannot hold these schemas, is refused there and this word
+\ repeats none of it. The one check that is this dialect's own is the first
+\ line: a schema table belongs to exactly one dialect at one schema version, and
+\ IR-SCHEMA cannot make it because it has no opinion about which dialect its
+\ caller is. Definition is one opcode at a time, so a refusal leaves the opcodes
+\ that were already defined and defines no more.
 : REGISTER ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b DIALECT-CK
    c b CELL-TYPE {: t:IR-ID:ir-type-id :}
    c b t DEF-CONST
    c b t HIR-OPCODE:ADD DEF-BINARY

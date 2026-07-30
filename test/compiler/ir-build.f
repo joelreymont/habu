@@ -843,6 +843,189 @@ create VW-BUF VW-CAP allot
    BND [: CEIL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE 2 T= E-IR-SYM-CAP T= ;
 
+\ ---- the live readers --------------------------------------------------------
+\ Facts about a module that is still being built, read back without a handle to
+\ the table that holds them: was this symbol interned, is it spelled this way,
+\ which dialect and schema version was this module created for. MK creates its
+\ module as dialect `hir` at version 1.0, so the three header answers below are
+\ the ones NEW-BUILDER was given and nothing else can have written them.
+: LR-BODY ( IR-CTX:ctx -- bool bool bool n n )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b s" square" IR-BUILD:INTERN-SYMBOL {: w:IR-ID:ir-symbol-id :}
+   c b w IR-BUILD:SYMBOL-CK
+   c b w s" square" IR-BUILD:SYMBOL-IS?
+   c b w s" squares" IR-BUILD:SYMBOL-IS?
+   c b  c b IR-BUILD:DIALECT@  s" hir" IR-BUILD:SYMBOL-IS?
+   c b IR-BUILD:SCHEMA-MAJOR@
+   c b IR-BUILD:SCHEMA-MINOR@ ;
+
+: LR-CASE ( -- )
+   s" the live readers answer for the module being built" T-LABEL
+   BND [: LR-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 1 T= TTRUE TFALSE TTRUE ;
+
+\ Asking about a symbol leaves the interner exactly as it was: a reader that
+\ interned the bytes it was comparing would grow the module it was checking.
+: LR-QUIET-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b s" square" IR-BUILD:INTERN-SYMBOL {: w:IR-ID:ir-symbol-id :}
+   b IR-BUILD:SYMBOLS
+   c b w s" never-interned-anywhere" IR-BUILD:SYMBOL-IS? drop
+   b IR-BUILD:SYMBOLS ;
+
+: LR-QUIET-CASE ( -- )
+   s" asking about a spelling interns nothing" T-LABEL
+   BND [: LR-QUIET-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 2 T= ;
+
+\ A span the module's source registry accepts, and one it does not. The bad span
+\ is assembled through the open generated constructor, which is the only way to
+\ name bytes outside a registered source.
+: LR-SPAN-BODY ( IR-CTX:ctx -- n )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b s" build-source" IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b  b s0 0 4 IR-BUILD:ADD-SPAN  IR-BUILD:SPAN-CK
+   b IR-BUILD:SOURCES ;
+
+: LR-SPAN-CASE ( -- )
+   s" a span of a registered source passes the live check" T-LABEL
+   BND [: LR-SPAN-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= ;
+
+: LR-SPAN-BAD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b s" build-source" IR-BUILD:ADD-SOURCE {: s0:IR-ID:ir-source-id :}
+   c b  s0 4 99 IR--SOURCE-SPAN:MAKE  IR-BUILD:SPAN-CK ;
+
+: LR-SPAN-BAD ( -- )
+   BND [: LR-SPAN-BAD-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A symbol identity of this module whose ordinal the interner never minted. It
+\ passes every ownership check there is and still does not exist.
+: LR-GHOST-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b  b IR-BUILD:MODULE-KEY b IR-BUILD:SYMBOLS IR-ID:PACK-SYMBOL
+   IR-BUILD:SYMBOL-CK ;
+
+: LR-GHOST ( -- )
+   BND [: LR-GHOST-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-FROZEN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b IR-BUILD:FREEZE drop
+   c b IR-BUILD:DIALECT@ drop ;
+
+: LR-FROZEN ( -- )
+   BND [: LR-FROZEN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-ABORTED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   b IR-BUILD:ABORT
+   c b IR-BUILD:SCHEMA-MAJOR@ drop ;
+
+: LR-ABORTED ( -- )
+   BND [: LR-ABORTED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A reader is a use of the builder, so it proves the caller owns the compilation
+\ exactly as an append does.
+: LR-XC-INNER ( IR-BUILD:builder IR-CTX:ctx -- )
+   swap IR-BUILD:DIALECT@ drop ;
+
+: LR-XC-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK
+   BND [: LR-XC-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC ( -- )
+   BND [: LR-XC-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ Every reader carries that gate itself rather than borrowing the gate of the
+\ reader a caller happens to run next, so each one is refused on its own.
+: LR-XC-SYM-INNER ( IR-BUILD:builder IR-ID:ir-symbol-id IR-CTX:ctx -- )
+   {: b:IR-BUILD:builder w:IR-ID:ir-symbol-id c2:IR-CTX:ctx :}
+   c2 b w IR-BUILD:SYMBOL-CK ;
+
+: LR-XC-SYM-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   b  c b s" square" IR-BUILD:INTERN-SYMBOL
+   BND [: LR-XC-SYM-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-SYM ( -- )
+   BND [: LR-XC-SYM-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-IS-INNER ( IR-BUILD:builder IR-ID:ir-symbol-id IR-CTX:ctx -- )
+   {: b:IR-BUILD:builder w:IR-ID:ir-symbol-id c2:IR-CTX:ctx :}
+   c2 b w s" square" IR-BUILD:SYMBOL-IS? drop ;
+
+: LR-XC-IS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   b  c b s" square" IR-BUILD:INTERN-SYMBOL
+   BND [: LR-XC-IS-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-IS ( -- )
+   BND [: LR-XC-IS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-SPAN-INNER ( IR-BUILD:builder IR-ID:ir-source-id IR-CTX:ctx -- )
+   {: b:IR-BUILD:builder s0:IR-ID:ir-source-id c2:IR-CTX:ctx :}
+   c2 b  s0 0 4 IR--SOURCE-SPAN:MAKE  IR-BUILD:SPAN-CK ;
+
+: LR-XC-SPAN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   b  c b s" build-source" IR-BUILD:ADD-SOURCE
+   BND [: LR-XC-SPAN-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-SPAN ( -- )
+   BND [: LR-XC-SPAN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-VER-INNER ( IR-BUILD:builder IR-CTX:ctx -- )
+   swap IR-BUILD:SCHEMA-MAJOR@ drop ;
+
+: LR-XC-VER-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK
+   BND [: LR-XC-VER-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-VER ( -- )
+   BND [: LR-XC-VER-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LIVE-REFUSE-CASES-A ( -- )
+   s" a span outside its source is refused by the live check" T-LABEL
+   [: LR-SPAN-BAD ;] E-IR-SRC-SPAN TTHROWSQ
+   s" a symbol identity the interner never minted is refused" T-LABEL
+   [: LR-GHOST ;] E-IR-SYM-BOUND TTHROWSQ ;
+
+: LIVE-REFUSE-CASES-B ( -- )
+   s" a live reader on a frozen builder rejects" T-LABEL
+   [: LR-FROZEN ;] E-IR-BUILD-FROZEN TTHROWSQ
+   s" a live reader on an aborted builder rejects" T-LABEL
+   [: LR-ABORTED ;] E-IR-BUILD-ABORTED TTHROWSQ ;
+
+: LIVE-REFUSE-CASES-C ( -- )
+   s" the dialect reader with a foreign live context rejects" T-LABEL
+   [: LR-XC ;] E-IR-BUILD-OWNER TTHROWSQ
+   s" the schema-version reader with a foreign live context rejects" T-LABEL
+   [: LR-XC-VER ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
+: LIVE-REFUSE-CASES-D ( -- )
+   s" the symbol reader with a foreign live context rejects" T-LABEL
+   [: LR-XC-SYM ;] E-IR-BUILD-OWNER TTHROWSQ
+   s" the spelling reader with a foreign live context rejects" T-LABEL
+   [: LR-XC-IS ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
+: LIVE-REFUSE-CASES-E ( -- )
+   s" the span reader with a foreign live context rejects" T-LABEL
+   [: LR-XC-SPAN ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
 \ ---- the checker seals the handle families -----------------------------------
 : CHECKER-CASES ( -- )
    s" IRB-FORGE ( n -- IR-BUILD:builder )"
@@ -858,6 +1041,12 @@ create VW-BUF VW-CAP allot
    s" IRB-MOD-FREEZE ( IR-CTX:ctx IR-BUILD:module -- IR-BUILD:module ) IR-BUILD:FREEZE"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" IRB-BUILDER-VIEW ( IR-BUILD:builder -- IR-ARENA:view ) IR-BUILD:FSYM-ROWS"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRB-DIALECT-CTXLESS ( IR-BUILD:builder -- IR-ID:ir-symbol-id ) IR-BUILD:DIALECT@"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRB-DIALECT-OF-MODULE ( IR-CTX:ctx IR-BUILD:module -- IR-ID:ir-symbol-id ) IR-BUILD:DIALECT@"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" IRB-LIVE-SYM-ROWS ( IR-CTX:ctx IR-BUILD:builder -- IR-ARENA:arena ) IR-BUILD:SYMBOL-CK"
       CHECK-QUIET-CANDIDATE! 0 T= ;
 
 \ ---- run ---------------------------------------------------------------------
@@ -931,6 +1120,32 @@ create VW-BUF VW-CAP allot
    drop
    CEILING-CASE ;
 
+: HARNESS-LIVE ( IR-CTX:ctx -- )
+   drop
+   LR-CASE
+   LR-QUIET-CASE
+   LR-SPAN-CASE ;
+
+: HARNESS-LIVE-REFUSE-A ( IR-CTX:ctx -- )
+   drop
+   LIVE-REFUSE-CASES-A ;
+
+: HARNESS-LIVE-REFUSE-B ( IR-CTX:ctx -- )
+   drop
+   LIVE-REFUSE-CASES-B ;
+
+: HARNESS-LIVE-REFUSE-C ( IR-CTX:ctx -- )
+   drop
+   LIVE-REFUSE-CASES-C ;
+
+: HARNESS-LIVE-REFUSE-D ( IR-CTX:ctx -- )
+   drop
+   LIVE-REFUSE-CASES-D ;
+
+: HARNESS-LIVE-REFUSE-E ( IR-CTX:ctx -- )
+   drop
+   LIVE-REFUSE-CASES-E ;
+
 public
 
 : RUN ( -- )
@@ -949,6 +1164,12 @@ public
    BND [: HARNESS-ABORT ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-XCTX ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-CEILING ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-REFUSE-A ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-REFUSE-B ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-REFUSE-C ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-REFUSE-D ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-REFUSE-E ;] IR-CTX:WITH-CONTEXT
    AB-RELEASE-CASE
    STALE-CASES
    CHECKER-CASES

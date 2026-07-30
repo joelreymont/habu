@@ -731,3 +731,4 @@ public
 -8288 constant E-HIR-STAGE      \ rename-staging misuse: a begin while one is open, a pick without a begin, or an end without a begin
 -8289 constant E-HIR-PICK       \ a stack rename that picks an input it never consumed, or an input or output count outside its ceiling
 -8290 constant E-HIR-OPCODE     \ a word bound to an opcode this dialect's schema table does not define
+-8291 constant E-HIR-DIALECT    \ a module whose schema table was created for another dialect or another schema version

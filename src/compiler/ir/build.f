@@ -22,7 +22,11 @@
 \ builder is live, so the builder handle is the only way to reach them and
 \ therefore the single mutation authority. FREEZE turns each of them into an
 \ IR-ARENA read-only view and publishes the views; ABORT retires all fifteen
-\ and publishes nothing.
+\ and publishes nothing. The live readers further down ask those tables
+\ questions before a freeze - was this symbol interned, does this span lie in
+\ its source, which dialect is this schema table for - and answer with a scalar,
+\ an identity, or a refusal, so a caller that needs a fact about a module under
+\ construction never needs a handle to the table holding it.
 \
 \ HANDLES AND HOW THEY STAY HONEST. A builder handle and the frozen module
 \ handle it becomes are the same nonzero, monotonic, never-reused generation
@@ -993,6 +997,70 @@ public
 
 : FUN-CELLS ( IR-BUILD:builder -- n )
    LIVE-SLOT T-FP TAB@ IR-FUN:ATTR-CELLS ;
+
+\ ---- what the builder can be asked about the module so far -------------------
+\ Questions a caller may ask about a module that is still being built. The
+\ counts above say how much a table holds; these say what is in it. A source
+\ tape has to prove a token's span lies inside the source it names and that its
+\ spelling really was interned, and a dialect has to prove the schema table it
+\ is about to fill was created for it - and all three facts live in tables this
+\ package holds privately, so before these readers existed the only way to ask
+\ was to wait for FREEZE, which is far too late for a tape and a module that
+\ have to be built together.
+\
+\ THEY CONFER NO MUTATION POWER. Each reader passes the same USE gate every
+\ append passes, so a foreign context, a frozen builder and an aborted builder
+\ are refused by their own names here exactly as they are at a mutation. Each
+\ one then asks the table's own authority and answers with a scalar, an
+\ identity, or a refusal: no arena handle leaves this package, so the builder is
+\ still the only route to a write. A reader that answers a question the table's
+\ authority already answers repeats none of its logic; it only reaches the
+\ table.
+
+\ The module's interner has really interned this symbol. IR-SYM refuses an
+\ identity of another module and an ordinal it never minted, and the refusal
+\ that comes out is the interner's own, so this path and a caller holding the
+\ symbol rows directly reject the same identity for the same reason.
+: SYMBOL-CK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id :}
+   c b USE {: slot:n :}
+   slot T-SR TAB@ id IR-SYM:LEN@ drop ;
+
+\ Byte equality between one of this module's symbols and a presented span. This
+\ is how a caller that knows a spelling checks an identity it was handed without
+\ interning anything: asking the interner for the identity of those bytes would
+\ append a symbol when they are absent, which is a write, and a check must not
+\ change the module it is checking.
+: SYMBOL-IS? ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id ptr u8 n -- bool )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   c b USE {: slot:n :}
+   slot T-SP TAB@  slot T-SR TAB@  id p u IR-SYM:EQ? ;
+
+\ The span names a source of this module and lies inside its registered bytes.
+\ The span is unmade at entry because the checker cannot yet bind a local of a
+\ multi-cell structure type (dot habu-bind-multi-cell-d2e153ed), the same step
+\ ADD-SPAN and SET-OP-SPAN take.
+: SPAN-CK ( IR-CTX:ctx IR-BUILD:builder IR-SOURCE:span -- )
+   IR--SOURCE-SPAN:UNMAKE
+   {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id st:n ln:n :}
+   c b USE {: slot:n :}
+   slot T-SA TAB@  src st ln IR--SOURCE-SPAN:MAKE  IR-SOURCE:SPAN-CK ;
+
+\ The dialect this module's schema table was created for, and the schema version
+\ it was created at. NEW-BUILDER fixes all three (design line 1714) and nothing
+\ can change them afterwards, so a dialect that reads them back is reading the
+\ header it would have to have written itself - which is what turns "call
+\ NEW-BUILDER through the dialect" from a usage rule into a check.
+: DIALECT@ ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b USE {: slot:n :}
+   slot T-QR TAB@ slot KEY@ IR-SCHEMA:DIALECT@ ;
+
+: SCHEMA-MAJOR@ ( IR-CTX:ctx IR-BUILD:builder -- n )
+   USE T-QR TAB@ IR-SCHEMA:MAJOR@ ;
+
+: SCHEMA-MINOR@ ( IR-CTX:ctx IR-BUILD:builder -- n )
+   USE T-QR TAB@ IR-SCHEMA:MINOR@ ;
 
 private
 

@@ -3580,3 +3580,29 @@ fits.
   smallest thing that exercises the path — for a table keyed by module symbols
   that is a plain `IR-CTX:NEW-MODULE` key plus an `IR-SYM` pair, five arenas, not
   a whole module builder.
+
+- **`CAST:` can take a value out of another package's type family but never put
+  one back in.** The checker refuses a cast whose *output* is a cell family
+  another package declared (`E-CAST-OWNER`, throw 7135, and the load dies with
+  nothing but that number). So a package cannot mint a proof token by retyping
+  an `IR-ID` identity it was handed. A one-field `STRUCTURE` that *carries* the
+  identity does the same job honestly: the generated `MAKE` and `UNMAKE` wrap and
+  unwrap it without claiming the power to create one. Declare that structure in a
+  `public` section — a `STRUCTURE` (or `ENUM`) declared while the package is
+  `private` compiles, but its generated `MAKE`/`UNMAKE` cannot be named, and the
+  load fails with `E-UNDEFINED` on the constructor.
+
+- **A proof token turns "every declarer must check first" from a comment into a
+  signature.** `HIR-WORD`'s row appender now takes an `interned` rather than a
+  symbol id, and the only two words that make one are the two ways to ask a
+  module's interner whether the symbol exists. A later declarer that forgets the
+  check does not compile, which is a much better guarantee than a note above the
+  appender saying to remember it.
+
+- **A partly changed locals group makes `typed-local-diff-lint` report the line
+  after it.** The lint only sees added lines, and it tracks whether it is inside
+  a `{: ... :}` group across them. If the opening line changed but the closing
+  `:}` line did not, the closer arrives as unchanged context, the lint never
+  leaves the group, and the first bare word on the next added line is reported as
+  an untyped local. Reflow the group so its closing line is part of the change;
+  do not silence a real-looking finding with an allow-comment.
