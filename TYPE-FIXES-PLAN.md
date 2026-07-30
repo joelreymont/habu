@@ -301,7 +301,13 @@ shipped ever has two grammars.
 Open bookmark `type-conversion` at master. Record the baseline fixpoint hash
 and one full-suite log as the reference point. Freeze the three design calls
 (items 16, 17, 21) with codex before any engine commit; each answer is one
-line in this file.
+line in this file. Absorb the stopped lanes: cherry-pick the already-reviewed
+candidates onto the branch as its first commits — the format cut (9fac6471,
+dual-accepted), the SAFET DATATYPE= revision and the HFCFG enrollment fix
+once their revisions close, and the CUDA cut if Joel rules the HABU_ZED=0
+path sufficient. Reviews carry over; their gates run in phase 4 with
+everything else. Nothing stopped is left ambient for the sweep to conflict
+with.
 
 ### Phase 1 — engine, first batch (codex). The grammar.
 
@@ -360,14 +366,15 @@ Sub-phases in order:
 ### Phase 3 — reconciliation (claude, small)
 
 docs/type-system.md rewritten against the converted tree (same probe
-discipline as its first writing); STATUS.md; refine-lint seed table and any
-lint expectation touching deleted words; this plan file gets a completion
-stamp per item.
+discipline as its first writing); STATUS.md; refine-lint seed table,
+suite-coverage-lint expectations, and any lint expectation touching deleted
+or respelled words; this plan file gets a completion stamp per item.
 
 ### Phase 4 — the single gate battery, then one landing
 
-fixpoint x2 byte-identity; full native test/run.f; full maki; every
-surviving lint; native dot gate. Fix reds in place (each red gets its cause
+In order: fixpoint x2 byte-identity FIRST (everything after runs on the
+refreshed engine), then full native test/run.f, full maki, every surviving
+lint, native dot gate. Fix reds in place (each red gets its cause
 named in the commit that fixes it). When green: one fast-forward of remote
 master to the branch tip, verified at origin, workspaces retired, campaign
 dots closed.
