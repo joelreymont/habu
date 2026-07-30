@@ -3336,6 +3336,33 @@ fits.
   additions; the fix went into the calling test packages and the library work
   became its own dot.
 
+- **Truncating a dictionary does not reclaim its heap, and a snapshot copies the
+  orphan verbatim.** The native refresh hides the previous generation's
+  dictionary back to the primitive boundary (`src/habu/hide.f`) and reloads the
+  prefix from source, but DP never moves, so 4.48 MB of the previous run's heap
+  sits below the live generation's first allotment holding that run's mmap
+  addresses and region pointers - 50 of the 113 cells that differed between two
+  builds of one snapshot image. A span with a structural endpoint fixes the whole
+  class at once; a list of offsets never can.
+
+- **Find the owner with a tool, and the byte offsets stop mattering.** The
+  twenty-row `SND-QUARANTINE` offset table had rotted so far that none of its
+  rows named a cell that actually drifted, and twelve of them were clearing live
+  checker buffers. What made it fixable was `tools/snap-heap-owner.f`: walk the
+  dictionary, recognise a heap owner by the one fixed shape `create` compiles,
+  and read the address it owns out of the instruction immediates. 1793 owners,
+  every drifting heap cell named, no value guessing anywhere.
+
+- **Confirm which subsystem a symptom belongs to before spending the lane on
+  it.** A restored image dying while compiling a definition was recorded as one
+  more undeclared DP-heap cell. It is not in DATA at all: an lldb search of the
+  whole DATA region finds nothing, and the disassembly at the fault shows the
+  four-instruction MOVZ/MOVK x9 chain in region code pushing a quotation's entry
+  address for `[: ;] catch`. `EM-SNAPSHOT-REBASE-DICT` walks dictionary records
+  only, so no address literal compiled into region code is ever relocated. Ten
+  minutes of debugger evidence moved the work to the right dot instead of
+  producing a plausible-looking DATA fix that would have changed nothing.
+
 - **A rigid host identity in a candidate's own signature is not an identity.**
   `fresh-region-a` in the signature of the definition under check parses to a
   TEMPLATE slot with a negative kind, and `ATOM-OK?` (src/core/checker.f)
