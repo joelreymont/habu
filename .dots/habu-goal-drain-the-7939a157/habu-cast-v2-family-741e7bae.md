@@ -44,4 +44,3 @@ window; all 19 compiler API packages reject raw definitions, aliases, and
 exports, while unrelated or global same-tail role APIs such as global
 `COUNT>N` remain distinct. No `IR-RAW` package is introduced.
 
-Claim: agent=ir0 workspace=.jj-ws/habu-add-compiler-ir-21e976fc branch=ir0
