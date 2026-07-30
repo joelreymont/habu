@@ -60,13 +60,12 @@
 \
 \ What it does NOT refuse, stated plainly so nobody reads more into a green run
 \ than is there. The models cover a FRAGMENT, and both name their omissions in
-\ their own headers - `T-ATOM`'s rigid host identities, VALUE-RECORD field
-\ coercion, the transport ops and the generated-accessor window, field
-\ projection, and block-uniform branches. This
+\ their own headers - VALUE-RECORD field coercion, the transport ops and the
+\ generated-accessor window, field projection, and block-uniform branches. This
 \ gate holds the modelled fragment to the checker; it cannot notice a change
 \ inside an unmodelled one. It also compares BEHAVIOUR only on the frozen
-\ vectors: two machines that agree on those twenty-eight programs may still
-\ disagree on the twenty-ninth, and only a soundness proof - which neither
+\ vectors: two machines that agree on those thirty-four programs may still
+\ disagree on the thirty-fifth, and only a soundness proof - which neither
 \ model states yet - would close that. That is not a small caveat. Both models
 \ publish more than a hundred concrete results, and only the decisions a vector
 \ reaches are actually held to the checker; the rest are held to the reader's
@@ -74,10 +73,11 @@
 \ ceiling, letting `INT-WIDENS?` pass any same-class pair, lowering or deleting
 \ `MATCH`'s depth guard, turning the per-step linear conservation count into a
 \ no-op, dropping the unterminated-`construct` test from `CHECK`'s open-form
-\ check, and letting `MATCH`'s scrutinee pop accept a bundle of any family of
-\ the right width each left this gate green before the vectors that reach those
-\ six decisions were added. Growing the vector table is what closes that, one
-\ decision at a time.
+\ check, letting `MATCH`'s scrutinee pop accept a bundle of any family of
+\ the right width, dropping the name comparison from `ATOM-OK?`, and letting a
+\ rigid identity counter hand out its value without advancing each left this
+\ gate green before the vectors that reach those seven decisions were added.
+\ Growing the vector table is what closes that, one decision at a time.
 \
 \ Focused command: `bin/hb --load test/compiler/checker-model-proof.f`. The gate
 \ compiles the models itself, so nothing has to be built first. It shells out to

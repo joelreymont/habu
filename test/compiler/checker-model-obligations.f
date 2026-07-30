@@ -28,6 +28,8 @@
 \     question, the other half being the cases file's walk over the checker;
 \   - the ceiling `con_max`, which is what a declared linear type's code counts
 \     from;
+\   - one obligation per rigid host-identity domain, running that domain's
+\     counter from its per-check restart through a mint and on to its bound;
 \   - one obligation per control frame kind, running the frozen model token
 \     sequence and reading the kind off the top of the model's frame stack;
 \   - one obligation per shared program vector, running the frozen model token
@@ -199,7 +201,44 @@ variable ARM-N
    s"   forall t : tok, tok_known t = true." +$ +NL
    s" Proof. destruct t; reflexivity. Qed." +$ +NL ;
 
-\ ---- 3. the control frame kinds ----------------------------------------------
+\ ---- 3. the rigid host-identity domains --------------------------------------
+\ One obligation per domain, and the same both-ways device the vocabulary gets:
+\ the exhaustive match refuses a `dom` constructor the frozen table has never
+\ heard of, and each row runs that domain's counter through the three things
+\ the checker's own mint word does — restart at 1, hand out the current value
+\ and advance, refuse at the bound rather than wrap past it.
+
+: EMIT-DOM-COMPLETE ( -- )
+   s" Definition dom_known (d : dom) : bool :=" +$ +NL
+   s"   match d with" +$ +NL
+   s"   | " +$
+   DOMAINS 0 ?do
+      i 0 > if s"  | " +$ then
+      i RGD-CON$ +$
+   loop
+   s"  => true" +$ +NL
+   s"   end." +$ +NL
+   s" Example rigid_domains_are_exactly_the_frozen_table :" +$ +NL
+   s"   forall d : dom, dom_known d = true." +$ +NL
+   s" Proof. destruct d; reflexivity. Qed." +$ +NL ;
+
+: +RESET ( -- )
+   s" (rigid_reset " +$ DOMAIN-BOUND +N s" )" +$ ;
+
+: EMIT-DOMAIN-ROW ( n -- ) {: k:n :}
+   s" Example rigid_domain_" +$ k RGD-CON$ +$ s"  :" +$ +NL
+   s"   rg_get " +$ k RGD-CON$ +$ s"  " +$ +RESET s"  = 1" +$ +NL
+   s"   /\ rigid_mint " +$ k RGD-CON$ +$ s"  " +$ +RESET
+      s"  = Some (1, rg_put " +$ k RGD-CON$ +$ s"  2 " +$ +RESET s" )" +$ +NL
+   s"   /\ rigid_mint " +$ k RGD-CON$ +$ s"  (rg_put " +$ k RGD-CON$ +$ s"  " +$
+      DOMAIN-BOUND +N s"  " +$ +RESET s" ) = None." +$ +NL
+   s" Proof. repeat split; vm_compute; reflexivity. Qed." +$ +NL ;
+
+: EMIT-DOMAINS ( -- )
+   EMIT-DOM-COMPLETE
+   DOMAINS 0 ?do i EMIT-DOMAIN-ROW loop ;
+
+\ ---- 4. the control frame kinds ----------------------------------------------
 
 : EMIT-FRAME-HELPER ( -- )
    s" Definition top_kind (s : st) : nat :=" +$ +NL
@@ -215,7 +254,7 @@ variable ARM-N
    EMIT-FRAME-HELPER
    FRAMES 0 ?do i EMIT-FRAME-ROW loop ;
 
-\ ---- 4. the shared program vectors -------------------------------------------
+\ ---- 5. the shared program vectors -------------------------------------------
 
 : EMIT-VECTOR-ROW ( n -- ) {: k:n :}
    s" Example vector_" +$ k VEC-NAME$ +$ s"  :" +$ +NL
@@ -236,6 +275,7 @@ public
    EMIT-CON-COMPLETE
    EMIT-TAG-COMPLETE
    EMIT-TOK-COMPLETE
+   EMIT-DOMAINS
    EMIT-FRAMES
    EMIT-VECTORS ;
 

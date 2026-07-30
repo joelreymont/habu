@@ -107,6 +107,25 @@ SUMTYPE cmtwin 0
 \ the model's `wToRAsWord`.
 : TO-R-WORD ( a | -- | a ) >r ;
 
+\ The four words the rigid host-identity vectors need. A `fresh-*` name in a
+\ signature is a TEMPLATE slot the checker mints an identity for at every call
+\ site, so a word that PRODUCES one cannot be written in checked Habu at all:
+\ minting a host identity is exactly what a trusted host constructor does and
+\ what checked code is not allowed to do. These are that boundary, in the same
+\ shape `lib/ptx/tile.f` declares `MK-SPAN` and `MK-MATRIX` in, and the vectors
+\ below are their test - each of the six turns on what these four declare.
+\
+\ `MK-REGION-PAIR` names ONE slot twice, so its two outputs carry one identity;
+\ `MK-REGION` and `MK-GEN` each name one slot in a different domain, so two
+\ calls are two allocations and one call of each is two domains at the same
+\ number. `SAME-ID` is the consumer that asks whether two atoms are one
+\ identity. They are the model's `wMkRegionPair`, `wMkRegion`, `wMkGen` and
+\ `wSameId`.
+TRUSTED: MK-REGION ( -- fresh-region-a ) 0 ;
+TRUSTED: MK-GEN ( -- fresh-gen-a ) 0 ;
+TRUSTED: MK-REGION-PAIR ( -- fresh-region-a fresh-region-a ) 0 0 ;
+TRUSTED: SAME-ID ( x x -- ) 2drop ;
+
 private
 
 variable CUR-K
@@ -349,6 +368,83 @@ public
 
 private
 
+\ ---- the rigid host-identity domains -----------------------------------------
+\ Two questions per domain, both read out of the checker's own source.
+\
+\ The first is that the domain's counter is a REAL per-check counter: its mint
+\ word refuses at the bound before it hands anything out, hands out its current
+\ value and advances, and the per-check restart puts it back to 1. Each of the
+\ three runs is built from the counter's name in the frozen table, so a counter
+\ renamed, a guard deleted, or an advance dropped is a row that stops matching.
+\
+\ The second is the ROUTING: which leading word sends an atom to which domain.
+\ That is a dispatch written as code, exactly like `CF-TOK?`, so it is walked
+\ token by token in the order it tests - and the two lengths in each test are
+\ derived from the leading word's own length rather than written down, so a
+\ word lengthened without its lengths moving is caught here rather than
+\ silently matching a prefix.
+
+: DOMAIN-COUNTER-ROW ( n -- ) {: k:n :}
+   SB-RESET s" the " SB-APPEND k RGD-CON$ SB-APPEND
+      s"  domain refuses at the bound before it mints" SB-APPEND SB$ T-LABEL
+   k RGD-MINT$ k RGD-GUARD$ RUNS-IN-BODY 1 T=
+   SB-RESET s" the " SB-APPEND k RGD-CON$ SB-APPEND
+      s"  domain hands out its value and advances" SB-APPEND SB$ T-LABEL
+   k RGD-MINT$ k RGD-ADV$ RUNS-IN-BODY 1 T=
+   SB-RESET s" the per-check restart puts the " SB-APPEND k RGD-CON$ SB-APPEND
+      s"  domain back to 1" SB-APPEND SB$ T-LABEL
+   RIGID-RESET-WORD$ k RGD-RESET$ RUNS-IN-BODY 1 T= ;
+
+: ROUTER-HEAD ( -- )
+   s" the atom-name router opens by naming its two token operands" T-LABEL
+   W-TOK$ s" {:" T$=
+   W-TOK$ s" a:ptr" T$=
+   W-TOK$ s" u:n" T$=
+   W-TOK$ s" :}" T$= ;
+
+: WORD-LEN$ ( n -- ptr u8 n ) {: k:n :}
+   SB-RESET k RGD-WORD$ nip FMT:SB-INT SB$ ;
+
+: ROUTER-ROW ( n -- ) {: k:n :}
+   SB-RESET s" the router tests the name is long enough for " SB-APPEND
+      k RGD-WORD$ SB-APPEND SB$ T-LABEL
+   W-TOK$ s" u" T$=
+   W-TOK$ k WORD-LEN$ T$=
+   W-TOK$ s" >=" T$=
+   W-TOK$ s" IF" T$=
+   s" then compares exactly that many bytes of it" T-LABEL
+   W-TOK$ s" a" T$=
+   W-TOK$ k WORD-LEN$ T$=
+   s" against a string literal, so a word in a comment cannot stand in" T-LABEL
+   W-TOK$ OPENER$ T$=
+   s" and the literal holds exactly the leading word the frozen row names" T-LABEL
+   CUR-K @ 1- COMPILER-ID-SRC:TOKEN-CONTENT$ k RGD-WORD$ T$=
+   s" compared with the engine's own token comparison" T-LABEL
+   W-TOK$ CONTROL-TEST-WORD$ T$=
+   s" and, on a match, minting from the counter this domain owns" T-LABEL
+   W-TOK$ s" IF" T$=
+   W-TOK$ k RGD-MINT$ T$=
+   W-TOK$ s" EXIT" T$=
+   W-TOK$ s" THEN" T$=
+   W-TOK$ s" THEN" T$= ;
+
+: ROUTER-TAIL ( -- )
+   s" a leading word none of the frozen rows names mints from the catch-all" T-LABEL
+   W-TOK$ DOMAINS 1- RGD-MINT$ T$=
+   s" and the router holds nothing the frozen table does not name" T-LABEL
+   W-MORE? 0= TTRUE ;
+
+public
+
+: DOMAIN-PHASE ( -- )
+   DOMAINS 0 ?do i DOMAIN-COUNTER-ROW loop
+   ROUTER-WORD$ SPAN-OPEN
+   ROUTER-HEAD
+   DOMAINS 0 ?do i RGD-ROUTED? if i ROUTER-ROW then loop
+   ROUTER-TAIL ;
+
+private
+
 \ ---- the shared program vectors ----------------------------------------------
 \ `CHECK-QUIET-CANDIDATE!` answers -1 certified, 1 unresolvable, 0 refused. The
 \ row stores the model's three-way verdict, so the mapping is written once here
@@ -378,6 +474,7 @@ public
    TAG-PHASE
    CONTROL-PHASE
    FRAME-PHASE
+   DOMAIN-PHASE
    VECTOR-PHASE ;
 
 ;using

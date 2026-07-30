@@ -3335,3 +3335,30 @@ fits.
   edit. Unpackaged global surfaces are frozen against edits, not just against
   additions; the fix went into the calling test packages and the library work
   became its own dot.
+
+- **A rigid host identity in a candidate's own signature is not an identity.**
+  `fresh-region-a` in the signature of the definition under check parses to a
+  TEMPLATE slot with a negative kind, and `ATOM-OK?` (src/core/checker.f)
+  refuses a negative kind outright — so `( fresh-region-a -- fresh-region-a )`
+  with an empty body is REFUSED, and so is a trusted word declared that way
+  trying to consume what another one produced. Only a call site mints
+  (`E-I-AK`), once per template slot per instantiation. Anyone writing fixtures
+  for the identity domains has to produce the identity from a trusted
+  constructor and consume it through a type variable; naming the same `fresh-*`
+  spelling twice proves nothing, because the two spellings are two arena
+  entries. The sharp fixture for the domain rule is instead two constructors in
+  DIFFERENT domains: each is the first mint of its own counter, so both ids are
+  1, and the refusal can only be coming from the name. Dropping `ATOM-OK?`'s
+  name comparison flips exactly that row and no other.
+
+- **A model whose executable configuration cannot hold the real constant should
+  make the constant a parameter, not a smaller lie.** The checker's `RIGID-MAX`
+  is `$4000000000000000`; a unary Rocq `nat` cannot represent it and
+  `vm_compute` would try to build it. `formal/Common/Effects.v` therefore takes
+  the bound as an argument, states every result about it for EVERY bound, and
+  runs its own executable configuration at a small one — which only ever
+  refuses SOONER, so the model still rejects more than the checker and never
+  accepts more. The checker's own literal is then held structurally instead:
+  the parity gate reads the guard, the advance and the per-check restart out of
+  each mint word's body, derived from the counter's name so the name is written
+  once.

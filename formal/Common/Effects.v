@@ -7,9 +7,11 @@
 
    Scope of this file: the syntax of types, stacks, and four-row effects; the
    type-family registry and the layout width expansion a family value goes
-   through on its way onto a row; executable unification of two stacks;
-   executable sequential composition of two effects; and the predicate that
-   decides whether a checked definition's implicit row survived its body.
+   through on its way onto a row; the rigid host-allocation identities a
+   signature can name and the per-domain counters that mint them; executable
+   unification of two stacks; executable sequential composition of two
+   effects; and the predicate that decides whether a checked definition's
+   implicit row survived its body.
    Laws, algebraic properties, and the soundness statement (acceptance implies
    the body cannot underflow or type-mismatch at runtime) are deliberately
    absent — they are later work.
@@ -17,7 +19,6 @@
    Deliberate omissions from the modelled fragment, each of which the checker
    also decides and each of which is a place a later soundness proof would not
    speak about:
-     - T-ATOM rigid host identities (region / extent / generation),
      - VALUE-RECORD field cells and their coercion (`FIELD-PAIR?` /
        `FIELD-COERCE?`, checker.f:1596-1597),
      - the whole-bundle TRANSPORT ops (`XPORT-STEP?`, checker.f:7215) and the
@@ -30,7 +31,10 @@
    `construct` (`CONM`) used to be on that list and no longer is: it is
    modelled in `Habu.Common.Control`, because it is a three-token form and a
    state machine rather than a type rule, and its step is written in terms of
-   `push_logical` below.
+   `push_logical` below.  T-ATOM's rigid host identities used to be on it too
+   and are now modelled here: `TAtom` carries the (domain, id) pair
+   `ATOM-OK?` decides on, and instantiation mints an identity from that
+   domain's own counter.
    Type families of arity > 0 — layouts, sums, products, `uniform<T>` — ARE
    modelled here, together with layout width expansion and the hidden-field /
    logical-bundle machinery, because those decide ordinary programs: a
@@ -47,7 +51,7 @@
    an occurrence and unification reports failure.  So the model can only ever
    reject more programs than the checker on that account, never accept more. *)
 
-From Stdlib Require Import Bool List PeanoNat.
+From Stdlib Require Import Bool List PeanoNat Lia.
 Import ListNotations.
 
 (* ------------------------------------------------------------------ *)
@@ -303,11 +307,138 @@ Definition fam_width (e : fenv) (f : nat) : nat :=
   end.
 
 (* ------------------------------------------------------------------ *)
+(* Rigid host-allocation identities (`T-ATOM`).                        *)
+(*                                                                     *)
+(* An atom names a host allocation's identity, which `ptr T` and an     *)
+(* ordinary type variable cannot: WHICH allocation it is (its region),  *)
+(* what bounds it has (its extent), and which mutation epoch it is in   *)
+(* (its generation).  The checker stores an atom as a NAME and a KIND   *)
+(* (`MK-ATOM-K`, checker.f:375-383), and the two together are the       *)
+(* identity: `ATOM-OK?` (checker.f:1312-1319) compares the kind and     *)
+(* then the name, so a number alone is never the authority.            *)
+(*                                                                     *)
+(* The name always begins with the domain's own word — a `fresh-`       *)
+(* token's tail is `region-..`, `extent-..` or `gen-..`, and every      *)
+(* other atom token likewise leads with `space-`, `mask-`, `block-` and *)
+(* so on (`ATOM-TOK?` / `FRESH-ATOM-TOK?`, checker.f:2808-2820).  That  *)
+(* is why the pair below is (domain, id) rather than one number: it is  *)
+(* the checker's own name-plus-kind, with the leading domain word read  *)
+(* off the name.  Two identities from different domains then have       *)
+(* different names however their numbers compare, which is exactly what *)
+(* `ATOM-OK?`'s name test decides.                                      *)
+(*                                                                     *)
+(* `RIGID-AK-MINT` (checker.f:370-374) routes a fresh atom to its       *)
+(* domain by that leading word and everything it does not recognise to  *)
+(* one shared catch-all counter, which is `DShared` here.               *)
+(* ------------------------------------------------------------------ *)
+
+Inductive dom : Type :=
+  | DRegion    (* `region-`: RGN-N, checker.f:358 *)
+  | DExtent    (* `extent-`: EXT-N, checker.f:361 *)
+  | DGen       (* `gen-`:    GEN-N, checker.f:364 *)
+  | DShared.   (* every other atom word: RIGID-N, checker.f:353 *)
+
+Definition dom_code (d : dom) : nat :=
+  match d with DRegion => 1 | DExtent => 2 | DGen => 3 | DShared => 0 end.
+
+Definition dom_eqb (a b : dom) : bool := Nat.eqb (dom_code a) (dom_code b).
+
+(* The id cell, `ATOM>K` (checker.f:386).  The checker distinguishes its three
+   cases by SIGN, which is why they are three constructors here.
+
+     - `ATempl k` is a NEGATIVE kind: a fresh-atom TEMPLATE slot, the key
+       `FAM-MARK` (checker.f:2693) interns a `fresh-*` signature name under.
+       It is not an identity yet, and `ATOM-OK?` refuses it outright.
+     - `AName k` is kind 0: an ordinary atom token, whose whole identity is
+       its spelling (`MK-ATOM`, checker.f:382).
+     - `AMint n` is a POSITIVE kind: an identity a call site actually minted
+       (`E-I-AK`, checker.f:4596). *)
+Inductive aid : Type :=
+  | ATempl : nat -> aid
+  | AName : nat -> aid
+  | AMint : nat -> aid.
+
+Definition aid_eqb (a b : aid) : bool :=
+  match a, b with
+  | ATempl x, ATempl y => Nat.eqb x y
+  | AName x, AName y => Nat.eqb x y
+  | AMint x, AMint y => Nat.eqb x y
+  | _, _ => false
+  end.
+
+(* `ATOM-OK?`'s second line, checker.f:1314: a negative kind never unifies,
+   not even with itself.  An uninstantiated template slot is a place an
+   identity will be minted, not an identity. *)
+Definition aid_rigidb (i : aid) : bool :=
+  match i with ATempl _ => false | _ => true end.
+
+(* `ATOM-OK?`, checker.f:1312-1319, entire: equal kinds, a kind that is not a
+   template slot, and equal names — and the name is the domain word plus the
+   tail, so comparing it is comparing the DOMAIN.  Within one check a domain's
+   ids are handed out by one strictly advancing counter, so a domain and an id
+   together name the same thing the checker's name-plus-kind names. *)
+Definition atom_okb (d1 : dom) (i1 : aid) (d2 : dom) (i2 : aid) : bool :=
+  aid_eqb i1 i2 && aid_rigidb i1 && dom_eqb d1 d2.
+
+(* ------------------------------------------------------------------ *)
+(* The per-domain identity counters.                                   *)
+(*                                                                     *)
+(* `RGN-N` / `EXT-N` / `GEN-N` and the shared `RIGID-N` (checker.f:332), *)
+(* all four restarted at 1 by `RIGID-RESET` (checker.f:348), which      *)
+(* `NEW` (checker.f:1804) runs once per check.  A domain hands out its  *)
+(* current value and advances, and REFUSES — `E-RIGID-EXHAUST`,         *)
+(* checker.f:331 — once it reaches the bound, rather than wrapping past *)
+(* it and re-granting an id that is still live.                        *)
+(*                                                                     *)
+(* The bound is a PARAMETER here and every result about it below is     *)
+(* stated for every bound.  The checker's own `RIGID-MAX` is            *)
+(* `$4000000000000000`, a number no unary `nat` can hold; the           *)
+(* executable configuration therefore runs at a bound of its own, and   *)
+(* the direction that costs is safe: a smaller bound refuses SOONER, so *)
+(* the model can only reject more programs than the checker on this     *)
+(* account, never accept more.                                         *)
+(* ------------------------------------------------------------------ *)
+
+Record rigid : Type := MkRigid {
+  rg_cap : nat;
+  rg_rgn : nat;
+  rg_ext : nat;
+  rg_gen : nat;
+  rg_shd : nat
+}.
+
+Definition rigid_reset (cap : nat) : rigid := MkRigid cap 1 1 1 1.
+
+Definition rg_get (d : dom) (r : rigid) : nat :=
+  match d with
+  | DRegion => rg_rgn r
+  | DExtent => rg_ext r
+  | DGen => rg_gen r
+  | DShared => rg_shd r
+  end.
+
+Definition rg_put (d : dom) (n : nat) (r : rigid) : rigid :=
+  match d with
+  | DRegion => MkRigid (rg_cap r) n (rg_ext r) (rg_gen r) (rg_shd r)
+  | DExtent => MkRigid (rg_cap r) (rg_rgn r) n (rg_gen r) (rg_shd r)
+  | DGen => MkRigid (rg_cap r) (rg_rgn r) (rg_ext r) n (rg_shd r)
+  | DShared => MkRigid (rg_cap r) (rg_rgn r) (rg_ext r) (rg_gen r) n
+  end.
+
+(* `RGN-FRESH` and its three siblings, checker.f:353-367, which are one word
+   written four times: refuse at the bound, otherwise answer the current value
+   and advance.  `None` is the throw. *)
+Definition rigid_mint (d : dom) (r : rigid) : option (nat * rigid) :=
+  let n := rg_get d r in
+  if Nat.ltb n (rg_cap r) then Some (n, rg_put d (S n) r) else None.
+
+(* ------------------------------------------------------------------ *)
 (* Terms.                                                              *)
 (*                                                                     *)
 (* `ty` is the checker's tagged term (`T-VAR`/`T-CON`/`T-PTR`/`T-QUOT`/ *)
-(* `T-PARAM`, checker.f:1-3).  `stack` is its row: `S-PUSH` cons cells  *)
-(* over an `S-ROW` bottom (`MK-PUSH`/`MK-ROW`, checker.f:692-700).      *)
+(* `T-ATOM`/`T-PARAM`, checker.f:1-3).  `stack` is its row: `S-PUSH`    *)
+(* cons cells over an `S-ROW` bottom (`MK-PUSH`/`MK-ROW`,               *)
+(* checker.f:692-700).                                                 *)
 (*                                                                     *)
 (* Two representation facts matter and are easy to get wrong.          *)
 (*                                                                     *)
@@ -345,6 +476,9 @@ Definition fam_width (e : fenv) (f : nat) : nat :=
 Inductive ty : Type :=
   | TVar : tyvar -> ty                (* T-VAR:   a lower-case signature letter *)
   | TCon : con -> ty                  (* T-CON:   a table type or role *)
+  (* T-ATOM: a rigid host-allocation identity, `MK-ATOM-K` (checker.f:375-383),
+     carrying the domain its name leads with and the id its kind holds. *)
+  | TAtom : dom -> aid -> ty
   (* T-PARAM: an application of a type family.  `MK-PARAM` (checker.f:657-677)
      stores three things and this constructor carries all three, in the same
      order: the resolved family id (`PARAM>FAM`, the IDENTITY — not the folded
@@ -448,6 +582,7 @@ Fixpoint ty_size (t : ty) : nat :=
   match t with
   | TVar _ => 1
   | TCon _ => 1
+  | TAtom _ _ => 1
   | TFam _ _ args => S (args_size args)
   | TPtr u => S (ty_size u)
   | TQuot _ _ e => S (eff_size e)
@@ -470,6 +605,15 @@ Fixpoint ty_eqb (a b : ty) : bool :=
   match a, b with
   | TVar x, TVar y => Nat.eqb x y
   | TCon x, TCon y => con_eqb x y
+  (* `U-TYPE`'s `2dup =` fast path is arena-pointer identity, which for atoms
+     is FINER than the spelling: two `fresh-region-a` slots parsed from two
+     signatures are two arena entries, so the fast path separates them and
+     `ATOM-OK?` then refuses them for being template slots.  Answering
+     `atom_okb` here reproduces that, and it is why a definition whose own
+     signature names one `fresh-*` slot on both sides is refused.  Measured:
+     `( fresh-region-a -- fresh-region-a )` with an empty body is refused, and
+     `( mask-a -- mask-a )` — an ordinary atom token, kind 0 — certifies. *)
+  | TAtom d1 i1, TAtom d2 i2 => atom_okb d1 i1 d2 i2
   (* Structural equality of the whole T-PARAM record: family, hidden slot and
      the argument run.  `U-TYPE`'s fast path (`2dup =`) is arena-pointer
      identity, which likewise separates two params that differ anywhere. *)
@@ -513,13 +657,24 @@ with stack_eqb (a b : stack) : bool :=
 (* on the cells they publish.                                          *)
 (* ------------------------------------------------------------------ *)
 
+(* The rigid identity counters ride here for one reason: `NEW`
+   (checker.f:1800-1807) resets `TV-RESET`, `FV` and `RIGID-RESET` together,
+   so they are one per-check store with one lifetime.  Only instantiation
+   reads or writes them; unification carries them unchanged. *)
 Structure subst : Type := MkSubst {
   sub_ty : list (tyvar * ty);
   sub_row : list (rowvar * stack);
-  sub_raw : list tyvar
+  sub_raw : list tyvar;
+  sub_rigid : rigid
 }.
 
-Definition empty_subst : subst := MkSubst [] [] [].
+(* The bound the executable configuration runs at.  It is not the checker's
+   number and does not claim to be — see the counter section above: every
+   result about the bound is stated for EVERY bound, and a smaller bound only
+   refuses sooner.  It is well past what any program in this file mints. *)
+Definition model_rigid_cap : nat := 64.
+
+Definition empty_subst : subst := MkSubst [] [] [] (rigid_reset model_rigid_cap).
 
 Fixpoint lookup_ty (l : list (tyvar * ty)) (v : tyvar) : option ty :=
   match l with
@@ -540,15 +695,18 @@ Fixpoint mem_nat (v : nat) (l : list nat) : bool :=
   end.
 
 Definition bind_ty (s : subst) (v : tyvar) (t : ty) : subst :=
-  MkSubst ((v, t) :: sub_ty s) (sub_row s) (sub_raw s).
+  MkSubst ((v, t) :: sub_ty s) (sub_row s) (sub_raw s) (sub_rigid s).
 
 Definition bind_row (s : subst) (r : rowvar) (x : stack) : subst :=
-  MkSubst (sub_ty s) ((r, x) :: sub_row s) (sub_raw s).
+  MkSubst (sub_ty s) ((r, x) :: sub_row s) (sub_raw s) (sub_rigid s).
+
+Definition put_rigid (s : subst) (r : rigid) : subst :=
+  MkSubst (sub_ty s) (sub_row s) (sub_raw s) r.
 
 (* `TVK-RAISE`, checker.f:674: meeting a RAW cell raises the other side. *)
 Definition raise_raw (s : subst) (v : tyvar) : subst :=
   if mem_nat v (sub_raw s) then s
-  else MkSubst (sub_ty s) (sub_row s) (v :: sub_raw s).
+  else MkSubst (sub_ty s) (sub_row s) (v :: sub_raw s) (sub_rigid s).
 
 Definition raw_varb (s : subst) (v : tyvar) : bool := mem_nat v (sub_raw s).
 
@@ -613,6 +771,7 @@ Fixpoint zonk_ty_fuel (fuel : nat) (s : subst) (t : ty) : ty :=
       match resolve_ty s t with
       | TVar v => TVar v
       | TCon c => TCon c
+      | TAtom d i => TAtom d i
       | TFam n h args => TFam n h (args_of (map (zonk_ty_fuel f s) (args_list args)))
       | TPtr u => TPtr (zonk_ty_fuel f s u)
       | TQuot h dd (Eff a b c d) =>
@@ -653,6 +812,7 @@ Fixpoint ty_occ_fuel (fuel : nat) (s : subst) (v : tyvar) (t : ty) : bool :=
       match resolve_ty s t with
       | TVar w => Nat.eqb w v
       | TCon _ => false
+      | TAtom _ _ => false
       (* `TY-OCC?`'s T-PARAM arm, checker.f:1278-1285: a type variable can
          hide inside a family ARGUMENT, so the occurs check descends there. *)
       | TFam _ _ args => existsb (fun u => ty_occ_fuel f s v u) (args_list args)
@@ -919,6 +1079,10 @@ Fixpoint raw_ok_fuel (fuel : nat) (s : subst) (t : ty) : option subst :=
       | TFam _ _ _ => None
       | TCon c => if linear_conb c then None else Some s
       | TPtr u => raw_ok_fuel f s u
+      (* `RAW-OK?`'s final `drop RES-TRUE`, checker.f:1672: an atom and an xt
+         are ADMITTED, because the engine's own codegen raw-stores role cells
+         and deferred xts. *)
+      | TAtom _ _ => Some s
       | TQuot _ _ _ => Some s    (* the engine legitimately raw-stores xts *)
       end
   end.
@@ -1025,6 +1189,11 @@ Definition u_ty (e : fenv) (k : ukind) (s : subst) (strict : bool) (a b : ty)
                   URow strict o1 o2; URow strict d1 d2])
     (* PAIR-STRICT: a pointee never widens, at any nesting depth. *)
     | TPtr u, TPtr w => Some (s, [UTy true u w])
+    (* `U-TYPE`'s atom arm, checker.f:1687-1688: two atoms meet through
+       `ATOM-OK?` and nothing else — no widening, no variable binding, no
+       coercion, and the same answer whichever `ukind` is in force. *)
+    | TAtom d1 i1, TAtom d2 i2 =>
+        if atom_okb d1 i1 d2 i2 then Some (s, []) else None
     | TFam _ _ _, TFam _ _ _ =>
         if negb (param_hid_okb ra rb) then None
         else match param_pair_args strict ra rb with
@@ -1168,35 +1337,118 @@ Definition unifiesb (r : option subst) : bool :=
 (* site (`E-INST`, used by `EFF-APPLY`, checker.f:4629-4633).  Because  *)
 (* the checker's variables come from one counter, a uniform shift above *)
 (* every id already in play is a faithful freshening.                   *)
+(*                                                                     *)
+(* Rigid host identities are freshened in the SAME walk and are not a   *)
+(* shift: each template slot is minted from its own domain's counter    *)
+(* (`E-I-AK`, checker.f:4596), once per instantiation, so the two       *)
+(* halves are written separately below and applied together.           *)
 (* ------------------------------------------------------------------ *)
 
-Fixpoint shift_ty (d : nat) (t : ty) : ty :=
+(* The template slots a stored effect carries, in the order a walk over it
+   first meets them.  `E-INST-RESET` (checker.f:4566) clears the whole
+   instantiation table, and `E-I-AK` (checker.f:4596) mints a slot the first
+   time the walk reaches it and reuses the recorded id afterwards — so one
+   slot named twice in one signature is ONE identity, and that is what lets a
+   constructor hand two outputs the same region. *)
+Definition slot_mem (l : list (dom * nat)) (d : dom) (k : nat) : bool :=
+  existsb (fun p => dom_eqb (fst p) d && Nat.eqb (snd p) k) l.
+
+Definition slot_add (l : list (dom * nat)) (d : dom) (k : nat) : list (dom * nat) :=
+  if slot_mem l d k then l else l ++ [(d, k)].
+
+Fixpoint slots_ty (acc : list (dom * nat)) (t : ty) : list (dom * nat) :=
+  match t with
+  | TVar _ => acc
+  | TCon _ => acc
+  | TAtom d (ATempl k) => slot_add acc d k
+  | TAtom _ _ => acc
+  | TFam _ _ args => slots_args acc args
+  | TPtr u => slots_ty acc u
+  | TQuot _ _ e => slots_eff acc e
+  end
+with slots_args (acc : list (dom * nat)) (l : tys) : list (dom * nat) :=
+  match l with
+  | TNil => acc
+  | TCons u rest => slots_args (slots_ty acc u) rest
+  end
+with slots_eff (acc : list (dom * nat)) (e : eff) : list (dom * nat) :=
+  match e with
+  | Eff a b c q => slots_row (slots_row (slots_row (slots_row acc a) b) c) q
+  end
+with slots_row (acc : list (dom * nat)) (x : stack) : list (dom * nat) :=
+  match x with
+  | SRow _ => acc
+  | SPush t rest => slots_row (slots_ty acc t) rest
+  end.
+
+(* What one instantiation minted: a slot and the id its domain handed it. *)
+Definition amap : Type := list ((dom * nat) * nat).
+
+Fixpoint amap_get (m : amap) (d : dom) (k : nat) : option nat :=
+  match m with
+  | [] => None
+  | (p, n) :: rest =>
+      if dom_eqb (fst p) d && Nat.eqb (snd p) k then Some n else amap_get rest d k
+  end.
+
+(* Mint every slot, in walk order, through the slot's own domain counter.  A
+   domain that refuses stops the whole instantiation, which is the throw. *)
+Fixpoint mint_slots (r : rigid) (l : list (dom * nat)) : option (rigid * amap) :=
+  match l with
+  | [] => Some (r, [])
+  | (d, k) :: rest =>
+      match rigid_mint d r with
+      | None => None
+      | Some (n, r') =>
+          match mint_slots r' rest with
+          | None => None
+          | Some (r'', m) => Some (r'', ((d, k), n) :: m)
+          end
+      end
+  end.
+
+(* A slot the map does not name keeps its template kind, which never unifies:
+   fail-closed, exactly as an exhausted walk is everywhere else here. *)
+Definition inst_atom (m : amap) (d : dom) (i : aid) : ty :=
+  match i with
+  | ATempl k =>
+      match amap_get m d k with
+      | Some n => TAtom d (AMint n)
+      | None => TAtom d (ATempl k)
+      end
+  | _ => TAtom d i
+  end.
+
+Fixpoint shift_ty (m : amap) (d : nat) (t : ty) : ty :=
   match t with
   | TVar v => TVar (d + v)
   | TCon c => TCon c
-  | TFam f h args => TFam f h (shift_args d args)
-  | TPtr u => TPtr (shift_ty d u)
-  | TQuot h dd e => TQuot h dd (shift_eff d e)
+  | TAtom dm i => inst_atom m dm i
+  | TFam f h args => TFam f h (shift_args m d args)
+  | TPtr u => TPtr (shift_ty m d u)
+  | TQuot h dd e => TQuot h dd (shift_eff m d e)
   end
-with shift_args (d : nat) (l : tys) : tys :=
+with shift_args (m : amap) (d : nat) (l : tys) : tys :=
   match l with
   | TNil => TNil
-  | TCons u rest => TCons (shift_ty d u) (shift_args d rest)
+  | TCons u rest => TCons (shift_ty m d u) (shift_args m d rest)
   end
-with shift_eff (d : nat) (e : eff) : eff :=
+with shift_eff (m : amap) (d : nat) (e : eff) : eff :=
   match e with
-  | Eff a b c q => Eff (shift_row d a) (shift_row d b) (shift_row d c) (shift_row d q)
+  | Eff a b c q =>
+      Eff (shift_row m d a) (shift_row m d b) (shift_row m d c) (shift_row m d q)
   end
-with shift_row (d : nat) (x : stack) : stack :=
+with shift_row (m : amap) (d : nat) (x : stack) : stack :=
   match x with
   | SRow r => SRow (d + r)
-  | SPush t rest => SPush (shift_ty d t) (shift_row d rest)
+  | SPush t rest => SPush (shift_ty m d t) (shift_row m d rest)
   end.
 
 Fixpoint max_ty (t : ty) : nat :=
   match t with
   | TVar v => v
   | TCon _ => 0
+  | TAtom _ _ => 0
   | TFam _ _ args => max_args args
   | TPtr u => max_ty u
   | TQuot _ _ e => max_eff e
@@ -1222,8 +1474,18 @@ Definition next_sub (s : subst) : nat :=
                (fold_left (fun n p => Nat.max n (Nat.max (fst p) (max_row (snd p))))
                           (sub_row s) 0)).
 
-Definition instantiate (above : nat) (w : word_eff) : word_eff :=
-  MkWordEff (shift_eff above (we_eff w)) (we_hasr w).
+(* `E-INST` (checker.f:4610-4650) does two freshenings in one walk and they
+   draw on two counters.  Variables come from `FRESH`, which is the uniform
+   shift above; rigid identities come from their own per-domain counters
+   through `E-I-AK`, which is the mint below.  `None` is `E-RIGID-EXHAUST`:
+   the counter refused rather than wrapping, and the check cannot go on. *)
+Definition instantiate (s : subst) (above : nat) (w : word_eff)
+  : option (subst * word_eff) :=
+  match mint_slots (sub_rigid s) (slots_eff [] (we_eff w)) with
+  | None => None
+  | Some (r, m) =>
+      Some (put_rigid s r, MkWordEff (shift_eff m above (we_eff w)) (we_hasr w))
+  end.
 
 (* ------------------------------------------------------------------ *)
 (* Sequential composition.                                             *)
@@ -1261,7 +1523,10 @@ Definition compose (e : fenv) (s : subst) (e1 e2 : word_eff)
 Definition compose_fresh (e : fenv) (s : subst) (e1 e2 : word_eff)
   : option (subst * word_eff) :=
   let above := Nat.max (next_sub s) (Nat.max (next_eff (we_eff e1)) (next_eff (we_eff e2))) in
-  compose e s e1 (instantiate above e2).
+  match instantiate s above e2 with
+  | None => None
+  | Some (s', e2') => compose e s' e1 e2'
+  end.
 
 (* The running state a body starts from: the declared input rows, unchanged. *)
 Definition id_eff (din rin : stack) : word_eff :=
@@ -1633,7 +1898,7 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 (* A cell published by a raw storage definer refuses a nominal family, which is
    the value-position half of the pointee seal. *)
 Example raw_cell_refuses_a_nominal :
-  let s := MkSubst [] [] [2] in
+  let s := MkSubst [] [] [2] (rigid_reset model_rigid_cap) in
   unifiesb (unify_stack [] UkInput s (stack_of 0 [TVar 2]) (stack_of 0 [fam0 7])) = false
   /\ unifiesb (unify_stack [] UkInput s (stack_of 0 [TVar 2]) (stack_of 0 [nt])) = true
   (* an ordinary variable is unaffected *)
@@ -1651,7 +1916,7 @@ Example linear_cons_are_nominal :
                 (stack_of 0 [TCon (CLinear 0)]) (stack_of 0 [nt])) = false
   /\ unifiesb (unify_stack [] UkInput empty_subst
                 (stack_of 0 [TCon (CLinear 0)]) (stack_of 0 [TCon (CLinear 0)])) = true
-  /\ unifiesb (unify_stack [] UkInput (MkSubst [] [] [2])
+  /\ unifiesb (unify_stack [] UkInput (MkSubst [] [] [2] (rigid_reset model_rigid_cap))
                 (stack_of 0 [TVar 2]) (stack_of 0 [TCon (CLinear 0)])) = false.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
@@ -1914,7 +2179,7 @@ Example an_open_argument_is_not_expanded :
   layout_args_openb empty_subst opta = true
   /\ layout_args_openb empty_subst optn = false
   /\ push_logical adts empty_subst opta (SRow 0) = SPush opta (SRow 0)
-  /\ let s := MkSubst [(2, nt)] [] [] in
+  /\ let s := MkSubst [(2, nt)] [] [] (rigid_reset model_rigid_cap) in
      layout_args_openb s opta = false
      /\ push_logical adts s opta (SRow 0)
         = SPush (fam_hid f_option 1 [TVar 2])
@@ -2080,3 +2345,193 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
 (* A signature type is a term, not a string: nothing here can be built by
    spelling. *)
 Fail Definition rows_are_not_types : ty := SRow 0.
+
+(* --- 9. Rigid host identities --------------------------------------- *)
+
+(* What the two rules above are FOR.  `ATOM-OK?` decides whether two
+   allocations are the same one, and the counters decide what "the same one"
+   can mean at all; a checker that got either wrong would let a program reach
+   one allocation through another's handle. *)
+
+Lemma dom_eqb_eq : forall a b, dom_eqb a b = true <-> a = b.
+Proof. destruct a, b; simpl; split; intros H; try discriminate H; reflexivity. Qed.
+
+Lemma rg_get_put_same : forall d n r, rg_get d (rg_put d n r) = n.
+Proof. destruct d; reflexivity. Qed.
+
+Lemma rg_get_put_other :
+  forall d d' n r, dom_eqb d' d = false -> rg_get d' (rg_put d n r) = rg_get d' r.
+Proof. destruct d, d'; simpl; intros n r H; try discriminate H; reflexivity. Qed.
+
+Lemma rg_cap_put : forall d n r, rg_cap (rg_put d n r) = rg_cap r.
+Proof. destruct d; reflexivity. Qed.
+
+Lemma rigid_mint_some :
+  forall d r n r',
+    rigid_mint d r = Some (n, r') ->
+    n = rg_get d r /\ r' = rg_put d (S n) r /\ n < rg_cap r.
+Proof.
+  unfold rigid_mint. intros d r n r' H.
+  destruct (Nat.ltb (rg_get d r) (rg_cap r)) eqn:Hlt; [ | discriminate ].
+  injection H as H1 H2. subst. repeat split.
+  - apply Nat.ltb_lt in Hlt. exact Hlt.
+Qed.
+
+(* A domain hands out its own counter and advances only itself, so no mint can
+   disturb another domain's supply. *)
+Lemma rigid_mint_isolates :
+  forall d r n r',
+    rigid_mint d r = Some (n, r') ->
+    rg_get d r' = S n
+    /\ rg_cap r' = rg_cap r
+    /\ forall d', dom_eqb d' d = false -> rg_get d' r' = rg_get d' r.
+Proof.
+  intros d r n r' H. apply rigid_mint_some in H as [-> [-> _]].
+  split; [ apply rg_get_put_same | ].
+  split; [ apply rg_cap_put | ].
+  intros d' Hd. apply rg_get_put_other. exact Hd.
+Qed.
+
+Lemma mint_slots_monotone :
+  forall l r r' m, mint_slots r l = Some (r', m) ->
+    rg_cap r' = rg_cap r /\ forall d, rg_get d r <= rg_get d r'.
+Proof.
+  induction l as [ | [d k] rest IH ]; simpl; intros r r' m H.
+  - injection H as Hr Hml. rewrite <- Hr.
+    split; [ reflexivity | intros; lia ].
+  - destruct (rigid_mint d r) as [ [n r1] | ] eqn:Hm; [ | discriminate ].
+    destruct (mint_slots r1 rest) as [ [r2 m2] | ] eqn:Hrest; [ | discriminate ].
+    injection H as Hr Hml. rewrite <- Hr.
+    pose proof Hm as HmB.
+    apply rigid_mint_isolates in Hm as [Hs [Hcap Hother]].
+    apply rigid_mint_some in HmB as [Hn0 _].
+    apply IH in Hrest as [Hcap2 Hmono].
+    split; [ rewrite Hcap2, Hcap; reflexivity | ].
+    intros d'. specialize (Hmono d').
+    destruct (dom_eqb d' d) eqn:Hd.
+    + apply dom_eqb_eq in Hd. subst d'. lia.
+    + rewrite (Hother d' Hd) in Hmono. exact Hmono.
+Qed.
+
+(* Every identity one instantiation mints lies in the window its own domain's
+   counter moved through, and that window ends strictly below the bound. *)
+Lemma mint_slots_range :
+  forall l r r' m, mint_slots r l = Some (r', m) ->
+    forall d k n, In ((d, k), n) m ->
+      rg_get d r <= n /\ S n <= rg_get d r' /\ n < rg_cap r.
+Proof.
+  induction l as [ | [d0 k0] rest IH ]; simpl; intros r r' m H d k n Hin.
+  - injection H as Hr Hml. rewrite <- Hml in Hin. destruct Hin.
+  - destruct (rigid_mint d0 r) as [ [n0 r1] | ] eqn:Hm; [ | discriminate ].
+    destruct (mint_slots r1 rest) as [ [r2 m2] | ] eqn:Hrest; [ | discriminate ].
+    injection H as Hr Hml. rewrite <- Hr. rewrite <- Hml in Hin.
+    pose proof Hm as Hm'. apply rigid_mint_some in Hm' as [Hn0 [_ Hcap0]].
+    pose proof Hm as Hiso. apply rigid_mint_isolates in Hiso as [Hs [Hcap Hother]].
+    pose proof Hrest as Hmono'. apply mint_slots_monotone in Hmono' as [Hcap2 Hmono].
+    destruct Hin as [Heq | Hin].
+    + assert (d0 = d /\ n0 = n) as [Hdd Hnn]
+        by (injection Heq; intros; split; congruence).
+      rewrite <- Hdd, <- Hnn.
+      split; [ lia | ]. split; [ rewrite <- Hs; apply Hmono | lia ].
+    + destruct (IH r1 r2 m2 Hrest d k n Hin) as [Hlo [Hhi Hc]].
+      split; [ | split; [ exact Hhi | lia ] ].
+      destruct (dom_eqb d d0) eqn:Hd.
+      * apply dom_eqb_eq in Hd. subst d0. lia.
+      * rewrite (Hother d Hd) in Hlo. lia.
+Qed.
+
+(* The domain and id of every identity an instantiation minted. *)
+Definition minted_ids (m : amap) : list (nat * nat) :=
+  map (fun p => (dom_code (fst (fst p)), snd p)) m.
+
+(* RESULT 1.  Two identities from different domains never unify, however their
+   numbers compare — including when they are equal, which is the ordinary case,
+   because every domain's counter starts at 1.  This is the whole reason the
+   number is not the authority: `RR-BOXR` and `RR-BOXG` in
+   test/rigid-region-suite.f are each the first mint of their own domain, and
+   `C-XDOM` is refused. *)
+Theorem cross_domain_identities_never_unify :
+  forall e k s d1 d2 i1 i2,
+    dom_eqb d1 d2 = false ->
+    unify_ty e k s (TAtom d1 i1) (TAtom d2 i2) = None.
+Proof.
+  intros e k s d1 d2 i1 i2 Hd.
+  unfold unify_ty.
+  destruct (unify_budget e s (ty_size (TAtom d1 i1) + ty_size (TAtom d2 i2)))
+    as [ | f ] eqn:Hb; [ reflexivity | ].
+  simpl. unfold u_ty.
+  destruct (res_budget s) as [ | rb ] eqn:Hr;
+    [ unfold res_budget in Hr; discriminate | ].
+  simpl. unfold atom_okb.
+  rewrite Hd, !Bool.andb_false_r. reflexivity.
+Qed.
+
+(* RESULT 2.  A template slot is not an identity.  A `fresh-*` name in a
+   signature is the PLACE a call site will mint one (`FAM-MARK`,
+   checker.f:2693), and until it is minted it unifies with nothing at all — not
+   even with a slot spelled exactly the same way.  Measured through
+   `CHECK-CANDIDATE!`: `( fresh-region-a -- fresh-region-a )` with an empty
+   body answers 0, while `( mask-a -- mask-a )` answers -1. *)
+Theorem a_template_slot_is_not_an_identity :
+  forall e k s d1 d2 k1 i2,
+    unify_ty e k s (TAtom d1 (ATempl k1)) (TAtom d2 i2) = None.
+Proof.
+  intros e k s d1 d2 k1 i2.
+  unfold unify_ty.
+  destruct (unify_budget e s (ty_size (TAtom d1 (ATempl k1)) + ty_size (TAtom d2 i2)))
+    as [ | f ] eqn:Hb; [ reflexivity | ].
+  simpl. unfold u_ty.
+  destruct (res_budget s) as [ | rb ] eqn:Hr;
+    [ unfold res_budget in Hr; discriminate | ].
+  simpl. unfold atom_okb, aid_rigidb.
+  destruct i2; simpl; rewrite ?Bool.andb_false_r; reflexivity.
+Qed.
+
+(* RESULT 3.  No identity is ever handed out twice inside one instantiation,
+   and none of them reaches the bound — so no counter wrapped, and no handle
+   names an allocation that is still live under another name. *)
+Theorem no_wrap_can_re_grant_a_live_identity :
+  forall l r r' m,
+    mint_slots r l = Some (r', m) ->
+    NoDup (minted_ids m)
+    /\ forall d k n, In ((d, k), n) m -> n < rg_cap r.
+Proof.
+  induction l as [ | [d0 k0] rest IH ]; simpl; intros r r' m H.
+  - injection H as Hr Hml. rewrite <- Hml.
+    split; [ constructor | intros d k n [] ].
+  - destruct (rigid_mint d0 r) as [ [n0 r1] | ] eqn:Hm; [ | discriminate ].
+    destruct (mint_slots r1 rest) as [ [r2 m2] | ] eqn:Hrest; [ | discriminate ].
+    injection H as Hr Hml. rewrite <- Hml.
+    pose proof Hm as Hm'. apply rigid_mint_some in Hm' as [Hn0 [_ Hcap0]].
+    pose proof Hm as Hiso. apply rigid_mint_isolates in Hiso as [Hs [Hcap _]].
+    destruct (IH r1 r2 m2 Hrest) as [Hnd Hbnd].
+    split.
+    + simpl. constructor; [ | exact Hnd ].
+      intros Hin. unfold minted_ids in Hin.
+      apply in_map_iff in Hin as [ [[d k] n] [Heq Hin] ].
+      simpl in Heq. injection Heq as Hdc Hn.
+      destruct (mint_slots_range rest r1 r2 m2 Hrest d k n Hin) as [Hlo _].
+      assert (d = d0) as Hdd by (destruct d, d0; simpl in Hdc; congruence).
+      rewrite Hdd, Hs in Hlo. lia.
+    + intros d k n [Heq | Hin].
+      * assert (n0 = n) as Hnn by (injection Heq; intros; congruence).
+        lia.
+      * rewrite <- Hcap. exact (Hbnd d k n Hin).
+Qed.
+
+(* RESULT 4.  Two call sites never share an identity either.  The counters are
+   reset once per check (`RIGID-RESET` inside `NEW`, checker.f:1804) and never
+   again, so the second instantiation starts where the first stopped.  This is
+   what makes two calls to one constructor two DIFFERENT allocations, which
+   `C-REUSE` and `C-MSKX` in test/rigid-region-suite.f both rest on. *)
+Theorem two_instantiations_never_share_an_identity :
+  forall l1 l2 r r1 r2 m1 m2,
+    mint_slots r l1 = Some (r1, m1) ->
+    mint_slots r1 l2 = Some (r2, m2) ->
+    forall d k1 k2 n, In ((d, k1), n) m1 -> In ((d, k2), n) m2 -> False.
+Proof.
+  intros l1 l2 r r1 r2 m1 m2 H1 H2 d k1 k2 n Hin1 Hin2.
+  destruct (mint_slots_range l1 r r1 m1 H1 d k1 n Hin1) as [_ [Hhi _]].
+  destruct (mint_slots_range l2 r1 r2 m2 H2 d k2 n Hin2) as [Hlo _].
+  apply (Nat.nle_succ_diag_l n). eapply Nat.le_trans; [ exact Hhi | exact Hlo ].
+Qed.

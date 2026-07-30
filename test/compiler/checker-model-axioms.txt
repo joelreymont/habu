@@ -169,6 +169,18 @@ closed
 theorem Habu.Common.Effects.the_two_occurs_checks_disagree_about_arguments
 type unify_stack adts UkExact empty_subst (SRow 0) (SPush (quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))) (SRow 3)) = None /\ unifiesb (unify_stack adts UkExact empty_subst (SRow 0) (SPush (fam_app f_serial [quot (Eff (SRow 0) (SRow 1) (SRow 2) (SRow 2))]) (SRow 3))) = true /\ ty_occurs empty_subst 9 (fam_app f_option [TVar 9]) = true /\ ty_occurs empty_subst 9 (fam_app f_option [nt]) = false
 closed
+theorem Habu.Common.Effects.cross_domain_identities_never_unify
+type forall (e : fenv) (k : ukind) (s : subst) (d1 d2 : dom) (i1 i2 : aid), dom_eqb d1 d2 = false -> unify_ty e k s (TAtom d1 i1) (TAtom d2 i2) = None
+closed
+theorem Habu.Common.Effects.a_template_slot_is_not_an_identity
+type forall (e : fenv) (k : ukind) (s : subst) (d1 d2 : dom) (k1 : nat) (i2 : aid), unify_ty e k s (TAtom d1 (ATempl k1)) (TAtom d2 i2) = None
+closed
+theorem Habu.Common.Effects.no_wrap_can_re_grant_a_live_identity
+type forall (l : list (dom * nat)) (r r' : rigid) (m : amap), mint_slots r l = Some (r', m) -> NoDup (minted_ids m) /\ (forall (d : dom) (k n : nat), In (d, k, n) m -> n < rg_cap r)
+closed
+theorem Habu.Common.Effects.two_instantiations_never_share_an_identity
+type forall (l1 l2 : list (dom * nat)) (r r1 r2 : rigid) (m1 m2 : amap), mint_slots r l1 = Some (r1, m1) -> mint_slots r1 l2 = Some (r2, m2) -> forall (d : dom) (k1 k2 n : nat), In (d, k1, n) m1 -> In (d, k2, n) m2 -> False
+closed
 theorem Habu.Common.Control.branch_arms_join
 type check_ctl (sig [i64] [i64]) [TCall wMkBool; TIf; TCall wStep1; TElse; TCall wStep1; TThen] = VCert
 closed

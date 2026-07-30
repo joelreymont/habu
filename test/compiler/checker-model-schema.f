@@ -7,7 +7,7 @@
 \ composition) and `formal/Common/Control.v` (branches, loops, `case`, `MATCH`,
 \ early return, the throw edge, quotations, locals, linear-once conservation).
 \
-\ It holds data and nothing else. Six tables:
+\ It holds data and nothing else. Seven tables:
 \
 \   1. The concrete type vocabulary. One row per type `CT-INIT` registers:
 \      the surface name, the `CC-` code word, the class word, the width in
@@ -28,9 +28,7 @@
 \
 \   3. The term tags. `T-CON` .. `T-PARAM` and `S-ROW` / `S-PUSH` are the
 \      checker's whole term and stack vocabulary, and each names the
-\      `Effects.ty` or `Effects.stack` constructor that stands for it. `T-ATOM`
-\      names none: the rigid host identity is a declared omission in Effects.v's
-\      own header, so the row records the omission rather than hiding it.
+\      `Effects.ty` or `Effects.stack` constructor that stands for it.
 \
 \   4. The control-flow dispatch table. One row per spelling `CF-TOK?`
 \      recognises, in the order it tests them, with the handler it runs and the
@@ -42,21 +40,30 @@
 \      mutates, with the exact source run that writes the kind number and a
 \      model token sequence that must leave a frame of that kind on top.
 \
-\   6. The shared program vectors. One row is one small checked definition: the
+\   6. The rigid host-identity domains. One row per identity domain a host
+\      allocation can be stamped in, naming the word an atom's name leads with,
+\      the checker word that mints from that domain, the counter variable it
+\      owns, and the `Effects.dom` constructor for it. The guard, the advance
+\      and the per-check restart are derived from the counter's name rather
+\      than written down again.
+\
+\   7. The shared program vectors. One row is one small checked definition: the
 \      Habu source the real checker is asked to certify, the model
 \      configuration and token list the same program is written as, and the ONE
 \      verdict both must answer. The two encodings are necessarily different -
 \      one is text for a token scanner, the other is an already-scanned token
 \      list - but they live in one row and the verdict is written once, so a
-\      row cannot be satisfied by editing only one side. The last eighteen rows
-\      hold six decisions nothing else here reaches: the widening lattice, the
-\      control-frame ceiling, `MATCH`'s own depth guard, the per-step linear
-\      conservation count, `construct`, and `MATCH`'s scrutinee pop. Before they
-\      existed, halving the ceiling, lowering or deleting the depth guard, making
-\      the conservation count a no-op, letting any two same-class types stand in
-\      for each other, dropping the unterminated-`construct` test at the
-\      definition boundary, or letting the scrutinee pop take a bundle of any
-\      family of the right width each left the whole gate green.
+\      row cannot be satisfied by editing only one side. The last twenty-four
+\      rows hold seven decisions nothing else here reaches: the widening
+\      lattice, the control-frame ceiling, `MATCH`'s own depth guard, the
+\      per-step linear conservation count, `construct`, `MATCH`'s scrutinee
+\      pop, and rigid host identities. Before they existed, halving the
+\      ceiling, lowering or deleting the depth guard, making the conservation
+\      count a no-op, letting any two same-class types stand in for each other,
+\      dropping the unterminated-`construct` test at the definition boundary,
+\      letting the scrutinee pop take a bundle of any family of the right
+\      width, or letting two identities from different domains unify on their
+\      numbers each left the whole gate green.
 \
 \ Where the two sides are not literally the same shape, and why that is sound:
 \
@@ -84,7 +91,7 @@ require lib/fmt.f
 package CHECKER-MODEL-PROOF
 private
 
-$2000 constant POOL-CAP
+$4000 constant POOL-CAP
 $200 constant STR-MAX
 $40 constant ROW-MAX
 
@@ -149,6 +156,11 @@ create FRK-RUN ROW-MAX cells allot
 create FRK-CFG ROW-MAX cells allot
 create FRK-TOKS ROW-MAX cells allot
 
+create RGD-WORD ROW-MAX cells allot
+create RGD-MINT ROW-MAX cells allot
+create RGD-CTR ROW-MAX cells allot
+create RGD-CON ROW-MAX cells allot
+
 create VEC-NAME ROW-MAX cells allot
 create VEC-SRC ROW-MAX cells allot
 create VEC-CFG ROW-MAX cells allot
@@ -161,6 +173,7 @@ variable SGN-N
 variable TAG-N
 variable CFT-N
 variable FRK-N
+variable RGD-N
 variable VEC-N
 
 : COL! ( n ptr a n -- ) {: v:n col:ptr i:n :}
@@ -263,11 +276,11 @@ variable VEC-N
 \ which model type it belongs to - `Effects.ty` for a term, `Effects.stack` for
 \ a row cell.
 \
-\ `T-ATOM` is the rigid host identity. Effects.v's header names it as a
-\ deliberate omission from the modelled fragment, so its row carries an empty
-\ constructor and an empty sort: the gate then holds the checker to exactly
-\ eight tags and the model to exactly the seven that are modelled, and a ninth
-\ tag on either side is a new row somebody has to write here first.
+\ `T-ATOM` is the rigid host identity, and its row is now filled in like every
+\ other: `Effects.TAtom` carries the domain and the id `ATOM-OK?` decides on.
+\ The gate then holds the checker to exactly eight tags and the model to
+\ exactly those eight, and a ninth tag on either side is a new row somebody has
+\ to write here first.
 
 : TAG-ROW ( ptr u8 n n ptr u8 n ptr u8 n ptr u8 n -- )
    {: wa:ptr wu:n code:n ca:ptr cu:n pa:ptr pu:n sa:ptr su:n :}
@@ -285,7 +298,7 @@ variable VEC-N
    s" S-ROW"   3 s" SRow"  s" SRow _"       s" stack" TAG-ROW
    s" S-PUSH"  4 s" SPush" s" SPush _ _"    s" stack" TAG-ROW
    s" T-QUOT"  5 s" TQuot" s" TQuot _ _ _"  s" ty"    TAG-ROW
-   s" T-ATOM"  6 s" "      s" "             s" "      TAG-ROW
+   s" T-ATOM"  6 s" TAtom" s" TAtom _ _"    s" ty"    TAG-ROW
    s" T-PARAM" 7 s" TFam"  s" TFam _ _ _"   s" ty"    TAG-ROW ;
 
 \ ---- 4. the control-flow dispatch table (`CF-TOK?`) --------------------------
@@ -403,7 +416,38 @@ variable OFF-N
       s" sig_fam [fam0 100] [nt]"
       s" [TMatch; TFamTok fmres; TVarTok 0; TOf]"                         FRK-ROW ;
 
-\ ---- 6. the shared program vectors -------------------------------------------
+\ ---- 6. the rigid host-identity domains --------------------------------------
+\ A host allocation is stamped with identities `ptr T` and a type variable
+\ cannot name: WHICH allocation it is, what bounds it has, and which mutation
+\ epoch it is in. One row is one identity DOMAIN: the word an atom's name leads
+\ with, the checker word that mints from that domain, the counter variable that
+\ domain owns, and the `Effects.dom` constructor that stands for it. The last
+\ row is the catch-all every atom word the router does not recognise mints
+\ from, so it carries no leading word.
+\
+\ Everything else about a domain is DERIVED from the counter name rather than
+\ written down again, because the checker writes the same three lines for each
+\ of them: the guard that refuses at the bound, the hand-out-and-advance, and
+\ the restart the per-check reset performs. A counter renamed on one side is
+\ then three rows that no longer match rather than three literals that quietly
+\ disagree. The routing test's two lengths are derived the same way, from the
+\ leading word's own length.
+
+: RGD-ROW ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: wa:ptr wu:n ma:ptr mu:n ca:ptr cu:n oa:ptr ou:n :}
+   wa wu STR+ RGD-WORD RGD-N @ COL!
+   ma mu STR+ RGD-MINT RGD-N @ COL!
+   ca cu STR+ RGD-CTR RGD-N @ COL!
+   oa ou STR+ RGD-CON RGD-N @ COL!
+   RGD-N @ 1+ RGD-N ! ;
+
+: BUILD-DOMAINS ( -- )
+   s" region-" s" RGN-FRESH"   s" RGN-N"   s" DRegion" RGD-ROW
+   s" extent-" s" EXT-FRESH"   s" EXT-N"   s" DExtent" RGD-ROW
+   s" gen-"    s" GEN-FRESH"   s" GEN-N"   s" DGen"    RGD-ROW
+   s" "        s" RIGID-FRESH" s" RIGID-N" s" DShared" RGD-ROW ;
+
+\ ---- 7. the shared program vectors -------------------------------------------
 \ One verdict per row, written once. `V-CERT`, `V-UNCK` and `V-REJECT` are the
 \ model's three outcomes; the cases file maps the checker's -1 / 1 / 0 into
 \ them, so an unresolvable is never read as a refusal.
@@ -679,6 +723,55 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
       s" [TMatch; TFamTok fmtwin; TVarTok 0; TOf; TCall wDropN; TEndof; TVarTok 1; TOf; TCall wDropN; TEndof; TSemiMatch]"
       V-REJECT VEC-ROW ;
 
+\ Six rows about rigid host-allocation identities, which nothing else here
+\ reaches. An identity is minted at a CALL SITE (`E-I-AK`, src/core/checker.f),
+\ once per template slot per instantiation, from the counter its domain owns.
+\ The rows come in three pairs and each pair turns on one thing:
+\
+\   - one call against two. `MK-REGION-PAIR` names one slot twice, so its two
+\     outputs carry ONE identity and the consumer certifies; two calls to
+\     `MK-REGION` are two allocations, the counter has advanced in between, and
+\     the same consumer is refused. A counter that restarted, or that handed
+\     out its value without advancing, would certify the second row;
+\   - two domains at the same number. `MK-REGION` and `MK-GEN` are each the
+\     FIRST mint of their own domain in that check, so both ids are 1 and the
+\     row is still refused. This is the sharp one: a comparison that looked at
+\     the number alone would certify it;
+\   - a template slot against an ordinary atom token. A `fresh-*` name in the
+\     candidate's OWN signature is the place an identity would be minted and
+\     never an identity, so naming one on both sides is refused; a `mask-*`
+\     token is an ordinary atom whose whole identity is its spelling, so the
+\     same shape certifies and differing spellings are refused.
+\
+\ Measured, by mutating the shipped checker, rebuilding the fixpoint and
+\ rerunning this gate; the checker was restored byte-for-byte after each.
+\ Dropping `ATOM-OK?`'s name comparison turns the two-domain row and the
+\ differing-spelling row from refusals into certifications and moves nothing
+\ else. Making a per-domain counter hand out its value without advancing turns
+\ the two-allocation row from a refusal into a certification and moves nothing
+\ else.
+: BUILD-ATOM-VECTORS ( -- )
+   s" one_call_hands_both_its_outputs_one_identity"
+      s" CMV29 ( -- ) CHECKER-MODEL-CASES:MK-REGION-PAIR CHECKER-MODEL-CASES:SAME-ID"
+      s" sig [] []" s" [TCall wMkRegionPair; TCall wSameId]" V-CERT VEC-ROW
+   s" two_calls_are_two_allocations_and_never_one"
+      s" CMV30 ( -- ) CHECKER-MODEL-CASES:MK-REGION CHECKER-MODEL-CASES:MK-REGION CHECKER-MODEL-CASES:SAME-ID"
+      s" sig [] []" s" [TCall wMkRegion; TCall wMkRegion; TCall wSameId]"
+      V-REJECT VEC-ROW
+   s" two_domains_at_the_same_number_still_reject"
+      s" CMV31 ( -- ) CHECKER-MODEL-CASES:MK-REGION CHECKER-MODEL-CASES:MK-GEN CHECKER-MODEL-CASES:SAME-ID"
+      s" sig [] []" s" [TCall wMkRegion; TCall wMkGen; TCall wSameId]"
+      V-REJECT VEC-ROW
+   s" a_template_slot_is_not_an_identity"
+      s" CMV32 ( fresh-region-a -- fresh-region-a )"
+      s" sig [aRegionSlot] [aRegionSlot]" s" []" V-REJECT VEC-ROW
+   s" an_atom_tokens_identity_is_its_spelling"
+      s" CMV33 ( mask-a -- mask-a )"
+      s" sig [aMaskA] [aMaskA]" s" []" V-CERT VEC-ROW
+   s" a_different_spelling_is_a_different_atom"
+      s" CMV34 ( mask-a -- mask-b )"
+      s" sig [aMaskA] [aMaskB]" s" []" V-REJECT VEC-ROW ;
+
 : BUILD-VECTORS ( -- )
    s" straight_line"
       s" CMV1 ( i64 -- i64 ) CHECKER-MODEL-CASES:STEP1"
@@ -721,12 +814,13 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    BUILD-MATCH-DEPTH-VECTORS
    BUILD-LINEAR-TRANSFER-VECTORS
    BUILD-CONSTRUCT-VECTORS
-   BUILD-SCRUTINEE-VECTORS ;
+   BUILD-SCRUTINEE-VECTORS
+   BUILD-ATOM-VECTORS ;
 
 : BUILD-ALL ( -- )
    0 POOL-U !  0 STR-N !
    0 VOC-N !  0 CLS-N !  0 SGN-N !  0 TAG-N !
-   0 CFT-N !  0 OFF-N !  0 FRK-N !  0 VEC-N !
+   0 CFT-N !  0 OFF-N !  0 FRK-N !  0 RGD-N !  0 VEC-N !
    BUILD-VOCAB
    BUILD-CLASSES
    BUILD-SIGNS
@@ -734,6 +828,7 @@ FRAME-CEIL MATCH-FRAMES - constant MATCH-DEPTH-MAX
    BUILD-CONTROL
    BUILD-OFF-TABLE
    BUILD-FRAMES
+   BUILD-DOMAINS
    BUILD-VECTORS ;
 
 BUILD-ALL
@@ -783,6 +878,36 @@ public
 : FRK-CFG$ ( n -- ptr u8 n )     FRK-CFG swap FRK-N @ COL@ STR$ ;
 : FRK-TOKS$ ( n -- ptr u8 n )    FRK-TOKS swap FRK-N @ COL@ STR$ ;
 
+\ The bound the generated obligations run a domain counter at. It is a harness
+\ number and nothing else: the checker's own `RIGID-MAX` is `$4000000000000000`
+\ and the model states every result about the bound for EVERY bound, so what
+\ the obligations have to show is that a domain restarts at 1, hands out its
+\ current value and advances, and REFUSES at whatever bound it is given.
+3 constant DOMAIN-BOUND
+
+: DOMAINS ( -- n )      RGD-N @ ;
+: RGD-WORD$ ( n -- ptr u8 n )   RGD-WORD swap RGD-N @ COL@ STR$ ;
+: RGD-MINT$ ( n -- ptr u8 n )   RGD-MINT swap RGD-N @ COL@ STR$ ;
+: RGD-CON$ ( n -- ptr u8 n )    RGD-CON swap RGD-N @ COL@ STR$ ;
+: RGD-ROUTED? ( n -- bool )     RGD-WORD$ nip 0 > ;
+
+\ The three runs a domain's counter name determines, built here so the name is
+\ written once. `RGD-GUARD$` is the refusal at the bound (`RGN-FRESH`,
+\ src/core/checker.f), `RGD-ADV$` the hand-out-and-advance in the same word,
+\ and `RGD-RESET$` the restart `RIGID-RESET` performs.
+: RGD-CTR$ ( n -- ptr u8 n )    RGD-CTR swap RGD-N @ COL@ STR$ ;
+
+: RGD-GUARD$ ( n -- ptr u8 n ) {: k:n :}
+   SB-RESET k RGD-CTR$ SB-APPEND
+   s"  @ RIGID-MAX @ >= IF E-RIGID-EXHAUST throw THEN" SB-APPEND SB$ ;
+
+: RGD-ADV$ ( n -- ptr u8 n ) {: k:n :}
+   SB-RESET k RGD-CTR$ SB-APPEND s"  @ dup 1+ " SB-APPEND
+   k RGD-CTR$ SB-APPEND s"  !" SB-APPEND SB$ ;
+
+: RGD-RESET$ ( n -- ptr u8 n ) {: k:n :}
+   SB-RESET s" 1 " SB-APPEND k RGD-CTR$ SB-APPEND s"  !" SB-APPEND SB$ ;
+
 : VECTORS ( -- n )      VEC-N @ ;
 : VEC-NAME$ ( n -- ptr u8 n )    VEC-NAME swap VEC-N @ COL@ STR$ ;
 : VEC-SRC$ ( n -- ptr u8 n )     VEC-SRC swap VEC-N @ COL@ STR$ ;
@@ -822,6 +947,15 @@ public
 
 : VOCAB-SET-WORD$ ( -- ptr u8 n )
    s" CT-SET" ;
+
+\ The two words the identity-domain rows are read out of, beside each domain's
+\ own mint word: the router that sends an atom name to its domain, and the
+\ per-check restart.
+: ROUTER-WORD$ ( -- ptr u8 n )
+   s" RIGID-AK-MINT" ;
+
+: RIGID-RESET-WORD$ ( -- ptr u8 n )
+   s" RIGID-RESET" ;
 
 : CONTROL-TEST-WORD$ ( -- ptr u8 n )
    s" CORE-STR=" ;

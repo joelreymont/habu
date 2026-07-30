@@ -577,6 +577,7 @@ Fixpoint mv_ty (v : tyvar) (pol : bool) (t : ty) : mpair :=
   match t with
   | TVar w => if Nat.eqb w v then (if pol then (0, 1) else (1, 0)) else mnil
   | TCon _ => mnil
+  | TAtom _ _ => mnil
   (* `EN-PARAM`, checker.f:4585-4591: the argument run is walked at the SAME
      polarity — a family application is not a quotation, so nothing flips. *)
   | TFam _ _ args => mv_args v pol args
@@ -614,6 +615,7 @@ Fixpoint vars_ty (t : ty) (acc : list tyvar) : list tyvar :=
   match t with
   | TVar w => if mem_nat w acc then acc else w :: acc
   | TCon _ => acc
+  | TAtom _ _ => acc
   (* A family argument is an ordinary effect variable position: `E-COPY`
      collects it and `EI-TV` therefore holds it. *)
   | TFam _ _ args => vars_args args acc
@@ -746,16 +748,27 @@ Definition step_nn_in (s : st) : st := step_ty2_in s nt nt.
    through `CHECKER-STEP` — so the linear count is checked BEFORE the return
    rows move, exactly as the checker orders it — then the return rows, only if
    the callee's signature actually wrote a `|` clause, and finally the
-   per-variable multiplicity pass. *)
+   per-variable multiplicity pass.
+
+   `instantiate` is where a rigid host identity is minted, so a call is also
+   where a domain can EXHAUST.  The checker throws `E-RIGID-EXHAUST` there and
+   the whole check stops with no verdict at all; this fragment has no such
+   outcome, so it fails the step, which is the fail-closed direction — the
+   model can refuse a program the checker would have aborted on, never certify
+   one. *)
 Definition apply_eff (s : st) (w : word_eff) : st :=
   let above := st_fv s in
-  let w' := instantiate above w in
-  let s := put_fv s (above + next_eff (we_eff w)) in
-  let s := checker_step s (we_din w') (we_dout w') in
-  let s := if we_hasr w'
-           then let s := rsuni_in s (we_rin w') in put_r s (we_rout w')
-           else s in
-  lin_eff_pass s w'.
+  match instantiate (st_sub s) above w with
+  | None => fail s
+  | Some (sub', w') =>
+      let s := put_sub s sub' in
+      let s := put_fv s (above + next_eff (we_eff w)) in
+      let s := checker_step s (we_din w') (we_dout w') in
+      let s := if we_hasr w'
+               then let s := rsuni_in s (we_rin w') in put_r s (we_rout w')
+               else s in
+      lin_eff_pass s w'
+  end.
 
 (* ------------------------------------------------------------------ *)
 (* The dead-path gate.                                                 *)
@@ -3693,7 +3706,48 @@ Example the_loop_rule_is_silent_about_underflow :
        [TCall wMkN; TCall wMkN; TDo; TCall trusted_img; TLoop] = VReject.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* --- 17. Failure is still a value ------------------------------------ *)
+(* --- 17. Rigid host identities at a call site ------------------------ *)
+
+(* The four words the shared identity vectors run, declared in the fixture
+   (`test/compiler/checker-model-cases.f`) as trusted host constructors,
+   because minting a host identity is exactly what checked code may not do:
+
+     TRUSTED: MK-REGION ( -- fresh-region-a ) 0 ;
+     TRUSTED: MK-GEN ( -- fresh-gen-a ) 0 ;
+     TRUSTED: MK-REGION-PAIR ( -- fresh-region-a fresh-region-a ) 0 0 ;
+     TRUSTED: SAME-ID ( x x -- ) 2drop ;
+
+   `MK-REGION-PAIR` names ONE template slot twice, so `E-I-AK` mints for it
+   once and both outputs carry that identity.  `MK-REGION` and `MK-GEN` name a
+   slot each in a different domain, so a call of each is two identities that
+   are both the FIRST mint of their own counter — the same number, in two
+   domains.  Measured through `CHECK-CANDIDATE!`:
+
+     ( -- ) MK-REGION-PAIR SAME-ID              -> -1
+     ( -- ) MK-REGION MK-REGION SAME-ID         ->  0
+     ( -- ) MK-REGION MK-GEN SAME-ID            ->  0, `identity domain confusion`
+     ( fresh-region-a -- fresh-region-a )       ->  0
+     ( mask-a -- mask-a )                       -> -1
+     ( mask-a -- mask-b )                       ->  0 *)
+
+(* Template slots are numbered per signature; `FAM-MARK` interns them globally
+   but `E-INST-RESET` clears the instantiation table at every call site, so no
+   two words share one. *)
+Definition aRegionSlot : ty := TAtom DRegion (ATempl 0).
+Definition aGenSlot : ty := TAtom DGen (ATempl 0).
+
+(* An ordinary atom token carries kind 0, so its whole identity is its name and
+   the domain adds nothing: `RIGID-AK-MINT` never routes it, because it is
+   never minted at all. *)
+Definition aMaskA : ty := TAtom DShared (AName 0).
+Definition aMaskB : ty := TAtom DShared (AName 1).
+
+Definition wMkRegion : word_eff := prim [] 1 [] [aRegionSlot].
+Definition wMkGen : word_eff := prim [] 1 [] [aGenSlot].
+Definition wMkRegionPair : word_eff := prim [] 1 [] [aRegionSlot; aRegionSlot].
+Definition wSameId : word_eff := prim [] 1 [TVar 2; TVar 2] [].
+
+(* --- 18. Failure is still a value ------------------------------------ *)
 
 (* Nothing above can raise, diverge, or be partial: `step` is total, `run` is
    structural on the token list, and every verdict is one of three values.
