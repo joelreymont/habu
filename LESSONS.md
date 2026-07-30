@@ -3515,3 +3515,15 @@ fits.
   in a shape no `defer` can express. When a fix converts the single-cell cases,
   check for the array-shaped ones before believing a restored image is well:
   ours compiled definitions happily and still died on the first `sumtype`.
+
+- **Never delete a lane workspace before the main workspace has re-verified
+  with a binary that can compile the new tree.** The callback-declaration
+  landing added a new primitive (`xt!`); the lane's freshly built `bin/hb` was
+  the only binary that could compile the tree, and I deleted its workspace
+  before re-running gates in the main workspace — every gate then exited 70
+  (the old binary rejects the unknown primitive), after the bookmark was
+  already pushed. Recovery was the no-binary bootstrap path, which worked on
+  first try — its own fix from earlier the same day. Order for engine-affecting
+  merges: rebase, refresh/install in the MAIN workspace (or copy the lane's
+  binary first), run gates, only then move the bookmark, push, and delete the
+  lane workspace.
