@@ -84,7 +84,10 @@ the census source):
     payloads collapse to generic `result`; tag-enum payloads are blocked by
     fix 14 and either wait, restructure their error arm, or stay bespoke with
     the gap cited; more than two arms or linear payloads means it was never a
-    result and stays a designed union.
+    result and stays a designed union. Audit refinement: the classification
+    rule picks candidates, but each family still gets an ownership and phase
+    check after the declaration cutover before it collapses — materially
+    different error domains or protocol phases are not merged mechanically.
 
 13. The 11 dead CAD-KIND nominals, misowned global type declarations, and raw
     repeated semantic bundles are deleted or given owners per the audit list.
@@ -153,9 +156,11 @@ the census source):
     2026-07-30: the generic `option` instantiates at a linear payload
     (wrapping a linear owner in `OPTION:SOME` certifies), so
     `DETACH-MAPPING` returns `option<SAFET:mapping>` and every consumer
-    matches `some`/`none`. The migration must verify linearity holds through
-    the MATCH arms when consumers convert (constructor side is probed; the
-    consumption side rides the sweep). General rule this suggests for the
+    matches `some`/`none`. Both sides are now probed (2026-07-30): the
+    constructor wraps a linear owner, and MATCH consumes it in the some arm
+    with an empty none arm — full round trip exit 0. The audit's objection
+    that map-take's arms "transfer linear ownership differently" is refuted
+    by that probe; option's arms transfer identically. General rule this suggests for the
     sweep: a hyphenated compound family name is a smell — it is usually
     either a disguised generic or a type homed in the wrong package.
 
@@ -232,6 +237,55 @@ the census source):
     that matters; borrowed spans are advisory; stash-after-free is a loud
     crash caught in review. The doc states lifetimes as a decision, not a
     gap.
+
+## Audit findings incorporated (three xhigh reviews at 77c7366b, Joel-ratified)
+
+29. **Error-masking defects, fixed in the conversion.** Filesystem predicates
+    report permission and I/O errors as "absent" (src/habu/habu1.f:1567-1574,
+    1898-1932; lib/fs.f:180-252) — absence and failure become distinct
+    answers. BENCH-GET returns invalid miss bytes behind an ignorable
+    boolean (maki/competitive-store.f:258-265) — becomes option.
+    POLICY:CHECK and ART:PROMOTE still throw around an obsolete
+    generic-result limitation that no longer exists — they return result.
+
+30. **Single-authority repairs.** Promotion gets ONE authority (ART:promoted
+    and PROMOTE:promoted each prove half the invariant today). Resource
+    budgets get ONE dimension enum, and the raw-cell erasure of the survivor
+    dies. REPORT splits: table rendering and Model CAD get their own names,
+    and the Model CAD handle stops being forgeable singleton state. Process
+    completion gets ONE public representation (three incompatible ones
+    across 132 files today). Build-cache and replay lifecycle states become
+    real state types instead of independently writable flags plus
+    side-channel errors.
+
+31. **Positional bundles become types.** Promotion digest/binding, model
+    configuration input, KV configuration input, GPT-2 shape, filesystem
+    metadata, Gregorian date, and MMA configuration (sixteen mutable globals
+    transported through 61 positional tuples) each get a declared type. The
+    62 consumers reopening CAD-NUM to publish 81 local projector aliases
+    stop; projections live with their owner.
+
+32. **Deletions and renames from the audit.** The twelve identical
+    identifier-result families, four evidence-presence families,
+    DIFFRUN:ref-result, and the diagnostic/obligation decode duplicates
+    collapse into the generics. Eleven public CAD-KIND types and sched have
+    no production consumer and are deleted. Globally declared types move to
+    their real owners (CUDA handles, PTY lifecycle, nominal builder, PTX
+    toolchain policy, autotune census, map types). Misleading names are
+    fixed: tcpol, ptxir-node, CEVID:ucat.
+
+33. **Audit non-issues, recorded so nobody relitigates.** Transient
+    pointer-length spans stay raw when consumed immediately; CUDA handles,
+    PTY process roles, typestate proofs, and live pool handles are real
+    nominal separations and stay. (The auditors' fourth non-issue — that
+    map-take must stay bespoke — is refuted by probe; see item 22.)
+
+34. **Promotion-digest identity is settled by probe, not debate.** The open
+    question: can two distinct policies produce byte-identical artifact
+    content? If no, the digest is content identity and the policy identity
+    is duplicate authority — delete it. If yes, name the colliding pair and
+    keep the policy identity with that pair as its regression fixture.
+    Assigned to the engine-half owner during the conversion.
 
 ## Joel's additions (from the type-system.md pass)
 
