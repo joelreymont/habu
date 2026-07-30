@@ -121,11 +121,17 @@ needs the raw cell owns its own private, audited projection and says so.
 `BYTE-LEN>N`), each with a note saying which primitive has to start accepting
 the role directly before it can be deleted.
 
-**`DEFTYPE NAME`** (`lib/type/deftype.f`) is the older form. It mints a role in
-one flat global namespace, so two files declaring the same name is a hard load
-failure. It is still used by core roles and by handle types such as the CUDA
-device and context handles in `lib/ptx/cuda-driver.f`. New package code should
-prefer `NEWTYPE`.
+**`DEFTYPE NAME`** (`lib/type/deftype.f`) is the same generation on the same
+substrate — a package-scoped nominal exactly like a `NEWTYPE`, probed: two
+packages may each declare `DEFTYPE SERIAL` and both load. The difference is
+what it derives: `DEFTYPE` generates the converter pair (`>NAME` and `NAME>N`)
+for free, so anyone may cross the boundary and every crossing is visible in
+source; a `NEWTYPE` derives nothing, so construction is whatever the owning
+package writes. Use `DEFTYPE` for "these two integers must never be mixed up";
+use `NEWTYPE` for "holding this value proves my validation ran". (An older,
+genuinely global `DEFTYPE` once lived in the core roles table; it is retired,
+and the current word deliberately replaced it on the package-scoped substrate —
+the decision record is `docs/value-nominal-substrate.md`.)
 
 A nominal cell family is also how a package embeds a **proof token**: a field
 whose only constructor is private to the package, so possessing a filled-in
