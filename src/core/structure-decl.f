@@ -8,7 +8,7 @@
 \ §2.2-2.5; dot habu-structure-parse-typed-c5a01e1f).
 \
 \ Grammar (docs §2.1):
-\   STRUCTURE type-name arity header-clause* field* ;STRUCTURE
+\   STRUCTURE type-name<binders> header-clause* field* ;STRUCTURE
 \   header-clause = POLICY policy-name | DERIVE derive-name+
 \   field         = FIELD field-name type-expr
 \ A malformed, duplicate, reserved, unresolved, or mixed-legacy token rejects at
@@ -54,7 +54,7 @@ package STRUCTURE-DECL
 \ 7102) and the field record's E-PF-NAME / E-TFAM-DUP / E-TFAM-CASE name-gate
 \ codes are raised by TFAM-DECL / the field-event path and pass through unchanged.
 7107 constant E-SYNTAX      \ malformed: missing name/arity/terminator, unexpected/legacy token
-7108 constant E-ARITY       \ arity token is not a small decimal in [0, cap]
+7108 constant E-HEAD        \ malformed declaration binder head
 7109 constant E-PAYLOAD     \ unresolved / unknown field type
 7110 constant E-NAME        \ reserved or colliding family name
 7116 constant E-POLICY      \ unknown or not-yet-supported layout policy
@@ -131,13 +131,11 @@ TRUSTED: PEND@ ( -- ptr u8 n ) PEND-A @ PEND-U @ ;
 \ ---------------------------------------------------------------------------
 variable FAM        \ family id being declared
 variable TOK        \ live declaration-event token (0 = no open transaction)
-variable SD-ARITY      \ parsed family arity
 variable FLDBASE    \ committed field high-water at open (field range start)
 variable NFLD       \ field count in this declaration
 variable SD-CELLS      \ running field cell width (next field's slot / byte offset)
 variable SEEN-FIELD \ a FIELD has appeared (header clauses must precede fields)
 variable SEEN-END   \ this declaration's ;STRUCTURE has been consumed
-variable SD-SI         \ private digit-scan index
 
 : SD-RESET ( -- )                      \ base state; re-seeded at load (process-local)
    0 PEND-U !   0 TOK !   0 SEEN-FIELD !   0 SEEN-END ! ;
@@ -181,37 +179,9 @@ SD-RESET
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ --- arity token: a small decimal within the shared declaration alphabet.
-: SD-DIGIT? ( n -- bool ) dup 47 > swap 58 < and ;
-: SD-ALLDIG? ( ptr u8 n -- bool )
-   dup 0= IF 2drop NO EXIT THEN
-   {: u:n :}                        \ ( a )
-   0 SD-SI !
-   BEGIN SD-SI @ u < WHILE
-      dup SD-SI @ + c@ SD-DIGIT? 0= IF drop NO EXIT THEN
-      SD-SI @ 1 + SD-SI !
-   REPEAT
-   drop YES ;
-: DEC ( ptr u8 n -- n )             \ decode an all-digit token
-   {: u:n :}                        \ ( a )
-   0                                \ ( a acc )
-   0 SD-SI !
-   BEGIN SD-SI @ u < WHILE
-      10 * over SD-SI @ + c@ 48 - +    \ acc = acc*10 + digit
-      SD-SI @ 1 + SD-SI !
-   REPEAT
-   nip ;                            \ drop a, keep acc
-\ Same wording the legacy definer prints for a bad arity token.
-: ARITY-WHY$ ( -- ptr u8 n ) s" arity must be a decimal, at most 23 parameters" ;
-: PARSE-ARITY ( ptr u8 n -- n )
-   dup 0= IF 2drop s" missing arity" E-ARITY DECL-REJECT:REJECT throw THEN
-   2dup SD-ALLDIG? 0= IF 2drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN
-   DEC dup TFAM-DECL-PARAM-COUNT > IF
-      drop ARITY-WHY$ E-ARITY DECL-REJECT:REJECT throw THEN ;
-
 \ ---------------------------------------------------------------------------
 \ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
-\ multi-char con names), positional letter params within arity, ptr T, and closed
+\ multi-char con names), named head binders, ptr T, and closed
 \ arity-0 layout/cell families. Everything else is unresolved.
 \
 \ A family that owns a linear value — directly or through its own fields — IS an
@@ -237,16 +207,19 @@ SD-RESET
       s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
    id YES ;
 
-: LETTER-TYPE ( ptr u8 n -- n )         \ single-char type: param / n / f / r
-   drop c@
+: LETTER-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}   \ binder / n / f / r
+   a c@
    dup ASCII-N = IF drop CON-N SD-SCH-CON EXIT THEN
    dup ASCII-F = IF drop CON-BOOL SD-SCH-CON EXIT THEN
    dup ASCII-R = IF drop CON-R SD-SCH-CON EXIT THEN
-   TFAM-DECL-CHAR>PARAM 0= IF
-      drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   dup SD-ARITY @ < IF SD-SCH-PARAM EXIT THEN
    drop
-   s" type parameter is outside the declared arity" E-PAYLOAD DECL-REJECT:REJECT throw ;
+   a u DECL-HEAD:PARAM? IF SD-SCH-PARAM EXIT THEN
+   drop
+   a c@ TFAM-DECL-CHAR>PARAM IF
+      drop s" type parameter is not declared by this head"
+      E-PAYLOAD DECL-REJECT:REJECT throw
+   THEN
+   drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
 
 \ A pointer is a NON-OWNING boundary: TFCL-NODE? stops at a pointer node, so a
 \ field spelled `ptr <linear>` reads non-linear and the containing family would
@@ -339,7 +312,6 @@ SD-RESET
    PKG-ACTIVE? 0= IF PKG-PUBLIC EXIT THEN PKG-MODE@ ;
 : SD-REGISTER ( ptr u8 n n -- )            \ ( na nu arity -- ) register the family, open the tx
    {: na:ptr nu:n ar:n :}
-   ar SD-ARITY !
    na nu DECL-REJECT:TOKEN!             \ the family name owns the registry's rejects
    s" duplicate family" E-DUP DECL-REJECT:EXPECT
    ACTIVE-PKG$ VIS na nu
@@ -374,11 +346,14 @@ SD-RESET
    DECL-REJECT:REJECT throw ;           \ unexpected / mixed-legacy token at the exact token
 : CLAUSES ( -- ) BEGIN CLAUSE UNTIL ;
 
-: DRIVE ( -- )                          \ name + arity + register + body
-   SD-NEXT 2dup DECL-REJECT:FAMILY!     \ ( na nu )  keep the span
-   2dup REQUIRE-NAME                    \ named before validation, so a bad name is reported
-   SD-NEXT PARSE-ARITY                  \ ( na nu arity )
-   SD-REGISTER
+: DRIVE ( -- )                          \ binder head + register + body
+   SD-NEXT 2dup DECL-REJECT:FAMILY!
+   s" binder list must contain unique declaration parameters"
+   E-HEAD DECL-REJECT:EXPECT
+   DECL-HEAD:PARSE drop >r
+   2dup DECL-REJECT:FAMILY!
+   2dup REQUIRE-NAME
+   r> SD-REGISTER
    CLAUSES ;
 
 \ One provisional transaction: commit by persisting, roll the family + schema +
@@ -392,7 +367,7 @@ SD-RESET
 \ declaration to the interpreter, the terminator is this declaration's own
 \ boundary, and there is nothing to skip once `;STRUCTURE` has been consumed or
 \ the input has ended. Measured before this existed:
-\ `STRUCTURE m7sbad 0 FIELD x n FIELD x n ;STRUCTURE NEWTYPE m7scont 1`
+\ `STRUCTURE m7sbad FIELD x n FIELD x n ;STRUCTURE NEWTYPE m7scont 1`
 \ reported the duplicate field, counted it, then died on
 \ `E-UNDEFINED: ;STRUCTURE`.
 : SD-SKIP-BODY ( -- )
@@ -462,5 +437,5 @@ public
 \ documented global language surface (package-first exception, like the shipped
 \ SUMTYPE/PRODUCT openers): it parses its own body up to ;STRUCTURE at interpret
 \ time, so its checked effect is ( -- ).
-\ STRUCTURE type-name arity [POLICY p] [DERIVE f+] (FIELD name type)* ;STRUCTURE
+\ STRUCTURE type-name<binders> [POLICY p] [DERIVE f+] (FIELD name type)* ;STRUCTURE
 : STRUCTURE ( -- ) STRUCTURE-DECL:SD-RUN ;

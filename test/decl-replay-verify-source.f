@@ -210,6 +210,23 @@ variable SB-I   variable SB-J
       a SB-I @ + c@ SRC-C
       SB-I @ 1 + SB-I !
    REPEAT ;
+
+\ The explicit-list result distinguishes a bare zero-arity head from an explicit
+\ empty list. Parsing must also own the binder bytes: reusing the caller's source
+\ buffer before lookup cannot change the installed map.
+: BINDER-SOURCE-REUSE ( -- )
+   s" plain" DECL-HEAD:PARSE 0= T-TRUE 0 T= s" plain" CORE-STR= T-TRUE
+   s" empty<>" DECL-HEAD:PARSE T-TRUE 0 T= s" empty" CORE-STR= T-TRUE
+   SRC-RESET
+   s" pair<e,a>" SRC-PUT
+   SRC$ DECL-HEAD:PARSE T-TRUE 2 T= s" pair" CORE-STR= T-TRUE
+   SRC-RESET
+   s" xxxxxxxxx" SRC-PUT
+   s" e" DECL-HEAD:PARAM? T-TRUE 0 T=
+   s" a" DECL-HEAD:PARAM? T-TRUE 1 T= ;
+
+BINDER-SOURCE-REUSE
+
 : SRC-DIGIT ( n -- ) 48 + SRC-C ;
 : SRC-VARIANT ( n -- ) {: i:n :}      \ one `vNNNN ` variant name: 6 bytes
    118 SRC-C
@@ -258,13 +275,13 @@ TRUSTED: FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE
 \ ---------------------------------------------------------------------------
 package sdlive
 public
-STRUCTURE pair 0
-   FIELD lo n
-   FIELD hi n
+STRUCTURE pair<e,a>
+   FIELD lo e
+   FIELD hi a
 ;STRUCTURE
 ;package
 
-s" package sdrep public STRUCTURE pair 0 FIELD lo n FIELD hi n ;STRUCTURE ;package"
+s" package sdrep public STRUCTURE pair<e,a> FIELD lo e FIELD hi a ;STRUCTURE ;package"
 VSPARITY:VS-LOAD
 
 s" sdlive:pair" s" sdrep:pair" VSPARITY:COMPARE
@@ -290,7 +307,7 @@ s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 \    and then names `evidence` inside `SUMTYPE discharge-result`; with no
 \    STRUCTURE arm on this path the payload was unresolvable.
 \ ---------------------------------------------------------------------------
-s" package edpay public STRUCTURE slotrec 0 FIELD v n ;STRUCTURE SUMTYPE box 0 VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"
+s" package edpay public STRUCTURE slotrec FIELD v n ;STRUCTURE SUMTYPE box 0 VARIANT full slotrec ;VARIANT VARIANT empty ;VARIANT ;SUMTYPE ;package"
 VSPARITY:VS-LOAD
 s" edpay:box" VSPARITY:VCOUNT 2 VSPARITY:T=
 s" edpay:slotrec" VSPARITY:FCOUNT 1 VSPARITY:T=
@@ -348,7 +365,7 @@ s" habu: bad enum declaration 'cm1': name must be a lowercase tail at '('"
 DECL-DIAG:HAS? -1 VSPARITY:T=
 
 DECL-DIAG:PROSE
-s" package vq public STRUCTURE cm2 0 FIELD a n ( note ) FIELD b n ;STRUCTURE ;package"
+s" package vq public STRUCTURE cm2 FIELD a n ( note ) FIELD b n ;STRUCTURE ;package"
 VSPARITY:VSTRY 7107 VSPARITY:T=
 s" habu: bad structure declaration 'cm2': unexpected token in structure declaration at '('"
 DECL-DIAG:HAS? -1 VSPARITY:T=

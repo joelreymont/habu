@@ -502,6 +502,99 @@ public
 private
 ;package
 
+\ ---------------------------------------------------------------------------
+\ Declaration-head binder map. The map owns the copied binder bytes, so field
+\ parsing never depends on the lifetime or reuse policy of the input buffer.
+\ ---------------------------------------------------------------------------
+package DECL-HEAD
+
+$3C constant DH-LT
+$3E constant DH-GT
+$2C constant DH-COMMA
+7108 constant E-HEAD
+
+create DH-MAP TFAM-DECL-PARAM-COUNT allot
+variable DH-N
+variable DH-I
+variable DH-J
+variable DH-OPEN
+variable DH-FIRST
+variable DH-LIM
+
+: DH-YES ( -- bool ) 0 0= ;
+: DH-NO ( -- bool ) 0 0= 0= ;
+
+: DH-BYTE! ( u8 n -- ) {: c:u8 i:n :}
+   c DH-MAP i + c! ;
+
+: DH-BYTE@ ( n -- u8 )
+   DH-MAP + c@ ;
+
+: DH-CLEAR ( -- )
+   0 DH-N ! ;
+
+: DH-BAD ( -- )
+   DH-CLEAR
+   E-HEAD throw ;
+
+: DH-FIND-OPEN ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      a over + c@
+      dup DH-LT = IF drop DH-YES EXIT THEN
+      DH-GT = IF DH-BAD THEN
+      1 +
+   REPEAT
+   drop 0 DH-NO ;
+
+: DH-SEEN? ( u8 -- bool ) {: c:u8 :}
+   0 DH-J !
+   BEGIN DH-J @ DH-N @ < WHILE
+      DH-J @ DH-BYTE@ c = IF DH-YES EXIT THEN
+      DH-J @ 1 + DH-J !
+   REPEAT
+   DH-NO ;
+
+: DH-BINDERS ( ptr u8 n n -- ) {: a:ptr first:n end:n :}
+   first DH-I !
+   BEGIN DH-I @ end < WHILE
+      a DH-I @ + c@
+      dup TFAM-DECL-CHAR>PARAM 0= IF drop drop DH-BAD THEN drop
+      dup DH-SEEN? IF drop DH-BAD THEN
+      DH-N @ DH-BYTE!
+      DH-N @ 1 + DH-N !
+      DH-I @ 1 + DH-I !
+      DH-I @ end = IF EXIT THEN
+      a DH-I @ + c@ DH-COMMA <> IF DH-BAD THEN
+      DH-I @ 1 + DH-I !
+      DH-I @ end >= IF DH-BAD THEN
+   REPEAT ;
+
+DH-CLEAR
+
+public
+
+: PARSE ( ptr u8 n -- ptr u8 n n bool ) {: a:ptr u:n :}
+   DH-CLEAR
+   a u DH-FIND-OPEN 0= IF drop a u 0 DH-NO EXIT THEN
+   DH-OPEN !
+   a u 1 - + c@ DH-GT <> IF DH-BAD THEN
+   DH-OPEN @ 1 + DH-FIRST !
+   u 1 - DH-LIM !
+   a DH-FIRST @ DH-LIM @ DH-BINDERS
+   a DH-OPEN @ DH-N @ DH-YES ;
+
+: PARAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   u 1 <> IF 0 DH-NO EXIT THEN
+   0 DH-I !
+   BEGIN DH-I @ DH-N @ < WHILE
+      DH-I @ DH-BYTE@ a c@ = IF DH-I @ DH-YES EXIT THEN
+      DH-I @ 1 + DH-I !
+   REPEAT
+   0 DH-NO ;
+
+private
+;package
+
 \ The checker participant lives in this file, so it owns its identity and order
 \ outright. The three orders published below belong to participant modules that
 \ enroll from their own files and have to read the value from somewhere.
