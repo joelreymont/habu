@@ -1,6 +1,6 @@
 ---
 title: Cut ENUM to binder FIELD grammar
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-30T23:53:23.711587+02:00"
@@ -13,3 +13,5 @@ Result: in DRIVE, parse the family token through the existing DECL-HEAD:PARSE be
 Production defect: ENUM-DECL:DRIVE rejects name<e,a> before head parsing, chooses full mode from a naked decimal body token, and assigns e/a by alphabet position rather than declared order. Acceptance fixtures in test/enum-decl-suite.f and test/decl-replay-verify-source.f author the final grammar and first execute in M17: pair<e,a> records arity 2 with e ordinal 0 and a ordinal 1; a phantom binder records arity 1; name<> is full TK-SUM; bare compact ENUM remains TK-ENUM; a valid but undeclared binder rejects E-PAYLOAD with byte-identical rollback; duplicate or malformed heads reject E-HEAD; retired ENUM name 1 syntax rejects and rolls back; bare positional VARIANT payload rejects while FIELD value a succeeds; live and replay declarations compare equal while replay retains its no-constructor-symbol distinction.
 
 Files: src/core/enum-decl.f, test/enum-decl-suite.f, test/decl-replay-verify-source.f. Owner: ENUM-DECL binder-head consumption and final FIELD-only payload grammar. Dependency: the landed DECL-HEAD interface from habu-parse-structure-binder-1da50c1c. Before M17, acceptance is exact hunk review, final-spelling census, rooted package diff, and typed-local diff only. Forbidden: compatibility grammar, dual parser, numeric arity, alphabet-derived ordinals, bare positional payloads, new parser/type/package/transaction, persistent binder metadata, caller rewrites, constructor changes, compact-mode changes, trust, wrappers, or new gates.
+
+Claim: agent=enum_cut workspace=.jj-ws/habu-cut-enum-to-b83a478f.
