@@ -142,7 +142,9 @@ s" MSIZE" s" -- n" TRUST
    s" BAD-M-LE32 ( len -- n ) M-LE32@" IBT-CHECK-REJECTS
    s" BAD-M-PAD ( len -- ) M-PAD-OFF" IBT-CHECK-REJECTS ;
 
-: IBT-TEST-SOURCE-SHAPE ( -- )
+package IMAGE-BYTES-TEST
+
+: SOURCE-SHAPE ( -- )
    s" src/os/image-bytes.f" IBT-LOAD
    s" create MBUF MSIZE allot" IBT-MUST-LACK
    s" : MBUF ( -- ptr u8 )" IBT-MUST-HAVE
@@ -171,17 +173,20 @@ s" MSIZE" s" -- n" TRUST
    s" tools/build-fixpoint.f" IBT-LOAD
    s" src/os/image-bytes.f" IBT-MUST-HAVE
    s" tools/srclist.f" IBT-LOAD
-   s" src/os/image-bytes.f " IBT-MUST-HAVE
-   s" src/habu/owner-wid-emit-seal.f " IBT-MUST-HAVE ;
+   s" src/os/image-bytes.f " IBT-MUST-HAVE ;
 
-: IBT-MAIN ( -- )
+public
+
+: RUN ( -- )
    T-RESET
    IBT-TEST-LITTLE-ENDIAN
    IBT-TEST-COPY-PAD
    IBT-TEST-BIG-ENDIAN
    IBT-TEST-REFINE-ERRORS
-   IBT-TEST-SOURCE-SHAPE
+   SOURCE-SHAPE
    T-REPORT
    s" image-bytes-test: ok" type cr ;
 
-IBT-MAIN
+;package
+
+IMAGE-BYTES-TEST:RUN
