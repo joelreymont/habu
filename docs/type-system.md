@@ -365,15 +365,16 @@ design — a tag value is one cell like any nominal; the instantiation code was
 never taught about variant families. The fix is scheduled in the type
 conversion (TYPE-FIXES-PLAN.md item 14).
 
-**Pointers carry no lifetime.** A pointer type says what it points at, but not
-which allocation it came from, how long it is valid, or how far it extends. The
-loader's scoped-access words are honest about the consequence in their own
-headers: nothing stops a body from stashing the span it was handed into a
-variable and reading it after the owner was disposed. That reads freed memory
-and crashes, exactly as it would in any language without region types. The
-guarantee there is the shape of the interface, not a proof. The capability that
-would close it — spans carrying region identity, extent, and borrow rules — is
-dot `habu-add-bounded-host-b40b048f`.
+**Pointers carry no lifetime — on purpose.** A pointer type says what it
+points at, and nothing else: not which allocation it came from, how long it is
+valid, or how far it extends. This is a decision, not a gap (Joel,
+2026-07-30). The safety that matters is carried by linear owners — a mapping,
+a store, a session is used exactly once and disposed explicitly, and the
+checker enforces that. A borrowed span inside a scoped word is advisory:
+stashing it past its owner's death reads freed memory and crashes loudly,
+exactly as in C, and that failure is review's to catch. We are Forth; a
+region-and-borrow system was considered and rejected as machinery for a
+threat model we do not have.
 
 **`?dup` is not part of the checked vocabulary.** Its result depends on its
 input's value rather than its type, so it has no signature. It is not merely

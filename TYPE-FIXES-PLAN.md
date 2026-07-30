@@ -225,6 +225,14 @@ the census source):
     fields, so an unjustified trust site fails at load through the
     production path. The compiler is the enforcement; no separate tool.
 
+28. **No pointer lifetimes, ever — the decision is recorded and the dot is
+    dead.** habu-add-bounded-host-b40b048f (a full borrow system:
+    span<region,type,extent,access,persistence>, generative regions, borrow
+    rules, generation counters) is deleted. Linear owners carry the safety
+    that matters; borrowed spans are advisory; stash-after-free is a loud
+    crash caught in review. The doc states lifetimes as a decision, not a
+    gap.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
