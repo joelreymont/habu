@@ -1,0 +1,98 @@
+# What the snapshot relocation proofs state, and what they rest on.
+#
+# One `theorem` row per published result in formal/Common/Reloc.v - every
+# `Theorem` and `Corollary` it declares - in the order the file declares them,
+# which is also the order the file's own `Print Assumptions` commands query
+# them. Every `theorem` row is followed by exactly one `type` row and then by
+# its assumption rows.
+#
+# There is one assumption row per result and it is always `closed`, which is
+# Rocq reporting "Closed under the global context". The relocation proofs rest
+# on nothing at all, so the gate in test/compiler/reloc-proof.f reads this
+# manifest with assumption rows FORBIDDEN: an `axiom` row cannot be written
+# here, and the empty set is checked a second time against what Rocq printed.
+# This is the same strength the interning and storage manifests ask for.
+#
+# A `type` row is this file's copy of what that result states, written in the
+# environment the generated obligations file sets up: Stdlib ZArith, Lia, List
+# and Bool imported, list notations imported, Z scope open, and
+# Habu.Common.Reloc imported last so a bare name resolves to the model's own.
+# The parity gate turns each row into
+# `Definition pinned_statement_<k> : <type row> := @<theorem name>.` in the
+# file it asks Rocq to compile, so Rocq's own type checker decides whether the
+# statement in the proof file still is the statement written here. It decides
+# that up to conversion, so renaming a bound variable is not a change but
+# weakening, strengthening, or trivialising a statement is. These rows are the
+# authority: the generated file is a build output and never reads a statement
+# out of the proof source, so changing the proof file alone cannot move the
+# target it is checked against.
+#
+# Lines starting with `#`, and blank lines, are commentary. A `type` row is
+# handed to Rocq. Every other row is compared byte for byte.
+
+theorem Habu.Common.Reloc.bl_word_is_call
+type forall d, is_bl (bl d) = true
+closed
+theorem Habu.Common.Reloc.shift_call_stays_a_call
+type forall w k, is_bl (shift_instr w k) = is_bl w
+closed
+theorem Habu.Common.Reloc.disp_of_bl
+type forall d, in_reach d -> disp_of (bl d) = d
+closed
+theorem Habu.Common.Reloc.shift_call_adds_instruction_units
+type forall w d, in_reach (disp_of w + d / 4) -> disp_of (shift_call w d) = disp_of w + d / 4
+closed
+theorem Habu.Common.Reloc.call_round_trip_identity
+type forall w off, (4 | off - region_off) -> rebase (canon w off) off = w
+closed
+theorem Habu.Common.Reloc.call_round_trip_rebases
+type forall w wo lo, (4 | wo - region_off) -> (4 | lo - region_off) -> in_reach (disp_of w + (wo - lo) / 4) -> disp_of (rebase (canon w wo) lo) = disp_of w + (wo - lo) / 4
+closed
+theorem Habu.Common.Reloc.canonical_form_is_base_independent
+type forall d off, (4 | off - region_off) -> canon (bl (d + (region_off - off) / 4)) off = bl d
+closed
+theorem Habu.Common.Reloc.reloc_leaves_unrecorded
+type forall s k i w, nth_error s i = Some (false, w) -> nth_error (fst (reloc_walk s k)) i = Some (false, w)
+closed
+theorem Habu.Common.Reloc.reloc_bad_site_not_rewritten
+type forall s k i w, nth_error s i = Some (true, w) -> is_bl w = false -> (forall j w', (j < i)%nat -> nth_error s j = Some (true, w') -> is_bl w' = true) -> nth_error (fst (reloc_walk s k)) i = Some (true, w) /\ snd (reloc_walk s k) = Some callmap_rc
+closed
+theorem Habu.Common.Reloc.reloc_clean_never_refuses
+type forall s k, (forall w, In (true, w) s -> is_bl w = true) -> snd (reloc_walk s k) = None
+closed
+theorem Habu.Common.Reloc.image_round_trip
+type forall s off, (4 | off - region_off) -> snd (canon_pass s off) = None -> fst (rebase_pass (fst (canon_pass s off)) off) = s
+closed
+theorem Habu.Common.Reloc.canonical_disp_in_reach
+type forall c i, 0 <= c < region_off -> 0 <= i -> 4 * i < region_bytes -> in_reach ((c - region_off) / 4 - i)
+closed
+theorem Habu.Common.Reloc.canonical_region_within_reach
+type region_off + region_bytes <= bl_reach
+closed
+theorem Habu.Common.Reloc.xt_round_trip
+type forall c dbase, 0 < dbase -> xt_ok c dbase -> xt_rebase (xt_canon c dbase) dbase = c
+closed
+theorem Habu.Common.Reloc.xt_zero_preserved
+type forall dbase, xt_canon 0 dbase = 0 /\ xt_rebase 0 dbase = 0
+closed
+theorem Habu.Common.Reloc.xt_rebase_general_base
+type forall c dbw dbl, 0 < dbw -> dbw <= c -> xt_rebase (xt_canon c dbw) dbl = c - dbw + dbl
+closed
+theorem Habu.Common.Reloc.every_region_dependent_producer_is_recorded
+type forall p, region_dependent p = true -> exists r, classify p = Recorded r
+closed
+theorem Habu.Common.Reloc.snapshot_covers_every_producer_but_code_addr
+type forall p, p <> P_code_addr -> snapshot_covers p = true
+closed
+theorem Habu.Common.Reloc.code_address_chain_is_the_open_gap
+type region_dependent P_code_addr = true /\ snapshot_covers P_code_addr = false
+closed
+theorem Habu.Common.Reloc.shift_out_of_reach_wraps
+type disp_of (shift_instr (bl (imm_half - 1)) 1) = - imm_half
+closed
+theorem Habu.Common.Reloc.misaligned_base_breaks_round_trip
+type rebase (canon (bl 0) (region_off + 2)) (region_off + 2) <> bl 0
+closed
+theorem Habu.Common.Reloc.dropping_the_call_guard_corrupts_data
+type reloc_walk [(true, 5)] 1 = ([(true, 5)], Some callmap_rc) /\ reloc_unguarded [(true, 5)] 1 = [(true, 6)]
+closed

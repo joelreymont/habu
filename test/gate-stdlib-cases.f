@@ -307,6 +307,13 @@ SUITE checker-model-proof
    test/compiler/checker-model-proof.f
 ;SUITE
 
+\ The snapshot relocation parity gate compiles formal/Common/Reloc.v with the
+\ Rocq proof assistant for the same reason, so it runs here and is documented
+\ manual-gate in tools/suite-coverage-lint-core.f alongside its siblings.
+SUITE compiler-reloc-proof
+   test/compiler/reloc-proof.f
+;SUITE
+
 SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
 ;SUITE

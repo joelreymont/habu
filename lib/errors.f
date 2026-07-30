@@ -449,6 +449,21 @@ public
 -6862 constant E-CMP-CONTROL  \ the checker's control-flow dispatch table or a control frame kind is not what the frozen table carries
 -6863 constant E-CMP-POOL     \ the frozen schema's own string pool or table is full
 
+\ Frozen snapshot relocation parity gate (package RELOC-PROOF): -6880..-6899.
+\ The next block after the checker model gate, and the sixth of the same
+\ family: it binds formal/Common/Reloc.v to the two emitted relocation passes
+\ in src/habu/habu2.f (SNAP-RELOC:EMIT-CALLS and SNAP-RELOC:EMIT-XT), the
+\ writer's address-cell canonicalization in src/habu/snap-lib.f, and the band
+\ constants in src/habu/layout.f. Like its five neighbours its manifest
+\ failures are the shared E-CID-AXIOM, because all six gates read one manifest
+\ grammar. Twenty codes; the rest of -6900..-6999 stays unclaimed.
+-6880 constant E-CRL-FIRST
+-6899 constant E-CRL-LAST
+-6880 constant E-CRL-ROW      \ a shared relocation vector index or table slot is outside its declared table
+-6881 constant E-CRL-STRUCT   \ a frozen relocation structure - a pinned band constant, a canonicalization body, or the shape of a vector row - is not what the shipped source carries
+-6882 constant E-CRL-DECODE   \ the shipped relocation pass carries an instruction, operand, symbol, or label the machine that runs it was never taught
+-6883 constant E-CRL-FAULT    \ the shipped relocation pass, run over a synthetic image, touched an address outside every declared segment or ran past its step budget
+
 \ Compiler growth region: -8000..-8999.
 \
 \ Why a second region. The compiler's first block, -6600..-6699, is full. Ten
