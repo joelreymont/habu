@@ -11,7 +11,10 @@
 \ rename and costs nothing at all. The count is asserted, not described, and so
 \ is the multiply's operand list: both operands are the same block argument,
 \ which is what "the rename produced no operation and no value" means when it is
-\ written down.
+\ written down. `rot -` and `nip -` make the same measurement for the two deeper
+\ renames, and they make it with a subtraction, whose operands cannot be
+\ exchanged without changing the answer, so the order a rename puts values back
+\ in is proved rather than described.
 \
 \ HOW A FIXTURE IS BUILT. Each one states its source text, and a small fixture
 \ lexer splits it on spaces and appends one tape token per word: the first two
@@ -423,6 +426,73 @@ variable LX-P                        \ the byte the scan stands on
    BND [: DIFF-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE 2 T= ;
 
+\ ---- the three-value rotation ------------------------------------------------
+\ `rot` ( a b c -- b c a ) is the rename where a wrong order is easiest to write
+\ and hardest to see, so this fixture is built so that only the right one passes.
+\ The body is `rot -`: after the rotation the vector holds b c a, the subtraction
+\ takes the top two with the deeper one as its first operand, and subtraction is
+\ not commutative - so its operands are c and then a, and the word returns b and
+\ the difference. Every other rotation of three values puts a different pair of
+\ block arguments into that operand list, so skewing any one pick index in the
+\ declaration reds this case rather than computing the same answer another way.
+\ And the rotation itself costs nothing: two operations, the subtraction and the
+\ return, is the whole function.
+: ROT3-BODY ( IR-CTX:ctx -- n bool bool bool n bool bool n n )
+   {: c:IR-CTX:ctx :}
+   s" : ROT3 rot - ;" TEXT!
+   c IM-OK SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena im:IR-ARENA:arena
+      v:IR-ARENA:view :}
+   c b v p r im 3 2 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk F-OPS
+   m blk 0 F-OP {: sub:IR-ID:ir-op-id :}
+   m blk 1 F-OP {: ret:IR-ID:ir-op-id :}
+   m sub s" hir.sub" F-OPC?
+   m sub 0 F-IN  m blk 2 F-ARG SAME?
+   m sub 1 F-IN  m blk 0 F-ARG SAME?
+   m ret F-INS
+   m ret 0 F-IN  m blk 1 F-ARG SAME?
+   m ret 1 F-IN  m sub 0 F-OUT SAME?
+   m F-VALUES
+   m F-TOTAL ;
+
+: ROT3-CASE ( -- )
+   s" rot rotates three values and adds no operation at all" T-LABEL
+   BND [: ROT3-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 4 T= TTRUE TTRUE 2 T= TTRUE TTRUE TTRUE 2 T= ;
+
+\ ---- dropping the value underneath -------------------------------------------
+\ `nip` ( a b -- b ) consumes two and puts back only the one that was on top, so
+\ in `nip -` the middle input disappears and the subtraction is between the first
+\ input and the third. Putting back the other consumed value instead would
+\ subtract the second input, which is a different operand list, so the single
+\ pick index is pinned here too. Two operations again: the rename adds none.
+: NDIF-BODY ( IR-CTX:ctx -- n bool bool bool bool n n )
+   {: c:IR-CTX:ctx :}
+   s" : NDIF nip - ;" TEXT!
+   c IM-OK SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena im:IR-ARENA:arena
+      v:IR-ARENA:view :}
+   c b v p r im 3 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk F-OPS
+   m blk 0 F-OP {: sub:IR-ID:ir-op-id :}
+   m blk 1 F-OP {: ret:IR-ID:ir-op-id :}
+   m sub s" hir.sub" F-OPC?
+   m sub 0 F-IN  m blk 0 F-ARG SAME?
+   m sub 1 F-IN  m blk 2 F-ARG SAME?
+   m ret 0 F-IN  m sub 0 F-OUT SAME?
+   m F-VALUES
+   m F-TOTAL ;
+
+: NDIF-CASE ( -- )
+   s" nip drops the value underneath and adds no operation at all" T-LABEL
+   BND [: NDIF-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 4 T= TTRUE TTRUE TTRUE TTRUE 2 T= ;
+
 \ ---- the published function --------------------------------------------------
 \ The definition became a function named as the source names it, with the
 \ declared effect, the spans the tape recorded, and one entry block.
@@ -451,10 +521,16 @@ variable LX-P                        \ the byte the scan stands on
 
 \ ---- refusals: what the elaborator will not compile --------------------------
 \ A word the model never declared. To checked source this is the same event as a
-\ declared boundary, and it carries the word model's own name for it.
+\ declared boundary, and it carries the word model's own name for it. The
+\ spelling is `xor`, not a stack word: the subset's five opcodes are a closed
+\ family with no bitwise operation in it, so modeling `xor` would mean a new
+\ opcode with an elaboration and a lowering behind it, while a new stack word is
+\ only another rename row. That keeps this fixture testing an undeclared word
+\ even as the rename vocabulary grows, which is how `rot` stopped being usable
+\ here.
 : UNDEC-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" : BAD rot ;" TEXT!
+   s" : BAD xor ;" TEXT!
    c IM-OK SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena im:IR-ARENA:arena
       v:IR-ARENA:view :}
@@ -786,6 +862,8 @@ public
    INC-CASE
    SUMA-CASE
    DIFF-CASE
+   ROT3-CASE
+   NDIF-CASE
    FUN-CASE
    BND [: drop UNDEC-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRTOK-CASE ;] IR-CTX:WITH-CONTEXT

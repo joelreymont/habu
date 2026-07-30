@@ -22,9 +22,9 @@
 \ declared is refused exactly as a declared unmodeled boundary is: to checked
 \ source they are the same event, this dialect cannot compile that word.
 \
-\ WHY A RENAME IS DATA AND NOT FOUR SPECIAL CASES. Section 7.3 line 758 says
-\ `DUP`, `DROP`, `SWAP` and `OVER` "produce no SIR operation and therefore no
-\ runtime instruction": they change the compile-time value vector and nothing
+\ WHY A RENAME IS DATA AND NOT SIX SPECIAL CASES. Section 7.3 says `DUP`,
+\ `DROP`, `SWAP`, `OVER`, `NIP` and `ROT` "produce no SIR operation and therefore
+\ no runtime instruction": they change the compile-time value vector and nothing
 \ else. A row therefore records that change as data - how many values the word
 \ consumes off the top, and which of them it puts back, in order - so the
 \ stack-to-SSA converter applies a rename by reading it rather than by carrying
@@ -34,9 +34,24 @@
 \   drop ( a -- )            consumes 1, puts back nothing
 \   swap ( a b -- b a )      consumes 2, puts back 0 1
 \   over ( a b -- a b a )    consumes 2, puts back 1 0 1
+\   nip  ( a b -- b )        consumes 2, puts back 0
+\   rot  ( a b c -- b c a )  consumes 3, puts back 1 0 2
 \ Picks are listed bottom first, which is the order they are pushed. A rename
-\ may repeat an input, as `DUP` and `OVER` do, and may drop one, as `DROP` does;
-\ the one rule is that it can only put back an input it consumed.
+\ may repeat an input, as `DUP` and `OVER` do, and may drop one, as `DROP` and
+\ `NIP` do; the one rule is that it can only put back an input it consumed.
+\
+\ HOW `ROT`'S PICK LIST IS DERIVED. Reading a pick list off a stack comment is
+\ mechanical, and `rot` is the one where getting it wrong is easy, so here is the
+\ derivation in full. `rot` consumes three values, a b c, with c on top; in the
+\ consumed window depth zero is the top, so c is depth 0, b is depth 1 and a is
+\ depth 2. Standard Forth `rot` brings the third value to the top and leaves
+\ b c a, read bottom to top. Picks are listed bottom first, so the list is the
+\ depth of b, then the depth of c, then the depth of a: 1 0 2. The neighbouring
+\ orders come out different, which is what makes the order provable rather than
+\ asserted: `-rot` ( a b c -- c a b ) would be 0 2 1, and leaving the three
+\ values where they are would be 2 1 0. The elaborator suite pins the difference
+\ with a subtraction, whose operands are not interchangeable, so a skewed pick
+\ index reds rather than computing the same answer by another route.
 \
 \ THE OPCODE A WORD MEANS IS A TYPE, NOT A LOOKUP. A row stores the stable code
 \ of a `HIR:opcode`, so binding a word to an operation this dialect does not
@@ -55,7 +70,7 @@
 \ built - and both end in the same IR-SYM refusal.
 \
 \ SPELLINGS ARE BYTES, AND THE LEXER OWNS THEIR CASE. REGISTER-WORDS interns the
-\ seven words of the subset exactly as `docs/forth.md` spells them: built-ins
+\ nine words of the subset exactly as `docs/forth.md` spells them: built-ins
 \ stay lower case. Symbol interning is byte equality, so a producer that hands
 \ the tape `DUP` where this table declared `dup` will find no row and be refused
 \ by name. Which spelling the real lexer records is the tape producer's fact and
@@ -549,11 +564,13 @@ public
    r v key i NTAPE:SPELL@ ADMIT ;
 
 \ ---- the subset's vocabulary -------------------------------------------------
-\ The seven words the straight-line subset models, and the exact ceilings they
+\ The nine words the straight-line subset models, and the exact ceilings they
 \ need, so a caller commits a table to what this registration writes and not to
-\ a guess.
-7 constant WORDS
-7 constant PICK-CELLS
+\ a guess. The pick cells are the picks the six renames put back, added up:
+\ two for `dup`, none for `drop`, two for `swap`, three for `over`, one for
+\ `nip` and three for `rot`.
+9 constant WORDS
+11 constant PICK-CELLS
 
 private
 
@@ -595,10 +612,29 @@ private
    1 ADD-PICK
    c b p r c b s" over" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
+\ nip ( a b -- b ): consume two and put back only the one that was on top.
+: DEF-NIP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   2 BEGIN-RENAME
+   0 ADD-PICK
+   c b p r c b s" nip" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+
+\ rot ( a b c -- b c a ): consume three and put all three back rotated, so the
+\ deepest of them ends on top. Bottom first that is b, then c, then a, whose
+\ depths in the consumed window are 1, 0 and 2 - the derivation at the head of
+\ this file.
+: DEF-ROT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   3 BEGIN-RENAME
+   1 ADD-PICK
+   0 ADD-PICK
+   2 ADD-PICK
+   c b p r c b s" rot" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+
 public
 
 \ Declare the whole straight-line source vocabulary into one word model: the
-\ three arithmetic words this dialect has operations for, and the four stack
+\ three arithmetic words this dialect has operations for, and the six stack
 \ words that only rename values. The builder is the module's symbol interner,
 \ so the spellings become identities of the same module the table is bound to.
 : REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -607,7 +643,9 @@ public
    c b p r DEF-DUP
    c b p r DEF-DROP
    c b p r DEF-SWAP
-   c b p r DEF-OVER ;
+   c b p r DEF-OVER
+   c b p r DEF-NIP
+   c b p r DEF-ROT ;
 
 private
 get-current prot-wid-add

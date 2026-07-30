@@ -757,17 +757,21 @@ names, which makes the closed world of section 5.3 a property of the type: a
 later stage cannot name an operation this dialect does not have, and every
 `MATCH` over the family has to answer for all five.
 
-**`DUP`, `DROP`, `SWAP` and `OVER` are not operations.** Section 7.3 already
-says they produce no SIR operation and therefore no runtime instruction. An
-`hir.dup` opcode would create an operation whose only job is to be deleted one
-stage later, and the stack traffic the old emitter generates is exactly what
-this pipeline exists to stop emitting. They are modeled instead as compile-time
-stack renames: a row records how many values the word consumes off the top of
-the value vector and which of them it puts back, in order, so the stack-to-SSA
-converter applies a rename by reading it rather than by carrying its own copy of
-what `OVER` means. The one rule is that a rename can only put back a value it
-consumed; repeating one, as `DUP` and `OVER` do, and dropping one, as `DROP`
-does, are both ordinary.
+**`DUP`, `DROP`, `SWAP`, `OVER`, `NIP` and `ROT` are not operations.** Section
+7.3 already says they produce no SIR operation and therefore no runtime
+instruction. An `hir.dup` opcode would create an operation whose only job is to
+be deleted one stage later, and the stack traffic the old emitter generates is
+exactly what this pipeline exists to stop emitting. They are modeled instead as
+compile-time stack renames: a row records how many values the word consumes off
+the top of the value vector and which of them it puts back, in order, so the
+stack-to-SSA converter applies a rename by reading it rather than by carrying
+its own copy of what `OVER` means. The one rule is that a rename can only put
+back a value it consumed; repeating one, as `DUP` and `OVER` do, and dropping
+one, as `DROP` and `NIP` do, are both ordinary. The pick list is read off the
+stack comment bottom first, naming each value by its depth in the consumed
+window with zero being the top, so `ROT` ( a b c -- b c a ) is 1 0 2 and the two
+orders next to it are not: `-ROT` would be 0 2 1 and leaving the three values
+alone would be 2 1 0.
 
 **The may-trap flag is the compilation unit's numeric policy.** Design line 240
 records whether an operation may trap, and section 5.5 puts the numerical policy

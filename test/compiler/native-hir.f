@@ -6,7 +6,7 @@
 \ schema table; the may-trap flag follows the compilation unit's overflow policy
 \ instead of being fixed in the dialect; a target the dialect cannot run on and
 \ a second registration are refused; the source-word model binds the three
-\ arithmetic words to operations and the four stack words to compile-time
+\ arithmetic words to operations and the six stack words to compile-time
 \ renames that produce no operation; a word the model does not model is refused
 \ by name and a declared boundary names the capability it is waiting for;
 \ reading a row as a meaning it does not have, a forged row, a swapped arena
@@ -283,7 +283,7 @@ private
 : OPS-CASE ( -- )
    s" the three arithmetic words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE 7 T= ;
+   TTRUE TTRUE TTRUE 9 T= ;
 
 \ One rename, folded into three numbers: how many values it consumes, how many
 \ it puts back, and the whole pick list in order as decimal digits, each pick
@@ -299,17 +299,27 @@ private
       10 * p r id i HIR-WORD:PICK@ 1+ +
    loop ;
 
-: RENAME-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n )
+: RENAME-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n n n n n )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r s" dup" REN
    c b p r s" drop" REN
    c b p r s" swap" REN
-   c b p r s" over" REN ;
+   c b p r s" over" REN
+   c b p r s" nip" REN
+   c b p r s" rot" REN ;
 
+\ `nip` consumes two and puts back the one that was on top, so its whole list is
+\ the single depth zero. `rot` consumes a b c and leaves b c a, and its list read
+\ bottom first is the depth of b, the depth of c and the depth of a - 1 0 2,
+\ which REN folds to 213. Neither neighbouring rotation folds to that number:
+\ `-rot` would be 0 2 1 and so 132, and leaving the values alone would be 2 1 0
+\ and so 321.
 : RENAME-CASE ( -- )
-   s" the four stack words are renames with exactly their picks" T-LABEL
+   s" the six stack words are renames with exactly their picks" T-LABEL
    BND [: RENAME-BODY ;] IR-CTX:WITH-CONTEXT
+   213 T= 3 T= 3 T=
+   1 T= 1 T= 2 T=
    212 T= 3 T= 2 T=
    12 T= 2 T= 2 T=
    0 T= 0 T= 1 T=
@@ -331,20 +341,25 @@ private
    TTRUE TTRUE ;
 
 \ Declaration order is observable, which is what an inventory walks: the three
-\ arithmetic words are declared first, then the four stack words.
-: AT-BODY ( IR-CTX:ctx -- bool bool )
+\ arithmetic words are declared first, then the six stack words, with the two
+\ newest renames at the end of the walk.
+: AT-BODY ( IR-CTX:ctx -- bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 3 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
+      c b s" dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 7 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 8 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" rot" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
    s" declared words walk in declaration order" T-LABEL
    BND [: AT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE ;
+   TTRUE TTRUE TTRUE TTRUE ;
 
 \ ---- a word model without a module builder -----------------------------------
 \ Every refusal below is measured against a light model: a plain module of the
@@ -409,12 +424,19 @@ private
 : UNMOD ( -- )
    BND [: UNMOD-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ A word no table here declared. The spelling is `xor` rather than a stack word,
+\ because the subset's five opcodes are a closed family and it holds no bitwise
+\ operation at all: modeling `xor` would mean adding an opcode, an elaboration
+\ and a lowering, which is a much larger commitment than adding a rename. So the
+\ spelling stays genuinely unmodeled while the rename vocabulary grows, and this
+\ fixture keeps testing what it says it tests. Every other fixture in this file
+\ that needs an arbitrary symbol of the light model uses the same spelling.
 : UNDEC-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MODEL
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
-   r c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:ADMIT drop ;
+   r c sp sy key s" xor" IR-SYM:INTERN HIR-WORD:ADMIT drop ;
 
 : UNDEC ( -- )
    BND [: UNDEC-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -496,7 +518,7 @@ private
    c 4 4 LIGHT
    {: sp2:IR-ARENA:arena sy2:IR-ARENA:arena p2:IR-ARENA:arena r2:IR-ARENA:arena
       key2:IR-ID:ir-module-key :}
-   c r sy2 c sp2 sy2 key2 s" rot" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+   c r sy2 c sp2 sy2 key2 s" xor" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
 
 : FOREIGN ( -- )
    BND [: FOREIGN-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -534,7 +556,7 @@ private
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
    c sp sy p r key FILL
-   c r sy c sp sy key s" rot" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+   c r sy c sp sy key s" xor" IR-SYM:INTERN HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
 
 : ROWFULL ( -- )
    BND [: ROWFULL-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -581,7 +603,7 @@ private
    c MODEL
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
-   c p r sy c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
+   c p r sy c sp sy key s" xor" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
 
 : STG-ENDLESS ( -- )
    BND [: STG-ENDLESS-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -594,7 +616,7 @@ private
    1 HIR-WORD:BEGIN-RENAME
    0 HIR-WORD:ADD-PICK
    HIR-WORD:ABANDON-RENAME
-   c p r sy c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
+   c p r sy c sp sy key s" xor" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME ;
 
 : STG-ABANDONED ( -- )
    BND [: STG-ABANDONED-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -622,8 +644,8 @@ private
       key:IR-ID:ir-module-key :}
    1 HIR-WORD:BEGIN-RENAME
    0 HIR-WORD:ADD-PICK
-   c p r sy c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME
-   r c sp sy key s" rot" IR-SYM:INTERN HIR-WORD:PICKS ;
+   c p r sy c sp sy key s" xor" IR-SYM:INTERN HIR-WORD:DECLARE-RENAME
+   r c sp sy key s" xor" IR-SYM:INTERN HIR-WORD:PICKS ;
 
 : STAGE-CASES ( -- )
    s" opening a rename while one is open is refused" T-LABEL
@@ -826,7 +848,7 @@ private
    c 4 4 LIGHT
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
-   c sp sy key s" rot" IR-SYM:INTERN {: w:IR-ID:ir-symbol-id :}
+   c sp sy key s" xor" IR-SYM:INTERN {: w:IR-ID:ir-symbol-id :}
    c r w IR-ID:SYMBOL-LOCAL mean a in n RAW-ROW
    p r w key ;
 
@@ -907,7 +929,7 @@ private
    [: FORGE-PICK ;] E-HIR-PICK TTHROWSQ ;
 
 \ ---- the tape join -----------------------------------------------------------
-\ A sealed source tape of `1 dup * rot`, then a string and a character literal,
+\ A sealed source tape of `1 dup * xor`, then a string and a character literal,
 \ and a word model of the same module. The tape and the model share one symbol
 \ interner, which is what makes a spelling on the tape and a spelling in the
 \ model the same identity.
@@ -919,11 +941,11 @@ private
    c sp sy wp wr key FILL
    c key 4 IR-SOURCE:NEW {: sr:IR-ARENA:arena :}
    c key 8 NTAPE:NEW {: tp:IR-ARENA:arena :}
-   c sr key s" 1 dup * rot" IR-SOURCE:REGISTER {: s0:IR-ID:ir-source-id :}
+   c sr key s" 1 dup * xor" IR-SOURCE:REGISTER {: s0:IR-ID:ir-source-id :}
    c sp sy key s" 1" IR-SYM:INTERN {: t0:IR-ID:ir-symbol-id :}
    c sp sy key s" dup" IR-SYM:INTERN {: t1:IR-ID:ir-symbol-id :}
    c sp sy key s" *" IR-SYM:INTERN {: t2:IR-ID:ir-symbol-id :}
-   c sp sy key s" rot" IR-SYM:INTERN {: t3:IR-ID:ir-symbol-id :}
+   c sp sy key s" xor" IR-SYM:INTERN {: t3:IR-ID:ir-symbol-id :}
    c tp sr sy
       sr s0 0 1 IR-SOURCE:SPAN t0 NTAPE-MODE:COMPILING 1 NTAPE:INT-TOKEN
       NTAPE:PUSH drop
@@ -1039,7 +1061,7 @@ private
    {: sp:IR-ARENA:arena sy:IR-ARENA:arena p:IR-ARENA:arena r:IR-ARENA:arena
       key:IR-ID:ir-module-key :}
    c r sy
-      c sp sy key s" rot" IR-SYM:INTERN
+      c sp sy key s" xor" IR-SYM:INTERN
       sy key GHOST-SYM
    HIR-WORD:DECLARE-UNMODELED ;
 
@@ -1070,7 +1092,7 @@ private
    c 4 4 LIGHT
    {: sp2:IR-ARENA:arena sy2:IR-ARENA:arena p2:IR-ARENA:arena r2:IR-ARENA:arena
       key2:IR-ID:ir-module-key :}
-   c r sy2  c sp sy key s" rot" IR-SYM:INTERN  HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
+   c r sy2  c sp sy key s" xor" IR-SYM:INTERN  HIR-OPCODE:ADD HIR-WORD:DECLARE-OP ;
 
 : XSY ( -- )
    BND [: XSY-BODY ;] IR-CTX:WITH-CONTEXT ;
