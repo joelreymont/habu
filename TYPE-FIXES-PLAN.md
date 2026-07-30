@@ -167,6 +167,26 @@ the census source):
     safetensors). The sweep applies this census-driven, not by taste: for
     each suffixed word, does a counterpart exist? No counterpart, no suffix.
 
+24. **Type `catch` honestly.** Today `catch` accepts only a stack-preserving
+    shape (inputs equal outputs), which forces shim words whose whole job is
+    to satisfy that contract — the `-BODY` convention (`UNMAP-BODY`,
+    `PARSE-BODY`, and kin) is ceremony paid to crude typing. New contract:
+    `catch` over an arbitrary checked effect, outcome delivered as a two-arm
+    value (completed with the effect's outputs, or thrown with the code and
+    the inputs restored) that callers MATCH like any result. The `-BODY`
+    shims evaporate. This is also the capability whose absence strands
+    owners on throw paths (the SEAL/E-UNSET class the old WSTORE header
+    described): a catch whose arms may hold different types is the same fix.
+
+25. **"Seal" gets one meaning.** Wordlist sealing (prot-wid, the exit-84
+    reopen refusal protecting compiler-internal packages) is a different
+    concept and keeps the name. Everything else called seal dies or is
+    renamed: owner-wid-emit-seal.f goes with the dead registry; the maki/db
+    proof mints (promotion authority, capability grants, stage proofs) are
+    the same construction-guard ceremony as cfg-proof and evaporate under
+    CONSTRUCT owner; layout-buffer-seal.f and lower-cert-seal.f get a census
+    before a verdict — checker bookkeeping stays, ceremony goes.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
