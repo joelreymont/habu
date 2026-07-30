@@ -1,9 +1,9 @@
 ---
 title: Fix persisted dangling-pointer owners
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-02T19:14:25.425920+02:00"
+created-at: "\"2026-07-02T19:14:25.425920+02:00\""
 ---
 
 20 data cells (quarantine table in src/habu/snap-lib.f SND-QUARANTINE, offsets tree-dependent) hold dead ASLR mmap pointers cached by their owning structures at snap time: buckets at drel 0x17CFxx/0x51DBxx (two instances of the same pre-/post-checker structure class caching source-text pointers - identify the lib), 0x31D1xx/0x32ECxx, 0x6CF8A8, 0x743ED0, 0x7571xx (FAM/USIGS-variable area), 0x75ABxx (USIGS-SNAP-P snapshot-copy bookkeeping cells). RCA proof (arena worker, 2026-07-02): none is read after restore; persist words store offsets, so these are per-owner CACHED pointers. Proper fix: identify each owning variable/field (map data offsets to owners via a diagnostic that walks known structure tables or prints allot positions at build), zero/reset at the owner (their SNAPSHOT-PREPARE or equivalent), then shrink SND-QUARANTINE to empty. The two-build byte-compare in the snap flow enforces exactness meanwhile: any layout shift makes the compare fail loudly with this dot as the pointer.
@@ -75,3 +75,5 @@ BOTH drift-drops AND hb-new still boots+checks a def. Only then move the reset
 into CHECKER-SNAPSHOT-PREPARE, refresh the fixpoint byte-exact, and shrink
 SND-QUARANTINE. Sandbox artifacts kept under /tmp/dot4 (hb-stdin, hb-snap-src,
 entry files) for a fast restart.
+
+Claim: agent=dangling workspace=.jj-ws/habu-fix-persisted-dangling-a520f7b4

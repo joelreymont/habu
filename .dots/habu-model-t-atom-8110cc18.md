@@ -1,9 +1,9 @@
 ---
 title: Model T-ATOM rigid host identities
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-30T00:02:43.415137+02:00"
+created-at: "\"2026-07-30T00:02:43.415137+02:00\""
 ---
 
 Full context: this is one of the omission leaves split out of habu-model-the-declared-4a2eb3c9, which asked for one leaf per declared omission rather than one big change.
@@ -19,3 +19,5 @@ The vector shape that would bind it. Two shared program vectors in test/compiler
 The mutation that must go red. Make ATOM-OK? (checker.f:1272) ignore the domain and compare the raw ids: the cross-domain row must flip from refused to certified and the gate must fail on exactly that row. Restore src/core/checker.f byte-identically afterwards and record the matrix in the dot.
 
 Blocked by nothing. It touches the type vocabulary only, so it does not wait on the construct, transport or match leaves.
+
+Claim: agent=tatom workspace=.jj-ws/habu-model-t-atom-8110cc18
