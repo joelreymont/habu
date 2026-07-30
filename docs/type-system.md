@@ -101,8 +101,9 @@ though both are integers, you declare a **nominal** — a type that is a cell at
 runtime and its own distinct thing to the checker.
 
 **`NEWTYPE name 0`** is the form to reach for. It registers a nominal cell
-family owned by the package it is declared in, so two packages may each have a
-type called `index` without any confusion between them. `lib/cad-num-types.f`
+type owned by the package it is declared in (a zero-parameter *family* — § 5
+defines that word), so two packages may each have a type called `index`
+without any confusion between them. `lib/cad-num-types.f`
 is the reference example: package `CAD-NUM` declares ten of them —
 `byte-len`, `item-count`, `cell-count`, `index`, `byte-off`, `cell-off`,
 `alignment`, `positive-divisor`, `alloc-byte-len`, `alloc-cell-count` — and
@@ -142,8 +143,23 @@ in their own headers about the limit of that evidence, and § 10 explains it.
 
 ## 5. Families: records, alternatives, and generics
 
-A **type family** is a named type that may take parameters. Records and tagged
-alternatives are both families, and so are the generic containers.
+**"Family" is the engine's word for a declared type, and it is worth thirty
+seconds because it appears in checker messages.** Every type you declare —
+with `STRUCTURE`, `ENUM`, or `NEWTYPE` — becomes one row in a single registry
+inside the engine: the type's name, the package that owns it, how many type
+parameters it takes, its fields or variants, and which derived operations it
+opted into. That row is called a type family. "Family" rather than "type"
+because one declaration can stand for many concrete types: `option` is
+declared once with one parameter, and every use picks a payload —
+`option<n>`, `option<CAD-NUM:index>` — each a different concrete type from
+the same declaration. A declaration with zero parameters is still a family;
+it just has exactly one member, and the checker prints it with an empty
+parameter list — when an error message says `maki:dtype<>`, that trailing
+`<>` is the checker naming a zero-parameter family instance, not a typo.
+
+So: records and tagged alternatives are families, the generic containers are
+families, and the nominal wrappers of § 4 are families too — one substrate,
+several declaring words.
 
 - **`STRUCTURE name arity … FIELD f type … ;STRUCTURE`** declares a record:
   several named fields travelling together as one value. `MDLCFG:mcfg` is a
