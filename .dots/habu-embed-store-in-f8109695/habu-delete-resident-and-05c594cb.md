@@ -1,9 +1,11 @@
 ---
 title: Delete resident and its erasures
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:59:20.807806+02:00"
+closed-at: "2026-07-30T10:15:44.967128+02:00"
+close-reason: Merged and verified f0f3660211458d06ffbf1deea6b910b49fd9bf5e on master@origin.
 blocks:
   - habu-cut-gpt2-model-445a19ff
 ---
