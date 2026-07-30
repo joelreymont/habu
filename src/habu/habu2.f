@@ -31,12 +31,9 @@
 : C-ADDR-PUSH ( -- )
    C-ADDR-RAW
    9 W-PUSH0 LIT64,  LCEMIT LABEL@ BL,  9 W-PUSH1 LIT64,  LCEMIT LABEL@ BL, ;
-\ push a DATA-region address (create/variable data field).
-: C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
-\ raw DATA-region address into x9, no push (the defer dispatch-cell address).
-: C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
-\ push a CODE-region address (quotation entry xt, ['] / postpone target xt).
-: C-CODE-ADDR ( -- )  C-ADDR-PUSH ;
+\ The three words that NAME the relocation kind of a chain are defined further
+\ down, right after the snapshot-relocation labels, because the code-address one
+\ has to record its site through SNAP-RELOC:MARK-SITE.
 \ ---- compile-mode CALL-or-INLINE (x11=target addr, x12=clen from FIND) ----
 $28 constant INL-MAX
 $D10043FF constant C-CALL-PROLOGUE-INSTR
@@ -162,13 +159,27 @@ variable LCALLMSG   \ a recorded call site does not hold a call instruction (CAL
 31 constant CALLMSG-LEN   \ byte length of "hb: snapshot call map mismatch\n" (LCALLMSG)
 variable LXTMSG     \ more address cells were declared than the table can hold (XTCELL-RC)
 32 constant XTMSG-LEN     \ byte length of "hb: snapshot address table full\n" (LXTMSG)
+variable LADDRMSG   \ a recorded address-literal site does not hold the MOVZ/MOVK chain (ADDRMAP-RC)
+34 constant ADDRMSG-LEN   \ byte length of "hb: snapshot address map mismatch\n" (LADDRMSG)
 variable LCALLS     \ region-to-text call relocation routine (snapshot write + restore)
 variable LXT        \ declared-address-cell relocation routine (snapshot restore)
 variable LMARK      \ declare one DATA cell as holding a region address
+variable LADDRS     \ address-literal relocation routine (snapshot write + restore)
+variable LADDRSITE  \ record the chain about to be emitted at CP as an address literal
 \ The six opcode bits of an AArch64 BL, i.e. $94000000 >> 26. The call relocation
 \ pass reads them with one shift rather than a mask-and-compare against a 64-bit
 \ literal.
 $25 constant BL-OP-HI
+
+\ The shape of the four-instruction address chain habu2.f C-ADDR-RAW emits, as the
+\ relocation pass has to read it back. ADDR-OPC-MASK keeps everything in a MOVZ or
+\ MOVK word except its 16-bit immediate, so masking a site word and comparing it
+\ against W-MOVZ0/W-MOVK1/W-MOVK2/W-MOVK3 checks the destination register and the
+\ shift as well as the opcode. ADDR-IMM-MASK is that immediate once it has been
+\ shifted down by five, and ADDR-CHAIN-BYTES is the whole chain.
+$FFE0001F constant ADDR-OPC-MASK
+$FFFF constant ADDR-IMM-MASK
+16 constant ADDR-CHAIN-BYTES
 
 \ Emit "declare the engine cell at OFFSET as holding a region address". The three
 \ engine hook cells are named this way at cold boot; the dispatch cell of a
@@ -178,7 +189,32 @@ $25 constant BL-OP-HI
 : MARK-CELL ( n -- ) {: cell:n :}
    9 cell LIT64,  9 DATA 9 ADD,  LMARK LABEL@ BL, ;
 
+\ Emit "the four-instruction chain that starts at the current CP is an address of
+\ code". The recorder reads CP itself, so the compile handler has nothing to pass
+\ and the site can never be off by an instruction.
+: MARK-SITE ( -- )
+   LADDRSITE LABEL@ BL, ;
+
 ;package
+
+\ ---- the three words that name a chain's relocation kind ---------------------
+\ Same instruction shape for all three; what differs is what the address means,
+\ which is why the kind is decided here, at the emit site, and never later by
+\ looking at the bytes.
+\ push a DATA-region address (create/variable data field). DATA is mapped at a
+\ fixed address in every run, so a persisted DATA literal is already correct in
+\ the run that restores it and is deliberately not recorded.
+: C-DATA-ADDR ( -- )  C-ADDR-PUSH ;
+\ raw DATA-region address into x9, no push (the defer dispatch-cell address).
+: C-DATA-ADDR-RAW ( -- )  C-ADDR-RAW ;
+\ push a CODE address (quotation entry xt, ['] / postpone target xt). The word it
+\ names lives in the JIT region or in the engine's loaded __text, and neither of
+\ those is at the same address in the run that restores a snapshot image, so the
+\ site goes in the address-literal map for the relocation pass to rewrite.
+: C-CODE-ADDR ( -- )
+   SNAP-RELOC:MARK-SITE
+   C-ADDR-PUSH ;
+
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
 30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)
 23 constant SRCREAD-MSG-LEN   \ byte length of "hb: cannot read source\n" (LSRCREAD; source read syscall error)
@@ -397,6 +433,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LSNAPVER LABEL@ LBL, s" hb: snapshot format version unsupported" BYTES,  NL-KW 1 BYTES,     \ SNAPVER-MSG-LEN bytes incl. newline
    SNAP-RELOC:LCALLMSG LABEL@ LBL, s" hb: snapshot call map mismatch" BYTES,  NL-KW 1 BYTES,     \ SNAP-RELOC:CALLMSG-LEN bytes incl. newline
    SNAP-RELOC:LXTMSG LABEL@ LBL, s" hb: snapshot address table full" BYTES,  NL-KW 1 BYTES,      \ SNAP-RELOC:XTMSG-LEN bytes incl. newline
+   SNAP-RELOC:LADDRMSG LABEL@ LBL, s" hb: snapshot address map mismatch" BYTES,  NL-KW 1 BYTES,   \ SNAP-RELOC:ADDRMSG-LEN bytes incl. newline
    LSRCFULL LABEL@ LBL, s" hb: source prefix buffer full" BYTES,  NL-KW 1 BYTES,               \ SRCFULL-MSG-LEN bytes incl. newline
    LSRCREAD LABEL@ LBL, s" hb: cannot read source" BYTES,  NL-KW 1 BYTES,                       \ SRCREAD-MSG-LEN bytes incl. newline
    LBADSTR  LABEL@ LBL, s" hb: bad string literal" BYTES,  NL-KW 1 BYTES,                       \ BADSTR-MSG-LEN bytes incl. newline
@@ -4038,6 +4075,15 @@ EM-AOT-RESTORE-HOOK-INIT
       10 9 4 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 16 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 4 STRW,
       10 9 8 LDRW,   5 $FFE0001F LIT64,  10 10 5 AND,  14 11 32 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 8 STRW,
       10 9 12 LDRW,  5 $FFE0001F LIT64,  10 10 5 AND,  14 11 48 LSRI,  5 $FFFF LIT64,  14 14 5 AND,  14 14 5 LSLI,  10 10 14 ORR,  10 9 12 STRW,
+      \ This pass is the second producer of code-address chains, so it records its
+      \ sites in the same map C-CODE-ADDR writes. It knows the literal is an
+      \ address of code without decoding anything: the offset came off the captured
+      \ CODE-site list, and the DATA-site list is walked by a different word.
+      14 9 DBASE SUB,                                \ x14 = chain byte offset within the region
+      4 14 0 ADDI,  4 4 2 LSRI,  4 4 7 ANDI,         \ x4 = bit number = word index & 7
+      14 14 5 LSRI,                                  \ x14 = map byte index = offset >> 5
+      5 SNAP-RELOC:ADDRMAP-OFF LIT64,  14 14 5 ADD,  14 DATA 14 ADD,
+      5 1 MOVZ,  5 5 4 LSLV,  13 14 0 LDRB,  13 13 5 ORR,  13 14 0 STRB,
       21 21 2 ADDI,  22 22 1 ADDI,  cloop B,
    crdone LBL, ;
 
@@ -4291,6 +4337,93 @@ public
       14 14 1 ADDI,  loop B,
    done LBL,  RET, ;
 
+\ Record the four-instruction MOVZ/MOVK chain that is about to be written at CP as
+\ an address of code, so the two relocation passes can find it again without ever
+\ decoding region bytes. Called from C-CODE-ADDR before the chain is emitted, so
+\ CP is exactly the chain's first word.
+\ x11 holds the address the caller is about to compile in and must survive; x30 is
+\ already dead here, because the chain emission itself calls LCEMIT four times.
+\ Clobbers x5, x6, x9.
+: EMIT-ADDR-SITE ( -- )
+   LADDRSITE LABEL@ LBL,
+   6 CP DBASE SUB,                                  \ x6 = chain's byte offset within the region
+   9 6 0 ADDI,  9 9 2 LSRI,  9 9 7 ANDI,            \ x9 = bit number = word index & 7
+   6 6 5 LSRI,                                      \ x6 = map byte index = offset >> 5
+   5 ADDRMAP-OFF LIT64,  6 6 5 ADD,  6 DATA 6 ADD,  \ x6 = map byte address
+   5 1 MOVZ,  5 5 9 LSLV,  9 6 0 LDRB,  9 9 5 ORR,  9 6 0 STRB,
+   RET, ;
+
+\ Address-literal relocation: the MOVZ/MOVK-shaped counterpart of the dictionary
+\ walk and of the call pass, and the third and last thing that has to move when a
+\ snapshot image is restored at addresses the writing run never saw.
+\ The chain a `[: ... ;]`, a `[']` or a `postpone` pushes names a word's code, and
+\ that code sits either inside the JIT region or in the engine's loaded __text.
+\ Both move independently between the writing and the restoring run, so the pass
+\ is parameterized exactly like the dictionary walk and is CALLED ONCE PER BAND,
+\ with the same triple that walk is given:
+\   x21 = base of the band being moved
+\   x22 = its length
+\   x25 = the base those addresses are moving to  (value - x21 + x25)
+\ and, like the call pass, with the image it is scanning:
+\   x8  = base of the region image being patched
+\   x11 = its byte length (the map is scanned only that far)
+\ The two bands are disjoint at both write and restore time -- the live region sits
+\ REGION-OFF above __text, and canonical text offsets are far below the RBASE-VA
+\ sentinel -- so a chain is rewritten by exactly one of the two calls, and a chain
+\ that names neither band (there is no such kind today) is left alone rather than
+\ guessed at.
+\ The sites are not searched for. They were recorded when the chain was created
+\ (ADDRMAP-OFF, written by EMIT-ADDR-SITE from C-CODE-ADDR and by the AOT seed's
+\ code-literal rebase), because a compiled word may carry inline non-instruction
+\ data and the sibling DATA literals share the chain's exact shape, so no decode of
+\ region bytes could tell the three apart.
+\ Clobbers x2, x3, x4, x5, x6, x7, x9, x10, x12, x13, x14; x8, x11, x21, x22 and
+\ x25 survive for the caller.
+: EMIT-ADDRS ( -- )
+   LBL LBL LBL LBL LBL LBL {: sal:label sadone:label sanext:label
+                              sabit:label sabnext:label sabad:label :}
+   LADDRS LABEL@ LBL,
+   6 ADDRMAP-OFF LIT64,  6 DATA 6 ADD,              \ x6 = address-literal map base
+   13 11 31 ADDI,  13 13 5 LSRI,                    \ x13 = map bytes covering the image (rounded up)
+   12 0 MOVZ,                                       \ x12 = map byte index
+   7 ADDR-OPC-MASK LIT64,                           \ x7 = an instruction word minus its immediate
+   2 ADDR-IMM-MASK LIT64,                           \ x2 = one 16-bit immediate field
+   sal LBL,  12 13 CMP,  C-GE sadone BCOND,
+      5 6 12 ADD,  5 5 0 LDRB,                      \ x5 = map byte, consumed one bit at a time
+      5 sanext CBZ,                                 \ no site recorded in these eight words
+      4 12 3 LSLI,                                  \ x4 = region word index of this byte's first bit
+      sabit LBL,  5 sanext CBZ,                     \ every remaining bit is clear
+         14 5 1 ANDI,  14 sabnext CBZ,
+            14 4 2 LSLI,                            \ x14 = chain's byte offset within the region
+            3 14 ADDR-CHAIN-BYTES ADDI,             \ the whole chain has to be inside the payload
+            3 11 CMP,  C-HI sabnext BCOND,          \ past this payload: not part of the image being patched
+            14 8 14 ADD,                            \ x14 = chain address
+            \ a recorded site must still be the chain. Anything else means the map
+            \ and the region disagree, which is a corrupt image, so refuse to run it.
+            9 14 0 LDRW,   9 9 7 AND,  10 W-MOVZ0 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            9 14 4 LDRW,   9 9 7 AND,  10 W-MOVK1 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            9 14 8 LDRW,   9 9 7 AND,  10 W-MOVK2 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            9 14 12 LDRW,  9 9 7 AND,  10 W-MOVK3 LIT64,  9 10 CMP,  C-NE sabad BCOND,
+            \ x3 = the address the four immediates spell out
+            9 14 0 LDRW,   9 9 5 LSRI,  9 9 2 AND,  3 9 0 ADDI,
+            9 14 4 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 16 LSLI,  3 3 9 ORR,
+            9 14 8 LDRW,   9 9 5 LSRI,  9 9 2 AND,  9 9 32 LSLI,  3 3 9 ORR,
+            9 14 12 LDRW,  9 9 5 LSRI,  9 9 2 AND,  9 9 48 LSLI,  3 3 9 ORR,
+            3 21 CMP,  C-CC sabnext BCOND,          \ below this band: the other call owns it
+            10 21 22 ADD,  3 10 CMP,  C-CS sabnext BCOND,
+            3 3 21 SUB,  3 3 25 ADD,                \ x3 = the same code at its new base
+            9 14 0 LDRW,   9 9 7 AND,  10 3 0 ADDI,   10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 0 STRW,
+            9 14 4 LDRW,   9 9 7 AND,  10 3 16 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 4 STRW,
+            9 14 8 LDRW,   9 9 7 AND,  10 3 32 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 8 STRW,
+            9 14 12 LDRW,  9 9 7 AND,  10 3 48 LSRI,  10 10 2 AND,  10 10 5 LSLI,  9 9 10 ORR,  9 14 12 STRW,
+         sabnext LBL,
+         5 5 1 LSRI,  4 4 1 ADDI,  sabit B,
+   sanext LBL,  12 12 1 ADDI,  sal B,
+   sabad LBL,
+      1 LADDRMSG LABEL@ ADR,  0 2 MOVZ,  2 ADDRMSG-LEN MOVZ,  NR-WRITE SYS,
+      0 ADDRMAP-RC MOVZ,  NR-EXIT-GROUP SYS,
+   sadone LBL,  RET, ;
+
 ;package
 
 \ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
@@ -4336,6 +4469,11 @@ public
    25 G-POP  22 G-POP  21 G-POP  15 G-POP  16 G-POP  8 G-POP
    11 16 8 SUB,  8 11 PROT-GUARD:CALL
    LSNAPRBD LABEL@ BL,
+   \ address-literal pass, text band: an xt a `[']` or a `postpone` compiled in may
+   \ name a primitive, whose code is in __text, so the same (x21,x22,x25) triple
+   \ pass 1 just used for dictionary cells applies to those chains too.
+   11 16 8 SUB,                                         \ x11 = region payload length
+   SNAP-RELOC:LADDRS LABEL@ BL,
    \ call pass: rewrite every recorded region-to-text call from the distance this
    \ run happens to have to the distance it would have if the region sat exactly
    \ REGION-OFF above __text. x21 still holds the live text base from pass 1.
@@ -4343,7 +4481,11 @@ public
    11 16 8 SUB,                                         \ x11 = region payload length
    SNAP-RELOC:LCALLS LABEL@ BL,
    21 DBASE 0 ADDI,  22 16 8 SUB,  25 RBASE-VA LIT64,   \ pass 2: live region -> RBASE-VA sentinel
-   LSNAPRBD LABEL@ BL, ;
+   LSNAPRBD LABEL@ BL,
+   \ address-literal pass, region band: the quotation entries and the xts that name
+   \ a word compiled into the region, folded to the same sentinel pass 2 uses.
+   11 16 8 SUB,
+   SNAP-RELOC:LADDRS LABEL@ BL, ;
 
 : EM-SNAPSHOT-RX-FLUSH ( -- )
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -4564,9 +4706,22 @@ public
    \ slides with __text). x6 = region payload len.
    21 RBASE-VA LIT64,  22 6 0 ADDI,  25 DBASE 0 ADDI,
    LSNAPRBD LABEL@ BL,
+   \ The address-literal pass runs once per band, right behind the dictionary walk
+   \ that band belongs to, and takes the same (x21,x22,x25) triple. It scans the
+   \ live region, so it needs x8 and the payload length in x11 -- and x11 still
+   \ holds the snapshot text size the text pass below has to have, so the three
+   \ values that pass clobbers are parked on the machine stack across both calls.
+   SP SP 32 SUBI,  6 SP 0 STR,  7 SP 8 STR,  11 SP 16 STR,
+   11 6 0 ADDI,
+   SNAP-RELOC:LADDRS LABEL@ BL,
+   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,
    \ text pass: canonical base 0 -> live text base. x22 = engine text len; x25 reloaded.
    21 0 MOVZ,  22 11 6 SUB,  22 22 7 SUB,  22 22 48 SUBI,  25 DATA RBASE-CELL LDR,
    LSNAPRBD LABEL@ BL,
+   11 6 0 ADDI,  8 DBASE 0 ADDI,
+   SNAP-RELOC:LADDRS LABEL@ BL,
+   6 SP 0 LDR,  7 SP 8 LDR,  11 SP 16 LDR,
+   SP SP 32 ADDI,
    \ call pass, the inverse of the writer's: the image carries every region-to-text
    \ call at the canonical REGION-OFF distance, so add back the difference between
    \ that and the distance this run actually got. The call map itself arrived with
@@ -7155,6 +7310,7 @@ package LABELS
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LSNAPRBD !  LBL LHIDXADD !  LBL LHIDXBUILD !
    LBL SNAP-RELOC:LCALLS !  LBL SNAP-RELOC:LXT !  LBL SNAP-RELOC:LMARK !
+   LBL SNAP-RELOC:LADDRS !  LBL SNAP-RELOC:LADDRSITE !
    LBL LQUALIFYDEF !  LBL LSTOREDEFNAME !
    LBL LAOTWIDGATE !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP !  LBL LTOPHOOK ! ;
@@ -7205,7 +7361,7 @@ package LABELS
    LBL LCOMPILEDIE !
    LBL LDICTFULL !  LBL LCODEFULL !
    LBL LSNAPBAD !  LBL LSNAPVER !
-   LBL SNAP-RELOC:LCALLMSG !  LBL SNAP-RELOC:LXTMSG !
+   LBL SNAP-RELOC:LCALLMSG !  LBL SNAP-RELOC:LXTMSG !  LBL SNAP-RELOC:LADDRMSG !
    LBL LSRCFULL !  LBL LSRCREAD !  LBL LBADSTR !
    LBL LPROTPUB !  LBL LPROTAOT !
    LBL LMMAPCODE !  LBL LMMAPDATA !  LBL LBLRANGE !
@@ -7470,6 +7626,7 @@ package ENGINE-BUILD
    EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
    EM-SNAPSHOT-REBASE-DICT  EM-AOTWIDGATE
    SNAP-RELOC:EMIT-CALLS  SNAP-RELOC:EMIT-MARK  SNAP-RELOC:EMIT-XT
+   SNAP-RELOC:EMIT-ADDR-SITE  SNAP-RELOC:EMIT-ADDRS
    EMIT-LOC-FIND
    KWDATA:EMIT
    EMIT-FOLDKW

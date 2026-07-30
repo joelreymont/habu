@@ -38,7 +38,15 @@ $48425350414E5321 constant SNAP-MAGIC
 \ declared address cells relative to the RBASE-VA sentinel, rather than in the
 \ writing run's own form. A version 4 engine would read both as live values and
 \ jump to wild addresses, so it must fail closed rc 80 instead.
-5 constant SNAP-FORMAT-VERSION
+\ Version 6: the address literals the compiler builds inside region code -- the
+\ four-instruction MOVZ/MOVK chain that pushes a quotation entry, a `[']` target
+\ or a `postpone` target -- are canonicalized as well, region-valued ones against
+\ the RBASE-VA sentinel and engine-text-valued ones against text base 0, from a
+\ third table in the SNAP-RELOC band. A version 5 image stores those chains as
+\ the writing run's own absolute addresses, so a version 5 engine and a version 6
+\ image disagree about what the chain bytes mean in both directions and each must
+\ fail closed rc 80 rather than execute the other's literals.
+6 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
@@ -592,13 +600,19 @@ public
 \ src/core/engine-error.f registry for the same reason those two do: the engine
 \ emitter reads its exit statuses from this file while it is being compiled, one
 \ generation before a new src/core constant would be reachable. 95 is the next
-\ free status above that registry's last entry (94), and 96 follows it.
+\ free status above that registry's last entry (94), and 96 and 97 follow it.
 95 constant CALLMAP-RC
 \ Exit status for an overfull address-cell table: more cells were declared to hold
 \ a region address than XTCELL-CAP has room for. Continuing would silently drop a
 \ cell and leave a stale writer-run address in a restored image, so the engine
 \ stops instead.
 96 constant XTCELL-RC
+\ Exit status for a corrupt address-literal map: the loader found a recorded
+\ address-literal site that does not hold the four-instruction MOVZ/MOVK chain the
+\ compiler emits there, so the image's region bytes and its literal map come from
+\ different builds or one of them is damaged. Rewriting the four immediates anyway
+\ would plant a wild address in live code, so the image is refused.
+97 constant ADDRMAP-RC
 
 \ Call-site map: one bit per four-byte word of the JIT region, recording every
 \ call site whose callee lives in the engine's loaded __text instead of inside the
@@ -621,6 +635,34 @@ REGION 32 / constant CALLMAP-BYTES        \ one bit per region word (REGION / 4 
 USE-BAND-END constant CALLMAP-OFF
 CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 
+\ Address-literal map: the same shape as the call map, one bit per four-byte word
+\ of the JIT region, recording the FIRST word of every four-instruction MOVZ/MOVK
+\ chain the compiler builds an execution token with. Those are the quotation entry
+\ address a `[: ... ;]` pushes and the target a `[']` or a `postpone` pushes; the
+\ chain names a word's code, which lives either inside the region or in the
+\ engine's loaded __text, and neither of those keeps its address between the run
+\ that writes a snapshot image and the run that restores it.
+\ A separate map rather than a second bit in the call map: a call site and a chain
+\ start are different instruction shapes at different addresses, the two passes
+\ rewrite completely different fields, and a two-bit call map would cost the same
+\ bytes while forcing the already-proven call pass to decode a tag it does not
+\ need. Two one-bit maps also let each pass keep the identical bit-scan loop.
+\ Membership is recorded where the compiler decides the literal is an address of
+\ CODE: habu2.f C-CODE-ADDR is the single emit point, and the AOT seed's code-
+\ literal rebase (EM-AOT-RELOC-CODE) is the second producer, which knows its sites
+\ are code literals because they come from the captured code-site list rather than
+\ the data-site list. The sibling C-DATA-ADDR literals are deliberately NOT
+\ recorded: they hold DATA addresses, and DATA is mapped at a fixed address in
+\ every run, so they are already the same in the writing and the restoring run.
+\ Nothing ever recognises a chain by looking at region bytes or at the value a
+\ chain carries: a compiled word may hold inline non-instruction data, and an
+\ ordinary integer may hold any value at all.
+\ Sized from REGION like the call map, so it cannot overflow and needs no capacity
+\ check, and keyed by region offset, so its own contents are run-invariant.
+REGION 32 / constant ADDRMAP-BYTES        \ one bit per region word (REGION / 4 / 8)
+CALLMAP-END constant ADDRMAP-OFF
+ADDRMAP-OFF ADDRMAP-BYTES + constant ADDRMAP-END
+
 \ Address-cell table: the DATA offset of every persisted cell that was DECLARED to
 \ hold a JIT-region address. Region code moves between the run that writes an
 \ image and the run that restores it, but DATA is mapped at a fixed address, so a
@@ -638,7 +680,7 @@ CALLMAP-OFF CALLMAP-BYTES + constant CALLMAP-END
 \ only offsets that are not already present, so a cell registered by both `defer`
 \ and `is` is listed once and is relocated once.
 4096 constant XTCELL-CAP                  \ declared address cells one image may carry
-CALLMAP-END constant XTCELL-N-CELL        \ live count of used rows
+ADDRMAP-END constant XTCELL-N-CELL        \ live count of used rows
 XTCELL-N-CELL 8 + constant XTCELL-ROWS-OFF
 XTCELL-ROWS-OFF XTCELL-CAP cells + constant XTCELL-END
 

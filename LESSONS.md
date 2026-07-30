@@ -3420,3 +3420,43 @@ fits.
   the parity gate reads the guard, the advance and the per-check restart out of
   each mint word's body, derived from the counter's name so the name is written
   once.
+
+- **Two builds of one snapshot image, diffed and split by section, separate
+  relocation classes faster than any single crash does.** Build the image
+  twice from an unchanged engine, `cmp -l` the two files, and bucket every
+  differing byte into header/text, region, DATA, trailer and the trailing extra
+  section using the trailer's own region and data lengths (region file base =
+  trailer base - data length - region length). Region bytes below `DICT-SIZE`
+  are dictionary records; above it they are compiled code. On this tree the code
+  bucket was 310 differing words, every one of them the second instruction of a
+  four-instruction MOVZ/MOVK x9 chain whose value moved by exactly the region
+  base delta — which is what proved the address-literal class was real before a
+  line of it was written, and what proved it gone afterwards (310 -> 0). Two
+  traps: `rg --byte-offset` reports the offset of the LINE, not the match, so
+  locating the trailer that way was 16 bytes wrong and made every record look
+  like garbage; and `bin/hb --load tools/imgdump.f -- --data <img> <off>`
+  answered 0 for a cell whose bytes were plainly non-zero, so read persisted
+  DATA out of the file at the computed base rather than through that path until
+  it is fixed.
+
+- **A wild jump in a restored image is not evidence of WHICH relocation class
+  is missing.** Three different defects in this campaign all present as "jump to
+  an address the writing run had": an unrelocated call, an unrelocated address
+  literal in code, and a persisted DATA cell that holds an execution token and
+  was never declared. Tell them apart before writing anything: search the live
+  region for the MOVZ/MOVK chain that would build the crashing value, search
+  DATA for the value itself, and — decisively — read the image FILE at the same
+  DATA offset. Present in the file means persisted; absent means it was computed
+  at run time from something else. In this lane the crashing value was absent
+  from the region as a chain and absent from the file as a cell, and an lldb
+  write-watchpoint set at `process launch --stop-at-entry` (the only point early
+  enough to beat the crash) caught it being written by the snapshot loader's own
+  DATA copy, which is what finally named the owner.
+
+- **A cell that holds an execution token has to be a `defer`, not a
+  `variable`.** `CHECKER-CERT:PRODUCER-XT` and `LOWER-CERT:FULL-XT` are plain
+  variables that an `execute` dispatches through, so nothing declares them to
+  the snapshot address-cell table the way `defer`/`is` declare a dispatch cell —
+  and a restored image jumps to the writing run's address on the first checked
+  definition. The declared-kind design is only as complete as the set of ways a
+  cell can come to hold a token, and `variable` + `execute` is outside it.
