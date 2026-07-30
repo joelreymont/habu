@@ -2887,3 +2887,7 @@ fits.
   consumers?" before substituting, and pin its resolution with a file-local
   positive control so a lost declaration flips a positive instead of letting
   every negative go silently green (dot habu-add-positive-controls-3eff7393).
+- **Do not encode a staged source prerequisite as a tracker blocker when both
+  leaves stay active until one terminal gate.** Record the exact prerequisite
+  commit in the contract and worker parent; otherwise the dependent leaf can
+  never become dispatchable before the terminal gate that closes its provider.
