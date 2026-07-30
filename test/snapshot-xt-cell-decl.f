@@ -17,6 +17,15 @@
 \ it. A relocation pass that decided membership by looking for values in the
 \ region's address range would relocate that cell, corrupt an ordinary integer,
 \ and pass this file's positive cases while failing here.
+\
+\ The second half of the file is the TABLE shape (dot
+\ habu-declare-persisted-cb-b150b5d5). `defer` and `is` name a cell while they are
+\ being compiled; an array of dispatch cells picks its cell at run time from a base
+\ pointer and a row index, so no compile handler ever sees that address. The store
+\ word is then the code that decides the cell will hold a token, and `xt!` stores
+\ and declares in one step. These rows drive the REAL coordinator --
+\ src/core/declaration-transaction.f, the one the five boot participants enroll
+\ through -- over a table this file owns, and watch the same engine table.
 
 require lib/errors.f
 require lib/test.f
@@ -132,6 +141,157 @@ RAW-ARM
 
 TAKE9
 
+\ ---- a TABLE of dispatch cells, driven through the real coordinator ----------
+
+public
+
+\ The row and state-record field offsets, read out of the coordinator itself
+\ rather than written down again here, so a layout change moves these rows with
+\ the production code instead of silently making them test something else.
+variable OFF-ID          variable OFF-ORDER
+variable OFF-SNAPSHOT    variable OFF-PREPARE    variable OFF-COMMIT
+variable OFF-ROLLBACK    variable OFF-RELEASE
+variable OFF-ALLOCATOR   variable OFF-DIAGNOSTIC
+
+private
+;package
+
+package DECLARATION-TRANSACTION
+
+: XT-CELL-OFFSETS ( -- )
+   ROW.ID-OFF        XT-CELL-DECL:OFF-ID !
+   ROW.ORDER-OFF     XT-CELL-DECL:OFF-ORDER !
+   ROW.SNAPSHOT-OFF  XT-CELL-DECL:OFF-SNAPSHOT !
+   ROW.PREPARE-OFF   XT-CELL-DECL:OFF-PREPARE !
+   ROW.COMMIT-OFF    XT-CELL-DECL:OFF-COMMIT !
+   ROW.ROLLBACK-OFF  XT-CELL-DECL:OFF-ROLLBACK !
+   ROW.RELEASE-OFF   XT-CELL-DECL:OFF-RELEASE !
+   ST.ALLOCATOR-OFF  XT-CELL-DECL:OFF-ALLOCATOR !
+   ST.DIAGNOSTIC-OFF XT-CELL-DECL:OFF-DIAGNOSTIC ! ;
+
+XT-CELL-OFFSETS
+
+;package
+
+package XT-CELL-DECL
+private
+
+3 constant TAB-CAP
+201 constant ID-A       200 constant ORDER-A
+202 constant ID-B       700 constant ORDER-B
+203 constant ID-C       100 constant ORDER-C
+
+DECLARATION-TRANSACTION:ROW-CELLS cells constant TAB-ROW-BYTES
+TAB-CAP DECLARATION-TRANSACTION:ROW-CELLS * constant TAB-CELLS
+
+create TAB-STATE DECLARATION-TRANSACTION:STATE-CELLS cells allot
+create TAB-ROWS  TAB-CELLS cells allot
+
+\ The same geometry, filled by an ordinary `!` with a REAL execution token. It is
+\ the negative that carries the weight for the table shape: every cell holds the
+\ kind of value a declared cell holds, and every cell must stay out of the engine
+\ table, because a store through a computed address decides nothing on its own.
+create LOOKALIKE TAB-CELLS cells allot
+
+variable T0   variable T1   variable T2   variable T3   variable T4
+variable TALLY
+
+: TAB-ALLOC ( ptr a n n -- ptr a ) 2drop ;
+: TAB-DIAG ( n n -- ) 2drop ;
+: TAB-STEP ( n -- n ) ;
+: TAB-DONE ( -- ) ;
+
+: TAB-REGISTER ( n n -- ) {: id:n order:n :}
+   TAB-STATE id order
+   [: TAB-STEP ;] [: TAB-STEP ;] [: TAB-STEP ;] [: TAB-STEP ;] [: TAB-DONE ;]
+   DECLARATION-TRANSACTION:REGISTER ;
+
+: TAB-INIT ( -- )
+   TAB-STATE TAB-ROWS TAB-CAP
+   [: TAB-ALLOC ;] [: TAB-DIAG ;]
+   DECLARATION-TRANSACTION:INIT ;
+
+: ROW-CELL ( n n -- ptr a ) {: row:n off:n :}
+   TAB-ROWS row TAB-ROW-BYTES * + off + ;
+
+: ROW-OFF ( n n -- n )
+   ROW-CELL data-base - ;
+
+: STATE-OFF ( n -- n ) {: off:n :}
+   TAB-STATE off + data-base - ;
+
+: LOOKALIKE-TARGET ( -- n ) 4711 ;
+
+: FORGE-TABLE ( -- )
+   TAB-CELLS 0 ?do
+      ['] LOOKALIKE-TARGET  LOOKALIKE i cells + !
+   loop ;
+
+: TALLY-IF-LISTED ( n -- )
+   LISTED? if TALLY @ 1 + TALLY ! then ;
+
+: LOOKALIKE-LISTED ( -- n )
+   0 TALLY !
+   TAB-CELLS 0 ?do
+      LOOKALIKE i cells + data-base - TALLY-IF-LISTED
+   loop
+   TALLY @ ;
+
+\ Every callback cell of every row, plus the state record's two.
+: DECLARED-COUNT ( -- n )
+   0 TALLY !
+   OFF-ALLOCATOR  @ STATE-OFF TALLY-IF-LISTED
+   OFF-DIAGNOSTIC @ STATE-OFF TALLY-IF-LISTED
+   TAB-CAP 0 ?do
+      i OFF-SNAPSHOT @ ROW-OFF TALLY-IF-LISTED
+      i OFF-PREPARE  @ ROW-OFF TALLY-IF-LISTED
+      i OFF-COMMIT   @ ROW-OFF TALLY-IF-LISTED
+      i OFF-ROLLBACK @ ROW-OFF TALLY-IF-LISTED
+      i OFF-RELEASE  @ ROW-OFF TALLY-IF-LISTED
+   loop
+   TALLY @ ;
+
+\ The identity and order cells sit in the same rows, are written by the same
+\ REGISTER, and hold ordinary integers stored with an ordinary `!`.
+: BOOKKEEPING-LISTED ( -- n )
+   0 TALLY !
+   TAB-CAP 0 ?do
+      i OFF-ID    @ ROW-OFF TALLY-IF-LISTED
+      i OFF-ORDER @ ROW-OFF TALLY-IF-LISTED
+   loop
+   TALLY @ ;
+
+: TAKE-T0 ( -- ) COUNT@ T0 ! ;
+: TAKE-T1 ( -- ) COUNT@ T1 ! ;
+: TAKE-T2 ( -- ) COUNT@ T2 ! ;
+: TAKE-T3 ( -- ) COUNT@ T3 ! ;
+: TAKE-T4 ( -- ) COUNT@ T4 ! ;
+
+TAKE-T0
+
+TAB-INIT
+
+TAKE-T1
+
+ID-A ORDER-A TAB-REGISTER
+
+TAKE-T2
+
+ID-B ORDER-B TAB-REGISTER
+
+TAKE-T3
+
+\ Order C sorts ahead of both, so OPEN-SLOT shifts the two live rows up through
+\ MOVE-ROW before the new row is written: the shifted stores land in row 2's
+\ five fresh cells and then re-store into row 1's and row 0's already declared
+\ ones. Five new rows, not fifteen, is what "the table refuses duplicates" means
+\ for a table whose contents move.
+ID-C ORDER-C TAB-REGISTER
+
+TAKE-T4
+
+FORGE-TABLE
+
 public
 
 : RUN ( -- )
@@ -164,6 +324,23 @@ public
    RAW-OFF LISTED? 0= TTRUE
    s" that cell really does hold the token that was stored" T-LABEL
    RAW-XT @  ['] RAW-TARGET  T=
+   s" initialising a coordinator declares its two callback cells" T-LABEL
+   T1 @ T0 @ 2 + T=
+   s" registering a participant declares its five callback cells" T-LABEL
+   T2 @ T1 @ 5 + T=
+   s" a second participant declares its own row's five" T-LABEL
+   T3 @ T2 @ 5 + T=
+   s" a participant that shifts the live rows declares only the new row's five" T-LABEL
+   T4 @ T3 @ 5 + T=
+   s" every callback cell of the table is in the relocation table" T-LABEL
+   DECLARED-COUNT  TAB-CAP 5 * 2 +  T=
+   s" the identity and order cells of those rows are not" T-LABEL
+   BOOKKEEPING-LISTED 0 T=
+   s" a lookalike table of real tokens declares nothing" T-LABEL
+   LOOKALIKE-LISTED 0 T=
+   s" the lookalike cells really do hold the token that was stored" T-LABEL
+   LOOKALIKE @  ['] LOOKALIKE-TARGET  T=
+   LOOKALIKE TAB-CELLS 1 - cells + @  ['] LOOKALIKE-TARGET  T=
    T-REPORT
    s" snapshot-xt-cell-decl-test: ok" type cr ;
 

@@ -117,13 +117,24 @@ TRUSTED: ROW.RELEASE ( ptr a -- ptr [ -- ] ) ROW.RELEASE-OFF + ;
 : ROLLBACK@ ( ptr a n -- [ n -- n ] ) ROW ROW.ROLLBACK @ ;
 : RELEASE@ ( ptr a n -- [ -- ] ) ROW ROW.RELEASE @ ;
 
+\ The five callback cells of a row, and the two callback cells of the state
+\ record below, hold an execution token: an address inside the JIT region, which
+\ the kernel places somewhere new on every boot. A snapshot image keeps them byte
+\ for byte, so each one has to be declared to the engine's address-cell table or
+\ a restored image dispatches into the writing run's region and dies (dot
+\ habu-declare-persisted-cb-b150b5d5). `defer` and `is` cannot declare these:
+\ they name a cell while they are being compiled, and a row's cell address is not
+\ known until ROW has multiplied a row index by the row size and added the table
+\ base at run time. These seven store words are the code that decides the cell
+\ will hold a token, so they are where the declaration belongs, and `xt!` makes
+\ the store and the declaration one step.
 : ID! ( n ptr a n -- ) ROW ROW.ID ! ;
 : ORDER! ( n ptr a n -- ) ROW ROW.ORDER ! ;
-: SNAPSHOT! ( [ n -- n ] ptr a n -- ) ROW ROW.SNAPSHOT ! ;
-: PREPARE! ( [ n -- n ] ptr a n -- ) ROW ROW.PREPARE ! ;
-: COMMIT! ( [ n -- n ] ptr a n -- ) ROW ROW.COMMIT ! ;
-: ROLLBACK! ( [ n -- n ] ptr a n -- ) ROW ROW.ROLLBACK ! ;
-: RELEASE! ( [ -- ] ptr a n -- ) ROW ROW.RELEASE ! ;
+: SNAPSHOT! ( [ n -- n ] ptr a n -- ) ROW ROW.SNAPSHOT xt! ;
+: PREPARE! ( [ n -- n ] ptr a n -- ) ROW ROW.PREPARE xt! ;
+: COMMIT! ( [ n -- n ] ptr a n -- ) ROW ROW.COMMIT xt! ;
+: ROLLBACK! ( [ n -- n ] ptr a n -- ) ROW ROW.ROLLBACK xt! ;
+: RELEASE! ( [ -- ] ptr a n -- ) ROW ROW.RELEASE xt! ;
 
 TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 
@@ -147,8 +158,8 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    0 state ST.FAILURE-PHASE !
    -1 state ST.FAILURE-PARTICIPANT !
    -1 state ST.CLEANUP-PARTICIPANT !
-   allocator state ST.ALLOCATOR !
-   diagnostic state ST.DIAGNOSTIC ! ;
+   allocator state ST.ALLOCATOR xt!
+   diagnostic state ST.DIAGNOSTIC xt! ;
 
 : DUPLICATE? ( ptr a n -- bool ) {: state:ptr id:n :}
    0

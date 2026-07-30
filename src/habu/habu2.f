@@ -4279,16 +4279,19 @@ public
 \ Declare one persisted DATA cell as holding a JIT-region address, so the snapshot
 \ writer canonicalises it and the loader maps it back onto the live region.
 \   x9 = the cell's address, unchanged on return.
-\ Membership is a set: `defer` registers a dispatch cell when it allocates it and
-\ `is` registers the cell it is about to store into, so the same cell arrives here
-\ more than once and must be listed once. The table is short (one row per deferred
-\ word in the image), the walk runs only while `defer`/`is` is being compiled, and
-\ the alternative -- letting a cell in twice -- would apply the relocation twice
-\ and produce an address that points nowhere.
+\ Membership is a set: `defer` registers a dispatch cell when it allocates it,
+\ `is` registers the cell it is about to store into, and the `xt!` primitive
+\ registers a cell whose address its caller worked out at run time, so the same
+\ cell arrives here more than once and must be listed once. The table is short
+\ (one row per deferred word plus one per declared table cell in the image), the
+\ walk runs while `defer`/`is` is being compiled or while a dispatch table is
+\ being filled in, and the alternative -- letting a cell in twice -- would apply
+\ the relocation twice and produce an address that points nowhere.
 \ Overflow is a hard stop: dropping a row would leave a stale writer-run address in
 \ a restored image, which is exactly the failure this table exists to prevent.
-\ Every register it uses is saved and restored, because both call sites are in the
-\ middle of a compile handler with its own live values.
+\ Every register it uses is saved and restored, because the compile-handler call
+\ sites are in the middle of a handler with its own live values and the `xt!` call
+\ site is in the middle of a running checked word.
 : EMIT-MARK ( -- )
    LBL LBL LBL LBL {: scan:label add:label full:label ret:label :}
    LMARK LABEL@ LBL,
@@ -4314,6 +4317,26 @@ public
    ret LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  12 SP 16 LDR,  13 SP 24 LDR,  14 SP 32 LDR,
    SP SP 48 ADDI,  RET, ;
+
+\ xt! ( q ptr q -- ): store an execution token into a persisted cell and declare
+\ that cell to the table above, in one step.
+\ `defer` and `is` can only declare a cell whose address is known while they are
+\ being COMPILED. A TABLE of dispatch cells picks its cell at RUN time, from a
+\ base pointer and a row index, so no compile handler ever sees that address, and
+\ the store word is the only code that knows a JIT-region address is going into a
+\ persisted cell (dot habu-declare-persisted-cb-b150b5d5). Storing and declaring
+\ are one primitive rather than two words so neither half can be done without the
+\ other and the declaration cannot drift away from the store it describes.
+\ The store itself is habu1.f BSTORE's, protection guard and all: x10 is the cell,
+\ x9 the token, and the guard leaves both alone. Then the cell address moves into
+\ x9 for the declarer above, which preserves x9 and saves every other register it
+\ touches. Registered framed, because the guard and LMARK are both BL.
+: BXTSTORE ( -- )
+   B G-POP  A G-POP
+   7 8 MOVZ,  B 7 PROT-GUARD:CALL
+   A B 0 STR,
+   A B 0 ADDI,
+   LMARK LABEL@ BL, ;
 
 \ Move every declared address cell by one signed amount.
 \   x10 = the amount to add
@@ -7601,7 +7624,8 @@ package ENGINE-BUILD
    EMIT-ARITY-GUARD             s" primitives/arity" ENGINE-SIZE:MARK
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
-   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F s" primitives/extra" ENGINE-SIZE:MARK
+   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F
+   s" xt!" ['] SNAP-RELOC:BXTSTORE 2 GDEREF-F  s" primitives/extra" ENGINE-SIZE:MARK
    EMIT-PROF-PRIMS            s" primitives/prof" ENGINE-SIZE:MARK
    EMIT-FP-PRIMS              s" primitives/float" ENGINE-SIZE:MARK
    EMIT-CEMIT                 s" primitives/cemit" ENGINE-SIZE:MARK

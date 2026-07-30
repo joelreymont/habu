@@ -1172,8 +1172,16 @@ previous definitions
    s" 2dup" ['] B2DUP FPRIM-L   s" 2drop" ['] B2DROP FPRIM-L
    s" 2swap" ['] B2SWAP FPRIM-L  s" 2over" ['] B2OVER FPRIM-L  s" ?dup" ['] BQDUP FPRIM-L ;
 
+\ xt! ( q ptr q -- ): in the native engine this stores an execution token AND
+\ declares the cell to the snapshot address-cell table (src/habu/habu2.f
+\ BXTSTORE). This recovery seed has no address-cell table and no relocating
+\ snapshot format of its own -- it carries SNAP-FORMAT-VERSION 3 and each build
+\ path relocates its own format -- so here the word is exactly the store, which
+\ is what src/core/declaration-transaction.f needs from it while the seed
+\ compiles the sources that build the real bin/hb.
 : EMIT-MEMORY-PRIMS ( -- )
    s" @"    ['] BFETCH FPRIM-L   s" !"    ['] BSTORE FPRIM-L   s" ptr-field" ['] BPTRFIELD FPRIM-L
+   s" xt!"  ['] BSTORE FPRIM-L
    s" +!" ['] BPLUSSTORE FPRIM-L
    s" c@"   ['] BCFETCH FPRIM-L  s" c!"   ['] BCSTORE FPRIM-L
    s" cells" ['] BCELLS FPRIM-L  s" cell+" ['] BCELLPLUS FPRIM-L

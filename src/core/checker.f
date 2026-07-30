@@ -5036,6 +5036,18 @@ PRIM: char+  PE-N PE-IN  PE-N PE-OUT PRIM;
 
 PRIM: @          PE-PTR-A PE-IN  PE-A PE-OUT PRIM;
 PRIM: !          PE-A PE-IN PE-PTR-A PE-IN PRIM;
+\ `xt!` is `!` plus the declaration that the cell it writes holds a JIT-region
+\ address, for a persisted cell whose address the caller works out at run time
+\ from a table base and a row index (dot habu-declare-persisted-cb-b150b5d5).
+\ Its row is `!`'s row, so the value and the pointee are the same type and a
+\ quotation-typed cell is written with a quotation of exactly its own effect.
+\ What the row still cannot say is that the pointee MUST be an execution token:
+\ there is no quotation-kinded type variable, only TVK-ANY and TVK-RAW, so `xt!`
+\ into a plain integer cell type-checks today and would have the loader shift an
+\ ordinary integer. That missing kind, and the rule that would make a plain `!`
+\ of a quotation into a persisted cell a reject, are dotted as
+\ habu-add-a-quotation-1610f30c.
+PRIM: xt!        PE-A PE-IN PE-PTR-A PE-IN PRIM;
 PRIM: ptr-field  PE-PTR-A PE-IN PE-N PE-IN  PE-PTR-PTR-B PE-OUT PRIM;
 PRIM: +!         PE-N PE-IN PE-PTR-N PE-IN PRIM;
 PRIM: c@         PE-PTR-U8 PE-IN  PE-U8 PE-OUT PRIM;

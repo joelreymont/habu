@@ -288,13 +288,20 @@ public
 \     chain's scaffold constant may occur in exactly one definition;
 \   - a new place that bakes a DATA or a CODE address, or emits a direct call,
 \     or declares a persisted address cell, appears in rows 3 to 8 and fails
-\     until someone has looked at it.
+\     until someone has looked at it;
+\   - rows 12 and 13 are the two names the address-cell DECLARER itself goes by
+\     in this file -- bare inside package SNAP-RELOC, qualified outside it -- so
+\     a new caller of that routine shows up whichever side of the package it is
+\     written on. They were added when `xt!` (dot
+\     habu-declare-persisted-cb-b150b5d5) made the declarer reachable at RUN
+\     time as well as from a compile handler; before that, row 8 saw every
+\     declaring site because MARK-CELL was the only way in.
 \
 \ The sets are written in the order the file declares them, so a reordering is a
 \ change too. `CORE` and `JIT` appear in several of them because those two
 \ emission phases are where the label variables are declared.
 
-12 constant CLOSURE-COUNT
+14 constant CLOSURE-COUNT
 
 : CLOSURE-TOKEN$ ( n -- ptr u8 n )
    case
@@ -310,6 +317,8 @@ public
       9 of s" SNAP-RELOC:MARK-SITE" endof
       10 of s" SNAP-RELOC:ADDRMAP-OFF" endof
       11 of s" SNAP-RELOC:LADDRS" endof
+      12 of s" LMARK" endof
+      13 of s" SNAP-RELOC:LMARK" endof
       E-CRL-ROW throw
    endcase ;
 
@@ -327,6 +336,8 @@ public
       9 of s" C-CODE-ADDR" endof
       10 of s" EM-AOT-RELOC-CODE" endof
       11 of s" BSNAPREBASE EM-SNAPSHOT-RESTORE CORE" endof
+      12 of s" MARK-CELL EMIT-MARK BXTSTORE" endof
+      13 of s" C-DEFER-CELL J-IS CORE" endof
       E-CRL-ROW throw
    endcase ;
 
