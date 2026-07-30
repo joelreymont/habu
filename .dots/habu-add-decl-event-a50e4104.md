@@ -1,36 +1,24 @@
 ---
-title: Make declaration closure manifest authoritative
-status: active
+title: Key declaration sources
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-21T06:59:26.054283+02:00"
 ---
 
-Problem: `BF-APPEND-DECL-FILES` hardcodes four declaration sources—
-`decl-event.f`, `structure-make.f`, `structure-decl.f`, and `enum-decl.f`—but
-none belongs to the stdin closure manifest or the candidate content key. An
-edit to any of them can therefore reuse a stale candidate. Adding only
-`decl-event.f` would preserve the same defect for its three consumers.
+Why: `BF-APPEND-DECL-FILES` already builds `src/core/decl-event.f`,
+`src/core/structure-make.f`, `src/core/structure-decl.f`, and
+`src/core/enum-decl.f`, but `TR-UNDER-SOURCE-FILES` omits them. The candidate
+cache can therefore reuse an engine built from stale declaration code.
 
-Acceptance: make `tools/stdin-closure-lib.f` the sole ordered authority for all
-four declaration build inputs. Add a declaration-input role distinct from the
-existing host role; every declaration row is keyed but is not a metabuild-host
-component. `BF-APPEND-DECL-FILES` walks those rows in manifest order and contains
-no declaration path literal. The candidate key walks every keyed manifest row
-directly instead of duplicating those paths in `test/run-files.f`. The audited
-bootstrap launcher keeps its required literal paths, and
-`tools/stdin-closure-lint.f` proves that it contains every declaration row,
-that build-fixpoint consumes the declaration role structurally, and that no raw
-declaration path bypass remains there. `tools/srclist.f` remains limited to
-metabuild-host rows; declaration inputs must not be misclassified as host code.
-
-Tests independently mutate each of the four declaration files and prove that
-the candidate key changes. Removing, reordering, duplicating, or changing the
-role of any declaration row makes a focused fixture fail. Preserve the exact
-load order and generated engine bytes. Files: `tools/stdin-closure-lib.f`,
-`tools/build-fixpoint.f`, `test/run-files.f`, `test/run-lib.f`,
-`tools/stdin-closure-lint.f`, and focused lint/key fixtures. Verify the focused
-fixtures, candidate cache miss/hit behavior, native fixpoint twice, and the full
-native gate.
-
-Claim: agent=decl_event_manifest workspace=.jj-ws/habu-add-decl-event-a50e4104
+Result: add exactly those four existing paths to `TR-UNDER-SOURCE-FILES` in
+their current build order. Change no build list, manifest, role, lint, source
+loader, or declaration code. Owner: `test/run-files.f` candidate source key
+only. Production red: with a warm candidate stamp, changing any one of the four
+files does not change `TR-UNDER-SOURCE-KEY` and the gate reports a cache hit.
+Acceptance: changing each file changes the key and forces a candidate rebuild;
+an unchanged tree remains a cache hit; generated engine bytes and declaration
+load order stay exact. Forbidden: a new manifest role, walker, lint, fixture
+parser, duplicate build path, cache bypass, or unrelated source-key cleanup.
+Smallest owning check: the existing run-result-cache key test plus one warm-cache
+mutation probe for each of the four paths. Claim: unassigned.

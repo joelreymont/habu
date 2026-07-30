@@ -20,6 +20,8 @@ type-schema registry state. Expose `RESERVE`, `SAVE`, `RESTORE-READY`,
 `RESTORE`, `FINALIZE-READY`, and `FINALIZE`. `RESERVE` grows both rollback-frame
 stores before either depth changes. `SAVE` is then infallible and records every
 logical mark plus the base/capacity state needed for exact restoration.
+Expose read-only `PROVISIONAL? ( family -- bool )`, true only while a frame is
+live and the family lies in `[saved TFAM-N, current TFAM-N)` for the top frame.
 `RESTORE-READY` and `FINALIZE-READY` validate both frame depths,
 field-transaction depth, saved/live ranges, and growth provenance without
 mutation. `RESTORE` canonicalizes every retired tail and restores the saved
@@ -37,8 +39,10 @@ registry cells, add test setters, add a second rollback authority, or add
 Acceptance: injected growth failure in either frame or data arena leaves both
 owners byte-identical, including tails, base, and capacity; readiness failure
 leaves both frames live and unchanged; nested save/restore/finalize stays
-lockstep; rejected declarations produce the same snapshot and fixpoint bytes as
-the untouched baseline. Mutations preserving a dirty tail, historical capacity,
+lockstep; `PROVISIONAL?` is false without a frame, below the saved mark, and at
+or above the live high-water, and true for every family added by the top frame;
+rejected declarations produce the same snapshot and fixpoint bytes as the
+untouched baseline. Mutations preserving a dirty tail, historical capacity,
 leaked replacement mapping, or reversed restore order fail.
 
 Files: `src/core/type-family.f`, `src/core/type-schema.f`, focused rollback

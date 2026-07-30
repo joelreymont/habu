@@ -1,11 +1,11 @@
 ---
-title: Reject owner package reopen
+title: Query owner package
 status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:48:17.715170+02:00"
 blocks:
-  - habu-parse-owner-construction-d876c9ef
+  - habu-record-owner-construction-65ddd22f
 ---
 
-Problem: source can write package NAME after an owner-construction product has closed, making the attacker appear to be the declaring owner. Result: the package compiler uses canonical XREF and the existing family metadata to reject reopening any package that owns a DRV-CONSTRUCT-OWNER product. Initial declaration remains legal while that package is active; after end-package there is no reopen path. Direct, qualified, mixed-case, evaluated-string, included-source, replay, JIT, and AOT forms use this one compile-time rule. Add no runtime registry, protected WID table, snapshot payload, persisted owner ID, source allowlist, friend latch, exit code, or compatibility exception. Owner: package declaration checking plus existing XREF/family queries only. Production red: package MDLCFG can be reopened after its owner product closes. Acceptance: packages without owner products still reopen; every owner-package reopen rejects with one named checker diagnostic before current-wordlist mutation; initial owner source compiles; hostile comments, strings, numeric WIDs, and nested evaluate cannot bypass; package, XREF, declaration, AOT, native fixpoint, and exact diff gates pass. Claim: unassigned.
+Problem: native package close must decide whether the active package declared an owner-construction product before checker state is cleared. Result: add TFAM-CONSTRUCT-OWNER-PKG? ( ptr u8 n -- bool ) beside the existing family queries. It scans live families by canonical folded package name and returns true exactly when one public product has DRV-CONSTRUCT-OWNER. This query does not alter CHECKER-PACKAGE or enforce reopening; the persistent XREF marker and native package preflight own that rule. Owner: type-family aggregate query only. Production red: the family registry cannot answer whether the active package needs an owner marker. Acceptance: a real package with one directly flagged public family returns true; unflagged, private, absent, and rolled-back families return false; query results follow nested registry rollback without mutation. Forbidden: parser syntax, CHECKER-PACKAGE edit, native marker or sink edit, table, protected WID, snapshot payload, persisted owner identifier, source allowlist, friend latch, new error, compatibility branch, or lint. Smallest owning check: create and flag one public family through the real registry, query its canonical package name, then roll it back and get false. Claim: unassigned.

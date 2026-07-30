@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -1194,8 +1194,9 @@ fits.
   only the LAST repeated `-a` (dropping earlier prerequisites) — patch the frontmatter, run
   dot-dep-lint, verify the rendered tree. `-P <root-id>` only when `.dots/<root-id>/<root-id>.md`
   exists; never `-P`/`-a` a nested id. `dot on` re-quotes metadata each transition (never re-run on
-  an active dot). Never interpolate Markdown backticks into a shell `dot add -d` — command
-  substitution executes them and can erase a stack effect; pass text as data. Mark/close the exact
+  an active dot). Never interpolate Markdown backticks into a double-quoted shell `dot add -d` —
+  command substitution executes them and can erase a stack effect. Omit Markdown quoting in the
+  CLI argument or single-quote the whole argument, then inspect the created file. Mark/close the exact
   PRINTED id, not a filename.
 - **Two push-verification failure modes: an empty `jj log -r` result must be tested with
   `[ -n ]`, and "Move SIDEWAYS bookmark master" means NOT a fast-forward.** A dot was closed on a
@@ -2228,7 +2229,16 @@ fits.
   type or field registry while keeping declaration events that name those rows
   creates published dangling identities even when both local state machines
   pass. Exercise the real outer scope, compare every related high-water mark,
-  and resolve every surviving event after success and failure.
+  and resolve every surviving event after success and failure. A guard that
+  rejects an identifier after rollback left its references live is only a
+  symptom check; retire references before targets in the rollback owner.
+- **With no compatibility contract, a format cut is deletion, not versioning.**
+  Remove the old writer, reader, validator, fixtures, and state in one green
+  change; do not preserve an empty ABI with versions, tombstones, or migration
+  branches.
+- **Audit every consumer before reusing a protection registry.** PROT-WID
+  membership also blocks ahead-of-time calls, so enrolling owner package WIDs
+  would change public callability instead of only guarding publication.
 - **Friend-only grammar needs the generated compiler-prefix seam.** Raw
   `--load` and `--build` inputs still see the baked dictionary's internal-word
   marks, so an isolated `PRIM:` corpus correctly rejects. Use the existing
