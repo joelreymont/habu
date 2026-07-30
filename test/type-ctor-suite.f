@@ -12,6 +12,8 @@
 \ generate nothing until item 9's construct form.
 
 require test/checker-assert.f
+require lib/adt/option.f
+require lib/adt/result.f
 
 variable #FAIL
 variable #CASE
@@ -1189,6 +1191,69 @@ CTOR-PAYPROV-TEST:LIVE-NAME s" PV-ZPL:ONE" T$=
 CTOR-PAYPROV-TEST:LIVE-DEF s" PV-ZPL:ONE ( n -- zpl ) 0 " T$=
 
 s" PAYLOAD-PROVIDER" type cr
+
+\ ---------------------------------------------------------------------------
+\ closed one-cell layouts bind generic value vars and normalize bound outputs.
+\ ---------------------------------------------------------------------------
+package E10CELL
+public
+ENUM tag red blue ;ENUM
+private
+
+: E10-ID ( a -- a ) ;
+: E10-TAG>N ( tag -- n )
+   MATCH tag red OF 3 ENDOF blue OF 5 ENDOF ;MATCH ;
+
+: E10-OPTION ( tag -- n )
+   OPTION:SOME MATCH option
+      none OF -1 ENDOF
+      some OF E10-TAG>N ENDOF
+   ;MATCH ;
+
+: E10-OPTION-Q ( tag -- n )
+   [: OPTION:SOME ;] execute MATCH option
+      none OF -1 ENDOF
+      some OF E10-TAG>N ENDOF
+   ;MATCH ;
+
+: E10-OK>N ( result<tag,n> -- n )
+   MATCH result
+      ok OF E10-TAG>N ENDOF
+      err OF 100 + ENDOF
+   ;MATCH ;
+
+: E10-ERR>N ( result<n,tag> -- n )
+   MATCH result
+      ok OF ENDOF
+      err OF E10-TAG>N 100 + ENDOF
+   ;MATCH ;
+
+using RESULT
+
+: E10-OK ( tag -- n ) OK E10-OK>N ;
+: E10-ERR ( tag -- n ) ERR E10-ERR>N ;
+
+;using
+
+: E10-RUN ( -- )
+   E10CELL:TAG:RED E10-ID E10-TAG>N 3 T=
+   E10CELL:TAG:BLUE E10-OPTION 5 T=
+   E10CELL:TAG:RED E10-OPTION-Q 3 T=
+   E10CELL:TAG:RED E10-OK 3 T=
+   E10CELL:TAG:BLUE E10-ERR 105 T= ;
+
+DEFLINEAR tok
+STRUCTURE lin
+   FIELD value tok
+;STRUCTURE
+
+s" E10-PTR-IN ( ptr a -- ptr tag )" CHECK-QUIET-CANDIDATE! 0 T=
+s" E10-PTR-OUT ( ptr tag -- ptr a )" CHECK-QUIET-CANDIDATE! 0 T=
+s" E10-RAW ( n -- tag ) here ! here @" CHECK-QUIET-CANDIDATE! 0 T=
+s" E10-LINEAR ( lin -- lin ) E10-ID" CHECK-QUIET-CANDIDATE! 0 T=
+
+E10-RUN
+;package
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

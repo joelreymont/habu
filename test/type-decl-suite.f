@@ -1984,9 +1984,9 @@ TDRV-EQ-LAST -1 T=
 TDRV-TAG0 0 T=
 TDRV-TAG2 2 T=
 
-\ the scalar =/0= wall on layout values is UNTOUCHED by derive (TD12-ZEQ kin).
+\ = remains numeric/pointer-only; generic one-cell 0= accepts the compact enum.
 s" TDRV-RAWEQ ( tdrv tdrv -- bool ) =" CHECK-QUIET-CANDIDATE! 0 T=
-s" TDRV-RAWZ ( tdrv -- bool ) 0=" CHECK-QUIET-CANDIDATE! 0 T=
+s" TDRV-RAWZ ( tdrv -- bool ) 0=" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ the derived word is family-exact: the wrong family rejects.
 ENUM tdrw one two ;ENUM

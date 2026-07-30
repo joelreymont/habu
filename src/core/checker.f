@@ -1400,6 +1400,41 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
       1 +
    REPEAT drop RES-FALSE ;
 
+\ PUSH-LOGICAL ( type row -- row ) : push one parsed signature type onto a stack
+\ row — the single seam for logical-vs-physical layout (docs/type-families.md
+\ §10-11, item 12 slice 3b). Every ordinary type and cell family pushes one
+\ logical cell (== MK-PUSH). A resolved LOGICAL sum/enum/product layout family
+\ expands to its W hidden physical fields — slot0 deepest, tag on top (docs §5);
+\ the whole-bundle transport surgery (XPORT-STEP?) and U-TYPE's hidden-field
+\ discipline then keep the group intact. A POSSIBLY-LINEAR layout (a linear con
+\ arg, or an unresolved var arg that may later bind linear) stays ONE logical
+\ cell so the TFAM-11 transport reject + identity flow keep its fail-closed
+\ semantics (docs §19) until whole-bundle linear counting lands.
+: PUSH-EXPAND? ( n -- bool ) T-RES {: t:n :}
+   t LAYOUT-PARAM?  t HIDDEN-PARAM? 0= and IF
+      t LAYOUT-ARGS-OPEN? 0= EXIT
+   THEN
+   RES-FALSE ;
+
+: PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
+   t T-RES {: r:n :}
+   r PUSH-EXPAND? IF
+      r row LAYOUT-PUSH-FIELDS EXIT       \ width known (incl. linear args): rows tell the truth
+   THEN
+   t row MK-PUSH ;
+
+\ Normalize a stored effect row after input unification has closed its type vars.
+\ Raw row tails remain shared. Concrete spines are rebuilt only from the first
+\ changed tail or newly expandable head, preserving the original head terms.
+: ROW-NORM ( n -- n ) {: row:n :}
+   row TAG S-PUSH <> IF row EXIT THEN
+   row P>REST RECURSE {: tail:n :}
+   row P>TYPE {: head:n :}
+   head T-RES {: t:n :}
+   t PUSH-EXPAND? IF t tail LAYOUT-PUSH-FIELDS EXIT THEN
+   tail row P>REST = IF row EXIT THEN
+   head tail MK-PUSH ;
+
 \ --- storable layouts S2 (dot habu-checker-capability-typed-a480c423): every
 \ closed non-linear layout with a physical cell may cross typed memory. W=1
 \ uses scalar lowering; W>1 lowers from the token's WF fact. W=0 products have
@@ -1535,10 +1570,33 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 : UPOS-REST ( n -- n ) dup UPOS-SPINE? IF 1 - THEN ;         \ ENC(c)-1 = ENC(c+1)
 : UPOS-TYPE ( n -- n ) dup UPOS-SPINE? IF negate 2 - THEN ;  \ ENC(c) -> slot c
 
+\ A generic input expects one logical value while a closed W1 actual is already
+\ represented by its hidden cell. Bind only that directional row seam; ROW-NORM
+\ later materializes installed outputs from the logical family identity.
 : U-ROW-DESCEND ( n n -- ) {: r1:n r2:n :}
    CUR-UPOS @ {: e:n :}
    e UPOS-REST CUR-UPOS !  r1 P>REST r2 P>REST PAIR
-   e UPOS-TYPE CUR-UPOS !  r1 P>TYPE r2 P>TYPE PAIR ;
+   e UPOS-TYPE CUR-UPOS !
+   UNIFY-KIND @ UK-INPUT =
+   CUR-STRICT @ 0= and
+   LAYOUT-XPORT @ 0= and IF
+      r1 P>TYPE T-RES {: act:n :}
+      r2 P>TYPE T-RES {: exp:n :}
+      exp ISVAR IF
+         exp PAY TV@ UNBOUND = IF
+            exp PAY TVK@ TVK-ANY = IF
+               act HIDDEN-PARAM? IF
+                  act LAYOUT-ARGS-OPEN? 0=
+                  act LAYOUT-MAYBE-LINEAR? 0= and
+                  act T-WIDTH 1 = and IF
+                     act MK-LOGICAL exp PAY TV! EXIT
+                  THEN
+               THEN
+            THEN
+         THEN
+      THEN
+   THEN
+   r1 P>TYPE r2 P>TYPE PAIR ;
 
 \ LOGHID expansion re-pairs the whole row with W-1 extra hidden cells, so the
 \ spine cursor is no longer slot-aligned past it: drop to no-position (fail
@@ -1824,7 +1882,7 @@ variable CDT-ROW
    DCUR @ din UNIFY-IN
    dup 0=  FAILSET @ 0=  and  OK @ and  IF din DEXP !  WAS @ DACT !  UF>DIAG  -1 FAILSET ! THEN
    OK @ and OK !
-   dout DCUR !
+   dout ROW-NORM DCUR !
    OK @ LINEXP @ 0= and IF LIN-CHECK THEN ;
 
 \ --- return row: >r r> r@ transfer types between DCUR and RCUR. A definition
@@ -1910,7 +1968,7 @@ variable CATCH-OPAQUE  \ RSCATCH rejected a catch of an opaque (untyped-memory) 
      QTT @ Q>XDEAD IF
         -1 DEADP !
      ELSE
-        QTT @ Q>DOUT DCUR !  QTT @ Q>ROUT RCUR !
+        QTT @ Q>DOUT ROW-NORM DCUR !  QTT @ Q>ROUT ROW-NORM RCUR !
         OK @  RSEXEC-EXP @ 0=  and IF LIN-CHECK THEN
      THEN
    ELSE QTT @ TAG T-VAR = IF
@@ -2845,25 +2903,6 @@ create ROWMAP 26 cells allot
 \ it is not the expected delimiter (EOF reads as a 0-length token -> mismatch).
 : EXPECT-SIG {: ea eu :}
    NEXT-SIG-TOK 2dup ea eu CORE-STR= IF 2drop ELSE SGBAD-SYNTAX! THEN ;
-
-\ PUSH-LOGICAL ( type row -- row ) : push one parsed signature type onto a stack
-\ row — the single seam for logical-vs-physical layout (docs/type-families.md
-\ §10-11, item 12 slice 3b). Every ordinary type and cell family pushes one
-\ logical cell (== MK-PUSH). A resolved LOGICAL sum/enum/product layout family
-\ expands to its W hidden physical fields — slot0 deepest, tag on top (docs §5);
-\ the whole-bundle transport surgery (XPORT-STEP?) and U-TYPE's hidden-field
-\ discipline then keep the group intact. A POSSIBLY-LINEAR layout (a linear con
-\ arg, or an unresolved var arg that may later bind linear) stays ONE logical
-\ cell so the TFAM-11 transport reject + identity flow keep its fail-closed
-\ semantics (docs §19) until whole-bundle linear counting lands.
-: PUSH-LOGICAL ( n n -- n ) {: t:n row:n :}
-   t T-RES {: r:n :}
-   r LAYOUT-PARAM?  r HIDDEN-PARAM? 0= and IF
-      r LAYOUT-ARGS-OPEN? 0= IF
-         r row LAYOUT-PUSH-FIELDS EXIT   \ width known (incl. linear args): rows tell the truth
-      THEN
-   THEN
-   t row MK-PUSH ;
 
 \ PSTACK ( tail -- row ) : parse one stack onto a tail row. A leading single
 \ upper-case token names the row (shared by letter); else the passed implicit
@@ -4528,7 +4567,8 @@ variable LMI
    CHECKER-STEP
    h ER.HASR @ 0 <> if
       RCUR @ h ER.RIN @ E-INST UNIFY-IN OK @ and OK !
-      h ER.ROUT @ E-INST RCUR !
+      DCUR @ ROW-NORM DCUR !
+      h ER.ROUT @ E-INST ROW-NORM RCUR !
    then
    h LIN-EFF-PASS ;
 
@@ -7652,8 +7692,10 @@ variable RECEFF   variable RECEFF-ON   variable RECEFF-UEND   variable RECEFF-SY
    h ER.DIN @ E-INST RDIN !
    h ER.DOUT @ E-INST RDOUT !
    RHAS @ 0 <> IF h ER.RIN @ E-INST RRIN !  h ER.ROUT @ E-INST RROUT ! THEN
-   RDIN @ SUNI-IN  RDOUT @ DCUR !
-   RHAS @ 0 <> IF RRIN @ RSUNI-IN  RROUT @ RCUR ! THEN
+   RDIN @ SUNI-IN
+   RHAS @ 0 <> IF RRIN @ RSUNI-IN THEN
+   RDOUT @ ROW-NORM DCUR !
+   RHAS @ 0 <> IF RROUT @ ROW-NORM RCUR ! THEN
    h LIN-EFF-PASS ;
 
 : CF-RECURSE
