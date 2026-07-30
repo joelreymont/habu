@@ -4933,6 +4933,33 @@ variable PE-EFF-ID
 : PE-A-RAW ( -- n ) PE-A dup PAY TVK-RAW! ;
 : PE-PTR-A-RAW ( -- n ) PE-A-RAW PE-PTR ;
 
+\ A QUOTATION operand for a prim row. `PE-Q` opens one, PE-QIN / PE-QOUT
+\ accumulate the quotation's own data rows exactly the way PE-IN / PE-OUT
+\ accumulate the prim's, and `;PE-Q` closes them into one `[ in -- out ]` term
+\ that PE-IN then takes as an operand. Data in and out share one fresh base row
+\ and the return effect is neutral, which is precisely what SIG-PARSE-QUOT
+\ builds from the same text in a signature string, so a prim row and a written
+\ signature describe the same term. Every other PE- atom builds a concrete term,
+\ so before this a prim could only name an installed execution token as a bare
+\ `n`: a cross-package producer installer had to declare an untyped xt where the
+\ producer's effect is exactly what its caller must be held to (dot
+\ habu-declare-persisted-producer-76fbce09).
+variable PE-QDIN
+variable PE-QDOUT
+
+: PE-Q ( -- )
+   FRESH MK-ROW dup PE-QDIN ! PE-QDOUT ! ;
+
+: PE-QIN ( n -- )
+   PE-QDIN @ MK-PUSH PE-QDIN ! ;
+
+: PE-QOUT ( n -- )
+   PE-QDOUT @ MK-PUSH PE-QDOUT ! ;
+
+: ;PE-Q ( -- n )
+   FRESH MK-ROW {: rbase:n :}
+   PE-QDIN @ PE-QDOUT @ rbase rbase MK-QUOT ;
+
 : PTABLE-START ( -- )
    0 #PE !
    0 UEND !
@@ -5285,7 +5312,7 @@ PPRIM: LOWER-CERT CELL@ PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: LOWER-CERT BYTES PE-PTR-U8 PE-OUT PE-N PE-OUT PPRIM;
 PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
-PPRIM: CHECKER-CERT INSTALL PE-N PE-IN PPRIM;
+PPRIM: CHECKER-CERT INSTALL PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -5571,23 +5598,38 @@ CTOR-PROT-DEFAULTS
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U ! ;
 
-TRUSTED: CHECKER-CERT-CALL ( ptr u8 n n n -- )
-   {: a:ptr u:n verdict:n xt:n :}
-   a u verdict xt execute ;
-
 package CHECKER-CERT
 
-variable PRODUCER-XT   0 PRODUCER-XT !
+\ The lowering-certificate producer is reached through a DECLARED dispatch cell,
+\ not through a variable that an `execute` reads. The cell holds an execution
+\ token, which is an address in the JIT region, and it lives in the DP heap,
+\ which a snapshot persists byte for byte; `defer` and `is` are the only two
+\ points that tell the snapshot writer a persisted cell holds such an address
+\ (src/habu/layout.f SNAP-RELOC:XTCELL-*). A `variable` plus `execute` is
+\ outside both, so its token used to be persisted as the writing run's absolute
+\ address and a restored image jumped into nothing on its first checked
+\ definition (dot habu-declare-persisted-producer-76fbce09). Declaring the
+\ producer's effect here also means the installed producer is fit-checked
+\ against it instead of arriving as an opaque xt.
+defer PRODUCER-XT ( ptr u8 n n -- )
+
+\ Producer authority is granted exactly once and then erased by
+\ src/core/lower-cert-seal.f. `is` will store into the cell any number of times
+\ and an unset dispatch cell reports only the generic "unset execution vector",
+\ so the grant itself is tracked here in an ordinary integer flag. The flag never
+\ holds a token, so it is not an address cell and needs no relocation.
+variable PRODUCER-SET   0 PRODUCER-SET !
 
 public
 
-: INSTALL ( n -- )
-   PRODUCER-XT @ 0 <> if s" checker: lowering certificate producer already installed" 76 die then
-   PRODUCER-XT ! ;
+: INSTALL ( [ ptr u8 n n -- ] -- )
+   PRODUCER-SET @ 0 <> if s" checker: lowering certificate producer already installed" 76 die then
+   is PRODUCER-XT
+   1 PRODUCER-SET ! ;
 
 : PRODUCE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
-   PRODUCER-XT @ 0= if s" checker: lowering certificate producer unavailable" 76 die then
-   a u verdict PRODUCER-XT @ CHECKER-CERT-CALL ;
+   PRODUCER-SET @ 0= if s" checker: lowering certificate producer unavailable" 76 die then
+   a u verdict PRODUCER-XT ;
 
 ;package
 

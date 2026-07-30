@@ -3454,12 +3454,9 @@ fits.
   DATA copy, which is what finally named the owner.
 
 - **A cell that holds an execution token has to be a `defer`, not a
-  `variable`.** `CHECKER-CERT:PRODUCER-XT` and `LOWER-CERT:FULL-XT` are plain
-  variables that an `execute` dispatches through, so nothing declares them to
+  `variable`.** `CHECKER-CERT:PRODUCER-XT` and `LOWER-CERT:FULL-XT` were plain
+  variables that an `execute` dispatched through, so nothing declared them to
   the snapshot address-cell table the way `defer`/`is` declare a dispatch cell —
-  and a restored image jumps to the writing run's address on the first checked
-  definition. The declared-kind design is only as complete as the set of ways a
-  cell can come to hold a token, and `variable` + `execute` is outside it.
 
 - **A typed local cannot name a structure wider than one cell.** `{:
   f:CTARGET:features :}` binds fine (one cell), but `{: sp:IR-SOURCE:span :}`
@@ -3488,3 +3485,33 @@ fits.
   symptom is `E-IR-ARENA-SLOTS` (-6657) and a run of unrelated red cases. Split
   the run into several harness contexts so each group's aborted contexts are
   swept before the next group allocates.
+  and a restored image jumped to the writing run's address on the first checked
+  definition. Both are now defers and that failure is gone. The declared-kind
+  design is only as complete as the set of ways a cell can come to hold a token,
+  and `variable` + `execute` was outside it.
+
+- **"Is this constant across runs?" is the cheapest way to tell a persisted
+  stale address from a live one.** Run the same restored image three times and
+  compare the crashing program counter against the live region base printed in
+  the same dump. If the crash address is byte-identical every time while the
+  region base moves, the value is baked into the image and no amount of reading
+  the code that produced it will tell you more than that. Confirm it by
+  searching the image FILE for the same 64-bit value little-endian: one
+  contiguous match means a data cell, and no match means a MOVZ/MOVK chain in
+  code instead, because a chain never stores the address contiguously. Two
+  commands, no debugger, and it splits the whole relocation-bug family in half.
+
+- **A quotation is a compile-time construct, so `[: … ;]` at the top level of a
+  prefix file is `E-UNDEFINED: [:`.** Every `is` site in the tree wraps the
+  hand-over in a one-shot install word (`: X-INSTALL ( -- ) [: W ;] is HOOK ;`
+  then `X-INSTALL`) for exactly this reason. Converting a top-level
+  `' W SOME-INSTALL` to a quotation means adding that seam, not just changing
+  the tick.
+
+- **The declaration points are `defer` and `is`, and neither can name a cell
+  whose address is computed at run time.** A table of callbacks — the
+  declaration-transaction participant rows, five quotations per participant in a
+  `create`d DP-heap array, run with `catch` — is the same persisted-token defect
+  in a shape no `defer` can express. When a fix converts the single-cell cases,
+  check for the array-shaped ones before believing a restored image is well:
+  ours compiled definitions happily and still died on the first `sumtype`.

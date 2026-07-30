@@ -338,6 +338,10 @@ variable FIELD-I
    verdict -1 = if a u MAKE exit then
    a u EMPTY ;
 
-' FULL-PRODUCE FULL-INSTALL
+\ One-shot install seam: a quotation is a compile-time construct, so the full
+\ producer is handed to the dispatch cell from inside a definition rather than
+\ from the top level. The seal retires this word with FULL-PRODUCE itself.
+: FULL-PRODUCE-INSTALL ( -- ) [: FULL-PRODUCE ;] FULL-INSTALL ;
+FULL-PRODUCE-INSTALL
 
 ;package
