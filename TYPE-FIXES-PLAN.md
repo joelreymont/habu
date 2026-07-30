@@ -187,6 +187,16 @@ the census source):
     CONSTRUCT owner; layout-buffer-seal.f and lower-cert-seal.f get a census
     before a verdict — checker bookkeeping stays, ceremony goes.
 
+26. **Unchecked regions become a delimited block, not a variable poke.**
+    `0 set-check … 1 set-check` is unbalanced and easy to leave open; Joel's
+    ruling: a named pair — `NO-TYPE-CHECK … ;NO-TYPE-CHECK` — that the parser
+    balances (an unterminated block is a load error, nesting rejected), with
+    `set-check` deleted from the public surface (at most a private cell
+    inside the block implementation). This also makes the "unchecked Habu
+    only as a named, tested boundary" rule mechanically greppable: the block
+    opener IS the boundary marker. Census 2026-07-30: 111 `0 set-check`
+    sites across 55 files migrate in the sweep.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
