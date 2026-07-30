@@ -138,7 +138,7 @@ whose only constructor is private to the package, so possessing a filled-in
 record is evidence that the package's own validating constructor built it.
 `MDLCFG:cfg-proof` in `maki/infer/model-config.f` and `GPT2TENSOR:layer-proof`
 in `maki/infer/gpt2-tensor.f` are the two live examples. Both files are honest
-in their own headers about the limit of that evidence, and § 10 explains it.
+in their own headers about the limit of that evidence, and § 9 explains it.
 
 ## 5. Families: records, alternatives, and generics
 
@@ -217,7 +217,7 @@ or failing case; a missing branch no longer type-checks. `SAFET` uses
 outcome of ending a mapping's life.
 
 There is a real limit on what can go inside a generic container today, and it
-is described in § 10.
+is described in § 9.
 
 ## 6. Linear owners: values you must use exactly once
 
@@ -326,62 +326,7 @@ it never proves the package cannot be reopened and drained. Attempting the
 reopen aborts with exit code 84 (`SEAL-PACKAGE`) — verified, and the same
 attempt on an unsealed package succeeds, so the seal is doing the work.
 
-## 9. What has been deleted, and why
-
-A running theme in this system is that machinery gets deleted when it turns out
-to have no consumer, to duplicate an authority that already exists somewhere
-else, or to have lost a measurement. Each of the following was removed for one
-of those three reasons.
-
-**The whole host-resident model path.** Three packages — the loader, the weight
-store, and the provenance layer — together with their fixture and six test
-suites, are gone with no replacement: about six thousand lines. No product
-caller consumed any of them. Between them they held a second model authority, a
-second storage authority, a second provenance authority, a second schema
-version and a second datatype authority, all standing between the parsed tensor
-index and a device-resident model. Three things worth naming individually went
-with them:
-
-- The **staged validate-then-check-then-load lifecycle**, three linear owner
-  types deep, which existed so that reaching each stage was unforgeable
-  evidence that the previous one had succeeded. It was careful, well-tested
-  work, and no product code ever asked it a question.
-- The **scoped-callback plumbing for reading a weight's bytes**. Its quotation
-  effect could transport exactly one raw cell back out, which meant a typed
-  result could not ride home and — worse — a pointer could legally escape the
-  scope disguised as that cell. The replacement is that the owner performs the
-  read itself and returns a typed result.
-- The **host residency handles**, which owned a second copy of the weights in
-  host memory. The measurement in `docs/gb10-uma-residency.md` decided this
-  one: on the target device a copied-once device buffer reads at about
-  273 GB/s against about 160 GB/s for a directly mapped host pointer, and the
-  copy itself costs about 1.7 ms per 100 MiB. The host copy sits on the wrong
-  side of that trade.
-
-**The model configuration's schema-version cell.** The configuration record is
-the current shape and carries no version number. This is the cleanest statement
-of the principle in the whole tree, and it is in that file's own header: an old
-shape is not a value this type can hold, so no consumer has an unknown-version
-case to answer. Deleting the cell deleted a whole class of downstream branches
-that could never be exercised.
-
-**Earlier, and for the same reason: ceremony that proved nothing.** The rule
-that emerged is worth keeping. Judge a private minting boundary by whether the
-type it introduces actually travels: a mint whose type flows through signatures
-across many files is confining something real, and a mint whose type never
-leaves its defining file is ceremony. Check how far the type reaches, not how
-many call sites there are — one audit got that backwards and nearly deleted a
-working confinement.
-
-Some minting boundaries never go away, and you should know which ones.
-The tensor layer mints witnesses that must be **fresh on every call** — two
-independently created spans must not be treated as the same type just because
-their sizes are spelled the same way, so each construction stamps a
-one-of-a-kind token. "Fresh each time" is not a fact about who owns a package,
-so no ownership rule can replace those. They are trusted by design and audited
-as such.
-
-## 10. Known gaps
+## 9. Known gaps
 
 These are the places where the type system does not yet say what we would like
 it to say. Each is real, each has been reproduced, and none of them is papered
@@ -436,7 +381,7 @@ reads worse than it should. The factoring idioms in `docs/forth.md` are the
 answer for now: when the juggling gets deep, the real fix is almost always
 another small word whose entry consumes the bundle.
 
-## 11. Where the deep detail lives
+## 10. Where the deep detail lives
 
 - `docs/forth.md` — the working standard: naming, packages, factoring, the
   checker and type model section, testing, and the commit gate. Note that its
@@ -450,7 +395,6 @@ another small word whose entry consumes the bundle.
   and PTX code.
 - `docs/effects.md` — the effect language itself.
 - `docs/typed-top-level.md` — what may and may not run at the interpreter.
-- `docs/gb10-uma-residency.md` — the residency measurement cited in § 9.
 - `TRUSTED.md` — the live ledger of every trusted site, its reason, its tests,
   and its owner.
 - `STATUS.md` — what is verified on the current tree, and what is in flight.
