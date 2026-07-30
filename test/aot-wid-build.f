@@ -10,12 +10,10 @@
 \ empty registry.
 \
 \ How the registry is injected without editing production source: the stdin
-\ metabuild driver src/habu/stdin.f ends with a single top-level `GO` call. This
-\ builder reads that file, verifies it still ends with that `GO` call (and dies
-\ with a clear message if the tail ever drifts), drops the `GO` call, and appends
-\ a `PWID-GO` that mirrors `GO` but writes two protected word-list ids into the
-\ capture buffer between capturing the REPL and emitting the image. The rest of
-\ the build reuses tools/build-fixpoint.f exactly as the normal stdin build does.
+\ metabuild driver ends with `STDIN-DRIVER:RUN`. This builder verifies that
+\ terminal call, drops it, then appends a `PWID-GO` that mirrors it but writes
+\ two protected word-list ids between capturing the REPL and emitting the image.
+\ The rest of the build reuses tools/build-fixpoint.f exactly as the normal stdin build does.
 \
 \ Its companion test/aot-wid-suite.f spawns this builder in a child process and
 \ then probes the resulting hb-pwid to prove the protected-WID registry is
@@ -70,17 +68,17 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    repeat ;
 
 : TAIL-BAD ( -- )
-   s" aot-wid-build: src/habu/stdin.f no longer ends with a top-level GO call" BF-BUILD-RC die ;
+   s" aot-wid-build: src/habu/stdin.f no longer ends with STDIN-DRIVER:RUN" BF-BUILD-RC die ;
 
-\ Length of stdin.f to keep: everything up to (not including) the trailing `GO`.
-\ Fail closed if the file does not end with a standalone `GO` token.
-: GO-KEEP ( -- n )
-   SRC-LAST {: l:n :}
-   l 1 < if TAIL-BAD then
-   l SRC-BUF + c@ [char] O <> if TAIL-BAD then
-   l 1- SRC-BUF + c@ [char] G <> if TAIL-BAD then
-   l 2 >= if l 2 - SRC-BUF + c@ WS? 0= if TAIL-BAD then then
-   l 1- ;
+\ Length of stdin.f to keep: everything before the terminal driver call.
+: RUN-KEEP ( -- n )
+   SRC-LAST 1+ {: end:n :}
+   s" STDIN-DRIVER:RUN" {: tail:ptr tailu:n :}
+   end tailu < if TAIL-BAD then
+   end tailu - {: start:n :}
+   SRC-BUF start + tailu tail tailu STR= 0= if TAIL-BAD then
+   start 0 > if SRC-BUF start 1- + c@ WS? 0= if TAIL-BAD then then
+   start ;
 
 : DRV-RESET ( -- )
    0 DRV-U ! ;
@@ -98,7 +96,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 \ EM-AOT-RELOC-DATA advances DP by the baked LAOTDATASIZE span read straight from
 \ the image; test/aot-data-span-forge.f probes that guard by baking a forged span.
 \ When HABU_AOT_SPAN is set to a decimal, that value overwrites the captured span
-\ AFTER CAPTURE-REPL and BEFORE EMIT-FORTH, so LAOTDATASIZE carries the forged value
+\ AFTER CAPTURE-REPL and BEFORE ENGINE-EMIT:FORTH, so LAOTDATASIZE carries the forged value
 \ (the forge test passes 2*DATA-SIZE, unambiguously past the seed headroom). No env
 \ leaves the real capture untouched (the plain protected-WID build path).
 : SPAN-FORGE-LINE ( -- )
@@ -107,7 +105,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
       s"    " DRV+  v vu DRV+  s"  AOT-DATA-SIZE !" DRV+ DRV-NL
    then ;
 
-\ Append PWID-GO: mirror stdin.f GO, injecting two protected word-list ids
+\ Append PWID-GO: mirror STDIN-DRIVER:RUN, injecting two protected word-list ids
 \ (300, one slot for WID > 255; and 70000, one slot for WID > 65535) into the
 \ capture buffer after CAPTURE-REPL. These two literal ids are the fixture
 \ contract: test/aot-wid-suite.f asserts exactly 300 and 70000 are restored, so
@@ -118,7 +116,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    s"    300 0 ACAP-PWID-PUT   70000 1 ACAP-PWID-PUT   2 AOT-PWID-N !" DRV+ DRV-NL
    SPAN-FORGE-LINE
    s"    0 0= STDIN? !" DRV+ DRV-NL
-   s"    HB@ 0 EMIT-FORTH" DRV+ DRV-NL
+   s"    HB@ 0 ENGINE-EMIT:FORTH" DRV+ DRV-NL
    S\"    s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV+ DRV-NL
    s"    DRV-EXIT-OK ;" DRV+ DRV-NL
    s" PWID-GO" DRV+ DRV-NL ;
@@ -126,9 +124,9 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
 : GEN-DRIVER ( -- )
    DRV-PATH!
    READ-STDIN-SRC
-   GO-KEEP {: keep:n :}
+   RUN-KEEP {: keep:n :}
    DRV-RESET
-   SRC-BUF keep DRV+                \ stdin.f minus its trailing GO call
+   SRC-BUF keep DRV+                \ stdin.f minus its terminal driver call
    INJECT                           \ ... plus the registry-baking PWID-GO
    DRV-PATH$ DRV-BUF DRV-U @ WRITE-ALL ;
 

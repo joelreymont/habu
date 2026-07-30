@@ -91,10 +91,16 @@ variable REPL-B1  variable REPL-R1  variable REPL-D1
    s" BPW-INSTALL" ACAP-BOOTRUN+                  \ debug-watch.f -> watch table init
    s" S-INSTALL" ACAP-BOOTRUN+ ;                  \ stepper.f -> stepper read hook
 
-: GO ( -- )
+package STDIN-DRIVER
+public
+
+: RUN ( -- )
    CAPTURE-REPL
    0 0= STDIN? !
-   HB@ 0 EMIT-FORTH                               \ empty LSRC: the REPL is seeded, not re-parsed
+   HB@ 0 ENGINE-EMIT:FORTH                        \ empty LSRC: the REPL is seeded, not re-parsed
    s" hb" STDIN-OUT DRV-EMIT-IMAGE
    DRV-EXIT-OK ;
-GO
+
+;package
+
+STDIN-DRIVER:RUN

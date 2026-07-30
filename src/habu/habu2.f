@@ -1,6 +1,6 @@
 \ habu2.f — engine-builder part 2: the JIT compiler
 \ emitters (literal/call/keywords/locals/strings/do-loop), the outer-interpreter
-\ main loop, and EMIT-FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
+\ main loop, and ENGINE-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 \ ---- literal emitters: scalars vs relocatable addresses ---------------------------
@@ -6768,6 +6768,9 @@ s" emit-main" s" --" TRUST
       1+
    REPEAT drop
    RET, ;
+
+package ENGINE-EMIT
+
 variable SRCA
 : SRCA@ ( -- ptr u8 )
    SRCA @ ;
@@ -6901,6 +6904,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    EMIT-LABEL-OPS
    EMIT-LABEL-P2 ;
 
+;package
+
 \ ---- AOT M2: N-word capture buffers (host-only build scratch; `allot` DATA, NOT
 \ baked into bin/hb). aot-capture.f fills them from the metabuild host's compiled
 \ words; EMIT-AOT-SEED bakes blob + N dict records + a call-site relocation table
@@ -7017,6 +7022,8 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 : AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
 s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
+package ENGINE-EMIT
+
 \ Bake the AOT section: blob length + blob, record count + N 48-byte dict records
 \ (xt/end blob-relative, inline name), site count + M u32 triples (blob-off,
 \ name-off, name-len), then the name pool. Placed last so it never shifts engine
@@ -7129,13 +7136,17 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 \ and the target tail) and the HABU_ENGINE_SIZE_MAP report are added post-sign by
 \ src/habu/driver-io.f DRV-SIZE-MAP, once the image length is final and the map
 \ can reconcile to the exact file size.
-: EMIT-FORTH ( ptr u8 n -- )
+public
+
+: FORTH ( ptr u8 n -- )
    ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
    EMIT-LABELS
    EMIT-CODE-SECTIONS
    EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK ;
-s" emit-forth" s" ptr u8 n --" TRUST
+s" forth" s" ptr u8 n --" TRUST
+
+;package
 
 package ENGINE-BUILD
 public
@@ -7143,7 +7154,7 @@ public
 \ the process-local build flag is therefore never observed after that edge.
 : BUILD ( ptr u8 n -- )
    ARM
-   EMIT-FORTH
+   ENGINE-EMIT:FORTH
    DISARM
    ;
 ;package
