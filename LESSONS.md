@@ -2875,3 +2875,11 @@ fits.
   who mints and refreshes connection metadata, give same-representation input
   roles distinct nominal types, and authorize result slices once at the batch
   boundary before connection-state validation.
+- **A fixture substitute must be production-load-bearing.** When a rejection
+  probe's wrong-type operand dies, pick the replacement from nominals with
+  real production consumers, not from whatever is still declared — the M8
+  repair first chose pass-id, itself dead, and a later ruling deleted it,
+  forcing a second repair. Check "does my substitute have production
+  consumers?" before substituting, and pin its resolution with a file-local
+  positive control so a lost declaration flips a positive instead of letting
+  every negative go silently green (dot habu-add-positive-controls-3eff7393).

@@ -449,12 +449,20 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
 - M7 src respell: the remaining generated-name spellings in src/core +
   src/habu (no declarer migration — zero old-form declarations there).
   blocked-by M6.
-- M8 maki/cad-kinds.f: thirty NEWTYPEs to carrier form; DELETE the
-  audited eleven dead CAD-KIND types exactly: `design-id obj-id
-  analysis-id plan-id toolchain-id pass-id artifact-kind capability-id
-  shape stage effect`. (`suite-id` is live and stays.) Closure: the
-  refine sites in maki/tensor.f and the surviving id consumers across
-  maki/db. blocked-by M7.
+- M8 maki/cad-kinds.f: the surviving NEWTYPEs to carrier form; the
+  dead-type deletion half LANDED (commit "Delete dead CAD-KIND nominals
+  and sched record" on type-conversion): twenty-one nominals deleted,
+  not the eleven audited here — item 37's file deletions stranded ten
+  more (`rev-id evidence-id run-id obligation-id schema-id action-id
+  suite-id producer-id config-id audit-event-id`; the original
+  "suite-id is live" note was wrong — its only consumers were maki/db
+  files). Nine survive: `node-id artifact-id target-id
+  numeric-policy-id dim rows cols address-space region`; artifact-id
+  rides M10a with maki/typestate.f. Wrong-type negative fixtures in
+  lower/model-test, fusion-plan-test, model-ir-test, target-test, and
+  cad-kinds-test re-based onto live substitutes, verified against real
+  signatures with paired resolve/reject probes. Remaining M8 work: the
+  carrier-form conversion of the nine survivors. blocked-by M7.
 - (dead `sched` — the VALUE-RECORD at maki/schedule.f:42, its four
   words at 251-254, and the schedule-test.f checks — is wave 2+ dead-code
   deletion: it does not block old-form removal or GPT-2 and gets no
@@ -544,7 +552,7 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   substrate — live via M9 survivors), bootstrap-wide-memory-src.f 2 +
   bootstrap-wide-interpret-src.f 1 + bootstrap-wide-tick-src.f 1
   (gforth recovery covenant), typed-storage-test.f 4 (typed storage),
-  cad-kinds-test.f 3 (the nineteen surviving CAD:KIND nominals),
+  cad-kinds-test.f 3 (the nine surviving CAD:KIND nominals),
   enum-decl-suite.f 1 (declarer suite — runs with M15's cohort),
   type-field-owner-suite.f 1 (field-owner checking),
   ptx/rep-neg-test.f 1 (live PTX negatives),
