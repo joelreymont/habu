@@ -519,8 +519,9 @@ public
 \   -8240..-8259  native stage N0 source tape (package NTAPE)
 \   -8260..-8279  old-vs-new code generator comparison harness
 \                 (package CODEGEN-COMPARE)
-\   -8280..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
-\                 the GPU stages) and the native and GPU back ends take
+\   -8280..-8299  native stage N1 straight-line HIR dialect (package HIR)
+\   -8300..-8999  unassigned. The remaining dialect packages (SIR, LIR, A64IR,
+\                 and the GPU stages) and the native and GPU back ends take
 \                 sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
 -8999 constant E-COMP-LAST
@@ -710,3 +711,23 @@ public
 -8262 constant E-CODEGEN-COMPARE-ROW      \ a row or output index outside the recorded count
 -8263 constant E-CODEGEN-COMPARE-CLOCK    \ the monotonic clock reported no elapsed time across a whole timing run
 -8264 constant E-CODEGEN-COMPARE-STAGE    \ a recorded value was read before the pass that computes it had finished
+
+\ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
+\
+\ Design section 7.2 makes HIR the resolved Habu IR. This sub-block covers the
+\ straight-line subset: the closed opcode set the dialect registers into its
+\ schema table, and the source-word model that says which Habu words that
+\ dialect can compile and what each one means. The schema records themselves are
+\ IR-SCHEMA's concern and reject with its own codes, so nothing here repeats
+\ them.
+-8280 constant E-HIR-STATE      \ a word-model arena failed its header, row-shape, window, or stored-code recheck
+-8281 constant E-HIR-OWNER      \ a module key or symbol presented to a word model that does not own it
+-8282 constant E-HIR-BOUND      \ a row index or a pick index at or past the count the table records
+-8283 constant E-HIR-CAP        \ a row or pick-pool capacity outside the accepted range, or a declaration past it
+-8284 constant E-HIR-CLASS      \ a stored meaning outside the vocabulary, or a reader or declarer applied to a meaning it does not serve
+-8285 constant E-HIR-DUP        \ a source word this word model already models
+-8286 constant E-HIR-UNMODELED  \ a source word this dialect cannot compile: unmodeled, or never declared at all
+-8287 constant E-HIR-KIND       \ a source-tape token kind the straight-line subset does not model
+-8288 constant E-HIR-STAGE      \ rename-staging misuse: a begin while one is open, a pick without a begin, or an end without a begin
+-8289 constant E-HIR-PICK       \ a stack rename that picks an input it never consumed, or an input or output count outside its ceiling
+-8290 constant E-HIR-OPCODE     \ a word bound to an opcode this dialect's schema table does not define

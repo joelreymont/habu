@@ -740,6 +740,60 @@ HIR validation checks the structured language rules but does not repeat the full
 
 A colon definition is provisional while HIR is built. Its symbol may be referenced by `RECURSE`, but no dictionary record points to executable code until all later stages succeed.
 
+#### As implemented: the straight-line subset
+
+`src/compiler/native/hir.f` (package `HIR`) owns the operation family and
+`src/compiler/native/hir-word.f` (package `HIR-WORD`) owns the source-word
+model. Together they are the dialect for a colon body that only computes with
+integers, which is the first program the native chain has to compile end to end.
+Four decisions, each one a commitment later leaves inherit.
+
+**Five opcodes, and no promises.** `hir.const`, `hir.add`, `hir.sub`, `hir.mul`
+and `hir.return`. The rest of the list above - `if`, `loop`, `quotation`,
+`execute`, `catch` and the others - are later leaves of the same chain. An
+opcode with no elaborator, no lowering and no test would be a promise rather
+than a schema, so none is declared. The family is an `ENUM`, not a list of
+names, which makes the closed world of section 5.3 a property of the type: a
+later stage cannot name an operation this dialect does not have, and every
+`MATCH` over the family has to answer for all five.
+
+**`DUP`, `DROP`, `SWAP` and `OVER` are not operations.** Section 7.3 already
+says they produce no SIR operation and therefore no runtime instruction. An
+`hir.dup` opcode would create an operation whose only job is to be deleted one
+stage later, and the stack traffic the old emitter generates is exactly what
+this pipeline exists to stop emitting. They are modeled instead as compile-time
+stack renames: a row records how many values the word consumes off the top of
+the value vector and which of them it puts back, in order, so the stack-to-SSA
+converter applies a rename by reading it rather than by carrying its own copy of
+what `OVER` means. The one rule is that a rename can only put back a value it
+consumed; repeating one, as `DUP` and `OVER` do, and dropping one, as `DROP`
+does, are both ordinary.
+
+**The may-trap flag is the compilation unit's numeric policy.** Design line 240
+records whether an operation may trap, and section 5.5 puts the numerical policy
+on the unit. Whether integer overflow traps is therefore not a fact about
+addition; it is a fact about the binding the context was created with, so
+registration reads `CNUM:OVERFLOW@` off the bound policy and the same three
+arithmetic opcodes register as may-trap under a trapping policy and as total
+under a wrapping one.
+
+**A source word means one of four things, and a refusal names its capability.**
+The word model answers `literal` for an integer-literal token, `op` for a word
+that elaborates to one operation, `rename` for a word that only rearranges the
+value vector, and refuses everything else. A refused word is either a declared
+boundary, which names the capability that has to land before it can be retired,
+or a word the model never declared at all; to checked source those are the same
+event. A character or string literal is a token kind the subset does not model
+and is refused as such rather than resolved as a name.
+
+The two halves cannot yet meet on one module. `IR-BUILD` hands out no live
+reader for a module's tables, so the source tape - which needs the module's live
+source registry and symbol rows to append a token - and the HIR module built
+from it cannot today be two halves of the same module, and the word model cannot
+ask the interner whether a presented symbol was really interned. Dot
+`habu-expose-live-ir-f0eaed6b` tracks the live readers that close all of that;
+the elaborator needs them.
+
 ### 7.3 Stage N2: SIR — stack SSA
 
 SIR is the principal optimization IR for native Habu.

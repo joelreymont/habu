@@ -3550,3 +3550,33 @@ fits.
   bytes of machine code the engine emitted for it. That is a two-line, fully
   checked way to measure code size from inside a running image, with no dumper,
   no disassembler and no second copy of the compiler's own accounting.
+
+- **A vocabulary a later stage must switch on belongs in an `ENUM`, not in a
+  string.** The straight-line HIR dialect first bound a source word to an
+  opcode by storing the opcode's interned symbol, which needed a runtime
+  existence check against the schema table — and `IR-BUILD` hands out no live
+  reader for it, so the check could not be written at all. Storing the opcode's
+  `ENUM` code instead makes the closed world of design section 5.3 a property of
+  the type: naming an operation the dialect does not have is unwritable, and the
+  decoder refuses a code outside the five at first touch. When a check you want
+  turns out to be impossible, ask whether the thing being checked should have
+  been a type.
+
+- **A package cannot be reopened after `get-current prot-wid-add`.** The
+  protection idiom at the foot of every substrate file seals the package's
+  wordlists, so a second file that reopens the package dies at load with the
+  package name as its whole error message (exit 84). Two files that belong
+  together either share one package and only the last one seals it, or — better
+  — become two packages with a one-way dependency. Watch the generated enum
+  namespace when picking the name: a hyphen inside a package name is doubled, so
+  package `HIR-WORD` with an `ENUM meaning` generates `HIR--WORD-MEANING:`.
+  Putting the enum in the hyphen-free package it really belongs to is the fix.
+
+- **A test fixture that throws holds its context until the enclosing harness
+  exits, so throwing fixtures must be cheap.** An `IR-BUILD` module owns fifteen
+  arenas against `IR-ARENA`'s sixty-four slots, so four throwing fixtures in one
+  harness group exhaust the registry and every later case fails with
+  `E-IR-ARENA-SLOTS` instead of its own code. Build the negative fixtures on the
+  smallest thing that exercises the path — for a table keyed by module symbols
+  that is a plain `IR-CTX:NEW-MODULE` key plus an `IR-SYM` pair, five arenas, not
+  a whole module builder.

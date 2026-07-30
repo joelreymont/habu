@@ -282,6 +282,10 @@ SUITE codegen-compare
    tools/codegen-compare-test.f
 ;SUITE
 
+SUITE compiler-native-hir
+   test/compiler/native-hir.f
+;SUITE
+
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
 \ and spawns child engines, so it runs here in the standalone stdlib gate and is
 \ documented manual-gate in tools/suite-coverage-lint-core.f, not mirrored into
