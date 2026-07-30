@@ -134,9 +134,10 @@ the census source):
     `ENUM option 1` becomes `ENUM option` — the parser reads to the closer and
     counts the distinct type variables itself (Joel: we know the number, we
     can parse until `;ENUM`). Same for `STRUCTURE name 0` and the carrier
-    `NEWTYPE`. Parameter order becomes first-use order, which also deletes
-    the `E-SUMTYPE-DECL` "declare a before b" ordering rule — with inference
-    it has nothing left to enforce. Engine note: the definer currently
+    `NEWTYPE`. Parameter letters already work in any use order — the
+    "declare a before b" rule that result.f's old header claimed was probed
+    2026-07-30 and does not exist (b-before-a loads, exit 0); the false
+    prose is deleted. Engine note: the definer currently
     registers the family row before parsing the body; registration defers or
     the arity cell is patched after the body parses.
 
