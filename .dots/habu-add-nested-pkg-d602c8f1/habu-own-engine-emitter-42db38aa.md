@@ -4,8 +4,6 @@ status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-30T22:13:55.502748+02:00"
-blocks:
-  - habu-delete-native-pkg-d80850de
 ---
 
 Problem: changing the native emitter exposes every altered transitive definition to the mandatory package gate. The reviewed first slice, commit e6c56d71a872a92d0c054ab42db68817e8ae8856, correctly owns the terminal callback, production drivers, generated caller, and trust identity, but a representative package-wall deletion still reports legacy global callees beginning with BPROTWIDADD and C-POSTPONE. Complete the same package boundary rather than creating helper-owner dots.
