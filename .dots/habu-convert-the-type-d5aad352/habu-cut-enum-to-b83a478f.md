@@ -4,8 +4,6 @@ status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-30T23:53:23.711587+02:00"
-blocks:
-  - habu-parse-structure-binder-1da50c1c
 ---
 
 Problem: package ENUM-DECL in src/core/enum-decl.f still requires a naked decimal arity to select full mode and maps one-letter payload parameters by alphabet position. The hard-cut surface is ENUM name<binders>; binder order defines schema ordinals; full payloads are written only as FIELD name type inside VARIANT blocks. Both live and replay callers already converge on ED-GUARDED and DRIVE.
