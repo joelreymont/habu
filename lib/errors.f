@@ -514,7 +514,8 @@ public
 \                 decoder that rebuilds a module from a frame when it lands
 \   -8160..-8179  unassigned (pass witnesses retired 2026-07-30: no consumer)
 \   -8180..-8199  IR facade assembly and package protection (package IR)
-\   -8200..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
+\   -8200..-8219  ARM64 routine machine-effect contracts (package A64EFF)
+\   -8220..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
 \                 the GPU stages) and the native and GPU back ends take
 \                 sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -640,4 +641,21 @@ public
 -8143 constant E-IR-ENCODE-CAP     \ a payload past the committed frame ceiling, or a stated canonical row count larger than the payload could hold
 -8144 constant E-IR-ENCODE-ROOM    \ a destination byte span shorter than the frame the presented module encodes to
 -8145 constant E-IR-ENCODE-BOUND   \ a payload slot index at or past the slot count the frame states
+
+\ ARM64 routine machine-effect contracts (package A64EFF): -8200..-8219
+\ The first sub-block of the dialect range the map above reserves. It belongs to
+\ src/compiler/a64-effect.f, which says what an emitted ARM64 routine does to the
+\ machine - which registers it reads, returns and destroys, what it does to the
+\ condition flags, the link register and the stack pointer, and how control
+\ leaves it. The A64IR dialect package composes these contracts with its own
+\ indexed operand records and takes a later sub-block for its own failures.
+-8200 constant E-A64EFF-GPR     \ a general-register set naming a register no routine can hold state in: x18 is platform-reserved, x30 is the link register and has its own field, 31 is the zero register or the stack pointer, or the bit is past the 32-register file
+-8201 constant E-A64EFF-FPR     \ a floating-register set bit past the 32-register file
+-8202 constant E-A64EFF-ROLE    \ one register in two roles that exclude each other: a declared result that is also declared destroyed
+-8203 constant E-A64EFF-FRAME   \ a frame size that is negative, not a multiple of the stack alignment, or past the reach of the load and store offset field
+-8204 constant E-A64EFF-SP      \ a stack-pointer delta that rises above the caller's stack, is not a multiple of the stack alignment, is deeper than the declared frame, or is nonzero on a routine whose control returns
+-8205 constant E-A64EFF-LINK    \ a link-register effect that cannot hold: control returns or tail-calls while x30 is declared destroyed
+-8206 constant E-A64EFF-CONTROL \ results declared on a routine that never returns
+-8207 constant E-A64EFF-TRAIT   \ a trait mask holding a bit outside the vocabulary of things a routine can do
+-8208 constant E-A64EFF-SLOT    \ a frame slot the routine cannot address: a width no load or store form carries, a negative or unaligned offset, an offset past the frame, or an offset past the reach of that width's offset field
 

@@ -61,6 +61,7 @@ STRUCTURE digest 0 DERIVE eq
 3 constant TAG-BINDING
 4 constant TAG-SCHEMA        \ one dialect operation schema record
 5 constant TAG-SCHEMA-TABLE  \ a dialect's whole schema table, chained over its record digests
+6 constant TAG-A64-ROUTINE   \ one ARM64 routine machine-effect contract
 
 private
 

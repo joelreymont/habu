@@ -461,6 +461,7 @@ public
    s" test/compiler/ir-render.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-diff.f" GSI-FORK-INCLUDE
    s" test/compiler/target-policy.f" GSI-FORK-INCLUDE
+   s" test/compiler/a64-effect.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-arena.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-attr.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-context.f" GSI-FORK-INCLUDE
