@@ -456,6 +456,7 @@ public
    s" test/compiler/ir-verify.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-canon.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-encode.f" GSI-FORK-INCLUDE
+   s" test/compiler/ir-pass.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-render.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-diff.f" GSI-FORK-INCLUDE
    s" test/compiler/target-policy.f" GSI-FORK-INCLUDE
