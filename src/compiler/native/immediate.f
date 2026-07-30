@@ -43,6 +43,7 @@ require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
 require src/compiler/ir/symbol.f
+require src/compiler/ir/build.f
 require src/compiler/native/tape.f
 
 package NIMM
@@ -164,6 +165,17 @@ public
 
 private
 
+\ Write one row whose symbol both checks have already passed: it belongs to this
+\ table's module, and the module's interner has answered for it.
+: WRITE ( IR-CTX:ctx IR-ARENA:arena IR-ID:ir-symbol-id n n -- )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena id:IR-ID:ir-symbol-id cls:n rsn:n :}
+   id IR-ID:SYMBOL-LOCAL {: so:n :}
+   a so FIND 0 < 0= if E-NIMM-DUP throw then
+   a ROOM-CK
+   c a so IR-ARENA:PUSH drop
+   c a cls IR-ARENA:PUSH drop
+   c a rsn IR-ARENA:PUSH drop ;
+
 \ Append one validated row. The symbol store is asked for the symbol's length,
 \ which is its own ownership and bound check, so a spelling this module never
 \ interned cannot be classified.
@@ -172,12 +184,18 @@ private
       id:IR-ID:ir-symbol-id cls:n rsn:n :}
    a id SYM-OWNER-CK
    sy id IR-SYM:LEN@ drop
-   id IR-ID:SYMBOL-LOCAL {: so:n :}
-   a so FIND 0 < 0= if E-NIMM-DUP throw then
-   a ROOM-CK
-   c a so IR-ARENA:PUSH drop
-   c a cls IR-ARENA:PUSH drop
-   c a rsn IR-ARENA:PUSH drop ;
+   c a id cls rsn WRITE ;
+
+\ The same append for a module that is still being built. Its interner is held
+\ privately by src/compiler/ir/build.f, so the builder answers the one question
+\ this table cannot ask directly, and it answers it by asking IR-SYM - the same
+\ refusal, under the same name, as the table-held path above.
+: BROW-ADD ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id cls:n rsn:n :}
+   a id SYM-OWNER-CK
+   c b id IR-BUILD:SYMBOL-CK
+   c a id cls rsn WRITE ;
 
 public
 
@@ -189,6 +207,16 @@ public
    {: cl:NIMM:class :}
    cl NIMM-CLASS:UNMODELED NIMM-CLASS:EQ if E-NIMM-CLASS throw then
    cl CLASS-CODE NO-REASON ROW-ADD ;
+
+\ The same declaration for a module still being built, which is every module the
+\ compiler makes: src/compiler/ir/build.f is the single mutation route to one, so
+\ a caller that has a builder cannot hand over the symbol rows the declarer above
+\ wants. This is the pairing NTAPE:PUSH and NTAPE:PUSH-INTO already have, and
+\ without it this table could only ever be filled for a module assembled by hand.
+: DECLARE-INTO ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id NIMM:class -- )
+   {: cl:NIMM:class :}
+   cl NIMM-CLASS:UNMODELED NIMM-CLASS:EQ if E-NIMM-CLASS throw then
+   cl CLASS-CODE NO-REASON BROW-ADD ;
 
 \ Declare a named unmodeled boundary. The reason symbol names the capability
 \ whose absence is why checked source may not compile this word, so a refusal
@@ -202,6 +230,20 @@ public
    NIMM-CLASS:UNMODELED CLASS-CODE
    why IR-ID:SYMBOL-LOCAL 1+
    ROW-ADD ;
+
+\ The same boundary declaration for a module still being built. Both symbols are
+\ that module's, so both go to its builder; without this the inventory of named
+\ boundaries that section 7.1 requires could only be kept for a module nobody
+\ compiles.
+: DECLARE-UNMODELED-INTO ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id why:IR-ID:ir-symbol-id :}
+   a why SYM-OWNER-CK
+   c b why IR-BUILD:SYMBOL-CK
+   c b a id
+   NIMM-CLASS:UNMODELED CLASS-CODE
+   why IR-ID:SYMBOL-LOCAL 1+
+   BROW-ADD ;
 
 \ ---- reading -----------------------------------------------------------------
 : DECLARED ( IR-ARENA:arena -- n )

@@ -520,7 +520,8 @@ public
 \   -8260..-8279  old-vs-new code generator comparison harness
 \                 (package CODEGEN-COMPARE)
 \   -8280..-8299  native stage N1 straight-line HIR dialect (package HIR)
-\   -8300..-8999  unassigned. The remaining dialect packages (SIR, LIR, A64IR,
+\   -8300..-8319  native stage N1 straight-line elaborator (package NELAB)
+\   -8320..-8999  unassigned. The remaining dialect packages (SIR, LIR, A64IR,
 \                 and the GPU stages) and the native and GPU back ends take
 \                 sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -732,3 +733,21 @@ public
 -8289 constant E-HIR-PICK       \ a stack rename that picks an input it never consumed, or an input or output count outside its ceiling
 -8290 constant E-HIR-OPCODE     \ a word bound to an opcode this dialect's schema table does not define
 -8291 constant E-HIR-DIALECT    \ a module whose schema table was created for another dialect or another schema version
+
+\ Native stage N1 straight-line elaborator (package NELAB): -8300..-8319
+\
+\ Design section 7.2's elaboration step: walk one sealed source tape and build
+\ the operations of a colon definition into a live module. Everything the
+\ elaborator asks another authority stays that authority's refusal - a word the
+\ dialect cannot compile is E-HIR-UNMODELED, a token kind the subset does not
+\ model is E-HIR-KIND, an immediate with no contract is E-NIMM-UNMODELED, and a
+\ malformed operation is IR-OP's - so these six codes are only the facts the
+\ elaborator alone can judge: the shape of the definition on the tape, the
+\ parser mode each of its tokens was consumed in, the contract class its frame
+\ words need, and the compile-time value vector.
+-8300 constant E-NELAB-SHAPE     \ a tape that is not exactly one colon definition: no opening `:`, no defined name, no closing `;`, or tokens after it
+-8301 constant E-NELAB-MODE      \ a definition token consumed in the wrong parser mode for its place: the frame outside interpreting, or a body word outside compiling
+-8302 constant E-NELAB-IMMEDIATE \ a definition-frame word whose immediate contract is not the intrinsic class
+-8303 constant E-NELAB-ARITY     \ a declared input or output count outside the accepted range, or a body that does not leave exactly the declared outputs
+-8304 constant E-NELAB-UNDER     \ a word consuming more values than the compile-time value vector holds
+-8305 constant E-NELAB-CAP       \ a compile-time value vector past the elaborator's ceiling

@@ -895,6 +895,36 @@ create VW-BUF VW-CAP allot
    BND [: LR-SPAN-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= ;
 
+\ What an opcode's schema declares, and which value an appended operation
+\ defined - both asked of a module that is still being built. An elaborator needs
+\ the first two before it can stage an operation at all, and the third because
+\ IR-OP mints an operation's results itself and END-OP hands back the operation
+\ rather than the values. The answer is checked against the operation's own row
+\ after the freeze: the value the reader named is the one that operation defines.
+: LR-OP-BODY ( IR-CTX:ctx -- n n n bool )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   c b FN-OPEN
+   c b IR-BUILD:BEGIN-BLOCK
+   c b  c b A-SPAN  IR-BUILD:SET-BLOCK-SPAN
+   c b K-CONST OP+ {: o:IR-ID:ir-op-id :}
+   c b o 0 IR-BUILD:OP-RESULT@ {: val:IR-ID:ir-value-id :}
+   c b K-RET OP+ drop
+   c b IR-BUILD:END-BLOCK drop
+   c b IR-BUILD:END-FUN drop
+   c b  c b K-CONST OPC-SYM  IR-BUILD:SCHEMA-OPERANDS
+   c b  c b K-CONST OPC-SYM  IR-BUILD:SCHEMA-RESULTS
+   c b  c b K-RET OPC-SYM  IR-BUILD:SCHEMA-RESULTS
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FVALUE-ROWS m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY val
+   IR-OP:FVALUE-OP@ IR-ID:OP-LOCAL  o IR-ID:OP-LOCAL = ;
+
+: LR-OP-CASE ( -- )
+   s" the schema shape and an operation's result read back before the freeze" T-LABEL
+   BND [: LR-OP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 0 T= 1 T= 0 T= ;
+
 : LR-SPAN-BAD-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c MK {: b:IR-BUILD:builder :}
@@ -998,6 +1028,51 @@ create VW-BUF VW-CAP allot
 : LR-XC-VER ( -- )
    BND [: LR-XC-VER-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+: LR-XC-SOP-INNER ( IR-BUILD:builder IR-ID:ir-symbol-id IR-CTX:ctx -- )
+   {: b:IR-BUILD:builder op:IR-ID:ir-symbol-id c2:IR-CTX:ctx :}
+   c2 b op IR-BUILD:SCHEMA-OPERANDS drop ;
+
+: LR-XC-SOP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   b  c b K-CONST OPC-SYM
+   BND [: LR-XC-SOP-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-SOP ( -- )
+   BND [: LR-XC-SOP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-SRS-INNER ( IR-BUILD:builder IR-ID:ir-symbol-id IR-CTX:ctx -- )
+   {: b:IR-BUILD:builder op:IR-ID:ir-symbol-id c2:IR-CTX:ctx :}
+   c2 b op IR-BUILD:SCHEMA-RESULTS drop ;
+
+: LR-XC-SRS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   b  c b K-CONST OPC-SYM
+   BND [: LR-XC-SRS-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-SRS ( -- )
+   BND [: LR-XC-SRS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-RES-INNER ( IR-BUILD:builder IR-ID:ir-op-id IR-CTX:ctx -- )
+   {: b:IR-BUILD:builder o:IR-ID:ir-op-id c2:IR-CTX:ctx :}
+   c2 b o 0 IR-BUILD:OP-RESULT@ drop ;
+
+: LR-XC-RES-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MK {: b:IR-BUILD:builder :}
+   c b SCH-ALL
+   c b FN-OPEN
+   c b IR-BUILD:BEGIN-BLOCK
+   c b  c b A-SPAN  IR-BUILD:SET-BLOCK-SPAN
+   b  c b K-CONST OP+
+   BND [: LR-XC-RES-INNER ;] IR-CTX:WITH-CONTEXT ;
+
+: LR-XC-RES ( -- )
+   BND [: LR-XC-RES-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : LIVE-REFUSE-CASES-A ( -- )
    s" a span outside its source is refused by the live check" T-LABEL
    [: LR-SPAN-BAD ;] E-IR-SRC-SPAN TTHROWSQ
@@ -1025,6 +1100,16 @@ create VW-BUF VW-CAP allot
 : LIVE-REFUSE-CASES-E ( -- )
    s" the span reader with a foreign live context rejects" T-LABEL
    [: LR-XC-SPAN ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
+: LIVE-REFUSE-CASES-F ( -- )
+   s" the schema operand reader with a foreign live context rejects" T-LABEL
+   [: LR-XC-SOP ;] E-IR-BUILD-OWNER TTHROWSQ
+   s" the schema result reader with a foreign live context rejects" T-LABEL
+   [: LR-XC-SRS ;] E-IR-BUILD-OWNER TTHROWSQ ;
+
+: LIVE-REFUSE-CASES-G ( -- )
+   s" the operation result reader with a foreign live context rejects" T-LABEL
+   [: LR-XC-RES ;] E-IR-BUILD-OWNER TTHROWSQ ;
 
 \ ---- the checker seals the handle families -----------------------------------
 : CHECKER-CASES ( -- )
@@ -1126,6 +1211,10 @@ create VW-BUF VW-CAP allot
    LR-QUIET-CASE
    LR-SPAN-CASE ;
 
+: HARNESS-LIVE-OP ( IR-CTX:ctx -- )
+   drop
+   LR-OP-CASE ;
+
 : HARNESS-LIVE-REFUSE-A ( IR-CTX:ctx -- )
    drop
    LIVE-REFUSE-CASES-A ;
@@ -1146,6 +1235,14 @@ create VW-BUF VW-CAP allot
    drop
    LIVE-REFUSE-CASES-E ;
 
+: HARNESS-LIVE-REFUSE-F ( IR-CTX:ctx -- )
+   drop
+   LIVE-REFUSE-CASES-F ;
+
+: HARNESS-LIVE-REFUSE-G ( IR-CTX:ctx -- )
+   drop
+   LIVE-REFUSE-CASES-G ;
+
 public
 
 : RUN ( -- )
@@ -1165,11 +1262,14 @@ public
    BND [: HARNESS-XCTX ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-CEILING ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-OP ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE-REFUSE-A ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE-REFUSE-B ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE-REFUSE-C ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE-REFUSE-D ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-LIVE-REFUSE-E ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-REFUSE-F ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-LIVE-REFUSE-G ;] IR-CTX:WITH-CONTEXT
    AB-RELEASE-CASE
    STALE-CASES
    CHECKER-CASES

@@ -1062,6 +1062,35 @@ public
 : SCHEMA-MINOR@ ( IR-CTX:ctx IR-BUILD:builder -- n )
    USE T-QR TAB@ IR-SCHEMA:MINOR@ ;
 
+\ How many operands and results the schema table declares for one opcode. An
+\ elaborator has to know both before it can stage the operation: how many values
+\ to take off its compile-time value vector, and how many results to declare. The
+\ schema table is the authority on an operation's shape (design line 229), and
+\ these two readers are how a caller reaches that authority for a module that is
+\ still being built. Neither is a second opinion about the shape: IR-OP:END-OP
+\ validates the staged operation against the same rows, so a caller that ignored
+\ these answers would be refused there.
+: SCHEMA-OPERANDS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
+   c b USE {: slot:n :}
+   slot T-QR TAB@ op IR-SCHEMA:OPERANDS ;
+
+: SCHEMA-RESULTS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
+   c b USE {: slot:n :}
+   slot T-QR TAB@ op IR-SCHEMA:RESULTS ;
+
+\ The value one appended operation defines. IR-OP mints an operation's results
+\ itself, so END-OP hands back the operation and not the values it created, and
+\ before this reader the only way to name one of them was to subtract from the
+\ module's value count - arithmetic on a total that no table promises. This asks
+\ the operation's own row instead, and IR-OP bound-checks the index against the
+\ result window that row records.
+: OP-RESULT@ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-op-id n -- IR-ID:ir-value-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-op-id i:n :}
+   c b USE {: slot:n :}
+   slot T-OP TAB@  slot T-OR TAB@  slot KEY@ id i IR-OP:RESULT@ ;
+
 private
 
 \ ---- freeze validation -------------------------------------------------------
