@@ -52,8 +52,7 @@ The checker verifies quotation parameters all the way through call chains and
 loops. Passing functions around is an ordinary checked capability here, not a
 special case that needs an escape hatch.
 
-There is one important guarantee about type variables, and it is worth stating
-plainly because it is easy to forget it is even a rule. If you declare
+Type variables come with one guarantee that is easy to forget is even a rule. If you declare
 `( a -- a )`, the body must genuinely work for any `a`. It may not quietly
 decide that `a` is one specific type. A body that pins the variable down is
 rejected at definition time with `E-NONPARAMETRIC-EFFECT` and a message that
@@ -143,8 +142,8 @@ in their own headers about the limit of that evidence, and § 10 explains it.
 
 ## 5. Families: records, alternatives, and generics
 
-**"Family" is the engine's word for a declared type, and it is worth thirty
-seconds because it appears in checker messages.** Every type you declare —
+**"Family" is the engine's word for a declared type. It appears in checker
+messages, so here is what it means.** Every type you declare —
 with `STRUCTURE`, `ENUM`, or `NEWTYPE` — becomes one row in a single registry
 inside the engine: the type's name, the package that owns it, how many type
 parameters it takes, its fields or variants, and which derived operations it
@@ -183,7 +182,7 @@ Declaring a family generates a **constructor** (`MAKE`) and a **destructurer**
 requires to be exhaustive — every variant needs an arm. The generated names are
 mechanical: the package name, then the family name with internal hyphens
 doubled. `STRUCTURE cfgkey` inside `package MDLCFG` produces
-`MDLCFG-CFGKEY:MAKE`. This spelling rule has a sharp edge worth knowing about:
+`MDLCFG-CFGKEY:MAKE`. This spelling rule creates one trap:
 `ENUM map-take` inside `package SAFET` produces `SAFET-MAP--TAKE:MOVED`, which
 reads as though it belongs to `package SAFET-MAP` — a real package declared
 earlier in the same file. There is also a readability cap of thirty-two
@@ -374,7 +373,7 @@ leaves its defining file is ceremony. Check how far the type reaches, not how
 many call sites there are — one audit got that backwards and nearly deleted a
 working confinement.
 
-Some minting boundaries are load-bearing forever, and it is worth knowing which.
+Some minting boundaries never go away, and you should know which ones.
 The tensor layer mints witnesses that must be **fresh on every call** — two
 independently created spans must not be treated as the same type just because
 their sizes are spelled the same way, so each construction stamps a
