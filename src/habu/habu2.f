@@ -1315,6 +1315,8 @@ variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-FIND-GLOBAL)
 variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
+package ENGINE-EMIT
+
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
@@ -1382,6 +1384,8 @@ here RESTAB-BUF - constant RESTAB-LEN
    s" ' CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
    NL-KW 1 BYTES,
    PFX-PATH-FILES ;
+
+;package
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-EMITW ( n -- ) {: w:n :}  9 w LIT64,  LCEMIT LABEL@ BL, ;
@@ -2086,6 +2090,8 @@ s" c-reject-dup-def" s" --" TRUST
 \ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
 \ resolve during the sealed self-hosting stage build and checker-boot recompile,
 \ where a checker word is neither reachably kept nor safely callable.
+package ENGINE-EMIT
+
 : C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -2134,6 +2140,8 @@ s" c-seal-match" s" --" TRUST
    ok LBL, ;
 s" c-qualify-seal-guard" s" --" TRUST
 
+;package
+
 variable LQUALIFYDEF      \ shared qualification helper entry (dot habu-emit-one-shared)
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
@@ -2152,6 +2160,8 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 \ die path is harmless. W^X: emitted into the RW code region like every other
 \ primitive, flushed RX with the rest of the image; it takes no data-region
 \ store outside the DATA cells its callers already touch.
+package ENGINE-EMIT
+
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
@@ -2227,6 +2237,8 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;              \ restore link register + return
 s" emit-qualify-def" s" --" TRUST
 
+;package
+
 : C-QUALIFY-DEF ( -- )  LQUALIFYDEF LABEL@ BL, ;      \ call the one shared helper
 s" c-qualify-def" s" --" TRUST
 
@@ -2245,6 +2257,8 @@ s" c-qualify-def" s" --" TRUST
 \ branch-with-link; the protected-publish exit is exit_group, so its unbalanced
 \ frame never returns. W^X: no data-region store outside the DATA cells its
 \ callers already touch; emitted RW, flushed RX with the image.
+package ENGINE-EMIT
+
 : EMIT-STORE-DEF-NAME ( -- )
    LSTOREDEFNAME LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                          \ save link register across the internal LPROTWIDQ BL
@@ -2265,6 +2279,8 @@ s" c-qualify-def" s" --" TRUST
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;                 \ restore link register + return
 s" emit-store-def-name" s" --" TRUST
+
+;package
 
 : C-STORE-DEF-NAME ( -- )  LSTOREDEFNAME LABEL@ BL, ;    \ call the one shared helper
 s" c-store-def-name" s" --" TRUST
@@ -2589,6 +2605,8 @@ s" bdrainpretrust" s" --" TRUST
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROT LABEL@ BL, ;
 
+package ENGINE-EMIT
+
 : C-POSTPONE ( -- )
    LBL LBL LBL {: pok pnimm pdone :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `postpone RESERVED:tail` once sealed (TFAM 2b-iii)
@@ -2604,6 +2622,8 @@ s" bdrainpretrust" s" --" TRUST
       9 LKWCOMPC LABEL@ ADR,  10 8 MOVZ,  LFIND LABEL@ BL,
       C-CALL
    pdone LBL, ;
+
+;package
 
 : C-QUOTE-START ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
@@ -2901,6 +2921,8 @@ variable LTOPHOOK
    LTOK LABEL@ BL,  LBCAP LABEL@ BL,
    11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC LABEL@ BL, ;
 
+package ENGINE-EMIT
+
 : C-TICK ( -- )
    LBL LBL LBL {: tk:label usedtry:label found:label :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
@@ -2923,6 +2945,8 @@ variable LTOPHOOK
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
+
+;package
 
 \ ---- item 12 slice 3b: pass-2 width-aware recompile, certificate side ------
 \ A definition whose certified check recorded any wider-than-cell width fact is
@@ -3999,6 +4023,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 \ generated constructor package is rejected before the call immediate is rewritten
 \ or the entry word is executed. Preserves x11; clobbers x5/x6/x9/x13/x14; saves x30
 \ for the nested LPROTWIDQ. A not-found xt (no record) skips the guard.
+package ENGINE-EMIT
+
 : EM-AOTWIDGATE ( -- )
    LBL LBL LBL {: wscan:label wfound:label wdone:label :}
    LAOTWIDGATE LABEL@ LBL,
@@ -4015,6 +4041,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
          0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
+
+;package
 
 \ snap-rebase ( base end count dbase dlen newbase -- ): canonicalize a region copy
 \ [base,end) in TWO passes so the image is byte-identical whatever VAs this run got.
@@ -4538,6 +4566,8 @@ s" c-package-record-match" s" label label --" TRUST
    done LBL, ;
 s" c-package-ensure" s" --" TRUST
 
+package ENGINE-EMIT
+
 : C-PACKAGE-PROT-GUARD ( -- )
    LBL LBL LBL LBL {: loop:label miss:label hit:label done:label :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
@@ -4585,6 +4615,8 @@ s" c-package-seal-guard" s" --" TRUST
    5 DATA PKG-REC-CELL STR,
    12 DATA CUR-CELL STR, ;
 s" c-package" s" --" TRUST
+
+;package
 
 : C-PUBLIC ( -- )
    C-TASK-LIVE-GUARD
@@ -4821,6 +4853,8 @@ s" c-export-tail!" s" --" TRUST
 \ guard). The checker call runs OUTSIDE the RW code window (checked code must
 \ execute RX); the record publish sits inside the 3/5 LPROT window because
 \ C-STORE-NAME spills long names at CP.
+package ENGINE-EMIT
+
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL LBL {: active:label dnamed:label named:label found:label done:label :}
@@ -4885,6 +4919,8 @@ s" c-export" s" --" TRUST
    s" immediate" KEEP? IF LMAIN LABEL@ LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY THEN ;
 s" em-interpret-define-keywords" s" --" TRUST
 
+;package
+
 : EM-INTERPRET-STRING-KEYWORDS ( -- )
    LMAIN LABEL@ LKWSQ     2 ['] C-ISDQ     CF-ENTRY
    LMAIN LABEL@ LKWCQ     2 ['] C-ICQ      CF-ENTRY
@@ -4923,6 +4959,8 @@ s" em-interpret-number" s" label --" TRUST
       found B, ;                                       \ resolved via a used package: rejoin the normal dispatch
 s" em-interpret-find" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-INTERPRET-WORDS ( -- )
    LBL {: lnotnum :}
    EM-INTERPRET-DEFINE-KEYWORDS s" interpret/define" ENGINE-SIZE:MARK
@@ -4937,6 +4975,8 @@ s" em-interpret-words" s" --" TRUST
    lnotcolon EM-INTERPRET-COLON s" interpret/colon" ENGINE-SIZE:MARK
    EM-INTERPRET-WORDS ;
 s" em-interpret" s" --" TRUST
+
+;package
 
 : EM-COMPILE-DROP-LOCALS ( -- )
    LBL {: done :}
@@ -5928,6 +5968,8 @@ s" em-compile-control-keywords" s" --" TRUST
    LMAIN LABEL@ LKWEDOTQ  3 ['] C-EDOTQ  CF-ENTRY ;
 s" em-compile-string-keywords" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-COMPILE-META-KEYWORDS ( -- )
    s" [']" KEEP? IF LMAIN LABEL@ LKWBTICK  3 ['] C-BTICK  CF-ENTRY THEN
    s" [char]" KEEP? IF LMAIN LABEL@ LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY THEN
@@ -5937,6 +5979,8 @@ s" em-compile-string-keywords" s" --" TRUST
    s" is" KEEP? IF LMAIN LABEL@ LKWIS 2 ['] J-IS CF-ENTRY THEN
    s" ;]" KEEP? IF LMAIN LABEL@ LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY THEN ;
 s" em-compile-meta-keywords" s" --" TRUST
+
+;package
 
 : EM-COMPILE-LOOP-KEYWORDS ( -- )
    s" do" KEEP? IF LMAIN LABEL@ LKWDO     2 ['] J-DO     CF-ENTRY THEN
@@ -5955,6 +5999,8 @@ s" em-compile-meta-keywords" s" --" TRUST
    s" {:" KEEP? IF LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CF-ENTRY THEN ;
 s" em-compile-loop-keywords" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-COMPILE-KEYWORDS ( -- )
    LBCAP LABEL@ BL,
    EM-COMPILE-CONTROL-KEYWORDS
@@ -5962,6 +6008,8 @@ s" em-compile-loop-keywords" s" --" TRUST
    EM-COMPILE-META-KEYWORDS
    EM-COMPILE-LOOP-KEYWORDS ;
 s" em-compile-keywords" s" --" TRUST
+
+;package
 
 : EM-COMPILE-LOCAL ( -- )
    LBL {: notloc :}
@@ -6711,6 +6759,9 @@ s" em-adt-match-of" s" --" TRUST
    s5 LBL,  EM-ADT-MATCH-OF
    off LBL, ;
 s" em-compile-adt-mode" s" --" TRUST
+
+package ENGINE-EMIT
+
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
@@ -6736,6 +6787,8 @@ s" em-compile" s" --" TRUST
    EM-COMPILE
    EM-INTERPRET-UNDERFLOW     s" main/underflow" ENGINE-SIZE:MARK ;
 s" emit-main" s" --" TRUST
+
+;package
 
 \ Pre-execution arity guard (LARITY). A deref/execute/dispatch primitive (@ !
 \ +! c@ c! atomic@ atomic! atomic-add atomic-cas count type execute

@@ -2259,6 +2259,8 @@ SOURCE-INIT
    C A 16 LDR,  C C B ORR,  C A 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
+package ENGINE-EMIT
+
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room:label done:label msg:label :}
    9 G-POP
@@ -2278,6 +2280,8 @@ SOURCE-INIT
    15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
    14 15 STLR,
    done LBL, ;
+
+;package
 
 : BPROTWIDROOM ( -- )
    15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
@@ -2402,6 +2406,8 @@ SOURCE-INIT
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 
+package ENGINE-EMIT
+
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
@@ -2417,6 +2423,8 @@ SOURCE-INIT
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
+
+;package
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
@@ -2449,11 +2457,15 @@ SOURCE-INIT
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 
+package ENGINE-EMIT
+
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS
    EMIT-CHECKER-PRIMS ;
+
+;package
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
