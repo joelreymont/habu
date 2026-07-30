@@ -107,6 +107,8 @@ TR-FILES: TR-UNDER-SOURCE-FILES
    src/core/pointer-storage-effects.f
    src/core/declaration-transaction.f
    src/core/generated-declaration.f
+   src/core/decl-event.f src/core/structure-make.f
+   src/core/structure-decl.f src/core/enum-decl.f
    src/core/roles.f src/core/bytes.f
    src/arch/arm64/asm.f src/arch/arm64/icode.f src/arch/arm64/mnem.f
    src/habu/layout.f src/os/env-base.f src/os/script-argv.f
