@@ -516,6 +516,8 @@ public
 \   -8180..-8199  IR facade assembly and package protection (package IR)
 \   -8200..-8219  ARM64 routine machine-effect contracts (package A64EFF)
 \   -8220..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
+\   -8220..-8239  native immediate-word contract table (package NIMM)
+\   -8240..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
 \                 the GPU stages) and the native and GPU back ends take
 \                 sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -659,3 +661,35 @@ public
 -8207 constant E-A64EFF-TRAIT   \ a trait mask holding a bit outside the vocabulary of things a routine can do
 -8208 constant E-A64EFF-SLOT    \ a frame slot the routine cannot address: a width no load or store form carries, a negative or unaligned offset, an offset past the frame, or an offset past the reach of that width's offset field
 
+
+\ Native stage N0 source tape (package NTAPE): -8240..-8259
+\
+\ The first sub-block of the native back end's range. Design section 7.1 puts
+\ the source tape below every IR dialect: it records the token stream the
+\ compiler actually consumed, so checking, elaboration, diagnostics, and code
+\ generation can prove they read the same bytes. Byte spans are IR-SOURCE's
+\ concern and reject with E-IR-SRC-SPAN, so no span code is minted here.
+-8240 constant E-NTAPE-STATE    \ a tape arena failed its header or row-shape recheck
+-8241 constant E-NTAPE-OWNER    \ a module key or an identity presented to a tape that does not own it
+-8242 constant E-NTAPE-BOUND    \ a token ordinal at or past the count the tape records
+-8243 constant E-NTAPE-CAP      \ a tape capacity outside the accepted range, or an append past it
+-8244 constant E-NTAPE-KIND     \ a token kind outside the vocabulary, or a reader applied to a kind that has no such field
+-8245 constant E-NTAPE-MODE     \ a stored parser mode outside the vocabulary
+-8246 constant E-NTAPE-LITERAL  \ a literal value a token of that kind may not carry
+-8247 constant E-NTAPE-ORIGIN   \ an expansion parent that is not an already-appended token of this tape
+-8248 constant E-NTAPE-ROOT     \ an origin read on a directly lexed token, which has none
+-8249 constant E-NTAPE-DIGEST   \ a presented tape digest does not match the recomputed one
+
+\ Native immediate-word contract table (package NIMM): -8220..-8239
+\
+\ Design section 7.1 divides compile-time immediate words into front-end
+\ intrinsics, sealed compile-time computation, and an unmodeled boundary that
+\ checked source must not compile. This table is where a word's class is
+\ declared, so a rejection can name the word instead of failing anonymously.
+-8220 constant E-NIMM-STATE     \ a contract table failed its header or row-shape recheck
+-8221 constant E-NIMM-OWNER     \ a module key or symbol presented to a table that does not own it
+-8222 constant E-NIMM-BOUND     \ a contract-row index at or past the count the table records
+-8223 constant E-NIMM-CAP       \ a table capacity outside the accepted range, or a declaration past it
+-8224 constant E-NIMM-CLASS     \ a stored class outside the vocabulary, or a declarer given a class it does not declare
+-8225 constant E-NIMM-DUP       \ a symbol this table already classifies
+-8226 constant E-NIMM-UNMODELED \ an immediate word checked source may not compile: unregistered, or declared unmodeled

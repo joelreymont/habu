@@ -3460,3 +3460,31 @@ fits.
   and a restored image jumps to the writing run's address on the first checked
   definition. The declared-kind design is only as complete as the set of ways a
   cell can come to hold a token, and `variable` + `execute` is outside it.
+
+- **A typed local cannot name a structure wider than one cell.** `{:
+  f:CTARGET:features :}` binds fine (one cell), but `{: sp:IR-SOURCE:span :}`
+  is rejected outright with `unknown type 'sp:IR-SOURCE:span' in signature`,
+  and the definition is not certified. So a word that receives a multi-cell
+  value has to `UNMAKE` it at entry and bind the pieces — which means the
+  value's cells have to be reachable, i.e. it must be the TOP input. That is a
+  real constraint on interface design, not a style note: `NTAPE:token` puts its
+  span field last precisely so `NTAPE-TOKEN:UNMAKE IR--SOURCE-SPAN:UNMAKE`
+  works in one line, and `NTAPE:PUSH-FROM` takes its parent ordinal above the
+  token for the same reason. Design the argument order around the unmake before
+  writing the body, or the word cannot be written at all. Dotted as
+  `habu-bind-multi-cell-d2e153ed`.
+
+- **An enum member list takes no trailing comments.** `ENUM kind ... name \ a
+  name` fails with `bad enum declaration 'kind': name must be a lowercase tail
+  at '\'`. Put the prose above the `ENUM`.
+
+- **Sixty-four arena slots is a real budget for a test suite.** `IR-ARENA` has
+  `SLOT-MAX 64` live-plus-frozen slots, reclaimed only when the owning context
+  dies — and a fixture that throws leaves its context alive until the enclosing
+  harness context exits. `IR-SOURCE`'s suite gets away with one harness because
+  a registry is one arena; a suite whose module is four arenas (source
+  registry, symbol pool, symbol rows, tape) runs the registry dry halfway
+  through and then every remaining case fails for the wrong reason — the
+  symptom is `E-IR-ARENA-SLOTS` (-6657) and a run of unrelated red cases. Split
+  the run into several harness contexts so each group's aborted contexts are
+  swept before the next group allocates.

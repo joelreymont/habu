@@ -647,6 +647,50 @@ Compile-time immediate words divide into three classes:
 
 No immediate word receives access to AArch64 emission in the new path.
 
+#### As implemented
+
+`src/compiler/native/tape.f` (package `NTAPE`) owns the tape and
+`src/compiler/native/immediate.f` (package `NIMM`) owns the three classes.
+Four decisions were taken while building them, and each one is a commitment
+later stages inherit.
+
+**The resolved spelling is an interned symbol, not a second byte slice.** The
+byte span already says where the token was read from. Storing a second byte
+range would say that twice and would still leave every reader to re-lex the
+bytes to learn the name. An `IR-SYM` symbol id is module-owned, deduplicates
+equal spellings, and lets the elaborator compare two names without touching
+bytes. A string literal's spelling is its body, which is exactly the slice a
+raw span cannot tell apart from the quoting syntax around it.
+
+**Origin is the expansion parent token, not the parent source.** `IR-SOURCE`
+already records the include or expansion parent of a whole source; the tape
+records the same relation one level down, between tokens, so a diagnostic can
+walk back to the token the programmer wrote. It is acyclic by construction for
+the same reason: a parent must already be appended, so its ordinal is strictly
+below its child's.
+
+**Whether a token carries a literal is a property of its kind.** There is no
+stored "has a literal" flag, so no second piece of state can contradict the
+first, and there are four minting words rather than one, so a name token that
+carries a value cannot be asked for. Reading a literal from a kind that has
+none is refused rather than answered with the zero the row stores.
+
+**The digest excludes the module serial.** Module serials are allocated per
+process. A tape digest that moved between runs could not key a cache or bind a
+certificate, so two structurally identical tapes digest identically, and the
+per-token record digests are chained the way `IR-SCHEMA` chains its schema
+table so no buffer grows with the tape. The digest covers the cells the tape
+owns; the bytes behind a span and behind a spelling are the source registry's
+and the interner's own content digests, and a stage that needs content
+identity binds both.
+
+The compile-time class of section 7.1 is recorded but not yet sealed: the
+guarantee that such an immediate reaches the program only through the builder
+is the HIR builder's to enforce, and there is no builder yet. Dot
+`habu-seal-the-compile-5f56e5e9` tracks that capability. The tape's only
+producer today is its own test suite; dot `habu-feed-the-src-f7ed8733` tracks
+driving it from the real reader.
+
 ### 7.2 Stage N1: HIR — resolved Habu IR
 
 HIR preserves Habu's structured source semantics.
@@ -1886,6 +1930,9 @@ NUMERIC-POLICY
 ### 13.2 Native pipeline
 
 ```text
+src/compiler/native/tape.f
+src/compiler/native/immediate.f
+
 src/compiler/hir/op.f
 src/compiler/hir/builder.f
 src/compiler/hir/elaborate.f
