@@ -238,3 +238,31 @@ orders no longer has one canonical form.
    must know the grammar to walk it; a corrupted store is caught by the header
    recheck and by the per-section counts, not by section tags. If the encoder
    wants tags, they belong to the wire format it owns.
+
+## Doc half discharged by the encoder lane (irencode, 2026-07-30)
+
+The follow-up this report offered - "If the orchestrator wants section 6.6 to
+name the split, that is a one-paragraph follow-up the encoder lane can inherit" -
+is done, in `docs/compiler-ir-design.md` section 6.6. It names the two stages and
+what each owns, says why renumbering is load-bearing and a bare permutation is
+not enough (citing `formal/Common/Interning.v`), records why the
+re-materialization reading was rejected, states the ceiling of eight canonical
+tables per live context against the encoder holding no registry of its own, and
+corrects one claim of this lane's report.
+
+The correction: this report's "What the stream leaves out" said IR-SCHEMA already
+publishes `FTABLE-DIGEST` for the encoder to bind the schema by. The encoder lane
+measured that it cannot. `IR-SCHEMA:FROW-DIGEST` folds each schema record's stored
+operand, result and attribute-key lists, and those hold module-local INSERTION
+ordinals, so two equivalent modules built along two admissible intern orders have
+two different schema-table digests; binding it made the digest-equality acceptance
+fail on exactly that field. The canonical frame binds the dialect's canonical name
+ordinal and its schema major and minor version instead, which is what section 6.6
+asks the header to state, and `test/compiler/ir-encode.f` carries a negative
+fixture that pins the non-canonical behaviour so nobody re-adds it silently. The
+canon.f header comment was corrected in place (comment only). The missing
+capability is dotted as `habu-canonicalize-the-dialect-2d9aad97`.
+
+MODEL GAP 3 of this report (the canonical cell stream is not modelled in Rocq,
+and modelling it belongs with the encoder) is still open. The encoder lane did not
+take it; see `habu-encode-compiler-ir-545ee6d1` gap 2.

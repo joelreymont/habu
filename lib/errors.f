@@ -481,7 +481,8 @@ public
 \   -8080..-8099  structural freeze verifier (package IR-VERIFY)
 \   -8100..-8119  canonical table reindexing and reference remap (package IR-CANON)
 \   -8120..-8139  deterministic renderer and structural diff
-\   -8140..-8159  canonical wire codec and digest (package IR-CODEC)
+\   -8140..-8159  canonical wire frame and digest (package IR-ENCODE), and the
+\                 decoder that rebuilds a module from a frame when it lands
 \   -8160..-8179  pass results and witness headers (package IR-PASS)
 \   -8180..-8199  IR facade assembly and package protection (package IR)
 \   -8200..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
@@ -580,3 +581,16 @@ public
 -8106 constant E-IR-CANON-RELEASED \ any use of a canonical table RELEASE already retired
 -8107 constant E-IR-CANON-SLOTS    \ the canonical-table registry has no free slot
 -8108 constant E-IR-CANON-SERIALS  \ canonical-table generation serials reached their ceiling
+
+\ Compiler canonical wire frame and content digest (package IR-ENCODE): -8140..-8159
+\ This is the sub-block the map above already reserves for the wire codec and
+\ digest, so the renderer and diff stage keeps -8120..-8139 as reserved. The
+\ package that took the block is IR-ENCODE, which is the encoding half of the
+\ codec the map named; a decoder that rebuilds a module from a frame is a
+\ separate stage and takes the rest of this sub-block when it lands.
+-8140 constant E-IR-ENCODE-STATE   \ a presented frame whose leading bytes are not a canonical module frame at all
+-8141 constant E-IR-ENCODE-VERSION \ a frame whose format major or minor version this encoder does not read
+-8142 constant E-IR-ENCODE-FRAME   \ a frame whose byte length is not exactly its header plus the payload slots its header states
+-8143 constant E-IR-ENCODE-CAP     \ a payload past the committed frame ceiling, or a stated canonical row count larger than the payload could hold
+-8144 constant E-IR-ENCODE-ROOM    \ a destination byte span shorter than the frame the presented module encodes to
+-8145 constant E-IR-ENCODE-BOUND   \ a payload slot index at or past the slot count the frame states

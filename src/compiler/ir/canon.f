@@ -123,8 +123,14 @@
 \ last operation (IR-VERIFY:TERM-CK), so the block states its operation count
 \ and not its terminator, and a function's first block is where the previous
 \ function's window ended. The dialect schema table is not a section at all:
-\ section 6.6 serializes "dialect/schema versions", not the schema, and
-\ IR-SCHEMA already publishes FTABLE-DIGEST for the encoder to bind it by. The
+\ section 6.6 serializes "dialect/schema versions", not the schema. This file
+\ used to add that IR-SCHEMA publishes FTABLE-DIGEST for the encoder to bind the
+\ schema by, and the encoder lane measured that it cannot: that digest folds each
+\ schema record's stored operand, result and attribute-key lists, and those hold
+\ module-local INSERTION ordinals, so two equivalent modules built along two
+\ intern orders have two different schema-table digests. The frame binds the
+\ dialect's canonical name ordinal and its schema major and minor version
+\ instead; see src/compiler/ir/encode.f. The
 \ derived block-edge table is section 6.6's "optional derived indices" and is
 \ re-derivable from the successor pool, so it is left out too.
 \

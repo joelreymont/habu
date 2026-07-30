@@ -234,6 +234,10 @@ SUITE compiler-ir-canon
    test/compiler/ir-canon.f
 ;SUITE
 
+SUITE compiler-ir-encode
+   test/compiler/ir-encode.f
+;SUITE
+
 SUITE compiler-ir-arena
    test/compiler/ir-arena.f
 ;SUITE
