@@ -93,12 +93,15 @@ the census source):
 
 ## Checker capability gaps (fix or explicitly defer)
 
-14. **Tagged families cannot instantiate generic parameters.**
+14. **Tagged families instantiate generic parameters — implemented in the
+    conversion.** (Joel, 2026-07-30: if we need it, we build it.) Today
     `option<MAKI:dtype>` is rejected (`expected: a actual: maki:dtype<>`)
-    while `option<CAD-NUM:index>` and option-over-structure work. The split
-    is tagged vs untagged, not foreign vs own package. Blocks part of fix 12.
-    Decide during the joint review: fix in the conversion, or defer with the
-    classification rule standing in.
+    while `option<CAD-NUM:index>` and option-over-structure work; the split
+    is tagged (variant-carrying) vs untagged, not foreign vs own package,
+    and it is implementation debt — a tag value is one cell like any
+    nominal; the generic-instantiation code was never taught about variant
+    families. The engine half fixes it; that unblocks fix 12 completely (all
+    20 domain results collapse, no bespoke stragglers).
 
 15. **Sealed-destructure residue.** Generated `MAKE`/`UNMAKE` are public even
     for proof-carrying records (a holder can UNMAKE and re-MAKE with a stale

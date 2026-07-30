@@ -136,6 +136,10 @@ the decision record is `docs/value-nominal-substrate.md`.)
 A nominal cell family is also how a package embeds a **proof token**: a field
 whose only constructor is private to the package, so possessing a filled-in
 record is evidence that the package's own validating constructor built it.
+This is a workaround, not architecture — construction control faked with a
+magic field because generated constructors are always public — and it is
+scheduled to be deleted: the `CONSTRUCT owner` flag (TYPE-FIXES-PLAN.md)
+controls construction directly and every proof token evaporates with it.
 `MDLCFG:cfg-proof` in `maki/infer/model-config.f` and `GPT2TENSOR:layer-proof`
 in `maki/infer/gpt2-tensor.f` are the two live examples. Both files are honest
 in their own headers about the limit of that evidence, and § 9 explains it.
@@ -345,8 +349,10 @@ defend themselves a second way: the tensor layer revalidates a rebuilt layer
 index against the configuration's bounds before it does any address
 arithmetic, so a forged index cannot reach a wrong row.
 
-**A tagged family cannot instantiate a generic parameter.** This is the sharpest
-gap and it is newly pinned down. `option<CAD-NUM:index>` works and is used in
+**A tagged family cannot instantiate a generic parameter.** A tagged family
+is one declared in variants (`ENUM`, or the older `SUMTYPE`): its values carry
+a tag saying which arm they are. An untagged one (`STRUCTURE`, `NEWTYPE`) has
+exactly one shape and needs no tag. The gap: `option<CAD-NUM:index>` works and is used in
 production (`lib/float.f`); so does `option<T>` over a `STRUCTURE`, complete
 with a `MATCH` that unmakes the record inside the `some` arm. But
 `option<MAKI:dtype>` — an `option` over a plain tag `ENUM` — is rejected at the
@@ -354,11 +360,10 @@ constructor: `expected: a actual: maki:dtype<>`, exit 70. The same rejection
 happens with a payload-free `SUMTYPE`, and with a tag family declared in the
 same package as the consumer, so this is not about package boundaries. It is
 about tagged families specifically: `NEWTYPE` and `STRUCTURE` instantiate a
-generic parameter, `ENUM` and `SUMTYPE` do not. This has no consumer today —
-the checkpoint parser's datatype surface was redesigned into a comparison that
-never wraps a datatype in an option — but it will bite the next piece of code
-that wants a generic over a tag type, and the reproducer pair is already paid
-for.
+generic parameter, `ENUM` and `SUMTYPE` do not. This is implementation debt, not
+design — a tag value is one cell like any nominal; the instantiation code was
+never taught about variant families. The fix is scheduled in the type
+conversion (TYPE-FIXES-PLAN.md item 14).
 
 **Pointers carry no lifetime.** A pointer type says what it points at, but not
 which allocation it came from, how long it is valid, or how far it extends. The
