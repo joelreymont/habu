@@ -156,6 +156,17 @@ the census source):
     sweep: a hyphenated compound family name is a smell — it is usually
     either a disguised generic or a type homed in the wrong package.
 
+23. **Word names stop echoing their argument types.** Where the package plus
+    the signature already state what a word consumes, the type-echo suffix is
+    deleted: `MEM:RELEASE-BYTES` becomes `MEM:RELEASE` (there is no
+    RELEASE-CELLS to distinguish from), `SAFET:UNMAP-MAPPING` becomes
+    `SAFET:UNMAP` (one unmap in the package; the old suffix defended against
+    the SAFET-MAP package collision that nested namespaces retire). A suffix
+    survives only where it distinguishes two real words — `ALLOC-BYTES` /
+    `ALLOC-CELLS` stay a pair (cells have live consumers: vector, KV,
+    safetensors). The sweep applies this census-driven, not by taste: for
+    each suffixed word, does a counterpart exist? No counterpart, no suffix.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
