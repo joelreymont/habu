@@ -225,17 +225,6 @@ variable XREF-QWID
    dup 0 >= if exit then
    s" undefine: word not found" 70 die ;
 
-: PROT-WID-CTOR-ADD ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TFAM-CTOR-WORD? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
-   a u XREF-FIND dup XREF-FOUND? 0= IF
-      drop s" xref: protected-WID constructor not found" 76 die
-   THEN
-   XREF-WORDLIST prot-wid-add ;
-
-: PROT-WID-CTOR-INSTALL ( -- ) [: PROT-WID-CTOR-ADD ;] is TDECL-PROT-WID-XT ;
-PROT-WID-CTOR-INSTALL
--1 TDECL-PROT-WID-ARMED !
-
 package GENERATED-DECL-NAME-PREFLIGHT
 
 private
@@ -278,6 +267,55 @@ INSTALL
 
 TRUSTED: XREF-PATCH32 ( n ptr a -- )
    patch32 ;
+
+package XREF
+
+private
+
+: NS-MATCH? ( n ptr u8 n -- bool ) {: i:n a:ptr u:n :}
+   i XREF-REC dup XREF-WORDLIST XREF-NAMESPACE-WL <> IF
+      drop XREF-FALSE EXIT
+   THEN
+   a u XREF-MATCH? ;
+
+: FIND-NS ( ptr u8 n -- ptr a n ) {: a:ptr u:n :}
+   XREF-NULL 0
+   0 BEGIN dup ndict@ < WHILE
+      dup a u NS-MATCH? IF
+         dup XREF-REC 2swap swap drop 1+ rot
+      THEN
+      1+
+   REPEAT
+   drop ;
+
+: WID-VALID? ( n -- bool )
+   dup FIRST-DYNAMIC-WID >= swap OWNER-WID-LIMIT < and ;
+
+: KIND@ ( ptr a -- n )
+   XREF-FLAGS DNAME-MIN-IN-MASK and 52 rshift ;
+
+: SET-TYPE ( ptr a -- )
+   dup XREF-LEN-SLOT cells XREF-REC+ 0 swap XREF-PATCH32
+   dup XREF-FLAGS NAMESPACE:KIND-TYPE 52 lshift or 32 rshift
+   swap XREF-FLAGS-SLOT cells 4 + XREF-REC+ XREF-PATCH32 ;
+
+public
+
+: FINALIZE-NAMESPACE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u FIND-NS {: rec:ptr count:n :}
+   count 1 <> IF s" xref: namespace identity is not unique" 76 die THEN
+   rec KIND@ NAMESPACE:KIND-PACKAGE <> IF
+      s" xref: namespace is not a package" 76 die
+   THEN
+   rec XREF-START {: pub:n :}
+   rec XREF-LEN {: pri:n :}
+   pub WID-VALID? pri WID-VALID? and pub pri <> and 0= IF
+      s" xref: invalid package roles" 76 die
+   THEN
+   rec SET-TYPE
+   pub ;
+
+;package
 
 : XREF-RETIRE ( ptr a -- )
    dup XREF-WORDLIST-SLOT cells XREF-REC+

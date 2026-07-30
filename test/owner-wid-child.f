@@ -165,12 +165,23 @@ variable RUN-CODE
    engine engineu s" test/owner-wid-state.f" RUN-FILE code T=
    ERR$ msg msgu CONTAINS? TTRUE ;
 
+: ASSERT-CAP ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: engine:ptr engineu:n file:ptr fileu:n msg:ptr msgu:n :}
+   engine engineu file fileu RUN-SOURCE 77 T=
+   ERR$ msg msgu CONTAINS? TTRUE ;
+
+: ASSERT-GEN-CAP ( ptr u8 n ptr u8 n -- )
+   {: engine:ptr engineu:n file:ptr fileu:n :}
+   engine engineu file fileu RUN-SOURCE 67 T=
+   ERR$ S\" hb: uncaught throw code 7169\n" T$= ;
+
 : BODY ( -- )
    OWNER-WID-IMAGE:BUILD
    BUILD-EXT:ASSERT-EMPTY
    OWNER-WID-DOCTOR:BUILD
    OWNER-WID-IMAGE:AOT-HB$ ASSERT-STATE
    OWNER-WID-IMAGE:SNAP-HB$ ASSERT-STATE
+   OWNER-WID-DOCTOR:SNAP-TYPE-OK$ ASSERT-STATE
    OWNER-WID-IMAGE:AOT-HB$ ASSERT-HIDDEN
    OWNER-WID-IMAGE:SNAP-HB$ ASSERT-HIDDEN
    OWNER-WID-IMAGE:AOT-HB$ ASSERT-PRIVATE-HIDDEN
@@ -179,14 +190,39 @@ variable RUN-CODE
    OWNER-WID-IMAGE:SNAP-HB$ ASSERT-ROLE-SWAP
    OWNER-WID-DOCTOR:AOT-BAD$ 82 s" hb: AOT owner frame corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:AOT-MAL$ 82 s" hb: AOT owner frame corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:AOT-LIMIT$ 82 s" hb: AOT owner frame corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-PAIR-CAP$ OWNER-WID-DOCTOR:QUAL-CAP-SRC$
+      s" LIMIT-QUAL:WORD" ASSERT-CAP
+   OWNER-WID-DOCTOR:SNAP-PAIR-CAP$ OWNER-WID-DOCTOR:PKG-CAP-SRC$
+      s" LIMIT-PACKAGE" ASSERT-CAP
+   OWNER-WID-DOCTOR:SNAP-WL-CAP$ OWNER-WID-DOCTOR:WL-CAP-SRC$
+      s" hb: wordlist WID space exhausted" ASSERT-CAP
+   OWNER-WID-DOCTOR:SNAP-PAIR-CAP$ OWNER-WID-DOCTOR:GEN-CAP-SRC$
+      ASSERT-GEN-CAP
    OWNER-WID-DOCTOR:SNAP-OLD$ 80 s" hb: snapshot format version unsupported" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-BAD$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-MAL$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-MAG$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-WID1$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-WID2$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-WID-HI$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-DUP$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-ZERO$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-RSVD$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-ALIAS$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-REUSE$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-PROT$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-XPTR$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-PTR$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-DICT-EXT$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-LEAD$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-TRAIL$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-DBL$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-TYPE-PRI$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-TYPE-ALIAS$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-TYPE-MISS$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-CROSS-DUP$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
+   OWNER-WID-DOCTOR:SNAP-TYPE-WIDN$ 79 s" hb: snapshot trailer corrupt" ASSERT-BAD
    OWNER-WID-DOCTOR:SNAP-LIVE$ ASSERT-MODES
    OWNER-WID-IMAGE:AOT-HB$ s" test/owner-wid-build-forge.f" RUN-FILE 70 T=
    ERR$ s" SET" CONTAINS? TTRUE ;

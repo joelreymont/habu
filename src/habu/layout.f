@@ -49,7 +49,8 @@ $181000 constant DICT-SIZE
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
+\ DNAME-MIN-IN (bits 52-59): namespace rows use this byte as their kind;
+\ ordinary rows use it as certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
 \ internal-mark pass; dot habu-habu-certified-words-84e84eaf). LFIND folds the
 \ byte into x13 bits 8-15; EM-INTERPRET-FIND fails closed BEFORE the BLR when
@@ -61,6 +62,14 @@ $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ and above the narrowed name-length field (bits 0-51); native length reads
 \ clear the top 12 bits (LSLI 12 / LSRI 12).
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
+package NAMESPACE
+
+public
+
+0 constant KIND-PACKAGE                    \ namespace record kind in DNAME-MIN-IN
+1 constant KIND-TYPE                       \ reserved namespace record kind
+
+;package
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
 \ DNAME-WIDE (bit 62): the word's recorded stack effect carries a
@@ -284,8 +293,9 @@ $3CB0 constant AOT-SEED-ARM-CELL
 \ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
 \ sealed system / generated constructor packages created in the friend window;
 \ PROT-WID? membership (habu1.f) gates the sealed-WID guards. u32 entries so wordlist
-\ IDs above 255 fit. Each PUBLIC ADT family consumes ONE slot (xref.f PROT-WID-CTOR-ADD
-\ -> prot-wid-add per family constructor wordlist), so the capacity is the number of
+\ IDs above 255 fit. Each PUBLIC ADT family consumes ONE slot
+\ (XREF:FINALIZE-NAMESPACE -> generated declaration staging -> prot-wid-add), so
+\ the capacity is the number of
 \ public ADT families a session may declare. Raised 16 -> 256 (dot
 \ habu-seal-protwid-cap-6f1c9d2b): 16 overflowed at the 17th public family (silent
 \ exit 84), and a realistic switchover (a public stdlib plus user Option/Result/...

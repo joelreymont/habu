@@ -1,5 +1,4 @@
-\ aot-data-span-forge.f - AOT DATA-reserve span-guard boot regression
-\ (dot habu-guard-aot-data-49de2ee6).
+\ aot-data-span-forge.f - hostile AOT span/WID boot regressions.
 \
 \ Proves EM-AOT-RELOC-DATA's span bound (habu2.f) both directions. That reserve --
 \ and its guard -- runs ONLY on interactive REPL entry (AOT-SEED-ARM-CELL), so both
@@ -9,6 +8,10 @@
 \         must die at boot naming "hb: AOT data span out of range" and exit 82
 \         (AOT-OWNER-RC). On the unfixed base the same image boots silently (the
 \         forged span is accepted with no bound check), so this case is red-first.
+\   RED : after one valid compact ordinary record, real images append one forged
+\         reserved/limit WID or -1 namespace marker; each dies before publication.
+\   GREEN: the span-only image leaves the real compact WIDs unchanged and reaches
+\         the later span guard, proving capture and restore accept global WID zero.
 \   GREEN: the unforged engine (its real few-KB span) must still boot to the REPL
 \         prompt and exit 0 -- the maximal legal reserve must not be over-rejected.
 \
@@ -87,13 +90,11 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U ! ;
 
-\ --- build the forged oversized image: spawn aot-wid-build with HABU_AOT_SPAN, so
-\ its emitted hb-pwid bakes LAOTDATASIZE = OVERSIZED-SPAN (see aot-wid-build.f
-\ SPAN-FORGE-LINE). Private HB_TMP so nothing in the tree is touched.
-: BUILD-FORGED ( -- )
+\ --- build one forged image through aot-wid-build's real capture path. ---
+: BUILD-FORGED ( ptr u8 n ptr u8 n -- ) {: key:ptr keyu:n value:ptr valueu:n :}
    PROC-ENV-RESET
    s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
-   s" HABU_AOT_SPAN" >LEN OVERSIZED-SPAN$ >LEN PROC-ENV+
+   key keyu >LEN value valueu >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -161,17 +162,22 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    PID @ 0 > TTRUE
    SFD @ close ;
 
-\ --- the two directions ---
-: ASSERT-FORGED-DIES ( -- )
-   HBPWID$ PTY-SPAWN                 \ boot the forged image under a PTY
-   s" AOT data span guard: forged span prints the named boot die" T-LABEL
-   s" hb: AOT data span out of range" WAIT-FOR TTRUE   \ its fd-2 die reaches the master
-   s" AOT data span guard: forged span exits 82 (AOT-OWNER-RC)" T-LABEL
+\ --- hostile and legal restore directions ---
+: ASSERT-FORGED-DIES ( ptr u8 n -- ) {: msg:ptr msgu:n :}
+   HBPWID$ PTY-SPAWN
+   msg msgu WAIT-FOR TTRUE
    PID @ >PID PROC-WAIT-RC MATCH result
      ok  OF drop 1 0 T= ENDOF          \ unexpected clean exit -> fail
-     err OF 82 T= ENDOF                \ expected: exit code == 82
+     err OF AOT-OWNER-RC T= ENDOF
    ;MATCH
    MFD @ close ;
+
+: ASSERT-WID-FORGE ( ptr u8 n ptr u8 n -- )
+   {: value:ptr valueu:n label:ptr labelu:n :}
+   s" HABU_AOT_REC_WID" value valueu BUILD-FORGED
+   label labelu T-LABEL
+   HBPWID$ EXISTS? TTRUE
+   s" hb: AOT dictionary WID corrupt" ASSERT-FORGED-DIES ;
 
 : ASSERT-LEGAL-BOOTS ( -- )
    PLAIN$ PTY-SPAWN                  \ boot the unforged engine under a PTY
@@ -179,6 +185,8 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    s" habu> " WAIT-FOR TTRUE         \ boot banner + prompt appear (span reserve passed)
    s" AOT data span guard: legal engine does not fire the span die" T-LABEL
    RBUF$ s" hb: AOT data span out of range" CONTAINS? 0= TTRUE
+   s" AOT record WID guard: legal engine does not fire the WID die" T-LABEL
+   RBUF$ s" hb: AOT dictionary WID corrupt" CONTAINS? 0= TTRUE
    4 SEND-C                          \ Ctrl-D: leave the REPL
    s" AOT data span guard: legal engine exits 0" T-LABEL
    PID @ >PID PROC-WAIT-RC MATCH result
@@ -197,10 +205,19 @@ create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
    HB-TARGET-LINUX? 0= if
       s" aot-data-span-forge: PTY boot cases run on linux only; skipped" type cr exit then
    SETUP
-   BUILD-FORGED
+   s" HABU_AOT_SPAN" OVERSIZED-SPAN$ BUILD-FORGED
    s" AOT data span guard: forged variant image exists after build" T-LABEL
    HBPWID$ EXISTS? TTRUE
-   ASSERT-FORGED-DIES
+   s" AOT span/WID guards: real WIDs reach the later span die" T-LABEL
+   s" hb: AOT data span out of range" ASSERT-FORGED-DIES
+   s" OWNER-API-PUB-WID"
+      s" AOT record WID guard: reserved public WID rejects" ASSERT-WID-FORGE
+   s" OWNER-API-PRI-WID"
+      s" AOT record WID guard: reserved private WID rejects" ASSERT-WID-FORGE
+   s" OWNER-WID-LIMIT"
+      s" AOT record WID guard: limit WID rejects" ASSERT-WID-FORGE
+   s" -1"
+      s" AOT record WID guard: namespace marker rejects after valid row" ASSERT-WID-FORGE
    ASSERT-LEGAL-BOOTS ;
 
 public

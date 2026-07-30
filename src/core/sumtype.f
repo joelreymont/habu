@@ -906,17 +906,18 @@ defer TDECL-EVENT-ARMED ( -- bool )
 \ adds no unchecked code.
 \ Generated-plan eval crossing and protected-wordlist recorder, reached
 \ through `defer` hooks so the call is statically effect-known (no execute of a
-\ raw stored xt). include.f / aot.f bind TDECL-EVAL-XT; xref.f binds
-\ TDECL-PROT-WID-XT. A separate ARMED flag records whether the real word is
+\ raw stored xt). include.f / aot.f bind TDECL-EVAL-XT;
+\ generated-declaration-protection.f binds TDECL-FINALIZE-XT. A separate ARMED
+\ flag records whether the real word is
 \ installed: a stage builder that omits those files leaves the flag 0, and the
 \ generator fails closed exactly as the old `hook @ 0=` guard did (a `defer`
 \ cannot be probed for its binding, so the flag carries that fact).
 defer TDECL-EVAL-XT ( ptr u8 n -- )
-defer TDECL-PROT-WID-XT ( ptr u8 n -- )
+defer TDECL-FINALIZE-XT ( ptr u8 n -- )
 defer TDECL-NAME-PREFLIGHT-XT ( ptr u8 n -- )
 defer TDECL-CAPACITY-PREFLIGHT-XT ( ptr u8 n n -- )
 variable TDECL-EVAL-ARMED
-variable TDECL-PROT-WID-ARMED
+variable TDECL-FINALIZE-ARMED
 
 : TDECL-NAME-PREFLIGHT-MISSING ( ptr u8 n -- )
    2drop s" sumtype: generated name preflight not installed" 76 die ;
@@ -1501,11 +1502,9 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
    vid pads TDGEN-BODY
    vid pads 1 + TDPLAN-CTOR+ ;
 
-: TDECL-CTOR-PROT-WID ( n -- ) {: vid:n :}
-   TDECL-PROT-WID-ARMED @ 0= IF s" sumtype: protected-wid hook not installed" 76 die THEN
-   TDGEN-CLEAR
-   vid TDGEN-NAME
-   TDGEN-NA @ TDGEN-NU @ TDECL-PROT-WID-XT ;
+: TDECL-FINALIZE-NS ( n -- ) {: vid:n :}
+   TDECL-FINALIZE-ARMED @ 0= IF s" sumtype: namespace finalizer not installed" 76 die THEN
+   vid SUMV-CTOR-PKG$ TDECL-FINALIZE-XT ;
 
 \ product generated words (item 15): `: PKG:MAKE ( fields -- fam<..> ) ;` and
 \ `: PKG:UNMAKE ( fam<..> -- fields ) ;`. Both bodies are EMPTY and the pending
@@ -1731,7 +1730,7 @@ variable TDD-H
    fam vstart 1 + 0 TDECL-PROD-WORD
    fam TDECL-DRV-WORDS                    \ derived words BEFORE the WID closes
    TDECL-GEN-EVAL
-   vstart TDECL-CTOR-PROT-WID ;
+   vstart TDECL-FINALIZE-NS ;
 
 \ Legacy adapter for the product generator, kept so the STRUCTURE make/unmake
 \ publisher (src/core/structure-make.f) keeps its ( fam -- ) call: it declares its
@@ -1770,7 +1769,7 @@ variable TDD-H
    REPEAT
    fam TDECL-DRV-WORDS                    \ derived words BEFORE the WID closes
    TDECL-GEN-EVAL
-   fam TFAM-VAR-START@ TDECL-CTOR-PROT-WID
+   fam TFAM-VAR-START@ TDECL-FINALIZE-NS
    ctx qn qr qc fam ;
 
 : TDECL-CTOR-WORDS-BODY ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )   \ generate one live family's constructors

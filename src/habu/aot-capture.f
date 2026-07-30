@@ -142,11 +142,11 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    48 0 ?do src i + c@  d i + c!  loop                        \ verbatim 48-byte copy
    src AOT-RWID -1 <> if
       k AOT-REC AOT-RXT bstart -  d AOT-N-C!                  \ ordinary [0] = xt - blob-start
-   then                                                        \ package [0]/[8] are raw u32 WID roles
+   then                                                        \ namespace rows stay raw for whole-set refusal
    AOT-REC-N @ 1+ AOT-REC-N ! ;
 
-\ --- compact 16B records: blob-off-or-package-public u32 + code-len-or-package-
-\ private u32 + name-off u16 + flags u8 + min-in u8 + wid u32. Built from the
+\ --- compact 16B ordinary records: blob-off u32 + code-len u32 + name-off u16
+\ + flags u8 + min-in u8 + wid u32. Built from the
 \ verbatim 48B records; each record's inline name is added to the deduped pool.
 \ EM-AOT-REGISTER-RECS expands each 16B record
 \ back to the full 48B dict record at boot. All the constant/derivable fields
@@ -159,22 +159,31 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
 \ the former pad byte so certified arity survives the seed round-trip. ---
 : ACAP-CREC-DST ( n -- ptr u8 ) AOT-CREC-ROW * AOT-REC-MAX 48 * +  AOT-REC-BUF@ swap + ;
 : ACAP-REC48@ ( -- ptr u8 ) AOT-REC-MAX 48 * AOT-REC-MAX AOT-CREC-ROW * +  AOT-REC-BUF@ swap + ;
+: ACAP-WID-OK? ( n -- bool )
+   dup 0= swap dup FIRST-DYNAMIC-WID >= swap OWNER-WID-LIMIT < and or ;
+: ACAP-VALIDATE-REC ( ptr u8 -- ) {: v:ptr :}
+   v AOT-RWID -1 = if s" aot-capture: namespace record forbidden" 74 die then
+   v 4 + ACAP-W32@ 0= 0= if s" aot-capture: rec blob-off exceeds u32" 74 die then
+   v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
+   v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
+   v 40 + ACAP-W32@ ACAP-WID-OK? 0=
+      if s" aot-capture: rec wid invalid" 74 die then
+   v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
+   v 20 + ACAP-W32@ $000FFFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
+   flags 2 and 0= 0= if s" aot-capture: rec has EXT name (uncompactable)" 74 die then
+   v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
+   len 16 > if s" aot-capture: rec name too long for inline" 74 die then ;
+
 : ACAP-COMPACT-RECS ( -- )
+   \ Validate the whole source set before adding names or writing compact rows.
+   \ Namespace rows belong only to snapshots; compact AOT has no namespace ABI.
+   AOT-REC-N @ 0 ?do i ACAP-REC-DST ACAP-VALIDATE-REC loop
    AOT-REC-N @ 0 ?do
-      i ACAP-REC-DST {: v:ptr :}                              \ verbatim 48B record
-      v AOT-RWID -1 = {: pkg:bool :}
-      v 4 + ACAP-W32@ 0= 0= if s" aot-capture: rec blob-off exceeds u32" 74 die then
-      v 12 + ACAP-W32@ 0= 0= if s" aot-capture: rec end exceeds u32" 74 die then
-      pkg 0= if
-         v 44 + ACAP-W32@ 0= 0= if s" aot-capture: rec wid exceeds u32" 74 die then
-      then
-      v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}         \ flag nibble ([16] bits 60-63)
-      v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}        \ DNAME-MIN-IN byte ([16] bits 52-59)
-      v 20 + ACAP-W32@ $000FFFFF and 0= 0= if s" aot-capture: rec [16] stray high bits" 74 die then
-      flags 2 and 0= 0= if s" aot-capture: rec has EXT name (uncompactable)" 74 die then
-      v 16 + ACAP-W32@ {: len:n :}                            \ name length ([16] low word)
-      len 16 > if s" aot-capture: rec name too long for inline" 74 die then
-      pkg if $FFFFFFFF else v 40 + ACAP-W32@ then {: wid:n :} \ package marker or full ordinary u32 WID
+      i ACAP-REC-DST {: v:ptr :}                              \ preflighted ordinary record
+      v 20 + ACAP-W32@ 28 rshift $F and {: flags:n :}
+      v 20 + ACAP-W32@ 20 rshift $FF and {: minin:n :}
+      v 16 + ACAP-W32@ {: len:n :}
+      v 40 + ACAP-W32@ {: wid:n :}
       v ACAP-W32@ {: start:n :}  v 8 + ACAP-W32@ {: clen:n :}
       v 24 + len ACAP-POOL-ADD {: noff:n :}                   \ inline name -> deduped pool entry
       noff $FFFF > if s" aot-capture: rec name-off exceeds u16" 74 die then
@@ -184,12 +193,12 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    loop ;
 
 \ Expand a compact 16B record to a 48B dict record image -- the EXACT field
-\ reconstruction EM-AOT-REGISTER-RECS runs at boot. Ordinary [0] remains a blob
-\ offset for the build-time inverse proof; boot adds CP. Package [0]/[8] stay raw.
+\ reconstruction EM-AOT-REGISTER-RECS runs at boot. [0] remains a blob offset
+\ for the build-time inverse proof; boot adds CP.
 : ACAP-U16@ ( ptr u8 -- n ) {: p:ptr :}  p c@  p 1+ c@ 8 lshift or ;
 : ACAP-EXPAND-REC ( ptr u8 ptr u8 -- ) {: c:ptr s:ptr :}      \ c=compact 16B, s=48B out
-   c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob-off or package public WID
-   c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code len or package private WID
+   c ACAP-W32@ s AOT-N-C!                                     \ [0..8) = blob offset
+   c 4 + ACAP-W32@ s 8 + AOT-N-C!                             \ [8..16) = code length
    c 8 + ACAP-U16@ {: noff:n :}                               \ name-off u16
    AOT-NAMES-BUF@ noff + c@ {: len:n :}                       \ len = pool[entry]
    c 10 + c@ {: flags:n :}
@@ -197,8 +206,7 @@ variable AOT-EXT-N   variable AOT-UNRES-N     \ kept-source counters: EXT names 
    flags 60 lshift  minin 52 lshift or  len or  s 16 + AOT-N-C!   \ [16] = flags<<60 | min-in<<52 | len
    0 s 24 + AOT-N-C!  0 s 32 + AOT-N-C!                       \ zero [24..40)
    len 0 ?do  AOT-NAMES-BUF@ noff 1+ + i + c@  s 24 + i + c!  loop
-   c 12 + ACAP-W32@ dup $FFFFFFFF = if drop -1 then
-   s 40 + AOT-N-C! ;                                          \ package marker sign-extends; ordinary wid stays u32
+   c 12 + ACAP-W32@ s 40 + AOT-N-C! ;                         \ ordinary wid stays u32
 variable ACAP-RECMM                                           \ record-proof mismatch count
 : ACAP-PROVE-RECS ( -- )                                      \ fail-closed: expand==verbatim, field-for-field
    0 ACAP-RECMM !
@@ -332,6 +340,8 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
 
 package AOT-OWNER
 
+: REC-KIND ( ptr a -- n ) AOT-RFLAGS DNAME-MIN-IN-MASK and 52 rshift ;
+
 0 constant OWNER-OK
 1 constant OWNER-BAD-COUNT
 2 constant OWNER-BAD-PUB
@@ -342,12 +352,16 @@ package AOT-OWNER
 7 constant OWNER-BAD-COLLISION
 8 constant OWNER-BAD-PACKAGE-MISSING
 9 constant OWNER-BAD-PACKAGE-DUP
+10 constant OWNER-BAD-NAMESPACE-KIND
 variable OWNER-BAD-KIND
 variable OWNER-BAD-ROW
 variable OWNER-BAD-OTHER
 
 : WID-VALID? ( n -- bool )
-   dup 0 > swap OWNER-WID-LIMIT <= and ;
+   dup 0 > swap OWNER-WID-LIMIT < and ;
+
+: OWNER-WID-VALID? ( n -- bool )
+   dup FIRST-DYNAMIC-WID >= swap OWNER-WID-LIMIT < and ;
 
 : PROT-N@ ( -- n )
    AOT-LIVE-DATA PROT-WID-N-CELL + atomic@ ;
@@ -409,8 +423,8 @@ variable OWNER-BAD-OTHER
    count OWNER-WID-MAX > if OWNER-BAD-COUNT -1 -1 OWNER-BAD! exit then
    count 0 ?do
       i OWNER-PAIR@ {: pub:n pri:n :}
-      pub WID-VALID? 0= if OWNER-BAD-PUB i -1 OWNER-BAD! unloop exit then
-      pri WID-VALID? 0= if OWNER-BAD-PRI i -1 OWNER-BAD! unloop exit then
+      pub OWNER-WID-VALID? 0= if OWNER-BAD-PUB i -1 OWNER-BAD! unloop exit then
+      pri OWNER-WID-VALID? 0= if OWNER-BAD-PRI i -1 OWNER-BAD! unloop exit then
       pub pri = if OWNER-BAD-SAME i -1 OWNER-BAD! unloop exit then
       pub PROTECTED? if OWNER-BAD-PUB-PROT i -1 OWNER-BAD! unloop exit then
       pri PROTECTED? if OWNER-BAD-PRI-PROT i -1 OWNER-BAD! unloop exit then
@@ -450,13 +464,22 @@ variable OWNER-PACKAGE-K
 
 : OWNER-NAME-VALID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    u 0= u 255 > or if 0 0= 0= exit then
-   u 0 ?do a i + c@ $3A = if 0 0= 0= unloop exit then loop
+   u 0 ?do
+      a i + c@ $3A = if
+         i 0= i 1+ u = or if 0 0= 0= unloop exit then
+         a i 1+ + c@ $3A = if 0 0= 0= unloop exit then
+      then
+   loop
    0 0= ;
 
 : PACKAGE-PAIR? ( ptr a n n -- bool ) {: rec:ptr pub:n pri:n :}
    rec AOT-RWID -1 =
+   rec REC-KIND NAMESPACE:KIND-PACKAGE = and
    rec AOT-RXT pub = and
    rec AOT-REND pri = and ;
+
+: NAMESPACE-KIND-VALID? ( ptr a -- bool )
+   REC-KIND NAMESPACE:KIND-TYPE <= ;
 
 : PACKAGE-RECORD ( n -- ptr a ) {: row:n :}
    0 OWNER-PACKAGE-N !
@@ -464,9 +487,16 @@ variable OWNER-PACKAGE-K
    row OWNER-PAIR@ {: pub:n pri:n :}
    ndict@ 0 ?do
       i AOT-REC {: rec:ptr :}
-      rec pub pri PACKAGE-PAIR? if
-         OWNER-PACKAGE-N @ 1+ OWNER-PACKAGE-N !
-         i OWNER-PACKAGE-K !
+      rec AOT-RWID -1 = if
+         rec NAMESPACE-KIND-VALID? 0= if
+            OWNER-BAD-NAMESPACE-KIND row i OWNER-BAD! drop
+            OWNER-BAD-DIAG
+            s" aot-capture: owner namespace kind invalid" 74 die
+         then
+         rec pub pri PACKAGE-PAIR? if
+            OWNER-PACKAGE-N @ 1+ OWNER-PACKAGE-N !
+            i OWNER-PACKAGE-K !
+         then
       then
    loop
    OWNER-PACKAGE-N @ 0= if

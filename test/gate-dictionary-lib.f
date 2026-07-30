@@ -372,12 +372,20 @@ variable START-NS
    GE-SRC-RESET
    s" : GD-COUNT ( -- n ) 1 ;" GE-SRC-LINE
    s" : HB:GD-COUNT ( -- n ) 2 ;" GE-SRC-LINE
+   s" package hb" GE-SRC-LINE
+   s" : GD-HIDDEN ( -- n ) 5 ;" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : GD-PUBLIC ( -- n ) GD-HIDDEN HB:GD-COUNT + ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
    s" package HBT" GE-SRC-LINE
    s" public" GE-SRC-LINE
    s" TRUSTED: GD-TRUSTED ( -- n ) 7 ;" GE-SRC-LINE
    s" ;package" GE-SRC-LINE
    s" GD-COUNT ." GE-SRC-LINE
    s" HB:GD-COUNT ." GE-SRC-LINE
+   s" HB:GD-PUBLIC ." GE-SRC-LINE
+   s" GD-HIDDEN" GE-SRC-S"
+   s"  0 search-wl 0= ." GE-SRC-LINE
    s" USE-HB ( -- n ) HB:GD-COUNT" GE-SRC-CHECK-LINE
    s" USE-HBT-TRUSTED ( -- n ) HBT:GD-TRUSTED" GE-SRC-CHECK-LINE
    s" : HBCALL ( -- n ) HB:GD-COUNT ;" GE-SRC-LINE
@@ -397,6 +405,8 @@ variable START-NS
    SB-RESET
    s" 1" GE-OUT-LINE
    s" 2" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    s" 2" GE-OUT-LINE
@@ -452,6 +462,74 @@ variable START-NS
    s" 17" GE-OUT-LINE
    s" 10" GE-OUT-LINE
    SB$ s" hb package public/private/reopen output" GE-EXPECT-OUT ;
+
+: PACKAGE-ABSOLUTE ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" package GD-ABSOLUTE-LONG:A:B" GE-SRC-LINE
+   s" : SECRET ( -- n ) 41 ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" package gd-absolute-long:a:b" GE-SRC-LINE
+   s" : CALL-SECRET ( -- n ) SECRET 1+ ;" GE-SRC-LINE
+   s" CALL-SECRET ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" cp@ ndict@ wordlist" GE-SRC-LINE
+   s" package gd-absolute-long ;package" GE-SRC-LINE
+   s" package GD-ABSOLUTE-LONG:a ;package" GE-SRC-LINE
+   s" package gd-absolute-long:A:b ;package" GE-SRC-LINE
+   s" wordlist swap 1+ = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" hb absolute package prefix/reopen" GE-EVAL-RUN-STDIN
+   SB-RESET
+   s" 42" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   SB$ s" hb absolute package prefix/reopen output" GE-EXPECT-OUT ;
+
+: PACKAGE-ROLLBACK-SOURCE ( -- )
+   GE-SRC-RESET
+   s" TRUSTED: GD-PKG-TRY ( ptr u8 n -- n ) ['] evaluate catch ;" GE-SRC-LINE
+   s" cp@ ndict@" GE-SRC-LINE
+   s" package :GD-PKG-BAD" GE-SRC-S"  s"  GD-PKG-TRY 75 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" cp@ ndict@" GE-SRC-LINE
+   s" package GD-PKG-BAD:" GE-SRC-S"  s"  GD-PKG-TRY 75 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" cp@ ndict@" GE-SRC-LINE
+   s" package GD-PKG::BAD" GE-SRC-S"  s"  GD-PKG-TRY 75 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" wordlist cp@ ndict@" GE-SRC-LINE
+   s" dbase@ REGION + $4000 - cp!" GE-SRC-LINE
+   s" package GD-PACKAGE-CAPACITY-LONG:A" GE-SRC-S"  s"  GD-PKG-TRY 76 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp!" GE-SRC-LINE
+   s" wordlist swap 1+ = ." GE-SRC-LINE
+   s" wordlist cp@ ndict@" GE-SRC-LINE
+   s" package GD-PKG-ROLLBACK-LONG:A:B GD-PKG-MISSING" GE-SRC-S"  s"  GD-PKG-TRY 70 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" wordlist swap - ." GE-SRC-LINE
+   s" wordlist" GE-SRC-LINE
+   s" package GD-PKG-ROLLBACK-LONG:A:B ;package" GE-SRC-LINE
+   s" wordlist swap - ." GE-SRC-LINE ;
+
+: PACKAGE-ROLLBACK ( -- )
+   GE-HB-RESET
+   PACKAGE-ROLLBACK-SOURCE
+   s" hb absolute package transactional publication" GE-EVAL-RUN-STDIN
+   SB-RESET
+   12 0 ?do s" -1" GE-OUT-LINE loop
+   s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" -1" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   s" 7" GE-OUT-LINE
+   SB$ s" hb absolute package transactional publication output" GE-EXPECT-OUT ;
 
 : PACKAGE-SEMICOLON ( -- )
    GE-HB-RESET
@@ -926,8 +1004,8 @@ variable START-NS
    $4B s" package" s" package rejects nesting" RUN-BAD-SOURCE
    GE-SRC-RESET  s" package" GE-SRC-LINE
    $4A s" package" s" package rejects missing name" RUN-BAD-SOURCE
-   GE-SRC-RESET  s" package A:B" GE-SRC-LINE
-   $4B s" A:B" s" package rejects qualified name" RUN-BAD-SOURCE
+   GE-SRC-RESET  s" package A::B" GE-SRC-LINE
+   $4B s" A::B" s" package rejects doubled separator" RUN-BAD-SOURCE
    GE-SRC-RESET
    s" package P" GE-SRC-LINE
    s" : H ( -- n ) 1 ;" GE-SRC-LINE
@@ -1271,6 +1349,8 @@ public
    s" dictionary/literal-float-eval" [: LITERAL-FLOAT-EVAL ;] CASE-RUN
    s" dictionary/namespace" [: NAMESPACE-QUALIFIED ;] CASE-RUN
    s" dictionary/package-runtime" [: PACKAGE-RUNTIME ;] CASE-RUN
+   s" dictionary/package-absolute" [: PACKAGE-ABSOLUTE ;] CASE-RUN
+   s" dictionary/package-rollback" [: PACKAGE-ROLLBACK ;] CASE-RUN
    s" dictionary/package-semicolon" [: PACKAGE-SEMICOLON ;] CASE-RUN
    s" dictionary/package-jit-stack" [: PACKAGE-JIT-STACK ;] CASE-RUN
    s" dictionary/package-check" [: PACKAGE-CHECK ;] CASE-RUN

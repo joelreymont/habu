@@ -1,6 +1,7 @@
 \ generated-declaration-protection.f - atomic constructor protection owner.
 \
-\ Generated declarations stage constructor wordlists here.  PREPARE proves the
+\ Generated declarations finalize their temporary namespace and stage its public
+\ wordlist here. PREPARE proves the
 \ irreversible engine registry has capacity, and this last ordered participant
 \ publishes only after every reversible owner committed.  Nested declarations
 \ retain their staged rows for the outer transaction.  Once this last owner is
@@ -10,7 +11,6 @@
 package GENERATED-DECL-PROTECTION
 
 7169 constant E-PROTECTION-CAP
-$FFFFFFFF constant WID-MAX
 4 constant CAP-INIT
 $0FFFFFFFFFFFFFFF constant CELL-CAP-MAX
 
@@ -105,18 +105,17 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 \ depth's base, and the base cell itself is rewritten by the next SNAPSHOT here.
 : RELEASE ( -- ) ;
 
-: STAGE-WORDLIST ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u TFAM-CTOR-WORD? 0= IF s" xref: protected-WID constructor mismatch" 76 die THEN
-   a u XREF-FIND dup XREF-FOUND? 0= IF
-      drop s" xref: protected-WID constructor not found" 76 die
-   THEN
-   XREF-WORDLIST STAGE+ ;
+: FINALIZE ( ptr u8 n -- )
+   XREF:FINALIZE-NAMESPACE STAGE+ ;
+
+: WID-PAIR-ROOM? ( n -- bool )
+   dup 0 >= swap OWNER-WID-LIMIT 2 - <= and ;
 
 : PLAN-PREFLIGHT ( ptr u8 n n -- ) {: a:ptr u:n words:n :}
    a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
       GENERATED-DECL-DICTIONARY:PREFLIGHT
    a u GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? IF
-      data-base WIDN-CELL + @ dup 0 < swap WID-MAX > or
+      data-base WIDN-CELL + @ WID-PAIR-ROOM? 0=
          IF E-PROTECTION-CAP throw THEN
    THEN
    words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
@@ -143,7 +142,8 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
    [: ROLLBACK ;]
    [: RELEASE ;]
    GENERATED-DECL-OWNER:REGISTER-LAST
-   [: STAGE-WORDLIST ;] is TDECL-PROT-WID-XT
+   [: FINALIZE ;] is TDECL-FINALIZE-XT
+   -1 TDECL-FINALIZE-ARMED !
    [: PLAN-PREFLIGHT ;] is TDECL-CAPACITY-PREFLIGHT-XT
    [: SNAPSHOT-RESET ;] is TDECL-OWNER-SNAPSHOT-XT ;
 

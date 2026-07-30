@@ -1953,39 +1953,51 @@ s" c-call-checker-defer" s" --" TRUST
    10 G-POP
    nohk LBL, ;
 
-: C-STORE-NAME ( -- )
+package HB-EMIT
+
+private
+
+: C-STORE-NAME-AT ( -- )                    \ x5=record, x9=exact bytes, x10=exact length; preserves all three
    LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
-   12 DATA TKL-CELL LDR,
+   12 10 0 ADDI,
    13 12 0 ADDI,
    12 DNAME-INL CMPI,  C-LE short BCOND,
-      14 DNAME-EXT LIT64,  13 13 14 ORR,  13 9 16 STR,
+      14 DNAME-EXT LIT64,  13 13 14 ORR,  13 5 16 STR,
       15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
       16 CP 15 ADD,
-      10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
+      11 REGION $4000 - LIT64,  11 DBASE 11 ADD,  16 11 CMP,  C-LT capok BCOND,
          fail B,
       capok LBL,
-      CP 9 24 STR,
-      10 DATA TKA-CELL LDR,
+      CP 5 24 STR,
+      15 9 0 ADDI,
       11 CP 0 ADDI,
       14 12 0 ADDI,
       lcopy LBL,  14 lcd CBZ,
-         15 10 0 LDRB,  15 11 0 STRB,
-         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
+         13 15 0 LDRB,  13 11 0 STRB,
+         15 15 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
       lcd LBL,
       CP 16 0 ADDI,
       done B,
    short LBL,
-      13 9 16 STR,
-      11 9 24 ADDI,  10 DATA TKA-CELL LDR,  14 12 0 ADDI,
+      13 5 16 STR,
+      11 5 24 ADDI,  16 9 0 ADDI,  14 12 0 ADDI,
       scopy LBL,  14 scd CBZ,
-         15 10 0 LDRB,  15 11 0 STRB,
-         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
+         15 16 0 LDRB,  15 11 0 STRB,
+         16 16 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
       scd LBL,
       done B,
    fail LBL,                                          \ long name would overflow the code region: recoverable inside evaluate (rc 76), fail-closed exit 76 at top level
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 76 MOVZ,  LCOMPILEDIE LABEL@ B,
    done LBL, ;
+
+: C-STORE-NAME ( -- )
+   5 9 0 ADDI,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   C-STORE-NAME-AT
+   9 5 0 ADDI, ;
+
+;package
 
 : C-QUALIFY-FAIL ( n -- ) {: rc:n :}                  \ qualified-name misuse ($4B) / dict-full ($4D) during C-QUALIFY-DEF: recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
@@ -2080,8 +2092,8 @@ package HB-EMIT
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan qnone qhas qbad qtail qlookup qapply qwidok nloop nnext ncmp nmatch nend ninl done :}
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
@@ -2129,14 +2141,17 @@ package HB-EMIT
    nend LBL,
       14 DATA DEF-WL-CELL LDR,  14 0 CMPI,  C-NE qapply BCOND,
       C-QUALIFY-CAP
-      14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,
-      15 14 1 ADDI,  15 DATA WIDN-CELL STR,
+      14 DATA WIDN-CELL LDR,  15 OWNER-WID-LIMIT 2 - LIT64,
+      14 15 CMP,  C-LS qwidok BCOND,
+         $4D C-QUALIFY-FAIL
+      qwidok LBL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
       11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
       17 DATA TKL-CELL STR,
       C-STORE-NAME
-      14 DATA DEF-WL-CELL LDR,  14 9 0 STR,
-      15 0 MOVZ,  15 9 8 STR,
+      14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,  14 9 0 STR,
+      15 14 1 ADDI,  15 9 8 STR,
+      16 14 2 ADDI,  16 DATA WIDN-CELL STR,
       15 0 MOVN,  15 9 40 STR,
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    qapply LBL,
@@ -3395,33 +3410,38 @@ s" c-local-ref" s" label label --" TRUST
 \ Register the LAOTNREC baked records at &dict[NDICT], rebasing each [0] xt from a
 \ blob offset to CP+offset, and hash-indexing it (LHIDXADD). All records first, so
 \ EM-AOT-PATCH-SITES can resolve sibling calls by name.
-\ Each source record is a compact 16 bytes (word0 = blob-off-or-package-public u32;
-\ word1 = code-len-or-package-private u32; word2 = name-off u16 | flags u8<<16 |
+\ Each source record is a compact 16 bytes (word0 = blob-off u32;
+\ word1 = code-len u32; word2 = name-off u16 | flags u8<<16 |
 \ min-in u8<<24; word3 = wid u32). Expand it to the full 48B dict record, rebasing
-\ ordinary [0] to CP+blob-off while package [0]/[8] remain raw u32 WID roles, and reconstructing [16]
+\ [0] to CP+blob-off, and reconstructing [16]
 \ flags|len, the [24..40) inline name (from the deduped LAOTNAMES pool, zero-padded),
 \ and [40] wid (full u32 so wordlist IDs above 255 survive) -- the EXACT inverse of
 \ the build-time ACAP-COMPACT-RECS, proven byte-identical to the source-compiled
 \ record by ACAP-PROVE-RECS. As each record is registered WIDN is advanced above its
 \ wid, so a post-seed wordlist allocation cannot collide with a restored wordlist.
+\ A complete first pass accepts global WID zero, rejects reserved or upper-bound
+\ ordinary WIDs, and finishes before any dictionary publication or WIDN advance.
 \ x2..x7 are LHIDXADD's saved set; x9/x11/x12 survive it. Records are 4B-aligned so
 \ each 32-bit word loads with LDRW.
 : EM-AOT-REGISTER-RECS ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: rloop:label rdone:label pkg:label fields:label nloop:label ndone:label
-      pkg-wid:label widok:label next:label :}
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: vloop:label vnext:label vdone:label rloop:label rdone:label
+      nloop:label ndone:label widok:label bad:label msg:label done:label :}
    9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,               \ x9 = compact record src (16B stride), x12 = k
    11 LAOTNREC LABEL@ ADR,  11 11 0 LDR,            \ x11 = N (survives LHIDXADD)
+   vloop LBL,  12 11 CMP,  C-GE vdone BCOND,
+      6 9 12 LDRW,
+      6 vnext CBZ,
+      6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+      5 OWNER-WID-LIMIT LIT64,  6 5 CMP,  C-CS bad BCOND,
+   vnext LBL,
+      9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  vloop B,
+   vdone LBL,
+   9 LAOTDICT LABEL@ ADR,  12 0 MOVZ,
    rloop LBL,  12 11 CMP,  C-GE rdone BCOND,
       10 DREC MOVZ,  10 NDICT 10 MUL,  10 DBASE 10 ADD,   \ x10 = &dict[NDICT]
-      6 9 12 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg BCOND,
       3 9 0 LDRW,  3 CP 3 ADD,  3 10 0 STR,         \ ordinary [0] = CP + blob-off u32
       3 9 4 LDRW,  3 10 8 STR,                      \ ordinary [8] = code length u32
-      fields B,
-      pkg LBL,
-      3 9 0 LDRW,  3 10 0 STR,                     \ package [0] = public WID u32
-      3 9 4 LDRW,  3 10 8 STR,                     \ package [8] = private WID u32
-      fields LBL,
       6 9 8 LDRW,                                   \ x6 = word2 = name-off | flags<<16 | min-in<<24
       5 $FFFF LIT64,  4 6 5 AND,                     \ x4 = name-off
       7 LAOTNAMES LABEL@ ADR,  4 7 4 ADD,           \ x4 = pool entry ptr (len byte)
@@ -3438,17 +3458,19 @@ s" c-local-ref" s" label label --" TRUST
          7 10 24 ADDI,  7 7 3 ADD,  2 7 0 STRB,     \ dict[24+i] = name[i]
          3 3 1 ADDI,  nloop B,
       ndone LBL,
-      6 9 12 LDRW,  5 $FFFFFFFF LIT64,  6 5 CMP,  C-EQ pkg-wid BCOND,
+      6 9 12 LDRW,
       6 10 40 STR,                                  \ ordinary [40] wid = word3 (full u32, hi=0)
       4 6 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE widok BCOND,   \ WIDN = max(WIDN, wid+1)
          4 DATA WIDN-CELL STR,                       \ advance so post-seed allocs clear restored wids
-      widok LBL,  next B,
-      pkg-wid LBL,
-      6 0 MOVN,  6 10 40 STR,                       \ package marker is signed -1; never advances WIDN
-      next LBL,
+      widok LBL,
       NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,      \ publish + index (x9/x11/x12 preserved)
       9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  rloop B,
-   rdone LBL, ;
+   rdone LBL,  done B,
+   bad LBL,
+      1 msg ADR,  0 2 MOVZ,  2 31 MOVZ,  NR-WRITE SYS,
+      0 AOT-OWNER-RC MOVZ,  NR-EXIT-GROUP SYS,
+   msg LBL,  s" hb: AOT dictionary WID corrupt" BYTES,  NL-KW 1 BYTES,
+   done LBL, ;
 
 \ Restore the baked protected-WID registry (TFAM 2b-v). Copies the LAOTPWID u32
 \ WIDs into the friend-arena registry table (direct STR into the sealed band, same
@@ -3478,11 +3500,12 @@ s" c-local-ref" s" label label --" TRUST
 \ starts immediately after the bounded protected-WID rows, carries its own shape,
 \ and ends with an independent marker so count corruption cannot widen the copy.
 : EM-AOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: pool-loop:label pool-done:label prot-loop:label prot-inner:label
       prot-next:label owner-loop:label owner-prot:label owner-prev:label
       owner-next:label name-loop:label name-hit:label name-valid:label
-      valid:label owner-prot-done:label owner-prev-done:label :}
+      path-loop:label path-next:label valid:label owner-prot-done:label
+      owner-prev-done:label :}
    11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
    11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
    12 LAOTPWID LABEL@ ADR,
@@ -3511,7 +3534,7 @@ s" c-local-ref" s" label label --" TRUST
    8 0 MOVZ,  10 12 0 ADDI,
    prot-loop LBL,  8 11 CMP,  C-GE owner-loop BCOND,
       14 10 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-CS bad BCOND,
       4 0 MOVZ,  5 12 0 ADDI,
       prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
          2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
@@ -3536,12 +3559,22 @@ s" c-local-ref" s" label label --" TRUST
          name-loop B,
       name-hit LBL,
          5 22 4 ADD,  7 5 0 LDRB,  7 3 CMP,  C-NE bad BCOND,
-         5 4 1 ADDI,  5 5 7 ADD,  5 21 CMP,  C-HI bad BCOND,
+         16 5 1 ADDI,  5 16 7 ADD,  5 21 CMP,  C-HI bad BCOND,
+         7 0 MOVZ,
+      path-loop LBL,  7 3 CMP,  C-GE name-valid BCOND,
+         2 16 7 ADD,  2 2 0 LDRB,
+         2 $3A CMPI,  C-NE path-next BCOND,
+         7 bad CBZ,
+         4 7 1 ADDI,  4 3 CMP,  C-GE bad BCOND,
+         2 16 4 ADD,  2 2 0 LDRB,  2 $3A CMPI,  C-EQ bad BCOND,
+      path-next LBL,
+         7 7 1 ADDI,  path-loop B,
       name-valid LBL,
       14 10 AOT-OWNER-SOURCE-PUB LDRW,  15 10 AOT-OWNER-SOURCE-PRI LDRW,
-      14 bad CBZ,  15 bad CBZ,
+      14 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+      15 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
       5 OWNER-WID-LIMIT LIT64,
-      14 5 CMP,  C-HI bad BCOND,  15 5 CMP,  C-HI bad BCOND,
+      14 5 CMP,  C-CS bad BCOND,  15 5 CMP,  C-CS bad BCOND,
       14 15 CMP,  C-EQ bad BCOND,
 
       4 0 MOVZ,  5 12 0 ADDI,
@@ -3583,7 +3616,10 @@ s" c-local-ref" s" label label --" TRUST
       scan LBL,
          6 found CBZ,
          2 5 40 LDR,  4 0 MOVN,  2 4 CMP,  C-NE next BCOND,
-         2 5 16 LDR,  4 2 12 LSLI,  4 4 12 LSRI,  4 3 CMP,  C-NE next BCOND,
+         2 5 16 LDR,
+         9 2 DNAME-MIN-IN-MASK ANDI,  9 9 52 LSRI,
+         9 NAMESPACE:KIND-TYPE CMPI,  C-HI bad BCOND,
+         4 2 12 LSLI,  4 4 12 LSRI,  4 3 CMP,  C-NE next BCOND,
          4 5 24 ADDI,
          2 2 DNAME-EXT ANDI,  2 inline CBZ,
             4 5 24 LDR,
@@ -3604,12 +3640,16 @@ s" c-local-ref" s" label label --" TRUST
             5 5 DREC ADDI,  6 6 1 SUBI,  scan B,
       found LBL,
       17 1 CMPI,  C-NE bad BCOND,
+      2 16 16 LDR,
+      9 2 DNAME-MIN-IN-MASK ANDI,  9 9 52 LSRI,
+      9 NAMESPACE:KIND-PACKAGE CMPI,  C-NE bad BCOND,
       14 16 0 LDR,  15 16 8 LDR,                    \ target-generation roles
       2 14 32 LSRI,  2 bad CBNZ,
       2 15 32 LSRI,  2 bad CBNZ,
-      14 bad CBZ,  15 bad CBZ,
+      14 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+      15 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
       2 OWNER-WID-LIMIT LIT64,
-      14 2 CMP,  C-HI bad BCOND,  15 2 CMP,  C-HI bad BCOND,
+      14 2 CMP,  C-CS bad BCOND,  15 2 CMP,  C-CS bad BCOND,
       14 15 CMP,  C-EQ bad BCOND,
 
       2 DATA WIDN-CELL LDR,
@@ -3986,13 +4026,22 @@ package HB-EMIT
 
 : EM-SNAPSHOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL
    {: prot-loop:label prot-max:label prot-inner:label prot-next:label
       owners:label owner-loop:label pub-max:label pri-max:label
       oscan:label onext:label odone:label
       owner-prot:label owner-prev-start:label owner-prev:label
-      owner-next:label widn:label name-inline:label name-ready:label
-      name-loop:label name-ok:label pkg-scan:label pkg-inline:label
+      owner-next:label namespaces:label ns-loop:label ns-next:label
+      ns-inline:label ns-ready:label ns-bytes:label ns-byte-next:label
+      ns-roles:label ns-pub-max:label ns-pri-max:label ns-pri-done:label
+      ns-prot:label ns-prot-done:label ns-owner:label ns-owner-pub:label
+      ns-owner-next:label ns-owner-done:label ns-prev:label ns-prev-name:label
+      ns-prev-inline:label ns-prev-ready:label ns-prev-bytes:label
+      ns-prev-next:label ns-prev-start:label
+      widn:label name-inline:label name-ready:label name-loop:label
+      name-next:label name-ok:label pkg-scan:label pkg-inline:label
       pkg-ready:label pkg-bytes:label pkg-hit:label pkg-next:label pkg-done:label :}
    5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,                                     \ x10 = snapshot DATA source
@@ -4004,7 +4053,7 @@ package HB-EMIT
    17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
    prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
       14 9 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-CS bad BCOND,
       14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
    prot-max LBL,
       4 0 MOVZ,  5 12 0 ADDI,
@@ -4020,11 +4069,12 @@ package HB-EMIT
    6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
    9 OWNER-WID-OFF MOVZ,  9 10 9 ADD,
    8 0 MOVZ,  5 9 0 ADDI,
-   owner-loop LBL,  8 6 CMP,  C-GE widn BCOND,
+   owner-loop LBL,  8 6 CMP,  C-GE namespaces BCOND,
       14 5 OWNER-WID-PUB LDRW,  15 5 OWNER-WID-PRI LDRW,
-      14 bad CBZ,  15 bad CBZ,
+      14 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+      15 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
       4 OWNER-WID-LIMIT LIT64,
-      14 4 CMP,  C-HI bad BCOND,  15 4 CMP,  C-HI bad BCOND,
+      14 4 CMP,  C-CS bad BCOND,  15 4 CMP,  C-CS bad BCOND,
       14 15 CMP,  C-EQ bad BCOND,
       14 17 CMP,  C-LS pub-max BCOND,  17 14 0 ADDI,
    pub-max LBL,
@@ -4046,15 +4096,20 @@ package HB-EMIT
       \ is name-based and later-wins. Require exactly one case-folded package
       \ identity across the whole restored dictionary before any byte is copied.
       2 1 16 LDR,
+      3 2 DNAME-MIN-IN-MASK ANDI,  3 3 52 LSRI,
+      3 NAMESPACE:KIND-PACKAGE CMPI,  C-NE bad BCOND,
       0 2 12 LSLI,  0 0 12 LSRI,
       0 bad CBZ,  0 $FF CMPI,  C-HI bad BCOND,
       21 1 24 ADDI,
       3 2 DNAME-EXT ANDI,  3 name-inline CBZ,
          0 DNAME-INL CMPI,  C-LE bad BCOND,
          21 1 24 LDR,
-         21 DBASE CMP,  C-LT bad BCOND,
-         21 21 DBASE SUB,  21 21 25 ADD,
-         21 25 CMP,  C-LT bad BCOND,  21 10 CMP,  C-HI bad BCOND,
+         3 RBASE-VA LIT64,  21 3 CMP,  C-CC bad BCOND,
+         21 21 3 SUB,
+         2 10 25 SUB,  21 2 CMP,  C-HI bad BCOND,
+         21 21 25 ADD,
+         3 DICT-SIZE LIT64,  3 25 3 ADD,
+         21 3 CMP,  C-CC bad BCOND,  21 10 CMP,  C-HI bad BCOND,
          2 10 21 SUB,  0 2 CMP,  C-HI bad BCOND,
          name-ready B,
       name-inline LBL,
@@ -4063,7 +4118,11 @@ package HB-EMIT
       4 0 MOVZ,
       name-loop LBL,  4 0 CMP,  C-GE name-ok BCOND,
          2 21 4 ADD,  2 2 0 LDRB,
-         2 $3A CMPI,  C-EQ bad BCOND,
+         2 $3A CMPI,  C-NE name-next BCOND,
+         4 bad CBZ,
+         3 4 1 ADDI,  3 0 CMP,  C-GE bad BCOND,
+         2 21 3 ADD,  2 2 0 LDRB,  2 $3A CMPI,  C-EQ bad BCOND,
+      name-next LBL,
          4 4 1 ADDI,  name-loop B,
       name-ok LBL,
       24 0 MOVZ,  22 25 0 ADDI,  23 16 0 ADDI,
@@ -4071,13 +4130,18 @@ package HB-EMIT
          2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE pkg-next BCOND,
          3 22 16 LDR,
          2 3 12 LSLI,  2 2 12 LSRI,  2 0 CMP,  C-NE pkg-next BCOND,
+         12 3 DNAME-MIN-IN-MASK ANDI,  12 12 52 LSRI,
+         12 NAMESPACE:KIND-PACKAGE CMPI,  C-NE pkg-next BCOND,
          4 22 24 ADDI,
          2 3 DNAME-EXT ANDI,  2 pkg-inline CBZ,
             0 DNAME-INL CMPI,  C-LE bad BCOND,
             4 22 24 LDR,
-            4 DBASE CMP,  C-LT bad BCOND,
-            4 4 DBASE SUB,  4 4 25 ADD,
-            4 25 CMP,  C-LT bad BCOND,  4 10 CMP,  C-HI bad BCOND,
+            2 RBASE-VA LIT64,  4 2 CMP,  C-CC bad BCOND,
+            4 4 2 SUB,
+            2 10 25 SUB,  4 2 CMP,  C-HI bad BCOND,
+            4 4 25 ADD,
+            2 DICT-SIZE LIT64,  2 25 2 ADD,
+            4 2 CMP,  C-CC bad BCOND,  4 10 CMP,  C-HI bad BCOND,
             2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
             pkg-ready B,
          pkg-inline LBL,
@@ -4113,10 +4177,126 @@ package HB-EMIT
    owner-next LBL,
       5 5 OWNER-WID-ROW ADDI,  8 8 1 ADDI,  owner-loop B,
 
+   \ Every restored namespace contributes its role WIDs to the allocation
+   \ watermark. Validate exact path storage before trusting either role.
+   namespaces LBL,
+   22 25 0 ADDI,  23 16 0 ADDI,
+   ns-loop LBL,  23 widn CBZ,
+      2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE ns-next BCOND,
+      3 22 16 LDR,
+      13 3 DNAME-MIN-IN-MASK ANDI,  13 13 52 LSRI,
+      13 NAMESPACE:KIND-TYPE CMPI,  C-HI bad BCOND,
+      0 3 12 LSLI,  0 0 12 LSRI,  0 bad CBZ,
+      4 22 24 ADDI,
+      2 3 DNAME-EXT ANDI,  2 ns-inline CBZ,
+         0 DNAME-INL CMPI,  C-LE bad BCOND,
+         4 22 24 LDR,
+         2 RBASE-VA LIT64,  4 2 CMP,  C-CC bad BCOND,
+         4 4 2 SUB,
+         2 10 25 SUB,  4 2 CMP,  C-HI bad BCOND,
+         4 4 25 ADD,
+         2 DICT-SIZE LIT64,  2 25 2 ADD,
+         4 2 CMP,  C-CC bad BCOND,  4 10 CMP,  C-HI bad BCOND,
+         2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
+         ns-ready B,
+      ns-inline LBL,
+         0 DNAME-INL CMPI,  C-GT bad BCOND,
+      ns-ready LBL,
+      7 0 MOVZ,
+      ns-bytes LBL,  7 0 CMP,  C-GE ns-roles BCOND,
+         2 4 7 ADD,  2 2 0 LDRB,
+         2 $3A CMPI,  C-NE ns-byte-next BCOND,
+         7 bad CBZ,
+         3 7 1 ADDI,  3 0 CMP,  C-GE bad BCOND,
+         12 4 3 ADD,  12 12 0 LDRB,  12 $3A CMPI,  C-EQ bad BCOND,
+      ns-byte-next LBL,
+         7 7 1 ADDI,  ns-bytes B,
+      ns-roles LBL,
+         14 22 0 LDR,  15 22 8 LDR,
+         2 14 32 LSRI,  2 bad CBNZ,
+         14 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+         2 OWNER-WID-LIMIT LIT64,  14 2 CMP,  C-CS bad BCOND,
+         14 17 CMP,  C-LS ns-pub-max BCOND,  17 14 0 ADDI,
+      ns-pub-max LBL,
+         13 NAMESPACE:KIND-PACKAGE CMPI,  C-EQ ns-pri-max BCOND,
+         15 bad CBNZ,
+         1 0 MOVZ,  24 0 MOVZ,  2 PROT-WID-OFF MOVZ,  2 10 2 ADD,
+         ns-prot B,
+      ns-pri-max LBL,
+         3 15 32 LSRI,  3 bad CBNZ,
+         15 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+         2 OWNER-WID-LIMIT LIT64,  15 2 CMP,  C-CS bad BCOND,
+         14 15 CMP,  C-EQ bad BCOND,
+         15 17 CMP,  C-LS ns-pri-done BCOND,  17 15 0 ADDI,
+      ns-pri-done LBL,
+         1 0 MOVZ,  24 0 MOVZ,  2 PROT-WID-OFF MOVZ,  2 10 2 ADD,
+      ns-prot LBL,  1 11 CMP,  C-GE ns-prot-done BCOND,
+         3 2 0 LDRW,
+         14 3 CMP,  5 C-EQ CSET,  24 24 5 ADD,
+         15 3 CMP,  C-EQ bad BCOND,
+         2 2 4 ADDI,  1 1 1 ADDI,  ns-prot B,
+      ns-prot-done LBL,
+         24 13 CMP,  C-NE bad BCOND,
+
+         1 0 MOVZ,  2 9 0 ADDI,
+      ns-owner LBL,  1 6 CMP,  C-GE ns-owner-done BCOND,
+         3 2 OWNER-WID-PUB LDRW,  5 2 OWNER-WID-PRI LDRW,
+         14 3 CMP,  C-NE ns-owner-pub BCOND,
+            15 5 CMP,  C-EQ ns-owner-next BCOND,
+            bad B,
+      ns-owner-pub LBL,
+         14 5 CMP,  C-EQ bad BCOND,
+         15 3 CMP,  C-EQ bad BCOND,
+         15 5 CMP,  C-EQ bad BCOND,
+      ns-owner-next LBL,
+         2 2 OWNER-WID-ROW ADDI,  1 1 1 ADDI,  ns-owner B,
+      ns-owner-done LBL,
+
+      ns-prev-start LBL,
+      1 25 0 ADDI,
+      ns-prev LBL,  1 22 CMP,  C-GE ns-next BCOND,
+         2 1 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE ns-prev-next BCOND,
+         2 1 16 LDR,
+         3 2 DNAME-MIN-IN-MASK ANDI,  3 3 52 LSRI,
+         8 1 0 LDR,  7 1 8 LDR,
+         14 8 CMP,  C-EQ bad BCOND,  14 7 CMP,  C-EQ bad BCOND,
+         15 8 CMP,  C-EQ bad BCOND,
+         13 NAMESPACE:KIND-PACKAGE CMPI,  C-NE ns-prev-name BCOND,
+         3 NAMESPACE:KIND-PACKAGE CMPI,  C-NE ns-prev-name BCOND,
+         15 7 CMP,  C-EQ bad BCOND,
+      ns-prev-name LBL,
+         8 2 12 LSLI,  8 8 12 LSRI,  8 0 CMP,  C-NE ns-prev-next BCOND,
+         5 1 24 ADDI,
+         3 2 DNAME-EXT ANDI,  3 ns-prev-inline CBZ,
+            5 1 24 LDR,
+            3 RBASE-VA LIT64,  5 3 CMP,  C-CC bad BCOND,
+            5 5 3 SUB,
+            3 10 25 SUB,  5 3 CMP,  C-HI bad BCOND,
+            5 5 25 ADD,
+            3 DICT-SIZE LIT64,  3 25 3 ADD,
+            5 3 CMP,  C-CC bad BCOND,  5 10 CMP,  C-HI bad BCOND,
+            3 10 5 SUB,  8 3 CMP,  C-HI bad BCOND,
+            ns-prev-ready B,
+         ns-prev-inline LBL,
+         ns-prev-ready LBL,
+         7 0 MOVZ,
+      ns-prev-bytes LBL,  7 0 CMP,  C-GE bad BCOND,
+         2 4 7 ADD,  2 2 0 LDRB,
+         3 2 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  2 2 3 ORR,
+         3 5 7 ADD,  3 3 0 LDRB,
+         8 3 $41 SUBI,  8 $1A CMPI,  8 C-CC CSET,  8 8 5 LSLI,  3 3 8 ORR,
+         2 3 CMP,  C-NE ns-prev-next BCOND,
+         7 7 1 ADDI,  ns-prev-bytes B,
+      ns-prev-next LBL,
+         1 1 DREC ADDI,  ns-prev B,
+   ns-next LBL,
+      22 22 DREC ADDI,  23 23 1 SUBI,  ns-loop B,
+
    widn LBL,
    6 10 WIDN-CELL LDR,
    14 6 32 LSRI,  14 bad CBNZ,
    6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+   14 OWNER-WID-LIMIT LIT64,  6 14 CMP,  C-HI bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
 \ ---- AOT snapshot? (trailer at the end of our own __text). If present:
@@ -4393,27 +4573,31 @@ s" c-call-checker-end-package" s" --" TRUST
    done LBL, ;
 s" c-call-checker-using" s" --" TRUST
 
-: C-PACKAGE-FAIL ( n -- ) {: rc:n :}                  \ package keyword misuse ($4A no name / $4B wrong context): recoverable inside evaluate, fail-closed exit rc at top level
+: C-PACKAGE-FAIL ( n -- ) {: rc:n :}                  \ package keyword misuse ($4A no name / $4B wrong context) or capacity ($4D): recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-package-fail" s" n --" TRUST
 
-: C-PACKAGE-NAME-GUARD ( -- )
-   LBL LBL LBL {: scan:label bad:label done:label :}
+package HB-EMIT
+
+private
+
+: C-PACKAGE-PATH-GUARD ( -- )
+   LBL LBL LBL LBL {: scan:label next:label bad:label done:label :}
    14 0 MOVZ,
    scan LBL,
       15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE done BCOND,
-      15 DATA TKA-CELL LDR,  15 15 14 ADD,  15 15 0 LDRB,
-      15 $3A CMPI,  C-EQ bad BCOND,
+      16 DATA TKA-CELL LDR,  16 16 14 ADD,  16 16 0 LDRB,
+      16 $3A CMPI,  C-NE next BCOND,
+      14 bad CBZ,
+      17 14 1 ADDI,  17 15 CMP,  C-GE bad BCOND,
+      16 DATA TKA-CELL LDR,  16 16 17 ADD,  16 16 0 LDRB,
+      16 $3A CMPI,  C-EQ bad BCOND,
+   next LBL,
       14 14 1 ADDI,  scan B,
    bad LBL,  $4B C-PACKAGE-FAIL
    done LBL, ;
-s" c-package-name-guard" s" --" TRUST
-
-: C-PACKAGE-NEW-PRIVATE-WID ( -- )
-   12 DATA WIDN-CELL LDR,
-   13 12 1 ADDI,  13 DATA WIDN-CELL STR, ;
-s" c-package-new-private-wid" s" --" TRUST
+s" c-package-path-guard" s" --" TRUST
 
 : C-PACKAGE-ALLOC-WIDS ( -- )
    17 DATA WIDN-CELL LDR,
@@ -4422,26 +4606,22 @@ s" c-package-new-private-wid" s" --" TRUST
 s" c-package-alloc-wids" s" --" TRUST
 
 : C-PACKAGE-NEW-RECORD ( -- )
+   LBL {: widroom:label :}
    C-QUALIFY-CAP
+   17 DATA WIDN-CELL LDR,  16 OWNER-WID-LIMIT 2 - LIT64,
+   17 16 CMP,  C-LS widroom BCOND,
+      $4D C-PACKAGE-FAIL
+   widroom LBL,
+   5 NDICT 0 ADDI,  11 DREC MOVZ,  5 5 11 MUL,  5 DBASE 5 ADD,
+   C-STORE-NAME-AT
    C-PACKAGE-ALLOC-WIDS
-   9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-   C-STORE-NAME
-   11 DATA WIDN-CELL LDR,  11 11 2 SUBI,
-   12 11 1 ADDI,
-   11 9 0 STR,  12 9 8 STR,
-   15 0 MOVN,  15 9 40 STR,
-   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
-   5 9 0 ADDI, ;
+   11 17 0 ADDI,  12 16 0 ADDI,
+   11 5 0 STR,  12 5 8 STR,
+   15 0 MOVN,  15 5 40 STR,
+   NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL, ;
 s" c-package-new-record" s" --" TRUST
 
-: C-PACKAGE-EXISTING-PRIVATE ( label -- ) {: done:label :}
-   LBL {: havepri:label :}
-   12 havepri CBNZ,
-      C-PACKAGE-NEW-PRIVATE-WID
-      12 5 8 STR,
-   havepri LBL,
-   done B, ;
-s" c-package-existing-private" s" label --" TRUST
+;package
 
 : C-PACKAGE-RECORD-MATCH ( label label -- ) {: hit:label miss:label :}
    LBL LBL {: cmp:label inline:label :}
@@ -4463,38 +4643,55 @@ s" c-package-existing-private" s" label --" TRUST
       7 7 1 ADDI,  cmp B, ;
 s" c-package-record-match" s" label label --" TRUST
 
-: C-PACKAGE-ENSURE ( -- )
-   LBL LBL LBL LBL LBL
-   {: loop:label miss:label hit:label make:label done:label :}
-   C-PACKAGE-NAME-GUARD
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   loop LBL,
-      6 make CBZ,
-      hit miss C-PACKAGE-RECORD-MATCH
-      hit LBL,
-         11 5 0 LDR,  12 5 8 LDR,
-         done C-PACKAGE-EXISTING-PRIVATE
-      miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+package HB-EMIT
+
+private
+
+: C-PACKAGE-PREFIX ( -- )                    \ x9=absolute bytes, x10=prefix length; returns x5/x11/x12
+   LBL LBL {: make:label done:label :}
+   LNSFIND LABEL@ BL,
+   5 make CBZ,
+      11 NAMESPACE:KIND-PACKAGE CMPI,  C-EQ done BCOND,
+      $4B C-PACKAGE-FAIL
    make LBL,
       C-PACKAGE-NEW-RECORD
-   done LBL, ;
+      done B,
+   done LBL,
+   11 5 0 LDR,  12 5 8 LDR, ;
+s" c-package-prefix" s" --" TRUST
+
+: C-PACKAGE-ENSURE ( -- )
+   LBL LBL LBL {: scan:label next:label final:label :}
+   17 0 MOVZ,
+   scan LBL,
+      14 DATA TKL-CELL LDR,  17 14 CMP,  C-GE final BCOND,
+      15 DATA TKA-CELL LDR,  15 15 17 ADD,  15 15 0 LDRB,
+      15 $3A CMPI,  C-NE next BCOND,
+         SP SP 16 SUBI,  17 SP 0 STR,
+         9 DATA TKA-CELL LDR,  10 17 0 ADDI,
+         C-PACKAGE-PREFIX
+         17 SP 0 LDR,  SP SP 16 ADDI,
+   next LBL,
+      17 17 1 ADDI,  scan B,
+   final LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+      C-PACKAGE-PREFIX ;
 s" c-package-ensure" s" --" TRUST
 
 package HB-EMIT
 
 : C-PACKAGE-PROT-GUARD ( -- )
-   LBL LBL LBL LBL {: loop:label miss:label hit:label done:label :}
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   loop LBL,
-      6 done CBZ,
-      hit miss C-PACKAGE-RECORD-MATCH
-      hit LBL,
-         9 5 0 LDR,  LPROTWIDQ LABEL@ BL,
-         13 done CBZ,
-         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
-      miss LBL,
-         5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   LBL LBL {: package:label done:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   LNSFIND LABEL@ BL,
+   5 done CBZ,
+      11 NAMESPACE:KIND-PACKAGE CMPI,  C-EQ package BCOND,
+      $4B C-PACKAGE-FAIL
+   package LBL,
+      9 5 0 LDR,  LPROTWIDQ LABEL@ BL,
+      13 done CBZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 s" c-package-prot-guard" s" --" TRUST
 
@@ -4507,8 +4704,9 @@ s" c-package-prot-guard" s" --" TRUST
    LTOK LABEL@ BL,  0 hastok CBNZ,
       $4A C-PACKAGE-FAIL
    hastok LBL,
-   C-CALL-CHECKER-PACKAGE
+   C-PACKAGE-PATH-GUARD
    C-PACKAGE-PROT-GUARD
+   C-CALL-CHECKER-PACKAGE
    2 3 MOVZ,  LPROT LABEL@ BL,
    C-PACKAGE-ENSURE
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -6740,7 +6938,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    ASM-INIT  0 #PL !  0 PNP ! ;
 
 : EMIT-LABEL-CORE ( -- )
-   LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LANCHOR !  LBL LFIND !  LBL LNSFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
@@ -7046,6 +7244,7 @@ package HB-EMIT
    EMIT-PROTWID  OWNER-WID-EMIT:ROUTINES s" primitives/protected-wid" HB-SIZE:MARK
    EM-AOT-OWNER-ROUTINE       s" primitives/aot-owner" HB-SIZE:MARK
    EMIT-FLUSH                 s" primitives/flush" HB-SIZE:MARK
+   EMIT-NS-FIND               s" primitives/ns-find" HB-SIZE:MARK
    EMIT-FIND                  s" primitives/find" HB-SIZE:MARK
    EMIT-FIND-USED             s" primitives/find-used" HB-SIZE:MARK
    EMIT-HIDX                  s" primitives/hash-index" HB-SIZE:MARK

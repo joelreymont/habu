@@ -72,9 +72,11 @@ public
 
 : FINISH ( -- )
    data-base PROT-WID-N-CELL + @ BEFORE @ 1+ T=
-   data-base PROT-WID-N-CELL + @ {: before:n :}
-   s" ZRES:OK" PROT-WID-CTOR-ADD
-   data-base PROT-WID-N-CELL + @ before T= ;
+   s" ZRES" XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? TTRUE
+   dup XREF-LEN 0 T=
+   dup XREF-FLAGS DNAME-MIN-IN-MASK and 52 rshift NAMESPACE:KIND-TYPE T=
+   XREF-START prot-wid? TTRUE ;
 
 ;package
 
@@ -297,7 +299,7 @@ s" undefine zres:ok" TCE-CATCH E-CTOR-PROTECTED T=
 \ ...and the constructor is still fully usable afterwards.
 : ZMK-OK3 ( n -- zres ) ZRES:OK ;
 s" UNDEF-SAFE" type cr
-\ a new tail is now caught by the native protected-WID wall; seal-package.f runs
+\ a new tail is now caught by the native protected-WID wall; seal.f runs
 \ that process-exit regression because it cannot be caught in-process.
 \ ordinary undefine of a user word still works.
 : ZDOOMED ( -- n ) 5 ;

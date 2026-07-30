@@ -1,11 +1,11 @@
 \ bootstrap-wide-memory-src.f - stage0 wide ADT memory execution/goldens.
 
-\ This isolated fixture does not load xref.f's constructor-package registration
-\ bridge. Keep the hook inert while the fixture exercises wide codegen.
+\ This isolated fixture does not load the namespace finalization/protection owner.
+\ Keep the hook inert while the fixture exercises wide codegen.
 : BWM-STAGE0-PROT-NOP ( ptr u8 n -- ) 2drop ;
-: BWM-PROT-INSTALL ( -- ) [: BWM-STAGE0-PROT-NOP ;] is TDECL-PROT-WID-XT ;
+: BWM-PROT-INSTALL ( -- ) [: BWM-STAGE0-PROT-NOP ;] is TDECL-FINALIZE-XT ;
 BWM-PROT-INSTALL
--1 TDECL-PROT-WID-ARMED !
+-1 TDECL-FINALIZE-ARMED !
 
 SUMTYPE bwm2 1
   VARIANT pair a ;VARIANT

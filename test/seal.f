@@ -421,7 +421,7 @@ public
    SLV-RC @ 0 T= ;
 
 \ --- protected-WID table capacity (dot habu-seal-protwid-cap-6f1c9d2b) --------------
-\ Each PUBLIC ADT family registers one protected WID (xref.f PROT-WID-CTOR-ADD ->
+\ Each PUBLIC ADT family registers one protected WID (XREF:FINALIZE-NAMESPACE ->
 \ prot-wid-add); the table holds PROT-WID-MAX (256, raised from 16) entries. A batch
 \ child declaring K public families is generated with unique letter-pair names (each
 \ family scopes its own 'foo' variant, so the variant name may repeat). The

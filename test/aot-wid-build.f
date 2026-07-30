@@ -105,16 +105,36 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
       s"    " DRV+  v vu DRV+  s"  AOT-DATA-SIZE !" DRV+ DRV-NL
    then ;
 
+\ Optional post-capture compact-record forge. It appends the forged row after one
+\ valid ordinary row, so the companion boot test proves whole-set restore
+\ preflight completes before publishing the valid prefix.
+: REC-WID-FORGE-LINE ( -- )
+   s" HABU_AOT_REC_WID" GETENV {: v:ptr vu:n :}
+   vu 0 > if
+      s"    " DRV+  v vu DRV+  s"  AOT-TEST-REC-WID!" DRV+ DRV-NL
+   then ;
+
 \ Append PWID-GO: mirror STDIN-DRIVER:RUN, injecting two protected word-list ids
 \ (300, one slot for WID > 255; and 70000, one slot for WID > 65535) into the
 \ capture buffer after CAPTURE-REPL. These two literal ids are the fixture
 \ contract: test/aot-wid-suite.f asserts exactly 300 and 70000 are restored, so
 \ any drift here turns that suite red (it is self-checking) - keep the two in step.
 : INJECT ( -- )
+   s" : AOT-TEST-REC-WID! ( n -- )" DRV+ DRV-NL
+   S\"    AOT-REC-N @ AOT-REC-MAX >= if s\" aot-wid-build: compact fixture full\" 74 die then" DRV+ DRV-NL
+   s"    AOT-REC-N @ 0 ?do" DRV+ DRV-NL
+   s"       i ACAP-CREC-DST 12 + dup ACAP-W32@ $FFFFFFFF <> if" DRV+ DRV-NL
+   s"          drop i ACAP-CREC-DST AOT-REC-N @ ACAP-CREC-DST AOT-CREC-ROW BYTE-COPY" DRV+ DRV-NL
+   s"          AOT-REC-N @ ACAP-CREC-DST 12 + AOT-P32!" DRV+ DRV-NL
+   s"          AOT-REC-N @ 1+ AOT-REC-N ! unloop exit" DRV+ DRV-NL
+   s"       then drop" DRV+ DRV-NL
+   s"    loop" DRV+ DRV-NL
+   S\"    drop s\" aot-wid-build: no compact ordinary record\" 74 die ;" DRV+ DRV-NL
    s" : PWID-GO ( -- )" DRV+ DRV-NL
    s"    CAPTURE-REPL" DRV+ DRV-NL
    s"    300 0 ACAP-PWID-PUT   70000 1 ACAP-PWID-PUT   2 AOT-PWID-N !" DRV+ DRV-NL
    SPAN-FORGE-LINE
+   REC-WID-FORGE-LINE
    s"    0 0= STDIN? !" DRV+ DRV-NL
    s"    HB@ 0 HB-EMIT:FORTH" DRV+ DRV-NL
    S\"    s\" hb\" STDIN-OUT DRV-EMIT-IMAGE" DRV+ DRV-NL

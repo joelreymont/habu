@@ -2052,7 +2052,14 @@ variable SZA-I
    THROW-CORRUPT-MSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
 
 : BWORDLIST ( -- )
-   9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
+   LBL LBL {: room:label msg:label :}
+   9 DATA WIDN-CELL LDR,
+   10 OWNER-WID-LIMIT LIT64,  9 10 CMP,  C-CC room BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 32 MOVZ,  NR-WRITE SYS,
+      0 77 MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  s" hb: wordlist WID space exhausted" BYTES,
+   room LBL,
+   9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;
 
 : BGETCUR ( -- )
    9 DATA CUR-CELL LDR,  9 G-PUSH ;
@@ -2834,6 +2841,46 @@ variable FIND-HNEXT
 variable FIND-HINL
 variable FIND-HCMP
 variable FIND-HMATCH
+
+package HB-EMIT
+
+private
+
+variable LNSFIND
+
+: EMIT-NS-FIND ( -- )
+   LBL LBL LBL LBL LBL LBL
+   {: loop:label next:label inline:label cmp:label found:label miss:label :}
+   LNSFIND LABEL@ LBL,
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   loop LBL,
+      6 miss CBZ,
+      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE next BCOND,
+      14 5 16 LDR,  15 14 12 LSLI,  15 15 12 LSRI,
+      15 10 CMP,  C-NE next BCOND,
+      16 5 24 ADDI,
+      15 14 DNAME-EXT ANDI,  15 inline CBZ,
+         16 5 24 LDR,
+      inline LBL,
+      7 0 MOVZ,
+      cmp LBL,
+         7 10 CMP,  C-GE found BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 9 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE next BCOND,
+         7 7 1 ADDI,  cmp B,
+      next LBL,
+         5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   found LBL,
+      11 5 16 LDR,
+      11 11 DNAME-MIN-IN-MASK ANDI,  11 11 52 LSRI,
+      RET,
+   miss LBL,
+      5 0 MOVZ,  RET, ;
+
+;package
 
 : EMIT-FIND ( -- )
    LFIND LABEL@ LBL,
