@@ -2236,6 +2236,10 @@ fits.
   Remove the old writer, reader, validator, fixtures, and state in one green
   change; do not preserve an empty ABI with versions, tombstones, or migration
   branches.
+- **Census namespace claims before accepting a package rename.** `HB-BUILD`
+  already owns the user-facing build tool, so renaming the native emission
+  lifecycle into it would merge unrelated authorities. Fold lifecycle state
+  into its real `HB-EMIT` owner and leave one package per concern.
 - **Audit every consumer before reusing a protection registry.** PROT-WID
   membership also blocks ahead-of-time calls, so enrolling owner package WIDs
   would change public callability instead of only guarding publication.
