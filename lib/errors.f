@@ -521,7 +521,8 @@ public
 \                 (package CODEGEN-COMPARE)
 \   -8280..-8299  native stage N1 straight-line HIR dialect (package HIR)
 \   -8300..-8319  native stage N1 straight-line elaborator (package NELAB)
-\   -8320..-8339  unassigned
+\   -8320..-8339  native ARM64 register allocation (package A64RA) and the
+\                 independent allocation validator (package A64RAV)
 \   -8340..-8359  native ARM64 machine dialect (package A64IR)
 \   -8360..-8379  native ARM64 instruction selection (package A64SEL)
 \   -8380..-8999  unassigned. The remaining dialect packages (SIR, LIR, and the
@@ -754,6 +755,44 @@ public
 -8303 constant E-NELAB-ARITY     \ a declared input or output count outside the accepted range, or a body that does not leave exactly the declared outputs
 -8304 constant E-NELAB-UNDER     \ a word consuming more values than the compile-time value vector holds
 -8305 constant E-NELAB-CAP       \ a compile-time value vector past the elaborator's ceiling
+
+\ Native ARM64 register allocation (package A64RA): -8320..-8329
+\
+\ Design section 7.9's linear scan over one straight-line block of the machine
+\ dialect. Refusals another authority owns keep that authority's name - a
+\ register no routine may hold state in is A64EFF's E-A64EFF-GPR, and a
+\ malformed module is IR-OP's or IR-VERIFY's - so these ten are the facts the
+\ allocator alone can judge: whether it was told which dialect it is reading,
+\ whether the module and contract it was handed are the ones it was told about,
+\ and whether what it found can be given real registers at all.
+-8320 constant E-A64RA-BIND      \ allocation attempted before the dialect's opcode and type identities were bound, or a second binding over a live one
+-8321 constant E-A64RA-MODULE    \ a frozen module that is not the bound one
+-8322 constant E-A64RA-STATE     \ an allocation reader used before the walk sealed one, or after a later walk replaced it
+-8323 constant E-A64RA-SHAPE     \ a module this leaf cannot allocate: not exactly one function, not exactly one block, or values the block does not hold
+-8324 constant E-A64RA-OPCODE    \ an operation of a form outside the dialect's family, whose register constraints are therefore unknown
+-8325 constant E-A64RA-CLASS     \ a value whose type is not the dialect's general-register type, so no general register can hold it
+-8326 constant E-A64RA-TARGET    \ a context bound to a target these registers do not belong to
+-8327 constant E-A64RA-CAP       \ a value ordinal outside the allocator's tables: more values in one block than they hold, or a read past the count the sealed walk recorded
+-8328 constant E-A64RA-TIE       \ a move-wide overwrite whose kept value is still needed afterwards: its one register field cannot hold both
+-8329 constant E-A64RA-PRESSURE  \ more values live at once than the routine may destroy: spilling has no lowering in this dialect yet
+
+\ Native ARM64 allocation validator (package A64RAV): -8330..-8339
+\
+\ Design section 7.9's independent check of a finished assignment, and section
+\ 11.3's register-allocation validator. It re-derives every live interval from
+\ the frozen module rather than reading the allocator's own belief, so these ten
+\ are the ways an assignment can fail to be true of the module it claims to be
+\ about.
+-8330 constant E-A64RAV-STATE     \ acceptance asked for with no sealed allocation, or an accepted answer read after a later walk replaced it
+-8331 constant E-A64RAV-MODULE    \ a module that is not the one the allocation was made from
+-8332 constant E-A64RAV-CONTRACT  \ a routine contract that is not the one the allocation was made under
+-8333 constant E-A64RAV-INTERVAL  \ a recorded live interval that is not the one the module's own definitions and uses give
+-8334 constant E-A64RAV-COVER     \ a value of the block with no assignment, or an assignment for a value the block does not hold
+-8335 constant E-A64RAV-REGISTER  \ an assigned register outside the set the routine contract says it may destroy
+-8336 constant E-A64RAV-OVERLAP   \ two values live at the same time assigned the same register
+-8337 constant E-A64RAV-CLASS     \ a value whose type is not the dialect's general-register type
+-8338 constant E-A64RAV-TIE       \ a move-wide overwrite whose result and kept operand are not the same register
+-8339 constant E-A64RAV-SHAPE     \ a module that is not exactly one function of one block, re-derived rather than taken from the allocator
 
 \ Native ARM64 machine dialect (package A64IR): -8340..-8359
 \

@@ -474,6 +474,7 @@ public
    s" test/compiler/native-elaborate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-a64ir.f" GSI-FORK-INCLUDE
    s" test/compiler/native-select.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-regalloc.f" GSI-FORK-INCLUDE
    s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
    s" test/ptr-elem-test.f" GSI-FORK-INCLUDE
