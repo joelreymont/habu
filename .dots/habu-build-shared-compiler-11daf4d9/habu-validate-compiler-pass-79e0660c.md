@@ -73,3 +73,14 @@ slot, so every arena, canonical table and pass result it owned is unreclaimable
 for the process lifetime. Dotted as habu-retire-a-ctx-66b6c297 with the measured
 symptom; the new test works around it by catching every refusal inside its own
 context rather than weakening the test.
+
+BOUNDARY DECISION 2026-07-30 (orchestrator, after review): the witness
+validate/accept ceremony is for PERSISTENCE and cross-process boundaries only
+- a kernel cache, a cross-process pass, a stored artifact. Between passes
+running in one process, the sealed typed module handle IS the identity check
+(same answer a single-process C compiler gets from its one in-memory IR), and
+threading WITNESS/VALIDATE through in-process hand-offs would be ceremony, not
+safety. Do not "complete" that wiring for tidiness. The first real consumer of
+the witness path is whichever lands first of: the PTX kernel cache or a
+persisted pass artifact; wire it there, with the snapshot campaign's lesson
+(trailer + format version + refusal on mismatch) as the precedent.
