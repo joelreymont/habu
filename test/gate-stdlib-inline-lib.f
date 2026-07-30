@@ -495,7 +495,6 @@ public
    s" test/seal.f" GSI-FORK-INCLUDE
    s" test/require-cap-test.f" GSI-FORK-INCLUDE
    s" test/seal-absence.f" GSI-FORK-INCLUDE
-   s" test/seal-package.f" GSI-FORK-INCLUDE
    s" test/engine-error-package.f" GSI-FORK-INCLUDE
    s" test/catch-frame.f" GSI-FORK-INCLUDE
    \ test/pre-trust-defer.f is deliberately NOT fork-included: four child-engine

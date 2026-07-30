@@ -283,34 +283,6 @@ variable RC
 : TRY-PUBLISH ( -- )
    TOK @ DECL-EVENT:PUBLISH ;
 
-public
-
-: REOPEN-SEALED ( -- )
-   S\" package TYPE-FIELD-OWNER\nTX-TOP\n;package"
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   ERR erru s" TYPE-FIELD-OWNER" CONTAINS? TTRUE ;
-
-\ The seal is what makes ROLLBACK-THROUGH's privacy load-bearing rather than
-\ decorative: absence from the dictionary only means nothing can NAME it, while
-\ the seal is what stops source from reopening the package and calling it by its
-\ bare private tail. Assert that route closes with the same exit 84, so a future
-\ change that unseals this package fails here instead of silently handing every
-\ caller a way to retire field frames out of order.
-: REOPEN-CLEANUP-SEALED ( -- )
-   S\" package TYPE-FIELD-OWNER\n0 ROLLBACK-THROUGH\n;package"
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS SUBJECT:RUN
-   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N {: erru:n :}
-   LEN>N {: outu:n :}
-   outu 0 T=
-   ERR erru s" TYPE-FIELD-OWNER" CONTAINS? TTRUE ;
-
-private
-
 DECL-EVENT:COUNT BASE-EVENT !
 
 public
@@ -512,7 +484,5 @@ RELEASE-SEAM-ABSENT
 
 ;package
 
-TYPE-FIELD-OWNER-TEST:REOPEN-SEALED
-TYPE-FIELD-OWNER-TEST:REOPEN-CLEANUP-SEALED
 T-REPORT
 s" type-field-owner-suite: ok" type cr

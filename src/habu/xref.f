@@ -273,7 +273,6 @@ private
    [: CHECK ;] is TDECL-NAME-PREFLIGHT-XT ;
 
 INSTALL
-get-current prot-wid-add
 
 ;package
 

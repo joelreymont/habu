@@ -169,8 +169,6 @@ undefine GENERATED-DECL-OWNER:LAST-CLEANUP-PARTICIPANT
 undefine GENERATED-DECL-DICTIONARY:PREFLIGHT
 undefine GENERATED-DECL-DICTIONARY:SNAPSHOT-RESET
 
-get-current prot-wid-add
-
 ;package
 
 \ The field owner's multi-frame cleanup vector and its total release vector are

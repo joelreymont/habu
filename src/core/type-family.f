@@ -1336,11 +1336,6 @@ public
    a u RESERVED? IF E-RESERVED throw THEN
    a u FAMILY-TAKEN? IF E-RESERVED throw THEN ;
 
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
-
 ;package
 
 \ A field tail may not spell a grammar keyword, a control word, or one of the
@@ -1617,12 +1612,6 @@ public
    id 1 + PF-N !
    tx ;
 
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
-private
-
 ;package
 
 package TYPE-FIELD
@@ -1645,10 +1634,6 @@ public
 : ALIGN@ ( n -- n ) PF-ALIGN@ ;
 : FLAGS@ ( n -- n ) PF-FLAGS@ ;
 
-private
-get-current prot-wid-add
-public
-get-current prot-wid-add
 ;package
 
 \ Concrete schema linearity. Family arguments are checker terms and are
@@ -1992,11 +1977,6 @@ package CHECKER-DECL-FRAME
    [: TYPES-RESTORE ;] is TYPES-RESTORE-XT
    [: TYPES-RELEASE ;] is TYPES-RELEASE-XT ;
 INSTALL-TYPES
-
-get-current prot-wid-add
-public
-get-current prot-wid-add
-private
 
 ;package
 

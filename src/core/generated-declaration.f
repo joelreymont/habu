@@ -685,7 +685,6 @@ public
 private
 
 INIT
-get-current prot-wid-add
 
 ;package
 
@@ -725,7 +724,6 @@ TRUSTED: INSTALL-DECLARATION-RUNNER ( -- )
    -1 TDECL-TXN-ARMED ! ;
 
 INSTALL-DECLARATION-RUNNER
-get-current prot-wid-add
 
 ;package
 
@@ -935,6 +933,5 @@ public
 private
 
 INSTALL
-get-current prot-wid-add
 
 ;package

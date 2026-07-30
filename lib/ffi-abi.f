@@ -243,13 +243,9 @@ TRUSTED: DLSYM-RAW ( n ptr u8 -- n ) {: handle:n name:ptr :}
    0 FFI-DLBUF 3 cells + !
    FFI-DLBUF FFI-DLBUF 2 cells + 2 DLSYM-SLOT @ ffi-call-bounded ;
 
-get-current prot-wid-add
-
 public
 
 : DLOPEN ( ptr u8 n -- n ) DLOPEN-RAW ;
 : DLSYM ( n ptr u8 -- n ) DLSYM-RAW ;
-
-get-current prot-wid-add
 
 ;package

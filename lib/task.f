@@ -511,12 +511,4 @@ TASK-MIN-STACK constant MIN-STACK
 : RELEASE ( ptr a -- )
    RELEASE ;
 
-private
-
-get-current prot-wid-add
-
-public
-
-get-current prot-wid-add
-
 ;package

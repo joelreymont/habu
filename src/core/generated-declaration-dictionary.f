@@ -100,6 +100,5 @@ public
 private
 
 INSTALL
-get-current prot-wid-add
 
 ;package

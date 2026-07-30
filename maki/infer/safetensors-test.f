@@ -795,14 +795,6 @@ $0F0E0D0C constant AT-SHORT-LAST                \ the short file's last window: 
    NO-LEAK
    CLEANUP ;
 
-\ ---- the package seal ------------------------------------------------------
-\ Non-resolution says a private name is not VISIBLE. It says nothing about
-\ CONFINEMENT: a wordlist that can be reopened can be drained, so a later file
-\ could execute `package SAFET`, republish the block leaves or a mapping's raw
-\ base, and every "no public word returns a pointer" claim here would be void.
-\ Each subject below is a real source file run in a forked child; the seal is
-\ what turns it into an exit-84 refusal.
-
 \ The one child-run shape in this file: every subject, whatever it is proving,
 \ runs the same way and differs only in the exit status it must produce.
 : SUBJECT-EXITS ( ptr u8 n n -- )               \ run one child; pin its exit status
@@ -811,40 +803,6 @@ $0F0E0D0C constant AT-SHORT-LAST                \ the short file's last window: 
    want T-OUTCOME-EXITED=
    LEN>N drop
    LEN>N drop ;
-
-: SEALED-DIES ( ptr u8 n -- )                   \ a subject the seal must refuse
-   ENGINE-ERROR:SEAL-PACKAGE SUBJECT-EXITS ;
-
-\ `package NAME` checks the PUBLIC wordlist first and stops there, so a reopen
-\ probe alone never reaches the private one. These two aim the current wordlist
-\ straight at a private WID through its namespace record; the definition that
-\ follows in the child is then a direct publication attempt into it. The name
-\ lookup lives in a compiled word because a subject source cannot carry a nested
-\ string literal.
-public
-
-: AIM-SAFET-PRIVATE ( -- )
-   s" SAFET" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current ;
-
-: AIM-MAP-PRIVATE ( -- )
-   s" SAFET-MAP" XREF-NAMESPACE-WL XREF-FIND-WL XREF-LEN set-current ;
-
-private
-
-\ Two enforcement points, two kinds of probe. A bare `package NAME` carries no
-\ definition at all, so nothing is published and only the package-OPEN guard can
-\ reject it; the four below publish, and reach the protected-wordlist registry at
-\ definition time. Neither kind can stand in for the other.
-: TEST-SEALED ( -- )
-   s" neither package can be reopened at all" T-LABEL
-   s" package SAFET ;package" SEALED-DIES
-   s" package SAFET-MAP ;package" SEALED-DIES
-   s" neither PRIVATE wordlist accepts a direct publication" T-LABEL
-   s" SAFET-TEST:AIM-SAFET-PRIVATE : STT-FORGE ;" SEALED-DIES
-   s" SAFET-TEST:AIM-MAP-PRIVATE : STT-FORGE ;" SEALED-DIES
-   s" and neither PUBLIC wordlist accepts a qualified one" T-LABEL
-   s" : SAFET:STT-FORGE ;" SEALED-DIES
-   s" : SAFET-MAP:STT-FORGE ;" SEALED-DIES ;
 
 \ ---- the released page -----------------------------------------------------
 \ Every NONE above says the reader ANSWERED nothing; none of them says it READ
@@ -1062,7 +1020,6 @@ public
    TEST-LINEAR-OWNERSHIP
    TEST-MAPPING-OWNERSHIP
    TEST-U32-TYPING
-   TEST-SEALED
    TEST-RELEASED-PAGE
    TEST-NO-AMBIENT-STATE
    TEST-SEALED-REPRESENTATION
@@ -1074,7 +1031,4 @@ public
 
 ;package
 
-\ Runs AFTER ;package (the weight-store-test arrangement): each seal subject
-\ forks from this process, and a fork taken inside an open package would make
-\ the child reject `package SAFET` as a nested opener instead of as a seal.
 SAFET-TEST:RUN

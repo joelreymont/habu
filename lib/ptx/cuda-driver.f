@@ -289,12 +289,4 @@ TRUSTED: CU-EVENT-ELAPSED-TIME ( ptr a cuda-event cuda-event -- rc )
 : DTOH ( ptr u8 cuda-devptr len -- )              \ copy device bytes -> host
    CU-MEMCPY-DTOH RC0 ;
 
-private
-
-get-current prot-wid-add
-
-public
-
-get-current prot-wid-add
-
 ;package

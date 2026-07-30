@@ -854,12 +854,4 @@ public
 : FIND-KEY ( JR:reader ptr u8 n -- JR:reader bool ) {: key:ptr len:n :}
    READER>STATE drop key len FIND-INNER ;
 
-private
-
-get-current prot-wid-add
-
-public
-
-get-current prot-wid-add
-
 ;package

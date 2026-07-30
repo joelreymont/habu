@@ -10,8 +10,6 @@ require lib/test.f
 require lib/json-read.f
 require lib/json-write.f
 require test/checker-assert.f
-require lib/test/outcome.f
-require lib/test/subject.f
 
 package JSON-READ-TEST
 private
@@ -26,8 +24,6 @@ create JRT-STATE-A-AFTER JRT-CANARY ,
 create JRT-STATE-B JR:STORAGE-BYTES allot
 create JRT-STATE-B-AFTER JRT-CANARY ,
 create JRT-ZERO-PTR-CELL 0 ,
-create JRT-SUBJECT-OUT $400 allot
-create JRT-SUBJECT-ERR $400 allot
 
 : JRT-OPEN-A ( ptr u8 n -- JR:reader )
    JRT-STATE-A JR:STORAGE-BYTES 2swap JR:INIT ;
@@ -545,13 +541,6 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-STATE-B JR:STORAGE-BYTES CELL + s" 0" JR:INIT JR:NEXT drop JR:CLOSE
    JRT-CANARY JRT-STATE-B-AFTER @ T= ;
 
-: JRT-TEST-SEALED ( -- )
-   s" package JR : FORGE ( ptr a -- JR:reader ) MINT-READER ; ;package"
-   JRT-SUBJECT-OUT $400 >LEN JRT-SUBJECT-ERR $400 >LEN 1000 >MS SUBJECT:RUN
-   ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
-   LEN>N drop
-   LEN>N drop ;
-
 : JRT-TEST-PRIVATE-BYTE-CONSTANTS ( -- )
    s" JR:BS" JRT-PRIVATE-CONSTANT
    s" JR:TAB" JRT-PRIVATE-CONSTANT
@@ -633,8 +622,6 @@ create JRT-LONG-KEY JRT-LONG-KEY-CAP allot
    JRT-TEST-PRIVATE-CONSTANTS
    s" raw representation and state helpers stay private" T-LABEL
    JRT-TEST-PRIVATE-STATE
-   s" the package cannot be reopened to reach private representation words" T-LABEL
-   JRT-TEST-SEALED
    s" exact and oversized capacity stay inside caller storage" T-LABEL
    JRT-TEST-STORAGE-EXTENT
    s" linear reader cannot be duplicated" T-LABEL
