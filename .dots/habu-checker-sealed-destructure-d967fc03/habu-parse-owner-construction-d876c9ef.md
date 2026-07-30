@@ -8,8 +8,6 @@ blocks:
   - habu-add-decl-event-a50e4104
   - habu-prove-verifier-event-f3454331
   - habu-rebuild-evaluate-txn-6c6e5b3c
-  - habu-guard-owner-namespace-219a451e
-  - habu-guard-owner-namespace-63169909
   - habu-guard-owner-namespace-baef64c5
   - habu-guard-owner-name-27f9e5bb
   - habu-guard-owner-patch-0cf2322f
