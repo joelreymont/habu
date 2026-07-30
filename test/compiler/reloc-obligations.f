@@ -23,6 +23,13 @@
 \ the loader's leg never runs. An address-cell row is simpler still: the
 \ writer's fold and the loader's rebase, applied to the cell the row names.
 \
+\ An address-literal chain row becomes an `addr_walk` over a list of
+\ (recorded, chain) pairs, with the band the pass is moving written out beside
+\ it: base, length, target. A slot is `mk_chain <address>` when its four words
+\ are the chain the compiler emits, and `break_chain <address> <word> <value>`
+\ when one of them is not, so the four instruction words are spelled out by the
+\ model rather than transcribed here.
+\
 \ Statements, not just names. Asking Rocq what a theorem assumes says nothing
 \ about what it says, so every theorem the manifest binds is also written out as
 \ `Definition pinned_statement_<k> : <manifest type row> := @<theorem name>.`
@@ -44,7 +51,7 @@ package RELOC-ROCQ
 using RELOC-PROOF
 private
 
-$8000 constant V-CAP
+$10000 constant V-CAP
 $0A constant LF
 $22 constant DQ
 
@@ -178,6 +185,61 @@ variable PIN-N
 : EMIT-XROWS ( -- )
    XROWS 0 ?do i EMIT-XROW loop ;
 
+\ ---- one address-literal chain row -------------------------------------------
+
+: +ACHAIN ( n n -- ) {: s:n v:n :}
+   s ASITE-BAD@ {: bad:n :}
+   bad 0 < if s" mk_chain " +$ v +N exit then
+   s" break_chain " +$ v +N s"  " +$ bad +N s"  " +$ CHAIN-BAD-WORD +N ;
+
+: +ASITE ( n n -- ) {: s:n v:n :}
+   s" (" +$
+   s ASITE-REC@ 0<> if s" true, " +$ else s" false, " +$ then
+   s v +ACHAIN s" )" +$ ;
+
+: +ALIST ( n n -- ) {: row:n phase:n :}
+   s" [" +$
+   row AROW-LEN@ 0 ?do
+      i 0 > if s" ; " +$ then
+      row AROW-BASE@ i + {: s:n :}
+      phase 0 = if s s ASITE-V0@ +ASITE else
+      phase 1 = if s s ASITE-V1@ +ASITE else
+                    s s ASITE-V2@ +ASITE then then
+   loop
+   s" ]" +$ ;
+
+: +ASTATUS ( n -- ) {: rc:n :}
+   rc 0= if s" None" +$ exit then
+   s" Some addrmap_rc" +$ ;
+
+: +ABAND ( n n n -- ) {: base:n blen:n tgt:n :}
+   s"  " +$ base +N s"  " +$ blen +N s"  " +$ tgt +N ;
+
+: EMIT-ACANON ( n -- ) {: row:n :}
+   s" Example addr_canon_" +$ row AROW-ROLE@ ROLE-NAME$ +$ s" _" +$ row +N
+      s"  :" +$ +NL
+   s"   addr_walk " +$ row 0 +ALIST
+      row AROW-WB@ row AROW-BLEN@ row AROW-CB@ +ABAND +NL
+   s"     = (" +$ row 1 +ALIST s" , " +$ row AROW-RC@ +ASTATUS s" )." +$ +NL
+   s" Proof. vm_compute. reflexivity. Qed." +$ +NL ;
+
+\ A refusing row has no loader leg, for the same reason a refusing call row has
+\ none: the shipped pass exits at the bad site and no image is ever written.
+: EMIT-AREBASE ( n -- ) {: row:n :}
+   s" Example addr_rebase_" +$ row AROW-ROLE@ ROLE-NAME$ +$ s" _" +$ row +N
+      s"  :" +$ +NL
+   s"   addr_walk " +$ row 1 +ALIST
+      row AROW-CB@ row AROW-BLEN@ row AROW-LB@ +ABAND +NL
+   s"     = (" +$ row 2 +ALIST s" , None)." +$ +NL
+   s" Proof. vm_compute. reflexivity. Qed." +$ +NL ;
+
+: EMIT-AROW ( n -- ) {: row:n :}
+   row EMIT-ACANON
+   row AROW-RC@ 0= if row EMIT-AREBASE then ;
+
+: EMIT-AROWS ( -- )
+   AROWS 0 ?do i EMIT-AROW loop ;
+
 public
 
 : START ( -- )
@@ -187,7 +249,8 @@ public
    EMIT-PINS
    EMIT-CLASSES
    EMIT-ROWS
-   EMIT-XROWS ;
+   EMIT-XROWS
+   EMIT-AROWS ;
 
 \ One theorem from the committed manifest, pinned to the statement the manifest
 \ says it makes. Rocq's own type checker has to accept the proved statement as

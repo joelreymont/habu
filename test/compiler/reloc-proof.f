@@ -1,12 +1,15 @@
 \ reloc-proof.f - the snapshot relocation parity gate.
 \
 \ `formal/Common/Reloc.v` proves the one invariant a portable snapshot image
-\ rests on: for every RECORDED call site, writer-side canonicalization composed
+\ rests on: for every RECORDED site, writer-side canonicalization composed
 \ with loader-side rebase is the IDENTITY, for any writer base and any loader
-\ base within BL's reach; a site the call map does not record is never touched;
-\ a recorded site that does not hold a call is refused with the shipped exit
-\ status rather than rewritten; and a declared address cell makes the same round
-\ trip through the RBASE-VA sentinel, with a cleared cell staying cleared. Until
+\ base within BL's reach; a site the map does not record is never touched; a
+\ recorded site that does not hold what the map says it holds is refused with
+\ the shipped exit status rather than rewritten; a declared address cell makes
+\ the same round trip through the RBASE-VA sentinel, with a cleared cell staying
+\ cleared; and an address literal compiled into region code as a
+\ four-instruction MOVZ/MOVK chain makes it too, all four immediates together,
+\ against the band the pass is given. Until
 \ this gate exists those are theorems about a model, and
 \ `src/habu/habu2.f` is a separate description of the same design, with nothing
 \ stopping the two drifting apart. The costliest defects of this campaign - a
@@ -19,7 +22,7 @@
 \ `test/compiler/reloc-obligations.f` asks Rocq about the same rows. Neither
 \ side carries a copy.
 \
-\ How the shipped side is reached. The two passes are EMITTED ASSEMBLY: Forth
+\ How the shipped side is reached. The three passes are EMITTED ASSEMBLY: Forth
 \ words that write AArch64 instructions into the engine being built. No test can
 \ call the machine code they produce. So `package RELOC-VM` decodes each
 \ definition's own instruction sequence out of habu2.f, through the shared
@@ -29,7 +32,10 @@
 \ constant, the field width, the opcode operand of the call check, the site
 \ index shift, or the opcode-preserving write in EMIT-CALLS each turns this gate
 \ red, and removing the call check makes the refusal row pass a data word
-\ through.
+\ through. The same was measured for the address-literal pass: dropping any one
+\ of its four immediate rewrites, dropping the band's lower-bound test, or
+\ dropping the fourth scaffold check each turns this gate red, on the chain rows
+\ and on nothing else.
 \
 \ What the gate refuses:
 \
@@ -65,18 +71,22 @@
 \ classification a total function in the model - a producer added without a
 \ class is a Rocq error - and the vocabulary rebuilt from src/habu/habu2.f
 \ itself, not listed in a comment. Measured: a new word that calls the shared
-\ MOVZ/MOVK carrier, and a second hand-built copy of that chain, each turn this
-\ gate red.
+\ MOVZ/MOVK carrier, a second hand-built copy of that chain, and C-CODE-ADDR
+\ ceasing to record its site each turn this gate red. The model states, and this
+\ gate holds, that a snapshot restore now replays the table of EVERY producer
+\ whose bytes move with the region; classify one to a table the restore does not
+\ walk and the model stops compiling.
 \
 \ What it does NOT prove. The machine reads mnemonics and operands, not the
 \ encoded instruction words: the encoders in src/arch/arm64 sit between this
 \ source and the bytes a CPU runs, and they have their own tests. So this gate
 \ binds the model to the shipped INSTRUCTION SEQUENCE, one step short of the
 \ shipped bytes. Closing that last step needs a real snapshot write-then-boot
-\ under a skewed constant, and that measurement is blocked today: the write-
-\ then-boot path is already red at HEAD on the very class this gate's
-\ `code_address_chain_is_the_open_gap` names, so there is no green baseline to
-\ break. The dot records the measurements that were taken instead.
+\ under a skewed constant, and that measurement is still blocked: a restored
+\ image cannot yet compile a definition, for a reason of a different class that
+\ has its own dot, so there is no green write-then-boot baseline to break. The
+\ dot records the measurements that were taken instead, including a full engine
+\ rebuild in both directions around a deliberately skewed address pass.
 \
 \ Focused command: `bin/hb --load test/compiler/reloc-proof.f`. The gate
 \ compiles the model itself, so nothing has to be built first.

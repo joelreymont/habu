@@ -163,3 +163,154 @@ C-CODE-ADDR moves from open gap to recorded-and-relocated: it is recorded at
 the emit site into SNAP-RELOC:ADDRMAP-OFF by EMIT-ADDR-SITE and by
 EM-AOT-RELOC-CODE, and relocated by EMIT-ADDRS once per band, all four
 immediates rewritten together.
+
+MEASURED 2026-07-30 (agent=relocsync, commit "Prove relocated address chains
+in the parity gate"). The parity gate the note above said did not exist has
+since landed, and it went red on this tree exactly as designed: its model still
+described C-CODE-ADDR as the open gap and its closure rows still froze the old
+caller sets. This change is the other half of the work: the model and the rows
+now describe what the emitter actually does, and the gate is green again
+because the new behaviour is proven, not because anything was weakened.
+
+What the model now says. formal/Common/Reloc.v gains a third relocation class
+beside the call displacements and the declared address cells: the
+four-instruction MOVZ/MOVK chain. One 16-bit immediate of a MOVZ or MOVK is
+modelled as `(w / 32) mod 65536` and everything else in the word as
+`scaffold_of`; four of them spell out a 64-bit address. On top of that sit the
+band move the shipped SNAP-RELOC:EMIT-ADDRS performs -- a chain whose address
+falls inside the band being moved becomes `address - band base + target base`,
+and one that does not is left alone -- and a walk over a whole image's worth of
+recorded sites.
+
+Fourteen new results, all closed under the global context, none admitted:
+the shipped ADDR-OPC-MASK really is the complement of the modelled immediate
+field; a chain built the way the compiler builds one passes the shipped check;
+the address read back out of a rewritten chain is the one written in; writing
+back the address a chain already carries leaves the four words untouched; a
+relocated chain is still a chain, so running the pass twice is meaningful; a
+chain outside the band is not touched; the canonical image carries the offset
+within the band and not the writing run's base; the writer's pass composed with
+the loader's is the identity at one chain and over a whole image; and for an
+arbitrary pair of bases the restored chain names the same word at the base this
+run got. The two negative results that mattered are kept and joined by two
+more: an unrecorded site is never visited, a recorded site that is not a chain
+is refused with ADDRMAP-RC (97) and keeps its bytes, a pass that wrote only
+three of the four immediates loses the top sixteen bits of the address, and
+dropping the chain guard rewrites a data word in silence.
+
+The open-gap theorem is gone, replaced by the general form its own comment
+promised: `snapshot_covers_every_producer`. That is not a restatement of a
+definition. The recorder for the AOT seed's capture-time code-literal list is
+deliberately kept in the model with "the restore does not replay this" attached
+to it, so classifying any producer there makes the theorem fail. The emit
+vocabulary also gains EM-AOT-RELOC-CODE, the second place that writes a code
+address into region bytes, and EM-AOT-RELOC-DATA beside it; C-CODE-ADDR and
+EM-AOT-RELOC-CODE are both classified as recorded in the address-literal map,
+which a restore does replay.
+
+What the rows now ask. test/compiler/reloc-schema.f gains eight more pinned
+constants (ADDRMAP-RC from layout.f, ADDR-OPC-MASK / ADDR-IMM-MASK /
+ADDR-CHAIN-BYTES from habu2.f, and the four scaffold words W-MOVZ0..W-MOVK3
+from habu1.f, which is a source file this gate had not read before) and five
+address-literal chain rows. Each row names the band the pass is moving and
+every four-word slot of a small region. test/compiler/reloc-cases.f decodes the
+shipped SNAP-RELOC:EMIT-ADDRS out of habu2.f and RUNS it over a real region
+image and a real address-literal map band, once per leg, exactly the way the
+call rows are already driven; test/compiler/reloc-obligations.f turns the very
+same rows into `addr_walk` obligations about the model. The four words of a
+slot are never written down on either side: both build them from the row's
+address and the scaffold words read out of habu1.f.
+
+test/compiler/reloc-vm.f needed three things it did not have: the register-to-
+register AND, and the three UNSIGNED conditions C-CC, C-CS and C-HI that the
+band test uses. Modelling those as signed would have let a band above 2^63 pass
+a test the hardware fails, so the machine folds both operands by the sign bit
+and compares.
+
+Closure rows, enumerated from the shipped source rather than guessed. W-MOVZ0
+now occurs in two definitions, C-ADDR-RAW and EMIT-ADDRS, because the pass has
+to recognise the shape it rewrites; that is what turned the gate red in the
+first place. Three rows are new: SNAP-RELOC:MARK-SITE is carried by C-CODE-ADDR
+and nothing else, SNAP-RELOC:ADDRMAP-OFF by EM-AOT-RELOC-CODE and nothing else,
+and SNAP-RELOC:LADDRS by BSNAPREBASE, EM-SNAPSHOT-RESTORE and CORE -- which is
+the per-band call structure the model's band parameter depends on.
+
+FALSIFICATION MATRIX (measured, every mutation applied and reverted).
+
+  1. EMIT-ADDRS drops the write of the fourth immediate.
+     First attempt: GATE STAYED GREEN. Every address in the first four chain
+     rows is below 2^48, because real region bases and the RBASE-VA sentinel
+     are, so the fourth immediate was zero on both sides and skipping it
+     changed nothing. The rows were the problem, not the pass. A fifth row,
+     chain_wide, was added: a band whose bases differ in every one of the four
+     sixteen-bit fields. With it, the same mutation reds asserts 200 and 202,
+     the chain image comparisons, and nothing else. This is the strongest
+     single thing this change bought and it was found by trying to break the
+     gate rather than by reading it.
+  2. EMIT-ADDRS drops the band's lower-bound skip: reds asserts 194 and 196,
+     the chain_other_band row, and nothing else.
+  3. EMIT-ADDRS drops the fourth scaffold check: reds asserts 197 and 198, the
+     chain_refuse row's exit status and image, and nothing else.
+  4. The model classifies C-CODE-ADDR back to the seed-only site list: the
+     model stops compiling, "Unable to unify true with snapshot_covers
+     P_code_addr".
+  5. The model's band move forgets to subtract the band base: the model stops
+     compiling on canonical_chain_is_base_independent.
+  6. W-MOVK3 renumbered in habu1.f: the pinned-constant row reds.
+  7. One chain row's canonical address skewed by one: BOTH halves red -- the
+     Habu image comparison and, separately compiled to be sure, the generated
+     Rocq obligation for the same row. That is the evidence that the row really
+     is one artifact with two readers.
+  8. C-CODE-ADDR stops recording its site: the SNAP-RELOC:MARK-SITE closure row
+     reds.
+
+  Mutation 1 was additionally run through a real engine rebuild in both
+  directions: skew habu2.f, `bin/hb --load tools/build-fixpoint-refresh.f --
+  install --force` (green, census 0 uncheckable / 0 rejected), gate red on the
+  chain rows only; restore habu2.f byte-identical, rebuild again (green), gate
+  green. src/habu is byte-identical to the base change in the final tree.
+
+GATES on the final tree: test/compiler/reloc-proof.f exit 0,
+test/compiler/reloc-manifest.f exit 0, test/compiler/insn-proof.f exit 0,
+`make -C formal` green then `make -C formal clean`, package-diff-lint and
+typed-local-diff-lint exit 0 on the change's own `jj diff --git`,
+error-code-lint 0 finding(s), suite-coverage-lint 0 finding(s), dot-dep-lint
+0 finding(s).
+
+BEST LONG-TERM FIX OR A PATCH? Long-term, and re-derived rather than taken on
+trust. The question a gate like this has to answer is whether the thing it
+proves is the thing that ships. The invariant is that an address baked into
+region code is only meaningful relative to the base of the object it names, so
+the model has to be parameterized by that object's extent -- and it is, with
+the same triple the shipped pass takes, which is why the two-call design's
+"each chain moves under exactly one band" is a stated theorem and not a comment.
+Nothing rests on a magic value: the addresses in the rows are frozen literals
+worked out from the geometry each row names, the four instruction words are
+built from constants read out of the shipped source, and the one place a
+constant is written twice (the model and the schema) is held equal by the
+pinned-constant rows. The place this could have been a patch is the
+classification: it would have been easy to delete the seed-only recorder along
+with the open-gap theorem, which would have left `snapshot_covers_every_producer`
+true by construction and worth nothing. It is kept, so the theorem still fails
+the moment a producer is named only by a table the restore does not walk.
+
+HONEST GAPS, not silently accepted.
+  - The gate still binds the model to the shipped INSTRUCTION SEQUENCE, one
+    step short of the shipped bytes, for the address pass exactly as for the
+    call pass: the machine reads mnemonics and operands, and the encoders in
+    src/arch/arm64 have their own tests.
+  - The fixture sets the address-map bits itself, the same way the call rows
+    set the call-map bits. So the bit index SNAP-RELOC:EMIT-ADDR-SITE writes is
+    not checked against the bit index EMIT-ADDRS reads; an off-by-one shared
+    between the recorder and the relocator would pass. Running the recorder's
+    own instruction sequence would close this and needs two more mnemonics
+    (LSLV, STRB) in the machine. Dotted as
+    habu-run-the-addr-e9252c2a.
+  - The model's slot list is one entry per four-word chain; the shipped pass
+    walks one bit per region word and reads four words at a set bit. That
+    stride, like the bitmap indexing, is exercised only on the Habu side. It is
+    MODEL GAP 3 and is named there.
+  - The model treats registers as unbounded integers. The band comparisons are
+    proved in Z and the shipped ones are unsigned 64-bit; they agree while
+    every address stays below 2^63, which is MODEL GAP 1 and is where the
+    machine's own unsigned compares do the real work.

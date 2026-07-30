@@ -2,11 +2,11 @@
 \
 \ The module lives in `package RELOC-VM`. It exists because of a hard problem in
 \ binding a proof to this particular piece of code: the snapshot relocation
-\ passes are EMITTED ASSEMBLY. `SNAP-RELOC:EMIT-CALLS` and `SNAP-RELOC:EMIT-XT`
-\ in src/habu/habu2.f are Forth words whose effect is to write AArch64
-\ instructions into the engine being built, and no test can call the machine
-\ code they produce: it only exists inside a running engine, reached from the
-\ snapshot writer and from the boot loader.
+\ passes are EMITTED ASSEMBLY. `SNAP-RELOC:EMIT-CALLS`, `SNAP-RELOC:EMIT-XT` and
+\ `SNAP-RELOC:EMIT-ADDRS` in src/habu/habu2.f are Forth words whose effect is to
+\ write AArch64 instructions into the engine being built, and no test can call
+\ the machine code they produce: it only exists inside a running engine, reached
+\ from the snapshot writer and from the boot loader.
 \
 \ The weak answer would be to write the same arithmetic a second time in Habu
 \ and check that copy against the model. That proves the copy and says nothing
@@ -90,6 +90,7 @@ $2D constant MINUS-C
 23 constant OP-SYS
 24 constant OP-RET
 25 constant OP-LIT64
+26 constant OP-AND
 
 \ ---- operand kinds -----------------------------------------------------------
 
@@ -278,6 +279,7 @@ private
    a u s" SUBI," MNEM-IS? if OP-SUBI 3 exit then
    a u s" ORR," MNEM-IS? if OP-ORR 3 exit then
    a u s" ANDI," MNEM-IS? if OP-ANDI 3 exit then
+   a u s" AND," MNEM-IS? if OP-AND 3 exit then
    a u s" LSLI," MNEM-IS? if OP-LSLI 3 exit then
    a u s" LSRI," MNEM-IS? if OP-LSRI 3 exit then
    a u s" ASRI," MNEM-IS? if OP-ASRI 3 exit then
@@ -521,6 +523,17 @@ private
    x 0< if x s rshift -1 64 s - lshift or exit then
    x s rshift ;
 
+\ An unsigned comparison of two 64-bit registers. Habu's `<` reads a cell as
+\ signed, so both operands are folded by the sign bit first; that turns the
+\ unsigned order into the signed one without narrowing either value. The
+\ address-literal pass compares a chain's value against its band this way, and
+\ modelling those compares as signed would let a band above 2^63 pass a test the
+\ hardware fails.
+$8000000000000000 constant SIGN-FOLD
+
+: ULT ( n n -- bool ) {: a:n b:n :}
+   a SIGN-FOLD xor b SIGN-FOLD xor < ;
+
 \ The conditions the shipped passes use. One they do not use raises rather than
 \ guessing, so a pass that starts branching on a new condition stops the gate.
 : COND? ( n -- bool ) {: c:n :}
@@ -530,6 +543,9 @@ private
    c s" C-LT" SYM? = if CMP-A @ CMP-B @ < exit then
    c s" C-GT" SYM? = if CMP-A @ CMP-B @ > exit then
    c s" C-LE" SYM? = if CMP-A @ CMP-B @ <= exit then
+   c s" C-CC" SYM? = if CMP-A @ CMP-B @ ULT exit then
+   c s" C-CS" SYM? = if CMP-A @ CMP-B @ ULT 0= exit then
+   c s" C-HI" SYM? = if CMP-B @ CMP-A @ ULT exit then
    E-CRL-DECODE throw ;
 
 : TARGET ( n -- n ) {: id:n :}
@@ -547,6 +563,7 @@ private
    op OP-SUBI = if n RG@ m - d RG! exit then
    op OP-ORR = if n RG@ m RG@ or d RG! exit then
    op OP-ANDI = if n RG@ m and d RG! exit then
+   op OP-AND = if n RG@ m RG@ and d RG! exit then
    op OP-LSLI = if n RG@ m lshift d RG! exit then
    op OP-LSRI = if n RG@ m rshift d RG! exit then
    op OP-ASRI = if n RG@ m ASR d RG! exit then

@@ -2,7 +2,7 @@
 \
 \ The module lives in `package RELOC-CASES`. It takes the frozen rows in
 \ `package RELOC-PROOF` and asks the SHIPPED relocation passes about them, in
-\ six groups:
+\ seven groups:
 \
 \   - the pinned band constants, read as literals out of src/habu/layout.f and
 \     src/habu/habu2.f. `formal/Common/Reloc.v` states the same numbers, so
@@ -34,6 +34,14 @@
 \
 \   - every address-cell row, driven through the shipped `SNAP-RELOC:EMIT-XT`
 \     the same way, with the writer's half applied first.
+\
+\   - every address-literal chain row, driven through the shipped
+\     `SNAP-RELOC:EMIT-ADDRS` the same way, once per leg: the writer's leg moves
+\     the live band onto the canonical sentinel and the loader's moves the
+\     sentinel onto the band this run got. The four words of every slot are built
+\     from the row's address and the scaffold words read out of
+\     src/habu/habu1.f, so neither this file nor the model carries an instruction
+\     word of its own.
 \
 \ The same rows become Rocq obligations in `test/compiler/reloc-obligations.f`;
 \ this file never restates them.
@@ -73,6 +81,7 @@ $20000000 constant VM-REGION
 64 constant IMG-AT        256 constant IMG-BYTES
 512 constant TAB-AT       128 constant TAB-BYTES
 768 constant CELLS-AT     128 constant CELLS-BYTES
+1024 constant AMAP-AT     64 constant AMAP-BYTES
 
 $3FFFFFF constant IMM-MASK
 26 constant IMM-BITS
@@ -84,6 +93,8 @@ variable IMG-OK
 variable SCAN-AT
 variable FOUND-TOK
 variable SET-N
+variable MOVED-N
+create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of habu1.f
 
 \ ---- 1. the pinned band constants --------------------------------------------
 
@@ -186,10 +197,42 @@ variable SET-N
    s" the address-cell row fits the cell window the machine gives it" T-LABEL
    row XROW-LEN@ 8 * CELLS-BYTES <= TTRUE ;
 
+\ How many slots of a chain row the writer's pass has to change. A row where
+\ that is zero would pass however little the pass did, so it is refused here.
+: AMOVED ( n -- n ) {: row:n :}
+   0 MOVED-N !
+   row AROW-LEN@ 0 ?do
+      row AROW-BASE@ i + {: s:n :}
+      s ASITE-V0@ s ASITE-V1@ <> if MOVED-N @ 1+ MOVED-N ! then
+   loop
+   MOVED-N @ ;
+
+: BANDS-APART? ( n n n -- bool ) {: a:n b:n blen:n :}
+   a blen + b <= b blen + a <= or ;
+
+: ASITE-SHAPE ( n n -- ) {: row:n j:n :}
+   s" every slot of the chain region is listed once, in order" T-LABEL
+   row AROW-BASE@ j + ASITE-IDX@ j CHAIN-WORDS * T= ;
+
+: AROW-SHAPE ( n -- ) {: row:n :}
+   row AROW-ROLE@ ROLE-SEE
+   s" the chain row lists exactly as many words as its region holds" T-LABEL
+   row AROW-LEN@ CHAIN-WORDS * row AROW-WORDS@ T=
+   s" the chain region fits the image window the machine gives it" T-LABEL
+   row AROW-WORDS@ 4 * IMG-BYTES <= TTRUE
+   s" the writer's band and the canonical band are disjoint" T-LABEL
+   row AROW-WB@ row AROW-CB@ row AROW-BLEN@ BANDS-APART? TTRUE
+   s" the loader's band and the canonical band are disjoint" T-LABEL
+   row AROW-LB@ row AROW-CB@ row AROW-BLEN@ BANDS-APART? TTRUE
+   s" the chain row asks the writer's pass to move at least one slot" T-LABEL
+   row AMOVED 0 > TTRUE
+   row AROW-LEN@ 0 ?do row i ASITE-SHAPE loop ;
+
 : PHASE-SHAPE ( -- )
    0 ROLE-SEEN !
    ROWS 0 ?do i ROW-SHAPE loop
    XROWS 0 ?do i XROW-SHAPE loop
+   AROWS 0 ?do i AROW-SHAPE loop
    s" every role the schema names is covered by a row" T-LABEL
    ROLE-SEEN @ 1 ROLE-COUNT lshift 1- T= ;
 
@@ -209,14 +252,36 @@ variable SET-N
    s" C-GE" COND-SYM
    s" C-LT" COND-SYM
    s" C-GT" COND-SYM
-   s" C-LE" COND-SYM ;
+   s" C-LE" COND-SYM
+   s" C-CC" COND-SYM
+   s" C-CS" COND-SYM
+   s" C-HI" COND-SYM ;
 
 : LOAD-EMIT-SYMS ( -- )
    EMIT-FILE$ COMPILER-ID-SRC:SCAN-FILE
    s" BL-OP-HI" COMPILER-ID-SRC:CONST@ BLOP !
    s" BL-OP-HI" BLOP @ RELOC-VM:SYM+
    s" CALLMSG-LEN" s" CALLMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
-   s" XTMSG-LEN" s" XTMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
+   s" XTMSG-LEN" s" XTMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDRMSG-LEN" s" ADDRMSG-LEN" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDR-OPC-MASK" s" ADDR-OPC-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDR-IMM-MASK" s" ADDR-IMM-MASK" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+
+   s" ADDR-CHAIN-BYTES" s" ADDR-CHAIN-BYTES" COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
+
+\ The chain's four scaffold words are declared in src/habu/habu1.f. They are
+\ bound as machine symbols so the shipped check runs against the shipped words,
+\ and kept here as well so the fixture builds its chains out of the same four.
+: SCAFFOLD-SYM ( n ptr u8 n -- ) {: j:n a:ptr u:n :}
+   a u COMPILER-ID-SRC:CONST@ {: w:n :}
+   a u w RELOC-VM:SYM+
+   w SCAF j cells + ! ;
+
+: LOAD-SCAFFOLD-SYMS ( -- )
+   SCAFFOLD-FILE$ COMPILER-ID-SRC:SCAN-FILE
+   0 s" W-MOVZ0" SCAFFOLD-SYM
+   1 s" W-MOVK1" SCAFFOLD-SYM
+   2 s" W-MOVK2" SCAFFOLD-SYM
+   3 s" W-MOVK3" SCAFFOLD-SYM ;
 
 \ The band offsets and the register alias come from the loaded layout, because
 \ they are derived rather than literal. CALLMAP-RC is a literal and is pinned as
@@ -229,14 +294,18 @@ variable SET-N
    s" XTCELL-N-CELL" SNAP-RELOC:XTCELL-N-CELL RELOC-VM:SYM+
    s" XTCELL-ROWS-OFF" SNAP-RELOC:XTCELL-ROWS-OFF RELOC-VM:SYM+
    s" XTCELL-CAP" SNAP-RELOC:XTCELL-CAP RELOC-VM:SYM+
-   s" XTCELL-RC" SNAP-RELOC:XTCELL-RC RELOC-VM:SYM+ ;
+   s" XTCELL-RC" SNAP-RELOC:XTCELL-RC RELOC-VM:SYM+
+   s" ADDRMAP-OFF" SNAP-RELOC:ADDRMAP-OFF RELOC-VM:SYM+
+   s" ADDRMAP-RC" SNAP-RELOC:ADDRMAP-RC RELOC-VM:SYM+ ;
 
 : LOAD-GLOBAL-LABELS ( -- )
    s" LCALLS" RELOC-VM:GLABEL+
    s" LXT" RELOC-VM:GLABEL+
    s" LMARK" RELOC-VM:GLABEL+
    s" LCALLMSG" RELOC-VM:GLABEL+
-   s" LXTMSG" RELOC-VM:GLABEL+ ;
+   s" LXTMSG" RELOC-VM:GLABEL+
+   s" LADDRS" RELOC-VM:GLABEL+
+   s" LADDRMSG" RELOC-VM:GLABEL+ ;
 
 \ Leaves the emitter source scanned, so a pass can be decoded straight after.
 : TEACH-MACHINE ( -- )
@@ -244,6 +313,7 @@ variable SET-N
    LOAD-COND-SYMS
    LOAD-LAYOUT-SYMS
    LOAD-GLOBAL-LABELS
+   LOAD-SCAFFOLD-SYMS
    LOAD-EMIT-SYMS ;
 
 : CLEAR-REGS ( -- )
@@ -405,6 +475,89 @@ variable SET-N
    RELOC-VM:INSTRUCTIONS 0 > TTRUE
    XROWS 0 ?do i XT-ROW loop ;
 
+\ ---- 6. driving the address-literal chain rows -------------------------------
+\ The shipped `SNAP-RELOC:EMIT-ADDRS` is decoded and run the same way the call
+\ pass is, once per leg: the writer's leg moves the live band onto the canonical
+\ sentinel and the loader's moves the sentinel onto the band this run got. Only
+\ the row is shared between this and the Rocq obligations; neither side computes
+\ an address, and the four words of every slot are built from the row's address
+\ and the scaffold words read out of src/habu/habu1.f.
+
+: CHAIN-WORD ( n n n -- n ) {: v:n j:n bad:n :}
+   j bad = if CHAIN-BAD-WORD exit then
+   v j 16 * rshift IMM16-MASK and IMM-SCALE * SCAF j cells + @ + ;
+
+: AMAP-BIT ( n -- ) {: idx:n :}
+   VM-DATA SNAP-RELOC:ADDRMAP-OFF + idx 3 rshift + {: at:n :}
+   at 1 RELOC-VM:PEEK 1 idx 7 and lshift or at 1 RELOC-VM:POKE ;
+
+: PLACE-ASITE ( n -- ) {: s:n :}
+   CHAIN-WORDS 0 ?do
+      s ASITE-V0@ i s ASITE-BAD@ CHAIN-WORD
+      VM-REGION s ASITE-IDX@ i + 4 * + 4 RELOC-VM:POKE
+   loop
+   s ASITE-REC@ 0<> if s ASITE-IDX@ AMAP-BIT then ;
+
+: ADDR-SEGMENTS ( n -- ) {: row:n :}
+   RELOC-VM:SEG-RESET
+   VM-DATA SNAP-RELOC:ADDRMAP-OFF + AMAP-AT AMAP-BYTES RELOC-VM:SEG+
+   VM-REGION IMG-AT row AROW-WORDS@ 4 * RELOC-VM:SEG+ ;
+
+: BUILD-CHAIN-IMAGE ( n -- ) {: row:n :}
+   row ADDR-SEGMENTS
+   row AROW-LEN@ 0 ?do row AROW-BASE@ i + PLACE-ASITE loop ;
+
+\ x8/x11 are the image the pass scans; x21/x22/x25 are the band it is moving.
+: RUN-ADDR-PASS ( n n n n -- n ) {: row:n base:n blen:n tgt:n :}
+   CLEAR-REGS
+   VM-REGION 8 RELOC-VM:R!
+   row AROW-WORDS@ 4 * 11 RELOC-VM:R!
+   base 21 RELOC-VM:R!
+   blen 22 RELOC-VM:R!
+   tgt 25 RELOC-VM:R!
+   VM-DATA DATA RELOC-VM:R!
+   RELOC-VM:RUN
+   RELOC-VM:HALT-CODE ;
+
+: ASITE-EXPECT ( n n n -- n ) {: s:n phase:n j:n :}
+   phase 0 = if s ASITE-V1@ j s ASITE-BAD@ CHAIN-WORD exit then
+   s ASITE-V2@ j s ASITE-BAD@ CHAIN-WORD ;
+
+: ASITE-MATCH ( n n -- ) {: s:n phase:n :}
+   CHAIN-WORDS 0 ?do
+      VM-REGION s ASITE-IDX@ i + 4 * + 4 RELOC-VM:PEEK
+      s phase i ASITE-EXPECT <> if false IMG-OK ! then
+   loop ;
+
+: CHAIN-IMAGE-MATCH ( n n -- bool ) {: row:n phase:n :}
+   true IMG-OK !
+   row AROW-LEN@ 0 ?do row AROW-BASE@ i + phase ASITE-MATCH loop
+   IMG-OK @ ;
+
+: ACANON-PHASE ( n -- ) {: row:n :}
+   row BUILD-CHAIN-IMAGE
+   s" the writer's address pass over the shipped instruction sequence ends as the row records" T-LABEL
+   row row AROW-WB@ row AROW-BLEN@ row AROW-CB@ RUN-ADDR-PASS row AROW-RC@ T=
+   s" the canonical chain image is the one the shared vector row records" T-LABEL
+   row 0 CHAIN-IMAGE-MATCH TTRUE ;
+
+: AREBASE-PHASE ( n -- ) {: row:n :}
+   s" the loader's address pass over the shipped instruction sequence returns cleanly" T-LABEL
+   row row AROW-CB@ row AROW-BLEN@ row AROW-LB@ RUN-ADDR-PASS 0 T=
+   s" the restored chain image is the one the shared vector row records" T-LABEL
+   row 1 CHAIN-IMAGE-MATCH TTRUE ;
+
+: CHAIN-ROW ( n -- ) {: row:n :}
+   row ACANON-PHASE
+   row AROW-RC@ 0<> if exit then
+   row AREBASE-PHASE ;
+
+: PHASE-ADDRS ( -- )
+   s" the shipped address pass decodes into instructions the machine can run" T-LABEL
+   s" EMIT-ADDRS" RELOC-VM:DECODE
+   RELOC-VM:INSTRUCTIONS 0 > TTRUE
+   AROWS 0 ?do i CHAIN-ROW loop ;
+
 public
 
 : HABU-SIDE ( -- )
@@ -415,7 +568,8 @@ public
    TEACH-MACHINE
    PHASE-CALLS
    PHASE-BASE-FREE
-   PHASE-XT ;
+   PHASE-XT
+   PHASE-ADDRS ;
 
 ;using
 ;package

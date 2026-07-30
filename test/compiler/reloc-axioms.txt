@@ -78,14 +78,53 @@ closed
 theorem Habu.Common.Reloc.xt_rebase_general_base
 type forall c dbw dbl, 0 < dbw -> dbw <= c -> xt_rebase (xt_canon c dbw) dbl = c - dbw + dbl
 closed
+theorem Habu.Common.Reloc.opc_mask_is_the_field_complement
+type addr_opc_mask = word32_span - 1 - addr_imm_mask * imm_scale /\ addr_imm_mask + 1 = imm16_span /\ addr_chain_bytes = 4 * 4
+closed
+theorem Habu.Common.Reloc.mk_chain_is_a_chain
+type forall v, is_chain (mk_chain v) = true
+closed
+theorem Habu.Common.Reloc.chain_value_of_put
+type forall c v, addr_ok v -> chain_value (chain_put c v) = v
+closed
+theorem Habu.Common.Reloc.chain_put_value
+type forall c, chain_put c (chain_value c) = c
+closed
+theorem Habu.Common.Reloc.addr_move_stays_a_chain
+type forall c base len tgt, is_chain (addr_move c base len tgt) = is_chain c
+closed
+theorem Habu.Common.Reloc.addr_out_of_band_untouched
+type forall c base len tgt, ~ in_band (chain_value c) base len -> addr_move c base len tgt = c
+closed
+theorem Habu.Common.Reloc.canonical_chain_is_base_independent
+type forall c wb len cb k, 0 <= k < len -> chain_value c = wb + k -> addr_ok (cb + k) -> chain_value (addr_move c wb len cb) = cb + k
+closed
+theorem Habu.Common.Reloc.addr_round_trip_identity
+type forall c wb len cb, in_band (chain_value c) wb len -> addr_ok (chain_value c - wb + cb) -> addr_move (addr_move c wb len cb) cb len wb = c
+closed
+theorem Habu.Common.Reloc.addr_round_trip_rebases
+type forall c wb len cb lb, in_band (chain_value c) wb len -> addr_ok (chain_value c - wb + cb) -> addr_ok (chain_value c - wb + lb) -> chain_value (addr_move (addr_move c wb len cb) cb len lb) = chain_value c - wb + lb
+closed
+theorem Habu.Common.Reloc.each_chain_moves_under_exactly_one_band
+type forall c a1 l1 t1 a2 l2 t2, in_band (chain_value c) a1 l1 -> (a1 + l1 <= a2 \/ a2 + l2 <= a1) -> addr_move c a2 l2 t2 = c /\ addr_move c a1 l1 t1 = chain_put c (chain_value c - a1 + t1)
+closed
+theorem Habu.Common.Reloc.addr_walk_leaves_unrecorded
+type forall s base len tgt i c, nth_error s i = Some (false, c) -> nth_error (fst (addr_walk s base len tgt)) i = Some (false, c)
+closed
+theorem Habu.Common.Reloc.addr_walk_bad_site_not_rewritten
+type forall s base len tgt i c, nth_error s i = Some (true, c) -> is_chain c = false -> (forall j c', (j < i)%nat -> nth_error s j = Some (true, c') -> is_chain c' = true) -> nth_error (fst (addr_walk s base len tgt)) i = Some (true, c) /\ snd (addr_walk s base len tgt) = Some addrmap_rc
+closed
+theorem Habu.Common.Reloc.addr_walk_clean_never_refuses
+type forall s base len tgt, (forall c, In (true, c) s -> is_chain c = true) -> snd (addr_walk s base len tgt) = None
+closed
+theorem Habu.Common.Reloc.addr_image_round_trip
+type forall s wb len cb, (forall c, In (true, c) s -> in_band (chain_value c) wb len /\ addr_ok (chain_value c - wb + cb)) -> snd (addr_walk s wb len cb) = None -> fst (addr_walk (fst (addr_walk s wb len cb)) cb len wb) = s
+closed
 theorem Habu.Common.Reloc.every_region_dependent_producer_is_recorded
 type forall p, region_dependent p = true -> exists r, classify p = Recorded r
 closed
-theorem Habu.Common.Reloc.snapshot_covers_every_producer_but_code_addr
-type forall p, p <> P_code_addr -> snapshot_covers p = true
-closed
-theorem Habu.Common.Reloc.code_address_chain_is_the_open_gap
-type region_dependent P_code_addr = true /\ snapshot_covers P_code_addr = false
+theorem Habu.Common.Reloc.snapshot_covers_every_producer
+type forall p, snapshot_covers p = true
 closed
 theorem Habu.Common.Reloc.shift_out_of_reach_wraps
 type disp_of (shift_instr (bl (imm_half - 1)) 1) = - imm_half
@@ -95,4 +134,10 @@ type rebase (canon (bl 0) (region_off + 2)) (region_off + 2) <> bl 0
 closed
 theorem Habu.Common.Reloc.dropping_the_call_guard_corrupts_data
 type reloc_walk [(true, 5)] 1 = ([(true, 5)], Some callmap_rc) /\ reloc_unguarded [(true, 5)] 1 = [(true, 6)]
+closed
+theorem Habu.Common.Reloc.skipping_the_last_movk_loses_the_top_field
+type chain_value (chain_put3 (mk_chain 0) imm48_span) = 0 /\ chain_value (chain_put (mk_chain 0) imm48_span) = imm48_span
+closed
+theorem Habu.Common.Reloc.dropping_the_chain_guard_corrupts_data
+type addr_walk [(true, (5, 0, 0, 0))] 0 1 7 = ([(true, (5, 0, 0, 0))], Some addrmap_rc) /\ addr_unguarded [(true, (5, 0, 0, 0))] 0 1 7 = [(true, (229, 0, 0, 0))]
 closed
