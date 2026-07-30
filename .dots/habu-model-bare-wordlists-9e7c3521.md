@@ -23,3 +23,12 @@ Why the context provider returns false. CHECKER-PKG-CONTEXT calls PKG-LIVE-XT, w
 Static invariant to record whichever way the semantics go: the checked load path must decide the package context of a definition at check time and name the offending state; a bare numeric 7136 reaching the top-level interpreter as an uncaught throw is a diagnostic gap on its own, independent of the modelling decision.
 
 Related: dot habu-restore-fail-closed-4f1d6375 suspects the same CHECKER-PKG-CONTEXT plumbing behind test/engine-error-package.f getting 67 where it expects 70. The two should be reviewed together, since a fix that gives 7136 a named fail-closed exit may re-green both.
+
+Update 2026-07-30 (from the fail-closed fix, commit 0a5b92d6): the reproducer
+`300 set-current : FOO ( -- n ) 1 ;` now exits with the NAMED fail-closed 70
+and the stderr line "hb: no authenticated package context for this
+definition", instead of the bare uncaught 67. That discharges this dot's
+"stderr diagnostic naming the offending state" clause; the remaining work here
+is only the SEMANTIC decision (legitimate anonymous-wordlist state versus
+formal rejection) and the regression pinning it. The refusal surface stays
+CHECKER-PKG-CONTEXT-REJECT in src/core/checker.f, single authority.
