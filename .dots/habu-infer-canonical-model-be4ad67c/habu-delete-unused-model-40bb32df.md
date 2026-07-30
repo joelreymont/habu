@@ -1,9 +1,11 @@
 ---
 title: Delete unused host model path
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T21:09:42.368678+02:00"
+closed-at: "2026-07-30T13:51:43.009108+02:00"
+close-reason: Reviewed deletion landed and verified at master@origin b82463edc1d9c831b4346c674e2a4e59c0c0981b.
 blocks:
   - habu-pin-gpt-2-cdb5cfe0
   - habu-delete-model-config-1c71a13e
