@@ -328,14 +328,21 @@ variable TFAM-N   0 TFAM-N !   REG-PROTECT
 \ a `DERIVE eq` clause marks the family row; the sumtype generator then emits
 \ the family's derived words and the ctor-word predicate below recognizes
 \ their fixed generator-owned tails, exactly like generated constructors.
+\ The same derive cell also carries DRV-CONSTRUCT-OWNER: the family's
+\ construction belongs to its package. That bit generates no word, so
+\ TFAM-DERIVE-ANY? — the gate every derived-word validation and generation
+\ path reads — masks only the two word-generating features.
 1 constant DRV-EQ
 2 constant DRV-HASH
+$4 constant DRV-CONSTRUCT-OWNER
 : TFAM-DERIVE@ ( n -- n ) TF-REC@ TF.DERIVE @ ;
 : TFAM-DERIVE-EQ! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-EQ or swap ! ;
 : TFAM-DERIVE-EQ? ( n -- bool ) TFAM-DERIVE@ DRV-EQ and 0 <> ;
 : TFAM-DERIVE-HASH! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-HASH or swap ! ;
 : TFAM-DERIVE-HASH? ( n -- bool ) TFAM-DERIVE@ DRV-HASH and 0 <> ;
-: TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ 0 <> ;
+: TFAM-CONSTRUCT-OWNER! ( n -- ) TF-REC@ TF.DERIVE dup @ DRV-CONSTRUCT-OWNER or swap ! ;
+: TFAM-CONSTRUCT-OWNER? ( n -- bool ) TFAM-DERIVE@ DRV-CONSTRUCT-OWNER and 0 <> ;
+: TFAM-DERIVE-ANY? ( n -- bool ) TFAM-DERIVE@ DRV-EQ DRV-HASH or and 0 <> ;
 
 \ a boxed value is a single heap/DATA pointer (docs §22.4 `ptr fam-box`) and a
 \ niche value is a single cell with the discriminant folded into the payload

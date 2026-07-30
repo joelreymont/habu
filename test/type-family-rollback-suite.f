@@ -66,6 +66,15 @@ TRUSTED: CLOSE ( n -- ) dup TYPE-FIELD-OWNER:PREPARE drop
    dup TYPE-FIELD-OWNER:COMMIT TYPE-FIELD-OWNER:FINALIZE ;
 ;package
 
+\ the family derive cell across a rollback frame.
+package RB-DERIVE
+public
+TRUSTED: CELL@ ( n -- n ) TFAM-DERIVE@ ;
+TRUSTED: ANY? ( n -- bool ) TFAM-DERIVE-ANY? ;
+TRUSTED: OWNER! ( n -- ) TFAM-CONSTRUCT-OWNER! ;
+TRUSTED: OWNER? ( n -- bool ) TFAM-CONSTRUCT-OWNER? ;
+;package
+
    variable TC
 variable P-TFAM   variable P-SUMV   variable P-PF   variable P-LAY
 variable P-SCHN   variable P-SCHR   variable P-STRU  variable P-PKN
@@ -351,6 +360,42 @@ QD-QA @ TWX-SCHEMA-A@ -1 T=               \ explicit clause canonicalizes hasr t
 TWX-SCHEMA-RESET  QD-BUILD QD-QB !
 QD-QB @ QD-QA @ T=                        \ same node id from the same baseline
 QD-CMP                                     \ byte-identical node arena + root pool
+
+\ ---------------------------------------------------------------------------
+\ P. owner-construction flag across a REAL savepoint (dot habu-record-owner-
+\    construction): DRV-CONSTRUCT-OWNER is a third bit in the SAME TF.DERIVE cell
+\    as the two generating bits, so it inherits the family row's transactional
+\    lifetime and needs no separate store. Inside a candidate the bit sets and
+\    reads back, and it must NOT turn on TFAM-DERIVE-ANY? — it generates no word.
+\    Rejecting the candidate retires the row by rewinding the TFAM-N high-water,
+\    and re-declaring the same (package,tail) reuses that slot with TF.DERIVE
+\    re-initialized to 0 by TFAM-DECL (type-family.f:473) — so the flag cannot
+\    survive a rollback as a ghost bit in a reused row.
+\ ---------------------------------------------------------------------------
+TWX-TFAM-RESET TWX-SCHEMA-RESET
+s" copre" CHECKER-PACKAGE-PUBLIC s" base" 1 TK-SUM TWX-TFAM-DECL drop   \ nonzero baseline
+TFAM-N@ P-TFAM !
+TWX-CAND-START
+   s" coc" CHECKER-PACKAGE-PUBLIC s" owned" 0 TK-ENUM TWX-TFAM-DECL A-TFAM !
+   A-TFAM @ RB-DERIVE:CELL@ 0 T=                   \ fresh row carries no bits
+   A-TFAM @ RB-DERIVE:OWNER!
+   A-TFAM @ RB-DERIVE:OWNER? -1 T=         \ set + read back in the savepoint
+   A-TFAM @ RB-DERIVE:CELL@ DRV-CONSTRUCT-OWNER T=
+   A-TFAM @ RB-DERIVE:ANY? 0 T=               \ no EQ/HASH: the gate stays false
+   s" coc" s" owned" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
+0 TWX-CAND-DONE drop
+\ the row is retired with the rejected candidate.
+TFAM-N@ P-TFAM @ T=
+s" coc" s" owned" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ 0 T=
+\ and the BIT is retired with it: re-declaring the same (package,tail) reuses the
+\ slot and observes a zero derive cell, not a ghost owner flag.
+s" coc" CHECKER-PACKAGE-PUBLIC s" owned" 0 TK-ENUM TWX-TFAM-DECL B-TFAM !
+B-TFAM @ A-TFAM @ T=                                \ the same slot id is reused
+B-TFAM @ RB-DERIVE:CELL@ 0 T=
+B-TFAM @ RB-DERIVE:OWNER? 0 T=
+B-TFAM @ RB-DERIVE:ANY? 0 T=
+\ the pre-existing baseline family is untouched throughout.
+s" copre" s" base" TWX-TFAM-FIND-IN FOUNDF ! drop  FOUNDF @ -1 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

@@ -75,6 +75,44 @@ TRUSTED: CLOSE ( n -- ) dup TYPE-FIELD-OWNER:PREPARE drop
 TRUSTED: ROLLBACK ( n -- ) TYPE-FIELD-OWNER:ROLLBACK ;
 ;package
 
+\ the derive cell of a family row: the two generating bits plus the owner-
+\ construction bit, the gate that must see only the generating two, and a
+\ whole-row snapshot so an untouched row can be proven byte-identical.
+package TF-DERIVE
+create ROW-SNAP TF-REC allot            \ exactly one TF-REC row
+variable DIFF-N
+variable WIDTH-N                        \ row width in cells, set from the test body
+PTR-VARIABLE BASE0                      \ witnessed base address of a probe row
+TRUSTED: ROW@ ( n -- ptr n ) TF-REC@ ;   \ row base address (TF-REC@ range-checks)
+public
+TRUSTED: CELL@ ( n -- n ) TFAM-DERIVE@ ;
+TRUSTED: ANY? ( n -- bool ) TFAM-DERIVE-ANY? ;
+TRUSTED: EQ! ( n -- ) TFAM-DERIVE-EQ! ;
+TRUSTED: HASH! ( n -- ) TFAM-DERIVE-HASH! ;
+TRUSTED: OWNER! ( n -- ) TFAM-CONSTRUCT-OWNER! ;
+TRUSTED: OWNER? ( n -- bool ) TFAM-CONSTRUCT-OWNER? ;
+: CELL-AT ( n n -- n ) {: id:n off:n :}  \ cell `off` of row `id`, read in checked code
+   id ROW@ off cells + @ ;
+: BASE-CAPTURE ( n -- ) ROW@ BASE0 ! ;
+: BASE-MOVED? ( n -- bool ) ROW@ BASE0 @ <> ;
+: WIDTH! ( n -- ) WIDTH-N ! ;
+: WIDTH ( -- n ) WIDTH-N @ ;
+: SNAP! ( n -- ) {: id:n :}             \ capture every cell of family `id`
+   0 begin dup WIDTH-N @ < while
+      dup id swap CELL-AT over cells ROW-SNAP + !
+      1+
+   repeat drop ;
+: SNAP-DIFF ( n -- n ) {: id:n :}       \ how many cells of `id` changed since SNAP!
+   0 DIFF-N !
+   0 begin dup WIDTH-N @ < while
+      dup id swap CELL-AT over cells ROW-SNAP + @ <> if
+         DIFF-N @ 1+ DIFF-N !
+      then
+      1+
+   repeat drop
+   DIFF-N @ ;
+;package
+
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
 TRUSTED: TWX-SCHEMA-APP? ( n -- bool ) SCHEMA-APP? ;
@@ -1333,6 +1371,227 @@ s" foreign-variant" TYPE-NAME:VARIANT-REQUIRE
 s" ready" TYPE-NAME:VARIANT-REQUIRE
 
 ;package
+
+\ ---------------------------------------------------------------------------
+\ 22. owner-construction flag (dot habu-record-owner-construction): DRV-CONSTRUCT-
+\    OWNER is a third bit in the SAME derive cell at TF.DERIVE, recording that a
+\    family's construction belongs to its package. It generates no word, so it must
+\    stay OUT of TFAM-DERIVE-ANY? - the gate every derived-word validation and
+\    generation path reads: TFAM-DERIVED-AT? (type-family.f:608) plus four
+\    sumtype.f sites, three of them validation (TDECL-DERIVE-COLLIDE,
+\    TDECL-DERIVE-NODE-OK, TDECL-DERIVE-REQUIRE) and one generation
+\    (TDECL-DRV-WORDS). The cases below pin both halves: the bit
+\    round-trips on a live family, and it never leaks into the derive-any gate in
+\    either direction. The exact bit value is checked against a LITERAL $4, not
+\    against DRV-CONSTRUCT-OWNER, so a wrong constant cannot self-certify.
+\    Invalid family ids are proven by the child-process case in section 23: TF-REC@
+\    rejects them with an uncatchable `76 die`, which would abort this suite rather
+\    than register a failure, so it cannot be an in-process case here.
+\ ---------------------------------------------------------------------------
+TWX-TFAM-RESET
+s" drvp" CHECKER-PACKAGE-PUBLIC s" plain" 0 TK-ENUM TWX-TFAM-DECL FID !
+s" drvp" CHECKER-PACKAGE-PUBLIC s" owned" 0 TK-ENUM TWX-TFAM-DECL PID !
+s" drvp" CHECKER-PACKAGE-PUBLIC s" eqf" 0 TK-ENUM TWX-TFAM-DECL AID !
+s" drvp" CHECKER-PACKAGE-PUBLIC s" hashf" 0 TK-ENUM TWX-TFAM-DECL CLID !
+
+\ a fresh family carries no derive bits at all.
+FID @ TF-DERIVE:CELL@ 0 T=
+FID @ TF-DERIVE:OWNER? 0 T=
+FID @ TF-DERIVE:ANY? 0 T=
+
+\ snapshot the whole UNFLAGGED row before any sibling is decorated.
+\ TF-REC and CELL are ordinary constants that resolve at top-level interpret (they
+\ do NOT resolve inside a checked ':' body), so the row width is computed here and
+\ handed to the snapshot helper - no trusted boundary is needed for it.
+TF-REC CELL / TF-DERIVE:WIDTH!
+TF-DERIVE:WIDTH 19 T=                   \ the row really is 19 cells wide
+FID @ TF-DERIVE:SNAP!
+
+\ set + read the owner bit on a live family; the cell holds exactly that bit, and
+\ the value is pinned to a literal independent of the constant under test.
+PID @ TF-DERIVE:OWNER!
+PID @ TF-DERIVE:OWNER? -1 T=
+PID @ TF-DERIVE:CELL@ $4 T=
+PID @ TF-DERIVE:CELL@ DRV-CONSTRUCT-OWNER T=
+\ ... and the owner bit alone leaves the derived-word gate false.
+PID @ TF-DERIVE:ANY? 0 T=
+\ the setter is idempotent (an or-mask, not a counter or a toggle).
+PID @ TF-DERIVE:OWNER!
+PID @ TF-DERIVE:CELL@ $4 T=
+
+\ the ordinary UNFLAGGED row is byte-identical across a sibling's flag write:
+\ every one of its cells is unchanged, so there is no side table, no shared cell,
+\ and no adjacent-row write.
+FID @ TF-DERIVE:SNAP-DIFF 0 T=
+FID @ TF-DERIVE:CELL@ 0 T=
+FID @ TF-DERIVE:OWNER? 0 T=
+FID @ TF-DERIVE:ANY? 0 T=
+
+\ DERIVE-ANY? is true for EQ or HASH regardless of the owner bit, in both orders.
+AID @ TF-DERIVE:EQ!
+AID @ TF-DERIVE:ANY? -1 T=
+\ ISOLATION: on an EQ-only row the owner query must be FALSE. A query that tested
+\ "any derive bit" instead of masking DRV-CONSTRUCT-OWNER would report true here.
+AID @ TF-DERIVE:OWNER? 0 T=
+AID @ TF-DERIVE:OWNER!                  \ owner bit added on top of EQ
+AID @ TF-DERIVE:ANY? -1 T=              \ still true: EQ still generates
+AID @ TF-DERIVE:OWNER? -1 T=
+AID @ TF-DERIVE:CELL@ $5 T=             \ literal: EQ($1) + owner($4)
+
+\ ISOLATION: same proof on a HASH-only row, so the mask is pinned against both
+\ generating bits and not just against EQ.
+s" drvp" CHECKER-PACKAGE-PUBLIC s" hashonly" 0 TK-ENUM TWX-TFAM-DECL PTID !
+PTID @ TF-DERIVE:HASH!
+PTID @ TF-DERIVE:ANY? -1 T=
+PTID @ TF-DERIVE:CELL@ $2 T=
+PTID @ TF-DERIVE:OWNER? 0 T=
+
+CLID @ TF-DERIVE:OWNER!                 \ owner bit FIRST, then HASH
+CLID @ TF-DERIVE:ANY? 0 T=              \ owner alone: gate still false
+CLID @ TF-DERIVE:HASH!
+CLID @ TF-DERIVE:ANY? -1 T=             \ HASH flips the gate, not owner
+CLID @ TF-DERIVE:OWNER? -1 T=
+CLID @ TF-DERIVE:CELL@ $6 T=            \ literal: HASH($2) + owner($4)
+
+\ ---------------------------------------------------------------------------
+\ 23. invalid family ids still hit TF-REC@'s range check, through the NEW words
+\    (dot habu-record-owner-construction). That check is an uncatchable `76 die`,
+\    so it cannot be an in-process case: it would abort this suite instead of
+\    registering a failure. It is proven the way test/require-cap-test.f proves its
+\    named die - fork a SUBJECT child, evaluate the offending source there, and
+\    assert the child's exit code and stderr text from the parent. The positive
+\    control (a VALID id in the same child shape) must exit 0, so the assertion
+\    cannot pass merely because every child dies.
+\ ---------------------------------------------------------------------------
+require lib/string.f                    \ CONTAINS? - stderr text assertion
+require lib/test/subject.f              \ SUBJECT:RUN - isolated child evaluation
+
+package TF-DIE
+$800 constant IO-CAP
+30000 constant TIMEOUT-MS
+create OUT-BUF IO-CAP allot
+create ERR-BUF IO-CAP allot
+variable ERR-U   variable RC-N   variable EXITED?
+: STORE ( outcome -- )
+   MATCH outcome
+      exited OF
+         RC-N !
+         -1 EXITED? !
+      ENDOF
+      signaled OF
+         RC-N !
+         0 EXITED? !
+      ENDOF
+      timeout OF
+         0 RC-N !
+         0 EXITED? !
+      ENDOF
+   ;MATCH ;
+public
+: RUN ( ptr u8 n -- )                   \ evaluate source in a child, capture outcome
+   OUT-BUF IO-CAP >LEN
+   ERR-BUF IO-CAP >LEN
+   TIMEOUT-MS >MS
+   SUBJECT:RUN
+   STORE
+   LEN>N ERR-U !
+   LEN>N drop ;
+: RC ( -- n ) RC-N @ ;
+: EXITED? ( -- bool ) EXITED? @ ;
+: ERR$ ( -- ptr u8 n ) ERR-BUF ERR-U @ ;
+;package
+
+\ The child is a COW fork of this process, so TF-DERIVE's public wrappers are
+\ already live in it: the child source needs no trust definitions of its own.
+\ the setter rejects an out-of-range id and a negative id.
+s" 999 TF-DERIVE:OWNER!" TF-DIE:RUN
+TF-DIE:EXITED? T-TRUE
+TF-DIE:RC 76 T=
+TF-DIE:ERR$ s" tfam: bad family id" CONTAINS? T-TRUE
+s" -1 TF-DERIVE:OWNER!" TF-DIE:RUN
+TF-DIE:EXITED? T-TRUE
+TF-DIE:RC 76 T=
+TF-DIE:ERR$ s" tfam: bad family id" CONTAINS? T-TRUE
+\ the read-only query rejects BOTH ends of the range, so a query that took the
+\ absolute value of its id (or checked only the high bound) would fail here.
+s" 999 TF-DERIVE:OWNER? drop" TF-DIE:RUN
+TF-DIE:EXITED? T-TRUE
+TF-DIE:RC 76 T=
+s" -1 TF-DERIVE:OWNER? drop" TF-DIE:RUN
+TF-DIE:EXITED? T-TRUE
+TF-DIE:RC 76 T=
+TF-DIE:ERR$ s" tfam: bad family id" CONTAINS? T-TRUE
+\ positive control: a VALID id in the same child shape exits clean, so the four
+\ cases above are a range rejection and not "any child dies". The child forks from
+\ this process, so section 22's families (ids 0..3) are live in it.
+TFAM-N@ 0 > T-TRUE                      \ id 0 really is in range for the child
+s" 0 TF-DERIVE:OWNER!" TF-DIE:RUN
+TF-DIE:EXITED? T-TRUE
+TF-DIE:RC 0 T=
+
+\ Declares families until a REAL arena relocation is witnessed through the
+\ TF-DERIVE:ROW@ address seam. No iteration bound is needed: capacity is finite and
+\ every declaration increments TFAM-N, so REG-GROW1 must eventually hand back a new
+\ base; a loop that did not terminate would itself be the failure signal. Exactly
+\ two ids are tracked - the last row flagged BEFORE the growth (which is the row at
+\ the capacity boundary, the first thing a short copy loses) and the row whose
+\ declaration TRIGGERED the growth, which is deliberately left unflagged so it can
+\ witness that the copy did not smear the bit forward.
+package TF-GROWTH
+create GNAME 1 2 CELL * + allot         \ exactly 1 + 2*CELL: 'g' + fixed-width hex id
+2 CELL * constant HEXW                  \ hex digits per cell, derived at package level
+variable FLAGGED-N                      \ last id flagged before the relocation
+variable NEW-N                          \ id whose declaration triggered it (unflagged)
+: HEXC ( n -- n ) {: d:n :}             \ 0..15 -> lowercase hex digit
+   d 10 < if
+      [char] 0 d +
+   else
+      [char] a d 10 - +
+   then ;
+: GNAME! ( n -- ) {: i:n :}             \ 'g' + fixed-width lowercase hex of i (injective)
+   [char] g GNAME c!
+   0 begin dup HEXW < while
+      dup  HEXW 1- over -  4 *
+      i swap rshift $F and HEXC
+      swap GNAME + 1 + c!
+      1+
+   repeat drop ;
+public
+: BOUNDARY ( -- n ) FLAGGED-N @ ;
+: TRIGGER ( -- n ) NEW-N @ ;
+: UNTIL-MOVED ( n n -- ) {: vis:n kind:n :}   \ row 0 must exist and be flagged
+   0 FLAGGED-N !
+   0 TF-DERIVE:BASE-CAPTURE
+   begin
+      FLAGGED-N @ 1+ GNAME!
+      s" grow" vis GNAME HEXW 1+ 0 kind TWX-TFAM-DECL NEW-N !
+      0 TF-DERIVE:BASE-MOVED? 0=
+   while
+      NEW-N @ TF-DERIVE:OWNER!
+      NEW-N @ FLAGGED-N !
+   repeat ;
+;package
+
+\ ---------------------------------------------------------------------------
+\ 24. the owner bit survives a REAL arena relocation (dot habu-record-owner-
+\    construction). TF.DERIVE is the LAST cell of a 19-cell row, so a short copy in
+\    TF-GROW (type-family.f:281-287) loses it first. The relocation is WITNESSED,
+\    not assumed: row 0's base address is captured through the TF-DERIVE:ROW@ seam
+\    and rows are declared until that address actually CHANGES, so a real REG-GROW1
+\    copy runs whatever capacity the arena starts at (TFAM-RESET rewinds TFAM-N but
+\    keeps capacity). Two ids carry the whole proof.
+\ ---------------------------------------------------------------------------
+TWX-TFAM-RESET
+s" growbase" CHECKER-PACKAGE-PUBLIC s" r0" 0 TK-ENUM TWX-TFAM-DECL FID !
+FID @ 0 T=                              \ the captured probe row really is id 0
+FID @ TF-DERIVE:OWNER!
+CHECKER-PACKAGE-PUBLIC TK-ENUM TF-GROWTH:UNTIL-MOVED
+\ the last row flagged BEFORE the growth sits at the capacity boundary: a copy one
+\ cell short drops its derive cell, so this is where the short copy shows up.
+TF-GROWTH:BOUNDARY TF-DERIVE:OWNER? -1 T=
+\ the row whose declaration triggered the growth was never flagged: the copy did
+\ not smear the bit onto a freshly allocated row.
+TF-GROWTH:TRIGGER TF-DERIVE:CELL@ 0 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

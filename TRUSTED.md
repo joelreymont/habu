@@ -1333,6 +1333,10 @@ test/type-family-rollback-suite.f:TWX-LAY-ADD test-metaprog habu-seal-set-check-
 test/type-family-rollback-suite.f:OPEN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-rollback-suite.f:CLOSE test-metaprog habu-seal-set-check-b3676b33
+test/type-family-rollback-suite.f:CELL@ test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-rollback-suite.f:ANY? test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-rollback-suite.f:OWNER! test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-rollback-suite.f:OWNER? test-metaprog habu-record-owner-construction-65ddd22f
 test/type-family-rollback-suite.f:TWX-PF-RAW@ test-metaprog habu-seal-set-check-b3676b33
 test/decl-event-suite.f:TWX-TFAM-RESET test-metaprog habu-seal-set-check-b3676b33
 test/decl-event-suite.f:TWX-SCHEMA-RESET test-metaprog habu-seal-set-check-b3676b33
@@ -1589,6 +1593,13 @@ test/type-family-suite.f:OPEN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:ADD test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:CLOSE test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:ROLLBACK test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:ROW@ test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-suite.f:CELL@ test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-suite.f:ANY? test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-suite.f:EQ! test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-suite.f:HASH! test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-suite.f:OWNER! test-metaprog habu-record-owner-construction-65ddd22f
+test/type-family-suite.f:OWNER? test-metaprog habu-record-owner-construction-65ddd22f
 test/type-family-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-APP? test-metaprog habu-seal-set-check-b3676b33
