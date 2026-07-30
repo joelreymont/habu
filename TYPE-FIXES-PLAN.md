@@ -178,14 +178,17 @@ the census source):
     owners on throw paths (the SEAL/E-UNSET class the old WSTORE header
     described): a catch whose arms may hold different types is the same fix.
 
-25. **"Seal" gets one meaning.** Wordlist sealing (prot-wid, the exit-84
-    reopen refusal protecting compiler-internal packages) is a different
-    concept and keeps the name. Everything else called seal dies or is
-    renamed: owner-wid-emit-seal.f goes with the dead registry; the maki/db
-    proof mints (promotion authority, capability grants, stage proofs) are
-    the same construction-guard ceremony as cfg-proof and evaporate under
-    CONSTRUCT owner; layout-buffer-seal.f and lower-cert-seal.f get a census
-    before a verdict — checker bookkeeping stays, ceremony goes.
+25. **Seal dies entirely.** Package sealing (SEAL-PACKAGE, the prot-wid
+    registry, the exit-84 reopen refusal on compiler-internal packages) is
+    deleted (Joel, 2026-07-30): we are Forth — everything is open,
+    redefinition is a feature, and a diff that reopens a checker package is
+    caught by review like any other loud mistake. With it go
+    owner-wid-emit-seal.f (dead registry), the maki/db proof mints
+    (promotion authority, capability grants, stage proofs — the same
+    construction-guard ceremony as cfg-proof, evaporating under CONSTRUCT
+    owner), and the doc's sealed-wordlists section. layout-buffer-seal.f and
+    lower-cert-seal.f get a census; whatever survives it gets renamed so the
+    word seal leaves the codebase.
 
 26. **Unchecked regions become a delimited block, not a variable poke.**
     `0 set-check … 1 set-check` is unbalanced and easy to leave open; Joel's
