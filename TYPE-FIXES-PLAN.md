@@ -197,6 +197,19 @@ the census source):
     opener IS the boundary marker. Census 2026-07-30: 111 `0 set-check`
     sites across 55 files migrate in the sweep.
 
+27. **One word for unproven effects; TRUSTED.md is deleted.** `PRIM:`,
+    `PPRIM:`, and `TRUSTED:` are one mechanism — assert an effect the checker
+    cannot prove — split three ways (global prim, packaged prim, trusted
+    Forth body). They collapse into one declaring word with an optionally
+    qualified name and an optional body: an engine primitive is the word
+    with no body, a laundering retype is the word with a body and a real
+    confession. The justification and retirement note live AT THE DEFINITION
+    in a lint-checkable shape — not in a hand-maintained central ledger.
+    TRUSTED.md is duplicate authority (source already declares everything;
+    the lint today enforces agreement between two files, which is effort
+    spent maintaining drift) and is deleted; any ledger view is generated
+    from source on demand.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
