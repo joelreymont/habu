@@ -1,8 +1,19 @@
 \ gpt2-pin.f - pinned GPT-2 artifact identity.
 
+require lib/prelude.f
+require maki/tensor.f
+
 package GPT2PIN
 
 public
+
+\ Resolved facts for this revision, never Hugging Face defaults.
+: DTYPE ( -- MAKI:dtype )
+   MAKI-DTYPE:DF32 ;
+: TIED? ( -- bool )
+   true ;
+: ATTN-SCALE? ( -- bool )
+   true ;
 
 : REVISION$ ( -- ptr u8 n )
    s" 607a30d783dfa663caf39e06633721c8d4cfcd7e" ;
