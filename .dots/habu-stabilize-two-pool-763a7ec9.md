@@ -177,3 +177,15 @@ per-phase guard, so the phase has under 10 percent room and the next case added
 to it kills the phase on the outer guard, which would also swallow the named
 verdict added here. New dot `habu-name-the-outcome-a80c2197`: every other caller
 of `T-OUTCOME-EXITED=` still gets the anonymous line until that file is packaged.
+
+Update 2026-07-30 (full-gate run on a quiet host, tree 75c9dd8c): the same
+phase-ceiling class also reds the two heaviest build phases even with no other
+load - build-fixpoint-fixtures and hb-build-fixtures both finish as
+kind=TIMEOUT-UNDER-LOAD code=0 in the full pool run (the pool's own eight
+slots are the load; hb-build-test alone was earlier measured at 159 s against
+the 120 s phase guard). Whatever this dot decides for check-cli's ceiling must
+cover these two as well: either the phase guard learns per-phase measured
+budgets with the same named timeout-vs-dead verdicts, or the heavy build
+phases get their own pool stage with a ceiling derived from measurement. They
+are the last two non-defect reds between the current tree and a fully green
+gate-stdlib.
