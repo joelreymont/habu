@@ -130,6 +130,20 @@ the census source):
     unchecked debugging pokes so that capability is deliberate, not
     accidental.
 
+20. **Explicit arity on declarations is deleted; the parser infers it.**
+    `ENUM option 1` becomes `ENUM option` — the parser reads to the closer and
+    counts the distinct type variables itself (Joel: we know the number, we
+    can parse until `;ENUM`). Same for `STRUCTURE name 0` and the carrier
+    `NEWTYPE`. Parameter order becomes first-use order, which also deletes
+    the `E-SUMTYPE-DECL` "declare a before b" ordering rule — with inference
+    it has nothing left to enforce. Engine note: the definer currently
+    registers the family row before parsing the body; registration defers or
+    the arity cell is patched after the body parses.
+
+21. **One payload spelling in variants.** `option` writes `FIELD value a`,
+    `result` writes bare positional `a` — same machinery, two syntaxes. The
+    conversion picks one (settle at the joint review) and migrates the other.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
