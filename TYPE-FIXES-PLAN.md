@@ -282,11 +282,10 @@ Joel's open decision above. Nothing stopped is left ambient.
 4. OLD-FORM DELETION, same batch (Joel, 2026-07-30: hard cutover — no
    both-forms engine, not even branch-internal): SUMTYPE, PRODUCT,
    DEFTYPE, the arity-NEWTYPE grammar, and the hash fallback are deleted
-   in the engine batch itself. Then ENGINE REFRESH #1. From that moment
-   nothing with an old-form declaration loads until it is migrated — the
-   boot prefix carries zero old-form declarations (verified), so the
-   engine itself builds; the sweep then advances a LOADABLE FRONTIER in
-   load order, and an unmigrated file failing loudly is the census.
+   in the engine batch itself. NO refresh follows (the single wave-1
+   refresh is at M17); all subsequent work is written blind against the
+   current engine, and the M17 refresh plus first full-tree load is
+   where the new grammar first executes.
 
 ### Phase 2 — tree migration (claude)
 
@@ -299,16 +298,15 @@ converted tree happens at the completion gate.
 
 2a. `result` and `option` first (everything depends on them), then
     lib/adt, lib core, CAD-NUM.
-2b. src/core + src/habu — the checker's own sources. R1 pre-probe first:
-    migrate ONE boot-prefix declaration, refresh, load the tree (no
-    suites), then sweep. ENGINE REFRESH #2 after 2b.
+2b. src/core + src/habu — the checker's own sources (respell only; zero
+    old-form declarations there). Written blind; no refresh.
 2c. maki + tools + test declarations, suite inventories updated as files
     move. The wave-1 rewrites ride here: the duplicate collapses (11, 12),
     the dead-type deletions from 13, map-take (22), the datatype rename
     (10), proof deletion (6), and the exact GPT-2 types (32).
-2d. Old-form deletion: SUMTYPE, PRODUCT, DEFTYPE, arity-NEWTYPE grammar,
-    the hash fallback, map-take. The single ENGINE REFRESH happens here. An rg
-    source census proves zero old-form sites.
+2d. (Old-form deletion happened in phase 1 — hard cutover. The single
+    ENGINE REFRESH and the zero-site rg census live at M17, the
+    completion gate.)
 
 ### Phase 3 — the gate battery, then one landing
 
@@ -357,23 +355,37 @@ R5. Anything deferred mid-wave must gain a wave-2 entry here before its
 
 ### Wave-1 leaf list (owner, blocked-by, owned interface, production check)
 
-Engine leaves (codex). Check = a checked load probe in the leaf workspace;
-no suites.
+Engine leaves (codex). Check = rg-census + review (nothing loads under
+the new grammar until M17); the stated probes RUN AT M17 as its
+acceptance list, authored in each leaf.
 
-- E1 arbitrary-depth path lookup. blocked-by: none. Interface: XREF
-  resolves A:B:...:WORD at any depth; bare names resolve by the ancestor
-  chain (own, ancestors outward, global); child reads ancestor privates,
-  parent cannot read child's; `using A:B` imports B's publics only.
-  Check: rg-census + review (no loads until M17).
-- E2 the namespace tree. blocked-by: E1. Interface: parent-linked
-  records; `package A:B:C` full-path declaration AND nested block
-  opening via a package stack; ONE tree where package and type paths
-  are the same claim — second claim is a declaration-time error;
-  creation/reopen open to all. Check: rg-census + review.
-- E3 declarers emit into the tree. blocked-by: E2. Interface: a type
-  declared in a package claims its child path and publishes
-  PKG:TYPE:MAKE there; old mangled spellings are not generated.
-  Check: rg-census + review.
+- E1 the namespace tree substrate: parent-linked records, node kinds
+  (package/type claims), the one-tree collision rejection. blocked-by:
+  none. Interface: tree create/read; second claim on a path is a
+  declaration-time error.
+- E2a full-path resolution: A:B:...:WORD at any depth reads the tree.
+  blocked-by: E1.
+- E2b ancestor-chain bare-name lookup + downward-private visibility
+  (child reads ancestor privates; parent cannot read child's).
+  blocked-by: E2a.
+- E2c `using A:B` = one level of B's publics. blocked-by: E2b.
+- E2d package create/reopen at any path + the package stack for block
+  nesting. blocked-by: E1.
+- E3 declarers emit into the tree: a type declared in a package claims
+  its child path and publishes PKG:TYPE:MAKE there; old mangled
+  spellings are not generated. blocked-by: E2a-E2d.
+- COMPATIBILITY SEAM (frozen source-level invariant): src/core and
+  src/habu must be compilable by the CURRENT bootstrap AND contain zero
+  retired grammar or spellings at landing. The intersection that makes
+  both true: engine sources reference generated constructor words ONLY
+  by bare in-package spelling (valid under both engines) or not at all —
+  never by qualified generated spelling, old-mangled or new-nested; and
+  they declare no types with any retired definer (already true: zero
+  old-form declarations in src). The M6/M7 respell leaves therefore
+  REWRITE src's generated-spelling references into bare in-package form
+  rather than respelling them nested; the zero-site census covers src
+  like everything else, and the old bootstrap compiles the whole engine
+  for the single M17 refresh.
 - E4 long-name capacity. blocked-by: E3. Interface: no hash fallback; true
   capacity overflow rejects loudly. Check: over-capacity declaration probe.
 - E5 binder heads on all three declarers. blocked-by: none (parallel to
@@ -491,7 +503,7 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   registry. Same discipline and ordering as M13b.
 - M14a FS: `STRUCTURE path` = `data ptr u8`, `len CAD-NUM:byte-len` —
   borrowed, never retained. Probe: FS:path resolves; path consumers
-  load. blocked-by E11.
+  load; probe runs at M17. blocked-by the phase-1 engine leaves.
 - M14b SAFET: `SAFET:file` is the RENAMED linear census owner;
   `SAFET:RELEASE ( file -- )` consumes it exactly once. Probe: census
   spellings E-UNDEFINED; the file chain loads. blocked-by M11c.
@@ -548,7 +560,8 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   delete). blocked-by M15.
 - M17 completion gate: the ONE engine refresh of wave 1 runs here, then
   the FULL-TREE load — the first time anything loads under the new
-  grammar — plus the rg zero-site census. blocked-by M13, M14a-d, M16.
+  grammar — plus the rg zero-site census. blocked-by M12, M13b, M13c,
+  M14a-d, M15, M16.
 - (docs reconciliation moved to phase 4, after everything — Joel.)
 - M18 green-tree mechanics: refine-lint and host-lint DELETED (item
   40); suite-coverage's conscious-exception table updated for
@@ -565,12 +578,22 @@ frozen contracts.
     engine batch] (Joel, 2026-07-30: no transactions in a single-threaded
     compiler.) The decl-event / declaration-transaction / coordinator
     layer — including the published event log the audit proved nothing
-    ever consults — is removed. What stays is the bare savepoint: save
-    the dictionary pointer, code pointer, and registry watermark; restore
-    on a rejected candidate. That is the whole mechanism reject-and-
-    continue testing needs (a fresh process per candidate would recompile
-    the boot prefix hundreds of times per suite), and it keeps no
-    transaction vocabulary.
+    ever consults — is removed. What stays is the SAVEPOINT, stated
+    honestly: declaration state spans many registries (dictionary ndict/
+    cp/dp, family, schema, layout, field/variant, constructor,
+    protection, checker records, and the new namespace tree), so the
+    frozen design is: EVERY declaration-mutated registry is append-only,
+    each exposes one high-water mark, a savepoint is the VECTOR of those
+    marks, and rollback truncates each to its mark (the C model: arena
+    pointers, not transaction logs). This is multi-owner work, split:
+    one conformance leaf PER REGISTRY — dictionary (ndict/cp/dp), family,
+    schema, layout, field/variant, constructor, protection, checker
+    records, and the new namespace tree (E1's substrate is born
+    append-only) — each leaf verifying append-only or converting, and
+    freezing that registry's high-water interface; the final savepoint
+    leaf only COMPOSES the frozen interfaces into the vector. Reject-
+    and-continue testing is the consumer (a fresh process per candidate
+    would recompile the boot prefix hundreds of times per suite).
 
 ### Phase 4 — docs reconciliation, at the very bottom (Joel)
 
