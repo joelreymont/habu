@@ -261,6 +261,8 @@ SUITE maki/infer/gpt2-pin-test.f
 ;SUITE
 SUITE maki/infer/gpt2-config-test.f
 ;SUITE
+SUITE maki/infer/hf-config-test.f
+;SUITE
 SUITE maki/infer/gpt2-tensor-test.f
 ;SUITE
 SUITE maki/journal-test.f
