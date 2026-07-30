@@ -2,7 +2,9 @@
 \ Native gates run it against HABU_UNDER_TEST; bootstrap.sh runs the same file
 \ against the Gforth-recovered candidate. Besides exact exits 86..88, it proves
 \ the post-seal checker bridge succeeds, then patches the sole embedded
-\ checker-package lookup token and proves the same source fails closed with 70.
+\ checker-package lookup token and proves the same source fails closed with 70
+\ AND names the refused state on fd 2 - the status alone cannot distinguish a
+\ named refusal from any other rc-70 reject.
 
 require lib/errors.f
 require lib/string.f
@@ -30,6 +32,7 @@ variable MATCH-OFF
 variable MATCH-N
 variable ROOT-U
 variable PATCHED-U
+variable ERR-U         \ bytes the last child wrote to fd 2
 
 create ROOT-BUF FS-PATH-CAP allot
 create PATCHED-BUF FS-PATH-CAP allot
@@ -45,6 +48,9 @@ create PATCHED-BUF FS-PATH-CAP allot
 
 : PATCHED$ ( -- ptr u8 n )
    PATCHED-BUF PATCHED-U @ ;
+
+: ERR$ ( -- ptr u8 n )
+   ERR ERR-U @ ;
 
 : HB$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" >LEN PROC-ENV-DEFAULT$? if LEN>N exit then
@@ -63,8 +69,8 @@ create PATCHED-BUF FS-PATH-CAP allot
    exe exeu >LEN src srcu >LEN OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
    RUN-ARGV-STDIN-CAPTURE
    MATCH result
-     ok  OF PCAP-CAPTURED:UNMAKE 2drop 0 ENDOF
-     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} c RC>N ENDOF
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :} e LEN>N ERR-U ! 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :} e LEN>N ERR-U ! c RC>N ENDOF
    ;MATCH ;
 
 : CHILD-RC ( ptr u8 n -- n )
@@ -142,6 +148,13 @@ create PATCHED-BUF FS-PATH-CAP allot
    PATCH-IMAGE
    s" post-seal missing checker fails closed" T-LABEL
    MISSING-CHECKER-RC 70 T=
+   \ The exit status alone cannot tell a named refusal from a lucky one: 70 is
+   \ also what an undefined word or a rejected body exits with. So the same run's
+   \ fd 2 has to name the state the checker refused on, which is what turns the
+   \ bare `hb: uncaught throw code 7136` (rc 67) this test used to get into a
+   \ diagnostic a reader can act on.
+   s" post-seal missing checker names the refused state" T-LABEL
+   ERR$ s" no authenticated package context" CONTAINS? TTRUE
    CLEANUP-RUN ;
 
 public

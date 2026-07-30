@@ -625,13 +625,53 @@ CHECKER-PKG-LIVE-DEFAULT
    CHECKER-VERIFY-PKG-DEPTH @ 0 <> IF 0 0= EXIT THEN
    CHECKER-PACKAGE-NEUTRAL? ;
 
+\ The refusal surface for "this definition has no package context".
+\
+\ Every checked definition, and every declaration front end, asks
+\ CHECKER-PKG-CONTEXT below which package the code being compiled belongs to.
+\ When neither authority can name one, the definition has to be refused: that is
+\ the fail-closed direction, and an engine whose package bridge to the checker is
+\ missing depends on it.
+\
+\ Refusing with a bare `E-PKG-CONTEXT throw` made the refusal invisible. 7136 is
+\ far outside the [1,255] band a process exit status can carry, so it can only
+\ reach the top-level uncaught-throw reporter, which prints `hb: uncaught throw
+\ code 7136` and exits UNCAUGHT-RC (67) - the status the engine uses for a throw
+\ nobody handled and nobody named, not for a compile-time refusal. That is what
+\ test/engine-error-package.f measured: it corrupts the sole embedded
+\ `checker-package` lookup token so the engine can no longer tell the checker
+\ which package it has opened, loads package source under that engine, and got
+\ 67 where the designed fail-closed status is 70.
+\
+\ So the refusal is now stated the way the engine states every other
+\ compile-time reject: name the offending state on fd 2, then throw the reject
+\ rc. Being inside [1,255] that rc is carried unchanged by the top-level
+\ reporter on every load leg - baked source, a `--load` file, stdin batch - so an
+\ unhandled refusal exits exactly 70, while an enclosing `catch` (a nested
+\ `evaluate`, the check tool, a test harness) still receives a catchable reject
+\ instead of a process exit. Which programs are refused does not change here,
+\ only how the refusal surfaces. Whether a bare word list ought to BE a legal
+\ definition context is a separate question, owned by dot
+\ habu-model-bare-wordlists-9e7c3521.
+\
+\ The `write` result is dropped for the same reason USIG-ADD-BAD below drops it:
+\ the next thing this word does is raise, so a short or failed diagnostic write
+\ has no caller that could act on it, and reporting it instead of the refusal
+\ would replace a named refusal with an unrelated code. The refusal itself is
+\ never dropped.
+70 constant PKGCTX-REJECT-RC   \ the engine's compile-reject rc (src/habu/habu2.f RC-REJECT)
+
+: CHECKER-PKG-CONTEXT-REJECT ( -- )
+   2 S\" hb: no authenticated package context for this definition\n" write drop
+   PKGCTX-REJECT-RC throw ;
+
 : CHECKER-PKG-CONTEXT ( -- ptr u8 n n )
    CHECKER-PKG-MIRROR-AUTHORITY? IF
       CHECKER-PKG-MIRROR
    ELSE
       PKG-LIVE-XT
    THEN
-   0= IF E-PKG-CONTEXT throw THEN ;
+   0= IF CHECKER-PKG-CONTEXT-REJECT THEN ;
 
 : CHECKER-AUTH-PACKAGE$ ( -- ptr u8 n )
    CHECKER-PKG-CONTEXT drop ;

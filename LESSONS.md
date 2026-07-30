@@ -3153,3 +3153,27 @@ fits.
   checker reported `expected: a ptr a actual: n n` at the store. Naming the cell
   `REV-CELL` fixed it. The package-wide cells in this substrate are already
   spelled `*-CELL` for the same reason.
+
+- **A refusal that throws an out-of-band code is invisible, not fail-closed.**
+  `test/engine-error-package.f` asserts that an engine whose `checker-package`
+  lookup token is corrupted still fails closed with rc 70, and it got 67. The
+  checker was refusing correctly - it genuinely had no package context to give -
+  but it refused by throwing `E-PKG-CONTEXT` (7136), and only codes in `[1,255]`
+  survive as a process exit status, so 7136 could only ever land in the generic
+  top-level reporter as `hb: uncaught throw code 7136` plus `UNCAUGHT-RC` (67).
+  A refusal a program is meant to observe has to be raised with the reject rc the
+  engine actually carries (70, `RC-REJECT`) and has to name its state on fd 2.
+  When an exit status looks wrong, check the width of the code before hunting for
+  the missing guard - and remember the exit status alone is weak evidence: 70 is
+  also what an undefined word exits with, so the regression must assert the
+  diagnostic text too.
+
+- **A guard keyed on the wrong "is it live yet" probe fires after the failure.**
+  The first attempt at the above closed the fail-open at the engine side instead:
+  `C-FIND-CHECKER` may silently skip a missing checker bridge word, so make it
+  skip only while no check hook is installed (`HOOK-CELL`), the same probe the
+  compile-immediate path uses for its preflight hook. It was measured, by printing
+  `check@` at the throw site, that `HOOK-CELL` is still 0 when the refusal
+  happens: the boot prefix reload runs unchecked, and the declaration front ends
+  ask for the package context directly rather than through the hook. A capability
+  probe is only structural if it is armed before the state it guards.
