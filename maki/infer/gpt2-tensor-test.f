@@ -108,62 +108,62 @@ variable HIGH
 \ the real GPT-2 124M geometry.
 : CFG-REAL ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 1024 50257 12 768 12 true 50256 50256 MDLCFG:BUILD ;
+   DT0 1024 50257 12 768 12 true 50256 50256 MDLCFG:BUILD ;
 
 \ tiny geometry: nlayer 2, nembd 4, nhead 2, nctx 8, nvocab 5 - every 2-d
 \ shape distinct and non-square, so a transposed or swapped dim cannot pass.
 : CFG-A ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 8 5 2 4 2 true 4 4 MDLCFG:BUILD ;
+   DT0 8 5 2 4 2 true 4 4 MDLCFG:BUILD ;
 
 \ SAME nlayer as CFG-A, ONE behavioral field flipped (tied): the identity twin.
 : CFG-B ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 8 5 2 4 2 false 4 4 MDLCFG:BUILD ;
+   DT0 8 5 2 4 2 false 4 4 MDLCFG:BUILD ;
 
 \ extreme-but-valid gpt2 geometry: BUILD accepts nembd = MAX-N (nvocab 1,
 \ nctx 1, nhead 1), so the 3*nembd qkv product must be the overflow rejector.
 : CFG-WIDE ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 1 1 1 MAXN 1 true 0 0 MDLCFG:BUILD ;
+   DT0 1 1 1 MAXN 1 true 0 0 MDLCFG:BUILD ;
 
 \ the same shape at the exact 4*nembd boundary and one past it.
 : CFG-WIDE-MAX ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 1 1 1 MAX-EMBD 1 true 0 0 MDLCFG:BUILD ;
+   DT0 1 1 1 MAX-EMBD 1 true 0 0 MDLCFG:BUILD ;
 
 : CFG-WIDE-OVER ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 1 1 1 MAX-EMBD 1 + 1 true 0 0 MDLCFG:BUILD ;
+   DT0 1 1 1 MAX-EMBD 1 + 1 true 0 0 MDLCFG:BUILD ;
 
 \ the llama arm never validated the gpt2 census bound, so COUNT's own
 \ pre-check must reject; the MAX-N extreme, then the exact boundary pair.
 : CFG-DEEP ( -- MDLCFG:mcfg )
    2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
-   1 DT0 8 32 MAXN 4 2 false 1 2 MDLCFG:BUILD ;
+   DT0 8 32 MAXN 4 2 false 1 2 MDLCFG:BUILD ;
 
 : CFG-DEEP-MAX ( -- MDLCFG:mcfg )
    2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
-   1 DT0 8 32 MAX-LAYERS 4 2 false 1 2 MDLCFG:BUILD ;
+   DT0 8 32 MAX-LAYERS 4 2 false 1 2 MDLCFG:BUILD ;
 
 : CFG-DEEP-OVER ( -- MDLCFG:mcfg )
    2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
-   1 DT0 8 32 MAX-LAYERS 1 + 4 2 false 1 2 MDLCFG:BUILD ;
+   DT0 8 32 MAX-LAYERS 1 + 4 2 false 1 2 MDLCFG:BUILD ;
 
 \ gpt2 arm with everything minimal but nctx, for the mask element product.
 : CFG-CTX ( n -- MDLCFG:mcfg ) {: cx:n :}
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 cx 1 1 1 1 true 0 0 MDLCFG:BUILD ;
+   DT0 cx 1 1 1 1 true 0 0 MDLCFG:BUILD ;
 
 \ the two measured full-product escapes: every per-dim product fits, the
 \ pair product does not.
 : CFG-MASK4E9 ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 4000000000 5 1 768 12 true 4 4 MDLCFG:BUILD ;
+   DT0 4000000000 5 1 768 12 true 4 4 MDLCFG:BUILD ;
 
 : CFG-NE40 ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
-   1 DT0 1 1 1 $10000000000 1 true 0 0 MDLCFG:BUILD ;
+   DT0 1 1 1 $10000000000 1 true 0 0 MDLCFG:BUILD ;
 
 \ ---- typed probes over the public surface -------------------------------------
 64 constant NAME-CAP

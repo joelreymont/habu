@@ -67,9 +67,8 @@
 \ collision between two meanings of the same digest. It is a source constant
 \ rather than a PIN argument on purpose: a caller must not be able to stamp a
 \ pin with a format version this code does not implement. It folds as its 8 raw
-\ little-endian cell bytes, the same way MDLCFG:BUILD folds mcfg's
-\ schema-version, so a reader meets one version convention across the two
-\ identity domains.
+\ little-endian cell bytes, the same scalar fold MDLCFG uses across the cfgkey
+\ preimage. The version row is this file's own: an mcfg carries no version cell.
 \
 \ THE PROOF, AND THE GAP IT DOES NOT CLOSE. prov-proof is an arity-0 NEWTYPE,
 \ the maki/typestate.f ART:built shape also used by MDLCFG: the engine
@@ -215,8 +214,8 @@ create HEXBUF HEX-LEN allot    \ the tensor artifact's computed hexadecimal dige
    HEXBUF HEX-LEN wnt wntu STR= 0= if E-PROV-DIGEST throw then ;
 
 \ ---- key preimage folds ------------------------------------------------------
-\ A cell folds as its 8 raw little-endian bytes, exactly as MDLCFG:BUILD folds
-\ mcfg's schema-version - one convention for a version row, not two.
+\ A cell folds as its 8 raw little-endian bytes, exactly as MDLCFG folds every
+\ scalar in the cfgkey preimage - one fold shape across both identity domains.
 : FOLD-N ( n -- )
    NSCR !  NSCR 8 CONTENT-KEY:TEXT+ ;
 

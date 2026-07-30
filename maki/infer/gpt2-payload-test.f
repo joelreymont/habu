@@ -119,7 +119,7 @@ using WSTORE
 
 : MODEL-CONFIG ( -- MDLCFG:mcfg )                        \ the real 124M geometry
    0.00001 true MDLCFG-ARCH:GPT2
-   1 MAKI-DTYPE:DF32 1024 50257 12 768 12 true 50256 50256 MDLCFG:BUILD ;
+   MAKI-DTYPE:DF32 1024 50257 12 768 12 true 50256 50256 MDLCFG:BUILD ;
 
 \ ---- candidate verdicts --------------------------------------------------------
 \ -1 is "the checker certified this definition", 0 is "the checker rejected it". The

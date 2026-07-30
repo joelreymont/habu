@@ -3,16 +3,12 @@
 \ CONCERN: one immutable, fully validated model configuration record (mcfg)
 \ whose content identity is a 32-byte CONTENT-KEY digest (cfgkey) minted as the
 \ sole constructor's FINAL act after all validation - no partially validated
-\ value ever carries a key (inference design rev 4, blackboard
-\ 20260724-191041.846 correction 2; executes the schema half of
-\ habu-infer-pack-normalized-84fc05fa - no second normalized-config authority
-\ may exist).
+\ value ever carries a key, and no second normalized-config authority exists.
 \
-\ STRUCTURE mcfg = schema-version (explicit; version bumps are deliberate,
-\ folded FIRST into the cfgkey preimage) + the common behavioral fields shared
-\ by both arms (MAKI:dtype - maki/tensor.f:123 is the sole dtype authority -
-\ nctx, nvocab, nlayer, nembd, nhead, tied-embeddings flag, bos-id, eos-id;
-\ special tokens are behavioral: decode stops on eos) + payload ENUM arch =
+\ STRUCTURE mcfg = the common behavioral fields shared by both arms
+\ (MAKI:dtype - maki/tensor.f:123 is the sole dtype authority - nctx, nvocab,
+\ nlayer, nembd, nhead, tied-embeddings flag, bos-id, eos-id; special tokens
+\ are behavioral: decode stops on eos) + payload ENUM arch =
 \ gpt2(ln-eps, attn-scale) | llama(nkvhead, ffn-dim, rope-theta, rms-eps) -
 \ no meaningless fields on either arm - + the embedded cfgkey + the
 \ private-mint proof token.
@@ -30,10 +26,14 @@
 \ The four semantic MODEL values are DERIVED, never stored: FAMILY@/POSITION@/
 \ NORM@/ACT@ are pure functions of the arch arm (gpt2 -> gpt2/learned/
 \ layer-norm/gelu-new; llama -> llama/rope/rms-norm/silu). A stored copy could
-\ drift from the arm and is forbidden (rev-4 single-authority rule).
+\ drift from the arm and is forbidden (single-authority rule).
 \
-\ cfgkey preimage: schema-version, every common behavioral field, then the
-\ canonical serialization of the arch payload (variant tag text + payload
+\ mcfg is the CURRENT representation and carries no version cell: an old shape
+\ is not a value this type can hold, so no consumer has an unknown-version case
+\ to answer.
+\
+\ cfgkey preimage: every common behavioral field, then the canonical
+\ serialization of the arch payload (variant tag text + payload
 \ fields), all in declared order. Scalar fields fold as their 8 raw
 \ little-endian cell bytes (floats: exact IEEE-754 bits, no decimal
 \ rendering); the dtype folds as its MAKI:DT-KEY wire text; flags normalize
@@ -41,8 +41,8 @@
 \ length-delimited by the library, so adjacent fields cannot alias.
 \
 \ Constructor validation, all BEFORE the key mints, each class a named throw:
-\ schema floor; positive extents with overflow-checked composed products
-\ (vocab*embed, ctx*embed, and per-arm embed*ffn); head-dim divisibility;
+\ positive extents with overflow-checked composed products (vocab*embed,
+\ ctx*embed, and per-arm embed*ffn); head-dim divisibility;
 \ special-token range; GQA divisibility on the llama arm; positive arm
 \ epsilons/theta; and the gpt2 tensor-census bound 4 + 13*nlayer.
 \
@@ -58,7 +58,6 @@ package MDLCFG
 public
 
 \ ---- named rejection codes (one per validated field class) -------------------
--5640 constant E-SCHEMA     \ schema-version below the first published version
 -5641 constant E-EXTENT     \ a geometry extent nonpositive, or a composed product overflows
 -5642 constant E-HEAD       \ nembd not divisible by nhead
 -5643 constant E-TOKEN      \ bos-id/eos-id outside [0, nvocab)
@@ -81,7 +80,6 @@ STRUCTURE cfgkey 0 DERIVE eq
 NEWTYPE cfg-proof 0
 
 STRUCTURE mcfg 0
-   FIELD sv n
    FIELD dt MAKI:dtype
    FIELD nctx n
    FIELD nvocab n
@@ -100,7 +98,6 @@ private
 
 TRUSTED: MINT-CFG-PROOF ( -- cfg-proof )  0 ;
 
-1 constant SCHEMA-FIRST            \ the first published mcfg schema version
 $7FFFFFFFFFFFFFFF constant MAX-N
 4 constant G-FIXED-T               \ gpt2 top-level tensors: wte, wpe, ln_f.g, ln_f.b
 13 constant G-LAYER-T              \ gpt2 per-layer tensors: 12 block params + attn.bias mask
@@ -120,9 +117,6 @@ create KBUF 32 allot               \ CONTENT-KEY:FINAL digest landing pad
    a 0= b 0= or if 0 exit then
    a MAX-N b / > if E-EXTENT throw then
    a b * ;
-
-: V-SCHEMA ( n -- )
-   SCHEMA-FIRST < if E-SCHEMA throw then ;
 
 \ nctx nvocab nlayer nembd nhead: positive, and the embedding/activation
 \ products (nvocab*nembd, nctx*nembd) fit a cell.
@@ -196,21 +190,20 @@ public
 
 \ ---- the sole constructor -------------------------------------------------------
 \ Argument order is the mcfg field order with the wide arm first (deepest) so
-\ the ten scalars bind as entry locals. Every rejection throws BEFORE the key
+\ the nine scalars bind as entry locals. Every rejection throws BEFORE the key
 \ mint; the key mint is the final act after the folds, then the proof and MAKE.
-: BUILD ( arch n MAKI:dtype n n n n n bool n n -- mcfg )
-   {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
-   sv V-SCHEMA
+: BUILD ( arch MAKI:dtype n n n n n bool n n -- mcfg )
+   {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    cx vo nl ne nh V-EXTENTS
    ne nh V-HEAD
    bos vo V-TOKEN  eos vo V-TOKEN
    nl nh ne V-ARCH
    CONTENT-KEY:RESET
-   sv FOLD-N  dt FOLD-DT
+   dt FOLD-DT
    cx FOLD-N  vo FOLD-N  nl FOLD-N  ne FOLD-N  nh FOLD-N
    te FOLD-B  bos FOLD-N  eos FOLD-N
    dup FOLD-ARCH
-   >r  sv dt cx vo nl ne nh te bos eos  r>
+   >r  dt cx vo nl ne nh te bos eos  r>
    KEY-FINAL  MINT-CFG-PROOF
    MDLCFG-MCFG:MAKE ;
 
@@ -220,20 +213,20 @@ private
 \ mcfg is non-linear: accessors dup the value, UNMAKE the copy, bind the proof
 \ local, and drop or extract the wide fields (key, arm) by whole-bundle
 \ transport. Each public accessor is ( mcfg -- mcfg x ).
-: MC-COMMON ( mcfg -- n MAKI:dtype n n n n n bool n n )
+: MC-COMMON ( mcfg -- MAKI:dtype n n n n n bool n n )
    MDLCFG-MCFG:UNMAKE {: tok:cfg-proof :}
    drop drop ;
 
 : MC-ARM ( mcfg -- arch )
    MDLCFG-MCFG:UNMAKE {: tok:cfg-proof :}
    drop >r
-   2drop 2drop 2drop 2drop 2drop
+   2drop 2drop 2drop 2drop drop
    r> ;
 
 : MC-KEY ( mcfg -- cfgkey )
    MDLCFG-MCFG:UNMAKE {: tok:cfg-proof :}
    >r >r
-   2drop 2drop 2drop 2drop 2drop
+   2drop 2drop 2drop 2drop drop
    r> drop  r> ;
 
 \ arm -> derived MODEL semantics (the only authority; nothing is stored).
@@ -264,44 +257,40 @@ private
 public
 
 \ ---- common behavioral field accessors -------------------------------------------
-: SCHEMA@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
-   sv ;
-
 : DTYPE@ ( mcfg -- mcfg MAKI:dtype )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    dt ;
 
 : NCTX@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    cx ;
 
 : NVOCAB@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    vo ;
 
 : NLAYER@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    nl ;
 
 : NEMBD@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    ne ;
 
 : NHEAD@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    nh ;
 
 : TIED@ ( mcfg -- mcfg bool )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    te ;
 
 : BOS@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    bos ;
 
 : EOS@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: sv:n dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    eos ;
 
 \ ---- the arch arm and the derived MODEL semantics --------------------------------

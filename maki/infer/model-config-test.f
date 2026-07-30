@@ -1,19 +1,21 @@
-\ model-config-test.f - MDLCFG acceptance (rev-4 correction 2).
+\ model-config-test.f - MDLCFG acceptance.
 \
 \ Legs, all through the public package surface:
 \   1. both arms construct (llama constructor-tested from day one) and every
 \      common accessor, payload projection, and DERIVED semantic accessor
 \      returns the built value - derived accessors match the arm on BOTH arms;
 \   2. cfgkey sensitivity: byte-identical configs compare equal; flipping any
-\      ONE behavioral field (schema-version, dtype, each geometry field, the
-\      flag, each special token, each arm payload field, the arm itself)
-\      flips the key;
+\      ONE behavioral field (dtype, each geometry field, the flag, each special
+\      token, each arm payload field, the arm itself) flips the key;
 \   3. constructor rejections per field class, each a named throw raised
 \      BEFORE the key mints;
 \   4. checker negatives: a raw n in the proof slot rejects, the private mint
 \      is unresolvable outside the package, the gpt2 arm rejects a GQA-shaped
 \      field by construction, a cfgkey is not two raw cells, and a MODEL
-\      family value cannot ride in the dtype slot.
+\      family value cannot ride in the dtype slot;
+\   5. the version cell is gone for good: the old constructor arity no longer
+\      certifies, both public schema words are unresolvable, and the live type
+\      registry holds no `sv` slot in mcfg.
 
 require lib/prelude.f
 require lib/test.f
@@ -32,7 +34,6 @@ package MDLCFG-TEST
    CHECK-QUIET-CANDIDATE! 1 T= ;
 
 \ ---- baseline field values (GPT-2 small; llama 7B-shaped) --------------------
-1 constant SV0
 1024 constant CX0
 50257 constant VO0
 12 constant NL0
@@ -57,16 +58,16 @@ $7FFFFFFFFFFFFFFF constant HUGE
    MDLCFG:CFGKEY@ >r drop r> ;
 
 : B-G ( -- MDLCFG:mcfg )
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD ;
 
 : B-L ( -- MDLCFG:mcfg )
-   L-ARM SV0 DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD ;
+   L-ARM DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD ;
 
 : BG-WITH ( MDLCFG:arch -- MDLCFG:cfgkey )
-   SV0 DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
+   DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 
 : BL-WITH ( MDLCFG:arch -- MDLCFG:cfgkey )
-   SV0 DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD KOF ;
+   DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD KOF ;
 
 \ ---- payload projections (arm asserted via FAMILY@ before these run) ---------
 : GP-EPS ( r bool -- r ) {: eps:r sc:bool :}  eps ;
@@ -115,7 +116,6 @@ $7FFFFFFFFFFFFFFF constant HUGE
 \ ---- 1. construction + accessors + derived semantics, both arms --------------
 : T-GPT2 ( -- )
    B-G
-   MDLCFG:SCHEMA@ SV0 T=
    MDLCFG:DTYPE@ DT0 MAKI-DTYPE:EQ TTRUE
    MDLCFG:NCTX@ CX0 T=
    MDLCFG:NVOCAB@ VO0 T=
@@ -135,7 +135,6 @@ $7FFFFFFFFFFFFFFF constant HUGE
 
 : T-LLAMA ( -- )
    B-L
-   MDLCFG:SCHEMA@ SV0 T=
    MDLCFG:NCTX@ 4096 T=
    MDLCFG:NVOCAB@ 32000 T=
    MDLCFG:NLAYER@ 32 T=
@@ -158,26 +157,24 @@ $7FFFFFFFFFFFFFFF constant HUGE
 : K-BASE ( -- MDLCFG:cfgkey )  B-G KOF ;
 : K-L ( -- MDLCFG:cfgkey )  B-L KOF ;
 
-: K-SV ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM v DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-DT ( MAKI:dtype -- MDLCFG:cfgkey ) {: v:MAKI:dtype :}
-   G-ARM SV0 v CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
+   G-ARM v CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-CX ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM SV0 DT0 v VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
+   G-ARM DT0 v VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-VO ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM SV0 DT0 CX0 v NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
+   G-ARM DT0 CX0 v NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-NL ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM SV0 DT0 CX0 VO0 v NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
+   G-ARM DT0 CX0 VO0 v NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-NE ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM SV0 DT0 CX0 VO0 NL0 v NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
+   G-ARM DT0 CX0 VO0 NL0 v NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-NH ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 v true BOS0 EOS0 MDLCFG:BUILD KOF ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 v true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-TE ( bool -- MDLCFG:cfgkey ) {: v:bool :}
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 NH0 v BOS0 EOS0 MDLCFG:BUILD KOF ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 v BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-BOS ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 NH0 true v EOS0 MDLCFG:BUILD KOF ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true v EOS0 MDLCFG:BUILD KOF ;
 : K-EOS ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 v MDLCFG:BUILD KOF ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 v MDLCFG:BUILD KOF ;
 : K-EPS ( r -- MDLCFG:cfgkey )  G-ARM-EPS BG-WITH ;
 : K-SC ( bool -- MDLCFG:cfgkey )  G-ARM-SC BG-WITH ;
 \ the llama arm over the SAME gpt2 commons: only the arm differs from K-BASE.
@@ -195,7 +192,6 @@ $7FFFFFFFFFFFFFFF constant HUGE
 : T-KEYS ( -- )
    K-BASE K-BASE MDLCFG:CFGKEY= TTRUE
    K-L K-L MDLCFG:CFGKEY= TTRUE
-   K-BASE 2 K-SV MDLCFG:CFGKEY= TFALSE
    K-BASE MAKI-DTYPE:DF16 K-DT MDLCFG:CFGKEY= TFALSE
    K-BASE 2048 K-CX MDLCFG:CFGKEY= TFALSE
    K-BASE 60000 K-VO MDLCFG:CFGKEY= TFALSE
@@ -214,28 +210,26 @@ $7FFFFFFFFFFFFFFF constant HUGE
    K-L 0.00001 KL-REPS MDLCFG:CFGKEY= TFALSE ;
 
 \ ---- 3. constructor rejections per field class --------------------------------
-: RJ-SV ( -- )
-   G-ARM 0 DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-CX ( -- )
-   G-ARM SV0 DT0 0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-VO ( -- )
-   G-ARM SV0 DT0 CX0 0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-NL ( -- )
-   G-ARM SV0 DT0 CX0 VO0 0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 VO0 0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-NE ( -- )
-   G-ARM SV0 DT0 CX0 VO0 NL0 0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 VO0 NL0 0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-NH ( -- )
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-OVF ( -- )
-   G-ARM SV0 DT0 HUGE VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 HUGE VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-HEAD ( -- )
-   G-ARM SV0 DT0 CX0 VO0 NL0 770 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 VO0 NL0 770 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-BOS ( -- )
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 NH0 true VO0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true VO0 EOS0 MDLCFG:BUILD drop ;
 : RJ-EOS ( -- )
-   G-ARM SV0 DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 -1 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 -1 MDLCFG:BUILD drop ;
 : RJ-CENSUS ( -- )
-   G-ARM SV0 DT0 CX0 VO0 HUGE NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
+   G-ARM DT0 CX0 VO0 HUGE NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-EPS ( -- )
    0.0 G-ARM-EPS BG-WITH drop ;
 : RJ-NKV ( -- )
@@ -254,7 +248,6 @@ $7FFFFFFFFFFFFFFF constant HUGE
    -1.0 KL-REPS drop ;
 
 : T-REJECTS ( -- )
-   [: RJ-SV ;] MDLCFG:E-SCHEMA TTHROWSQ
    [: RJ-CX ;] MDLCFG:E-EXTENT TTHROWSQ
    [: RJ-VO ;] MDLCFG:E-EXTENT TTHROWSQ
    [: RJ-NL ;] MDLCFG:E-EXTENT TTHROWSQ
@@ -283,9 +276,9 @@ T-REJECTS
 
 \ ---- 4. checker negatives -----------------------------------------------------
 \ the generated raw MAKE certifies only with a genuine proof value...
-s" MCP-MAKE ( n MAKI:dtype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey MDLCFG:cfg-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" YES
+s" MCP-MAKE ( MAKI:dtype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey MDLCFG:cfg-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" YES
 \ ...a raw n in the proof slot type-rejects...
-s" MCN-PROOF ( n MAKI:dtype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey n -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
+s" MCN-PROOF ( MAKI:dtype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey n -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
 \ ...and the private mint is unresolvable outside package MDLCFG (verdict 1),
 \ qualified or bare, so the proof cannot be produced around BUILD.
 s" MCN-MINT ( -- MDLCFG:cfg-proof ) MDLCFG:MINT-CFG-PROOF" UNK
@@ -299,7 +292,29 @@ s" MCP-L ( n n r r -- MDLCFG:arch ) MDLCFG-ARCH:LLAMA" YES
 \ a cfgkey is a nominal value, not raw cells.
 s" MCN-KEYRAW ( n n -- bool ) MDLCFG:CFGKEY=" NO
 \ a MODEL family value cannot ride in the dtype slot (single authority).
-s" MCN-DTSWAP ( MDLCFG:arch n MODEL:family n n n n n bool n n -- MDLCFG:mcfg ) MDLCFG:BUILD" NO
+s" MCN-DTSWAP ( MDLCFG:arch MODEL:family n n n n n bool n n -- MDLCFG:mcfg ) MDLCFG:BUILD" NO
+
+\ ---- 5. the version cell is unrepresentable, not merely unused ----------------
+\ The old eleven-input arity no longer certifies, so a caller that still hands
+\ BUILD a version cannot be written at all.
+s" MCN-OLDARITY ( MDLCFG:arch n MAKI:dtype n n n n n bool n n -- MDLCFG:mcfg ) MDLCFG:BUILD" NO
+\ Both words the package used to export for the version are unresolvable now
+\ (verdict 1); each certified before the cut, so these pin the deletion.
+s" MCN-SCHEMA-ACC ( MDLCFG:mcfg -- MDLCFG:mcfg n ) MDLCFG:SCHEMA@" UNK
+s" MCN-SCHEMA-ERR ( -- n ) MDLCFG:E-SCHEMA" UNK
+\ Those two verdicts read checker enrollment; these read the live dictionary,
+\ so an unchecked reintroduction of either exported name is caught as well.
+s" MDLCFG:SCHEMA@" XREF-FIND XREF-FOUND? TFALSE
+s" MDLCFG:E-SCHEMA" XREF-FIND XREF-FOUND? TFALSE
+\ And the record carries no version slot: the live type registry resolves one
+\ mcfg identity, answers the -1 sentinel for `sv`, and puts the dtype first -
+\ so no accessor could read a version even by raw UNMAKE.
+using REFLECT
+   s" mcfg" s" MDLCFG-MCFG" FAMS 1 T=
+   s" mcfg" s" MDLCFG-MCFG" s" sv" SLOT -1 T=
+   s" mcfg" s" MDLCFG-MCFG" s" dt" SLOT 0 T=
+   s" mcfg" s" MDLCFG-MCFG" FLDS 12 T=
+;using
 
 T-REPORT
 
