@@ -1,7 +1,12 @@
 # habu — Status
 
-Last verified: 2026-07-29
-Verification context: repair-control exact-tree verification, DGX Spark linux-arm64.
+Last verified: 2026-07-30
+Verification context: proofs-branch integration verification, macOS arm64 —
+focused owning gates green on every landed commit (IR chain through render/diff,
+snapshot relocation with declared-cell tables, stage0 using + recovery prologue,
+checker-model construct/scrutinee, storage/structure guard vectors, fail-closed
+package-context reject); full gate-stdlib first stage measured, historical red
+set now owned by open dots (engine-error-package returned to green).
 
 ## What is running and what is next
 
