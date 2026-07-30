@@ -56,7 +56,7 @@ path sufficient, or hold the lane for a post-conversion landing.
    declaration: a flagged type publishes no `MAKE`; the owning package
    constructs through the compiler's `construct` form, which wave 1 extends
    from sum/enum variants to structure and newtype construction
-   (`construct FAMILY make`). `UNMAKE` stays public and always generated —
+   (`construct <type-name> make`). `UNMAKE` stays public and always generated —
    destructuring cannot mint anything. The thirteen guard/marker dots are
    deleted. The one limitation is stated, not armored against: packages are
    reopenable by design, so foreign construction via reopen is caught by
@@ -67,13 +67,22 @@ path sufficient, or hold the lane for a post-conversion landing.
    private mints and ledger rows are all deleted. No zero-field token type
    needs to exist.
 
-7. **Generated namespaces nest.** [wave 1] `MDLCFG:CFGKEY:MAKE` replaces
-   `MDLCFG-CFGKEY:MAKE`; mangles like `SAFET-MAP--TAKE:MOVED` die. Engine
-   side: qualified lookup learns a two-colon split; namespace records gain a
-   parent link; the family definer creates a child namespace under the
-   declaring package. NOT source-level nested `package` blocks — the flat
-   package scope stays. Type rendering already prints the nested form, so
-   words come to agree with types.
+7. **Packages nest, arbitrarily deep.** [wave 1] (Joel interview,
+   2026-07-30.) `A:B:C:D:WORD` is legal. Declaring: BOTH spellings —
+   `package A:B:C` by full path from any file, and nested `package` blocks
+   (opening B inside A opens A:B; the engine gains a package stack). Bare
+   names resolve by the LEXICAL ANCESTOR CHAIN: own package, each ancestor
+   outward, then global; nearest wins. Privacy: a child sees its
+   ancestors' privates; parents never see into children; outsiders see
+   publics only. `using A:B` imports B's publics only — one level.
+   ONE namespace tree: a package path and a type path are the same kind
+   of claim; first claim wins and the second is a declaration-time error.
+   Anyone may create or reopen any package anywhere (the Forth covenant;
+   the diff is the audit). A type's generated namespace is simply a child
+   node claiming its path — `MDLCFG:CFGKEY:MAKE` replaces
+   `MDLCFG-CFGKEY:MAKE` and mangles like `SAFET-MAP--TAKE:MOVED` die.
+   Type rendering already prints the nested form, so words agree with
+   types.
 
 8. **Long generated names: the hash fallback AND the arbitrary cap both
    die.** [wave 1] The 32-byte limit was a readability cap, not an engine
@@ -174,7 +183,7 @@ path sufficient, or hold the lane for a post-conversion landing.
     packaging/restoration, lowering, caller migration — its own campaign
     after GPT-2 runs.
 
-25. **Seal dies entirely.** [wave 2+, one campaign] Package sealing
+25. **Seal dies entirely.** [wave 1 — agreed-dead deletes now] Package sealing
     (SEAL-PACKAGE, prot-wid, the exit-84 reopen refusal) is deleted — we
     are Forth; review catches compiler-package reopens. With it go
     owner-wid-emit-seal.f and the doc's sealed-wordlists section;
@@ -189,9 +198,11 @@ path sufficient, or hold the lane for a post-conversion landing.
     thing — a primitive operation of the checked language (syscall,
     machine op, retype axiom). `PPRIM:` and `TRUSTED:` fold in; the
     justification and retirement note move to the declaration in a
-    grammar-required shape; TRUSTED.md, trust-lint.f, and the
-    trusted-inventory ratchets are deleted (a ledger view, if ever wanted,
-    is generated).
+    grammar-required shape. The LEDGER machinery — TRUSTED.md,
+    trust-lint.f, the trusted-inventory ratchets — is agreed-dead and
+    deletes in WAVE 1 (item 38): each row's justification folds into its
+    site's comment as part of the deletion leaf, then file, lint, and
+    ratchets go. The PRIM: grammar unification itself remains wave 2+.
 
 28. **No pointer lifetimes, ever.** [decision, recorded] The borrow-system
     dot is deleted. Linear owners carry the safety that matters; borrowed
@@ -225,7 +236,7 @@ path sufficient, or hold the lane for a post-conversion landing.
     package owns everything model-specific (weights, execution, catalog);
     `FS:path` as the borrowed ptr-u8 plus `CAD-NUM:byte-len` structure;
     config opening returns generic `result<GPT2:config,n>`, not a bespoke
-    config-result family; `DEVRT` owns the generic device runtime; `INFER`
+    config-result family; `GPU` owns the GPU runtime; `INFER`
     owns the closed model carrier. `GPT2DEV` and `MDLCFG:mcfg` do not
     survive as names.
 
@@ -254,12 +265,14 @@ Joel's open decision above. Nothing stopped is left ambient.
 
 ### Phase 1 — engine batch (codex), in this order
 
-1. Nested namespaces first (7): two-colon lookup, parent-linked records,
-   child-namespace generation — the final declarers must emit nested names
-   from birth, so lookup exists before they do. Long-name handling (8)
-   rides this.
+1. Nested packages first (7): arbitrary-depth path resolution with the
+   ancestor-chain scoping and downward-private visibility, the package
+   stack for block nesting, the one-tree collision rejection, and
+   declarers emitting into the tree — the final declarers must emit
+   nested names from birth, so the tree exists before they do. Long-name
+   handling (8) rides this.
 2. Unified declarers (head binders (16), FIELD payload spelling (21),
-   carrier NEWTYPE (2), CONSTRUCT owner + construct-family-make (5)).
+   carrier NEWTYPE (2), CONSTRUCT owner + construct-<type-name>-make (5)).
    They write the registry directly; a failed declaration is undone by
    the bare watermark save/restore (three pointers), which is the same
    mechanism the reject-and-continue candidate checks use. Per item 35
@@ -279,11 +292,10 @@ Joel's open decision above. Nothing stopped is left ambient.
 
 Migration unit = one declaration plus its COMPLETE caller closure. No
 old-name aliases, ever. Leaves under 30 minutes, own workspaces,
-integrated onto the branch. Hard-cutover check discipline: the tree is
-NOT fully loadable mid-sweep by design; each leaf's check is that the
-migrated PREFIX loads — bin/hb --load of the deepest migrated file in
-load order — plus the leaf's named probe. Full-tree loadability returns
-exactly when the sweep completes.
+integrated onto the branch. Hard-cutover check discipline (amended: NO mid-course refresh): nothing
+loads under the new grammar until M17's single refresh; each leaf's
+check is its rg closure census plus review. The first load of the
+converted tree happens at the completion gate.
 
 2a. `result` and `option` first (everything depends on them), then
     lib/adt, lib core, CAD-NUM.
@@ -295,8 +307,8 @@ exactly when the sweep completes.
     the dead-type deletions from 13, map-take (22), the datatype rename
     (10), proof deletion (6), and the exact GPT-2 types (32).
 2d. Old-form deletion: SUMTYPE, PRODUCT, DEFTYPE, arity-NEWTYPE grammar,
-    the hash fallback, map-take. ENGINE REFRESH #3. An rg source census
-    proves zero old-form sites.
+    the hash fallback, map-take. The single ENGINE REFRESH happens here. An rg
+    source census proves zero old-form sites.
 
 ### Phase 3 — the gate battery, then one landing
 
@@ -314,14 +326,12 @@ In order:
    their slices are in scope by the touch rule).
 5. both exact-diff gates on the final combined diff — the ownership
    check on every migrated definition, run once.
-6. the cheap lints, seconds each: host-lint, refine-lint (M18 fixed its
-   seeds), suite-coverage-lint, error-code-lint, maki-dep-lint,
-   dot-dep-lint. (The former separate "native dot gate" entry is deleted
+6. the cheap lints, seconds each: suite-coverage-lint, error-code-lint,
+   maki-dep-lint, dot-dep-lint. (host-lint, refine-lint, and
+   stale-status-lint no longer exist by battery time — items 36/40.) (The former separate "native dot gate" entry is deleted
    as a duplicate of dot-dep-lint.)
-STATUS note: stale-status-lint reads STATUS.md, which names deleted
-types; M18 therefore includes a MINIMAL factual STATUS touch (delete
-sentences naming dead types, add nothing) so the battery can green —
-the real STATUS rewrite stays phase 4. Deliberately absent: a
+(STATUS.md and stale-status-lint no longer exist by battery time —
+item 36 — so no STATUS special case remains.) Deliberately absent: a
 performance gate — declaration-time machinery changed, not runtime hot
 paths; boot-time shifts surface in the fixpoint run.
 Fix reds in place, each with its cause named. When green: one
@@ -330,8 +340,11 @@ campaign dots closed, wave-2 campaigns unblocked.
 
 ### Risk register
 
-R1. The checker's own sources migrating under the both-forms engine (2b):
-    one-declaration-first pre-probe before the sweep.
+R1. With no mid-course refresh, every grammar and migration defect
+    surfaces at ONE moment: M17's terminal refresh and first full load.
+    This is accepted by ruling (hard cutover; nothing builds until the
+    refactor completes); the mitigation is review depth per leaf, not
+    early execution.
 R2. Tagged-generic unification (14) touches the CON-OK?/unify path of the
     pointer-element fix; regression pair required both directions.
 R3. Namespace nesting changes every qualified lookup; the
@@ -347,13 +360,20 @@ R5. Anything deferred mid-wave must gain a wave-2 entry here before its
 Engine leaves (codex). Check = a checked load probe in the leaf workspace;
 no suites.
 
-- E1 two-colon qualified lookup. blocked-by: none. Interface: XREF resolves
-  PKG:CHILD:WORD. Check: probe file resolving a nested spelling loads.
-- E2 parent-linked namespace records. blocked-by: E1. Interface: child
-  registration under a declaring package. Check: record walk probe.
-- E3 definers emit child namespaces. blocked-by: E2. Interface: a family
-  declared in a package publishes PKG:FAMILY:MAKE. Check: load probe old
-  mangled name E-UNDEFINED, nested name resolves.
+- E1 arbitrary-depth path lookup. blocked-by: none. Interface: XREF
+  resolves A:B:...:WORD at any depth; bare names resolve by the ancestor
+  chain (own, ancestors outward, global); child reads ancestor privates,
+  parent cannot read child's; `using A:B` imports B's publics only.
+  Check: rg-census + review (no loads until M17).
+- E2 the namespace tree. blocked-by: E1. Interface: parent-linked
+  records; `package A:B:C` full-path declaration AND nested block
+  opening via a package stack; ONE tree where package and type paths
+  are the same claim — second claim is a declaration-time error;
+  creation/reopen open to all. Check: rg-census + review.
+- E3 declarers emit into the tree. blocked-by: E2. Interface: a type
+  declared in a package claims its child path and publishes
+  PKG:TYPE:MAKE there; old mangled spellings are not generated.
+  Check: rg-census + review.
 - E4 long-name capacity. blocked-by: E3. Interface: no hash fallback; true
   capacity overflow rejects loudly. Check: over-capacity declaration probe.
 - E5 binder heads on all three declarers. blocked-by: none (parallel to
@@ -367,13 +387,19 @@ no suites.
 - E8 CONSTRUCT owner clause. blocked-by: E5. Interface: header clause
   recorded in the derive cell (absorbs the halted owner-flag hunk); MAKE
   suppressed. Check: foreign qualified MAKE E-UNDEFINED.
-- E9 construct FAMILY make for structures/newtypes. blocked-by: E8.
-  Interface: in-package construction form checked and lowered. Check:
-  owner-package construction probe loads; foreign rejects.
+- E9 `construct <type-name> make` for structures/newtypes. blocked-by:
+  E8. Interface: the EXISTING in-package construction form (today:
+  `construct <type-name> <variant>` for enums) extended to build
+  owner-constructed structures and newtypes; checked and lowered. Check:
+  owner-package construction probe; foreign rejects.
 - E10 tagged-generic instantiation. blocked-by: none. Interface:
   option/result instantiate at variant families. Check: the paid
   reproducer pair, both directions.
-- E11 ENGINE REFRESH #1. blocked-by: E1-E10.
+- (E11 deleted — Joel, 2026-07-30: NO refresh until the refactor is
+  complete. Exactly ONE engine refresh exists in wave 1, at the entry of
+  the completion gate M17. All phase-1 and phase-2 work is written and
+  reviewed blind against the current engine; the new grammar is first
+  exercised by the terminal refresh, then the battery.)
 
 Migration leaves (claude). Census 2026-07-30, exact: 111 SUMTYPE, 42
 PRODUCT, 123 NEWTYPE, 29 DEFTYPE declarations. src/core and src/habu carry
@@ -381,7 +407,7 @@ ZERO old-form declarations (verified), so the checker's own sources need
 only the generated-namespace respell, not declarer migration. Every leaf:
 owner claude, result = the named declarations on the new grammar with their
 complete caller closure respelled, check = checked tree load at the leaf
-commit plus the named probe. Blocked-by E11 unless noted.
+commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unless noted; there is no mid-course refresh, so leaf checks are rg-census and review, not loads.
 
 - M1 lib/adt: result.f `SUMTYPE result 2` to binder ENUM; option.f gains
   its binder head. Closure: generated RESULT:/OPTION: constructor and
@@ -406,12 +432,11 @@ commit plus the named probe. Blocked-by E11 unless noted.
   alloc-cell-count` + `ENUM numeric-result 1` binder head. Closure:
   cad-num-arithmetic.f and cad-num-types-test.f (the only two files
   spelling the generated CAD--NUM names — verified). blocked-by M1.
-- M6 boot-prefix respell pre-probe: ONE generated-name consumer in
-  src/core (the R1 gate: respell, refresh, tree load; no suites).
-  blocked-by M2-M5.
+- M6 boot-prefix respell: the generated-name consumers in src/core
+  (no refresh — written blind). blocked-by M2-M5.
 - M7 src respell: the remaining generated-name spellings in src/core +
   src/habu (no declarer migration — zero old-form declarations there).
-  ENGINE REFRESH #2 closes this leaf. blocked-by M6.
+  blocked-by M6.
 - M8 maki/cad-kinds.f: thirty NEWTYPEs to carrier form; DELETE the
   audited eleven dead CAD-KIND types exactly: `design-id obj-id
   analysis-id plan-id toolchain-id pass-id artifact-kind capability-id
@@ -433,13 +458,8 @@ commit plus the named probe. Blocked-by E11 unless noted.
 - M10a proofs, typestate: typestate.f `decl elab solved legal draft
   complete drafted verified emitted build-proof` — CONSTRUCT owner on
   the owning stage structures, tokens+mints deleted. blocked-by M7.
-- M10b proofs, db promotion: db/promotion.f `cand-proof ver-proof
-  meas-proof sat-proof prom-proof` + db/promotion-authority.f
-  `auth-proof`. blocked-by M7.
-- M10c proofs, db capability: db/capability.f `grant`. blocked-by M7.
-- M10d proofs, evidence: evidence/policy.f `grant-proof`,
-  evidence/promote.f `promoted`, evidence/schema.f `certify-proof
-  golden-proof gradcheck-proof profile-proof`. blocked-by M7.
+- (M10b/M10c/M10d db and evidence proofs: their files die under item
+  37 — no migration, no evaporation needed.)
 - M10e proofs, infer: infer/gpt2-tensor.f `layer-proof` only
   (cfg-proof deletion is owned by M14c). Probe (all M10x): foreign
   construction of one formerly guarded type per package rejects.
@@ -452,84 +472,23 @@ commit plus the named probe. Blocked-by E11 unless noted.
 - M11c map-take deletion (item 22): safetensors.f map-take deleted,
   DETACH-MAPPING returns option<SAFET:mapping>, consumers re-matched.
   Probe: map-take spellings E-UNDEFINED. blocked-by M7.
-- M12 the twelve id-result collapses. All twelve are `ok a | wrong-width
-  | unknown` (verified). Freeze ONE shared error enum, owned by CAD-KIND:
-  `CAD-KIND:id-error = wrong-width | unknown`; all twelve become
-  `result<a,CAD-KIND:id-error>` — no result<a,n>, no option, no
-  per-owner family: rev.f:67, target/target.f:79,
-  artifact.f:44, schema.f:74, db/evidence.f:62, config.f:72,
-  db/obligation.f:205, journal.f:54, db/diff-suite-id.f:49,
-  producer.f:73, numpolicy.f:153, experiment/run.f:91 — artifact.f's is
-  the direct SUMTYPE-to-result hard cut. One leaf each. Closure per
-  leaf: that file's constructors + MATCH sites. The CAD-KIND:id-error
-  freeze (rides M8) comes first; the twelve conversions then run in
-  PARALLEL — disjoint files, disjoint owners. blocked-by M8 only.
-- M13 the remaining collapses, each with its frozen error-enum owner and
-  the exact variant list (frozen interfaces; arm shapes verified from
-  source):
-  * DIAG/OBLIG decode: db/diagnostic.f:123 and db/obligation.f:193 share
-    exactly `malformed | noncanonical | bounds | duplicate |
-    unknown-required`. That five-arm enum lives in the NEW shared file
-    `maki/db/codec.f`, package `DBCODEC`; the two become
-    `result<DIAG:diagnostic,DBCODEC:decode-error>` and
-    `result<OBLIG:obligation,DBCODEC:decode-error>`. DIFFSUITE's
-    decode-result (db/diff-suite.f:153, no duplicate, uses unknown) is a
-    distinct taxonomy, retained unchanged.
-  * The four presence slots (evidence/schema.f:118-130 `certify-slot
-    golden-slot gradcheck-slot profile-slot`) and db/diff-runner.f:100
-    ref-result: present/absent — become option.
-  * Success-carrying families become result<ok, OWNER:error>, error enum
-    owned by the declaring package, variants exact:
-    art-result -> result<a, ARTIFACT:art-error = malformed |
-      noncanonical | bounds | duplicate | unknown-required |
-      kind-mismatch | unsupported-migration | digest-mismatch>
-      (eight arms, maki/db/artifact.f:127-134);
-    authz-result -> result<OBLIG:evidence, DAUTH:authz-error =
-      not-discharged | unauthorized>;
-    diagnostic build-result -> result<DIAG:diagnostic, DIAG:build-error
-      = missing-owner | missing-reproduction>
-      (maki/db/diagnostic.f:119-120);
-    run-result -> result<n, DIFFRUN:run-error = faulted>;
-    transaction result -> result<a, TX:tx-error = duplicate-write |
-      omitted-read | malformed | bounds>;
-    discharge-result -> result<OBLIG:evidence, OBLIG:discharge-error =
-      wrong-subject | wrong-domain | wrong-relation | wrong-environment
-      | wrong-verifier-class | not-independent>;
-    commit-store keeps THREE CSTORE-owned error enums — the source
-      narrows reachable errors by protocol phase and a superset would
-      widen authority: commit-result -> result<a, CSTORE:commit-error =
-      conflict | duplicate-write | omitted-read>; auth-result ->
-      result<a, CSTORE:auth-error = conflict | duplicate-write |
-      omitted-read | unauthorized | exhausted FIELD dim BUDGET:dim>;
-      commit-discharge-result -> result<a,
-      CSTORE:commit-discharge-error = conflict | duplicate-write |
-      omitted-read | unauthorized | exhausted FIELD dim BUDGET:dim |
-      not-discharged | unauthorized-verifier>;
-    attenuate-result -> result<a, CAPTOK:attenuate-error = escape-cap |
-      escape-budget FIELD dim BUDGET:dim>;
-    diff-case load-result -> result<a, CASESTORE:load-error = absent |
-      malformed | mismatch>;
-    diff-suite build-result -> result<DIFFSUITE:suite,
-      DIFFSUITE:build-error = incomplete | tolerance-mismatch |
-      reference-not-independent>;
-    register-result -> result<a, ACTION:register-error = incomplete |
-      conflict>;
-    seal-result -> result<a, RUN:seal-error = incomplete>;
-    objective-result -> result<RUNMETRIC:objective-metric,
-      RUNMETRIC:objective-error = not-training>;
-    competitive load-result -> result<CEVID:evidence, CEVID:load-error
-      = absent | malformed>.
-  * Designed unions, retained (no success payload to carry, or nullary
-    success): verify-result (audit-log.f:96; error arms carry idx),
-    loop-result (agent-loop.f:89), budget-result (budget-ledger.f:57),
-    dispatch-result (action.f:157; nullary accepted — a result<f,...>
-    would invent a meaningless payload).
-  One leaf per family. Sequencing: only shared-file/shared-type clusters
-  order — maki/db/codec.f (DBCODEC) lands before the DIAG and OBLIG
-  conversions, and the three CSTORE results convert together; every
-  other family leaf runs in PARALLEL. All M13 clusters blocked-by E11
-  only (CAD-KIND:id-error is unrelated); the DBCODEC-first and
-  CSTORE-together orderings are internal to their clusters.
+- M12 id-result collapses, TWO members after the item-37 deletion:
+  target/target.f:79 and numpolicy.f:153 become
+  result<a,CAD-KIND:id-error> (freeze rides M8). The other ten die with
+  their files. One leaf each, parallel. blocked-by M8.
+- M13 deleted (its families all lived in files item 37 deletes).
+- M13b the V2-complex deletion leaves per item 37: one leaf per
+  directory/file-cluster (maki/db in bounded slices, maki/experiment,
+  competitive stores, evidence-minus-two-enums with the golden-leg/
+  prec-class move, the six orphan identity files), each with its
+  only-consumer-is-own-test verification and suite-inventory/lint-seed
+  retirement. blocked-by: none of the engine leaves (deletions work on
+  any engine); ordered before M17 so the census counts them gone.
+- M13c the agreed-dead deletion leaves per item 38: seal (package
+  sealing + owner-wid-emit-seal.f + the two boot-seal files' census),
+  the trust ledger (justifications to sites, then TRUSTED.md +
+  trust-lint.f + inventory ratchets), dead sched, the OWNER-WID runtime
+  registry. Same discipline and ordering as M13b.
 - M14a FS: `STRUCTURE path` = `data ptr u8`, `len CAD-NUM:byte-len` —
   borrowed, never retained. Probe: FS:path resolves; path consumers
   load. blocked-by E11.
@@ -542,8 +501,8 @@ commit plus the named probe. Blocked-by E11 unless noted.
   single-arch, flat. THIS LEAF deletes cfgkey, the arch wrapper, and
   cfg-proof (owning those deletions; M10e narrows to layer-proof).
   `GPT2:BUILD` validates and owner-constructs it (CONSTRUCT owner).
-  `HFCFG:OPEN-GPT2 ( FS:path -- result<GPT2:config,n> )` is the exact
-  borrowed-path boundary. Probe: MDLCFG spellings E-UNDEFINED; the
+  `HF:CFG:OPEN-GPT2 ( FS:path -- result<GPT2:config,n> )` is the exact
+  borrowed-path boundary (HFCFG becomes HF:CFG per item 39). Probe: MDLCFG spellings E-UNDEFINED; the
   embedded pinned-config fixture builds. blocked-by M11b, M14a.
 - M14d GPT2 tensors: `GPT2:layer-id` is the one-cell checked layer
   index, owner-constructed only after range validation against
@@ -554,7 +513,7 @@ commit plus the named probe. Blocked-by E11 unless noted.
   deletes the cfgkey/layer-proof coupling and owns the exact
   constructor/slot closure. Probe: GPT2TENSOR spellings E-UNDEFINED;
   slot bijectivity fixture loads. blocked-by M14c.
-  DEVRT runtime and INFER model types are explicitly LATER, unfrozen
+  GPU runtime and INFER model types are explicitly LATER, unfrozen
   product contracts — the owner names reserve nothing; their types
   freeze in their own design rounds after wave 1.
 - M15 declarer test suites rewritten for the new grammar (exact counts):
@@ -565,25 +524,38 @@ commit plus the named probe. Blocked-by E11 unless noted.
   cast-negative-suite.f 1 — one leaf per file, old-grammar rejection
   fixtures added, deftype suites become carrier-form suites. blocked-by
   M7 (engine tests; independent of maki).
-- M16 remaining test/tools declarations, ONE LEAF PER NAMED FILE
-  (exact): test/extent-product-
-  test.f 5, extent-substrate-probe.f 5, bootstrap-wide-memory-src.f 2,
-  bootstrap-wide-interpret-src.f 1, bootstrap-wide-tick-src.f 1,
-  typed-storage-test.f 4, cad-kinds-test.f 3, owner-wid-role-swap.f 2,
-  enum-decl-suite.f 1, type-layout-lower-pending.f 3,
-  type-field-owner-suite.f 1, layout-valid-product-bad.f 1,
-  lower-cert.f 1, ptx/rep-neg-test.f 1, tools/ptx/autotune-sweep.f
-  `census` 1, tools/public-signatures-test.f 3, db test fixtures
-  (promotion-authority-test.f 1). blocked-by M15.
-- M17 completion gate: with old forms already deleted in phase 1 (hard
-  cutover), this leaf is the FULL-TREE load — the frontier reaches the
-  end — plus the rg zero-site census and ENGINE REFRESH #3. blocked-by
-  M13, M14a-d, M16.
+- M16 remaining test/tools declarations under the purpose rule (Joel:
+  a test migrates ONLY if it names the live capability it proves; a
+  test that cannot, deletes; tests of machinery in the deletion set die
+  with their machinery). MIGRATE, one leaf per file, purpose stated:
+  extent-product-test.f 5 + extent-substrate-probe.f 5 (extent
+  substrate — live via M9 survivors), bootstrap-wide-memory-src.f 2 +
+  bootstrap-wide-interpret-src.f 1 + bootstrap-wide-tick-src.f 1
+  (gforth recovery covenant), typed-storage-test.f 4 (typed storage),
+  cad-kinds-test.f 3 (the nineteen surviving CAD:KIND nominals),
+  enum-decl-suite.f 1 (declarer suite — runs with M15's cohort),
+  type-field-owner-suite.f 1 (field-owner checking),
+  ptx/rep-neg-test.f 1 (live PTX negatives),
+  tools/public-signatures-test.f 3 (signature rendering),
+  tools/ptx/autotune-sweep.f `census` 1 (live tuning tool). DELETE with
+  their machinery: owner-wid-role-swap.f (OWNER-WID dies in M13c),
+  promotion-authority-test.f (db, item 37), lower-cert.f (tied to the
+  lower-cert-seal census in M13c — lives or dies with its machinery),
+  layout-valid-product-bad.f (PRODUCT-specific negative; nothing to
+  test once PRODUCT is gone unless the layout rule re-fixtures under
+  STRUCTURE — decided at claim with the purpose rule),
+  type-layout-lower-pending.f (must name a live capability at claim or
+  delete). blocked-by M15.
+- M17 completion gate: the ONE engine refresh of wave 1 runs here, then
+  the FULL-TREE load — the first time anything loads under the new
+  grammar — plus the rg zero-site census. blocked-by M13, M14a-d, M16.
 - (docs reconciliation moved to phase 4, after everything — Joel.)
-- M18 lint-expectation mechanics: refine-lint seed table and
-  suite-coverage expectations updated for deleted/respelled words —
-  these are green-tree mechanics and MUST precede the battery (stale
-  seeds red the lints). blocked-by M17.
+- M18 green-tree mechanics: refine-lint and host-lint DELETED (item
+  40); suite-coverage's conscious-exception table updated for
+  deleted/respelled suites; STATUS.md DELETED (item 36) with the
+  census-ratchet baseline moved into the gate tool that measures it and
+  stale-status-lint deleted with the file. Must precede the battery.
+  blocked-by M17.
 
 Phase 3 runs after M18. Leaf contracts freeze one at a time on the
 blackboard as their predecessors complete; this list is the map, not the
@@ -604,6 +576,90 @@ frozen contracts.
 
 Only after the battery is green and the landing is done:
 docs/type-system.md rewritten against the converted tree with the same
-probe discipline as its first writing; STATUS.md; this plan gets its
-per-item completion stamps. Documentation reconciles once, when
+probe discipline as its first writing; this plan gets its per-item
+completion stamps. Documentation reconciles once, when
 everything is finished — not during.
+
+36. **STATUS.md is deleted.** [wave 1, rides M18] (Joel, 2026-07-30.) Every
+    fact in it has a real authority elsewhere: the dot tracker owns "what
+    is next", the gates own gate state, and the build owns the certified
+    counts. The census ratchet's baseline moves out of prose into the gate
+    tool that measures it; stale-status-lint dies with the file. Session
+    orientation is the tracker plus this plan.
+
+37. **The V2 evidence/experiment complex is DELETED in wave 1.** (Joel,
+    2026-07-30: delete code we don't need or that smells; no parking.)
+    Deleted whole, each deletion leaf verifying only-consumer-is-own-test
+    at claim time: all of maki/db (78 files including tests),
+    maki/experiment, the competitive stores
+    (competitive-evidence-store.f, competitive-evidence.f,
+    competitive-store.f), maki/evidence EXCEPT the two live enums, and
+    the orphan identity files rev.f, journal.f, producer.f, config.f,
+    artifact.f, maki/schema.f. SURVIVES with named live consumers:
+    spec.f (equation registry: mha/backward/plan-ops), report.f
+    (cad/store/golden/lower), async-dag.f (runtime event identity),
+    numpolicy.f and target/ (sched-key), and evidence/schema.f's
+    `golden-leg` + `prec-class` which MOVE to a live provenance home as
+    part of the deletion leaf (cad.f and store-rehydrate.f consume
+    them). Their suite entries, lint seeds, and dots retire with the
+    files. Consequences folded: M12 shrinks to TWO id-result collapses
+    (target/target.f:79, numpolicy.f:153 — the other ten die with their
+    files); M13 is DELETED (all three of its collapses lived in dying
+    files); M10b/c die with db; the DIAG/OBLIG/presence recordings are
+    void.
+
+38. **Every agreed-dead item from Joel's review deletes in wave 1 — no
+    parking.** The pulled-forward set, joining items 35-37: package
+    sealing (25: SEAL-PACKAGE, prot-wid, exit-84, owner-wid-emit-seal.f;
+    layout-buffer-seal.f and lower-cert-seal.f get their census inside
+    the leaf and whatever fails it dies there too); the trust ledger
+    (from 27: TRUSTED.md, trust-lint.f, trusted-inventory ratchets, with
+    per-row justifications folded to their sites first); the dead sched
+    type (schedule.f:42 + its four words + schedule-test.f checks); the
+    production-empty OWNER-WID runtime registry (the collapsed campaign's
+    delete-runtime-pkg leaf executes here). Each is its own deletion
+    leaf in M13c with the only-consumer/emptiness verification at claim
+    time. Improvements stay wave 2+ (PRIM: grammar, NO-TYPE-CHECK block,
+    typed catch, typed interpreter, renames/rehomes); deletions do not.
+    Catch-all (Joel): proof tokens, mints, and seals are removed
+    EVERYWHERE — M17's terminal census additionally proves zero
+    remaining `*-proof` / `MINT-*` / seal-named definitions in the tree
+    outside the two survivors with live consumers at that point
+    (typestate's stage machinery converts under CONSTRUCT owner in M10a;
+    layer-proof and cfg-proof die in M10e/M14c-d).
+
+39. **Package names restructure onto the nested tree.** [wave 1, rides the
+    sweep's respell] (Joel, 2026-07-30.) The hyphen-glued and standalone
+    package names become real children:
+    - `SAFET-MAP` -> `SAFET:MAP` (the original landmine, fixed by actual
+      nesting);
+    - `CAD-NUM` -> `CAD:NUM`, `CAD-KIND` -> `CAD:KIND`;
+    - `GPT2PIN` -> `GPT2:PIN`; the reference data package ->
+      `GPT2:REF`; the future tokenizer is born `GPT2:TOK`;
+    - `HFCFG` -> `HF:CFG` (Joel: Hugging Face is a domain root; its
+      config reader is the child): the pinned opener is
+      `HF:CFG:OPEN-GPT2 ( FS:path -- result<GPT2:config,n> )` — the
+      -GPT2 suffix is a real counterpart marker (OPEN-QWEN follows in
+      its own arm), not a type echo;
+    - `KV` -> `INFER:KV`;
+    - flat roots stay flat where they are genuinely general: MAKI, SAFET,
+      FS, MEM, JR, CAD, INFER. `DEVRT` -> `GPU` (Joel: it is the GPU and
+      nothing else; `DEV` is inherited CUDA jargon) — the GPU domain
+      root (`GPU:SESSION`, `GPU:LOAD`, completion carriers), growing
+      children as its contracts freeze.
+    M14c's opener spelling updates accordingly; every rename is a
+    respell-closure in the sweep, no aliases.
+
+40. **Lint adjudication (Joel, 2026-07-30).** DELETED in wave 1, joining
+    M13c: refine-lint (hand seed table = the TRUSTED.md disease; its
+    seeds are mostly proof mints and erasures this plan deletes, and
+    CONSTRUCT owner is the structural confinement that replaces it) and
+    host-lint (seventeen patterns rejecting retired workflow hooks — a
+    resurrection guard, the rejected absence-lint class). STAY, verified
+    derived-not-transcribed: suite-coverage-lint (re-parses the gate
+    files each run; catches unscheduled suites; one conscious-exception
+    table) and error-code-lint (global E- code uniqueness). Wave 2+
+    doctrine endpoint: once the sweep makes the tree comply, the
+    typed-local and package-ownership rules flip into hard checker load
+    errors and both diff lints delete; error-code uniqueness is
+    checker-absorbable the same way.
