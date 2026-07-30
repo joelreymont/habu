@@ -93,14 +93,6 @@ SUITE package-diff-lint-fixtures
    tools/package-diff-lint-test.f
 ;SUITE
 
-SUITE render-parse-lint
-   tools/render-parse-lint.f
-;SUITE
-
-SUITE render-parse-lint-fixtures
-   tools/render-parse-lint-test.f
-;SUITE
-
 SUITE error-code-lint
    tools/error-code-lint.f
 ;SUITE

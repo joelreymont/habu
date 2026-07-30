@@ -7,7 +7,7 @@ created-at: "2026-07-13T17:09:10.200654+02:00"
 blocks:
   - habu-ptx-phantom-preserving-3df9db92
   - habu-freeze-compiler-baseline-b9777eee
-  - habu-seal-compiler-ir-3c1e313d
+  - habu-encode-compiler-ir-545ee6d1
   - habu-type-dsl-prove-93da83c4
 ---
 
