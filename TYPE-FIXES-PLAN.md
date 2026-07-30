@@ -200,15 +200,22 @@ the census source):
 27. **One word for unproven effects; TRUSTED.md is deleted.** `PRIM:`,
     `PPRIM:`, and `TRUSTED:` are one mechanism — assert an effect the checker
     cannot prove — split three ways (global prim, packaged prim, trusted
-    Forth body). They collapse into one declaring word with an optionally
-    qualified name and an optional body: an engine primitive is the word
-    with no body, a laundering retype is the word with a body and a real
-    confession. The justification and retirement note live AT THE DEFINITION
+    Forth body). They collapse into `TRUSTED:` (the name reads true for both
+    uses: trusted machine code, trusted Forth body; `PRIM:` would misname
+    the hundreds of source-level sites), taking an optionally qualified name
+    and an optional body: an engine primitive is the word with no body, a
+    laundering retype is the word with a body and a real confession.
+    `PRIM:` and `PPRIM:` are deleted. The justification and retirement note live AT THE DEFINITION
     in a lint-checkable shape — not in a hand-maintained central ledger.
     TRUSTED.md is duplicate authority (source already declares everything;
     the lint today enforces agreement between two files, which is effort
     spent maintaining drift) and is deleted; any ledger view is generated
-    from source on demand.
+    from source on demand. trust-lint.f and the trusted-inventory ratchet
+    tools die with the ledger (Joel, 2026-07-30): their only job was
+    two-file agreement, and at-site completeness is not a lint's job — the
+    declaring word's own grammar REQUIRES the justification and retirement
+    fields, so an unjustified trust site fails at load through the
+    production path. The compiler is the enforcement; no separate tool.
 
 ## Joel's additions (from the type-system.md pass)
 
