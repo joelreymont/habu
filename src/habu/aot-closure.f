@@ -11,6 +11,8 @@
 s" JSON-DIAGS" s" -- ptr a" TRUST
 s" CHECK!" s" ptr u8 n -- n" TRUST
 
+package AOT-LINK
+
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
 \ Live-extent bounds as integers, for value-domain range tests (CELL-TEXTPTR?):
@@ -36,8 +38,6 @@ s" AOT-PTR@" s" ptr a -- ptr a" TRUST
 \ conditional/compare branches (BCOND/CBZ/TBZ), which stay intra-record and are
 \ never followed as calls. TARGET returns the branch's absolute code address =
 \ site + sign-extended(imm26) * 4.
-package AOT-BRANCH
-
 $7C000000 constant MASK
 $14000000 constant OPCODE
 $3FFFFFF constant DELTA-MASK
@@ -47,8 +47,6 @@ $94000000 constant CALL-OP
 
 : SIGNED ( n -- n ) SIGN xor SIGN - ;
 
-public
-
 : DIRECT? ( n -- bool ) MASK and OPCODE = ;
 \ A `BL imm26` — the one native call form (habu2.f LCEMITBL). Distinguished from a
 \ plain `B` (same opcode minus the link bit) so intra-record control flow is skipped.
@@ -56,8 +54,6 @@ public
 
 : TARGET ( ptr u8 n -- ptr u8 ) {: p:ptr w:n :}
    p w DELTA-MASK and SIGNED 4 * + ;
-
-;package
 
 : REC {: k:n :} ( n -- ptr a )
    AOT-DBASE@ k 48 * + ;          \ dict record k  (0:addr 8:len 16:name-len|flags 24:name|ptr)
@@ -70,17 +66,12 @@ public
 \ record pointer. `REC-NAME-PTR ( ptr a -- ptr a )` previously declared the name
 \ pointer to have the record's element type, which is what let a cell pointer be
 \ read with c@.
-package AOT-REC
-private
-
 : REC>IX {: r:ptr :} ( ptr a -- n )
    r AOT-DBASE@ - 48 / ;
 : IX-NAME-LEN {: k:n :} ( n -- n )
    k REC 16 + @ DNAME-LEN-MASK and ;
 : IX-NAME-PTR {: k:n :} ( n -- ptr u8 )
    k REC 16 + @ DNAME-EXT and 0= IF k REC 24 + ELSE k REC 24 + AOT-PTR@ THEN ;
-
-public
 
 : REC-NAME-LEN {: r:ptr :} ( ptr a -- n )
    r REC>IX IX-NAME-LEN ;
@@ -89,9 +80,6 @@ public
 : REC-NAME@ {: r:ptr :} ( ptr a -- ptr u8 n )
    r REC-NAME-PTR  r REC-NAME-LEN ;
 
-;package
-
-using AOT-REC
 : REC-NAME-C@ {: r:ptr idx:n :} ( ptr a n -- n )
    r REC-NAME-PTR idx + c@ ;
 
@@ -242,8 +230,8 @@ variable SP2  variable SEND
 \ Follow a direct BL (the one native call form) to its callee; leave everything
 \ else (a plain B, conditional/compare branches, intra-record jumps) untouched.
 : SCAN-DIRECT ( ptr a ptr u8 -- ) {: caller:ptr p:ptr :}
-   p AOT-W32@ dup AOT-BRANCH:CALL? if
-      p swap AOT-BRANCH:TARGET FINDADDR-PTR caller swap SCAN-CALLEE
+   p AOT-W32@ dup CALL? if
+      p swap TARGET FINDADDR-PTR caller swap SCAN-CALLEE
    else
       drop
    then ;
@@ -260,3 +248,5 @@ variable WI
    s" aot: no entry" 74 die ;
 : CLOSURE  0 NCLO !  FINDMAIN dup 0= IF drop NO-ENTRY-DIE THEN  dup ROOTREC !  ADD-CLO
    0 WI ! BEGIN WI @ NCLO @ < WHILE  WI @ cells CLO + @ SCAN-REC  WI @ 1+ WI ! REPEAT ;
+
+;package

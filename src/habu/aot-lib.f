@@ -282,8 +282,8 @@ TRUSTED: MAP-IN-BLOB ( ptr a ptr u8 -- n ) {: r:ptr t:ptr :}
 : ADRTGT {: p:ptr w:n :} ( ptr u8 n -- ptr u8 )
    p  w 5 19 BITS 2 lshift  w 29 2 BITS or 21 SX + ;
 : RELOC-W32 {: r:ptr p:ptr w:n :} ( ptr a ptr u8 n -- n )
-   w AOT-BRANCH:DIRECT? IF
-      r p w AOT-BRANCH:TARGET MAP-TARGET!
+   w DIRECT? IF
+      r p w TARGET MAP-TARGET!
       w $FC000000 and  ASM-LEN TNEW @ REL26 or EXIT THEN
    w BCOND? IF
       r p w BTGT19 MAP-TARGET!
