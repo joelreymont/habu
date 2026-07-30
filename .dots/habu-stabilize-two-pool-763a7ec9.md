@@ -189,3 +189,14 @@ budgets with the same named timeout-vs-dead verdicts, or the heavy build
 phases get their own pool stage with a ceiling derived from measurement. They
 are the last two non-defect reds between the current tree and a fully green
 gate-stdlib.
+
+Update 2026-07-30 (standalone measurement on the master-merged tree, fresh
+engine): tools/build-fixpoint-test.f alone takes 142 s wall against the 120 s
+pool phase guard, so its pool red is genuinely this ceiling class. Its CONTENT
+also improved: the old "cannot map fixed code region" failure class is GONE
+(the snapshot relocation landing fixed it; previously 12 such failures), and 5
+failures remain with a different signature - a child exiting 134 (SIGABRT)
+after mapping succeeds, consistent with the undeclared persisted-cell crash
+owned by habu-fix-persisted-dangling-a520f7b4 (fix in flight). So this phase
+needs BOTH the ceiling treatment here and that dot's fix to go green; neither
+alone suffices.
