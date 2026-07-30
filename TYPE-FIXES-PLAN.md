@@ -287,6 +287,109 @@ the census source):
     keep the policy identity with that pair as its regression fixture.
     Assigned to the engine-half owner during the conversion.
 
+## Implementation plan (for Joel's review)
+
+The 34 items above are the scope; this is the execution order. One shared
+conversion branch off master; both of us commit to it; no gates run until
+phase 4; the audits are the only other running work. Within the branch the
+engine temporarily accepts BOTH old and new forms so the tree stays loadable
+mid-sweep — the old forms are deleted before the branch lands, so nothing
+shipped ever has two grammars.
+
+### Phase 0 — branch and baseline (hours)
+
+Open bookmark `type-conversion` at master. Record the baseline fixpoint hash
+and one full-suite log as the reference point. Freeze the three design calls
+(items 16, 17, 21) with codex before any engine commit; each answer is one
+line in this file.
+
+### Phase 1 — engine, first batch (codex). The grammar.
+
+Order inside the batch, each step buildable on the last:
+1. Family definer core: arity inference (20), the agreed payload spelling
+   (21), carrier-form NEWTYPE as 1-field-structure sugar (2), CONSTRUCT
+   owner flag recorded + parsed + MAKE suppressed + in-package construct
+   form checked and lowered (5; absorbs the halted owner-flag hunk and the
+   four campaign leaves).
+2. Tagged-generic instantiation (14) — unification learns variant families.
+3. Nested generated namespaces (7): two-colon lookup, parent-linked records,
+   child-namespace generation. Loud name-limit rejection (8) rides this.
+4. Multi-cell-local diagnosis (9). PRIM: unification (27): new grammar with
+   required justification; old TRUSTED:/PPRIM: arms still parse until phase
+   2 ends. NO-TYPE-CHECK block (26): new form; set-check still works until
+   the sweep replaces its 111 sites.
+5. ENGINE REFRESH #1 (build-fixpoint) — the sweep cannot start without it.
+
+Typed catch (24) and the typed interpreter stack (19) are NOT in this batch:
+both are deep engine work whose cascade is unknown. Codex sizes them in his
+planning answer; default is a second conversion wave after this one lands,
+recorded here as sequenced-after, not dropped.
+
+### Phase 2 — tree migration (claude). The sweep.
+
+File-by-file, in load order so the tree loads at every commit; each file
+migrates completely in one commit. Per-file checklist applied mechanically:
+SUMTYPE/PRODUCT to ENUM/STRUCTURE (4); DEFTYPE and arity-NEWTYPE to carrier
+form (2, 3); proof fields deleted and CONSTRUCT owner added on the owning
+structures (5, 6, and the maki/db mints from 25); set-check to NO-TYPE-CHECK
+(26); TRUSTED: to PRIM: with its justification moved to the site (27);
+generated-name respelling to nested form (7); datatype rename (10); echo
+suffixes stripped where no counterpart exists (23); hyphenated family names
+reviewed against the item-22 smell rule; map-take replaced by
+option<mapping> (22).
+
+Sub-phases in order:
+2a. lib/adt (result to ENUM first — everything depends on it), lib core,
+    CAD-NUM.
+2b. src/core + src/habu (the checker's own sources migrate; the engine
+    accepts both forms, so the boot prefix converts like any file).
+    ENGINE REFRESH #2 after 2b.
+2c. maki + tools + test sweep. Suite inventories updated as files move.
+2d. Audit repairs that are TYPE work (30 single-authority, 31 positional
+    bundles, 32 deletions/renames/moves). Behavioral repairs (29:
+    fs-predicate masking, BENCH-GET, obsolete throws) each get a focused
+    red-first test in the same commit as the fix — they change observable
+    behavior and are the likeliest final-gate reds, so they are probed
+    as they land, not discovered in phase 4.
+2e. Package sealing deleted (25: SEAL-PACKAGE, prot-wid, exit-84).
+    TRUSTED.md, trust-lint.f, trusted-inventory tools deleted (27).
+    Old definer arms deleted from the engine (SUMTYPE, PRODUCT, DEFTYPE,
+    arity-NEWTYPE, TRUSTED:, PPRIM:, set-check, hash-name fallback).
+    ENGINE REFRESH #3. A grep census proves zero old-form sites remain.
+
+### Phase 3 — reconciliation (claude, small)
+
+docs/type-system.md rewritten against the converted tree (same probe
+discipline as its first writing); STATUS.md; refine-lint seed table and any
+lint expectation touching deleted words; this plan file gets a completion
+stamp per item.
+
+### Phase 4 — the single gate battery, then one landing
+
+fixpoint x2 byte-identity; full native test/run.f; full maki; every
+surviving lint; native dot gate. Fix reds in place (each red gets its cause
+named in the commit that fixes it). When green: one fast-forward of remote
+master to the branch tip, verified at origin, workspaces retired, campaign
+dots closed.
+
+### Risk register (pre-probe before the phase that triggers them)
+
+R1. The checker's own sources migrating under the both-forms engine (2b) is
+    the highest-risk step: a definer bug here corrupts everything after.
+    Pre-probe: migrate ONE boot-prefix file first, refresh, run the
+    declaration suites, before sweeping the rest.
+R2. Tagged-generic unification (14) touches the same CON-OK?/unify path as
+    the pointer-element fix; regression pair required with both directions.
+R3. The 132-file process-completion unification (30) is the widest single
+    consolidation; it migrates as its own 2d slice with a focused suite.
+R4. Namespace nesting (7) changes lookup for every qualified reference;
+    the respell in 2a-2c must be complete per file or the file fails to
+    load — the per-file-complete rule is what keeps this safe.
+R5. Behavioral fixes (29) can change outputs recorded in golden logs;
+    each carries its red-first test and any golden updates in one commit.
+R6. Items deferred by codex's sizing (24, 19) must be recorded as
+    sequenced-after with their own entry here — nothing silently dropped.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
