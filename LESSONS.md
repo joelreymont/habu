@@ -2858,3 +2858,20 @@ fits.
   application descriptor before enqueue; the device completion proof should
   prove only quiescence of its one linear session, not duplicate application
   identity in a second package.
+- **Size transport storage from one canonical model-info value.** Passing model
+  name, valid-token count, token-byte bound, and batch cap separately duplicates
+  authority and makes pre-admission capacity proof depend on callers agreeing.
+  Parse only requested syntax; derive storage after the engine and scheduler
+  publish their canonical limits.
+- **A hard cut is one publication, not one untestable edit.** Add the final new
+  surface without forwarding the old one, cut internal callers in green commits
+  on an unpublished branch, delete the old surface, then publish only that final
+  tree. Never claim a child is green if its provider already deleted its inputs.
+- **Cleanup stages must pass the returned owner forward.** A successful stop
+  usually exposes the next outer owner; the cleanup chain must consume that
+  owner or return the exact stage where cleanup refused. A generic "closed"
+  result at every intermediate step silently loses the remaining lifetime.
+- **Freeze every state source and validation authority before dispatch.** Name
+  who mints and refreshes connection metadata, give same-representation input
+  roles distinct nominal types, and authorize result slices once at the batch
+  boundary before connection-state validation.

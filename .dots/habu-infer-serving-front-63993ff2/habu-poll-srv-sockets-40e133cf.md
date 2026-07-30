@@ -5,8 +5,9 @@ priority: 1
 issue-type: task
 created-at: "2026-07-30T01:12:14.601922+02:00"
 blocks:
-  - habu-own-completion-srv-dfc8812e
-  - habu-drive-completion-req-39137097
+  - habu-build-completion-poll-e57ab507
+  - habu-accept-ready-completion-a2d9d4bd
+  - habu-drive-ready-completion-086b8540
 ---
 
-Why: listener and connection readiness must advance without blocking scheduler work. Interface: package-private SERVE:POLL-IO builds interests from the listener and fixed connection rows, chooses timeout zero whenever SCHED reports runnable work and otherwise the bounded nearest idle deadline, polls once, accepts into free rows until would-block, drives each reported READABLE or WRITABLE connection once, and expires idle rows. It returns the server with no scheduler tick or result routing. Owner: one bounded socket-poll iteration only. Production red: a runnable scheduler can stall behind an unrelated poll timeout. Acceptance: runnable work progresses with no file-descriptor readiness, nearest deadline bounds idle wait, full capacity suppresses accept, and three fragmented or slow clients remain isolated through poll, accept, read, write, timeout, and errno failures. Forbidden: scheduler execution, result routing, general event loop, busy loop, thread, dynamic rows, metrics, retry, version, or compatibility path. Smallest owning check: focused multi-client poll traces with real SOCK-OS descriptors.
+Why: the completed poll plan, existing-row pass, and accept pass need one syscall composition. Interface: package-private SERVE:POLL-IO consumes one server, calls POLL-PLAN, invokes SOCK-OS:POLL exactly once, calls DRIVE-READY once for the rows captured by that plan, then calls ACCEPT-READY once only if the server remains healthy. Newly accepted rows therefore wait for the next poll plan. It returns the exact server or stop-only owner from those stages and performs no interest, timeout, accept, connection, or expiry logic itself. Owner: one bounded socket-poll composition only. Production red: the three ready phases have no product entry. Acceptance: instrumented production traces prove exact phase order, one poll call, no accept after stop-only, no same-iteration drive of a new row, and unchanged propagation of every syscall or transition refusal. Forbidden: copied phase logic, scheduler execution, result routing, general event loop, busy loop, thread, dynamic row, metrics, retry, version, or compatibility path. Smallest owning check: focused phase-order trace through SERVE:POLL-IO with real SOCK-OS descriptors. Claim: unassigned.

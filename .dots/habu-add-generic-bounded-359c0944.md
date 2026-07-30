@@ -1,7 +1,7 @@
 ---
 title: Add generic bounded-copy result family
 status: open
-priority: 2
+priority: 1
 issue-type: task
 created-at: "\"2026-07-22T15:51:34.318889+02:00\""
 blocks:
@@ -9,9 +9,10 @@ blocks:
   - habu-checker-sealed-destructure-d967fc03
 ---
 
-Problem: JSON-WRITE, model-pack, normalized-config, and safetensors callers all
-need one bounded-copy outcome that preserves a possibly linear owner on success
-and refusal. Rejected commits 7a2572b6 and 7b62d6af used the internal parse-only
+Problem: the explicit JSON writer (`habu-build-explicit-json-399f5929`),
+model-pack, normalized-config, and safetensors callers all need one bounded-copy
+outcome that preserves a possibly linear owner on success and refusal. Rejected
+commits 7a2572b6 and 7b62d6af used the internal parse-only
 ENUM-DECL:ED-RUN entry, left package COPY reopenable, tested constructors
 without a real copy, and enrolled no canonical gate.
 
