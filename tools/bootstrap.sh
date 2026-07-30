@@ -98,7 +98,6 @@ SRC_COMMON=(
   src/habu/xref.f
   src/core/generated-declaration-dictionary.f
   src/core/generated-declaration-protection.f
-  src/habu/owner-wid-emit-seal.f
   src/core/layout-buffer-seal.f
   src/core/lower-cert-seal.f
 )

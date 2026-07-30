@@ -580,7 +580,6 @@ create LF $0A c,
    s" src/habu/xref.f" EXPECT-FILE
    s" src/core/generated-declaration-dictionary.f" EXPECT-FILE
    s" src/core/generated-declaration-protection.f" EXPECT-FILE
-   s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
    s" src/core/layout-buffer-seal.f" EXPECT-FILE
    s" src/core/lower-cert-seal.f" EXPECT-FILE ;
 
@@ -618,7 +617,6 @@ create LF $0A c,
    s" src/habu/xref.f" EXPECT-FILE
    s" src/core/generated-declaration-dictionary.f" EXPECT-FILE
    s" src/core/generated-declaration-protection.f" EXPECT-FILE
-   s" src/habu/owner-wid-emit-seal.f" EXPECT-FILE
    s" src/core/layout-buffer-seal.f" EXPECT-FILE
    s" src/core/lower-cert-seal.f" EXPECT-FILE ;
 
@@ -913,10 +911,10 @@ public
       s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 RECOVERY-U !
    s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
-      [: RECOVERY+ ;] CAPTURE 34 T=
+      [: RECOVERY+ ;] CAPTURE 33 T=
    EXPECT-RECOVERY-COMMON
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 34 ASSERT-UNIQUE
+   RECOVERY$ 33 ASSERT-UNIQUE
    RECOVERY-TARGETS ;
 
 : FIXPOINT ( -- )
@@ -944,10 +942,10 @@ public
       s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
-      [: FIXPOINT+ ;] CAPTURE 35 T=
+      [: FIXPOINT+ ;] CAPTURE 34 T=
    EXPECT-FIXPOINT-COMMON
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 35 ASSERT-UNIQUE
+   FIXPOINT$ 34 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
 
 ;package

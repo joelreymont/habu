@@ -842,7 +842,6 @@ public
    out outu s" src/habu/xref.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-dictionary.f" BF-APPEND-SOURCE
    out outu s" src/core/generated-declaration-protection.f" BF-APPEND-SOURCE
-   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/layout-buffer-seal.f" BF-APPEND-SOURCE
    out outu s" src/core/lower-cert-seal.f" BF-APPEND-SOURCE ;
 
@@ -951,7 +950,6 @@ public
    out outu s" src/habu/jit.f" BF-APPEND-SOURCE
    out outu s" src/habu/engine-size.f" BF-APPEND-SOURCE
    out outu s" src/habu/habu2.f" BF-APPEND-SOURCE
-   out outu s" src/habu/owner-wid-emit-seal.f" BF-APPEND-SOURCE
    out outu BF-APPEND-DRIVER-IO ;
 
 : BF-APPEND-SNAP-PRESEAL ( ptr u8 n -- ) {: out:ptr outu:n :}
