@@ -1,9 +1,11 @@
 ---
 title: Load GPT-2 atomically
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T17:13:41.372373+02:00"
+closed-at: "2026-07-30T11:57:14.272124+02:00"
+close-reason: "Superseded: the current vLLM engine loads SAFET tensors directly into GPT2DEV weights; GPT2LOAD/WSTORE host models have no product consumer."
 blocks:
   - habu-delete-model-config-1c71a13e
 ---

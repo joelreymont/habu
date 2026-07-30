@@ -1,9 +1,11 @@
 ---
 title: Read GPT-2 host tensor
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T17:13:41.385140+02:00"
+closed-at: "2026-07-30T11:57:14.438656+02:00"
+close-reason: Superseded with its GPT2LOAD/WSTORE host-forward path; the shared device engine consumes GPT2DEV weights directly.
 blocks:
   - habu-add-bounded-u32-9bd95c8c
   - habu-carry-model-config-c9085fa1
