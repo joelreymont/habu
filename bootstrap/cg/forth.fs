@@ -91,12 +91,16 @@ $20 constant FRIEND-ARENA               \ arena base offset within the DATA regi
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
-83 constant ENGINE-ERROR:SEAL-VIOLATION \ process exit status for a post-seal protected write
-84 constant ENGINE-ERROR:SEAL-PACKAGE
-85 constant ENGINE-ERROR:BAD-TAG         \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
-86 constant ENGINE-ERROR:CALLABLE-ABI
-87 constant ENGINE-ERROR:CATCH-STACK
-88 constant ENGINE-ERROR:CODE-CERT
+vocabulary ENGINE-ERROR
+also ENGINE-ERROR definitions
+83 constant SEAL-VIOLATION \ process exit status for a post-seal protected write
+84 constant PROTECTED-WID
+85 constant BAD-TAG         \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
+86 constant CALLABLE-ABI
+87 constant CATCH-STACK
+88 constant CODE-CERT
+previous definitions
+vocabulary ENGINE-EMIT
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
 $F2C00010 constant C-CALL-MOVK-X16-32
@@ -421,7 +425,6 @@ variable LKWDEFER variable LKWIS variable LKWDEFERUNSET   \ deferred-word keywor
 variable LKWTRUSTED variable LKWTRUST variable LKWCHKDOES variable LKWKERNEL
 variable LKWPACKAGE variable LKWPUBLIC variable LKWPRIVATE variable LKWSEMIPACKAGE
 variable LCHKPACKAGE variable LCHKPUB variable LCHKPRI variable LCHKENDPKG variable LCHKDEFER
-variable LRESCHECKCERT variable LRESLOWERCERT variable LRESLOWERHOOK variable LRESENGINEERROR
 variable LKWAT2 variable LKWSTORE2 variable LP2FETCH variable LP2STORE
 variable LKWTUCK3 variable LKWROT3 variable LKWMROT3
 variable LKW2DUP3 variable LKW2DROP3 variable LKW2SWAP3 variable LKW2OVER3
@@ -1052,6 +1055,7 @@ previous definitions
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC @ BL, ;
 \ Recovery and native use the same protected-WID registry contract.
+also ENGINE-EMIT definitions
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room done msg :} \ typed-local-lint: allow-bare-local
    9 G-POP
@@ -1061,7 +1065,7 @@ previous definitions
    14 15 LDAR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
       0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  s" hb: protected-WID table full" BYTES,
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
@@ -1071,6 +1075,7 @@ previous definitions
    15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
    14 15 STLR,
    done LBL, ;
+previous definitions
 
 : BPROTWIDROOM ( -- )
    15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
@@ -1170,6 +1175,7 @@ previous definitions
 
 : BOWNERFINALIZE ( -- ) ;
 
+also ENGINE-EMIT definitions
 : EMIT-ENGINE-PRIMS ( -- )
    s" FINALIZE" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID
    s" run-rc" ['] BRUNRC FPRIM-L
@@ -1183,6 +1189,7 @@ previous definitions
    s" prot-wid-add" ['] BPROTWIDADD FPRIM
    s" prot-wid-room" ['] BPROTWIDROOM FPRIM
    s" die"  ['] BDIE   FPRIM-L ;
+previous definitions
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" open-rd" ['] BOPENRD FPRIM-L
@@ -1199,10 +1206,12 @@ previous definitions
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM ;
 
+also ENGINE-EMIT definitions
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS  EMIT-CHECKER-PRIMS ;
+previous definitions
 
 \ ---- CEMIT ( x9=word -- ) : str w9,[x28] ; CP += 4 ----
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
@@ -2438,6 +2447,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    lmiss LBL,  0 0 MOVN,  RET, ;                     \ -1
 
 \ keyword bytes (lower-case) at known labels; ADR reaches them PC-relative
+also ENGINE-EMIT definitions
 : EMIT-KWDATA ( -- )
    LKWIF @ LBL,     s" if"     BYTES,    LKWTHEN @ LBL,   s" then"   BYTES,
    LKWELSE @ LBL,   s" else"   BYTES,    LKWBEGIN @ LBL,  s" begin"  BYTES,
@@ -2477,16 +2487,13 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LCHKPACKAGE @ LBL, s" checker-package" BYTES,  LCHKPUB @ LBL, s" checker-public" BYTES,
    LCHKPRI @ LBL, s" checker-private" BYTES,  LCHKENDPKG @ LBL, s" checker-end-package" BYTES,
    LCHKDEFER @ LBL, s" checker-defer" BYTES,
-   LRESCHECKCERT @ LBL, s" checker-cert" BYTES,
-   LRESLOWERCERT @ LBL, s" lower-cert" BYTES,
-   LRESLOWERHOOK @ LBL, s" lower-cert-hook" BYTES,
-   LRESENGINEERROR @ LBL, s" engine-error" BYTES,
    LKWQUOT @ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ @ LBL,  SEMIQ-KW 2 BYTES,
    LKWCONSTRUCT @ LBL, s" construct" BYTES,  LKWMATCH @ LBL, s" match" BYTES,  LKWSEMIMATCH @ LBL, s" ;match" BYTES,
    LTFLCONFAM @ LBL, s" tfl-con-fam?" BYTES,  LTFLCVAR @ LBL, s" tfl-cvar?" BYTES,
    LTFLMATCHFAM @ LBL, s" tfl-match-fam?" BYTES,  LTFLNAME @ LBL, s" tfam-name$" BYTES,
    LBADTAGPFX @ LBL, s" hb: bad " BYTES,  LBADTAGSFX @ LBL, BADTAG-SFX-KW 5 BYTES,
    PFX-PATH-FILES ;
+previous definitions
 
 \ compile-time handler emitters (run at BUILD time, append JIT-emitter ICode)
 : C-EMITW ( n -- )  9 swap LIT64,  LCEMIT @ BL, ;          \ emit one fixed instr word
@@ -3022,9 +3029,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ tail in that package's public WID. The original spelling remains available
 \ to the checker/hook through DEF-TKA/DEF-TKL; no textual prefix dictionary
 \ entries are created.
+also ENGINE-EMIT definitions
 : C-QUALIFY-DEF ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qtail qseal qsealed qlookup nloop nnext ncmp nmatch ninl nmake nroom qapply qbad done :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: qscan qnone qhas qtail qlookup nloop nnext ncmp nmatch ninl nmake nroom qapply qbad done :} \ typed-local-lint: allow-bare-local
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
@@ -3040,21 +3048,9 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       14 17 1 ADDI,  14 12 CMP,  C-GE qnone BCOND,
       14 17 1 ADDI,
    qtail LBL,
-      14 12 CMP,  C-GE qseal BCOND,
+      14 12 CMP,  C-GE qlookup BCOND,
       15 11 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ qbad BCOND,
       14 14 1 ADDI,  qtail B,
-   qseal LBL,
-      17 DATA TKL-CELL STR,
-      9 DATA FRIEND-LATCH-CELL LDR,  9 qlookup CBZ,
-      0 LRESCHECKCERT @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
-      0 LRESLOWERCERT @ ADR,  1 10 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
-      0 LRESLOWERHOOK @ ADR,  1 15 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
-      0 LRESENGINEERROR @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 qsealed CBNZ,
-      qlookup B,
-   qsealed LBL,
-      0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
    qlookup LBL,
       5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    nloop LBL,
@@ -3099,6 +3095,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    qbad LBL,
       0 75 MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
+previous definitions
 
 : C-STORE-DEF-NAME ( -- )
    C-STORE-NAME
@@ -3111,6 +3108,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 \ LCREATE ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
 \ applies to top-level creates. Created-word effects are recorded by DOESPATCH
 \ after DOES> has parsed the created-word effect.
+also ENGINE-EMIT definitions
 : EMIT-CREATE ( -- )
    LBL {: nokind :}
    LCREATE @ LBL,
@@ -3134,6 +3132,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    LKWCREATE 6 C-DEFHOOK
    nokind LBL,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+previous definitions
 
 : C-CREATE ( -- )  15 1 MOVZ,  LCREATE @ BL, ;
 
@@ -3142,6 +3141,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
 
 \ CONSTANT ( n -- ) "name": define a word that pushes n. Pop n first (x15
 \ survives the name copy), then emit a literal-push body via C-LIT (x11=n).
+also ENGINE-EMIT definitions
 : C-CONSTANT ( -- )
    2 3 MOVZ,  LPROT @ BL,  LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
@@ -3157,6 +3157,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    NDICT NDICT 1 ADDI,  9 9 0 LDR,                      \ x9 = body start for the flush
    2 5 MOVZ,  LPROT @ BL,  LFLUSH @ BL,
    LKWCONST 8 C-DEFHOOK ;
+previous definitions
 
 \ IMMEDIATE: mark the LAST defined word — the compile loop EXECUTES immediate
 \ words instead of compiling calls (flag = DNAME-IMM in slot.name-len|flags).
@@ -3293,8 +3294,8 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       15 4 CMP,  C-NE miss BCOND,
       7 7 1 ADDI,  cmp B, ;
 
-: C-PACKAGE-PROT-GUARD ( n -- )
-   {: bad :} \ typed-local-lint: allow-bare-local
+also ENGINE-EMIT definitions
+: C-PACKAGE-PROT-GUARD ( -- )
    LBL LBL LBL LBL {: loop miss hit done :} \ typed-local-lint: allow-bare-local
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
    loop LBL,
@@ -3303,25 +3304,12 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       hit LBL,
          9 5 0 LDR,  LPROTWIDQ @ BL,
          13 done CBZ,
-         bad B,
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+         0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       miss LBL,
          5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    done LBL, ;
-
-: C-PACKAGE-SEAL-GUARD ( -- )
-   LBL LBL {: ok bad :} \ typed-local-lint: allow-bare-local
-   9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,
-   0 LRESCHECKCERT @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
-   0 LRESLOWERCERT @ ADR,  1 10 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
-   0 LRESLOWERHOOK @ ADR,  1 15 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
-   0 LRESENGINEERROR @ ADR,  1 12 MOVZ,  LKWCMP @ BL,  0 bad CBNZ,
-   bad C-PACKAGE-PROT-GUARD
-   ok B,
-   bad LBL,
-      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
+previous definitions
 
 : C-PACKAGE-NAME-GUARD ( -- )
    LBL LBL LBL {: loop bad done :} \ typed-local-lint: allow-bare-local
@@ -3358,6 +3346,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       NDICT NDICT 1 ADDI,
    done LBL, ;
 
+also ENGINE-EMIT definitions
 : C-PACKAGE ( -- )
    LBL LBL LBL {: inactive hastok checkdone :} \ typed-local-lint: allow-bare-local
    9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
@@ -3372,7 +3361,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    checkdone LBL,
-   C-PACKAGE-SEAL-GUARD
+   C-PACKAGE-PROT-GUARD
    2 3 MOVZ,  LPROT @ BL,
    C-PACKAGE-ENSURE
    2 5 MOVZ,  LPROT @ BL,
@@ -3380,6 +3369,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    5 DATA PKG-REC-CELL STR,
    12 DATA CUR-CELL STR, ;
+previous definitions
 
 : C-PUBLIC ( -- )
    LBL {: active :} \ typed-local-lint: allow-bare-local
@@ -4428,6 +4418,7 @@ variable CFSK2
       0 77 MOVZ,  NR-EXIT-GROUP SYS,
    ndok LBL, ;
 
+also ENGINE-EMIT definitions
 : C-COLON-PENDING-DREC ( -- )
    LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
@@ -4441,6 +4432,7 @@ variable CFSK2
    12 0 MOVZ,  12 DATA LOCN-CELL STR,  12 DATA LOCF-CELL STR,
    12 DATA CMM-CELL STR,  12 DATA CMFRD-CELL STR,  12 DATA CMBK-CELL STR,
    ;
+previous definitions
 
 : C-COLON-MAYBE-SIG ( -- )
    LBL LBL {: nsig scd :}
@@ -4589,6 +4581,7 @@ variable CFSK2
 \ defer NAME ( sig ) : create NAME. The signature is required (parsed + consumed,
 \ unchecked in stage0). clen spans the whole body incl RET, so addr+clen lands
 \ exactly on the trailer.
+also ENGINE-EMIT definitions
 : C-DEFER ( -- )
    LBL {: named :}   \ typed-local-lint: allow-bare-local
    2 3 MOVZ,  LPROT @ BL,                           \ region -> RW
@@ -4620,6 +4613,7 @@ variable CFSK2
    pdone LBL,
    EM-REC-WIDE-PUBLISH                              \ publish wide/min-in record marks (hook-guarded, no-op unset)
    9 0 MOVZ,  9 DATA PEND-CELL STR, ;               \ clear PEND
+previous definitions
 
 \ is NAME : resolve NAME's dispatch cell via its meta trailer (FIND addr+clen ->
 \ DEFER-MAGIC then the cell addr); die if NAME is missing or is not a defer.
@@ -5425,6 +5419,7 @@ variable P2SK
    lmain LKWSTORE2  1 1 ['] EM-P2X-STORE P2W-ENTRY
    notp2 LBL, ;
 
+also ENGINE-EMIT definitions
 : C-TRUSTED ( -- )
    2 3 MOVZ,  LPROT @ BL,
    C-COLON-CODE-ROOM
@@ -5435,7 +5430,9 @@ variable P2SK
    C-PARSE-TRUST-SIG
    C-COLON-RESET-COMPILE-STATE
    C-COLON-WORD-PROLOGUE ;
+previous definitions
 
+also ENGINE-EMIT definitions
 : EMIT-INTERPRET-COLON ( n n -- ) {: lmain lnotcolon :}
    lnotcolon C-COLON-TOKEN?
       LBL {: p2ok :} \ typed-local-lint: allow-bare-local
@@ -5489,6 +5486,7 @@ variable P2SK
    LBL {: lnotcolon :}
    lmain lnotcolon EMIT-INTERPRET-COLON
    lmain lundef EMIT-INTERPRET-WORDS ;
+previous definitions
 
 : EMIT-COMPILE-DROP-LOCALS ( -- )
    LBL {: done :}
@@ -6118,6 +6116,7 @@ variable P2SK
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
+also ENGINE-EMIT definitions
 : EMIT-MAIN ( -- )
    EMIT-STARTUP
    LBL {: LMAIN :}  LBL {: LEXIT :}  LBL {: LCOMPILE :}  LBL {: LUNDEF :}   \ allocate up-front (byte-free) so the LMAIN store below is in scope
@@ -6132,6 +6131,7 @@ variable P2SK
 	   EMIT-PREFMISS
 	   LUNDEF EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT ;
+previous definitions
 
 : EMIT-RESET-BUILDER ( -- )
    ICODE-RESET  CF-RESET  0 #PL !  0 PNP ! ;
@@ -6149,6 +6149,7 @@ variable P2SK
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;
 
+also ENGINE-EMIT definitions
 : EMIT-LABEL-CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
@@ -6167,12 +6168,12 @@ variable P2SK
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !
-   LBL LRESCHECKCERT !  LBL LRESLOWERCERT !  LBL LRESLOWERHOOK !  LBL LRESENGINEERROR !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
    LBL LKWCONSTRUCT !  LBL LKWMATCH !  LBL LKWSEMIMATCH !
    LBL LTFLCONFAM !  LBL LTFLCVAR !
    LBL LTFLMATCHFAM !  LBL LTFLNAME !  LBL LBADTAGPFX !  LBL LBADTAGSFX ! ;
+previous definitions
 
 : EMIT-LABEL-SIGNALS ( -- )
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
@@ -6230,6 +6231,7 @@ variable P2SK
    LBL [ also LOWER-TXN-CODE ] VDESC-LABEL [ previous ] !
    LBL [ also LOWER-TXN-CODE ] DRIFT-FAIL-LABEL [ previous ] ! ;
 
+also ENGINE-EMIT definitions
 : EMIT-LABELS ( -- )
    EMIT-LABEL-CORE
    EMIT-LABEL-RUNTIME
@@ -6239,7 +6241,9 @@ variable P2SK
    EMIT-LABEL-JIT
    EMIT-LABEL-OPS
    EMIT-LABEL-P2 ;
+previous definitions
 
+also ENGINE-EMIT definitions
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM   \ dot habu-engine-pre-trust-77410827
@@ -6253,7 +6257,9 @@ variable P2SK
    EMIT-FLUSH
    EMIT-FIND
    EMIT-NUM ;
+previous definitions
 
+also ENGINE-EMIT definitions
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
    EMIT-DOESPATCH
@@ -6265,6 +6271,7 @@ variable P2SK
    EMIT-CMPKW
    EMIT-UNKW
    EMIT-P2KW ;
+previous definitions
 
 : EMIT-RUNTIME-SECTIONS ( -- )
    EMIT-CRASH-HANDLER
@@ -6278,31 +6285,35 @@ variable P2SK
    EMIT-P2-HELPERS
    [ also LOWER-TXN-CODE ] EMIT-DESC EMIT-DRIFT-FAIL [ previous ] ;
 
+also ENGINE-EMIT definitions
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN                                              \ entry @ offset 0
    EMIT-PRIMITIVE-SECTIONS
    EMIT-DICTIONARY-SECTIONS
    EMIT-RUNTIME-SECTIONS
    EMIT-DICT ;                                            \ after #PL is final
+previous definitions
 
 : EMIT-SOURCE-BYTES ( -- )
    LSRC @ LBL,  SRCA @ SRCN @ BYTES, ;
 
+also ENGINE-EMIT definitions
 : EMIT-FORTH ( src-a src-u -- )
    SRCN !  SRCA !
    EMIT-RESET-BUILDER
    EMIT-LABELS
    EMIT-CODE-SECTIONS
    EMIT-SOURCE-BYTES ;
+previous definitions
 
 \ Build a standalone native Forth that interprets `src`, write it to `outfile`.
 : FORTH-EXE ( src-a src-u out-a out-u -- )
-   2>r  EMIT-FORTH  2r> EMIT-EXE ;
+   2>r  ENGINE-EMIT:EMIT-FORTH  2r> EMIT-EXE ;
 
 : FORTH-BUILD-EXE ( src-a src-u out-a out-u -- )
    2>r
    BUILD-SOURCE? on
-   ['] EMIT-FORTH catch
+   ['] ENGINE-EMIT:EMIT-FORTH catch
    BUILD-SOURCE? off
    throw
    2r> EMIT-EXE ;
@@ -6310,5 +6321,5 @@ variable P2SK
 \ Build a standalone native Forth that reads its program from STDIN (batch REPL),
 \ write it to `outfile`:  echo ': SQ DUP * ; 5 SQ .' | ./outfile
 : FORTH-REPL-EXE ( out-a out-u -- )
-   STDIN? on  s" "  ['] EMIT-FORTH catch  STDIN? off  throw  \ restore mode even on error
+   STDIN? on  s" "  ['] ENGINE-EMIT:EMIT-FORTH catch  STDIN? off  throw  \ restore mode even on error
    EMIT-EXE ;

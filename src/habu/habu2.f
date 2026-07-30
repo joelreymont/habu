@@ -1317,31 +1317,6 @@ variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / 
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
 package ENGINE-EMIT
 
-variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
-\ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
-\ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
-\ This ONE native table is the reserved-name set: the guards fold each candidate
-\ byte and compare against it. It lives in the compiler (habu1/habu2 CHECK-OFF
-\ region) rather than the checker because the guards must resolve it during the
-\ sealed self-hosting stage build and checker-boot recompile, where a checker
-\ word is neither reachably kept nor safely callable from mid C-QUALIFY-DEF.
-create RESTAB-BUF
-   9 c, $6F c, $77 c, $6E c, $65 c, $72 c, $2D c,
-         $77 c, $69 c, $64 c,                     \ "owner-wid"
-   4 c, $74 c, $66 c, $61 c, $6D c,               \ "tfam"
-   4 c, $74 c, $79 c, $70 c, $65 c,               \ "type"
-   5 c, $6D c, $61 c, $74 c, $63 c, $68 c,        \ "match"
-  12 c, $63 c, $68 c, $65 c, $63 c, $6B c, $65 c, \ "checker-cert"
-         $72 c, $2D c, $63 c, $65 c, $72 c, $74 c,
-  10 c, $6C c, $6F c, $77 c, $65 c, $72 c, $2D c, \ "lower-cert"
-         $63 c, $65 c, $72 c, $74 c,
-  15 c, $6C c, $6F c, $77 c, $65 c, $72 c, $2D c, \ "lower-cert-hook"
-         $63 c, $65 c, $72 c, $74 c, $2D c, $68 c, $6F c, $6F c, $6B c,
-  12 c, $65 c, $6E c, $67 c, $69 c, $6E c, $65 c, \ "engine-error"
-         $2D c, $65 c, $72 c, $72 c, $6F c, $72 c,
-   0 c,                                           \ terminator
-here RESTAB-BUF - constant RESTAB-LEN
-
 : EMIT-KWDATA ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
    LKWELSE LABEL@ LBL,   s" else"   BYTES,    LKWBEGIN LABEL@ LBL,  s" begin"  BYTES,
@@ -1373,7 +1348,7 @@ here RESTAB-BUF - constant RESTAB-LEN
    LKWTRUSTED LABEL@ LBL, s" trusted:" BYTES,
    LKWKERNEL LABEL@ LBL, s" kernel:" BYTES,
    LKWTRUST LABEL@ LBL, s" trust" BYTES,      LKWCHKDOES LABEL@ LBL, s" check-does!" BYTES,  LKWPACKAGE LABEL@ LBL, s" package" BYTES,  LKWPUBLIC LABEL@ LBL, s" public" BYTES,
-   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LRESTAB LABEL@ LBL, RESTAB-BUF RESTAB-LEN BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
+   LKWPRIVATE LABEL@ LBL, s" private" BYTES,  LKWSEMIPACKAGE LABEL@ LBL, s" ;package" BYTES,  LKWDUPDEF LABEL@ LBL, s" duplicate definition: " BYTES,  LKWQUOT LABEL@ LBL,  QUOT-KW 2 BYTES,   LKWSEMIQ LABEL@ LBL,  SEMIQ-KW 2 BYTES,  LKWDEFER LABEL@ LBL, s" defer" BYTES,  LKWIS LABEL@ LBL, s" is" BYTES,  LKWDEFERUNSET LABEL@ LBL, s" defer-unset" BYTES,  LCHKPACKAGE LABEL@ LBL, s" checker-package" BYTES,  LCHKPUB LABEL@ LBL, s" checker-public" BYTES,  LCHKPRI LABEL@ LBL, s" checker-private" BYTES,  LCHKENDPKG LABEL@ LBL, s" checker-end-package" BYTES,  LCHKDEFER LABEL@ LBL, s" checker-defer" BYTES,  LSIGPTRA LABEL@ LBL, s" -- ptr a" BYTES,  LSIGA LABEL@ LBL, s" -- a" BYTES,  LRECWPUB LABEL@ LBL, s" rec-wide-publish" BYTES,  LRECMIQ LABEL@ LBL, s" rec-min-in@" BYTES,  LP2DOESW LABEL@ LBL, s" hb: does>-split cannot lower layout width facts: " BYTES,
    LKWEXPORT LABEL@ LBL, s" export" BYTES,  LCHKEXPORT LABEL@ LBL, s" checker-export" BYTES,
    LKWUSING LABEL@ LBL, s" using" BYTES,  LKWSEMIUSING LABEL@ LBL, s" ;using" BYTES,  LCHKUSING LABEL@ LBL, s" checker-using" BYTES,
    LKWCONSTRUCT LABEL@ LBL, s" construct" BYTES,  LKWMATCH LABEL@ LBL, s" match" BYTES,  LKWSEMIMATCH LABEL@ LBL, s" ;match" BYTES,
@@ -2082,66 +2057,6 @@ s" c-dup-def-fail" s" --" TRUST
    done LBL, ;
 s" c-reject-dup-def" s" --" TRUST
 
-\ TFAM 2b-ii: sealed system-package guard. The offending token sits in
-\ TKA/TKL when either emitter runs, so the shared fail writes it and exits with
-\ the distinct named code ENGINE-ERROR:SEAL-PACKAGE. Both guards read the REAL friend latch
-\ (FRIEND-LATCH-CELL) natively: latch 0 = engine cold load (friend) allows the
-\ reserved name; sealed = user source rejects fail-closed. The reserved-name set
-\ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
-\ resolve during the sealed self-hosting stage build and checker-boot recompile,
-\ where a checker word is neither reachably kept nor safely callable.
-package ENGINE-EMIT
-
-: C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
-   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-   0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
-s" c-seal-package-fail" s" --" TRUST
-
-: C-SEAL-MATCH ( -- )   \ if TKA[0,x24) folds to a reserved name (RESTAB), exit ENGINE-ERROR:SEAL-PACKAGE
-   LBL LBL LBL LBL LBL {: tabloop:label cmploop:label matched:label tabnext:label done:label :}
-   13 LRESTAB LABEL@ ADR,                               \ x13 = reserved-name table cursor
-   tabloop LBL,
-      14 13 0 LDRB,                                     \ x14 = entry length
-      14 done CBZ,                                      \ 0 terminator -> no match
-      14 24 CMP,  C-NE tabnext BCOND,                   \ length mismatch -> next entry
-      15 0 MOVZ,                                        \ x15 = byte index
-      cmploop LBL,
-         15 24 CMP,  C-GE matched BCOND,                \ all bytes matched -> reserved
-         16 DATA TKA-CELL LDR,  16 16 15 ADD,  16 16 0 LDRB,   \ x16 = candidate byte TKA[x15]
-         3 16 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  16 16 3 ORR,   \ fold A-Z -> a-z
-         17 13 15 ADD,  17 17 1 ADDI,  17 17 0 LDRB,    \ x17 = entry byte [1+x15]
-         16 17 CMP,  C-NE tabnext BCOND,                \ byte mismatch -> next entry
-         15 15 1 ADDI,  cmploop B,
-      matched LBL,
-         C-SEAL-PACKAGE-FAIL
-   tabnext LBL,
-      13 13 14 ADD,  13 13 1 ADDI,                      \ advance past [len][bytes]
-      tabloop B,
-   done LBL, ;
-s" c-seal-match" s" --" TRUST
-
-: C-QUALIFY-SEAL-GUARD ( -- )   \ reject `NAME:tail` defs into a sealed system package
-   LBL LBL LBL {: scan:label have:label ok:label :}
-   9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,             \ friend/open -> no guard
-   \ Only a NAME:tail token (first ':' not at an edge, matching CHECKER-QUALIFIED?)
-   \ can name a package; a leading/trailing ':' (e.g. `PRIM:`) is an ordinary name.
-   \ The whole check is native (RESTAB + fold), so it is safe during the sealed
-   \ self-hosting stage build and checker-boot recompile of the engine's own defs.
-   25 DATA TKL-CELL LDR,  24 0 MOVZ,
-   scan LBL,
-      24 25 CMP,  C-GE ok BCOND,                        \ no ':' -> ordinary -> skip
-      9 DATA TKA-CELL LDR,  9 9 24 ADD,  9 9 0 LDRB,
-      9 $3A CMPI,  C-EQ have BCOND,                      \ first ':' at index x24
-      24 24 1 ADDI,  scan B,
-   have LBL,
-      24 ok CBZ,                                         \ leading ':' -> ordinary -> skip
-      9 24 1 ADDI,  9 25 CMP,  C-GE ok BCOND,            \ trailing ':' -> ordinary -> skip
-      C-SEAL-MATCH                                       \ prefix len = x24; fail if reserved
-   ok LBL, ;
-s" c-qualify-seal-guard" s" --" TRUST
-
-;package
-
 variable LQUALIFYDEF      \ shared qualification helper entry (dot habu-emit-one-shared)
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
@@ -2167,7 +2082,6 @@ package ENGINE-EMIT
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qnone qhas qbad qtail qlookup qapply nloop nnext ncmp nmatch nend ninl done :}
-   C-QUALIFY-SEAL-GUARD
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
@@ -2271,7 +2185,7 @@ package ENGINE-EMIT
       1 LPROTPUB LABEL@ ADR,  0 2 MOVZ,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,       \ protected + sealed: name the guard on fd 2 before exit 84
       0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,     \ + the offending def name
       1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,                       \ + newline
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
    pgok LBL,
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
@@ -2609,7 +2523,7 @@ package ENGINE-EMIT
 
 : C-POSTPONE ( -- )
    LBL LBL LBL {: pok pnimm pdone :}
-   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `postpone RESERVED:tail` once sealed (TFAM 2b-iii)
+   LTOK LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 pok CBNZ,                                          \ postpone <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. Only LTOK + LFIND ran; nothing published/emitted -> clean rollback
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -2925,7 +2839,7 @@ package ENGINE-EMIT
 
 : C-TICK ( -- )
    LBL LBL LBL {: tk:label usedtry:label found:label :}
-   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
+   LTOK LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 usedtry CBZ,                                       \ open-scope + global miss -> try used publics (` ' SUITE` under a `using`)
    found LBL,
@@ -2942,7 +2856,7 @@ package ENGINE-EMIT
 
 : C-BTICK ( -- )
    LBL {: bk :}
-   LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
+   LTOK LABEL@ BL,
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
 
@@ -4018,7 +3932,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
 \ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
 \ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
-\ the protected-WID registry, fail-closed (exit ENGINE-ERROR:SEAL-PACKAGE) -- so a captured
+\ the protected-WID registry, fail-closed (exit ENGINE-ERROR:PROTECTED-WID) -- so a captured
 \ relocation callee or boot-run entry name that resolves into a sealed system /
 \ generated constructor package is rejected before the call immediate is rewritten
 \ or the entry word is executed. Preserves x11; clobbers x5/x6/x9/x13/x14; saves x30
@@ -4038,7 +3952,7 @@ package ENGINE-EMIT
       LPROTWIDQ LABEL@ BL,                               \ x13 = protected?
       13 wdone CBZ,
          1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ protected WID at AOT boot gate: name it on fd 2 before exit 84
-         0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+         0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -4577,19 +4491,12 @@ package ENGINE-EMIT
       hit LBL,
          9 5 0 LDR,  LPROTWIDQ LABEL@ BL,
          13 done CBZ,
-         C-SEAL-PACKAGE-FAIL
+         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+         0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       miss LBL,
          5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    done LBL, ;
 s" c-package-prot-guard" s" --" TRUST
-
-: C-PACKAGE-SEAL-GUARD ( -- )   \ reject `package NAME` open/reopen of a sealed system package
-   LBL {: ok:label :}
-   9 DATA FRIEND-LATCH-CELL LDR,  9 ok CBZ,             \ friend/open -> allow (engine cold load)
-   24 DATA TKL-CELL LDR,  C-SEAL-MATCH                  \ candidate len = TKL; fail if reserved
-   C-PACKAGE-PROT-GUARD
-   ok LBL, ;
-s" c-package-seal-guard" s" --" TRUST
 
 : C-PACKAGE ( -- )
    C-TASK-LIVE-GUARD
@@ -4601,7 +4508,7 @@ s" c-package-seal-guard" s" --" TRUST
       $4A C-PACKAGE-FAIL
    hastok LBL,
    C-CALL-CHECKER-PACKAGE
-   C-PACKAGE-SEAL-GUARD
+   C-PACKAGE-PROT-GUARD
    2 3 MOVZ,  LPROT LABEL@ BL,
    C-PACKAGE-ENSURE
    2 5 MOVZ,  LPROT LABEL@ BL,
@@ -4846,8 +4753,8 @@ s" c-export-tail!" s" --" TRUST
 \   directly loadable.
 \ Checker sync mirrors C-PACKAGE (CHECKER-EXPORT sees the ORIGINAL spelling
 \ and throws on unsigned/prim sources). Native walls that hold without the
-\ hook: missing name ($4A), sealed source prefix (C-QUALIFY-SEAL-GUARD,
-\ ENGINE-ERROR:SEAL-PACKAGE), undefined word (token + rc 70), duplicate tail
+\ Native walls that hold without the hook: missing name ($4A), undefined word
+\ (token + rc 70), duplicate tail
 \ (C-REJECT-DUP-DEF $4E, checked BEFORE the checker call so the labeled
 \ native diagnosis wins), protected-WID target (C-STORE-DEF-NAME publish
 \ guard). The checker call runs OUTSIDE the RW code window (checked code must
@@ -4867,7 +4774,6 @@ package ENGINE-EMIT
    LTOK LABEL@ BL,  0 named CBNZ,
       $4A C-PACKAGE-FAIL
    named LBL,
-   C-QUALIFY-SEAL-GUARD
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 found CBNZ,                                          \ EXPORT <undefined>: recoverable inside evaluate (rc 70), fail-closed exit 70 at top level. C-EXPORT's own state is clean (only LTOK + LFIND ran; no SP push, no publish). Caveat (universal, not new): if the failing string ALSO opened the package (package X public export NOPE), the recovery restores the dictionary + compile state but not package scope, so X stays open — identical to the landed LUNDEF/dup-def in-package recoveries; the session is usable for fresh top-level defines. Package-scope rollback is a separate follow-up.
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
@@ -6867,7 +6773,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
    LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !
-   LBL LCHKDEFER !  LBL LRESTAB !  LBL LRECWPUB !  LBL LRECMIQ !  LBL LP2DOESW !
+   LBL LCHKDEFER !  LBL LRECWPUB !  LBL LRECMIQ !  LBL LP2DOESW !
    LBL LKWEXPORT !  LBL LCHKEXPORT !
    LBL LKWUSING !  LBL LKWSEMIUSING !  LBL LCHKUSING !  LBL LFINDUSED !
    LBL LKWQUOT !  LBL LKWSEMIQ !  LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !

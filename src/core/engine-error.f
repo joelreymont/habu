@@ -3,7 +3,7 @@
 package ENGINE-ERROR
 public
 83 constant SEAL-VIOLATION
-84 constant SEAL-PACKAGE
+84 constant PROTECTED-WID
 85 constant BAD-TAG
 86 constant CALLABLE-ABI
 87 constant CATCH-STACK

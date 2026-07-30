@@ -1015,23 +1015,27 @@ public
    CELL-WIDTH-CHECK
    CELL 1 cells T= ;
 
+package BCG-SUITE
+
 : BCG-TEST-ENGINE-ERROR ( -- )
    s" src/core/engine-error.f" BCG-LOAD
    s" package ENGINE-ERROR" BCG-MUST-HAVE
    s" 83 constant SEAL-VIOLATION" BCG-MUST-HAVE
-   s" 84 constant SEAL-PACKAGE" BCG-MUST-HAVE
+   s" 84 constant PROTECTED-WID" BCG-MUST-HAVE
    s" 85 constant BAD-TAG" BCG-MUST-HAVE
    s" 86 constant CALLABLE-ABI" BCG-MUST-HAVE
    s" 87 constant CATCH-STACK" BCG-MUST-HAVE
    s" 88 constant CODE-CERT" BCG-MUST-HAVE
    s" constant E-SEAL-VIOLATION" BCG-MUST-LACK
    s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" 83 constant ENGINE-ERROR:SEAL-VIOLATION" BCG-MUST-HAVE
-   s" 84 constant ENGINE-ERROR:SEAL-PACKAGE" BCG-MUST-HAVE
-   s" 85 constant ENGINE-ERROR:BAD-TAG" BCG-MUST-HAVE
-   s" 86 constant ENGINE-ERROR:CALLABLE-ABI" BCG-MUST-HAVE
-   s" 87 constant ENGINE-ERROR:CATCH-STACK" BCG-MUST-HAVE
-   s" 88 constant ENGINE-ERROR:CODE-CERT" BCG-MUST-HAVE
+   s" vocabulary ENGINE-ERROR" BCG-MUST-HAVE
+   s" 83 constant SEAL-VIOLATION" BCG-MUST-HAVE
+   s" 84 constant PROTECTED-WID" BCG-MUST-HAVE
+   s" 85 constant BAD-TAG" BCG-MUST-HAVE
+   s" 86 constant CALLABLE-ABI" BCG-MUST-HAVE
+   s" 87 constant CATCH-STACK" BCG-MUST-HAVE
+   s" 88 constant CODE-CERT" BCG-MUST-HAVE
+   s" vocabulary ENGINE-EMIT" BCG-MUST-HAVE
    s" : C-P2-FIND-GLOBAL?" BCG-MUST-HAVE
    s" : C-P2-FIND-CHECKER" BCG-MUST-HAVE
    s" FRIEND-LATCH-CELL LDR,  9 done CBZ," BCG-MUST-HAVE
@@ -1045,6 +1049,8 @@ public
    S\" s\" CODE-CERT\" s\" -- n\" TRUST" BCG-MUST-HAVE
    s" tools/bootstrap.sh" BCG-LOAD
    s" test/engine-error-package.f" BCG-MUST-HAVE ;
+
+;package
 
 : BCG-TEST-CELL-SOURCE ( -- )
    s" src/core/cell.f" BCG-LOAD
@@ -1407,7 +1413,11 @@ public
 
 ;package
 
-: BCG-MAIN ( -- )
+package BCG-SUITE
+
+public
+
+: RUN ( -- )
    T-RESET
    BCG-TEST-MMAP-DIAG
    BCG-PREFLIGHT:TEST
@@ -1441,4 +1451,6 @@ public
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 
-BCG-MAIN
+;package
+
+BCG-SUITE:RUN

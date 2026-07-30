@@ -2270,7 +2270,7 @@ package ENGINE-EMIT
    14 15 LDAR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
       0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,    \ registry full: name the cap on fd 2 before exit 84
-      0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  s" hb: protected-WID table full" BYTES,   \ 28 bytes; data reached only via ADR
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,

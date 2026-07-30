@@ -493,15 +493,17 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
 \ before exit 84. Red-first: the bare exit left stderr empty, so the CONTAINS assertion
 \ fails. (The sibling AOT boot-pass gate EM-AOTWIDGATE is also now labeled (LPROTAOT); it
 \ fires only on a crafted AOT/snapshot image, so its forced-reject fixture is dotted.)
+package SEAL-SUITE
+
 : SLV-PUBLISH-FORGE$ ( -- ptr u8 n )         \ define a word into a public family's protected WID
    SB-RESET
    s" SUMTYPE foo 1 VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
    s" : foo:BOGUS ( -- ) ;" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died ENGINE-ERROR:SEAL-PACKAGE naming the publish guard
+: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died ENGINE-ERROR:PROTECTED-WID naming the publish guard
    SLV-EXITED @ TTRUE
-   SLV-RC @ ENGINE-ERROR:SEAL-PACKAGE T=
+   SLV-RC @ ENGINE-ERROR:PROTECTED-WID T=
    SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
 
 : SLV-PROT-PUBLISH ( -- )
@@ -530,6 +532,8 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
    SLV-OWNER-PRI-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-PROT-PUBLISH
    s" : X ; via 1 set-current into OWNER-API-PUB-WID -> labeled exit 84" T-LABEL
    SLV-OWNER-PUB-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-PROT-PUBLISH ;
+
+;package
 
 package OWNER-WID-TEST
 
@@ -844,7 +848,11 @@ public
    s" post-seal define/package/trusted/defer still work" T-LABEL
    SLV-LANG-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-OK ;
 
-: SLV-MAIN ( -- )
+package SEAL-SUITE
+
+public
+
+: RUN ( -- )
    T-RESET
    TAIL-RATCHET:START
    SLV-PREPARE
@@ -862,7 +870,9 @@ public
    T-REPORT
    s" seal-test: ok" type cr ;
 
-SLV-MAIN
+;package
+
+SEAL-SUITE:RUN
 
 \ --- Prove-absence: guarded sinks NOT covered by an automated forge above ---
 \ The 16 PROT-GUARD sinks: BSTORE/BPLUSSTORE/BCSTORE/BATSTORE/BATADD (x10=B),

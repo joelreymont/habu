@@ -92,14 +92,14 @@ public
 \ arithmetic, stack, comparisons
 s" package-scoped engine error ABI" T-LABEL
 ENGINE-ERROR:SEAL-VIOLATION 83 T=
-ENGINE-ERROR:SEAL-PACKAGE 84 T=
+ENGINE-ERROR:PROTECTED-WID 84 T=
 ENGINE-ERROR:BAD-TAG 85 T=
 ENGINE-ERROR:CALLABLE-ABI 86 T=
 ENGINE-ERROR:CATCH-STACK 87 T=
 ENGINE-ERROR:CODE-CERT 88 T=
 s" legacy engine error globals absent" T-LABEL
 s" E-SEAL-VIOLATION" 0 search-wl 0 T=
-s" E-SEAL-PACKAGE" 0 search-wl 0 T=
+s" E-PROTECTED-WID" 0 search-wl 0 T=
 s" E-BAD-TAG" 0 search-wl 0 T=
 s" E-CALLABLE-ABI" 0 search-wl 0 T=
 s" E-CATCH-STACK" 0 search-wl 0 T=
