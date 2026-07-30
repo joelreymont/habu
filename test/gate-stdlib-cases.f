@@ -314,6 +314,15 @@ SUITE compiler-reloc-proof
    test/compiler/reloc-proof.f
 ;SUITE
 
+\ The instruction-encoding parity gate compiles formal/Common/Insn.v with the
+\ Rocq proof assistant and spawns child engines for the encodings the shipped
+\ assembler refuses by ending the process, so it runs here in the standalone
+\ stdlib gate and is documented manual-gate in tools/suite-coverage-lint-core.f
+\ alongside its four siblings.
+SUITE compiler-insn-proof
+   test/compiler/insn-proof.f
+;SUITE
+
 SUITE raw-storage-load-seal
    test/raw-storage-load-seal-test.f
 ;SUITE

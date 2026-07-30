@@ -327,6 +327,14 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ free of the Rocq toolchain. The Habu half of the same binding has no such
    \ dependency and does run resident, as test/compiler/reloc-manifest.f.
    s" test/compiler/reloc-proof.f" q execute
+   \ instruction-encoding parity gate: the fifth gate of the same shape and the
+   \ same Rocq dependency - it compiles formal/Common/Insn.v and then a
+   \ generated obligations file, and it spawns child engines for the rows the
+   \ shipped assembler refuses by ending the process. Runs spawned in the
+   \ standalone stdlib gate; the resident tier stays free of the Rocq
+   \ toolchain. The Habu half of the same binding has no such dependency and
+   \ does run resident, as test/compiler/insn-manifest.f.
+   s" test/compiler/insn-proof.f" q execute
    s" tools/object-image-test.f" q execute
    s" tools/imgdump-test.f" q execute
    s" tools/imagedisasm-test.f" q execute

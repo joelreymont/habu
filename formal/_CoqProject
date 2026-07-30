@@ -13,3 +13,4 @@ Common/Storage.v
 Common/Reloc.v
 Common/Effects.v
 Common/Control.v
+Common/Insn.v

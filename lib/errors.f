@@ -449,6 +449,19 @@ public
 -6862 constant E-CMP-CONTROL  \ the checker's control-flow dispatch table or a control frame kind is not what the frozen table carries
 -6863 constant E-CMP-POOL     \ the frozen schema's own string pool or table is full
 
+\ Frozen instruction-encoding parity gate (package COMPILER-INSN-PROOF):
+\ -6880..-6899. The sixth gate of the same family: it binds
+\ formal/Common/Insn.v to the ARM64 assembler the engine emits through,
+\ src/arch/arm64/asm.f with its mnemonic and label layers in
+\ src/arch/arm64/mnem.f and src/arch/arm64/icode.f. Like its five neighbours
+\ its manifest failures are the shared E-CID-AXIOM, because all six gates read
+\ one manifest grammar. Twenty codes at -6900..-6919; the relocation gate
+\ landed first and holds -6880..-6899; the rest of -6920..-6999 is unclaimed.
+-6900 constant E-CIE-FIRST
+-6919 constant E-CIE-LAST
+-6900 constant E-CIE-ROW      \ a shared instruction vector index or table slot is outside its declared table
+-6901 constant E-CIE-FORM     \ an instruction form code no row of the frozen vocabulary names
+
 \ Frozen snapshot relocation parity gate (package RELOC-PROOF): -6880..-6899.
 \ The next block after the checker model gate, and the sixth of the same
 \ family: it binds formal/Common/Reloc.v to the two emitted relocation passes

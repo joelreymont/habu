@@ -3336,6 +3336,37 @@ fits.
   additions; the fix went into the calling test packages and the library work
   became its own dot.
 
+- **A mutation that moves a guard is not the same experiment as one that removes
+  it.** Falsifying the reserved-register half of the instruction-encoding gate,
+  the first attempt changed `XREG?` in `src/arch/arm64/asm.f` from refusing x18
+  to refusing x19. The gate reported zero failures, which looked like a hole in
+  the gate. It was not: three encoding vectors legitimately use x19, so the
+  moved guard killed the gate process before it reached a single assertion, and
+  a dead run and a clean run print the same nothing to a `grep TFAIL`. Deleting
+  the guard body instead - the mutation that actually models "somebody removed
+  the check" - turned exactly the twelve refusal rows red and nothing else. Two
+  rules came out of it: mutate by deleting the thing under test, not by moving
+  it somewhere else the fixtures also use, and never read "no failures" from a
+  filtered run without also checking the run reached its report line.
+
+- **A `case` default cannot answer with a value in this Forth.** `ENDCASE`
+  consumes the selector, so a default arm that pushes a result leaves the stack
+  one item short and the checker rejects the word at `endcase` with
+  `expected: n actual:`. Every default in the tree throws for this reason. A
+  total function over a small enumeration is better written as named predicates
+  and early exits than as a `case` with a fallback, which also reads better:
+  `FORM-ARITY` in `test/compiler/insn-schema.f` asks `NULLARY-FORM?`,
+  `UNARY-FORM?`, `BINARY-FORM?` in turn and answers 3 at the end.
+
+- **The Forth source lexer the Rocq parity gates read `.v` files with does not
+  know Coq comments.** `test/compiler/*-proof.f` counts `Admitted` and `admit`
+  tokens structurally through `COMPILER-ID-SRC:SCAN-FILE`, which strips `\` and
+  `( )` comments - not `(* *)`. A header sentence in `formal/Common/Insn.v` that
+  said "the ranges the ARM64 encodings admit" failed the no-admitted-statement
+  check. Prose in a committed `.v` file has to avoid `admit`, `Admitted`,
+  `Theorem`, `Corollary`, `Module`, `End` and `Print Assumptions` as words until
+  the lexer learns the comment syntax.
+
 - **Truncating a dictionary does not reclaim its heap, and a snapshot copies the
   orphan verbatim.** The native refresh hides the previous generation's
   dictionary back to the primitive boundary (`src/habu/hide.f`) and reloads the
