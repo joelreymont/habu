@@ -145,6 +145,17 @@ the census source):
     `result` writes bare positional `a` — same machinery, two syntaxes. The
     conversion picks one (settle at the joint review) and migrates the other.
 
+22. **`SAFET:map-take` is deleted as an option duplicate.** Its arms —
+    `moved(mapping) | empty` — are `some | none` in costume. Probed
+    2026-07-30: the generic `option` instantiates at a linear payload
+    (wrapping a linear owner in `OPTION:SOME` certifies), so
+    `DETACH-MAPPING` returns `option<SAFET:mapping>` and every consumer
+    matches `some`/`none`. The migration must verify linearity holds through
+    the MATCH arms when consumers convert (constructor side is probed; the
+    consumption side rides the sweep). General rule this suggests for the
+    sweep: a hyphenated compound family name is a smell — it is usually
+    either a disguised generic or a type homed in the wrong package.
+
 ## Joel's additions (from the type-system.md pass)
 
 - (add items here)
