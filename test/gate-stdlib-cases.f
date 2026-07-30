@@ -246,10 +246,6 @@ SUITE compiler-ir-encode
    test/compiler/ir-encode.f
 ;SUITE
 
-SUITE compiler-ir-pass
-   test/compiler/ir-pass.f
-;SUITE
-
 SUITE compiler-ir-render
    test/compiler/ir-render.f
 ;SUITE

@@ -21,7 +21,7 @@ require tools/refine-lint-core.f
 package RFL-TEST
 
 4096 constant OUT-CAP
-19 constant IR-PUBLIC-PKG#
+18 constant IR-PUBLIC-PKG#
 9 constant IR-KIND#
 2 constant IR-RAW-FORM#
 57 constant DEF-FORM#
@@ -116,7 +116,6 @@ create RAW-NAME-BUF 64 allot
       15 of s" IR-BUILD" endof
       16 of s" IR-VERIFY" endof
       17 of s" IR-CODEC" endof
-      18 of s" IR-PASS" endof
       E-TBL-BOUNDS throw
    endcase ;
 

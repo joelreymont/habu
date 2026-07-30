@@ -484,7 +484,7 @@ public
 \                 diff (package IR-DIFF)
 \   -8140..-8159  canonical wire frame and digest (package IR-ENCODE), and the
 \                 decoder that rebuilds a module from a frame when it lands
-\   -8160..-8179  pass results and witness headers (package IR-PASS)
+\   -8160..-8179  unassigned (pass witnesses retired 2026-07-30: no consumer)
 \   -8180..-8199  IR facade assembly and package protection (package IR)
 \   -8200..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
 \                 the GPU stages) and the native and GPU back ends take
@@ -613,32 +613,3 @@ public
 -8144 constant E-IR-ENCODE-ROOM    \ a destination byte span shorter than the frame the presented module encodes to
 -8145 constant E-IR-ENCODE-BOUND   \ a payload slot index at or past the slot count the frame states
 
-\ Compiler pass results and witness headers (package IR-PASS): -8160..-8179
-\ The sub-block the map above reserves for design section 6.7. The remainder of
-\ the encoder's -8140..-8159 is held for the decoder that rebuilds a module from
-\ a frame, so this stage takes the next unassigned sub-block rather than
-\ spilling into its neighbour. One fact gets one code: the pass identity and the
-\ pass version are the single fact "which generation of which pass produced
-\ this", so they share E-IR-PASS-PASS. A scratch span too short for a module's
-\ canonical frame stays IR-ENCODE:ENCODE's own E-IR-ENCODE-ROOM, because that is
-\ the same fact and IR-ENCODE owns it; E-IR-PASS-ROOM is only about the
-\ destination a witness is written into.
--8160 constant E-IR-PASS-STATE     \ a presented witness whose leading bytes are not a pass witness at all, or a result slot that failed its recheck
--8161 constant E-IR-PASS-VERSION   \ a witness whose format major or minor version this reader does not read
--8162 constant E-IR-PASS-FRAME     \ a witness byte span that is not exactly one witness header
--8163 constant E-IR-PASS-STAGE     \ check-stage misuse: a check begun while one is open, a field declared twice, or an end without a begin
--8164 constant E-IR-PASS-FIELD     \ a required staged field was never declared before the check ran
--8165 constant E-IR-PASS-ROOM      \ a destination byte span shorter than one witness header
--8166 constant E-IR-PASS-PASS      \ a witness naming a pass identity or pass version other than the one the consumer demanded
--8167 constant E-IR-PASS-INPUT     \ a witness whose input-module digest is not the input module's canonical frame digest
--8168 constant E-IR-PASS-OUTPUT    \ a witness whose output-module digest is not the output module's canonical frame digest
--8169 constant E-IR-PASS-TARGET    \ a witness whose target-contract digest is not the bound context's
--8170 constant E-IR-PASS-POLICY    \ a witness whose numeric-policy digest is not the bound context's
--8171 constant E-IR-PASS-SCHEMA    \ a witness whose schema digest is not the output module's frozen schema-table digest
--8172 constant E-IR-PASS-PAYLOAD   \ a payload whose length or digest is not the one the witness binds
--8173 constant E-IR-PASS-METRICS   \ a metrics record whose length or digest is not the one the witness binds
--8174 constant E-IR-PASS-STALE     \ a module that is not a live frozen one, or a pass-result handle this registry never minted or whose owning context has torn down
--8175 constant E-IR-PASS-CONSUMED  \ any use of a pass result ACCEPT already published
--8176 constant E-IR-PASS-RELEASED  \ any use of a pass result RELEASE already retired
--8177 constant E-IR-PASS-SLOTS     \ the pass-result registry has no free slot
--8178 constant E-IR-PASS-SERIALS   \ pass-result generation serials reached their ceiling

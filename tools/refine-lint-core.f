@@ -81,8 +81,7 @@ $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
 16 constant PKG-IR-BUILD
 17 constant PKG-IR-VERIFY
 18 constant PKG-IR-CODEC
-19 constant PKG-IR-PASS
-20 constant PKG-IR-RAW
+19 constant PKG-IR-RAW
 
 create NUM-BUF NUM-CAP allot
 create ONE 1 allot
@@ -645,12 +644,11 @@ private
    a u s" IR-BUILD" LINT-STR=CI if PKG-IR-BUILD exit then
    a u s" IR-VERIFY" LINT-STR=CI if PKG-IR-VERIFY exit then
    a u s" IR-CODEC" LINT-STR=CI if PKG-IR-CODEC exit then
-   a u s" IR-PASS" LINT-STR=CI if PKG-IR-PASS exit then
    a u s" IR-RAW" LINT-STR=CI if PKG-IR-RAW exit then
    PKG-OTHER ;
 
 : IR-API-PKG? ( n -- bool )
-   dup PKG-IR-ID >= swap PKG-IR-PASS <= and ;
+   dup PKG-IR-ID >= swap PKG-IR-CODEC <= and ;
 
 : COMPILER-PKG? ( ptr u8 n -- bool )
    PACKAGE-KIND-OF PKG-OTHER <> ;
