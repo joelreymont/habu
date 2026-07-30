@@ -2891,3 +2891,8 @@ fits.
   leaves stay active until one terminal gate.** Record the exact prerequisite
   commit in the contract and worker parent; otherwise the dependent leaf can
   never become dispatchable before the terminal gate that closes its provider.
+- **Probe protected-word reachability in the exact suite load before freezing a
+  test seam.** Top-level interpretation does not imply that a protected internal
+  colon word is callable: the engine can reject it before its range or behavior
+  is exercised. Use an existing public observation when one exists; otherwise
+  name and inventory the smallest test-metaprogramming wrapper in the contract.
