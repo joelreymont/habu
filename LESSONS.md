@@ -2847,3 +2847,14 @@ fits.
   costs one command: before any dispatch, read the target dot's `Claim:` line and
   confirm the agent name is yours. An assignment changes who is responsible for an
   outcome, never who may write in a workspace.
+- **A multi-row result cannot be followed by repeated fallible single-row
+  cleanup.** An early close can destroy ownership before a later refusal, while
+  hiding the whole result loses already committed peer tokens. Preflight and
+  commit reclamation once for the complete set; if it still refuses, preserve
+  every row and publish the complete committed result with the terminal owner.
+  The same ownership rule applies to device descriptors: caller memory is not
+  immutable merely because a pointer was called a view, so retain descriptor
+  storage under the package owner until finalization. Authenticate that
+  application descriptor before enqueue; the device completion proof should
+  prove only quiescence of its one linear session, not duplicate application
+  identity in a second package.

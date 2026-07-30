@@ -1,5 +1,5 @@
 ---
-title: "Infer KV: atomic cancellation cleanup"
+title: Close KV sequences atomically
 status: open
 priority: 1
 issue-type: task
@@ -8,17 +8,4 @@ blocks:
   - habu-finalize-provisional-kv-b8b46613
 ---
 
-Why this exists:
-cancellation and failed-prefill cleanup return page and reservation owners; discovering a defect after the first return can strand or double-return state.
-
-Required result:
-preflight the whole sequence row, opaque identity, page list, per-page reference counts, free-list capacity, unused token/page/copy reservations, and absence from the pending append batch, then atomically retire the handle, decrement shared references, and return each newly unowned page and reservation. Empty, partial-tail, full-page, forked/shared, and failed-prefill sequences use this single transition. INFER calls it only at a type-proven no-pending boundary after RUN-ROWS finalized any provisional batch. Do not add scheduler mutation, snapshot pins, retryable-unmap state, log-and-continue cleanup, or a second cancellation policy.
-
-Done when:
-injected invariant failures mutate nothing; every ordinary and shared sequence shape returns exact ownership without changing survivors; a sequence in the pending batch rejects until that batch commits or aborts; stale and double cancellation reject; focused KV tests pass.
-
-Expected touch points: maki/infer/kv-cache.f, maki/infer/kv-cache-test.f.
-Smallest check: bin/hb --load maki/infer/kv-cache-test.f.
-Prerequisites: finalized provisional append transition.
-Owned result: cancellation and failed-prefill cleanup only.
-Claim: unassigned.
+Why: closing several inference rows sequentially can return pages for early rows before a later invariant failure, preventing atomic scheduler retirement. Result: replace public CANCEL-SEQ with the sole KV:CLOSE-MANY ( KV:cache ptr KV:seq CAD-NUM:item-count -- KV:close-result ). It accepts one or more distinct opaque live sequences from the same cache only after no provisional batch contains them. One aggregate preflight resolves every identity and validates all page lists, shared-reference deltas, free-list capacity, token, page, and copy reservations, arithmetic, and final allocator invariants. Only then one total commit retires all handles, decrements aggregate references, returns newly unowned pages, and releases reservations; no fallible operation remains after the first store. It returns closed(cache) or refused(cache,seq,code) with no mutation, where seq is the first failing copyable handle. INFER is the only external caller and uses the same operation for one and many rows. Owner: whole-sequence KV reclamation only. Dependency: finalized provisional append transition. Production red: current single-row cancellation mutates reference state before its last invariant check. Acceptance: one, several, empty, partial-tail, full-page, forked, shared-page, and failed-prefill shapes reclaim exactly; duplicate, stale, cross-cache, pending-batch, overflow, and injected failure at every preflight position leave the whole cache unchanged; shared peers remain exact; CANCEL-SEQ is absent. Forbidden: scheduler mutation, partial close, retry state, snapshot, compatibility wrapper, metric, or lint. Smallest owning check: bin/hb --load maki/infer/kv-cache-test.f with every list shape and failure position. Claim: unassigned.
