@@ -82,6 +82,47 @@ search. `src/habu/xref.f` is baked into `bin/hb` and exposes `LATEST`,
 when debugging dictionary ownership. `XREF word-name` prints the latest matching
 record name, start, length, flags, and wordlist.
 
+## Who owns a persisted DATA cell — `tools/snap-heap-owner.f`
+
+When two builds of the same snapshot image differ, the differing byte offsets say
+*where* a stale pointer sits but not *whose* it is, and guessing an owner from
+what the cell contains is how this class of bug gets papered over. This tool
+answers the question from the dictionary instead. It prints two maps:
+
+- `SNAP-HEAP-OWNER:DUMP` — `<heap offset> <name>` for every word that owns a
+  piece of the DP heap. The owner of a drifting offset is the last line whose
+  offset is not greater than it. A word is recognised as a heap owner by the one
+  fixed shape `create`/`variable` compiles (the four-instruction MOVZ/MOVK x9
+  address chain, the push stencil, a return, code length 24), and the address it
+  owns is read out of the chain's immediate fields.
+- `SNAP-HEAP-OWNER:CODE-MAP` — `<JIT region offset> <code length> <name>` for
+  every word that has code, headed by the region base and heap top this run got,
+  so a program counter caught by a debugger watchpoint turns into a name.
+
+It has to run inside a process that has the source under investigation loaded and
+has not retired its dictionary, because that is the only place the names exist.
+The way to get one is to add two lines to `src/habu/snap.f` just above the final
+`SNAP-RETIRE-GO`, run a snapshot build, and take the lines off again:
+
+```
+require tools/snap-heap-owner.f
+SNAP-HEAP-OWNER:DUMP
+```
+
+```sh
+HB_TMP=<private-root> bin/hb --load tools/build-fixpoint-refresh.f -- snap > owners.txt
+```
+
+The heap map that produced the owner table in dot
+`habu-fix-persisted-dangling-a520f7b4` had 1793 owners; pairing it against the
+offsets `cmp -l` reports between two images built from one `hb-stdin` and one
+`hb-snap-src` named every drifting cell above the engine-reserved band.
+
+For the same reason it cannot be loaded on its own: it reads the dictionary
+through `src/habu/xref.f` and the instruction encodings through
+`src/habu/habu1.f`, and the snapshot builder inlines both rather than
+`require`-ing them, so the tool must not `require` them either.
+
 ## Stage0 mirror vs native engine — which engine is actually running
 
 Two independent engines compile the prefix, and a defect can live in one and be

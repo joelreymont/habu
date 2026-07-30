@@ -1,0 +1,9 @@
+---
+title: Give builder-loaded diagnostics a test seam
+status: open
+priority: 3
+issue-type: task
+created-at: "2026-07-30T09:49:51.298294+02:00"
+---
+
+tools/snap-heap-owner.f has no scheduled suite and cannot get one the usual way. It only means anything inside a process that has the engine prefix and the builder tail loaded and has not retired its dictionary - a snapshot build - so it reads the dictionary through src/habu/xref.f and the four MOVZ/MOVK instruction encodings through src/habu/habu1.f without requiring either, because the snapshot builder inlines those files and a require would load a second copy. 'bin/hb --load tools/snap-heap-owner.f' therefore fails closed with E-UNDEFINED on W-MOVZ0, which is honest but leaves the tool outside the gate: today it is exercised only by hand, by adding two lines above SNAP-RETIRE-GO in src/habu/snap.f and running a snapshot build (docs/debugging.md, section 'Who owns a persisted DATA cell'). What is missing is a way to run a checked fixture INSIDE a builder process. tools/build-fixpoint.f already has the seam: BF-EMIT-SNAP-RUN-SOURCE-WITH injects one extra source file after the builder tail and before the driver, and BUILD-EXT:SET/KEEP-SET drive it - that is how the owner-WID snapshot fixtures arm themselves. Give that seam a general entry a test file can use, then add a suite that injects a fixture asserting the concrete facts: that the heap map is monotonic in dictionary order, that its first row is the first variable of the first prefix source file, that every reported offset lies between DATA-START and the heap top, that the code map's offsets and lengths do not overlap, and that a deliberately mis-shaped record is NOT reported as a heap owner. Route it in test/gate-stdlib-cases.f and test/gate-stdlib-inline-lib.f like snapshot-xt-cell-decl. Until then the tool is an explicitly documented uncheckable boundary, which is a gap and not a design.

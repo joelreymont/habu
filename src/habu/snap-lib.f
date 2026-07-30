@@ -193,39 +193,42 @@ TRUSTED: SND-ZERO-SPAN-CELL ( n -- ) SND-N @ + 0 swap ! ;
 : SND-COPY ( -- )
    data-base SND-PTR SDL @ BYTE-COPY ;
 
-\ Quarantined dangling-pointer cells (dot habu-persist-dangling-owners):
-\ live process-state cells scattered across persisted structures, each
-\ holding an ASLR mmap pointer that is dead after restore (proven by RCA:
-\ none is read post-restore; buckets = two instances of the same
-\ pre-/post-checker structure classes caching source-text pointers, plus
-\ the USIGS snapshot-copy bookkeeping cells). Offsets are tree-dependent;
-\ the two-build byte-compare in the snap flow fails closed on any drift,
-\ and the owning-field fixes are tracked by the dot above. Keep entries
-\ sorted; every change needs the compare green on the exact tree.
-\ Every one of these cells lives in the DP heap, so each is written as its
-\ distance from DATA-START rather than as a raw DATA offset. They used to be raw
-\ offsets, and adding a band below DATA-START then silently moved all twenty of
-\ them off their cells -- the region-to-text call map went there (dot
-\ habu-relocate-snapshot-region-752042fe). Written this way, growing the
-\ engine-reserved area moves the heap and these entries together, and only a
-\ change to the heap's own contents can invalidate them.
-create SND-QUARANTINE
-   DATA-START $1732B0 + , DATA-START $1732C8 + , DATA-START $1732D0 + ,
-   DATA-START $1733F0 + , DATA-START $1733F8 + ,
-   DATA-START $313498 + , DATA-START $3134B8 + , DATA-START $324FF8 + ,
-   DATA-START $513EC0 + , DATA-START $513ED8 + , DATA-START $513EE0 + ,
-   DATA-START $514000 + ,
-   DATA-START $6C5C08 + , DATA-START $73A230 + ,
-   DATA-START $74D4A8 + , DATA-START $74D4B0 + , DATA-START $74D4C0 + ,
-   DATA-START $750EE0 + , DATA-START $750F50 + , DATA-START $750F58 + ,
-20 constant SND-QUARANTINE#
+\ ---- the heap the refresh prelude abandoned ---------------------------------
+\ The native refresh truncates the dictionary back to the primitive boundary
+\ (src/habu/hide.f BFR-HIDE-DICT-FROM-EARLIEST, driven by tools/build-fixpoint.f
+\ BF-STAGE2-HIDE-DEFS) and then reloads the whole prefix from source. Truncating
+\ the dictionary does not move DP, so everything the previous generation had
+\ allotted stays in the DP heap with no owner and no reader -- and it still holds
+\ that generation's own mmap addresses and region pointers, which the image then
+\ carries into runs where they mean nothing. Measured on this tree with
+\ tools/snap-heap-owner.f: 4.48 MB of abandoned heap holding 50 of the 113 heap cells
+\ that differ between two builds of the same image.
+\ The live generation starts at IMK-NDICT0, the first variable of the first
+\ prefix source file (src/core/util.f records the primitive record watermark
+\ there precisely because it is first), so everything below it is abandoned. A
+\ build with no truncation ahead of it puts IMK-NDICT0 at DATA-START and the
+\ span is empty, which is the same rule with nothing to do.
+\ This replaces a table of twenty hardcoded offsets that had gone stale: measured
+\ against the actual two-build difference, eight of them pointed inside this same
+\ abandoned heap and the other twelve zeroed cells in live checker buffers that
+\ do not differ between builds at all.
+\ IMK-NDICT0 is a prefix-internal word: the whole engine prefix loads inside the
+\ refresh prelude's check-off window, so it carries no charted effect and checked
+\ code cannot name it. This is the same named trusted boundary src/habu/snap.f
+\ uses to reach CHECKER-SNAPSHOT-PREPARE, and for the same reason.
+TRUSTED: SND-DEAD-HEAP-END ( -- n )
+   IMK-NDICT0 data-base - ;
 
-TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
-
-: SND-ZERO-QUARANTINE ( -- )
-   SND-QUARANTINE# 0 ?do
-      i SND-QUARANTINE@ SND-ZERO-SPAN-CELL
-   loop ;
+: SND-ZERO-DEAD-HEAP ( -- )
+   SND-DEAD-HEAP-END {: end:n :}
+   end DATA-START < if
+      s" snap: live heap starts below DATA-START" 74 die
+   then
+   DATA-START
+   begin dup 8 + end <= while
+      dup SND-ZERO-SPAN-CELL
+      8 +
+   repeat drop ;
 
 \ ---- persisted cells that hold a JIT-region address --------------------------
 \ Everything inside the region copy is already canonicalised: pointers into the
@@ -272,7 +275,7 @@ TRUSTED: SND-XT-CELL! ( n n -- ) SND-N @ + ! ;
    SND-ALLOC
    SND-COPY
    SND-ZERO-LIVE
-   SND-ZERO-QUARANTINE
+   SND-ZERO-DEAD-HEAP
    SND-CANON-XT-CELLS ;
 
 : CANON-REGION ( -- )
