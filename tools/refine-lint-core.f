@@ -42,7 +42,7 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-67 constant SEED#
+62 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -225,33 +225,17 @@ private
       \ habu-v2-differential-runner-13359019); the RAW>EVIDENCE-ID shape - content-addressed
       \ by the DifferentialSuite digest.
       59 of s" RAW>SUITE-ID" endof         \ content-addressed by the interned suite digest
-      \ The GPT-2 checkpoint loader stores its parsed tensor index and sealed
-      \ slot table in the prepared-load block as raw cells. These two private
-      \ words restore the owners only for GPT2LOAD transitions and exits.
-      \ Both retire with the linear-scope combinator capability,
-      \ habu-checker-linear-scope-6218899c.
-      60 of s" CELL>TENSOR-INDEX" endof    \ sole inverse of TENSOR-INDEX>CELL
-      61 of s" CELL>TABLE" endof           \ sole inverse of TABLE>CELL
-      \ CHECK-MAPPED stores the checkpoint mapping in the mapped-ready block.
-      \ This private word restores it only for DISCARD-MAPPED or LOAD-MAPPED.
-      \ Retires with habu-checker-linear-scope-6218899c.
-      62 of s" CELL>MAPPING" endof         \ sole inverse of MAPPING>CELL
-      \ LOAD-COPIED stores its owned copy buffer while later fallible steps run.
-      \ This private word restores it exactly once for cleanup or successful
-      \ store construction. Retires with the same linear-scope capability.
-      66 of s" CELL>BUFFER" endof          \ sole inverse of BUFFER>CELL
-      \ The three private proof makers of the inference intake path. Each is the
+      \ The two private proof makers of the inference intake path. Each is the
       \ only constructor of an arity-0 nominal family inside a validated
-      \ record - MDLCFG:mcfg, GPT2TENSOR:layer-id, GPT2LOAD:gpt2-model - and each is what
+      \ record - MDLCFG:mcfg and GPT2TENSOR:layer-id - and each is what
       \ makes that record unforgeable from nothing outside its package. They are seeded
       \ so the confinement is name-and-path enforced rather than resting on the family
-      \ being private: a copy of any of them appearing in another file is a finding.
+      \ being private: a copy of either of them appearing in another file is a finding.
       \ Note what they do NOT close: the generated UNMAKE is public, so a REAL record
       \ can be destructured and rebuilt with forged scalars and the original proof.
       \ That is the sealed-destructure capability, habu-checker-sealed-destructure-d967fc03.
-      63 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
-      64 of s" MINT-LAYER-PROOF" endof      \ seals an authenticated GPT2TENSOR:layer-id
-      65 of s" MAKE-MODEL-PROOF" endof     \ seals a loaded GPT2LOAD:gpt2-model
+      60 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
+      61 of s" MINT-LAYER-PROOF" endof     \ seals an authenticated GPT2TENSOR:layer-id
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -317,13 +301,8 @@ private
       57 of s" maki/db/capability.f" endof
       58 of s" maki/experiment/run.f" endof
       59 of s" maki/db/diff-suite-id.f" endof
-      60 of s" maki/infer/gpt2-load.f" endof
-      61 of s" maki/infer/gpt2-load.f" endof
-      62 of s" maki/infer/gpt2-load.f" endof
-      63 of s" maki/infer/model-config.f" endof
-      64 of s" maki/infer/gpt2-tensor.f" endof
-      65 of s" maki/infer/gpt2-load.f" endof
-      66 of s" maki/infer/gpt2-load.f" endof
+      60 of s" maki/infer/model-config.f" endof
+      61 of s" maki/infer/gpt2-tensor.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 

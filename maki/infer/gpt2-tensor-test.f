@@ -25,8 +25,8 @@
 \      the MAX-N extremes, all E-SIZE;
 \   5. LAYER-ID range rejects (E-LAYER) and boundary accepts;
 \   6. SLOT bijectivity on the tiny geometry: every slot in
-\      [0, COUNT) hit exactly once - the fixture that later drives
-\      WSTORE SEAL; an off-by-one slot formula reds here;
+\      [0, COUNT) hit exactly once, so the catalog's slot numbering is a
+\      complete permutation; an off-by-one slot formula reds here;
 \   7. THE IDENTITY FIXTURE (ratified correction 1): two configs with the
 \      SAME nlayer differing in ONE behavioral field (tied); a layer-id minted
 \      against A used with B rejects E-CONFIG even though its slot is in

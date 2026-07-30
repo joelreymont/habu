@@ -6,25 +6,22 @@ Verification context: repair-control exact-tree verification, DGX Spark linux-ar
 ## What is running and what is next
 
 The active goal is serving large models on DGX Spark (a vLLM replacement),
-built as checked Habu Forth. The GPT-2 loading chain is landed on master and
-destruction-reviewed end to end: real 548 MB checkpoint (all tensors F32,
-160 tensors) → safetensors file mapping and parsed tensor index → GPT2LOAD
-`PREPARE` → either `CHECK-MAPPED → LOAD-MAPPED` or
-`CHECK-COPY → LOAD-COPIED` → a linear `gpt2-model`. Failed checks return their
-owned input unchanged. Ordinary release paths return their owned resources, and
-the copied path cleans up partial allocations when release succeeds. A release
-can still throw `E-MEM-UNMAP` and interrupt later cleanup; that total-release
-fix is tracked by `habu-make-owned-release-79de2b5c`. The checker accepts linear payloads in unified
-`ENUM` and `STRUCTURE` declarations, which the loader tests exercise directly
-with the model.
+built as checked Habu Forth. What is landed on master for GPT-2 intake is the
+read side: a real 548 MB checkpoint (all tensors F32, 160 tensors) is mapped
+and parsed into a tensor index by `SAFET` (`maki/infer/safetensors.f`),
+`GPT2TENSOR` owns the tensor catalog, `MDLCFG` owns the validated model
+configuration, `GPT2PIN` owns the checkpoint revision and digests, and the
+reference-data suite pins the expected vectors.
 
-In flight, in landing order: sealed-destructure and linear-scope checker
-capabilities; owned-release and model-store work tracked by
-`habu-make-owned-release-79de2b5c` and `habu-embed-store-in-f8109695`;
-signature-lint dynamic input; then GPT-2 forward execution and greedy decode
-on mapped storage. Copied storage is the host oracle; production device
-residency (cuMemAlloc, bounded streaming, peak of model plus one in-flight
-chunk) is a planned task ahead of modern-dense serving.
+There is no host-resident model, weight-storage or provenance layer. The
+`GPT2LOAD`, `WSTORE` and `MODELPROV` packages that used to hold one are
+deleted with no replacement: no product caller consumed any of them, and their
+duplicate model, storage, provenance, version and dtype authority stood
+between the parsed tensor index and a device-resident model.
+
+In flight, in landing order: the pinned config parse and one canonical SAFET
+dtype; then direct SAFET-to-GPT2DEV staging; then GPT-2 forward execution; then
+greedy decode.
 
 ## Gate state
 
