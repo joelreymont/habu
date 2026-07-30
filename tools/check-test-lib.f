@@ -50,6 +50,34 @@ $4000 constant BUF-CAP
 $100001 constant OVERCAP-SOURCE-LEN
 128 constant LIST-ENTRY-CAP
 
+\ What the child cases here prove is the standalone command line: the exit status
+\ of `bin/hb tools/check.f ...`, the diagnostics it writes, and the temporary
+\ files it removes. None of that gets slower when the host is busy, so the
+\ millisecond budget handed to every capture is a deadlock guard and nothing
+\ else. It exists so a child that never exits cannot hang the gate forever, and
+\ it must never be reachable by a child that is merely slow.
+\
+\ Measured 2026-07-30 on a 12-core machine. The heaviest child is the cleanup
+\ child, 4.7 to 5.0 s at an ambient load average of 13 and 11.2 to 13.4 s while
+\ eight gate pool slots are busy; the `--load tools/check.f` children are 2.0 to
+\ 3.2 s and 7.5 to 8.7 s under the same two conditions. WORST-CHILD-MS records
+\ the busiest measurement. HANG-MARGIN is 4 rather than the order of magnitude
+\ the cheaper fixtures can afford, because the product is bounded from above as
+\ well: the gate gives this whole phase 120 s (SUITE-TIMEOUT-MS in
+\ test/gate-stdlib-lib.f), and a guard above that would always lose the race to
+\ the phase guard and never get to name anything. Between those two bounds the
+\ guard is unreachable by load, since a host slow enough to stretch one child to
+\ 54 s would have blown the phase guard on the earlier cases already.
+13500 constant WORST-CHILD-MS
+4 constant HANG-MARGIN
+WORST-CHILD-MS HANG-MARGIN * constant CHILD-HANG-MS
+
+\ Exit status for the deadlock verdict, kept distinct from every status a case
+\ compares against: 64 is this fixture's usage error, 67 is the engine's
+\ uncaught throw, 70 is the check tool's own failure, and 83 upwards belong to
+\ the engine failure ABI in src/core/engine-error.f.
+79 constant HANG-RC
+
 create TMP-ROOT FS-PATH-CAP allot
 create BAD-PATH FS-PATH-CAP allot
 create DIRECT-PATH FS-PATH-CAP allot
@@ -306,14 +334,14 @@ variable START-NS
 
 : CHECK-CAPTURE ( -- n n n )
    HB$ >LEN CAP-OUT BUF-CAP >LEN
-   CAP-ERR BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS RUN-ARGV-CAPTURE
    CAPTURE>N ;
 
 : CHECK-STDIN-CAPTURE ( ptr u8 n -- n n n )
    {: src:ptr srcu:n :}
    HB$ >LEN src srcu >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   $2710 >MS RUN-ARGV-STDIN-CAPTURE
+   CHILD-HANG-MS >MS RUN-ARGV-STDIN-CAPTURE
    CAPTURE>N ;
 
 \ ---- command-line drivers ---------------------------------------------------
@@ -416,7 +444,7 @@ variable START-NS
    s" tools/check.f" >LEN PROC-ARGV+
    s" --" >LEN PROC-ARGV+
    CLI-HB$ >LEN CLI-ROOT$ >LEN
-   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN $2710 >MS
+   CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS
    PROC-CWD:RUN-ARGV-ENV-CWD-CAPTURE
    CAPTURE>N ;
 
@@ -443,7 +471,7 @@ variable START-NS
    s" TMPDIR" >LEN CLEANUP-TMP$ >LEN PROC-ENV+
    PROC-ENV-INHERIT-MISSING
    HB$ >LEN CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   $2710 >MS RUN-ARGV-ENV-CAPTURE
+   CHILD-HANG-MS >MS RUN-ARGV-ENV-CAPTURE
    CAPTURE>N ;
 
 : CLEANUP-CHILD-ERR ( ptr u8 n n -- )
@@ -471,7 +499,7 @@ variable START-NS
    s" --load" >LEN PROC-ARGV+
    BAD$ >LEN PROC-ARGV+
    HB$ >LEN CAP-OUT BUF-CAP >LEN
-   CAP-ERR BUF-CAP >LEN $2710 >MS RUN-ARGV-CAPTURE
+   CAP-ERR BUF-CAP >LEN CHILD-HANG-MS >MS RUN-ARGV-CAPTURE
    CAPTURE>N ;
 
 : DUP$SRC ( -- ptr u8 n )
@@ -1616,7 +1644,7 @@ create BIG $2000 allot   variable BIG-U
    BAD$ >LEN PROC-ARGV+
    HB$ >LEN s" " >LEN
    CAP-OUT BUF-CAP >LEN CAP-ERR BUF-CAP >LEN
-   $2710 >MS RUN-ARGV-STDIN-CAPTURE
+   CHILD-HANG-MS >MS RUN-ARGV-STDIN-CAPTURE
    CAPTURE>N ;
 
 : ENUM-CLI-TEST ( -- )
@@ -1760,10 +1788,28 @@ create BIG $2000 allot   variable BIG-U
    CAP-ERR erru s" ckt-good-use" CONTAINS? TFALSE
    CAP-ERR erru s" preverify" CONTAINS? TFALSE ;
 
+\ A capture whose deadlock guard expires throws E-PROC-TIMEOUT from inside the
+\ process library, which used to leave the run with nothing but `hb: uncaught
+\ throw code -2502`: it named no case, no child and no budget, so a hung child
+\ and a slow one looked identical from the gate log. CASE-RUN is the one place
+\ that knows which case is running, so it is where that verdict gets its name.
+\ Only the deadlock code is claimed here; every other throw keeps propagating
+\ untouched.
+: CASE-HUNG ( ptr u8 n -- ) {: label:ptr labelu:n :}
+   s" FAIL: " type label labelu type
+   s"  - child never exited; deadlock guard ms: " type CHILD-HANG-MS .
+   s" check-test: child deadlock guard expired" HANG-RC die ;
+
+: CASE-THREW ( ptr u8 n n -- ) {: label:ptr labelu:n rc:n :}
+   rc 0= if exit then
+   rc E-PROC-TIMEOUT <> if rc throw then
+   label labelu CASE-HUNG ;
+
 \ typed-local-lint: allow-bare-local - CASE-RUN q preserves its quotation effect.
 : CASE-RUN ( ptr u8 n [ -- ] -- ) {: label:ptr labelu:n q :}
    mono-ns START-NS !
-   q execute
+   q catch {: rc:n :}
+   label labelu rc CASE-THREW
    s" PASS: " type label labelu type
    s"  (" type mono-ns START-NS @ - PROC-NS-PER-MS / . s" ms)" type cr ;
 

@@ -3177,3 +3177,29 @@ fits.
   happens: the boot prefix reload runs unchecked, and the declaration front ends
   ask for the package context directly rather than through the hook. A capability
   probe is only structural if it is armed before the state it guards.
+
+- **A child-process budget in a test is a deadlock guard, never a performance
+  expectation.** `test/compiler/ir-id.f` gave each spawned engine 2000 ms and
+  `tools/check-test-lib.f` gave each of its six children a bare `$2710`, and both
+  phases turned red only when the gate pool had eight slots busy. Measured on a
+  12-core machine: the ir-id concurrency child costs 0.62-1.10 s idle and
+  2.34-3.00 s under eight busy slots, the check-cli cleanup child 4.7-5.0 s and
+  11.2-13.4 s. Decisive test: raising only the budget in a scratch copy turned
+  eight concurrent runs from eight reds into eight passes, so the concurrency
+  property held the whole time and the stopwatch was the only thing failing. The
+  fix that lasts is not a bigger number - it is writing the budget as a measured
+  worst case times a stated margin, so a reviewer can see what it is guarding
+  against, plus a verdict that says which of the three things happened. The
+  shared `T-OUTCOME-EXITED=` prints `expected 0 got 1` for a hung child, a
+  signalled child and a wrong exit code alike, and an expired capture inside
+  `RUN-ARGV-CAPTURE` escaped as `hb: uncaught throw code -2502`, naming no case.
+  Both hid a load problem behind a line that looked like a real defect.
+
+- **Check whether the file you want to fix can be edited at all before designing
+  the fix.** The natural home for named completion-variant diagnostics is
+  `lib/test/outcome.f`, but that file defines its three assertions at global
+  scope with no package, so `tools/package-diff-lint.f` reports
+  `E-PACKAGE-OWNERSHIP` on any change to them - measured with a one-character
+  edit. Unpackaged global surfaces are frozen against edits, not just against
+  additions; the fix went into the calling test packages and the library work
+  became its own dot.

@@ -38,11 +38,65 @@ private
 
 $FFFFFFFF constant LOCAL-MAX
 $1000 constant SUBJECT-CAP
-2000 constant SUBJECT-MS
 70 constant INTERNAL-RC
+
+\ The exit status the concurrency child uses for every overlap failure, named
+\ OVERLAP-RC there too (test/compiler/ir-id-concurrency.f). The two live in
+\ different processes, so the value has to be written twice; keep them equal.
+$4C constant OVERLAP-RC
+
+\ Every child case below decides its verdict from the child's own exit status,
+\ and an exit status does not change when the host gets busy. The millisecond
+\ budget handed to the capture is therefore a deadlock guard and nothing else:
+\ it exists so a child that never exits cannot hang the gate forever, and it
+\ must never be reachable by a child that is merely slow.
+\
+\ Measured 2026-07-30 on a 12-core machine. The spawned concurrency child costs
+\ 0.62 to 1.10 s with the machine idle and 2.34 to 3.00 s while eight gate pool
+\ slots are busy, and it is the most expensive child here: it starts a fresh
+\ engine and loads lib/task.f and the identity module from scratch. The subject
+\ children start from a fork of this process instead, so even the cases that
+\ reload the identity module inside the fork cost a fraction of that: the whole
+\ file, every child included, runs in 2.8 s idle and 9 to 14 s under those same
+\ eight busy slots. WORST-CHILD-MS records that busiest measurement and
+\ HANG-MARGIN keeps the guard an order of magnitude above it, so host load
+\ cannot reach the guard. The product also stays well inside the gate's own
+\ 120 s per-phase guard (SUITE-TIMEOUT-MS in test/gate-stdlib-lib.f), so a real
+\ deadlock is still reported here by name, with its case, instead of arriving as
+\ an anonymous killed phase.
+3000 constant WORST-CHILD-MS
+10 constant HANG-MARGIN
+WORST-CHILD-MS HANG-MARGIN * constant HANG-MS
 
 create SUBJECT-OUT SUBJECT-CAP allot
 create SUBJECT-ERR SUBJECT-CAP allot
+
+\ One assert per call, exactly like the shared T-OUTCOME-EXITED= it replaces,
+\ but every way of not exiting gets its own name. A guard that expired and a
+\ child that exited with the wrong status are different findings and must never
+\ print the same line: the shared assertion reports both as `expected 0 got 1`,
+\ which is how a busy host and a broken allocator became indistinguishable here.
+\ Naming the guard needs the budget, and only this caller knows it; giving
+\ lib/test/outcome.f its own per-variant diagnostics needs that file packaged
+\ first, which is tracked by dot habu-name-the-outcome-a80c2197.
+: CHILD-HUNG ( -- )
+   T-NEXT
+   s" child never exited: deadlock guard expired" T-ASSERT-DETAIL
+   s" guard ms: " type HANG-MS .
+   T-LABEL-CLEAR ;
+
+: CHILD-SIGNALED ( n -- ) {: sig:n :}
+   T-NEXT
+   s" child died on a signal without an exit status" T-ASSERT-DETAIL
+   s" signal: " type sig .
+   T-LABEL-CLEAR ;
+
+: CHILD-EXITED= ( outcome n -- ) {: want:n :}
+   MATCH outcome
+     exited OF want T= ENDOF
+     signaled OF CHILD-SIGNALED ENDOF
+     timeout OF CHILD-HUNG ENDOF
+   ;MATCH ;
 
 : SCALAR-CASES ( -- )
    0 IR-ID:COUNT IR-ID:COUNT-N 0 T=
@@ -160,7 +214,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
 : SUBJECT-RUN ( ptr u8 n -- len len outcome )
    SUBJECT-OUT SUBJECT-CAP >LEN
    SUBJECT-ERR SUBJECT-CAP >LEN
-   SUBJECT-MS >MS SUBJECT:RUN ;
+   HANG-MS >MS SUBJECT:RUN ;
 
 : CONCURRENT-SOURCE$ ( n -- ptr u8 n ) {: mode:n :}
    SB-RESET
@@ -186,11 +240,11 @@ create SUBJECT-ERR SUBJECT-CAP allot
    0 ARGV$ >LEN src srcu >LEN
    SUBJECT-OUT SUBJECT-CAP >LEN
    SUBJECT-ERR SUBJECT-CAP >LEN
-   SUBJECT-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
+   HANG-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME ;
 
 : CONCURRENT-GREEN ( -- )
    s" concurrent allocator barrier" T-LABEL
-   1 CONCURRENT-RUN 0 T-OUTCOME-EXITED=
+   1 CONCURRENT-RUN 0 CHILD-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
@@ -198,7 +252,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
 
 : CONCURRENT-MUTATION ( -- )
    s" barrier-removal mutation fails overlap witness" T-LABEL
-   0 CONCURRENT-RUN 76 T-OUTCOME-EXITED=
+   0 CONCURRENT-RUN OVERLAP-RC CHILD-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
@@ -206,7 +260,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
 
 : CONCURRENT-ACTIVATE-CLEANUP ( -- )
    s" activation cleanup permits same-process task reuse" T-LABEL
-   2 CONCURRENT-RUN 0 T-OUTCOME-EXITED=
+   2 CONCURRENT-RUN 0 CHILD-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
@@ -219,19 +273,19 @@ create SUBJECT-ERR SUBJECT-CAP allot
 
 : SEAL-CASE ( ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n needle:ptr needleu:n :}
-   src srcu SUBJECT-RUN ENGINE-ERROR:SEAL-PACKAGE T-OUTCOME-EXITED=
+   src srcu SUBJECT-RUN ENGINE-ERROR:SEAL-PACKAGE CHILD-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
    SUBJECT-ERR erru needle needleu CONTAINS? TTRUE ;
 
 : CONTEXT-SEAL-CASE ( ptr u8 n -- )
-   SUBJECT-RUN ENGINE-ERROR:SEAL-VIOLATION T-OUTCOME-EXITED=
+   SUBJECT-RUN ENGINE-ERROR:SEAL-VIOLATION CHILD-EXITED=
    LEN>N drop
    LEN>N drop ;
 
 : INTERNAL-AUTH-CASE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SUBJECT-RUN INTERNAL-RC T-OUTCOME-EXITED=
+   a u SUBJECT-RUN INTERNAL-RC CHILD-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
@@ -239,7 +293,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    SUBJECT-ERR erru a u CONTAINS? TTRUE ;
 
 : OWNER-CAST-REJECT ( ptr u8 n -- )
-   SUBJECT-RUN UNCAUGHT-RC T-OUTCOME-EXITED=
+   SUBJECT-RUN UNCAUGHT-RC CHILD-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
@@ -321,7 +375,7 @@ create SUBJECT-ERR SUBJECT-CAP allot
    s" current WID cannot diverge from its package" T-LABEL
    s" 1 data-base $28 + !" CONTEXT-SEAL-CASE
    s" module serial survives require replay" T-LABEL
-   RELOAD-STABLE$ SUBJECT-RUN 0 T-OUTCOME-EXITED=
+   RELOAD-STABLE$ SUBJECT-RUN 0 CHILD-EXITED=
    LEN>N {: erru:n :}
    LEN>N {: outu:n :}
    outu 0 T=
