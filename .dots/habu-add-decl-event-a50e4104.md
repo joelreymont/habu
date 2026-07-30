@@ -1,9 +1,11 @@
 ---
 title: Key declaration sources
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-21T06:59:26.054283+02:00"
+closed-at: "2026-07-30T09:08:10.735408+02:00"
+close-reason: Implemented in 06ac2e78ba4f369ea09f8e60cd1102bdd06db8a5; independently reviewed and landed on master@origin; focused production cache proof, typed-local, package, Maki, PTX standard-library, host, and dot gates green.
 ---
 
 Why: `BF-APPEND-DECL-FILES` already builds `src/core/decl-event.f`,
