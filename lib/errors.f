@@ -521,9 +521,12 @@ public
 \                 (package CODEGEN-COMPARE)
 \   -8280..-8299  native stage N1 straight-line HIR dialect (package HIR)
 \   -8300..-8319  native stage N1 straight-line elaborator (package NELAB)
-\   -8320..-8999  unassigned. The remaining dialect packages (SIR, LIR, A64IR,
-\                 and the GPU stages) and the native and GPU back ends take
-\                 sub-blocks from here, each named above its codes.
+\   -8320..-8339  unassigned
+\   -8340..-8359  native ARM64 machine dialect (package A64IR)
+\   -8360..-8379  native ARM64 instruction selection (package A64SEL)
+\   -8380..-8999  unassigned. The remaining dialect packages (SIR, LIR, and the
+\                 GPU stages) and the native and GPU back ends take sub-blocks
+\                 from here, each named above its codes.
 -8000 constant E-COMP-FIRST
 -8999 constant E-COMP-LAST
 
@@ -751,3 +754,31 @@ public
 -8303 constant E-NELAB-ARITY     \ a declared input or output count outside the accepted range, or a body that does not leave exactly the declared outputs
 -8304 constant E-NELAB-UNDER     \ a word consuming more values than the compile-time value vector holds
 -8305 constant E-NELAB-CAP       \ a compile-time value vector past the elaborator's ceiling
+
+\ Native ARM64 machine dialect (package A64IR): -8340..-8359
+\
+\ The dialect that stands for real ARM64 instruction forms with virtual registers
+\ as SSA values. Almost every refusal a malformed A64IR operation earns belongs
+\ to IR-SCHEMA or IR-OP, which measure it against the schema table; these three
+\ are the facts only the dialect knows: which schema table it may fill, and the
+\ two operand fields of the move-wide form.
+-8340 constant E-A64IR-DIALECT  \ a module whose schema table was created for another dialect or another schema version
+-8341 constant E-A64IR-IMM      \ a move-wide immediate outside the sixteen-bit field the form holds
+-8342 constant E-A64IR-SHIFT    \ a move-wide shift that does not select one of the four halves of a general register
+
+\ Native ARM64 instruction selection (package A64SEL): -8360..-8379
+\
+\ The pass that reads a frozen straight-line HIR module and builds the frozen
+\ A64IR module its operations select to. Refusals another authority owns keep
+\ that authority's name - an out-of-range move-wide operand is E-A64IR-IMM or
+\ E-A64IR-SHIFT, and a malformed operation is IR-OP's - so these seven are the
+\ facts the selector alone can judge: whether it was told which dialect it is
+\ reading, whether the module and text it was handed are the ones it was told
+\ about, and whether what it found is something this leaf can select at all.
+-8360 constant E-A64SEL-BIND    \ selection attempted before the source dialect's opcode identities were bound, or a second binding over a live one
+-8361 constant E-A64SEL-SOURCE  \ a frozen module that is not the bound one, or source text whose digest is not the one the module recorded
+-8362 constant E-A64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
+-8363 constant E-A64SEL-SHAPE   \ a module or function this leaf cannot select: not exactly one source, or a function that is not exactly one block
+-8364 constant E-A64SEL-TRAP    \ an operation whose schema says it may trap: trapping arithmetic has no machine lowering in this dialect yet
+-8365 constant E-A64SEL-ATTR    \ a constant whose attribute is not under the source dialect's value key
+-8366 constant E-A64SEL-CAP     \ more values in one function than the selector's value map holds

@@ -3606,3 +3606,25 @@ fits.
   leaves the group, and the first bare word on the next added line is reported as
   an untyped local. Reflow the group so its closing line is part of the change;
   do not silence a real-looking finding with an allow-comment.
+
+- **A compiler-suite fixture that refuses leaks its context's arenas until an
+  enclosing context leaves normally.** `IR-CTX:WITH-CONTEXT` releases its
+  mapping on the throw path, but the registry slots of an abandoned context are
+  reclaimed only when a live enclosing context exits (the note on stale handles
+  in `src/compiler/ir/context.f`), and `IR-ARENA` sweeps a slot only when its
+  owner is no longer live. A module holds about seventeen arenas and the
+  registry holds sixty-four, so a group of refusal cases run at the top level
+  exhausts it after three or four and every later case fails with
+  `E-IR-ARENA-SLOTS` (-6657) instead of its own error. Run each group inside a
+  `WITH-CONTEXT` that leaves normally, keep at most two or three module-building
+  refusals per group, and give each positive case that builds two modules a
+  context of its own.
+
+- **A pass that reads one module and writes another cannot name the first
+  module's opcodes.** Symbols are module-local ordinals, so "is this operation
+  `hir.add`" has no answer from outside without either the source dialect's own
+  authority or a second copy of its spellings. Restating the spellings is the
+  drift-prone answer. Asking the source dialect for its opcode identities while
+  its module is still being built, and recording which module the answers came
+  from, keeps one authority and turns "bind the module you are about to select"
+  into a check rather than a usage rule.
