@@ -1,6 +1,6 @@
 ---
 title: Signed pass-2 xpad corrections through the trusted certificate
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-22T14:42:35.837742+02:00"

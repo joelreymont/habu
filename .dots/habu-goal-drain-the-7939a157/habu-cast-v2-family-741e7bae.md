@@ -1,6 +1,6 @@
 ---
 title: "CAST: v2 - family ownership rule for cast declarations"
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-19T01:59:06.031631+02:00"
