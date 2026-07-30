@@ -1,10 +1,10 @@
 \ package-diff-lint-core.f - enforce package ownership on changed Forth definitions.
 \
 \ The unified-diff grammar belongs to tools/lint/diff.f.  Each canonical section
-\ is parsed once to verify the new side and reconstruct the complete old source,
-\ then replayed to align genuine old-side package transitions with new lines.
-\ Both complete sources are lexed: hunk context and isolated deleted lines cannot
-\ prove package scope across multiline comments, strings, or definitions.
+\ is parsed once to verify the new side and reconstruct the complete old source.
+\ Both complete sources are lexed into owner-aware definition multisets: hunk
+\ context and isolated deleted lines cannot prove package scope across multiline
+\ comments, strings, or definitions.
 \
 \ The scan consumes the lint lexer's events rather than re-reading source text.
 \ Three kinds arrive.  A WORD drives the ownership rules.  A `( ... )` comment is
@@ -41,6 +41,25 @@ private
 6 constant VALUE-RECORD-BLOCK
 7 constant LOW-STRUCTURE-BLOCK
 8 constant DATA-DEFINITION
+1 constant OWNER-PACKAGE
+2 constant OWNER-VOCAB
+0 constant OLD-NAME-A-FIELD
+1 constant OLD-NAME-U-FIELD
+2 constant OLD-OWNER-A-FIELD
+3 constant OLD-OWNER-U-FIELD
+4 constant OLD-OWNER-KIND-FIELD
+5 constant OLD-MATCHED-FIELD
+0 constant NEW-DEFINER-FIELD
+1 constant NEW-NAME-FIELD
+2 constant NEW-LAST-FIELD
+3 constant NEW-OWNER-A-FIELD
+4 constant NEW-OWNER-U-FIELD
+5 constant NEW-OWNER-KIND-FIELD
+6 constant NEW-MATCH-FIELD
+7 constant VOCAB-I-FIELD
+0 constant MATCH-NEW
+1 constant MATCH-EXACT
+2 constant MATCH-OWNER
 10 constant LF-C
 45 constant DASH-C
 47 constant SLASH-C
@@ -107,11 +126,20 @@ variable WHOLE-CHANGED
 variable SOURCE-LINE
 variable SOURCE-OFF
 variable NEW-LINE
-variable OLD-LINE
 variable LEX-I
 variable PACKAGE-OPEN
-variable SCOPE-DELTA
-variable SCAN-LINE
+variable VOCAB-N
+variable OWNER-A
+variable OWNER-U
+variable OWNER-KIND
+variable OLDDEF#
+variable NEWDEF#
+variable VOCAB#
+variable OLD-SCAN
+variable FORM-I
+variable FORM-END-I
+variable FORM-NAME-I
+variable FORM-N
 variable DEF-OPEN
 variable DEF-KIND
 variable DEF-DEFINER-I
@@ -128,7 +156,6 @@ variable INPUT-U
 variable SECTION-START
 variable ARTIFACT-LINE-START
 variable ARTIFACT-I
-variable REPLAY-SECTION-SEEN
 variable FILE-USED
 
 : PTR-SLOT ( ptr a -- ptr ptr u8 )
@@ -238,8 +265,8 @@ variable FILE-USED
 \ exists -- so it is admitted the way sumtype.f, roles.f, structures.f and
 \ enums.f are, and it must be removed once the checker sealing work (dot
 \ habu-seal-the-checker-5314c0ab) gives those seams real package owners.
-\ Package-boundary changes are still reported for every file here
-\ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
+\ Owner changes around retained definitions are still reported for every file
+\ before this allowlist is consulted.  Files with only
 \ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
 \ global added beside DEFTYPE or STRUCTURE is still rejected.
 : GLOBAL-IMPLEMENTATION? ( -- bool )
@@ -281,8 +308,8 @@ variable FILE-USED
 \ recorded, so the decision needs no second parser and never looks at the
 \ declared family name.  The token-to-bit half sits beside GLOBAL-SURFACE?
 \ below rather than here, because it needs the token comparator, exactly as
-\ ERR-VOCAB? does.  FINISH-DEFINITION still checks SCOPE-DELTA first, so adding
-\ or deleting a package boundary around a fixture is reported even here.
+\ ERR-VOCAB? does.  FINISH-DEFINITION still compares the retained definition's
+\ exact old and new owners first, so changing its package is reported even here.
 \
 \ test/internal-word-gate.f was listed here and was removed once the shape rule
 \ was measured: it declares nothing through the grammar - its fixtures are
@@ -491,6 +518,15 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    dup MEM-MAX-N 2 / > if drop E-MEM-SIZE throw then
    2 * ;
 
+: SLOT# ( -- n )
+   NEW-SLOTS @ OLD-SLOTS @ ADD-SIZE ;
+
+: MARK-CELLS ( -- n )
+   SLOT# DOUBLE-SIZE DOUBLE-SIZE DOUBLE-SIZE ;
+
+: MARK-BYTES ( -- n )
+   MARK-CELLS >COUNT MEM-CELLS>BYTES ;
+
 : BUILD-FULL-PATH ( -- )
    ROOT$ FILE$ FULL-BUF JOIN-PATH FULL-U ! ;
 
@@ -500,7 +536,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    size 0 < if E-MEM-SIZE throw then
    size 2 ADD-SIZE NEW-SLOTS !
    size INPUT-U @ ADD-SIZE 2 ADD-SIZE OLD-SLOTS !
-   NEW-SLOTS @ DOUBLE-SIZE OLD-SLOTS @ ADD-SIZE MARK-U !
+   MARK-BYTES NEW-SLOTS @ ADD-SIZE MARK-U !
    size SOURCE-ALLOC
    FULL$ SOURCE-A@ SOURCE-CAP @ READ-ALL SOURCE-U !
    SOURCE-U @ size <> if E-DIFF-SYNTAX throw then
@@ -508,42 +544,126 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    OLD-SLOTS @ 2 - OLD-ALLOC
    0 OLD-U ! ;
 
-: LINE-OFF ( n -- n ) {: line:n :}
+: TABLE-CELL ( n n -- ptr a ) {: i:n field:n :}
+   MARK-A@ field SLOT# * i + cells + ;
+
+: OLDDEF-CELL ( n n -- ptr a ) {: i:n field:n :}
+   i 0 < i OLDDEF# @ >= or if E-DIFF-SYNTAX throw then
+   i field TABLE-CELL ;
+
+: NEWDEF-CELL ( n n -- ptr a ) {: i:n field:n :}
+   i 0 < i NEWDEF# @ >= or if E-DIFF-SYNTAX throw then
+   i OLD-SLOTS @ + field TABLE-CELL ;
+
+: VOCAB-CELL ( n -- ptr a ) {: i:n :}
+   i 0 < i VOCAB# @ >= or if E-DIFF-SYNTAX throw then
+   i VOCAB-I-FIELD TABLE-CELL ;
+
+: ADDED-A ( n -- ptr u8 ) {: line:n :}
    line 0 <= if E-DIFF-SYNTAX throw then
    line NEW-SLOTS @ >= if E-DIFF-SYNTAX throw then
-   line 2 * ;
-
-: OLD-LINE-OFF ( n -- n ) {: line:n :}
-   line 0 <= if E-DIFF-SYNTAX throw then
-   line OLD-SLOTS @ >= if E-DIFF-SYNTAX throw then
-   NEW-SLOTS @ 2 * line + ;
+   MARK-A@ MARK-BYTES + line + ;
 
 : MARK-LINE ( n -- ) {: line:n :}
-   1 MARK-A@ line LINE-OFF + c! ;
+   1 line ADDED-A c! ;
 
 : ADDED? ( n -- bool )
    dup 0 <= if drop false exit then
-   LINE-OFF MARK-A@ + c@ 0<> ;
+   ADDED-A c@ 0<> ;
 
-: DELTA@ ( n -- n )
-   LINE-OFF 1+ MARK-A@ + c@
-   dup 127 > if 256 - then ;
+: OWNER-ID! ( n n -- ) {: namei:n kind:n :}
+   namei LINT-LEX:TOKEN
+   dup OWNER-U !
+   over OWNER-A !
+   2drop
+   kind OWNER-KIND ! ;
 
-: DELTA+ ( n n -- ) {: line:n amount:n :}
-   line DELTA@ amount + {: next:n :}
-   next -127 < next 127 > or if E-DIFF-SYNTAX throw then
-   next 0 < if next 256 + else next then
-   MARK-A@ line LINE-OFF + 1+ c! ;
+: OLDDEF-A@ ( n -- ptr u8 )
+   OLD-NAME-A-FIELD OLDDEF-CELL @ ;
 
-: OLD-DELTA@ ( n -- n )
-   OLD-LINE-OFF MARK-A@ + c@
-   dup 127 > if 256 - then ;
+: OLDDEF-U@ ( n -- n )
+   OLD-NAME-U-FIELD OLDDEF-CELL @ ;
 
-: OLD-DELTA+ ( n n -- ) {: line:n amount:n :}
-   line OLD-DELTA@ amount + {: next:n :}
-   next -1 < next 1 > or if E-DIFF-SYNTAX throw then
-   next 0 < if next 256 + else next then
-   MARK-A@ line OLD-LINE-OFF + c! ;
+: OLDDEF-OWNER-A@ ( n -- ptr u8 )
+   OLD-OWNER-A-FIELD OLDDEF-CELL @ ;
+
+: OLDDEF-OWNER-U@ ( n -- n )
+   OLD-OWNER-U-FIELD OLDDEF-CELL @ ;
+
+: OLDDEF-OWNER-KIND@ ( n -- n )
+   OLD-OWNER-KIND-FIELD OLDDEF-CELL @ ;
+
+: OLDDEF-MATCHED? ( n -- bool )
+   OLD-MATCHED-FIELD OLDDEF-CELL @ 0<> ;
+
+: OLDDEF-MATCHED! ( n -- )
+   1 swap OLD-MATCHED-FIELD OLDDEF-CELL ! ;
+
+: OLDDEF+ ( n -- ) {: namei:n :}
+   OLDDEF# @ OLD-SLOTS @ >= if E-MEM-SIZE throw then
+   OLDDEF# @ {: i:n :}
+   i 1+ OLDDEF# !
+   namei LINT-LEX:TOKEN
+   dup i OLD-NAME-U-FIELD OLDDEF-CELL !
+   drop i OLD-NAME-A-FIELD OLDDEF-CELL !
+   OWNER-A @ i OLD-OWNER-A-FIELD OLDDEF-CELL !
+   OWNER-U @ i OLD-OWNER-U-FIELD OLDDEF-CELL !
+   OWNER-KIND @ i OLD-OWNER-KIND-FIELD OLDDEF-CELL !
+   0 i OLD-MATCHED-FIELD OLDDEF-CELL ! ;
+
+: NEWDEF-DEFINER@ ( n -- n )
+   NEW-DEFINER-FIELD NEWDEF-CELL @ ;
+
+: NEWDEF-NAME@ ( n -- n )
+   NEW-NAME-FIELD NEWDEF-CELL @ ;
+
+: NEWDEF-LAST@ ( n -- n )
+   NEW-LAST-FIELD NEWDEF-CELL @ ;
+
+: NEWDEF-OWNER-A@ ( n -- ptr u8 )
+   NEW-OWNER-A-FIELD NEWDEF-CELL @ ;
+
+: NEWDEF-OWNER-U@ ( n -- n )
+   NEW-OWNER-U-FIELD NEWDEF-CELL @ ;
+
+: NEWDEF-OWNER-KIND@ ( n -- n )
+   NEW-OWNER-KIND-FIELD NEWDEF-CELL @ ;
+
+: NEWDEF-MATCH@ ( n -- n )
+   NEW-MATCH-FIELD NEWDEF-CELL @ ;
+
+: NEWDEF-MATCH! ( n n -- ) {: state:n i:n :}
+   state i NEW-MATCH-FIELD NEWDEF-CELL ! ;
+
+: NEWDEF+ ( n -- ) {: last:n :}
+   NEWDEF# @ NEW-SLOTS @ >= if E-MEM-SIZE throw then
+   NEWDEF# @ {: i:n :}
+   i 1+ NEWDEF# !
+   DEF-DEFINER-I @ i NEW-DEFINER-FIELD NEWDEF-CELL !
+   DEF-NAME-I @ i NEW-NAME-FIELD NEWDEF-CELL !
+   last i NEW-LAST-FIELD NEWDEF-CELL !
+   OWNER-A @ i NEW-OWNER-A-FIELD NEWDEF-CELL !
+   OWNER-U @ i NEW-OWNER-U-FIELD NEWDEF-CELL !
+   OWNER-KIND @ i NEW-OWNER-KIND-FIELD NEWDEF-CELL !
+   MATCH-NEW i NEW-MATCH-FIELD NEWDEF-CELL ! ;
+
+: VOCAB-I@ ( n -- n )
+   VOCAB-CELL @ ;
+
+: VOCAB+ ( n -- ) {: namei:n :}
+   VOCAB# @ SLOT# >= if E-MEM-SIZE throw then
+   VOCAB# @ {: i:n :}
+   i 1+ VOCAB# !
+   namei i VOCAB-I-FIELD TABLE-CELL ! ;
+
+: VOCAB-NAME? ( n n -- bool ) {: namei:n i:n :}
+   namei LINT-LEX:TOKEN i VOCAB-I@ LINT-LEX:TOKEN LINT-STR=CI ;
+
+: VOCAB-DECLARED? ( n -- bool ) {: namei:n :}
+   0 begin dup VOCAB# @ < while
+      dup namei swap VOCAB-NAME? if drop true exit then
+      1+
+   repeat drop false ;
 
 : OLD+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 0 < if E-MEM-SIZE throw then
@@ -801,6 +921,10 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    DEF-NAME-I @ s" E-PACKAGE-OWNERSHIP" REPORT-HEAD
    s" defines a changed module word outside a package" OUT LF-C OUT-C ;
 
+: REPORT-OWNER-CHANGE ( -- )
+   DEF-NAME-I @ s" E-PACKAGE-OWNERSHIP" REPORT-HEAD
+   s" changes the package owner of an existing module word" OUT LF-C OUT-C ;
+
 : REPORT-OWNER-PREFIX ( -- )
    DEF-NAME-I @ s" E-REDUNDANT-PACKAGE-PREFIX" REPORT-HEAD
    s" repeats its package owner `" OUT PACKAGE$ OUT s" `" OUT LF-C OUT-C ;
@@ -838,10 +962,9 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 \ shape -- an error-code name defined by the lower-case `constant` definer --
 \ and reports everything else: another name shape, another defining word,
 \ `CONSTANT` in capitals, and the same declaration in any other file.
-\ FINISH-DEFINITION checks SCOPE-DELTA before it consults this admission, so a
-\ deleted or moved `package`/`;package` boundary that leaves a constant
-\ unpackaged at its scan point is still reported.  A complete block whose
-\ opener and closer both change nets zero delta and is not a scope change.
+\ FINISH-DEFINITION compares exact old and new owners before it consults this
+\ admission, so a deleted, moved, or renamed owner around a retained constant is
+\ still reported.
 : ERR-VOCAB? ( -- bool )
    FILE$ s" lib/errors.f" LINT-STR= 0= if false exit then
    DEF-DEFINER-I @ s" constant" TOK= 0= if false exit then
@@ -918,23 +1041,85 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    then
    false ;
 
-\ A changed unpackaged definition normally loses its package owner.  A non-zero
-\ SCOPE-DELTA means a `package`/`;package` boundary around this definition was
-\ added or deleted in this diff, so its ownership genuinely changed: that is
-\ reported for every file, including the allowlisted core surface (type-family.f
-\ still opens inner packages).  Only a plain body change or whole-file change of
-\ an already-global definition is exempt, and only on that surface.
-: FINISH-DEFINITION ( n -- ) {: last-line:n :}
-   DEF-PACKAGED @ if
-      CHECK-PREFIX
-   else
-      SCOPE-DELTA @ 0<> if
-         REPORT-GLOBAL
-      else
-         DEF-START-LINE @ last-line ADDED-RANGE? WHOLE-CHANGED @ or
-         GLOBAL-SURFACE? 0= and if REPORT-GLOBAL then
+: OLDDEF-NAME? ( n n -- bool ) {: newi:n oldi:n :}
+   newi NEWDEF-NAME@ LINT-LEX:TOKEN
+   oldi OLDDEF-A@ oldi OLDDEF-U@ LINT-STR=CI ;
+
+: OLDDEF-OWNER? ( n n -- bool ) {: newi:n oldi:n :}
+   newi NEWDEF-OWNER-KIND@ oldi OLDDEF-OWNER-KIND@ <> if false exit then
+   newi NEWDEF-OWNER-KIND@ 0= if true exit then
+   newi NEWDEF-OWNER-A@ newi NEWDEF-OWNER-U@
+   oldi OLDDEF-OWNER-A@ oldi OLDDEF-OWNER-U@ LINT-STR=CI ;
+
+: OLDDEF-FIND ( n bool -- n ) {: newi:n exact:bool :}
+   0 begin dup OLDDEF# @ < while
+      dup {: oldi:n :}
+      oldi OLDDEF-MATCHED? 0= if
+         newi oldi OLDDEF-NAME? if
+            exact 0= newi oldi OLDDEF-OWNER? or if exit then
+         then
       then
-   then
+      1+
+   repeat drop -1 ;
+
+: MATCH-NEWDEF ( n bool n -- ) {: newi:n exact:bool state:n :}
+   newi exact OLDDEF-FIND dup 0 < if drop exit then
+   OLDDEF-MATCHED!
+   state newi NEWDEF-MATCH! ;
+
+: MATCH-EXACTS ( -- )
+   0 begin dup NEWDEF# @ < while
+      dup true MATCH-EXACT MATCH-NEWDEF
+      1+
+   repeat drop ;
+
+: MATCH-CHANGES ( -- )
+   0 begin dup NEWDEF# @ < while
+      dup NEWDEF-MATCH@ MATCH-NEW = if
+         dup false MATCH-OWNER MATCH-NEWDEF
+      then
+      1+
+   repeat drop ;
+
+: LOAD-NEWDEF ( n -- ) {: i:n :}
+   i NEWDEF-DEFINER@ dup DEF-DEFINER-I !
+   dup LINT-LEX:LINE@ DEF-START-LINE !
+   LINT-LEX:LINE@ ADDED?
+   i NEWDEF-NAME@ dup DEF-NAME-I !
+   LINT-LEX:LINE@ ADDED? or DEF-TAIL-ADDED !
+   i NEWDEF-OWNER-A@ OWNER-A !
+   i NEWDEF-OWNER-U@ OWNER-U !
+   i NEWDEF-OWNER-KIND@ OWNER-KIND !
+   OWNER-KIND @ 0<> dup DEF-PACKAGED ! PACKAGE-OPEN !
+   OWNER-U @ 0= if 0 PACKAGE-U ! exit then
+   OWNER-A @ OWNER-U @ PACKAGE-BUF PACKAGE-U COPY! ;
+
+: CHECK-GLOBAL ( n -- ) {: last-line:n :}
+   DEF-START-LINE @ last-line ADDED-RANGE? WHOLE-CHANGED @ or
+   GLOBAL-SURFACE? 0= and if REPORT-GLOBAL then ;
+
+: CHECK-NEWDEF ( n -- ) {: i:n :}
+   i LOAD-NEWDEF
+   i NEWDEF-MATCH@ MATCH-OWNER = if
+      DEF-PACKAGED @ if REPORT-OWNER-CHANGE else REPORT-GLOBAL then
+   else
+      DEF-PACKAGED @ if CHECK-PREFIX else i NEWDEF-LAST@ CHECK-GLOBAL then
+   then ;
+
+\ Definitions are multisets keyed by case-insensitive name and exact owner.
+\ Exact owner matches are removed first, independent of source position; the
+\ remaining same-name entries pair in source order and are owner changes.  A new
+\ entry left unmatched follows the ordinary package/global admission rules.
+: RECONCILE-DEFINITIONS ( -- )
+   MATCH-EXACTS
+   MATCH-CHANGES
+   0 begin dup NEWDEF# @ < while
+      dup CHECK-NEWDEF
+      1+
+   repeat drop ;
+
+: FINISH-DEFINITION ( n -- ) {: last-line:n :}
+   OLD-SCAN @ 0= if last-line NEWDEF+ then
    false DEF-OPEN ! ;
 
 : START-DEFINITION ( n n -- ) {: k:n kind:n :}
@@ -942,9 +1127,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    kind DEF-KIND !
    k DEF-DEFINER-I !
    namei DEF-NAME-I !
-   k LINT-LEX:LINE@ DEF-START-LINE !
-   PACKAGE-OPEN @ DEF-PACKAGED !
-   k LINT-LEX:LINE@ ADDED? namei LINT-LEX:LINE@ ADDED? or DEF-TAIL-ADDED !
+   OLD-SCAN @ if namei OLDDEF+ then
    kind DATA-DEFINITION = if
       namei LINT-LEX:LINE@ FINISH-DEFINITION
    else
@@ -952,28 +1135,137 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    then
    namei 1+ LEX-I ! ;
 
-: PACKAGE-SET ( n -- ) {: namei:n :}
+: PACKAGE-SET ( n n -- ) {: namei:n kind:n :}
    namei WORD? 0= if E-DIFF-SYNTAX throw then
    PACKAGE-OPEN @ if E-DIFF-SYNTAX throw then
-   namei LINT-LEX:TOKEN PACKAGE-BUF PACKAGE-U COPY!
-   true PACKAGE-OPEN ! ;
+   namei kind OWNER-ID!
+   namei LINT-LEX:TOKEN
+   PACKAGE-BUF PACKAGE-U COPY!
+   true PACKAGE-OPEN !
+   0 VOCAB-N ! ;
+
+: OWNER-CLEAR ( -- )
+   false PACKAGE-OPEN !
+   0 PACKAGE-U !
+   0 VOCAB-N !
+   0 OWNER-A !
+   0 OWNER-U !
+   0 OWNER-KIND ! ;
 
 : PACKAGE-CLEAR ( -- )
    PACKAGE-OPEN @ 0= if E-DIFF-SYNTAX throw then
-   false PACKAGE-OPEN !
-   0 PACKAGE-U ! ;
+   VOCAB-N @ 0<> if E-DIFF-SYNTAX throw then
+   OWNER-CLEAR ;
+
+: FORM-ALSO? ( -- bool )
+   FORM-I @ LINT-LEX:COUNT >= if false exit then
+   FORM-I @ s" also" TOK=CI ;
+
+: FORM-PREVIOUS? ( -- bool )
+   FORM-I @ LINT-LEX:COUNT >= if false exit then
+   FORM-I @ s" previous" TOK=CI ;
+
+: COMMENT? ( n -- bool ) {: k:n :}
+   k 0 < k LINT-LEX:COUNT >= or if false exit then
+   k LINT-LEX:KIND@ LINT-LEX:COMMENT = ;
+
+: FORM-SKIP-COMMENTS ( -- )
+   begin FORM-I @ COMMENT? while
+      FORM-I @ 1+ FORM-I !
+   repeat ;
+
+: VOCAB-OPEN-FORM? ( n -- bool ) {: k:n :}
+   k s" also" TOK=CI 0= if false exit then
+   k 1+ FORM-I !
+   FORM-SKIP-COMMENTS
+   0 FORM-N !
+   begin
+      FORM-I @ dup LINT-LEX:COUNT >= if drop false exit then
+      dup WORD? 0= if drop false exit then
+      dup VOCAB-DECLARED? 0= if drop false exit then
+      FORM-NAME-I !
+      FORM-I @ 1+ FORM-I !
+      FORM-SKIP-COMMENTS
+      FORM-N @ 1+ FORM-N !
+      FORM-ALSO?
+   while
+      FORM-I @ 1+ FORM-I !
+      FORM-SKIP-COMMENTS
+   repeat
+   FORM-I @ LINT-LEX:COUNT >= if false exit then
+   FORM-I @ s" definitions" TOK=CI 0= if false exit then
+   FORM-I @ FORM-END-I !
+   true ;
+
+: VOCAB-CLOSE-FORM? ( n -- bool ) {: k:n :}
+   k s" previous" TOK=CI 0= if false exit then
+   k FORM-I !
+   0 FORM-N !
+   begin FORM-PREVIOUS? while
+      FORM-I @ 1+ FORM-I !
+      FORM-SKIP-COMMENTS
+      FORM-N @ 1+ FORM-N !
+   repeat
+   FORM-I @ LINT-LEX:COUNT >= if false exit then
+   FORM-I @ s" definitions" TOK=CI 0= if false exit then
+   FORM-I @ FORM-END-I !
+   true ;
+
+: VOCAB-OPEN ( -- )
+   PACKAGE-OPEN @ if E-DIFF-SYNTAX throw then
+   FORM-NAME-I @ OWNER-VOCAB PACKAGE-SET
+   FORM-N @ VOCAB-N !
+   FORM-END-I @ 1+ LEX-I ! ;
+
+: VOCAB-CLOSE ( -- )
+   PACKAGE-OPEN @ 0= if E-DIFF-SYNTAX throw then
+   VOCAB-N @ 0= if E-DIFF-SYNTAX throw then
+   FORM-N @ VOCAB-N @ <> if E-DIFF-SYNTAX throw then
+   OWNER-CLEAR
+   FORM-END-I @ 1+ LEX-I ! ;
+
+: VOCABULARY-TOKEN ( n -- bool ) {: k:n :}
+   k s" vocabulary" TOK=CI 0= if false exit then
+   k 1+ FORM-I !
+   FORM-SKIP-COMMENTS
+   FORM-I @ dup WORD? 0= if drop E-DIFF-SYNTAX throw then
+   PACKAGE-OPEN @ 0= if dup VOCAB+ then
+   1+ LEX-I !
+   true ;
+
+: BRACKET-END ( n -- n ) {: k:n :}
+   k 1+ begin dup LINT-LEX:COUNT < while
+      dup WORD? if dup s" ]" TOK=CI if 1+ exit then then
+      1+
+   repeat drop -1 ;
+
+: BRACKET-TOKEN ( n -- bool ) {: k:n :}
+   k s" [" TOK=CI 0= if false exit then
+   k BRACKET-END dup 0 < if drop E-DIFF-SYNTAX throw then LEX-I !
+   true ;
 
 : PACKAGE-TOKEN ( n -- bool ) {: k:n :}
    k s" package" TOK=CI if
-      k LINT-LEX:LINE@ ADDED? if SCOPE-DELTA @ 1+ SCOPE-DELTA ! then
-      k 1+ PACKAGE-SET
+      k 1+ OWNER-PACKAGE PACKAGE-SET
       k 2 + LEX-I !
       true exit
    then
    k s" ;package" TOK=CI if
-      k LINT-LEX:LINE@ ADDED? if SCOPE-DELTA @ 1- SCOPE-DELTA ! then
       PACKAGE-CLEAR
       k 1+ LEX-I !
+      true exit
+   then
+   k s" also" TOK=CI if
+      k VOCAB-OPEN-FORM? if VOCAB-OPEN else k 1+ LEX-I ! then
+      true exit
+   then
+   k s" previous" TOK=CI if
+      k VOCAB-CLOSE-FORM? if
+         PACKAGE-OPEN @ 0= if E-DIFF-SYNTAX throw then
+         VOCAB-CLOSE
+      else
+         k 1+ LEX-I !
+      then
       true exit
    then
    false ;
@@ -986,78 +1278,37 @@ s" test/engine-suite.f" ENGINE-SET ROW+
       then
       k 1+ LEX-I ! exit
    then
+   k BRACKET-TOKEN if exit then
+   k VOCABULARY-TOKEN if exit then
    k PACKAGE-TOKEN if exit then
    k DEFINER-KIND dup 0= if drop k 1+ LEX-I ! exit then
    k swap START-DEFINITION ;
 
-: APPLY-DELETED-DELTA ( n -- ) {: line:n :}
-   begin SCAN-LINE @ line <= while
-      SCOPE-DELTA @ SCAN-LINE @ DELTA@ + SCOPE-DELTA !
-      SCAN-LINE @ 1+ SCAN-LINE !
-   repeat ;
-
-: SCAN-DEFINITIONS ( -- )
-   SOURCE$ LINT-LEX:SOURCE
+: SCAN-SOURCE ( ptr u8 n bool -- ) {: a:ptr u:n old:bool :}
+   a u LINT-LEX:SOURCE
    LEX-CHECK
+   old OLD-SCAN !
+   old if 0 OLDDEF# ! else 0 NEWDEF# ! then
+   0 VOCAB# !
    0 LEX-I !
    false PACKAGE-OPEN !
-   0 SCOPE-DELTA !
-   1 SCAN-LINE !
+   0 VOCAB-N !
+   0 OWNER-A !
+   0 OWNER-U !
+   0 OWNER-KIND !
    false DEF-OPEN !
    0 PACKAGE-U !
    begin LEX-I @ LINT-LEX:COUNT < while
-      LEX-I @ LINT-LEX:LINE@ APPLY-DELETED-DELTA
       LEX-I @ SCAN-TOKEN
    repeat
    DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;
 
-: OLD-PACKAGE-TOKEN ( n -- bool ) {: k:n :}
-   k s" package" TOK=CI if
-      k 1+ WORD? 0= if E-DIFF-SYNTAX throw then
-      PACKAGE-OPEN @ if E-DIFF-SYNTAX throw then
-      k LINT-LEX:LINE@ 1 OLD-DELTA+
-      true PACKAGE-OPEN !
-      k 2 + LEX-I !
-      true exit
-   then
-   k s" ;package" TOK=CI if
-      PACKAGE-OPEN @ 0= if E-DIFF-SYNTAX throw then
-      k LINT-LEX:LINE@ -1 OLD-DELTA+
-      false PACKAGE-OPEN !
-      k 1+ LEX-I !
-      true exit
-   then
-   false ;
+: SCAN-OLD ( -- )
+   OLD$ true SCAN-SOURCE ;
 
-: OLD-START-DEFINITION ( n n -- ) {: k:n kind:n :}
-   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
-   kind DATA-DEFINITION = if
-      namei 1+ LEX-I ! exit
-   then
-   kind DEF-KIND !
-   true DEF-OPEN !
-   namei 1+ LEX-I ! ;
-
-: OLD-SCAN-TOKEN ( n -- ) {: k:n :}
-   k OPAQUE? if k 1+ LEX-I ! exit then
-   DEF-OPEN @ if
-      k DEF-KIND @ CLOSE? if false DEF-OPEN ! then
-      k 1+ LEX-I ! exit
-   then
-   k OLD-PACKAGE-TOKEN if exit then
-   k DEFINER-KIND dup 0= if drop k 1+ LEX-I ! exit then
-   k swap OLD-START-DEFINITION ;
-
-: SCAN-OLD-BOUNDARIES ( -- )
-   OLD$ LINT-LEX:SOURCE
-   LEX-CHECK
-   0 LEX-I !
-   false PACKAGE-OPEN !
-   false DEF-OPEN !
-   begin LEX-I @ LINT-LEX:COUNT < while
-      LEX-I @ OLD-SCAN-TOKEN
-   repeat
-   DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;
+: SCAN-DEFINITIONS ( -- )
+   SOURCE$ false SCAN-SOURCE
+   RECONCILE-DEFINITIONS ;
 
 : WHOLE-CHANGE? ( DIFF:form -- bool )
    MATCH DIFF:form
@@ -1125,63 +1376,12 @@ s" test/engine-suite.f" ENGINE-SET ROW+
       1+
    repeat drop ;
 
-: REPLAY-BEGIN ( -- )
-   REPLAY-SECTION-SEEN @ if E-DIFF-SYNTAX throw then
-   true REPLAY-SECTION-SEEN !
-   1 OLD-LINE !
-   1 NEW-LINE ! ;
-
-: REPLAY-HUNK ( n -- ) {: line:n :}
-   line NEW-LINE @ < if E-DIFF-SYNTAX throw then
-   line NEW-LINE @ - {: gap:n :}
-   OLD-LINE @ gap ADD-SIZE OLD-LINE !
-   line NEW-LINE ! ;
-
-: REPLAY-DELETE ( -- )
-   OLD-LINE @ OLD-DELTA@ negate {: amount:n :}
-   amount 0<> if NEW-LINE @ amount DELTA+ then
-   OLD-LINE @ 1 ADD-SIZE OLD-LINE ! ;
-
-: REPLAY-EVENT ( DIFF:event -- )
-   MATCH DIFF:event
-      none OF ENDOF
-      section OF REPLAY-BEGIN ENDOF
-      hunk OF HUNK-NEW-LINE REPLAY-HUNK ENDOF
-      add OF NEW-LINE @ 1 ADD-SIZE NEW-LINE ! ENDOF
-      context OF
-         OLD-LINE @ 1 ADD-SIZE OLD-LINE !
-         NEW-LINE @ 1 ADD-SIZE NEW-LINE !
-      ENDOF
-      delete OF REPLAY-DELETE ENDOF
-   ;MATCH ;
-
-: REPLAY-LINE ( ptr u8 n -- )
-   DIFF:LINE REPLAY-EVENT ;
-
-: REPLAY-SOURCE-LINES ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 SCAN-START !
-   0 begin dup u < while
-      dup a + c@ LF-C = if
-         a SCAN-START @ + over SCAN-START @ - REPLAY-LINE
-         dup 1+ SCAN-START !
-      then
-      1+
-   repeat drop ;
-
-: REPLAY-DELETED-BOUNDARIES ( -- )
-   DIFF:RESET
-   false REPLAY-SECTION-SEEN !
-   INPUT$ REPLAY-SOURCE-LINES
-   DIFF:FINISH REPLAY-EVENT
-   REPLAY-SECTION-SEEN @ 0= if E-DIFF-SYNTAX throw then ;
-
 : FINISH-SECTION-WORK ( -- )
    DIFF:FINISH EVENT
    SECTION-SEEN @ 0= if E-DIFF-SYNTAX throw then
    SECTION-ACTIVE @ if
       COPY-SOURCE-REST
-      SCAN-OLD-BOUNDARIES
-      REPLAY-DELETED-BOUNDARIES
+      SCAN-OLD
       SCAN-DEFINITIONS
    then
    DIFF:RESET ;

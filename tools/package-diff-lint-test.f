@@ -193,6 +193,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-ROOT$ s" test/test" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/core" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   TEST-ROOT$ s" bootstrap/cg" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS ;
 
 : TEST-GLOBAL-SOURCE ( ptr u8 n -- )
@@ -217,6 +219,458 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" ;package" TEST-SOURCE-LINE
    TEST-DIFF-RESET s" lib/case.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS ;
+
+: TEST-GFORTH-VOCABULARY ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary RECOVERY" TEST-SOURCE-LINE
+   s" AlSo RECOVERY DeFiNiTiOnS" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" PrEvIoUs dEfInItIoNs" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN ;
+
+: TEST-GFORTH-LAST-OWNER ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary OUTER" TEST-SOURCE-LINE
+   s" vocabulary INNER" TEST-SOURCE-LINE
+   s" also OUTER also INNER definitions" TEST-SOURCE-LINE
+   s" : INNER-PREFIX ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous previous definitions" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-GFORTH-GLOBALS ( -- )
+   TEST-SOURCE-RESET
+   s" : OUTSIDE-BEFORE ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" vocabulary RECOVERY" TEST-SOURCE-LINE
+   s" also RECOVERY definitions" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   s" : OUTSIDE-AFTER ( -- n ) 3 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   2 TEST-EXPECT-FINDINGS ;
+
+: TEST-GFORTH-STRING-LINE ( -- )
+   s" s" TEST-SOURCE+
+   TEST-DQUOTE-C TEST-SOURCE-C
+   TEST-SPACE-C TEST-SOURCE-C
+   s" also FORGED definitions previous definitions" TEST-SOURCE+
+   TEST-DQUOTE-C TEST-SOURCE-C
+   s"  drop" TEST-SOURCE-LINE ;
+
+: TEST-GFORTH-COMMENT-SEARCH ( -- )
+   s" also " TEST-SOURCE+
+   TEST-BACKSLASH-C TEST-SOURCE-C
+   s"  search order only" TEST-SOURCE-LINE ;
+
+: TEST-GFORTH-INERT-SEARCH ( -- )
+   TEST-SOURCE-RESET
+   s" also" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN
+   TEST-SOURCE-RESET
+   TEST-GFORTH-COMMENT-SEARCH
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN ;
+
+: TEST-GFORTH-ALSO-DEFINERS ( -- )
+   TEST-SOURCE-RESET
+   s" also : GLOBAL ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS
+   TEST-SOURCE-RESET
+   s" also variable GLOBAL-CELL" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-GFORTH-ALSO-PACKAGE ( -- )
+   TEST-SOURCE-RESET
+   s" also package X : OWNED ( -- n ) 1 ; ;package" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN ;
+
+: TEST-WRITE-ADDED-ALSO ( -- )
+   TEST-SOURCE-RESET
+   s" also" TEST-SOURCE-LINE
+   s" : GLOBAL ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-ADDED-ALSO-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1 +1,2 @@" TEST-DIFF+ TEST-LF
+   s" +also" TEST-DIFF+ TEST-LF
+   s" -: GLOBAL ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s" +: GLOBAL ( -- n ) 2 ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-ADDED-ALSO ( -- )
+   TEST-WRITE-ADDED-ALSO
+   TEST-DIFF-RESET TEST-ADDED-ALSO-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-GFORTH-BRACKET-OWNER ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary V" TEST-SOURCE-LINE
+   s" [ also V definitions ]" TEST-SOURCE-LINE
+   s" : GLOBAL ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" [ previous definitions ]" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   s" bracketed owner lookalikes remain opaque" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-GROUPED-OWNER ( -- )
+   TEST-SOURCE-RESET
+   s" package B" TEST-SOURCE-LINE
+   s" : KEEP ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" lib/grouped-owner.f" TEST-WRITE-SOURCE ;
+
+: TEST-GROUPED-OWNER-DIFF ( -- )
+   s" lib/grouped-owner.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,3 @@" TEST-DIFF+ TEST-LF
+   s" -package A" TEST-DIFF+ TEST-LF
+   s" -: KEEP ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s" +package B" TEST-DIFF+ TEST-LF
+   s" +: KEEP ( -- n ) 2 ;" TEST-DIFF+ TEST-LF
+   s"  ;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-GROUPED-OWNER ( -- )
+   TEST-WRITE-GROUPED-OWNER
+   TEST-DIFF-RESET TEST-GROUPED-OWNER-DIFF
+   s" grouped owner and definition replacement retains identity" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-REORDERED-NAMES ( -- )
+   TEST-SOURCE-RESET
+   s" package B" TEST-SOURCE-LINE
+   s" : SHARED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" package A" TEST-SOURCE-LINE
+   s" : SHARED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" lib/reordered-names.f" TEST-WRITE-SOURCE ;
+
+: TEST-REORDERED-NAMES-DIFF ( -- )
+   s" lib/reordered-names.f" TEST-MODIFY-HEAD
+   s" @@ -1,6 +1,6 @@" TEST-DIFF+ TEST-LF
+   s" -package A" TEST-DIFF+ TEST-LF
+   s" +package B" TEST-DIFF+ TEST-LF
+   s"  : SHARED ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s"  ;package" TEST-DIFF+ TEST-LF
+   s" -package B" TEST-DIFF+ TEST-LF
+   s" +package A" TEST-DIFF+ TEST-LF
+   s"  : SHARED ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s"  ;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-REORDERED-NAMES ( -- )
+   TEST-WRITE-REORDERED-NAMES
+   TEST-DIFF-RESET TEST-REORDERED-NAMES-DIFF
+   s" reordered same-name definitions retain exact owners" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-WRITE-UNDECLARED-VOCAB ( -- )
+   TEST-SOURCE-RESET
+   s" : FAKE ( -- ) ;" TEST-SOURCE-LINE
+   s" also FAKE definitions" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-UNDECLARED-VOCAB-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  : FAKE ( -- ) ;" TEST-DIFF+ TEST-LF
+   s" +also FAKE definitions" TEST-DIFF+ TEST-LF
+   s" +: OWNED ( -- n ) 1 ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-UNDECLARED-VOCAB ( -- )
+   TEST-WRITE-UNDECLARED-VOCAB
+   TEST-DIFF-RESET TEST-UNDECLARED-VOCAB-DIFF
+   s" ordinary word cannot become a vocabulary owner" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-GFORTH-COMMENTED-FORM ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary V" TEST-SOURCE-LINE
+   s" also ( inert ) V definitions" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous ( inert ) definitions" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   s" comments between vocabulary roles are inert" T-LABEL
+   TEST-EXPECT-CLEAN
+   TEST-SOURCE-RESET
+   s" vocabulary ( inert ) V" TEST-SOURCE-LINE
+   s" also V definitions" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   s" comments before vocabulary names are inert" T-LABEL
+   TEST-EXPECT-CLEAN ;
+
+: TEST-GFORTH-OPAQUE ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary LOOKUP" TEST-SOURCE-LINE
+   s" also LOOKUP" TEST-SOURCE-LINE
+   s" : SEARCH-ONLY ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous" TEST-SOURCE-LINE
+   s" [ also LOOKUP ]" TEST-SOURCE-LINE
+   s" : BRACKET-ONLY ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" [ previous ]" TEST-SOURCE-LINE
+   TEST-BACKSLASH-C TEST-SOURCE-C
+   s"  also FORGED definitions" TEST-SOURCE-LINE
+   s" ( also FORGED definitions previous definitions )" TEST-SOURCE-LINE
+   TEST-GFORTH-STRING-LINE
+   s" PRIM: GFV-ROW also FORGED definitions previous definitions PRIM;" TEST-SOURCE-LINE
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   2 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-DELETED-VOCAB-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary OLD" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-DELETED-VOCAB-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,4 +1,2 @@" TEST-DIFF+ TEST-LF
+   s"  vocabulary OLD" TEST-DIFF+ TEST-LF
+   s" -also OLD definitions" TEST-DIFF+ TEST-LF
+   s"  : LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s" -previous definitions" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-DELETED-OWNER ( -- )
+   TEST-WRITE-DELETED-VOCAB-SOURCE
+   TEST-DIFF-RESET TEST-DELETED-VOCAB-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-DELETED-TERMINALS ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary OLD" TEST-SOURCE-LINE
+   s" also OLD" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-DELETED-TERMINALS-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,6 +1,4 @@" TEST-DIFF+ TEST-LF
+   s"  vocabulary OLD" TEST-DIFF+ TEST-LF
+   s"  also OLD" TEST-DIFF+ TEST-LF
+   s" -definitions" TEST-DIFF+ TEST-LF
+   s"  : LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s"  previous" TEST-DIFF+ TEST-LF
+   s" -definitions" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-DELETED-TERMINALS ( -- )
+   TEST-WRITE-DELETED-TERMINALS
+   TEST-DIFF-RESET TEST-DELETED-TERMINALS-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-DELETED-FORMS ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary OLD" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" : LATER ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-DELETED-FORMS-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,8 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  vocabulary OLD" TEST-DIFF+ TEST-LF
+   s" -also" TEST-DIFF+ TEST-LF
+   s" -OLD" TEST-DIFF+ TEST-LF
+   s" -definitions" TEST-DIFF+ TEST-LF
+   s"  : LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s" -previous" TEST-DIFF+ TEST-LF
+   s" -definitions" TEST-DIFF+ TEST-LF
+   s"  : LATER ( -- n ) 2 ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-DELETED-FORMS ( -- )
+   TEST-WRITE-DELETED-FORMS
+   TEST-DIFF-RESET TEST-DELETED-FORMS-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-CREATED-OWNER ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary V" TEST-SOURCE-LINE
+   s" also V" TEST-SOURCE-LINE
+   s" definitions" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous" TEST-SOURCE-LINE
+   s" definitions" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-CREATED-OWNER-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,8 +1,6 @@" TEST-DIFF+ TEST-LF
+   s"  vocabulary V" TEST-DIFF+ TEST-LF
+   s"  also V" TEST-DIFF+ TEST-LF
+   s" -BLOCK" TEST-DIFF+ TEST-LF
+   s"  definitions" TEST-DIFF+ TEST-LF
+   s"  : LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s"  previous" TEST-DIFF+ TEST-LF
+   s" -BLOCK" TEST-DIFF+ TEST-LF
+   s"  definitions" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-CREATED-OWNER ( -- )
+   TEST-WRITE-CREATED-OWNER
+   TEST-DIFF-RESET TEST-CREATED-OWNER-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-RENAMED-VOCAB ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary A" TEST-SOURCE-LINE
+   s" vocabulary B" TEST-SOURCE-LINE
+   s" also B definitions" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-RENAMED-VOCAB-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,5 +1,5 @@" TEST-DIFF+ TEST-LF
+   s"  vocabulary A" TEST-DIFF+ TEST-LF
+   s"  vocabulary B" TEST-DIFF+ TEST-LF
+   s" -also A definitions" TEST-DIFF+ TEST-LF
+   s" +also B definitions" TEST-DIFF+ TEST-LF
+   s"  : LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s"  previous definitions" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-RENAMED-OWNER ( -- )
+   TEST-WRITE-RENAMED-VOCAB
+   TEST-DIFF-RESET TEST-RENAMED-VOCAB-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-EDITED-RENAMED-VOCAB ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary A" TEST-SOURCE-LINE
+   s" vocabulary B" TEST-SOURCE-LINE
+   s" also B definitions" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-EDITED-RENAMED-VOCAB-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,5 +1,5 @@" TEST-DIFF+ TEST-LF
+   s"  vocabulary A" TEST-DIFF+ TEST-LF
+   s"  vocabulary B" TEST-DIFF+ TEST-LF
+   s" -also A definitions" TEST-DIFF+ TEST-LF
+   s" +also B definitions" TEST-DIFF+ TEST-LF
+   s" -: LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s" +: LEAK ( -- n ) 2 ;" TEST-DIFF+ TEST-LF
+   s"  previous definitions" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-EDITED-RENAMED-OWNER ( -- )
+   TEST-WRITE-EDITED-RENAMED-VOCAB
+   TEST-DIFF-RESET TEST-EDITED-RENAMED-VOCAB-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-SAME-LINE-RENAMED ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary A vocabulary B also B definitions : LEAK ( -- n ) 2 ; previous definitions"
+   TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-SAME-LINE-RENAMED-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1 +1 @@" TEST-DIFF+ TEST-LF
+   s" -vocabulary A vocabulary B also A definitions : LEAK ( -- n ) 1 ; previous definitions"
+   TEST-DIFF+ TEST-LF
+   s" +vocabulary A vocabulary B also B definitions : LEAK ( -- n ) 2 ; previous definitions"
+   TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-SAME-LINE-RENAMED ( -- )
+   TEST-WRITE-SAME-LINE-RENAMED
+   TEST-DIFF-RESET TEST-SAME-LINE-RENAMED-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-RENAMED-PACKAGE ( -- )
+   TEST-SOURCE-RESET
+   s" package B" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   s" lib/renamed-owner.f" TEST-WRITE-SOURCE ;
+
+: TEST-RENAMED-PACKAGE-DIFF ( -- )
+   s" lib/renamed-owner.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,3 @@" TEST-DIFF+ TEST-LF
+   s" -package A" TEST-DIFF+ TEST-LF
+   s" +package B" TEST-DIFF+ TEST-LF
+   s"  : LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s"  ;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-RENAMED-PACKAGE ( -- )
+   TEST-WRITE-RENAMED-PACKAGE
+   TEST-DIFF-RESET TEST-RENAMED-PACKAGE-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-CHANGED-OWNER-KIND ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary V" TEST-SOURCE-LINE
+   s" also V definitions" TEST-SOURCE-LINE
+   s" : LEAK ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-CHANGED-OWNER-KIND-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1,4 @@" TEST-DIFF+ TEST-LF
+   s" -package V" TEST-DIFF+ TEST-LF
+   s" +vocabulary V" TEST-DIFF+ TEST-LF
+   s" +also V definitions" TEST-DIFF+ TEST-LF
+   s"  : LEAK ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF
+   s" +previous definitions" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-CHANGED-OWNER-KIND ( -- )
+   TEST-WRITE-CHANGED-OWNER-KIND
+   TEST-DIFF-RESET TEST-CHANGED-OWNER-KIND-DIFF
+   1 TEST-EXPECT-FINDINGS ;
+
+: TEST-WRITE-SAME-LINE-OWNER ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary V" TEST-SOURCE-LINE
+   s" also V definitions : KEEP ( -- n ) 1 ; previous definitions" TEST-SOURCE-LINE
+   TEST-BACKSLASH-C TEST-SOURCE-C
+   s"  new comment" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-SAME-LINE-OWNER-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,2 +1,3 @@" TEST-DIFF+ TEST-LF
+   s"  vocabulary V" TEST-DIFF+ TEST-LF
+   s"  also V definitions : KEEP ( -- n ) 1 ; previous definitions" TEST-DIFF+ TEST-LF
+   s" +" TEST-DIFF+ TEST-BACKSLASH-C TEST-DIFF-C
+   s"  new comment" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-SAME-LINE-OWNER ( -- )
+   TEST-WRITE-SAME-LINE-OWNER
+   TEST-DIFF-RESET TEST-SAME-LINE-OWNER-DIFF
+   TEST-EXPECT-CLEAN ;
+
+: TEST-WRITE-BALANCED-VOCAB-SOURCE ( -- )
+   TEST-SOURCE-RESET
+   s" : LEGACY ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" vocabulary SIDE" TEST-SOURCE-LINE
+   s" also SIDE definitions" TEST-SOURCE-LINE
+   s" : LOCAL ( -- n ) 2 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   s" : LATER ( -- n ) 3 ;" TEST-SOURCE-LINE
+   s" bootstrap/cg/forth.fs" TEST-WRITE-SOURCE ;
+
+: TEST-BALANCED-VOCAB-DIFF ( -- )
+   s" bootstrap/cg/forth.fs" TEST-MODIFY-HEAD
+   s" @@ -1,2 +1,6 @@" TEST-DIFF+ TEST-LF
+   s"  : LEGACY ( -- n ) 1 ;" TEST-DIFF+ TEST-LF
+   s" +vocabulary SIDE" TEST-DIFF+ TEST-LF
+   s" +also SIDE definitions" TEST-DIFF+ TEST-LF
+   s" +: LOCAL ( -- n ) 2 ;" TEST-DIFF+ TEST-LF
+   s" +previous definitions" TEST-DIFF+ TEST-LF
+   s"  : LATER ( -- n ) 3 ;" TEST-DIFF+ TEST-LF ;
+
+: TEST-GFORTH-BALANCED-INSERT ( -- )
+   TEST-WRITE-BALANCED-VOCAB-SOURCE
+   TEST-DIFF-RESET TEST-BALANCED-VOCAB-DIFF
+   TEST-EXPECT-CLEAN ;
 
 : TEST-REDUNDANT-PREFIXES ( -- )
    TEST-DIFF-RESET
@@ -352,6 +806,71 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-ROOT$ PACKAGE-DIFF:ROOT!
    TEST-DIFF$ PACKAGE-DIFF:SOURCE
    PACKAGE-DIFF:FINISH ;
+
+: TEST-GFORTH-SYNTAX-CASE ( -- )
+   TEST-DIFF-RESET s" bootstrap/cg/forth.fs" TEST-ADD-SOURCE-SECTION
+   [: TEST-RUN-DIRECT ;] E-DIFF-SYNTAX TTHROWSQ ;
+
+: TEST-GFORTH-SYNTAX ( -- )
+   TEST-SOURCE-RESET
+   s" vocabulary OUTER" TEST-SOURCE-LINE
+   s" vocabulary INNER" TEST-SOURCE-LINE
+   s" also OUTER also INNER definitions" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   TEST-GFORTH-SYNTAX-CASE
+   TEST-SOURCE-RESET
+   s" package OWNER" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   TEST-GFORTH-SYNTAX-CASE
+   TEST-SOURCE-RESET
+   s" vocabulary OWNER" TEST-SOURCE-LINE
+   s" also OWNER definitions" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" ;package" TEST-SOURCE-LINE
+   TEST-GFORTH-SYNTAX-CASE
+   TEST-SOURCE-RESET
+   s" vocabulary OPEN" TEST-SOURCE-LINE
+   s" also OPEN definitions" TEST-SOURCE-LINE
+   s" : OWNED ( -- n ) 1 ;" TEST-SOURCE-LINE
+   TEST-GFORTH-SYNTAX-CASE
+   TEST-SOURCE-RESET
+   s" vocabulary OPEN" TEST-SOURCE-LINE
+   s" [ also OPEN definitions" TEST-SOURCE-LINE
+   s" : HIDDEN ( -- n ) 1 ;" TEST-SOURCE-LINE
+   s" previous definitions" TEST-SOURCE-LINE
+   TEST-GFORTH-SYNTAX-CASE
+   TEST-SOURCE-RESET
+   s" previous definitions" TEST-SOURCE-LINE
+   TEST-GFORTH-SYNTAX-CASE ;
+
+: TEST-GFORTH-VOCABULARIES ( -- )
+   TEST-GFORTH-VOCABULARY
+   TEST-GFORTH-LAST-OWNER
+   TEST-GFORTH-GLOBALS
+   TEST-GFORTH-INERT-SEARCH
+   TEST-GFORTH-ALSO-DEFINERS
+   TEST-GFORTH-ALSO-PACKAGE
+   TEST-GFORTH-ADDED-ALSO
+   TEST-GFORTH-BRACKET-OWNER
+   TEST-GFORTH-GROUPED-OWNER
+   TEST-GFORTH-REORDERED-NAMES
+   TEST-GFORTH-UNDECLARED-VOCAB
+   TEST-GFORTH-COMMENTED-FORM
+   TEST-GFORTH-OPAQUE
+   TEST-GFORTH-SYNTAX
+   TEST-GFORTH-DELETED-OWNER
+   TEST-GFORTH-DELETED-TERMINALS
+   TEST-GFORTH-DELETED-FORMS
+   TEST-GFORTH-CREATED-OWNER
+   TEST-GFORTH-RENAMED-OWNER
+   TEST-GFORTH-EDITED-RENAMED-OWNER
+   TEST-GFORTH-SAME-LINE-RENAMED
+   TEST-RENAMED-PACKAGE
+   TEST-GFORTH-CHANGED-OWNER-KIND
+   TEST-GFORTH-SAME-LINE-OWNER
+   TEST-GFORTH-BALANCED-INSERT ;
 
 \ A finding count alone cannot tell a report about the real global apart from a
 \ report about a word forged out of row bytes: both are "one finding".  The
@@ -1195,7 +1714,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s"  new comment" TEST-DIFF+ TEST-LF
    s"  ;package" TEST-DIFF+ TEST-LF ;
 
-: TEST-PAREN-NAME-REPLAY ( -- )
+: TEST-PAREN-NAME-RECON ( -- )
    TEST-WRITE-PAREN-NAME-SOURCE
    TEST-DIFF-RESET
    TEST-PAREN-NAME-DIFF
@@ -1214,7 +1733,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 
 \ Both fake package transitions sit inside control-whitespace comments in real
 \ registry rows.  They cannot surround and hide the changed global definition.
-: TEST-CONTROL-COMMENT-REPLAY ( -- )
+: TEST-CONTROL-COMMENT-ROW ( -- )
    TEST-WRITE-CONTROL-COMMENT-SOURCE
    TEST-DIFF-RESET
    s" lib/control-comment.f" TEST-ADD-SOURCE-SECTION
@@ -1670,6 +2189,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-PREPARE
    TEST-GLOBAL-OWNERS
    TEST-CASE-CLOSE-REOPEN
+   TEST-GFORTH-VOCABULARIES
    TEST-REDUNDANT-PREFIXES
    TEST-DEFINER-INVENTORY
    TEST-REGISTRY-LANGUAGE
@@ -1681,8 +2201,8 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-CHECKER-EXEMPTION
    TEST-ERROR-VOCABULARY
    TEST-POSITIVES
-   TEST-PAREN-NAME-REPLAY
-   TEST-CONTROL-COMMENT-REPLAY
+   TEST-PAREN-NAME-RECON
+   TEST-CONTROL-COMMENT-ROW
    TEST-DELETED-OWNER
    TEST-ZERO-COUNT-OWNER-DELETION
    TEST-DELETION-TO-EMPTY
