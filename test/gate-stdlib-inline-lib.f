@@ -466,6 +466,7 @@ public
    s" test/compiler/ir-symbol.f" GSI-FORK-INCLUDE
    s" test/compiler/ir-type.f" GSI-FORK-INCLUDE
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
+   s" test/ptr-elem-test.f" GSI-FORK-INCLUDE
    s" test/typed-storage-test.f" GSI-FORK-INCLUDE
    s" test/raw-storage-load-seal-test.f" GSI-FORK-INCLUDE
    s" lib/fs-test.f" GSI-FORK-INCLUDE

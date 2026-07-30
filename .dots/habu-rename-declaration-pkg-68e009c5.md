@@ -1,9 +1,11 @@
 ---
 title: Rename declaration package to DECL-TX
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-26T21:40:54.812333+02:00"
+closed-at: "2026-07-30T04:38:59.221944+02:00"
+close-reason: "Cut at 6ae012a2: namespace-only churn does not enable owner construction, GPT-2, or the vLLM replacement; no alias or migration is needed."
 ---
 
 Problem: the package name `DECLARATION-TRANSACTION` is needlessly verbose at

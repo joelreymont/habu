@@ -1302,9 +1302,16 @@ CT-INIT
 \ generic n/int-family interaction. Input/output checks use the integer lattice:
 \ a narrower concrete int can flow into a wider one; widening never applies to
 \ nominal roles (pid/fd/rc/idx/len/...), which stay strict.
+\ A pointee (CUR-STRICT) admits NEITHER relaxation: an element type is part of
+\ the pointer's identity, so two concrete elements must carry the SAME code.
+\ Both the width lattice AND generic `n` absorption are value-position rules —
+\ `n` is the generic 64-bit stack cell, not a wildcard element — so allowing
+\ either one under a pointer let `ptr n` and `ptr u8` alias each other and a
+\ caller read a byte span with cell `@` (or a cell span with `c@`) uncaught.
 : CON-OK? ( n n -- bool ) {: t1:n t2:n :}
    t1 PAY t2 PAY = IF RES-TRUE EXIT THEN
-   UNIFY-WIDEN? CUR-STRICT @ 0= and IF t1 PAY t2 PAY INT-WIDENS? EXIT THEN
+   CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN
+   UNIFY-WIDEN? IF t1 PAY t2 PAY INT-WIDENS? EXIT THEN
    t1 PAY CC-N = t2 PAY INT-FAM? and IF RES-TRUE EXIT THEN
    t2 PAY CC-N = t1 PAY INT-FAM? and IF RES-TRUE EXIT THEN
    RES-FALSE ;

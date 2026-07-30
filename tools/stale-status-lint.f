@@ -1,7 +1,6 @@
 \ stale-status-lint.f - CLI entrypoint for stale status/count lint.
 \ Load after tools/stale-status-lint-core.f.
 
-require lib/date.f
 require lib/errors.f
 require lib/string.f
 require lib/memory.f

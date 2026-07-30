@@ -95,7 +95,11 @@ create SP-CT-L   SP-IDX-CAP cells allot
 variable SP-CT-N
 
 : SP-IDX-SLOT ( ptr a n -- ptr a )  SP-IDX-NAME *  + ;
-: SP-LIST+ ( ptr u8 n ptr a ptr a ptr a -- ) {: a:ptr u:n base:ptr lb:ptr cv:ptr :}
+\ The three blocks have three different element types, so they need three
+\ different declarations: `base` is the packed name bytes, `lb` the per-entry
+\ length cells, `cv` the live-count cell. One shared `ptr a` made them one type,
+\ so reading the count as an integer also declared the name bytes to be cells.
+: SP-LIST+ ( ptr u8 n ptr u8 ptr n ptr n -- ) {: a:ptr u:n base:ptr lb:ptr cv:ptr :}
    u SP-IDX-NAME > if E-SPEC-SYNTAX throw then
    cv @ SP-IDX-CAP >= if E-SPEC-ARITY throw then
    a  base cv @ SP-IDX-SLOT  u BYTE-COPY

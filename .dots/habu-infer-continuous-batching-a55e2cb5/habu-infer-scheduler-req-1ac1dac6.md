@@ -1,25 +1,15 @@
 ---
-title: "Infer scheduler: request state machine"
+title: Own the inference scheduler
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:43:30.801548+02:00"
 blocks:
-  - habu-add-bounded-host-b40b048f
+  - habu-infer-engine-64-02416606
 ---
 
-Why this exists:
-scheduler states and allowed transitions are prose, so partial or illegal request progress can be represented.
+Why: multiple requests need one owner for the shared engine and their lifecycle; copyable request identifiers must never carry that ownership.
 
-Required result:
-define a typed request identity and WAITING, PREFILLING, DECODING, COMPLETED, CANCELLED, FAILED, REJECTED states with explicit transition functions.
+Result: package SCHED defines one linear scheduler; copyable nominal scheduler id and request handle types with no public constructors; states waiting, prefilling, and decoding; one immutable copyable SCHED:result-cap value; and the sole public nominal result-row sum: token(req,id,off,len) | token-final(req,id,off,len,reason,prompt-n,completion-n) | finished(req,reason,prompt-n,completion-n) | failed(req,code). START ( INFER:engine n n -- SCHED:start-result ) takes maximum live requests and decode batch, validates them, allocates one fixed request table plus bounded selection and INFER input/step scratch, mints one process-unique scheduler identity, and publishes only after every acquisition succeeds. Identity exhaustion rejects instead of wrapping. ID ( SCHED:sched -- SCHED:sched SCHED:id ) returns its copyable nominal id; each request handle and every later terminal owner carries that same identity. MATCH-ID ( SCHED:sched SCHED:id -- SCHED:id-match-result ) returns matched(scheduler,id) only for the originating scheduler or refused(scheduler,id,cross-scheduler) without mutation. Rows own no byte storage; offsets address the caller arena. Each row privately owns its INFER:seq, maximum output count, counters, and state; sampling configuration and random state live in the sequence. Every operation resolves scheduler and row identity internally. RUNNABLE? ( SCHED:sched -- SCHED:sched bool ) is true exactly when a nonterminal row can advance on the next TICK. RESULT-CAP ( SCHED:sched -- SCHED:sched SCHED:result-cap ) is the sole projection of maximum result rows and token bytes one tick can publish; callers may copy the value but cannot construct it. FOOTPRINT returns immutable host/device owned-byte counts from stored allocation extents. Ordinary STOP rejects live requests. A cleanup-failed scheduler is the public linear SCHED:terminal owner declared by the retirement leaf; only SCHED:STOP may retry its ordered sequence/cache/device teardown, while SCHED:MATCH-TERMINAL may authenticate it without exposing or changing ownership. STOP refusal propagates terminal intact. Add no scheduler-owned result storage, event slot, request owner, public identity field, raw row field, engine per request, second queue or cache, callback, task, thread, global table, growth after START, transport field, version, or compatibility API.
 
-Done when:
-every allowed transition succeeds once; skipped, stale, terminal, and duplicate transitions reject without mutation.
-
-Expected touch points: new maki/infer/request-state.f, focused test, FILEMAP.md.
-Smallest check: focused transition matrix.
-Prerequisite: `habu-add-bounded-host-b40b048f` must provide the owned, aligned
-storage and unique mutable borrow consumed by the state machine. A copyable raw
-caller pointer cannot be refined into unique linear request authority.
-Owned result: request identity and state machine only.
+Owner: new `maki/infer/scheduler.f` scheduler lifetime, healthy identity matching, result schema/capacity, and row state only; callers own result table and byte storage. Production red: no owner can hold one engine while tracking more than one request or authenticate transport teardown to that scheduler. Acceptance: two schedulers have distinct ids and many request handles coexist; copied ids reveal no field; MATCH-ID accepts only its originating scheduler and returns both owners intact on mismatch; exhaustion rejects; RESULT-CAP is unforgeable and equals the checked maximum rows and bytes; footprint equals the checked allocations; every allowed transition is exact; skipped, stale, cross-scheduler, terminal, and duplicate transitions reject without mutation; partial START and STOP failures release once; a copied handle names the same row but cannot access another scheduler. Smallest owning check: focused scheduler construction and state matrix through the real INFER engine. Claim: unassigned.

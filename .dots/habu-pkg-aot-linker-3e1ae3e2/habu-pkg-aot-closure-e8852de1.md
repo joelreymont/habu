@@ -1,9 +1,11 @@
 ---
 title: Package AOT closure
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-23T21:59:36.655320+02:00"
+closed-at: "2026-07-30T04:07:59.950027+02:00"
+close-reason: Landed reviewed package hard cut at 5895a7a5d57c; exact production, native, Maki, PTX, package, trust, host, and dot gates passed.
 blocks:
   - habu-pkg-aot-linker-7b8acef6
 ---

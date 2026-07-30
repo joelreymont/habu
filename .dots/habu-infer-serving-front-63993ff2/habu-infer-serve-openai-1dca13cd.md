@@ -1,25 +1,11 @@
 ---
-title: "Infer serve: OpenAI completions mapping"
+title: Finish strict completion decode
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T10:07:43.943179+02:00"
 blocks:
-  - habu-infer-serve-completion-987f5b4b
-  - habu-infer-serve-engine-37b8873a
+  - habu-decode-completion-sampling-4c405a01
 ---
 
-Why this exists:
-OpenAI-compatible fields and finish reasons must map exactly onto the internal completion contract without leaking transport policy into the engine.
-
-Required result:
-Translate the supported completions request into the internal schema and translate engine events into the declared non-streaming and streaming response objects.
-
-Done when:
-Supported fields, defaults, usage counts, token chunks, finish reasons, and named errors match committed protocol fixtures; unsupported fields reject explicitly.
-
-Expected touch points: OpenAI protocol mapping and focused JSON fixtures.
-Smallest check: the focused request and streamed-response fixture test.
-Prerequisites: completion request schema and engine event stream.
-Owned result: OpenAI-compatible field mapping only.
-Claim: unassigned.
+Why: the required and scalar leaves build the production decoder; this leaf closes the exact supported OpenAI field set. Result: finish the same OPENAI-COMP:DECODE pass so any stream field, stop, suffix, echo, logprobs, best_of, logit_bias, user, unknown field, duplicate field, wrong role, or unsupported prompt form refuses before publication. Success returns the one request value from the earlier leaves with canonical SAMPLE:config; no INFER-owned sampling type or second request representation exists. Owner: final strict-field dispatch and decoder integration only. Production red: supported scalar fields exist but the complete field policy has not been proven through one pass. Acceptance: exact and reordered canonical requests decode; hostile strings, duplicates, unsupported fields, wrong roles and types, malformed JSON, and stream true or false all select exact DECODE arms before scheduler admission. Forbidden: response rendering, streaming, chat, token-array prompt, multiple choices, model alias, permissive unknown field, schema, DOM, transport framing, version, compatibility, metric, or lint. Smallest owning check: bin/hb --load maki/serve/openai-decode-test.f. Claim: unassigned.

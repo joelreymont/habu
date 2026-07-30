@@ -159,33 +159,39 @@ variable BLR-CNT
 
 : SURFACE-PRI-DEFS ( -- )
    s" : AS-NOT-EXPOSED-WL? ( ptr a n -- bool ) over XREF-NAME$ rot XREF-FIND-WL <> ;" GE-SRC-LINE
-   s" : AS-BARE-IDENTITY? ( ptr a -- bool ) 0 AS-NOT-EXPOSED-WL? ;" GE-SRC-LINE
-   s" : AS-QUAL-IDENTITY? ( ptr a -- bool ) AS-PUB AS-NOT-EXPOSED-WL? ;" GE-SRC-LINE
    s" : AS-NAME-ABSENT? ( ptr u8 n n -- bool ) XREF-FIND-WL XREF-FOUND? 0= ;" GE-SRC-LINE
    s" : AS-BARE-NAME ( ptr u8 n -- ) 0 AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
    s" : AS-QUAL-NAME ( ptr u8 n -- ) AS-PUB AS-NAME-ABSENT? AS-FAIL ;" GE-SRC-LINE
-   s" : AS-NAMED ( ptr u8 n -- ) 2dup AS-BARE-NAME AS-QUAL-NAME ;" GE-SRC-LINE
    s" : AS-PRIVATE ( ptr u8 n -- ptr a ) AS-PRI XREF-FIND-WL dup XREF-FOUND? AS-FAIL ;" GE-SRC-LINE
+   s" : AS-NAMED ( ptr u8 n -- ) 2dup AS-PRIVATE drop" GE-SRC+
+   s"  2dup AS-BARE-NAME AS-QUAL-NAME ;" GE-SRC-LINE
    s\" : AS-HOSTILE-CHECK ( -- ) s\" SENTSET\" AS-PRIVATE" GE-SRC+
    s"  dup AS-HOST-PUB AS-NOT-EXPOSED-WL? AS-FAIL drop" GE-SRC+
    s\"  s\" SENTSET\" AS-HOST-PUB AS-NAME-ABSENT? 0= AS-FAIL ;" GE-SRC-LINE
    s\" : AS-MAIN-CHECK ( -- ) s\" MAIN\" 0 XREF-FIND-WL XREF-FOUND? AS-FAIL" GE-SRC+
    s\"  s\" MAIN\" AS-PRI XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE
+   \ Representative words, one per way the packaging could regress: REC and
+   \ CLOSURE are ordinary closure-walk code, FINDADDR-PTR is the record
+   \ resolver the linker calls, DIRECT? and TARGET are the branch decoders
+   \ absorbed out of the retired AOT-BRANCH package, CELL-TEXTPTR? is the
+   \ pointer classifier, and RELOC-W32 is the aot-lib caller that used to
+   \ reach the branch decoders through the AOT-BRANCH: prefix and now calls
+   \ them bare. Each must live in AOT-LINK's private wordlist and be reachable
+   \ under no other name.
    s" : AS-NAMED-CHECK ( -- )" GE-SRC+
-   s\"  s\" SENTSET\" AS-NAMED s\" READ-PROG\" AS-NAMED" GE-SRC+
-   s\"  s\" MAP-IN-BLOB\" AS-NAMED s\" COPY-COMPACT-BLOB\" AS-NAMED" GE-SRC+
-   s\"  s\" SEED+\" AS-NAMED ;" GE-SRC-LINE
-   s" : AS-PRI-CHECK ( -- ) 0 ndict@ 0 ?do" GE-SRC+
-   s"  i XREF-REC dup XREF-WORDLIST AS-PRI = if" GE-SRC+
-   s"  dup AS-BARE-IDENTITY? AS-FAIL dup AS-QUAL-IDENTITY? AS-FAIL" GE-SRC+
-   s"  drop 1+ else drop then loop 0 > AS-FAIL ;" GE-SRC-LINE ;
+   s\"  s\" REC\" AS-NAMED s\" REC-NAME-PTR\" AS-NAMED" GE-SRC+
+   s\"  s\" CLOSURE\" AS-NAMED s\" FINDADDR-PTR\" AS-NAMED" GE-SRC+
+   s\"  s\" DIRECT?\" AS-NAMED s\" TARGET\" AS-NAMED" GE-SRC+
+   s\"  s\" CELL-TEXTPTR?\" AS-NAMED s\" RELOC-W32\" AS-NAMED ;" GE-SRC-LINE
+   s\" : AS-NO-RETIRED-NS ( -- ) s\" AOT-BRANCH\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? 0= AS-FAIL" GE-SRC+
+   s\"  s\" AOT-REC\" XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? 0= AS-FAIL ;" GE-SRC-LINE ;
 
 : SURFACE-DEFS ( -- )
    SURFACE-BASE-DEFS
    SURFACE-PUB-DEFS
    SURFACE-PRI-DEFS
    s\" : AS-RUN ( -- ) s\" AOT-LINK\" 0 XREF-FIND-WL XREF-FOUND? 0= AS-FAIL" GE-SRC+
-   s"  AS-HOSTILE-CHECK AS-MAIN-CHECK AS-NAMED-CHECK AS-PUB-CHECK AS-PRI-CHECK ;" GE-SRC-LINE
+   s"  AS-HOSTILE-CHECK AS-MAIN-CHECK AS-NAMED-CHECK AS-NO-RETIRED-NS AS-PUB-CHECK ;" GE-SRC-LINE
    s" AS-RUN" GE-SRC-LINE
    s" ;package" GE-SRC-LINE ;
 

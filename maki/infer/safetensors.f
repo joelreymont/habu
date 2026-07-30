@@ -311,6 +311,7 @@ MR-REC-OFF 1 cells + constant BLOCK-BYTES
 1 cells constant MR-LEN-OFF    \ mapping byte length
 2 cells constant MR-OWNS-OFF   \ 1 when UNMAP-MAPPING must unmap these bytes
 3 cells constant MR-BYTES
+3 constant MR-CELLS            \ the same size, in the unit the cell allocator takes
 
 \ ---- audited representation boundary ---------------------------------------
 \ Ten private leaves, one abstraction: minting an owner token from its block,
@@ -436,7 +437,10 @@ variable LIVE-N
 \ session reuses its reservation, so only the first successful parse allocates.
 : RESERVE-MAPPING ( ptr n -- ) {: st:ptr :}
    st MR-REC-IDX ptr-field @ 0= 0= if exit then
-   MR-ALLOC MEM:ALLOC-BYTES drop {: mr:ptr :}
+   \ The record is three CELLS, so it comes from the cell allocator; the byte
+   \ allocator hands back a `ptr u8` that cannot hold the record's cell fields.
+   \ DISPOSE still releases MR-BYTES, which is the same size in bytes.
+   MR-CELLS MEM:CELLS-ALLOC-COUNT MEM:ALLOC-CELLS {: mr:ptr :}
    mr st MR-FILL
    mr st MR-REC-IDX ptr-field ! ;
 

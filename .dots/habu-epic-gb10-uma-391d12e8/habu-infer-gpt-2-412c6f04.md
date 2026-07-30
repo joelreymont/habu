@@ -1,15 +1,15 @@
 ---
-title: "Infer: GPT-2 124M real-weights forward"
+title: "Infer: GPT-2 pinned inputs"
 status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-21T15:57:56.745951+02:00\""
 blocks:
-  - habu-infer-gpt2-greedy-b456d5b6
+  - habu-own-gpt-2-664626a8
 ---
 
-This is the GPT-2 real-weights campaign record. Do not dispatch it as implementation work. Its leaves own tensor binding, checked geometry, one transformer block, the full host forward, reference-fixture provenance, and the deterministic greedy oracle.
+Campaign only; do not dispatch. Own the exact GPT-2 checkpoint identity, reusable byte-pair encoding state, and GPT-2 tokenizer adapter consumed by the shared device engine. The landed GPT2-REFERENCE package already owns the correctness probes, logits, and 64 reference identifiers; no second forward implementation or reference generator belongs here.
 
-The rejected broad forward in `.jj-ws/fable-gpt2fwd` remains preserved as evidence only. It must be reviewed and partitioned against those leaves; no parent claim remains active.
+Close when the pinned config, safetensors, vocabulary, and merges are exact, two tokenizer owners interleave, and the committed prompt encodes and decodes byte-exactly. Direct GPT2DEV loading and all computation remain in the persistent executor and INFER campaigns. Rejected host-forward commit 736a887c and the removed host-forward dots remain evidence at source commit 85a9646fd6b97e5d2cbb86d637bcf8d8ab2aece8 and must not land.
 
 Claim: unassigned.

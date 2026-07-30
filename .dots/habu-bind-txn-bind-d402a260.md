@@ -8,17 +8,9 @@ blocks:
   - habu-delete-resident-and-05c594cb
 ---
 
-Refrozen 2026-07-27 against the correction list in blackboard message
-20260727-162631.750-codex-8f35 on channel general. The earlier candidate
-`666a7269` and its claim are rejected evidence only.
-
 Why: once the model owns its weight store and `WSTORE:resident` is deleted, the
 two validated residency arms still need one public operation that produces the
-same model state without duplicating validation or weight access. The blocker
-edge is retargeted here to `habu-delete-resident-and-05c594cb`, the leaf that
-performs that deletion. The previous edge pointed at
-`habu-add-wstore-scoped-e57e32e2`, which is marked obsolete and do-not-implement
-and whose closure the delete leaf owns, so it could never have cleared.
+same model state without duplicating validation or weight access.
 
 Owner and interface: package `GPT2TX` owns a new payload ENUM `bind-result`
 with exact arms `bound(FIELD m GPT2TX:gpt2-model)` and

@@ -135,7 +135,9 @@ allocates nothing of its own at freeze time. They are published as
 the test were updated with it. The capacity consequence is recorded honestly:
 seventeen arenas per module against IR-ARENA's sixty-four registry slots means
 three modules can be live at one time rather than four, both limits are named
-refusals, and raising the arena registry is dot habu-raise-ir-arena-5efcde65.
+refusals; raising the arena registry slot count is a one-constant capacity
+change IR-ARENA makes when a real consumer needs more than three live modules
+(no dot - no consumer needs it yet).
 
 **The structural verifier has landed.** This dot's closing note said the section
 6.5 verification "becomes one more refusal arm in front of the arena freezing

@@ -357,8 +357,11 @@ variable REGFILE-U
 
 \ ---- watch-table: classify / dedup / resolve / completeness ratchet ----------
 
-create PW-SCRATCH  PERF-WATCH:SET-BYTES allot
-create PW-MANIFEST PERF-WATCH:SET-BYTES allot
+\ Each set is two blocks: the index cells and the path-byte arena.
+create PW-SCRATCH-IX  PERF-WATCH:INDEX-BYTES allot
+create PW-SCRATCH-AR  PERF-WATCH:ARENA-BYTES allot
+create PW-MANIFEST-IX PERF-WATCH:INDEX-BYTES allot
+create PW-MANIFEST-AR PERF-WATCH:ARENA-BYTES allot
 variable PW-BAD
 
 : CLASSIFY-TESTS ( -- )   \ the classifier keys every acceptance case exactly
@@ -374,53 +377,51 @@ variable PW-BAD
    s" lib/ptx/zz-new-producer.f"    PERF-WATCH:CLASSIFY PERF-WATCH:PW-UNKNOWN  T= ;
 
 : DEDUP-TESTS ( -- )   \ a path set accepts distinct paths and rejects a duplicate
-   PW-SCRATCH PERF-WATCH:PS-RESET
-   PW-SCRATCH s" lib/ptx/tile.f" PERF-WATCH:PS-ADD
-   PW-SCRATCH s" lib/ptx/opt.f"  PERF-WATCH:PS-ADD
-   PW-SCRATCH PERF-WATCH:PS-N 2 T=
-   [: PW-SCRATCH s" lib/ptx/tile.f" PERF-WATCH:PS-ADD ;] E-WATCH-DUP TTHROWSQ ;
+   PW-SCRATCH-IX PERF-WATCH:PS-RESET
+   PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/tile.f" PERF-WATCH:PS-ADD
+   PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/opt.f"  PERF-WATCH:PS-ADD
+   PW-SCRATCH-IX PERF-WATCH:PS-N 2 T=
+   [: PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/tile.f" PERF-WATCH:PS-ADD ;] E-WATCH-DUP TTHROWSQ ;
 
-: PW-RESOLVE# ( ptr a -- n ) {: s:ptr :}   \ paths in the set that do not resolve on disk
+: PW-RESOLVE# ( ptr n ptr u8 -- n ) {: ix:ptr ar:ptr :}   \ paths in the set that do not resolve on disk
    0 PW-BAD !
-   0 begin dup s PERF-WATCH:PS-N < while
-      s over PERF-WATCH:PS-AT FILE? 0= if PW-BAD @ 1+ PW-BAD ! then
-      1+
-   repeat drop PW-BAD @ ;
+   ix PERF-WATCH:PS-N 0 ?do
+      ix ar i PERF-WATCH:PS-AT FILE? 0= if PW-BAD @ 1+ PW-BAD ! then
+   loop PW-BAD @ ;
 
 : RESOLVE-TESTS ( -- )   \ every watched + excluded path resolves; a bogus path is caught
-   PERF-WATCH:WATCH-SET   PW-RESOLVE# 0 T=
-   PERF-WATCH:EXCLUDE-SET PW-RESOLVE# 0 T=
-   PW-SCRATCH PERF-WATCH:PS-RESET
-   PW-SCRATCH s" lib/ptx/tile.f" PERF-WATCH:PS-ADD
-   PW-SCRATCH s" lib/ptx/zz-does-not-exist.f" PERF-WATCH:PS-ADD
-   PW-SCRATCH PW-RESOLVE# 1 T= ;
+   PERF-WATCH:WATCH-INDEX   PERF-WATCH:WATCH-ARENA   PW-RESOLVE# 0 T=
+   PERF-WATCH:EXCLUDE-INDEX PERF-WATCH:EXCLUDE-ARENA PW-RESOLVE# 0 T=
+   PW-SCRATCH-IX PERF-WATCH:PS-RESET
+   PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/tile.f" PERF-WATCH:PS-ADD
+   PW-SCRATCH-IX PW-SCRATCH-AR s" lib/ptx/zz-does-not-exist.f" PERF-WATCH:PS-ADD
+   PW-SCRATCH-IX PW-SCRATCH-AR PW-RESOLVE# 1 T= ;
 
 : PW-MAN-LIB ( ptr u8 n -- ) {: a:ptr u:n :}   \ collect every lib/src .f source
    a u s" .f" ENDS-WITH? 0= if exit then
-   PW-MANIFEST a u PERF-WATCH:PS-ADD ;
+   PW-MANIFEST-IX PW-MANIFEST-AR a u PERF-WATCH:PS-ADD ;
 
 : PW-MAN-CG ( ptr u8 n -- ) {: a:ptr u:n :}   \ collect every tools/ptx/*-cg.f driver
    a u s" -cg.f" ENDS-WITH? 0= if exit then
-   PW-MANIFEST a u PERF-WATCH:PS-ADD ;
+   PW-MANIFEST-IX PW-MANIFEST-AR a u PERF-WATCH:PS-ADD ;
 
 : PW-MAN-COLLECT ( -- )   \ the on-disk producer manifest across the scanned dirs
-   PW-MANIFEST PERF-WATCH:PS-RESET
+   PW-MANIFEST-IX PERF-WATCH:PS-RESET
    s" lib/ptx"      [: PW-MAN-LIB ;] WALK-FILES
    s" src/arch/ptx" [: PW-MAN-LIB ;] WALK-FILES
    s" tools/ptx"    [: PW-MAN-CG ;] WALK-FILES ;
 
-: PW-RATCHET# ( ptr a -- n ) {: s:ptr :}   \ unclassified producers in a manifest set
+: PW-RATCHET# ( ptr n ptr u8 -- n ) {: ix:ptr ar:ptr :}   \ unclassified producers in a manifest set
    0 PW-BAD !
-   0 begin dup s PERF-WATCH:PS-N < while
-      s over PERF-WATCH:PS-AT PERF-WATCH:CLASSIFY PERF-WATCH:PW-UNKNOWN = if PW-BAD @ 1+ PW-BAD ! then
-      1+
-   repeat drop PW-BAD @ ;
+   ix PERF-WATCH:PS-N 0 ?do
+      ix ar i PERF-WATCH:PS-AT PERF-WATCH:CLASSIFY PERF-WATCH:PW-UNKNOWN = if PW-BAD @ 1+ PW-BAD ! then
+   loop PW-BAD @ ;
 
 : RATCHET-COMPLETE-TESTS ( -- )   \ the live producer tree is fully owned; an addition fails
    PW-MAN-COLLECT
-   PW-MANIFEST PW-RATCHET# 0 T=
-   PW-MANIFEST s" lib/ptx/zz-new-producer.f" PERF-WATCH:PS-ADD
-   PW-MANIFEST PW-RATCHET# 1 T= ;
+   PW-MANIFEST-IX PW-MANIFEST-AR PW-RATCHET# 0 T=
+   PW-MANIFEST-IX PW-MANIFEST-AR s" lib/ptx/zz-new-producer.f" PERF-WATCH:PS-ADD
+   PW-MANIFEST-IX PW-MANIFEST-AR PW-RATCHET# 1 T= ;
 
 T-RESET
 KLT-SOURCE-TESTS

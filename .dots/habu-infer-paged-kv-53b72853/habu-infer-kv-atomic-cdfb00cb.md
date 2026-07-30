@@ -1,24 +1,11 @@
 ---
-title: "Infer KV: atomic append transition"
-status: active
+title: Cancel provisional KV batch
+status: open
 priority: 1
 issue-type: task
 created-at: "\"2026-07-22T09:38:16.930498+02:00\""
 blocks:
-  - habu-infer-kv-declared-a0319bef
+  - habu-describe-provisional-kv-ead10e30
 ---
 
-Why this exists:
-page-boundary append and copy-on-write tail append perform several fallible checks and ownership mutations; a late failure can leave length, reservations, references, or free pages inconsistent.
-
-Required result:
-preflight every fallible condition, then commit an infallible append transition.
-
-Done when:
-injected failures at every preflight point leave the cache byte-for-byte invariant, a successful boundary append allocates exactly one page and consumes exactly one reservation, and copy-on-write changes only the mutable tail.
-
-Expected touch points: maki/infer/kv-cache.f, maki/infer/kv-cache-test.f.
-Smallest check: bin/hb --load maki/infer/kv-cache-test.f.
-Prerequisites: declared maximum admission.
-Owned result: append transition only.
-Claim: agent=kv_atomic_append workspace=.jj-ws/habu-infer-kv-atomic-cdfb00cb.
+Why: a provisional batch or ready descriptor must be releasable before the first device enqueue without publishing cache state. Result: CANCEL-BATCH and CANCEL-READY return cancelled(cache) or refused(cache,the-input-carrier,cancel-error), restoring every provisional page, reference, reservation, descriptor row, and private staging owner only on success. The existing monotonic HIGH-WATER retains any observed provisional occupancy. Remove APPEND-TOKEN and every public single-row append wrapper in the same cut; Package KV remains the sole cache-state mutation owner. This leaf contains no DEVRT type, launch, pending, DONE, QUIESCED, commit, post-enqueue cancel, or terminal batch identifier; the separate finalizer owns post-enqueue publication and rollback. Owner: pre-enqueue cancellation and obsolete append-surface deletion only. Production red: APPEND-TOKEN can still publish one sequence independently, and begun or described work has no total pre-enqueue cancellation surface. Acceptance: cancellation restores committed lengths, page tables, references, reservations, free-list membership, and descriptor ownership exactly while preserving only the specified HIGH-WATER increase; injected cleanup failure returns the exact cache and carrier without mutation; repeated, stale, and cross-cache carriers refuse; APPEND-TOKEN and every public wrapper are absent from source, checker, tests, and generated images; the open, add, and describe paths remain exact. Forbidden: public constructor, descriptor edit, DEVRT work, snapshot, lease, boolean sync flag, compatibility API, new metric, partial commit, or second policy. Smallest owning check: focused CANCEL-BATCH, CANCEL-READY, HIGH-WATER, and removed-surface cases through maki/infer/kv-cache-test.f. Claim: unassigned.

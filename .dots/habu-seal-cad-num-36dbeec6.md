@@ -5,7 +5,7 @@ priority: 2
 issue-type: task
 created-at: "2026-07-13T14:14:22.891286+02:00"
 blocks:
-  - habu-seal-owners-syntax-63051652
+  - habu-checker-sealed-destructure-d967fc03
   - habu-migrate-cad-num-cf178e59
   - habu-register-native-repl-f12807aa
 ---

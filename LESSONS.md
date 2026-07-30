@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -1254,8 +1254,9 @@ fits.
   only the LAST repeated `-a` (dropping earlier prerequisites) — patch the frontmatter, run
   dot-dep-lint, verify the rendered tree. `-P <root-id>` only when `.dots/<root-id>/<root-id>.md`
   exists; never `-P`/`-a` a nested id. `dot on` re-quotes metadata each transition (never re-run on
-  an active dot). Never interpolate Markdown backticks into a shell `dot add -d` — command
-  substitution executes them and can erase a stack effect; pass text as data. Mark/close the exact
+  an active dot). Never interpolate Markdown backticks into a double-quoted shell `dot add -d` —
+  command substitution executes them and can erase a stack effect. Omit Markdown quoting in the
+  CLI argument or single-quote the whole argument, then inspect the created file. Mark/close the exact
   PRINTED id, not a filename.
 - **Two push-verification failure modes: an empty `jj log -r` result must be tested with
   `[ -n ]`, and "Move SIDEWAYS bookmark master" means NOT a fast-forward.** A dot was closed on a
@@ -2328,7 +2329,16 @@ fits.
   type or field registry while keeping declaration events that name those rows
   creates published dangling identities even when both local state machines
   pass. Exercise the real outer scope, compare every related high-water mark,
-  and resolve every surviving event after success and failure.
+  and resolve every surviving event after success and failure. A guard that
+  rejects an identifier after rollback left its references live is only a
+  symptom check; retire references before targets in the rollback owner.
+- **With no compatibility contract, a format cut is deletion, not versioning.**
+  Remove the old writer, reader, validator, fixtures, and state in one green
+  change; do not preserve an empty ABI with versions, tombstones, or migration
+  branches.
+- **Audit every consumer before reusing a protection registry.** PROT-WID
+  membership also blocks ahead-of-time calls, so enrolling owner package WIDs
+  would change public callability instead of only guarding publication.
 - **Friend-only grammar needs the generated compiler-prefix seam.** Raw
   `--load` and `--build` inputs still see the baked dictionary's internal-word
   marks, so an isolated `PRIM:` corpus correctly rejects. Use the existing
@@ -2905,6 +2915,128 @@ fits.
   replacements were smaller than what they deleted. When a check must
   reimplement the semantics of the thing it checks, that is the signal to
   delete it, not to narrow it again.
+- **Before naming a file as the unit of deletion, ask whether it holds more
+  than one invariant.** A dot was written to delete three files whose lint
+  "only checks that a date equals today". The file actually implemented two
+  unrelated checks. The date comparison was a pure function of the calendar
+  with no reachable stable green state, so a red run carried no information
+  about the tree. The other check walked every tracked document and rejected
+  any line quoting a self-check count, pointing authors at the single source of
+  truth instead; it stays green indefinitely and its findings name a file and a
+  line. Deleting the file would have destroyed a working invariant to kill a
+  broken one that happened to share a filename. The whole-file scope also
+  manufactured a caller cascade — an emptied gate phase, a phase-id retirement,
+  documentation-map rows, a coverage entry — that vanished entirely once the
+  unit became the invariant rather than the file. The test that separates them
+  is whether a check has a reachable stable green state, not whether it looks
+  like governance.
+- **"Zero consumers" misclassifies every hand-invoked tool, because an entry
+  point has no consumer by construction.** A cruft audit listed three files as
+  verified dead. Only one was: a strict subset of an enrolled test that had
+  moved directories. The second was a diagnostic tool with a real usage
+  interface, which our own rule about building tools instead of bisecting by
+  hand says to keep. For the third the audit misread a line retiring an
+  aggregate performance verdict as retiring the file itself. An audit's
+  reasons need re-deriving one by one; its confident line counts are not
+  evidence. The same sweep also showed that a trust-ledger row can name test
+  files as the consumers of an unchecked boundary that none of them load, so a
+  column no gate validates is an unenforced claim.
+- **Announcing an objection window and then not waiting for it is worse than
+  never offering one.** I posted "unless you object, I will fast-forward and
+  push", then pushed about three minutes later, and the other orchestrator's
+  hold arrived after the push had already landed. Offering a review period and
+  consuming it yourself reads as consultation while functioning as notice, and
+  it costs more trust than pushing without comment would have. If the window is
+  real, wait for an answer; if the change genuinely cannot wait, say that
+  instead and own it.
+- **Proving you did not cause a failure is not proving the tree passes, and
+  choosing your own gate subset is how a red tip gets published.** I moved
+  master to a metadata-only chain after running four gates I picked myself, and
+  reasoned that a change touching no `.f` file could not affect a source gate.
+  The reasoning was sound and the conclusion was still wrong, because the rule
+  is "master is always green", not "master is no worse than I found it". Those
+  are different propositions and only the first one is the rule. The tip was
+  red on two gates I never ran. Worse, I already knew one of them was failing —
+  I had run it that morning and built an entire deletion contract around its
+  failure — but I had it filed as "the check I am removing" rather than "a red
+  gate on the tree I am about to publish", and a fact can sit vivid in one
+  mental slot while being invisible in the slot that would have stopped me. The
+  guard is mechanical, not attentional: run the full owning gate set on the
+  exact tree, and check whether any active tracker entry blocks the bookmark,
+  before the bookmark moves. Both of those would have caught it; neither
+  depends on noticing anything.
+- **Freeze a write set from the callers a change forces, not from the change
+  you picture.** Three contracts in two days named a file set that the delivered
+  work had to exceed, and every time the gap was a caller rather than a
+  surprise: deleting a word migrates whoever calls it. In the worst case I wrote
+  "owner: these three files only", then reviewed and accepted a four-file diff
+  whose fourth file was the deleted word's only external caller, and never
+  compared the diff against the ownership line I had written myself. Derive the
+  write set by asking what breaks when each named definition disappears, and
+  when a review shows the delivered file set exceeding the contract, that is the
+  contract failing its own review — not a scope question for the worker.
+- **An acceptance that names a proof the system cannot perform is not an
+  acceptance.** Four of these shipped into contracts in one day, and each looked
+  rigorous while being unrunnable. A registry byte-identity comparison was
+  specified across two child processes, but the child's state dies with the
+  child, so there was nothing left to compare. Stderr was frozen as "one distinct
+  diagnostic code per failure", but the renderer emits a message form and cannot
+  produce codes. A package-reopen rejection was made an acceptance while four
+  live files legitimately reopened that package, so passing it required deleting
+  working code. Role-specific non-consuming borrows were required from a design
+  whose only exit from the owner consumed it, so no operation could construct
+  one. The check is mechanical and takes one pass: for every acceptance, name the
+  operation that produces the evidence and confirm the system can run it — not
+  that the property is desirable, that the measurement exists.
+- **Before counting, say what the count has to predict, then check the
+  population matches.** A census of "sites touching the migrated words" was
+  offered as the write set for sealing a package. Sealing does not break
+  consumers of a word; it breaks reopeners of the package, which is a different
+  set of files reached by a different query. The count was also taken with a
+  plain text search, so comments counted as callers — substring presence
+  masquerading as structural evidence, which the rules already forbid and which I
+  reached for anyway because it was the quicker query. Both errors were invisible
+  in the number itself: it looked like a census and was one, of the wrong thing.
+- **Being handed a problem is not being handed the lane it lives in; re-read the
+  claim at dispatch, not at planning time.** Told to drive a stop-line incident to
+  a reviewable candidate, I put a worker straight into that incident's registered
+  workspace. The claim on it named the other orchestrator's agent. I had read that
+  claim earlier the same day and quoted it back to them, so this was not ignorance
+  — "you own this problem" silently became "you own this lane" somewhere between
+  reading the assignment and writing the dispatch. Their worker was announced into
+  the same workspace five minutes later; two workers editing one tree would have
+  corrupted the only working repair for a red master. The guard is mechanical and
+  costs one command: before any dispatch, read the target dot's `Claim:` line and
+  confirm the agent name is yours. An assignment changes who is responsible for an
+  outcome, never who may write in a workspace.
+- **A multi-row result cannot be followed by repeated fallible single-row
+  cleanup.** An early close can destroy ownership before a later refusal, while
+  hiding the whole result loses already committed peer tokens. Preflight and
+  commit reclamation once for the complete set; if it still refuses, preserve
+  every row and publish the complete committed result with the terminal owner.
+  The same ownership rule applies to device descriptors: caller memory is not
+  immutable merely because a pointer was called a view, so retain descriptor
+  storage under the package owner until finalization. Authenticate that
+  application descriptor before enqueue; the device completion proof should
+  prove only quiescence of its one linear session, not duplicate application
+  identity in a second package.
+- **Size transport storage from one canonical model-info value.** Passing model
+  name, valid-token count, token-byte bound, and batch cap separately duplicates
+  authority and makes pre-admission capacity proof depend on callers agreeing.
+  Parse only requested syntax; derive storage after the engine and scheduler
+  publish their canonical limits.
+- **A hard cut is one publication, not one untestable edit.** Add the final new
+  surface without forwarding the old one, cut internal callers in green commits
+  on an unpublished branch, delete the old surface, then publish only that final
+  tree. Never claim a child is green if its provider already deleted its inputs.
+- **Cleanup stages must pass the returned owner forward.** A successful stop
+  usually exposes the next outer owner; the cleanup chain must consume that
+  owner or return the exact stage where cleanup refused. A generic "closed"
+  result at every intermediate step silently loses the remaining lifetime.
+- **Freeze every state source and validation authority before dispatch.** Name
+  who mints and refreshes connection metadata, give same-representation input
+  roles distinct nominal types, and authorize result slices once at the batch
+  boundary before connection-state validation.
 
 - **A locally-absent workspace does not mean the work is unowned.** Two lanes
   were wasted today duplicating work another orchestrator was already doing:

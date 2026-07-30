@@ -235,7 +235,12 @@ TRUSTED: MINT-BUFFER ( ptr u8 -- WSTORE:buffer ) ;
 TRUSTED: BUF>REC ( WSTORE:buffer -- WSTORE:buffer ptr n )
    dup ;
 
-TRUSTED: TAKE-BUFFER ( WSTORE:buffer -- ptr n ) ;
+\ Symmetric with MINT-BUFFER on purpose: the token IS the allocation MINT-BUFFER
+\ was handed, so consuming it gives back the same `ptr u8`. Declaring the consume
+\ as `ptr n` made the pair retype the block's element silently, which only ever
+\ certified because a pointee used to admit `n` where `u8` was required. Callers
+\ that need the record's CELLS take them from BUF>REC, the audited cell view.
+TRUSTED: TAKE-BUFFER ( WSTORE:buffer -- ptr u8 ) ;
 
 \ The residency handle is the store's own table block retyped once more, so its
 \ mint and its consume are the same identities SEAL and TAKE-TABLE already are.
@@ -402,10 +407,10 @@ PTR-VARIABLE RB-PEND
 \ reason SAFET:UNMAP-MAPPING does it - a caller disposing several owners must see
 \ a failed release without unwinding past the owners it has not disposed of yet.
 : BUF-FREE ( WSTORE:buffer -- result<n,n> )
-   TAKE-BUFFER {: rec:ptr :}
+   BUF>REC {: rec:ptr :}                       \ the record's CELLS, token still held
    rec RB-BASE-IDX ptr-field @ {: base:ptr :}
    rec RB-LEN-OFF + @ {: blen:n :}
-   rec BLK>BYTES RB-ALLOC MEM:RELEASE-BYTES
+   TAKE-BUFFER RB-ALLOC MEM:RELEASE-BYTES      \ the allocation's BYTES, token consumed
    -1 LIVE-N +!
    base blen [: BUF-REL ;] catch {: code:n :}
    2drop

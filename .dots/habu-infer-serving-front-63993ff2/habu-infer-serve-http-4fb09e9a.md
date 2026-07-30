@@ -1,26 +1,11 @@
 ---
-title: "Infer serve: HTTP connection lifecycle"
+title: Close terminal completion connection
 status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-22T10:07:44.072966+02:00"
 blocks:
-  - habu-infer-serve-http-7f1f6959
-  - habu-infer-serve-openai-1dca13cd
-  - habu-infer-serve-client-6fb4998e
+  - habu-close-completion-conn-7b2fdd67
 ---
 
-Why this exists:
-A socket connection needs explicit ownership across accept, request framing, response writes, client cancellation, and shutdown.
-
-Required result:
-Drive one bounded HTTP connection from accepted descriptor through framing and OpenAI mapping to a client backpressure lease, closing every descriptor and request owner exactly once.
-
-Done when:
-Normal, keep-alive-disabled, malformed, slow-reader, disconnect, timeout, engine-error, and server-shutdown traces all release their owners and preserve other connections.
-
-Expected touch points: HTTP connection driver and focused socket lifecycle tests.
-Smallest check: the focused connection lifecycle test.
-Prerequisites: HTTP framing, OpenAI mapping, and client backpressure lease.
-Owned result: one HTTP connection lifecycle only.
-Claim: unassigned.
+Why: once scheduler cleanup fails, later connection teardown must authenticate the terminal owner without attempting cancellation again. Result: public SERVE-CONN:CLOSE-AFTER-SCHED-FAIL ( SCHED:terminal SERVE-CONN:conn -- SERVE-CONN:terminal-close-result ) calls SCHED:MATCH-TERMINAL with the connection's stored id. Mismatch returns the unchanged terminal and connection before touching the writer or descriptor. A match closes the JSON-WRITE:writer once, attempts socket close once without cancellation, and returns the terminal, every non-socket buffer owner, and any live request handle, plus the socket error when close fails. No completed arm retains a socket or writer owner. Owner: authenticated terminal-scheduler connection close only. Production red: a terminal from one server can otherwise authorize teardown of another server's connection. Acceptance: idle and live matching connections close each owner once; terminal A against connection B returns both byte-identical and makes no close call; close failure preserves every non-socket owner and is never retried; first-of-many and two-server traces keep terminal identity exact. Forbidden: OPEN, healthy CLOSE, cancellation through terminal, read, write, decode, result apply, socket retry, compatibility, metric, or lint. Smallest owning check: bin/hb --load maki/serve/connection-state-test.f. Claim: unassigned.
