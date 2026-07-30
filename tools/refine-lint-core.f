@@ -42,7 +42,7 @@ private
 
 $40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
-69 constant SEED#
+67 constant SEED#
 8 constant ALLOW-MAX
 32 constant NUM-CAP
 
@@ -232,22 +232,14 @@ private
       \ habu-checker-linear-scope-6218899c.
       60 of s" CELL>TENSOR-INDEX" endof    \ sole inverse of TENSOR-INDEX>CELL
       61 of s" CELL>TABLE" endof           \ sole inverse of TABLE>CELL
-      \ WSTORE's residency handle holds a whole store as ONE cell because a loaded
-      \ model field names one value while the store is three cells wide. The current
-      \ storage owner is stored in the resident block as a raw cell, and these two
-      \ words read it back; each is reachable only from
-      \ WSTORE:RESIDENT-DISPOSE, the single word that ends a resident's life. Both
-      \ retire with the linear-scope combinator, habu-checker-linear-scope-6218899c.
-      62 of s" N>MAP" endof                \ the sole inverse of MAP>N (mapped variant)
-      63 of s" N>BUF" endof                \ the sole inverse of BUF>N (allocated variant)
       \ CHECK-MAPPED stores the checkpoint mapping in the mapped-ready block.
       \ This private word restores it only for DISCARD-MAPPED or LOAD-MAPPED.
       \ Retires with habu-checker-linear-scope-6218899c.
-      64 of s" CELL>MAPPING" endof         \ sole inverse of MAPPING>CELL
+      62 of s" CELL>MAPPING" endof         \ sole inverse of MAPPING>CELL
       \ LOAD-COPIED stores its owned copy buffer while later fallible steps run.
       \ This private word restores it exactly once for cleanup or successful
       \ store construction. Retires with the same linear-scope capability.
-      68 of s" CELL>BUFFER" endof          \ sole inverse of BUFFER>CELL
+      66 of s" CELL>BUFFER" endof          \ sole inverse of BUFFER>CELL
       \ The three private proof makers of the inference intake path. Each is the
       \ only constructor of an arity-0 nominal family inside a validated
       \ record - MDLCFG:mcfg, GPT2TENSOR:layer-id, GPT2LOAD:gpt2-model - and each is what
@@ -257,9 +249,9 @@ private
       \ Note what they do NOT close: the generated UNMAKE is public, so a REAL record
       \ can be destructured and rebuilt with forged scalars and the original proof.
       \ That is the sealed-destructure capability, habu-checker-sealed-destructure-d967fc03.
-      65 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
-      66 of s" MINT-LAYER-PROOF" endof      \ seals an authenticated GPT2TENSOR:layer-id
-      67 of s" MAKE-MODEL-PROOF" endof     \ seals a loaded GPT2LOAD:gpt2-model
+      63 of s" MINT-CFG-PROOF" endof       \ seals a validated MDLCFG:mcfg
+      64 of s" MINT-LAYER-PROOF" endof      \ seals an authenticated GPT2TENSOR:layer-id
+      65 of s" MAKE-MODEL-PROOF" endof     \ seals a loaded GPT2LOAD:gpt2-model
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -327,13 +319,11 @@ private
       59 of s" maki/db/diff-suite-id.f" endof
       60 of s" maki/infer/gpt2-load.f" endof
       61 of s" maki/infer/gpt2-load.f" endof
-      62 of s" maki/infer/weight-store.f" endof
-      63 of s" maki/infer/weight-store.f" endof
-      64 of s" maki/infer/gpt2-load.f" endof
-      65 of s" maki/infer/model-config.f" endof
-      66 of s" maki/infer/gpt2-tensor.f" endof
-      67 of s" maki/infer/gpt2-load.f" endof
-      68 of s" maki/infer/gpt2-load.f" endof
+      62 of s" maki/infer/gpt2-load.f" endof
+      63 of s" maki/infer/model-config.f" endof
+      64 of s" maki/infer/gpt2-tensor.f" endof
+      65 of s" maki/infer/gpt2-load.f" endof
+      66 of s" maki/infer/gpt2-load.f" endof
       E-TBL-BOUNDS throw
    endcase ;
 
