@@ -10,9 +10,10 @@
 \
 \ Two arms are under test. RECORD-ENUM used to drive sumtype.f's CHECKER-DEFENUM
 \ — the legacy metadata-only entry, which the type-DSL cutover deletes and which
-\ only ever understood a compact list of bare variant names. There was no arm for
-\ the unified STRUCTURE at all, so a STRUCTURE family was simply invisible on
-\ this path. Both now drive the front ends' registration-only replay entries.
+\ only ever understood a compact list of bare variant names. It now replays both
+\ bare compact heads and explicit binder heads. There was no arm for the unified
+\ STRUCTURE at all, so a STRUCTURE family was simply invisible on this path. Both
+\ now drive the front ends' registration-only replay entries.
 \
 \ HOW THE COMPARISON IS MADE. The same declaration text is registered twice: once
 \ by executing it (the live front end), once by handing it to
@@ -24,7 +25,13 @@
 \   variants: name and tag of every row, in declaration order, plus the
 \             constructor package stamped on that row
 \   fields:   the TYPE-FIELD row count keyed (family, variant), and each row's
-\             name, schema root, slot, and cell width
+\             name, semantic scalar schema (kind plus parameter ordinal or
+\             concrete code), slot, and cell width
+\ R-SCH projects a schema node's tag and A cell without interpreting either.
+\ Checked comparison admits only scalar parameter and concrete schemas. If
+\ either side is unsupported, it records the failure and skips both cross-view
+\ comparisons, so allocation-dependent pointer identities never participate in
+\ equality.
 \ The ONE intended difference is the constructor SYMBOL: executing a declaration
 \ renders its constructor words, replaying it must not, so the live rows carry a
 \ symbol and the replayed rows carry zero. That asymmetry is asserted, not
@@ -45,6 +52,11 @@ package VSPARITY
 
 variable #FAIL
 variable #CASE
+
+\ Stable schema tags captured at package load. Checked code uses these
+\ package-local values to classify the two comparable scalar shapes.
+SCH-PARAM constant R-PARAM
+SCH-CON constant R-CON
 
 \ --- the registry reflection surface. Every one is a read; none mutates.
 \ TRUSTED: because each forwards to a sealed pre-hook registry word the checker
@@ -69,7 +81,9 @@ TRUSTED: V-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 TRUSTED: R-FAM ( n -- n ) TYPE-FIELD:FAMILY@ ;
 TRUSTED: R-VAR ( n -- n ) TYPE-FIELD:VARIANT@ ;
 TRUSTED: R-NAME$ ( n -- ptr u8 n ) PF-NAME$ ;
-TRUSTED: R-SCH ( n -- n ) PF-SCH@ ;
+TRUSTED: R-SCH ( n -- n n )
+   TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@ dup SCHEMA-TAG@ swap SCHEMA-A@ ;
+
 TRUSTED: R-SLOT ( n -- n ) PF-SLOT@ ;
 TRUSTED: R-CELLS ( n -- n ) PF-CELLS@ ;
 TRUSTED: R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
@@ -98,6 +112,9 @@ public
    s" assert: expected true" type cr ;
 
 private
+
+: R-SCALAR? ( n -- bool )
+   dup R-PARAM = swap R-CON = or ;
 
 \ --- field-row walking. TYPE-FIELD rows are a flat table keyed (family,
 \ variant), so a family's rows are found by scanning for that key; the Nth match
@@ -130,7 +147,16 @@ private
       ai 0 >= T-TRUE
       bi 0 >= T-TRUE
       ai R-NAME$ bi R-NAME$ CORE-STR= T-TRUE
-      ai R-SCH   bi R-SCH   T=
+      ai R-SCH {: atag:n apay:n :}
+      bi R-SCH {: btag:n bpay:n :}
+      atag R-SCALAR? {: aok:bool :}
+      btag R-SCALAR? {: bok:bool :}
+      aok T-TRUE
+      bok T-TRUE
+      aok bok and IF
+         atag btag T=
+         apay bpay T=
+      THEN
       ai R-SLOT  bi R-SLOT  T=
       ai R-CELLS bi R-CELLS T=
       SJ @ 1 + SJ !
@@ -302,7 +328,23 @@ VSPARITY:VS-LOAD
 s" edlive:colour" s" edrep:colour" VSPARITY:COMPARE
 
 \ ---------------------------------------------------------------------------
-\ 3. A STRUCTURE named as a later declaration's payload type — the shape that
+\ 3. Full ENUM. An explicit pair<e,a> head selects TK-SUM, preserves binder
+\    order in the two FIELD schemas, and replays without constructor symbols.
+\ ---------------------------------------------------------------------------
+package eflive
+public
+ENUM pair<e,a>
+   VARIANT pair FIELD left e FIELD right a ;VARIANT
+;ENUM
+;package
+
+s" package efrep public ENUM pair<e,a> VARIANT pair FIELD left e FIELD right a ;VARIANT ;ENUM ;package"
+VSPARITY:VS-LOAD
+
+s" eflive:pair" s" efrep:pair" VSPARITY:COMPARE
+
+\ ---------------------------------------------------------------------------
+\ 4. A STRUCTURE named as a later declaration's payload type — the shape that
 \    was broken end to end. maki/db/obligation.f declares `STRUCTURE evidence`
 \    and then names `evidence` inside `SUMTYPE discharge-result`; with no
 \    STRUCTURE arm on this path the payload was unresolvable.
@@ -313,7 +355,7 @@ s" edpay:box" VSPARITY:VCOUNT 2 VSPARITY:T=
 s" edpay:slotrec" VSPARITY:FCOUNT 1 VSPARITY:T=
 
 \ ---------------------------------------------------------------------------
-\ 4. A body the capture buffer cannot hold RAISES; it is never truncated.
+\ 5. A body the capture buffer cannot hold RAISES; it is never truncated.
 \
 \    This is the failure the replay entries made dangerous. verify-source's
 \    BODY-APPEND used to skip the single token that would not fit and keep
@@ -348,7 +390,7 @@ s" capb" 1400 VSPARITY:ENUM-SOURCE VSPARITY:VSTRY 7118 VSPARITY:T=
 VSPARITY:CAP-FAMILY-ABSENT
 
 \ ---------------------------------------------------------------------------
-\ 5. Comments are NOT laundered out of a declaration body.
+\ 6. Comments are NOT laundered out of a declaration body.
 \
 \    The engine reads a declaration body with `parse-name`, which has no comment
 \    rule, so `\` and `(` inside one are ordinary tokens that hit the name gate.

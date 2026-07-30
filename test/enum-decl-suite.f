@@ -12,8 +12,9 @@
 \ family record and the event stream; the shared
 \ variant open/close and field events sequence correctly and each field event
 \ carries the open variant selector; every reject anchor (mixed mode,
-\ arity-then-compact, late compact header, compact positional payload, missing
-\ ;VARIANT / ;ENUM, malformed arity, empty enum, reserved / case family name,
+\ positional payload, late compact header, compact payload, missing
+\ ;VARIANT / ;ENUM, malformed head, retired numeric arity, empty enum,
+\ reserved / case family name,
 \ duplicate variant, every reserved variant-name category, package-scoped family
 \ collisions, and the field record's own dup / reserved / case / schema gate)
 \ fires at the offending token; a mid-declaration reject leaves every
@@ -106,7 +107,7 @@ package ENUM-DECL
    VBASE @ 2 + VID !
    TOK @ RC !
 
-   s" ENUM-DECL:ED-RUN epnested 0 VARIANT foreign FIELD nested n ;VARIANT ;ENUM" EV
+   s" ENUM-DECL:ED-RUN epnested<> VARIANT foreign FIELD nested n ;VARIANT ;ENUM" EV
    VBASE @ NODE !
 
    s" DECL-EVENT:CURRENT FID @ VS0 @ DECL-EVENT:PAYLOAD-N 0 T=" EV
@@ -191,7 +192,7 @@ VS0 @ 2 + SV-TAG@ 2 T=
 \    variant payload plus one tag cell.
 \ ---------------------------------------------------------------------------
 TYPE-FIELD:COUNT B !
-s" ENUM-DECL:ED-RUN msg 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN msg<> VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" EV
 s" msg" FAMID F-SUM? T-TRUE                           \ a full enum is a tagged sum
 s" msg" FAMID F-VAR-COUNT 2 T=                        \ quit, move
 s" msg" FAMID F-FLD-COUNT 2 T=                        \ x, y (only move has fields)
@@ -220,20 +221,34 @@ NODE @ SCH-TAG@ SCHCON# T=                            \ a concrete-con schema no
 NODE @ SCH-A@ CCN# T=                                 \ con code = n
 
 \ ---------------------------------------------------------------------------
-\ 4. A full declaration with arity resolves a positional-parameter field: FIELD v
-\    a is parameter 0 within arity 1, so the field commits (no unresolved reject).
+\ 4. Binder order is schema order. pair<e,a> records two parameters in the
+\    declared order, and phantom<e> retains arity one without using its binder.
 \ ---------------------------------------------------------------------------
-TFAMN@ FID !
-s" ENUM-DECL:ED-RUN boxe 1 VARIANT hold FIELD v a ;VARIANT ;ENUM" EV
-TFAMN@ FID @ 1 + T=                                   \ family registered (param resolved, no rollback)
-s" boxe" FAMID F-FLD-COUNT 1 T=                       \ the parameter field committed
+TYPE-FIELD:COUNT B !
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN pair<e,a> VARIANT pair FIELD left e FIELD right a ;VARIANT ;ENUM" EV
+1 DECL-EVENT:ARITY? T-TRUE
+1 DECL-EVENT:VAR@ 2 T=
+s" pair" FAMID F-FLD-COUNT 2 T=
+B @ TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
+NODE @ SCHEMA-PARAM? T-TRUE
+NODE @ SCH-A@ 0 T=
+B @ 1 + TYPE-FIELD:SCHEMA@ SCH-ROOT@ NODE !
+NODE @ SCHEMA-PARAM? T-TRUE
+NODE @ SCH-A@ 1 T=
+
+DECL-EVENT:RESET
+s" ENUM-DECL:ED-RUN phantom<e> VARIANT none ;VARIANT ;ENUM" EV
+1 DECL-EVENT:ARITY? T-TRUE
+1 DECL-EVENT:VAR@ 1 T=
+s" phantom" FAMID F-FLD-COUNT 0 T=
 
 \ ---------------------------------------------------------------------------
-\ 4b. The full ENUM parser consumes the shared declaration alphabet.  A
-\     maximum-arity declaration accepts g and z while f/n/r remain concrete;
-\     the exact inverse table is tested once in type-family-suite.f.
+\ 4b. The full ENUM parser consumes the shared declaration alphabet. A head
+\     declaring the maximum binder set accepts g and z while f/n/r remain
+\     concrete; the exact alphabet is tested once in type-family-suite.f.
 \ ---------------------------------------------------------------------------
-s" ENUM-DECL:ED-RUN emap 23 VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN emap<a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z> VARIANT values FIELD pa a FIELD pb b FIELD pc c FIELD pd d FIELD pe e FIELD pg g FIELD flag f FIELD integer n FIELD real r FIELD last z ;VARIANT ;ENUM" EV
 s" emap" FAMID F-FLD-COUNT 10 T=                      \ every mapped/scalar field committed
 
 \ ---------------------------------------------------------------------------
@@ -246,7 +261,7 @@ s" epwide" FAMID PFB !
 
 package ENUM-DECL
 TEST-PAYLOAD-XT
-execute epview 0
+execute epview<>
    VARIANT empty ;VARIANT
    VARIANT scalar FIELD value n ;VARIANT
    VARIANT mixed FIELD first n FIELD pair epwide ;VARIANT
@@ -258,7 +273,7 @@ B @ 7161 T=                                            \ published token is stal
 
 package ENUM-DECL
 TEST-PAYLOAD-ROLL-XT
-catch eproll 0 VARIANT gone FIELD value n ;VARIANT ;ENUM
+catch eproll<> VARIANT gone FIELD value n ;VARIANT ;ENUM
 ;package
 7107 T=                                                \ forced body failure rolled back
 RC @ FID @ VS0 @ ' DECL-EVENT:PAYLOAD-N catch B ! drop drop drop
@@ -266,7 +281,7 @@ B @ 7161 T=                                            \ rolled-back token is st
 
 \ ---------------------------------------------------------------------------
 \ 5. Compact event stream: DECL then one VARIANT + VARIANT-END pair per variant,
-\    with no arity header (compact is implicitly arity zero).
+\    with no binder-derived arity event (compact is implicitly arity zero).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
 s" ENUM-DECL:ED-RUN evtc ea eb ;ENUM" EV
@@ -278,11 +293,11 @@ DECL-EVENT:COUNT 5 T=                                 \ DECL + (VARIANT + VARIAN
 4 DECL-EVENT:VARIANT-END? T-TRUE
 
 \ ---------------------------------------------------------------------------
-\ 6. Full event stream: DECL, ARITY header, then variant open/close bracketing
+\ 6. Full event stream: DECL, binder-derived ARITY event, then variant open/close bracketing
 \    with the shared field event carrying the open variant as its selector.
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN evtf 0 VARIANT quit ;VARIANT VARIANT move FIELD mx n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN evtf<> VARIANT quit ;VARIANT VARIANT move FIELD mx n ;VARIANT ;ENUM" EV
 DECL-EVENT:COUNT 7 T=                                 \ DECL, ARITY, VARIANT, VARIANT-END, VARIANT, FIELD, VARIANT-END
 0 DECL-EVENT:DECL? T-TRUE
 1 DECL-EVENT:ARITY? T-TRUE
@@ -363,7 +378,7 @@ DECL-EVENT:COUNT 6 T=                                 \ DERIVE x2, POLICY, one v
 \ 8. POLICY reaches both the family record and the event stream (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN opt 0 POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN opt<> POLICY packed-tag VARIANT alpha ;VARIANT ;ENUM" EV
 s" opt" FAMID F-POLICY@ PACKED# T=                    \ family layout policy is packed-tag
 2 DECL-EVENT:POLICY? T-TRUE                           \ a POLICY event followed DECL + ARITY
 2 DECL-EVENT:VAR@ PACKED# T=                          \ its recorded code is packed-tag
@@ -373,7 +388,7 @@ s" opt" FAMID F-POLICY@ PACKED# T=                    \ family layout policy is 
 \    one clause are accepted, each recorded once (full mode).
 \ ---------------------------------------------------------------------------
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN der 0 DERIVE eq hash VARIANT alpha ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN der<> DERIVE eq hash VARIANT alpha ;VARIANT ;ENUM" EV
 s" der" FAMID F-EQ? T-TRUE                            \ eq derived
 s" der" FAMID F-HASH? T-TRUE                          \ hash derived
 2 DECL-EVENT:DERIVE? T-TRUE                           \ two DERIVE events after DECL + ARITY
@@ -387,7 +402,7 @@ s" der" FAMID F-HASH? T-TRUE                          \ hash derived
 REG-MARK
 TYPE-FIELD:COUNT PFB !
 DECL-EVENT:COUNT DEVB !
-s" ENUM-DECL:ED-RUN dupf 0 VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TRY 7102 T=
+s" ENUM-DECL:ED-RUN dupf<> VARIANT alpha FIELD z n FIELD z n ;VARIANT ;ENUM" TRY 7102 T=
 TFAMN@ RB-TFAM @ T=                                   \ family retired
 SCHN@ RB-SCH @ T=                                     \ schema nodes retired
 SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
@@ -404,25 +419,26 @@ TFAMN@ RB-TFAM @ T=                                   \ family retired
 SUMVN@ RB-SUMV @ T=                                   \ variant rows retired
 
 \ ---------------------------------------------------------------------------
-\ 12. Grammar / mode / arity / name / field rejects, each at the offending token.
+\ 12. Grammar / mode / head / name / field rejects, each at the offending token.
 \ ---------------------------------------------------------------------------
 s" ENUM-DECL:ED-RUN emix red VARIANT alpha ;VARIANT ;ENUM" TRY 7107 T=       \ mixed modes (block token in compact)
-s" ENUM-DECL:ED-RUN eac 2 red ;ENUM" TRY 7107 T=                         \ arity then a bare compact variant
+s" ENUM-DECL:ED-RUN eac<a> VARIANT red a ;VARIANT ;ENUM" TRY 7107 T=       \ positional payload is not a FIELD clause
+s" ENUM-DECL:ED-RUN efield<a> VARIANT red FIELD value a ;VARIANT ;ENUM" TRY 0 T= \ named FIELD payload succeeds
 s" ENUM-DECL:ED-RUN ech red POLICY packed-tag ;ENUM" TRY 7107 T=         \ header clause after a compact variant
 s" ENUM-DECL:ED-RUN ecp red FIELD y n ;ENUM" TRY 7107 T=                 \ positional/named payload in compact
-s" ENUM-DECL:ED-RUN emv 0 VARIANT alpha FIELD x n ;ENUM" TRY 7107 T=         \ missing ;VARIANT
+s" ENUM-DECL:ED-RUN emv<> VARIANT alpha FIELD x n ;ENUM" TRY 7107 T=         \ missing ;VARIANT
 s" ENUM-DECL:ED-RUN eme red green" TRY 7107 T=                           \ missing ;ENUM
-s" ENUM-DECL:ED-RUN ear 24 VARIANT alpha ;VARIANT ;ENUM" TRY 7108 T=         \ arity above the shared 23 cap
+s" ENUM-DECL:ED-RUN ear<e,e> VARIANT alpha ;VARIANT ;ENUM" TRY 7108 T=       \ duplicate binder
 s" ENUM-DECL:ED-RUN eempty ;ENUM" TRY 7107 T=                            \ an enum needs a variant
 s" ENUM-DECL:ED-RUN enum red ;ENUM" TRY 7110 T=                          \ reserved opener keyword as a name
 s" ENUM-DECL:ED-RUN Bad red ;ENUM" TRY 7101 T=                           \ upper-case family name (case)
 s" ENUM-DECL:ED-RUN n red ;ENUM" TRY 7110 T=                             \ single-letter family name
-s" ENUM-DECL:ED-RUN erf 0 VARIANT alpha FIELD make n ;VARIANT ;ENUM" TRY 7125 T=   \ reserved field name
-s" ENUM-DECL:ED-RUN ecf 0 VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \ upper-case field name (case)
-s" ENUM-DECL:ED-RUN ebs 0 VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
-s" ENUM-DECL:ED-RUN euc 0 VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TRY 7109 T=      \ upper-case single-letter type
-s" ENUM-DECL:ED-RUN epa 0 VARIANT alpha FIELD x a ;VARIANT ;ENUM" TRY 7109 T=      \ parameter outside declared arity
-s" ENUM-DECL:ED-RUN epg 6 VARIANT alpha FIELD x h ;VARIANT ;ENUM" TRY 7109 T=      \ parameter 6 is outside arity 6
+s" ENUM-DECL:ED-RUN erf<> VARIANT alpha FIELD make n ;VARIANT ;ENUM" TRY 7125 T=   \ reserved field name
+s" ENUM-DECL:ED-RUN ecf<> VARIANT alpha FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=    \ upper-case field name (case)
+s" ENUM-DECL:ED-RUN ebs<> VARIANT alpha FIELD x nope ;VARIANT ;ENUM" TRY 7109 T=   \ unresolved field type
+s" ENUM-DECL:ED-RUN euc<> VARIANT alpha FIELD x Q ;VARIANT ;ENUM" TRY 7109 T=      \ upper-case single-letter type
+s" ENUM-DECL:ED-RUN epa<> VARIANT alpha FIELD x a ;VARIANT ;ENUM" TRY 7109 T=      \ valid but undeclared binder
+s" ENUM-DECL:ED-RUN epg<a,b,c,d,e,g> VARIANT alpha FIELD x h ;VARIANT ;ENUM" TRY 7109 T= \ valid but undeclared binder
 
 \ ---------------------------------------------------------------------------
 \ 13. A duplicate family name rejects (E-TFAM-DUP 7102 from TFAM-DECL).
@@ -465,15 +481,15 @@ REG-RESTORE
 \ their ordered schema-bearing FIELD event sequence.
 REG-MARK
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN ids<> VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
 DECL-EVENT:IDENTITY RC !
 REG-RESTORE
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN ids<> VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f ;VARIANT ;ENUM" EV
 DECL-EVENT:IDENTITY RC @ T=
 REG-RESTORE
 DECL-EVENT:RESET
-s" ENUM-DECL:ED-RUN ids 0 VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN ids<> VARIANT empty ;VARIANT VARIANT pair FIELD first n FIELD second f FIELD third n ;VARIANT ;ENUM" EV
 DECL-EVENT:IDENTITY RC @ <> T-TRUE
 REG-RESTORE
 ;package
@@ -531,6 +547,10 @@ s" ENUM-DECL:ED-RUN compact-late-policy alpha POLICY packed-tag ;ENUM" 7107 REJE
 s" ENUM-DECL:ED-RUN compact-late-derive alpha DERIVE eq ;ENUM" 7107 REJECT-SAME
 s" ENUM-DECL:ED-RUN compact-policy-name alpha policy ;ENUM" 7107 REJECT-SAME
 s" ENUM-DECL:ED-RUN compact-derive-name alpha derive ;ENUM" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN headdup<e,e> VARIANT alpha ;VARIANT ;ENUM" 7108 REJECT-SAME
+s" ENUM-DECL:ED-RUN headbad<e,> VARIANT alpha ;VARIANT ;ENUM" 7108 REJECT-SAME
+s" ENUM-DECL:ED-RUN retired-arity 1 VARIANT alpha ;VARIANT ;ENUM" 7101 REJECT-SAME
+s" ENUM-DECL:ED-RUN undeclared<e> VARIANT alpha FIELD value a ;VARIANT ;ENUM" 7109 REJECT-SAME
 
 private
 
@@ -545,20 +565,20 @@ s" ENUM-DECL:ED-RUN reject-compact space-x ;ENUM" 7110 REJECT-SAME
 s" ENUM-DECL:ED-RUN reject-compact color ;ENUM" 7110 REJECT-SAME
 s" ENUM-DECL:ED-RUN reject-compact local-variant ;ENUM" 7110 REJECT-SAME
 
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT" 7107 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT n ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT q ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT if ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT variant ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT bool ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT enum-record ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT space-x ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT color ;VARIANT ;ENUM" 7110 REJECT-SAME
-s" ENUM-DECL:ED-RUN reject-full 0 VARIANT local-variant ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT" 7107 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT n ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT q ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT if ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT variant ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT bool ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT enum-record ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT space-x ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT color ;VARIANT ;ENUM" 7110 REJECT-SAME
+s" ENUM-DECL:ED-RUN reject-full<> VARIANT local-variant ;VARIANT ;ENUM" 7110 REJECT-SAME
 
 s" ENUM-DECL:ED-RUN allowed-compact foreign-variant ;ENUM" EV
 s" allowed-compact" FAMID F-VAR-COUNT 1 T=
-s" ENUM-DECL:ED-RUN allowed-full 0 VARIANT foreign-variant ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN allowed-full<> VARIANT foreign-variant ;VARIANT ;ENUM" EV
 s" allowed-full" FAMID F-VAR-COUNT 1 T=
 s" ENUM-DECL:ED-RUN duplicate-order ready ready ;ENUM" 7102 REJECT-SAME
 
@@ -643,7 +663,7 @@ private
 \      Generation moves the native dictionary, which is what the dictionary
 \      participant's savepoint has to be able to undo.
 enum-ctor-test:DICT-MARK
-s" ENUM-DECL:ED-RUN msgctor 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN msgctor<> VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM" EV
 enum-ctor-test:DICT-MOVED
 
 s" msgctor" FAMID FID !
@@ -668,7 +688,7 @@ s" C6 ( n n -- n ) MSGCTOR:MOVE" CHECK-QUIET-CANDIDATE! 0 T=
 \      TYPE-FIELD rows, which is exactly what ORDER 820 gives it, so a payload
 \      family that derives publishes its constructors AND its derived tag and
 \      equality words from one pass.
-s" ENUM-DECL:ED-RUN dctor 0 DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN dctor<> DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two ;VARIANT ;ENUM" EV
 s" D1 ( n -- dctor ) DCTOR:ONE" CHECK-QUIET-CANDIDATE! -1 T=
 s" D2 ( -- dctor ) DCTOR:TWO" CHECK-QUIET-CANDIDATE! -1 T=
 s" D3 ( dctor -- n ) DCTOR:TAG" CHECK-QUIET-CANDIDATE! -1 T=
@@ -710,7 +730,7 @@ s" msgctor" FAMID enum-ctor-test:ARM-RC 7176 T=       \ right kind, but depth 0
 \      gate refuses it, so no constructor package is derived onto the variant
 \      rows and no constructor symbol is recorded for them.
 package enum-ctor-private
-s" ENUM-DECL:ED-RUN privctor 0 VARIANT alpha FIELD a n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN privctor<> VARIANT alpha FIELD a n ;VARIANT ;ENUM" EV
 s" privctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= T-TRUE
 s" privctor" FAMID F-VAR-COUNT 1 T=                   \ the variant really is there
 s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-PKG$ nip 0 T=  \ but carries no constructor package
@@ -723,9 +743,9 @@ s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-SYM 0 T=       \ and no const
 \      equality, and a variant spelled like the derived word the same DERIVE
 \      clause generates. Every registry cursor, the published event log, and the
 \      native dictionary come back byte-identical.
-s" ENUM-DECL:ED-RUN rollctor 0 DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
+s" ENUM-DECL:ED-RUN rollctor<> DERIVE eq VARIANT one FIELD a n ;VARIANT VARIANT two FIELD b r ;VARIANT ;ENUM"
    7119 enum-ctor-test:CTOR-REJECT
-s" ENUM-DECL:ED-RUN rollctor2 0 DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
+s" ENUM-DECL:ED-RUN rollctor2<> DERIVE eq VARIANT tag FIELD a n ;VARIANT ;ENUM"
    7110 enum-ctor-test:CTOR-REJECT
 s" rollctor" FAMID 0 T=                               \ the family itself never landed
 s" rollctor2" FAMID 0 T=
@@ -818,7 +838,7 @@ s" lay-unified-def" FAMID enum-layout-test:NO-ROW
 \      one-cell payload, the same packed policy. This pairing keeps working
 \      after the global ENUM token moves to the front end.
 SUMTYPE lay-legacy-pay 0 POLICY packed-tag VARIANT lpnone ;VARIANT VARIANT lpone n ;VARIANT ;SUMTYPE
-s" ENUM-DECL:ED-RUN lay-unified-pay 0 POLICY packed-tag VARIANT upnone ;VARIANT VARIANT upone FIELD x n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN lay-unified-pay<> POLICY packed-tag VARIANT upnone ;VARIANT VARIANT upone FIELD x n ;VARIANT ;ENUM" EV
 s" lay-legacy-pay" FAMID s" lay-unified-pay" FAMID enum-layout-test:PARITY
 s" lay-unified-pay" FAMID 16 8 1 enum-layout-test:SHAPE   \ 8 payload bytes + 1 tag byte, cell-aligned
 
@@ -832,10 +852,10 @@ s" lay-unified-pay" FAMID 16 8 1 enum-layout-test:SHAPE   \ 8 payload bytes + 1 
 \      of the marks the checker participant's savepoint carries, so the refused
 \      declaration's row goes back with its family.
 REG-MARK
-s" ENUM-DECL:ED-RUN lay-keep 0 POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM-DECL:ED-RUN lay-keep<> POLICY packed-tag DERIVE eq VARIANT one FIELD p n ;VARIANT ;ENUM" TRY 0 T=
 LAY-N@ RB-LAY @ 1 + T=                                \ the accepted twin baked exactly one row
 REG-MARK
-s" ENUM-DECL:ED-RUN lay-drop 0 POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TRY 7119 T=
+s" ENUM-DECL:ED-RUN lay-drop<> POLICY packed-tag DERIVE eq VARIANT one FIELD p ptr n ;VARIANT ;ENUM" TRY 7119 T=
 LAY-N@ RB-LAY @ T=                                    \ the refused twin left none
 TFAMN@ RB-TFAM @ T=
 
@@ -877,12 +897,12 @@ s" ENUM-DECL:ED-RUN dgdup red red ;ENUM" TRY 7102 T=
 s" habu: bad enum declaration 'dgdup': duplicate variant at 'red'" DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgar 24 VARIANT vv ;VARIANT ;ENUM" TRY 7108 T=
-s" habu: bad enum declaration 'dgar': arity must be a decimal, at most 23 parameters at '24'"
+s" ENUM-DECL:ED-RUN dgar<e,e> VARIANT vv ;VARIANT ;ENUM" TRY 7108 T=
+s" habu: bad enum declaration 'dgar<e,e>': binder list must contain unique declaration parameters at 'dgar<e,e>'"
 DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgpay 0 VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM-DECL:ED-RUN dgpay<> VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'dgpay': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
@@ -899,7 +919,7 @@ s" habu: bad enum declaration 'dgord': derive feature not yet supported at 'orde
 DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgfn 0 VARIANT vv FIELD make n ;VARIANT ;ENUM" TRY 7125 T=
+s" ENUM-DECL:ED-RUN dgfn<> VARIANT vv FIELD make n ;VARIANT ;ENUM" TRY 7125 T=
 s" habu: bad enum declaration 'dgfn': reserved field name at 'make'" DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
@@ -934,7 +954,7 @@ s" habu: bad enum declaration 'dgunified2': empty enum at 'dgunified2'" DECL-DIA
 \      ENUM reports the ENUM's family, not the variant or the field it is nested
 \      in, while the token moves to the offending payload token.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgnest 0 VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM-DECL:ED-RUN dgnest<> VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'dgnest': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
 s" declaration 'nestvar'" DECL-DIAG:HAS? 0 T=
 s" declaration 'nestfld'" DECL-DIAG:HAS? 0 T=
@@ -984,7 +1004,7 @@ s\" \"code\":\"E-BAD-DECLARATION\"" DECL-DIAG:HAS? -1 T=
 \      rolled back and touches no registry cursor.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgok1 red green ;ENUM" TRY 0 T=
-s" ENUM-DECL:ED-RUN dgok2 0 VARIANT okvar FIELD okfld n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM-DECL:ED-RUN dgok2<> VARIANT okvar FIELD okfld n ;VARIANT ;ENUM" TRY 0 T=
 s" ENUM-DECL:ED-RUN dgok3 POLICY packed-tag redd greend ;ENUM" TRY 0 T=
 s" ENUM-DECL:ED-RUN dgok4 DERIVE eq rede greene ;ENUM" TRY 0 T=
 DECL-DIAG:SILENT? -1 T=
@@ -1060,7 +1080,7 @@ s" ENUM-DECL:ED-RUN dgtwice blue ;ENUM" TRY 7102 T=
 s" habu: bad enum declaration 'dgtwice': duplicate family at 'dgtwice'" DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgdupfld 0 VARIANT vv FIELD zz n FIELD zz n ;VARIANT ;ENUM" TRY 7102 T=
+s" ENUM-DECL:ED-RUN dgdupfld<> VARIANT vv FIELD zz n FIELD zz n ;VARIANT ;ENUM" TRY 7102 T=
 s" habu: bad enum declaration 'dgdupfld': duplicate field name at 'zz'" DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
@@ -1079,35 +1099,35 @@ s" habu: bad enum declaration 'dghdr': header clause after the first variant at 
 DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgvb 0 VARIANT vv stray ;VARIANT ;ENUM" TRY 7107 T=
+s" ENUM-DECL:ED-RUN dgvb<> VARIANT vv stray ;VARIANT ;ENUM" TRY 7107 T=
 s" habu: bad enum declaration 'dgvb': unexpected token in variant block at 'stray'"
 DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgvn 0 VARIANT" TRY 7107 T=
+s" ENUM-DECL:ED-RUN dgvn<> VARIANT" TRY 7107 T=
 s" habu: bad enum declaration 'dgvn': missing variant name" DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgdgd 1 DERIVE eq VARIANT vv ;VARIANT ;ENUM" TRY 7119 T=
+s" ENUM-DECL:ED-RUN dgdgd<e> DERIVE eq VARIANT vv ;VARIANT ;ENUM" TRY 7119 T=
 s" habu: bad enum declaration 'dgdgd': derive requires a concrete (arity 0) family at 'eq'"
 DECL-DIAG:HAS? -1 T=
 
 \      7119 raised by the constructor participant's payload-role check, two
 \      phases after the body: no reason is armed for it, so the table answers.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgroleq 0 DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TRY 7119 T=
+s" ENUM-DECL:ED-RUN dgroleq<> DERIVE eq VARIANT vv FIELD p ptr n ;VARIANT ;ENUM" TRY 7119 T=
 s" habu: bad enum declaration 'dgroleq': a payload type or role has no derived equality at 'dgroleq'"
 DECL-DIAG:HAS? -1 T=
 
 \      7110 raised by the variant-name gate, and 7101 raised by the field record:
 \      both are deeper owners, both answered from the table.
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgvrsv 0 VARIANT n ;VARIANT ;ENUM" TRY 7110 T=
+s" ENUM-DECL:ED-RUN dgvrsv<> VARIANT n ;VARIANT ;ENUM" TRY 7110 T=
 s" habu: bad enum declaration 'dgvrsv': name is reserved or already taken at 'n'"
 DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN dgfcase 0 VARIANT vv FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=
+s" ENUM-DECL:ED-RUN dgfcase<> VARIANT vv FIELD Zed n ;VARIANT ;ENUM" TRY 7101 T=
 s" habu: bad enum declaration 'dgfcase': name must be a lowercase tail at 'Zed'"
 DECL-DIAG:HAS? -1 T=
 
@@ -1185,9 +1205,9 @@ VS0 @ 2 + enum-ctor-test:CTOR-SYM 0 T=
 s" R1 ( -- rpcompact ) RPCOMPACT:RED" CHECK-QUIET-CANDIDATE! 1 T=
 
 \ 23b. FULL mode replays too. The legacy CHECKER-DEFENUM this entry replaces read
-\      a compact list of bare variant names and nothing else, so an arity header
-\      or a VARIANT block was unregisterable through the old consumers.
-s" rpfull" s" 0 VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
+\      a compact list of bare variant names and nothing else, so an explicit
+\      binder head or a VARIANT block was unregisterable through the old consumers.
+s" rpfull<>" s" VARIANT quit ;VARIANT VARIANT move FIELD x n FIELD y n ;VARIANT ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 s" rpfull" FAMID FID !
 FID @ F-SUM? -1 T=                        \ full mode still picks TK-SUM
@@ -1212,7 +1232,7 @@ FID @ F-HASH? -1 T=
 \      live one — the end-to-end half of the channel claim the diagnostics leaf
 \      could only make for the live path.
 DECL-DIAG:PROSE
-s" rpbadv" s" 0 VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 7107 T=
+s" rpbadv<>" s" VARIANT vv stray ;VARIANT ;ENUM" enum-replay-test:RP-TRY 7107 T=
 s" habu: bad enum declaration 'rpbadv': unexpected token in variant block at 'stray'"
 DECL-DIAG:HAS? -1 T=
 
@@ -1239,9 +1259,9 @@ DECL-DIAG:OFF
 \      reads the input source again rather than a spent buffer. This is the
 \      failure the two-exit close in ED-REPLAY exists to prevent.
 DECL-DIAG:PROSE
-s" rpdangle" s" 0 VARIANT" enum-replay-test:RP-TRY 7107 T=
+s" rpdangle<>" s" VARIANT" enum-replay-test:RP-TRY 7107 T=
 DECL-DIAG:OFF
-s" ENUM-DECL:ED-RUN rpafterbad 0 VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM-DECL:ED-RUN rpafterbad<> VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
 s" rpafterbad" FAMID F-VAR-COUNT 1 T=
 
 \ 23h. Re-entry is refused with its own named code rather than retargeting a
@@ -1249,7 +1269,7 @@ s" rpafterbad" FAMID F-VAR-COUNT 1 T=
 enum-replay-test:RP-FORCE-OPEN
 s" rpbusy" s" red ;ENUM" enum-replay-test:RP-TRY 7177 T=
 enum-replay-test:RP-FORCE-CLOSE
-s" ENUM-DECL:ED-RUN rpafterbusy 0 VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM-DECL:ED-RUN rpafterbusy<> VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
 
 \ 23i. Live and replayed declarations of the SAME shape register the SAME
 \      registry state. Declared in two packages so both families coexist; every
@@ -1257,11 +1277,11 @@ s" ENUM-DECL:ED-RUN rpafterbusy 0 VARIANT vv ;VARIANT ;ENUM" TRY 0 T=
 \      replayed one carries no constructor symbol.
 package rp-live-test
 public
-s" ENUM-DECL:ED-RUN shape 0 POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN shape<> POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM" EV
 ;package
 package rp-copy-test
 public
-s" shape" s" 0 POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM"
+s" shape<>" s" POLICY packed-tag VARIANT alpha ;VARIANT VARIANT beta FIELD px n ;VARIANT ;ENUM"
 enum-replay-test:RP-TRY 0 T=
 ;package
 
@@ -1368,7 +1388,7 @@ DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN cwvf 0 VARIANT loop ;VARIANT ;ENUM" TRY 7110 T=
+s" ENUM-DECL:ED-RUN cwvf<> VARIANT loop ;VARIANT ;ENUM" TRY 7110 T=
 s" habu: bad enum declaration 'cwvf': name is reserved or already taken at 'loop'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
@@ -1379,7 +1399,7 @@ DECL-DIAG:OFF
 \      answer the legacy PRODUCT definer now gives for the identical field name
 \      (test/type-decl-suite.f pins that half).
 DECL-DIAG:PROSE
-s" ENUM-DECL:ED-RUN cwfld 0 VARIANT vv FIELD then n ;VARIANT ;ENUM" TRY 7125 T=
+s" ENUM-DECL:ED-RUN cwfld<> VARIANT vv FIELD then n ;VARIANT ;ENUM" TRY 7125 T=
 s" habu: bad enum declaration 'cwfld': reserved field name at 'then'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
@@ -1389,7 +1409,7 @@ DECL-DIAG:OFF
 \      one of the three positions.
 s" ENUM-DECL:ED-RUN iffy dolly matcher constructor elsewhere ;ENUM" EV
 s" iffy" FAMID F-VAR-COUNT 4 T=
-s" ENUM-DECL:ED-RUN doing 0 VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" EV
+s" ENUM-DECL:ED-RUN doing<> VARIANT looping FIELD ifs n FIELD thence n ;VARIANT ;ENUM" EV
 s" doing" FAMID F-FLD-COUNT 2 T=
 
 ;package
@@ -1484,14 +1504,14 @@ TRUSTED: LINEAR? ( n -- bool ) TFAM-CONCRETE-LINEAR? ;   \ owns one, directly or
 ;package
 
 \ depth 1, legal before this change: a payload naming the linear con itself.
-s" ENUM edlone 0 VARIANT hold FIELD t EDLIN:tok ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlone<> VARIANT hold FIELD t EDLIN:tok ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
 s" edlone" FAMID EDLIN:LINEAR? T-TRUE
 
 \ depth 2, the shape this dot unblocks: a payload naming a linear family. This is
 \ the frozen load-result shape, with a stand-in for gpt2-model.
 s" STRUCTURE edlmodel 0 FIELD res EDLIN:tok FIELD nl n ;STRUCTURE" TRY 0 T=
 s" edlmodel" FAMID EDLIN:LINEAR? T-TRUE
-s" ENUM edl-load-result 0 VARIANT loaded FIELD model edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edl-load-result<> VARIANT loaded FIELD model edlmodel ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
 s" edl-load-result" FAMID EDLIN:LINEAR? T-TRUE                    \ linear by containment
 s" edl-load-result" FAMID F-VAR-COUNT 2 T=
 s" edl-load-result" FAMID F-FLD-COUNT 2 T=                    \ one named payload per variant
@@ -1500,24 +1520,24 @@ s" edl-load-result" FAMID F-WIDTH 3 T=                        \ tag cell + the w
 \ depth 3: the walk recurses again rather than stopping one level down.
 s" STRUCTURE edl-via-load 0 FIELD result edl-load-result ;STRUCTURE" TRY 0 T=
 s" edl-via-load" FAMID EDLIN:LINEAR? T-TRUE
-s" ENUM edlnest 0 VARIANT loaded FIELD result edl-via-load ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlnest<> VARIANT loaded FIELD result edl-via-load ;VARIANT VARIANT rejected FIELD code n ;VARIANT ;ENUM" TRY 0 T=
 s" edlnest" FAMID EDLIN:LINEAR? T-TRUE
 
 \ the control: a chain with no linear value anywhere stays non-linear, so the
 \ walk is answering about the chain and not about nesting as such.
 s" STRUCTURE edlplain 0 FIELD v n ;STRUCTURE" TRY 0 T=
-s" ENUM edlctl 0 VARIANT hold FIELD m edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlctl<> VARIANT hold FIELD m edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
 s" edlctl" FAMID EDLIN:LINEAR? 0= T-TRUE
 
 \ wrong role: the same word in the FIELD NAME position is a name, never a type,
 \ so it neither resolves nor makes the enum linear.
-s" ENUM edlrole 0 VARIANT hold FIELD edlmodel n ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlrole<> VARIANT hold FIELD edlmodel n ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
 s" edlrole" FAMID EDLIN:LINEAR? 0= T-TRUE
 
 \ reordering: naming a family before it is declared is still an unknown type,
 \ so acceptance comes from resolution and not from the spelling alone.
 DECL-DIAG:PROSE
-s" ENUM edlfwd 0 VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlfwd<> VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlfwd': unknown payload type at 'edllater'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
@@ -1528,9 +1548,9 @@ DECL-DIAG:OFF
 \ "unknown payload type" sent readers looking for a declaration that was right
 \ there. A name that resolves to nothing still reports unknown, which is true.
 \ ---------------------------------------------------------------------------
-s" ENUM edlgen 1 VARIANT hold FIELD m a ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlgen<a> VARIANT hold FIELD m a ;VARIANT ;ENUM" TRY 0 T=
 DECL-DIAG:PROSE
-s" ENUM edlgenuse 0 VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlgenuse<> VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlgenuse': payload type is parametric and needs type arguments at 'edlgen'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
@@ -1556,58 +1576,58 @@ DECL-DIAG:OFF
 \ ---------------------------------------------------------------------------
 
 \ the two spellings side by side. Naming the value owns it; pointing at it cannot.
-s" ENUM edlowns 0 VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlowns<> VARIANT hold FIELD m edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
 s" edlowns" FAMID EDLIN:LINEAR? T-TRUE
 
 DECL-DIAG:PROSE
-s" ENUM edlptr 0 VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlptr<> VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlptr': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 
 \ the con spelling launders the same way, so the same rule refuses it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
-s" ENUM edlptrcon 0 VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlptrcon<> VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlptrcon': payload type is a pointer to a linear value and cannot own it at 'EDLIN:tok'"
 DECL-DIAG:HAS? -1 T=
 
 \ depth: a second pointer does not launder past the rule. The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
-s" ENUM edlptr2 0 VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlptr2<> VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlptr2': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
-s" ENUM edlptrsum 0 VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlptrsum<> VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edl-load-result'"
 DECL-DIAG:HAS? -1 T=
 
 \ every variant is checked, not just the first, and the token names the offending
 \ payload rather than the declaration's first payload.
 DECL-DIAG:PROSE
-s" ENUM edlptrlate 0 VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlptrlate<> VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlptrlate': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 
 \ the controls. A pointer to a family that owns nothing declares and leaves the
 \ enum non-linear — so the rejects above answer the POINTEE's linearity and not
 \ the word `ptr`.
-s" ENUM edlptrok 0 VARIANT hold FIELD p ptr edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlptrok<> VARIANT hold FIELD p ptr edlplain ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 0 T=
 s" edlptrok" FAMID EDLIN:LINEAR? 0= T-TRUE
 s" edlptrok" FAMID F-WIDTH 2 T=                       \ tag cell + the one-cell pointer payload
-s" ENUM edlptrok2 0 VARIANT hold FIELD p ptr ptr edlplain ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlptrok2<> VARIANT hold FIELD p ptr ptr edlplain ;VARIANT ;ENUM" TRY 0 T=
 s" edlptrok2" FAMID EDLIN:LINEAR? 0= T-TRUE
-s" ENUM edlptrn 0 VARIANT hold FIELD p ptr n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlptrn<> VARIANT hold FIELD p ptr n ;VARIANT ;ENUM" TRY 0 T=
 s" edlptrn" FAMID EDLIN:LINEAR? 0= T-TRUE
 
 \ wrong role: the same words in the FIELD NAME position are names, never types.
 \ Neither resolves, neither is refused, and neither makes the enum linear.
-s" ENUM edlptrrole 0 VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlptrrole<> VARIANT hold FIELD ptr n ;VARIANT ;ENUM" TRY 0 T=
 s" edlptrrole" FAMID EDLIN:LINEAR? 0= T-TRUE
-s" ENUM edlptrrole2 0 VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TRY 0 T=
+s" ENUM edlptrrole2<> VARIANT hold FIELD edlmodel n ;VARIANT ;ENUM" TRY 0 T=
 s" edlptrrole2" FAMID EDLIN:LINEAR? 0= T-TRUE
 
 \ hostile comments. A variant block has NO comment syntax: its reader takes plain
@@ -1617,17 +1637,17 @@ s" edlptrrole2" FAMID EDLIN:LINEAR? 0= T-TRUE
 \ 7107, a DIFFERENT code from this rule's 7109, so no verdict here is ever
 \ produced by scanning prose.
 DECL-DIAG:PROSE
-s" ENUM edlptrpar 0 VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TRY 7107 T=
+s" ENUM edlptrpar<> VARIANT hold FIELD v n ( FIELD p ptr edlmodel ) ;VARIANT ;ENUM" TRY 7107 T=
 s" habu: bad enum declaration 'edlptrpar': unexpected token in variant block at '('"
 DECL-DIAG:HAS? -1 T=                                  \ the paren itself was the token
 DECL-DIAG:PROSE
-s" ENUM edlptrbsl 0 VARIANT hold FIELD v n \ FIELD p ptr edlmodel" TRY 7107 T=
+s" ENUM edlptrbsl<> VARIANT hold FIELD v n \ FIELD p ptr edlmodel" TRY 7107 T=
 s" habu: bad enum declaration 'edlptrbsl': unexpected token in variant block at '\'"
 DECL-DIAG:HAS? -1 T=                                  \ and so was the backslash
 \ and trailing text after the offending payload cannot suppress the reject,
 \ because the payload is resolved before anything following it is read.
 DECL-DIAG:PROSE
-s" ENUM edlptrtail 0 VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TRY 7109 T=
+s" ENUM edlptrtail<> VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TRY 7109 T=
 s" habu: bad enum declaration 'edlptrtail': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
