@@ -19,10 +19,11 @@
 \     word, and that the operands are well formed. The Habu side asks the
 \     shipped emitter for the same word, so a disagreement between the model
 \     and the assembler shows up as one side refusing;
-\   - an overflow row asks that the operands are NOT well formed and that the
-\     32-bit result of the model's own masking step is still the word the
-\     shipped encoder emitted, which is what makes "not refused" a statement
-\     about a specific wrong instruction rather than a vague worry;
+\   - an out-of-range row asks that the operands are NOT well formed. The Habu
+\     side runs the same row through the shipped mnemonic in a child engine and
+\     requires it to be refused, so the pair says the two bounds are the same
+\     bound: loosen it in the model and this obligation fails, loosen it in the
+\     assembler and the child emits instead of dying;
 \   - a reserved-register row asks whether the model says that operand slot is
 \     checked, against what the shipped code actually did with x18 in it.
 \
@@ -112,15 +113,15 @@ variable PIN-N
    s"  = true." +$ +NL
    s" Proof. split; vm_compute; reflexivity. Qed." +$ +NL ;
 
-\ ---- the overflow rows -------------------------------------------------------
+\ ---- the out-of-range rows ---------------------------------------------------
+\ The shipped code refuses the row; the model has to agree that the operands
+\ are not well formed. A bound loosened on either side breaks the pair.
 
-: EMIT-OVERFLOW ( n -- ) {: r:n :}
-   s" Example overflow_" +$ r OVF-FORM@ FORM-NAME$ +$ s" _" +$ r +N s"  :" +$ +NL
-   s"   wf " +$ r OVF-FORM@ r OVF-A@ r OVF-B@ r OVF-C@ +INSN
-   s"  = false" +$ +NL
-   s"   /\ emit " +$ r OVF-FORM@ r OVF-A@ r OVF-B@ r OVF-C@ +INSN
-   s"  = " +$ r OVF-WORD@ +N s" ." +$ +NL
-   s" Proof. split; vm_compute; reflexivity. Qed." +$ +NL ;
+: EMIT-OUT-OF-RANGE ( n -- ) {: r:n :}
+   s" Example out_of_range_" +$ r OOR-FORM@ FORM-NAME$ +$ s" _" +$ r +N s"  :" +$ +NL
+   s"   wf " +$ r OOR-FORM@ r OOR-A@ r OOR-B@ r OOR-C@ +INSN
+   s"  = false." +$ +NL
+   s" Proof. vm_compute. reflexivity. Qed." +$ +NL ;
 
 \ ---- the reserved-register rows ----------------------------------------------
 \ Exit code 72 is the shipped refusal; anything else is a slot no check reaches.
@@ -135,7 +136,7 @@ variable PIN-N
 
 : EMIT-ROWS ( -- )
    VECTORS 0 ?do i EMIT-VECTOR loop
-   OVERFLOWS 0 ?do i EMIT-OVERFLOW loop
+   OUT-OF-RANGES 0 ?do i EMIT-OUT-OF-RANGE loop
    RESERVEDS 0 ?do i EMIT-RESERVED loop ;
 
 public

@@ -46,8 +46,8 @@ closed
 theorem Habu.Common.Insn.opcode_and_operands_tile_the_word
 type forall i : insn, Z.lor (opmask i) (fldmask i) = 4294967295 /\ Z.land (opmask i) (fldmask i) = 0
 closed
-theorem Habu.Common.Insn.unguarded_x_register_forms
-type forall i : insn, checked_regs i <> xregs i -> (exists a b : Z, i = Ldar a b) \/ (exists a b : Z, i = Stlr a b) \/ (exists a b : Z, i = Cbz a b) \/ (exists a b : Z, i = Cbnz a b)
+theorem Habu.Common.Insn.every_x_register_is_checked
+type forall i : insn, checked_regs i = xregs i
 closed
 theorem Habu.Common.Insn.overflow_aliases_another_instruction
 type wf (Movz 0 65536 0) = false /\ emit (Movz 0 65536 0) = enc (Movz 0 0 1) /\ wf (Cset 1 16) = false /\ emit (Cset 1 16) = enc (Cset 1 0)

@@ -16,12 +16,14 @@
 \ Two halves, because one of them ends processes:
 \
 \   - `HABU-SIDE` runs in this engine. It covers the encoding vectors, the
-\     overflow vectors, the reserved-register rows the shipped code does NOT
-\     refuse, and the `>LIMM` bindings.
-\   - `REFUSAL-SIDE` runs the rows the shipped code DOES refuse. `XREG?` and
-\     `>LIMM` report a refusal by ending the process with `die`, so each of
-\     those rows runs in a child engine through `test/compiler/insn-refusal.f`
-\     and is judged by its exit status.
+\     reserved-register rows the shipped code does NOT refuse, and the `>LIMM`
+\     bindings.
+\   - `REFUSAL-SIDE` runs the rows the shipped code DOES refuse: the reserved
+\     register, an operand outside its field, an operand a scale division would
+\     round, and a mask `>LIMM` cannot pack. Every refusal reports itself by
+\     ending the process with `die`, so each of those rows runs in a child
+\     engine through `test/compiler/insn-refusal.f` and is judged by its exit
+\     status.
 \
 \ Consumers: `test/compiler/insn-manifest.f` (the first half only) and
 \ `test/compiler/insn-proof.f` (both, plus the proof assistant).
@@ -235,20 +237,6 @@ private
       i FORM-COVERED? TTRUE
    loop ;
 
-\ ---- the overflow vectors ----------------------------------------------------
-
-: OVERFLOW-ROW ( n -- ) {: r:n :}
-   SB-RESET
-   s" an out-of-range operand of " SB-APPEND
-   r OVF-FORM@ FORM-NAME$ SB-APPEND
-   s"  is encoded rather than refused" SB-APPEND
-   SB$ T-LABEL
-   r OVF-FORM@ r OVF-A@ r OVF-B@ r OVF-C@ 0 EMITTED-WORD
-   r OVF-WORD@ T= ;
-
-: PHASE-OVERFLOW ( -- )
-   OVERFLOWS 0 ?do i OVERFLOW-ROW loop ;
-
 \ ---- the reserved-register rows the shipped code lets through ----------------
 
 : RESERVED-ALLOWED-ROW ( n -- ) {: r:n :}
@@ -258,7 +246,7 @@ private
    r RES-FORM@ FORM-NAME$ SB-APPEND
    s"  is not refused, and encodes" SB-APPEND
    SB$ T-LABEL
-   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ 0 EMITTED-WORD
+   r RES-FORM@ r RES-A@ r RES-B@ r RES-C@ r RES-MASK@ EMITTED-WORD
    r RES-WORD@ T= ;
 
 : PHASE-RESERVED-ALLOWED ( -- )
@@ -282,7 +270,6 @@ public
 : HABU-SIDE ( -- )
    PHASE-VECTORS
    PHASE-COVERAGE
-   PHASE-OVERFLOW
    PHASE-RESERVED-ALLOWED
    PHASE-LIMM ;
 
@@ -301,6 +288,9 @@ private
 
 : ROW-ENV$ ( -- ptr u8 n )
    s" HABU_INSN_RESERVED_ROW" ;
+
+: RANGE-ENV$ ( -- ptr u8 n )
+   s" HABU_INSN_RANGE_ROW" ;
 
 : LIMM-ENV$ ( -- ptr u8 n )
    s" HABU_INSN_LIMM_ROW" ;
@@ -325,6 +315,15 @@ private
    ROW-ENV$ r CHILD-OUTCOME
    r RES-RC@ T-OUTCOME-EXITED= ;
 
+: OUT-OF-RANGE-ROW ( n -- ) {: r:n :}
+   SB-RESET
+   s" an operand outside its field in " SB-APPEND
+   r OOR-FORM@ FORM-NAME$ SB-APPEND
+   s"  is refused before a word is emitted" SB-APPEND
+   SB$ T-LABEL
+   RANGE-ENV$ r CHILD-OUTCOME
+   RESERVED-RC T-OUTCOME-EXITED= ;
+
 : LIMM-BAD-ROW ( n -- ) {: r:n :}
    s" >LIMM refuses a mask that is not a rotated run of ones" T-LABEL
    LIMM-ENV$ r CHILD-OUTCOME
@@ -334,6 +333,7 @@ public
 
 : REFUSAL-SIDE ( -- )
    RESERVEDS 0 ?do i RESERVED-REFUSED-ROW loop
+   OUT-OF-RANGES 0 ?do i OUT-OF-RANGE-ROW loop
    LIMM-BADS 0 ?do i LIMM-BAD-ROW loop ;
 
 ;using

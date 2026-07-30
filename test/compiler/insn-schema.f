@@ -17,19 +17,23 @@
 \      copy, so weakening a row asks both sides a weaker question and deleting
 \      one stops both sides asking.
 \
-\   2. The overflow vectors. Each row is an operand that does not fit its
-\      field. The shipped encoders bound nothing, so none of these is refused:
-\      the row records the word that comes out anyway. The Habu side proves the
-\      shipped word really emits it; the Rocq side proves the operands are not
-\      well formed and that the word is the encoding of a DIFFERENT
-\      instruction, or of none at all.
+\   2. The out-of-range vectors. Each row is an operand that does not fit the
+\      field the encoder drops it into, or a byte operand that the encoder's
+\      scale division would round down. Every one of them is refused: the
+\      shipped word ends the process with code 72 before any bit is packed, so
+\      each row runs in a child engine and is judged by its exit status. The
+\      Rocq side asks the model whether the same operands are well formed, and
+\      the answer must be no. That is what binds the two bounds together: a
+\      bound the shipped code loosened would emit instead of dying, and a bound
+\      the model loosened would answer `true` here.
 \
 \   3. The reserved-register vectors. x18 is Darwin platform-reserved, and
 \      `XREG?` in `src/arch/arm64/asm.f` refuses it at encode time. A row names
-\      an operand slot holding x18 and what the shipped code does with it:
-\      exit code 72 where the check runs, and the emitted word where it does
-\      not. The second kind is a FINDING, not a design - the file's own header
-\      says the check runs on every X-register operand field.
+\      an operand slot holding x18 and what the shipped code does with it. There
+\      is one row for every X-register operand slot of every form, because the
+\      model's `checked_regs` is a claim about each slot on its own, and a row
+\      is what makes that claim answerable. All of them refuse; the one row that
+\      does not is the control, an immediate that happens to be 18.
 \
 \   4. The logical-immediate vectors. `>LIMM` turns a plain mask into the
 \      packed N:immr:imms the encoding carries. The packing is what the model
@@ -48,6 +52,36 @@
 \     `src/arch/arm64/icode.f` computes from a label. The cases file builds a
 \     label at that distance, so a negative delta exercises the immediate
 \     resolve and a positive one exercises the forward fixup and backpatch.
+\
+\ How the bounds are covered, and what is deliberately not covered:
+\
+\   - Every form has one encoding row with all of its operands at their largest
+\     legal value, so a bound that became one too tight fails on that row.
+\   - Every X-register operand slot has an x18 row.
+\   - Every operand that is not a register has an out-of-range row, one per
+\     encoder, because each encoder applies the bound at its own call site.
+\   - A register that is merely too large is one row per way a register reaches
+\     the guard (`XMW3`, `XR3` in each of its three slots, `XRDI` in each of its
+\     two, `XR2` in each of its two, `XR2ND`, and a bare `XREG?`), not one per
+\     slot. The x18 rows already show that every slot reaches `XREG?`; the field
+\     bound then lives inside that one word, so a row per slot would be the same
+\     fact under seventy-six names.
+\   - Three bounds have no row because the shipped mnemonic cannot reach them.
+\     The packed logical immediate is built by `>LIMM`, which never returns a
+\     value outside the field; a branch or ADR displacement is a label distance
+\     that `src/arch/arm64/icode.f` bounds first; and an ADR displacement is a
+\     word position times four, so it can never be misaligned. Each is stated
+\     here rather than left to be discovered.
+\   - The floating-point encoders bound their D-register operands too, through
+\     `DR2` and `DR3` in `src/arch/arm64/asm.f`, but they have no row here at
+\     all: the floating-point forms are not in the modelled vocabulary, which
+\     `formal/Common/Insn.v` records as a MODEL GAP with its own dot. When that
+\     gap closes, those bounds get rows like every other form's.
+\   - `wf` calls a left shift of zero malformed and the shipped encoder does
+\     not refuse it. That is not a missing bound: zero is inside the six-bit
+\     shift field, and the reason the model excludes it is that the word is
+\     also a right shift of zero. `lsli_lsri_alias_at_zero` in
+\     `formal/Common/Insn.v` is where that lives.
 \
 \ Consumers: `test/compiler/insn-cases.f`,
 \ `test/compiler/insn-obligations.f`, `test/compiler/insn-refusal.f`.
@@ -201,13 +235,19 @@ public
    k F-B = k F-BL = or k F-BCOND = or k F-CBZ = or k F-CBNZ = or
    k F-ADR = or ;
 
+\ What `die` reports for every refusal in `src/arch/arm64/asm.f`: the reserved
+\ register, an operand outside its field, and an operand a scale division would
+\ round. A row that carries it runs in a child engine, because the refusal ends
+\ the process.
+72 constant RESERVED-RC
+
 private
 
 \ ---- storage -----------------------------------------------------------------
 
 $100 constant VEC-CAP
-$20 constant OVF-CAP
-$20 constant RES-CAP
+$40 constant OOR-CAP
+$80 constant RES-CAP
 $10 constant LIM-CAP
 
 create VEC-FORM VEC-CAP cells allot
@@ -217,16 +257,16 @@ create VEC-C VEC-CAP cells allot
 create VEC-MASK VEC-CAP cells allot
 create VEC-WORD VEC-CAP cells allot
 
-create OVF-FORM OVF-CAP cells allot
-create OVF-A OVF-CAP cells allot
-create OVF-B OVF-CAP cells allot
-create OVF-C OVF-CAP cells allot
-create OVF-WORD OVF-CAP cells allot
+create OOR-FORM OOR-CAP cells allot
+create OOR-A OOR-CAP cells allot
+create OOR-B OOR-CAP cells allot
+create OOR-C OOR-CAP cells allot
 
 create RES-FORM RES-CAP cells allot
 create RES-A RES-CAP cells allot
 create RES-B RES-CAP cells allot
 create RES-C RES-CAP cells allot
+create RES-MASK RES-CAP cells allot
 create RES-RC RES-CAP cells allot
 create RES-WORD RES-CAP cells allot
 
@@ -234,15 +274,15 @@ create LIM-MASK LIM-CAP cells allot
 create LIM-NIS LIM-CAP cells allot
 
 variable VEC-N
-variable OVF-N
+variable OOR-N
 variable RES-N
 variable LIM-N
 
 : VEC-RANGE ( n -- ) {: i:n :}
    i 0 < i VEC-N @ >= or if E-CIE-ROW throw then ;
 
-: OVF-RANGE ( n -- ) {: i:n :}
-   i 0 < i OVF-N @ >= or if E-CIE-ROW throw then ;
+: OOR-RANGE ( n -- ) {: i:n :}
+   i 0 < i OOR-N @ >= or if E-CIE-ROW throw then ;
 
 : RES-RANGE ( n -- ) {: i:n :}
    i 0 < i RES-N @ >= or if E-CIE-ROW throw then ;
@@ -273,24 +313,36 @@ variable LIM-N
 : VL ( n n n n n n -- ) {: form:n a:n b:n nis:n mask:n word:n :}
    form a b nis mask word VEC+ ;
 
-: OVF+ ( n n n n n -- ) {: form:n a:n b:n c:n word:n :}
-   OVF-N @ OVF-CAP >= if E-CIE-ROW throw then
-   form OVF-FORM OVF-N @ cells + !
-   a OVF-A OVF-N @ cells + !
-   b OVF-B OVF-N @ cells + !
-   c OVF-C OVF-N @ cells + !
-   word OVF-WORD OVF-N @ cells + !
-   OVF-N @ 1+ OVF-N ! ;
+\ An out-of-range row carries no expected word: the shipped code refuses it, so
+\ there is nothing to read back. It carries no mask either, because the only
+\ operand a mask would be for - the packed logical immediate - cannot be driven
+\ out of range through the shipped mnemonic.
+: OOR+ ( n n n n -- ) {: form:n a:n b:n c:n :}
+   OOR-N @ OOR-CAP >= if E-CIE-ROW throw then
+   form OOR-FORM OOR-N @ cells + !
+   a OOR-A OOR-N @ cells + !
+   b OOR-B OOR-N @ cells + !
+   c OOR-C OOR-N @ cells + !
+   OOR-N @ 1+ OOR-N ! ;
 
-: RES+ ( n n n n n n -- ) {: form:n a:n b:n c:n rc:n word:n :}
+\ A reserved-register row carries the plain mask as well, because the logical
+\ mnemonics take one and build the packed operand from it; the `c` column is
+\ that packed value, which is what the model is asked about.
+: RES+ ( n n n n n n n -- ) {: form:n a:n b:n c:n mask:n rc:n word:n :}
    RES-N @ RES-CAP >= if E-CIE-ROW throw then
    form RES-FORM RES-N @ cells + !
    a RES-A RES-N @ cells + !
    b RES-B RES-N @ cells + !
    c RES-C RES-N @ cells + !
+   mask RES-MASK RES-N @ cells + !
    rc RES-RC RES-N @ cells + !
    word RES-WORD RES-N @ cells + !
    RES-N @ 1+ RES-N ! ;
+
+\ Almost every reserved-register row is the same shape: an operand slot holding
+\ x18, no mask, refused before a word exists.
+: X18 ( n n n n -- ) {: form:n a:n b:n c:n :}
+   form a b c 0 RESERVED-RC 0 RES+ ;
 
 : LIM+ ( n n -- ) {: mask:n nis:n :}
    LIM-N @ LIM-CAP >= if E-CIE-ROW throw then
@@ -315,7 +367,10 @@ variable LIM-N
    F-MOVN 12 $FFF 2 $92C1FFEC V3
    F-MOVK 5 $1234 0 $F2824685 V3
    F-MOVK 5 $1234 16 $F2A24685 V3
-   F-MOVK 9 $FFFF 48 $F2FFFFE9 V3 ;
+   F-MOVK 9 $FFFF 48 $F2FFFFE9 V3
+   F-MOVZ 31 $FFFF 3 $D2FFFFFF V3
+   F-MOVN 31 $FFFF 3 $92FFFFFF V3
+   F-MOVK 31 $FFFF 48 $F2FFFFFF V3 ;
 
 : SHIFTED-REGISTER-VECTORS ( -- )
    F-ADD 3 3 2 $8B020063 V3
@@ -331,7 +386,17 @@ variable LIM-N
    F-UDIV 7 8 9 $9AC90907 V3
    F-LSLV 5 5 9 $9AC920A5 V3
    F-LSLV 3 4 5 $9AC52083 V3
-   F-LSRV 6 7 8 $9AC824E6 V3 ;
+   F-LSRV 6 7 8 $9AC824E6 V3
+   F-ADD 31 31 31 $8B1F03FF V3
+   F-SUB 31 31 31 $CB1F03FF V3
+   F-AND 31 31 31 $8A1F03FF V3
+   F-ORR 31 31 31 $AA1F03FF V3
+   F-EOR 31 31 31 $CA1F03FF V3
+   F-MUL 31 31 31 $9B1F7FFF V3
+   F-SDIV 31 31 31 $9ADF0FFF V3
+   F-UDIV 31 31 31 $9ADF0BFF V3
+   F-LSLV 31 31 31 $9ADF23FF V3
+   F-LSRV 31 31 31 $9ADF27FF V3 ;
 
 : IMMEDIATE-VECTORS ( -- )
    F-ADDI 6 11 0 $91000166 V3
@@ -342,7 +407,12 @@ variable LIM-N
    F-ANDI 14 14 $10C0 $2000000000000000 $924301CE VL
    F-ANDI 9 9 $1007 $FF $92401D29 VL
    F-ORRI 3 4 $1000 1 $B2400083 VL
-   F-EORI 5 6 $100F $FFFF $D2403CC5 VL ;
+   F-EORI 5 6 $100F $FFFF $D2403CC5 VL
+   F-ADDI 31 31 $FFF $913FFFFF V3
+   F-SUBI 31 31 $FFF $D13FFFFF V3
+   F-ANDI 31 31 $1007 $FF $92401FFF VL
+   F-ORRI 31 31 $1000 1 $B24003FF VL
+   F-EORI 31 31 $100F $FFFF $D2403FFF VL ;
 
 : SHIFT-VECTORS ( -- )
    F-LSLI 7 7 5 $D37BE8E7 V3
@@ -352,7 +422,10 @@ variable LIM-N
    F-LSRI 9 9 32 $D360FD29 V3
    F-LSRI 2 3 63 $D37FFC62 V3
    F-ASRI 5 5 1 $9341FCA5 V3
-   F-ASRI 8 9 63 $937FFD28 V3 ;
+   F-ASRI 8 9 63 $937FFD28 V3
+   F-LSLI 31 31 63 $D34103FF V3
+   F-LSRI 31 31 63 $D37FFFFF V3
+   F-ASRI 31 31 63 $937FFFFF V3 ;
 
 : MEMORY-VECTORS ( -- )
    F-LDR 8 31 40 $F94017E8 V3
@@ -369,7 +442,15 @@ variable LIM-N
    F-LDRW 3 4 16380 $B97FFC83 V3
    F-STRW 5 6 4 $B90004C5 V3
    F-LDAR 14 15 $C8DFFDEE V2
-   F-STLR 11 5 $C89FFCAB V2 ;
+   F-STLR 11 5 $C89FFCAB V2
+   F-LDR 31 31 32760 $F97FFFFF V3
+   F-STR 31 31 32760 $F93FFFFF V3
+   F-LDRB 31 31 $FFF $397FFFFF V3
+   F-STRB 31 31 $FFF $393FFFFF V3
+   F-LDRW 31 31 16380 $B97FFFFF V3
+   F-STRW 31 31 16380 $B93FFFFF V3
+   F-LDAR 31 31 $C8DFFFFF V2
+   F-STLR 31 31 $C89FFFFF V2 ;
 
 : COMPARE-VECTORS ( -- )
    F-CMP 9 8 $EB08013F V2
@@ -379,7 +460,10 @@ variable LIM-N
    F-CMPI 4 35 $F1008C9F V2
    F-CMPI 1 $FFF $F13FFC3F V2
    F-CSET 13 2 $9A9F37ED V2
-   F-CSET 7 0 $9A9F17E7 V2 ;
+   F-CSET 7 0 $9A9F17E7 V2
+   F-CMP 31 31 $EB1F03FF V2
+   F-CMPI 31 $FFF $F13FFFFF V2
+   F-CSET 31 15 $9A9FE7FF V2 ;
 
 \ Branch rows carry the word-relative delta. A row with a delta at or below
 \ zero resolves against a label already bound, which is the immediate path in
@@ -407,7 +491,11 @@ variable LIM-N
    F-CBNZ 15 0 $B500000F V2
    F-CBNZ 9 2 $B5000049 V2
    F-ADR 1 -8 $10FFFFC1 V2
-   F-ADR 1 16 $10000081 V2 ;
+   F-ADR 1 16 $10000081 V2
+   F-BCOND 15 0 $5400000F V2
+   F-CBZ 31 0 $B400001F V2
+   F-CBNZ 31 0 $B500001F V2
+   F-ADR 31 0 $1000001F V2 ;
 
 : SYSTEM-VECTORS ( -- )
    F-SVC 0 $D4000001 V1
@@ -420,53 +508,145 @@ variable LIM-N
    F-BLR 7 $D63F00E0 V1
    F-BR 3 $D61F0060 V1
    F-ICIVAU 5 $D50B7525 V1
-   F-DCCVAU 6 $D50B7B26 V1 ;
+   F-DCCVAU 6 $D50B7B26 V1
+   F-SVC $FFFF $D41FFFE1 V1
+   F-BLR 31 $D63F03E0 V1
+   F-BR 31 $D61F03E0 V1
+   F-ICIVAU 31 $D50B753F V1
+   F-DCCVAU 31 $D50B7B3F V1 ;
 
-\ ---- the overflow vectors ----------------------------------------------------
-\ Each row hands an emitter an operand one past the field it goes in. None of
-\ them is refused. The first four run into the neighbouring field and encode a
-\ different instruction; the last two leave the emitted vocabulary altogether.
+\ ---- the out-of-range vectors ------------------------------------------------
+\ Each row hands an emitter an operand the field cannot hold, or a byte operand
+\ the encoder's scale division would round down. Every one is refused before a
+\ bit is packed, so every one runs in a child engine and is judged by its exit
+\ status. The comment on a row says what the shipped code used to emit instead.
 
-: OVERFLOW-VECTORS ( -- )
-   F-MOVZ 0 $10000 0 $D2A00000 OVF+          \ imm16 + 1 becomes hw = 1
-   F-CSET 1 16 0 $9A9F17E1 OVF+              \ cond 16 becomes cond eq
-   F-MOVK 5 $1234 8 $F2824685 OVF+           \ a shift of 8 rounds down to 0
-   F-LDR 1 2 12 $F9400441 OVF+               \ an offset of 12 rounds down to 8
-   F-ADDI 1 2 $1000 $91400041 OVF+           \ imm12 + 1 sets the shift-by-12 bit
-   F-ADD 1 2 32 $8B200041 OVF+ ;             \ register 32 sets the extend bit
+\ A register one past the five-bit field, once for each way a register reaches
+\ the guard. `XMW3` carries the move-wide destination, `XR3` the three operands
+\ of a shifted-register form, `XRDI` the destination and base of an immediate
+\ or load/store form, `XR2` both operands of an acquire/release form, `XR2ND`
+\ the register of a two-operand form whose second operand is not one, and
+\ `XREG?` on its own the single operand of an indirect branch.
+: REGISTER-RANGE-VECTORS ( -- )
+   F-MOVZ 32 0 0 OOR+                        \ was: register 32 became hw = 1
+   F-ADD 32 2 3 OOR+
+   F-ADD 1 32 3 OOR+
+   F-ADD 1 2 32 OOR+                         \ was: register 32 set the extend bit
+   F-ADDI 32 2 0 OOR+
+   F-ADDI 1 32 0 OOR+
+   F-LDAR 32 15 0 OOR+
+   F-LDAR 14 32 0 OOR+
+   F-CSET 32 0 0 OOR+
+   F-BLR 32 0 0 OOR+ ;
+
+\ Every operand that is not a register, one row per encoder that bounds it.
+: IMMEDIATE-RANGE-VECTORS ( -- )
+   F-MOVZ 0 $10000 0 OOR+                    \ was: imm16 + 1 became hw = 1
+   F-MOVN 0 $10000 0 OOR+
+   F-MOVK 0 $10000 0 OOR+
+   F-SVC $10000 0 0 OOR+
+   F-MOVZ 0 0 4 OOR+                         \ the shifted half is two bits wide
+   F-MOVN 0 0 4 OOR+
+   F-MOVK 5 $1234 64 OOR+                    \ a shift of 64 is a fifth half
+   F-ADDI 1 2 $1000 OOR+                     \ was: imm12 + 1 set the shift-by-12 bit
+   F-SUBI 1 2 $1000 OOR+
+   F-LDRB 1 2 $1000 OOR+
+   F-STRB 1 2 $1000 OOR+
+   F-CMPI 1 $1000 0 OOR+
+   F-LDR 1 2 32768 OOR+                      \ 32768 / 8 is one past the field
+   F-STR 1 2 32768 OOR+
+   F-LDRW 1 2 16384 OOR+
+   F-STRW 1 2 16384 OOR+
+   F-LSLI 1 2 64 OOR+
+   F-LSRI 1 2 64 OOR+
+   F-ASRI 1 2 64 OOR+
+   F-CSET 1 16 0 OOR+                        \ was: cond 16 became cond eq
+   F-BCOND 16 0 0 OOR+ ;
+
+\ A byte operand the encoder divides by its access scale. Each was rounded down
+\ and encoded as the aligned operand below it.
+: MISALIGNED-VECTORS ( -- )
+   F-MOVK 5 $1234 8 OOR+                     \ was: a shift of 8 rounded down to 0
+   F-LDR 1 2 12 OOR+                         \ was: an offset of 12 rounded down to 8
+   F-STR 1 2 12 OOR+
+   F-LDRW 1 2 6 OOR+
+   F-STRW 1 2 6 OOR+ ;
 
 \ ---- the reserved-register vectors -------------------------------------------
-\ Exit code 72 is what `die` reports for the refusal in `XREG?`. A row with
-\ code 72 runs in a child engine, because the refusal ends the process; a row
-\ with code 0 runs in this one and is compared against the word that came out.
+\ One row per X-register operand slot of every form. A row with code 72 runs in
+\ a child engine, because the refusal ends the process; the one row with code 0
+\ runs in this one and is compared against the word that came out.
 
-public
-72 constant RESERVED-RC
-private
+: RESERVED-MOVE-WIDE ( -- )
+   F-MOVZ 18 0 0 X18
+   F-MOVN 18 0 0 X18
+   F-MOVK 18 0 0 X18 ;
+
+: RESERVED-SHIFTED-REGISTER ( -- )
+   F-ADD 18 2 3 X18   F-ADD 1 18 3 X18   F-ADD 1 2 18 X18
+   F-SUB 18 2 3 X18   F-SUB 1 18 3 X18   F-SUB 1 2 18 X18
+   F-AND 18 2 3 X18   F-AND 1 18 3 X18   F-AND 1 2 18 X18
+   F-ORR 18 2 3 X18   F-ORR 1 18 3 X18   F-ORR 1 2 18 X18
+   F-EOR 18 2 3 X18   F-EOR 1 18 3 X18   F-EOR 1 2 18 X18
+   F-MUL 18 2 3 X18   F-MUL 1 18 3 X18   F-MUL 1 2 18 X18
+   F-SDIV 18 2 3 X18  F-SDIV 1 18 3 X18  F-SDIV 1 2 18 X18
+   F-UDIV 18 2 3 X18  F-UDIV 1 18 3 X18  F-UDIV 1 2 18 X18
+   F-LSLV 18 2 3 X18  F-LSLV 1 18 3 X18  F-LSLV 1 2 18 X18
+   F-LSRV 18 2 3 X18  F-LSRV 1 18 3 X18  F-LSRV 1 2 18 X18 ;
+
+\ The logical forms take the plain mask and pack it themselves, so these rows
+\ carry the mask the mnemonic is handed and the packed value the model sees.
+: RESERVED-IMMEDIATE ( -- )
+   F-ADDI 18 2 0 X18   F-ADDI 1 18 0 X18
+   F-SUBI 18 2 0 X18   F-SUBI 1 18 0 X18
+   F-ANDI 18 2 $1007 $FF RESERVED-RC 0 RES+
+   F-ANDI 1 18 $1007 $FF RESERVED-RC 0 RES+
+   F-ORRI 18 2 $1000 1 RESERVED-RC 0 RES+
+   F-ORRI 1 18 $1000 1 RESERVED-RC 0 RES+
+   F-EORI 18 2 $100F $FFFF RESERVED-RC 0 RES+
+   F-EORI 1 18 $100F $FFFF RESERVED-RC 0 RES+ ;
+
+: RESERVED-SHIFT ( -- )
+   F-LSLI 18 2 1 X18   F-LSLI 1 18 1 X18
+   F-LSRI 18 2 0 X18   F-LSRI 1 18 0 X18
+   F-ASRI 18 2 0 X18   F-ASRI 1 18 0 X18 ;
+
+: RESERVED-MEMORY ( -- )
+   F-LDR 18 15 0 X18   F-LDR 1 18 0 X18
+   F-STR 18 15 0 X18   F-STR 1 18 0 X18
+   F-LDRB 18 15 0 X18  F-LDRB 1 18 0 X18
+   F-STRB 18 15 0 X18  F-STRB 1 18 0 X18
+   F-LDRW 18 15 0 X18  F-LDRW 1 18 0 X18
+   F-STRW 18 15 0 X18  F-STRW 1 18 0 X18
+   F-LDAR 18 15 0 X18  F-LDAR 14 18 0 X18
+   F-STLR 18 5 0 X18   F-STLR 14 18 0 X18 ;
+
+: RESERVED-COMPARE-AND-BRANCH ( -- )
+   F-CMP 18 8 0 X18    F-CMP 9 18 0 X18
+   F-CMPI 18 16 0 X18
+   F-CSET 18 0 0 X18
+   F-CBZ 18 0 0 X18
+   F-CBNZ 18 0 0 X18
+   F-ADR 18 0 0 X18
+   F-BLR 18 0 0 X18
+   F-BR 18 0 0 X18
+   F-ICIVAU 18 0 0 X18
+   F-DCCVAU 18 0 0 X18 ;
+
+\ The control: an immediate that happens to be 18 is not a register, so it
+\ still encodes. Without it a check that refused the number 18 everywhere,
+\ rather than the register x18, would look correct here.
+: RESERVED-CONTROL ( -- )
+   F-LDR 1 2 144 0 0 $F9404841 RES+ ;
 
 : RESERVED-VECTORS ( -- )
-   F-LDR 18 15 0 RESERVED-RC 0 RES+
-   F-LDR 1 18 0 RESERVED-RC 0 RES+
-   F-ADD 18 2 3 RESERVED-RC 0 RES+
-   F-ADD 1 18 3 RESERVED-RC 0 RES+
-   F-ADD 1 2 18 RESERVED-RC 0 RES+
-   F-MOVZ 18 0 0 RESERVED-RC 0 RES+
-   F-CMP 18 8 0 RESERVED-RC 0 RES+
-   F-CMP 9 18 0 RESERVED-RC 0 RES+
-   F-CMPI 18 16 0 RESERVED-RC 0 RES+
-   F-CSET 18 0 0 RESERVED-RC 0 RES+
-   F-ADR 18 0 0 RESERVED-RC 0 RES+
-   F-BLR 18 0 0 RESERVED-RC 0 RES+
-   \ FINDING: no check reaches these slots. LDAR and STLR never call XREG?,
-   \ and CBZ,/CBNZ, in src/arch/arm64/icode.f build their word without going
-   \ through the ENC-CBZ/ENC-CBNZ encoders that would have called it.
-   F-LDAR 18 15 0 0 $C8DFFDF2 RES+
-   F-LDAR 14 18 0 0 $C8DFFE4E RES+
-   F-STLR 18 5 0 0 $C89FFCB2 RES+
-   F-CBZ 18 0 0 0 $B4000012 RES+
-   F-CBNZ 18 0 0 0 $B5000012 RES+
-   \ and an immediate that happens to be 18 is not a register, so it stands.
-   F-LDR 1 2 144 0 $F9404841 RES+ ;
+   RESERVED-MOVE-WIDE
+   RESERVED-SHIFTED-REGISTER
+   RESERVED-IMMEDIATE
+   RESERVED-SHIFT
+   RESERVED-MEMORY
+   RESERVED-COMPARE-AND-BRANCH
+   RESERVED-CONTROL ;
 
 \ ---- the logical-immediate vectors -------------------------------------------
 
@@ -478,7 +658,7 @@ private
 
 : BUILD-VECTORS ( -- )
    0 VEC-N !
-   0 OVF-N !
+   0 OOR-N !
    0 RES-N !
    0 LIM-N !
    MOVE-WIDE-VECTORS
@@ -489,7 +669,9 @@ private
    COMPARE-VECTORS
    BRANCH-VECTORS
    SYSTEM-VECTORS
-   OVERFLOW-VECTORS
+   REGISTER-RANGE-VECTORS
+   IMMEDIATE-RANGE-VECTORS
+   MISALIGNED-VECTORS
    RESERVED-VECTORS
    LIMM-VECTORS ;
 
@@ -500,7 +682,7 @@ public
 \ ---- reading the tables ------------------------------------------------------
 
 : VECTORS ( -- n )        VEC-N @ ;
-: OVERFLOWS ( -- n )      OVF-N @ ;
+: OUT-OF-RANGES ( -- n )  OOR-N @ ;
 : RESERVEDS ( -- n )      RES-N @ ;
 : LIMMS ( -- n )          LIM-N @ ;
 
@@ -511,16 +693,16 @@ public
 : ROW-MASK@ ( n -- n )    dup VEC-RANGE cells VEC-MASK + @ ;
 : ROW-WORD@ ( n -- n )    dup VEC-RANGE cells VEC-WORD + @ ;
 
-: OVF-FORM@ ( n -- n )    dup OVF-RANGE cells OVF-FORM + @ ;
-: OVF-A@ ( n -- n )       dup OVF-RANGE cells OVF-A + @ ;
-: OVF-B@ ( n -- n )       dup OVF-RANGE cells OVF-B + @ ;
-: OVF-C@ ( n -- n )       dup OVF-RANGE cells OVF-C + @ ;
-: OVF-WORD@ ( n -- n )    dup OVF-RANGE cells OVF-WORD + @ ;
+: OOR-FORM@ ( n -- n )    dup OOR-RANGE cells OOR-FORM + @ ;
+: OOR-A@ ( n -- n )       dup OOR-RANGE cells OOR-A + @ ;
+: OOR-B@ ( n -- n )       dup OOR-RANGE cells OOR-B + @ ;
+: OOR-C@ ( n -- n )       dup OOR-RANGE cells OOR-C + @ ;
 
 : RES-FORM@ ( n -- n )    dup RES-RANGE cells RES-FORM + @ ;
 : RES-A@ ( n -- n )       dup RES-RANGE cells RES-A + @ ;
 : RES-B@ ( n -- n )       dup RES-RANGE cells RES-B + @ ;
 : RES-C@ ( n -- n )       dup RES-RANGE cells RES-C + @ ;
+: RES-MASK@ ( n -- n )    dup RES-RANGE cells RES-MASK + @ ;
 : RES-RC@ ( n -- n )      dup RES-RANGE cells RES-RC + @ ;
 : RES-WORD@ ( n -- n )    dup RES-RANGE cells RES-WORD + @ ;
 

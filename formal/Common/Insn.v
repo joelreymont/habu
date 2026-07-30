@@ -31,31 +31,32 @@
      mask_never_truncates          - the shipped `MSK` ($FFFFFFFF and) is the
                                      identity on every well-formed encoding,
                                      so it never silently drops a bit.
-     unguarded_x_register_forms    - LDAR, STLR, CBZ and CBNZ are exactly the
-                                     modelled forms with an X-register
-                                     operand the shipped encoder does not
-                                     pass through its reserved-register
-                                     check.  A FINDING, not a design: the
-                                     header of src/arch/arm64/asm.f says the
-                                     check runs on every X-register operand
-                                     field.
-     overflow_aliases_another_instruction    - FINDING.  An out-of-range
-                                     16-bit move immediate, or an
-                                     out-of-range condition code, is not
-                                     refused: it runs into the neighbouring
-                                     field and encodes a DIFFERENT
-                                     well-formed instruction.
-     truncating_scale_aliases_another_offset - FINDING.  The mnemonics that
-                                     divide a byte operand by its scale
-                                     (MOVK by 16, LDR by 8) round down
-                                     without checking, so a misaligned
-                                     operand encodes a different, aligned
-                                     one.
-     overflow_escapes_the_vocabulary         - FINDING.  An out-of-range
-                                     12-bit immediate or register number
-                                     leaves the modelled vocabulary
-                                     altogether: the emitted word is not the
-                                     encoding of any form here.
+     every_x_register_is_checked   - every X-register operand of every form
+                                     is one the shipped encoder passes
+                                     through its reserved-register refusal.
+                                     This is the promise the header of
+                                     src/arch/arm64/asm.f makes.  It was
+                                     false of LDAR, STLR, CBZ and CBNZ until
+                                     those encoders and the branch emitters
+                                     in src/arch/arm64/icode.f were repaired.
+     overflow_aliases_another_instruction    - why the field bounds have to
+                                     be enforced.  An out-of-range 16-bit
+                                     move immediate, or an out-of-range
+                                     condition code, would run into the
+                                     neighbouring field and encode a
+                                     DIFFERENT well-formed instruction.
+     truncating_scale_aliases_another_offset - why the scale checks have to
+                                     be enforced.  The mnemonics that divide
+                                     a byte operand by its scale (MOVK by 16,
+                                     LDR by 8) round down, so a misaligned
+                                     operand would encode a different,
+                                     aligned one.
+     overflow_escapes_the_vocabulary         - the other way an unbounded
+                                     operand fails: an out-of-range 12-bit
+                                     immediate or register number leaves the
+                                     modelled vocabulary altogether, and the
+                                     emitted word is not the encoding of any
+                                     form here.
      lsli_lsri_alias_at_zero       - a shift-left by zero and a shift-right
                                      by zero are the same word, which is why
                                      a left shift of zero is not well formed
@@ -311,8 +312,15 @@ Definition emit (i : insn) : Z := Z.land (enc i) 0xFFFFFFFF.
 
 (* Well formed: every operand fits the field the encoder drops it into, and
    every scaled operand really is a multiple of its scale.  These are the
-   ranges the ARM64 encodings allow - NOT the ranges the shipped words check,
-   which is the point of the findings below. *)
+   ranges the ARM64 encodings allow, and they are now also the ranges the
+   shipped encoders refuse outside of - the out-of-range rows in
+   test/compiler/insn-schema.f run each one through the real mnemonic and
+   require the process to die, while asking this predicate the same question.
+
+   One clause is not an encoder bound and has no such row.  A left shift of
+   zero is inside the six-bit shift field, and the shipped encoder emits it;
+   it is excluded here because that word is also a right shift of zero, so
+   the decoder cannot name it.  lsli_lsri_alias_at_zero below is that fact. *)
 Definition uok (w v : Z) : bool := (0 <=? v) && (v <? 2 ^ w).
 Definition sok (w v : Z) : bool := (- (2 ^ (w - 1)) <=? v) && (v <? 2 ^ (w - 1)).
 Definition rok (r : Z) : bool := uok 5 r.
@@ -371,10 +379,12 @@ Definition wf (i : insn) : bool :=
 
 (* Which operands the shipped encoder passes through XREG?, the
    reserved-register refusal in src/arch/arm64/asm.f, and which operands are
-   X registers at all.  Read off the shipped code: XR3 checks all three, XRDI
-   the destination and base, XRD3 and XR2ND the first, XR2 both, and the
-   branch emitters in src/arch/arm64/icode.f build their words without
-   calling the asm.f encoders at all. *)
+   X registers at all.  The first list is read off the shipped code: XR3
+   checks all three operands, XRDI the destination and base, XMW3 and XR2ND
+   the first, XR2 both, and the branch emitters in src/arch/arm64/icode.f
+   reach it by building their base word with the asm.f encoder.  The second
+   list is read off the operand roles.  They are written separately and
+   every_x_register_is_checked below is what makes them answer the same. *)
 Definition checked_regs (i : insn) : list Z :=
   match i with
   | Movz rd imm hw => [rd]
@@ -404,16 +414,16 @@ Definition checked_regs (i : insn) : list Z :=
   | Strb rt rn off => [rt; rn]
   | Ldrw rt rn off => [rt; rn]
   | Strw rt rn off => [rt; rn]
-  | Ldar rt rn => []
-  | Stlr rt rn => []
+  | Ldar rt rn => [rt; rn]
+  | Stlr rt rn => [rt; rn]
   | Cmp rn rm => [rn; rm]
   | Cmpi rn imm => [rn]
   | Cset rd cond => [rd]
   | B d => []
   | Bl d => []
   | Bcond cond d => []
-  | Cbz rt d => []
-  | Cbnz rt d => []
+  | Cbz rt d => [rt]
+  | Cbnz rt d => [rt]
   | Adr rd bd => [rd]
   | Svc imm => []
   | Ret => []
@@ -1468,48 +1478,52 @@ Proof. destruct i; split; vm_compute; reflexivity. Qed.
 
 (* ---- what the shipped guards do and do not cover ------------------------ *)
 
-(* FINDING.  src/arch/arm64/asm.f opens by saying the reserved-register
-   refusal runs at encode time "for every X-register operand field".  Four
-   modelled forms take an X register the shipped code never shows that check:
-   ENC-LDAR and ENC-STLR simply do not call it, and CBZ,/CBNZ, in
-   src/arch/arm64/icode.f build their word directly instead of going through
-   the ENC-CBZ/ENC-CBNZ encoders that would have called it.  The statement is
-   over the whole inductive, so adding a form without recording its checked
-   operands breaks this proof. *)
-Theorem unguarded_x_register_forms : forall i,
-  checked_regs i <> xregs i ->
-  (exists a b, i = Ldar a b) \/ (exists a b, i = Stlr a b) \/
-  (exists a b, i = Cbz a b) \/ (exists a b, i = Cbnz a b).
-Proof.
-  destruct i; intros H;
-    try (exfalso; apply H; reflexivity);
-    eauto 6.
-Qed.
+(* src/arch/arm64/asm.f opens by saying the reserved-register refusal runs at
+   encode time "for every X-register operand field".  This is that promise:
+   the operands the shipped code screens and the operands that are X registers
+   are the same list, for every form.  It used to be false of four forms -
+   ENC-LDAR and ENC-STLR did not call the check, and CBZ,/CBNZ, in
+   src/arch/arm64/icode.f built their word without going through the encoder
+   that would have called it - and the shape of the old statement was the list
+   of exceptions.  The statement is over the whole inductive, so adding a form
+   without recording its checked operands breaks this proof, and so does
+   dropping a check from an encoder and saying so in checked_regs.  Which
+   entry of checked_regs corresponds to which shipped call site is settled by
+   the reserved-register rows in test/compiler/insn-schema.f: there is one for
+   every slot named here, and each runs the real mnemonic in a child engine. *)
+Theorem every_x_register_is_checked : forall i, checked_regs i = xregs i.
+Proof. destruct i; reflexivity. Qed.
 
-(* ---- silent field overflow --------------------------------------------- *)
+(* ---- why each bound has to be enforced ---------------------------------- *)
 
-(* FINDING.  Nothing in the shipped encoders bounds an operand, so an operand
-   one past its field runs into the next one.  Both cases below emit the
-   encoding of a DIFFERENT well-formed instruction, with no diagnostic: a
-   16-bit move immediate of 65536 becomes the same move shifted left 16, and
-   a condition code of 16 becomes the condition code the encoder inverts to
-   the same four bits. *)
+(* The shipped encoders now refuse an operand that does not fit its field, and
+   the out-of-range rows in test/compiler/insn-schema.f run each refusal in a
+   child engine.  The three results below say why that refusal is the only
+   safe answer: they compute what the packing WOULD have produced, and it is
+   never a diagnostic-free version of the instruction that was asked for.
+   Without them a reader could take the bounds for pedantry.
+
+   An operand one past its field runs into the next one, and here it emits the
+   encoding of a DIFFERENT well-formed instruction: a 16-bit move immediate of
+   65536 becomes the same move shifted left 16, and a condition code of 16
+   becomes the condition code the encoder inverts to the same four bits. *)
 Theorem overflow_aliases_another_instruction :
   wf (Movz 0 65536 0) = false /\ emit (Movz 0 65536 0) = enc (Movz 0 0 1) /\
   wf (Cset 1 16) = false /\ emit (Cset 1 16) = enc (Cset 1 0).
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* FINDING.  The mnemonics that carry a byte operand divide it by the access
-   scale with a plain Forth `/`, which rounds down.  A misaligned operand is
-   therefore not refused; it silently encodes the aligned one below it. *)
+(* The mnemonics that carry a byte operand divide it by the access scale, and
+   division rounds down.  This is what a misaligned operand would have
+   encoded if `SCALE/` did not refuse it first: the aligned operand below it,
+   with no diagnostic. *)
 Theorem truncating_scale_aliases_another_offset :
   wf (Movk 5 4660 8) = false /\ emit (Movk 5 4660 8) = enc (Movk 5 4660 0) /\
   wf (Ldr 1 2 12) = false /\ emit (Ldr 1 2 12) = enc (Ldr 1 2 8).
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
-(* FINDING.  The other way an unbounded operand fails: the word it produces
-   is not any instruction this model names, so a decoder - or a reader of a
-   dump - cannot even report what was emitted. *)
+(* The other way an unbounded operand fails: the word it produces is not any
+   instruction this model names, so a decoder - or a reader of a dump - could
+   not even report what had been emitted. *)
 Theorem overflow_escapes_the_vocabulary :
   wf (Addi 1 2 4096) = false /\ decode (emit (Addi 1 2 4096)) = None /\
   wf (Add 1 2 32) = false /\ decode (emit (Add 1 2 32)) = None.
@@ -1530,7 +1544,7 @@ Print Assumptions enc_injective.
 Print Assumptions decoder_rows_exclusive.
 Print Assumptions mask_never_truncates.
 Print Assumptions opcode_and_operands_tile_the_word.
-Print Assumptions unguarded_x_register_forms.
+Print Assumptions every_x_register_is_checked.
 Print Assumptions overflow_aliases_another_instruction.
 Print Assumptions truncating_scale_aliases_another_offset.
 Print Assumptions overflow_escapes_the_vocabulary.

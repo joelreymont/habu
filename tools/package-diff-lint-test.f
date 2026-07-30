@@ -200,6 +200,10 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    TEST-ROOT$ s" src/habu" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
    TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
+   \ the ARM64 encoder prefix, which the entry names file by file rather than by
+   \ directory, so the disassembler beside them is a negative
+   TEST-ROOT$ s" src/arch/arm64" TEST-PATH-BUF JOIN-PATH TEST-PATH-U !
+   TEST-PATH-BUF TEST-PATH-U @ MAKE-DIRS
    \ the Gforth recovery mirror's own directory, plus a same-basename neighbour
    \ one level up and a copy of the whole path under test/, which is what a
    \ suffix comparison would wrongly admit
@@ -1385,6 +1389,67 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deleted package boundary in render.f still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
+\ ---- src/arch/arm64/{asm,icode,mnem}.f: the ARM64 encoder prefix ----
+\ Same category and same fixtures as the checker and render entries: the three
+\ files carry no package at all, they load ahead of the compiler that defines
+\ packages, and their names are resolved bare by every later engine source. The
+\ positive is the shape that measured the problem - adding the operand bounds to
+\ asm.f - and the negatives pin the match as an exact path and keep every scope
+\ change reported.
+
+: TEST-WRITE-ARM64-OWNER-LOSS ( -- )
+   TEST-SOURCE-RESET
+   s" : ENC-RET ( -- n ) 3596550080 ;" TEST-SOURCE-LINE
+   s" src/arch/arm64/asm.f" TEST-WRITE-SOURCE ;
+
+: TEST-ARM64-OWNER-LOSS-DIFF ( -- )
+   s" src/arch/arm64/asm.f" TEST-MODIFY-HEAD
+   s" @@ -1,3 +1 @@" TEST-DIFF+ TEST-LF
+   s" -package ARM64-ASM" TEST-DIFF+ TEST-LF
+   s"  : ENC-RET ( -- n ) 3596550080 ;" TEST-DIFF+ TEST-LF
+   s" -;package" TEST-DIFF+ TEST-LF ;
+
+: TEST-ARM64-EXEMPTION ( -- )
+   \ Positive: a body change to an existing global encoder is admitted, for all
+   \ three files, because the whole surface of each is global by construction.
+   s" src/arch/arm64/asm.f" TEST-CHECKER-COMMENT-CASE
+   s" the ARM64 encoder prefix exempts a body change in asm.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   s" src/arch/arm64/icode.f" TEST-CHECKER-COMMENT-CASE
+   s" the ARM64 encoder prefix exempts a body change in icode.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   s" src/arch/arm64/mnem.f" TEST-CHECKER-COMMENT-CASE
+   s" the ARM64 encoder prefix exempts a body change in mnem.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Positive: a new global word is admitted too. This is the exact shape of the
+   \ operand bounds - ?REG, ?IMM12, SCALE/ - added beside the encoders.
+   s" src/arch/arm64/asm.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" the ARM64 encoder prefix exempts a new global bound in asm.f" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a sibling carrying the allowlist path as a prefix is not an exact
+   \ match and must still fail.
+   s" src/arch/arm64/asm-extra.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" sibling src/arch/arm64/asm-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the allowlist path
+   \ as a suffix but is not exact, so it must still fail.
+   s" lib/asm.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" lib/asm.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the disassembler shares the directory and is NOT in the entry, so
+   \ a new global there is still reported - the category is three named files,
+   \ not the src/arch/arm64 tree.
+   s" src/arch/arm64/disasm.f" TEST-CHECKER-NEW-GLOBAL-CASE
+   s" src/arch/arm64/disasm.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative (structural): deleting a package boundary inside an allowlisted
+   \ file still reports lost ownership. The entry suppresses a plain global body
+   \ or definition change, never a scope change.
+   TEST-WRITE-ARM64-OWNER-LOSS
+   TEST-DIFF-RESET TEST-ARM64-OWNER-LOSS-DIFF
+   s" deleted package boundary in asm.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS ;
+
 \ ---- src/habu/habu2.f: the engine emitter's body-edit admission ----
 \ This is the narrowest of the three principled categories, so its fixtures pin
 \ BOTH halves: the one shape it admits, and the shape it must keep reporting.
@@ -2489,6 +2554,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-TYPE-FAMILY-EXEMPTION
    TEST-CHECKER-EXEMPTION
    TEST-RENDER-EXEMPTION
+   TEST-ARM64-EXEMPTION
    TEST-ENGINE-EXEMPTION
    TEST-MIRROR-EXEMPTION
    TEST-CONST-DEFINITIONS

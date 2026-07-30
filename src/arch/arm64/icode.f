@@ -216,18 +216,24 @@ variable BBASE  variable BKIND
      drop  ASM-CP @ I-LBL @ >LABEL BKIND @ FX+  BBASE @ EMITW
    ELSE  ASM-CP @ -  BKIND @ FX-B26 = IF ?REL26 D26 ELSE ?REL19 D19 THEN  BBASE @ or EMITW  THEN ;
 
-: B, ( label -- )  $14000000  BBASE !  FX-B26 BKIND !  BR-EMIT ;
+\ The base word of a branch is the asm.fs encoder applied to a zero delta —
+\ the same shape ADR, below already uses. Going through the encoder keeps one
+\ authority for each opcode's bit layout and for its operand refusals: the
+\ condition code and the compare-and-branch register are bounded and screened
+\ for the reserved register by ENC-BCOND and ENC-CBZ/ENC-CBNZ, before the
+\ delta this layer computes is folded in.
+: B, ( label -- )  0 ENC-B  BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
-: BL, ( label -- )  $94000000 BBASE !  FX-B26 BKIND !  BR-EMIT ;
+: BL, ( label -- )  0 ENC-BL BBASE !  FX-B26 BKIND !  BR-EMIT ;
 
 : BCOND, ( n label -- )
-   LABEL>N I-LBL ! I-COND !  $54000000 I-COND @ or BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-COND !  0 I-COND @ ENC-BCOND BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 : CBZ, ( n label -- )
-   LABEL>N I-LBL ! I-RD !  $B4000000 I-RD @ or BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-RD !  I-RD @ 0 ENC-CBZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 : CBNZ, ( n label -- )
-   LABEL>N I-LBL ! I-RD !  $B5000000 I-RD @ or BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
+   LABEL>N I-LBL ! I-RD !  I-RD @ 0 ENC-CBNZ BBASE !  FX-B19 BKIND !  I-LBL @ >LABEL BR-EMIT ;
 
 \ adr rd, label: PC-relative address (FX-ADR fixup when forward)
 : ADR, ( n label -- )

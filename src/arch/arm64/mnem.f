@@ -12,7 +12,9 @@
 
 : MOVN, ( n n -- )  0 MOVNHW EMITW ;
 
-: MOVK, ( n n n -- )  $10 / MOVKHW EMITW ;
+\ MOVK, takes the shift in BITS and selects the shifted half with it, so a
+\ shift that is not a whole half is refused rather than rounded down.
+: MOVK, ( n n n -- )  $10 SCALE/ MOVKHW EMITW ;
 
 : ADD, ( n n n -- )  ENC-ADD EMITW ;
 

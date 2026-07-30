@@ -274,6 +274,21 @@ variable FILE-USED
 \ word while its ~100 neighbours stay global would split the surface rather than
 \ seal it, so this entry is interim and is retired by the render sealing dot
 \ alongside the checker sealing work.
+\ src/arch/arm64/asm.f, src/arch/arm64/icode.f and src/arch/arm64/mnem.f are the
+\ fourth entry, on the same terms and for one subsystem: the ARM64 encoder
+\ prefix.  None of the three contains a `package` at all.  They are the third,
+\ fourth and fifth files tools/srclist.f puts in the engine source prefix, ahead
+\ of the compiler that defines packages in the first place, and every later
+\ prefix file resolves their names bare -- src/habu/jit.f, src/habu/habu1.f and
+\ src/habu/habu2.f call `LDR,`, `CBZ,`, `MOVZHW` and the rest with no qualifier,
+\ as do tools/asm-src-test.f and test/compiler/insn-schema.f.  Their own headers
+\ say why: they are written in the STANDALONE's Forth so the Gforth recovery
+\ compiler can read them before the native checker exists.  Measured on
+\ 2026-07-30: with no entry here, adding the operand bounds to asm.f reported ten
+\ ownership faults for words the encoders already published, so the gate rejected
+\ every possible change to the ARM64 assembler.  Interim, exactly like the
+\ checker and render entries, and retired by dot habu-pkg-the-arm64-ffabc063,
+\ which gives the three files real package owners and migrates their callers.
 \ Package-boundary changes are still reported for every file here
 \ (FINISH-DEFINITION checks SCOPE-DELTA before this allowlist).  Files with only
 \ one global declarer are handled by GLOBAL-SURFACE? below, so an unrelated
@@ -287,6 +302,9 @@ variable FILE-USED
    FILE$ s" src/core/type-family.f" LINT-STR= if true exit then  \ core surface, interim; see header
    FILE$ s" src/core/checker.f" LINT-STR= if true exit then      \ core surface, interim; see header
    FILE$ s" src/core/render.f" LINT-STR= if true exit then       \ checker's render half, interim; see header
+   FILE$ s" src/arch/arm64/asm.f" LINT-STR= if true exit then    \ ARM64 encoder prefix, interim; see header
+   FILE$ s" src/arch/arm64/icode.f" LINT-STR= if true exit then  \ ARM64 encoder prefix, interim; see header
+   FILE$ s" src/arch/arm64/mnem.f" LINT-STR= if true exit then   \ ARM64 encoder prefix, interim; see header
    FILE$ s" src/core/enums.f" LINT-STR= ;
 
 \ Declaration-grammar fixture suites.  The second principled category, built on
