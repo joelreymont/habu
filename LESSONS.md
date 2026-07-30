@@ -3527,3 +3527,26 @@ fits.
   merges: rebase, refresh/install in the MAIN workspace (or copy the lane's
   binary first), run gates, only then move the bookmark, push, and delete the
   lane workspace.
+
+- **Timing a word: seven short runs beat three long ones, and normalising
+  against an empty call does not cancel host load.** The codegen comparison
+  harness first timed each word three times at a million repetitions and kept
+  the fastest. On a 12-core host with 16 competing busy processes, one case had
+  all three of its runs hit by the same sustained scheduling delay and came out
+  4.1 times its idle cost — a false alarm no useful tolerance can absorb.
+  Switching to seven runs of 250,000 repetitions cut the worst drift to about
+  3x AND made the whole pass twice as fast (0.5 s against 0.9 s), because the
+  fastest-run rule gets more chances to find a clean scheduling window.
+  Expressing each cost as a multiple of an empty call measured in the same pass
+  is still worth doing — it is what makes the numbers portable between machines
+  — but it does not cancel load: a two-nanosecond empty call can find a clean
+  window while an eighty-nanosecond body cannot, so under load the ratio grows
+  rather than staying put. Budget the tolerance from measurements taken under
+  deliberate oversubscription, write the measurements down next to the constant,
+  and say plainly that a timing gate catches catastrophic regressions only.
+
+- **Read a compiled word's size from its own dictionary record.** `XREF-FIND`
+  returns the record, `XREF-START` its code address and `XREF-LEN` the number of
+  bytes of machine code the engine emitted for it. That is a two-line, fully
+  checked way to measure code size from inside a running image, with no dumper,
+  no disassembler and no second copy of the compiler's own accounting.

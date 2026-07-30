@@ -515,9 +515,11 @@ public
 \   -8160..-8179  unassigned (pass witnesses retired 2026-07-30: no consumer)
 \   -8180..-8199  IR facade assembly and package protection (package IR)
 \   -8200..-8219  ARM64 routine machine-effect contracts (package A64EFF)
-\   -8220..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
 \   -8220..-8239  native immediate-word contract table (package NIMM)
-\   -8240..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
+\   -8240..-8259  native stage N0 source tape (package NTAPE)
+\   -8260..-8279  old-vs-new code generator comparison harness
+\                 (package CODEGEN-COMPARE)
+\   -8280..-8999  unassigned. The dialect packages (HIR, SIR, LIR, A64IR, and
 \                 the GPU stages) and the native and GPU back ends take
 \                 sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -693,3 +695,18 @@ public
 -8224 constant E-NIMM-CLASS     \ a stored class outside the vocabulary, or a declarer given a class it does not declare
 -8225 constant E-NIMM-DUP       \ a symbol this table already classifies
 -8226 constant E-NIMM-UNMODELED \ an immediate word checked source may not compile: unregistered, or declared unmodeled
+
+\ Old-vs-new code generator comparison harness (package CODEGEN-COMPARE):
+\ -8260..-8279
+\
+\ The harness compiles a pinned corpus of small checked words through the real
+\ engine, then records each word's machine-code size, its execution outputs on
+\ pinned inputs, and how long one call takes. Two conditions stop it outright:
+\ a store it cannot grow, and a subject word it cannot find. Everything the
+\ comparison itself decides is reported as a finding instead, so one run names
+\ every disagreement rather than stopping at the first.
+-8260 constant E-CODEGEN-COMPARE-CAP      \ a row, output-vector, or report-text store is full
+-8261 constant E-CODEGEN-COMPARE-SUBJECT  \ a named subject word is not in the live dictionary
+-8262 constant E-CODEGEN-COMPARE-ROW      \ a row or output index outside the recorded count
+-8263 constant E-CODEGEN-COMPARE-CLOCK    \ the monotonic clock reported no elapsed time across a whole timing run
+-8264 constant E-CODEGEN-COMPARE-STAGE    \ a recorded value was read before the pass that computes it had finished
