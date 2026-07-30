@@ -1,6 +1,6 @@
 ---
 title: Key declaration sources
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-07-21T06:59:26.054283+02:00"
@@ -21,4 +21,5 @@ an unchanged tree remains a cache hit; generated engine bytes and declaration
 load order stay exact. Forbidden: a new manifest role, walker, lint, fixture
 parser, duplicate build path, cache bypass, or unrelated source-key cleanup.
 Smallest owning check: the existing run-result-cache key test plus one warm-cache
-mutation probe for each of the four paths. Claim: unassigned.
+mutation probe for each of the four paths. Claim: agent=decl-key-impl
+workspace=.jj-ws/habu-add-decl-event-a50e4104-r2.
