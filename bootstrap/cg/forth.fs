@@ -32,12 +32,10 @@ $181000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (g
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
-\ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
-\ native checker/seal pass (src/habu/layout.f, dot
-\ habu-habu-certified-words-84e84eaf). Stage0 never sets the band (no checker),
-\ so narrowing the length mask and the 12-bit LSLI/LSRI length reads below is
-\ behavior-identical here and keeps the mirror's record layout numerically
-\ equal to the native one on the recovery path.
+\ DNAME-MIN-IN (bits 52-59): namespace rows use this byte as their kind;
+\ ordinary rows use it as certified minimum input arity. Stage0 never sets the
+\ ordinary-row band, but it stores and validates namespace kinds exactly like
+\ native so the 48-byte recovery records survive snapshot/AOT restore.
 $0FF0000000000000 constant DNAME-MIN-IN-MASK
 $1000000000000000 constant DNAME-IMM
 $2000000000000000 constant DNAME-EXT
@@ -101,6 +99,16 @@ also HB-ERROR definitions
 88 constant CODE-CERT
 previous definitions
 vocabulary HB-EMIT
+also HB-EMIT definitions
+0 constant KIND-PACKAGE
+1 constant KIND-TYPE
+variable LSTOREDEFNAME
+variable LCOMPILEDIE
+variable LDICTFULL
+variable LPROTPUB
+24 constant CAPMSG-LEN
+40 constant PROTPUB-MSG-LEN
+previous definitions
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
 $F2C00010 constant C-CALL-MOVK-X16-32
@@ -391,6 +399,9 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
 
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
+also HB-EMIT definitions
+variable LNSFIND
+previous definitions
 variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LPROTWIDQ  variable LFLUSH variable LNCOUNT
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
 variable LCFPUSH  variable LCFPOP  variable LPAT   variable LKWCMP  variable LBCAP  variable LBCS
@@ -983,7 +994,17 @@ previous definitions
    lcorrupt LBL,  s" hb: catch frame corrupt" HB-ERROR:CATCH-STACK C-EXIT-DIAG ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
-: BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
+also HB-EMIT definitions
+: BWORDLIST ( -- )
+   LBL LBL {: room msg :} \ typed-local-lint: allow-bare-local
+   9 DATA WIDN-CELL LDR,
+   10 OWNER-WID-LIMIT LIT64,  9 10 CMP,  C-CC room BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 32 MOVZ,  NR-WRITE SYS,
+      0 77 MOVZ,  NR-EXIT-GROUP SYS,
+      msg LBL,  s" hb: wordlist WID space exhausted" BYTES,
+   room LBL,
+   9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
+previous definitions
 
 : BGETCUR ( -- )    9 DATA CUR-CELL LDR,  9 G-PUSH ;                                       \ ( -- wid )
 
@@ -1198,6 +1219,7 @@ previous definitions
    s" close" ['] BCLOSE FPRIM-L
    s" rbase" ['] BRBASE FPRIM-L ;
 
+also HB-EMIT definitions
 : EMIT-CHECKER-PRIMS ( -- )
    s" catch" ['] BCATCH FPRIM   s" throw" ['] BTHROW FPRIM-L
    s" wordlist" ['] BWORDLIST FPRIM-L   s" get-current" ['] BGETCUR FPRIM-L
@@ -1206,7 +1228,6 @@ previous definitions
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM ;
 
-also HB-EMIT definitions
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
@@ -1383,6 +1404,42 @@ previous definitions
    10 9 0 ADDI,
    fil LBL,  10 CP CMP,  C-GE fid BCOND,  10 ICIVAU,  10 10 64 ADDI,  fil B,
    fid LBL,  DSB-ISH,  ISB,  RET, ;
+
+also HB-EMIT definitions
+
+: EMIT-NS-FIND ( -- )
+   LBL LBL LBL LBL LBL LBL
+   {: loop next inline cmp found miss :} \ typed-local-lint: allow-bare-local
+   LNSFIND @ LBL,
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
+   loop LBL,
+      6 miss CBZ,
+      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE next BCOND,
+      14 5 16 LDR,  15 14 12 LSLI,  15 15 12 LSRI,
+      15 10 CMP,  C-NE next BCOND,
+      16 5 24 ADDI,
+      15 14 DNAME-EXT ANDI,  15 inline CBZ,
+         16 5 24 LDR,
+      inline LBL,
+      7 0 MOVZ,
+      cmp LBL,
+         7 10 CMP,  C-GE found BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
+         4 9 7 ADD,     4 4 0 LDRB,
+         3 4 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE next BCOND,
+         7 7 1 ADDI,  cmp B,
+      next LBL,
+         5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   found LBL,
+      11 5 16 LDR,
+      11 11 DNAME-MIN-IN-MASK ANDI,  11 11 52 LSRI,
+      RET,
+   miss LBL,
+      5 0 MOVZ,  RET, ;
+
+previous definitions
 
 \ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1 ) over 48-byte records ----
 \ Qualified tokens search the named package's public WID. Bare tokens inside an
@@ -2468,6 +2525,8 @@ also HB-EMIT definitions
    LKWCONST @ LBL,  s" constant" BYTES,
    LQNL @ LBL,  QNL-KW 2 BYTES,   LOKS @ LBL,  OKS-KW 4 BYTES,
    LPREFMISSMSG @ LBL, S\" hb: compile preflight hook missing\n" BYTES,
+   LDICTFULL @ LBL, s" hb: dictionary full at: " BYTES,
+   LPROTPUB @ LBL, s" hb: cannot publish into protected word: " BYTES,
    LKWDO @ LBL,  s" do" BYTES,    LKWLOOP @ LBL,  s" loop" BYTES,    LKWI @ LBL,  s" i" BYTES,
    LKWTOR @ LBL,  s" >r" BYTES,   LKWRFROM @ LBL,  s" r>" BYTES,   LKWRFET @ LBL,  s" r@" BYTES,
    LKWEXIT @ LBL,  s" exit" BYTES,   LKWREC @ LBL,  s" recurse" BYTES,
@@ -2992,47 +3051,71 @@ previous definitions
    10 G-POP
    nohk LBL, ;
 
-: C-STORE-NAME ( -- )
+also HB-EMIT definitions
+: C-STORE-NAME-AT ( -- )                    \ x5=record, x9=exact bytes, x10=exact length; preserves all three
    LBL LBL LBL LBL LBL LBL LBL LBL {: short fail capok lcopy lcd scopy scd done :}
-   12 DATA TKL-CELL LDR,
+   12 10 0 ADDI,
    13 12 0 ADDI,
    12 DNAME-INL CMPI,  C-LE short BCOND,
-      14 DNAME-EXT LIT64,  13 13 14 ORR,  13 9 16 STR,
+      14 DNAME-EXT LIT64,  13 13 14 ORR,  13 5 16 STR,
       15 12 3 ADDI,  15 15 2 LSRI,  15 15 2 LSLI,
       16 CP 15 ADD,
-      10 REGION $4000 - LIT64,  10 DBASE 10 ADD,  16 10 CMP,  C-LT capok BCOND,
+      11 REGION $4000 - LIT64,  11 DBASE 11 ADD,  16 11 CMP,  C-LT capok BCOND,
          fail B,
       capok LBL,
-      CP 9 24 STR,
-      10 DATA TKA-CELL LDR,
+      CP 5 24 STR,
+      15 9 0 ADDI,
       11 CP 0 ADDI,
       14 12 0 ADDI,
       lcopy LBL,  14 lcd CBZ,
-         15 10 0 LDRB,  15 11 0 STRB,
-         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
+         13 15 0 LDRB,  13 11 0 STRB,
+         15 15 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  lcopy B,
       lcd LBL,
       CP 16 0 ADDI,
       done B,
    short LBL,
-      13 9 16 STR,
-      11 9 24 ADDI,  10 DATA TKA-CELL LDR,  14 12 0 ADDI,
+      13 5 16 STR,
+      11 5 24 ADDI,  16 9 0 ADDI,  14 12 0 ADDI,
       scopy LBL,  14 scd CBZ,
-         15 10 0 LDRB,  15 11 0 STRB,
-         10 10 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
+         15 16 0 LDRB,  15 11 0 STRB,
+         16 16 1 ADDI,  11 11 1 ADDI,  14 14 1 SUBI,  scopy B,
       scd LBL,
       done B,
    fail LBL,
-      s" bootstrap: definition name too long" C-EXIT76
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 76 MOVZ,  LCOMPILEDIE @ B,
    done LBL, ;
 
-\ A qualified definer token names a real package record and stores only its
-\ tail in that package's public WID. The original spelling remains available
-\ to the checker/hook through DEF-TKA/DEF-TKL; no textual prefix dictionary
-\ entries are created.
-also HB-EMIT definitions
+: C-STORE-NAME ( -- )
+   5 9 0 ADDI,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   C-STORE-NAME-AT
+   9 5 0 ADDI, ;
+
+\ A qualified definer token names a real package row, storing the complete
+\ first-colon prefix in that row and only the tail in its public WID. The
+\ original spelling remains available to the checker/hook through
+\ DEF-TKA/DEF-TKL; no ordinary prefix definitions are created.
+: C-QUALIFY-FAIL ( n -- ) {: rc :}
+   0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
+   0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+   0 rc MOVZ,  LCOMPILEDIE @ B, ;
+
+: C-CAP-LABEL ( ptr a -- )
+   0 2 MOVZ,
+   @ 1 swap ADR,
+   2 CAPMSG-LEN MOVZ,  NR-WRITE SYS, ;
+
+: C-QUALIFY-CAP ( -- )
+   LBL {: room :}
+   14 DICT-CAP MOVZ,  NDICT 14 CMP,  C-LT room BCOND,
+      LDICTFULL C-CAP-LABEL
+      77 C-QUALIFY-FAIL
+   room LBL, ;
+
 : C-QUALIFY-DEF ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qtail qlookup nloop nnext ncmp nmatch ninl nmake nroom qapply qbad done :} \ typed-local-lint: allow-bare-local
+   {: qscan qnone qhas qtail qlookup nloop nnext ncmp nmatch ninl nmake qwidok qapply qbad done :} \ typed-local-lint: allow-bare-local
    11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
    12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
@@ -3042,6 +3125,7 @@ also HB-EMIT definitions
       14 11 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
       17 17 1 ADDI,  qscan B,
    qnone LBL,
+      C-QUALIFY-CAP
       done B,
    qhas LBL,
       17 qnone CBZ,
@@ -3075,15 +3159,17 @@ also HB-EMIT definitions
          qapply B,
       nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
    nmake LBL,
-      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT nroom BCOND,
-         0 77 MOVZ,  NR-EXIT-GROUP SYS,
-      nroom LBL,
+      C-QUALIFY-CAP
+      14 DATA WIDN-CELL LDR,  15 OWNER-WID-LIMIT 2 - LIT64,
+      14 15 CMP,  C-LS qwidok BCOND,
+         77 C-QUALIFY-FAIL
+      qwidok LBL,
       9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
+      17 DATA TKL-CELL STR,
       C-STORE-NAME
-      14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,
-      15 14 1 ADDI,  15 DATA WIDN-CELL STR,
-      14 9 0 STR,
-      15 0 MOVZ,  15 9 8 STR,
+      14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,  14 9 0 STR,
+      15 14 1 ADDI,  15 9 8 STR,
+      16 14 2 ADDI,  16 DATA WIDN-CELL STR,
       15 0 MOVN,  15 9 40 STR,
       NDICT NDICT 1 ADDI,
    qapply LBL,
@@ -3091,17 +3177,37 @@ also HB-EMIT definitions
       12 DATA DEF-TKL-CELL LDR,
       11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
+      C-QUALIFY-CAP
       done B,
    qbad LBL,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      75 C-QUALIFY-FAIL
    done LBL, ;
 previous definitions
 
-: C-STORE-DEF-NAME ( -- )
+also HB-EMIT definitions
+: EMIT-STORE-DEF-NAME ( -- )
+   LSTOREDEFNAME @ LBL,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LBL {: pgok :}
+   14 DATA FRIEND-LATCH-CELL LDR,  14 pgok CBZ,
+   SP SP 16 SUBI,  9 SP 0 STR,
+   9 DATA DEF-WL-CELL LDR,  LPROTWIDQ @ BL,
+   9 SP 0 LDR,  SP SP 16 ADDI,
+   13 pgok CBZ,
+      0 2 MOVZ,  1 LPROTPUB @ ADR,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,
+      0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
+      0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
+      0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
+   pgok LBL,
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
-   12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR, ;
+   12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
+
+: C-STORE-DEF-NAME ( -- )
+   LSTOREDEFNAME @ BL, ;
+previous definitions
 
 \ CREATE as a BL-able routine: the interpret keyword AND the runtime `create`
 \ prim share it, so defining words (`: CONST create , does> @ ;`) work.
@@ -3273,95 +3379,106 @@ previous definitions
          LCHKENDPKG 19 C-PACKAGE-CHECK-CALL
    done LBL, ;
 
-: C-PACKAGE-RECORD-MATCH ( n n -- )
-   \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   {: hit miss :}
-   LBL LBL {: cmp inl :} \ typed-local-lint: allow-bare-local
-   14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE miss BCOND,
-   14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
-   15 DATA TKL-CELL LDR,  14 15 CMP,  C-NE miss BCOND,
-   16 5 24 ADDI,
-   14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inl CBZ,
-      16 5 24 LDR,
-   inl LBL,
-   7 0 MOVZ,
-   cmp LBL,
-      15 DATA TKL-CELL LDR,  7 15 CMP,  C-GE hit BCOND,
-      15 16 7 ADD,  15 15 0 LDRB,
-      3 15 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-      4 DATA TKA-CELL LDR,  4 4 7 ADD,  4 4 0 LDRB,
-      3 4 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-      15 4 CMP,  C-NE miss BCOND,
-      7 7 1 ADDI,  cmp B, ;
-
 also HB-EMIT definitions
-: C-PACKAGE-PROT-GUARD ( -- )
-   LBL LBL LBL LBL {: loop miss hit done :} \ typed-local-lint: allow-bare-local
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   loop LBL,
-      6 done CBZ,
-      hit miss C-PACKAGE-RECORD-MATCH
-      hit LBL,
-         9 5 0 LDR,  LPROTWIDQ @ BL,
-         13 done CBZ,
-         0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
-      miss LBL,
-         5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
-   done LBL, ;
-previous definitions
 
-: C-PACKAGE-NAME-GUARD ( -- )
-   LBL LBL LBL {: loop bad done :} \ typed-local-lint: allow-bare-local
+: C-PACKAGE-FAIL ( n -- ) {: rc :}
+   0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+   0 rc MOVZ,  LCOMPILEDIE @ B, ;
+
+: C-PACKAGE-PATH-GUARD ( -- )
+   LBL LBL LBL LBL {: scan next bad done :} \ typed-local-lint: allow-bare-local
    14 0 MOVZ,
-   loop LBL,
+   scan LBL,
       15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE done BCOND,
-      15 DATA TKA-CELL LDR,  15 15 14 ADD,  15 15 0 LDRB,
-      15 $3A CMPI,  C-EQ bad BCOND,
-      14 14 1 ADDI,  loop B,
-   bad LBL,  0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      16 DATA TKA-CELL LDR,  16 16 14 ADD,  16 16 0 LDRB,
+      16 $3A CMPI,  C-NE next BCOND,
+      14 bad CBZ,
+      17 14 1 ADDI,  17 15 CMP,  C-GE bad BCOND,
+      16 DATA TKA-CELL LDR,  16 16 17 ADD,  16 16 0 LDRB,
+      16 $3A CMPI,  C-EQ bad BCOND,
+   next LBL,
+      14 14 1 ADDI,  scan B,
+   bad LBL,  75 C-PACKAGE-FAIL
    done LBL, ;
+
+: C-PACKAGE-ALLOC-WIDS ( -- )
+   17 DATA WIDN-CELL LDR,
+   16 17 1 ADDI,
+   15 17 2 ADDI,  15 DATA WIDN-CELL STR, ;
+
+: C-PACKAGE-NEW-RECORD ( -- )
+   LBL {: widroom :} \ typed-local-lint: allow-bare-local
+   C-QUALIFY-CAP
+   17 DATA WIDN-CELL LDR,  16 OWNER-WID-LIMIT 2 - LIT64,
+   17 16 CMP,  C-LS widroom BCOND,
+      77 C-PACKAGE-FAIL
+   widroom LBL,
+   5 NDICT 0 ADDI,  11 DREC MOVZ,  5 5 11 MUL,  5 DBASE 5 ADD,
+   C-STORE-NAME-AT
+   C-PACKAGE-ALLOC-WIDS
+   11 17 0 ADDI,  12 16 0 ADDI,
+   11 5 0 STR,  12 5 8 STR,
+   15 0 MOVN,  15 5 40 STR,
+   NDICT NDICT 1 ADDI, ;
+
+: C-PACKAGE-PREFIX ( -- )                    \ x9=absolute bytes, x10=prefix length; returns x5/x11/x12
+   LBL LBL {: make done :} \ typed-local-lint: allow-bare-local
+   LNSFIND @ BL,
+   5 make CBZ,
+      11 KIND-PACKAGE CMPI,  C-EQ done BCOND,
+      75 C-PACKAGE-FAIL
+   make LBL,
+      C-PACKAGE-NEW-RECORD
+      done B,
+   done LBL,
+   11 5 0 LDR,  12 5 8 LDR, ;
 
 : C-PACKAGE-ENSURE ( -- )
-   LBL LBL LBL LBL LBL LBL
-   {: loop miss hit make room done :} \ typed-local-lint: allow-bare-local
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   loop LBL,
-      6 make CBZ,
-      hit miss C-PACKAGE-RECORD-MATCH
-      hit LBL,
-         11 5 0 LDR,  12 5 8 LDR,  done B,
-      miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
-   make LBL,
-      9 DICT-CAP MOVZ,  NDICT 9 CMP,  C-LT room BCOND,
-         0 77 MOVZ,  NR-EXIT-GROUP SYS,
-      room LBL,
-      9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-      C-STORE-NAME
-      5 NDICT 0 ADDI,  10 DREC MOVZ,  5 5 10 MUL,  5 DBASE 5 ADD,
-      11 DATA WIDN-CELL LDR,  12 11 1 ADDI,
-      14 12 1 ADDI,  14 DATA WIDN-CELL STR,
-      11 5 0 STR,  12 5 8 STR,
-      14 0 MOVN,  14 5 40 STR,
-      NDICT NDICT 1 ADDI,
+   LBL LBL LBL {: scan next final :} \ typed-local-lint: allow-bare-local
+   17 0 MOVZ,
+   scan LBL,
+      14 DATA TKL-CELL LDR,  17 14 CMP,  C-GE final BCOND,
+      15 DATA TKA-CELL LDR,  15 15 17 ADD,  15 15 0 LDRB,
+      15 $3A CMPI,  C-NE next BCOND,
+         SP SP 16 SUBI,  17 SP 0 STR,
+         9 DATA TKA-CELL LDR,  10 17 0 ADDI,
+         C-PACKAGE-PREFIX
+         17 SP 0 LDR,  SP SP 16 ADDI,
+   next LBL,
+      17 17 1 ADDI,  scan B,
+   final LBL,
+      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+      C-PACKAGE-PREFIX ;
+
+: C-PACKAGE-PROT-GUARD ( -- )
+   LBL LBL {: package done :} \ typed-local-lint: allow-bare-local
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   LNSFIND @ BL,
+   5 done CBZ,
+      11 KIND-PACKAGE CMPI,  C-EQ package BCOND,
+      75 C-PACKAGE-FAIL
+   package LBL,
+      9 5 0 LDR,  LPROTWIDQ @ BL,
+      13 done CBZ,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 
-also HB-EMIT definitions
 : C-PACKAGE ( -- )
    LBL LBL LBL {: inactive hastok checkdone :} \ typed-local-lint: allow-bare-local
    9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      75 C-PACKAGE-FAIL
    inactive LBL,
    LTOK @ BL,  0 hastok CBNZ,
-      0 74 MOVZ,  NR-EXIT-GROUP SYS,
+      74 C-PACKAGE-FAIL
    hastok LBL,
-   C-PACKAGE-NAME-GUARD
+   C-PACKAGE-PATH-GUARD
+   C-PACKAGE-PROT-GUARD
    LCHKPACKAGE 15 checkdone C-P2-FIND-CHECKER
    9 DATA TKA-CELL LDR,  9 G-PUSH
    9 DATA TKL-CELL LDR,  9 G-PUSH
    C-CALL-X11-SAVED
    checkdone LBL,
-   C-PACKAGE-PROT-GUARD
    2 3 MOVZ,  LPROT @ BL,
    C-PACKAGE-ENSURE
    2 5 MOVZ,  LPROT @ BL,
@@ -3369,12 +3486,11 @@ also HB-EMIT definitions
    11 DATA PKG-PUB-CELL STR,  12 DATA PKG-PRI-CELL STR,
    5 DATA PKG-REC-CELL STR,
    12 DATA CUR-CELL STR, ;
-previous definitions
 
 : C-PUBLIC ( -- )
    LBL {: active :} \ typed-local-lint: allow-bare-local
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      75 C-PACKAGE-FAIL
    active LBL,
    LCHKPUB 14 C-PACKAGE-CHECK-CALL
    9 DATA PKG-PUB-CELL LDR,  9 DATA CUR-CELL STR, ;
@@ -3382,7 +3498,7 @@ previous definitions
 : C-PRIVATE ( -- )
    LBL {: active :} \ typed-local-lint: allow-bare-local
    9 DATA PKG-PRI-CELL LDR,  9 active CBNZ,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      75 C-PACKAGE-FAIL
    active LBL,
    LCHKPRI 15 C-PACKAGE-CHECK-CALL
    9 DATA PKG-PRI-CELL LDR,  9 DATA CUR-CELL STR, ;
@@ -3390,13 +3506,14 @@ previous definitions
 : C-END-PACKAGE ( -- )
    LBL {: active :} \ typed-local-lint: allow-bare-local
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
-      0 75 MOVZ,  NR-EXIT-GROUP SYS,
+      75 C-PACKAGE-FAIL
    active LBL,
    LCHKENDPKG 19 C-PACKAGE-CHECK-CALL
    9 DATA PKG-PARENT-CELL LDR,  9 DATA CUR-CELL STR,
    9 0 MOVZ,
    9 DATA PKG-PUB-CELL STR,  9 DATA PKG-PRI-CELL STR,
    9 DATA PKG-PARENT-CELL STR,  9 DATA PKG-REC-CELL STR, ;
+previous definitions
 
 : EM-REC-WIDE-PUBLISH ( -- )
    LBL {: nohook :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
@@ -4134,12 +4251,19 @@ variable CFSK2
    2 5 MOVZ,  LPROT @ BL,
    9 DBASE 0 ADDI,  5 DICT-SIZE LIT64,  9 9 5 ADD,  LFLUSH @ BL, ;
 
+also HB-EMIT definitions
 : EMIT-SNAPSHOT-VALIDATE-WIDS ( n -- ) {: bad :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   LBL LBL LBL LBL
    {: prot-loop prot-max prot-inner prot-next owners owner-loop pub-max pri-max \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-      oscan onext odone owner-prot owner-prev-start owner-prev owner-next widn \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-      name-inline name-ready name-loop name-ok pkg-scan pkg-inline \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      oscan onext odone owner-prot owner-prev-start owner-prev owner-next \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      namespaces ns-loop ns-next ns-inline ns-ready ns-bytes ns-byte-next \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      ns-roles ns-pub-max ns-pri-max ns-pri-done ns-prot ns-prot-done \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      ns-owner ns-owner-pub ns-owner-next ns-owner-done ns-prev ns-prev-name \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      ns-prev-inline ns-prev-ready ns-prev-bytes ns-prev-next ns-prev-start \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
+      widn name-inline name-ready name-loop name-next name-ok pkg-scan pkg-inline \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
       pkg-ready pkg-bytes pkg-hit pkg-next pkg-done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,
@@ -4151,7 +4275,7 @@ variable CFSK2
    17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
    prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
       14 9 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-CS bad BCOND,
       14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
    prot-max LBL,
       4 0 MOVZ,  5 12 0 ADDI,
@@ -4167,11 +4291,12 @@ variable CFSK2
    6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
    9 OWNER-WID-OFF MOVZ,  9 10 9 ADD,
    8 0 MOVZ,  5 9 0 ADDI,
-   owner-loop LBL,  8 6 CMP,  C-GE widn BCOND,
+   owner-loop LBL,  8 6 CMP,  C-GE namespaces BCOND,
       14 5 OWNER-WID-PUB LDRW,  15 5 OWNER-WID-PRI LDRW,
-      14 bad CBZ,  15 bad CBZ,
+      14 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+      15 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
       4 OWNER-WID-LIMIT LIT64,
-      14 4 CMP,  C-HI bad BCOND,  15 4 CMP,  C-HI bad BCOND,
+      14 4 CMP,  C-CS bad BCOND,  15 4 CMP,  C-CS bad BCOND,
       14 15 CMP,  C-EQ bad BCOND,
       14 17 CMP,  C-LS pub-max BCOND,  17 14 0 ADDI,
    pub-max LBL,
@@ -4188,16 +4313,25 @@ variable CFSK2
       22 22 DREC ADDI,  23 23 1 SUBI,  oscan B,
    odone LBL,
       24 1 CMPI,  C-NE bad BCOND,
+
+      \ A numeric role pair identifies the owned sentinel, but qualified lookup
+      \ is name-based and later-wins. Require exactly one case-folded package
+      \ identity across the whole restored dictionary before any byte is copied.
       2 1 16 LDR,
+      3 2 DNAME-MIN-IN-MASK ANDI,  3 3 52 LSRI,
+      3 KIND-PACKAGE CMPI,  C-NE bad BCOND,
       0 2 12 LSLI,  0 0 12 LSRI,
       0 bad CBZ,  0 $FF CMPI,  C-HI bad BCOND,
       21 1 24 ADDI,
       3 2 DNAME-EXT ANDI,  3 name-inline CBZ,
          0 DNAME-INL CMPI,  C-LE bad BCOND,
          21 1 24 LDR,
-         21 DBASE CMP,  C-LT bad BCOND,
-         21 21 DBASE SUB,  21 21 25 ADD,
-         21 25 CMP,  C-LT bad BCOND,  21 10 CMP,  C-HI bad BCOND,
+         3 RBASE-VA LIT64,  21 3 CMP,  C-CC bad BCOND,
+         21 21 3 SUB,
+         2 10 25 SUB,  21 2 CMP,  C-HI bad BCOND,
+         21 21 25 ADD,
+         3 DICT-SIZE LIT64,  3 25 3 ADD,
+         21 3 CMP,  C-CC bad BCOND,  21 10 CMP,  C-HI bad BCOND,
          2 10 21 SUB,  0 2 CMP,  C-HI bad BCOND,
          name-ready B,
       name-inline LBL,
@@ -4206,7 +4340,11 @@ variable CFSK2
       4 0 MOVZ,
       name-loop LBL,  4 0 CMP,  C-GE name-ok BCOND,
          2 21 4 ADD,  2 2 0 LDRB,
-         2 $3A CMPI,  C-EQ bad BCOND,
+         2 $3A CMPI,  C-NE name-next BCOND,
+         4 bad CBZ,
+         3 4 1 ADDI,  3 0 CMP,  C-GE bad BCOND,
+         2 21 3 ADD,  2 2 0 LDRB,  2 $3A CMPI,  C-EQ bad BCOND,
+      name-next LBL,
          4 4 1 ADDI,  name-loop B,
       name-ok LBL,
       24 0 MOVZ,  22 25 0 ADDI,  23 16 0 ADDI,
@@ -4214,13 +4352,18 @@ variable CFSK2
          2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE pkg-next BCOND,
          3 22 16 LDR,
          2 3 12 LSLI,  2 2 12 LSRI,  2 0 CMP,  C-NE pkg-next BCOND,
+         12 3 DNAME-MIN-IN-MASK ANDI,  12 12 52 LSRI,
+         12 KIND-PACKAGE CMPI,  C-NE pkg-next BCOND,
          4 22 24 ADDI,
          2 3 DNAME-EXT ANDI,  2 pkg-inline CBZ,
             0 DNAME-INL CMPI,  C-LE bad BCOND,
             4 22 24 LDR,
-            4 DBASE CMP,  C-LT bad BCOND,
-            4 4 DBASE SUB,  4 4 25 ADD,
-            4 25 CMP,  C-LT bad BCOND,  4 10 CMP,  C-HI bad BCOND,
+            2 RBASE-VA LIT64,  4 2 CMP,  C-CC bad BCOND,
+            4 4 2 SUB,
+            2 10 25 SUB,  4 2 CMP,  C-HI bad BCOND,
+            4 4 25 ADD,
+            2 DICT-SIZE LIT64,  2 25 2 ADD,
+            4 2 CMP,  C-CC bad BCOND,  4 10 CMP,  C-HI bad BCOND,
             2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
             pkg-ready B,
          pkg-inline LBL,
@@ -4255,10 +4398,126 @@ variable CFSK2
    owner-next LBL,
       5 5 OWNER-WID-ROW ADDI,  8 8 1 ADDI,  owner-loop B,
 
+   \ Every restored namespace contributes its role WIDs to the allocation
+   \ watermark. Validate exact path storage before trusting either role.
+   namespaces LBL,
+   22 25 0 ADDI,  23 16 0 ADDI,
+   ns-loop LBL,  23 widn CBZ,
+      2 22 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE ns-next BCOND,
+      3 22 16 LDR,
+      13 3 DNAME-MIN-IN-MASK ANDI,  13 13 52 LSRI,
+      13 KIND-TYPE CMPI,  C-HI bad BCOND,
+      0 3 12 LSLI,  0 0 12 LSRI,  0 bad CBZ,
+      4 22 24 ADDI,
+      2 3 DNAME-EXT ANDI,  2 ns-inline CBZ,
+         0 DNAME-INL CMPI,  C-LE bad BCOND,
+         4 22 24 LDR,
+         2 RBASE-VA LIT64,  4 2 CMP,  C-CC bad BCOND,
+         4 4 2 SUB,
+         2 10 25 SUB,  4 2 CMP,  C-HI bad BCOND,
+         4 4 25 ADD,
+         2 DICT-SIZE LIT64,  2 25 2 ADD,
+         4 2 CMP,  C-CC bad BCOND,  4 10 CMP,  C-HI bad BCOND,
+         2 10 4 SUB,  0 2 CMP,  C-HI bad BCOND,
+         ns-ready B,
+      ns-inline LBL,
+         0 DNAME-INL CMPI,  C-GT bad BCOND,
+      ns-ready LBL,
+      7 0 MOVZ,
+      ns-bytes LBL,  7 0 CMP,  C-GE ns-roles BCOND,
+         2 4 7 ADD,  2 2 0 LDRB,
+         2 $3A CMPI,  C-NE ns-byte-next BCOND,
+         7 bad CBZ,
+         3 7 1 ADDI,  3 0 CMP,  C-GE bad BCOND,
+         12 4 3 ADD,  12 12 0 LDRB,  12 $3A CMPI,  C-EQ bad BCOND,
+      ns-byte-next LBL,
+         7 7 1 ADDI,  ns-bytes B,
+      ns-roles LBL,
+         14 22 0 LDR,  15 22 8 LDR,
+         2 14 32 LSRI,  2 bad CBNZ,
+         14 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+         2 OWNER-WID-LIMIT LIT64,  14 2 CMP,  C-CS bad BCOND,
+         14 17 CMP,  C-LS ns-pub-max BCOND,  17 14 0 ADDI,
+      ns-pub-max LBL,
+         13 KIND-PACKAGE CMPI,  C-EQ ns-pri-max BCOND,
+         15 bad CBNZ,
+         1 0 MOVZ,  24 0 MOVZ,  2 PROT-WID-OFF MOVZ,  2 10 2 ADD,
+         ns-prot B,
+      ns-pri-max LBL,
+         3 15 32 LSRI,  3 bad CBNZ,
+         15 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+         2 OWNER-WID-LIMIT LIT64,  15 2 CMP,  C-CS bad BCOND,
+         14 15 CMP,  C-EQ bad BCOND,
+         15 17 CMP,  C-LS ns-pri-done BCOND,  17 15 0 ADDI,
+      ns-pri-done LBL,
+         1 0 MOVZ,  24 0 MOVZ,  2 PROT-WID-OFF MOVZ,  2 10 2 ADD,
+      ns-prot LBL,  1 11 CMP,  C-GE ns-prot-done BCOND,
+         3 2 0 LDRW,
+         14 3 CMP,  5 C-EQ CSET,  24 24 5 ADD,
+         15 3 CMP,  C-EQ bad BCOND,
+         2 2 4 ADDI,  1 1 1 ADDI,  ns-prot B,
+      ns-prot-done LBL,
+         24 13 CMP,  C-NE bad BCOND,
+
+         1 0 MOVZ,  2 9 0 ADDI,
+      ns-owner LBL,  1 6 CMP,  C-GE ns-owner-done BCOND,
+         3 2 OWNER-WID-PUB LDRW,  5 2 OWNER-WID-PRI LDRW,
+         14 3 CMP,  C-NE ns-owner-pub BCOND,
+            15 5 CMP,  C-EQ ns-owner-next BCOND,
+            bad B,
+      ns-owner-pub LBL,
+         14 5 CMP,  C-EQ bad BCOND,
+         15 3 CMP,  C-EQ bad BCOND,
+         15 5 CMP,  C-EQ bad BCOND,
+      ns-owner-next LBL,
+         2 2 OWNER-WID-ROW ADDI,  1 1 1 ADDI,  ns-owner B,
+      ns-owner-done LBL,
+
+      ns-prev-start LBL,
+      1 25 0 ADDI,
+      ns-prev LBL,  1 22 CMP,  C-GE ns-next BCOND,
+         2 1 40 LDR,  3 0 MOVN,  2 3 CMP,  C-NE ns-prev-next BCOND,
+         2 1 16 LDR,
+         3 2 DNAME-MIN-IN-MASK ANDI,  3 3 52 LSRI,
+         8 1 0 LDR,  7 1 8 LDR,
+         14 8 CMP,  C-EQ bad BCOND,  14 7 CMP,  C-EQ bad BCOND,
+         15 8 CMP,  C-EQ bad BCOND,
+         13 KIND-PACKAGE CMPI,  C-NE ns-prev-name BCOND,
+         3 KIND-PACKAGE CMPI,  C-NE ns-prev-name BCOND,
+         15 7 CMP,  C-EQ bad BCOND,
+      ns-prev-name LBL,
+         8 2 12 LSLI,  8 8 12 LSRI,  8 0 CMP,  C-NE ns-prev-next BCOND,
+         5 1 24 ADDI,
+         3 2 DNAME-EXT ANDI,  3 ns-prev-inline CBZ,
+            5 1 24 LDR,
+            3 RBASE-VA LIT64,  5 3 CMP,  C-CC bad BCOND,
+            5 5 3 SUB,
+            3 10 25 SUB,  5 3 CMP,  C-HI bad BCOND,
+            5 5 25 ADD,
+            3 DICT-SIZE LIT64,  3 25 3 ADD,
+            5 3 CMP,  C-CC bad BCOND,  5 10 CMP,  C-HI bad BCOND,
+            3 10 5 SUB,  8 3 CMP,  C-HI bad BCOND,
+            ns-prev-ready B,
+         ns-prev-inline LBL,
+         ns-prev-ready LBL,
+         7 0 MOVZ,
+      ns-prev-bytes LBL,  7 0 CMP,  C-GE bad BCOND,
+         2 4 7 ADD,  2 2 0 LDRB,
+         3 2 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  2 2 3 ORR,
+         3 5 7 ADD,  3 3 0 LDRB,
+         8 3 $41 SUBI,  8 $1A CMPI,  8 C-CC CSET,  8 8 5 LSLI,  3 3 8 ORR,
+         2 3 CMP,  C-NE ns-prev-next BCOND,
+         7 7 1 ADDI,  ns-prev-bytes B,
+      ns-prev-next LBL,
+         1 1 DREC ADDI,  ns-prev B,
+   ns-next LBL,
+      22 22 DREC ADDI,  23 23 1 SUBI,  ns-loop B,
+
    widn LBL,
    6 10 WIDN-CELL LDR,
    14 6 32 LSRI,  14 bad CBNZ,
    6 FIRST-DYNAMIC-WID CMPI,  C-LT bad BCOND,
+   14 OWNER-WID-LIMIT LIT64,  6 14 CMP,  C-HI bad BCOND,
    6 17 CMP,  C-LS bad BCOND, ;
 
 : EMIT-SNAPSHOT-RESTORE ( -- )
@@ -4364,6 +4623,7 @@ variable CFSK2
    EMIT-DATA-INIT
    EMIT-SNAPSHOT-RESTORE
    EMIT-STARTUP-RUNTIME-STATE ;
+previous definitions
 
 : EMIT-MAIN-RUNTIME-LABELS ( n -- ) {: lmain :}
    9 LDOESPATCH @ ADR,  9 DATA DOESP-CELL STR,
@@ -4405,6 +4665,7 @@ variable CFSK2
 \ Dict-capacity exit (mirrors native C-DIE-DICT-FULL, dot
 \ habu-gate-runner-entry-81c84af0): fixed label + the current token + newline
 \ to fd 2, exit 77. The msg blob carries the newline at offset 24.
+also HB-EMIT definitions
 : C-COLON-DICT-ROOM ( -- )
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL {: ndok msg full :}
@@ -4415,10 +4676,9 @@ variable CFSK2
       0 2 MOVZ,  1 msg ADR,  2 24 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 2 MOVZ,  1 msg ADR,  1 1 24 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 77 MOVZ,  NR-EXIT-GROUP SYS,
+      0 77 MOVZ,  LCOMPILEDIE @ B,
    ndok LBL, ;
 
-also HB-EMIT definitions
 : C-COLON-PENDING-DREC ( -- )
    LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
@@ -6035,9 +6295,18 @@ previous definitions
    9 DATA RSAVSP-CELL LDR,  SP 9 0 ADDI,
    LREAD @ B, ;
 
-: EMIT-PREFMISS-RECOVER ( -- )
-   LBL LBL LBL {: loop pop deliver :} \ typed-local-lint: allow-bare-local - Gforth-hosted label ids.
-   15 70 MOVZ,
+also HB-EMIT definitions
+: EMIT-COMPILE-DIE ( -- )
+   LBL LBL LBL LBL LBL {: eval loop pop deliver die :} \ typed-local-lint: allow-bare-local - Gforth-hosted label ids.
+   LCOMPILEDIE @ LBL,
+   15 0 0 ADDI,
+   12 DATA EVALD-CELL LDR,  12 eval CBNZ,
+      9 DATA REPLH-CELL LDR,  9 die CBZ,
+      2 5 MOVZ,  LPROT @ BL,
+      LRREC @ B,
+   die LBL,
+      NR-EXIT-GROUP SYS,
+   eval LBL,
    11 DATA HND-CELL LDR,
    loop LBL,
       12 DATA EVALD-CELL LDR,  12 deliver CBZ,
@@ -6071,7 +6340,8 @@ previous definitions
 : EMIT-PREFMISS ( -- )
    LPREFMISS @ LBL,
    0 2 MOVZ,  1 LPREFMISSMSG @ ADR,  2 PREFMISSMSG-LEN MOVZ,  NR-WRITE SYS,
-   EMIT-PREFMISS-RECOVER ;
+   0 70 MOVZ,  LCOMPILEDIE @ B, ;
+previous definitions
 
 : EMIT-UNDEF ( n -- ) {: lundef :}
    lundef LBL,
@@ -6129,6 +6399,7 @@ also HB-EMIT definitions
 	   LCOMPILE LBL,
 	      LMAIN LUNDEF EMIT-COMPILE
 	   EMIT-PREFMISS
+	   EMIT-COMPILE-DIE
 	   LUNDEF EMIT-UNDEF
 	   LEXIT LMAIN EMIT-EXIT ;
 previous definitions
@@ -6136,20 +6407,22 @@ previous definitions
 : EMIT-RESET-BUILDER ( -- )
    ICODE-RESET  CF-RESET  0 #PL !  0 PNP ! ;
 
+also HB-EMIT definitions
 : EMIT-LABEL-CORE ( -- )
    LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LNSFIND !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
 
 : EMIT-LABEL-RUNTIME ( -- )
-   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !
+   LBL LBCHAIN !  LBL LCREATE !  LBL LDOESPATCH !  LBL LSTOREDEFNAME !
    LBL LREAD !  LBL LRBYE !  LBL LRDIE !  LBL LRREC !  LBL LQNL !  LBL LOKS !
    LBL LPREFMISS !  LBL LPREFMISSMSG !
-   LBL LTHROWDISPATCH !
+   LBL LCOMPILEDIE !  LBL LTHROWDISPATCH !
+   LBL LDICTFULL !  LBL LPROTPUB !
    LBL LEX0 !  LBL LUN0 ! ;
 
-also HB-EMIT definitions
 : EMIT-LABEL-CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
@@ -6255,12 +6528,14 @@ also HB-EMIT definitions
    EMIT-PROT
    EMIT-PROTWID
    EMIT-FLUSH
+   EMIT-NS-FIND
    EMIT-FIND
    EMIT-NUM ;
 previous definitions
 
 also HB-EMIT definitions
 : EMIT-DICTIONARY-SECTIONS ( -- )
+   EMIT-STORE-DEF-NAME
    EMIT-CREATE
    EMIT-DOESPATCH
    EMIT-CF-HELPERS  EMIT-ESC-DECODE  EMIT-ESC-SCAN  EMIT-ESC-COPY
