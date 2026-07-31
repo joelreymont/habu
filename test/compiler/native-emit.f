@@ -12,22 +12,19 @@
 \ WHY THE BYTES ARE EXECUTED AND NOT ONLY COMPARED. A table of expected words is
 \ necessary and not sufficient: it can only disagree with an emitter that changed,
 \ never with one that was always wrong, because the expected words and the
-\ emitter can be wrong in the same way. Three of the shapes below are therefore
-\ published into the engine's own code space and CALLED as leaf routines through
-\ the C-ABI call the FFI already owns, with the arguments the source-level
-\ arithmetic takes and its answer compared. The harness reads the byte offset of
-\ each instruction out of the SOURCE MAP rather than multiplying its index, so a
-\ map that lost a row or moved an offset stops the program from running at all
-\ instead of being checked only where a test happens to look.
+\ emitter can be wrong in the same way. Five of the shapes below are therefore
+\ published into the engine's own code space and CALLED as leaf routines, through
+\ test/compiler/native-run-fixture.f, with the arguments the source-level
+\ arithmetic takes and its answer compared. That file's header says why the byte
+\ offsets come from the source map and why the result register is asserted before
+\ every call; each executing case below makes that assertion.
 \
-\ WHY THE RESULT REGISTER IS ASSERTED BEFORE EACH RUN. This chain has no
-\ calling-convention binding yet (dot habu-bind-arm64-arg-f76afa3a): a block
-\ argument gets the next free register of the routine's own pool and a returned
-\ value stays wherever it was computed. For the shapes below that happens to be
-\ the C ABI's own registers, which is what makes calling them meaningful, and
-\ each executing case asserts that the returned value really is in register zero
-\ before it calls. If allocation ever changes so that it is not, those cases go
-\ red on the assertion rather than silently comparing whatever x0 held.
+\ WHERE THE CHAIN ITSELF IS DRIVEN. Binding the two dialects, selecting,
+\ allocating, accepting and emitting are the same four stages in the same order
+\ for every caller, so they live in test/compiler/native-chain-fixture.f and this
+\ suite drives them from there. What is this file's own is how each shape is
+\ built into HIR by hand, which is what a suite about encodings has to state
+\ itself.
 \
 \ WHY ONE OF THE BYTE CASES ALLOCATES OUT OF A HIGH POOL. The low registers are
 \ where an emitter that ignored the allocation entirely would put things anyway.
@@ -50,21 +47,18 @@
 \ registry slots back only when a live enclosing context leaves normally.
 
 require lib/test.f
-require lib/ffi.f
 require src/compiler/native/select.f
 require src/compiler/native/emit.f
+require test/compiler/native-chain-fixture.f
+require test/compiler/native-run-fixture.f
 
 package A64EMIT-TEST
 private
 
 \ ---- bindings ----------------------------------------------------------------
+\ The machine these instructions are for, from the shared chain fixture.
 : WBND ( -- CBIND:binding )
-   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
-   CTARGET-PTR--WIDTH:BITS64
-   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
-   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
-   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
-   CBIND:BIND ;
+   NFIX:BINDING ;
 
 \ The same numeric policy on a machine that executes none of these instructions.
 : PBND ( -- CBIND:binding )
@@ -74,30 +68,6 @@ private
    CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
-
-\ ---- routine contracts -------------------------------------------------------
-: POOL-N ( n -- A64EFF:gprs )
-   {: n:n :}
-   A64EFF:GPR-NONE
-   n 0 ?do i A64EFF:GPR-REG A64EFF:GPR-WITH loop ;
-
-: LEAF ( A64EFF:gprs -- A64EFF:routine )
-   {: pool:A64EFF:gprs :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE pool
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
-
-: LEAF-N ( n -- A64EFF:routine )
-   POOL-N LEAF ;
-
-: POOL-FROM ( n n -- A64EFF:gprs )
-   {: base:n n:n :}
-   A64EFF:GPR-NONE
-   n 0 ?do base i + A64EFF:GPR-REG A64EFF:GPR-WITH loop ;
-
-: LEAF-FROM ( n n -- A64EFF:routine )
-   POOL-FROM LEAF ;
 
 \ ---- the fixture's source text -----------------------------------------------
 create TXT
@@ -242,39 +212,17 @@ create TXT
    CLOSE-FUN ;
 
 \ ---- running the whole chain -------------------------------------------------
-: A64-BUILDER ( -- IR-BUILD:builder )
-   IR-BUILD:PLAN-BEGIN
-   IR-BUILD:PLAN-DEFAULT
-   CC A64IR:NEW-BUILDER ;
-
-\ Bind the source dialect to the module being read and the machine dialect to the
-\ module about to be written - to the allocator and to the emitter both, because
-\ each keeps its own identities - then select.
-: SELECTED ( -- IR-BUILD:module )
-   CC BB A64SEL:BIND-SOURCE
-   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   A64-BUILDER {: ab:IR-BUILD:builder :}
-   CC ab A64RA:BIND-DIALECT
-   CC ab A64EMIT:BIND-DIALECT
-   CC m ab TXT TXT-N A64SEL:SELECT ;
-
 \ Select, allocate, accept and emit for a leaf routine of `n` registers. Every
 \ positive case goes through the whole chain, so nothing here emits from a claim
 \ the validator has not agreed with.
 : EMITTED ( n -- )
    {: n:n :}
-   SELECTED {: m:IR-BUILD:module :}
-   CC m n LEAF-N A64RA:ALLOCATE
-   m n LEAF-N A64RAV:ACCEPT
-   CC m A64EMIT:EMIT ;
+   CC BB TXT TXT-N n NFIX:RUN ;
 
 \ The same, out of a pool that starts at `base`.
 : EMITTED-FROM ( n n -- )
    {: base:n n:n :}
-   SELECTED {: m:IR-BUILD:module :}
-   CC m base n LEAF-FROM A64RA:ALLOCATE
-   m base n LEAF-FROM A64RAV:ACCEPT
-   CC m A64EMIT:EMIT ;
+   CC BB TXT TXT-N base n NFIX:RUN-FROM ;
 
 \ ---- reading the emission ----------------------------------------------------
 : BYTE-AT ( n -- n )
@@ -292,44 +240,17 @@ create TXT
 \ The register the returned value ended up in. The last value the module defines
 \ is the one the return carries in every shape below.
 : RESULT-REG ( -- n )
-   A64RA:VALUES 1- A64RAV:REG@ ;
+   NFIX:RESULT-REG ;
 
 \ ---- publishing and calling the emitted bytes --------------------------------
-\ patch32 is the engine's own code-injection boundary and is refused from checked
-\ code, so exactly one trusted word does the store and nothing else; the address
-\ it stores at comes from the source map, and the word it stores comes from the
-\ emission. Same for the C-ABI call: only the call itself is trusted.
-TRUSTED: POKE ( n n -- ) patch32 ;
-
-: PUBLISH ( -- n )
-   cp@ {: fn:n :}
-   A64EMIT:INSNS {: n:n :}
-   n 0 ?do
-      i A64EMIT:WORD@  fn i A64EMIT:MAP-OFFSET@ +  POKE
-   loop
-   fn ;
-
-TRUSTED: EXEC0 ( n -- n ) {: fn:n :}
-   FFI:RESET
-   FFI:ARGS FFI:REG-LENS 0 fn ffi-call-bounded ;
-
-TRUSTED: EXEC1 ( n n -- n ) {: a:n fn:n :}
-   FFI:RESET
-   a 0 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 1 fn ffi-call-bounded ;
-
-TRUSTED: EXEC2 ( n n n -- n ) {: a:n b:n fn:n :}
-   FFI:RESET
-   a 0 FFI:VALUE!
-   b 1 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 2 fn ffi-call-bounded ;
-
-TRUSTED: EXEC3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
-   FFI:RESET
-   a 0 FFI:VALUE!
-   b 1 FFI:VALUE!
-   c 2 FFI:VALUE!
-   FFI:ARGS FFI:REG-LENS 3 fn ffi-call-bounded ;
+\ The store into code space and the C-ABI call are the two engine boundaries, and
+\ they live in test/compiler/native-run-fixture.f so the comparison harness runs
+\ the emitted bytes exactly the way this suite does.
+: PUBLISH ( -- n )       NRUN:PUBLISH ;
+: EXEC0 ( n -- n )       NRUN:EXEC0 ;
+: EXEC1 ( n n -- n )     NRUN:EXEC1 ;
+: EXEC2 ( n n n -- n )   NRUN:EXEC2 ;
+: EXEC3 ( n n n n -- n ) NRUN:EXEC3 ;
 
 \ ---- the emitted bytes -------------------------------------------------------
 \ `mul x0, x0, x0` then `ret`. The bytes are written out here rather than
@@ -637,9 +558,7 @@ TRUSTED: EXEC3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
    BIND-EMIT
    BUILD-PLAIN
    M-FREEZE {: m:IR-BUILD:module :}
-   c m 4 LEAF-N A64RA:ALLOCATE
-   m 4 LEAF-N A64RAV:ACCEPT
-   c m A64EMIT:EMIT ;
+   c m 0 4 NFIX:FINISH ;
 
 \ `movz x0, #7` then `ret`: a module built by hand emits exactly as one that came
 \ through selection does.
@@ -741,8 +660,8 @@ TRUSTED: EXEC3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
    BIND-RA
    BUILD-PLAIN
    M-FREEZE {: m1:IR-BUILD:module :}
-   c m1 4 LEAF-N A64RA:ALLOCATE
-   m1 4 LEAF-N A64RAV:ACCEPT
+   c m1 4 NFIX:LEAF-N A64RA:ALLOCATE
+   m1 4 NFIX:LEAF-N A64RAV:ACCEPT
    c A64-NEW
    BIND-EMIT
    BUILD-PLAIN
@@ -758,13 +677,13 @@ TRUSTED: EXEC3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
    BIND-EMIT
    BUILD-PLAIN
    M-FREEZE {: m1:IR-BUILD:module :}
-   c m1 4 LEAF-N A64RA:ALLOCATE
-   m1 4 LEAF-N A64RAV:ACCEPT
+   c m1 4 NFIX:LEAF-N A64RA:ALLOCATE
+   m1 4 NFIX:LEAF-N A64RAV:ACCEPT
    c A64-NEW
    BIND-RA
    BUILD-PLAIN
    M-FREEZE {: m2:IR-BUILD:module :}
-   c m2 4 LEAF-N A64RA:ALLOCATE
+   c m2 4 NFIX:LEAF-N A64RA:ALLOCATE
    c m1 A64EMIT:EMIT ;
 
 \ An index outside a sealed emission.
