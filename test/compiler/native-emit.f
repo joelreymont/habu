@@ -49,6 +49,7 @@
 require lib/test.f
 require src/compiler/native/select.f
 require src/compiler/native/emit.f
+require src/compiler/native/spill.f
 require test/compiler/native-chain-fixture.f
 require test/compiler/native-run-fixture.f
 
@@ -479,6 +480,9 @@ create TXT
 : BIND-RA ( -- )
    CC BB A64RA:BIND-DIALECT ;
 
+: BIND-RAV ( -- )
+   CC BB A64RAV:BIND-DIALECT ;
+
 : M-OPEN ( A64IR:opcode -- )
    {: o:A64IR:opcode :}
    CC BB  CC BB o A64IR:OPCODE  IR-BUILD:BEGIN-OP
@@ -501,8 +505,36 @@ create TXT
    CC BB v IR-BUILD:ADD-OPERAND
    CC BB IR-BUILD:END-OP drop ;
 
+: M-ADD ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   A64IR-OPCODE:ADD M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CLOSE-VALUE ;
+
 : M-FREEZE ( -- IR-BUILD:module )
    CC BB IR-BUILD:FREEZE ;
+
+: BIND-SPILL ( -- )
+   CC BB A64SPILL:BIND-DIALECT ;
+
+\ Five literals materialised before any of them is read, so five values are live
+\ at once and three registers cannot hold them. This is the shape the whole
+\ spill route exists for, and the only way to know the route is right is to run
+\ the bytes it produces.
+: BUILD-CHAIN ( -- )
+   s" CHAIN" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
+   $55 M-MOVZ {: e:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
+   s2 d M-ADD {: s3:IR-ID:ir-value-id :}
+   s3 e M-ADD M-RET
+   CLOSE-FUN ;
 
 \ A plain one-function machine module the state and identity cases can use.
 : BUILD-PLAIN ( -- )
@@ -555,6 +587,7 @@ create TXT
    {: c:IR-CTX:ctx :}
    c A64-NEW
    BIND-RA
+   BIND-RAV
    BIND-EMIT
    BUILD-PLAIN
    M-FREEZE {: m:IR-BUILD:module :}
@@ -573,6 +606,56 @@ create TXT
    s" a hand-built machine module emits the instructions it names" T-LABEL
    WBND [: PLAIN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE $D65F03C0 T= $D28000E0 T= 2 T= ;
+
+\ ---- a program that does not fit ---------------------------------------------
+\ The whole spill route, ending in bytes that run: allocate the chain, lower the
+\ spill decisions into a module whose stores and loads are operations, allocate
+\ that, accept it, and emit. What the executed answer proves is what no table of
+\ expected words can - that the value put into a frame slot is the value that
+\ comes back out of it, that the frame the routine takes is the frame it gives
+\ back, and that the stack pointer the loads and stores are relative to is where
+\ the reserve left it.
+: SPILL-EMITTED ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW
+   BIND-RA
+   BIND-SPILL
+   BUILD-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   c m0 3 16 NFIX:LEAF-FRAMED A64RA:ALLOCATE
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   c A64IR:NEW-BUILDER {: nb:IR-BUILD:builder :}
+   c nb A64RA:BIND-DIALECT
+   c nb A64RAV:BIND-DIALECT
+   c nb A64EMIT:BIND-DIALECT
+   c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   c m1 3 16 NFIX:LEAF-FRAMED A64RA:ALLOCATE
+   m1 3 16 NFIX:LEAF-FRAMED A64RAV:ACCEPT
+   c m1 A64EMIT:EMIT ;
+
+: SPILL-BODY ( IR-CTX:ctx -- n n n n n )
+   SPILL-EMITTED
+   A64EMIT:INSNS
+   0 A64EMIT:WORD@                   \ sub sp, sp, #16 - the routine takes its frame
+   4 A64EMIT:WORD@                   \ str x2, [sp, #0] - the third literal is put away
+   9 A64EMIT:WORD@                   \ ldr x1, [sp, #0] - and comes back for the sum
+   NFIX:RESULT-REG ;
+
+: SPILL-CASE ( -- )
+   s" a block that does not fit reserves a frame and spills into it" T-LABEL
+   WBND [: SPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= $F94003E1 T= $F90003E2 T= $D10043FF T= 16 T= ;
+
+: RUN-SPILL-BODY ( IR-CTX:ctx -- n n )
+   SPILL-EMITTED
+   NFIX:RESULT-REG
+   PUBLISH EXEC0 ;
+
+: RUN-SPILL-CASE ( -- )
+   s" the emitted spilled program computes what its values add up to" T-LABEL
+   WBND [: RUN-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   $11 $22 + $33 + $44 + $55 + T= 0 T= ;
 
 \ ---- refusals ----------------------------------------------------------------
 \ Nobody has accepted anything yet. This case runs FIRST in the suite, because an
@@ -658,6 +741,7 @@ create TXT
    {: c:IR-CTX:ctx :}
    c A64-NEW
    BIND-RA
+   BIND-RAV
    BUILD-PLAIN
    M-FREEZE {: m1:IR-BUILD:module :}
    c m1 4 NFIX:LEAF-N A64RA:ALLOCATE
@@ -674,6 +758,7 @@ create TXT
    {: c:IR-CTX:ctx :}
    c A64-NEW
    BIND-RA
+   BIND-RAV
    BIND-EMIT
    BUILD-PLAIN
    M-FREEZE {: m1:IR-BUILD:module :}
@@ -788,6 +873,8 @@ public
    RUN-REUSE-CASE
    RUN-WIDE-CASE
    PLAIN-CASE
+   SPILL-CASE
+   RUN-SPILL-CASE
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT

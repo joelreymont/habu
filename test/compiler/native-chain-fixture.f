@@ -29,6 +29,7 @@
 
 require src/compiler/native/select.f
 require src/compiler/native/emit.f
+require src/compiler/native/spill.f
 
 package NFIX
 
@@ -68,6 +69,7 @@ private
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    c A64-BUILDER {: ab:IR-BUILD:builder :}
    c ab A64RA:BIND-DIALECT
+   c ab A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c m ab a u A64SEL:SELECT ;
 
@@ -87,6 +89,17 @@ public
 \ A leaf routine of `n` registers from the pool that starts at register zero.
 : LEAF-N ( n -- A64EFF:routine )
    0 swap LEAF-FROM ;
+
+\ The same with a frame of its own, for a routine whose values do not all fit in
+\ its registers: a spill needs somewhere to go, and how deep that is, is the
+\ contract's declaration.
+: LEAF-FRAMED ( n n -- A64EFF:routine )
+   {: n:n size:n :}
+   0 n POOL {: pool:A64EFF:gprs :}
+   A64EFF:GPR-NONE A64EFF:GPR-NONE pool
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
 
 \ Allocate registers for a frozen machine module, have the validator accept the
 \ allocation, and emit. Nothing here emits from a claim the validator has not
