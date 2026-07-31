@@ -1,9 +1,11 @@
 ---
 title: Allocate straight-line A64IR
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"2026-07-26T22:57:52.836871+02:00\""
+created-at: "\"\\\"2026-07-26T22:57:52.836871+02:00\\\"\""
+closed-at: "2026-07-31T17:39:45.180391+02:00"
+close-reason: "Landed as c19801e794c3 on proofs: A64RA linear scan + A64RAV independent validator, reviewed hunk by hunk, suites and lints green on the exact tree, pushed"
 blocks:
   - habu-idx-arm64-operands-98280863
 ---
