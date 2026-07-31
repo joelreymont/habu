@@ -22,13 +22,26 @@
 \ thing. The address stored to comes from the source map and the word stored
 \ comes from the emission, so neither trusted word chooses anything.
 \
-\ THERE IS NO CALLING-CONVENTION BINDING YET (dot habu-bind-arm64-arg-f76afa3a).
-\ A block argument gets the next free register of the routine's own pool and a
-\ returned value stays where it was computed. For the straight-line shapes both
-\ callers run, that happens to be the C ABI's own registers, which is what makes
-\ calling them meaningful - and every caller asserts that the returned value
-\ really is in register zero before it calls, so a change in allocation reds on
-\ the assertion instead of silently comparing whatever x0 held.
+\ TWO WAYS IN, AND THEY ARE THE TWO CONVENTIONS. A routine compiled under the C
+\ ABI takes its arguments in x0 upwards and leaves its result in x0, so it is
+\ entered through the engine's bounded foreign call - EXEC0..EXEC3 below. A
+\ routine compiled under the data-stack convention takes its arguments out of the
+\ caller's data stack and leaves its results there, which is exactly what an
+\ ordinary Habu word does, so it is entered the way the engine enters any word:
+\ ENTER0..ENTER3 push the routine's address and run `execute`, whose whole body
+\ is a branch-and-link to that address with the data-stack pointer live. That is
+\ the SAME mechanism the interpreter uses - `EM-INTERPRET-FIND` resolves a word
+\ to its code address and branches to it, and `execute` is that branch with the
+\ address taken off the stack - so nothing here models a call, and the engine's
+\ own dictionary lookup is the only part of the path that is missing.
+\
+\ WHY `execute` IS THE WHOLE PUBLICATION. An xt in this engine IS a code address:
+\ `'` pushes the address the dictionary holds and `execute` branches to it
+\ (src/habu/habu1.f BEXEC). Giving the emitted routine a dictionary record would
+\ add a name and a lookup and change nothing about how it is entered, so the
+\ smallest honest boundary is one trusted word per arity that does nothing but
+\ execute an address the caller already has. `src/habu/habu2.f` uses exactly this
+\ shape for its own keyword dispatch (`EM-HXT-EXECUTE`).
 \
 \ NOTHING IN THIS FILE ASSERTS. It defines no case and prints nothing: it is a
 \ fixture, not a test, so it never names the harness verdict word and no gate
@@ -77,5 +90,16 @@ TRUSTED: EXEC3 ( n n n n -- n ) {: a:n b:n c:n fn:n :}
    b 1 FFI:VALUE!
    c 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 fn ffi-call-bounded ;
+
+\ ---- entering a routine as a Habu word ---------------------------------------
+\ The arguments are already on the data stack, which is where a routine compiled
+\ under the data-stack convention reads them from; the address goes on top and
+\ `execute` branches to it. Each arity is its own word only because the declared
+\ effect has to say how many cells the routine consumes and leaves - the body is
+\ the same one word in every case, and none of them touches an argument.
+TRUSTED: ENTER0 ( n -- )         execute ;
+TRUSTED: ENTER1 ( n n -- n )     execute ;
+TRUSTED: ENTER2 ( n n n -- n )   execute ;
+TRUSTED: ENTER3 ( n n n n -- n ) execute ;
 
 ;package

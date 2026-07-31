@@ -531,6 +531,96 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" arithmetic that may trap has no machine lowering and is refused" T-LABEL
    [: TRAPPING ;] E-A64SEL-TRAP TTHROWSQ ;
 
+\ ---- the data-stack convention -----------------------------------------------
+\ The same one-argument function, selected under a contract that declares its
+\ argument in data-stack slot zero and its result in slot zero. What the case
+\ reads back is the whole of what the convention becomes: the block takes no
+\ argument at all, the pointer is moved down over one cell, the argument is a
+\ load out of slot zero, the result is a store into slot zero, the pointer is
+\ moved up over one cell, and the return carries nothing because the result is
+\ already published. Each of the four operations is asserted by opcode AND by the
+\ field it carries, so an entry that named the wrong slot or moved the pointer by
+\ the wrong amount is a different assertion rather than the same shape.
+: SLOTS-N ( n -- A64EFF:placeseq )
+   {: n:n :}
+   A64EFF:SEQ-NONE
+   n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+
+: HABU-CONV ( n n -- A64EFF:routine )
+   {: in:n out:n :}
+   in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+\ A contract whose argument side names a data-stack slot AND a register. There is
+\ no entry sequence for a convention that puts one argument on the stack and the
+\ next in a register, so it is refused rather than half-built.
+: MIXED-CONV ( -- A64EFF:routine )
+   A64EFF:SEQ-NONE 0 A64EFF:SEQ-WITH-SLOT 0 A64EFF:SEQ-WITH
+   A64EFF:SEQ-NONE A64EFF:GPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+: SELECTED-HABU ( n n -- IR-BUILD:module )
+   {: in:n out:n :}
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N  in out HABU-CONV  A64SEL:SELECT ;
+
+: DSTACK-BODY ( IR-CTX:ctx -- n n bool n bool n bool bool n bool n n )
+   HIR-MOD
+   BUILD-SQUARE
+   1 1 SELECTED-HABU READ!
+   R-BLKR RV BLK0 IR-FUN:FARG-COUNT
+   OPS
+   0 s" a64.dtake" OPCODE-IS?
+   0 0 ATTR-INT
+   1 s" a64.dload" OPCODE-IS?
+   1 0 ATTR-INT
+   1 0 s" a64.dslot" ATTR-KEY-IS?
+   3 s" a64.dstore" OPCODE-IS?
+   3 0 ATTR-INT
+   4 s" a64.dpublish" OPCODE-IS?
+   4 0 ATTR-INT
+   R-OPR RV 5 OP@ IR-OP:FOPERANDS ;
+
+: DSTACK-CASE ( -- )
+   s" a routine's data-stack convention is selected into its own operations" T-LABEL
+   WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 8 T= TTRUE 0 T= TTRUE TTRUE 0 T= TTRUE 8 T= TTRUE 6 T= 0 T= ;
+
+: MIXED-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-SQUARE
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N MIXED-CONV A64SEL:SELECT drop ;
+
+: ARITY-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-SQUARE
+   2 1 SELECTED-HABU drop ;
+
+: MIXED ( -- )
+   WBND [: MIXED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: DARITY ( -- )
+   WBND [: ARITY-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ One refusal per group: each abandons a context holding TWO modules - the source
+\ module the fixture built and the machine builder the selection opened - so two
+\ of them in one group exhaust the live-arena registry and the second case
+\ reports a refusal that really happened as a failure.
+: MIXED-REFUSE-CASE ( -- )
+   s" a convention mixing register places with data-stack places is refused" T-LABEL
+   [: MIXED ;] E-A64SEL-PLACE TTHROWSQ ;
+
+: DARITY-REFUSE-CASE ( -- )
+   s" a convention naming more data-stack arguments than the word has is refused" T-LABEL
+   [: DARITY ;] E-A64SEL-PLACE TTHROWSQ ;
+
 \ ---- groups ------------------------------------------------------------------
 : GROUP-BIND-REFUSE ( IR-CTX:ctx -- )
    drop
@@ -552,6 +642,14 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    drop
    TRAP-REFUSE-CASES ;
 
+: GROUP-MIXED-REFUSE ( IR-CTX:ctx -- )
+   drop
+   MIXED-REFUSE-CASE ;
+
+: GROUP-DARITY-REFUSE ( IR-CTX:ctx -- )
+   drop
+   DARITY-REFUSE-CASE ;
+
 public
 
 : RUN ( -- )
@@ -562,11 +660,14 @@ public
    SMALL-CASE
    WIDE-CASE
    FUN-CASE
+   DSTACK-CASE
    WBND [: GROUP-BIND-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-OPCODE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TRAP-REFUSE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-MIXED-REFUSE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-DARITY-REFUSE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
 ;package

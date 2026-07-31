@@ -1283,6 +1283,30 @@ create TXT
    M-FREEZE {: m:IR-BUILD:module :}
    CC m  4 POOL-N  A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
 
+\ ---- data-stack places the allocation cannot honour -------------------------
+\ A convention declaring an argument in a data-stack slot describes a module the
+\ selector already turned that place into a load in - so the block has no
+\ argument for it. Handed a module that still carries its arguments as block
+\ arguments, this allocation would leave them in registers no caller ever wrote
+\ to, and it refuses instead. The second case is a side that names a register
+\ place and a data-stack place at once, which nothing in the chain can pair with
+\ a module's arguments.
+: DSLOT-Q ( n -- A64EFF:placeseq )
+   A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH-SLOT ;
+
+: UNLOWERED-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 POOL-N  0 DSLOT-Q  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+
+: MIXED-PLACE-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 POOL-N  0 DSLOT-Q 1 A64EFF:SEQ-WITH  A64EFF:SEQ-NONE
+   LEAF-DECL A64RA:ALLOCATE ;
+
 \ Two registers cannot hold three arguments at once, and the routine declares no
 \ frame, so there is nowhere to put the third: the pressure refusal that is left
 \ is the frame running out of slots.
@@ -1476,6 +1500,10 @@ create TXT
 : RESERVED-CASES ( -- )
    s" the platform-reserved register cannot be declared destroyable" T-LABEL
    [: A64EFF:RESERVED-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ
+   s" the data-stack pointer cannot be declared destroyable" T-LABEL
+   [: A64EFF:DSTACK-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ
+   s" the data-stack pointer cannot be declared as an argument place" T-LABEL
+   [: A64EFF:DSTACK-GPR SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
    s" the link register cannot be declared destroyable" T-LABEL
    [: A64EFF:LINK-GPR A64EFF:GPR-REG drop ;] E-A64EFF-GPR TTHROWSQ
    s" the zero register cannot be declared destroyable" T-LABEL
@@ -1561,6 +1589,18 @@ create TXT
    s" more declared results than the routine returns is refused" T-LABEL
    [: OVER-OUT ;] E-A64RA-FIXED TTHROWSQ ;
 
+: UNLOWERED ( -- )
+   WBND [: UNLOWERED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: MIXED-PLACE ( -- )
+   WBND [: MIXED-PLACE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: PLACE-REFUSE-CASES ( -- )
+   s" data-stack places on a module that still carries block arguments are refused" T-LABEL
+   [: UNLOWERED ;] E-A64RA-PLACE TTHROWSQ
+   s" a side mixing register places with data-stack places is refused" T-LABEL
+   [: MIXED-PLACE ;] E-A64RA-PLACE TTHROWSQ ;
+
 \ Its own group: each refusing body above abandons a context, and the live-arena
 \ registry gives those slots back only when the enclosing context leaves.
 : CROSS-REFUSE-CASE ( -- )
@@ -1632,6 +1672,7 @@ create TXT
 : GROUP-POOL ( IR-CTX:ctx -- )      drop POOL-REFUSE-CASES ;
 : GROUP-FIXED ( IR-CTX:ctx -- )     drop FIXED-REFUSE-CASES ;
 : GROUP-CROSS ( IR-CTX:ctx -- )     drop CROSS-REFUSE-CASE ;
+: GROUP-PLACE ( IR-CTX:ctx -- )     drop PLACE-REFUSE-CASES ;
 : GROUP-FIXED-ACCEPT ( IR-CTX:ctx -- ) drop FIXED-ACCEPT-CASES ;
 : GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
 : GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE ;
@@ -1676,6 +1717,7 @@ public
    WBND [: GROUP-POOL ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-CROSS ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-PLACE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-FIXED-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-LOWER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-NO-SPILL ;] IR-CTX:WITH-CONTEXT

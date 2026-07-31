@@ -26,11 +26,18 @@
 \ answers are recorded as that row's outputs. The head-to-head check is then an
 \ exact comparison of the two rows' outputs: the same corpus word compiled two
 \ ways has to compute the same thing, and a row where it does not is a finding
-\ the run reports and exits non-zero on. Bytes are exact too. The cost is a
-\ measurement and is read as one; each path is a multiple of an empty call
-\ entered the same way, which is the only sense in which two call paths this
-\ different are comparable, and the report prints the absolute nanoseconds of
-\ both so a reader can see what was measured rather than only the ratio.
+\ the run reports and exits non-zero on. Bytes are exact too.
+\
+\ AND IT IS CALLED THE WAY A HABU WORD IS. The routines are compiled under the
+\ data-stack convention, so the pinned inputs go on the data stack and the
+\ routine is entered by the same branch the interpreter uses (NRUN:ENTER0..3,
+\ whose body is `execute`). The old column's word call is one branch too, so the
+\ two costs are finally about the emitted code rather than about a marshalling
+\ trampoline. One difference is left and is not hidden: the new column's entry
+\ goes through the address on the stack rather than through an address the
+\ engine compiled into the call site, which is one indirect branch more. That is
+\ what each path's own calibration row measures, and the report prints the
+\ absolute nanoseconds of both empty calls so a reader can subtract it.
 \
 \ ONE CONTEXT PER WORD. A module holds about seventeen arenas and the live
 \ registry holds sixty-four, and a covered word builds a source module, a word
@@ -189,7 +196,7 @@ private
    c 0 0 REGS CODEGEN-CHAIN:CHAIN
    CODEGEN-CHAIN:PUBLISH!
    s" CODEGEN-CORPUS:NOOP" CODEGEN-CHAIN:BYTES
-   [: CODEGEN-CHAIN:FN@ NRUN:EXEC0 drop ;]
+   [: CODEGEN-CHAIN:FN@ NRUN:ENTER0 ;]
    [: ;]
    CODEGEN-COMPARE:MEASURE-EMITTED
    CODEGEN-COMPARE:CALIBRATE ;
@@ -199,12 +206,11 @@ private
    {: c:IR-CTX:ctx :}
    s" ADD3 + +" NSRC:TEXT!
    c 3 1 REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:RESULT-CK
    CODEGEN-CHAIN:PUBLISH!
    s" CODEGEN-CORPUS:ADD3" CODEGEN-CHAIN:BYTES
-   [: 1 2 3 CODEGEN-CHAIN:FN@ NRUN:EXEC3 drop ;]
-   [: 1 2 3 CODEGEN-CHAIN:FN@ NRUN:EXEC3 CODEGEN-COMPARE:VECTOR
-      -5 5 7 CODEGEN-CHAIN:FN@ NRUN:EXEC3 CODEGEN-COMPARE:VECTOR ;]
+   [: 1 2 3 CODEGEN-CHAIN:FN@ NRUN:ENTER3 drop ;]
+   [: 1 2 3 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR
+      -5 5 7 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
 \ `: SQUARE-SUM ( n n -- n ) dup * swap dup * + ;` - four renames and three
@@ -213,12 +219,11 @@ private
    {: c:IR-CTX:ctx :}
    s" SQUARE-SUM dup * swap dup * +" NSRC:TEXT!
    c 2 1 REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:RESULT-CK
    CODEGEN-CHAIN:PUBLISH!
    s" CODEGEN-CORPUS:SQUARE-SUM" CODEGEN-CHAIN:BYTES
-   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:EXEC2 drop ;]
-   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:EXEC2 CODEGEN-COMPARE:VECTOR
-      -2 5 CODEGEN-CHAIN:FN@ NRUN:EXEC2 CODEGEN-COMPARE:VECTOR ;]
+   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 drop ;]
+   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR
+      -2 5 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
 : COVERED-CASES ( -- )

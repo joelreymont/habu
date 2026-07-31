@@ -30,17 +30,23 @@
 \ recorded parser mode instead. Writing the frame here would hand the elaborator
 \ a tape no compilation can produce.
 \
-\ WHY THE RESULT REGISTER IS CHECKED BEFORE ANYTHING IS CALLED. It used to be
-\ luck: the chain had no calling-convention binding, a returned value stayed in
-\ whichever register computed it, and for these shapes that happened to be
-\ register zero - which is where the C-ABI call reads a result from. Now the
-\ routine contract DECLARES it: the arguments arrive in x0 upwards and the
-\ result leaves in x0, the allocator pre-colours from that declaration and the
-\ validator refuses an assignment that does not honour it. The check below is
-\ therefore no longer a hope about where the value landed; it compares the
-\ accepted assignment against the declaration the routines are compiled under,
-\ so a chain that stopped honouring its own contract stops the harness here
-\ instead of calling code whose result is somewhere the caller will not look.
+\ THE ROUTINES ARE COMPILED UNDER THE CONVENTION A HABU WORD IS ENTERED THROUGH.
+\ Argument i is taken out of data-stack slot i of the caller's stack and result j
+\ is left in slot j (design section 7.6), which is what an ordinary word does, so
+\ the emitted routine is entered by the same branch the interpreter uses and the
+\ two columns of the comparison are called the same way. It used to be the C ABI
+\ and a foreign-call trampoline, and the trampoline cost two orders of magnitude
+\ more than the routine it entered, which is what made the nanosecond half of the
+\ comparison undecidable (dot habu-measure-the-new-dbaf82dc).
+\
+\ WHAT REPLACED THE RESULT-REGISTER CHECK. Under the C ABI the harness asserted
+\ that the returned value was in the register the call reads one from. There is
+\ no such register now: a result is a store into a slot, the validator re-derives
+\ every one of those stores against the contract's declared places before the
+\ allocation is accepted (A64RAV's DSTACK-CK), and the harness's own head-to-head
+\ check compares what the routine really computed against what the old emitter's
+\ word computes on the same pinned inputs. A store to the wrong slot fails that
+\ comparison, so the guard is execution rather than an assertion about a register.
 \
 \ ONE ROUTINE AT A TIME. The published routine goes into the free code slot, and
 \ the next publication uses the same slot, so a routine is compiled, checked,
@@ -62,7 +68,7 @@ public
 
 \ Elaborate the source text now in the fixture's text buffer as a definition that
 \ takes `in` values and leaves `out`, then select, allocate, accept and emit it
-\ for a leaf routine of `regs` registers.
+\ under the data-stack convention, with `regs` scratch registers.
 : CHAIN ( IR-CTX:ctx n n n -- )
    {: c:IR-CTX:ctx in:n out:n regs:n :}
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
@@ -71,17 +77,11 @@ public
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}
    c b v p r in out NELAB:COLON drop
-   c b NSRC:TEXT$ 0 regs in out NFIX:RUN-ABI ;
+   c b NSRC:TEXT$ 0 regs in out NFIX:RUN-HABU ;
 
 \ How many bytes of machine code the chain emitted for it.
 : BYTES ( -- n )
    A64EMIT:SIZE ;
-
-\ The returned value has to be in the register the routine's own contract
-\ declares its result leaves in, which is the register the C-ABI call reads one
-\ from. Called by every shape that returns one, before it is ever called.
-: RESULT-CK ( -- )
-   NFIX:RESULT-REG NFIX:ABI-RESULT <> if E-CODEGEN-COMPARE-REG throw then ;
 
 \ Store the emission into code space and keep its entry address for the timing
 \ and correctness bodies to call.

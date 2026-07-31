@@ -173,11 +173,59 @@ create TXT TEXT-CAP allot
    NFIX:BINDING [: CHAIN-BODY ;] IR-CTX:WITH-CONTEXT
    121 T= 49 T= 49 T= 0 T= 2 T= -1 T= 3 T= ;
 
+\ ---- the same definition, entered the way a word is --------------------------
+\ Design section 7.6's convention, end to end: the routine is compiled to take
+\ argument zero out of data-stack slot zero of the CALLER's stack and to leave
+\ result zero in slot zero, published into code space, and then entered by the
+\ branch the interpreter itself uses - `execute` on the address, with the data
+\ stack live. Nothing marshals anything; the argument is already where the
+\ routine reads it.
+\
+\ WHY THIS CASE IS THE PROOF THAT THE REGISTER IS THE RIGHT ONE. Which register
+\ the running engine keeps its data-stack pointer in is a fact about the engine,
+\ and this case is the only thing in the suite that can be wrong about it. The
+\ emitted routine reads its argument through that register and writes its result
+\ back through it; if it were any other register the value read would be whatever
+\ that register happened to hold and the answer would not be the square of seven -
+\ and the data-stack pointer would be left somewhere the engine could not run on,
+\ so the comparison against the interpreted word on the line after would not even
+\ be reached. Mutating A64EFF:DSTACK-GPR to any other allocatable number reddens
+\ here, which is what makes the constant load-bearing rather than declared.
+: SRC2 ( -- ptr u8 n )
+   s" : NCH-SQD ( n -- n ) dup * ;" ;
+
+: RECORD2 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC2 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: HABU-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD2
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 REGS 1 1 NFIX:RUN-HABU
+   A64EMIT:INSNS
+   7 NRUN:PUBLISH NRUN:ENTER1
+   s" 7 NCH-SQD" EV-N
+   s" 11 NCH-SQD" EV-N ;
+
+\ Five instructions: the pointer down over the one argument, the load, the
+\ multiply, the store, the pointer up over the one result - and the return.
+: HABU-CASE ( -- )
+   s" a compiled word is entered and left through the data stack" T-LABEL
+   NFIX:BINDING [: HABU-BODY ;] IR-CTX:WITH-CONTEXT
+   121 T= 49 T= 49 T= 6 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    CHAIN-CASE
+   HABU-CASE
    T-REPORT ;
 
 ;package

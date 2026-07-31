@@ -281,6 +281,12 @@ private
 
 public
 
+\ What an empty call of this path costs, in picoseconds. The report subtracts it
+\ from each row of the same path, which is the one honest way to compare two
+\ paths whose entry costs differ: what is left is the routine and not the call.
+: PATH-PICOS ( n -- n )
+   BASE-PICOS ;
+
 : NORMALIZE ( -- )
    0 begin dup ROW-N @ < while
       dup {: k:n :}

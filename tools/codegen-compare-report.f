@@ -25,16 +25,17 @@
 \ the file disagree with itself on every other host, while the ratio to an empty
 \ call measured in the same run stays comparable.
 \
-\ READ THE TWO COST COLUMNS WITH THE NOTE THIS FILE PRINTS UNDER THEM. An old
-\ row is called as an ordinary Habu word; a new row has to be called through the
-\ C-ABI trampoline, because the convention the chain declares on its routines is
-\ the C one - a Habu word's own data-stack entry does not exist yet (dot
-\ habu-enter-and-leave-2684e515) - and that entry costs two orders of magnitude
-\ more than the routine it enters. Each
-\ column is therefore a multiple of an empty call of its own kind, and the
-\ absolute nanoseconds of both are printed so a reader can see that the new
-\ column's are dominated by the harness's own call rather than by the emitted
-\ code. The byte and result columns carry no such caveat: they are exact.
+\ READ THE TWO COST COLUMNS WITH THE TWO NOTES THIS FILE PRINTS UNDER THEM. Both
+\ paths are entered by a branch now: an old row is an ordinary Habu word call,
+\ and a new row is that same branch through `execute`, because the routines the
+\ chain emits take their arguments off the data stack the way a word does. One
+\ difference is left - the new column's address is on the stack rather than
+\ compiled into the call site, which is one indirect branch more - so each column
+\ is still a multiple of an empty call of its OWN kind and the two floors are not
+\ the same number. Rather than leave a reader to guess what that is worth, the
+\ report prints both floors and every covered word's cost with its floor taken
+\ off, which is the emitted code and nothing else. The byte and result columns
+\ carry no such caveat: they are exact.
 
 require lib/errors.f
 require lib/prelude.f
@@ -322,15 +323,60 @@ private
    s"   outputs" type k PRINT-OUTPUTS
    cr ;
 
-\ What the two cost columns do and do not say. Printed with every run, because a
-\ reader who takes them for a like-for-like race is reading them wrongly.
+\ ---- the cost of the routine, with the call taken off ------------------------
+\ Both columns are entered by a branch now: an old row is an ordinary Habu word
+\ call and a new row is that same branch through `execute`, because the routines
+\ the chain emits take their arguments off the data stack the way a word does.
+\ One difference is left, and it is why each path still keeps its own calibration
+\ row: the new column's address is on the stack rather than compiled into the
+\ call site, so its entry is one indirect branch more. That difference is a
+\ constant, it is exactly what an empty call of each kind measures, and
+\ subtracting it leaves the emitted code - which is the number the comparison is
+\ about. Both the floor and the difference are printed, so nothing is hidden in a
+\ ratio.
+: PATH-FLOOR ( n -- ) {: path:n :}
+   path CODEGEN-COMPARE:PATH-PICOS NANOS. ;
+
+: BODY-NS ( n -- ) {: k:n :}
+   k CODEGEN-COMPARE:PICOSECONDS
+   k CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-PICOS - {: d:n :}
+   d 0 < if s" 0.000" type exit then
+   d NANOS. ;
+
+: BODY-ROW ( n n -- ) {: k:n j:n :}
+   s"   " type
+   k CODEGEN-COMPARE:NAME$ type
+   s"   old " type k BODY-NS
+   s"  ns   new " type j BODY-NS
+   s"  ns" type cr ;
+
+: BODIES ( -- )
+   s" Cost of the emitted code, with the entry taken off. Both columns are entered" type cr
+   s" by a branch; the new column's goes through the address on the stack, which is" type cr
+   s" one indirect branch more, so each path's own empty call is the floor and what" type cr
+   s" is printed here is the row minus that floor." type cr
+   s" empty call: old " type CODEGEN-COMPARE:PATH-OLD PATH-FLOOR
+   s"  ns, new " type CODEGEN-COMPARE:PATH-NEW PATH-FLOOR
+   s"  ns" type cr
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         CODEGEN-COMPARE:PATH-NEW i CODEGEN-COMPARE:NAME$
+         CODEGEN-COMPARE:FIND-ROW {: j:n :}
+         j 0 >= if i j BODY-ROW then
+      then
+   loop ;
+
+\ What the two ratio columns of the table do and do not say. Printed with every
+\ run, because a reader who takes them for a like-for-like race is reading them
+\ wrongly: each is a multiple of an empty call of its own kind, and the two
+\ floors are not the same number.
 : CAVEAT ( -- )
-   s" How to read the two cost columns. An old row is called as an ordinary Habu" type cr
-   s" word; a new row is called through the C-ABI trampoline, because that is the" type cr
-   s" convention its routines declare and a Habu word's own data-stack entry does" type cr
-   s" not exist yet. That entry costs far more than the routine it enters, so each" type cr
-   s" column is a multiple of an empty call of its OWN kind and the nanoseconds" type cr
-   s" above show what each really cost. The bytes and results carry no such caveat." type cr ;
+   s" How to read the two cost columns of the table. Each is a multiple of an empty" type cr
+   s" call of its OWN kind, and the two floors differ - an old row is entered by a" type cr
+   s" branch the engine compiled into the call site, a new row by a branch through" type cr
+   s" an address on the stack. So the ratios are not comparable with each other;" type cr
+   s" the nanoseconds above and the entry-subtracted figures below are. The bytes" type cr
+   s" and the results carry no such caveat: they are exact." type cr ;
 
 \ ---- the head-to-head finding ----------------------------------------------
 \ The one thing the comparison must never let past: the same corpus word
@@ -377,6 +423,8 @@ public
       dup PRINT-ROW
       1+
    repeat drop
+   cr
+   BODIES
    cr
    CAVEAT ;
 
