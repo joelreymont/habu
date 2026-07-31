@@ -8,14 +8,13 @@
 \ than as two lexers agreeing with each other.
 \
 \ What it proves: the token count, spellings, kinds, modes, spans and literal
-\ of a real definition; that the result binds the tape through NTAPE:VERIFY and
-\ the bytes through the registry's content digest; exactly which one-byte edits
-\ each of those two digests can and cannot see; that the text the tape records
-\ is the definition the engine reconstructed, so a backslash comment and the
-\ original whitespace are not in it; that a spelling hidden in a parenthesised
-\ comment or inside a string payload never becomes a row, because the reader
-\ never consumes it; and that every refusal of the producer's state machine
-\ fires by name.
+\ of a real definition; exactly which one-byte edits the sealed tape's own
+\ digest can and cannot see, and which of those the source registry's content
+\ digest catches instead; that the text the tape records is the definition the
+\ engine reconstructed, so a backslash comment and the original whitespace are
+\ not in it; that a spelling hidden in a parenthesised comment or inside a
+\ string payload never becomes a row, because the reader never consumes it;
+\ and that every refusal of the producer's state machine fires by name.
 
 require lib/test.f
 require src/compiler/native/feed.f
@@ -51,7 +50,7 @@ here CELL 1- and CELL swap - CELL 1- and allot
 UNITS TYPED-BUFFER T-KEY IR-ID:ir-module-key
 UNITS TYPED-BUFFER T-MOD IR-BUILD:module
 UNITS TYPED-BUFFER T-TAPE IR-ARENA:view
-UNITS TYPED-BUFFER T-RES NCERT:result
+create T-VERDICT UNITS cells allot   \ the verdict each unit answered
 
 \ The buffer a unit keeps its scanned text in. A unit is opened with it, the
 \ producer copies the reader's text into it, and a case reads the recorded
@@ -63,8 +62,15 @@ create UTXT TEXT-CAP allot
 : KEY@ ( n -- IR-ID:ir-module-key )  T-KEY @ ;
 : MOD@ ( n -- IR-BUILD:module )      T-MOD @ ;
 : TAPE@ ( n -- IR-ARENA:view )       T-TAPE @ ;
-: RES@ ( n -- NCERT:result )         T-RES @ ;
+: VERDICT@ ( n -- n )                cells T-VERDICT + @ ;
 : SRC@ ( n -- IR-ARENA:view )        MOD@ IR-BUILD:FSOURCES ;
+
+\ The source the unit registered, read off the tape rather than carried
+\ alongside it: every row's span names the source it spans into, so the
+\ identity a case asks the registry about is the one the recorded rows use.
+: SRC-ID ( n -- IR-ID:ir-source-id )
+   {: slot:n :}
+   slot TAPE@ slot KEY@ 0 NTAPE:SPAN@ IR-SOURCE:SPAN-SRC ;
 
 : NEW-BLD ( IR-CTX:ctx -- IR-BUILD:builder )
    {: c:IR-CTX:ctx :}
@@ -82,7 +88,7 @@ create UTXT TEXT-CAP allot
    c b IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
    c b tp UTXT TEXT-CAP NFEED:BEGIN-UNIT
    a u EV
-   NFEED:END-UNIT  slot T-RES !  slot T-TAPE !
+   NFEED:END-UNIT  slot cells T-VERDICT + !  slot T-TAPE !
    c b IR-BUILD:FREEZE slot T-MOD ! ;
 
 \ ---- reading a recorded tape back --------------------------------------------
@@ -137,13 +143,19 @@ create UTXT TEXT-CAP allot
 \ How many bytes the reader actually handed over, as the registry recorded them.
 : SRC-LEN ( n -- n )
    {: slot:n :}
-   slot SRC@ slot RES@ NCERT:SOURCE IR-SOURCE:FLEN@ ;
+   slot SRC@ slot SRC-ID IR-SOURCE:FLEN@ ;
+
+\ The registry's own content digest over the bytes this unit registered. It is
+\ the authority on the bytes; the tape digest is the authority on the cells.
+: SRC-DIGEST ( n -- CDIGEST:digest )
+   {: slot:n :}
+   slot SRC@ slot SRC-ID IR-SOURCE:FDIGEST@ ;
 
 : SAME-TAPE? ( -- bool )
-   0 RES@ NCERT:TAPE-DIGEST  1 RES@ NCERT:TAPE-DIGEST  CDIGEST-DIGEST:EQ ;
+   0 TAPE@ NTAPE:DIGEST  1 TAPE@ NTAPE:DIGEST  CDIGEST-DIGEST:EQ ;
 
 : SAME-TEXT? ( -- bool )
-   0 RES@ NCERT:TEXT-DIGEST  1 RES@ NCERT:TEXT-DIGEST  CDIGEST-DIGEST:EQ ;
+   0 SRC-DIGEST  1 SRC-DIGEST  CDIGEST-DIGEST:EQ ;
 
 \ ---- the token grid of a real definition -------------------------------------
 \ One definition of the Wave 2 straight-line slice, recorded while the engine
@@ -155,7 +167,7 @@ create UTXT TEXT-CAP allot
    {: c:IR-CTX:ctx :}
    c s" : NF-SQUARE ( n -- n ) dup * 3 + ;" 0 REC
    0 TOKENS
-   0 RES@ NCERT:VERDICT
+   0 VERDICT@
    0 0 SPAN-START
    0 0 SPAN-LEN
    0 3 LIT ;
@@ -254,7 +266,7 @@ create UTXT TEXT-CAP allot
 \ bound to bytes nobody kept.
 : KEPT-DIGEST? ( n -- bool )
    {: slot:n :}
-   slot SRC@  slot RES@ NCERT:SOURCE  IR-SOURCE:FDIGEST@
+   slot SRC-DIGEST
    UTXT slot SRC-LEN CDIGEST:COMPUTE
    CDIGEST-DIGEST:EQ ;
 
@@ -303,87 +315,6 @@ create UTXT TEXT-CAP allot
    BND [: HIDE-STRING-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TFALSE TFALSE 4 T= ;
 
-\ ---- the binding -------------------------------------------------------------
-\ The result binds the tape it was published with, through NTAPE:VERIFY, and
-\ the bytes behind it through the registry's own content digest.
-: BIND-BODY ( IR-CTX:ctx -- n )
-   {: c:IR-CTX:ctx :}
-   c s" : NF-BIND ( n -- n ) 2 * ;" 0 REC
-   0 TAPE@ 0 SRC@ 0 RES@ NCERT:VERIFY
-   0 TOKENS ;
-
-: BIND-CASE ( -- )
-   s" the result verifies against the tape and the source it bound" T-LABEL
-   BND [: BIND-BODY ;] IR-CTX:WITH-CONTEXT
-   3 T= ;
-
-\ A refusal is raised INSIDE the context and rethrown outside it. A throw that
-\ escapes IR-CTX:WITH-CONTEXT abandons the context, and an abandoned context
-\ keeps its arena registry slots until an enclosing live context leaves - with
-\ no enclosing context, that is never, and the next case runs out of slots.
-\ Every refusal case below therefore answers its throw code and rethrows past
-\ the context boundary.
-: CROSS-TAPE-VERIFY ( -- )
-   1 TAPE@ 0 SRC@ 0 RES@ NCERT:VERIFY ;
-
-: CROSS-SRC-VERIFY ( -- )
-   0 TAPE@ 1 SRC@ 0 RES@ NCERT:VERIFY ;
-
-\ A result whose tape digest is another unit's is forged: the generated
-\ constructor is open, so this is the shape that reaches VERIFY's own refusal
-\ rather than an owner check underneath it.
-: FORGED-TEXT-VERIFY ( -- )
-   0 TAPE@ 0 SRC@
-   0 RES@ NCERT:VERDICT
-   0 RES@ NCERT:SOURCE
-   0 RES@ NCERT:TAPE-DIGEST
-   1 RES@ NCERT:TEXT-DIGEST
-   NCERT-RESULT:MAKE
-   NCERT:VERIFY ;
-
-\ Presented against another unit's tape it is refused: this is the whole point
-\ of carrying a digest rather than a promise.
-: CROSS-TAPE-BODY ( IR-CTX:ctx -- n )
-   {: c:IR-CTX:ctx :}
-   c s" : NF-XT1 ( n -- n ) 2 * ;" 0 REC
-   c s" : NF-XT2 ( n -- n ) 3 * ;" 1 REC
-   [: CROSS-TAPE-VERIFY ;] catch ;
-
-: CROSS-TAPE ( -- )
-   BND [: CROSS-TAPE-BODY ;] IR-CTX:WITH-CONTEXT throw ;
-
-\ Presented against another module's registry it is refused by the registry,
-\ which owns the question "is this one of my sources": a source identity of
-\ another module never resolves there.
-: CROSS-SRC-BODY ( IR-CTX:ctx -- n )
-   {: c:IR-CTX:ctx :}
-   c s" : NF-XX1 ( n -- n ) 2 * ;" 0 REC
-   c s" : NF-XX2 ( n -- n ) 3 * ;" 1 REC
-   [: CROSS-SRC-VERIFY ;] catch ;
-
-: CROSS-SRC ( -- )
-   BND [: CROSS-SRC-BODY ;] IR-CTX:WITH-CONTEXT throw ;
-
-\ The right tape and the right registry, and a text digest that is somebody
-\ else's: this is the edit the tape digest alone cannot see, and it is the one
-\ NCERT's own refusal is for.
-: FORGED-TEXT-BODY ( IR-CTX:ctx -- n )
-   {: c:IR-CTX:ctx :}
-   c s" : NF-FG1 ( n -- n ) 2 * ;" 0 REC
-   c s" : NF-FG2 ( n -- n ) 3 * ;" 1 REC
-   [: FORGED-TEXT-VERIFY ;] catch ;
-
-: FORGED-TEXT ( -- )
-   BND [: FORGED-TEXT-BODY ;] IR-CTX:WITH-CONTEXT throw ;
-
-: CROSS-CASES ( -- )
-   s" a result presented against another unit's tape is refused" T-LABEL
-   [: CROSS-TAPE ;] E-NTAPE-DIGEST TTHROWSQ
-   s" a result presented against another module's registry is refused" T-LABEL
-   [: CROSS-SRC ;] E-IR-SRC-OWNER TTHROWSQ
-   s" a result carrying another text's digest is refused" T-LABEL
-   [: FORGED-TEXT ;] E-NCERT-DIGEST TTHROWSQ ;
-
 \ ---- what one changed byte moves ---------------------------------------------
 \ A byte inside a literal moves the tape digest. The pair is built so that the
 \ literal is the only cell that can differ: the two names are the same length,
@@ -409,8 +340,11 @@ create UTXT TEXT-CAP allot
 \ to paper over: the tape stores a spelling as its module-local symbol ordinal,
 \ and each of these two names is its own module's first symbol, so the two
 \ tapes are cell for cell identical. The registry's content digest is what
-\ tells them apart, which is why the result binds both. Delete the text digest
-\ from NCERT and this case goes green in the wrong direction.
+\ tells them apart, so a stage that needs to know WHICH bytes were read asks
+\ the registry and never the tape - that is what instruction selection's own
+\ digest check does in production (A64SEL:SOURCE!), and the reasoning behind
+\ it is recorded in LESSONS.md, "A digest over interned identities cannot see
+\ a spelling".
 : NAMEBYTE-BODY ( IR-CTX:ctx -- bool bool )
    {: c:IR-CTX:ctx :}
    c s" : NF-NMA ( -- n ) 1 ;" 0 REC
@@ -455,6 +389,13 @@ create UTXT TEXT-CAP allot
    TFALSE 4 T= 2 T= ;
 
 \ ---- the refusals ------------------------------------------------------------
+\ A refusal is raised INSIDE the context and rethrown outside it. A throw that
+\ escapes IR-CTX:WITH-CONTEXT abandons the context, and an abandoned context
+\ keeps its arena registry slots until an enclosing live context leaves - with
+\ no enclosing context, that is never, and the next case runs out of slots.
+\ Every refusal case below therefore answers its throw code and rethrows past
+\ the context boundary.
+\
 \ A scratch unit, opened over a module nothing else reads. The three handles
 \ are parked rather than kept in locals because a refusal case has to reach
 \ them from inside a quotation under `catch`, and a local is not visible there.
@@ -498,9 +439,9 @@ create UTXT-TINY TINY-CAP allot
 : TWO-DEFS ( -- )
    BND [: TWO-DEFS-BODY ;] IR-CTX:WITH-CONTEXT throw ;
 
-\ A unit that never reached a verdict has no result to publish.
+\ A unit that never reached a verdict has nothing to answer.
 : END-QUIET ( -- )
-   NFEED:END-UNIT NCERT:VERDICT drop drop ;
+   NFEED:END-UNIT drop drop ;
 
 : NO-SCAN-BODY ( IR-CTX:ctx -- n )
    OPEN-SCRATCH
@@ -638,8 +579,6 @@ public
    HIDE-COMMENT-CASE
    HIDE-STRING-CASE
    KEPT-CASE
-   BIND-CASE
-   CROSS-CASES
    LITBYTE-CASE
    NAMEBYTE-CASE
    COMMENTBYTE-CASE

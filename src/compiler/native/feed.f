@@ -12,9 +12,9 @@
 \
 \ WHAT A UNIT IS. One checked definition: one scan, one registered source, one
 \ tape, one verdict. BEGIN-UNIT arms the reader, the reader fills the tape, and
-\ END-UNIT seals it and publishes the result. Recording is never on by itself:
-\ outside a unit the observer is disarmed and the checker pays one load and a
-\ branch per token.
+\ END-UNIT seals it and answers the sealed tape and the verdict the scan
+\ reached. Recording is never on by itself: outside a unit the observer is
+\ disarmed and the checker pays one load and a branch per token.
 \
 \ WHY THE UNIT IS ONE SCAN AND NOT A WINDOW OF TIME. The checker scans text for
 \ reasons other than the definition in front of it - a candidate probe, a
@@ -77,7 +77,6 @@ require src/compiler/ir/source.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/compiler/native/tape.f
-require src/compiler/native/cert.f
 
 package NFEED
 private
@@ -240,19 +239,21 @@ public
    ST-ARMED F-STATE !
    CHECKER-TAPE:ARM ;
 
-\ Close it: disarm the reader, seal the tape, and publish the result the sealed
-\ tape and the registered source bind. Sealing here rather than in the caller
-\ is the point at which the digest becomes worth sharing: after it, the tape
-\ handle refuses every append.
-: END-UNIT ( -- IR-ARENA:view NCERT:result )
+\ Close it: disarm the reader, seal the tape, and answer the two things a
+\ caller has: the sealed tape and the verdict the scan reached. Sealing here
+\ rather than in the caller is the point at which the digest becomes worth
+\ sharing: after it, the tape handle refuses every append.
+\
+\ The registered source is not answered separately because the tape already
+\ names it - every row's span carries the source it spans into, so a caller
+\ that wants the recorded length or the registry's content digest reads the
+\ source identity off a span rather than off a second value that could
+\ disagree with the tape in its hand.
+: END-UNIT ( -- IR-ARENA:view n )
    ST-DONE STATE-CK
    CHECKER-TAPE:DISARM
-   TAPE NTAPE:SEAL {: v:IR-ARENA:view :}
-   v
-   F-VERDICT @  SID
-   v NTAPE:DIGEST
-   CTX BLD SID IR-BUILD:SOURCE-DIGEST
-   NCERT-RESULT:MAKE
+   TAPE NTAPE:SEAL
+   F-VERDICT @
    CLEAR ;
 
 \ Give a unit up. The only route out of a unit whose scan threw: the failure has

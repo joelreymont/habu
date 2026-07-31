@@ -692,16 +692,15 @@ is the HIR builder's to enforce, and there is no builder yet. Dot
 #### As implemented: the producer
 
 `src/compiler/native/feed.f` (package `NFEED`) fills a tape from the reader the
-engine already runs over every checked definition, and
-`src/compiler/native/cert.f` (package `NCERT`) is the source-bound checking
-result it publishes.
+engine already runs over every checked definition, and answers the sealed tape
+and the verdict the scan reached.
 
 **The producer hangs on the checker's reader, not on a second lexer.** The
 migration sentence above allows the checker to keep running over source text as
 long as its result binds the tape digest. If a different reader filled the tape,
 that binding would be a convention between two lexers that happen to agree; the
 tape is filled by `src/core/checker.f` `CHECK-SCAN` itself, as it consumes each
-token, so the certificate binds the token stream the checker actually read. The
+token, so the verdict belongs to the token stream the checker actually read. The
 seam is package `CHECKER-TAPE` in that file: three events - the text a scan
 opens with, each token as it is consumed, and the verdict it ends with - reached
 through declared dispatch cells and disarmed by default, so an unarmed checker
@@ -715,13 +714,16 @@ of an immediate - so an open unit accepts exactly one scan and refuses a second
 by name. "One row per token, exactly once, in order" is then a property of the
 state machine rather than of the caller's care.
 
-**The result binds two digests, because one is not enough.** The tape digest
-covers the cells the tape owns. It cannot see a changed name: a module numbers
-its own symbols, so a definition and the same definition with one letter of its
-name changed intern that name at the same ordinal, produce spans of the same
-length, and digest identically. The registry's per-source content digest is what
-tells them apart, so `NCERT` binds both and `test/compiler/native-feed.f` pins
-exactly which one-byte edits each digest can and cannot see.
+**A unit answers the sealed tape and the verdict, and nothing else.** Identity
+implies content inside one process: a stage holding the tape handle the unit
+sealed is holding the tape the checker filled, so there is no certificate value
+to carry a digest of it. The tape digest deliberately cannot see spellings - a
+module numbers its own symbols, so two definitions differing only inside a name
+digest identically - and the authority on the bytes is the source registry's
+per-source content digest, which instruction selection already checks in
+production (`A64SEL:SOURCE!`); `test/compiler/native-feed.f` pins which one-byte
+edits each of the two digests can and cannot see. A cross-process consumer would
+need a value that binds both, and none exists today.
 
 **What the reader hands over is the reconstructed definition.** The engine gives
 the check hook the definition it rebuilt - name, declared signature, body - with

@@ -13,8 +13,8 @@
 \ THE CHAIN, IN THE ORDER IT RUNS:
 \   evaluate                 the engine compiles `: NCH-SQ ( n -- n ) dup * ;`
 \   engine check hook        the checker scans the reconstructed definition
-\   NFEED unit               one row per token, in consumption order
-\   NCERT result             the verdict, bound to the tape and to the bytes
+\   NFEED unit               one row per token, in consumption order, and the
+\                            sealed tape and verdict the unit answers
 \   NELAB:COLON              the tape becomes HIR operations
 \   NFIX:RUN                 select, allocate, accept, emit
 \   NRUN:PUBLISH + EXEC1     the words become a routine this process calls
@@ -72,12 +72,12 @@ here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER R-CTX IR-CTX:ctx
 1 TYPED-BUFFER R-BLD IR-BUILD:builder
 1 TYPED-BUFFER R-TAPE IR-ARENA:view
-1 TYPED-BUFFER R-RES NCERT:result
+variable R-VERDICT                    \ the verdict the unit answered
 
 : CC ( -- IR-CTX:ctx )           0 R-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 R-BLD @ ;
 : TAPE ( -- IR-ARENA:view )      0 R-TAPE @ ;
-: RES ( -- NCERT:result )        0 R-RES @ ;
+: VERDICT ( -- n )               R-VERDICT @ ;
 
 \ The buffer the recorded definition's text is kept in. The producer copies the
 \ reader's text here as the scan opens; instruction selection reads it back to
@@ -112,18 +112,21 @@ create TXT TEXT-CAP allot
    p r ;
 
 \ Compile the definition through the production path with a unit open, and park
-\ the sealed tape and the source-bound result the unit publishes.
+\ the sealed tape and the verdict the unit answers.
 : RECORD ( -- )
    CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
    CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
    SRC EV
-   NFEED:END-UNIT  0 R-RES !  0 R-TAPE ! ;
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
 
-\ How many bytes the reader handed over, as the registry recorded them. It is
-\ read off the LIVE builder, because the text has to be presented to instruction
-\ selection and selection takes its binding before the module freezes.
+\ How many bytes the reader handed over, as the registry recorded them. The
+\ source is named off the tape's own first span, so the length asked for is the
+\ length of the source the recorded rows span into. It is read off the LIVE
+\ builder, because the text has to be presented to instruction selection and
+\ selection takes its binding before the module freezes.
 : TEXT-LEN ( -- n )
-   CC BB  RES NCERT:SOURCE  IR-BUILD:SOURCE-LEN ;
+   CC BB  TAPE BB IR-BUILD:MODULE-KEY 0 NTAPE:SPAN@ IR-SOURCE:SPAN-SRC
+   IR-BUILD:SOURCE-LEN ;
 
 \ ---- stage N1 and the machine stages -----------------------------------------
 \ Elaborate the produced tape into the module the tape was recorded into. The
@@ -146,9 +149,9 @@ create TXT TEXT-CAP allot
 \ The text presented to selection is the one the unit kept, and selection refuses
 \ it unless it digests to the source the HIR module carries - so a copy that
 \ drifted stops the run here instead of moving spans onto other bytes. That
-\ digest check is the production stage doing the binding NCERT:VERIFY states as a
-\ value, which is why this case does not restate it: test/compiler/native-feed.f
-\ owns the verification of the result itself.
+\ digest check is where the bytes are bound to the module in production, and it
+\ is the only place that binding is stated: there is no separate certificate
+\ value to restate it.
 : CHAIN-BODY ( IR-CTX:ctx -- n n n n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
@@ -156,7 +159,7 @@ create TXT TEXT-CAP allot
    CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    RECORD
    TAPE NTAPE:TOKENS
-   RES NCERT:VERDICT
+   VERDICT
    p r ELABORATE
    CC BB TXT TEXT-LEN REGS NFIX:RUN
    A64EMIT:INSNS

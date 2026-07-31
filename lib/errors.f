@@ -526,8 +526,9 @@ public
 \   -8340..-8359  native ARM64 machine dialect (package A64IR)
 \   -8360..-8379  native ARM64 instruction selection (package A64SEL)
 \   -8380..-8399  native ARM64 instruction emission (package A64EMIT)
-\   -8400..-8419  native stage N0 source-tape producer (package NFEED) and the
-\                 source-bound checking result it publishes (package NCERT)
+\   -8400..-8409  native stage N0 source-tape producer (package NFEED)
+\   -8410..-8419  unassigned (source-bound checking result retired 2026-07-31:
+\                 no consumer)
 \   -8440..-8459  native ARM64 spill lowering (package A64SPILL) and the
 \                 frame-slot refusals the register allocator (A64RA) and its
 \                 validator (A64RAV) gained when their own block filled up
@@ -886,13 +887,6 @@ public
 -8404 constant E-NFEED-KIND     \ a token class this stage has no tape kind for
 -8405 constant E-NFEED-LITERAL  \ an integer literal whose value this stage cannot read back
 -8406 constant E-NFEED-TEXT     \ a scan whose text is longer than the buffer the unit was opened with
-
-\ The source-bound checking result (package NCERT): -8410..-8419
-\
-\ One value: the verdict a scan reached, the source it read, and the two
-\ digests that pin what it read - the tape's, over the token grid, and the
-\ registry's, over the bytes. Its one refusal is a binding that does not hold.
--8410 constant E-NCERT-DIGEST   \ a result presented against a tape or a source registry whose digest is not the one it bound
 
 \ Native ARM64 spill lowering and frame slots: -8440..-8459
 \

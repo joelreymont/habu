@@ -1046,24 +1046,11 @@ public
    c b USE {: slot:n :}
    slot T-SA TAB@  src st ln IR--SOURCE-SPAN:MAKE  IR-SOURCE:SPAN-CK ;
 
-\ The content digest the registry recorded for one of this module's sources.
-\ A stage that binds source identity needs it while the module is still being
-\ built, because the tape digest deliberately covers only the cells the tape
-\ owns: two texts that differ inside a name digest the same tape, since each
-\ module numbers its own symbols and both names take the same ordinal. The
-\ registry's own digest is the authority on the bytes, and this reader only
-\ reaches it - it computes nothing of its own.
-: SOURCE-DIGEST ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-source-id -- CDIGEST:digest )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id :}
-   c b USE {: slot:n :}
-   slot T-SA TAB@ src IR-SOURCE:DIGEST@ ;
-
-\ How many bytes one of this module's sources holds, read the same way and for
-\ the same reason: a stage that has to present those bytes again - instruction
-\ selection does, because it re-registers the source into the module it writes -
-\ needs the length BEFORE the module freezes, since the binding it selects
-\ against is taken on the live builder. The registry recorded the length when the
-\ bytes were registered; this reader only reaches it.
+\ How many bytes one of this module's sources holds. A stage that has to present
+\ those bytes again - instruction selection does, because it re-registers the
+\ source into the module it writes - needs the length BEFORE the module freezes,
+\ since the binding it selects against is taken on the live builder. The registry
+\ recorded the length when the bytes were registered; this reader only reaches it.
 : SOURCE-LEN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-source-id -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder src:IR-ID:ir-source-id :}
    c b USE {: slot:n :}
