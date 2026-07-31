@@ -11,10 +11,10 @@ package UTF8
 
 public
 
-SUMTYPE scalar-step 0
-   VARIANT scalar n n ;VARIANT
-   VARIANT raw-byte n n ;VARIANT
-;SUMTYPE
+ENUM scalar-step<>
+   VARIANT scalar FIELD code n FIELD next n ;VARIANT
+   VARIANT raw-byte FIELD byte n FIELD next n ;VARIANT
+;ENUM
 
 private
 

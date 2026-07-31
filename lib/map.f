@@ -29,11 +29,11 @@ ENUM slot-state
 \ sum instead of 0/1/2 constants plus a -1 idx placeholder: free/found carry
 \ the slot index, full carries nothing, and the checker forces every consumer
 \ through exhaustive MATCH.
-SUMTYPE map-loc 0
+ENUM map-loc<>
   VARIANT full ;VARIANT
-  VARIANT free idx ;VARIANT
-  VARIANT found idx ;VARIANT
-;SUMTYPE
+  VARIANT free FIELD slot idx ;VARIANT
+  VARIANT found FIELD slot idx ;VARIANT
+;ENUM
 
 5381 constant MAP-HASH-SEED
 33 constant MAP-HASH-MUL

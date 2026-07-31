@@ -9,11 +9,11 @@ s" lib/adt/result.f" required            \ result<n,n> for PROC-RUN-IO-RC (switc
 \ carrying the exit code, a signal death carrying the signal, or a capture
 \ timeout (always SIGKILL-reaped, so no payload). The checker forces every
 \ consumer through exhaustive MATCH; PROC-OUTCOME>RC is the rc flattener.
-SUMTYPE outcome 0
-  VARIANT exited n ;VARIANT
-  VARIANT signaled n ;VARIANT
+ENUM outcome<>
+  VARIANT exited FIELD code n ;VARIANT
+  VARIANT signaled FIELD sig n ;VARIANT
   VARIANT timeout ;VARIANT
-;SUMTYPE
+;ENUM
 
 \ pcap - the byte-length pair a bounded capture always produces, split by how the
 \ child completed (switchover wave B). A clean exit carries just the two captured
@@ -28,11 +28,11 @@ SUMTYPE outcome 0
 \ completion code, never an errno.)
 package PCAP
 public
-STRUCTURE captured 0
+STRUCTURE captured<>
   FIELD out len
   FIELD err len
 ;STRUCTURE
-STRUCTURE failed 0
+STRUCTURE failed<>
   FIELD out len
   FIELD err len
   FIELD code rc
