@@ -3628,3 +3628,41 @@ fits.
   its module is still being built, and recording which module the answers came
   from, keeps one authority and turns "bind the module you are about to select"
   into a check rather than a usage rule.
+
+- **A local shadows the package word of the same name, and the error lands on
+  the callee.** A private reader `KEY ( -- IR-ID:ir-module-key )` and a local
+  named `key:IR-ID:ir-symbol-id` in the same package do not coexist: locals
+  resolve first, so every `KEY` inside that word became the symbol, and the
+  checker reported the mismatch at the frozen reader that consumed it rather
+  than at the local that caused it. The shipped substrate files all use a
+  three-letter `KEY` reader, so a comparison local must be spelled something
+  else (`want`, `sym`) - and a "expected ir-module-key actual ir-symbol-id" on a
+  reader you did not change means look at the locals group, not at the reader.
+
+- **Emitted machine code can be executed inside the same process, and that is
+  what makes a byte table worth anything.** `cp@` answers the free code slot,
+  the trusted-only `patch32` stores one instruction word into it, and
+  `ffi-call-bounded` calls it as a C-ABI leaf routine with arguments in
+  x0..x7 - the pattern `lib/ffi-test.f` already uses for its hand-assembled
+  stubs. Two consequences worth keeping: the publishing word must be inside a
+  definition (a top-level `cp@` patch overwrites the line being interpreted),
+  and the address of each instruction should come from the emitter's own source
+  map rather than from four times its index, so a map that lost a row stops the
+  program from running instead of being checked only where a test looks.
+
+- **A mutation can survive because a neighbouring check makes it
+  behaviour-preserving, and that is a seam and not a test gap.** Replacing the
+  native emitter's checked register reader (`A64RAV:REG@`) with the allocator's
+  raw claim (`A64RA:CLAIM@`) left the whole suite green, because the emitter
+  already probes acceptance, freshness and module identity before it reads a
+  register. No test can tell the two apart; only review can. The real answer is
+  to stop the raw claim being readable at all - the allocator publishes it
+  publicly today, so its own header's "the validator is the only door" is a
+  convention rather than a structure (dot habu-close-the-alloc-af5b68a2).
+
+- **Two refusing compiler fixtures that each build two modules are already one
+  group too many.** The registry note in `src/compiler/ir/context.f` bites at
+  four modules, not at four fixtures: a group holding one abandoned two-module
+  context plus another one dies with `E-IR-ARENA-SLOTS` and the second case
+  reports "expected true got false" for a refusal that really happened. Budget
+  a refusal group by MODULES abandoned, not by cases.
