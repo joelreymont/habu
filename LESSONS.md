@@ -2025,6 +2025,9 @@ fits.
   `E-PROTECTION-CAP` (7169), which the uncaught boundary reports with exit 67;
   expecting the engine's `prot-wid-add` exit 84 would require crossing the
   atomic publication boundary and is obsolete.
+- **An excluded record kind is corruption, not a compatibility marker.** If a
+  compact range contains ordinary dictionary rows only, reject namespace WIDs
+  during whole-set preflight; skipping one lets unvalidated authority publish.
 - **Rollback is not an atomic publication boundary when a generator yields
   between words.** Render the complete declaration plan, check every name,
   effect, body, visibility rule, and plan-determined capacity in one discardable
