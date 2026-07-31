@@ -3666,3 +3666,12 @@ fits.
   context plus another one dies with `E-IR-ARENA-SLOTS` and the second case
   reports "expected true got false" for a refusal that really happened. Budget
   a refusal group by MODULES abandoned, not by cases.
+
+- **A green gate proves nothing unless the tree under test is the tree being
+  landed.** A landing script computed a revision into a shell variable, the
+  lookup silently matched nothing, and `jj new` with an empty argument checked
+  out a tree WITHOUT the work being landed - after which every suite "passed"
+  vacuously and the bookmark was pushed without the commit it was supposed to
+  carry. Two rules: after any checkout, confirm a file the change adds is
+  actually present before running gates; and never interpolate a revision
+  variable without failing loudly when it is empty.
