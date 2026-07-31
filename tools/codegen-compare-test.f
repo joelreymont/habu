@@ -14,10 +14,26 @@
 \ the sizes and outputs they carry are the ones the engine actually produced.
 \ Only the specific corruption under test is invented.
 \
-\ The last thing the file does is run CODEGEN-COMPARE-CLI:CHECK - the exact word
+\ The new code generator's column is checked two ways, because the two questions
+\ are different. The comparison logic is checked on rows built to fool it: a new
+\ row whose recorded answers are the old row's answers must read as agreement,
+\ and the same row with one value moved by one must read as a disagreement and
+\ be counted. Those rows are built from a real measurement, so only the moved
+\ value is invented, and they prove the thing a comparison harness must never get
+\ wrong - reporting a wrong answer as a match.
+\
+\ The coverage claim is then checked on the real run: every corpus word is either
+\ compiled by the new chain or named as a gap with the capabilities it waits for,
+\ never both and never neither, no new row disagrees with its old row, and every
+\ word the chain did compile came out smaller than the old emitter made it. Those
+\ are assertions about the store the real pass left behind, computed here from
+\ the public readers rather than by calling the harness's own check.
+\
+\ Between the two, the file runs CODEGEN-COMPARE-CLI:CHECK - the exact word
 \ `bin/hb --load tools/codegen-compare.f` runs - against the committed baseline
 \ in the repository. That is the real production path, and it ends the process
-\ with a non-zero status if the committed table and the live compiler disagree.
+\ with a non-zero status if the committed table and the live compiler disagree,
+\ or if the two code generators do.
 
 require lib/test.f
 require lib/string.f
@@ -25,6 +41,8 @@ require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require tools/codegen-compare-cli.f
+require tools/codegen-compare-new.f
+require tools/codegen-compare-report.f
 
 package CODEGEN-COMPARE-TEST
 
@@ -297,6 +315,170 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    MEASURE-HONEST
    PATH$ FINDINGS-AT 0 T= ;
 
+\ ---- the new column's comparison, on rows built to fool it -----------------
+
+\ The row indices MEASURE-HONEST leaves behind: the calibration call and the
+\ corpus word whose answers the fixtures below echo.
+0 constant OLD-NOOP-ROW
+1 constant OLD-ADD3-ROW
+
+4 constant EMPTY-BYTES            \ what the new chain really emits for an empty word
+12 constant ADD3-BYTES            \ and for the three-argument sum
+
+\ An empty new call, so the new path has the calibration row every other new row
+\ is divided by. Nothing is timed here that the real pass does not time.
+: NEW-CALIBRATION-CASE ( -- )
+   s" CODEGEN-CORPUS:NOOP" EMPTY-BYTES
+   [: ;]
+   [: ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED
+   CODEGEN-COMPARE:CALIBRATE ;
+
+\ A new row that answers exactly what the old row answered.
+: NEW-HONEST-CASE ( -- )
+   s" CODEGEN-CORPUS:ADD3" ADD3-BYTES
+   [: ;]
+   [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR
+      OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
+\ The same row with one answer moved by one.
+: NEW-WRONG-CASE ( -- )
+   s" CODEGEN-CORPUS:ADD3" ADD3-BYTES
+   [: ;]
+   [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR
+      OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT 1+ CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
+\ And one that answers a value short.
+: NEW-SHORT-CASE ( -- )
+   s" CODEGEN-CORPUS:ADD3" ADD3-BYTES
+   [: ;]
+   [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
+\ typed-local-lint: allow-bare-local - build is the case body being measured.
+: MEASURE-WITH ( [ -- ] -- ) {: build :}
+   CODEGEN-COMPARE:RESET
+   CODEGEN-NEW:RESET
+   CODEGEN-COMPARE:PASS-BEGIN
+   CALIBRATION-CASE
+   HONEST-ADD3-CASE
+   NEW-CALIBRATION-CASE
+   build execute
+   CODEGEN-COMPARE:PASS-END
+   CODEGEN-COMPARE:NORMALIZE ;
+
+\ The new row the fixtures above add is always the last one.
+: LAST-ROW ( -- n )
+   CODEGEN-COMPARE:ROWS 1- ;
+
+: UNKNOWN-GAP ( -- )
+   s" CODEGEN-CORPUS:NOT-A-WORD" CODEGEN--NEW-CAP:LOCALS CODEGEN-NEW:GAP ;
+
+: NEW-COLUMN-CASES ( -- )
+   s" a new row that answers what the old row answered reads as agreement" T-LABEL
+   [: NEW-HONEST-CASE ;] MEASURE-WITH
+   LAST-ROW CODEGEN-NEW:ROW-MATCH? TTRUE
+   CODEGEN-NEW:MISMATCHES 0 T=
+   CODEGEN-REPORT:SAY-MISMATCHES 0 T=
+
+   s" one answer moved by one is reported as a disagreement" T-LABEL
+   [: NEW-WRONG-CASE ;] MEASURE-WITH
+   LAST-ROW CODEGEN-NEW:ROW-MATCH? TFALSE
+   CODEGEN-NEW:MISMATCHES 1 T=
+
+   s" a new row one answer short is reported too" T-LABEL
+   [: NEW-SHORT-CASE ;] MEASURE-WITH
+   LAST-ROW CODEGEN-NEW:ROW-MATCH? TFALSE
+   CODEGEN-NEW:MISMATCHES 1 T=
+
+   s" a new row is compared with the old row of the same name, not with itself" T-LABEL
+   [: NEW-WRONG-CASE ;] MEASURE-WITH
+   LAST-ROW CODEGEN-NEW:PARTNER OLD-ADD3-ROW T=
+
+   s" naming a gap for a word the old column never measured is refused" T-LABEL
+   [: UNKNOWN-GAP ;] E-CODEGEN-COMPARE-CORPUS TTHROWSQ ;
+
+\ ---- what the real run left behind ------------------------------------------
+\ Read back off the store the production path filled, so these say something
+\ about the run that just happened rather than about a fixture.
+
+: OLD-ROWS ( -- n )
+   CODEGEN-COMPARE:PATH-OLD CODEGEN-COMPARE:ROWS-OF ;
+
+: NEW-ROWS ( -- n )
+   CODEGEN-COMPARE:PATH-NEW CODEGEN-COMPARE:ROWS-OF ;
+
+: COMPILED? ( n -- bool ) {: k:n :}
+   CODEGEN-COMPARE:PATH-NEW k CODEGEN-COMPARE:NAME$ CODEGEN-COMPARE:FIND-ROW 0 >= ;
+
+: NAMED-GAP? ( n -- bool ) {: k:n :}
+   false
+   CODEGEN-NEW:GAPS 0 ?do
+      i CODEGEN-NEW:GAP-NAME$ k CODEGEN-COMPARE:NAME$ STR= if drop true leave then
+   loop ;
+
+\ How many corpus words are accounted for by neither column - the one number
+\ that says a word was quietly skipped.
+: UNACCOUNTED ( -- n )
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i COMPILED? 0= i NAMED-GAP? 0= and if 1+ then
+      then
+   loop ;
+
+\ And how many are claimed by both, which would double-count the corpus.
+: DOUBLE-COUNTED ( -- n )
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i COMPILED? i NAMED-GAP? and if 1+ then
+      then
+   loop ;
+
+: CAPLESS-GAPS ( -- n )
+   0
+   CODEGEN-NEW:GAPS 0 ?do
+      i CODEGEN-NEW:GAP-CAPS@ 0= if 1+ then
+   loop ;
+
+\ Every word the new chain compiled, compared byte for byte with the old
+\ emitter's answer for the same word.
+: NOT-SMALLER ( -- n )
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW = if
+         i CODEGEN-NEW:PARTNER {: b:n :}
+         b 0 < if 1+ else
+            i CODEGEN-COMPARE:SIZE b CODEGEN-COMPARE:SIZE < 0= if 1+ then
+         then
+      then
+   loop ;
+
+: REAL-RUN-CASES ( -- )
+   s" the real run measured the whole pinned corpus" T-LABEL
+   OLD-ROWS 11 T=
+
+   s" every corpus word is compiled by the new chain or named a gap" T-LABEL
+   UNACCOUNTED 0 T=
+
+   s" and no corpus word is claimed by both accounts" T-LABEL
+   DOUBLE-COUNTED 0 T=
+
+   s" the two accounts together are the whole corpus" T-LABEL
+   NEW-ROWS CODEGEN-NEW:GAPS + OLD-ROWS T=
+
+   s" every gap names at least one capability it is waiting for" T-LABEL
+   CAPLESS-GAPS 0 T=
+
+   s" every word the new chain compiled computes what the old emitter computes" T-LABEL
+   CODEGEN-NEW:MISMATCHES 0 T=
+
+   s" and every one of them is fewer bytes of machine code" T-LABEL
+   NOT-SMALLER 0 T= ;
+
 : SETUP ( -- )
    CLEANUP-RESET
    s" habu-codegen-compare" TMPDIR-MKDIR
@@ -311,9 +493,11 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    TWO-ROW-CASES
    STRUCTURE-CASES
    SLOWDOWN-CASES
+   NEW-COLUMN-CASES
    CLEANUP-RUN
    CODEGEN-BASELINE:LOUD!
    CODEGEN-COMPARE-CLI:CHECK
+   REAL-RUN-CASES
    T-REPORT ;
 
 MAIN
