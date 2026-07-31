@@ -5326,6 +5326,20 @@ PRIM-TRUSTED-ONLY!
 PPRIM: LOWER-CERT-HOOK HOOK PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-OUT PPRIM;
 PPRIM: CHECKER-CERT INSTALL PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN PPRIM;
 PPRIM: CHECKER-CERT PRODUCE PE-PTR-U8 PE-IN PE-N PE-IN PE-N PE-IN PPRIM;
+\ The source-tape observer's arming surface (dot habu-feed-the-src-f7ed8733).
+\ Checked callers may install and arm an observer: it is called before a token
+\ is judged and its answer is never read, so it can abort a compilation but
+\ never accept one, and it needs no trust boundary to hold the checker sound.
+PPRIM: CHECKER-TAPE INSTALL
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN ;PE-Q PE-IN
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
+   PE-Q PE-PTR-U8 PE-QIN PE-N PE-QIN PE-N PE-QIN ;PE-Q PE-IN
+PPRIM;
+PPRIM: CHECKER-TAPE ARM PPRIM;
+PPRIM: CHECKER-TAPE DISARM PPRIM;
+PPRIM: CHECKER-TAPE K-NAME PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-TAPE K-INT PE-N PE-OUT PPRIM;
+PPRIM: CHECKER-TAPE K-REAL PE-N PE-OUT PPRIM;
 PRIM: P2-LOCSEQ-RESET PRIM;
 PRIM: P2-CARVE-W PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: P2-LIVE-W@ PE-N PE-IN  PE-N PE-OUT PRIM;
@@ -9591,6 +9605,103 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    REPEAT drop
    NP-MINT-CHECK ;
 
+\ ---- the source-tape observer (dot habu-feed-the-src-f7ed8733) ---------------
+\ docs/compiler-ir-design.md section 7.1 wants checking, elaboration,
+\ diagnostics and code generation to talk about the same tokens. CHECK-SCAN
+\ below is the reader that turns a checked definition's text into tokens, so it
+\ is where the stage N0 source tape has to be filled: any other producer would
+\ be a second lexer, and the certificate would bind a token stream the checker
+\ never read.
+\
+\ WHAT THIS PACKAGE OWNS. Three event points on the one reader - the text a
+\ scan is about to consume, each token as it is consumed, and the verdict that
+\ scan reached - and the classification of a token into the reader's own
+\ literal vocabulary, which is ALLDIG?/FLODIG? and nothing new.
+\
+\ WHAT IT REFUSES. Installing a second observer over a live one, and arming an
+\ observer that was never installed. Both die by name rather than dispatching
+\ into an unset cell.
+\
+\ WHAT IT DOES NOT DECIDE. Nothing about a verdict. The observer is called
+\ before the token is judged and its answer is never read, so it can abort a
+\ compilation by throwing but it can never turn a rejected definition into an
+\ accepted one. Off, it is one variable fetch and a branch per token.
+package CHECKER-TAPE
+public
+
+\ The reader's own token vocabulary, as codes an observer can store. `name` is
+\ every token to be resolved later, including a string or character opener,
+\ whose payload this reader skips rather than consumes. The three are closed:
+\ an observer that meets something else has met a construct this reader does
+\ not have, which is a class to add here rather than a number to smuggle past.
+0 constant K-NAME
+1 constant K-INT
+2 constant K-REAL
+
+private
+
+\ The three events reach the observer through DECLARED dispatch cells for the
+\ reason CHECKER-CERT:PRODUCER-XT does: the cell holds an execution token, a
+\ snapshot persists it byte for byte, and `defer`/`is` are the only two points
+\ that tell the snapshot writer so.
+defer SCAN-XT ( ptr u8 n -- )
+defer TOKEN-XT ( ptr u8 n n n n -- )
+defer DONE-XT ( ptr u8 n n -- )
+
+\ Whether an observer was installed is a question ARM has to ASK, and a
+\ dispatch cell cannot be interrogated, so the grant is an ordinary flag.
+variable SET   0 SET !
+
+public
+
+\ Armed by the compilation unit that wants a tape, disarmed after it. The call
+\ sites read this cell directly, so an unarmed checker pays a load and a branch.
+variable ARMED   0 ARMED !
+
+: INSTALL ( [ ptr u8 n -- ] [ ptr u8 n n n n -- ] [ ptr u8 n n -- ] -- )
+   SET @ 0 <> if s" checker: source-tape observer already installed" 76 die then
+   is DONE-XT
+   is TOKEN-XT
+   is SCAN-XT
+   1 SET ! ;
+
+: ARM ( -- )
+   SET @ 0= if s" checker: no source-tape observer to arm" 76 die then
+   ARMED @ 0 <> if s" checker: source-tape observer already armed" 76 die then
+   1 ARMED ! ;
+
+: DISARM ( -- )
+   0 ARMED ! ;
+
+private
+
+\ Which of the reader's three token classes this token is. It asks the two
+\ predicates DO-TOK's own literal step asks, so the tape cannot disagree with
+\ the checker about what a literal is.
+: KIND ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u ALLDIG? IF K-INT EXIT THEN
+   a u FLODIG? IF K-REAL EXIT THEN
+   K-NAME ;
+
+public
+
+\ The reader is about to consume this text.
+: SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u SCAN-XT ;
+
+\ One token, as the reader consumed it: its bytes, its byte offset in the
+\ scanned text, its class, and whether it is the definition's name token - the
+\ one token of a colon definition the outer interpreter parses before the
+\ parser switches to compiling.
+: TOKEN ( ptr u8 n n n -- ) {: a:ptr u:n off:n first:n :}
+   a u off a u KIND first TOKEN-XT ;
+
+\ The verdict that scan reached, with the text it reached it over.
+: DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
+   a u verdict DONE-XT ;
+
+;package
+
 : CHECK-RESET {: a u :}
    u TOKBUF-ENSURE
    a TBASE !  u TBLEN !  NEW
@@ -9610,6 +9721,7 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
    0 RECEFF !  0 RECEFF-ON !  0 RECEFF-UEND ! ;
 
 : CHECK-SCAN ( -- )
+   CHECKER-TAPE:ARMED @ IF TBASE@ TBLEN @ CHECKER-TAPE:SCAN THEN
    BEGIN TI @ TBLEN @ < WHILE
      BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 =  and WHILE TI @ 1 + TI ! REPEAT
      TI @ TBLEN @ < IF
@@ -9636,6 +9748,9 @@ variable NP-OUT-I       \ output cell param arg index (NP-OUT-TERM is non-recurs
        ELSE
          TI @ TSTART !
          BEGIN TI @ TBLEN @ <  TI @ TBYTE@ 32 <>  and WHILE TI @ 1 + TI ! REPEAT
+         CHECKER-TAPE:ARMED @ IF
+            TSTART @ TADDR  TI @ TSTART @ -  TSTART @  TOK0 @  CHECKER-TAPE:TOKEN
+         THEN
          TSTART @ TADDR  TI @ TSTART @ -  DO-TOK1
        THEN
      THEN
@@ -10302,6 +10417,7 @@ variable CAND-A   variable CAND-U   variable CAND-VERDICT
    -1 VSIG !
    a u CHECK {: verdict:n :}
    0 VSIG !
+   CHECKER-TAPE:ARMED @ IF a u verdict CHECKER-TAPE:DONE THEN
    a u verdict CHECKER-CERT:PRODUCE
    verdict ;
 
