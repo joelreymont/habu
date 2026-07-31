@@ -389,6 +389,7 @@ create LF $0A c,
 
 : EXPECT-CHECKER ( -- )
    s" PFX-COMMON" s" LPUTIL" s" src/core/util.f" EXPECT-ROW
+   s" PFX-COMMON" s" LPQNAME" s" src/core/qname.f" EXPECT-ROW
    s" PFX-COMMON" s" LPCELL" s" src/core/cell.f" EXPECT-ROW
    s" PFX-COMMON" s" LPPTRSTORAGE" s" src/core/pointer-storage.f" EXPECT-ROW
    s" PFX-COMMON" s" LPENGINEERROR" s" src/core/engine-error.f" EXPECT-ROW
@@ -495,14 +496,14 @@ create LF $0A c,
 : NATIVE-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-NATIVE
-   45 ASSERT-EQUAL
+   46 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
 : GFORTH-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-GFORTH
-   42 ASSERT-EQUAL
+   43 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
@@ -512,6 +513,7 @@ create LF $0A c,
 : EXPECT-RECOVERY-CHECKER ( -- )
    0 EXPECT-U !
    s" src/core/util.f" EXPECT-FILE
+   s" src/core/qname.f" EXPECT-FILE
    s" src/core/cell.f" EXPECT-FILE
    s" src/core/pointer-storage.f" EXPECT-FILE
    s" src/core/engine-error.f" EXPECT-FILE
@@ -896,10 +898,10 @@ public
 : RECOVERY ( -- )
    0 RECOVERY-U !
    s" emit_src() {" s"   local f" MODE-CAT s" cat"
-   [: RECOVERY+ ;] CAPTURE 20 T=
+   [: RECOVERY+ ;] CAPTURE 21 T=
    EXPECT-RECOVERY
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 20 ASSERT-UNIQUE
+   RECOVERY$ 21 ASSERT-UNIQUE
    s" emit_decl_src() {" s" emit_src() {" s" cat src/" SCOPE-N 4 T=
    s" emit_src() {" s"   local f" S\" emit_decl_src \"$out\"" SCOPE-N 1 T=
    s" emit_src() {" s"   local f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-N 1 T=
@@ -920,10 +922,10 @@ public
 : FIXPOINT ( -- )
    0 FIXPOINT-U !
    s" : BF-APPEND-CHECKER-BOOT" s" : BF-APPEND-CORE-BYTES"
-   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 24 T=
+   MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 25 T=
    EXPECT-FIXPOINT-SRC
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 24 ASSERT-UNIQUE
+   FIXPOINT$ 25 ASSERT-UNIQUE
    s" : BF-APPEND-DECL-FILES" s" : BF-APPEND-CORE-FILES"
    s" BF-APPEND-SOURCE" SCOPE-N 4 T=
    s" : BF-APPEND-RUN-PRELUDE" s" : BF-APPEND-STDIN-RUN-PRELUDE"

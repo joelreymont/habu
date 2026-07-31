@@ -400,7 +400,12 @@ create PNPOOL PRIM-NAME-CAP chars allot   variable PNP   variable #PL
 \ shared label ids (forward refs)
 variable LANCHOR  variable LFIND  variable LNUM  variable LDICT  variable LSRC  variable SRCN  variable SRCA
 also HB-EMIT definitions
+variable LQCLASS
 variable LNSFIND
+variable LFINDWID
+variable LNSENSURE
+variable LKWDUPDEF
+variable LPQNAME
 previous definitions
 variable LCEMIT   variable LTOK   variable LPROT  variable LPROTSPAN  variable LPROTREC  variable LPROTWIDQ  variable LFLUSH variable LNCOUNT
 \ control-flow JIT helpers + keyword data labels (self-host 1b)
@@ -1407,6 +1412,29 @@ previous definitions
 
 also HB-EMIT definitions
 
+: EMIT-QCLASS ( -- )
+   \ x9/x10 = full token and are preserved; x17 = length (unqualified),
+   \ last ':' index, or -1.
+   LBL LBL LBL LBL {: scan next bad done :} \ typed-local-lint: allow-bare-local
+   LQCLASS @ LBL,
+   17 10 0 ADDI,
+   14 0 MOVZ,
+   scan LBL,
+      14 10 CMP,  C-GE done BCOND,
+      15 9 14 ADD,  15 15 0 LDRB,
+      15 $3A CMPI,  C-NE next BCOND,
+      14 bad CBZ,
+      16 14 1 ADDI,  16 10 CMP,  C-GE bad BCOND,
+      15 9 16 ADD,  15 15 0 LDRB,
+      15 $3A CMPI,  C-EQ bad BCOND,
+      17 14 0 ADDI,
+   next LBL,
+      14 14 1 ADDI,  scan B,
+   bad LBL,
+      17 0 MOVN,
+   done LBL,
+      RET, ;
+
 : EMIT-NS-FIND ( -- )
    LBL LBL LBL LBL LBL LBL
    {: loop next inline cmp found miss :} \ typed-local-lint: allow-bare-local
@@ -1439,85 +1467,41 @@ also HB-EMIT definitions
    miss LBL,
       5 0 MOVZ,  RET, ;
 
-previous definitions
-
-\ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1 ) over 48-byte records ----
-\ Qualified tokens search the named package's public WID. Bare tokens inside an
-\ open package search private, public, then FORTH; outside they search FORTH.
-: EMIT-FIND ( -- )
-   LFIND @ LBL,
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qunqual qpkg qloop qnext qcmp qmatch qinl qmiss floop fdone fnext frank fcmp fscan fhit finl pri pub have :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   0 9 0 ADDI,  1 10 0 ADDI,                             \ original token
-   2 0 MOVN,  2 2 1 SUBI,                               \ -2 = unqualified
-   3 9 0 ADDI,  4 10 0 ADDI,  7 0 MOVZ,                \ search token, len, colon index
-   qscan LBL,
-      7 1 CMP,  C-GE qunqual BCOND,
-      8 0 7 ADD,  8 8 0 LDRB,  8 $3A CMPI,  C-EQ qpkg BCOND,
-      7 7 1 ADDI,  qscan B,
-   qpkg LBL,
-      7 qunqual CBZ,  8 7 1 ADDI,  8 1 CMP,  C-GE qunqual BCOND,
-      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   qloop LBL,
-      6 qmiss CBZ,
-      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE qnext BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 7 CMP,  C-NE qnext BCOND,
+: EMIT-FIND-WID ( -- )
+   \ x9/x10 = exact name, x2 = exact WID; all three are preserved.
+   \ x11/x12/x13 match LFIND's address, code length, and encoded result.
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: loop done next inline cmp match have miss :} \ typed-local-lint: allow-bare-local
+   LFINDWID @ LBL,
+   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  13 0 MOVZ,
+   loop LBL,
+      6 done CBZ,
+      14 5 40 LDR,  14 2 CMP,  C-NE next BCOND,
+      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,
+      14 10 CMP,  C-NE next BCOND,
       16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 qinl CBZ,
+      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 inline CBZ,
          16 5 24 LDR,
-      qinl LBL,
-      8 0 MOVZ,
-      qcmp LBL,
-         8 7 CMP,  C-GE qmatch BCOND,
-         14 16 8 ADD,  14 14 0 LDRB,
-         15 14 $41 SUBI,  15 26 CMPI,  15 C-CC CSET,  15 15 5 LSLI,  14 14 15 ORR,
-         17 0 8 ADD,  17 17 0 LDRB,
-         15 17 $41 SUBI,  15 26 CMPI,  15 C-CC CSET,  15 15 5 LSLI,  17 17 15 ORR,
-         14 17 CMP,  C-NE qnext BCOND,
-         8 8 1 ADDI,  qcmp B,
-      qmatch LBL,
-         2 5 0 LDR,                                    \ package public WID
-         3 0 7 ADD,  3 3 1 ADDI,
-         4 1 7 SUB,  4 4 1 SUBI,
-         5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  7 0 MOVZ,  13 0 MOVZ,
-         floop B,
-      qnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  qloop B,
-   qmiss LBL,  13 0 MOVZ,  RET,
-   qunqual LBL,
-   5 DBASE 0 ADDI,  6 NDICT 0 ADDI,  7 0 MOVZ,  13 0 MOVZ,
-   floop LBL,
-      6 fdone CBZ,
-      8 5 40 LDR,
-      2 0 CMPI,  C-GE frank BCOND,
-         14 DATA PKG-PRI-CELL LDR,  8 14 CMP,  C-NE pri BCOND,  14 3 MOVZ,  frank B,
-      pri LBL,
-         15 DATA PKG-PUB-CELL LDR,  8 15 CMP,  C-NE pub BCOND,  14 2 MOVZ,  frank B,
-      pub LBL,
-         8 fnext CBNZ,  14 1 MOVZ,
-      frank LBL,
-      2 0 CMPI,  C-LT fcmp BCOND,
-         8 2 CMP,  C-NE fnext BCOND,  14 1 MOVZ,
-      fcmp LBL,
-      14 7 CMP,  C-LT fnext BCOND,
-      15 5 16 LDR,  15 15 12 LSLI,  15 15 12 LSRI,  15 4 CMP,  C-NE fnext BCOND,
-      16 5 24 ADDI,
-      15 5 16 LDR,  15 15 DNAME-EXT ANDI,  15 finl CBZ,
-         16 5 24 LDR,
-      finl LBL,
-      8 0 MOVZ,
-      fscan LBL,
-         8 4 CMP,  C-GE fhit BCOND,
-         15 16 8 ADD,  15 15 0 LDRB,
-         17 15 $41 SUBI,  17 26 CMPI,  17 C-CC CSET,  17 17 5 LSLI,  15 15 17 ORR,
-         12 3 8 ADD,  12 12 0 LDRB,
-         17 12 $41 SUBI,  17 26 CMPI,  17 C-CC CSET,  17 17 5 LSLI,  12 12 17 ORR,
-         15 12 CMP,  C-NE fnext BCOND,
-         8 8 1 ADDI,  fscan B,
-      fhit LBL,                                            \ keep scanning: take the LAST
-         11 5 0 ADDI,  13 1 MOVZ,  7 14 0 ADDI,
-      fnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  floop B,
-   fdone LBL,
-      13 have CBNZ,  RET,
+      inline LBL,
+      7 0 MOVZ,
+      cmp LBL,
+         7 10 CMP,  C-GE match BCOND,
+         15 16 7 ADD,  15 15 0 LDRB,
+         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,
+         3 3 5 LSLI,  15 15 3 ORR,
+         4 9 7 ADD,  4 4 0 LDRB,
+         3 4 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,
+         3 3 5 LSLI,  4 4 3 ORR,
+         15 4 CMP,  C-NE next BCOND,
+         7 7 1 ADDI,  cmp B,
+      match LBL,
+         11 5 0 ADDI,  13 1 MOVZ,
+      next LBL,
+         5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
+   done LBL,
+      13 have CBNZ,
+   miss LBL,
+      RET,
    have LBL,
       5 11 0 ADDI,  12 5 8 LDR,
       15 5 16 LDR,
@@ -1526,6 +1510,42 @@ previous definitions
       15 15 8 ORR,
       13 1 MOVZ,  13 13 15 ORR,
       11 5 0 LDR,  RET, ;
+
+\ ---- FIND ( x9=tka x10=tkl -- x11=addr x12=clen x13=found|imm<<1 ) over 48-byte records ----
+\ Qualified tokens search the exact full-prefix namespace's public WID. Bare
+\ tokens search the open package's private and public WIDs, then FORTH.
+: EMIT-FIND ( -- )
+   LFIND @ LBL,
+   SP SP 32 SUBI,  30 SP 0 STR,
+   LBL LBL LBL LBL {: qpath trypub tryglobal ret :} \ typed-local-lint: allow-bare-local
+   LQCLASS @ BL,
+   13 0 MOVZ,
+   17 0 CMPI,  C-LT ret BCOND,
+   17 10 CMP,  C-NE qpath BCOND,
+      2 DATA PKG-PRI-CELL LDR,
+      LFINDWID @ BL,
+      13 ret CBNZ,
+   trypub LBL,
+      2 DATA PKG-PUB-CELL LDR,  LFINDWID @ BL,
+      13 ret CBNZ,
+   tryglobal LBL,
+      2 0 MOVZ,  LFINDWID @ BL,
+      ret B,
+   qpath LBL,
+      10 SP 8 STR,  17 SP 16 STR,
+      10 17 0 ADDI,  LNSFIND @ BL,
+      12 SP 8 LDR,  17 SP 16 LDR,
+      13 0 MOVZ,
+      5 ret CBZ,
+      11 KIND-TYPE CMPI,  C-HI ret BCOND,
+      2 5 0 LDR,
+      9 9 17 ADD,  9 9 1 ADDI,
+      10 12 17 SUB,  10 10 1 SUBI,
+      LFINDWID @ BL,
+   ret LBL,
+      30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+previous definitions
 
 \ ---- NUMBER? ( x9=tka x10=tkl -- x11=val x12=ok ) ----
 \ Accepts decimal and $hex, each with an optional leading '-'.  x6=base, x7=digit.
@@ -1886,8 +1906,10 @@ create ZBYTE 0 c,
 : PFX-PATH-ROW ( n ptr n ptr u8 n -- ) {: kind var a u :}
    var @ LBL,  a u ZBYTES, ;
 
+also HB-EMIT
 : PFX-LOAD-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
+   PFX-COMMON LPQNAME        s" src/core/qname.f"       PFX-LOAD-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-LOAD-ROW
@@ -1906,6 +1928,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-LOAD-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-LOAD-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-LOAD-ROW ;
+previous
 
 : PFX-LOAD-DECL-FILES ( -- )
    \ The shared declaration-event transaction loads first, then the STRUCTURE
@@ -1973,8 +1996,10 @@ create ZBYTE 0 c,
    PFX-LOAD-BASE-FILES
    PFX-LOAD-SCRIPT-ARGV ;
 
+also HB-EMIT
 : PFX-PATH-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
+   PFX-COMMON LPQNAME        s" src/core/qname.f"       PFX-PATH-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PATH-ROW
@@ -1993,6 +2018,7 @@ create ZBYTE 0 c,
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PATH-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PATH-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PATH-ROW ;
+previous
 
 : PFX-PATH-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PATH-ROW
@@ -2216,8 +2242,10 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
       C-SOURCE-APPEND-PROVIDED
    then ;
 
+also HB-EMIT
 : PFX-PROVIDE-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PROVIDE-ROW
+   PFX-COMMON LPQNAME        s" src/core/qname.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PROVIDE-ROW
@@ -2236,6 +2264,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    PFX-COMMON LPPTRSTORAGEEFF s" src/core/pointer-storage-effects.f" PFX-PROVIDE-ROW
    PFX-COMMON LPDECLTXN      s" src/core/declaration-transaction.f" PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECL      s" src/core/generated-declaration.f" PFX-PROVIDE-ROW ;
+previous
 
 : PFX-PROVIDE-DECL-FILES ( -- )
    PFX-COMMON LPDECLEVENT    s" src/core/decl-event.f"     PFX-PROVIDE-ROW
@@ -2543,6 +2572,7 @@ also HB-EMIT definitions
    LKWTRUST @ LBL, s" trust" BYTES,      LKWCHKDOES @ LBL, s" check-does!" BYTES,
    LKWPACKAGE @ LBL, s" package" BYTES,  LKWPUBLIC @ LBL, s" public" BYTES,
    LKWPRIVATE @ LBL, s" private" BYTES,  LKWSEMIPACKAGE @ LBL, s" ;package" BYTES,
+   LKWDUPDEF @ LBL, s" duplicate definition: " BYTES,
    LCHKPACKAGE @ LBL, s" checker-package" BYTES,  LCHKPUB @ LBL, s" checker-public" BYTES,
    LCHKPRI @ LBL, s" checker-private" BYTES,  LCHKENDPKG @ LBL, s" checker-end-package" BYTES,
    LCHKDEFER @ LBL, s" checker-defer" BYTES,
@@ -3092,10 +3122,9 @@ also HB-EMIT definitions
    C-STORE-NAME-AT
    9 5 0 ADDI, ;
 
-\ A qualified definer token names a real package row, storing the complete
-\ first-colon prefix in that row and only the tail in its public WID. The
-\ original spelling remains available to the checker/hook through
-\ DEF-TKA/DEF-TKL; no ordinary prefix definitions are created.
+\ A qualified definer token ensures every full-prefix package row and stores
+\ only the tail in the final package's public WID. The original spelling
+\ remains available to the checker/hook through DEF-TKA/DEF-TKL.
 : C-QUALIFY-FAIL ( n -- ) {: rc :}
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
@@ -3113,75 +3142,50 @@ also HB-EMIT definitions
       77 C-QUALIFY-FAIL
    room LBL, ;
 
-: C-QUALIFY-DEF ( -- )
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qtail qlookup nloop nnext ncmp nmatch ninl nmake qwidok qapply qbad done :} \ typed-local-lint: allow-bare-local
-   11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
-   12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
-   14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
-   17 0 MOVZ,
-   qscan LBL,
-      17 12 CMP,  C-GE qnone BCOND,
-      14 11 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
-      17 17 1 ADDI,  qscan B,
-   qnone LBL,
-      C-QUALIFY-CAP
-      done B,
-   qhas LBL,
-      17 qnone CBZ,
-      14 17 1 ADDI,  14 12 CMP,  C-GE qnone BCOND,
-      14 17 1 ADDI,
-   qtail LBL,
-      14 12 CMP,  C-GE qlookup BCOND,
-      15 11 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ qbad BCOND,
-      14 14 1 ADDI,  qtail B,
-   qlookup LBL,
-      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   nloop LBL,
-      6 nmake CBZ,
-      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE nnext BCOND,
-      16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
-         16 5 24 LDR,
-      ninl LBL,
-      7 0 MOVZ,
-      ncmp LBL,
-         7 17 CMP,  C-GE nmatch BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 11 7 ADD,  4 4 0 LDRB,
-         3 4 $41 SUBI,  3 26 CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE nnext BCOND,
-         7 7 1 ADDI,  ncmp B,
-      nmatch LBL,
-         14 5 0 LDR,  14 DATA DEF-WL-CELL STR,
-         qapply B,
-      nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
-   nmake LBL,
-      C-QUALIFY-CAP
-      14 DATA WIDN-CELL LDR,  15 OWNER-WID-LIMIT 2 - LIT64,
-      14 15 CMP,  C-LS qwidok BCOND,
-         77 C-QUALIFY-FAIL
-      qwidok LBL,
-      9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-      17 DATA TKL-CELL STR,
-      C-STORE-NAME
-      14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,  14 9 0 STR,
-      15 14 1 ADDI,  15 9 8 STR,
-      16 14 2 ADDI,  16 DATA WIDN-CELL STR,
-      15 0 MOVN,  15 9 40 STR,
-      NDICT NDICT 1 ADDI,
-   qapply LBL,
-      11 DATA DEF-TKA-CELL LDR,
-      12 DATA DEF-TKL-CELL LDR,
-      11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
-      12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
-      C-QUALIFY-CAP
-      done B,
-   qbad LBL,
-      75 C-QUALIFY-FAIL
+: C-DUP-DEF-FAIL ( -- )
+   0 2 MOVZ,  1 LKWDUPDEF @ ADR,  2 22 MOVZ,  NR-WRITE SYS,
+   0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
+   0 $4E MOVZ,  LCOMPILEDIE @ B, ;
+
+: C-REJECT-DUP-DEF ( -- )
+   LBL {: done :}
+   9 DATA TKA-CELL LDR,
+   10 DATA TKL-CELL LDR,
+   2 DATA DEF-WL-CELL LDR,
+   LFINDWID @ BL,
+   13 done CBZ,
+      C-DUP-DEF-FAIL
    done LBL, ;
+
+: C-QUALIFY-DEF ( -- )
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LBL LBL LBL {: plain bad done :} \ typed-local-lint: allow-bare-local
+   9 DATA TKA-CELL LDR,  9 DATA DEF-TKA-CELL STR,
+   10 DATA TKL-CELL LDR,  10 DATA DEF-TKL-CELL STR,
+   14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
+   LQCLASS @ BL,
+   17 0 CMPI,  C-LT bad BCOND,
+   17 10 CMP,  C-EQ plain BCOND,
+      14 0 MOVZ,  14 DATA DEF-WL-CELL STR,
+      17 SP 8 STR,
+      10 17 0 ADDI,  LNSENSURE @ BL,
+      17 SP 8 LDR,
+      11 DATA DEF-WL-CELL STR,
+      11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,
+      11 DATA TKA-CELL STR,
+      12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,
+      12 DATA TKL-CELL STR,
+      C-QUALIFY-CAP
+      C-REJECT-DUP-DEF
+      done B,
+   plain LBL,
+      C-QUALIFY-CAP
+      C-REJECT-DUP-DEF
+      done B,
+   bad LBL,
+      75 C-QUALIFY-FAIL
+   done LBL,
+   30 SP 0 LDR,  SP SP 16 ADDI, ;
 previous definitions
 
 also HB-EMIT definitions
@@ -3386,19 +3390,11 @@ also HB-EMIT definitions
    0 rc MOVZ,  LCOMPILEDIE @ B, ;
 
 : C-PACKAGE-PATH-GUARD ( -- )
-   LBL LBL LBL LBL {: scan next bad done :} \ typed-local-lint: allow-bare-local
-   14 0 MOVZ,
-   scan LBL,
-      15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE done BCOND,
-      16 DATA TKA-CELL LDR,  16 16 14 ADD,  16 16 0 LDRB,
-      16 $3A CMPI,  C-NE next BCOND,
-      14 bad CBZ,
-      17 14 1 ADDI,  17 15 CMP,  C-GE bad BCOND,
-      16 DATA TKA-CELL LDR,  16 16 17 ADD,  16 16 0 LDRB,
-      16 $3A CMPI,  C-EQ bad BCOND,
-   next LBL,
-      14 14 1 ADDI,  scan B,
-   bad LBL,  75 C-PACKAGE-FAIL
+   LBL {: done :} \ typed-local-lint: allow-bare-local
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   LQCLASS @ BL,
+   17 0 CMPI,  C-GE done BCOND,
+      75 C-PACKAGE-FAIL
    done LBL, ;
 
 : C-PACKAGE-ALLOC-WIDS ( -- )
@@ -3433,22 +3429,32 @@ also HB-EMIT definitions
    done LBL,
    11 5 0 LDR,  12 5 8 LDR, ;
 
-: C-PACKAGE-ENSURE ( -- )
+: EMIT-NS-ENSURE ( -- )
+   \ x9/x10 = package path; returns final record/public/private in x5/x11/x12.
+   LNSENSURE @ LBL,
+   SP SP 32 SUBI,
+   30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
    LBL LBL LBL {: scan next final :} \ typed-local-lint: allow-bare-local
    17 0 MOVZ,
    scan LBL,
-      14 DATA TKL-CELL LDR,  17 14 CMP,  C-GE final BCOND,
-      15 DATA TKA-CELL LDR,  15 15 17 ADD,  15 15 0 LDRB,
+      14 SP 16 LDR,  17 14 CMP,  C-GE final BCOND,
+      15 SP 8 LDR,  15 15 17 ADD,  15 15 0 LDRB,
       15 $3A CMPI,  C-NE next BCOND,
-         SP SP 16 SUBI,  17 SP 0 STR,
-         9 DATA TKA-CELL LDR,  10 17 0 ADDI,
+         17 SP 24 STR,
+         9 SP 8 LDR,  10 17 0 ADDI,
          C-PACKAGE-PREFIX
-         17 SP 0 LDR,  SP SP 16 ADDI,
+         17 SP 24 LDR,
    next LBL,
       17 17 1 ADDI,  scan B,
    final LBL,
-      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
-      C-PACKAGE-PREFIX ;
+      9 SP 8 LDR,  10 SP 16 LDR,
+      C-PACKAGE-PREFIX
+      9 SP 8 LDR,  10 SP 16 LDR,
+      30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+: C-PACKAGE-ENSURE ( -- )
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   LNSENSURE @ BL, ;
 
 : C-PACKAGE-PROT-GUARD ( -- )
    LBL LBL {: package done :} \ typed-local-lint: allow-bare-local
@@ -6409,8 +6415,8 @@ previous definitions
 
 also HB-EMIT definitions
 : EMIT-LABEL-CORE ( -- )
-   LBL LANCHOR !  LBL LFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
-   LBL LNSFIND !
+   LBL LANCHOR !  LBL LFIND !  LBL LQCLASS !  LBL LNSFIND !  LBL LFINDWID !  LBL LNSENSURE !
+   LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTWIDQ !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LBCAP !  LBL LBCS !  LBL LESCDEC !  LBL LESCHEX !  LBL LESCSCAN !  LBL LESCCOPY !
    LBL LCFPUSH !  LBL LCFPOP !  LBL LPAT !  LBL LKWCMP ! ;
@@ -6440,6 +6446,7 @@ also HB-EMIT definitions
    LBL LKWIMM !  LBL LKWPOST !  LBL LKWCOMPC !  LBL LKWDOES !
    LBL LKWTRUSTED !  LBL LKWTRUST !  LBL LKWCHKDOES !  LBL LKWKERNEL !
    LBL LKWPACKAGE !  LBL LKWPUBLIC !  LBL LKWPRIVATE !  LBL LKWSEMIPACKAGE !
+   LBL LKWDUPDEF !
    LBL LCHKPACKAGE !  LBL LCHKPUB !  LBL LCHKPRI !  LBL LCHKENDPKG !  LBL LCHKDEFER !
    LBL LKWQUOT !  LBL LKWSEMIQ !
    LBL LKWDEFER !  LBL LKWIS !  LBL LKWDEFERUNSET !
@@ -6452,10 +6459,11 @@ previous definitions
    LBL LCRASHH !  LBL LHEX !  LBL LHDR !  LBL LTRAPH !  LBL LBPH !
    LBL LSRCRD !  LBL LSHBANG ! ;
 
+also HB-EMIT
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
-   LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
+   LBL LPUTIL !  LBL LPQNAME !  LBL LPCELL !  LBL LPPTRSTORAGE !
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !  LBL LPDECLTXN !  LBL LPGENDECL !
@@ -6466,6 +6474,7 @@ previous definitions
    LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !
    LBL LPGENDECLPROT !  LBL LPLAYOUTSEAL ! ;
+previous
 
 : EMIT-LABEL-JIT ( -- )
    LBL LPROFH !  LBL LPROFDUMP !
@@ -6528,8 +6537,11 @@ also HB-EMIT definitions
    EMIT-PROT
    EMIT-PROTWID
    EMIT-FLUSH
+   EMIT-QCLASS
    EMIT-NS-FIND
+   EMIT-FIND-WID
    EMIT-FIND
+   EMIT-NS-ENSURE
    EMIT-NUM ;
 previous definitions
 

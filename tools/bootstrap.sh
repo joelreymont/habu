@@ -198,6 +198,8 @@ emit_src() {
   printf "0 set-check\n" >> "$out"
   cat src/core/util.f >> "$out"
   printf '\n' >> "$out"
+  cat src/core/qname.f >> "$out"
+  printf '\n' >> "$out"
   cat src/core/cell.f >> "$out"
   printf '\n' >> "$out"
   cat src/core/pointer-storage.f >> "$out"
