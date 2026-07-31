@@ -393,15 +393,17 @@ create NAMEBUF NAME-CAP allot
    k pos  id 0 RESULT@  RBIND ;
 
 \ Every decision the allocator anchored to this position, in the order it made
-\ them. The plan is in that order already, so the walk reads it with a cursor
-\ rather than searching it.
+\ them. The plan is in that order already - a walk decides one operation's spills
+\ before the next one's - so this reads it with a cursor rather than searching
+\ it, and the block below refuses a plan the cursor did not reach the end of: a
+\ decision anchored to a position this block does not have would otherwise be
+\ dropped in silence, and a dropped store is a value that never reaches its
+\ slot.
 : INSERT-AT ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id pos:n :}
    A64RA:PLAN-N {: n:n :}
    begin
-      N-CUR @ n <
       N-CUR @ n < if N-CUR @ A64RA:PLAN-POS@ pos = else false then
-      and
    while
       N-CUR @ {: j:n :}
       j A64RA:PLAN-STORE? if
@@ -489,6 +491,7 @@ create NAMEBUF NAME-CAP allot
       i n 1- = if id EMIT-RELEASE then
       id i COPY-OP
    loop
+   N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
    CTX BLD IR-BUILD:END-BLOCK drop ;
 
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
