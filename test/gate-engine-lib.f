@@ -841,13 +841,17 @@ RUNTIME-RUNNER:SUBJECT!
 \ Now a kernel-representable code in [1,255] still exits byte-identically to
 \ before (deliberate exit contracts: argv usage 64, check hook 70, lint
 \ findings 1), while any other code is named on fd 2 and exits GE-UNCAUGHT-RC.
-: GE-UNCAUGHT-RUN ( ptr u8 n n ptr u8 n -- )
+: GE-UNCAUGHT-RUN ( n ptr u8 n -- )
+   {: want:n label:ptr labelu:n :}
+   GE-SRC-BUF GE-SRC-U @ RUNTIME-DIRECT:NO-HANDLER
+   want label labelu GE-EXPECT-RC ;
+
+: GE-UNCAUGHT-LINE ( ptr u8 n n ptr u8 n -- )
    {: src:ptr srcu:n want:n label:ptr labelu:n :}
    GE-HB-RESET
    GE-SRC-RESET
    src srcu GE-SRC-LINE
-   GE-SRC-BUF GE-SRC-U @ RUNTIME-DIRECT:NO-HANDLER
-   want label labelu GE-EXPECT-RC ;
+   want label labelu GE-UNCAUGHT-RUN ;
 
 package RUNTIME-RUNNER
 public
@@ -864,7 +868,7 @@ public
 
 : GE-UNCAUGHT-CASE ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n want:n needle:ptr needleu:n label:ptr labelu:n :}
-   src srcu want label labelu GE-UNCAUGHT-RUN
+   src srcu want label labelu GE-UNCAUGHT-LINE
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
 255 constant GE-TFAM-CAP-PKG-U
@@ -890,8 +894,7 @@ TF-CTOR-NS-CAP GE-TFAM-CAP-PKG-U - constant GE-TFAM-CAP-FAM-U
 : GE-TFAM-CAP-UNCAUGHT ( -- )
    GE-HB-RESET
    GE-TFAM-CAP-SOURCE
-   GE-SRC-BUF GE-SRC-U @ RUNTIME-DIRECT:NO-HANDLER
-   GE-UNCAUGHT-RC s" generated namespace cap rc" GE-EXPECT-RC
+   GE-UNCAUGHT-RC s" generated namespace cap rc" GE-UNCAUGHT-RUN
    GT-OUT$ nip 0 <> if s" generated namespace cap stdout" GE-FAIL then
    GE-TFAM-CAP-ERR
    GT-ERR$ GE-SRC-BUF GE-SRC-U @ STR= 0= if
