@@ -525,7 +525,8 @@ public
 \                 independent allocation validator (package A64RAV)
 \   -8340..-8359  native ARM64 machine dialect (package A64IR)
 \   -8360..-8379  native ARM64 instruction selection (package A64SEL)
-\   -8380..-8999  unassigned. The remaining dialect packages (SIR, LIR, and the
+\   -8380..-8399  native ARM64 instruction emission (package A64EMIT)
+\   -8400..-8999  unassigned. The remaining dialect packages (SIR, LIR, and the
 \                 GPU stages) and the native and GPU back ends take sub-blocks
 \                 from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -821,3 +822,25 @@ public
 -8364 constant E-A64SEL-TRAP    \ an operation whose schema says it may trap: trapping arithmetic has no machine lowering in this dialect yet
 -8365 constant E-A64SEL-ATTR    \ a constant whose attribute is not under the source dialect's value key
 -8366 constant E-A64SEL-CAP     \ more values in one function than the selector's value map holds
+
+\ Native ARM64 instruction emission (package A64EMIT): -8380..-8399
+\
+\ The last leaf of the native chain: it turns a frozen, verified, accepted
+\ A64IR module into ARM64 instruction bytes and a source map. Refusals another
+\ authority owns keep that authority's name - a register answered from a stale
+\ acceptance is E-A64RAV-STATE, and an operand or attribute value outside the
+\ field it lands in is the assembler's own refusal in src/arch/arm64/asm.f - so
+\ these ten are the facts the emitter alone can judge: whether it was told which
+\ dialect it is reading, whether the module and the register assignment it was
+\ handed are the ones it was told about, whether what it found is a shape this
+\ leaf can emit, and whether a caller is reading an emission that exists.
+-8380 constant E-A64EMIT-STATE   \ a reader asked about an emission that has not happened, or that a later refused run replaced
+-8381 constant E-A64EMIT-BIND    \ emission attempted before the machine dialect's identities were bound, or a second binding over a live one
+-8382 constant E-A64EMIT-MODULE  \ a frozen module that is not the bound one, or a builder of another dialect or schema version
+-8383 constant E-A64EMIT-ALLOC   \ no accepted register assignment at all, or one accepted for a different module
+-8384 constant E-A64EMIT-SHAPE   \ not the straight-line subset: not exactly one function of one block, or a block whose only return is not its last operation
+-8385 constant E-A64EMIT-OPCODE  \ an operation whose opcode is none of the machine dialect's family
+-8386 constant E-A64EMIT-ATTR    \ a move-wide operation that carries no attribute under the key the dialect declares for it
+-8387 constant E-A64EMIT-CAP     \ more instructions in one block than the emission buffers hold
+-8388 constant E-A64EMIT-TARGET  \ emission under a context bound to a machine these instructions are not for
+-8389 constant E-A64EMIT-BOUND   \ an instruction or source-map index at or past the count the sealed emission holds
