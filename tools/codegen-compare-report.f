@@ -337,10 +337,14 @@ private
 : PATH-FLOOR ( n -- ) {: path:n :}
    path CODEGEN-COMPARE:PATH-PICOS NANOS. ;
 
+\ A row that measured faster than its own empty call is host noise, and it is
+\ printed as the negative number it is rather than clamped to zero: a reader who
+\ sees a minus sign knows the row is at the resolution of the measurement, and a
+\ clamp would have hidden exactly that.
 : BODY-NS ( n -- ) {: k:n :}
    k CODEGEN-COMPARE:PICOSECONDS
    k CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-PICOS - {: d:n :}
-   d 0 < if s" 0.000" type exit then
+   d 0 < if s" -" type d negate NANOS. exit then
    d NANOS. ;
 
 : BODY-ROW ( n n -- ) {: k:n j:n :}

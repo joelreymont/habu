@@ -291,6 +291,11 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 : FRAME-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-FRAME @ ATTR-INT ;
 
+\ ---- the data-stack operands -------------------------------------------------
+\ The same two readings against the other pointer, under the dialect's own keys
+\ for them. They are separate keys and separate readers because a frame offset
+\ and a data-stack offset are counted from different registers: one key answering
+\ both would let a frame access encode as a data-stack access.
 : DSLOT-OFF ( IR-ID:ir-op-id -- n )
    0 BND-DSLOT @ ATTR-INT ;
 
@@ -367,12 +372,12 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT SLOT-OPCODE
    MATCH A64IR:opcode
-      movz    OF id WORD-MOVZ ENDOF
-      movk    OF id WORD-MOVK ENDOF
-      mov     OF id WORD-MOV ENDOF
-      add     OF id TRIPLE ENC-ADD ENDOF
-      sub     OF id TRIPLE ENC-SUB ENDOF
-      mul     OF id TRIPLE ENC-MUL ENDOF
+      movz     OF id WORD-MOVZ ENDOF
+      movk     OF id WORD-MOVK ENDOF
+      mov      OF id WORD-MOV ENDOF
+      add      OF id TRIPLE ENC-ADD ENDOF
+      sub      OF id TRIPLE ENC-SUB ENDOF
+      mul      OF id TRIPLE ENC-MUL ENDOF
       store    OF id WORD-STORE ENDOF
       load     OF id WORD-LOAD ENDOF
       reserve  OF id WORD-RESERVE ENDOF

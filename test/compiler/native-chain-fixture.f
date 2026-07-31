@@ -21,7 +21,16 @@
 \ which registers a routine may use, and the emission suite deliberately runs one
 \ shape out of a pool that starts above register zero so every register field in
 \ the encoding is reached. The pool is therefore a base and a count here rather
-\ than a fixed set.
+\ than a fixed set. It now reaches the SELECTOR too, because a convention that
+\ names data-stack slots becomes operations at selection time.
+\
+\ TWO CONVENTIONS, BOTH BUILT HERE. LEAF-ABI declares the C ABI - arguments in x0
+\ upwards, result out of x0 - which is what the emission suite's routines are
+\ entered through, and LEAF-HABU declares the one design section 7.6 gives a
+\ Habu word: argument i out of data-stack slot i of the caller's stack, result j
+\ into slot j. A routine under the second is entered by the branch the
+\ interpreter itself uses, which is what makes an emitted routine callable the
+\ way an interpreted word is.
 \
 \ NOTHING IN THIS FILE ASSERTS. It defines no case and prints nothing: it is a
 \ fixture, not a test, so it never names the harness verdict word and no gate
@@ -149,11 +158,6 @@ public
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
-\ The register the ABI takes a returned value out of, for a caller that has to
-\ agree with the contract rather than assume it.
-: ABI-RESULT ( -- n )
-   ABI-OUT0 ;
-
 \ ---- the convention a Habu word is entered and left through ------------------
 \ Design section 7.6: an externally callable Habu word takes argument i out of
 \ data-stack slot i of the caller's stack and leaves result j in slot j. That is
@@ -187,17 +191,9 @@ public
    m base n LEAF-FROM A64RAV:ACCEPT
    c m A64EMIT:EMIT ;
 
-\ The same three stages under a contract that declares the C ABI, so the
-\ arguments arrive and the result leaves where the caller of the emitted code
-\ will really look. The contract is built twice, from the same four numbers,
+\ The same three stages under the data-stack convention a Habu word is entered
+\ and left through. The contract is built twice, from the same four numbers,
 \ because a routine value cannot be held in a local.
-: FINISH-ABI ( IR-CTX:ctx IR-BUILD:module n n n n -- )
-   {: c:IR-CTX:ctx m:IR-BUILD:module base:n n:n in:n out:n :}
-   c m base n in out LEAF-ABI A64RA:ALLOCATE
-   m base n in out LEAF-ABI A64RAV:ACCEPT
-   c m A64EMIT:EMIT ;
-
-\ And under the data-stack convention a Habu word is entered and left through.
 : FINISH-HABU ( IR-CTX:ctx IR-BUILD:module n n n n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module base:n n:n in:n out:n :}
    c m base n in out LEAF-HABU A64RA:ALLOCATE
@@ -214,13 +210,6 @@ public
 : RUN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n n:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b a u 0 n RUN-FROM ;
-
-\ Select and finish under the declared C ABI: `in` arguments and `out` returned
-\ values, and `n` registers from `base` on top of the ones the convention names.
-: RUN-ABI ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   c b a u base n in out LEAF-ABI SELECTED {: m:IR-BUILD:module :}
-   c m base n in out FINISH-ABI ;
 
 \ Select and finish under the data-stack convention: `in` arguments taken out of
 \ slots 0.. of the caller's stack and `out` results left in slots 0.., with `n`

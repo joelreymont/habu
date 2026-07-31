@@ -734,7 +734,11 @@ public
 -8263 constant E-CODEGEN-COMPARE-CLOCK    \ the monotonic clock reported no elapsed time across a whole timing run
 -8264 constant E-CODEGEN-COMPARE-STAGE    \ a recorded value was read before the pass that computes it had finished
 -8265 constant E-CODEGEN-COMPARE-CORPUS   \ a corpus word the new column names that the old column never measured
--8266 constant E-CODEGEN-COMPARE-REG      \ an emitted routine whose returned value is not in the register the call reads it from
+\ -8266 is retired and must not be reused: it was the comparison harness's check
+\ that an emitted routine's returned value sat in the register the C-ABI call
+\ reads one from, and the harness now compiles its routines under the data-stack
+\ convention, where a result is a store into a slot and the validator re-derives
+\ every one of those stores against the contract.
 -8267 constant E-NSRC-CAP                 \ source text longer than the chain fixture's text buffer
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
