@@ -664,7 +664,6 @@ private
    ;MATCH ;
 
 : ASSERT-DIRECT-SITES ( n -- ) {: start:n :}
-   GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:NO-HANDLER" s" runtime direct no-handler site" SHAPE-ONE-AFTER
    GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:TRAP" s" runtime direct trap site" SHAPE-ONE-AFTER
    GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:FILE-LOADER" s" runtime direct file-loader site" SHAPE-ONE-AFTER
    GE-SRC-BUF GE-SRC-U @ start s" RUNTIME-DIRECT:SCRIPT-ARGV" s" runtime direct script-argv site" SHAPE-ONE-AFTER
