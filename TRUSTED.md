@@ -594,6 +594,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | TWX-E-INST | `n -- n` | Test-only bridge to the production stored-effect node instantiator, used to verify CELL restoration on the fresh variable; it grants no production authority. | `test/type-decl-suite.f`, `test/candidate-validation.f` | test/type-decl-suite.f | 2026-07-31 | test-metaprog | habu-enforce-one-cell-8a183ca1 |
 | TWX-TFAM-CARRIER-OK? | `n -- bool` | Test-only direct probe of the installed carrier-schema hook for valid, invalid, phantom, pointer, and open nested applications; it grants no production authority. | `test/type-decl-suite.f`, `test/candidate-validation.f` | test/type-decl-suite.f | 2026-07-31 | test-metaprog | habu-enforce-one-cell-8a183ca1 |
 | TWX-TFAM-CELL-OK? | `n -- bool` | Test-only direct probe of structural one-cell classification across product, sum, enum, and evidence families; it grants no production authority. | `test/type-decl-suite.f`, `test/candidate-validation.f` | test/type-decl-suite.f | 2026-07-31 | test-metaprog | habu-enforce-one-cell-8a183ca1 |
+| TWX-TFAM-LAYOUT! | `n n --` | Test-only layout-policy mutator used to exercise the boxed and niche structural branches on E7WIDE before restoring stack-cell-tag; it grants no production authority. | `test/type-decl-suite.f`, `test/candidate-validation.f` | test/type-decl-suite.f | 2026-07-31 | test-metaprog | habu-enforce-one-cell-8a183ca1 |
 | TWX-TFAM-SCHEMA-ROOT@ | `n -- n` | Test-only reader for the reused family schema-root cell, used to pin the negative no-schema sentinel before fixture mutation; it grants no production authority. | `test/type-decl-suite.f`, `test/candidate-validation.f` | test/type-decl-suite.f | 2026-07-31 | test-metaprog | habu-enforce-one-cell-8a183ca1 |
 | TWX-TFAM-SCHEMA-ROOT! | `n n --` | Test-only mutator that attaches synthetic carrier roots to the three fixture NEWTYPE families; it changes no production declaration authority. | `test/type-decl-suite.f`, `test/candidate-validation.f` | test/type-decl-suite.f | 2026-07-31 | test-metaprog | habu-enforce-one-cell-8a183ca1 |
 | TWX-SCHEMA-CON | `n -- n` | Test-only schema-node builder used to create the concrete-n carrier root for the phantom-argument control; it grants no production authority. | `test/type-decl-suite.f`, `test/candidate-validation.f` | test/type-decl-suite.f | 2026-07-31 | test-metaprog | habu-enforce-one-cell-8a183ca1 |
@@ -1539,6 +1540,11 @@ test/type-decl-suite.f:TWX-CAND-DONE test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CAND-START test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CHECKER-FIND-USIG test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-CON-OF test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-E-BUILD-EFFECT test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-E-DIN@ test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-E-INST test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-E-INST-RESET test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-E-PTR test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-FRESH test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-HIDDEN-PARAM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-HIDDEN-SLOT@ test-metaprog habu-seal-set-check-b3676b33
@@ -1546,6 +1552,10 @@ test/type-decl-suite.f:TWX-LAYOUT-PUSH-FIELDS test-metaprog habu-seal-set-check-
 test/type-decl-suite.f:TWX-MK-CON test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-MK-HIDDEN test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-MK-PARAM test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-MK-PARAM0 test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-MK-PARAM1 test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-MK-PARAM2 test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-MK-PUSH test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-MK-ROW test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-MK-VAR test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-MULTI-ERR-BEGIN test-metaprog habu-seal-set-check-b3676b33
@@ -1557,11 +1567,13 @@ test/type-decl-suite.f:TWX-PAIR test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PARAM-SCR+ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PARAM>FAM test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-PARAM>HID test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-PAY test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-PUSH-LOGICAL test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-R-RES test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-A@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-APP test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-APP? test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-SCHEMA-CON test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-SCHEMA-CON? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-PARAM test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SCHEMA-PARAM? test-metaprog habu-seal-set-check-b3676b33
@@ -1577,23 +1589,38 @@ test/type-decl-suite.f:TWX-SUMV-PAYCELLS@ test-metaprog habu-seal-set-check-b367
 test/type-decl-suite.f:TWX-SUMV-SCH-COUNT@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SUMV-SCH-START@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-SUMV-TAG@ test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-T-RES test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-TAG test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-POLICY test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TDECL-THROW test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TFAM-CARRIER-OK? test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TFAM-CELL-OK? test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-TFAM-CELL? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-DECL test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-ENUM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-FLD-COUNT@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-FLD-START@ test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TFAM-LAYOUT! test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-TFAM-LAYOUT-POLICY@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-LAYOUT? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-PKG$ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-PRODUCT? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-SCH-ARITY test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TFAM-SCHEMA-ROOT! test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TFAM-SCHEMA-ROOT@ test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-TFAM-SLOTS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-SUM? test-metaprog habu-seal-set-check-b3676b33
 test/type-decl-suite.f:TWX-TFAM-VIS@ test-metaprog habu-seal-set-check-b3676b33
+test/type-decl-suite.f:TWX-TRIAL-REST test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TRIAL-SAVE test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TVK-ANY test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TVK-CELL test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TVK-CELL! test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TVK-MEET test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TVK-RAW test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TVK-RAW! test-metaprog habu-enforce-one-cell-8a183ca1
+test/type-decl-suite.f:TWX-TVK@ test-metaprog habu-enforce-one-cell-8a183ca1
 test/type-decl-suite.f:TWX-UNIFY test-metaprog habu-seal-set-check-b3676b33
 test/deftype-suite.f:TWX-SNAP-PREP test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-CHECKER-SNAPSHOT-PREPARE test-metaprog habu-seal-set-check-b3676b33
