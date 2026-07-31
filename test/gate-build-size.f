@@ -74,6 +74,14 @@
 \ text (CODELEN 135252 -> 134860). The direct-BL landing had left the scan a no-op; the
 \ shave crosses back under the 4 KiB floor the munmap primitive had pushed the file over,
 \ so the whole-file total drops one page. Exact rows in test/gate-size-attribution-test.f.
+\ 2026-07-31 macOS 148855 -> 148855: the snapshot-relocation stack grows engine
+\ text by 1680 bytes (CODELEN 114988 -> 116668) - the address-cell table and its
+\ `defer`/`is` declaration sites, the relocated region-address literals, the `xt!`
+\ store-and-declare primitive, and the RBASE-VA name-bounds check. Header + code
+\ is 120764 bytes, still inside the same eight 16 KiB __TEXT pages, so the pad
+\ absorbs all of it and the page-rounded whole-file total is unchanged. Exact
+\ CODE-TEXT/floor rows and the per-region attribution are in
+\ test/gate-size-attribution-test.f.
 148855 constant GB-SIZE-BASELINE-MACOS
 127168 constant GB-SIZE-BASELINE-LINUX   \ fable re-measure 2026-07-21 (DGX Spark linux-arm64):
                                          \ retiring the vestigial snapshot rebase-calls scan
