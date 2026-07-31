@@ -47,31 +47,13 @@ private
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
-public
-
-\ The AArch64 Darwin binding these chain runs are made under. Overflow wraps,
-\ which is what ARM64's add, sub and mul do; a trapping unit is refused by the
-\ selector and has its own case in the selection suite.
-: BINDING ( -- CBIND:binding )
-   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
-   CTARGET-PTR--WIDTH:BITS64
-   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
-   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
-   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
-   CBIND:BIND ;
-
 \ A leaf routine that may use `n` registers starting at `base`.
 : LEAF-FROM ( n n -- A64EFF:routine )
    POOL LEAF-OF ;
 
-\ The same, out of the pool that starts at register zero.
-: LEAF-N ( n -- A64EFF:routine )
-   0 swap LEAF-FROM ;
-
 \ The builder the machine module is written through.
 : A64-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
    {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-BEGIN
    IR-BUILD:PLAN-DEFAULT
    c A64IR:NEW-BUILDER ;
 
@@ -88,6 +70,23 @@ public
    c ab A64RA:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
    c m ab a u A64SEL:SELECT ;
+
+public
+
+\ The AArch64 Darwin binding these chain runs are made under. Overflow wraps,
+\ which is what ARM64's add, sub and mul do; a trapping unit is refused by the
+\ selector and has its own case in the selection suite.
+: BINDING ( -- CBIND:binding )
+   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
+   CTARGET-PTR--WIDTH:BITS64
+   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
+   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
+   CBIND:BIND ;
+
+\ A leaf routine of `n` registers from the pool that starts at register zero.
+: LEAF-N ( n -- A64EFF:routine )
+   0 swap LEAF-FROM ;
 
 \ Allocate registers for a frozen machine module, have the validator accept the
 \ allocation, and emit. Nothing here emits from a claim the validator has not

@@ -92,7 +92,6 @@ public
 \ into the same code, so the two files cannot disagree about what a row is.
 0 constant PATH-OLD
 1 constant PATH-NEW
-2 constant PATH-N
 
 \ How much slower than its recorded baseline a row may measure before the
 \ comparison calls it a regression.
@@ -114,6 +113,8 @@ public
 8 constant COST-BAND
 
 private
+
+2 constant PATH-N                 \ how many code generators a row can name
 
 1000000 constant NS-PER-MS
 $7FFFFFFFFFFFFFFF constant PICOS-MAX

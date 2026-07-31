@@ -40,33 +40,14 @@ private
 32 constant SP-C
 48 constant ZERO-C
 57 constant NINE-C
+256 constant TXT-CAP
+128 constant TAPE-CAP
 
 variable LX-I                        \ how many tokens are on the tape
 variable LX-P                        \ the byte the scan stands on
 
-public
-
-256 constant TXT-CAP
-128 constant TAPE-CAP
-
 create TXT TXT-CAP allot
 variable TXT-U
-
-\ ---- the source text ---------------------------------------------------------
-: TEXT+ ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   TXT-U @ u + TXT-CAP > if E-NSRC-CAP throw then
-   0 begin dup u < while
-      dup a + c@  over TXT-U @ + TXT + c!
-      1+
-   repeat drop
-   TXT-U @ u + TXT-U ! ;
-
-: TEXT! ( ptr u8 n -- )
-   0 TXT-U ! TEXT+ ;
-
-: TEXT$ ( -- ptr u8 n )
-   TXT TXT-U @ ;
 
 : SLICE ( n n -- ptr u8 n )
    {: st:n ln:n :}
@@ -92,6 +73,25 @@ variable TXT-U
    {: c:IR-CTX:ctx st:n ln:n :}
    c 0 W-B @ st ln SLICE IR-BUILD:INTERN-SYMBOL ;
 
+public
+
+\ ---- the source text ---------------------------------------------------------
+: TEXT+ ( ptr u8 n -- )
+   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   TXT-U @ u + TXT-CAP > if E-NSRC-CAP throw then
+   0 begin dup u < while
+      dup a + c@  over TXT-U @ + TXT + c!
+      1+
+   repeat drop
+   TXT-U @ u + TXT-U ! ;
+
+: TEXT! ( ptr u8 n -- )
+   0 TXT-U ! TEXT+ ;
+
+: TEXT$ ( -- ptr u8 n )
+   TXT TXT-U @ ;
+
+\ ---- the tape tokens ---------------------------------------------------------
 \ A name token whose spelling is exactly the bytes its span covers.
 : NAME, ( IR-CTX:ctx n n NTAPE:mode -- )
    {: c:IR-CTX:ctx st:n ln:n m:NTAPE:mode :}
