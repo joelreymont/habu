@@ -834,25 +834,6 @@ RUNTIME-RUNNER:SUBJECT!
 \ shared candidate-validation worker instead of a second
 \ HABU_UNDER_TEST spawn per candidate. See engine-suite.f "candidate ... smoke".
 
-\ An uncaught top-level throw reaches the engine's BTHROW no-handler path
-\ (habu1.f THROW-NOREC). Before the fix it exit_group'd the RAW code, so the
-\ kernel masked it to 8 bits: -2816 (a multiple of 256) exited 0 SILENTLY and
-\ -2802 exited 14 SILENTLY - fail-open for any tool reading the exit status.
-\ Now a kernel-representable code in [1,255] still exits byte-identically to
-\ before (deliberate exit contracts: argv usage 64, check hook 70, lint
-\ findings 1), while any other code is named on fd 2 and exits GE-UNCAUGHT-RC.
-: GE-UNCAUGHT-RUN ( n ptr u8 n -- )
-   {: want:n label:ptr labelu:n :}
-   GE-SRC-BUF GE-SRC-U @ RUNTIME-DIRECT:NO-HANDLER
-   want label labelu GE-EXPECT-RC ;
-
-: GE-UNCAUGHT-LINE ( ptr u8 n n ptr u8 n -- )
-   {: src:ptr srcu:n want:n label:ptr labelu:n :}
-   GE-HB-RESET
-   GE-SRC-RESET
-   src srcu GE-SRC-LINE
-   want label labelu GE-UNCAUGHT-RUN ;
-
 package RUNTIME-RUNNER
 public
 
@@ -866,54 +847,80 @@ public
 
 ;package
 
-: GE-UNCAUGHT-CASE ( ptr u8 n n ptr u8 n ptr u8 n -- )
+package GENG
+private
+
+\ An uncaught top-level throw reaches the engine's BTHROW no-handler path
+\ (habu1.f THROW-NOREC). Before the fix it exit_group'd the RAW code, so the
+\ kernel masked it to 8 bits: -2816 (a multiple of 256) exited 0 SILENTLY and
+\ -2802 exited 14 SILENTLY - fail-open for any tool reading the exit status.
+\ Now a kernel-representable code in [1,255] still exits byte-identically to
+\ before (deliberate exit contracts: argv usage 64, check hook 70, lint
+\ findings 1), while any other code is named on fd 2 and exits GE-UNCAUGHT-RC.
+: UNC-RUN ( n ptr u8 n -- )
+   {: want:n label:ptr labelu:n :}
+   GE-SRC-BUF GE-SRC-U @ RUNTIME-DIRECT:NO-HANDLER
+   want label labelu GE-EXPECT-RC ;
+
+: UNC-LINE ( ptr u8 n n ptr u8 n -- )
+   {: src:ptr srcu:n want:n label:ptr labelu:n :}
+   GE-HB-RESET
+   GE-SRC-RESET
+   src srcu GE-SRC-LINE
+   want label labelu UNC-RUN ;
+
+: UNC-CASE ( ptr u8 n n ptr u8 n ptr u8 n -- )
    {: src:ptr srcu:n want:n needle:ptr needleu:n label:ptr labelu:n :}
-   src srcu want label labelu GE-UNCAUGHT-LINE
+   src srcu want label labelu UNC-LINE
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
-255 constant GE-TFAM-CAP-PKG-U
-TF-CTOR-NS-CAP GE-TFAM-CAP-PKG-U - constant GE-TFAM-CAP-FAM-U
+255 constant CAP-PKG-U
+TF-CTOR-NS-CAP CAP-PKG-U - constant CAP-FAM-U
 
-: GE-TFAM-CAP-SOURCE ( -- )
+: CAP-SOURCE ( -- )
    GE-SRC-RESET
    s" package " GE-SRC+
-   GE-TFAM-CAP-PKG-U [char] p GE-SRC-REPEAT-C
+   CAP-PKG-U [char] p GE-SRC-REPEAT-C
    s"  public PRODUCT " GE-SRC+
-   GE-TFAM-CAP-FAM-U [char] f GE-SRC-REPEAT-C
+   CAP-FAM-U [char] f GE-SRC-REPEAT-C
    s"  0 FIELD x n ;PRODUCT ;package" GE-SRC-LINE ;
 
-: GE-TFAM-CAP-ERR ( -- )
+: CAP-ERR ( -- )
    GE-SRC-RESET
    s" habu: bad product declaration '" GE-SRC+
-   GE-TFAM-CAP-FAM-U [char] f GE-SRC-REPEAT-C
+   CAP-FAM-U [char] f GE-SRC-REPEAT-C
    s" ': tfam: constructor namespace too long at '" GE-SRC+
-   GE-TFAM-CAP-FAM-U [char] f GE-SRC-REPEAT-C
+   CAP-FAM-U [char] f GE-SRC-REPEAT-C
    s" '" GE-SRC-LINE
    s" hb: uncaught throw code 7135" GE-SRC-LINE ;
 
-: GE-TFAM-CAP-UNCAUGHT ( -- )
+: CAP-UNC ( -- )
    GE-HB-RESET
-   GE-TFAM-CAP-SOURCE
-   GE-UNCAUGHT-RC s" generated namespace cap rc" GE-UNCAUGHT-RUN
+   CAP-SOURCE
+   GE-UNCAUGHT-RC s" generated namespace cap rc" UNC-RUN
    GT-OUT$ nip 0 <> if s" generated namespace cap stdout" GE-FAIL then
-   GE-TFAM-CAP-ERR
+   CAP-ERR
    GT-ERR$ GE-SRC-BUF GE-SRC-U @ STR= 0= if
       s" generated namespace cap stderr" GE-FAIL
    then ;
 
-: GE-UNCAUGHT-THROW ( -- )
+public
+
+: UNCAUGHT ( -- )
    s" -2816 throw" GE-UNCAUGHT-RC s" uncaught throw code -2816"
-      s" uncaught throw -2816 (kernel-masks-to-0)" GE-UNCAUGHT-CASE
+      s" uncaught throw -2816 (kernel-masks-to-0)" UNC-CASE
    s" -2802 throw" GE-UNCAUGHT-RC s" uncaught throw code -2802"
-      s" uncaught throw -2802 (kernel-masks-to-14)" GE-UNCAUGHT-CASE
+      s" uncaught throw -2802 (kernel-masks-to-14)" UNC-CASE
    s" 70 throw" 70 s" uncaught throw 70 representable passthrough" RUNTIME-RUNNER:LINE-RC
    s" uncaught throw 70 representable passthrough" GE-EXPECT-SILENT
    s" : GEUT ( -- ) [: -2816 throw ;] catch . ;  GEUT" 0
       s" caught throw stays in-process rc 0" RUNTIME-RUNNER:LINE-RC
    SB-RESET s" -2816" SB-APPEND GE-SB-LF
    SB$ s" caught throw control output" GE-EXPECT-OUT
-   GE-TFAM-CAP-UNCAUGHT
+   CAP-UNC
    s" PASS: uncaught top-level throw exits are reported, never masked" type cr ;
+
+;package
 
 \ Interpret-mode transports of a wide layout bundle SILENTLY CORRUPTED: the
 \ top-level stack ops move one physical cell, so a TRUSTED-seeded 2-cell
@@ -2059,7 +2066,7 @@ public
 
 : REST ( -- )
    GENG:ASSERT-RUNTIME-SUBJECT
-   GE-UNCAUGHT-THROW
+   GENG:UNCAUGHT
    GE-INTERP-LAYOUT
    GE-MATCH-EXEC
    GE-DICT-FULL
