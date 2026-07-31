@@ -282,6 +282,30 @@ variable BLR-CNT
    DATA-EXPECT s" hb-build AOT data region output" GB-RUN-EXPECT
    s" PASS: hb-build AOT persistent data region (create/,/variable/@/!/+!/loop)" type cr ;
 
+: DEEP-NS-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package aot:deep" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" PRODUCT pair 0" GE-SRC-LINE
+   s"   FIELD left n" GE-SRC-LINE
+   s"   FIELD right n" GE-SRC-LINE
+   s" ;PRODUCT" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : MAIN ( -- ) 17 29 AOT:DEEP:PAIR:MAKE AOT:DEEP:PAIR:UNMAKE . . ;" GE-SRC-LINE ;
+
+: DEEP-NS-EXPECT ( -- ptr u8 n )
+   SB-RESET
+   s" 29" GE-OUT-LINE
+   s" 17" GE-OUT-LINE
+   SB$ ;
+
+: DEEP-NS ( -- )
+   s" hb-aot-deep-ns.f" s" hb-aot-deep-ns" s" hb-aot-deep-ns-report.json" PATHS
+   DEEP-NS-SOURCE
+   s" hb-build AOT deep namespace build" BUILD-STRICT
+   DEEP-NS-EXPECT s" hb-build AOT deep namespace output" GB-RUN-EXPECT
+   s" PASS: hb-build AOT deep generated namespace" type cr ;
+
 \ Persistent-data code-window regression (dot habu-identify-code-pointers-b973e6cc,
 \ red-first). A datum whose VALUE lands in the former [RBASE-VA, RBASE-VA+REGION)
 \ magnitude window -- here RBASE-VA+REGION-8, the top cell of the JIT region, free
@@ -559,6 +583,7 @@ variable BLR-CNT
    s" hb-gate-aot-bundle-data" GT-START
    BUNDLE
    DATA
+   DEEP-NS
    DATA-WINDOW
    LAYOUT-STORE
    LAYOUT-FETCH

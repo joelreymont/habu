@@ -183,6 +183,21 @@ SUMTYPE result 0
 : ZDEEP-L ( n -- zdeep:left:result ) ZDEEP:LEFT:RESULT:OK ;
 : ZDEEP-R ( n -- zdeep:right:result ) ZDEEP:RIGHT:RESULT:OK ;
 : ZDEEP-H ( n -- z-deep:left:result ) Z-DEEP:LEFT:RESULT:OK ;
+package ZDEEP-RT
+public
+: L ( n -- n )
+   ZDEEP:LEFT:RESULT:OK
+   MATCH zdeep:left:result ok OF ENDOF ;MATCH ;
+: R ( n -- n )
+   ZDEEP:RIGHT:RESULT:OK
+   MATCH zdeep:right:result ok OF ENDOF ;MATCH ;
+: H ( n -- n )
+   Z-DEEP:LEFT:RESULT:OK
+   MATCH z-deep:left:result ok OF ENDOF ;MATCH ;
+;package
+17 ZDEEP-RT:L 17 T=
+23 ZDEEP-RT:R 23 T=
+31 ZDEEP-RT:H 31 T=
 s" zdeep:left" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" ZDEEP:LEFT:RESULT" T$=
 s" zdeep:right" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
@@ -425,8 +440,9 @@ s" CONSTRUCT-OWN" type cr
 
 \ ---------------------------------------------------------------------------
 \ item 15: product generated words. A PUBLIC product publishes exactly two
-\ checked words in its generated namespace — FAMILY:MAKE ( fields -- fam<..> ) and
-\ PKG:UNMAKE ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
+\ checked words in its exact family-path generated namespace —
+\ FAMILY-PATH:MAKE ( fields -- fam<..> ) and FAMILY-PATH:UNMAKE
+\ ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
 \ window: a product bundle is its field cells in slot order (no tag), so
 \ construction/destructure are physical no-ops and runtime round-trips are
 \ identity. Same publish/protection stack as sum constructors (SUMV rows).
@@ -510,7 +526,8 @@ PRODUCT prow 0
 : ZPPK-MK ( n -- zppk:prow ) ZPPK:PROW:MAKE ;
 : ZPPK-UN ( zppk:prow -- n ) ZPPK:PROW:UNMAKE ;
 s" GEN-PRODUCT-PKG" type cr
-\ private products export nothing: no package, no words, no construct form.
+\ private products export nothing: no generated namespace, no words, no
+\ construct form.
 package zpsec
 private
 PRODUCT phid 0
