@@ -3675,3 +3675,30 @@ fits.
   carry. Two rules: after any checkout, confirm a file the change adds is
   actually present before running gates; and never interpolate a revision
   variable without failing loudly when it is empty.
+
+- **A quotation cannot see the enclosing word's locals, and the engine says so
+  with exit 75, not with a checker diagnostic.** `[: c b tp SOMETHING ;] catch`
+  inside a word that bound `c b tp` as locals dies at COMPILE time with a bare
+  `c` on stdout and rc 75 (`src/habu/habu2.f`: "local referenced inside a
+  quotation"), which reads like a crash rather than a type error and points at
+  no line. If a quotation needs state from its caller, park the state in a
+  `TYPED-BUFFER` and read it inside the quotation.
+
+- **The engine hands the check hook a RECONSTRUCTED definition, not the file's
+  bytes.** For `: NAME ( sig ) body ;` the checker receives `NAME ( sig ) body`
+  - no leading `:`, no trailing `;`, backslash comments already stripped and
+  runs of whitespace collapsed to one space. So every byte offset the checker
+  reports is an offset into that text, a `( ... )` comment is still in it while
+  a `\ ` comment never was, and anything that wants a file and a line has to be
+  told the file separately. Probe it before assuming: a temporary print in
+  `CHECK-RESET` and at the `DO-TOK1` call site in `CHECK-SCAN`, gated on a
+  marker in the text, answers in one run - an installed `bin/hb` re-reads
+  `src/core/checker.f` from disk at boot, so no rebuild is needed.
+
+- **A digest over interned identities cannot see a spelling.** Two source texts
+  that differ only inside a name produce byte-identical stage N0 tapes: each
+  module numbers its own symbols, so both names take ordinal zero, the spans
+  have the same length, and every stored cell matches. Any result that wants to
+  say "this is the source I read" therefore has to bind the source registry's
+  content digest as well as the tape's - and a test that only compares tapes
+  will happily pass while the two texts are different programs.

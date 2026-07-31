@@ -687,9 +687,57 @@ identity binds both.
 The compile-time class of section 7.1 is recorded but not yet sealed: the
 guarantee that such an immediate reaches the program only through the builder
 is the HIR builder's to enforce, and there is no builder yet. Dot
-`habu-seal-the-compile-5f56e5e9` tracks that capability. The tape's only
-producer today is its own test suite; dot `habu-feed-the-src-f7ed8733` tracks
-driving it from the real reader.
+`habu-seal-the-compile-5f56e5e9` tracks that capability.
+
+#### As implemented: the producer
+
+`src/compiler/native/feed.f` (package `NFEED`) fills a tape from the reader the
+engine already runs over every checked definition, and
+`src/compiler/native/cert.f` (package `NCERT`) is the source-bound checking
+result it publishes.
+
+**The producer hangs on the checker's reader, not on a second lexer.** The
+migration sentence above allows the checker to keep running over source text as
+long as its result binds the tape digest. If a different reader filled the tape,
+that binding would be a convention between two lexers that happen to agree; the
+tape is filled by `src/core/checker.f` `CHECK-SCAN` itself, as it consumes each
+token, so the certificate binds the token stream the checker actually read. The
+seam is package `CHECKER-TAPE` in that file: three events - the text a scan
+opens with, each token as it is consumed, and the verdict it ends with - reached
+through declared dispatch cells and disarmed by default, so an unarmed checker
+pays one load and a branch per token. An observer is called before a token is
+judged and its answer is never read: it can abort a compilation by throwing, and
+it can never turn a rejected definition into an accepted one.
+
+**A unit is one scan.** The checker scans text for reasons other than the
+definition in front of it - a candidate probe, a `does>` body, a preflight check
+of an immediate - so an open unit accepts exactly one scan and refuses a second
+by name. "One row per token, exactly once, in order" is then a property of the
+state machine rather than of the caller's care.
+
+**The result binds two digests, because one is not enough.** The tape digest
+covers the cells the tape owns. It cannot see a changed name: a module numbers
+its own symbols, so a definition and the same definition with one letter of its
+name changed intern that name at the same ordinal, produce spans of the same
+length, and digest identically. The registry's per-source content digest is what
+tells them apart, so `NCERT` binds both and `test/compiler/native-feed.f` pins
+exactly which one-byte edits each digest can and cannot see.
+
+**What the reader hands over is the reconstructed definition.** The engine gives
+the check hook the definition it rebuilt - name, declared signature, body - with
+the opening `:` and closing `;` already consumed, backslash comments gone and
+whitespace runs collapsed. So the tape's source is that text, spans are offsets
+into it, a parenthesised comment is not a token, and a string or character
+literal's payload is not a token either, because the reader steps over both.
+Three consequences are open work: the produced tape has no `:`/`;` rows for
+section 7.2's elaborator to find (`habu-reconcile-the-produced-26737779`, with
+`habu-bind-the-colon-ea509e61`), literal payloads never reach the tape's
+`string-literal` and `char-literal` kinds (`habu-put-str-and-0750ac90`), and a
+recorded unit is not yet tied to the file it came from
+(`habu-bind-a-recorded-78d51725`). A literal's value is read back from its
+spelling and every spelling that reader declines is refused rather than recorded
+as something else, until the engine's own parser is reachable
+(`habu-record-the-engine-79c570ed`).
 
 ### 7.2 Stage N1: HIR — resolved Habu IR
 
