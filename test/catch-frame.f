@@ -9,7 +9,7 @@
 \ file against the Gforth-recovered candidate, so native and recovery must agree.
 \ The in-process cases assert the restored VALUES a checked r>/loop-index sees; the
 \ forged-frame child fixtures assert the sentinel/underflow guards fail closed with
-\ ENGINE-ERROR:CATCH-STACK (87) BEFORE any restore store touches caller memory.
+\ HB-ERROR:CATCH-STACK (87) BEFORE any restore store touches caller memory.
 
 require lib/errors.f
 require lib/string.f
@@ -107,7 +107,7 @@ variable ERRLEN
 : FORGE-FAILS-CLOSED ( ptr u8 n ptr u8 n -- )   \ ( label forge-src -- ): rc 87 + exact diagnostic
    {: lbl:ptr lblu:n src:ptr srcu:n :}
    lbl lblu T-LABEL
-   src srcu FORGE-RC ENGINE-ERROR:CATCH-STACK T=
+   src srcu FORGE-RC HB-ERROR:CATCH-STACK T=
    ERR$ DIAG$ T$= ;
 
 : FORGED-FRAMES ( -- )

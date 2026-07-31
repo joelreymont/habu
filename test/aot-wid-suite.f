@@ -55,7 +55,7 @@ package AOT-WID-SUITE
 \ Test vectors - mirror the ids baked by test/aot-wid-build.f.
 300   constant WID-A                 \ baked protected word-list id > 255
 70000 constant WID-B                 \ baked protected word-list id > 65535
-ENGINE-ERROR:PROTECTED-WID constant FORGE-RC   \ publish-into-protected exit code (84)
+HB-ERROR:PROTECTED-WID constant FORGE-RC   \ publish-into-protected exit code (84)
 
 $8000 constant CAP                   \ build + probe stdout/stderr capture
 2048  constant FORGE-CAP             \ stdin-piped forge source

@@ -1,6 +1,6 @@
 \ seal.f - friend-arena seal regressions (TFAM 2b-i).
 \
-\ Proves the post-seal raw-write guard (PROT-GUARD, exit ENGINE-ERROR:SEAL-VIOLATION) traps
+\ Proves the post-seal raw-write guard (PROT-GUARD, exit HB-ERROR:SEAL-VIOLATION) traps
 \ every store sink whose target lands in the sealed crown-jewel band
 \ [data-base+FRIEND-ARENA, +FRIEND-ARENA-LEN), that the latch itself is inside
 \ the band (one-way seal), that a read syscall whose buffer starts in the band is
@@ -28,7 +28,7 @@ require lib/test/subject.f
 require test/tail-ratchet.f
 
 2048 constant SLV-CAP
-ENGINE-ERROR:SEAL-VIOLATION constant SLV-SEAL-RC
+HB-ERROR:SEAL-VIOLATION constant SLV-SEAL-RC
 
 variable SLV-ROOT-U
 variable SLV-CHILD-U
@@ -202,7 +202,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
 \ rewinds CP) to it; a name resolving to an ENGINE record (index below the
 \ seal-time watermark SEAL-NDICT-CELL, captured by SEAL-CAPTURE at the end of the
 \ engine source) would retire engine definitions and rewind CP into engine code.
-\ Post-seal user source must be rejected fail-closed (ENGINE-ERROR:SEAL-VIOLATION). `WORDS`
+\ Post-seal user source must be rejected fail-closed (HB-ERROR:SEAL-VIOLATION). `WORDS`
 \ is an engine word defined in xref.f, well below the watermark.
 : SLV-FORGET-ENGINE-FORGE$ ( -- ptr u8 n )       \ FORGET an engine definition
    SB-RESET
@@ -303,7 +303,7 @@ create SLV-EMPTY 1 allot            \ zero-length stdin
    SB$ ;
 
 \ FFI seal guard (TFAM 2b-iii, cat 5 FFI-writer): a sealed-band pointer packed as a
-\ LIVE integer/pointer FFI arg must trap ENGINE-ERROR:SEAL-VIOLATION at the trampoline BEFORE
+\ LIVE integer/pointer FFI arg must trap HB-ERROR:SEAL-VIOLATION at the trampoline BEFORE
 \ the foreign call, else the callee writes through it and tampers a sealed cell.
 \ Routed via the checked FFI package with an explicit writable extent; fn=0 so
 \ the whole-span guard must fire first (an unguarded BLR to 0
@@ -495,15 +495,27 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
 \ fires only on a crafted AOT/snapshot image, so its forced-reject fixture is dotted.)
 package SEAL-SUITE
 
+: SLV-PKG-PROT-FORGE$ ( -- ptr u8 n )
+   s" package HB-ERROR" ;
+
+: SLV-ASSERT-PROT-PKG ( -- )
+   SLV-EXITED @ TTRUE
+   SLV-RC @ HB-ERROR:PROTECTED-WID T=
+   SLV-ERR$ s" HB-ERROR" CONTAINS? TTRUE ;
+
+: SLV-PROT-PKG ( -- )
+   s" reopening HB-ERROR package rejects" T-LABEL
+   SLV-PKG-PROT-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-PROT-PKG ;
+
 : SLV-PUBLISH-FORGE$ ( -- ptr u8 n )         \ define a word into a public family's protected WID
    SB-RESET
    s" SUMTYPE foo 1 VARIANT bar a ;VARIANT ;SUMTYPE" SB-APPEND SLV-LF
    s" : foo:BOGUS ( -- ) ;" SB-APPEND SLV-LF
    SB$ ;
 
-: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died ENGINE-ERROR:PROTECTED-WID naming the publish guard
+: SLV-ASSERT-PROT-PUBLISH ( -- )             \ child died HB-ERROR:PROTECTED-WID naming the publish guard
    SLV-EXITED @ TTRUE
-   SLV-RC @ ENGINE-ERROR:PROTECTED-WID T=
+   SLV-RC @ HB-ERROR:PROTECTED-WID T=
    SLV-ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
 
 : SLV-PROT-PUBLISH ( -- )
@@ -703,7 +715,7 @@ public
 package SLV-PARITY
 
 7 constant DIRECT-N
-55 constant SUBJECT-N
+56 constant SUBJECT-N
 : RESULT ( -- ptr u8 n ptr u8 n n )
    SLV-OUT SLV-OUT-U @ SLV-ERR SLV-ERR-U @ SLV-RC @ ;
 
@@ -819,7 +831,7 @@ public
 
 \ Sealed-dictionary truncation guard (TFAM 2b-iii): FORGET-DEFS-FROM /
 \ HIDE-DEFS-FROM of an engine definition (below the seal-time ndict watermark)
-\ must trap ENGINE-ERROR:SEAL-VIOLATION after the sealed entry.
+\ must trap HB-ERROR:SEAL-VIOLATION after the sealed entry.
 : SLV-NEGATIVES-TRUNCATE ( -- )
    s" FORGET-DEFS-FROM of an engine def traps" T-LABEL
    SLV-FORGET-ENGINE-FORGE$ SLV-EXEC:SUBJECT SLV-ASSERT-SEAL
@@ -862,6 +874,7 @@ public
    SLV-NEGATIVES-TRUNCATE
    SLV-POSITIVES
    SLV-PWID-CAP
+   SLV-PROT-PKG
    SLV-PROT-PUBLISH
    SLV-OWNER-FORGE
    OWNER-WID-TEST:RUN

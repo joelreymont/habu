@@ -10,7 +10,7 @@
 \   consumes the name as a no-op, keeping directive-carrying programs (for
 \   example lib/prelude.f) directly loadable.
 \ Rejects pinned by child exit status: undefined source (rc 70, token named),
-\ sealed-system source prefix (rc 84, ENGINE-ERROR:SEAL-PACKAGE), missing name (rc 74),
+\ protected source package (uncaught E-EXPORT-SEALED 7114 -> rc 67), missing name (rc 74),
 \ duplicate tail / self-export (rc 78, labeled "duplicate definition:"),
 \ primitive source (uncaught E-EXPORT-PRIM 7115 -> rc 67, code named), and a
 \ private word behind a closed package (qualified lookup is public-only,
@@ -18,7 +18,7 @@
 \
 \ Each program runs in a fresh child engine (HABU_UNDER_TEST when the gate
 \ sets it, else bin/hb) over piped stdin; the representative undefined case
-\ also runs --load for entry-path parity, exactly like test/seal-package.f.
+\ also runs --load for entry-path parity.
 \
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f lib/fs.f
 \   lib/fs-mutate.f lib/process.f lib/process-argv.f lib/process-env.f
@@ -39,7 +39,6 @@ require lib/process-env.f
 70 constant XPK-UNDEF-RC              \ undefined-word child exit status
 74 constant XPK-NONAME-RC             \ missing EXPORT name ($4A)
 78 constant XPK-DUP-RC                \ duplicate definition ($4E)
-ENGINE-ERROR:SEAL-PACKAGE constant XPK-SEAL-RC
 67 constant XPK-THROW-RC              \ engine uncaught-throw boundary exit
 
 variable XPK-ROOT-U
@@ -116,11 +115,11 @@ create XPK-EMPTY 1 allot
    s" ;package" XPK-LINE
    SB$ ;
 
-: XPK-SEALED-FORGE$ ( -- ptr u8 n )           \ sealed system-package source rejects
+: XPK-PROTECTED-FORGE$ ( -- ptr u8 n )        \ protected source package rejects
    SB-RESET
    s" package XB" XPK-LINE
    s" public" XPK-LINE
-   s" EXPORT tfam:anything" XPK-LINE
+   s" EXPORT HB-ERROR:BAD-TAG" XPK-LINE
    s" ;package" XPK-LINE
    SB$ ;
 
@@ -277,8 +276,9 @@ create XPK-EMPTY 1 allot
    s" NOSUCH-EXPORT-SRC" XPK-ERR?
    s" undefined source rejects (--load)" T-LABEL
    XPK-UNDEF-FORGE$ XPK-RUN-LOAD XPK-UNDEF-RC XPK-ASSERT-RC
-   s" sealed system-package source rejects" T-LABEL
-   XPK-SEALED-FORGE$ XPK-RUN-STDIN XPK-SEAL-RC XPK-ASSERT-RC
+   s" protected source package rejects" T-LABEL
+   XPK-PROTECTED-FORGE$ XPK-RUN-STDIN XPK-THROW-RC XPK-ASSERT-RC
+   s" 7114" XPK-ERR?
    s" missing name rejects" T-LABEL
    XPK-NONAME-FORGE$ XPK-RUN-STDIN XPK-NONAME-RC XPK-ASSERT-RC
    s" duplicate tail rejects with labeled diagnosis" T-LABEL

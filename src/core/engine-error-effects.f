@@ -1,6 +1,6 @@
 \ engine-error-effects.f - checker rows for the early engine failure ABI.
 
-package ENGINE-ERROR
+package HB-ERROR
 public
 s" SEAL-VIOLATION" s" -- n" TRUST
 s" PROTECTED-WID" s" -- n" TRUST

@@ -1,4 +1,4 @@
-\ rt.fs — native runtime routines for the ENGINE-BUILDER port. Emits stack and
+\ rt.fs — native runtime routines for the native engine builder. Emits stack and
 \ printer instruction sequences via mnem.fs. Keep this stage-source file
 \ local-free so the Gforth recovery compiler can check it.
 \ data-stack ops (XDS points just past TOS; full-ascending); regs live in mnem.fs

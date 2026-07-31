@@ -120,7 +120,7 @@ are among the marked cells, so a bare row-address computation
 A PROT-GUARD write-trap band was considered (relocate the ten cells into a guarded
 DATA band `[REG-BAND-OFF, +REG-BAND-LEN)` added to `GUARD-SPAN`/`PROT-GUARD`,
 `habu1.f:211-241`, so `!`/`c!`/`+!` trap a post-seal write with
-`ENGINE-ERROR:SEAL-VIOLATION`). It does not close the checked-source threat model,
+`HB-ERROR:SEAL-VIOLATION`). It does not close the checked-source threat model,
 for a structural reason:
 
 - A guarded band traps ordinary stores, so the legitimate declaration-time

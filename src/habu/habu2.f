@@ -1,6 +1,6 @@
 \ habu2.f — engine-builder part 2: the JIT compiler
 \ emitters (literal/call/keywords/locals/strings/do-loop), the outer-interpreter
-\ main loop, and ENGINE-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
+\ main loop, and HB-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 \ ---- literal emitters: scalars vs relocatable addresses ---------------------------
@@ -870,7 +870,7 @@ public
    fail C-SOURCE-APPEND-X4-TO ;
 
 : EMIT-SEAL-FRIEND-TOKEN ( label -- ) {: fail:label :}
-   ENGINE-BUILD:BUILDING? if exit then
+   HB-EMIT:BUILDING? if exit then
    LBL {: done:label :}
    12 DATA SNAP-CELL LDR,
    12 done CBNZ,
@@ -1315,7 +1315,7 @@ variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-FIND-GLOBAL)
 variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
-package ENGINE-EMIT
+package HB-EMIT
 
 : EMIT-KWDATA ( -- )
    LKWIF LABEL@ LBL,     s" if"     BYTES,    LKWTHEN LABEL@ LBL,   s" then"   BYTES,
@@ -2075,7 +2075,7 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 \ die path is harmless. W^X: emitted into the RW code region like every other
 \ primitive, flushed RX with the rest of the image; it takes no data-region
 \ store outside the DATA cells its callers already touch.
-package ENGINE-EMIT
+package HB-EMIT
 
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
@@ -2171,7 +2171,7 @@ s" c-qualify-def" s" --" TRUST
 \ branch-with-link; the protected-publish exit is exit_group, so its unbalanced
 \ frame never returns. W^X: no data-region store outside the DATA cells its
 \ callers already touch; emitted RW, flushed RX with the image.
-package ENGINE-EMIT
+package HB-EMIT
 
 : EMIT-STORE-DEF-NAME ( -- )
    LSTOREDEFNAME LABEL@ LBL,
@@ -2185,7 +2185,7 @@ package ENGINE-EMIT
       1 LPROTPUB LABEL@ ADR,  0 2 MOVZ,  2 PROTPUB-MSG-LEN MOVZ,  NR-WRITE SYS,       \ protected + sealed: name the guard on fd 2 before exit 84
       0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,     \ + the offending def name
       1 LOPENNL LABEL@ ADR,  0 2 MOVZ,  2 1 MOVZ,  NR-WRITE SYS,                       \ + newline
-      0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
+      0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
    pgok LBL,
    C-STORE-NAME
    14 DATA DEF-WL-CELL LDR,  14 9 40 STR,
@@ -2519,7 +2519,7 @@ s" bdrainpretrust" s" --" TRUST
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROT LABEL@ BL, ;
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : C-POSTPONE ( -- )
    LBL LBL LBL {: pok pnimm pdone :}
@@ -2835,7 +2835,7 @@ variable LTOPHOOK
    LTOK LABEL@ BL,  LBCAP LABEL@ BL,
    11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC LABEL@ BL, ;
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : C-TICK ( -- )
    LBL LBL LBL {: tk:label usedtry:label found:label :}
@@ -3932,12 +3932,12 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
 \ Sealed-WID reject for the AOT boot passes (TFAM 2b-v). x11 = resolved xt on entry;
 \ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
-\ the protected-WID registry, fail-closed (exit ENGINE-ERROR:PROTECTED-WID) -- so a captured
+\ the protected-WID registry, fail-closed (exit HB-ERROR:PROTECTED-WID) -- so a captured
 \ relocation callee or boot-run entry name that resolves into a sealed system /
 \ generated constructor package is rejected before the call immediate is rewritten
 \ or the entry word is executed. Preserves x11; clobbers x5/x6/x9/x13/x14; saves x30
 \ for the nested LPROTWIDQ. A not-found xt (no record) skips the guard.
-package ENGINE-EMIT
+package HB-EMIT
 
 : EM-AOTWIDGATE ( -- )
    LBL LBL LBL {: wscan:label wfound:label wdone:label :}
@@ -3952,7 +3952,7 @@ package ENGINE-EMIT
       LPROTWIDQ LABEL@ BL,                               \ x13 = protected?
       13 wdone CBZ,
          1 LPROTAOT LABEL@ ADR,  0 2 MOVZ,  2 PROTAOT-MSG-LEN MOVZ,  NR-WRITE SYS,    \ protected WID at AOT boot gate: name it on fd 2 before exit 84
-         0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
+         0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
    wdone LBL,
       30 SP 0 LDR,  11 SP 8 LDR,  SP SP 16 ADDI,  RET, ;
 
@@ -4480,7 +4480,7 @@ s" c-package-record-match" s" label label --" TRUST
    done LBL, ;
 s" c-package-ensure" s" --" TRUST
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : C-PACKAGE-PROT-GUARD ( -- )
    LBL LBL LBL LBL {: loop:label miss:label hit:label done:label :}
@@ -4492,7 +4492,7 @@ package ENGINE-EMIT
          9 5 0 LDR,  LPROTWIDQ LABEL@ BL,
          13 done CBZ,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
+         0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       miss LBL,
          5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    done LBL, ;
@@ -4578,7 +4578,7 @@ s" c-end-package" s" --" TRUST
    LTOK LABEL@ BL,  0 hastok CBNZ,
       0 2 MOVZ,  1 mmiss ADR,  2 31 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 89 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 89 = ENGINE-ERROR:USING-NO-NAME
+      0 89 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 89 = HB-ERROR:USING-NO-NAME
    mmiss LBL,  s" hb: using: missing package name" BYTES,
    hastok LBL,
    14 0 MOVZ,
@@ -4588,7 +4588,7 @@ s" c-end-package" s" --" TRUST
       14 14 1 ADDI,  cscan B,
    cbad LBL,
       0 2 MOVZ,  1 cmsg ADR,  2 46 MOVZ,  NR-WRITE SYS,
-      90 C-DIE-TOKEN-NL                               \ 90 = ENGINE-ERROR:USING-BAD-NAME
+      90 C-DIE-TOKEN-NL                               \ 90 = HB-ERROR:USING-BAD-NAME
    cmsg LBL,  s" hb: using: package name must not contain ':': " BYTES,
    cok LBL, ;
 s" c-using-name-guard" s" --" TRUST
@@ -4603,7 +4603,7 @@ s" c-using-name-guard" s" --" TRUST
       miss LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    notfound LBL,
       0 2 MOVZ,  1 umsg ADR,  2 28 MOVZ,  NR-WRITE SYS,
-      91 C-DIE-TOKEN-NL                               \ 91 = ENGINE-ERROR:USING-UNKNOWN
+      91 C-DIE-TOKEN-NL                               \ 91 = HB-ERROR:USING-UNKNOWN
    umsg LBL,  s" hb: using: unknown package: " BYTES,
    done LBL, ;
 s" c-using-wid" s" --" TRUST
@@ -4613,7 +4613,7 @@ s" c-using-wid" s" --" TRUST
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,       \ x8 = live using depth (overflow test)
    14 USE-MAX MOVZ,  8 14 CMP,  C-LT pushok BCOND,
       0 2 MOVZ,  1 fmsg ADR,  2 39 MOVZ,  NR-WRITE SYS,
-      92 C-DIE-TOKEN-NL                               \ 92 = ENGINE-ERROR:USING-OVERFLOW
+      92 C-DIE-TOKEN-NL                               \ 92 = HB-ERROR:USING-OVERFLOW
    fmsg LBL,  s" hb: using: too many concurrent usings: " BYTES,
    pushok LBL,
       7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,   \ reload depth on the accepted path (no cross-syscall live reg)
@@ -4636,7 +4636,7 @@ s" c-using" s" --" TRUST
    8 ok CBNZ,
       0 2 MOVZ,  1 umsg ADR,  2 32 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL LABEL@ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 93 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 93 = ENGINE-ERROR:USING-UNBALANCED
+      0 93 MOVZ,  LCOMPILEDIE LABEL@ B,               \ 93 = HB-ERROR:USING-UNBALANCED
    umsg LBL,  s" hb: ;using without an open using" BYTES,
    ok LBL,
    7 USE-DEPTH-CELL LIT64,  7 DATA 7 ADD,  8 7 0 LDR,  8 8 1 SUBI,  8 7 0 STR, ;   \ reload depth (no cross-syscall live reg), depth--
@@ -4711,7 +4711,7 @@ s" c-end-using" s" --" TRUST
    amb LBL,
       0 2 MOVZ,  1 ambmsg ADR,  2 60 MOVZ,  NR-WRITE SYS,
       2 5 MOVZ,  LPROT LABEL@ BL,                                  \ region -> RX (idempotent; a compile-path caller is RW here)
-      94 C-DIE-TOKEN-NL                               \ 94 = ENGINE-ERROR:USING-AMBIGUOUS
+      94 C-DIE-TOKEN-NL                               \ 94 = HB-ERROR:USING-AMBIGUOUS
    ambmsg LBL,  s" hb: ambiguous bare word resolves in multiple used packages: " BYTES, ;
 s" emit-find-used" s" --" TRUST
 
@@ -4760,7 +4760,7 @@ s" c-export-tail!" s" --" TRUST
 \ guard). The checker call runs OUTSIDE the RW code window (checked code must
 \ execute RX); the record publish sits inside the 3/5 LPROT window because
 \ C-STORE-NAME spills long names at CP.
-package ENGINE-EMIT
+package HB-EMIT
 
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
@@ -4865,20 +4865,20 @@ s" em-interpret-number" s" label --" TRUST
       found B, ;                                       \ resolved via a used package: rejoin the normal dispatch
 s" em-interpret-find" s" --" TRUST
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : EM-INTERPRET-WORDS ( -- )
    LBL {: lnotnum :}
-   EM-INTERPRET-DEFINE-KEYWORDS s" interpret/define" ENGINE-SIZE:MARK
-   EM-INTERPRET-STRING-KEYWORDS s" interpret/string" ENGINE-SIZE:MARK
+   EM-INTERPRET-DEFINE-KEYWORDS s" interpret/define" HB-SIZE:MARK
+   EM-INTERPRET-STRING-KEYWORDS s" interpret/string" HB-SIZE:MARK
    lnotnum EM-INTERPRET-NUMBER
-   lnotnum LBL,               s" interpret/number" ENGINE-SIZE:MARK
-   EM-INTERPRET-FIND          s" interpret/find" ENGINE-SIZE:MARK ;
+   lnotnum LBL,               s" interpret/number" HB-SIZE:MARK
+   EM-INTERPRET-FIND          s" interpret/find" HB-SIZE:MARK ;
 s" em-interpret-words" s" --" TRUST
 
 : EM-INTERPRET ( -- )
    LBL {: lnotcolon :}
-   lnotcolon EM-INTERPRET-COLON s" interpret/colon" ENGINE-SIZE:MARK
+   lnotcolon EM-INTERPRET-COLON s" interpret/colon" HB-SIZE:MARK
    EM-INTERPRET-WORDS ;
 s" em-interpret" s" --" TRUST
 
@@ -5074,7 +5074,7 @@ s" em-compile-ret" s" --" TRUST
    invalid LBL,
    0 2 MOVZ,
    1 badmsg ADR,  2 LVP-BADTAG-LEN MOVZ,  NR-WRITE SYS,            \ write(2,"hb: bad layout tag\n",19)
-   0 ENGINE-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
+   0 HB-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,
    RET,
    badmsg LBL,  S\" hb: bad layout tag\n" BYTES,                   \ inline data (msg+newline, contiguous): relocation-safe within the registered record
@@ -5874,7 +5874,7 @@ s" em-compile-control-keywords" s" --" TRUST
    LMAIN LABEL@ LKWEDOTQ  3 ['] C-EDOTQ  CF-ENTRY ;
 s" em-compile-string-keywords" s" --" TRUST
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : EM-COMPILE-META-KEYWORDS ( -- )
    s" [']" KEEP? IF LMAIN LABEL@ LKWBTICK  3 ['] C-BTICK  CF-ENTRY THEN
@@ -5905,7 +5905,7 @@ s" em-compile-meta-keywords" s" --" TRUST
    s" {:" KEEP? IF LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CF-ENTRY THEN ;
 s" em-compile-loop-keywords" s" --" TRUST
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : EM-COMPILE-KEYWORDS ( -- )
    LBCAP LABEL@ BL,
@@ -6147,7 +6147,7 @@ s" em-reset-compile-state" s" --" TRUST
    0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
    LEVCORRUPT LABEL@ LBL,                              \ eval-cross forged/corrupt handler frame: fail closed before any restore
    0 2 MOVZ,  1 LEVCORRUPTMSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
+   0 HB-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    LEVCORRUPTMSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
 s" em-eval-throw-recover" s" --" TRUST
 
@@ -6494,7 +6494,7 @@ s" em-adt-con-var" s" --" TRUST
 \   continuation: a jump over the message, the message "hb: bad <family> tag\n"
 \   copied inline (the NAME BYTES travel with the word — never a live pointer into
 \   the mmap-relocatable TF-STR pool), then a self-contained write(2,msg,len) +
-\   exit_group(ENGINE-ERROR:BAD-TAG). Modeled on C-DIE-TOKEN-NL's write/exit tail and C-SDQ's
+\   exit_group(HB-ERROR:BAD-TAG). Modeled on C-DIE-TOKEN-NL's write/exit tail and C-SDQ's
 \   inline-byte copy, but every instruction is C-EMITW'd into the user code region
 \   (x28=CP), not the engine. Runs with the region RW. Clobbers x5-x16.
 : C-DIE-BAD-TAG ( -- )
@@ -6523,7 +6523,7 @@ s" em-adt-con-var" s" --" TRUST
    9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT LABEL@ BL,   \ movz x2, #len
    9 SYS-EMIT-WRITE LIT64,  LCEMIT LABEL@ BL,          \ movz x_sys, #NR-WRITE
    SYS-EMIT-SVC C-EMITW                                \ svc
-   9 $D2800000 ENGINE-ERROR:BAD-TAG 32 * + LIT64,  LCEMIT LABEL@ BL,   \ movz x0, #ENGINE-ERROR:BAD-TAG
+   9 $D2800000 HB-ERROR:BAD-TAG 32 * + LIT64,  LCEMIT LABEL@ BL,   \ movz x0, #HB-ERROR:BAD-TAG
    9 SYS-EMIT-EXIT LIT64,  LCEMIT LABEL@ BL,           \ movz x_sys, #NR-EXIT-GROUP
    SYS-EMIT-SVC C-EMITW                                \ svc
    SP SP $20 ADDI, ;
@@ -6666,32 +6666,32 @@ s" em-adt-match-of" s" --" TRUST
    off LBL, ;
 s" em-compile-adt-mode" s" --" TRUST
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
-   EM-COMPILE-ADT-MODE        s" compile/adt" ENGINE-SIZE:MARK
-   lnotsemi EM-COMPILE-SEMI   s" compile/semi" ENGINE-SIZE:MARK
-   EM-COMPILE-LOCAL           s" compile/local" ENGINE-SIZE:MARK
-   EM-COMPILE-P2WIDE          s" compile/p2wide" ENGINE-SIZE:MARK
-   EM-COMPILE-KEYWORDS        s" compile/keywords" ENGINE-SIZE:MARK
-   EM-COMPILE-LITERAL         s" compile/literal" ENGINE-SIZE:MARK
-   EM-COMPILE-OPS             s" compile/ops" ENGINE-SIZE:MARK
-   EM-COMPILE-CALL            s" compile/call" ENGINE-SIZE:MARK
-   EM-COMPILE-UNDEF           s" compile/undef" ENGINE-SIZE:MARK
-   EM-COMPILE-DIE             s" compile/die" ENGINE-SIZE:MARK
-   EM-COMPILE-EXIT            s" compile/exit" ENGINE-SIZE:MARK
-   EM-EVAL-THROW-RECOVER      s" compile/eval-recover" ENGINE-SIZE:MARK ;
+   EM-COMPILE-ADT-MODE        s" compile/adt" HB-SIZE:MARK
+   lnotsemi EM-COMPILE-SEMI   s" compile/semi" HB-SIZE:MARK
+   EM-COMPILE-LOCAL           s" compile/local" HB-SIZE:MARK
+   EM-COMPILE-P2WIDE          s" compile/p2wide" HB-SIZE:MARK
+   EM-COMPILE-KEYWORDS        s" compile/keywords" HB-SIZE:MARK
+   EM-COMPILE-LITERAL         s" compile/literal" HB-SIZE:MARK
+   EM-COMPILE-OPS             s" compile/ops" HB-SIZE:MARK
+   EM-COMPILE-CALL            s" compile/call" HB-SIZE:MARK
+   EM-COMPILE-UNDEF           s" compile/undef" HB-SIZE:MARK
+   EM-COMPILE-DIE             s" compile/die" HB-SIZE:MARK
+   EM-COMPILE-EXIT            s" compile/exit" HB-SIZE:MARK
+   EM-EVAL-THROW-RECOVER      s" compile/eval-recover" HB-SIZE:MARK ;
 s" em-compile" s" --" TRUST
 
 : EMIT-MAIN ( -- )
    LBL LMAIN !  LBL LEXIT !  LBL LCOMPILE !  LBL LUNDEF !  LBL LUNDERFLOW !  LBL LARITY !
-   EM-STARTUP                 s" main/startup" ENGINE-SIZE:MARK
-   EM-COMMENT                 s" main/comment" ENGINE-SIZE:MARK
+   EM-STARTUP                 s" main/startup" HB-SIZE:MARK
+   EM-COMMENT                 s" main/comment" HB-SIZE:MARK
    EM-INTERPRET
    EM-COMPILE
-   EM-INTERPRET-UNDERFLOW     s" main/underflow" ENGINE-SIZE:MARK ;
+   EM-INTERPRET-UNDERFLOW     s" main/underflow" HB-SIZE:MARK ;
 s" emit-main" s" --" TRUST
 
 ;package
@@ -6728,7 +6728,7 @@ s" emit-main" s" --" TRUST
    REPEAT drop
    RET, ;
 
-package ENGINE-EMIT
+package HB-EMIT
 
 variable SRCA
 : SRCA@ ( -- ptr u8 )
@@ -6981,7 +6981,7 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 : AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
 s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
-package ENGINE-EMIT
+package HB-EMIT
 
 \ Bake the AOT section: blob length + blob, record count + N 48-byte dict records
 \ (xt/end blob-relative, inline name), site count + M u32 triples (blob-off,
@@ -7031,28 +7031,28 @@ package ENGINE-EMIT
    A G-PUSH ;
 
 : EMIT-PRIMITIVE-SECTIONS ( -- )
-   EMIT-PRIMS  OWNER-WID-EMIT:PRIMS s" primitives/base" ENGINE-SIZE:MARK
-   EMIT-ARITY-GUARD             s" primitives/arity" ENGINE-SIZE:MARK
+   EMIT-PRIMS  OWNER-WID-EMIT:PRIMS s" primitives/base" HB-SIZE:MARK
+   EMIT-ARITY-GUARD             s" primitives/arity" HB-SIZE:MARK
    s" snap-rebase" ['] BSNAPREBASE FPRIM
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM
-   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F s" primitives/extra" ENGINE-SIZE:MARK
-   EMIT-PROF-PRIMS            s" primitives/prof" ENGINE-SIZE:MARK
-   EMIT-FP-PRIMS              s" primitives/float" ENGINE-SIZE:MARK
-   EMIT-CEMIT                 s" primitives/cemit" ENGINE-SIZE:MARK
-   EMIT-CEMITBL               s" primitives/cemitbl" ENGINE-SIZE:MARK
-   EMIT-BCAP                  s" primitives/capture" ENGINE-SIZE:MARK
-   EMIT-TOK                   s" primitives/token" ENGINE-SIZE:MARK
-   EMIT-PROT                  s" primitives/protect" ENGINE-SIZE:MARK
-   EMIT-PROTWID  OWNER-WID-EMIT:ROUTINES s" primitives/protected-wid" ENGINE-SIZE:MARK
-   EM-AOT-OWNER-ROUTINE       s" primitives/aot-owner" ENGINE-SIZE:MARK
-   EMIT-FLUSH                 s" primitives/flush" ENGINE-SIZE:MARK
-   EMIT-FIND                  s" primitives/find" ENGINE-SIZE:MARK
-   EMIT-FIND-USED             s" primitives/find-used" ENGINE-SIZE:MARK
-   EMIT-HIDX                  s" primitives/hash-index" ENGINE-SIZE:MARK
-   EMIT-QUALIFY-DEF           s" primitives/qualify-def" ENGINE-SIZE:MARK
-   EMIT-STORE-DEF-NAME        s" primitives/store-def-name" ENGINE-SIZE:MARK
-   EMIT-NUM                   s" primitives/number" ENGINE-SIZE:MARK
-   EMIT-TOPHOOK               s" primitives/top-hook" ENGINE-SIZE:MARK ;
+   s" tok-imm?" ['] BTOKIMM 2 GDEREF-F s" primitives/extra" HB-SIZE:MARK
+   EMIT-PROF-PRIMS            s" primitives/prof" HB-SIZE:MARK
+   EMIT-FP-PRIMS              s" primitives/float" HB-SIZE:MARK
+   EMIT-CEMIT                 s" primitives/cemit" HB-SIZE:MARK
+   EMIT-CEMITBL               s" primitives/cemitbl" HB-SIZE:MARK
+   EMIT-BCAP                  s" primitives/capture" HB-SIZE:MARK
+   EMIT-TOK                   s" primitives/token" HB-SIZE:MARK
+   EMIT-PROT                  s" primitives/protect" HB-SIZE:MARK
+   EMIT-PROTWID  OWNER-WID-EMIT:ROUTINES s" primitives/protected-wid" HB-SIZE:MARK
+   EM-AOT-OWNER-ROUTINE       s" primitives/aot-owner" HB-SIZE:MARK
+   EMIT-FLUSH                 s" primitives/flush" HB-SIZE:MARK
+   EMIT-FIND                  s" primitives/find" HB-SIZE:MARK
+   EMIT-FIND-USED             s" primitives/find-used" HB-SIZE:MARK
+   EMIT-HIDX                  s" primitives/hash-index" HB-SIZE:MARK
+   EMIT-QUALIFY-DEF           s" primitives/qualify-def" HB-SIZE:MARK
+   EMIT-STORE-DEF-NAME        s" primitives/store-def-name" HB-SIZE:MARK
+   EMIT-NUM                   s" primitives/number" HB-SIZE:MARK
+   EMIT-TOPHOOK               s" primitives/top-hook" HB-SIZE:MARK ;
 
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
@@ -7083,10 +7083,10 @@ package ENGINE-EMIT
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN
    EMIT-PRIMITIVE-SECTIONS
-   EMIT-DICTIONARY-SECTIONS   s" dictionary-code" ENGINE-SIZE:MARK
-   EMIT-RUNTIME-SECTIONS      s" runtime" ENGINE-SIZE:MARK
-   EMIT-DICT                  s" seed-dictionary" ENGINE-SIZE:MARK
-   EMIT-AOT-SEED              s" aot-seed" ENGINE-SIZE:MARK ;
+   EMIT-DICTIONARY-SECTIONS   s" dictionary-code" HB-SIZE:MARK
+   EMIT-RUNTIME-SECTIONS      s" runtime" HB-SIZE:MARK
+   EMIT-DICT                  s" seed-dictionary" HB-SIZE:MARK
+   EMIT-AOT-SEED              s" aot-seed" HB-SIZE:MARK ;
 
 : EMIT-SOURCE-BYTES ( -- )
    LSRC LABEL@ LBL,  SRCA@ SRCN @ BYTES, ;
@@ -7098,22 +7098,22 @@ package ENGINE-EMIT
 public
 
 : FORTH ( ptr u8 n -- )
-   ENGINE-SIZE:RESET
+   HB-SIZE:RESET
    EMIT-RESET-BUILDER
    EMIT-LABELS
    EMIT-CODE-SECTIONS
-   EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK ;
+   EMIT-SOURCE-BYTES          s" baked-source" HB-SIZE:MARK ;
 s" forth" s" ptr u8 n --" TRUST
 
 ;package
 
-package ENGINE-BUILD
+package HB-EMIT
 public
 \ An escaped emitter throw is caught only by the internal driver, which exits;
 \ the process-local build flag is therefore never observed after that edge.
 : BUILD ( ptr u8 n -- )
    ARM
-   ENGINE-EMIT:FORTH
+   FORTH
    DISARM
    ;
 ;package

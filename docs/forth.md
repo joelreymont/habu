@@ -812,8 +812,8 @@ address arithmetic at the public boundary.
 
 ## Errors
 
-- Engine process failures use only the sealed `ENGINE-ERROR` package ABI:
-  `SEAL-VIOLATION` 83, `SEAL-PACKAGE` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
+- Engine process failures use only the sealed `HB-ERROR` package ABI:
+  `SEAL-VIOLATION` 83, `PROTECTED-WID` 84, `BAD-TAG` 85, `CALLABLE-ABI` 86,
   `CATCH-STACK` 87, and `CODE-CERT` 88. Global `E-*` aliases are forbidden;
   native and no-binary recovery consume the same qualified names and values.
 - **Fallible words `throw` a named code** (defined in `src/config.fs`,

@@ -932,8 +932,8 @@ fits.
 - **SUBJECT:RUN forks the live test process, so call it with NO package open,
   and never gate a CLI file that parses argv.** A suite whose RUN executes
   inside its own package makes the forked child's `package X` a NESTED-package
-  reject (exit 75) instead of the behavior under test (weight-store's seal probe
-  expected SEAL-PACKAGE 84); close the package and call `PKG:RUN` from top level
+  reject (exit 75) instead of the behavior under test (weight-store's protected-package probe
+  expected HB-ERROR:PROTECTED-WID 84); close the package and call `PKG:RUN` from top level
   (the json-read-test arrangement).
 
 - **A new file / TRUSTED word / candidate case each trips a specific manifest the
@@ -1626,7 +1626,7 @@ fits.
   Live collisions (E-CUDA/E-FUSE both -5002, etc.) slipped past review; `error-code-lint.f` fails any
   negative code claimed by two `E-*` names (allowing sysexits-style positive exits, range sentinels,
   same-name re-registrations). Keep older widely-used codes stable, renumber the newer claimant; a bulk
-  `E-*`→`ENGINE-ERROR:*` migration must EXCLUDE its replacement spelling and end with an exact
+  `E-*`→`HB-ERROR:*` migration must EXCLUDE its replacement spelling and end with an exact
   legacy/near-miss scan (a non-token-exact match corrupts the new spelling). Removing a satisfied class
   error is fine only when it had a single runtime reader.
 - **A benchmark reports axes SEPARATELY, deterministically, from evidence.** Trial pass, task pass@k,
@@ -1923,7 +1923,7 @@ fits.
 - **A forward oracle is not a trainable sublayer.** Completion requires parameter/input adjoints, real batch/shape contracts, every architectural bias, model integration and device lowering; a fixed toy forward remains a golden.
 - **Optimizer policy and bias state belong to the optimizer.** Rebuilding beta powers and correction helpers in each trainer duplicates code and permits drift; explicit state also makes independent optimizers composable.
 - **Fuse Q, K and V before planner boundaries disappear.** Three host-dispatched projections reread the same input and cannot be recovered by a later IR fusion pass that never sees them together.
-- **A build-dependency file cannot reference a new engine/checker word in the same commit.** `bin/hb` marks its baked prefix (checker.f, engine-error.f) as `provided`, so a tool the build itself `require`s (verify-source.f, check-core.f) is certified against the OLD baked dictionary; a new `PRIM:`/`:` word or a new `ENGINE-ERROR:` code it names is undefined there. Reference new named codes from the engine as raw numbers (like `C-PACKAGE-FAIL` does) with a naming comment, and defer new-word references from build-dependency tools to a follow-up commit after the word is baked.
+- **A build-dependency file cannot reference a new engine/checker word in the same commit.** `bin/hb` marks its baked prefix (checker.f, engine-error.f) as `provided`, so a tool the build itself `require`s (verify-source.f, check-core.f) is certified against the OLD baked dictionary; a new `PRIM:`/`:` word or a new `HB-ERROR:` code it names is undefined there. Reference new named codes from the engine as raw numbers (like `C-PACKAGE-FAIL` does) with a naming comment, and defer new-word references from build-dependency tools to a follow-up commit after the word is baked.
 - **Acceptance criteria can create a dependency cycle even when the dot says it has no dependencies.** If a foundation task requires future consumers or a future registry to pass, those consumers cannot depend on the foundation honestly. Keep the foundation's proof on current owners plus one representative fixture; enroll future owners in their own dots.
 - **A test file is still a module when a suite co-loads it.** Several PTX device tests each defined generic global scratch words such as `HX`; standalone runs passed, but the composed `ptx-toolchain` gate failed at the second definition. Give every co-loaded test a real package owner instead of relying on process isolation, load order, or one-off prefix renames.
 - **A semantic payload consumer must use the canonical logical-row seam for every layout width.** `TFC-PUSH-PAY` expanded only layouts wider than one cell, so a width-one enum payload stayed logical and a nested `MATCH` could not consume it even though signature parsing correctly expanded the same type. Delegate to `PUSH-LOGICAL`; do not duplicate its layout-width policy in each consumer.

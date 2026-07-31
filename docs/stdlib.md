@@ -698,7 +698,7 @@ consumer through `MATCH slot-state` or the `MAP-*?` predicates. The nominal
 getter/setter API prevents checked callers from laundering state through `n`.
 The caller still owns raw map storage and `MAP-SLOT-FIELD` intentionally exposes
 its representation. `MAP-SLOT-STATE@` is therefore a validating decoder: raw
-tags 0/1/2 become constructors and every other tag throws `ENGINE-ERROR:BAD-TAG`.
+tags 0/1/2 become constructors and every other tag throws `HB-ERROR:BAD-TAG`.
 
 The lookup verdict is the `map-loc` sum family: `full` (table exhausted,
 no payload), `free idx` (insertion slot), and `found idx` (hit slot), with

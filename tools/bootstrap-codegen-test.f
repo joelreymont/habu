@@ -13,8 +13,8 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
 
-\ habu2.f is 262,867 bytes on the ENGINE-ERROR cutover tree; 25% headroom is
-\ 328,584 bytes, so the next power-of-two arena is $80000.
+\ habu2.f is 333,728 bytes on the HB-ERROR cutover tree; 25% headroom is
+\ 417,160 bytes, so the next power-of-two arena is $80000.
 $80000 constant BCG-CAP
 
 create BCG-BUF BCG-CAP allot
@@ -1017,9 +1017,9 @@ public
 
 package BCG-SUITE
 
-: BCG-TEST-ENGINE-ERROR ( -- )
+: BCG-TEST-HB-ERROR ( -- )
    s" src/core/engine-error.f" BCG-LOAD
-   s" package ENGINE-ERROR" BCG-MUST-HAVE
+   s" package HB-ERROR" BCG-MUST-HAVE
    s" 83 constant SEAL-VIOLATION" BCG-MUST-HAVE
    s" 84 constant PROTECTED-WID" BCG-MUST-HAVE
    s" 85 constant BAD-TAG" BCG-MUST-HAVE
@@ -1028,14 +1028,14 @@ package BCG-SUITE
    s" 88 constant CODE-CERT" BCG-MUST-HAVE
    s" constant E-SEAL-VIOLATION" BCG-MUST-LACK
    s" bootstrap/cg/forth.fs" BCG-LOAD
-   s" vocabulary ENGINE-ERROR" BCG-MUST-HAVE
+   s" vocabulary HB-ERROR" BCG-MUST-HAVE
    s" 83 constant SEAL-VIOLATION" BCG-MUST-HAVE
    s" 84 constant PROTECTED-WID" BCG-MUST-HAVE
    s" 85 constant BAD-TAG" BCG-MUST-HAVE
    s" 86 constant CALLABLE-ABI" BCG-MUST-HAVE
    s" 87 constant CATCH-STACK" BCG-MUST-HAVE
    s" 88 constant CODE-CERT" BCG-MUST-HAVE
-   s" vocabulary ENGINE-EMIT" BCG-MUST-HAVE
+   s" vocabulary HB-EMIT" BCG-MUST-HAVE
    s" : C-P2-FIND-GLOBAL?" BCG-MUST-HAVE
    s" : C-P2-FIND-CHECKER" BCG-MUST-HAVE
    s" FRIEND-LATCH-CELL LDR,  9 done CBZ," BCG-MUST-HAVE
@@ -1044,7 +1044,7 @@ package BCG-SUITE
    s" : C-FIND-CHECKER" BCG-MUST-HAVE
    s" FRIEND-LATCH-CELL LDR,  9 done CBZ," BCG-MUST-HAVE
    s" src/core/engine-error-effects.f" BCG-LOAD
-   s" package ENGINE-ERROR" BCG-MUST-HAVE
+   s" package HB-ERROR" BCG-MUST-HAVE
    S\" s\" SEAL-VIOLATION\" s\" -- n\" TRUST" BCG-MUST-HAVE
    S\" s\" CODE-CERT\" s\" -- n\" TRUST" BCG-MUST-HAVE
    s" tools/bootstrap.sh" BCG-LOAD
@@ -1426,7 +1426,7 @@ public
    BCG-TEST-PREFIX-LIST
    BCG-TEST-TOK-IMM-MIRROR
    BCG-TEST-PROTWID-LEAFNESS
-   BCG-TEST-ENGINE-ERROR
+   BCG-TEST-HB-ERROR
    BCG-TEST-CELL-PARITY
    BCG-CAP:TEST
    BCG-TEST-BAKED-SOURCE-PREFIX

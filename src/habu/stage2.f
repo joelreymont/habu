@@ -61,7 +61,7 @@ s" SBUF@" s" -- ptr u8" TRUST
 : GO ( -- )
    READ-SRC
    DRV-RETIRE-RELOADS
-   SBUF@ SLEN @ ENGINE-BUILD:BUILD
+   SBUF@ SLEN @ HB-EMIT:BUILD
    s" hb" S2-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently

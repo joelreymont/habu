@@ -1,7 +1,7 @@
 \ engine-size.f - exact emitted-engine region measurements.
 \ Load after src/arch/arm64/icode.f.
 
-package ENGINE-SIZE
+package HB-SIZE
 
 $80 constant CAP
 74 constant CAP-RC
@@ -17,11 +17,11 @@ variable N
 
 : VALIDATE ( n -- n )
    {: idx:n :}
-   idx 0 < idx N @ >= or if s" engine-size: row out of range" CAP-RC die then
+   idx 0 < idx N @ >= or if s" hb-size: row out of range" CAP-RC die then
    idx ;
 
 : ROOM ( -- )
-   N @ CAP >= if s" engine-size: row capacity" CAP-RC die then ;
+   N @ CAP >= if s" hb-size: row capacity" CAP-RC die then ;
 
 : PREV-END@ ( n -- n )
    {: idx:n :}

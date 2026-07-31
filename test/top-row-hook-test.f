@@ -14,7 +14,7 @@
 \ and `top-check@` round-trips the installed xt. Cold-prefix process negatives
 \ prove an invalid install dies rc 70 with the
 \ named diagnostic before any dispatch BLR, and a raw store into the sealed
-\ hook cells evaluated in an isolated fork traps ENGINE-ERROR:SEAL-VIOLATION
+\ hook cells evaluated in an isolated fork traps HB-ERROR:SEAL-VIOLATION
 \ while both band neighbors stay writable.
 \ Hook uninstalled = today's dispatch, proven by the rest of the native gate.
 \
@@ -387,18 +387,18 @@ create TRH-EMPTY 1 allot
    TRH-EXITED @ TTRUE
    TRH-RC @ TRH-REJECT-RC T=
    TRH-ERR$ s" set-preflight: invalid or replaced hook" CONTAINS? TTRUE
-   s" raw ! into COMPILE-PREFLIGHT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
+   s" raw ! into COMPILE-PREFLIGHT-CELL traps HB-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-PREFLIGHT-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
-   TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
-   s" raw ! into TOP-HOOK-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
+   TRH-RC @ HB-ERROR:SEAL-VIOLATION T=
+   s" raw ! into TOP-HOOK-CELL traps HB-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-SEAL-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
-   TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
-   s" raw ! into ENGINE-SNAP-XT-CELL traps ENGINE-ERROR:SEAL-VIOLATION" T-LABEL
+   TRH-RC @ HB-ERROR:SEAL-VIOLATION T=
+   s" raw ! into ENGINE-SNAP-XT-CELL traps HB-ERROR:SEAL-VIOLATION" T-LABEL
    TRH-SNAP-SEAL-FORGE$ TRH-RUN-SUBJECT
    TRH-EXITED @ TTRUE
-   TRH-RC @ ENGINE-ERROR:SEAL-VIOLATION T=
+   TRH-RC @ HB-ERROR:SEAL-VIOLATION T=
    s" one cell below the band stays writable" T-LABEL
    TRH-BELOW-FORGE$ TRH-RUN-SUBJECT
    TRH-ASSERT-OK

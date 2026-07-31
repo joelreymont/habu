@@ -3,7 +3,7 @@
 \ The generated checked children use the zero-valued W=2 OK constructor.  At
 \ the first-cell boundary its payload would clear the seal latch if STR ran
 \ before the guard.  At the later-cell boundary its tag would do the same after
-\ the first ordinary cell store.  Exact ENGINE-ERROR:SEAL-VIOLATION catches a missing guard
+\ the first ordinary cell store.  Exact HB-ERROR:SEAL-VIOLATION catches a missing guard
 \ or a write before the latch load; the TLP-STORE2-G lowering golden pins STR
 \ after the remaining range guard.  Together they prove the protected cell is
 \ unchanged, including on loop iterations after the first.
@@ -138,17 +138,17 @@ variable WSS-OUT-U
 
 : WSS-FIRST-TEST ( -- )
    s" first-cell protected intersection traps before mutation" T-LABEL
-   WSS-FIRST$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT ;
+   WSS-FIRST$ HB-ERROR:SEAL-VIOLATION WSS-EXPECT ;
 
 : WSS-LATER-TEST ( -- )
    s" later-cell protected intersection traps before mutation" T-LABEL
-   WSS-LATER$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT ;
+   WSS-LATER$ HB-ERROR:SEAL-VIOLATION WSS-EXPECT ;
 
 : WSS-TXN-TEST ( -- )
    s" generated W=2 lower crossing traps through LPROTSPAN ABI" T-LABEL
-   WSS-TXN-LOWER$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT
+   WSS-TXN-LOWER$ HB-ERROR:SEAL-VIOLATION WSS-EXPECT
    s" generated W=2 upper crossing traps through LPROTSPAN ABI" T-LABEL
-   WSS-TXN-UPPER$ ENGINE-ERROR:SEAL-VIOLATION WSS-EXPECT
+   WSS-TXN-UPPER$ HB-ERROR:SEAL-VIOLATION WSS-EXPECT
    s" generated W=2 exact lower neighbor remains writable" T-LABEL
    WSS-TXN-BEFORE$ 0 WSS-EXPECT
    s" generated W=2 exact upper neighbor remains writable" T-LABEL

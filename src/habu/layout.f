@@ -156,7 +156,7 @@ $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + se
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); 0 until SEAL-CAPTURE
 
-\ ENGINE-ERROR:BAD-TAG is the runtime exit status when a compiled MATCH reaches its invalid-tag
+\ HB-ERROR:BAD-TAG is the runtime exit status when a compiled MATCH reaches its invalid-tag
 \ fallback (TFAM 10 slice 3, docs/type-families.md §16/§24). The compiler emits a
 \ self-contained die (write "hb: bad <family> tag\n" to fd 2 + NR-EXIT-GROUP) with
 \ NO normal continuation at the tail of every MATCH. A well-typed scrutinee never
@@ -409,7 +409,7 @@ $27E8 constant COMPILE-PREFLIGHT-CELL
 \ fail-closed `set-top-check` prim (habu1.f BSETTOPCHECK), which mirrors
 \ `set-check`/BSETCHECK's live-code install window; the cell is its own
 \ PROT-GUARD band (habu1.f GUARD-SPAN/PROT-GUARD) so a post-seal raw store
-\ traps ENGINE-ERROR:SEAL-VIOLATION exactly like the HOOK-CELL crown jewel. It sits in
+\ traps HB-ERROR:SEAL-VIOLATION exactly like the HOOK-CELL crown jewel. It sits in
 \ the reclaimed band between TRUSTED-CELL ($27B8) and RSTK-OFF ($2800) and is
 \ snapshot-persistent (< DATA-START) like HOOK-CELL. When installed, the
 \ interpret dispatch points (habu2.f EM-INTERPRET-FIND / EM-INTERPRET-NUMBER

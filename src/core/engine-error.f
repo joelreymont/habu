@@ -1,6 +1,6 @@
 \ engine-error.f - authoritative engine failure ABI.
 
-package ENGINE-ERROR
+package HB-ERROR
 public
 83 constant SEAL-VIOLATION
 84 constant PROTECTED-WID

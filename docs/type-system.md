@@ -327,7 +327,7 @@ the seal, a later file could execute `package SAFET-MAP` and republish the
 private word that turns an `mmap` result into a typed pointer, handing out raw
 addresses. Non-resolution from outside proves only that a name is not visible;
 it never proves the package cannot be reopened and drained. Attempting the
-reopen aborts with exit code 84 (`SEAL-PACKAGE`) — verified, and the same
+reopen aborts with exit code 84 (`PROTECTED-WID`) — verified, and the same
 attempt on an unsealed package succeeds, so the seal is doing the work.
 
 ## 9. Known gaps

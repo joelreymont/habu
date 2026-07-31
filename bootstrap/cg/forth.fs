@@ -91,8 +91,8 @@ $20 constant FRIEND-ARENA               \ arena base offset within the DATA regi
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
-vocabulary ENGINE-ERROR
-also ENGINE-ERROR definitions
+vocabulary HB-ERROR
+also HB-ERROR definitions
 83 constant SEAL-VIOLATION \ process exit status for a post-seal protected write
 84 constant PROTECTED-WID
 85 constant BAD-TAG         \ MATCH invalid-tag runtime exit (TFAM 10 slice 3; mirrors layout.f)
@@ -100,7 +100,7 @@ also ENGINE-ERROR definitions
 87 constant CATCH-STACK
 88 constant CODE-CERT
 previous definitions
-vocabulary ENGINE-EMIT
+vocabulary HB-EMIT
 $D2800010 constant C-CALL-MOVZ-X16
 $F2A00010 constant C-CALL-MOVK-X16-16
 $F2C00010 constant C-CALL-MOVK-X16-32
@@ -514,7 +514,7 @@ previous definitions
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap [ also GUARD ] BLOB-SPAN [ previous ]
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 HB-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : PROT-GUARD ( n -- )
@@ -529,7 +529,7 @@ previous definitions
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap [ also GUARD ] BLOB-ADDR [ previous ]
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 HB-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 : GUARD-CODE-WORD ( n -- )
@@ -541,7 +541,7 @@ previous definitions
    addr DREG CMP,  C-HI trap BCOND,
    EREG addr 3 ANDI,  EREG trap CBNZ,
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 HB-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 \ ---- primitive bodies (ICode operating on the x19 data stack) ----
@@ -980,7 +980,7 @@ previous definitions
    NR-EXIT-GROUP SYS,
    lfixed LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS,
    \ forged/corrupt handler frame: seed hard-exits (mirrors native BTHROW THROW-CORRUPT)
-   lcorrupt LBL,  s" hb: catch frame corrupt" ENGINE-ERROR:CATCH-STACK C-EXIT-DIAG ;
+   lcorrupt LBL,  s" hb: catch frame corrupt" HB-ERROR:CATCH-STACK C-EXIT-DIAG ;
 
 \ wordlists: each dict record carries a wid (offset 40). New defs take CURRENT.
 : BWORDLIST ( -- )  9 DATA WIDN-CELL LDR,  9 G-PUSH  9 9 1 ADDI,  9 DATA WIDN-CELL STR, ;  \ ( -- wid )
@@ -1055,7 +1055,7 @@ previous definitions
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC @ BL, ;
 \ Recovery and native use the same protected-WID registry contract.
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room done msg :} \ typed-local-lint: allow-bare-local
    9 G-POP
@@ -1065,7 +1065,7 @@ also ENGINE-EMIT definitions
    14 15 LDAR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
       0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
+      0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  s" hb: protected-WID table full" BYTES,
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
@@ -1175,7 +1175,7 @@ previous definitions
 
 : BOWNERFINALIZE ( -- ) ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-ENGINE-PRIMS ( -- )
    s" FINALIZE" ['] BOWNERFINALIZE OWNER-API-PUB-WID FPRIM-WID
    s" run-rc" ['] BRUNRC FPRIM-L
@@ -1206,7 +1206,7 @@ previous definitions
    s" set-preflight" ['] BSETPREFLIGHT FPRIM-L
    s" tok-imm?" ['] BTOKIMM FPRIM ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
@@ -2447,7 +2447,7 @@ variable SRC-BLOOP variable SRC-BDONE  variable SRC-BFAIL
    lmiss LBL,  0 0 MOVN,  RET, ;                     \ -1
 
 \ keyword bytes (lower-case) at known labels; ADR reaches them PC-relative
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-KWDATA ( -- )
    LKWIF @ LBL,     s" if"     BYTES,    LKWTHEN @ LBL,   s" then"   BYTES,
    LKWELSE @ LBL,   s" else"   BYTES,    LKWBEGIN @ LBL,  s" begin"  BYTES,
@@ -3029,7 +3029,7 @@ previous definitions
 \ tail in that package's public WID. The original spelling remains available
 \ to the checker/hook through DEF-TKA/DEF-TKL; no textual prefix dictionary
 \ entries are created.
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : C-QUALIFY-DEF ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
    {: qscan qnone qhas qtail qlookup nloop nnext ncmp nmatch ninl nmake nroom qapply qbad done :} \ typed-local-lint: allow-bare-local
@@ -3108,7 +3108,7 @@ previous definitions
 \ LCREATE ( x15=top-level? ): the hook KIND record (`NAME create` -> sig -- n)
 \ applies to top-level creates. Created-word effects are recorded by DOESPATCH
 \ after DOES> has parsed the created-word effect.
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-CREATE ( -- )
    LBL {: nokind :}
    LCREATE @ LBL,
@@ -3141,7 +3141,7 @@ previous definitions
 
 \ CONSTANT ( n -- ) "name": define a word that pushes n. Pop n first (x15
 \ survives the name copy), then emit a literal-push body via C-LIT (x11=n).
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : C-CONSTANT ( -- )
    2 3 MOVZ,  LPROT @ BL,  LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,  LBCAP @ BL,   \ seed "NAME " for the hook
@@ -3294,7 +3294,7 @@ previous definitions
       15 4 CMP,  C-NE miss BCOND,
       7 7 1 ADDI,  cmp B, ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : C-PACKAGE-PROT-GUARD ( -- )
    LBL LBL LBL LBL {: loop miss hit done :} \ typed-local-lint: allow-bare-local
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
@@ -3305,7 +3305,7 @@ also ENGINE-EMIT definitions
          9 5 0 LDR,  LPROTWIDQ @ BL,
          13 done CBZ,
          0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
-         0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
+         0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       miss LBL,
          5 5 DREC ADDI,  6 6 1 SUBI,  loop B,
    done LBL, ;
@@ -3346,7 +3346,7 @@ previous definitions
       NDICT NDICT 1 ADDI,
    done LBL, ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : C-PACKAGE ( -- )
    LBL LBL LBL {: inactive hastok checkdone :} \ typed-local-lint: allow-bare-local
    9 DATA PKG-PUB-CELL LDR,  9 inactive CBZ,
@@ -4418,7 +4418,7 @@ variable CFSK2
       0 77 MOVZ,  NR-EXIT-GROUP SYS,
    ndok LBL, ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : C-COLON-PENDING-DREC ( -- )
    LTOK @ BL,
    12 0 MOVZ,  12 DATA BODYLEN-CELL STR,
@@ -4581,7 +4581,7 @@ previous definitions
 \ defer NAME ( sig ) : create NAME. The signature is required (parsed + consumed,
 \ unchecked in stage0). clen spans the whole body incl RET, so addr+clen lands
 \ exactly on the trailer.
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : C-DEFER ( -- )
    LBL {: named :}   \ typed-local-lint: allow-bare-local
    2 3 MOVZ,  LPROT @ BL,                           \ region -> RW
@@ -4772,7 +4772,7 @@ also LOWER-CERT
    invalid LBL,
       0 2 MOVZ,  1 LVPBADMSG @ ADR,  2 18 MOVZ,  NR-WRITE SYS,
       0 2 MOVZ,  1 LQNL @ ADR,  1 1 1 ADDI,  2 1 MOVZ,  NR-WRITE SYS,
-      0 ENGINE-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
+      0 HB-ERROR:BAD-TAG MOVZ,  NR-EXIT-GROUP SYS,
    done LBL,
    RET, ;
 
@@ -5419,7 +5419,7 @@ variable P2SK
    lmain LKWSTORE2  1 1 ['] EM-P2X-STORE P2W-ENTRY
    notp2 LBL, ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : C-TRUSTED ( -- )
    2 3 MOVZ,  LPROT @ BL,
    C-COLON-CODE-ROOM
@@ -5432,7 +5432,7 @@ also ENGINE-EMIT definitions
    C-COLON-WORD-PROLOGUE ;
 previous definitions
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-INTERPRET-COLON ( n n -- ) {: lmain lnotcolon :}
    lnotcolon C-COLON-TOKEN?
       LBL {: p2ok :} \ typed-local-lint: allow-bare-local
@@ -5836,7 +5836,7 @@ previous definitions
 
 \ Emit the invalid-tag die INLINE into the user word (mirrors habu2.f): jump over
 \ the message, "hb: bad <family> tag\n" copied inline, then a self-contained
-\ write(2)+exit_group(ENGINE-ERROR:BAD-TAG). x11=name addr, x12=name len. Region RW.
+\ write(2)+exit_group(HB-ERROR:BAD-TAG). x11=name addr, x12=name len. Region RW.
 : C-DIE-BAD-TAG ( -- )
    \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
    LBL LBL LBL LBL LBL LBL {: p1 p2 s1 s2 t1 t2 :}
@@ -5864,7 +5864,7 @@ previous definitions
    9 $D2800002 LIT64,  14 14 5 LSLI,  9 9 14 ORR,  LCEMIT @ BL,
    9 SYS-EMIT-WRITE LIT64,  LCEMIT @ BL,
    SYS-EMIT-SVC C-EMITW
-   9 $D2800000 ENGINE-ERROR:BAD-TAG 32 * + LIT64,  LCEMIT @ BL,
+   9 $D2800000 HB-ERROR:BAD-TAG 32 * + LIT64,  LCEMIT @ BL,
    9 SYS-EMIT-EXIT LIT64,  LCEMIT @ BL,
    SYS-EMIT-SVC C-EMITW
    SP SP $20 ADDI, ;
@@ -6116,7 +6116,7 @@ previous definitions
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 
 \ ---- MAIN: startup (data stack + mmap + seed dict) then the outer interpreter ----
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-MAIN ( -- )
    EMIT-STARTUP
    LBL {: LMAIN :}  LBL {: LEXIT :}  LBL {: LCOMPILE :}  LBL {: LUNDEF :}   \ allocate up-front (byte-free) so the LMAIN store below is in scope
@@ -6149,7 +6149,7 @@ previous definitions
    LBL LTHROWDISPATCH !
    LBL LEX0 !  LBL LUN0 ! ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-LABEL-CONTROL ( -- )
    LBL LKWIF !  LBL LKWTHEN !  LBL LKWELSE !  LBL LKWBEGIN !
    LBL LKWUNTIL !  LBL LKWAGAIN !  LBL LKWWHILE !  LBL LKWREPEAT !
@@ -6231,7 +6231,7 @@ previous definitions
    LBL [ also LOWER-TXN-CODE ] VDESC-LABEL [ previous ] !
    LBL [ also LOWER-TXN-CODE ] DRIFT-FAIL-LABEL [ previous ] ! ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-LABELS ( -- )
    EMIT-LABEL-CORE
    EMIT-LABEL-RUNTIME
@@ -6243,7 +6243,7 @@ also ENGINE-EMIT definitions
    EMIT-LABEL-P2 ;
 previous definitions
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-PRIMITIVE-SECTIONS ( -- )
    EMIT-PRIMS
    s" DRAIN-PRETRUST" ['] BDRAINPRETRUST FPRIM   \ dot habu-engine-pre-trust-77410827
@@ -6259,7 +6259,7 @@ also ENGINE-EMIT definitions
    EMIT-NUM ;
 previous definitions
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-DICTIONARY-SECTIONS ( -- )
    EMIT-CREATE
    EMIT-DOESPATCH
@@ -6285,7 +6285,7 @@ previous definitions
    EMIT-P2-HELPERS
    [ also LOWER-TXN-CODE ] EMIT-DESC EMIT-DRIFT-FAIL [ previous ] ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-CODE-SECTIONS ( -- )
    EMIT-MAIN                                              \ entry @ offset 0
    EMIT-PRIMITIVE-SECTIONS
@@ -6297,7 +6297,7 @@ previous definitions
 : EMIT-SOURCE-BYTES ( -- )
    LSRC @ LBL,  SRCA @ SRCN @ BYTES, ;
 
-also ENGINE-EMIT definitions
+also HB-EMIT definitions
 : EMIT-FORTH ( src-a src-u -- )
    SRCN !  SRCA !
    EMIT-RESET-BUILDER
@@ -6308,12 +6308,12 @@ previous definitions
 
 \ Build a standalone native Forth that interprets `src`, write it to `outfile`.
 : FORTH-EXE ( src-a src-u out-a out-u -- )
-   2>r  ENGINE-EMIT:EMIT-FORTH  2r> EMIT-EXE ;
+   2>r  HB-EMIT:EMIT-FORTH  2r> EMIT-EXE ;
 
 : FORTH-BUILD-EXE ( src-a src-u out-a out-u -- )
    2>r
    BUILD-SOURCE? on
-   ['] ENGINE-EMIT:EMIT-FORTH catch
+   ['] HB-EMIT:EMIT-FORTH catch
    BUILD-SOURCE? off
    throw
    2r> EMIT-EXE ;
@@ -6321,5 +6321,5 @@ previous definitions
 \ Build a standalone native Forth that reads its program from STDIN (batch REPL),
 \ write it to `outfile`:  echo ': SQ DUP * ; 5 SQ .' | ./outfile
 : FORTH-REPL-EXE ( out-a out-u -- )
-   STDIN? on  s" "  ['] ENGINE-EMIT:EMIT-FORTH catch  STDIN? off  throw  \ restore mode even on error
+   STDIN? on  s" "  ['] HB-EMIT:EMIT-FORTH catch  STDIN? off  throw  \ restore mode even on error
    EMIT-EXE ;

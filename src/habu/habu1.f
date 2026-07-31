@@ -6,7 +6,7 @@
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 
-package ENGINE-BUILD
+package HB-EMIT
 variable ACTIVE
 : ACTIVE? ( -- bool ) ACTIVE @ ;
 : ARM ( -- ) 0 0= ACTIVE ! ;
@@ -264,7 +264,7 @@ public
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-BAND
    addr trap GUARD:SPAN
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 HB-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 package PROT-GUARD
@@ -308,7 +308,7 @@ public
    addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
    addr trap GUARD:ADDR
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 HB-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 \ A code emission target owns one aligned instruction inside the writable code
@@ -324,7 +324,7 @@ public
    addr DREG CMP,  C-HI trap BCOND,
    EREG addr 3 ANDI,  EREG trap CBNZ,
    ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 HB-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
 \ Guard the kernel-written extent encoded by the target ioctl ABI. Linux's
@@ -359,7 +359,7 @@ public
       2 7 PROT-GUARD:CALL
    THEN
    done B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
+   trap LBL,  0 HB-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    done LBL, ;
 
 \ ---- primitive bodies (operate on the x19 data stack) ----
@@ -1205,7 +1205,7 @@ variable SZA-I
 \ cp!/ndict! are the FORGET code-emit sinks: cp! redirects JIT emission to the
 \ popped CP, ndict! points the next dict-record write at DBASE+n*DREC. Both guard
 \ the address or full span each sink redirects a write to, so a post-seal value
-\ landing in either sealed band fails closed at the sink (ENGINE-ERROR:SEAL-VIOLATION), exactly
+\ landing in either sealed band fails closed at the sink (HB-ERROR:SEAL-VIOLATION), exactly
 \ like the raw-store guards — not via the incidental word-creation bounds check.
 \ Legit FORGET marks live in the code/dict region (DBASE-relative), whose region
 \ offset is never inside a data-base band, so the latch-gated guard leaves them intact.
@@ -2048,7 +2048,7 @@ variable SZA-I
    THROW-NOREC-FB2 LABEL@ LBL,  0 UNCAUGHT-RC MOVZ,  NR-EXIT-GROUP SYS, \ else deterministic uncaught-throw rc
    THROW-CORRUPT LABEL@ LBL,                             \ forged/corrupt handler frame: fail closed before any restore
    0 2 MOVZ,  1 THROW-CORRUPT-MSG LABEL@ ADR,  2 23 MOVZ,  NR-WRITE SYS,
-   0 ENGINE-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
+   0 HB-ERROR:CATCH-STACK MOVZ,  NR-EXIT-GROUP SYS,
    THROW-CORRUPT-MSG LABEL@ LBL,  s" hb: catch frame corrupt" BYTES, ;
 
 : BWORDLIST ( -- )
@@ -2259,7 +2259,7 @@ SOURCE-INIT
    C A 16 LDR,  C C B ORR,  C A 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room:label done:label msg:label :}
@@ -2270,7 +2270,7 @@ package ENGINE-EMIT
    14 15 LDAR,
    14 PROT-WID-MAX CMPI,  C-LT room BCOND,
       0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,    \ registry full: name the cap on fd 2 before exit 84
-      0 ENGINE-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
+      0 HB-ERROR:PROTECTED-WID MOVZ,  NR-EXIT-GROUP SYS,
       msg LBL,  s" hb: protected-WID table full" BYTES,   \ 28 bytes; data reached only via ADR
    room LBL,
    15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
@@ -2406,7 +2406,7 @@ package ENGINE-EMIT
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
@@ -2457,7 +2457,7 @@ package ENGINE-EMIT
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 
-package ENGINE-EMIT
+package HB-EMIT
 
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS

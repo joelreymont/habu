@@ -440,7 +440,7 @@ variable BLR-CNT
 \ matched family + helper is AOT-built with a SELECTED non-MAIN entry (the helper)
 \ and a forged value-stack seed (payload slots + an out-of-range tag), so the
 \ stripped image starts at the helper and reaches its inline invalid-tag die
-\ (rc ENGINE-ERROR:BAD-TAG 85 + "hb: bad gemt tag"). The SAME source built normally (entry
+\ (rc HB-ERROR:BAD-TAG 85 + "hb: bad gemt tag"). The SAME source built normally (entry
 \ MAIN) exits 0, and the entry/seed/mode axis is folded into every cache layer
 \ (artifact key + source-index key + object bytes) so the two are distinct
 \ artifacts with no cross-restore in either direction, and the die survives an
@@ -507,7 +507,7 @@ variable BLR-CNT
 \ layout value then reads it back through `@`; the forged seed carries an
 \ out-of-range tag (res tags are 0..1, seed tag 5), so the wide fetch reaches
 \ LP2VEXEC's invalid path, which writes "hb: bad layout tag\n" and exits
-\ ENGINE-ERROR:BAD-TAG (85). Because the message is inlined inside the registered
+\ HB-ERROR:BAD-TAG (85). Because the message is inlined inside the registered
 \ LP2VEXEC record, its ADR is relocated with the copied helper and the diagnostic
 \ is byte-identical to the engine's in the stripped image. The SAME source built
 \ normally (entry MAIN) exits 0.

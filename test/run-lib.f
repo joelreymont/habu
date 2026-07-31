@@ -946,7 +946,7 @@ private
    s" --"  >LEN PROC-ARGV+
    slice sliceu  >LEN PROC-ARGV+ ;
 
-: TR-ENGINE-BUILD-ARGS ( -- )
+: TR-HB-EMIT-ARGS ( -- )
    s" build" TR-ENGINE-SLICE-ARGS ;
 
 : TR-ENGINE-FIXTURES-ARGS ( -- )
@@ -1122,7 +1122,7 @@ private
       12 of TR-DIAG-ALL-STRICT-ARGS endof
       13 of TR-DIAG-FILE-UNSAFE-ARGS endof
       14 of TR-DICTIONARY-ARGS endof
-      15 of TR-ENGINE-BUILD-ARGS endof
+      15 of TR-HB-EMIT-ARGS endof
       16 of TR-ENGINE-RUNTIME-ARGS endof
       17 of TR-STDLIB-LINT-TOOLS-ARGS endof
       18 of TR-STDLIB-LINT-MANIFEST-ARGS endof

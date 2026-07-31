@@ -65,7 +65,7 @@ variable DRV-WALL-U
    TEXTSZ CODE-OFF CODELEN @ + - ;
 
 : DRV-SIZE-TAIL-MARK ( n -- ) {: i:n :}
-   i IMG-TAIL-NAME i IMG-TAIL-BYTES ENGINE-SIZE:MARK-BYTES ;
+   i IMG-TAIL-NAME i IMG-TAIL-BYTES HB-SIZE:MARK-BYTES ;
 
 : DRV-SIZE-TAIL ( -- )
    0 begin dup IMG-TAIL-N < while
@@ -74,15 +74,15 @@ variable DRV-WALL-U
    repeat drop ;
 
 : DRV-SIZE-MARKS ( -- )
-   s" container/header" CODE-OFF ENGINE-SIZE:MARK-BYTES
-   s" container/text-pad" DRV-SIZE-TEXTPAD ENGINE-SIZE:MARK-BYTES
+   s" container/header" CODE-OFF HB-SIZE:MARK-BYTES
+   s" container/text-pad" DRV-SIZE-TEXTPAD HB-SIZE:MARK-BYTES
    DRV-SIZE-TAIL ;
 
 \ Fail closed: the sum of every recorded region must equal the exact image
 \ length. A residue means an emitted region has no named row - the build stops
 \ rather than ship an engine whose size the map cannot fully explain.
 : DRV-SIZE-RECONCILE ( -- )
-   ENGINE-SIZE:TOTAL MLEN@ <> if
+   HB-SIZE:TOTAL MLEN@ <> if
       s" driver: size map does not reconcile to image length" DRV-SIZE-RC die
    then ;
 
@@ -91,10 +91,10 @@ variable DRV-WALL-U
 \ the signature row (SB-SIZE) and MLEN@ are final. HABU_ENGINE_SIZE_MAP prints the
 \ reconciled rows for capture by tools/size-report.f.
 : DRV-SIZE-MAP ( -- )
-   ENGINE-SIZE:COUNT 0= if exit then
+   HB-SIZE:COUNT 0= if exit then
    DRV-SIZE-MARKS
    DRV-SIZE-RECONCILE
-   s" HABU_ENGINE_SIZE_MAP" GETENV nip 0 > if ENGINE-SIZE:REPORT then ;
+   s" HABU_ENGINE_SIZE_MAP" GETENV nip 0 > if HB-SIZE:REPORT then ;
 
 \ The single high-level image-emission tail: assemble the current CODE into the
 \ target image, sign it with the caller's sigid, and write it to path. Every

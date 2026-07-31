@@ -15,7 +15,7 @@ require lib/process-argv.f
 require lib/process-env.f
 require lib/codesign.f
 
-package ENGINE-ERROR-TEST
+package HB-ERROR-TEST
 private
 
 $800 constant CAP
@@ -53,7 +53,7 @@ create PATCHED-BUF FS-PATH-CAP allot
 
 : SOURCE$ ( ptr u8 n -- ptr u8 n ) {: name:ptr u:n :}
    SB-RESET
-   S\" s\" engine-error-test\" " SB-APPEND
+   S\" s\" hb-error-test\" " SB-APPEND
    name u SB-APPEND
    s"  die" SB-APPEND
    SB$ ;
@@ -95,7 +95,7 @@ create PATCHED-BUF FS-PATH-CAP allot
    u IMAGE-U !
    u MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop IMAGE-A-FIELD !
    HB$ IMAGE u READ-ALL u <> if
-      s" engine-error-test: short engine read" 1 die
+      s" hb-error-test: short engine read" 1 die
    then ;
 
 : NAME-AT? ( n -- bool ) {: off:n :}
@@ -112,7 +112,7 @@ create PATCHED-BUF FS-PATH-CAP allot
       1+
    repeat drop
    MATCH-N @ 1 <> if
-      s" engine-error-test: checker-package occurrence count" 1 die
+      s" hb-error-test: checker-package occurrence count" 1 die
    then ;
 
 : PATCH-IMAGE ( -- )
@@ -127,11 +127,11 @@ create PATCHED-BUF FS-PATH-CAP allot
 
 : EXACT-EXITS ( -- )
    s" callable ABI exits 86" T-LABEL
-   s" ENGINE-ERROR:CALLABLE-ABI" CHILD-RC 86 T=
+   s" HB-ERROR:CALLABLE-ABI" CHILD-RC 86 T=
    s" CATCH stack exits 87" T-LABEL
-   s" ENGINE-ERROR:CATCH-STACK" CHILD-RC 87 T=
+   s" HB-ERROR:CATCH-STACK" CHILD-RC 87 T=
    s" code certificate exits 88" T-LABEL
-   s" ENGINE-ERROR:CODE-CERT" CHILD-RC 88 T= ;
+   s" HB-ERROR:CODE-CERT" CHILD-RC 88 T= ;
 
 : POST-SEAL-BRIDGE ( -- )
    s" post-seal package reaches checker bridge" T-LABEL
@@ -151,8 +151,8 @@ public
    EXACT-EXITS
    POST-SEAL-BRIDGE
    T-REPORT
-   s" engine-error-package: ok" type cr ;
+   s" hb-error-package: ok" type cr ;
 
 ;package
 
-ENGINE-ERROR-TEST:RUN
+HB-ERROR-TEST:RUN

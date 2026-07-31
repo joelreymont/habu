@@ -58,7 +58,7 @@ package BUILD-DRIVER
    READ-PROG
    BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 0= 0= STDIN? !
-   BLD-PB@ PN @ ENGINE-EMIT:FORTH
+   BLD-PB@ PN @ HB-EMIT:FORTH
    s" hb-prog" BLD-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently
