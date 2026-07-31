@@ -96,12 +96,13 @@ TRUSTED: TWX-MK-VAR ( n -- n ) MK-VAR ;
 TRUSTED: TWX-MK-ROW ( n -- n ) MK-ROW ;
 TRUSTED: TWX-MK-PUSH ( n n -- n ) MK-PUSH ;
 TRUSTED: TWX-MK-PARAM ( n ptr u8 n n -- n ) MK-PARAM ;
-TRUSTED: TWX-MK-PARAM0 ( n -- n ) {: fam:n :}
-   PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM ;
-TRUSTED: TWX-MK-PARAM1 ( n n -- n ) {: arg:n fam:n :}
-   PARAM-SCR-N @ arg PARAM-SCR+ fam TFAM-NAME$ fam MK-PARAM ;
-TRUSTED: TWX-MK-PARAM2 ( n n n -- n ) {: a:n b:n fam:n :}
-   PARAM-SCR-N @ a PARAM-SCR+ b PARAM-SCR+ fam TFAM-NAME$ fam MK-PARAM ;
+TRUSTED: TWX-MK-PARAM0 ( n -- n )
+   >r PARAM-SCR-N @ r@ TFAM-NAME$ r> MK-PARAM ;
+TRUSTED: TWX-MK-PARAM1 ( n n -- n )
+   >r PARAM-SCR-N @ >r PARAM-SCR+ r> r@ TFAM-NAME$ r> MK-PARAM ;
+TRUSTED: TWX-MK-PARAM2 ( n n n -- n )
+   >r PARAM-SCR-N @ >r >r PARAM-SCR+ r> PARAM-SCR+ r>
+   r@ TFAM-NAME$ r> MK-PARAM ;
 TRUSTED: TWX-P>TYPE ( n -- n ) P>TYPE ;
 TRUSTED: TWX-P>REST ( n -- n ) P>REST ;
 TRUSTED: TWX-CON-OF ( ptr u8 n -- n ) CON-OF ;
