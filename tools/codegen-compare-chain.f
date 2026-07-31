@@ -22,6 +22,14 @@
 \ the same program, which is the strongest tie available until the tape is fed
 \ from the engine's own lexer.
 \
+\ AND WHY IT IS RETYPED WITHOUT ITS FRAME. The line handed to the fixture is
+\ `NAME body…`, not `: NAME body… ;`. That is not an abbreviation: it is the
+\ shape a real tape has. The engine consumes the opening `:` and the closing `;`
+\ before the checker's reader sees anything, so a produced tape carries no frame
+\ row, and src/compiler/native/elaborate.f reads the name/body boundary off the
+\ recorded parser mode instead. Writing the frame here would hand the elaborator
+\ a tape no compilation can produce.
+\
 \ WHY THE RESULT REGISTER IS CHECKED BEFORE ANYTHING IS CALLED. The chain has no
 \ calling-convention binding yet (dot habu-bind-arm64-arg-f76afa3a): a returned
 \ value stays in whichever register computed it. For these shapes that is
@@ -55,11 +63,10 @@ public
    {: c:IR-CTX:ctx in:n out:n regs:n :}
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
    c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b NSRC:ORDINARY-IMM {: im:IR-ARENA:arena :}
    c b NSRC:TAPE {: tp:IR-ARENA:arena :}
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}
-   c b v p r im in out NELAB:COLON drop
+   c b v p r in out NELAB:COLON drop
    c b NSRC:TEXT$ regs NFIX:RUN ;
 
 \ How many bytes of machine code the chain emitted for it.

@@ -10,22 +10,27 @@
 \ reason that is about them rather than about the compiler.
 \
 \ WHAT A FIXTURE STATES AND WHAT THIS FILE DERIVES. The caller states the source
-\ text. This file splits it on spaces and appends one tape token per word: the
-\ first two tokens are read while interpreting, because `:` runs from the outer
-\ interpreter and parses the defined name before it switches the parser to
-\ compiling, and every later token is read while compiling. A run of digits is an
-\ integer literal carrying its value; everything else is a name. Every token's
-\ byte span is its real range in the text, so spans and spellings cannot disagree
-\ with the source, and the module registers those same bytes as its source - which
-\ is what lets the selector check later that the text presented to it is the text
-\ the module was compiled from.
+\ text. This file splits it on spaces and appends one tape token per word: a run
+\ of digits is an integer literal carrying its value, everything else is a name,
+\ and every token's byte span is its real range in the text - so spans and
+\ spellings cannot disagree with the source, and the module registers those same
+\ bytes as its source, which is what lets the selector check later that the text
+\ presented to it is the text the module was compiled from.
 \
-\ WHAT STAYS WITH THE CALLER. The immediate-word contract table is a parameter,
-\ not a fixed part of the rig: the elaboration suite needs tables that are wrong
-\ on purpose - a `:` declared an unmodeled boundary, a `;` never declared, a `;`
-\ declared compile-time rather than intrinsic - and those belong to the suite that
-\ refuses them. ORDINARY-IMM below builds the one honest table, for callers that
-\ want a definition to compile rather than to be refused.
+\ THE TEXT IS A DEFINITION WITHOUT ITS FRAME, BECAUSE THAT IS WHAT A REAL TAPE
+\ HOLDS. The tape a real compilation produces is filled by the checker's own
+\ reader, and the engine hands that reader the definition it RECONSTRUCTED: the
+\ name, the declared signature and the body, with the opening `:` and the closing
+\ `;` already consumed. There is no frame token on a produced tape and there
+\ never will be, so a caller here states `NAME body…` rather than
+\ `: NAME body… ;`. What draws the name/body boundary is the recorded parser
+\ mode, exactly as it does on a produced tape: `:` parses the defined name from
+\ the outer interpreter before it switches the parser to compiling, so the FIRST
+\ token is marked interpreting and every later one compiling. That is the one
+\ fact src/compiler/native/elaborate.f reads the frame from, so a fixture that
+\ marked two tokens interpreting would be describing a tape no producer can make.
+\ test/compiler/native-feed.f measures the same grid on a definition the engine
+\ really compiled.
 \
 \ NOTHING IN THIS FILE ASSERTS. It defines no case and prints nothing: it is a
 \ fixture, not a test, so it never names the harness verdict word and no gate
@@ -134,11 +139,11 @@ private
    loop ;
 
 \ The mode is the token's place in the definition: `:` reads the defined name
-\ before it switches the parser to compiling, so the first two tokens were read
-\ while interpreting and everything after them while compiling.
+\ before it switches the parser to compiling, so the first token - the name - was
+\ read while interpreting and everything after it while compiling.
 : TOKEN, ( IR-CTX:ctx n n n -- )
    {: c:IR-CTX:ctx ix:n st:n ln:n :}
-   ix 2 < if c st ln NTAPE-MODE:INTERPRETING NAME, exit then
+   ix 0= if c st ln NTAPE-MODE:INTERPRETING NAME, exit then
    st ln DIGITS? if
       c st ln NTAPE-MODE:COMPILING st ln VALUE-OF INT, exit
    then
@@ -196,15 +201,6 @@ public
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r HIR-WORD:REGISTER-WORDS
    p r ;
-
-\ The honest immediate-word contract table: both frame words declared the
-\ front-end intrinsics they are.
-: ORDINARY-IMM ( IR-CTX:ctx IR-BUILD:builder -- IR-ARENA:arena )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b IR-BUILD:MODULE-KEY 4 NIMM:NEW {: im:IR-ARENA:arena :}
-   c b im  c b s" :" IR-BUILD:INTERN-SYMBOL  NIMM-CLASS:INTRINSIC NIMM:DECLARE-INTO
-   c b im  c b s" ;" IR-BUILD:INTERN-SYMBOL  NIMM-CLASS:INTRINSIC NIMM:DECLARE-INTO
-   im ;
 
 \ A tape of this module, bound to the text now in TXT and registered as the
 \ module's source, ready for LEX to write into.

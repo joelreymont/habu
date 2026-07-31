@@ -7,11 +7,24 @@
 \ what the compiler built, and this file is the only place that turns one into
 \ the other. It is the first pass of the native chain that translates a program.
 \
-\ WHAT IT TRANSLATES. One colon definition of the straight-line subset: an
-\ opening `:`, the defined name, a body of integer literals, modeled arithmetic
-\ words and compile-time stack renames, and a closing `;`. Nothing else, and no
-\ second definition on the same tape - a tape with tokens after the `;` is
-\ refused rather than half read.
+\ WHAT IT TRANSLATES. One colon definition of the straight-line subset: the
+\ defined name and a body of integer literals, modeled arithmetic words and
+\ compile-time stack renames. Nothing else.
+\
+\ THE UNIT IS THE DEFINITION, AND THAT IS WHY THERE IS NO FRAME TO FIND. The
+\ tape this pass reads is produced by src/compiler/native/feed.f from the
+\ checker's own reader, and that reader never sees a definition frame: the
+\ engine hands the check hook the definition it reconstructed - name, declared
+\ signature, body - with the opening `:` and the closing `;` already consumed.
+\ So there is no `:` row to match and no `;` row to stop at, and there never
+\ will be. What the tape does record is the parser mode each token was consumed
+\ in, and that draws the boundary exactly: `:` parses the defined name from the
+\ outer interpreter before it switches the parser to compiling, so the name is
+\ the one token of a definition read while INTERPRETING and every token of the
+\ body was read while COMPILING. This pass therefore reads the first row as the
+\ name, walks the rest as the body, and ends the body where the tape ends. It
+\ holds no spelling of its own: a program whose compiler spells its definition
+\ frame differently produces the same tape and elaborates the same way.
 \
 \ THE COMPILE-TIME VALUE VECTOR IS THE WHOLE IDEA. Design section 7.3 keeps a
 \ vector of the values the data stack holds at each point of the body, and says
@@ -25,39 +38,41 @@
 \
 \ WHERE THE WORD'S INPUTS COME FROM. The entry block's arguments are the word's
 \ declared inputs, one value each, and they are the vector's contents when the
-\ body starts. At the `;` the vector must hold exactly the declared outputs, and
-\ they become the operands of `hir.return` bottom first - the order the caller's
-\ stack has them.
+\ body starts. When the body ends the vector must hold exactly the declared
+\ outputs, and they become the operands of `hir.return` bottom first - the order
+\ the caller's stack has them.
 \
 \ WHAT THIS PASS IS TOLD RATHER THAN READS. Two facts come in as arguments: how
 \ many values the word takes and how many it leaves. They belong to the checker's
 \ accepted stack effect, which section 7.2 requires the elaborated operations to
-\ correspond to, and the frozen checker environment that will carry it is dot
-\ habu-bind-checker-env-ed4f9f87. Until that lands the caller states the arity
-\ and the elaborator checks the body against it, which is why a body that leaves
-\ the wrong number of values is refused here rather than discovered later. Two
-\ more facts are this file's own for the same reason: the definition frame is
-\ found by the spellings `:` and `;`, and a definition compiles as exported. Dot
-\ habu-bind-the-colon-ea509e61 takes all four off this file and onto the frozen
-\ environment. Linkage and convention need no such dot: a colon definition is a
-\ definition of this module and it is called the Habu way.
+\ correspond to. The checker knows them - it parses the declared signature during
+\ the very scan this tape was recorded from - but it publishes them only through
+\ a name lookup into its live effect store, which answers about whatever word
+\ carries that name now rather than about the definition this tape is. Binding
+\ them to the recorded unit is the frozen checker environment's work, dot
+\ habu-bind-checker-env-ed4f9f87, reached through habu-bind-the-colon-ea509e61.
+\ Until that lands the caller states the arity at ONE seam, COLON's last two
+\ arguments, and the elaborator checks the body against it - which is why a body
+\ that leaves the wrong number of values is refused here rather than discovered
+\ later. One more fact is this file's own for the same reason: a definition
+\ compiles as exported, while whether it is visible outside its package is the
+\ package system's fact, and the same dot moves it. Linkage and convention need
+\ no such dot: a colon definition is a definition of this module and it is called
+\ the Habu way.
 \
-\ WHY IT ASKS FOUR AUTHORITIES AND OWNS NONE OF THEM. The tape says what the
-\ tokens are; src/compiler/native/immediate.f says whether the two frame words
-\ may be compiled at all; src/compiler/native/hir-word.f says what each body word
-\ means, and for a rename says exactly which values it puts back;
-\ src/compiler/ir/build.f's schema readers say how many operands an opcode takes
-\ and how many results it defines. This file repeats none of those facts. It owns
-\ the value vector, the shape of a definition on a tape, and the parser mode each
-\ of its tokens must have been read in - and nothing else.
+\ WHY IT ASKS THREE AUTHORITIES AND OWNS NONE OF THEM. The tape says what the
+\ tokens are and which mode each was read in; src/compiler/native/hir-word.f says
+\ what each body word means, and for a rename says exactly which values it puts
+\ back; src/compiler/ir/build.f's schema readers say how many operands an opcode
+\ takes and how many results it defines. This file repeats none of those facts.
+\ It owns the value vector and the shape of a definition on a tape - and nothing
+\ else.
 \
-\ THE PARSER MODE IS CHECKED, NOT DECORATION. `:` runs from the outer interpreter
-\ and parses the defined name before it switches the parser to compiling, so both
-\ of the first two tokens were read while interpreting; every token of the body,
-\ and the `;` that ends it, was read while compiling. The tape records the mode
-\ each token was consumed in, so those are facts this pass can check instead of
-\ assume, and a producer that disagrees is refused loudly rather than compiled
-\ into something else.
+\ THE PARSER MODE IS CHECKED, NOT DECORATION. The mode is what the frame reading
+\ above rests on, so it is verified at every row and not sampled: the first row
+\ must say interpreting and every later row must say compiling. A tape with a
+\ second interpreting row is a tape of something other than one definition, and
+\ it is refused loudly rather than compiled into something else.
 \
 \ WHAT A REFUSAL LEAVES BEHIND. A refused elaboration leaves the builder holding
 \ whatever function, block and operation stages it had opened. That is the
@@ -84,7 +99,6 @@ require src/compiler/ir/type.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/tape.f
-require src/compiler/native/immediate.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
 
@@ -233,13 +247,16 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
 \ vector has to hold exactly as many as the word declares - one too few or one
 \ too many is a body that does not match its effect, and it is refused here
 \ rather than turned into a return of the wrong width. `hir.return` declares a
-\ variadic operand tail, so the count is the word's and not the opcode's.
-: EMIT-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
+\ variadic operand tail, so the count is the word's and not the opcode's. The
+\ return has no token of its own on a produced tape - the `;` that used to carry
+\ it was consumed before the checker read anything - so it answers for the span
+\ of the definition's name, which is the definition itself.
+: EMIT-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
-      ix:n out:n :}
+      out:n :}
    VN @ out <> if E-NELAB-ARITY throw then
    c b HIR-OPCODE:RETURN HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
-   c b v key ix op OPEN
+   c b v key 0 op OPEN
    out 0 ?do
       c b  i VAT  IR-BUILD:ADD-OPERAND
    loop
@@ -253,31 +270,6 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
 : MODE-CK ( IR-ARENA:view n NTAPE:mode -- )
    {: v:IR-ARENA:view ix:n want:NTAPE:mode :}
    v ix NTAPE:MODE@ want NTAPE-MODE:EQ 0= if E-NELAB-MODE throw then ;
-
-\ Is this token spelled exactly these bytes? Byte equality against the module's
-\ own interner, which appends nothing - asking the interner for the identity of
-\ the bytes would mint a symbol when they are absent, and reading a tape must not
-\ change the module it is read into.
-: SPELLED? ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n ptr u8 n -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
-      ix:n a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   c b  v key ix NTAPE:SPELL@  a u IR-BUILD:SYMBOL-IS? ;
-
-\ A frame word must be a declared front-end intrinsic. `compile-time` is a
-\ different contract - an immediate that may run during elaboration and reach the
-\ program only through the builder - and opening or closing a definition is not
-\ that, so it is refused by name rather than admitted as near enough.
-: FRAME-CK ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena n -- )
-   NIMM:ADMIT-TOKEN NIMM-CLASS:INTRINSIC NIMM-CLASS:EQ
-   0= if E-NELAB-IMMEDIATE throw then ;
-
-\ The token that ends the definition. A literal is never it, whatever it is
-\ spelled, so the kind is asked before the spelling.
-: END-TOKEN? ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- bool )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
-      ix:n :}
-   v ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
-   c b v key ix s" ;" SPELLED? ;
 
 \ ---- the walk ----------------------------------------------------------------
 variable IX                          \ the body token the walk stands on
@@ -298,15 +290,16 @@ variable IX                          \ the body token the walk stands on
       unmodeled OF E-HIR-UNMODELED throw ENDOF
    ;MATCH ;
 
-\ Walk the body until the closing `;`, and leave the walk standing on it. A tape
-\ that runs out first is not a definition at all.
+\ Walk the body: every row after the name, to the end of the tape. The tape's
+\ end is the definition's end, because the tape IS one definition - the unit the
+\ producer opened and sealed around one scan - so there is nothing to look for
+\ and nothing can follow.
 : WALK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
       r:IR-ARENA:arena key:IR-ID:ir-module-key n:n :}
-   2 IX !
+   1 IX !
    begin
-      IX @ n >= if E-NELAB-SHAPE throw then
-      c b v key IX @ END-TOKEN? 0=
+      IX @ n <
    while
       c b v p r key IX @ STEP
       IX @ 1+ IX !
@@ -334,17 +327,18 @@ variable IX                          \ the body token the walk stands on
 : OPEN-FUN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       in:n out:n :}
-   c b  v key 1 NTAPE:SPELL@  IR-BUILD:BEGIN-FUN
+   c b  v key 0 NTAPE:SPELL@  IR-BUILD:BEGIN-FUN
    c b  c b in out SIGNATURE  IR-BUILD:SET-SIGNATURE
    c b IR--FUN-LINKAGE:DEFINED IR-BUILD:SET-LINKAGE
    c b IR--FUN-VISIBILITY:EXPORTED IR-BUILD:SET-VISIBILITY
    c b IR--FUN-CONVENTION:HABU IR-BUILD:SET-CONVENTION
-   c b  v key 1 NTAPE:SPAN@  IR-BUILD:SET-FUN-SPAN ;
+   c b  v key 0 NTAPE:SPAN@  IR-BUILD:SET-FUN-SPAN ;
 
 \ The entry block, whose arguments are the word's inputs and whose span is the
-\ `:` that opened the definition. The arguments enter the value vector in
-\ declaration order, so the first input is the deepest value, exactly as the
-\ caller's stack has them.
+\ definition's name - the only token a produced tape has that stands for the
+\ definition as a whole. The arguments enter the value vector in declaration
+\ order, so the first input is the deepest value, exactly as the caller's stack
+\ has them.
 : OPEN-BLOCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       in:n :}
@@ -355,52 +349,35 @@ variable IX                          \ the body token the walk stands on
       c b  c b CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop ;
 
-\ The two frame tokens, read before anything is built: the opener is the
-\ intrinsic `:` read while interpreting, and the token after it is the name the
-\ definition gives, read while interpreting too because `:` parses it before it
-\ switches the parser to compiling.
-: FRAME-READ ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
-      im:IR-ARENA:arena :}
+\ The one row the definition frame is: the name the definition gives, read while
+\ the parser was still interpreting because `:` parses it before it switches the
+\ parser to compiling. A tape whose first row is a literal names nothing, and one
+\ whose first row was read while compiling is not a top-level definition at all.
+: NAME-READ ( IR-ARENA:view -- )
+   {: v:IR-ARENA:view :}
    v 0 NAME-CK
-   v 0 NTAPE-MODE:INTERPRETING MODE-CK
-   c b v key 0 s" :" SPELLED? 0= if E-NELAB-SHAPE throw then
-   v key im 0 FRAME-CK
-   v 1 NAME-CK
-   v 1 NTAPE-MODE:INTERPRETING MODE-CK ;
-
-\ The closing `;`: the same contract check the opener gets, then the return that
-\ hands the word's outputs over, and then the rule that this tape held one
-\ definition and nothing after it.
-: FRAME-CLOSE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena n n -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
-      im:IR-ARENA:arena out:n n:n :}
-   v IX @ NTAPE-MODE:COMPILING MODE-CK
-   v key im IX @ FRAME-CK
-   c b v key IX @ out EMIT-RETURN
-   IX @ 1+ n <> if E-NELAB-SHAPE throw then ;
+   v 0 NTAPE-MODE:INTERPRETING MODE-CK ;
 
 public
 
 \ Elaborate the one colon definition this sealed tape holds, and answer the
 \ function it became. The arenas are, in order, the tape's sealed view, the word
-\ model's pick pool, the word model's rows, and the immediate-word contract
-\ table; the two counts are the values the word takes and the values it leaves.
-\ Every identity read off the tape is checked against this builder's module by
-\ the table that owns it, so a tape of another module cannot be elaborated into
-\ this one.
-: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
+\ model's pick pool and the word model's rows; the two counts are the values the
+\ word takes and the values it leaves. Every identity read off the tape is
+\ checked against this builder's module by the table that owns it, so a tape of
+\ another module cannot be elaborated into this one.
+: COLON ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ARENA:arena IR-ARENA:arena n n -- IR-ID:ir-fun-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view p:IR-ARENA:arena
-      r:IR-ARENA:arena im:IR-ARENA:arena in:n out:n :}
+      r:IR-ARENA:arena in:n out:n :}
    in out ARITY-CK
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    v NTAPE:TOKENS {: n:n :}
-   n 3 < if E-NELAB-SHAPE throw then
-   c b v key im FRAME-READ
+   n 1 < if E-NELAB-SHAPE throw then
+   v NAME-READ
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK
    c b v p r key n WALK
-   c b v key im out n FRAME-CLOSE
+   c b v key out EMIT-RETURN
    c b IR-BUILD:END-BLOCK drop
    c b IR-BUILD:END-FUN ;
 

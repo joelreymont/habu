@@ -728,16 +728,32 @@ the check hook the definition it rebuilt - name, declared signature, body - with
 the opening `:` and closing `;` already consumed, backslash comments gone and
 whitespace runs collapsed. So the tape's source is that text, spans are offsets
 into it, a parenthesised comment is not a token, and a string or character
-literal's payload is not a token either, because the reader steps over both.
-Three consequences are open work: the produced tape has no `:`/`;` rows for
-section 7.2's elaborator to find (`habu-reconcile-the-produced-26737779`, with
-`habu-bind-the-colon-ea509e61`), literal payloads never reach the tape's
-`string-literal` and `char-literal` kinds (`habu-put-str-and-0750ac90`), and a
-recorded unit is not yet tied to the file it came from
+literal's payload is not a token either, because the reader steps over both. The
+consequence for section 7.2 is settled rather than open: a produced tape has no
+frame rows at all, so the elaborator stopped looking for them and reads the
+definition frame off the recorded modes instead - `:` parses the defined name
+from the outer interpreter before switching, so the name is the one token
+recorded as consumed while INTERPRETING and every body token as consumed while
+COMPILING. Two consequences are still open work: literal payloads never reach the
+tape's `string-literal` and `char-literal` kinds (`habu-put-str-and-0750ac90`),
+and a recorded unit is not yet tied to the file it came from
 (`habu-bind-a-recorded-78d51725`). A literal's value is read back from its
 spelling and every spelling that reader declines is refused rather than recorded
 as something else, until the engine's own parser is reachable
 (`habu-record-the-engine-79c570ed`).
+
+**A unit keeps the text it recorded, because nothing else does.** `IR-SOURCE`
+stores a source's length and the digest of its bytes, never the bytes, and the
+buffer the checker read from is the engine's own scratch - refilled by the next
+definition the process compiles. A later stage that must present the same text
+again, as instruction selection does when it carries spans into a second module,
+would otherwise have to reconstruct it and hope. So a unit is opened with a byte
+buffer the caller owns and the scan is copied into it as it opens; the caller
+reads the recorded length back off the frozen source registry, and every stage
+that presents those bytes is checked against the registry's content digest, so
+the copy is proved rather than trusted. A definition whose text is longer than
+the committed buffer is refused (`E-NFEED-TEXT`) rather than truncated, on the
+same terms as a tape too small for its tokens.
 
 ### 7.2 Stage N1: HIR — resolved Habu IR
 
@@ -845,6 +861,51 @@ from it cannot today be two halves of the same module, and the word model cannot
 ask the interner whether a presented symbol was really interned. Dot
 `habu-expose-live-ir-f0eaed6b` tracks the live readers that close all of that;
 the elaborator needs them.
+
+#### As implemented: the elaborator
+
+`src/compiler/native/elaborate.f` (package `NELAB`) walks one sealed source tape
+and builds the operations of a colon definition into a module under
+construction. Two decisions govern what it may read.
+
+**The definition frame is the recorded parser mode, not a spelling.** A produced
+tape has no `:` row and no `;` row - the engine consumed both before the checker
+saw anything - so an elaborator that matched those spellings could only ever
+elaborate tapes a test had built for it. What the tape does record is the mode
+each token was consumed in, and that draws the boundary exactly: `:` parses the
+defined name from the outer interpreter before switching the parser to
+compiling, so the name is the one token read while INTERPRETING and every body
+token was read while COMPILING. The elaborator therefore reads row zero as the
+name, walks every later row as the body, and ends the body where the tape ends -
+because the tape IS one definition, the unit `NFEED` opened and sealed around one
+scan. It holds no spelling of its own, so a compiler that spells its definition
+frame differently produces the same tape and elaborates the same way. Every row
+is mode-checked, not sampled: a second interpreting row is a tape of something
+other than one definition and is refused (`E-NELAB-MODE`). Two refusals retired
+with the frame: there is no frame word left whose immediate contract could be
+wrong, and no token can follow the definition.
+
+**The declared arity is still the caller's, at one seam.** Section 7.2 requires
+the elaborated operations to correspond to an accepted, source-bound checker
+certificate, and the checker does parse the declared signature during the very
+scan the tape was recorded from. But it publishes an effect only through a
+lookup by NAME into its live effect store (`EFFECT-QUERY` and the `EFFECT-*`
+readers in `src/core/checker.f`), which answers about whichever word carries that
+name at the moment of the call rather than about the definition a given tape is -
+a binding by lucky timing, not by structure. Binding the accepted effect to the
+recorded unit belongs to the frozen checker environment,
+`habu-bind-checker-env-ed4f9f87`, reached through `habu-bind-the-colon-ea509e61`;
+the same dot owns the definition's visibility, which is fixed to exported here
+while the package system is its real authority. Until then `NELAB:COLON` takes
+the two counts as its last two arguments and checks the body against them, so a
+body that leaves the wrong number of values is refused at elaboration rather than
+discovered later.
+
+`test/compiler/native-chain.f` is the acceptance for both: it hands one colon
+definition to `evaluate`, takes the tape the engine's own check hook produced,
+and carries it through elaboration, selection, allocation, validation and
+emission to instruction words it then publishes and calls, comparing the routine's
+answer with the interpreted word's. Nothing in that run is hand-built.
 
 ### 7.3 Stage N2: SIR — stack SSA
 

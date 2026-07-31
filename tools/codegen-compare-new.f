@@ -172,13 +172,20 @@ private
 \ effect the elaborator is still handed as two counts, and the pinned inputs the
 \ old column used. Nothing below catches: a refusal here means this file claimed
 \ a word was expressible when it is not.
+\
+\ The line is the definition WITHOUT its frame - `ADD3 + +`, not `: ADD3 + + ;` -
+\ because that is the shape a real tape has: the engine consumes the opening `:`
+\ and the closing `;` before the checker's reader sees a token, so a produced tape
+\ carries no frame row and the elaborator reads the name/body boundary off the
+\ recorded parser mode. The comment above each body shows the corpus word as it
+\ is really written, so the two can still be held side by side.
 
 \ `: NOOP ( -- ) ;` - the calibration row. It returns nothing, so it has no
 \ result register to check and no output to compare; what it measures is the
 \ floor of a call on this path, which every other new row is divided by.
 : NOOP-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" : NOOP ;" NSRC:TEXT!
+   s" NOOP" NSRC:TEXT!
    c 0 0 REGS CODEGEN-CHAIN:CHAIN
    CODEGEN-CHAIN:PUBLISH!
    s" CODEGEN-CORPUS:NOOP" CODEGEN-CHAIN:BYTES
@@ -190,7 +197,7 @@ private
 \ `: ADD3 ( n n n -- n ) + + ;`
 : ADD3-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" : ADD3 + + ;" NSRC:TEXT!
+   s" ADD3 + +" NSRC:TEXT!
    c 3 1 REGS CODEGEN-CHAIN:CHAIN
    CODEGEN-CHAIN:RESULT-CK
    CODEGEN-CHAIN:PUBLISH!
@@ -204,7 +211,7 @@ private
 \ operations, and the renames are where the new chain stops paying.
 : SQUARE-SUM-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" : SQUARE-SUM dup * swap dup * + ;" NSRC:TEXT!
+   s" SQUARE-SUM dup * swap dup * +" NSRC:TEXT!
    c 2 1 REGS CODEGEN-CHAIN:CHAIN
    CODEGEN-CHAIN:RESULT-CK
    CODEGEN-CHAIN:PUBLISH!

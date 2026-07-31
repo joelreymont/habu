@@ -310,6 +310,13 @@ SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
 
+\ The native chain's end-to-end run: source text through the real compile path
+\ to executed machine code. It runs after the leaves it composes, so a red here
+\ with green leaves means the leaves disagree with each other.
+SUITE compiler-native-chain
+   test/compiler/native-chain.f
+;SUITE
+
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
 \ and spawns child engines, so it runs here in the standalone stdlib gate and is
 \ documented manual-gate in tools/suite-coverage-lint-core.f, not mirrored into

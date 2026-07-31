@@ -53,6 +53,13 @@ UNITS TYPED-BUFFER T-MOD IR-BUILD:module
 UNITS TYPED-BUFFER T-TAPE IR-ARENA:view
 UNITS TYPED-BUFFER T-RES NCERT:result
 
+\ The buffer a unit keeps its scanned text in. A unit is opened with it, the
+\ producer copies the reader's text into it, and a case reads the recorded
+\ length back off the frozen source registry - so the bytes stay readable after
+\ the engine's own scratch has been refilled by the next compilation.
+256 constant TEXT-CAP
+create UTXT TEXT-CAP allot
+
 : KEY@ ( n -- IR-ID:ir-module-key )  T-KEY @ ;
 : MOD@ ( n -- IR-BUILD:module )      T-MOD @ ;
 : TAPE@ ( n -- IR-ARENA:view )       T-TAPE @ ;
@@ -73,7 +80,7 @@ UNITS TYPED-BUFFER T-RES NCERT:result
    c NEW-BLD {: b:IR-BUILD:builder :}
    b IR-BUILD:MODULE-KEY slot T-KEY !
    c b IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
-   c b tp NFEED:BEGIN-UNIT
+   c b tp UTXT TEXT-CAP NFEED:BEGIN-UNIT
    a u EV
    NFEED:END-UNIT  slot T-RES !  slot T-TAPE !
    c b IR-BUILD:FREEZE slot T-MOD ! ;
@@ -235,6 +242,33 @@ UNITS TYPED-BUFFER T-RES NCERT:result
    s" the recorded source is the reconstructed definition" T-LABEL
    BND [: TRIM-BODY ;] IR-CTX:WITH-CONTEXT
    2 T= 19 T= ;
+
+\ ---- the text the unit kept --------------------------------------------------
+\ The buffer a unit is opened with has to still hold the recorded definition
+\ after the engine has compiled something else, because that is the whole reason
+\ for copying: IR-SOURCE stores a length and a digest, never the bytes, and the
+\ text the reader handed over lives in the engine's own scratch. So this case
+\ records one definition, compiles a SECOND one outside any unit, and only then
+\ asks whether the buffer still digests to what the registry recorded. Delete the
+\ copy in NFEED:ON-SCAN and this goes red, because the registry would then be
+\ bound to bytes nobody kept.
+: KEPT-DIGEST? ( n -- bool )
+   {: slot:n :}
+   slot SRC@  slot RES@ NCERT:SOURCE  IR-SOURCE:FDIGEST@
+   UTXT slot SRC-LEN CDIGEST:COMPUTE
+   CDIGEST-DIGEST:EQ ;
+
+: KEPT-BODY ( IR-CTX:ctx -- n bool )
+   {: c:IR-CTX:ctx :}
+   c s" : NF-KEPT ( n -- n ) 4 * ;" 0 REC
+   s" : NF-AFTER ( n -- n ) 9 + ;" EV
+   0 SRC-LEN
+   0 KEPT-DIGEST? ;
+
+: KEPT-CASE ( -- )
+   s" the unit's buffer still holds the recorded text after a later compilation" T-LABEL
+   BND [: KEPT-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE 23 T= ;
 
 \ ---- hostile fixtures --------------------------------------------------------
 \ A spelling inside a parenthesised comment is text the reader steps over, so
@@ -434,10 +468,22 @@ here CELL 1- and CELL swap - CELL 1- and allot
    c NEW-BLD {: b:IR-BUILD:builder :}
    c b IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
    c 0 U-CTX !  b 0 U-BLD !  tp 0 U-TP !
-   c b tp NFEED:BEGIN-UNIT ;
+   c b tp UTXT TEXT-CAP NFEED:BEGIN-UNIT ;
+
+\ A unit opened with a buffer too small for the definition it is about to see.
+\ Eight bytes is past the name alone, so the refusal is the producer's own and
+\ not a zero-length special case.
+8 constant TINY-CAP
+create UTXT-TINY TINY-CAP allot
+
+: OPEN-TINY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c NEW-BLD {: b:IR-BUILD:builder :}
+   c b IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
+   c b tp UTXT-TINY TINY-CAP NFEED:BEGIN-UNIT ;
 
 : REOPEN-SCRATCH ( -- )
-   0 U-CTX @  0 U-BLD @  0 U-TP @  NFEED:BEGIN-UNIT ;
+   0 U-CTX @  0 U-BLD @  0 U-TP @  UTXT TEXT-CAP NFEED:BEGIN-UNIT ;
 
 \ One unit is one scan. A second definition inside the same unit is a second
 \ token stream, and blending the two into one tape is exactly what this refusal
@@ -497,6 +543,18 @@ here CELL 1- and CELL swap - CELL 1- and allot
 : REAL ( -- )
    BND [: REAL-BODY ;] IR-CTX:WITH-CONTEXT throw ;
 
+\ A definition whose reconstructed text does not fit the buffer the unit was
+\ opened with. The producer refuses the scan rather than recording spans into
+\ bytes it could not keep.
+: BIGTEXT-BODY ( IR-CTX:ctx -- n )
+   OPEN-TINY
+   s" : NF-TOOBIG ( n -- n ) 2 * ;" EV-CATCH {: rc:n :}
+   NFEED:ABANDON-UNIT
+   rc ;
+
+: BIGTEXT ( -- )
+   BND [: BIGTEXT-BODY ;] IR-CTX:WITH-CONTEXT throw ;
+
 \ A token event that lies about where its bytes were read is refused. The event
 \ surface is reachable only from an unchecked boundary - no checked caller can
 \ name it, because it carries no prim axiom - so this fixture is the forge that
@@ -526,7 +584,7 @@ TRUSTED: FAKE-TOKEN ( ptr u8 n n n -- ) CHECKER-TAPE:TOKEN ;
    c NEW-BLD {: b:IR-BUILD:builder :}
    c NEW-BLD {: b2:IR-BUILD:builder :}
    c b2 IR-BUILD:MODULE-KEY 32 NTAPE:NEW {: tp:IR-ARENA:arena :}
-   c b tp NFEED:BEGIN-UNIT
+   c b tp UTXT TEXT-CAP NFEED:BEGIN-UNIT
    s" : NF-XMOD ( -- n ) 1 ;" EV-CATCH {: rc:n :}
    NFEED:ABANDON-UNIT
    rc ;
@@ -560,6 +618,8 @@ TRUSTED: FAKE-TOKEN ( ptr u8 n n n -- ) CHECKER-TAPE:TOKEN ;
    [: HEX ;] E-NFEED-LITERAL TTHROWSQ
    s" a float literal is refused: this stage has no kind for it" T-LABEL
    [: REAL ;] E-NFEED-KIND TTHROWSQ
+   s" a definition longer than the unit's text buffer is refused" T-LABEL
+   [: BIGTEXT ;] E-NFEED-TEXT TTHROWSQ
    s" a token event that lies about its offset is refused" T-LABEL
    [: LIAR ;] E-NFEED-SPAN TTHROWSQ
    s" a tape and a builder of two modules die on the owner check" T-LABEL
@@ -577,6 +637,7 @@ public
    TRIM-CASE
    HIDE-COMMENT-CASE
    HIDE-STRING-CASE
+   KEPT-CASE
    BIND-CASE
    CROSS-CASES
    LITBYTE-CASE

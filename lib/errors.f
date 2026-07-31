@@ -755,14 +755,15 @@ public
 \ the operations of a colon definition into a live module. Everything the
 \ elaborator asks another authority stays that authority's refusal - a word the
 \ dialect cannot compile is E-HIR-UNMODELED, a token kind the subset does not
-\ model is E-HIR-KIND, an immediate with no contract is E-NIMM-UNMODELED, and a
-\ malformed operation is IR-OP's - so these six codes are only the facts the
-\ elaborator alone can judge: the shape of the definition on the tape, the
-\ parser mode each of its tokens was consumed in, the contract class its frame
-\ words need, and the compile-time value vector.
--8300 constant E-NELAB-SHAPE     \ a tape that is not exactly one colon definition: no opening `:`, no defined name, no closing `;`, or tokens after it
--8301 constant E-NELAB-MODE      \ a definition token consumed in the wrong parser mode for its place: the frame outside interpreting, or a body word outside compiling
--8302 constant E-NELAB-IMMEDIATE \ a definition-frame word whose immediate contract is not the intrinsic class
+\ model is E-HIR-KIND, and a malformed operation is IR-OP's - so these five
+\ codes are only the facts the elaborator alone can judge: the shape of the
+\ definition on the tape, the parser mode each of its tokens was consumed in,
+\ the declared arity, and the compile-time value vector. -8302 was the frame
+\ word's immediate contract, which the elaborator no longer judges: a produced
+\ tape carries no frame token to classify, so the code is retired rather than
+\ reused.
+-8300 constant E-NELAB-SHAPE     \ a tape that is not one colon definition: no tokens at all, or a first token that is not the defined name
+-8301 constant E-NELAB-MODE      \ a definition token consumed in the wrong parser mode for its place: the name outside interpreting, or a body word outside compiling
 -8303 constant E-NELAB-ARITY     \ a declared input or output count outside the accepted range, or a body that does not leave exactly the declared outputs
 -8304 constant E-NELAB-UNDER     \ a word consuming more values than the compile-time value vector holds
 -8305 constant E-NELAB-CAP       \ a compile-time value vector past the elaborator's ceiling
@@ -862,17 +863,19 @@ public
 \
 \ The producer that fills a source tape from the checker's own reader. Refusals
 \ another authority owns keep that authority's name - a tape that is full is
-\ E-NTAPE-CAP, a span outside its source is IR-SOURCE's - so these six are the
-\ facts the producer alone can judge: whether a unit is open, whether the scan
-\ that reached it is the unit's own, whether the token it was handed really is
-\ the bytes at the offset it claims, and whether this stage can record the
-\ token at all.
+\ E-NTAPE-CAP, a span outside its source is IR-SOURCE's - so these seven are
+\ the facts the producer alone can judge: whether a unit is open, whether the
+\ scan that reached it is the unit's own, whether the token it was handed
+\ really is the bytes at the offset it claims, whether the text the reader
+\ handed over fits the buffer the caller committed, and whether this stage can
+\ record the token at all.
 -8400 constant E-NFEED-STATE    \ a producer word reached in a state that has no meaning for it: no unit open, a unit still scanning, or a second unit over a live one
 -8401 constant E-NFEED-SCAN     \ a second or foreign reader scan reached an open unit: one unit is one scan
 -8402 constant E-NFEED-SPAN     \ a token whose bytes are not the bytes at the offset it claims, or that leaves the scanned text
 -8403 constant E-NFEED-ORDER    \ an append answered an ordinal other than the next one: the tape gained a row this producer did not write
 -8404 constant E-NFEED-KIND     \ a token class this stage has no tape kind for
 -8405 constant E-NFEED-LITERAL  \ an integer literal whose value this stage cannot read back
+-8406 constant E-NFEED-TEXT     \ a scan whose text is longer than the buffer the unit was opened with
 
 \ The source-bound checking result (package NCERT): -8410..-8419
 \

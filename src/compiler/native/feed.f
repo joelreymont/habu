@@ -32,21 +32,34 @@
 \ what CHECK-SCAN consumed - a parenthesised comment is not a token, and a
 \ string or character literal's payload is not a token either, because the
 \ reader steps over both. A later stage that needs those bytes needs a reader
-\ that consumes them; it must not guess them from this tape. Three consequences
-\ are open work rather than hidden: a produced tape has no `:` and `;` rows for
-\ the elaborator to find its definition frame by
-\ (habu-reconcile-the-produced-26737779), a literal payload never reaches the
-\ tape's string-literal and char-literal kinds (habu-put-str-and-0750ac90), and
-\ a recorded unit is not yet tied to the file it came from
-\ (habu-bind-a-recorded-78d51725).
+\ that consumes them; it must not guess them from this tape. The opening `:`
+\ and the closing `;` are gone before the checker sees anything, so a produced
+\ tape has no frame rows at all and the elaborator reads the definition frame
+\ off the recorded modes instead - the name is the one token consumed while
+\ interpreting. Two consequences are still open work rather than hidden: a
+\ literal payload never reaches the tape's string-literal and char-literal
+\ kinds (habu-put-str-and-0750ac90), and a recorded unit is not yet tied to the
+\ file it came from (habu-bind-a-recorded-78d51725).
 \
-\ WHAT IT REFUSES. A foreign or second scan, a token whose bytes are not the
-\ bytes at the offset it claims, an append that lands anywhere but the next
-\ ordinal, a literal class this stage has no tape kind for, and an integer
-\ literal whose value it cannot read back. Refusals another authority owns keep
-\ that authority's name: a full tape is E-NTAPE-CAP, a span outside its source
-\ is IR-SOURCE's, and a tape that belongs to another module than the builder is
-\ NTAPE's own owner check at the first token.
+\ WHY THE UNIT KEEPS THE TEXT. IR-SOURCE records a source as its length and the
+\ digest of its bytes, never the bytes, and the buffer the checker read from is
+\ the engine's own scratch - it is refilled by the next definition the process
+\ compiles. A later stage that has to present the same text again, as
+\ instruction selection does when it carries the spans into a second module,
+\ would therefore have to reconstruct it from the source it came from and hope.
+\ So a unit is opened with a byte buffer the caller owns, the scan is copied
+\ into it as it opens, and the caller reads the length back off the frozen
+\ source registry. The copy is not taken on trust either: every stage that
+\ presents these bytes is checked against the registry's content digest.
+\
+\ WHAT IT REFUSES. A foreign or second scan, a scan longer than the caller's
+\ text buffer, a token whose bytes are not the bytes at the offset it claims,
+\ an append that lands anywhere but the next ordinal, a literal class this
+\ stage has no tape kind for, and an integer literal whose value it cannot read
+\ back. Refusals another authority owns keep that authority's name: a full tape
+\ is E-NTAPE-CAP, a span outside its source is IR-SOURCE's, and a tape that
+\ belongs to another module than the builder is NTAPE's own owner check at the
+\ first token.
 \
 \ WHAT IT DOES NOT DECIDE. What a token means, whether the definition is well
 \ typed, and what the verdict should be. It classifies nothing itself: the
@@ -85,19 +98,20 @@ here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER F-TAPE IR-ARENA:arena
 1 TYPED-BUFFER F-SID IR-ID:ir-source-id
 variable F-STATE     ST-IDLE F-STATE !
-variable F-BASE                        \ the scanned text, as the reader handed it over
-variable F-LEN
+variable F-TXT                         \ the caller's buffer, holding the text the reader scanned
+variable F-CAP                         \ how many bytes that buffer holds
+variable F-LEN                         \ how many it was handed
 variable F-N                           \ rows appended so far
 variable F-VERDICT
 
-: BASE-FIELD ( -- ptr ptr u8 )
-   F-BASE 0 ptr-field ;
+: TXT-FIELD ( -- ptr ptr u8 )
+   F-TXT 0 ptr-field ;
 
-: BASE@ ( -- ptr u8 )
-   BASE-FIELD @ ;
+: TXT@ ( -- ptr u8 )
+   TXT-FIELD @ ;
 
-: BASE! ( ptr u8 -- )
-   BASE-FIELD ! ;
+: TXT! ( ptr u8 -- )
+   TXT-FIELD ! ;
 
 : CTX ( -- IR-CTX:ctx )          0 F-CTX @ ;
 : BLD ( -- IR-BUILD:builder )    0 F-BLD @ ;
@@ -110,13 +124,14 @@ variable F-VERDICT
 \ ---- one token ---------------------------------------------------------------
 \ The offset the reader reports and the bytes it hands over have to be the same
 \ token, or every span on this tape is a claim about bytes nobody compared. The
-\ check is one string compare against the text the scan opened with, and it is
-\ what lets a reader change position without silently relabelling the tape.
+\ check is one string compare against the KEPT text - the copy later stages
+\ present - so it proves the offset honest and the copy faithful in one step,
+\ and it lets a reader change position without silently relabelling the tape.
 : BYTES-CK ( ptr u8 n n -- ) {: a:ptr u:n off:n :}
    u 1 < if E-NFEED-SPAN throw then
    off 0 < if E-NFEED-SPAN throw then
    off u + F-LEN @ > if E-NFEED-SPAN throw then
-   BASE@ off + u  a u  STR= 0= if E-NFEED-SPAN throw then ;
+   TXT@ off + u  a u  STR= 0= if E-NFEED-SPAN throw then ;
 
 \ The parser mode the token was consumed in. `:` runs from the outer
 \ interpreter and parses the defined name before the parser switches to
@@ -172,10 +187,15 @@ variable F-VERDICT
    F-N @ <> if E-NFEED-ORDER throw then ;
 
 \ ---- what the reader calls ---------------------------------------------------
+\ The text is copied into the caller's buffer before it is registered, so the
+\ registry's content digest is taken over the bytes that were kept rather than
+\ over bytes nothing will hold on to.
 : ON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
    F-STATE @ ST-ARMED <> if E-NFEED-SCAN throw then
-   CTX BLD a u IR-BUILD:ADD-SOURCE 0 F-SID !
-   a BASE!  u F-LEN !
+   u F-CAP @ > if E-NFEED-TEXT throw then
+   a TXT@ u BYTE-COPY
+   u F-LEN !
+   CTX BLD TXT@ u IR-BUILD:ADD-SOURCE 0 F-SID !
    ST-SCANNING F-STATE ! ;
 
 : ON-TOKEN ( ptr u8 n n n n -- ) {: a:ptr u:n off:n kind:n first:n :}
@@ -190,26 +210,32 @@ variable F-VERDICT
 : ON-DONE ( ptr u8 n n -- ) {: a:ptr u:n verdict:n :}
    ST-SCANNING STATE-CK
    u F-LEN @ <> if E-NFEED-SCAN throw then
-   BASE@ F-LEN @  a u  STR= 0= if E-NFEED-SCAN throw then
+   TXT@ F-LEN @  a u  STR= 0= if E-NFEED-SCAN throw then
    verdict F-VERDICT !
    ST-DONE F-STATE ! ;
 
+\ The text buffer is the caller's, so what is cleared here is this producer's
+\ hold on it and not its contents: a caller that read the recorded length off
+\ the frozen registry still owns the bytes it committed.
 : CLEAR ( -- )
-   0 F-N !  0 F-LEN !  0 F-VERDICT !
+   0 F-N !  0 F-LEN !  0 F-CAP !  0 F-VERDICT !
    ST-IDLE F-STATE ! ;
 
 public
 
-\ Open a unit: this context, this module under construction, this tape. The
-\ tape's ceiling is the caller's commitment - a definition with more tokens
-\ than it holds is refused by NTAPE with its own capacity error rather than
-\ truncated here.
-: BEGIN-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena :}
+\ Open a unit: this context, this module under construction, this tape, and the
+\ buffer the scanned text is kept in. Both ceilings are the caller's
+\ commitment - a definition with more tokens than the tape holds is refused by
+\ NTAPE with its own capacity error, and one whose text is longer than the
+\ buffer is refused here, rather than either being truncated.
+: BEGIN-UNIT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena ptr u8 n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder tp:IR-ARENA:arena txt cap:n :} \ typed-local-lint: allow-bare-local - txt keeps the ptr u8 byte-span role
    ST-IDLE STATE-CK
+   cap 0 < if E-NFEED-TEXT throw then
    c 0 F-CTX !
    b 0 F-BLD !
    tp 0 F-TAPE !
+   txt TXT!  cap F-CAP !
    0 F-N !  0 F-LEN !  0 F-VERDICT !
    ST-ARMED F-STATE !
    CHECKER-TAPE:ARM ;

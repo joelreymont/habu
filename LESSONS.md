@@ -1,6 +1,6 @@
 # Lessons
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 Durable, transferable rules only — "when X, do/never Y because Z", with the
 specific word / path / constant / error kept. Coding standards live in
@@ -1044,6 +1044,23 @@ fits.
   repo-global operations (rebases, bookmark moves, workspace forgets) to the
   minimum while a lane is mid-implementation. The report-everything discipline
   saved the day: the worker documented every edit, so re-landing is cheap.
+
+- **`jj workspace update-stale` blanks an undescribed working copy — and the
+  snapshot it took first is how you get the work back.** A lane with a full,
+  gate-green but UNDESCRIBED change hit "working copy is stale" because peer
+  workspaces had advanced the operation log; `update-stale` reported
+  `Added 0 files, modified 10 files, removed 3 files` and left `jj st` saying
+  "no changes", with every edit gone from disk. It is recoverable, and the exact
+  route matters: `jj op log` shows a `snapshot working copy / args: jj workspace
+  update-stale` operation on the OTHER branch of the reconcile merge - that
+  operation holds the pre-reset tree. Read the commit out of it with
+  `jj --at-op <op> log -r <change-id>` (confirm with
+  `jj --at-op <op> diff --stat -r <change-id>`) and bring it back with
+  `jj restore --from <commit-id>`, which touches only your own working copy.
+  Do NOT reach for `jj op restore`, which rewinds the whole repo and would
+  discard every peer workspace's work in the same window. Then describe
+  immediately. The cheap prevention is the rule above: `jj describe -m` as soon
+  as a change is coherent, not when it is finished.
 
   dot-graph lint threw during a closure batch, but the same shell block carried
   on through seal, bookmark move, and `jj git push`, publishing a red master
@@ -3244,6 +3261,42 @@ fits.
   say "this is the source I read" therefore has to bind the source registry's
   content digest as well as the tape's - and a test that only compares tapes
   will happily pass while the two texts are different programs.
+
+- **When a producer and a consumer disagree about a shape, ask which of the two
+  is describing something real.** The stage N0 tape producer records what the
+  engine actually hands the check hook; the elaborator was matching an opening
+  `:` and a closing `;` by SPELLING, and neither will ever be on a produced tape
+  because the engine consumes both before the checker sees anything. It was not
+  a case of "one of the two has to move" on the merits - only one side was
+  describing a real token stream, and the other side's tests had been building
+  the tape its code wanted. The repair was not to teach the producer to fake
+  frame rows but to find what the tape DOES record that draws the same boundary:
+  the parser mode. `:` parses the defined name from the outer interpreter before
+  it switches, so the name is the one row marked interpreting and every body row
+  is marked compiling. A structural fact already on the tape beat a spelling the
+  elaborator held privately, and the elaborator now holds no spelling at all.
+
+- **A suite whose fixtures are built by the code under test's own idea of the
+  input proves only self-consistency.** Every `NELAB` fixture hand-lexed
+  `: NAME body ;` onto a tape, so the suite was green while the elaborator could
+  not read a single tape a real compilation produced. The tell is that no test
+  in the file ran the production entry point. The fix that makes the class of bug
+  visible is one end-to-end case that starts at `evaluate` and ends at executed
+  bytes (`test/compiler/native-chain.f`): mutating the walk to start one row late
+  or stop one row early leaves nothing hand-built to hide behind, and both the
+  leaf suite and the chain go red together.
+
+- **`IR-SOURCE` stores a length and a digest, never the bytes, and the bytes it
+  was given are the engine's scratch.** The text the check hook receives lives in
+  the checker's token buffer, which the next compiled definition refills, so any
+  stage that has to present the same text again - instruction selection does,
+  because it re-registers the source into the machine module and proves it by
+  digest - cannot hold the pointer and must not reconstruct the text from the
+  original source either (the reconstruction has a trailing space:
+  `NF-KEPT ( n -- n ) 4 * ` is 23 bytes, not 22). `NFEED:BEGIN-UNIT` therefore
+  takes a caller-owned byte buffer and copies the scan into it, on the same terms
+  as the tape's own capacity: the ceiling is the caller's commitment and an
+  over-long definition is refused (`E-NFEED-TEXT`), never truncated.
 
 - **The native chain runs end to end from source text, so a comparison harness
   never has to hand-build HIR.** The elaboration suite's fixture already lexes a
