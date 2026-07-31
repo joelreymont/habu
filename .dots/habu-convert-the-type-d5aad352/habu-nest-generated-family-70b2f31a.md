@@ -1,10 +1,12 @@
 ---
 title: Nest generated family namespaces
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-30T16:16:01.754614+02:00"
 ---
+
+Claim: agent=codex-e3 workspace=.jj-ws/habu-nest-generated-family-70b2f31a
 
 Why: public generated families currently flatten and escape their declaring package and family tail into names such as MDLCFG-CFGKEY and SAFET-MAP--TAKE. The checked type spelling already has one natural identity: the exact absolute path. E1 supplies exact package/type namespace rows and finalization; checked and recovery E2a supply last-separator lookup and full-prefix definition. Those accepted commits, through c9103871aba581e0526399f2fbbb13850c8e4996, are the only dependencies. Ancestor lookup, using, nested source package blocks, parent links, and a separate capacity leaf are not dependencies.
 
