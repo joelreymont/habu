@@ -45,7 +45,7 @@ private
 
 : FAM-CTOR? ( n ptr u8 n -- bool ) {: fam:n pa:ptr pu:n :}
    fam TFAM-VAR-COUNT@ 0 <= if false exit then
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ pa pu STR= ;
+   fam TFAM-VAR-START@ SUMV-CTOR-NS$ pa pu STR= ;
 
 : FAM-HIT? ( n ptr u8 n ptr u8 n -- bool ) {: fam:n ta:ptr tu:n pa:ptr pu:n :}
    fam TFAM-NAME$ ta tu STR= fam pa pu FAM-CTOR? and ;
@@ -114,7 +114,7 @@ public
 : ARM-CTOR$ ( ptr u8 n ptr u8 n n -- ptr u8 n ) {: ta:ptr tu:n pa:ptr pu:n k:n :}
    ta tu pa pu FAM-ID k LIVE-VAR {: var:n :}
    var 0 < if s" <missing>" exit then
-   var SUMV-CTOR-PKG$ ;
+   var SUMV-CTOR-NS$ ;
 \ A case index that does not exist must answer the sentinel, NOT fall through to the
 \ record path: TYPE-FIELD:NO-VARIANT is itself -1, so passing an unresolved case straight
 \ down would silently count the family's NO-VARIANT rows and report a real number for a

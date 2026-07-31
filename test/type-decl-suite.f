@@ -521,7 +521,7 @@ TDY @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 1 T=
 TDF @ TFAM-VAR-COUNT@ 2 T=
 TDF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
 TDF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
-TDF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" TDPAIR" T$=
+TDF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" TDPAIR" T$=
 TDF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 2 T=
 TDF @ TFAM-VAR-START@ TWX-SUMV-SCH-COUNT@ 2 T=
 TDF @ TFAM-VAR-START@ TWX-SUMV-SCH-START@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
@@ -1155,20 +1155,20 @@ TDF @ TDX @ <> -1 T=
 
 \ ---------------------------------------------------------------------------
 \ item 8 metadata: a PUBLIC sum/enum family derives its constructor package name
-\ (Package Shape) at ;SUMTYPE and stores it in every variant's SV.CTOR-PKG slot;
+\ namespace path at ;SUMTYPE and stores it in every variant's SV.CTOR-NS slot;
 \ a PRIVATE family exports nothing, so the slot stays empty (the `construct`
 \ form is item 9). No runtime constructor word is published in this item yet.
 \ ---------------------------------------------------------------------------
 \ top-level public `tdres` -> package TDRES on both variants.
 s" " s" tdres" TWX-TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
 TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ SUMV-CTOR-PKG$ s" TDRES" T$=
-TDV0 @ 1 + SUMV-CTOR-PKG$ s" TDRES" T$=
+TDV0 @ SUMV-CTOR-NS$ s" TDRES" T$=
+TDV0 @ 1 + SUMV-CTOR-NS$ s" TDRES" T$=
 \ in-package public `tdpa:tres` -> package TDPA-TRES.
 s" tdpa" s" tres" TWX-TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
 TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ SUMV-CTOR-PKG$ s" TDPA-TRES" T$=
-\ a private sum exports no constructor package: SV.CTOR-PKG stays empty.
+TDV0 @ SUMV-CTOR-NS$ s" TDPA:TRES" T$=
+\ a private sum exports no constructor namespace: SV.CTOR-NS stays empty.
 package tdp8
 private
 SUMTYPE tsec 1
@@ -1178,7 +1178,7 @@ SUMTYPE tsec 1
 s" tdp8" s" tsec" TWX-TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
 TDF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 TDF @ TFAM-VAR-START@ TDV0 !
-TDV0 @ SUMV-CTOR-PKG$ nip 0 T=
+TDV0 @ SUMV-CTOR-NS$ nip 0 T=
 
 \ ---------------------------------------------------------------------------
 \ package-scoped SIG resolution (habu-tfam-4-remainder part 3): unqualified

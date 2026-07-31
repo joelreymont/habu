@@ -237,17 +237,16 @@ public
    THEN
    a u XREF-FIND XREF-FOUND? IF
       s" xref: generated declaration already exists" 76 die
+   THEN
+   a u NAMESPACE-EXISTS? IF
+      s" xref: generated namespace already exists" 76 die
    THEN ;
 
 : DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
    words 0 <= words COUNT-MAX >= or IF
       s" xref: generated declaration word count overflow" 76 die
    THEN
-   a u NAMESPACE-EXISTS? IF words EXIT THEN
    words 1 + ;
-
-: NEW-WORDLIST? ( ptr u8 n -- bool )
-   NAMESPACE-EXISTS? 0= ;
 
 private
 

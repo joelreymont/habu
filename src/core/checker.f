@@ -5075,7 +5075,7 @@ PRIM: TFAM-DERIVE-HASH? PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-VAR-START@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: TFAM-VAR-COUNT@ PE-N PE-IN  PE-N PE-OUT PRIM;
 PRIM: SUMV-NAME$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
-PRIM: SUMV-CTOR-PKG$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
+PRIM: SUMV-CTOR-NS$ PE-N PE-IN  PE-PTR-U8 PE-OUT PE-N PE-OUT PRIM;
 PPRIM: TYPE-FIELD COUNT PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD TX-DEPTH PE-N PE-OUT PPRIM;
 PPRIM: TYPE-FIELD NO-VARIANT PE-N PE-OUT PPRIM;
@@ -5420,11 +5420,11 @@ USHADOW-DIAG-DEFAULT
 \ ctor-protection query hooks (item 8), rebound by type-family.f. The
 \ registry-not-loaded default reports "not a protected ctor", matching the old
 \ 0-hook guards which skipped the throw before the registry existed.
-defer CTOR-PKG?-XT ( ptr u8 n -- bool )       \ name is a recorded ctor package?
+defer CTOR-NS?-XT ( ptr u8 n -- bool )        \ name is a recorded ctor namespace?
 defer CTOR-WORD?-XT ( ptr u8 n -- bool )      \ name is a generated ctor word?
 defer CTOR-EXTEND?-XT ( ptr u8 n -- bool )    \ new tail in a closed ctor package?
 : CTOR-PROT-DEFAULTS ( -- )
-   [: 2drop RES-FALSE ;] is CTOR-PKG?-XT
+   [: 2drop RES-FALSE ;] is CTOR-NS?-XT
    [: 2drop RES-FALSE ;] is CTOR-WORD?-XT
    [: 2drop RES-FALSE ;] is CTOR-EXTEND?-XT ;
 CTOR-PROT-DEFAULTS
@@ -5433,7 +5433,7 @@ CTOR-PROT-DEFAULTS
    a u CTOR-WORD?-XT IF E-CTOR-PROTECTED throw THEN ;
 
 : CHECKER-PACKAGE ( ptr u8 n -- )
-   2dup CTOR-PKG?-XT IF E-CTOR-PROTECTED throw THEN
+   2dup CTOR-NS?-XT IF E-CTOR-PROTECTED throw THEN
    CHECKER-PACKAGE-COPY
    CHECKER-PACKAGE-PRIVATE CHECKER-PACKAGE-MODE ! ;
 

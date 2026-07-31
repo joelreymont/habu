@@ -428,7 +428,6 @@ create LF $0A c,
    s" PFX-COMMON" s" LPINCLUDE" s" src/core/include.f" EXPECT-ROW
    s" PFX-COMMON" s" LPENUMS" s" src/core/enums.f" EXPECT-ROW
    s" PFX-COMMON" s" LPSHA256" s" src/core/sha256.f" EXPECT-ROW
-   s" PFX-COMMON" s" LPTFAMSHA" s" src/core/type-family-sha.f" EXPECT-ROW
    s" PFX-COMMON" s" LPCOMBINATORS" s" src/core/combinators.f" EXPECT-ROW
    s" PFX-COMMON" s" LPXREF" s" src/habu/xref.f" EXPECT-ROW
    s" PFX-COMMON" s" LPGENDECLDICT" s" src/core/generated-declaration-dictionary.f" EXPECT-ROW
@@ -496,14 +495,14 @@ create LF $0A c,
 : NATIVE-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-NATIVE
-   46 ASSERT-EQUAL
+   45 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
 : GFORTH-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-GFORTH
-   43 ASSERT-EQUAL
+   42 ASSERT-EQUAL
    s" src/core/structures-effects.f" BCG-MUST-LACK
    s" LPSTRUCTEFF" BCG-MUST-LACK ;
 
@@ -563,7 +562,6 @@ create LF $0A c,
    s" src/os/script-argv.f" EXPECT-FILE
    s" src/core/enums.f" EXPECT-FILE
    s" src/core/sha256.f" EXPECT-FILE
-   s" src/core/type-family-sha.f" EXPECT-FILE
    s" src/core/combinators.f" EXPECT-FILE
    s" src/habu/treeshake.f" EXPECT-FILE
    s" src/habu/rt.f" EXPECT-FILE
@@ -600,7 +598,6 @@ create LF $0A c,
    s" BF-APPEND-SCRIPT-ARGV" EXPECT-FILE
    s" BF-APPEND-ENUMS" EXPECT-FILE
    s" src/core/sha256.f" EXPECT-FILE
-   s" src/core/type-family-sha.f" EXPECT-FILE
    s" BF-APPEND-COMBINATORS" EXPECT-FILE
    s" src/habu/treeshake.f" EXPECT-FILE
    s" src/habu/rt.f" EXPECT-FILE
@@ -913,10 +910,10 @@ public
       s" src/core/structures.f" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 RECOVERY-U !
    s" SRC_COMMON=(" s" emit_boot_hide() {" MODE-ARRAY s" "
-      [: RECOVERY+ ;] CAPTURE 33 T=
+      [: RECOVERY+ ;] CAPTURE 32 T=
    EXPECT-RECOVERY-COMMON
    RECOVERY$ EXPECT$ T$=
-   RECOVERY$ 33 ASSERT-UNIQUE
+   RECOVERY$ 32 ASSERT-UNIQUE
    RECOVERY-TARGETS ;
 
 : FIXPOINT ( -- )
@@ -944,10 +941,10 @@ public
       s" BF-APPEND-CORE-FILES" s" LOWER-CERT-HOOK:INSTALL" SCOPE-BEFORE
    0 FIXPOINT-U !
    s" : BF-APPEND-COMMON" s" : BF-APPEND-DRIVER-IO" MODE-COMMON s" "
-      [: FIXPOINT+ ;] CAPTURE 34 T=
+      [: FIXPOINT+ ;] CAPTURE 33 T=
    EXPECT-FIXPOINT-COMMON
    FIXPOINT$ EXPECT$ T$=
-   FIXPOINT$ 34 ASSERT-UNIQUE
+   FIXPOINT$ 33 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
 
 ;package

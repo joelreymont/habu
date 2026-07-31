@@ -78,7 +78,7 @@ TRUSTED: F-VCOUNT ( n -- n ) TFAM-VAR-COUNT@ ;
 TRUSTED: F-FCOUNT ( n -- n ) TFAM-FLD-COUNT@ ;
 TRUSTED: V-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
 TRUSTED: V-TAG ( n -- n ) SUMV-TAG@ ;
-TRUSTED: V-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+TRUSTED: V-NS$ ( n -- ptr u8 n ) SUMV-CTOR-NS$ ;
 TRUSTED: V-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 TRUSTED: R-FAM ( n -- n ) TYPE-FIELD:FAMILY@ ;
 TRUSTED: R-VAR ( n -- n ) TYPE-FIELD:VARIANT@ ;

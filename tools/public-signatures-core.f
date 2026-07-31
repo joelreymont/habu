@@ -741,7 +741,7 @@ variable PS-DEF-SIG-U
 
 \ --- synthesized public constructor signatures (item 13). Each PUBLIC ENUM
 \ family in the live registry publishes one nullary constructor per variant:
-\ word `PKG:VARIANT` (from SUMV-CTOR-PKG$/SUMV-NAME$), signature `-- family<args>`
+\ word `PKG:VARIANT` (from SUMV-CTOR-NS$/SUMV-NAME$), signature `-- family<args>`
 \ (the logical family type from name+arity, mirroring sumtype.f TDGEN-OUT-TYPE).
 \ Metadata only -- never a hidden field; payload-carrying SUM/PRODUCT constructors
 \ are a later sub-slice.
@@ -778,7 +778,7 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    PS-CSIG$ ;
 
 : PS-CTOR-WORD$ ( n -- ptr u8 n ) {: vid:n :}   \ PKG:VARIANT (upper-cased)
-   vid SUMV-CTOR-PKG$ {: pa:ptr pu:n :}
+   vid SUMV-CTOR-NS$ {: pa:ptr pu:n :}
    vid SUMV-NAME$ {: na:ptr nu:n :}
    pu nu + 1+ {: u:n :}
    u PS-WORD-CAP > IF s" public-signatures: constructor word too long" PS-DIE THEN
@@ -813,7 +813,7 @@ create PS-CSIG-BUF PS-SIG-CAP allot   variable PS-CSIG-W
    PS-CSIG$ ;
 
 : PS-DRV-WORD$ ( n ptr u8 n -- ptr u8 n ) {: fam:n ta:ptr tu:n :}   \ PKG:TAIL (upper)
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ {: pa:ptr pu:n :}
+   fam TFAM-VAR-START@ SUMV-CTOR-NS$ {: pa:ptr pu:n :}
    pu tu + 1+ {: u:n :}
    u PS-WORD-CAP > IF s" public-signatures: derived word too long" PS-DIE THEN
    pa pu PS-WORD-BUF COPY-UPPER

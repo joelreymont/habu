@@ -152,7 +152,6 @@ variable BP-SET
    s" src/core/include.f" q execute
    s" src/core/enums.f" q execute
    s" src/core/sha256.f" q execute
-   s" src/core/type-family-sha.f" q execute
    s" src/core/combinators.f" q execute
    s" src/habu/xref.f" q execute
    s" src/core/generated-declaration-dictionary.f" q execute

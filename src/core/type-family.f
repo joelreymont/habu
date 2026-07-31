@@ -486,8 +486,8 @@ $4 constant DRV-CONSTRUCT-OWNER
 5 cells constant SV.SCH-COUNT-OFF
 6 cells constant SV.PAYCELLS-OFF
 7 cells constant SV.CTOR-SYM-OFF
-8 cells constant SV.CTOR-PKG-OFF-AT
-9 cells constant SV.CTOR-PKG-U-OFF
+8 cells constant SV.CTOR-NS-OFF-AT
+9 cells constant SV.CTOR-NS-U-OFF
 10 cells constant SUMV-REC
 CELL constant SUMV-REC-ALIGN
 0 constant SUMV-REC-PTR-MASK
@@ -500,8 +500,8 @@ CELL constant SUMV-REC-ALIGN
 : SV.SCH-COUNT ( ptr a -- ptr a ) SV.SCH-COUNT-OFF + ;
 : SV.PAYCELLS ( ptr a -- ptr a ) SV.PAYCELLS-OFF + ;
 : SV.CTOR-SYM ( ptr a -- ptr a ) SV.CTOR-SYM-OFF + ;
-: SV.CTOR-PKG-OFF ( ptr a -- ptr a ) SV.CTOR-PKG-OFF-AT + ;
-: SV.CTOR-PKG-U ( ptr a -- ptr a ) SV.CTOR-PKG-U-OFF + ;
+: SV.CTOR-NS-OFF ( ptr a -- ptr a ) SV.CTOR-NS-OFF-AT + ;
+: SV.CTOR-NS-U ( ptr a -- ptr a ) SV.CTOR-NS-U-OFF + ;
 
 SV.FAM-OFF 0 cells TF-LAYOUT=
 SV.NAME-OFF-AT 1 cells TF-LAYOUT=
@@ -511,8 +511,8 @@ SV.SCH-START-OFF 4 cells TF-LAYOUT=
 SV.SCH-COUNT-OFF 5 cells TF-LAYOUT=
 SV.PAYCELLS-OFF 6 cells TF-LAYOUT=
 SV.CTOR-SYM-OFF 7 cells TF-LAYOUT=
-SV.CTOR-PKG-OFF-AT 8 cells TF-LAYOUT=
-SV.CTOR-PKG-U-OFF 9 cells TF-LAYOUT=
+SV.CTOR-NS-OFF-AT 8 cells TF-LAYOUT=
+SV.CTOR-NS-U-OFF 9 cells TF-LAYOUT=
 SUMV-REC 10 cells TF-LAYOUT=
 SUMV-REC-ALIGN CELL TF-LAYOUT=
 SUMV-REC SUMV-REC-ALIGN mod 0 TF-LAYOUT=
@@ -525,8 +525,8 @@ SUMV-REC-PTR-MASK 0 TF-LAYOUT=
 0 SV.SCH-COUNT SV.SCH-COUNT-OFF TF-LAYOUT=
 0 SV.PAYCELLS SV.PAYCELLS-OFF TF-LAYOUT=
 0 SV.CTOR-SYM SV.CTOR-SYM-OFF TF-LAYOUT=
-0 SV.CTOR-PKG-OFF SV.CTOR-PKG-OFF-AT TF-LAYOUT=
-0 SV.CTOR-PKG-U SV.CTOR-PKG-U-OFF TF-LAYOUT=
+0 SV.CTOR-NS-OFF SV.CTOR-NS-OFF-AT TF-LAYOUT=
+0 SV.CTOR-NS-U SV.CTOR-NS-U-OFF TF-LAYOUT=
 
 4 constant SUMV-CAP-INIT
 variable SUMV-CAP-V   SUMV-CAP-INIT SUMV-CAP-V !   REG-PROTECT
@@ -562,31 +562,31 @@ variable SUMV-N   0 SUMV-N !   REG-PROTECT
 \ checker symbol for the generated constructor word lands in SV.CTOR-SYM. Private
 \ families export nothing, so both stay zero. All three cells are integers /
 \ interned offsets, so the existing SUMV snapshot bake persists them verbatim.
-: SUMV-CTOR-PKG! ( n n n -- ) {: id:n off:n u:n :}
-   off id SUMV-REC@ SV.CTOR-PKG-OFF !   u id SUMV-REC@ SV.CTOR-PKG-U ! ;
-: SUMV-CTOR-PKG$ ( n -- ptr u8 n ) {: id:n :}
-   id SUMV-REC@ {: r:ptr :}  r SV.CTOR-PKG-OFF @ r SV.CTOR-PKG-U @ TF-OFF$ ;
+: SUMV-CTOR-NS! ( n n n -- ) {: id:n off:n u:n :}
+   off id SUMV-REC@ SV.CTOR-NS-OFF !   u id SUMV-REC@ SV.CTOR-NS-U ! ;
+: SUMV-CTOR-NS$ ( n -- ptr u8 n ) {: id:n :}
+   id SUMV-REC@ {: r:ptr :}  r SV.CTOR-NS-OFF @ r SV.CTOR-NS-U @ TF-OFF$ ;
 : SUMV-CTOR-SYM! ( n n -- ) swap SUMV-REC@ SV.CTOR-SYM ! ;
 : SUMV-CTOR-SYM@ ( n -- n ) SUMV-REC@ SV.CTOR-SYM @ ;
 
 \ generated-constructor protection predicates (item 8 slice 3). Names are
-\ matched case-insensitively against the recorded SV.CTOR-PKG spellings, so a
-\ folded alias cannot reopen a constructor package, extend it with a new
+\ matched case-insensitively against the recorded SV.CTOR-NS spellings, so a
+\ folded alias cannot reopen a constructor namespace, extend it with a new
 \ tail, or undefine a generated word through any case variant. Installed into
 \ the checker's CTOR-*-XT friend cells at the end of this file.
 variable TF-CI              \ protection scan index (TF-I stays the decl scanner's)
-: SUMV-CTOR-PKG-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
-   id SUMV-REC@ SV.CTOR-PKG-U @ 0= IF RES-FALSE EXIT THEN
-   id SUMV-CTOR-PKG$ a u CORE-STR=CI ;
-: TFAM-CTOR-PKG? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a recorded ctor package name?
+: SUMV-CTOR-NS-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
+   id SUMV-REC@ SV.CTOR-NS-U @ 0= IF RES-FALSE EXIT THEN
+   id SUMV-CTOR-NS$ a u CORE-STR=CI ;
+: TFAM-CTOR-NS? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a recorded ctor namespace?
    0 TF-CI !
    BEGIN TF-CI @ SUMV-N @ < WHILE
-      a u TF-CI @ SUMV-CTOR-PKG-MATCH? IF RES-TRUE EXIT THEN
+      a u TF-CI @ SUMV-CTOR-NS-MATCH? IF RES-TRUE EXIT THEN
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
 : TFAM-CTOR-WORD-AT? ( ptr u8 n ptr u8 n n -- bool )
    {: qa:ptr qu:n ta:ptr tu:n id:n :}
-   qa qu id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   qa qu id SUMV-CTOR-NS-MATCH? 0= IF RES-FALSE EXIT THEN
    ta tu id SUMV-NAME$ CORE-STR=CI ;
 : TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -600,7 +600,7 @@ variable TF-CI              \ protection scan index (TF-I stays the decl scanner
 : TFAM-DERIVED-AT? ( ptr u8 n ptr u8 n n -- bool )
    {: qa:ptr qu:n ta:ptr tu:n id:n :}
    id SUMV-FAM@ TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
-   qa qu id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   qa qu id SUMV-CTOR-NS-MATCH? 0= IF RES-FALSE EXIT THEN
    ta tu id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
 : TFAM-CTOR-SPANS? ( ptr u8 n ptr u8 n -- bool )
    {: qa:ptr qu:n ta:ptr tu:n :}
@@ -619,7 +619,7 @@ variable TF-CI              \ protection scan index (TF-I stays the decl scanner
    a u QNAME:SPLIT
    {: qa:ptr qu:n ta:ptr tu:n kind:n :}
    kind QNAME:QUALIFIED <> IF RES-FALSE EXIT THEN
-   qa qu TFAM-CTOR-PKG? 0= IF RES-FALSE EXIT THEN
+   qa qu TFAM-CTOR-NS? 0= IF RES-FALSE EXIT THEN
    qa qu ta tu TFAM-CTOR-SPANS? 0= ;
 
 : SUMV-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
@@ -643,122 +643,39 @@ variable TF-CI              \ protection scan index (TF-I stays the decl scanner
    id SUMV-REC@ {: r:ptr :}
    fam r SV.FAM !   noff r SV.NAME-OFF !   nu r SV.NAME-U !
    tag r SV.TAG !   ss r SV.SCH-START !   sc r SV.SCH-COUNT !   pc r SV.PAYCELLS !
-   0 r SV.CTOR-SYM !   0 r SV.CTOR-PKG-OFF !   0 r SV.CTOR-PKG-U !
+   0 r SV.CTOR-SYM !   0 r SV.CTOR-NS-OFF !   0 r SV.CTOR-NS-U !
    id ;
 
 \ ---------------------------------------------------------------------------
-\ constructor package-name derivation (Package Shape; docs/type-families.md §12,
-\ PLAN "Package Shape"). Maps the defining (package, family tail) to the reserved
-\ constructor package spelling — the same bytes native, habu1, and the Gforth
-\ mirror must produce (all three parse this one file). Readable escaped form:
-\ uppercase every joined segment (the package segment AND the family tail),
-\ double a literal '-' inside each ('-' -> '--'), join with single '-'
-\ separators. Escaping the tail too is what makes the map injective: canonical
-\ segments never start/end with '-', so hyphen runs inside escaped segments stay
-\ even-length and interior, and each single '-' separator decodes uniquely.
-\ Package `a-b` family `c` derives `A--B-C`; `a`+`b-c` derives `A-B--C`; a
-\ top-level `a-b-c` derives `A--B--C` — all distinct. The escaped form is
-\ injective at EVERY length, and both the runtime dictionary (DNAME-EXT external
-\ names, habu2.f C-STORE-NAME) and the AOT snapshot (EXT records ride the
-\ kept-source path, aot-capture.f) store names past the 16-byte inline cell, so
-\ TF-CTOR-NAME-LIMIT is a READABILITY cap on the generated spelling — NOT a
-\ dictionary/record structural bound (audit dot habu-raise-or-alias-5d2a6b70:
-\ the SHA form below is itself > 16 bytes and already stores/constructs fine).
-\ Past the cap the spelling is `T` + the first 16 lowercase hex digits of SHA-256
-\ over the length-prefixed unescaped segment list + '-' + the raw uppercase
-\ tail (unescaped: the fixed-width hash region already delimits it); that opaque
-\ fallback only bounds pathologically long names, it never protects a fixed width.
-\ Top level (empty package) derives the bare escaped tail: `result` -> `RESULT`.
-\ SHA-256 loads after this file in the engine prefix, so the fallback hashes
-\ through the friend xt installed by type-family-sha.f.
-\ 32 (not 16): the longest legitimate escaped ctor package is ~25 bytes
-\ (CAD-KIND-ADDRESS--SPACE; EVID/POLICY presence-slot sums like
-\ EVID-CERTIFY--SLOT=18, POLICY-PROMOTE--POLICY=22), so 32 keeps every real
-\ family on the readable escaped spelling with headroom while retaining the SHA
-\ fallback for anything longer.
-32 constant TF-CTOR-NAME-LIMIT   \ readable-spelling cap (audit: NOT DNAME-INL)
-$400 constant TF-CTOR-CAP        \ derived-name / segment-list buffer bytes
-create TF-CTOR-BUF TF-CTOR-CAP allot
-variable TF-CTOR-U               \ derived-name length
-create TF-CTOR-SEG TF-CTOR-CAP allot   \ length-prefixed segment list (SHA input)
-variable TF-CTOR-SEG-U
-create TF-CTOR-HEX 16 allot       \ 16 lowercase hex digits from the SHA fallback
+\ Constructor namespace derivation maps the declaring package path and family
+\ tail onto the exact absolute child path. Existing ':' and '-' bytes remain
+\ literal; only ASCII letters are uppercased. Top-level families use their bare
+\ tail. The fixed buffer is the only capacity authority.
+$400 constant TF-CTOR-NS-CAP
+create TF-CTOR-NS-BUF TF-CTOR-NS-CAP allot
+variable TF-CTOR-NS-U
 
-: TF-SHA16-UNSET ( ptr u8 n ptr u8 -- )   \ default until type-family-sha.f installs
-   {: a:ptr u:n dst:ptr :}
-   s" tfam: constructor sha hook not installed" 76 die ;
+: TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;
+: TF-CTOR-NS-C, ( n -- )
+   TF-CTOR-NS-U @ TF-CTOR-NS-CAP >= IF
+      s" tfam: constructor namespace too long" 76 die
+   THEN
+   TF-CTOR-NS-BUF TF-CTOR-NS-U @ + c!
+   TF-CTOR-NS-U @ 1 + TF-CTOR-NS-U ! ;
 
-\ friend hook: 16 hex of SHA-256 over (ptr,n) into the 16-byte output;
-\ type-family-sha.f installs TF-SHA16 once the registry and hash both exist.
-defer TF-SHA16-XT ( ptr u8 n ptr u8 -- )
-
-: TF-SHA16-DEFAULT ( -- )
-   [: TF-SHA16-UNSET ;] is TF-SHA16-XT ;
-TF-SHA16-DEFAULT
-
-: TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;   \ a-z -> A-Z
-: TF-CTOR-C, ( n -- )            \ append one byte to the derived-name buffer
-   TF-CTOR-U @ TF-CTOR-CAP >= IF s" tfam: constructor name too long" 76 die THEN
-   TF-CTOR-BUF TF-CTOR-U @ + c!
-   TF-CTOR-U @ 1 + TF-CTOR-U ! ;
-: TF-CTOR-SEG-C, ( n -- )        \ append one byte to the SHA segment-list input
-   TF-CTOR-SEG-U @ TF-CTOR-CAP >= IF s" tfam: segment list too long" 76 die THEN
-   TF-CTOR-SEG TF-CTOR-SEG-U @ + c!
-   TF-CTOR-SEG-U @ 1 + TF-CTOR-SEG-U ! ;
-
-: TF-CTOR-ESC ( ptr u8 n -- ) {: a:ptr u:n :}   \ one uppercased '-'->'--' escaped segment
+: TF-CTOR-NS-APP ( ptr u8 n -- ) {: a:ptr u:n :}
    0 TF-I !
    BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ dup 45 = IF
-         drop 45 TF-CTOR-C, 45 TF-CTOR-C,
-      ELSE TF-UPPER-C TF-CTOR-C, THEN
+      a TF-I @ + c@ TF-UPPER-C TF-CTOR-NS-C,
       TF-I @ 1 + TF-I !
    REPEAT ;
-: TF-CTOR-TAIL ( ptr u8 n -- ) {: a:ptr u:n :}      \ raw uppercased tail (hash form)
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ TF-UPPER-C TF-CTOR-C,
-      TF-I @ 1 + TF-I !
-   REPEAT ;
-: TF-CTOR-BUILD-ESCAPED ( ptr u8 n ptr u8 n -- )   \ (pkg tail)
-   {: pa:ptr pu:n ta:ptr tu:n :}
-   0 TF-CTOR-U !
-   pu 0 > IF pa pu TF-CTOR-ESC  45 TF-CTOR-C, THEN
-   ta tu TF-CTOR-ESC ;
 
-: TF-CTOR-SEG-BUILD ( ptr u8 n -- ) {: pa:ptr pu:n :}   \ length-prefixed segment list
-   0 TF-CTOR-SEG-U !
-   pu 0= IF EXIT THEN                     \ top level: empty segment list
-   pu TF-CTOR-SEG-C,                      \ one length byte (package name <= 255)
-   0 TF-I !
-   BEGIN TF-I @ pu < WHILE
-      pa TF-I @ + c@ TF-CTOR-SEG-C,
-      TF-I @ 1 + TF-I !
-   REPEAT ;
-: TF-CTOR-HEX, ( -- )            \ append the 16 fallback hex digits to the buffer
-   0 TF-I !
-   BEGIN TF-I @ 16 < WHILE
-      TF-CTOR-HEX TF-I @ + c@ TF-CTOR-C,
-      TF-I @ 1 + TF-I !
-   REPEAT ;
-: TF-CTOR-BUILD-HASH ( ptr u8 n ptr u8 n -- )   \ (pkg tail)
+: TF-CTOR-NS$ ( ptr u8 n ptr u8 n -- ptr u8 n )
    {: pa:ptr pu:n ta:ptr tu:n :}
-   pa pu TF-CTOR-SEG-BUILD
-   TF-CTOR-SEG TF-CTOR-SEG-U @ TF-CTOR-HEX TF-SHA16-XT
-   0 TF-CTOR-U !
-   [char] T TF-CTOR-C,
-   TF-CTOR-HEX,
-   45 TF-CTOR-C,
-   ta tu TF-CTOR-TAIL ;
-
-\ TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ptr u8 n ) : derived constructor
-\ package name in TF-CTOR-BUF. Escaped form when it fits the inline name limit,
-\ else the SHA-256 fallback. The tail must already be a canonical lowercase tail.
-: TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
-   {: pa:ptr pu:n ta:ptr tu:n :}
-   pa pu ta tu TF-CTOR-BUILD-ESCAPED
-   TF-CTOR-U @ TF-CTOR-NAME-LIMIT > IF pa pu ta tu TF-CTOR-BUILD-HASH THEN
-   TF-CTOR-BUF TF-CTOR-U @ ;
+   0 TF-CTOR-NS-U !
+   pu 0 > IF pa pu TF-CTOR-NS-APP 58 TF-CTOR-NS-C, THEN
+   ta tu TF-CTOR-NS-APP
+   TF-CTOR-NS-BUF TF-CTOR-NS-U @ ;
 
 \ ---------------------------------------------------------------------------
 \ shared fields, keyed by (family-id, optional-variant-id, field tail).
@@ -2585,7 +2502,7 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
 \ defer to the real query word, replacing the old raw-variable stores).
 : TFAM-HOOK-INSTALL ( -- )
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
-   [: TFAM-CTOR-PKG? ;]    is CTOR-PKG?-XT     \ item 8: constructor-package reopen reject
+   [: TFAM-CTOR-NS? ;]     is CTOR-NS?-XT      \ generated namespace reopen reject
    [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
    [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ item 8: closed-package extra-tail reject
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT

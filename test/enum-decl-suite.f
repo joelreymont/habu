@@ -605,7 +605,7 @@ public
 variable CT-I   variable CT-N
 variable CT-DICT   variable CT-CP   variable CT-FAM
 
-TRUSTED: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+TRUSTED: CTOR-NS$ ( n -- ptr u8 n ) SUMV-CTOR-NS$ ;
 TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 TRUSTED: DICT-RECS ( -- n ) ndict@ ;
 TRUSTED: DICT-CODE ( -- n ) cp@ ;
@@ -668,8 +668,8 @@ enum-ctor-test:DICT-MOVED
 
 s" msgctor" FAMID FID !
 FID @ F-VAR-START VS0 !
-VS0 @ enum-ctor-test:CTOR-PKG$ s" MSGCTOR" CORE-STR= T-TRUE       \ package derived and stamped on the rows
-VS0 @ 1 + enum-ctor-test:CTOR-PKG$ s" MSGCTOR" CORE-STR= T-TRUE
+VS0 @ enum-ctor-test:CTOR-NS$ s" MSGCTOR" CORE-STR= T-TRUE       \ namespace derived and stamped on the rows
+VS0 @ 1 + enum-ctor-test:CTOR-NS$ s" MSGCTOR" CORE-STR= T-TRUE
 
 \ rendered arity == committed TYPE-FIELD row count for (family, variant)
 FID @ VS0 @ enum-ctor-test:PAY-ROWS 0 T=
@@ -702,8 +702,8 @@ s" ENUM lgpar red green blue ;ENUM" EV
 s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" EV
 s" lgpar" FAMID F-VAR-START B !
 s" fepar" FAMID F-VAR-START VID !
-B @ enum-ctor-test:CTOR-PKG$ s" LGPAR" CORE-STR= T-TRUE
-VID @ enum-ctor-test:CTOR-PKG$ s" FEPAR" CORE-STR= T-TRUE
+B @ enum-ctor-test:CTOR-NS$ s" LGPAR" CORE-STR= T-TRUE
+VID @ enum-ctor-test:CTOR-NS$ s" FEPAR" CORE-STR= T-TRUE
 B @ SV-TAG@ VID @ SV-TAG@ T=
 B @ 1 + SV-TAG@ VID @ 1 + SV-TAG@ T=
 B @ 2 + SV-TAG@ VID @ 2 + SV-TAG@ T=
@@ -733,7 +733,7 @@ package enum-ctor-private
 s" ENUM-DECL:ED-RUN privctor<> VARIANT alpha FIELD a n ;VARIANT ;ENUM" EV
 s" privctor" FAMID GENERATED-DECL-CTOR:OWNS? 0= T-TRUE
 s" privctor" FAMID F-VAR-COUNT 1 T=                   \ the variant really is there
-s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-PKG$ nip 0 T=  \ but carries no constructor package
+s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-NS$ nip 0 T=  \ but carries no constructor namespace
 s" privctor" FAMID F-VAR-START enum-ctor-test:CTOR-SYM 0 T=       \ and no constructor symbol
 ;package
 
@@ -1191,8 +1191,8 @@ VS0 @ 2 + SV-TAG@ 2 T=
 
 \ REGISTRATION happened: the constructor package is stamped on every row, which
 \ is what a later `RPCOMPACT:RED` in the same source resolves through.
-VS0 @ enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
-VS0 @ 2 + enum-ctor-test:CTOR-PKG$ s" RPCOMPACT" CORE-STR= T-TRUE
+VS0 @ enum-ctor-test:CTOR-NS$ s" RPCOMPACT" CORE-STR= T-TRUE
+VS0 @ 2 + enum-ctor-test:CTOR-NS$ s" RPCOMPACT" CORE-STR= T-TRUE
 
 \ GENERATION did not: no constructor symbol was recorded on any row, and the
 \ constructor word genuinely does not exist. This is the observable that fails

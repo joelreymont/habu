@@ -8,7 +8,7 @@
 \ TRUST anywhere. Parametric (arity > 0) families are possibly-linear layouts
 \ under the v1 cell-kinded params (a linear con can flow through a var), so
 \ their constructors stay unpublished until TFAM 11's whole-bundle linear
-\ counting; their SV.CTOR-PKG metadata is still recorded. Private families
+\ counting; their SV.CTOR-NS metadata is still recorded. Private families
 \ generate nothing until item 9's construct form.
 
 require test/checker-assert.f
@@ -168,7 +168,7 @@ s" GEN-AFTER" type cr
 
 \ ---------------------------------------------------------------------------
 \ >16-byte escaped ctor package, constructable by readable name
-\ (dot habu-raise-or-alias-5d2a6b70). Before the TF-CTOR-NAME-LIMIT raise
+\ (dot habu-raise-or-alias-5d2a6b70). Before the old readability-limit raise
 \ (16 -> 32) a presence-slot sum whose escaped package name exceeds 16 got an
 \ opaque SHA ctor package (Thex...-TAIL), unwritable in committed source; now it
 \ keeps the READABLE escaped name and its constructors are callable by it. This
@@ -184,7 +184,7 @@ private
 ;package
 \ the derived ctor package is the readable escaped name (17 bytes > 16), NOT a SHA fold:
 s" evx" s" certify-slot" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" EVX-CERTIFY--SLOT" T$=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" EVX:CERTIFY-SLOT" T$=
 \ and the constructors are callable cross-package by that readable name:
 : EVX-MK-GOT  ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT ;
 : EVX-MK-NONE (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE ;
@@ -204,7 +204,7 @@ SUMTYPE zpar 1
   VARIANT psome a ;VARIANT
 ;SUMTYPE
 s" " s" zpar" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPAR" T$=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" ZPAR" T$=
 s" ZB6 ( n -- zpar<n> ) ZPAR:PSOME" CHECK-QUIET-CANDIDATE! -1 T=   \ publishes + certifies
 
 SUMTYPE zpoly 2
@@ -254,7 +254,7 @@ SUMTYPE zsec 0
 ;SUMTYPE
 ;package
 s" zp8" s" zsec" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ nip 0 T=
 s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 
 \ ---------------------------------------------------------------------------
@@ -404,7 +404,7 @@ s" " s" zpt" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-COUNT@ 2 T=
 TCF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
 TCF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ s" ZPT" T$=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" ZPT" T$=
 TCF @ TFAM-VAR-START@ TWX-SUMV-PAYCELLS@ 2 T=
 TCF @ TFAM-VAR-START@ TWX-SUMV-CTOR-SYM@ 0 <> -1 T=
 TCF @ TFAM-VAR-START@ 1 + TWX-SUMV-CTOR-SYM@ 0 <> -1 T=
@@ -482,7 +482,7 @@ PRODUCT phid 0
 ;PRODUCT
 ;package
 s" zpsec" s" phid" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
-TCF @ TFAM-VAR-START@ SUMV-CTOR-PKG$ nip 0 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ nip 0 T=
 s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
 \ protection: the derived package is closed (reopen/undefine reject), and the
 \ generated words stay callable after the rejected attempts.

@@ -92,7 +92,6 @@ variable CHECKED
    s" src/core/include.f" PREFIX-FILE
    s" src/core/enums.f" PREFIX-FILE
    s" src/core/sha256.f" PREFIX-FILE
-   s" src/core/type-family-sha.f" PREFIX-FILE
    s" src/core/combinators.f" PREFIX-FILE
    s" src/habu/xref.f" PREFIX-FILE
    s" src/core/layout-buffer-seal.f" PREFIX-FILE

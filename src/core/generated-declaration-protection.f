@@ -114,10 +114,8 @@ TRUSTED: ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 : PLAN-PREFLIGHT ( ptr u8 n n -- ) {: a:ptr u:n words:n :}
    a u words GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS
       GENERATED-DECL-DICTIONARY:PREFLIGHT
-   a u GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? IF
-      data-base WIDN-CELL + @ WID-PAIR-ROOM? 0=
-         IF E-PROTECTION-CAP throw THEN
-   THEN
+   data-base WIDN-CELL + @ WID-PAIR-ROOM? 0=
+      IF E-PROTECTION-CAP throw THEN
    words 0 > prot-wid-room 0= and IF E-PROTECTION-CAP throw THEN
    STAGE-ENSURE ;
 

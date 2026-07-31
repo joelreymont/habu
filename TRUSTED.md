@@ -1428,7 +1428,7 @@ test/enum-decl-suite.f:RP-FORCE-CLOSE test-metaprog habu-cut-global-enum-56ca54e
 test/structure-decl-suite.f:RP-EV test-metaprog habu-cut-global-enum-56ca54e2
 test/structure-decl-suite.f:RP-TRY test-metaprog habu-cut-global-enum-56ca54e2
 test/structure-decl-suite.f:SV-NAME$ test-metaprog habu-cut-global-enum-56ca54e2
-test/structure-decl-suite.f:CTOR-PKG$ test-metaprog habu-cut-global-enum-56ca54e2
+test/structure-decl-suite.f:CTOR-NS$ test-metaprog habu-cut-global-enum-56ca54e2
 test/structure-decl-suite.f:CTOR-SYM test-metaprog habu-cut-global-enum-56ca54e2
 test/structure-decl-suite.f:FAM-VAR-START test-metaprog habu-cut-global-enum-56ca54e2
 test/structure-decl-suite.f:FAM-VAR-COUNT test-metaprog habu-cut-global-enum-56ca54e2
@@ -1462,7 +1462,7 @@ test/enum-decl-suite.f:REG-RESTORE test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:TFAMN@ test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:SCHN@ test-metaprog habu-enum-parse-full-39c0dc1b
 test/enum-decl-suite.f:SUMVN@ test-metaprog habu-enum-parse-full-39c0dc1b
-test/enum-decl-suite.f:CTOR-PKG$ test-metaprog habu-enum-generate-named-1f3261a3
+test/enum-decl-suite.f:CTOR-NS$ test-metaprog habu-enum-generate-named-1f3261a3
 test/enum-decl-suite.f:DICT-RECS test-metaprog habu-enum-generate-named-1f3261a3
 test/enum-decl-suite.f:DICT-CODE test-metaprog habu-enum-generate-named-1f3261a3
 test/enum-decl-suite.f:ARM-RC test-metaprog habu-enum-generate-named-1f3261a3
@@ -1668,7 +1668,7 @@ test/type-family-suite.f:TWX-SCHEMA-ROOT@ test-metaprog habu-seal-set-check-b367
 test/type-family-suite.f:TWX-SCHEMA-SNAPSHOT-PERSIST test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SCHEMA-TAG@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-ADD test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-SUMV-CTOR-PKG! test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-SUMV-CTOR-NS! test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-FAM@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-FIND test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-PAY-FIELD test-metaprog habu-seal-set-check-b3676b33
@@ -1677,7 +1677,7 @@ test/type-family-suite.f:TWX-SUMV-PAY-ROOT test-metaprog habu-seal-set-check-b36
 test/type-family-suite.f:TWX-SUMV-PAYCELLS@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-SUMV-TAG@ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TF-CANON? test-metaprog habu-seal-set-check-b3676b33
-test/type-family-suite.f:TWX-TF-CTOR-PKG$ test-metaprog habu-seal-set-check-b3676b33
+test/type-family-suite.f:TWX-TF-CTOR-NS$ test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TF-HIDDEN? test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TF-INTERN test-metaprog habu-seal-set-check-b3676b33
 test/type-family-suite.f:TWX-TF-OFF$ test-metaprog habu-seal-set-check-b3676b33

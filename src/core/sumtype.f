@@ -552,16 +552,16 @@ create TDV-BADLETTER 1 allot
 
 \ --- constructor metadata (item 8): a PUBLIC family derives its reserved
 \ constructor package (Package Shape) once and records it in every variant's
-\ SV.CTOR-PKG slot, keyed by family id so same-tail families in different
+\ SV.CTOR-NS slot, keyed by family id so same-tail families in different
 \ packages get disjoint constructor namespaces. Private families export nothing,
 \ so the slot stays empty and construction waits on item 9's `construct` form.
 \ The derived name is interned AFTER the escaped/hashed spelling is built, so the
 \ transient family package/tail pointers are consumed before any pool grow.
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-PUBLIC? 0= IF EXIT THEN
-   fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-PKG$ {: ca:ptr cu:n :}
+   fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-NS$ {: ca:ptr cu:n :}
    ca cu TF-INTERN {: coff:n :}
-   count 0 DO  vstart i +  coff cu SUMV-CTOR-PKG!  LOOP ;
+   count 0 DO  vstart i +  coff cu SUMV-CTOR-NS!  LOOP ;
 
 \ --- optional layout-policy header clause (item 16, docs §22): `POLICY <name>`
 \ after the arity (sum/product) or the name (enum), before the first VARIANT /
@@ -891,7 +891,7 @@ defer TDECL-EVENT-ARMED ( -- bool )
 \ entry stays metadata-only, so preverify/all-errors dispatch never mutates
 \ the tool dictionary and checker rollback stays complete. Each PUBLIC variant
 \ becomes one checked qualified definition
-\    : <CTOR-PKG>:<VARIANT> ( payload.. -- family<a,..> ) 0 .. 0 <tag> ;
+\    : <CTOR-NS>:<VARIANT> ( payload.. -- family<a,..> ) 0 .. 0 <tag> ;
 \ rendered from interned SUMV metadata only. Before any generated source reaches
 \ the evaluator, the generator renders every constructor and derived word,
 \ rejects duplicate, live, or visibility-invalid symbols, grows all
@@ -901,9 +901,8 @@ defer TDECL-EVENT-ARMED ( -- bool )
 \ accepted plan crosses the audited INCLUDE-EVALUATE boundary once. The generated
 \ text never contains TRUST, TRUSTED:, or set-check.
 \ The one complete-plan evaluate crossing rides the audited boundary
-\ (include.f), reached through this friend xt installed by type-family-sha.f
-\ once both sides exist (the TF-SHA16-XT pattern) — the generator itself
-\ adds no unchecked code.
+\ (include.f), installed after both sides exist; the generator itself adds no
+\ unchecked code.
 \ Generated-plan eval crossing and protected-wordlist recorder, reached
 \ through `defer` hooks so the call is statically effect-known (no execute of a
 \ raw stored xt). include.f / aot.f bind TDECL-EVAL-XT;
@@ -1460,7 +1459,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 : TDGEN-NAME ( n -- ) {: vid:n :}        \ ": PKG:VARIANT " with the span recorded
    s" : " TDGEN-APP
    TDGEN-U @ {: n0:n :}
-   vid SUMV-CTOR-PKG$ TDGEN-APP
+   vid SUMV-CTOR-NS$ TDGEN-APP
    58 TDGEN-C,
    vid SUMV-NAME$ TDGEN-UPPER
    TDGEN-BUF n0 + TDGEN-NA !
@@ -1504,7 +1503,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 
 : TDECL-FINALIZE-NS ( n -- ) {: vid:n :}
    TDECL-FINALIZE-ARMED @ 0= IF s" sumtype: namespace finalizer not installed" 76 die THEN
-   vid SUMV-CTOR-PKG$ TDECL-FINALIZE-XT ;
+   vid SUMV-CTOR-NS$ TDECL-FINALIZE-XT ;
 
 \ product generated words (item 15): `: PKG:MAKE ( fields -- fam<..> ) ;` and
 \ `: PKG:UNMAKE ( fam<..> -- fields ) ;`. Both bodies are EMPTY and the pending
@@ -1550,7 +1549,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 \ through TFAM-DERIVED-AT? (products: eq only), and the words ride the ctor
 \ package's item-8 closed-but-callable WID protection and registry rollback.
 : TDGEN-DRV-REF ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ "PKG:TAIL" (upper tail)
-   fam TFAM-VAR-START@ SUMV-CTOR-PKG$ TDGEN-APP
+   fam TFAM-VAR-START@ SUMV-CTOR-NS$ TDGEN-APP
    58 TDGEN-C,
    ta tu TDGEN-UPPER ;
 : TDGEN-DRV-NAME ( n ptr u8 n -- ) {: fam:n ta:ptr tu:n :}   \ ": PKG:TAIL " span-recorded

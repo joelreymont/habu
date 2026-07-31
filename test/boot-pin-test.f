@@ -34,9 +34,9 @@ public
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-47 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 46 calls)
+46 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 45 calls)
                                     \ 22->26: +src/core/type-family.f +type-schema.f +sumtype.f
-                                    \ +type-family-sha.f (TFAM growth; user sign-off dot
+                                    \ +the former type-family SHA helper (TFAM growth; user sign-off dot
                                     \ habu-boot-pin-sign-be74cfd3). 26->31: +src/core/
                                     \ layout-buffer.f +layout-buffer-seal.f +layout-valid.f
                                     \ +lower-cert-base.f +lower-cert-seal.f (wide-ADT stack +
@@ -56,6 +56,7 @@ public
                                     \ Later declaration/front-end rows brought the base to 42;
                                     \ 42->46: +generic declaration transaction,
                                     \ native dictionary owner, and protection owner.
+                                    \ 46->45: retire the constructor namespace SHA helper.
 
 create BPT-D1   80 allot            \ pristine digest hex
 create BPT-HEX  80 allot            \ scratch digest hex

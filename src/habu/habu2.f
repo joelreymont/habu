@@ -184,7 +184,7 @@ public
 variable LPQNAME
 ;package
 variable LPSTRUCTDECL   variable LPENUMDECL
-variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
+variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256
 variable LPCOMBINATORS  variable LPXREF  variable LPGENDECLDICT  variable LPGENDECLPROT
 variable LPLAYOUTSEAL  variable LPLOWERCERTSEAL
 variable LPTOPROW
@@ -629,7 +629,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-LOAD-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-LOAD-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-LOAD-ROW
-   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-LOAD-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-LOAD-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-LOAD-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-LOAD-ROW
@@ -729,7 +728,6 @@ s" c-bp-watch-dump" s" label label --" TRUST
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PATH-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PATH-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PATH-ROW
-   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PATH-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PATH-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PATH-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PATH-ROW
@@ -1004,7 +1002,6 @@ public
    PFX-COMMON LPINCLUDE      s" src/core/include.f"     PFX-PROVIDE-ROW
    PFX-COMMON LPENUMS        s" src/core/enums.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPSHA256       s" src/core/sha256.f"      PFX-PROVIDE-ROW
-   PFX-COMMON LPTFAMSHA      s" src/core/type-family-sha.f" PFX-PROVIDE-ROW
    PFX-COMMON LPCOMBINATORS  s" src/core/combinators.f" PFX-PROVIDE-ROW
    PFX-COMMON LPXREF         s" src/habu/xref.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPGENDECLDICT  s" src/core/generated-declaration-dictionary.f" PFX-PROVIDE-ROW
@@ -6975,7 +6972,7 @@ s" SRCA@" s" -- ptr u8" TRUST
    LBL LPHABULAYOUT !
    LBL LPENVBASE !  LBL LPINCLUDE !  LBL LPSCRIPTARGV !  LBL LPINTMARK !  LBL LPROLES !
    LBL LPDECLEVENT !  LBL LPSTRUCTMAKE !  LBL LPSTRUCTDECL !  LBL LPENUMDECL !
-   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !  LBL LPTFAMSHA !
+   LBL LPENUMS !  LBL LPEXECVECTOR !  LBL LPSHA256 !
    LBL LPCOMBINATORS !  LBL LPXREF !  LBL LPGENDECLDICT !  LBL LPGENDECLPROT !
    LBL LPLAYOUTSEAL !  LBL LPLOWERCERTSEAL !
    LBL LPTOPROW !  LBL LCHKSNAPTOKEN ! ;

@@ -13,7 +13,7 @@ package DHT
 
 $4000 constant CAP
 10000 constant TIMEOUT-MS
-32 constant COMMON-N               \ pre-hook structures effect rows retired
+31 constant COMMON-N               \ constructor namespace SHA helper retired
 
 variable OUT-A
 variable ERR-A

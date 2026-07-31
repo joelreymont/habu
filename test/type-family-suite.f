@@ -32,15 +32,6 @@ variable #CASE
       then
       1+
    repeat drop ;
-\ TSNE ( ga gu wa wu -- ) : assert two strings are NOT byte-identical.
-: TSNE ( ptr u8 n ptr u8 n -- ) {: ga:ptr gu:n wa:ptr wu:n :}
-   #CASE @ 1 + #CASE !
-   gu wu <> if exit then
-   0 begin dup gu < while
-      dup ga + c@  over wa + c@ <> if drop exit then
-      1+
-   repeat drop
-   T-FAIL s" assert strings differ: both " type ga gu type cr ;
 : T-PF-DROP ( n n n ptr u8 n n n n n n n n -- )
    2drop 2drop 2drop 2drop 2drop 2drop ;
 
@@ -143,7 +134,7 @@ TRUSTED: TWX-SCHEMA-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: TWX-SCHEMA-SNAPSHOT-PERSIST ( -- ) SCHEMA-SNAPSHOT-PERSIST ;
 TRUSTED: TWX-SCHEMA-TAG@ ( n -- n ) SCHEMA-TAG@ ;
 TRUSTED: TWX-SUMV-ADD ( n ptr u8 n n n n n -- n ) SUMV-ADD ;
-TRUSTED: TWX-SUMV-CTOR-PKG! ( n n n -- ) SUMV-CTOR-PKG! ;
+TRUSTED: TWX-SUMV-CTOR-NS! ( n n n -- ) SUMV-CTOR-NS! ;
 TRUSTED: TWX-SUMV-FAM@ ( n -- n ) SUMV-FAM@ ;
 TRUSTED: TWX-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 TRUSTED: TWX-SUMV-PAY-FIELD ( n n -- n bool ) SUMV-PAY-FIELD ;
@@ -152,7 +143,7 @@ TRUSTED: TWX-SUMV-PAY-ROOT ( n n -- n ) SUMV-PAY-ROOT ;
 TRUSTED: TWX-SUMV-PAYCELLS@ ( n -- n ) SUMV-PAYCELLS@ ;
 TRUSTED: TWX-SUMV-TAG@ ( n -- n ) SUMV-TAG@ ;
 TRUSTED: TWX-TF-CANON? ( ptr u8 n -- bool ) TF-CANON? ;
-TRUSTED: TWX-TF-CTOR-PKG$ ( ptr u8 n ptr u8 n -- ptr u8 n ) TF-CTOR-PKG$ ;
+TRUSTED: TWX-TF-CTOR-NS$ ( ptr u8 n ptr u8 n -- ptr u8 n ) TF-CTOR-NS$ ;
 TRUSTED: TWX-TF-HIDDEN? ( ptr u8 n -- bool ) TF-HIDDEN? ;
 TRUSTED: TWX-TF-INTERN ( ptr u8 n -- n ) TF-INTERN ;
 TRUSTED: TWX-TF-OFF$ ( n n -- ptr u8 n ) TF-OFF$ ;
@@ -824,95 +815,50 @@ CLID @ TWX-LAY-FIND FOUNDF !  TWX-LAY-POLICY@ TL-CUSTOM T=  FOUNDF @ -1 T=
 FID @ TL-STACK-CELL-TAG 8 8 8 ' TWX-LAY-ADD catch   TC ! 2drop 2drop drop  TC @ E-TFAM-DUP T=
 
 \ ---------------------------------------------------------------------------
-\ 12b. constructor package-name derivation (PLAN Package Shape, docs §12; item 8).
-\    TWX-TF-CTOR-PKG$ ( pkg-a pkg-u tail-a tail-u -- ctor-a ctor-u ): uppercase the
-\    package segment and family tail, escape a literal '-' inside the segment as
-\    '--', join package-then-tail with a single '-'; when the escaped spelling
-\    exceeds the 32-byte readability cap (TF-CTOR-NAME-LIMIT; raised from 16 by
-\    dot habu-raise-or-alias-5d2a6b70), the name is `T` + the first 16 lowercase
-\    hex digits of SHA-256 over the length-prefixed segment list + `-` + the
-\    uppercase tail. Pure, injective, stable (no alloc-order id).
+\ 12b. constructor namespace derivation. The generated namespace is the exact
+\    absolute package path plus the family tail, ASCII-uppercased byte-for-byte.
+\    Colons and hyphens are literal identity bytes; no escaping or hashing occurs.
 \ ---------------------------------------------------------------------------
-variable CPA   variable CPU   variable CQA   variable CQU
-\ top level: bare uppercased tail, no separator.
-s" " s" result" TWX-TF-CTOR-PKG$ s" RESULT" T$=
-\ in-package: PKG-TAIL.
-s" pkg" s" result" TWX-TF-CTOR-PKG$ s" PKG-RESULT" T$=
-s" opt" s" some"   TWX-TF-CTOR-PKG$ s" OPT-SOME" T$=
-\ digits pass through unchanged.
-s" v2" s" ok"      TWX-TF-CTOR-PKG$ s" V2-OK" T$=
-\ injectivity across the hyphen boundary: every joined segment (package AND
-\ tail) escapes '-' as '--', so all three hyphen splits stay distinct:
-\   a-b + c  ->  A--B-C      a + b-c  ->  A-B--C      "" + a-b-c -> A--B--C
-s" a-b" s" c"      TWX-TF-CTOR-PKG$ s" A--B-C" T$=
-s" a"   s" b-c"    TWX-TF-CTOR-PKG$ s" A-B--C" T$=
-s" "    s" a-b-c"  TWX-TF-CTOR-PKG$ s" A--B--C" T$=
-\ determinism: identical inputs -> byte-identical output.
-s" pkg" s" result" TWX-TF-CTOR-PKG$ s" PKG-RESULT" T$=
+variable CPA   variable CPU
+s" " s" result" TWX-TF-CTOR-NS$ s" RESULT" T$=
+s" pkg" s" result" TWX-TF-CTOR-NS$ s" PKG:RESULT" T$=
+s" p:q" s" a-b" TWX-TF-CTOR-NS$ s" P:Q:A-B" T$=
+s" a-b" s" c" TWX-TF-CTOR-NS$ s" A-B:C" T$=
+s" a" s" b-c" TWX-TF-CTOR-NS$ s" A:B-C" T$=
+s" " s" a-b-c" TWX-TF-CTOR-NS$ s" A-B-C" T$=
 
-\ Readable band 16 < len <= 32 (raised from 16 by dot
-\ habu-raise-or-alias-5d2a6b70): the escaped form is injective at every length
-\ and the runtime/AOT dictionary stores long names (DNAME-EXT), so an escaped
-\ spelling up to 32 bytes keeps its READABLE form -- the real EVID/POLICY
-\ presence-slot ctor packages (EVID-CERTIFY--SLOT=18, POLICY-PROMOTE--POLICY=22)
-\ are now constructable by name. These three folded to opaque SHA before the raise:
-s" verylongpackagename" s" result" TWX-TF-CTOR-PKG$ s" VERYLONGPACKAGENAME-RESULT" T$=   \ 26
-s" " s" verylongfamilyname" TWX-TF-CTOR-PKG$ s" VERYLONGFAMILYNAME" T$=                    \ 18
-\ exactly 32 bytes stays readable (the boundary is len <= 32):
-s" abcdefghijklmno" s" pqrstuvwxyzabcde" TWX-TF-CTOR-PKG$ s" ABCDEFGHIJKLMNO-PQRSTUVWXYZABCDE" T$=  \ 15+1+16
-
-\ SHA-256 fallback fires only PAST 32 bytes now. escaped
-\ `VERYLONGPACKAGENAME-RESULTRESULTR` is 33 bytes > 32, so the derived name is
-\ `T` + 16 hex + `-RESULTRESULTR` = 31 bytes (the hash covers only the package
-\ segment list; the tail is appended raw). Structure asserted here; the exact
-\ hash goldens (determinism + injectivity + algorithm pin) follow.
-s" verylongpackagename" s" resultresultr" TWX-TF-CTOR-PKG$ CPU ! CPA !
-CPU @ 31 T=
-CPA @ 1 s" T" T$=                           \ prefix marker
-CPA @ 17 + 1 s" -" T$=                      \ separator after the 16-hex hash
-CPA @ 18 + 13 s" RESULTRESULTR" T$=         \ uppercase family tail suffix (appended raw)
-\ every hash byte is a lowercase hex digit (0-9 a-f).
-: HEXLC? ( n -- bool ) {: c:n :}
-   c 48 >= c 57 <= and   c 97 >= c 102 <= and   or ;
-: HEX16? ( ptr u8 -- bool ) {: p:ptr :}
-   0 begin dup 16 < while
-      dup p + c@ HEXLC? 0= if drop 0 0= 0= exit then
+package TF-NS-TEST
+$400 constant CAP
+create PKG-BUF CAP allot
+: FILL ( n -- ) {: u:n :}
+   0 begin dup u < while
+      [char] a over PKG-BUF + c!
       1+
-   repeat drop 0 0= ;
-CPA @ 1 + HEX16? -1 T=
-\ TWX-TF-CTOR-PKG$ returns a pointer into the shared derivation buffer, so intern a
-\ stable copy of the first result before deriving again.
-variable CPOFF
-CPA @ CPU @ TWX-TF-INTERN CPOFF !
-\ determinism: the same long input reproduces the same derived name.
-s" verylongpackagename" s" resultresultr" TWX-TF-CTOR-PKG$ CQU ! CQA !
-CQA @ CQU @  CPOFF @ CPU @ TWX-TF-OFF$  T$=
-\ injectivity: a different long package hashes to a different name (the hash
-\ region separates inputs that share length and tail).
-s" verylongpackagenamx" s" resultresultr" TWX-TF-CTOR-PKG$ CQU ! CQA !
-CQA @ CQU @  CPOFF @ CPU @ TWX-TF-OFF$  TSNE   \ NOT equal to the first long name
-\ exact golden pins the pinned algorithm byte-for-byte (hash covers the package
-\ segment list only, so the longer tail keeps the verylongpackagename golden):
-\ SHA-256(0x13 "verylongpackagename") = 92a8624462e75ea4... (independent impl).
-s" verylongpackagename" s" resultresultr" TWX-TF-CTOR-PKG$ s" T92a8624462e75ea4-RESULTRESULTR" T$=
-\ a long family tail with an empty package: fallback hashes the empty segment
-\ list, tail still appended (33-byte top-level tail > 32).
-s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TWX-TF-CTOR-PKG$ CQU ! CQA !
-CQU @ 51 T=                                 \ T(1)+16 hex+ -(1)+33-byte tail
-CQA @ 1 s" T" T$=
-CQA @ 1 + HEX16? -1 T=
-CQA @ 18 + 33 s" ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
-\ empty segment list golden: SHA-256("") = e3b0c44298fc1c14... (FIPS-180 constant).
-s" " s" abcdefghijklmnopqrstuvwxyzabcdefg" TWX-TF-CTOR-PKG$ s" Te3b0c44298fc1c14-ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFG" T$=
+   repeat drop ;
+public
+: BOUNDARY ( -- ptr u8 n )
+   CAP 2 - FILL
+   PKG-BUF CAP 2 - s" z" TWX-TF-CTOR-NS$ ;
+: OVER ( -- )
+   CAP 1- FILL
+   PKG-BUF CAP 1- s" z" TWX-TF-CTOR-NS$ 2drop ;
+;package
 
-\ SV.CTOR-PKG metadata slot: friend writer/reader round-trip through the pool.
-\ VOK is a live variant id from section 10; storing its constructor package name
+\ Exactly 1024 output bytes succeed with literal path punctuation preserved.
+TF-NS-TEST:BOUNDARY CPU ! CPA !
+CPU @ $400 T=
+CPA @ c@ [char] A T=
+CPA @ $3FE + c@ [char] : T=
+CPA @ $3FF + c@ [char] Z T=
+
+\ SV.CTOR-NS metadata slot: friend writer/reader round-trip through the pool.
+\ VOK is a live variant id from section 10; storing its constructor namespace
 \ leaves the other variant fields untouched.
 variable RPK
-s" RESULT" TWX-TF-INTERN RPK !
-VOK @ SUMV-CTOR-PKG$ nip 0 T=               \ unset variants report an empty name
-VOK @ RPK @ 6 TWX-SUMV-CTOR-PKG!
-VOK @ SUMV-CTOR-PKG$ s" RESULT" T$=
+s" P:Q:RESULT" TWX-TF-INTERN RPK !
+VOK @ SUMV-CTOR-NS$ nip 0 T=               \ unset variants report an empty name
+VOK @ RPK @ 10 TWX-SUMV-CTOR-NS!
+VOK @ SUMV-CTOR-NS$ s" P:Q:RESULT" T$=
 VOK @ TWX-SUMV-TAG@ 0 T=                        \ tag field intact after the CTOR write
 
 \ ---------------------------------------------------------------------------
@@ -1500,6 +1446,13 @@ public
 : EXITED? ( -- bool ) EXITED? @ ;
 : ERR$ ( -- ptr u8 n ) ERR-BUF ERR-U @ ;
 ;package
+
+\ The builder refuses the first output beyond its fixed capacity with the exact
+\ public diagnostic; the preceding in-process case proved the boundary succeeds.
+s" TF-NS-TEST:OVER" TF-DIE:RUN
+TF-DIE:EXITED? T-TRUE
+TF-DIE:RC 76 T=
+TF-DIE:ERR$ s" tfam: constructor namespace too long" CONTAINS? T-TRUE
 
 \ The child is a COW fork of this process, so TF-DERIVE's public wrappers are
 \ already live in it: the child source needs no trust definitions of its own.

@@ -456,7 +456,7 @@ public
 TRUSTED: RP-EV ( ptr u8 n ptr u8 n -- ) STRUCTURE-DECL:SD-REPLAY ;
 TRUSTED: RP-TRY ( ptr u8 n ptr u8 n -- n ) ['] RP-EV catch ;
 TRUSTED: SV-NAME$ ( n -- ptr u8 n ) SUMV-NAME$ ;
-TRUSTED: CTOR-PKG$ ( n -- ptr u8 n ) SUMV-CTOR-PKG$ ;
+TRUSTED: CTOR-NS$ ( n -- ptr u8 n ) SUMV-CTOR-NS$ ;
 TRUSTED: CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 TRUSTED: FAM-VAR-START ( n -- n ) TFAM-VAR-START@ ;
 TRUSTED: FAM-VAR-COUNT ( n -- n ) TFAM-VAR-COUNT@ ;
@@ -485,7 +485,7 @@ FID @ struct-replay-test:FAM-VAR-COUNT 2 T=          \ make + unmake rows regist
 FID @ struct-replay-test:FAM-VAR-START SV0 !
 SV0 @ struct-replay-test:SV-NAME$ s" make" CORE-STR= T-TRUE
 SV0 @ 1 + struct-replay-test:SV-NAME$ s" unmake" CORE-STR= T-TRUE
-SV0 @ struct-replay-test:CTOR-PKG$ s" RPSD" CORE-STR= T-TRUE
+SV0 @ struct-replay-test:CTOR-NS$ s" RPSD" CORE-STR= T-TRUE
 
 \ registration yes, generation no: no constructor symbol, and the word does not
 \ resolve (1 = uncheckable; the identical live declaration answers -1, accepted).
