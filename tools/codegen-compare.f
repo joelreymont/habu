@@ -11,6 +11,16 @@
 \       from this measurement. Use it when a deliberate compiler change has
 \       moved the numbers, and read the resulting diff before committing it.
 \
+\ THIS ENTRY IS THE TIMED CHECK, AND IT IS RUN BY HAND. It compares the cost
+\ column with the committed table; no gate does. A cost is a measurement, and a
+\ machine with every core busy - which is what a gate is - moves one further than
+\ the tolerance band without any compiler having changed. The head of
+\ tools/codegen-compare-baseline.f records the measurements that settle it. What
+\ runs in the gates is tools/codegen-compare-test.f, which checks the same pass
+\ over the same shared body with the cost column left out and says so in its
+\ output. Run this entry on a quiet machine before and after a change that is
+\ meant to move the numbers, and read what it prints.
+\
 \ The whole point of the harness is that the numbers come from the real engine:
 \ the corpus words are compiled by bin/hb when tools/codegen-compare-corpus.f is
 \ loaded, their machine code sizes are read from their own dictionary records,

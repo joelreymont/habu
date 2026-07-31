@@ -33,6 +33,21 @@
 \                   tools/codegen-compare-core.f for the load measurements it is
 \                   derived from.
 \
+\ THE COST COLUMN CAN BE LEFT OUT, AND SAYS SO WHEN IT IS. A gate runs many
+\ suites at once, and a timing taken on a loaded host is compared here with a
+\ number recorded on an idle one. Measured on the twelve-core host this harness
+\ was written on: with eight competing busy processes per core the pass still
+\ agreed, but CODEGEN-CORPUS:BYTE-FIND came out 7.93 times its recorded cost
+\ against a band of eight - two per cent of margin - and with sixteen per core
+\ the run reported four slower rows and the pass budget and exited non-zero.
+\ None of those was a compiler change. So a run may declare the cost column
+\ unchecked: COSTS-UNCHECKED! leaves the cost comparison and the pass budget out
+\ - the budget exists only to say the timings are untrustworthy, so it belongs
+\ with them - and COMPARE prints one line naming what it did not compare and
+\ why. A run that skips the timings therefore cannot be mistaken for a run that
+\ compared them and found nothing. Everything else is compared exactly as
+\ before, because none of it is a measurement. COSTS-CHECKED! is the default.
+\
 \ Every disagreement is a finding: the run reports all of them and returns the
 \ count, rather than stopping at the first.
 
@@ -65,6 +80,7 @@ variable ROW-N
 variable DECLARED-ROWS
 variable FINDINGS
 variable REPORT?
+variable COSTS?                   \ compare the cost column, and with it the pass budget
 variable CURSOR
 variable TEXT-CURSOR
 PTR-VARIABLE LINE-A
@@ -258,6 +274,14 @@ public
 : QUIET! ( -- )
    0 REPORT? ! ;
 
+\ Compare the cost column and the pass budget, or leave both out. See the note
+\ at the head of this file for what a loaded host does to a timing.
+: COSTS-CHECKED! ( -- )
+   -1 COSTS? ! ;
+
+: COSTS-UNCHECKED! ( -- )
+   0 COSTS? ! ;
+
 : PATH$ ( -- ptr u8 n )
    s" test/compiler/codegen-compare-baseline.txt" ;
 
@@ -358,7 +382,7 @@ private
    then
    k b SIZE-CHECK
    k b OUTPUT-CHECK
-   k b COST-CHECK ;
+   COSTS? @ if k b COST-CHECK then ;
 
 : EXTRA-ROW-CHECK ( n -- ) {: b:n :}
    b ROW-PATH CODEGEN-COMPARE:PATH-OLD = if
@@ -377,6 +401,14 @@ private
    s"  ms budget; the timings are not trustworthy on this host" SAY
    SAY-END FIND+ ;
 
+\ What a run that left the timings out says instead. It is not a finding: it is
+\ the one line that keeps an unchecked cost column from reading as a checked one.
+: COST-NOTE ( -- )
+   s" codegen-compare: COST-UNCHECKED the cost column and the pass budget were" SAY
+   s"  not compared: host load under a parallel gate moves a timing further than" SAY
+   s"  the tolerance band. The timed check is bin/hb --load tools/codegen-compare.f" SAY
+   SAY-END ;
+
 public
 
 \ Compare the rows just measured with the rows LOAD parsed. Adds to the finding
@@ -390,7 +422,7 @@ public
       dup EXTRA-ROW-CHECK
       1+
    repeat drop
-   BUDGET-CHECK
+   COSTS? @ if BUDGET-CHECK else COST-NOTE then
    FINDINGS @ ;
 
 : FINDINGS@ ( -- n )
@@ -400,6 +432,7 @@ private
 
 : INIT ( -- )
    -1 REPORT? !
+   -1 COSTS? !
    0 FINDINGS !
    0 ROW-N ! ;
 

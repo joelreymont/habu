@@ -478,6 +478,11 @@ public
    s" test/compiler/native-regalloc.f" GSI-FORK-INCLUDE
    s" test/compiler/native-emit.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
+   \ Runs the exact half of the code generator comparison - bytes, computed
+   \ values, the two generators head to head, the committed table's structure.
+   \ The timing column is left out here because this group runs its members in
+   \ parallel; see the note on the codegen-compare entry in
+   \ test/gate-stdlib-cases.f, and run the timed check by hand.
    s" tools/codegen-compare-test.f" GSI-FORK-INCLUDE
    s" test/pointer-storage-test.f" GSI-FORK-INCLUDE
    s" test/ptr-elem-test.f" GSI-FORK-INCLUDE

@@ -282,6 +282,22 @@ SUITE compiler-native-immediate
    test/compiler/native-immediate.f
 ;SUITE
 
+\ The code generator comparison harness, and what a gate can honestly ask of it.
+\ Its member checks the exact half: machine-code bytes, the values each compiled
+\ word computes, the head-to-head agreement of the two code generators, and the
+\ structure of the committed table. The timing column is deliberately left out
+\ of every gate, here and in the resident group below. A cost is a measurement
+\ compared with a number recorded on an idle machine, and a loaded host reaches
+\ the tolerance band on its own - eight competing processes per core left two
+\ per cent of it, sixteen went through it and reported four words that no
+\ compiler change had touched. Those measurements, and what the band does and
+\ does not buy, are written at the head of tools/codegen-compare-baseline.f.
+\ The scheduled run prints one line naming the comparison it did not make, and
+\ the timed check is bin/hb --load tools/codegen-compare.f, run by hand before a
+\ change that is meant to move the numbers. The member is mirrored into the
+\ resident stdlib/tail-pure fork group, so it is scheduled rather than
+\ manual-gate, and nothing is entered for it in the manual-gate table of
+\ tools/suite-coverage-lint-core.f.
 SUITE codegen-compare
    tools/codegen-compare-test.f
 ;SUITE

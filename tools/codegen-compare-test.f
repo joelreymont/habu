@@ -29,11 +29,34 @@
 \ are assertions about the store the real pass left behind, computed here from
 \ the public readers rather than by calling the harness's own check.
 \
-\ Between the two, the file runs CODEGEN-COMPARE-CLI:CHECK - the exact word
-\ `bin/hb --load tools/codegen-compare.f` runs - against the committed baseline
-\ in the repository. That is the real production path, and it ends the process
-\ with a non-zero status if the committed table and the live compiler disagree,
-\ or if the two code generators do.
+\ Between the two, the file runs CODEGEN-COMPARE-CLI:CHECK-EXACT against the
+\ committed baseline in the repository: the same measurement pass, the same
+\ report, the same baseline load and the same verdict that
+\ `bin/hb --load tools/codegen-compare.f` runs, over the same shared body, with
+\ the cost column and the pass budget left out. It ends the process with a
+\ non-zero status if the committed table and the live compiler disagree, or if
+\ the two code generators do.
+\
+\ WHY THIS FILE LEAVES THE TIMINGS OUT, AND WHERE THEY ARE STILL CHECKED. This
+\ file is scheduled: it runs in the resident stdlib/tail-pure fork group and in
+\ the spawned stdlib gate, both of which keep every core busy. A cost is the one
+\ column that is a measurement rather than a fact about the compiled code, and it
+\ is compared with a number recorded on an idle machine - measured, with the
+\ numbers, at the head of tools/codegen-compare-baseline.f, where eight competing
+\ processes per core left two per cent of the tolerance band and sixteen went
+\ through it. A scheduled run that can fail for host load is worse than no
+\ scheduled run at all, so the timings against the committed table are checked by
+\ hand with `bin/hb --load tools/codegen-compare.f`, and the run says out loud
+\ which comparison it did not make.
+\
+\ The timing column is still exercised here, and where the answer cannot turn on
+\ host load: the deliberately slowed word below is measured and compared against
+\ a baseline written from another measurement in the same pass, so both sides of
+\ that comparison meet the same busy machine. Those cases prove the cost column
+\ reports a real slowdown and reports nothing at normal speed. The cases after
+\ them prove that leaving the cost column unchecked drops that comparison and
+\ nothing else: a wrong size, a wrong output value and a missing row are all
+\ still reported with the timings left out.
 
 require lib/test.f
 require lib/string.f
@@ -315,6 +338,63 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    MEASURE-HONEST
    PATH$ FINDINGS-AT 0 T= ;
 
+\ ---- the cost column unchecked ---------------------------------------------
+
+\ What a scheduled run leaves out, and what it must still catch. The row under
+\ test carries a cost of one, which no measured row can be within eight times of,
+\ so a case that expects nothing is asking whether the cost column was consulted
+\ at all, and a case that expects a finding is asking whether everything else
+\ still is. The measurement they read is the honest one SLOWDOWN-CASES left
+\ behind.
+: WILD-COST-ROW ( n -- ) {: k:n :}
+   k k CODEGEN-COMPARE:SIZE 1 FIX-ROW ;
+
+: WILD-COST-FIXTURE ( -- )
+   FIX-RESET
+   2 FIX-DECLARED
+   0 FIX-TRUE-ROW
+   1 WILD-COST-ROW ;
+
+: COST-MODE-CASES ( -- )
+   s" a cost far outside the band is reported while the cost column is checked" T-LABEL
+   WILD-COST-FIXTURE
+   FIX-FINDINGS 1 T=
+
+   s" and is not reported once the cost column is unchecked" T-LABEL
+   CODEGEN-BASELINE:COSTS-UNCHECKED!
+   WILD-COST-FIXTURE
+   FIX-FINDINGS 0 T=
+
+   s" the deliberately slowed word is not reported either" T-LABEL
+   HONEST-FIXTURE
+   FIX-WRITE
+   MEASURE-SLOW
+   PATH$ FINDINGS-AT 0 T=
+
+   s" but a wrong size byte still is" T-LABEL
+   MEASURE-HONEST
+   FIX-RESET
+   2 FIX-DECLARED
+   0 FIX-TRUE-ROW
+   1 1 CODEGEN-COMPARE:SIZE 4 + 1 FIX-ROW
+   FIX-FINDINGS 1 T=
+
+   s" and so does a wrong output value" T-LABEL
+   FIX-RESET
+   2 FIX-DECLARED
+   0 FIX-TRUE-ROW
+   1 BAD-OUTPUT !
+   1 WILD-COST-ROW
+   FIX-FINDINGS 1 T=
+
+   s" and so does a row the baseline is missing" T-LABEL
+   FIX-RESET
+   1 FIX-DECLARED
+   0 FIX-TRUE-ROW
+   FIX-FINDINGS 1 T=
+
+   CODEGEN-BASELINE:COSTS-CHECKED! ;
+
 \ ---- the new column's comparison, on rows built to fool it -----------------
 
 \ The row indices MEASURE-HONEST leaves behind: the calibration call and the
@@ -493,10 +573,11 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    TWO-ROW-CASES
    STRUCTURE-CASES
    SLOWDOWN-CASES
+   COST-MODE-CASES
    NEW-COLUMN-CASES
    CLEANUP-RUN
    CODEGEN-BASELINE:LOUD!
-   CODEGEN-COMPARE-CLI:CHECK
+   CODEGEN-COMPARE-CLI:CHECK-EXACT
    REAL-RUN-CASES
    T-REPORT ;
 
