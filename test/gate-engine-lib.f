@@ -874,8 +874,9 @@ private
    src srcu want label labelu UNC-LINE
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
-255 constant CAP-PKG-U
-TF-CTOR-NS-CAP CAP-PKG-U - constant CAP-FAM-U
+$400 constant CAP-SPEC
+$FF constant CAP-PKG-U
+CAP-SPEC CAP-PKG-U - constant CAP-FAM-U
 
 : CAP-SOURCE ( -- )
    GE-SRC-RESET
@@ -895,6 +896,9 @@ TF-CTOR-NS-CAP CAP-PKG-U - constant CAP-FAM-U
    s" hb: uncaught throw code 7135" GE-SRC-LINE ;
 
 : CAP-UNC ( -- )
+   TF-CTOR-NS-CAP CAP-SPEC <> if
+      s" generated namespace cap spec drift" GE-FAIL
+   then
    GE-HB-RESET
    CAP-SOURCE
    GE-UNCAUGHT-RC s" generated namespace cap rc" UNC-RUN
