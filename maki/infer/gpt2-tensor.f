@@ -139,14 +139,14 @@ ENUM orientation DERIVE eq
 NEWTYPE layer-proof 0
 
 \ ---- authenticated layer identity: cfgkey copy + index + private proof ----------
-STRUCTURE layer-id 0
+STRUCTURE layer-id<>
    FIELD key MDLCFG:cfgkey
    FIELD idx n
    FIELD tok layer-proof
 ;STRUCTURE
 
 \ ---- the tensor identity ---------------------------------------------------------
-ENUM tensor-id 0
+ENUM tensor-id<>
    VARIANT global
       FIELD role global-role
    ;VARIANT

@@ -66,20 +66,20 @@ public
 -5646 constant E-CENSUS     \ the gpt2 tensor census 4 + 13*nlayer overflows a cell
 
 \ ---- the architecture payload (consumers MATCH on the arm) -------------------
-ENUM arch 0
+ENUM arch<>
    VARIANT gpt2  FIELD ln-eps r  FIELD attn-scale f ;VARIANT
    VARIANT llama FIELD nkvhead n  FIELD ffn-dim n  FIELD rope-theta r  FIELD rms-eps r ;VARIANT
 ;ENUM
 
 \ ---- the 32-byte content identity as four n cells ----------------------------
-STRUCTURE cfgkey 0 DERIVE eq
+STRUCTURE cfgkey<> DERIVE eq
    FIELD k0 n  FIELD k1 n  FIELD k2 n  FIELD k3 n
 ;STRUCTURE
 
 \ ---- the private-mint proof (see header: arity-0 nominal, ART:built shape) ---
 NEWTYPE cfg-proof 0
 
-STRUCTURE mcfg 0
+STRUCTURE mcfg<>
    FIELD dt MAKI:dtype
    FIELD nctx n
    FIELD nvocab n

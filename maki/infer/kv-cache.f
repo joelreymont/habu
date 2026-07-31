@@ -54,13 +54,13 @@ public
 \ The nominal fields are private representation roles. The structure is public so
 \ callers can transport a sequence value, but only allocator operations mint the
 \ three field values from raw state.
-STRUCTURE kvseq 0
+STRUCTURE kvseq<>
    FIELD cache kv-cache-id
    FIELD slot kv-seq-slot
    FIELD gen kv-seq-gen
 ;STRUCTURE
 
-STRUCTURE kvcfg 0
+STRUCTURE kvcfg<>
    FIELD nkv n
    FIELD hdim n
    FIELD dbytes n
