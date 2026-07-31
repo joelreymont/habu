@@ -38,6 +38,9 @@ PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
 \ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
 SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 
+package PST
+private
+
 \ Build long declarations compactly, then cross the audited EVALUATE boundary
 \ into the real ENUM declarer before the manifest registry is emitted.
 TDGEN-CAP constant PST-DECL-CAP
@@ -80,8 +83,6 @@ variable PST-DECL-U
    PST-SPEC-CAP 102 PST-DECL-REP
    s"  variant ;ENUM" PST-DECL-APP
    PST-DECL-BUF PST-DECL-U @ ;
-
-PST-LONG-DECL$ INCLUDE-EVALUATE
 
 PS-FILE-CAP constant PST-BUF-CAP
 $7530 constant PST-TIMEOUT-MS
@@ -664,6 +665,7 @@ variable PST-CAP-ROW
 
 : PST-MAIN ( -- )
    T-RESET
+   PST-LONG-DECL$ INCLUDE-EVALUATE
    PST-PREPARE
    PST-TEST-GOOD
    PST-TEST-FIXTURE
@@ -683,4 +685,6 @@ variable PST-CAP-ROW
    T-REPORT
    s" public-signatures-test: ok" type cr ;
 
-PST-MAIN
+' PST-MAIN
+;package
+execute
