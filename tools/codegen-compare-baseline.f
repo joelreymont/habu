@@ -13,6 +13,16 @@
 \ The file also declares its own row count on a "rows: N" line, so deleting a
 \ row is a finding even when the measurement side lost the same word.
 \
+\ ONLY THE OLD ROWS ARE COMMITTED. The measurement pass also produces a new row
+\ for every corpus word the native chain can compile, and none of them are
+\ written here: the new chain is still growing, its byte counts move with every
+\ capability it gains, and pinning them would turn a real advance into a red
+\ gate. The new column is recomputed on every run and compared with the old one
+\ live - exactly, on the values the two routines produce - so it is checked
+\ without being frozen. Rows of that path are therefore skipped on both sides of
+\ the comparison below, and the reader still understands the word `new` so a
+\ hand-added new row is reported as an extra row rather than silently ignored.
+\
 \ What is compared exactly, and what is compared with a tolerance:
 \
 \   size, outputs   exactly. These are facts about the emitted code and about
@@ -39,8 +49,6 @@ package CODEGEN-BASELINE
 $4000 constant FILE-CAP
 32 constant SPACE-BYTE
 10 constant NEWLINE-BYTE
-0 constant PATH-OLD
-1 constant PATH-NEW
 
 FILE-CAP BUFFER: FILE-TEXT
 variable FILE-U
@@ -217,8 +225,8 @@ variable LINE-U
 : SCAN-LINE ( ptr u8 n -- )
    LINE!
    NEXT$ 0= if 2drop exit then
-   2dup CODEGEN-COMPARE:PATH-OLD$ STR= if 2drop PATH-OLD PARSE-ROW exit then
-   2dup CODEGEN-COMPARE:PATH-NEW$ STR= if 2drop PATH-NEW PARSE-ROW exit then
+   2dup CODEGEN-COMPARE:PATH-OLD$ STR= if 2drop CODEGEN-COMPARE:PATH-OLD PARSE-ROW exit then
+   2dup CODEGEN-COMPARE:PATH-NEW$ STR= if 2drop CODEGEN-COMPARE:PATH-NEW PARSE-ROW exit then
    s" rows:" STR= if PARSE-DECLARED then ;
 
 : NEXT-LINE ( -- ptr u8 n bool )
@@ -276,7 +284,7 @@ private
 
 : FIND-BASELINE ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup ROW-N @ < while
-      dup ROW-PATH PATH-OLD = if
+      dup ROW-PATH CODEGEN-COMPARE:PATH-OLD = if
          dup ROW-NAME$ a u STR= if exit then
       then
       1+
@@ -336,7 +344,11 @@ private
    s" , allowed up to " SAY ceiling SAY-NUM
    SAY-END FIND+ ;
 
+\ A new row is measured live and committed nowhere, so it has nothing to be
+\ compared with here. Its outputs are checked against the old row's by
+\ tools/codegen-compare-new.f, which is where the head-to-head comparison lives.
 : MEASURED-ROW-CHECK ( n -- ) {: k:n :}
+   k CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD <> if exit then
    k CODEGEN-COMPARE:NAME$ FIND-BASELINE {: b:n :}
    b 0 < if
       s" MISSING-ROW" FINDING
@@ -349,8 +361,8 @@ private
    k b COST-CHECK ;
 
 : EXTRA-ROW-CHECK ( n -- ) {: b:n :}
-   b ROW-NAME$ CODEGEN-COMPARE:FIND-ROW 0 >= if
-      b ROW-PATH PATH-OLD = if exit then
+   b ROW-PATH CODEGEN-COMPARE:PATH-OLD = if
+      CODEGEN-COMPARE:PATH-OLD b ROW-NAME$ CODEGEN-COMPARE:FIND-ROW 0 >= if exit then
    then
    s" EXTRA-ROW" FINDING
    b ROW-NAME$ SAY

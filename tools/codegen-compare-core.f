@@ -1,20 +1,37 @@
 \ codegen-compare-core.f - the measurement engine of the codegen comparison.
-\ One concern: turning a named, already-compiled word into one recorded row.
+\ One concern: turning one runnable piece of machine code into one recorded row.
 \
-\ For each subject word the engine records three facts:
+\ For each subject the engine records three facts:
 \
-\   size      the number of bytes of machine code the word occupies. This is
-\             read out of the word's own dictionary record - the record keeps
-\             the code start address and the code length - so it is the code the
-\             engine actually emitted, not an estimate and not a re-count.
-\   outputs   the values the word leaves on the stack when it is executed on its
-\             pinned inputs. The caller runs the word and hands each result to
+\   size      the number of bytes of machine code the subject occupies.
+\   outputs   the values the subject leaves on the stack when it is executed on
+\             its pinned inputs. The caller runs it and hands each result to
 \             VECTOR, which appends it to the row in order.
 \   cost      how long one call takes. See the timing note below.
 \
-\ Nothing here compiles anything or reproduces any part of a compiler. The
-\ subject words were compiled by the engine when their source file was loaded;
-\ this file only looks them up, runs them, and times them.
+\ TWO CODE GENERATORS, ONE STORE. A row records which code generator produced
+\ it. An old row is a word the engine compiled when its source file was loaded:
+\ MEASURE looks it up and reads its size out of its own dictionary record - the
+\ record keeps the code start address and the code length - so the size is the
+\ code the engine actually emitted, not an estimate and not a re-count. A new
+\ row is a routine the native chain emitted and the harness published into code
+\ space: it has no dictionary record, so MEASURE-EMITTED is told the size the
+\ emitter reported. Everything else about the two is measured identically, by
+\ the same words, in the same pass.
+\
+\ EACH PATH IS NORMALIZED AGAINST ITS OWN EMPTY CALL. The two paths are entered
+\ differently - an old row is called as an ordinary Habu word, a new row through
+\ the C-ABI call, because the chain has no calling-convention binding yet - so
+\ the call overhead is not the same on both sides and no subtraction can make it
+\ so. Each path therefore declares its own calibration row, an empty call
+\ entered the same way its other rows are, and every cost is a multiple of that.
+\ A cost is then "how much more than an empty call of this kind", which is the
+\ only sense in which the two columns are comparable; the report prints absolute
+\ nanoseconds for both as well, so a reader can see what was actually measured.
+\
+\ Nothing here compiles anything or reproduces any part of a compiler. The old
+\ subjects were compiled by the engine when their source file was loaded and the
+\ new ones by the native chain; this file only runs them and times them.
 \
 \ Timing discipline (no sleeps anywhere, and a named budget).
 \
@@ -70,6 +87,13 @@ public
 64 constant NAME-MAX
 8 constant OUTPUT-MAX
 
+\ Which code generator produced a row. The committed table spells these out in
+\ its first column, and tools/codegen-compare-baseline.f reads the spelling back
+\ into the same code, so the two files cannot disagree about what a row is.
+0 constant PATH-OLD
+1 constant PATH-NEW
+2 constant PATH-N
+
 \ How much slower than its recorded baseline a row may measure before the
 \ comparison calls it a regression.
 \
@@ -105,6 +129,8 @@ private
 
 ROW-MAX NAME-MAX * BUFFER: NAME-BYTES
 create NAME-LENS ROW-MAX cells allot
+create PATHS ROW-MAX cells allot
+create CALIBRATIONS PATH-N cells allot
 create SIZES ROW-MAX cells allot
 create PICOS ROW-MAX cells allot
 create SPREADS ROW-MAX cells allot
@@ -114,7 +140,6 @@ create OUT-VALUES ROW-MAX OUTPUT-MAX * cells allot
 
 variable ROW-N
 variable OUT-N                    \ outputs recorded so far for the row being measured
-variable CALIBRATION-ROW
 variable FASTEST
 variable SLOWEST
 variable PASS-NS
@@ -126,6 +151,9 @@ variable NORMALIZED
 
 : ROW-OK ( n -- n )
    dup 0 < over ROW-N @ >= or if E-CODEGEN-COMPARE-ROW throw then ;
+
+: PATH-OK ( n -- n )
+   dup 0 < over PATH-N >= or if E-CODEGEN-COMPARE-ROW throw then ;
 
 : NAME-AT ( n -- ptr u8 )
    NAME-MAX * NAME-BYTES + ;
@@ -179,7 +207,7 @@ public
 : RESET ( -- )
    0 ROW-N !
    0 OUT-N !
-   -1 CALIBRATION-ROW !
+   PATH-N 0 ?do -1 CALIBRATIONS i SLOT ! loop
    0 PASS-NS !
    0 PASS-MS !
    0 NORMALIZED ! ;
@@ -196,13 +224,17 @@ public
 : OVER-BUDGET? ( -- bool )
    PASS-MS @ BUDGET-MS > ;
 
-\ Measure one subject: name, a body that calls it once for timing, and a body
-\ that calls it on its pinned inputs and hands every result to VECTOR.
+private
+
+\ Record one row: which code generator produced it, its name, its size in bytes,
+\ a body that calls the subject once for timing, and a body that calls it on its
+\ pinned inputs and hands every result to VECTOR.
 \ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
-: MEASURE ( ptr u8 n [ -- ] [ -- ] -- ) {: a:ptr u:n timing vectors :}
+: RECORD ( ptr u8 n n n [ -- ] [ -- ] -- ) {: a:ptr u:n path:n size:n timing vectors :}
    ROW-N @ ROW-MAX >= if E-CODEGEN-COMPARE-CAP throw then
    a u NAME!
-   a u SUBJECT-SIZE SIZES ROW-N @ SLOT !
+   path PATH-OK PATHS ROW-N @ SLOT !
+   size SIZES ROW-N @ SLOT !
    0 OUT-N !
    vectors execute
    OUT-N @ OUT-COUNTS ROW-N @ SLOT !
@@ -212,37 +244,66 @@ public
    0 COSTS ROW-N @ SLOT !
    ROW-N @ 1+ ROW-N ! ;
 
-\ Declare the row just measured to be the calibration row: every other row's
-\ cost is expressed as a multiple of this one. Declared explicitly rather than
-\ assumed to be row zero, so a reordered case list cannot silently divide by the
-\ wrong measurement.
+public
+
+\ Measure a word the engine compiled: its size comes from its own dictionary
+\ record, so a subject this image does not hold stops the pass.
+\ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
+: MEASURE ( ptr u8 n [ -- ] [ -- ] -- ) {: a:ptr u:n timing vectors :}
+   a u PATH-OLD  a u SUBJECT-SIZE  timing vectors RECORD ;
+
+\ Measure a routine the native chain emitted and the caller published. It has no
+\ dictionary record, so the size is the one the emitter reported.
+\ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
+: MEASURE-EMITTED ( ptr u8 n n [ -- ] [ -- ] -- ) {: a:ptr u:n size:n timing vectors :}
+   a u PATH-NEW size timing vectors RECORD ;
+
+\ Declare the row just measured to be its path's calibration row: every other
+\ row of that path expresses its cost as a multiple of this one. Declared
+\ explicitly rather than assumed to be the path's first row, so a reordered case
+\ list cannot silently divide by the wrong measurement.
 : CALIBRATE ( -- )
-   ROW-N @ 1- ROW-OK CALIBRATION-ROW ! ;
+   ROW-N @ 1- ROW-OK {: k:n :}
+   k CALIBRATIONS  PATHS k SLOT @  SLOT ! ;
+
+private
+
+\ The picoseconds an empty call of this path costs. A path with rows and no
+\ calibration row would otherwise divide every one of them by nothing.
+: BASE-PICOS ( n -- n ) {: path:n :}
+   CALIBRATIONS path PATH-OK SLOT @ {: base-row:n :}
+   base-row 0 < if E-CODEGEN-COMPARE-STAGE throw then
+   PICOS base-row ROW-OK SLOT @ ;
+
+public
 
 : NORMALIZE ( -- )
-   CALIBRATION-ROW @ ROW-OK {: base-row:n :}
-   PICOS base-row SLOT @ {: base:n :}
-   base 0= if E-CODEGEN-COMPARE-CLOCK throw then
    0 begin dup ROW-N @ < while
       dup {: k:n :}
+      PATHS k SLOT @ BASE-PICOS {: base:n :}
+      base 0= if E-CODEGEN-COMPARE-CLOCK throw then
       PICOS k SLOT @ COST-UNIT * base / COSTS k SLOT !
       1+
    repeat drop
    -1 NORMALIZED ! ;
 
 \ The word that opens a data row in the baseline table, and names which code
-\ generator produced it. Only the old path emits today, so only old rows are
-\ ever measured; the new chain writes new rows when it starts emitting, and the
-\ table's reader already knows both words so a new row can never be mistaken for
-\ prose and quietly ignored.
+\ generator produced it.
 : PATH-OLD$ ( -- ptr u8 n )
    s" old" ;
 
 : PATH-NEW$ ( -- ptr u8 n )
    s" new" ;
 
+: PATH$ ( n -- ptr u8 n ) {: path:n :}
+   path PATH-OK PATH-NEW = if PATH-NEW$ exit then
+   PATH-OLD$ ;
+
 : ROWS ( -- n )
    ROW-N @ ;
+
+: PATH@ ( n -- n ) {: k:n :}
+   PATHS k ROW-OK SLOT @ ;
 
 : NAME$ ( n -- ptr u8 n ) {: k:n :}
    k ROW-OK NAME-AT
@@ -272,10 +333,35 @@ public
    j 0 < j k OUTPUTS >= or if E-CODEGEN-COMPARE-ROW throw then
    OUT-VALUES k OUTPUT-MAX * j + SLOT @ ;
 
-: FIND-ROW ( ptr u8 n -- n ) {: a:ptr u:n :}
+\ The row of this path with this name, or -1. Two paths measure the same corpus
+\ word under the same name, so a search that ignored the path would answer with
+\ whichever row it met first.
+: FIND-ROW ( n ptr u8 n -- n ) {: path:n a:ptr u:n :}
+   path PATH-OK drop
    0 begin dup ROW-N @ < while
-      dup NAME$ a u STR= if exit then
+      dup PATH@ path = if
+         dup NAME$ a u STR= if exit then
+      then
       1+
    repeat drop -1 ;
+
+: ROWS-OF ( n -- n ) {: path:n :}
+   path PATH-OK drop
+   0
+   ROW-N @ 0 ?do
+      i PATH@ path = if 1+ then
+   loop ;
+
+\ Did two rows leave exactly the same values on the stack? This is the equality
+\ the head-to-head comparison turns on: the same corpus word compiled two ways
+\ has to compute the same answer on the same pinned inputs.
+: SAME-OUTPUTS? ( n n -- bool ) {: k:n j:n :}
+   k ROW-OK drop
+   j ROW-OK drop
+   k OUTPUTS j OUTPUTS <> if false exit then
+   true
+   k OUTPUTS 0 ?do
+      k i OUTPUT  j i OUTPUT  <> if drop false leave then
+   loop ;
 
 ;package
