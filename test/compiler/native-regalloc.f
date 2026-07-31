@@ -550,6 +550,60 @@ create TXT
    sum neg M-ADD M-RET
    CLOSE-FUN ;
 
+\ An eighth form that ties both of its results, each to its own operand. Two ties
+\ on one operation is what the move-wide overwrite cannot show, and a form is
+\ free to declare it, so the walk has to honour every tie rather than the first.
+: PAIR-SCHEMA ( -- IR-ID:ir-symbol-id )
+   CC BB s" a64.pair" IR-BUILD:INTERN-SYMBOL {: op:IR-ID:ir-symbol-id :}
+   op IR-SCHEMA:BEGIN-OP
+   CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-OPERAND
+   CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-OPERAND
+   CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-RESULT
+   CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-RESULT
+   0 0 IR-SCHEMA:ADD-TIE
+   1 1 IR-SCHEMA:ADD-TIE
+   false 0 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   false IR-SCHEMA:SET-TRAP
+   CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET
+   CC BB s" a64.rule.pair" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RULE
+   CC BB s" a64.render.pair" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RENDERER
+   CC BB IR-BUILD:DEFINE-OP
+   op ;
+
+: M-PAIR ( IR-ID:ir-symbol-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: op:IR-ID:ir-symbol-id x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   CC BB op IR-BUILD:BEGIN-OP
+   CC BB  BODY-ST BODY-LN SPN  IR-BUILD:SET-OP-SPAN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   M-RESULT+
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 0 IR-BUILD:OP-RESULT@
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+\ Both ties over two values of their own: each result returns to its own
+\ operand's register.
+: BUILD-PAIR ( -- )
+   PAIR-SCHEMA {: op:IR-ID:ir-symbol-id :}
+   s" PAIR" 0 1 OPEN-FUN
+   $1111 M-MOVZ {: u:IR-ID:ir-value-id :}
+   $2222 M-MOVZ {: v:IR-ID:ir-value-id :}
+   op u v M-PAIR {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   x y M-ADD M-RET
+   CLOSE-FUN ;
+
+\ The same form handed one value as both of its tied operands: the two results
+\ would have to share the one register field that value is in.
+: BUILD-PAIR-SHARED ( -- )
+   PAIR-SCHEMA {: op:IR-ID:ir-symbol-id :}
+   s" SHARED" 0 1 OPEN-FUN
+   $1111 M-MOVZ {: u:IR-ID:ir-value-id :}
+   op u u M-PAIR {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   x y M-ADD M-RET
+   CLOSE-FUN ;
+
 \ The same refusal the move-wide overwrite gets, on a form that is not it: the
 \ tied operand is read again after the operation that overwrites it.
 : BUILD-EXTRA-LIVE-TIE ( -- )
@@ -634,6 +688,23 @@ create TXT
    false WBND [: EXTRA-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 1 T= 0 T= 2 T= 1 T= 0 T= ;
 
+: PAIR-BODY ( IR-CTX:ctx -- n n n n n n )
+   A64-MOD
+   BUILD-PAIR
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@ ;
+
+: PAIR-CASE ( -- )
+   s" a form that ties both of its results honours both ties" T-LABEL
+   WBND [: PAIR-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 1 T= 0 T= 1 T= 0 T= 5 T= ;
+
 \ ---- refusals ----------------------------------------------------------------
 \ Each of these four runs the validator as well, even though the allocator
 \ refuses first. That is what makes the validator's own line reachable: an
@@ -661,6 +732,11 @@ create TXT
 : EXTRA-LIVE-TIE-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-EXTRA-LIVE-TIE
+   REFUSE-SHAPE ;
+
+: PAIR-SHARED-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-PAIR-SHARED
    REFUSE-SHAPE ;
 
 \ Two registers cannot hold three arguments at once, and a routine that may
@@ -779,6 +855,7 @@ create TXT
 : WRONG-CLASS ( -- )      WBND [: WRONG-CLASS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : TWO-FUNS ( -- )         WBND [: TWO-FUNS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EXTRA-LIVE-TIE ( -- )   WBND [: EXTRA-LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: PAIR-SHARED ( -- )      WBND [: PAIR-SHARED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRESSURE ( -- )         WBND [: PRESSURE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-POOL ( -- )       WBND [: EMPTY-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )     WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -806,7 +883,9 @@ create TXT
    s" a move-wide overwrite whose kept value is read again is refused" T-LABEL
    [: LIVE-TIE ;] E-A64RA-TIE TTHROWSQ
    s" a tied operand of any form, read again, is refused the same way" T-LABEL
-   [: EXTRA-LIVE-TIE ;] E-A64RA-TIE TTHROWSQ ;
+   [: EXTRA-LIVE-TIE ;] E-A64RA-TIE TTHROWSQ
+   s" one value as two tied operands of one operation is refused" T-LABEL
+   [: PAIR-SHARED ;] E-A64RA-TIE TTHROWSQ ;
 
 : PRESSURE-REFUSE-CASES ( -- )
    s" more values live at once than the routine may destroy is refused" T-LABEL
@@ -872,6 +951,7 @@ public
    INTERLEAVED-CASE
    TIED-EXTRA-CASE
    UNTIED-EXTRA-CASE
+   PAIR-CASE
    RESERVED-CASES
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT

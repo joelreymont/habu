@@ -48,7 +48,7 @@
 \ constraint. A register constraint invented later belongs in the schema beside
 \ the tie and must be read here; a constraint kept somewhere this pass does not
 \ look would be allocated around silently, which is the reason the tie moved out
-\ of this file in the first place (dot habu-read-every-schema-constraint).
+\ of this file in the first place (dot habu-make-an-unread-33f525e8).
 \
 \ WHICH REGISTERS MAY BE USED, AND WHY THERE IS NO LIST OF THEM HERE. The
 \ routine's own contract says which general registers it may destroy, and a value
@@ -360,32 +360,38 @@ create R-HOLD REGS-N cells allot
 : ASSIGN ( IR-ID:ir-value-id -- )
    SLOT FREE-REG TAKE ;
 
-\ A tied result lands in the register the kept value is already in, so the kept
-\ value must die here: if it is read again later, no single register field can
-\ serve both and the program is refused. The field it lands in must also be free
-\ at this point, so two ties of one operation cannot be handed the same register.
-: TIE ( IR-ID:ir-op-id n n n -- )
-   {: id:IR-ID:ir-op-id rs:n op:n pos:n :}
-   id op OPERAND-AT SLOT {: keep:n :}
-   keep LAST-AT pos <> if E-A64RA-TIE throw then
-   keep REG-AT {: r:n :}
+\ A tied result lands in the register field its operand already occupies, so that
+\ field has to be free the moment this operation writes. Everything that dies
+\ here has just been released, so a field that is still held means one of exactly
+\ two things, and neither can be given registers: the kept value is read again
+\ after the operation that overwrites it, or another tie of this same operation
+\ has already taken the field, which is what happens when a form is handed one
+\ value as two of its tied operands. Both are refused by the same name, because
+\ both say one register field would have to hold two values at once.
+\
+\ An operand holding no register cannot lend one. SSA puts every definition
+\ before its uses, so the walk has already given it one and this cannot happen;
+\ reading the holder table at a negative index is not how we would find out.
+: TIE ( IR-ID:ir-op-id n n -- )
+   {: id:IR-ID:ir-op-id rs:n op:n :}
+   id op OPERAND-AT SLOT REG-AT {: r:n :}
    r 0 < r REGS-N >= or if E-A64RA-TIE throw then
    r HOLD-AT NOBODY <> if E-A64RA-TIE throw then
    id rs RESULT-AT SLOT  r  TAKE ;
 
-: ASSIGN-RESULT ( IR-ID:ir-op-id n n -- )
-   {: id:IR-ID:ir-op-id rs:n pos:n :}
+: ASSIGN-RESULT ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id rs:n :}
    id rs TIED-TO {: op:n :}
    op UNTIED = if
       id rs RESULT-AT ASSIGN exit
    then
-   id rs op pos TIE ;
+   id rs op TIE ;
 
 : ASSIGN-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
    pos 1+ EXPIRE
    V-OPR VW id IR-OP:FRESULTS {: n:n :}
-   n 0 ?do id i pos ASSIGN-RESULT loop ;
+   n 0 ?do id i ASSIGN-RESULT loop ;
 
 : SCAN-ASSIGN ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
