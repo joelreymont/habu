@@ -3901,3 +3901,59 @@ fits.
   to an empty call of the same kind and nothing stronger, and it must say so in
   the report. The byte counts and the executed results are the columns that
   decide anything until the emitted routines can be entered as Habu words.
+
+- **The engine's data-stack pointer is a register, and naming it turns "the
+  allocator must never hand it out" into something no contract can say.**
+  `src/arch/arm64/mnem.f` calls x19 XDS, `src/habu/rt.f`'s push and pop are a
+  store and a load through it, and `src/habu/habu2.f` measures interpreter depth
+  as `(XDS - S0) / 8`. Excluding 19 from `A64EFF`'s general-register mask - the
+  same line x18, x30 and 31 are excluded on - means every route into a contract
+  refuses it: the set constructor, the single-register constructor, a place list,
+  and the writable set an allocator derives. There is no check any pass has to
+  remember, because there is no contract to remember it about.
+
+- **An emitted routine is callable as a Habu word the moment its arguments come
+  off the data stack: an xt in this engine IS a code address.** `execute`
+  (`src/habu/habu1.f` BEXEC) pops the address and branches to it with x19 live,
+  which is the same branch `EM-INTERPRET-FIND` makes after a dictionary lookup.
+  So the whole publication is one trusted word per arity whose body is
+  `execute` - `src/habu/habu2.f` already uses that shape for its own keyword
+  dispatch - and no dictionary record is needed to enter the code. What that
+  bought was the measurement: the FFI trampoline cost 253 ns per call and made
+  the nanosecond half of the codegen comparison undecidable; entering the same
+  routine as a word costs 4.3 ns, of which 4.3 is the empty call.
+
+- **A convention that names two kinds of place has to pack the kind INTO the
+  element, not into a second list.** `A64EFF`'s ordered interface list is one
+  cell because a contract field has to be one cell. Adding a parallel kind list
+  would be a second field, and a place list of four with a kind list of three is
+  two statements about one convention that can disagree - which is exactly what
+  making the interface ordered was for. A kind bit over the five-bit payload
+  keeps one spelling per list, so the digest still agrees with `SAME?`; the price
+  is two positions (ten instead of twelve), and it is the right price.
+
+- **Renaming the reader is what forces every consumer to be revisited.** Widening
+  `regseq` into a list of places meant `SEQ@` could no longer answer "the
+  register at position i" - a slot index would have read as a register number in
+  the allocator's table. Deleting `SEQ@` and publishing `SEQ-REG@` and
+  `SEQ-SLOT@`, each refusing the other kind by name, turned a silent wrong number
+  into a compile error at every call site. A reader that answers a payload
+  without saying what it is, is the bug.
+
+- **A lowering belongs in the pass that already builds the module, unless its
+  input only exists later.** Spill lowering builds a SECOND module because the
+  spill plan is the allocator's output and the module is frozen by then. A
+  routine's calling convention is known before a single operation is selected, so
+  the entry loads and exit stores go in the SELECTOR - one module, which the
+  independent validator then reads as operations. The one-authority rule is about
+  the emitter never materialising instructions no module contains; it does not
+  ask for a second module when the first one can hold them.
+
+- **A diff lint that reads only the added lines gets the parser state wrong in
+  both directions.** `typed-local-diff-lint` tracked `{:` … `:}` over added lines
+  only, so a locals group opened on an UNCHANGED line looked closed - and a bare
+  local added inside it was never reported - while one closed on an unchanged
+  line looked open, and the ordinary body words after it were reported as untyped
+  locals. Both are the same defect: the state is a property of the new file, and
+  every line of the new file is either added or context. Reading context lines for
+  the two delimiters (and reporting nothing from them) fixes both.

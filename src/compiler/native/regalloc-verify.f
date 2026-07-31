@@ -461,13 +461,13 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 \ is the value the program computed for that result is a statement about the
 \ module the selector read, and this file is handed one module - the same gap the
 \ spill lowering has (dot habu-prove-the-spill-0294e0e8), with the same owner
-\ (dot habu-prove-the-data-stack-8f0d3f65).
+\ (dot habu-prove-a-data-df458151).
 \
 \ THE TWO REGIONS DO NOT MEET YET. A routine that both reaches the caller's data
 \ stack and reserves a frame would need one operation at position zero to be both
 \ the frame reserve and the data-stack take, and there is no rule here for
 \ nesting them. It is refused by name rather than checked half-way, and no pass
-\ in the chain builds one (dot habu-spill-a-data-stack-6c1b73f2).
+\ in the chain builds one (dot habu-let-a-data-edb3ba26).
 : DTAKE-AT? ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id at:n want:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}

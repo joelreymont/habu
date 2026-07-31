@@ -104,11 +104,39 @@ variable SCAN-START
       dup LOCAL 1+
    repeat drop ;
 
+\ ---- an unchanged line still says where a locals group starts and ends --------
+\ A locals group spans several lines as often as not, and a change touches one of
+\ them. Reading only the added lines therefore left the "am I inside a group"
+\ state wrong in both directions: a group opened on an unchanged line looked
+\ closed, so a bare local ADDED inside it was never reported, and a group closed
+\ on an unchanged line looked open, so ordinary body words after it were reported
+\ as untyped locals. Both are the same defect - the state is a property of the
+\ NEW FILE, and every line of the new file is either added or context. So a
+\ context line is read for the two delimiters and for the allow annotation, and
+\ for nothing else: it reports no token, because it is not a line this change
+\ added and this lint judges what a change added.
+: LOCAL-STATE ( n -- ) {: k:n :}
+   k s" {:" TOKEN= if true IN-LOCALS ! exit then
+   k s" :}" TOKEN= if
+      false IN-LOCALS ! false ALLOW-GROUP ! exit
+   then ;
+
+: SCAN-STATE ( ptr u8 n -- ) {: a:ptr u:n :}
+   FORTH? 0= if exit then
+   a u ALLOW? if true ALLOW-GROUP ! then
+   a u LINT-LEX:SOURCE
+   0 begin dup LINT-LEX:COUNT < while
+      dup LOCAL-STATE 1+
+   repeat drop ;
+
 : LINE+ ( -- )
    NEW-LINE @ 1+ NEW-LINE ! ;
 
 : ADD-LINE ( ptr u8 n -- )
    SCAN LINE+ ;
+
+: CONTEXT-LINE ( ptr u8 n -- )
+   SCAN-STATE LINE+ ;
 
 : FILE-RESET ( -- )
    false IN-LOCALS !
@@ -132,7 +160,7 @@ variable SCAN-START
       ENDOF
       hunk OF DIFF:HUNK-NEW-START HUNK ENDOF
       add OF DIFF:CONTENT$ ADD-LINE ENDOF
-      context OF LINE+ ENDOF
+      context OF DIFF:CONTENT$ CONTEXT-LINE ENDOF
       delete OF ENDOF
    ;MATCH ;
 

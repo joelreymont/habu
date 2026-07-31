@@ -36,6 +36,7 @@ $10000 constant TLDT-LARGE-CAP
 variable TLDT-ROOT-U
 variable TLDT-GOOD-U
 variable TLDT-BAD-U
+variable TLDT-SPAN-U
 variable TLDT-IGNORED-U
 variable TLDT-ALLOW-U
 variable TLDT-MD-U
@@ -45,6 +46,7 @@ variable TLDT-LARGE-SRC-U
 create TLDT-ROOT-BUF FS-PATH-CAP allot
 create TLDT-GOOD-BUF FS-PATH-CAP allot
 create TLDT-BAD-BUF FS-PATH-CAP allot
+create TLDT-SPAN-BUF FS-PATH-CAP allot
 create TLDT-IGNORED-BUF FS-PATH-CAP allot
 create TLDT-ALLOW-BUF FS-PATH-CAP allot
 create TLDT-MD-BUF FS-PATH-CAP allot
@@ -64,6 +66,9 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 
 : TLDT-BAD ( -- ptr u8 n )
    TLDT-BAD-BUF TLDT-BAD-U @ ;
+
+: TLDT-SPAN ( -- ptr u8 n )
+   TLDT-SPAN-BUF TLDT-SPAN-U @ ;
 
 : TLDT-IGNORED ( -- ptr u8 n )
    TLDT-IGNORED-BUF TLDT-IGNORED-U @ ;
@@ -160,6 +165,31 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    SB-RESET
    SB$ ;
 
+\ A locals group that OPENS on an unchanged line and gains a bare local on a
+\ changed one, and one that CLOSES on an unchanged line with ordinary body words
+\ after it. Both are what a rename or a signature edit inside a multi-line group
+\ really looks like, and both were wrong before a context line was read for the
+\ two delimiters: the first was missed entirely and the second reported body
+\ words as untyped locals. Only the added line is reported, which is the second
+\ half of the rule.
+: TLDT-SPAN$ ( -- ptr u8 n )
+   SB-RESET
+   s" lib/span.f" TLDT-DIFF-HEAD
+   s" @@ -1,4 +1,6 @@" SB-APPEND TLDT-LF
+   s"  : SPAN ( n n -- n ) {:" SB-APPEND TLDT-LF
+   s" +   a:n bare" SB-APPEND TLDT-LF
+   s"  :}" SB-APPEND TLDT-LF
+   s"     a" SB-APPEND TLDT-LF
+   s" +   bare +" SB-APPEND TLDT-LF
+   s"  ;" SB-APPEND TLDT-LF
+   SB$ ;
+
+: TLDT-SPAN-OUT$ ( -- ptr u8 n )
+   SB-RESET
+   s" E-UNTYPED-LOCAL lib/span.f:2:8: `bare` needs :type inside {: :}" SB-APPEND
+   TLDT-LF
+   SB$ ;
+
 : TLDT-BAD-OUT$ ( -- ptr u8 n )
    SB-RESET
    s" E-UNTYPED-LOCAL lib/bad.f:1:21: `x` needs :type inside {: :}" SB-APPEND
@@ -217,18 +247,21 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    TLDT-ROOT CLEANUP-DIR+
    TLDT-ROOT s" good.diff" TLDT-GOOD-BUF JOIN-PATH TLDT-GOOD-U !
    TLDT-ROOT s" bad.diff" TLDT-BAD-BUF JOIN-PATH TLDT-BAD-U !
+   TLDT-ROOT s" span.diff" TLDT-SPAN-BUF JOIN-PATH TLDT-SPAN-U !
    TLDT-ROOT s" ignored.diff" TLDT-IGNORED-BUF JOIN-PATH TLDT-IGNORED-U !
    TLDT-ROOT s" allow.diff" TLDT-ALLOW-BUF JOIN-PATH TLDT-ALLOW-U !
    TLDT-ROOT s" note.diff" TLDT-MD-BUF JOIN-PATH TLDT-MD-U !
    TLDT-ROOT s" large.diff" TLDT-LARGE-BUF JOIN-PATH TLDT-LARGE-U !
    TLDT-GOOD CLEANUP+
    TLDT-BAD CLEANUP+
+   TLDT-SPAN CLEANUP+
    TLDT-IGNORED CLEANUP+
    TLDT-ALLOW CLEANUP+
    TLDT-MD CLEANUP+
    TLDT-LARGE CLEANUP+
    TLDT-GOOD TLDT-GOOD$ WRITE-ALL
    TLDT-BAD TLDT-BAD$ WRITE-ALL
+   TLDT-SPAN TLDT-SPAN$ WRITE-ALL
    TLDT-IGNORED TLDT-IGNORED$ WRITE-ALL
    TLDT-ALLOW TLDT-ALLOW$ WRITE-ALL
    TLDT-MD TLDT-MD$ WRITE-ALL
@@ -279,6 +312,16 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
 : TLDT-TEST-BAD ( -- )
    TLDT-BAD TLDT-RUN-CORE 1 TLDT-EXPECT-EXIT TLDT-ASSERT-BAD ;
 
+\ The added line inside the group is reported and the body words after the
+\ group's unchanged close are not, which is the whole of what reading a context
+\ line for its delimiters buys.
+: TLDT-ASSERT-SPAN ( n n -- ) {: outu:n erru:n :}
+   erru 0 T=
+   TLDT-OUT outu TLDT-SPAN-OUT$ T$= ;
+
+: TLDT-TEST-SPAN ( -- )
+   TLDT-SPAN TLDT-RUN-CORE 1 TLDT-EXPECT-EXIT TLDT-ASSERT-SPAN ;
+
 : TLDT-TEST-CRLF ( -- )
    [: TLDT-CRLF ;] E-DIFF-SYNTAX TTHROWSQ ;
 
@@ -296,6 +339,7 @@ create TLDT-LARGE-SRC TLDT-LARGE-CAP allot
    TLDT-TEST-ALLOW
    TLDT-TEST-NON-FORTH
    TLDT-TEST-BAD
+   TLDT-TEST-SPAN
    TLDT-TEST-CRLF
    TLDT-TEST-MALFORMED
    CLEANUP-RUN
