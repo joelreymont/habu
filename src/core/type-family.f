@@ -206,6 +206,7 @@ variable TF-PK-N   0 TF-PK-N !   REG-PROTECT
 19 cells constant TF-REC
 CELL constant TF-REC-ALIGN
 0 constant TF-REC-PTR-MASK
+-1 constant TF-NO-SCHEMA   \ root index 0 is valid
 
 : TF.PKG-OFF ( ptr a -- ptr a ) TF.PKG-OFF-AT + ;
 : TF.PKG-U ( ptr a -- ptr a ) TF.PKG-U-OFF + ;
@@ -468,7 +469,7 @@ $4 constant DRV-CONSTRUCT-OWNER
    0 r TF.VAR-START !          0 r TF.VAR-COUNT !
    0 r TF.FLD-START !          0 r TF.FLD-COUNT !
    TAGW-CELL r TF.TAGW !
-   0 r TF.SCHEMA-ROOT !
+   TF-NO-SCHEMA r TF.SCHEMA-ROOT !
    0 r TF.SPAN-OFF !   0 r TF.SPAN-U !
    0 r TF.DERIVE !
    arity TFAM-PK-RESERVE
@@ -2265,6 +2266,40 @@ defer TFC-QUOT-ROW ( n n -- n )   \ ( rownode base -- row )
    THEN
    s" tfam: unsupported construct payload schema" 76 die ;
 
+: TFAM-CARRIER-OK? ( n -- bool )
+   T-RES {: term:n :}
+   term TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   term PARAM>FAM {: fam:n :}
+   term PARAM>ARGC fam TFAM-ARITY@ <> IF RES-FALSE EXIT THEN
+   fam TFAM-SCHEMA-ROOT@ {: root:n :}
+   root TF-NO-SCHEMA = IF RES-TRUE EXIT THEN
+   term TFC-ARGS!
+   root SCHEMA-ROOT@ TFC-SCH-TERM CELL-OK? ;
+
+: TFAM-PAYLOADLESS? ( n -- bool ) {: fam:n :}
+   fam TFAM-VAR-START@ {: base:n :}
+   0 BEGIN dup fam TFAM-VAR-COUNT@ < WHILE
+      base over + SUMV-PAY-N 0 <> IF drop RES-FALSE EXIT THEN
+      1 +
+   REPEAT drop RES-TRUE ;
+
+: TFAM-CELL-OK? ( n -- bool )
+   T-RES {: term:n :}
+   term TAG T-PARAM <> IF RES-FALSE EXIT THEN
+   term PARAM>FAM {: fam:n :}
+   term PARAM>ARGC fam TFAM-ARITY@ <> IF RES-FALSE EXIT THEN
+   fam TFAM-BOXED-OR-NICHE? IF RES-TRUE EXIT THEN
+   fam TFAM-CELL? IF term TFAM-CARRIER-OK? EXIT THEN
+   fam TFAM-PRODUCT? IF
+      fam TFAM-FLD-COUNT@ 1 <> IF RES-FALSE EXIT THEN
+      term TFC-ARGS!
+      fam TFAM-FLD-START@ TYPE-FIELD:SCHEMA@ SCHEMA-ROOT@
+      TFC-SCH-TERM CELL-OK?
+      EXIT
+   THEN
+   fam TFAM-SUM? fam TFAM-ENUM? or IF fam TFAM-PAYLOADLESS? EXIT THEN
+   RES-FALSE ;
+
 : TFC-QUOT-ROW-IMPL ( n n -- n ) {: rownode:n base:n :}
    base 0                                                \ ( row j )
    BEGIN dup rownode SCHEMA-ROW-COUNT@ < WHILE            \ ( row j )
@@ -2569,6 +2604,8 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
    [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ item 7: checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance
+   [: TFAM-CARRIER-OK? ;] is TFAM-CARRIER-OK-XT
+   [: TFAM-CELL-OK? ;] is TFAM-CELL-OK-XT
    [: TFAM-WIDTH@ ;]  is TFAM-WIDTH-XT     \ item 12: checker reads DECLARED logical widths (params-as-cells) for the boot fallback
    [: TFAM-INST-WIDTH@ ;] is TFAM-INST-WIDTH-XT   \ layout-cap slice 1: arg-aware INSTANTIATED width for T-WIDTH / WF fact surface
    [: TFAM-CONSTRUCT-FAM ;]  is CONSTRUCT-FAM-XT   \ item 9: construct family resolution (active package only)

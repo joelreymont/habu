@@ -94,7 +94,14 @@ TRUSTED: TWX-TAG ( n -- n ) TAG ;
 TRUSTED: TWX-MK-CON ( n -- n ) MK-CON ;
 TRUSTED: TWX-MK-VAR ( n -- n ) MK-VAR ;
 TRUSTED: TWX-MK-ROW ( n -- n ) MK-ROW ;
+TRUSTED: TWX-MK-PUSH ( n n -- n ) MK-PUSH ;
 TRUSTED: TWX-MK-PARAM ( n ptr u8 n n -- n ) MK-PARAM ;
+TRUSTED: TWX-MK-PARAM0 ( n -- n ) {: fam:n :}
+   PARAM-SCR-N @ fam TFAM-NAME$ fam MK-PARAM ;
+TRUSTED: TWX-MK-PARAM1 ( n n -- n ) {: arg:n fam:n :}
+   PARAM-SCR-N @ arg PARAM-SCR+ fam TFAM-NAME$ fam MK-PARAM ;
+TRUSTED: TWX-MK-PARAM2 ( n n n -- n ) {: a:n b:n fam:n :}
+   PARAM-SCR-N @ a PARAM-SCR+ b PARAM-SCR+ fam TFAM-NAME$ fam MK-PARAM ;
 TRUSTED: TWX-P>TYPE ( n -- n ) P>TYPE ;
 TRUSTED: TWX-P>REST ( n -- n ) P>REST ;
 TRUSTED: TWX-CON-OF ( ptr u8 n -- n ) CON-OF ;
@@ -107,6 +114,24 @@ TRUSTED: TWX-PARAM>FAM ( n -- n ) PARAM>FAM ;
 TRUSTED: TWX-PARAM>HID ( n -- n ) PARAM>HID ;
 TRUSTED: TWX-PUSH-LOGICAL ( n n -- n ) PUSH-LOGICAL ;
 TRUSTED: TWX-R-RES ( n -- n ) R-RES ;
+TRUSTED: TWX-T-RES ( n -- n ) T-RES ;
+TRUSTED: TWX-PAY ( n -- n ) PAY ;
+TRUSTED: TWX-TVK@ ( n -- n ) TVK@ ;
+TRUSTED: TWX-TVK-MEET ( n n -- ) TVK-MEET ;
+TRUSTED: TWX-TVK-CELL! ( n -- ) TVK-CELL! ;
+TRUSTED: TWX-TVK-RAW! ( n -- ) TVK-RAW! ;
+TRUSTED: TWX-TVK-ANY ( -- n ) TVK-ANY ;
+TRUSTED: TWX-TVK-CELL ( -- n ) TVK-CELL ;
+TRUSTED: TWX-TVK-RAW ( -- n ) TVK-RAW ;
+TRUSTED: TWX-TRIAL-SAVE ( -- )
+   TRIAL-DEPTH @ 1 + TRIAL-DEPTH ! TRIAL-SAVE ;
+TRUSTED: TWX-TRIAL-REST ( -- )
+   TRIAL-REST TRIAL-DEPTH @ 1 - TRIAL-DEPTH ! ;
+TRUSTED: TWX-E-BUILD-EFFECT ( n n n n bool -- n ) E-BUILD-EFFECT ;
+TRUSTED: TWX-E-PTR ( n -- ptr a ) E-PTR ;
+TRUSTED: TWX-E-INST-RESET ( ptr a -- ) E-INST-RESET ;
+TRUSTED: TWX-E-DIN@ ( ptr a -- n ) ER.DIN @ ;
+TRUSTED: TWX-E-INST ( n -- n ) E-INST ;
 TRUSTED: TWX-SCHEMA-A@ ( n -- n ) SCHEMA-A@ ;
 TRUSTED: TWX-SCHEMA-APP? ( n -- bool ) SCHEMA-APP? ;
 TRUSTED: TWX-SCHEMA-CON? ( n -- bool ) SCHEMA-CON? ;
@@ -128,6 +153,10 @@ TRUSTED: TWX-TFAM-ENUM? ( n -- bool ) TFAM-ENUM? ;
 TRUSTED: TWX-TFAM-FIND-IN ( ptr u8 n ptr u8 n -- n bool ) TFAM-FIND-IN ;
 TRUSTED: TWX-TFAM-FLD-COUNT@ ( n -- n ) TFAM-FLD-COUNT@ ;
 TRUSTED: TWX-TFAM-FLD-START@ ( n -- n ) TFAM-FLD-START@ ;
+TRUSTED: TWX-TFAM-CARRIER-OK? ( n -- bool ) TFAM-CARRIER-OK? ;
+TRUSTED: TWX-TFAM-CELL-OK? ( n -- bool ) TFAM-CELL-OK? ;
+TRUSTED: TWX-TFAM-SCHEMA-ROOT@ ( n -- n ) TFAM-SCHEMA-ROOT@ ;
+TRUSTED: TWX-TFAM-SCHEMA-ROOT! ( n n -- ) TFAM-SCHEMA-ROOT! ;
 TRUSTED: TWX-TFAM-LAYOUT-POLICY@ ( n -- n ) TFAM-LAYOUT-POLICY@ ;
 TRUSTED: TWX-TFAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
 TRUSTED: TWX-TFAM-PKG$ ( n -- ptr u8 n ) TFAM-PKG$ ;
@@ -140,6 +169,7 @@ TRUSTED: TWX-UNIFY ( n n -- bool ) UNIFY ;
 \ that TFAM-SCH-ARITY descends every payload node kind (dot
 \ habu-declaration-time-arity-4c70e37c).
 TRUSTED: TWX-SCHEMA-PARAM ( n -- n ) SCHEMA-PARAM ;
+TRUSTED: TWX-SCHEMA-CON ( n -- n ) SCHEMA-CON ;
 TRUSTED: TWX-SCHEMA-PTR ( n -- n ) SCHEMA-PTR ;
 TRUSTED: TWX-SCHEMA-APP ( n n n -- n ) SCHEMA-APP ;
 TRUSTED: TWX-SCHEMA-ROW ( n n -- n ) SCHEMA-ROW ;
@@ -2398,6 +2428,128 @@ DIAG-BUFFER$ s\" \"family\":\"tdnres\"" TDT-CONTAINS? -1 T=
 0 DIAG-JSON!
 DIAG-BUFFER-OFF
 s" TDNA3 ( n -- tdnopt<tdnres<n,n>> ) TDNOPT:SOME" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ ---------------------------------------------------------------------------
+\ One-cell carrier enforcement. STRUCTURE supplies the real one-field and
+\ two-field shapes; three NEWTYPE declarations receive synthetic carrier roots
+\ for parameter 0, concrete n, and ptr(parameter 0).
+\ ---------------------------------------------------------------------------
+NEWTYPE e7id 1
+STRUCTURE e7wide 0 FIELD x n FIELD y n ;STRUCTURE
+STRUCTURE e7one 1 FIELD value a ;STRUCTURE
+NEWTYPE e7phant 1
+NEWTYPE e7ref 1
+
+variable E7ID      variable E7PH      variable E7REF
+variable E7ONE     variable E7WIDE    variable E7ENUM
+variable E7SUM     variable E7EVID    variable E7OK
+variable E7V       variable E7A       variable E7B
+variable E7EFF
+
+s" " s" e7one" TWX-TFAM-FIND-IN E7OK ! E7ONE !
+E7OK @ -1 T=
+s" " s" e7wide" TWX-TFAM-FIND-IN E7OK ! E7WIDE !
+E7OK @ -1 T=
+s" " s" tdcolor" TWX-TFAM-FIND-IN E7OK ! E7ENUM !
+E7OK @ -1 T=
+s" " s" tdres" TWX-TFAM-FIND-IN E7OK ! E7SUM !
+E7OK @ -1 T=
+s" " s" e7id" TWX-TFAM-FIND-IN E7OK ! E7ID !
+E7OK @ -1 T=
+s" " s" e7phant" TWX-TFAM-FIND-IN E7OK ! E7PH !
+E7OK @ -1 T=
+s" " s" e7ref" TWX-TFAM-FIND-IN E7OK ! E7REF !
+E7OK @ -1 T=
+
+E7ID @ TWX-TFAM-SCHEMA-ROOT@ -1 T=
+E7ID @ 0 TWX-SCHEMA-PARAM TWX-SCHEMA-ROOT+ TWX-TFAM-SCHEMA-ROOT!
+E7PH @ CC-N TWX-SCHEMA-CON TWX-SCHEMA-ROOT+ TWX-TFAM-SCHEMA-ROOT!
+E7REF @ 0 TWX-SCHEMA-PARAM TWX-SCHEMA-PTR TWX-SCHEMA-ROOT+
+   TWX-TFAM-SCHEMA-ROOT!
+s" " CHECKER-PACKAGE-PUBLIC s" e7evid" 0 TK-EVIDENCE
+   TWX-TFAM-DECL E7EVID !
+
+\ Signature parsing is the production entry point. Removing the carrier hook,
+\ using width alone, or recursing through pointer pointees flips a control here.
+s" E7-ID-N ( e7id<n> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" E7-ID-R ( e7id<r> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" E7-ID-ONE ( e7id<e7one<n>> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" E7-DIRECT ( e7id<e7wide> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" E7-NEST-BAD ( e7id<e7one<e7wide>> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" E7-PHANTOM ( e7phant<e7wide> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" E7-REF ( e7ref<e7wide> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+s" E7-OPEN ( e7id<e7one<a>> -- ) drop" CHECK-QUIET-CANDIDATE! -1 T=
+\ Arity mismatch rejects before the carrier hook can read a missing argument.
+s" E7-ARITY ( e7id -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+
+\ Direct structural controls pin every owned family-kind arm. The open nested
+\ carrier succeeds by meeting its field variable with CELL, not by accepting it
+\ unconstrained.
+TWX-NEW
+CC-N TWX-MK-CON E7ONE @ TWX-MK-PARAM1 TWX-TFAM-CELL-OK? -1 T=
+E7WIDE @ TWX-MK-PARAM0 TWX-TFAM-CELL-OK? 0 T=
+E7ENUM @ TWX-MK-PARAM0 TWX-TFAM-CELL-OK? -1 T=
+CC-N TWX-MK-CON CC-N TWX-MK-CON E7SUM @ TWX-MK-PARAM2
+   TWX-TFAM-CELL-OK? 0 T=
+E7EVID @ TWX-MK-PARAM0 TWX-TFAM-CELL-OK? 0 T=
+E7WIDE @ TWX-MK-PARAM0 E7ID @ TWX-MK-PARAM1
+   TWX-TFAM-CARRIER-OK? 0 T=
+E7WIDE @ TWX-MK-PARAM0 E7PH @ TWX-MK-PARAM1
+   TWX-TFAM-CARRIER-OK? -1 T=
+E7WIDE @ TWX-MK-PARAM0 E7REF @ TWX-MK-PARAM1
+   TWX-TFAM-CARRIER-OK? -1 T=
+TWX-FRESH dup E7V ! TWX-MK-VAR E7ONE @ TWX-MK-PARAM1
+   E7ID @ TWX-MK-PARAM1 TWX-TFAM-CARRIER-OK? -1 T=
+E7V @ TWX-TVK@ TWX-TVK-CELL T=
+
+: E7-BAD ( -- n )
+   E7WIDE @ TWX-MK-PARAM0 E7ID @ TWX-MK-PARAM1 ;
+
+\ Both U-TYPE variable orientations reject a bypass-built invalid application.
+TWX-NEW
+TWX-FRESH dup E7V ! TWX-TVK-CELL!
+E7V @ TWX-MK-VAR E7-BAD TWX-UNIFY 0 T=
+TWX-NEW
+TWX-FRESH dup E7V ! TWX-TVK-CELL!
+E7-BAD E7V @ TWX-MK-VAR TWX-UNIFY 0 T=
+
+\ ANY + CELL preserves CELL; CELL + RAW resolves to RAW.
+TWX-TVK-ANY 0 T=
+TWX-TVK-RAW 1 T=
+TWX-TVK-CELL 2 T=
+TWX-NEW
+TWX-FRESH dup E7A ! TWX-TVK-CELL!
+TWX-FRESH E7B !
+E7A @ TWX-MK-VAR E7B @ TWX-MK-VAR TWX-UNIFY -1 T=
+E7A @ TWX-MK-VAR TWX-T-RES TWX-PAY TWX-TVK@ TWX-TVK-CELL T=
+TWX-NEW
+TWX-FRESH dup E7A ! TWX-TVK-CELL!
+TWX-FRESH dup E7B ! TWX-TVK-RAW!
+E7A @ TWX-MK-VAR E7B @ TWX-MK-VAR TWX-UNIFY -1 T=
+E7A @ TWX-MK-VAR TWX-T-RES TWX-PAY TWX-TVK@ TWX-TVK-RAW T=
+
+\ A CELL-to-RAW trial records CELL as the prior kind and restores it exactly.
+TWX-NEW
+TWX-FRESH dup E7V ! TWX-TVK-CELL!
+TWX-TRIAL-SAVE
+E7V @ TWX-TVK-RAW TWX-TVK-MEET
+E7V @ TWX-TVK@ TWX-TVK-RAW T=
+TWX-TRIAL-REST
+E7V @ TWX-TVK@ TWX-TVK-CELL T=
+
+\ EN.B is the sole persisted kind field: build a real effect, reset checker
+\ variables, instantiate its data input, and recover CELL on the fresh variable.
+TWX-NEW
+TWX-FRESH dup E7V ! TWX-TVK-CELL!
+E7V @ TWX-MK-VAR TWX-FRESH TWX-MK-ROW TWX-MK-PUSH
+TWX-FRESH TWX-MK-ROW
+TWX-FRESH TWX-MK-ROW
+TWX-FRESH TWX-MK-ROW
+0 TWX-E-BUILD-EFFECT E7EFF !
+TWX-NEW
+E7EFF @ TWX-E-PTR dup TWX-E-INST-RESET TWX-E-DIN@ TWX-E-INST
+   TWX-R-RES TWX-P>TYPE TWX-T-RES TWX-PAY TWX-TVK@
+   TWX-TVK-CELL T=
 
 : REPORT ( -- )
    #FAIL @ 0 = if s" ok" type cr exit then

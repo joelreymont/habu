@@ -74,13 +74,10 @@ create VRC-TV-BOOT MAXTV-INIT cells allot    create VRC-RV-BOOT MAXTV-INIT cells
 create VRI-TV-BOOT MAXTV-INIT cells allot     create VRI-RV-BOOT MAXTV-INIT cells allot
 create EC-TV-BOOT MAXTV-INIT cells allot      create EC-RV-BOOT MAXTV-INIT cells allot
 create EI-TV-BOOT MAXTV-INIT cells allot      create EI-RV-BOOT MAXTV-INIT cells allot
-\ TVK: per-type-var KIND (nominal-storage raw discipline, habu-nominal-storage-raw).
-\ 0 = TVK-ANY (an ordinary polymorphic var); 1 = TVK-RAW (a var minted by a raw
-\ storage definer -- here/,/create/variable/constant -- whose cell admits only a
-\ plain scalar representation and must NEVER absorb a nominal atom, arity-0
-\ family, layout, or nominal-bearing pointer). It rides the shared TV arena so a
-\ fresh var id indexes it too, is zeroed (ANY) on grow/reset/trial-rollback, and
-\ persists on stored effect records (EN.B on var nodes) across snapshot/AOT.
+\ TVK: per-type-var carrier kind. ANY is unconstrained; CELL admits exactly one
+\ stack cell; RAW is the stronger raw-storage constraint. The kind rides the
+\ shared TV arena, is zeroed to ANY on grow/reset, trails every speculative meet,
+\ and persists in stored effect records through EN.B.
 create TVK-BOOT MAXTV-INIT cells allot
 variable TVT-P     variable RVT-P
 variable VRC-TV-P  variable VRC-RV-P   variable VRI-TV-P  variable VRI-RV-P
@@ -143,11 +140,12 @@ TVINIT
 
 0 constant TVK-ANY   \ ordinary polymorphic type var
 1 constant TVK-RAW   \ minted by a raw storage definer; admits only plain scalars
+2 constant TVK-CELL  \ constrained to a one-cell carrier
 : TVK@ ( n -- n ) cells TVK + @ ;
-: TVK-RAW? ( n -- bool ) TVK@ TVK-RAW = ;
 \ permanent (untrailed) RAW mark for build-time contexts (prim/signature build,
 \ freshening); the trailed TVK-RAISE below is used inside unification.
 : TVK-RAW! ( n -- ) TVK-RAW swap cells TVK + ! ;
+: TVK-CELL! ( n -- ) TVK-CELL swap cells TVK + ! ;
 
 : TAG 7 and ;
 
@@ -181,7 +179,7 @@ PTRA-BOOT PTRA-P !   MAXPTR-INIT PTR-CAP !
 
 \ --- unification trail: TV!/RV! record each speculative var binding here so a
 \ failed prim-overload trial undoes them by popping+unbinding (TRIAL-REST) instead
-\ of copying the whole TVT/RVT pool. Each entry packs (var-id << 1 | is-row).
+\ of copying the whole TVT/RVT pool. Each entry packs (var-id << 2 | tag).
 \ Reset per definition in NEW; grows into anon mmap on demand; repointed to boot
 \ at snapshot (per-definition scratch, no live content across a snapshot).
 4096 constant TRAIL-INIT        \ trail entries (grows on demand)
@@ -195,7 +193,7 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
    need TRAIL-CAP @ 2 * max {: nc:n :}
    TRAIL-P @ TRAIL-CAP @ cells nc cells ARENA-BYTES-GROW TRAIL-P !
    nc TRAIL-CAP ! ;
-: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ record a mutation to var `id`; tag 0=TVT 1=RVT 2=TVK
+: TRAIL-PUSH ( n n -- ) {: id:n tag:n :}   \ tags: 0=TVT, 1=RVT, 2=TVK ANY, 3=TVK CELL
    TRAIL-N @ 1 + TRAIL-ENSURE
    id 4 * tag +  TRAIL-N @ cells TRAIL + !
    TRAIL-N @ 1 + TRAIL-N ! ;
@@ -206,15 +204,33 @@ TRAIL-BOOT TRAIL-P !   TRAIL-INIT TRAIL-CAP !   0 TRAIL-N !
       e 3 and {: tag:n :}   e 2 rshift {: id:n :}
       tag 0= IF UNBOUND id cells TVT + ! ELSE
       tag 1 = IF UNBOUND id cells RVT + ! ELSE
-      TVK-ANY id cells TVK + ! THEN THEN
+      tag 2 = IF TVK-ANY id cells TVK + ! ELSE
+      tag 3 = IF TVK-CELL id cells TVK + ! ELSE
+         s" checker: invalid trail tag" 76 die
+      THEN THEN THEN THEN
    REPEAT ;
-\ TVK-RAISE ( id -- ) : raise var `id` to TVK-RAW inside unification, trailed so a
-\ failed prim-overload trial (TRIAL-REST) or definition reject restores TVK-ANY.
-\ Idempotent: a var already RAW records nothing (so no spurious trail growth).
-: TVK-RAISE ( n -- )
-   dup TVK-RAW? IF drop EXIT THEN
-   dup 2 TRAIL-PUSH
-   TVK-RAW! ;
+\ TVK-MEET ( id kind -- ) : explicit ANY < CELL < RAW meet. Each transition
+\ records the exact prior kind so nested speculative meets unwind one step at a
+\ time. Same-kind meets are idempotent.
+: TVK-MEET ( n n -- ) {: id:n kind:n :}
+   id TVK@ {: old:n :}
+   old TVK-ANY = IF
+      kind TVK-ANY = IF EXIT THEN
+      kind TVK-CELL = IF id 2 TRAIL-PUSH id TVK-CELL! EXIT THEN
+      kind TVK-RAW = IF id 2 TRAIL-PUSH id TVK-RAW! EXIT THEN
+      s" checker: invalid type-var kind meet" 76 die
+   THEN
+   old TVK-CELL = IF
+      kind TVK-ANY = kind TVK-CELL = or IF EXIT THEN
+      kind TVK-RAW = IF id 3 TRAIL-PUSH id TVK-RAW! EXIT THEN
+      s" checker: invalid type-var kind meet" 76 die
+   THEN
+   old TVK-RAW = IF
+      kind TVK-ANY = kind TVK-CELL = or kind TVK-RAW = or IF EXIT THEN
+      s" checker: invalid type-var kind meet" 76 die
+   THEN
+   s" checker: invalid type-var kind meet" 76 die ;
+: TVK-RAISE ( n -- ) TVK-RAW TVK-MEET ;
 
 \ --- linear/affine kind discipline (habu-linear-kind-inference) --------------
 \ Concrete-count conservation only sees linear CONS on the stack. It is defeated
@@ -461,6 +477,8 @@ defer TFAM-RESOLVE-XT ( ptr u8 n ptr u8 n -- n bool )   \ pkg + name -> family i
 defer TFAM-ARITY-XT ( n -- n )                          \ family id -> declared arity
 defer TFAM-LAYOUT?-XT ( n -- bool )                     \ family id occupies an ADT layout
 defer TFAM-CELL?-XT ( n -- bool )                       \ family id is a scalar cell kind (TK-CELL)
+defer TFAM-CARRIER-OK-XT ( n -- bool )                  \ family application satisfies its carrier schema
+defer TFAM-CELL-OK-XT ( n -- bool )                     \ family application structurally occupies one cell
 defer TFAM-WIDTH-XT ( n -- n )                           \ declared logical width in stack cells, params-as-cells (docs §18)
 defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical width of a resolved layout term, arg-aware (docs §18)
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
@@ -633,19 +651,24 @@ variable EXT-FREE-N   0 EXT-FREE-N !
 : TFAM-ARITY* ( n -- n ) TFAM-ARITY-XT ;
 : TFAM-LAYOUT?* ( n -- bool ) TFAM-LAYOUT?-XT ;
 : TFAM-CELL?* ( n -- bool ) TFAM-CELL?-XT ;
+: TFAM-CARRIER-OK?* ( n -- bool ) TFAM-CARRIER-OK-XT ;
+: TFAM-CELL-OK?* ( n -- bool ) TFAM-CELL-OK-XT ;
 : TFAM-WIDTH@* ( n -- n ) TFAM-WIDTH-XT ;
 
 \ Registry-not-loaded DEFAULTS for the TFAM query hooks (wrapped in a word so the
 \ `[: ;]` quotations compile; `[: ;] is` is not valid at interpret level). Each
 \ default reproduces the old 0-hook fallback: resolve nothing / arity 0 / not a
-\ layout / not a cell / one cell / the declared family width / no construct family
-\ / no match family / not a wide-ctor call. type-family.f rebinds each hook with
-\ `is` to the real query word once the registry exists.
+\ layout / not a cell / no carrier restriction / no structural cell proof / one
+\ cell / the declared family width / no construct family / no match family / not
+\ a wide-ctor call. type-family.f rebinds each hook with `is` to the real query
+\ word once the registry exists.
 : TFAM-QUERY-DEFAULTS ( -- )
    [: 2drop 2drop 0 RES-FALSE ;] is TFAM-RESOLVE-XT
    [: drop 0 ;] is TFAM-ARITY-XT
    [: drop RES-FALSE ;] is TFAM-LAYOUT?-XT
    [: drop RES-FALSE ;] is TFAM-CELL?-XT
+   [: drop RES-TRUE ;] is TFAM-CARRIER-OK-XT
+   [: drop RES-FALSE ;] is TFAM-CELL-OK-XT
    [: drop 1 ;] is TFAM-WIDTH-XT
    [: PARAM>FAM TFAM-WIDTH@* ;] is TFAM-INST-WIDTH-XT
    [: 2drop 0 RES-FALSE ;] is CONSTRUCT-FAM-XT
@@ -1504,9 +1527,21 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    dup TAG T-CON = IF PAY CT-LINEAR? 0= EXIT THEN    \ plain scalar / role OK; linear con NO
    dup TAG T-PTR = IF PTR>INNER RECURSE EXIT THEN    \ ptr: pointee must also be RAW-admissible
    drop RES-TRUE ;                                    \ atom / xt / row: engine raw-stores these -> admit
-: RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
-   over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
-   nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
+: CELL-OK? ( n -- bool )   \ may a one-cell carrier absorb resolved `term`?
+   T-RES
+   dup ISVAR IF PAY TVK-CELL TVK-MEET RES-TRUE EXIT THEN
+   dup TAG T-PARAM = IF TFAM-CELL-OK?* EXIT THEN
+   dup TAG T-CON = IF drop RES-TRUE EXIT THEN
+   dup TAG T-ATOM = IF drop RES-TRUE EXIT THEN
+   dup TAG T-QUOT = IF drop RES-TRUE EXIT THEN
+   dup TAG T-PTR = IF drop RES-TRUE EXIT THEN
+   drop RES-FALSE ;
+: TVK-BLOCK? ( n n -- bool ) {: id:n term:n :}
+   id TVK@ {: kind:n :}
+   kind TVK-ANY = IF RES-FALSE EXIT THEN
+   kind TVK-RAW = IF term RAW-OK? 0= EXIT THEN
+   kind TVK-CELL = IF term CELL-OK? 0= EXIT THEN
+   s" checker: invalid type-var kind" 76 die ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -1527,10 +1562,10 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
    2dup LAYOUT-BLOCK? IF U-FAIL ELSE   \ item 12: only a whole-bundle transport op may bind a layout cell
    over ISVAR IF
      over PAY over TY-OCC? IF U-FAIL ELSE
-       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE   \ raw discipline: RAW var rejects nominal/atom/layout
+       over PAY over TVK-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE
    dup ISVAR IF
      dup PAY  rot  tuck TY-OCC? IF U-FAIL ELSE
-       over PAY over RAW-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE
+       over PAY over TVK-BLOCK? IF U-FAIL ELSE swap PAY TV! THEN THEN ELSE
    over TAG T-CON =  over TAG T-CON =  and IF
      2dup CON-OK? IF 2drop ELSE U-FAIL THEN
    ELSE U-FAIL THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN THEN ;
@@ -2848,14 +2883,19 @@ defer SIG-QUOT-XT ( -- n )
 \ (family-specific arity diagnostic) when the arg count differs from the family's
 \ declared arity; reject a `redx<..>` over a free/product extent (BTC-7 contraction
 \ rule) before it can name a summable axis; then build the T-PARAM (MK-PARAM rewinds
-\ scratch to `base`).
+\ scratch to `base`). An exact, otherwise-clean application must satisfy its
+\ family's carrier schema.
 : SIG-END-PARAM {: base:n a:ptr u:n fam:n :}
    PARAM-SCR-N @ base - {: got:n :}
-   got fam TFAM-ARITY* <> IF a u fam TFAM-ARITY* got SGBAD-ARITY! THEN
+   fam TFAM-ARITY* {: want:n :}
+   got want <> IF a u want got SGBAD-ARITY! THEN
    fam EXT-REDX-FAM @ =  EXT-REDX-FAM @ 0 <> and  got 1 = and IF
       base cells PARAM-SCR + @ EXT-REDX-BAD-ARG? IF a u SGBAD-SYNTAX! THEN
    THEN
-   base a u fam MK-PARAM ;
+   base a u fam MK-PARAM
+   got want = SGBAD @ 0= and IF
+      dup TFAM-CARRIER-OK?* 0= IF a u SGBAD-SYNTAX! THEN
+   THEN ;
 
 \ SIG-TYPE ( ptr u8 n -- n ) : one signature type. A registered family token opens
 \ `family<arg,...>`; each arg RECURSEs. `base` marks the shared scratch depth on
@@ -4101,7 +4141,7 @@ EC-RV MAXTV E-MAP-CLEAR   0 EC-RV-HW !
       T-VAR of
          EN-VAR E-NODE-NEW E-OFF >r
          x E-RES PAY E-TV-ID r@ E-PTR EN.A !
-         x E-RES PAY TVK@ r@ E-PTR EN.B !   \ persist the var kind (TVK-ANY/TVK-RAW) for freshening + snapshot
+         x E-RES PAY TVK@ r@ E-PTR EN.B !   \ persist TVK-ANY/CELL/RAW for freshening + snapshot
          r>
       endof
       S-ROW of
@@ -4441,6 +4481,12 @@ variable FMEND
 : E-I-STR ( ptr a -- ptr u8 n )
    dup EN.A @ E-PTR swap EN.B @ ;
 
+: E-I-TVK ( n n -- ) {: kind:n term:n :}
+   kind TVK-ANY = IF EXIT THEN
+   kind TVK-RAW = IF term PAY TVK-RAW! EXIT THEN
+   kind TVK-CELL = IF term PAY TVK-CELL! EXIT THEN
+   s" checker: invalid stored type-var kind" 76 die ;
+
 : E-INST ( n -- n ) {: off:n :}
    off 0= if 0 exit then
    off E-PTR >r
@@ -4448,7 +4494,7 @@ variable FMEND
       EN-CON of r@ EN.A @ MK-CON r> drop endof
       EN-VAR of
          r@ EN.A @ E-I-TV                                  \ fresh var term
-         r@ EN.B @ TVK-RAW = IF dup PAY TVK-RAW! THEN       \ restore persisted RAW kind on the fresh var
+         r@ EN.B @ over E-I-TVK                             \ restore persisted kind on the fresh var
          r> drop
       endof
       EN-ROW of r@ EN.A @ E-I-RV r> drop endof
