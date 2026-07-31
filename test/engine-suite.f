@@ -519,31 +519,74 @@ s" wrong-effect recursion rejects" T-LABEL
 s" CREC-BAD ( n -- n ) dup recurse" CHECK-QUIET-CANDIDATE! 0 T=
 s" sig-less recursion stays uncheckable" T-LABEL
 s" CREC-SIGLESS dup recurse" CHECK-QUIET-CANDIDATE! 1 T=
-\ engine FIND parity for colon tokens: a non-edge first colon plus a second
-\ colon never resolves (FIND-QBAD); edge colons stay ordinary names.
-s" a:b:c" s" -- n" TRUST
-s" a:b:" s" -- n" TRUST
-s" x:" s" -- n" TRUST
-s" ::x" s" -- n" TRUST
-s" tq:tail" s" -- n" TRUST
-s" double-colon token rejects" T-LABEL
-s" CBAD-QUAL-DOUBLE ( -- n ) a:b:c" CHECK-QUIET-CANDIDATE! 1 T=
-s" trailing-second-colon token rejects" T-LABEL
-s" CBAD-QUAL-TRAIL ( -- n ) a:b:" CHECK-QUIET-CANDIDATE! 1 T=
-s" edge-colon names stay ordinary" T-LABEL
-s" COK-QUAL-EDGE ( -- n n ) x: ::x" CHECK-QUIET-CANDIDATE! -1 T=
-s" single-colon qualified resolves" T-LABEL
-s" COK-QUAL-ONE ( -- n ) tq:tail" CHECK-QUIET-CANDIDATE! -1 T=
+\ QNAME is the sole grammar owner. It splits on the last colon, returns exact
+\ source spans, and distinguishes every empty-component shape from absence.
+package ENGINE-SUITE
+private
+: QNAME-CASES ( -- )
+   s" tail" QNAME:SPLIT
+   {: ba:ptr bu:n bta:ptr btu:n bk:n :}
+   bk QNAME:BARE T=
+   ba bu s" " T$=
+   bta btu s" tail" T$=
+   s" pkg:sub:tail" QNAME:SPLIT
+   {: qa:ptr qu:n qta:ptr qtu:n qk:n :}
+   qk QNAME:QUALIFIED T=
+   qa qu s" pkg:sub" T$=
+   qta qtu s" tail" T$=
+   s" :tail" QNAME:SPLIT
+   {: la:ptr lu:n lta:ptr ltu:n lk:n :}
+   lk QNAME:MALFORMED T=
+   la lu s" " T$=
+   lta ltu s" " T$=
+   s" pkg:" QNAME:SPLIT
+   {: ra:ptr ru:n rta:ptr rtu:n rk:n :}
+   rk QNAME:MALFORMED T=
+   ra ru s" " T$=
+   rta rtu s" " T$=
+   s" pkg::tail" QNAME:SPLIT
+   {: da:ptr du:n dta:ptr dtu:n dk:n :}
+   dk QNAME:MALFORMED T=
+   da du s" " T$=
+   dta dtu s" " T$= ;
+
+QNAME-CASES
+;package
+
+package ES-DEEP:LEFT
+public
+: VALUE ( -- n ) 101 ;
+;package
+
+package ES-DEEP:RIGHT
+public
+: VALUE ( n -- n ) 1 + ;
+;package
+
+s" complete deep qualifier resolves the left identity" T-LABEL
+s" COK-DEEP-LEFT ( -- n ) ES-DEEP:LEFT:VALUE" CHECK-QUIET-CANDIDATE! -1 T=
+s" complete deep qualifier resolves the right identity" T-LABEL
+s" COK-DEEP-RIGHT ( n -- n ) ES-DEEP:RIGHT:VALUE" CHECK-QUIET-CANDIDATE! -1 T=
+s" same tail in a sibling keeps its distinct effect" T-LABEL
+s" CBAD-DEEP-RIGHT ( -- n ) ES-DEEP:RIGHT:VALUE" CHECK-QUIET-CANDIDATE! 0 T=
+s" missing deep namespace remains undefined" T-LABEL
+s" CBAD-DEEP-MISSING ( -- n ) ES-DEEP:MISSING:VALUE" CHECK-QUIET-CANDIDATE! 1 T=
+s" leading empty component is malformed" T-LABEL
+s" CBAD-QUAL-LEAD ( -- n ) :ES-DEEP:LEFT:VALUE" CHECK-QUIET-CANDIDATE! 1 T=
+s" trailing empty component is malformed" T-LABEL
+s" CBAD-QUAL-TRAIL ( -- n ) ES-DEEP:LEFT:VALUE:" CHECK-QUIET-CANDIDATE! 1 T=
+s" doubled colon component is malformed" T-LABEL
+s" CBAD-QUAL-DOUBLE ( -- n ) ES-DEEP::VALUE" CHECK-QUIET-CANDIDATE! 1 T=
 TRUSTED: ES-JSON-DIAGS! ( bool -- ) JSON-DIAGS ! ;   \ whitebox diag-mode boundary
 RSD-BUF RSD-CAP DIAG-BUFFER!
 0 0= ES-JSON-DIAGS!
 s" qualified diag verdict" T-LABEL
-s" CBAD-QUAL-DIAG ( -- n ) a:b:c" CHECK-CANDIDATE! 1 T=
+s" CBAD-QUAL-DIAG ( -- n ) ES-DEEP::VALUE" CHECK-CANDIDATE! 1 T=
 0 0= 0= ES-JSON-DIAGS!
 s" qualified diag code" T-LABEL
 DIAG-BUFFER$ s" E-BAD-QUALIFIED" T-HAS? -1 T=
 s" qualified diag token" T-LABEL
-DIAG-BUFFER$ s" a:b:c" T-HAS? -1 T=
+DIAG-BUFFER$ s" ES-DEEP::VALUE" T-HAS? -1 T=
 DIAG-BUFFER-OFF
 variable TG-UEND
 variable TG-CAP

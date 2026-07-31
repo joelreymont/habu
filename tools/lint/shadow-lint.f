@@ -151,7 +151,8 @@ variable BAD  variable LI  variable IN-PACKAGE
    s" src/habu/habu1.f" FB SL-FB-CAP READ-FILE  TOKENIZE  SCAN-PRIMS
    s" tools/lint/text.f" LINT-FILE   s" tools/lint/token.f" LINT-FILE s" tools/lint/lib.f" LINT-FILE
    s" tools/lint/shadow-lint.f" LINT-FILE
-   s" src/core/util.f"      LINT-FILE   s" src/core/cell.f"      LINT-FILE
+   s" src/core/util.f"      LINT-FILE   s" src/core/qname.f"     LINT-FILE
+   s" src/core/cell.f"      LINT-FILE
    s" src/core/pointer-storage.f" LINT-FILE
    s" src/core/pointer-storage-effects.f" LINT-FILE
    s" src/core/engine-error.f" LINT-FILE

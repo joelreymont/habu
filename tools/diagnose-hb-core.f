@@ -67,6 +67,7 @@ variable CHECKED
 \ is first because it is the first source the engine reopens at boot.
 : COMMON-FILES ( -- )
    s" src/core/util.f" PREFIX-FILE
+   s" src/core/qname.f" PREFIX-FILE
    s" src/core/cell.f" PREFIX-FILE
    s" src/core/pointer-storage.f" PREFIX-FILE
    s" src/core/engine-error.f" PREFIX-FILE

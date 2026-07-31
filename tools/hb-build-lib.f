@@ -504,6 +504,7 @@ HBB-INSTALL-CHILD-LINTS
 : HBB-KEY-COMMON-SOURCES ( -- )
    s" src/habu/hide.f" HBB-KEY-FILE+
    s" src/core/util.f" HBB-KEY-FILE+
+   s" src/core/qname.f" HBB-KEY-FILE+
    s" src/core/cell.f" HBB-KEY-FILE+
    s" src/core/pointer-storage.f" HBB-KEY-FILE+
    s" src/core/engine-error.f" HBB-KEY-FILE+

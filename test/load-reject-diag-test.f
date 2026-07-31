@@ -40,6 +40,7 @@ create ERR CAP allot
 create EMPTY 1 allot
 create BASE FS-PATH-CAP allot
 create UNDEF-P FS-PATH-CAP allot
+create QNAME-P FS-PATH-CAP allot
 create BODY-P FS-PATH-CAP allot
 create OUTER-P FS-PATH-CAP allot
 create FRAG-P FS-PATH-CAP allot
@@ -57,6 +58,7 @@ create BPF-P FS-PATH-CAP allot
 
 variable BASE-U
 variable UNDEF-U
+variable QNAME-U
 variable BODY-U
 variable OUTER-U
 variable FRAG-U
@@ -81,6 +83,9 @@ variable RC
 
 : UNDEF$ ( -- ptr u8 n )
    UNDEF-P UNDEF-U @ ;
+
+: QNAME$ ( -- ptr u8 n )
+   QNAME-P QNAME-U @ ;
 
 : BODY$ ( -- ptr u8 n )
    BODY-P BODY-U @ ;
@@ -153,6 +158,7 @@ variable RC
 
 : PATHS! ( -- )
    s" undef.f" UNDEF-P UNDEF-U PATH!
+   s" qname.f" QNAME-P QNAME-U PATH!
    s" body.f" BODY-P BODY-U PATH!
    s" outer.f" OUTER-P OUTER-U PATH!
    s" frag.f" FRAG-P FRAG-U PATH!
@@ -169,7 +175,8 @@ variable RC
    s" byte-ptr-fetch.f" BPF-P BPF-U PATH! ;
 
 : REJECT-FIXTURES! ( -- )
-   UNDEF$ s" : LRD-X ( -- ) LRD-NO-SUCH-WORD-XYZ ;" WRITE-ALL
+   UNDEF$ s" -1 JSON-DIAGS ! : LRD-X ( -- ) LRD:NO:SUCH:WORD ;" WRITE-ALL
+   QNAME$ s" -1 JSON-DIAGS ! : LRD-QBAD ( -- ) LRD::NO:WORD ;" WRITE-ALL
    BODY$ s" : LRD-Y ( n -- n ) drop ;" WRITE-ALL
    BPS$ s" variable LRD-P : LRD-BASE ( -- ptr u8 ) LRD-P @ ; : LRD-BPS ( -- ) 0 LRD-BASE ! ;" WRITE-ALL
    BPF$ s" variable LRD-Q : LRD-QBASE ( -- ptr u8 ) LRD-Q @ ; : LRD-BPF ( -- n ) LRD-QBASE @ ;" WRITE-ALL
@@ -240,14 +247,26 @@ LOWER-CERT-HOOK:INSTALL
 : OUT$ ( -- ptr u8 n )
    OUT OUT-U @ ;
 
-\ Every rejecting load: exit-kind EXIT, rc 70, EMPTY stdout, NON-EMPTY stderr
-\ that names the failing token — the silent-exit-70 red/green discriminator.
-: ASSERT-NAMED ( ptr u8 n -- ) {: name:ptr nameu:n :}
+\ Every rejecting load: exit-kind EXIT, rc 70, EMPTY stdout, NON-EMPTY stderr.
+: ASSERT-REJECT ( -- )
    EXITED @ TTRUE
    RC @ REJECT-RC T=
    OUT-U @ 0 T=
-   ERR-U @ 0 > TTRUE
+   ERR-U @ 0 > TTRUE ;
+
+: ASSERT-NAMED ( ptr u8 n -- ) {: name:ptr nameu:n :}
+   ASSERT-REJECT
    ERR$ name nameu CONTAINS? TTRUE ;
+
+: ASSERT-STRUCT-DIAG ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: code:ptr codeu:n repair:ptr repairu:n word:ptr wordu:n token:ptr tokenu:n :}
+   ASSERT-REJECT
+   ERR$ JSON-PARSE dup GJA-OBJ {: root:n :}
+   root GJA-DIAG-CONTRACT-ROW
+   root s" code" GJA-REQ code codeu GJA-ASSERT-STR
+   root s" repair_class" GJA-REQ repair repairu GJA-ASSERT-STR
+   root s" word" GJA-REQ word wordu GJA-ASSERT-STR
+   root s" token" GJA-REQ token tokenu GJA-ASSERT-STR ;
 
 : ASSERT-OK ( -- )
    EXITED @ TTRUE
@@ -291,10 +310,16 @@ LOWER-CERT-HOOK:INSTALL
    ERR-U @ TEST-ERR-U T= ;
 
 : TEST-UNDEF ( -- )
-   s" direct --load reject names the undefined word" T-LABEL
+   s" direct --load reject carries the exact deep undefined token" T-LABEL
    UNDEF$ RUN
-   s" E-UNDEFINED" ASSERT-NAMED
-   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
+   s" E-UNDEFINED" s" unknown_rejection"
+   s" lrd-x" s" LRD:NO:SUCH:WORD" ASSERT-STRUCT-DIAG ;
+
+: TEST-QNAME ( -- )
+   s" malformed load token has a distinct structural diagnostic" T-LABEL
+   QNAME$ RUN
+   s" E-BAD-QUALIFIED" s" fix_qualified_name"
+   s" lrd-qbad" s" LRD::NO:WORD" ASSERT-STRUCT-DIAG ;
 
 : TEST-BODY ( -- )
    s" checked-body reject names word and token" T-LABEL
@@ -321,10 +346,10 @@ LOWER-CERT-HOOK:INSTALL
    ERR$ s" actual: ptr u8" CONTAINS? TTRUE ;
 
 : TEST-REQUIRE-CHAIN ( -- )
-   s" require-chain reject names the undefined word" T-LABEL
+   s" require-chain reject carries the exact deep undefined token" T-LABEL
    OUTER$ RUN
-   s" E-UNDEFINED" ASSERT-NAMED
-   ERR$ s" LRD-NO-SUCH-WORD-XYZ" CONTAINS? TTRUE ;
+   s" E-UNDEFINED" s" unknown_rejection"
+   s" lrd-x" s" LRD:NO:SUCH:WORD" ASSERT-STRUCT-DIAG ;
 
 : TEST-IMM-INCLUDE ( -- )
    s" checked include rejects before executing its fragment" T-LABEL
@@ -368,6 +393,7 @@ LOWER-CERT-HOOK:INSTALL
    TEST-STORE-SIGNALED
    TEST-STORE-TIMEOUT
    TEST-UNDEF
+   TEST-QNAME
    TEST-BODY
    TEST-BYTE-PTR-STORE
    TEST-BYTE-PTR-FETCH

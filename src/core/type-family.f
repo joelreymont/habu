@@ -575,7 +575,6 @@ variable SUMV-N   0 SUMV-N !   REG-PROTECT
 \ tail, or undefine a generated word through any case variant. Installed into
 \ the checker's CTOR-*-XT friend cells at the end of this file.
 variable TF-CI              \ protection scan index (TF-I stays the decl scanner's)
-variable TF-CW-COL          \ first-colon split position
 : SUMV-CTOR-PKG-MATCH? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}
    id SUMV-REC@ SV.CTOR-PKG-U @ 0= IF RES-FALSE EXIT THEN
    id SUMV-CTOR-PKG$ a u CORE-STR=CI ;
@@ -585,18 +584,10 @@ variable TF-CW-COL          \ first-colon split position
       a u TF-CI @ SUMV-CTOR-PKG-MATCH? IF RES-TRUE EXIT THEN
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
-: TF-CW-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ first non-edge ':' -> TF-CW-COL
-   -1 TF-CW-COL !
-   0 TF-CI !
-   BEGIN TF-CI @ u < WHILE
-      a TF-CI @ + c@ 58 = IF TF-CI @ TF-CW-COL ! u TF-CI ! ELSE TF-CI @ 1 + TF-CI ! THEN
-   REPEAT
-   TF-CW-COL @ 0 > TF-CW-COL @ u 1 - < and ;
-: TFAM-CTOR-WORD-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = ctor id?
-   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 -  id SUMV-NAME$ CORE-STR=CI ;
-: TF-CW-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}   \ name tail after the split colon
-   a TF-CW-COL @ + 1 +  u TF-CW-COL @ - 1 - ;
+: TFAM-CTOR-WORD-AT? ( ptr u8 n ptr u8 n n -- bool )
+   {: qa:ptr qu:n ta:ptr tu:n id:n :}
+   qa qu id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   ta tu id SUMV-NAME$ CORE-STR=CI ;
 : TFAM-DERIVED-TAIL? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ a fixed generator-owned derived tail?
    a u s" eq" CORE-STR=CI IF RES-TRUE EXIT THEN
    a u s" hash" CORE-STR=CI IF RES-TRUE EXIT THEN
@@ -606,22 +597,30 @@ variable TF-CW-COL          \ first-colon split position
    a u s" hash" CORE-STR=CI IF fam TFAM-DERIVE-HASH? EXIT THEN
    fam TFAM-PRODUCT? IF RES-FALSE EXIT THEN   \ products get no discriminant
    a u s" tag" CORE-STR=CI ;                  \ tag rides ANY derive on sum/enum
-: TFAM-DERIVED-AT? ( ptr u8 n n -- bool ) {: a:ptr u:n id:n :}   \ split name = id-family derived word?
+: TFAM-DERIVED-AT? ( ptr u8 n ptr u8 n n -- bool )
+   {: qa:ptr qu:n ta:ptr tu:n id:n :}
    id SUMV-FAM@ TFAM-DERIVE-ANY? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
-   a u TF-CW-TAIL$ id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
-: TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT/derived word?
-   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
+   qa qu id SUMV-CTOR-PKG-MATCH? 0= IF RES-FALSE EXIT THEN
+   ta tu id SUMV-FAM@ TFAM-DERIVED-KIND-TAIL? ;
+: TFAM-CTOR-SPANS? ( ptr u8 n ptr u8 n -- bool )
+   {: qa:ptr qu:n ta:ptr tu:n :}
    0 TF-CI !
    BEGIN TF-CI @ SUMV-N @ < WHILE
-      a u TF-CI @ TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
-      a u TF-CI @ TFAM-DERIVED-AT? IF RES-TRUE EXIT THEN
+      qa qu ta tu TF-CI @ TFAM-CTOR-WORD-AT? IF RES-TRUE EXIT THEN
+      qa qu ta tu TF-CI @ TFAM-DERIVED-AT? IF RES-TRUE EXIT THEN
       TF-CI @ 1 + TF-CI !
    REPEAT RES-FALSE ;
+: TFAM-CTOR-WORD? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ exact PKG:VARIANT/derived word?
+   a u QNAME:SPLIT
+   {: qa:ptr qu:n ta:ptr tu:n kind:n :}
+   kind QNAME:QUALIFIED <> IF RES-FALSE EXIT THEN
+   qa qu ta tu TFAM-CTOR-SPANS? ;
 : TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor package?
-   a u TF-CW-SPLIT? 0= IF RES-FALSE EXIT THEN
-   a TF-CW-COL @ TFAM-CTOR-PKG? 0= IF RES-FALSE EXIT THEN
-   a u TFAM-CTOR-WORD? 0= ;
+   a u QNAME:SPLIT
+   {: qa:ptr qu:n ta:ptr tu:n kind:n :}
+   kind QNAME:QUALIFIED <> IF RES-FALSE EXIT THEN
+   qa qu TFAM-CTOR-PKG? 0= IF RES-FALSE EXIT THEN
+   qa qu ta tu TFAM-CTOR-SPANS? 0= ;
 
 : SUMV-MATCH? ( n ptr u8 n n -- bool ) {: fam:n na:ptr nu:n id:n :}
    id SUMV-FAM@ fam = 0= IF RES-FALSE EXIT THEN
@@ -2137,7 +2136,6 @@ $100 constant TFQ-CAP            \ folded qualifier bytes (CHECKER-PACKAGE-CAP)
 create TFQ-BUF TFQ-CAP allot
 variable TFQ-U
 variable TFQ-TA   variable TFQ-TU     \ qualified tail token
-variable TFQ-COLON
 
 : TFQ-FOLD-COPY ( ptr u8 n -- ) {: a:ptr u:n :}   \ folded qualifier -> TFQ-BUF
    u TFQ-CAP > IF s" tfam: qualifier too long" 76 die THEN
@@ -2148,24 +2146,13 @@ variable TFQ-COLON
    REPEAT
    u TFQ-U ! ;
 
-\ TFQ-SPLIT? ( ptr u8 n -- bool ) : one non-edge ':' splits qualifier/tail
-\ (engine FIND parity); edge or repeated colons never split (and never resolve).
-: TFQ-SPLIT? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   -1 TFQ-COLON !
-   0 TF-I !
-   BEGIN TF-I @ u < WHILE
-      a TF-I @ + c@ 58 = IF
-         TFQ-COLON @ 0 < 0= IF RES-FALSE EXIT THEN   \ second ':' -> malformed
-         TF-I @ TFQ-COLON !
-      THEN
-      TF-I @ 1 + TF-I !
-   REPEAT
-   TFQ-COLON @ 0 < IF RES-FALSE EXIT THEN
-   TFQ-COLON @ 0 = IF RES-FALSE EXIT THEN            \ leading ':'
-   TFQ-COLON @ u 1 - = IF RES-FALSE EXIT THEN        \ trailing ':'
-   a TFQ-COLON @ TFQ-FOLD-COPY
-   a TFQ-COLON @ + 1 + TFQ-TA !
-   u TFQ-COLON @ - 1 - TFQ-TU !
+: TFQ-SPLIT? ( ptr u8 n -- bool )
+   QNAME:SPLIT
+   {: qa:ptr qu:n ta:ptr tu:n kind:n :}
+   kind QNAME:QUALIFIED <> IF RES-FALSE EXIT THEN
+   qa qu TFQ-FOLD-COPY
+   ta TFQ-TA !
+   tu TFQ-TU !
    RES-TRUE ;
 
 : TFAM-QUAL-RESOLVE ( ptr u8 n -- n bool ) {: pa:ptr pu:n :}

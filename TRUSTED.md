@@ -1245,11 +1245,6 @@ test/engine-suite.f:T-CTV test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-SCOPED-W test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-PRESO test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-V14 test-metaprog habu-primitive-effect-axiom-1119f176
-test/engine-suite.f:a:b:c test-metaprog habu-primitive-effect-axiom-1119f176
-test/engine-suite.f:a:b: test-metaprog habu-primitive-effect-axiom-1119f176
-test/engine-suite.f:x: test-metaprog habu-primitive-effect-axiom-1119f176
-test/engine-suite.f:::x test-metaprog habu-primitive-effect-axiom-1119f176
-test/engine-suite.f:tq:tail test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-GROW-PAIR test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-PHASE-ID test-metaprog habu-primitive-effect-axiom-1119f176
 test/engine-suite.f:T-ASM-CODE test-metaprog habu-builder-trust-rows-c5d41af6

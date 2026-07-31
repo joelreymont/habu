@@ -178,6 +178,11 @@ variable LPHABULAYOUT   variable LPENVBASE      variable LPINCLUDE
 variable LPSCRIPTARGV   variable LPINTMARK
 variable LPROLES
 variable LPDECLTXN      variable LPGENDECL      variable LPDECLEVENT    variable LPSTRUCTMAKE
+
+package HB-EMIT
+public
+variable LPQNAME
+;package
 variable LPSTRUCTDECL   variable LPENUMDECL
 variable LPENUMS        variable LPEXECVECTOR   variable LPSHA256       variable LPTFAMSHA
 variable LPCOMBINATORS  variable LPXREF  variable LPGENDECLDICT  variable LPGENDECLPROT
@@ -581,6 +586,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 : PFX-LOAD-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-LOAD-ROW
+   PFX-COMMON HB-EMIT:LPQNAME s" src/core/qname.f"       PFX-LOAD-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-LOAD-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-LOAD-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-LOAD-ROW
@@ -684,6 +690,7 @@ s" c-bp-watch-dump" s" label label --" TRUST
 
 : PFX-PATH-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PATH-ROW
+   PFX-COMMON HB-EMIT:LPQNAME s" src/core/qname.f"       PFX-PATH-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PATH-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PATH-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PATH-ROW
@@ -958,6 +965,7 @@ public
 
 : PFX-PROVIDE-CHECKER-FILES ( -- )
    PFX-COMMON LPUTIL         s" src/core/util.f"        PFX-PROVIDE-ROW
+   PFX-COMMON HB-EMIT:LPQNAME s" src/core/qname.f"       PFX-PROVIDE-ROW
    PFX-COMMON LPCELL         s" src/core/cell.f"        PFX-PROVIDE-ROW
    PFX-COMMON LPPTRSTORAGE   s" src/core/pointer-storage.f" PFX-PROVIDE-ROW
    PFX-COMMON LPENGINEERROR  s" src/core/engine-error.f" PFX-PROVIDE-ROW
@@ -6959,7 +6967,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 : EMIT-LABEL-SOURCES ( -- )
    LBL LPLINUXTARGET !  LBL LPMACOSTARGET !
    LBL LPLINUXLAYOUT !  LBL LPMACOSLAYOUT !
-   LBL LPUTIL !  LBL LPCELL !  LBL LPPTRSTORAGE !
+   LBL LPUTIL !  LBL HB-EMIT:LPQNAME !  LBL LPCELL !  LBL LPPTRSTORAGE !
    LBL LPSTRUCTURES !  LBL LPBYTES !  LBL LPENGINEERROR !  LBL LPCHECKER !  LBL LPENGINEERROREFFECTS !
    LBL LPLOWERCERTBASE !  LBL LPRENDER !  LBL LPHOOK !
    LBL LPCELLEFF !  LBL LPPTRSTORAGEEFF !  LBL LPDECLTXN !  LBL LPGENDECL !

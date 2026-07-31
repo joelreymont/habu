@@ -1137,6 +1137,22 @@ s" tdpa" s" tres" TWX-TFAM-FIND-IN TDOK ! TDX !
 TDOK @ -1 T=
 TDF @ TDX @ <> -1 T=
 
+package tddeep:a
+public
+NEWTYPE path 1
+;package
+
+package tddeep:b
+public
+NEWTYPE path 2
+;package
+
+s" tddeep:a" s" path" TWX-TFAM-FIND-IN TDOK ! TDF !
+TDOK @ -1 T=
+s" tddeep:b" s" path" TWX-TFAM-FIND-IN TDOK ! TDX !
+TDOK @ -1 T=
+TDF @ TDX @ <> -1 T=
+
 \ ---------------------------------------------------------------------------
 \ item 8 metadata: a PUBLIC sum/enum family derives its constructor package name
 \ (Package Shape) at ;SUMTYPE and stores it in every variant's SV.CTOR-PKG slot;
@@ -1193,9 +1209,14 @@ package tdpb
 s" TPOK-OWN ( tres<n> -- tdpb:tres<n> )" CHECK-QUIET-CANDIDATE! -1 T=
 s" TPBAD-OTHER ( tres<n> -- tdpa:tres<n> ) " CHECK-QUIET-CANDIDATE! 0 T=
 ;package
-\ unknown qualifiers and malformed multi-colon tokens reject as unknown types.
+\ Unknown qualifiers and empty-component qualified tokens reject.
 s" TQBAD-NOPKG ( nopkg:tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
-s" TQBAD-COLONS ( tdpa:tres:x<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+s" TQBAD-COLONS ( tdpa::tres<n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
+\ Complete deep package names resolve at the last colon. Sibling packages with
+\ the same tail retain distinct family identities and widths.
+s" TQOK-DEEP-A ( tddeep:a:path<n> -- tddeep:a:path<n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TQOK-DEEP-B ( tddeep:b:path<n,n> -- tddeep:b:path<n,n> )" CHECK-QUIET-CANDIDATE! -1 T=
+s" TQBAD-DEEP-ID ( tddeep:a:path<n> -- tddeep:b:path<n,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 \ hidden physical names never resolve in public signatures.
 s" TQBAD-HIDDEN ( @tdres.tag<n,n> -- ) drop" CHECK-QUIET-CANDIDATE! 0 T=
 
@@ -1759,8 +1780,8 @@ s" SUMTYPE tdqb1 0 VARIANT bv nopkg:qslot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT
 \ a PRIVATE family in another package stays unreachable, qualified or bare.
 s" SUMTYPE tdqb2 0 VARIANT bv tdqp:qpriv ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdqb3 0 VARIANT bv qpriv ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
-\ malformed multi-colon tokens and non-canonical tails never split/resolve.
-s" SUMTYPE tdqb4 0 VARIANT bv tdqp:qslot:x ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
+\ Empty-component qualified tokens and non-canonical tails never resolve.
+s" SUMTYPE tdqb4 0 VARIANT bv tdqp::qslot ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 s" SUMTYPE tdqb5 0 VARIANT bv tdqp:QSLOT ;VARIANT ;SUMTYPE" E-TDECL-PAYLOAD TDT-NEG
 \ a QUALIFIED self-reference is the same recursion as the bare spelling —
 \ private, public, ptr-wrapped, and product-field forms all reject recursive

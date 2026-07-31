@@ -97,12 +97,9 @@ PTR-VARIABLE XREF-A
 PTR-VARIABLE XREF-B
 variable XREF-U
 variable XREF-V
-PTR-VARIABLE XREF-SN
-variable XREF-SU
 PTR-VARIABLE XREF-FN
 variable XREF-FU
 variable XREF-WID
-variable XREF-IDX
 variable XREF-NV
 
 : XREF-A@ ( -- ptr u8 )
@@ -110,9 +107,6 @@ variable XREF-NV
 
 : XREF-B@ ( -- ptr u8 )
    XREF-B @ ;
-
-: XREF-SN@ ( -- ptr u8 )
-   XREF-SN @ ;
 
 : XREF-FN@ ( -- ptr u8 )
    XREF-FN @ ;
@@ -122,9 +116,6 @@ variable XREF-NV
 
 : XREF-B! ( ptr u8 -- )
    XREF-B ! ;
-
-: XREF-SN! ( ptr u8 -- )
-   XREF-SN ! ;
 
 : XREF-FN! ( ptr u8 -- )
    XREF-FN ! ;
@@ -143,17 +134,6 @@ variable XREF-NV
    XREF-U ! XREF-A!
    XREF-NAME$ XREF-A@ XREF-U @ XREF-STR=CI ;
 
-: XREF-FIND-WL ( ptr u8 n n -- ptr a )
-   XREF-WID ! XREF-FU ! XREF-FN!
-   ndict@ 1-
-   begin dup 0 >= while
-      dup XREF-REC XREF-WORDLIST XREF-WID @ = if
-         dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if XREF-REC exit then
-      then
-      1-
-   repeat drop
-   XREF-NULL ;
-
 : XREF-FIND-WL-INDEX ( ptr u8 n n -- n )
    XREF-WID ! XREF-FU ! XREF-FN!
    ndict@ 1-
@@ -165,65 +145,74 @@ variable XREF-NV
    repeat drop
    -1 ;
 
-variable XREF-QI
-variable XREF-QWID
+: XREF-FIND-WL ( ptr u8 n n -- ptr a )
+   XREF-FIND-WL-INDEX
+   dup 0 >= IF XREF-REC EXIT THEN
+   drop XREF-NULL ;
 
-: XREF-QUAL-INDEX ( ptr u8 n -- n )
-   XREF-SU ! XREF-SN!
-   -1 XREF-QI !
-   0 begin dup XREF-SU @ < while
-      XREF-SN@ over ZBYTE@ $3A = if
-         XREF-QI @ 0 >= if drop -2 exit then
-         dup XREF-QI !
-      then
-      1+
-   repeat drop
-   XREF-QI @ dup 0 < if exit then
-   dup 0= if drop -1 exit then
-   dup XREF-SU @ 1- = if drop -1 exit then ;
+package XREF
 
-: XREF-FIND-QUALIFIED ( ptr u8 n n -- ptr a )
-   XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? 0= if drop XREF-NULL exit then
-   XREF-START XREF-QWID !
-   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  XREF-QWID @  XREF-FIND-WL ;
+public
 
-: XREF-FIND-QUALIFIED-INDEX ( ptr u8 n n -- n )
-   XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-IDX @ XREF-NAMESPACE-WL XREF-FIND-WL
-   dup XREF-FOUND? 0= if drop -1 exit then
-   XREF-START XREF-QWID !
-   XREF-SN@ XREF-IDX @ 1 + ZPTR+  XREF-SU @ XREF-IDX @ - 1-  XREF-QWID @  XREF-FIND-WL-INDEX ;
+0 constant FOUND
+1 constant NONE
+2 constant MALFORMED
+
+private
+
+: KIND@ ( ptr a -- n )
+   XREF-FLAGS DNAME-MIN-IN-MASK and 52 rshift ;
+
+: RESULT ( n -- n n )
+   dup 0 >= IF FOUND ELSE NONE THEN ;
+
+: QUAL-WID ( ptr u8 n -- n bool )
+   XREF-NAMESPACE-WL XREF-FIND-WL-INDEX
+   dup 0 < IF drop 0 XREF-FALSE EXIT THEN
+   XREF-REC
+   dup KIND@
+   dup NAMESPACE:KIND-PACKAGE =
+   swap NAMESPACE:KIND-TYPE = or 0= IF
+      drop 0 XREF-FALSE
+      EXIT
+   THEN
+   XREF-START XREF-TRUE ;
+
+public
+
+: RESOLVE ( ptr u8 n n -- n n ) {: a:ptr u:n bare-wid:n :}
+   a u QNAME:SPLIT
+   {: qa:ptr qu:n ta:ptr tu:n kind:n :}
+   kind QNAME:MALFORMED = IF -1 MALFORMED EXIT THEN
+   kind QNAME:BARE = IF
+      ta tu bare-wid XREF-FIND-WL-INDEX RESULT
+      EXIT
+   THEN
+   qa qu QUAL-WID 0= IF drop -1 NONE EXIT THEN
+   {: qwid:n :}
+   ta tu qwid XREF-FIND-WL-INDEX RESULT ;
+
+: GUARD ( n n -- n n )
+   dup MALFORMED = IF 2drop QNAME:E-SYNTAX throw THEN ;
+
+: REQUIRE ( n n ptr u8 n n -- n )
+   {: idx:n status:n msg:ptr msgu:n code:n :}
+   status MALFORMED = IF QNAME:E-SYNTAX throw THEN
+   status FOUND = IF idx EXIT THEN
+   msg msgu code die ;
+
+;package
 
 : XREF-FIND ( ptr u8 n -- ptr a )
-   XREF-QUAL-INDEX
-   dup -2 = if drop XREF-NULL exit then
-   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED exit then
-   drop XREF-SN@ XREF-SU @ 0 XREF-FIND-WL ;
+   0 XREF:RESOLVE XREF:GUARD
+   dup XREF:FOUND <> IF 2drop XREF-NULL EXIT THEN
+   drop XREF-REC ;
 
-: XREF-FIND-INDEX ( ptr u8 n -- n )
-   XREF-QUAL-INDEX
-   dup -2 = if drop -1 exit then
-   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
-   drop XREF-SN@ XREF-SU @ 0 XREF-FIND-WL-INDEX ;
+: XREF-REQUIRE-INDEX ( n n -- n )
+   s" xref: word not found" 76 XREF:REQUIRE ;
 
-: XREF-FIND-CURRENT-INDEX ( ptr u8 n -- n )
-   get-current XREF-FIND-WL-INDEX ;
-
-: XREF-FIND-TARGET-INDEX ( ptr u8 n -- n )
-   XREF-QUAL-INDEX
-   dup -2 = if drop -1 exit then
-   dup 0 >= if XREF-SN@ XREF-SU @ rot XREF-FIND-QUALIFIED-INDEX exit then
-   drop XREF-SN@ XREF-SU @ XREF-FIND-CURRENT-INDEX ;
-
-: XREF-REQUIRE-INDEX ( n -- n )
-   dup 0 >= if exit then
-   s" xref: word not found" 76 die ;
-
-: XREF-REQUIRE-UNDEFINE ( n -- n )
-   dup 0 >= if exit then
-   s" undefine: word not found" 70 die ;
+: XREF-REQUIRE-UNDEFINE ( n n -- n )
+   s" undefine: word not found" 70 XREF:REQUIRE ;
 
 package GENERATED-DECL-NAME-PREFLIGHT
 
@@ -232,9 +221,13 @@ private
 $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
 : NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u XREF-QUAL-INDEX {: split:n :}
-   split 0 < IF s" xref: generated declaration is not qualified" 76 die THEN
-   XREF-SN@ split XREF-NAMESPACE-WL XREF-FIND-WL XREF-FOUND? ;
+   a u QNAME:SPLIT
+   dup QNAME:QUALIFIED <> IF
+      drop 2drop 2drop
+      s" xref: generated declaration is not qualified" 76 die
+   THEN
+   drop 2drop
+   XREF-NAMESPACE-WL XREF-FIND-WL-INDEX 0 >= ;
 
 public
 
@@ -291,9 +284,6 @@ private
 : WID-VALID? ( n -- bool )
    dup FIRST-DYNAMIC-WID >= swap OWNER-WID-LIMIT < and ;
 
-: KIND@ ( ptr a -- n )
-   XREF-FLAGS DNAME-MIN-IN-MASK and 52 rshift ;
-
 : SET-TYPE ( ptr a -- )
    dup XREF-LEN-SLOT cells XREF-REC+ 0 swap XREF-PATCH32
    dup XREF-FLAGS NAMESPACE:KIND-TYPE 52 lshift or 32 rshift
@@ -323,39 +313,22 @@ public
    $4 XREF-REC+ -1 swap XREF-PATCH32
    drop ;
 
-: XREF-RETIRE-WL ( ptr u8 n n -- )
-   XREF-WID ! XREF-FU ! XREF-FN!
-   ndict@ 1-
-   begin dup 0 >= while
-      dup XREF-REC XREF-WORDLIST XREF-WID @ = if
-         dup XREF-REC XREF-FN@ XREF-FU @ XREF-MATCH? if
-            dup XREF-REC XREF-RETIRE
-         then
-      then
-      1-
-   repeat drop ;
-
-\ A qualified token names PACKAGE:TAIL, but its dictionary record stores TAIL
-\ in the package wordlist. Retire from that resolved record identity; the
-\ original spelling remains the checker-side symbol identity below.
 : XREF-RETIRE-INDEX ( n -- )
-   XREF-REC dup XREF-NAME$ rot XREF-WORDLIST XREF-RETIRE-WL ;
+   XREF-REC XREF-RETIRE ;
 
 : UNDEFINE-NAME ( ptr u8 n -- )
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-TARGET-INDEX XREF-REQUIRE-UNDEFINE XREF-IDX !
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE   \ guarded checker mutation completes before retirement
-   XREF-IDX @ XREF-RETIRE-INDEX ;
-
-: UNDEFINE-FOUND ( ptr u8 n n -- )
-   XREF-IDX ! XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ CHECKER-UNDEFINE
-   XREF-IDX @ XREF-RETIRE-INDEX ;
+   {: a:ptr u:n :}
+   a u get-current XREF:RESOLVE XREF-REQUIRE-UNDEFINE {: idx:n :}
+   a u CHECKER-UNDEFINE
+   idx XREF-RETIRE-INDEX ;
 
 : UNDEFINE-IF-DEFINED ( ptr u8 n -- )
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX
-   dup 0 >= if XREF-SN@ XREF-SU @ rot UNDEFINE-FOUND else drop then ;
+   {: a:ptr u:n :}
+   a u 0 XREF:RESOLVE XREF:GUARD
+   dup XREF:NONE = IF 2drop EXIT THEN
+   drop {: idx:n :}
+   a u CHECKER-UNDEFINE
+   idx XREF-RETIRE-INDEX ;
 
 \ Sealed-dictionary truncation guard (TFAM 2b-iii). Once the friend latch is
 \ sealed (SEAL-FRIEND, end of cold prefix), a dictionary FORGET/HIDE that lowers
@@ -373,18 +346,18 @@ TRUSTED: SEAL-NDICT@ ( -- n ) data-base SEAL-NDICT-CELL + @ ;
    then ;
 
 : HIDE-DEFS-FROM ( ptr u8 n -- )
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+   {: a:ptr u:n :}
+   a u 0 XREF:RESOLVE XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   a u CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict! ;
 
 variable XREF-FORGET-CP
 
 : FORGET-DEFS-FROM ( ptr u8 n -- )
-   XREF-SU ! XREF-SN!
-   XREF-SN@ XREF-SU @ XREF-FIND-INDEX XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
+   {: a:ptr u:n :}
+   a u 0 XREF:RESOLVE XREF-REQUIRE-INDEX SEAL-DICT-GUARD {: idx:n :}
    idx XREF-REC XREF-START XREF-FORGET-CP !
-   XREF-SN@ XREF-SU @ CHECKER-USIGS-TRUNCATE-FROM-RAW
+   a u CHECKER-USIGS-TRUNCATE-FROM-RAW
    idx ndict!
    XREF-FORGET-CP @ cp! ;
 
@@ -406,7 +379,9 @@ variable XREF-FORGET-CP
    s" wordlist" rot XREF-WORDLIST XREF-N. ;
 
 : XREF ( -- )
-   parse-name XREF-FIND XREF. ;
+   parse-name 0 XREF:RESOLVE XREF:GUARD
+   dup XREF:NONE = IF 2drop XREF-NULL XREF. EXIT THEN
+   drop XREF-REC XREF. ;
 
 : SEE ( -- )
    XREF ;

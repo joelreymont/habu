@@ -5232,6 +5232,14 @@ PRIM: proc-watch-open PE-N PE-IN PE-N PE-OUT PRIM;   \ ( pid -- fd|-1 ) process-
 PRIM: kill-errno PE-N PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( pid sig -- 0|-errno ) signal with errno detail
 PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM;   \ ( pathz argv envp -- -errno ) child-side exec; only returns on failure
 PRIM: munmap   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
+PPRIM: QNAME BARE PE-N PE-OUT PPRIM;
+PPRIM: QNAME QUALIFIED PE-N PE-OUT PPRIM;
+PPRIM: QNAME MALFORMED PE-N PE-OUT PPRIM;
+PPRIM: QNAME E-SYNTAX PE-N PE-OUT PPRIM;
+PPRIM: QNAME SPLIT
+   PE-PTR-U8 PE-IN PE-N PE-IN
+   PE-PTR-U8 PE-OUT PE-N PE-OUT
+   PE-PTR-U8 PE-OUT PE-N PE-OUT PE-N PE-OUT PPRIM;
 \ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
 \ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
 \ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Placed
@@ -5240,8 +5248,6 @@ PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 
 PTABLE-END
 
-variable CHECKER-COLON-N
-variable CHECKER-COLON-I
 variable CHECKER-REC-A
 variable CHECKER-REC-U
 variable CHECKER-QA
@@ -5461,17 +5467,6 @@ public
 
 ;package
 
-: CHECKER-COLON-SCAN ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 CHECKER-COLON-N !
-   -1 CHECKER-COLON-I !
-   0 BEGIN dup u < WHILE
-      a over + c@ $3A = IF
-         CHECKER-COLON-N @ 0= IF dup CHECKER-COLON-I ! THEN
-         CHECKER-COLON-N @ 1+ CHECKER-COLON-N !
-      THEN
-      1 +
-   REPEAT drop ;
-
 : CHECKER-QA-FIELD ( -- ptr ptr u8 )
    CHECKER-QA 0 ptr-field ;
 
@@ -5493,20 +5488,20 @@ public
 variable CHECKER-QBAD-TOK
 $20 constant CK-SEAL-LATCH-OFF          \ = layout.f FRIEND-LATCH-CELL
 
-\ engine FIND parity (habu1.f FIND-QHAS/FIND-QBAD): a leading or trailing first
-\ colon keeps the token an ordinary name; a non-edge first colon with a second
-\ colon anywhere is a malformed qualified name and must never resolve.
 : CHECKER-QUALIFIED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    0 CHECKER-QBAD-TOK !
-   a u CHECKER-COLON-SCAN
-   CHECKER-COLON-N @ 0= IF RES-FALSE EXIT THEN
-   CHECKER-COLON-I @ 0= IF RES-FALSE EXIT THEN
-   CHECKER-COLON-I @ u 1 - = IF RES-FALSE EXIT THEN
-   CHECKER-COLON-N @ 1 <> IF -1 CHECKER-QBAD-TOK ! RES-FALSE EXIT THEN
-   a CHECKER-QA!
-   CHECKER-COLON-I @ CHECKER-QU !
-   a CHECKER-COLON-I @ + 1 + CHECKER-TA!
-   u CHECKER-COLON-I @ - 1 - CHECKER-TU !
+   a u QNAME:SPLIT
+   {: qa:ptr qu:n ta:ptr tu:n kind:n :}
+   kind QNAME:MALFORMED = IF
+      -1 CHECKER-QBAD-TOK !
+      RES-FALSE
+      EXIT
+   THEN
+   kind QNAME:QUALIFIED <> IF RES-FALSE EXIT THEN
+   qa CHECKER-QA!
+   qu CHECKER-QU !
+   ta CHECKER-TA!
+   tu CHECKER-TU !
    RES-TRUE ;
 
 : CHECKER-QPKG$ ( -- ptr u8 n )

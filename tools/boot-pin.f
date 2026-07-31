@@ -123,6 +123,7 @@ variable BP-SET
 \ sandbox-copy both drive this, so the list lives in exactly one place.
 : BP-EACH ( [ ptr u8 n -- ] -- ) {: q :}  \ typed-local-lint: allow-bare-local - quotation bound as ordinary local (docs/forth.md)
    s" src/core/util.f" q execute
+   s" src/core/qname.f" q execute
    s" src/core/cell.f" q execute
    s" src/core/pointer-storage.f" q execute
    s" src/core/engine-error.f" q execute

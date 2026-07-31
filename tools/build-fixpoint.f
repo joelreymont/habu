@@ -756,6 +756,7 @@ public
 
 : BF-APPEND-CHECKER-BOOT ( ptr u8 n -- ) {: out:ptr outu:n :}
    out outu s" src/core/util.f" BF-APPEND-SOURCE
+   out outu s" src/core/qname.f" BF-APPEND-SOURCE
    out outu s" src/core/cell.f" BF-APPEND-SOURCE
    out outu s" src/core/pointer-storage.f" BF-APPEND-SOURCE
    out outu s" src/core/engine-error.f" BF-APPEND-SOURCE

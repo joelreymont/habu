@@ -486,6 +486,9 @@ variable START-NS
    GE-HB-RESET
    GE-SRC-RESET
    s" TRUSTED: GD-QTRY ( ptr u8 n -- n ) ['] evaluate catch dup if >r 2drop r> then ;" GE-SRC-LINE
+   s" : GD-QOPT ( -- ) parse-name UNDEFINE-IF-DEFINED ;" GE-SRC-LINE
+   s" : GD-QHIDE ( -- ) parse-name HIDE-DEFS-FROM ;" GE-SRC-LINE
+   s" : GD-QFORGET ( -- ) parse-name FORGET-DEFS-FROM ;" GE-SRC-LINE
    s" : GD-QDEF:A:B:C:VALUE ( -- n ) 42 ;" GE-SRC-LINE
    s" wordlist cp@ ndict@" GE-SRC-LINE
    s" package GD-QDEF ;package" GE-SRC-LINE
@@ -542,19 +545,34 @@ variable START-NS
    s" cp@ = ." GE-SRC-LINE
    s" wordlist swap 1+ = ." GE-SRC-LINE
    s" wordlist cp@ ndict@" GE-SRC-LINE
-   s" :GD-QMISS" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
-   s" GD-QMISS:" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
-   s" GD-QMISS::WORD" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" XREF :GD-LIFE:A:WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" undefine :GD-LIFE:A:WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QOPT :GD-LIFE:A:WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QHIDE :GD-LIFE:A:WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QFORGET :GD-LIFE:A:WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" XREF GD-LIFE:A:WORD:" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" undefine GD-LIFE:A:WORD:" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QOPT GD-LIFE:A:WORD:" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QHIDE GD-LIFE:A:WORD:" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QFORGET GD-LIFE:A:WORD:" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" XREF GD-LIFE::WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" undefine GD-LIFE::WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QOPT GD-LIFE::WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QHIDE GD-LIFE::WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QFORGET GD-LIFE::WORD" GE-SRC-S"  s"  GD-QTRY 7107 = ." GE-SRC-LINE
+   s" GD-QMISS:A:B:WORD" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" GD-QOPT GD-QMISS:A:B:WORD" GE-SRC-S"  s"  GD-QTRY 0= ." GE-SRC-LINE
+   s" undefine GD-QMISS:A:B:WORD" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
    s" ndict@ = ." GE-SRC-LINE
    s" cp@ = ." GE-SRC-LINE
-   s" wordlist swap 1+ = ." GE-SRC-LINE
+   s" wordlist = ." GE-SRC-LINE
    s" hb full qualified paths" GE-EVAL-RUN-STDIN
    SB-RESET
    3 0 ?do s" -1" GE-OUT-LINE loop
    s" 42" GE-OUT-LINE
    s" 42" GE-OUT-LINE
    s" 43" GE-OUT-LINE
-   31 0 ?do s" -1" GE-OUT-LINE loop
+   46 0 ?do s" -1" GE-OUT-LINE loop
    SB$ s" hb full qualified paths output" GE-EXPECT-OUT ;
 
 : PACKAGE-ROLLBACK-SOURCE ( -- )

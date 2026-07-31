@@ -614,7 +614,7 @@ variable MDV-I   variable MDV-F
    LINLOCBAD @ IF s" Keep the linear value on the stack; do not bind it to a local." EXIT THEN
    MDIAG @ 0 <> IF MDIAG-SUGGEST$ EXIT THEN
    DEADERR @ IF s" Remove tokens after the terminating control word, or move the work before it." EXIT THEN
-   QUALBAD @ IF s" Use one ':' qualifier, e.g. PKG:WORD." EXIT THEN
+   QUALBAD @ IF s" Use nonempty ':'-separated components, e.g. PKG:SUB:WORD." EXIT THEN
    UNDEFERR @ IF s" Inspect the token, signature, and raw stack evidence." EXIT THEN
    DVERD @ 1 = IF s" Rewrite with modeled words or isolate an audited primitive." EXIT THEN
    SGBAD @ IF
@@ -701,7 +701,7 @@ variable JPOS  variable JLINE  variable JCOL
    QUALBAD @ IF
      s" E-BAD-QUALIFIED habu: in " DTXT  NMA @ NMU @ DTXT
      s" : malformed qualified name '" DTXT  FAILTK FAILTU @ DTXT
-     s" ' (more than one ':')" DTXT EXIT
+     s" ' (qualified-name components must be nonempty)" DTXT EXIT
    THEN
    UNDEFERR @ IF
      s" E-UNDEFINED habu: in " DTXT  NMA @ NMU @ DTXT

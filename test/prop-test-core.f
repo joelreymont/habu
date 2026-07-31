@@ -830,6 +830,7 @@ public
    2dup s" core-str=" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
    2dup s" core-str=ci" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
    2dup s" tfam-ctor-word?" AX-STR= if 2drop s" AXBUF 3 " exit then
+   2dup s" qname:split" AX-STR= if 2drop s" AXBUF 3 " exit then
    2drop s"  " ;
 
 \ ---- runner builders: plant AXR:CANARY beneath the operand row, then measure
@@ -1509,17 +1510,22 @@ variable SS-I  variable SS-J  variable SS-BAD
 \ AXR 325 0 2 1 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
 \ AXR 326 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
 \ AXR 327 0 2 1 prim - munmap - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 328 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 329 0 1 0 pprim checker-decl-frame start private pe-n pe-in
-\ AXR 330 0 1 1 pprim checker-decl-frame prepare private pe-n pe-in pe-f pe-out
-\ AXR 331 0 1 0 pprim checker-decl-frame rollback private pe-n pe-in
-\ AXR 332 0 0 0 pprim checker-decl-frame release private -
-\ AXR 333 0 0 0 prim - newtype - -
-\ AXR 334 0 0 0 prim - sumtype - -
-\ AXR 335 0 0 0 prim - product - -
-\ AXR 336 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 337 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 338 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 339 0 0 0 prim - defer-layout-buffer - -
-\ AXR 340 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 341 0 0 0 prim - typed-variable - -
+\ AXR 328 1 0 1 pprim qname bare - pe-n pe-out
+\ AXR 329 1 0 1 pprim qname qualified - pe-n pe-out
+\ AXR 330 1 0 1 pprim qname malformed - pe-n pe-out
+\ AXR 331 1 0 1 pprim qname e-syntax - pe-n pe-out
+\ AXR 332 2 2 5 pprim qname split - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out pe-ptr-u8 pe-out pe-n pe-out pe-n pe-out
+\ AXR 333 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
+\ AXR 334 0 1 0 pprim checker-decl-frame start private pe-n pe-in
+\ AXR 335 0 1 1 pprim checker-decl-frame prepare private pe-n pe-in pe-f pe-out
+\ AXR 336 0 1 0 pprim checker-decl-frame rollback private pe-n pe-in
+\ AXR 337 0 0 0 pprim checker-decl-frame release private -
+\ AXR 338 0 0 0 prim - newtype - -
+\ AXR 339 0 0 0 prim - sumtype - -
+\ AXR 340 0 0 0 prim - product - -
+\ AXR 341 0 1 0 prim - layout-buffer - pe-n pe-in
+\ AXR 342 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 343 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
+\ AXR 344 0 0 0 prim - defer-layout-buffer - -
+\ AXR 345 0 1 0 prim - typed-buffer - pe-n pe-in
+\ AXR 346 0 0 0 prim - typed-variable - -

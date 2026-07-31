@@ -34,7 +34,7 @@ public
 4096 constant BPT-CAP
 30000 constant BPT-TIMEOUT-MS
 70 constant BPT-DRIFT-RC
-46 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 45 calls)
+47 constant BPT-PFX-ROW#            \ PFX-LOAD-ROW occurrences in habu2.f (1 def + 46 calls)
                                     \ 22->26: +src/core/type-family.f +type-schema.f +sumtype.f
                                     \ +type-family-sha.f (TFAM growth; user sign-off dot
                                     \ habu-boot-pin-sign-be74cfd3). 26->31: +src/core/
