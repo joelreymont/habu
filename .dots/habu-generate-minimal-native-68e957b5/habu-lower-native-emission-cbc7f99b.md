@@ -1,9 +1,11 @@
 ---
 title: Lower native emission through typed IR
-status: active
+status: closed
 priority: 1
 issue-type: task
-created-at: "\"\\\"2026-07-18T11:52:19.524294+02:00\\\"\""
+created-at: "\"\\\"\\\\\\\"2026-07-18T11:52:19.524294+02:00\\\\\\\"\\\"\""
+closed-at: "2026-07-31T18:20:04.210850+02:00"
+close-reason: "Adapter delivered and merged (232a43def967): A64EMIT drives the real asm.f encoders from A64RAV-accepted modules, bytes executed as proof, 13-mutation matrix. The migrated-compiler-entry residue moved to its own dot minted today"
 blocks:
   - habu-type-native-protection-c26d8323
   - habu-emit-proof-carrying-058f43b6
