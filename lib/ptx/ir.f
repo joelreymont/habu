@@ -17,16 +17,16 @@ require lib/adt/option.f                     \ option<n> for PTXIR-FIND(-RAW) (s
 
 64 constant PTXIR-MAX
 
-\ ptxir-node is a PRODUCT (wave D, dot habu-switchover-wave-d-1fcdef69): the
+\ ptxir-node is a STRUCTURE (wave D, dot habu-switchover-wave-d-1fcdef69): the
 \ on-stack node bundle is a checker-owned 5-cell record; the physical
 \ PTXIR-NODES array below is separate storage and stays raw cells.
-PRODUCT ptxir-node 0
+STRUCTURE ptxir-node<>
   FIELD op n
   FIELD a n
   FIELD b n
   FIELD val n
   FIELD live n
-;PRODUCT
+;STRUCTURE
 
 BEGIN-STRUCTURE PTXIR-REC
    CELL +FIELD PTXIR.OP

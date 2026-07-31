@@ -12,10 +12,10 @@ require lib/adt/option.f             \ option<n>: TRY-PTXAS$ reports a resolved 
 \ identity (gb10); every other target takes the explicit non-pinned branch
 \ (compat). The MATCH is exhaustive by construction, so a target class can never
 \ fall through into an implicit unknown-success assembly.
-SUMTYPE tcpol 0
+ENUM tcpol<>
   VARIANT gb10 ;VARIANT
   VARIANT compat ;VARIANT
-;SUMTYPE
+;ENUM
 
 package PTXTC
 
