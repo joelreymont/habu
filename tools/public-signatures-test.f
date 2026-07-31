@@ -1,8 +1,9 @@
 \ public-signatures-test.f - checked fixtures for tools/public-signatures.f.
 \ Run: bin/hb --load lib/errors.f lib/string.f lib/test.f lib/memory.f
-\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f tools/lint/text.f
+\ lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f
+\ tools/lint/text.f
 \ tools/lint/intern.f tools/lint/token.f tools/lint/lib.f
-\ tools/public-signatures-core.f tools/public-signatures-test.f
+\ tools/json.f tools/public-signatures-core.f tools/public-signatures-test.f
 
 require lib/errors.f
 require lib/string.f
@@ -12,18 +13,23 @@ require lib/vector.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
+require lib/process-argv.f
+require lib/engine-candidate.f
 require tools/lint/text.f
 require tools/lint/intern.f
 require tools/lint/token.f
 require tools/lint/lib.f
+require tools/json.f
 require tools/public-signatures-core.f
 
 \ A public ENUM registered here exercises the metadata-synthesized constructor
-\ signatures (item 13): each variant publishes a nullary `PKG:VARIANT ( -- fam )`
+\ signatures (item 13): each variant publishes a nullary
+\ `FAMILY-PATH:VARIANT ( -- fam )`
 \ in the manifest, drawn from TFAM/SUMV registry metadata (never a hidden field).
 ENUM pstcolor red green blue ;ENUM
 \ A DERIVE-eq enum additionally publishes the synthesized derived words
-\ PKG:TAG ( fam -- n ) and PKG:EQ ( fam fam -- bool ) (derive S1).
+\ FAMILY-PATH:TAG ( fam -- n ) and FAMILY-PATH:EQ ( fam fam -- bool )
+\ (derive S1).
 ENUM pstsig DERIVE eq low high ;ENUM
 \ derive S2: payload sums and products publish derived rows too; products
 \ derive EQ only (no discriminant row).
@@ -35,6 +41,7 @@ SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 \ Build long declarations compactly, then cross the audited EVALUATE boundary
 \ into the real ENUM declarer before the manifest registry is emitted.
 TDGEN-CAP constant PST-DECL-CAP
+$400 constant PST-SPEC-CAP
 create PST-DECL-BUF PST-DECL-CAP allot
 variable PST-DECL-U
 
@@ -70,14 +77,14 @@ variable PST-DECL-U
 : PST-CAP-DECL$ ( -- ptr u8 n )
    PST-DECL-RESET
    s" ENUM " PST-DECL-APP
-   TF-CTOR-NS-CAP 102 PST-DECL-REP
+   PST-SPEC-CAP 102 PST-DECL-REP
    s"  variant ;ENUM" PST-DECL-APP
    PST-DECL-BUF PST-DECL-U @ ;
 
 PST-LONG-DECL$ INCLUDE-EVALUATE
-PST-CAP-DECL$ INCLUDE-EVALUATE
 
 PS-FILE-CAP constant PST-BUF-CAP
+$7530 constant PST-TIMEOUT-MS
 
 variable PST-ROOT-U
 variable PST-FIX-U
@@ -86,6 +93,7 @@ variable PST-RUN-U
 
 create PST-ROOT-BUF FS-PATH-CAP allot
 create PST-FIX-BUF FS-PATH-CAP allot
+create PST-CAP-BUF FS-PATH-CAP allot
 create PST-DEP-BUF FS-PATH-CAP allot
 create PST-ENTRY-BUF FS-PATH-CAP allot
 create PST-GDEP-BUF FS-PATH-CAP allot
@@ -98,6 +106,7 @@ create PST-SUM-BUF FS-PATH-CAP allot
 create PST-NUM-BUF FS-PATH-CAP allot
 create PST-OUT PST-BUF-CAP allot
 create PST-ERR PST-BUF-CAP allot
+variable PST-CAP-U
 variable PST-DEP-U
 variable PST-ENTRY-U
 variable PST-GDEP-U
@@ -118,6 +127,9 @@ variable PST-NUM-U
 
 : PST-FIX ( -- ptr u8 n )
    PST-FIX-BUF PST-FIX-U @ ;
+
+: PST-CAP-FILE ( -- ptr u8 n )
+   PST-CAP-BUF PST-CAP-U @ ;
 
 : PST-RUN-A-FIELD ( -- ptr ptr u8 )
    PST-RUN-A 0 ptr-field ;
@@ -203,8 +215,36 @@ variable PST-NUM-U
    a u PST-ROOT-BUF PST-ROOT-U PST-COPY!
    PST-ROOT CLEANUP-DIR+
    PST-ROOT s" public-signatures-fixture.f" PST-FIX-BUF JOIN-PATH PST-FIX-U !
+   PST-ROOT s" public-signatures-cap.f" PST-CAP-BUF JOIN-PATH PST-CAP-U !
    PST-FIX CLEANUP+
-   PST-FIX PST-FIXTURE$ WRITE-ALL ;
+   PST-CAP-FILE CLEANUP+
+   PST-FIX PST-FIXTURE$ WRITE-ALL
+   PST-CAP-FILE PST-CAP-DECL$ WRITE-ALL ;
+
+: PST-ARG+ ( ptr u8 n -- )
+   >LEN PROC-ARGV+ ;
+
+: PST-CAPTURE>N ( result<pcap:captured,pcap:failed> -- n n n )
+   MATCH result
+     ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
+        o LEN>N e LEN>N 0 ENDOF
+     err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
+        o LEN>N e LEN>N c RC>N ENDOF
+   ;MATCH ;
+
+: PST-PRODUCTION-RUN ( -- n n n )
+   PROC-ARGV-RESET
+   s" --load" PST-ARG+
+   PST-CAP-FILE PST-ARG+
+   s" tools/public-signatures-core.f" PST-ARG+
+   s" tools/public-signatures.f" PST-ARG+
+   s" --" PST-ARG+
+   PST-CAP-FILE PST-ARG+
+   ENGINE-CANDIDATE:PATH$ >LEN
+   PST-OUT PST-BUF-CAP >LEN
+   PST-ERR PST-BUF-CAP >LEN
+   PST-TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE PST-CAPTURE>N ;
 
 : PST-CORE-SETUP ( n -- ) {: flag:n :}
    PST-OUT PST-BUF-CAP PS-OUT-BUFFER!
@@ -533,7 +573,7 @@ variable PST-NUM-U
 
 : PST-CAP-WORD$ ( -- ptr u8 n )
    PST-DECL-RESET
-   TF-CTOR-NS-CAP 70 PST-DECL-REP
+   PST-SPEC-CAP 70 PST-DECL-REP
    s" :VARIANT" PST-DECL-APP
    PST-DECL-BUF PST-DECL-U @ ;
 
@@ -541,9 +581,57 @@ variable PST-NUM-U
    PST-DECL-RESET
    40 PST-DECL-C,
    s" -- " PST-DECL-APP
-   TF-CTOR-NS-CAP 102 PST-DECL-REP
+   PST-SPEC-CAP 102 PST-DECL-REP
    41 PST-DECL-C,
    PST-DECL-BUF PST-DECL-U @ ;
+
+: PST-JGET ( n ptr u8 n -- n )
+   JSON-GET dup 0 < IF
+      s" public-signatures-test: missing JSON field" 76 die
+   THEN ;
+
+: PST-JSTR= ( n ptr u8 n ptr u8 n -- bool )
+   {: node:n key:ptr keyu:n value:ptr valueu:n :}
+   node key keyu PST-JGET JSON-STRING$ value valueu STR= ;
+
+: PST-CAP-ROW? ( n -- bool ) {: row:n :}
+   row JSON-KIND J-OBJ <> IF 0 0= 0= EXIT THEN
+   row s" word" JSON-GET dup 0 < IF drop 0 0= 0= EXIT THEN
+   JSON-STRING$ PST-CAP-WORD$ STR= ;
+
+variable PST-CAP-HITS
+variable PST-CAP-ROW
+
+: PST-FIND-CAP-ROW ( n -- ) {: defs:n :}
+   0 PST-CAP-HITS !
+   -1 PST-CAP-ROW !
+   defs JSON-COUNT 0 ?do
+      defs i JSON-ARR@ dup PST-CAP-ROW? IF
+         PST-CAP-HITS @ 1+ PST-CAP-HITS !
+         PST-CAP-ROW !
+      ELSE
+         drop
+      THEN
+   loop
+   PST-CAP-HITS @ 1 T=
+   PST-CAP-HITS @ 1 <> IF
+      s" public-signatures-test: exact constructor row is not unique" 76 die
+   THEN ;
+
+: PST-TEST-CAP-PRODUCTION ( -- )
+   TF-CTOR-NS-CAP PST-SPEC-CAP T=
+   PST-PRODUCTION-RUN 0 PST-EXPECT-EXIT {: outu:n erru:n :}
+   erru 0 T=
+   PST-CAP-WORD$ nip PST-SPEC-CAP 8 + T=
+   PST-CAP-SIG$ nip PST-SPEC-CAP 5 + T=
+   PST-OUT outu JSON-PARSE
+   s" definitions" PST-JGET
+   dup JSON-KIND J-ARR T=
+   PST-FIND-CAP-ROW
+   PST-CAP-ROW @ s" word" PST-CAP-WORD$ PST-JSTR= TTRUE
+   PST-CAP-ROW @ s" signature" PST-CAP-SIG$ PST-JSTR= TTRUE
+   PST-CAP-ROW @ s" file" PST-CAP-FILE PST-JSTR= TTRUE
+   PST-CAP-ROW @ s" exported" PST-JGET JSON-BOOL@ TTRUE ;
 
 \ item 13: the registered public ENUM `pstcolor` publishes one synthesized
 \ nullary constructor per variant, `PSTCOLOR:<VARIANT> ( -- pstcolor )`.
@@ -572,11 +660,7 @@ variable PST-NUM-U
    PST-OUT outu s" PSTHASH:EQ" PST-WORD$ CONTAINS? TFALSE       \ hash-only: no eq row
    PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE      \ eq-only: no hash row
    PST-LONG-WORD$ nip 256 > TTRUE
-   PST-OUT outu PST-LONG-WORD$ CONTAINS? TTRUE
-   PST-CAP-WORD$ nip TF-CTOR-NS-CAP 8 + T=
-   PST-OUT outu PST-CAP-WORD$ CONTAINS? TTRUE
-   PST-CAP-SIG$ nip TF-CTOR-NS-CAP 5 + T=
-   PST-OUT outu PST-CAP-SIG$ CONTAINS? TTRUE ;
+   PST-OUT outu PST-LONG-WORD$ CONTAINS? TTRUE ;
 
 : PST-MAIN ( -- )
    T-RESET
@@ -586,6 +670,7 @@ variable PST-NUM-U
    PST-TEST-NUM-NAMES
    PST-TEST-PARAM-ALPHABET
    PST-TEST-ENUM-CTORS
+   PST-TEST-CAP-PRODUCTION
    PST-TEST-TRUST
    PST-TEST-NOARG
    PST-TEST-CLOSURE-PKG
