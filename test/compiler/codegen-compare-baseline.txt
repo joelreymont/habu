@@ -10,10 +10,14 @@ field by field. Nothing here is written by hand; regenerate it with
 
     bin/hb --load tools/codegen-compare.f -- --update
 
-When the new compiler chain starts emitting machine code it will add a second
-set of rows, marked new, for the same corpus words and the same inputs, and
-the two sets become the head-to-head comparison this harness exists for.
-Until then every row is marked old and there is no new column to show.
+The new compiler chain compiles the corpus words it can express in the same
+run, and the harness prints the two side by side - bytes, cost, and whether
+the two answers agree. Those rows are not written here. The chain is still
+gaining capabilities and its numbers move with each one, so pinning them
+would turn an advance into a red gate; they are recomputed every run and
+compared with the old rows live instead. Every row in this file is therefore
+marked old. The reader still understands the word new, so a hand-added new
+row is reported as an extra row rather than quietly ignored.
 
 How to read a row
 -----------------

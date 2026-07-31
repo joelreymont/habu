@@ -11,11 +11,17 @@
 \ a second value that reaches it (an empty span, a zero argument, a miss).
 \
 \ The calibration case is first and says so. It measures an empty call, and
-\ every other row's cost is expressed as a multiple of it, so the table survives
-\ being regenerated on a faster or slower machine.
+\ every other old row's cost is expressed as a multiple of it, so the table
+\ survives being regenerated on a faster or slower machine.
+\
+\ The new code generator's column is measured in the same pass, from
+\ tools/codegen-compare-new.f, on the same corpus words and the same pinned
+\ inputs. It keeps its own calibration row for the reason given there: the two
+\ paths are entered differently and only a ratio to a like call compares.
 
 require tools/codegen-compare-core.f
 require tools/codegen-compare-corpus.f
+require tools/codegen-compare-new.f
 
 package CODEGEN-CASES
 
@@ -122,10 +128,14 @@ private
 
 public
 
+\ The old column first, then the new one: tools/codegen-compare-new.f checks
+\ every name it writes down against a row the old column measured, so the old
+\ rows have to be there before it runs.
 : RUN ( -- )
    CODEGEN-COMPARE:RESET
    CODEGEN-COMPARE:PASS-BEGIN
    ALL-CASES
+   CODEGEN-NEW:RUN
    CODEGEN-COMPARE:PASS-END
    CODEGEN-COMPARE:NORMALIZE ;
 

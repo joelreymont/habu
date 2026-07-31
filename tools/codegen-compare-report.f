@@ -3,26 +3,43 @@
 \
 \ Two renderings, because they answer different questions:
 \
-\   BASELINE$  the committed table. It carries only the numbers that are stable
-\              across runs and machines - the compiled size, the outputs, and
-\              the cost expressed as a multiple of an empty call - so the file
-\              in the repository changes when the compiler changes and at no
-\              other time.
-\   PRINT      the report a person reads after a run. It carries the same rows
-\              plus the measurement detail that is true of this run only:
-\              absolute nanoseconds per call, how far apart the timed runs were,
-\              and how long the whole measurement pass took.
+\   BASELINE$  the committed table. It carries only the OLD code generator's
+\              rows, and only the numbers that are stable across runs and
+\              machines - the compiled size, the outputs, and the cost expressed
+\              as a multiple of an empty call - so the file in the repository
+\              changes when that emitter changes and at no other time. The new
+\              chain's rows are deliberately not written: it is still gaining
+\              capabilities, its numbers move with each one, and pinning them
+\              would turn an advance into a red gate. They are recomputed every
+\              run and checked against the old rows live instead.
+\   PRINT      the report a person reads after a run. It is the head-to-head
+\              table - each corpus word's old and new bytes, costs and whether
+\              the two agree about what the word computes - followed by the
+\              words the new chain cannot compile yet and what each is waiting
+\              for, and then the measurement detail that is true of this run
+\              only: absolute nanoseconds per call, how far apart the timed runs
+\              were, and how long the whole pass took.
 \
 \ Absolute nanoseconds are deliberately absent from the committed table. They
 \ are a property of the machine that measured them, so storing them would make
 \ the file disagree with itself on every other host, while the ratio to an empty
 \ call measured in the same run stays comparable.
+\
+\ READ THE TWO COST COLUMNS WITH THE NOTE THIS FILE PRINTS UNDER THEM. An old
+\ row is called as an ordinary Habu word; a new row has to be called through the
+\ C-ABI trampoline, because the chain has no calling-convention binding yet, and
+\ that entry costs two orders of magnitude more than the routine it enters. Each
+\ column is therefore a multiple of an empty call of its own kind, and the
+\ absolute nanoseconds of both are printed so a reader can see that the new
+\ column's are dominated by the harness's own call rather than by the emitted
+\ code. The byte and result columns carry no such caveat: they are exact.
 
 require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require lib/fmt.f
 require tools/codegen-compare-core.f
+require tools/codegen-compare-new.f
 
 package CODEGEN-REPORT
 
@@ -35,8 +52,11 @@ variable TEXT-U
 5 constant SIZE-COL
 6 constant COST-COL
 2 constant GAP-COL
+9 constant WIDE-COL                  \ a head-to-head column, wide enough for a cost
+6 constant VERDICT-COL
 10 constant NEWLINE-BYTE
 32 constant SPACE-BYTE
+45 constant DASH-BYTE
 
 : APPEND ( ptr u8 n -- ) {: a:ptr u:n :}
    TEXT-U @ u + TEXT-CAP > if E-CODEGEN-COMPARE-CAP throw then
@@ -93,10 +113,14 @@ variable TEXT-U
    NL
    s"     bin/hb --load tools/codegen-compare.f -- --update" LINE
    NL
-   s" When the new compiler chain starts emitting machine code it will add a second" LINE
-   s" set of rows, marked new, for the same corpus words and the same inputs, and" LINE
-   s" the two sets become the head-to-head comparison this harness exists for." LINE
-   s" Until then every row is marked old and there is no new column to show." LINE
+   s" The new compiler chain compiles the corpus words it can express in the same" LINE
+   s" run, and the harness prints the two side by side - bytes, cost, and whether" LINE
+   s" the two answers agree. Those rows are not written here. The chain is still" LINE
+   s" gaining capabilities and its numbers move with each one, so pinning them" LINE
+   s" would turn an advance into a red gate; they are recomputed every run and" LINE
+   s" compared with the old rows live instead. Every row in this file is therefore" LINE
+   s" marked old. The reader still understands the word new, so a hand-added new" LINE
+   s" row is reported as an extra row rather than quietly ignored." LINE
    NL ;
 
 : HOW-TO-READ ( -- )
@@ -130,7 +154,7 @@ variable TEXT-U
    NL ;
 
 : TABLE-HEAD ( -- )
-   s" rows: " APPEND CODEGEN-COMPARE:ROWS NUM NL
+   s" rows: " APPEND CODEGEN-COMPARE:PATH-OLD CODEGEN-COMPARE:ROWS-OF NUM NL
    NL
    s" path  word                          bytes    cost  outputs" LINE
    s" ----  ----------------------------  -----  ------  -------" LINE ;
@@ -157,7 +181,7 @@ variable TEXT-U
 
 : TABLE-ROWS ( -- )
    0 begin dup CODEGEN-COMPARE:ROWS < while
-      dup ROW
+      dup CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if dup ROW then
       1+
    repeat drop ;
 
@@ -174,7 +198,99 @@ public
 
 private
 
-\ ---- the report a person reads ---------------------------------------------
+\ ---- the head-to-head table ------------------------------------------------
+\ One line per corpus word: what the old emitter made of it, what the new chain
+\ made of it, and whether the two compute the same thing. A word the new chain
+\ cannot compile yet carries a dash in its columns and is named again, with the
+\ capabilities it is waiting for, in the list underneath.
+
+: DASH-COL ( -- )
+   WIDE-COL 1- PAD DASH-BYTE APPEND-C ;
+
+: VERDICT ( ptr u8 n -- )
+   VERDICT-COL over - PAD APPEND ;
+
+: PAIR-HEAD ( -- )
+   s" word                          old bytes  new bytes   old cost   new cost  result" LINE
+   s" ----------------------------  ---------  ---------  ---------  ---------  ------" LINE ;
+
+: COVERED-PAIR ( n n -- ) {: k:n j:n :}
+   k CODEGEN-COMPARE:SIZE WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   j CODEGEN-COMPARE:SIZE WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   k CODEGEN-COMPARE:COST WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   j CODEGEN-COMPARE:COST WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   j CODEGEN-NEW:ROW-MATCH? if s" same" VERDICT else s" DIFFERS" VERDICT then ;
+
+: UNCOVERED-PAIR ( n -- ) {: k:n :}
+   k CODEGEN-COMPARE:SIZE WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   DASH-COL
+   GAP-COL PAD
+   k CODEGEN-COMPARE:COST WIDE-COL PAD-LEFT
+   GAP-COL PAD
+   DASH-COL
+   GAP-COL PAD
+   s" -" VERDICT ;
+
+: PAIR-ROW ( n -- ) {: k:n :}
+   k CODEGEN-COMPARE:NAME$ NAME-COL PAD-RIGHT
+   GAP-COL PAD
+   CODEGEN-COMPARE:PATH-NEW k CODEGEN-COMPARE:NAME$ CODEGEN-COMPARE:FIND-ROW {: j:n :}
+   j 0 < if k UNCOVERED-PAIR else k j COVERED-PAIR then
+   NL ;
+
+: PAIR-ROWS ( -- )
+   0 begin dup CODEGEN-COMPARE:ROWS < while
+      dup CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if dup PAIR-ROW then
+      1+
+   repeat drop ;
+
+: GAP-CAP-LIST ( n -- ) {: k:n :}
+   0 begin dup k CODEGEN-NEW:GAP-CAPS@ < while
+      dup 0 > if s" , " APPEND then
+      dup k swap CODEGEN-NEW:GAP-CAP@ CODEGEN-NEW:CAP$ APPEND
+      1+
+   repeat drop ;
+
+: GAP-ROW ( n -- ) {: k:n :}
+   s"   " APPEND
+   k CODEGEN-NEW:GAP-NAME$ NAME-COL PAD-RIGHT
+   GAP-COL PAD
+   k GAP-CAP-LIST
+   NL ;
+
+: GAP-LIST ( -- )
+   CODEGEN-NEW:GAPS 0= if exit then
+   NL
+   s" not yet compiled by the new chain, and what each is waiting for:" LINE
+   0 begin dup CODEGEN-NEW:GAPS < while
+      dup GAP-ROW
+      1+
+   repeat drop ;
+
+: COUNTS ( -- )
+   s" corpus words: " APPEND
+   CODEGEN-COMPARE:PATH-OLD CODEGEN-COMPARE:ROWS-OF NUM
+   s" , compiled by the new chain: " APPEND
+   CODEGEN-COMPARE:PATH-NEW CODEGEN-COMPARE:ROWS-OF NUM
+   s" , not yet: " APPEND
+   CODEGEN-NEW:GAPS NUM
+   NL ;
+
+: PAIRS$ ( -- ptr u8 n )
+   0 TEXT-U !
+   COUNTS
+   NL
+   PAIR-HEAD
+   PAIR-ROWS
+   GAP-LIST
+   TEXT TEXT-U @ ;
+
+\ ---- the measurement detail ------------------------------------------------
 
 : FRACTION. ( n -- ) {: frac:n :}
    frac 100 < if s" 0" type then
@@ -194,6 +310,8 @@ private
    repeat drop ;
 
 : PRINT-ROW ( n -- ) {: k:n :}
+   k CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH$ type
+   s"   " type
    k CODEGEN-COMPARE:NAME$ type
    s"   bytes " type k CODEGEN-COMPARE:SIZE FMT:.U
    s"   cost " type k CODEGEN-COMPARE:COST FMT:.U
@@ -202,20 +320,62 @@ private
    s"   outputs" type k PRINT-OUTPUTS
    cr ;
 
+\ What the two cost columns do and do not say. Printed with every run, because a
+\ reader who takes them for a like-for-like race is reading them wrongly.
+: CAVEAT ( -- )
+   s" How to read the two cost columns. An old row is called as an ordinary Habu" type cr
+   s" word; a new row is called through the C-ABI trampoline, because the chain has" type cr
+   s" no calling-convention binding yet and its routines cannot be entered any other" type cr
+   s" way. That entry costs far more than the routine it enters, so each column is a" type cr
+   s" multiple of an empty call of its OWN kind and the absolute nanoseconds above" type cr
+   s" show what each really cost. The bytes and the results carry no such caveat." type cr ;
+
+\ ---- the head-to-head finding ----------------------------------------------
+\ The one thing the comparison must never let past: the same corpus word
+\ compiled two ways computing two different answers on the same pinned inputs.
+\ Reported by name, with both answers, and counted into the run's findings.
+
+: SAY-OUTPUTS ( n -- ) {: k:n :}
+   k CODEGEN-COMPARE:OUTPUTS 0= if s"  nothing" type exit then
+   k PRINT-OUTPUTS ;
+
+: SAY-MISMATCH ( n -- ) {: j:n :}
+   s" codegen-compare: RESULT " type
+   j CODEGEN-COMPARE:NAME$ type
+   s"  compiled by the new chain produces" type j SAY-OUTPUTS
+   s" , the old emitter produces" type
+   j CODEGEN-NEW:PARTNER {: k:n :}
+   k 0 < if s"  no row at all" type else k SAY-OUTPUTS then
+   cr ;
+
 public
 
+\ Name every corpus word the two code generators disagree about, and answer how
+\ many there were.
+: SAY-MISMATCHES ( -- n )
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW = if
+         i CODEGEN-NEW:ROW-MATCH? 0= if i SAY-MISMATCH 1+ then
+      then
+   loop ;
+
 : PRINT ( -- )
-   s" code generator: old (the emitter bin/hb uses today)" type cr
-   s" corpus words measured: " type CODEGEN-COMPARE:ROWS FMT:.U cr
+   s" code generator comparison: old (the emitter bin/hb uses today)" type cr
+   s"                            new (the native chain)" type cr
    s" repetitions per timed run: " type CODEGEN-COMPARE:REPS FMT:.U
    s" , timed runs per word: " type CODEGEN-COMPARE:RUNS FMT:.U
    s"  (the fastest run is the one recorded)" type cr
    s" measurement pass: " type CODEGEN-COMPARE:PASS-MS@ FMT:.U
    s"  ms, budget " type CODEGEN-COMPARE:BUDGET-MS FMT:.U s"  ms" type cr
    cr
+   PAIRS$ type
+   cr
    0 begin dup CODEGEN-COMPARE:ROWS < while
       dup PRINT-ROW
       1+
-   repeat drop ;
+   repeat drop
+   cr
+   CAVEAT ;
 
 ;package

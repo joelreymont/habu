@@ -15,6 +15,7 @@ require lib/fs-mutate.f
 require tools/codegen-compare-cases.f
 require tools/codegen-compare-report.f
 require tools/codegen-compare-baseline.f
+require tools/codegen-compare-new.f
 
 package CODEGEN-COMPARE-CLI
 
@@ -26,19 +27,23 @@ private
    cr
    s" codegen-compare: " type findings FMT:.U s"  finding(s)" type cr
    findings 0= if exit then
-   S\" codegen-compare: the measurement disagrees with the committed baseline\n"
+   S\" codegen-compare: the measurement disagrees with the committed baseline, or the two code generators disagree\n"
    FINDINGS-RC die ;
 
 public
 
-\ Measure the pinned corpus, print the report, and compare with the committed
-\ baseline. Exits the process non-zero, after naming every disagreement, when
-\ the comparison finds anything.
+\ Measure the pinned corpus with both code generators, print the report, and
+\ check two things: that the old column still agrees with the committed
+\ baseline, and that every word the new chain compiled computes what the old
+\ one computes. Exits the process non-zero, after naming every disagreement,
+\ when either finds anything.
 : CHECK ( -- )
    CODEGEN-CASES:RUN
    CODEGEN-REPORT:PRINT
    CODEGEN-BASELINE:PATH$ CODEGEN-BASELINE:LOAD
-   CODEGEN-BASELINE:COMPARE VERDICT ;
+   CODEGEN-BASELINE:COMPARE
+   CODEGEN-REPORT:SAY-MISMATCHES +
+   VERDICT ;
 
 \ Measure, print, and rewrite the committed baseline from this measurement.
 : UPDATE ( -- )
