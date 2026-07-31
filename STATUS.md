@@ -49,7 +49,7 @@ elapsed-ms is informational only; per-phase timeouts remain as hang guards.
 Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
 gap (habu-add-pinned-engine-90090800).
 Certified (linux-arm64): 4197  Uncheckable: 0  Rejected: 0
-Certified (macos-arm64): 4265
+Certified (macos-arm64): 4266
 Host-script workflow hooks: retired and gated
 
 Attribution for the linux-arm64 row, whose history the bullets below carry to
@@ -260,6 +260,12 @@ adds 1, and `src/core/lower-cert-base.f` adds 1. Per change:
 - Failing closed on an absent package context adds 1 to `src/core/checker.f`,
   `CHECKER-PKG-CONTEXT-REJECT`.
 
+Binding ARM64 argument and result registers adds 1 more, `ENC-MOV` in
+`src/arch/arm64/asm.f` (a register-to-register move is `orr` with the zero
+register, written once beside the other encoders), moving the row 4265 -> 4266.
+It lands in a file both targets append, so the linux-arm64 row is owed the same
+one and reads 4231 the next time the gate measures on that host.
+
 The native compiler chain this stack also landed — the 17 new and changed files
 under `src/compiler/`, among them the tape, immediate, HIR, elaborator, selector,
 a64 dialect, register allocator and verifier, spill planner, emitter, feed and
@@ -267,7 +273,7 @@ certificate modules — adds nothing to this row. None of those files is part of
 the assembled stage2 engine source, so the census does not see them, exactly as
 it does not see `tools/` or `test/`. All 33 definitions above land in files the
 common boot and checker prefix appends on both targets, and none is conditional
-on the host, so the linux-arm64 row is owed the same 33 and reads 4230 the next
+on the host, so the linux-arm64 row is owed the same 33 and read 4230 before the move encoder below the next
 time the gate measures on that host.
 
 The checker declaration-frame tagging does add engine text: the four
