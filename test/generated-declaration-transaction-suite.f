@@ -81,6 +81,9 @@ variable NS-HOOK-N
 variable NS-HOOK-NAME-OK
 variable NS-HOOK-META-CLEAR
 variable NS-HOOK-PUBLICATION-CLEAR
+$2000 constant NS-PKT-CAP
+create NS-PKT NS-PKT-CAP allot
+variable NS-PKT-U
 variable NC-QUERY-N
 variable NATIVE-NDICT-N0
 variable NATIVE-CP-N0
@@ -88,7 +91,10 @@ PTR-VARIABLE NATIVE-DP-N0
 
 $1000 constant NC-SRC-CAP
 $FF constant NC-PKG-U
-TF-CTOR-NS-CAP NC-PKG-U - 1 - constant NC-FAM-U
+$400 constant NC-SPEC-CAP
+NC-SPEC-CAP NC-PKG-U - 1 - constant NC-FAM-U
+96 constant NC-DIAG-U
+93 constant NC-DIAG-B-U
 0 constant NC-ENUM
 1 constant NC-SUM
 2 constant NC-PROD
@@ -1337,10 +1343,49 @@ INSTALL-GROW-NESTED
    s" GDPRETYPE:RESULT" XREF:FINALIZE-NAMESPACE drop
    s" package gdboth public : MAKE ( n -- n ) ; ;package" INCLUDE-EVALUATE ;
 
-: NS-EVAL ( ptr u8 n -- )
+: NS-PKT-RESET ( -- )
+   0 NS-PKT-U ! ;
+
+: NS-PKT-C, ( n -- )
+   NS-PKT-U @ NS-PKT-CAP >= IF
+      s" namespace packet oracle too long" 76 die
+   THEN
+   NS-PKT NS-PKT-U @ + c!
+   NS-PKT-U @ 1 + NS-PKT-U ! ;
+
+: NS-PKT-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ NS-PKT-C,
+      1 +
+   REPEAT drop ;
+
+: NS-PACKET$ ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- ptr u8 n )
+   {: kind:ptr kindu:n family:ptr familyu:n token:ptr tokenu:n why:ptr whyu:n :}
+   NS-PKT-RESET
+   s" habu: bad " NS-PKT-APP
+   kind kindu NS-PKT-APP
+   s"  declaration '" NS-PKT-APP
+   family familyu NS-PKT-APP
+   s" ': " NS-PKT-APP
+   why whyu NS-PKT-APP
+   tokenu 0 > IF
+      s"  at '" NS-PKT-APP
+      token tokenu NS-PKT-APP
+      39 NS-PKT-C,
+   THEN
+   10 NS-PKT-C,
+   NS-PKT NS-PKT-U @ ;
+
+: NS-DIAG$ ( ptr u8 n ptr u8 n -- ptr u8 n )
+   {: kind:ptr kindu:n family:ptr familyu:n :}
+   kind kindu family familyu family familyu
+   s" xref: generated namespace already exists" NS-PACKET$ ;
+
+: NS-EVAL ( ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n kind:ptr kindu:n family:ptr familyu:n :}
    DECL-DIAG:PROSE
-   EVALUATE-CATCH 76 T=
-   s" xref: generated namespace already exists" DECL-DIAG:HAS? TTRUE
+   src srcu EVALUATE-CATCH 76 T=
+   DECL-DIAG:TEXT$ kind kindu family familyu NS-DIAG$ DECL-DIAG:SAME? TTRUE
    DECL-DIAG:OFF ;
 
 : NS-ASSERT-ROLLED ( -- )
@@ -1349,53 +1394,95 @@ INSTALL-GROW-NESTED
    ASSERT-NATIVE-HIGHWATERS
    WID-NEXT WID-N0 @ T= ;
 
-: NS-TIMING-CASE ( ptr u8 n ptr u8 n n -- )
-   {: srca:ptr srcu:n nsa:ptr nsu:n vars:n :}
+: NS-RECORD ( -- )
+   RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
+   WID-NEXT WID-N0 ! ;
+
+: NS-CONTINUE ( ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n ns:ptr nsu:n :}
+   src srcu EVALUATE-CATCH 0 T=
+   ns nsu XREF:NAMESPACE? TTRUE
+   ASSERT-PRODUCTION-IDLE ;
+
+: NS-TIMING-CASE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n n ptr u8 n ptr u8 n -- )
+   {: srca:ptr srcu:n kind:ptr kindu:n family:ptr familyu:n nsa:ptr nsu:n vars:n
+      next:ptr nextu:n nextns:ptr nextnsu:n :}
+   NS-RECORD
    nsa NS-EXPECT-A !  nsu NS-EXPECT-U !  vars NS-EXPECT-VARS !
    0 NS-HOOK-N !
    0 NS-HOOK-NAME-OK !
    0 NS-HOOK-META-CLEAR !
    0 NS-HOOK-PUBLICATION-CLEAR !
    [: OBSERVE-NS ;] is TDECL-NS-EXISTS-XT
-   srca srcu NS-EVAL
+   srca srcu kind kindu family familyu NS-EVAL
    RESTORE-GENERATED-EVALUATOR
    NS-HOOK-N @ 1 T=
    NS-HOOK-NAME-OK @ TTRUE
    NS-HOOK-META-CLEAR @ TTRUE
    NS-HOOK-PUBLICATION-CLEAR @ TTRUE
-   NS-ASSERT-ROLLED ;
+   NS-ASSERT-ROLLED
+   ASSERT-PRODUCTION-IDLE
+   next nextu nextns nextnsu NS-CONTINUE ;
 
-: NS-PRODUCTION-CASE ( ptr u8 n -- )
-   NS-EVAL
-   NS-ASSERT-ROLLED ;
+: NS-PRODUCTION-CASE ( ptr u8 n ptr u8 n ptr u8 n ptr u8 n ptr u8 n -- )
+   {: src:ptr srcu:n kind:ptr kindu:n family:ptr familyu:n
+      next:ptr nextu:n ns:ptr nsu:n :}
+   NS-RECORD
+   src srcu kind kindu family familyu NS-EVAL
+   NS-ASSERT-ROLLED
+   ASSERT-PRODUCTION-IDLE
+   next nextu ns nsu NS-CONTINUE ;
 
 : TEST-NAMESPACE-COLLISIONS ( -- )
    SETUP-NAMESPACE-COLLISIONS
-   RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
-   WID-NEXT WID-N0 !
 
    \ The observing hook pins each owning seam before constructor metadata,
    \ native dictionary, WID, or protection publication.
-   s" ENUM gdpreenum red blue ;ENUM" s" GDPREENUM" 2 NS-TIMING-CASE
+   s" ENUM gdpreenum red blue ;ENUM" s" enum" s" gdpreenum"
+      s" GDPREENUM" 2
+      s" ENUM gdnsh-enum ok ;ENUM GDNSH-ENUM:OK drop" s" GDNSH-ENUM"
+      NS-TIMING-CASE
    s" SUMTYPE gdpresum 0 VARIANT one ;VARIANT ;SUMTYPE"
-      s" GDPRESUM" 1 NS-TIMING-CASE
+      s" sumtype" s" gdpresum" s" GDPRESUM" 1
+      s" SUMTYPE gdnsh-sum 0 VARIANT ok ;VARIANT ;SUMTYPE GDNSH-SUM:OK drop"
+      s" GDNSH-SUM" NS-TIMING-CASE
    s" PRODUCT gdpreprod 0 FIELD x n ;PRODUCT"
-      s" GDPREPROD" 0 NS-TIMING-CASE
+      s" product" s" gdpreprod" s" GDPREPROD" 0
+      s" PRODUCT gdnsh-prod 0 FIELD x n ;PRODUCT 7 GDNSH-PROD:MAKE GDNSH-PROD:UNMAKE 7 T="
+      s" GDNSH-PROD" NS-TIMING-CASE
    s" STRUCTURE gdprestruct 0 FIELD x n ;STRUCTURE"
-      s" GDPRESTRUCT" 0 NS-TIMING-CASE
+      s" structure" s" gdprestruct" s" GDPRESTRUCT" 0
+      s" STRUCTURE gdnsh-struct 0 FIELD x n ;STRUCTURE 8 GDNSH-STRUCT:MAKE GDNSH-STRUCT:UNMAKE 8 T="
+      s" GDNSH-STRUCT" NS-TIMING-CASE
 
    \ The installed xref hook then drives the same four production entry paths.
-   s" ENUM gdpreenum red blue ;ENUM" NS-PRODUCTION-CASE
-   s" SUMTYPE gdpresum 0 VARIANT one ;VARIANT ;SUMTYPE" NS-PRODUCTION-CASE
-   s" PRODUCT gdpreprod 0 FIELD x n ;PRODUCT" NS-PRODUCTION-CASE
-   s" STRUCTURE gdprestruct 0 FIELD x n ;STRUCTURE" NS-PRODUCTION-CASE
+   s" ENUM gdpreenum red blue ;ENUM" s" enum" s" gdpreenum"
+      s" ENUM gdns-enum ok ;ENUM GDNS-ENUM:OK drop" s" GDNS-ENUM"
+      NS-PRODUCTION-CASE
+   s" SUMTYPE gdpresum 0 VARIANT one ;VARIANT ;SUMTYPE"
+      s" sumtype" s" gdpresum"
+      s" SUMTYPE gdns-sum 0 VARIANT ok ;VARIANT ;SUMTYPE GDNS-SUM:OK drop"
+      s" GDNS-SUM" NS-PRODUCTION-CASE
+   s" PRODUCT gdpreprod 0 FIELD x n ;PRODUCT"
+      s" product" s" gdpreprod"
+      s" PRODUCT gdns-prod 0 FIELD x n ;PRODUCT 11 GDNS-PROD:MAKE GDNS-PROD:UNMAKE 11 T="
+      s" GDNS-PROD" NS-PRODUCTION-CASE
+   s" STRUCTURE gdprestruct 0 FIELD x n ;STRUCTURE"
+      s" structure" s" gdprestruct"
+      s" STRUCTURE gdns-struct 0 FIELD x n ;STRUCTURE 12 GDNS-STRUCT:MAKE GDNS-STRUCT:UNMAKE 12 T="
+      s" GDNS-STRUCT" NS-PRODUCTION-CASE
 
    \ A finalized type row is the same exact-child conflict.
    s" package gdpretype public PRODUCT result 0 FIELD x n ;PRODUCT ;package"
-      NS-PRODUCTION-CASE
+      s" product" s" result"
+      s" PRODUCT gdns-type 0 FIELD x n ;PRODUCT 13 GDNS-TYPE:MAKE GDNS-TYPE:UNMAKE 13 T="
+      s" GDNS-TYPE" NS-PRODUCTION-CASE
 
    \ Namespace identity wins when the child also contains the would-be word.
-   s" PRODUCT gdboth 0 FIELD x n ;PRODUCT" NS-PRODUCTION-CASE ;
+   s" PRODUCT gdboth 0 FIELD x n ;PRODUCT"
+      s" product" s" gdboth"
+      s" PRODUCT gdns-both 0 FIELD x n ;PRODUCT 14 GDNS-BOTH:MAKE GDNS-BOTH:UNMAKE 14 T="
+      s" GDNS-BOTH" NS-PRODUCTION-CASE ;
 
 : NC-C, ( n -- )
    NC-U @ NC-SRC-CAP >= IF
@@ -1426,22 +1513,66 @@ INSTALL-GROW-NESTED
 : NC-FAMILY ( bool -- )
    IF NC-FAM-U 1 + [char] b ELSE NC-FAM-U [char] a THEN NC-REP ;
 
+: NC-KIND$ ( n -- ptr u8 n )
+   dup NC-ENUM = IF drop s" enum" EXIT THEN
+   dup NC-SUM = IF drop s" sumtype" EXIT THEN
+   dup NC-PROD = IF drop s" product" EXIT THEN
+   drop s" structure" ;
+
+: NC-LONG-FAMILY$ ( -- ptr u8 n )
+   0 NC-U !
+   0 0= NC-FAMILY
+   NC-SRC NC-U @ ;
+
+: NC-MARKED-FAMILY$ ( -- ptr u8 n )
+   0 NC-U !
+   NC-DIAG-B-U [char] b NC-REP
+   s" ..." NC-APP
+   NC-SRC NC-U @ ;
+
+: NC-UNIFIED? ( n -- bool )
+   dup NC-ENUM = swap NC-STRUCT = or ;
+
+: NC-ASSERT-UNIFIED-DIAG ( n -- ) {: kind:n :}
+   NC-MARKED-FAMILY$ nip NC-DIAG-U T=
+   DECL-REJECT:KIND$ kind NC-KIND$ DECL-DIAG:SAME? TTRUE
+   DECL-REJECT:FAMILY$ NC-MARKED-FAMILY$ DECL-DIAG:SAME? TTRUE
+   DECL-REJECT:TOKEN$ NC-MARKED-FAMILY$ DECL-DIAG:SAME? TTRUE
+   E-TFAM-NS-CAP DECL-REJECT:REASON$
+      s" tfam: constructor namespace too long" DECL-DIAG:SAME? TTRUE
+   DECL-DIAG:TEXT$
+   kind NC-KIND$
+   NC-MARKED-FAMILY$ 2dup
+   s" tfam: constructor namespace too long"
+   NS-PACKET$ DECL-DIAG:SAME? TTRUE ;
+
+: NC-ASSERT-CAP-DIAG ( n -- ) {: kind:n :}
+   kind NC-UNIFIED? IF
+      kind NC-ASSERT-UNIFIED-DIAG
+   ELSE
+      DECL-DIAG:TEXT$
+      kind NC-KIND$
+      NC-LONG-FAMILY$ 2dup
+      s" tfam: constructor namespace too long"
+      NS-PACKET$ DECL-DIAG:SAME? TTRUE
+   THEN ;
+
 : NC-DECL$ ( n bool -- ptr u8 n ) {: kind:n long:bool :}
    0 NC-U !
    s" package " NC-APP
    kind [char] p NC-PKG
    s"  public " NC-APP
    kind NC-ENUM = IF
-      s" ENUM " NC-APP long NC-FAMILY s"  x ;ENUM ;package" NC-APP
+      s" ENUM " NC-APP long NC-FAMILY s"  x y ;ENUM ;package" NC-APP
    ELSE kind NC-SUM = IF
       s" SUMTYPE " NC-APP long NC-FAMILY
-      s"  0 VARIANT x ;VARIANT ;SUMTYPE ;package" NC-APP
+      s"  0 VARIANT x ;VARIANT VARIANT y n ;VARIANT ;SUMTYPE ;package" NC-APP
    ELSE kind NC-PROD = IF
       s" PRODUCT " NC-APP long NC-FAMILY
-      s"  0 FIELD x n ;PRODUCT ;package" NC-APP
+      s"  0 FIELD x n FIELD y n ;PRODUCT ;package" NC-APP
    ELSE
       s" STRUCTURE " NC-APP long NC-FAMILY
-      s"  0 FIELD x n ;STRUCTURE ;package" NC-APP
+      s"  0 FIELD x n FIELD y n ;STRUCTURE ;package" NC-APP
    THEN THEN THEN
    NC-SRC NC-U @ ;
 
@@ -1452,6 +1583,89 @@ INSTALL-GROW-NESTED
    NC-FAM-U [char] A NC-REP
    NC-SRC NC-U @ ;
 
+: NC-NS-APP ( n -- ) {: kind:n :}
+   kind [char] P NC-PKG
+   58 NC-C,
+   NC-FAM-U [char] A NC-REP ;
+
+: NC-WORD-APP ( n ptr u8 n -- ) {: kind:n a:ptr u:n :}
+   kind NC-NS-APP
+   58 NC-C,
+   a u NC-APP ;
+
+: NC-WORD$ ( n ptr u8 n -- ptr u8 n ) {: kind:n a:ptr u:n :}
+   0 NC-U !
+   kind a u NC-WORD-APP
+   NC-SRC NC-U @ ;
+
+: NC-WID-WORDS ( n -- n ) {: wid:n :}
+   0
+   ndict@ 0 ?do
+      i XREF-REC XREF-WORDLIST wid = IF 1 + THEN
+   loop ;
+
+: NC-ASSERT-NS ( n -- ) {: kind:n :}
+   kind NC-NS$ XREF-NAMESPACE-WL XREF-FIND-WL
+   dup XREF-FOUND? TTRUE
+   dup XREF-LEN 0 T=
+   dup XREF-FLAGS DNAME-MIN-IN-MASK and 52 rshift NAMESPACE:KIND-TYPE T=
+   XREF-START dup prot-wid? TTRUE
+   NC-WID-WORDS 2 T= ;
+
+: NC-ASSERT-WORD ( n ptr u8 n -- ) {: kind:n a:ptr u:n :}
+   kind a u NC-WORD$ QUALIFIED-ABSENT? 0= TTRUE ;
+
+: NC-CHECK-VARIANT ( n ptr u8 n bool -- ) {: kind:n a:ptr u:n payload:bool :}
+   0 NC-U !
+   s" NC-CAP-VARIANT-" NC-APP
+   kind NC-PKG-C NC-C,
+   45 NC-C,
+   a u NC-APP
+   s"  ( -- " NC-APP
+   kind NC-NS-APP
+   s"  ) " NC-APP
+   payload IF s" 1 " NC-APP THEN
+   kind a u NC-WORD-APP
+   NC-SRC NC-U @ CHECK-QUIET-CANDIDATE! -1 T= ;
+
+: NC-CHECK-RECORD ( n -- ) {: kind:n :}
+   0 NC-U !
+   s" NC-CAP-RECORD-" NC-APP
+   kind NC-PKG-C NC-C,
+   s"  ( -- n n ) 1 2 " NC-APP
+   kind s" MAKE" NC-WORD-APP
+   32 NC-C,
+   kind s" UNMAKE" NC-WORD-APP
+   NC-SRC NC-U @ CHECK-QUIET-CANDIDATE! -1 T= ;
+
+: NC-RUN-NAME ( n -- )
+   s" NC-CAP-ROUNDTRIP-" NC-APP
+   NC-PKG-C NC-C, ;
+
+: NC-RUN-RECORD ( n -- ) {: kind:n :}
+   0 NC-U !
+   s" : " NC-APP kind NC-RUN-NAME
+   s"  ( -- n n ) 1 2 " NC-APP
+   kind s" MAKE" NC-WORD-APP
+   32 NC-C,
+   kind s" UNMAKE" NC-WORD-APP
+   s"  ; " NC-APP
+   kind NC-RUN-NAME
+   s"  2 T= 1 T=" NC-APP
+   NC-SRC NC-U @ EVALUATE-CATCH 0 T= ;
+
+: NC-ASSERT-SUM-SURFACE ( n -- ) {: kind:n :}
+   kind s" X" NC-ASSERT-WORD
+   kind s" Y" NC-ASSERT-WORD
+   kind s" X" 0 0= 0= NC-CHECK-VARIANT
+   kind s" Y" kind NC-SUM = NC-CHECK-VARIANT ;
+
+: NC-ASSERT-RECORD-SURFACE ( n -- ) {: kind:n :}
+   kind s" MAKE" NC-ASSERT-WORD
+   kind s" UNMAKE" NC-ASSERT-WORD
+   kind NC-CHECK-RECORD
+   kind NC-RUN-RECORD ;
+
 : NC-QUERY ( ptr u8 n -- bool )
    2drop
    NC-QUERY-N @ 1 + NC-QUERY-N !
@@ -1459,7 +1673,31 @@ INSTALL-GROW-NESTED
 
 : NC-EXACT ( n -- ) {: kind:n :}
    kind 0 0= 0= NC-DECL$ EVALUATE-CATCH 0 T=
-   kind NC-NS$ XREF:NAMESPACE? TTRUE ;
+   kind NC-ASSERT-NS
+   kind NC-ENUM = kind NC-SUM = or IF
+      kind NC-ASSERT-SUM-SURFACE
+   ELSE
+      kind NC-ASSERT-RECORD-SURFACE
+   THEN ;
+
+: NC-SHORT ( n -- ) {: kind:n :}
+   kind NC-ENUM = IF
+      s" ENUM gdcap-enum ok ;ENUM" EVALUATE-CATCH 0 T=
+      s" GDCAP-ENUM" XREF:NAMESPACE? TTRUE
+      EXIT
+   THEN
+   kind NC-SUM = IF
+      s" SUMTYPE gdcap-sum 0 VARIANT ok ;VARIANT ;SUMTYPE" EVALUATE-CATCH 0 T=
+      s" GDCAP-SUM" XREF:NAMESPACE? TTRUE
+      EXIT
+   THEN
+   kind NC-PROD = IF
+      s" PRODUCT gdcap-prod 0 FIELD x n ;PRODUCT" EVALUATE-CATCH 0 T=
+      s" GDCAP-PROD" XREF:NAMESPACE? TTRUE
+      EXIT
+   THEN
+   s" STRUCTURE gdcap-struct 0 FIELD x n ;STRUCTURE" EVALUATE-CATCH 0 T=
+   s" GDCAP-STRUCT" XREF:NAMESPACE? TTRUE ;
 
 : NC-OVER ( n -- ) {: kind:n :}
    RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
@@ -1468,18 +1706,20 @@ INSTALL-GROW-NESTED
    [: NC-QUERY ;] is TDECL-NS-EXISTS-XT
    DECL-DIAG:PROSE
    kind 0 0= NC-DECL$ EVALUATE-CATCH E-TFAM-NS-CAP T=
-   s" tfam: constructor namespace too long" DECL-DIAG:HAS? TTRUE
+   kind NC-ASSERT-CAP-DIAG
    DECL-DIAG:OFF
    RESTORE-GENERATED-EVALUATOR
    NC-QUERY-N @ 0 T=
-   NS-ASSERT-ROLLED ;
+   NS-ASSERT-ROLLED
+   ASSERT-PRODUCTION-IDLE
+   kind NC-SHORT ;
 
 : TEST-NAMESPACE-CAPACITY ( -- )
+   TF-CTOR-NS-CAP NC-SPEC-CAP T=
    NC-ENUM NC-EXACT   NC-ENUM NC-OVER
    NC-SUM NC-EXACT    NC-SUM NC-OVER
    NC-PROD NC-EXACT   NC-PROD NC-OVER
-   NC-STRUCT NC-EXACT NC-STRUCT NC-OVER
-   s" ENUM gdcapafter ok ;ENUM" EVALUATE-CATCH 0 T= ;
+   NC-STRUCT NC-EXACT NC-STRUCT NC-OVER ;
 
 : RUN-CAPACITY-PREFLIGHT ( -- )
    s" GDCAP-MISSING:MAKE" CAPACITY-PREFLIGHT-N @ TDECL-CAPACITY-PREFLIGHT-XT ;
