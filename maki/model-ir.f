@@ -67,7 +67,7 @@ NEWTYPE operand-ref 0
 NEWTYPE input-index 0
 NEWTYPE ref-pos 0
 
-STRUCTURE mark 0
+STRUCTURE mark<>
    FIELD nodes n
    FIELD slots n
    FIELD refs n

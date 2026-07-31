@@ -54,12 +54,12 @@ NEWTYPE stream-id 0
 NEWTYPE event-id 0
 NEWTYPE node-id 0
 
-PRODUCT stats 0
+STRUCTURE stats<>
    FIELD nodes n
    FIELD streams n
    FIELD events n
    FIELD edges n
-;PRODUCT
+;STRUCTURE
 
 ;package
 

@@ -104,7 +104,7 @@ ENUM dimclass DERIVE eq
 \ (NPOL:dom, maki/numpolicy.f) - the plan's declared proof domain, so changing the
 \ request is a different key (no FP32/TF32 baseline pairing). (Inline `\` notes
 \ inside a STRUCTURE block reject.)
-STRUCTURE skey 0 DERIVE eq
+STRUCTURE skey<> DERIVE eq
   FIELD rsig n
   FIELD rk dimclass
   FIELD rm n
