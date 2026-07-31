@@ -397,10 +397,6 @@ variable START-NS
    s"  0 search-wl 0= ." GE-SRC-LINE
    s" GD-COUNT" GE-SRC-S"
    s"  0 search-wl 0= ." GE-SRC-LINE
-   s" : GD-EDGE: ( -- n ) 3 ;" GE-SRC-LINE
-   s" GD-EDGE: ." GE-SRC-LINE
-   s" GD-EDGE:" GE-SRC-S"
-   s"  0 search-wl 0= ." GE-SRC-LINE
    s" hb wordlist namespace qualification" GE-EVAL-RUN-STDIN
    SB-RESET
    s" 1" GE-OUT-LINE
@@ -413,8 +409,6 @@ variable START-NS
    s" 7" GE-OUT-LINE
    s" 2" GE-OUT-LINE
    s" -1" GE-OUT-LINE
-   s" 0" GE-OUT-LINE
-   s" 3" GE-OUT-LINE
    s" 0" GE-OUT-LINE
    SB$ s" hb wordlist namespace qualification output" GE-EXPECT-OUT ;
 
@@ -487,6 +481,81 @@ variable START-NS
    s" -1" GE-OUT-LINE
    s" -1" GE-OUT-LINE
    SB$ s" hb absolute package prefix/reopen output" GE-EXPECT-OUT ;
+
+: FULL-QUALIFIED ( -- )
+   GE-HB-RESET
+   GE-SRC-RESET
+   s" TRUSTED: GD-QTRY ( ptr u8 n -- n ) ['] evaluate catch dup if >r 2drop r> then ;" GE-SRC-LINE
+   s" : GD-QDEF:A:B:C:VALUE ( -- n ) 42 ;" GE-SRC-LINE
+   s" wordlist cp@ ndict@" GE-SRC-LINE
+   s" package GD-QDEF ;package" GE-SRC-LINE
+   s" package GD-QDEF:A ;package" GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" wordlist swap 1+ = ." GE-SRC-LINE
+   s" GD-QDEF:A:B:C:VALUE ." GE-SRC-LINE
+   s" gd-qdef:a:b:c:value ." GE-SRC-LINE
+   s" package GD-QPKG:A:B" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" : VALUE ( -- n ) 43 ;" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" GD-QPKG:A:B:VALUE ." GE-SRC-LINE
+   \ Each native EXPORT refusal pins rc, NDICT, CP, and absent alias publication.
+   s" package GD-QEXPORT" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" cp@ ndict@" GE-SRC-LINE
+   s" EXPORT :GD-QPKG:A:B:VALUE" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" VALUE" GE-SRC-S"  s"  get-current search-wl 0= ." GE-SRC-LINE
+   s" cp@ ndict@" GE-SRC-LINE
+   s" EXPORT GD-QPKG:A:B:VALUE:" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" VALUE" GE-SRC-S"  s"  get-current search-wl 0= ." GE-SRC-LINE
+   s" cp@ ndict@" GE-SRC-LINE
+   s" EXPORT GD-QPKG:A::B:VALUE" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" VALUE" GE-SRC-S"  s"  get-current search-wl 0= ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" : GD-QGHOST ( -- n ) 99 ;" GE-SRC-LINE
+   s" package GD-QSCOPE" GE-SRC-LINE
+   s" GD-QPKG:A:B:GD-QGHOST" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" package GD-QTYPE:A:B" GE-SRC-LINE
+   s" public" GE-SRC-LINE
+   s" ENUM state ready ;ENUM" GE-SRC-LINE
+   s" ;package" GE-SRC-LINE
+   s" GD-QTYPE:A:B:STATE:READY drop" GE-SRC-S"  s"  GD-QTRY 0= ." GE-SRC-LINE
+   s" wordlist cp@ ndict@" GE-SRC-LINE
+   s" : GD-QTYPE:A:B:STATE:BAD ( -- n ) 1 ;" GE-SRC-S"  s"  GD-QTRY 75 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" wordlist swap 1+ = ." GE-SRC-LINE
+   s" GD-QTYPE:A:B:STATE:BAD" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" wordlist cp@ ndict@" GE-SRC-LINE
+   s" : :GD-QBAD ( -- n ) 1 ;" GE-SRC-S"  s"  GD-QTRY 75 = ." GE-SRC-LINE
+   s" : GD-QBAD: ( -- n ) 1 ;" GE-SRC-S"  s"  GD-QTRY 75 = ." GE-SRC-LINE
+   s" : GD-QBAD::WORD ( -- n ) 1 ;" GE-SRC-S"  s"  GD-QTRY 75 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" wordlist swap 1+ = ." GE-SRC-LINE
+   s" wordlist cp@ ndict@" GE-SRC-LINE
+   s" :GD-QMISS" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" GD-QMISS:" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" GD-QMISS::WORD" GE-SRC-S"  s"  GD-QTRY 70 = ." GE-SRC-LINE
+   s" ndict@ = ." GE-SRC-LINE
+   s" cp@ = ." GE-SRC-LINE
+   s" wordlist swap 1+ = ." GE-SRC-LINE
+   s" hb full qualified paths" GE-EVAL-RUN-STDIN
+   SB-RESET
+   3 0 ?do s" -1" GE-OUT-LINE loop
+   s" 42" GE-OUT-LINE
+   s" 42" GE-OUT-LINE
+   s" 43" GE-OUT-LINE
+   31 0 ?do s" -1" GE-OUT-LINE loop
+   SB$ s" hb full qualified paths output" GE-EXPECT-OUT ;
 
 : PACKAGE-ROLLBACK-SOURCE ( -- )
    GE-SRC-RESET
@@ -1350,6 +1419,7 @@ public
    s" dictionary/namespace" [: NAMESPACE-QUALIFIED ;] CASE-RUN
    s" dictionary/package-runtime" [: PACKAGE-RUNTIME ;] CASE-RUN
    s" dictionary/package-absolute" [: PACKAGE-ABSOLUTE ;] CASE-RUN
+   s" dictionary/full-qualified" [: FULL-QUALIFIED ;] CASE-RUN
    s" dictionary/package-rollback" [: PACKAGE-ROLLBACK ;] CASE-RUN
    s" dictionary/package-semicolon" [: PACKAGE-SEMICOLON ;] CASE-RUN
    s" dictionary/package-jit-stack" [: PACKAGE-JIT-STACK ;] CASE-RUN

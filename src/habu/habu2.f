@@ -2073,14 +2073,13 @@ variable LQUALIFYDEF      \ shared qualification helper entry (dot habu-emit-one
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
 \ One shared qualification/publication helper (dot habu-emit-one-shared).
-\ Formerly this whole body was inlined at every definer (CREATE/CONSTANT/TRUSTED:/
-\ DEFER/colon), copying the qualification scan, package lookup/create path,
-\ duplicate wall, capacity guard, name storage, and state restoration into each
-\ handler. It is now emitted once at LQUALIFYDEF and reached by branch-with-link.
+\ The path classifier and prefix walker are shared with FIND and package; this
+\ helper selects the target WID, rewrites the tail, and applies the definition
+\ walls. It is emitted once at LQUALIFYDEF and reached by branch-with-link.
 \ Register ABI: pure DATA-cell (memory) in/out — it reads TKA/TKL/CUR, writes the
 \ DEF-* mirror + TKA/TKL. It clobbers the general scratch set (x3-x17); every
 \ caller already recomputes those from memory after the call, so nothing is live
-\ across it. The one internal branch-with-link (LHIDXADD) clobbers the link
+\ across it. Its shared-helper branch-with-links clobber the link
 \ register, so the body saves x30 across itself. Fail exits (seal/dup/qualified-
 \ name misuse/dict-full) either exit_group or B LCOMPILEDIE, whose recovery
 \ restores SP from the eval-frame / REPL snapshot, so the unbalanced frame on a
@@ -2091,79 +2090,32 @@ package HB-EMIT
 
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
-   SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: qscan qnone qhas qbad qtail qlookup qapply qwidok nloop nnext ncmp nmatch nend ninl done :}
-   11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
-   12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
+   SP SP 16 SUBI,  30 SP 0 STR,
+   LBL LBL LBL {: plain:label bad:label done:label :}
+   9 DATA TKA-CELL LDR,  9 DATA DEF-TKA-CELL STR,
+   10 DATA TKL-CELL LDR,  10 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
-   9 11 0 ADDI,  10 12 0 ADDI,  17 0 MOVZ,
-   qscan LBL,
-      17 10 CMP,  C-GE qnone BCOND,
-      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ qhas BCOND,
-      17 17 1 ADDI,  qscan B,
-   qnone LBL,
-      C-QUALIFY-CAP
-      C-REJECT-DUP-DEF
-      done B,
-   qhas LBL,
-      17 0 CMPI,  C-EQ qnone BCOND,
-      14 17 1 ADDI,  14 10 CMP,  C-GE qnone BCOND,
+   LQCLASS LABEL@ BL,
+   17 0 CMPI,  C-LT bad BCOND,
+   17 10 CMP,  C-EQ plain BCOND,
       14 0 MOVZ,  14 DATA DEF-WL-CELL STR,
-      14 17 1 ADDI,
-   qtail LBL,
-      14 10 CMP,  C-GE qlookup BCOND,
-      15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ qbad BCOND,
-      14 14 1 ADDI,  qtail B,
-   qlookup LBL,
-      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   nloop LBL,
-      6 nend CBZ,
-      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE nnext BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE nnext BCOND,
-      16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 ninl CBZ,
-         16 5 24 LDR,
-      ninl LBL,
-      7 0 MOVZ,
-      ncmp LBL,
-         7 17 CMP,  C-GE nmatch BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 9 7 ADD,     4 4 0 LDRB,
-         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE nnext BCOND,
-         7 7 1 ADDI,  ncmp B,
-      nmatch LBL,
-         14 5 0 LDR,  14 DATA DEF-WL-CELL STR,
-         nend B,
-      nnext LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  nloop B,
-   nend LBL,
-      14 DATA DEF-WL-CELL LDR,  14 0 CMPI,  C-NE qapply BCOND,
-      C-QUALIFY-CAP
-      14 DATA WIDN-CELL LDR,  15 OWNER-WID-LIMIT 2 - LIT64,
-      14 15 CMP,  C-LS qwidok BCOND,
-         $4D C-QUALIFY-FAIL
-      qwidok LBL,
-      9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
-      11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,
-      17 DATA TKL-CELL STR,
-      C-STORE-NAME
-      14 DATA WIDN-CELL LDR,  14 DATA DEF-WL-CELL STR,  14 9 0 STR,
-      15 14 1 ADDI,  15 9 8 STR,
-      16 14 2 ADDI,  16 DATA WIDN-CELL STR,
-      15 0 MOVN,  15 9 40 STR,
-      NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
-   qapply LBL,
+      17 SP 8 STR,
+      10 17 0 ADDI,  LNSENSURE LABEL@ BL,
+      17 SP 8 LDR,
+      11 DATA DEF-WL-CELL STR,
       11 DATA DEF-TKA-CELL LDR,  11 11 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
       12 DATA DEF-TKL-CELL LDR,  12 12 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
       C-QUALIFY-CAP
       C-REJECT-DUP-DEF
       done B,
-   qbad LBL,
+   plain LBL,
+      C-QUALIFY-CAP
+      C-REJECT-DUP-DEF
+      done B,
+   bad LBL,
       $4B C-QUALIFY-FAIL
    done LBL,
-   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;              \ restore link register + return
+   30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;
 s" emit-qualify-def" s" --" TRUST
 
 ;package
@@ -4583,19 +4535,11 @@ package HB-EMIT
 private
 
 : C-PACKAGE-PATH-GUARD ( -- )
-   LBL LBL LBL LBL {: scan:label next:label bad:label done:label :}
-   14 0 MOVZ,
-   scan LBL,
-      15 DATA TKL-CELL LDR,  14 15 CMP,  C-GE done BCOND,
-      16 DATA TKA-CELL LDR,  16 16 14 ADD,  16 16 0 LDRB,
-      16 $3A CMPI,  C-NE next BCOND,
-      14 bad CBZ,
-      17 14 1 ADDI,  17 15 CMP,  C-GE bad BCOND,
-      16 DATA TKA-CELL LDR,  16 16 17 ADD,  16 16 0 LDRB,
-      16 $3A CMPI,  C-EQ bad BCOND,
-   next LBL,
-      14 14 1 ADDI,  scan B,
-   bad LBL,  $4B C-PACKAGE-FAIL
+   LBL {: done:label :}
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   LQCLASS LABEL@ BL,
+   17 0 CMPI,  C-GE done BCOND,
+      $4B C-PACKAGE-FAIL
    done LBL, ;
 s" c-package-path-guard" s" --" TRUST
 
@@ -4660,25 +4604,34 @@ private
    11 5 0 LDR,  12 5 8 LDR, ;
 s" c-package-prefix" s" --" TRUST
 
-: C-PACKAGE-ENSURE ( -- )
+: EMIT-NS-ENSURE ( -- )
+   \ x9/x10 = package path; returns final record/public/private in x5/x11/x12.
+   LNSENSURE LABEL@ LBL,
+   SP SP 32 SUBI,
+   30 SP 0 STR,  9 SP 8 STR,  10 SP 16 STR,
    LBL LBL LBL {: scan:label next:label final:label :}
    17 0 MOVZ,
    scan LBL,
-      14 DATA TKL-CELL LDR,  17 14 CMP,  C-GE final BCOND,
-      15 DATA TKA-CELL LDR,  15 15 17 ADD,  15 15 0 LDRB,
+      14 SP 16 LDR,  17 14 CMP,  C-GE final BCOND,
+      15 SP 8 LDR,  15 15 17 ADD,  15 15 0 LDRB,
       15 $3A CMPI,  C-NE next BCOND,
-         SP SP 16 SUBI,  17 SP 0 STR,
-         9 DATA TKA-CELL LDR,  10 17 0 ADDI,
+         17 SP 24 STR,
+         9 SP 8 LDR,  10 17 0 ADDI,
          C-PACKAGE-PREFIX
-         17 SP 0 LDR,  SP SP 16 ADDI,
+         17 SP 24 LDR,
    next LBL,
       17 17 1 ADDI,  scan B,
    final LBL,
-      9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
-      C-PACKAGE-PREFIX ;
-s" c-package-ensure" s" --" TRUST
+      9 SP 8 LDR,  10 SP 16 LDR,
+      C-PACKAGE-PREFIX
+      9 SP 8 LDR,  10 SP 16 LDR,
+      30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+s" emit-ns-ensure" s" --" TRUST
 
-package HB-EMIT
+: C-PACKAGE-ENSURE ( -- )
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   LNSENSURE LABEL@ BL, ;
+s" c-package-ensure" s" --" TRUST
 
 : C-PACKAGE-PROT-GUARD ( -- )
    LBL LBL {: package:label done:label :}
@@ -4920,25 +4873,6 @@ s" emit-find-used" s" --" TRUST
    C-CALL-X11-SAVED ;
 s" c-call-checker-export" s" --" TRUST
 
-\ Rewrite TKA/TKL to the tail of a NAME:tail token (DEF-TKA/DEF-TKL hold the
-\ original spelling). A leading/trailing first colon keeps the token an
-\ ordinary name (FIND parity); a malformed double-colon token never reaches
-\ here (LFIND already rejected it as undefined).
-: C-EXPORT-TAIL! ( -- )
-   LBL LBL LBL {: scan:label have:label done:label :}
-   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  17 0 MOVZ,
-   scan LBL,
-      17 10 CMP,  C-GE done BCOND,                     \ no ':' -> bare name
-      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ have BCOND,
-      17 17 1 ADDI,  scan B,
-   have LBL,
-      17 done CBZ,                                     \ leading ':' -> ordinary
-      14 17 1 ADDI,  14 10 CMP,  C-GE done BCOND,      \ trailing ':' -> ordinary
-      11 9 17 ADD,  11 11 1 ADDI,  11 DATA TKA-CELL STR,
-      12 10 17 SUB,  12 12 1 SUBI,  12 DATA TKL-CELL STR,
-   done LBL, ;
-s" c-export-tail!" s" --" TRUST
-
 \ EXPORT keyword (dot habu-compiler-pkg-re-688212c1). Two documented roles
 \ split by package context, mirrored 1:1 by verify-source RECORD-EXPORT:
 \ - INSIDE an open package: publish an EXISTING word under its own tail into
@@ -4957,12 +4891,15 @@ s" c-export-tail!" s" --" TRUST
 \ native diagnosis wins), protected-WID target (C-STORE-DEF-NAME publish
 \ guard). The checker call runs OUTSIDE the RW code window (checked code must
 \ execute RX); the record publish sits inside the 3/5 LPROT window because
-\ C-STORE-NAME spills long names at CP.
+\ C-STORE-NAME spills long names at CP. The classifier derives the publish tail
+\ once; frame slots preserve that exact span across checker synchronization.
 package HB-EMIT
 
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
-   LBL LBL LBL LBL LBL {: active:label dnamed:label named:label found:label done:label :}
+   LBL LBL LBL LBL LBL LBL LBL
+   {: active:label dnamed:label named:label found:label tail:label bad:label
+      done:label :}
    9 DATA PKG-PUB-CELL LDR,  9 active CBNZ,
       LTOK LABEL@ BL,  0 dnamed CBNZ,
          $4A C-PACKAGE-FAIL
@@ -4977,18 +4914,27 @@ package HB-EMIT
       0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
       0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    found LBL,
-   SP SP 32 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
-   11 DATA TKA-CELL LDR,  11 DATA DEF-TKA-CELL STR,
-   12 DATA TKL-CELL LDR,  12 DATA DEF-TKL-CELL STR,
+   SP SP 48 SUBI,  11 SP 0 STR,  12 SP 8 STR,  13 SP 16 STR,
+   9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,
+   LQCLASS LABEL@ BL,
+   17 0 CMPI,  C-LT bad BCOND,
+   9 DATA DEF-TKA-CELL STR,
+   10 DATA DEF-TKL-CELL STR,
    14 DATA CUR-CELL LDR,  14 DATA DEF-WL-CELL STR,
-   C-EXPORT-TAIL!
+   17 10 CMP,  C-EQ tail BCOND,
+      9 9 17 ADD,  9 9 1 ADDI,
+      10 10 17 SUB,  10 10 1 SUBI,
+   tail LBL,
+   9 SP 24 STR,  10 SP 32 STR,
+   9 DATA TKA-CELL STR,  10 DATA TKL-CELL STR,
    C-QUALIFY-CAP
    C-REJECT-DUP-DEF                                      \ native dup wall first: labeled diagnosis + $4E
    11 DATA DEF-TKA-CELL LDR,  11 DATA TKA-CELL STR,      \ checker sees the ORIGINAL spelling
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
    C-CALL-CHECKER-EXPORT
    2 3 MOVZ,  LPROT LABEL@ BL,
-   C-EXPORT-TAIL!                                        \ tail again for the publish (pure rescan)
+   11 SP 24 LDR,  11 DATA TKA-CELL STR,
+   12 SP 32 LDR,  12 DATA TKL-CELL STR,
    9 NDICT 0 ADDI,  10 DREC MOVZ,  9 9 10 MUL,  9 DBASE 9 ADD,
    C-STORE-DEF-NAME
    14 SP 0 LDR,  14 9 0 STR,                            \ [0] = source code ptr
@@ -5001,7 +4947,12 @@ package HB-EMIT
    15 9 16 STR,
    NDICT NDICT 1 ADDI,  LHIDXADD LABEL@ BL,
    2 5 MOVZ,  LPROT LABEL@ BL,
-   SP SP 32 ADDI,
+   SP SP 48 ADDI,
+   done B,
+   bad LBL,
+      SP SP 48 ADDI,
+      0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
+      0 70 MOVZ,  LCOMPILEDIE LABEL@ B,
    done LBL, ;
 s" c-export" s" --" TRUST
 
@@ -6938,7 +6889,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    ASM-INIT  0 #PL !  0 PNP ! ;
 
 : EMIT-LABEL-CORE ( -- )
-   LBL LANCHOR !  LBL LFIND !  LBL LNSFIND !  LBL LNUM !  LBL LDICT !  LBL LSRC !
+   LBL LANCHOR !  LBL LFIND !  LBL LQCLASS !  LBL LNSFIND !  LBL LNSENSURE !
+   LBL LNUM !  LBL LDICT !  LBL LSRC !
    LBL LCEMIT !  LBL LCEMITBL !  LBL LTOK !  LBL LPROT !  LBL LPROTREC !  LBL LPROTSPAN !  LBL LFLUSH !  LBL LNCOUNT !
    LBL LAOTCODE !  LBL LAOTDICT !  LBL LAOTCODELEN !
    LBL LAOTNREC !  LBL LAOTNSITE !  LBL LAOTSITES !  LBL LAOTNAMES !  LBL LAOTNAMESLEN !
@@ -7244,10 +7196,12 @@ package HB-EMIT
    EMIT-PROTWID  OWNER-WID-EMIT:ROUTINES s" primitives/protected-wid" HB-SIZE:MARK
    EM-AOT-OWNER-ROUTINE       s" primitives/aot-owner" HB-SIZE:MARK
    EMIT-FLUSH                 s" primitives/flush" HB-SIZE:MARK
+   EMIT-QCLASS                s" primitives/qclass" HB-SIZE:MARK
    EMIT-NS-FIND               s" primitives/ns-find" HB-SIZE:MARK
    EMIT-FIND                  s" primitives/find" HB-SIZE:MARK
    EMIT-FIND-USED             s" primitives/find-used" HB-SIZE:MARK
    EMIT-HIDX                  s" primitives/hash-index" HB-SIZE:MARK
+   EMIT-NS-ENSURE             s" primitives/ns-ensure" HB-SIZE:MARK
    EMIT-QUALIFY-DEF           s" primitives/qualify-def" HB-SIZE:MARK
    EMIT-STORE-DEF-NAME        s" primitives/store-def-name" HB-SIZE:MARK
    EMIT-NUM                   s" primitives/number" HB-SIZE:MARK

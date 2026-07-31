@@ -4,7 +4,8 @@
 \ interpret only):
 \     bin/hb < test/type-export-suite.f
 \ Covers: cross-package alias fidelity (one scheme, two names, source
-\ untouched), private->public promotion, defer + control-flag copy, quotation
+\ untouched), deep-qualified last-tail publication, private->public promotion,
+\ defer + control-flag copy, quotation
 \ scheme fidelity, every reject (no package, undefined, private from a closed
 \ package, malformed qualification, sealed-system source, primitive source,
 \ duplicate/self-export), scope/candidate rollback of the alias rows, and the
@@ -115,8 +116,10 @@ s" XP-NOPE" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
 s" xps:XP-NOPE" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
 \ private word from a CLOSED package: qualified lookup is public-only.
 s" xps:XP-PRIV" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
-\ malformed qualification (double colon / edge colon) never resolves.
+\ well-formed deep missing remains an ordinary undefined source.
 s" xps:XP:BAD" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
+\ Checked E2a owns final malformed-path diagnostics; retain the established edge
+\ behavior here without adding new checked separator cases.
 s" :XP-INC" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-UNDEFINED T=
 \ re-export FROM a sealed system package (latch is sealed in this process).
 s" tfam:list" ' CHECKER-EXPORT catch TC ! 2drop  TC @ E-EXPORT-SEALED T=
@@ -200,6 +203,22 @@ EXPORT XPE:XPE-DBL
 : XPE-USE2 ( n -- n ) XPE:XPE-DBL ;
 5 XPE-USE1 10 T=
 5 XPE-USE2 10 T=
+
+\ deep source qualification publishes only the last tail into the target WID.
+package A:B:C
+public
+: WORD ( n -- n ) 3 * ;
+;package
+
+package XPH
+public
+EXPORT A:B:C:WORD
+: USE3 ( n -- n ) WORD ;
+;package
+
+6 A:B:C:WORD 18 T=
+6 XPH:WORD 18 T=
+4 XPH:USE3 12 T=
 
 \ private->public promotion through the engine keyword.
 package XPG

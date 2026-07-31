@@ -480,18 +480,6 @@ variable FL-DL
 variable FL-DD
 variable FL-IL
 variable FL-ID
-variable FIND-QSCAN
-variable FIND-QNONE
-variable FIND-QHAS
-variable FIND-QBAD
-variable FIND-QTAIL
-variable FIND-QTAILOK
-variable FIND-NLOOP
-variable FIND-NNEXT
-variable FIND-NCMP
-variable FIND-NMATCH
-variable FIND-NEND
-variable FIND-NINL
 variable FIND-START
 variable FIND-LOOP
 variable FIND-DONE
@@ -2846,7 +2834,32 @@ package HB-EMIT
 
 private
 
+variable LQCLASS
 variable LNSFIND
+variable LNSENSURE
+
+: EMIT-QCLASS ( -- )
+   \ x9/x10 = full token and are preserved; x17 = length (unqualified),
+   \ last ':' index, or -1.
+   LBL LBL LBL LBL {: scan:label next:label bad:label done:label :}
+   LQCLASS LABEL@ LBL,
+   17 10 0 ADDI,
+   14 0 MOVZ,
+   scan LBL,
+      14 10 CMP,  C-GE done BCOND,
+      15 9 14 ADD,  15 15 0 LDRB,
+      15 $3A CMPI,  C-NE next BCOND,
+      14 bad CBZ,
+      16 14 1 ADDI,  16 10 CMP,  C-GE bad BCOND,
+      15 9 16 ADD,  15 15 0 LDRB,
+      15 $3A CMPI,  C-EQ bad BCOND,
+      17 14 0 ADDI,
+   next LBL,
+      14 14 1 ADDI,  scan B,
+   bad LBL,
+      17 0 MOVN,
+   done LBL,
+      RET, ;
 
 : EMIT-NS-FIND ( -- )
    LBL LBL LBL LBL LBL LBL
@@ -2882,20 +2895,12 @@ variable LNSFIND
 
 ;package
 
+package HB-EMIT
+
 : EMIT-FIND ( -- )
+   LBL LBL {: qpath:label ret:label :}
    LFIND LABEL@ LBL,
-   LBL FIND-QSCAN !
-   LBL FIND-QNONE !
-   LBL FIND-QHAS !
-   LBL FIND-QBAD !
-   LBL FIND-QTAIL !
-   LBL FIND-QTAILOK !
-   LBL FIND-NLOOP !
-   LBL FIND-NNEXT !
-   LBL FIND-NCMP !
-   LBL FIND-NMATCH !
-   LBL FIND-NEND !
-   LBL FIND-NINL !
+   SP SP 32 SUBI,  30 SP 0 STR,
    LBL FIND-START !
    LBL FIND-LOOP !
    LBL FIND-DONE !
@@ -2912,49 +2917,22 @@ variable LNSFIND
    LBL FIND-HINL !
    LBL FIND-HCMP !
    LBL FIND-HMATCH !
+   LQCLASS LABEL@ BL,
    13 0 MOVZ,
-   17 0 MOVZ,
-   FIND-QSCAN LABEL@ LBL,
-      17 10 CMP,  C-GE FIND-QNONE LABEL@ BCOND,
-      14 9 17 ADD,  14 14 0 LDRB,  14 $3A CMPI,  C-EQ FIND-QHAS LABEL@ BCOND,
-      17 17 1 ADDI,  FIND-QSCAN LABEL@ B,
-   FIND-QNONE LABEL@ LBL,
-      2 DATA PKG-PRI-CELL LDR,  FIND-START LABEL@ B,
-   FIND-QHAS LABEL@ LBL,
-      17 0 CMPI,  C-EQ FIND-QNONE LABEL@ BCOND,
-      14 17 1 ADDI,  14 10 CMP,  C-GE FIND-QNONE LABEL@ BCOND,
-      14 17 1 ADDI,
-   FIND-QTAIL LABEL@ LBL,
-      14 10 CMP,  C-GE FIND-QTAILOK LABEL@ BCOND,
-      15 9 14 ADD,  15 15 0 LDRB,  15 $3A CMPI,  C-EQ FIND-QBAD LABEL@ BCOND,
-      14 14 1 ADDI,  FIND-QTAIL LABEL@ B,
-   FIND-QTAILOK LABEL@ LBL,
-      5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
-   FIND-NLOOP LABEL@ LBL,
-      6 FIND-NEND LABEL@ CBZ,
-      14 5 40 LDR,  15 0 MOVN,  14 15 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-      14 5 16 LDR,  14 14 12 LSLI,  14 14 12 LSRI,  14 17 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-      16 5 24 ADDI,
-      14 5 16 LDR,  14 14 DNAME-EXT ANDI,  14 FIND-NINL LABEL@ CBZ,
-         16 5 24 LDR,
-      FIND-NINL LABEL@ LBL,
-      7 0 MOVZ,
-      FIND-NCMP LABEL@ LBL,
-         7 17 CMP,  C-GE FIND-NMATCH LABEL@ BCOND,
-         15 16 7 ADD,  15 15 0 LDRB,
-         3 15 $41 SUBI,  3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  15 15 3 ORR,
-         4 9 7 ADD,     4 4 0 LDRB,
-         3 4 $41 SUBI,   3 $1A CMPI,  3 C-CC CSET,  3 3 5 LSLI,  4 4 3 ORR,
-         15 4 CMP,  C-NE FIND-NNEXT LABEL@ BCOND,
-         7 7 1 ADDI,  FIND-NCMP LABEL@ B,
-      FIND-NMATCH LABEL@ LBL,
-         2 5 0 LDR,
-         9 9 17 ADD,  9 9 1 ADDI,
-         10 10 17 SUB,  10 10 1 SUBI,
-         FIND-START LABEL@ B,
-      FIND-NNEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-NLOOP LABEL@ B,
-   FIND-NEND LABEL@ LBL,  RET,
-   FIND-QBAD LABEL@ LBL,  RET,
+   17 0 CMPI,  C-LT ret BCOND,
+   17 10 CMP,  C-NE qpath BCOND,
+      12 0 MOVZ,  2 DATA PKG-PRI-CELL LDR,  FIND-START LABEL@ B,
+   qpath LBL,
+      10 SP 8 STR,  17 SP 16 STR,
+      10 17 0 ADDI,  LNSFIND LABEL@ BL,
+      12 SP 8 LDR,  17 SP 16 LDR,
+      13 0 MOVZ,
+      5 ret CBZ,
+      11 NAMESPACE:KIND-TYPE CMPI,  C-HI ret BCOND,
+      2 5 0 LDR,
+      9 9 17 ADD,  9 9 1 ADDI,
+      10 12 17 SUB,  10 10 1 SUBI,
+      12 0 MOVN,
    FIND-START LABEL@ LBL,
       \ hash probe (fast path): fold+hash the name once, walk the open-addressed
       \ chain for (name XOR wid). A validated slot (index<NDICT, wid==x2, name
@@ -2995,7 +2973,7 @@ variable LNSFIND
          15 15 16 ORR,
          14 14 DNAME-IMM ANDI,  14 14 59 LSRI,                \ immediate bit -> 2
          14 14 15 ORR,
-         13 1 MOVZ,  13 13 14 ORR,  RET,
+         13 1 MOVZ,  13 13 14 ORR,  ret B,
       FIND-HNEXT LABEL@ LBL,
          8 8 1 SUBI,  8 FIND-LINEAR LABEL@ CBZ,
          6 6 1 ADDI,  5 HIDX-SLOTS 1 - LIT64,  6 6 5 AND,  FIND-HLOOP LABEL@ B,
@@ -3032,6 +3010,7 @@ variable LNSFIND
       FIND-NEXT LABEL@ LBL,  5 5 DREC ADDI,  6 6 1 SUBI,  FIND-LOOP LABEL@ B,
    FIND-DONE LABEL@ LBL,
       13 FIND-FOUND LABEL@ CBNZ,
+      12 0 CMPI,  C-LT FIND-MISS LABEL@ BCOND,
       14 DATA PKG-PRI-CELL LDR,  14 FIND-MISS LABEL@ CBZ,
       14 2 CMP,  C-NE FIND-TRYG LABEL@ BCOND,
          2 DATA PKG-PUB-CELL LDR,  FIND-START LABEL@ B,
@@ -3039,7 +3018,11 @@ variable LNSFIND
       14 DATA PKG-PUB-CELL LDR,  14 2 CMP,  C-NE FIND-MISS LABEL@ BCOND,
          2 0 MOVZ,  FIND-START LABEL@ B,
       FIND-FOUND LABEL@ LBL,
-      FIND-MISS LABEL@ LBL,  RET, ;
+      FIND-MISS LABEL@ LBL,
+   ret LBL,
+      30 SP 0 LDR,  SP SP 32 ADDI,  RET, ;
+
+;package
 
 : C-NUM-INIT-REGS ( -- )
    11 0 MOVZ,  13 1 MOVZ,  14 0 MOVZ,  12 0 MOVZ,  6 10 MOVZ, ;
