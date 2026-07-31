@@ -82,6 +82,14 @@
 \ is the operation's own field, decided by the allocator and checked by the
 \ validator before this pass runs.
 \
+\ THE FOUR DATA-STACK FORMS ARE FOUR MORE INSTRUCTIONS AND NOTHING ELSE, for the
+\ same reason: the same load, store, subtraction and addition, against the
+\ register the running engine keeps the caller's data stack in. Nothing here
+\ decides that a routine reads its arguments off the data stack - the convention
+\ is declared on the routine's contract and turned into these operations by
+\ src/compiler/native/select.f, so what reaches this pass is a module that
+\ already contains its own entry and exit, and this file only encodes them.
+\
 \ THE SOURCE MAP IS THE POINT OF THE BYTE OFFSETS. Every emitted instruction gets
 \ one row: the byte offset it was placed at, and the span of the operation it
 \ came from. The offset is the cursor at the moment the instruction was appended,
@@ -120,7 +128,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-11 constant OPCODES-N
+15 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -131,7 +139,11 @@ private
 7 constant O-LOAD
 8 constant O-RESERVE
 9 constant O-RELEASE
-10 constant O-RET
+10 constant O-DTAKE
+11 constant O-DLOAD
+12 constant O-DSTORE
+13 constant O-DPUBLISH
+14 constant O-RET
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -163,6 +175,8 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SH IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-MAX INSN-BYTES * allot
@@ -180,11 +194,15 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
       add     OF O-ADD     ENDOF
       sub     OF O-SUB     ENDOF
       mul     OF O-MUL     ENDOF
-      store   OF O-STORE   ENDOF
-      load    OF O-LOAD    ENDOF
-      reserve OF O-RESERVE ENDOF
-      release OF O-RELEASE ENDOF
-      ret     OF O-RET     ENDOF
+      store    OF O-STORE    ENDOF
+      load     OF O-LOAD     ENDOF
+      reserve  OF O-RESERVE  ENDOF
+      release  OF O-RELEASE  ENDOF
+      dtake    OF O-DTAKE    ENDOF
+      dload    OF O-DLOAD    ENDOF
+      dstore   OF O-DSTORE   ENDOF
+      dpublish OF O-DPUBLISH ENDOF
+      ret      OF O-RET      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -197,9 +215,13 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
       O-MUL     of A64IR-OPCODE:MUL     endof
       O-STORE   of A64IR-OPCODE:STORE   endof
       O-LOAD    of A64IR-OPCODE:LOAD    endof
-      O-RESERVE of A64IR-OPCODE:RESERVE endof
-      O-RELEASE of A64IR-OPCODE:RELEASE endof
-      O-RET     of A64IR-OPCODE:RET     endof
+      O-RESERVE  of A64IR-OPCODE:RESERVE  endof
+      O-RELEASE  of A64IR-OPCODE:RELEASE  endof
+      O-DTAKE    of A64IR-OPCODE:DTAKE    endof
+      O-DLOAD    of A64IR-OPCODE:DLOAD    endof
+      O-DSTORE   of A64IR-OPCODE:DSTORE   endof
+      O-DPUBLISH of A64IR-OPCODE:DPUBLISH endof
+      O-RET      of A64IR-OPCODE:RET      endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -269,6 +291,12 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 : FRAME-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-FRAME @ ATTR-INT ;
 
+: DSLOT-OFF ( IR-ID:ir-op-id -- n )
+   0 BND-DSLOT @ ATTR-INT ;
+
+: DBYTES-SIZE ( IR-ID:ir-op-id -- n )
+   0 BND-DBYTES @ ATTR-INT ;
+
 \ ---- one instruction per operation -------------------------------------------
 \ Each of these is exactly the encoder call the form names, with the registers
 \ the accepted allocation answers and the operands the module carries.
@@ -315,6 +343,26 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    {: id:IR-ID:ir-op-id :}
    A64EFF:SP-GPR A64EFF:SP-GPR  id FRAME-SIZE  ENC-ADDI ;
 
+\ The four data-stack forms, which are the same four instructions against the
+\ other pointer. The base is A64EFF:DSTACK-GPR - the register the running engine
+\ keeps the data stack in - asked for rather than written here, for the same
+\ reason the frame accesses ask for the stack-pointer operand.
+: WORD-DTAKE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-SUBI ;
+
+: WORD-DPUBLISH ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI ;
+
+: WORD-DLOAD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  ENC-LDR ;
+
+: WORD-DSTORE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  ENC-STR ;
+
 : WORD-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT SLOT-OPCODE
@@ -325,11 +373,15 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
       add     OF id TRIPLE ENC-ADD ENDOF
       sub     OF id TRIPLE ENC-SUB ENDOF
       mul     OF id TRIPLE ENC-MUL ENDOF
-      store   OF id WORD-STORE ENDOF
-      load    OF id WORD-LOAD ENDOF
-      reserve OF id WORD-RESERVE ENDOF
-      release OF id WORD-RELEASE ENDOF
-      ret     OF ENC-RET ENDOF
+      store    OF id WORD-STORE ENDOF
+      load     OF id WORD-LOAD ENDOF
+      reserve  OF id WORD-RESERVE ENDOF
+      release  OF id WORD-RELEASE ENDOF
+      dtake    OF id WORD-DTAKE ENDOF
+      dload    OF id WORD-DLOAD ENDOF
+      dstore   OF id WORD-DSTORE ENDOF
+      dpublish OF id WORD-DPUBLISH ENDOF
+      ret      OF ENC-RET ENDOF
    ;MATCH ;
 
 \ ---- the buffer and the map --------------------------------------------------
@@ -477,13 +529,19 @@ public
    c b A64IR-OPCODE:MUL     BIND1
    c b A64IR-OPCODE:STORE   BIND1
    c b A64IR-OPCODE:LOAD    BIND1
-   c b A64IR-OPCODE:RESERVE BIND1
-   c b A64IR-OPCODE:RELEASE BIND1
-   c b A64IR-OPCODE:RET     BIND1
-   c b A64IR:KEY-IMM   0 BND-IMM !
-   c b A64IR:KEY-SHIFT 0 BND-SH !
-   c b A64IR:KEY-SLOT  0 BND-SLOT !
-   c b A64IR:KEY-FRAME 0 BND-FRAME !
+   c b A64IR-OPCODE:RESERVE  BIND1
+   c b A64IR-OPCODE:RELEASE  BIND1
+   c b A64IR-OPCODE:DTAKE    BIND1
+   c b A64IR-OPCODE:DLOAD    BIND1
+   c b A64IR-OPCODE:DSTORE   BIND1
+   c b A64IR-OPCODE:DPUBLISH BIND1
+   c b A64IR-OPCODE:RET      BIND1
+   c b A64IR:KEY-IMM    0 BND-IMM !
+   c b A64IR:KEY-SHIFT  0 BND-SH !
+   c b A64IR:KEY-SLOT   0 BND-SLOT !
+   c b A64IR:KEY-FRAME  0 BND-FRAME !
+   c b A64IR:KEY-DSLOT  0 BND-DSLOT !
+   c b A64IR:KEY-DBYTES 0 BND-DBYTES !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without emitting against it.

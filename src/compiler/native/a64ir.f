@@ -31,9 +31,39 @@
 \   a64.ldr      Ldr rt sp off   - load a register back out of a frame slot
 \   a64.reserve  Subi sp sp n    - claim the routine's own frame
 \   a64.release  Addi sp sp n    - give the frame back
+\   a64.dtake    Subi ds ds n    - take the caller's operands off the data stack
+\   a64.dload    Ldr rt ds off   - read one of them out of its slot
+\   a64.dstore   Str rt ds off   - write a result into its slot
+\   a64.dpublish Addi ds ds n    - make the results the caller's
 \   a64.ret      Ret             - return to the address in the link register
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
+\
+\ THE FOUR DATA-STACK FORMS ARE THE OTHER CALLING CONVENTION, MADE OF
+\ INSTRUCTIONS. Design section 7.6 gives an externally callable Habu word its
+\ inputs and outputs in canonical slots of the CALLER's data stack rather than in
+\ registers, and the running engine keeps the pointer to that stack in one
+\ register it never gives away (A64EFF:DSTACK-GPR). These four forms are how a
+\ routine reaches it, and they are the exact mirror of the frame four: the
+\ pointer is named by the form rather than taken as an operand, for the same
+\ reason and with the same consequence - no value of this dialect stands for it
+\ and none can, because a value is a register the allocator may hand out and this
+\ one it may never. The stack is full-ascending and the pointer sits just past
+\ the caller's top, so a routine taking `a` arguments moves it down over them
+\ once (a64.dtake), reads argument i at 8i, writes result j at 8j, and moves it
+\ up over `r` results once (a64.dpublish). That is the same net effect a word the
+\ engine compiled itself has, arrived at with two instructions instead of one
+\ push or pop per value.
+\
+\ WHY THEY THREAD A CHAIN OF THEIR OWN. The token type is the one MEM-TYPE below,
+\ because there is one kind of ordering value in this dialect and a second would
+\ be a second class the allocator has to learn. The CHAIN is separate: a64.dtake
+\ mints one and a64.dpublish ends it, exactly as a64.reserve and a64.release do
+\ for the frame. Forcing the two into one chain would declare that a frame access
+\ and a data-stack access have to keep their order against each other, and they
+\ do not - the frame is below the machine stack pointer and the data stack is a
+\ region of the engine's own that no frame access can reach - so the schemas say
+\ which space each form touches and the orderings stay two.
 \
 \ WHY A COPY IS A FORM WHEN THE MACHINE HAS NO COPY INSTRUCTION. A routine's
 \ contract says which register each returned value leaves in, and the value the
@@ -165,6 +195,10 @@ ENUM opcode DERIVE eq
    load
    reserve
    release
+   dtake
+   dload
+   dstore
+   dpublish
    ret
 ;ENUM
 
@@ -287,6 +321,25 @@ private
    dup A64EFF:FRAME-MAX > if E-A64IR-FRAME throw then
    dup FRAME-LIM > if E-A64IR-FRAME throw then ;
 
+\ ---- checked data-stack operands ---------------------------------------------
+\ A slot of the caller's data stack, measured the same way a frame slot is - the
+\ two forms that reach it are the same Ldr and Str - so the reach is A64EFF's
+\ answer for this width and not a constant repeated here. The stack is a stack of
+\ whole cells, so an offset that is not a multiple of one names no slot.
+: DSLOT ( n -- n )
+   dup 0 < if E-A64IR-DSLOT throw then
+   dup SLOT-BYTES mod 0<> if E-A64IR-DSLOT throw then
+   dup SLOT-BYTES A64EFF:SLOT-REACH > if E-A64IR-DSLOT throw then ;
+
+\ How far the data-stack pointer moves at entry or at exit. It is a whole number
+\ of cells - a routine takes and publishes values, not bytes - and it goes into
+\ the same unsigned twelve-bit add/sub immediate the frame is claimed with. There
+\ is no stack-alignment rule: the data stack is cell-aligned, not sixteen.
+: DBYTES ( n -- n )
+   dup 0 < if E-A64IR-DBYTES throw then
+   dup SLOT-BYTES mod 0<> if E-A64IR-DBYTES throw then
+   dup OFF-MAX > if E-A64IR-DBYTES throw then ;
+
 public
 
 \ ---- the type of a virtual register ------------------------------------------
@@ -325,11 +378,15 @@ public
       add     OF s" a64.add"     ENDOF
       sub     OF s" a64.sub"     ENDOF
       mul     OF s" a64.mul"     ENDOF
-      store   OF s" a64.str"     ENDOF
-      load    OF s" a64.ldr"     ENDOF
-      reserve OF s" a64.reserve" ENDOF
-      release OF s" a64.release" ENDOF
-      ret     OF s" a64.ret"     ENDOF
+      store    OF s" a64.str"      ENDOF
+      load     OF s" a64.ldr"      ENDOF
+      reserve  OF s" a64.reserve"  ENDOF
+      release  OF s" a64.release"  ENDOF
+      dtake    OF s" a64.dtake"    ENDOF
+      dload    OF s" a64.dload"    ENDOF
+      dstore   OF s" a64.dstore"   ENDOF
+      dpublish OF s" a64.dpublish" ENDOF
+      ret      OF s" a64.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -365,6 +422,23 @@ public
 : FRAME-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    FRAME IR-BUILD:INTERN-INT-ATTR ;
 
+\ The two attribute keys the data-stack forms require. They are their own keys
+\ rather than the frame's, because a consumer that walks a module has to be able
+\ to say which region an access is in without asking which opcode it is - and a
+\ frame slot and a data-stack slot are counted from different pointers, so one
+\ key answering both would let a frame check judge a data-stack access.
+: KEY-DSLOT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.dslot" IR-BUILD:INTERN-SYMBOL ;
+
+: KEY-DBYTES ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.dbytes" IR-BUILD:INTERN-SYMBOL ;
+
+: DSLOT-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   DSLOT IR-BUILD:INTERN-INT-ATTR ;
+
+: DBYTES-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   DBYTES IR-BUILD:INTERN-INT-ATTR ;
+
 private
 
 \ ---- the schema definitions --------------------------------------------------
@@ -381,11 +455,15 @@ private
       add     OF s" a64.rule.add"     ENDOF
       sub     OF s" a64.rule.sub"     ENDOF
       mul     OF s" a64.rule.mul"     ENDOF
-      store   OF s" a64.rule.str"     ENDOF
-      load    OF s" a64.rule.ldr"     ENDOF
-      reserve OF s" a64.rule.reserve" ENDOF
-      release OF s" a64.rule.release" ENDOF
-      ret     OF s" a64.rule.ret"     ENDOF
+      store    OF s" a64.rule.str"      ENDOF
+      load     OF s" a64.rule.ldr"      ENDOF
+      reserve  OF s" a64.rule.reserve"  ENDOF
+      release  OF s" a64.rule.release"  ENDOF
+      dtake    OF s" a64.rule.dtake"    ENDOF
+      dload    OF s" a64.rule.dload"    ENDOF
+      dstore   OF s" a64.rule.dstore"   ENDOF
+      dpublish OF s" a64.rule.dpublish" ENDOF
+      ret      OF s" a64.rule.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -397,11 +475,15 @@ private
       add     OF s" a64.render.add"     ENDOF
       sub     OF s" a64.render.sub"     ENDOF
       mul     OF s" a64.render.mul"     ENDOF
-      store   OF s" a64.render.str"     ENDOF
-      load    OF s" a64.render.ldr"     ENDOF
-      reserve OF s" a64.render.reserve" ENDOF
-      release OF s" a64.render.release" ENDOF
-      ret     OF s" a64.render.ret"     ENDOF
+      store    OF s" a64.render.str"      ENDOF
+      load     OF s" a64.render.ldr"      ENDOF
+      reserve  OF s" a64.render.reserve"  ENDOF
+      release  OF s" a64.render.release"  ENDOF
+      dtake    OF s" a64.render.dtake"    ENDOF
+      dload    OF s" a64.render.dload"    ENDOF
+      dstore   OF s" a64.render.dstore"   ENDOF
+      dpublish OF s" a64.render.dpublish" ENDOF
+      ret      OF s" a64.render.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -548,6 +630,74 @@ private
    c b A64IR-OPCODE:RELEASE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the data-stack forms ----------------------------------------------------
+\ The caller's data stack is not the routine's frame: it is a region of the
+\ running engine's own memory, reached through the pointer register the engine
+\ keeps it in. The space says so, which is how a consumer tells a frame access
+\ from a data-stack access without asking which opcode it is looking at. Nothing
+\ else in a module of this dialect reaches that region, so nothing aliases it.
+: DSTACK-MEM ( IR-SCHEMA:effect -- )
+   {: e:IR-SCHEMA:effect :}
+   false 0 0 IR-SCHEMA:SET-CONTROL
+   IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNALIASED e IR-SCHEMA:SET-MEMORY ;
+
+\ Dtake: the routine moves the data-stack pointer down over the arguments the
+\ caller left, and the order of every data-stack access starts here. It reads no
+\ token because there is nothing before it.
+: DEF-DTAKE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:DTAKE OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-DBYTES IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:DTAKE NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Dload: one argument read out of its slot. Result zero is the register, so the
+\ value an argument arrives as is asked for exactly like any other value.
+: DEF-DLOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:DLOAD OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-DSLOT IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ DSTACK-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:DLOAD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Dstore: one result written into its slot, which is how a Habu word publishes.
+: DEF-DSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:DSTORE OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-DSLOT IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:DSTORE NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Dpublish: the data-stack pointer moves up over the results, which is the moment
+\ they become the caller's. It defines no value, so every data-stack access of
+\ the block is ordered before it and none can follow it.
+: DEF-DPUBLISH ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:DPUBLISH OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   c b KEY-DBYTES IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE DSTACK-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:DPUBLISH NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ Ret: the block's one terminator. Design line 237 makes it a terminator and
 \ design lines 706-708 give a terminator no results of its own; the values still
 \ live where control leaves are its operands, and how many there are is a
@@ -611,6 +761,10 @@ public
    c b t k DEF-LDR
    c b k DEF-RESERVE
    c b k DEF-RELEASE
+   c b k DEF-DTAKE
+   c b t k DEF-DLOAD
+   c b t k DEF-DSTORE
+   c b k DEF-DPUBLISH
    c b t DEF-RET ;
 
 private

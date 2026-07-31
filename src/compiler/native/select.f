@@ -67,6 +67,39 @@
 \ was compiled from exactly when the two digests agree, and that is the check made
 \ before a single span is rebuilt.
 \
+\ THE ROUTINE'S CALLING CONVENTION IS SELECTED HERE, AND WHY IT IS HERE. A
+\ convention names a PLACE per argument and per returned value, and a place is a
+\ register or a slot of the caller's data stack (src/compiler/a64-effect.f,
+\ design section 7.6). A register place needs no instruction: the value arrives
+\ in a register, and which register is the allocator's constraint, so it stays a
+\ block argument and a terminator operand exactly as before. A data-stack place
+\ needs three - the pointer moved down over the caller's operands, one load per
+\ argument, one store per result and the pointer moved back up - and those are
+\ INSTRUCTIONS, so they have to be in a module.
+\
+\ THE ONE-AUTHORITY RULE PUTS THEM IN THIS PASS AND NOT IN THE EMITTER. An
+\ instruction the emitter materialised out of a contract would be an instruction
+\ no module contains, so the independent register-allocation validator would have
+\ nothing to re-derive it from and would end up checking the emitter's belief
+\ against the emitter's belief - the same argument that made spill lowering build
+\ a second module rather than let the emitter invent stores. It does NOT need a
+\ second module here, which is the difference from spilling: a spill plan is the
+\ ALLOCATOR's output and only exists after the module is frozen, while a routine's
+\ convention is known before a single operation is selected. So this pass, which
+\ is already the one that decides which machine operations a program becomes,
+\ takes the contract and builds the entry and the exit as part of the module it
+\ was going to build anyway. Everything downstream then reads one module that
+\ contains its own interface.
+\
+\ THE ENTRY AND EXIT PAIR IS EMITTED WHOLE, EVEN WHEN A COUNT IS ZERO. A routine
+\ whose convention uses the data stack always gets both the take and the publish,
+\ so the chain of memory tokens has one beginning and one end and the validator
+\ has one layout to re-derive. A word with arguments and no results therefore
+\ ends with an addition of zero, and one with results and no arguments starts
+\ with a subtraction of zero. Dropping those is a peephole, and a peephole is an
+\ optimisation this leaf deliberately does not do - the same reason a constant is
+\ always materialised from its lowest half up.
+\
 \ ONE SELECTION AT A TIME. The value map is a fixed package-owned slot rather than
 \ a heap object, and the source module is read through the one cursor
 \ src/compiler/native/frozen.f owns, so this pass selects one module at a time -
@@ -86,6 +119,7 @@ require src/compiler/ir/source.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
+require src/compiler/a64-effect.f
 require src/compiler/native/hir.f
 require src/compiler/native/a64ir.f
 require src/compiler/native/frozen.f
@@ -124,6 +158,9 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
 1 TYPED-BUFFER S-ACC IR-ID:ir-value-id
+1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
+1 TYPED-BUFFER S-ARGS A64EFF:placeseq
+1 TYPED-BUFFER S-OUTS A64EFF:placeseq
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
 create NAMEBUF NAME-CAP allot
@@ -134,6 +171,10 @@ create NAMEBUF NAME-CAP allot
 : SID ( -- IR-ID:ir-source-id )      0 S-SID @ ;
 : ACC ( -- IR-ID:ir-value-id )       0 S-ACC @ ;
 : ACC! ( IR-ID:ir-value-id -- )      0 S-ACC ! ;
+: TOK ( -- IR-ID:ir-value-id )       0 S-TOK @ ;
+: TOK! ( IR-ID:ir-value-id -- )      0 S-TOK ! ;
+: ARGS ( -- A64EFF:placeseq )        0 S-ARGS @ ;
+: OUTS ( -- A64EFF:placeseq )        0 S-OUTS @ ;
 
 \ ---- the source dialect's opcode family --------------------------------------
 \ One injective slot per member, so the family stays exhaustive: a member added
@@ -238,10 +279,97 @@ create NAMEBUF NAME-CAP allot
 : RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
 
+: TOKEN+ ( -- )
+   CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
+
+: OPERAND+ ( IR-ID:ir-value-id -- )
+   CTX BLD rot IR-BUILD:ADD-OPERAND ;
+
 \ Close the operation and keep the one value it defined as the running value.
 : CLOSE-VALUE ( -- )
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ ACC! ;
+
+\ ---- the routine's convention, read once -------------------------------------
+\ How many positions of one side are data-stack slots. A side that mixes register
+\ places with data-stack places is refused: there is no entry sequence here for a
+\ convention that puts argument one in a register and argument two on the stack,
+\ and half-serving it would leave one of them nowhere.
+: SLOT-POSITIONS ( A64EFF:placeseq -- n )
+   {: s:A64EFF:placeseq :}
+   s A64EFF:SEQ-SLOTS {: sl:n :}
+   sl 0= if 0 exit then
+   sl s A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then
+   sl ;
+
+\ Does this routine take its arguments and leave its results on the caller's data
+\ stack at all? One side saying so commits the other: a word whose arguments
+\ arrive on the stack and whose result leaves in a register is not a convention
+\ this pass builds, so a register place on either side is refused once either
+\ side names a slot.
+: DSTACK? ( -- bool )
+   ARGS SLOT-POSITIONS OUTS SLOT-POSITIONS or 0<> ;
+
+: DSTACK-CK ( -- )
+   DSTACK? 0= if exit then
+   ARGS SLOT-POSITIONS ARGS A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then
+   OUTS SLOT-POSITIONS OUTS A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then ;
+
+\ ---- the four data-stack operations ------------------------------------------
+\ Each carries the span of the source operation it is anchored to, so a
+\ diagnostic about an entry load still points at the word the programmer wrote.
+: DSLOT-ATTR+ ( n -- )
+   {: off:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DSLOT  CTX BLD off A64IR:DSLOT-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+: DBYTES-ATTR+ ( n -- )
+   {: size:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+\ The pointer moves down over the caller's operands, and the order of every
+\ data-stack access starts here.
+: EMIT-DTAKE ( IR-ID:ir-op-id n -- )
+   {: at:IR-ID:ir-op-id bytes:n :}
+   at A64IR-OPCODE:DTAKE OPEN
+   TOKEN+
+   bytes DBYTES-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
+
+\ One argument, read out of its slot. The value it defines is what every use of
+\ that argument in the selected module reads.
+: EMIT-DLOAD ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id off:n :}
+   at A64IR-OPCODE:DLOAD OPEN
+   TOK OPERAND+
+   RESULT+
+   TOKEN+
+   off DSLOT-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 1 IR-BUILD:OP-RESULT@ TOK!
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ ;
+
+\ One result, written into its slot.
+: EMIT-DSTORE ( IR-ID:ir-op-id IR-ID:ir-value-id n -- )
+   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id off:n :}
+   at A64IR-OPCODE:DSTORE OPEN
+   v OPERAND+
+   TOK OPERAND+
+   TOKEN+
+   off DSLOT-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
+
+\ The pointer moves up over the results, which is the moment they become the
+\ caller's, and the order of the data-stack accesses ends.
+: EMIT-DPUBLISH ( IR-ID:ir-op-id n -- )
+   {: at:IR-ID:ir-op-id bytes:n :}
+   at A64IR-OPCODE:DPUBLISH OPEN
+   TOK OPERAND+
+   bytes DBYTES-ATTR+
+   CTX BLD IR-BUILD:END-OP drop ;
 
 \ ---- selecting a constant ----------------------------------------------------
 \ The literal is the whole content of a source constant, and it rides as the
@@ -297,15 +425,30 @@ create NAMEBUF NAME-CAP allot
    id 0 RESULT-AT  ACC  VBIND ;
 
 \ ---- selecting the return ----------------------------------------------------
-\ The values still live where control leaves become the terminator's operands,
-\ in the order the source return has them.
+\ Under a register convention the values still live where control leaves become
+\ the terminator's operands, in the order the source return has them. Under the
+\ data-stack convention each of them is written into the slot its declared place
+\ names first, the pointer is moved up over them, and the return carries nothing:
+\ the results are already published where the caller will look.
+: EMIT-EXIT ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   OUTS SLOT-POSITIONS {: r:n :}
+   id OPERANDS-OF r <> if E-A64SEL-PLACE throw then
+   r 0 ?do
+      id  id i OPERAND  OUTS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DSTORE
+   loop
+   id  r A64IR:SLOT-WIDTH *  EMIT-DPUBLISH ;
+
 : EMIT-RETURN ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
+   DSTACK? if id EMIT-EXIT then
    id A64IR-OPCODE:RET OPEN
-   id OPERANDS-OF {: k:n :}
-   k 0 ?do
-      CTX BLD  id i OPERAND  IR-BUILD:ADD-OPERAND
-   loop
+   DSTACK? 0= if
+      id OPERANDS-OF {: k:n :}
+      k 0 ?do
+         CTX BLD  id i OPERAND  IR-BUILD:ADD-OPERAND
+      loop
+   then
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ ---- the selection table -----------------------------------------------------
@@ -360,19 +503,42 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  V-FUNR VW f IR-FUN:FCONVENTION@  IR-BUILD:SET-CONVENTION
    CTX BLD f FUN-SPAN IR-BUILD:SET-FUN-SPAN ;
 
-\ The entry block's arguments are the word's inputs, one virtual register each,
-\ and each one is the value the matching source argument selects to.
-: OPEN-BLOCK ( IR-ID:ir-block-id -- )
+\ The word's inputs under a register convention: one block argument each, one
+\ virtual register each, and each one is the value the matching source argument
+\ selects to.
+: OPEN-ARGS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   CTX BLD IR-BUILD:BEGIN-BLOCK
-   CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
-   VCLEAR
    bk ARG-COUNT {: n:n :}
    n 0 ?do
       bk i ARG-AT
       CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG
       VBIND
    loop ;
+
+\ The same inputs under the data-stack convention: the block takes no argument at
+\ all, because nothing arrives in a register. The pointer is moved down over the
+\ caller's operands once, and each argument is then the value its own load
+\ defines. The entry operations are anchored to the block's first source
+\ operation, so they carry a span of the word they belong to.
+: OPEN-DARGS ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   ARGS SLOT-POSITIONS {: a:n :}
+   bk ARG-COUNT a <> if E-A64SEL-PLACE throw then
+   bk 0 OP-AT {: at:IR-ID:ir-op-id :}
+   at  a A64IR:SLOT-WIDTH *  EMIT-DTAKE
+   a 0 ?do
+      bk i ARG-AT
+      at  ARGS i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  EMIT-DLOAD
+      VBIND
+   loop ;
+
+: OPEN-BLOCK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   CTX BLD IR-BUILD:BEGIN-BLOCK
+   CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
+   VCLEAR
+   DSTACK? if bk OPEN-DARGS exit then
+   bk OPEN-ARGS ;
 
 \ One function of the source module. The straight-line subset is one block, and a
 \ function with any other shape is refused here rather than selected in part: a
@@ -463,10 +629,25 @@ public
 \ so a builder that already holds them, or one of another dialect, is refused by
 \ A64IR. The bytes are the source text the frozen module was compiled from, and
 \ they are proved to be by digest before any span is carried across.
-: SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
+\
+\ The routine contract is the LAST argument because a contract is twelve cells
+\ and a value of more than one cell cannot be bound to a typed local: it is taken
+\ apart at the top, its two place lists are kept, and the ten fields this pass
+\ has no use for are dropped. It is the whole contract rather than the two lists
+\ alone so that a caller cannot hand this pass one routine's convention and the
+\ allocator another's.
+: SELECT ( IR-CTX:ctx IR-BUILD:module IR-BUILD:builder ptr u8 n A64EFF:routine -- IR-BUILD:module )
+   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
+   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
+      t:A64EFF:traits size:n delta:n :}
    {: c:IR-CTX:ctx m:IR-BUILD:module b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    BND-TAKE
    m BND-MODULE-CK
+   gi 0 S-ARGS !
+   gr 0 S-OUTS !
+   DSTACK-CK
    c b A64IR:REGISTER
    c 0 S-CTX !
    b 0 S-BLD !

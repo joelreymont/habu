@@ -143,14 +143,14 @@ private
 \ ---- contracts that declare where their arguments and results live -----------
 \ An ordered list of one, two or three registers, so a case can say which
 \ register each position takes without spelling the packing out.
-: SQ ( n -- A64EFF:regseq )
+: SQ ( n -- A64EFF:placeseq )
    A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH ;
 
-: SQ2 ( n n -- A64EFF:regseq )
+: SQ2 ( n n -- A64EFF:placeseq )
    {: a:n b:n :}
    a SQ b A64EFF:SEQ-WITH ;
 
-: SQ3 ( n n n -- A64EFF:regseq )
+: SQ3 ( n n n -- A64EFF:placeseq )
    {: a:n b:n c:n :}
    a b SQ2 c A64EFF:SEQ-WITH ;
 
@@ -159,8 +159,8 @@ private
 \ are the given pool less the ones a result leaves in - one register cannot be
 \ both. The pool is passed rather than derived, so a case can hand it one that
 \ does NOT hold a declared register and get the refusal that earns.
-: LEAF-DECL ( A64EFF:gprs A64EFF:regseq A64EFF:regseq -- A64EFF:routine )
-   {: pool:A64EFF:gprs args:A64EFF:regseq outs:A64EFF:regseq :}
+: LEAF-DECL ( A64EFF:gprs A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
+   {: pool:A64EFF:gprs args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args outs
    pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
@@ -168,8 +168,8 @@ private
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 \ The same with a frame, for a program that declares an interface AND spills.
-: LEAF-DECL-FRAMED ( A64EFF:gprs A64EFF:regseq A64EFF:regseq -- A64EFF:routine )
-   {: pool:A64EFF:gprs args:A64EFF:regseq outs:A64EFF:regseq :}
+: LEAF-DECL-FRAMED ( A64EFF:gprs A64EFF:placeseq A64EFF:placeseq -- A64EFF:routine )
+   {: pool:A64EFF:gprs args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args outs
    pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
@@ -349,7 +349,7 @@ create TXT
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
    CC ab A64RAV:BIND-DIALECT
-   CC m ab TXT TXT-N A64SEL:SELECT ;
+   CC m ab TXT TXT-N  A64EFF:GPR-NONE LEAF  A64SEL:SELECT ;
 
 \ Allocate the selected module for a leaf routine of `n` registers and have the
 \ validator accept it. Every positive case goes through both, so no case reads a
@@ -1417,7 +1417,7 @@ create TXT
    CC BB IR-BUILD:FREEZE {: hm:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
-   CC hm ab TXT TXT-N A64SEL:SELECT {: m:IR-BUILD:module :}
+   CC hm ab TXT TXT-N  A64EFF:GPR-NONE LEAF  A64SEL:SELECT {: m:IR-BUILD:module :}
    CC m 4 LEAF-N A64RA:ALLOCATE
    hm 4 LEAF-N A64RAV:ACCEPT ;
 

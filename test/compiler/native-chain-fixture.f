@@ -63,7 +63,7 @@ private
 0 constant ABI-ARG0                  \ argument i arrives in x(ABI-ARG0 + i)
 0 constant ABI-OUT0                  \ returned value j leaves in x(ABI-OUT0 + j)
 
-: ABI-SEQ ( n n -- A64EFF:regseq )
+: ABI-SEQ ( n n -- A64EFF:placeseq )
    {: base:n n:n :}
    A64EFF:SEQ-NONE
    n 0 ?do base i + A64EFF:SEQ-WITH loop ;
@@ -79,7 +79,16 @@ private
 \ each keeps its own identities - then select. The text is the source the module
 \ was compiled from; the selector checks its digest against the one the module
 \ recorded, so a caller cannot present other bytes.
-: SELECTED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- IR-BUILD:module )
+\ The routine contract reaches the selector as well as the allocator now, because
+\ the selector is where a data-stack place becomes a load or a store. It is the
+\ last argument for the same reason it is everywhere else: twelve cells cannot be
+\ bound to a typed local, so it is presented on top and taken apart there.
+: SELECTED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n A64EFF:routine -- IR-BUILD:module )
+   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
+   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
+      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
+      t:A64EFF:traits size:n delta:n :}
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b A64SEL:BIND-SOURCE
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
@@ -87,7 +96,9 @@ private
    c ab A64RA:BIND-DIALECT
    c ab A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
-   c m ab a u A64SEL:SELECT ;
+   c m ab a u
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   A64SEL:SELECT ;
 
 public
 
@@ -127,8 +138,8 @@ public
 \ nothing.
 : LEAF-ABI ( n n n n -- A64EFF:routine )
    {: base:n n:n in:n out:n :}
-   ABI-ARG0 in ABI-SEQ {: args:A64EFF:regseq :}
-   ABI-OUT0 out ABI-SEQ {: outs:A64EFF:regseq :}
+   ABI-ARG0 in ABI-SEQ {: args:A64EFF:placeseq :}
+   ABI-OUT0 out ABI-SEQ {: outs:A64EFF:placeseq :}
    base n POOL
    args A64EFF:SEQ-SET A64EFF:GPR-WITH
    outs A64EFF:SEQ-SET A64EFF:GPR-WITH {: pool:A64EFF:gprs :}
@@ -142,6 +153,30 @@ public
 \ agree with the contract rather than assume it.
 : ABI-RESULT ( -- n )
    ABI-OUT0 ;
+
+\ ---- the convention a Habu word is entered and left through ------------------
+\ Design section 7.6: an externally callable Habu word takes argument i out of
+\ data-stack slot i of the caller's stack and leaves result j in slot j. That is
+\ the whole declaration, and it is the same shape on both sides, so one word
+\ builds either list.
+: SLOT-SEQ ( n -- A64EFF:placeseq )
+   {: n:n :}
+   A64EFF:SEQ-NONE
+   n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
+
+\ A leaf routine under that convention. No register is part of the interface -
+\ everything arrives and leaves through the caller's stack - so the pool is
+\ exactly the `n` scratch registers from `base` and the whole of it is declared
+\ destroyed. The engine's own data-stack register can never be one of them:
+\ src/compiler/a64-effect.f keeps it out of every general-register set, so a
+\ contract that handed it out cannot be built at all.
+: LEAF-HABU ( n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n :}
+   in SLOT-SEQ  out SLOT-SEQ
+   base n POOL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 \ Allocate registers for a frozen machine module, have the validator accept the
 \ allocation, and emit. Nothing here emits from a claim the validator has not
@@ -162,10 +197,17 @@ public
    m base n in out LEAF-ABI A64RAV:ACCEPT
    c m A64EMIT:EMIT ;
 
+\ And under the data-stack convention a Habu word is entered and left through.
+: FINISH-HABU ( IR-CTX:ctx IR-BUILD:module n n n n -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module base:n n:n in:n out:n :}
+   c m base n in out LEAF-HABU A64RA:ALLOCATE
+   m base n in out LEAF-HABU A64RAV:ACCEPT
+   c m A64EMIT:EMIT ;
+
 \ Select and finish in one step, out of a pool of `n` registers from `base`.
 : RUN-FROM ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   c b a u SELECTED {: m:IR-BUILD:module :}
+   c b a u base n LEAF-FROM SELECTED {: m:IR-BUILD:module :}
    c m base n FINISH ;
 
 \ The same, out of the pool that starts at register zero.
@@ -177,8 +219,17 @@ public
 \ values, and `n` registers from `base` on top of the ones the convention names.
 : RUN-ABI ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   c b a u SELECTED {: m:IR-BUILD:module :}
+   c b a u base n in out LEAF-ABI SELECTED {: m:IR-BUILD:module :}
    c m base n in out FINISH-ABI ;
+
+\ Select and finish under the data-stack convention: `in` arguments taken out of
+\ slots 0.. of the caller's stack and `out` results left in slots 0.., with `n`
+\ scratch registers from `base`. This is the whole of what makes an emitted
+\ routine callable the way an interpreted word is.
+: RUN-HABU ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   c b a u base n in out LEAF-HABU SELECTED {: m:IR-BUILD:module :}
+   c m base n in out FINISH-HABU ;
 
 \ The register the returned value ended up in. The last value the module defines
 \ is the one the return carries in every straight-line shape, and it is read

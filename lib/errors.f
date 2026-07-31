@@ -924,3 +924,21 @@ public
 \ assignment does. Both packages' own blocks were full when the binding landed.
 -8460 constant E-A64RA-FIXED     \ a declared argument or result register the allocation cannot honour: more declared positions than the routine has arguments or returned values, a register outside the set the routine may write, one value returned at two declared positions, or a declared register already held where it has to be taken
 -8461 constant E-A64RAV-FIXED    \ an assignment that does not put a declared argument or returned value where the contract declares it, or one made for a contract declaring more positions than the module has
+
+\ Native ARM64 data-stack calling convention: -8480..-8499
+\
+\ A Habu word takes its inputs and publishes its outputs through canonical
+\ data-stack slots rather than through registers, so a position of a calling
+\ convention became a PLACE - a register or a data-stack slot - and the machine
+\ dialect gained the four forms that reach the data stack. These are the facts
+\ the five owners of that convention add. Refusals another authority owns keep
+\ that authority's name: a place list that is not canonical at all is still
+\ A64EFF's E-A64EFF-SEQ, a register no routine may hold state in is
+\ E-A64EFF-GPR, and an operand outside the field it lands in is the assembler's.
+-8480 constant E-A64EFF-KIND    \ a place read as the kind it is not: the register of a data-stack slot, or the slot index of a register
+-8481 constant E-A64IR-DSLOT    \ a data-stack slot offset the load and store forms cannot address: negative, not a multiple of the eight bytes they move, or past the reach of their scaled twelve-bit offset field
+-8482 constant E-A64IR-DBYTES   \ a data-stack pointer adjustment no routine can make: negative, not a multiple of one stack cell, or past the twelve-bit immediate that claims it
+-8483 constant E-A64SEL-PLACE   \ a calling convention this selector has no rule for: one side mixing register places with data-stack places
+-8484 constant E-A64RA-PLACE    \ a place list the allocation cannot honour: one side mixing register places with data-stack places, or data-stack places declared on a module whose interface is still block arguments or terminator operands
+-8485 constant E-A64RAV-PLACE   \ the same, re-derived: a mixed side, or data-stack places on a module that still carries its interface as block arguments or terminator operands
+-8486 constant E-A64RAV-DSTACK  \ a data-stack entry or exit sequence that is not the one the contract declares: a missing or misplaced adjustment, a wrong byte count, a load or store naming a slot no place declares, or a module that reaches both the data stack and a frame

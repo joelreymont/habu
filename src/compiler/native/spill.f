@@ -108,7 +108,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-11 constant OPCODES-N
+15 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -119,14 +119,20 @@ private
 7 constant O-LOAD
 8 constant O-RESERVE
 9 constant O-RELEASE
-10 constant O-RET
+10 constant O-DTAKE
+11 constant O-DLOAD
+12 constant O-DSTORE
+13 constant O-DPUBLISH
+14 constant O-RET
 
 \ One slot per attribute key the dialect declares.
-4 constant KEYS-N
+6 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
 3 constant K-FRAME
+4 constant K-DSLOT
+5 constant K-DBYTES
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -174,11 +180,15 @@ create NAMEBUF NAME-CAP allot
       add     OF O-ADD     ENDOF
       sub     OF O-SUB     ENDOF
       mul     OF O-MUL     ENDOF
-      store   OF O-STORE   ENDOF
-      load    OF O-LOAD    ENDOF
-      reserve OF O-RESERVE ENDOF
-      release OF O-RELEASE ENDOF
-      ret     OF O-RET     ENDOF
+      store    OF O-STORE    ENDOF
+      load     OF O-LOAD     ENDOF
+      reserve  OF O-RESERVE  ENDOF
+      release  OF O-RELEASE  ENDOF
+      dtake    OF O-DTAKE    ENDOF
+      dload    OF O-DLOAD    ENDOF
+      dstore   OF O-DSTORE   ENDOF
+      dpublish OF O-DPUBLISH ENDOF
+      ret      OF O-RET      ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -191,9 +201,13 @@ create NAMEBUF NAME-CAP allot
       O-MUL     of A64IR-OPCODE:MUL     endof
       O-STORE   of A64IR-OPCODE:STORE   endof
       O-LOAD    of A64IR-OPCODE:LOAD    endof
-      O-RESERVE of A64IR-OPCODE:RESERVE endof
-      O-RELEASE of A64IR-OPCODE:RELEASE endof
-      O-RET     of A64IR-OPCODE:RET     endof
+      O-RESERVE  of A64IR-OPCODE:RESERVE  endof
+      O-RELEASE  of A64IR-OPCODE:RELEASE  endof
+      O-DTAKE    of A64IR-OPCODE:DTAKE    endof
+      O-DLOAD    of A64IR-OPCODE:DLOAD    endof
+      O-DSTORE   of A64IR-OPCODE:DSTORE   endof
+      O-DPUBLISH of A64IR-OPCODE:DPUBLISH endof
+      O-RET      of A64IR-OPCODE:RET      endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -312,6 +326,18 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-FRAME  CTX BLD size A64IR:FRAME-ATTR  IR-BUILD:ADD-ATTR ;
 
+\ The two data-stack fields. This pass inserts no data-stack operation of its
+\ own - the convention is the selector's - but it copies the ones the selector
+\ built, and a field copied under the wrong key would be a routine reading its
+\ arguments out of its own frame.
+: DSLOT-ATTR+ ( n -- )
+   {: off:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DSLOT  CTX BLD off A64IR:DSLOT-ATTR  IR-BUILD:ADD-ATTR ;
+
+: DBYTES-ATTR+ ( n -- )
+   {: size:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR  IR-BUILD:ADD-ATTR ;
+
 : CLOSE ( -- IR-ID:ir-op-id )
    CTX BLD IR-BUILD:END-OP ;
 
@@ -415,6 +441,8 @@ create NAMEBUF NAME-CAP allot
       then
       k K-SLOT = if v SLOT-ATTR+ then
       k K-FRAME = if v FRAME-ATTR+ then
+      k K-DSLOT = if v DSLOT-ATTR+ then
+      k K-DBYTES = if v DBYTES-ATTR+ then
    loop ;
 
 : COPY-OPERANDS ( IR-ID:ir-op-id n -- )
@@ -546,14 +574,16 @@ create NAMEBUF NAME-CAP allot
    A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then ;
 
 \ A module that already reserves a frame has been through this pass. Lowering it
-\ again would build a second frame inside the first, so it stops here.
+\ again would build a second frame inside the first, so it stops here. The test
+\ is the frame forms by name and not "any operation that touches memory": a
+\ routine that reads its arguments off the caller's data stack touches memory in
+\ every one of its entry loads and has never been through this pass at all.
 : ONCE-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n 0 ?do
-      V-SCHR VW  bk i OP-AT OPCODE-AT  IR-SCHEMA:FEFFECT@
-      IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ
-      0= if E-A64SPILL-SHAPE throw then
+      bk i OP-AT OPCODE-AT OPCODE-SLOT {: k:n :}
+      k O-RESERVE = k O-RELEASE = or if E-A64SPILL-SHAPE throw then
    loop ;
 
 : SHAPE-CK ( -- )
@@ -594,13 +624,19 @@ public
    c b A64IR-OPCODE:MUL     BIND1
    c b A64IR-OPCODE:STORE   BIND1
    c b A64IR-OPCODE:LOAD    BIND1
-   c b A64IR-OPCODE:RESERVE BIND1
-   c b A64IR-OPCODE:RELEASE BIND1
-   c b A64IR-OPCODE:RET     BIND1
-   c b A64IR:KEY-IMM   K-IMM BND-KEY !
-   c b A64IR:KEY-SHIFT K-SHIFT BND-KEY !
-   c b A64IR:KEY-SLOT  K-SLOT BND-KEY !
-   c b A64IR:KEY-FRAME K-FRAME BND-KEY !
+   c b A64IR-OPCODE:RESERVE  BIND1
+   c b A64IR-OPCODE:RELEASE  BIND1
+   c b A64IR-OPCODE:DTAKE    BIND1
+   c b A64IR-OPCODE:DLOAD    BIND1
+   c b A64IR-OPCODE:DSTORE   BIND1
+   c b A64IR-OPCODE:DPUBLISH BIND1
+   c b A64IR-OPCODE:RET      BIND1
+   c b A64IR:KEY-IMM    K-IMM BND-KEY !
+   c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
+   c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
+   c b A64IR:KEY-FRAME  K-FRAME BND-KEY !
+   c b A64IR:KEY-DSLOT  K-DSLOT BND-KEY !
+   c b A64IR:KEY-DBYTES K-DBYTES BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    BOUND-YES BND-MODE ! ;

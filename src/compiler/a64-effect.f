@@ -18,28 +18,34 @@
 \ change where control leaves, whether it calls, calls indirectly or enters the
 \ kernel, and how control leaves at all.
 \
-\ THE GENERAL-REGISTER INTERFACE IS ORDERED, BECAUSE A CONVENTION IS. A set can
-\ say that a routine reads x0 and x1; it cannot say that argument two arrives in
-\ x1, and that is the only thing a caller and a callee have to agree about. The
-\ two general-register interface fields are therefore ordered lists rather than
-\ sets: `gpr-arg` names the register each argument arrives in, position by
-\ position, and `gpr-out` names the register each returned value leaves in. The
-\ sets are still answerable - GPR-IN@ and GPR-RESULT@ derive them - so no reader
-\ lost anything, and there is no second place a convention could be written down
-\ and disagree from. This is what the register allocator pre-colours from and
-\ what its validator checks the finished assignment against, and both are handed
-\ this one value, so neither can be answering about another routine's interface.
-\ WHICH registers a particular ABI uses is the caller's declaration, not a
-\ constant here: this file owns what a convention IS, not which one is in force.
+\ THE INTERFACE IS ORDERED, BECAUSE A CONVENTION IS. A set can say that a routine
+\ reads x0 and x1; it cannot say that argument two arrives in x1, and that is the
+\ only thing a caller and a callee have to agree about. The two general interface
+\ fields are therefore ordered lists rather than sets: `gpr-arg` says where each
+\ argument arrives, position by position, and `gpr-out` where each returned value
+\ leaves. The register sets are still answerable - GPR-IN@ and GPR-RESULT@ derive
+\ them - so no reader lost anything, and there is no second place a convention
+\ could be written down and disagree from. This is what the register allocator
+\ pre-colours from and what its validator checks the finished assignment against,
+\ and both are handed this one value, so neither can be answering about another
+\ routine's interface. WHICH places a particular ABI uses is the caller's
+\ declaration, not a constant here: this file owns what a convention IS, not
+\ which one is in force.
+\
+\ A POSITION NAMES A PLACE, AND A REGISTER IS ONE KIND OF PLACE. Design section
+\ 7.6 gives an externally callable Habu word its inputs and outputs in canonical
+\ data-stack slots, which are not registers at all, so "argument two arrives in
+\ x1" and "argument two arrives in data-stack slot two" have to be sayable by one
+\ declaration. A position therefore holds a PLACE: a general register, or a
+\ data-stack slot. There are exactly two kinds and no third is anticipated - a
+\ machine-stack argument slot, a floating register and an immediate would each be
+\ a further kind with a further owner, and none of them exists in the chain.
 \ The floating-register interface is still a pair of sets, deliberately: the
 \ machine dialect has no floating value class yet, so an ordered floating list
 \ would be a promise rather than a declaration anything could honour, and a
 \ convention that interleaves integer and floating arguments needs the position
 \ of an argument to carry its class as well (dot
-\ habu-bind-floating-and-d2a16dbd). Which registers a Habu word's own convention
-\ uses is a further question again - design section 7.6 puts its inputs and
-\ outputs in data-stack slots, which are not registers at all (dot
-\ habu-enter-and-leave-2684e515).
+\ habu-bind-floating-and-d2a16dbd).
 \
 \ THE VOCABULARY IS THE ASSEMBLER'S, NOT A SECOND ONE. Every bound here is read
 \ off the instruction vocabulary that formal/Common/Insn.v models and
@@ -48,6 +54,16 @@
 \   - a register operand is a five-bit field, so a file holds 32 registers;
 \   - x18 is Darwin platform-reserved and `XREG?` refuses it in EVERY X-register
 \     operand slot, so no emitted routine can hold state there;
+\   - x19 holds the running engine's data-stack pointer. src/arch/arm64/mnem.f
+\     names it (`19 constant XDS`), src/habu/rt.f's push and pop are stores and
+\     loads through it, and src/habu/habu2.f measures the interpreter's stack
+\     depth as (XDS - S0) / 8 - so every word the engine calls finds its operands
+\     through this one register and leaves its results through it. It is not a
+\     register a routine may be given: a routine that wrote to it would move the
+\     caller's stack under the caller. It is excluded from the general-register
+\     mask for the same reason x18 is, which is what makes "the allocator may
+\     never hand out the data-stack pointer" a fact about what a contract can BE
+\     rather than a check some pass has to remember;
 \   - the D-register file has no reserved member, so all 32 are nameable;
 \   - a frame slot is reached by an unsigned-offset load or store, whose offset
 \     field is twelve bits scaled by the access width, and whose scale division
@@ -86,7 +102,7 @@
 \ renumbered without bumping SCHEMA.
 \
 \ FORGERY. `routine` is a public family, so its generated MAKE can assemble twelve
-\ field values that never passed the checked constructor, and `regseq` likewise
+\ field values that never passed the checked constructor, and `placeseq` likewise
 \ can assemble a cell that is not a list at all. Every word here whose result
 \ carries identity or a decision - VALIDATE, SAME?, ENCODE, DIGEST, the derived
 \ interface, preserved and writable sets, RETURNS?, CHECK-SLOT, and each of the
@@ -128,21 +144,41 @@ STRUCTURE fprs 0 DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
-\ ---- an ordered register list ------------------------------------------------
-\ What a set cannot say: which register argument two arrives in. A nominal
-\ one-field record again, but over a packed ORDERED list - element i is the
-\ register at position i and the length rides above them - so it cannot be
-\ confused with a set, with the other file's set, or with a bare integer.
+\ ---- what one position of a convention names ---------------------------------
+\ A place is where one argument arrives or one returned value leaves. There are
+\ two kinds and the closed family says so, which is what makes every reader of a
+\ position answer for both: a general register, or a slot of the caller's data
+\ stack. The two codes are stable wire codes - they are the kind bit of the
+\ packing below, so they ride in the digest - and neither may be renumbered
+\ without bumping SCHEMA.
+ENUM pkind DERIVE eq
+   gpr
+   dslot
+;ENUM
+
+\ ---- an ordered place list ---------------------------------------------------
+\ What a set cannot say: where argument two arrives. A nominal one-field record
+\ again, but over a packed ORDERED list - element i is the place at position i
+\ and the length rides above them - so it cannot be confused with a set, with the
+\ other file's set, or with a bare integer.
 \
 \ WHY IT IS PACKED INTO ONE CELL. A contract field has to be one cell: a value of
 \ more than one cell cannot be bound to a typed local today, which is the same
-\ reason the record below is flat. It fits without squeezing because a register
-\ operand is a five-bit field - the fact that makes a file 32 registers - so one
-\ cell holds twelve positions and their count with bits to spare. The packing is
-\ canonical: every bit past the last position is zero, so one list has exactly
-\ one spelling and the digest below agrees with SAME? rather than approximating
-\ it.
-STRUCTURE regseq 0 DERIVE eq
+\ reason the record below is flat. It fits without squeezing because a place is a
+\ kind bit over a five-bit payload - five bits being the register operand field,
+\ the fact that makes a file 32 registers - so one cell holds ten positions and
+\ their count with bits to spare.
+\
+\ WHY THE KIND RIDES IN THE ELEMENT AND NOT IN A SECOND LIST. A second parallel
+\ list would be a second field, and a contract with a place list of four and a
+\ kind list of three would be two statements about one convention that could
+\ disagree - exactly what making the interface ordered was for. Packing the kind
+\ into the element makes a place one value with one spelling: the packing stays
+\ canonical because every bit past the last position is zero, so one list has
+\ exactly one cell and A64EFF:DIGEST, which stores that cell, agrees with SAME?
+\ rather than approximating it. The cost is two positions: ten instead of the
+\ twelve a five-bit element held.
+STRUCTURE placeseq 0 DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
@@ -199,8 +235,8 @@ STRUCTURE traits 0 DERIVE eq
 \ `sp-delta` is the net stack-pointer change where control leaves, which is zero
 \ or negative.
 STRUCTURE routine 0
-   FIELD gpr-arg regseq
-   FIELD gpr-out regseq
+   FIELD gpr-arg placeseq
+   FIELD gpr-out placeseq
    FIELD gpr-clobber gprs
    FIELD fpr-live-in fprs
    FIELD fpr-result fprs
@@ -223,29 +259,35 @@ private
 5 constant REG-BITS       \ a register operand is a five-bit field
 1 REG-BITS lshift constant FILE-N        \ registers per file, which is that field's reach
 18 constant RESERVED-N    \ x18, refused by XREG? in every X-register operand slot
+19 constant DSTACK-N      \ x19, the running engine's data-stack pointer (src/arch/arm64/mnem.f `19 constant XDS`)
 30 constant LINK-N        \ x30, the link register, which has its own contract field
 31 constant ZERO-N        \ operand 31: the zero register, or the stack pointer
 
 \ The general registers a routine can hold state in: the whole file less the
-\ three the schema gives another owner.
+\ four the schema gives another owner.
 1 FILE-N lshift 1 -
    1 RESERVED-N lshift invert and
+   1 DSTACK-N lshift invert and
    1 LINK-N lshift invert and
    1 ZERO-N lshift invert and
 constant GPR-MASK
 
 1 FILE-N lshift 1 - constant FPR-MASK
 
-\ ---- how an ordered register list is packed ----------------------------------
-\ Positions from the bottom of the cell, five bits each, and the length in the
-\ bits left over at the top. How many positions there are is therefore not a
-\ number chosen here: it is how many of that field one cell holds once the length
-\ has its own room, and the length field is wide enough for it.
+\ ---- how an ordered place list is packed --------------------------------------
+\ Positions from the bottom of the cell, six bits each - one kind bit over a
+\ five-bit payload - and the length in the bits left over at the top. How many
+\ positions there are is therefore not a number chosen here: it is how many of
+\ that element one cell holds once the length has its own room, and the length
+\ field is wide enough for it.
 CELL 8 * constant SEQ-BITS               \ bits in the one cell a list occupies
 4 constant SEQ-LEN-BITS                  \ the length, above the last position
+REG-BITS 1+ constant PLACE-BITS          \ a payload and the bit that says what it is
 SEQ-BITS SEQ-LEN-BITS - constant SEQ-LEN-SHIFT
-SEQ-LEN-SHIFT REG-BITS / constant SEQ-MAX-N   \ positions one cell holds
-1 REG-BITS lshift 1 - constant REG-MASK
+SEQ-LEN-SHIFT PLACE-BITS / constant SEQ-MAX-N   \ positions one cell holds
+1 REG-BITS lshift 1 - constant PAY-MASK  \ the payload: a register number, or a data-stack slot index
+1 REG-BITS lshift constant KIND-BIT      \ set on a data-stack slot, clear on a register
+1 PLACE-BITS lshift 1 - constant PLACE-MASK
 1 SEQ-LEN-BITS lshift 1 - constant SEQ-LEN-MASK
 
 \ The unsigned-offset load and store field: twelve bits, scaled by the access
@@ -271,8 +313,8 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : F-BITS ( A64EFF:fprs -- n )     A64EFF-FPRS:UNMAKE ;
 : MK-T ( n -- A64EFF:traits )     A64EFF-TRAITS:MAKE ;
 : T-BITS ( A64EFF:traits -- n )   A64EFF-TRAITS:UNMAKE ;
-: MK-S ( n -- A64EFF:regseq )     A64EFF-REGSEQ:MAKE ;
-: S-BITS ( A64EFF:regseq -- n )   A64EFF-REGSEQ:UNMAKE ;
+: MK-S ( n -- A64EFF:placeseq )     A64EFF-PLACESEQ:MAKE ;
+: S-BITS ( A64EFF:placeseq -- n )   A64EFF-PLACESEQ:UNMAKE ;
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per closed family. These fix the digest; see the header.
@@ -317,25 +359,44 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : FREG-CK ( n -- n )
    dup 0 < over FILE-N >= or if E-A64EFF-FPR throw then ;
 
-\ ---- the rules of an ordered register list -----------------------------------
+\ ---- the rules of an ordered place list --------------------------------------
 \ Reading one packed list. Nothing below is public: a caller reaches a position
 \ through the readers further down, which validate the whole list first, so there
 \ is no route to an element of a list that was never checked.
 : SEQ-LEN-OF ( n -- n )
    SEQ-LEN-SHIFT rshift SEQ-LEN-MASK and ;
 
+\ The whole element at one position - kind bit and payload together - which is
+\ the value two positions are compared as, so one register and one data-stack
+\ slot with the same number are two different places.
 : SEQ-AT ( n n -- n )
    {: w:n p:n :}
-   w p REG-BITS * rshift REG-MASK and ;
+   w p PLACE-BITS * rshift PLACE-MASK and ;
+
+: PLACE-SLOT? ( n -- bool )
+   KIND-BIT and 0<> ;
+
+: PLACE-PAY ( n -- n )
+   PAY-MASK and ;
 
 \ A register a routine can hold state in, decided by the set rule rather than by
-\ a second list of what is forbidden: x18, x30 and 31 fail here because no
+\ a second list of what is forbidden: x18, x19, x30 and 31 fail here because no
 \ general-register set may name them either.
 : SEQ-REG-CK ( n -- )
    REG-CK 1 swap lshift GPR-CK drop ;
 
-\ Does the register at this position already appear before it? A caller cannot
-\ put two different values in one register, so one register is one position.
+\ A data-stack slot index the payload field holds. How deep a caller's stack may
+\ be is the caller's business; what this schema owns is that a position's payload
+\ is five bits wide, so an index past that has nowhere to be written down.
+: SEQ-SLOT-CK ( n -- )
+   dup 0 < over PAY-MASK > or if E-A64EFF-SEQ throw then drop ;
+
+: SEQ-PLACE-CK ( n -- )
+   dup PLACE-SLOT? if PLACE-PAY SEQ-SLOT-CK exit then
+   PLACE-PAY SEQ-REG-CK ;
+
+\ Does the place at this position already appear before it? A caller cannot put
+\ two different values in one place, so one place is one position.
 : SEQ-REPEATS? ( n n -- bool )
    {: w:n p:n :}
    false
@@ -344,15 +405,15 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    loop ;
 
 \ A packed list that can be a convention: a length the cell holds, every element
-\ a register a routine can hold state in, no register twice, and nothing left
-\ standing past the last position - which is what makes the packing canonical, so
-\ two lists are the same value exactly when their cells are equal.
+\ a place a caller could really use, no place twice, and nothing left standing
+\ past the last position - which is what makes the packing canonical, so two
+\ lists are the same value exactly when their cells are equal.
 : SEQ-CK ( n -- n )
    dup {: w:n :}
    w SEQ-LEN-OF {: len:n :}
    len SEQ-MAX-N > if E-A64EFF-SEQ throw then
    len 0 ?do
-      w i SEQ-AT SEQ-REG-CK
+      w i SEQ-AT SEQ-PLACE-CK
       w i SEQ-REPEATS? if E-A64EFF-SEQ throw then
    loop
    SEQ-MAX-N len ?do
@@ -360,12 +421,25 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    loop ;
 
 \ The set of registers a list names, which is how the two derived reader sets
-\ below are answered.
+\ below are answered. A data-stack slot is not a register and contributes
+\ nothing: a routine whose whole interface is data-stack slots reads, returns and
+\ destroys no register on account of its convention.
 : SEQ-MASK ( n -- n )
    dup SEQ-LEN-OF {: w:n len:n :}
    0
    len 0 ?do
-      1  w i SEQ-AT  lshift or
+      w i SEQ-AT dup PLACE-SLOT? if drop else PLACE-PAY 1 swap lshift or then
+   loop ;
+
+\ How many positions of a list are data-stack slots. Zero says every position is
+\ a register, the length says every position is a slot, and anything between says
+\ the list mixes the two kinds - which is a convention this file can describe and
+\ no pass of the chain has a rule for yet.
+: SEQ-SLOTS-OF ( n -- n )
+   dup SEQ-LEN-OF {: w:n len:n :}
+   0
+   len 0 ?do
+      w i SEQ-AT PLACE-SLOT? if 1+ then
    loop ;
 
 \ A result is a register the caller reads; a destroyed register holds nothing the
@@ -423,10 +497,13 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    if E-A64EFF-CONTROL throw then ;
 
 \ ---- canonical preimage ------------------------------------------------------
-\ Version 2: the two general-register interface slots hold ordered lists rather
-\ than sets, so a contract's preimage means something different than it did and
-\ the version says so instead of two schemas sharing one digest.
-2 constant SCHEMA
+\ Version 3: the two interface slots hold ordered lists of PLACES rather than of
+\ registers, so the same cell means something different than it did - a position
+\ is now six bits and one of them says whether the payload is a register or a
+\ data-stack slot - and the version says so instead of two schemas sharing one
+\ digest. Version 2 was the step before, where those slots became ordered lists
+\ rather than sets.
+3 constant SCHEMA
 14 constant SLOTS
 0 constant SLOT-TAG
 1 constant SLOT-SCHEMA
@@ -458,6 +535,14 @@ public
 : RESERVED-GPR ( -- n )   RESERVED-N ;
 : LINK-GPR ( -- n )       LINK-N ;
 : ZERO-GPR ( -- n )       ZERO-N ;
+
+\ The register the running engine keeps its data-stack pointer in. A pass that
+\ emits an access to the caller's stack asks for it here rather than writing 19,
+\ so the one place that says why no routine may hold state there is also the one
+\ place that says where it does appear. It is excluded from GPR-MASK above, so
+\ no general-register set and no place list can name it and no contract that
+\ hands it out can be built at all.
+: DSTACK-GPR ( -- n )     DSTACK-N ;
 
 \ The same operand number, named for what it means in the forms that reach a
 \ frame slot: there operand 31 is the stack pointer rather than the zero
@@ -516,44 +601,87 @@ public
    probe F-BITS FPR-CK {: want:n :}
    set F-BITS FPR-CK want and want = ;
 
-\ ---- ordered register lists --------------------------------------------------
+\ ---- ordered place lists ------------------------------------------------------
 \ The convention that names nothing: a routine whose arguments arrive, or whose
-\ results leave, in no register this contract has an opinion about. It is also
-\ what a routine that takes or returns nothing declares, and those are the same
+\ results leave, in no place this contract has an opinion about. It is also what
+\ a routine that takes or returns nothing declares, and those are the same
 \ statement - there is no position to say anything about either way.
-: SEQ-NONE ( -- A64EFF:regseq )   0 MK-S ;
+: SEQ-NONE ( -- A64EFF:placeseq )   0 MK-S ;
 
 \ How many positions one list can hold at all. A consumer that walks positions
 \ asks rather than assuming the packing.
 : SEQ-LIMIT ( -- n )              SEQ-MAX-N ;
 
-\ The list with one more register after its last position. A register the list
-\ already names is refused here rather than appended: two positions in one
-\ register is a convention no caller could satisfy - it would have to put two
-\ different values in one place - and that is exactly the shape a mistyped
-\ declaration takes.
-: SEQ-WITH ( A64EFF:regseq n -- A64EFF:regseq )
-   {: s:regseq r:n :}
+\ The largest data-stack slot index a position can name, which is the reach of a
+\ position's payload field. A consumer placing slots asks rather than assuming.
+: SEQ-SLOT-LIMIT ( -- n )         PAY-MASK ;
+
+private
+
+\ The list with one more place after its last position. A place the list already
+\ names is refused here rather than appended: two positions in one place is a
+\ convention no caller could satisfy - it would have to put two different values
+\ in one place - and that is exactly the shape a mistyped declaration takes.
+: SEQ-PUT ( A64EFF:placeseq n -- A64EFF:placeseq )
+   {: s:placeseq e:n :}
    s S-BITS SEQ-CK {: w:n :}
    w SEQ-LEN-OF {: len:n :}
    len SEQ-MAX-N >= if E-A64EFF-SEQ throw then
-   r SEQ-REG-CK
-   w  r len REG-BITS * lshift or  1 SEQ-LEN-SHIFT lshift +
+   e SEQ-PLACE-CK
+   w  e len PLACE-BITS * lshift or  1 SEQ-LEN-SHIFT lshift +
    SEQ-CK MK-S ;
 
-: SEQ-LEN ( A64EFF:regseq -- n )
+public
+
+\ The list with one more REGISTER place after its last position.
+: SEQ-WITH ( A64EFF:placeseq n -- A64EFF:placeseq )
+   REG-CK SEQ-PUT ;
+
+\ The list with one more DATA-STACK SLOT place after its last position. This is
+\ the whole of what design section 7.6's convention needs to be sayable: argument
+\ i arrives in slot i, result j leaves in slot j.
+: SEQ-WITH-SLOT ( A64EFF:placeseq n -- A64EFF:placeseq )
+   dup 0 < over PAY-MASK > or if E-A64EFF-SEQ throw then
+   KIND-BIT or SEQ-PUT ;
+
+: SEQ-LEN ( A64EFF:placeseq -- n )
    S-BITS SEQ-CK SEQ-LEN-OF ;
 
-\ The register at one position. A position the list does not have is refused
-\ rather than answered with whatever the packing holds there.
-: SEQ@ ( A64EFF:regseq n -- n )
-   {: s:regseq p:n :}
+private
+
+: SEQ-ELEM ( A64EFF:placeseq n -- n )
+   {: s:placeseq p:n :}
    s S-BITS SEQ-CK {: w:n :}
    p 0 < p w SEQ-LEN-OF >= or if E-A64EFF-SEQ throw then
    w p SEQ-AT ;
 
-\ Which registers a list names, forgetting the order.
-: SEQ-SET ( A64EFF:regseq -- A64EFF:gprs )
+public
+
+\ Which kind of place one position names. Every reader of a position goes through
+\ this or is refused: there is no word that answers a payload without saying what
+\ it is, so a pass that treated a slot index as a register number would have had
+\ to ask for the register of a slot and be told no.
+: SEQ-KIND@ ( A64EFF:placeseq n -- A64EFF:pkind )
+   SEQ-ELEM PLACE-SLOT? if A64EFF-PKIND:DSLOT exit then A64EFF-PKIND:GPR ;
+
+\ The register at one position. A position holding a data-stack slot is refused
+\ rather than answered with an index that would read as a register number.
+: SEQ-REG@ ( A64EFF:placeseq n -- n )
+   SEQ-ELEM dup PLACE-SLOT? if E-A64EFF-KIND throw then PLACE-PAY ;
+
+\ The data-stack slot index at one position, refused the same way in reverse.
+: SEQ-SLOT@ ( A64EFF:placeseq n -- n )
+   SEQ-ELEM dup PLACE-SLOT? 0= if E-A64EFF-KIND throw then PLACE-PAY ;
+
+\ How many positions of the list are data-stack slots. Zero and the whole length
+\ are the two homogeneous conventions; anything between mixes the kinds, which is
+\ describable here and has no lowering rule anywhere in the chain yet.
+: SEQ-SLOTS ( A64EFF:placeseq -- n )
+   S-BITS SEQ-CK SEQ-SLOTS-OF ;
+
+\ Which registers a list names, forgetting the order. Data-stack slots are not
+\ registers and are not in it.
+: SEQ-SET ( A64EFF:placeseq -- A64EFF:gprs )
    S-BITS SEQ-CK SEQ-MASK MK-G ;
 
 \ ---- traits ------------------------------------------------------------------
@@ -575,8 +703,8 @@ public
 \ ---- construction and validation ---------------------------------------------
 \ The production entry point. A combination that cannot be true of one routine
 \ throws a named error and no contract value is produced.
-: ROUTINE ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine )
-   {: gi:regseq gr:regseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
+: ROUTINE ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine )
+   {: gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
       l:link c:control t:traits size:n delta:n :}
    gi S-BITS SEQ-CK drop
    gr S-BITS SEQ-CK SEQ-MASK gc G-BITS GPR-CK ROLE-CK
@@ -596,10 +724,10 @@ public
 
 \ ---- field readers -----------------------------------------------------------
 \ A projection of a value the caller already holds; nothing here revalidates.
-: ARGS@ ( A64EFF:routine -- A64EFF:regseq )
+: ARGS@ ( A64EFF:routine -- A64EFF:placeseq )
    A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop drop drop drop ;
 
-: RESULTS@ ( A64EFF:routine -- A64EFF:regseq )
+: RESULTS@ ( A64EFF:routine -- A64EFF:placeseq )
    A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop drop drop nip ;
 
 : GPR-CLOBBER@ ( A64EFF:routine -- A64EFF:gprs )
@@ -650,7 +778,7 @@ public
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    drop drop drop                  \ the floating sets
-   {: gi:regseq gr:regseq gc:gprs :}
+   {: gi:placeseq gr:placeseq gc:gprs :}
    GPR-MASK gr S-BITS SEQ-MASK invert and gc G-BITS invert and MK-G ;
 
 \ Every register the routine may WRITE: the ones it destroys, plus the ones it
@@ -663,7 +791,7 @@ public
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    drop drop drop                  \ the floating sets
-   {: gi:regseq gr:regseq gc:gprs :}
+   {: gi:placeseq gr:placeseq gc:gprs :}
    gr S-BITS SEQ-MASK gc G-BITS or MK-G ;
 
 : FPR-PRESERVED ( A64EFF:routine -- A64EFF:fprs )
@@ -696,13 +824,13 @@ public
 \ contract cannot be compared as if it were a declarable routine.
 : SAME? ( A64EFF:routine A64EFF:routine -- bool )
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: ygi:regseq ygr:regseq ygc:gprs yfi:fprs yfr:fprs yfc:fprs yz:nzcv
+   {: ygi:placeseq ygr:placeseq ygc:gprs yfi:fprs yfr:fprs yfc:fprs yz:nzcv
       yl:link yc:control yt:traits ysize:n ydelta:n :}
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: xgi:regseq xgr:regseq xgc:gprs xfi:fprs xfr:fprs xfc:fprs xz:nzcv
+   {: xgi:placeseq xgr:placeseq xgc:gprs xfi:fprs xfr:fprs xfc:fprs xz:nzcv
       xl:link xc:control xt:traits xsize:n xdelta:n :}
-   xgi ygi A64EFF-REGSEQ:EQ
-   xgr ygr A64EFF-REGSEQ:EQ and
+   xgi ygi A64EFF-PLACESEQ:EQ
+   xgr ygr A64EFF-PLACESEQ:EQ and
    xgc ygc A64EFF-GPRS:EQ and
    xfi yfi A64EFF-FPRS:EQ and
    xfr yfr A64EFF-FPRS:EQ and
@@ -718,7 +846,7 @@ public
 \ next ENCODE call; DIGEST is the copy-free consumer.
 : ENCODE ( A64EFF:routine -- ptr u8 n )
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:regseq gr:regseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
+   {: gi:placeseq gr:placeseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
       l:link c:control t:traits size:n delta:n :}
    CDIGEST:TAG-A64-ROUTINE PRE SLOT-TAG CDIGEST:SLOT!
    SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!

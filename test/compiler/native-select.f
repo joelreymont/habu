@@ -244,11 +244,22 @@ create TXT
    IR-BUILD:PLAN-DEFAULT
    CC A64IR:NEW-BUILDER ;
 
+\ The contract these fixtures select under. Every one of them is about the BODY
+\ of a selection, so the convention names no place at all - the selector then
+\ adds no entry and no exit, and what the case reads back is exactly what the
+\ source module's operations selected to. The data-stack convention has its own
+\ cases further down, which is where an entry and an exit are the subject.
+: NO-PLACES ( -- A64EFF:routine )
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE A64EFF:GPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
 \ Bind the source dialect while the module is still live, freeze it, and select.
 : SELECTED ( -- IR-BUILD:module )
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   CC m A64-BUILDER TXT TXT-N A64SEL:SELECT ;
+   CC m A64-BUILDER TXT TXT-N NO-PLACES A64SEL:SELECT ;
 
 \ ---- reading the selected module ---------------------------------------------
 1 TYPED-BUFFER R-KEY IR-ID:ir-module-key
@@ -430,7 +441,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    HIR-MOD
    BUILD-SQUARE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   CC m A64-BUILDER TXT TXT-N A64SEL:SELECT drop ;
+   CC m A64-BUILDER TXT TXT-N NO-PLACES A64SEL:SELECT drop ;
 
 : TWICE-BIND-BODY ( IR-CTX:ctx -- )
    HIR-MOD
@@ -442,7 +453,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    BUILD-SQUARE
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   CC m A64-BUILDER OTHER-TXT A64SEL:SELECT drop ;
+   CC m A64-BUILDER OTHER-TXT NO-PLACES A64SEL:SELECT drop ;
 
 : WRONG-DIALECT-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -457,7 +468,7 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    CC BB  OTHER-TXT  IR-BUILD:ADD-SOURCE drop
    CC BB A64SEL:BIND-SOURCE
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
-   CC m A64-BUILDER TXT TXT-N A64SEL:SELECT drop ;
+   CC m A64-BUILDER TXT TXT-N NO-PLACES A64SEL:SELECT drop ;
 
 : EXTRA-OPCODE-BODY ( IR-CTX:ctx -- )
    HIR-MOD

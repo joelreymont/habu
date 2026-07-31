@@ -134,6 +134,8 @@ variable N-VALS
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 
 create D-AT VMAX cells allot         \ where the module says each value is written
 create L-AT VMAX cells allot         \ where the module says each value is last read
@@ -165,16 +167,15 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    IR-ID:VALUE-LOCAL
    dup 0 < over VMAX >= or if E-A64RAV-COVER throw then ;
 
-\ ---- what an operation says about the frame ----------------------------------
-\ Nothing below asks which opcode an operation is. A frame access declares a
-\ memory effect in its own schema and carries its slot under the dialect's slot
-\ key; an operation that reserves or releases the frame declares a memory effect
-\ and carries no slot. Both are read off the declaration, so a form added to the
-\ dialect is judged by what it says about itself.
-: PURE? ( IR-ID:ir-op-id -- bool )
-   V-SCHR VW swap OPCODE-AT IR-SCHEMA:FEFFECT@
-   IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ ;
-
+\ ---- what an operation says about the memory it reaches -----------------------
+\ Nothing below asks which opcode an operation is. Every form that touches memory
+\ carries its offset or its size under one of the dialect's four keys, and which
+\ key it is says which region the access is in: a frame slot and a frame size are
+\ counted from the machine stack pointer, a data-stack slot and a data-stack
+\ adjustment from the engine's data-stack pointer. Reading the key rather than
+\ the opcode is what keeps a frame rule from ever being applied to a data-stack
+\ access, and it is why a form added to the dialect is judged by what it says
+\ about itself.
 : ATTR-INT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    NOSLOT
@@ -188,6 +189,22 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 
 : SLOT-OF ( IR-ID:ir-op-id -- n )    0 BND-SLOT @ ATTR-INT ;
 : FRAME-OF ( IR-ID:ir-op-id -- n )   0 BND-FRAME @ ATTR-INT ;
+: DSLOT-OF ( IR-ID:ir-op-id -- n )   0 BND-DSLOT @ ATTR-INT ;
+: DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
+
+\ Which region an operation reaches, read off the keys the dialect declares for
+\ each family rather than off an opcode name. A frame access counts its offset
+\ from the machine stack pointer and a data-stack access counts its offset from
+\ the engine's data-stack pointer, so an operation that carries a frame key is in
+\ the frame and one that carries a data-stack key is in the caller's stack, and
+\ no check about one can ever be applied to the other.
+: FRAME-TOUCH? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id FRAME-OF NOSLOT <>  id SLOT-OF NOSLOT <>  or ;
+
+: DSTACK-TOUCH? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id DBYTES-OF NOSLOT <>  id DSLOT-OF NOSLOT <>  or ;
 
 \ Does this operation write a value into a slot, or read one out of one?
 : STORES? ( IR-ID:ir-op-id -- bool )
@@ -357,27 +374,45 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 \ A contract naming more positions than the module has arguments or returned
 \ values is not this module's contract and is refused before any position is
 \ compared.
-: ARG-CK ( IR-ID:ir-block-id A64EFF:regseq -- )
-   {: bk:IR-ID:ir-block-id args:A64EFF:regseq :}
-   args A64EFF:SEQ-LEN {: n:n :}
+\ How many positions of one side are register places. Re-derived here rather than
+\ read out of the allocator, for the same reason every other fact is: a side that
+\ mixes register places with data-stack places has no pairing rule anywhere in
+\ this chain, and a side declared entirely in data-stack slots constrains no
+\ register at all - the selector turned every one of those places into an
+\ operation, and DSTACK-CK below is what judges those.
+: REG-POSITIONS ( A64EFF:placeseq -- n )
+   {: s:A64EFF:placeseq :}
+   s A64EFF:SEQ-LEN {: len:n :}
+   s A64EFF:SEQ-SLOTS {: sl:n :}
+   sl 0= if len exit then
+   sl len <> if E-A64RAV-PLACE throw then
+   0 ;
+
+: ARG-CK ( IR-ID:ir-block-id A64EFF:placeseq -- )
+   {: bk:IR-ID:ir-block-id args:A64EFF:placeseq :}
+   args A64EFF:SEQ-SLOTS 0<> bk ARG-COUNT 0<> and
+   if E-A64RAV-PLACE throw then
+   args REG-POSITIONS {: n:n :}
    bk ARG-COUNT n < if E-A64RAV-FIXED throw then
    n 0 ?do
       bk i ARG-AT SLOT A64RA:CLAIM@
-      args i A64EFF:SEQ@ <> if E-A64RAV-FIXED throw then
+      args i A64EFF:SEQ-REG@ <> if E-A64RAV-FIXED throw then
    loop ;
 
 \ Where control leaves, the register holding returned value j is the one declared
 \ for position j. The terminator is read off the block's own row, and its
 \ operands are the values the routine returns, so this is the assignment's answer
 \ at exactly the instant the convention talks about.
-: OUT-CK ( IR-ID:ir-block-id A64EFF:regseq -- )
-   {: bk:IR-ID:ir-block-id outs:A64EFF:regseq :}
-   outs A64EFF:SEQ-LEN {: n:n :}
+: OUT-CK ( IR-ID:ir-block-id A64EFF:placeseq -- )
+   {: bk:IR-ID:ir-block-id outs:A64EFF:placeseq :}
    V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ {: id:IR-ID:ir-op-id :}
+   outs A64EFF:SEQ-SLOTS 0<> id OPERANDS-OF 0<> and
+   if E-A64RAV-PLACE throw then
+   outs REG-POSITIONS {: n:n :}
    id OPERANDS-OF n < if E-A64RAV-FIXED throw then
    n 0 ?do
       id i OPERAND-AT SLOT A64RA:CLAIM@
-      outs i A64EFF:SEQ@ <> if E-A64RAV-FIXED throw then
+      outs i A64EFF:SEQ-REG@ <> if E-A64RAV-FIXED throw then
    loop ;
 
 \ ---- the frame -----------------------------------------------------------------
@@ -390,13 +425,12 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    {: bk:IR-ID:ir-block-id :}
    false
    bk OP-COUNT 0 ?do
-      bk i OP-AT PURE? 0= if drop true leave then
+      bk i OP-AT FRAME-TOUCH? if drop true leave then
    loop ;
 
 : FRAME-AT? ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id at:n want:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
-   id PURE? if E-A64RAV-FRAME throw then
    id SLOT-OF NOSLOT <> if E-A64RAV-FRAME throw then
    id FRAME-OF want <> if E-A64RAV-FRAME throw then ;
 
@@ -409,8 +443,75 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    bk n 2 - want FRAME-AT?
    n 0 ?do
       i 0 <> i n 2 - <> and if
-         bk i OP-AT {: id:IR-ID:ir-op-id :}
-         id PURE? 0= id SLOT-OF NOSLOT = and if E-A64RAV-FRAME throw then
+         bk i OP-AT FRAME-OF NOSLOT <> if E-A64RAV-FRAME throw then
+      then
+   loop ;
+
+\ ---- the data stack ----------------------------------------------------------
+\ A routine whose convention names data-stack slots reaches the caller's stack
+\ with a fixed sequence, and this is where the module is measured against the
+\ declaration that sequence came from. Four facts are decidable from one module
+\ and one contract, and all four are checked: the pointer is moved down over
+\ exactly the arguments the contract declares and up over exactly the results;
+\ each load names the slot the argument place at its position names, in that
+\ order; each store names the slot the result place at its position names, in
+\ that order; and nothing else in the block touches the data stack.
+\
+\ WHAT IS NOT DECIDABLE HERE, and its owner. Whether the value a store publishes
+\ is the value the program computed for that result is a statement about the
+\ module the selector read, and this file is handed one module - the same gap the
+\ spill lowering has (dot habu-prove-the-spill-0294e0e8), with the same owner
+\ (dot habu-prove-the-data-stack-8f0d3f65).
+\
+\ THE TWO REGIONS DO NOT MEET YET. A routine that both reaches the caller's data
+\ stack and reserves a frame would need one operation at position zero to be both
+\ the frame reserve and the data-stack take, and there is no rule here for
+\ nesting them. It is refused by name rather than checked half-way, and no pass
+\ in the chain builds one (dot habu-spill-a-data-stack-6c1b73f2).
+: DTAKE-AT? ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id at:n want:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id DSLOT-OF NOSLOT <> if E-A64RAV-DSTACK throw then
+   id DBYTES-OF want <> if E-A64RAV-DSTACK throw then ;
+
+: DSLOT-AT? ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id at:n want:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id DBYTES-OF NOSLOT <> if E-A64RAV-DSTACK throw then
+   id DSLOT-OF want <> if E-A64RAV-DSTACK throw then ;
+
+\ Every position of the block that is allowed to touch the data stack: the take
+\ at the top, the loads after it, the stores in front of the publish, and the
+\ publish itself.
+: DSTACK-POS? ( n n n n -- bool )
+   {: n:n a:n r:n at:n :}
+   at 0 = if true exit then
+   at a <= if true exit then
+   at n 2 - = if true exit then
+   at n 2 - r - >= at n 2 - < and ;
+
+: DSTACK-CK ( IR-ID:ir-block-id A64EFF:placeseq A64EFF:placeseq -- )
+   {: bk:IR-ID:ir-block-id args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   args A64EFF:SEQ-SLOTS {: a:n :}
+   outs A64EFF:SEQ-SLOTS {: r:n :}
+   bk OP-COUNT {: n:n :}
+   a 0= r 0= and if
+      n 0 ?do bk i OP-AT DSTACK-TOUCH? if E-A64RAV-DSTACK throw then loop
+      exit
+   then
+   bk FRAMES? if E-A64RAV-DSTACK throw then
+   n a r + 3 + < if E-A64RAV-DSTACK throw then
+   bk 0  a A64IR:SLOT-WIDTH *  DTAKE-AT?
+   a 0 ?do
+      bk i 1+  args i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
+   loop
+   bk n 2 -  r A64IR:SLOT-WIDTH *  DTAKE-AT?
+   r 0 ?do
+      bk  n 2 - r - i +  outs i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
+   loop
+   n 0 ?do
+      n a r i DSTACK-POS? 0= if
+         bk i OP-AT DSTACK-TOUCH? if E-A64RAV-DSTACK throw then
       then
    loop ;
 
@@ -441,7 +542,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 \ than one cell cannot be held in a local.
 : SLOT-CK ( IR-ID:ir-block-id A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
+   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
@@ -500,9 +601,9 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
-: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:regseq A64EFF:regseq n -- IR-ID:ir-block-id )
+: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq n -- IR-ID:ir-block-id )
    {: m:IR-BUILD:module pool:A64EFF:gprs
-      args:A64EFF:regseq outs:A64EFF:regseq frame:n :}
+      args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    ST-NONE ST !
    BND-TAKE
    m BND-MODULE-CK
@@ -520,6 +621,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    bk TIE-CK
    bk args ARG-CK
    bk outs OUT-CK
+   bk args outs DSTACK-CK
    bk frame FRAME-CK
    bk FLOW-CK
    bk ;
@@ -541,8 +643,10 @@ public
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b A64IR:GPR-TYPE  0 BND-GPR !
    c b A64IR:MEM-TYPE  0 BND-MEM !
-   c b A64IR:KEY-SLOT  0 BND-SLOT !
-   c b A64IR:KEY-FRAME 0 BND-FRAME !
+   c b A64IR:KEY-SLOT   0 BND-SLOT !
+   c b A64IR:KEY-FRAME  0 BND-FRAME !
+   c b A64IR:KEY-DSLOT  0 BND-DSLOT !
+   c b A64IR:KEY-DBYTES 0 BND-DBYTES !
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------
@@ -550,7 +654,7 @@ public
 \ routine contract, or refuse it by name. Nothing is answered until this returns.
 : ACCEPT ( IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
+   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}

@@ -135,12 +135,19 @@
 \ that could not write the register its result leaves in could not compute the
 \ result at all.
 \
-\ WHAT IS STILL NOT BOUND. A Habu word takes its inputs and publishes its outputs
-\ through canonical data-stack slots (design section 7.6), and this dialect has
-\ no way to name the data-stack pointer, so the convention bound here is the
-\ other one: the C-ABI leaf routines the chain emits today, whose interface is
-\ registers. A place that is not a register cannot be declared yet, and that is
-\ the seam of dot habu-enter-and-leave-2684e515.
+\ A PLACE THAT IS NOT A REGISTER IS NOT THIS PASS'S BUSINESS. A convention names
+\ a PLACE per position, and a place is a register or a slot of the caller's data
+\ stack (design section 7.6). A register place is a constraint on the allocation
+\ and is pre-coloured here. A data-stack place is not: the selector turned it
+\ into a load at the top of the block or a store in front of the return, so by
+\ the time this pass runs the value it names is an ordinary value of the module
+\ with no fixed register at all. So the two lists are read for their REGISTER
+\ positions, and a side declared in slots contributes none. Two things are
+\ refused rather than allocated around: a side that mixes the kinds, which no
+\ pass of this chain has a lowering for, and a side declared in slots on a module
+\ that still carries its interface as block arguments or terminator operands -
+\ which means the lowering never happened, and allocating it would leave the
+\ arguments sitting in registers nobody put them in.
 \
 \ WHAT THE ALLOCATION IS, AND WHO MAY READ IT. The product is not a new module:
 \ nothing about the operations changes, only which register each value sits in.
@@ -499,15 +506,31 @@ create PL-VAL PLMAX cells allot
 \ ---- the routine's own fixed registers ---------------------------------------
 \ The contract's two ordered lists, read once into tables this walk can index by
 \ position. Nothing here decides anything about them: the contract already
-\ refused a list that could not be a convention - a register no routine may hold
-\ state in, or one register at two positions - so what is left to judge is
-\ whether THIS allocation can honour them.
-: FIXED! ( A64EFF:regseq A64EFF:regseq -- )
-   {: args:A64EFF:regseq outs:A64EFF:regseq :}
-   args A64EFF:SEQ-LEN ARGS-N !
-   outs A64EFF:SEQ-LEN OUTS-N !
-   ARGS-N @ 0 ?do args i A64EFF:SEQ@  i cells A-REG + ! loop
-   OUTS-N @ 0 ?do outs i A64EFF:SEQ@  i cells O-REG + ! loop ;
+\ refused a list that could not be a convention - a place no caller could use, or
+\ one place at two positions - so what is left to judge is whether THIS allocation
+\ can honour them.
+
+\ How many positions of one side are register places, which is how many of them
+\ constrain this allocation. A side declared entirely in data-stack slots
+\ constrains nothing: the selector already turned every one of those places into
+\ a load or a store, so the values are ordinary values by the time they reach
+\ here. A side that mixes the two kinds is refused, because pairing position i of
+\ a mixed list with argument i of a module some of whose arguments are no longer
+\ arguments is a rule nothing in this chain has.
+: REG-POSITIONS ( A64EFF:placeseq -- n )
+   {: s:A64EFF:placeseq :}
+   s A64EFF:SEQ-LEN {: len:n :}
+   s A64EFF:SEQ-SLOTS {: sl:n :}
+   sl 0= if len exit then
+   sl len <> if E-A64RA-PLACE throw then
+   0 ;
+
+: FIXED! ( A64EFF:placeseq A64EFF:placeseq -- )
+   {: args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   args REG-POSITIONS ARGS-N !
+   outs REG-POSITIONS OUTS-N !
+   ARGS-N @ 0 ?do args i A64EFF:SEQ-REG@  i cells A-REG + ! loop
+   OUTS-N @ 0 ?do outs i A64EFF:SEQ-REG@  i cells O-REG + ! loop ;
 
 \ A declared register the routine may not write is a contract that contradicts
 \ itself for this allocation: the argument could not be held and the result could
@@ -530,6 +553,19 @@ create PL-VAL PLMAX cells allot
    {: bk:IR-ID:ir-block-id :}
    bk ARG-COUNT ARGS-N @ < if E-A64RA-FIXED throw then
    bk TERM-OF OPERANDS-OF OUTS-N @ < if E-A64RA-FIXED throw then ;
+
+\ A side declared in data-stack slots is a side the module no longer carries in
+\ registers at all: the selector turned each place into a load at the top of the
+\ block or a store in front of the return, so the block has no argument and the
+\ terminator no operand for it. A module that still carries them has not been
+\ through that step, and allocating it would hand the arguments registers no
+\ caller ever wrote to.
+: LOWERED-CK ( IR-ID:ir-block-id A64EFF:placeseq A64EFF:placeseq -- )
+   {: bk:IR-ID:ir-block-id args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   args A64EFF:SEQ-SLOTS 0<> bk ARG-COUNT 0<> and
+   if E-A64RA-PLACE throw then
+   outs A64EFF:SEQ-SLOTS 0<> bk TERM-OF OPERANDS-OF 0<> and
+   if E-A64RA-PLACE throw then ;
 
 \ Which register each returned value has to be in where control leaves. A value
 \ returned at two declared positions would have to be in two registers at once,
@@ -811,7 +847,7 @@ create PL-VAL PLMAX cells allot
 \ the reach of the offset field - so the decision is made there and not here.
 : SLOTS-CK ( A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
+   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
@@ -885,9 +921,9 @@ public
 \ routine that may destroy nothing allocates nothing; the walk seals a claim per
 \ value, which src/compiler/native/regalloc-verify.f then has to accept before
 \ anything may act on it.
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:regseq A64EFF:regseq n -- )
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs
-      args:A64EFF:regseq outs:A64EFF:regseq frame:n :}
+      args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
@@ -902,6 +938,7 @@ public
    BLOCK-OF {: bk:IR-ID:ir-block-id :}
    bk 0 S-BLK !
    bk FIXED-ARITY-CK
+   bk args outs LOWERED-CK
    bk SCAN-LIVE
    COVER-CK
    bk WANTS!
@@ -909,7 +946,7 @@ public
 
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
+   {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
       t:A64EFF:traits size:n delta:n :}

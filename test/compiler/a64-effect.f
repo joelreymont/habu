@@ -75,14 +75,14 @@ private
 \ ---- named register lists ----------------------------------------------------
 \ One position, and two, so a case can say which register arrives where without
 \ spelling the packing out.
-: SQ ( n -- A64EFF:regseq )
+: SQ ( n -- A64EFF:placeseq )
    A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH ;
 
-: SQ2 ( n n -- A64EFF:regseq )
+: SQ2 ( n n -- A64EFF:placeseq )
    {: a:n b:n :}
    a SQ b A64EFF:SEQ-WITH ;
 
-: SQ-NONE ( -- A64EFF:regseq )   A64EFF:SEQ-NONE ;
+: SQ-NONE ( -- A64EFF:placeseq )   A64EFF:SEQ-NONE ;
 
 \ ---- forged set values -------------------------------------------------------
 \ A set the generated constructor assembled without passing the checked one, so
@@ -95,7 +95,7 @@ private
 \ Each fixes the fields a case is not about, so a case reads as the one fact it
 \ is making.
 
-: R-GPR ( A64EFF:regseq A64EFF:regseq A64EFF:gprs -- A64EFF:routine )
+: R-GPR ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs -- A64EFF:routine )
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -119,8 +119,8 @@ private
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED l c A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
-: R-RESULT ( A64EFF:regseq A64EFF:fprs A64EFF:nzcv A64EFF:control -- A64EFF:routine )
-   {: gr:regseq fr:fprs z:nzcv c:control :}
+: R-RESULT ( A64EFF:placeseq A64EFF:fprs A64EFF:nzcv A64EFF:control -- A64EFF:routine )
+   {: gr:placeseq fr:fprs z:nzcv c:control :}
    SQ-NONE gr A64EFF:GPR-NONE
    A64EFF:FPR-NONE fr A64EFF:FPR-NONE
    z A64EFF-LINK:PRESERVED c A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -147,7 +147,7 @@ private
    4 A64EFF:SLOT-REACH IMM12-LIM 1- 4 * T=
    1 A64EFF:SLOT-REACH IMM12-LIM 1- T=
    8 A64EFF:SLOT-REACH dup A64EFF:SP-ALIGN mod - A64EFF:FRAME-MAX T=
-   A64EFF:GPR-ALL A64EFF:GPRS-N $3FFBFFFF T=
+   A64EFF:GPR-ALL A64EFF:GPRS-N $3FF3FFFF T=
    A64EFF:FPR-ALL A64EFF:FPRS-N $FFFFFFFF T= ;
 
 \ ---- 2a. the register vocabulary ---------------------------------------------
@@ -159,16 +159,18 @@ private
    0 A64EFF:GPR-SET A64EFF:GPRS-N 0 T=
    X0 A64EFF:GPRS-N 1 T=
    [: 1 18 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 1 19 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 1 30 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 1 31 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 1 32 lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 18 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 19 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 30 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 31 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: 32 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    [: -1 A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
    17 A64EFF:GPR-REG A64EFF:GPRS-N 1 17 lshift T=
-   19 A64EFF:GPR-REG A64EFF:GPRS-N 1 19 lshift T=
+   20 A64EFF:GPR-REG A64EFF:GPRS-N 1 20 lshift T=
    29 A64EFF:GPR-REG A64EFF:GPRS-N 1 29 lshift T=
    18 A64EFF:FPR-REG A64EFF:FPRS-N 1 18 lshift T=
    31 A64EFF:FPR-REG A64EFF:FPRS-N 1 31 lshift T=
@@ -209,7 +211,7 @@ private
 \ ---- 2b2. the ordered register list -------------------------------------------
 \ A list of as many positions as one can hold, so the limit is reached by
 \ appending rather than by a number written here.
-: LONG-SEQ ( n -- A64EFF:regseq )
+: LONG-SEQ ( n -- A64EFF:placeseq )
    {: n:n :}
    SQ-NONE
    n 0 ?do i A64EFF:SEQ-WITH loop ;
@@ -218,18 +220,18 @@ private
    SQ-NONE A64EFF:SEQ-LEN 0 T=
    SQ-NONE A64EFF:SEQ-SET A64EFF:GPRS-N 0 T=
    0 SQ A64EFF:SEQ-LEN 1 T=
-   0 SQ 0 A64EFF:SEQ@ 0 T=
+   0 SQ 0 A64EFF:SEQ-REG@ 0 T=
    0 1 SQ2 A64EFF:SEQ-LEN 2 T=
-   0 1 SQ2 0 A64EFF:SEQ@ 0 T=
-   0 1 SQ2 1 A64EFF:SEQ@ 1 T=
-   2 0 SQ2 0 A64EFF:SEQ@ 2 T=
-   2 0 SQ2 1 A64EFF:SEQ@ 0 T=
+   0 1 SQ2 0 A64EFF:SEQ-REG@ 0 T=
+   0 1 SQ2 1 A64EFF:SEQ-REG@ 1 T=
+   2 0 SQ2 0 A64EFF:SEQ-REG@ 2 T=
+   2 0 SQ2 1 A64EFF:SEQ-REG@ 0 T=
    0 1 SQ2 A64EFF:SEQ-SET A64EFF:GPRS-N X0 X1 A64EFF:GPR-WITH A64EFF:GPRS-N T=
    2 0 SQ2 A64EFF:SEQ-SET A64EFF:GPRS-N X0 X2 A64EFF:GPR-WITH A64EFF:GPRS-N T=
    A64EFF:SEQ-LIMIT LONG-SEQ A64EFF:SEQ-LEN A64EFF:SEQ-LIMIT T=
-   A64EFF:SEQ-LIMIT LONG-SEQ A64EFF:SEQ-LIMIT 1- A64EFF:SEQ@ A64EFF:SEQ-LIMIT 1- T=
-   17 SQ 0 A64EFF:SEQ@ 17 T=
-   29 SQ 0 A64EFF:SEQ@ 29 T=
+   A64EFF:SEQ-LIMIT LONG-SEQ A64EFF:SEQ-LIMIT 1- A64EFF:SEQ-REG@ A64EFF:SEQ-LIMIT 1- T=
+   17 SQ 0 A64EFF:SEQ-REG@ 17 T=
+   29 SQ 0 A64EFF:SEQ-REG@ 29 T=
    [: 0 0 SQ2 A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
    [: 2 1 SQ2 1 A64EFF:SEQ-WITH A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
    [: 18 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
@@ -238,15 +240,74 @@ private
    [: 32 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
    [: -1 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
    [: A64EFF:SEQ-LIMIT 1+ LONG-SEQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: SQ-NONE 0 A64EFF:SEQ@ drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: 0 SQ 1 A64EFF:SEQ@ drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: 0 SQ -1 A64EFF:SEQ@ drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: 1 A64EFF-REGSEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: 15 60 lshift A64EFF-REGSEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
-   [: 1 60 lshift 18 or A64EFF-REGSEQ:MAKE A64EFF:SEQ-LEN drop ;]
+   [: SQ-NONE 0 A64EFF:SEQ-REG@ drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 0 SQ 1 A64EFF:SEQ-REG@ drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 0 SQ -1 A64EFF:SEQ-REG@ drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 1 A64EFF-PLACESEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 15 60 lshift A64EFF-PLACESEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 1 60 lshift 18 or A64EFF-PLACESEQ:MAKE A64EFF:SEQ-LEN drop ;]
       E-A64EFF-GPR TTHROWSQ
-   [: -1 A64EFF-REGSEQ:MAKE A64EFF:SEQ-SET A64EFF:GPRS-N drop ;]
+   [: -1 A64EFF-PLACESEQ:MAKE A64EFF:SEQ-SET A64EFF:GPRS-N drop ;]
       E-A64EFF-SEQ TTHROWSQ ;
+
+\ ---- 2b3. the other kind of place --------------------------------------------
+\ A position can name a slot of the caller's data stack instead of a register,
+\ which is what design section 7.6's convention needs. Four things are owed: the
+\ two kinds are told apart, a payload read as the wrong kind is refused rather
+\ than answered with a number that would read as the other one, a slot is not a
+\ register anywhere a set is derived, and one register and one slot with the same
+\ number are two different places rather than a repeat.
+: DQ ( n -- A64EFF:placeseq )
+   SQ-NONE swap A64EFF:SEQ-WITH-SLOT ;
+
+: DQ2 ( n n -- A64EFF:placeseq )
+   {: a:n b:n :}
+   a DQ b A64EFF:SEQ-WITH-SLOT ;
+
+: PLACES ( -- )
+   0 DQ A64EFF:SEQ-LEN 1 T=
+   0 DQ 0 A64EFF:SEQ-SLOT@ 0 T=
+   0 DQ A64EFF:SEQ-SLOTS 1 T=
+   0 DQ 0 A64EFF:SEQ-KIND@ A64EFF-PKIND:DSLOT A64EFF-PKIND:EQ TTRUE
+   0 SQ 0 A64EFF:SEQ-KIND@ A64EFF-PKIND:GPR A64EFF-PKIND:EQ TTRUE
+   0 1 DQ2 A64EFF:SEQ-LEN 2 T=
+   0 1 DQ2 0 A64EFF:SEQ-SLOT@ 0 T=
+   0 1 DQ2 1 A64EFF:SEQ-SLOT@ 1 T=
+   0 1 DQ2 A64EFF:SEQ-SLOTS 2 T=
+   0 1 SQ2 A64EFF:SEQ-SLOTS 0 T=
+   \ a data-stack place is in no register set, so a routine that takes everything
+   \ off the stack reads and returns no register on account of its convention
+   0 1 DQ2 A64EFF:SEQ-SET A64EFF:GPRS-N 0 T=
+   0 DQ 0 SQ X2 R-GPR A64EFF:GPR-IN@ A64EFF:GPRS-N 0 T=
+   0 SQ 0 DQ X2 R-GPR A64EFF:GPR-RESULT@ A64EFF:GPRS-N 0 T=
+   \ one register and one slot with the same number are two places, not a repeat
+   SQ-NONE 0 A64EFF:SEQ-WITH 0 A64EFF:SEQ-WITH-SLOT A64EFF:SEQ-LEN 2 T=
+   A64EFF:SEQ-SLOT-LIMIT DQ 0 A64EFF:SEQ-SLOT@ A64EFF:SEQ-SLOT-LIMIT T=
+   \ and the refusals
+   [: 0 DQ 0 A64EFF:SEQ-REG@ drop ;] E-A64EFF-KIND TTHROWSQ
+   [: 0 SQ 0 A64EFF:SEQ-SLOT@ drop ;] E-A64EFF-KIND TTHROWSQ
+   [: 0 0 DQ2 A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: A64EFF:SEQ-SLOT-LIMIT 1+ DQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: -1 DQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ ;
+
+\ ---- 2b4. the data-stack register is unbuildable ------------------------------
+\ The engine keeps the running data-stack pointer in one register, and no routine
+\ this schema can describe may hold state there: it is out of the general-register
+\ mask exactly as x18, x30 and 31 are, so every route into a contract refuses it
+\ and there is no contract that hands it out to be allocated from. Each of the
+\ five routes is tried, because a check that only closes the door a caller
+\ happens to use is not a closed door.
+: DSTACK-RESERVED ( -- )
+   A64EFF:DSTACK-GPR 19 T=
+   A64EFF:GPR-ALL A64EFF:GPRS-N  1 A64EFF:DSTACK-GPR lshift and  0 T=
+   [: A64EFF:DSTACK-GPR A64EFF:GPR-REG A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 1 A64EFF:DSTACK-GPR lshift A64EFF:GPR-SET A64EFF:GPRS-N drop ;]
+      E-A64EFF-GPR TTHROWSQ
+   [: A64EFF:DSTACK-GPR SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: SQ-NONE SQ-NONE  1 A64EFF:DSTACK-GPR lshift A64EFF-GPRS:MAKE  R-GPR
+      DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ
+   [: SQ-NONE SQ-NONE  1 A64EFF:DSTACK-GPR lshift A64EFF-GPRS:MAKE  R-GPR
+      A64EFF:GPR-WRITABLE A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ ;
 
 \ What the two derived sets and the writable set answer. The writable set is the
 \ one an allocator hands registers out of, and it is asserted to hold the result
@@ -372,7 +433,7 @@ private
 \ A second forgery, this one naming the reserved register at argument position
 \ zero of a list the checked constructor would never have accepted.
 : FORGED-X18 ( -- A64EFF:routine )
-   1 60 lshift 18 or A64EFF-REGSEQ:MAKE SQ-NONE A64EFF:GPR-NONE
+   1 60 lshift 18 or A64EFF-PLACESEQ:MAKE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF-ROUTINE:MAKE ;
@@ -400,9 +461,9 @@ private
 : READERS ( -- )
    FORGED A64EFF:FRAME@ 32 T=
    FORGED A64EFF:DELTA@ -16 T=
-   FORGED-X18 A64EFF:ARGS@ A64EFF-REGSEQ:UNMAKE 1 60 lshift 18 or T=
-   0 SQ 1 SQ X2 R-GPR A64EFF:ARGS@ 0 A64EFF:SEQ@ 0 T=
-   0 SQ 1 SQ X2 R-GPR A64EFF:RESULTS@ 0 A64EFF:SEQ@ 1 T=
+   FORGED-X18 A64EFF:ARGS@ A64EFF-PLACESEQ:UNMAKE 1 60 lshift 18 or T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:ARGS@ 0 A64EFF:SEQ-REG@ 0 T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:RESULTS@ 0 A64EFF:SEQ-REG@ 1 T=
    0 SQ 1 SQ X2 R-GPR A64EFF:GPR-CLOBBER@ A64EFF:GPRS-N X2 A64EFF:GPRS-N T=
    D0 D1 D2 R-FPR A64EFF:FPR-IN@ A64EFF:FPRS-N D0 A64EFF:FPRS-N T=
    D0 D1 D2 R-FPR A64EFF:FPR-RESULT@ A64EFF:FPRS-N D1 A64EFF:FPRS-N T=
@@ -415,15 +476,15 @@ private
 \ ---- 2g. a missing or role-swapped argument never reaches runtime -------------
 \ -1 is accepted by the checker, 0 refused.
 : STATIC-REJECTS ( -- )
-   s" A64T-OK ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-OK ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" A64T-SHORT ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-SHORT ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-FILES ( A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-FILES ( A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-SWAP ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:link A64EFF:nzcv A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-SWAP ( A64EFF:placeseq A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:link A64EFF:nzcv A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-BARE ( n A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-BARE ( n A64EFF:placeseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-SETOK ( n -- A64EFF:gprs ) A64EFF:GPR-SET"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -433,11 +494,11 @@ private
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-SETS ( A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-SEQOK ( A64EFF:regseq n -- A64EFF:regseq ) A64EFF:SEQ-WITH"
+   s" A64T-SEQOK ( A64EFF:placeseq n -- A64EFF:placeseq ) A64EFF:SEQ-WITH"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" A64T-SEQSET ( A64EFF:gprs n -- A64EFF:regseq ) A64EFF:SEQ-WITH"
+   s" A64T-SEQSET ( A64EFF:gprs n -- A64EFF:placeseq ) A64EFF:SEQ-WITH"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-SEQOUT ( A64EFF:regseq -- A64EFF:regseq ) A64EFF:SEQ-SET"
+   s" A64T-SEQOUT ( A64EFF:placeseq -- A64EFF:placeseq ) A64EFF:SEQ-SET"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-SLOTOK ( n n A64EFF:routine -- ) A64EFF:CHECK-SLOT"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -449,9 +510,9 @@ private
    0 SQ 1 SQ X2 R-GPR A64EFF:ENCODE {: base:ptr len:n :}
    len 112 T=
    base 0 CDIGEST:SLOT@ CDIGEST:TAG-A64-ROUTINE T=
-   base 1 CDIGEST:SLOT@ 2 T=
-   base 2 CDIGEST:SLOT@ 0 SQ A64EFF-REGSEQ:UNMAKE T=
-   base 3 CDIGEST:SLOT@ 1 SQ A64EFF-REGSEQ:UNMAKE T=
+   base 1 CDIGEST:SLOT@ 3 T=
+   base 2 CDIGEST:SLOT@ 0 SQ A64EFF-PLACESEQ:UNMAKE T=
+   base 3 CDIGEST:SLOT@ 1 SQ A64EFF-PLACESEQ:UNMAKE T=
    base 4 CDIGEST:SLOT@ X2 A64EFF:GPRS-N T=
    base 5 CDIGEST:SLOT@ 0 T=
    base 6 CDIGEST:SLOT@ 0 T=
@@ -480,7 +541,7 @@ private
 \ compilation while keeping its old identity.
 : ROUTINE$ ( -- ptr u8 n ptr u8 n )  s" routine" s" A64EFF-ROUTINE" ;
 : GPRS$ ( -- ptr u8 n ptr u8 n )     s" gprs" s" A64EFF-GPRS" ;
-: REGSEQ$ ( -- ptr u8 n ptr u8 n )   s" regseq" s" A64EFF-REGSEQ" ;
+: PLACESEQ$ ( -- ptr u8 n ptr u8 n ) s" placeseq" s" A64EFF-PLACESEQ" ;
 : FPRS$ ( -- ptr u8 n ptr u8 n )     s" fprs" s" A64EFF-FPRS" ;
 : TRAITS$ ( -- ptr u8 n ptr u8 n )   s" traits" s" A64EFF-TRAITS" ;
 
@@ -488,9 +549,9 @@ private
    nip CDIGEST:SLOT-BYTES / ;
 
 : SCHEMA-PINS ( -- )
-   REGSEQ$ REFLECT:FAMS 1 T=
-   REGSEQ$ REFLECT:FLDS 1 T=
-   REGSEQ$ REFLECT:WIDTH 1 T=
+   PLACESEQ$ REFLECT:FAMS 1 T=
+   PLACESEQ$ REFLECT:FLDS 1 T=
+   PLACESEQ$ REFLECT:WIDTH 1 T=
    ROUTINE$ REFLECT:FAMS 1 T=
    ROUTINE$ REFLECT:FLDS 12 T=
    ROUTINE$ REFLECT:WIDTH 12 T=
@@ -573,7 +634,7 @@ create DGA ROWS 4 * cells allot
 
 \ The same for an interface position: either the routine declares one there or
 \ it declares none.
-: A-SEQ ( n n n -- A64EFF:regseq )   \ index, bit position, register
+: A-SEQ ( n n n -- A64EFF:placeseq )   \ index, bit position, register
    {: a:n p:n r:n :}
    a p BIT-AT 0= if SQ-NONE exit then
    r SQ ;
@@ -663,6 +724,8 @@ public
    VOCABULARY
    ALGEBRA
    SEQUENCE
+   PLACES
+   DSTACK-RESERVED
    DERIVED
    ROLE-REJECTS
    STACK-REJECTS

@@ -74,7 +74,7 @@ private
 
 $80000 constant SRC-CAP   \ >= largest scanned source (checker.f grew past $40000)
 512 constant PATH-CAP
-1024 constant MAX-CLAIMS
+2048 constant MAX-CLAIMS  \ the tree passed 1024 live claims; the table is sized above what it holds, and a full one dies rather than certifying a partial ledger
 1024 constant MAX-RES
 48 constant ZERO-C
 36 constant DOLLAR-C

@@ -111,8 +111,10 @@ private
    A64IR:SLOT-WIDTH 8 T= ;
 
 \ ---- registration ------------------------------------------------------------
-\ The eleven opcodes, and the count, so "nothing else was defined" is measured
-\ rather than assumed.
+\ The fifteen opcodes, and the count, so "nothing else was defined" is measured
+\ rather than assumed. The eleven the register conventions use are here; the four
+\ that reach the caller's data stack are checked in DSTACK-SPELL-CASE below, and
+\ the count covers all fifteen.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -142,9 +144,9 @@ private
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the eleven machine opcodes" T-LABEL
+   s" registration defines exactly the fifteen machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 11 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 15 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -222,6 +224,39 @@ private
    s" the four frame opcodes and their two keys are spelled as declared" T-LABEL
    BND [: FRAME-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ The four data-stack forms and their two keys. They are their own opcodes and
+\ their own keys, not the frame's: a routine reading an argument out of the
+\ caller's stack and a routine reloading a spilled value are two different
+\ accesses counted from two different pointers, and a reader has to be able to
+\ tell them apart without asking which opcode it has.
+: DSTACK-SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:DTAKE A64IR:OPCODE {: tk:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:DLOAD A64IR:OPCODE {: ld:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:DSTORE A64IR:OPCODE {: st:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:DPUBLISH A64IR:OPCODE {: pb:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-DSLOT {: sk:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-DBYTES {: bk:IR-ID:ir-symbol-id :}
+   b IR-BUILD:SCHEMAS drop
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   rv tk IR-SCHEMA:FDEFINED?
+   rv ld IR-SCHEMA:FDEFINED?
+   rv st IR-SCHEMA:FDEFINED?
+   rv pb IR-SCHEMA:FDEFINED?
+   pv yv tk s" a64.dtake" IR-SYM:FEQ?
+   pv yv ld s" a64.dload" IR-SYM:FEQ?
+   pv yv sk s" a64.dslot" IR-SYM:FEQ?
+   pv yv bk s" a64.dbytes" IR-SYM:FEQ? ;
+
+: DSTACK-SPELL-CASE ( -- )
+   s" the four data-stack opcodes and their two keys are spelled as declared" T-LABEL
+   BND [: DSTACK-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ ---- the declared shapes -----------------------------------------------------
 \ Every field the arithmetic schema declares, read back off the frozen table.
@@ -458,6 +493,70 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
 
+\ ---- the data-stack operand refusals -----------------------------------------
+\ A data-stack slot the load and store forms cannot address, and an adjustment
+\ of the pointer that is not a whole number of cells or does not fit the one
+\ immediate that makes it. Both are refused on the production builder, so no
+\ module can hold one.
+: DSLOT-ODD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH 1- A64IR:DSLOT-ATTR drop ;
+
+: DSLOT-LOW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH negate A64IR:DSLOT-ATTR drop ;
+
+: DSLOT-HIGH-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b  A64IR:SLOT-WIDTH A64EFF:SLOT-REACH A64IR:SLOT-WIDTH +  A64IR:DSLOT-ATTR
+   drop ;
+
+: DBYTES-ODD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b 1 A64IR:DBYTES-ATTR drop ;
+
+: DBYTES-LOW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH negate A64IR:DBYTES-ATTR drop ;
+
+: DBYTES-HIGH-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:DBYTES-ATTR drop ;
+
+: DSLOT-ODD ( -- )    BND [: DSLOT-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DSLOT-LOW ( -- )    BND [: DSLOT-LOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DSLOT-HIGH ( -- )   BND [: DSLOT-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DBYTES-ODD ( -- )   BND [: DBYTES-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DBYTES-LOW ( -- )   BND [: DBYTES-LOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+: DBYTES-HIGH ( -- )  BND [: DBYTES-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ Two refusals per group, for the reason the frame-depth group already gives:
+\ each one abandons a context holding a module, and the registry gives those
+\ slots back only when a live enclosing context leaves.
+: DSLOT-REFUSE-CASES ( -- )
+   s" a data-stack slot that is not a whole cell from the pointer is refused" T-LABEL
+   [: DSLOT-ODD ;] E-A64IR-DSLOT TTHROWSQ
+   s" a negative data-stack slot is refused" T-LABEL
+   [: DSLOT-LOW ;] E-A64IR-DSLOT TTHROWSQ ;
+
+: DSLOT-REACH-CASES ( -- )
+   s" a data-stack slot past the reach of the offset field is refused" T-LABEL
+   [: DSLOT-HIGH ;] E-A64IR-DSLOT TTHROWSQ
+   s" a data-stack adjustment that is not whole cells is refused" T-LABEL
+   [: DBYTES-ODD ;] E-A64IR-DBYTES TTHROWSQ ;
+
+: DBYTES-REFUSE-CASES ( -- )
+   s" a negative data-stack adjustment is refused" T-LABEL
+   [: DBYTES-LOW ;] E-A64IR-DBYTES TTHROWSQ
+   s" a data-stack adjustment past its immediate is refused" T-LABEL
+   [: DBYTES-HIGH ;] E-A64IR-DBYTES TTHROWSQ ;
+
 : SLOT-ODD ( -- )
    BND [: SLOT-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -616,6 +715,18 @@ private
    drop
    FRAME-DEPTH-CASES ;
 
+: GROUP-DSLOT-REFUSE ( IR-CTX:ctx -- )
+   drop
+   DSLOT-REFUSE-CASES ;
+
+: GROUP-DSLOT-REACH ( IR-CTX:ctx -- )
+   drop
+   DSLOT-REACH-CASES ;
+
+: GROUP-DBYTES-REFUSE ( IR-CTX:ctx -- )
+   drop
+   DBYTES-REFUSE-CASES ;
+
 : GROUP-MOV ( IR-CTX:ctx -- )
    drop
    MOV-CASE ;
@@ -659,6 +770,9 @@ public
    BND [: GROUP-SLOT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-DEPTH ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-DSLOT-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-DSLOT-REACH ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-DBYTES-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHIFT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TABLE-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TARGET-REFUSE ;] IR-CTX:WITH-CONTEXT
