@@ -228,6 +228,37 @@ private
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 0 T= 1 T= 1 T= TTRUE TTRUE 2 T= 1 T= 0 T= ;
 
+\ ---- the tied register field -------------------------------------------------
+\ The move-wide overwrite is the one form of this dialect whose result and whose
+\ operand are one register field, and its schema is where that is written down.
+\ Every other form names each of its registers once, so a consumer that reads the
+\ tie gets the constraint from the form instead of from an opcode's name.
+: TIE-BODY ( IR-CTX:ctx -- n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:MOVK A64IR:OPCODE {: k:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:ADD A64IR:OPCODE {: a:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:SUB A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:RET A64IR:OPCODE {: t:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv k IR-SCHEMA:FTIES
+   qv rv k 0 IR-SCHEMA:FTIE-RESULT@
+   qv rv k 0 IR-SCHEMA:FTIE-OPERAND@
+   rv z IR-SCHEMA:FTIES
+   rv a IR-SCHEMA:FTIES
+   rv s IR-SCHEMA:FTIES
+   rv u IR-SCHEMA:FTIES
+   rv t IR-SCHEMA:FTIES ;
+
+: TIE-CASE ( -- )
+   s" the move-wide overwrite declares its one tie and nothing else does" T-LABEL
+   BND [: TIE-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 1 T= ;
+
 \ ---- the move-wide operand refusals ------------------------------------------
 \ A caller reaches the two operand fields only through the attribute builders, so
 \ the refusal is proved on the production word rather than on the bound alone.
@@ -350,6 +381,10 @@ private
    ARITH-CASE
    SHAPE-CASE ;
 
+: GROUP-TIE ( IR-CTX:ctx -- )
+   drop
+   TIE-CASE ;
+
 : GROUP-IMM-REFUSE ( IR-CTX:ctx -- )
    drop
    IMM-REFUSE-CASES ;
@@ -374,6 +409,7 @@ public
    HALVES-CASE
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-IMM-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHIFT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TABLE-REFUSE ;] IR-CTX:WITH-CONTEXT

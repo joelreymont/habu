@@ -36,7 +36,9 @@
 \ has to be named: a64.movk reads the value the previous half left and defines
 \ the value with this half merged in. That is what makes a materialised 64-bit
 \ constant a chain of operations the allocator can read rather than a hidden
-\ update of a register nobody declared.
+\ update of a register nobody declared. The two SSA values are still one register
+\ field, and a64.movk's schema says so with a tie, so the register allocator gets
+\ the constraint from the form itself rather than from this opcode's name.
 \
 \ WHY A RETURN CARRIES OPERANDS WHEN THE INSTRUCTION CARRIES NONE. The Ret form
 \ reads no register the assembler names, but the values a word returns are still
@@ -273,12 +275,16 @@ private
    c b IR-BUILD:DEFINE-OP ;
 
 \ Movk: the value whose other halves survive is the operand, and the value with
-\ this half merged in is the result.
+\ this half merged in is the result. The instruction names one register field for
+\ both, so the schema declares result 0 tied to operand 0 and every consumer that
+\ has to put them in one physical register reads that instead of knowing which
+\ opcode the overwrite is.
 : DEF-MOVK ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:MOVK OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
+   0 0 IR-SCHEMA:ADD-TIE
    c b MOVE-ATTRS
    PURE-VALUE
    TOTAL
