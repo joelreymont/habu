@@ -16,14 +16,17 @@
 \ exchanged without changing the answer, so the order a rename puts values back
 \ in is proved rather than described.
 \
-\ HOW A FIXTURE IS BUILT. Each one states its source text, and a small fixture
-\ lexer splits it on spaces and appends one tape token per word: the first two
-\ tokens are read while interpreting, the rest while compiling, a run of digits
-\ is an integer literal carrying its value, and every token's byte span is its
-\ real range in that text. Spans and spellings therefore cannot disagree with the
-\ source, which is what makes the operations' spans real source bindings rather
-\ than placeholders. The hostile fixtures push their tokens by hand, because the
-\ thing under test is a token the lexer would never produce.
+\ HOW A FIXTURE IS BUILT. Each one states its source text, and the shared chain
+\ fixture test/compiler/native-source-fixture.f lexes it onto a tape: one token
+\ per word, spans that are real ranges in that text, and the parser mode each
+\ token would really have been read in. That file is shared with the code
+\ generator comparison harness, so both harnesses agree about what a token is.
+\ The hostile fixtures below push their tokens by hand through the same writer,
+\ because the thing under test is a token the lexer would never produce.
+\
+\ WHAT THIS SUITE STILL OWNS. The immediate-word contract table is built here,
+\ because three of its four shapes are wrong on purpose and belong to the suite
+\ that refuses them.
 \
 \ WHICH REFUSAL BELONGS TO WHOM. The elaborator names six refusals of its own -
 \ the shape of a definition, the parser mode of a token, the contract class of a
@@ -37,6 +40,7 @@
 
 require lib/test.f
 require src/compiler/native/elaborate.f
+require test/compiler/native-source-fixture.f
 
 package NELAB-TEST
 private
@@ -51,154 +55,11 @@ private
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
-\ ---- the fixture's source text -----------------------------------------------
-\ One buffer holds the text the current fixture compiles. It is registered as the
-\ module's source, so every span a token carries is a real range in these bytes
-\ and IR-SOURCE refuses one that is not.
-256 constant TXT-CAP
-create TXT TXT-CAP allot
-variable TXT-U
-
-: TEXT+ ( ptr u8 n -- )
-   {: a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   TXT-U @ u + TXT-CAP > if s" test: fixture text too long" T-EX-FAIL die then
-   0 begin dup u < while
-      dup a + c@  over TXT-U @ + TXT + c!
-      1+
-   repeat drop
-   TXT-U @ u + TXT-U ! ;
-
-: TEXT! ( ptr u8 n -- )
-   0 TXT-U ! TEXT+ ;
-
-: SLICE ( n n -- ptr u8 n )
-   {: st:n ln:n :}
-   st TXT + ln ;
-
-\ ---- the tape writer ---------------------------------------------------------
-\ The module, the tape and the registered source the current fixture appends to.
-1 TYPED-BUFFER W-B IR-BUILD:builder
-1 TYPED-BUFFER W-TP IR-ARENA:arena
-1 TYPED-BUFFER W-S0 IR-ID:ir-source-id
-
-: WRITER! ( IR-BUILD:builder IR-ARENA:arena IR-ID:ir-source-id -- )
-   {: b:IR-BUILD:builder tp:IR-ARENA:arena s0:IR-ID:ir-source-id :}
-   b 0 W-B !
-   tp 0 W-TP !
-   s0 0 W-S0 ! ;
-
-: SPAN ( n n -- IR-SOURCE:span )
-   {: st:n ln:n :}
-   0 W-B @  0 W-S0 @ st ln IR-BUILD:ADD-SPAN ;
-
-: SYM ( IR-CTX:ctx n n -- IR-ID:ir-symbol-id )
-   {: c:IR-CTX:ctx st:n ln:n :}
-   c 0 W-B @ st ln SLICE IR-BUILD:INTERN-SYMBOL ;
-
-\ A name token whose spelling is exactly the bytes its span covers.
-: NAME, ( IR-CTX:ctx n n NTAPE:mode -- )
-   {: c:IR-CTX:ctx st:n ln:n m:NTAPE:mode :}
-   c 0 W-B @ 0 W-TP @
-      st ln SPAN  c st ln SYM  m NTAPE:NAME-TOKEN
-   NTAPE:PUSH-INTO drop ;
-
-: INT, ( IR-CTX:ctx n n NTAPE:mode n -- )
-   {: c:IR-CTX:ctx st:n ln:n m:NTAPE:mode val:n :}
-   c 0 W-B @ 0 W-TP @
-      st ln SPAN  c st ln SYM  m val NTAPE:INT-TOKEN
-   NTAPE:PUSH-INTO drop ;
-
-: STR, ( IR-CTX:ctx n n NTAPE:mode -- )
-   {: c:IR-CTX:ctx st:n ln:n m:NTAPE:mode :}
-   c 0 W-B @ 0 W-TP @
-      st ln SPAN  c st ln SYM  m NTAPE:STRING-TOKEN
-   NTAPE:PUSH-INTO drop ;
-
-\ ---- the fixture lexer -------------------------------------------------------
-32 constant SP-C
-48 constant ZERO-C
-57 constant NINE-C
-
-variable LX-I                        \ how many tokens are on the tape
-variable LX-P                        \ the byte the scan stands on
-
-: DIGIT? ( n -- bool )
-   {: ch:n :}
-   ch ZERO-C >= ch NINE-C <= and ;
-
-: DIGITS? ( n n -- bool )
-   {: st:n ln:n :}
-   ln 0= if false exit then
-   true
-   ln 0 ?do
-      st i + TXT + c@ DIGIT? 0= if drop false leave then
-   loop ;
-
-: VALUE-OF ( n n -- n )
-   {: st:n ln:n :}
-   0
-   ln 0 ?do
-      10 *  st i + TXT + c@ ZERO-C -  +
-   loop ;
-
-\ The mode is the token's place in the definition: `:` reads the defined name
-\ before it switches the parser to compiling, so the first two tokens were read
-\ while interpreting and everything after them while compiling.
-: TOKEN, ( IR-CTX:ctx n n n -- )
-   {: c:IR-CTX:ctx ix:n st:n ln:n :}
-   ix 2 < if c st ln NTAPE-MODE:INTERPRETING NAME, exit then
-   st ln DIGITS? if
-      c st ln NTAPE-MODE:COMPILING st ln VALUE-OF INT, exit
-   then
-   c st ln NTAPE-MODE:COMPILING NAME, ;
-
-: AT-SP? ( -- bool )
-   LX-P @ TXT-U @ >= if false exit then
-   LX-P @ TXT + c@ SP-C = ;
-
-: SKIP-SP ( -- )
-   begin AT-SP? while
-      LX-P @ 1+ LX-P !
-   repeat ;
-
-: END? ( n -- bool )
-   {: k:n :}
-   k TXT-U @ >= if true exit then
-   k TXT + c@ SP-C = ;
-
-: RUN-END ( -- n )
-   LX-P @
-   begin dup END? 0= while
-      1+
-   repeat ;
-
-: LEX ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   0 LX-I !
-   0 LX-P !
-   begin
-      SKIP-SP
-      LX-P @ TXT-U @ <
-   while
-      c LX-I @ LX-P @  RUN-END LX-P @ -  TOKEN,
-      RUN-END LX-P !
-      LX-I @ 1+ LX-I !
-   repeat ;
-
-\ ---- the module a fixture compiles into --------------------------------------
-: MOD ( IR-CTX:ctx -- IR-BUILD:builder )
-   {: c:IR-CTX:ctx :}
-   IR-BUILD:PLAN-DEFAULT
-   c HIR:NEW-BUILDER {: b:IR-BUILD:builder :}
-   c b HIR:REGISTER
-   b ;
-
-: MODEL ( IR-CTX:ctx IR-BUILD:builder -- IR-ARENA:arena IR-ARENA:arena )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
-   c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS HIR-WORD:PICK-CELLS HIR-WORD:NEW
-   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b p r HIR-WORD:REGISTER-WORDS
-   p r ;
+\ ---- the shared source fixture -----------------------------------------------
+\ The text buffer, the tape writer and the lexer live in
+\ test/compiler/native-source-fixture.f. Importing its public words lets every
+\ fixture below read the way it always did.
+using NSRC
 
 \ Which contract the two frame words get. A definition needs both of them
 \ declared as front-end intrinsics; the other three shapes are what the refusal
@@ -232,23 +93,21 @@ variable LX-P                        \ the byte the scan stands on
 
 : IMM ( IR-CTX:ctx IR-BUILD:builder n -- IR-ARENA:arena )
    {: c:IR-CTX:ctx b:IR-BUILD:builder shape:n :}
+   shape IM-OK = if c b ORDINARY-IMM exit then
    c b IR-BUILD:MODULE-KEY 4 NIMM:NEW {: im:IR-ARENA:arena :}
    c b im shape IMM-OPEN
    c b im shape IMM-CLOSE
    im ;
-
-128 constant TAPE-CAP
 
 \ Everything a fixture compiles with, up to but not including the tokens: the
 \ module with its dialect and word model, the immediate table, and a tape bound
 \ to the text already in TXT.
 : RIG ( IR-CTX:ctx n -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena )
    {: c:IR-CTX:ctx shape:n :}
-   c MOD {: b:IR-BUILD:builder :}
+   c HIR-BUILDER {: b:IR-BUILD:builder :}
    c b MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b shape IMM {: im:IR-ARENA:arena :}
-   c b IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
-   b tp  c b TXT TXT-U @ IR-BUILD:ADD-SOURCE  WRITER!
+   c b TAPE {: tp:IR-ARENA:arena :}
    b p r im tp ;
 
 \ The same rig with the text lexed onto the tape and the tape sealed.
@@ -698,7 +557,7 @@ variable LX-P                        \ the byte the scan stands on
    c IM-OK SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena im:IR-ARENA:arena
       v:IR-ARENA:view :}
-   c MOD {: b2:IR-BUILD:builder :}
+   c HIR-BUILDER {: b2:IR-BUILD:builder :}
    c b2 v p r im 1 1 NELAB:COLON drop ;
 
 : FOREIGN ( -- )

@@ -706,20 +706,27 @@ public
 -8225 constant E-NIMM-DUP       \ a symbol this table already classifies
 -8226 constant E-NIMM-UNMODELED \ an immediate word checked source may not compile: unregistered, or declared unmodeled
 
-\ Old-vs-new code generator comparison harness (package CODEGEN-COMPARE):
+\ Old-vs-new code generator comparison harness (package CODEGEN-COMPARE), and
+\ the native chain fixtures it shares with the compiler suites (package NSRC):
 \ -8260..-8279
 \
 \ The harness compiles a pinned corpus of small checked words through the real
 \ engine, then records each word's machine-code size, its execution outputs on
-\ pinned inputs, and how long one call takes. Two conditions stop it outright:
-\ a store it cannot grow, and a subject word it cannot find. Everything the
-\ comparison itself decides is reported as a finding instead, so one run names
-\ every disagreement rather than stopping at the first.
+\ pinned inputs, and how long one call takes. It then compiles the same words
+\ again through the new native chain and records the same three facts. Four
+\ conditions stop it outright: a store it cannot grow, a subject word it cannot
+\ find, a corpus word the new column names that the old column never measured,
+\ and an emitted routine whose answer is not in the register the call needs it
+\ in. Everything the comparison itself decides is reported as a finding instead,
+\ so one run names every disagreement rather than stopping at the first.
 -8260 constant E-CODEGEN-COMPARE-CAP      \ a row, output-vector, or report-text store is full
 -8261 constant E-CODEGEN-COMPARE-SUBJECT  \ a named subject word is not in the live dictionary
 -8262 constant E-CODEGEN-COMPARE-ROW      \ a row or output index outside the recorded count
 -8263 constant E-CODEGEN-COMPARE-CLOCK    \ the monotonic clock reported no elapsed time across a whole timing run
 -8264 constant E-CODEGEN-COMPARE-STAGE    \ a recorded value was read before the pass that computes it had finished
+-8265 constant E-CODEGEN-COMPARE-CORPUS   \ a corpus word the new column names that the old column never measured
+-8266 constant E-CODEGEN-COMPARE-REG      \ an emitted routine whose returned value is not in the register the call reads it from
+-8267 constant E-NSRC-CAP                 \ source text longer than the chain fixture's text buffer
 
 \ Native stage N1 straight-line HIR dialect (package HIR): -8280..-8299
 \
