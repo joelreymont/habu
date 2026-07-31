@@ -949,7 +949,8 @@ public
    1 L-RS ST! ;
 
 \ This result and this operand are one register field of the instruction form,
-\ named by their ordinals in the two lists above. Declaring the tie here is what
+\ named by their ordinals in the two lists above - the result's first, then the
+\ operand's, the order the pair reads in. Declaring the tie here is what
 \ lets a register allocator read the constraint instead of knowing which opcode
 \ has it; the ordinals are checked against the finished lists at DEFINE, so the
 \ two lists may be declared in any order around this.
