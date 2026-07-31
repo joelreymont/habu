@@ -488,7 +488,7 @@ UNCAUGHT-RC constant SLV-PWID-PREFLIGHT-RC
 
 \ --- publish-into-protected-word guard (dot habu-label-two-silent-bd8e5d09) -----------
 \ Once the friend latch is sealed, publishing a definition into a protected WID (a public
-\ family's generated constructor package) via `<pkg>:WORD` must fail closed. The guard
+\ family's generated constructor namespace) via `<pkg>:WORD` must fail closed. The guard
 \ (habu2.f C-STORE-DEF-NAME) now names itself on fd 2 (LPROTPUB) with the offending word
 \ before exit 84. Red-first: the bare exit left stderr empty, so the CONTAINS assertion
 \ fails. (The sibling AOT boot-pass gate EM-AOTWIDGATE is also now labeled (LPROTAOT); it

@@ -74,9 +74,27 @@ variable GENERATED-CHECKER-ABSENT
 variable GENERATED-EVENT-STAGED
 variable GENERATED-PROTECTION-UNPUBLISHED
 variable GENERATED-DICTIONARY-UNPUBLISHED
+PTR-VARIABLE NS-EXPECT-A
+variable NS-EXPECT-U
+variable NS-EXPECT-VARS
+variable NS-HOOK-N
+variable NS-HOOK-NAME-OK
+variable NS-HOOK-META-CLEAR
+variable NS-HOOK-PUBLICATION-CLEAR
+variable NC-QUERY-N
 variable NATIVE-NDICT-N0
 variable NATIVE-CP-N0
 PTR-VARIABLE NATIVE-DP-N0
+
+$1000 constant NC-SRC-CAP
+$FF constant NC-PKG-U
+TF-CTOR-NS-CAP NC-PKG-U - 1 - constant NC-FAM-U
+0 constant NC-ENUM
+1 constant NC-SUM
+2 constant NC-PROD
+3 constant NC-STRUCT
+create NC-SRC NC-SRC-CAP allot
+variable NC-U
 
 variable SNAPSHOT-TRACE
 variable PREPARE-TRACE
@@ -342,6 +360,34 @@ package GENERATED-DECLARATION-TXN-TEST
    GENERATED-N @ 1 + GENERATED-N !
    INCLUDE-EVALUATE ;
 
+TRUSTED: NS-VAR-NS$ ( n -- ptr u8 n ) SUMV-CTOR-NS$ ;
+TRUSTED: NS-VAR-SYM@ ( n -- n ) SUMV-CTOR-SYM@ ;
+
+: RECORD-NS-META ( -- )
+   SUMV-N@ VARIANT-N0 @ - NS-EXPECT-VARS @ = NS-HOOK-META-CLEAR !
+   VARIANT-N0 @
+   BEGIN dup SUMV-N@ < WHILE
+      dup NS-VAR-NS$ nip 0 <> IF 0 NS-HOOK-META-CLEAR ! THEN
+      NS-VAR-SYM@ 0 <> IF 0 NS-HOOK-META-CLEAR ! THEN
+      1 +
+   REPEAT drop ;
+
+: RECORD-NS-PUBLICATION ( -- )
+   ndict@ NATIVE-NDICT-N0 @ =
+   cp@ NATIVE-CP-N0 @ = and
+   here NATIVE-DP-N0 @ = and
+   prot-wid-room PROTECTION-ROOM-N0 @ = and
+   GENERATED-DECL-PROTECTION:STAGED-COUNT STAGED-N0 @ = and
+   data-base WIDN-CELL + @ WID-N0 @ = and
+   NS-HOOK-PUBLICATION-CLEAR ! ;
+
+: OBSERVE-NS ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   NS-HOOK-N @ 1 + NS-HOOK-N !
+   a u NS-EXPECT-A @ NS-EXPECT-U @ CORE-STR= NS-HOOK-NAME-OK !
+   RECORD-NS-META
+   RECORD-NS-PUBLICATION
+   0 0= ;
+
 : RECORD-PREFLIGHT-NONPUBLICATION ( -- )
    s" GDTX:RED" XREF-FIND XREF-FOUND? 0= GENERATED-XREF-ABSENT !
    s" GDTX:RED" CHECKER-DEFINED? 0= GENERATED-CHECKER-ABSENT !
@@ -414,7 +460,8 @@ package GENERATED-DECLARATION-TXN-TEST
 
 : RESTORE-GENERATED-EVALUATOR ( -- )
    [: INCLUDE-EVALUATE ;] is TDECL-EVAL-XT
-   [: GENERATED-DECL-NAME-PREFLIGHT:CHECK ;] is TDECL-NAME-PREFLIGHT-XT ;
+   [: GENERATED-DECL-NAME-PREFLIGHT:CHECK ;] is TDECL-NAME-PREFLIGHT-XT
+   [: XREF:NAMESPACE? ;] is TDECL-NS-EXISTS-XT ;
 
 : EVALUATE-SOURCE ( -- )
    SOURCE-A @ SOURCE-U @ INCLUDE-EVALUATE ;
@@ -1281,18 +1328,170 @@ INSTALL-GROW-NESTED
    ASSERT-OWNER-DEPTHS
    ASSERT-PRODUCTION-IDLE ;
 
+: SETUP-NAMESPACE-COLLISIONS ( -- )
+   s" package gdpreenum ;package" INCLUDE-EVALUATE
+   s" package gdpresum ;package" INCLUDE-EVALUATE
+   s" package gdpreprod ;package" INCLUDE-EVALUATE
+   s" package gdprestruct ;package" INCLUDE-EVALUATE
+   s" package gdpretype ;package package gdpretype:result ;package" INCLUDE-EVALUATE
+   s" GDPRETYPE:RESULT" XREF:FINALIZE-NAMESPACE drop
+   s" package gdboth public : MAKE ( n -- n ) ; ;package" INCLUDE-EVALUATE ;
+
+: NS-EVAL ( ptr u8 n -- )
+   DECL-DIAG:PROSE
+   EVALUATE-CATCH 76 T=
+   s" xref: generated namespace already exists" DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF ;
+
+: NS-ASSERT-ROLLED ( -- )
+   ASSERT-UNCHANGED
+   ASSERT-OWNER-DEPTHS
+   ASSERT-NATIVE-HIGHWATERS
+   WID-NEXT WID-N0 @ T= ;
+
+: NS-TIMING-CASE ( ptr u8 n ptr u8 n n -- )
+   {: srca:ptr srcu:n nsa:ptr nsu:n vars:n :}
+   nsa NS-EXPECT-A !  nsu NS-EXPECT-U !  vars NS-EXPECT-VARS !
+   0 NS-HOOK-N !
+   0 NS-HOOK-NAME-OK !
+   0 NS-HOOK-META-CLEAR !
+   0 NS-HOOK-PUBLICATION-CLEAR !
+   [: OBSERVE-NS ;] is TDECL-NS-EXISTS-XT
+   srca srcu NS-EVAL
+   RESTORE-GENERATED-EVALUATOR
+   NS-HOOK-N @ 1 T=
+   NS-HOOK-NAME-OK @ TTRUE
+   NS-HOOK-META-CLEAR @ TTRUE
+   NS-HOOK-PUBLICATION-CLEAR @ TTRUE
+   NS-ASSERT-ROLLED ;
+
+: NS-PRODUCTION-CASE ( ptr u8 n -- )
+   NS-EVAL
+   NS-ASSERT-ROLLED ;
+
+: TEST-NAMESPACE-COLLISIONS ( -- )
+   SETUP-NAMESPACE-COLLISIONS
+   RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
+   WID-NEXT WID-N0 !
+
+   \ The observing hook pins each owning seam before constructor metadata,
+   \ native dictionary, WID, or protection publication.
+   s" ENUM gdpreenum red blue ;ENUM" s" GDPREENUM" 2 NS-TIMING-CASE
+   s" SUMTYPE gdpresum 0 VARIANT one ;VARIANT ;SUMTYPE"
+      s" GDPRESUM" 1 NS-TIMING-CASE
+   s" PRODUCT gdpreprod 0 FIELD x n ;PRODUCT"
+      s" GDPREPROD" 0 NS-TIMING-CASE
+   s" STRUCTURE gdprestruct 0 FIELD x n ;STRUCTURE"
+      s" GDPRESTRUCT" 0 NS-TIMING-CASE
+
+   \ The installed xref hook then drives the same four production entry paths.
+   s" ENUM gdpreenum red blue ;ENUM" NS-PRODUCTION-CASE
+   s" SUMTYPE gdpresum 0 VARIANT one ;VARIANT ;SUMTYPE" NS-PRODUCTION-CASE
+   s" PRODUCT gdpreprod 0 FIELD x n ;PRODUCT" NS-PRODUCTION-CASE
+   s" STRUCTURE gdprestruct 0 FIELD x n ;STRUCTURE" NS-PRODUCTION-CASE
+
+   \ A finalized type row is the same exact-child conflict.
+   s" package gdpretype public PRODUCT result 0 FIELD x n ;PRODUCT ;package"
+      NS-PRODUCTION-CASE
+
+   \ Namespace identity wins when the child also contains the would-be word.
+   s" PRODUCT gdboth 0 FIELD x n ;PRODUCT" NS-PRODUCTION-CASE ;
+
+: NC-C, ( n -- )
+   NC-U @ NC-SRC-CAP >= IF
+      s" generated declaration capacity source too long" 76 die
+   THEN
+   NC-SRC NC-U @ + c!
+   NC-U @ 1 + NC-U ! ;
+
+: NC-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 BEGIN dup u < WHILE
+      dup a + c@ NC-C,
+      1 +
+   REPEAT drop ;
+
+: NC-REP ( n n -- ) {: u:n c:n :}
+   0 BEGIN dup u < WHILE c NC-C, 1 + REPEAT drop ;
+
+: NC-PKG-C ( n -- n )
+   dup NC-ENUM = IF drop [char] E EXIT THEN
+   dup NC-SUM = IF drop [char] S EXIT THEN
+   dup NC-PROD = IF drop [char] P EXIT THEN
+   drop [char] T ;
+
+: NC-PKG ( n n -- ) {: kind:n c:n :}
+   NC-PKG-U 1 - c NC-REP
+   kind NC-PKG-C NC-C, ;
+
+: NC-FAMILY ( bool -- )
+   IF NC-FAM-U 1 + [char] b ELSE NC-FAM-U [char] a THEN NC-REP ;
+
+: NC-DECL$ ( n bool -- ptr u8 n ) {: kind:n long:bool :}
+   0 NC-U !
+   s" package " NC-APP
+   kind [char] p NC-PKG
+   s"  public " NC-APP
+   kind NC-ENUM = IF
+      s" ENUM " NC-APP long NC-FAMILY s"  x ;ENUM ;package" NC-APP
+   ELSE kind NC-SUM = IF
+      s" SUMTYPE " NC-APP long NC-FAMILY
+      s"  0 VARIANT x ;VARIANT ;SUMTYPE ;package" NC-APP
+   ELSE kind NC-PROD = IF
+      s" PRODUCT " NC-APP long NC-FAMILY
+      s"  0 FIELD x n ;PRODUCT ;package" NC-APP
+   ELSE
+      s" STRUCTURE " NC-APP long NC-FAMILY
+      s"  0 FIELD x n ;STRUCTURE ;package" NC-APP
+   THEN THEN THEN
+   NC-SRC NC-U @ ;
+
+: NC-NS$ ( n -- ptr u8 n ) {: kind:n :}
+   0 NC-U !
+   kind [char] P NC-PKG
+   58 NC-C,
+   NC-FAM-U [char] A NC-REP
+   NC-SRC NC-U @ ;
+
+: NC-QUERY ( ptr u8 n -- bool )
+   2drop
+   NC-QUERY-N @ 1 + NC-QUERY-N !
+   0 0= 0= ;
+
+: NC-EXACT ( n -- ) {: kind:n :}
+   kind 0 0= 0= NC-DECL$ EVALUATE-CATCH 0 T=
+   kind NC-NS$ XREF:NAMESPACE? TTRUE ;
+
+: NC-OVER ( n -- ) {: kind:n :}
+   RECORD-BASELINE RECORD-OWNER-DEPTHS RECORD-NATIVE-HIGHWATERS
+   WID-NEXT WID-N0 !
+   0 NC-QUERY-N !
+   [: NC-QUERY ;] is TDECL-NS-EXISTS-XT
+   DECL-DIAG:PROSE
+   kind 0 0= NC-DECL$ EVALUATE-CATCH E-TFAM-NS-CAP T=
+   s" tfam: constructor namespace too long" DECL-DIAG:HAS? TTRUE
+   DECL-DIAG:OFF
+   RESTORE-GENERATED-EVALUATOR
+   NC-QUERY-N @ 0 T=
+   NS-ASSERT-ROLLED ;
+
+: TEST-NAMESPACE-CAPACITY ( -- )
+   NC-ENUM NC-EXACT   NC-ENUM NC-OVER
+   NC-SUM NC-EXACT    NC-SUM NC-OVER
+   NC-PROD NC-EXACT   NC-PROD NC-OVER
+   NC-STRUCT NC-EXACT NC-STRUCT NC-OVER
+   s" ENUM gdcapafter ok ;ENUM" EVALUATE-CATCH 0 T= ;
+
 : RUN-CAPACITY-PREFLIGHT ( -- )
-   s" GDNESTED:MAKE" CAPACITY-PREFLIGHT-N @ TDECL-CAPACITY-PREFLIGHT-XT ;
+   s" GDCAP-MISSING:MAKE" CAPACITY-PREFLIGHT-N @ TDECL-CAPACITY-PREFLIGHT-XT ;
 
 : CAPACITY-PREFLIGHT-CATCH ( n -- n )
    CAPACITY-PREFLIGHT-N !
    [: RUN-CAPACITY-PREFLIGHT ;] catch ;
 
 : TEST-PLAN-CAPACITY-PREFLIGHT ( -- )
-   s" GDNESTED:MAKE" 2 GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS 2 T=
+   \ Every public declaration reserves the constructor namespace's WID pair.
+   s" GDNESTED:MAKE" 2 GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS 3 T=
    s" GDCAP-MISSING:MAKE" 2 GENERATED-DECL-NAME-PREFLIGHT:DICTIONARY-RECORDS 3 T=
-   s" GDNESTED:MAKE" GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? 0= TTRUE
-   s" GDCAP-MISSING:MAKE" GENERATED-DECL-NAME-PREFLIGHT:NEW-WORDLIST? TTRUE
    DICT-CAP ndict@ - {: room:n :}
    RECORD-NATIVE-HIGHWATERS
    room CAPACITY-PREFLIGHT-CATCH 0 T=
@@ -1341,6 +1540,8 @@ public
    TEST-NAME-PREFLIGHT-CLEARS-AUTHORITY
    TEST-GENERATOR-ROLLBACK
    TEST-EVALUATOR-FAILURE-CLEARS-AUTHORITY
+   TEST-NAMESPACE-COLLISIONS
+   TEST-NAMESPACE-CAPACITY
    TEST-PLAN-CAPACITY-PREFLIGHT
    TEST-SUCCESS-PUBLICATION
    TEST-DICTIONARY-DEPTH-PRIVATE

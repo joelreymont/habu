@@ -16,7 +16,7 @@
 \
 \ TWO RULES THIS SET ENFORCES SO A PIN CANNOT LIE.
 \
-\ 1. A family is identified by its tail PLUS the constructor package its variants carry -
+\ 1. A family is identified by its tail PLUS the constructor namespace its variants carry -
 \    the (package, tail) pair that owns family identity. A tail alone is NOT unique: eight
 \    packages declare a family whose tail is `id-result`, so a tail-only lookup silently
 \    pins whichever one loaded first and reports green about a family the suite never
@@ -28,8 +28,8 @@
 \    (-1, or `<missing>` for a name) rather than read a registry row that is not there.
 \
 \ test/checker-assert-test.f is this file's own suite: it declares hostile fixtures - two
-\ families sharing one tail under different constructor packages - and proves the
-\ ambiguity is counted, a wrong constructor package resolves nothing, and every reader
+\ families sharing one tail under different constructor namespaces - and proves the
+\ ambiguity is counted, a wrong constructor namespace resolves nothing, and every reader
 \ answers the sentinel instead of a neighbouring row.
 
 require lib/prelude.f
@@ -85,7 +85,7 @@ public
 
 \ ---- family identity ----------------------------------------------------------
 \ FAMS is the uniqueness assertion: 1 is the only healthy answer. 0 means the identity
-\ resolves nothing (a renamed family, or a wrong constructor package); more than 1 means
+\ resolves nothing (a renamed family, or a wrong constructor namespace); more than 1 means
 \ the identity is ambiguous and no pin under it can be trusted.
 : FAMS ( ptr u8 n ptr u8 n -- n ) {: ta:ptr tu:n pa:ptr pu:n :}
    0

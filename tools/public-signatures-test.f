@@ -32,7 +32,52 @@ PRODUCT pstprod 0 DERIVE eq FIELD aa n ;PRODUCT
 \ derive S3: a hash-only sum publishes HASH (+TAG) but no EQ row.
 SUMTYPE psthash 0 DERIVE hash VARIANT hh n ;VARIANT ;SUMTYPE
 
-8192 constant PST-BUF-CAP
+\ Build long declarations compactly, then cross the audited EVALUATE boundary
+\ into the real ENUM declarer before the manifest registry is emitted.
+TDGEN-CAP constant PST-DECL-CAP
+create PST-DECL-BUF PST-DECL-CAP allot
+variable PST-DECL-U
+
+: PST-DECL-RESET ( -- )
+   0 PST-DECL-U ! ;
+
+: PST-DECL-C, ( n -- )
+   PST-DECL-U @ PST-DECL-CAP >= if
+      s" public-signatures-test: declaration source too long" 76 die
+   then
+   PST-DECL-BUF PST-DECL-U @ + c!
+   PST-DECL-U @ 1+ PST-DECL-U ! ;
+
+: PST-DECL-APP ( ptr u8 n -- ) {: a:ptr u:n :}
+   0 begin dup u < while
+      dup a + c@ PST-DECL-C,
+      1+
+   repeat drop ;
+
+: PST-DECL-REP ( n n -- ) {: u:n c:n :}
+   0 begin dup u < while
+      c PST-DECL-C,
+      1+
+   repeat drop ;
+
+: PST-LONG-DECL$ ( -- ptr u8 n )
+   PST-DECL-RESET
+   s" package " PST-DECL-APP
+   250 112 PST-DECL-REP
+   s"  public ENUM pstlongfamily variant ;ENUM ;package" PST-DECL-APP
+   PST-DECL-BUF PST-DECL-U @ ;
+
+: PST-CAP-DECL$ ( -- ptr u8 n )
+   PST-DECL-RESET
+   s" ENUM " PST-DECL-APP
+   TF-CTOR-NS-CAP 102 PST-DECL-REP
+   s"  variant ;ENUM" PST-DECL-APP
+   PST-DECL-BUF PST-DECL-U @ ;
+
+PST-LONG-DECL$ INCLUDE-EVALUATE
+PST-CAP-DECL$ INCLUDE-EVALUATE
+
+PS-FILE-CAP constant PST-BUF-CAP
 
 variable PST-ROOT-U
 variable PST-FIX-U
@@ -480,6 +525,26 @@ variable PST-NUM-U
    23 PS-FAM-ARGS
    PS-CSIG$ s" <a,b,c,d,e,g,h,i,j,k,l,m,o,p,q,s,t,u,v,w,x,y,z>" T$= ;
 
+: PST-LONG-WORD$ ( -- ptr u8 n )
+   SB-RESET
+   250 0 ?do 80 SB-APPEND-C loop
+   s" :PSTLONGFAMILY:VARIANT" SB-APPEND
+   SB$ ;
+
+: PST-CAP-WORD$ ( -- ptr u8 n )
+   PST-DECL-RESET
+   TF-CTOR-NS-CAP 70 PST-DECL-REP
+   s" :VARIANT" PST-DECL-APP
+   PST-DECL-BUF PST-DECL-U @ ;
+
+: PST-CAP-SIG$ ( -- ptr u8 n )
+   PST-DECL-RESET
+   40 PST-DECL-C,
+   s" -- " PST-DECL-APP
+   TF-CTOR-NS-CAP 102 PST-DECL-REP
+   41 PST-DECL-C,
+   PST-DECL-BUF PST-DECL-U @ ;
+
 \ item 13: the registered public ENUM `pstcolor` publishes one synthesized
 \ nullary constructor per variant, `PSTCOLOR:<VARIANT> ( -- pstcolor )`.
 : PST-TEST-ENUM-CTORS ( -- )
@@ -505,7 +570,13 @@ variable PST-NUM-U
    PST-OUT outu s" (psthash -- n)" PST-SIG$ CONTAINS? TTRUE
    PST-OUT outu s" PSTHASH:TAG" PST-WORD$ CONTAINS? TTRUE       \ tag rides any derive
    PST-OUT outu s" PSTHASH:EQ" PST-WORD$ CONTAINS? TFALSE       \ hash-only: no eq row
-   PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE ;    \ eq-only: no hash row
+   PST-OUT outu s" PSTSUM:HASH" PST-WORD$ CONTAINS? TFALSE      \ eq-only: no hash row
+   PST-LONG-WORD$ nip 256 > TTRUE
+   PST-OUT outu PST-LONG-WORD$ CONTAINS? TTRUE
+   PST-CAP-WORD$ nip TF-CTOR-NS-CAP 8 + T=
+   PST-OUT outu PST-CAP-WORD$ CONTAINS? TTRUE
+   PST-CAP-SIG$ nip TF-CTOR-NS-CAP 5 + T=
+   PST-OUT outu PST-CAP-SIG$ CONTAINS? TTRUE ;
 
 : PST-MAIN ( -- )
    T-RESET

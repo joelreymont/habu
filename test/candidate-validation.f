@@ -210,8 +210,8 @@ variable FAILS
    s" test/structure-certify-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/enum-decl-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/decl-replay-verify-source.f" construct case-kind positive 0 s" " s" " RUN-CASE
-   s" test/enum-ctor-collide-bad.f" construct case-kind negative 76
-      s" ENUM-CTOR-COLLIDE-ARMED" s" sumtype: generated declaration already defined" RUN-CASE
+   s" test/generated-name-collide-bad.f" construct case-kind negative 76
+      s" GENERATED-NAME-COLLIDE-ARMED" s" sumtype: generated declaration already defined" RUN-CASE
    s" test/type-decl-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/deftype-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/deftype-dup-bad.f" construct case-kind negative 67

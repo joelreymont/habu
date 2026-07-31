@@ -12,7 +12,7 @@
 \ registry cursor byte-identical to the pre-declaration baseline; the
 \ deterministic snapshot identity is reproducible for an identical declaration
 \ against a fresh registry; and — the reconciliation seam — a public STRUCTURE
-\ with fields generates a working sealed FAMILY:MAKE/UNMAKE ctor package that
+\ with fields generates a working sealed FAMILY:MAKE/UNMAKE namespace that
 \ round-trips bit-identically in declaration order, while a rejected, an opaque
 \ zero-field, and a private declaration each generate no ctor words.
 \ A failure prints F<index> + detail; REPORT exits 1.
@@ -244,7 +244,7 @@ public
 \ ---------------------------------------------------------------------------
 \ 10. End-to-end wiring (the ;STRUCTURE -> STRUCTURE-MAKE:GENERATE seam): a public
 \     STRUCTURE with fields, declared from real syntax, generates a working sealed
-\     MAKE/UNMAKE ctor package (two variant rows: make + unmake). MAKE then UNMAKE
+\     MAKE/UNMAKE namespace (two variant rows: make + unmake). MAKE then UNMAKE
 \     is a bit-identical physical no-op that preserves declaration order.
 \ ---------------------------------------------------------------------------
 SUMVN@ SV0 !
@@ -276,7 +276,7 @@ s" SDMAPBAD ( n n n n n bool n n r char -- n n n n n bool n n r char ) SDMAP:MAK
 
 \ ---------------------------------------------------------------------------
 \ 12. Constructor generation is gated (SD-MAKEABLE?): only a PUBLIC structure WITH
-\     fields owns a ctor package. A rejected declaration and an opaque zero-field
+\     fields owns a constructor namespace. A rejected declaration and an opaque zero-field
 \     declaration each generate NO ctor words (the variant cursor is unchanged).
 \ ---------------------------------------------------------------------------
 SUMVN@ SV0 !
@@ -447,7 +447,7 @@ DECL-DIAG:OFF
 \ could not get past maki/db/obligation.f's `STRUCTURE evidence`.
 \
 \ Registration here includes the family's MAKE/UNMAKE variant rows and their
-\ constructor package, because that is how a later `FAMILY:MAKE` in the same
+\ constructor namespace, because that is how a later `FAMILY:MAKE` in the same
 \ source resolves. Only the rendering of those two words is skipped.
 \ ---------------------------------------------------------------------------
 package struct-replay-test

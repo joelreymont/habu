@@ -517,7 +517,7 @@ TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-PARAM? -1 T=
 TDX @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 0 T=
 TDY @ TYPE-FIELD:SCHEMA@ TWX-SCHEMA-ROOT@ TWX-SCHEMA-A@ 1 T=
 \ generated-word metadata (item 15): two generator-owned SUMV rows sharing the
-\ field schema range, ctor package derived from the (pkg, tail) identity.
+\ field schema range, constructor namespace recorded from exact path identity.
 TDF @ TFAM-VAR-COUNT@ 2 T=
 TDF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
 TDF @ TFAM-VAR-START@ 1 + SUMV-NAME$ s" unmake" T$=
@@ -1154,17 +1154,17 @@ TDOK @ -1 T=
 TDF @ TDX @ <> -1 T=
 
 \ ---------------------------------------------------------------------------
-\ item 8 metadata: a PUBLIC sum/enum family derives its constructor package name
-\ namespace path at ;SUMTYPE and stores it in every variant's SV.CTOR-NS slot;
+\ item 8 metadata: a PUBLIC sum/enum family records its exact constructor
+\ namespace path at ;SUMTYPE in every variant's SV.CTOR-NS slot;
 \ a PRIVATE family exports nothing, so the slot stays empty (the `construct`
 \ form is item 9). No runtime constructor word is published in this item yet.
 \ ---------------------------------------------------------------------------
-\ top-level public `tdres` -> package TDRES on both variants.
+\ top-level public `tdres` -> namespace TDRES on both variants.
 s" " s" tdres" TWX-TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
 TDF @ TFAM-VAR-START@ TDV0 !
 TDV0 @ SUMV-CTOR-NS$ s" TDRES" T$=
 TDV0 @ 1 + SUMV-CTOR-NS$ s" TDRES" T$=
-\ in-package public `tdpa:tres` -> package TDPA-TRES.
+\ in-package public `tdpa:tres` -> namespace TDPA:TRES.
 s" tdpa" s" tres" TWX-TFAM-FIND-IN TDOK ! TDF !   TDOK @ -1 T=
 TDF @ TFAM-VAR-START@ TDV0 !
 TDV0 @ SUMV-CTOR-NS$ s" TDPA:TRES" T$=
@@ -2022,7 +2022,7 @@ TD3MLOG @ 0 TWX-MK-HIDDEN  TD3LOG @ 0 TWX-MK-HIDDEN  TWX-UNIFY 0 T=
 \ ---------------------------------------------------------------------------
 \ derive S1 (dot habu-checker-capability-derive): `DERIVE eq` on a PUBLIC ENUM
 \ generates PKG:TAG (discriminant) + PKG:EQ (tag equality) as ORDINARY CHECKED
-\ words in the ctor package — no window, no trust, no engine lowering.
+\ words in the constructor namespace — no window, no trust, no engine lowering.
 \ ---------------------------------------------------------------------------
 TDIAG-BUF 8192 DIAG-BUFFER!   \ silence this section's expected declaration rejects
 ENUM tdrv DERIVE eq red green blue ;ENUM

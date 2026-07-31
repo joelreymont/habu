@@ -155,6 +155,7 @@ TRUSTED: MULTI-COUNT+ ( -- ) 1 MULTI-ERR-N +! ;
 7126 constant C-PF-SCHEMA   \ type-family.f E-PF-SCHEMA
 7127 constant C-PF-LAYOUT   \ type-family.f E-PF-LAYOUT
 7128 constant C-PF-FLAGS    \ type-family.f E-PF-FLAGS
+7135 constant C-NS-CAP      \ type-family.f E-TFAM-NS-CAP
 7161 constant C-EVENT-TX    \ decl-event.f E-DEV-TX
 7162 constant C-EVENT-STATE \ decl-event.f E-DEV-STATE
 7163 constant C-DUP-POLICY  \ decl-event.f E-DEV-DUP-POLICY
@@ -189,6 +190,7 @@ variable ARMED              \ the code the armed reason explains (NO-CODE = none
    code C-POLICY    = IF s" unknown layout policy"        FOUND EXIT THEN
    code C-RECURSIVE = IF s" invalid layout policy for recursive sum" FOUND EXIT THEN
    code C-CAP       = IF s" declaration too long"         FOUND EXIT THEN
+   code C-NS-CAP    = IF s" tfam: constructor namespace too long" FOUND EXIT THEN
    \ 7119 reaching the table (rather than an armed front-end reason) means the
    \ derive requirement failed later, in the constructor participant's payload
    \ role and equality checks, not that the feature token was unknown.
@@ -857,8 +859,15 @@ TRUSTED: CTOR-PROVIDER ( -- n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] )
    TDECL-SUMV-PROVIDER ;
 TRUSTED: CTOR-GEN ( n [ n n n -- n ] [ n n n n -- n ] [ n n n -- n ] n -- n )
    TDECL-CTOR-WORDS-BODY ;
+TRUSTED: NS-EXISTS? ( n -- bool ) TDECL-CTOR-NS-EXISTS? ;
 TRUSTED: PEND-CLEAR ( -- ) CTOR-PEND-CLEAR ;
 TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
+
+: NS-REQUIRE ( n -- )
+   NS-EXISTS? IF
+      DECL-REJECT:AT-FAMILY
+      s" xref: generated namespace already exists" 76 DECL-REJECT:REJECT throw
+   THEN ;
 
 : ARM-BASE ( -- ptr a ) ARM-P @ ;
 : ARM-SLOT ( -- ptr a )                    \ this nesting level's armed-family cell
@@ -877,7 +886,7 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ THE GATE, and the one place that spells it.
 \
 \ A family owns generated constructors when it is PUBLIC (a private family
-\ exports nothing and TDECL-CTOR-PUBLISH would leave the constructor package
+\ exports nothing and TDECL-CTOR-PUBLISH would leave the constructor namespace
 \ empty), has at least one variant, and is one of the two ENUM-front-end kinds.
 \
 \ Both kinds, deliberately. The global-token cutover's acceptance is that every
@@ -933,12 +942,15 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ rendered rather than publishing a set nobody validated.
 : PART-PREPARE ( n -- n ) {: depth:n :}
    ARMED-FAM {: fam:n :}
-   fam NO-FAMILY <> IF fam GEN-REQUIRE THEN
+   fam NO-FAMILY <> IF
+      fam GEN-REQUIRE
+      fam NS-REQUIRE
+   THEN
    depth ;
 
 \ The work. Mirrors the legacy sum definer's close sequence (sumtype.f
 \ CHECKER-DEFSUM-BODY): reject a variant spelled like a derived word, prove every
-\ payload role is derivably comparable, stamp the constructor package on each
+\ payload role is derivably comparable, stamp the constructor namespace on each
 \ variant row, then render/evaluate/certify/seal the whole set through the shared
 \ generator. Both role gates read committed rows, which is why they work here and
 \ could not work in the body phase.
@@ -949,7 +961,7 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
 \ TDECL-CTOR-WORDS, and CHECKER-DEFENUM — the metadata-only entry check-core and
 \ verify-source drove before this one existed — ended with TDECL-CTOR-PUBLISH and
 \ defined no word.
-\ So the constructor PACKAGE STAMP on each variant row is registration, not
+\ So the constructor NAMESPACE STAMP on each variant row is registration, not
 \ generation: it is how a later `FAMILY:VARIANT` in the same source resolves at
 \ all. Skipping the arming instead of the rendering would have left every
 \ constructor use in a replayed file undefined, which is the whole reason the
@@ -989,6 +1001,8 @@ TRUSTED: VAR-CTOR-SYM ( n -- n ) SUMV-CTOR-SYM@ ;
    GENERATED-DECL-OWNER:REGISTER ;
 
 public
+
+: REQUIRE-NS ( n -- ) NS-REQUIRE ;
 
 \ The declaration front end names the family whose constructors this transaction
 \ owns. Legal only inside an open declaration transaction, and only for a family

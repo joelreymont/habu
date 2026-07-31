@@ -6,12 +6,12 @@
 \ read. This suite drives REFLECT against fixtures declared for the purpose:
 \   A-*  : a public family resolves uniquely and every reader returns its real value.
 \   D-*  : DISCRIMINATION - two public families share one tail under different
-\          constructor packages, and each identity reads back its OWN family. A
+\          constructor namespaces, and each identity reads back its OWN family. A
 \          tail-only lookup (the pre-R7 shape) would answer whichever loaded first.
 \   X-*  : AMBIGUITY - two PRIVATE families share one tail. A private family publishes
-\          no constructor package, so both answer to the same identity and FAMS reports
+\          no constructor namespace, so both answer to the same identity and FAMS reports
 \          2: the uniqueness assertion fails loudly instead of pinning a coin flip.
-\   S-*  : SENTINEL REFUSAL - a wrong constructor package, an unknown tail, and an
+\   S-*  : SENTINEL REFUSAL - a wrong constructor namespace, an unknown tail, and an
 \          out-of-range case index each make every reader answer -1 (or `<missing>`),
 \          never a neighbouring registry row.
 \   R-*  : the record readers, which hang off NO-VARIANT rather than a case.
@@ -43,7 +43,7 @@ ENUM probe 1
 ;ENUM
 ;package
 
-\ Two PRIVATE families share the tail `shadow`. Neither publishes a constructor package,
+\ Two PRIVATE families share the tail `shadow`. Neither publishes a constructor namespace,
 \ so neither can be told from the other by identity - the case FAMS exists to expose.
 package REFLTEST-P
 private
@@ -73,12 +73,12 @@ STRUCTURE row 0
 package REFLECT-TEST
 
 \ the identities under test, named once
-: A$ ( -- ptr u8 n ptr u8 n )     s" probe" s" REFLTEST--A-PROBE" ;
-: B$ ( -- ptr u8 n ptr u8 n )     s" probe" s" REFLTEST--B-PROBE" ;
-: ROW$ ( -- ptr u8 n ptr u8 n )   s" row" s" REFLTEST--R-ROW" ;
-: SHADOW$ ( -- ptr u8 n ptr u8 n )  s" shadow" s" " ;      \ private: no constructor package
-: WRONG$ ( -- ptr u8 n ptr u8 n )   s" probe" s" REFLTEST--Z-PROBE" ;   \ no such package
-: GONE$ ( -- ptr u8 n ptr u8 n )    s" no-such-family" s" REFLTEST--A-PROBE" ;
+: A$ ( -- ptr u8 n ptr u8 n )     s" probe" s" REFLTEST-A:PROBE" ;
+: B$ ( -- ptr u8 n ptr u8 n )     s" probe" s" REFLTEST-B:PROBE" ;
+: ROW$ ( -- ptr u8 n ptr u8 n )   s" row" s" REFLTEST-R:ROW" ;
+: SHADOW$ ( -- ptr u8 n ptr u8 n )  s" shadow" s" " ;      \ private: no constructor namespace
+: WRONG$ ( -- ptr u8 n ptr u8 n )   s" probe" s" REFLTEST-Z:PROBE" ;   \ no such namespace
+: GONE$ ( -- ptr u8 n ptr u8 n )    s" no-such-family" s" REFLTEST-A:PROBE" ;
 
 T-RESET
 
@@ -91,12 +91,12 @@ A$ REFLECT:VIS 1 T=
 A$ REFLECT:VARS 2 T=
 A$ 0 REFLECT:ARM$ s" alpha" T$=
 A$ 1 REFLECT:ARM$ s" beta" T$=
-A$ 0 REFLECT:ARM-CTOR$ s" REFLTEST--A-PROBE" T$=
+A$ 0 REFLECT:ARM-CTOR$ s" REFLTEST-A:PROBE" T$=
 A$ 0 REFLECT:ARM-FLDS 1 T=
 A$ 1 REFLECT:ARM-FLDS 0 T=
 A$ 0 s" first" REFLECT:ARM-SLOT 0 T=
 
-\ ---- D: the same tail under another constructor package is another family ------------
+\ ---- D: the same tail under another constructor namespace is another family ----------
 B$ REFLECT:FAMS 1 T=
 B$ REFLECT:ARITY 1 T=              \ A is arity 0; reading B's arity proves the split
 B$ REFLECT:VARS 3 T=               \ A has 2 cases, B has 3

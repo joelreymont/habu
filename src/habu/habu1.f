@@ -2650,7 +2650,7 @@ package HB-EMIT
 \ init, AOT-REPL restore, snapshot restore); a single membership rule protects
 \ them uniformly and unforgeably. Dynamic package wordlists start at
 \ FIRST-DYNAMIC-WID (3), so the reserved pins never shadow a real allocation.
-\ Beyond the two pins, the sealed system + generated constructor package WIDs are
+\ Beyond the two pins, the sealed system + generated constructor namespace WIDs are
 \ found by a linear scan of the PROT-WID-N-CELL entries of the u32 PROT-WID-OFF
 \ table (both inside the sealed friend arena). Preserves x5 x6 x7 x9 x14; x13 is
 \ the result. Called by the sealed-WID guards (record publish, AOT

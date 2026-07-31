@@ -180,6 +180,9 @@ private
 
 public
 
+: NAMESPACE? ( ptr u8 n -- bool )
+   QUAL-WID nip ;
+
 : RESOLVE ( ptr u8 n n -- n n ) {: a:ptr u:n bare-wid:n :}
    a u QNAME:SPLIT
    {: qa:ptr qu:n ta:ptr tu:n kind:n :}
@@ -220,15 +223,6 @@ private
 
 $7FFFFFFFFFFFFFFF constant COUNT-MAX
 
-: NAMESPACE-EXISTS? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u QNAME:SPLIT
-   dup QNAME:QUALIFIED <> IF
-      drop 2drop 2drop
-      s" xref: generated declaration is not qualified" 76 die
-   THEN
-   drop 2drop
-   XREF-NAMESPACE-WL XREF-FIND-WL-INDEX 0 >= ;
-
 public
 
 : CHECK ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -237,9 +231,6 @@ public
    THEN
    a u XREF-FIND XREF-FOUND? IF
       s" xref: generated declaration already exists" 76 die
-   THEN
-   a u NAMESPACE-EXISTS? IF
-      s" xref: generated namespace already exists" 76 die
    THEN ;
 
 : DICTIONARY-RECORDS ( ptr u8 n n -- n ) {: a:ptr u:n words:n :}
@@ -251,7 +242,8 @@ public
 private
 
 : INSTALL ( -- )
-   [: CHECK ;] is TDECL-NAME-PREFLIGHT-XT ;
+   [: CHECK ;] is TDECL-NAME-PREFLIGHT-XT
+   [: XREF:NAMESPACE? ;] is TDECL-NS-EXISTS-XT ;
 
 INSTALL
 

@@ -2,7 +2,7 @@
 \ /type-families.md §12). Run BY THE ENGINE over stdin, like the type-decl
 \ suite:  bin/hb < test/type-ctor-suite.f
 \ A PUBLIC arity-0 SUMTYPE generates one checked constructor word per variant
-\ in its derived constructor package (RESULT:OK shape): payload cells stay,
+\ in its generated constructor namespace (RESULT:OK shape): payload cells stay,
 \ M-p zero pads and the tag push on top, certified against the declared
 \ hidden-field sig through the checker-owned pending-constructor rule — no
 \ TRUST anywhere. Parametric (arity > 0) families are possibly-linear layouts
@@ -142,7 +142,7 @@ SUMTYPE zopt 0
 s" GEN-OPT" type cr
 
 \ ---------------------------------------------------------------------------
-\ in-package public family: constructor package derives from (pkg, tail) and
+\ in-package public family: constructor namespace is the exact family path and
 \ the words are callable from global scope; declaring-package state survives.
 \ ---------------------------------------------------------------------------
 package zpub
@@ -157,8 +157,39 @@ NEWTYPE zonly 1
 s" zpub" s" zonly" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TWX-TFAM-VIS@ CHECKER-PACKAGE-PRIVATE T=
 \ the generated word is globally addressable; qualified sig type resolves.
-: ZMK-YES ( n -- zpub:tres ) ZPUB-TRES:YES ;
+: ZMK-YES ( n -- zpub:tres ) ZPUB:TRES:YES ;
 s" GEN-PKG" type cr
+
+\ Exact absolute paths remain distinct at arbitrary depth, including siblings
+\ with the same family tail and literal hyphens in a path segment.
+package zdeep:left
+public
+SUMTYPE result 0
+  VARIANT ok n ;VARIANT
+;SUMTYPE
+;package
+package zdeep:right
+public
+SUMTYPE result 0
+  VARIANT ok n ;VARIANT
+;SUMTYPE
+;package
+package z-deep:left
+public
+SUMTYPE result 0
+  VARIANT ok n ;VARIANT
+;SUMTYPE
+;package
+: ZDEEP-L ( n -- zdeep:left:result ) ZDEEP:LEFT:RESULT:OK ;
+: ZDEEP-R ( n -- zdeep:right:result ) ZDEEP:RIGHT:RESULT:OK ;
+: ZDEEP-H ( n -- z-deep:left:result ) Z-DEEP:LEFT:RESULT:OK ;
+s" zdeep:left" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" ZDEEP:LEFT:RESULT" T$=
+s" zdeep:right" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" ZDEEP:RIGHT:RESULT" T$=
+s" z-deep:left" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" Z-DEEP:LEFT:RESULT" T$=
+
 \ global scope is back: a fresh top-level sum still generates.
 SUMTYPE zafter 0
   VARIANT one n ;VARIANT
@@ -167,12 +198,8 @@ SUMTYPE zafter 0
 s" GEN-AFTER" type cr
 
 \ ---------------------------------------------------------------------------
-\ >16-byte escaped ctor package, constructable by readable name
-\ (dot habu-raise-or-alias-5d2a6b70). Before the old readability-limit raise
-\ (16 -> 32) a presence-slot sum whose escaped package name exceeds 16 got an
-\ opaque SHA ctor package (Thex...-TAIL), unwritable in committed source; now it
-\ keeps the READABLE escaped name and its constructors are callable by it. This
-\ is the real EVID presence-slot casualty shape (EVID-CERTIFY--SLOT = 18 bytes).
+\ Literal hyphens remain literal in the exact family-path namespace. This is the
+\ real EVID presence-slot shape: EVX:CERTIFY-SLOT, with no escaping or hashing.
 \ ---------------------------------------------------------------------------
 package evx
 public
@@ -182,16 +209,16 @@ SUMTYPE certify-slot 0
 ;SUMTYPE
 private
 ;package
-\ the derived ctor package is the readable escaped name (17 bytes > 16), NOT a SHA fold:
+\ the recorded namespace is the exact absolute family path:
 s" evx" s" certify-slot" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" EVX:CERTIFY-SLOT" T$=
-\ and the constructors are callable cross-package by that readable name:
-: EVX-MK-GOT  ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT ;
-: EVX-MK-NONE (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE ;
-s" EVX-GET ( n -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT"  CHECK-QUIET-CANDIDATE! -1 T=
-s" EVX-NON (   -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-NONE" CHECK-QUIET-CANDIDATE! -1 T=
-\ wrong payload still rejects at the readable call site (no soundness lost):
-s" EVX-BAD ( ptr u8 -- evx:certify-slot ) EVX-CERTIFY--SLOT:CERTIFY-GOT" CHECK-QUIET-CANDIDATE! 0 T=
+\ and the constructors are callable cross-package by that exact path:
+: EVX-MK-GOT  ( n -- evx:certify-slot ) EVX:CERTIFY-SLOT:CERTIFY-GOT ;
+: EVX-MK-NONE (   -- evx:certify-slot ) EVX:CERTIFY-SLOT:CERTIFY-NONE ;
+s" EVX-GET ( n -- evx:certify-slot ) EVX:CERTIFY-SLOT:CERTIFY-GOT"  CHECK-QUIET-CANDIDATE! -1 T=
+s" EVX-NON (   -- evx:certify-slot ) EVX:CERTIFY-SLOT:CERTIFY-NONE" CHECK-QUIET-CANDIDATE! -1 T=
+\ wrong payload still rejects at the exact-path call site:
+s" EVX-BAD ( ptr u8 -- evx:certify-slot ) EVX:CERTIFY-SLOT:CERTIFY-GOT" CHECK-QUIET-CANDIDATE! 0 T=
 s" GEN-LONG-CTOR" type cr
 
 \ ---------------------------------------------------------------------------
@@ -245,7 +272,7 @@ s" ZP7 ( own -- zpoly<own,n> ) ZPMK-G" CHECK-QUIET-CANDIDATE! 0 T=
 s" ZP8 ( n -- zpoly<n,n> zpoly<n,n> ) ZPOLY:OK dup" CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---------------------------------------------------------------------------
-\ private families export nothing: no constructor package, no words.
+\ private families export nothing: no constructor namespace, no words.
 \ ---------------------------------------------------------------------------
 package zp8
 private
@@ -255,7 +282,16 @@ SUMTYPE zsec 0
 ;package
 s" zp8" s" zsec" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ nip 0 T=
-s" ZB7 ( n -- n ) ZP8-ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
+s" ZB7 ( n -- n ) ZP8:ZSEC:HIDE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
+package zdeep:private
+private
+SUMTYPE result 0
+  VARIANT hide n ;VARIANT
+;SUMTYPE
+;package
+s" zdeep:private" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
+TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ nip 0 T=
+s" ZB7D ( n -- n ) ZDEEP:PRIVATE:RESULT:HIDE" CHECK-QUIET-CANDIDATE! 1 T=
 
 \ ---------------------------------------------------------------------------
 \ rejected declarations generate nothing: a duplicate family neither redefines
@@ -277,10 +313,10 @@ TWX-MULTI-ERR-END 1 T=
 s" " s" zlin" TWX-TFAM-FIND-IN TCOK ! drop   TCOK @ 0 T=
 
 \ ---------------------------------------------------------------------------
-\ slice 3: protection. Generated packages are closed-but-callable: `package`
+\ slice 3: protection. Generated namespaces are closed-but-callable: `package`
 \ cannot open/reopen the derived name (any case), `undefine` of a generated
 \ word rejects BEFORE retirement (still callable after the catch), and a new
-\ tail cannot certify into the constructor package. SV.CTOR-SYM records the
+\ tail cannot certify into the constructor namespace. SV.CTOR-SYM records the
 \ published checker symbol.
 \ ---------------------------------------------------------------------------
 s" " s" zres" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
@@ -304,7 +340,7 @@ s" UNDEF-SAFE" type cr
 \ ordinary undefine of a user word still works.
 : ZDOOMED ( -- n ) 5 ;
 s" undefine ZDOOMED" TCE-CATCH 0 T=
-\ native producer populated the protected-WID registry for constructor packages.
+\ native producer populated the protected-WID registry for constructor namespaces.
 data-base PROT-WID-N-CELL + @ 0 > -1 T=
 
 \ ---------------------------------------------------------------------------
@@ -384,12 +420,12 @@ s" CP2 ( n -- cnsec ) construct cnsec hide" CHECK-QUIET-CANDIDATE! -1 T=
 ;package
 s" CB13 ( n -- cnpub:cnres ) construct cnres yes" CHECK-QUIET-CANDIDATE! 0 T=
 s" CB14 ( n -- cnpub:cnres ) construct cnpub:cnres yes" CHECK-QUIET-CANDIDATE! 0 T=
-s" CP3 ( n -- cnpub:cnres ) CNPUB-CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ the public cross-package path
+s" CP3 ( n -- cnpub:cnres ) CNPUB:CNRES:YES" CHECK-QUIET-CANDIDATE! -1 T=   \ the public cross-package path
 s" CONSTRUCT-OWN" type cr
 
 \ ---------------------------------------------------------------------------
 \ item 15: product generated words. A PUBLIC product publishes exactly two
-\ checked words in its derived package — PKG:MAKE ( fields -- fam<..> ) and
+\ checked words in its generated namespace — FAMILY:MAKE ( fields -- fam<..> ) and
 \ PKG:UNMAKE ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
 \ window: a product bundle is its field cells in slot order (no tag), so
 \ construction/destructure are physical no-ops and runtime round-trips are
@@ -399,7 +435,7 @@ PRODUCT zpt 0
   FIELD x n
   FIELD y n
 ;PRODUCT
-\ metadata: two generator-owned rows, ctor package derived, syms recorded.
+\ metadata: two generator-owned rows, exact namespace recorded, syms recorded.
 s" " s" zpt" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-COUNT@ 2 T=
 TCF @ TFAM-VAR-START@ SUMV-NAME$ s" make" T$=
@@ -463,7 +499,7 @@ s" PP2 ( n n -- zpt ) ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PL1 ( own n -- zpr<own,n> ) ZPR:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" PL2 ( zpr<own,n> -- zpr<own,n> )" CHECK-QUIET-CANDIDATE! 0 T=
 s" PL3 ( zpr<own,n> -- own n ) ZPR:UNMAKE" CHECK-QUIET-CANDIDATE! 0 T=
-\ in-package public product: derived package, callable from global scope,
+\ in-package public product: exact-path namespace, callable from global scope,
 \ package state survives generation.
 package zppk
 public
@@ -471,8 +507,8 @@ PRODUCT prow 0
   FIELD v n
 ;PRODUCT
 ;package
-: ZPPK-MK ( n -- zppk:prow ) ZPPK-PROW:MAKE ;
-: ZPPK-UN ( zppk:prow -- n ) ZPPK-PROW:UNMAKE ;
+: ZPPK-MK ( n -- zppk:prow ) ZPPK:PROW:MAKE ;
+: ZPPK-UN ( zppk:prow -- n ) ZPPK:PROW:UNMAKE ;
 s" GEN-PRODUCT-PKG" type cr
 \ private products export nothing: no package, no words, no construct form.
 package zpsec
@@ -483,8 +519,8 @@ PRODUCT phid 0
 ;package
 s" zpsec" s" phid" TWX-TFAM-FIND-IN TCOK ! TCF !   TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ nip 0 T=
-s" PS1 ( n -- n ) ZPSEC-PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
-\ protection: the derived package is closed (reopen/undefine reject), and the
+s" PS1 ( n -- n ) ZPSEC:PHID:MAKE" CHECK-QUIET-CANDIDATE! 1 T=   \ undefined word -> uncheckable
+\ protection: the generated namespace is closed (reopen/undefine reject), and the
 \ generated words stay callable after the rejected attempts.
 s" package zpt" TCE-CATCH E-CTOR-PROTECTED T=
 s" package ZPT" TCE-CATCH E-CTOR-PROTECTED T=
@@ -622,7 +658,7 @@ s" : CLXG-BADTWO ( clx2 clx2 -- clxg<clx2> ) construct clxg wtwo ;" TCE-CATCH 70
 s" : CLXG-THREE ( n n n -- clxg<clx2> ) construct clxg wthree ;" TCE-CATCH 0 T=               \ same family + instantiation, positive-extra variant compiles (produce-only, see above)
 \ wtwo arm body uses only always-defined words (2drop 0), so the reject can ONLY come
 \ from the checker's negative-extra arm reject at 'OF' — not an E-UNDEFINED accessor:
-\ inside package XPAD-ASYM the derived ctor package is XPAD-ASYM-CLX2, so a bare
+\ inside package XPAD-ASYM the generated namespace is XPAD-ASYM:CLX2, so a bare
 \ CLX2:UNMAKE would itself throw rc 70 and mask the fix (dead probe). This shape flips
 \ pre-fix 0 -> post-fix 70 structurally.
 s" : CLXG-GET ( clxg<clx2> -- n ) MATCH clxg wtwo OF 2drop 0 ENDOF wthree OF + + ENDOF ;MATCH ;" TCE-CATCH 70 T=   \ MATCH's negative-extra arm fails closed at 'OF'
@@ -1187,10 +1223,10 @@ CTOR-PAYPROV-TEST:LIVE-PROBE
 CTOR-PAYPROV-TEST:LIVE-COUNT 1 T=
 CTOR-PAYPROV-TEST:LIVE-THROW CTOR-PAYPROV-TEST:COMMITTED-PAYLOAD-CODE T=
 CTOR-PAYPROV-TEST:LIVE-ROWS 1 T=
-CTOR-PAYPROV-TEST:LIVE-NAME s" PV-ZPL:ONE" T$=
+CTOR-PAYPROV-TEST:LIVE-NAME s" PV:ZPL:ONE" T$=
 \ the live declaration's own payload cell became the constructor's input and its
 \ own cell width set the zero padding (one slot, one cell, so no pads, tag 0).
-CTOR-PAYPROV-TEST:LIVE-DEF s" PV-ZPL:ONE ( n -- zpl ) 0 " T$=
+CTOR-PAYPROV-TEST:LIVE-DEF s" PV:ZPL:ONE ( n -- zpl ) 0 " T$=
 
 s" PAYLOAD-PROVIDER" type cr
 

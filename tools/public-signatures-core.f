@@ -7,8 +7,8 @@ require tools/lint/intern.f
 require tools/event-closure-lib.f
 
 $10000 constant PS-FILE-CAP
-256 constant PS-WORD-CAP
-1024 constant PS-SIG-CAP
+TDGEN-CAP constant PS-WORD-CAP       \ the production generated-word renderer limit
+TDGEN-CAP constant PS-SIG-CAP        \ the production generated-word renderer limit
 32 constant PS-NUM-CAP
 
 8 constant PS-BS

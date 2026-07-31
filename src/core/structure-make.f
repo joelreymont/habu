@@ -54,7 +54,7 @@
 \ post-hook checked body, reached through named forwarders): six thin read
 \ forwarders the validation reads, plus one SM-EMIT that performs the sealed
 \ mutation — build the field schema run, add the two variant rows,
-\ set the variant range, derive the constructor package, generate both words.
+\ set the variant range, record the constructor namespace, generate both words.
 \ Provisional field-schema reads go through DECL-EVENT with the exact live
 \ declaration token and family, so no uncommitted field row is globally readable.
 \ When the type-DSL cutover factors the shared
@@ -90,7 +90,7 @@ TRUSTED: SM-SUMV-FIND ( n ptr u8 n -- n bool ) SUMV-FIND ;
 \ declaration-order root run (the payload-schema range the two generated variant rows
 \ carry — exactly the run shape the PRODUCT ctor path builds while parsing its fields),
 \ adds the make(0)/unmake(1) variant rows over it at the family's product width,
-\ sets the variant range, and derives the constructor package.
+\ sets the variant range, and records the constructor namespace.
 \ TRUSTED: because every word it calls is a sealed pre-hook registry word.
 \ GENERATE has already validated its local preconditions; any evaluator or checker
 \ rejection propagates to GENERATED-DECL for full rollback.
@@ -138,10 +138,10 @@ public
 \ Throws E-SM-FAM (not a live/public/product family), E-SM-EMPTY (no fields),
 \ a DECL-EVENT scope error (the token does not own that family/field), or E-SM-DUP
 \ (MAKE/UNMAKE already generated) — every reject
-\ before any registry write, so a rejected call publishes nothing.
+\ before any constructor registry write, so a rejected call publishes nothing.
 \
 \ A REPLAYED declaration (tools/check-core.f's nominal pass, verify-source)
-\ registers the make/unmake variant rows and the constructor package, then
+\ registers the make/unmake variant rows and the constructor namespace, then
 \ stops: it is reading source, not building a program, so it must define no
 \ word. It cannot skip the rows, because they are how a later `FAMILY:MAKE` in
 \ the same source resolves — the same reason the legacy metadata-only entry
@@ -153,6 +153,7 @@ public
    fc 1 < IF E-SM-EMPTY throw THEN
    fam SM-REQUIRE-UNGENERATED
    tok fam fc SM-REQUIRE-READABLE
+   fam GENERATED-DECL-CTOR:REQUIRE-NS
    tok fam  fam SM-FLD-START  fc  SM-EMIT-ROWS
    DECL-REPLAY:RP-ACTIVE? IF EXIT THEN
    fam SM-EMIT-WORDS ;

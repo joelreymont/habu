@@ -5412,9 +5412,9 @@ USHADOW-DIAG-DEFAULT
 \ predicates live in type-family.f (loads later) and install into these friend
 \ cells; empty cells fail open only in engines with no TFAM registry at all
 \ (stage builders, which never see user declarations). Guards: a recorded
-\ constructor package cannot be opened/reopened by `package`; a generated
+\ constructor namespace cannot be opened/reopened by `package`; a generated
 \ constructor word cannot be undefined; a new tail cannot certify into a
-\ constructor package (closed-but-callable, PLAN Package Shape).
+\ constructor namespace (closed-but-callable).
 7111 constant E-CTOR-PROTECTED
 7121 constant E-CHECKER-LAYOUT-BUFFER
 \ ctor-protection query hooks (item 8), rebound by type-family.f. The
@@ -5422,7 +5422,7 @@ USHADOW-DIAG-DEFAULT
 \ 0-hook guards which skipped the throw before the registry existed.
 defer CTOR-NS?-XT ( ptr u8 n -- bool )        \ name is a recorded ctor namespace?
 defer CTOR-WORD?-XT ( ptr u8 n -- bool )      \ name is a generated ctor word?
-defer CTOR-EXTEND?-XT ( ptr u8 n -- bool )    \ new tail in a closed ctor package?
+defer CTOR-EXTEND?-XT ( ptr u8 n -- bool )    \ new tail in a closed ctor namespace?
 : CTOR-PROT-DEFAULTS ( -- )
    [: 2drop RES-FALSE ;] is CTOR-NS?-XT
    [: 2drop RES-FALSE ;] is CTOR-WORD?-XT
@@ -6495,9 +6495,9 @@ variable UNSAFE-SYM-N
 \   symbol leg rejects by IDENTITY so a qualified or renamed reference that
 \   resolves to the same symbol cannot launder it past this gate;
 \ - duplicate tail in the current section (CHECKER-CERT-DUP? -> $4E).
-\ INTO a generated ctor package is structurally unreachable: CHECKER-PACKAGE
+\ INTO a generated constructor namespace is structurally unreachable: CHECKER-PACKAGE
 \ rejects opening one (E-CTOR-PROTECTED), so the current package can never be
-\ a ctor package. Re-export FROM a ctor package stays allowed by design
+\ a constructor namespace. Re-export FROM one stays allowed by design
 \ (generated words are closed-but-callable).
 7112 constant E-EXPORT-NO-PACKAGE
 7113 constant E-EXPORT-UNDEFINED

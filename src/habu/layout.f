@@ -291,7 +291,7 @@ $3CA8 constant AOT-SEED-DONE-CELL
 \ the toolchain and runs SNAPGO before LEXIT). Zeroed by DATA-INIT for every boot.
 $3CB0 constant AOT-SEED-ARM-CELL
 \ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
-\ sealed system / generated constructor packages created in the friend window;
+\ sealed system / generated constructor namespaces created in the friend window;
 \ PROT-WID? membership (habu1.f) gates the sealed-WID guards. u32 entries so wordlist
 \ IDs above 255 fit. Each PUBLIC ADT family consumes ONE slot
 \ (XREF:FINALIZE-NAMESPACE -> generated declaration staging -> prot-wid-add), so

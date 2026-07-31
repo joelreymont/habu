@@ -23,7 +23,7 @@
 \   family:   kind (product/sum/enum), arity, declared width, layout policy,
 \             derive-eq, derive-hash, variant count, field count
 \   variants: name and tag of every row, in declaration order, plus the
-\             constructor package stamped on that row
+\             constructor namespace stamped on that row
 \   fields:   the TYPE-FIELD row count keyed (family, variant), and each row's
 \             name, semantic scalar schema (kind plus parameter ordinal or
 \             concrete code), slot, and cell width
@@ -180,14 +180,14 @@ private
       BV @ SI @ + {: b:n :}
       a V-NAME$ b V-NAME$ CORE-STR= T-TRUE
       a V-TAG b V-TAG T=
-      \ The constructor package is DERIVED from the declaring package and the
+      \ The constructor namespace is the declaring package path plus the
       \ family name, and the two copies must live in different packages to
       \ coexist, so the two stamps differ by construction. What matters is that
       \ the replayed row carries one at all: that stamp is the registration a
       \ later FAMILY:VARIANT resolves through, and it is exactly what would be
       \ lost by skipping the arming instead of the rendering.
-      b V-PKG$ nip 0 > T-TRUE
-      a V-PKG$ nip 0 > T-TRUE
+      b V-NS$ nip 0 > T-TRUE
+      a V-NS$ nip 0 > T-TRUE
       \ the one intended asymmetry: words rendered live, never on replay
       a V-SYM 0 <> T-TRUE
       b V-SYM 0 T=

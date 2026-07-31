@@ -696,7 +696,7 @@ s" D4 ( dctor dctor -- f ) DCTOR:EQ" CHECK-QUIET-CANDIDATE! -1 T=
 
 \ 20c. Compact-mode parity with the legacy definer: the same three variant names
 \      declared through `ENUM` and through ED-RUN produce the same derived
-\      constructor package spelling, the same declaration-order tags, and
+\      constructor namespace spelling, the same declaration-order tags, and
 \      constructors that certify and reject identically.
 s" ENUM lgpar red green blue ;ENUM" EV
 s" ENUM-DECL:ED-RUN fepar red green blue ;ENUM" EV
@@ -727,7 +727,7 @@ s" msgctor" FAMID GENERATED-DECL-CTOR:OWNS? T-TRUE
 s" msgctor" FAMID enum-ctor-test:ARM-RC 7176 T=       \ right kind, but depth 0
 
 \ 20e. A private ENUM stays inert: the family and its variants register, but the
-\      gate refuses it, so no constructor package is derived onto the variant
+\      gate refuses it, so no constructor namespace is recorded on the variant
 \      rows and no constructor symbol is recorded for them.
 package enum-ctor-private
 s" ENUM-DECL:ED-RUN privctor<> VARIANT alpha FIELD a n ;VARIANT ;ENUM" EV
@@ -751,12 +751,10 @@ s" rollctor" FAMID 0 T=                               \ the family itself never 
 s" rollctor2" FAMID 0 T=
 
 \ 20g. Arming a family whose constructors are already live is refused by name.
-\      This is the boundary that keeps a caller away from sumtype.f's
-\      TDPLAN-NAME+ duplicate guard, which answers a second plan row for a live
-\      word with `76 die` — a process exit that no transaction can roll back and
-\      no `catch` can see (test/enum-ctor-collide-bad.f pins that behaviour where
-\      it can still be observed). The check is an existence test on the variant
-\      row's recorded constructor symbol, so it is independent of the kind and
+\      This is the boundary that keeps a caller away from planning a second set
+\      for a family whose words are already live. The ARM check is an existence
+\      test on the variant row's recorded constructor symbol, so it is independent
+\      of the kind and
 \      visibility gate: msgctor still OWNS? its constructors, and its published
 \      words survive the refused transaction untouched.
 s" msgctor" FAMID GENERATED-DECL-CTOR:OWNS? T-TRUE     \ still an owning kind
@@ -1145,7 +1143,7 @@ DECL-DIAG:OFF
 \     ED-RUN, reading its tokens from the caller's buffer.
 \
 \     What these cases have to separate is registration from generation, because
-\     the two used to be one step. Registration includes the constructor PACKAGE
+\     the two used to be one step. Registration includes the constructor namespace
 \     stamped on each variant row — that is metadata the checker resolves types
 \     through, and the legacy metadata-only entry CHECKER-DEFENUM published it
 \     too. Generation is the rendering of the constructor WORDS, and that is the
@@ -1189,7 +1187,7 @@ VS0 @ 2 + SV-NAME$ s" blue" CORE-STR= T-TRUE
 VS0 @ SV-TAG@ 0 T=
 VS0 @ 2 + SV-TAG@ 2 T=
 
-\ REGISTRATION happened: the constructor package is stamped on every row, which
+\ REGISTRATION happened: the constructor namespace is stamped on every row, which
 \ is what a later `RPCOMPACT:RED` in the same source resolves through.
 VS0 @ enum-ctor-test:CTOR-NS$ s" RPCOMPACT" CORE-STR= T-TRUE
 VS0 @ 2 + enum-ctor-test:CTOR-NS$ s" RPCOMPACT" CORE-STR= T-TRUE

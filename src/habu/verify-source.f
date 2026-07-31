@@ -529,7 +529,7 @@ variable NOM-TAIL-U
 \
 \ Without this arm a STRUCTURE family was never registered on this path, so a
 \ later signature or payload type naming it could not resolve. Registration
-\ includes the family's MAKE/UNMAKE variant rows and constructor package, so
+\ includes the family's MAKE/UNMAKE variant rows and constructor namespace, so
 \ `FAMILY:MAKE` in the same source resolves; no dictionary word is defined.
 : RECORD-STRUCTURE-DECL ( -- )
    DECL-TOKEN {: name:ptr nameu:n :}

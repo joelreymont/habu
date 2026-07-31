@@ -84,12 +84,13 @@ path sufficient, or hold the lane for a post-conversion landing.
    Type rendering already prints the nested form, so words agree with
    types.
 
-8. **Long generated names: the hash fallback AND the arbitrary cap both
-   die.** [wave 1] The 32-byte limit was a readability cap, not an engine
-   limit — DNAME-EXT already stores long names. New behavior: any length
-   works up to true storage/token capacity; only a genuine capacity overflow
-   is rejected, loudly, at declaration. No silent hash names, no wrapping
-   long words to appease a mangler.
+8. **Long generated names: the hash fallback AND the readability cap both
+   die.** [wave 1] The 32-byte limit was not an engine limit — DNAME-EXT
+   already stores long names. The sole builder has a real 1024-byte buffer;
+   that exact boundary succeeds and the first byte beyond it throws
+   `E-TFAM-NS-CAP` (7135) before namespace lookup. The declaration transaction
+   supplies the exact reason and the top-level renderer exits 76. No second
+   length formula, silent hash names, or wrapping long words to appease a mangler.
 
 9. **The multi-cell-local rejection gets a real diagnosis.** [wave 2+] The
    checker knows the value is a multi-cell family; the error says so and
@@ -281,8 +282,9 @@ Joel's open decision above. Nothing stopped is left ambient.
 3. Tagged-generic instantiation (14).
 4. OLD-FORM DELETION, same batch (Joel, 2026-07-30: hard cutover — no
    both-forms engine, not even branch-internal): SUMTYPE, PRODUCT,
-   DEFTYPE, the arity-NEWTYPE grammar, and the hash fallback are deleted
-   in the engine batch itself. NO refresh follows (the single wave-1
+   DEFTYPE, and the arity-NEWTYPE grammar are deleted in the engine batch
+   itself. E3 has already deleted the generated-name hash fallback. NO
+   refresh follows (the single wave-1
    refresh is at M17); all subsequent work is written blind against the
    current engine, and the M17 refresh plus first full-tree load is
    where the new grammar first executes.
@@ -359,35 +361,24 @@ Engine leaves (codex). Check = rg-census + review (nothing loads under
 the new grammar until M17); the stated probes RUN AT M17 as its
 acceptance list, authored in each leaf.
 
-- E1 the namespace tree substrate: parent-linked records, node kinds
-  (package/type claims), the one-tree collision rejection. blocked-by:
-  none. Interface: tree create/read; second claim on a path is a
-  declaration-time error.
-- E2a full-path resolution: A:B:...:WORD at any depth reads the tree.
+- E1 the existing namespace substrate: canonical full-path rows, package/type
+  kinds, and one-row identity collision rejection; there are no parent links.
+  blocked-by: none.
+- E2a full-path resolution: A:B:...:WORD at any depth reads those rows.
   blocked-by: E1.
-- E2b ancestor-chain bare-name lookup + downward-private visibility
-  (child reads ancestor privates; parent cannot read child's).
-  blocked-by: E2a.
-- E2c `using A:B` = one level of B's publics. blocked-by: E2b.
-- E2d package create/reopen at any path + the package stack for block
-  nesting. blocked-by: E1.
 - E3 declarers emit into the tree: a type declared in a package claims
   its child path and publishes PKG:TYPE:MAKE there; old mangled
-  spellings are not generated. blocked-by: E2a-E2d.
-- COMPATIBILITY SEAM (frozen source-level invariant): src/core and
-  src/habu must be compilable by the CURRENT bootstrap AND contain zero
-  retired grammar or spellings at landing. The intersection that makes
-  both true: engine sources reference generated constructor words ONLY
-  by bare in-package spelling (valid under both engines) or not at all —
-  never by qualified generated spelling, old-mangled or new-nested; and
-  they declare no types with any retired definer (already true: zero
-  old-form declarations in src). The M6/M7 respell leaves therefore
-  REWRITE src's generated-spelling references into bare in-package form
-  rather than respelling them nested; the zero-site census covers src
-  like everything else, and the old bootstrap compiles the whole engine
-  for the single M17 refresh.
-- E4 long-name capacity. blocked-by: E3. Interface: no hash fallback; true
-  capacity overflow rejects loudly. Check: over-capacity declaration probe.
+  spellings are not generated. blocked-by: E1, E2a.
+- Bootstrap mechanics, not compatibility: the current bootstrap compiles
+  engine source once for the M17 refresh, while the landing source contains
+  zero retired grammar or generated spellings. Engine references are bare
+  in-package or absent until that refresh. This creates no alias, fallback,
+  forwarding word, or dual old/new behavior.
+- E4 is absorbed by E3: the sole 1024-byte namespace builder has no hash
+  fallback; the exact boundary succeeds and the first byte beyond it throws
+  `E-TFAM-NS-CAP` (7135) before namespace lookup. Only the declaration
+  transaction maps that code to the exact reason; the top-level renderer exits
+  76. No duplicate capacity predicate, second capacity leaf, or refresh exists.
 - E5 binder heads on all three declarers. blocked-by: none (parallel to
   E1-E4). Interface: NAME<a,b> binder list; arity = list length. Check:
   binder probe incl. phantom binder.

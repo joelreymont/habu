@@ -154,13 +154,13 @@ and the generated variant surface. `habu-checker-certify-unified-5d56fe73` owns
 checker certification and diagnostics. `habu-compiler-lower-unified-5f599080`
 owns compiler capture, lowering, snapshots, AOT metadata, and recovery parity.
 
-## Shared metadata and generated packages
+## Shared metadata and generated namespaces
 
 The cutover reuses one schema graph for both blocks:
 
 - family and layout rows: `src/core/type-family.f`;
 - field/variant schema nodes: `src/core/type-schema.f`;
-- declaration transactions and generated packages: `src/core/sumtype.f`;
+- declaration transactions and generated namespaces: `src/core/sumtype.f`;
 - checker expansion, hidden fields, matching, and stored effects:
   `src/core/checker.f` and `src/core/render.f`;
 - source replay: `src/habu/verify-source.f`, `tools/check-core.f`, and
@@ -177,16 +177,17 @@ Rows preserve declaration slot, schema root, width, alignment, byte offset,
 visibility, and source span. Constructor inputs, `UNMAKE`, and `MATCH` bindings
 remain in declaration order while reflection gains exact field names.
 
-The generated package remains the only callable construction surface. A public
+The generated namespace remains the only callable construction surface. A public
 field-bearing `STRUCTURE point ...` publishes `POINT:MAKE`, `POINT:UNMAKE`, and
 typed field operations. A zero-field `STRUCTURE` is an opaque one-cell family
 and publishes no raw constructor. A public `ENUM message ...` publishes one constructor per variant
-(`MESSAGE:QUIT`, `MESSAGE:MOVE`, and so on). The package is closed after
-generation. Private declarations expose the same operations only to their
-owning package; they do not publish a public constructor package.
+(`MESSAGE:QUIT`, `MESSAGE:MOVE`, and so on). The namespace is closed after
+generation. Private declarations publish no constructor namespace; their
+checker-owned forms remain scoped to the declaring package.
 
-Package spelling keeps the existing injective uppercase escape/join algorithm;
-the cutover does not rename callable constructors or persisted WIDs. Field
+Constructor spelling is the exact uppercase family path: package `PX-PROBE`
+plus family `pxevid` is `PX-PROBE:PXEVID`, with literal hyphens and colons and
+no escape or hash alias. Field
 accessors use exactly `FAMILY:FIELD ( ptr family<a,...> -- ptr field-type )`.
 
 The early-load cycle at `src/habu/habu2.f`, `bootstrap/cg/forth.fs`, and

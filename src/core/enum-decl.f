@@ -50,7 +50,7 @@
 \ renders no constructor itself. Once the variant range, the field range and the
 \ payload width are bound, ED-CLOSE names the family to the ORDER 820 constructor
 \ participant (src/core/generated-declaration.f) and the declaration transaction
-\ generates the per-variant checked constructor package (MESSAGE:QUIT, docs §2.3)
+\ generates the per-variant checked constructor namespace (MESSAGE:QUIT, docs §2.3)
 \ inside its commit phase, so a failure anywhere publishes no constructor at all.
 \
 \ ---------------------------------------------------------------------------

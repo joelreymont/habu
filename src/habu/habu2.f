@@ -2135,7 +2135,7 @@ s" c-qualify-def" s" --" TRUST
 \ a user can redirect with `set-current`, or a resolved package WID). Reject
 \ publishing into a protected WID once the friend latch is sealed -- so user source
 \ cannot `<protected-wid> set-current : FOO ;` or `: RESULT:BOGUS ;` into a sealed
-\ system / generated constructor package. Friend/cold-load (latch 0) is exempt.
+\ system / generated constructor namespace. Friend/cold-load (latch 0) is exempt.
 \ Register ABI: x9 = record pointer, live in AND out — the body saves it across
 \ the internal LPROTWIDQ call (SP-relative) and restores it, then uses it for the
 \ [40] wid store; every caller reads x9 after the call, so the save/restore is the
@@ -3931,7 +3931,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 \ re-derive its record WID (scan dict for [0]==xt, read [40]) and, if that WID is in
 \ the protected-WID registry, fail-closed (exit HB-ERROR:PROTECTED-WID) -- so a captured
 \ relocation callee or boot-run entry name that resolves into a sealed system /
-\ generated constructor package is rejected before the call immediate is rewritten
+\ generated constructor namespace is rejected before the call immediate is rewritten
 \ or the entry word is executed. Preserves x11; clobbers x5/x6/x9/x13/x14; saves x30
 \ for the nested LPROTWIDQ. A not-found xt (no record) skips the guard.
 package HB-EMIT
@@ -7061,7 +7061,7 @@ $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
 \ protected-WID registry AOT image (TFAM 2b-v): the u32 WIDs of sealed system /
-\ generated constructor packages, captured from the live friend-arena registry and
+\ generated constructor namespaces, captured from the live friend-arena registry and
 \ baked so EM-AOT-REGISTER-PROT-WIDS can restore them at boot -- advancing WIDN past
 \ each so a post-restore wordlist alloc cannot collide with a restored protected WID.
 \ u32 entries (matching the registry's checked u32 domain) so wordlist IDs above 255

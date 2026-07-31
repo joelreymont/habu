@@ -495,16 +495,26 @@ fits.
   arity for type family" otherwise) but its BARE qualifier in a `MATCH` selector — do
   not put qualifier and `<...>` together. A parameterized `result` type can't be a
   `{: :}` local — specialize the word or keep it on the stack.
-- **A generated PRODUCT/SUMTYPE constructor DOUBLES every internal hyphen of the
-  family and prefixes the (escaped) package.** `PRODUCT content-digest` in `package
-  ARTIFACT` generates `ARTIFACT-CONTENT--DIGEST:MAKE`; a nullary variant ctor is
-  `PKG-FAMILY:VARIANT`; `MATCH` arms and destructuring use the BARE variant name.
-  Package-private family ctors live in a DERIVED escaped package
-  (`PRODUCT pxevid` in `package PX-PROBE` → `PX--PROBE-PXEVID:MAKE`). Wrap long
-  spellings in short private words. Escaped ctor names >32 chars SHA-fall-back to an
-  unreadable `Thexhash-TAIL` (readability cap `TF-CTOR-NAME-LIMIT`, raised 16→32; not a
-  structural bound — long names store via DNAME-EXT). Keep `len(PKG)+1+len(escaped-family)
-  ≤ 32` for any family a caller must construct by name.
+- **A generated PRODUCT/SUMTYPE constructor uses the exact absolute family path.**
+  `PRODUCT content-digest` in `package ARTIFACT` generates
+  `ARTIFACT:CONTENT-DIGEST:MAKE`; a nullary variant constructor is
+  `PKG:FAMILY:VARIANT`. Existing colons and hyphens remain literal, and `MATCH`
+  arms still use the bare variant name. There is no escape, flattened alias, or
+  hash fallback. The sole namespace builder accepts exactly 1024 output bytes
+  and throws `E-TFAM-NS-CAP` (7135) at byte 1025, before namespace lookup. Map
+  only that code to `tfam: constructor namespace too long` in the declaration
+  transaction; preserve every other throw and let the top-level renderer exit
+  76. Never duplicate the builder's length formula in a preflight predicate.
+- **Fence generated identity at each front end's first constructor publication.**
+  Reversible provisional family, variant, field, schema, and layout rows may
+  precede a pure exact-child lookup; constructor rows, namespace metadata,
+  words, WIDs, and protection may not. Unified ENUM reaches that fence in its
+  participant PREPARE, while legacy SUMTYPE/PRODUCT and STRUCTURE need their own
+  pre-row seams. If the child also holds a would-be word, namespace identity is
+  the root conflict; do not duplicate the generator's candidate walk to preserve
+  a symptom's diagnostic precedence. A checker-only `TRUST` symbol has no xref
+  namespace and remains a separate hard-failure dot; the xref word check after
+  the fence is invariant defense, not another public collision path.
 - **A word returning a layout value (PRODUCT/SUMTYPE) cannot be called at TOP LEVEL**
   ("interpret-mode layout value") — wrap the construct/UNMAKE/assert in one checked
   word and call THAT from top level (store the decoded handle's slot in a variable and

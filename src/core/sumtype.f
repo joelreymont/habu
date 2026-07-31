@@ -87,6 +87,10 @@ variable TDECL-FAM-REG   \ family id registered by the LAST successful sum (-1 =
    catch {: rc:n :}
    rc 0= IF EXIT THEN
    TDECL-RESTORE
+   rc E-TFAM-NS-CAP = IF
+      TDN-A @ TDN-U @ TDECL-TOK!
+      s" tfam: constructor namespace too long" TDECL-WHY!
+   THEN
    TDECL-REPORT
    MULTI-ERR? IF 1 MULTI-ERR-N +! EXIT THEN
    rc throw ;
@@ -550,16 +554,39 @@ create TDV-BADLETTER 1 allot
       2drop fam TDECL-VARIANT
    AGAIN ;
 
-\ --- constructor metadata (item 8): a PUBLIC family derives its reserved
-\ constructor package (Package Shape) once and records it in every variant's
+\ Exact-child lookup is installed by xref.f. It is a pure question so every
+\ declaration front end can ask it after reversible metadata registration but
+\ before its first constructor row, word, WID, or protection mutation.
+defer TDECL-NS-EXISTS-XT ( ptr u8 n -- bool )
+
+: TDECL-NS-EXISTS-MISSING ( ptr u8 n -- bool )
+   2drop s" sumtype: generated namespace preflight not installed" 76 die ;
+
+[: TDECL-NS-EXISTS-MISSING ;] is TDECL-NS-EXISTS-XT
+
+: TDECL-CTOR-NS$ ( n -- ptr u8 n ) {: fam:n :}
+   fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-NS$ ;
+
+: TDECL-CTOR-NS-EXISTS? ( n -- bool )
+   TDECL-CTOR-NS$ TDECL-NS-EXISTS-XT ;
+
+: TDECL-CTOR-NS-REQUIRE ( n -- ) {: fam:n :}
+   fam TFAM-PUBLIC? 0= IF EXIT THEN
+   fam TDECL-CTOR-NS-EXISTS? IF
+      fam TFAM-NAME$ s" xref: generated namespace already exists"
+      76 TDECL-THROW
+   THEN ;
+
+\ --- constructor metadata: a PUBLIC family records its exact absolute
+\ constructor namespace once in every variant's
 \ SV.CTOR-NS slot, keyed by family id so same-tail families in different
 \ packages get disjoint constructor namespaces. Private families export nothing,
 \ so the slot stays empty and construction waits on item 9's `construct` form.
-\ The derived name is interned AFTER the escaped/hashed spelling is built, so the
+\ The derived name is interned AFTER the exact-path spelling is built, so the
 \ transient family package/tail pointers are consumed before any pool grow.
 : TDECL-CTOR-PUBLISH ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-PUBLIC? 0= IF EXIT THEN
-   fam TFAM-PKG$ fam TFAM-NAME$ TF-CTOR-NS$ {: ca:ptr cu:n :}
+   fam TDECL-CTOR-NS$ {: ca:ptr cu:n :}
    ca cu TF-INTERN {: coff:n :}
    count 0 DO  vstart i +  coff cu SUMV-CTOR-NS!  LOOP ;
 
@@ -647,7 +674,7 @@ create TDV-BADLETTER 1 allot
    BEGIN fam TDECL-DERIVE-MORE? 0= UNTIL ;   \ later tokens end the order-free list by pushback
 
 \ a DERIVE-marked family must not declare a variant spelled like a generated
-\ derived tail: the ctor package would hold two words with one name.
+\ derived tail: the constructor namespace would hold two words with one name.
 variable TDD-I   variable TDD-J   variable TDD-K
 : TDECL-DERIVE-COLLIDE ( n n n -- ) {: fam:n vstart:n count:n :}
    fam TFAM-DERIVE-ANY? 0= IF EXIT THEN
@@ -709,6 +736,7 @@ variable TDD-I   variable TDD-J   variable TDD-K
    fam vstart TDV-N @ TFAM-VAR-RANGE!
    fam TDV-MAX @ TFAM-SLOTS!
    fam TDECL-LAYOUT-DESC
+   fam TDECL-CTOR-NS-REQUIRE
    fam vstart TDV-N @ TDECL-CTOR-PUBLISH
    fam TDECL-FAM-REG ! ;
 
@@ -738,7 +766,7 @@ variable TDD-I   variable TDD-J   variable TDD-K
 \ dup-reject enforce lowercase + no duplicate field within the product.
 \ A product's generated surface is two words with FIXED generator-owned tails,
 \ recorded as two SUMV rows so the whole item-8 publish/protection stack
-\ (ctor-package derivation, closed-but-callable WID wall, CTOR-SYM records) is
+\ (constructor-namespace derivation, closed-but-callable WID wall, CTOR-SYM records) is
 \ shared verbatim with sums: `make` ( fields -- fam<..> ) and `unmake`
 \ ( fam<..> -- fields ), both compiled with EMPTY bodies under the k=0
 \ pending-constructor window — a product bundle IS its field cells in slot
@@ -848,6 +876,7 @@ defer TDECL-EVENT-ARMED ( -- bool )
    fam fstart TDP-N @ TFAM-FLD-RANGE!
    fam TDP-W @ TFAM-SLOTS!               \ product width = field cell width sum (no tag)
    fam TDECL-LAYOUT-DESC
+   fam TDECL-CTOR-NS-REQUIRE
    fam rstart TDECL-PRODUCT-ROWS
    fam fam TFAM-VAR-START@ 1 TDECL-DERIVE-REQUIRE ;
 
@@ -1530,7 +1559,7 @@ variable TDPV-I   variable TDPV-J   variable TDPV-W
 
 \ --- derived typed equality (derive S1+S2, dot habu-checker-capability-derive):
 \ `DERIVE eq` on a PUBLIC arity-0 ENUM/SUMTYPE/PRODUCT generates ORDINARY
-\ CHECKED words into the family's reserved constructor package — no pending
+\ CHECKED words into the family's reserved constructor namespace — no pending
 \ window, no trust rows, no engine lowering: the bodies are plain checked
 \ MATCH/UNMAKE/call text the checker certifies exactly like user code, so
 \ equality is semantic and layout-policy agnostic. Derived eq CONSUMES both

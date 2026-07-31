@@ -332,15 +332,17 @@ public
   overloaded; aliasing one row would narrow the effect), and a duplicate
   tail in the target section. Re-exporting a generated constructor word
   (closed-but-callable) under a second name is allowed; adding tails INTO a
-  generated constructor package stays rejected. AOT tree-shake keeps one
+  generated constructor namespace stays rejected. AOT tree-shake keeps one
   body, and the alias rows roll back atomically with checker scope frames.
   At TOP LEVEL (outside any package) `EXPORT name…` is the pre-existing
   hb-build `--repl` export directive: the build strips it before compiling
   and a plain load consumes the name as a no-op, so directive-carrying
   programs stay directly loadable.
-- Qualified names use the existing single-colon wordlist syntax. The qualifier
-  selects the package public wordlist and the dictionary record stores the tail,
-  so `HB:COUNT` resolves public `COUNT` in package `HB`.
+- Qualified names use colon-separated absolute paths at arbitrary depth. The
+  last separator splits the namespace path from the word tail, so `A:B:COUNT`
+  resolves public `COUNT` in exact namespace `A:B`. Package and generated type
+  namespaces share one path identity; no ancestor, alias, or flattened spelling
+  is consulted for a qualified reference.
 - **Qualify only across package boundaries.** `NAME:WORD` is for callers *outside*
   `NAME`. A file that belongs to package `NAME` reopens it with `package NAME` and
   calls `NAME`'s words by their bare names — writing `NAME:WORD` inside `NAME`'s own
@@ -485,6 +487,15 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
   ordering means adding `MEM:span` cannot change what an existing top-level
   `span` means. Exact same-package duplicates, reserved grammar names, and
   foreign private rows still reject.
+- A public family's generated namespace is its exact absolute family path,
+  ASCII-uppercased: global `result` is `RESULT`; `result` in `a:b` is
+  `A:B:RESULT`; `c-d` in `a` is `A:C-D`. Existing colons and hyphens remain
+  literal. There is no flattened, escaped, hashed, aliased, or fallback
+  spelling. Private families publish no generated namespace. The sole builder
+  accepts exactly 1024 output bytes and throws `E-TFAM-NS-CAP` (7135) at byte
+  1025, before namespace lookup. Declaration transactions attach
+  `tfam: constructor namespace too long` and roll back; the top-level renderer
+  exits 76. No second capacity predicate or length formula exists.
 - `SUMTYPE name arity [ DERIVE … ] VARIANT v payload… ;VARIANT … ;SUMTYPE`
   registers a tagged union (`TK-SUM`, tag = declaration order). **Variant
   payloads are positional type tokens** — letter params, concrete cell types,
@@ -511,6 +522,10 @@ ENUM color red green blue ;ENUM     \ payloadless tag-only sum
   after the checker hook, so these definitions publish their checked effects
   directly; no boot path loads the retained pre-hook effect mirror. Prefer the
   typed families above and reserve this form for raw layout (e.g. `lib/vector.f`).
+
+The wave-1 grammar and namespace cutover is written source-first. Its new tests
+first execute after the single M17 engine refresh; no intermediate refresh is
+part of the migration.
 - `ENUM+` / `ENUM4+` are the legacy numeric counter definers: `n ENUM+ NAME`
   defines `NAME = n` and leaves `n+1` (`ENUM4+` leaves `n+4`).
 - Type, field, and variant names are lowercase; generated and project-defined

@@ -107,11 +107,11 @@ checker package-scope mutators, direct legacy checker registry mutators,
 retirement, `cp@`, `rbase`, `dbase@`, `data-base`, `patch32`, `!`, `c!`, `+!`,
 atomics, `here`/`allot`/`,`/`c,` must not publish into, lookup through, read or
 execute/postpone/compile from, or delete from sealed system wordlists or
-generated constructor metadata wordlists. Public generated constructor packages
+generated constructor metadata wordlists. Public generated constructor namespaces
 are closed but callable: published words such as `RESULT:OK` may be looked up,
 executed, postponed, and compiled as public APIs, but users cannot add tails,
 delete entries, expose mutable handles, or reach private metadata through that
-package. Protected wordlists and checker/dictionary memory ranges carry
+namespace. Protected wordlists and checker/dictionary memory ranges carry
 provenance: stores, atomics, arena writes, every primitive/syscall effect with a
 writable pointer (`read`, `readlink`, `stat64`, `lstat64`, `getdirentries64`,
 `poll`, `ioctl`, future writer syscalls), `mmap` remapping, and `ffi-call*`
@@ -213,7 +213,7 @@ arity parameters, concrete checker types, pointers, or closed nested families.
 Direct recursion, unknown types, duplicate fields, open nested
 applications, and layout-policy cycles reject transactionally.
 
-A public declaration with fields publishes one closed generated package:
+A public declaration with fields publishes one closed generated namespace:
 
 ```text
 POINT:MAKE      ( field... -- point )
@@ -227,8 +227,9 @@ type's normal checked load/store operations. The generated words are ordinary
 checked words or compiler-certified metadata operations; none is a raw cast.
 The accessor is available only where the storage/layout policy gives an
 addressable field.
-Private declarations expose generated operations only inside their owning
-package. Generated packages are sealed after publication.
+Private declarations publish no generated namespace; checker-owned private
+forms remain usable only inside their declaring package. Public generated
+namespaces are sealed after publication.
 
 #### Field-projection checker capability (IMPLEMENTED)
 
@@ -303,18 +304,17 @@ The distinction is metadata, never public syntax. Physical width is the
 selected policy's tag plus the widest variant payload. Padding is canonical
 zero. Nested structures and enums contribute their full physical widths.
 
-A public declaration publishes one closed generated package with one checked
+A public declaration publishes one closed generated namespace with one checked
 constructor per variant (`MESSAGE:QUIT`, `MESSAGE:MOVE`, and so on). Constructor
 inputs and `MATCH` payload bindings follow field declaration order, deepest
 first. Private constructors resolve only in the owning package.
 
-Generated package spelling is unchanged by the cutover. Every package and
-family segment uses the existing injective uppercase escape/join algorithm: a
-top-level `point` derives `POINT`; `pxevid` inside `PX-PROBE` derives
-`PX--PROBE-PXEVID`. Structure operation tails and enum variant tails retain
-their declaration spellings after uppercase folding. This preserves existing
-closed-package identity, snapshot rows, and AOT references while replacing the
-declaration registry.
+The generated namespace is the family's exact absolute path, ASCII-uppercased:
+a top-level `point` uses `POINT`; `pxevid` inside `PX-PROBE` uses
+`PX-PROBE:PXEVID`. Colons and hyphens remain literal. Structure operation tails
+and enum variant tails retain their declaration spellings after uppercase
+folding. Checked, native, recovery, AOT, and snapshot lookup all use this one
+identity.
 
 ### 2.4 Unified field registry
 
@@ -339,7 +339,7 @@ sum-payload, or pointer-layout field registry survives the cutover.
 operations such as `eq`, `hash`, `order`, or canonical codecs. Both blocks use
 the same registry transaction: parse and validate the entire declaration,
 reserve names, register schema/layout metadata, generate operations, certify
-them, seal the generated package, then publish atomically. Any failure restores
+them, seal the generated namespace, then publish atomically. Any failure restores
 all family, schema, wordlist, signature, reflection, snapshot, and AOT rows.
 
 Ownership within the transaction (settled 2026-07-20 after the STRUCTURE
@@ -460,7 +460,7 @@ different package cannot unify with this one.
 
 Private family constructors are checker-owned tokens keyed by package, family,
 and variant id. They are not bare dictionary words and do not export constructor
-packages. Public families may publish constructor packages such as `RESULT:OK`;
+namespaces. Public families may publish namespaces such as `RESULT:OK`;
 after the constructor token protocol is installed, private families construct
 only through that checker-owned protocol while the owning package is open.
 
@@ -701,7 +701,7 @@ SUMV record:
   payload-schema-count
   payload-cell-count
   generated-constructor-symbol
-  constructor-package-id
+  constructor-namespace-offset/length
 ```
 
 For:
@@ -1039,7 +1039,7 @@ the derive suite). The generated tails `eq`/`tag` are generator-owned: a
 DERIVE-marked family rejects a variant spelled `eq` or `tag`
 (`E-TDECL-NAME`), the words are extend/undefine-protected exactly like
 constructors (`TFAM-DERIVED-AT?` feeds the item-8 predicates; products
-recognize `eq` only), and all ride the ctor package's closed-but-callable WID
+recognize `eq` only), and all ride the constructor namespace's closed-but-callable WID
 protection and registry rollback (the request lives in the family row's
 `TF.DERIVE` bitmask, so a rolled-back declaration forgets it with the row).
 
@@ -1220,8 +1220,8 @@ type arguments` from `ENUM`, rather than the old `unknown field type` /
 `unknown payload type`. Only a name that resolves to nothing is reported as
 unknown.
 
-A PUBLIC product publishes exactly two generated words in its derived
-constructor package, with fixed generator-owned tails (the analogue of a
+A PUBLIC product publishes exactly two generated words in its exact-path
+constructor namespace, with fixed generator-owned tails (the analogue of a
 sum's per-variant constructors):
 
 ```forth
@@ -1387,38 +1387,47 @@ COLOR:GREEN ( -- color )
 COLOR:BLUE  ( -- color )
 ```
 
-Constructor packages are keyed by the defining `family-id`, not by a bare
-uppercase tail. A top-level `SUMTYPE result` may publish `RESULT:OK` and
-`RESULT:ERR`. A `result` family declared inside another package must publish into
-a distinct constructor package derived from stable source identity by one
-pinned algorithm shared byte-identically by native `habu2`, `habu1`, and the
-Gforth bootstrap mirror: uppercase each canonical package path segment and the
-family tail, escape every literal `-` inside every joined segment — the family
-tail included — as `--`, and join segments plus tail with single `-`
-separators (escaping only the package segments is not injective: package `a`
-with family `b-c` would collide with a top-level family `a-b-c`); if the
-escaped spelling exceeds the engine dictionary name-length limit, the spelling
-is `T` plus the first 16 lowercase hex digits of SHA-256 over the
-length-prefixed unescaped segment list, then `-` plus the raw uppercase family
-tail (unescaped: the fixed-width hash region already delimits it, and hash
-spellings are always longer than the escaped-form limit, so the two forms can
-never collide). It must not
-collide with the top-level `RESULT` package. The spelling must be a legal
-one-colon package call, injective, and stable across unrelated earlier
-package/family declarations; it must not use allocation-order numeric
-package/family ids or raw hyphen concatenation. Hyphenated names such as package
-`A-B` with family `c` and package `A` with family `b-c` must not derive the same
-constructor package (`A--B-C` vs `A-B--C`).
-Generated constructor package names are reserved and
-non-reopenable by ordinary `package`; an existing ordinary package with that
-spelling, or an existing qualified definition-created wordlist with that
-spelling, makes the family declaration fail. Private family constructors are not
-exported as external constructor packages and are not bare words. They use the
+Constructor namespaces are exact family paths, not aliases keyed by a flattened
+tail. A top-level `SUMTYPE result` publishes `RESULT:OK` and `RESULT:ERR`; a
+`result` family in package `a:b` publishes `A:B:RESULT:OK`. The one spelling
+algorithm uppercases ASCII in the canonical package path and family tail, joins
+a nonempty path to the tail with `:`, and leaves existing colons and hyphens
+literal. Thus package `a-b` plus family `c` is `A-B:C`, while package `a` plus
+family `b-c` is `A:B-C`; the global family `a-b-c` is `A-B-C`. No escape,
+hash, truncation, alias, allocation-order id, or lookup fallback exists.
+
+The fixed builder accepts exactly 1024 output bytes and throws
+`E-TFAM-NS-CAP` (7135) at the first byte beyond that bound, before namespace
+lookup. Declaration transactions map only that code to the family token and
+`tfam: constructor namespace too long`; other throws are unchanged. The
+top-level renderer exits 76. The builder is the sole capacity authority: there
+is no second predicate or length formula.
+
+Generated constructor namespaces are reserved and non-reopenable by ordinary
+`package`. Reversible declaration rows may be staged first, but before the first
+constructor publication an existing package or type row at the exact child
+rejects catchably with `xref: generated namespace already exists` through ENUM,
+SUMTYPE, PRODUCT, and STRUCTURE. Namespace identity wins if that child also
+contains an ordinary dictionary word. The late
+`GENERATED-DECL-NAME-PREFLIGHT:CHECK` remains an invariant-only defense for an
+xref-visible duplicate; real declarers cannot reach it after the exact-child
+fence, and no second candidate-name walk exists. A checker-only `TRUST` symbol
+has no xref namespace and still reaches the hard TDPLAN duplicate failure; dot
+`habu-throw-on-generated-38b50740` owns its catchable repair after this cutover.
+A successful public
+declaration creates exactly one temporary child row, publishes all generated
+words in its public WID, finalizes that row to type with private WID zero, and
+protects the public WID once. Private families publish no namespace and carry
+empty namespace metadata. They use the
 checker-owned source form:
 
 ```forth
 construct family variant
 ```
+
+This wave-1 source cutover has no intermediate engine refresh. Its new namespace
+tests first execute after the single M17 refresh, together with the zero-old-
+spelling census and full-tree load.
 
 The parser consumes the family and variant tokens, resolves them while the
 owning package is open, and records `(owning-package-id, family-id, variant-id)`
@@ -1538,8 +1547,8 @@ reference lookup is a view of the native dictionary, not a separate registry.
 Only a fully accepted plan crosses the single transactional `evaluate` boundary.
 The checker, family, variant, schema, field, event, dictionary, code, and data
 high-waters are rollback-owned. The wordlist allocator may consume one monotonic,
-never-reused identity when a new constructor package is needed, but the dictionary
-namespace record is its only lookup path and is removed on rollback. Native code-
+never-reused public/private WID pair for each attempted public namespace, but the
+dictionary row is its only lookup path and is removed on rollback. Native code-
 or data-space exhaustion therefore remains a compiler-storage failure inside the
 rollback boundary; it cannot publish the final event, protection, sealing, or
 ready state. Plan and constructor arena size arithmetic rejects overflow before

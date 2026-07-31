@@ -54,6 +54,7 @@ CELL constant TAGW-CELL     \ default tag width: one stack cell
 7127 constant E-PF-LAYOUT     \ invalid field layout metadata / policy
 7128 constant E-PF-FLAGS      \ undefined field flag bits
 7132 constant E-TFAM-PAYLOAD  \ malformed or mixed unified payload metadata
+7135 constant E-TFAM-NS-CAP   \ generated namespace exceeds its sole builder capacity
 
 variable TF-I                 \ private scan/copy index
 variable TF-PUB               \ private first-public-match accumulator (-1 = none)
@@ -558,7 +559,7 @@ variable SUMV-N   0 SUMV-N !   REG-PROTECT
 : SUMV-N@ ( -- n ) SUMV-N @ ;
 
 \ generated-constructor metadata (item 8). A PUBLIC sum/enum family stores its
-\ derived constructor package name (interned offset+len) in every variant; the
+\ exact constructor namespace (interned offset+len) in every variant; the
 \ checker symbol for the generated constructor word lands in SV.CTOR-SYM. Private
 \ families export nothing, so both stay zero. All three cells are integers /
 \ interned offsets, so the existing SUMV snapshot bake persists them verbatim.
@@ -615,7 +616,7 @@ variable TF-CI              \ protection scan index (TF-I stays the decl scanner
    {: qa:ptr qu:n ta:ptr tu:n kind:n :}
    kind QNAME:QUALIFIED <> IF RES-FALSE EXIT THEN
    qa qu ta tu TFAM-CTOR-SPANS? ;
-: TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor package?
+: TFAM-CTOR-EXTEND? ( ptr u8 n -- bool ) {: a:ptr u:n :}   \ new tail in a ctor namespace?
    a u QNAME:SPLIT
    {: qa:ptr qu:n ta:ptr tu:n kind:n :}
    kind QNAME:QUALIFIED <> IF RES-FALSE EXIT THEN
@@ -658,7 +659,7 @@ variable TF-CTOR-NS-U
 : TF-UPPER-C ( n -- n ) {: c:n :} c TF-LOWER? IF c 32 - EXIT THEN c ;
 : TF-CTOR-NS-C, ( n -- )
    TF-CTOR-NS-U @ TF-CTOR-NS-CAP >= IF
-      s" tfam: constructor namespace too long" 76 die
+      E-TFAM-NS-CAP throw
    THEN
    TF-CTOR-NS-BUF TF-CTOR-NS-U @ + c!
    TF-CTOR-NS-U @ 1 + TF-CTOR-NS-U ! ;
@@ -2504,7 +2505,7 @@ variable FPRJ-FID    variable FPRJ-OFF   variable FPRJ-FAM
    [: TFAM-SIG-RESOLVE ;] is TFAM-RESOLVE-XT
    [: TFAM-CTOR-NS? ;]     is CTOR-NS?-XT      \ generated namespace reopen reject
    [: TFAM-CTOR-WORD? ;]   is CTOR-WORD?-XT    \ item 8: generated-word undefine reject
-   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ item 8: closed-package extra-tail reject
+   [: TFAM-CTOR-EXTEND? ;] is CTOR-EXTEND?-XT  \ generated namespace extra-tail reject
    [: TFAM-ARITY@ ;]  is TFAM-ARITY-XT
    [: TFAM-LAYOUT? ;] is TFAM-LAYOUT?-XT   \ item 7: checker reaches the layout kind for its fail-closed guard
    [: TFAM-CELL? ;]   is TFAM-CELL?-XT     \ nominal scalars: checker reaches the cell kind for LAYOUT-BUFFER admission + pointee governance

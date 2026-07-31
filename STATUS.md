@@ -99,7 +99,7 @@ measures today:
   own gate rather than declaring a second one. So 4133 + 17 = 4150, the number
   recorded above and the number the self-check measures on this tree. That change
   also edits `TRUSTED.md`, `tools/decl-gen-probe.f`,
-  `test/enum-ctor-collide-bad.f`, and five test files, none of which is part of
+  `test/generated-name-collide-bad.f`, and five test files, none of which is part of
   the assembled stage2 engine source. The engine binary is byte-identical across
   the added gate clause, so the CODELEN and per-region rows below are unchanged
   by it.

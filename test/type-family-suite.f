@@ -369,8 +369,8 @@ s" reSult"  TWX-TF-CANON? 0 T=
 s" RESULT"  TWX-TF-CANON? 0 T=
 s" 123"     TWX-TF-CANON? 0 T=
 s" @x"      TWX-TF-CANON? 0 T=
-\ internal-only single hyphens: leading / trailing / doubled '-' reject
-\ (item 8's '-'->'--' constructor-package escaping depends on this canon).
+\ Canonical family tails permit internal single hyphens; leading, trailing, and
+\ doubled hyphens remain invalid independently of namespace spelling.
 s" -a"      TWX-TF-CANON? 0 T=
 s" a-"      TWX-TF-CANON? 0 T=
 s" a--b"    TWX-TF-CANON? 0 T=
@@ -839,9 +839,9 @@ public
 : BOUNDARY ( -- ptr u8 n )
    CAP 2 - FILL
    PKG-BUF CAP 2 - s" z" TWX-TF-CTOR-NS$ ;
-: OVER ( -- )
-   CAP 1- FILL
-   PKG-BUF CAP 1- s" z" TWX-TF-CTOR-NS$ 2drop ;
+: TOO-LONG ( -- )
+   CAP 1 - FILL
+   PKG-BUF CAP 1 - s" z" TWX-TF-CTOR-NS$ 2drop ;
 ;package
 
 \ Exactly 1024 output bytes succeed with literal path punctuation preserved.
@@ -850,6 +850,7 @@ CPU @ $400 T=
 CPA @ c@ [char] A T=
 CPA @ $3FE + c@ [char] : T=
 CPA @ $3FF + c@ [char] Z T=
+' TF-NS-TEST:TOO-LONG catch E-TFAM-NS-CAP T=
 
 \ SV.CTOR-NS metadata slot: friend writer/reader round-trip through the pool.
 \ VOK is a live variant id from section 10; storing its constructor namespace
@@ -1446,13 +1447,6 @@ public
 : EXITED? ( -- bool ) EXITED? @ ;
 : ERR$ ( -- ptr u8 n ) ERR-BUF ERR-U @ ;
 ;package
-
-\ The builder refuses the first output beyond its fixed capacity with the exact
-\ public diagnostic; the preceding in-process case proved the boundary succeeds.
-s" TF-NS-TEST:OVER" TF-DIE:RUN
-TF-DIE:EXITED? T-TRUE
-TF-DIE:RC 76 T=
-TF-DIE:ERR$ s" tfam: constructor namespace too long" CONTAINS? T-TRUE
 
 \ The child is a COW fork of this process, so TF-DERIVE's public wrappers are
 \ already live in it: the child source needs no trust definitions of its own.

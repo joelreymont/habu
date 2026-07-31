@@ -692,8 +692,8 @@ and key lengths are `len`. `MAP-CELLS` returns the cell count to allocate for a
 capacity, and `MAP-INIT` initializes that storage. Key strings use `ptr u8 len`.
 
 Per-slot lifecycle state is the `slot-state` enum family (`empty`, `deleted`,
-`occupied`) with generated constructors `SLOT--STATE:EMPTY`,
-`SLOT--STATE:DELETED`, and `SLOT--STATE:OCCUPIED`. The checker forces every
+`occupied`) with generated constructors `SLOT-STATE:EMPTY`,
+`SLOT-STATE:DELETED`, and `SLOT-STATE:OCCUPIED`. The checker forces every
 consumer through `MATCH slot-state` or the `MAP-*?` predicates. The nominal
 getter/setter API prevents checked callers from laundering state through `n`.
 The caller still owns raw map storage and `MAP-SLOT-FIELD` intentionally exposes
@@ -702,7 +702,7 @@ tags 0/1/2 become constructors and every other tag throws `HB-ERROR:BAD-TAG`.
 
 The lookup verdict is the `map-loc` sum family: `full` (table exhausted,
 no payload), `free idx` (insertion slot), and `found idx` (hit slot), with
-generated constructors `MAP--LOC:FULL`, `MAP--LOC:FREE`, and `MAP--LOC:FOUND`.
+generated constructors `MAP-LOC:FULL`, `MAP-LOC:FREE`, and `MAP-LOC:FOUND`.
 The carried `idx` payload replaces the old `-1` index placeholder, and every
 consumer dispatches through exhaustive `MATCH map-loc`.
 

@@ -183,17 +183,16 @@ several declaring words.
 
 Declaring a family generates a **constructor** (`MAKE`) and a **destructurer**
 (`UNMAKE`), plus `MATCH … ;MATCH` for the alternatives, which the checker
-requires to be exhaustive — every variant needs an arm. The generated names are
-mechanical: the package name, then the family name with internal hyphens
-doubled. `STRUCTURE cfgkey` inside `package MDLCFG` produces
-`MDLCFG-CFGKEY:MAKE`. This spelling rule creates one trap:
-`ENUM map-take` inside `package SAFET` produces `SAFET-MAP--TAKE:MOVED`, which
-reads as though it belongs to `package SAFET-MAP` — a real package declared
-earlier in the same file. There is also a readability cap of thirty-two
-characters on the generated spelling (`TF-CTOR-NAME-LIMIT` in
-`src/core/type-family.f`); past it the name is built from a hash instead, so a
-long, fully spelled-out constructor simply does not resolve. Wrap the long ones
-in short private words.
+requires to be exhaustive — every variant needs an arm. Generated names use the
+family's exact absolute path. `STRUCTURE cfgkey` inside `package MDLCFG`
+produces `MDLCFG:CFGKEY:MAKE`; `ENUM map-take` inside `package SAFET` produces
+`SAFET:MAP-TAKE:MOVED`. ASCII letters are uppercased while existing colons and
+hyphens remain literal. There is no flattened alias, doubled-hyphen escape, or
+hash fallback. The fixed builder accepts exactly 1024 output bytes and throws
+`E-TFAM-NS-CAP` (7135) at byte 1025, before namespace lookup. Declaration
+transactions attach `tfam: constructor namespace too long`, roll back, and
+leave other throws unchanged; the top-level renderer exits 76. No second
+capacity predicate or length formula exists.
 
 **Multi-cell values.** A record with several fields is one logical value that
 occupies several stack cells. The checker tracks the whole bundle, and two

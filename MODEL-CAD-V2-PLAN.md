@@ -136,9 +136,9 @@ optional-variant-id, field-tail)`. A row owns slot, schema root, width,
 alignment, byte offset, visibility, and source span. Structure fields use no
 variant id; enum payload fields use their variant id. Field-name reflection,
 constructors, `UNMAKE`, `MATCH`, codecs, snapshots, and AOT all consume those
-same ordered rows. Existing constructor-package spelling is preserved through
-the current injective uppercase escape/join algorithm (`point` -> `POINT`,
-package `PX-PROBE` plus `pxevid` -> `PX--PROBE-PXEVID`).
+same ordered rows. Constructor namespaces use exact uppercase family paths:
+`point` -> `POINT`, package `PX-PROBE` plus `pxevid` -> `PX-PROBE:PXEVID`.
+Colons and hyphens remain literal; no escape or hash alias exists.
 
 The raw-structure bootstrap cycle is removed instead of generalized. Internal
 records needed before the checker hook use explicit named cell or byte offsets,
@@ -1803,9 +1803,9 @@ must preserve; the cited spellings are migration sites, not V2 syntax:
   a bundle product holding that sum, and `UNMAKE`+`MATCH` elimination all
   certify; a payload product where the slot sum is expected rejects.
 - Sealed construction: docs/type-families.md §12 — public families construct
-  only through the generated ctor package (derived escaped spelling: package
-  `MODEL` + family `elab` publishes `MODEL-ELAB:MAKE`; a hyphenated segment
-  escapes, e.g. `PX-PROBE`+`pxevid` derives `PX--PROBE-PXEVID`). Private sums
+  only through the generated namespace at the exact family path: package
+  `MODEL` + family `elab` publishes `MODEL:ELAB:MAKE`; a hyphenated segment
+  remains literal, so `PX-PROBE`+`pxevid` is `PX-PROBE:PXEVID`. Private sums
   construct only via owner-scoped `construct family variant` (cross-package or
   qualified operands never resolve); private products have no construction
   surface at all (§9.4, fail-closed).
@@ -1856,7 +1856,7 @@ STRUCTURE complete 0
 ~~~
 
 Sealing decision: the generated `PLAN-COMPLETE:MAKE` is public
-(closed-but-callable ctor package), so the seal is the proof-token FIELD. The
+(closed-but-callable constructor namespace), so the seal is the proof-token FIELD. The
 only producer of a `complete-proof` cell is a private
 `TRUSTED: MINT-COMPLETE-PROOF ( -- complete-proof )` inside the owning
 package, invoked by the transition word after its independent verifier
