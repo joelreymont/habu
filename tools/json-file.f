@@ -54,7 +54,7 @@ public
 \ at end of stream. A pending partial line at EOF (no trailing LF) still yields
 \ SOME. Public so the unified declaration generates JSONF-LINE:MAKE/UNMAKE;
 \ the cursor words stay package-private.
-STRUCTURE line 0
+STRUCTURE line<>
   FIELD ptr ptr u8
   FIELD len n
 ;STRUCTURE
@@ -64,7 +64,7 @@ STRUCTURE line 0
 \ code = the caught throw code for ERROR rows (0 otherwise). The row reader
 \ returns option<JSONF:row>: SOME(row) for data AND blank rows (kind
 \ distinguishes), NONE only at end of stream (the former JSONL-ROW-EOF sentinel).
-STRUCTURE row 0
+STRUCTURE row<>
   FIELD node n
   FIELD kind n
   FIELD code n

@@ -71,11 +71,11 @@ require tools/ptx/autotune.f
 \ malformed nvidia-smi probe. The checker forces every consumer to MATCH all three,
 \ so an INFRASTRUCTURE failure can never be silently read as contention (the old -1
 \ sentinel's exact bug) and a count can never masquerade as ownership.
-SUMTYPE census 0
-  VARIANT exclusive    n ;VARIANT
-  VARIANT contended    n n ;VARIANT
-  VARIANT probe-failed n n ;VARIANT
-;SUMTYPE
+ENUM census<>
+  VARIANT exclusive    FIELD owners n ;VARIANT
+  VARIANT contended    FIELD foreign n FIELD total n ;VARIANT
+  VARIANT probe-failed FIELD diag n FIELD rc n ;VARIANT
+;ENUM
 
 package AUTOTUNE
 public
