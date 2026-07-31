@@ -36,7 +36,7 @@ public
 \ One column's addressable fields as a single record: ha = header text pointer,
 \ hn = header text byte length, al = alignment code (AL-L / AL-R). (Structure bodies
 \ take no inline comments, hence the field notes here.)
-STRUCTURE col 0
+STRUCTURE col<>
   FIELD ha ptr u8
   FIELD hn n
   FIELD al n

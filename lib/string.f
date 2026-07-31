@@ -366,7 +366,7 @@ public
 \ replacement for the former (ptr u8 byte-len byte-off bool) value+flag return
 \ (switchover wave B), so a caller cannot read the slice or cursor on the
 \ no-field path.
-STRUCTURE split 0
+STRUCTURE split<>
   FIELD ptr ptr u8
   FIELD len CAD-NUM:byte-len
   FIELD next CAD-NUM:byte-off

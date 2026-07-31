@@ -117,7 +117,7 @@ public
 \ A loaded index record is the stored object-key bytes for a source key.
 \ LOAD returns option<objidx:rec>: SOME(key-bytes) when the index file exists,
 \ NONE when it is absent.
-STRUCTURE rec 0
+STRUCTURE rec<>
   FIELD ptr ptr u8
   FIELD len n
 ;STRUCTURE

@@ -467,7 +467,7 @@ variable RX-COUNT-POS
 \ and takes apart the (off, len) pair in declaration order.
 package RX
 public
-STRUCTURE hit 0
+STRUCTURE hit<>
   FIELD off off
   FIELD len len
 ;STRUCTURE

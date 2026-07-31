@@ -294,7 +294,7 @@ variable LOAD-OFF
 \ Public so the generated OBJ-LINE:MAKE/UNMAKE exist; NEXT-LINE itself stays
 \ package-private.
 public
-STRUCTURE line 0
+STRUCTURE line<>
   FIELD ptr ptr u8
   FIELD len n
 ;STRUCTURE
