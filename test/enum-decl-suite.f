@@ -903,7 +903,7 @@ DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgpay<> VARIANT vv FIELD payfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'dgpay': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgpay': unknown declaration term at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgpol POLICY nosuch red ;ENUM" TRY 7116 T=
@@ -955,7 +955,7 @@ s" habu: bad enum declaration 'dgunified2': empty enum at 'dgunified2'" DECL-DIA
 \      in, while the token moves to the offending payload token.
 DECL-DIAG:PROSE
 s" ENUM-DECL:ED-RUN dgnest<> VARIANT nestvar FIELD nestfld nosuchtype ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'dgnest': unknown payload type at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
+s" habu: bad enum declaration 'dgnest': unknown declaration term at 'nosuchtype'" DECL-DIAG:HAS? -1 T=
 s" declaration 'nestvar'" DECL-DIAG:HAS? 0 T=
 s" declaration 'nestfld'" DECL-DIAG:HAS? 0 T=
 
@@ -1480,7 +1480,7 @@ VS0 @ LONG-N 1 - + SV-TAG@ LONG-N 1 - T=   \ no gap: the last tag is N-1
 \
 \ The resolver used to refuse any family whose schemas reach a linear value. That
 \ made `FIELD res WSTORE:resident` legal but `FIELD model gpt2-model` reject 7109
-\ as an "unknown payload type", even though gpt2-model owns that resident through
+\ as an "unknown declaration term", even though gpt2-model owns that resident through
 \ a structure field. Both forms carry the resident's obligation, so refusing the
 \ nested form bought no soundness; it only blocked the name. What actually
 \ enforces the discipline is TFAM-CONCRETE-LINEAR?, which
@@ -1538,20 +1538,20 @@ s" edlrole" FAMID EDLIN:LINEAR? 0= T-TRUE
 \ so acceptance comes from resolution and not from the spelling alone.
 DECL-DIAG:PROSE
 s" ENUM edlfwd<> VARIANT hold FIELD m edllater ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlfwd': unknown payload type at 'edllater'"
+s" habu: bad enum declaration 'edlfwd': unknown declaration term at 'edllater'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
 \ A name that DOES resolve says why it cannot be a payload type. A parametric
 \ family named bare is the one such case source can reach, and reporting it as
-\ "unknown payload type" sent readers looking for a declaration that was right
+\ "unknown declaration term" sent readers looking for a declaration that was right
 \ there. A name that resolves to nothing still reports unknown, which is true.
 \ ---------------------------------------------------------------------------
 s" ENUM edlgen<a> VARIANT hold FIELD m a ;VARIANT ;ENUM" TRY 0 T=
 DECL-DIAG:PROSE
 s" ENUM edlgenuse<> VARIANT hold FIELD m edlgen ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlgenuse': payload type is parametric and needs type arguments at 'edlgen'"
+s" habu: bad enum declaration 'edlgenuse': declaration term family needs type arguments at 'edlgen'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
@@ -1581,35 +1581,35 @@ s" edlowns" FAMID EDLIN:LINEAR? T-TRUE
 
 DECL-DIAG:PROSE
 s" ENUM edlptr<> VARIANT hold FIELD p ptr edlmodel ;VARIANT VARIANT none FIELD c n ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlptr': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+s" habu: bad enum declaration 'edlptr': pointer to a linear declaration term is not allowed at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 
 \ the con spelling launders the same way, so the same rule refuses it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
 s" ENUM edlptrcon<> VARIANT hold FIELD p ptr EDLIN:tok ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlptrcon': payload type is a pointer to a linear value and cannot own it at 'EDLIN:tok'"
+s" habu: bad enum declaration 'edlptrcon': pointer to a linear declaration term is not allowed at 'EDLIN:tok'"
 DECL-DIAG:HAS? -1 T=
 
 \ depth: a second pointer does not launder past the rule. The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
 s" ENUM edlptr2<> VARIANT hold FIELD p ptr ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlptr2': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+s" habu: bad enum declaration 'edlptr2': pointer to a linear declaration term is not allowed at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
 s" ENUM edlptrsum<> VARIANT hold FIELD p ptr edl-load-result ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlptrsum': payload type is a pointer to a linear value and cannot own it at 'edl-load-result'"
+s" habu: bad enum declaration 'edlptrsum': pointer to a linear declaration term is not allowed at 'edl-load-result'"
 DECL-DIAG:HAS? -1 T=
 
 \ every variant is checked, not just the first, and the token names the offending
 \ payload rather than the declaration's first payload.
 DECL-DIAG:PROSE
 s" ENUM edlptrlate<> VARIANT good FIELD c n ;VARIANT VARIANT bad FIELD p ptr edlmodel ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlptrlate': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+s" habu: bad enum declaration 'edlptrlate': pointer to a linear declaration term is not allowed at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 
 \ the controls. A pointer to a family that owns nothing declares and leaves the
@@ -1648,7 +1648,7 @@ DECL-DIAG:HAS? -1 T=                                  \ and so was the backslash
 \ because the payload is resolved before anything following it is read.
 DECL-DIAG:PROSE
 s" ENUM edlptrtail<> VARIANT hold FIELD p ptr edlmodel ( note ) ;VARIANT ;ENUM" TRY 7109 T=
-s" habu: bad enum declaration 'edlptrtail': payload type is a pointer to a linear value and cannot own it at 'edlmodel'"
+s" habu: bad enum declaration 'edlptrtail': pointer to a linear declaration term is not allowed at 'edlmodel'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 

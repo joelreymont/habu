@@ -336,7 +336,7 @@ DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
 s" STRUCTURE-DECL:SD-RUN sdgbad FIELD a nosuchtype ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdgbad': unknown field type at 'nosuchtype'"
+s" habu: bad structure declaration 'sdgbad': unknown declaration term at 'nosuchtype'"
 DECL-DIAG:HAS? -1 T=
 
 DECL-DIAG:PROSE
@@ -442,7 +442,7 @@ DECL-DIAG:OFF
 \ Before this entry existed, STRUCTURE had no registration path for a tool that
 \ is reading source rather than interpreting it, so tools/check-core.f simply
 \ skipped the keyword: the family was never registered, and the next declaration
-\ that named it as a payload type rejected with "unknown payload type". That is
+\ that named it as a payload type rejected with "unknown declaration term". That is
 \ the live bug this closes — `bin/hb --load tools/check.f -- maki/db/promotion.f`
 \ could not get past maki/db/obligation.f's `STRUCTURE evidence`.
 \
@@ -521,7 +521,7 @@ s" rpsdpay" FAMID struct-replay-test:FAM-FLD-COUNT 1 T=
 \ A malformed replayed STRUCTURE reports through the same renderer as a live one.
 DECL-DIAG:PROSE
 s" rpsdbad" s" FIELD one nope ;STRUCTURE" struct-replay-test:RP-TRY 7109 T=
-s" habu: bad structure declaration 'rpsdbad': unknown field type at 'nope'"
+s" habu: bad structure declaration 'rpsdbad': unknown declaration term at 'nope'"
 DECL-DIAG:HAS? -1 T=
 
 \ A buffer with no terminator rejects through the front end's own gate.
@@ -598,7 +598,7 @@ DECL-DIAG:OFF
 \
 \ The resolver used to refuse any family whose schemas reach a linear value. That
 \ made `FIELD res WSTORE:resident` legal but `FIELD m gpt2-model` — the very same
-\ resource one structure deeper — reject 7109 as an "unknown field type", about a
+\ resource one structure deeper — reject 7109 as an "unknown declaration term", about a
 \ family that had just registered successfully. The two spellings carry the same
 \ obligation, so refusing one of them bought no soundness; it only blocked the
 \ name. What actually enforces the discipline is TFAM-CONCRETE-LINEAR?, which
@@ -660,20 +660,20 @@ s" sdlrole" FAMID SDLIN:LINEAR? 0= T-TRUE
 \ so acceptance comes from resolution and not from the spelling alone.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlfwd FIELD m sdllater ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlfwd': unknown field type at 'sdllater'"
+s" habu: bad structure declaration 'sdlfwd': unknown declaration term at 'sdllater'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
 \ ---------------------------------------------------------------------------
 \ A name that DOES resolve says why it cannot be a field type. A parametric
 \ family named bare is the one such case source can reach, and reporting it as
-\ "unknown field type" sent readers looking for a declaration that was right
+\ "unknown declaration term" sent readers looking for a declaration that was right
 \ there. A name that resolves to nothing still reports unknown, which is true.
 \ ---------------------------------------------------------------------------
 s" STRUCTURE sdlgen<a> FIELD a a ;STRUCTURE" TRY 0 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdlgenuse FIELD m sdlgen ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlgenuse': field type is parametric and needs type arguments at 'sdlgen'"
+s" habu: bad structure declaration 'sdlgenuse': declaration term family needs type arguments at 'sdlgen'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 
@@ -706,39 +706,39 @@ s" sdlowns" FAMID SDLIN:LINEAR? T-TRUE
 
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr FIELD p ptr sdlbox ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlptr': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+s" habu: bad structure declaration 'sdlptr': pointer to a linear declaration term is not allowed at 'sdlbox'"
 DECL-DIAG:HAS? -1 T=
 
 \ the con spelling launders the same way, so the same rule refuses it, and the
 \ diagnostic names the con it found rather than some enclosing family.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrcon FIELD p ptr SDLIN:tok ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlptrcon': field type is a pointer to a linear value and cannot own it at 'SDLIN:tok'"
+s" habu: bad structure declaration 'sdlptrcon': pointer to a linear declaration term is not allowed at 'SDLIN:tok'"
 DECL-DIAG:HAS? -1 T=
 
 \ depth: a second pointer does not launder past the rule. The inner recursion
 \ rejects first, so the token names the family that owns the resource.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptr2 FIELD p ptr ptr sdlbox ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlptr2': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+s" habu: bad structure declaration 'sdlptr2': pointer to a linear declaration term is not allowed at 'sdlbox'"
 DECL-DIAG:HAS? -1 T=
 
 \ reaching the resource through a nested family or through a sum is still reaching
 \ it, so a pointer to either is refused for the same reason.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrdeep FIELD p ptr sdldeep ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlptrdeep': field type is a pointer to a linear value and cannot own it at 'sdldeep'"
+s" habu: bad structure declaration 'sdlptrdeep': pointer to a linear declaration term is not allowed at 'sdldeep'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrsum FIELD p ptr sdlsum ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlptrsum': field type is a pointer to a linear value and cannot own it at 'sdlsum'"
+s" habu: bad structure declaration 'sdlptrsum': pointer to a linear declaration term is not allowed at 'sdlsum'"
 DECL-DIAG:HAS? -1 T=
 
 \ a field anywhere in the body is checked, not just the first one, and the token
 \ names the offending field's type rather than the declaration's first field.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrlate FIELD a n FIELD p ptr sdlbox FIELD c n ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlptrlate': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+s" habu: bad structure declaration 'sdlptrlate': pointer to a linear declaration term is not allowed at 'sdlbox'"
 DECL-DIAG:HAS? -1 T=
 
 \ the controls. A pointer to a family that owns nothing declares, keeps its one
@@ -777,7 +777,7 @@ DECL-DIAG:HAS? -1 T=                                  \ and so was the backslash
 \ the field is resolved before anything following it is read.
 DECL-DIAG:PROSE
 s" STRUCTURE sdlptrtail FIELD p ptr sdlbox ( note ) ;STRUCTURE" TRY 7109 T=
-s" habu: bad structure declaration 'sdlptrtail': field type is a pointer to a linear value and cannot own it at 'sdlbox'"
+s" habu: bad structure declaration 'sdlptrtail': pointer to a linear declaration term is not allowed at 'sdlbox'"
 DECL-DIAG:HAS? -1 T=
 DECL-DIAG:OFF
 

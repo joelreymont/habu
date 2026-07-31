@@ -57,6 +57,8 @@ variable #CASE
 \ package-local values to classify the two comparable scalar shapes.
 SCH-PARAM constant R-PARAM
 SCH-CON constant R-CON
+SCH-PTR constant R-PTR
+SCH-APP constant R-APP
 
 \ --- the registry reflection surface. Every one is a read; none mutates.
 \ TRUSTED: because each forwards to a sealed pre-hook registry word the checker
@@ -87,12 +89,18 @@ TRUSTED: R-SCH ( n -- n n )
 TRUSTED: R-SLOT ( n -- n ) PF-SLOT@ ;
 TRUSTED: R-CELLS ( n -- n ) PF-CELLS@ ;
 TRUSTED: R-TOTAL ( -- n ) TYPE-FIELD:COUNT ;
+TRUSTED: N-SCH ( n -- n n ) dup SCHEMA-TAG@ swap SCHEMA-A@ ;
+TRUSTED: N-CON ( -- n ) CC-N ;
+TRUSTED: SCH-HIGH ( -- n ) SCHEMA-N@ ;
+TRUSTED: ROOT-HIGH ( -- n ) SCHEMA-ROOT-N@ ;
 
 variable AV   variable BV
 variable SI   variable SJ
 variable ACC
 
 public
+
+DEFLINEAR VSPARITY:term-lin
 
 : FAIL ( -- )
    [char] F emit #CASE @ .
@@ -292,6 +300,129 @@ TRUSTED: FAM-FIND ( ptr u8 n -- n bool ) TFAM-ACTIVE-PKG$ 2swap TFAM-SIG-RESOLVE
    s" green ;ENUM ;package" SRC-PUT
    SRC$ ;
 
+\ --- shared declaration-term parser. Providers expose only the next token;
+\ TERM owns no source mode and must not call one for a non-pointer token.
+private
+
+variable TERM-CALLS
+
+: EMPTY-NEXT ( -- ptr u8 n )
+   TERM-CALLS @ 1 + TERM-CALLS !
+   0 0 ;
+
+: PTR-NEXT ( -- ptr u8 n )
+   TERM-CALLS @ {: idx:n :}
+   idx 1 + TERM-CALLS !
+   idx 0 = IF s" ptr" EXIT THEN
+   idx 1 = IF s" n" EXIT THEN
+   0 0 ;
+
+: LINEAR-NEXT ( -- ptr u8 n )
+   TERM-CALLS @ {: idx:n :}
+   idx 1 + TERM-CALLS !
+   idx 0 = IF s" VSPARITY:term-lin" EXIT THEN
+   0 0 ;
+
+: TERM-EXHAUSTION ( -- )
+   0 TERM-CALLS !
+   EMPTY-NEXT 0 T= 0 T=
+   TERM-CALLS @ 1 T= ;
+
+: TERM-UNKNOWN-BODY ( -- )
+   s" no-such-term-family" [: EMPTY-NEXT ;] DECL-HEAD:TERM drop ;
+: TERM-UNKNOWN-RC ( -- n ) [: TERM-UNKNOWN-BODY ;] catch ;
+
+: TERM-PARAMETRIC-BODY ( -- )
+   s" sdlive:pair" [: EMPTY-NEXT ;] DECL-HEAD:TERM drop ;
+: TERM-PARAMETRIC-RC ( -- n ) [: TERM-PARAMETRIC-BODY ;] catch ;
+
+: TERM-MISSING-BODY ( -- )
+   s" ptr" [: EMPTY-NEXT ;] DECL-HEAD:TERM drop ;
+: TERM-MISSING-RC ( -- n ) [: TERM-MISSING-BODY ;] catch ;
+
+: TERM-LINEAR-BODY ( -- )
+   s" ptr" [: LINEAR-NEXT ;] DECL-HEAD:TERM drop ;
+: TERM-LINEAR-RC ( -- n ) [: TERM-LINEAR-BODY ;] catch ;
+
+: TERM-SCALAR ( -- )
+   0 TERM-CALLS !
+   s" n" [: EMPTY-NEXT ;] DECL-HEAD:TERM {: node:n :}
+   TERM-CALLS @ 0 T=
+   node N-SCH {: tag:n con:n :}
+   tag R-CON T=
+   con N-CON T= ;
+
+: TERM-PTRS ( -- )
+   0 TERM-CALLS !
+   s" ptr" [: PTR-NEXT ;] DECL-HEAD:TERM {: outer:n :}
+   TERM-CALLS @ 2 T=
+   outer N-SCH {: otag:n inner:n :}
+   otag R-PTR T=
+   inner N-SCH {: itag:n leaf:n :}
+   itag R-PTR T=
+   leaf N-SCH {: ltag:n con:n :}
+   ltag R-CON T=
+   con N-CON T= ;
+
+: TERM-BINDERS ( -- )
+   s" term-bind<e,a>" DECL-HEAD:PARSE
+   T-TRUE 2 T= s" term-bind" CORE-STR= T-TRUE
+   0 TERM-CALLS !
+   s" e" [: EMPTY-NEXT ;] DECL-HEAD:TERM {: e:n :}
+   e N-SCH {: etag:n eidx:n :}
+   etag R-PARAM T=  eidx 0 T=
+   s" a" [: EMPTY-NEXT ;] DECL-HEAD:TERM {: a:n :}
+   a N-SCH {: atag:n aidx:n :}
+   atag R-PARAM T=  aidx 1 T=
+   TERM-CALLS @ 0 T= ;
+
+: TERM-CLOSED ( -- )
+   0 TERM-CALLS !
+   s" termclosed:leaf" [: EMPTY-NEXT ;] DECL-HEAD:TERM {: node:n :}
+   TERM-CALLS @ 0 T=
+   node N-SCH {: tag:n fam:n :}
+   tag R-APP T=
+   fam s" termclosed:leaf" FAMID T= ;
+
+: TERM-ROLLBACK ( -- )
+   SCH-HIGH {: sch:n :}
+   ROOT-HIGH {: root:n :}
+   SRC-RESET
+   s" package termreject public STRUCTURE broken " SRC-PUT
+   s" FIELD ok ptr ptr n FIELD bad ptr VSPARITY:term-lin " SRC-PUT
+   s" ;STRUCTURE ;package" SRC-PUT
+   SRC$ VSTRY 7109 T=
+   SCH-HIGH sch T=
+   ROOT-HIGH root T= ;
+
+public
+
+: TERM-CHECK ( -- )
+   TERM-EXHAUSTION
+   TERM-SCALAR
+   TERM-PTRS
+   TERM-BINDERS
+   TERM-CLOSED
+   0 TERM-CALLS !
+   TERM-UNKNOWN-RC 7109 T=
+   TERM-CALLS @ 0 T=
+   7109 DECL-REJECT:REASON$ s" unknown declaration term" DECL-DIAG:SAME? T-TRUE
+   0 TERM-CALLS !
+   TERM-PARAMETRIC-RC 7109 T=
+   TERM-CALLS @ 0 T=
+   7109 DECL-REJECT:REASON$ s" declaration term family needs type arguments"
+   DECL-DIAG:SAME? T-TRUE
+   0 TERM-CALLS !
+   TERM-MISSING-RC 7107 T=
+   TERM-CALLS @ 1 T=
+   7107 DECL-REJECT:REASON$ s" missing declaration term" DECL-DIAG:SAME? T-TRUE
+   0 TERM-CALLS !
+   TERM-LINEAR-RC 7109 T=
+   TERM-CALLS @ 1 T=
+   7109 DECL-REJECT:REASON$ s" pointer to a linear declaration term is not allowed"
+   DECL-DIAG:SAME? T-TRUE
+   TERM-ROLLBACK ;
+
 ;package
 
 \ ---------------------------------------------------------------------------
@@ -311,6 +442,13 @@ s" package sdrep public STRUCTURE pair<e,a> FIELD lo e FIELD hi a ;STRUCTURE ;pa
 VSPARITY:VS-LOAD
 
 s" sdlive:pair" s" sdrep:pair" VSPARITY:COMPARE
+
+package termclosed
+public
+STRUCTURE leaf FIELD value n ;STRUCTURE
+;package
+
+VSPARITY:TERM-CHECK
 
 \ ---------------------------------------------------------------------------
 \ 2. Compact ENUM. This is the arm that changed owner: it drove the legacy

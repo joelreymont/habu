@@ -503,7 +503,7 @@ private
 ;package
 
 \ ---------------------------------------------------------------------------
-\ Declaration-head binder map. The map owns the copied binder bytes, so field
+\ Declaration head and term parsing. The binder map owns copied bytes, so term
 \ parsing never depends on the lifetime or reuse policy of the input buffer.
 \ ---------------------------------------------------------------------------
 package DECL-HEAD
@@ -511,6 +511,11 @@ package DECL-HEAD
 $3C constant DH-LT
 $3E constant DH-GT
 $2C constant DH-COMMA
+$6E constant TERM-N
+$66 constant TERM-F
+$72 constant TERM-R
+7107 constant E-TERM-SYNTAX
+7109 constant E-TERM-TYPE
 7108 constant E-HEAD
 
 create DH-MAP TFAM-DECL-PARAM-COUNT allot
@@ -520,6 +525,24 @@ variable DH-J
 variable DH-OPEN
 variable DH-FIRST
 variable DH-LIM
+
+\ The declaration term parser is shared by every generated declaration front
+\ end. These forwarders are the one post-hook boundary to the sealed schema,
+\ type-family, and checker registries it reads or extends.
+TRUSTED: FAM-ARITY@ ( n -- n ) TFAM-ARITY@ ;
+TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
+TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
+TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
+TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
+TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
+TRUSTED: CON-N ( -- n ) CC-N ;
+TRUSTED: CON-F ( -- n ) CC-BOOL ;
+TRUSTED: CON-R ( -- n ) CC-R ;
+TRUSTED: SCH-CON ( n -- n ) SCHEMA-CON ;
+TRUSTED: SCH-PARAM ( n -- n ) SCHEMA-PARAM ;
+TRUSTED: SCH-PTR ( n -- n ) SCHEMA-PTR ;
+TRUSTED: SCH-APP ( n n n -- n ) SCHEMA-APP ;
+TRUSTED: SCH-LINEAR? ( n -- bool ) TFCL-NODE? ;
 
 : DH-YES ( -- bool ) 0 0= ;
 : DH-NO ( -- bool ) 0 0= 0= ;
@@ -569,6 +592,47 @@ variable DH-LIM
       DH-I @ end >= IF DH-BAD THEN
    REPEAT ;
 
+: DH-PARAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
+   u 1 <> IF 0 DH-NO EXIT THEN
+   0 DH-I !
+   BEGIN DH-I @ DH-N @ < WHILE
+      DH-I @ DH-BYTE@ a c@ = IF DH-I @ DH-YES EXIT THEN
+      DH-I @ 1 + DH-I !
+   REPEAT
+   0 DH-NO ;
+
+\ A bare family term is closed: arity zero and either a layout or a nominal
+\ cell. Parameterized family application grammar belongs outside declarations.
+: TERM-FAM? ( ptr u8 n -- n bool )
+   ACTIVE-PKG$ 2swap SIG-RESOLVE 0= IF drop 0 DH-NO EXIT THEN
+   {: id:n :}
+   id FAM-LAYOUT? id FAM-CELL? or 0= IF 0 DH-NO EXIT THEN
+   id FAM-ARITY@ 0 <> IF
+      s" declaration term family needs type arguments"
+      E-TERM-TYPE DECL-REJECT:REJECT throw THEN
+   id DH-YES ;
+
+: TERM-LETTER ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a c@
+   dup TERM-N = IF drop CON-N SCH-CON EXIT THEN
+   dup TERM-F = IF drop CON-F SCH-CON EXIT THEN
+   dup TERM-R = IF drop CON-R SCH-CON EXIT THEN
+   drop
+   a u DH-PARAM? IF SCH-PARAM EXIT THEN
+   drop
+   a c@ TFAM-DECL-CHAR>PARAM IF
+      drop s" type parameter is not declared by this head"
+      E-TERM-TYPE DECL-REJECT:REJECT throw
+   THEN
+   drop s" unknown declaration term" E-TERM-TYPE DECL-REJECT:REJECT throw ;
+
+\ A pointer is non-owning. TFCL-NODE? deliberately stops at pointer nodes, so a
+\ linear pointee must be rejected before SCH-PTR can hide its obligation.
+: TERM-POINTEE ( n -- n )
+   dup SCH-LINEAR? IF
+      s" pointer to a linear declaration term is not allowed"
+      E-TERM-TYPE DECL-REJECT:REJECT throw THEN ;
+
 DH-CLEAR
 
 public
@@ -584,13 +648,20 @@ public
    a DH-OPEN @ DH-N @ DH-YES ;
 
 : PARAM? ( ptr u8 n -- n bool ) {: a:ptr u:n :}
-   u 1 <> IF 0 DH-NO EXIT THEN
-   0 DH-I !
-   BEGIN DH-I @ DH-N @ < WHILE
-      DH-I @ DH-BYTE@ a c@ = IF DH-I @ DH-YES EXIT THEN
-      DH-I @ 1 + DH-I !
-   REPEAT
-   0 DH-NO ;
+   a u DH-PARAM? ;
+
+\ TERM consumes one already-read token. The provider is a caller capability,
+\ used only for a ptr pointee; DECL-HEAD owns no input or replay state.
+: TERM
+   ( ptr u8 n [ -- ptr u8 n ] -- n )
+   {: a:ptr u:n next :} \ typed-local-lint: allow-bare-local
+   u 0= IF s" missing declaration term" E-TERM-SYNTAX DECL-REJECT:REJECT throw THEN
+   a u s" ptr" CORE-STR=CI IF
+      next execute next RECURSE TERM-POINTEE SCH-PTR EXIT THEN
+   u 1 = IF a u TERM-LETTER EXIT THEN
+   a u CON-CODE dup 0 <> IF SCH-CON EXIT THEN drop
+   a u TERM-FAM? IF 0 0 SCH-APP EXIT THEN drop
+   s" unknown declaration term" E-TERM-TYPE DECL-REJECT:REJECT throw ;
 
 private
 ;package

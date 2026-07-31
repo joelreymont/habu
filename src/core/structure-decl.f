@@ -55,7 +55,7 @@ package STRUCTURE-DECL
 \ codes are raised by TFAM-DECL / the field-event path and pass through unchanged.
 7107 constant E-SYNTAX      \ malformed: missing name/arity/terminator, unexpected/legacy token
 7108 constant E-HEAD        \ malformed declaration binder head
-7109 constant E-PAYLOAD     \ unresolved / unknown field type
+7109 constant E-PAYLOAD     \ unresolved / unknown declaration term
 7110 constant E-NAME        \ reserved or colliding family name
 7116 constant E-POLICY      \ unknown or not-yet-supported layout policy
 7119 constant E-DERIVE      \ unknown or not-yet-supported derive feature
@@ -63,10 +63,6 @@ package STRUCTURE-DECL
 7102 constant E-DUP         \ duplicate family or field tail (type-family.f E-TFAM-DUP,
                             \ raised by TFAM-DECL / the field-event path; named here only
                             \ so a reason can be armed for it before those calls)
-
-110 constant ASCII-N
-102 constant ASCII-F
-114 constant ASCII-R
 
 \ typed boolean producers (core has no `true`/`false`).
 : YES ( -- bool ) 0 0= ;
@@ -87,9 +83,6 @@ TRUSTED: FAM-SLOTS! ( n n -- ) TFAM-SLOTS! ;
 TRUSTED: FAM-PUBLIC? ( n -- bool ) TFAM-PUBLIC? ;
 TRUSTED: FAM-ARITY@ ( n -- n ) TFAM-ARITY@ ;
 TRUSTED: FAM-WIDTH@ ( n -- n ) TFAM-WIDTH@ ;
-TRUSTED: FAM-LAYOUT? ( n -- bool ) TFAM-LAYOUT? ;
-TRUSTED: FAM-CELL? ( n -- bool ) TFAM-CELL? ;
-TRUSTED: SIG-RESOLVE ( ptr u8 n ptr u8 n -- n bool ) TFAM-SIG-RESOLVE ;
 TRUSTED: ACTIVE-PKG$ ( -- ptr u8 n ) TFAM-ACTIVE-PKG$ ;
 TRUSTED: PKG-ACTIVE? ( -- bool ) CHECKER-PACKAGE-ACTIVE? ;
 TRUSTED: PKG-MODE@ ( -- n ) CHECKER-PACKAGE-MODE @ ;
@@ -97,23 +90,15 @@ TRUSTED: CANON? ( ptr u8 n -- bool ) TF-CANON? ;
 TRUSTED: GRAMMAR-KW? ( ptr u8 n -- bool ) TF-GRAMMAR-KEYWORD? ;
 TRUSTED: CONTROL-KW? ( ptr u8 n -- bool ) TYPE-NAME:CONTROL? ;
 TRUSTED: CON-CODE ( ptr u8 n -- n ) CON-OF ;
-TRUSTED: CON-N ( -- n ) CC-N ;          \ single-letter n : signed cell
-TRUSTED: CON-BOOL ( -- n ) CC-BOOL ;    \ single-letter f : boolean/flag
-TRUSTED: CON-R ( -- n ) CC-R ;          \ single-letter r : real/float
 TRUSTED: LT-STACK ( -- n ) TL-STACK-CELL-TAG ;   \ default layout policy code
 TRUSTED: LT-PACKED ( -- n ) TL-PACKED-TAG ;      \ packed-tag layout policy code
 TRUSTED: DV-EQ ( -- n ) DRV-EQ ;                 \ derive feature code: equality
 TRUSTED: DV-HASH ( -- n ) DRV-HASH ;             \ derive feature code: hash
 TRUSTED: PKG-PUBLIC ( -- n ) CHECKER-PACKAGE-PUBLIC ;   \ public visibility code
-TRUSTED: SD-SCH-CON ( n -- n ) SCHEMA-CON ;
-TRUSTED: SD-SCH-PARAM ( n -- n ) SCHEMA-PARAM ;
-TRUSTED: SD-SCH-PTR ( n -- n ) SCHEMA-PTR ;
-TRUSTED: SD-SCH-APP ( n n n -- n ) SCHEMA-APP ;
 TRUSTED: SCH-ROOT+ ( n -- n ) SCHEMA-ROOT+ ;
 TRUSTED: SCH-ROOT@ ( n -- n ) SCHEMA-ROOT@ ;
 TRUSTED: SCH-APP? ( n -- bool ) SCHEMA-APP? ;
 TRUSTED: SCH-A@ ( n -- n ) SCHEMA-A@ ;
-TRUSTED: SCH-OWNS-LINEAR? ( n -- bool ) TFCL-NODE? ;   \ node reaches a linear value
 TRUSTED: FLAGS-NONE ( -- n ) PF-FLAGS-NONE ;   \ field-record layout flag: none
 TRUSTED: TK-PROD ( -- n ) TK-PRODUCT ;         \ single-shape record family kind
 
@@ -179,66 +164,6 @@ SD-RESET
       2drop s" name must be a lowercase family tail" E-CASE DECL-REJECT:REJECT throw THEN
    NAME-RESERVED? IF s" reserved name" E-NAME DECL-REJECT:REJECT throw THEN ;
 
-\ ---------------------------------------------------------------------------
-\ field type resolution -> a schema node (docs §8): concrete cell types (n/f/r +
-\ multi-char con names), named head binders, ptr T, and closed
-\ arity-0 layout/cell families. Everything else is unresolved.
-\
-\ A family that owns a linear value — directly or through its own fields — IS an
-\ accepted field type (dot habu-checker-enum-payload-9e1ae6cc). The structure then
-\ owns that obligation by containment, which is the same rule a field naming a
-\ bare DEFLINEAR con already relies on: TFAM-CONCRETE-LINEAR? walks the product's
-\ field schemas, follows an application node into the family it names, and reports
-\ the structure linear, so the checker counts the whole bundle as one linear unit.
-\ Refusing the family spelling while accepting the con spelling blocked the name
-\ and never the obligation, so it bought no soundness.
-\
-\ A parametric family named bare is the one resolved-but-unusable case source can
-\ reach, and it now says so. Calling a registered family "unknown field type" sent
-\ readers hunting for a missing declaration that was in fact right there. The
-\ remaining kind test still falls through to the unknown message because the only
-\ kind it excludes, TK-EVIDENCE, has no declarer any source can write.
-\ ---------------------------------------------------------------------------
-: FIELD-FAM? ( ptr u8 n -- n bool )     \ resolve a closed arity-0 layout/cell family
-   ACTIVE-PKG$ 2swap SIG-RESOLVE 0= IF drop 0 NO EXIT THEN
-   {: id:n :}
-   id FAM-LAYOUT? id FAM-CELL? or 0= IF 0 NO EXIT THEN
-   id FAM-ARITY@ 0 <> IF
-      s" field type is parametric and needs type arguments" E-PAYLOAD DECL-REJECT:REJECT throw THEN
-   id YES ;
-
-: LETTER-TYPE ( ptr u8 n -- n ) {: a:ptr u:n :}   \ binder / n / f / r
-   a c@
-   dup ASCII-N = IF drop CON-N SD-SCH-CON EXIT THEN
-   dup ASCII-F = IF drop CON-BOOL SD-SCH-CON EXIT THEN
-   dup ASCII-R = IF drop CON-R SD-SCH-CON EXIT THEN
-   drop
-   a u DECL-HEAD:PARAM? IF SD-SCH-PARAM EXIT THEN
-   drop
-   a c@ TFAM-DECL-CHAR>PARAM IF
-      drop s" type parameter is not declared by this head"
-      E-PAYLOAD DECL-REJECT:REJECT throw
-   THEN
-   drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
-
-\ A pointer is a NON-OWNING boundary: TFCL-NODE? stops at a pointer node, so a
-\ field spelled `ptr <linear>` reads non-linear and the containing family would
-\ copy and drop freely while a linear resource sits behind the address. The
-\ family spelling and the con spelling launder identically, so both are refused
-\ here, at the declaration door, with one rule.
-: REQUIRE-POINTEE ( n -- n )                \ pointee node, or reject a linear owner behind the address
-   dup SCH-OWNS-LINEAR? IF
-      s" field type is a pointer to a linear value and cannot own it"
-      E-PAYLOAD DECL-REJECT:REJECT throw THEN ;
-
-: RESOLVE-TYPE ( ptr u8 n -- n )        \ type token(s) -> schema node
-   dup 0= IF 2drop s" missing field type" E-SYNTAX DECL-REJECT:REJECT throw THEN
-   2dup s" ptr" CORE-STR=CI IF 2drop SD-NEXT RECURSE REQUIRE-POINTEE SD-SCH-PTR EXIT THEN
-   dup 1 = IF LETTER-TYPE EXIT THEN
-   2dup CON-CODE dup 0 <> IF nip nip SD-SCH-CON EXIT THEN drop
-   2dup FIELD-FAM? IF nip nip 0 0 SD-SCH-APP EXIT THEN drop
-   2drop s" unknown field type" E-PAYLOAD DECL-REJECT:REJECT throw ;
-
 : SCH-WIDTH ( n -- n )                  \ physical cell width of a field schema node
    dup SCH-APP? IF SCH-A@ FAM-WIDTH@ EXIT THEN drop 1 ;
 
@@ -301,7 +226,9 @@ SD-RESET
    SD-NEXT dup 0= IF
       2drop s" missing field name" E-SYNTAX DECL-REJECT:REJECT throw THEN   \ field name
    {: na:ptr nu:n :}
-   SD-NEXT RESOLVE-TYPE {: node:n :}
+   SD-NEXT
+   [: SD-NEXT dup 0= IF 2drop 0 0 THEN ;]   \ TERM exhaustion is exactly 0 0
+   DECL-HEAD:TERM {: node:n :}
    na nu node EMIT-FIELD
    -1 SEEN-FIELD ! ;
 
