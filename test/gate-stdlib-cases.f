@@ -274,6 +274,10 @@ SUITE compiler-native-tape
    test/compiler/native-tape.f
 ;SUITE
 
+SUITE compiler-native-feed
+   test/compiler/native-feed.f
+;SUITE
+
 SUITE compiler-native-immediate
    test/compiler/native-immediate.f
 ;SUITE
