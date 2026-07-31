@@ -16,7 +16,12 @@
 \ excused by it. The one thing it does take from the allocator is which module
 \ and which routine contract the allocation was made for, because those are what
 \ it is checking the assignment against; both are checked to be the ones it was
-\ handed. Which register fields an instruction form shares is likewise re-derived:
+\ handed. That contract is also where the routine's fixed registers are declared
+\ - which register each argument arrives in and each returned value leaves in -
+\ and every declared position is compared against the assignment itself, so an
+\ allocator that pre-coloured nothing, or pre-coloured the wrong value, or
+\ planned a move it never made, disagrees here rather than being taken at its
+\ word. Which register fields an instruction form shares is likewise re-derived:
 \ the ties come out of the module's own schema table, so this file and the
 \ allocator agree because they read one declaration, not because one told the
 \ other. The dialect's own identities - which type is a register, which is a
@@ -401,6 +406,38 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
       loop
    loop ;
 
+\ ---- the routine's declared registers ------------------------------------------
+\ The contract this check was handed says which register each argument arrives in
+\ and which each returned value leaves in. Both are decided here from that list
+\ and the assignment alone: nothing is read out of the allocator's own view of
+\ its constraints, so an allocator that pre-coloured the wrong value, pre-coloured
+\ nothing at all, or planned a move it never made is caught by the disagreement.
+\ A contract naming more positions than the module has arguments or returned
+\ values is not this module's contract and is refused before any position is
+\ compared.
+: ARG-CK ( IR-ID:ir-block-id A64EFF:regseq -- )
+   {: bk:IR-ID:ir-block-id args:A64EFF:regseq :}
+   args A64EFF:SEQ-LEN {: n:n :}
+   V-BLKR VW bk IR-FUN:FARG-COUNT n < if E-A64RAV-FIXED throw then
+   n 0 ?do
+      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ SLOT A64RA:CLAIM@
+      args i A64EFF:SEQ@ <> if E-A64RAV-FIXED throw then
+   loop ;
+
+\ Where control leaves, the register holding returned value j is the one declared
+\ for position j. The terminator is read off the block's own row, and its
+\ operands are the values the routine returns, so this is the assignment's answer
+\ at exactly the instant the convention talks about.
+: OUT-CK ( IR-ID:ir-block-id A64EFF:regseq -- )
+   {: bk:IR-ID:ir-block-id outs:A64EFF:regseq :}
+   outs A64EFF:SEQ-LEN {: n:n :}
+   V-BLKR VW V-OPR VW KEY bk IR-FUN:FTERMINATOR@ {: id:IR-ID:ir-op-id :}
+   V-OPR VW id IR-OP:FOPERANDS n < if E-A64RAV-FIXED throw then
+   n 0 ?do
+      id i OPERAND-AT SLOT A64RA:CLAIM@
+      outs i A64EFF:SEQ@ <> if E-A64RAV-FIXED throw then
+   loop ;
+
 \ ---- the frame -----------------------------------------------------------------
 \ A block that touches the frame at all takes it with its first operation and
 \ gives it back with the one in front of its terminator, and both name the frame
@@ -462,7 +499,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 \ than one cell cannot be held in a local.
 : SLOT-CK ( IR-ID:ir-block-id A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
@@ -485,8 +522,9 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    0= if E-A64RAV-MODULE throw then ;
 
 \ The allocation depends on one fact of the contract: which general registers the
-\ routine may destroy. A contract that names a different set is a different
-\ allocation problem, and this one is not an answer to it.
+\ routine may write, which is what it destroys together with what it returns a
+\ value in. A contract that names a different set is a different allocation
+\ problem, and this one is not an answer to it.
 : CONTRACT-CK ( A64EFF:gprs -- )
    A64RA:POOL A64EFF-GPRS:EQ 0= if E-A64RAV-CONTRACT throw then ;
 
@@ -520,8 +558,9 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
-: WALK ( IR-BUILD:module A64EFF:gprs n -- IR-ID:ir-block-id )
-   {: m:IR-BUILD:module pool:A64EFF:gprs frame:n :}
+: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:regseq A64EFF:regseq n -- IR-ID:ir-block-id )
+   {: m:IR-BUILD:module pool:A64EFF:gprs
+      args:A64EFF:regseq outs:A64EFF:regseq frame:n :}
    ST-NONE ST !
    BND-TAKE
    m BND-MODULE-CK
@@ -537,6 +576,8 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    REGISTER-CK
    OVERLAP-CK
    bk TIE-CK
+   bk args ARG-CK
+   bk outs OUT-CK
    bk frame FRAME-CK
    bk FLOW-CK
    bk ;
@@ -567,11 +608,13 @@ public
 \ routine contract, or refuse it by name. Nothing is answered until this returns.
 : ACCEPT ( IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
-      size:n delta:n :}
-   gc size WALK {: bk:IR-ID:ir-block-id :}
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
+      t:A64EFF:traits size:n delta:n :}
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
+   pool gi gr size WALK {: bk:IR-ID:ir-block-id :}
    bk
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    SLOT-CK

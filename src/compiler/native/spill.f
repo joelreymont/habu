@@ -27,13 +27,20 @@
 \ values - except that a value that lost its register is read out of its slot
 \ instead, by a load placed in front of the operation that reads it.
 \
-\ THE FOUR THINGS THIS PASS INSERTS. A reserve at the top of the block and a
+\ THE FIVE THINGS THIS PASS INSERTS. A reserve at the top of the block and a
 \ release in front of the terminator, because a routine that uses a slot has to
 \ take its frame and give it back; a store in front of the operation at which a
-\ value lost its register; and a load in front of each later operation that reads
-\ that value. The order inside one anchor is the order the allocator decided
-\ them, which is what makes the register the allocator counted on free exactly
-\ where it counted on it.
+\ value lost its register; a load in front of each later operation that reads
+\ that value; and a copy in front of the return, for a returned value that is not
+\ in the register the routine's contract says it leaves in. The order inside one
+\ anchor is the order the allocator decided them, which is what makes the
+\ register the allocator counted on free exactly where it counted on it.
+\
+\ THE FRAME IS ONLY TAKEN BY A MODULE THAT USES ONE. A plan may hold nothing but
+\ copies - a routine whose values all fit but whose result is in the wrong
+\ register - and such a module needs no slot, so it gets no reserve and no
+\ release. A frame reserved and given back with nothing written into it would be
+\ two instructions for nothing and a stack pointer no reader could account for.
 \
 \ THE MEMORY TOKEN IS THREADED HERE. The dialect's frame forms carry a memory
 \ token so their order is a dependency the module holds rather than a property of
@@ -48,9 +55,9 @@
 \     outside without the dialect's authority; this pass asks A64IR while the old
 \     module is still being built, exactly as the allocator and the emitter do.
 \   - a frozen module that is not the one the binding was taken over.
-\   - a spill plan that is not about this module, or a walk that decided no
-\     spill: rewriting a module that needs no spill would be a copy, and a copy
-\     with a new identity is a module nobody asked for.
+\   - a plan that is not about this module, or a walk that decided nothing at
+\     all: rewriting a module that needs no store, no load and no copy would be a
+\     duplicate, and a duplicate with a new identity is a module nobody asked for.
 \   - a module that already holds frame operations. Spill lowering runs once; a
 \     module that has been through it and still wants spills is a disagreement
 \     between the allocator and this pass, and it stops here by name rather than
@@ -101,17 +108,18 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-10 constant OPCODES-N
+11 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
-2 constant O-ADD
-3 constant O-SUB
-4 constant O-MUL
-5 constant O-STORE
-6 constant O-LOAD
-7 constant O-RESERVE
-8 constant O-RELEASE
-9 constant O-RET
+2 constant O-MOV
+3 constant O-ADD
+4 constant O-SUB
+5 constant O-MUL
+6 constant O-STORE
+7 constant O-LOAD
+8 constant O-RESERVE
+9 constant O-RELEASE
+10 constant O-RET
 
 \ One slot per attribute key the dialect declares.
 4 constant KEYS-N
@@ -194,6 +202,7 @@ create NAMEBUF NAME-CAP allot
    MATCH A64IR:opcode
       movz    OF O-MOVZ    ENDOF
       movk    OF O-MOVK    ENDOF
+      mov     OF O-MOV     ENDOF
       add     OF O-ADD     ENDOF
       sub     OF O-SUB     ENDOF
       mul     OF O-MUL     ENDOF
@@ -208,6 +217,7 @@ create NAMEBUF NAME-CAP allot
    case
       O-MOVZ    of A64IR-OPCODE:MOVZ    endof
       O-MOVK    of A64IR-OPCODE:MOVK    endof
+      O-MOV     of A64IR-OPCODE:MOV     endof
       O-ADD     of A64IR-OPCODE:ADD     endof
       O-SUB     of A64IR-OPCODE:SUB     endof
       O-MUL     of A64IR-OPCODE:MUL     endof
@@ -392,6 +402,21 @@ create NAMEBUF NAME-CAP allot
    id 1 RESULT@ TOK!
    k pos  id 0 RESULT@  RBIND ;
 
+\ The value is put into the register the routine's contract says it leaves in, in
+\ front of the return. The copy reads the value as it stands at this position -
+\ which is the reloaded one when the value spent part of its life in a slot - and
+\ its result is a value of its own, so the return below it carries the copy and
+\ not the original. Which register the copy lands in is not decided here and is
+\ not in the plan: the lowered module is allocated again, and that walk reads the
+\ declaration off the same contract.
+: EMIT-MOVE ( IR-ID:ir-op-id n n -- )
+   {: at:IR-ID:ir-op-id k:n pos:n :}
+   at A64IR-OPCODE:MOV OPEN
+   KEY k IR-ID:PACK-VALUE pos READ-AS OPERAND+
+   GPR-RESULT+
+   CLOSE {: id:IR-ID:ir-op-id :}
+   k pos  id 0 RESULT@  RBIND ;
+
 \ Every decision the allocator anchored to this position, in the order it made
 \ them. The plan is in that order already - a walk decides one operation's spills
 \ before the next one's - so this reads it with a cursor rather than searching
@@ -399,6 +424,13 @@ create NAMEBUF NAME-CAP allot
 \ decision anchored to a position this block does not have would otherwise be
 \ dropped in silence, and a dropped store is a value that never reaches its
 \ slot.
+: INSERT-ONE ( IR-ID:ir-op-id n n -- )
+   {: at:IR-ID:ir-op-id j:n pos:n :}
+   j A64RA:PLAN-VALUE@ {: k:n :}
+   j A64RA:PLAN-STORE? if at k EMIT-STORE exit then
+   j A64RA:PLAN-MOVE? if at k pos EMIT-MOVE exit then
+   at k pos EMIT-LOAD ;
+
 : INSERT-AT ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id pos:n :}
    A64RA:PLAN-N {: n:n :}
@@ -406,11 +438,7 @@ create NAMEBUF NAME-CAP allot
       N-CUR @ n < if N-CUR @ A64RA:PLAN-POS@ pos = else false then
    while
       N-CUR @ {: j:n :}
-      j A64RA:PLAN-STORE? if
-         at j A64RA:PLAN-VALUE@ EMIT-STORE
-      else
-         at j A64RA:PLAN-VALUE@ pos EMIT-LOAD
-      then
+      at j pos INSERT-ONE
       j 1+ N-CUR !
    repeat ;
 
@@ -479,16 +507,22 @@ create NAMEBUF NAME-CAP allot
       VBIND
    loop ;
 
+\ A frame is taken only by a module that uses one. A plan of nothing but moves
+\ needs no slot, and a routine that reserved a frame it never wrote into would be
+\ two instructions and a stack pointer nobody can account for.
+: FRAMES? ( -- bool )
+   A64RA:SPILLS 0<> ;
+
 : WALK-BLOCK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
    n 1 < if E-A64SPILL-SHAPE throw then
    bk OPEN-BLOCK
-   bk 0 OP-AT EMIT-RESERVE
+   FRAMES? if bk 0 OP-AT EMIT-RESERVE then
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id i INSERT-AT
-      i n 1- = if id EMIT-RELEASE then
+      i n 1- = FRAMES? and if id EMIT-RELEASE then
       id i COPY-OP
    loop
    N-CUR @ A64RA:PLAN-N <> if E-A64SPILL-PLAN throw then
@@ -568,7 +602,7 @@ create NAMEBUF NAME-CAP allot
    A64RA:SEALED? 0= if E-A64SPILL-PLAN throw then
    m IR-BUILD:FMODULE A64RA:MODULE@ IR-ID:MODULE-SAME?
    0= if E-A64SPILL-PLAN throw then
-   A64RA:SPILLS 0= if E-A64SPILL-PLAN throw then ;
+   A64RA:PLAN-N 0= if E-A64SPILL-PLAN throw then ;
 
 \ A module that already reserves a frame has been through this pass. Lowering it
 \ again would build a second frame inside the first, so it stops here.
@@ -613,6 +647,7 @@ public
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b A64IR-OPCODE:MOVZ    BIND1
    c b A64IR-OPCODE:MOVK    BIND1
+   c b A64IR-OPCODE:MOV     BIND1
    c b A64IR-OPCODE:ADD     BIND1
    c b A64IR-OPCODE:SUB     BIND1
    c b A64IR-OPCODE:MUL     BIND1

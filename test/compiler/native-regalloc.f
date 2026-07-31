@@ -28,6 +28,20 @@
 \ the validator's own judgement about the module in front of it and not the
 \ allocator's agreement with itself.
 \
+\ WHAT THE FIXED-REGISTER FIXTURES MEASURE. A routine contract can say which
+\ register each argument arrives in and each returned value leaves in, and three
+\ separate things are owed. That the scan FOLLOWS it: the two-argument shape is
+\ allocated once with nothing declared and once with its arguments declared into
+\ registers the default scan would never have chosen, so every register in the
+\ answer moves and a scan that handed a pinned register out to something else
+\ would collide. That a value which cannot be pre-coloured is MOVED instead: a
+\ routine returning an argument that has to leave somewhere else plans a copy,
+\ the copy is lowered into an operation, and the second allocation puts its
+\ result in the declared register. And that the VALIDATOR decides the same thing
+\ for itself: three cases allocate under a contract that declares nothing and ask
+\ for an acceptance under one that declares something the assignment does not
+\ satisfy, over the same registers, so nothing but the declaration differs.
+\
 \ WHAT THE POSITIVE FIXTURES MEASURE. Each one asserts the exact register of
 \ every value, not merely that some allocation succeeded. That is what makes the
 \ shapes falsifiable: a scan that never released a dead value's register gives
@@ -97,7 +111,7 @@ private
 \ keeps the link register, touches no flags, reserves no frame and calls nothing.
 : LEAF ( A64EFF:gprs -- A64EFF:routine )
    {: pool:A64EFF:gprs :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE pool
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -110,7 +124,7 @@ private
 : LEAF-FRAMED ( n n -- A64EFF:routine )
    {: n:n size:n :}
    n POOL-N {: pool:A64EFF:gprs :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE pool
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
@@ -125,6 +139,42 @@ private
 
 : LEAF-FROM ( n n -- A64EFF:routine )
    POOL-FROM LEAF ;
+
+\ ---- contracts that declare where their arguments and results live -----------
+\ An ordered list of one, two or three registers, so a case can say which
+\ register each position takes without spelling the packing out.
+: SQ ( n -- A64EFF:regseq )
+   A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH ;
+
+: SQ2 ( n n -- A64EFF:regseq )
+   {: a:n b:n :}
+   a SQ b A64EFF:SEQ-WITH ;
+
+: SQ3 ( n n n -- A64EFF:regseq )
+   {: a:n b:n c:n :}
+   a b SQ2 c A64EFF:SEQ-WITH ;
+
+\ A leaf routine that declares its interface: the arguments arrive in the first
+\ list, the returned values leave in the second, and the registers it may destroy
+\ are the given pool less the ones a result leaves in - one register cannot be
+\ both. The pool is passed rather than derived, so a case can hand it one that
+\ does NOT hold a declared register and get the refusal that earns.
+: LEAF-DECL ( A64EFF:gprs A64EFF:regseq A64EFF:regseq -- A64EFF:routine )
+   {: pool:A64EFF:gprs args:A64EFF:regseq outs:A64EFF:regseq :}
+   args outs
+   pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+\ The same with a frame, for a program that declares an interface AND spills.
+: LEAF-DECL-FRAMED ( A64EFF:gprs A64EFF:regseq A64EFF:regseq -- A64EFF:routine )
+   {: pool:A64EFF:gprs args:A64EFF:regseq outs:A64EFF:regseq :}
+   args outs
+   pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 16 0 A64EFF:ROUTINE ;
 
 \ ---- the fixture's source text -----------------------------------------------
 create TXT
@@ -436,6 +486,56 @@ create TXT
    WBND [: UNUSED-BODY ;] IR-CTX:WITH-CONTEXT
    -1 T= -1 T= 1 T= 0 T= 2 T= ;
 
+\ ---- the registers a routine's contract declares -----------------------------
+\ The whole point of the declaration is that the scan follows it instead of the
+\ numbering. This shape's arguments would take x0 and x1 if nothing said
+\ otherwise - the DIFF case above measures exactly that - so declaring them into
+\ x2 and x0 moves every register in the answer, and the result declared into x1
+\ moves too. What it proves is that the scan never hands a pinned register out
+\ while its argument is live: x2 is the lowest free register at the subtraction
+\ and it is not the one the difference lands in.
+: DECL-DIFF-BODY ( IR-CTX:ctx -- n n n n n )
+   HIR-MOD
+   BUILD-DIFF
+   SELECTED {: m:IR-BUILD:module :}
+   CC m 4 POOL-N 2 0 SQ2 1 SQ LEAF-DECL A64RA:ALLOCATE
+   m 4 POOL-N 2 0 SQ2 1 SQ LEAF-DECL A64RAV:ACCEPT
+   A64RA:MOVES
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@ ;
+
+: DECL-DIFF-CASE ( -- )
+   s" declared argument and result registers are the ones the scan uses" T-LABEL
+   WBND [: DECL-DIFF-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 0 T= 2 T= 3 T= 0 T= ;
+
+\ A pool that starts above register zero, with the convention still naming the
+\ low ones: the arguments arrive where the caller puts them whatever the pool's
+\ base is, and everything else is allocated out of the pool. This is the shape
+\ the comparison harness runs, and it is what makes a pool base a decision about
+\ scratch registers rather than about the interface.
+: DECL-HIGH-BODY ( IR-CTX:ctx -- n n n n n n )
+   HIR-MOD
+   BUILD-SUM3
+   SELECTED {: m:IR-BUILD:module :}
+   CC m  4 4 POOL-FROM 0 1 2 SQ3 A64EFF:SEQ-SET A64EFF:GPR-WITH
+      0 1 2 SQ3  0 SQ LEAF-DECL A64RA:ALLOCATE
+   m  4 4 POOL-FROM 0 1 2 SQ3 A64EFF:SEQ-SET A64EFF:GPR-WITH
+      0 1 2 SQ3  0 SQ LEAF-DECL A64RAV:ACCEPT
+   A64RA:MOVES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@ ;
+
+: DECL-HIGH-CASE ( -- )
+   s" a pool above register zero still delivers the declared registers" T-LABEL
+   WBND [: DECL-HIGH-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 2 T= 1 T= 0 T= 0 T= ;
+
 \ ---- machine modules built by hand -------------------------------------------
 \ The shapes the selector never produces. Everything below builds straight into
 \ the machine dialect, so there is one module per context rather than two.
@@ -491,6 +591,13 @@ create TXT
    {: v:IR-ID:ir-value-id :}
    A64IR-OPCODE:RET M-OPEN
    CC BB v IR-BUILD:ADD-OPERAND
+   CC BB IR-BUILD:END-OP drop ;
+
+: M-RET2 ( IR-ID:ir-value-id IR-ID:ir-value-id -- )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   A64IR-OPCODE:RET M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
    CC BB IR-BUILD:END-OP drop ;
 
 : M-FREEZE ( -- IR-BUILD:module )
@@ -815,6 +922,22 @@ create TXT
    CC m n LEAF-N A64RA:ALLOCATE
    m ;
 
+\ A block that returns its first argument and holds no operation but the return.
+\ Nothing about it can be decided except where its arguments arrive and where its
+\ returned value leaves, which is why the fixed-register cases use it.
+: BUILD-KEEP ( -- )
+   s" KEEPM" 2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ drop
+   a M-RET
+   CLOSE-FUN ;
+
+\ Its contract: the arguments arrive in x0 and x1 the way a caller puts them, and
+\ the returned value has to leave in x1 - which is not where the argument it
+\ returns arrives. That is the one shape pre-colouring cannot serve.
+: DECL-KEEP ( -- A64EFF:routine )
+   4 POOL-N  0 1 SQ2  1 SQ  LEAF-DECL ;
+
 \ ---- a hand-built module allocates the same way ------------------------------
 \ The tie fixture below is the same chain the selector produces, so a module
 \ built by hand and a module selected from source have to allocate alike; this is
@@ -1000,6 +1123,56 @@ create TXT
    WBND [: DOUBLE-BODY ;] IR-CTX:WITH-CONTEXT
    2 T= 0 T= 2 T= 1 T= ;
 
+\ ---- a returned value that has to be moved -----------------------------------
+\ The value the return carries is an argument, pinned where the caller put it, and
+\ the contract says it leaves somewhere else. The walk cannot pre-colour it - the
+\ caller's choice wins - so it plans a copy in front of the return, exactly the
+\ way it plans a store for a value that lost its register.
+: MOVE-PLAN-BODY ( IR-CTX:ctx -- n n bool n n n )
+   A64-MOD
+   BUILD-KEEP
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m DECL-KEEP A64RA:ALLOCATE
+   A64RA:MOVES
+   A64RA:PLAN-N
+   0 A64RA:PLAN-MOVE?
+   0 A64RA:PLAN-VALUE@
+   0 A64RA:PLAN-POS@
+   0 A64RA:CLAIM@ ;
+
+: MOVE-PLAN-CASE ( -- )
+   s" a returned value that is not where it has to leave is planned a copy" T-LABEL
+   WBND [: MOVE-PLAN-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 0 T= TTRUE 1 T= 1 T= ;
+
+\ The same program through the whole route: lower the copy into an operation and
+\ allocate the module that holds it. The second walk plans nothing, because the
+\ copy's own result is a value it can put in the declared register - and the
+\ validator accepts, which is what makes the answer readable at all.
+: MOVE-LOWER-BODY ( IR-CTX:ctx -- n n n n n n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-KEEP
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 DECL-KEEP A64RA:ALLOCATE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64RA:BIND-DIALECT
+   CC nb A64RAV:BIND-DIALECT
+   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m1 DECL-KEEP A64RA:ALLOCATE
+   m1 DECL-KEEP A64RAV:ACCEPT
+   A64RA:MOVES
+   A64RA:SPILLS
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@ ;
+
+: MOVE-LOWER-CASE ( -- )
+   s" the lowered copy lands in the register the contract declares" T-LABEL
+   WBND [: MOVE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 1 T= 0 T= 3 T= 0 T= 0 T= ;
+
 \ ---- refusals ----------------------------------------------------------------
 \ Each of these four runs the validator as well, even though the allocator
 \ refuses first. That is what makes the validator's own line reachable: an
@@ -1033,6 +1206,82 @@ create TXT
    A64-MOD
    BUILD-PAIR-SHARED
    REFUSE-SHAPE ;
+
+\ A program that spills AND declares where its result leaves. The two are one
+\ plan and one lowering, so this is what proves they compose: the lowered module
+\ holds the sixteen values the stores and loads make of the original nine, needs
+\ no further spill, and the value the return carries is in the declared register
+\ - x1, not the x0 the same program lands in when nothing is declared. It costs
+\ no copy either, because the walk pre-colours the last sum straight into x1.
+: DECL-SPILL-CONTRACT ( -- A64EFF:routine )
+   3 POOL-N  A64EFF:SEQ-NONE  1 SQ  LEAF-DECL-FRAMED ;
+
+: DECL-SPILL-BODY ( IR-CTX:ctx -- n n n n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 DECL-SPILL-CONTRACT A64RA:ALLOCATE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64RA:BIND-DIALECT
+   CC nb A64RAV:BIND-DIALECT
+   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m1 DECL-SPILL-CONTRACT A64RA:ALLOCATE
+   m1 DECL-SPILL-CONTRACT A64RAV:ACCEPT
+   A64RA:SPILLS
+   A64RA:MOVES
+   A64RA:VALUES
+   A64RA:VALUES 1- A64RAV:REG@ ;
+
+: DECL-SPILL-CASE ( -- )
+   s" a program that spills still leaves its result where it is declared" T-LABEL
+   WBND [: DECL-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 16 T= 0 T= 0 T= ;
+
+\ Two returned values whose declared registers cross. The first literal is still
+\ live when the second is written, so the value that has to leave in x0 cannot
+\ have x0 - the value that has to leave in x1 was given it when x0 was busy - and
+\ putting them both right needs the two copies ordered, or a temporary when they
+\ need each other's register. That is the parallel copy this pass does not have,
+\ so the shape is refused rather than half-served.
+: BUILD-CROSS ( -- )
+   s" CROSS" 0 2 OPEN-FUN
+   $11 M-MOVZ {: w:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   w b M-ADD {: t:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: a:IR-ID:ir-value-id :}
+   b a M-RET2
+   CLOSE-FUN ;
+
+: CROSS-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-CROSS
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  2 POOL-N  A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
+
+\ ---- fixed constraints an allocation cannot honour ---------------------------
+\ A declared argument register the routine may not write. The pool is x0 to x3
+\ and the convention says the first argument arrives in x5, which this routine
+\ has promised to preserve: it could not be held there at all.
+: ARG-OUT-OF-POOL-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 POOL-N  5 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+
+\ A convention that names three argument positions for a routine that has two.
+: OVER-ARG-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 POOL-N  0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RA:ALLOCATE ;
+
+\ And one that names two returned values for a routine that returns one.
+: OVER-OUT-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 POOL-N  A64EFF:SEQ-NONE  0 1 SQ2 LEAF-DECL A64RA:ALLOCATE ;
 
 \ Two registers cannot hold three arguments at once, and the routine declares no
 \ frame, so there is nowhere to put the third: the pressure refusal that is left
@@ -1178,6 +1427,30 @@ create TXT
    4 M-ALLOCATE {: m:IR-BUILD:module :}
    m 3 LEAF-N A64RAV:ACCEPT ;
 
+\ The validator reads the declaration itself rather than anything the allocator
+\ kept. Each of these three allocates under a contract that declares nothing -
+\ so the arguments take the low registers in order and the returned value stays
+\ where it was - and then asks for an acceptance under a contract that declares
+\ something the assignment does not satisfy, over the same registers, so the
+\ declaration is the only thing that differs.
+: ACCEPT-WRONG-ARG-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m  4 POOL-N  1 0 SQ2  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
+
+: ACCEPT-WRONG-OUT-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m  4 POOL-N  A64EFF:SEQ-NONE  1 SQ LEAF-DECL A64RAV:ACCEPT ;
+
+: ACCEPT-OVER-ARG-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-KEEP
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m  4 POOL-N  0 1 2 SQ3  A64EFF:SEQ-NONE LEAF-DECL A64RAV:ACCEPT ;
+
 \ A claim nobody checked is not an answer, and an answer stops being one when a
 \ later walk replaces the allocation it was about.
 : UNCHECKED-BODY ( IR-CTX:ctx -- )
@@ -1215,6 +1488,16 @@ create TXT
 : EXTRA-LIVE-TIE ( -- )   WBND [: EXTRA-LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PAIR-SHARED ( -- )      WBND [: PAIR-SHARED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRESSURE ( -- )         WBND [: PRESSURE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ARG-OUT-OF-POOL ( -- )  WBND [: ARG-OUT-OF-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: CROSS ( -- )            WBND [: CROSS-BODY ;] IR-CTX:WITH-CONTEXT ;
+: OVER-ARG ( -- )         WBND [: OVER-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
+: OVER-OUT ( -- )         WBND [: OVER-OUT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ACCEPT-WRONG-ARG ( -- )
+   WBND [: ACCEPT-WRONG-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ACCEPT-WRONG-OUT ( -- )
+   WBND [: ACCEPT-WRONG-OUT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ACCEPT-OVER-ARG ( -- )
+   WBND [: ACCEPT-OVER-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
 : SMALL-FRAME ( -- )      WBND [: SMALL-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : TWICE-LOWER ( -- )      WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1264,6 +1547,34 @@ create TXT
 : POOL-REFUSE-CASES ( -- )
    s" a routine that may destroy nothing allocates nothing" T-LABEL
    [: EMPTY-POOL ;] E-A64RA-POOL TTHROWSQ ;
+
+\ The first of these is the contract's own refusal and not the allocator's: two
+\ arguments declared into one register is a convention no caller could satisfy,
+\ so no contract carrying it can be built and no allocation is ever reached.
+: FIXED-REFUSE-CASES ( -- )
+   s" two argument positions in one register cannot be declared at all" T-LABEL
+   [: 0 0 SQ2 A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   s" a declared argument register the routine may not write is refused" T-LABEL
+   [: ARG-OUT-OF-POOL ;] E-A64RA-FIXED TTHROWSQ
+   s" more declared arguments than the routine has is refused" T-LABEL
+   [: OVER-ARG ;] E-A64RA-FIXED TTHROWSQ
+   s" more declared results than the routine returns is refused" T-LABEL
+   [: OVER-OUT ;] E-A64RA-FIXED TTHROWSQ ;
+
+\ Its own group: each refusing body above abandons a context, and the live-arena
+\ registry gives those slots back only when the enclosing context leaves.
+: CROSS-REFUSE-CASE ( -- )
+   s" two returned values that need each other's register are refused" T-LABEL
+   [: CROSS ;] E-A64RA-FIXED TTHROWSQ ;
+
+\ The validator's own judgement about the same declaration.
+: FIXED-ACCEPT-CASES ( -- )
+   s" an assignment that ignores a declared argument register is refused" T-LABEL
+   [: ACCEPT-WRONG-ARG ;] E-A64RAV-FIXED TTHROWSQ
+   s" an assignment that ignores a declared result register is refused" T-LABEL
+   [: ACCEPT-WRONG-OUT ;] E-A64RAV-FIXED TTHROWSQ
+   s" accepting under a convention with more positions than the module is refused" T-LABEL
+   [: ACCEPT-OVER-ARG ;] E-A64RAV-FIXED TTHROWSQ ;
 
 : LOWER-TWICE-CASE ( -- )
    s" lowering a module that already reserves a frame is refused" T-LABEL
@@ -1319,6 +1630,9 @@ create TXT
 : GROUP-TIE ( IR-CTX:ctx -- )       drop TIE-REFUSE-CASES ;
 : GROUP-PRESSURE ( IR-CTX:ctx -- )  drop PRESSURE-REFUSE-CASES ;
 : GROUP-POOL ( IR-CTX:ctx -- )      drop POOL-REFUSE-CASES ;
+: GROUP-FIXED ( IR-CTX:ctx -- )     drop FIXED-REFUSE-CASES ;
+: GROUP-CROSS ( IR-CTX:ctx -- )     drop CROSS-REFUSE-CASE ;
+: GROUP-FIXED-ACCEPT ( IR-CTX:ctx -- ) drop FIXED-ACCEPT-CASES ;
 : GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
 : GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE ;
 : GROUP-SLOT ( IR-CTX:ctx -- )      drop SLOT-REFUSE-CASES ;
@@ -1334,6 +1648,11 @@ public
 : RUN ( -- )
    T-RESET
    SQUARE-CASE
+   MOVE-PLAN-CASE
+   MOVE-LOWER-CASE
+   DECL-SPILL-CASE
+   DECL-DIFF-CASE
+   DECL-HIGH-CASE
    PLAN-CASE
    TIE-SPILL-CASE
    DOUBLE-CASE
@@ -1355,6 +1674,9 @@ public
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-PRESSURE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-POOL ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-FIXED ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-CROSS ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-FIXED-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-LOWER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-NO-SPILL ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SLOT ;] IR-CTX:WITH-CONTEXT

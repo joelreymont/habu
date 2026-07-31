@@ -531,7 +531,11 @@ public
 \   -8440..-8459  native ARM64 spill lowering (package A64SPILL) and the
 \                 frame-slot refusals the register allocator (A64RA) and its
 \                 validator (A64RAV) gained when their own block filled up
-\   -8420..-8439, -8460..-8999  unassigned. The remaining dialect packages
+\   -8460..-8479  native ARM64 fixed-register binding: the refusals the register
+\                 allocator (A64RA) and its validator (A64RAV) gained for the
+\                 argument and result registers a routine contract declares,
+\                 when their own blocks were full
+\   -8420..-8439, -8480..-8999  unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
 \                 ends take sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -675,6 +679,7 @@ public
 -8206 constant E-A64EFF-CONTROL \ results declared on a routine that never returns
 -8207 constant E-A64EFF-TRAIT   \ a trait mask holding a bit outside the vocabulary of things a routine can do
 -8208 constant E-A64EFF-SLOT    \ a frame slot the routine cannot address: a width no load or store form carries, a negative or unaligned offset, an offset past the frame, or an offset past the reach of that width's offset field
+-8209 constant E-A64EFF-SEQ     \ an ordered register list no calling convention can have: more positions than one cell holds, a register no routine can hold state in, one register named at two positions, or bits set past the last position
 
 
 \ Native stage N0 source tape (package NTAPE): -8240..-8259
@@ -914,3 +919,14 @@ public
 -8448 constant E-A64RAV-SHARE    \ two values live at the same time stored in one frame slot
 -8449 constant E-A64RAV-RELOAD   \ a reload reading a slot nothing stored to before it, or a slot whose last store carried another value
 -8450 constant E-A64RAV-FRAME    \ a module whose reserved frame is not the frame the routine contract declares, or whose frame is reserved or released somewhere it cannot be
+
+\ Native ARM64 fixed-register binding (packages A64RA and A64RAV): -8460..-8479
+\
+\ The registers a routine's arguments arrive in and its results leave in are
+\ declared by its contract (package A64EFF), which owns the shape of that
+\ declaration and refuses one that cannot be a convention at all. These two are
+\ what the register allocator and its validator add: whether the allocation this
+\ machine module needs can honour that declaration, and whether the finished
+\ assignment does. Both packages' own blocks were full when the binding landed.
+-8460 constant E-A64RA-FIXED     \ a declared argument or result register the allocation cannot honour: more declared positions than the routine has arguments or returned values, a register outside the set the routine may write, one value returned at two declared positions, or a declared register already held where it has to be taken
+-8461 constant E-A64RAV-FIXED    \ an assignment that does not put a declared argument or returned value where the contract declares it, or one made for a contract declaring more positions than the module has

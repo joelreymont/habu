@@ -132,6 +132,14 @@ variable ARM-Z
 
 : ENC-EOR ( n n n -- n ) XR3 $CA000000 RRR ;
 
+\ A register-to-register move. ARM64 has no move form of its own: `mov xd, xm`
+\ is `orr xd, xzr, xm`, which is what a disassembler prints back and what the
+\ recovery emitter writes too. Operand 31 in a logical form is the zero
+\ register, so the copy is that one form with 31 as its first source, written
+\ once here rather than at each caller.
+31 constant ARM-ZERO-REG
+: ENC-MOV ( n n -- n ) ARM-ZERO-REG swap ENC-ORR ;
+
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
 
 : RRI ( n n n n -- n )

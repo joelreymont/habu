@@ -23,6 +23,7 @@
 \ and src/arch/arm64/asm.f encodes, and it carries only operands that form has:
 \   a64.movz     Movz rd imm hw  - write a 16-bit half into a cleared register
 \   a64.movk     Movk rd imm sh  - overwrite one 16-bit half, keeping the rest
+\   a64.mov      Orr rd xzr rm   - copy one register into another
 \   a64.add      Add rd rn rm    - 64-bit register addition
 \   a64.sub      Sub rd rn rm    - 64-bit register subtraction
 \   a64.mul      Mul rd rn rm    - 64-bit register multiplication
@@ -33,6 +34,18 @@
 \   a64.ret      Ret             - return to the address in the link register
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
+\
+\ WHY A COPY IS A FORM WHEN THE MACHINE HAS NO COPY INSTRUCTION. A routine's
+\ contract says which register each returned value leaves in, and the value the
+\ program computed is not always already there - it can be an argument the caller
+\ put somewhere else, or a value whose register was decided by a tie. Putting it
+\ where it has to be is one instruction, and it has to be an operation of this
+\ dialect for the same reason a spill store is: a register allocator may decide
+\ it, but only a module can contain it, and only what a module contains can be
+\ checked. ARM64 has no separate move instruction - `mov xd, xm` IS `orr xd, xzr,
+\ xm`, which is what a disassembler prints back - so this form is that one form
+\ with the zero register in its first source, and src/arch/arm64/asm.f says so
+\ once in ENC-MOV rather than at each caller.
 \
 \ THE FOUR MEMORY FORMS EXIST BECAUSE A SPILL IS AN INSTRUCTION. A straight-line
 \ block can hold more values at once than any register file has, so the register
@@ -144,6 +157,7 @@ public
 ENUM opcode DERIVE eq
    movz
    movk
+   mov
    add
    sub
    mul
@@ -307,6 +321,7 @@ public
    MATCH opcode
       movz    OF s" a64.movz"    ENDOF
       movk    OF s" a64.movk"    ENDOF
+      mov     OF s" a64.mov"     ENDOF
       add     OF s" a64.add"     ENDOF
       sub     OF s" a64.sub"     ENDOF
       mul     OF s" a64.mul"     ENDOF
@@ -362,6 +377,7 @@ private
    MATCH opcode
       movz    OF s" a64.rule.movz"    ENDOF
       movk    OF s" a64.rule.movk"    ENDOF
+      mov     OF s" a64.rule.mov"     ENDOF
       add     OF s" a64.rule.add"     ENDOF
       sub     OF s" a64.rule.sub"     ENDOF
       mul     OF s" a64.rule.mul"     ENDOF
@@ -377,6 +393,7 @@ private
    MATCH opcode
       movz    OF s" a64.render.movz"    ENDOF
       movk    OF s" a64.render.movk"    ENDOF
+      mov     OF s" a64.render.mov"     ENDOF
       add     OF s" a64.render.add"     ENDOF
       sub     OF s" a64.render.sub"     ENDOF
       mul     OF s" a64.render.mul"     ENDOF
@@ -430,6 +447,23 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:MOVK NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Mov: one register read, one written, and no tie - the whole point of this form
+\ is that the two are DIFFERENT registers, which is what makes it able to put a
+\ value where a routine's contract says it has to leave. A copy whose source and
+\ destination came out the same register would be an instruction that does
+\ nothing, and nothing in the chain builds one: the pass that decides a move
+\ decides it only for a value that is not already where it has to be.
+: DEF-MOV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:MOV OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:MOV NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ One shifted-register three-operand form: two registers read, one written. The
@@ -569,6 +603,7 @@ public
    c b MEM-TYPE {: k:IR-ID:ir-type-id :}
    c b t DEF-MOVZ
    c b t DEF-MOVK
+   c b t DEF-MOV
    c b t A64IR-OPCODE:ADD DEF-BINARY
    c b t A64IR-OPCODE:SUB DEF-BINARY
    c b t A64IR-OPCODE:MUL DEF-BINARY

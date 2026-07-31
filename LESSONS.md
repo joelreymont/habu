@@ -1339,6 +1339,56 @@ fits.
 
 ## Runtime, Codegen & AOT
 
+- **A fixed-register constraint belongs to the routine's interface, not to the
+  instruction form: put it where the rest of that interface already is.** The
+  ARM64 chain needed to say "argument two arrives in x1" and "the result leaves
+  in x0". The operation schema (`src/compiler/ir/schema.f`) was the tempting
+  home because ties live there and the allocator already reads it - but `add`
+  never needs x0, and a constraint that varies per ROUTINE cannot be a property
+  of a FORM. It went onto the routine contract (`src/compiler/a64-effect.f`),
+  which already declared which registers are read and returned, as two ordered
+  register lists replacing the two sets - and the sets are now DERIVED from the
+  lists, because a stored set beside a stored list is two authorities that can
+  disagree. The payoff is structural, not stylistic: `A64RA:ALLOCATE` and
+  `A64RAV:ACCEPT` were already handed that one value, so the allocator
+  pre-colours from the declaration and the validator checks the same declaration
+  independently with no new plumbing and no chance of the two reading different
+  copies. Ask "whose fact is this?" before "where is it convenient?".
+- **An ordered list can live in a one-cell contract field: pack it, and make the
+  packing canonical.** A record field has to be one cell (a multi-cell value
+  cannot be a typed local yet), which is why register SETS were used where a
+  convention needs an ORDER. A register operand is a five-bit field, so twelve
+  positions and a four-bit length fit one 64-bit cell exactly. The rule that
+  makes it safe is that every bit past the last position must be zero
+  (`A64EFF:SEQ-CK`): without it two cells could mean one list, and the digest
+  would stop agreeing with the structural comparison. A forged cell - the
+  generated `MAKE` of a public family - is refused by the same check.
+- **A returned value's register is a constraint at the RETURN, not at the
+  definition; pre-colouring is the optimisation and a copy is the fallback.**
+  Pinning the defining operation is what makes an ordinary routine emit no extra
+  instruction, but it is not always possible - the value can be an argument the
+  caller placed elsewhere, or a tied field, or its register can be busy - and
+  after a spill and reload a value is not even in the register it was computed
+  in. So `regalloc.f` decides at the terminator: if the returned value is not in
+  the declared register it plans an `a64.mov`, and `spill.f` (already the pass
+  that turns decisions into operations) inserts it and redirects the return's
+  operand. ARM64 has no move instruction - `mov xd, xm` IS `orr xd, xzr, xm` -
+  so the encoder is one line in `src/arch/arm64/asm.f` and no caller writes the
+  idiom.
+- **The allocatable pool is what a routine may WRITE, which is not its destroyed
+  set.** `A64EFF` refuses one register in two roles, so a register holding a
+  result is deliberately absent from the destroyed set - and a routine that
+  could not write its result register could not compute the result. The pool is
+  therefore `GPR-WRITABLE` (destroyed plus returned), derived from the contract
+  rather than stored, and both the allocator and its validator derive it from
+  the contract each is handed.
+- **`tools/typed-local-diff-lint.f` only lexes ADDED lines, so a `{:` you change
+  whose `:}` is context leaves the group open for the rest of the hunk.** Every
+  later added token in that hunk is reported as a bare local. It is not a false
+  positive to argue with: re-flow the locals group so the closing `:}` lands on
+  a changed line (move one local up), and the lint goes quiet without weakening
+  anything.
+
 - **A pass that DECIDES a spill cannot also be the pass that leaves the module
   alone: put the decision in one file and the operations in another, and make
   the wrong order refuse itself.** `src/compiler/native/regalloc.f` now chooses

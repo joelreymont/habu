@@ -30,13 +30,17 @@
 \ recorded parser mode instead. Writing the frame here would hand the elaborator
 \ a tape no compilation can produce.
 \
-\ WHY THE RESULT REGISTER IS CHECKED BEFORE ANYTHING IS CALLED. The chain has no
-\ calling-convention binding yet (dot habu-bind-arm64-arg-f76afa3a): a returned
-\ value stays in whichever register computed it. For these shapes that is
-\ register zero, which is where the C-ABI call reads a result from, and that is
-\ what makes calling them meaningful. It is checked rather than assumed, so a
-\ change in allocation stops the harness instead of letting it compare whatever
-\ x0 happened to hold.
+\ WHY THE RESULT REGISTER IS CHECKED BEFORE ANYTHING IS CALLED. It used to be
+\ luck: the chain had no calling-convention binding, a returned value stayed in
+\ whichever register computed it, and for these shapes that happened to be
+\ register zero - which is where the C-ABI call reads a result from. Now the
+\ routine contract DECLARES it: the arguments arrive in x0 upwards and the
+\ result leaves in x0, the allocator pre-colours from that declaration and the
+\ validator refuses an assignment that does not honour it. The check below is
+\ therefore no longer a hope about where the value landed; it compares the
+\ accepted assignment against the declaration the routines are compiled under,
+\ so a chain that stopped honouring its own contract stops the harness here
+\ instead of calling code whose result is somewhere the caller will not look.
 \
 \ ONE ROUTINE AT A TIME. The published routine goes into the free code slot, and
 \ the next publication uses the same slot, so a routine is compiled, checked,
@@ -67,16 +71,17 @@ public
    c NSRC:LEX
    tp NTAPE:SEAL {: v:IR-ARENA:view :}
    c b v p r in out NELAB:COLON drop
-   c b NSRC:TEXT$ regs NFIX:RUN ;
+   c b NSRC:TEXT$ 0 regs in out NFIX:RUN-ABI ;
 
 \ How many bytes of machine code the chain emitted for it.
 : BYTES ( -- n )
    A64EMIT:SIZE ;
 
-\ The returned value has to be in the register the C-ABI call reads a result
+\ The returned value has to be in the register the routine's own contract
+\ declares its result leaves in, which is the register the C-ABI call reads one
 \ from. Called by every shape that returns one, before it is ever called.
 : RESULT-CK ( -- )
-   NFIX:RESULT-REG 0 <> if E-CODEGEN-COMPARE-REG throw then ;
+   NFIX:RESULT-REG NFIX:ABI-RESULT <> if E-CODEGEN-COMPARE-REG throw then ;
 
 \ Store the emission into code space and keep its entry address for the timing
 \ and correctness bodies to call.

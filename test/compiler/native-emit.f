@@ -657,6 +657,65 @@ create TXT
    WBND [: RUN-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
    $11 $22 + $33 + $44 + $55 + T= 0 T= ;
 
+\ ---- a returned value put where the contract says it leaves ------------------
+\ `SECOND ( a b -- b )` under the C ABI: the arguments arrive in x0 and x1 and
+\ the returned value leaves in x0, so the value the return carries is in the
+\ register its caller chose and has to be in a different one where control
+\ leaves. The allocator plans a copy, the lowering makes it an operation, and
+\ this is what proves the copy is a real instruction: the emitted word is the
+\ ARM64 spelling of a move, and calling the routine gives back the SECOND
+\ argument - which it cannot do if the copy was dropped, encoded backwards, or
+\ landed in another register.
+: BUILD-SECOND ( -- )
+   s" SECOND" 2 1 OPEN-FUN
+   ARG+ drop
+   ARG+ {: b:IR-ID:ir-value-id :}
+   b M-RET
+   CLOSE-FUN ;
+
+: SECOND-ABI ( -- A64EFF:routine )
+   0 4 2 1 NFIX:LEAF-ABI ;
+
+: SECOND-EMITTED ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c A64-NEW
+   BIND-RA
+   BIND-SPILL
+   BUILD-SECOND
+   M-FREEZE {: m0:IR-BUILD:module :}
+   c m0 SECOND-ABI A64RA:ALLOCATE
+   IR-BUILD:PLAN-BEGIN
+   IR-BUILD:PLAN-DEFAULT
+   c A64IR:NEW-BUILDER {: nb:IR-BUILD:builder :}
+   c nb A64RA:BIND-DIALECT
+   c nb A64RAV:BIND-DIALECT
+   c nb A64EMIT:BIND-DIALECT
+   c m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   c m1 SECOND-ABI A64RA:ALLOCATE
+   m1 SECOND-ABI A64RAV:ACCEPT
+   c m1 A64EMIT:EMIT ;
+
+: SECOND-BODY ( IR-CTX:ctx -- n n n )
+   SECOND-EMITTED
+   A64EMIT:INSNS
+   0 A64EMIT:WORD@                   \ mov x0, x1 - orr x0, xzr, x1
+   1 A64EMIT:WORD@ ;
+
+: SECOND-CASE ( -- )
+   s" a returned value in the wrong register is copied into the right one" T-LABEL
+   WBND [: SECOND-BODY ;] IR-CTX:WITH-CONTEXT
+   $D65F03C0 T= $AA0103E0 T= 2 T= ;
+
+: RUN-SECOND-BODY ( IR-CTX:ctx -- n n )
+   SECOND-EMITTED
+   NFIX:RESULT-REG
+   7 9 PUBLISH EXEC2 ;
+
+: RUN-SECOND-CASE ( -- )
+   s" the emitted copy really returns the second argument" T-LABEL
+   WBND [: RUN-SECOND-BODY ;] IR-CTX:WITH-CONTEXT
+   9 T= 0 T= ;
+
 \ ---- refusals ----------------------------------------------------------------
 \ Nobody has accepted anything yet. This case runs FIRST in the suite, because an
 \ acceptance is package state no later run takes back: once one allocation has
@@ -875,6 +934,8 @@ public
    PLAIN-CASE
    SPILL-CASE
    RUN-SPILL-CASE
+   SECOND-CASE
+   RUN-SECOND-CASE
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT

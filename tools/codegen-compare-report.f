@@ -27,8 +27,10 @@
 \
 \ READ THE TWO COST COLUMNS WITH THE NOTE THIS FILE PRINTS UNDER THEM. An old
 \ row is called as an ordinary Habu word; a new row has to be called through the
-\ C-ABI trampoline, because the chain has no calling-convention binding yet, and
-\ that entry costs two orders of magnitude more than the routine it enters. Each
+\ C-ABI trampoline, because the convention the chain declares on its routines is
+\ the C one - a Habu word's own data-stack entry does not exist yet (dot
+\ habu-enter-and-leave-2684e515) - and that entry costs two orders of magnitude
+\ more than the routine it enters. Each
 \ column is therefore a multiple of an empty call of its own kind, and the
 \ absolute nanoseconds of both are printed so a reader can see that the new
 \ column's are dominated by the harness's own call rather than by the emitted
@@ -324,11 +326,11 @@ private
 \ reader who takes them for a like-for-like race is reading them wrongly.
 : CAVEAT ( -- )
    s" How to read the two cost columns. An old row is called as an ordinary Habu" type cr
-   s" word; a new row is called through the C-ABI trampoline, because the chain has" type cr
-   s" no calling-convention binding yet and its routines cannot be entered any other" type cr
-   s" way. That entry costs far more than the routine it enters, so each column is a" type cr
-   s" multiple of an empty call of its OWN kind and the absolute nanoseconds above" type cr
-   s" show what each really cost. The bytes and the results carry no such caveat." type cr ;
+   s" word; a new row is called through the C-ABI trampoline, because that is the" type cr
+   s" convention its routines declare and a Habu word's own data-stack entry does" type cr
+   s" not exist yet. That entry costs far more than the routine it enters, so each" type cr
+   s" column is a multiple of an empty call of its OWN kind and the nanoseconds" type cr
+   s" above show what each really cost. The bytes and results carry no such caveat." type cr ;
 
 \ ---- the head-to-head finding ----------------------------------------------
 \ The one thing the comparison must never let past: the same corpus word

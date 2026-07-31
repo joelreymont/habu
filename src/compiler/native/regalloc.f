@@ -42,18 +42,42 @@
 \ WHAT THIS PASS HAS TO KNOW ABOUT A FORM, AND WHERE IT COMES FROM. Exactly two
 \ things, and both are declarations it reads rather than facts it remembers: the
 \ register class of each value, which is its type, and the ties, which are the
-\ schema's. There is no third register constraint in this dialect - nothing can
-\ yet say that a value must sit in a named register, and no form clobbers a
-\ register it does not name - so reading those two is reading the whole
-\ constraint. A register constraint invented later belongs in the schema beside
-\ the tie and must be read here; a constraint kept somewhere this pass does not
-\ look would be allocated around silently, which is the reason the tie moved out
-\ of this file in the first place (dot habu-make-an-unread-33f525e8).
+\ schema's. Nothing else about a FORM constrains a register: no form of this
+\ dialect names a fixed register or clobbers one it does not name. A form
+\ constraint invented later belongs in the schema beside the tie and must be read
+\ here; a constraint kept somewhere this pass does not look would be allocated
+\ around silently, which is the reason the tie moved out of this file in the
+\ first place (dot habu-make-an-unread-33f525e8).
+\
+\ THE THIRD CONSTRAINT IS THE ROUTINE'S, NOT THE FORM'S. `add` never needs x0.
+\ SQUARE's argument, on the other hand, has to arrive somewhere its caller and it
+\ have agreed on, and its result has to leave somewhere the caller will look.
+\ That is a property of one routine's interface, so it is declared where the rest
+\ of that interface is - on the routine contract this pass is already handed
+\ (src/compiler/a64-effect.f), as an ordered register list per side - and it
+\ would be wrong in the operation schema, which describes forms and knows nothing
+\ about which routine they are in. Reading it here is reading it from the same
+\ value the independent validator is handed, so neither is repeating the other.
+\
+\ WHAT PRE-COLOURING DOES, AND WHEN A MOVE IS UNAVOIDABLE. A block argument whose
+\ position the contract names is given exactly that register before the scan
+\ starts, and the scan then cannot hand it out while the argument is live,
+\ because it is held like any other assignment. A returned value is different:
+\ what the contract says about it is where it has to be when control LEAVES, so
+\ the walk gives it the declared register at its definition when that register is
+\ free - which costs nothing and is why an ordinary routine emits no extra
+\ instruction - and when it is not free, or when the value is an argument already
+\ pinned somewhere else, or when its register is a tied field, the value is
+\ placed like any other and the walk plans a register-to-register move in front
+\ of the return. A move is a decision the same way a spill is: this pass
+\ publishes it and src/compiler/native/spill.f builds the module in which it is
+\ an operation.
 \
 \ WHICH REGISTERS MAY BE USED, AND WHY THERE IS NO LIST OF THEM HERE. The
-\ routine's own contract says which general registers it may destroy, and a value
-\ living in a register is exactly the routine destroying it. The allocatable pool
-\ is therefore that declared set and nothing else. There is no literal list of
+\ routine's own contract says which general registers it may write - the ones it
+\ destroys together with the ones it returns a value in - and a value living in a
+\ register is exactly the routine writing it. The allocatable pool is therefore
+\ that declared set and nothing else. There is no literal list of
 \ register numbers in this file: x18, x30 and register 31 are excluded because
 \ src/compiler/a64-effect.f refuses them in any general-register set at all, so
 \ no contract that names one can be built, and a forged contract is rejected when
@@ -103,13 +127,20 @@
 \ last use, and the walk covers it - and given none. A value of any third type is
 \ refused: this pass has no class for it.
 \
-\ NO FIXED CONSTRAINTS, AND WHY THERE CANNOT BE ANY YET. Design section 7.9 also
-\ asks for pre-coloured intervals, and there are none here because nothing can
-\ yet say that a value must be in a named register: a Habu word takes its inputs
-\ and publishes its outputs through data-stack slots, and this dialect has no
-\ load, no store and no way to name the data-stack pointer. A block argument is
-\ therefore a value that has to be somewhere, and it is given the next free
-\ register of the routine's own set. The seam is dot habu-bind-arm64-arg-f76afa3a.
+\ WHICH REGISTERS THE POOL IS, NOW THAT SOME OF THEM ARE RESULTS. The pool is
+\ every register the routine may WRITE, which the contract answers as
+\ A64EFF:GPR-WRITABLE: the ones it destroys plus the ones it returns a value in.
+\ The destroyed set alone would be wrong, because a register holding a result is
+\ deliberately not in it - one register cannot be in both roles - and a routine
+\ that could not write the register its result leaves in could not compute the
+\ result at all.
+\
+\ WHAT IS STILL NOT BOUND. A Habu word takes its inputs and publishes its outputs
+\ through canonical data-stack slots (design section 7.6), and this dialect has
+\ no way to name the data-stack pointer, so the convention bound here is the
+\ other one: the C-ABI leaf routines the chain emits today, whose interface is
+\ registers. A place that is not a register cannot be declared yet, and that is
+\ the seam of dot habu-enter-and-leave-2684e515.
 \
 \ WHAT THE ALLOCATION IS, AND WHO MAY READ IT. The product is not a new module:
 \ nothing about the operations changes, only which register each value sits in.
@@ -166,9 +197,10 @@ private
 \ ceilings; this is the flat one both this pass and the lowering pass carry.
 1024 constant PLMAX
 
-\ The two kinds of decision.
+\ The three kinds of decision.
 0 constant P-STORE
 1 constant P-RELOAD
+2 constant P-MOVE                    \ a returned value put where it has to leave
 
 \ The two value classes this dialect has.
 0 constant C-GPR
@@ -188,6 +220,10 @@ A64EFF:FILE-SIZE constant REGS-N
 
 \ This result shares its register field with no operand.
 -1 constant UNTIED
+
+\ Positions one side of a calling convention can name, which is the contract's
+\ own bound rather than a second one.
+A64EFF:SEQ-LIMIT constant FIXED-MAX
 
 \ ---- the frozen tables of the module being read ------------------------------
 7 constant VIEWS-N
@@ -222,6 +258,10 @@ variable FRAME-N
 0 FRAME-N !
 variable RL-N
 0 RL-N !
+variable ARGS-N
+0 ARGS-N !
+variable OUTS-N
+0 OUTS-N !
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
@@ -240,6 +280,9 @@ create V-REG VMAX cells allot
 create V-SET VMAX cells allot
 create V-CLS VMAX cells allot
 create V-SLOT VMAX cells allot
+create V-WANT VMAX cells allot
+create A-REG FIXED-MAX cells allot
+create O-REG FIXED-MAX cells allot
 create R-HOLD REGS-N cells allot
 create R-PIN REGS-N cells allot
 create R-RL REGS-N cells allot
@@ -267,6 +310,7 @@ create PL-VAL PLMAX cells allot
 : SET-AT ( n -- n )                  cells V-SET + @ ;
 : CLS-AT ( n -- n )                  cells V-CLS + @ ;
 : SLOT-AT ( n -- n )                 cells V-SLOT + @ ;
+: WANT-AT ( n -- n )                 cells V-WANT + @ ;
 
 : DEF! ( n n -- )                    {: v:n k:n :} v k cells V-DEF + ! ;
 : LAST! ( n n -- )                   {: v:n k:n :} v k cells V-LAST + ! ;
@@ -274,6 +318,7 @@ create PL-VAL PLMAX cells allot
 : SET! ( n n -- )                    {: v:n k:n :} v k cells V-SET + ! ;
 : CLS! ( n n -- )                    {: v:n k:n :} v k cells V-CLS + ! ;
 : SLOT! ( n n -- )                   {: v:n k:n :} v k cells V-SLOT + ! ;
+: WANT! ( n n -- )                   {: v:n k:n :} v k cells V-WANT + ! ;
 
 : HOLD-AT ( n -- n )                 cells R-HOLD + @ ;
 : HOLD! ( n n -- )                   {: v:n r:n :} v r cells R-HOLD + ! ;
@@ -296,6 +341,7 @@ create PL-VAL PLMAX cells allot
       NOBODY i REG!
       C-GPR i CLS!
       NOSLOT i SLOT!
+      NOBODY i WANT!
    loop
    REGS-N 0 ?do NOBODY i HOLD! loop
    PINS-CLEAR
@@ -350,6 +396,17 @@ create PL-VAL PLMAX cells allot
 : RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
    V-OPP VW V-OPR VW KEY id i IR-OP:FRESULT@ ;
+
+\ The operation control leaves the block through. Its operands are the values the
+\ routine returns, so it is where the contract's result declaration is decided.
+\ It is read off the block's own row rather than taken as the last operation:
+\ which operation terminates a block is the block's recorded fact.
+: TERM-OF ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
+   {: bk:IR-ID:ir-block-id :}
+   V-BLKR VW V-OPR VW KEY bk IR-FUN:FTERMINATOR@ ;
+
+: OPERANDS-OF ( IR-ID:ir-op-id -- n )
+   V-OPR VW swap IR-OP:FOPERANDS ;
 
 \ ---- the register constraints this operation's form declares -----------------
 \ The schema table of the module being allocated is the authority on the shape of
@@ -483,6 +540,55 @@ create PL-VAL PLMAX cells allot
    r k REG!
    k r HOLD! ;
 
+\ ---- the routine's own fixed registers ---------------------------------------
+\ The contract's two ordered lists, read once into tables this walk can index by
+\ position. Nothing here decides anything about them: the contract already
+\ refused a list that could not be a convention - a register no routine may hold
+\ state in, or one register at two positions - so what is left to judge is
+\ whether THIS allocation can honour them.
+: FIXED! ( A64EFF:regseq A64EFF:regseq -- )
+   {: args:A64EFF:regseq outs:A64EFF:regseq :}
+   args A64EFF:SEQ-LEN ARGS-N !
+   outs A64EFF:SEQ-LEN OUTS-N !
+   ARGS-N @ 0 ?do args i A64EFF:SEQ@  i cells A-REG + ! loop
+   OUTS-N @ 0 ?do outs i A64EFF:SEQ@  i cells O-REG + ! loop ;
+
+\ A declared register the routine may not write is a contract that contradicts
+\ itself for this allocation: the argument could not be held and the result could
+\ not be computed. It is refused before a single value is placed. The two halves
+\ are not equally reachable and say so: an argument register outside the pool is
+\ an ordinary declaration mistake, while ALLOCATE derives the pool from the same
+\ contract and always puts the result registers in it, so the second loop can
+\ only answer for a caller that drives WALK with a pool of its own.
+: FIXED-POOL-CK ( -- )
+   ARGS-N @ 0 ?do
+      i cells A-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
+   loop
+   OUTS-N @ 0 ?do
+      i cells O-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
+   loop ;
+
+\ A convention that names more positions than the routine has arguments, or more
+\ than it returns values, is not this routine's convention.
+: FIXED-ARITY-CK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   V-BLKR VW bk IR-FUN:FARG-COUNT ARGS-N @ < if E-A64RA-FIXED throw then
+   bk TERM-OF OPERANDS-OF OUTS-N @ < if E-A64RA-FIXED throw then ;
+
+\ Which register each returned value has to be in where control leaves. A value
+\ returned at two declared positions would have to be in two registers at once,
+\ and copying it into the second is a lowering this pass does not have (dot
+\ habu-lower-parallel-copies-cdf9720e), so it is refused rather than half-served.
+: WANTS! ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk TERM-OF {: id:IR-ID:ir-op-id :}
+   OUTS-N @ 0 ?do
+      id i OPERAND-AT SLOT {: k:n :}
+      k WANT-AT NOBODY <> if E-A64RA-FIXED throw then
+      k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
+      i cells O-REG + @  k WANT!
+   loop ;
+
 \ ---- the cost rule -----------------------------------------------------------
 \ Does this operation read this value?
 : READS? ( IR-ID:ir-op-id n -- bool )
@@ -571,13 +677,48 @@ create PL-VAL PLMAX cells allot
    v pos EVICT
    v ;
 
+\ Where a value goes when it is written. A value the contract says leaves in a
+\ named register takes that register when nothing holds it, which is what makes
+\ an ordinary return cost no instruction at all; when something does hold it, the
+\ value is placed like any other and the walk plans a move at the return.
+\
+\ The one shape refused here is a register held by ANOTHER value the same return
+\ has to deliver. Moving that one out of the way first is a parallel copy, and
+\ two moves that each need the other's register need a temporary or an exchange -
+\ neither of which this pass has (dot habu-lower-parallel-copies-cdf9720e). It
+\ cannot arise while a convention names one returned value, because then only one
+\ value wants anything.
+: PLACE ( n n -- n )
+   {: k:n pos:n :}
+   k WANT-AT {: want:n :}
+   want NOBODY <> if
+      want HOLD-AT {: held:n :}
+      held NOBODY = if want exit then
+      held WANT-AT NOBODY <> if E-A64RA-FIXED throw then
+   then
+   ENTRY pos GRAB ;
+
 : ASSIGN ( IR-ID:ir-value-id n -- )
    {: id:IR-ID:ir-value-id pos:n :}
    id SLOT {: k:n :}
    k CLS-AT C-TOKEN = if exit then
-   ENTRY pos GRAB {: r:n :}
+   k pos PLACE {: r:n :}
    k r TAKE
    pos ENTRY <> if r PIN! then ;
+
+\ A block argument the contract gives a register arrives in exactly that one. It
+\ is taken before the scan hands anything out, so nothing can be holding it: the
+\ arguments are the first values placed and one register is one position, so the
+\ second refusal below is fail-closed rather than reachable. The first is not:
+\ the memory token the frame forms thread lives in no register, and a module that
+\ made one a block argument would be declaring a convention for something a
+\ caller cannot put anywhere.
+: PIN-ARG ( IR-ID:ir-value-id n -- )
+   {: id:IR-ID:ir-value-id r:n :}
+   id SLOT {: k:n :}
+   k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
+   r HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
+   k r TAKE ;
 
 \ A tied result lands in the register field its operand already occupies, so that
 \ field has to be free the moment this operation writes. Everything that dies
@@ -661,15 +802,37 @@ create PL-VAL PLMAX cells allot
    V-OPR VW id IR-OP:FRESULTS {: n:n :}
    n 0 ?do id i pos ASSIGN-RESULT loop ;
 
+\ Every returned value the contract named a register for is in it where control
+\ leaves, or the walk plans the move that puts it there. This is decided after
+\ the whole scan, because it is a statement about where the values ARE at the
+\ return - a value that was spilled and read back is in the register its reload
+\ landed in, not the one it was computed in, and only the finished scan knows
+\ which that is.
+: RETURN-CK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk TERM-OF {: id:IR-ID:ir-op-id :}
+   OUTS-N @ 0 ?do
+      id i OPERAND-AT SLOT {: k:n :}
+      k REG-AT  i cells O-REG + @  <> if
+         P-MOVE  N-OPS @ 1-  k  PLAN+
+      then
+   loop ;
+
 : SCAN-ASSIGN ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    PINS-CLEAR
    V-BLKR VW bk IR-FUN:FARG-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ ENTRY ASSIGN
+      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ {: a:IR-ID:ir-value-id :}
+      i ARGS-N @ < if
+         a  i cells A-REG + @  PIN-ARG
+      else
+         a ENTRY ASSIGN
+      then
    loop
    V-BLKR VW bk IR-FUN:FOP-COUNT {: k:n :}
-   k 0 ?do bk i OP-AT i ASSIGN-OP loop ;
+   k 0 ?do bk i OP-AT i ASSIGN-OP loop
+   bk RETURN-CK ;
 
 \ ---- what one allocation run is told -----------------------------------------
 : VIEWS! ( IR-BUILD:module -- )
@@ -704,7 +867,7 @@ create PL-VAL PLMAX cells allot
 \ the reach of the offset field - so the decision is made there and not here.
 : SLOTS-CK ( A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
@@ -778,8 +941,9 @@ public
 \ routine that may destroy nothing allocates nothing; the walk seals a claim per
 \ value, which src/compiler/native/regalloc-verify.f then has to accept before
 \ anything may act on it.
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs n -- )
-   {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs frame:n :}
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:regseq A64EFF:regseq n -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs
+      args:A64EFF:regseq outs:A64EFF:regseq frame:n :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
@@ -788,19 +952,25 @@ public
    frame FRAME-N !
    m VIEWS!
    TABLES-CLEAR
+   args outs FIXED!
+   FIXED-POOL-CK
    BLOCK-OF {: bk:IR-ID:ir-block-id :}
    bk 0 S-BLK !
+   bk FIXED-ARITY-CK
    bk SCAN-LIVE
    COVER-CK
+   bk WANTS!
    bk SCAN-ASSIGN ;
 
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+   {: gi:A64EFF:regseq gr:A64EFF:regseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
-      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
-      size:n delta:n :}
-   gc size WALK
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control
+      t:A64EFF:traits size:n delta:n :}
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
+   pool gi gr size WALK
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;
@@ -875,6 +1045,23 @@ public
 
 : PLAN-STORE? ( n -- bool )
    SEAL-CK PLAN-ORD-CK cells PL-KIND + @ P-STORE = ;
+
+\ A decision of the third kind: the value at this row has to be put into the
+\ register the contract says it leaves in, by a register-to-register move in
+\ front of the return. The register itself is not carried here - the lowered
+\ module's own allocation reads it back off the same contract - so this row says
+\ only which value has to be moved and where the move goes.
+: PLAN-MOVE? ( n -- bool )
+   SEAL-CK PLAN-ORD-CK cells PL-KIND + @ P-MOVE = ;
+
+\ How many moves this walk decided. A walk that answers zero and spills nothing
+\ decided a module that already is the one it read.
+: MOVES ( -- n )
+   SEAL-CK
+   0
+   N-PLAN @ 0 ?do
+      i cells PL-KIND + @ P-MOVE = if 1+ then
+   loop ;
 
 private
 get-current prot-wid-add

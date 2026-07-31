@@ -23,6 +23,18 @@
 \ 4. WHAT IS PRESERVED IS THE COMPLEMENT OF WHAT IS RETURNED AND DESTROYED. The
 \    derived set is checked against an independently computed complement over the
 \    whole legal file, not against a restatement of the module's own arithmetic.
+\    The other three derived sets are here for the same reason: the two interface
+\    sets, which are what the ordered argument and result lists name, and the
+\    writable set an allocator hands registers out of - which has to hold the
+\    result register precisely because the destroyed set cannot.
+\
+\ 6. AN ORDERED REGISTER LIST IS ORDERED, BOUNDED AND CANONICAL. Position order
+\    is the declaration's and not the register number's; a register named twice
+\    is refused, because a caller cannot put two values in one place; a register
+\    no routine may hold state in is refused by the set rule's own name; a
+\    position past the end has no answer; and a packed cell the generated
+\    constructor assembled with bits past its length is refused, which is what
+\    keeps the digest agreeing with the structural comparison.
 \
 \ 5. EVERY FIELD CHANGES IDENTITY. The suite enumerates 392 legal contracts - one
 \    sweep over the register roles and the flag family, one over the traits and
@@ -60,6 +72,18 @@ private
 : D1 ( -- A64EFF:fprs )   1 A64EFF:FPR-REG ;
 : D2 ( -- A64EFF:fprs )   2 A64EFF:FPR-REG ;
 
+\ ---- named register lists ----------------------------------------------------
+\ One position, and two, so a case can say which register arrives where without
+\ spelling the packing out.
+: SQ ( n -- A64EFF:regseq )
+   A64EFF:SEQ-NONE swap A64EFF:SEQ-WITH ;
+
+: SQ2 ( n n -- A64EFF:regseq )
+   {: a:n b:n :}
+   a SQ b A64EFF:SEQ-WITH ;
+
+: SQ-NONE ( -- A64EFF:regseq )   A64EFF:SEQ-NONE ;
+
 \ ---- forged set values -------------------------------------------------------
 \ A set the generated constructor assembled without passing the checked one, so
 \ it names something the schema says no routine can hold state in.
@@ -71,39 +95,39 @@ private
 \ Each fixes the fields a case is not about, so a case reads as the one fact it
 \ is making.
 
-: R-GPR ( A64EFF:gprs A64EFF:gprs A64EFF:gprs -- A64EFF:routine )
+: R-GPR ( A64EFF:regseq A64EFF:regseq A64EFF:gprs -- A64EFF:routine )
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 : R-FPR ( A64EFF:fprs A64EFF:fprs A64EFF:fprs -- A64EFF:routine )
    {: fi:fprs fr:fprs fc:fprs :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE A64EFF:GPR-NONE fi fr fc
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE fi fr fc
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 : R-STACK ( A64EFF:control n n -- A64EFF:routine )
    {: c:control size:n delta:n :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE A64EFF:GPR-NONE
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED c
    A64EFF:TRAITS-NONE size delta A64EFF:ROUTINE ;
 
 : R-LINK ( A64EFF:control A64EFF:link -- A64EFF:routine )
    {: c:control l:link :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE A64EFF:GPR-NONE
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED l c A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
-: R-RESULT ( A64EFF:gprs A64EFF:fprs A64EFF:nzcv A64EFF:control -- A64EFF:routine )
-   {: gr:gprs fr:fprs z:nzcv c:control :}
-   A64EFF:GPR-NONE gr A64EFF:GPR-NONE
+: R-RESULT ( A64EFF:regseq A64EFF:fprs A64EFF:nzcv A64EFF:control -- A64EFF:routine )
+   {: gr:regseq fr:fprs z:nzcv c:control :}
+   SQ-NONE gr A64EFF:GPR-NONE
    A64EFF:FPR-NONE fr A64EFF:FPR-NONE
    z A64EFF-LINK:PRESERVED c A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
 \ A leaf that touches nothing: the neutral contract every case starts from.
 : LEAF ( -- A64EFF:routine )
-   A64EFF:GPR-NONE A64EFF:GPR-NONE A64EFF:GPR-NONE R-GPR ;
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE R-GPR ;
 
 \ A routine with a frame, for the slot cases.
 : FRAMED ( n -- A64EFF:routine )
@@ -182,13 +206,71 @@ private
    [: FORGED-TRAITS A64EFF:T-CALL A64EFF:TRAITS-HAS? drop ;] E-A64EFF-TRAIT TTHROWSQ
    [: A64EFF:T-CALL FORGED-TRAITS A64EFF:TRAITS-HAS? drop ;] E-A64EFF-TRAIT TTHROWSQ ;
 
+\ ---- 2b2. the ordered register list -------------------------------------------
+\ A list of as many positions as one can hold, so the limit is reached by
+\ appending rather than by a number written here.
+: LONG-SEQ ( n -- A64EFF:regseq )
+   {: n:n :}
+   SQ-NONE
+   n 0 ?do i A64EFF:SEQ-WITH loop ;
+
+: SEQUENCE ( -- )
+   SQ-NONE A64EFF:SEQ-LEN 0 T=
+   SQ-NONE A64EFF:SEQ-SET A64EFF:GPRS-N 0 T=
+   0 SQ A64EFF:SEQ-LEN 1 T=
+   0 SQ 0 A64EFF:SEQ@ 0 T=
+   0 1 SQ2 A64EFF:SEQ-LEN 2 T=
+   0 1 SQ2 0 A64EFF:SEQ@ 0 T=
+   0 1 SQ2 1 A64EFF:SEQ@ 1 T=
+   2 0 SQ2 0 A64EFF:SEQ@ 2 T=
+   2 0 SQ2 1 A64EFF:SEQ@ 0 T=
+   0 1 SQ2 A64EFF:SEQ-SET A64EFF:GPRS-N X0 X1 A64EFF:GPR-WITH A64EFF:GPRS-N T=
+   2 0 SQ2 A64EFF:SEQ-SET A64EFF:GPRS-N X0 X2 A64EFF:GPR-WITH A64EFF:GPRS-N T=
+   A64EFF:SEQ-LIMIT LONG-SEQ A64EFF:SEQ-LEN A64EFF:SEQ-LIMIT T=
+   A64EFF:SEQ-LIMIT LONG-SEQ A64EFF:SEQ-LIMIT 1- A64EFF:SEQ@ A64EFF:SEQ-LIMIT 1- T=
+   17 SQ 0 A64EFF:SEQ@ 17 T=
+   29 SQ 0 A64EFF:SEQ@ 29 T=
+   [: 0 0 SQ2 A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 2 1 SQ2 1 A64EFF:SEQ-WITH A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 18 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 30 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 31 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: 32 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: -1 SQ A64EFF:SEQ-LEN drop ;] E-A64EFF-GPR TTHROWSQ
+   [: A64EFF:SEQ-LIMIT 1+ LONG-SEQ A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: SQ-NONE 0 A64EFF:SEQ@ drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 0 SQ 1 A64EFF:SEQ@ drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 0 SQ -1 A64EFF:SEQ@ drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 1 A64EFF-REGSEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 15 60 lshift A64EFF-REGSEQ:MAKE A64EFF:SEQ-LEN drop ;] E-A64EFF-SEQ TTHROWSQ
+   [: 1 60 lshift 18 or A64EFF-REGSEQ:MAKE A64EFF:SEQ-LEN drop ;]
+      E-A64EFF-GPR TTHROWSQ
+   [: -1 A64EFF-REGSEQ:MAKE A64EFF:SEQ-SET A64EFF:GPRS-N drop ;]
+      E-A64EFF-SEQ TTHROWSQ ;
+
+\ What the two derived sets and the writable set answer. The writable set is the
+\ one an allocator hands registers out of, and it is asserted to hold the result
+\ register - which the destroyed set deliberately cannot name, because one
+\ register is not in two roles - as well as everything destroyed.
+: DERIVED ( -- )
+   LEAF A64EFF:GPR-IN@ A64EFF:GPRS-N 0 T=
+   LEAF A64EFF:GPR-RESULT@ A64EFF:GPRS-N 0 T=
+   LEAF A64EFF:GPR-WRITABLE A64EFF:GPRS-N 0 T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-IN@ A64EFF:GPRS-N X0 A64EFF:GPRS-N T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-RESULT@ A64EFF:GPRS-N X1 A64EFF:GPRS-N T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-WRITABLE
+      X1 X2 A64EFF:GPR-WITH A64EFF:GPR-HAS? TTRUE
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-WRITABLE X0 A64EFF:GPR-HAS? TFALSE
+   0 1 SQ2 SQ-NONE X2 R-GPR A64EFF:GPR-IN@
+      X0 X1 A64EFF:GPR-WITH A64EFF:GPR-HAS? TTRUE ;
+
 \ ---- 2c. one register cannot be returned and destroyed ------------------------
 : ROLE-REJECTS ( -- )
-   [: A64EFF:GPR-NONE X1 X1 R-GPR DROP-ROUTINE ;] E-A64EFF-ROLE TTHROWSQ
-   [: A64EFF:GPR-NONE X0 X1 A64EFF:GPR-WITH X1 R-GPR DROP-ROUTINE ;]
+   [: SQ-NONE 1 SQ X1 R-GPR DROP-ROUTINE ;] E-A64EFF-ROLE TTHROWSQ
+   [: SQ-NONE 0 1 SQ2 X1 R-GPR DROP-ROUTINE ;]
       E-A64EFF-ROLE TTHROWSQ
    [: D0 D1 D1 R-FPR DROP-ROUTINE ;] E-A64EFF-ROLE TTHROWSQ
-   A64EFF:GPR-NONE X0 X1 R-GPR DROP-ROUTINE
+   SQ-NONE 0 SQ X1 R-GPR DROP-ROUTINE
    D2 D0 D1 R-FPR DROP-ROUTINE ;
 
 \ ---- 2d. the stack -----------------------------------------------------------
@@ -218,17 +300,17 @@ private
 
 \ ---- 2f. a routine that never comes back delivers nothing ---------------------
 : CONTROL-REJECTS ( -- )
-   [: X0 A64EFF:FPR-NONE A64EFF-NZCV:UNTOUCHED A64EFF-CONTROL:NO-RETURN
+   [: 0 SQ A64EFF:FPR-NONE A64EFF-NZCV:UNTOUCHED A64EFF-CONTROL:NO-RETURN
       R-RESULT DROP-ROUTINE ;] E-A64EFF-CONTROL TTHROWSQ
-   [: A64EFF:GPR-NONE D0 A64EFF-NZCV:UNTOUCHED A64EFF-CONTROL:NO-RETURN
+   [: SQ-NONE D0 A64EFF-NZCV:UNTOUCHED A64EFF-CONTROL:NO-RETURN
       R-RESULT DROP-ROUTINE ;] E-A64EFF-CONTROL TTHROWSQ
-   [: A64EFF:GPR-NONE A64EFF:FPR-NONE A64EFF-NZCV:RESULT
+   [: SQ-NONE A64EFF:FPR-NONE A64EFF-NZCV:RESULT
       A64EFF-CONTROL:NO-RETURN R-RESULT DROP-ROUTINE ;]
       E-A64EFF-CONTROL TTHROWSQ
-   A64EFF:GPR-NONE A64EFF:FPR-NONE A64EFF-NZCV:CLOBBERED
+   SQ-NONE A64EFF:FPR-NONE A64EFF-NZCV:CLOBBERED
       A64EFF-CONTROL:NO-RETURN R-RESULT DROP-ROUTINE
-   X0 D0 A64EFF-NZCV:RESULT A64EFF-CONTROL:RETURNS R-RESULT DROP-ROUTINE
-   X0 D0 A64EFF-NZCV:RESULT A64EFF-CONTROL:TAIL-CALL R-RESULT DROP-ROUTINE ;
+   0 SQ D0 A64EFF-NZCV:RESULT A64EFF-CONTROL:RETURNS R-RESULT DROP-ROUTINE
+   0 SQ D0 A64EFF-NZCV:RESULT A64EFF-CONTROL:TAIL-CALL R-RESULT DROP-ROUTINE ;
 
 \ ---- 4. what is preserved is the complement ----------------------------------
 \ The expected value is computed here from the whole legal file and the two sets
@@ -242,10 +324,10 @@ private
 : PRESERVED ( -- )
    LEAF A64EFF:GPR-PRESERVED A64EFF:GPRS-N
       A64EFF:GPR-NONE A64EFF:GPR-NONE WANT-PRESERVED T=
-   X0 X1 X2 R-GPR A64EFF:GPR-PRESERVED A64EFF:GPRS-N X1 X2 WANT-PRESERVED T=
-   X0 X1 X2 R-GPR A64EFF:GPR-PRESERVED X1 A64EFF:GPR-HAS? TFALSE
-   X0 X1 X2 R-GPR A64EFF:GPR-PRESERVED X2 A64EFF:GPR-HAS? TFALSE
-   X0 X1 X2 R-GPR A64EFF:GPR-PRESERVED X0 A64EFF:GPR-HAS? TTRUE
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-PRESERVED A64EFF:GPRS-N X1 X2 WANT-PRESERVED T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-PRESERVED X1 A64EFF:GPR-HAS? TFALSE
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-PRESERVED X2 A64EFF:GPR-HAS? TFALSE
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-PRESERVED X0 A64EFF:GPR-HAS? TTRUE
    D0 D1 D2 R-FPR A64EFF:FPR-PRESERVED A64EFF:FPRS-N
       A64EFF:FPR-ALL A64EFF:FPRS-N D1 A64EFF:FPRS-N invert and
       D2 A64EFF:FPRS-N invert and T=
@@ -282,15 +364,15 @@ private
 \ Assembled by the generated constructor with a stack delta a returning routine
 \ cannot have, so every word that revalidates refuses it with that rule's code.
 : FORGED ( -- A64EFF:routine )
-   A64EFF:GPR-NONE A64EFF:GPR-NONE A64EFF:GPR-NONE
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 32 -16 A64EFF-ROUTINE:MAKE ;
 
-\ A second forgery, this one naming the reserved register in a set the checked
-\ constructor would never have accepted.
+\ A second forgery, this one naming the reserved register at argument position
+\ zero of a list the checked constructor would never have accepted.
 : FORGED-X18 ( -- A64EFF:routine )
-   1 18 lshift A64EFF-GPRS:MAKE A64EFF:GPR-NONE A64EFF:GPR-NONE
+   1 60 lshift 18 or A64EFF-REGSEQ:MAKE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF-ROUTINE:MAKE ;
@@ -308,7 +390,9 @@ private
    [: FORGED-X18 A64EFF:VALIDATE DROP-ROUTINE ;] E-A64EFF-GPR TTHROWSQ
    [: FORGED-X18 A64EFF:DIGEST DROP-DIGEST ;] E-A64EFF-GPR TTHROWSQ
    [: FORGED-X18 A64EFF:GPR-PRESERVED A64EFF:GPRS-N drop ;]
-      E-A64EFF-GPR TTHROWSQ ;
+      E-A64EFF-GPR TTHROWSQ
+   [: FORGED-X18 A64EFF:GPR-IN@ A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ
+   [: FORGED-X18 A64EFF:GPR-WRITABLE A64EFF:GPRS-N drop ;] E-A64EFF-GPR TTHROWSQ ;
 
 \ A field reader only projects, so it answers about a forged record without
 \ pretending the record is declarable. That is the documented split, and it is
@@ -316,10 +400,10 @@ private
 : READERS ( -- )
    FORGED A64EFF:FRAME@ 32 T=
    FORGED A64EFF:DELTA@ -16 T=
-   FORGED-X18 A64EFF:GPR-IN@ A64EFF:GPRS-N 1 18 lshift T=
-   X0 X1 X2 R-GPR A64EFF:GPR-IN@ A64EFF:GPRS-N X0 A64EFF:GPRS-N T=
-   X0 X1 X2 R-GPR A64EFF:GPR-RESULT@ A64EFF:GPRS-N X1 A64EFF:GPRS-N T=
-   X0 X1 X2 R-GPR A64EFF:GPR-CLOBBER@ A64EFF:GPRS-N X2 A64EFF:GPRS-N T=
+   FORGED-X18 A64EFF:ARGS@ A64EFF-REGSEQ:UNMAKE 1 60 lshift 18 or T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:ARGS@ 0 A64EFF:SEQ@ 0 T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:RESULTS@ 0 A64EFF:SEQ@ 1 T=
+   0 SQ 1 SQ X2 R-GPR A64EFF:GPR-CLOBBER@ A64EFF:GPRS-N X2 A64EFF:GPRS-N T=
    D0 D1 D2 R-FPR A64EFF:FPR-IN@ A64EFF:FPRS-N D0 A64EFF:FPRS-N T=
    D0 D1 D2 R-FPR A64EFF:FPR-RESULT@ A64EFF:FPRS-N D1 A64EFF:FPRS-N T=
    D0 D1 D2 R-FPR A64EFF:FPR-CLOBBER@ A64EFF:FPRS-N D2 A64EFF:FPRS-N T=
@@ -331,21 +415,29 @@ private
 \ ---- 2g. a missing or role-swapped argument never reaches runtime -------------
 \ -1 is accepted by the checker, 0 refused.
 : STATIC-REJECTS ( -- )
-   s" A64T-OK ( A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-OK ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! -1 T=
-   s" A64T-SHORT ( A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-SHORT ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-FILES ( A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-FILES ( A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-SWAP ( A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:link A64EFF:nzcv A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-SWAP ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:link A64EFF:nzcv A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
-   s" A64T-BARE ( n A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+   s" A64T-BARE ( n A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-SETOK ( n -- A64EFF:gprs ) A64EFF:GPR-SET"
       CHECK-QUIET-CANDIDATE! -1 T=
    s" A64T-SETX ( n -- A64EFF:fprs ) A64EFF:GPR-SET"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-WITHX ( A64EFF:gprs A64EFF:fprs -- A64EFF:gprs ) A64EFF:GPR-WITH"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" A64T-SETS ( A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine ) A64EFF:ROUTINE"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" A64T-SEQOK ( A64EFF:regseq n -- A64EFF:regseq ) A64EFF:SEQ-WITH"
+      CHECK-QUIET-CANDIDATE! -1 T=
+   s" A64T-SEQSET ( A64EFF:gprs n -- A64EFF:regseq ) A64EFF:SEQ-WITH"
+      CHECK-QUIET-CANDIDATE! 0 T=
+   s" A64T-SEQOUT ( A64EFF:regseq -- A64EFF:regseq ) A64EFF:SEQ-SET"
       CHECK-QUIET-CANDIDATE! 0 T=
    s" A64T-SLOTOK ( n n A64EFF:routine -- ) A64EFF:CHECK-SLOT"
       CHECK-QUIET-CANDIDATE! -1 T=
@@ -354,12 +446,12 @@ private
 
 \ ---- 5a. the canonical preimage ----------------------------------------------
 : PREIMAGE ( -- )
-   X0 X1 X2 R-GPR A64EFF:ENCODE {: base:ptr len:n :}
+   0 SQ 1 SQ X2 R-GPR A64EFF:ENCODE {: base:ptr len:n :}
    len 112 T=
    base 0 CDIGEST:SLOT@ CDIGEST:TAG-A64-ROUTINE T=
-   base 1 CDIGEST:SLOT@ 1 T=
-   base 2 CDIGEST:SLOT@ X0 A64EFF:GPRS-N T=
-   base 3 CDIGEST:SLOT@ X1 A64EFF:GPRS-N T=
+   base 1 CDIGEST:SLOT@ 2 T=
+   base 2 CDIGEST:SLOT@ 0 SQ A64EFF-REGSEQ:UNMAKE T=
+   base 3 CDIGEST:SLOT@ 1 SQ A64EFF-REGSEQ:UNMAKE T=
    base 4 CDIGEST:SLOT@ X2 A64EFF:GPRS-N T=
    base 5 CDIGEST:SLOT@ 0 T=
    base 6 CDIGEST:SLOT@ 0 T=
@@ -374,7 +466,7 @@ private
    nb 10 CDIGEST:SLOT@ 2 T=
    nb 12 CDIGEST:SLOT@ 32 T=
    nb 13 CDIGEST:SLOT@ -32 T=
-   A64EFF:GPR-NONE A64EFF:FPR-NONE A64EFF-NZCV:READ-CLOBBERED
+   SQ-NONE A64EFF:FPR-NONE A64EFF-NZCV:READ-CLOBBERED
       A64EFF-CONTROL:RETURNS R-RESULT A64EFF:ENCODE {: zb:ptr zlen:n :}
    zb 8 CDIGEST:SLOT@ 4 T=
    A64EFF-CONTROL:NO-RETURN A64EFF-LINK:CLOBBERED R-LINK
@@ -388,6 +480,7 @@ private
 \ compilation while keeping its old identity.
 : ROUTINE$ ( -- ptr u8 n ptr u8 n )  s" routine" s" A64EFF-ROUTINE" ;
 : GPRS$ ( -- ptr u8 n ptr u8 n )     s" gprs" s" A64EFF-GPRS" ;
+: REGSEQ$ ( -- ptr u8 n ptr u8 n )   s" regseq" s" A64EFF-REGSEQ" ;
 : FPRS$ ( -- ptr u8 n ptr u8 n )     s" fprs" s" A64EFF-FPRS" ;
 : TRAITS$ ( -- ptr u8 n ptr u8 n )   s" traits" s" A64EFF-TRAITS" ;
 
@@ -395,6 +488,9 @@ private
    nip CDIGEST:SLOT-BYTES / ;
 
 : SCHEMA-PINS ( -- )
+   REGSEQ$ REFLECT:FAMS 1 T=
+   REGSEQ$ REFLECT:FLDS 1 T=
+   REGSEQ$ REFLECT:WIDTH 1 T=
    ROUTINE$ REFLECT:FAMS 1 T=
    ROUTINE$ REFLECT:FLDS 12 T=
    ROUTINE$ REFLECT:WIDTH 12 T=
@@ -475,6 +571,13 @@ create DGA ROWS 4 * cells allot
    a p BIT-AT 0= if A64EFF:GPR-NONE exit then
    r A64EFF:GPR-REG ;
 
+\ The same for an interface position: either the routine declares one there or
+\ it declares none.
+: A-SEQ ( n n n -- A64EFF:regseq )   \ index, bit position, register
+   {: a:n p:n r:n :}
+   a p BIT-AT 0= if SQ-NONE exit then
+   r SQ ;
+
 : A-FPR ( n n n -- A64EFF:fprs )
    {: a:n p:n r:n :}
    a p BIT-AT 0= if A64EFF:FPR-NONE exit then
@@ -482,7 +585,7 @@ create DGA ROWS 4 * cells allot
 
 : SWEEP-A>ROUTINE ( n -- A64EFF:routine )
    {: a:n :}
-   a 5 0 A-GPR  a 4 1 A-GPR  a 3 2 A-GPR
+   a 5 0 A-SEQ  a 4 1 A-SEQ  a 3 2 A-GPR
    a 2 0 A-FPR  a 1 1 A-FPR  a 0 2 A-FPR
    a A-NZCV A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 16 0 A64EFF:ROUTINE ;
@@ -517,7 +620,7 @@ create DGA ROWS 4 * cells allot
    {: b:n :}
    b 9 mod {: s:n :}
    b 9 / {: t:n :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE A64EFF:GPR-NONE
+   SQ-NONE SQ-NONE A64EFF:GPR-NONE
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED s B-LINK s B-CONTROL
    t A64EFF:TRAIT-SET s B-FRAME s B-DELTA A64EFF:ROUTINE ;
@@ -546,10 +649,10 @@ create DGA ROWS 4 * cells allot
 
 \ A record built twice by separate calls is the same record and the same digest.
 : STABLE ( -- )
-   X0 X1 X2 R-GPR X0 X1 X2 R-GPR A64EFF:SAME? TTRUE
-   X0 X1 X2 R-GPR A64EFF:DIGEST
-   X0 X1 X2 R-GPR A64EFF:DIGEST CDIGEST-DIGEST:EQ TTRUE
-   LEAF X0 X1 X2 R-GPR A64EFF:SAME? TFALSE
+   0 SQ 1 SQ X2 R-GPR 0 SQ 1 SQ X2 R-GPR A64EFF:SAME? TTRUE
+   0 SQ 1 SQ X2 R-GPR A64EFF:DIGEST
+   0 SQ 1 SQ X2 R-GPR A64EFF:DIGEST CDIGEST-DIGEST:EQ TTRUE
+   LEAF 0 SQ 1 SQ X2 R-GPR A64EFF:SAME? TFALSE
    LEAF A64EFF:DIGEST LEAF A64EFF:DIGEST CDIGEST-DIGEST:EQ TTRUE ;
 
 public
@@ -559,6 +662,8 @@ public
    MACHINE-FACTS
    VOCABULARY
    ALGEBRA
+   SEQUENCE
+   DERIVED
    ROLE-REJECTS
    STACK-REJECTS
    LINK-REJECTS

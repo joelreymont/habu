@@ -43,7 +43,7 @@ private
 
 : LEAF-OF ( A64EFF:gprs -- A64EFF:routine )
    {: pool:A64EFF:gprs :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE pool
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
@@ -51,6 +51,22 @@ private
 \ A leaf routine that may use `n` registers starting at `base`.
 : LEAF-FROM ( n n -- A64EFF:routine )
    POOL LEAF-OF ;
+
+\ ---- the C ABI these routines are called through -----------------------------
+\ AAPCS64 hands the first integer arguments over in x0 upwards and takes an
+\ integer result back out of x0, and that is the whole convention a leaf routine
+\ of this fixture has. It is written here once because the fixture is what calls
+\ the emitted code - through the engine's own C-ABI call - so this is the one
+\ place that knows which registers the caller will really use. It belongs in the
+\ target contract beside the ABI name that already selects it, and moving it
+\ there is dot habu-publish-the-aapcs-b51c7e3f.
+0 constant ABI-ARG0                  \ argument i arrives in x(ABI-ARG0 + i)
+0 constant ABI-OUT0                  \ returned value j leaves in x(ABI-OUT0 + j)
+
+: ABI-SEQ ( n n -- A64EFF:regseq )
+   {: base:n n:n :}
+   A64EFF:SEQ-NONE
+   n 0 ?do base i + A64EFF:SEQ-WITH loop ;
 
 \ The builder the machine module is written through.
 : A64-BUILDER ( IR-CTX:ctx -- IR-BUILD:builder )
@@ -96,10 +112,36 @@ public
 : LEAF-FRAMED ( n n -- A64EFF:routine )
    {: n:n size:n :}
    0 n POOL {: pool:A64EFF:gprs :}
-   A64EFF:GPR-NONE A64EFF:GPR-NONE pool
+   A64EFF:SEQ-NONE A64EFF:SEQ-NONE pool
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
+
+\ A leaf routine with the C ABI declared on it: `in` arguments arriving in x0
+\ upwards and `out` returned values leaving in x0 upwards. The registers it may
+\ use are `n` of them from `base` TOGETHER WITH the ones the convention names,
+\ because a declared register outside the routine's own set is refused by name -
+\ an argument could not be held there and a result could not be computed there.
+\ The destroyed set is what is left after the result registers are taken out:
+\ one register cannot be both a result and a register whose contents mean
+\ nothing.
+: LEAF-ABI ( n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n :}
+   ABI-ARG0 in ABI-SEQ {: args:A64EFF:regseq :}
+   ABI-OUT0 out ABI-SEQ {: outs:A64EFF:regseq :}
+   base n POOL
+   args A64EFF:SEQ-SET A64EFF:GPR-WITH
+   outs A64EFF:SEQ-SET A64EFF:GPR-WITH {: pool:A64EFF:gprs :}
+   args outs
+   pool outs A64EFF:SEQ-SET A64EFF:GPR-WITHOUT
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+
+\ The register the ABI takes a returned value out of, for a caller that has to
+\ agree with the contract rather than assume it.
+: ABI-RESULT ( -- n )
+   ABI-OUT0 ;
 
 \ Allocate registers for a frozen machine module, have the validator accept the
 \ allocation, and emit. Nothing here emits from a claim the validator has not
@@ -108,6 +150,16 @@ public
    {: c:IR-CTX:ctx m:IR-BUILD:module base:n n:n :}
    c m base n LEAF-FROM A64RA:ALLOCATE
    m base n LEAF-FROM A64RAV:ACCEPT
+   c m A64EMIT:EMIT ;
+
+\ The same three stages under a contract that declares the C ABI, so the
+\ arguments arrive and the result leaves where the caller of the emitted code
+\ will really look. The contract is built twice, from the same four numbers,
+\ because a routine value cannot be held in a local.
+: FINISH-ABI ( IR-CTX:ctx IR-BUILD:module n n n n -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module base:n n:n in:n out:n :}
+   c m base n in out LEAF-ABI A64RA:ALLOCATE
+   m base n in out LEAF-ABI A64RAV:ACCEPT
    c m A64EMIT:EMIT ;
 
 \ Select and finish in one step, out of a pool of `n` registers from `base`.
@@ -120,6 +172,13 @@ public
 : RUN ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n n:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b a u 0 n RUN-FROM ;
+
+\ Select and finish under the declared C ABI: `in` arguments and `out` returned
+\ values, and `n` registers from `base` on top of the ones the convention names.
+: RUN-ABI ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   c b a u SELECTED {: m:IR-BUILD:module :}
+   c m base n in out FINISH-ABI ;
 
 \ The register the returned value ended up in. The last value the module defines
 \ is the one the return carries in every straight-line shape, and it is read

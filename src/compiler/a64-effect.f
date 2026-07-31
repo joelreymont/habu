@@ -18,6 +18,29 @@
 \ change where control leaves, whether it calls, calls indirectly or enters the
 \ kernel, and how control leaves at all.
 \
+\ THE GENERAL-REGISTER INTERFACE IS ORDERED, BECAUSE A CONVENTION IS. A set can
+\ say that a routine reads x0 and x1; it cannot say that argument two arrives in
+\ x1, and that is the only thing a caller and a callee have to agree about. The
+\ two general-register interface fields are therefore ordered lists rather than
+\ sets: `gpr-arg` names the register each argument arrives in, position by
+\ position, and `gpr-out` names the register each returned value leaves in. The
+\ sets are still answerable - GPR-IN@ and GPR-RESULT@ derive them - so no reader
+\ lost anything, and there is no second place a convention could be written down
+\ and disagree from. This is what the register allocator pre-colours from and
+\ what its validator checks the finished assignment against, and both are handed
+\ this one value, so neither can be answering about another routine's interface.
+\ WHICH registers a particular ABI uses is the caller's declaration, not a
+\ constant here: this file owns what a convention IS, not which one is in force.
+\ The floating-register interface is still a pair of sets, deliberately: the
+\ machine dialect has no floating value class yet, so an ordered floating list
+\ would be a promise rather than a declaration anything could honour, and a
+\ convention that interleaves integer and floating arguments needs the position
+\ of an argument to carry its class as well (dot
+\ habu-bind-floating-and-d2a16dbd). Which registers a Habu word's own convention
+\ uses is a further question again - design section 7.6 puts its inputs and
+\ outputs in data-stack slots, which are not registers at all (dot
+\ habu-enter-and-leave-2684e515).
+\
 \ THE VOCABULARY IS THE ASSEMBLER'S, NOT A SECOND ONE. Every bound here is read
 \ off the instruction vocabulary that formal/Common/Insn.v models and
 \ src/arch/arm64/asm.f emits, and test/compiler/a64-effect.f pins each one against
@@ -63,10 +86,12 @@
 \ renumbered without bumping SCHEMA.
 \
 \ FORGERY. `routine` is a public family, so its generated MAKE can assemble twelve
-\ field values that never passed the checked constructor. Every word here whose
-\ result carries identity or a decision - VALIDATE, SAME?, ENCODE, DIGEST, the
-\ derived preserved sets, RETURNS? and CHECK-SLOT - revalidates its input first.
-\ The plain field readers do not: they only project a value the caller holds.
+\ field values that never passed the checked constructor, and `regseq` likewise
+\ can assemble a cell that is not a list at all. Every word here whose result
+\ carries identity or a decision - VALIDATE, SAME?, ENCODE, DIGEST, the derived
+\ interface, preserved and writable sets, RETURNS?, CHECK-SLOT, and each of the
+\ list readers - revalidates its input first. The plain field readers do not:
+\ they only project a value the caller holds.
 \
 \ WHY THE RECORD IS FLAT. Grouping the three roles of a register file into a
 \ nested record would read better, but a multi-cell value cannot be bound to a
@@ -100,6 +125,24 @@ STRUCTURE gprs 0 DERIVE eq
 ;STRUCTURE
 
 STRUCTURE fprs 0 DERIVE eq
+   FIELD bits n
+;STRUCTURE
+
+\ ---- an ordered register list ------------------------------------------------
+\ What a set cannot say: which register argument two arrives in. A nominal
+\ one-field record again, but over a packed ORDERED list - element i is the
+\ register at position i and the length rides above them - so it cannot be
+\ confused with a set, with the other file's set, or with a bare integer.
+\
+\ WHY IT IS PACKED INTO ONE CELL. A contract field has to be one cell: a value of
+\ more than one cell cannot be bound to a typed local today, which is the same
+\ reason the record below is flat. It fits without squeezing because a register
+\ operand is a five-bit field - the fact that makes a file 32 registers - so one
+\ cell holds twelve positions and their count with bits to spare. The packing is
+\ canonical: every bit past the last position is zero, so one list has exactly
+\ one spelling and the digest below agrees with SAME? rather than approximating
+\ it.
+STRUCTURE regseq 0 DERIVE eq
    FIELD bits n
 ;STRUCTURE
 
@@ -149,12 +192,15 @@ STRUCTURE traits 0 DERIVE eq
 \ Fields in declaration order, deepest stack field first. It does not DERIVE eq -
 \ a structure field is not a derivable role - so SAME? below is the hand-written
 \ field-by-field identity, and it is the equality the digest is proved to agree
-\ with. `frame` is how far below the entry stack pointer the routine's own frame
-\ reaches, in bytes; `sp-delta` is the net stack-pointer change where control
-\ leaves, which is zero or negative.
+\ with. `gpr-arg` is the register each argument arrives in and `gpr-out` the
+\ register each returned value leaves in, both position by position; the sets a
+\ reader used to find in their place are derived from them below. `frame` is how
+\ far below the entry stack pointer the routine's own frame reaches, in bytes;
+\ `sp-delta` is the net stack-pointer change where control leaves, which is zero
+\ or negative.
 STRUCTURE routine 0
-   FIELD gpr-live-in gprs
-   FIELD gpr-result gprs
+   FIELD gpr-arg regseq
+   FIELD gpr-out regseq
    FIELD gpr-clobber gprs
    FIELD fpr-live-in fprs
    FIELD fpr-result fprs
@@ -174,7 +220,8 @@ private
 \ own constant and asserts it against the public reader below, so a bound that
 \ moved there reddens this schema instead of silently disagreeing with it.
 
-32 constant FILE-N        \ registers per file: a register operand is a 5-bit field
+5 constant REG-BITS       \ a register operand is a five-bit field
+1 REG-BITS lshift constant FILE-N        \ registers per file, which is that field's reach
 18 constant RESERVED-N    \ x18, refused by XREG? in every X-register operand slot
 30 constant LINK-N        \ x30, the link register, which has its own contract field
 31 constant ZERO-N        \ operand 31: the zero register, or the stack pointer
@@ -188,6 +235,18 @@ private
 constant GPR-MASK
 
 1 FILE-N lshift 1 - constant FPR-MASK
+
+\ ---- how an ordered register list is packed ----------------------------------
+\ Positions from the bottom of the cell, five bits each, and the length in the
+\ bits left over at the top. How many positions there are is therefore not a
+\ number chosen here: it is how many of that field one cell holds once the length
+\ has its own room, and the length field is wide enough for it.
+CELL 8 * constant SEQ-BITS               \ bits in the one cell a list occupies
+4 constant SEQ-LEN-BITS                  \ the length, above the last position
+SEQ-BITS SEQ-LEN-BITS - constant SEQ-LEN-SHIFT
+SEQ-LEN-SHIFT REG-BITS / constant SEQ-MAX-N   \ positions one cell holds
+1 REG-BITS lshift 1 - constant REG-MASK
+1 SEQ-LEN-BITS lshift 1 - constant SEQ-LEN-MASK
 
 \ The unsigned-offset load and store field: twelve bits, scaled by the access
 \ width. The widest access moves eight bytes, so the deepest byte a slot can sit
@@ -212,6 +271,8 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 : F-BITS ( A64EFF:fprs -- n )     A64EFF-FPRS:UNMAKE ;
 : MK-T ( n -- A64EFF:traits )     A64EFF-TRAITS:MAKE ;
 : T-BITS ( A64EFF:traits -- n )   A64EFF-TRAITS:UNMAKE ;
+: MK-S ( n -- A64EFF:regseq )     A64EFF-REGSEQ:MAKE ;
+: S-BITS ( A64EFF:regseq -- n )   A64EFF-REGSEQ:UNMAKE ;
 
 \ ---- stable wire codes -------------------------------------------------------
 \ One injective code per closed family. These fix the digest; see the header.
@@ -255,6 +316,57 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
 
 : FREG-CK ( n -- n )
    dup 0 < over FILE-N >= or if E-A64EFF-FPR throw then ;
+
+\ ---- the rules of an ordered register list -----------------------------------
+\ Reading one packed list. Nothing below is public: a caller reaches a position
+\ through the readers further down, which validate the whole list first, so there
+\ is no route to an element of a list that was never checked.
+: SEQ-LEN-OF ( n -- n )
+   SEQ-LEN-SHIFT rshift SEQ-LEN-MASK and ;
+
+: SEQ-AT ( n n -- n )
+   {: w:n p:n :}
+   w p REG-BITS * rshift REG-MASK and ;
+
+\ A register a routine can hold state in, decided by the set rule rather than by
+\ a second list of what is forbidden: x18, x30 and 31 fail here because no
+\ general-register set may name them either.
+: SEQ-REG-CK ( n -- )
+   REG-CK 1 swap lshift GPR-CK drop ;
+
+\ Does the register at this position already appear before it? A caller cannot
+\ put two different values in one register, so one register is one position.
+: SEQ-REPEATS? ( n n -- bool )
+   {: w:n p:n :}
+   false
+   p 0 ?do
+      w i SEQ-AT  w p SEQ-AT  = if drop true leave then
+   loop ;
+
+\ A packed list that can be a convention: a length the cell holds, every element
+\ a register a routine can hold state in, no register twice, and nothing left
+\ standing past the last position - which is what makes the packing canonical, so
+\ two lists are the same value exactly when their cells are equal.
+: SEQ-CK ( n -- n )
+   dup {: w:n :}
+   w SEQ-LEN-OF {: len:n :}
+   len SEQ-MAX-N > if E-A64EFF-SEQ throw then
+   len 0 ?do
+      w i SEQ-AT SEQ-REG-CK
+      w i SEQ-REPEATS? if E-A64EFF-SEQ throw then
+   loop
+   SEQ-MAX-N len ?do
+      w i SEQ-AT 0<> if E-A64EFF-SEQ throw then
+   loop ;
+
+\ The set of registers a list names, which is how the two derived reader sets
+\ below are answered.
+: SEQ-MASK ( n -- n )
+   dup SEQ-LEN-OF {: w:n len:n :}
+   0
+   len 0 ?do
+      1  w i SEQ-AT  lshift or
+   loop ;
 
 \ A result is a register the caller reads; a destroyed register holds nothing the
 \ caller may read. One register cannot be both.
@@ -311,7 +423,10 @@ BIT-CALL BIT-INDIRECT or BIT-SYSCALL or constant BIT-ALL
    if E-A64EFF-CONTROL throw then ;
 
 \ ---- canonical preimage ------------------------------------------------------
-1 constant SCHEMA
+\ Version 2: the two general-register interface slots hold ordered lists rather
+\ than sets, so a contract's preimage means something different than it did and
+\ the version says so instead of two schemas sharing one digest.
+2 constant SCHEMA
 14 constant SLOTS
 0 constant SLOT-TAG
 1 constant SLOT-SCHEMA
@@ -401,6 +516,46 @@ public
    probe F-BITS FPR-CK {: want:n :}
    set F-BITS FPR-CK want and want = ;
 
+\ ---- ordered register lists --------------------------------------------------
+\ The convention that names nothing: a routine whose arguments arrive, or whose
+\ results leave, in no register this contract has an opinion about. It is also
+\ what a routine that takes or returns nothing declares, and those are the same
+\ statement - there is no position to say anything about either way.
+: SEQ-NONE ( -- A64EFF:regseq )   0 MK-S ;
+
+\ How many positions one list can hold at all. A consumer that walks positions
+\ asks rather than assuming the packing.
+: SEQ-LIMIT ( -- n )              SEQ-MAX-N ;
+
+\ The list with one more register after its last position. A register the list
+\ already names is refused here rather than appended: two positions in one
+\ register is a convention no caller could satisfy - it would have to put two
+\ different values in one place - and that is exactly the shape a mistyped
+\ declaration takes.
+: SEQ-WITH ( A64EFF:regseq n -- A64EFF:regseq )
+   {: s:regseq r:n :}
+   s S-BITS SEQ-CK {: w:n :}
+   w SEQ-LEN-OF {: len:n :}
+   len SEQ-MAX-N >= if E-A64EFF-SEQ throw then
+   r SEQ-REG-CK
+   w  r len REG-BITS * lshift or  1 SEQ-LEN-SHIFT lshift +
+   SEQ-CK MK-S ;
+
+: SEQ-LEN ( A64EFF:regseq -- n )
+   S-BITS SEQ-CK SEQ-LEN-OF ;
+
+\ The register at one position. A position the list does not have is refused
+\ rather than answered with whatever the packing holds there.
+: SEQ@ ( A64EFF:regseq n -- n )
+   {: s:regseq p:n :}
+   s S-BITS SEQ-CK {: w:n :}
+   p 0 < p w SEQ-LEN-OF >= or if E-A64EFF-SEQ throw then
+   w p SEQ-AT ;
+
+\ Which registers a list names, forgetting the order.
+: SEQ-SET ( A64EFF:regseq -- A64EFF:gprs )
+   S-BITS SEQ-CK SEQ-MASK MK-G ;
+
 \ ---- traits ------------------------------------------------------------------
 : TRAIT-SET ( n -- A64EFF:traits )   TRAIT-CK MK-T ;
 : TRAITS-N ( A64EFF:traits -- n )    T-BITS ;
@@ -420,11 +575,11 @@ public
 \ ---- construction and validation ---------------------------------------------
 \ The production entry point. A combination that cannot be true of one routine
 \ throws a named error and no contract value is produced.
-: ROUTINE ( A64EFF:gprs A64EFF:gprs A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine )
-   {: gi:gprs gr:gprs gc:gprs fi:fprs fr:fprs fc:fprs
-      z:nzcv l:link c:control t:traits size:n delta:n :}
-   gi G-BITS GPR-CK drop
-   gr G-BITS GPR-CK gc G-BITS GPR-CK ROLE-CK
+: ROUTINE ( A64EFF:regseq A64EFF:regseq A64EFF:gprs A64EFF:fprs A64EFF:fprs A64EFF:fprs A64EFF:nzcv A64EFF:link A64EFF:control A64EFF:traits n n -- A64EFF:routine )
+   {: gi:regseq gr:regseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
+      l:link c:control t:traits size:n delta:n :}
+   gi S-BITS SEQ-CK drop
+   gr S-BITS SEQ-CK SEQ-MASK gc G-BITS GPR-CK ROLE-CK
    fi F-BITS FPR-CK drop
    fr F-BITS FPR-CK fc F-BITS FPR-CK ROLE-CK
    t T-BITS TRAIT-CK drop
@@ -432,7 +587,7 @@ public
    size delta DELTA-CK
    c delta BALANCE-CK
    c l LINK-CK
-   gr G-BITS fr F-BITS z c RESULT-CK
+   gr S-BITS SEQ-MASK fr F-BITS z c RESULT-CK
    gi gr gc fi fr fc z l c t size delta A64EFF-ROUTINE:MAKE ;
 
 \ Recheck a contract that may have been assembled by the generated constructor.
@@ -441,10 +596,10 @@ public
 
 \ ---- field readers -----------------------------------------------------------
 \ A projection of a value the caller already holds; nothing here revalidates.
-: GPR-IN@ ( A64EFF:routine -- A64EFF:gprs )
+: ARGS@ ( A64EFF:routine -- A64EFF:regseq )
    A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop drop drop drop ;
 
-: GPR-RESULT@ ( A64EFF:routine -- A64EFF:gprs )
+: RESULTS@ ( A64EFF:routine -- A64EFF:regseq )
    A64EFF-ROUTINE:UNMAKE drop drop drop drop drop drop drop drop drop drop nip ;
 
 : GPR-CLOBBER@ ( A64EFF:routine -- A64EFF:gprs )
@@ -478,20 +633,44 @@ public
    A64EFF-ROUTINE:UNMAKE nip nip nip nip nip nip nip nip nip nip nip ;
 
 \ ---- derived facts -----------------------------------------------------------
+\ Which registers the interface lists name, as sets. A caller that only wants to
+\ know whether a register takes part - and every caller before the convention was
+\ ordered wanted exactly that - asks here rather than walking positions, and the
+\ answer cannot contradict the list because there is nothing else to read it out
+\ of.
+: GPR-IN@ ( A64EFF:routine -- A64EFF:gprs )
+   VALIDATE ARGS@ SEQ-SET ;
+
+: GPR-RESULT@ ( A64EFF:routine -- A64EFF:gprs )
+   VALIDATE RESULTS@ SEQ-SET ;
+
 \ What survives the routine: every register of the file it neither returns nor
 \ destroys. Derived, never stored, so it cannot contradict the destroyed set.
 : GPR-PRESERVED ( A64EFF:routine -- A64EFF:gprs )
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    drop drop drop                  \ the floating sets
-   {: gi:gprs gr:gprs gc:gprs :}
-   GPR-MASK gr G-BITS invert and gc G-BITS invert and MK-G ;
+   {: gi:regseq gr:regseq gc:gprs :}
+   GPR-MASK gr S-BITS SEQ-MASK invert and gc G-BITS invert and MK-G ;
+
+\ Every register the routine may WRITE: the ones it destroys, plus the ones it
+\ returns a value in. They are two roles and one register cannot be both, which
+\ is why they are two fields - but a register allocator does not care why a
+\ register may be written, only that it may, so the set it may hand out is this
+\ one and not the destroyed set alone. Derived for the same reason the preserved
+\ set is: a stored copy could disagree with the two fields it is made of.
+: GPR-WRITABLE ( A64EFF:routine -- A64EFF:gprs )
+   VALIDATE A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
+   drop drop drop                  \ the floating sets
+   {: gi:regseq gr:regseq gc:gprs :}
+   gr S-BITS SEQ-MASK gc G-BITS or MK-G ;
 
 : FPR-PRESERVED ( A64EFF:routine -- A64EFF:fprs )
    VALIDATE A64EFF-ROUTINE:UNMAKE
    drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
    {: fi:fprs fr:fprs fc:fprs :}
-   drop drop drop                  \ the general sets
+   drop drop drop                  \ the general interface lists and destroyed set
    FPR-MASK fr F-BITS invert and fc F-BITS invert and MK-F ;
 
 : RETURNS? ( A64EFF:routine -- bool )
@@ -517,13 +696,13 @@ public
 \ contract cannot be compared as if it were a declarable routine.
 : SAME? ( A64EFF:routine A64EFF:routine -- bool )
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: ygi:gprs ygr:gprs ygc:gprs yfi:fprs yfr:fprs yfc:fprs
-      yz:nzcv yl:link yc:control yt:traits ysize:n ydelta:n :}
+   {: ygi:regseq ygr:regseq ygc:gprs yfi:fprs yfr:fprs yfc:fprs yz:nzcv
+      yl:link yc:control yt:traits ysize:n ydelta:n :}
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: xgi:gprs xgr:gprs xgc:gprs xfi:fprs xfr:fprs xfc:fprs
-      xz:nzcv xl:link xc:control xt:traits xsize:n xdelta:n :}
-   xgi ygi A64EFF-GPRS:EQ
-   xgr ygr A64EFF-GPRS:EQ and
+   {: xgi:regseq xgr:regseq xgc:gprs xfi:fprs xfr:fprs xfc:fprs xz:nzcv
+      xl:link xc:control xt:traits xsize:n xdelta:n :}
+   xgi ygi A64EFF-REGSEQ:EQ
+   xgr ygr A64EFF-REGSEQ:EQ and
    xgc ygc A64EFF-GPRS:EQ and
    xfi yfi A64EFF-FPRS:EQ and
    xfr yfr A64EFF-FPRS:EQ and
@@ -539,12 +718,12 @@ public
 \ next ENCODE call; DIGEST is the copy-free consumer.
 : ENCODE ( A64EFF:routine -- ptr u8 n )
    VALIDATE A64EFF-ROUTINE:UNMAKE
-   {: gi:gprs gr:gprs gc:gprs fi:fprs fr:fprs fc:fprs
-      z:nzcv l:link c:control t:traits size:n delta:n :}
+   {: gi:regseq gr:regseq gc:gprs fi:fprs fr:fprs fc:fprs z:nzcv
+      l:link c:control t:traits size:n delta:n :}
    CDIGEST:TAG-A64-ROUTINE PRE SLOT-TAG CDIGEST:SLOT!
    SCHEMA PRE SLOT-SCHEMA CDIGEST:SLOT!
-   gi G-BITS PRE SLOT-GPR-IN CDIGEST:SLOT!
-   gr G-BITS PRE SLOT-GPR-RES CDIGEST:SLOT!
+   gi S-BITS PRE SLOT-GPR-IN CDIGEST:SLOT!
+   gr S-BITS PRE SLOT-GPR-RES CDIGEST:SLOT!
    gc G-BITS PRE SLOT-GPR-CLOB CDIGEST:SLOT!
    fi F-BITS PRE SLOT-FPR-IN CDIGEST:SLOT!
    fr F-BITS PRE SLOT-FPR-RES CDIGEST:SLOT!

@@ -1,7 +1,7 @@
 \ native-a64ir.f - checked ARM64 machine dialect tests.
 \
 \ Proves the contract of src/compiler/native/a64ir.f: registering the dialect
-\ defines exactly ten opcodes and every declared field of each one reads back
+\ defines exactly eleven opcodes and every declared field of each one reads back
 \ through the frozen schema table; the two move-wide operand bounds and the two
 \ frame-slot bounds are the shipped assembler's own and are asserted against it
 \ rather than restated; a move-wide immediate or shift, a frame slot, or a
@@ -111,13 +111,14 @@ private
    A64IR:SLOT-WIDTH 8 T= ;
 
 \ ---- registration ------------------------------------------------------------
-\ The ten opcodes, and the count, so "nothing else was defined" is measured
+\ The eleven opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:MOVK A64IR:OPCODE {: k:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:MOV A64IR:OPCODE {: v:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:ADD A64IR:OPCODE {: a:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:SUB A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
@@ -130,6 +131,7 @@ private
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED?
    rv k IR-SCHEMA:FDEFINED?
+   rv v IR-SCHEMA:FDEFINED?
    rv a IR-SCHEMA:FDEFINED?
    rv s IR-SCHEMA:FDEFINED?
    rv u IR-SCHEMA:FDEFINED?
@@ -140,9 +142,9 @@ private
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the ten machine opcodes" T-LABEL
+   s" registration defines exactly the eleven machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 10 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 11 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -333,16 +335,46 @@ private
    TTRUE TTRUE TTRUE 2 T= 1 T=
    TTRUE TTRUE TTRUE TTRUE 1 T= 1 T= 2 T= ;
 
+\ The copy: one register read, one register written, no attribute, no tie, and
+\ the same spelling every other reader sees. The absent tie is the whole content
+\ of the form - a copy whose two registers were one field would be an
+\ instruction that does nothing - so it is asserted here beside the shape.
+: MOV-BODY ( IR-CTX:ctx -- bool n n n n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:MOV A64IR:OPCODE {: v:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv v s" a64.mov" IR-SYM:FEQ?
+   rv v IR-SCHEMA:FOPERANDS
+   rv v IR-SCHEMA:FRESULTS
+   rv v IR-SCHEMA:FATTRS
+   rv v IR-SCHEMA:FTIES
+   rv v IR-SCHEMA:FTERMINATOR?
+   rv v IR-SCHEMA:FTRAPS?
+   rv v IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ ;
+
+: MOV-CASE ( -- )
+   s" the copy reads one register, writes one, and ties neither" T-LABEL
+   BND [: MOV-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TFALSE TFALSE 0 T= 0 T= 1 T= 1 T= TTRUE ;
+
 \ ---- the tied register field -------------------------------------------------
 \ The move-wide overwrite is the one form of this dialect whose result and whose
 \ operand are one register field, and its schema is where that is written down.
 \ Every other form names each of its registers once, so a consumer that reads the
 \ tie gets the constraint from the form instead of from an opcode's name.
-: TIE-BODY ( IR-CTX:ctx -- n n n n n n n n )
+: TIE-BODY ( IR-CTX:ctx -- n n n n n n n n n )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:MOVK A64IR:OPCODE {: k:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:MOV A64IR:OPCODE {: v:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:ADD A64IR:OPCODE {: a:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:SUB A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
@@ -353,6 +385,7 @@ private
    rv k IR-SCHEMA:FTIES
    qv rv k 0 IR-SCHEMA:FTIE-RESULT@
    qv rv k 0 IR-SCHEMA:FTIE-OPERAND@
+   rv v IR-SCHEMA:FTIES
    rv z IR-SCHEMA:FTIES
    rv a IR-SCHEMA:FTIES
    rv s IR-SCHEMA:FTIES
@@ -362,7 +395,7 @@ private
 : TIE-CASE ( -- )
    s" the move-wide overwrite declares its one tie and nothing else does" T-LABEL
    BND [: TIE-BODY ;] IR-CTX:WITH-CONTEXT
-   0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 1 T= ;
+   0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 0 T= 1 T= ;
 
 \ ---- the move-wide operand refusals ------------------------------------------
 \ A caller reaches the two operand fields only through the attribute builders, so
@@ -583,6 +616,10 @@ private
    drop
    FRAME-DEPTH-CASES ;
 
+: GROUP-MOV ( IR-CTX:ctx -- )
+   drop
+   MOV-CASE ;
+
 : GROUP-TIE ( IR-CTX:ctx -- )
    drop
    TIE-CASE ;
@@ -615,6 +652,7 @@ public
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-MOV ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-IMM-REFUSE ;] IR-CTX:WITH-CONTEXT

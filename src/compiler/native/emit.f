@@ -122,17 +122,18 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-10 constant OPCODES-N
+11 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
-2 constant O-ADD
-3 constant O-SUB
-4 constant O-MUL
-5 constant O-STORE
-6 constant O-LOAD
-7 constant O-RESERVE
-8 constant O-RELEASE
-9 constant O-RET
+2 constant O-MOV
+3 constant O-ADD
+4 constant O-SUB
+5 constant O-MUL
+6 constant O-STORE
+7 constant O-LOAD
+8 constant O-RESERVE
+9 constant O-RELEASE
+10 constant O-RET
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -205,6 +206,7 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    MATCH A64IR:opcode
       movz    OF O-MOVZ    ENDOF
       movk    OF O-MOVK    ENDOF
+      mov     OF O-MOV     ENDOF
       add     OF O-ADD     ENDOF
       sub     OF O-SUB     ENDOF
       mul     OF O-MUL     ENDOF
@@ -219,6 +221,7 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    case
       O-MOVZ    of A64IR-OPCODE:MOVZ    endof
       O-MOVK    of A64IR-OPCODE:MOVK    endof
+      O-MOV     of A64IR-OPCODE:MOV     endof
       O-ADD     of A64IR-OPCODE:ADD     endof
       O-SUB     of A64IR-OPCODE:SUB     endof
       O-MUL     of A64IR-OPCODE:MUL     endof
@@ -322,6 +325,13 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id IMM-OF  id HALF-OF  MOVKHW ;
 
+\ The copy that puts a returned value where the routine's contract says it
+\ leaves. ENC-MOV is the assembler's own name for the Orr-with-zero-register
+\ form ARM64 spells a move as, so no second idiom is written here.
+: WORD-MOV ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-MOV ;
+
 \ The shifted-register three-operand forms differ only in which encoder they end
 \ in, so they share the operand reading.
 : TRIPLE ( IR-ID:ir-op-id -- n n n )
@@ -356,6 +366,7 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    MATCH A64IR:opcode
       movz    OF id WORD-MOVZ ENDOF
       movk    OF id WORD-MOVK ENDOF
+      mov     OF id WORD-MOV ENDOF
       add     OF id TRIPLE ENC-ADD ENDOF
       sub     OF id TRIPLE ENC-SUB ENDOF
       mul     OF id TRIPLE ENC-MUL ENDOF
@@ -514,6 +525,7 @@ public
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b A64IR-OPCODE:MOVZ    BIND1
    c b A64IR-OPCODE:MOVK    BIND1
+   c b A64IR-OPCODE:MOV     BIND1
    c b A64IR-OPCODE:ADD     BIND1
    c b A64IR-OPCODE:SUB     BIND1
    c b A64IR-OPCODE:MUL     BIND1

@@ -21,7 +21,9 @@
 \
 \ EACH PATH IS NORMALIZED AGAINST ITS OWN EMPTY CALL. The two paths are entered
 \ differently - an old row is called as an ordinary Habu word, a new row through
-\ the C-ABI call, because the chain has no calling-convention binding yet - so
+\ the C-ABI call, because the convention the chain binds is the C one and a Habu
+\ word's own data-stack entry does not exist yet (dot
+\ habu-enter-and-leave-2684e515) - so
 \ the call overhead is not the same on both sides and no subtraction can make it
 \ so. Each path therefore declares its own calibration row, an empty call
 \ entered the same way its other rows are, and every cost is a multiple of that.
