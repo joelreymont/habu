@@ -26,7 +26,7 @@ private
 \ The row shape src/compiler/ir/schema.f commits to, mirrored here so a fixture
 \ can append a raw row past that package's constructors and prove the decoders
 \ still hold. A change to the layout must change this mirror too.
-22 constant ROW-CELLS
+24 constant ROW-CELLS
 0 constant F-NAME
 3 constant F-OPTAIL
 6 constant F-RSTAIL
@@ -43,6 +43,7 @@ private
 20 constant F-RULE
 1 constant F-OPST
 2 constant F-OPN
+23 constant F-TIN
 -1 constant NO-POISON
 
 \ ---- bindings ----------------------------------------------------------------
@@ -112,6 +113,7 @@ private
 22 constant V-BASE-C
 23 constant V-SUCC
 24 constant V-TERM
+25 constant V-TIE
 
 : CONTROL-BASE? ( n -- bool )
    {: v:n :}
@@ -159,6 +161,12 @@ private
    v V-ATN = if c sp sr key s" attr.beta" IR-SYM:INTERN IR-SCHEMA:ADD-ATTR then
    v V-ATEXT = if IR-SCHEMA:ADD-ATTR-EXT then ;
 
+\ The base declares one operand and one result of the same type, so the tie
+\ variation is the base with that one pair declared as one register field.
+: STAGE-TIES ( n -- )
+   {: v:n :}
+   v V-TIE = if 0 0 IR-SCHEMA:ADD-TIE then ;
+
 : STAGE-CONTROL ( n -- )
    {: v:n :}
    v V-SUCC = if true 1 0 IR-SCHEMA:SET-CONTROL exit then
@@ -198,6 +206,7 @@ private
    c tp tr key v STAGE-OPS
    c tp tr key v STAGE-RES
    c sp sr key v STAGE-ATTRS
+   v STAGE-TIES
    v STAGE-CONTROL
    v STAGE-EFFECT
    v V-TRAP = IR-SCHEMA:SET-TRAP
@@ -243,7 +252,7 @@ private
    a r IR-SCHEMA:TABLE-DIGEST ;
 
 \ ---- reading one defined schema back -----------------------------------------
-: READ-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool n )
+: READ-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool n n )
    {: c:IR-CTX:ctx :}
    c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
    c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
@@ -261,12 +270,13 @@ private
    r op IR-SCHEMA:REGIONS
    r op IR-SCHEMA:TRAPS?
    r op IR-SCHEMA:TERMINATOR?
-   r op IR-SCHEMA:ATTRS ;
+   r op IR-SCHEMA:ATTRS
+   r op IR-SCHEMA:TIES ;
 
 : READ-CASE ( -- )
    s" a defined schema reads back the counts and flags it declared" T-LABEL
    BND [: READ-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= TFALSE TFALSE 0 T= 0 T= 1 T= TFALSE 1 T= TTRUE 1 T= ;
+   0 T= 1 T= TFALSE TFALSE 0 T= 0 T= 1 T= TFALSE 1 T= TTRUE 1 T= ;
 
 : FIELD-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
@@ -476,7 +486,7 @@ private
    s" a rejected definition consumes the stage" T-LABEL
    [: MISS-CONTROL ;] E-IR-SCHEMA-FIELD TTHROWSQ
    BND [: READ-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= TFALSE TFALSE 0 T= 0 T= 1 T= TFALSE 1 T= TTRUE 1 T=
+   0 T= 1 T= TFALSE TFALSE 0 T= 0 T= 1 T= TFALSE 1 T= TTRUE 1 T=
    s" abandoning a schema leaves the next one free to open" T-LABEL
    BND [: ABANDON-BODY ;] IR-CTX:WITH-CONTEXT 1 T=
    s" opening a schema while one is open rejects" T-LABEL
@@ -671,6 +681,129 @@ private
    s" a terminator with successors and no results defines" T-LABEL
    3 TERM-RUN ;
 
+\ ---- tied operands -----------------------------------------------------------
+\ One fixture per way a tie can be wrong, each staged inside a schema that is
+\ legal apart from the tie, so the refusal is the tie's own. Case 0 is the legal
+\ one: one operand and one result of the same type, declared as one register
+\ field.
+: TIE-OPS ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx tp:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key k:n :}
+   k 6 = if c tp tr key I64 IR-SCHEMA:ADD-OPERAND-TAIL exit then
+   k 7 = if c tp tr key U8 IR-SCHEMA:ADD-OPERAND exit then
+   c tp tr key I64 IR-SCHEMA:ADD-OPERAND
+   k 4 = if c tp tr key I64 IR-SCHEMA:ADD-OPERAND then ;
+
+: TIE-RES ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx tp:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key k:n :}
+   k 8 = if exit then
+   c tp tr key I64 IR-SCHEMA:ADD-RESULT
+   k 5 = if c tp tr key I64 IR-SCHEMA:ADD-RESULT then ;
+
+: TIE-CONTROL ( n -- )
+   {: k:n :}
+   k 8 = if
+      true 0 0 IR-SCHEMA:SET-CONTROL exit
+   then
+   false 0 0 IR-SCHEMA:SET-CONTROL ;
+
+: TIE-DECL ( n -- )
+   {: k:n :}
+   k 1 = if 1 0 IR-SCHEMA:ADD-TIE exit then
+   k 2 = if 0 1 IR-SCHEMA:ADD-TIE exit then
+   k 3 = if -1 0 IR-SCHEMA:ADD-TIE exit then
+   k 4 = if
+      0 0 IR-SCHEMA:ADD-TIE
+      0 1 IR-SCHEMA:ADD-TIE exit
+   then
+   k 5 = if
+      0 0 IR-SCHEMA:ADD-TIE
+      1 0 IR-SCHEMA:ADD-TIE exit
+   then
+   0 0 IR-SCHEMA:ADD-TIE ;
+
+: TIE-STAGE ( IR-CTX:ctx IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ARENA:arena IR-ID:ir-module-key n -- )
+   {: c:IR-CTX:ctx sp:IR-ARENA:arena sr:IR-ARENA:arena tp:IR-ARENA:arena tr:IR-ARENA:arena key:IR-ID:ir-module-key k:n :}
+   c sp sr key V-BASE OP-SYM IR-SCHEMA:BEGIN-OP
+   c tp tr key k TIE-OPS
+   c tp tr key k TIE-RES
+   k TIE-DECL
+   k TIE-CONTROL
+   IR-SCHEMA:SET-PURE
+   false IR-SCHEMA:SET-TRAP
+   CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET
+   c sp sr key V-BASE RULE-SYM IR-SCHEMA:SET-RULE
+   c sp sr key V-BASE REND-SYM IR-SCHEMA:SET-RENDERER ;
+
+: TIE-BODY ( n IR-CTX:ctx -- )
+   {: k:n c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr tp tr key k TIE-STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE ;
+
+: TIE-RUN ( n -- )
+   BND [: TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ The declared tie reads back through the live readers and, once the module is
+\ frozen, through the view readers, which is the pair a register allocator uses.
+: TIE-READ-BODY ( IR-CTX:ctx -- n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr tp tr key 0 TIE-STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE
+   c sp sr key V-BASE OP-SYM {: op:IR-ID:ir-symbol-id :}
+   r op IR-SCHEMA:TIES
+   a r op 0 IR-SCHEMA:TIE-RESULT@
+   a r op 0 IR-SCHEMA:TIE-OPERAND@
+   a IR-ARENA:FREEZE {: pv:IR-ARENA:view :}
+   r IR-ARENA:FREEZE {: rv:IR-ARENA:view :}
+   rv op IR-SCHEMA:FTIES
+   pv rv op 0 IR-SCHEMA:FTIE-RESULT@
+   pv rv op 0 IR-SCHEMA:FTIE-OPERAND@ ;
+
+: TIE-IDX-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c IR-CTX:NEW-MODULE drop {: key:IR-ID:ir-module-key :}
+   c key SYM-NEW {: sp:IR-ARENA:arena sr:IR-ARENA:arena :}
+   c key TYP-NEW {: tp:IR-ARENA:arena tr:IR-ARENA:arena :}
+   c sp sr key V-BASE TAB-NEW {: a:IR-ARENA:arena r:IR-ARENA:arena :}
+   c sp sr tp tr key 0 TIE-STAGE
+   c a r key sr tr IR-SCHEMA:DEFINE
+   a r  c sp sr key V-BASE OP-SYM  1 IR-SCHEMA:TIE-RESULT@ drop ;
+
+: TIE-IDX-RUN ( -- )
+   BND [: TIE-IDX-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TIE-CASES ( -- )
+   s" a result tied to an operand of the same type defines" T-LABEL
+   0 TIE-RUN
+   s" the declared tie reads back live and through the frozen views" T-LABEL
+   BND [: TIE-READ-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 1 T= 0 T= 0 T= 1 T=
+   s" a tie naming a result past the result list rejects" T-LABEL
+   [: 1 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" a tie naming an operand past the operand list rejects" T-LABEL
+   [: 2 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" a negative tied result ordinal rejects" T-LABEL
+   [: 3 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" tying one result to two operands rejects" T-LABEL
+   [: 4 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" tying two results to one operand rejects" T-LABEL
+   [: 5 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" a tie onto the variadic operand tail rejects" T-LABEL
+   [: 6 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" a tie between two different types rejects" T-LABEL
+   [: 7 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" a terminator tying anything rejects, having no results" T-LABEL
+   [: 8 TIE-RUN ;] E-IR-SCHEMA-TIE TTHROWSQ
+   s" a tie index past the declared ties rejects" T-LABEL
+   [: TIE-IDX-RUN ;] E-IR-SCHEMA-BOUND TTHROWSQ ;
+
 \ ---- target legality ---------------------------------------------------------
 : TGT-BODY ( n IR-CTX:ctx -- )
    {: k:n c:IR-CTX:ctx :}
@@ -806,6 +939,7 @@ private
    s" the semantic rule participates in the digest" T-LABEL     V-RULE DIG-MOVES
    s" the renderer participates in the digest" T-LABEL          V-REND DIG-MOVES
    s" the owning dialect participates in the digest" T-LABEL    V-DIALECT DIG-MOVES
+   s" a declared tie participates in the digest" T-LABEL        V-TIE DIG-MOVES
    s" the successor count participates in the digest" T-LABEL   V-SUCC CDIG-MOVES
    s" the terminator flag participates in the digest" T-LABEL   V-TERM CDIG-MOVES
    ARCH-DIG-CASE
@@ -1057,7 +1191,8 @@ private
    k 9 = if r op IR-SCHEMA:ALIAS@ drop then
    k 10 = if r key op IR-SCHEMA:RULE@ drop then
    k 11 = if a r key op 0 IR-SCHEMA:OPERAND@ drop then
-   k 12 = if r op IR-SCHEMA:FEATURES@ drop then ;
+   k 12 = if r op IR-SCHEMA:FEATURES@ drop then
+   k 13 = if a r op 0 IR-SCHEMA:TIE-RESULT@ drop then ;
 
 : FORGE-RUN ( n n n -- )
    BND [: FORGE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1096,7 +1231,9 @@ private
    s" a forged operand window past the pool rejects" T-LABEL
    [: F-OPN 4 11 FORGE-RUN ;] E-IR-SCHEMA-STATE TTHROWSQ
    s" a forged feature word outside the known bits rejects" T-LABEL
-   [: F-FEAT $8000 12 FORGE-RUN ;] E-CTGT-FEATURE-BITS TTHROWSQ ;
+   [: F-FEAT $8000 12 FORGE-RUN ;] E-CTGT-FEATURE-BITS TTHROWSQ
+   s" a forged tie window past the pool rejects" T-LABEL
+   [: F-TIN 4 13 FORGE-RUN ;] E-IR-SCHEMA-STATE TTHROWSQ ;
 
 \ ---- frozen modules ----------------------------------------------------------
 : FZ-BODY ( IR-CTX:ctx -- n bool n n bool bool )
@@ -1195,7 +1332,7 @@ private
    s" fresh contexts and tables succeed after teardown" T-LABEL
    4 0 ?do
       BND [: READ-BODY ;] IR-CTX:WITH-CONTEXT
-      1 T= TFALSE TFALSE 0 T= 0 T= 1 T= TFALSE 1 T= TTRUE 1 T=
+      0 T= 1 T= TFALSE TFALSE 0 T= 0 T= 1 T= TFALSE 1 T= TTRUE 1 T=
    loop ;
 
 \ ---- the checker keeps the API sealed ----------------------------------------
@@ -1247,6 +1384,10 @@ private
    EFFECT-CASES
    TERM-CASES ;
 
+: HARNESS-TIE ( IR-CTX:ctx -- )
+   drop
+   TIE-CASES ;
+
 : HARNESS-TARGET ( IR-CTX:ctx -- )
    drop
    TARGET-CASES ;
@@ -1282,6 +1423,7 @@ public
    BND [: HARNESS-STAGE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-ARITY ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-EFFECT ;] IR-CTX:WITH-CONTEXT
+   BND [: HARNESS-TIE ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-TARGET ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-OWNER ;] IR-CTX:WITH-CONTEXT
    BND [: HARNESS-CAP ;] IR-CTX:WITH-CONTEXT

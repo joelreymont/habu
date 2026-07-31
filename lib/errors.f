@@ -548,6 +548,7 @@ public
 -8012 constant E-IR-SCHEMA-KIND    \ a field reader applied to a schema whose effect shape does not carry that field
 -8013 constant E-IR-SCHEMA-DIGEST  \ a presented schema-table digest does not match the recomputed one
 -8014 constant E-IR-SCHEMA-VERSION \ a schema major or minor version outside the accepted range
+-8015 constant E-IR-SCHEMA-TIE     \ a tied operand declaration naming no fixed entry, a mismatched type, or a field tied twice
 
 \ Compiler operation and value store (package IR-OP): -8020..-8039
 -8020 constant E-IR-OP-STATE     \ an operation store failed its header, row-shape, window, or stored-code recheck

@@ -45,6 +45,7 @@
 \   extension-set flag                      - design line 479
 \   semantic rule identifier symbol         - design line 242
 \   renderer identifier symbol              - design line 243
+\   tied operand list and count             - see the note below
 \ Design line 234 asks for arity RULES rather than a bare count, so an operand
 \ or result list is a fixed sequence of types optionally ending in a variadic
 \ tail: the last listed type then describes every further operand or result.
@@ -91,6 +92,23 @@
 \     values to a successor as its block arguments (design lines 706-708) and
 \     design line 532 makes those arguments the matched interface, so a
 \     terminator has nowhere to put a result of its own.
+\
+\ TIED OPERANDS BELONG TO THE FORM. Some instruction forms name one register
+\ field twice: the move-wide overwrite keeps the bits of its destination it does
+\ not write, so the value it keeps and the value it produces are one register. In
+\ SSA those are two values, and a register allocator has to put them in the same
+\ physical register or the instruction means something else. That is a property
+\ of the form, exactly as its operand types are, so a schema declares it the way
+\ an instruction descriptor does: a list of ties, each naming one result ordinal
+\ and the operand ordinal it shares a register with. The default is no tie, so a
+\ form that declares none has none - by declaration, not by a reader's guess.
+\ A tie is checked whole at definition and rejects with E-IR-SCHEMA-TIE: both
+\ ordinals must name a fixed entry of their list, never a variadic tail, because
+\ a tail stands for a run of operands and "the tail" names no single register;
+\ the tied result and operand must have the same type, since one register holds
+\ one value; and no result and no operand may be tied twice, because one field
+\ cannot hold two values and two fields cannot be one. A terminator therefore
+\ cannot tie anything at all - it has no results to tie.
 \
 \ TARGET LEGALITY COMES FROM THE BINDING. Design line 241 records the legal
 \ target capabilities and design line 541 makes the freeze check "target-specific
@@ -241,7 +259,18 @@ $53435231 constant SCR-MAGIC         \ "SCR1": the row-table header format tag
 19 constant OFF-TERM                 \ design line 237
 20 constant OFF-RULE                 \ design line 242
 21 constant OFF-REND                 \ design line 243
-22 constant ROW-CELLS
+22 constant OFF-TIST                 \ the tied-operand list
+23 constant OFF-TIN
+24 constant ROW-CELLS
+
+\ A tie is stored as a pair of cells, the result ordinal then the operand
+\ ordinal, so a stored tie list is twice as many cells as it holds ties.
+2 constant TIE-PAIR
+0 constant TIE-RS                    \ the result half of a stored pair
+1 constant TIE-OP                    \ the operand half
+
+: TIE-CELLS ( n -- n )
+   TIE-PAIR * ;
 
 256 constant CAP-MAX                 \ committed opcodes per dialect table
 $FFFFFFFF PHDR-CELLS - constant POOL-MAX
@@ -570,14 +599,19 @@ $FFFF constant VERSION-MAX           \ committed schema major/minor ceiling
 1 constant MODE-OPEN
 -1 constant UNSET
 
-\ The three staged lists share one pair of arrays, addressed by a list index
-\ and a fixed segment base, because a Habu word cannot take a storage array as
-\ an argument: one indexed pair keeps the append, validate, and copy helpers
-\ shared instead of written out three times.
-3 constant LIST#
+\ The four staged lists share one pair of arrays, addressed by a list index and
+\ a fixed segment base, because a Habu word cannot take a storage array as an
+\ argument: one indexed pair keeps the append, validate, and copy helpers shared
+\ instead of written out four times. Each entry occupies one slot of each array:
+\ the first holds the entry's ordinal, and the second its companion cell - the
+\ owning module serial for the three identity lists, and the tied operand
+\ ordinal for the tie list, whose entries are two ordinals of this schema rather
+\ than an identity of the module.
+4 constant LIST#
 0 constant L-OP
 1 constant L-RS
 2 constant L-AT
+3 constant L-TI
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable STG-MODE
@@ -719,6 +753,40 @@ create STG-T LIST# cells allot
    L-OP ST@ 0<> L-OP SN@ 0= and if E-IR-SCHEMA-ARITY throw then
    L-RS ST@ 0<> L-RS SN@ 0= and if E-IR-SCHEMA-ARITY throw then ;
 
+\ A tied ordinal names one fixed entry of its list. A variadic tail stands for
+\ every further operand or result, so it names no single register field and
+\ cannot be tied.
+: FIXED-CK ( n n -- )
+   {: l:n ord:n :}
+   ord 0 < ord l SN@ >= or if E-IR-SCHEMA-TIE throw then
+   l ST@ 0<> ord l SN@ 1- = and if E-IR-SCHEMA-TIE throw then ;
+
+\ One register holds one value, so the tied result and the tied operand have to
+\ be the same type of the same module.
+: TIE-TYPE-CK ( n n -- )
+   {: rs:n op:n :}
+   L-RS SEG rs + SV@  L-OP SEG op + SV@  <> if E-IR-SCHEMA-TIE throw then
+   L-RS SEG rs + SO@  L-OP SEG op + SO@  <> if E-IR-SCHEMA-TIE throw then ;
+
+\ No result and no operand may be tied twice: one register field cannot hold two
+\ values, and two register fields cannot be one.
+: TIE-ONCE-CK ( n -- )
+   {: k:n :}
+   k 0 ?do
+      L-TI SEG k + SV@  L-TI SEG i + SV@  = if E-IR-SCHEMA-TIE throw then
+      L-TI SEG k + SO@  L-TI SEG i + SO@  = if E-IR-SCHEMA-TIE throw then
+   loop ;
+
+: TIES-CK ( -- )
+   L-TI SN@ 0 ?do
+      L-TI SEG i + SV@ {: rs:n :}
+      L-TI SEG i + SO@ {: op:n :}
+      L-RS rs FIXED-CK
+      L-OP op FIXED-CK
+      rs op TIE-TYPE-CK
+      i TIE-ONCE-CK
+   loop ;
+
 \ Design lines 236, 237, 531, 532: control-flow edges belong to the block's one
 \ terminator, and a terminator hands its values to the successor as block
 \ arguments rather than producing results of its own.
@@ -765,7 +833,7 @@ create STG-T LIST# cells allot
 : ROOM-CK ( IR-ARENA:arena IR-ARENA:arena -- )
    {: a:IR-ARENA:arena r:IR-ARENA:arena :}
    r CNT r HC-CAP LCELL@ >= if E-IR-SCHEMA-CAP throw then
-   a PCELLS L-OP SN@ + L-RS SN@ + L-AT SN@ +
+   a PCELLS L-OP SN@ + L-RS SN@ + L-AT SN@ + L-TI SN@ TIE-CELLS +
    a PC-CAP LCELL@ > if E-IR-SCHEMA-CAP throw then ;
 
 : CELL+ ( IR-CTX:ctx IR-ARENA:arena n -- )
@@ -779,8 +847,19 @@ create STG-T LIST# cells allot
    loop
    st ;
 
-: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena n n n -- )
-   {: c:IR-CTX:ctx r:IR-ARENA:arena opst:n rsst:n atst:n :}
+\ The tie list is two cells per entry, so it has an appender of its own rather
+\ than the shared one.
+: TIE-LIST-ADD ( IR-CTX:ctx IR-ARENA:arena -- n )
+   {: c:IR-CTX:ctx a:IR-ARENA:arena :}
+   a PCELLS {: st:n :}
+   L-TI SN@ 0 ?do
+      c a L-TI SEG i + SV@ CELL+
+      c a L-TI SEG i + SO@ CELL+
+   loop
+   st ;
+
+: ROW-ADD ( IR-CTX:ctx IR-ARENA:arena n n n n -- )
+   {: c:IR-CTX:ctx r:IR-ARENA:arena opst:n rsst:n atst:n tist:n :}
    c r STG-NAME @ CELL+
    c r opst CELL+   c r L-OP SN@ CELL+   c r L-OP ST@ CELL+
    c r rsst CELL+   c r L-RS SN@ CELL+   c r L-RS ST@ CELL+
@@ -791,7 +870,8 @@ create STG-T LIST# cells allot
    c r STG-TRAP @ CELL+
    c r STG-ARCH @ CELL+   c r STG-FEAT @ CELL+
    c r STG-TERM @ CELL+
-   c r STG-RULE @ CELL+   c r STG-REND @ CELL+ ;
+   c r STG-RULE @ CELL+   c r STG-REND @ CELL+
+   c r tist CELL+   c r L-TI SN@ CELL+ ;
 
 \ ---- creation checks ---------------------------------------------------------
 : ROW-CAP-OK ( n -- )
@@ -867,6 +947,16 @@ public
 : ADD-RESULT-TAIL ( IR-ID:ir-type-id -- )
    L-RS swap TYPE+
    1 L-RS ST! ;
+
+\ This result and this operand are one register field of the instruction form,
+\ named by their ordinals in the two lists above. Declaring the tie here is what
+\ lets a register allocator read the constraint instead of knowing which opcode
+\ has it; the ordinals are checked against the finished lists at DEFINE, so the
+\ two lists may be declared in any order around this.
+: ADD-TIE ( n n -- )
+   {: rs:n op:n :}
+   STG-OPEN-CK
+   L-TI rs op ORD+ ;
 
 \ Design line 479: an attribute key this opcode requires.
 : ADD-ATTR ( IR-ID:ir-symbol-id -- )
@@ -965,6 +1055,7 @@ public
    FIELDS-CK
    ARITY-CK
    TERM-CK
+   TIES-CK
    syr key STG-NAME @ STG-NAMEO @ STG-SYM-CK
    syr key STG-RULE @ STG-RULEO @ STG-SYM-CK
    syr key STG-REND @ STG-RENDO @ STG-SYM-CK
@@ -977,7 +1068,8 @@ public
    c a L-OP LIST-ADD {: opst:n :}
    c a L-RS LIST-ADD {: rsst:n :}
    c a L-AT LIST-ADD {: atst:n :}
-   c r opst rsst atst ROW-ADD ;
+   c a TIE-LIST-ADD {: tist:n :}
+   c r opst rsst atst tist ROW-ADD ;
 
 \ ---- table readers -----------------------------------------------------------
 : SCHEMAS ( IR-ARENA:arena -- n )
@@ -1033,6 +1125,11 @@ public
 
 : ATTRS ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    OFF-ATN FLD ;
+
+\ How many ties this form declares. Zero is the default and the common answer:
+\ most forms name every register field once.
+: TIES ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   OFF-TIN FLD ;
 
 : ATTR-EXT? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
    OFF-ATEXT FLD N>BOOL ;
@@ -1092,6 +1189,16 @@ private
    i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
    a st i + PC@ ORD-OK ;
 
+\ One half of one stored tie, revalidated the same way: the whole tie list is
+\ TIE-PAIR cells per entry, and the index counts ties rather than cells.
+: TWIN@ ( IR-ARENA:arena IR-ARENA:arena n n n -- n )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n i:n col:n :}
+   r l OFF-TIST RC@ {: st:n :}
+   r l OFF-TIN RC@ {: ln:n :}
+   a PCELLS st ln TIE-CELLS WIN-CK-N
+   i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
+   a st i TIE-CELLS + col + PC@ ORD-OK ;
+
 : FWIN@ ( IR-ARENA:view IR-ARENA:view n n n n -- n )
    {: pv:IR-ARENA:view rv:IR-ARENA:view l:n stoff:n lenoff:n i:n :}
    rv l stoff FRC@ {: st:n :}
@@ -1099,6 +1206,14 @@ private
    pv FPCELLS st ln WIN-CK-N
    i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
    pv st i + FPC@ ORD-OK ;
+
+: FTWIN@ ( IR-ARENA:view IR-ARENA:view n n n -- n )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view l:n i:n col:n :}
+   rv l OFF-TIST FRC@ {: st:n :}
+   rv l OFF-TIN FRC@ {: ln:n :}
+   pv FPCELLS st ln TIE-CELLS WIN-CK-N
+   i 0 < i ln >= or if E-IR-SCHEMA-BOUND throw then
+   pv st i TIE-CELLS + col + FPC@ ORD-OK ;
 
 public
 
@@ -1117,10 +1232,22 @@ public
    a r key KEY-CK
    key a r  r op ROW-OF  OFF-ATST OFF-ATN i WIN@ IR-ID:PACK-SYMBOL ;
 
+\ The two halves of one tie. Both are ordinals into this schema's own result and
+\ operand lists rather than identities of the module, so neither takes the key.
+: TIE-RESULT@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- n )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id i:n :}
+   a r PAIR-CK
+   a r  r op ROW-OF  i TIE-RS TWIN@ ;
+
+: TIE-OPERAND@ ( IR-ARENA:arena IR-ARENA:arena IR-ID:ir-symbol-id n -- n )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena op:IR-ID:ir-symbol-id i:n :}
+   a r PAIR-CK
+   a r  r op ROW-OF  i TIE-OP TWIN@ ;
+
 \ ---- digests (design lines 602, 1716) ----------------------------------------
 private
 
-1 constant PRE-VER                \ this file's canonical preimage version
+2 constant PRE-VER                \ this file's canonical preimage version
 
 0 constant DS-TAG
 1 constant DS-VER
@@ -1144,8 +1271,10 @@ private
 19 constant DS-TERM
 20 constant DS-RULE
 21 constant DS-REND
-22 constant DS-FIX
-DS-FIX ARITY-MAX 3 * + constant DS-SLOTS
+22 constant DS-TIN
+23 constant DS-FIX
+\ Three lists of one cell per entry, and the tie list of TIE-PAIR cells each.
+DS-FIX ARITY-MAX 3 * + ARITY-MAX TIE-CELLS + constant DS-SLOTS
 DS-SLOTS CDIGEST:SLOT-BYTES * constant DS-BYTES
 create DPRE DS-BYTES allot
 
@@ -1185,7 +1314,8 @@ create TPRE TS-BYTES allot
    r l OFF-FEAT RC@ DS-FEAT DP!
    r l OFF-TERM RC@ DS-TERM DP!
    r l OFF-RULE RC@ DS-RULE DP!
-   r l OFF-REND RC@ DS-REND DP! ;
+   r l OFF-REND RC@ DS-REND DP!
+   r l OFF-TIN RC@ DS-TIN DP! ;
 
 \ Append one stored list to the preimage and answer the next free slot. The
 \ list's length is already fixed earlier in the preimage, so the concatenation
@@ -1199,6 +1329,18 @@ create TPRE TS-BYTES allot
    loop
    at ln + ;
 
+\ The tie list, both halves of every tie in declaration order. Its length is
+\ already fixed earlier in the preimage, so this stays injective too.
+: DPRE-TIES ( IR-ARENA:arena IR-ARENA:arena n n -- n )
+   {: a:IR-ARENA:arena r:IR-ARENA:arena l:n at:n :}
+   r l OFF-TIN RC@ {: ln:n :}
+   at ln TIE-CELLS + DS-SLOTS > if E-IR-SCHEMA-STATE throw then
+   ln 0 ?do
+      a r l i TIE-RS TWIN@  at i TIE-CELLS + DP!
+      a r l i TIE-OP TWIN@  at i TIE-CELLS + TIE-OP + DP!
+   loop
+   at ln TIE-CELLS + ;
+
 : ROW-DIGEST ( IR-ARENA:arena IR-ARENA:arena n n -- CDIGEST:digest )
    {: a:IR-ARENA:arena r:IR-ARENA:arena dia:n l:n :}
    r dia l DPRE-FIX
@@ -1208,7 +1350,9 @@ create TPRE TS-BYTES allot
    {: at2:n :}
    a r l OFF-ATST OFF-ATN at2 DPRE-LIST
    {: at3:n :}
-   DPRE at3 CDIGEST:SLOT-BYTES * CDIGEST:COMPUTE ;
+   a r l at3 DPRE-TIES
+   {: at4:n :}
+   DPRE at4 CDIGEST:SLOT-BYTES * CDIGEST:COMPUTE ;
 
 : FDPRE-FIX ( IR-ARENA:view n n -- )
    {: rv:IR-ARENA:view dia:n l:n :}
@@ -1233,7 +1377,8 @@ create TPRE TS-BYTES allot
    rv l OFF-FEAT FRC@ DS-FEAT DP!
    rv l OFF-TERM FRC@ DS-TERM DP!
    rv l OFF-RULE FRC@ DS-RULE DP!
-   rv l OFF-REND FRC@ DS-REND DP! ;
+   rv l OFF-REND FRC@ DS-REND DP!
+   rv l OFF-TIN FRC@ DS-TIN DP! ;
 
 : FDPRE-LIST ( IR-ARENA:view IR-ARENA:view n n n n -- n )
    {: pv:IR-ARENA:view rv:IR-ARENA:view l:n stoff:n lenoff:n at:n :}
@@ -1244,6 +1389,16 @@ create TPRE TS-BYTES allot
    loop
    at ln + ;
 
+: FDPRE-TIES ( IR-ARENA:view IR-ARENA:view n n -- n )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view l:n at:n :}
+   rv l OFF-TIN FRC@ {: ln:n :}
+   at ln TIE-CELLS + DS-SLOTS > if E-IR-SCHEMA-STATE throw then
+   ln 0 ?do
+      pv rv l i TIE-RS FTWIN@  at i TIE-CELLS + DP!
+      pv rv l i TIE-OP FTWIN@  at i TIE-CELLS + TIE-OP + DP!
+   loop
+   at ln TIE-CELLS + ;
+
 : FROW-DIGEST ( IR-ARENA:view IR-ARENA:view n n -- CDIGEST:digest )
    {: pv:IR-ARENA:view rv:IR-ARENA:view dia:n l:n :}
    rv dia l FDPRE-FIX
@@ -1253,7 +1408,9 @@ create TPRE TS-BYTES allot
    {: at2:n :}
    pv rv l OFF-ATST OFF-ATN at2 FDPRE-LIST
    {: at3:n :}
-   DPRE at3 CDIGEST:SLOT-BYTES * CDIGEST:COMPUTE ;
+   pv rv l at3 FDPRE-TIES
+   {: at4:n :}
+   DPRE at4 CDIGEST:SLOT-BYTES * CDIGEST:COMPUTE ;
 
 \ The table digest is a chain: seed over the header and the row count, then one
 \ fold step per record digest. Deterministic, covers every row, and needs no
@@ -1350,6 +1507,9 @@ public
 : FATTRS ( IR-ARENA:view IR-ID:ir-symbol-id -- n )
    OFF-ATN FFLD ;
 
+: FTIES ( IR-ARENA:view IR-ID:ir-symbol-id -- n )
+   OFF-TIN FFLD ;
+
 : FATTR-EXT? ( IR-ARENA:view IR-ID:ir-symbol-id -- bool )
    OFF-ATEXT FFLD N>BOOL ;
 
@@ -1413,6 +1573,16 @@ public
    pv rv FPAIR-CK
    rv key FRKEY-CK
    key pv rv  rv op FROW-OF  OFF-ATST OFF-ATN i FWIN@ IR-ID:PACK-SYMBOL ;
+
+: FTIE-RESULT@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id n -- n )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id i:n :}
+   pv rv FPAIR-CK
+   pv rv  rv op FROW-OF  i TIE-RS FTWIN@ ;
+
+: FTIE-OPERAND@ ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id n -- n )
+   {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id i:n :}
+   pv rv FPAIR-CK
+   pv rv  rv op FROW-OF  i TIE-OP FTWIN@ ;
 
 : FDIGEST ( IR-ARENA:view IR-ARENA:view IR-ID:ir-symbol-id -- CDIGEST:digest )
    {: pv:IR-ARENA:view rv:IR-ARENA:view op:IR-ID:ir-symbol-id :}
