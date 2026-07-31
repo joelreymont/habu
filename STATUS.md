@@ -49,11 +49,12 @@ elapsed-ms is informational only; per-phase timeouts remain as hang guards.
 Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
 gap (habu-add-pinned-engine-90090800).
 Certified (linux-arm64): 4197  Uncheckable: 0  Rejected: 0
-Certified (macos-arm64): 4232
+Certified (macos-arm64): 4265
 Host-script workflow hooks: retired and gated
 
-Attribution for the current linux-arm64 row, which is the count this tree
-measures today:
+Attribution for the linux-arm64 row, whose history the bullets below carry to
+4197. That row is owed a linux-host re-measure: the changes narrated after the
+bullets have moved it since, and this tree no longer measures 4197 on that host.
 
 - The master commit this stack now sits on measures 4058, and its own row
   already records that corrected number. Two of those definitions are the
@@ -229,6 +230,45 @@ touches the DO/LEAVE level stack. Its three callers `J-LVLEAVE`, `J-LOOP` and
 `test/gate-engine-lib.f` are not part of the assembled stage2 engine source and
 count nothing. The linux-arm64 row is owed the same single addition and is
 re-measured on that host.
+
+Seven changes on this stack move the macos-arm64 row from 4232 to 4265, a growth
+of 33 definitions in five engine files. Per file: `src/arch/arm64/asm.f` adds 11,
+`src/core/checker.f` adds 12, `src/habu/habu2.f` adds 8, `src/core/layout-valid.f`
+adds 1, and `src/core/lower-cert-base.f` adds 1. Per change:
+
+- Refusing out-of-range ARM64 operands at encode adds 11 net to
+  `src/arch/arm64/asm.f`. Twelve are new: the range and shape guards `OUT?`,
+  `?REG`, `?IMM16`, `?IMM12`, `?NIS`, `?SHIFT`, `?COND` and `?HW`, the scaled
+  offset helper `SCALE/`, and the field packers `DR2`, `DR3` and `XMW3`. One is
+  deleted, the old `XRD3` those packers replace. Every existing `ENC-*` encoder
+  is rewritten in place to call the guards, which changes no count.
+- The checker's source-tape observer seam adds 7 to `src/core/checker.f`: the
+  observer package's `INSTALL`, `ARM`, `DISARM`, `KIND`, `SCAN`, `TOKEN` and
+  `DONE`.
+- Declaring persisted callback table cells adds 1 to `src/habu/habu2.f`,
+  `BXTSTORE`.
+- Declaring persisted region-address cells adds 4 to `src/habu/habu2.f`:
+  `MARK-CELL`, `EMIT-CALLS`, `EMIT-MARK` and `EMIT-XT`.
+- Relocating persisted region address literals adds 3 to `src/habu/habu2.f`:
+  `MARK-SITE`, `EMIT-ADDR-SITE` and `EMIT-ADDRS`. `C-CODE-ADDR`, `C-DATA-ADDR`
+  and `C-DATA-ADDR-RAW` are rewritten rather than added.
+- Declaring persisted producer xt cells adds 6: `PE-Q`, `PE-QIN`, `PE-QOUT` and
+  `;PE-Q` in `src/core/checker.f`, `FULL-PRODUCE-INSTALL` in
+  `src/core/layout-valid.f`, and `DISPATCH-INSTALL` in
+  `src/core/lower-cert-base.f`. The `INSTALL` in `src/core/checker.f` and the
+  `FULL-INSTALL` in `src/core/lower-cert-base.f` are rewritten, not added.
+- Failing closed on an absent package context adds 1 to `src/core/checker.f`,
+  `CHECKER-PKG-CONTEXT-REJECT`.
+
+The native compiler chain this stack also landed — the 17 new and changed files
+under `src/compiler/`, among them the tape, immediate, HIR, elaborator, selector,
+a64 dialect, register allocator and verifier, spill planner, emitter, feed and
+certificate modules — adds nothing to this row. None of those files is part of
+the assembled stage2 engine source, so the census does not see them, exactly as
+it does not see `tools/` or `test/`. All 33 definitions above land in files the
+common boot and checker prefix appends on both targets, and none is conditional
+on the host, so the linux-arm64 row is owed the same 33 and reads 4230 the next
+time the gate measures on that host.
 
 The checker declaration-frame tagging does add engine text: the four
 `CHECKER-DECL-FRAME` primitive axiom rows grow the ahead-of-time seed by 16
