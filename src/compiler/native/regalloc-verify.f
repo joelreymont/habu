@@ -19,7 +19,42 @@
 \ handed. Which register fields an instruction form shares is likewise re-derived:
 \ the ties come out of the module's own schema table, so this file and the
 \ allocator agree because they read one declaration, not because one told the
-\ other.
+\ other. The dialect's own identities - which type is a register, which is a
+\ memory token, which attribute key carries a slot - come from the dialect
+\ itself, asked while the module was still being built, for the same reason: an
+\ identity taken from the allocator would be the allocator telling the checker
+\ what to check.
+\
+\ THE FRAME, AND WHAT IS DECIDABLE ABOUT IT. A value that lost its register lives
+\ in a slot of the routine's frame, and four facts about that are this file's:
+\   - every slot a frame access names is one the routine can actually address.
+\     A64EFF:CHECK-SLOT is the rule and it is called with the routine's own
+\     contract, so a slot outside the declared frame, an unaligned one, or one
+\     past the reach of the offset field is refused under A64EFF's name.
+\   - the frame the module reserves is the frame the contract declares, it is
+\     reserved by the block's first operation and released by the one in front of
+\     the terminator, and no other operation touches the stack pointer. A module
+\     that stores into a frame it never took is the failure this catches.
+\   - no two values share a slot: a slot is written once. That is stronger than
+\     "no two values live at once share a slot" and it is what is decidable from
+\     the module alone - a module records which slot a store writes, not which
+\     value a later load was meant for, so a slot handed to a second value would
+\     be indistinguishable from a slot legitimately reused if reuse were allowed.
+\     The allocator never reuses a slot, so this check is exact for it; an
+\     allocator that starts reusing slots reddens here, which is the right way to
+\     find out that this rule has to be generalised with it.
+\   - every load reads a slot something stored to first, so no reload invents a
+\     value out of whatever the frame happened to hold.
+\ What is NOT decided here is that the loaded value is the value the program
+\ wanted: that is a statement about the module this one was rewritten FROM, and
+\ this file is handed one module. The owner of that comparison is the lowering
+\ pass (dot habu-prove-the-spill-rewrite).
+\
+\ TWO VALUE CLASSES. A general register and a memory token, told apart by type.
+\ A token lives in no register, so it is covered and measured like every other
+\ value and takes part in no register rule: it is not checked against the pool,
+\ it never clashes with anything, and asking for its register is refused rather
+\ than answered with something that looks like one.
 \
 \ THE INTERFERENCE RULE, IN FULL. Two different values may share a register
 \ exactly when they are never live at the same instant. Order them by where they
@@ -49,10 +84,12 @@ require src/compiler/a64-effect.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
+require src/compiler/ir/attr.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
+require src/compiler/native/a64ir.f
 require src/compiler/native/regalloc.f
 
 package A64RAV
@@ -64,7 +101,7 @@ private
 \ The position of a block argument: before every operation of the block.
 -1 constant ENTRY
 
-7 constant VIEWS-N
+8 constant VIEWS-N
 0 constant V-OPP                     \ operation pool
 1 constant V-OPR                     \ operation rows
 2 constant V-VALR                    \ value rows
@@ -72,17 +109,39 @@ private
 4 constant V-BLKR                    \ block rows
 5 constant V-SCHP                    \ schema list pool
 6 constant V-SCHR                    \ schema rows
+7 constant V-ATTR                    \ attribute rows
 
 0 constant ST-NONE
 1 constant ST-ACCEPTED
 
+0 constant BOUND-NO
+1 constant BOUND-YES
+
+\ The two value classes this dialect has.
+0 constant C-GPR
+1 constant C-TOKEN
+
+\ This operation names no slot.
+-1 constant NOSLOT
+
+\ Slots one block may use: one per value at worst.
+VMAX constant SLOTS-MAX
+
 here CELL 1- and CELL swap - CELL 1- and allot
 variable ST
 ST-NONE ST !
+variable BND-MODE
+BOUND-NO BND-MODE !
 variable A-GEN
 0 A-GEN !
 variable N-VALS
 0 N-VALS !
+
+1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
+1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
+1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
+1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
 VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
@@ -90,6 +149,8 @@ VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
 create D-AT VMAX cells allot         \ where the module says each value is written
 create L-AT VMAX cells allot         \ where the module says each value is last read
 create S-AT VMAX cells allot         \ whether the block defines this value at all
+create C-AT VMAX cells allot         \ which class the module gives each value
+create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 
 : KEY ( -- IR-ID:ir-module-key )     0 S-KEY @ ;
 : VW ( n -- IR-ARENA:view )          S-VIEW @ ;
@@ -97,19 +158,28 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
 : DEF-AT ( n -- n )                  cells D-AT + @ ;
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
 : SEEN-AT ( n -- n )                 cells S-AT + @ ;
+: CLS-AT ( n -- n )                  cells C-AT + @ ;
 
 : DEF! ( n n -- )                    {: v:n k:n :} v k cells D-AT + ! ;
 : LAST! ( n n -- )                   {: v:n k:n :} v k cells L-AT + ! ;
 : SEEN! ( n n -- )                   {: v:n k:n :} v k cells S-AT + ! ;
+: CLS! ( n n -- )                    {: v:n k:n :} v k cells C-AT + ! ;
 
 : TABLES-CLEAR ( -- )
    VMAX 0 ?do
       0 i SEEN!
       ENTRY i DEF!
       ENTRY i LAST!
-   loop ;
+      C-GPR i CLS!
+   loop
+   SLOTS-MAX 0 ?do -1 i cells W-AT + ! loop ;
 
 \ ---- identity ----------------------------------------------------------------
+: SAME-SYM? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
+   {: x:IR-ID:ir-symbol-id y:IR-ID:ir-symbol-id :}
+   x IR-ID:SYMBOL-LOCAL y IR-ID:SYMBOL-LOCAL <> if false exit then
+   x IR-ID:SYMBOL-OWNER y IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? ;
+
 : SAME-TYPE? ( IR-ID:ir-type-id IR-ID:ir-type-id -- bool )
    {: x:IR-ID:ir-type-id y:IR-ID:ir-type-id :}
    x IR-ID:TYPE-LOCAL y IR-ID:TYPE-LOCAL <> if false exit then
@@ -145,7 +215,38 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
    m IR-BUILD:FFUN-ROWS   V-FUNR S-VIEW !
    m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW !
    m IR-BUILD:FSCHEMA-POOL V-SCHP S-VIEW !
-   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW ! ;
+   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW !
+   m IR-BUILD:FATTR-ROWS  V-ATTR S-VIEW ! ;
+
+\ ---- what an operation says about the frame ----------------------------------
+\ Nothing below asks which opcode an operation is. A frame access declares a
+\ memory effect in its own schema and carries its slot under the dialect's slot
+\ key; an operation that reserves or releases the frame declares a memory effect
+\ and carries no slot. Both are read off the declaration, so a form added to the
+\ dialect is judged by what it says about itself.
+: PURE? ( IR-ID:ir-op-id -- bool )
+   V-SCHR VW swap OPCODE-AT IR-SCHEMA:FEFFECT@
+   IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ ;
+
+: ATTR-INT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
+   {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
+   NOSLOT
+   V-OPR VW id IR-OP:FATTRS 0 ?do
+      V-OPP VW V-OPR VW KEY id i IR-OP:FATTR-KEY@ want SAME-SYM? if
+         drop
+         V-ATTR VW  V-OPP VW V-OPR VW KEY id i IR-OP:FATTR@  IR-ATTR:FINT@
+         leave
+      then
+   loop ;
+
+: SLOT-OF ( IR-ID:ir-op-id -- n )    0 BND-SLOT @ ATTR-INT ;
+: FRAME-OF ( IR-ID:ir-op-id -- n )   0 BND-FRAME @ ATTR-INT ;
+
+\ Does this operation write a value into a slot, or read one out of one?
+: STORES? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
+   IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
 
 \ The straight-line subset, re-derived rather than taken on trust.
 : BLOCK-OF ( -- IR-ID:ir-block-id )
@@ -214,25 +315,40 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
       i LAST-AT i A64RA:LAST@ <> if E-A64RAV-INTERVAL throw then
    loop ;
 
-\ One register class: every value of this dialect is a general register, so a
-\ value of any other type has been given a register that cannot hold it.
+\ Two register classes: every value of this dialect is a general register or the
+\ memory token the frame forms thread, and the class is decided by the type the
+\ module gives the value against the two the dialect answered. A value of any
+\ third type has been given a register that cannot hold it.
 : CLASS-CK ( -- )
-   A64RA:GPR-TYPE@ {: want:IR-ID:ir-type-id :}
    N-VALS @ 0 ?do
       V-VALR VW KEY  KEY i IR-ID:PACK-VALUE  IR-OP:FVALUE-TYPE@
-      want SAME-TYPE? 0= if E-A64RAV-CLASS throw then
+      {: t:IR-ID:ir-type-id :}
+      t 0 BND-GPR @ SAME-TYPE? if C-GPR i CLS! then
+      t 0 BND-MEM @ SAME-TYPE? if C-TOKEN i CLS! then
+      t 0 BND-GPR @ SAME-TYPE? t 0 BND-MEM @ SAME-TYPE? or
+      0= if E-A64RAV-CLASS throw then
    loop ;
+
+: GPR? ( n -- bool )
+   CLS-AT C-GPR = ;
 
 \ Every assigned register is one the routine's contract says it may destroy. The
 \ contract cannot name x18, x30 or register 31 at all - A64EFF refuses them in
 \ any general-register set - so a reserved register fails this check for the same
-\ reason an unrelated callee-saved register does.
+\ reason an unrelated callee-saved register does. A memory token holds no
+\ register, and one that was given a real register is refused as loudly as a
+\ register outside the pool: the emitter would then be reading a machine object
+\ out of something that is only an ordering.
 : REGISTER-CK ( -- )
    A64RA:POOL A64EFF:GPRS-N {: pool:n :}
    N-VALS @ 0 ?do
       i A64RA:CLAIM@ {: r:n :}
-      r 0 < r A64EFF:FILE-SIZE >= or if E-A64RAV-REGISTER throw then
-      pool 1 r lshift and 0= if E-A64RAV-REGISTER throw then
+      i GPR? 0= if
+         r 0 >= r A64EFF:FILE-SIZE < and if E-A64RAV-CLASS throw then
+      else
+         r 0 < r A64EFF:FILE-SIZE >= or if E-A64RAV-REGISTER throw then
+         pool 1 r lshift and 0= if E-A64RAV-REGISTER throw then
+      then
    loop ;
 
 \ Are these two values ever live at the same instant? See the header: values
@@ -250,7 +366,7 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
    N-VALS @ {: n:n :}
    n 0 ?do
       n i 1+ ?do
-         j i CLASH? if
+         j GPR? i GPR? and  j i CLASH? and if
             j A64RA:CLAIM@ i A64RA:CLAIM@ = if E-A64RAV-OVERLAP throw then
          then
       loop
@@ -280,6 +396,81 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
       loop
    loop ;
 
+\ ---- the frame -----------------------------------------------------------------
+\ A block that touches the frame at all takes it with its first operation and
+\ gives it back with the one in front of its terminator, and both name the frame
+\ the routine's contract declares. Any other operation that moves the stack
+\ pointer - one that declares a memory effect and names no slot - is a second
+\ frame inside the first, and there is no rule for that here.
+: FRAMES? ( IR-ID:ir-block-id -- bool )
+   {: bk:IR-ID:ir-block-id :}
+   false
+   V-BLKR VW bk IR-FUN:FOP-COUNT 0 ?do
+      bk i OP-AT PURE? 0= if drop true leave then
+   loop ;
+
+: FRAME-AT? ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id at:n want:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id PURE? if E-A64RAV-FRAME throw then
+   id SLOT-OF NOSLOT <> if E-A64RAV-FRAME throw then
+   id FRAME-OF want <> if E-A64RAV-FRAME throw then ;
+
+: FRAME-CK ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id want:n :}
+   bk FRAMES? 0= if exit then
+   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   n 3 < if E-A64RAV-FRAME throw then
+   bk 0 want FRAME-AT?
+   bk n 2 - want FRAME-AT?
+   n 0 ?do
+      i 0 <> i n 2 - <> and if
+         bk i OP-AT {: id:IR-ID:ir-op-id :}
+         id PURE? 0= id SLOT-OF NOSLOT = and if E-A64RAV-FRAME throw then
+      then
+   loop ;
+
+\ Every slot the module names is written before it is read, and no slot is
+\ written twice. See the header for why the second rule is the decidable form of
+\ "no two values share a slot".
+: FLOW-CK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   V-BLKR VW bk IR-FUN:FOP-COUNT 0 ?do
+      bk i OP-AT {: id:IR-ID:ir-op-id :}
+      id SLOT-OF {: off:n :}
+      off NOSLOT <> if
+         off A64IR:SLOT-WIDTH / {: s:n :}
+         s 0 < s SLOTS-MAX >= or if E-A64RAV-SLOT throw then
+         id STORES? if
+            s cells W-AT + @ 0 >= if E-A64RAV-SHARE throw then
+            i s cells W-AT + !
+         else
+            s cells W-AT + @ 0 < if E-A64RAV-RELOAD throw then
+         then
+      then
+   loop ;
+
+\ Every slot a frame access names, measured against the routine that has to
+\ address it. The rule is A64EFF's, so a slot outside the declared frame, an
+\ unaligned one, or one past the reach of the offset field is refused under
+\ A64EFF's own name; the contract is rebuilt per access because a value of more
+\ than one cell cannot be held in a local.
+: SLOT-CK ( IR-ID:ir-block-id A64EFF:routine -- )
+   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
+   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
+      size:n delta:n :}
+   {: bk:IR-ID:ir-block-id :}
+   V-BLKR VW bk IR-FUN:FOP-COUNT 0 ?do
+      bk i OP-AT SLOT-OF {: off:n :}
+      off NOSLOT <> if
+         off A64IR:SLOT-WIDTH
+         gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+         A64EFF:CHECK-SLOT
+      then
+   loop ;
+
 \ ---- what the acceptance is bound to -----------------------------------------
 : STATE-CK ( -- )
    A64RA:SEALED? 0= if E-A64RAV-STATE throw then ;
@@ -302,15 +493,33 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
    STATE-CK
    A64RA:GEN A-GEN @ <> if E-A64RAV-STATE throw then ;
 
-public
+\ WHY THIS BINDING IS NOT SPENT. The allocator and the lowering pass take a
+\ one-shot binding because nothing else in them says which module the next call
+\ is about, so a caller could otherwise run against a module it never bound. Here
+\ that hole is closed by an identity check instead: the binding records the module
+\ it was taken over and ACCEPT refuses any other one by name. A binding left
+\ behind by a refused check is therefore harmless - it can only ever be used
+\ against the module it belongs to - and the one state worth refusing is having
+\ been asked for a check before any binding was taken at all.
+: BND-TAKE ( -- )
+   BND-MODE @ BOUND-YES <> if E-A64RAV-STATE throw then ;
 
-\ ---- the check ---------------------------------------------------------------
-\ Accept the sealed allocation as a true assignment for this module under this
-\ routine contract, or refuse it by name. Nothing is answered until this returns.
-: ACCEPT ( IR-BUILD:module A64EFF:routine -- )
-   A64EFF:VALIDATE A64EFF:GPR-CLOBBER@ {: pool:A64EFF:gprs :}
-   {: m:IR-BUILD:module :}
+: BND-MODULE-CK ( IR-BUILD:module -- )
+   IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
+   0= if E-A64RAV-MODULE throw then ;
+
+: DIALECT-CK ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b  c b IR-BUILD:DIALECT@  A64IR:NAME IR-BUILD:SYMBOL-IS?
+   0= if E-A64RAV-MODULE throw then
+   c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
+   c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
+
+: WALK ( IR-BUILD:module A64EFF:gprs n -- IR-ID:ir-block-id )
+   {: m:IR-BUILD:module pool:A64EFF:gprs frame:n :}
    ST-NONE ST !
+   BND-TAKE
+   m BND-MODULE-CK
    STATE-CK
    m MODULE-CK
    pool CONTRACT-CK
@@ -323,6 +532,44 @@ public
    REGISTER-CK
    OVERLAP-CK
    bk TIE-CK
+   bk frame FRAME-CK
+   bk FLOW-CK
+   bk ;
+
+public
+
+\ ---- binding the dialect -----------------------------------------------------
+\ Learn the identities this check needs from the dialect itself, while the module
+\ is still being built: which type a general register is, which is the memory
+\ token, and the two attribute keys the frame forms carry their fields under. A
+\ module's symbols and types are its own ordinals, so this is the only moment any
+\ of them can be asked for, and taking them from the allocator instead would be
+\ the thing being checked telling the checker what to check. A second binding
+\ replaces the first; see BND-TAKE for why that is safe here and not in the
+\ passes that take a one-shot binding.
+: BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder :}
+   c b DIALECT-CK
+   b IR-BUILD:MODULE@ 0 BND-MOD !
+   c b A64IR:GPR-TYPE  0 BND-GPR !
+   c b A64IR:MEM-TYPE  0 BND-MEM !
+   c b A64IR:KEY-SLOT  0 BND-SLOT !
+   c b A64IR:KEY-FRAME 0 BND-FRAME !
+   BOUND-YES BND-MODE ! ;
+
+\ ---- the check ---------------------------------------------------------------
+\ Accept the sealed allocation as a true assignment for this module under this
+\ routine contract, or refuse it by name. Nothing is answered until this returns.
+: ACCEPT ( IR-BUILD:module A64EFF:routine -- )
+   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
+   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
+      size:n delta:n :}
+   gc size WALK {: bk:IR-ID:ir-block-id :}
+   bk
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   SLOT-CK
    A64RA:GEN A-GEN !
    ST-ACCEPTED ST ! ;
 
@@ -331,11 +578,22 @@ public
 
 \ The register that holds this value. This is the only checked answer in the
 \ chain: it exists only after ACCEPT has agreed with the module, and it stops
-\ existing the moment a later allocation replaces the one that was accepted.
+\ existing the moment a later allocation replaces the one that was accepted. A
+\ memory token holds no register, so asking for one is refused rather than
+\ answered with a number that is not a register.
 : REG@ ( n -- n )
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
+   dup GPR? 0= if E-A64RAV-CLASS throw then
    A64RA:CLAIM@ ;
+
+\ Is this value one that lives in a register at all? The emitter asks before it
+\ asks for a register, and a caller that wants to probe an accepted answer for
+\ staleness asks about the module rather than about one value's class.
+: REGISTERED? ( n -- bool )
+   FRESH-CK
+   dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
+   GPR? ;
 
 private
 get-current prot-wid-add

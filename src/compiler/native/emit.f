@@ -479,13 +479,16 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 
 \ The register assignment this run will read. The probe is what makes staleness
 \ a refusal before a byte is written rather than halfway through: an acceptance a
-\ later allocation replaced stops answering, under A64RAV's own name. What is
+\ later allocation replaced stops answering, under A64RAV's own name. It asks
+\ whether the first value is one that lives in a register rather than which
+\ register it is in, because the first value of a module that spills is the
+\ memory token the frame forms thread and that has no register to answer. What is
 \ left for this pass to judge is whether the accepted assignment is about the
 \ module it is being asked to emit.
 : ALLOC-CK ( IR-BUILD:module -- )
    {: m:IR-BUILD:module :}
    A64RAV:ACCEPTED? 0= if E-A64EMIT-ALLOC throw then
-   A64RA:VALUES 0 > if 0 A64RAV:REG@ drop then
+   A64RA:VALUES 0 > if 0 A64RAV:REGISTERED? drop then
    m IR-BUILD:FMODULE A64RA:MODULE@ IR-ID:MODULE-SAME?
    0= if E-A64EMIT-ALLOC throw then ;
 

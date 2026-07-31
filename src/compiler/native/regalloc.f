@@ -60,17 +60,48 @@
 \ this pass revalidates it. A reserved register is out of reach here by
 \ construction rather than by a check that could be forgotten.
 \
-\ WHY RUNNING OUT OF REGISTERS IS A REFUSAL AND NOT A SPILL. A straight-line
-\ block can hold more values at once than any register file has - a long chain of
+\ RUNNING OUT OF REGISTERS IS A DECISION, NOT A REFUSAL. A straight-line block
+\ can hold more values at once than any register file has - a long chain of
 \ literals proves it - so the bound cannot be proved away and spilling is the
-\ real answer. The real answer cannot be built yet: spilling means writing a
-\ value to a frame slot and reading it back, and the A64IR dialect has no store,
-\ no load and no frame-slot operand, so an allocation that said "this value lives
-\ in a slot" would name an instruction nothing can emit. This pass therefore
-\ refuses the program by name, exactly as the selector refuses trapping
-\ arithmetic that has no machine lowering. The missing capability is dot
-\ habu-lower-spills-and-ef14a0dd; when the dialect can express a spill and a
-\ reload, the refusal becomes a decision.
+\ answer. A spill is a store into a slot of the routine's own frame and a load
+\ back out of it, and the A64IR dialect has both, so this pass decides where they
+\ go instead of refusing the program. Two refusals are left, and neither is
+\ register pressure: E-A64RA-PRESSURE is now only the routine's declared frame
+\ running out of slots, and E-A64RA-POOL is the one shape no spill can serve - an
+\ operation that needs more registers at a single instant than the routine may
+\ destroy, with every register already holding a value that same operation reads.
+\ A routine that may destroy nothing is the smallest example.
+\
+\ THE COST RULE, AND WHY IT IS STATED RATHER THAN TUNED. When a register has to
+\ be taken from a value, the value taken is the one whose next read is furthest
+\ away: a store bought now then buys the most operations before a reload is
+\ needed, which is the classic furthest-next-use rule. Two values whose next
+\ reads are equally far - two values never read again, for instance - are
+\ separated by the lower register number, so one program always allocates one
+\ way and a fixture can assert the exact registers. A value is stored once, when
+\ its register is taken, and reloaded once before each operation that reads it
+\ afterwards; a use before that point still reads the register, because the
+\ register still holds the value there.
+\
+\ THE PASS DECIDES SPILLS; IT STILL REWRITES NOTHING. A spill decision is a pair
+\ of instructions, and instructions live in a module, and a frozen module cannot
+\ gain one. So this pass publishes the decisions the same way it publishes
+\ registers - as claims about the module it read - and src/compiler/native/
+\ spill.f is what builds the module in which those decisions are real operations.
+\ The register claims of a walk that decided any spill are NOT an assignment for
+\ the module it read, and they are not meant to be: two values will share a
+\ register there, because one of them is in a slot for part of its life and the
+\ module does not say so. The validator refuses exactly that, which is what makes
+\ "allocate, lower the spills, allocate the result" the only way to reach an
+\ accepted answer rather than a convention. The second walk decides no spill: it
+\ reads a module whose operations already are the ones the first walk assumed.
+\
+\ TWO VALUE CLASSES. A value of the machine dialect is a general register or the
+\ memory token the frame forms thread, and this pass reads which by type, from
+\ the two identities the dialect answered at binding time. A token lives in no
+\ register, so it is measured like every other value - it has a definition and a
+\ last use, and the walk covers it - and given none. A value of any third type is
+\ refused: this pass has no class for it.
 \
 \ NO FIXED CONSTRAINTS, AND WHY THERE CANNOT BE ANY YET. Design section 7.9 also
 \ asks for pre-coloured intervals, and there are none here because nothing can
@@ -128,6 +159,24 @@ private
 \ not a ceiling to widen silently.
 256 constant VMAX
 
+\ Spill decisions in one block. Each one is an operation the lowering pass will
+\ insert: one store per value that loses its register, one load before each
+\ operation that reads it afterwards. A block of VMAX values has fewer than VMAX
+\ reads per value, but a ceiling that says so exactly would be a product of two
+\ ceilings; this is the flat one both this pass and the lowering pass carry.
+1024 constant PLMAX
+
+\ The two kinds of decision.
+0 constant P-STORE
+1 constant P-RELOAD
+
+\ The two value classes this dialect has.
+0 constant C-GPR
+1 constant C-TOKEN
+
+\ This value is in no slot.
+-1 constant NOSLOT
+
 \ The register file, taken from the schema that owns the machine facts.
 A64EFF:FILE-SIZE constant REGS-N
 
@@ -163,12 +212,25 @@ variable GEN-N
 0 GEN-N !
 variable N-VALS
 0 N-VALS !
+variable N-OPS
+0 N-OPS !
+variable N-PLAN
+0 N-PLAN !
+variable N-SLOTS
+0 N-SLOTS !
+variable FRAME-N
+0 FRAME-N !
+variable RL-N
+0 RL-N !
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
+1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
+1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
+1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
 1 TYPED-BUFFER S-POOL A64EFF:gprs
 VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
 
@@ -176,10 +238,18 @@ create V-DEF VMAX cells allot
 create V-LAST VMAX cells allot
 create V-REG VMAX cells allot
 create V-SET VMAX cells allot
+create V-CLS VMAX cells allot
+create V-SLOT VMAX cells allot
 create R-HOLD REGS-N cells allot
+create R-PIN REGS-N cells allot
+create R-RL REGS-N cells allot
+create PL-POS PLMAX cells allot
+create PL-KIND PLMAX cells allot
+create PL-VAL PLMAX cells allot
 
 \ ---- the slots, read back ----------------------------------------------------
 : KEY ( -- IR-ID:ir-module-key )     0 S-KEY @ ;
+: BLK ( -- IR-ID:ir-block-id )       0 S-BLK @ ;
 : VW ( n -- IR-ARENA:view )          S-VIEW @ ;
 : POOL-BITS ( -- n )                 0 S-POOL @ A64EFF:GPRS-N ;
 
@@ -195,14 +265,28 @@ create R-HOLD REGS-N cells allot
 : LAST-AT ( n -- n )                 cells V-LAST + @ ;
 : REG-AT ( n -- n )                  cells V-REG + @ ;
 : SET-AT ( n -- n )                  cells V-SET + @ ;
+: CLS-AT ( n -- n )                  cells V-CLS + @ ;
+: SLOT-AT ( n -- n )                 cells V-SLOT + @ ;
 
 : DEF! ( n n -- )                    {: v:n k:n :} v k cells V-DEF + ! ;
 : LAST! ( n n -- )                   {: v:n k:n :} v k cells V-LAST + ! ;
 : REG! ( n n -- )                    {: v:n k:n :} v k cells V-REG + ! ;
 : SET! ( n n -- )                    {: v:n k:n :} v k cells V-SET + ! ;
+: CLS! ( n n -- )                    {: v:n k:n :} v k cells V-CLS + ! ;
+: SLOT! ( n n -- )                   {: v:n k:n :} v k cells V-SLOT + ! ;
 
 : HOLD-AT ( n -- n )                 cells R-HOLD + @ ;
 : HOLD! ( n n -- )                   {: v:n r:n :} v r cells R-HOLD + ! ;
+
+\ A register a reload or a result of the operation being allocated has just been
+\ given cannot be taken away again by the same operation: that operation needs
+\ what is in it now. The pins are cleared before each operation.
+: PINNED? ( n -- bool )              cells R-PIN + @ 0<> ;
+: PIN! ( n -- )                      1 swap cells R-PIN + ! ;
+
+: PINS-CLEAR ( -- )
+   REGS-N 0 ?do 0 i cells R-PIN + ! loop
+   0 RL-N ! ;
 
 : TABLES-CLEAR ( -- )
    VMAX 0 ?do
@@ -210,8 +294,38 @@ create R-HOLD REGS-N cells allot
       ENTRY i DEF!
       ENTRY i LAST!
       NOBODY i REG!
+      C-GPR i CLS!
+      NOSLOT i SLOT!
    loop
-   REGS-N 0 ?do NOBODY i HOLD! loop ;
+   REGS-N 0 ?do NOBODY i HOLD! loop
+   PINS-CLEAR
+   0 N-PLAN !
+   0 N-SLOTS ! ;
+
+\ ---- the spill plan ----------------------------------------------------------
+\ One row per operation the lowering pass has to insert, in the order the walk
+\ decided them, each anchored to the operation it goes in front of.
+: PLAN+ ( n n n -- )
+   {: kind:n pos:n k:n :}
+   N-PLAN @ {: j:n :}
+   j PLMAX >= if E-A64RA-CAP throw then
+   pos j cells PL-POS + !
+   kind j cells PL-KIND + !
+   k j cells PL-VAL + !
+   j 1+ N-PLAN ! ;
+
+\ Is this value already being reloaded in front of this operation? One reload
+\ serves every read of one value by one operation, so an operation that reads a
+\ spilled value twice takes one register for it and not two.
+: RELOADED? ( n n -- bool )
+   {: k:n pos:n :}
+   false
+   N-PLAN @ 0 ?do
+      i cells PL-KIND + @ P-RELOAD =
+      i cells PL-POS + @ pos = and
+      i cells PL-VAL + @ k = and
+      if drop true leave then
+   loop ;
 
 \ ---- identity ----------------------------------------------------------------
 \ Two types are the same when they are the same ordinal of the same module.
@@ -264,12 +378,17 @@ create R-HOLD REGS-N cells allot
       then
    loop ;
 
-\ ---- the one register class this dialect has ---------------------------------
-\ Every value of the machine dialect is a 64-bit general register. A value of any
-\ other type has no place in the pool, and it is refused rather than given one.
-: CLASS-CK ( IR-ID:ir-value-id -- )
-   V-VALR VW KEY rot IR-OP:FVALUE-TYPE@  0 BND-TYP @  SAME-TYPE?
-   0= if E-A64RA-CLASS throw then ;
+\ ---- the two value classes this dialect has ----------------------------------
+\ A general register, or the memory token the frame forms thread. Both identities
+\ came from the dialect itself at binding time, so nothing here compares
+\ spellings or knows which opcode produced the value. A value of any third type
+\ has no class here and is refused rather than given a register.
+: CLASS-OF ( IR-ID:ir-value-id -- n )
+   {: id:IR-ID:ir-value-id :}
+   V-VALR VW KEY id IR-OP:FVALUE-TYPE@ {: t:IR-ID:ir-type-id :}
+   t 0 BND-TYP @ SAME-TYPE? if C-GPR exit then
+   t 0 BND-MEM @ SAME-TYPE? if C-TOKEN exit then
+   E-A64RA-CLASS throw ;
 
 \ ---- pass one: where each value is written, and where it is last read ---------
 \ A definition is recorded once - a second one means the walk is not reading an
@@ -277,10 +396,11 @@ create R-HOLD REGS-N cells allot
 \ it, which is monotonic because the walk runs forwards.
 : DEFINE ( IR-ID:ir-value-id n -- )
    {: id:IR-ID:ir-value-id pos:n :}
-   id CLASS-CK
+   id CLASS-OF {: cls:n :}
    id SLOT {: k:n :}
    k SET-AT 0<> if E-A64RA-SHAPE throw then
    1 k SET!
+   cls k CLS!
    pos k DEF!
    pos k LAST! ;
 
@@ -311,6 +431,7 @@ create R-HOLD REGS-N cells allot
    {: bk:IR-ID:ir-block-id :}
    bk SCAN-ARGS
    V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   n N-OPS !
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id i USES-OF-OP
@@ -342,23 +463,121 @@ create R-HOLD REGS-N cells allot
    {: r:n :}
    POOL-BITS 1 r lshift and 0<> ;
 
-\ The lowest-numbered register of the pool that holds nothing. Lowest rather than
-\ next-around, so the same block always allocates the same way.
+\ The lowest-numbered register of the pool that holds nothing, or -1 when every
+\ one of them is taken. Lowest rather than next-around, so the same block always
+\ allocates the same way.
 : FREE-REG ( -- n )
    -1
    REGS-N 0 ?do
       i POOL-HAS? i HOLD-AT NOBODY = and if drop i leave then
-   loop
-   dup 0 < if E-A64RA-PRESSURE throw then ;
+   loop ;
 
+\ Nothing below hands out a register that is not the routine's: FREE-REG only
+\ answers one of the pool, and a register taken from a value was one of the pool
+\ when that value got it. The check is here because a register outside the
+\ contract would be the routine destroying something it promised to keep, and
+\ that must fail closed rather than be argued about.
 : TAKE ( n n -- )
    {: k:n r:n :}
-   r POOL-HAS? 0= if E-A64RA-PRESSURE throw then
+   r POOL-HAS? 0= if E-A64RA-POOL throw then
    r k REG!
    k r HOLD! ;
 
-: ASSIGN ( IR-ID:ir-value-id -- )
-   SLOT FREE-REG TAKE ;
+\ ---- the cost rule -----------------------------------------------------------
+\ Does this operation read this value?
+: READS? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id k:n :}
+   false
+   V-OPR VW id IR-OP:FOPERANDS 0 ?do
+      id i OPERAND-AT SLOT k = if drop true leave then
+   loop ;
+
+\ The position of the first operation at or after `from` that reads this value. A
+\ value nothing reads again answers the operation count, which is past every
+\ position, so "furthest next use" puts the values nobody wants last without a
+\ second rule for them.
+: NEXT-USE ( n n -- n )
+   {: k:n from:n :}
+   N-OPS @ {: n:n :}
+   n
+   n from 0 max ?do
+      BLK i OP-AT k READS? if drop i leave then
+   loop ;
+
+\ May this register be taken away? Not if it holds nothing, not if the operation
+\ being allocated has already been given it, and not if the operation named by
+\ `spare` is about to read it - taking it then would destroy the value before the
+\ instruction that needs it runs. ENTRY spares no operation.
+: EVICTABLE? ( n n -- bool )
+   {: r:n spare:n :}
+   r HOLD-AT {: v:n :}
+   v NOBODY = if false exit then
+   r PINNED? if false exit then
+   spare ENTRY = if true exit then
+   BLK spare OP-AT v READS? 0= ;
+
+: FURTHEST ( n n -- n )
+   {: spare:n pos:n :}
+   -1
+   REGS-N 0 ?do
+      i spare EVICTABLE? if
+         i HOLD-AT pos 1+ 0 max NEXT-USE {: c:n :}
+         c over > if drop c then
+      then
+   loop ;
+
+\ The register the next value takes. The lowest free one if there is one;
+\ otherwise the one whose value is read furthest away, with the lowest register
+\ number breaking a tie. A shape where nothing can be taken is the one register
+\ pressure no spill can serve.
+: VICTIM ( n n -- n )
+   {: spare:n pos:n :}
+   spare pos FURTHEST {: want:n :}
+   want 0 < if E-A64RA-POOL throw then
+   -1
+   REGS-N 0 ?do
+      i spare EVICTABLE? if
+         i HOLD-AT pos 1+ 0 max NEXT-USE want = if drop i leave then
+      then
+   loop
+   dup 0 < if E-A64RA-POOL throw then ;
+
+\ ---- taking a register away --------------------------------------------------
+\ The next slot of the routine's frame. Slots are handed out in order and never
+\ handed out twice, so no two values ever share one; a frame with no room for the
+\ next slot is what is left of register pressure as a refusal.
+: NEW-SLOT ( -- n )
+   N-SLOTS @ A64IR:SLOT-WIDTH * {: off:n :}
+   off A64IR:SLOT-WIDTH + FRAME-N @ > if E-A64RA-PRESSURE throw then
+   N-SLOTS @ 1+ N-SLOTS !
+   off ;
+
+\ Put the value in this register away, in front of the operation at `pos`. The
+\ store reads the register, so the value is still there for an operation at `pos`
+\ that reads it; from `pos` on, the register is free and every later read of the
+\ value is a reload.
+: EVICT ( n n -- )
+   {: r:n pos:n :}
+   r HOLD-AT {: k:n :}
+   NEW-SLOT k SLOT!
+   P-STORE pos 0 max k PLAN+
+   NOBODY r HOLD! ;
+
+: GRAB ( n n -- n )
+   {: spare:n pos:n :}
+   FREE-REG {: r:n :}
+   r 0 >= if r exit then
+   spare pos VICTIM {: v:n :}
+   v pos EVICT
+   v ;
+
+: ASSIGN ( IR-ID:ir-value-id n -- )
+   {: id:IR-ID:ir-value-id pos:n :}
+   id SLOT {: k:n :}
+   k CLS-AT C-TOKEN = if exit then
+   ENTRY pos GRAB {: r:n :}
+   k r TAKE
+   pos ENTRY <> if r PIN! then ;
 
 \ A tied result lands in the register field its operand already occupies, so that
 \ field has to be free the moment this operation writes. Everything that dies
@@ -369,6 +588,13 @@ create R-HOLD REGS-N cells allot
 \ value as two of its tied operands. Both are refused by the same name, because
 \ both say one register field would have to hold two values at once.
 \
+\ An operand that was spilled lends the register its reload landed in, because
+\ that is the register the instruction really names: the reload is a value of its
+\ own in the module this walk is planning, it dies at this operation, and the
+\ tied result takes its place. So a tie over a value that has to survive is
+\ legal once that value is in a slot, and it is refused only when the value is
+\ still in the register.
+\
 \ An operand holding no register cannot lend one. SSA puts every definition
 \ before its uses, so the walk has already given it one and this cannot happen;
 \ reading the holder table at a negative index is not how we would find out.
@@ -377,27 +603,70 @@ create R-HOLD REGS-N cells allot
    id op OPERAND-AT SLOT REG-AT {: r:n :}
    r 0 < r REGS-N >= or if E-A64RA-TIE throw then
    r HOLD-AT NOBODY <> if E-A64RA-TIE throw then
-   id rs RESULT-AT SLOT  r  TAKE ;
+   id rs RESULT-AT SLOT  r  TAKE
+   r PIN! ;
 
-: ASSIGN-RESULT ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id rs:n :}
+: ASSIGN-RESULT ( IR-ID:ir-op-id n n -- )
+   {: id:IR-ID:ir-op-id rs:n pos:n :}
    id rs TIED-TO {: op:n :}
    op UNTIED = if
-      id rs RESULT-AT ASSIGN exit
+      id rs RESULT-AT pos ASSIGN exit
    then
    id rs op TIE ;
 
+\ ---- the reloads one operation needs -----------------------------------------
+\ A value that lost its register is read out of its slot again, once for this
+\ operation however many of its operands name it. The register the reload lands
+\ in has to survive until the operation reads it, so nothing this operation reads
+\ may be taken to make room - that is what `pos` as the spared operation says -
+\ and it is given back the moment the operation has read it.
+: RELOAD-REG ( n -- )
+   {: r:n :}
+   RL-N @ {: j:n :}
+   j REGS-N >= if E-A64RA-CAP throw then
+   r j cells R-RL + !
+   j 1+ RL-N ! ;
+
+: RELOADS-FREE ( -- )
+   RL-N @ 0 ?do
+      NOBODY i cells R-RL + @ HOLD!
+   loop
+   0 RL-N ! ;
+
+: OP-RELOADS ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id pos:n :}
+   V-OPR VW id IR-OP:FOPERANDS {: n:n :}
+   n 0 ?do
+      id i OPERAND-AT SLOT {: k:n :}
+      k SLOT-AT NOSLOT <> k pos RELOADED? 0= and if
+         pos pos GRAB {: r:n :}
+         P-RELOAD pos k PLAN+
+         k r HOLD!
+         r k REG!
+         r PIN!
+         r RELOAD-REG
+      then
+   loop ;
+
+\ One operation, in the order the machine runs it: the values it reads are put
+\ where it can read them, then everything that dies here gives its register back,
+\ then the values it writes are given registers - which is what lets a result
+\ land in a register its own operand has just vacated.
 : ASSIGN-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
+   PINS-CLEAR
+   id pos OP-RELOADS
+   RELOADS-FREE
    pos 1+ EXPIRE
    V-OPR VW id IR-OP:FRESULTS {: n:n :}
-   n 0 ?do id i ASSIGN-RESULT loop ;
+   n 0 ?do id i pos ASSIGN-RESULT loop ;
 
 : SCAN-ASSIGN ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
+   PINS-CLEAR
    V-BLKR VW bk IR-FUN:FARG-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ ASSIGN
+      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ ENTRY ASSIGN
    loop
    V-BLKR VW bk IR-FUN:FOP-COUNT {: k:n :}
    k 0 ?do bk i OP-AT i ASSIGN-OP loop ;
@@ -422,6 +691,28 @@ create R-HOLD REGS-N cells allot
    KEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
    V-FUNR VW f IR-FUN:FBLOCK-COUNT 1 <> if E-A64RA-SHAPE throw then
    V-FUNR VW V-BLKR VW KEY f 0 IR-FUN:FBLOCK@ ;
+
+\ ---- the contract, read once -------------------------------------------------
+\ A contract is a twelve-field value and a value of more than one cell cannot be
+\ bound to a local, so a word that needs two of its fields takes them apart once
+\ and a word that needs the whole contract again builds it back. Both readers
+\ below revalidate what they are handed, which is what makes rebuilding it safe:
+\ a forged contract cannot survive the round trip.
+\ Every slot this walk handed out, measured against the routine that has to
+\ address it. A64EFF owns that rule - a width its forms carry, an offset its
+\ scale division will not round, an offset inside the declared frame and inside
+\ the reach of the offset field - so the decision is made there and not here.
+: SLOTS-CK ( A64EFF:routine -- )
+   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
+   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
+      size:n delta:n :}
+   N-SLOTS @ 0 ?do
+      i A64IR:SLOT-WIDTH *  A64IR:SLOT-WIDTH
+      gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+      A64EFF:CHECK-SLOT
+   loop ;
 
 \ These registers belong to one architecture. A context bound to another target
 \ describes a machine that has none of them.
@@ -473,6 +764,8 @@ public
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b A64IR:GPR-TYPE 0 BND-TYP !
+   c b A64IR:MEM-TYPE 0 BND-MEM !
+   c b A64IR:KEY-SLOT 0 BND-SLOT !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without allocating against it.
@@ -485,20 +778,30 @@ public
 \ routine that may destroy nothing allocates nothing; the walk seals a claim per
 \ value, which src/compiler/native/regalloc-verify.f then has to accept before
 \ anything may act on it.
-: ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
-   A64EFF:VALIDATE A64EFF:GPR-CLOBBER@ {: pool:A64EFF:gprs :}
-   {: c:IR-CTX:ctx m:IR-BUILD:module :}
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs n -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs frame:n :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
    c TARGET-CK
    pool 0 S-POOL !
+   frame FRAME-N !
    m VIEWS!
    TABLES-CLEAR
    BLOCK-OF {: bk:IR-ID:ir-block-id :}
+   bk 0 S-BLK !
    bk SCAN-LIVE
    COVER-CK
-   bk SCAN-ASSIGN
+   bk SCAN-ASSIGN ;
+
+: ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
+   A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
+   {: gi:A64EFF:gprs gr:A64EFF:gprs gc:A64EFF:gprs
+      fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
+      z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
+      size:n delta:n :}
+   gc size WALK
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;
 
@@ -521,8 +824,13 @@ public
 : POOL ( -- A64EFF:gprs )
    SEAL-CK 0 S-POOL @ ;
 
-: GPR-TYPE@ ( -- IR-ID:ir-type-id )
-   SEAL-CK 0 BND-TYP @ ;
+
+\ The frame this walk allocated under, and how much of it the spills need.
+: FRAME ( -- n )
+   SEAL-CK FRAME-N @ ;
+
+: FRAME-USED ( -- n )
+   SEAL-CK N-SLOTS @ A64IR:SLOT-WIDTH * ;
 
 : VALUES ( -- n )
    SEAL-CK N-VALS @ ;
@@ -535,6 +843,35 @@ public
 
 : LAST@ ( n -- n )
    SEAL-CK ORD-CK LAST-AT ;
+
+\ ---- the spill decisions -----------------------------------------------------
+\ How many values lost their register, and where each one went. A walk that
+\ answers zero here decided no spill, and its register claims describe the module
+\ it read; a walk that answers more decided a program the module does not yet
+\ contain, and src/compiler/native/spill.f is what builds the one it does.
+: SPILLS ( -- n )
+   SEAL-CK N-SLOTS @ ;
+
+: SLOT@ ( n -- n )
+   SEAL-CK ORD-CK SLOT-AT ;
+
+\ The decisions in the order they were made. Each one is an operation to insert
+\ in front of the operation at its position: a store of the value out of the
+\ register it is losing, or a load of it back before the operation that reads it.
+: PLAN-N ( -- n )
+   SEAL-CK N-PLAN @ ;
+
+: PLAN-ORD-CK ( n -- n )
+   dup 0 < over N-PLAN @ >= or if E-A64RA-CAP throw then ;
+
+: PLAN-POS@ ( n -- n )
+   SEAL-CK PLAN-ORD-CK cells PL-POS + @ ;
+
+: PLAN-VALUE@ ( n -- n )
+   SEAL-CK PLAN-ORD-CK cells PL-VAL + @ ;
+
+: PLAN-STORE? ( n -- bool )
+   SEAL-CK PLAN-ORD-CK cells PL-KIND + @ P-STORE = ;
 
 private
 get-current prot-wid-add

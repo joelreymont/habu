@@ -9,6 +9,25 @@
 \ be allocated at all, a contract that cannot hold it, a module the allocation
 \ was not made from, and a claim nobody has checked are each refused by name.
 \
+\ WHAT THE SPILL FIXTURES MEASURE. A block that holds five literals before it
+\ reads any of them does not fit in three registers, and the walk decides where
+\ the two that do not fit go. Three things are asserted about that, each
+\ falsifiable on its own: the plan - which values lose their register, in front of
+\ which operation, and into which slot - because that is the cost rule and nothing
+\ else measures it; the exact registers of the lowered module, because a lowering
+\ that put a store or a load anywhere else moves them; and that the lowered module
+\ needs no further spill, because the walk that planned it claimed the operations
+\ it would contain. A cost rule that chose the nearest next use instead of the
+\ furthest reddens the first two: the plan names other values, and the registers
+\ move with them.
+\
+\ WHY THE FRAME REFUSALS ARE BUILT BY HAND. A slot outside the declared frame,
+\ two values in one slot, a reload of a slot nothing wrote, and a frame that is
+\ not the contract's are shapes the lowering pass never produces. They are built
+\ straight into the machine dialect, one wrong thing each, so what is measured is
+\ the validator's own judgement about the module in front of it and not the
+\ allocator's agreement with itself.
+\
 \ WHAT THE POSITIVE FIXTURES MEASURE. Each one asserts the exact register of
 \ every value, not merely that some allocation succeeded. That is what makes the
 \ shapes falsifiable: a scan that never released a dead value's register gives
@@ -42,6 +61,7 @@
 require lib/test.f
 require src/compiler/native/select.f
 require src/compiler/native/regalloc-verify.f
+require src/compiler/native/spill.f
 
 package A64RA-TEST
 private
@@ -84,6 +104,16 @@ private
 
 : LEAF-N ( n -- A64EFF:routine )
    POOL-N LEAF ;
+
+\ The same leaf with a frame of its own: a routine that spills has to have
+\ somewhere to spill to, and how deep that is, is the contract's declaration.
+: LEAF-FRAMED ( n n -- A64EFF:routine )
+   {: n:n size:n :}
+   n POOL-N {: pool:A64EFF:gprs :}
+   A64EFF:GPR-NONE A64EFF:GPR-NONE pool
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE size 0 A64EFF:ROUTINE ;
 
 \ `n` registers starting at `base`. A pool that does not start at register zero
 \ is what tells the allocatable set apart from the low registers: nothing may be
@@ -268,6 +298,7 @@ create TXT
    CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    A64-BUILDER {: ab:IR-BUILD:builder :}
    CC ab A64RA:BIND-DIALECT
+   CC ab A64RAV:BIND-DIALECT
    CC m ab TXT TXT-N A64SEL:SELECT ;
 
 \ Allocate the selected module for a leaf routine of `n` registers and have the
@@ -416,6 +447,7 @@ create TXT
    c 0 W-CTX !
    b 0 W-BLD !
    c b A64RA:BIND-DIALECT
+   c b A64RAV:BIND-DIALECT
    c b A64IR:REGISTER
    c b TXT TXT-N IR-BUILD:ADD-SOURCE 0 W-SRC ! ;
 
@@ -614,6 +646,137 @@ create TXT
    lo neg M-ADD M-RET
    CLOSE-FUN ;
 
+\ ---- the frame forms, built by hand ------------------------------------------
+\ The shapes a lowered module has, so the validator's frame rules can be measured
+\ on modules that are wrong in exactly one way. Every one of them threads the
+\ memory token the dialect's forms declare, because a module that does not is
+\ refused by the freeze verifier and would prove nothing about this file.
+: M-TOKEN+ ( -- )
+   CC BB  CC BB A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
+
+: M-FRAME-ATTR ( n -- )
+   {: size:n :}
+   CC BB  CC BB A64IR:KEY-FRAME  CC BB size A64IR:FRAME-ATTR  IR-BUILD:ADD-ATTR ;
+
+: M-SLOT-ATTR ( n -- )
+   {: off:n :}
+   CC BB  CC BB A64IR:KEY-SLOT  CC BB off A64IR:SLOT-ATTR  IR-BUILD:ADD-ATTR ;
+
+: M-RESERVE ( n -- IR-ID:ir-value-id )
+   {: size:n :}
+   A64IR-OPCODE:RESERVE M-OPEN
+   M-TOKEN+
+   size M-FRAME-ATTR
+   CLOSE-VALUE ;
+
+: M-RELEASE ( IR-ID:ir-value-id n -- )
+   {: tok:IR-ID:ir-value-id size:n :}
+   A64IR-OPCODE:RELEASE M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   size M-FRAME-ATTR
+   CC BB IR-BUILD:END-OP drop ;
+
+: M-STORE ( IR-ID:ir-value-id IR-ID:ir-value-id n -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id tok:IR-ID:ir-value-id off:n :}
+   A64IR-OPCODE:STORE M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB tok IR-BUILD:ADD-OPERAND
+   M-TOKEN+
+   off M-SLOT-ATTR
+   CLOSE-VALUE ;
+
+: M-LOAD ( IR-ID:ir-value-id n -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: tok:IR-ID:ir-value-id off:n :}
+   A64IR-OPCODE:LOAD M-OPEN
+   CC BB tok IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   M-TOKEN+
+   off M-SLOT-ATTR
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 0 IR-BUILD:OP-RESULT@
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+\ ---- the shape that cannot fit -----------------------------------------------
+\ Five literals are materialised before any of them is read, so all five are live
+\ at once and no pool of three can hold them. The sum then reads them in the
+\ order they were made, which is what makes the cost rule visible: the two values
+\ read LAST are the two the allocator has to put away.
+: BUILD-CHAIN ( -- )
+   s" CHAIN" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
+   $55 M-MOVZ {: e:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
+   s2 d M-ADD {: s3:IR-ID:ir-value-id :}
+   s3 e M-ADD M-RET
+   CLOSE-FUN ;
+
+\ A module that already reserves a frame and still cannot fit its values in the
+\ pool, so a second lowering is something a caller could really ask for. Lowering
+\ it would build a second frame inside the first, and the slots the allocator
+\ hands out start at the top of a frame it does not know is already in use.
+: BUILD-FRAMED ( -- )
+   s" FRAMED" 0 1 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   a tok 0 M-STORE {: t1:IR-ID:ir-value-id :}
+   t1 0 M-LOAD {: w:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 c M-ADD {: s2:IR-ID:ir-value-id :}
+   s2 w M-ADD {: s3:IR-ID:ir-value-id :}
+   t2 16 M-RELEASE
+   s3 M-RET
+   CLOSE-FUN ;
+
+\ The same shape with the store past the end of the frame the contract declares.
+: BUILD-FAR-SLOT ( -- )
+   s" FAR" 0 1 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   7 M-MOVZ {: v:IR-ID:ir-value-id :}
+   v tok 16 M-STORE {: t1:IR-ID:ir-value-id :}
+   t1 16 M-LOAD {: w:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 16 M-RELEASE
+   w M-RET
+   CLOSE-FUN ;
+
+\ Two values put into one slot while both are still going to be read.
+: BUILD-SHARED-SLOT ( -- )
+   s" SHARED" 0 1 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   7 M-MOVZ {: v:IR-ID:ir-value-id :}
+   9 M-MOVZ {: u:IR-ID:ir-value-id :}
+   v tok 0 M-STORE {: t1:IR-ID:ir-value-id :}
+   u t1 0 M-STORE {: t2:IR-ID:ir-value-id :}
+   t2 0 M-LOAD {: w:IR-ID:ir-value-id t3:IR-ID:ir-value-id :}
+   t3 16 M-RELEASE
+   w M-RET
+   CLOSE-FUN ;
+
+\ A reload of a slot nothing ever stored to.
+: BUILD-EMPTY-SLOT ( -- )
+   s" EMPTY" 0 1 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   tok 0 M-LOAD {: w:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 16 M-RELEASE
+   w M-RET
+   CLOSE-FUN ;
+
+\ A frame the module takes that is not the frame the contract declares.
+: BUILD-WRONG-FRAME ( -- )
+   s" WRONGF" 0 1 OPEN-FUN
+   32 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   7 M-MOVZ {: v:IR-ID:ir-value-id :}
+   v tok 0 M-STORE {: t1:IR-ID:ir-value-id :}
+   t1 0 M-LOAD {: w:IR-ID:ir-value-id t2:IR-ID:ir-value-id :}
+   t2 32 M-RELEASE
+   w M-RET
+   CLOSE-FUN ;
+
 \ A plain machine module the negative cases about state and binding can use.
 : BUILD-PLAIN ( -- )
    s" PLAIN" 0 1 OPEN-FUN
@@ -705,6 +868,77 @@ create TXT
    WBND [: PAIR-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 1 T= 0 T= 1 T= 0 T= 5 T= ;
 
+\ ---- lowering a spill --------------------------------------------------------
+\ The whole route a program that does not fit takes: allocate it, and if the walk
+\ decided any spill, build the module those decisions are operations in and
+\ allocate that. The second walk decides nothing, because it reads a module whose
+\ operations already are the ones the first walk assumed.
+: SPILL-BIND ( -- )
+   CC BB A64SPILL:BIND-DIALECT ;
+
+: LOWERED ( n n -- IR-BUILD:module )
+   {: n:n f:n :}
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 n f LEAF-FRAMED A64RA:ALLOCATE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC nb A64RA:BIND-DIALECT
+   CC nb A64RAV:BIND-DIALECT
+   CC m0 nb TXT TXT-N A64SPILL:REWRITE {: m1:IR-BUILD:module :}
+   CC m1 n f LEAF-FRAMED A64RA:ALLOCATE
+   m1 n f LEAF-FRAMED A64RAV:ACCEPT
+   m1 ;
+
+\ What the walk decided, before anything was lowered. Five values are live where
+\ the fifth literal is written and three registers hold them, so two have to go
+\ into the frame - and WHICH two is the cost rule: the sum reads the literals in
+\ the order they were made, so the third and fourth are the ones read furthest
+\ away when the register runs out.
+: PLAN-BODY ( IR-CTX:ctx -- n n n n n n n n n n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 3 16 LEAF-FRAMED A64RA:ALLOCATE
+   A64SPILL:RELEASE
+   A64RA:SPILLS
+   A64RA:PLAN-N
+   0 A64RA:PLAN-VALUE@
+   0 A64RA:PLAN-POS@
+   1 A64RA:PLAN-VALUE@
+   1 A64RA:PLAN-POS@
+   2 A64RA:PLAN-VALUE@
+   2 A64RA:PLAN-POS@
+   2 A64RA:SLOT@
+   3 A64RA:SLOT@ ;
+
+: PLAN-CASE ( -- )
+   s" the values read furthest away are the ones that lose their register" T-LABEL
+   WBND [: PLAN-BODY ;] IR-CTX:WITH-CONTEXT
+   8 T= 0 T= 6 T= 2 T= 4 T= 3 T= 3 T= 2 T= 4 T= 2 T= ;
+
+\ The lowered module allocates with no spill left, and every value of it is
+\ accepted. The exact registers are asserted, so a cost rule that chose another
+\ victim - or a lowering that put a store or a load anywhere else - moves them.
+: LOWER-BODY ( IR-CTX:ctx -- n n bool bool n n n bool n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-CHAIN
+   3 16 LOWERED drop
+   A64RA:SPILLS
+   A64RA:VALUES
+   A64RAV:ACCEPTED?
+   0 A64RAV:REGISTERED?
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REGISTERED?
+   5 A64RAV:REG@ ;
+
+: LOWER-CASE ( -- )
+   s" a block that does not fit is lowered and then allocates" T-LABEL
+   WBND [: LOWER-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= TFALSE 2 T= 1 T= 0 T= TFALSE TTRUE 16 T= 0 T= ;
+
 \ ---- refusals ----------------------------------------------------------------
 \ Each of these four runs the validator as well, even though the allocator
 \ refuses first. That is what makes the validator's own line reachable: an
@@ -739,13 +973,76 @@ create TXT
    BUILD-PAIR-SHARED
    REFUSE-SHAPE ;
 
-\ Two registers cannot hold three arguments at once, and a routine that may
-\ destroy nothing cannot hold one.
+\ Two registers cannot hold three arguments at once, and the routine declares no
+\ frame, so there is nowhere to put the third: the pressure refusal that is left
+\ is the frame running out of slots.
 : PRESSURE-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SUM3
    SELECTED {: m:IR-BUILD:module :}
    CC m 2 LEAF-N A64RA:ALLOCATE ;
+
+\ The same chain in two registers, which needs three slots, against a frame that
+\ holds two. A frame is a multiple of the stack alignment and a slot is half of
+\ one, so "one slot short" is a frame of sixteen bytes and a program that wants
+\ twenty-four.
+: SMALL-FRAME-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 2 16 LEAF-FRAMED A64RA:ALLOCATE ;
+
+\ Lowering a module that already reserves a frame: it has been through the pass
+\ once, and a second frame inside the first is not a thing this pass builds.
+: TWICE-LOWER-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   SPILL-BIND
+   BUILD-FRAMED
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 2 48 LEAF-FRAMED A64RA:ALLOCATE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC m0 nb TXT TXT-N A64SPILL:REWRITE drop ;
+
+\ Lowering a module whose walk decided no spill at all.
+: NO-SPILL-LOWER-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   SPILL-BIND
+   BUILD-PLAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 4 16 LEAF-FRAMED A64RA:ALLOCATE
+   A64-BUILDER {: nb:IR-BUILD:builder :}
+   CC m0 nb TXT TXT-N A64SPILL:REWRITE drop ;
+
+\ ---- the frame rules, on modules that are wrong in one way -------------------
+\ Each of these is a lowered shape with one thing changed, allocated and then
+\ presented to the validator. The allocator itself has nothing to say about them
+\ - it hands out no slot here, because nothing spills - so the refusal is the
+\ validator's own judgement about the module in front of it.
+: FRAME-REFUSE ( n -- )
+   {: f:n :}
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m 4 f LEAF-FRAMED A64RA:ALLOCATE
+   m 4 f LEAF-FRAMED A64RAV:ACCEPT ;
+
+: FAR-SLOT-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-FAR-SLOT
+   16 FRAME-REFUSE ;
+
+: SHARED-SLOT-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-SHARED-SLOT
+   16 FRAME-REFUSE ;
+
+: EMPTY-SLOT-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-EMPTY-SLOT
+   16 FRAME-REFUSE ;
+
+: WRONG-FRAME-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-WRONG-FRAME
+   16 FRAME-REFUSE ;
 
 : EMPTY-POOL-BODY ( IR-CTX:ctx -- )
    A64-MOD
@@ -857,6 +1154,13 @@ create TXT
 : EXTRA-LIVE-TIE ( -- )   WBND [: EXTRA-LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PAIR-SHARED ( -- )      WBND [: PAIR-SHARED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRESSURE ( -- )         WBND [: PRESSURE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SMALL-FRAME ( -- )      WBND [: SMALL-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
+: TWICE-LOWER ( -- )      WBND [: TWICE-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
+: NO-SPILL-LOWER ( -- )   WBND [: NO-SPILL-LOWER-BODY ;] IR-CTX:WITH-CONTEXT ;
+: FAR-SLOT ( -- )         WBND [: FAR-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: EMPTY-SLOT ( -- )       WBND [: EMPTY-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
+: WRONG-FRAME ( -- )      WBND [: WRONG-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-POOL ( -- )       WBND [: EMPTY-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )     WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-BIND ( -- )          WBND [: NO-BIND-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -888,13 +1192,37 @@ create TXT
    [: PAIR-SHARED ;] E-A64RA-TIE TTHROWSQ ;
 
 : PRESSURE-REFUSE-CASES ( -- )
-   s" more values live at once than the routine may destroy is refused" T-LABEL
+   s" more values live at once than a routine with no frame can put away" T-LABEL
    [: PRESSURE ;] E-A64RA-PRESSURE TTHROWSQ
-   s" a routine that may destroy nothing allocates nothing" T-LABEL
-   [: EMPTY-POOL ;] E-A64RA-PRESSURE TTHROWSQ
+   s" a frame one slot short of what the spills need is refused" T-LABEL
+   [: SMALL-FRAME ;] E-A64RA-PRESSURE TTHROWSQ
    \ The refusal just above left no sealed walk, so there is no claim to read.
    s" a refused allocation leaves no claim behind" T-LABEL
    [: 0 A64RA:CLAIM@ drop ;] E-A64RA-STATE TTHROWSQ ;
+
+: POOL-REFUSE-CASES ( -- )
+   s" a routine that may destroy nothing allocates nothing" T-LABEL
+   [: EMPTY-POOL ;] E-A64RA-POOL TTHROWSQ ;
+
+: LOWER-TWICE-CASE ( -- )
+   s" lowering a module that already reserves a frame is refused" T-LABEL
+   [: TWICE-LOWER ;] E-A64SPILL-SHAPE TTHROWSQ ;
+
+: LOWER-NONE-CASE ( -- )
+   s" lowering a module whose walk decided no spill is refused" T-LABEL
+   [: NO-SPILL-LOWER ;] E-A64SPILL-PLAN TTHROWSQ ;
+
+: SLOT-REFUSE-CASES ( -- )
+   s" a slot outside the declared frame is refused" T-LABEL
+   [: FAR-SLOT ;] E-A64EFF-SLOT TTHROWSQ
+   s" two values in one slot are refused" T-LABEL
+   [: SHARED-SLOT ;] E-A64RAV-SHARE TTHROWSQ ;
+
+: RELOAD-REFUSE-CASES ( -- )
+   s" a reload of a slot nothing stored to is refused" T-LABEL
+   [: EMPTY-SLOT ;] E-A64RAV-RELOAD TTHROWSQ
+   s" a frame that is not the one the contract declares is refused" T-LABEL
+   [: WRONG-FRAME ;] E-A64RAV-FRAME TTHROWSQ ;
 
 : BIND-REFUSE-CASES ( -- )
    s" allocating without a binding is refused" T-LABEL
@@ -929,6 +1257,11 @@ create TXT
 : GROUP-SHAPE ( IR-CTX:ctx -- )     drop SHAPE-REFUSE-CASES ;
 : GROUP-TIE ( IR-CTX:ctx -- )       drop TIE-REFUSE-CASES ;
 : GROUP-PRESSURE ( IR-CTX:ctx -- )  drop PRESSURE-REFUSE-CASES ;
+: GROUP-POOL ( IR-CTX:ctx -- )      drop POOL-REFUSE-CASES ;
+: GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
+: GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE ;
+: GROUP-SLOT ( IR-CTX:ctx -- )      drop SLOT-REFUSE-CASES ;
+: GROUP-RELOAD ( IR-CTX:ctx -- )    drop RELOAD-REFUSE-CASES ;
 : GROUP-BIND ( IR-CTX:ctx -- )      drop BIND-REFUSE-CASES ;
 : GROUP-MODULE ( IR-CTX:ctx -- )    drop MODULE-REFUSE-CASES ;
 : GROUP-TARGET ( IR-CTX:ctx -- )    drop TARGET-REFUSE-CASES ;
@@ -940,6 +1273,8 @@ public
 : RUN ( -- )
    T-RESET
    SQUARE-CASE
+   PLAN-CASE
+   LOWER-CASE
    DIFF-CASE
    SUM3-CASE
    SUM3-TIGHT-CASE
@@ -956,6 +1291,11 @@ public
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-PRESSURE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-POOL ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-LOWER ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-NO-SPILL ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-SLOT ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-RELOAD ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TARGET ;] IR-CTX:WITH-CONTEXT
