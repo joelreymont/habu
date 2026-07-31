@@ -1,9 +1,11 @@
 ---
 title: Refresh the macOS engine size ratchet for the native-chain stack
-status: open
+status: active
 priority: 2
 issue-type: task
-created-at: "2026-07-31T21:01:38.789793+02:00"
+created-at: "\"2026-07-31T21:01:38.789793+02:00\""
 ---
 
 The engine build slice (test/run.f phase 15, gate-engine-build) is still red after the census ratchet refresh, on a second stale ratchet that the census failure had been masking. The candidate engine's __text measures 116668 while MACOS-CODE-TEXT in test/gate-size-attribution-test.f is committed at 114988: 1680 bytes of growth, from the same seven engine changes that grew the census 4232 -> 4265 (ARM64 encode-time operand guards in src/arch/arm64/asm.f, the checker source-tape observer seam and persisted producer-xt cells in src/core/checker.f, persisted callback-table and region-address cells in src/habu/habu2.f, plus src/core/layout-valid.f and src/core/lower-cert-base.f). Failure text: 'candidate CODELEN ratchet: __text grew past the CODE-TEXT row - bump it in test/gate-size-attribution-test.f in this commit'. The refresh is not a one-line bump: MACOS-FLOOR-DIST (4396), MACOS-SIGNATURE (1295) and MACOS-TOTAL (148855) all derive from CODE-TEXT, MACOS-TOTAL must stay equal to GB-SIZE-BASELINE-MACOS in test/gate-build-size.f, and 1680 bytes may cross the 16 KiB __TEXT page, so bin/hb has to be re-installed at a byte fixpoint (install --force twice to a byte-identical binary, HABU_ENGINE_SIZE_MAP=1 captured and reconciled with zero residue) before the rows can be committed with the per-region attribution the file's convention requires. Per-region __text budget enforcement and everything after the CODELEN check in the slice are unverified because GE-CODELEN throws first. Depends on the census refresh landing (habu-refresh-the-engine-f2d8e5d8) so the slice reaches this check at all. Overlaps tools/re-measure.f work in habu-one-shot-re-dac8ff72.
+
+Claim: agent=sizelane workspace=.jj-ws/habu-refresh-the-macos-edeb6c4b
