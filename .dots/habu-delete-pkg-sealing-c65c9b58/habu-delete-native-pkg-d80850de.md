@@ -1,6 +1,6 @@
 ---
 title: Delete native package-name wall
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-30T22:10:14.562565+02:00"
@@ -21,4 +21,4 @@ Fixture ownership: test/seal.f opens package SEAL-SUITE. SLV-PUBLISH-FORGE$, SLV
 
 Owner and exact files: src/habu/habu1.f, src/habu/habu2.f, bootstrap/cg/forth.fs, src/core/engine-error.f, src/core/engine-error-effects.f, test/engine-suite.f, test/aot-wid-suite.f, test/seal.f, and tools/bootstrap-codegen-test.f. Dependencies: completed native HB-EMIT ownership and structural Gforth vocabulary recognition in the existing package gate. Pre-change production probes: package HB-ERROR and qualified HB-ERROR:BAD-TAG both exit 84; a generated-constructor publication also exits 84. Acceptance before M17: the first two probes succeed; the constructor still refuses with PROTECTED-WID 84; native and recovery behavior match; ENGINE-ERROR, ENGINE-EMIT, and SEAL-PACKAGE have zero live spellings; exact absence, rename, package, typed-local, and trust gates pass. Runtime suites execute only in M17.
 
-Forbidden: protected registry deletion, ordinary owner registration changes, checker/export mirror edits, compatibility, aliases, versions, new lint or exemption, allowlists, documentation, unrelated seal work, or any public bootstrap helper beyond the three existing recovery entry points. Claim: unassigned.
+Forbidden: protected registry deletion, ordinary owner registration changes, checker/export mirror edits, compatibility, aliases, versions, new lint or exemption, allowlists, documentation, unrelated seal work, or any public bootstrap helper beyond the three existing recovery entry points. Claim: agent=seal_native_impl workspace=.jj-ws/habu-delete-native-pkg-d80850de.
