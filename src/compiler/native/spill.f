@@ -63,6 +63,14 @@
 \     source registered in it, so the bytes are proved to be the same bytes
 \     before a single span is rebuilt.
 \
+\ WHERE THE CALLER STILL HAS TO KNOW THE ORDER. Reaching bytes for a program
+\ that spills is four stages in one order - allocate, ask how many spills, lower,
+\ allocate the lowered module - and every caller spells it out today. One word
+\ that answers "the module that was emitted" would make the branch unforgettable
+\ (dot habu-give-the-native-f9a7eb36). The one thing that cannot go wrong quietly
+\ is the branch being skipped: an allocation that decided a spill is not an
+\ assignment for the module it read, and the validator refuses it.
+\
 \ ONE REWRITE AT A TIME. The value map and the views are fixed package-owned
 \ slots rather than heap objects, so this pass rewrites one module at a time -
 \ the single-task compilation discipline the rest of the native chain keeps. The

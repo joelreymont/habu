@@ -1339,6 +1339,58 @@ fits.
 
 ## Runtime, Codegen & AOT
 
+- **A pass that DECIDES a spill cannot also be the pass that leaves the module
+  alone: put the decision in one file and the operations in another, and make
+  the wrong order refuse itself.** `src/compiler/native/regalloc.f` now chooses
+  a victim and a slot, but a frozen module cannot gain the store and the load
+  those decisions are, and a builder cannot gain them in the middle either - a
+  block's operations only grow at the end, and a spill store belongs in FRONT of
+  the operation that took the register. So the allocator publishes the decisions
+  as claims and `src/compiler/native/spill.f` builds the module they are
+  operations in; the caller then allocates THAT. The alternative - leaving the
+  module alone and having the emitter materialise the stores and loads out of
+  the claims - fails the review question rather than the tests: the instruction
+  stream would be something no module contains, so the independent validator
+  would have nothing to re-derive spills from and would be checking the
+  allocator's belief against itself. What makes the two-step safe is that
+  skipping the second step cannot pass: an allocation that decided a spill has
+  two values in one register (one of them is in a slot for part of its life and
+  the module does not say so), and `A64RAV` refuses it under E-A64RAV-OVERLAP.
+- **`IR-VERIFY` makes "declares a memory effect" mean "carries a memory token",
+  so a store you were about to call pure needs an SSA chain and a second value
+  class everywhere.** `EFFECT-CK` in `src/compiler/ir/verify.f` refuses any
+  non-pure schema without a memory-token operand or result, which is the right
+  rule and is why `a64.reserve` mints a token, `a64.str`/`a64.ldr` pass it on
+  and `a64.release` ends it. The cost is not in the dialect, it is in every
+  consumer: the allocator and its validator went from "every value is a general
+  register" to two classes read off the type, `A64RAV:REG@` had to start
+  refusing a token, and the emitter's staleness probe had to stop asking for
+  value zero's register because in a lowered module value zero is the token.
+  Budget that when adding the first effectful form to a dialect.
+- **A frame slot is an ATTRIBUTE, not an operand, and the difference is what can
+  be checked.** An operand of the IR is an SSA value - something an operation
+  defined - and no operation computes a slot; two operations naming one slot are
+  not naming one definition. As an attribute, `IR-SCHEMA` declares the key, the
+  freeze verifier proves every operation of the form carries exactly one, and
+  the dialect's own checked builder (`A64IR:SLOT-ATTR`) refuses an unreachable
+  slot before it is interned. The base register is not an operand either: the
+  stack pointer is not a value the allocator may hand out, so the base is a
+  property of the form.
+- **Two twelve-bit fields on ARM64 are not one bound: a frame slot reaches eight
+  times as far as a frame reservation.** `A64EFF:SLOT-REACH` is the unsigned
+  offset field SCALED by the access width (4095*8 = 32760 bytes), but the frame
+  is claimed with `sub sp, sp, #imm12` and that immediate is unscaled, so the
+  deepest frame `A64IR` can RESERVE is 4095 rounded down to the stack alignment
+  = 4080 (`A64IR:FRAME-LIMIT`). A slot bound taken from `SLOT-REACH` alone
+  passes every test that never builds a frame between 4080 and 32760 - the
+  fixture that catches it has to sit in that gap.
+- **A frame is a multiple of the stack alignment and a slot is half of one, so
+  "one slot short" is not a frame one slot smaller.** `A64EFF:FRAME-CK` refuses
+  a frame that is not a multiple of `SP-ALIGN` (16) while a slot is 8 bytes, so
+  a one-slot frame is undeclarable and a fixture for "the frame runs out" has to
+  make the PROGRAM want an odd number of slots (three slots against a frame of
+  sixteen bytes), not shrink the frame to eight.
+
 - **A new keyword in `bootstrap/cg/forth.fs` needs its label allocated in an
   `EMIT-LABEL-*` group, or the engine dies at startup with `hb: snapshot trailer
   corrupt` (79).** The label variables (`variable LKWUSING …`) start at 0, and 0

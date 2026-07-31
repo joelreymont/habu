@@ -824,8 +824,11 @@ public
 : POOL ( -- A64EFF:gprs )
    SEAL-CK 0 S-POOL @ ;
 
-
-\ The frame this walk allocated under, and how much of it the spills need.
+\ The frame this walk allocated under, and how much of it the spills used. The
+\ first is the contract's declaration and the second is what the program proved
+\ it needs; nothing yet turns the second into the first, so a routine whose
+\ author declared too small a frame is refused rather than given the frame it
+\ needs (dot habu-derive-a-routine-84ed36b6).
 : FRAME ( -- n )
    SEAL-CK FRAME-N @ ;
 

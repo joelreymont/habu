@@ -48,7 +48,7 @@
 \ What is NOT decided here is that the loaded value is the value the program
 \ wanted: that is a statement about the module this one was rewritten FROM, and
 \ this file is handed one module. The owner of that comparison is the lowering
-\ pass (dot habu-prove-the-spill-rewrite).
+\ pass (dot habu-prove-the-spill-0294e0e8).
 \
 \ TWO VALUE CLASSES. A general register and a memory token, told apart by type.
 \ A token lives in no register, so it is covered and measured like every other
