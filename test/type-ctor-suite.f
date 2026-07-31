@@ -437,8 +437,9 @@ s" CONSTRUCT-OWN" type cr
 
 \ ---------------------------------------------------------------------------
 \ item 15: product generated words. A PUBLIC product publishes exactly two
-\ checked words in its generated namespace — FAMILY:MAKE ( fields -- fam<..> ) and
-\ PKG:UNMAKE ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
+\ checked words in its exact family-path generated namespace —
+\ FAMILY-PATH:MAKE ( fields -- fam<..> ) and FAMILY-PATH:UNMAKE
+\ ( fam<..> -- fields ) — both empty-bodied under the k=0 pending
 \ window: a product bundle is its field cells in slot order (no tag), so
 \ construction/destructure are physical no-ops and runtime round-trips are
 \ identity. Same publish/protection stack as sum constructors (SUMV rows).
@@ -522,7 +523,8 @@ PRODUCT prow 0
 : ZPPK-MK ( n -- zppk:prow ) ZPPK:PROW:MAKE ;
 : ZPPK-UN ( zppk:prow -- n ) ZPPK:PROW:UNMAKE ;
 s" GEN-PRODUCT-PKG" type cr
-\ private products export nothing: no package, no words, no construct form.
+\ private products export nothing: no generated namespace, no words, no
+\ construct form.
 package zpsec
 private
 PRODUCT phid 0
