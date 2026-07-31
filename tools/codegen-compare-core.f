@@ -229,7 +229,8 @@ private
 \ Record one row: which code generator produced it, its name, its size in bytes,
 \ a body that calls the subject once for timing, and a body that calls it on its
 \ pinned inputs and hands every result to VECTOR.
-\ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
+\ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies,
+\ and a local annotation cannot carry a quotation effect.
 : RECORD ( ptr u8 n n n [ -- ] [ -- ] -- ) {: a:ptr u:n path:n size:n timing vectors :}
    ROW-N @ ROW-MAX >= if E-CODEGEN-COMPARE-CAP throw then
    a u NAME!
