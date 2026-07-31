@@ -7,6 +7,11 @@ package OWNER-WID-COLD-TEST
 
 public
 
+PRODUCT pair 0
+   FIELD left n
+   FIELD right n
+;PRODUCT
+
 : PUBLIC-PROOF ( -- n )
    314159 ;
 

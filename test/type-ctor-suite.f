@@ -183,6 +183,18 @@ SUMTYPE result 0
 : ZDEEP-L ( n -- zdeep:left:result ) ZDEEP:LEFT:RESULT:OK ;
 : ZDEEP-R ( n -- zdeep:right:result ) ZDEEP:RIGHT:RESULT:OK ;
 : ZDEEP-H ( n -- z-deep:left:result ) Z-DEEP:LEFT:RESULT:OK ;
+: ZDEEP-L-RT ( n -- n )
+   ZDEEP:LEFT:RESULT:OK
+   MATCH zdeep:left:result ok OF ENDOF ;MATCH ;
+: ZDEEP-R-RT ( n -- n )
+   ZDEEP:RIGHT:RESULT:OK
+   MATCH zdeep:right:result ok OF ENDOF ;MATCH ;
+: ZDEEP-H-RT ( n -- n )
+   Z-DEEP:LEFT:RESULT:OK
+   MATCH z-deep:left:result ok OF ENDOF ;MATCH ;
+17 ZDEEP-L-RT 17 T=
+23 ZDEEP-R-RT 23 T=
+31 ZDEEP-H-RT 31 T=
 s" zdeep:left" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=
 TCF @ TFAM-VAR-START@ SUMV-CTOR-NS$ s" ZDEEP:LEFT:RESULT" T$=
 s" zdeep:right" s" result" TWX-TFAM-FIND-IN TCOK ! TCF ! TCOK @ -1 T=

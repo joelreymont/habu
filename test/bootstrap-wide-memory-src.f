@@ -16,6 +16,14 @@ SUMTYPE bwm4 3
   VARIANT quad a b c ;VARIANT
 ;SUMTYPE
 
+package bwm:deep-zone
+public
+PRODUCT pair 0
+  FIELD left n
+  FIELD right n
+;PRODUCT
+;package
+
 variable BWM-FAILS
 variable BWM-CASES
 
@@ -51,6 +59,8 @@ variable BWM-CASES
 : BWM-MK2 ( -- bwm2<n> ) 7 BWM2:PAIR ;
 : BWM-MK2B ( -- bwm2<n> ) 8 BWM2:OTHER ;
 : BWM-MK4 ( -- bwm4<n,n,n> ) 91 92 93 BWM4:QUAD ;
+: BWM-DEEP-ROUND ( n n -- n n )
+   BWM:DEEP-ZONE:PAIR:MAKE BWM:DEEP-ZONE:PAIR:UNMAKE ;
 
 TRUSTED: BWM-UN2 ( bwm2<n> -- n n ) ;
 TRUSTED: BWM-UN4 ( bwm4<n,n,n> -- n n n n ) ;
@@ -198,6 +208,7 @@ variable BWM-GXT
    BWM-TEST:NAMESPACE
    BWM-RUN2 0 BWM= 7 BWM=
    BWM-RUN4 0 BWM= 93 BWM= 92 BWM= 91 BWM=
+   11 22 BWM-DEEP-ROUND 22 BWM= 11 BWM=
    BWM-LOCAL2 0 BWM= 7 BWM= 5 BWM=
    BWM-LOCAL4 0 BWM= 93 BWM= 92 BWM= 91 BWM= 5 BWM=
    BWM-LOCAL-TEST:DUAL 0 BWM= 93 BWM= 92 BWM= 91 BWM= 0 BWM= 7 BWM=

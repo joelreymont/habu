@@ -867,6 +867,37 @@ public
    src srcu want label labelu GE-UNCAUGHT-RUN
    needle needleu label labelu GE-EXPECT-ERR-HAS ;
 
+255 constant GE-TFAM-CAP-PKG-U
+TF-CTOR-NS-CAP GE-TFAM-CAP-PKG-U - constant GE-TFAM-CAP-FAM-U
+
+: GE-TFAM-CAP-SOURCE ( -- )
+   GE-SRC-RESET
+   s" package " GE-SRC+
+   GE-TFAM-CAP-PKG-U [char] p GE-SRC-REPEAT-C
+   s"  public PRODUCT " GE-SRC+
+   GE-TFAM-CAP-FAM-U [char] f GE-SRC-REPEAT-C
+   s"  0 FIELD x n ;PRODUCT ;package" GE-SRC-LINE ;
+
+: GE-TFAM-CAP-ERR ( -- )
+   GE-SRC-RESET
+   s" habu: bad product declaration '" GE-SRC+
+   GE-TFAM-CAP-FAM-U [char] f GE-SRC-REPEAT-C
+   s" ': tfam: constructor namespace too long at '" GE-SRC+
+   GE-TFAM-CAP-FAM-U [char] f GE-SRC-REPEAT-C
+   s" '" GE-SRC-LINE
+   s" hb: uncaught throw code 7135" GE-SRC-LINE ;
+
+: GE-TFAM-CAP-UNCAUGHT ( -- )
+   GE-HB-RESET
+   GE-TFAM-CAP-SOURCE
+   GE-SRC-BUF GE-SRC-U @ RUNTIME-DIRECT:NO-HANDLER
+   GE-UNCAUGHT-RC s" generated namespace cap rc" GE-EXPECT-RC
+   GT-OUT$ nip 0 <> if s" generated namespace cap stdout" GE-FAIL then
+   GE-TFAM-CAP-ERR
+   GT-ERR$ GE-SRC-BUF GE-SRC-U @ STR= 0= if
+      s" generated namespace cap stderr" GE-FAIL
+   then ;
+
 : GE-UNCAUGHT-THROW ( -- )
    s" -2816 throw" GE-UNCAUGHT-RC s" uncaught throw code -2816"
       s" uncaught throw -2816 (kernel-masks-to-0)" GE-UNCAUGHT-CASE
@@ -878,6 +909,7 @@ public
       s" caught throw stays in-process rc 0" RUNTIME-RUNNER:LINE-RC
    SB-RESET s" -2816" SB-APPEND GE-SB-LF
    SB$ s" caught throw control output" GE-EXPECT-OUT
+   GE-TFAM-CAP-UNCAUGHT
    s" PASS: uncaught top-level throw exits are reported, never masked" type cr ;
 
 \ Interpret-mode transports of a wide layout bundle SILENTLY CORRUPTED: the

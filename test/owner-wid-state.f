@@ -21,6 +21,11 @@ package OWNER-WID-STATE
 : MEMBER? ( n -- bool )
    owner-wid? ;
 
+: ROUND ( -- )
+   19 23 OWNER-WID-COLD-TEST:PAIR:MAKE
+   OWNER-WID-COLD-TEST:PAIR:UNMAKE
+   23 T= 19 T= ;
+
 : CHECK ( -- )
    data-base OWNER-WID-N-CELL + @ 1 T=
    data-base OWNER-WID-OFF + @ {: pair:n :}
@@ -39,6 +44,7 @@ package OWNER-WID-STATE
    pri MEMBER? TTRUE
    pub pri OWNER-WID-MAX PREFLIGHT TFALSE
    OWNER-WID-COLD-TEST:PUBLIC-PROOF 314159 T=
+   ROUND
    s" OWNER-WID-COLD-TEST:PRIVATE-PROOF" 0 search-wl 0 T=
    s" owner-wid-add" 0 search-wl 0 T=
    s" owner-wid-test-add" 0 search-wl 0 T= ;
