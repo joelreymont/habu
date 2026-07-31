@@ -26,18 +26,29 @@
 \ arithmetic run in one register, and it is the same rule the validator applies
 \ when it decides whether two live ranges overlap.
 \
-\ THE MOVE-WIDE OVERWRITE IS A TIED OPERAND. Movk writes one sixteen-bit half of
-\ a register and keeps the other three, so in the encoding its source and its
-\ destination are one register field. In SSA those are two values, and the
-\ allocator has to put them in the same physical register or the instruction
-\ means something else. It is handled here as what it is - a tie - and not as a
-\ coincidence: the result takes the operand's register, and a program in which
-\ the kept value is still needed after the overwrite is refused by name, because
-\ one register field cannot hold a value that must survive and a value that
-\ replaces it. That the tie belongs to movk is a fact of the dialect; today this
-\ pass learns which opcode movk is from the dialect itself (see the binding
-\ below), and the destination is a tie declared in the operation schema, so an
-\ allocator can read a constraint instead of knowing a name.
+\ TIED OPERANDS ARE READ, NOT RECOGNISED. Some instruction forms name one
+\ register field twice - the move-wide overwrite writes one sixteen-bit half and
+\ keeps the other three, so its source and its destination are one field. In SSA
+\ those are two values, and this pass has to put them in the same physical
+\ register or the instruction means something else. Which forms do that is not
+\ knowledge this file holds: a form declares its ties in its own operation schema
+\ (src/compiler/ir/schema.f), and the walk below reads that declaration for every
+\ operation it allocates. A tied result therefore takes the register of the
+\ operand it shares a field with, and a program in which the kept value is still
+\ needed afterwards is refused by name, because one register field cannot hold a
+\ value that must survive and the value that replaces it. A dialect that gives a
+\ new form a tie is honoured here without a line changing.
+\
+\ WHAT THIS PASS HAS TO KNOW ABOUT A FORM, AND WHERE IT COMES FROM. Exactly two
+\ things, and both are declarations it reads rather than facts it remembers: the
+\ register class of each value, which is its type, and the ties, which are the
+\ schema's. There is no third register constraint in this dialect - nothing can
+\ yet say that a value must sit in a named register, and no form clobbers a
+\ register it does not name - so reading those two is reading the whole
+\ constraint. A register constraint invented later belongs in the schema beside
+\ the tie and must be read here; a constraint kept somewhere this pass does not
+\ look would be allocated around silently, which is the reason the tie moved out
+\ of this file in the first place (dot habu-read-every-schema-constraint).
 \
 \ WHICH REGISTERS MAY BE USED, AND WHY THERE IS NO LIST OF THEM HERE. The
 \ routine's own contract says which general registers it may destroy, and a value
@@ -93,6 +104,7 @@ require src/compiler/a64-effect.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
+require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
@@ -102,22 +114,11 @@ package A64RA
 private
 
 \ ---- the bound dialect -------------------------------------------------------
-\ A module's symbols and types are its own ordinals, so "is this operation a
-\ move-wide overwrite" and "is this value a general register" cannot be answered
-\ from outside without either the dialect's own authority or a restatement of its
-\ spellings. Restating them would be a second authority that drifts, so this pass
-\ asks A64IR itself while the module is still being built, and keeps the
-\ identities it answers. One slot per member of the operation family keeps the
-\ family exhaustive: a member added to A64IR:opcode makes this fail to compile
-\ until it has a slot.
-6 constant OPCODES-N
-0 constant O-MOVZ
-1 constant O-MOVK
-2 constant O-ADD
-3 constant O-SUB
-4 constant O-MUL
-5 constant O-RET
-
+\ A module's types are its own ordinals, so "is this value a general register"
+\ cannot be answered from outside without either the dialect's own authority or a
+\ restatement of its spellings. Restating them would be a second authority that
+\ drifts, so this pass asks A64IR itself while the module is still being built,
+\ and keeps the identity it answers.
 0 constant BOUND-NO
 1 constant BOUND-YES
 
@@ -136,13 +137,18 @@ A64EFF:FILE-SIZE constant REGS-N
 \ Nothing holds this register.
 -1 constant NOBODY
 
+\ This result shares its register field with no operand.
+-1 constant UNTIED
+
 \ ---- the frozen tables of the module being read ------------------------------
-5 constant VIEWS-N
+7 constant VIEWS-N
 0 constant V-OPP                     \ operation pool
 1 constant V-OPR                     \ operation rows
 2 constant V-VALR                    \ value rows
 3 constant V-FUNR                    \ function rows
 4 constant V-BLKR                    \ block rows
+5 constant V-SCHP                    \ schema list pool
+6 constant V-SCHR                    \ schema rows
 
 \ ---- allocation state --------------------------------------------------------
 0 constant ST-EMPTY
@@ -159,7 +165,6 @@ variable N-VALS
 0 N-VALS !
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
-OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
@@ -209,48 +214,20 @@ create R-HOLD REGS-N cells allot
    REGS-N 0 ?do NOBODY i HOLD! loop ;
 
 \ ---- identity ----------------------------------------------------------------
-\ Two symbols, or two types, are the same when they are the same ordinal of the
-\ same module. Nothing here compares spellings.
-: SAME-SYM? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
-   {: x:IR-ID:ir-symbol-id y:IR-ID:ir-symbol-id :}
-   x IR-ID:SYMBOL-LOCAL y IR-ID:SYMBOL-LOCAL <> if false exit then
-   x IR-ID:SYMBOL-OWNER y IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? ;
-
+\ Two types are the same when they are the same ordinal of the same module.
+\ Nothing here compares spellings.
 : SAME-TYPE? ( IR-ID:ir-type-id IR-ID:ir-type-id -- bool )
    {: x:IR-ID:ir-type-id y:IR-ID:ir-type-id :}
    x IR-ID:TYPE-LOCAL y IR-ID:TYPE-LOCAL <> if false exit then
    x IR-ID:TYPE-OWNER y IR-ID:TYPE-OWNER IR-ID:MODULE-SAME? ;
-
-\ ---- the dialect's operation family ------------------------------------------
-: SLOT-OF ( A64IR:opcode -- n )
-   MATCH A64IR:opcode
-      movz OF O-MOVZ ENDOF
-      movk OF O-MOVK ENDOF
-      add  OF O-ADD  ENDOF
-      sub  OF O-SUB  ENDOF
-      mul  OF O-MUL  ENDOF
-      ret  OF O-RET  ENDOF
-   ;MATCH ;
-
-\ Which member of the family this symbol names. An operation of a form outside
-\ the family is refused rather than allocated blind: an unmodelled form may tie
-\ its operands the way the move-wide overwrite does, and guessing that it does
-\ not is how a wrong register reaches the encoder.
-: OPCODE-SLOT ( IR-ID:ir-symbol-id -- n )
-   {: sym:IR-ID:ir-symbol-id :}
-   -1
-   OPCODES-N 0 ?do
-      sym i BND-OP @ SAME-SYM? if drop i leave then
-   loop
-   dup 0 < if E-A64RA-OPCODE throw then ;
 
 \ ---- reading the frozen module -----------------------------------------------
 : OP-AT ( IR-ID:ir-block-id n -- IR-ID:ir-op-id )
    {: bk:IR-ID:ir-block-id i:n :}
    V-BLKR VW V-OPR VW KEY bk i IR-FUN:FOP@ ;
 
-: OPCODE-AT ( IR-ID:ir-op-id -- n )
-   V-OPR VW KEY rot IR-OP:FOPCODE@ OPCODE-SLOT ;
+: OPCODE-AT ( IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
+   V-OPR VW KEY rot IR-OP:FOPCODE@ ;
 
 : OPERAND-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
@@ -259,6 +236,33 @@ create R-HOLD REGS-N cells allot
 : RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
    V-OPP VW V-OPR VW KEY id i IR-OP:FRESULT@ ;
+
+\ ---- the register constraints this operation's form declares -----------------
+\ The schema table of the module being allocated is the authority on the shape of
+\ every form in it, ties included, so these three readers are the whole of what
+\ this pass knows about which registers an operation may be given.
+: TIES-AT ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   V-SCHR VW id OPCODE-AT IR-SCHEMA:FTIES ;
+
+: TIE-RESULT-AT ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FTIE-RESULT@ ;
+
+: TIE-OPERAND-AT ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FTIE-OPERAND@ ;
+
+\ Which operand this result shares a register field with, or UNTIED when the form
+\ ties it to none.
+: TIED-TO ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id rs:n :}
+   UNTIED
+   id TIES-AT 0 ?do
+      id i TIE-RESULT-AT rs = if
+         drop id i TIE-OPERAND-AT leave
+      then
+   loop ;
 
 \ ---- the one register class this dialect has ---------------------------------
 \ Every value of the machine dialect is a 64-bit general register. A value of any
@@ -309,7 +313,6 @@ create R-HOLD REGS-N cells allot
    V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id OPCODE-AT drop
       id i USES-OF-OP
       id i DEFS-OF-OP
    loop ;
@@ -357,28 +360,32 @@ create R-HOLD REGS-N cells allot
 : ASSIGN ( IR-ID:ir-value-id -- )
    SLOT FREE-REG TAKE ;
 
-\ The move-wide overwrite: the result has to land in the register the kept value
-\ is already in, so the kept value must die here. If it is read again later, no
-\ single register field can serve both and the program is refused.
-: TIE ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
-   id 0 OPERAND-AT SLOT {: keep:n :}
+\ A tied result lands in the register the kept value is already in, so the kept
+\ value must die here: if it is read again later, no single register field can
+\ serve both and the program is refused. The field it lands in must also be free
+\ at this point, so two ties of one operation cannot be handed the same register.
+: TIE ( IR-ID:ir-op-id n n n -- )
+   {: id:IR-ID:ir-op-id rs:n op:n pos:n :}
+   id op OPERAND-AT SLOT {: keep:n :}
    keep LAST-AT pos <> if E-A64RA-TIE throw then
-   id 0 RESULT-AT SLOT  keep REG-AT  TAKE ;
+   keep REG-AT {: r:n :}
+   r 0 < r REGS-N >= or if E-A64RA-TIE throw then
+   r HOLD-AT NOBODY <> if E-A64RA-TIE throw then
+   id rs RESULT-AT SLOT  r  TAKE ;
 
-: ASSIGN-RESULTS ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   V-OPR VW id IR-OP:FRESULTS {: n:n :}
-   n 0 ?do id i RESULT-AT ASSIGN loop ;
+: ASSIGN-RESULT ( IR-ID:ir-op-id n n -- )
+   {: id:IR-ID:ir-op-id rs:n pos:n :}
+   id rs TIED-TO {: op:n :}
+   op UNTIED = if
+      id rs RESULT-AT ASSIGN exit
+   then
+   id rs op pos TIE ;
 
 : ASSIGN-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
    pos 1+ EXPIRE
-   id OPCODE-AT O-MOVK = if
-      id pos TIE
-   else
-      id ASSIGN-RESULTS
-   then ;
+   V-OPR VW id IR-OP:FRESULTS {: n:n :}
+   n 0 ?do id i pos ASSIGN-RESULT loop ;
 
 : SCAN-ASSIGN ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -398,7 +405,9 @@ create R-HOLD REGS-N cells allot
    m IR-BUILD:FOP-ROWS    V-OPR  S-VIEW !
    m IR-BUILD:FVALUE-ROWS V-VALR S-VIEW !
    m IR-BUILD:FFUN-ROWS   V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW ! ;
+   m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW !
+   m IR-BUILD:FSCHEMA-POOL V-SCHP S-VIEW !
+   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW ! ;
 
 \ The straight-line subset is one function of one block; any other shape means
 \ control flow, and control flow has no allocation rule here yet.
@@ -426,10 +435,6 @@ create R-HOLD REGS-N cells allot
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
    0= if E-A64RA-MODULE throw then ;
 
-: BIND1 ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
-   c b o A64IR:OPCODE  o SLOT-OF BND-OP ! ;
-
 \ A module whose schema table was created for another dialect, or for another
 \ version of this one, holds operations whose register constraints this pass does
 \ not know even if some of them happen to be spelled the same.
@@ -450,23 +455,17 @@ create R-HOLD REGS-N cells allot
 public
 
 \ ---- binding the dialect -----------------------------------------------------
-\ Learn the operation and type identities of the module that is about to be
-\ allocated, while it is still being built. A module's symbols and types are its
-\ own ordinals, so this is the only moment the dialect can be asked which symbol
-\ each of its opcodes is and which type its general register is; the answers stay
-\ valid after the module freezes because freezing keeps the module's identity.
-\ The binding is spent by the next ALLOCATE.
+\ Learn the identity of the module that is about to be allocated and the type of
+\ its general register, while it is still being built. A module's types are its
+\ own ordinals, so this is the only moment the dialect can be asked which type
+\ its general register is; the answer stays valid after the module freezes
+\ because freezing keeps the module's identity. The binding is spent by the next
+\ ALLOCATE.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    BND-MODE @ BOUND-YES = if E-A64RA-BIND throw then
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
-   c b A64IR-OPCODE:MOVZ BIND1
-   c b A64IR-OPCODE:MOVK BIND1
-   c b A64IR-OPCODE:ADD  BIND1
-   c b A64IR-OPCODE:SUB  BIND1
-   c b A64IR-OPCODE:MUL  BIND1
-   c b A64IR-OPCODE:RET  BIND1
    c b A64IR:GPR-TYPE 0 BND-TYP !
    BOUND-YES BND-MODE ! ;
 
@@ -515,9 +514,6 @@ public
 
 : POOL ( -- A64EFF:gprs )
    SEAL-CK 0 S-POOL @ ;
-
-: MOVK-SYM ( -- IR-ID:ir-symbol-id )
-   SEAL-CK O-MOVK BND-OP @ ;
 
 : GPR-TYPE@ ( -- IR-ID:ir-type-id )
    SEAL-CK 0 BND-TYP @ ;

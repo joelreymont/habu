@@ -763,19 +763,22 @@ public
 \ Design section 7.9's linear scan over one straight-line block of the machine
 \ dialect. Refusals another authority owns keep that authority's name - a
 \ register no routine may hold state in is A64EFF's E-A64EFF-GPR, and a
-\ malformed module is IR-OP's or IR-VERIFY's - so these ten are the facts the
+\ malformed module is IR-OP's or IR-VERIFY's - so these are the facts the
 \ allocator alone can judge: whether it was told which dialect it is reading,
 \ whether the module and contract it was handed are the ones it was told about,
 \ and whether what it found can be given real registers at all.
--8320 constant E-A64RA-BIND      \ allocation attempted before the dialect's opcode and type identities were bound, or a second binding over a live one
+-8320 constant E-A64RA-BIND      \ allocation attempted before the dialect's module and type identities were bound, or a second binding over a live one
 -8321 constant E-A64RA-MODULE    \ a frozen module that is not the bound one
 -8322 constant E-A64RA-STATE     \ an allocation reader used before the walk sealed one, or after a later walk replaced it
 -8323 constant E-A64RA-SHAPE     \ a module this leaf cannot allocate: not exactly one function, not exactly one block, or values the block does not hold
--8324 constant E-A64RA-OPCODE    \ an operation of a form outside the dialect's family, whose register constraints are therefore unknown
+\ -8324 is retired. It refused an operation of a form the allocator did not
+\ recognise, because such a form might tie its registers without saying so. A
+\ form now declares its ties in its own operation schema and the allocator reads
+\ them, so there is nothing left to recognise and nothing left to refuse.
 -8325 constant E-A64RA-CLASS     \ a value whose type is not the dialect's general-register type, so no general register can hold it
 -8326 constant E-A64RA-TARGET    \ a context bound to a target these registers do not belong to
 -8327 constant E-A64RA-CAP       \ a value ordinal outside the allocator's tables: more values in one block than they hold, or a read past the count the sealed walk recorded
--8328 constant E-A64RA-TIE       \ a move-wide overwrite whose kept value is still needed afterwards: its one register field cannot hold both
+-8328 constant E-A64RA-TIE       \ a schema-declared tie that cannot be honoured: the kept value is still needed afterwards, or its register is not free
 -8329 constant E-A64RA-PRESSURE  \ more values live at once than the routine may destroy: spilling has no lowering in this dialect yet
 
 \ Native ARM64 allocation validator (package A64RAV): -8330..-8339
@@ -793,7 +796,7 @@ public
 -8335 constant E-A64RAV-REGISTER  \ an assigned register outside the set the routine contract says it may destroy
 -8336 constant E-A64RAV-OVERLAP   \ two values live at the same time assigned the same register
 -8337 constant E-A64RAV-CLASS     \ a value whose type is not the dialect's general-register type
--8338 constant E-A64RAV-TIE       \ a move-wide overwrite whose result and kept operand are not the same register
+-8338 constant E-A64RAV-TIE       \ a schema-declared tie the assignment breaks: the tied result and operand are not the same register
 -8339 constant E-A64RAV-SHAPE     \ a module that is not exactly one function of one block, re-derived rather than taken from the allocator
 
 \ Native ARM64 machine dialect (package A64IR): -8340..-8359

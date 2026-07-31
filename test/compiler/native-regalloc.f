@@ -22,8 +22,15 @@
 \ them and then run through the real A64SEL:SELECT. The hostile fixtures are
 \ built straight into the machine dialect instead, because they are shapes the
 \ selector will never produce - a value of the wrong register class, a second
-\ function, an operation of a form outside the family, a move-wide overwrite
-\ whose kept value is read again - and the allocator must still refuse them.
+\ function, a tied operand whose kept value is read again - and the allocator
+\ must still refuse them.
+\
+\ WHERE THE TIE COMES FROM, AND HOW THAT IS MEASURED. The allocator holds no
+\ opcode identity for the tie: it reads each operation's own schema. Two fixtures
+\ below define a seventh form into the dialect's table, identical apart from the
+\ tie, and allocate the same program with each. The tied one puts the result back
+\ into its operand's register and the untied one gives it the lowest free
+\ register, so the two exact register lists differ only because the schemas do.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so a case that builds a source module and a
@@ -497,15 +504,19 @@ create TXT
    9 M-MOVZ M-RET
    CLOSE-FUN ;
 
-\ A seventh machine operation, defined into this dialect's own table. Nothing in
-\ the substrate forbids it and the module verifies, so the allocator has to
-\ refuse it by name rather than by never meeting it: an unmodelled form may tie
-\ its registers the way the move-wide overwrite does.
-: EXTRA-SCHEMA ( -- IR-ID:ir-symbol-id )
+\ A seventh machine operation, defined into this dialect's own table, with a tie
+\ only when the fixture asks for one. Nothing in the substrate forbids a dialect
+\ giving itself another form, and the allocator has no list of forms to consult:
+\ it honours whatever this schema declares. The two fixtures below are therefore
+\ what proves the tie is read out of the schema rather than recognised by name -
+\ neither of them is the move-wide overwrite.
+: EXTRA-SCHEMA ( bool -- IR-ID:ir-symbol-id )
+   {: tied:bool :}
    CC BB s" a64.neg" IR-BUILD:INTERN-SYMBOL {: op:IR-ID:ir-symbol-id :}
    op IR-SCHEMA:BEGIN-OP
    CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-OPERAND
    CC BB A64IR:GPR-TYPE IR-SCHEMA:ADD-RESULT
+   tied if 0 0 IR-SCHEMA:ADD-TIE then
    false 0 0 IR-SCHEMA:SET-CONTROL
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
@@ -515,15 +526,38 @@ create TXT
    CC BB IR-BUILD:DEFINE-OP
    op ;
 
-: BUILD-EXTRA ( -- )
-   EXTRA-SCHEMA {: op:IR-ID:ir-symbol-id :}
-   s" NEG" 0 1 OPEN-FUN
-   7 M-MOVZ {: v:IR-ID:ir-value-id :}
+: M-NEG ( IR-ID:ir-symbol-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: op:IR-ID:ir-symbol-id v:IR-ID:ir-value-id :}
    CC BB op IR-BUILD:BEGIN-OP
    CC BB  BODY-ST BODY-LN SPN  IR-BUILD:SET-OP-SPAN
    CC BB v IR-BUILD:ADD-OPERAND
    M-RESULT+
-   CLOSE-VALUE M-RET
+   CLOSE-VALUE ;
+
+\ The seventh form over a value produced well before it, with other work in
+\ between, so a declared tie and no tie land in different registers: tied, the
+\ result has to return to the register its operand is in; untied, it takes the
+\ lowest free one, which by then is a different register.
+: BUILD-EXTRA ( bool -- )
+   {: tied:bool :}
+   tied EXTRA-SCHEMA {: op:IR-ID:ir-symbol-id :}
+   s" NEG" 2 1 OPEN-FUN
+   ARG+ {: a:IR-ID:ir-value-id :}
+   ARG+ {: b:IR-ID:ir-value-id :}
+   $5678 M-MOVZ {: lo:IR-ID:ir-value-id :}
+   a b M-ADD {: sum:IR-ID:ir-value-id :}
+   op lo M-NEG {: neg:IR-ID:ir-value-id :}
+   sum neg M-ADD M-RET
+   CLOSE-FUN ;
+
+\ The same refusal the move-wide overwrite gets, on a form that is not it: the
+\ tied operand is read again after the operation that overwrites it.
+: BUILD-EXTRA-LIVE-TIE ( -- )
+   true EXTRA-SCHEMA {: op:IR-ID:ir-symbol-id :}
+   s" NEGTIED" 0 1 OPEN-FUN
+   $5678 M-MOVZ {: lo:IR-ID:ir-value-id :}
+   op lo M-NEG {: neg:IR-ID:ir-value-id :}
+   lo neg M-ADD M-RET
    CLOSE-FUN ;
 
 \ A plain machine module the negative cases about state and binding can use.
@@ -574,6 +608,32 @@ create TXT
    WBND [: INTERLEAVED-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 2 T= 0 T= 2 T= 1 T= 0 T= 6 T= ;
 
+\ The same interleaved shape over the dialect's seventh form, once with the tie
+\ declared and once without. Nothing in the allocator names this form, so the two
+\ answers differ only because the schemas do.
+: EXTRA-BODY ( bool IR-CTX:ctx -- n n n n n n )
+   {: tied:bool c:IR-CTX:ctx :}
+   c A64-MOD
+   tied BUILD-EXTRA
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   5 A64RAV:REG@ ;
+
+: TIED-EXTRA-CASE ( -- )
+   s" a tie declared on a form that is not the overwrite is honoured" T-LABEL
+   true WBND [: EXTRA-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 2 T= 0 T= 2 T= 1 T= 0 T= ;
+
+: UNTIED-EXTRA-CASE ( -- )
+   s" the same form without the tie takes the lowest free register" T-LABEL
+   false WBND [: EXTRA-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 1 T= 0 T= 2 T= 1 T= 0 T= ;
+
 \ ---- refusals ----------------------------------------------------------------
 \ Each of these four runs the validator as well, even though the allocator
 \ refuses first. That is what makes the validator's own line reachable: an
@@ -598,9 +658,9 @@ create TXT
    BUILD-TWO-FUNS
    REFUSE-SHAPE ;
 
-: EXTRA-OPCODE-BODY ( IR-CTX:ctx -- )
+: EXTRA-LIVE-TIE-BODY ( IR-CTX:ctx -- )
    A64-MOD
-   BUILD-EXTRA
+   BUILD-EXTRA-LIVE-TIE
    REFUSE-SHAPE ;
 
 \ Two registers cannot hold three arguments at once, and a routine that may
@@ -718,7 +778,7 @@ create TXT
 : LIVE-TIE ( -- )         WBND [: LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-CLASS ( -- )      WBND [: WRONG-CLASS-BODY ;] IR-CTX:WITH-CONTEXT ;
 : TWO-FUNS ( -- )         WBND [: TWO-FUNS-BODY ;] IR-CTX:WITH-CONTEXT ;
-: EXTRA-OPCODE ( -- )     WBND [: EXTRA-OPCODE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: EXTRA-LIVE-TIE ( -- )   WBND [: EXTRA-LIVE-TIE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : PRESSURE ( -- )         WBND [: PRESSURE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-POOL ( -- )       WBND [: EMPTY-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )     WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -740,13 +800,13 @@ create TXT
    s" a value that is not a general register of this dialect is refused" T-LABEL
    [: WRONG-CLASS ;] E-A64RA-CLASS TTHROWSQ
    s" a module of more than one function is refused" T-LABEL
-   [: TWO-FUNS ;] E-A64RA-SHAPE TTHROWSQ
-   s" an operation of a form outside the dialect's family is refused" T-LABEL
-   [: EXTRA-OPCODE ;] E-A64RA-OPCODE TTHROWSQ ;
+   [: TWO-FUNS ;] E-A64RA-SHAPE TTHROWSQ ;
 
 : TIE-REFUSE-CASES ( -- )
    s" a move-wide overwrite whose kept value is read again is refused" T-LABEL
-   [: LIVE-TIE ;] E-A64RA-TIE TTHROWSQ ;
+   [: LIVE-TIE ;] E-A64RA-TIE TTHROWSQ
+   s" a tied operand of any form, read again, is refused the same way" T-LABEL
+   [: EXTRA-LIVE-TIE ;] E-A64RA-TIE TTHROWSQ ;
 
 : PRESSURE-REFUSE-CASES ( -- )
    s" more values live at once than the routine may destroy is refused" T-LABEL
@@ -810,6 +870,8 @@ public
    WIDE-CASE
    PLAIN-CASE
    INTERLEAVED-CASE
+   TIED-EXTRA-CASE
+   UNTIED-EXTRA-CASE
    RESERVED-CASES
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT

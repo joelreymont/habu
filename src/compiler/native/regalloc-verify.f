@@ -16,7 +16,10 @@
 \ excused by it. The one thing it does take from the allocator is which module
 \ and which routine contract the allocation was made for, because those are what
 \ it is checking the assignment against; both are checked to be the ones it was
-\ handed.
+\ handed. Which register fields an instruction form shares is likewise re-derived:
+\ the ties come out of the module's own schema table, so this file and the
+\ allocator agree because they read one declaration, not because one told the
+\ other.
 \
 \ THE INTERFERENCE RULE, IN FULL. Two different values may share a register
 \ exactly when they are never live at the same instant. Order them by where they
@@ -46,6 +49,7 @@ require src/compiler/a64-effect.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
 require src/compiler/ir/arena.f
+require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
@@ -60,12 +64,14 @@ private
 \ The position of a block argument: before every operation of the block.
 -1 constant ENTRY
 
-5 constant VIEWS-N
+7 constant VIEWS-N
 0 constant V-OPP                     \ operation pool
 1 constant V-OPR                     \ operation rows
 2 constant V-VALR                    \ value rows
 3 constant V-FUNR                    \ function rows
 4 constant V-BLKR                    \ block rows
+5 constant V-SCHP                    \ schema list pool
+6 constant V-SCHR                    \ schema rows
 
 0 constant ST-NONE
 1 constant ST-ACCEPTED
@@ -104,11 +110,6 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
    loop ;
 
 \ ---- identity ----------------------------------------------------------------
-: SAME-SYM? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
-   {: x:IR-ID:ir-symbol-id y:IR-ID:ir-symbol-id :}
-   x IR-ID:SYMBOL-LOCAL y IR-ID:SYMBOL-LOCAL <> if false exit then
-   x IR-ID:SYMBOL-OWNER y IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? ;
-
 : SAME-TYPE? ( IR-ID:ir-type-id IR-ID:ir-type-id -- bool )
    {: x:IR-ID:ir-type-id y:IR-ID:ir-type-id :}
    x IR-ID:TYPE-LOCAL y IR-ID:TYPE-LOCAL <> if false exit then
@@ -122,6 +123,10 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
 : OP-AT ( IR-ID:ir-block-id n -- IR-ID:ir-op-id )
    {: bk:IR-ID:ir-block-id i:n :}
    V-BLKR VW V-OPR VW KEY bk i IR-FUN:FOP@ ;
+
+: OPCODE-AT ( IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
+   {: id:IR-ID:ir-op-id :}
+   V-OPR VW KEY id IR-OP:FOPCODE@ ;
 
 : OPERAND-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
@@ -138,7 +143,9 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
    m IR-BUILD:FOP-ROWS    V-OPR  S-VIEW !
    m IR-BUILD:FVALUE-ROWS V-VALR S-VIEW !
    m IR-BUILD:FFUN-ROWS   V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW ! ;
+   m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW !
+   m IR-BUILD:FSCHEMA-POOL V-SCHP S-VIEW !
+   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW ! ;
 
 \ The straight-line subset, re-derived rather than taken on trust.
 : BLOCK-OF ( -- IR-ID:ir-block-id )
@@ -249,20 +256,28 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
       loop
    loop ;
 
-\ The move-wide overwrite keeps the bits of its destination it does not write, so
-\ its result and the value it keeps are one register field. An assignment that
-\ gives them two registers describes an instruction the machine cannot execute.
+\ A form that names one register field twice - the move-wide overwrite keeps the
+\ bits of its destination it does not write - declares that tie in its own
+\ operation schema. Every declared tie is checked here on its own terms, read out
+\ of the module's schema table rather than out of anything the allocator kept: an
+\ assignment that gives a tied result and its operand two registers describes an
+\ instruction the machine cannot execute.
+: OP-TIE-CK ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-SCHP VW V-SCHR VW  id OPCODE-AT  i IR-SCHEMA:FTIE-RESULT@ {: rs:n :}
+   V-SCHP VW V-SCHR VW  id OPCODE-AT  i IR-SCHEMA:FTIE-OPERAND@ {: op:n :}
+   id op OPERAND-AT SLOT A64RA:CLAIM@
+   id rs RESULT-AT SLOT A64RA:CLAIM@
+   <> if E-A64RAV-TIE throw then ;
+
 : TIE-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   A64RA:MOVK-SYM {: movk:IR-ID:ir-symbol-id :}
    V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
-      V-OPR VW KEY id IR-OP:FOPCODE@ movk SAME-SYM? if
-         id 0 OPERAND-AT SLOT A64RA:CLAIM@
-         id 0 RESULT-AT SLOT A64RA:CLAIM@
-         <> if E-A64RAV-TIE throw then
-      then
+      V-SCHR VW id OPCODE-AT IR-SCHEMA:FTIES 0 ?do
+         id i OP-TIE-CK
+      loop
    loop ;
 
 \ ---- what the acceptance is bound to -----------------------------------------
