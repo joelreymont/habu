@@ -67,32 +67,31 @@
 \ was compiled from exactly when the two digests agree, and that is the check made
 \ before a single span is rebuilt.
 \
-\ ONE SELECTION AT A TIME. The value map and the frozen module's views are fixed
-\ package-owned slots rather than heap objects, so this pass selects one module at
-\ a time - the single-task compilation discipline the rest of the compiler already
-\ keeps. The whole walk is one call, so nothing a refused call left behind can be
-\ read by the next one; the binding is separately taken at entry, so a refused
-\ selection also leaves no binding for a later caller to select against by
-\ accident.
+\ ONE SELECTION AT A TIME. The value map is a fixed package-owned slot rather than
+\ a heap object, and the source module is read through the one cursor
+\ src/compiler/native/frozen.f owns, so this pass selects one module at a time -
+\ the single-task compilation discipline the rest of the compiler already keeps.
+\ The whole walk is one call, so nothing a refused call left behind can be read by
+\ the next one; the binding is separately taken at entry, so a refused selection
+\ also leaves no binding for a later caller to select against by accident.
 
 require lib/prelude.f
 require lib/errors.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
-require src/compiler/ir/arena.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/type.f
-require src/compiler/ir/attr.f
 require src/compiler/ir/source.f
 require src/compiler/ir/schema.f
-require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/hir.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frozen.f
 
 package A64SEL
+using NFROZEN
 private
 
 \ ---- the bound source dialect ------------------------------------------------
@@ -108,31 +107,10 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ ---- how much of one function this pass holds --------------------------------
-\ Values in one function. Two hundred and fifty-six is far past anything a
-\ straight-line body reaches; a function that wants more is a capability to raise
-\ here, not a ceiling to widen silently.
-256 constant VMAX
-
 \ The longest function name this pass can carry across. A name is copied out of
 \ the source module's interner and interned into the new one, because the two
 \ modules number their symbols separately.
 128 constant NAME-CAP
-
-\ The frozen tables of the module being read. One indexed slot per view keeps
-\ every helper below to a signature a reader can hold in their head.
-11 constant VIEWS-N
-0 constant V-SYMP                    \ symbol pool
-1 constant V-SYMR                    \ symbol rows
-2 constant V-TYPR                    \ type rows
-3 constant V-ATTR                    \ attribute rows
-4 constant V-SRC                     \ source registry
-5 constant V-SCHR                    \ schema rows
-6 constant V-OPP                     \ operation pool
-7 constant V-OPR                     \ operation rows
-8 constant V-VALR                    \ value rows
-9 constant V-FUNR                    \ function rows
-10 constant V-BLKR                   \ block rows
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable BND-MODE
@@ -144,10 +122,8 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
-1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
 1 TYPED-BUFFER S-ACC IR-ID:ir-value-id
-VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
 create NAMEBUF NAME-CAP allot
@@ -155,21 +131,9 @@ create NAMEBUF NAME-CAP allot
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
-: KEY ( -- IR-ID:ir-module-key )     0 S-KEY @ ;
 : SID ( -- IR-ID:ir-source-id )      0 S-SID @ ;
 : ACC ( -- IR-ID:ir-value-id )       0 S-ACC @ ;
 : ACC! ( IR-ID:ir-value-id -- )      0 S-ACC ! ;
-: VW ( n -- IR-ARENA:view )          S-VIEW @ ;
-
-\ ---- symbol identity ---------------------------------------------------------
-\ Two symbols are the same when they are the same ordinal of the same module.
-\ Nothing here compares spellings: the source dialect's spellings are the source
-\ dialect's, and this pass holds identities it was given rather than bytes it
-\ decided on.
-: SAME-SYM? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
-   {: x:IR-ID:ir-symbol-id y:IR-ID:ir-symbol-id :}
-   x IR-ID:SYMBOL-LOCAL y IR-ID:SYMBOL-LOCAL <> if false exit then
-   x IR-ID:SYMBOL-OWNER y IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? ;
 
 \ ---- the source dialect's opcode family --------------------------------------
 \ One injective slot per member, so the family stays exhaustive: a member added
@@ -239,29 +203,28 @@ create NAMEBUF NAME-CAP allot
 
 : OP-SPAN ( IR-ID:ir-op-id -- IR-SOURCE:span )
    {: id:IR-ID:ir-op-id :}
-   V-OPR VW KEY id IR-OP:FSPAN@ IR--SOURCE-SPAN:UNMAKE
+   id SPAN-AT IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
 : FUN-SPAN ( IR-ID:ir-fun-id -- IR-SOURCE:span )
    {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW KEY f IR-FUN:FSPAN@ IR--SOURCE-SPAN:UNMAKE
+   V-FUNR VW MKEY f IR-FUN:FSPAN@ IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
 : BLOCK-SPAN ( IR-ID:ir-block-id -- IR-SOURCE:span )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW KEY bk IR-FUN:FBLOCK-SPAN@ IR--SOURCE-SPAN:UNMAKE
+   V-BLKR VW MKEY bk IR-FUN:FBLOCK-SPAN@ IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
 \ The value one operand of a source operation selected to.
 : OPERAND ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FOPERAND@ VOF ;
+   OPERAND-AT VOF ;
 
 \ ---- staging one machine operation -------------------------------------------
 \ Every machine operation carries the span of the source operation it selects
@@ -287,10 +250,10 @@ create NAMEBUF NAME-CAP allot
 \ instead of read as if it were the value.
 : CONST-VALUE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
-   V-OPR VW id IR-OP:FATTRS 1 <> if E-A64SEL-ATTR throw then
-   V-OPP VW V-OPR VW KEY id 0 IR-OP:FATTR-KEY@  0 BND-VAL @  SAME-SYM?
+   id ATTRS-OF 1 <> if E-A64SEL-ATTR throw then
+   id 0 ATTR-KEY-AT  0 BND-VAL @  SAME-SYM?
    0= if E-A64SEL-ATTR throw then
-   V-ATTR VW  V-OPP VW V-OPR VW KEY id 0 IR-OP:FATTR@  IR-ATTR:FINT@ ;
+   id 0 ATTR-INT-AT ;
 
 \ One move-wide operation. `keep` is whether the halves already in place survive:
 \ movz clears them and movk keeps them, which is exactly the difference between
@@ -318,7 +281,7 @@ create NAMEBUF NAME-CAP allot
 : EMIT-CONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id CONST-VALUE  MATERIALISE
-   V-OPP VW V-OPR VW KEY id 0 IR-OP:FRESULT@  ACC  VBIND ;
+   id 0 RESULT-AT  ACC  VBIND ;
 
 \ ---- selecting the arithmetic ------------------------------------------------
 \ Two values in, one out. The operands are the values the source operands
@@ -331,7 +294,7 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    RESULT+
    CLOSE-VALUE
-   V-OPP VW V-OPR VW KEY id 0 IR-OP:FRESULT@  ACC  VBIND ;
+   id 0 RESULT-AT  ACC  VBIND ;
 
 \ ---- selecting the return ----------------------------------------------------
 \ The values still live where control leaves become the terminator's operands,
@@ -339,7 +302,7 @@ create NAMEBUF NAME-CAP allot
 : EMIT-RETURN ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id A64IR-OPCODE:RET OPEN
-   V-OPR VW id IR-OP:FOPERANDS {: k:n :}
+   id OPERANDS-OF {: k:n :}
    k 0 ?do
       CTX BLD  id i OPERAND  IR-BUILD:ADD-OPERAND
    loop
@@ -351,7 +314,7 @@ create NAMEBUF NAME-CAP allot
 \ selects to.
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   V-OPR VW KEY id IR-OP:FOPCODE@ {: sym:IR-ID:ir-symbol-id :}
+   id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
    V-SCHR VW sym IR-SCHEMA:FTRAPS? if E-A64SEL-TRAP throw then
    sym OPCODE-SLOT SLOT-OPCODE
    MATCH HIR:opcode
@@ -368,7 +331,7 @@ create NAMEBUF NAME-CAP allot
 \ the new module gains one symbol per distinct name and no more.
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ID:ir-fun-id :}
-   V-SYMP VW V-SYMR VW  V-FUNR VW KEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
+   V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
    IR-SYM:FCOPY {: u:n :}
    CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
 
@@ -377,7 +340,7 @@ create NAMEBUF NAME-CAP allot
 \ read off the source module rather than counted off its body.
 : FUN-SIG ( IR-ID:ir-fun-id -- IR-ID:ir-type-id )
    {: f:IR-ID:ir-fun-id :}
-   V-TYPR VW  V-FUNR VW KEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@
+   V-TYPR VW  V-FUNR VW MKEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@
    {: in:n out:n :}
    CTX BLD A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
    IR-TYPE:FN-BEGIN
@@ -404,9 +367,9 @@ create NAMEBUF NAME-CAP allot
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
    VCLEAR
-   V-BLKR VW bk IR-FUN:FARG-COUNT {: n:n :}
+   bk ARG-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@
+      bk i ARG-AT
       CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG
       VBIND
    loop ;
@@ -416,33 +379,18 @@ create NAMEBUF NAME-CAP allot
 \ second block means control flow, and control flow has no selection rule yet.
 : WALK-FUN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW f IR-FUN:FBLOCK-COUNT 1 <> if E-A64SEL-SHAPE throw then
-   V-FUNR VW V-BLKR VW KEY f 0 IR-FUN:FBLOCK@ {: bk:IR-ID:ir-block-id :}
+   f BLOCK-COUNT 1 <> if E-A64SEL-SHAPE throw then
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
    f OPEN-FUN
    bk OPEN-BLOCK
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   bk OP-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-OPR VW KEY bk i IR-FUN:FOP@ RULE
+      bk i OP-AT RULE
    loop
    CTX BLD IR-BUILD:END-BLOCK drop
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one selection run is told ------------------------------------------
-: VIEWS! ( IR-BUILD:module -- )
-   {: m:IR-BUILD:module :}
-   m IR-BUILD:FKEY 0 S-KEY !
-   m IR-BUILD:FSYM-POOL    V-SYMP S-VIEW !
-   m IR-BUILD:FSYM-ROWS    V-SYMR S-VIEW !
-   m IR-BUILD:FTYPE-ROWS   V-TYPR S-VIEW !
-   m IR-BUILD:FATTR-ROWS   V-ATTR S-VIEW !
-   m IR-BUILD:FSOURCES     V-SRC  S-VIEW !
-   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW !
-   m IR-BUILD:FOP-POOL     V-OPP  S-VIEW !
-   m IR-BUILD:FOP-ROWS     V-OPR  S-VIEW !
-   m IR-BUILD:FVALUE-ROWS  V-VALR S-VIEW !
-   m IR-BUILD:FFUN-ROWS    V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS  V-BLKR S-VIEW ! ;
-
 \ The new module gets the same source the old one has, proved the same rather
 \ than assumed: IR-SOURCE records a source as the digest of its bytes, so the
 \ text presented here is the text the source module was compiled from exactly
@@ -450,7 +398,7 @@ create NAMEBUF NAME-CAP allot
 : SOURCE! ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-A64SEL-SHAPE throw then
-   V-SRC VW  KEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
+   V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
    p u CDIGEST:COMPUTE
    CDIGEST-DIGEST:EQ 0= if E-A64SEL-SOURCE throw then
    c b p u IR-BUILD:ADD-SOURCE 0 S-SID ! ;
@@ -524,9 +472,9 @@ public
    b 0 S-BLD !
    m VIEWS!
    c b p u SOURCE!
-   V-FUNR VW IR-FUN:FFUNS {: n:n :}
+   FUN-COUNT {: n:n :}
    n 0 ?do
-      KEY i IR-ID:PACK-FUN WALK-FUN
+      MKEY i IR-ID:PACK-FUN WALK-FUN
    loop
    c b IR-BUILD:FREEZE ;
 
@@ -536,4 +484,5 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 
+;using
 ;package

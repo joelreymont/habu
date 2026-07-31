@@ -165,14 +165,15 @@ require src/compiler/binding.f
 require src/compiler/a64-effect.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
-require src/compiler/ir/arena.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frozen.f
 
 package A64RA
+using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
@@ -185,11 +186,6 @@ private
 1 constant BOUND-YES
 
 \ ---- how much of one block this pass holds -----------------------------------
-\ Values in one block. The selector carries the same ceiling, so a module it
-\ produced always fits; a block that wants more is a capability to raise in both,
-\ not a ceiling to widen silently.
-256 constant VMAX
-
 \ Spill decisions in one block. Each one is an operation the lowering pass will
 \ insert: one store per value that loses its register, one load before each
 \ operation that reads it afterwards. A block of VMAX values has fewer than VMAX
@@ -225,16 +221,6 @@ A64EFF:FILE-SIZE constant REGS-N
 \ own bound rather than a second one.
 A64EFF:SEQ-LIMIT constant FIXED-MAX
 
-\ ---- the frozen tables of the module being read ------------------------------
-7 constant VIEWS-N
-0 constant V-OPP                     \ operation pool
-1 constant V-OPR                     \ operation rows
-2 constant V-VALR                    \ value rows
-3 constant V-FUNR                    \ function rows
-4 constant V-BLKR                    \ block rows
-5 constant V-SCHP                    \ schema list pool
-6 constant V-SCHR                    \ schema rows
-
 \ ---- allocation state --------------------------------------------------------
 0 constant ST-EMPTY
 1 constant ST-SEALED
@@ -269,10 +255,8 @@ variable OUTS-N
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
-1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
 1 TYPED-BUFFER S-POOL A64EFF:gprs
-VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
 
 create V-DEF VMAX cells allot
 create V-LAST VMAX cells allot
@@ -291,9 +275,7 @@ create PL-KIND PLMAX cells allot
 create PL-VAL PLMAX cells allot
 
 \ ---- the slots, read back ----------------------------------------------------
-: KEY ( -- IR-ID:ir-module-key )     0 S-KEY @ ;
 : BLK ( -- IR-ID:ir-block-id )       0 S-BLK @ ;
-: VW ( n -- IR-ARENA:view )          S-VIEW @ ;
 : POOL-BITS ( -- n )                 0 S-POOL @ A64EFF:GPRS-N ;
 
 \ ---- the per-value tables ----------------------------------------------------
@@ -373,40 +355,14 @@ create PL-VAL PLMAX cells allot
       if drop true leave then
    loop ;
 
-\ ---- identity ----------------------------------------------------------------
-\ Two types are the same when they are the same ordinal of the same module.
-\ Nothing here compares spellings.
-: SAME-TYPE? ( IR-ID:ir-type-id IR-ID:ir-type-id -- bool )
-   {: x:IR-ID:ir-type-id y:IR-ID:ir-type-id :}
-   x IR-ID:TYPE-LOCAL y IR-ID:TYPE-LOCAL <> if false exit then
-   x IR-ID:TYPE-OWNER y IR-ID:TYPE-OWNER IR-ID:MODULE-SAME? ;
-
 \ ---- reading the frozen module -----------------------------------------------
-: OP-AT ( IR-ID:ir-block-id n -- IR-ID:ir-op-id )
-   {: bk:IR-ID:ir-block-id i:n :}
-   V-BLKR VW V-OPR VW KEY bk i IR-FUN:FOP@ ;
-
-: OPCODE-AT ( IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
-   V-OPR VW KEY rot IR-OP:FOPCODE@ ;
-
-: OPERAND-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FOPERAND@ ;
-
-: RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FRESULT@ ;
-
 \ The operation control leaves the block through. Its operands are the values the
 \ routine returns, so it is where the contract's result declaration is decided.
 \ It is read off the block's own row rather than taken as the last operation:
 \ which operation terminates a block is the block's recorded fact.
 : TERM-OF ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW V-OPR VW KEY bk IR-FUN:FTERMINATOR@ ;
-
-: OPERANDS-OF ( IR-ID:ir-op-id -- n )
-   V-OPR VW swap IR-OP:FOPERANDS ;
+   V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ ;
 
 \ ---- the register constraints this operation's form declares -----------------
 \ The schema table of the module being allocated is the authority on the shape of
@@ -442,7 +398,7 @@ create PL-VAL PLMAX cells allot
 \ has no class here and is refused rather than given a register.
 : CLASS-OF ( IR-ID:ir-value-id -- n )
    {: id:IR-ID:ir-value-id :}
-   V-VALR VW KEY id IR-OP:FVALUE-TYPE@ {: t:IR-ID:ir-type-id :}
+   id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
    t 0 BND-TYP @ SAME-TYPE? if C-GPR exit then
    t 0 BND-MEM @ SAME-TYPE? if C-TOKEN exit then
    E-A64RA-CLASS throw ;
@@ -469,25 +425,25 @@ create PL-VAL PLMAX cells allot
 
 : DEFS-OF-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
-   V-OPR VW id IR-OP:FRESULTS {: n:n :}
+   id RESULTS-OF {: n:n :}
    n 0 ?do id i RESULT-AT pos DEFINE loop ;
 
 : USES-OF-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
-   V-OPR VW id IR-OP:FOPERANDS {: n:n :}
+   id OPERANDS-OF {: n:n :}
    n 0 ?do id i OPERAND-AT pos USE loop ;
 
 : SCAN-ARGS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FARG-COUNT {: n:n :}
+   bk ARG-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ ENTRY DEFINE
+      bk i ARG-AT ENTRY DEFINE
    loop ;
 
 : SCAN-LIVE ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk SCAN-ARGS
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   bk OP-COUNT {: n:n :}
    n N-OPS !
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
@@ -572,7 +528,7 @@ create PL-VAL PLMAX cells allot
 \ than it returns values, is not this routine's convention.
 : FIXED-ARITY-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FARG-COUNT ARGS-N @ < if E-A64RA-FIXED throw then
+   bk ARG-COUNT ARGS-N @ < if E-A64RA-FIXED throw then
    bk TERM-OF OPERANDS-OF OUTS-N @ < if E-A64RA-FIXED throw then ;
 
 \ Which register each returned value has to be in where control leaves. A value
@@ -594,7 +550,7 @@ create PL-VAL PLMAX cells allot
 : READS? ( IR-ID:ir-op-id n -- bool )
    {: id:IR-ID:ir-op-id k:n :}
    false
-   V-OPR VW id IR-OP:FOPERANDS 0 ?do
+   id OPERANDS-OF 0 ?do
       id i OPERAND-AT SLOT k = if drop true leave then
    loop ;
 
@@ -776,7 +732,7 @@ create PL-VAL PLMAX cells allot
 
 : OP-RELOADS ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
-   V-OPR VW id IR-OP:FOPERANDS {: n:n :}
+   id OPERANDS-OF {: n:n :}
    n 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
       k SLOT-AT NOSLOT <> k pos RELOADED? 0= and if
@@ -799,7 +755,7 @@ create PL-VAL PLMAX cells allot
    id pos OP-RELOADS
    RELOADS-FREE
    pos 1+ EXPIRE
-   V-OPR VW id IR-OP:FRESULTS {: n:n :}
+   id RESULTS-OF {: n:n :}
    n 0 ?do id i pos ASSIGN-RESULT loop ;
 
 \ Every returned value the contract named a register for is in it where control
@@ -821,39 +777,27 @@ create PL-VAL PLMAX cells allot
 : SCAN-ASSIGN ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    PINS-CLEAR
-   V-BLKR VW bk IR-FUN:FARG-COUNT {: n:n :}
+   bk ARG-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ {: a:IR-ID:ir-value-id :}
+      bk i ARG-AT {: a:IR-ID:ir-value-id :}
       i ARGS-N @ < if
          a  i cells A-REG + @  PIN-ARG
       else
          a ENTRY ASSIGN
       then
    loop
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: k:n :}
+   bk OP-COUNT {: k:n :}
    k 0 ?do bk i OP-AT i ASSIGN-OP loop
    bk RETURN-CK ;
 
 \ ---- what one allocation run is told -----------------------------------------
-: VIEWS! ( IR-BUILD:module -- )
-   {: m:IR-BUILD:module :}
-   m IR-BUILD:FKEY 0 S-KEY !
-   m IR-BUILD:FMODULE 0 S-MOD !
-   m IR-BUILD:FOP-POOL    V-OPP  S-VIEW !
-   m IR-BUILD:FOP-ROWS    V-OPR  S-VIEW !
-   m IR-BUILD:FVALUE-ROWS V-VALR S-VIEW !
-   m IR-BUILD:FFUN-ROWS   V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW !
-   m IR-BUILD:FSCHEMA-POOL V-SCHP S-VIEW !
-   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW ! ;
-
 \ The straight-line subset is one function of one block; any other shape means
 \ control flow, and control flow has no allocation rule here yet.
 : BLOCK-OF ( -- IR-ID:ir-block-id )
-   V-FUNR VW IR-FUN:FFUNS 1 <> if E-A64RA-SHAPE throw then
-   KEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW f IR-FUN:FBLOCK-COUNT 1 <> if E-A64RA-SHAPE throw then
-   V-FUNR VW V-BLKR VW KEY f 0 IR-FUN:FBLOCK@ ;
+   FUN-COUNT 1 <> if E-A64RA-SHAPE throw then
+   MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 1 <> if E-A64RA-SHAPE throw then
+   f 0 BLOCK-AT ;
 
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
@@ -951,6 +895,7 @@ public
    pool 0 S-POOL !
    frame FRAME-N !
    m VIEWS!
+   m IR-BUILD:FMODULE 0 S-MOD !
    TABLES-CLEAR
    args outs FIXED!
    FIXED-POOL-CK
@@ -1069,4 +1014,5 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 
+;using
 ;package

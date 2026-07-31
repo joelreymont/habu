@@ -104,18 +104,16 @@ require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
-require src/compiler/ir/arena.f
-require src/compiler/ir/attr.f
 require src/compiler/ir/source.f
-require src/compiler/ir/op.f
-require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
 require src/compiler/native/regalloc-verify.f
 require src/arch/arm64/asm.f
 
 package A64EMIT
+using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
@@ -139,11 +137,6 @@ private
 1 constant BOUND-YES
 
 \ ---- how much of one block this pass holds -----------------------------------
-\ Values in one block. The selector and the allocator carry the same ceiling, so
-\ a module either of them accepted always fits; a block that wants more is a
-\ capability to raise in all three, not a ceiling to widen silently.
-256 constant VMAX
-
 \ One instruction per operation. Two forms define no value - the return and the
 \ release of the frame - and every other operation defines at least one, so a
 \ block that fits the ceiling above emits at most this many.
@@ -151,14 +144,6 @@ VMAX 2 + constant INSN-MAX
 
 \ Every ARM64 instruction is four bytes.
 4 constant INSN-BYTES
-
-\ ---- the frozen tables of the module being read ------------------------------
-5 constant VIEWS-N
-0 constant V-OPP                     \ operation pool
-1 constant V-OPR                     \ operation rows
-2 constant V-FUNR                    \ function rows
-3 constant V-BLKR                    \ block rows
-4 constant V-ATTR                    \ attribute rows
 
 \ ---- emission state ----------------------------------------------------------
 0 constant ST-EMPTY
@@ -179,27 +164,12 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 
-1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
-VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
-
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-MAX INSN-BYTES * allot
 create M-OFF INSN-MAX cells allot
 create M-ST INSN-MAX cells allot
 create M-LN INSN-MAX cells allot
 INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
-
-\ ---- the slots, read back ----------------------------------------------------
-: KEY ( -- IR-ID:ir-module-key )     0 S-KEY @ ;
-: VW ( n -- IR-ARENA:view )          S-VIEW @ ;
-
-\ ---- identity ----------------------------------------------------------------
-\ Two symbols are the same when they are the same ordinal of the same module.
-\ Nothing here compares spellings.
-: SAME-SYM? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
-   {: x:IR-ID:ir-symbol-id y:IR-ID:ir-symbol-id :}
-   x IR-ID:SYMBOL-LOCAL y IR-ID:SYMBOL-LOCAL <> if false exit then
-   x IR-ID:SYMBOL-OWNER y IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? ;
 
 \ ---- the dialect's operation family ------------------------------------------
 : SLOT-OF ( A64IR:opcode -- n )
@@ -244,23 +214,8 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    dup 0 < if E-A64EMIT-OPCODE throw then ;
 
 \ ---- reading the frozen module -----------------------------------------------
-: OP-AT ( IR-ID:ir-block-id n -- IR-ID:ir-op-id )
-   {: bk:IR-ID:ir-block-id i:n :}
-   V-BLKR VW V-OPR VW KEY bk i IR-FUN:FOP@ ;
-
 : SLOT-AT ( IR-ID:ir-op-id -- n )
-   V-OPR VW KEY rot IR-OP:FOPCODE@ OPCODE-SLOT ;
-
-: OPERAND-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FOPERAND@ ;
-
-: RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FRESULT@ ;
-
-: OP-COUNT ( IR-ID:ir-block-id -- n )
-   V-BLKR VW swap IR-FUN:FOP-COUNT ;
+   OPCODE-AT OPCODE-SLOT ;
 
 \ ---- the registers, through the one door that answers ------------------------
 \ A64RAV:REG@ is the only checked answer in the chain, and it is the only way a
@@ -281,16 +236,16 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 : ATTR-SLOT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    -1
-   V-OPR VW id IR-OP:FATTRS {: n:n :}
+   id ATTRS-OF {: n:n :}
    n 0 ?do
-      V-OPP VW V-OPR VW KEY id i IR-OP:FATTR-KEY@ want SAME-SYM? if drop i leave then
+      id i ATTR-KEY-AT want SAME-SYM? if drop i leave then
    loop
    dup 0 < if E-A64EMIT-ATTR throw then ;
 
 : ATTR-INT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    id want ATTR-SLOT {: k:n :}
-   V-ATTR VW  V-OPP VW V-OPR VW KEY id k IR-OP:FATTR@  IR-ATTR:FINT@ ;
+   id k ATTR-INT-AT ;
 
 : IMM-OF ( IR-ID:ir-op-id -- n )
    0 BND-IMM @ ATTR-INT ;
@@ -398,7 +353,7 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 : MAP! ( IR-ID:ir-op-id n n -- )
    {: id:IR-ID:ir-op-id off:n k:n :}
    off k cells M-OFF + !
-   V-OPR VW KEY id IR-OP:FSPAN@ IR--SOURCE-SPAN:UNMAKE
+   id SPAN-AT IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
    src k M-SRC !
    st k cells M-ST + !
@@ -415,22 +370,13 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    k 1+ N-INS ! ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
-: VIEWS! ( IR-BUILD:module -- )
-   {: m:IR-BUILD:module :}
-   m IR-BUILD:FKEY 0 S-KEY !
-   m IR-BUILD:FOP-POOL    V-OPP  S-VIEW !
-   m IR-BUILD:FOP-ROWS    V-OPR  S-VIEW !
-   m IR-BUILD:FFUN-ROWS   V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW !
-   m IR-BUILD:FATTR-ROWS  V-ATTR S-VIEW ! ;
-
 \ One function of one block; any other shape means control flow, and control flow
 \ has no layout rule here yet.
 : BLOCK-OF ( -- IR-ID:ir-block-id )
-   V-FUNR VW IR-FUN:FFUNS 1 <> if E-A64EMIT-SHAPE throw then
-   KEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW f IR-FUN:FBLOCK-COUNT 1 <> if E-A64EMIT-SHAPE throw then
-   V-FUNR VW V-BLKR VW KEY f 0 IR-FUN:FBLOCK@ ;
+   FUN-COUNT 1 <> if E-A64EMIT-SHAPE throw then
+   MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 1 <> if E-A64EMIT-SHAPE throw then
+   f 0 BLOCK-AT ;
 
 \ The block's operations run in one order and end once. Re-derived rather than
 \ taken from the verifier, because this pass is about to lay them out in exactly
@@ -605,4 +551,5 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 
+;using
 ;package

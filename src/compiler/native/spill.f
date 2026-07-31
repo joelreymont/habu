@@ -78,8 +78,9 @@
 \ is the branch being skipped: an allocation that decided a spill is not an
 \ assignment for the module it read, and the validator refuses it.
 \
-\ ONE REWRITE AT A TIME. The value map and the views are fixed package-owned
-\ slots rather than heap objects, so this pass rewrites one module at a time -
+\ ONE REWRITE AT A TIME. The value map is a fixed package-owned slot rather than a
+\ heap object, and the old module is read through the one cursor
+\ src/compiler/native/frozen.f owns, so this pass rewrites one module at a time -
 \ the single-task compilation discipline the rest of the native chain keeps. The
 \ whole walk is one call, and the binding is taken at entry whatever the outcome,
 \ so a refused rewrite leaves nothing behind for the next caller.
@@ -89,19 +90,18 @@ require lib/errors.f
 require src/compiler/digest.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
-require src/compiler/ir/arena.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/type.f
-require src/compiler/ir/attr.f
 require src/compiler/ir/source.f
 require src/compiler/ir/schema.f
-require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
 
 package A64SPILL
+using NFROZEN
 private
 
 \ ---- the bound dialect -------------------------------------------------------
@@ -131,27 +131,10 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ Values in one block, the ceiling the allocator carries.
-256 constant VMAX
-
 \ The longest function name this pass can carry across. A name is copied out of
 \ the old module's interner and interned into the new one, because the two
 \ modules number their symbols separately.
 128 constant NAME-CAP
-
-\ The frozen tables of the module being read.
-11 constant VIEWS-N
-0 constant V-SYMP                    \ symbol pool
-1 constant V-SYMR                    \ symbol rows
-2 constant V-TYPR                    \ type rows
-3 constant V-ATTR                    \ attribute rows
-4 constant V-SRC                     \ source registry
-5 constant V-SCHR                    \ schema rows
-6 constant V-OPP                     \ operation pool
-7 constant V-OPR                     \ operation rows
-8 constant V-VALR                    \ value rows
-9 constant V-FUNR                    \ function rows
-10 constant V-BLKR                   \ block rows
 
 here CELL 1- and CELL swap - CELL 1- and allot
 variable BND-MODE
@@ -167,10 +150,8 @@ KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
-1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
 1 TYPED-BUFFER S-SID IR-ID:ir-source-id
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
-VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 VMAX TYPED-BUFFER RMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
@@ -180,22 +161,9 @@ create NAMEBUF NAME-CAP allot
 \ ---- the slots, read back ----------------------------------------------------
 : CTX ( -- IR-CTX:ctx )              0 S-CTX @ ;
 : BLD ( -- IR-BUILD:builder )        0 S-BLD @ ;
-: KEY ( -- IR-ID:ir-module-key )     0 S-KEY @ ;
 : SID ( -- IR-ID:ir-source-id )      0 S-SID @ ;
 : TOK ( -- IR-ID:ir-value-id )       0 S-TOK @ ;
 : TOK! ( IR-ID:ir-value-id -- )      0 S-TOK ! ;
-: VW ( n -- IR-ARENA:view )          S-VIEW @ ;
-
-\ ---- identity ----------------------------------------------------------------
-: SAME-SYM? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
-   {: x:IR-ID:ir-symbol-id y:IR-ID:ir-symbol-id :}
-   x IR-ID:SYMBOL-LOCAL y IR-ID:SYMBOL-LOCAL <> if false exit then
-   x IR-ID:SYMBOL-OWNER y IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? ;
-
-: SAME-TYPE? ( IR-ID:ir-type-id IR-ID:ir-type-id -- bool )
-   {: x:IR-ID:ir-type-id y:IR-ID:ir-type-id :}
-   x IR-ID:TYPE-LOCAL y IR-ID:TYPE-LOCAL <> if false exit then
-   x IR-ID:TYPE-OWNER y IR-ID:TYPE-OWNER IR-ID:MODULE-SAME? ;
 
 \ ---- the machine operation family --------------------------------------------
 : SLOT-OF ( A64IR:opcode -- n )
@@ -291,36 +259,24 @@ create NAMEBUF NAME-CAP allot
 
 : OP-SPAN ( IR-ID:ir-op-id -- IR-SOURCE:span )
    {: id:IR-ID:ir-op-id :}
-   V-OPR VW KEY id IR-OP:FSPAN@ IR--SOURCE-SPAN:UNMAKE
+   id SPAN-AT IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
 : FUN-SPAN ( IR-ID:ir-fun-id -- IR-SOURCE:span )
    {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW KEY f IR-FUN:FSPAN@ IR--SOURCE-SPAN:UNMAKE
+   V-FUNR VW MKEY f IR-FUN:FSPAN@ IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
 
 : BLOCK-SPAN ( IR-ID:ir-block-id -- IR-SOURCE:span )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW KEY bk IR-FUN:FBLOCK-SPAN@ IR--SOURCE-SPAN:UNMAKE
+   V-BLKR VW MKEY bk IR-FUN:FBLOCK-SPAN@ IR--SOURCE-SPAN:UNMAKE
    {: src:IR-ID:ir-source-id st:n ln:n :}
    src SRC-CK
    BLD SID st ln IR-BUILD:ADD-SPAN ;
-
-: OP-AT ( IR-ID:ir-block-id n -- IR-ID:ir-op-id )
-   {: bk:IR-ID:ir-block-id i:n :}
-   V-BLKR VW V-OPR VW KEY bk i IR-FUN:FOP@ ;
-
-: OPERAND-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FOPERAND@ ;
-
-: RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FRESULT@ ;
 
 \ The type of one value of the old module, restated in the new one. The two
 \ modules number their types separately, so a value's class is carried across by
@@ -328,7 +284,7 @@ create NAMEBUF NAME-CAP allot
 \ no type for.
 : TYPE-OF ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
    {: id:IR-ID:ir-value-id :}
-   V-VALR VW KEY id IR-OP:FVALUE-TYPE@ {: t:IR-ID:ir-type-id :}
+   id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
    t 0 BND-GPR @ SAME-TYPE? if CTX BLD A64IR:GPR-TYPE exit then
    t 0 BND-MEM @ SAME-TYPE? if CTX BLD A64IR:MEM-TYPE exit then
    E-A64SPILL-SHAPE throw ;
@@ -382,7 +338,7 @@ create NAMEBUF NAME-CAP allot
 : EMIT-STORE ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id k:n :}
    at A64IR-OPCODE:STORE OPEN
-   KEY k IR-ID:PACK-VALUE VOF OPERAND+
+   MKEY k IR-ID:PACK-VALUE VOF OPERAND+
    TOK OPERAND+
    MEM-RESULT+
    k A64RA:SLOT@ SLOT-ATTR+
@@ -412,7 +368,7 @@ create NAMEBUF NAME-CAP allot
 : EMIT-MOVE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
    at A64IR-OPCODE:MOV OPEN
-   KEY k IR-ID:PACK-VALUE pos READ-AS OPERAND+
+   MKEY k IR-ID:PACK-VALUE pos READ-AS OPERAND+
    GPR-RESULT+
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
@@ -445,10 +401,10 @@ create NAMEBUF NAME-CAP allot
 \ ---- copying one operation of the old block ----------------------------------
 : COPY-ATTRS ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   V-OPR VW id IR-OP:FATTRS {: n:n :}
+   id ATTRS-OF {: n:n :}
    n 0 ?do
-      V-OPP VW V-OPR VW KEY id i IR-OP:FATTR-KEY@ KEY-SLOT-OF {: k:n :}
-      V-ATTR VW  V-OPP VW V-OPR VW KEY id i IR-OP:FATTR@  IR-ATTR:FINT@ {: v:n :}
+      id i ATTR-KEY-AT KEY-SLOT-OF {: k:n :}
+      id i ATTR-INT-AT {: v:n :}
       k K-IMM = if
          CTX BLD  CTX BLD A64IR:KEY-IMM  CTX BLD v A64IR:IMM-ATTR
          IR-BUILD:ADD-ATTR
@@ -463,28 +419,28 @@ create NAMEBUF NAME-CAP allot
 
 : COPY-OPERANDS ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
-   V-OPR VW id IR-OP:FOPERANDS {: n:n :}
+   id OPERANDS-OF {: n:n :}
    n 0 ?do
       id i OPERAND-AT pos READ-AS OPERAND+
    loop ;
 
 : COPY-RESULTS ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   V-OPR VW id IR-OP:FRESULTS {: n:n :}
+   id RESULTS-OF {: n:n :}
    n 0 ?do
       CTX BLD  id i RESULT-AT TYPE-OF  IR-BUILD:ADD-RESULT
    loop ;
 
 : BIND-RESULTS ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: old:IR-ID:ir-op-id new:IR-ID:ir-op-id :}
-   V-OPR VW old IR-OP:FRESULTS {: n:n :}
+   old RESULTS-OF {: n:n :}
    n 0 ?do
       old i RESULT-AT  new i RESULT@  VBIND
    loop ;
 
 : COPY-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
-   V-OPR VW KEY id IR-OP:FOPCODE@ OPCODE-SLOT SLOT-OPCODE {: o:A64IR:opcode :}
+   id OPCODE-AT OPCODE-SLOT SLOT-OPCODE {: o:A64IR:opcode :}
    id o OPEN
    id pos COPY-OPERANDS
    id COPY-RESULTS
@@ -499,9 +455,9 @@ create NAMEBUF NAME-CAP allot
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
    VCLEAR
-   V-BLKR VW bk IR-FUN:FARG-COUNT {: n:n :}
+   bk ARG-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ {: a:IR-ID:ir-value-id :}
+      bk i ARG-AT {: a:IR-ID:ir-value-id :}
       a
       CTX BLD  a TYPE-OF  IR-BUILD:ADD-BLOCK-ARG
       VBIND
@@ -515,7 +471,7 @@ create NAMEBUF NAME-CAP allot
 
 : WALK-BLOCK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   bk OP-COUNT {: n:n :}
    n 1 < if E-A64SPILL-SHAPE throw then
    bk OPEN-BLOCK
    FRAMES? if bk 0 OP-AT EMIT-RESERVE then
@@ -530,7 +486,7 @@ create NAMEBUF NAME-CAP allot
 
 : FUN-NAME ( IR-ID:ir-fun-id -- IR-ID:ir-symbol-id )
    {: f:IR-ID:ir-fun-id :}
-   V-SYMP VW V-SYMR VW  V-FUNR VW KEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
+   V-SYMP VW V-SYMR VW  V-FUNR VW MKEY f IR-FUN:FSYMBOL@  NAMEBUF NAME-CAP
    IR-SYM:FCOPY {: u:n :}
    CTX BLD NAMEBUF u IR-BUILD:INTERN-SYMBOL ;
 
@@ -539,7 +495,7 @@ create NAMEBUF NAME-CAP allot
 \ them.
 : FUN-SIG ( IR-ID:ir-fun-id -- IR-ID:ir-type-id )
    {: f:IR-ID:ir-fun-id :}
-   V-TYPR VW  V-FUNR VW KEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@
+   V-TYPR VW  V-FUNR VW MKEY f IR-FUN:FSIGNATURE@  IR-TYPE:FARITY@
    {: in:n out:n :}
    CTX BLD A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
    IR-TYPE:FN-BEGIN
@@ -549,36 +505,21 @@ create NAMEBUF NAME-CAP allot
 
 : WALK-FUN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW f IR-FUN:FBLOCK-COUNT 1 <> if E-A64SPILL-SHAPE throw then
+   f BLOCK-COUNT 1 <> if E-A64SPILL-SHAPE throw then
    CTX BLD f FUN-NAME IR-BUILD:BEGIN-FUN
    CTX BLD f FUN-SIG IR-BUILD:SET-SIGNATURE
    CTX BLD  V-FUNR VW f IR-FUN:FLINKAGE@  IR-BUILD:SET-LINKAGE
    CTX BLD  V-FUNR VW f IR-FUN:FVISIBILITY@  IR-BUILD:SET-VISIBILITY
    CTX BLD  V-FUNR VW f IR-FUN:FCONVENTION@  IR-BUILD:SET-CONVENTION
    CTX BLD f FUN-SPAN IR-BUILD:SET-FUN-SPAN
-   V-FUNR VW V-BLKR VW KEY f 0 IR-FUN:FBLOCK@ WALK-BLOCK
+   f 0 BLOCK-AT WALK-BLOCK
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one rewrite is told ------------------------------------------------
-: VIEWS! ( IR-BUILD:module -- )
-   {: m:IR-BUILD:module :}
-   m IR-BUILD:FKEY 0 S-KEY !
-   m IR-BUILD:FSYM-POOL    V-SYMP S-VIEW !
-   m IR-BUILD:FSYM-ROWS    V-SYMR S-VIEW !
-   m IR-BUILD:FTYPE-ROWS   V-TYPR S-VIEW !
-   m IR-BUILD:FATTR-ROWS   V-ATTR S-VIEW !
-   m IR-BUILD:FSOURCES     V-SRC  S-VIEW !
-   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW !
-   m IR-BUILD:FOP-POOL     V-OPP  S-VIEW !
-   m IR-BUILD:FOP-ROWS     V-OPR  S-VIEW !
-   m IR-BUILD:FVALUE-ROWS  V-VALR S-VIEW !
-   m IR-BUILD:FFUN-ROWS    V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS  V-BLKR S-VIEW ! ;
-
 : SOURCE! ( IR-CTX:ctx IR-BUILD:builder ptr u8 n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p u:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
    V-SRC VW IR-SOURCE:FSOURCES 1 <> if E-A64SPILL-SHAPE throw then
-   V-SRC VW  KEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
+   V-SRC VW  MKEY 0 IR-ID:PACK-SOURCE  IR-SOURCE:FDIGEST@
    p u CDIGEST:COMPUTE
    CDIGEST-DIGEST:EQ 0= if E-A64SPILL-SOURCE throw then
    c b p u IR-BUILD:ADD-SOURCE 0 S-SID ! ;
@@ -608,18 +549,18 @@ create NAMEBUF NAME-CAP allot
 \ again would build a second frame inside the first, so it stops here.
 : ONCE-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   bk OP-COUNT {: n:n :}
    n 0 ?do
-      V-SCHR VW  V-OPR VW KEY bk i OP-AT IR-OP:FOPCODE@  IR-SCHEMA:FEFFECT@
+      V-SCHR VW  bk i OP-AT OPCODE-AT  IR-SCHEMA:FEFFECT@
       IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ
       0= if E-A64SPILL-SHAPE throw then
    loop ;
 
 : SHAPE-CK ( -- )
-   V-FUNR VW IR-FUN:FFUNS 1 <> if E-A64SPILL-SHAPE throw then
-   KEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW f IR-FUN:FBLOCK-COUNT 1 <> if E-A64SPILL-SHAPE throw then
-   V-FUNR VW V-BLKR VW KEY f 0 IR-FUN:FBLOCK@ ONCE-CK ;
+   FUN-COUNT 1 <> if E-A64SPILL-SHAPE throw then
+   MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 1 <> if E-A64SPILL-SHAPE throw then
+   f 0 BLOCK-AT ONCE-CK ;
 
 : BIND1 ( IR-CTX:ctx IR-BUILD:builder A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder o:A64IR:opcode :}
@@ -688,7 +629,7 @@ public
    m VIEWS!
    c b p u SOURCE!
    SHAPE-CK
-   KEY 0 IR-ID:PACK-FUN WALK-FUN
+   MKEY 0 IR-ID:PACK-FUN WALK-FUN
    c b IR-BUILD:FREEZE ;
 
 private
@@ -697,4 +638,5 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 
+;using
 ;package

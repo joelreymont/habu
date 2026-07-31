@@ -88,33 +88,20 @@ require lib/errors.f
 require src/compiler/a64-effect.f
 require src/compiler/ir/id.f
 require src/compiler/ir/context.f
-require src/compiler/ir/arena.f
-require src/compiler/ir/attr.f
 require src/compiler/ir/schema.f
 require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
 
 package A64RAV
+using NFROZEN
 private
-
-\ Values in one block, the ceiling the allocator carries.
-256 constant VMAX
 
 \ The position of a block argument: before every operation of the block.
 -1 constant ENTRY
-
-8 constant VIEWS-N
-0 constant V-OPP                     \ operation pool
-1 constant V-OPR                     \ operation rows
-2 constant V-VALR                    \ value rows
-3 constant V-FUNR                    \ function rows
-4 constant V-BLKR                    \ block rows
-5 constant V-SCHP                    \ schema list pool
-6 constant V-SCHR                    \ schema rows
-7 constant V-ATTR                    \ attribute rows
 
 0 constant ST-NONE
 1 constant ST-ACCEPTED
@@ -148,17 +135,11 @@ variable N-VALS
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 
-1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
-VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
-
 create D-AT VMAX cells allot         \ where the module says each value is written
 create L-AT VMAX cells allot         \ where the module says each value is last read
 create S-AT VMAX cells allot         \ whether the block defines this value at all
 create C-AT VMAX cells allot         \ which class the module gives each value
 create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
-
-: KEY ( -- IR-ID:ir-module-key )     0 S-KEY @ ;
-: VW ( n -- IR-ARENA:view )          S-VIEW @ ;
 
 : DEF-AT ( n -- n )                  cells D-AT + @ ;
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
@@ -179,49 +160,10 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    loop
    SLOTS-MAX 0 ?do -1 i cells W-AT + ! loop ;
 
-\ ---- identity ----------------------------------------------------------------
-: SAME-SYM? ( IR-ID:ir-symbol-id IR-ID:ir-symbol-id -- bool )
-   {: x:IR-ID:ir-symbol-id y:IR-ID:ir-symbol-id :}
-   x IR-ID:SYMBOL-LOCAL y IR-ID:SYMBOL-LOCAL <> if false exit then
-   x IR-ID:SYMBOL-OWNER y IR-ID:SYMBOL-OWNER IR-ID:MODULE-SAME? ;
-
-: SAME-TYPE? ( IR-ID:ir-type-id IR-ID:ir-type-id -- bool )
-   {: x:IR-ID:ir-type-id y:IR-ID:ir-type-id :}
-   x IR-ID:TYPE-LOCAL y IR-ID:TYPE-LOCAL <> if false exit then
-   x IR-ID:TYPE-OWNER y IR-ID:TYPE-OWNER IR-ID:MODULE-SAME? ;
-
 \ ---- reading the frozen module -----------------------------------------------
 : SLOT ( IR-ID:ir-value-id -- n )
    IR-ID:VALUE-LOCAL
    dup 0 < over VMAX >= or if E-A64RAV-COVER throw then ;
-
-: OP-AT ( IR-ID:ir-block-id n -- IR-ID:ir-op-id )
-   {: bk:IR-ID:ir-block-id i:n :}
-   V-BLKR VW V-OPR VW KEY bk i IR-FUN:FOP@ ;
-
-: OPCODE-AT ( IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
-   {: id:IR-ID:ir-op-id :}
-   V-OPR VW KEY id IR-OP:FOPCODE@ ;
-
-: OPERAND-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FOPERAND@ ;
-
-: RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
-   {: id:IR-ID:ir-op-id i:n :}
-   V-OPP VW V-OPR VW KEY id i IR-OP:FRESULT@ ;
-
-: VIEWS! ( IR-BUILD:module -- )
-   {: m:IR-BUILD:module :}
-   m IR-BUILD:FKEY 0 S-KEY !
-   m IR-BUILD:FOP-POOL    V-OPP  S-VIEW !
-   m IR-BUILD:FOP-ROWS    V-OPR  S-VIEW !
-   m IR-BUILD:FVALUE-ROWS V-VALR S-VIEW !
-   m IR-BUILD:FFUN-ROWS   V-FUNR S-VIEW !
-   m IR-BUILD:FBLOCK-ROWS V-BLKR S-VIEW !
-   m IR-BUILD:FSCHEMA-POOL V-SCHP S-VIEW !
-   m IR-BUILD:FSCHEMA-ROWS V-SCHR S-VIEW !
-   m IR-BUILD:FATTR-ROWS  V-ATTR S-VIEW ! ;
 
 \ ---- what an operation says about the frame ----------------------------------
 \ Nothing below asks which opcode an operation is. A frame access declares a
@@ -236,10 +178,10 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 : ATTR-INT ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
    {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
    NOSLOT
-   V-OPR VW id IR-OP:FATTRS 0 ?do
-      V-OPP VW V-OPR VW KEY id i IR-OP:FATTR-KEY@ want SAME-SYM? if
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT want SAME-SYM? if
          drop
-         V-ATTR VW  V-OPP VW V-OPR VW KEY id i IR-OP:FATTR@  IR-ATTR:FINT@
+         id i ATTR-INT-AT
          leave
       then
    loop ;
@@ -255,10 +197,10 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 
 \ The straight-line subset, re-derived rather than taken on trust.
 : BLOCK-OF ( -- IR-ID:ir-block-id )
-   V-FUNR VW IR-FUN:FFUNS 1 <> if E-A64RAV-SHAPE throw then
-   KEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   V-FUNR VW f IR-FUN:FBLOCK-COUNT 1 <> if E-A64RAV-SHAPE throw then
-   V-FUNR VW V-BLKR VW KEY f 0 IR-FUN:FBLOCK@ ;
+   FUN-COUNT 1 <> if E-A64RAV-SHAPE throw then
+   MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 1 <> if E-A64RAV-SHAPE throw then
+   f 0 BLOCK-AT ;
 
 \ ---- what the module says about each value -----------------------------------
 : NOTE-DEF ( IR-ID:ir-value-id n -- )
@@ -277,26 +219,26 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 
 : DEFS-OF-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
-   V-OPR VW id IR-OP:FRESULTS {: n:n :}
+   id RESULTS-OF {: n:n :}
    n 0 ?do id i RESULT-AT pos NOTE-DEF loop ;
 
 : USES-OF-OP ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id pos:n :}
-   V-OPR VW id IR-OP:FOPERANDS {: n:n :}
+   id OPERANDS-OF {: n:n :}
    n 0 ?do id i OPERAND-AT pos NOTE-USE loop ;
 
 : MEASURE-ARGS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FARG-COUNT {: n:n :}
+   bk ARG-COUNT {: n:n :}
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ ENTRY NOTE-DEF
+      bk i ARG-AT ENTRY NOTE-DEF
    loop ;
 
 : MEASURE ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    TABLES-CLEAR
    bk MEASURE-ARGS
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   bk OP-COUNT {: n:n :}
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id i USES-OF-OP
@@ -326,7 +268,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 \ third type has been given a register that cannot hold it.
 : CLASS-CK ( -- )
    N-VALS @ 0 ?do
-      V-VALR VW KEY  KEY i IR-ID:PACK-VALUE  IR-OP:FVALUE-TYPE@
+      MKEY i IR-ID:PACK-VALUE VALUE-TYPE-AT
       {: t:IR-ID:ir-type-id :}
       t 0 BND-GPR @ SAME-TYPE? if C-GPR i CLS! then
       t 0 BND-MEM @ SAME-TYPE? if C-TOKEN i CLS! then
@@ -398,7 +340,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 
 : TIE-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   bk OP-COUNT {: n:n :}
    n 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       V-SCHR VW id OPCODE-AT IR-SCHEMA:FTIES 0 ?do
@@ -418,9 +360,9 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 : ARG-CK ( IR-ID:ir-block-id A64EFF:regseq -- )
    {: bk:IR-ID:ir-block-id args:A64EFF:regseq :}
    args A64EFF:SEQ-LEN {: n:n :}
-   V-BLKR VW bk IR-FUN:FARG-COUNT n < if E-A64RAV-FIXED throw then
+   bk ARG-COUNT n < if E-A64RAV-FIXED throw then
    n 0 ?do
-      V-BLKR VW V-VALR VW KEY bk i IR-FUN:FARG@ SLOT A64RA:CLAIM@
+      bk i ARG-AT SLOT A64RA:CLAIM@
       args i A64EFF:SEQ@ <> if E-A64RAV-FIXED throw then
    loop ;
 
@@ -431,8 +373,8 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 : OUT-CK ( IR-ID:ir-block-id A64EFF:regseq -- )
    {: bk:IR-ID:ir-block-id outs:A64EFF:regseq :}
    outs A64EFF:SEQ-LEN {: n:n :}
-   V-BLKR VW V-OPR VW KEY bk IR-FUN:FTERMINATOR@ {: id:IR-ID:ir-op-id :}
-   V-OPR VW id IR-OP:FOPERANDS n < if E-A64RAV-FIXED throw then
+   V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF n < if E-A64RAV-FIXED throw then
    n 0 ?do
       id i OPERAND-AT SLOT A64RA:CLAIM@
       outs i A64EFF:SEQ@ <> if E-A64RAV-FIXED throw then
@@ -447,7 +389,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 : FRAMES? ( IR-ID:ir-block-id -- bool )
    {: bk:IR-ID:ir-block-id :}
    false
-   V-BLKR VW bk IR-FUN:FOP-COUNT 0 ?do
+   bk OP-COUNT 0 ?do
       bk i OP-AT PURE? 0= if drop true leave then
    loop ;
 
@@ -461,7 +403,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 : FRAME-CK ( IR-ID:ir-block-id n -- )
    {: bk:IR-ID:ir-block-id want:n :}
    bk FRAMES? 0= if exit then
-   V-BLKR VW bk IR-FUN:FOP-COUNT {: n:n :}
+   bk OP-COUNT {: n:n :}
    n 3 < if E-A64RAV-FRAME throw then
    bk 0 want FRAME-AT?
    bk n 2 - want FRAME-AT?
@@ -477,7 +419,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 \ "no two values share a slot".
 : FLOW-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FOP-COUNT 0 ?do
+   bk OP-COUNT 0 ?do
       bk i OP-AT {: id:IR-ID:ir-op-id :}
       id SLOT-OF {: off:n :}
       off NOSLOT <> if
@@ -504,7 +446,7 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
    {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW bk IR-FUN:FOP-COUNT 0 ?do
+   bk OP-COUNT 0 ?do
       bk i OP-AT SLOT-OF {: off:n :}
       off NOSLOT <> if
          off A64IR:SLOT-WIDTH
@@ -649,4 +591,5 @@ get-current prot-wid-add
 public
 get-current prot-wid-add
 
+;using
 ;package
