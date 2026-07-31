@@ -1,14 +1,14 @@
 \ native-a64ir.f - checked ARM64 machine dialect tests.
 \
 \ Proves the contract of src/compiler/native/a64ir.f: registering the dialect
-\ defines exactly six opcodes and every declared field of each one reads back
-\ through the frozen schema table; the two move-wide operand bounds are the
-\ shipped assembler's own and are asserted against it rather than restated; a
-\ move-wide immediate or shift outside its field is refused before it can be
-\ interned as an attribute; the halves of a 64-bit value are read out the way a
-\ move-wide chain has to reproduce them; and a module of another dialect, a
-\ second registration, and a target this dialect cannot run on are each refused
-\ by name.
+\ defines exactly ten opcodes and every declared field of each one reads back
+\ through the frozen schema table; the two move-wide operand bounds and the two
+\ frame-slot bounds are the shipped assembler's own and are asserted against it
+\ rather than restated; a move-wide immediate or shift, a frame slot, or a
+\ reserved frame outside its field is refused before it can be interned as an
+\ attribute; the halves of a 64-bit value are read out the way a move-wide chain
+\ has to reproduce them; and a module of another dialect, a second registration,
+\ and a target this dialect cannot run on are each refused by name.
 \
 \ WHY THE BOUNDS ARE ASSERTED AGAINST THE ASSEMBLER. The dialect writes its
 \ bounds as the field widths they are, because requiring the whole shipped
@@ -25,6 +25,7 @@
 \ been copied from the unit instead.
 
 require lib/test.f
+require src/compiler/a64-effect.f
 require src/compiler/native/a64ir.f
 require src/arch/arm64/asm.f
 
@@ -90,10 +91,29 @@ private
    2 A64IR:HALF-SHIFT 32 T=
    3 A64IR:HALF-SHIFT 48 T= ;
 
+\ ---- the frame bounds --------------------------------------------------------
+\ A frame slot is reached by an unsigned-offset store whose byte offset the
+\ encoder divides by the access width, so two facts have to agree with the
+\ shipped assembler and not merely be written down here: the width the dialect
+\ places slots at is the width the encoder scales by, and the deepest slot the
+\ dialect will accept is the last one the twelve-bit field holds. Both are read
+\ off ENC-STR's own output rather than restated, so an encoder that changed its
+\ scale or its field reddens here.
+: STR-OFFSET-FIELD ( n -- n )
+   {: off:n :}
+   0 A64EFF:ZERO-GPR off ENC-STR 10 rshift $FFF and ;
+
+: FRAME-BOUND-CASE ( -- )
+   s" the frame-slot bounds are the shipped assembler's" T-LABEL
+   A64IR:SLOT-WIDTH STR-OFFSET-FIELD 1 T=
+   A64IR:SLOT-WIDTH A64EFF:SLOT-REACH STR-OFFSET-FIELD IMM12-LIM 1- T=
+   A64IR:SLOT-WIDTH A64EFF:SLOT-REACH  IMM12-LIM 1- A64IR:SLOT-WIDTH * T=
+   A64IR:SLOT-WIDTH 8 T= ;
+
 \ ---- registration ------------------------------------------------------------
-\ The six opcodes, and the count, so "nothing else was defined" is measured
+\ The ten opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -101,6 +121,10 @@ private
    c b A64IR-OPCODE:ADD A64IR:OPCODE {: a:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:SUB A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:STORE A64IR:OPCODE {: w:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:LOAD A64IR:OPCODE {: d:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:RESERVE A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:RELEASE A64IR:OPCODE {: q:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:RET A64IR:OPCODE {: t:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
@@ -109,12 +133,16 @@ private
    rv a IR-SCHEMA:FDEFINED?
    rv s IR-SCHEMA:FDEFINED?
    rv u IR-SCHEMA:FDEFINED?
+   rv w IR-SCHEMA:FDEFINED?
+   rv d IR-SCHEMA:FDEFINED?
+   rv p IR-SCHEMA:FDEFINED?
+   rv q IR-SCHEMA:FDEFINED?
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the six machine opcodes" T-LABEL
+   s" registration defines exactly the ten machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 6 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 10 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -160,9 +188,38 @@ private
    pv yv sk s" a64.shift" IR-SYM:FEQ? ;
 
 : SPELL-CASE ( -- )
-   s" the six opcodes and the two move-wide keys are spelled as declared" T-LABEL
+   s" the arithmetic opcodes and the two move-wide keys are spelled as declared" T-LABEL
    BND [: SPELL-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ The four frame forms and their two keys, spelled the way the instruction
+\ vocabulary spells them. The two the enum cannot spell - `str` and `ldr` are
+\ taken names in this Forth - are named `store` and `load` in the family and keep
+\ the assembler's mnemonic as their symbol, which is what every other reader
+\ sees.
+: FRAME-SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:STORE A64IR:OPCODE {: w:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:LOAD A64IR:OPCODE {: d:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:RESERVE A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:RELEASE A64IR:OPCODE {: q:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-SLOT {: lk:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-FRAME {: fk:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   pv yv w s" a64.str" IR-SYM:FEQ?
+   pv yv d s" a64.ldr" IR-SYM:FEQ?
+   pv yv p s" a64.reserve" IR-SYM:FEQ?
+   pv yv q s" a64.release" IR-SYM:FEQ?
+   pv yv lk s" a64.slot" IR-SYM:FEQ?
+   pv yv fk s" a64.frame" IR-SYM:FEQ? ;
+
+: FRAME-SPELL-CASE ( -- )
+   s" the four frame opcodes and their two keys are spelled as declared" T-LABEL
+   BND [: FRAME-SPELL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ ---- the declared shapes -----------------------------------------------------
 \ Every field the arithmetic schema declares, read back off the frozen table.
@@ -228,6 +285,54 @@ private
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 0 T= 1 T= 1 T= TTRUE TTRUE 2 T= 1 T= 0 T= ;
 
+\ ---- the declared shapes of the frame forms ----------------------------------
+\ The store puts a register away and passes the memory order on; the load takes
+\ the order, answers the register first and the order second; the reserve mints
+\ the order out of nothing and the release ends it. Every one of them declares a
+\ memory effect rather than purity, which is what makes the freeze verifier
+\ demand the token they carry - so this case is also what proves the token is not
+\ decoration.
+: FRAME-SHAPE-BODY ( IR-CTX:ctx -- n n n bool bool bool bool n n bool bool bool n n n n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:STORE A64IR:OPCODE {: w:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:LOAD A64IR:OPCODE {: d:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:RESERVE A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:RELEASE A64IR:OPCODE {: q:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b A64IR:MEM-TYPE {: kt:IR-ID:ir-type-id :}
+   c b A64IR:KEY-SLOT {: lk:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv w IR-SCHEMA:FOPERANDS
+   rv w IR-SCHEMA:FRESULTS
+   rv w IR-SCHEMA:FATTRS
+   qv rv key w 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL lk IR-ID:SYMBOL-LOCAL =
+   rv w IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
+   qv rv key w 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key w 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv d IR-SCHEMA:FOPERANDS
+   rv d IR-SCHEMA:FRESULTS
+   qv rv key d 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key d 1 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv d IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
+   rv p IR-SCHEMA:FOPERANDS
+   rv p IR-SCHEMA:FRESULTS
+   rv q IR-SCHEMA:FOPERANDS
+   rv q IR-SCHEMA:FRESULTS
+   rv w IR-SCHEMA:FTERMINATOR?
+   rv w IR-SCHEMA:FTRAPS?
+   rv w IR-SCHEMA:FALIAS@ IR--SCHEMA-ALIAS:UNALIASED IR--SCHEMA-ALIAS:EQ ;
+
+: FRAME-SHAPE-CASE ( -- )
+   s" the four frame forms have the shapes their instructions have" T-LABEL
+   BND [: FRAME-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TFALSE TFALSE 0 T= 1 T= 1 T= 0 T=
+   TTRUE TTRUE TTRUE 2 T= 1 T=
+   TTRUE TTRUE TTRUE TTRUE 1 T= 1 T= 2 T= ;
+
 \ ---- the tied register field -------------------------------------------------
 \ The move-wide overwrite is the one form of this dialect whose result and whose
 \ operand are one register field, and its schema is where that is written down.
@@ -281,6 +386,64 @@ private
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR:REG-BITS A64IR:SHIFT-ATTR drop ;
+
+\ ---- the frame operand refusals ----------------------------------------------
+\ A slot the memory forms cannot address and a frame no routine can declare are
+\ both refused on the production builder, so no module can hold one at all.
+: SLOT-ODD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH 1- A64IR:SLOT-ATTR drop ;
+
+: SLOT-LOW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH negate A64IR:SLOT-ATTR drop ;
+
+: SLOT-HIGH-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b  A64IR:SLOT-WIDTH A64EFF:SLOT-REACH A64IR:SLOT-WIDTH +  A64IR:SLOT-ATTR
+   drop ;
+
+: FRAME-ODD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR:SLOT-WIDTH A64IR:FRAME-ATTR drop ;
+
+: FRAME-HIGH-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b  A64EFF:FRAME-MAX A64EFF:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
+
+: SLOT-ODD ( -- )
+   BND [: SLOT-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SLOT-LOW ( -- )
+   BND [: SLOT-LOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SLOT-HIGH ( -- )
+   BND [: SLOT-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FRAME-ODD ( -- )
+   BND [: FRAME-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FRAME-HIGH ( -- )
+   BND [: FRAME-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SLOT-REFUSE-CASES ( -- )
+   s" a frame slot that is not a whole access from the frame is refused" T-LABEL
+   [: SLOT-ODD ;] E-A64IR-SLOT TTHROWSQ
+   s" a negative frame slot is refused" T-LABEL
+   [: SLOT-LOW ;] E-A64IR-SLOT TTHROWSQ ;
+
+: FRAME-REFUSE-CASES ( -- )
+   s" a frame slot past the reach of the offset field is refused" T-LABEL
+   [: SLOT-HIGH ;] E-A64IR-SLOT TTHROWSQ
+   s" a frame that does not keep the stack pointer aligned is refused" T-LABEL
+   [: FRAME-ODD ;] E-A64IR-FRAME TTHROWSQ
+   s" a frame deeper than the offset field can reach is refused" T-LABEL
+   [: FRAME-HIGH ;] E-A64IR-FRAME TTHROWSQ ;
 
 : IMM-HIGH ( -- )
    BND [: IMM-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -376,10 +539,26 @@ private
    NAMED-CASE
    SPELL-CASE ;
 
+: GROUP-FRAME-SPELL ( IR-CTX:ctx -- )
+   drop
+   FRAME-SPELL-CASE ;
+
 : GROUP-SHAPE ( IR-CTX:ctx -- )
    drop
    ARITH-CASE
    SHAPE-CASE ;
+
+: GROUP-FRAME-SHAPE ( IR-CTX:ctx -- )
+   drop
+   FRAME-SHAPE-CASE ;
+
+: GROUP-SLOT-REFUSE ( IR-CTX:ctx -- )
+   drop
+   SLOT-REFUSE-CASES ;
+
+: GROUP-FRAME-REFUSE ( IR-CTX:ctx -- )
+   drop
+   FRAME-REFUSE-CASES ;
 
 : GROUP-TIE ( IR-CTX:ctx -- )
    drop
@@ -406,11 +585,16 @@ public
 : RUN ( -- )
    T-RESET
    BOUND-CASE
+   FRAME-BOUND-CASE
    HALVES-CASE
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-FRAME-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-IMM-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-SLOT-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-FRAME-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHIFT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TABLE-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TARGET-REFUSE ;] IR-CTX:WITH-CONTEXT

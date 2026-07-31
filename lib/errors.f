@@ -528,9 +528,12 @@ public
 \   -8380..-8399  native ARM64 instruction emission (package A64EMIT)
 \   -8400..-8419  native stage N0 source-tape producer (package NFEED) and the
 \                 source-bound checking result it publishes (package NCERT)
-\   -8420..-8999  unassigned. The remaining dialect packages (SIR, LIR, and the
-\                 GPU stages) and the native and GPU back ends take sub-blocks
-\                 from here, each named above its codes.
+\   -8440..-8459  native ARM64 spill lowering (package A64SPILL) and the
+\                 frame-slot refusals the register allocator (A64RA) and its
+\                 validator (A64RAV) gained when their own block filled up
+\   -8420..-8439, -8460..-8999  unassigned. The remaining dialect packages
+\                 (SIR, LIR, and the GPU stages) and the native and GPU back
+\                 ends take sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
 -8999 constant E-COMP-LAST
 
@@ -789,7 +792,7 @@ public
 -8326 constant E-A64RA-TARGET    \ a context bound to a target these registers do not belong to
 -8327 constant E-A64RA-CAP       \ a value ordinal outside the allocator's tables: more values in one block than they hold, or a read past the count the sealed walk recorded
 -8328 constant E-A64RA-TIE       \ a schema-declared tie that cannot be honoured: the kept value is still needed afterwards, or its register is not free
--8329 constant E-A64RA-PRESSURE  \ more values live at once than the routine may destroy: spilling has no lowering in this dialect yet
+-8329 constant E-A64RA-PRESSURE  \ the routine's declared frame is exhausted: more values have to be spilled at once than its frame holds slots for. Register pressure itself is now a spill, not a refusal; the one operation that no spill can serve is E-A64RA-POOL
 
 \ Native ARM64 allocation validator (package A64RAV): -8330..-8339
 \
@@ -813,12 +816,14 @@ public
 \
 \ The dialect that stands for real ARM64 instruction forms with virtual registers
 \ as SSA values. Almost every refusal a malformed A64IR operation earns belongs
-\ to IR-SCHEMA or IR-OP, which measure it against the schema table; these three
-\ are the facts only the dialect knows: which schema table it may fill, and the
-\ two operand fields of the move-wide form.
+\ to IR-SCHEMA or IR-OP, which measure it against the schema table; these five
+\ are the facts only the dialect knows: which schema table it may fill, the two
+\ operand fields of the move-wide form, and the two of the frame forms.
 -8340 constant E-A64IR-DIALECT  \ a module whose schema table was created for another dialect or another schema version
 -8341 constant E-A64IR-IMM      \ a move-wide immediate outside the sixteen-bit field the form holds
 -8342 constant E-A64IR-SHIFT    \ a move-wide shift that does not select one of the four halves of a general register
+-8343 constant E-A64IR-SLOT     \ a frame-slot offset the memory forms cannot address: negative, not a multiple of the eight bytes they move, or past the reach of their scaled twelve-bit offset field
+-8344 constant E-A64IR-FRAME    \ a reserved frame size no routine can declare: negative, not a multiple of the stack alignment, or past the deepest frame the offset field can reach
 
 \ Native ARM64 instruction selection (package A64SEL): -8360..-8379
 \
@@ -883,3 +888,29 @@ public
 \ digests that pin what it read - the tape's, over the token grid, and the
 \ registry's, over the bytes. Its one refusal is a binding that does not hold.
 -8410 constant E-NCERT-DIGEST   \ a result presented against a tape or a source registry whose digest is not the one it bound
+
+\ Native ARM64 spill lowering and frame slots: -8440..-8459
+\
+\ The sub-block the register-allocation stage took when its own twenty codes
+\ (-8320..-8339) were spent, exactly as the map above prescribes: a stage that
+\ outgrows its block takes the next unassigned one rather than spilling into a
+\ neighbour. It holds the spill-lowering pass (package A64SPILL), which reads a
+\ frozen machine module and builds the module in which the allocator's spill
+\ decisions are real store and load operations, plus the frame-slot facts the
+\ allocator (package A64RA) and its validator (package A64RAV) gained with it.
+\ Refusals another authority owns keep that authority's name: a slot no load or
+\ store form can reach is A64EFF's E-A64EFF-SLOT, a slot offset outside the
+\ dialect's own field is E-A64IR-SLOT, and a malformed module is IR-OP's.
+-8440 constant E-A64SPILL-BIND   \ a rewrite attempted before the machine dialect's identities were bound, or a second binding over a live one
+-8441 constant E-A64SPILL-PLAN   \ no sealed spill plan at all, one made for another module, or one a later allocation replaced
+-8442 constant E-A64SPILL-SHAPE  \ a module this pass cannot rewrite: not exactly one function of one block, a span naming another source, or a value used before it is defined
+-8443 constant E-A64SPILL-SOURCE \ source text whose digest is not the one the module being rewritten recorded
+-8444 constant E-A64SPILL-OPCODE \ an operation whose opcode is none of the machine dialect's family, so this pass has no form to rebuild it as
+-8445 constant E-A64SPILL-CAP    \ more values or more inserted operations in one block than the rewriter's tables hold
+
+\ The allocator's second refusal, and the validator's frame-slot ones.
+-8446 constant E-A64RA-POOL      \ one operation needs more registers at a single instant than the routine may destroy, and every register holds a value that same operation needs: no spill can free one
+-8447 constant E-A64RAV-SLOT     \ a frame access whose slot the module and the contract disagree about: a slot the routine cannot address, or one no allocation claimed
+-8448 constant E-A64RAV-SHARE    \ two values live at the same time stored in one frame slot
+-8449 constant E-A64RAV-RELOAD   \ a reload reading a slot nothing stored to before it, or a slot whose last store carried another value
+-8450 constant E-A64RAV-FRAME    \ a module whose reserved frame is not the frame the routine contract declares, or whose frame is reserved or released somewhere it cannot be
