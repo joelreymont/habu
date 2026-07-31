@@ -94,7 +94,7 @@ NEWTYPE alloc-cell-count 0      \ positive cell count accepted by a cell allocat
 \ this package and in its consumers is untouched, because the spellings come from
 \ the package name and the family tail and the payload binding order comes from
 \ the declaration order - none of which the declaration mode changes.
-ENUM numeric-result 1
+ENUM numeric-result<a>
    VARIANT ok FIELD role a ;VARIANT
    VARIANT negative ;VARIANT
    VARIANT zero ;VARIANT

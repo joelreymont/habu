@@ -294,7 +294,7 @@ public
 \ (src/core/type-family.f), so it keeps the readable escaped spelling instead of
 \ falling back to the opaque SHA form; the pin on that exact spelling below is
 \ what would notice if it ever crossed the cap.
-ENUM nr-twin 1
+ENUM nr-twin<a>
    VARIANT ok FIELD role a ;VARIANT
    VARIANT negative ;VARIANT
    VARIANT zero ;VARIANT
