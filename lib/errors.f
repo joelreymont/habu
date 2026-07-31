@@ -526,7 +526,9 @@ public
 \   -8340..-8359  native ARM64 machine dialect (package A64IR)
 \   -8360..-8379  native ARM64 instruction selection (package A64SEL)
 \   -8380..-8399  native ARM64 instruction emission (package A64EMIT)
-\   -8400..-8999  unassigned. The remaining dialect packages (SIR, LIR, and the
+\   -8400..-8419  native stage N0 source-tape producer (package NFEED) and the
+\                 source-bound checking result it publishes (package NCERT)
+\   -8420..-8999  unassigned. The remaining dialect packages (SIR, LIR, and the
 \                 GPU stages) and the native and GPU back ends take sub-blocks
 \                 from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -848,3 +850,26 @@ public
 -8387 constant E-A64EMIT-CAP     \ more instructions in one block than the emission buffers hold
 -8388 constant E-A64EMIT-TARGET  \ emission under a context bound to a machine these instructions are not for
 -8389 constant E-A64EMIT-BOUND   \ an instruction or source-map index at or past the count the sealed emission holds
+
+\ Native stage N0 source-tape producer (package NFEED): -8400..-8409
+\
+\ The producer that fills a source tape from the checker's own reader. Refusals
+\ another authority owns keep that authority's name - a tape that is full is
+\ E-NTAPE-CAP, a span outside its source is IR-SOURCE's - so these six are the
+\ facts the producer alone can judge: whether a unit is open, whether the scan
+\ that reached it is the unit's own, whether the token it was handed really is
+\ the bytes at the offset it claims, and whether this stage can record the
+\ token at all.
+-8400 constant E-NFEED-STATE    \ a producer word reached in a state that has no meaning for it: no unit open, a unit still scanning, or a second unit over a live one
+-8401 constant E-NFEED-SCAN     \ a second or foreign reader scan reached an open unit: one unit is one scan
+-8402 constant E-NFEED-SPAN     \ a token whose bytes are not the bytes at the offset it claims, or that leaves the scanned text
+-8403 constant E-NFEED-ORDER    \ an append answered an ordinal other than the next one: the tape gained a row this producer did not write
+-8404 constant E-NFEED-KIND     \ a token class this stage has no tape kind for
+-8405 constant E-NFEED-LITERAL  \ an integer literal whose value this stage cannot read back
+
+\ The source-bound checking result (package NCERT): -8410..-8419
+\
+\ One value: the verdict a scan reached, the source it read, and the two
+\ digests that pin what it read - the tape's, over the token grid, and the
+\ registry's, over the bytes. Its one refusal is a binding that does not hold.
+-8410 constant E-NCERT-DIGEST   \ a result presented against a tape or a source registry whose digest is not the one it bound
