@@ -56,7 +56,7 @@ public
 \ the capability bitset, a subset of CAP-ALL that must include CAP-PTX. No
 \ definer accepts a comment inside a declaration body, so the per-cell notes live
 \ here rather than on the FIELD lines.
-ENUM descriptor 0
+ENUM descriptor<>
    VARIANT value
       FIELD isa n
       FIELD arch n
@@ -76,7 +76,7 @@ ENUM descriptor 0
 \ full mode, so the one payload of `ok` is a named FIELD; the generated
 \ TARGET-ID--RESULT:OK / :WRONG-WIDTH / :UNKNOWN constructors and every MATCH site
 \ are unchanged, for the same reason the descriptor's are.
-ENUM id-result 1
+ENUM id-result<a>
    VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT

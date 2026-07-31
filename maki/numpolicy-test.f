@@ -156,7 +156,7 @@ public
 \ private family publishes no constructors at all, and the positive control below
 \ builds through the twin's own ok, so neither negative can pass by being
 \ unresolvable rather than ill-typed.
-ENUM idr-twin 1
+ENUM idr-twin<a>
    VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT

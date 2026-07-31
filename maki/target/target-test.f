@@ -215,7 +215,7 @@ public
 \ constructors at all, and the positive controls build through the twins' own
 \ constructors, so neither negative can pass by being unresolvable rather than
 \ ill-typed.
-ENUM desc-twin 0
+ENUM desc-twin<>
    VARIANT value
       FIELD isa n
       FIELD arch n
@@ -226,7 +226,7 @@ ENUM desc-twin 0
    ;VARIANT
 ;ENUM
 
-ENUM idr-twin 1
+ENUM idr-twin<a>
    VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT

@@ -150,7 +150,7 @@ ENUM dom DERIVE eq
 \ :WRONG-WIDTH / :UNKNOWN constructors and every MATCH site are unchanged, because both
 \ spellings and payload binding order derive from the package, the family tail, and the
 \ declaration order, none of which the mode changes.
-ENUM id-result 1
+ENUM id-result<a>
    VARIANT ok FIELD id a ;VARIANT
    VARIANT wrong-width ;VARIANT
    VARIANT unknown ;VARIANT
