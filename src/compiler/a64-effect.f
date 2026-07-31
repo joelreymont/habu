@@ -343,6 +343,13 @@ public
 : RESERVED-GPR ( -- n )   RESERVED-N ;
 : LINK-GPR ( -- n )       LINK-N ;
 : ZERO-GPR ( -- n )       ZERO-N ;
+
+\ The same operand number, named for what it means in the forms that reach a
+\ frame slot: there operand 31 is the stack pointer rather than the zero
+\ register. A pass emitting a frame access asks for it here instead of writing
+\ the number, so the one place that knows why 31 holds no routine state is also
+\ the one place that says where it does appear.
+: SP-GPR ( -- n )         ZERO-N ;
 : SP-ALIGN ( -- n )       SP-ALIGN-N ;
 : FRAME-MAX ( -- n )      FRAME-MAX-N ;
 

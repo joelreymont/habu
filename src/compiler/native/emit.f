@@ -71,6 +71,17 @@
 \ assembler answers it by ending the process rather than by throwing (dot
 \ habu-make-the-arm64-fa89e081).
 \
+\ THE FRAME FORMS ARE FOUR MORE INSTRUCTIONS AND NOTHING ELSE. A store, a load,
+\ and the subtraction and addition that take the routine's frame and give it back
+\ each encode exactly like every other form here: through the assembler's own
+\ encoder, with the register the accepted allocation answers and the slot or size
+\ the operation carries. The memory token those operations thread is an ordering
+\ dependency and not a machine object, so it reaches no encoder at all - it is
+\ read by the passes that have to keep the accesses in order, and it occupies no
+\ register and no byte. Nothing here decides where a spill goes either: the slot
+\ is the operation's own field, decided by the allocator and checked by the
+\ validator before this pass runs.
+\
 \ THE SOURCE MAP IS THE POINT OF THE BYTE OFFSETS. Every emitted instruction gets
 \ one row: the byte offset it was placed at, and the span of the operation it
 \ came from. The offset is the cursor at the moment the instruction was appended,
@@ -88,6 +99,7 @@
 
 require lib/prelude.f
 require lib/errors.f
+require src/compiler/a64-effect.f
 require src/compiler/target.f
 require src/compiler/binding.f
 require src/compiler/ir/id.f
@@ -110,13 +122,17 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-6 constant OPCODES-N
+10 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-ADD
 3 constant O-SUB
 4 constant O-MUL
-5 constant O-RET
+5 constant O-STORE
+6 constant O-LOAD
+7 constant O-RESERVE
+8 constant O-RELEASE
+9 constant O-RET
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -127,9 +143,10 @@ private
 \ capability to raise in all three, not a ceiling to widen silently.
 256 constant VMAX
 
-\ One instruction per operation, and every operation but the terminator defines a
-\ value, so a block that fits the ceiling above emits at most this many.
-VMAX 1+ constant INSN-MAX
+\ One instruction per operation. Two forms define no value - the return and the
+\ release of the frame - and every other operation defines at least one, so a
+\ block that fits the ceiling above emits at most this many.
+VMAX 2 + constant INSN-MAX
 
 \ Every ARM64 instruction is four bytes.
 4 constant INSN-BYTES
@@ -158,6 +175,8 @@ variable N-INS
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IMM IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-SH IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-KEY IR-ID:ir-module-key
 VIEWS-N TYPED-BUFFER S-VIEW IR-ARENA:view
@@ -184,22 +203,30 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 \ ---- the dialect's operation family ------------------------------------------
 : SLOT-OF ( A64IR:opcode -- n )
    MATCH A64IR:opcode
-      movz OF O-MOVZ ENDOF
-      movk OF O-MOVK ENDOF
-      add  OF O-ADD  ENDOF
-      sub  OF O-SUB  ENDOF
-      mul  OF O-MUL  ENDOF
-      ret  OF O-RET  ENDOF
+      movz    OF O-MOVZ    ENDOF
+      movk    OF O-MOVK    ENDOF
+      add     OF O-ADD     ENDOF
+      sub     OF O-SUB     ENDOF
+      mul     OF O-MUL     ENDOF
+      store   OF O-STORE   ENDOF
+      load    OF O-LOAD    ENDOF
+      reserve OF O-RESERVE ENDOF
+      release OF O-RELEASE ENDOF
+      ret     OF O-RET     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
    case
-      O-MOVZ of A64IR-OPCODE:MOVZ endof
-      O-MOVK of A64IR-OPCODE:MOVK endof
-      O-ADD  of A64IR-OPCODE:ADD  endof
-      O-SUB  of A64IR-OPCODE:SUB  endof
-      O-MUL  of A64IR-OPCODE:MUL  endof
-      O-RET  of A64IR-OPCODE:RET  endof
+      O-MOVZ    of A64IR-OPCODE:MOVZ    endof
+      O-MOVK    of A64IR-OPCODE:MOVK    endof
+      O-ADD     of A64IR-OPCODE:ADD     endof
+      O-SUB     of A64IR-OPCODE:SUB     endof
+      O-MUL     of A64IR-OPCODE:MUL     endof
+      O-STORE   of A64IR-OPCODE:STORE   endof
+      O-LOAD    of A64IR-OPCODE:LOAD    endof
+      O-RESERVE of A64IR-OPCODE:RESERVE endof
+      O-RELEASE of A64IR-OPCODE:RELEASE endof
+      O-RET     of A64IR-OPCODE:RET     endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -272,6 +299,18 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
 : HALF-OF ( IR-ID:ir-op-id -- n )
    0 BND-SH @ ATTR-INT A64IR:HALF-BITS SCALE/ ;
 
+\ ---- the frame operands ------------------------------------------------------
+\ A slot is a byte offset from the stack pointer and a reserved frame is a byte
+\ count, and both go to the encoder as the bytes they are: ENC-LDR and ENC-STR
+\ divide by their own access scale and refuse a value that division would round,
+\ and ENC-SUBI and ENC-ADDI bound their own immediate field. No bound is repeated
+\ here for the same reason none of the move-wide ones is.
+: SLOT-OFF ( IR-ID:ir-op-id -- n )
+   0 BND-SLOT @ ATTR-INT ;
+
+: FRAME-SIZE ( IR-ID:ir-op-id -- n )
+   0 BND-FRAME @ ATTR-INT ;
+
 \ ---- one instruction per operation -------------------------------------------
 \ Each of these is exactly the encoder call the form names, with the registers
 \ the accepted allocation answers and the operands the module carries.
@@ -289,16 +328,42 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  id 1 OPERAND-REG ;
 
+\ The frame accesses. Both name the stack pointer as their base, because the
+\ frame is where the stack pointer is: the form has no other base and this
+\ dialect has no value that could be one. The register moved is the store's one
+\ operand and the load's first result, which is what their schemas declare.
+: WORD-STORE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-STR ;
+
+: WORD-LOAD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
+
+\ Taking the frame and giving it back are one subtraction and one addition on the
+\ stack pointer, of exactly the size the operation carries.
+: WORD-RESERVE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64EFF:SP-GPR A64EFF:SP-GPR  id FRAME-SIZE  ENC-SUBI ;
+
+: WORD-RELEASE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64EFF:SP-GPR A64EFF:SP-GPR  id FRAME-SIZE  ENC-ADDI ;
+
 : WORD-OF ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT SLOT-OPCODE
    MATCH A64IR:opcode
-      movz OF id WORD-MOVZ ENDOF
-      movk OF id WORD-MOVK ENDOF
-      add  OF id TRIPLE ENC-ADD ENDOF
-      sub  OF id TRIPLE ENC-SUB ENDOF
-      mul  OF id TRIPLE ENC-MUL ENDOF
-      ret  OF ENC-RET ENDOF
+      movz    OF id WORD-MOVZ ENDOF
+      movk    OF id WORD-MOVK ENDOF
+      add     OF id TRIPLE ENC-ADD ENDOF
+      sub     OF id TRIPLE ENC-SUB ENDOF
+      mul     OF id TRIPLE ENC-MUL ENDOF
+      store   OF id WORD-STORE ENDOF
+      load    OF id WORD-LOAD ENDOF
+      reserve OF id WORD-RESERVE ENDOF
+      release OF id WORD-RELEASE ENDOF
+      ret     OF ENC-RET ENDOF
    ;MATCH ;
 
 \ ---- the buffer and the map --------------------------------------------------
@@ -444,14 +509,20 @@ public
    BND-MODE @ BOUND-YES = if E-A64EMIT-BIND throw then
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
-   c b A64IR-OPCODE:MOVZ BIND1
-   c b A64IR-OPCODE:MOVK BIND1
-   c b A64IR-OPCODE:ADD  BIND1
-   c b A64IR-OPCODE:SUB  BIND1
-   c b A64IR-OPCODE:MUL  BIND1
-   c b A64IR-OPCODE:RET  BIND1
+   c b A64IR-OPCODE:MOVZ    BIND1
+   c b A64IR-OPCODE:MOVK    BIND1
+   c b A64IR-OPCODE:ADD     BIND1
+   c b A64IR-OPCODE:SUB     BIND1
+   c b A64IR-OPCODE:MUL     BIND1
+   c b A64IR-OPCODE:STORE   BIND1
+   c b A64IR-OPCODE:LOAD    BIND1
+   c b A64IR-OPCODE:RESERVE BIND1
+   c b A64IR-OPCODE:RELEASE BIND1
+   c b A64IR-OPCODE:RET     BIND1
    c b A64IR:KEY-IMM   0 BND-IMM !
    c b A64IR:KEY-SHIFT 0 BND-SH !
+   c b A64IR:KEY-SLOT  0 BND-SLOT !
+   c b A64IR:KEY-FRAME 0 BND-FRAME !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without emitting against it.

@@ -177,6 +177,18 @@ $FFFF constant HALF-MASK
 \ pinned against the shipped assembler.
 XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 
+\ The frame itself is claimed and given back by an add/sub-immediate, whose
+\ immediate is an unsigned twelve-bit field with no scale. That is a tighter
+\ bound than the reach of a slot - a scaled offset field of the same width
+\ addresses eight times as far - so the deepest frame this dialect can RESERVE is
+\ this field's largest value, rounded down to the stack alignment. It is written
+\ here as the field width it is, the same way the move-wide bounds are, and
+\ test/compiler/native-a64ir.f pins it against the shipped assembler's IMM12-LIM
+\ and against ENC-SUBI's own output.
+12 constant OFF-BITS                 \ the add/sub immediate and the offset field
+1 OFF-BITS lshift 1- constant OFF-MAX
+OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
+
 \ ---- the dialect's own symbols -----------------------------------------------
 \ Every symbol this dialect mints is spelled `a64.`-something, so a dialect
 \ symbol and any other name in the module's one interner can never collide.
@@ -252,12 +264,14 @@ private
    dup SLOT-BYTES mod 0<> if E-A64IR-SLOT throw then
    dup SLOT-BYTES A64EFF:SLOT-REACH > if E-A64IR-SLOT throw then ;
 
-\ A frame a routine could declare: the stack pointer stays aligned, and the frame
-\ stays inside the deepest one an offset field can address.
+\ A frame a routine could both declare and take: the stack pointer stays aligned,
+\ the frame stays inside the region A64EFF can describe at all, and it stays
+\ inside the one immediate that claims it.
 : FRAME ( n -- n )
    dup 0 < if E-A64IR-FRAME throw then
    dup A64EFF:SP-ALIGN mod 0<> if E-A64IR-FRAME throw then
-   dup A64EFF:FRAME-MAX > if E-A64IR-FRAME throw then ;
+   dup A64EFF:FRAME-MAX > if E-A64IR-FRAME throw then
+   dup FRAME-LIM > if E-A64IR-FRAME throw then ;
 
 public
 
@@ -279,6 +293,11 @@ public
 \ A consumer that places slots asks for the width rather than assuming it, and
 \ takes the reach that goes with it from A64EFF.
 : SLOT-WIDTH ( -- n )    SLOT-BYTES ;
+
+\ The deepest frame a routine of this dialect can reserve. A consumer deciding
+\ how much frame a program needs asks here rather than assuming the whole region
+\ A64EFF can describe is reachable in one instruction.
+: FRAME-LIMIT ( -- n )   FRAME-LIM ;
 
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so asking
