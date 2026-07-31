@@ -416,6 +416,15 @@ private
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b  A64EFF:FRAME-MAX A64EFF:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
 
+\ A frame inside the region A64EFF can describe and past the one immediate that
+\ claims it. The two bounds are different fields - a slot offset is scaled by the
+\ access width and the frame immediate is not - so a frame between them is the
+\ only case that reaches the second bound at all.
+: FRAME-DEEP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b  A64IR:FRAME-LIMIT A64EFF:SP-ALIGN +  A64IR:FRAME-ATTR drop ;
+
 : SLOT-ODD ( -- )
    BND [: SLOT-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -431,6 +440,9 @@ private
 : FRAME-HIGH ( -- )
    BND [: FRAME-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+: FRAME-DEEP ( -- )
+   BND [: FRAME-DEEP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : SLOT-REFUSE-CASES ( -- )
    s" a frame slot that is not a whole access from the frame is refused" T-LABEL
    [: SLOT-ODD ;] E-A64IR-SLOT TTHROWSQ
@@ -441,9 +453,16 @@ private
    s" a frame slot past the reach of the offset field is refused" T-LABEL
    [: SLOT-HIGH ;] E-A64IR-SLOT TTHROWSQ
    s" a frame that does not keep the stack pointer aligned is refused" T-LABEL
-   [: FRAME-ODD ;] E-A64IR-FRAME TTHROWSQ
+   [: FRAME-ODD ;] E-A64IR-FRAME TTHROWSQ ;
+
+\ The two frame depths are a group of their own: each of these abandons a
+\ context holding a module, and the registry gives those slots back only when a
+\ live enclosing context leaves.
+: FRAME-DEPTH-CASES ( -- )
    s" a frame deeper than the offset field can reach is refused" T-LABEL
-   [: FRAME-HIGH ;] E-A64IR-FRAME TTHROWSQ ;
+   [: FRAME-HIGH ;] E-A64IR-FRAME TTHROWSQ
+   s" a frame deeper than the immediate that claims it is refused" T-LABEL
+   [: FRAME-DEEP ;] E-A64IR-FRAME TTHROWSQ ;
 
 : IMM-HIGH ( -- )
    BND [: IMM-HIGH-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -560,6 +579,10 @@ private
    drop
    FRAME-REFUSE-CASES ;
 
+: GROUP-FRAME-DEPTH ( IR-CTX:ctx -- )
+   drop
+   FRAME-DEPTH-CASES ;
+
 : GROUP-TIE ( IR-CTX:ctx -- )
    drop
    TIE-CASE ;
@@ -586,6 +609,8 @@ public
    T-RESET
    BOUND-CASE
    FRAME-BOUND-CASE
+   s" the deepest frame this dialect can reserve is the add-sub immediate" T-LABEL
+   A64IR:FRAME-LIMIT  IMM12-LIM 1- dup A64EFF:SP-ALIGN mod -  T=
    HALVES-CASE
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
@@ -595,6 +620,7 @@ public
    BND [: GROUP-IMM-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SLOT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-FRAME-DEPTH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHIFT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TABLE-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TARGET-REFUSE ;] IR-CTX:WITH-CONTEXT

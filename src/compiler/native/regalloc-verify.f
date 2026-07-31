@@ -338,7 +338,12 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 \ reason an unrelated callee-saved register does. A memory token holds no
 \ register, and one that was given a real register is refused as loudly as a
 \ register outside the pool: the emitter would then be reading a machine object
-\ out of something that is only an ordering.
+\ out of something that is only an ordering. That second refusal is fail-closed
+\ rather than reachable and says so: a claim is the allocator's own, no module
+\ built by hand can forge one, and the allocator gives a token none. It is still
+\ written, because a check that only looks at the registers it expects to see is
+\ not a check, and it is not claimed to be tested - only mutating the allocator
+\ reaches it.
 : REGISTER-CK ( -- )
    A64RA:POOL A64EFF:GPRS-N {: pool:n :}
    N-VALS @ 0 ?do

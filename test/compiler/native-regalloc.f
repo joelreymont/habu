@@ -714,6 +714,32 @@ create TXT
    s3 e M-ADD M-RET
    CLOSE-FUN ;
 
+\ Three literals in two registers, where the two candidates for eviction are
+\ read by the same operation. Their next reads are equally far away, so nothing
+\ but the tie rule decides which one goes into the frame - and the rule is the
+\ lower register number.
+: BUILD-TIE ( -- )
+   s" TIE" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   s1 c M-ADD M-RET
+   CLOSE-FUN ;
+
+\ An operation that reads one spilled value twice. One reload serves both reads,
+\ because the value is in one register once it is back; a reload per read would
+\ take a second register and spill something else to get it.
+: BUILD-DOUBLE ( -- )
+   s" DOUBLE" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   b c M-ADD {: s1:IR-ID:ir-value-id :}
+   a a M-ADD {: s2:IR-ID:ir-value-id :}
+   s1 s2 M-ADD M-RET
+   CLOSE-FUN ;
+
 \ A module that already reserves a frame and still cannot fit its values in the
 \ pool, so a second lowering is something a caller could really ask for. Lowering
 \ it would build a second frame inside the first, and the slots the allocator
@@ -938,6 +964,41 @@ create TXT
    s" a block that does not fit is lowered and then allocates" T-LABEL
    WBND [: LOWER-BODY ;] IR-CTX:WITH-CONTEXT
    2 T= TFALSE 2 T= 1 T= 0 T= TFALSE TTRUE 16 T= 0 T= ;
+
+\ Which of two equally distant values loses its register. Both are read by the
+\ same operation, so the cost rule cannot separate them and the tie rule does:
+\ the first plan row names the value in the lower register.
+: TIE-SPILL-BODY ( IR-CTX:ctx -- n n n )
+   A64-MOD
+   BUILD-TIE
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 2 16 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:SPILLS
+   0 A64RA:PLAN-VALUE@
+   0 A64RA:PLAN-POS@ ;
+
+: TIE-SPILL-CASE ( -- )
+   s" a tie between two equally distant values goes to the lower register" T-LABEL
+   WBND [: TIE-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 0 T= 2 T= ;
+
+\ One reload serves every read of one value by one operation. A reload per read
+\ would need a second register at that operation, and taking one means spilling
+\ something else - so the count of decisions is what measures it.
+: DOUBLE-BODY ( IR-CTX:ctx -- n n n n )
+   A64-MOD
+   BUILD-DOUBLE
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 2 32 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:SPILLS
+   A64RA:PLAN-N
+   0 A64RA:PLAN-VALUE@
+   0 A64RA:PLAN-POS@ ;
+
+: DOUBLE-CASE ( -- )
+   s" one reload serves both reads of a value by one operation" T-LABEL
+   WBND [: DOUBLE-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= 0 T= 2 T= 1 T= ;
 
 \ ---- refusals ----------------------------------------------------------------
 \ Each of these four runs the validator as well, even though the allocator
@@ -1274,6 +1335,8 @@ public
    T-RESET
    SQUARE-CASE
    PLAN-CASE
+   TIE-SPILL-CASE
+   DOUBLE-CASE
    LOWER-CASE
    DIFF-CASE
    SUM3-CASE
