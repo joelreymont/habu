@@ -26,6 +26,8 @@
 \   hir.mem    -> no instruction: the order binds to the one a64.dtake minted
 \   hir.load   -> a64.aldr
 \   hir.store  -> a64.astr
+\   hir.bload  -> a64.aldrb
+\   hir.bstore -> a64.astrb
 \   hir.return -> a64.ret
 \ An operand is not "the same position in the new operation"; it is the value the
 \ source operand's own definition selected to, looked up in the value map. That is
@@ -139,7 +141,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-13 constant OPCODES-N
+15 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -153,6 +155,8 @@ private
 10 constant O-LOAD
 11 constant O-STORE
 12 constant O-DIV
+13 constant O-BLOAD
+14 constant O-BSTORE
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -210,6 +214,8 @@ create NAMEBUF NAME-CAP allot
       mem    OF O-MEM    ENDOF
       load   OF O-LOAD   ENDOF
       store  OF O-STORE  ENDOF
+      bload  OF O-BLOAD  ENDOF
+      bstore OF O-BSTORE ENDOF
       return OF O-RETURN ENDOF
    ;MATCH ;
 
@@ -227,6 +233,8 @@ create NAMEBUF NAME-CAP allot
       O-MEM    of HIR-OPCODE:MEM    endof
       O-LOAD   of HIR-OPCODE:LOAD   endof
       O-STORE  of HIR-OPCODE:STORE  endof
+      O-BLOAD  of HIR-OPCODE:BLOAD  endof
+      O-BSTORE of HIR-OPCODE:BSTORE endof
       O-RETURN of HIR-OPCODE:RETURN endof
       E-A64SEL-OPCODE throw
    endcase ;
@@ -479,14 +487,21 @@ create NAMEBUF NAME-CAP allot
    DSTACK? 0= if E-A64SEL-MEM throw then
    id 0 RESULT-AT  TOK  VBIND ;
 
-\ One cell read through an address the program computed. The address is the
-\ source load's first operand and the order its second, and both are the values
-\ those operands selected to, so a load reading the wrong operand is a wrong
-\ VALUE rather than a wrong index. The token the machine load answers becomes the
+\ One read through an address the program computed. The address is the source
+\ load's first operand and the order its second, and both are the values those
+\ operands selected to, so a load reading the wrong operand is a wrong VALUE
+\ rather than a wrong index. The token the machine load answers becomes the
 \ running order, so the routine's own exit stores are ordered after it.
-: EMIT-ALOAD ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id A64IR-OPCODE:ALOAD OPEN
+\
+\ The WIDTH is the machine opcode this word is handed, because it is a property
+\ of the form on both sides: hir.load selects to a64.aldr and hir.bload to
+\ a64.aldrb, and the two source forms are otherwise the same shape. Handing the
+\ opcode in rather than deciding it here is what keeps the pairing in one place -
+\ the selection table below - so a byte load lowered at cell width is a wrong
+\ line of that table rather than a missing branch inside this word.
+: EMIT-ALOAD ( IR-ID:ir-op-id A64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:A64IR:opcode :}
+   id o OPEN
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    RESULT+
@@ -497,12 +512,13 @@ create NAMEBUF NAME-CAP allot
    id 1 RESULT-AT tk VBIND
    id 0 RESULT-AT  CTX BLD nid 0 IR-BUILD:OP-RESULT@  VBIND ;
 
-\ One cell written through an address the program computed: the value, the
-\ address, the order - the same three the source store carries, in the same
-\ order, so the two cannot be swapped without swapping them in the source too.
-: EMIT-ASTORE ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   id A64IR-OPCODE:ASTORE OPEN
+\ One write through an address the program computed: the value, the address, the
+\ order - the same three the source store carries, in the same order, so the two
+\ cannot be swapped without swapping them in the source too. The width is the
+\ machine opcode handed in, for the reason the load above gives.
+: EMIT-ASTORE ( IR-ID:ir-op-id A64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:A64IR:opcode :}
+   id o OPEN
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 2 OPERAND  IR-BUILD:ADD-OPERAND
@@ -657,6 +673,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       mem    OF false ENDOF
       load   OF false ENDOF
       store  OF false ENDOF
+      bload  OF false ENDOF
+      bstore OF false ENDOF
       br     OF false ENDOF
       brz    OF false ENDOF
       return OF false ENDOF
@@ -682,8 +700,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       lt     OF id A64IR-COND:LT EMIT-FLAG ENDOF
       le     OF id A64IR-COND:LE EMIT-FLAG ENDOF
       mem    OF id EMIT-MEM ENDOF
-      load   OF id EMIT-ALOAD ENDOF
-      store  OF id EMIT-ASTORE ENDOF
+      load   OF id A64IR-OPCODE:ALOAD EMIT-ALOAD ENDOF
+      store  OF id A64IR-OPCODE:ASTORE EMIT-ASTORE ENDOF
+      bload  OF id A64IR-OPCODE:ABLOAD EMIT-ALOAD ENDOF
+      bstore OF id A64IR-OPCODE:ABSTORE EMIT-ASTORE ENDOF
       br     OF id EMIT-BR ENDOF
       brz    OF id EMIT-BRZ ENDOF
       return OF id EMIT-RETURN ENDOF
@@ -860,6 +880,8 @@ public
    c b HIR-OPCODE:MEM    BIND1
    c b HIR-OPCODE:LOAD   BIND1
    c b HIR-OPCODE:STORE  BIND1
+   c b HIR-OPCODE:BLOAD  BIND1
+   c b HIR-OPCODE:BSTORE BIND1
    c b HIR-OPCODE:RETURN BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
    BOUND-YES BND-MODE ! ;

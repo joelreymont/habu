@@ -65,9 +65,9 @@ private
    b ;
 
 \ ---- the dialect: what registration defines ----------------------------------
-\ The twelve opcodes, and the count, so "nothing else was defined" is measured
+\ The fifteen opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b HIR-OPCODE:CONST HIR:OPCODE {: k:IR-ID:ir-symbol-id :}
@@ -83,6 +83,8 @@ private
    c b HIR-OPCODE:MEM HIR:OPCODE {: m:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:LOAD HIR:OPCODE {: d:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:STORE HIR:OPCODE {: w:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:BLOAD HIR:OPCODE {: bl:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:BSTORE HIR:OPCODE {: bw:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv k IR-SCHEMA:FDEFINED?
@@ -97,12 +99,15 @@ private
    rv t IR-SCHEMA:FDEFINED?
    rv m IR-SCHEMA:FDEFINED?
    rv d IR-SCHEMA:FDEFINED?
-   rv w IR-SCHEMA:FDEFINED? ;
+   rv w IR-SCHEMA:FDEFINED?
+   rv bl IR-SCHEMA:FDEFINED?
+   rv bw IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the thirteen opcodes of the subset" T-LABEL
+   s" registration defines exactly the fifteen opcodes of the subset" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 13 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   TTRUE TTRUE 15 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the
 \ version.
@@ -368,7 +373,7 @@ private
 : OPS-CASE ( -- )
    s" the six operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 26 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 28 T= ;
 
 \ ---- the two halves of a typed locals group ----------------------------------
 \ Neither stages an operation, so what the word model has to say about them is
@@ -417,7 +422,10 @@ private
    3 T= 1 T= 1 T= ;
 
 \ ---- the memory words and the data word --------------------------------------
-\ The two memory words bind to the two memory operations, the increment binds to
+\ The four memory words bind to the four memory operations - one pair per access
+\ width, because the width is a form of the dialect and not a field of one form,
+\ so `c@` and `@` are different opcodes and not one opcode read two ways - the
+\ increment binds to
 \ an addition of one - which is what makes `1+` one token of source and two
 \ operations rather than an opcode this dialect does not have - and a `create`d
 \ data word is declared by the caller with the value it pushes. The last one is
@@ -434,7 +442,7 @@ private
    c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  DATUM HIR-WORD:DECLARE-FIXED
    b p r ;
 
-: MEMWORD-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+: MEMWORD-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-PLUS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    r c b s" CELL-A" IR-BUILD:INTERN-SYMBOL HIR-WORD:FIXED-VALUE@
@@ -444,13 +452,19 @@ private
       HIR-OPCODE:LOAD HIR-OPCODE:EQ
    r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
       HIR-OPCODE:STORE HIR-OPCODE:EQ
+   r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+      HIR-OPCODE:BLOAD HIR-OPCODE:EQ
+   r c b s" c!" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+      HIR-OPCODE:BSTORE HIR-OPCODE:EQ
+   r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+      HIR-OPCODE:LOAD HIR-OPCODE:EQ 0=
    r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-OPCODE@
       HIR-OPCODE:ADD HIR-OPCODE:EQ ;
 
 : MEMWORD-CASE ( -- )
    s" the memory words, the increment and a data word read back as declared" T-LABEL
    BND [: MEMWORD-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE DATUM T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE DATUM T= ;
 
 \ Asking a data word which operation it is, when its whole meaning is a value.
 : FIXED-CLASS-BODY ( IR-CTX:ctx -- )
@@ -521,7 +535,7 @@ private
    TTRUE TTRUE ;
 
 \ Declaration order is observable, which is what an inventory walks: the six
-\ arithmetic words are declared first, then the two step words, the two memory
+\ arithmetic words are declared first, then the two step words, the four memory
 \ words, the seven control words and the two halves of a locals group, with the
 \ renames at the end of the walk.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool )
@@ -530,11 +544,11 @@ private
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 19 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 21 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 24 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 26 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 25 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 27 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" rot" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1055,7 +1069,7 @@ private
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 13 0 0 FORGE
+   1 15 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 

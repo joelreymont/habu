@@ -34,6 +34,10 @@
 \   a64.ldr      Ldr rt sp off   - load a register back out of a frame slot
 \   a64.astr     Str rt rn 0     - store a register through an address register
 \   a64.aldr     Ldr rt rn 0     - load a register through an address register
+\   a64.astrb    Strb rt rn 0    - store a register's lowest byte through an
+\                                  address register
+\   a64.aldrb    Ldrb rt rn 0    - load one byte through an address register,
+\                                  zero-extended into the register
 \   a64.reserve  Subi sp sp n    - claim the routine's own frame
 \   a64.release  Addi sp sp n    - give the frame back
 \   a64.dtake    Subi ds ds n    - take the caller's operands off the data stack
@@ -260,6 +264,8 @@ ENUM opcode DERIVE eq
    dpublish
    aload
    astore
+   abload
+   abstore
    flag
    br
    brz
@@ -502,6 +508,8 @@ public
       dpublish OF s" a64.dpublish" ENDOF
       aload    OF s" a64.aldr"     ENDOF
       astore   OF s" a64.astr"     ENDOF
+      abload   OF s" a64.aldrb"    ENDOF
+      abstore  OF s" a64.astrb"    ENDOF
       flag     OF s" a64.flag"     ENDOF
       br       OF s" a64.b"        ENDOF
       brz      OF s" a64.cbz"      ENDOF
@@ -626,6 +634,8 @@ private
       dpublish OF s" a64.rule.dpublish" ENDOF
       aload    OF s" a64.rule.aldr"     ENDOF
       astore   OF s" a64.rule.astr"     ENDOF
+      abload   OF s" a64.rule.aldrb"    ENDOF
+      abstore  OF s" a64.rule.astrb"    ENDOF
       flag     OF s" a64.rule.flag"     ENDOF
       br       OF s" a64.rule.b"        ENDOF
       brz      OF s" a64.rule.cbz"      ENDOF
@@ -652,6 +662,8 @@ private
       dpublish OF s" a64.render.dpublish" ENDOF
       aload    OF s" a64.render.aldr"     ENDOF
       astore   OF s" a64.render.astr"     ENDOF
+      abload   OF s" a64.render.aldrb"    ENDOF
+      abstore  OF s" a64.render.astrb"    ENDOF
       flag     OF s" a64.render.flag"     ENDOF
       br       OF s" a64.render.b"        ENDOF
       brz      OF s" a64.render.cbz"      ENDOF
@@ -947,6 +959,43 @@ private
    c b A64IR-OPCODE:ASTORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Aldrb and astrb: the same two addressed accesses one byte wide. Everything
+\ about them is the addressed cell forms' - the base is a value, the offset is
+\ zero, the space is generic and the aliasing unrestricted, and they thread the
+\ one token chain - and the single difference is the number of bytes the
+\ instruction moves. That difference is the FORM and not a field: the machine
+\ has separate Ldrb and Strb encodings, so a width no encoding exists for cannot
+\ be named at all, and every MATCH over this dialect's opcode family has to say
+\ what a byte access becomes. The loaded byte arrives zero-extended, because
+\ Ldrb writes a W register and writing a W register clears the upper half of the
+\ X register - which is what `c@` leaves on a Habu stack; the stored byte is the
+\ operand register's lowest, which is what `c!` writes.
+: DEF-ALDRB ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:ABLOAD OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:READ ADDR-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:ABLOAD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+: DEF-ASTRB ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:ABSTORE OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:WRITE ADDR-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:ABSTORE NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the comparison form -----------------------------------------------------
 \ Flag: two registers compared, and the Habu flag that comparison leaves. It is
 \ ONE operation of this dialect and three instructions of the machine - compare,
@@ -1081,6 +1130,8 @@ public
    c b k DEF-DPUBLISH
    c b t k DEF-ALDR
    c b t k DEF-ASTR
+   c b t k DEF-ALDRB
+   c b t k DEF-ASTRB
    c b t DEF-FLAG
    c b t DEF-BR
    c b t DEF-BRZ

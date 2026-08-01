@@ -113,8 +113,9 @@ private
 \ ---- registration ------------------------------------------------------------
 \ The opcodes, and the count, so "nothing else was defined" is measured rather
 \ than assumed. The fifteen the register conventions use are here; the four that
-\ reach the caller's data stack are checked in DSTACK-SPELL-CASE below and the
-\ two addressed forms in ADDR-SHAPE-CASE, and the count covers all twenty-one.
+\ reach the caller's data stack are checked in DSTACK-SPELL-CASE below, the two
+\ addressed cell forms in ADDR-SHAPE-CASE and the two addressed byte forms in
+\ BYTE-SHAPE-CASE, and the count covers all twenty-three.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -152,10 +153,10 @@ private
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the twenty-one machine opcodes" T-LABEL
+   s" registration defines exactly the twenty-three machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 21 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 23 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -429,6 +430,52 @@ private
    TTRUE TTRUE TTRUE TTRUE 0 T= 1 T= 3 T=
    TTRUE TTRUE TTRUE 0 T= 2 T= 2 T=
    TTRUE TTRUE ;
+
+\ ---- the declared shapes of the two addressed BYTE forms ---------------------
+\ A byte access is its own form, so what has to be asserted is that it is one: a
+\ spelling of its own, an opcode identity that is NOT the cell form's, and the
+\ same shape the cell form has - address then order in, register then order out
+\ for the load; value, address and order in and the order out for the store -
+\ with no attribute anywhere, because a width carried as an attribute is exactly
+\ what this dialect refuses to do. They are in the generic space with
+\ unrestricted aliasing and therefore on the one token chain, because a byte an
+\ address names may be a byte of the caller's data stack.
+: BYTE-SHAPE-BODY ( IR-CTX:ctx -- bool bool bool n n n bool bool n n n bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:ABLOAD A64IR:OPCODE {: bl:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:ABSTORE A64IR:OPCODE {: bs:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:ALOAD A64IR:OPCODE {: al:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b A64IR:MEM-TYPE {: kt:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv bl s" a64.aldrb" IR-SYM:FEQ?
+   pv yv bs s" a64.astrb" IR-SYM:FEQ?
+   bl IR-ID:SYMBOL-LOCAL al IR-ID:SYMBOL-LOCAL = 0=
+   rv bl IR-SCHEMA:FOPERANDS
+   rv bl IR-SCHEMA:FRESULTS
+   rv bl IR-SCHEMA:FATTRS
+   qv rv key bl 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key bl 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv bs IR-SCHEMA:FOPERANDS
+   rv bs IR-SCHEMA:FRESULTS
+   rv bs IR-SCHEMA:FATTRS
+   rv bl IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
+   rv bs IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
+   rv bs IR-SCHEMA:FALIAS@ IR--SCHEMA-ALIAS:UNRESTRICTED IR--SCHEMA-ALIAS:EQ ;
+
+: BYTE-SHAPE-CASE ( -- )
+   s" the two byte forms are forms of their own with the addressed shape" T-LABEL
+   BND [: BYTE-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE
+   0 T= 1 T= 3 T=
+   TTRUE TTRUE 0 T= 2 T= 2 T=
+   TTRUE TTRUE TTRUE ;
 
 \ The division: two registers read, one written, no attribute - the same shape
 \ as the three arithmetic forms - and the ONE form of this dialect whose schema
@@ -926,6 +973,7 @@ private
 : GROUP-ADDR ( IR-CTX:ctx -- )
    drop
    ADDR-SHAPE-CASE
+   BYTE-SHAPE-CASE
    SDIV-CASE ;
 
 : GROUP-BRANCH ( IR-CTX:ctx -- )

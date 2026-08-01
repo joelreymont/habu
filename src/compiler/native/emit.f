@@ -157,7 +157,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-21 constant OPCODES-N
+23 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -179,6 +179,8 @@ private
 18 constant O-ALOAD
 19 constant O-ASTORE
 20 constant O-SDIV
+21 constant O-ABLOAD
+22 constant O-ABSTORE
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -259,6 +261,8 @@ create B-START BMAX cells allot
       dpublish OF O-DPUBLISH ENDOF
       aload    OF O-ALOAD   ENDOF
       astore   OF O-ASTORE  ENDOF
+      abload   OF O-ABLOAD  ENDOF
+      abstore  OF O-ABSTORE ENDOF
       flag     OF O-FLAG     ENDOF
       br       OF O-BR       ENDOF
       brz      OF O-BRZ      ENDOF
@@ -288,6 +292,8 @@ create B-START BMAX cells allot
       O-RET      of A64IR-OPCODE:RET      endof
       O-ALOAD    of A64IR-OPCODE:ALOAD    endof
       O-ASTORE   of A64IR-OPCODE:ASTORE   endof
+      O-ABLOAD   of A64IR-OPCODE:ABLOAD   endof
+      O-ABSTORE  of A64IR-OPCODE:ABSTORE  endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -454,6 +460,21 @@ create B-START BMAX cells allot
 : WORD-ASTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STR ;
+
+\ The same two accesses one byte wide. Ldrb and Strb are their own encodings
+\ with their own unscaled twelve-bit offset field, so the width is which
+\ ENCODER is called and nothing else about the instruction changes: same
+\ destination register, same base register out of the accepted allocation, same
+\ zero offset. A byte access encoded with ENC-LDR would read eight bytes where
+\ the program asked for one, which is why the two are separate arms of the table
+\ below rather than one arm reading a width off the operation.
+: WORD-ABLOAD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ADDR-OFF  ENC-LDRB ;
+
+: WORD-ABSTORE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STRB ;
 
 \ ---- the condition a comparison is made under --------------------------------
 : COND-OF ( IR-ID:ir-op-id -- n )
@@ -649,6 +670,8 @@ create B-START BMAX cells allot
       dpublish OF id  id WORD-DPUBLISH  APPEND ENDOF
       aload    OF id  id WORD-ALOAD  APPEND ENDOF
       astore   OF id  id WORD-ASTORE  APPEND ENDOF
+      abload   OF id  id WORD-ABLOAD  APPEND ENDOF
+      abstore  OF id  id WORD-ABSTORE  APPEND ENDOF
       flag     OF id PUT-FLAG ENDOF
       br       OF id PUT-BR ENDOF
       brz      OF id PUT-BRZ ENDOF
@@ -784,6 +807,8 @@ public
    c b A64IR-OPCODE:RET      BIND1
    c b A64IR-OPCODE:ALOAD    BIND1
    c b A64IR-OPCODE:ASTORE   BIND1
+   c b A64IR-OPCODE:ABLOAD   BIND1
+   c b A64IR-OPCODE:ABSTORE  BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !

@@ -190,6 +190,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       mem    OF 9 ENDOF
       load   OF 10 ENDOF
       store  OF 11 ENDOF
+      bload  OF 13 ENDOF
+      bstore OF 14 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -207,6 +209,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       10 of HIR-OPCODE:LOAD endof
       11 of HIR-OPCODE:STORE endof
       12 of HIR-OPCODE:DIV endof
+      13 of HIR-OPCODE:BLOAD endof
+      14 of HIR-OPCODE:BSTORE endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -767,7 +771,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ `over`, one for `nip` and three for `rot`. A `{: … :}` group adds two words
 \ and no picks: its halves stage nothing and the names between them are the
 \ program's, so they never become rows of this table.
-26 constant WORDS
+28 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -791,14 +795,19 @@ private
    c b r c b s" 1-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
    c b r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD 1 BDECLARE-CONST-OP ;
 
-\ The two cell-width memory words. `@` ( ptr -- n ) reads the cell an address
-\ names and `!` ( n ptr -- ) writes one; the order they happen in is the memory
-\ order the dialect's own token carries, and src/compiler/native/elaborate.f
-\ threads it, so nothing about it is stored in these rows.
+\ The four memory words, two per width. `@` ( ptr -- n ) reads the cell an
+\ address names and `!` ( n ptr -- ) writes one; `c@` ( ptr -- n ) reads the
+\ BYTE an address names and `c!` ( n ptr -- ) writes one. The order they happen
+\ in is the memory order the dialect's own token carries, and
+\ src/compiler/native/elaborate.f threads it, so nothing about it is stored in
+\ these rows. The width is not stored either: it is which opcode the row names,
+\ because src/compiler/native/hir.f makes the width a form.
 : DEF-MEMORY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" @" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LOAD BDECLARE-OP
-   c b r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:STORE BDECLARE-OP ;
+   c b r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:STORE BDECLARE-OP
+   c b r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BLOAD BDECLARE-OP
+   c b r c b s" c!" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BSTORE BDECLARE-OP ;
 
 \ The structured control words. Three pairs and the loop index; nothing else of
 \ Habu's control vocabulary is declared, because nothing else has a block
@@ -890,7 +899,7 @@ public
 
 \ Declare the whole straight-line source vocabulary into one word model: the
 \ words this dialect has operations for, the two step words that are a literal
-\ and an operation, the two memory words, the structured control words, the two
+\ and an operation, the four memory words, the structured control words, the two
 \ halves of a typed locals group, and the stack words that only rename values.
 \ The builder is the module's symbol
 \ interner, so the spellings become identities of the same module the table is

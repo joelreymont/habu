@@ -70,7 +70,19 @@ $7FFFFFFF constant SERIAL-CEILING    \ production per-context module ceiling; th
                                      \ full IR-ID module serial range
 $7FFFFFFF constant GEN-MAX           \ context generation ceiling
 64 constant DEPTH-MAX                \ live + retired registry slots
-$10000 constant MAP-BYTES            \ one 64K mapping per context
+$20000 constant MAP-BYTES            \ one 128K mapping per context. It was 64K
+                                     \ while one module of the machine dialect
+                                     \ cost about seventeen kilobytes; the
+                                     \ dialect's byte-width memory forms tipped
+                                     \ a geometrically grown table over its next
+                                     \ doubling and took registration past
+                                     \ twenty-seven, and the spill lowering
+                                     \ holds TWO modules of that dialect in one
+                                     \ context - the old module it reads and the
+                                     \ rewritten one it builds. Two of them no
+                                     \ longer fit 64K, and that is a real pass
+                                     \ of the compiler rather than a fixture, so
+                                     \ the mapping is what has to give.
 
 \ Header slots inside the mapping, one CDIGEST slot each.
 0 constant HF-MINTED                 \ modules minted by this context

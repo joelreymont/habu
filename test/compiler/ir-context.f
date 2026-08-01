@@ -16,8 +16,8 @@ require src/compiler/ir/context.f
 package IR-CTX-TEST
 private
 
-$10000 constant TMAP-BYTES           \ pins the context mapping size
-$10000 128 - constant TSCR-CAP       \ pins the scratch capacity behind the header
+$20000 constant TMAP-BYTES           \ pins the context mapping size
+$20000 128 - constant TSCR-CAP       \ pins the scratch capacity behind the header
 64 constant TDEPTH-MAX               \ pins the registry capacity
 
 \ ---- fixtures ----------------------------------------------------------------

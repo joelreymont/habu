@@ -9,7 +9,7 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Twelve opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Fifteen opcodes, and nothing else:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
@@ -20,6 +20,8 @@
 \   hir.mem       the memory the definition is entered with
 \   hir.load      read one cell from an address the program computed
 \   hir.store     write one cell to an address the program computed
+\   hir.bload     read one BYTE from an address the program computed
+\   hir.bstore    write one BYTE to an address the program computed
 \   hir.br        go on to one block, handing it the live values
 \   hir.brz       go on to one of two blocks, on whether a value is zero
 \   hir.return    leave the function with the word's outputs
@@ -41,6 +43,24 @@
 \ carries only the token it mints; src/compiler/native/select.f gives it no
 \ instruction at all, because on this machine the routine's memory order already
 \ begins where the routine takes the caller's operands.
+\
+\ WHY THE WIDTH OF AN ACCESS IS A FORM AND NOT AN ATTRIBUTE. `@` and `c@` reach
+\ the same address space in the same order, and they differ only in how many
+\ bytes they move - so a width field on ONE memory opcode looks like the smaller
+\ change. It is the wrong one. An operation's schema is what says what the
+\ operation IS: its operand and result types, its effect on memory, the
+\ instruction a selector may lower it to. A width carried as an attribute would
+\ leave one schema standing for two accesses that write different numbers of
+\ bytes, so every consumer - the selector, the emitter, and any later pass that
+\ has to know whether two accesses overlap - would have to read an attribute
+\ before it knew what it was looking at, and a schema-driven check could no
+\ longer tell a wrong lowering from a right one. It would also make an
+\ unwritable state writable: an attribute is a number, and a number can be a
+\ width no machine form of this target has. Two forms make the closed world of
+\ design line 229 do the work instead - `hir.bload` and `hir.bstore` are members
+\ of the opcode family, every MATCH over the family has to answer for them, and
+\ a width the machine cannot encode cannot be spelled at all. That is exactly
+\ how the cell forms were built, and the byte forms are built the same way.
 \
 \ THE ADDRESS IS AN OPERAND, WHICH IS WHY THIS IS NOT THE FRAME. The two memory
 \ forms of the machine dialect that existed before this one reach a frame slot,
@@ -121,6 +141,8 @@ ENUM opcode DERIVE eq
    mem
    load
    store
+   bload
+   bstore
    br
    brz
    return
@@ -235,6 +257,8 @@ public
       mem    OF s" hir.mem"    ENDOF
       load   OF s" hir.load"   ENDOF
       store  OF s" hir.store"  ENDOF
+      bload  OF s" hir.bload"  ENDOF
+      bstore OF s" hir.bstore" ENDOF
       br     OF s" hir.br"     ENDOF
       brz    OF s" hir.brz"    ENDOF
       return OF s" hir.return" ENDOF
@@ -277,6 +301,8 @@ private
       mem    OF s" hir.rule.mem"    ENDOF
       load   OF s" hir.rule.load"   ENDOF
       store  OF s" hir.rule.store"  ENDOF
+      bload  OF s" hir.rule.bload"  ENDOF
+      bstore OF s" hir.rule.bstore" ENDOF
       br     OF s" hir.rule.br"     ENDOF
       brz    OF s" hir.rule.brz"    ENDOF
       return OF s" hir.rule.return" ENDOF
@@ -295,6 +321,8 @@ private
       mem    OF s" hir.render.mem"    ENDOF
       load   OF s" hir.render.load"   ENDOF
       store  OF s" hir.render.store"  ENDOF
+      bload  OF s" hir.render.bload"  ENDOF
+      bstore OF s" hir.render.bstore" ENDOF
       br     OF s" hir.render.br"     ENDOF
       brz    OF s" hir.render.brz"    ENDOF
       return OF s" hir.render.return" ENDOF
@@ -436,6 +464,42 @@ private
    c b HIR-OPCODE:STORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Reading one byte: the same address and order the cell load takes, and the same
+\ two answers. What differs is the number of bytes the access moves, and that is
+\ the whole content of the form - the value it answers is the byte widened into a
+\ cell, which is what `c@` leaves on a Habu stack. The operand and result types
+\ are the cell type for that reason: a byte is not a type of this dialect, it is
+\ a width of an access.
+: DEF-BLOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:BLOAD OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:READ GENERIC-MEM
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:BLOAD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Writing one byte: the value, the address, and the memory as it stands, in the
+\ order Forth writes `value address c!`. Only the value's lowest byte reaches
+\ memory, which is what the machine form encodes and what the engine's own `c!`
+\ does; the operand is still a cell, because a cell is what the program has.
+: DEF-BSTORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:BSTORE OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:WRITE GENERIC-MEM
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:BSTORE NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ Going on to one block, handing it the values that are still live. Design lines
 \ 706-708 make a terminator's operands the successor's block arguments and
 \ design line 532 makes the verifier match their count and types against the
@@ -537,6 +601,8 @@ public
    c b k DEF-MEM
    c b t k DEF-LOAD
    c b t k DEF-STORE
+   c b t k DEF-BLOAD
+   c b t k DEF-BSTORE
    c b t DEF-BR
    c b t DEF-BRZ
    c b t DEF-RETURN ;
