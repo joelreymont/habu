@@ -119,6 +119,8 @@ variable DEF-NAME-I
 variable DEF-START-LINE
 variable DEF-PACKAGED
 variable DEF-TAIL-ADDED
+variable RESULT-N
+variable COUNT-RESULT
 variable NUM-I
 variable SCAN-START
 variable STEM-START
@@ -801,6 +803,10 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    DEF-NAME-I @ s" E-PACKAGE-OWNERSHIP" REPORT-HEAD
    s" defines a changed module word outside a package" OUT LF-C OUT-C ;
 
+: REPORT-RESULT-OWNER ( -- )
+   DEF-NAME-I @ s" E-PACKAGE-OWNERSHIP" REPORT-HEAD
+   s" must be the single global ENUM result declaration" OUT LF-C OUT-C ;
+
 : REPORT-OWNER-PREFIX ( -- )
    DEF-NAME-I @ s" E-REDUNDANT-PACKAGE-PREFIX" REPORT-HEAD
    s" repeats its package owner `" OUT PACKAGE$ OUT s" `" OUT LF-C OUT-C ;
@@ -895,6 +901,20 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    bit 0= if false exit then
    allowed bit and 0<> ;
 
+: RESULT-FILE? ( -- bool )
+   FILE$ s" lib/adt/result.f" LINT-STR= ;
+
+: RESULT-NAME? ( -- bool )
+   RESULT-FILE? 0= if false exit then
+   DEF-NAME-I @ s" result" TOK=CI ;
+
+: RESULT-DECL? ( -- bool )
+   RESULT-NAME? 0= if false exit then
+   DEF-DEFINER-I @ s" ENUM" TOK=CI ;
+
+: RESULT-SURFACE? ( -- bool )
+   RESULT-DECL? RESULT-N @ 1 = and ;
+
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
    GRAMMAR-FIXTURE? if true exit then
@@ -903,6 +923,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
       DEF-DEFINER-I @ s" ENUM" TOK=CI
       DEF-NAME-I @ s" option" TOK=CI and exit
    then
+   RESULT-SURFACE? if true exit then
    FILE$ s" lib/type/deftype.f" LINT-STR= if
       DEF-NAME-I @ s" DEFTYPE" TOK=CI exit
    then
@@ -925,14 +946,25 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 \ still opens inner packages).  Only a plain body change or whole-file change of
 \ an already-global definition is exempt, and only on that surface.
 : FINISH-DEFINITION ( n -- ) {: last-line:n :}
-   DEF-PACKAGED @ if
-      CHECK-PREFIX
+   COUNT-RESULT @ if
+      RESULT-NAME? if
+         RESULT-N @ 1+ RESULT-N !
+      then
+      false DEF-OPEN !
+      exit
+   then
+   RESULT-NAME? DEF-PACKAGED @ and if
+      REPORT-RESULT-OWNER
    else
-      SCOPE-DELTA @ 0<> if
-         REPORT-GLOBAL
+      DEF-PACKAGED @ if
+         CHECK-PREFIX
       else
-         DEF-START-LINE @ last-line ADDED-RANGE? WHOLE-CHANGED @ or
-         GLOBAL-SURFACE? 0= and if REPORT-GLOBAL then
+         SCOPE-DELTA @ 0<> if
+            REPORT-GLOBAL
+         else
+            DEF-START-LINE @ last-line ADDED-RANGE? WHOLE-CHANGED @ or
+            GLOBAL-SURFACE? 0= and if REPORT-GLOBAL then
+         then
       then
    then
    false DEF-OPEN ! ;
@@ -996,9 +1028,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
       SCAN-LINE @ 1+ SCAN-LINE !
    repeat ;
 
-: SCAN-DEFINITIONS ( -- )
-   SOURCE$ LINT-LEX:SOURCE
-   LEX-CHECK
+: SCAN-DEFINITION-PASS ( -- )
    0 LEX-I !
    false PACKAGE-OPEN !
    0 SCOPE-DELTA !
@@ -1010,6 +1040,19 @@ s" test/engine-suite.f" ENGINE-SET ROW+
       LEX-I @ SCAN-TOKEN
    repeat
    DEF-OPEN @ 0<> PACKAGE-OPEN @ 0<> or if E-DIFF-SYNTAX throw then ;
+
+: SCAN-DEFINITIONS ( -- )
+   SOURCE$ LINT-LEX:SOURCE
+   LEX-CHECK
+   0 RESULT-N !
+   false COUNT-RESULT !
+   RESULT-FILE? if
+      \ The owner needs one structural count before source-order-independent admission.
+      true COUNT-RESULT !
+      SCAN-DEFINITION-PASS
+      false COUNT-RESULT !
+   then
+   SCAN-DEFINITION-PASS ;
 
 : OLD-PACKAGE-TOKEN ( n -- bool ) {: k:n :}
    k s" package" TOK=CI if
