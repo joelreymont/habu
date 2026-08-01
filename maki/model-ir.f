@@ -152,7 +152,7 @@ DEFER-LAYOUT-BUFFER MI-INOFF-AT MIR:ref-pos \ operand window start in MI-INS ( n
 create MI-INCNT MIR-NODE-SEED cells allot  variable MI-INCNT-P  MI-INCNT data-base - MI-INCNT-P !  variable MI-INCNT-CAP  MIR-NODE-SEED cells MI-INCNT-CAP !  \ operand window length (offset)
 DEFER-LAYOUT-BUFFER MI-ROWS-AT CAD-KIND:rows \ output rows column ( n -- ptr CAD-KIND:rows )
 DEFER-LAYOUT-BUFFER MI-COLS-AT CAD-KIND:cols \ output cols column ( n -- ptr CAD-KIND:cols )
-DEFER-LAYOUT-BUFFER MI-DT-AT dtype    \ dtype column ( n -- ptr dtype )
+DEFER-LAYOUT-BUFFER MI-DT-AT datatype    \ datatype column ( n -- ptr datatype )
 DEFER-LAYOUT-BUFFER MI-LAY-AT layout  \ layout column ( n -- ptr layout )
 create MI-ATTR MIR-NODE-SEED cells allot  variable MI-ATTR-P  MI-ATTR data-base - MI-ATTR-P !  variable MI-ATTR-CAP  MIR-NODE-SEED cells MI-ATTR-CAP !  \ attrs cell (offset)
 create MI-MAT  MIR-NODE-SEED cells allot  variable MI-MAT-P   MI-MAT  data-base - MI-MAT-P  !  variable MI-MAT-CAP   MIR-NODE-SEED cells MI-MAT-CAP  !  \ materialization flag (offset)
@@ -171,7 +171,7 @@ variable MIR-INS-BOUND                 \ live operand-pool extent (grow-to-large
 \ model-input slots (their own descriptor facts)
 DEFER-LAYOUT-BUFFER MI-IS-ROWS-AT CAD-KIND:rows \ input rows column ( n -- ptr CAD-KIND:rows )
 DEFER-LAYOUT-BUFFER MI-IS-COLS-AT CAD-KIND:cols \ input cols column ( n -- ptr CAD-KIND:cols )
-DEFER-LAYOUT-BUFFER MI-IS-DT-AT  dtype    \ dtype column ( n -- ptr dtype )
+DEFER-LAYOUT-BUFFER MI-IS-DT-AT  datatype    \ datatype column ( n -- ptr datatype )
 DEFER-LAYOUT-BUFFER MI-IS-LAY-AT layout   \ layout column ( n -- ptr layout )
 DEFER-LAYOUT-BUFFER MI-IS-AL-AT  align    \ align column (zero image = unknown)
 variable MIR-IS-N
@@ -403,7 +403,7 @@ public
 \ dtype/layout arrive as family values (a bad tag is a checker reject; the old
 \ E-MK-DTYPE/E-TV-LAYOUT range validation is unrepresentable). The descriptor
 \ stores run from the stack before the extent locals bind.
-: MIR-INPUT+ ( CAD-KIND:rows CAD-KIND:cols dtype layout -- MIR:input-slot )
+: MIR-INPUT+ ( CAD-KIND:rows CAD-KIND:cols datatype layout -- MIR:input-slot )
    MIR-IS-N @ MIR-IN-CAP >= if E-MIR-INSLOT throw then   \ generous ceiling (transactional)
    MIR-IS-N @ MIR-SLOT-ENSURE                    \ derive slot-table size from the model
    NEXT-SLOT {: s:MIR:input-slot :}
@@ -419,7 +419,7 @@ public
 
 : MIR-SLOT-ROWS@ ( MIR:input-slot -- CAD-KIND:rows )  MIR-IS-CK MI-IS-ROWS-AT @ ;
 : MIR-SLOT-COLS@ ( MIR:input-slot -- CAD-KIND:cols )  MIR-IS-CK MI-IS-COLS-AT @ ;
-: MIR-SLOT-DT@   ( MIR:input-slot -- dtype )   MIR-IS-CK MI-IS-DT-AT  @ ;
+: MIR-SLOT-DT@   ( MIR:input-slot -- datatype )   MIR-IS-CK MI-IS-DT-AT  @ ;
 : MIR-SLOT-LAY@  ( MIR:input-slot -- layout )  MIR-IS-CK MI-IS-LAY-AT @ ;
 : MIR-SLOT-AL@   ( MIR:input-slot -- align )   MIR-IS-CK MI-IS-AL-AT  @ ;
 
@@ -455,7 +455,7 @@ public
    MIR-INS-U @ 1+ MIR-INS-U !
    MIR-PEND-CNT @ 1+ MIR-PEND-CNT ! ;
 
-: MIR-OP+ ( CAD-KIND:rows CAD-KIND:cols dtype layout n n -- CAD-KIND:node-id )
+: MIR-OP+ ( CAD-KIND:rows CAD-KIND:cols datatype layout n n -- CAD-KIND:node-id )
    {: attr:n mat:n :}                    \ rows cols dtype layout attr mat -- node
    MIR-PEND-ON @ 0= if E-MIR-STATE throw then
    MIR-N @ MIR-CAP >= if E-MIR-CAP throw then
@@ -482,7 +482,7 @@ public
 : MIR-OP@   ( CAD-KIND:node-id -- opkind )   MIR-CK MI-OP-AT @ ;
 : MIR-ROWS@ ( CAD-KIND:node-id -- CAD-KIND:rows )  MIR-CK MI-ROWS-AT @ ;
 : MIR-COLS@ ( CAD-KIND:node-id -- CAD-KIND:cols )  MIR-CK MI-COLS-AT @ ;
-: MIR-DT@   ( CAD-KIND:node-id -- dtype )   MIR-CK MI-DT-AT  @ ;
+: MIR-DT@   ( CAD-KIND:node-id -- datatype )   MIR-CK MI-DT-AT  @ ;
 : MIR-LAY@  ( CAD-KIND:node-id -- layout )  MIR-CK MI-LAY-AT @ ;
 : MIR-ATTR@ ( CAD-KIND:node-id -- n )     MIR-CK cells MI-ATTR-BASE  + @ ;
 : MIR-AD@   ( CAD-KIND:node-id -- n )     MIR-CK cells MI-AD-BASE    + @ ;

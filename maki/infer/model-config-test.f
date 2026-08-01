@@ -43,7 +43,7 @@ package MDLCFG-TEST
 50256 constant EOS0
 $7FFFFFFFFFFFFFFF constant HUGE
 
-: DT0 ( -- MAKI:dtype ) MAKI-DTYPE:DF32 ;
+: DT0 ( -- MAKI:datatype ) MAKI-DATATYPE:DF32 ;
 : EPS0 ( -- r ) 0.00001 ;
 : RMSEPS0 ( -- r ) 0.000001 ;
 : THETA0 ( -- r ) 10000.0 ;
@@ -116,7 +116,7 @@ $7FFFFFFFFFFFFFFF constant HUGE
 \ ---- 1. construction + accessors + derived semantics, both arms --------------
 : T-GPT2 ( -- )
    B-G
-   MDLCFG:DTYPE@ DT0 MAKI-DTYPE:EQ TTRUE
+   MDLCFG:DTYPE@ DT0 MAKI-DATATYPE:EQ TTRUE
    MDLCFG:NCTX@ CX0 T=
    MDLCFG:NVOCAB@ VO0 T=
    MDLCFG:NLAYER@ NL0 T=
@@ -157,7 +157,7 @@ $7FFFFFFFFFFFFFFF constant HUGE
 : K-BASE ( -- MDLCFG:cfgkey )  B-G KOF ;
 : K-L ( -- MDLCFG:cfgkey )  B-L KOF ;
 
-: K-DT ( MAKI:dtype -- MDLCFG:cfgkey ) {: v:MAKI:dtype :}
+: K-DT ( MAKI:datatype -- MDLCFG:cfgkey ) {: v:MAKI:datatype :}
    G-ARM v CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
 : K-CX ( n -- MDLCFG:cfgkey ) {: v:n :}
    G-ARM DT0 v VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
@@ -192,7 +192,7 @@ $7FFFFFFFFFFFFFFF constant HUGE
 : T-KEYS ( -- )
    K-BASE K-BASE MDLCFG:CFGKEY= TTRUE
    K-L K-L MDLCFG:CFGKEY= TTRUE
-   K-BASE MAKI-DTYPE:DF16 K-DT MDLCFG:CFGKEY= TFALSE
+   K-BASE MAKI-DATATYPE:DF16 K-DT MDLCFG:CFGKEY= TFALSE
    K-BASE 2048 K-CX MDLCFG:CFGKEY= TFALSE
    K-BASE 60000 K-VO MDLCFG:CFGKEY= TFALSE
    K-BASE 24 K-NL MDLCFG:CFGKEY= TFALSE
@@ -276,9 +276,9 @@ T-REJECTS
 
 \ ---- 4. checker negatives -----------------------------------------------------
 \ the generated raw MAKE certifies only with a genuine proof value...
-s" MCP-MAKE ( MAKI:dtype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey MDLCFG:cfg-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" YES
+s" MCP-MAKE ( MAKI:datatype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey MDLCFG:cfg-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" YES
 \ ...a raw n in the proof slot type-rejects...
-s" MCN-PROOF ( MAKI:dtype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey n -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
+s" MCN-PROOF ( MAKI:datatype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey n -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
 \ ...and the private mint is unresolvable outside package MDLCFG (verdict 1),
 \ qualified or bare, so the proof cannot be produced around BUILD.
 s" MCN-MINT ( -- MDLCFG:cfg-proof ) MDLCFG:MINT-CFG-PROOF" UNK
@@ -297,7 +297,7 @@ s" MCN-DTSWAP ( MDLCFG:arch MODEL:family n n n n n bool n n -- MDLCFG:mcfg ) MDL
 \ ---- 5. the version cell is unrepresentable, not merely unused ----------------
 \ The old eleven-input arity no longer certifies, so a caller that still hands
 \ BUILD a version cannot be written at all.
-s" MCN-OLDARITY ( MDLCFG:arch n MAKI:dtype n n n n n bool n n -- MDLCFG:mcfg ) MDLCFG:BUILD" NO
+s" MCN-OLDARITY ( MDLCFG:arch n MAKI:datatype n n n n n bool n n -- MDLCFG:mcfg ) MDLCFG:BUILD" NO
 \ Both words the package used to export for the version are unresolvable now
 \ (verdict 1); each certified before the cut, so these pin the deletion.
 s" MCN-SCHEMA-ACC ( MDLCFG:mcfg -- MDLCFG:mcfg n ) MDLCFG:SCHEMA@" UNK

@@ -61,7 +61,7 @@ private
    r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-ROWS@ else r MIR-REF-NODE MIR-ROWS@ then ;
 : SV-REF-COLS ( MIR:operand-ref -- CAD-KIND:cols ) {: r:MIR:operand-ref :}
    r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-COLS@ else r MIR-REF-NODE MIR-COLS@ then ;
-: SV-REF-DT ( MIR:operand-ref -- dtype ) {: r:MIR:operand-ref :}
+: SV-REF-DT ( MIR:operand-ref -- datatype ) {: r:MIR:operand-ref :}
    r MIR-REF-INPUT? if r MIR-REF-SLOT MIR-SLOT-DT@ else r MIR-REF-NODE MIR-DT@ then ;
 
 : SV-REF-ELEMS ( MIR:operand-ref -- n )

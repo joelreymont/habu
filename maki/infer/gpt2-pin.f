@@ -8,8 +8,8 @@ package GPT2PIN
 public
 
 \ Resolved facts for this revision, never Hugging Face defaults.
-: DTYPE ( -- MAKI:dtype )
-   MAKI-DTYPE:DF32 ;
+: DTYPE ( -- MAKI:datatype )
+   MAKI-DATATYPE:DF32 ;
 : TIED? ( -- bool )
    true ;
 : ATTN-SCALE? ( -- bool )

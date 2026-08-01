@@ -124,7 +124,7 @@ path sufficient, or hold the lane for a post-conversion landing.
 ## Checker capability work in wave 1
 
 14. **Tagged families instantiate generic parameters.** [wave 1] Today
-    `option<MAKI:dtype>` is rejected while untagged payloads work; the
+    `option<MAKI:datatype>` is rejected while untagged payloads work; the
     split is tagged (variant-carrying) vs untagged, and it is
     implementation debt — a tag value is one cell like any nominal. Fixed
     in the engine batch; this is what lets item 12 collapse everything.
@@ -486,7 +486,7 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   blocked-by M7.
 - M11a infer deftypes: kv-cache.f `KV-CACHE-ID KV-SEQ-SLOT KV-SEQ-GEN`
   to carrier form. blocked-by M7.
-- M11b the datatype rename (item 10): MAKI:dtype family + five
+- M11b the datatype rename (item 10): MAKI:datatype family + five
   constructors + DT-KEY/DT-SIZE/EQ and every consumer spelling.
   blocked-by M7.
 - M11c map-take deletion (item 22): safetensors.f map-take deleted,

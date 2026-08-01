@@ -102,7 +102,7 @@ variable HIGH
    LOW @ ;
 
 \ ---- fixture configs (all through the sole MDLCFG constructor) ----------------
-: DT0 ( -- MAKI:dtype )  MAKI-DTYPE:DF32 ;
+: DT0 ( -- MAKI:datatype )  MAKI-DATATYPE:DF32 ;
 : EPS0 ( -- r )  0.00001 ;
 
 \ the real GPT-2 124M geometry.
@@ -562,7 +562,7 @@ s" LAYER-ID-RAW-PROOF ( MDLCFG:cfgkey n n -- GPT2TENSOR:layer-id ) GPT2TENSOR-LA
 \ ...MDLCFG's proof cannot substitute (cross-package proof domains), nor can
 \ GPT2TENSOR's proof seal an mcfg...
 s" LAYER-ID-WRONG-PROOF ( MDLCFG:cfgkey n MDLCFG:cfg-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
-s" CONFIG-WRONG-PROOF ( n MAKI:dtype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey GPT2TENSOR:layer-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
+s" CONFIG-WRONG-PROOF ( n MAKI:datatype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey GPT2TENSOR:layer-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
 \ ...raw cells are not a cfgkey, and the private mint is unresolvable outside.
 s" LAYER-ID-RAW-KEY ( n n n n n GPT2TENSOR:layer-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
 s" PRIVATE-MINT ( -- GPT2TENSOR:layer-proof ) GPT2TENSOR:MINT-LAYER-PROOF" UNK

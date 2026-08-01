@@ -6,7 +6,7 @@
 \ value ever carries a key, and no second normalized-config authority exists.
 \
 \ STRUCTURE mcfg = the common behavioral fields shared by both arms
-\ (MAKI:dtype - maki/tensor.f:123 is the sole dtype authority - nctx, nvocab,
+\ (MAKI:datatype - maki/tensor.f:123 is the sole dtype authority - nctx, nvocab,
 \ nlayer, nembd, nhead, tied-embeddings flag, bos-id, eos-id; special tokens
 \ are behavioral: decode stops on eos) + payload ENUM arch =
 \ gpt2(ln-eps, attn-scale) | llama(nkvhead, ffn-dim, rope-theta, rms-eps) -
@@ -80,7 +80,7 @@ STRUCTURE cfgkey 0 DERIVE eq
 NEWTYPE cfg-proof 0
 
 STRUCTURE mcfg 0
-   FIELD dt MAKI:dtype
+   FIELD dt MAKI:datatype
    FIELD nctx n
    FIELD nvocab n
    FIELD nlayer n
@@ -164,7 +164,7 @@ create KBUF 32 allot               \ CONTENT-KEY:FINAL digest landing pad
 : FOLD-B ( bool -- )
    if 1 else 0 then FOLD-N ;
 
-: FOLD-DT ( MAKI:dtype -- )
+: FOLD-DT ( MAKI:datatype -- )
    MAKI:DT-KEY CONTENT-KEY:TEXT+ ;
 
 : FOLD-GPT2 ( r bool -- ) {: eps:r sc:bool :}
@@ -192,8 +192,8 @@ public
 \ Argument order is the mcfg field order with the wide arm first (deepest) so
 \ the nine scalars bind as entry locals. Every rejection throws BEFORE the key
 \ mint; the key mint is the final act after the folds, then the proof and MAKE.
-: BUILD ( arch MAKI:dtype n n n n n bool n n -- mcfg )
-   {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+: BUILD ( arch MAKI:datatype n n n n n bool n n -- mcfg )
+   {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    cx vo nl ne nh V-EXTENTS
    ne nh V-HEAD
    bos vo V-TOKEN  eos vo V-TOKEN
@@ -213,7 +213,7 @@ private
 \ mcfg is non-linear: accessors dup the value, UNMAKE the copy, bind the proof
 \ local, and drop or extract the wide fields (key, arm) by whole-bundle
 \ transport. Each public accessor is ( mcfg -- mcfg x ).
-: MC-COMMON ( mcfg -- MAKI:dtype n n n n n bool n n )
+: MC-COMMON ( mcfg -- MAKI:datatype n n n n n bool n n )
    MDLCFG-MCFG:UNMAKE {: tok:cfg-proof :}
    drop drop ;
 
@@ -257,40 +257,40 @@ private
 public
 
 \ ---- common behavioral field accessors -------------------------------------------
-: DTYPE@ ( mcfg -- mcfg MAKI:dtype )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+: DTYPE@ ( mcfg -- mcfg MAKI:datatype )
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    dt ;
 
 : NCTX@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    cx ;
 
 : NVOCAB@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    vo ;
 
 : NLAYER@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    nl ;
 
 : NEMBD@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    ne ;
 
 : NHEAD@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    nh ;
 
 : TIED@ ( mcfg -- mcfg bool )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    te ;
 
 : BOS@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    bos ;
 
 : EOS@ ( mcfg -- mcfg n )
-   dup MC-COMMON {: dt:MAKI:dtype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
+   dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    eos ;
 
 \ ---- the arch arm and the derived MODEL semantics --------------------------------

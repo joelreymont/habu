@@ -47,12 +47,12 @@ create LRD-CS $800 allot  variable LRD-CS-U
 : LRD-COL-SRC ( -- ptr u8 n )
    LRD-CS-RESET
    S\" MIR-RESET\n"                                                                                        LRD-CS+
-   S\" 4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
-   S\" 4 1 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
+   S\" 4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
+   S\" 4 1 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop\n"                                        LRD-CS+
    S\" MAKI-OPKIND:ADD MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+ 1 MIR-SLOT-ID MIR-IN-REF MIR-IN+\n"   LRD-CS+
-   S\" 4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
+   S\" 4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
    S\" MAKI-OPKIND:RMSNORM MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+\n"                              LRD-CS+
-   S\" 4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
+   S\" 4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop\n"                                       LRD-CS+
    LRD-CS LRD-CS-U @ ;
 
 \ ---- spawn bin/hb to emit region 0's PTX into PTXTC:PTX$ (child re-builds the IR) --

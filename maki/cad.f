@@ -678,9 +678,9 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
    CAP-IN-N @ CAP-CAP >= if E-CAD-INPUTS throw then     \ generous ceiling (transactional)
    CAP-IN-N @ CAP-IN-ENSURE                             \ derive input-handle column from the model
    a u PARSE-SHAPE {: rows:n cols:n :}
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW SPACE-HOST TENSOR:TV-DESC
    CAP-IN-N @ CAP-IN!                                                        \ handle for the seed
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop           \ register the IR input slot
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop           \ register the IR input slot
    a u SPEC-NAME {: na:ptr nu:n :}
    nu 0 > if  na nu NT-BIND drop  else  CAP-SYNTH-NAME  then
    CAP-IN-N @ 1+ CAP-IN-N ! ;

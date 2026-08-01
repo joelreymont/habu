@@ -106,21 +106,22 @@ public
    {: value:n :}
    value 0 < 0= value SPACE-N < and ;
 
-\ Element dtypes (Orin sm_87: bf16/f16 yes, no fp8). The `dtype` ENUM is the
+\ Element datatypes (Orin sm_87: bf16/f16 yes, no fp8). The `datatype` ENUM is the
 \ semantic type carried through construction, Model IR storage, and every
 \ consumer (dot habu-cad-adt-swap, corrected plan). The DT-* codes remain ONLY
 \ as the wire/hash vocabulary crossed at the named boundaries below; no internal
-\ API takes or returns a raw dtype code. Variant tails are df-prefixed (`f32` is
+\ API takes or returns a raw datatype code. Variant tails are df-prefixed (`f32` is
 \ a reserved variant tail); DT-KEY renders the wire strings "f32".."i32".
-\ DERIVE eq generates the typed identity compare MAKI-DTYPE:EQ ( dtype dtype --
-\ bool ) (derive S1) so dtype can be an enum FIELD of a DERIVE-eq PRODUCT (the
+\ DERIVE eq generates the typed identity compare MAKI-DATATYPE:EQ
+\ ( datatype datatype -- bool ) (derive S1) so datatype can be an enum FIELD
+\ of a DERIVE-eq PRODUCT (the
 \ SKEY schedule key, dot habu-cad-adt-swap); zero behavior change to the codes.
-\ The dtype role deliberately stays an ENUM rather than a CAD-KIND nominal
+\ The datatype role deliberately stays an ENUM rather than a CAD-KIND nominal
 \ (merge policy habu-merge-policy-master-961bb2b7): variant-closed constructors
 \ and MATCH renders subsume DTYPE-REFINE/DTYPE-RAW with no raw-n surface.
 0 constant DT-F32   1 constant DT-F16   2 constant DT-BF16
 3 constant DT-U32   4 constant DT-I32
-ENUM dtype DERIVE eq
+ENUM datatype DERIVE eq
   df32
   df16
   dbf16
@@ -128,10 +129,10 @@ ENUM dtype DERIVE eq
   di32
 ;ENUM
 
-\ named render boundaries: dtype -> wire code / wire text (exhaustive MATCH;
-\ a bad dtype is unrepresentable, so no throw arm exists)
-: DTYPE>N ( dtype -- n )
-   MATCH dtype
+\ named render boundaries: datatype -> wire code / wire text (exhaustive MATCH;
+\ a bad datatype is unrepresentable, so no throw arm exists)
+: DTYPE>N ( datatype -- n )
+   MATCH datatype
       df32  OF DT-F32  ENDOF
       df16  OF DT-F16  ENDOF
       dbf16 OF DT-BF16 ENDOF
@@ -139,8 +140,8 @@ ENUM dtype DERIVE eq
       di32  OF DT-I32  ENDOF
    ;MATCH ;
 
-: DT-KEY ( dtype -- ptr u8 n )
-   MATCH dtype
+: DT-KEY ( datatype -- ptr u8 n )
+   MATCH datatype
       df32  OF s" f32"  ENDOF
       df16  OF s" f16"  ENDOF
       dbf16 OF s" bf16" ENDOF
@@ -148,8 +149,8 @@ ENUM dtype DERIVE eq
       di32  OF s" i32"  ENDOF
    ;MATCH ;
 
-: DT-SIZE ( dtype -- CAD-KIND:dim )
-   MATCH dtype
+: DT-SIZE ( datatype -- CAD-KIND:dim )
+   MATCH datatype
       df32  OF 4 DIM-REFINE ENDOF
       df16  OF 2 DIM-REFINE ENDOF
       dbf16 OF 2 DIM-REFINE ENDOF
@@ -201,7 +202,7 @@ ENUM dtype DERIVE eq
    r1 ROWS-RAW r2 ROWS-RAW BCAST-DIM?
    c1 COLS-RAW c2 COLS-RAW BCAST-DIM? and ;
 
-: SHAPE-BYTES ( CAD-KIND:rows CAD-KIND:cols dtype -- CAD-KIND:dim )
+: SHAPE-BYTES ( CAD-KIND:rows CAD-KIND:cols datatype -- CAD-KIND:dim )
    DT-SIZE {: es:CAD-KIND:dim :}
    SHAPE-ELEMS es DIM* ;
 

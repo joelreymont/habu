@@ -1,9 +1,9 @@
 # Maki tensors — storage, metadata, the tensor value, broadcast classes
 
 The landed tensor layer, checked Habu throughout, one concern per file. A tensor
-is storage (`array.f`) plus recorded facts (`tensor.f` dtype, `tensor-value.f`
+is storage (`array.f`) plus recorded facts (`tensor.f` datatype, `tensor-value.f`
 layout/alignment/shape); the facts travel as **checked type families**, never as
-raw integers, so a swapped semantic role (dtype where layout belongs) is a
+raw integers, so a swapped semantic role (datatype where layout belongs) is a
 checker reject, not a runtime surprise.
 
 ## `maki/array.f` — tensor-scale storage + whole-tensor ops
@@ -17,22 +17,22 @@ Comparison metrics for goldens and parity tests: `T-DIST2`, `T-NORM2`,
 `T-REL-L2 ( ptr a ptr a n -- r )` (relative L2 vs a reference tensor), and the
 scalar `T-REL1 ( r r -- r )`. Tests: `maki/array-test.f`.
 
-## `maki/tensor.f` — shape arithmetic + the dtype family
+## `maki/tensor.f` — shape arithmetic + the datatype family
 
-2-D shape arithmetic and the sm_87 dtype set. The `dtype` **ENUM family**
-(`ENUM dtype DERIVE eq` — variants `df32 df16 dbf16 du32 di32`; `f32` is a
+2-D shape arithmetic and the sm_87 datatype set. The `datatype` **ENUM family**
+(`ENUM datatype DERIVE eq` — variants `df32 df16 dbf16 du32 di32`; `f32` is a
 reserved variant tail, hence the `df` prefix) is the semantic type carried
 through construction, Model IR storage, and every consumer. The `DT-*` integer
 codes survive **only** as wire/hash vocabulary at two named render boundaries:
-`DTYPE>N ( dtype -- n )` and `DT-KEY ( dtype -- ptr u8 n )` (renders
-`"f32"`..`"i32"`); both are exhaustive `MATCH`es, so a bad dtype is
+`DTYPE>N ( datatype -- n )` and `DT-KEY ( datatype -- ptr u8 n )` (renders
+`"f32"`..`"i32"`); both are exhaustive `MATCH`es, so a bad datatype is
 unrepresentable and `E-MK-DTYPE` is retired (code reserved). `DERIVE eq`
-generates `MAKI-DTYPE:EQ ( dtype dtype -- bool )` so dtype can be an enum field
+generates `MAKI-DATATYPE:EQ ( datatype datatype -- bool )` so datatype can be an enum field
 of the `DERIVE eq` SKEY product (`maki/sched-key.f`).
 
-- `DT-SIZE ( dtype -- n )` — element bytes (f32/u32/i32 = 4, f16/bf16 = 2).
+- `DT-SIZE ( datatype -- n )` — element bytes (f32/u32/i32 = 4, f16/bf16 = 2).
 - `SHAPE-ELEMS ( n n -- n )`, `SHAPE-EQUAL? ( n n n n -- bool )`,
-  `SHAPE-BYTES ( n n dtype -- n )`.
+  `SHAPE-BYTES ( n n datatype -- n )`.
 - Broadcast (NumPy rule, dims equal or either 1): `DIM-BCAST? ( n n -- bool )`,
   `SHAPE-BCAST? ( n n n n -- bool )`, result shape via `DIM-MAX` /
   `BCAST-SHAPE ( n n n n -- n n )`.
@@ -64,16 +64,16 @@ family can never enter a descriptor cell. Shape extents are the nominal
 `CAD-KIND:rows` / `CAD-KIND:cols` kinds (`maki/tensor.f SHAPE` constructs);
 the address-space fact is `CAD-KIND:address-space` (Model-CAD V2 R3).
 
-- Constructors: `TV-NEW-HOST ( ptr a CAD-KIND:rows CAD-KIND:cols dtype layout -- tensor )`
+- Constructors: `TV-NEW-HOST ( ptr a CAD-KIND:rows CAD-KIND:cols datatype layout -- tensor )`
   (host space, measured alignment),
   `TV-NEW ( ptr a CAD-KIND:rows CAD-KIND:cols -- tensor )` (defaults f32 + row-major),
-  `TV-DESC ( CAD-KIND:rows CAD-KIND:cols dtype layout CAD-KIND:address-space -- tensor )`
+  `TV-DESC ( CAD-KIND:rows CAD-KIND:cols datatype layout CAD-KIND:address-space -- tensor )`
   (planning descriptor: no buffer, align `unknown`, `TV-DATA@` fails closed
   with `E-TV-NODATA`).
 - Accessors, one per recorded fact: `TV-ROWS@` `TV-COLS@` `TV-SPACE@` `TV-ELEMS`
-  `TV-DTYPE@ ( tensor -- dtype )` `TV-LAYOUT@ ( tensor -- layout )`
+  `TV-DTYPE@ ( tensor -- datatype )` `TV-LAYOUT@ ( tensor -- layout )`
   `TV-ALIGN@ ( tensor -- align )` `TV-HAS-DATA?` `TV-DATA@ ( tensor -- ptr a )`.
-  The settable dtype/layout mutators are gone with R3 (descriptor facts are
+  The settable datatype/layout mutators are gone with R3 (descriptor facts are
   fixed at construction).
 - Lifecycle: `TV-RESET` (invalidates outstanding handles), `TV-COUNT`;
   bad handle = `E-TV-HANDLE`, full store = `E-TV-FULL`.
@@ -91,7 +91,7 @@ the address-space fact is `CAD-KIND:address-space` (Model-CAD V2 R3).
 
 tensor-value owns -5040..-5049; `E-TV-LAYOUT` and `E-TV-OPKIND` are retired —
 the families make out-of-range tags checker rejects. Tests:
-`maki/tensor-value-test.f`, including the swapped-family negatives (dtype into
+`maki/tensor-value-test.f`, including the swapped-family negatives (datatype into
 a layout slot and vice versa reject with cited diagnostics).
 
 ## `maki/bcast.f` — broadcast-operand classification for lowering
@@ -124,17 +124,17 @@ constructed spans never unify by accident; agreement must be constructed
 
 ## Where the facts flow
 
-The dtype/layout/align (and op-kind) families travel as family values from
+The datatype/layout/align (and op-kind) families travel as family values from
 construction into the Model IR (`maki/model-ir.f` — `MIR-INPUT+` /
-`MIR-OP+ ( CAD-KIND:rows CAD-KIND:cols dtype layout n n -- CAD-KIND:node-id )`)
+`MIR-OP+ ( CAD-KIND:rows CAD-KIND:cols datatype layout n n -- CAD-KIND:node-id )`)
 and out to every consumer; integer codes appear only at the named wire/hash
 boundaries above. Graph handles are nominal too: `CAD-KIND:node-id`,
 `MIR:input-slot`, `MIR:operand-ref`, and `MIR:input-index`. The field-swap
-holes are closed by the checker: a dtype<->layout swap at `MIR-INPUT+` /
+holes are closed by the checker: a datatype<->layout swap at `MIR-INPUT+` /
 `MIR-OP+` / `TV-NEW-HOST` rejects in both directions, a rows<->cols swap and a
 raw-`n` extent reject at the same boundaries (pinned in `maki/model-ir-test.f`
 and `maki/tensor-value-test.f`), and the schedule key is a `DERIVE eq`
-`PRODUCT` over dimclass/dtype/layout/align enum fields (`maki/sched-key.f`),
+`PRODUCT` over dimclass/datatype/layout/align enum fields (`maki/sched-key.f`),
 so a role-swapped key cannot be constructed.
 
 ## Design intent (unchanged)

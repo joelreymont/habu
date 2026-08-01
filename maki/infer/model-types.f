@@ -6,7 +6,7 @@
 \ design rev 4, blackboard 20260724-191041.846). `adapter` is the typed
 \ FORMAT-ID surface consumed by provenance PIN (rev-4 correction 4); the
 \ adapter's tensor names and orientation convention stay GPT2TENSOR-owned semantics of
-\ the variant. There is deliberately NO dtype family here: MAKI:dtype
+\ the variant. There is deliberately NO dtype family here: MAKI:datatype
 \ (maki/tensor.f:123, package MAKI public) is the sole dtype authority.
 \ No parser, storage, JSON, or target identity belongs in this package.
 \

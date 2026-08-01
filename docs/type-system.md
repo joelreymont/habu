@@ -10,10 +10,8 @@ says the checker accepts or rejects something, that was run, and the message it
 produced is quoted so you can reproduce it.
 
 One naming note before we start. The system spells the idea "what numeric kind
-a tensor element is" as `dtype` in every source file today. The ruling is that
-this becomes **datatype**, and the first new surface to carry the new spelling
-is in flight. This document writes "datatype" in prose and keeps `dtype` only
-where it quotes a word that really is spelled that way in the source.
+a tensor element is" as `datatype`. The older `dtype` family spelling is
+retired.
 
 ## 1. The one-sentence version
 
@@ -157,7 +155,7 @@ declared once with one parameter, and every use picks a payload —
 `option<n>`, `option<CAD-NUM:index>` — each a different concrete type from
 the same declaration. A declaration with zero parameters is still a family;
 it just has exactly one member, and the checker prints it with an empty
-parameter list — when an error message says `maki:dtype<>`, that trailing
+parameter list — when an error message says `maki:datatype<>`, that trailing
 `<>` is the checker naming a zero-parameter family instance, not a typo.
 
 So: records and tagged alternatives are families, the generic containers are
@@ -169,7 +167,7 @@ several declaring words.
   twelve-field example.
 - **`ENUM name … ;ENUM`** declares a set of alternatives. In its short form the
   body is bare variant names and nothing else, which gives you a plain tag set:
-  `MAKI:dtype` (`maki/tensor.f:123`) is five names, `df32` through `di32`, and
+  `MAKI:datatype` (`maki/tensor.f:123`) is five names, `df32` through `di32`, and
   is the single authority on element datatypes for the whole tensor layer. In
   its full form, with an arity token and `VARIANT … ;VARIANT` clauses, each
   alternative may carry named fields — `SAFET:map-take` is `moved` carrying a
@@ -179,7 +177,7 @@ several declaring words.
   live code uses them (`lib/process.f`, `lib/adt/result.f`), but new code
   should use `STRUCTURE` and `ENUM`.
 - **`DERIVE eq`** on a public family generates its typed identity comparison,
-  so consumers compare values instead of raw tags. `MAKI-DTYPE:EQ` is one.
+  so consumers compare values instead of raw tags. `MAKI-DATATYPE:EQ` is one.
 
 Declaring a family generates a **constructor** (`MAKE`) and a **destructurer**
 (`UNMAKE`), plus `MATCH … ;MATCH` for the alternatives, which the checker
@@ -203,7 +201,7 @@ rules follow from that:
   `{: p:pair :}` for a `STRUCTURE pair` is rejected with `unknown type
   'p:pair' in signature`, exit 70. Consume it straight off the stack with
   `UNMAKE` or `MATCH` instead, deepest field first. Single-cell families are
-  fine in locals — `{: tok:cfg-proof :}` and `{: dt:MAKI:dtype :}` both appear
+  fine in locals — `{: tok:cfg-proof :}` and `{: dt:MAKI:datatype :}` both appear
   throughout `maki/infer/model-config.f`.
 - A word that returns a multi-cell value **cannot be called at the interpreter
   prompt**. The interpreter would shuffle one physical cell of a multi-cell
@@ -355,8 +353,8 @@ a tag saying which arm they are. An untagged one (`STRUCTURE`, `NEWTYPE`) has
 exactly one shape and needs no tag. The gap: `option<CAD-NUM:index>` works and is used in
 production (`lib/float.f`); so does `option<T>` over a `STRUCTURE`, complete
 with a `MATCH` that unmakes the record inside the `some` arm. But
-`option<MAKI:dtype>` — an `option` over a plain tag `ENUM` — is rejected at the
-constructor: `expected: a actual: maki:dtype<>`, exit 70. The same rejection
+`option<MAKI:datatype>` — an `option` over a plain tag `ENUM` — is rejected at the
+constructor: `expected: a actual: maki:datatype<>`, exit 70. The same rejection
 happens with a payload-free `SUMTYPE`, and with a tag family declared in the
 same package as the consumer, so this is not about package boundaries. It is
 about tagged families specifically: `NEWTYPE` and `STRUCTURE` instantiate a

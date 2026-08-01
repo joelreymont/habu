@@ -32,14 +32,14 @@ create KT-BUF KT-CAP allot  variable KT-BU
 \ ---- IR builders (one gelu/relu elementwise chain over a single input) ------
 : BUILD ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
    MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-NODE-ID MIR-NODE-REF MIR-IN+
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 \ same chain, chosen input dtype; the dtype family cannot bind into a local, so
 \ it rides the stack into MIR-INPUT+ and the nodes read it back from the slot
-: BUILD-DT ( n n dtype -- )
+: BUILD-DT ( n n datatype -- )
    MIR-RESET
    >r SHAPE r> MAKI-LAYOUT:ROW MIR-INPUT+ drop
    0 MIR-SLOT-ID MIR-SLOT-ROWS@ 0 MIR-SLOT-ID MIR-SLOT-COLS@
@@ -52,9 +52,9 @@ create KT-BUF KT-CAP allot  variable KT-BU
 \ intrinsic op domain is exact, so REGION-POL folds it to EXACT (vs BUILD's relative)
 : BUILD-RELU ( n n -- ) {: rows:n cols:n :}
    MIR-RESET
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MAKI-OPKIND:RELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   rows cols SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
+   rows cols SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop ;
 
 T-RESET
 
@@ -131,40 +131,40 @@ KT-DUP-LABEL TARGET:SM87 TARGET:EQUAL? TFALSE                     \ facts differ
 \ Any wrong field would make MAKI-SKEY:EQ false.
 : SK-EXPECT ( -- skey )
    $431e24867468a764 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:RELATIVE MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:RELATIVE MAKI-SKEY:MAKE ;
 : SK-MATCHES ( n -- bool )  FP-REGION-ID SK-KEY SK-EXPECT MAKI-SKEY:EQ ;
 0 SK-MATCHES TTRUE
 \ MAKI-SKEY:EQ discriminates every semantic field: one differing field -> unequal.
 : SK-BASE ( -- skey )
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-RSIG-DIFF ( -- skey )    \ only the region signature differs
    8 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-RM-DIFF ( -- skey )      \ only the rows magnitude differs
    7 MAKI-DIMCLASS:EXACT 3 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-CK-DIFF ( -- skey )      \ only the columns shape class differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-CM-DIFF ( -- skey )      \ only the columns magnitude differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 256
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-DT-DIFF ( -- skey )      \ only dtype differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF16 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF16 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-LAY-DIFF ( -- skey )     \ only layout differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:COL MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:COL MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-AL-DIFF ( -- skey )      \ only align differs
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A8 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A8 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-RK-DIFF ( -- skey )      \ only rows shape class differs (exact vs pow2)
    7 MAKI-DIMCLASS:POW2 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:EXACT MAKI-SKEY:MAKE ;
 : SK-POL-DIFF ( -- skey )     \ only the requested numeric policy differs (exact vs relative)
    7 MAKI-DIMCLASS:EXACT 2 MAKI-DIMCLASS:POW2-TAIL 128
-   MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:RELATIVE MAKI-SKEY:MAKE ;
+   MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MAKI-ALIGN:A16 NPOL-DOM:RELATIVE MAKI-SKEY:MAKE ;
 \ the EQ comparisons ride inside : definitions (interpret mode cannot hold skey):
 : SK-EQ-SELF ( -- bool ) SK-BASE SK-BASE      MAKI-SKEY:EQ ;
 : SK-EQ-RSIG ( -- bool ) SK-BASE SK-RSIG-DIFF MAKI-SKEY:EQ ;
@@ -214,12 +214,12 @@ SK-TAB-RESET
 \ MAKI-SKEY:MAKE ( n dimclass n dimclass n dtype layout align NPOL:dom -- skey ). A
 \ dtype in the layout slot (and vice-versa), a bare n laundered into an enum column,
 \ or a wrong-family value in the numeric-policy slot rejects; the positive certifies.
-s" SKP  ( n dimclass n dimclass n dtype layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
-s" SKN1 ( n dimclass n dimclass n layout dtype align NPOL:dom -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
+s" SKP  ( n dimclass n dimclass n datatype layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! -1 T=
+s" SKN1 ( n dimclass n dimclass n layout datatype align NPOL:dom -- skey ) MAKI-SKEY:MAKE" CHECK-QUIET-CANDIDATE! 0 T=
 s" SKN2 ( n dimclass n dimclass n n layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE"     CHECK-QUIET-CANDIDATE! 0 T=
-s" SKN3 ( n dimclass n dimclass n dtype layout n NPOL:dom -- skey ) MAKI-SKEY:MAKE"     CHECK-QUIET-CANDIDATE! 0 T=
-s" SKN4 ( n n n dimclass n dtype layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE"        CHECK-QUIET-CANDIDATE! 0 T=
-s" SKN5 ( n dimclass n dimclass n dtype layout align align -- skey ) MAKI-SKEY:MAKE"    CHECK-QUIET-CANDIDATE! 0 T=
+s" SKN3 ( n dimclass n dimclass n datatype layout n NPOL:dom -- skey ) MAKI-SKEY:MAKE"     CHECK-QUIET-CANDIDATE! 0 T=
+s" SKN4 ( n n n dimclass n datatype layout align NPOL:dom -- skey ) MAKI-SKEY:MAKE"        CHECK-QUIET-CANDIDATE! 0 T=
+s" SKN5 ( n dimclass n dimclass n datatype layout align align -- skey ) MAKI-SKEY:MAKE"    CHECK-QUIET-CANDIDATE! 0 T=
 
 \ ---- alignment class falls back to al? for an unrecorded input --------------
 2 100 BUILD  FP-BUILD
@@ -228,7 +228,7 @@ s" SKN5 ( n dimclass n dimclass n dtype layout align align -- skey ) MAKI-SKEY:M
 \ ---- signature determinism + sensitivity -----------------------------------
 2 100 BUILD FP-BUILD  0 FP-REGION-ID SK-RSIG$ KT-COPY               \ baseline (f32) signature
 2 100 BUILD FP-BUILD  0 FP-REGION-ID SK-RSIG$ KT-BUF$ STR= TTRUE    \ same facts -> identical
-2 100 MAKI-DTYPE:DF16 BUILD-DT FP-BUILD  0 FP-REGION-ID SK-RSIG$ KT-BUF$ STR= TFALSE \ dtype change -> different
+2 100 MAKI-DATATYPE:DF16 BUILD-DT FP-BUILD  0 FP-REGION-ID SK-RSIG$ KT-BUF$ STR= TFALSE \ dtype change -> different
 
 \ ---- replay table: cad-5 store seam ----------------------------------------
 2 100 BUILD 0 MIR-SLOT-ID MAKI-ALIGN:A16 MIR-SLOT-AL! FP-BUILD
@@ -333,13 +333,13 @@ TYPED-VARIABLE KT-STALE-R CAD-KIND:region  \ held region id to replay against a 
 : KT-TRY-STALE ( -- )  KT-STALE-R @ TARGET:SM87 SK-KEY$ 2drop ;
 : KT-BUILD-2R ( -- )    \ gelu (region 0) + matmul (region 1: EW->MM is backend-refused)
    MIR-RESET
-   4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
-   8 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
+   8 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW MIR-INPUT+ drop
    MAKI-OPKIND:GELU MIR-OP-BEGIN 0 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   4 8 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
+   4 8 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 1 MIR-OP+ drop
    MAKI-OPKIND:MATMUL MIR-OP-BEGIN
    0 MIR-NODE-ID MIR-NODE-REF MIR-IN+  1 MIR-SLOT-ID MIR-IN-REF MIR-IN+
-   4 4 SHAPE MAKI-DTYPE:DF32 MAKI-LAYOUT:ROW 0 2 MIR-OP+ drop ;
+   4 4 SHAPE MAKI-DATATYPE:DF32 MAKI-LAYOUT:ROW 0 2 MIR-OP+ drop ;
 KT-BUILD-2R FP-BUILD
 FP-REGION-COUNT 2 T=
 KT-STALE-SET
