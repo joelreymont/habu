@@ -226,17 +226,49 @@ create TXT TEXT-CAP allot
 \ the false arm reaches the join through, the true arm, and the join that takes
 \ both arms' values as its arguments. What this case adds to the two above is the
 \ layout and the fixups - the block starts are asserted exactly, and so are the
-\ two branch instructions at the end of the entry block, decoded as the numbers
-\ the assembler produces for them.
+\ three instructions the entry block ends in, decoded as the numbers the
+\ assembler produces for them.
 \
-\ WHY THE TWO BRANCH WORDS ARE PINNED. A branch is the one instruction whose
-\ operand is not in the module: it is the distance to a block, computed from the
-\ layout. Asserting the emitted word is the only way to say the distance was
+\ THE ENTRY BLOCK ENDS IN THE FUSED COMPARE-AND-BRANCH, WHICH IS WHY IT IS THREE
+\ AND NOT FIVE. `2dup <` answers a flag whose only reader is the `if` right
+\ after it, so src/compiler/native/select.f selects the pair as one a64.cmpbr:
+\ compare, branch on the condition, branch. The three instructions land at
+\ indices three, four and five, and the two the old shape spent materialising
+\ the flag as a number - the `cset` and the `neg` - are not emitted at all. That
+\ is the whole of this pass's saving, and it is visible here as an instruction
+\ count of fifteen rather than seventeen and as block one starting at six rather
+\ than eight.
+\
+\ WHY THE THREE WORDS ARE PINNED. A branch is the one instruction whose operand
+\ is not in the module: it is the distance to a block, computed from the layout.
+\ Asserting the emitted word is the only way to say the distance was
 \ computed from the right end - a fixup to the wrong block, or a displacement
 \ measured from the branch's block instead of the branch itself, changes exactly
-\ these two numbers and nothing else the suite can see. The `cbz` at index 6
-\ carries +2, which lands on block one; the `b` at index 7 carries +4, which
-\ lands on block two. Swapping the two successors swaps those two numbers.
+\ these two numbers and nothing else the suite can see. The `b.lt` at index 4
+\ carries +5, which lands on block TWO - the arm that swaps; the `b` at index 5
+\ carries +1, which lands on block one, the stub the other arm reaches the join
+\ through and the block laid out immediately after. Swapping the two successors
+\ swaps those two numbers.
+\
+\ AND WHY THE CONDITION IN IT IS `lt` WITH THE SUCCESSORS THE OTHER WAY ROUND. A
+\ Habu flag is true when the source relation holds, and the source two-way
+\ branch goes to its FIRST successor when that flag is zero - the arm the
+\ comparison did not choose - while a64.cmpbr goes to its first successor when
+\ the condition HOLDS. So the fused branch keeps `<` as `lt` and takes the
+\ source branch's SECOND successor first. The other wiring - negate the
+\ condition, keep the order - computes the same program and is measurably slower
+\ on loops, which is why src/compiler/native/select.f states which one it uses
+\ and why. Getting either half wrong sends `3 4 NCH-MAX` down the arm that does
+\ not swap and answers 3, which is what the two execution rows below catch.
+\
+\ The instruction before them is the compare itself, asserted with its two
+\ register fields masked out: which registers the allocator chose is not this
+\ suite's business, but that the fused operation begins with a Cmp and not with
+\ something that writes a register is.
+$FFE0FC1F constant CMP-SHAPE         \ the Cmp form with its two register fields cleared
+$EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
+1409286315 constant BLT-TO-TWO       \ B.lt +5, the fused branch to block two
+335544321 constant B-TO-ONE          \ B +1, the branch to block one
 : SRC3 ( -- ptr u8 n )
    s" : NCH-MAX ( n n -- n ) 2dup < if swap then drop ;" ;
 
@@ -250,7 +282,7 @@ create TXT TEXT-CAP allot
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB TAPE p r 2 1 NELAB:COLON drop ;
 
-: BRANCH-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n )
+: BRANCH-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
    c HIR-MOD 0 R-BLD !
@@ -266,8 +298,9 @@ create TXT TEXT-CAP allot
    1 A64EMIT:BLOCK-START@
    2 A64EMIT:BLOCK-START@
    3 A64EMIT:BLOCK-START@
-   6 A64EMIT:WORD@
-   7 A64EMIT:WORD@
+   3 A64EMIT:WORD@ CMP-SHAPE and
+   4 A64EMIT:WORD@
+   5 A64EMIT:WORD@
    NRUN:PUBLISH {: fn:n :}
    3 4 fn NRUN:ENTER2
    9 -1 fn NRUN:ENTER2
@@ -278,9 +311,9 @@ create TXT TEXT-CAP allot
    s" a definition with a branch compiles, lays out and runs" T-LABEL
    NFIX:BINDING [: BRANCH-BODY ;] IR-CTX:WITH-CONTEXT
    9 T= 4 T= 9 T= 4 T=
-   335544324 T= 3019898946 T=
-   14 T= 11 T= 8 T= 0 T=
-   4 T= 17 T= -1 T= 7 T= ;
+   B-TO-ONE T= BLT-TO-TWO T= CMP-FORM T=
+   12 T= 9 T= 6 T= 0 T=
+   4 T= 15 T= -1 T= 7 T= ;
 
 \ ---- a definition that reads and writes memory -------------------------------
 \ The same run over a body whose whole point is a side effect, and the first one
@@ -622,6 +655,105 @@ create TXT TEXT-CAP allot
    NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 3628800 T= 1 T= 3628800 T= 5 T= ;
 
+\ ---- the two comparisons that must NOT fuse ----------------------------------
+\ Fusing a comparison into the branch below it is only legal when the branch is
+\ the comparison's ONLY reader. These two cases are the other side of that rule,
+\ run all the way through and executed, because a fusion that ignored the rule
+\ would produce a routine that computes something else rather than a module that
+\ fails a shape assertion.
+\
+\ THE FIRST IS A COMPARISON WITH NO BRANCH UNDER IT AT ALL: what the word leaves
+\ IS the flag, so the flag has to be materialised as the number a Habu flag is.
+\ Nine instructions - the pointer down over the two arguments, two loads, the
+\ comparison's three, the store, the pointer up, the return - which is one more
+\ than a fused pair would be and two more than the branchless part of it.
+: SRC10 ( -- ptr u8 n )
+   s" : NCH-ISLT ( n n -- bool ) < ;" ;
+
+: RECORD10 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC10 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: ELABORATE10 ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB TAPE p r 2 1 NELAB:COLON drop ;
+
+: ISLT-BODY ( IR-CTX:ctx -- n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD10
+   p r ELABORATE10
+   CC BB TXT TEXT-LEN 0 REGS 2 1 NFIX:RUN-HABU
+   A64EMIT:INSNS
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   3 4 fn NRUN:ENTER2
+   9 -1 fn NRUN:ENTER2
+   s" 3 4 NCH-ISLT" EV-N
+   s" 9 -1 NCH-ISLT" EV-N ;
+
+: ISLT-CASE ( -- )
+   s" a comparison whose answer is the word's result keeps its flag and runs"
+   T-LABEL
+   NFIX:BINDING [: ISLT-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= -1 T= 0 T= -1 T= 1 T= 9 T= ;
+
+\ THE SECOND IS A COMPARISON THAT IS BOTH BRANCHED ON AND KEPT. `< dup if then`
+\ is the smallest checked source there is for it: the comparison answers one
+\ flag, `dup` puts a second reference to that same SSA value on the compile-time
+\ vector, the `if` tests one of them, and the other is what the word leaves - so
+\ the value has three readers, the two-way branch and the two edges that carry it
+\ to the join. The empty arm is the point rather than an oversight: nothing else
+\ is needed to give the flag a second reader, and adding anything would only make
+\ the fixture harder to read.
+\
+\ WHAT IT ASSERTS. Fifteen instructions and four blocks, and the instruction at
+\ index six is a Cbz and not a B.cond - checked by its top byte, because which
+\ register the Cbz tests and how far it jumps are not this case's business. Six
+\ is where the two-way branch lands only when the flag really was materialised:
+\ the pointer down, two loads, then the comparison's three, and the branch after
+\ them. A fusion that ignored the use count would emit thirteen instructions
+\ here, put a B.cond at index four, and leave the value the two edges carry
+\ defined by nothing at all.
+: SRC11 ( -- ptr u8 n )
+   s" : NCH-LTKEEP ( n n -- bool ) < dup if then ;" ;
+
+$FF000000 constant BRANCH-KIND       \ the byte that says which branch form this is
+$B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
+
+: RECORD11 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC11 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: LTKEEP-BODY ( IR-CTX:ctx -- n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD11
+   p r ELABORATE10
+   CC BB TXT TEXT-LEN 0 REGS 2 1 NFIX:RUN-HABU
+   A64EMIT:INSNS
+   A64EMIT:BLOCKS
+   6 A64EMIT:WORD@ BRANCH-KIND and
+   NRUN:PUBLISH {: fn:n :}
+   3 4 fn NRUN:ENTER2
+   9 -1 fn NRUN:ENTER2
+   s" 3 4 NCH-LTKEEP" EV-N
+   s" 9 -1 NCH-LTKEEP" EV-N ;
+
+: LTKEEP-CASE ( -- )
+   s" a comparison that is branched on and kept keeps its flag and runs" T-LABEL
+   NFIX:BINDING [: LTKEEP-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= -1 T= 0 T= -1 T=
+   CBZ-KIND T= 4 T= 15 T= ;
+
 \ ---- the contract and the body have to agree about calling -------------------
 \ Whether a routine calls is the contract's declaration, and the selector builds
 \ the frame and the link save from it. Two ways for that declaration to be wrong,
@@ -675,6 +807,8 @@ public
    BSUM-CASE
    BFIND-CASE
    FACT-CASE
+   ISLT-CASE
+   LTKEEP-CASE
    AGREE-CASES
    T-REPORT ;
 

@@ -124,6 +124,15 @@ public
    x IR-ID:TYPE-LOCAL y IR-ID:TYPE-LOCAL <> if false exit then
    x IR-ID:TYPE-OWNER y IR-ID:TYPE-OWNER IR-ID:MODULE-SAME? ;
 
+\ Two values are the same when they are the same ordinal of the same module. A
+\ pass that has to ask whether the value one operation defined is the value
+\ another one reads goes through here rather than comparing ordinals, so an
+\ identity of another module can never answer yes.
+: SAME-VALUE? ( IR-ID:ir-value-id IR-ID:ir-value-id -- bool )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   x IR-ID:VALUE-LOCAL y IR-ID:VALUE-LOCAL <> if false exit then
+   x IR-ID:VALUE-OWNER y IR-ID:VALUE-OWNER IR-ID:MODULE-SAME? ;
+
 \ ---- the functions and blocks of the module ----------------------------------
 : FUN-COUNT ( -- n )
    V-FUNR VW IR-FUN:FFUNS ;

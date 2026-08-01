@@ -50,6 +50,11 @@
 \   a64.cbz      Cbz rt target; B other
 \                                - go to the first block when rt is zero and to
 \                                  the second when it is not
+\   a64.cmpbr    Cmp rn rm; B.cc target; B other
+\                                - compare two registers and go to the first
+\                                  block when the condition holds and to the
+\                                  second when it does not, without ever
+\                                  materialising the flag as a number
 \   a64.call     Addi ds ds n; Bl entry; Subi ds ds m
 \                                - hand the caller's data stack to the word being
 \                                  compiled, call it, and take the stack back
@@ -59,19 +64,31 @@
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
 \
-\ THREE OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form
+\ FOUR OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form
 \ above is one instruction, and that is the rule this dialect keeps wherever it
 \ can: one operation, one form, four bytes. The division breaks it because its
 \ zero-divisor guard and the divide it guards are inseparable - the whole point
 \ of the guard is that nothing runs between the test and the divide. The
-\ comparison and the two-way branch break it for a related reason, which is the
-\ condition flags. The flags are a
+\ comparison, the two-way branch and the compare-and-branch break it for a
+\ related reason, which is the condition flags. The flags are a
 \ single architectural register that no value of this dialect stands for and the
 \ allocator may never hand out, so the instructions that write them and the
 \ instruction that reads them have to be inseparable - and the only way an IR can
 \ say "inseparable" is to make them one operation. Everything downstream reads
 \ the count off the opcode, so the layout stays exact: a form's instruction count
 \ is a property of the form, the same way its operand count is.
+\
+\ THE COMPARE-AND-BRANCH IS WHY THE FLAGS ARGUMENT MATTERS RATHER THAN BEING A
+\ CURIOSITY. A source comparison that only ever answers a branch test does not
+\ need the number a Habu flag is: the machine already has the answer in its
+\ condition flags one instruction after the compare, and a branch can read it
+\ there. Written as a64.flag followed by a64.cbz that is five instructions and a
+\ register - compare, set, negate, test-and-branch, branch - where a64.cmpbr is
+\ three and none. It has to be ONE operation for exactly the reason a64.flag is
+\ one: the compare writes the flags and the conditional branch reads them, and an
+\ IR in which they were two operations would let a later pass put something
+\ between them. src/compiler/native/select.f is the pass that chooses it, and it
+\ only does so when the source comparison's single use is that branch.
 \
 \ THE FOUR DATA-STACK FORMS ARE THE OTHER CALLING CONVENTION, MADE OF
 \ INSTRUCTIONS. Design section 7.6 gives an externally callable Habu word its
@@ -274,6 +291,7 @@ ENUM opcode DERIVE eq
    flag
    br
    brz
+   cmpbr
    call
    linksave
    linkload
@@ -281,11 +299,16 @@ ENUM opcode DERIVE eq
 ;ENUM
 
 \ The conditions a comparison may be made under. Three, because three are what
-\ the corpus's branching words compare with: `<`, `<=` and `=`. The equality
+\ the corpus's branching words compare with: `<`, `<=` and `=`. There is no
+\ member for their opposites, and there deliberately is not: a form that has to
+\ branch on the FALSITY of one of them names the same condition and puts the
+\ two successors the other way round, so the complements would be a vocabulary
+\ nothing produces. The equality
 \ member is spelled `equal` and not `eq`, because `eq` is the name the ENUM
-\ derives for its own comparison word and a member cannot take it. It is an ENUM so a caller
-\ names the condition instead of writing the number the field holds, and so a
-\ condition this dialect has no comparison for is unwritable rather than checked.
+\ derives for its own comparison word and a member cannot take it. It is an ENUM
+\ so a caller names the condition instead of writing the number the field holds,
+\ and so a condition this dialect has no form for is unwritable rather than
+\ checked.
 ENUM cond DERIVE eq
    lt
    le
@@ -343,13 +366,18 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 
 \ ---- the branch fields -------------------------------------------------------
 \ How far each branch form reaches, as the signed word displacement its own
-\ field holds. An unconditional branch carries a 26-bit field and a
-\ compare-and-branch a 19-bit one, both counting instructions rather than bytes.
-\ The emitter asks here before it hands a displacement to the encoder, because
-\ the encoder masks the field rather than bounding it - a branch out of reach
-\ would otherwise become a branch somewhere else.
+\ field holds. An unconditional branch carries a 26-bit field, a
+\ compare-and-branch a 19-bit one and a conditional branch a 19-bit one, all
+\ counting instructions rather than bytes. The emitter asks here before it hands
+\ a displacement to the encoder, because the encoder masks the field rather than
+\ bounding it - a branch out of reach would otherwise become a branch somewhere
+\ else. The conditional branch's width is written as its own constant even
+\ though it is the same number as the compare-and-branch's: they are two
+\ instruction forms with two displacement fields, and one constant standing for
+\ both would let a field that moved in one be judged by the other's width.
 26 constant B-BITS
 19 constant BZ-BITS
+19 constant BCOND-BITS
 
 \ ---- the dialect's own symbols -----------------------------------------------
 \ Every symbol this dialect mints is spelled `a64.`-something, so a dialect
@@ -525,6 +553,7 @@ public
       flag     OF s" a64.flag"     ENDOF
       br       OF s" a64.b"        ENDOF
       brz      OF s" a64.cbz"      ENDOF
+      cmpbr    OF s" a64.cmpbr"    ENDOF
       call     OF s" a64.call"     ENDOF
       linksave OF s" a64.lnkstr"   ENDOF
       linkload OF s" a64.lnkldr"   ENDOF
@@ -562,6 +591,7 @@ public
 \ rather than bounding them.
 : B-FITS? ( n -- bool )      B-BITS FITS? ;
 : BZ-FITS? ( n -- bool )     BZ-BITS FITS? ;
+: BCOND-FITS? ( n -- bool )  BCOND-BITS FITS? ;
 
 \ Design line 479: the two attribute keys a move-wide operation requires. The
 \ immediate and the half it goes into are the whole content of a move, so a move
@@ -672,6 +702,7 @@ private
       flag     OF s" a64.rule.flag"     ENDOF
       br       OF s" a64.rule.b"        ENDOF
       brz      OF s" a64.rule.cbz"      ENDOF
+      cmpbr    OF s" a64.rule.cmpbr"    ENDOF
       call     OF s" a64.rule.call"     ENDOF
       linksave OF s" a64.rule.lnkstr"   ENDOF
       linkload OF s" a64.rule.lnkldr"   ENDOF
@@ -703,6 +734,7 @@ private
       flag     OF s" a64.render.flag"     ENDOF
       br       OF s" a64.render.b"        ENDOF
       brz      OF s" a64.render.cbz"      ENDOF
+      cmpbr    OF s" a64.render.cmpbr"    ENDOF
       call     OF s" a64.render.call"     ENDOF
       linksave OF s" a64.render.lnkstr"   ENDOF
       linkload OF s" a64.render.lnkldr"   ENDOF
@@ -1099,6 +1131,54 @@ private
    c b A64IR-OPCODE:BRZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Cmpbr: control goes to the first successor when the two registers stand in the
+\ named relation and to the second when they do not. Its two operands are the
+\ registers it compares and NOT block arguments, so both of its successors must
+\ be blocks that take none - the same rule the two-way branch above keeps, for
+\ the same reason: with two successors the operation model has no way to say
+\ which operand belongs to which destination.
+\
+\ THE FIRST SUCCESSOR IS THE CONDITION-HOLDS ONE, AND THAT IS A DECISION THE
+\ MACHINE MADE. The emitter lays a conditional branch to the first successor
+\ down and an unconditional branch to the second after it, so the first
+\ successor is the one reached by a TAKEN conditional and the second is reached
+\ by falling into the branch below. A pass fusing a source two-way branch has a
+\ free choice of which way round to put them - it can negate the condition and
+\ keep the source order, or keep the condition and swap the order - and the two
+\ are not equally fast: measured over the eleven-row corpus against
+\ byte-identical control rows, putting the CONDITION-TRUE arm first is flat and
+\ putting the condition-FALSE arm first costs the loop rows four to six per
+\ cent, because it makes the hot path a taken conditional that jumps over the
+\ unconditional branch beside it. Keeping the condition-true arm first is also
+\ what leaves the unconditional branch pointing at the block laid out next,
+\ which is the branch a later elision pass can delete (dot
+\ habu-elide-a-branch-74966a02). src/compiler/native/select.f wires the
+\ successors accordingly.
+\
+\ IT DEFINES NO VALUE, WHICH IS THE WHOLE SAVING. The comparison it stands for
+\ writes only the condition flags, and the branch beside it reads them there, so
+\ nothing is materialised into a register and the register allocator has one
+\ fewer live value to place. That is what makes it three instructions and no
+\ register where a64.flag followed by a64.cbz is five and one.
+\
+\ THE CONDITION IS THE WHOLE CONTENT OF THE TEST, so it rides as the attribute
+\ under the same key the comparison form uses, and IR-OP refuses an operation
+\ that omits it. Which condition a fused source comparison becomes is
+\ src/compiler/native/select.f's answer, not this file's: this form only says
+\ that the first successor is the one taken when the condition holds.
+: DEF-CMPBR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:CMPBR OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   true 2 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:CMPBR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ Ret: the block's one terminator. Design line 237 makes it a terminator and
 \ design lines 706-708 give a terminator no results of its own; the values still
 \ live where control leaves are its operands, and how many there are is a
@@ -1245,6 +1325,7 @@ public
    c b t DEF-FLAG
    c b t DEF-BR
    c b t DEF-BRZ
+   c b t DEF-CMPBR
    c b k DEF-CALL
    c b k DEF-LNKSTR
    c b k DEF-LNKLDR

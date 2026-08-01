@@ -39,6 +39,15 @@
 \ what makes a wrongly wired operand a wrong VALUE rather than a wrong index, and
 \ it is why the fixtures assert operand identity and not operand count.
 \
+\ ONE PAIR OF SOURCE OPERATIONS BECOMES ONE MACHINE OPERATION, AND IT IS THE ONLY
+\ ONE. A comparison standing immediately above the hir.brz that tests it, whose
+\ value the rest of the function never reads again, selects together with that
+\ branch to a64.cmpbr - a compare and a conditional branch, three instructions
+\ and no register, where the two rules above would give five instructions and
+\ one. Every other comparison keeps a64.flag and every other two-way branch keeps
+\ a64.cbz. The fusion section below states what it requires and why it lives in
+\ this pass rather than in one of its own.
+\
 \ WHY A CONSTANT IS A CHAIN. ARM64 has no instruction that puts an arbitrary
 \ 64-bit number into a register. It writes one sixteen-bit half at a time: movz
 \ clears the register and writes a half, movk overwrites a half and keeps the
@@ -200,8 +209,11 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-OUTS A64EFF:placeseq
 1 TYPED-BUFFER S-TRT A64EFF:traits
 1 TYPED-BUFFER S-FTOK IR-ID:ir-value-id
+1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
+1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
 variable S-FRAME                     \ the frame the contract declares, in bytes
 variable N-CALLS                     \ calls this selection built
+variable FUSE-AT                     \ where in this block the fused comparison is, or -1
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
 create NAMEBUF NAME-CAP allot
@@ -220,6 +232,8 @@ create NAMEBUF NAME-CAP allot
 : FRAME ( -- n )                     S-FRAME @ ;
 : FTOK ( -- IR-ID:ir-value-id )      0 S-FTOK @ ;
 : FTOK! ( IR-ID:ir-value-id -- )     0 S-FTOK ! ;
+: FUN ( -- IR-ID:ir-fun-id )         0 S-FUN @ ;
+: BLK ( -- IR-ID:ir-block-id )       0 S-BLK @ ;
 
 \ ---- the source dialect's opcode family --------------------------------------
 \ One injective slot per member, so the family stays exhaustive: a member added
@@ -778,18 +792,39 @@ create NAMEBUF NAME-CAP allot
    CTX BLD IR-BUILD:END-OP drop ;
 
 \ ---- selecting a comparison --------------------------------------------------
+\ Which condition one source comparison is made under, read off the operation's
+\ own opcode. Both the comparison that answers a Habu flag and the fused
+\ compare-and-branch below ask here, so the pairing of a source relation to a
+\ machine condition is written once: a comparison lowered under the wrong
+\ condition is one wrong line of this table rather than two lines that can
+\ disagree with each other. An operation that is not one of the three is refused
+\ by name, because a caller asking this of anything else has already gone wrong.
+: COMPARE-COND ( IR-ID:ir-op-id -- A64IR:cond )
+   OPCODE-AT OPCODE-SLOT
+   case
+      O-LT of A64IR-COND:LT    endof
+      O-LE of A64IR-COND:LE    endof
+      O-EQ of A64IR-COND:EQUAL endof
+      E-A64SEL-OPCODE throw
+   endcase ;
+
+: COMPARE-SLOT? ( n -- bool )
+   {: k:n :}
+   k O-LT = k O-LE = or k O-EQ = or ;
+
 \ One source comparison is one machine comparison, under the condition the source
 \ opcode names. The machine form is three instructions and one operation, because
 \ the condition flags the three pass between them are a single architectural
 \ resource with no value of the machine dialect to stand for it; the dialect says
 \ so, and this pass only has to name the condition.
-: EMIT-FLAG ( IR-ID:ir-op-id A64IR:cond -- )
-   {: id:IR-ID:ir-op-id k:A64IR:cond :}
+: EMIT-FLAG ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
    id A64IR-OPCODE:FLAG OPEN
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    RESULT+
-   CTX BLD  CTX BLD A64IR:KEY-COND  CTX BLD k A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD A64IR:KEY-COND
+   CTX BLD  id COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 
@@ -929,6 +964,151 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    then
    o ;
 
+\ ---- fusing a comparison into the branch that tests it -----------------------
+\ A source comparison whose answer is nothing but the question the branch below
+\ it asks does not need the number a Habu flag is. The machine has the answer in
+\ its condition flags one instruction after the compare, and a conditional
+\ branch reads it there - so the two source operations become ONE machine
+\ operation, a64.cmpbr, which is three instructions and no register where
+\ a64.flag followed by a64.cbz is five and one.
+\
+\ WHY THE FUSION IS HERE AND NOT IN A PASS OF ITS OWN. Two reasons, and the
+\ second is the one that decides it.
+\
+\ ONE AUTHORITY. This pass is already the only place that says which machine
+\ operations a source operation becomes - the table below is that rule whole -
+\ so a second pass choosing a64.cmpbr would be a second authority over the same
+\ question, and the two could disagree about what a comparison lowers to. It
+\ would also have nowhere to live: there is no hir.cmpbr to rewrite the source
+\ module into, and inventing one would put a machine form into the source
+\ dialect; rewriting the MACHINE module instead means building the flag and the
+\ two-way branch and then deleting them again, which is the shape
+\ src/compiler/native/spill.f has - and spill.f has it because a spill plan is
+\ the ALLOCATOR's output and cannot exist until the module is frozen. A fusion
+\ decision needs nothing that does not already exist before the first operation
+\ is selected.
+\
+\ AND BECAUSE THE SINGLE-USE FACT IS ONLY CHEAP HERE. What makes the fusion
+\ legal is that the comparison's value has exactly one use in the whole
+\ function. That is one walk of the FROZEN source module's operand lists - the
+\ module this pass reads from first to last, whose every value is already
+\ defined and whose every use is already written down. In the module being BUILT
+\ the same question has no answer yet: a use that has not been selected is not
+\ there to count, so a pass asking it of the machine module would be asking
+\ about half a module. The fact is therefore derived where it is complete, off
+\ the frozen module, and never guessed at from the shape of the source.
+\
+\ WHAT THE FUSION REQUIRES, ALL THREE STRUCTURAL.
+\   - The block's last operation is hir.brz, and the operation before it is one
+\     of the three comparisons. Adjacency is the whole of the scheduling
+\     question: the two operations become one where they already stand, so
+\     nothing is moved, no live range is stretched, and no operation ends up
+\     between the compare and the branch that reads its flags.
+\   - The value the branch tests is the value that comparison defines. Held as
+\     an identity, so a branch testing something else is not fused into a
+\     comparison that happens to sit above it.
+\   - That value has exactly one use in the function. A comparison whose answer
+\     is also returned, stored or handed across an edge still needs the number,
+\     so it keeps a64.flag and the branch keeps a64.cbz.
+\ The comparison also goes through the same trap gate every selected operation
+\ goes through, so a source dialect that ever made a comparison trapping cannot
+\ have that trap dropped by being fused away.
+: USES-IN-OP ( IR-ID:ir-value-id IR-ID:ir-op-id -- n )
+   {: v:IR-ID:ir-value-id id:IR-ID:ir-op-id :}
+   0
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT v SAME-VALUE? if 1+ then
+   loop ;
+
+: USES-IN-BLOCK ( IR-ID:ir-value-id IR-ID:ir-block-id -- n )
+   {: v:IR-ID:ir-value-id bk:IR-ID:ir-block-id :}
+   0
+   bk OP-COUNT 0 ?do
+      v  bk i OP-AT  USES-IN-OP  +
+   loop ;
+
+\ How many operands of the whole function name this value. An operand is the
+\ only place a value can be used - a successor is a block, an attribute is a
+\ number - so this count is every use there is.
+: USES-OF ( IR-ID:ir-value-id -- n )
+   {: v:IR-ID:ir-value-id :}
+   0
+   FUN BLOCK-COUNT 0 ?do
+      v  FUN i BLOCK-AT  USES-IN-BLOCK  +
+   loop ;
+
+\ Where this block's fused comparison is, or -1 when it has none. It is read
+\ once per block, before a single operation of the block is selected, so the
+\ walk and the terminator both read one answer.
+: FUSE-SCAN ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   -1 FUSE-AT !
+   bk OP-COUNT {: n:n :}
+   n 2 < if exit then
+   bk n 1- OP-AT OPCODE-AT OPCODE-SLOT O-BRZ <> if exit then
+   bk n 2 - OP-AT {: d:IR-ID:ir-op-id :}
+   d OPCODE-AT OPCODE-SLOT COMPARE-SLOT? 0= if exit then
+   d RESULTS-OF 1 <> if exit then
+   d 0 RESULT-AT  bk n 1- OP-AT 0 OPERAND-AT  SAME-VALUE? 0= if exit then
+   d 0 RESULT-AT USES-OF 1 <> if exit then
+   d OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
+   sym OPCODE-SLOT SLOT-OPCODE  sym TRAP-CK  drop
+   n 2 - FUSE-AT ! ;
+
+\ THE POLARITY, WHICH IS THE ONE THING THIS FUSION HAS TO GET RIGHT. A Habu flag
+\ is all bits set when the source relation HOLDS, and hir.brz goes to its FIRST
+\ successor when the value it tests is ZERO - so the source branch's first
+\ successor is the arm the relation did NOT choose and its second is the arm it
+\ did. a64.cmpbr goes to ITS first successor when the condition HOLDS. The two
+\ therefore line up by swapping: the fused branch keeps the comparison's own
+\ condition, unnegated, and takes the source branch's SECOND successor as its
+\ first.
+\
+\   source `<` answers a flag; hir.brz succ 0 is `not (a < b)`, succ 1 is `a < b`
+\   a64.cmpbr under `lt`: succ 0 is `a < b`, succ 1 is `not (a < b)`
+\   so cmpbr succ 0 := brz succ 1, cmpbr succ 1 := brz succ 0, condition `lt`
+\   and the same for `<=` under `le` and `=` under `equal`
+\
+\ THE OTHER WAY ROUND WOULD ALSO BE CORRECT AND IS MEASURABLY SLOWER. Negating
+\ the condition and keeping the source successor order computes exactly the same
+\ program. It puts the arm the relation did not choose behind the TAKEN
+\ conditional branch, which on the corpus's loops is the arm taken on every turn
+\ but the last - so the hot path becomes a taken conditional jumping over the
+\ unconditional branch beside it. Measured over the eleven-row table against the
+\ four byte-identical rows as a control, that costs SUM-TO 3.7%, COUNT-DOWN
+\ 3.9%, BYTE-SUM 4.6%, BYTE-FIND 4.6% and FACT 6.1%, while this wiring is inside
+\ +/-1% on every row. It is also the wiring that leaves the unconditional branch
+\ pointing at the block laid out next, which is what a later elision pass can
+\ delete (dot habu-elide-a-branch-74966a02).
+\
+\ The operands are the comparison's, in the comparison's order: a64.cmpbr
+\ compares its first operand against its second exactly as a64.flag does, so
+\ `a b <` fuses to a compare of a against b under `lt` and a swapped pair would
+\ be a wrong program rather than a different spelling.
+\
+\ The span is the BRANCH's. The operation is the block's terminator - what it
+\ is, is a two-way branch - and the span every reader of a terminator expects is
+\ the control word the programmer wrote.
+: EMIT-CMPBR ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:CMPBR OPEN
+   CTX BLD  cm 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  cm 1 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  CTX BLD A64IR:KEY-COND
+   CTX BLD  cm COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   id 1 SUCCESSOR+
+   id 0 SUCCESSOR+
+   CTX BLD IR-BUILD:END-OP drop ;
+
+\ The two-way branch, fused or not. A block whose scan found no comparison to
+\ fuse gets the same a64.cbz it always got, over the value the source branch
+\ tests - which is why a comparison that is used a second time costs nothing but
+\ the fusion.
+: EMIT-BRANCH ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   FUSE-AT @ 0 < if id EMIT-BRZ exit then
+   id  BLK FUSE-AT @ OP-AT  EMIT-CMPBR ;
+
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
@@ -939,16 +1119,16 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       sub    OF id A64IR-OPCODE:SUB EMIT-BINARY ENDOF
       mul    OF id A64IR-OPCODE:MUL EMIT-BINARY ENDOF
       div    OF id A64IR-OPCODE:SDIV EMIT-BINARY ENDOF
-      lt     OF id A64IR-COND:LT EMIT-FLAG ENDOF
-      le     OF id A64IR-COND:LE EMIT-FLAG ENDOF
-      equal  OF id A64IR-COND:EQUAL EMIT-FLAG ENDOF
+      lt     OF id EMIT-FLAG ENDOF
+      le     OF id EMIT-FLAG ENDOF
+      equal  OF id EMIT-FLAG ENDOF
       mem    OF id EMIT-MEM ENDOF
       load   OF id A64IR-OPCODE:ALOAD EMIT-ALOAD ENDOF
       store  OF id A64IR-OPCODE:ASTORE EMIT-ASTORE ENDOF
       bload  OF id A64IR-OPCODE:ABLOAD EMIT-ALOAD ENDOF
       bstore OF id A64IR-OPCODE:ABSTORE EMIT-ASTORE ENDOF
       br     OF id EMIT-BR ENDOF
-      brz    OF id EMIT-BRZ ENDOF
+      brz    OF id EMIT-BRANCH ENDOF
       call   OF id EMIT-CALL ENDOF
       return OF id EMIT-RETURN ENDOF
    ;MATCH ;
@@ -1050,12 +1230,22 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ SSA under dominance - the freeze verifier proved it of the source module and
 \ will prove it again of this one - so the map has to answer across the whole
 \ function.
+\
+\ A comparison the scan chose to fuse selects to NOTHING here. It is not skipped
+\ so much as moved into the terminator: the branch below it builds the one
+\ machine operation that stands for both, and the value the comparison defined
+\ is never bound into the value map because nothing left in the function reads
+\ it. That is what the single-use fact bought, and it is held rather than
+\ assumed - a second reader would ask the map for a value nothing bound and be
+\ refused by name.
 : WALK-BLOCK ( IR-ID:ir-block-id n -- )
    {: bk:IR-ID:ir-block-id ord:n :}
    bk ord OPEN-BLOCK
+   bk 0 S-BLK !
+   bk FUSE-SCAN
    bk OP-COUNT {: n:n :}
    n 0 ?do
-      bk i OP-AT RULE
+      i FUSE-AT @ <> if bk i OP-AT RULE then
    loop
    CTX BLD IR-BUILD:END-BLOCK drop ;
 
@@ -1067,6 +1257,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    f BLOCK-COUNT {: n:n :}
    n 1 < if E-A64SEL-SHAPE throw then
    n NFROZEN:BMAX > if E-A64SEL-CAP throw then
+   f 0 S-FUN !
    f OPEN-FUN
    VCLEAR
    n 0 ?do

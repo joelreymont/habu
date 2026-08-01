@@ -157,7 +157,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-26 constant OPCODES-N
+27 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -184,14 +184,16 @@ private
 23 constant O-CALL
 24 constant O-LINKSAVE
 25 constant O-LINKLOAD
+26 constant O-CMPBR
 
 0 constant BOUND-NO
 1 constant BOUND-YES
 
 \ ---- how much of one routine this pass holds ----------------------------------
-\ Instructions in one routine. Three forms of the dialect emit more than one
-\ instruction - the comparison and the division are three each and the two-way
-\ branch is two - and none emits more than three, so three per operation is the
+\ Instructions in one routine. Five forms of the dialect emit more than one
+\ instruction - the comparison, the division, the call and the fused
+\ compare-and-branch are three each and the two-way branch is two - and none
+\ emits more than three, so three per operation is the
 \ ceiling per operation. Operations are bounded by the values they define: every
 \ operation defines at least one value except a block's terminator, the release
 \ of the frame and the data-stack publish, of which there is at most one each per
@@ -270,6 +272,7 @@ create B-START BMAX cells allot
       flag     OF O-FLAG     ENDOF
       br       OF O-BR       ENDOF
       brz      OF O-BRZ      ENDOF
+      cmpbr    OF O-CMPBR    ENDOF
       call     OF O-CALL     ENDOF
       linksave OF O-LINKSAVE ENDOF
       linkload OF O-LINKLOAD ENDOF
@@ -296,6 +299,7 @@ create B-START BMAX cells allot
       O-FLAG     of A64IR-OPCODE:FLAG     endof
       O-BR       of A64IR-OPCODE:BR       endof
       O-BRZ      of A64IR-OPCODE:BRZ      endof
+      O-CMPBR    of A64IR-OPCODE:CMPBR    endof
       O-RET      of A64IR-OPCODE:RET      endof
       O-ALOAD    of A64IR-OPCODE:ALOAD    endof
       O-ASTORE   of A64IR-OPCODE:ASTORE   endof
@@ -561,8 +565,8 @@ create B-START BMAX cells allot
 \ answer rather than a lucky one.
 \
 \ How many instructions a form is, is a property of the form: one for all but the
-\ comparison and the division, which are three each, and the two-way branch,
-\ which is two. The layout pass and
+\ comparison, the division, the call and the compare-and-branch, which are three
+\ each, and the two-way branch, which is two. The layout pass and
 \ the emission pass read the same answer, so the offsets the fixups are computed
 \ against are the offsets the instructions land at.
 : INSNS-OF ( n -- n )
@@ -570,6 +574,7 @@ create B-START BMAX cells allot
    k O-FLAG = if 3 exit then
    k O-SDIV = if 3 exit then
    k O-CALL = if 3 exit then
+   k O-CMPBR = if 3 exit then
    k O-BRZ = if 2 exit then
    1 ;
 
@@ -631,6 +636,15 @@ create B-START BMAX cells allot
    d A64IR:BZ-FITS? 0= if E-A64EMIT-REACH throw then
    rt d ENC-CBZ ;
 
+\ The conditional branch reaches as far as its own nineteen-bit displacement
+\ field, which is asked for by that form's own name: ENC-BCOND masks the field
+\ exactly as the other two encoders do, so a target out of reach would become a
+\ target somewhere else rather than a refusal.
+: BCOND-WORD ( n n -- n )
+   {: d:n k:n :}
+   d A64IR:BCOND-FITS? 0= if E-A64EMIT-REACH throw then
+   d k ENC-BCOND ;
+
 \ Going to one block, handing it its arguments. The arguments are already in the
 \ registers the destination's block arguments were given - that is the register
 \ allocation's own decision and the validator has agreed with it - so the
@@ -645,6 +659,24 @@ create B-START BMAX cells allot
 : PUT-BRZ ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 OPERAND-REG  id 0 SUCC-BLOCK DELTA  BZ-WORD  APPEND
+   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+
+\ The fused compare-and-branch, which is three instructions: compare the two
+\ registers, go to the first successor when the condition the operation carries
+\ holds, and go to the second when it does not. The comparison writes only the
+\ condition flags and the branch beside it reads them there, so no register is
+\ written and no flag is materialised - which is the whole difference from the
+\ pair of operations this replaces.
+\
+\ BOTH BRANCHES ARE EMITTED, in the successor order the operation records, so
+\ neither successor depends on where the layout happened to put it - the same
+\ rule the two-way branch above keeps. The conditional branch's displacement is
+\ measured after the compare has been appended, because a displacement is
+\ counted from the instruction that carries it.
+: PUT-CMPBR ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
+   id  id 0 SUCC-BLOCK DELTA  id COND-OF  BCOND-WORD  APPEND
    id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
 
 \ One comparison, which is three instructions: compare the two registers, set one
@@ -731,6 +763,7 @@ create B-START BMAX cells allot
       flag     OF id PUT-FLAG ENDOF
       br       OF id PUT-BR ENDOF
       brz      OF id PUT-BRZ ENDOF
+      cmpbr    OF id PUT-CMPBR ENDOF
       call     OF id PUT-CALL ENDOF
       linksave OF id  id WORD-LNKSTR  APPEND ENDOF
       linkload OF id  id WORD-LNKLDR  APPEND ENDOF
@@ -748,7 +781,7 @@ create B-START BMAX cells allot
 \ that order.
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
    OP-AT SLOT-AT {: k:n :}
-   k O-RET = k O-BR = or k O-BRZ = or ;
+   k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or ;
 
 : BLOCK-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -863,6 +896,7 @@ public
    c b A64IR-OPCODE:FLAG     BIND1
    c b A64IR-OPCODE:BR       BIND1
    c b A64IR-OPCODE:BRZ      BIND1
+   c b A64IR-OPCODE:CMPBR    BIND1
    c b A64IR-OPCODE:RET      BIND1
    c b A64IR-OPCODE:ALOAD    BIND1
    c b A64IR-OPCODE:ASTORE   BIND1

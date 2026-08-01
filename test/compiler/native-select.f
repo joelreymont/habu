@@ -262,6 +262,69 @@ $1000 constant BUMP-ADDR
    $1234000000005678 CONSTOP RET1
    CLOSE-FUN ;
 
+\ ---- a comparison and the branch that tests it -------------------------------
+\ `: MAX2 ( n n -- n ) 2dup < if swap then drop ;` as the elaborator leaves it:
+\ four blocks - the entry that compares and branches, one stub per arm because a
+\ two-way branch carries no values, and the join that takes the chosen value as
+\ its argument. It is built here rather than elaborated for the reason every
+\ other fixture in this file is, and it is built ONCE and used three ways: the
+\ comparison it opens with is a parameter, and the value its two arms hand on is
+\ a parameter, so the fused case, the three conditions and the multi-use
+\ fall-back are the same shape with one thing changed.
+: BLOCK-ID ( n -- IR-ID:ir-block-id )
+   {: k:n :}
+   BB IR-BUILD:MODULE-KEY k IR-ID:PACK-BLOCK ;
+
+: BLOCK+ ( -- )
+   CC BB IR-BUILD:END-BLOCK drop
+   CC BB IR-BUILD:BEGIN-BLOCK
+   CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
+
+: BRZ2 ( IR-ID:ir-value-id n n -- )
+   {: f:IR-ID:ir-value-id z:n o:n :}
+   HIR-OPCODE:BRZ CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB f IR-BUILD:ADD-OPERAND
+   CC BB z BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB o BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: BR1 ( IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id t:n :}
+   HIR-OPCODE:BR CLOSE-ST CLOSE-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+\ `carry` says which value the two arms hand the join. Handing the ARGUMENTS on
+\ leaves the comparison's answer with one reader, the branch, which is what the
+\ fusion requires; handing the COMPARISON's answer on gives it three, which is
+\ what the fall-back requires. Nothing else about the two modules differs, so a
+\ fusion that ignored the use count would produce the same module for both.
+: BUILD-BRANCH ( HIR:opcode bool -- )
+   {: o:HIR:opcode carry:bool :}
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   o x y BINOP {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   carry if f 3 BR1 else x 3 BR1 then
+   BLOCK+
+   carry if f 3 BR1 else y 3 BR1 then
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ `: ISLT ( n n -- bool ) < ;` - a comparison whose answer IS what the word
+\ leaves. There is no branch below it at all, so there is nothing to fuse into
+\ and the flag has to be materialised.
+: BUILD-FLAG-VALUE ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:LT x y BINOP RET1
+   CLOSE-FUN ;
+
 \ An operation of a sixth opcode, defined into the same dialect's table. Nothing
 \ in the substrate forbids it and the module verifies, so the pass has to refuse
 \ it by name rather than by never meeting it.
@@ -384,6 +447,11 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    R-OPP RV R-OPR RV RK i OP@ k IR-OP:FATTR-KEY@
    p u IR-SYM:FEQ? ;
 
+\ Which block a terminator of the entry block hands control to, as its ordinal.
+: SUCC@ ( n n -- n )
+   {: i:n k:n :}
+   R-OPP RV R-OPR RV RK i OP@ k IR-OP:FSUCCESSOR@ IR-ID:BLOCK-LOCAL ;
+
 \ ---- the multiply of `dup *` -------------------------------------------------
 : SQUARE-BODY ( IR-CTX:ctx -- n n n n bool bool bool bool bool )
    HIR-MOD
@@ -450,6 +518,112 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" an addition selects to an addition and not to its neighbour" T-LABEL
    WBND [: ADD-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE ;
+
+\ ---- the fused compare-and-branch --------------------------------------------
+\ The entry block of the branching shape holds ONE operation when the comparison
+\ fuses: the source comparison selects to nothing at all, and the branch selects
+\ to a64.cmpbr over the comparison's own two operands. The two successors carry
+\ across in the source order, so the block the source branch reached when its
+\ flag was zero is still the first one.
+\
+\ THE CONDITION IS THE COMPARISON'S OWN AND THE SUCCESSORS ARE SWAPPED, and that
+\ is the whole polarity of the pass. A source `<` answers a flag that is true
+\ when the relation holds, and the source branch takes its FIRST successor when
+\ that flag is ZERO - the arm the relation did not choose - while a64.cmpbr
+\ takes its first successor when the condition HOLDS. So the fused branch keeps
+\ `lt` and takes the source branch's SECOND successor first: block two here,
+\ with block one second. The condition is asserted against the dialect's own
+\ code for `lt` rather than against a number, because
+\ test/compiler/native-a64ir.f is what holds that code against the assembler.
+: FUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool n n n )
+   HIR-MOD
+   HIR-OPCODE:LT false BUILD-BRANCH
+   SELECTED READ!
+   OPS
+   0 s" a64.cmpbr" OPCODE-IS?
+   0 s" a64.flag" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 1 OPERAND@ 1 ARG@ SAME-VALUE?
+   0 0 s" a64.cond" ATTR-KEY-IS?
+   0 0 ATTR-INT
+   0 0 SUCC@
+   0 1 SUCC@ ;
+
+: FUSE-CASE ( -- )
+   s" a single-use comparison and its branch select to one compare-and-branch"
+   T-LABEL
+   WBND [: FUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 2 T=
+   A64IR-COND:LT A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TFALSE TTRUE 1 T= ;
+
+\ The other two comparisons, so the whole polarity table is pinned and not just
+\ the row the corpus happens to exercise most: `<=` fuses under `le` and `=`
+\ under `equal`, each with the source branch's second successor first. A
+\ condition carried across as some other condition sends the fused branch down
+\ the arm the source would not have taken.
+: FUSE-LE-BODY ( IR-CTX:ctx -- bool n )
+   HIR-MOD
+   HIR-OPCODE:LE false BUILD-BRANCH
+   SELECTED READ!
+   0 s" a64.cmpbr" OPCODE-IS?
+   0 0 ATTR-INT ;
+
+: FUSE-LE-CASE ( -- )
+   s" a fused less-or-equal branches on less-or-equal" T-LABEL
+   WBND [: FUSE-LE-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:LE A64IR:COND-CODE T= TTRUE ;
+
+: FUSE-EQ-BODY ( IR-CTX:ctx -- bool n )
+   HIR-MOD
+   HIR-OPCODE:EQUAL false BUILD-BRANCH
+   SELECTED READ!
+   0 s" a64.cmpbr" OPCODE-IS?
+   0 0 ATTR-INT ;
+
+: FUSE-EQ-CASE ( -- )
+   s" a fused equality branches on equal" T-LABEL
+   WBND [: FUSE-EQ-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:EQUAL A64IR:COND-CODE T= TTRUE ;
+
+\ The same shape with the comparison's answer handed on to the join as well. It
+\ now has three readers, so the flag really is needed as a number and the pair
+\ stays two operations - the comparison under its OWN condition, and the
+\ two-way branch over the value it defines. This is the fixture that makes the
+\ use count load-bearing: remove the count and the entry block comes out one
+\ operation, and the value the two arms hand over is defined by nothing.
+: NOFUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
+   HIR-MOD
+   HIR-OPCODE:LT true BUILD-BRANCH
+   SELECTED READ!
+   OPS
+   0 s" a64.flag" OPCODE-IS?
+   1 s" a64.cbz" OPCODE-IS?
+   0 s" a64.cmpbr" OPCODE-IS?
+   1 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   0 0 ATTR-INT ;
+
+: NOFUSE-CASE ( -- )
+   s" a comparison read a second time keeps its flag and its branch" T-LABEL
+   WBND [: NOFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:LT A64IR:COND-CODE T=
+   TTRUE TFALSE TTRUE TTRUE 2 T= ;
+
+\ And a comparison with no branch under it at all: its answer is what the word
+\ leaves, so it is materialised exactly as before.
+: FLAG-VALUE-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   BUILD-FLAG-VALUE
+   SELECTED READ!
+   OPS
+   0 s" a64.flag" OPCODE-IS?
+   1 s" a64.ret" OPCODE-IS?
+   0 s" a64.cmpbr" OPCODE-IS? ;
+
+: FLAG-VALUE-CASE ( -- )
+   s" a comparison whose answer is the word's result keeps its flag" T-LABEL
+   WBND [: FLAG-VALUE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE 2 T= ;
 
 \ ---- the move-wide chain -----------------------------------------------------
 : SMALL-BODY ( IR-CTX:ctx -- n bool n n bool bool bool )
@@ -817,6 +991,11 @@ public
    DIFF-CASE
    DIV-CASE
    ADD-CASE
+   FUSE-CASE
+   FUSE-LE-CASE
+   FUSE-EQ-CASE
+   NOFUSE-CASE
+   FLAG-VALUE-CASE
    SMALL-CASE
    WIDE-CASE
    FUN-CASE
