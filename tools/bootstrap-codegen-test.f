@@ -1429,13 +1429,16 @@ private
 
 : OWNER-PUBLISH ( -- )
    s" src/habu/habu1.f" LOAD
-   s" 14 15 LDAR," MUST-HAVE
-   s" 14 15 STLR," MUST-HAVE
+   \ prot-wid-add publishes a set bit with acquire-load / release-store on the band
+   \ word that holds it; the AOT restore release-publishes the shape tag only after
+   \ the whole bitmap is copied. Both are the ordering the readers depend on.
+   s" 16 15 LDAR," MUST-HAVE
+   s" 16 15 STLR," MUST-HAVE
    s" src/habu/habu2.f" LOAD
-   s" 11 5 STLR," MUST-HAVE
+   s" 4 5 STLR," MUST-HAVE
    s" src/habu/aot-capture.f" LOAD
-   s" AOT-LIVE-DATA PROT-WID-N-CELL + atomic@" MUST-HAVE
-   s" AOT-LIVE-DATA PROT-WID-N-CELL + AOT-CELL@" MUST-LACK
+   s" AOT-LIVE-DATA PROT-REG-TAG-CELL + atomic@" MUST-HAVE
+   s" AOT-LIVE-DATA PROT-REG-TAG-CELL + AOT-CELL@" MUST-LACK
    s" AOT-LIVE-DATA OWNER-WID-N-CELL + atomic@" MUST-HAVE
    s" variable OWNER-PACKAGE-K" MUST-HAVE
    s" variable OWNER-PACKAGE-REC" MUST-LACK
