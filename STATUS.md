@@ -49,7 +49,7 @@ elapsed-ms is informational only; per-phase timeouts remain as hang guards.
 Pinned engine/checker/inference benchmarks are tracked as an accepted coverage
 gap (habu-add-pinned-engine-90090800).
 Certified (linux-arm64): 4197  Uncheckable: 0  Rejected: 0
-Certified (macos-arm64): 4266
+Certified (macos-arm64): 4270
 Host-script workflow hooks: retired and gated
 
 Attribution for the linux-arm64 row, whose history the bullets below carry to
@@ -275,6 +275,39 @@ it does not see `tools/` or `test/`. All 33 definitions above land in files the
 common boot and checker prefix appends on both targets, and none is conditional
 on the host, so the linux-arm64 row is owed the same 33 and read 4230 before the move encoder below the next
 time the gate measures on that host.
+
+Four more definitions move the macos-arm64 row 4266 -> 4270, measured on this
+tree at the byte fixpoint (`install --force` to a byte-identical `bin/hb`, then
+the self-check census the build prints). One of them was already in the tree and
+had gone unrecorded; three are this stack's.
+
+- Giving the machine dialect its compare and branch forms added `ENC-NEG` to
+  `src/arch/arm64/asm.f` (ARM64 has no negate form either, so a negate is `sub`
+  against the zero register beside `ENC-MOV`'s `orr`). That landed without a
+  census refresh, so the 4266 row above was one short of the tree before any of
+  the protected-WID work: the base of that work measures 4267.
+- Replacing the protected-WID table with a WID-indexed bitmap adds 2 to
+  `src/habu/habu1.f`: `PROT-BITS-AT,` and `PROT-BITS-ADDR,`, the two emitters
+  that turn a wordlist id into the address of its bit and the bit's mask. Every
+  site that used to walk the table — `PROT-WID?`, `prot-wid-add`, the AOT and
+  snapshot validators — calls one of them instead. So 4267 + 2 = 4269.
+- Naming registry exhaustion in the declaration diagnostic adds 1 to
+  `src/core/generated-declaration.f`, `REASON-PROTECTION`, the reason row that
+  maps `E-PROTECTION-CAP` (7169) to "the protected-wordlist registry is full".
+  So 4269 + 1 = 4270.
+
+`src/habu/aot-capture.f` is where the bitmap change adds the most definitions —
+nine (`ACAP-PWID-IN-RANGE?`, `ACAP-PWID-BYTE`, `ACAP-PWID-SET`,
+`ACAP-PWID-BIT?`, `ACAP-PWID-CLEAR`, `ACAP-PWID-TAG@`, `ACAP-PWID-SAME-SHAPE`,
+`ACAP-PWID-LEGACY`, `ACAP-PWID-COUNT`) against six deleted
+(`ACAP-PWID-SLOT`, `ACAP-PWID-PUT`, `ACAP-PWID-GET`, `PROT-N@`, `PROT@`,
+`PROT-DUP?`) — and it counts nothing here. That file is the metabuild host's
+capture driver, appended to the stdin build's source and not to the assembled
+stage2 engine source the census scans, exactly as `tools/` and `test/` are not.
+`src/habu/layout.f` and `src/habu/habu2.f` change substantially and add no
+definition at all: the first is constants, the second rewrites the bodies of
+`EM-AOT-REGISTER-PROT-WIDS`, `EM-AOT-VALIDATE-WIDS` and the startup and
+snapshot validators in place. The linux-arm64 row is owed the same four.
 
 The checker declaration-frame tagging does add engine text: the four
 `CHECKER-DECL-FRAME` primitive axiom rows grow the ahead-of-time seed by 16
