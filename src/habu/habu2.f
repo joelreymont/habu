@@ -3761,19 +3761,21 @@ s" c-local-ref" s" label label --" TRUST
    4 PROT-REG-TAG LIT64,
    4 5 STLR, ;                                       \ release-publish the shape tag last
 
-\ Validate both baked WID registries before either is restored. The owner frame
-\ starts immediately after the bounded protected-WID rows, carries its own shape,
-\ and ends with an independent marker so count corruption cannot widen the copy.
+\ Validate both baked WID registries before either is restored. The protected-WID
+\ frame is a fixed-size bitmap behind its own shape tag, so the owner frame sits at a
+\ CONSTANT offset past it -- where the old row array made the owner magic double as
+\ the protected section's only terminator, and a corrupted count could walk the copy
+\ into it. The owner frame still carries its own shape and end marker.
 : EM-AOT-VALIDATE-WIDS ( label -- ) {: bad:label :}
-   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
-   {: pool-loop:label pool-done:label prot-loop:label prot-inner:label
-      prot-next:label owner-loop:label owner-prot:label owner-prev:label
+   LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL LBL
+   {: pool-loop:label pool-done:label opub-ok:label opri-ok:label
+      owner-loop:label owner-prev:label
       owner-next:label name-loop:label name-hit:label name-valid:label
-      valid:label owner-prot-done:label owner-prev-done:label :}
+      valid:label owner-prev-done:label :}
    11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
-   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
+   5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND, \ protected-WID frame shape tag
    12 LAOTPWID LABEL@ ADR,
-   4 11 2 LSLI,  9 12 4 ADD,                       \ x9 = owner frame
+   9 12 PROT-BITS-BYTES ADDI,                      \ x9 = owner frame (fixed offset)
    2 9 0 LDR,  5 AOT-OWNER-MAGIC LIT64,  2 5 CMP,  C-NE bad BCOND,
    2 9 8 LDR,  2 AOT-OWNER-VERSION CMPI,  C-NE bad BCOND,
    6 9 16 LDR,  6 OWNER-WID-MAX CMPI,  C-HI bad BCOND,
@@ -3795,16 +3797,11 @@ s" c-local-ref" s" label label --" TRUST
    pool-done LBL,
       4 21 CMP,  C-NE bad BCOND,
 
-   8 0 MOVZ,  10 12 0 ADDI,
-   prot-loop LBL,  8 11 CMP,  C-GE owner-loop BCOND,
-      14 10 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
-      4 0 MOVZ,  5 12 0 ADDI,
-      prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
-         2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
-         5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
-   prot-next LBL,
-      10 10 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+   \ The row scan this replaces proved three things about the baked WIDs: none was 0,
+   \ none exceeded OWNER-WID-LIMIT, and none repeated. A bitmap makes the last two
+   \ structural -- a bit has one index and the index cannot leave [0, PROT-WID-MAX) --
+   \ so only "WID 0 is not a wordlist" is left to check, and it is one bit.
+   2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,
 
    owner-loop LBL,
    8 0 MOVZ,  10 9 0 ADDI,
@@ -3831,12 +3828,17 @@ s" c-local-ref" s" label label --" TRUST
       14 5 CMP,  C-HI bad BCOND,  15 5 CMP,  C-HI bad BCOND,
       14 15 CMP,  C-EQ bad BCOND,
 
-      4 0 MOVZ,  5 12 0 ADDI,
-      owner-prot LBL,  4 11 CMP,  C-GE owner-prot-done BCOND,
-         2 5 0 LDRW,
-         14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
-         5 5 4 ADDI,  4 4 1 ADDI,  owner-prot B,
-      owner-prot-done LBL,
+      \ Neither owner WID may also be protected: one bit test each, where the row
+      \ array needed a full scan per owner row. A WID at or above the bound has no
+      \ bit, so it cannot be protected and needs no test.
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS opub-ok BCOND,
+         12 14 5 3 2 PROT-BITS-AT,
+         5 5 0 LDR,  5 5 3 AND,  5 bad CBNZ,
+      opub-ok LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS opri-ok BCOND,
+         12 15 5 3 2 PROT-BITS-AT,
+         5 5 0 LDR,  5 5 3 AND,  5 bad CBNZ,
+      opri-ok LBL,
 
       4 0 MOVZ,  5 9 0 ADDI,
       owner-prev LBL,  4 8 CMP,  C-GE owner-prev-done BCOND,
@@ -3854,8 +3856,7 @@ s" c-local-ref" s" label label --" TRUST
       found:label prot:label prot-done:label prev:label prev-done:label
       copy-loop:label copy-done:label pub-widn:label pri-widn:label
       bad:label msg:label ret:label :}
-   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,
-   21 LAOTPWID LABEL@ ADR,  4 11 2 LSLI,  21 21 4 ADD,
+   21 LAOTPWID LABEL@ ADR,  21 21 PROT-BITS-BYTES ADDI,   \ owner frame: fixed offset past the bitmap
    23 21 16 LDR,  21 21 AOT-OWNER-HEADER ADDI,      \ x21=identity rows, x23=count
    25 LAOTNAMES LABEL@ ADR,
    SP SP 2048 SUBI,
@@ -3909,13 +3910,15 @@ s" c-local-ref" s" label label --" TRUST
          3 DATA WIDN-CELL STR,
       pri-widn LBL,
 
-      2 DATA PROT-WID-N-CELL LDR,
-      3 PROT-WID-OFF MOVZ,  3 DATA 3 ADD,
-      4 0 MOVZ,
-      prot LBL,  4 2 CMP,  C-GE prot-done BCOND,
-         5 3 0 LDRW,
-         14 5 CMP,  C-EQ bad BCOND,  15 5 CMP,  C-EQ bad BCOND,
-         3 3 4 ADDI,  4 4 1 ADDI,  prot B,
+      \ Neither restored owner WID may already be protected in the LIVE band: one bit
+      \ test each against DATA, where the row array needed a scan of the whole table.
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS prot BCOND,
+         DATA 14 3 5 4 PROT-BITS-ADDR,
+         3 3 0 LDR,  3 3 5 AND,  3 bad CBNZ,
+      prot LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS prot-done BCOND,
+         DATA 15 3 5 4 PROT-BITS-ADDR,
+         3 3 0 LDR,  3 3 5 AND,  3 bad CBNZ,
       prot-done LBL,
 
       4 0 MOVZ,  5 SP 0 ADDI,
@@ -4544,25 +4547,29 @@ public
       owner-next:label widn:label name-inline:label name-ready:label
       name-loop:label name-ok:label pkg-scan:label pkg-inline:label
       pkg-ready:label pkg-bytes:label pkg-hit:label pkg-next:label pkg-done:label :}
-   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,                                     \ x10 = snapshot DATA source
    25 10 6 SUB,                                     \ x25 = snapshot dictionary source
    16 15 0 ADDI,                                    \ x16 = snapshot dictionary record count
-   11 10 PROT-WID-N-CELL LDR,
-   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
-   12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
-   prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
-      14 9 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
-      14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
+   11 10 PROT-REG-TAG-CELL LDR,
+   5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND, \ the image's band must be a bitmap
+   12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,            \ x12 = &image bitmap[0]
+   2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,            \ WID 0 is never a wordlist
+   \ x17 = highest protected WID (0 if none): find the top non-zero word, then shift
+   \ its bits out. Replaces a per-row running max plus an O(rows^2) duplicate scan --
+   \ a bitmap cannot repeat an index, so only the maximum is still worth computing.
+   17 0 MOVZ,  8 PROT-BITS-BYTES MOVZ,
+   prot-loop LBL,  8 owners CBZ,
+      8 8 8 SUBI,
+      9 12 8 ADD,  9 9 0 LDR,
+      9 prot-max CBNZ,
+      prot-loop B,
    prot-max LBL,
-      4 0 MOVZ,  5 12 0 ADDI,
-   prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
-      2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
-      5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
+      17 8 3 LSLI,  5 0 MOVZ,
+   prot-inner LBL,  9 prot-next CBZ,
+      9 9 1 LSRI,  5 5 1 ADDI,  prot-inner B,
    prot-next LBL,
-      9 9 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+      17 17 5 ADD,  17 17 1 SUBI,
 
    owners LBL,
    5 OWNER-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
@@ -4650,11 +4657,15 @@ public
       pkg-done LBL,
          24 1 CMPI,  C-NE bad BCOND,
 
-      4 0 MOVZ,  12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   owner-prot LBL,  4 11 CMP,  C-GE owner-prev-start BCOND,
-      2 12 0 LDRW,
-      14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
-      12 12 4 ADDI,  4 4 1 ADDI,  owner-prot B,
+      \ Neither owner WID may also be protected in the image: one bit test each.
+      12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS owner-prot BCOND,
+         12 14 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
+   owner-prot LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS owner-prev-start BCOND,
+         12 15 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
    owner-prev-start LBL,
       4 0 MOVZ,  12 9 0 ADDI,
    owner-prev LBL,  4 8 CMP,  C-GE owner-next BCOND,
@@ -4784,7 +4795,7 @@ public
    snomag LBL, ;
 
 : EM-STARTUP-RUNTIME-STATE ( -- )
-   LBL {: cwok :}
+   LBL LBL LBL {: cwok:label pwclr:label pwclrd:label :}
    9 0 MOVZ,  9 DATA HND-CELL STR,
    9 DATA SNAP-CELL LDR,
    9 cwok CBNZ,
@@ -4801,7 +4812,17 @@ public
    HOOK-CELL SNAP-RELOC:MARK-CELL
    COMPILE-PREFLIGHT-CELL SNAP-RELOC:MARK-CELL
    TOP-HOOK-CELL SNAP-RELOC:MARK-CELL
-   9 0 MOVZ,  9 DATA PROT-WID-N-CELL STR,  \ constructor registry starts empty
+   \ Constructor registry starts empty: clear the whole bitmap, then publish the shape
+   \ tag. The old count cell made "empty" a single store; a bitmap has to be zeroed in
+   \ full, and a cold boot is the only path that may do it (a restored image carries
+   \ the declarations its writing run made).
+   9 0 MOVZ,
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
+   11 PROT-BITS-BYTES MOVZ,
+   pwclr LBL,  11 pwclrd CBZ,
+      9 10 0 STR,  10 10 8 ADDI,  11 11 8 SUBI,  pwclr B,
+   pwclrd LBL,
+   9 PROT-REG-TAG LIT64,  9 DATA PROT-REG-TAG-CELL STR,
    OWNER-WID-EMIT:COLD-LABEL@ BL,
    cwok LBL,  9 0 MOVZ,
    9 DATA ENGINE-SNAP-XT-CELL STR,
@@ -7512,15 +7533,14 @@ variable AOT-CODE-B0
 $400 constant AOT-BOOTRUN-CAP
 create AOT-BOOTRUN-BUF AOT-BOOTRUN-CAP allot    variable AOT-BOOTRUN-LEN
 
-\ protected-WID registry AOT image (TFAM 2b-v): the u32 WIDs of sealed system /
-\ generated constructor packages, captured from the live friend-arena registry and
-\ baked so EM-AOT-REGISTER-PROT-WIDS can restore them at boot -- advancing WIDN past
-\ each so a post-restore wordlist alloc cannot collide with a restored protected WID.
-\ u32 entries (matching the registry's checked u32 domain) so wordlist IDs above 255
-\ round-trip through the seed with no u8 truncation. Capacity = PROT-WID-MAX so a full
-\ registry always fits.
-PROT-WID-MAX constant AOT-PWID-MAX
-create AOT-PWID-BUF AOT-PWID-MAX 4 * allot    variable AOT-PWID-N
+\ protected-WID registry AOT image (TFAM 2b-v): a bit-for-bit image of the live
+\ friend-arena bitmap, baked so EM-AOT-REGISTER-PROT-WIDS can restore it at boot --
+\ advancing WIDN past the highest restored WID so a post-restore wordlist alloc
+\ cannot collide with a protected one. The blob is a fixed PROT-BITS-BYTES image of
+\ a SET, so it does not depend on the order the writing run protected its WIDs and
+\ the owner frame that follows sits at a constant offset. It is always emitted at
+\ full width, which is what lets the shape tag in front of it be the frame's version.
+create AOT-PWID-BUF PROT-BITS-BYTES allot
 
 package AOT-OWNER
 
@@ -7618,9 +7638,9 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
    LAOTNCSITE LABEL@ LBL,  AOT-CSITE-N @ DCQ,
    LAOTCSITES LABEL@ LBL,  EMIT-AOT-CSITES
    LAOTBOOTRUN LABEL@ LBL,  AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ 1 + BYTES,   \ +1 = live 0 terminator
-   LAOTNPWID LABEL@ LBL,  AOT-PWID-N @ DCQ,                                  \ protected-WID registry: count
-   LAOTPWID LABEL@ LBL,                                                      \ then N u32 WIDs (TFAM 2b-v)
-   AOT-PWID-N @ 0 > if AOT-PWID-BUF@ AOT-PWID-N @ 4 * BYTES, then
+   LAOTNPWID LABEL@ LBL,  PROT-REG-TAG DCQ,                                  \ protected-WID frame: shape tag
+   LAOTPWID LABEL@ LBL,                                                      \ then the fixed-width bitmap (TFAM 2b-v)
+   AOT-PWID-BUF@ PROT-BITS-BYTES BYTES,
    AOT-OWNER:BAKE ;
 
 \ tok-imm? ( ptr u8 n -- n ): live-dictionary immediate probe for the checker

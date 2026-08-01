@@ -116,12 +116,14 @@ $D63F0200 constant C-CALL-BLR-X16
 \ Second guarded band (TFAM 2b-v): protected package WID registry plus uncaught
 \ hook. Stage0 now owns the same registry shape as native so package reopen is
 \ guarded by WID identity rather than a second hard-coded package-name list.
-$3CB8 constant PROT-WID-N-CELL
-$3CC0 constant PROT-WID-OFF
-256 constant PROT-WID-MAX
-PROT-WID-OFF PROT-WID-MAX 4 * + constant PROT-WID-END
-PROT-WID-N-CELL constant PROT-REG-OFF
-$410 constant PROT-REG-LEN
+$3CB8 constant PROT-REG-TAG-CELL
+$50574249544D4150 constant PROT-REG-TAG
+$3CC0 constant PROT-BITS-OFF
+8192 constant PROT-WID-MAX
+PROT-WID-MAX 8 / constant PROT-BITS-BYTES
+PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
+PROT-REG-TAG-CELL constant PROT-REG-OFF
+$410 constant PROT-REG-LEN   \ = PROT-BITS-END 1 cells + PROT-REG-OFF - ; band unchanged by the bitmap
 $47C0 constant OWNER-WID-N-CELL
 $47C8 constant OWNER-WID-OFF
 8 constant OWNER-WID-ROW
@@ -1078,30 +1080,41 @@ previous definitions
    10 9 16 LDR,  10 10 DNAME-WIDE ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROTREC @ BL, ;
 \ Recovery and native use the same protected-WID registry contract.
+\ xw = WID -> xa = &bitmap word holding its bit, xm = that bit's mask; xscratch dies.
+\ Callers must have proved w < PROT-WID-MAX, which is what keeps xa inside the band.
+: PROT-BITS-AT, ( bits w a m scratch -- ) {: bits w a m scratch :} \ typed-local-lint: allow-bare-local
+   scratch w 6 LSRI,  scratch scratch 3 LSLI,
+   a bits scratch ADD,
+   m w 63 ANDI,
+   scratch 1 MOVZ,  m scratch m LSLV, ;
+
+: PROT-BITS-ADDR, ( base w a m scratch -- ) {: base w a m scratch :} \ typed-local-lint: allow-bare-local
+   a PROT-BITS-OFF MOVZ,  a base a ADD,
+   a w a m scratch PROT-BITS-AT, ;
+
 : BPROTWIDADD ( -- )
-   LBL LBL LBL {: room done msg :} \ typed-local-lint: allow-bare-local
+   LBL LBL LBL {: ok done msg :} \ typed-local-lint: allow-bare-local
    9 G-POP
    LPROTWIDQ @ BL,
    13 done CBNZ,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
-   14 PROT-WID-MAX CMPI,  C-LT room BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,
+   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 36 MOVZ,  NR-WRITE SYS,
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: protected-WID table full" BYTES,
-   room LBL,
-   15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
-   16 14 2 LSLI,  15 15 16 ADD,
-   9 15 0 STRW,                                      \ initialize row before release-publishing count
-   14 14 1 ADDI,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 STLR,
+      msg LBL,  s" hb: protected-WID id above the bound" BYTES,
+   ok LBL,
+   DATA 9 15 14 16 PROT-BITS-ADDR,
+   16 15 LDAR,
+   16 16 14 ORR,
+   16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
 : BPROTWIDROOM ( -- )
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
+   LBL {: pos :} \ typed-local-lint: allow-bare-local
+   14 DATA WIDN-CELL LDR,
    9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
+   14 0 MOVZ,  9 14 CMP,  C-GT pos BCOND,
+      9 0 MOVZ,
+   pos LBL,
    9 G-PUSH ;
 
 \ search-wl ( a u wid -- addr|0 ): find name (a,u) in wordlist wid (case-folded)
@@ -1378,18 +1391,17 @@ previous definitions
    RET, ;
 
 : EMIT-PROTWID ( -- )
-   LBL LBL LBL {: loop next done :} \ typed-local-lint: allow-bare-local
+   LBL {: done :} \ typed-local-lint: allow-bare-local
    LPROTWIDQ @ LBL,
    SP SP 32 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
    13 0 MOVZ,
-   6 DATA PROT-WID-N-CELL LDR,
-   7 0 MOVZ,
-   5 PROT-WID-OFF MOVZ,  5 DATA 5 ADD,
-   loop LBL,  7 6 CMP,  C-GE done BCOND,
-      14 5 0 LDRW,  14 9 CMP,  C-NE next BCOND,
-         13 1 MOVZ,  done B,
-      next LBL,  5 5 4 ADDI,  7 7 1 ADDI,  loop B,
+   5 PROT-WID-MAX MOVZ,  9 5 CMP,  C-CS done BCOND,
+   DATA 9 5 14 6 PROT-BITS-ADDR,
+   7 5 LDAR,
+   7 7 14 AND,
+   7 done CBZ,
+   13 1 MOVZ,
    done LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
@@ -4377,25 +4389,26 @@ variable CFSK2
       oscan onext odone owner-prot owner-prev-start owner-prev owner-next widn \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
       name-inline name-ready name-loop name-ok pkg-scan pkg-inline \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
       pkg-ready pkg-bytes pkg-hit pkg-next pkg-done :} \ typed-local-lint: allow-bare-local - stock Gforth rejects Habu type suffixes.
-   5 PROT-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
+   5 PROT-BITS-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
    10 12 7 SUB,
    25 10 6 SUB,
    16 15 0 ADDI,
-   11 10 PROT-WID-N-CELL LDR,
-   11 PROT-WID-MAX CMPI,  C-HI bad BCOND,
-   12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
-   prot-loop LBL,  8 11 CMP,  C-GE owners BCOND,
-      14 9 0 LDRW,  14 bad CBZ,
-      5 OWNER-WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
-      14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
+   11 10 PROT-REG-TAG-CELL LDR,
+   5 PROT-REG-TAG LIT64,  11 5 CMP,  C-NE bad BCOND,
+   12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
+   2 12 0 LDR,  2 2 1 ANDI,  2 bad CBNZ,
+   17 0 MOVZ,  8 PROT-BITS-BYTES MOVZ,
+   prot-loop LBL,  8 owners CBZ,
+      8 8 8 SUBI,
+      9 12 8 ADD,  9 9 0 LDR,
+      9 prot-max CBNZ,
+      prot-loop B,
    prot-max LBL,
-      4 0 MOVZ,  5 12 0 ADDI,
-   prot-inner LBL,  4 8 CMP,  C-GE prot-next BCOND,
-      2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
-      5 5 4 ADDI,  4 4 1 ADDI,  prot-inner B,
+      17 8 3 LSLI,  5 0 MOVZ,
+   prot-inner LBL,  9 prot-next CBZ,
+      9 9 1 LSRI,  5 5 1 ADDI,  prot-inner B,
    prot-next LBL,
-      9 9 4 ADDI,  8 8 1 ADDI,  prot-loop B,
+      17 17 5 ADD,  17 17 1 SUBI,
 
    owners LBL,
    5 OWNER-WID-END MOVZ,  7 5 CMP,  C-CC bad BCOND,
@@ -4476,11 +4489,14 @@ variable CFSK2
          22 22 DREC ADDI,  23 23 1 SUBI,  pkg-scan B,
       pkg-done LBL,
          24 1 CMPI,  C-NE bad BCOND,
-      4 0 MOVZ,  12 PROT-WID-OFF MOVZ,  12 10 12 ADD,
-   owner-prot LBL,  4 11 CMP,  C-GE owner-prev-start BCOND,
-      2 12 0 LDRW,
-      14 2 CMP,  C-EQ bad BCOND,  15 2 CMP,  C-EQ bad BCOND,
-      12 12 4 ADDI,  4 4 1 ADDI,  owner-prot B,
+      12 PROT-BITS-OFF MOVZ,  12 10 12 ADD,
+      2 PROT-WID-MAX MOVZ,  14 2 CMP,  C-CS owner-prot BCOND,
+         12 14 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
+   owner-prot LBL,
+      2 PROT-WID-MAX MOVZ,  15 2 CMP,  C-CS owner-prev-start BCOND,
+         12 15 4 3 2 PROT-BITS-AT,
+         4 4 0 LDR,  4 4 3 AND,  4 bad CBNZ,
    owner-prev-start LBL,
       4 0 MOVZ,  12 9 0 ADDI,
    owner-prev LBL,  4 8 CMP,  C-GE owner-next BCOND,
@@ -4561,15 +4577,21 @@ variable CFSK2
    snomag LBL, ;
 
 : EMIT-STARTUP-RUNTIME-STATE ( -- )
-   LBL {: cwok :}
+   LBL LBL LBL {: cwok pwclr pwclrd :} \ typed-local-lint: allow-bare-local
    9 0 MOVZ,  9 DATA HND-CELL STR,
    9 DATA SNAP-CELL LDR,
    9 cwok CBNZ,
    9 0 MOVZ,  9 DATA CUR-CELL STR,
    9 FIRST-DYNAMIC-WID MOVZ,  9 DATA WIDN-CELL STR,
    9 0 MOVZ,  9 DATA HOOK-CELL STR,  9 DATA COMPILE-PREFLIGHT-CELL STR,
-   9 DATA PROT-WID-N-CELL STR,
    9 DATA OWNER-WID-N-CELL STR,
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
+   11 PROT-BITS-BYTES MOVZ,
+   pwclr LBL,  11 pwclrd CBZ,
+      9 10 0 STR,  10 10 8 ADDI,  11 11 8 SUBI,  pwclr B,
+   pwclrd LBL,
+   9 PROT-REG-TAG LIT64,  9 DATA PROT-REG-TAG-CELL STR,
+   9 0 MOVZ,
    cwok LBL,
    9 0 MOVZ,  9 DATA REPLH-CELL STR,
    9 DATA LOOPSP-CELL STR,

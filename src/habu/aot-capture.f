@@ -303,31 +303,60 @@ variable ACAP-P
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;      \ live terminator (uncounted)
 
 \ --- protected-WID registry capture (TFAM 2b-v): serialize the live friend-arena
-\ registry (PROT-WID-N-CELL count + PROT-WID-OFF u32 table) into AOT-PWID-BUF so
-\ EMIT-AOT-SEED bakes it and EM-AOT-REGISTER-PROT-WIDS restores it at boot. Each
-\ WID is a full u32, so wordlist IDs above 255 round-trip with no u8 truncation.
-\ In the current metabuild no producer populates the registry (item 8 will), so the
-\ live count is 0 and the capture is a clean no-op; ACAP-PWID-SELFTEST proves the
-\ u32 serialize/deserialize round-trip independently, exactly as ACAP-WID-SELFTEST
-\ proves the record path. ---
-: ACAP-PWID-SLOT ( n -- ptr u8 ) 4 * AOT-PWID-BUF@ + ;         \ slot index -> u32 byte addr
-: ACAP-PWID-PUT ( n n -- ) {: v:n ix:n :}                      \ v=wid ix=slot: store as u32
-   v  ix ACAP-PWID-SLOT  AOT-P32! ;
-: ACAP-PWID-GET ( n -- n ) ACAP-PWID-SLOT ACAP-W32@ ;          \ slot -> wid (u32, boot-read model)
-: ACAP-PWID-CAPTURE ( -- )                                     \ live registry -> AOT-PWID-BUF
-   AOT-LIVE-DATA PROT-WID-N-CELL + atomic@ {: n:n :}
-   n AOT-PWID-MAX > if s" aot-capture: protected-WID registry overflow" 74 die then
-   n AOT-PWID-N !
-   n 0 ?do
-      AOT-LIVE-DATA PROT-WID-OFF + i 4 * + AOT-A>U8 ACAP-W32@   \ live table[i] (u32)
-      i ACAP-PWID-PUT
+\ band into AOT-PWID-BUF so EMIT-AOT-SEED bakes it and EM-AOT-REGISTER-PROT-WIDS
+\ restores it at boot. The band is a WID-indexed bitmap and the buffer is a
+\ bit-for-bit image of it, so the bake is canonical: one protected SET always
+\ produces one byte string, whatever order the host happened to protect them in.
+\ That is what lets install --force converge byte-identically across the changeover.
+\
+\ SHAPE DETECTION -- this is the transitional-build hazard layout.f documents. The
+\ capture runs on the METABUILD HOST, which during the changeover is the PREVIOUS,
+\ table-era engine, read at the offsets the NEW layout names. The tag cell reads
+\ PROT-REG-TAG on a bitmap-era host and a row count (0..PROT-WID-LEGACY-MAX) on a
+\ table-era one; the two cannot be confused, because a legacy count is bounded far
+\ below the tag and a table-era engine has no way to write the tag. Any third value
+\ is an unknown lineage and dies rather than being guessed at. The legacy leg
+\ retires once the seed has rolled past the transition (dot
+\ habu-retire-legacy-pwid). ---
+: ACAP-PWID-IN-RANGE? ( n -- bool ) {: wid:n :}
+   wid 0 < 0=  wid PROT-WID-MAX <  and ;
+: ACAP-PWID-BYTE ( n -- ptr u8 ) 3 rshift AOT-PWID-BUF@ + ;
+: ACAP-PWID-SET ( n -- ) {: wid:n :}
+   wid ACAP-PWID-IN-RANGE? 0= if
+      s" aot-capture: protected WID above the bitmap bound" 74 die
+   then
+   wid ACAP-PWID-BYTE dup c@  1 wid 7 and lshift or  swap c! ;
+: ACAP-PWID-BIT? ( n -- bool ) {: wid:n :}
+   wid ACAP-PWID-IN-RANGE? 0= if 0 0= 0= exit then
+   wid ACAP-PWID-BYTE c@  wid 7 and rshift  1 and 0= 0= ;
+: ACAP-PWID-CLEAR ( -- )
+   PROT-BITS-BYTES 0 ?do 0 AOT-PWID-BUF@ i + c! loop ;
+: ACAP-PWID-TAG@ ( -- n ) AOT-LIVE-DATA PROT-REG-TAG-CELL + atomic@ ;
+: ACAP-PWID-SAME-SHAPE ( -- )                                  \ bitmap-era host: copy the band
+   PROT-BITS-BYTES 0 ?do
+      AOT-LIVE-DATA PROT-BITS-OFF + i + AOT-A>U8 c@  AOT-PWID-BUF@ i + c!
    loop ;
+: ACAP-PWID-LEGACY ( n -- ) {: n:n :}                          \ table-era host: rows -> bits
+   n 0 < n PROT-WID-LEGACY-MAX > or if
+      s" aot-capture: unrecognised protected-WID registry shape" 74 die
+   then
+   n 0 ?do
+      AOT-LIVE-DATA PROT-WID-LEGACY-OFF + i 4 * + AOT-A>U8 ACAP-W32@ ACAP-PWID-SET
+   loop ;
+: ACAP-PWID-CAPTURE ( -- )                                     \ live band -> AOT-PWID-BUF
+   ACAP-PWID-CLEAR
+   ACAP-PWID-TAG@ {: tag:n :}
+   tag PROT-REG-TAG = if ACAP-PWID-SAME-SHAPE exit then
+   tag ACAP-PWID-LEGACY ;
+variable ACAP-PWID-N                                           \ population accumulator
+: ACAP-PWID-COUNT ( -- n )                                     \ how many WIDs are protected
+   0 ACAP-PWID-N !
+   PROT-WID-MAX 0 ?do i ACAP-PWID-BIT? if ACAP-PWID-N @ 1 + ACAP-PWID-N ! then loop
+   ACAP-PWID-N @ ;
 variable ACAP-PWID-MX                                          \ max-WID accumulator
-: ACAP-PWID-MAXWID ( -- n )                                    \ largest WID in AOT-PWID-BUF (0 if empty)
+: ACAP-PWID-MAXWID ( -- n )                                    \ largest protected WID (0 if none)
    0 ACAP-PWID-MX !
-   AOT-PWID-N @ 0 ?do
-      i ACAP-PWID-GET dup ACAP-PWID-MX @ > if ACAP-PWID-MX ! else drop then
-   loop
+   PROT-WID-MAX 0 ?do i ACAP-PWID-BIT? if i ACAP-PWID-MX ! then loop
    ACAP-PWID-MX @ ;
 
 package AOT-OWNER
@@ -349,26 +378,13 @@ variable OWNER-BAD-OTHER
 : WID-VALID? ( n -- bool )
    dup 0 > swap OWNER-WID-LIMIT <= and ;
 
-: PROT-N@ ( -- n )
-   AOT-LIVE-DATA PROT-WID-N-CELL + atomic@ ;
-
-: PROT@ ( n -- n ) {: idx:n :}
-   AOT-LIVE-DATA PROT-WID-OFF + AOT-A>U8 idx 4 * + ACAP-W32@ ;
-
-: PROT-DUP? ( n n -- bool )
-   PROT@ swap PROT@ = ;
-
+\ The captured bitmap is the normalised view of whatever shape the host carried, so
+\ these read it rather than the live band. The row scan they replace proved no entry
+\ was 0, none exceeded the WID domain, and none repeated; a bitmap makes the last two
+\ structural -- a bit has exactly one index and the index cannot leave the band --
+\ and ACAP-PWID-SET has already refused any out-of-range WID from a legacy host.
 : PROT-VALID? ( -- bool )
-   PROT-N@ {: count:n :}
-   count 0 < if 0 0= 0= exit then
-   count PROT-WID-MAX > if 0 0= 0= exit then
-   count 0 ?do
-      i PROT@ WID-VALID? 0= if 0 0= 0= unloop exit then
-      i 0 ?do
-         j i PROT-DUP? if 0 0= 0= unloop unloop exit then
-      loop
-   loop
-   0 0= ;
+   0 ACAP-PWID-BIT? 0= ;
 
 : OWNER-N@ ( -- n )
    AOT-LIVE-DATA OWNER-WID-N-CELL + atomic@ ;
@@ -383,11 +399,7 @@ variable OWNER-BAD-OTHER
    dup OWNER-WID-PUB OWNER@
    swap OWNER-WID-PRI OWNER@ ;
 
-: PROTECTED? ( n -- bool ) {: wid:n :}
-   PROT-N@ 0 ?do
-      i PROT@ wid = if 0 0= unloop exit then
-   loop
-   0 0= 0= ;
+: PROTECTED? ( n -- bool ) ACAP-PWID-BIT? ;
 
 : PAIRS-COLLIDE? ( n n -- bool ) {: left:n right:n :}
    left OWNER-PAIR@ {: lpub:n lpri:n :}
@@ -425,7 +437,7 @@ variable OWNER-BAD-OTHER
    s" row " type OWNER-BAD-ROW @ .
    s" other " type OWNER-BAD-OTHER @ .
    s" count " type OWNER-N@ .
-   s" protected " type PROT-N@ .
+   s" protected " type ACAP-PWID-COUNT .
    OWNER-BAD-ROW @ dup 0 >= swap OWNER-N@ < and if
       OWNER-BAD-ROW @ OWNER-PAIR@
       s" pub " type swap . s" pri " type .
@@ -538,6 +550,7 @@ public
    AOT-LIVE-DATA AOT-DBASE = if
       s" aot-capture: live DATA aliases dictionary base" 74 die
    then
+   ACAP-PWID-CAPTURE
    PROT-VALID? 0= if
       s" aot-capture: protected-WID registry corrupt" 74 die
    then
@@ -546,7 +559,6 @@ public
       OWNER-BAD-DIAG
       s" aot-capture: owner-WID registry corrupt" 74 die
    then
-   ACAP-PWID-CAPTURE
    count 0 ?do i FREEZE-ROW loop
    OWNER-N@ count <> if
       s" aot-capture: owner-WID count changed during freeze" 74 die
@@ -566,7 +578,7 @@ public
 : ACAP-RESET ( -- )
    0 AOT-BLOB-LEN !  0 AOT-REC-N !  0 AOT-SITE-N !  0 AOT-NAMES-LEN !
    0 AOT-EXT-N !  0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
-   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-PWID-N !
+   0 AOT-CSITE-N !  0 AOT-CODE-B0 !  ACAP-PWID-CLEAR
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
 : ACAP-CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    ACAP-RESET
@@ -617,24 +629,29 @@ public
    0 AOT-REC-N !  0 AOT-NAMES-LEN ! ;               \ leave buffers clean for the real capture
 ACAP-WID-SELFTEST
 
-\ --- build-time regression (TFAM 2b-v): a protected-WID registry entry above 255
-\ must round-trip through the u32 AOT serialize/deserialize with no truncation, and
-\ the max-WID (used at boot to advance WIDN past every restored WID) must be exact.
-\ Runs in the live metabuild BEFORE stdin.f's real ACAP-CAPTURE, and clears
-\ AOT-PWID-N so the real (empty) capture is unaffected. Fail-closed via die:
-\ ACAP-PWID-PUT is the exact serialize the capture uses; ACAP-PWID-GET is the exact
-\ u32 read EM-AOT-REGISTER-PROT-WIDS runs at boot, so this guards both directions. ---
+\ --- build-time regression (TFAM 2b-v): the protected-WID bitmap must round-trip a
+\ WID above 255 through the AOT serialize/deserialize with no truncation, must not
+\ answer for a WID it never set, and must report an exact maximum (the boot restore
+\ uses it to advance WIDN past every restored WID). Runs in the live metabuild
+\ BEFORE stdin.f's real ACAP-CAPTURE and clears the buffer afterwards, so the real
+\ capture is unaffected. ACAP-PWID-SET is the exact serialize the capture uses and
+\ ACAP-PWID-BIT? reads the same bits EM-AOT-REGISTER-PROT-WIDS copies at boot, so
+\ this guards both directions. Fail-closed via die. ---
 : ACAP-PWID-SELFTEST ( -- )
-   0 AOT-PWID-N !
-   42   0 ACAP-PWID-PUT                              \ entry 0 = 42
-   1000 1 ACAP-PWID-PUT                              \ entry 1 = 1000  ( > 255 )
-   300  2 ACAP-PWID-PUT                              \ entry 2 = 300   ( > 255 )
-   3 AOT-PWID-N !
-   0 ACAP-PWID-GET 42   <> if s" aot-capture: pwid self-test: entry 0 corrupted" 74 die then
-   1 ACAP-PWID-GET 1000 <> if s" aot-capture: pwid self-test: wid 1000 (>255) truncated" 74 die then
-   2 ACAP-PWID-GET 300  <> if s" aot-capture: pwid self-test: wid 300 (>255) truncated" 74 die then
+   ACAP-PWID-CLEAR
+   42 ACAP-PWID-SET
+   1000 ACAP-PWID-SET                                \ > 255: the truncation this must not do
+   300 ACAP-PWID-SET                                 \ > 255, and in a different byte
+   42 ACAP-PWID-BIT? 0= if s" aot-capture: pwid self-test: wid 42 lost" 74 die then
+   1000 ACAP-PWID-BIT? 0= if s" aot-capture: pwid self-test: wid 1000 (>255) truncated" 74 die then
+   300 ACAP-PWID-BIT? 0= if s" aot-capture: pwid self-test: wid 300 (>255) truncated" 74 die then
+   43 ACAP-PWID-BIT? if s" aot-capture: pwid self-test: neighbour bit set" 74 die then
+   1000 8 - ACAP-PWID-BIT? if s" aot-capture: pwid self-test: wrong byte set" 74 die then
+   PROT-WID-MAX ACAP-PWID-BIT? if s" aot-capture: pwid self-test: bound not refused" 74 die then
+   ACAP-PWID-COUNT 3 <> if s" aot-capture: pwid self-test: population wrong" 74 die then
    ACAP-PWID-MAXWID 1000 <> if s" aot-capture: pwid self-test: max-WID for WIDN advance wrong" 74 die then
-   0 AOT-PWID-N ! ;                                  \ leave clean for the real capture
+   ACAP-PWID-CLEAR
+   0 ACAP-PWID-COUNT <> if s" aot-capture: pwid self-test: clear left bits set" 74 die then ;
 ACAP-PWID-SELFTEST
 
 \ --- build-time regression (dot habu-separate-aot-records): owner freeze rows are
