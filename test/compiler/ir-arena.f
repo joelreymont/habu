@@ -21,7 +21,7 @@ private
 8 constant TSEED                     \ pins the pre-doubling seed capacity
 64 constant TSLOTS                   \ pins the arena registry capacity
 2048 constant TBIG                   \ full-fill ceiling; its doubling chain fits one mapping
-$10000 constant TMAP-BYTES           \ pins the context mapping size
+$20000 constant TMAP-BYTES           \ pins the context mapping size
 
 \ ---- fixtures ----------------------------------------------------------------
 : BND ( -- CBIND:binding )

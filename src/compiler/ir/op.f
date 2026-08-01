@@ -132,13 +132,14 @@
 \
 \ CEILINGS AND THE CONTEXT MAPPING. Capacities are creation parameters bounded
 \ by the ordinal range a row or pool cell can address. The practical limit today
-\ is smaller and belongs to the context: IR-CTX maps 64K per context, so all of a
-\ module's tables together have about eight thousand cells to share, which is a
-\ test-scale module rather than a production one. Enlarging or chunking that
-\ mapping changes the memory profile of every table that shares it, so it is its
-\ own designed capacity decision and its own dot, not a side effect of this
-\ store. Hitting a committed ceiling here is a named error thrown before any
-\ mutation, so a full store stays readable and keeps every identity it issued.
+\ is smaller and belongs to the context: IR-CTX maps 128K per context, so all
+\ of a module's tables together have about sixteen thousand cells to share,
+\ which is a test-scale module rather than a production one. Enlarging or
+\ chunking that mapping changes the memory profile of every table that shares
+\ it, so it is its own designed capacity decision and its own dot, not a side
+\ effect of this store. Hitting a committed ceiling here is a named error
+\ thrown before any mutation, so a full store stays readable and keeps every
+\ identity it issued.
 \
 \ NOTHING PUBLIC MUTATES A FROZEN STORE. Every word here that writes takes an
 \ IR-ARENA:arena builder handle, and the checker rejects an IR-ARENA:view in that

@@ -129,7 +129,7 @@ public
 
 : PIN-VALUE ( n -- n )
    case
-      0 of $10000 endof
+      0 of $20000 endof
       1 of 64 endof
       2 of $7FFFFFFF endof
       3 of 16 endof
@@ -574,6 +574,15 @@ variable DSCN-N
 \ five bytes cost eight and no two spans can overlap. A refused take does not
 \ move the cursor, which is why the used total repeats after each refusal. The
 \ last accepted take fills the mapping exactly to its last byte.
+\
+\ The three large numbers below are the scratch capacity plus one, the capacity
+\ itself, and the capacity less the thirty-two bytes already used. They are the
+\ two refusal guards and the exact fill, in that order: the first is too big for
+\ any cursor, the second fits the capacity but not the cursor it meets, and the
+\ third lands on the last byte of the mapping. Changing IR-CTX:MAP-BYTES moves
+\ all three, the used total after them, and `map_bytes` in
+\ `formal/Common/Storage.v` together - the pinned capacity row above is what
+\ makes forgetting either side fail.
 : SCRATCH-ROW ( -- )
    CSEQ
       COP-SCRATCH 5 8 C-OK
@@ -582,13 +591,13 @@ variable DSCN-N
       COP-USED 0 32 C-OK
       COP-SCRATCH 0 E-IR-CTX-SIZE C-NO
       COP-USED 0 32 C-OK
-      COP-SCRATCH 65409 E-IR-CTX-SCRATCH C-NO
+      COP-SCRATCH 130945 E-IR-CTX-SCRATCH C-NO
       COP-USED 0 32 C-OK
-      COP-SCRATCH 65408 E-IR-CTX-SCRATCH C-NO
+      COP-SCRATCH 130944 E-IR-CTX-SCRATCH C-NO
       COP-USED 0 32 C-OK
-      COP-SCRATCH 65376 65408 C-OK
+      COP-SCRATCH 130912 130944 C-OK
       COP-SCRATCH 1 E-IR-CTX-SCRATCH C-NO
-      COP-USED 0 65408 C-OK
+      COP-USED 0 130944 C-OK
    ROLE-SCRATCH 4 ;CSEQ ;
 
 \ The module budget is reserved against this context's ceiling before the global
