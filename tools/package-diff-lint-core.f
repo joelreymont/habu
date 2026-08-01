@@ -121,6 +121,7 @@ variable DEF-PACKAGED
 variable DEF-TAIL-ADDED
 variable RESULT-N
 variable COUNT-RESULT
+variable RESULT-I
 variable NUM-I
 variable SCAN-START
 variable STEM-START
@@ -912,8 +913,43 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    RESULT-NAME? 0= if false exit then
    DEF-DEFINER-I @ s" ENUM" TOK=CI ;
 
+: RESULT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   RESULT-I @
+   begin dup LEX-I @ <= while
+      dup LINT-LEX:KIND@ LINT-LEX:COMMENT = if
+         1+
+      else
+         dup WORD? 0= if drop false exit then
+         dup a u TOK= if 1+ RESULT-I ! true else drop false then
+         exit
+      then
+   repeat
+   drop false ;
+
+: RESULT-SHAPE? ( -- bool )
+   DEF-DEFINER-I @ RESULT-I !
+   s" ENUM"     RESULT-TOK? 0= if false exit then
+   s" result"   RESULT-TOK? 0= if false exit then
+   s" 2"        RESULT-TOK? 0= if false exit then
+   s" VARIANT"  RESULT-TOK? 0= if false exit then
+   s" ok"       RESULT-TOK? 0= if false exit then
+   s" FIELD"    RESULT-TOK? 0= if false exit then
+   s" value"    RESULT-TOK? 0= if false exit then
+   s" a"        RESULT-TOK? 0= if false exit then
+   s" ;VARIANT" RESULT-TOK? 0= if false exit then
+   s" VARIANT"  RESULT-TOK? 0= if false exit then
+   s" err"      RESULT-TOK? 0= if false exit then
+   s" FIELD"    RESULT-TOK? 0= if false exit then
+   s" error"    RESULT-TOK? 0= if false exit then
+   s" b"        RESULT-TOK? 0= if false exit then
+   s" ;VARIANT" RESULT-TOK? 0= if false exit then
+   s" ;ENUM"    RESULT-TOK? 0= if false exit then
+   RESULT-I @ LEX-I @ 1+ = ;
+
 : RESULT-SURFACE? ( -- bool )
-   RESULT-DECL? RESULT-N @ 1 = and ;
+   RESULT-DECL? 0= if false exit then
+   RESULT-N @ 1 = 0= if false exit then
+   RESULT-SHAPE? ;
 
 : GLOBAL-SURFACE? ( -- bool )
    GLOBAL-IMPLEMENTATION? if true exit then
