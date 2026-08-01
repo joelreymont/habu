@@ -167,6 +167,7 @@ WF-N@ 1 T=  0 WF-OFF@ 50 T=  0 WF-WIDTH@ 2 T=
 \ Tested boundary (TRUSTED): reinterprets an xt as the byte base for the four
 \ c@ loads of one u32 — test-only code introspection, the same class as the
 \ imgdump/jitdump readers; every use sits directly under the golden asserts.
+\ Retirement owner: habu-interpret-wide-gate-1d70acf7.
 TRUSTED: TLP-W32 ( n n -- n )
    + dup c@ over 1 + c@ 8 lshift or over 2 + c@ 16 lshift or swap 3 + c@ 24 lshift or ;
 
@@ -175,6 +176,7 @@ TRUSTED: TLP-W32 ( n n -- n )
 \ correctly fails closed on them. The goldens only READ code bytes, so the xt
 \ comes from the raw-xt introspection boundary (search-wl, wordlist 0) — the
 \ same test-only class as TLP-W32 and the documented unchecked residual.
+\ Retirement owner: habu-interpret-wide-gate-1d70acf7.
 TRUSTED: TLP-XT ( ptr u8 n -- n ) 0 search-wl ;
 
 variable GXT
@@ -295,6 +297,8 @@ GN @ 18 + $F94003FE GG  GN @ 19 + $910043FF GG  GN @ 20 + $D65F03C0 GG
 \ 91 92 93 TLP--MIX:BIG -> (91, 92, 93, tag 1). Only the UNPACKERS remain a
 \ tested TRUSTED boundary: surfacing bundle cells for value asserts needs a
 \ destructor, which is item 9's MATCH (dot habu-retire-tlp-mk2-ac7760d2).
+\ Both raw unpackers retire with habu-retire-tlp-mk2-ac7760d2 when checked
+\ MATCH/destructuring can expose their payload cells.
 \ ---------------------------------------------------------------------------
 : TLP-MK2 ( -- tlp-res<n,n> ) 7 TLP--RES:ERR ;
 : TLP-MK2B ( -- tlp-res<n,n> ) 8 TLP--RES:OK ;

@@ -326,6 +326,8 @@ TFOLD 9 T=
    2dup T-LABEL
    CHECK-QUIET-CANDIDATE! 0 T= ;
 
+\ Direct CHECK! assertion cannot certify its own recursive checker call.
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: T-CHECK-PASSES ( ptr u8 n -- )
    2dup T-LABEL
    CHECK! -1 T= ;
@@ -1479,16 +1481,19 @@ s" CBAD-LOCAL-DEAD ( i64 -- i64 ) exit {: x:i64 :} x" T-CHECK-REJECTS
 \ signature-carrying immediate is now a wrong-certificate reject (p5, dot
 \ habu-checker-fitting-arity-70dc94e4; pinned by test/immediate-model-test.f),
 \ so this whitebox fixture is a TRUSTED: boundary like P5 below.
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: ES-TI ( -- n ) IM5 ;
 ES-TI 5 T=
 \ POSTPONE is compiler-manipulating; this fixture tests the runtime primitive,
 \ not checked user code. TP must compile through P5 while the trusted immediate
 \ boundary is active.
+\ P5 retires with habu-primitive-effect-axiom-1119f176.
 TRUSTED: P5 ( -- i64 ) postpone IM5 ; immediate
 \ TP compiles through the trusted immediate P5 (postpone expands IM5 into TP's
 \ body, so P5's declared effect IS TP's runtime step) - but the checker cannot
 \ verify a compile-time expansion, so TP is a TRUSTED: boundary under the p5
 \ immediate reject like ES-TI above.
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: TP ( -- n ) P5 ;
 TP 5 T=
 

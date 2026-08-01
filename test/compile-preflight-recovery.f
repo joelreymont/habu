@@ -6,11 +6,14 @@ variable CPR-WID
    {: got:n want:n code:n :}
    got want <> if code throw then ;
 
-\ `evaluate` is the metaprogramming boundary under test.
+\ Controlled evaluate-under-catch proves missing preflight returns through the
+\ language exception path. Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: CPR-EVAL ( ptr u8 n -- n )
    [: evaluate ;] catch ;
 
 get-current CPR-WID !
+\ Disabling checking and installing CPR-HOOK are the unchecked-region boundary;
+\ TYPE-FIXES-PLAN item 26 replaces both with NO-TYPE-CHECK.
 0 set-check
 
 : CPR-HOOK ( ptr u8 n -- n )

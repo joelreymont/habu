@@ -35,6 +35,8 @@
 require lib/prelude.f
 require lib/string.f
 
+\ Recursive CHECK-CANDIDATE! plus DIAG-QUIET state cannot certify itself.
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: CHECK-QUIET-CANDIDATE! ( ptr u8 n -- n )
    1 DIAG-QUIET +!
    CHECK-CANDIDATE!

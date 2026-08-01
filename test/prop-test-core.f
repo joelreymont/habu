@@ -20,6 +20,9 @@ require lib/fs.f
 require lib/process.f
 require lib/process-fork.f
 
+\ The fail-closed hook recursively invokes CHECK!; dynamic checker invocation
+\ remains owned by habu-primitive-effect-axiom-1119f176. TYPE-FIXES-PLAN item
+\ 26 replaces its set-check installer with NO-TYPE-CHECK.
 TRUSTED: PROP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> if 70 throw then ;
 TRUSTED: PROP-INSTALL-HOOK ( -- )
@@ -29,12 +32,16 @@ PROP-INSTALL-HOOK
 
 \ ---- measurement: compare stack depth before and after a certified run
 variable BASE  variable MC
+\ Drains an arbitrary residual row while preserving its measured depth.
+\ Retirement owner: habu-typed-depth-introspection-18f0efda.
 TRUSTED: CLEAR-MEAS  ( R n -- n )
    dup MC !  begin MC @ 0 > while  swap drop  MC @ 1- MC !  repeat ;
 variable VERD                     \ last verdict, set by the check hook
 \ Reads the engine's evaluate-error cell by its NAMED layout constant
 \ (EVALERR-CELL, src/habu/layout.f) rather than a hardcoded offset, so a
 \ layout change can't silently point this peek at the wrong cell.
+\ habu-type-isolated-dynamic-244c0e2c retires this direct read by returning a
+\ typed raw dynamic-evaluate outcome.
 TRUSTED: ERR@  ( -- n )
    data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
@@ -176,6 +183,8 @@ variable FC-KIND  variable FC-EXP  variable FC-MEAS
 \ without compiling; accepted candidates are compiled with the hook off after
 \ CHECK! has already certified their effect. Two levels (program + shrink variant)
 \ let shrinking roll back inside a program's own checkpoint.
+\ TYPE-FIXES-PLAN item 35 replaces these raw code, dictionary, and signature
+\ checkpoints with its append-only high-water savepoint vector and rollback.
 variable CPSAVE  variable NDSAVE  variable UESAVE
 variable SCPSV   variable SNDSV   variable SUESV
 variable CHKCPSV variable CHKNDSV variable CHKUESV
@@ -190,18 +199,24 @@ TRUSTED: CHK-FORGET ( -- ) CHKNDSV @ ndict! CHKCPSV @ cp! CHKUESV @ UEND ! UTERM
    0 PBUF-U ! s" depth BASE ! " P+
    0 RJ ! begin RJ @ in-arity < while  s" 7 " P+  RJ @ 1+ RJ ! repeat
    name-ch PC  32 PC  s" depth BASE @ - CLEAR-MEAS" P+ ;
+\ Records CHECK!'s verdict while accepting the candidate. Dynamic checker
+\ invocation belongs to habu-primitive-effect-axiom-1119f176; subsequent
+\ rollback belongs to TYPE-FIXES-PLAN item 35.
 TRUSTED: CHK-HOOK ( ptr u8 n -- n )
    CHECK! dup VERD ! drop -1 ;
 \ Differential boundary: certification already happened via CHECK! in CHK;
 \ the compile stage runs unchecked so the fuzzer measures the candidate's
-\ true runtime arity without re-entering the hook. Queued owner:
-\ habu-seal-set-check-b3676b33 (test set-check behind the friend latch).
+\ true runtime arity without re-entering the hook. TYPE-FIXES-PLAN item 26
+\ replaces the unchecked compile region with NO-TYPE-CHECK; dynamic evaluate
+\ remains owned by habu-primitive-effect-axiom-1119f176.
 TRUSTED: CHK-COMPILE-CERT ( ptr u8 n -- )
    0 set-check
    evaluate
    PROP-INSTALL-HOOK ;
 : CHK-BODY$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
    a 2 + u 4 - ;
+\ Dynamic candidate evaluation belongs to habu-primitive-effect-axiom-1119f176;
+\ exact rollback belongs to TYPE-FIXES-PLAN item 35's savepoint vector.
 TRUSTED: CHK  ( ptr u8 n -- )
    CHK-MARK
    0 VERD !
@@ -212,6 +227,9 @@ TRUSTED: CHK  ( ptr u8 n -- )
       2drop
       CHK-FORGET
    THEN ;
+\ Dynamic measurement records exact residual depth or an evaluate trap.
+\ Dynamic evaluate belongs to habu-primitive-effect-axiom-1119f176; arbitrary
+\ residual-row measurement belongs to habu-typed-depth-introspection-18f0efda.
 TRUSTED: RUN-MEAS  ( n n -- )   \ execute a word and set LAST-MEAS/LAST-TRAP
    0 LAST-TRAP !  RUN1  PBUF PBUF-U @ evaluate
    ERR@ 0 = IF
@@ -301,8 +319,9 @@ variable BSAVE
    ELSE  0 0= 0=  THEN  SFORGET ;
 : STILLCERT? ( -- bool )  SMARK  REBUILD-G  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
 \ Differential boundary: deliberately compiles a checker-REJECTED body to
-\ confirm a false reject - unchecked compile is the point. Queued owner:
-\ habu-seal-set-check-b3676b33 (test set-check behind the friend latch).
+\ confirm a false reject. TYPE-FIXES-PLAN item 26 replaces its unchecked compile
+\ region with NO-TYPE-CHECK; dynamic evaluate remains owned by
+\ habu-primitive-effect-axiom-1119f176.
 TRUSTED: CONFIRM-FR? ( -- bool )   \ compile unchecked, run, and prove the rejected true-sig body matches
    SMARK  0 set-check  PBUF PBUF-U @ evaluate  PROP-INSTALL-HOOK
    ERR@ 0 = IF  71 NIN @ RUN-MEAS
