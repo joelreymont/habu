@@ -541,7 +541,7 @@ variable NB                          \ blocks closed so far; also the open block
 \ and this elaborator has no way to say "unreachable" - it would have to invent a
 \ block with no predecessor and values for its arms to hand on. So `exit` outside
 \ an `if`, or with anything but `then` after it, is E-NELAB-CTRL, and dot
-\ habu-exit-from-anywhere-in-a-body carries the general case.
+\ habu-let-exit-leave-7e013b93 carries the general case.
 variable OUT-N                       \ values the definition leaves
 variable EXIT-USED                   \ whether the body has an `exit` at all
 variable EXIT-ORD                    \ the block every `exit` and the fall-through reach

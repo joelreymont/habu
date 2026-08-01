@@ -355,6 +355,20 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ through. What it no longer refuses is the honest case: mutually exclusive
 \ readers of one order.
 \
+\ THE THIRD CLAUSE IS A BACKSTOP, AND SAYS SO. The first two are reached by
+\ ordinary mistakes and were falsified by making them: a selection pass that
+\ builds an access and forgets to pass its order on fails the first, and one that
+\ hands two accesses of a block the same order fails the second. The third was
+\ not reachable from any mutation of this compiler, because a module with two
+\ readers of one order on one path is refused before it gets here - either by the
+\ freeze verifier's dominance rule, or by the allocator's edge rule, which finds
+\ the order and the block argument it feeds live at the same time. It is written
+\ anyway, and it is not claimed to be tested: the rule this file states is a rule
+\ about the module, and a check that only looks at the shapes its neighbours
+\ happen to catch is not a check of that rule. Removing the two clauses above it
+\ and the allocator's edge rule reaches it. Dot habu-reach-the-mem-05c529af is
+\ the case that would reach it from a module instead.
+\
 \ WHY THIS IS WORTH CHECKING WHEN NOTHING REORDERS YET. A pass that built an
 \ access and forgot to pass its order on leaves a module in which the accesses
 \ after it are not ordered against it - and the instructions would still be

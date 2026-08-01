@@ -4018,3 +4018,44 @@ fits.
   Mutate the compiler, run the gate, revert: that is evidence about the check,
   and it is worth more than a fixture that can only be built by agreeing with the
   thing under test.
+
+## The width of a memory access is a form, not a field
+
+Adding `c@` to the native chain looked like a width attribute on one memory
+opcode. It is two opcodes instead, on both sides of the chain, and the reason
+is what a schema is FOR: every consumer reads the opcode to know what an
+operation does, so a width behind an attribute would make the selector, the
+emitter and any later alias pass read a field before they knew what they were
+looking at - and a number can name a width no encoder exists for. Two forms
+make the closed world do the work: every MATCH has to answer for the byte
+access, and an unencodable width is unwritable.
+
+## A memory order crosses an edge the way every other value does
+
+The order is an SSA value, so a loop body that loads reaches its order as a
+BLOCK ARGUMENT, handed over by the branch with the rest of the live values.
+Two things had to change with it, and both were the honest change rather than
+the small one.
+
+The first: a terminator's operands ARE its successor's block arguments, so the
+successor declares their types and the opcode's schema cannot. The verifier
+already checked them against the destination position by position, so the
+schema's tail type simply stopped being consulted for a single-successor
+terminator - which is what let one branch carry both cells and an order.
+
+The second: "every order is consumed exactly once" counted over the whole
+function is only right for a routine of one block. A two-way branch hands its
+successors nothing, so both of them read the order the block above them left,
+and a loop's latch and its exit both read the order the body left. Those are
+mutually exclusive readers, not a fork of memory. The rule is per path: read at
+least once, never twice in one block, and no two readers on a common path that
+does not redefine it.
+
+## A dialect that grows can outgrow a context mapping
+
+Two more opcodes tipped a geometrically grown table over its next doubling and
+took one machine module from seventeen kilobytes of a context to twenty-seven.
+The spill lowering holds two modules of that dialect in one context, so 64K
+stopped being enough - and that is a real pass, not a fixture. The mapping is
+what gives; the giveaway that it was a capacity and not a bug was that the
+failure was E-IR-CTX-SCRATCH in a fixture that had not changed.
