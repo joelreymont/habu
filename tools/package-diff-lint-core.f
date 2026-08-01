@@ -1005,8 +1005,20 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    then
    false DEF-OPEN ! ;
 
+: NAME-AFTER ( n -- n )
+   1+
+   begin dup LINT-LEX:COUNT < while
+      dup LINT-LEX:KIND@ LINT-LEX:COMMENT = if
+         1+
+      else
+         dup WORD? if exit then
+         drop E-DIFF-SYNTAX throw
+      then
+   repeat
+   drop E-DIFF-SYNTAX throw ;
+
 : START-DEFINITION ( n n -- ) {: k:n kind:n :}
-   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
+   k NAME-AFTER {: namei:n :}
    kind DEF-KIND !
    k DEF-DEFINER-I !
    namei DEF-NAME-I !
@@ -1109,7 +1121,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    false ;
 
 : OLD-START-DEFINITION ( n n -- ) {: k:n kind:n :}
-   k 1+ dup WORD? 0= if drop E-DIFF-SYNTAX throw then {: namei:n :}
+   k NAME-AFTER {: namei:n :}
    kind DATA-DEFINITION = if
       namei 1+ LEX-I ! exit
    then

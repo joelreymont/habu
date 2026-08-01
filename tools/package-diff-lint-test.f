@@ -586,6 +586,26 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
    1 TEST-EXPECT-FINDINGS ;
 
+: TEST-RESULT-CLEAN ( ptr u8 n -- )
+   T-LABEL
+   TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
+   TEST-EXPECT-CLEAN ;
+
+: TEST-RESULT-COMMENTS ( -- )
+   TEST-SOURCE-RESET
+   s" ENUM ( inert ) result 2" TEST-SOURCE-LINE
+   s"   VARIANT ok  FIELD value a ;VARIANT" TEST-SOURCE-LINE
+   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
+   s" ;ENUM" TEST-SOURCE-LINE
+   s" RESULT accepts an inert comment before its name" TEST-RESULT-CLEAN
+
+   TEST-SOURCE-RESET
+   s" ENUM ( 1 ) result ( 2 ) 2" TEST-SOURCE-LINE
+   s" ( 3 ) VARIANT ( 4 ) ok ( 5 ) FIELD ( 6 ) value ( 7 ) a ( 8 ) ;VARIANT" TEST-SOURCE-LINE
+   s" ( 9 ) VARIANT ( 10 ) err ( 11 ) FIELD ( 12 ) error ( 13 ) b ( 14 ) ;VARIANT" TEST-SOURCE-LINE
+   s" ( 15 ) ;ENUM" TEST-SOURCE-LINE
+   s" RESULT accepts comments at every schema gap" TEST-RESULT-CLEAN ;
+
 : TEST-RESULT-IMPOSTORS ( -- )
    TEST-SOURCE-RESET
    s" ENUM result 1" TEST-SOURCE-LINE
@@ -703,6 +723,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 
 : TEST-RESULT-GLOBAL ( -- )
    TEST-RESULT-WRAPPED
+   TEST-RESULT-COMMENTS
    TEST-RESULT-IMPOSTORS
    TEST-SOURCE-RESET
    TEST-RESULT-LEGACY+
