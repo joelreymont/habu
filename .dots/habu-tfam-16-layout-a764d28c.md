@@ -327,10 +327,10 @@ linear/destructor system. Global pointer state uses the json-write ptr-field
 idiom (variable + `X 0 ptr-field`). Unit-tested directly in `lib/layout/box-test.f`
 (zero-init, tag/payload round-trip, distinct/independent storage, chunk-boundary
 growth survival, arena reset) — no boxed SUMTYPE declaration involved. Placed in
-the `lib/layout/` SUBDIR so it is internal boxed-policy runtime, correctly exempt
-from the published-stdlib manifest coverage walk (which only requires module rows
-for flat `lib/*.f`), like `lib/ptx/`. Registered in FILEMAP + the stdlib gate
-(tail-pure-fixtures suite). No engine/prim change → lighter gate (no byte-fixpoint
+the `lib/layout/` SUBDIR because it is internal boxed-policy runtime, like
+`lib/ptx/`; its source and real consumers define its operational surface.
+Registered in FILEMAP + the stdlib gate (tail-pure-fixtures suite). No
+engine/prim change → lighter gate (no byte-fixpoint
 from this change; bin/hb refreshed only because fable's engine moved under the
 lane). Remaining boxed sub-slices 3-6 (heap-alloc/ctor codegen, MATCH deref,
 self-ref grammar, accept-flip, mutual recursion) unchanged.

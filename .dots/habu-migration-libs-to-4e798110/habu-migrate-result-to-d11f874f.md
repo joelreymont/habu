@@ -34,7 +34,7 @@ Dependency: `habu-libs-migrate-option-510a7e40` lands first because both leaves
 edit the exact-path global-family lint. Exact files: `lib/adt/result.f`,
 `lib/adt/result-test.f`, `docs/forth.md`, `tools/package-diff-lint-core.f`,
 `tools/package-diff-lint-test.f`, and `FILEMAP.md`. Do not edit consumers,
-`lib/std.manifest`, enum census, gate schedule, or suite-coverage table.
+enum census, gate schedule, or suite-coverage table.
 Acceptance: focused `adt-result` production suite, typed-local and package
 exact-diff lints, file-map lint, exact 174-file unchanged census, exact public
 wordlist enumeration, and scratch mutation kills for arm order, field names,

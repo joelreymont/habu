@@ -20,13 +20,13 @@ private
 public
 600000 constant TIMEOUT-MS
 private
-41 constant TR-PHASES
+40 constant TR-PHASES
 32 constant TR-NUM-CAP
 $100 constant TR-HOST-CAP
 $82 constant TR-UNDER-STAMP-U
 public
 $2 constant CANDIDATE-HOST-PHASES
-$1B constant EARLY-HOST-PHASES
+$1A constant EARLY-HOST-PHASES
 $3 constant LATE-PHASES
 private
 9 constant TR-UNDER-PREFIX-U
@@ -76,14 +76,13 @@ create TR-CANDIDATE-HOST-ORDER
 $9 , $E ,
 
 create TR-LATE-ORDER
-$3 , $15 , $10 ,
+$3 , $14 , $10 ,
 
 create TR-EARLY-HOST-ORDER
-$8 , $7 , $25 , $26 , $27 , $28 , $17 , $16 ,
-$1B , $C , $11 , $24 , $1F , $23 , $B , $A ,
-$20 , $22 ,
-$5 , $2 , $1C , $1D , $1A , $21 , $D , $19 ,
-$12 ,
+$8 , $7 , $24 , $25 , $26 , $27 , $16 , $15 ,
+$1A , $C , $11 , $23 , $1E , $22 , $B , $A ,
+$1F , $21 ,
+$5 , $2 , $1B , $1C , $19 , $20 , $D , $18 ,
 
 create TR-BUILD-CACHE-BUF FS-PATH-CAP allot
 create TR-PATH-BUF FS-PATH-CAP allot
@@ -912,12 +911,6 @@ private
 : TR-STDLIB-LINT-TOOLS-ARGS ( -- )
    s" lint-tools" TR-STDLIB-SLICE-ARGS ;
 
-: TR-STDLIB-LINT-MANIFEST-ARGS ( -- )
-   s" tools/lint/text.f"  >LEN PROC-ARGV+
-   s" tools/lint/token.f"  >LEN PROC-ARGV+
-   s" tools/lint/lib.f"  >LEN PROC-ARGV+
-   s" tools/stdlib-manifest-test.f"  >LEN PROC-ARGV+ ;
-
 : TR-STDLIB-LINT-ARTIFACTS-ARGS ( -- )
    s" lint-artifacts" TR-STDLIB-SLICE-ARGS ;
 
@@ -1032,29 +1025,28 @@ public
       15 of s" native engine build slice" endof
       16 of s" native engine runtime slice" endof
       17 of s" native stdlib lint tools slice" endof
-      18 of s" native stdlib lint manifest slice" endof
-      19 of s" native stdlib lint artifacts slice" endof
-      20 of s" native stdlib lint libs slice" endof
-      21 of s" native engine candidate validation slice" endof
-      22 of s" GROUP: stdlib/tool-repair [parallel]" endof
-      23 of s" GROUP: stdlib/tool-doc [parallel]" endof
-      24 of s" GROUP: stdlib/tool-lints [parallel]" endof
-      25 of s" GROUP: stdlib/tool-typed-local [parallel]" endof
-      26 of s" GROUP: stdlib/tail-fast [inprocess]" endof
-      27 of s" GROUP: stdlib/tail-pure [inprocess]" endof
-      28 of s" GROUP: stdlib/tail-runner [inprocess]" endof
-      29 of s" GROUP: stdlib/tail-build [inprocess]" endof
-      30 of s" unused retired phase 30" endof
-      31 of s" GROUP: stdlib/lint-libs/core [inprocess]" endof
-      32 of s" GROUP: stdlib/lint-libs/ptx [inprocess]" endof
-      33 of s" GROUP: stdlib/lint-libs/ptx-neg [inprocess]" endof
-      34 of s" GROUP: stdlib/lint-libs/ptx-toolchain [inprocess]" endof
-      35 of s" GROUP: stdlib/lint-artifacts/fast [inprocess]" endof
-      36 of s" GROUP: stdlib/tail-process [inprocess]" endof
-      37 of s" GROUP: stdlib/tool-lint/repl [parallel]" endof
-      38 of s" GROUP: stdlib/tool-lint/aot-signature [parallel]" endof
-      39 of s" GROUP: stdlib/tool-lint/names [parallel]" endof
-      40 of s" GROUP: stdlib/tool-lint/bundle-json [parallel]" endof
+      18 of s" native stdlib lint artifacts slice" endof
+      19 of s" native stdlib lint libs slice" endof
+      20 of s" native engine candidate validation slice" endof
+      21 of s" GROUP: stdlib/tool-repair [parallel]" endof
+      22 of s" GROUP: stdlib/tool-doc [parallel]" endof
+      23 of s" GROUP: stdlib/tool-lints [parallel]" endof
+      24 of s" GROUP: stdlib/tool-typed-local [parallel]" endof
+      25 of s" GROUP: stdlib/tail-fast [inprocess]" endof
+      26 of s" GROUP: stdlib/tail-pure [inprocess]" endof
+      27 of s" GROUP: stdlib/tail-runner [inprocess]" endof
+      28 of s" GROUP: stdlib/tail-build [inprocess]" endof
+      29 of s" unused retired phase 29" endof
+      30 of s" GROUP: stdlib/lint-libs/core [inprocess]" endof
+      31 of s" GROUP: stdlib/lint-libs/ptx [inprocess]" endof
+      32 of s" GROUP: stdlib/lint-libs/ptx-neg [inprocess]" endof
+      33 of s" GROUP: stdlib/lint-libs/ptx-toolchain [inprocess]" endof
+      34 of s" GROUP: stdlib/lint-artifacts/fast [inprocess]" endof
+      35 of s" GROUP: stdlib/tail-process [inprocess]" endof
+      36 of s" GROUP: stdlib/tool-lint/repl [parallel]" endof
+      37 of s" GROUP: stdlib/tool-lint/aot-signature [parallel]" endof
+      38 of s" GROUP: stdlib/tool-lint/names [parallel]" endof
+      39 of s" GROUP: stdlib/tool-lint/bundle-json [parallel]" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1079,29 +1071,28 @@ private
       15 of s" gate-engine-build" endof
       16 of s" gate-engine-runtime" endof
       17 of s" gate-stdlib-lint-tools" endof
-      18 of s" gate-stdlib-lint-manifest" endof
-      19 of s" gate-stdlib-lint-artifacts" endof
-      20 of s" gate-stdlib-lint-libs" endof
-      21 of s" gate-engine-validate" endof
-      22 of s" gate-stdlib-tool-repair" endof
-      23 of s" gate-stdlib-tool-doc" endof
-      24 of s" gate-stdlib-tool-lints" endof
-      25 of s" gate-stdlib-tool-typed" endof
-      26 of s" gate-stdlib-tail-fast" endof
-      27 of s" gate-stdlib-tail-pure" endof
-      28 of s" gate-stdlib-tail-runner" endof
-      29 of s" gate-stdlib-tail-build" endof
-      30 of s" gate-unused-30" endof
-      31 of s" gate-stdlib-lint-libs-core" endof
-      32 of s" gate-stdlib-lint-libs-ptx" endof
-      33 of s" gate-stdlib-lint-libs-ptx-neg" endof
-      34 of s" gate-stdlib-lint-libs-ptx-tool" endof
-      35 of s" gate-stdlib-lint-artifacts-fast" endof
-      36 of s" gate-stdlib-tail-process" endof
-      37 of s" gate-stdlib-tool-lint-repl" endof
-      38 of s" gate-stdlib-tool-lint-aot" endof
-      39 of s" gate-stdlib-tool-lint-names" endof
-      40 of s" gate-stdlib-tool-lint-bundle" endof
+      18 of s" gate-stdlib-lint-artifacts" endof
+      19 of s" gate-stdlib-lint-libs" endof
+      20 of s" gate-engine-validate" endof
+      21 of s" gate-stdlib-tool-repair" endof
+      22 of s" gate-stdlib-tool-doc" endof
+      23 of s" gate-stdlib-tool-lints" endof
+      24 of s" gate-stdlib-tool-typed" endof
+      25 of s" gate-stdlib-tail-fast" endof
+      26 of s" gate-stdlib-tail-pure" endof
+      27 of s" gate-stdlib-tail-runner" endof
+      28 of s" gate-stdlib-tail-build" endof
+      29 of s" gate-unused-29" endof
+      30 of s" gate-stdlib-lint-libs-core" endof
+      31 of s" gate-stdlib-lint-libs-ptx" endof
+      32 of s" gate-stdlib-lint-libs-ptx-neg" endof
+      33 of s" gate-stdlib-lint-libs-ptx-tool" endof
+      34 of s" gate-stdlib-lint-artifacts-fast" endof
+      35 of s" gate-stdlib-tail-process" endof
+      36 of s" gate-stdlib-tool-lint-repl" endof
+      37 of s" gate-stdlib-tool-lint-aot" endof
+      38 of s" gate-stdlib-tool-lint-names" endof
+      39 of s" gate-stdlib-tool-lint-bundle" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1125,29 +1116,28 @@ private
       15 of TR-ENGINE-BUILD-ARGS endof
       16 of TR-ENGINE-RUNTIME-ARGS endof
       17 of TR-STDLIB-LINT-TOOLS-ARGS endof
-      18 of TR-STDLIB-LINT-MANIFEST-ARGS endof
-      19 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
-      20 of TR-STDLIB-LINT-LIBS-ARGS endof
-      21 of TR-ENGINE-VALIDATE-ARGS endof
+      18 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
+      19 of TR-STDLIB-LINT-LIBS-ARGS endof
+      20 of TR-ENGINE-VALIDATE-ARGS endof
+      21 of TR-STDLIB-TOOL-ARGS endof
       22 of TR-STDLIB-TOOL-ARGS endof
       23 of TR-STDLIB-TOOL-ARGS endof
       24 of TR-STDLIB-TOOL-ARGS endof
-      25 of TR-STDLIB-TOOL-ARGS endof
+      25 of TR-STDLIB-TAIL-ARGS endof
       26 of TR-STDLIB-TAIL-ARGS endof
       27 of TR-STDLIB-TAIL-ARGS endof
       28 of TR-STDLIB-TAIL-ARGS endof
-      29 of TR-STDLIB-TAIL-ARGS endof
-      30 of TR-UNSCHEDULED-PHASE endof
+      29 of TR-UNSCHEDULED-PHASE endof
+      30 of TR-STDLIB-LINT-LIBS-ARGS endof
       31 of TR-STDLIB-LINT-LIBS-ARGS endof
       32 of TR-STDLIB-LINT-LIBS-ARGS endof
       33 of TR-STDLIB-LINT-LIBS-ARGS endof
-      34 of TR-STDLIB-LINT-LIBS-ARGS endof
-      35 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
-      36 of TR-STDLIB-TAIL-ARGS endof
+      34 of TR-STDLIB-LINT-ARTIFACTS-ARGS endof
+      35 of TR-STDLIB-TAIL-ARGS endof
+      36 of TR-STDLIB-TOOL-ARGS endof
       37 of TR-STDLIB-TOOL-ARGS endof
       38 of TR-STDLIB-TOOL-ARGS endof
       39 of TR-STDLIB-TOOL-ARGS endof
-      40 of TR-STDLIB-TOOL-ARGS endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1168,29 +1158,28 @@ private
       14 of s" dictionary" endof
       16 of s" runtime" endof
       17 of s" lint-tools" endof
-      18 of s" lint-manifest" endof
-      19 of s" lint-artifacts" endof
-      20 of s" lint-libs" endof
-      21 of s" validate" endof
-      22 of s" tool-repair" endof
-      23 of s" tool-doc" endof
-      24 of s" tool-lints" endof
-      25 of s" tool-typed" endof
-      26 of s" tail-fast" endof
-      27 of s" tail-pure" endof
-      28 of s" tail-runner" endof
-      29 of s" tail-build" endof
-      30 of TR-UNSCHEDULED-PHASE endof
-      31 of s" lint-libs-core" endof
-      32 of s" lint-libs-ptx" endof
-      33 of s" lint-libs-ptx-neg" endof
-      34 of s" lint-libs-ptx-tool" endof
-      35 of s" lint-artifacts-fast" endof
-      36 of s" tail-process" endof
-      37 of s" tool-lint-repl" endof
-      38 of s" tool-lint-aot" endof
-      39 of s" tool-lint-names" endof
-      40 of s" tool-lint-bundle" endof
+      18 of s" lint-artifacts" endof
+      19 of s" lint-libs" endof
+      20 of s" validate" endof
+      21 of s" tool-repair" endof
+      22 of s" tool-doc" endof
+      23 of s" tool-lints" endof
+      24 of s" tool-typed" endof
+      25 of s" tail-fast" endof
+      26 of s" tail-pure" endof
+      27 of s" tail-runner" endof
+      28 of s" tail-build" endof
+      29 of TR-UNSCHEDULED-PHASE endof
+      30 of s" lint-libs-core" endof
+      31 of s" lint-libs-ptx" endof
+      32 of s" lint-libs-ptx-neg" endof
+      33 of s" lint-libs-ptx-tool" endof
+      34 of s" lint-artifacts-fast" endof
+      35 of s" tail-process" endof
+      36 of s" tool-lint-repl" endof
+      37 of s" tool-lint-aot" endof
+      38 of s" tool-lint-names" endof
+      39 of s" tool-lint-bundle" endof
       E-TBL-BOUNDS throw
    endcase ;
 
@@ -1206,7 +1195,7 @@ private
       17 of TR-TRUE endof
       18 of TR-TRUE endof
       19 of TR-TRUE endof
-      20 of TR-TRUE endof
+      21 of TR-TRUE endof
       22 of TR-TRUE endof
       23 of TR-TRUE endof
       24 of TR-TRUE endof
@@ -1214,7 +1203,7 @@ private
       26 of TR-TRUE endof
       27 of TR-TRUE endof
       28 of TR-TRUE endof
-      29 of TR-TRUE endof
+      30 of TR-TRUE endof
       31 of TR-TRUE endof
       32 of TR-TRUE endof
       33 of TR-TRUE endof
@@ -1224,7 +1213,6 @@ private
       37 of TR-TRUE endof
       38 of TR-TRUE endof
       39 of TR-TRUE endof
-      40 of TR-TRUE endof
       TR-FALSE swap
    endcase ;
 
@@ -1262,7 +1250,7 @@ public
       3 of TR-TRUE endof
       14 of TR-TRUE endof
       16 of TR-TRUE endof
-      21 of TR-TRUE endof
+      20 of TR-TRUE endof
       TR-FALSE swap
    endcase ;
 
@@ -1292,8 +1280,8 @@ public
       1 of TR-FALSE endof
       4 of TR-FALSE endof
       15 of TR-FALSE endof
+      18 of TR-FALSE endof
       19 of TR-FALSE endof
-      20 of TR-FALSE endof
       TR-TRUE swap
    endcase ;
 
@@ -1307,7 +1295,7 @@ public
       3 of s" candidate-cli" endof
       16 of s" candidate-cli" endof
       14 of s" candidate-source" endof
-      21 of s" candidate-source" endof
+      20 of s" candidate-source" endof
       s" host-source" rot
    endcase ;
 
@@ -1529,8 +1517,8 @@ public
       13 of TR-PRE-DIAG-FILE @ 0 <> endof
       14 of TR-PRE-DICT @ 0 <> endof
       16 of TR-PRE-RUNTIME @ 0 <> endof
-      19 of TR-PRE-ARTIFACTS @ 0 <> endof
-      21 of TR-PRE-VALIDATE @ 0 <> endof
+      18 of TR-PRE-ARTIFACTS @ 0 <> endof
+      20 of TR-PRE-VALIDATE @ 0 <> endof
       TR-FALSE swap
    endcase ;
 
@@ -1543,8 +1531,8 @@ public
       12 of -1 TR-PRE-DIAG-GROUP ! -1 TR-PRE-DIAG-REPAIR ! -1 TR-PRE-DIAG-UNDEF ! -1 TR-PRE-DIAG-FILE ! endof
       14 of -1 TR-PRE-DICT ! endof
       16 of -1 TR-PRE-RUNTIME ! endof
-      19 of -1 TR-PRE-ARTIFACTS ! endof
-      21 of -1 TR-PRE-VALIDATE ! endof
+      18 of -1 TR-PRE-ARTIFACTS ! endof
+      20 of -1 TR-PRE-VALIDATE ! endof
    endcase ;
 
 private

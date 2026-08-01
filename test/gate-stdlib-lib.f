@@ -19,7 +19,6 @@ package STDLIB-GATE
 6 constant SUITE-LINT-TOOLS-ID
 7 constant SUITE-LINT-LIBS-ID
 8 constant SUITE-LINT-ARTIFACTS-ID
-9 constant SUITE-LINT-MANIFEST-ID
 
 variable SUITE-SLICE
 variable SUITE-SKIP-TOOL-LINTS
@@ -37,7 +36,7 @@ variable SUITE-TIMINGS
    0 0= 0= ;
 
 : SUITE-USAGE ( -- )
-   s" usage: test/gate-stdlib.f [lint|lint-tools|lint-manifest|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N] [--timings]" SUITE-USAGE-RC die ;
+   s" usage: test/gate-stdlib.f [lint|lint-tools|lint-artifacts|lint-libs|tool|check-cli|tail] [--pool-slots N] [--timings]" SUITE-USAGE-RC die ;
 
 : SUITE-ARG$ ( -- ptr u8 n )
    SUITE-ARG-I @ SCRIPT-ARGV$ ;
@@ -92,7 +91,6 @@ private
 : SUITE-SLICE-ARG? ( -- bool )
    SUITE-ARG$ s" lint" STR= if SUITE-LINT-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" lint-tools" STR= if SUITE-LINT-TOOLS-ID SUITE-SLICE! SUITE-TRUE exit then
-   SUITE-ARG$ s" lint-manifest" STR= if SUITE-LINT-MANIFEST-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" lint-artifacts" STR= if SUITE-LINT-ARTIFACTS-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" lint-libs" STR= if SUITE-LINT-LIBS-ID SUITE-SLICE! SUITE-TRUE exit then
    SUITE-ARG$ s" tool" STR= if SUITE-TOOL-ID SUITE-SLICE! SUITE-TRUE exit then
@@ -211,9 +209,6 @@ private
    s" imagedisasm-tool" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
-: SUITE-LINT-MANIFEST-LABEL? ( -- bool )
-   s" stdlib-manifest" SUITE-LABEL= ;
-
 : SUITE-LINT-LIBS-LABEL? ( -- bool )
    s" string-helpers" SUITE-LABEL= if SUITE-TRUE exit then
    s" utf8-scalar" SUITE-LABEL= if SUITE-TRUE exit then
@@ -239,12 +234,10 @@ private
    SUITE-SLICE @ case
       SUITE-LINT-ID of
          SUITE-LINT-TOOLS-LABEL? if SUITE-TRUE exit then
-         SUITE-LINT-MANIFEST-LABEL? if SUITE-TRUE exit then
          SUITE-LINT-ARTIFACTS-LABEL? if SUITE-TRUE exit then
          SUITE-LINT-LIBS-LABEL?
       endof
       SUITE-LINT-TOOLS-ID of SUITE-LINT-TOOLS-LABEL? endof
-      SUITE-LINT-MANIFEST-ID of SUITE-LINT-MANIFEST-LABEL? endof
       SUITE-LINT-ARTIFACTS-ID of SUITE-LINT-ARTIFACTS-LABEL? endof
       SUITE-LINT-LIBS-ID of SUITE-LINT-LIBS-LABEL? endof
       SUITE-FALSE swap

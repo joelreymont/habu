@@ -39,8 +39,8 @@ Exact files: `lib/adt/option.f`, `lib/adt/option-test.f`, `docs/forth.md`,
 The new test file raises the enum census's walked-file count from 1,266 to
 1,267, so the exact write set also includes `tools/enum-census-core.f` solely
 for that ratchet. Its declaration baseline stays unchanged at 111 plain and 88
-full sites. Do not edit `lib/std.manifest`, the enum-census baseline, RESULT, or
-any consumer. Acceptance: focused OPTION suite, exact owning standard-library
+full sites. Do not edit the enum-census baseline, RESULT, or any consumer.
+Acceptance: focused OPTION suite, exact owning standard-library
 suite including enum census, typed-local and package exact-diff lints,
 suite-coverage and file-map lints, an exact census proving 1,267 walked files
 with 111 plain and 88 full sites, an exact census proving 124 unchanged

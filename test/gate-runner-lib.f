@@ -27,30 +27,29 @@ package GATE-RUNNER
 15 constant ID-CHECK-CLI
 16 constant ID-TAIL
 17 constant ID-LINT-TOOLS
-18 constant ID-LINT-MANIFEST
-19 constant ID-LINT-ARTIFACTS
-20 constant ID-LINT-LIBS
-21 constant ID-REPAIR
-22 constant ID-FIXTURES
-23 constant ID-RUNTIME
-24 constant ID-VALIDATE
-25 constant ID-DIAG-REPAIR
-26 constant ID-DIAG-UNDEF-PRIMARY
-27 constant ID-DIAG-ALL-STRICT
-28 constant ID-DIAG-FILE-UNSAFE
-29 constant ID-DICTIONARY
-30 constant ID-DEBUG
-31 constant ID-TAIL-FAST
-32 constant ID-TAIL-PURE
-33 constant ID-TAIL-RUNNER
-34 constant ID-TAIL-BUILD
-36 constant ID-LINT-LIBS-CORE
-37 constant ID-LINT-LIBS-PTX
-38 constant ID-LINT-LIBS-PTX-NEG
-39 constant ID-LINT-LIBS-PTX-TOOL
-40 constant ID-LINT-ARTIFACTS-FAST
-41 constant ID-TAIL-PROCESS
-42 constant ID-DIAG-LABEL-COPY
+18 constant ID-LINT-ARTIFACTS
+19 constant ID-LINT-LIBS
+20 constant ID-REPAIR
+21 constant ID-FIXTURES
+22 constant ID-RUNTIME
+23 constant ID-VALIDATE
+24 constant ID-DIAG-REPAIR
+25 constant ID-DIAG-UNDEF-PRIMARY
+26 constant ID-DIAG-ALL-STRICT
+27 constant ID-DIAG-FILE-UNSAFE
+28 constant ID-DICTIONARY
+29 constant ID-DEBUG
+30 constant ID-TAIL-FAST
+31 constant ID-TAIL-PURE
+32 constant ID-TAIL-RUNNER
+33 constant ID-TAIL-BUILD
+35 constant ID-LINT-LIBS-CORE
+36 constant ID-LINT-LIBS-PTX
+37 constant ID-LINT-LIBS-PTX-NEG
+38 constant ID-LINT-LIBS-PTX-TOOL
+39 constant ID-LINT-ARTIFACTS-FAST
+40 constant ID-TAIL-PROCESS
+41 constant ID-DIAG-LABEL-COPY
 variable START-NS
 variable ARG-I
 
@@ -122,7 +121,6 @@ variable ARG-I
    s" check-cli" ARG0= if ID-CHECK-CLI exit then
    s" tail" ARG0= if ID-TAIL exit then
    s" lint-tools" ARG0= if ID-LINT-TOOLS exit then
-   s" lint-manifest" ARG0= if ID-LINT-MANIFEST exit then
    s" lint-artifacts" ARG0= if ID-LINT-ARTIFACTS exit then
    s" lint-libs" ARG0= if ID-LINT-LIBS exit then
    s" repair" ARG0= if ID-REPAIR exit then
@@ -175,7 +173,6 @@ variable ARG-I
       ID-CHECK-CLI of CHECK-CLI-GATE:RUN endof
       ID-TAIL of STDLIB endof
       ID-LINT-TOOLS of GSI-LINT-TOOLS endof
-      ID-LINT-MANIFEST of GSI-LINT-MANIFEST endof
       ID-LINT-ARTIFACTS of STDLIB endof
       ID-LINT-LIBS of STDLIB endof
       ID-LINT-LIBS-CORE of GSI-LINT-LIBS-CORE endof
@@ -245,7 +242,6 @@ variable ARG-I
       ID-TOOL-SEMANTICS of 0 0= endof
       ID-CHECK-CLI of 0 0= endof
       ID-LINT-TOOLS of 0 0= endof
-      ID-LINT-MANIFEST of 0 0= endof
       ID-LINT-LIBS-CORE of 0 0= endof
       ID-LINT-LIBS-PTX of 0 0= endof
       ID-LINT-LIBS-PTX-NEG of 0 0= endof

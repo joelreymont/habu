@@ -662,10 +662,8 @@ fits.
   cap in one pass when a named file trips one; route lint CLIs through `LINT-MAIN` (catch,
   print `tool: threw <code> (<name>)`, re-throw); the shared `LINT-READ-DIE` prints the
   offending path; never read `$?` after a pipeline.
-- **`stdlib-manifest-test` counts every distinct flat library file in the public-signature
-  closure, not only manifest module rows.** A new shared dependency can therefore trip
-  `SMT-LIB-MAX` even when the number of modules stays below the old limit; size that loud
-  wall from the complete flat `lib/*.f` corpus and keep the capacity failure.
+- **Source and real consumers are authority.** Hand-maintained ledgers without a
+  production consumer drift and must not gate changes.
 - **A capacity exit must ATTRIBUTE itself everywhere — a lone token byte or a bare rc
   is unattributable.** Engine dict-full = `hb: dictionary full at: <token>` (77), code
   space (76), and each store labels its own die. Distinguish the two engine arms:
@@ -702,18 +700,6 @@ fits.
   MAIN-CHECKOUT-ONLY latent red workers never see (their trees contain no `.jj-ws`). Fixed
   at the root (`lib/fs.f` skip list); add new conventional untracked dirs there when
   introduced.
-- **Stdlib files need their source file and a `lib/std.manifest` row, plus
-  `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
-  `tools/public-signatures.f` output EXACTLY (`TRUSTED:`/constants get no row; effect must
-  sit immediately after the word name, before `{: :}` locals, or it is invisible). Keep an
-  unavoidable trusted seam private behind an ordinary checked public wrapper so the general
-  signature drift gate owns the public manifest row and `TRUSTED.md` owns only the raw seam.
-  Miss the manifest and the direct manifest gate fails. The lint-manifest
-  slice is the OWNING gate a new-lib lane must run (host/trust/coverage do NOT cover
-  it). `lib/` subdirs (`lib/ptx/`) are research sub-libraries: gate `SMT-COLLECT-LIB-FILE`
-  on `SMT-LIB-FILE?` (flat `lib/<module>.f` only) so coverage tracks flat modules; nested
-  dirs stay trust-audited + `-test.f` + gate-covered but out of the curated manifest
-  (mirrors top-level `maki/`).
 - **Stdlib leaves hide missing requires for months — bare-load them to prove it.** A
   module consuming another's words with no `require` line is masked by gate load order and
   surfaces only as a consumer "workaround" require. Proof and regression are the same
@@ -732,16 +718,6 @@ fits.
   by dropping the require: emit `s" lib/<mod>.f" provided` for every bundled module
   before its source (`BL-EMIT-PROVIDED-ALL`), mirroring how the native engine marks
   baked prefix files provided so a later `require` short-circuits.
-- **Packaging a stdlib module for the manifest: put the public API in a `public`
-  SECTION, not `EXPORT`-from-private.** `tools/public-signatures.f` `PS-PUBLIC?` checks
-  `PS-IN-PKG` BEFORE `PS-EXPORTED?`, so a word defined in a package's `private` section
-  and later `EXPORT`ed emits NO manifest row (the code still runs and resolves as
-  `PKG:WORD`, but the stdlib-manifest gate never sees it). When definition order forbids
-  one trailing public section (a public accessor is used by an earlier private word,
-  e.g. `JR:SPAN$` used by `JR-READ-NUMBER`), use several `public`/`private` toggles so
-  each public word is declared in a `public` section at its natural position. Constants
-  get no manifest row even when public, so exported token-kind constants
-  (`JR:T-OBJ` ..) never appear in `lib/std.manifest`.
 - **Repo-scale source lints must STREAM, not vectorize.** Building a per-token vector costs 8
   `VEC-PUSH`es/token plus growth copies, so `LINT-LEX:SOURCE` took 9.2s on one file and a 141k fill
   63.9s; `lib/vector.f` element access is itself constant-time (`VEC-CELL-FIELD` is
@@ -936,21 +912,9 @@ fits.
   expected SEAL-PACKAGE 84); close the package and call `PKG:RUN` from top level
   (the json-read-test arrangement).
 
-- **A new file / TRUSTED word / candidate case each trips a specific manifest the
-  focused suite never shows — only `test/run.f` does.** (1) A **flat `lib/*.f`**
-  must have a `lib/std.manifest` module row (`stdlib-manifest-test`: "missing
-  module row"); a **subdir** `lib/<sub>/*.f` is outside the flat-stdlib walk
-  (`SMT-FLAT-LIB-FILE?` = exactly one `/`), so type-surface libs like extents and
-  value nominals live in a subdir (`lib/type/…`) to avoid the word-row/doc/drift
-  contract, matching maki/ precedent. (2) A new **`TRUSTED:`** word needs BOTH a
-  `TRUSTED.md` markdown table row (`trust-lint`: "UNMANIFESTED … no TRUSTED.md
-  row") AND a per-site line in the `<!-- trusted-inventory-classes -->` block
-  (`trusted-inventory` ratchet) — mirror the nearest sibling's class/dot
-  (`prim-axiom …`). (3) New **`test/candidate-validation.f`** cases must bump the
-  whitebox counts in `test/candidate-validation-test.f` (`s" test/` total, and the
-  `construct case-kind positive|negative` counts) and add PATH-PIN + DIRECT-PIN
-  rows. Run `test/run.f` before claiming green; a clean focused suite hides all
-  three.
+- **Add no new `TRUSTED:` sites.** Use a properly owned `PRIM:` axiom or wait
+  for checker capability; existing `TRUSTED:` sites are migration inventory,
+  not precedent.
 - **A property test pinning a TRANSITIONAL invariant must be revisited the moment
   the capability it anticipates starts being used for real.** `test/pre-trust-defer.f`
   COMPAT-MISS-CASE asserted that an engine lacking the DRAIN-PRETRUST prim BOOTS
@@ -2667,7 +2631,7 @@ fits.
 - **A review answers the question it was given.** An implementation was
   accepted against "does this preserve the accepted behavior" while being
   simultaneously unmergeable, because its stack had drifted from master and
-  dropped manifest rows master had gained. Both verdicts were right about
+  dropped changes master had gained. Both verdicts were right about
   different axes. Any review that could precede a merge must also check base
   currency, since master-always-green is a property of the exact rebased tree.
 - **Freeze an interface only after a checked candidate compiles and runs

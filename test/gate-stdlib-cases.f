@@ -117,10 +117,6 @@ SUITE diff-frame-codec
    tools/lint/diff-frame-test.f
 ;SUITE
 
-SUITE stdlib-manifest
-   tools/stdlib-manifest-test.f
-;SUITE
-
 SUITE host-lint-fixtures
    tools/host-lint-test.f
 ;SUITE

@@ -27,25 +27,24 @@ TEST:TRW-LOAD-DONE
       2 of TOOL endof
       3 of CHECK-CLI-GATE:RUN endof
       17 of GSI-LINT-TOOLS endof
-      18 of GSI-LINT-MANIFEST endof
-      22 of GSI-TOOL-REPAIR endof
-      23 of GSI-TOOL-DOC endof
-      24 of GSI-TOOL-LINT-PHASE endof
-      25 of GSI-TOOL-TYPED endof
-      26 of GSI-TAIL-FAST endof
-      27 of TAIL-PURE:RUN endof
-      28 of TAIL-RUNNER endof
-      29 of GSI-TAIL-BUILD endof
-      31 of GSI-LINT-LIBS-CORE endof
-      32 of GSI-LINT-LIBS-PTX endof
-      33 of GSI-LINT-LIBS-PTX-NEG endof
-      34 of GSI-LINT-LIBS-PTX-TOOL endof
-      35 of GSI-LINT-ARTIFACTS-FAST endof
-      36 of TAIL-PROCESS:RUN endof
-      37 of GSI-TOOL-LINT-REPL-PHASE endof
-      38 of GSI-TOOL-LINT-AOT endof
-      39 of GSI-TOOL-LINT-NAMES endof
-      40 of GSI-TOOL-LINT-BUNDLE endof
+      21 of GSI-TOOL-REPAIR endof
+      22 of GSI-TOOL-DOC endof
+      23 of GSI-TOOL-LINT-PHASE endof
+      24 of GSI-TOOL-TYPED endof
+      25 of GSI-TAIL-FAST endof
+      26 of TAIL-PURE:RUN endof
+      27 of TAIL-RUNNER endof
+      28 of GSI-TAIL-BUILD endof
+      30 of GSI-LINT-LIBS-CORE endof
+      31 of GSI-LINT-LIBS-PTX endof
+      32 of GSI-LINT-LIBS-PTX-NEG endof
+      33 of GSI-LINT-LIBS-PTX-TOOL endof
+      34 of GSI-LINT-ARTIFACTS-FAST endof
+      35 of TAIL-PROCESS:RUN endof
+      36 of GSI-TOOL-LINT-REPL-PHASE endof
+      37 of GSI-TOOL-LINT-AOT endof
+      38 of GSI-TOOL-LINT-NAMES endof
+      39 of GSI-TOOL-LINT-BUNDLE endof
       E-TBL-BOUNDS throw
    endcase ;
 

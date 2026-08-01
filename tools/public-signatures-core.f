@@ -333,10 +333,10 @@ variable PS-DEF-SIG-U
 \ both tools agree): hb parses numeric literals BEFORE dictionary lookup, so a
 \ definition named like a literal - all digits (42), float (.0, 1.5, -.5), or
 \ $hex ($FF), optionally minus-signed - is unreachable, yet it is a real
-\ definition and must get a manifest row. PS-PROJECT-WORD? alone skipped these
-\ (no alpha byte): exactly how lib/fmt.f's old `.0` escaped its lib/std.manifest
-\ row. E-NUMERIC-DEFINITION rejects new ones; the manifest must still SEE
-\ historical ones instead of silently dropping them.
+\ definition and must remain visible in emitted public signatures.
+\ PS-PROJECT-WORD? alone skipped these (no alpha byte): exactly how lib/fmt.f's
+\ old `.0` escaped the output. E-NUMERIC-DEFINITION rejects new ones; the
+\ scanner must still SEE historical ones instead of silently dropping them.
 : PS-DIGIT? ( n -- bool )
    dup 47 > swap 58 < and ;
 

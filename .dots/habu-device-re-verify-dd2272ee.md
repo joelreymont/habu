@@ -13,13 +13,15 @@ Follow-up to habu-rca-culaunchkernel-ee5babba (RCA done, launch migrated to cuLa
 The zed Orin box is unreachable for ~a week; expected back ~2026-07-14. Until
 then this device sign-off cannot run. State: the standalone-load commit was
 extracted and merged independently (head 7fce161077f8, its dot closed) since it
-never depended on the migration. The remaining pair is PARKED in
+never depended on the migration. The remaining migration is PARKED in
 .jj-ws/seal-hardening: cd144b09 "Migrate launch to cuLaunchKernel; RCA the hang"
-+ 4d51b403 "Add stdlib manifest row for lib/cuda-launch.f" (ids float across
-rebases; identify by description). Risk is low: the cuLaunchKernel MECHANISM the
+(ids float across rebases; identify by description). Commit 4d51b403 is the
+abolished ledger-only companion and is not part of this migration. Risk is low:
+the cuLaunchKernel MECHANISM the
 migration uses was ALREADY device-golden-proven on the Orin via
 tools/ptx/culk-probe.f (rc 0 / cuCtxSynchronize rc 0 / read-back 0x40C00000 = 6.0)
 before the box went down, and the migrated launchers use the identical
 CU-LAUNCH-1D helper and pass all local gates -- only the direct on-device run of
 the migrated files themselves is outstanding. When zed returns (~2026-07-14):
-rebase the pair onto the then-current head, run steps (1)-(3) above, then merge.
+rebase the migration onto the then-current head, run steps (1)-(3) above, then
+merge.

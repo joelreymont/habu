@@ -1,11 +1,9 @@
 # Standard Library
 
-The standard library lives under `lib/`. `lib/std.manifest` is the canonical
-machine-readable layout and signature index for that tree. This file is the
-authoritative LLM-facing stdlib surface: prompts, examples, benchmark tasks, and
-future module implementations must use the effects and boundary contracts here.
-The initial manifest reserves module ownership only; public word rows are added
-only after checked source exists.
+The standard library lives under `lib/`. Checked source and its real consumers
+define the operational surface. This file is the authoritative LLM-facing stdlib
+guide: prompts, examples, benchmark tasks, and future module implementations must
+use the effects and boundary contracts here.
 
 ## Layout
 
@@ -48,18 +46,18 @@ Planned module files:
 - `lib/time.f`
 - `lib/date.f`
 
-Each module gets a focused test file named in the manifest and documentation in
-this file. Source files stay one concern per file, and new public/library words
-default to checked typed definitions.
+Each module owns focused tests and documentation in this file. Source files stay
+one concern per file, and new public/library words default to checked typed
+definitions.
 
 ## LLM Surface
 
 LLM-facing code should call the highest-level checked word that matches the
 task, and should only reach for unchecked host/runtime primitives at the audited
 boundaries named below. The surface below includes active source-backed words
-and planned API contracts. Source-backed public word rows are the only published
-rows in `lib/std.manifest`; planned contracts here define the target API shape
-for implementation dots and benchmark prompts.
+and planned API contracts. Checked definitions in source are the published
+surface; planned contracts here define the target API shape for implementation
+dots and benchmark prompts.
 
 Typed examples in prompts must use the current checked grammar exactly. Array
 views and cell-backed map storage use `ptr a n`; byte strings, regex bytecode
@@ -88,16 +86,16 @@ capacity. Public signatures must keep that representation visible until
 dedicated concrete handle types exist.
 
 Opaque `addr` values are boundary-only. A module may use `addr` only for values
-that checked code never dereferences, or behind a named audited `TRUST` wrapper
-that converts the boundary value into a typed pointer contract with focused
-tests. Regex prose may call values `rx`, but manifest effects and source
-signatures remain typed as `ptr u8 n`; map prose may call values `map`, but
-manifest effects and source signatures remain typed as `ptr a n` for storage
-and `ptr u8 n` for keys.
+that checked code never dereferences. When the checker cannot express a
+boundary, add a checker-owned `PRIM:` axiom; unchecked colon bodies are
+forbidden. Regex prose may call values `rx`, but source signatures remain typed
+as `ptr u8 n`; map prose may call values `map`, but source signatures remain
+typed as `ptr a n` for storage and `ptr u8 n` for keys.
 
 ## PTX
 
-`lib/ptx/` is a research sub-library, not a flat `lib/std.manifest` module.
+`lib/ptx/` is a separate research sub-library with its own source consumers and
+tests.
 `lib/ptx/header.f` provides the checked PTX kernel header vocabulary used by
 `docs/ptx-sketch.md`. `KERNEL:` is a compiler keyword alias for `:`; load
 `lib/errors.f lib/ptx/header.f` before kernel sources. `%BLOCK` validates legal
@@ -1964,45 +1962,3 @@ in Habu scripts and libraries. Habu build helpers are responsible for validating
 user source, proving checked definitions, detecting missing artifacts, and
 reporting named failures. Shell may allocate private temporary space and pass it
 to Habu; Habu decides what work happens inside that space.
-
-## Manifest Format
-
-`lib/std.manifest` is UTF-8 TSV with schema version `1` and this exact header:
-
-```text
-schema_version	module	file	kind	word	effect	test	doc	owner	status	notes
-```
-
-Columns:
-
-- `schema_version`: currently `1`.
-- `module`: lowercase stable module name.
-- `file`: stable `lib/<module>.f` source path.
-- `kind`: `module` or `word`.
-- `word`: public word name for `word` rows; empty for `module` rows.
-- `effect`: normalized checked effect for `word` rows; empty for `module` rows.
-- `test`: focused test path that owns the row.
-- `doc`: documentation path for the row.
-- `owner`: stable ownership label for future parallel workers.
-- `status`: `planned`, `active`, or `published`.
-- `notes`: short human context, without tabs.
-
-`module` rows reserve file ownership and leave `word` and `effect` empty. `word`
-rows describe only public checked definitions that exist in source. The `effect`
-field must match the normalized `signature` emitted by:
-
-```sh
-bin/hb --load \
-  lib/errors.f lib/memory.f lib/vector.f \
-  tools/lint/text.f tools/lint/intern.f tools/lint/token.f tools/lint/lib.f \
-  tools/public-signatures.f -- lib/<module>.f
-```
-
-The manifest, docs, source coverage, and signature drift are validated by
-`tools/stdlib-manifest-test.f`.
-
-Run the focused check with:
-
-```sh
-bin/hb --load lib/errors.f lib/string.f lib/memory.f lib/fs.f lib/process.f lib/process-argv.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/stdlib-manifest-test.f
-```

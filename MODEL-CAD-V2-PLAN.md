@@ -1484,7 +1484,7 @@ wave, `MEM-ALLOC-BYTES`, is split into disjoint caller dots:
   `tools/lint/text-foundation-test.f`, `tools/refine-lint-core.f`,
   `tools/repair-packet-core.f`, `tools/repair-packet-test.f`,
   `tools/repair-schema-doc-test.f`, `tools/signature-lint-core.f`,
-  `tools/stdlib-manifest-test.f`, `tools/trust-lint.f`, and
+  `tools/trust-lint.f`, and
   `tools/trusted-inventory.f`.
 
 Each caller dot owns its listed files plus their already-associated focused

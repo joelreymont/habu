@@ -620,10 +620,6 @@ public
 \ + give the bench compile-checks a scheduled runner per
 \ habu-derive-inprocess-spawned-a54e760d.
 
-: GSI-LINT-MANIFEST ( -- )
-   s" stdlib/lint-manifest" GSI-GROUP-SEQ GSI-GROUP-HEADER
-   s" tools/stdlib-manifest-test.f" GSI-INCLUDE ;
-
 : GSI-LINT-ARTIFACTS-FAST ( -- )
    s" stdlib/lint-artifacts/fast" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TEST-SETUP

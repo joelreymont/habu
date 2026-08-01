@@ -1,8 +1,10 @@
 ---
 title: Structure standard library manifest rows
-status: open
+status: closed
 priority: 1
 issue-type: task
+closed-at: "2026-08-01T12:36:35.377094+02:00"
+close-reason: "Abolished: the deleted stdlib manifest test has no row storage, parser, parity, or diagnostic product left to structure."
 blocks:
   - habu-lowering-hash-unified-586f7881
 created-at: "2026-07-19T21:36:26.080502+02:00"

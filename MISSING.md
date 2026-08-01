@@ -209,8 +209,8 @@ Two moves:
 ## Cleanup — floating-point prelude words the extractor rejects
 
 Done: `f<=`, `f>=`, `fdup`, and `fover` are back in `lib/prelude.f`, public
-signature extraction emits `F<=`/`F>=`, the four words have manifest rows and
-`lib/prelude-test.f` coverage.
+signature extraction emits `F<=`/`F>=`, and `lib/prelude-test.f` covers all four
+words.
 
 ---
 

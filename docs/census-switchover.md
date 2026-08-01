@@ -46,8 +46,8 @@ migrate LAST (Wave E).
 - `lib/object.f:332 FIND-TAG`, `lib/hashmap.f:16 HM-PROBE`,
   `lib/map.f:152 MAP-INDEX` / `:156 MAP-PROBE`.
 - `src/habu/aot-capture.f:95 ACAP-POOL-FIND` ("entry off, or -1 if absent").
-- Manifest-documented: `lib/std.manifest:333 FS-TRY-STAT-MODE … or -1`,
-  `:334 FS-TRY-LSTAT-MODE`.
+- Migrated: `lib/fs.f` defines `FS-TRY-STAT-MODE` and
+  `FS-TRY-LSTAT-MODE` as `option<n>`; neither retains a `-1` sentinel.
 Target: `option<idx>`. Difficulty: needs-MATCH (callers do `-1 =`/`0<` tests,
 e.g. `CONTAINS? FIND-SUB 0 < 0=` `lib/string.f:89-90`). Blast radius HIGH.
 
@@ -99,8 +99,7 @@ Single-value `-- <one> bool` (65 total; biggest option<scalar> class):
   `:230 STR>NUMBER?` (radius **16**); `lib/date.f:125 DATE-N`, `:134
   PARSE-YMD`; `tools/date.f:126,135`; `tools/imgdump.f:268,280,292`,
   `tools/imagedisasm.f:70,96`, `tools/trusted-inventory.f:689 PARSE-COUNT`,
-  `tools/gate-json-assert-core.f:124 GJA-U?`,
-  `tools/stdlib-manifest-test.f:786`.
+  `tools/gate-json-assert-core.f:124 GJA-U?`.
 - Floats → option<r>: `lib/float.f:41 FL-DIGITS>F`, `:63 FL-SIG`,
   `:87 STR>FLOAT`.
 - Lookups → option<val>: `lib/map.f:206 MAP-GET ( … -- n bool )` (radius
