@@ -157,7 +157,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-20 constant OPCODES-N
+21 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -178,13 +178,15 @@ private
 17 constant O-RET
 18 constant O-ALOAD
 19 constant O-ASTORE
+20 constant O-SDIV
 
 0 constant BOUND-NO
 1 constant BOUND-YES
 
 \ ---- how much of one routine this pass holds ----------------------------------
 \ Instructions in one routine. Three forms of the dialect emit more than one
-\ instruction, and none emits more than three, so three per operation is the
+\ instruction - the comparison and the division are three each and the two-way
+\ branch is two - and none emits more than three, so three per operation is the
 \ ceiling per operation. Operations are bounded by the values they define: every
 \ operation defines at least one value except a block's terminator, the release
 \ of the frame and the data-stack publish, of which there is at most one each per
@@ -246,6 +248,7 @@ create B-START BMAX cells allot
       add     OF O-ADD     ENDOF
       sub     OF O-SUB     ENDOF
       mul     OF O-MUL     ENDOF
+      sdiv    OF O-SDIV    ENDOF
       store    OF O-STORE    ENDOF
       load     OF O-LOAD     ENDOF
       reserve  OF O-RESERVE  ENDOF
@@ -270,6 +273,7 @@ create B-START BMAX cells allot
       O-ADD     of A64IR-OPCODE:ADD     endof
       O-SUB     of A64IR-OPCODE:SUB     endof
       O-MUL     of A64IR-OPCODE:MUL     endof
+      O-SDIV    of A64IR-OPCODE:SDIV    endof
       O-STORE   of A64IR-OPCODE:STORE   endof
       O-LOAD    of A64IR-OPCODE:LOAD    endof
       O-RESERVE  of A64IR-OPCODE:RESERVE  endof
@@ -507,12 +511,14 @@ create B-START BMAX cells allot
 \ answer rather than a lucky one.
 \
 \ How many instructions a form is, is a property of the form: one for all but the
-\ comparison and the two-way branch, which are three and two. The layout pass and
+\ comparison and the division, which are three each, and the two-way branch,
+\ which is two. The layout pass and
 \ the emission pass read the same answer, so the offsets the fixups are computed
 \ against are the offsets the instructions land at.
 : INSNS-OF ( n -- n )
    {: k:n :}
    k O-FLAG = if 3 exit then
+   k O-SDIV = if 3 exit then
    k O-BRZ = if 2 exit then
    1 ;
 
@@ -601,6 +607,23 @@ create B-START BMAX cells allot
    id  rd id COND-OF ENC-CSET  APPEND
    id  rd rd ENC-NEG  APPEND ;
 
+\ One division, which is three instructions: branch past the trap when the
+\ divisor is not zero, the trap, and the divide. It is the sequence the engine's
+\ own `/` compiles to - src/habu/habu1.f BDIV0? followed by BDIV - so a compiled
+\ division answers what an interpreted one answers on every divisor, and ends
+\ the process on the one divisor a bare Sdiv would answer zero for.
+\
+\ The branch distance is a property of this form and not of the block layout:
+\ it skips exactly the one instruction between it and the divide, so it is
+\ written here as the two words it is rather than measured off the label table.
+2 constant DIV-SKIP                  \ words from the guard to the divide
+
+: PUT-SDIV ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 1 OPERAND-REG DIV-SKIP ENC-CBNZ  APPEND
+   id  ENC-BRK  APPEND
+   id  id TRIPLE ENC-SDIV  APPEND ;
+
 \ ---- one operation, as the instructions it is --------------------------------
 \ The whole encoding table. Every arm names the instructions one machine
 \ operation becomes; nothing else in this file decides which bytes an operation
@@ -615,6 +638,7 @@ create B-START BMAX cells allot
       add      OF id  id TRIPLE ENC-ADD  APPEND ENDOF
       sub      OF id  id TRIPLE ENC-SUB  APPEND ENDOF
       mul      OF id  id TRIPLE ENC-MUL  APPEND ENDOF
+      sdiv     OF id PUT-SDIV ENDOF
       store    OF id  id WORD-STORE  APPEND ENDOF
       load     OF id  id WORD-LOAD  APPEND ENDOF
       reserve  OF id  id WORD-RESERVE  APPEND ENDOF
@@ -745,6 +769,7 @@ public
    c b A64IR-OPCODE:ADD     BIND1
    c b A64IR-OPCODE:SUB     BIND1
    c b A64IR-OPCODE:MUL     BIND1
+   c b A64IR-OPCODE:SDIV    BIND1
    c b A64IR-OPCODE:STORE   BIND1
    c b A64IR-OPCODE:LOAD    BIND1
    c b A64IR-OPCODE:RESERVE  BIND1

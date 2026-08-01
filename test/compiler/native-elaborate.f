@@ -898,11 +898,151 @@ using NSRC
    s" a loop index outside any counted loop is refused" T-LABEL
    [: STRAY-INDEX ;] E-NELAB-CTRL TTHROWSQ ;
 
+\ ---- a typed locals frame ----------------------------------------------------
+\ The corpus's LERP, written as the tape carries it: `{:`, one `name:type` token
+\ per local, `:}`, then a body that reads the names. A local is a named SSA
+\ VALUE, so the whole of what this case has to prove is which value each name
+\ ended up meaning - and every one of those answers is an operand identity read
+\ off the published module, not a count.
+\
+\ THE BINDING ORDER IS THE POINT. `{: a b t :}` over a stack holding a, b, t
+\ binds a to the DEEPEST value, so `a` is block argument zero and `t` is block
+\ argument two. `b a -` therefore subtracts argument zero from argument one, and
+\ a subtraction's operands cannot be exchanged without changing the answer - so
+\ a frame that bound the names the other way round reddens here rather than
+\ computing the same number by another route. `t *` then reads argument two, and
+\ the second `a` reads argument zero again, which is what says a name may be
+\ read more than once and still be one value.
+\
+\ AND THE DIVISION'S OPERANDS. `100 /` divides the product by the hundred, in
+\ that order, so operand zero is the multiply's result and operand one is the
+\ constant's. Swapping them is a different program and this says so.
+\
+\ Six operations for nine body tokens: the group stages nothing at all - it is
+\ five of those tokens - and neither does either mention of a local.
+: LERP-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool n )
+   {: c:IR-CTX:ctx :}
+   s" LERP {: a:n b:n t:n :} b a - t * 100 / a +" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 3 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk F-OPS
+   m blk 0 F-OP {: sb:IR-ID:ir-op-id :}
+   m blk 1 F-OP {: ml:IR-ID:ir-op-id :}
+   m blk 2 F-OP {: kn:IR-ID:ir-op-id :}
+   m blk 3 F-OP {: dv:IR-ID:ir-op-id :}
+   m blk 4 F-OP {: ad:IR-ID:ir-op-id :}
+   m sb s" hir.sub" F-OPC?
+   m dv s" hir.div" F-OPC?
+   m sb 0 F-IN  m blk 1 F-ARG SAME?
+   m sb 1 F-IN  m blk 0 F-ARG SAME?
+   m ml 0 F-IN  m sb 0 F-OUT SAME?
+   m ml 1 F-IN  m blk 2 F-ARG SAME?
+   m dv 0 F-IN  m ml 0 F-OUT SAME?
+   m dv 1 F-IN  m kn 0 F-OUT SAME?
+   m ad 0 F-IN  m dv 0 F-OUT SAME?
+   m ad 1 F-IN  m blk 0 F-ARG SAME?
+   m F-VALUES ;
+
+: LERP-CASE ( -- )
+   s" a typed locals frame binds the first name to the deepest value" T-LABEL
+   BND [: LERP-BODY ;] IR-CTX:WITH-CONTEXT
+   8 T=
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   TTRUE TTRUE
+   6 T= ;
+
+\ ---- what a locals frame refuses ---------------------------------------------
+\ Each of the five below is a shape this elaborator has no rule for, and each one
+\ is refused by name rather than compiled into something else. Rebinding a local
+\ and taking its address need no case here: `to` and `^` are not words of the
+\ dialect at all, so they are already refused as E-HIR-UNMODELED by the case
+\ above them in this file.
+: TWO-GROUPS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" TWOG {: a:n :} {: b:n :} a" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 2 1 NELAB:COLON drop ;
+
+: TWO-GROUPS ( -- )
+   BND [: TWO-GROUPS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: OPEN-GROUP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" OPENG {: a:n" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: OPEN-GROUP ( -- )
+   BND [: OPEN-GROUP-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: SHADOW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" SHADOW {: dup:n :} 0" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: SHADOW ( -- )
+   BND [: SHADOW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TWICE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" TWICE {: a:n a:n :} a" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 2 1 NELAB:COLON drop ;
+
+: TWICE ( -- )
+   BND [: TWICE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A group inside a branch would bind names on a path that does not reach the
+\ rest of the body, and this elaborator has no scoping rule for that.
+: NESTED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" NESTG dup if {: a:n :} a then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: NESTED ( -- )
+   BND [: NESTED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TWO-GROUPS-CASE ( -- )
+   s" a second locals group in one definition is refused" T-LABEL
+   [: TWO-GROUPS ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: OPEN-GROUP-CASE ( -- )
+   s" a locals group the body never closes is refused" T-LABEL
+   [: OPEN-GROUP ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: SHADOW-CASE ( -- )
+   s" a local named after a word the dialect models is refused" T-LABEL
+   [: SHADOW ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: TWICE-CASE ( -- )
+   s" the same local declared twice is refused" T-LABEL
+   [: TWICE ;] E-NELAB-LOCAL TTHROWSQ ;
+
+: NESTED-CASE ( -- )
+   s" a locals group inside a control structure is refused" T-LABEL
+   [: NESTED ;] E-NELAB-LOCAL TTHROWSQ ;
+
 public
 
 : RUN ( -- )
    T-RESET
    MAX2-CASE
+   LERP-CASE
+   BND [: drop TWO-GROUPS-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop OPEN-GROUP-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop SHADOW-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop TWICE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop NESTED-CASE ;] IR-CTX:WITH-CONTEXT
    COUNTDOWN-CASE
    SUMTO-CASE
    BND [: drop ORPHAN-CASE ;] IR-CTX:WITH-CONTEXT

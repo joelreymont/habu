@@ -196,6 +196,16 @@ create TXT
    HIR-OPCODE:ADD x y BINOP RET1
    CLOSE-FUN ;
 
+\ `: QUOT ( n n -- n ) / ;`: two different arguments again, so the divide's
+\ operand order is visible, and the one source operation whose schema says it
+\ may trap that this pass still selects.
+: BUILD-DIV ( -- )
+   2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:DIV x y BINOP RET1
+   CLOSE-FUN ;
+
 \ `: BUMP ( n -- n ) A ! A @ 1+ ;` with A a fixed address, as the elaborator
 \ leaves it: the memory the definition is entered with, then a store, then a
 \ load, each taking the order the one before it answered.
@@ -409,6 +419,25 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" a subtraction selects to a subtraction with its operands in order" T-LABEL
    WBND [: DIFF-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE TTRUE TFALSE TTRUE ;
+
+\ A division selects even though its schema declares that it may trap, because
+\ the machine form it selects to KEEPS the trap: a64.sdiv is the zero-divisor
+\ guard and the divide together. That is the whole difference between this case
+\ and the trapping-addition refusal further down, and it is why the trap gate
+\ asks which opcode it is looking at rather than only whether the flag is set.
+: DIV-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   HIR-MOD
+   BUILD-DIV
+   SELECTED READ!
+   0 s" a64.sdiv" OPCODE-IS?
+   0 s" a64.mul" OPCODE-IS?
+   0 0 OPERAND@ 0 ARG@ SAME-VALUE?
+   0 1 OPERAND@ 1 ARG@ SAME-VALUE? ;
+
+: DIV-CASE ( -- )
+   s" a division selects to the machine divide with its operands in order" T-LABEL
+   WBND [: DIV-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TFALSE TTRUE ;
 
 : ADD-BODY ( IR-CTX:ctx -- bool bool )
    HIR-MOD
@@ -752,6 +781,7 @@ public
    T-RESET
    SQUARE-CASE
    DIFF-CASE
+   DIV-CASE
    ADD-CASE
    SMALL-CASE
    WIDE-CASE

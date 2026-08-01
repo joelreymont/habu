@@ -22,6 +22,7 @@
 \   hir.add    -> a64.add
 \   hir.sub    -> a64.sub
 \   hir.mul    -> a64.mul
+\   hir.div    -> a64.sdiv
 \   hir.mem    -> no instruction: the order binds to the one a64.dtake minted
 \   hir.load   -> a64.aldr
 \   hir.store  -> a64.astr
@@ -40,15 +41,19 @@
 \ half to start from to save an instruction is an optimisation, and an optimiser
 \ is not this leaf.
 \
-\ WHY A TRAPPING OPERATION IS REFUSED RATHER THAN SELECTED. Whether integer
-\ overflow traps is the compilation unit's numeric policy, and the source dialect
-\ records the answer in each arithmetic schema's may-trap flag. ARM64's Add, Sub
-\ and Mul wrap; lowering a trapping addition needs a flag-setting form, a
-\ conditional branch and a trap target, and the A64IR dialect has none of the
-\ three yet. Selecting a trapping addition to a plain a64.add would silently drop
-\ the check the policy asked for, so this pass reads the source schema's own flag
-\ and refuses. The missing lowering is tracked as its own capability; until it
-\ lands, a trapping unit does not select at all rather than selecting wrongly.
+\ WHY A TRAPPING OPERATION IS REFUSED UNLESS ITS RULE KEEPS THE TRAP. The source
+\ dialect records in each schema's may-trap flag whether an operation can raise,
+\ and a lowering that drops the raise is a wrong program rather than a faster
+\ one. So this pass reads that flag and asks one more question of the opcode -
+\ does the rule below reproduce the trap? Division does: a64.sdiv is the guard
+\ and the divide together, exactly the three instructions the engine's own `/`
+\ is, so a compiled division ends the process on a zero divisor where an
+\ interpreted one does. Trapping arithmetic does not: ARM64's Add, Sub and Mul
+\ wrap, and a trapping addition needs a flag-setting form, a conditional branch
+\ and a trap target that the A64IR dialect has none of yet, so it is refused
+\ rather than selected to a plain a64.add. That missing lowering is tracked as
+\ its own capability; until it lands, a trapping unit does not select at all
+\ rather than selecting wrongly.
 \
 \ HOW IT KNOWS WHICH OPCODE IS WHICH. An operation names its opcode with a symbol
 \ of its own module, and a module's symbols are its own ordinals, so "is this
@@ -134,7 +139,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-12 constant OPCODES-N
+13 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -147,6 +152,7 @@ private
 9 constant O-MEM
 10 constant O-LOAD
 11 constant O-STORE
+12 constant O-DIV
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -196,6 +202,7 @@ create NAMEBUF NAME-CAP allot
       add    OF O-ADD    ENDOF
       sub    OF O-SUB    ENDOF
       mul    OF O-MUL    ENDOF
+      div    OF O-DIV    ENDOF
       lt     OF O-LT     ENDOF
       le     OF O-LE     ENDOF
       br     OF O-BR     ENDOF
@@ -212,6 +219,7 @@ create NAMEBUF NAME-CAP allot
       O-ADD    of HIR-OPCODE:ADD    endof
       O-SUB    of HIR-OPCODE:SUB    endof
       O-MUL    of HIR-OPCODE:MUL    endof
+      O-DIV    of HIR-OPCODE:DIV    endof
       O-LT     of HIR-OPCODE:LT     endof
       O-LE     of HIR-OPCODE:LE     endof
       O-BR     of HIR-OPCODE:BR     endof
@@ -623,16 +631,54 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ The whole rule. Every arm names the machine operations one source operation
 \ becomes; nothing else in this file decides which opcode a source operation
 \ selects to.
+\ Which source operations this pass lowers WITHOUT losing the trap its schema
+\ declares. It is one exhaustive answer per member of the source family rather
+\ than a flag read off the operation, because whether a trap survives is a
+\ property of the rule below and of nothing else - a member added to
+\ HIR:opcode has to answer it before it can be selected at all.
+\
+\ Division is the only one that survives today, and it survives because a64.sdiv
+\ IS the guard and the divide: the machine form branches over a `brk` when the
+\ divisor is not zero, which is what the engine's own `/` does, so a compiled
+\ division traps exactly where an interpreted one traps. A trapping ADDITION has
+\ no such form - it needs a flag-setting add, a conditional branch and a trap
+\ target, none of which is in the machine dialect - so selecting it as a plain
+\ a64.add would drop the check the unit's numeric policy asked for, and it is
+\ refused instead. Dot habu-lower-trapping-arithmetic-5f514ffe carries it.
+: TRAP-PRESERVED? ( HIR:opcode -- bool )
+   MATCH HIR:opcode
+      const  OF false ENDOF
+      add    OF false ENDOF
+      sub    OF false ENDOF
+      mul    OF false ENDOF
+      div    OF true  ENDOF
+      lt     OF false ENDOF
+      le     OF false ENDOF
+      mem    OF false ENDOF
+      load   OF false ENDOF
+      store  OF false ENDOF
+      br     OF false ENDOF
+      brz    OF false ENDOF
+      return OF false ENDOF
+   ;MATCH ;
+
+: TRAP-CK ( HIR:opcode IR-ID:ir-symbol-id -- HIR:opcode )
+   {: o:HIR:opcode sym:IR-ID:ir-symbol-id :}
+   V-SCHR VW sym IR-SCHEMA:FTRAPS? if
+      o TRAP-PRESERVED? 0= if E-A64SEL-TRAP throw then
+   then
+   o ;
+
 : RULE ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPCODE-AT {: sym:IR-ID:ir-symbol-id :}
-   V-SCHR VW sym IR-SCHEMA:FTRAPS? if E-A64SEL-TRAP throw then
-   sym OPCODE-SLOT SLOT-OPCODE
+   sym OPCODE-SLOT SLOT-OPCODE  sym TRAP-CK
    MATCH HIR:opcode
       const  OF id EMIT-CONST ENDOF
       add    OF id A64IR-OPCODE:ADD EMIT-BINARY ENDOF
       sub    OF id A64IR-OPCODE:SUB EMIT-BINARY ENDOF
       mul    OF id A64IR-OPCODE:MUL EMIT-BINARY ENDOF
+      div    OF id A64IR-OPCODE:SDIV EMIT-BINARY ENDOF
       lt     OF id A64IR-COND:LT EMIT-FLAG ENDOF
       le     OF id A64IR-COND:LE EMIT-FLAG ENDOF
       mem    OF id EMIT-MEM ENDOF
@@ -806,6 +852,7 @@ public
    c b HIR-OPCODE:ADD    BIND1
    c b HIR-OPCODE:SUB    BIND1
    c b HIR-OPCODE:MUL    BIND1
+   c b HIR-OPCODE:DIV    BIND1
    c b HIR-OPCODE:LT     BIND1
    c b HIR-OPCODE:LE     BIND1
    c b HIR-OPCODE:BR     BIND1

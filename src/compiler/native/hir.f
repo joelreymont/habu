@@ -14,6 +14,7 @@
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
 \   hir.mul       integer multiplication
+\   hir.div       signed integer division, truncating toward zero
 \   hir.lt        signed less-than, answering a Habu flag
 \   hir.le        signed less-than-or-equal, answering a Habu flag
 \   hir.mem       the memory the definition is entered with
@@ -114,6 +115,7 @@ ENUM opcode DERIVE eq
    add
    sub
    mul
+   div
    lt
    le
    mem
@@ -157,6 +159,13 @@ ENUM ctrl DERIVE eq
 \ so the caller that builds the word model states it - the address of a data
 \ word in this process is not something this dialect can look up yet, and dot
 \ habu-resolve-a-data-a1c8067f is where that lookup lands.
+\ `open-locals` and `close-locals` are the two halves of a `{: … :}` group. A
+\ group binds names to values the body then reads by name, and a bound name is
+\ nothing but a value of the compile-time vector - so the group stages no
+\ operation, exactly as a rename does, and the names between the two halves are
+\ the PROGRAM's rather than this dialect's. That is why they are two meanings
+\ and not one: what the opener does is start reading names, and what the closer
+\ does is take one value off the vector per name read, right to left.
 ENUM meaning DERIVE eq
    literal
    op
@@ -164,6 +173,8 @@ ENUM meaning DERIVE eq
    control
    rename
    fixed
+   open-locals
+   close-locals
    unmodeled
 ;ENUM
 
@@ -218,6 +229,7 @@ public
       add    OF s" hir.add"    ENDOF
       sub    OF s" hir.sub"    ENDOF
       mul    OF s" hir.mul"    ENDOF
+      div    OF s" hir.div"    ENDOF
       lt     OF s" hir.lt"     ENDOF
       le     OF s" hir.le"     ENDOF
       mem    OF s" hir.mem"    ENDOF
@@ -259,6 +271,7 @@ private
       add    OF s" hir.rule.add"    ENDOF
       sub    OF s" hir.rule.sub"    ENDOF
       mul    OF s" hir.rule.mul"    ENDOF
+      div    OF s" hir.rule.div"    ENDOF
       lt     OF s" hir.rule.lt"     ENDOF
       le     OF s" hir.rule.le"     ENDOF
       mem    OF s" hir.rule.mem"    ENDOF
@@ -276,6 +289,7 @@ private
       add    OF s" hir.render.add"    ENDOF
       sub    OF s" hir.render.sub"    ENDOF
       mul    OF s" hir.render.mul"    ENDOF
+      div    OF s" hir.render.div"    ENDOF
       lt     OF s" hir.render.lt"     ENDOF
       le     OF s" hir.render.le"     ENDOF
       mem    OF s" hir.render.mem"    ENDOF
@@ -318,6 +332,26 @@ private
    c TRAPS? IR-SCHEMA:SET-TRAP
    TARGET
    c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Division: the same two cells in and one cell out, and it is the one arithmetic
+\ operation of this dialect that may trap whatever the unit's numeric policy
+\ says. The policy is about OVERFLOW, and a division does not overflow the way a
+\ sum does; what it does is divide by zero, and the engine's own `/` traps on
+\ that unconditionally - src/habu/habu1.f BDIV0? branches over a `brk` when the
+\ divisor is not zero. So the may-trap flag is declared true here rather than
+\ read off the policy, and the machine dialect's lowering has to reproduce the
+\ trap rather than drop it.
+: DEF-DIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:DIV OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:DIV NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ One comparison: two cells in, one cell out, and the answer is a Habu flag -
@@ -497,6 +531,7 @@ public
    c b t HIR-OPCODE:ADD DEF-BINARY
    c b t HIR-OPCODE:SUB DEF-BINARY
    c b t HIR-OPCODE:MUL DEF-BINARY
+   c b t DEF-DIV
    c b t HIR-OPCODE:LT DEF-COMPARE
    c b t HIR-OPCODE:LE DEF-COMPARE
    c b k DEF-MEM

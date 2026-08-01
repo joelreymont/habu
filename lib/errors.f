@@ -987,3 +987,17 @@ public
 -8520 constant E-NELAB-TOKEN    \ an operation whose schema declares more than one memory token among its operands or among its results: the elaborator threads one order and has no rule for two
 -8521 constant E-A64SEL-MEM     \ a memory operation in a routine whose convention names no data-stack place at all: the generic memory order of this dialect begins where the routine takes the caller's operands, and a routine that takes and publishes nothing has no beginning for it
 -8522 constant E-A64RAV-ORDER   \ a memory order the module mints and does not pass on exactly once: a token nothing reads leaves the order after it unstated, and a token two operations read is two orders claiming to be one
+
+\ Native typed locals: -8540..-8549
+\
+\ A `{: … :}` group binds names to values the body then reads by name. The
+\ elaborator is the only stage that ever sees a local: a bound name is a value
+\ of the compile-time vector, so nothing downstream of the elaborator learns a
+\ new concept and no other package gains a code here. A refusal another
+\ authority already owns keeps that authority's name - a local named after a
+\ word the dialect models is still E-HIR-DUP's kind of collision but it is this
+\ elaborator that has no rule for it, and a source word the dialect cannot
+\ compile at all is still E-HIR-UNMODELED, which is what a rebinding or an
+\ address-of by name is refused as.
+-8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a second group in one definition, a group opened inside a control structure, a group left unclosed, a closer with no opener, a declared name the dialect already models, the same name declared twice, or a token in the group that is not a name
+-8541 constant E-NELAB-LOCAL-CAP \ more locals in one definition than the elaborator's name table holds

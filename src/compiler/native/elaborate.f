@@ -8,8 +8,10 @@
 \ the other. It is the first pass of the native chain that translates a program.
 \
 \ WHAT IT TRANSLATES. One colon definition of the straight-line subset: the
-\ defined name and a body of integer literals, modeled arithmetic words and
-\ compile-time stack renames. Nothing else.
+\ defined name and a body of integer literals, modeled arithmetic words,
+\ compile-time stack renames, the structured control words, the two cell-width
+\ memory words, and one `{: … :}` group of typed locals read by name. Nothing
+\ else.
 \
 \ THE UNIT IS THE DEFINITION, AND THAT IS WHY THERE IS NO FRAME TO FIND. The
 \ tape this pass reads is produced by src/compiler/native/feed.f from the
@@ -179,6 +181,82 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
    VN @ picks + VMAX > if E-NELAB-CAP throw then
    picks 0 ?do
       in 1- p r sym i HIR-WORD:PICK@ -  VWIN @  VPUSH
+   loop ;
+
+\ ---- the names a `{: … :}` group binds ---------------------------------------
+\ A typed local is a named SSA VALUE and nothing else. It is bound once, when
+\ the group closes, to a value that is already on the compile-time vector, and
+\ every later mention of the name puts that same value back on the vector. So a
+\ local needs no memory, no frame slot and no operation of any dialect: reading
+\ one is exactly as free as `dup` is, and the value it names is what travels
+\ across a branch or a loop edge, carried as a block argument like every other
+\ live value. That is why nothing downstream of this file learns a new concept.
+\
+\ WHAT THE TAPE REALLY CARRIES, WHICH IS WHERE THE SHAPE COMES FROM. The
+\ engine's own reader consumes `{:`, then one token per declared local spelled
+\ `name:type`, then `:}` - test/compiler/native-feed.f records exactly that grid
+\ off a real compilation, so this file reads the shape the producer makes rather
+\ than one it hopes for. The body then spells the bare name, so the annotation
+\ is cut off when the name is declared; where it is cut off is
+\ src/compiler/native/hir-word.f's LOCAL-NAME-LEN, because this file holds no
+\ spelling of its own.
+\
+\ WHY THE GROUP IS FOUND BEFORE THE WALK. Two walks read the body - the skeleton
+\ that counts blocks and the build that makes them - and both of them meet
+\ tokens that are neither dialect words nor literals: the declared names, and
+\ every later mention of one. Asking the word model about either is a refusal,
+\ so both walks have to know which rows are the group and which names are
+\ locals before they start. The pre-pass answers both by recording the group's
+\ two ENDS as tape indices, so the two walks share one derivation of where the
+\ group is instead of each keeping a state machine that could drift; and the
+\ build checks its own arrival at the closer against the index the pre-pass
+\ recorded, which is the same two-derivations discipline SKELETON keeps.
+\
+\ ONE GROUP, AT THE TOP LEVEL, READ-ONLY. That is what the corpus needs and it
+\ is all that is built: a second group in one definition, a group inside a
+\ control structure and an unclosed group are refused by name. Rebinding a local
+\ and taking its address need no refusal here at all - no such word is in the
+\ dialect's vocabulary, so `to` and `^` are already refused as words this
+\ dialect cannot compile. Dots habu-rebind-a-typed-b2a3e369 and
+\ habu-take-the-addr-18a38b4f carry the two capabilities.
+16 constant LMAX                     \ locals one definition may declare
+64 constant LNAME-CAP                \ bytes one declaration spelling may hold
+
+here CELL 1- and CELL swap - CELL 1- and allot
+variable LN                          \ how many locals were declared
+variable LG-FROM                     \ the tape row the `{:` is on, or -1
+variable LG-TO                       \ the tape row the `:}` is on, or -1
+variable LBOUND                      \ whether the group has closed and bound
+LMAX TYPED-BUFFER LNAME IR-ID:ir-symbol-id
+LMAX TYPED-BUFFER LVAL IR-ID:ir-value-id
+create LBUF LNAME-CAP allot
+
+: LRESET ( -- )
+   0 LN !
+   -1 LG-FROM !
+   -1 LG-TO !
+   0 LBOUND ! ;
+
+: LAT ( n -- n )
+   dup 0 < over LN @ >= or if E-NELAB-LOCAL throw then ;
+
+\ Is this tape row part of the declaration - the opener, or one of the names
+\ after it? The closer is not: it is the row that does the binding.
+: IN-DECL? ( n -- bool )
+   {: ix:n :}
+   LG-FROM @ 0 <  if false exit then
+   ix LG-FROM @ >=  ix LG-TO @ <  and ;
+
+\ Which declared local this row names, or a negative answer. The comparison is
+\ between interned identities of one module, so it is an identity question and
+\ not a search for text.
+: LOCAL-OF ( n -- n )
+   {: ix:n :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if -1 exit then
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   -1
+   LN @ 0 ?do
+      sy i LNAME @ NFROZEN:SAME-SYM? if drop i leave then
    loop ;
 
 \ ---- the definition's memory order -------------------------------------------
@@ -550,6 +628,70 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
    {: v:IR-ARENA:view ix:n want:NTAPE:mode :}
    v ix NTAPE:MODE@ want NTAPE-MODE:EQ 0= if E-NELAB-MODE throw then ;
 
+\ ---- finding the locals group ------------------------------------------------
+\ One walk of the body before either of the other two, recording where the group
+\ is and which names it declares. It asks the word model only about rows the
+\ model could answer for: MODELS? is the one reader here that treats an
+\ undeclared word as an ordinary answer rather than a refusal, which is exactly
+\ what a name the program chose is.
+: MODELED-AS? ( IR-ARENA:arena n HIR:meaning -- bool )
+   {: r:IR-ARENA:arena ix:n m:HIR:meaning :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ m HIR-MEANING:EQ ;
+
+: DUP-LOCAL? ( IR-ID:ir-symbol-id -- bool )
+   {: sy:IR-ID:ir-symbol-id :}
+   false
+   LN @ 0 ?do
+      sy i LNAME @ NFROZEN:SAME-SYM? or
+   loop ;
+
+\ One declared local: its bare name, interned into this module so that every
+\ later mention of it in the body is the same identity. The annotation is cut
+\ off by the word model, which owns how a source word of this dialect is
+\ spelled. A name the dialect already models is refused rather than allowed to
+\ shadow it: `{: i:n :}` inside a counted loop would otherwise make `i` mean two
+\ things, and which one it means is a rule this file has no business inventing
+\ (dot habu-decide-what-a-9f38a8f6).
+: DECLARE-LOCAL ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   LN @ LMAX >= if E-NELAB-LOCAL-CAP throw then
+   CTX BLD  VW MKEY ix NTAPE:SPELL@  LBUF LNAME-CAP IR-BUILD:SYMBOL-COPY {: u:n :}
+   LBUF u HIR-WORD:LOCAL-NAME-LEN {: nu:n :}
+   nu 1 < if E-NELAB-LOCAL throw then
+   CTX BLD LBUF nu IR-BUILD:INTERN-SYMBOL {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? if E-NELAB-LOCAL throw then
+   sy DUP-LOCAL? if E-NELAB-LOCAL throw then
+   sy LN @ LNAME !
+   LN @ 1+ LN ! ;
+
+\ One row of the pre-pass. Before the group, the only row that matters is an
+\ opener; inside it, every row is a declared name until the closer; after it, a
+\ second opener is refused, because one group per definition is what this
+\ elaborator binds.
+: SCAN-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   LG-FROM @ 0 < if
+      r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if ix LG-FROM ! then exit
+   then
+   LG-TO @ 0 >= if
+      r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if E-NELAB-LOCAL throw then exit
+   then
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-NELAB-LOCAL throw then
+   r ix HIR-MEANING:CLOSE-LOCALS MODELED-AS? if ix LG-TO ! exit then
+   r ix HIR-MEANING:OPEN-LOCALS MODELED-AS? if E-NELAB-LOCAL throw then
+   r ix DECLARE-LOCAL ;
+
+: LOCALS-SCAN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena n:n :}
+   LRESET
+   n 1 ?do
+      r i SCAN-STEP
+   loop
+   LG-FROM @ 0 >=  LG-TO @ 0 <  and if E-NELAB-LOCAL throw then ;
+
 \ ---- the block skeleton ------------------------------------------------------
 \ A structure's opener has to branch to the block its paths meet in, and that
 \ block does not exist yet: IR-BUILD mints a block ordinal when the block is
@@ -591,6 +733,8 @@ create JOIN-TAB TMAX cells allot
 : SK-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
+   ix IN-DECL? if exit then
+   ix LOCAL-OF 0 >= if exit then
    VW MKEY r ix HIR-WORD:ADMIT-TOKEN
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
    r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
@@ -769,6 +913,45 @@ create JOIN-TAB TMAX cells allot
 : DO-INDEX ( -- )
    DO-FRAME CS-IDX @ VPUSH ;
 
+\ ---- binding and reading the locals ------------------------------------------
+\ `:}`: take one value off the compile-time vector per declared name, RIGHT TO
+\ LEFT. Forth pops the top value into the LAST name, so the first name declared
+\ is the deepest value - which is the same order the entry block's arguments are
+\ in, and the same order the caller's stack has them. Reading the values off the
+\ vector bottom first and binding them in declaration order is exactly that
+\ rule, and it is the one thing a locals group has to get right: `{: a b t :}`
+\ over a stack holding a, b, t must bind a to the deepest, not to the top.
+\
+\ The group's own place is checked twice. The row this closer is on has to be
+\ the row the pre-pass recorded, so the two walks agree about where the group
+\ is; and no control structure may be open, because a group inside one would
+\ bind names on a path that does not dominate the rest of the body and this
+\ elaborator has no scoping rule for that (dot habu-scope-a-locals-2faa3d7a).
+: DO-CLOSE-LOCALS ( n -- )
+   {: ix:n :}
+   ix LG-TO @ <> if E-NELAB-LOCAL throw then
+   LBOUND @ 0<> if E-NELAB-LOCAL throw then
+   CS-N @ 0<> if E-NELAB-LOCAL throw then
+   LN @ {: k:n :}
+   k VN @ > if E-NELAB-UNDER throw then
+   VN @ k - {: base:n :}
+   k 0 ?do
+      base i + VAT  i LVAL !
+   loop
+   k VDROP
+   1 LBOUND ! ;
+
+\ A mention of a bound local in the body: the value it names goes back on the
+\ vector. It produces no operation, exactly as a rename does, because the value
+\ already exists - whatever computed it - and this only says where it is used.
+: LOCAL-READ? ( n -- bool )
+   {: ix:n :}
+   ix LOCAL-OF {: k:n :}
+   k 0 < if false exit then
+   LBOUND @ 0= if E-NELAB-LOCAL throw then
+   k LAT LVAL @ VPUSH
+   true ;
+
 \ The whole control table. Every arm names the blocks one source control word
 \ builds; nothing else in this file decides what a control word means.
 : DO-CONTROL ( IR-ARENA:arena n -- )
@@ -795,15 +978,19 @@ variable IX                          \ the body token the walk stands on
 : STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
+   ix IN-DECL? if exit then
+   ix LOCAL-READ? if exit then
    VW MKEY r ix HIR-WORD:ADMIT-TOKEN
    MATCH HIR:meaning
-      literal   OF ix EMIT-CONST ENDOF
-      op        OF r ix EMIT-OP ENDOF
-      const-op  OF r ix EMIT-CONST-OP ENDOF
-      fixed     OF r ix EMIT-FIXED ENDOF
-      control   OF r ix DO-CONTROL ENDOF
-      rename    OF p r  VW MKEY ix NTAPE:SPELL@  RENAME ENDOF
-      unmodeled OF E-HIR-UNMODELED throw ENDOF
+      literal      OF ix EMIT-CONST ENDOF
+      op           OF r ix EMIT-OP ENDOF
+      const-op     OF r ix EMIT-CONST-OP ENDOF
+      fixed        OF r ix EMIT-FIXED ENDOF
+      control      OF r ix DO-CONTROL ENDOF
+      rename       OF p r  VW MKEY ix NTAPE:SPELL@  RENAME ENDOF
+      open-locals  OF E-NELAB-LOCAL throw ENDOF
+      close-locals OF ix DO-CLOSE-LOCALS ENDOF
+      unmodeled    OF E-HIR-UNMODELED throw ENDOF
    ;MATCH ;
 
 \ Walk the body: every row after the name, to the end of the tape. The tape's
@@ -894,6 +1081,7 @@ public
    n 1 < if E-NELAB-SHAPE throw then
    v NAME-READ
    TOK-RESET
+   r n LOCALS-SCAN
    r n SKELETON
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK

@@ -1036,6 +1036,18 @@ public
    c b USE {: slot:n :}
    slot T-SP TAB@  slot T-SR TAB@  id p u IR-SYM:EQ? ;
 
+\ The bytes of one of this module's symbols, copied into the caller's buffer,
+\ answering how many there are. SYMBOL-IS? serves a caller that already knows
+\ the spelling it is looking for; this serves one that does not - a stage
+\ reading a name the PROGRAM chose rather than a name the dialect declared, as
+\ the elaborator does for a `{: … :}` local. It appends nothing: the interner is
+\ read, and IR-SYM refuses an identity of another module or an ordinal it never
+\ minted, exactly as it does for SYMBOL-IS?.
+: SYMBOL-COPY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id ptr u8 n -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder id:IR-ID:ir-symbol-id p cap:n :} \ typed-local-lint: allow-bare-local - p keeps the ptr u8 byte-span role
+   c b USE {: slot:n :}
+   slot T-SP TAB@  slot T-SR TAB@  id p cap IR-SYM:COPY ;
+
 \ The span names a source of this module and lies inside its registered bytes.
 \ The span is unmade at entry because the checker cannot yet bind a local of a
 \ multi-cell structure type (dot habu-bind-multi-cell-d2e153ed), the same step

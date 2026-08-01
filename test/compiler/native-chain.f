@@ -367,6 +367,80 @@ create TXT TEXT-CAP allot
    NFIX:BINDING [: MEM-BODY ;] IR-CTX:WITH-CONTEXT
    BUMPED T= BUMPED T= BUMPED T= BUMPED T= 1 T= ;
 
+\ ---- a definition with typed locals and a division ---------------------------
+\ The same run over a body that binds three names with `{: … :}` and divides.
+\ Nothing about the group is typed into this file as a tape row: `evaluate`
+\ compiles the definition, the checker's own reader consumes `{:`, the three
+\ `name:type` tokens and `:}`, and the elaborator reads that grid off the tape
+\ the producer sealed. So this case is the acceptance of the locals leaf - if the
+\ engine's reader carried the declaration some other way, the chain would refuse
+\ here rather than compile something else.
+\
+\ WHY THESE ARGUMENTS AND NOT THE CORPUS'S. A locals frame's one job is to bind
+\ the FIRST name to the DEEPEST value, and most argument triples cannot see a
+\ binding that got that wrong: `10 20 50 LERP` answers 15 whether a and b are
+\ swapped or not, because the interpolation is symmetric about its midpoint. So
+\ the arguments here are chosen to make every permutation of the three bindings
+\ answer a different number - 3, 17, 40 answers 8, and swapping any two names
+\ answers 12, 9 or 40 - and the answer is compared with what the engine's own
+\ compilation of the same source computes. Swapping the division's two operands
+\ answers 3.
+\
+\ AND WHAT THE DIVISION IS. `hir.div` selects to `a64.sdiv`, which is three
+\ instructions and not one: the divisor is tested, a `brk` is jumped over when it
+\ is not zero, and only then does the divide run. That is exactly what the
+\ engine's own `/` compiles to (src/habu/habu1.f BDIV0? then BDIV), so the
+\ compiled routine and the interpreted word agree on a zero divisor as well as on
+\ the rounding - both truncate toward zero, which the two negative-quotient cases
+\ below pin.
+: SRC5 ( -- ptr u8 n )
+   s" : NCH-LERP ( n n n -- n ) {: a:n b:n t:n :} b a - t * 100 / a + ;" ;
+
+: RECORD5 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC5 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: ELABORATE5 ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB TAPE p r 3 1 NELAB:COLON drop ;
+
+\ Fourteen instructions: the pointer down over the three arguments, three loads,
+\ the subtraction, the multiply, the constant, the division's three, the
+\ addition, the store, the pointer up over the one result, and the return.
+: LOCALS-BODY ( IR-CTX:ctx -- n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD5
+   TAPE NTAPE:TOKENS
+   VERDICT
+   p r ELABORATE5
+   CC BB TXT TEXT-LEN 0 REGS 3 1 NFIX:RUN-HABU
+   A64EMIT:INSNS
+   NRUN:PUBLISH {: fn:n :}
+   3 17 40 fn NRUN:ENTER3
+   0 100 25 fn NRUN:ENTER3
+   -40 0 30 fn NRUN:ENTER3
+   s" 3 17 40 NCH-LERP" EV-N
+   s" -40 0 30 NCH-LERP" EV-N ;
+
+\ The token count is the whole grid the reader produced: the name, `{:`, three
+\ declarations, `:}`, and the nine body tokens. Asserting it is what says the
+\ declaration reached the tape at all rather than being consumed before it.
+\
+\ The third argument triple divides a negative product: (0 - -40) * 30 is 1200
+\ over 100, which is exact, so it is the SECOND number that pins the rounding -
+\ -40 + 12 is -28 either way. What it really pins is the sign: a routine that
+\ divided the other way round, or that mixed the bindings up, answers something
+\ else, and the interpreted word is run on the same triple to say so.
+: LOCALS-CASE ( -- )
+   s" a definition with typed locals and a division compiles and runs" T-LABEL
+   NFIX:BINDING [: LOCALS-BODY ;] IR-CTX:WITH-CONTEXT
+   -28 T= 8 T= -28 T= 25 T= 8 T= 14 T= -1 T= 15 T= ;
+
 public
 
 : RUN ( -- )
@@ -375,6 +449,7 @@ public
    HABU-CASE
    BRANCH-CASE
    MEM-CASE
+   LOCALS-CASE
    T-REPORT ;
 
 ;package

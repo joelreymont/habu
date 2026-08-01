@@ -184,6 +184,14 @@ create TXT
    HIR-OPCODE:SUB x y BINOP RET1
    CLOSE-FUN ;
 
+\ `: QUOT ( n n -- n ) / ;`
+: BUILD-DIV ( -- )
+   s" QUOT" 2 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   HIR-OPCODE:DIV x y BINOP RET1
+   CLOSE-FUN ;
+
 \ `: SUM3 ( a b c -- n ) + + ;`
 : BUILD-SUM3 ( -- )
    s" SUM3" 3 1 OPEN-FUN
@@ -368,6 +376,44 @@ $1000 constant BUMP-ADDR
    s" a subtraction emits with its operands in the order the source has them" T-LABEL
    WBND [: DIFF-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= $D65F03C0 T= $CB010000 T= 2 T= ;
+
+\ `cbnz x1, +2`, `brk`, `sdiv x0, x0, x1`, `ret`. The division is ONE operation
+\ of the machine dialect and three instructions, and the two in front of the
+\ divide are the whole of what makes a compiled division agree with an
+\ interpreted one: ARM64's Sdiv answers zero for a zero divisor, and the
+\ engine's own `/` ends the process instead (src/habu/habu1.f BDIV0?). Deleting
+\ either of them, or moving the guard's distance off two, reddens here.
+: DIV-BODY ( IR-CTX:ctx -- n n n n n )
+   HIR-MOD
+   BUILD-DIV
+   4 EMITTED
+   A64EMIT:INSNS
+   0 A64EMIT:WORD@
+   1 A64EMIT:WORD@
+   2 A64EMIT:WORD@
+   3 A64EMIT:WORD@ ;
+
+: DIV-CASE ( -- )
+   s" a division emits the zero-divisor guard the engine's own divide has" T-LABEL
+   WBND [: DIV-BODY ;] IR-CTX:WITH-CONTEXT
+   $D65F03C0 T= $9AC10C00 T= $D4200000 T= $B5000041 T= 4 T= ;
+
+\ And it computes what the engine computes, truncating toward zero rather than
+\ flooring: -7 over 2 is -3 and not -4. The two negative cases are what say the
+\ rounding of a compiled division is the rounding of an interpreted one.
+: RUN-DIV-BODY ( IR-CTX:ctx -- n n n )
+   HIR-MOD
+   BUILD-DIV
+   4 EMITTED
+   PUBLISH {: fn:n :}
+   7 2 fn EXEC2
+   -7 2 fn EXEC2
+   7 -2 fn EXEC2 ;
+
+: RUN-DIV-CASE ( -- )
+   s" the emitted division truncates toward zero, as the engine's does" T-LABEL
+   WBND [: RUN-DIV-BODY ;] IR-CTX:WITH-CONTEXT
+   -3 T= -3 T= 3 T= ;
 
 \ `add x0, x0, x1`, `add x0, x0, x2`, `ret`.
 : SUM3-BODY ( IR-CTX:ctx -- n n n n )
@@ -1010,6 +1056,7 @@ public
    SQUARE-CASE
    BYTES-CASE
    DIFF-CASE
+   DIV-CASE
    SUM3-CASE
    REUSE-CASE
    SUM3-HIGH-CASE
@@ -1018,6 +1065,7 @@ public
    MAP-CASE
    RUN-SQUARE-CASE
    RUN-DIFF-CASE
+   RUN-DIV-CASE
    RUN-SUM3-CASE
    RUN-REUSE-CASE
    RUN-WIDE-CASE

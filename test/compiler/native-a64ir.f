@@ -112,10 +112,10 @@ private
 
 \ ---- registration ------------------------------------------------------------
 \ The opcodes, and the count, so "nothing else was defined" is measured rather
-\ than assumed. The fourteen the register conventions use are here; the four that
+\ than assumed. The fifteen the register conventions use are here; the four that
 \ reach the caller's data stack are checked in DSTACK-SPELL-CASE below and the
-\ two addressed forms in ADDR-SHAPE-CASE, and the count covers all twenty.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+\ two addressed forms in ADDR-SHAPE-CASE, and the count covers all twenty-one.
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -124,6 +124,7 @@ private
    c b A64IR-OPCODE:ADD A64IR:OPCODE {: a:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:SUB A64IR:OPCODE {: s:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:SDIV A64IR:OPCODE {: y:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:STORE A64IR:OPCODE {: w:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:LOAD A64IR:OPCODE {: d:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:RESERVE A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
@@ -140,6 +141,7 @@ private
    rv a IR-SCHEMA:FDEFINED?
    rv s IR-SCHEMA:FDEFINED?
    rv u IR-SCHEMA:FDEFINED?
+   rv y IR-SCHEMA:FDEFINED?
    rv w IR-SCHEMA:FDEFINED?
    rv d IR-SCHEMA:FDEFINED?
    rv p IR-SCHEMA:FDEFINED?
@@ -150,10 +152,10 @@ private
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the twenty machine opcodes" T-LABEL
+   s" registration defines exactly the twenty-one machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE 20 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 21 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -427,6 +429,34 @@ private
    TTRUE TTRUE TTRUE TTRUE 0 T= 1 T= 3 T=
    TTRUE TTRUE TTRUE 0 T= 2 T= 2 T=
    TTRUE TTRUE ;
+
+\ The division: two registers read, one written, no attribute - the same shape
+\ as the three arithmetic forms - and the ONE form of this dialect whose schema
+\ says it may raise. Its three instructions are the zero-divisor guard and the
+\ divide together, which is what makes the raise real: a compiled division ends
+\ the process where the engine's own `/` does instead of answering zero. The
+\ multiply is asserted beside it as total, so the trap flag is a statement about
+\ division rather than about arithmetic.
+: SDIV-BODY ( IR-CTX:ctx -- bool n n n bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:SDIV A64IR:OPCODE {: y:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:MUL A64IR:OPCODE {: u:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv y s" a64.sdiv" IR-SYM:FEQ?
+   rv y IR-SCHEMA:FOPERANDS
+   rv y IR-SCHEMA:FRESULTS
+   rv y IR-SCHEMA:FATTRS
+   rv y IR-SCHEMA:FTRAPS?
+   rv u IR-SCHEMA:FTRAPS? ;
+
+: SDIV-CASE ( -- )
+   s" the division is the one machine form that may raise" T-LABEL
+   BND [: SDIV-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE 0 T= 1 T= 2 T= TTRUE ;
 
 \ The copy: one register read, one register written, no attribute, no tie, and
 \ the same spelling every other reader sees. The absent tie is the whole content
@@ -895,7 +925,8 @@ private
 
 : GROUP-ADDR ( IR-CTX:ctx -- )
    drop
-   ADDR-SHAPE-CASE ;
+   ADDR-SHAPE-CASE
+   SDIV-CASE ;
 
 : GROUP-BRANCH ( IR-CTX:ctx -- )
    drop

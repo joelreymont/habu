@@ -19,6 +19,12 @@
 \             operation at all;
 \   fixed     it pushes one value and nothing else, which is what a `create`d
 \             data word does, and the row carries that value;
+\   open-locals   it starts a `{: … :}` group, so the names after it are the
+\   close-locals  program's own locals and the closer binds one value to each,
+\                 right to left. Neither stages an operation and neither carries
+\                 a payload: the work is the elaborator's, over the rows between
+\                 them, and a bound name is just a value of the compile-time
+\                 vector.
 \   unmodeled a named boundary: checked source may not compile it yet, and the
 \             row says which capability has to land first.
 \ A fourth meaning, `literal`, belongs to a source-tape token rather than to a
@@ -150,6 +156,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       const-op  OF 4 ENDOF
       control   OF 5 ENDOF
       fixed     OF 6 ENDOF
+      open-locals  OF 7 ENDOF
+      close-locals OF 8 ENDOF
    ;MATCH ;
 
 \ Code zero, `literal`, is deliberately absent: a literal is a token's meaning,
@@ -162,6 +170,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       4 of HIR-MEANING:CONST-OP endof
       5 of HIR-MEANING:CONTROL endof
       6 of HIR-MEANING:FIXED endof
+      7 of HIR-MEANING:OPEN-LOCALS endof
+      8 of HIR-MEANING:CLOSE-LOCALS endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -171,6 +181,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       add    OF 1 ENDOF
       sub    OF 2 ENDOF
       mul    OF 3 ENDOF
+      div    OF 12 ENDOF
       return OF 4 ENDOF
       lt     OF 5 ENDOF
       le     OF 6 ENDOF
@@ -195,6 +206,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       9 of HIR-OPCODE:MEM endof
       10 of HIR-OPCODE:LOAD endof
       11 of HIR-OPCODE:STORE endof
+      12 of HIR-OPCODE:DIV endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -417,9 +429,30 @@ private
    UNUSED UNUSED
    ROW-ADD ;
 
+\ The row a word with no payload at all writes. The two halves of a typed
+\ locals group are the only words of this dialect like that: `{:` starts reading
+\ the names that follow and `:}` binds them, and both of those are the
+\ elaborator's work over the rows between them, so there is nothing for a row to
+\ carry but the meaning. The meaning is held against the two that qualify, so
+\ this declarer cannot be used to write an `op` row with no opcode or a `rename`
+\ row with no picks.
+: PLAIN-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:meaning -- )
+   {: m:HIR:meaning :}
+   m HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ
+   m HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ or
+   0= if E-HIR-CLASS throw then
+   m MEAN-CODE
+   UNUSED UNUSED UNUSED
+   ROW-ADD ;
+
 \ The same declaration for a module still being built: the builder answers for
 \ its own interner. This is how REGISTER-WORDS declares the subset's vocabulary
 \ into a module whose symbol rows no caller can hold.
+: BDECLARE-PLAIN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:meaning -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id m:HIR:meaning :}
+   c r  c b id BSYM-CK  m PLAIN-ROW ;
+
 : BDECLARE-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode :}
@@ -599,6 +632,34 @@ public
    r id ROW-OF {: l:n :}
    r l OFF-MEAN RC@ N>MEAN ;
 
+\ Whether this table models the word at all, asked without being refused. Every
+\ other reader here treats an undeclared word as an error, which is right when
+\ the answer is about to be used; this one exists because the elaborator has to
+\ ask a question no other caller asks - whether a name the PROGRAM chose for a
+\ `{: … :}` local collides with a word of the dialect - and the answer "no" is
+\ the ordinary case rather than a failure.
+: MODELS? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id SYM-OWNER-CK
+   r id IR-ID:SYMBOL-LOCAL FIND 0 >= ;
+
+\ The bare name inside one typed local's declaration spelling. A declaration
+\ reads `name:type`, and the tape carries the whole of it as one token - proved
+\ by test/compiler/native-feed.f, which records `{: a:n b:n t:n :}` off the
+\ engine's own reader - while the body reads the name alone. So the annotation
+\ has to be cut off somewhere, and it is cut off here: this file is the one that
+\ knows how a source word of this dialect is spelled, and the elaborator holds
+\ no spelling of its own. An unannotated local is a real shape too (`{: a b :}`
+\ is ordinary Habu), and its whole spelling is its name.
+$3A constant ANN-C                   \ the `:` that separates a local from its type
+
+: LOCAL-NAME-LEN ( ptr u8 n -- n )
+   {: a:ptr u:n :}
+   u
+   u 0 ?do
+      a i + c@ ANN-C = if drop i leave then
+   loop ;
+
 \ The gate. Answers what checked source may compile this word into, and refuses
 \ everything else by name.
 : ADMIT ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:meaning )
@@ -703,18 +764,21 @@ public
 \ so a caller commits a table to what this registration writes and not to a
 \ guess. The pick cells are the picks the seven renames put back, added up:
 \ four for `2dup`, two for `dup`, none for `drop`, two for `swap`, three for
-\ `over`, one for `nip` and three for `rot`.
-23 constant WORDS
+\ `over`, one for `nip` and three for `rot`. A `{: … :}` group adds two words
+\ and no picks: its halves stage nothing and the names between them are the
+\ program's, so they never become rows of this table.
+26 constant WORDS
 15 constant PICK-CELLS
 
 private
 
-\ The five words this dialect has operations for.
+\ The six words this dialect has operations for.
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD BDECLARE-OP
    c b r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB BDECLARE-OP
    c b r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL BDECLARE-OP
+   c b r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:DIV BDECLARE-OP
    c b r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LT BDECLARE-OP
    c b r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LE BDECLARE-OP ;
 
@@ -749,6 +813,16 @@ private
    c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
    c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
    c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL ;
+
+\ The two halves of a typed locals group. Neither stages an operation and
+\ neither carries a payload: what the opener does is start reading the names
+\ that follow it and what the closer does is bind them, and both of those are
+\ the elaborator's work over the tape rows between them. The row therefore holds
+\ the meaning and nothing else.
+: DEF-LOCALS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-MEANING:OPEN-LOCALS BDECLARE-PLAIN
+   c b r c b s" :}" IR-BUILD:INTERN-SYMBOL HIR-MEANING:CLOSE-LOCALS BDECLARE-PLAIN ;
 
 \ dup ( a -- a a ): consume the top value and put it back twice.
 : DEF-DUP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -816,8 +890,9 @@ public
 
 \ Declare the whole straight-line source vocabulary into one word model: the
 \ words this dialect has operations for, the two step words that are a literal
-\ and an operation, the two memory words, the structured control words, and the
-\ stack words that only rename values. The builder is the module's symbol
+\ and an operation, the two memory words, the structured control words, the two
+\ halves of a typed locals group, and the stack words that only rename values.
+\ The builder is the module's symbol
 \ interner, so the spellings become identities of the same module the table is
 \ bound to. A `create`d data word is NOT here: which data words exist is a fact
 \ about the program being compiled and not about the dialect, so a caller
@@ -828,6 +903,7 @@ public
    c b r DEF-STEP
    c b r DEF-MEMORY
    c b r DEF-CONTROL
+   c b r DEF-LOCALS
    c b p r DEF-2DUP
    c b p r DEF-DUP
    c b p r DEF-DROP

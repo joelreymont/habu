@@ -8,19 +8,20 @@
 \ "the new column has fewer rows" can only ever mean "these named capabilities
 \ are missing", never "the harness quietly stopped looking".
 \
-\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares twenty-three
-\ source words - `+ - * < <=`, `1-` and `1+`, the two memory words `@` and `!`,
-\ the seven structured control words `if then begin until ?do loop i`, and the
-\ seven renames `2dup dup drop swap over nip rot` - plus integer literals, and
-\ src/compiler/native/hir.f gives the dialect twelve operations. A word of the
+\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares twenty-six
+\ source words - `+ - * / < <=`, `1-` and `1+`, the two memory words `@` and `!`,
+\ the seven structured control words `if then begin until ?do loop i`, the two
+\ halves `{:` and `:}` of a typed locals group, and the seven renames
+\ `2dup dup drop swap over nip rot` - plus integer literals, and
+\ src/compiler/native/hir.f gives the dialect thirteen operations. A word of the
 \ corpus is expressible exactly when its body is those words and nothing else,
 \ plus - for a body that names a `create`d data word - the one address the
-\ harness states (dot habu-resolve-a-data-a1c8067f). Seven of the eleven are:
+\ harness states (dot habu-resolve-a-data-a1c8067f). Eight of the eleven are:
 \ the empty word, the three-argument sum, the sum of two squares - which is the
-\ one that shows the renames costing nothing at all - the two-way branch, both
-\ loop forms, and the cell bump.
+\ one that shows the renames costing nothing at all - the two-way branch, the
+\ typed locals frame, both loop forms, and the cell bump.
 \
-\ THE CAPABILITIES THE OTHER FIVE WAIT FOR are the vocabulary below, and each
+\ THE CAPABILITIES THE OTHER THREE WAIT FOR are the vocabulary below, and each
 \ gap row names every one it needs rather than the first that stops it - a word
 \ that needs a branch and a comparison is not unblocked by branches alone, and a
 \ reader planning the next capability should see that.
@@ -256,6 +257,31 @@ private
       9 -1 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
+\ `: LERP ( n n n -- n ) {: a:n b:n t:n :} b a - t * 100 / a + ;` - the typed
+\ locals frame, and the one word of the corpus that divides. The declaration is
+\ written here exactly as the corpus writes it, annotations and all, because
+\ that is what a produced tape carries: the engine's own reader consumes `{:`,
+\ one `name:type` token per local and `:}`, and test/compiler/native-feed.f
+\ records that grid off a real compilation.
+\
+\ WHAT MAKES THE TWO PINNED INPUTS A CHECK ON THE BINDING ORDER. `{: a b t :}`
+\ over a stack holding a, b, t must bind a to the DEEPEST value; binding it to
+\ the top instead is the one mistake a locals frame can make. The first pinned
+\ input cannot see it - (10, 20, 50) answers 15 either way, because the
+\ subtraction is symmetric about the midpoint there - and the second one can:
+\ (0, 100, 25) answers 25 with the right binding and 75 with a and b swapped, so
+\ the head-to-head check against the interpreted word catches it.
+: LERP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" LERP {: a:n b:n t:n :} b a - t * 100 / a +" NSRC:TEXT!
+   c 3 1 REGS CODEGEN-CHAIN:CHAIN
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:LERP" CODEGEN-CHAIN:BYTES
+   [: 10 20 50 CODEGEN-CHAIN:FN@ NRUN:ENTER3 drop ;]
+   [: 10 20 50 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR
+      0 100 25 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
 \ `: SUM-TO ( n -- n ) 0 swap 0 ?do i + loop ;` - the counted loop. Seven blocks,
 \ and the one place in the corpus where the loop index is a value the chain
 \ carries in a register rather than a frame the engine pushes.
@@ -313,22 +339,19 @@ private
    NFIX:BINDING [: ADD3-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: SQUARE-SUM-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: MAX2-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: LERP-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: SUM-TO-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: COUNT-DOWN-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: CELL-BUMP-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the words the subset cannot express yet ---------------------------------
 : GAP-CASES ( -- )
-   s" CODEGEN-CORPUS:LERP" CODEGEN--NEW-CAP:LOCALS GAP
-      CODEGEN--NEW-CAP:DIVISION GAP-ALSO
    s" CODEGEN-CORPUS:FACT" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
       CODEGEN--NEW-CAP:CALLS GAP-ALSO
       CODEGEN--NEW-CAP:COMPARISON GAP-ALSO
    s" CODEGEN-CORPUS:BYTE-SUM" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-      CODEGEN--NEW-CAP:LOCALS GAP-ALSO
       CODEGEN--NEW-CAP:MEMORY GAP-ALSO
    s" CODEGEN-CORPUS:BYTE-FIND" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-      CODEGEN--NEW-CAP:LOCALS GAP-ALSO
       CODEGEN--NEW-CAP:MEMORY GAP-ALSO
       CODEGEN--NEW-CAP:COMPARISON GAP-ALSO ;
 

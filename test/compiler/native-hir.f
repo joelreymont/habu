@@ -67,13 +67,14 @@ private
 \ ---- the dialect: what registration defines ----------------------------------
 \ The twelve opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b HIR-OPCODE:CONST HIR:OPCODE {: k:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:ADD HIR:OPCODE {: a:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:SUB HIR:OPCODE {: s:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:MUL HIR:OPCODE {: u:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:DIV HIR:OPCODE {: v:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:LT HIR:OPCODE {: l:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:LE HIR:OPCODE {: e:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:BR HIR:OPCODE {: j:IR-ID:ir-symbol-id :}
@@ -88,6 +89,7 @@ private
    rv a IR-SCHEMA:FDEFINED?
    rv s IR-SCHEMA:FDEFINED?
    rv u IR-SCHEMA:FDEFINED?
+   rv v IR-SCHEMA:FDEFINED?
    rv l IR-SCHEMA:FDEFINED?
    rv e IR-SCHEMA:FDEFINED?
    rv j IR-SCHEMA:FDEFINED?
@@ -98,9 +100,9 @@ private
    rv w IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the twelve opcodes of the subset" T-LABEL
+   s" registration defines exactly the thirteen opcodes of the subset" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 12 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 13 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the
 \ version.
@@ -294,6 +296,28 @@ private
    WBND [: TRAP-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TFALSE TFALSE TFALSE TFALSE ;
 
+\ ---- the one opcode whose trap is not the unit's policy -----------------------
+\ Division may trap under EITHER policy, because what it traps on is a zero
+\ divisor and not an overflow: the engine's own `/` branches over a `brk` when
+\ the divisor is not zero, so a lowering that dropped the check would answer
+\ zero where the interpreted word ends the process. The flag says so under both
+\ bindings, which is what makes it a fact about division rather than about the
+\ policy the unit was registered with.
+: DIV-TRAP-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-OPCODE:DIV HIR:OPCODE {: v:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv v IR-SCHEMA:FTRAPS? ;
+
+: DIV-TRAP-CASES ( -- )
+   s" division may trap under a trapping policy" T-LABEL
+   BND [: DIV-TRAP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE
+   s" and under a wrapping one too, because it is not an overflow" T-LABEL
+   WBND [: DIV-TRAP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE ;
+
 \ ---- registration refusals ---------------------------------------------------
 : PTX-BODY ( IR-CTX:ctx -- )
    DIALECT-NEW drop ;
@@ -330,20 +354,67 @@ private
    c b p r HIR-WORD:REGISTER-WORDS
    b p r ;
 
-: OPS-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+: OPS-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    r HIR-WORD:MODELED
    r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:ADD HIR-OPCODE:EQ
    r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:SUB HIR-OPCODE:EQ
    r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:MUL HIR-OPCODE:EQ
+   r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:DIV HIR-OPCODE:EQ
    r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LT HIR-OPCODE:EQ
    r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LE HIR-OPCODE:EQ ;
 
 : OPS-CASE ( -- )
-   s" the five operation words bind to their operations" T-LABEL
+   s" the six operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE 23 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 26 T= ;
+
+\ ---- the two halves of a typed locals group ----------------------------------
+\ Neither stages an operation, so what the word model has to say about them is
+\ only which half each one is - and a row read as the other half, or as any
+\ other meaning, is a category error rather than a wrong answer.
+: LOCALS-MEAN-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
+      HIR-MEANING:OPEN-LOCALS HIR-MEANING:EQ
+   r c b s" :}" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
+      HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ
+   r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
+      HIR-MEANING:CLOSE-LOCALS HIR-MEANING:EQ
+   r c b s" {:" IR-BUILD:INTERN-SYMBOL HIR-WORD:MODELS? ;
+
+: LOCALS-MEAN-CASE ( -- )
+   s" the two halves of a locals group are declared and each is itself" T-LABEL
+   BND [: LOCALS-MEAN-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TFALSE TTRUE TTRUE ;
+
+\ MODELS? is the one reader that answers about a word the table never declared
+\ rather than refusing, which is what a name the PROGRAM chose for a local is.
+: MODELS-BODY ( IR-CTX:ctx -- bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" dup" IR-BUILD:INTERN-SYMBOL HIR-WORD:MODELS?
+   r c b s" a" IR-BUILD:INTERN-SYMBOL HIR-WORD:MODELS? ;
+
+: MODELS-CASE ( -- )
+   s" the table answers about a word it never declared without refusing" T-LABEL
+   BND [: MODELS-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE ;
+
+\ Where a typed local's annotation is cut off. `a:n` declares `a`; an
+\ unannotated local is its whole spelling; and the separator is the FIRST colon,
+\ so a type that carries one of its own keeps the same name.
+: ANN-BODY ( -- n n n )
+   s" a:n" HIR-WORD:LOCAL-NAME-LEN
+   s" a" HIR-WORD:LOCAL-NAME-LEN
+   s" ref:IR-CTX:ctx" HIR-WORD:LOCAL-NAME-LEN ;
+
+: ANN-CASE ( -- )
+   s" a local's name is what stands before its annotation" T-LABEL
+   ANN-BODY
+   3 T= 1 T= 1 T= ;
 
 \ ---- the memory words and the data word --------------------------------------
 \ The two memory words bind to the two memory operations, the increment binds to
@@ -449,20 +520,21 @@ private
    BND [: MEAN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE ;
 
-\ Declaration order is observable, which is what an inventory walks: the five
+\ Declaration order is observable, which is what an inventory walks: the six
 \ arithmetic words are declared first, then the two step words, the two memory
-\ words and the seven control words, with the renames at the end of the walk.
+\ words, the seven control words and the two halves of a locals group, with the
+\ renames at the end of the walk.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 16 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 19 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 21 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 24 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 22 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 25 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" rot" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -983,7 +1055,7 @@ private
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 12 0 0 FORGE
+   1 13 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 
@@ -1307,7 +1379,8 @@ private
 
 : GROUP-POLICY ( IR-CTX:ctx -- )
    drop
-   TRAP-CASES ;
+   TRAP-CASES
+   DIV-TRAP-CASES ;
 
 : GROUP-REG-REFUSE ( IR-CTX:ctx -- )
    drop
@@ -1319,6 +1392,9 @@ private
    MEMWORD-CASE
    RENAME-CASE
    MEAN-CASE
+   LOCALS-MEAN-CASE
+   MODELS-CASE
+   ANN-CASE
    AT-CASE ;
 
 : GROUP-FIXED-REFUSE ( IR-CTX:ctx -- )

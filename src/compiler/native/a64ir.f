@@ -27,6 +27,9 @@
 \   a64.add      Add rd rn rm    - 64-bit register addition
 \   a64.sub      Sub rd rn rm    - 64-bit register subtraction
 \   a64.mul      Mul rd rn rm    - 64-bit register multiplication
+\   a64.sdiv     Cbnz rm +2; Brk; Sdiv rd rn rm
+\                                - 64-bit signed division, trapping on a zero
+\                                  divisor exactly as the engine's own `/` does
 \   a64.str      Str rt sp off   - store a register into a frame slot
 \   a64.ldr      Ldr rt sp off   - load a register back out of a frame slot
 \   a64.astr     Str rt rn 0     - store a register through an address register
@@ -47,10 +50,13 @@
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
 \
-\ TWO OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form above
-\ is one instruction, and that is the rule this dialect keeps wherever it can:
-\ one operation, one form, four bytes. The comparison and the two-way branch
-\ break it for the same reason, which is the condition flags. The flags are a
+\ THREE OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form
+\ above is one instruction, and that is the rule this dialect keeps wherever it
+\ can: one operation, one form, four bytes. The division breaks it because its
+\ zero-divisor guard and the divide it guards are inseparable - the whole point
+\ of the guard is that nothing runs between the test and the divide. The
+\ comparison and the two-way branch break it for a related reason, which is the
+\ condition flags. The flags are a
 \ single architectural register that no value of this dialect stands for and the
 \ allocator may never hand out, so the instructions that write them and the
 \ instruction that reads them have to be inseparable - and the only way an IR can
@@ -170,12 +176,20 @@
 \ against these, so a bound that moved in the assembler reddens this dialect
 \ instead of silently disagreeing with it.
 \
-\ NOTHING HERE MAY TRAP. Add, Sub and Mul on ARM64 wrap; none of the ten forms
-\ raises on overflow. A frame access does not either: its slot is proved
-\ addressable before the operation can be built. That is why every schema below declares no trap, and it is
-\ why the selector refuses a source operation whose own schema says it may trap:
-\ a trapping addition needs a flag-setting form and a conditional branch to a
-\ trap target, and none of that is in this dialect yet.
+\ ONE FORM MAY TRAP, AND IT IS THE ONE THAT HAS TO. Add, Sub and Mul on ARM64
+\ wrap; none of them raises on overflow, and a frame access does not either -
+\ its slot is proved addressable before the operation can be built. Division is
+\ the exception, and deliberately: the engine's own `/` branches over a `brk`
+\ when the divisor is not zero (src/habu/habu1.f BDIV0?), so a divide by zero
+\ ends the process rather than answering the zero a bare Sdiv would. a64.sdiv is
+\ those three instructions as ONE operation, for the same reason the comparison
+\ is three - the guard and the divide are inseparable, and an IR in which they
+\ were two operations would let a later pass put something between them - and
+\ its schema declares that it may trap. That declaration is what lets the
+\ selector tell a source operation it can lower faithfully from one it cannot: a
+\ trapping ADDITION still needs a flag-setting form and a conditional branch to
+\ a trap target, and none of that is in this dialect yet, so the selector still
+\ refuses it.
 \
 \ THE TWO ADDRESSED FORMS ARE THE ONLY ONES WHOSE BASE IS A VALUE. Every other
 \ memory form above reaches a region the FORM names - the frame from the stack
@@ -235,6 +249,7 @@ ENUM opcode DERIVE eq
    add
    sub
    mul
+   sdiv
    store
    load
    reserve
@@ -476,6 +491,7 @@ public
       add     OF s" a64.add"     ENDOF
       sub     OF s" a64.sub"     ENDOF
       mul     OF s" a64.mul"     ENDOF
+      sdiv    OF s" a64.sdiv"    ENDOF
       store    OF s" a64.str"      ENDOF
       load     OF s" a64.ldr"      ENDOF
       reserve  OF s" a64.reserve"  ENDOF
@@ -599,6 +615,7 @@ private
       add     OF s" a64.rule.add"     ENDOF
       sub     OF s" a64.rule.sub"     ENDOF
       mul     OF s" a64.rule.mul"     ENDOF
+      sdiv    OF s" a64.rule.sdiv"    ENDOF
       store    OF s" a64.rule.str"      ENDOF
       load     OF s" a64.rule.ldr"      ENDOF
       reserve  OF s" a64.rule.reserve"  ENDOF
@@ -624,6 +641,7 @@ private
       add     OF s" a64.render.add"     ENDOF
       sub     OF s" a64.render.sub"     ENDOF
       mul     OF s" a64.render.mul"     ENDOF
+      sdiv    OF s" a64.render.sdiv"    ENDOF
       store    OF s" a64.render.str"      ENDOF
       load     OF s" a64.render.ldr"      ENDOF
       reserve  OF s" a64.render.reserve"  ENDOF
@@ -718,6 +736,26 @@ private
    TOTAL
    TARGET
    c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Signed division: the same two registers in and one out as the three forms
+\ above, and the one form of this dialect that may raise. It is three
+\ instructions - branch over the trap when the divisor is not zero, the trap,
+\ the divide - because that is what the engine's own `/` is, and a routine this
+\ chain compiles has to do what the interpreted word does on every input rather
+\ than only on the ones a harness pins. The three are one operation for the
+\ reason the comparison's three are: the branch and the instruction it guards
+\ are inseparable, and nothing may be inserted between them.
+: DEF-SDIV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:SDIV OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b A64IR-OPCODE:SDIV NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the frame forms ---------------------------------------------------------
@@ -1032,6 +1070,7 @@ public
    c b t A64IR-OPCODE:ADD DEF-BINARY
    c b t A64IR-OPCODE:SUB DEF-BINARY
    c b t A64IR-OPCODE:MUL DEF-BINARY
+   c b t DEF-SDIV
    c b t k DEF-STR
    c b t k DEF-LDR
    c b k DEF-RESERVE
