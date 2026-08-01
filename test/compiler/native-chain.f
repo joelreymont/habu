@@ -307,11 +307,11 @@ create TXT TEXT-CAP allot
 \ two paths are compared on the memory they left as well as on the value they
 \ answered.
 \
-\ AND THE ARGUMENT IS BIGGER THAN A BYTE ON PURPOSE. The dialect has one access
-\ width and the assembler has four encoders; a cell-width load written with the
-\ byte-width encoder would answer the same number for every argument under 256,
-\ so the argument is 4000 and the answer 4001, which the low eight bits cannot
-\ carry.
+\ AND THE ARGUMENT IS BIGGER THAN A BYTE ON PURPOSE. The dialect has a cell
+\ access and a byte access and the assembler has an encoder for each; a
+\ cell-width access written with the byte-width encoder would keep only the low
+\ eight bits, so the argument is 4000 and the answer 4001, which those bits
+\ cannot carry. The case below this one holds the same line from the other end.
 : SRC4 ( -- ptr u8 n )
    s" : NCH-BUMP ( n -- n ) NCH-CELL ! NCH-CELL @ 1+ dup NCH-CELL ! ;" ;
 
@@ -441,6 +441,130 @@ create TXT TEXT-CAP allot
    NFIX:BINDING [: LOCALS-BODY ;] IR-CTX:WITH-CONTEXT
    -28 T= 8 T= -28 T= 25 T= 8 T= 14 T= -1 T= 15 T= ;
 
+\ ---- a definition that reads BYTES in a loop ---------------------------------
+\ The same run over a body that walks a byte span: `c@` inside a counted loop,
+\ which is where the two capabilities of this leaf meet. It is the acceptance of
+\ both.
+\
+\ WHAT THE BYTE WIDTH HAS TO GET RIGHT, AND HOW THE ANSWER SAYS SO. `c@` reads
+\ ONE byte. A load emitted at cell width would read eight bytes starting at the
+\ same address, so every position of the scan would answer a number in the
+\ millions instead of a character code, the sum would not be 416, and the last
+\ positions would read past the end of the buffer altogether. Nothing about the
+\ shape of the module would change - the same operation in the same place - so
+\ this is the check that the WIDTH reached the encoder.
+\
+\ AND WHAT THE MEMORY ORDER HAS TO GET RIGHT. The load is inside the loop, so the
+\ order it reads on the second turn is the one the first turn left, and that
+\ order reaches the loop body as a block argument. Before this leaf the module
+\ could not be built at all: the order was minted where the first memory word
+\ stood, inside the body, and a value defined in a loop body does not dominate
+\ the header that hands it back - the freeze verifier refused it by name. So a
+\ green run here is the whole of the crossing: elaboration, the freeze verifier's
+\ dominance rule, the allocation validator's per-path order rule, and the answer.
+\
+\ THE BUFFER IS THE ENGINE'S, LIKE THE CELL ABOVE. It is created by evaluating a
+\ `BUFFER:` declaration through the same front end, filled one byte at a time
+\ through the engine's own `c!`, and its address is read back by evaluating its
+\ name. The four bytes are `habu`, whose codes add up to 416, and no two of them
+\ are equal - so a scan that read one position twice, or that stopped one short,
+\ answers something else.
+: SRC6 ( -- ptr u8 n )
+   s" : NCH-BSUM ( ptr u8 n -- n ) {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop ;" ;
+
+: SRC7 ( -- ptr u8 n )
+   s" : NCH-BFIND ( ptr u8 n n -- n ) {: a:ptr u:n c:n :} u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;" ;
+
+8 constant LOOP-REGS                 \ a loop's carried values each hold one
+
+\ `habu`: 104, 97, 98, 117, which add up to 416.
+416 constant HABU-SUM
+98 constant LETTER-B                 \ the third byte
+122 constant LETTER-Z                \ no byte of the buffer
+
+: BUFFER-MAKE ( -- )
+   s" 4 BUFFER: NCH-BUF" EV
+   s" 104 NCH-BUF c!" EV
+   s" 97 NCH-BUF 1 + c!" EV
+   s" 98 NCH-BUF 2 + c!" EV
+   s" 117 NCH-BUF 3 + c!" EV ;
+
+: RECORD6 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC6 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: RECORD7 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC7 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: ELABORATE6 ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB TAPE p r 2 1 NELAB:COLON drop ;
+
+: ELABORATE7 ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB TAPE p r 3 1 NELAB:COLON drop ;
+
+\ The address is handed over as a number, which is what the routine reads it as:
+\ a compiled word takes its arguments out of the caller's data-stack slots and
+\ the slots hold cells. The interpreted word is called on the same buffer through
+\ the engine, where the same two cells are a byte span.
+: BSUM-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD6
+   p r ELABORATE6
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 2 1 NFIX:RUN-HABU
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   s" NCH-BUF" EV-N {: buf:n :}
+   buf 4 fn NRUN:ENTER2
+   buf 0 fn NRUN:ENTER2
+   s" NCH-BUF 4 NCH-BSUM" EV-N ;
+
+: BSUM-CASE ( -- )
+   s" a definition that reads bytes in a loop compiles and runs" T-LABEL
+   NFIX:BINDING [: BSUM-BODY ;] IR-CTX:WITH-CONTEXT
+   HABU-SUM T= 0 T= HABU-SUM T= 7 T= ;
+
+\ ---- a definition that leaves from the middle of a loop ----------------------
+\ The same run over a scan that stops as soon as it finds the byte it wants.
+\ `exit` inside a counted loop is a branch to the block the definition's one
+\ return is in, handing it the value the word leaves - so the module still has
+\ exactly one place control leaves through, which is what everything downstream
+\ of the elaborator is written against.
+\
+\ THE TWO PINNED ARGUMENTS ARE THE TWO WAYS OUT. `b` is the third byte of the
+\ buffer, so the early exit fires on the third turn and the answer is 2; `z` is
+\ in no position, so the loop runs to its end and the answer is the -1 after it.
+\ A branch to the wrong block cannot answer both: reaching the return early
+\ answers 0 or -1 for the hit, and never reaching it answers 2 for the miss.
+: BFIND-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD7
+   p r ELABORATE7
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 3 1 NFIX:RUN-HABU
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   s" NCH-BUF" EV-N {: buf:n :}
+   buf 4 LETTER-B fn NRUN:ENTER3
+   buf 4 LETTER-Z fn NRUN:ENTER3
+   s" NCH-BUF 4 98 NCH-BFIND" EV-N ;
+
+: BFIND-CASE ( -- )
+   s" a definition that leaves from the middle of a loop compiles and runs" T-LABEL
+   NFIX:BINDING [: BFIND-BODY ;] IR-CTX:WITH-CONTEXT
+   2 T= -1 T= 2 T= 11 T= ;
+
 public
 
 : RUN ( -- )
@@ -450,6 +574,9 @@ public
    BRANCH-CASE
    MEM-CASE
    LOCALS-CASE
+   BUFFER-MAKE
+   BSUM-CASE
+   BFIND-CASE
    T-REPORT ;
 
 ;package
