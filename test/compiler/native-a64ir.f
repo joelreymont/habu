@@ -116,7 +116,7 @@ private
 \ reach the caller's data stack are checked in DSTACK-SPELL-CASE below, the two
 \ addressed cell forms in ADDR-SHAPE-CASE and the two addressed byte forms in
 \ BYTE-SHAPE-CASE, and the count covers all twenty-three.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -134,6 +134,9 @@ private
    c b A64IR-OPCODE:BR A64IR:OPCODE {: j:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:BRZ A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:RET A64IR:OPCODE {: t:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:CALL A64IR:OPCODE {: cl:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:LINKSAVE A64IR:OPCODE {: ls:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:LINKLOAD A64IR:OPCODE {: ll:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED?
@@ -150,13 +153,16 @@ private
    rv g IR-SCHEMA:FDEFINED?
    rv j IR-SCHEMA:FDEFINED?
    rv n IR-SCHEMA:FDEFINED?
-   rv t IR-SCHEMA:FDEFINED? ;
+   rv t IR-SCHEMA:FDEFINED?
+   rv cl IR-SCHEMA:FDEFINED?
+   rv ls IR-SCHEMA:FDEFINED?
+   rv ll IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the twenty-three machine opcodes" T-LABEL
+   s" registration defines exactly the twenty-six machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 23 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 26 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )

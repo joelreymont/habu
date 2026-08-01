@@ -4059,3 +4059,41 @@ The spill lowering holds two modules of that dialect in one context, so 64K
 stopped being enough - and that is a real pass, not a fixture. The mapping is
 what gives; the giveaway that it was a capacity and not a bug was that the
 failure was E-IR-CTX-SCRATCH in a fixture that had not changed.
+
+## A self-call is cheap; what a call costs is the caller's registers
+
+Recursion looked like the branch. It is not. The branch is a displacement known
+at layout, exactly like a block branch, and one instruction. What a call really
+costs is that the callee's contract destroys the register pool the allocator
+hands out, so for a SELF-call every register the caller holds a value in is a
+register the recursive instance writes. Nothing in a Habu word's convention is
+callee-saved, and `A64EFF` cannot even express it: a register is destroyed or
+preserved, and preserved is the complement of destroyed, so "written and put
+back" has nowhere to be written down.
+
+The consequence is where the design lives. The values live across a call cross
+it on the CALLER's data stack, below the callee's argument base, through the
+same `a64.dstore` and `a64.dload` the routine's own entry and exit already use;
+the call site is therefore the routine's exit sequence, the call, and the
+routine's entry sequence, and it leaves the data-stack pointer where it found
+it. Saying that in the source dialect means `hir.call` consumes every live value
+and answers each of them again - a variadic operand tail and a variadic result
+tail - so the register allocator sees the two lifetimes a call really splits a
+value into rather than one lifetime spanning the call that ends it.
+
+Only one thing genuinely needs a frame: x30. It is not a value of the dialect
+(the allocator may never hand it out), so the save and the restore are forms
+that NAME the register, exactly as the frame forms name the stack pointer.
+
+## A validator's shape rules are the real cost of a new capability
+
+Adding the call to the dialect was a day's worth of schemas and lowerings. What
+took the argument was `regalloc-verify.f`: it knew that a routine's data-stack
+traffic was exactly an entry sequence at the top of block zero and an exit
+sequence in front of the return block's terminator, and that a routine of more
+than one block had no frame at all. Both were TRUE and both had to become
+narrower true statements rather than be relaxed - the entry and exit windows
+shift by the prologue the contract's traits declare, and every other data-stack
+touch has to be a whole call site whose two byte counts are exactly the store
+run in front of it and the load run behind it. A capability that cannot be
+stated as a shape the validator re-derives is a capability that is not checked.

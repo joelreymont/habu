@@ -10,8 +10,8 @@
 \ WHAT IT TRANSLATES. One colon definition of the straight-line subset: the
 \ defined name and a body of integer literals, modeled arithmetic words,
 \ compile-time stack renames, the structured control words, the two cell-width
-\ memory words, and one `{: … :}` group of typed locals read by name. Nothing
-\ else.
+\ memory words, `RECURSE`, and one `{: … :}` group of typed locals read by name.
+\ Nothing else.
 \
 \ THE UNIT IS THE DEFINITION, AND THAT IS WHY THERE IS NO FRAME TO FIND. The
 \ tape this pass reads is produced by src/compiler/native/feed.f from the
@@ -542,6 +542,7 @@ variable NB                          \ blocks closed so far; also the open block
 \ block with no predecessor and values for its arms to hand on. So `exit` outside
 \ an `if`, or with anything but `then` after it, is E-NELAB-CTRL, and dot
 \ habu-let-exit-leave-7e013b93 carries the general case.
+variable IN-N                        \ values the definition takes
 variable OUT-N                       \ values the definition leaves
 variable EXIT-USED                   \ whether the body has an `exit` at all
 variable EXIT-ORD                    \ the block every `exit` and the fall-through reach
@@ -790,6 +791,12 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
       CTX BLD  CTX BLD  r sy HIR-WORD:CONST-OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
       0<> exit
    then
+   m HIR-MEANING:CONTROL HIR-MEANING:EQ if
+      CTX BLD  CTX BLD  HIR-OPCODE:CALL HIR:OPCODE  TOKEN-OPERANDS 0= if
+         false exit
+      then
+      r sy HIR-WORD:CTRL@ HIR-CTRL:SELF-CALL HIR-CTRL:EQ exit
+   then
    false ;
 
 : MEM-SCAN ( IR-ARENA:arena n -- )
@@ -862,6 +869,7 @@ create JOIN-TAB TMAX cells allot
       index       OF ENDOF
       drop-loop   OF ENDOF
       early-exit  OF NB @ 1+ NB !  1 EXIT-USED !  1 EXIT-PENDING ! ENDOF
+      self-call   OF ENDOF
    ;MATCH ;
 
 \ Walk the body once, counting. A structure left open at the end of the body is
@@ -1034,6 +1042,50 @@ create JOIN-TAB TMAX cells allot
 : DO-INDEX ( -- )
    DO-FRAME CS-IDX @ VPUSH ;
 
+\ `RECURSE`: call the word being compiled. What the operation is handed is the
+\ WHOLE compile-time value vector, bottom first, and what it answers is the
+\ vector as it stands afterwards - the values below the arguments again, then the
+\ word's outputs. The arguments are the top `in` of the vector, exactly as they
+\ would be for any other word taking `in` values.
+\
+\ WHY EVERYTHING LIVE CROSSES THE OPERATION. src/compiler/native/hir.f gives the
+\ reason in full: the callee is this same routine, so no register the caller holds
+\ a value in survives the call, and the honest statement of that is that the call
+\ consumes each live value and answers a new one. It costs nothing when nothing is
+\ live - the operation then takes just the arguments and the order - and it is
+\ what lets the machine stage put the survivors somewhere the callee cannot reach.
+\
+\ THE ORDER IS TAKEN AND ANSWERED, so a call cannot be moved across a memory word
+\ and a memory word cannot be moved across a call. It is live here because
+\ MEM-SCAN counts a self-call as a word that needs one, so COLON minted it in the
+\ entry block; reaching this with none is the same disagreement between the
+\ pre-scan and the walk that a memory word with no order is, and it is refused
+\ rather than patched up by minting one in whatever block the walk has reached.
+: DO-SELF-CALL ( n -- )
+   {: ix:n :}
+   IN-N @ {: a:n :}
+   OUT-N @ {: r:n :}
+   VN @ a < if E-NELAB-CALL throw then
+   TOK-LIVE @ 0= if E-NELAB-CALL throw then
+   VN @ a - {: k:n :}
+   k r + VMAX > if E-NELAB-CALL throw then
+   CTX BLD HIR-OPCODE:CALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CTX BLD TOK IR-BUILD:ADD-OPERAND
+   VN @ 0 ?do
+      CTX BLD  i VAT  IR-BUILD:ADD-OPERAND
+   loop
+   CTX BLD  CTX BLD HIR:MEM-TYPE  IR-BUILD:ADD-RESULT
+   k r + 0 ?do
+      CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-RESULT
+   loop
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   VN @ VDROP
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK!
+   k r + 0 ?do
+      CTX BLD id i 1+ IR-BUILD:OP-RESULT@ VPUSH
+   loop ;
+
 \ `unloop`: this dialect carries a counted loop's index and limit as block
 \ arguments, so there is no frame to drop and nothing is staged. What it does is
 \ insist that a counted loop IS open, which is the one thing the word means that
@@ -1110,6 +1162,7 @@ create JOIN-TAB TMAX cells allot
       index       OF DO-INDEX ENDOF
       drop-loop   OF DO-UNLOOP ENDOF
       early-exit  OF ix DO-EXIT ENDOF
+      self-call   OF ix DO-SELF-CALL ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------
@@ -1233,6 +1286,7 @@ public
    n 1 < if E-NELAB-SHAPE throw then
    v NAME-READ
    TOK-RESET
+   in IN-N !
    out OUT-N !
    r n LOCALS-SCAN
    r n MEM-SCAN

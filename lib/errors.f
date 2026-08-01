@@ -1001,3 +1001,17 @@ public
 \ address-of by name is refused as.
 -8540 constant E-NELAB-LOCAL     \ a locals declaration this elaborator has no rule for: a second group in one definition, a group opened inside a control structure, a group left unclosed, a closer with no opener, a declared name the dialect already models, the same name declared twice, or a token in the group that is not a name
 -8541 constant E-NELAB-LOCAL-CAP \ more locals in one definition than the elaborator's name table holds
+
+\ Native calls: -8550..-8559
+\
+\ `RECURSE` is a call to the word being compiled. What is new about it is not the
+\ branch - it is that the caller's own registers do not survive it, because the
+\ callee is this same routine and its contract destroys exactly the registers the
+\ allocator hands out. So the values the caller still needs cross the call on the
+\ caller's data stack, and the caller's return address crosses it in the
+\ routine's own frame. These are the facts those owners add; a refusal another
+\ authority already owns keeps that authority's name - a call to ANOTHER word is
+\ still E-HIR-UNMODELED, because no such word is in the dialect's vocabulary.
+-8550 constant E-NELAB-CALL     \ a self-call the elaborator has no rule for: fewer values on the compile-time vector than the word declares it takes, more values live across the call than the vector can hold afterwards, or a call reached with no memory order live
+-8551 constant E-A64SEL-CALL    \ a call the selector has no lowering for: a routine whose convention names no data-stack place, a routine contract that does not declare that this routine calls, a contract declaring a call in a module that contains none, a frame too small to hold the saved link register, or a call whose operand and result lists disagree about how many values are live across it
+-8552 constant E-A64RAV-CALL    \ a call site that is not the sequence the dialect lowers a call to: a store run that does not name slots zero upwards in order, a byte count that is not the run it stands for, or a saved link register the module does not restore from the slot it saved it into

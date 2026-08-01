@@ -8,23 +8,29 @@
 \ "the new column has fewer rows" can only ever mean "these named capabilities
 \ are missing", never "the harness quietly stopped looking".
 \
-\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares thirty-one
+\ THE GAP LIST IS EMPTY. All eleven corpus words are compiled by the chain, which
+\ is what makes the table a comparison of two code generators over one corpus
+\ rather than over the part of it one of them can express. The gap vocabulary
+\ below stays, because the next capability the chain lacks has to be nameable.
+\
+\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares thirty-two
 \ source words - `+ - * / < <= =`, `1-` and `1+`, the four memory words `@`, `!`,
-\ `c@` and `c!`, the nine control words `if then begin until ?do loop i unloop
-\ exit`, the two halves `{:` and `:}` of a typed locals group, and the seven
-\ renames `2dup dup drop swap over nip rot` - plus integer literals, and
-\ src/compiler/native/hir.f gives the dialect sixteen operations. A word of the
+\ `c@` and `c!`, the ten control words `if then begin until ?do loop i unloop
+\ exit RECURSE`, the two halves `{:` and `:}` of a typed locals group, and the
+\ seven renames `2dup dup drop swap over nip rot` - plus integer literals, and
+\ src/compiler/native/hir.f gives the dialect seventeen operations. A word of the
 \ corpus is expressible exactly when its body is those words and nothing else,
 \ plus - for a body that names a `create`d data word - the one address the
-\ harness states (dot habu-resolve-a-data-a1c8067f). Ten of the eleven are: the
-\ empty word, the three-argument sum, the sum of two squares - which is the one
-\ that shows the renames costing nothing at all - the two-way branch, the typed
-\ locals frame, both loop forms, the cell bump, the byte sum and the byte scan.
+\ harness states (dot habu-resolve-a-data-a1c8067f). All eleven are: the empty
+\ word, the three-argument sum, the sum of two squares - which is the one that
+\ shows the renames costing nothing at all - the two-way branch, the typed
+\ locals frame, both loop forms, the recursion, the cell bump, the byte sum and
+\ the byte scan.
 \
-\ THE CAPABILITY THE LAST ONE WAITS FOR is the vocabulary below, and its gap row
-\ names every one it needs rather than the first that stops it - a word that
-\ needs a branch and a comparison is not unblocked by branches alone, and a
-\ reader planning the next capability should see that.
+\ WHAT A GAP ROW WOULD SAY. There is none today, and when there is one again its
+\ row names every capability it needs rather than the first that stops it - a
+\ word that needs a branch and a comparison is not unblocked by branches alone,
+\ and a reader planning the next capability should see that.
 \
 \ HOW A COVERED ROW IS CHECKED. The routine the chain emitted is published into
 \ code space and CALLED on the same pinned inputs the old column used, and its
@@ -363,6 +369,26 @@ private
       EMPTY$ CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
+\ `: FACT ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;` - the
+\ recursion, which is also the plain word-call-and-return shape. It is the one
+\ corpus word whose routine is not a leaf: it reserves a frame and puts its
+\ caller's return address in it, because the first call would otherwise destroy
+\ it, and every value it still needs crosses the call on its own data stack,
+\ because no register of the caller survives a call to a routine whose contract
+\ destroys the whole pool. The two pinned inputs are the two ways through - ten
+\ recurses ten deep, one takes the base-case arm and never calls at all - and
+\ both are compared against the interpreted word.
+: FACT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" FACT dup 1 <= if drop 1 exit then dup 1- RECURSE *" NSRC:TEXT!
+   c 1 1 LOOP-REGS CODEGEN-CHAIN:CHAIN-CALL
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:FACT" CODEGEN-CHAIN:BYTES
+   [: 10 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
+   [: 10 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
+      0 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
 \ `: BYTE-FIND ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
 \      u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;` - the byte scan that
 \ leaves from the middle of its loop. Three capabilities meet in it: the byte
@@ -396,13 +422,19 @@ private
    NFIX:BINDING [: COUNT-DOWN-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: CELL-BUMP-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: BYTE-SUM-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: BYTE-FIND-BODY ;] IR-CTX:WITH-CONTEXT ;
+   NFIX:BINDING [: BYTE-FIND-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the words the subset cannot express yet ---------------------------------
-: GAP-CASES ( -- )
-   s" CODEGEN-CORPUS:FACT" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-      CODEGEN--NEW-CAP:CALLS GAP-ALSO
-      CODEGEN--NEW-CAP:COMPARISON GAP-ALSO ;
+\ None. Every word of the corpus is compiled by the chain, so the gap list is
+\ empty and COVERAGE-CK below is what says so - it refuses a pass in which any
+\ corpus word is neither compiled nor declared a gap, so an empty list is a
+\ statement about all eleven rather than the absence of one.
+\
+\ THE MACHINERY STAYS. A gap row is how the next capability that is missing gets
+\ named, and deleting the vocabulary would mean the next word this chain cannot
+\ express is a shorter table instead of a named capability.
+: GAP-CASES ( -- ) ;
 
 \ ---- accounting --------------------------------------------------------------
 : GAP-FOR? ( ptr u8 n -- bool ) {: a:ptr u:n :}

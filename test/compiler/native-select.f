@@ -627,6 +627,21 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
+\ A contract that declares the routine CALLS, over a body that contains no call.
+\ The declaration is what makes this pass reserve a frame and save the caller's
+\ return address, so a routine that declared it and never called would carry two
+\ instructions and a stack pointer nobody can account for. The two derivations of
+\ one fact - the contract's trait and the calls this pass really built - have to
+\ agree, and this is the direction test/compiler/native-chain.f cannot measure:
+\ a refused case abandons a context holding two modules, and that suite can
+\ afford exactly one of them.
+: CALL-CONV ( n n -- A64EFF:routine )
+   {: in:n out:n :}
+   in SLOTS-N  out SLOTS-N  A64EFF:GPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:T-CALL A64EFF:SP-ALIGN 0 A64EFF:ROUTINE ;
+
 \ A contract whose argument side names a data-stack slot AND a register. There is
 \ no entry sequence for a convention that puts one argument on the stack and the
 \ next in a register, so it is refused rather than half-built.
@@ -730,6 +745,21 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
 : DARITY ( -- )
    WBND [: ARITY-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ The same square, selected under a contract that says it calls.
+: CALL-NONE-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-SQUARE
+   CC BB A64SEL:BIND-SOURCE
+   CC BB IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   CC m A64-BUILDER TXT TXT-N  1 1 CALL-CONV  A64SEL:SELECT drop ;
+
+: CALL-NONE ( -- )
+   WBND [: CALL-NONE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: CALL-NONE-REFUSE-CASE ( -- )
+   s" a contract declaring a call over a body with none is refused" T-LABEL
+   [: CALL-NONE ;] E-A64SEL-CALL TTHROWSQ ;
+
 \ One refusal per group: each abandons a context holding TWO modules - the source
 \ module the fixture built and the machine builder the selection opened - so two
 \ of them in one group exhaust the live-arena registry and the second case
@@ -775,6 +805,10 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    drop
    DARITY-REFUSE-CASE ;
 
+: GROUP-CALL-NONE-REFUSE ( IR-CTX:ctx -- )
+   drop
+   CALL-NONE-REFUSE-CASE ;
+
 public
 
 : RUN ( -- )
@@ -796,6 +830,7 @@ public
    WBND [: GROUP-MEM-REG-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MIXED-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-DARITY-REFUSE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-CALL-NONE-REFUSE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
 ;package

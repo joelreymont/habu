@@ -142,6 +142,7 @@ variable NB-N                        \ blocks in the function being checked
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 
 create D-AT VMAX cells allot         \ where the module says each value is written
 create L-AT VMAX cells allot         \ where the module says each value is last read
@@ -203,6 +204,13 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : FRAME-OF ( IR-ID:ir-op-id -- n )   0 BND-FRAME @ ATTR-INT ;
 : DSLOT-OF ( IR-ID:ir-op-id -- n )   0 BND-DSLOT @ ATTR-INT ;
 : DBYTES-OF ( IR-ID:ir-op-id -- n )  0 BND-DBYTES @ ATTR-INT ;
+: DBACK-OF ( IR-ID:ir-op-id -- n )   0 BND-DBACK @ ATTR-INT ;
+
+\ The take-back count is the field only the call form carries, so carrying it is
+\ what makes an operation a call - asked of the operation itself rather than of
+\ its opcode, which is the rule every other reader here follows.
+: DCALL? ( IR-ID:ir-op-id -- bool )
+   DBACK-OF NOSLOT <> ;
 
 \ Which region an operation reaches, read off the keys the dialect declares for
 \ each family rather than off an opcode name. A frame access counts its offset
@@ -216,7 +224,8 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 
 : DSTACK-TOUCH? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id DBYTES-OF NOSLOT <>  id DSLOT-OF NOSLOT <>  or ;
+   id DBYTES-OF NOSLOT <>  id DSLOT-OF NOSLOT <>  or
+   id DBACK-OF NOSLOT <> or ;
 
 \ Does this operation write a value into a slot, or read one out of one?
 : STORES? ( IR-ID:ir-op-id -- bool )
@@ -786,6 +795,10 @@ variable V-AT
 0 V-AT !
 variable V-CHANGED
 0 V-CHANGED !
+variable V-CALLS                     \ whether the contract says this routine calls
+0 V-CALLS !
+variable VD-AT                       \ the position the data-stack scan stands on
+0 VD-AT !
 
 create VB-ST BMAX cells allot
 create VB-EN BMAX cells allot
@@ -997,16 +1010,70 @@ create V-TMP SETC cells allot
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do f i VEDGE-OF loop ;
 
-\ ---- what a routine with control flow may not have ---------------------------
-\ No frame. The allocator refuses to spill in a routine of more than one block
-\ because a spill decision cannot yet name the block it belongs in, so a module
-\ that reserves a frame here was not produced by that refusal and is not an
-\ allocation this file can accept.
-: VFRAME-CK ( IR-ID:ir-fun-id -- )
+\ ---- the frame of a routine with control flow --------------------------------
+\ A routine that does not call may not touch a frame at all: the allocator
+\ refuses to spill in a routine of more than one block, because a spill decision
+\ cannot yet name the block it belongs in, so a module that reserves a frame here
+\ was not produced by that refusal and is not an allocation this file can accept.
+\
+\ A routine that DOES call has exactly one thing in its frame and it is not a
+\ spill: the caller's return address, which the first call would otherwise
+\ destroy. So the shape is fixed and is checked as a shape - the entry block
+\ takes the frame with its first operation and saves into slot zero with its
+\ second, the block control leaves through reads slot zero back and gives the
+\ frame back with the two operations in front of its terminator, both frame sizes
+\ are the one the contract declares, and no other operation anywhere touches the
+\ frame. A routine that saved its return address and did not restore it, or
+\ restored it from another slot, returns to whatever the frame happened to hold.
+: VNO-FRAME ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do
       f i BLOCK-AT FRAMES? if E-A64RAV-FRAME throw then
    loop ;
+
+\ One frame access at this position, moving the link register into or out of the
+\ slot the routine keeps it in.
+: VLINK-AT? ( IR-ID:ir-block-id n bool -- )
+   {: bk:IR-ID:ir-block-id at:n store:bool :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id FRAME-OF NOSLOT <> if E-A64RAV-CALL throw then
+   id SLOT-OF 0 <> if E-A64RAV-CALL throw then
+   store if
+      id STORES? 0= if E-A64RAV-CALL throw then exit
+   then
+   id STORES? if E-A64RAV-CALL throw then ;
+
+\ No frame access in this block outside the window the shape allows it in.
+: VFRAME-CLEAN ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id lo:n hi:n :}
+   bk OP-COUNT 0 ?do
+      i lo < i hi >= or if
+         bk i OP-AT FRAME-TOUCH? if E-A64RAV-CALL throw then
+      then
+   loop ;
+
+: VLINK-CK ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id rb:n want:n :}
+   rb 0 = if E-A64RAV-CALL throw then   \ dot habu-let-a-routine-00e845b9
+   f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
+   f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
+   eb OP-COUNT 2 < if E-A64RAV-CALL throw then
+   xb OP-COUNT {: n:n :}
+   n 3 < if E-A64RAV-CALL throw then
+   eb 0 want FRAME-AT?
+   eb 1 true VLINK-AT?
+   xb n 3 - false VLINK-AT?
+   xb n 2 - want FRAME-AT?
+   eb 0 2 VFRAME-CLEAN
+   xb  n 3 -  n 1-  VFRAME-CLEAN
+   V-BLKS @ 0 ?do
+      i 0 <> i rb <> and if f i BLOCK-AT 0 0 VFRAME-CLEAN then
+   loop ;
+
+: VFRAME-CK ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id rb:n want:n :}
+   V-CALLS @ 0= if f VNO-FRAME exit then
+   f rb want VLINK-CK ;
 
 \ ---- the data stack, across blocks -------------------------------------------
 \ The entry sequence is at the top of the block the caller enters, the exit
@@ -1022,25 +1089,93 @@ create V-TMP SETC cells allot
    {: b:n :}
    b cells VB-EN + @  b cells VB-ST + @ - ;
 
+\ How many operations the routine's own frame costs at each end. A routine that
+\ calls takes its frame and saves the return address before it reads a single
+\ argument, and restores and gives the frame back after it has published its
+\ results, so both sequences sit two operations further in than they otherwise
+\ would. It is derived from the contract's traits, which is the same declaration
+\ the selector built the pair from.
+: PRO-N ( -- n )
+   V-CALLS @ 0= if 0 exit then 2 ;
+
 : VDEXIT-POS? ( n n n -- bool )
    {: n:n r:n at:n :}
-   at n 2 - = if true exit then
-   at n 2 - r - >= at n 2 - < and ;
+   n 2 - PRO-N - {: p:n :}
+   at p = if true exit then
+   at p r - >= at p < and ;
 
 : VDPOS? ( n n n n n n -- bool )
    {: b:n at:n eb:n rb:n a:n r:n :}
-   b eb = at a <= and if true exit then
+   b eb = at a PRO-N + <= and if true exit then
    b rb = if rb VB-OPS r at VDEXIT-POS? exit then
    false ;
 
+\ ---- a call site, re-derived -------------------------------------------------
+\ What the dialect lowers a call to, measured from the module rather than taken
+\ from the selector: a run of data-stack stores naming slots zero upwards in
+\ order, the call, and a run of data-stack loads naming slots zero upwards in
+\ order. The call's own two byte counts have to be exactly those two runs - it
+\ moves the pointer up over what it stores and back down over what it loads - so
+\ a store the selector forgot, a slot named out of order, and a byte count that
+\ does not stand for its run are three different disagreements and all three are
+\ refused here. That is the whole of what makes a caller's live values survive:
+\ the pointer ends where it started and every value comes back out of the slot it
+\ went into.
+: DSTORE-RUN ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk OP-COUNT {: n:n :}
+   0
+   n at - 0 ?do
+      bk at i + OP-AT {: id:IR-ID:ir-op-id :}
+      id DSLOT-OF  i A64IR:SLOT-WIDTH * =  id STORES?  and
+      0= if leave then
+      drop i 1+
+   loop ;
+
+: DLOAD-RUN ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk OP-COUNT {: n:n :}
+   0
+   n at - 0 ?do
+      bk at i + OP-AT {: id:IR-ID:ir-op-id :}
+      id DSLOT-OF  i A64IR:SLOT-WIDTH * =  id STORES? 0=  and
+      0= if leave then
+      drop i 1+
+   loop ;
+
+: VCALL-SITE ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk at DSTORE-RUN {: g:n :}
+   at g + {: cp:n :}
+   cp bk OP-COUNT >= if E-A64RAV-CALL throw then
+   bk cp OP-AT {: id:IR-ID:ir-op-id :}
+   id DCALL? 0= if E-A64RAV-CALL throw then
+   id DBYTES-OF  g A64IR:SLOT-WIDTH * <> if E-A64RAV-CALL throw then
+   bk cp 1+ DLOAD-RUN {: b:n :}
+   id DBACK-OF  b A64IR:SLOT-WIDTH * <> if E-A64RAV-CALL throw then
+   cp 1+ b + ;
+
+\ Every position of every block that touches the caller's data stack is either
+\ part of the routine's own entry or exit, or part of one call site. The scan is
+\ forward and consumes a whole call site at a time, so a store left over between
+\ two sites, or a call with no stores in front of it, stops at the first position
+\ the scan cannot account for.
 : VDCLEAN1 ( IR-ID:ir-fun-id n n n n n -- )
    {: f:IR-ID:ir-fun-id b:n eb:n rb:n a:n r:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 0 ?do
-      b i eb rb a r VDPOS? 0= if
-         bk i OP-AT DSTACK-TOUCH? if E-A64RAV-DSTACK throw then
+   bk OP-COUNT {: n:n :}
+   0 VD-AT !
+   begin VD-AT @ n < while
+      b VD-AT @ eb rb a r VDPOS? if
+         VD-AT @ 1+ VD-AT !
+      else
+         bk VD-AT @ OP-AT DSTACK-TOUCH? if
+            bk VD-AT @ VCALL-SITE VD-AT !
+         else
+            VD-AT @ 1+ VD-AT !
+         then
       then
-   loop ;
+   repeat ;
 
 : VDSTACK-CK ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
@@ -1051,13 +1186,13 @@ create V-TMP SETC cells allot
       exit
    then
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
-   eb OP-COUNT a 1+ < if E-A64RAV-DSTACK throw then
-   eb 0  a A64IR:SLOT-WIDTH *  DTAKE-AT?
+   eb OP-COUNT a 1+ PRO-N + < if E-A64RAV-DSTACK throw then
+   eb PRO-N  a A64IR:SLOT-WIDTH *  DTAKE-AT?
    a 0 ?do
-      eb i 1+  args i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
+      eb PRO-N i + 1+  args i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
    loop
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
-   xb OP-COUNT {: n:n :}
+   xb OP-COUNT PRO-N - {: n:n :}
    n r 2 + < if E-A64RAV-DSTACK throw then
    xb n 2 -  r A64IR:SLOT-WIDTH *  DTAKE-AT?
    r 0 ?do
@@ -1073,8 +1208,8 @@ create V-TMP SETC cells allot
       f i BLOCK-AT FLOW-CK
    loop ;
 
-: MB-VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
-   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+: MB-VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n -- )
+   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    f VMEASURE
    INTERVAL-CK
    CLASS-CK
@@ -1086,7 +1221,7 @@ create V-TMP SETC cells allot
    f 0 BLOCK-AT args ARG-CK
    f rb BLOCK-AT outs OUT-CK
    f rb args outs VDSTACK-CK
-   f VFRAME-CK ;
+   f rb frame VFRAME-CK ;
 
 \ ---- what the acceptance is bound to -----------------------------------------
 : STATE-CK ( -- )
@@ -1146,7 +1281,7 @@ create V-TMP SETC cells allot
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f RET-ORD {: rb:n :}
    f BLOCK-COUNT 1 <> if
-      f rb args outs MB-VERIFY
+      f rb args outs frame MB-VERIFY
       f rb BLOCK-AT exit
    then
    f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -1186,6 +1321,7 @@ public
    c b A64IR:KEY-FRAME  0 BND-FRAME !
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
+   c b A64IR:KEY-DBACK  0 BND-DBACK !
    BOUND-YES BND-MODE ! ;
 
 \ ---- the check ---------------------------------------------------------------
@@ -1199,6 +1335,7 @@ public
       t:A64EFF:traits size:n delta:n :}
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
+   t A64EFF:T-CALL A64EFF:TRAITS-HAS? if 1 else 0 then V-CALLS !
    pool gi gr size WALK {: bk:IR-ID:ir-block-id :}
    bk
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE

@@ -157,7 +157,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-23 constant OPCODES-N
+26 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -181,6 +181,9 @@ private
 20 constant O-SDIV
 21 constant O-ABLOAD
 22 constant O-ABSTORE
+23 constant O-CALL
+24 constant O-LINKSAVE
+25 constant O-LINKLOAD
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -225,6 +228,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-MAX INSN-BYTES * allot
@@ -266,6 +270,9 @@ create B-START BMAX cells allot
       flag     OF O-FLAG     ENDOF
       br       OF O-BR       ENDOF
       brz      OF O-BRZ      ENDOF
+      call     OF O-CALL     ENDOF
+      linksave OF O-LINKSAVE ENDOF
+      linkload OF O-LINKLOAD ENDOF
       ret      OF O-RET      ENDOF
    ;MATCH ;
 
@@ -294,6 +301,9 @@ create B-START BMAX cells allot
       O-ASTORE   of A64IR-OPCODE:ASTORE   endof
       O-ABLOAD   of A64IR-OPCODE:ABLOAD   endof
       O-ABSTORE  of A64IR-OPCODE:ABSTORE  endof
+      O-CALL     of A64IR-OPCODE:CALL     endof
+      O-LINKSAVE of A64IR-OPCODE:LINKSAVE endof
+      O-LINKLOAD of A64IR-OPCODE:LINKLOAD endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -373,6 +383,11 @@ create B-START BMAX cells allot
 
 : DBYTES-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-DBYTES @ ATTR-INT ;
+
+\ The second adjustment, which only the call form carries: how far the pointer
+\ comes back down over what the callee left.
+: DBACK-SIZE ( IR-ID:ir-op-id -- n )
+   0 BND-DBACK @ ATTR-INT ;
 
 \ ---- one instruction per operation -------------------------------------------
 \ Each of these is exactly the encoder call the form names, with the registers
@@ -476,6 +491,20 @@ create B-START BMAX cells allot
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STRB ;
 
+\ ---- the caller's return address ---------------------------------------------
+\ The same Str and Ldr the frame accesses are, against the same stack pointer,
+\ moving the register the routine's contract has its own field for. It is asked
+\ for by name rather than written here, for the same reason the stack pointer and
+\ the data-stack pointer are: the one place that says why no routine may hold
+\ state in x30 is also the one place that says where it does appear.
+: WORD-LNKSTR ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64EFF:LINK-GPR  A64EFF:SP-GPR  id SLOT-OFF  ENC-STR ;
+
+: WORD-LNKLDR ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   A64EFF:LINK-GPR  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
+
 \ ---- the condition a comparison is made under --------------------------------
 : COND-OF ( IR-ID:ir-op-id -- n )
    0 BND-COND @ ATTR-INT ;
@@ -540,6 +569,7 @@ create B-START BMAX cells allot
    {: k:n :}
    k O-FLAG = if 3 exit then
    k O-SDIV = if 3 exit then
+   k O-CALL = if 3 exit then
    k O-BRZ = if 2 exit then
    1 ;
 
@@ -645,6 +675,32 @@ create B-START BMAX cells allot
    id  ENC-BRK  APPEND
    id  id TRIPLE ENC-SDIV  APPEND ;
 
+\ One call, which is three instructions: the data-stack pointer up over
+\ everything the callee is being handed, the branch that leaves the return
+\ address in the link register, and the pointer back down over everything the
+\ callee left. The two adjustments are the operation's own fields; only the
+\ branch is this pass's arithmetic.
+\
+\ THE TARGET IS BLOCK ZERO OF THE ROUTINE BEING EMITTED, which is where the
+\ caller entered and therefore where the callee has to enter: the prologue that
+\ takes the frame, saves the return address and reads the arguments is the first
+\ thing in it. Its displacement is measured exactly as a branch's is - the block's
+\ start less this instruction's own position - and it is held against the field
+\ the dialect declares for the Bl form before the encoder is called, because that
+\ encoder masks its displacement field rather than bounding it.
+0 constant CALL-BLOCK                \ the routine's own entry
+
+: BL-WORD ( n -- n )
+   {: d:n :}
+   d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
+   d ENC-BL ;
+
+: PUT-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI  APPEND
+   id  CALL-BLOCK DELTA BL-WORD  APPEND
+   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBACK-SIZE  ENC-SUBI  APPEND ;
+
 \ ---- one operation, as the instructions it is --------------------------------
 \ The whole encoding table. Every arm names the instructions one machine
 \ operation becomes; nothing else in this file decides which bytes an operation
@@ -675,6 +731,9 @@ create B-START BMAX cells allot
       flag     OF id PUT-FLAG ENDOF
       br       OF id PUT-BR ENDOF
       brz      OF id PUT-BRZ ENDOF
+      call     OF id PUT-CALL ENDOF
+      linksave OF id  id WORD-LNKSTR  APPEND ENDOF
+      linkload OF id  id WORD-LNKLDR  APPEND ENDOF
       ret      OF id  ENC-RET  APPEND ENDOF
    ;MATCH ;
 
@@ -809,6 +868,9 @@ public
    c b A64IR-OPCODE:ASTORE   BIND1
    c b A64IR-OPCODE:ABLOAD   BIND1
    c b A64IR-OPCODE:ABSTORE  BIND1
+   c b A64IR-OPCODE:CALL      BIND1
+   c b A64IR-OPCODE:LINKSAVE  BIND1
+   c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !
@@ -816,6 +878,7 @@ public
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
    c b A64IR:KEY-COND   0 BND-COND !
+   c b A64IR:KEY-DBACK  0 BND-DBACK !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without emitting against it.

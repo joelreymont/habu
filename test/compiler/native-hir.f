@@ -67,7 +67,7 @@ private
 \ ---- the dialect: what registration defines ----------------------------------
 \ The sixteen opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b HIR-OPCODE:CONST HIR:OPCODE {: k:IR-ID:ir-symbol-id :}
@@ -86,6 +86,7 @@ private
    c b HIR-OPCODE:BLOAD HIR:OPCODE {: bl:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:BSTORE HIR:OPCODE {: bw:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:EQUAL HIR:OPCODE {: eqs:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:CALL HIR:OPCODE {: cl:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv k IR-SCHEMA:FDEFINED?
@@ -103,13 +104,14 @@ private
    rv w IR-SCHEMA:FDEFINED?
    rv bl IR-SCHEMA:FDEFINED?
    rv bw IR-SCHEMA:FDEFINED?
-   rv eqs IR-SCHEMA:FDEFINED? ;
+   rv eqs IR-SCHEMA:FDEFINED?
+   rv cl IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the sixteen opcodes of the subset" T-LABEL
+   s" registration defines exactly the seventeen opcodes of the subset" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE 16 T= ;
+   TTRUE TTRUE TTRUE TTRUE 17 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the
 \ version.
@@ -376,7 +378,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 31 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 32 T= ;
 
 \ ---- the two halves of a typed locals group ----------------------------------
 \ Neither stages an operation, so what the word model has to say about them is
@@ -547,11 +549,11 @@ private
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 24 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 25 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 29 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 30 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 31 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" rot" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1072,7 +1074,7 @@ private
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 16 0 0 FORGE
+   1 17 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 

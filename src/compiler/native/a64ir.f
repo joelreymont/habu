@@ -50,6 +50,11 @@
 \   a64.cbz      Cbz rt target; B other
 \                                - go to the first block when rt is zero and to
 \                                  the second when it is not
+\   a64.call     Addi ds ds n; Bl entry; Subi ds ds m
+\                                - hand the caller's data stack to the word being
+\                                  compiled, call it, and take the stack back
+\   a64.lnkstr   Str x30 sp off  - put the caller's return address in a frame slot
+\   a64.lnkldr   Ldr x30 sp off  - take it back out again
 \   a64.ret      Ret             - return to the address in the link register
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
@@ -269,6 +274,9 @@ ENUM opcode DERIVE eq
    flag
    br
    brz
+   call
+   linksave
+   linkload
    ret
 ;ENUM
 
@@ -517,6 +525,9 @@ public
       flag     OF s" a64.flag"     ENDOF
       br       OF s" a64.b"        ENDOF
       brz      OF s" a64.cbz"      ENDOF
+      call     OF s" a64.call"     ENDOF
+      linksave OF s" a64.lnkstr"   ENDOF
+      linkload OF s" a64.lnkldr"   ENDOF
       ret      OF s" a64.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -595,6 +606,17 @@ public
 : KEY-DBYTES ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.dbytes" IR-BUILD:INTERN-SYMBOL ;
 
+\ The second data-stack adjustment, which only the call form has: a call moves
+\ the pointer up over what it hands the callee and back down over what it takes
+\ from it, and the two counts differ whenever the callee leaves a different
+\ number of values than it takes. It is its own key rather than a second
+\ attribute under KEY-DBYTES because a key answers "which pointer, in which
+\ direction" for every reader that walks a module without asking which opcode it
+\ is looking at, and an operation carrying one key twice would be two answers to
+\ one question.
+: KEY-DBACK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.dback" IR-BUILD:INTERN-SYMBOL ;
+
 \ The attribute key the comparison form requires: which condition it sets its
 \ flag on. The condition is the whole content of a comparison, so a comparison
 \ without it means nothing, and IR-OP refuses one that omits it.
@@ -611,6 +633,11 @@ public
    DSLOT IR-BUILD:INTERN-INT-ATTR ;
 
 : DBYTES-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   DBYTES IR-BUILD:INTERN-INT-ATTR ;
+
+\ The take-back count is the same field in the same instruction form, so it is
+\ held against the same bound.
+: DBACK-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    DBYTES IR-BUILD:INTERN-INT-ATTR ;
 
 private
@@ -645,6 +672,9 @@ private
       flag     OF s" a64.rule.flag"     ENDOF
       br       OF s" a64.rule.b"        ENDOF
       brz      OF s" a64.rule.cbz"      ENDOF
+      call     OF s" a64.rule.call"     ENDOF
+      linksave OF s" a64.rule.lnkstr"   ENDOF
+      linkload OF s" a64.rule.lnkldr"   ENDOF
       ret      OF s" a64.rule.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -673,6 +703,9 @@ private
       flag     OF s" a64.render.flag"     ENDOF
       br       OF s" a64.render.b"        ENDOF
       brz      OF s" a64.render.cbz"      ENDOF
+      call     OF s" a64.render.call"     ENDOF
+      linksave OF s" a64.render.lnkstr"   ENDOF
+      linkload OF s" a64.render.lnkldr"   ENDOF
       ret      OF s" a64.render.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -1082,6 +1115,77 @@ private
    c b A64IR-OPCODE:RET NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the call, and the link register it costs --------------------------------
+\ Call: the routine hands the caller's data stack to the word being compiled and
+\ takes it back. THREE instructions and one operation - move the data-stack
+\ pointer up over everything the callee is being handed, branch with link to the
+\ routine's own entry, move it back down over everything the callee left - for
+\ the reason the comparison and the division are one operation each: between the
+\ first and the last of the three the machine is in a state no other operation of
+\ this dialect is written for. The pointer stands above values that are the
+\ CALLEE's, so an access placed in the middle would be reading or writing the
+\ callee's stack through the caller's offsets, and an IR in which the three were
+\ three operations would let any later pass put one there.
+\
+\ IT MOVES NO VALUE, AND THAT IS THE WHOLE POINT. The values crossing a call are
+\ moved by ordinary a64.dstore and a64.dload operations around it - the same two
+\ forms a routine's own entry and exit use, at the same slots counted from the
+\ same pointer - so the caller's saved values and the callee's arguments are
+\ operations a validator can read rather than an effect this form claims. What is
+\ left for the form itself is control, the link register, and the two adjustments,
+\ and the two adjustments are its attributes.
+\
+\ THE TARGET IS THE ROUTINE'S OWN ENTRY AND IS NOT AN OPERAND. A self-call's
+\ displacement is known where every other branch's is - at layout, as the
+\ distance to a block of this function - so it needs no relocation and no symbol.
+\ A call to ANOTHER word does need both, and this dialect has neither: it is
+\ refused by the selector rather than approximated here.
+: DEF-CALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:CALL OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-DBYTES IR-SCHEMA:ADD-ATTR
+   c b KEY-DBACK IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ-WRITE DSTACK-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b A64IR-OPCODE:CALL NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Saving and restoring the caller's return address. They are the same Str and Ldr
+\ the frame forms above are, against the same stack pointer, and they differ in
+\ exactly one thing: the register they move is x30, which is named by the FORM.
+\ It has to be, for the reason the stack pointer and the data-stack pointer are:
+\ an operand of this dialect is a value, a value is a register the allocator may
+\ hand out, and the link register is one it may never - src/compiler/a64-effect.f
+\ keeps x30 out of every general-register set, which is what makes "the allocator
+\ cannot put a value in the link register" a fact about what a contract can be
+\ rather than a rule some pass has to remember.
+: DEF-LNKSTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:LINKSAVE OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-SLOT IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE FRAME-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:LINKSAVE NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+: DEF-LNKLDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:LINKLOAD OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-SLOT IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ FRAME-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:LINKLOAD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -1141,6 +1245,9 @@ public
    c b t DEF-FLAG
    c b t DEF-BR
    c b t DEF-BRZ
+   c b k DEF-CALL
+   c b k DEF-LNKSTR
+   c b k DEF-LNKLDR
    c b t DEF-RET ;
 
 private

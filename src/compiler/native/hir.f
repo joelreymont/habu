@@ -9,7 +9,7 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Sixteen opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Seventeen opcodes, and nothing else:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
@@ -27,6 +27,8 @@
 \   hir.bstore    write one BYTE to an address the program computed
 \   hir.br        go on to one block, handing it the live values
 \   hir.brz       go on to one of two blocks, on whether a value is zero
+\   hir.call      call the word being compiled, handing it the values it takes
+\                 and every value the caller still holds
 \   hir.return    leave the function with the word's outputs
 \ That is exactly what section 7.2's list needs for a colon body with no
 \ control flow, no calls, no locals and no strings. Section 7.2 names many more
@@ -149,6 +151,7 @@ ENUM opcode DERIVE eq
    bstore
    br
    brz
+   call
    return
 ;ENUM
 
@@ -157,9 +160,13 @@ ENUM opcode DERIVE eq
 \ of one structure: `if` closes with `then`, `begin` with `until`, `?do` with
 \ `loop`. `index` is the loop index `i`, which is neither - it reads the
 \ innermost open counted loop's index and stages no operation of its own.
+\ `self-call` is `RECURSE`: it calls the word being compiled. It is a control
+\ action rather than an operation word because how many values it takes and
+\ leaves is the DEFINITION's arity, which no schema-driven staging can read off
+\ an opcode - the elaborator stages it by hand, exactly as it stages the return.
 \ It is an ENUM for the same reason the opcode family is: a table that binds a
 \ source word to a control action cannot name an action this dialect has no
-\ construction for, and every MATCH over it has to answer for all seven.
+\ construction for, and every MATCH over it has to answer for all of them.
 ENUM ctrl DERIVE eq
    open-if
    close-if
@@ -170,6 +177,7 @@ ENUM ctrl DERIVE eq
    index
    drop-loop
    early-exit
+   self-call
 ;ENUM
 
 \ What a Habu source word, or a source-tape token, means to this dialect.
@@ -268,6 +276,7 @@ public
       bstore OF s" hir.bstore" ENDOF
       br     OF s" hir.br"     ENDOF
       brz    OF s" hir.brz"    ENDOF
+      call   OF s" hir.call"   ENDOF
       return OF s" hir.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -313,6 +322,7 @@ private
       bstore OF s" hir.rule.bstore" ENDOF
       br     OF s" hir.rule.br"     ENDOF
       brz    OF s" hir.rule.brz"    ENDOF
+      call   OF s" hir.rule.call"   ENDOF
       return OF s" hir.rule.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -334,6 +344,7 @@ private
       bstore OF s" hir.render.bstore" ENDOF
       br     OF s" hir.render.br"     ENDOF
       brz    OF s" hir.render.brz"    ENDOF
+      call   OF s" hir.render.call"   ENDOF
       return OF s" hir.render.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -559,6 +570,47 @@ private
    c b HIR-OPCODE:RETURN NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Calling the word being compiled, which is what `RECURSE` is. Its operands are
+\ the memory order and EVERY value the caller still holds, bottom first, with the
+\ arguments the callee takes as the top of them; its results are the order again
+\ and those same values, with the callee's outputs in place of its arguments.
+\
+\ WHY THE WHOLE LIVE VECTOR CROSSES THE OPERATION AND NOT JUST THE ARGUMENTS. The
+\ callee is this same routine, so every register the caller could be holding a
+\ value in is a register the callee writes: a Habu word's contract destroys
+\ exactly the registers the allocator hands out, and there is no role in it for a
+\ register that is written and put back. So a value the caller still needs does
+\ not survive the call in a register, and the honest way to say that in the source
+\ dialect is that the call CONSUMES it and ANSWERS it again - a different value,
+\ defined by the call, which whatever computes with it afterwards reads instead.
+\ The machine stage then has somewhere real to put it (the caller's own data
+\ stack) and the register allocator sees the two lifetimes it really has rather
+\ than one lifetime spanning a call that ends it.
+\
+\ WHY BOTH LISTS ARE VARIADIC. How many values are live across a call is a fact
+\ about the call site, and how many the callee takes and leaves is a fact about
+\ the routine - neither is a fact about the opcode, so neither can be a fixed
+\ count in a schema. The order is the one fixed operand and the one fixed result,
+\ so a reader finds it by position as well as by type.
+\
+\ AND WHY IT MAY TRAP. A call runs the callee, and whatever the callee can do the
+\ call can do: the corpus's own recursive word divides nothing, but a call that
+\ declared itself total would be claiming something about a routine rather than
+\ about an operation. The machine lowering reproduces it exactly, by being the
+\ same call, which is what src/compiler/native/select.f's trap rule requires.
+: DEF-CALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:CALL OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND-TAIL
+   k IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT-TAIL
+   IR--SCHEMA-EFFECT:READ-WRITE GENERIC-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:CALL NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -615,6 +667,7 @@ public
    c b t k DEF-BSTORE
    c b t DEF-BR
    c b t DEF-BRZ
+   c b t k DEF-CALL
    c b t DEF-RETURN ;
 
 private

@@ -193,6 +193,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       bload  OF 13 ENDOF
       bstore OF 14 ENDOF
       equal  OF 15 ENDOF
+      call   OF 16 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -213,6 +214,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       13 of HIR-OPCODE:BLOAD endof
       14 of HIR-OPCODE:BSTORE endof
       15 of HIR-OPCODE:EQUAL endof
+      16 of HIR-OPCODE:CALL endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -230,6 +232,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       index       OF 6 ENDOF
       drop-loop   OF 7 ENDOF
       early-exit  OF 8 ENDOF
+      self-call   OF 9 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -243,6 +246,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       6 of HIR-CTRL:INDEX endof
       7 of HIR-CTRL:DROP-LOOP endof
       8 of HIR-CTRL:EARLY-EXIT endof
+      9 of HIR-CTRL:SELF-CALL endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -777,7 +781,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ `over`, one for `nip` and three for `rot`. A `{: … :}` group adds two words
 \ and no picks: its halves stage nothing and the names between them are the
 \ program's, so they never become rows of this table.
-31 constant WORDS
+32 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -816,10 +820,18 @@ private
    c b r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BLOAD BDECLARE-OP
    c b r c b s" c!" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BSTORE BDECLARE-OP ;
 
-\ The structured control words. Three pairs and the loop index; nothing else of
-\ Habu's control vocabulary is declared, because nothing else has a block
-\ construction in src/compiler/native/elaborate.f yet, and a word declared here
-\ without one would be a promise rather than a model.
+\ The structured control words. Three pairs, the loop index, the two words that
+\ leave a structure, and `RECURSE`; nothing else of Habu's control vocabulary is
+\ declared, because nothing else has a block construction in
+\ src/compiler/native/elaborate.f yet, and a word declared here without one would
+\ be a promise rather than a model.
+\
+\ `RECURSE` IS SPELLED IN UPPER CASE, WHICH IS NOT AN EXCEPTION TO THE RULE ABOVE.
+\ The rule is that this table interns each word exactly as `docs/forth.md` spells
+\ it, and § "RECURSE uses the declared effect" spells this one in capitals - so
+\ the row and the source agree by following one authority, not by two guesses
+\ landing on the same bytes. A body that wrote it any other way finds no row and
+\ is refused by name.
 : DEF-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" if" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-IF BDECLARE-CONTROL
@@ -830,7 +842,8 @@ private
    c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
    c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL
    c b r c b s" unloop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:DROP-LOOP BDECLARE-CONTROL
-   c b r c b s" exit" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL ;
+   c b r c b s" exit" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL
+   c b r c b s" RECURSE" IR-BUILD:INTERN-SYMBOL HIR-CTRL:SELF-CALL BDECLARE-CONTROL ;
 
 \ The two halves of a typed locals group. Neither stages an operation and
 \ neither carries a payload: what the opener does is start reading the names

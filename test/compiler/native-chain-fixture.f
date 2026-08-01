@@ -182,6 +182,31 @@ public
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
+\ The same convention for a routine that CALLS - which, for now, means a routine
+\ that calls itself. Two fields change and neither is decoration. `traits` gains
+\ the direct-call bit, which is the declaration the selector builds the frame and
+\ the link save from and the validator measures them against; and `frame` becomes
+\ one slot, rounded up to the stack alignment, because that is where the caller's
+\ return address goes. `link preserved` does not change, and that is the point:
+\ it was true of a leaf for nothing, and a routine that calls has to MAKE it true
+\ by saving x30 and putting it back before it returns.
+\
+\ THE FRAME IS ONE SLOT AND NOT MORE, so nothing but the return address is in it.
+\ A routine of more than one block cannot spill at all, so there is no second
+\ claimant on it; a single-block routine that both called and spilled would have
+\ the allocator hand slot zero to a value, and the validator refuses the second
+\ write to one slot by name. Dot habu-give-the-routine-679de563 gives the frame one
+\ owner that reserves the link slot before the allocator places anything.
+A64EFF:SP-ALIGN constant CALL-FRAME
+
+: CALL-HABU ( n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n :}
+   in SLOT-SEQ  out SLOT-SEQ
+   base n POOL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:T-CALL CALL-FRAME 0 A64EFF:ROUTINE ;
+
 \ Allocate registers for a frozen machine module, have the validator accept the
 \ allocation, and emit. Nothing here emits from a claim the validator has not
 \ agreed with, which is the whole reason the three stages are one word.
@@ -225,6 +250,17 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b a u base n in out LEAF-HABU SELECTED {: m:IR-BUILD:module :}
    c m base n in out FINISH-HABU ;
+
+\ Select and finish for a routine that calls itself. The contract is built three
+\ times from the same four numbers, because a routine value cannot be held in a
+\ local; every one of the three is the same declaration, so the selector, the
+\ allocator and the validator are answering about one routine.
+: RUN-HABU-CALL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   c b a u  base n in out CALL-HABU  SELECTED {: m:IR-BUILD:module :}
+   c m  base n in out CALL-HABU  A64RA:ALLOCATE
+   m  base n in out CALL-HABU  A64RAV:ACCEPT
+   c m A64EMIT:EMIT ;
 
 \ The register the returned value ended up in. The last value the module defines
 \ is the one the return carries in every straight-line shape, and it is read

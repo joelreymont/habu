@@ -82,6 +82,20 @@ private
    c b v p r in out NELAB:COLON drop
    c b NSRC:TEXT$ 0 regs in out NFIX:RUN-HABU ;
 
+\ The same for a definition that calls itself. Only the routine contract differs:
+\ it declares that the routine calls and gives it a frame for the return address,
+\ which is what makes the selector build the frame, the link save and the
+\ call site, and what the validator measures all three against. Everything else -
+\ the lexer, the elaborator, the four back-half stages - is the same path.
+: FINISH-CALL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      in:n out:n regs:n :}
+   c b NSRC:TAPE {: tp:IR-ARENA:arena :}
+   c NSRC:LEX
+   tp NTAPE:SEAL {: v:IR-ARENA:view :}
+   c b v p r in out NELAB:COLON drop
+   c b NSRC:TEXT$ 0 regs in out NFIX:RUN-HABU-CALL ;
+
 public
 
 \ Elaborate the source text now in the fixture's text buffer as a definition that
@@ -92,6 +106,13 @@ public
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
    c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b p r in out regs FINISH ;
+
+\ The same for a body that calls itself.
+: CHAIN-CALL ( IR-CTX:ctx n n n -- )
+   {: c:IR-CTX:ctx in:n out:n regs:n :}
+   c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r in out regs FINISH-CALL ;
 
 \ The same for a body that mentions one `create`d data word: its spelling, and
 \ the address it pushes. The address is stated because the chain cannot yet look

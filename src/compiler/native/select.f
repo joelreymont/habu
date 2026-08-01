@@ -31,6 +31,8 @@
 \   hir.store  -> a64.astr
 \   hir.bload  -> a64.aldrb
 \   hir.bstore -> a64.astrb
+\   hir.call   -> one a64.dstore per value crossing the call, then a64.call,
+\                 then one a64.dload per value coming back
 \   hir.return -> a64.ret
 \ An operand is not "the same position in the new operation"; it is the value the
 \ source operand's own definition selected to, looked up in the value map. That is
@@ -104,6 +106,15 @@
 \ was going to build anyway. Everything downstream then reads one module that
 \ contains its own interface.
 \
+\ AND A ROUTINE THAT CALLS GETS TWO MORE PIECES OF INTERFACE, FOR THE SAME
+\ REASON. Its caller's return address is destroyed by the first call it makes, so
+\ it reserves its own frame and puts x30 in it before the body and takes it back
+\ before it returns; and every value the caller still holds at a call site is
+\ written into the caller's data stack and read back out of it, because no
+\ register survives a call to a routine whose contract destroys the whole pool.
+\ Both are instructions, both are decided by the contract, and both therefore
+\ belong in the module this pass builds rather than in the emitter.
+\
 \ THE ENTRY AND EXIT PAIR IS EMITTED WHOLE, EVEN WHEN A COUNT IS ZERO. A routine
 \ whose convention uses the data stack always gets both the take and the publish,
 \ so the chain of memory tokens has one beginning and one end and the validator
@@ -144,7 +155,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-16 constant OPCODES-N
+17 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -161,6 +172,7 @@ private
 13 constant O-BLOAD
 14 constant O-BSTORE
 15 constant O-EQ
+16 constant O-CALL
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -186,6 +198,10 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
 1 TYPED-BUFFER S-ARGS A64EFF:placeseq
 1 TYPED-BUFFER S-OUTS A64EFF:placeseq
+1 TYPED-BUFFER S-TRT A64EFF:traits
+1 TYPED-BUFFER S-FTOK IR-ID:ir-value-id
+variable S-FRAME                     \ the frame the contract declares, in bytes
+variable N-CALLS                     \ calls this selection built
 VMAX TYPED-BUFFER VMAP IR-ID:ir-value-id
 create VSET VMAX cells allot
 create NAMEBUF NAME-CAP allot
@@ -200,6 +216,10 @@ create NAMEBUF NAME-CAP allot
 : TOK! ( IR-ID:ir-value-id -- )      0 S-TOK ! ;
 : ARGS ( -- A64EFF:placeseq )        0 S-ARGS @ ;
 : OUTS ( -- A64EFF:placeseq )        0 S-OUTS @ ;
+: TRAITS ( -- A64EFF:traits )        0 S-TRT @ ;
+: FRAME ( -- n )                     S-FRAME @ ;
+: FTOK ( -- IR-ID:ir-value-id )      0 S-FTOK @ ;
+: FTOK! ( IR-ID:ir-value-id -- )     0 S-FTOK ! ;
 
 \ ---- the source dialect's opcode family --------------------------------------
 \ One injective slot per member, so the family stays exhaustive: a member added
@@ -222,6 +242,7 @@ create NAMEBUF NAME-CAP allot
       store  OF O-STORE  ENDOF
       bload  OF O-BLOAD  ENDOF
       bstore OF O-BSTORE ENDOF
+      call   OF O-CALL   ENDOF
       return OF O-RETURN ENDOF
    ;MATCH ;
 
@@ -242,6 +263,7 @@ create NAMEBUF NAME-CAP allot
       O-STORE  of HIR-OPCODE:STORE  endof
       O-BLOAD  of HIR-OPCODE:BLOAD  endof
       O-BSTORE of HIR-OPCODE:BSTORE endof
+      O-CALL   of HIR-OPCODE:CALL   endof
       O-RETURN of HIR-OPCODE:RETURN endof
       E-A64SEL-OPCODE throw
    endcase ;
@@ -369,6 +391,35 @@ create NAMEBUF NAME-CAP allot
    ARGS SLOT-POSITIONS ARGS A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then
    OUTS SLOT-POSITIONS OUTS A64EFF:SEQ-LEN <> if E-A64SEL-PLACE throw then ;
 
+\ Does the contract say this routine calls? That declaration is what decides
+\ whether the frame and the link save are built, and SELECT holds it against the
+\ module: a contract that declares a call for a body containing none would
+\ reserve a frame for nothing, and a body containing one under a contract that
+\ declares none would destroy the caller's return address.
+: CALLS? ( -- bool )
+   TRAITS A64EFF:T-CALL A64EFF:TRAITS-HAS? ;
+
+\ What a contract that declares a call has to say for this pass to build one.
+\ A call reaches the callee through the caller's data stack, so a routine whose
+\ convention names no data-stack place has no way to hand an argument over; and
+\ the return address goes into slot zero of the routine's own frame, so a frame
+\ too small to hold one cell has nowhere to put it. Both are the contract's
+\ declaration and both are decided before a single operation is selected.
+: CONTRACT-CK ( -- )
+   CALLS? 0= if exit then
+   DSTACK? 0= if E-A64SEL-CALL throw then
+   FRAME A64IR:SLOT-WIDTH < if E-A64SEL-CALL throw then ;
+
+\ The contract and the module have to agree about whether this routine calls.
+\ A contract that declares a call for a body containing none reserves a frame and
+\ saves a return address for nothing; a body containing one is refused at the
+\ call by CONTRACT-CK's other half. Two derivations of one fact, held together.
+: CALLED-CK ( -- )
+   CALLS? if
+      N-CALLS @ 0= if E-A64SEL-CALL throw then exit
+   then
+   N-CALLS @ 0<> if E-A64SEL-CALL throw then ;
+
 \ ---- the four data-stack operations ------------------------------------------
 \ Each carries the span of the source operation it is anchored to, so a
 \ diagnostic about an entry load still points at the word the programmer wrote.
@@ -424,6 +475,162 @@ create NAMEBUF NAME-CAP allot
    TOK OPERAND+
    bytes DBYTES-ATTR+
    CTX BLD IR-BUILD:END-OP drop ;
+
+\ ---- the routine's frame, and the return address in it -----------------------
+\ A routine that calls is a routine whose own return address is destroyed by the
+\ first call it makes, so it puts it away before the body and takes it back
+\ before it returns. Where it puts it is slot zero of its own frame, and the
+\ frame is the one its contract declares - the same declaration the register
+\ allocator's validator measures every frame access against.
+\
+\ WHY THE PAIR IS BUILT HERE AND NOT AT EMISSION. It is the same argument that
+\ put the data-stack entry and exit in this pass: an instruction the emitter
+\ materialised out of a contract is an instruction no module contains, so the
+\ independent validator would have nothing to re-derive it from. A routine's
+\ interface is known before a single operation is selected, and saving the link
+\ register is part of that interface - it is what makes the contract's
+\ `link preserved` true of the routine rather than merely declared.
+\
+\ THE FRAME ORDER IS ITS OWN CHAIN AND CROSSES BLOCKS BY DOMINANCE. The reserve
+\ mints it in the entry block, the save takes it, the restore reads what the save
+\ left and the release ends it. The entry block dominates every block of the
+\ routine, so the value the save answers is readable in the block control leaves
+\ through without being handed across an edge - which is ordinary SSA and is what
+\ the freeze verifier proves. The data stack keeps a separate chain for the
+\ reason the dialect gives: no operation of this dialect can compute an address
+\ inside the frame, so the two orders are independent and stating one would be
+\ claiming something nothing proved.
+0 constant LINK-SLOT                 \ where the caller's return address is kept
+
+: FRAME-ATTR+ ( n -- )
+   {: size:n :}
+   CTX BLD  CTX BLD A64IR:KEY-FRAME  CTX BLD size A64IR:FRAME-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+: SLOT-ATTR+ ( n -- )
+   {: off:n :}
+   CTX BLD  CTX BLD A64IR:KEY-SLOT  CTX BLD off A64IR:SLOT-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+: EMIT-RESERVE ( IR-ID:ir-op-id -- )
+   {: at:IR-ID:ir-op-id :}
+   at A64IR-OPCODE:RESERVE OPEN
+   TOKEN+
+   FRAME FRAME-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ FTOK! ;
+
+: EMIT-RELEASE ( IR-ID:ir-op-id -- )
+   {: at:IR-ID:ir-op-id :}
+   at A64IR-OPCODE:RELEASE OPEN
+   FTOK OPERAND+
+   FRAME FRAME-ATTR+
+   CTX BLD IR-BUILD:END-OP drop ;
+
+\ The two halves of the link save, which differ only in which way the register
+\ moves. Neither takes the register as an operand: it is x30, named by the form.
+: EMIT-LINK ( IR-ID:ir-op-id A64IR:opcode -- )
+   {: at:IR-ID:ir-op-id o:A64IR:opcode :}
+   at o OPEN
+   FTOK OPERAND+
+   TOKEN+
+   LINK-SLOT A64IR:SLOT-WIDTH * SLOT-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ FTOK! ;
+
+\ Whether the frame and the link save are built at all is CALLS? above.
+: PROLOGUE ( IR-ID:ir-op-id -- )
+   {: at:IR-ID:ir-op-id :}
+   CALLS? 0= if exit then
+   at EMIT-RESERVE
+   at A64IR-OPCODE:LINKSAVE EMIT-LINK ;
+
+: EPILOGUE ( IR-ID:ir-op-id -- )
+   {: at:IR-ID:ir-op-id :}
+   CALLS? 0= if exit then
+   at A64IR-OPCODE:LINKLOAD EMIT-LINK
+   at EMIT-RELEASE ;
+
+\ ---- selecting a call --------------------------------------------------------
+\ THE CALL-SITE INVARIANT, WHICH IS WHAT THIS WORD BUILDS.
+\
+\ The engine keeps the data stack full-ascending with its pointer one cell past
+\ the caller's top live value. A routine of arity (a -> r) is entered with the
+\ pointer one past its a arguments; it moves the pointer down over them, reads
+\ argument i at 8i, writes result j at 8j and moves the pointer up over the r
+\ results. That is the routine's own entry and exit, and it is already what this
+\ pass builds.
+\
+\ A call site is the mirror of it. Let the pointer stand at ds0 and let the
+\ caller hold k live values besides the a arguments. The site writes each live
+\ value into slot i and each argument into slot k+i, through the same a64.dstore
+\ the exit uses; moves the pointer up over all k+a of them, branches with link to
+\ the routine's own entry, and moves it back down over k+r; then reads each live
+\ value back out of slot i and each result out of slot k+j, through the same
+\ a64.dload the entry uses. The callee's own -8a and +8r land exactly on the
+\ argument slots, so the pointer ends at ds0 again and the caller's live values
+\ are back in registers, read out of the very slots they were written to.
+\
+\ WHY THE CALLER SAVES AT ALL. The callee is this same routine: its contract's
+\ destroyed set is exactly the register pool the allocator hands out, so every
+\ register the caller holds a value in is one the recursive instance writes.
+\ Nothing in a Habu word's convention is callee-saved - src/compiler/a64-effect.f
+\ has no role for a register that is written and put back - so the caller saves,
+\ and the one place it can save to that the callee cannot reach is its own data
+\ stack below the callee's argument base.
+\
+\ AND WHY THE COUNTS ARE DERIVED TWICE. How many values are live across the call
+\ is read off the operand list, and again off the result list, against the
+\ routine's own declared arity; the two have to agree. A source operation whose
+\ two lists tell different stories is refused by name rather than lowered into a
+\ store run and a load run of different lengths.
+: DBACK-ATTR+ ( n -- )
+   {: size:n :}
+   CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR
+   IR-BUILD:ADD-ATTR ;
+
+: CALL-LIVE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   ARGS SLOT-POSITIONS {: a:n :}
+   OUTS SLOT-POSITIONS {: r:n :}
+   id OPERANDS-OF 1- a - {: k:n :}
+   k 0 < if E-A64SEL-CALL throw then
+   id RESULTS-OF 1- r - k <> if E-A64SEL-CALL throw then
+   k ;
+
+: EMIT-BL ( IR-ID:ir-op-id n n -- )
+   {: at:IR-ID:ir-op-id give:n back:n :}
+   at A64IR-OPCODE:CALL OPEN
+   TOK OPERAND+
+   TOKEN+
+   give DBYTES-ATTR+
+   back DBACK-ATTR+
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
+
+\ Nothing here re-asks whether this routine may call at all. CONTRACT-CK decided
+\ it before the first operation was selected - a contract that declares a call
+\ needs the data-stack convention and a frame for the return address - and
+\ CALLED-CK decides the other half after the last one, by holding the calls this
+\ pass really built against the contract's declaration. A third copy of the
+\ question here would be a check no mutation can reach.
+: EMIT-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   ARGS SLOT-POSITIONS {: a:n :}
+   OUTS SLOT-POSITIONS {: r:n :}
+   id CALL-LIVE {: k:n :}
+   id 0 OPERAND TOK!
+   k a + 0 ?do
+      id  id i 1+ OPERAND  i A64IR:SLOT-WIDTH *  EMIT-DSTORE
+   loop
+   id  k a + A64IR:SLOT-WIDTH *  k r + A64IR:SLOT-WIDTH *  EMIT-BL
+   k r + 0 ?do
+      id i 1+ RESULT-AT
+      id  i A64IR:SLOT-WIDTH *  EMIT-DLOAD
+      VBIND
+   loop
+   id 0 RESULT-AT  TOK  VBIND
+   N-CALLS @ 1+ N-CALLS ! ;
 
 \ ---- selecting a constant ----------------------------------------------------
 \ The literal is the whole content of a source constant, and it rides as the
@@ -560,6 +767,7 @@ create NAMEBUF NAME-CAP allot
 : EMIT-RETURN ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    DSTACK? if id EMIT-EXIT then
+   id EPILOGUE
    id A64IR-OPCODE:RET OPEN
    DSTACK? 0= if
       id OPERANDS-OF {: k:n :}
@@ -710,6 +918,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       bstore OF false ENDOF
       br     OF false ENDOF
       brz    OF false ENDOF
+      call   OF true  ENDOF
       return OF false ENDOF
    ;MATCH ;
 
@@ -740,6 +949,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       bstore OF id A64IR-OPCODE:ABSTORE EMIT-ASTORE ENDOF
       br     OF id EMIT-BR ENDOF
       brz    OF id EMIT-BRZ ENDOF
+      call   OF id EMIT-CALL ENDOF
       return OF id EMIT-RETURN ENDOF
    ;MATCH ;
 
@@ -815,6 +1025,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    ARGS SLOT-POSITIONS {: a:n :}
    bk ARG-COUNT a <> if E-A64SEL-PLACE throw then
    bk 0 OP-AT {: at:IR-ID:ir-op-id :}
+   at PROLOGUE
    at  a A64IR:SLOT-WIDTH *  EMIT-DTAKE
    a 0 ?do
       bk i ARG-AT
@@ -932,6 +1143,7 @@ public
    c b HIR-OPCODE:STORE  BIND1
    c b HIR-OPCODE:BLOAD  BIND1
    c b HIR-OPCODE:BSTORE BIND1
+   c b HIR-OPCODE:CALL   BIND1
    c b HIR-OPCODE:RETURN BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
    c b HIR:MEM-TYPE 0 BND-MEM !
@@ -966,7 +1178,11 @@ public
    m BND-MODULE-CK
    gi 0 S-ARGS !
    gr 0 S-OUTS !
+   t 0 S-TRT !
+   size S-FRAME !
+   0 N-CALLS !
    DSTACK-CK
+   CONTRACT-CK
    c b A64IR:REGISTER
    c 0 S-CTX !
    b 0 S-BLD !
@@ -976,6 +1192,7 @@ public
    n 0 ?do
       MKEY i IR-ID:PACK-FUN WALK-FUN
    loop
+   CALLED-CK
    c b IR-BUILD:FREEZE ;
 
 private

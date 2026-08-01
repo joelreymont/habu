@@ -565,6 +565,103 @@ create TXT TEXT-CAP allot
    NFIX:BINDING [: BFIND-BODY ;] IR-CTX:WITH-CONTEXT
    2 T= -1 T= 2 T= 11 T= ;
 
+\ ---- a definition that calls itself ------------------------------------------
+\ The same run over the one shape that needs a call: `RECURSE`, which is a call
+\ to the word being compiled and therefore the plain word-call-and-return shape
+\ as well. Three things have to be right at once and the answer says so.
+\
+\ FIRST, THE RETURN ADDRESS. The routine reserves its own frame and puts x30 in
+\ slot zero before it reads a single argument, and takes it back before it
+\ returns. A call writes x30, so a routine that did not save it would return to
+\ wherever the innermost call left off - the process would run away rather than
+\ answer 3628800.
+\
+\ SECOND, THE CALLER'S OWN LIVE VALUE. `dup 1- RECURSE *` still needs `n` after
+\ the call, and no register holds a value across a call to this routine: its
+\ contract destroys exactly the pool the allocator hands out, and the recursive
+\ instance writes it. So `n` crosses the call on the caller's data stack, below
+\ the argument the callee reads, and comes back out of the slot it went into. A
+\ routine that kept it in a register answers 10 rather than 3628800, because the
+\ multiply would read whatever the deepest call left there.
+\
+\ THIRD, THE BRANCH ITSELF. The call's displacement is measured to block zero of
+\ this routine - the prologue - so the callee arrives with its frame taken and
+\ its arguments read. A displacement one instruction out lands on the link save
+\ instead and the frame is never taken.
+\
+\ AND THE TWO PINNED ARGUMENTS ARE THE TWO WAYS THROUGH. Ten recurses ten deep;
+\ one takes the base-case arm on the first turn and never calls at all, so the
+\ prologue and the epilogue are exercised with no call between them. The
+\ interpreted word is run on both, which is what says the two paths agree.
+: SRC8 ( -- ptr u8 n )
+   s" : NCH-FACT ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;" ;
+
+: RECORD8 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC8 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: FACT-BODY ( IR-CTX:ctx -- n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD8
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 1 1 NFIX:RUN-HABU-CALL
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   10 fn NRUN:ENTER1
+   1 fn NRUN:ENTER1
+   s" 10 NCH-FACT" EV-N
+   s" 1 NCH-FACT" EV-N ;
+
+: FACT-CASE ( -- )
+   s" a definition that calls itself compiles and runs" T-LABEL
+   NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 3628800 T= 1 T= 3628800 T= 5 T= ;
+
+\ ---- the contract and the body have to agree about calling -------------------
+\ Whether a routine calls is the contract's declaration, and the selector builds
+\ the frame and the link save from it. Two ways for that declaration to be wrong,
+\ and both are refused before a byte is emitted rather than discovered by a
+\ routine that returns to the wrong place.
+\
+\ A BODY THAT CALLS UNDER A CONTRACT THAT DOES NOT SAY SO would get no frame and
+\ no link save, so the first call would destroy the caller's return address. The
+\ same recursive definition is put through the leaf contract to prove it stops.
+\
+\ The other direction - a contract that says so over a body that does not call,
+\ which would reserve a frame and save a return address for nothing - is the same
+\ refusal from the other side and is measured in test/compiler/native-select.f,
+\ which has a context to spare for it. A refused case abandons a context holding
+\ two modules, so this suite can afford exactly one.
+: SRC9 ( -- ptr u8 n )
+   s" : NCH-FACT2 ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;" ;
+
+: RECORD9 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC9 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: LEAF-FACT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD9
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 1 1 NFIX:RUN-HABU ;
+
+: LEAF-FACT ( -- )
+   NFIX:BINDING [: LEAF-FACT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: AGREE-CASES ( -- )
+   s" a body that calls under a contract that does not is refused" T-LABEL
+   [: LEAF-FACT ;] E-A64SEL-CALL TTHROWSQ ;
+
 public
 
 : RUN ( -- )
@@ -577,6 +674,8 @@ public
    BUFFER-MAKE
    BSUM-CASE
    BFIND-CASE
+   FACT-CASE
+   AGREE-CASES
    T-REPORT ;
 
 ;package
