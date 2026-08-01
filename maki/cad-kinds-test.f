@@ -57,6 +57,15 @@ s" CK-STAGE ( CAD-KIND:stage -- CAD-KIND:stage )" YES
 s" CK-EFFECT ( CAD-KIND:effect -- CAD-KIND:effect )" YES
 s" CK-REGION ( CAD-KIND:region -- CAD-KIND:region )" YES
 
+: ID-ERROR>N ( CAD-KIND:id-error -- n )
+   MATCH CAD-KIND:id-error
+      wrong-width OF 1 ENDOF
+      unknown     OF 2 ENDOF
+   ;MATCH ;
+
+CAD--KIND-ID--ERROR:WRONG-WIDTH ID-ERROR>N 1 T=
+CAD--KIND-ID--ERROR:UNKNOWN ID-ERROR>N 2 T=
+
 \ Adjacent roles never collapse to one cell-shaped scalar identity.
 s" CK-X01 ( CAD-KIND:design-id -- CAD-KIND:rev-id )" NO
 s" CK-X02 ( CAD-KIND:rev-id -- CAD-KIND:obj-id )" NO

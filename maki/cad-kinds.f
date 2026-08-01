@@ -65,6 +65,11 @@ NEWTYPE numeric-policy-id 0
 NEWTYPE capability-id 0
 NEWTYPE audit-event-id 0
 
+ENUM id-error
+   wrong-width
+   unknown
+;ENUM
+
 \ Model and lowering domain roles.
 \ dtype and layout are NOT declared here: those roles are owned by the maki
 \ ENUM families (`dtype` in maki/tensor.f, `layout` in maki/tensor-value.f),
