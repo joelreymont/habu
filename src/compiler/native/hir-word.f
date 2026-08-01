@@ -192,6 +192,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       store  OF 11 ENDOF
       bload  OF 13 ENDOF
       bstore OF 14 ENDOF
+      equal  OF 15 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -211,6 +212,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       12 of HIR-OPCODE:DIV endof
       13 of HIR-OPCODE:BLOAD endof
       14 of HIR-OPCODE:BSTORE endof
+      15 of HIR-OPCODE:EQUAL endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -226,6 +228,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       open-do     OF 4 ENDOF
       close-loop  OF 5 ENDOF
       index       OF 6 ENDOF
+      drop-loop   OF 7 ENDOF
+      early-exit  OF 8 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -237,6 +241,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       4 of HIR-CTRL:OPEN-DO endof
       5 of HIR-CTRL:CLOSE-LOOP endof
       6 of HIR-CTRL:INDEX endof
+      7 of HIR-CTRL:DROP-LOOP endof
+      8 of HIR-CTRL:EARLY-EXIT endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -771,12 +777,12 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ `over`, one for `nip` and three for `rot`. A `{: … :}` group adds two words
 \ and no picks: its halves stage nothing and the names between them are the
 \ program's, so they never become rows of this table.
-28 constant WORDS
+31 constant WORDS
 15 constant PICK-CELLS
 
 private
 
-\ The six words this dialect has operations for.
+\ The seven words this dialect has operations for.
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD BDECLARE-OP
@@ -784,7 +790,8 @@ private
    c b r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL BDECLARE-OP
    c b r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:DIV BDECLARE-OP
    c b r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LT BDECLARE-OP
-   c b r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LE BDECLARE-OP ;
+   c b r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LE BDECLARE-OP
+   c b r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:EQUAL BDECLARE-OP ;
 
 \ `1-` ( n -- n ) and `1+` ( n -- n ): subtract or add one. Each is one token of
 \ source and two operations of this dialect, and the row says exactly that
@@ -821,7 +828,9 @@ private
    c b r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-UNTIL BDECLARE-CONTROL
    c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
    c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
-   c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL ;
+   c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL
+   c b r c b s" unloop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:DROP-LOOP BDECLARE-CONTROL
+   c b r c b s" exit" IR-BUILD:INTERN-SYMBOL HIR-CTRL:EARLY-EXIT BDECLARE-CONTROL ;
 
 \ The two halves of a typed locals group. Neither stages an operation and
 \ neither carries a payload: what the opener does is start reading the names

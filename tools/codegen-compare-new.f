@@ -8,22 +8,22 @@
 \ "the new column has fewer rows" can only ever mean "these named capabilities
 \ are missing", never "the harness quietly stopped looking".
 \
-\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares twenty-six
-\ source words - `+ - * / < <=`, `1-` and `1+`, the two memory words `@` and `!`,
-\ the seven structured control words `if then begin until ?do loop i`, the two
-\ halves `{:` and `:}` of a typed locals group, and the seven renames
-\ `2dup dup drop swap over nip rot` - plus integer literals, and
-\ src/compiler/native/hir.f gives the dialect thirteen operations. A word of the
+\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares thirty-one
+\ source words - `+ - * / < <= =`, `1-` and `1+`, the four memory words `@`, `!`,
+\ `c@` and `c!`, the nine control words `if then begin until ?do loop i unloop
+\ exit`, the two halves `{:` and `:}` of a typed locals group, and the seven
+\ renames `2dup dup drop swap over nip rot` - plus integer literals, and
+\ src/compiler/native/hir.f gives the dialect sixteen operations. A word of the
 \ corpus is expressible exactly when its body is those words and nothing else,
 \ plus - for a body that names a `create`d data word - the one address the
-\ harness states (dot habu-resolve-a-data-a1c8067f). Eight of the eleven are:
-\ the empty word, the three-argument sum, the sum of two squares - which is the
-\ one that shows the renames costing nothing at all - the two-way branch, the
-\ typed locals frame, both loop forms, and the cell bump.
+\ harness states (dot habu-resolve-a-data-a1c8067f). Ten of the eleven are: the
+\ empty word, the three-argument sum, the sum of two squares - which is the one
+\ that shows the renames costing nothing at all - the two-way branch, the typed
+\ locals frame, both loop forms, the cell bump, the byte sum and the byte scan.
 \
-\ THE CAPABILITIES THE OTHER THREE WAIT FOR are the vocabulary below, and each
-\ gap row names every one it needs rather than the first that stops it - a word
-\ that needs a branch and a comparison is not unblocked by branches alone, and a
+\ THE CAPABILITY THE LAST ONE WAITS FOR is the vocabulary below, and its gap row
+\ names every one it needs rather than the first that stops it - a word that
+\ needs a branch and a comparison is not unblocked by branches alone, and a
 \ reader planning the next capability should see that.
 \
 \ HOW A COVERED ROW IS CHECKED. The routine the chain emitted is published into
@@ -311,6 +311,16 @@ private
       -3 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
+\ The pinned inputs of the two byte-span words, written here the way every other
+\ covered body writes its pinned inputs: as the literal the old column uses. The
+\ subject text is the one tools/codegen-compare-cases.f measures the interpreted
+\ words on, so the two columns scan the same bytes.
+: SUBJECT$ ( -- ptr u8 n )
+   s" habu codegen baseline" ;
+
+: EMPTY$ ( -- ptr u8 n )
+   s" " ;
+
 \ `: CELL-BUMP ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;` - the
 \ memory word, written here exactly as the corpus writes it, `BUMP-CELL` and
 \ all. What the chain is told about that name is its address, because the chain
@@ -334,6 +344,48 @@ private
       CODEGEN-CORPUS:BUMP-CELL@ CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
+\ `: BYTE-SUM ( ptr u8 n -- n ) {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop ;` -
+\ byte-width memory inside a loop, which is the first body of the corpus that
+\ needs the memory order to cross an edge: the load is in the loop body, so the
+\ order the second turn reads is the one the first turn left, and it reaches the
+\ body as a block argument. The two pinned inputs are the subject text and an
+\ EMPTY span, so the zero-trip path out of a `?do` is measured as well as the
+\ counting one - and on the empty span the loop body never runs, which is the
+\ case a routine that ordered its accesses wrongly could still get right.
+: BYTE-SUM-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" BYTE-SUM {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop" NSRC:TEXT!
+   c 2 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:BYTE-SUM" CODEGEN-CHAIN:BYTES
+   [: SUBJECT$ CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN drop ;]
+   [: SUBJECT$ CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN CODEGEN-COMPARE:VECTOR
+      EMPTY$ CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
+\ `: BYTE-FIND ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
+\      u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;` - the byte scan that
+\ leaves from the middle of its loop. Three capabilities meet in it: the byte
+\ load, the memory order crossing the loop edge, and `exit`, which branches to
+\ the block the return is in rather than returning a second time. The two pinned
+\ inputs are a byte that IS in the subject text and one that is not, so both ways
+\ out are measured - the early one and the one that runs the loop to its end and
+\ answers the miss.
+103 constant LETTER-G                \ present in the subject text
+122 constant LETTER-Z                \ absent from it
+
+: BYTE-FIND-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" BYTE-FIND {: a:ptr u:n c:n :} u 0 ?do i a + c@ c = if i unloop exit then loop -1"
+   NSRC:TEXT!
+   c 3 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:BYTE-FIND" CODEGEN-CHAIN:BYTES
+   [: SUBJECT$ LETTER-G CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN1 drop ;]
+   [: SUBJECT$ LETTER-G CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN1 CODEGEN-COMPARE:VECTOR
+      SUBJECT$ LETTER-Z CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN1 CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
 : COVERED-CASES ( -- )
    NFIX:BINDING [: NOOP-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: ADD3-BODY ;] IR-CTX:WITH-CONTEXT
@@ -342,17 +394,14 @@ private
    NFIX:BINDING [: LERP-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: SUM-TO-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: COUNT-DOWN-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: CELL-BUMP-BODY ;] IR-CTX:WITH-CONTEXT ;
+   NFIX:BINDING [: CELL-BUMP-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: BYTE-SUM-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: BYTE-FIND-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the words the subset cannot express yet ---------------------------------
 : GAP-CASES ( -- )
    s" CODEGEN-CORPUS:FACT" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
       CODEGEN--NEW-CAP:CALLS GAP-ALSO
-      CODEGEN--NEW-CAP:COMPARISON GAP-ALSO
-   s" CODEGEN-CORPUS:BYTE-SUM" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-      CODEGEN--NEW-CAP:MEMORY GAP-ALSO
-   s" CODEGEN-CORPUS:BYTE-FIND" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-      CODEGEN--NEW-CAP:MEMORY GAP-ALSO
       CODEGEN--NEW-CAP:COMPARISON GAP-ALSO ;
 
 \ ---- accounting --------------------------------------------------------------

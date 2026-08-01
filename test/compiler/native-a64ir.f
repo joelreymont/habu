@@ -613,12 +613,15 @@ private
    A64IR-COND:LT A64IR:COND-CODE C-LT T=
    A64IR-COND:LE A64IR:COND-CODE C-LE T=
    A64IR-COND:LT A64IR:COND-CODE A64IR:N>COND A64IR-COND:LT A64IR-COND:EQ TTRUE
-   A64IR-COND:LE A64IR:COND-CODE A64IR:N>COND A64IR-COND:LE A64IR-COND:EQ TTRUE ;
+   A64IR-COND:LE A64IR:COND-CODE A64IR:N>COND A64IR-COND:LE A64IR-COND:EQ TTRUE
+   A64IR-COND:EQUAL A64IR:COND-CODE C-EQ T=
+   A64IR-COND:EQUAL A64IR:COND-CODE A64IR:N>COND A64IR-COND:EQUAL A64IR-COND:EQ
+   TTRUE ;
 
 \ A code the vocabulary does not name decodes as nothing at all.
 : COND-REFUSE-CASES ( -- )
    s" a stored condition outside the vocabulary is refused" T-LABEL
-   [: 0 A64IR:N>COND drop ;] catch E-A64IR-COND T=
+   [: C-NE A64IR:N>COND drop ;] catch E-A64IR-COND T=
    [: C-LT 1+ A64IR:N>COND drop ;] catch E-A64IR-COND T= ;
 
 \ ---- the reach of each branch --------------------------------------------------

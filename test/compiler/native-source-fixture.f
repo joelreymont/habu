@@ -45,6 +45,7 @@ private
 32 constant SP-C
 48 constant ZERO-C
 57 constant NINE-C
+45 constant MINUS-C
 256 constant TXT-CAP
 128 constant TAPE-CAP
 
@@ -138,6 +139,15 @@ private
       10 *  st i + TXT + c@ ZERO-C -  +
    loop ;
 
+\ A minus sign in front of a digit run makes the token an integer literal and not
+\ a name, which is what the engine's own reader makes of it. The sign alone is
+\ the word `-`, so a run of one byte is still a name.
+: SIGNED? ( n n -- bool )
+   {: st:n ln:n :}
+   ln 2 < if false exit then
+   st TXT + c@ MINUS-C <> if false exit then
+   st 1+ ln 1- DIGITS? ;
+
 \ The mode is the token's place in the definition: `:` reads the defined name
 \ before it switches the parser to compiling, so the first token - the name - was
 \ read while interpreting and everything after it while compiling.
@@ -146,6 +156,9 @@ private
    ix 0= if c st ln NTAPE-MODE:INTERPRETING NAME, exit then
    st ln DIGITS? if
       c st ln NTAPE-MODE:COMPILING st ln VALUE-OF INT, exit
+   then
+   st ln SIGNED? if
+      c st ln NTAPE-MODE:COMPILING  0 st 1+ ln 1- VALUE-OF -  INT, exit
    then
    c st ln NTAPE-MODE:COMPILING NAME, ;
 

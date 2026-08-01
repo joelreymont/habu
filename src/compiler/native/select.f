@@ -23,6 +23,9 @@
 \   hir.sub    -> a64.sub
 \   hir.mul    -> a64.mul
 \   hir.div    -> a64.sdiv
+\   hir.lt     -> a64.flag, under the signed less-than condition
+\   hir.le     -> a64.flag, under the signed less-than-or-equal condition
+\   hir.eq     -> a64.flag, under the equal condition
 \   hir.mem    -> no instruction: the order binds to the one a64.dtake minted
 \   hir.load   -> a64.aldr
 \   hir.store  -> a64.astr
@@ -141,7 +144,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-15 constant OPCODES-N
+16 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -157,6 +160,7 @@ private
 12 constant O-DIV
 13 constant O-BLOAD
 14 constant O-BSTORE
+15 constant O-EQ
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -210,6 +214,7 @@ create NAMEBUF NAME-CAP allot
       div    OF O-DIV    ENDOF
       lt     OF O-LT     ENDOF
       le     OF O-LE     ENDOF
+      equal  OF O-EQ     ENDOF
       br     OF O-BR     ENDOF
       brz    OF O-BRZ    ENDOF
       mem    OF O-MEM    ENDOF
@@ -229,6 +234,7 @@ create NAMEBUF NAME-CAP allot
       O-DIV    of HIR-OPCODE:DIV    endof
       O-LT     of HIR-OPCODE:LT     endof
       O-LE     of HIR-OPCODE:LE     endof
+      O-EQ     of HIR-OPCODE:EQUAL endof
       O-BR     of HIR-OPCODE:BR     endof
       O-BRZ    of HIR-OPCODE:BRZ    endof
       O-MEM    of HIR-OPCODE:MEM    endof
@@ -696,6 +702,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       div    OF true  ENDOF
       lt     OF false ENDOF
       le     OF false ENDOF
+      equal  OF false ENDOF
       mem    OF false ENDOF
       load   OF false ENDOF
       store  OF false ENDOF
@@ -725,6 +732,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       div    OF id A64IR-OPCODE:SDIV EMIT-BINARY ENDOF
       lt     OF id A64IR-COND:LT EMIT-FLAG ENDOF
       le     OF id A64IR-COND:LE EMIT-FLAG ENDOF
+      equal  OF id A64IR-COND:EQUAL EMIT-FLAG ENDOF
       mem    OF id EMIT-MEM ENDOF
       load   OF id A64IR-OPCODE:ALOAD EMIT-ALOAD ENDOF
       store  OF id A64IR-OPCODE:ASTORE EMIT-ASTORE ENDOF
@@ -916,6 +924,7 @@ public
    c b HIR-OPCODE:DIV    BIND1
    c b HIR-OPCODE:LT     BIND1
    c b HIR-OPCODE:LE     BIND1
+   c b HIR-OPCODE:EQUAL  BIND1
    c b HIR-OPCODE:BR     BIND1
    c b HIR-OPCODE:BRZ    BIND1
    c b HIR-OPCODE:MEM    BIND1

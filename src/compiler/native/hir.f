@@ -9,7 +9,7 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Fifteen opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Sixteen opcodes, and nothing else:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
@@ -17,6 +17,9 @@
 \   hir.div       signed integer division, truncating toward zero
 \   hir.lt        signed less-than, answering a Habu flag
 \   hir.le        signed less-than-or-equal, answering a Habu flag
+\   hir.eq        equality, answering a Habu flag - the opcode family spells
+\                 this member `equal`, because an ENUM that derives a comparison
+\                 word has already taken the name `eq`
 \   hir.mem       the memory the definition is entered with
 \   hir.load      read one cell from an address the program computed
 \   hir.store     write one cell to an address the program computed
@@ -138,6 +141,7 @@ ENUM opcode DERIVE eq
    div
    lt
    le
+   equal
    mem
    load
    store
@@ -164,6 +168,8 @@ ENUM ctrl DERIVE eq
    open-do
    close-loop
    index
+   drop-loop
+   early-exit
 ;ENUM
 
 \ What a Habu source word, or a source-tape token, means to this dialect.
@@ -254,6 +260,7 @@ public
       div    OF s" hir.div"    ENDOF
       lt     OF s" hir.lt"     ENDOF
       le     OF s" hir.le"     ENDOF
+      equal  OF s" hir.eq"     ENDOF
       mem    OF s" hir.mem"    ENDOF
       load   OF s" hir.load"   ENDOF
       store  OF s" hir.store"  ENDOF
@@ -298,6 +305,7 @@ private
       div    OF s" hir.rule.div"    ENDOF
       lt     OF s" hir.rule.lt"     ENDOF
       le     OF s" hir.rule.le"     ENDOF
+      equal  OF s" hir.rule.eq"     ENDOF
       mem    OF s" hir.rule.mem"    ENDOF
       load   OF s" hir.rule.load"   ENDOF
       store  OF s" hir.rule.store"  ENDOF
@@ -318,6 +326,7 @@ private
       div    OF s" hir.render.div"    ENDOF
       lt     OF s" hir.render.lt"     ENDOF
       le     OF s" hir.render.le"     ENDOF
+      equal  OF s" hir.render.eq"     ENDOF
       mem    OF s" hir.render.mem"    ENDOF
       load   OF s" hir.render.load"   ENDOF
       store  OF s" hir.render.store"  ENDOF
@@ -385,7 +394,7 @@ private
 \ One comparison: two cells in, one cell out, and the answer is a Habu flag -
 \ all bits set or none. A comparison cannot overflow whatever the unit's numeric
 \ policy is, so unlike the three arithmetic opcodes it is total by declaration
-\ and not by policy. The two comparisons of this subset differ only in their
+\ and not by policy. The three comparisons of this subset differ only in their
 \ names, so they share this shape.
 : DEF-COMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
@@ -598,6 +607,7 @@ public
    c b t DEF-DIV
    c b t HIR-OPCODE:LT DEF-COMPARE
    c b t HIR-OPCODE:LE DEF-COMPARE
+   c b t HIR-OPCODE:EQUAL DEF-COMPARE
    c b k DEF-MEM
    c b t k DEF-LOAD
    c b t k DEF-STORE

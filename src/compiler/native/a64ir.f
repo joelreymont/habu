@@ -272,13 +272,16 @@ ENUM opcode DERIVE eq
    ret
 ;ENUM
 
-\ The conditions a comparison may be made under. Two, because two are what the
-\ corpus's branching words compare with: `<` and `<=`. It is an ENUM so a caller
+\ The conditions a comparison may be made under. Three, because three are what
+\ the corpus's branching words compare with: `<`, `<=` and `=`. The equality
+\ member is spelled `equal` and not `eq`, because `eq` is the name the ENUM
+\ derives for its own comparison word and a member cannot take it. It is an ENUM so a caller
 \ names the condition instead of writing the number the field holds, and so a
 \ condition this dialect has no comparison for is unwritable rather than checked.
 ENUM cond DERIVE eq
    lt
    le
+   equal
 ;ENUM
 
 private
@@ -328,6 +331,7 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 1 COND-BITS lshift constant COND-LIM
 11 constant COND-LT                  \ signed less than
 13 constant COND-LE                  \ signed less than or equal
+0 constant COND-EQ                   \ equal
 
 \ ---- the branch fields -------------------------------------------------------
 \ How far each branch form reaches, as the signed word displacement its own
@@ -524,8 +528,9 @@ public
 \ own name for it.
 : COND-CODE ( A64IR:cond -- n )
    MATCH cond
-      lt OF COND-LT ENDOF
-      le OF COND-LE ENDOF
+      lt    OF COND-LT ENDOF
+      le    OF COND-LE ENDOF
+      equal OF COND-EQ ENDOF
    ;MATCH ;
 
 \ The condition one stored code names. It is an exact case, so a code outside
@@ -536,6 +541,7 @@ public
    case
       COND-LT of A64IR-COND:LT endof
       COND-LE of A64IR-COND:LE endof
+      COND-EQ of A64IR-COND:EQUAL endof
       E-A64IR-COND throw
    endcase ;
 

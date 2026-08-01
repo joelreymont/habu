@@ -519,6 +519,39 @@ variable OPJ                         \ general operands taken so far by the open
 \ forward to is worked out before the walk starts, by SKELETON below.
 variable NB                          \ blocks closed so far; also the open block's ordinal
 
+\ ---- leaving from the middle of a definition ---------------------------------
+\ `exit` leaves the word from wherever it is written, and a definition has ONE
+\ place control leaves through: the block that holds `hir.return`. So an `exit`
+\ is a branch to that block, handing it the values the word leaves - exactly
+\ what the fall-through at the end of the body does. A definition that contains
+\ an `exit` therefore gets a block of its own for the return, taking the outputs
+\ as its arguments; a definition without one keeps the shape it had, where the
+\ return is the last operation of the last block.
+\
+\ WHY ONE RETURN BLOCK AND NOT TWO RETURNS. Two blocks ending in `hir.return`
+\ would be two places control leaves, and everything downstream is written
+\ against one: the register allocator finds the routine's exit by looking for the
+\ block with no successor and refuses a module with two, because a convention
+\ that says where a result is left has nowhere to leave it twice. Branching to a
+\ shared exit block is the ordinary structured answer and needs no new concept -
+\ the outputs cross the edge as block arguments, like every other live value.
+\
+\ WHAT AN `exit` MAY NOT DO YET, AND IT IS REFUSED BY NAME. It has to be the
+\ last word of the `if` arm it is in. The words after it would be unreachable,
+\ and this elaborator has no way to say "unreachable" - it would have to invent a
+\ block with no predecessor and values for its arms to hand on. So `exit` outside
+\ an `if`, or with anything but `then` after it, is E-NELAB-CTRL, and dot
+\ habu-exit-from-anywhere-in-a-body carries the general case.
+variable OUT-N                       \ values the definition leaves
+variable EXIT-USED                   \ whether the body has an `exit` at all
+variable EXIT-ORD                    \ the block every `exit` and the fall-through reach
+variable EXIT-PENDING                \ an `exit` closed the arm; only its `then` may follow
+
+: EXIT-RESET ( -- )
+   0 EXIT-USED !
+   -1 EXIT-ORD !
+   0 EXIT-PENDING ! ;
+
 : BLOCK-ORD ( n -- IR-ID:ir-block-id )
    {: k:n :}
    k 0 < k NFROZEN:BMAX >= or if E-NELAB-BLOCK throw then
@@ -817,7 +850,9 @@ create JOIN-TAB TMAX cells allot
    MATCH HIR:ctrl
       open-if     OF HIR-CTRL:OPEN-IF ix SK-PUSH  NB @ 2 + NB ! ENDOF
       close-if    OF HIR-CTRL:OPEN-IF CS-OPENER-CK CS-JOIN@
-                     NB @ 1+ NB !  NB @ JOIN!  CS-POP ENDOF
+                     EXIT-PENDING @ 0= if NB @ 1+ NB ! then
+                     0 EXIT-PENDING !
+                     NB @ JOIN!  CS-POP ENDOF
       open-begin  OF HIR-CTRL:OPEN-BEGIN ix SK-PUSH  NB @ 1+ NB ! ENDOF
       close-until OF HIR-CTRL:OPEN-BEGIN CS-OPENER-CK drop
                      NB @ 2 + NB !  CS-POP ENDOF
@@ -825,6 +860,8 @@ create JOIN-TAB TMAX cells allot
       close-loop  OF HIR-CTRL:OPEN-DO CS-OPENER-CK CS-JOIN@
                      NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
       index       OF ENDOF
+      drop-loop   OF ENDOF
+      early-exit  OF NB @ 1+ NB !  1 EXIT-USED !  1 EXIT-PENDING ! ENDOF
    ;MATCH ;
 
 \ Walk the body once, counting. A structure left open at the end of the body is
@@ -835,11 +872,15 @@ create JOIN-TAB TMAX cells allot
    n TMAX > if E-NELAB-BLOCK throw then
    0 NB !
    CS-RESET
+   EXIT-RESET
    n 1 ?do
       r i SK-STEP
    loop
    CS-N @ 0<> if E-NELAB-CTRL throw then
-   NB @ NFROZEN:BMAX > if E-NELAB-BLOCK throw then
+   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
+   EXIT-USED @ 0<> if NB @ 1+ EXIT-ORD ! then
+   EXIT-USED @ 0<> if NB @ 1+ else NB @ then
+   NFROZEN:BMAX > if E-NELAB-BLOCK throw then
    0 NB !
    CS-RESET ;
 
@@ -880,8 +921,12 @@ create JOIN-TAB TMAX cells allot
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
    t CS-DEPTH@ {: d:n :}
    t CS-JOIN@ {: j:n :}
-   VN @ d <> if E-NELAB-JOIN throw then
-   ix j TERM-BR
+   EXIT-PENDING @ 0<> if
+      0 EXIT-PENDING !
+   else
+      VN @ d <> if E-NELAB-JOIN throw then
+      ix j TERM-BR
+   then
    NB @ j <> if E-NELAB-CTRL throw then
    ix d OPEN-ARGS
    CS-POP ;
@@ -989,6 +1034,28 @@ create JOIN-TAB TMAX cells allot
 : DO-INDEX ( -- )
    DO-FRAME CS-IDX @ VPUSH ;
 
+\ `unloop`: this dialect carries a counted loop's index and limit as block
+\ arguments, so there is no frame to drop and nothing is staged. What it does is
+\ insist that a counted loop IS open, which is the one thing the word means that
+\ can be wrong: `unloop` outside a loop is refused by DO-FRAME, by name.
+: DO-UNLOOP ( -- )
+   DO-FRAME drop ;
+
+\ `exit`: leave the word from here. The vector has to hold exactly the values the
+\ word declares it leaves - one too few or one too many is a body that does not
+\ match its effect, and it is refused here rather than turned into a branch that
+\ hands the exit block the wrong number of values - and the branch carries them
+\ to the block the return is in. The arm is finished: EXIT-PENDING says so, and
+\ the only word that may follow is the `then` that closes it.
+: DO-EXIT ( n -- )
+   {: ix:n :}
+   CS-N @ 1 < if E-NELAB-CTRL throw then
+   CS-TOP CS-KIND @ HIR-CTRL:OPEN-IF HIR-CTRL:EQ 0= if E-NELAB-CTRL throw then
+   VN @ OUT-N @ <> if E-NELAB-ARITY throw then
+   EXIT-ORD @ 0 < if E-NELAB-CTRL throw then
+   ix EXIT-ORD @ TERM-BR
+   1 EXIT-PENDING ! ;
+
 \ ---- binding and reading the locals ------------------------------------------
 \ `:}`: take one value off the compile-time vector per declared name, RIGHT TO
 \ LEFT. Forth pops the top value into the LAST name, so the first name declared
@@ -1041,6 +1108,8 @@ create JOIN-TAB TMAX cells allot
       open-do     OF ix DO-OPEN-DO ENDOF
       close-loop  OF ix DO-CLOSE-LOOP ENDOF
       index       OF DO-INDEX ENDOF
+      drop-loop   OF DO-UNLOOP ENDOF
+      early-exit  OF ix DO-EXIT ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------
@@ -1051,9 +1120,16 @@ variable IX                          \ the body token the walk stands on
 \ and a control word builds blocks. `unmodeled` never reaches the match -
 \ HIR-WORD:ADMIT refuses it first - and the arm throws the same refusal rather
 \ than inventing a second name for it.
+: AFTER-EXIT-CK ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix HIR-MEANING:CONTROL MODELED-AS? 0= if E-NELAB-CTRL throw then
+   r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
+   HIR-CTRL:CLOSE-IF HIR-CTRL:EQ 0= if E-NELAB-CTRL throw then ;
+
 : STEP ( IR-ARENA:arena IR-ARENA:arena n -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
+   EXIT-PENDING @ 0<> if r ix AFTER-EXIT-CK then
    ix IN-DECL? if exit then
    ix LOCAL-READ? if exit then
    VW MKEY r ix HIR-WORD:ADMIT-TOKEN
@@ -1157,14 +1233,23 @@ public
    n 1 < if E-NELAB-SHAPE throw then
    v NAME-READ
    TOK-RESET
+   out OUT-N !
    r n LOCALS-SCAN
    r n MEM-SCAN
    r n SKELETON
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK
    TOK-NEED @ 0<> if 0 EMIT-MEM then
+   0 EXIT-PENDING !
    p r n WALK
    CS-N @ 0<> if E-NELAB-CTRL throw then
+   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
+   EXIT-USED @ 0<> if
+      VN @ out <> if E-NELAB-ARITY throw then
+      0 EXIT-ORD @ TERM-BR
+      NB @ EXIT-ORD @ <> if E-NELAB-CTRL throw then
+      0 out OPEN-ARGS
+   then
    c b v key out EMIT-RETURN
    c b IR-BUILD:END-BLOCK drop
    c b IR-BUILD:END-FUN ;
