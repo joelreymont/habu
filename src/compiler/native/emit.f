@@ -542,14 +542,14 @@ create B-START BMAX cells allot
 \ registers the destination's block arguments were given - that is the register
 \ allocation's own decision and the validator has agreed with it - so the
 \ operands reach no encoder here and the whole instruction is the jump.
-: EMIT-BR ( IR-ID:ir-op-id -- )
+: PUT-BR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 SUCC-BLOCK DELTA B-WORD  APPEND ;
 
 \ The two-way branch: go to the first successor when the tested register is
 \ zero, and to the second when it is not. Both branches are emitted, in that
 \ order, so neither successor depends on where the layout happened to put it.
-: EMIT-BRZ ( IR-ID:ir-op-id -- )
+: PUT-BRZ ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id  id 0 OPERAND-REG  id 0 SUCC-BLOCK DELTA  BZ-WORD  APPEND
    id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
@@ -558,7 +558,7 @@ create B-START BMAX cells allot
 \ into the result on the condition, and negate it, because a Habu flag is all
 \ bits set rather than one. This is the sequence the engine's own emitter uses,
 \ so a compiled comparison answers what an interpreted one answers.
-: EMIT-FLAG ( IR-ID:ir-op-id -- )
+: PUT-FLAG ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
@@ -569,7 +569,7 @@ create B-START BMAX cells allot
 \ The whole encoding table. Every arm names the instructions one machine
 \ operation becomes; nothing else in this file decides which bytes an operation
 \ is.
-: EMIT-OP ( IR-ID:ir-op-id -- )
+: PUT-OP ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id SLOT-AT SLOT-OPCODE
    MATCH A64IR:opcode
@@ -587,9 +587,9 @@ create B-START BMAX cells allot
       dload    OF id  id WORD-DLOAD  APPEND ENDOF
       dstore   OF id  id WORD-DSTORE  APPEND ENDOF
       dpublish OF id  id WORD-DPUBLISH  APPEND ENDOF
-      flag     OF id EMIT-FLAG ENDOF
-      br       OF id EMIT-BR ENDOF
-      brz      OF id EMIT-BRZ ENDOF
+      flag     OF id PUT-FLAG ENDOF
+      br       OF id PUT-BR ENDOF
+      brz      OF id PUT-BRZ ENDOF
       ret      OF id  ENC-RET  APPEND ENDOF
    ;MATCH ;
 
@@ -624,7 +624,7 @@ create B-START BMAX cells allot
 : WALK-BLOCK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT 0 ?do
-      bk i OP-AT EMIT-OP
+      bk i OP-AT PUT-OP
    loop ;
 
 : WALK ( IR-ID:ir-fun-id -- )

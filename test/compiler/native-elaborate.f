@@ -142,6 +142,32 @@ using NSRC
    {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
    x IR-ID:VALUE-LOCAL y IR-ID:VALUE-LOCAL = ;
 
+\ How many blocks the function has, which block a terminator's successor names,
+\ and how many successors it has. The control-flow cases below are about exactly
+\ these three, so they are read off the published module and not described.
+: F-BLKS ( IR-BUILD:module IR-ID:ir-fun-id -- n )
+   {: m:IR-BUILD:module f:IR-ID:ir-fun-id :}
+   m IR-BUILD:FFUN-ROWS f IR-FUN:FBLOCK-COUNT ;
+
+: F-BLK-AT ( IR-BUILD:module IR-ID:ir-fun-id n -- IR-ID:ir-block-id )
+   {: m:IR-BUILD:module f:IR-ID:ir-fun-id i:n :}
+   m IR-BUILD:FFUN-ROWS m IR-BUILD:FBLOCK-ROWS m IR-BUILD:FKEY f i
+   IR-FUN:FBLOCK@ ;
+
+: F-TERM ( IR-BUILD:module IR-ID:ir-block-id -- IR-ID:ir-op-id )
+   {: m:IR-BUILD:module blk:IR-ID:ir-block-id :}
+   m IR-BUILD:FBLOCK-ROWS m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY blk
+   IR-FUN:FTERMINATOR@ ;
+
+: F-SUCCS ( IR-BUILD:module IR-ID:ir-op-id -- n )
+   {: m:IR-BUILD:module op:IR-ID:ir-op-id :}
+   m IR-BUILD:FOP-ROWS op IR-OP:FSUCCESSORS ;
+
+: F-SUCC ( IR-BUILD:module IR-ID:ir-op-id n -- n )
+   {: m:IR-BUILD:module op:IR-ID:ir-op-id i:n :}
+   m IR-BUILD:FOP-POOL m IR-BUILD:FOP-ROWS m IR-BUILD:FKEY op i
+   IR-OP:FSUCCESSOR@ IR-ID:BLOCK-LOCAL ;
+
 \ ---- a rename-heavy word: the op-count proof ---------------------------------
 \ `dup` consumes the one input and puts it back twice, so the multiply's two
 \ operands are the same block argument and no operation is staged for the rename.
@@ -620,10 +646,206 @@ using NSRC
    s" a defined name the tape read while compiling is refused" T-LABEL
    [: NAMEMODE ;] E-NELAB-MODE TTHROWSQ ;
 
+\ ---- the three shapes a control word builds ----------------------------------
+\ Each of these is a real corpus body, elaborated and then measured on the three
+\ things a control construction can get wrong: how many blocks it made, which
+\ block each edge goes to, and what the join takes as its arguments. A module
+\ that reached FREEZE has already been through the whole structural verifier -
+\ dominance, successor-argument counts and types, one terminator per block - so
+\ what is left to assert is the wiring, and the wiring is asserted by ordinal.
+
+\ `MAX2 2dup < if swap then drop`. Four blocks: the entry, the false arm's stub,
+\ the true arm, and the join. The two-way branch hands nothing over and its two
+\ successors are the stub and the true arm IN THAT ORDER - zero first - so a
+\ swapped pair or a flipped polarity is a different pair of ordinals here. Both
+\ arms reach the join with two arguments, because the stack was two deep when the
+\ structure opened and `swap` changed which value is which and not how many.
+: MAX2-BODY ( IR-CTX:ctx -- n bool n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" MAX2 2dup < if swap then drop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 2 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: st:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: th:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: jn:IR-ID:ir-block-id :}
+   m e F-TERM {: t:IR-ID:ir-op-id :}
+   m t s" hir.brz" F-OPC?
+   m t F-SUCCS
+   m t 0 F-SUCC
+   m t 1 F-SUCC
+   m  m st F-TERM  F-INS
+   m  m th F-TERM  F-INS
+   m jn F-ARGS
+   m  m st F-TERM  0 F-SUCC ;
+
+: MAX2-CASE ( -- )
+   s" a two-way branch becomes four blocks wired to one join" T-LABEL
+   BND [: MAX2-BODY ;] IR-CTX:WITH-CONTEXT
+   3 T= 2 T= 2 T= 2 T= 2 T= 1 T= 2 T= TTRUE 4 T= ;
+
+\ `COUNT-DOWN begin 1- dup 0 <= until`. Four blocks: the entry, the loop header,
+\ the latch and the exit. The header is reached twice - once from the entry and
+\ once from the latch - and takes one argument both times, which is what makes
+\ the loop-carried value a block argument instead of a redefinition. `until`
+\ leaves when the flag is true, so the ZERO successor is the latch and the other
+\ is the exit: reversing them turns the loop inside out and the two ordinals say
+\ so.
+: COUNTDOWN-BODY ( IR-CTX:ctx -- n bool n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" COUNT-DOWN begin 1- dup 0 <= until" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: la:IR-ID:ir-block-id :}
+   m  m e F-TERM  s" hir.br" F-OPC?
+   m  m e F-TERM  0 F-SUCC
+   m hd F-ARGS
+   m  m hd F-TERM  F-SUCCS
+   m  m hd F-TERM  0 F-SUCC
+   m  m hd F-TERM  1 F-SUCC
+   m  m la F-TERM  0 F-SUCC
+   m  m la F-TERM  F-INS ;
+
+: COUNTDOWN-CASE ( -- )
+   s" a begin-until loop becomes a header its latch branches back to" T-LABEL
+   BND [: COUNTDOWN-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 1 T= 3 T= 2 T= 2 T= 1 T= 1 T= TTRUE 4 T= ;
+
+\ `SUM-TO 0 swap 0 ?do i + loop`. Seven blocks: the entry, the skip stub the
+\ entry test branches to when the loop runs no turns at all, the pre-header, the
+\ header, the exit stub, the latch, and the join both exits meet in. The header
+\ takes three arguments - the accumulator, the index and the limit - because all
+\ three change on every turn, and the index is NOT on the value vector: Forth's
+\ loop parameters are not on the data stack, so the body's `i` reads the header's
+\ argument rather than something the body pushed.
+: SUMTO-BODY ( IR-CTX:ctx -- n n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" SUM-TO 0 swap 0 ?do i + loop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: sk:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: pr:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: hd:IR-ID:ir-block-id :}
+   m f 4 F-BLK-AT {: xt:IR-ID:ir-block-id :}
+   m f 5 F-BLK-AT {: la:IR-ID:ir-block-id :}
+   m f 6 F-BLK-AT {: jn:IR-ID:ir-block-id :}
+   m  m e F-TERM  0 F-SUCC
+   m  m e F-TERM  1 F-SUCC
+   m  m sk F-TERM  0 F-SUCC
+   m  m pr F-TERM  0 F-SUCC
+   m hd F-ARGS
+   m  m la F-TERM  0 F-SUCC
+   m  m xt F-TERM  0 F-SUCC
+   m jn F-ARGS ;
+
+: SUMTO-CASE ( -- )
+   s" a counted loop becomes a header, a latch and one join for both exits" T-LABEL
+   BND [: SUMTO-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 6 T= 3 T= 3 T= 3 T= 6 T= 2 T= 1 T= 7 T= ;
+
+\ ---- what a broken control structure is refused as ---------------------------
+\ A closer with no opener, a closer that does not match the opener it meets, an
+\ opener left open at the end of the body, and an arm that leaves the stack a
+\ different depth from the one it started at. Each is a different way of writing
+\ a control structure that does not close, and each has to be refused by name
+\ rather than compiled into some other program.
+: ORPHAN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" ORPHAN 1 then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: ORPHAN ( -- )
+   BND [: ORPHAN-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: CROSSED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" CROSSED begin 0 then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: CROSSED ( -- )
+   BND [: CROSSED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: UNCLOSED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" UNCLOSED 0 if" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: UNCLOSED ( -- )
+   BND [: UNCLOSED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: LOPSIDED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" LOPSIDED dup if 1 then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: LOPSIDED ( -- )
+   BND [: LOPSIDED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: STRAY-INDEX-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" STRAY i" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: STRAY-INDEX ( -- )
+   BND [: STRAY-INDEX-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ A refused elaboration leaves its context standing, so each of these gets an
+\ enclosing context of its own in RUN, one case at a time, exactly as every
+\ other refusal in this suite does.
+: ORPHAN-CASE ( -- )
+   s" a closer with no opener is refused" T-LABEL
+   [: ORPHAN ;] E-NELAB-CTRL TTHROWSQ ;
+
+: CROSSED-CASE ( -- )
+   s" a closer that does not match its opener is refused" T-LABEL
+   [: CROSSED ;] E-NELAB-CTRL TTHROWSQ ;
+
+: UNCLOSED-CASE ( -- )
+   s" a body that ends with a structure still open is refused" T-LABEL
+   [: UNCLOSED ;] E-NELAB-CTRL TTHROWSQ ;
+
+: LOPSIDED-CASE ( -- )
+   s" an arm that changes the stack depth is refused" T-LABEL
+   [: LOPSIDED ;] E-NELAB-JOIN TTHROWSQ ;
+
+: STRAY-INDEX-CASE ( -- )
+   s" a loop index outside any counted loop is refused" T-LABEL
+   [: STRAY-INDEX ;] E-NELAB-CTRL TTHROWSQ ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   MAX2-CASE
+   COUNTDOWN-CASE
+   SUMTO-CASE
+   BND [: drop ORPHAN-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop CROSSED-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop UNCLOSED-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop LOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop STRAY-INDEX-CASE ;] IR-CTX:WITH-CONTEXT
    SQUARE-CASE
    INC-CASE
    SUMA-CASE
