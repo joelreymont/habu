@@ -7,9 +7,9 @@ require lib/ffi.f
 create FFI-T-OUT 1 cells allot
 create FFI-T-KP-CELL 1 cells allot
 
-\ Fixed local stubs and exact test schemas below expose only their stated ABI;
-\ no instruction or address is caller-selected. Retirement owner:
-\ habu-ptx-m1-c-1df1d6e7.
+\ Local stubs, instruction bytes, and call targets are fixed. Caller data pointers
+\ are constrained by each exact FFI schema and its registered READABLE/WRITABLE
+\ extents. Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: FFI-T-STORE-X1 ( -- n ) cp@ {: fn:n :}
    $F9000001 fn patch32
    $D65F03C0 fn $4 + patch32
