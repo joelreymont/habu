@@ -3988,3 +3988,33 @@ fits.
   no arguments at all and every argument-carrying edge goes through a stub block
   whose terminator is the unconditional branch: ordinary critical-edge splitting,
   and it falls out of the shapes rather than being imposed on them.
+
+- **Splitting a critical edge in BLOCKS does not split it in VALUES.** The
+  elaborator already gave every argument-carrying edge a block of its own, and
+  the allocator still had no answer for `MAX2`: the two arms hand the join
+  `(a, b)` and `(b, a)`, so coalescing each argument with its feeders merged all
+  four into one class holding two values that are live at once. What fixes it is
+  a copy per argument in the *predecessor*, because a copy's result is defined
+  just before the branch and dies at it — two copies on different edges can never
+  be live together, and neither can be live with the argument it feeds. The class
+  becomes interference-free by construction. A block with the same long-lived
+  values flowing through it buys nothing.
+
+- **A conservative live range must not extend past a value's last use in a block
+  it is only live-IN to.** Extending to the end of every block a value is live in
+  OR out of looked harmlessly conservative and broke `SUM-TO`: the loop-carried
+  limit is live-in to the latch, dies there at the copy that hands it back round
+  the loop, and the over-extension made the argument and its own copy look like
+  two values live at once — `E-A64RA-EDGE` on a program that is correct. Live-in
+  earns `lo`, live-OUT earns `hi`, and the use scan already covers the last use
+  inside. Conservatism that costs registers is fine; conservatism that invents an
+  interference is a wrong answer.
+
+- **A mutation you cannot write as a fixture, you can still run.** The
+  block-argument register clause has no hostile module: the allocator decides the
+  registers, so a module with a mismatched edge is not buildable by hand. Editing
+  ONE line of the allocator — skip the union for the last argument of each edge —
+  produced exactly the mismatch and the validator refused it with its own code.
+  Mutate the compiler, run the gate, revert: that is evidence about the check,
+  and it is worth more than a fixture that can only be built by agreeing with the
+  thing under test.
