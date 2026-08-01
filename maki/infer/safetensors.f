@@ -149,6 +149,7 @@ private
 \ Reinterprets the raw address the mmap primitive returns as a typed byte
 \ pointer. The checker cannot express this syscall-result refinement, and this
 \ is the only place in the loader that needs it.
+\ Retirement owner: habu-epic-gb10-uma-391d12e8.
 TRUSTED: N>PTR ( n -- ptr u8 ) ;
 
 0 constant MAP-ADDR-ANY

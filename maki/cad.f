@@ -835,6 +835,7 @@ $5E constant TR-C                                  \ '^' - the reserved transpos
 \ The body reads every input / named value from the slot table by index (no per-input local,
 \ no dynamic-arity stack push). TRUSTED: `evaluate` is metaprogramming the checker cannot
 \ express; the compiled body is fully checked by the active hook (dot habu-checker-reentrancy-certify).
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: CAP-COMPILE-RUN ( -- )
    NT-N @ 1- CAP-SLOT-ENSURE                       \ size the slot table to the interned slot count
    CAP-IN-N @ 0 ?do  i CAP-IN@ i CAP-SLOT!  loop    \ store input descriptors into slots 0..N-1

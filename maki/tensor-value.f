@@ -700,6 +700,8 @@ public
 private
 
 \ Typed descriptor facts cross into the legacy eager array kernel only here.
+\ The checked caller validates every nominal role before this adapter.
+\ Retirement owner: habu-epic-model-cad-70b629a9.
 TRUSTED: TYPED-LINEAR ( ptr a ptr a ptr a ptr a CAD-KIND:rows CAD-KIND:cols CAD-KIND:cols -- )
    MAKI:LINEAR ;
 
