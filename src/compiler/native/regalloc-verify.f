@@ -524,6 +524,19 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ Are these two values ever live at the same instant? See the header: values
 \ written at the same position always are, and otherwise the earlier one has to
 \ be read for the last time at or before the later one is written.
+\
+\ THIS IS ALSO THE WHOLE CHECK ON COALESCING, AND IT NEEDS TO KNOW NOTHING ABOUT
+\ IT. src/compiler/native/regalloc.f gives a copy's two ends one register
+\ wherever their classes hold no interfering pair, and it decides that by walking
+\ the copies in the module's own order, so which merges get made depends on that
+\ order. None of that is re-derived here and none of it needs to be. What a merge
+\ can do wrong is put two values that ARE live at the same instant into one
+\ register, and OVERLAP-CK below refuses exactly that, from the module's own
+\ liveness and the assignment's own registers. It is a statement about the
+\ answer, so it holds whatever order the answer was reached in - and it would
+\ catch a coalescer with no order at all. A validator that instead re-derived the
+\ merge sequence would be checking that the allocator did what the allocator
+\ does.
 : CLASH? ( n n -- bool )
    {: a:n b:n :}
    a DEF-AT b DEF-AT = if true exit then

@@ -264,6 +264,7 @@ variable OUTS-N
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
@@ -843,7 +844,7 @@ create PL-VAL PLMAX cells allot
 \ from a definition to its last use. A routine with control flow has neither: its
 \ operations have no single order until one is chosen, and a value can be live
 \ down one arm of a branch and dead down the other. This section is the general
-\ rule, and it is four steps.
+\ rule, and it is five steps.
 \
 \ ONE. A LINEAR ORDER AND GLOBAL POSITIONS. Blocks are numbered in the order the
 \ module records them - the order the selector built them in and the order the
@@ -880,6 +881,63 @@ create PL-VAL PLMAX cells allot
 \ wrong. It cannot happen for what this chain builds, because
 \ src/compiler/native/select.f copies every value crossing an argument-carrying
 \ edge into a value of its own first, and those copies die at the branch.
+\
+\ A SCHEMA TIE IS THE SAME KIND OF CONSTRAINT AND IS UNIONED THE SAME WAY. A form
+\ that names one register field for a result and an operand says those two values
+\ ARE one register, which is a statement about class membership and nothing else,
+\ so it is a union like an edge is. See MB-TIES below for why leaving it to the
+\ scan looked like it worked and did not.
+\
+\ FIVE. COALESCING BY PREFERENCE. Step four is the classes that MUST be one
+\ register. This step is the classes that MAY be. An a64.mov copies one value
+\ into another, so if its two ends are given one register it moves that register
+\ into itself and src/compiler/native/emit.f writes no instruction for it at
+\ all. The copies worth removing are exactly the ones step four's edge splitting
+\ put there - one per value crossing an argument-carrying edge, which on a loop
+\ latch is a value copied back to where it came from.
+\
+\ A COPY'S TWO ENDS ARE MERGED WHEN THE MERGE KEEPS THE CLASS INVARIANT, AND NOT
+\ OTHERWISE. The invariant is step four's own: no two members of one class are
+\ live at the same instant. So the question asked of a candidate is the question
+\ MB-MEMBER-CK asks of the answer - is any member of the source's class live at
+\ the same instant as any member of the destination's class - and the merge is
+\ made only when the answer is no. A merge that would put two live values in one
+\ register is simply not made, the copy stays a real instruction, and the
+\ allocation is the one this pass would have produced without this step. There is
+\ no wrong allocation here that something later repairs.
+\
+\ WHY THAT IS THE RIGHT QUESTION AND NOT MERELY A SAFE ONE. What the merge buys
+\ is that the copy can be dropped, and dropping it is sound only if the register
+\ already holds the source's value where the copy stood and still holds it at
+\ every read of the destination. Both follow from non-interference alone. A
+\ member of the class defined anywhere between the source's definition and the
+\ copy would be live where the source is live; one defined between the copy and a
+\ read of the destination would be live where the destination is live. Neither
+\ can exist in a class whose members never overlap, so the register holds exactly
+\ what the elided copy would have put in it. Non-interference is measured over
+\ the hull intervals of step three, which over-approximate real liveness, so a
+\ pair this test calls disjoint is disjoint at run time too.
+\
+\ THE ORDER MERGES ARE MADE IN, AND WHY IT DOES NOT DECIDE CORRECTNESS. Merging
+\ grows classes, so one merge can stop a later one from being made: the question
+\ is asked against the classes as they stand at the time. Candidates are
+\ therefore taken in the order the module records them - blocks in module order,
+\ operations in block order, the order every pass in this chain already agrees on
+\ - so one module always gets one answer. What the order cannot do is admit an
+\ unsound merge: the test is asked against current membership, membership only
+\ grows, so the test only ever gets harder as the walk goes on. That is also why
+\ src/compiler/native/regalloc-verify.f does not need to know the order. It
+\ checks the RESULT - no two values live at the same instant were given one
+\ register - which is a property of the assignment and not of the walk that
+\ reached it.
+\
+\ THE PRICE, STATED. A merged class is held over the hull of both its parts, so
+\ coalescing across a gap keeps a register busy where the two classes apart would
+\ have let something else use it. That can turn a routine that fitted into one
+\ that does not, and this path refuses rather than spills, so coalescing is paid
+\ for in E-A64RA-SPILL and never in wrong code. Choosing between candidates that
+\ compete for the same class, instead of taking them in module order, is dot
+\ habu-choose-between-competing-ecc61e5c.
 \
 \ WHAT THIS PATH DOES NOT DO, AND SAYS SO. It does not spill. A spill decision is
 \ anchored to an operation POSITION, and with more than one block a position has
@@ -1160,12 +1218,134 @@ create CL-HI VMAX cells allot
    then
    b LAST-AT a DEF-AT > ;
 
+\ ---- the same question, asked of two whole classes ---------------------------
+\ Is this value live at the same instant as any member of that class? The
+\ per-value question is OVERLAP? above, unchanged - this only asks it of every
+\ member.
+: MB-MEETS? ( n n -- bool )
+   {: a:n r:n :}
+   false
+   N-VALS @ 0 ?do
+      i UF-FIND r = if a i OVERLAP? or then
+   loop ;
+
+\ Would merging these two classes break the invariant that no two members of one
+\ class are live at once? Asked member against member, which is the same
+\ comparison MB-MEMBER-CK makes over the finished classes: a union is allowed
+\ exactly when the merged class would still pass that check. Both callers below -
+\ the ties, which must merge, and step five, which prefers to - ask it here, so
+\ there is one statement of the question rather than two.
+\
+\ It is asked pairwise rather than between the two class HULLS because the hulls
+\ answer a slightly different question. A hull runs from the earliest definition
+\ in the class to the last use, so two hulls that only touch can still hold a
+\ pair that overlaps - a value defined at the touching position and never read
+\ shares its definition point with a member of the other class - and the pair is
+\ what the invariant is about. The hull is what the scan below holds a register
+\ over; it is not the interference question.
+: MB-CLASH? ( n n -- bool )
+   {: ra:n rb:n :}
+   false
+   N-VALS @ 0 ?do
+      i UF-FIND ra = if i rb MB-MEETS? or then
+   loop ;
+
+\ ---- the ties, which are must-share constraints too --------------------------
+\ A form that names one register field for a result and an operand - the
+\ move-wide overwrite is the one this dialect has - says those two values ARE one
+\ physical register, exactly as an argument-carrying edge does. So a tie is a
+\ union of the same kind and belongs in the same structure: the class is what
+\ gets a register, and a tie decides membership of a class.
+\
+\ WHY IT IS WRITTEN DOWN HERE RATHER THAN LEFT TO THE SCAN. It used to be left to
+\ the scan, and the scan does not enforce it. It came out right only because the
+\ operand of an overwrite dies at the overwrite, so its register is free again
+\ one position later, and FREE-REG hands out the lowest free register - so the
+\ result usually got the register the operand had just given up. Usually is not a
+\ rule. Step five below fixes the register of one end of a copy on purpose, which
+\ is enough to make the two ends of a tie differ, and the validator then refuses
+\ the whole routine with E-A64RAV-TIE. Stating the tie as a union makes it hold
+\ by construction: the two ends are one class and a class is one register.
+\
+\ ENDS THAT ARE LIVE AT THE SAME INSTANT CANNOT BE ONE REGISTER AT ALL, and that
+\ is E-A64RA-TIE - the same refusal the straight-line path makes when the
+\ register a tie needs is still holding something, under the same name. It cannot
+\ happen for what this chain builds: the overwrite is the only tied form and its
+\ operand is the half-built constant, whose only reader is the overwrite itself.
+: MB-TIE1 ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id i:n :}
+   id  id i TIE-OPERAND-AT  OPERAND-AT SLOT {: s:n :}
+   id  id i TIE-RESULT-AT   RESULT-AT  SLOT {: d:n :}
+   s UF-FIND {: ra:n :}
+   d UF-FIND {: rb:n :}
+   ra rb = if exit then
+   ra rb MB-CLASH? if E-A64RA-TIE throw then
+   s d UF-UNION ;
+
+: MB-TIES-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id TIES-AT 0 ?do id i MB-TIE1 loop ;
+
+: MB-TIES-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do bk i OP-AT MB-TIES-OP loop ;
+
+: MB-TIES ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-BLKS @ 0 ?do f i MB-TIES-BLOCK loop ;
+
+\ ---- step five: coalescing the copies ----------------------------------------
+\ Which operations are candidates. A copy is the one form whose whole effect is
+\ to put one register's contents in another, so it is the one form that becomes
+\ nothing when both ends are the same register. The name is the dialect's own,
+\ learned at BIND-DIALECT, so this pass never spells an opcode itself.
+: MB-COPY? ( IR-ID:ir-op-id -- bool )
+   OPCODE-AT 0 BND-MOV @ SAME-SYM? ;
+
+\ One candidate. Ends already in one class need nothing; ends whose classes hold
+\ an interfering pair keep their copy.
+: MB-COALESCE1 ( n n -- )
+   {: s:n d:n :}
+   s UF-FIND {: ra:n :}
+   d UF-FIND {: rb:n :}
+   ra rb = if exit then
+   ra rb MB-CLASH? if exit then
+   s d UF-UNION ;
+
+\ A copy of this dialect carries one operand and one result, which is what its
+\ schema declares and what the freeze verifier has already held it to, so the
+\ source is operand zero and the destination result zero.
+: MB-COALESCE-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id MB-COPY? 0= if exit then
+   id 0 OPERAND-AT SLOT  id 0 RESULT-AT SLOT  MB-COALESCE1 ;
+
+: MB-COALESCE-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do bk i OP-AT MB-COALESCE-OP loop ;
+
+\ The whole walk, in the module's own order. See step five in the header for why
+\ the order is written down and why it cannot decide correctness.
+: MB-COALESCE ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-BLKS @ 0 ?do f i MB-COALESCE-BLOCK loop ;
+
+\ The hull of each class, which is what the scan below holds a register over. It
+\ is computed after every union - the ones the edges force and the ones step five
+\ prefers - so a merged class is held over the whole of both its parts.
 : MB-CLASS1 ( n -- )
    {: k:n :}
    k UF-FIND {: r:n :}
    k DEF-AT   r cells CL-LO + @ min  r cells CL-LO + !
    k LAST-AT  r cells CL-HI + @ max  r cells CL-HI + ! ;
 
+\ The class invariant, stated over the finished classes: no two members of one
+\ class are live at the same instant. It is the reason the edge splitting exists
+\ and it is the condition step five asks before every merge, so a bug in either
+\ dies here rather than in an allocation that puts two live values in one
+\ register.
 : MB-MEMBER-CK ( n n -- )
    {: a:n b:n :}
    a UF-FIND b UF-FIND <> if exit then
@@ -1228,6 +1408,8 @@ create CL-HI VMAX cells allot
    UF-INIT
    f MB-RANGES
    N-BLKS @ 0 ?do f i MB-EDGES-OF loop
+   f MB-TIES
+   f MB-COALESCE
    MB-CLASSES
    MB-SCAN
    MB-FINISH ;
@@ -1316,11 +1498,14 @@ create CL-HI VMAX cells allot
 public
 
 \ ---- binding the dialect -----------------------------------------------------
-\ Learn the identity of the module that is about to be allocated and the type of
-\ its general register, while it is still being built. A module's types are its
-\ own ordinals, so this is the only moment the dialect can be asked which type
-\ its general register is; the answer stays valid after the module freezes
-\ because freezing keeps the module's identity. The binding is spent by the next
+\ Learn the identity of the module that is about to be allocated, the type of its
+\ general register, and the name of its register-to-register copy, while it is
+\ still being built. A module's types and symbols are its own ordinals, so this
+\ is the only moment the dialect can be asked any of them; the answers stay valid
+\ after the module freezes because freezing keeps the module's identity. The copy
+\ is asked for because coalescing has to recognise one - see step five below -
+\ and asking A64IR rather than spelling "a64.mov" again here is what keeps the
+\ dialect the only authority on its own names. The binding is spent by the next
 \ ALLOCATE.
 : BIND-DIALECT ( IR-CTX:ctx IR-BUILD:builder -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
@@ -1330,6 +1515,7 @@ public
    c b A64IR:GPR-TYPE 0 BND-TYP !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:KEY-SLOT 0 BND-SLOT !
+   c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without allocating against it.

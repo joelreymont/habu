@@ -65,6 +65,36 @@ private
 TRUSTED: EV ( ptr u8 n -- ) evaluate ;
 TRUSTED: EV-N ( ptr u8 n -- n ) evaluate ;
 
+\ ---- counting the register-to-register copies that survived ------------------
+\ How many of the emitted instructions are a copy from one register to another.
+\ It is the measure of two rules at once, and the two cases below read it in
+\ opposite directions.
+\
+\ WHERE THE COPIES COME FROM. src/compiler/native/select.f puts one a64.mov in
+\ front of every value crossing an argument-carrying edge, because a block
+\ argument and everything handed to it are one physical register and handing over
+\ a value the program still holds would need two. Most of those copies are
+\ unnecessary: the two ends usually are not live at the same instant, and then
+\ src/compiler/native/regalloc.f gives them one register and
+\ src/compiler/native/emit.f writes no instruction for a copy into the register
+\ it comes from. What is left is the copies that had to stay.
+\
+\ WHY THE INSTRUCTION IS FOUND BY ITS SHAPE RATHER THAN COUNTED IN THE MODULE. A
+\ module still holds the a64.mov whether or not it was emitted, so counting
+\ operations would measure the selector and not the emitter. The bytes are what
+\ runs. A copy of this dialect is Orr with the zero register, which is what
+\ ENC-MOV builds and the only Orr anything in the chain emits, so the form with
+\ its two register fields cleared identifies it exactly.
+$FFE0FFE0 constant MOV-SHAPE         \ the Orr-with-zero-register form, register fields cleared
+: MOV-FORM ( -- n )
+   0 0 ENC-MOV MOV-SHAPE and ;
+
+: COPIES ( -- n )
+   0
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ MOV-SHAPE and MOV-FORM = if 1+ then
+   loop ;
+
 \ ---- what the run parks ------------------------------------------------------
 \ A quotation cannot read the enclosing word's locals, and the whole run is one
 \ word, so the handles that cross a stage boundary are parked rather than bound.
@@ -279,6 +309,23 @@ create TXT TEXT-CAP allot
 \ its two register fields masked out: which registers the allocator chose is not
 \ this suite's business, but that the fused operation begins with a Cmp and not
 \ with something that writes a register is.
+\ AND THE FOUR COPIES ARE THE OTHER SIDE OF THE COALESCING RULE. This is the
+\ smallest routine whose edge copies CANNOT be removed, and it is why the copies
+\ exist at all. The two arms hand the join the same two values the other way
+\ round - one passes (a, b) and the other (b, a) - so the join's first argument
+\ is a class holding a copy of `a` and a copy of `b`, and both of those are made
+\ while `a` and `b` are still live. Merging either copy's ends into the argument
+\ class would put two values that are live at the same instant in one register,
+\ so src/compiler/native/regalloc.f refuses the merge, all four copies stay real
+\ instructions, and the swap happens.
+\
+\ A COALESCER THAT SKIPPED THE INTERFERENCE TEST DIES HERE TWICE. It would merge
+\ the copies away, and this count would drop; and the routine would then swap
+\ with one register, which answers 3 for `3 4 NCH-MAX` instead of 4. The count is
+\ asserted as well as the answers because the count says WHY the answers came out
+\ right - a later pass that removed the copies some other way and still answered
+\ 4 would be a different program and should be looked at.
+4 constant SWAP-COPIES               \ two arms, two values each, none of them coalescible
 $FFE0FC1F constant CMP-SHAPE         \ the Cmp form with its two register fields cleared
 $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
 1409286283 constant BLT-TO-TWO       \ B.lt +4, the fused branch to block two
@@ -296,7 +343,7 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB TAPE p r 2 1 NELAB:COLON drop ;
 
-: BRANCH-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n n )
+: BRANCH-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
    c HIR-MOD 0 R-BLD !
@@ -315,6 +362,7 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    3 A64EMIT:WORD@ CMP-SHAPE and
    4 A64EMIT:WORD@
    7 A64EMIT:WORD@
+   COPIES
    NRUN:PUBLISH {: fn:n :}
    3 4 fn NRUN:ENTER2
    9 -1 fn NRUN:ENTER2
@@ -325,6 +373,7 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    s" a definition with a branch compiles, lays out and runs" T-LABEL
    NFIX:BINDING [: BRANCH-BODY ;] IR-CTX:WITH-CONTEXT
    9 T= 4 T= 9 T= 4 T=
+   SWAP-COPIES T=
    B-TO-THREE T= BLT-TO-TWO T= CMP-FORM T=
    10 T= 8 T= 5 T= 0 T=
    4 T= 13 T= -1 T= 7 T= ;
@@ -592,6 +641,18 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
 \ in no position, so the loop runs to its end and the answer is the -1 after it.
 \ A branch to the wrong block cannot answer both: reaching the return early
 \ answers 0 or -1 for the hit, and never reaching it answers 2 for the miss.
+\ AND IT IS THE ONE FIXTURE IN THIS SUITE THAT CARRIES A SCHEMA TIE. The `-1` it
+\ answers on a miss has all four halves set, so it is materialised as a move-wide
+\ zero followed by three overwrites, and an overwrite names ONE register field
+\ for its operand and its result - the schema says so, and every consumer has to
+\ put the two values in one physical register. src/compiler/native/regalloc.f
+\ states that as a union, so the four values of the chain are one class and one
+\ register by construction. It used to be left to the scan, which does not
+\ enforce it and only came out right because the operand of an overwrite dies at
+\ the overwrite and the lowest free register was usually the one it had just
+\ given up; coalescing fixes registers on purpose and broke that luck at once.
+\ Removing the union puts this case back to E-A64RAV-TIE, which is the validator
+\ refusing the whole routine rather than a wrong answer reaching the buffer.
 : BFIND-BODY ( IR-CTX:ctx -- n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
@@ -649,7 +710,16 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    SRC8 EV
    NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
 
-: FACT-BODY ( IR-CTX:ctx -- n n n n n )
+\ AND EVERY EDGE COPY IN IT IS GONE, which is the coalescing rule read the other
+\ way from NCH-MAX. This routine's edges hand values on without permuting them,
+\ so each copy's source dies at the copy and its two ends are never live at the
+\ same instant. src/compiler/native/regalloc.f gives each pair one register and
+\ src/compiler/native/emit.f writes nothing for a copy into the register it came
+\ from, so the count below is zero: a value that crosses an edge unchanged costs
+\ no instruction. A coalescer that stopped preferring, or an emitter that emitted
+\ a copy from a register into itself, puts them back and this goes red while
+\ every answer stays correct - which is the point of asserting it.
+: FACT-BODY ( IR-CTX:ctx -- n n n n n n )
    {: c:IR-CTX:ctx :}
    c 0 R-CTX !
    c HIR-MOD 0 R-BLD !
@@ -658,6 +728,7 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    p r ELABORATE
    CC BB TXT TEXT-LEN 0 LOOP-REGS 1 1 NFIX:RUN-HABU-CALL
    A64EMIT:BLOCKS
+   COPIES
    NRUN:PUBLISH {: fn:n :}
    10 fn NRUN:ENTER1
    1 fn NRUN:ENTER1
@@ -667,7 +738,7 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
 : FACT-CASE ( -- )
    s" a definition that calls itself compiles and runs" T-LABEL
    NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 3628800 T= 1 T= 3628800 T= 5 T= ;
+   1 T= 3628800 T= 1 T= 3628800 T= 0 T= 5 T= ;
 
 \ ---- the two comparisons that must NOT fuse ----------------------------------
 \ Fusing a comparison into the branch below it is only legal when the branch is

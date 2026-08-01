@@ -858,10 +858,15 @@ create NAMEBUF NAME-CAP allot
 \ edge a block of its own, and a block split alone does not help, because the
 \ VALUES crossing it are still the long-lived ones.
 \
-\ THE PRICE, STATED. One instruction and one live register per argument per
-\ edge, and a copy whose two ends coalesce into one register comes out as a
-\ register copied into itself - a no-op instruction that is still emitted,
-\ because eliding it is a peephole and this leaf does not do peepholes.
+\ THE PRICE, AND WHAT PAYS IT BACK. One instruction and one live register per
+\ argument per edge. Most of that is given back further down the chain: the
+\ register allocator prefers one register for a copy's two ends wherever they do
+\ not interfere (src/compiler/native/regalloc.f, step five), and the emitter
+\ writes no instruction for a copy from a register into itself
+\ (src/compiler/native/emit.f, SELF-MOV?). So a copy that did not have to be
+\ there costs nothing at run time, and the copies that remain are the ones whose
+\ ends really are live at the same instant - which is exactly the case this
+\ splitting exists for.
 64 constant EDGE-MAX
 EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 

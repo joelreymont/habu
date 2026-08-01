@@ -134,7 +134,8 @@
 \ And because one rule asked twice is still a rule asked twice, WALK holds the
 \ instruction cursor against the layout at the start of every block and at the
 \ end of the routine: a disagreement between what was counted and what was
-\ written is E-A64EMIT-LAYOUT before any caller can read a byte of it.
+\ written is E-A64EMIT-LAYOUT before any caller can read a byte of it. The same
+\ cursor covers the second elision below.
 \
 \ THE SOURCE MAP IS THE POINT OF THE BYTE OFFSETS. Every emitted instruction gets
 \ one row: the byte offset it was placed at, and the span of the operation it
@@ -146,13 +147,33 @@
 \ with a little-endian placement of each word rather than an array of words: the
 \ offsets have to index something a caller can actually look at.
 \
-\ AN ELIDED BRANCH GETS NO ROW, because the map has one row per emitted
+\ A COPY INTO THE REGISTER IT COMES FROM IS NOT EMITTED EITHER, WHICH MAKES A
+\ COPY'S INSTRUCTION COUNT A PROPERTY OF THE REGISTER ASSIGNMENT. An a64.mov
+\ whose source and destination registers are the same moves nothing, so it is
+\ left out. The register allocator is what makes that common rather than
+\ accidental: it prefers one register for both ends of a copy wherever the two do
+\ not interfere (src/compiler/native/regalloc.f, step five), which is how the
+\ copy a value crossing an argument-carrying edge is split with disappears on a
+\ loop latch. But the rule here is register equality alone and asks nothing about
+\ intent, so a copy whose ends land in one register for any other reason goes the
+\ same way.
+\
+\ SO THE SECOND RULE IS WRITTEN ONCE TOO. SELF-MOV? answers, from an operation,
+\ whether it is a copy into its own register; the layout subtracts its
+\ instruction and PUT-MOV leaves out exactly the instruction the layout did not
+\ count. The same cursor check holds them both. What this rule costs is an
+\ ordering: the layout used to be computable from the module alone and now needs
+\ the accepted assignment, so EMIT probes the acceptance before it lays the
+\ blocks out. That is written where the pass is run.
+\
+\ AN ELIDED INSTRUCTION GETS NO ROW, because the map has one row per emitted
 \ instruction and nothing else. That is what the index of a row MEANS here: row k
 \ describes the instruction WORD@ k answers, and the two are read together by
 \ every caller that locates a byte. A row standing for an instruction that was
 \ not emitted would put every row after it against the wrong instruction, which
 \ is a worse answer than the honest one - the terminator's span is on the rows of
-\ the instructions it did emit, and a branch that is not there is not anywhere.
+\ the instructions it did emit, and a branch or a copy that is not there is not
+\ anywhere.
 \
 \ ONE EMISSION AT A TIME. The buffers are fixed package-owned storage rather than
 \ heap objects, so this pass emits one routine at a time - the single-task
@@ -613,8 +634,9 @@ create B-START BMAX cells allot
    k O-BRZ = if 2 exit then
    1 ;
 
-\ How many instructions an OPERATION is, is that count less the branch it does
-\ not need, which takes the next three words to say.
+\ How many instructions an OPERATION is, is that count less the two instructions
+\ it can turn out not to need: a trailing branch to the block laid out next, and
+\ a copy from a register into itself. The next four words say which.
 \
 \ Three forms end in an unconditional branch: the one-way branch is nothing else,
 \ and the two-way branch and the compare-and-branch each end in one after their
@@ -644,10 +666,33 @@ create B-START BMAX cells allot
    s 0 < if false exit then
    id s SUCC-BLOCK  home 1+ = ;
 
+\ THE SECOND RULE, ALSO WRITTEN ONCE. A copy whose source and destination are the
+\ same register moves that register into itself, which is no instruction at all,
+\ and it is not emitted. The register allocator prefers one register for both
+\ ends of a copy wherever the two do not interfere - step five of
+\ src/compiler/native/regalloc.f - so this is what deletes the copy an
+\ argument-carrying edge is split with; but nothing here asks whether the
+\ allocator meant it to. The rule is register equality and only that, so a copy
+\ whose ends happened to land in one register for any other reason goes the same
+\ way.
+\
+\ IT IS ASKED THROUGH THE SAME DOOR AS EVERY OTHER REGISTER. OPERAND-REG and
+\ RESULT-REG are A64RAV:REG@, the one checked answer in the chain, so a stale or
+\ unaccepted assignment refuses here exactly as it refuses when an instruction is
+\ being encoded. What it costs is that the layout can no longer be computed
+\ before the assignment has been accepted: how many instructions a copy is, is
+\ now a fact about the allocation. EMIT below therefore probes the assignment
+\ before it lays the blocks out, and says so.
+: SELF-MOV? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id SLOT-AT O-MOV <> if false exit then
+   id 0 RESULT-REG  id 0 OPERAND-REG  = ;
+
 : OP-INSNS ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT INSNS-OF
-   id home FALL-THRU? if 1- then ;
+   id home FALL-THRU? if 1- then
+   id SELF-MOV? if 1- then ;
 
 : BLOCK-INSNS ( IR-ID:ir-block-id n -- n )
    {: bk:IR-ID:ir-block-id home:n :}
@@ -809,6 +854,17 @@ create B-START BMAX cells allot
    id  CALL-BLOCK DELTA BL-WORD  APPEND
    id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBACK-SIZE  ENC-SUBI  APPEND ;
 
+\ One copy, which is one instruction unless it is a copy from a register into
+\ itself, and then it is none. SELF-MOV? is the layout's own word, asked here
+\ with the same argument, so the instruction left out is exactly the instruction
+\ the layout did not count. An elided copy gets no source-map row for the same
+\ reason an elided branch gets none: a row's index is which instruction WORD@
+\ answers at it.
+: PUT-MOV ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id SELF-MOV? if exit then
+   id  id WORD-MOV  APPEND ;
+
 \ ---- one operation, as the instructions it is --------------------------------
 \ The whole encoding table. Every arm names the instructions one machine
 \ operation becomes; nothing else in this file decides which bytes an operation
@@ -824,7 +880,7 @@ create B-START BMAX cells allot
    MATCH A64IR:opcode
       movz     OF id  id WORD-MOVZ  APPEND ENDOF
       movk     OF id  id WORD-MOVK  APPEND ENDOF
-      mov      OF id  id WORD-MOV  APPEND ENDOF
+      mov      OF id PUT-MOV ENDOF
       add      OF id  id TRIPLE ENC-ADD  APPEND ENDOF
       sub      OF id  id TRIPLE ENC-SUB  APPEND ENDOF
       mul      OF id  id TRIPLE ENC-MUL  APPEND ENDOF
@@ -1017,10 +1073,17 @@ public
 \ ---- the pass ----------------------------------------------------------------
 \ Emit the whole of one frozen machine module, under the register assignment the
 \ validator has accepted for it, into this package's buffers. Nothing is readable
-\ until this returns; a run that refuses leaves no sealed emission. The shape is
-\ decided before the assignment is, because whether these operations are
-\ something this leaf can lay out at all is a question about the module alone -
-\ and an assignment is never read before both questions have been answered.
+\ until this returns; a run that refuses leaves no sealed emission.
+\
+\ THE SHAPE IS STILL DECIDED FIRST AND THE LAYOUT IS NOT. Whether these
+\ operations are something this leaf can emit at all is a question about the
+\ module alone, so SHAPE-CK is asked before any assignment is read - a module of
+\ a shape this pass cannot serve is refused as that, and not as a complaint
+\ about registers. But how many instructions the module IS depends on the
+\ assignment now, because a copy whose two ends are one register is no
+\ instruction (SELF-MOV? above), so the layout cannot be computed until the
+\ assignment has been accepted. ALLOC-CK therefore comes between them: the
+\ acceptance is probed, and only then are the blocks laid out and written.
 : EMIT ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    BND-TAKE
@@ -1031,8 +1094,8 @@ public
    m VIEWS!
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f SHAPE-CK
-   f LAYOUT
    m ALLOC-CK
+   f LAYOUT
    f WALK
    ST-SEALED ST ! ;
 

@@ -4133,3 +4133,52 @@ The elision also moves a cost that used to be invisible: with every branch
 emitted, the layout ORDER was irrelevant to what a routine computed. It is
 load-bearing now, so the price has to be written where the order is decided, not
 only where the branch is skipped.
+
+## An optimiser that fixes a register on purpose finds every constraint that was holding by luck
+
+Copy coalescing is the first pass in the native chain that decides a register
+for a reason other than "the scan got here and this one was free". The first
+thing it did was turn `test/compiler/native-chain.f` red with `E-A64RAV-TIE` on
+the one fixture that materialises `-1`. The cause was not in the new code. The
+multi-block allocator never fed schema ties into its union-find at all: a
+move-wide overwrite names one register field for its operand and its result, and
+that was coming out right only because the operand dies at the overwrite, so its
+register is free one position later, and `FREE-REG` hands out the LOWEST free
+register - usually the one just released. Coalescing pinned the other end of the
+chain to a block argument's register and the coincidence stopped.
+
+Two things follow. The first is the fix: a tie is a must-share constraint of
+exactly the same kind as an argument-carrying edge, so it belongs in the same
+union-find, and then it holds by construction rather than by the order
+`FREE-REG` happens to scan in. The second is where the bug had been hiding. The
+multi-block path has no unit tests - `test/compiler/native-regalloc.f` is
+straight-line fixtures only - so the only thing checking it was an end-to-end
+run that happened to pass, and the validator's own tie clause, which agreed with
+the lucky answer because the lucky answer was right. A check cannot tell you
+that a rule is unenforced when the accident keeps satisfying it.
+
+So: before adding a pass that PICKS registers, list the constraints the existing
+allocator is supposed to enforce and find where each one is stated. Any that is
+"the scan just does it" is a constraint your new pass is about to break.
+
+## The validator for a preference pass checks the answer, not the walk
+
+Coalescing merges classes in an order - candidates in module order, and a merge
+can block a later one because it grows a class - so it is tempting to think the
+validator has to re-derive the order to check the result. It does not, and it
+should not. What a wrong merge does is put two values that are live at the same
+instant into one register, and `OVERLAP-CK` already refuses exactly that, from
+the module's own liveness and the assignment's own registers. That statement is
+about the answer, so it holds whatever order produced it - and it would catch a
+coalescer with no order at all, or a hand-written module. Re-deriving the merge
+sequence would have been the thing being checked telling the checker what to
+check. Both mutations confirmed it: dropping the interference test dies as
+`E-A64RA-EDGE` in the allocator's own class invariant, and dropping that too
+dies as `E-A64RAV-OVERLAP` in the validator.
+
+The corollary is about the interference question itself. Asking it of the two
+VALUES at the ends of the copy instead of the two CLASSES they belong to also
+dies (`E-A64RA-EDGE`): the ends may be disjoint while a member the union-find
+already put in one of their classes is not. A must-share structure changes what
+"do these two interfere" means, and the question has to be asked at the grain
+the structure works at.

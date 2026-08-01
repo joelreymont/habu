@@ -78,16 +78,18 @@
 \ written down once and read by the layout: how many instructions the operations
 \ of a block are is never guessed at from anything but the opcodes in it.
 \
-\ THE COUNT IS A CEILING FOR THE THREE TERMINATORS AND AN EXACT NUMBER FOR
-\ EVERYTHING ELSE. The one-way branch, the two-way branch and the compare-and-
-\ branch each end in an unconditional branch, and src/compiler/native/emit.f does
-\ not emit that branch when the block it names is the block laid out next - the
-\ machine gets there by falling into it. So those three are one instruction
-\ shorter wherever the layout allows, which makes their count a property of the
-\ operation's POSITION as well as of its form. That is the emitter's own
-\ arithmetic and it is stated there: the rule is one word both its layout pass
-\ and its writing pass ask, and the two are held against each other at every
-\ block boundary. Nothing outside the emitter counts instructions.
+\ THE COUNT IS A CEILING FOR FOUR FORMS AND AN EXACT NUMBER FOR EVERYTHING ELSE.
+\ The one-way branch, the two-way branch and the compare-and-branch each end in
+\ an unconditional branch, and src/compiler/native/emit.f does not emit that
+\ branch when the block it names is the block laid out next - the machine gets
+\ there by falling into it. So those three are one instruction shorter wherever
+\ the layout allows, which makes their count a property of the operation's
+\ POSITION as well as of its form. The fourth is the copy: a64.mov whose source
+\ and destination registers are the same moves nothing and is not emitted either,
+\ which makes its count a property of the REGISTER ASSIGNMENT. All of that is the
+\ emitter's own arithmetic and it is stated there: each rule is one word both its
+\ layout pass and its writing pass ask, and the two are held against each other
+\ at every block boundary. Nothing outside the emitter counts instructions.
 \
 \ THE COMPARE-AND-BRANCH IS WHY THE FLAGS ARGUMENT MATTERS RATHER THAN BEING A
 \ CURIOSITY. A source comparison that only ever answers a branch test does not
