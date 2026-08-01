@@ -899,6 +899,20 @@ create TXT
    w M-RET
    CLOSE-FUN ;
 
+\ A store whose order nothing reads. The release takes the order the RESERVE
+\ minted rather than the one the store answered, so the module never says that
+\ anything happens after the store - and it would still emit the same four
+\ instructions in the same printed order, which is exactly why the claim has to
+\ be checked rather than run.
+: BUILD-LOOSE-ORDER ( -- )
+   s" LOOSE" 0 1 OPEN-FUN
+   16 M-RESERVE {: tok:IR-ID:ir-value-id :}
+   7 M-MOVZ {: v:IR-ID:ir-value-id :}
+   v tok 0 M-STORE drop
+   tok 16 M-RELEASE
+   v M-RET
+   CLOSE-FUN ;
+
 \ A frame the module takes that is not the frame the contract declares.
 : BUILD-WRONG-FRAME ( -- )
    s" WRONGF" 0 1 OPEN-FUN
@@ -1378,6 +1392,11 @@ create TXT
    BUILD-WRONG-FRAME
    16 FRAME-REFUSE ;
 
+: LOOSE-ORDER-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-LOOSE-ORDER
+   16 FRAME-REFUSE ;
+
 : EMPTY-POOL-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-PLAIN
@@ -1533,6 +1552,7 @@ create TXT
 : SHARED-SLOT ( -- )      WBND [: SHARED-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-SLOT ( -- )       WBND [: EMPTY-SLOT-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-FRAME ( -- )      WBND [: WRONG-FRAME-BODY ;] IR-CTX:WITH-CONTEXT ;
+: LOOSE-ORDER ( -- )     WBND [: LOOSE-ORDER-BODY ;] IR-CTX:WITH-CONTEXT ;
 : EMPTY-POOL ( -- )       WBND [: EMPTY-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : WRONG-MODULE ( -- )     WBND [: WRONG-MODULE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : NO-BIND ( -- )          WBND [: NO-BIND-BODY ;] IR-CTX:WITH-CONTEXT ;
@@ -1636,6 +1656,10 @@ create TXT
    s" a frame that is not the one the contract declares is refused" T-LABEL
    [: WRONG-FRAME ;] E-A64RAV-FRAME TTHROWSQ ;
 
+: ORDER-REFUSE-CASES ( -- )
+   s" a memory order the module mints and nothing reads is refused" T-LABEL
+   [: LOOSE-ORDER ;] E-A64RAV-ORDER TTHROWSQ ;
+
 : BIND-REFUSE-CASES ( -- )
    s" allocating without a binding is refused" T-LABEL
    [: NO-BIND ;] E-A64RA-BIND TTHROWSQ
@@ -1677,6 +1701,7 @@ create TXT
 : GROUP-LOWER ( IR-CTX:ctx -- )     drop LOWER-TWICE-CASE ;
 : GROUP-NO-SPILL ( IR-CTX:ctx -- )  drop LOWER-NONE-CASE ;
 : GROUP-SLOT ( IR-CTX:ctx -- )      drop SLOT-REFUSE-CASES ;
+: GROUP-ORDER ( IR-CTX:ctx -- )     drop ORDER-REFUSE-CASES ;
 : GROUP-RELOAD ( IR-CTX:ctx -- )    drop RELOAD-REFUSE-CASES ;
 : GROUP-BIND ( IR-CTX:ctx -- )      drop BIND-REFUSE-CASES ;
 : GROUP-MODULE ( IR-CTX:ctx -- )    drop MODULE-REFUSE-CASES ;
@@ -1722,6 +1747,7 @@ public
    WBND [: GROUP-LOWER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-NO-SPILL ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SLOT ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-ORDER ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-RELOAD ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-BIND ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MODULE ;] IR-CTX:WITH-CONTEXT

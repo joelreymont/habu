@@ -196,6 +196,51 @@ create TXT
    HIR-OPCODE:ADD x y BINOP RET1
    CLOSE-FUN ;
 
+\ `: BUMP ( n -- n ) A ! A @ 1+ ;` with A a fixed address, as the elaborator
+\ leaves it: the memory the definition is entered with, then a store, then a
+\ load, each taking the order the one before it answered.
+$1000 constant BUMP-ADDR
+
+: MEMT ( -- IR-ID:ir-type-id )
+   CC BB HIR:MEM-TYPE ;
+
+: MEM0 ( -- IR-ID:ir-value-id )
+   HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: STORE1 ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
+   HIR-OPCODE:STORE BODY-ST BODY-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB a IR-BUILD:ADD-OPERAND
+   CC BB k IR-BUILD:ADD-OPERAND
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+: LOAD1 ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
+   HIR-OPCODE:LOAD BODY-ST BODY-LN OPEN-OP
+   CC BB a IR-BUILD:ADD-OPERAND
+   CC BB k IR-BUILD:ADD-OPERAND
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 0 IR-BUILD:OP-RESULT@
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+: BUILD-BUMP ( -- )
+   1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   BUMP-ADDR CONSTOP {: a0:IR-ID:ir-value-id :}
+   x a0 k0 STORE1 {: k1:IR-ID:ir-value-id :}
+   BUMP-ADDR CONSTOP {: a1:IR-ID:ir-value-id :}
+   a1 k1 LOAD1 {: got:IR-ID:ir-value-id k2:IR-ID:ir-value-id :}
+   1 CONSTOP {: one:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD got one BINOP RET1
+   CLOSE-FUN ;
+
 \ A literal that fits one move-wide half, and one that needs two.
 : BUILD-SMALL ( -- )
    0 1 OPEN-FUN
@@ -591,6 +636,53 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    WBND [: DSTACK-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 8 T= TTRUE 0 T= TTRUE TTRUE 0 T= TTRUE 8 T= TTRUE 6 T= 0 T= ;
 
+\ ---- the memory operations, lowered ------------------------------------------
+\ What the two addressed forms are wired to, read off the selected module. The
+\ source order is minted by hir.mem, which selects to no instruction at all: the
+\ token the machine store takes is the one a64.dtake minted and a64.dload passed
+\ on, so the whole routine - entry, body and exit - is on one chain. The store's
+\ two register operands are checked against the values they must be, and the
+\ load's order operand against the store's answer, so a lowering that dropped a
+\ link or swapped the value and the address is a different VALUE here.
+\
+\ The operation numbering: 0 dtake, 1 dload, 2 movz (the address), 3 astr,
+\ 4 movz (the address again), 5 aldr, 6 movz 1, 7 add, 8 dstore, 9 dpublish,
+\ 10 ret.
+: MEM-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool )
+   HIR-MOD
+   BUILD-BUMP
+   1 1 SELECTED-HABU READ!
+   OPS
+   3 s" a64.astr" OPCODE-IS?
+   5 s" a64.aldr" OPCODE-IS?
+   3 0 OPERAND@  1 0 RESULT@  SAME-VALUE?
+   3 1 OPERAND@  2 0 RESULT@  SAME-VALUE?
+   3 2 OPERAND@  1 1 RESULT@  SAME-VALUE?
+   5 0 OPERAND@  4 0 RESULT@  SAME-VALUE?
+   5 1 OPERAND@  3 0 RESULT@  SAME-VALUE?
+   8 1 OPERAND@  5 1 RESULT@  SAME-VALUE? ;
+
+: MEM-CASE ( -- )
+   s" a store and a load select to the addressed forms on one memory order" T-LABEL
+   WBND [: MEM-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 11 T= ;
+
+\ A memory operation in a routine whose convention names only registers. The
+\ generic memory order of this dialect begins where the routine takes the
+\ caller's operands, and a routine that takes none has no beginning for it, so
+\ the lowering is refused by name rather than invented.
+: MEM-REG-BODY ( IR-CTX:ctx -- )
+   HIR-MOD
+   BUILD-BUMP
+   SELECTED drop ;
+
+: MEM-REG ( -- )
+   WBND [: MEM-REG-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: MEM-REG-REFUSE-CASE ( -- )
+   s" a memory operation in a register-convention routine is refused" T-LABEL
+   [: MEM-REG ;] E-A64SEL-MEM TTHROWSQ ;
+
 : MIXED-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SQUARE
@@ -642,6 +734,10 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    drop
    TRAP-REFUSE-CASES ;
 
+: GROUP-MEM-REG-REFUSE ( IR-CTX:ctx -- )
+   drop
+   MEM-REG-REFUSE-CASE ;
+
 : GROUP-MIXED-REFUSE ( IR-CTX:ctx -- )
    drop
    MIXED-REFUSE-CASE ;
@@ -661,11 +757,13 @@ public
    WIDE-CASE
    FUN-CASE
    DSTACK-CASE
+   MEM-CASE
    WBND [: GROUP-BIND-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SOURCE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-SHAPE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-OPCODE-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TRAP-REFUSE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-MEM-REG-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MIXED-REFUSE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-DARITY-REFUSE ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;

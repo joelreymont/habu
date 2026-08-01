@@ -223,6 +223,70 @@ using NSRC
    BND [: INC-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 5 T= TTRUE TTRUE TTRUE 3 T= ;
 
+\ ---- a word that reads and writes memory -------------------------------------
+\ The corpus's cell-bump body, `A ! A @ 1+ dup A !`, with A a `create`d data
+\ word the model is told the address of. What this case measures is the two
+\ things the printed operation list cannot show on its own.
+\
+\ THE OPERAND ORDER OF A STORE. Forth writes `value address !`, so the value is
+\ the deeper of the two and therefore the store's FIRST operand and the address
+\ its second. The two are both cells, so an elaborator that exchanged them would
+\ build a module that verifies, allocates and emits - and writes the cell's
+\ address into whatever the value happens to point at. Here each one is compared
+\ against the value it has to be: the block argument, and the constant the data
+\ word became.
+\
+\ THE ORDER ITSELF, LINK BY LINK. `hir.mem` is staged by the first body word that
+\ needs an order and by nothing else, and every access after it takes the order
+\ the access before it answered. The chain is asserted as identities - the
+\ store's order operand is the mint's result, the load's is the store's result,
+\ the second store's is the load's second result - so an access that took an
+\ older order, or a fresh one, is a different VALUE here rather than a different
+\ printed order.
+4096 constant CELL-A-ADDR
+
+: SEALED-DATA ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena IR-ARENA:view )
+   {: c:IR-CTX:ctx :}
+   c HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b s" CELL-A" CELL-A-ADDR MODEL-DATA
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b TAPE {: tp:IR-ARENA:arena :}
+   c LEX
+   b p r  tp NTAPE:SEAL ;
+
+: BUMP-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   s" BUMP CELL-A ! CELL-A @ 1+ dup CELL-A !" TEXT!
+   c SEALED-DATA
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLK {: blk:IR-ID:ir-block-id :}
+   m blk 0 F-OP {: a0:IR-ID:ir-op-id :}
+   m blk 1 F-OP {: mem:IR-ID:ir-op-id :}
+   m blk 2 F-OP {: st0:IR-ID:ir-op-id :}
+   m blk 3 F-OP {: a1:IR-ID:ir-op-id :}
+   m blk 4 F-OP {: ld:IR-ID:ir-op-id :}
+   m blk 7 F-OP {: a2:IR-ID:ir-op-id :}
+   m blk 8 F-OP {: st1:IR-ID:ir-op-id :}
+   m blk F-OPS
+   m mem s" hir.mem" F-OPC?
+   m st0 s" hir.store" F-OPC?
+   m ld s" hir.load" F-OPC?
+   m a2 s" hir.const" F-OPC?
+   m st0 0 F-IN  m blk 0 F-ARG SAME?
+   m st0 1 F-IN  m a0 0 F-OUT SAME?
+   m st0 2 F-IN  m mem 0 F-OUT SAME?
+   m ld 0 F-IN  m a1 0 F-OUT SAME?
+   m ld 1 F-IN  m st0 0 F-OUT SAME?
+   m st1 2 F-IN  m ld 1 F-OUT SAME? ;
+
+: BUMP-CASE ( -- )
+   s" a store and a load compile to one order, threaded link by link" T-LABEL
+   BND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   TTRUE TTRUE TTRUE TTRUE 10 T= ;
+
 \ ---- a word with two outputs -------------------------------------------------
 \ `over + swap` leaves the sum and the first input, in that order. Two
 \ operations: three renames between them stage nothing, and the return hands
@@ -848,6 +912,7 @@ public
    BND [: drop STRAY-INDEX-CASE ;] IR-CTX:WITH-CONTEXT
    SQUARE-CASE
    INC-CASE
+   BUMP-CASE
    SUMA-CASE
    DIFF-CASE
    ROT3-CASE

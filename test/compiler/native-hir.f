@@ -177,6 +177,50 @@ private
    BND [: SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE 0 T= 1 T= TTRUE 1 T= 1 T= 0 T= ;
 
+\ The three memory schemas, read back off the frozen table. What is asserted is
+\ the shape the ordering rests on: the mint takes nothing and answers one order,
+\ the load takes an address and an order and answers a cell and an order, and the
+\ store takes a value, an address and an order and answers an order. The types
+\ are checked position by position, so an operand list in another order is a
+\ different type here rather than a different comment; and both accesses declare
+\ a memory effect rather than purity, which is what makes the freeze verifier
+\ demand the order they carry.
+: MEM-SHAPE-BODY ( IR-CTX:ctx -- n n bool n n bool bool bool n n bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b HIR-OPCODE:MEM HIR:OPCODE {: mk:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:LOAD HIR:OPCODE {: ld:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:STORE HIR:OPCODE {: st:IR-ID:ir-symbol-id :}
+   c b IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT
+   {: t:IR-ID:ir-type-id :}
+   c b HIR:MEM-TYPE {: kt:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv mk IR-SCHEMA:FOPERANDS
+   rv mk IR-SCHEMA:FRESULTS
+   rv mk IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:PURE IR--SCHEMA-EFFECT:EQ
+   rv ld IR-SCHEMA:FOPERANDS
+   rv ld IR-SCHEMA:FRESULTS
+   qv rv key ld 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key ld 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv ld IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
+   rv st IR-SCHEMA:FOPERANDS
+   rv st IR-SCHEMA:FRESULTS
+   qv rv key st 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key st 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key st 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv st IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
+   rv st IR-SCHEMA:FALIAS@ IR--SCHEMA-ALIAS:UNRESTRICTED IR--SCHEMA-ALIAS:EQ ;
+
+: MEM-SHAPE-CASE ( -- )
+   s" the memory schemas carry an address, a value and one order" T-LABEL
+   BND [: MEM-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE 1 T= 3 T=
+   TTRUE TTRUE TTRUE 2 T= 2 T=
+   TTRUE 1 T= 0 T= ;
+
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.
 : SPELL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
@@ -300,6 +344,55 @@ private
    s" the five operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE 23 T= ;
+
+\ ---- the memory words and the data word --------------------------------------
+\ The two memory words bind to the two memory operations, the increment binds to
+\ an addition of one - which is what makes `1+` one token of source and two
+\ operations rather than an opcode this dialect does not have - and a `create`d
+\ data word is declared by the caller with the value it pushes. The last one is
+\ how a definition that mentions a data word compiles at all, so what is asserted
+\ is the value it reads back as and the meaning the gate answers for it.
+4096 constant DATUM
+
+: MODEL-PLUS ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r HIR-WORD:REGISTER-WORDS
+   c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  DATUM HIR-WORD:DECLARE-FIXED
+   b p r ;
+
+: MEMWORD-BODY ( IR-CTX:ctx -- n bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-PLUS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" CELL-A" IR-BUILD:INTERN-SYMBOL HIR-WORD:FIXED-VALUE@
+   r c b s" CELL-A" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
+      HIR-MEANING:FIXED HIR-MEANING:EQ
+   r c b s" @" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+      HIR-OPCODE:LOAD HIR-OPCODE:EQ
+   r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@
+      HIR-OPCODE:STORE HIR-OPCODE:EQ
+   r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-OPCODE@
+      HIR-OPCODE:ADD HIR-OPCODE:EQ ;
+
+: MEMWORD-CASE ( -- )
+   s" the memory words, the increment and a data word read back as declared" T-LABEL
+   BND [: MEMWORD-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE DATUM T= ;
+
+\ Asking a data word which operation it is, when its whole meaning is a value.
+: FIXED-CLASS-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MODEL-PLUS {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" CELL-A" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ drop ;
+
+: FIXED-CLASS ( -- )
+   BND [: FIXED-CLASS-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FIXED-CLASS-CASE ( -- )
+   s" a data word asked which operation it is is refused" T-LABEL
+   [: FIXED-CLASS ;] E-HIR-CLASS TTHROWSQ ;
 
 \ One rename, folded into three numbers: how many values it consumes, how many
 \ it puts back, and the whole pick list in order as decimal digits, each pick
@@ -1208,6 +1301,7 @@ private
    drop
    ARITH-CASE
    SHAPE-CASE
+   MEM-SHAPE-CASE
    SPELL-CASE
    RULE-CASE ;
 
@@ -1222,9 +1316,14 @@ private
 : GROUP-MODEL ( IR-CTX:ctx -- )
    drop
    OPS-CASE
+   MEMWORD-CASE
    RENAME-CASE
    MEAN-CASE
    AT-CASE ;
+
+: GROUP-FIXED-REFUSE ( IR-CTX:ctx -- )
+   drop
+   FIXED-CLASS-CASE ;
 
 : GROUP-REFUSE ( IR-CTX:ctx -- )
    drop
@@ -1274,6 +1373,7 @@ public
    BND [: GROUP-POLICY ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-REG-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-MODEL ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-FIXED-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-OWNER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-STAGE ;] IR-CTX:WITH-CONTEXT
