@@ -477,6 +477,8 @@ public
    s" test/compiler/native-select.f" GSI-FORK-INCLUDE
    s" test/compiler/native-regalloc.f" GSI-FORK-INCLUDE
    s" test/compiler/native-emit.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-publish.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed
    \ values, the two generators head to head, the committed table's structure.

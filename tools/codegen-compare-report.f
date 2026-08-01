@@ -25,17 +25,16 @@
 \ the file disagree with itself on every other host, while the ratio to an empty
 \ call measured in the same run stays comparable.
 \
-\ READ THE TWO COST COLUMNS WITH THE TWO NOTES THIS FILE PRINTS UNDER THEM. Both
-\ paths are entered by a branch now: an old row is an ordinary Habu word call,
-\ and a new row is that same branch through `execute`, because the routines the
-\ chain emits take their arguments off the data stack the way a word does. One
-\ difference is left - the new column's address is on the stack rather than
-\ compiled into the call site, which is one indirect branch more - so each column
-\ is still a multiple of an empty call of its OWN kind and the two floors are not
-\ the same number. Rather than leave a reader to guess what that is worth, the
-\ report prints both floors and every covered word's cost with its floor taken
-\ off, which is the emitted code and nothing else. The byte and result columns
-\ carry no such caveat: they are exact.
+\ THE TWO COST COLUMNS ARE THE SAME KIND OF NUMBER, AND THE REPORT SAYS SO WITH A
+\ MEASUREMENT RATHER THAN A PARAGRAPH. Both columns are ordinary words of the
+\ dictionary now - the old ones the engine's emitter compiled, the new ones the
+\ native chain compiled and the publication seam republished - so both are
+\ entered by whatever the engine does for a call, and each column's empty call
+\ measures the same thing. The report prints both floors on one line, and
+\ FLOOR-GAP compares them: while they agree the two ratios are comparable with
+\ each other, and if they ever stop agreeing that is a finding naming the two
+\ numbers rather than a caveat asking the reader to allow for it. The byte and
+\ result columns never needed such an allowance: they are exact.
 
 require lib/errors.f
 require lib/prelude.f
@@ -324,16 +323,11 @@ private
    cr ;
 
 \ ---- the cost of the routine, with the call taken off ------------------------
-\ Both columns are entered by a branch now: an old row is an ordinary Habu word
-\ call and a new row is that same branch through `execute`, because the routines
-\ the chain emits take their arguments off the data stack the way a word does.
-\ One difference is left, and it is why each path still keeps its own calibration
-\ row: the new column's address is on the stack rather than compiled into the
-\ call site, so its entry is one indirect branch more. That difference is a
-\ constant, it is exactly what an empty call of each kind measures, and
-\ subtracting it leaves the emitted code - which is the number the comparison is
-\ about. Both the floor and the difference are printed, so nothing is hidden in a
-\ ratio.
+\ Both columns are entered the same way now, so the floor each path measures is
+\ the same call and taking it off leaves the emitted code - which is the number
+\ the comparison is about. Each path still measures its own floor rather than
+\ sharing one, because the agreement between them is a fact about the publication
+\ seam that can regress, and a shared floor could not report it.
 : PATH-FLOOR ( n -- ) {: path:n :}
    path CODEGEN-COMPARE:PATH-PICOS NANOS. ;
 
@@ -356,9 +350,8 @@ private
 
 : BODIES ( -- )
    s" Cost of the emitted code, with the entry taken off. Both columns are entered" type cr
-   s" by a branch; the new column's goes through the address on the stack, which is" type cr
-   s" one indirect branch more, so each path's own empty call is the floor and what" type cr
-   s" is printed here is the row minus that floor." type cr
+   s" the way the engine enters any word, so each path's own empty call is the same" type cr
+   s" floor and what is printed here is the row minus that floor." type cr
    s" empty call: old " type CODEGEN-COMPARE:PATH-OLD PATH-FLOOR
    s"  ns, new " type CODEGEN-COMPARE:PATH-NEW PATH-FLOOR
    s"  ns" type cr
@@ -370,17 +363,46 @@ private
       then
    loop ;
 
-\ What the two ratio columns of the table do and do not say. Printed with every
-\ run, because a reader who takes them for a like-for-like race is reading them
-\ wrongly: each is a multiple of an empty call of its own kind, and the two
-\ floors are not the same number.
-: CAVEAT ( -- )
-   s" How to read the two cost columns of the table. Each is a multiple of an empty" type cr
-   s" call of its OWN kind, and the two floors differ - an old row is entered by a" type cr
-   s" branch the engine compiled into the call site, a new row by a branch through" type cr
-   s" an address on the stack. So the ratios are not comparable with each other;" type cr
-   s" the nanoseconds above and the entry-subtracted figures below are. The bytes" type cr
-   s" and the results carry no such caveat: they are exact." type cr ;
+\ ---- do the two floors still measure the same call? --------------------------
+\ The comparison's two ratio columns are only comparable with each other while
+\ they are divided by the same thing. That used to be false and was written down
+\ as a caveat; it is true now because both columns are entered as ordinary words,
+\ and what makes it a claim rather than an assumption is this check.
+\
+\ THE BAND. Two measurements of the same call differ by host noise, which the
+\ recorded run spread puts in the low percent. The difference this check exists
+\ to catch is an entry that goes back to being indirect, which cost the new
+\ column about two and a half times its floor when it did. Half again is
+\ therefore far above the noise and far below the defect.
+500 constant FLOOR-BAND              \ permille each floor may differ from the other
+
+: FLOOR-DELTA ( -- n )
+   CODEGEN-COMPARE:PATH-OLD CODEGEN-COMPARE:PATH-PICOS {: old:n :}
+   CODEGEN-COMPARE:PATH-NEW CODEGEN-COMPARE:PATH-PICOS {: new:n :}
+   old new - dup 0 < if negate then ;
+
+: FLOOR-SMALLER ( -- n )
+   CODEGEN-COMPARE:PATH-OLD CODEGEN-COMPARE:PATH-PICOS {: old:n :}
+   CODEGEN-COMPARE:PATH-NEW CODEGEN-COMPARE:PATH-PICOS {: new:n :}
+   old new < if old exit then
+   new ;
+
+public
+
+\ Report the two floors as one finding if they have stopped measuring the same
+\ call, and answer how many findings that was.
+: SAY-FLOOR-GAP ( -- n )
+   FLOOR-SMALLER {: base:n :}
+   base 0= if E-CODEGEN-COMPARE-CLOCK throw then
+   FLOOR-DELTA CODEGEN-COMPARE:COST-UNIT * base / {: permille:n :}
+   permille FLOOR-BAND <= if 0 exit then
+   s" codegen-compare: ENTRY the two empty calls no longer measure the same call: old " type
+   CODEGEN-COMPARE:PATH-OLD PATH-FLOOR
+   s"  ns, new " type CODEGEN-COMPARE:PATH-NEW PATH-FLOOR
+   s"  ns" type cr
+   1 ;
+
+private
 
 \ ---- the head-to-head finding ----------------------------------------------
 \ The one thing the comparison must never let past: the same corpus word
@@ -428,8 +450,6 @@ public
       1+
    repeat drop
    cr
-   BODIES
-   cr
-   CAVEAT ;
+   BODIES ;
 
 ;package

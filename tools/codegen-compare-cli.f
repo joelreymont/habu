@@ -31,12 +31,22 @@ private
 \ from the decision about the cost column, which the two public entries below
 \ make before calling this. Factored so the checked and the unchecked run are
 \ the same code on the same load path and cannot drift apart.
+
+\ The two empty calls are a timing like any other, so the run that leaves the
+\ cost column out leaves this out too - on a host with every core busy the two
+\ floors can drift apart for the same reason a row's cost can. It is the timed
+\ check, run by hand, that says the two columns are still entered the same way.
+: FLOOR-FINDINGS ( -- n )
+   CODEGEN-BASELINE:COSTS-CHECKED? 0= if 0 exit then
+   CODEGEN-REPORT:SAY-FLOOR-GAP ;
+
 : RUN-CHECK ( -- n )
    CODEGEN-CASES:RUN
    CODEGEN-REPORT:PRINT
    CODEGEN-BASELINE:PATH$ CODEGEN-BASELINE:LOAD
    CODEGEN-BASELINE:COMPARE
-   CODEGEN-REPORT:SAY-MISMATCHES + ;
+   CODEGEN-REPORT:SAY-MISMATCHES +
+   FLOOR-FINDINGS + ;
 
 : VERDICT ( n -- ) {: findings:n :}
    cr

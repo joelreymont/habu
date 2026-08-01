@@ -4214,3 +4214,53 @@ suite. It says nothing about whether a `*-CASE` word inside that file is called
 from the file's own `RUN`. Deleting a case from `RUN` leaves the lint green and
 the suite green, and the case simply never runs. Adding cases to an existing
 suite therefore still needs the eye: read `RUN` and count.
+
+## An engine that bakes call targets makes publication an ordering fact
+
+Making the native chain's output an ordinary word turned out not to need a new
+engine mechanism: a word of this engine IS a dictionary record whose first cell
+holds the address of its first instruction, and `patch32` - the same primitive
+`undefine` uses to retire a record - writes that cell, flips the region
+writable, restores execute permission and syncs the instruction cache on the
+way. What it DOES need is an honest statement about when it works. The engine
+resolves a call when the CALLER is compiled: either a direct branch to the
+callee's address or, for a body under forty bytes with no position-dependent
+instruction, a verbatim copy of the callee into the caller. Neither can be
+revisited - there is no callee-keyed fixup table, and an inlined caller holds
+private bytes no patch could reach. So republishing a record is not "every
+caller now calls the new code"; it is "every caller compiled from now on does".
+That is exactly the definition transaction's own shape, because a migration
+belongs immediately after the definition, before anything has called it.
+
+The same fact is what let the code generator comparison keep both columns alive
+without a second corpus of hand-copied bodies: the old column's call sites are
+compiled before the migration and the new column's after it, so each one bakes
+the code generator it is measuring. Load order became load-bearing, which is
+worth writing where the order is decided rather than only where the record is
+rewritten.
+
+## A caught throw must not unwind past a scoped resource
+
+`IR-CTX:WITH-CONTEXT` gives its arenas back when its quotation returns and not
+when a throw passes through it, and the shared arena registry holds sixty-four.
+Catching a refused migration OUTSIDE the context therefore worked perfectly for
+the first few refusals and then failed the whole suite with
+`E-IR-ARENA-SLOTS` - a resource error several cases away from the case that
+leaked. The same shape appeared one layer down: a recording unit whose scan
+threw, or whose close threw, left the checker's reader armed, so the NEXT
+migration was refused for the state its predecessor left rather than for
+anything about itself. Both fixes are the same rule: catch INSIDE the scope,
+carry the code out as data, and rethrow it above. A refusal path that is not
+exercised repeatedly in one process looks correct for exactly as long as
+nobody refuses twice.
+
+## A quotation may not be opened inside another
+
+`[: … [: … ;] … ;]` is not a nesting the engine compiles: it fails closed with
+exit 75 at the inner opener. The failure surfaces at the file that is being
+loaded LATER, because the source that contains the nesting loads fine and only
+leaves the quotation-patch cell set - so the next file's first ordinary `[:`
+is reported as the nested one. When a quotation opener is rejected for no
+visible reason, look for an unbalanced or nested quotation in something already
+loaded, not in the file being read. Factor the inner quotation into a named
+word; nothing else changes.

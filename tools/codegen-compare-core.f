@@ -10,26 +10,25 @@
 \   cost      how long one call takes. See the timing note below.
 \
 \ TWO CODE GENERATORS, ONE STORE. A row records which code generator produced
-\ it. An old row is a word the engine compiled when its source file was loaded:
-\ MEASURE looks it up and reads its size out of its own dictionary record - the
-\ record keeps the code start address and the code length - so the size is the
-\ code the engine actually emitted, not an estimate and not a re-count. A new
-\ row is a routine the native chain emitted and the harness published into code
-\ space: it has no dictionary record, so MEASURE-EMITTED is told the size the
-\ emitter reported. Everything else about the two is measured identically, by
-\ the same words, in the same pass.
+\ it. Both are words of the running dictionary now - the old ones compiled by
+\ the engine when tools/codegen-compare-corpus.f was loaded, the new ones
+\ recompiled by the native chain and republished by
+\ tools/codegen-compare-migrated.f - so MEASURE and MEASURE-NEW read a size the
+\ same way, out of the subject's own dictionary record. The record keeps the code
+\ start address and the code length, so the size is the code that will really
+\ run: not an estimate, not a re-count, and not a number some emitter reported
+\ about a routine nothing published. The one thing that differs is which record
+\ the size is read from, because a new row is named after the corpus word it is
+\ compared against and its code lives under the word that carries it.
 \
-\ EACH PATH IS NORMALIZED AGAINST ITS OWN EMPTY CALL. The two paths are entered
-\ differently - an old row is called as an ordinary Habu word, a new row through
-\ the C-ABI call, because the convention the chain binds is the C one and a Habu
-\ word's own data-stack entry does not exist yet (dot
-\ habu-enter-and-leave-2684e515) - so
-\ the call overhead is not the same on both sides and no subtraction can make it
-\ so. Each path therefore declares its own calibration row, an empty call
-\ entered the same way its other rows are, and every cost is a multiple of that.
-\ A cost is then "how much more than an empty call of this kind", which is the
-\ only sense in which the two columns are comparable; the report prints absolute
-\ nanoseconds for both as well, so a reader can see what was actually measured.
+\ EACH PATH STILL DECLARES ITS OWN EMPTY CALL, AND THE TWO NOW AGREE. Both
+\ columns are entered the way the engine enters any word - the caller's compiled
+\ call site, or the caller with the callee's body copied into it - so the entry
+\ cost is the same on both sides and neither ratio is a different kind of number
+\ from the other. The two calibration rows are kept, and measured, because that
+\ agreement is a fact about the publication seam that can regress: the report
+\ prints both floors and the check compares them. Every cost remains a multiple
+\ of its own path's empty call, which now means the same thing on both sides.
 \
 \ Nothing here compiles anything or reproduces any part of a compiler. The old
 \ subjects were compiled by the engine when their source file was loaded and the
@@ -256,11 +255,16 @@ public
 : MEASURE ( ptr u8 n [ -- ] [ -- ] -- ) {: a:ptr u:n timing vectors :}
    a u PATH-OLD  a u SUBJECT-SIZE  timing vectors RECORD ;
 
-\ Measure a routine the native chain emitted and the caller published. It has no
-\ dictionary record, so the size is the one the emitter reported.
+\ Measure a word the native chain compiled and the publication seam republished.
+\ The row is named after the corpus word it is the head-to-head partner of, and
+\ the size is read off the record of the word that actually carries the new
+\ code - the same reader, on the same kind of record, as the old column's. There
+\ is no way to state a size here: a new row's byte count is whatever the engine
+\ recorded for the word a caller would enter.
 \ typed-local-lint: allow-bare-local - timing and vectors are quotation bodies.
-: MEASURE-EMITTED ( ptr u8 n n [ -- ] [ -- ] -- ) {: a:ptr u:n size:n timing vectors :}
-   a u PATH-NEW size timing vectors RECORD ;
+: MEASURE-NEW ( ptr u8 n ptr u8 n [ -- ] [ -- ] -- )
+   {: a:ptr u:n na:ptr nu:n timing vectors :}
+   a u PATH-NEW  na nu SUBJECT-SIZE  timing vectors RECORD ;
 
 \ Declare the row just measured to be its path's calibration row: every other
 \ row of that path expresses its cost as a multiple of this one. Declared

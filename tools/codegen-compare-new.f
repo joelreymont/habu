@@ -32,35 +32,31 @@
 \ word that needs a branch and a comparison is not unblocked by branches alone,
 \ and a reader planning the next capability should see that.
 \
-\ HOW A COVERED ROW IS CHECKED. The routine the chain emitted is published into
-\ code space and CALLED on the same pinned inputs the old column used, and its
-\ answers are recorded as that row's outputs. The head-to-head check is then an
-\ exact comparison of the two rows' outputs: the same corpus word compiled two
-\ ways has to compute the same thing, and a row where it does not is a finding
-\ the run reports and exits non-zero on. Bytes are exact too.
+\ HOW A COVERED ROW IS CHECKED. The word the chain compiled is CALLED on the same
+\ pinned inputs the old column used, and its answers are recorded as that row's
+\ outputs. The head-to-head check is then an exact comparison of the two rows'
+\ outputs: the same corpus word compiled two ways has to compute the same thing,
+\ and a row where it does not is a finding the run reports and exits non-zero on.
+\ Bytes are exact too, and both columns' byte counts now come off a dictionary
+\ record rather than one off a record and one off an emitter's report.
 \
-\ AND IT IS CALLED THE WAY A HABU WORD IS. The routines are compiled under the
-\ data-stack convention, so the pinned inputs go on the data stack and the
-\ routine is entered by the same branch the interpreter uses (NRUN:ENTER0..3,
-\ whose body is `execute`). The old column's word call is one branch too, so the
-\ two costs are finally about the emitted code rather than about a marshalling
-\ trampoline. One difference is left and is not hidden: the new column's entry
-\ goes through the address on the stack rather than through an address the
-\ engine compiled into the call site, which is one indirect branch more. That is
-\ what each path's own calibration row measures, and the report prints the
-\ absolute nanoseconds of both empty calls so a reader can subtract it.
-\
-\ ONE CONTEXT PER WORD. A module holds about seventeen arenas and the live
-\ registry holds sixty-four, and a covered word builds a source module, a word
-\ model, an immediate table, a tape and a machine module. Each therefore runs
-\ inside its own context, which gives its arenas back when it leaves.
+\ AND IT IS CALLED THE WAY EVERY WORD IS. The new chain's routines are published
+\ as ordinary dictionary words by tools/codegen-compare-migrated.f before this
+\ file is compiled, so a body below names a word and the engine resolves that
+\ call exactly as it resolves the old column's - a direct branch to the callee, or
+\ the callee's body copied into the caller when it is small enough for that.
+\ Nothing here pushes an address, and nothing here executes one. The paragraph
+\ that used to stand at this point, telling a reader that the new column paid one
+\ indirect branch the old one did not, is gone because the difference is gone:
+\ the two calibration rows measure the same kind of call, the report prints both,
+\ and the check reports it as a finding if they drift apart.
 
 require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-core.f
-require tools/codegen-compare-chain.f
 require tools/codegen-compare-corpus.f
+require tools/codegen-compare-migrated.f
 
 package CODEGEN-NEW
 
@@ -85,15 +81,6 @@ private
 
 16 constant GAP-MAX
 6 constant CAP-MAX
-4 constant REGS                   \ registers a straight-line corpus routine may use
-
-\ A routine with control flow needs more, and says why. A block argument and
-\ every value handed to it across an edge are one class holding one register for
-\ the whole span between them, so a loop's carried values each hold a register
-\ from the pre-header to the latch whether or not they are read in between. That
-\ is the conservatism of the hull intervals src/compiler/native/regalloc.f
-\ documents, and it is paid in registers rather than in correctness.
-8 constant LOOP-REGS
 
 GAP-MAX CODEGEN-COMPARE:NAME-MAX * BUFFER: GAP-NAMES
 create GAP-LENS GAP-MAX cells allot
@@ -195,80 +182,57 @@ public
 private
 
 \ ---- the covered words -------------------------------------------------------
-\ Each one states the corpus body as the subset spells it, the declared stack
-\ effect the elaborator is still handed as two counts, and the pinned inputs the
-\ old column used. Nothing below catches: a refusal here means this file claimed
-\ a word was expressible when it is not.
+\ Each row names the corpus word it is compared against, the word that carries
+\ the new chain's code for the same body, and the pinned inputs the old column
+\ used. The bodies themselves are in tools/codegen-compare-migrated.f, which
+\ compiled and published them before this file was compiled - which is why a
+\ call below is an ordinary call to an ordinary word and there is no chain,
+\ context or published address anywhere in it.
 \
-\ The line is the definition WITHOUT its frame - `ADD3 + +`, not `: ADD3 + + ;` -
-\ because that is the shape a real tape has: the engine consumes the opening `:`
-\ and the closing `;` before the checker's reader sees a token, so a produced tape
-\ carries no frame row and the elaborator reads the name/body boundary off the
-\ recorded parser mode. The comment above each body shows the corpus word as it
-\ is really written, so the two can still be held side by side.
+\ NOTHING HERE CATCHES. A word this file names that the migration did not
+\ publish is a claim the comparison made and did not keep, and it must surface as
+\ the missing subject rather than as a row that quietly went away.
 
 \ `: NOOP ( -- ) ;` - the calibration row. It returns nothing, so it has no
-\ result register to check and no output to compare; what it measures is the
-\ floor of a call on this path, which every other new row is divided by.
-: NOOP-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" NOOP" NSRC:TEXT!
-   c 0 0 REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:NOOP" CODEGEN-CHAIN:BYTES
-   [: CODEGEN-CHAIN:FN@ NRUN:ENTER0 ;]
+\ output to compare; what it measures is the floor of a call on this path, which
+\ every other new row is divided by. Both paths' floors are now the same call
+\ into the same kind of record, so the two are expected to agree and the report
+\ prints them side by side.
+: NOOP-CASE ( -- )
+   s" CODEGEN-CORPUS:NOOP" s" CODEGEN-CORPUS:NOOP-N"
+   [: CODEGEN-CORPUS:NOOP-N ;]
    [: ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED
+   CODEGEN-COMPARE:MEASURE-NEW
    CODEGEN-COMPARE:CALIBRATE ;
 
-\ `: ADD3 ( n n n -- n ) + + ;`
-: ADD3-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" ADD3 + +" NSRC:TEXT!
-   c 3 1 REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:ADD3" CODEGEN-CHAIN:BYTES
-   [: 1 2 3 CODEGEN-CHAIN:FN@ NRUN:ENTER3 drop ;]
-   [: 1 2 3 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR
-      -5 5 7 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+: ADD3-CASE ( -- )
+   s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:ADD3-N"
+   [: 1 2 3 CODEGEN-CORPUS:ADD3-N drop ;]
+   [: 1 2 3 CODEGEN-CORPUS:ADD3-N CODEGEN-COMPARE:VECTOR
+      -5 5 7 CODEGEN-CORPUS:ADD3-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: SQUARE-SUM ( n n -- n ) dup * swap dup * + ;` - four renames and three
-\ operations, and the renames are where the new chain stops paying.
-: SQUARE-SUM-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" SQUARE-SUM dup * swap dup * +" NSRC:TEXT!
-   c 2 1 REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:SQUARE-SUM" CODEGEN-CHAIN:BYTES
-   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 drop ;]
-   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR
-      -2 5 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+\ Four renames and three operations, and the renames are where the new chain
+\ stops paying.
+: SQUARE-SUM-CASE ( -- )
+   s" CODEGEN-CORPUS:SQUARE-SUM" s" CODEGEN-CORPUS:SQUARE-SUM-N"
+   [: 3 4 CODEGEN-CORPUS:SQUARE-SUM-N drop ;]
+   [: 3 4 CODEGEN-CORPUS:SQUARE-SUM-N CODEGEN-COMPARE:VECTOR
+      -2 5 CODEGEN-CORPUS:SQUARE-SUM-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: MAX2 ( n n -- n ) 2dup < if swap then drop ;` - the two-way branch. Four
-\ blocks: the entry that compares, the stub the false arm reaches the join
-\ through, the true arm, and the join that takes both arms' two values as its
-\ arguments. It is the smallest word in the corpus whose answer depends on which
-\ way a branch went, so the head-to-head check below - both argument orders, the
-\ same two the old column uses - is what says the branch went the right way.
-: MAX2-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" MAX2 2dup < if swap then drop" NSRC:TEXT!
-   c 2 1 REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:MAX2" CODEGEN-CHAIN:BYTES
-   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 drop ;]
-   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR
-      9 -1 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+\ The two-way branch. It is the smallest word in the corpus whose answer depends
+\ on which way a branch went, so the head-to-head check below - both argument
+\ orders, the same two the old column uses - is what says the branch went the
+\ right way.
+: MAX2-CASE ( -- )
+   s" CODEGEN-CORPUS:MAX2" s" CODEGEN-CORPUS:MAX2-N"
+   [: 3 4 CODEGEN-CORPUS:MAX2-N drop ;]
+   [: 3 4 CODEGEN-CORPUS:MAX2-N CODEGEN-COMPARE:VECTOR
+      9 -1 CODEGEN-CORPUS:MAX2-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: LERP ( n n n -- n ) {: a:n b:n t:n :} b a - t * 100 / a + ;` - the typed
-\ locals frame, and the one word of the corpus that divides. The declaration is
-\ written here exactly as the corpus writes it, annotations and all, because
-\ that is what a produced tape carries: the engine's own reader consumes `{:`,
-\ one `name:type` token per local and `:}`, and test/compiler/native-feed.f
-\ records that grid off a real compilation.
+\ The typed locals frame, and the one word of the corpus that divides.
 \
 \ WHAT MAKES THE TWO PINNED INPUTS A CHECK ON THE BINDING ORDER. `{: a b t :}`
 \ over a stack holding a, b, t must bind a to the DEEPEST value; binding it to
@@ -276,154 +240,113 @@ private
 \ input cannot see it - (10, 20, 50) answers 15 either way, because the
 \ subtraction is symmetric about the midpoint there - and the second one can:
 \ (0, 100, 25) answers 25 with the right binding and 75 with a and b swapped, so
-\ the head-to-head check against the interpreted word catches it.
-: LERP-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" LERP {: a:n b:n t:n :} b a - t * 100 / a +" NSRC:TEXT!
-   c 3 1 REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:LERP" CODEGEN-CHAIN:BYTES
-   [: 10 20 50 CODEGEN-CHAIN:FN@ NRUN:ENTER3 drop ;]
-   [: 10 20 50 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR
-      0 100 25 CODEGEN-CHAIN:FN@ NRUN:ENTER3 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+\ the head-to-head check against the old column catches it.
+: LERP-CASE ( -- )
+   s" CODEGEN-CORPUS:LERP" s" CODEGEN-CORPUS:LERP-N"
+   [: 10 20 50 CODEGEN-CORPUS:LERP-N drop ;]
+   [: 10 20 50 CODEGEN-CORPUS:LERP-N CODEGEN-COMPARE:VECTOR
+      0 100 25 CODEGEN-CORPUS:LERP-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: SUM-TO ( n -- n ) 0 swap 0 ?do i + loop ;` - the counted loop. Seven blocks,
-\ and the one place in the corpus where the loop index is a value the chain
-\ carries in a register rather than a frame the engine pushes.
-: SUM-TO-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" SUM-TO 0 swap 0 ?do i + loop" NSRC:TEXT!
-   c 1 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:SUM-TO" CODEGEN-CHAIN:BYTES
-   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
-   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
-      1 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+\ The counted loop, and the one place in the corpus where the loop index is a
+\ value the chain carries in a register rather than a frame the engine pushes.
+: SUM-TO-CASE ( -- )
+   s" CODEGEN-CORPUS:SUM-TO" s" CODEGEN-CORPUS:SUM-TO-N"
+   [: 16 CODEGEN-CORPUS:SUM-TO-N drop ;]
+   [: 16 CODEGEN-CORPUS:SUM-TO-N CODEGEN-COMPARE:VECTOR
+      1 CODEGEN-CORPUS:SUM-TO-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: COUNT-DOWN ( n -- n ) begin 1- dup 0 <= until ;` - the other loop form, with
-\ the test at the end. The second pinned input is negative, so the loop runs once
-\ and leaves; the first counts all the way down. Between them they measure both
-\ ways out of a back edge.
-: COUNT-DOWN-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" COUNT-DOWN begin 1- dup 0 <= until" NSRC:TEXT!
-   c 1 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:COUNT-DOWN" CODEGEN-CHAIN:BYTES
-   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
-   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
-      -3 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+\ The other loop form, with the test at the end. The second pinned input is
+\ negative, so the loop runs once and leaves; the first counts all the way down.
+\ Between them they measure both ways out of a back edge.
+: COUNT-DOWN-CASE ( -- )
+   s" CODEGEN-CORPUS:COUNT-DOWN" s" CODEGEN-CORPUS:COUNT-DOWN-N"
+   [: 16 CODEGEN-CORPUS:COUNT-DOWN-N drop ;]
+   [: 16 CODEGEN-CORPUS:COUNT-DOWN-N CODEGEN-COMPARE:VECTOR
+      -3 CODEGEN-CORPUS:COUNT-DOWN-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 \ The pinned inputs of the two byte-span words, written here the way every other
 \ covered body writes its pinned inputs: as the literal the old column uses. The
-\ subject text is the one tools/codegen-compare-cases.f measures the interpreted
-\ words on, so the two columns scan the same bytes.
+\ subject text is the one tools/codegen-compare-cases.f measures the old words
+\ on, so the two columns scan the same bytes.
 : SUBJECT$ ( -- ptr u8 n )
    s" habu codegen baseline" ;
 
 : EMPTY$ ( -- ptr u8 n )
    s" " ;
 
-\ `: CELL-BUMP ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;` - the
-\ memory word, written here exactly as the corpus writes it, `BUMP-CELL` and
-\ all. What the chain is told about that name is its address, because the chain
-\ cannot yet ask the engine what a data word is (dot
-\ habu-resolve-a-data-a1c8067f); the address it is told is the corpus's own, so
-\ the routine this column compiles bumps the SAME cell the interpreted word
-\ bumps, and both columns record the cell's contents as an output. That is what
-\ makes the head-to-head check a statement about the store and the load: a
+\ The memory word. Both columns bump the SAME cell - the migrated body names the
+\ corpus's own private cell - and both record its contents as an output. That is
+\ what makes the head-to-head check a statement about the store and the load: a
 \ routine that computed `n 1+` and touched no memory would answer the same two
 \ numbers and fail on the other two.
-: CELL-BUMP-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" CELL-BUMP BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL !" NSRC:TEXT!
-   c s" BUMP-CELL" CODEGEN-CORPUS:BUMP-ADDR 1 1 REGS CODEGEN-CHAIN:CHAIN-DATA
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:CELL-BUMP" CODEGEN-CHAIN:BYTES
-   [: 7 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
-   [: 7 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
+: CELL-BUMP-CASE ( -- )
+   s" CODEGEN-CORPUS:CELL-BUMP" s" CODEGEN-CORPUS:CELL-BUMP-N"
+   [: 7 CODEGEN-CORPUS:CELL-BUMP-N drop ;]
+   [: 7 CODEGEN-CORPUS:CELL-BUMP-N CODEGEN-COMPARE:VECTOR
       CODEGEN-CORPUS:BUMP-CELL@ CODEGEN-COMPARE:VECTOR
-      -1 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
+      -1 CODEGEN-CORPUS:CELL-BUMP-N CODEGEN-COMPARE:VECTOR
       CODEGEN-CORPUS:BUMP-CELL@ CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: BYTE-SUM ( ptr u8 n -- n ) {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop ;` -
-\ byte-width memory inside a loop, which is the first body of the corpus that
+\ Byte-width memory inside a loop, which is the first body of the corpus that
 \ needs the memory order to cross an edge: the load is in the loop body, so the
 \ order the second turn reads is the one the first turn left, and it reaches the
 \ body as a block argument. The two pinned inputs are the subject text and an
 \ EMPTY span, so the zero-trip path out of a `?do` is measured as well as the
 \ counting one - and on the empty span the loop body never runs, which is the
 \ case a routine that ordered its accesses wrongly could still get right.
-: BYTE-SUM-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" BYTE-SUM {: a:ptr u:n :} 0 u 0 ?do i a + c@ + loop" NSRC:TEXT!
-   c 2 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:BYTE-SUM" CODEGEN-CHAIN:BYTES
-   [: SUBJECT$ CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN drop ;]
-   [: SUBJECT$ CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN CODEGEN-COMPARE:VECTOR
-      EMPTY$ CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+: BYTE-SUM-CASE ( -- )
+   s" CODEGEN-CORPUS:BYTE-SUM" s" CODEGEN-CORPUS:BYTE-SUM-N"
+   [: SUBJECT$ CODEGEN-CORPUS:BYTE-SUM-N drop ;]
+   [: SUBJECT$ CODEGEN-CORPUS:BYTE-SUM-N CODEGEN-COMPARE:VECTOR
+      EMPTY$ CODEGEN-CORPUS:BYTE-SUM-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: FACT ( n -- n ) dup 1 <= if drop 1 exit then dup 1- RECURSE * ;` - the
-\ recursion, which is also the plain word-call-and-return shape. It is the one
-\ corpus word whose routine is not a leaf: it reserves a frame and puts its
+\ The recursion, which is also the plain word-call-and-return shape. It is the
+\ one corpus word whose routine is not a leaf: it reserves a frame and puts its
 \ caller's return address in it, because the first call would otherwise destroy
 \ it, and every value it still needs crosses the call on its own data stack,
 \ because no register of the caller survives a call to a routine whose contract
 \ destroys the whole pool. The two pinned inputs are the two ways through - ten
-\ recurses ten deep, one takes the base-case arm and never calls at all - and
-\ both are compared against the interpreted word.
-: FACT-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" FACT dup 1 <= if drop 1 exit then dup 1- RECURSE *" NSRC:TEXT!
-   c 1 1 LOOP-REGS CODEGEN-CHAIN:CHAIN-CALL
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:FACT" CODEGEN-CHAIN:BYTES
-   [: 10 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
-   [: 10 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
-      0 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+\ recurses ten deep, one takes the base-case arm and never calls at all.
+: FACT-CASE ( -- )
+   s" CODEGEN-CORPUS:FACT" s" CODEGEN-CORPUS:FACT-N"
+   [: 10 CODEGEN-CORPUS:FACT-N drop ;]
+   [: 10 CODEGEN-CORPUS:FACT-N CODEGEN-COMPARE:VECTOR
+      0 CODEGEN-CORPUS:FACT-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
-\ `: BYTE-FIND ( ptr u8 n n -- n ) {: a:ptr u:n c:n :}
-\      u 0 ?do i a + c@ c = if i unloop exit then loop -1 ;` - the byte scan that
-\ leaves from the middle of its loop. Three capabilities meet in it: the byte
-\ load, the memory order crossing the loop edge, and `exit`, which branches to
-\ the block the return is in rather than returning a second time. The two pinned
-\ inputs are a byte that IS in the subject text and one that is not, so both ways
-\ out are measured - the early one and the one that runs the loop to its end and
-\ answers the miss.
+\ The byte scan that leaves from the middle of its loop. Three capabilities meet
+\ in it: the byte load, the memory order crossing the loop edge, and `exit`,
+\ which branches to the block the return is in rather than returning a second
+\ time. The two pinned inputs are a byte that IS in the subject text and one that
+\ is not, so both ways out are measured - the early one and the one that runs the
+\ loop to its end and answers the miss.
 103 constant LETTER-G                \ present in the subject text
 122 constant LETTER-Z                \ absent from it
 
-: BYTE-FIND-BODY ( IR-CTX:ctx -- )
-   {: c:IR-CTX:ctx :}
-   s" BYTE-FIND {: a:ptr u:n c:n :} u 0 ?do i a + c@ c = if i unloop exit then loop -1"
-   NSRC:TEXT!
-   c 3 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
-   CODEGEN-CHAIN:PUBLISH!
-   s" CODEGEN-CORPUS:BYTE-FIND" CODEGEN-CHAIN:BYTES
-   [: SUBJECT$ LETTER-G CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN1 drop ;]
-   [: SUBJECT$ LETTER-G CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN1 CODEGEN-COMPARE:VECTOR
-      SUBJECT$ LETTER-Z CODEGEN-CHAIN:FN@ NRUN:ENTER-SPAN1 CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+: BYTE-FIND-CASE ( -- )
+   s" CODEGEN-CORPUS:BYTE-FIND" s" CODEGEN-CORPUS:BYTE-FIND-N"
+   [: SUBJECT$ LETTER-G CODEGEN-CORPUS:BYTE-FIND-N drop ;]
+   [: SUBJECT$ LETTER-G CODEGEN-CORPUS:BYTE-FIND-N CODEGEN-COMPARE:VECTOR
+      SUBJECT$ LETTER-Z CODEGEN-CORPUS:BYTE-FIND-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 : COVERED-CASES ( -- )
-   NFIX:BINDING [: NOOP-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: ADD3-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: SQUARE-SUM-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: MAX2-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: LERP-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: SUM-TO-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: COUNT-DOWN-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: CELL-BUMP-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: BYTE-SUM-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: BYTE-FIND-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT ;
+   NOOP-CASE
+   ADD3-CASE
+   SQUARE-SUM-CASE
+   MAX2-CASE
+   LERP-CASE
+   SUM-TO-CASE
+   COUNT-DOWN-CASE
+   CELL-BUMP-CASE
+   BYTE-SUM-CASE
+   BYTE-FIND-CASE
+   FACT-CASE ;
 
 \ ---- the words the subset cannot express yet ---------------------------------
 \ None. Every word of the corpus is compiled by the chain, so the gap list is

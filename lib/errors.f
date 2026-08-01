@@ -1017,3 +1017,26 @@ public
 -8550 constant E-NELAB-CALL     \ a self-call the elaborator has no rule for: fewer values on the compile-time vector than the word declares it takes, more values live across the call than the vector can hold afterwards, or a call reached with no memory order live
 -8551 constant E-A64SEL-CALL    \ a call the selector has no lowering for: a routine whose convention names no data-stack place, a routine contract that does not declare that this routine calls, a contract declaring a call in a module that contains none, a frame too small to hold the saved link register, or a call whose operand and result lists disagree about how many values are live across it
 -8552 constant E-A64RAV-CALL    \ a call site that is not the sequence the dialect lowers a call to: a store run that does not name slots zero upwards in order, a byte count that is not the run it stands for, or a saved link register the module does not restore from the slot it saved it into
+
+\ Native publication: -8560..-8579
+\
+\ An emission becomes a word the engine's callers can reach by taking a slice of
+\ the engine's own code arena and pointing an existing dictionary record at it.
+\ Two owners add facts here: the publication seam, which claims the code space
+\ and rewrites the record, and the migration entry, which is what runs the chain
+\ for one named definition. A refusal another authority already owns keeps that
+\ authority's name: an emission that no accepted allocation stands behind is
+\ still A64EMIT's E-A64EMIT-ALLOC, a reader before the seal is E-A64EMIT-STATE,
+\ a body the dialect cannot compile is E-HIR-UNMODELED, and a code address the
+\ engine will not write to is the engine's own sealed exit rather than a throw.
+-8560 constant E-NPUB-NAME    \ a name this seam cannot republish: no such word, a retired record, a package or namespace record, an engine-internal word, or an immediate word whose callers are the compiler rather than the running program
+-8561 constant E-NPUB-ROOM    \ the emission does not fit in what is left of the code arena under the engine's own end reserve
+-8562 constant E-NPUB-SIZE    \ an emission that cannot be a word body: no instructions at all, or a byte size that is not a whole number of instructions
+-8563 constant E-NPUB-OFFSET  \ an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned
+-8564 constant E-NPUB-CAP     \ more republished words than the seam's replacement log holds
+-8565 constant E-NPUB-LOG     \ a replacement asked about a word the log has no row for
+
+-8570 constant E-NMIGRATE-STATE   \ a migration reached while another one is open: the recorder takes one definition at a time
+-8571 constant E-NMIGRATE-TEXT    \ definition source longer than the recorder's text buffer, or a name longer than the log holds
+-8572 constant E-NMIGRATE-VERDICT \ the engine's own check did not certify the definition, so there is no checked word to migrate
+-8573 constant E-NMIGRATE-NAME    \ the definition the source published is not the name the caller asked to migrate: the newest dictionary record carries another name

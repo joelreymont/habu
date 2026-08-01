@@ -36,6 +36,7 @@
 \ fixture, not a test, so it never names the harness verdict word and no gate
 \ schedules it on its own.
 
+require src/compiler/native/abi.f
 require src/compiler/native/select.f
 require src/compiler/native/emit.f
 require src/compiler/native/spill.f
@@ -45,10 +46,12 @@ package NFIX
 private
 
 \ ---- the routine contract ----------------------------------------------------
+\ The register pool and the two Habu-word contracts belong to the convention
+\ itself, not to this fixture: src/compiler/native/abi.f states them once so the
+\ suites and the publication seam answer about one convention. What is left here
+\ is the C ABI, which only this fixture's callers use.
 : POOL ( n n -- A64EFF:gprs )
-   {: base:n n:n :}
-   A64EFF:GPR-NONE
-   n 0 ?do base i + A64EFF:GPR-REG A64EFF:GPR-WITH loop ;
+   NABI:POOL ;
 
 : LEAF-OF ( A64EFF:gprs -- A64EFF:routine )
    {: pool:A64EFF:gprs :}
@@ -113,14 +116,10 @@ public
 
 \ The AArch64 Darwin binding these chain runs are made under. Overflow wraps,
 \ which is what ARM64's add, sub and mul do; a trapping unit is refused by the
-\ selector and has its own case in the selection suite.
+\ selector and has its own case in the selection suite. It is the compiler's own
+\ binding, stated in src/compiler/native/abi.f.
 : BINDING ( -- CBIND:binding )
-   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
-   CTARGET-PTR--WIDTH:BITS64
-   CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH CTARGET:CONTRACT
-   CNUM-OVERFLOW:WRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
-   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
-   CBIND:BIND ;
+   NABI:BINDING ;
 
 \ A leaf routine of `n` registers from the pool that starts at register zero.
 : LEAF-N ( n -- A64EFF:routine )
@@ -160,52 +159,23 @@ public
 
 \ ---- the convention a Habu word is entered and left through ------------------
 \ Design section 7.6: an externally callable Habu word takes argument i out of
-\ data-stack slot i of the caller's stack and leaves result j in slot j. That is
-\ the whole declaration, and it is the same shape on both sides, so one word
-\ builds either list.
-: SLOT-SEQ ( n -- A64EFF:placeseq )
-   {: n:n :}
-   A64EFF:SEQ-NONE
-   n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
-
-\ A leaf routine under that convention. No register is part of the interface -
-\ everything arrives and leaves through the caller's stack - so the pool is
-\ exactly the `n` scratch registers from `base` and the whole of it is declared
-\ destroyed. The engine's own data-stack register can never be one of them:
-\ src/compiler/a64-effect.f keeps it out of every general-register set, so a
-\ contract that handed it out cannot be built at all.
-: LEAF-HABU ( n n n n -- A64EFF:routine )
-   {: base:n n:n in:n out:n :}
-   in SLOT-SEQ  out SLOT-SEQ
-   base n POOL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
-
-\ The same convention for a routine that CALLS - which, for now, means a routine
-\ that calls itself. Two fields change and neither is decoration. `traits` gains
-\ the direct-call bit, which is the declaration the selector builds the frame and
-\ the link save from and the validator measures them against; and `frame` becomes
-\ one slot, rounded up to the stack alignment, because that is where the caller's
-\ return address goes. `link preserved` does not change, and that is the point:
-\ it was true of a leaf for nothing, and a routine that calls has to MAKE it true
-\ by saving x30 and putting it back before it returns.
+\ data-stack slot i of the caller's stack and leaves result j in slot j. Both
+\ contracts under it - the leaf and the one that calls - are stated in
+\ src/compiler/native/abi.f, because the publication seam has to build the same
+\ two and a second copy would be a second convention.
 \
-\ THE FRAME IS ONE SLOT AND NOT MORE, so nothing but the return address is in it.
-\ A routine of more than one block cannot spill at all, so there is no second
-\ claimant on it; a single-block routine that both called and spilled would have
-\ the allocator hand slot zero to a value, and the validator refuses the second
-\ write to one slot by name. Dot habu-give-the-routine-679de563 gives the frame one
-\ owner that reserves the link slot before the allocator places anything.
-A64EFF:SP-ALIGN constant CALL-FRAME
+\ THE FRAME OF A CALLING ROUTINE IS ONE SLOT AND NOT MORE, so nothing but the
+\ return address is in it. A routine of more than one block cannot spill at all,
+\ so there is no second claimant on it; a single-block routine that both called
+\ and spilled would have the allocator hand slot zero to a value, and the
+\ validator refuses the second write to one slot by name. Dot
+\ habu-give-the-routine-679de563 gives the frame one owner that reserves the link
+\ slot before the allocator places anything.
+: LEAF-HABU ( n n n n -- A64EFF:routine )
+   NABI:LEAF ;
 
 : CALL-HABU ( n n n n -- A64EFF:routine )
-   {: base:n n:n in:n out:n :}
-   in SLOT-SEQ  out SLOT-SEQ
-   base n POOL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL CALL-FRAME 0 A64EFF:ROUTINE ;
+   NABI:CALL ;
 
 \ Allocate registers for a frozen machine module, have the validator accept the
 \ allocation, and emit. Nothing here emits from a claim the validator has not

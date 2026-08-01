@@ -326,6 +326,21 @@ SUITE compiler-native-emit
    test/compiler/native-emit.f
 ;SUITE
 
+\ The publication seam: what a republished dictionary record holds, and what the
+\ seam refuses. It runs before the chain's own end-to-end suite because a
+\ republication it got wrong would show up there as a word that computes the
+\ wrong thing several stages away from the cause.
+SUITE compiler-native-publish
+   test/compiler/native-publish.f
+;SUITE
+
+\ The production entry: a definition the engine compiles, recompiled by the
+\ chain and republished under its own name, plus what happens to a word the
+\ chain cannot compile.
+SUITE compiler-native-migrate
+   test/compiler/native-migrate.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.

@@ -282,6 +282,12 @@ public
 : COSTS-UNCHECKED! ( -- )
    0 COSTS? ! ;
 
+\ Whether this run compares timings at all. The caller that decides also has to
+\ leave every other timed check out of an untimed run, so the decision is read
+\ back here rather than taken twice.
+: COSTS-CHECKED? ( -- bool )
+   COSTS? @ 0<> ;
+
 : PATH$ ( -- ptr u8 n )
    s" test/compiler/codegen-compare-baseline.txt" ;
 

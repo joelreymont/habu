@@ -402,40 +402,40 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
 0 constant OLD-NOOP-ROW
 1 constant OLD-ADD3-ROW
 
-4 constant EMPTY-BYTES            \ what the new chain really emits for an empty word
-12 constant ADD3-BYTES            \ and for the three-argument sum
-
-\ An empty new call, so the new path has the calibration row every other new row
-\ is divided by. Nothing is timed here that the real pass does not time.
+\ The fixtures below build new rows whose ANSWERS are stated, so what they
+\ exercise is the head-to-head comparison rather than a compiler. Their byte
+\ counts are not stated: a new row's size comes off the record of the word that
+\ carries the new chain's code, so these name the real migrated words and read
+\ the real sizes, exactly as the production pass does.
 : NEW-CALIBRATION-CASE ( -- )
-   s" CODEGEN-CORPUS:NOOP" EMPTY-BYTES
+   s" CODEGEN-CORPUS:NOOP" s" CODEGEN-CORPUS:NOOP-N"
    [: ;]
    [: ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED
+   CODEGEN-COMPARE:MEASURE-NEW
    CODEGEN-COMPARE:CALIBRATE ;
 
 \ A new row that answers exactly what the old row answered.
 : NEW-HONEST-CASE ( -- )
-   s" CODEGEN-CORPUS:ADD3" ADD3-BYTES
+   s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:ADD3-N"
    [: ;]
    [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR
       OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 \ The same row with one answer moved by one.
 : NEW-WRONG-CASE ( -- )
-   s" CODEGEN-CORPUS:ADD3" ADD3-BYTES
+   s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:ADD3-N"
    [: ;]
    [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR
       OLD-ADD3-ROW 1 CODEGEN-COMPARE:OUTPUT 1+ CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 \ And one that answers a value short.
 : NEW-SHORT-CASE ( -- )
-   s" CODEGEN-CORPUS:ADD3" ADD3-BYTES
+   s" CODEGEN-CORPUS:ADD3" s" CODEGEN-CORPUS:ADD3-N"
    [: ;]
    [: OLD-ADD3-ROW 0 CODEGEN-COMPARE:OUTPUT CODEGEN-COMPARE:VECTOR ;]
-   CODEGEN-COMPARE:MEASURE-EMITTED ;
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 \ typed-local-lint: allow-bare-local - build is the case body being measured.
 : MEASURE-WITH ( [ -- ] -- ) {: build :}
