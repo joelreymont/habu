@@ -8,15 +8,17 @@
 \ "the new column has fewer rows" can only ever mean "these named capabilities
 \ are missing", never "the harness quietly stopped looking".
 \
-\ WHAT THE STRAIGHT-LINE SUBSET IS TODAY. src/compiler/native/hir-word.f declares
-\ nine source words - `+ - *` and the six renames `dup drop swap over nip rot` -
-\ plus integer literals, and src/compiler/native/hir.f gives the dialect five
-\ operations. A word of the corpus is expressible exactly when its body is those
-\ words and nothing else. Three of the eleven are: the empty word, the
-\ three-argument sum, and the sum of two squares, which is the one that shows the
-\ renames costing nothing at all.
+\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares twenty source
+\ words - `+ - * < <=`, `1-`, the seven structured control words
+\ `if then begin until ?do loop i`, and the seven renames
+\ `2dup dup drop swap over nip rot` - plus integer literals, and
+\ src/compiler/native/hir.f gives the dialect nine operations. A word of the
+\ corpus is expressible exactly when its body is those words and nothing else.
+\ Six of the eleven are: the empty word, the three-argument sum, the sum of two
+\ squares - which is the one that shows the renames costing nothing at all - the
+\ two-way branch, and both loop forms.
 \
-\ THE CAPABILITIES THE OTHER EIGHT WAIT FOR are the vocabulary below, and each
+\ THE CAPABILITIES THE OTHER FIVE WAIT FOR are the vocabulary below, and each
 \ gap row names every one it needs rather than the first that stops it - a word
 \ that needs a branch and a comparison is not unblocked by branches alone, and a
 \ reader planning the next capability should see that.
@@ -73,7 +75,15 @@ private
 
 16 constant GAP-MAX
 6 constant CAP-MAX
-4 constant REGS                   \ registers a corpus routine may use
+4 constant REGS                   \ registers a straight-line corpus routine may use
+
+\ A routine with control flow needs more, and says why. A block argument and
+\ every value handed to it across an edge are one class holding one register for
+\ the whole span between them, so a loop's carried values each hold a register
+\ from the pre-header to the latch whether or not they are read in between. That
+\ is the conservatism of the hull intervals src/compiler/native/regalloc.f
+\ documents, and it is paid in registers rather than in correctness.
+8 constant LOOP-REGS
 
 GAP-MAX CODEGEN-COMPARE:NAME-MAX * BUFFER: GAP-NAMES
 create GAP-LENS GAP-MAX cells allot
@@ -226,20 +236,64 @@ private
       -2 5 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
+\ `: MAX2 ( n n -- n ) 2dup < if swap then drop ;` - the two-way branch. Four
+\ blocks: the entry that compares, the stub the false arm reaches the join
+\ through, the true arm, and the join that takes both arms' two values as its
+\ arguments. It is the smallest word in the corpus whose answer depends on which
+\ way a branch went, so the head-to-head check below - both argument orders, the
+\ same two the old column uses - is what says the branch went the right way.
+: MAX2-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" MAX2 2dup < if swap then drop" NSRC:TEXT!
+   c 2 1 REGS CODEGEN-CHAIN:CHAIN
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:MAX2" CODEGEN-CHAIN:BYTES
+   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 drop ;]
+   [: 3 4 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR
+      9 -1 CODEGEN-CHAIN:FN@ NRUN:ENTER2 CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
+\ `: SUM-TO ( n -- n ) 0 swap 0 ?do i + loop ;` - the counted loop. Seven blocks,
+\ and the one place in the corpus where the loop index is a value the chain
+\ carries in a register rather than a frame the engine pushes.
+: SUM-TO-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" SUM-TO 0 swap 0 ?do i + loop" NSRC:TEXT!
+   c 1 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:SUM-TO" CODEGEN-CHAIN:BYTES
+   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
+   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
+      1 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
+\ `: COUNT-DOWN ( n -- n ) begin 1- dup 0 <= until ;` - the other loop form, with
+\ the test at the end. The second pinned input is negative, so the loop runs once
+\ and leaves; the first counts all the way down. Between them they measure both
+\ ways out of a back edge.
+: COUNT-DOWN-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" COUNT-DOWN begin 1- dup 0 <= until" NSRC:TEXT!
+   c 1 1 LOOP-REGS CODEGEN-CHAIN:CHAIN
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:COUNT-DOWN" CODEGEN-CHAIN:BYTES
+   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
+   [: 16 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
+      -3 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
 : COVERED-CASES ( -- )
    NFIX:BINDING [: NOOP-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: ADD3-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: SQUARE-SUM-BODY ;] IR-CTX:WITH-CONTEXT ;
+   NFIX:BINDING [: SQUARE-SUM-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: MAX2-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: SUM-TO-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: COUNT-DOWN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the words the subset cannot express yet ---------------------------------
 : GAP-CASES ( -- )
-   s" CODEGEN-CORPUS:MAX2" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-      CODEGEN--NEW-CAP:COMPARISON GAP-ALSO
    s" CODEGEN-CORPUS:LERP" CODEGEN--NEW-CAP:LOCALS GAP
       CODEGEN--NEW-CAP:DIVISION GAP-ALSO
-   s" CODEGEN-CORPUS:SUM-TO" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-   s" CODEGEN-CORPUS:COUNT-DOWN" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
-      CODEGEN--NEW-CAP:COMPARISON GAP-ALSO
    s" CODEGEN-CORPUS:FACT" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
       CODEGEN--NEW-CAP:CALLS GAP-ALSO
       CODEGEN--NEW-CAP:COMPARISON GAP-ALSO
