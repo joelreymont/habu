@@ -9,22 +9,48 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Nine opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Twelve opcodes, and nothing else:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
 \   hir.mul       integer multiplication
 \   hir.lt        signed less-than, answering a Habu flag
 \   hir.le        signed less-than-or-equal, answering a Habu flag
+\   hir.mem       the memory the definition is entered with
+\   hir.load      read one cell from an address the program computed
+\   hir.store     write one cell to an address the program computed
 \   hir.br        go on to one block, handing it the live values
 \   hir.brz       go on to one of two blocks, on whether a value is zero
 \   hir.return    leave the function with the word's outputs
 \ That is exactly what section 7.2's list needs for a colon body with no
-\ control flow, no calls, no locals, no memory and no strings. Section 7.2 names
-\ many more operations - `if`, `loop`, `quotation`, `execute`, `catch` and the
-\ rest - and every one of them is a later leaf of the same chain. An opcode with
-\ no elaborator, no lowering and no test would be a promise, not a schema, so
-\ none is declared here.
+\ control flow, no calls, no locals and no strings. Section 7.2 names many more
+\ operations - `quotation`, `execute`, `catch` and the rest - and every one of
+\ them is a later leaf of the same chain. An opcode with no elaborator, no
+\ lowering and no test would be a promise, not a schema, so none is declared
+\ here.
+\
+\ WHY MEMORY NEEDS THREE OPCODES AND NOT TWO. A load and a store say what a
+\ program does to memory; they do not say in which order it does it, and the
+\ order is the whole of what `!` then `@` to one address means. In an SSA module
+\ an order is a value: each access takes the memory as it stood and answers the
+\ memory as it now stands, so a load written after a store reads that store's
+\ answer and no later pass may lift it above. That value has to start somewhere,
+\ and hir.mem is where - it is the memory the definition is entered with. It
+\ computes nothing, reads nothing and writes nothing, so it is declared pure and
+\ carries only the token it mints; src/compiler/native/select.f gives it no
+\ instruction at all, because on this machine the routine's memory order already
+\ begins where the routine takes the caller's operands.
+\
+\ THE ADDRESS IS AN OPERAND, WHICH IS WHY THIS IS NOT THE FRAME. The two memory
+\ forms of the machine dialect that existed before this one reach a frame slot,
+\ whose base is the stack pointer and whose offset is a field of the
+\ instruction - nothing the program computes. These two reach wherever the
+\ program says: the address is an ordinary value of this dialect, defined by
+\ whatever computed it, so `BUMP-CELL @` and `a i + c@` are the same shape with
+\ different arithmetic in front of them. The effect is therefore declared in the
+\ generic address space with unrestricted aliasing: an address a program
+\ computed may name any cell it can reach, and a dialect that claimed otherwise
+\ would license a reordering nothing proved.
 \
 \ WHY DUP, DROP, SWAP AND OVER ARE NOT OPCODES. Section 7.3 line 758 is explicit:
 \ those words "produce no SIR operation and therefore no runtime instruction",
@@ -90,6 +116,9 @@ ENUM opcode DERIVE eq
    mul
    lt
    le
+   mem
+   load
+   store
    br
    brz
    return
@@ -122,12 +151,19 @@ ENUM ctrl DERIVE eq
 \ checked source may not compile yet. src/compiler/native/hir-word.f is the
 \ table that binds a word to one of them; the vocabulary lives here because it
 \ is the dialect's, not the table's.
+\ `fixed` is the meaning of a word that pushes one value and nothing else, which
+\ is what a `create`d data word does: its address is decided once, when the word
+\ is created, and every mention of it is that number. The row carries the value,
+\ so the caller that builds the word model states it - the address of a data
+\ word in this process is not something this dialect can look up yet, and dot
+\ habu-resolve-a-data-a1c8067f is where that lookup lands.
 ENUM meaning DERIVE eq
    literal
    op
    const-op
    control
    rename
+   fixed
    unmodeled
 ;ENUM
 
@@ -184,6 +220,9 @@ public
       mul    OF s" hir.mul"    ENDOF
       lt     OF s" hir.lt"     ENDOF
       le     OF s" hir.le"     ENDOF
+      mem    OF s" hir.mem"    ENDOF
+      load   OF s" hir.load"   ENDOF
+      store  OF s" hir.store"  ENDOF
       br     OF s" hir.br"     ENDOF
       brz    OF s" hir.brz"    ENDOF
       return OF s" hir.return" ENDOF
@@ -195,6 +234,16 @@ public
 \ nothing, and IR-OP refuses one that omits it.
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.value" IR-BUILD:INTERN-SYMBOL ;
+
+\ ---- the type of the memory order --------------------------------------------
+\ The order of the definition's memory accesses, as a value they pass along. It
+\ lives in no register and stands for no number: it is what makes "this load
+\ happens after that store" a dependency the module holds rather than a property
+\ of the printed order. Every stage that has to tell a general value from an
+\ ordering value reads this identity, which is why it is one public reader here
+\ rather than a type interned at each use site.
+: MEM-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
+   IR--TYPE-DOMAIN:DATA-MEM IR-BUILD:INTERN-TOKEN ;
 
 private
 
@@ -212,6 +261,9 @@ private
       mul    OF s" hir.rule.mul"    ENDOF
       lt     OF s" hir.rule.lt"     ENDOF
       le     OF s" hir.rule.le"     ENDOF
+      mem    OF s" hir.rule.mem"    ENDOF
+      load   OF s" hir.rule.load"   ENDOF
+      store  OF s" hir.rule.store"  ENDOF
       br     OF s" hir.rule.br"     ENDOF
       brz    OF s" hir.rule.brz"    ENDOF
       return OF s" hir.rule.return" ENDOF
@@ -226,6 +278,9 @@ private
       mul    OF s" hir.render.mul"    ENDOF
       lt     OF s" hir.render.lt"     ENDOF
       le     OF s" hir.render.le"     ENDOF
+      mem    OF s" hir.render.mem"    ENDOF
+      load   OF s" hir.render.load"   ENDOF
+      store  OF s" hir.render.store"  ENDOF
       br     OF s" hir.render.br"     ENDOF
       brz    OF s" hir.render.brz"    ENDOF
       return OF s" hir.render.return" ENDOF
@@ -280,6 +335,71 @@ private
    false IR-SCHEMA:SET-TRAP
    TARGET
    c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ ---- the memory forms --------------------------------------------------------
+\ Design lines 238 and 239: an operation that touches memory declares the domain,
+\ the address space and the alias behaviour, and carries the token that orders it
+\ against the others. The address these two forms reach is a value the program
+\ computed, so it may name any cell the program can reach: the space is the
+\ generic one and the aliasing is unrestricted, which is the declaration that
+\ forbids a later pass from moving a load across a store to "another" address it
+\ cannot prove is another.
+: GENERIC-MEM ( IR-SCHEMA:effect -- )
+   {: e:IR-SCHEMA:effect :}
+   false 0 0 IR-SCHEMA:SET-CONTROL
+   IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
+
+\ The memory the definition is entered with. It reads nothing and writes
+\ nothing - it is where the order STARTS, not an access - so it is declared pure
+\ and its whole content is the token it mints. Being pure is what lets it carry
+\ a token result with no token operand: there is nothing before it to take one
+\ from.
+: DEF-MEM ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:MEM OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:MEM NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Reading one cell: the address, and the memory as it stands. It answers the
+\ cell's contents and the memory it read them out of, so the access after it
+\ takes that answer and cannot be lifted above this one. The token is the LAST
+\ operand and the LAST result of both forms, which is this dialect's own
+\ convention and is why src/compiler/native/elaborate.f finds it by TYPE rather
+\ than by position.
+: DEF-LOAD ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:LOAD OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:READ GENERIC-MEM
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:LOAD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Writing one cell: the value, the address, and the memory as it stands. Forth
+\ writes `value address !`, so the value is the deeper of the two on the data
+\ stack and therefore the first operand - the same rule every other binary
+\ operation of this dialect follows, and the reason a swapped pair is a wrong
+\ program rather than a wrong index.
+: DEF-STORE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:STORE OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:WRITE GENERIC-MEM
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:STORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Going on to one block, handing it the values that are still live. Design lines
@@ -372,12 +492,16 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder :}
    c b DIALECT-CK
    c b CELL-TYPE {: t:IR-ID:ir-type-id :}
+   c b MEM-TYPE {: k:IR-ID:ir-type-id :}
    c b t DEF-CONST
    c b t HIR-OPCODE:ADD DEF-BINARY
    c b t HIR-OPCODE:SUB DEF-BINARY
    c b t HIR-OPCODE:MUL DEF-BINARY
    c b t HIR-OPCODE:LT DEF-COMPARE
    c b t HIR-OPCODE:LE DEF-COMPARE
+   c b k DEF-MEM
+   c b t k DEF-LOAD
+   c b t k DEF-STORE
    c b t DEF-BR
    c b t DEF-BRZ
    c b t DEF-RETURN ;

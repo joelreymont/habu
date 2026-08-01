@@ -972,3 +972,17 @@ public
 -8507 constant E-A64RA-EDGE     \ a block argument and the values handed to it across an edge cannot share one register: two of them are live at the same time, or the edge hands over a different number of values than the destination takes
 -8508 constant E-A64RA-SPILL    \ a routine of more than one block needs a value put in a frame slot, and a spill decision cannot yet name the block it belongs in
 -8509 constant E-A64RAV-EDGE    \ the same edge rule, re-derived: an assignment in which the register holding a terminator's operand is not the register holding the successor's block argument at that position
+
+\ Native ARM64 memory access: -8520..-8539
+\
+\ A colon body that reads or writes a cell of memory needs two things no earlier
+\ leaf had: an ordering value that says which access happens before which, and a
+\ load and a store whose address is a value the program computed rather than a
+\ pointer the instruction form names. The source dialect gained the order and
+\ the two words, and the machine dialect gained the two forms. These are the
+\ facts those owners add. A refusal another authority already owns keeps that
+\ authority's name: a source word the dialect cannot compile is still
+\ E-HIR-UNMODELED, a row read as a meaning it does not carry is E-HIR-CLASS, and
+\ an address operand outside the field it lands in is the assembler's.
+-8520 constant E-NELAB-TOKEN    \ an operation whose schema declares more than one memory token among its operands or among its results: the elaborator threads one order and has no rule for two
+-8521 constant E-A64SEL-MEM     \ a memory operation in a routine whose convention names no data-stack place at all: the generic memory order of this dialect begins where the routine takes the caller's operands, and a routine that takes and publishes nothing has no beginning for it

@@ -40,12 +40,30 @@ require lib/prelude.f
 
 package CODEGEN-CORPUS
 
-\ CELL-BUMP needs one cell of storage of its own. It is private: nothing outside
-\ this file may read or write it, so the word's behaviour cannot be disturbed
-\ from elsewhere between the correctness run and the timing runs.
+\ CELL-BUMP needs one cell of storage of its own, and it is the corpus's: no
+\ other word in the process writes it except the routine the new code generator
+\ compiles for the very same body, which is the point - both columns of the
+\ comparison bump THIS cell, so the harness verifies one piece of memory instead
+\ of two that merely look alike. That is safe against the timing runs for the
+\ reason the body itself gives: CELL-BUMP stores its argument before it reads
+\ anything, so what it answers never depends on what the cell held before.
 create BUMP-CELL 1 cells allot
 
 public
+
+\ The cell's address as the number a code generator has to materialise, and its
+\ contents. The address is a named unchecked boundary and the only one in this
+\ file: the checker gives a `create`d word the type `ptr a`, deliberately, so
+\ that a pointer cannot be done arithmetic on by accident, and there is no
+\ checked way to say "the number that pointer is" - which is exactly what a
+\ compiler needs of a data word. Dot habu-resolve-a-data-a1c8067f is the
+\ capability that retires it: when the chain can ask the engine what a data word
+\ is, the harness stops naming the address at all. The reader beside it is
+\ ordinary checked Habu, and it is what both columns verify the bump through.
+TRUSTED: BUMP-ADDR ( -- n ) BUMP-CELL ;
+
+: BUMP-CELL@ ( -- n )
+   BUMP-CELL @ ;
 
 : NOOP ( -- )
    ;

@@ -111,10 +111,10 @@ private
    A64IR:SLOT-WIDTH 8 T= ;
 
 \ ---- registration ------------------------------------------------------------
-\ The fifteen opcodes, and the count, so "nothing else was defined" is measured
-\ rather than assumed. The eleven the register conventions use are here; the four
-\ that reach the caller's data stack are checked in DSTACK-SPELL-CASE below, and
-\ the count covers all eighteen.
+\ The opcodes, and the count, so "nothing else was defined" is measured rather
+\ than assumed. The fourteen the register conventions use are here; the four that
+\ reach the caller's data stack are checked in DSTACK-SPELL-CASE below and the
+\ two addressed forms in ADDR-SHAPE-CASE, and the count covers all twenty.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -150,10 +150,10 @@ private
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the eighteen machine opcodes" T-LABEL
+   s" registration defines exactly the twenty machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE 18 T= ;
+   TTRUE TTRUE TTRUE TTRUE 20 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -376,6 +376,57 @@ private
    TTRUE TFALSE TFALSE 0 T= 1 T= 1 T= 0 T=
    TTRUE TTRUE TTRUE 2 T= 1 T=
    TTRUE TTRUE TTRUE TTRUE 1 T= 1 T= 2 T= ;
+
+\ ---- the declared shapes of the two addressed forms --------------------------
+\ These are the forms whose base is a value, so what has to be asserted is
+\ exactly the two things a frame access does not have: an address OPERAND, and no
+\ slot attribute at all. The load takes the address then the order and answers
+\ the loaded register then the order; the store takes the value, the address and
+\ the order and answers the order. Both are in the generic space with
+\ unrestricted aliasing, which is the declaration that puts them on one chain
+\ with the data-stack forms - and the data-stack store is read back here beside
+\ them, because an unaliased data stack next to an unrestricted addressed store
+\ would be the module claiming an independence it has no proof of.
+: ADDR-SHAPE-BODY ( IR-CTX:ctx -- bool bool n n n bool bool bool n n n bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:ALOAD A64IR:OPCODE {: al:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:ASTORE A64IR:OPCODE {: as:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:DSTORE A64IR:OPCODE {: ds:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b A64IR:MEM-TYPE {: kt:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv al s" a64.aldr" IR-SYM:FEQ?
+   pv yv as s" a64.astr" IR-SYM:FEQ?
+   rv al IR-SCHEMA:FOPERANDS
+   rv al IR-SCHEMA:FRESULTS
+   rv al IR-SCHEMA:FATTRS
+   qv rv key al 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key al 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv al IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:READ IR--SCHEMA-EFFECT:EQ
+   rv as IR-SCHEMA:FOPERANDS
+   rv as IR-SCHEMA:FRESULTS
+   rv as IR-SCHEMA:FATTRS
+   qv rv key as 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key as 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key as 2 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL kt IR-ID:TYPE-LOCAL =
+   rv as IR-SCHEMA:FEFFECT@ IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ
+   rv al IR-SCHEMA:FSPACE@ IR--TYPE-SPACE:GENERIC IR--TYPE-SPACE:EQ
+   rv as IR-SCHEMA:FALIAS@ IR--SCHEMA-ALIAS:UNRESTRICTED IR--SCHEMA-ALIAS:EQ
+   rv ds IR-SCHEMA:FALIAS@ IR--SCHEMA-ALIAS:UNRESTRICTED IR--SCHEMA-ALIAS:EQ ;
+
+: ADDR-SHAPE-CASE ( -- )
+   s" the two addressed forms take their base as a value and name no slot" T-LABEL
+   BND [: ADDR-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE
+   TTRUE TTRUE TTRUE TTRUE 0 T= 1 T= 3 T=
+   TTRUE TTRUE TTRUE 0 T= 2 T= 2 T=
+   TTRUE TTRUE ;
 
 \ The copy: one register read, one register written, no attribute, no tie, and
 \ the same spelling every other reader sees. The absent tie is the whole content
@@ -842,6 +893,10 @@ private
    drop
    MOV-CASE ;
 
+: GROUP-ADDR ( IR-CTX:ctx -- )
+   drop
+   ADDR-SHAPE-CASE ;
+
 : GROUP-BRANCH ( IR-CTX:ctx -- )
    drop
    BRANCH-SHAPE-CASE
@@ -884,6 +939,7 @@ public
    BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-MOV ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-ADDR ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-SHAPE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-IMM-REFUSE ;] IR-CTX:WITH-CONTEXT

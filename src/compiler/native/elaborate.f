@@ -181,6 +181,34 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
       in 1- p r sym i HIR-WORD:PICK@ -  VWIN @  VPUSH
    loop ;
 
+\ ---- the definition's memory order -------------------------------------------
+\ A load and a store say what a definition does to memory; the order they do it
+\ in is a value they pass along, and this is where the walk keeps the one it has
+\ reached. It is minted lazily, by the first body word whose operation takes it,
+\ so a definition that touches no memory contains no operation for it and the
+\ modules the other corpus words compile to are unchanged.
+\
+\ ONE ORDER PER DEFINITION, AND WHAT THAT COSTS TODAY. The order is minted in
+\ whatever block the first memory word is in, so a definition whose store is in
+\ one arm of a branch and whose load is after the join builds a value that does
+\ not dominate its use - and the freeze verifier refuses it by name. Carrying the
+\ order across an edge the way every other live value is carried, as a block
+\ argument, is dot habu-order-mem-across-115338f5; until it lands a memory word
+\ inside a structure is a refusal at freeze rather than a wrong program.
+1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
+variable TOK-LIVE                    \ whether an order has been minted yet
+variable OPJ                         \ general operands taken so far by the open staging
+
+: TOK-RESET ( -- )
+   0 TOK-LIVE ! ;
+
+: TOK ( -- IR-ID:ir-value-id )
+   0 S-TOK @ ;
+
+: TOK! ( IR-ID:ir-value-id -- )
+   0 S-TOK !
+   1 TOK-LIVE ! ;
+
 \ ---- staging one operation ---------------------------------------------------
 \ The cell type of this subset: one signed 64-bit integer per stack value. The
 \ dialect declares the same type in every schema it registers, and this is the
@@ -201,39 +229,89 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
    c b op IR-BUILD:BEGIN-OP
    c b  v key ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN ;
 
-\ The operands the opcode's schema declares, taken off the vector. The deepest
-\ one is the operation's first operand, so `-` on a stack holding a then b
-\ subtracts b from a, exactly as the source reads. The count is the schema's
-\ fixed operand list: no source word of this subset binds to an opcode with a
-\ variadic tail, and a word model that bound one would be refused downstream by
-\ name - IR-OP measures a staged operation against the same schema, and IR-FUN
-\ refuses a terminator that is not the block's last operation.
+\ ---- which positions of a form carry the order --------------------------------
+\ A general value comes off the compile-time vector and the memory order comes
+\ off the slot above; which position is which is the schema table's answer, read
+\ by TYPE and not by position, so this file assumes nothing about where a
+\ dialect puts its token. One order at a time is this file's own limit and it is
+\ stated as a refusal: a form declaring two of them would need two orders, and
+\ there is no rule here for that.
+: TOKEN? ( IR-ID:ir-type-id -- bool )
+   {: t:IR-ID:ir-type-id :}
+   t  CTX BLD HIR:MEM-TYPE  NFROZEN:SAME-TYPE? ;
+
+: TOKEN-CK ( n -- n )
+   dup 1 > if E-NELAB-TOKEN throw then ;
+
+: TOKEN-OPERANDS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
+   c b op IR-BUILD:SCHEMA-OPERANDS {: k:n :}
+   0
+   k 0 ?do
+      c b op i IR-BUILD:SCHEMA-OPERAND@ TOKEN? if 1+ then
+   loop
+   TOKEN-CK ;
+
+: TOKEN-RESULTS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
+   c b op IR-BUILD:SCHEMA-RESULTS {: k:n :}
+   0
+   k 0 ?do
+      c b op i IR-BUILD:SCHEMA-RESULT@ TOKEN? if 1+ then
+   loop
+   TOKEN-CK ;
+
+\ The operands the opcode's schema declares. A general operand is taken off the
+\ vector, deepest first, so `-` on a stack holding a then b subtracts b from a,
+\ exactly as the source reads; the memory order is not on the vector and is
+\ handed over from the slot instead. The count is the schema's fixed operand
+\ list: no source word of this subset binds to an opcode with a variadic tail,
+\ and a word model that bound one would be refused downstream by name - IR-OP
+\ measures a staged operation against the same schema, and IR-FUN refuses a
+\ terminator that is not the block's last operation.
 : OPERANDS+ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
    c b op IR-BUILD:SCHEMA-OPERANDS {: k:n :}
-   k VN @ > if E-NELAB-UNDER throw then
-   VN @ k - {: base:n :}
+   k  c b op TOKEN-OPERANDS  - {: v:n :}
+   v VN @ > if E-NELAB-UNDER throw then
+   VN @ v - {: base:n :}
+   0 OPJ !
    k 0 ?do
-      c b  base i + VAT  IR-BUILD:ADD-OPERAND
+      c b op i IR-BUILD:SCHEMA-OPERAND@ TOKEN? if
+         c b TOK IR-BUILD:ADD-OPERAND
+      else
+         c b  base OPJ @ + VAT  IR-BUILD:ADD-OPERAND
+         OPJ @ 1+ OPJ !
+      then
    loop
-   k VDROP ;
+   v VDROP ;
 
 : RESULTS+ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
+   c b op TOKEN-RESULTS drop
    c b op IR-BUILD:SCHEMA-RESULTS {: k:n :}
    k 0 ?do
-      c b  c b CELL-TYPE  IR-BUILD:ADD-RESULT
+      c b op i IR-BUILD:SCHEMA-RESULT@ TOKEN? if
+         c b  c b HIR:MEM-TYPE  IR-BUILD:ADD-RESULT
+      else
+         c b  c b CELL-TYPE  IR-BUILD:ADD-RESULT
+      then
    loop ;
 
-\ Close the operation and push what it defined. The values are the operation's
-\ own, read back off its row, so nothing here has to know which value ordinals
-\ the store happened to mint.
+\ Close the operation and keep what it defined: a general value goes on the
+\ vector and the memory order goes in the slot, so the next access threads this
+\ one's answer. The values are the operation's own, read back off its row, so
+\ nothing here has to know which value ordinals the store happened to mint.
 : CLOSE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
    c b IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    c b op IR-BUILD:SCHEMA-RESULTS {: k:n :}
    k 0 ?do
-      c b id i IR-BUILD:OP-RESULT@ VPUSH
+      c b op i IR-BUILD:SCHEMA-RESULT@ TOKEN? if
+         c b id i IR-BUILD:OP-RESULT@ TOK!
+      else
+         c b id i IR-BUILD:OP-RESULT@ VPUSH
+      then
    loop ;
 
 \ ---- the things a body token becomes -----------------------------------------
@@ -251,12 +329,33 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
    IR-BUILD:ADD-ATTR
    CTX BLD op CLOSE ;
 
+\ The memory the definition is entered with, staged at the span of the token that
+\ first needed it. It takes nothing and answers the order every later access
+\ threads.
+: EMIT-MEM ( n -- )
+   {: ix:n :}
+   CTX BLD HIR-OPCODE:MEM HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CTX BLD op OPERANDS+
+   CTX BLD op RESULTS+
+   CTX BLD op CLOSE ;
+
+\ Make sure there is an order for a form that takes one. The first memory word of
+\ a definition therefore stages two operations - the order, then itself - and
+\ every one after it stages only itself.
+: TOKEN-READY ( IR-ID:ir-symbol-id n -- )
+   {: op:IR-ID:ir-symbol-id ix:n :}
+   CTX BLD op TOKEN-OPERANDS 0= if exit then
+   TOK-LIVE @ 0<> if exit then
+   ix EMIT-MEM ;
+
 \ One operation of this dialect, staged at the span of the token named. How many
 \ operands it takes off the vector and how many results it puts back is the
 \ schema table's answer, never this file's.
 : EMIT-OPCODE ( n HIR:opcode -- )
    {: ix:n k:HIR:opcode :}
    CTX BLD k HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   op ix TOKEN-READY
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
@@ -272,6 +371,13 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
 : EMIT-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    ix  r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:OPCODE@  EMIT-OPCODE ;
+
+\ A word that pushes one fixed value - the address a `create`d data word names.
+\ The value is the word model's, so this stages the same operation an integer
+\ literal in the source would.
+: EMIT-FIXED ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   ix  r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:FIXED-VALUE@  EMIT-LIT ;
 
 \ A word that is one constant and one operation - `1-` is `1` then `-`. Both
 \ halves come off the word model's row, so a second opcode meaning the same
@@ -691,6 +797,7 @@ variable IX                          \ the body token the walk stands on
       literal   OF ix EMIT-CONST ENDOF
       op        OF r ix EMIT-OP ENDOF
       const-op  OF r ix EMIT-CONST-OP ENDOF
+      fixed     OF r ix EMIT-FIXED ENDOF
       control   OF r ix DO-CONTROL ENDOF
       rename    OF p r  VW MKEY ix NTAPE:SPELL@  RENAME ENDOF
       unmodeled OF E-HIR-UNMODELED throw ENDOF
@@ -783,6 +890,7 @@ public
    v NTAPE:TOKENS {: n:n :}
    n 1 < if E-NELAB-SHAPE throw then
    v NAME-READ
+   TOK-RESET
    r n SKELETON
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK

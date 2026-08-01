@@ -22,6 +22,9 @@
 \   hir.add    -> a64.add
 \   hir.sub    -> a64.sub
 \   hir.mul    -> a64.mul
+\   hir.mem    -> no instruction: the order binds to the one a64.dtake minted
+\   hir.load   -> a64.aldr
+\   hir.store  -> a64.astr
 \   hir.return -> a64.ret
 \ An operand is not "the same position in the new operation"; it is the value the
 \ source operand's own definition selected to, looked up in the value map. That is
@@ -131,7 +134,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-9 constant OPCODES-N
+12 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -141,6 +144,9 @@ private
 6 constant O-LE
 7 constant O-BR
 8 constant O-BRZ
+9 constant O-MEM
+10 constant O-LOAD
+11 constant O-STORE
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -194,6 +200,9 @@ create NAMEBUF NAME-CAP allot
       le     OF O-LE     ENDOF
       br     OF O-BR     ENDOF
       brz    OF O-BRZ    ENDOF
+      mem    OF O-MEM    ENDOF
+      load   OF O-LOAD   ENDOF
+      store  OF O-STORE  ENDOF
       return OF O-RETURN ENDOF
    ;MATCH ;
 
@@ -207,6 +216,9 @@ create NAMEBUF NAME-CAP allot
       O-LE     of HIR-OPCODE:LE     endof
       O-BR     of HIR-OPCODE:BR     endof
       O-BRZ    of HIR-OPCODE:BRZ    endof
+      O-MEM    of HIR-OPCODE:MEM    endof
+      O-LOAD   of HIR-OPCODE:LOAD   endof
+      O-STORE  of HIR-OPCODE:STORE  endof
       O-RETURN of HIR-OPCODE:RETURN endof
       E-A64SEL-OPCODE throw
    endcase ;
@@ -436,6 +448,62 @@ create NAMEBUF NAME-CAP allot
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 
+\ ---- selecting the memory operations -----------------------------------------
+\ THE SOURCE ORDER AND THE MACHINE ORDER ARE ONE ORDER. The source dialect starts
+\ a definition's memory order with hir.mem, and this machine dialect starts a
+\ routine's generic memory order with a64.dtake - the moment the routine takes
+\ the caller's operands off the data stack. They are the same order: the data
+\ stack is generic memory, an address a program computed may name a slot of it,
+\ and a module that kept two chains over one space would be stating an
+\ independence nothing proved. So hir.mem selects to NO instruction at all. What
+\ it selects to is a VALUE: the token a64.dtake already minted, bound to the
+\ source order so that every access below it threads the one chain the whole
+\ module has.
+\
+\ WHICH IS WHY A ROUTINE WITHOUT A DATA-STACK CONVENTION IS REFUSED. A routine
+\ that takes nothing and publishes nothing off the caller's stack has no
+\ a64.dtake, so there is no token for the source order to bind to, and this pass
+\ has no other way to mint one. It is refused by name rather than lowered to
+\ something with an order nobody stated; dot habu-begin-a-mem-4d2399cf is where
+\ that gap is answered.
+: EMIT-MEM ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   DSTACK? 0= if E-A64SEL-MEM throw then
+   id 0 RESULT-AT  TOK  VBIND ;
+
+\ One cell read through an address the program computed. The address is the
+\ source load's first operand and the order its second, and both are the values
+\ those operands selected to, so a load reading the wrong operand is a wrong
+\ VALUE rather than a wrong index. The token the machine load answers becomes the
+\ running order, so the routine's own exit stores are ordered after it.
+: EMIT-ALOAD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:ALOAD OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   RESULT+
+   TOKEN+
+   CTX BLD IR-BUILD:END-OP {: nid:IR-ID:ir-op-id :}
+   CTX BLD nid 1 IR-BUILD:OP-RESULT@ {: tk:IR-ID:ir-value-id :}
+   tk TOK!
+   id 1 RESULT-AT tk VBIND
+   id 0 RESULT-AT  CTX BLD nid 0 IR-BUILD:OP-RESULT@  VBIND ;
+
+\ One cell written through an address the program computed: the value, the
+\ address, the order - the same three the source store carries, in the same
+\ order, so the two cannot be swapped without swapping them in the source too.
+: EMIT-ASTORE ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:ASTORE OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  id 2 OPERAND  IR-BUILD:ADD-OPERAND
+   TOKEN+
+   CTX BLD IR-BUILD:END-OP {: nid:IR-ID:ir-op-id :}
+   CTX BLD nid 0 IR-BUILD:OP-RESULT@ {: tk:IR-ID:ir-value-id :}
+   tk TOK!
+   id 0 RESULT-AT tk VBIND ;
+
 \ ---- selecting the return ----------------------------------------------------
 \ Under a register convention the values still live where control leaves become
 \ the terminator's operands, in the order the source return has them. Under the
@@ -567,6 +635,9 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       mul    OF id A64IR-OPCODE:MUL EMIT-BINARY ENDOF
       lt     OF id A64IR-COND:LT EMIT-FLAG ENDOF
       le     OF id A64IR-COND:LE EMIT-FLAG ENDOF
+      mem    OF id EMIT-MEM ENDOF
+      load   OF id EMIT-ALOAD ENDOF
+      store  OF id EMIT-ASTORE ENDOF
       br     OF id EMIT-BR ENDOF
       brz    OF id EMIT-BRZ ENDOF
       return OF id EMIT-RETURN ENDOF
@@ -739,6 +810,9 @@ public
    c b HIR-OPCODE:LE     BIND1
    c b HIR-OPCODE:BR     BIND1
    c b HIR-OPCODE:BRZ    BIND1
+   c b HIR-OPCODE:MEM    BIND1
+   c b HIR-OPCODE:LOAD   BIND1
+   c b HIR-OPCODE:STORE  BIND1
    c b HIR-OPCODE:RETURN BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
    BOUND-YES BND-MODE ! ;

@@ -66,6 +66,24 @@ variable FN                       \ where the routine being measured was publish
 
 public
 
+private
+
+\ The half both entry points share: lex the text onto a tape of this module,
+\ elaborate the definition it holds against the word model handed in, then
+\ select, allocate, accept and emit it under the data-stack convention. The two
+\ differ only in the model, which is the one thing a definition mentioning a
+\ data word needs more of.
+: FINISH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena
+      in:n out:n regs:n :}
+   c b NSRC:TAPE {: tp:IR-ARENA:arena :}
+   c NSRC:LEX
+   tp NTAPE:SEAL {: v:IR-ARENA:view :}
+   c b v p r in out NELAB:COLON drop
+   c b NSRC:TEXT$ 0 regs in out NFIX:RUN-HABU ;
+
+public
+
 \ Elaborate the source text now in the fixture's text buffer as a definition that
 \ takes `in` values and leaves `out`, then select, allocate, accept and emit it
 \ under the data-stack convention, with `regs` scratch registers.
@@ -73,11 +91,18 @@ public
    {: c:IR-CTX:ctx in:n out:n regs:n :}
    c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
    c b NSRC:MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
-   c b NSRC:TAPE {: tp:IR-ARENA:arena :}
-   c NSRC:LEX
-   tp NTAPE:SEAL {: v:IR-ARENA:view :}
-   c b v p r in out NELAB:COLON drop
-   c b NSRC:TEXT$ 0 regs in out NFIX:RUN-HABU ;
+   c b p r in out regs FINISH ;
+
+\ The same for a body that mentions one `create`d data word: its spelling, and
+\ the address it pushes. The address is stated because the chain cannot yet look
+\ a data word up in the engine's dictionary (dot habu-resolve-a-data-a1c8067f);
+\ everything else about the run is identical, including the lexer, so the two
+\ entry points cannot drift.
+: CHAIN-DATA ( IR-CTX:ctx ptr u8 n n n n n -- )
+   {: c:IR-CTX:ctx a u:n v:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   c NSRC:HIR-BUILDER {: b:IR-BUILD:builder :}
+   c b a u v NSRC:MODEL-DATA {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r in out regs FINISH ;
 
 \ How many bytes of machine code the chain emitted for it.
 : BYTES ( -- n )

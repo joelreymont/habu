@@ -29,6 +29,8 @@
 \   a64.mul      Mul rd rn rm    - 64-bit register multiplication
 \   a64.str      Str rt sp off   - store a register into a frame slot
 \   a64.ldr      Ldr rt sp off   - load a register back out of a frame slot
+\   a64.astr     Str rt rn 0     - store a register through an address register
+\   a64.aldr     Ldr rt rn 0     - load a register through an address register
 \   a64.reserve  Subi sp sp n    - claim the routine's own frame
 \   a64.release  Addi sp sp n    - give the frame back
 \   a64.dtake    Subi ds ds n    - take the caller's operands off the data stack
@@ -175,6 +177,31 @@
 \ a trapping addition needs a flag-setting form and a conditional branch to a
 \ trap target, and none of that is in this dialect yet.
 \
+\ THE TWO ADDRESSED FORMS ARE THE ONLY ONES WHOSE BASE IS A VALUE. Every other
+\ memory form above reaches a region the FORM names - the frame from the stack
+\ pointer, the caller's stack from the engine's own pointer - and neither base is
+\ a value of this dialect, because neither register is one the allocator may hand
+\ out. a64.aldr and a64.astr are the opposite: their base is an ordinary virtual
+\ register, defined by whatever computed the address, so they are how a program
+\ reaches a cell it named itself. Both use the same Ldr and Str forms as the
+\ frame accesses with an offset of zero, which is what `[Xn]` is on this machine,
+\ so no new encoding enters the assembler for them.
+\
+\ AND THEY SHARE THE DATA STACK'S ORDER, WHICH IS NOT A CONVENIENCE. An address
+\ a program computed may name any cell the program can reach, and the caller's
+\ data stack is such a region: a routine that stores through a computed address
+\ can, in principle, be storing into the very slot a later a64.dstore publishes
+\ into. So the two families are in ONE address space and ONE token chain -
+\ a64.dtake mints it, every access threads it, a64.dpublish ends it - and the
+\ orderings a module states are then true rather than convenient. Splitting them
+\ would declare that a computed store and a data-stack store need not keep their
+\ order, and nothing proves that. The frame is the case where something does
+\ prove it: a frame slot is below the machine stack pointer, no operation of this
+\ dialect produces the stack pointer as a value, and no source word can therefore
+\ compute an address inside it - which is why the frame keeps a chain and a space
+\ of its own, and why the data-stack forms' aliasing is now unrestricted while
+\ the frame's stays unaliased.
+\
 \ TWO VALUE CLASSES, DELIBERATELY NAMED. A value of this dialect is either a
 \ 64-bit general register or the memory token the frame forms thread, and
 \ GPR-TYPE and MEM-TYPE are the single places that say which is which. The
@@ -216,6 +243,8 @@ ENUM opcode DERIVE eq
    dload
    dstore
    dpublish
+   aload
+   astore
    flag
    br
    brz
@@ -455,6 +484,8 @@ public
       dload    OF s" a64.dload"    ENDOF
       dstore   OF s" a64.dstore"   ENDOF
       dpublish OF s" a64.dpublish" ENDOF
+      aload    OF s" a64.aldr"     ENDOF
+      astore   OF s" a64.astr"     ENDOF
       flag     OF s" a64.flag"     ENDOF
       br       OF s" a64.b"        ENDOF
       brz      OF s" a64.cbz"      ENDOF
@@ -576,6 +607,8 @@ private
       dload    OF s" a64.rule.dload"    ENDOF
       dstore   OF s" a64.rule.dstore"   ENDOF
       dpublish OF s" a64.rule.dpublish" ENDOF
+      aload    OF s" a64.rule.aldr"     ENDOF
+      astore   OF s" a64.rule.astr"     ENDOF
       flag     OF s" a64.rule.flag"     ENDOF
       br       OF s" a64.rule.b"        ENDOF
       brz      OF s" a64.rule.cbz"      ENDOF
@@ -599,6 +632,8 @@ private
       dload    OF s" a64.render.dload"    ENDOF
       dstore   OF s" a64.render.dstore"   ENDOF
       dpublish OF s" a64.render.dpublish" ENDOF
+      aload    OF s" a64.render.aldr"     ENDOF
+      astore   OF s" a64.render.astr"     ENDOF
       flag     OF s" a64.render.flag"     ENDOF
       br       OF s" a64.render.b"        ENDOF
       brz      OF s" a64.render.cbz"      ENDOF
@@ -757,12 +792,16 @@ private
 \ The caller's data stack is not the routine's frame: it is a region of the
 \ running engine's own memory, reached through the pointer register the engine
 \ keeps it in. The space says so, which is how a consumer tells a frame access
-\ from a data-stack access without asking which opcode it is looking at. Nothing
-\ else in a module of this dialect reaches that region, so nothing aliases it.
+\ from a data-stack access without asking which opcode it is looking at. The
+\ aliasing is unrestricted because a module of this dialect can now reach that
+\ region another way: a64.aldr and a64.astr take their address as a value, and a
+\ value can be the address of a data-stack slot. That is the same declaration
+\ those two forms make, and the two families share one token chain for exactly
+\ this reason.
 : DSTACK-MEM ( IR-SCHEMA:effect -- )
    {: e:IR-SCHEMA:effect :}
    false 0 0 IR-SCHEMA:SET-CONTROL
-   IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNALIASED e IR-SCHEMA:SET-MEMORY ;
+   IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
 
 \ Dtake: the routine moves the data-stack pointer down over the arguments the
 \ caller left, and the order of every data-stack access starts here. It reads no
@@ -819,6 +858,55 @@ private
    TOTAL
    TARGET
    c b A64IR-OPCODE:DPUBLISH NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ ---- the two addressed forms -------------------------------------------------
+\ The only memory forms of this dialect whose base is a value. They are in the
+\ same generic space as the data-stack forms and thread the same chain, because
+\ an address the program computed may name a data-stack slot; the aliasing is
+\ unrestricted, which is the declaration that forbids a later pass from moving
+\ one of these across another access it cannot prove is elsewhere.
+: ADDR-MEM ( IR-SCHEMA:effect -- )
+   {: e:IR-SCHEMA:effect :}
+   false 0 0 IR-SCHEMA:SET-CONTROL
+   IR--TYPE-SPACE:GENERIC IR--SCHEMA-ALIAS:UNRESTRICTED e IR-SCHEMA:SET-MEMORY ;
+
+\ Aldr: the address to read through, and the token that orders this load against
+\ every other access. Result zero is the register the cell's contents land in, so
+\ a consumer that wants the loaded value asks for the first result the way it
+\ does of every other value-producing form. There is no offset attribute: the
+\ form encodes at offset zero, which is `[Xn]`, and an offset that is not zero is
+\ an addressing mode this dialect does not have rather than a field left at its
+\ default.
+: DEF-ALDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:ALOAD OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:READ ADDR-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:ALOAD NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Astr: the register whose value is being written, the address to write it
+\ through, and the token. The value is the FIRST operand and the address the
+\ second, which is the order the source dialect's store has them and the order
+\ Forth writes them in, so a swapped pair is a wrong program rather than a
+\ different spelling of the same one.
+: DEF-ASTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:ASTORE OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   IR--SCHEMA-EFFECT:WRITE ADDR-MEM
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:ASTORE NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ ---- the comparison form -----------------------------------------------------
@@ -952,6 +1040,8 @@ public
    c b t k DEF-DLOAD
    c b t k DEF-DSTORE
    c b k DEF-DPUBLISH
+   c b t k DEF-ALDR
+   c b t k DEF-ASTR
    c b t DEF-FLAG
    c b t DEF-BR
    c b t DEF-BRZ

@@ -97,6 +97,15 @@
 \ src/compiler/native/select.f, so what reaches this pass is a module that
 \ already contains its own entry and exit, and this file only encodes them.
 \
+\ THE TWO ADDRESSED FORMS ARE TWO MORE INSTRUCTIONS AND NOTHING ELSE, and the
+\ only difference is where the base comes from. A frame access names the stack
+\ pointer and a data-stack access names the engine's data-stack register, both
+\ written here because neither is a value; an addressed access takes its base out
+\ of the module, as the register the accepted allocation gave the address value.
+\ Its offset is zero - `[Xn]` - and that zero is a property of the form rather
+\ than a field of the operation, because this dialect has no addressing mode with
+\ an offset for a caller to have got wrong.
+\
 \ THE BLOCK LAYOUT AND THE FIXUPS ARE ONE PASS AND NOT TWO. A branch has to know
 \ where it is going before it can be encoded, and where it is going is where the
 \ destination block's first instruction lands. So the layout is computed first,
@@ -148,7 +157,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-18 constant OPCODES-N
+20 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -167,6 +176,8 @@ private
 15 constant O-BR
 16 constant O-BRZ
 17 constant O-RET
+18 constant O-ALOAD
+19 constant O-ASTORE
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -243,6 +254,8 @@ create B-START BMAX cells allot
       dload    OF O-DLOAD    ENDOF
       dstore   OF O-DSTORE   ENDOF
       dpublish OF O-DPUBLISH ENDOF
+      aload    OF O-ALOAD   ENDOF
+      astore   OF O-ASTORE  ENDOF
       flag     OF O-FLAG     ENDOF
       br       OF O-BR       ENDOF
       brz      OF O-BRZ      ENDOF
@@ -269,6 +282,8 @@ create B-START BMAX cells allot
       O-BR       of A64IR-OPCODE:BR       endof
       O-BRZ      of A64IR-OPCODE:BRZ      endof
       O-RET      of A64IR-OPCODE:RET      endof
+      O-ALOAD    of A64IR-OPCODE:ALOAD    endof
+      O-ASTORE   of A64IR-OPCODE:ASTORE   endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -414,6 +429,27 @@ create B-START BMAX cells allot
 : WORD-DSTORE ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  ENC-STR ;
+
+\ ---- the two addressed forms -------------------------------------------------
+\ The same Ldr and Str the frame and the data stack use, with the base taken out
+\ of the module instead of named by this file: an addressed access reaches
+\ wherever the program computed, so its base is the register the accepted
+\ allocation gave the address value. The offset is zero, which is what `[Xn]` is,
+\ and it is written here as the number the form carries rather than read off an
+\ attribute the dialect does not declare: there is no addressing mode with an
+\ offset in this dialect, so there is no field to read.
+0 constant ADDR-OFF
+
+\ The load's address is its first operand and its loaded value is its first
+\ result; the store's value is its first operand and its address is its second,
+\ which is the order the dialect declares and the order Forth writes.
+: WORD-ALOAD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ADDR-OFF  ENC-LDR ;
+
+: WORD-ASTORE ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  id 1 OPERAND-REG  ADDR-OFF  ENC-STR ;
 
 \ ---- the condition a comparison is made under --------------------------------
 : COND-OF ( IR-ID:ir-op-id -- n )
@@ -587,6 +623,8 @@ create B-START BMAX cells allot
       dload    OF id  id WORD-DLOAD  APPEND ENDOF
       dstore   OF id  id WORD-DSTORE  APPEND ENDOF
       dpublish OF id  id WORD-DPUBLISH  APPEND ENDOF
+      aload    OF id  id WORD-ALOAD  APPEND ENDOF
+      astore   OF id  id WORD-ASTORE  APPEND ENDOF
       flag     OF id PUT-FLAG ENDOF
       br       OF id PUT-BR ENDOF
       brz      OF id PUT-BRZ ENDOF
@@ -719,6 +757,8 @@ public
    c b A64IR-OPCODE:BR       BIND1
    c b A64IR-OPCODE:BRZ      BIND1
    c b A64IR-OPCODE:RET      BIND1
+   c b A64IR-OPCODE:ALOAD    BIND1
+   c b A64IR-OPCODE:ASTORE   BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !

@@ -51,6 +51,7 @@ require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-chain.f
+require tools/codegen-compare-corpus.f
 
 package CODEGEN-NEW
 
@@ -282,13 +283,37 @@ private
       -3 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-EMITTED ;
 
+\ `: CELL-BUMP ( n -- n ) BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL ! ;` - the
+\ memory word, written here exactly as the corpus writes it, `BUMP-CELL` and
+\ all. What the chain is told about that name is its address, because the chain
+\ cannot yet ask the engine what a data word is (dot
+\ habu-resolve-a-data-a1c8067f); the address it is told is the corpus's own, so
+\ the routine this column compiles bumps the SAME cell the interpreted word
+\ bumps, and both columns record the cell's contents as an output. That is what
+\ makes the head-to-head check a statement about the store and the load: a
+\ routine that computed `n 1+` and touched no memory would answer the same two
+\ numbers and fail on the other two.
+: CELL-BUMP-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" CELL-BUMP BUMP-CELL ! BUMP-CELL @ 1+ dup BUMP-CELL !" NSRC:TEXT!
+   c s" BUMP-CELL" CODEGEN-CORPUS:BUMP-ADDR 1 1 REGS CODEGEN-CHAIN:CHAIN-DATA
+   CODEGEN-CHAIN:PUBLISH!
+   s" CODEGEN-CORPUS:CELL-BUMP" CODEGEN-CHAIN:BYTES
+   [: 7 CODEGEN-CHAIN:FN@ NRUN:ENTER1 drop ;]
+   [: 7 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
+      CODEGEN-CORPUS:BUMP-CELL@ CODEGEN-COMPARE:VECTOR
+      -1 CODEGEN-CHAIN:FN@ NRUN:ENTER1 CODEGEN-COMPARE:VECTOR
+      CODEGEN-CORPUS:BUMP-CELL@ CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-EMITTED ;
+
 : COVERED-CASES ( -- )
    NFIX:BINDING [: NOOP-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: ADD3-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: SQUARE-SUM-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: MAX2-BODY ;] IR-CTX:WITH-CONTEXT
    NFIX:BINDING [: SUM-TO-BODY ;] IR-CTX:WITH-CONTEXT
-   NFIX:BINDING [: COUNT-DOWN-BODY ;] IR-CTX:WITH-CONTEXT ;
+   NFIX:BINDING [: COUNT-DOWN-BODY ;] IR-CTX:WITH-CONTEXT
+   NFIX:BINDING [: CELL-BUMP-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 \ ---- the words the subset cannot express yet ---------------------------------
 : GAP-CASES ( -- )
@@ -297,7 +322,6 @@ private
    s" CODEGEN-CORPUS:FACT" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
       CODEGEN--NEW-CAP:CALLS GAP-ALSO
       CODEGEN--NEW-CAP:COMPARISON GAP-ALSO
-   s" CODEGEN-CORPUS:CELL-BUMP" CODEGEN--NEW-CAP:MEMORY GAP
    s" CODEGEN-CORPUS:BYTE-SUM" CODEGEN--NEW-CAP:CONTROL-FLOW GAP
       CODEGEN--NEW-CAP:LOCALS GAP-ALSO
       CODEGEN--NEW-CAP:MEMORY GAP-ALSO

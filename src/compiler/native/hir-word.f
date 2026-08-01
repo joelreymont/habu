@@ -9,11 +9,16 @@
 \ dependency runs one way: HIR-WORD names HIR's opcodes and HIR knows nothing
 \ about source words.
 \
-\ THREE MEANINGS AND A REFUSAL. A word of the straight-line subset means exactly
+\ THE MEANINGS AND A REFUSAL. A word of the straight-line subset means exactly
 \ one of these:
 \   op        it elaborates to one operation of this dialect;
+\   const-op  it is one integer literal followed by one operation - `1-` is `1`
+\             then `-` - and the row carries both;
+\   control   it decides which blocks the definition has, and stages nothing;
 \   rename    it only rearranges the compile-time value vector and produces no
 \             operation at all;
+\   fixed     it pushes one value and nothing else, which is what a `create`d
+\             data word does, and the row carries that value;
 \   unmodeled a named boundary: checked source may not compile it yet, and the
 \             row says which capability has to land first.
 \ A fourth meaning, `literal`, belongs to a source-tape token rather than to a
@@ -144,6 +149,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       unmodeled OF 3 ENDOF
       const-op  OF 4 ENDOF
       control   OF 5 ENDOF
+      fixed     OF 6 ENDOF
    ;MATCH ;
 
 \ Code zero, `literal`, is deliberately absent: a literal is a token's meaning,
@@ -155,6 +161,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       3 of HIR-MEANING:UNMODELED endof
       4 of HIR-MEANING:CONST-OP endof
       5 of HIR-MEANING:CONTROL endof
+      6 of HIR-MEANING:FIXED endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -169,6 +176,9 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       le     OF 6 ENDOF
       br     OF 7 ENDOF
       brz    OF 8 ENDOF
+      mem    OF 9 ENDOF
+      load   OF 10 ENDOF
+      store  OF 11 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -182,6 +192,9 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       6 of HIR-OPCODE:LE endof
       7 of HIR-OPCODE:BR endof
       8 of HIR-OPCODE:BRZ endof
+      9 of HIR-OPCODE:MEM endof
+      10 of HIR-OPCODE:LOAD endof
+      11 of HIR-OPCODE:STORE endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -380,6 +393,19 @@ private
    v UNUSED
    ROW-ADD ;
 
+\ The row a word that pushes one fixed value writes. A `create`d data word is
+\ decided once, when the word is created, and every mention of it is that one
+\ number; the row therefore carries the number and no opcode, because what the
+\ word means is the value and not an operation. The value sits in the same cell
+\ a constant-and-operation row keeps its constant in, so the two readers below
+\ read one concept out of one place.
+: FIXED-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n -- )
+   {: v:n :}
+   HIR-MEANING:FIXED MEAN-CODE
+   UNUSED
+   v UNUSED
+   ROW-ADD ;
+
 \ The row a structured control word writes. It stages no operation of its own -
 \ what a control word does is decide which blocks a definition has and which
 \ values cross between them - so the only thing a row holds is which control
@@ -408,6 +434,21 @@ private
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id k:HIR:ctrl :}
    c r  c b id BSYM-CK  k CONTROL-ROW ;
+
+public
+
+\ Declare that a source word pushes one fixed value. This is how a `create`d
+\ data word enters a definition the chain compiles: the caller states the
+\ address, because the chain cannot yet ask the engine what a data word is (dot
+\ habu-resolve-a-data-a1c8067f). It is the builder form and there is no frozen
+\ one, because which data words a program mentions is known while its module is
+\ being built and never afterwards.
+: DECLARE-FIXED ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id v:n :}
+   c r  c b id BSYM-CK  v FIXED-ROW ;
+
+private
 
 public
 
@@ -588,6 +629,14 @@ public
    r id HIR-MEANING:CONST-OP ROW-AS {: l:n :}
    r l OFF-IN RC@ ;
 
+\ The value a word that pushes one fixed value pushes. Asking it about a word of
+\ any other meaning is a category error rather than a missing value, which is
+\ ROW-AS's rule.
+: FIXED-VALUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:FIXED ROW-AS {: l:n :}
+   r l OFF-IN RC@ ;
+
 \ Which control action a structured control word is.
 : CTRL@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:ctrl )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
@@ -654,12 +703,12 @@ public
    r v key i NTAPE:SPELL@ ADMIT ;
 
 \ ---- the subset's vocabulary -------------------------------------------------
-\ The nine words the straight-line subset models, and the exact ceilings they
-\ need, so a caller commits a table to what this registration writes and not to
-\ a guess. The pick cells are the picks the six renames put back, added up:
-\ two for `dup`, none for `drop`, two for `swap`, three for `over`, one for
-\ `nip` and three for `rot`.
-20 constant WORDS
+\ The words the straight-line subset models, and the exact ceilings they need,
+\ so a caller commits a table to what this registration writes and not to a
+\ guess. The pick cells are the picks the seven renames put back, added up:
+\ four for `2dup`, two for `dup`, none for `drop`, two for `swap`, three for
+\ `over`, one for `nip` and three for `rot`.
+23 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -673,12 +722,23 @@ private
    c b r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LT BDECLARE-OP
    c b r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LE BDECLARE-OP ;
 
-\ `1-` ( n -- n ): subtract one. It is one token of source and two operations of
-\ this dialect, and the row says exactly that rather than claiming a decrement
-\ opcode the dialect does not have.
-: DEF-DEC ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+\ `1-` ( n -- n ) and `1+` ( n -- n ): subtract or add one. Each is one token of
+\ source and two operations of this dialect, and the row says exactly that
+\ rather than claiming an increment or decrement opcode the dialect does not
+\ have.
+: DEF-STEP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
-   c b r c b s" 1-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB 1 BDECLARE-CONST-OP ;
+   c b r c b s" 1-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
+   c b r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD 1 BDECLARE-CONST-OP ;
+
+\ The two cell-width memory words. `@` ( ptr -- n ) reads the cell an address
+\ names and `!` ( n ptr -- ) writes one; the order they happen in is the memory
+\ order the dialect's own token carries, and src/compiler/native/elaborate.f
+\ threads it, so nothing about it is stored in these rows.
+: DEF-MEMORY ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" @" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LOAD BDECLARE-OP
+   c b r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:STORE BDECLARE-OP ;
 
 \ The structured control words. Three pairs and the loop index; nothing else of
 \ Habu's control vocabulary is declared, because nothing else has a block
@@ -759,13 +819,18 @@ private
 public
 
 \ Declare the whole straight-line source vocabulary into one word model: the
-\ three arithmetic words this dialect has operations for, and the six stack
-\ words that only rename values. The builder is the module's symbol interner,
-\ so the spellings become identities of the same module the table is bound to.
+\ words this dialect has operations for, the two step words that are a literal
+\ and an operation, the two memory words, the structured control words, and the
+\ stack words that only rename values. The builder is the module's symbol
+\ interner, so the spellings become identities of the same module the table is
+\ bound to. A `create`d data word is NOT here: which data words exist is a fact
+\ about the program being compiled and not about the dialect, so a caller
+\ declares one with DECLARE-FIXED and commits the table to the extra row.
 : REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b r DEF-ARITH
-   c b r DEF-DEC
+   c b r DEF-STEP
+   c b r DEF-MEMORY
    c b r DEF-CONTROL
    c b p r DEF-2DUP
    c b p r DEF-DUP

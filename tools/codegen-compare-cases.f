@@ -92,11 +92,20 @@ private
       0 CODEGEN-CORPUS:FACT CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE ;
 
+\ The one corpus word whose whole point is a side effect. What it RETURNS is
+\ `n 1+`, which a routine that never touched memory could compute just as well,
+\ so the cell it bumped is recorded as an output beside the answer: after each
+\ call the harness reads CODEGEN-CORPUS:BUMP-CELL@ and vectors it. The new
+\ column bumps the very same cell and records it the same way, so the
+\ head-to-head check is about the store and the load and not only about the
+\ arithmetic between them.
 : CELL-BUMP-CASE ( -- )
    s" CODEGEN-CORPUS:CELL-BUMP"
    [: 7 CODEGEN-CORPUS:CELL-BUMP drop ;]
    [: 7 CODEGEN-CORPUS:CELL-BUMP CODEGEN-COMPARE:VECTOR
-      -1 CODEGEN-CORPUS:CELL-BUMP CODEGEN-COMPARE:VECTOR ;]
+      CODEGEN-CORPUS:BUMP-CELL@ CODEGEN-COMPARE:VECTOR
+      -1 CODEGEN-CORPUS:CELL-BUMP CODEGEN-COMPARE:VECTOR
+      CODEGEN-CORPUS:BUMP-CELL@ CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE ;
 
 : BYTE-SUM-CASE ( -- )

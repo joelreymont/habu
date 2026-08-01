@@ -1090,6 +1090,24 @@ public
    c b USE {: slot:n :}
    slot T-QR TAB@ op IR-SCHEMA:RESULTS ;
 
+\ The type the schema declares at one operand position and at one result
+\ position. How many there are is not the whole shape of an operation: an
+\ elaborator that has to hand a value over needs to know WHICH value belongs
+\ there, and the type is what says so - a general value comes off the caller's
+\ compile-time vector, and a memory token comes off the order the definition is
+\ threading. Both readings are the schema table's own, so a caller reads the
+\ shape from the authority that declared it instead of assuming a position from
+\ the opcode's name.
+: SCHEMA-OPERAND@ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id n -- IR-ID:ir-type-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id i:n :}
+   c b USE {: slot:n :}
+   slot T-QP TAB@  slot T-QR TAB@  slot KEY@  op i IR-SCHEMA:OPERAND@ ;
+
+: SCHEMA-RESULT@ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id n -- IR-ID:ir-type-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id i:n :}
+   c b USE {: slot:n :}
+   slot T-QP TAB@  slot T-QR TAB@  slot KEY@  op i IR-SCHEMA:RESULT@ ;
+
 \ The value one appended operation defines. IR-OP mints an operation's results
 \ itself, so END-OP hands back the operation and not the values it created, and
 \ before this reader the only way to name one of them was to subtract from the

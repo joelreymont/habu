@@ -108,7 +108,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-18 constant OPCODES-N
+20 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -127,6 +127,8 @@ private
 15 constant O-BR
 16 constant O-BRZ
 17 constant O-RET
+18 constant O-ALOAD
+19 constant O-ASTORE
 
 \ One slot per attribute key the dialect declares.
 7 constant KEYS-N
@@ -192,6 +194,8 @@ create NAMEBUF NAME-CAP allot
       dload    OF O-DLOAD    ENDOF
       dstore   OF O-DSTORE   ENDOF
       dpublish OF O-DPUBLISH ENDOF
+      aload    OF O-ALOAD   ENDOF
+      astore   OF O-ASTORE  ENDOF
       flag     OF O-FLAG     ENDOF
       br       OF O-BR       ENDOF
       brz      OF O-BRZ      ENDOF
@@ -218,6 +222,8 @@ create NAMEBUF NAME-CAP allot
       O-BR       of A64IR-OPCODE:BR       endof
       O-BRZ      of A64IR-OPCODE:BRZ      endof
       O-RET      of A64IR-OPCODE:RET      endof
+      O-ALOAD    of A64IR-OPCODE:ALOAD    endof
+      O-ASTORE   of A64IR-OPCODE:ASTORE   endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -666,6 +672,8 @@ public
    c b A64IR-OPCODE:BR       BIND1
    c b A64IR-OPCODE:BRZ      BIND1
    c b A64IR-OPCODE:RET      BIND1
+   c b A64IR-OPCODE:ALOAD    BIND1
+   c b A64IR-OPCODE:ASTORE   BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
