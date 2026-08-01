@@ -220,12 +220,75 @@ create TXT TEXT-CAP allot
    NFIX:BINDING [: HABU-BODY ;] IR-CTX:WITH-CONTEXT
    121 T= 49 T= 49 T= 6 T= ;
 
+\ ---- a definition with a branch, all the way through -------------------------
+\ The same run over a body whose answer depends on which way a branch went. Four
+\ blocks come out of `if … then`: the entry that compares and branches, the stub
+\ the false arm reaches the join through, the true arm, and the join that takes
+\ both arms' values as its arguments. What this case adds to the two above is the
+\ layout and the fixups - the block starts are asserted exactly, and so are the
+\ two branch instructions at the end of the entry block, decoded as the numbers
+\ the assembler produces for them.
+\
+\ WHY THE TWO BRANCH WORDS ARE PINNED. A branch is the one instruction whose
+\ operand is not in the module: it is the distance to a block, computed from the
+\ layout. Asserting the emitted word is the only way to say the distance was
+\ computed from the right end - a fixup to the wrong block, or a displacement
+\ measured from the branch's block instead of the branch itself, changes exactly
+\ these two numbers and nothing else the suite can see. The `cbz` at index 6
+\ carries +2, which lands on block one; the `b` at index 7 carries +4, which
+\ lands on block two. Swapping the two successors swaps those two numbers.
+: SRC3 ( -- ptr u8 n )
+   s" : NCH-MAX ( n n -- n ) 2dup < if swap then drop ;" ;
+
+: RECORD3 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC3 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: ELABORATE2 ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB TAPE p r 2 1 NELAB:COLON drop ;
+
+: BRANCH-BODY ( IR-CTX:ctx -- n n n n n n n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD3
+   TAPE NTAPE:TOKENS
+   VERDICT
+   p r ELABORATE2
+   CC BB TXT TEXT-LEN 0 REGS 2 1 NFIX:RUN-HABU
+   A64EMIT:INSNS
+   A64EMIT:BLOCKS
+   0 A64EMIT:BLOCK-START@
+   1 A64EMIT:BLOCK-START@
+   2 A64EMIT:BLOCK-START@
+   3 A64EMIT:BLOCK-START@
+   6 A64EMIT:WORD@
+   7 A64EMIT:WORD@
+   NRUN:PUBLISH {: fn:n :}
+   3 4 fn NRUN:ENTER2
+   9 -1 fn NRUN:ENTER2
+   s" 3 4 NCH-MAX" EV-N
+   s" 9 -1 NCH-MAX" EV-N ;
+
+: BRANCH-CASE ( -- )
+   s" a definition with a branch compiles, lays out and runs" T-LABEL
+   NFIX:BINDING [: BRANCH-BODY ;] IR-CTX:WITH-CONTEXT
+   9 T= 4 T= 9 T= 4 T=
+   335544324 T= 3019898946 T=
+   14 T= 11 T= 8 T= 0 T=
+   4 T= 17 T= -1 T= 7 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
    CHAIN-CASE
    HABU-CASE
+   BRANCH-CASE
    T-REPORT ;
 
 ;package
