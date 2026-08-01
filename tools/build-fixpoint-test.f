@@ -27,10 +27,9 @@ $40000 constant BFT-BIG-CAP
 
 \ Snapshot trailer field offsets from the magic cell (src/habu/snap-lib.f
 \ SNAP-WRITE-BYTES): magic +0, text base +8, ndict +16, region len +24,
-\ data len +32, format version +40.
+\ data len +32.
 16 constant BFT-TRL-NDICT
 24 constant BFT-TRL-REGLEN
-40 constant BFT-TRL-VERSION
 
 package BFT-SNAP-HOOK
 private
@@ -718,31 +717,23 @@ public
 
 \ Doctored snapshot-trailer regression (TFAM 12 item 6, dot
 \ habu-tfam-12-layout-057181a9): the loader EM-SNAPSHOT-RESTORE
-\ (src/habu/habu2.f) validates the 48-byte format-versioned trailer before
-\ restoring regions - version cell > SNAP-FORMAT-VERSION exits 80
-\ (E-SNAP-VERSION), an oversized region-len/data-len/ndict field exits 79
-\ (corrupt trailer). The snapshot binary is built through the SAME gated route
+\ (src/habu/habu2.f) validates the 40-byte trailer before restoring regions;
+\ an oversized region-len/data-len/ndict field exits 79. The snapshot binary
+\ is built through the SAME gated route
 \ the pipeline uses (BF-SNAP-SOURCE + BF-CERTIFY-SNAP + hb-stdin --build
 \ hb-snap-src -> hb-snap0, the BF-BUILD-SNAP-FROM-STDIN mechanism): snap.f's
 \ former 0 set-check window is now the TRUSTED: SNAP-RETIRE-GO boundary, so
 \ the emitted snap source certifies clean and the `-- snap` route is gated
 \ end-to-end again (dot habu-tfam-12-item-346f03c2 part 1).
 \ Measured facts this fixture encodes (macOS/arm64, 2026-07-09):
-\ - The trailer magic is NOT at FILE-SIZE-48: SNAP-EXTRA-SIZE padding and the
+\ - The trailer magic is not at file-size minus trailer-size: SNAP-EXTRA-SIZE padding and the
 \   codesign blob follow it, so the fixture SCANS for the LAST SNAP-MAGIC
 \   occurrence (the trailer is written after both payloads; nothing after it
 \   contains the magic).
 \ - A patched image must be re-signed (CODESIGN:FORCE) or macOS SIGKILLs it
 \   before the loader runs.
-\ - Corrupting the magic itself is NOT a rejection: both trailer probes miss
-\   and the engine falls through to a COLD boot (rc 0) by design, so there is
-\   no magic-corruption leg.
-\ - EM-SNAPSHOT-RESTORE now labels both fatal exits on fd 2 before the
-\   NR-EXIT-GROUP (dot habu-tfam-12-item-346f03c2 part 2): rc 79 prints
-\   "hb: snapshot trailer corrupt", rc 80 prints
-\   "hb: snapshot format version unsupported". BFT-DOCTORED-CAPTURE captures the
-\   doctored engine's stderr so this fixture asserts the diagnostic TEXT, not
-\   just the rc.
+\ - EM-SNAPSHOT-RESTORE labels corruption on fd 2 before NR-EXIT-GROUP.
+\   BFT-DOCTORED-CAPTURE asserts both rc 79 and the diagnostic text.
 : BFT-BYTES-FIELD ( -- ptr ptr u8 )
    BFT-BYTES-A 0 ptr-field ;
 
@@ -961,11 +952,6 @@ public
    BFT-MAGIC-LAST!
    BFT-SNAP-HOOK:VERIFY-IMAGE
    BFT-MAG-LAST @ {: mag:n :}
-   mag BFT-TRL-VERSION + BFT-BYTE@ SNAP-FORMAT-VERSION T=
-   mag BFT-TRL-VERSION + 2 BFT-DOCTORED-CAPTURE
-   80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
-   mag BFT-TRL-VERSION + $FF BFT-DOCTORED-CAPTURE
-   80 s" hb: snapshot format version unsupported" BFT-ASSERT-SNAP-EXIT
    \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but
    \ far above REGION/DICT-CAP (top bytes could go negative or SIGSEGV).
    mag BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE

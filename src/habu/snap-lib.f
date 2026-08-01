@@ -7,22 +7,7 @@
 \ output path — the single knob; build-fixpoint owns/moves the artifact
 : SNAP-OUT s" hb-snap0" TMP-PATH ;
 
-\ Snapshot trailer format version (item 12 slice 3b, dot
-\ habu-snapshot-format-ver): once 3b bakes nonzero hidden-field counts into the
-\ persisted effect-node arena, a pre-3b engine restoring such an image would
-\ misread hidden fields as logical params. The trailer grows 40->48 bytes with
-\ a format-version cell at offset 40; the loader (habu2.f EM-SNAPSHOT-RESTORE)
-\ rejects any image whose version is not the current format with a distinct
-\ exit status (80, mirroring the snbad rc-79 corrupt-trailer path). Bump on any
-\ layout change that a prior engine would misread.
-\ Version 2: dict record [16] bits 52-59 became the DNAME-MIN-IN certified
-\ input-arity band (dot habu-habu-certified-words-84e84eaf); a pre-change
-\ engine restoring a post-change snapshot would fold the band into name
-\ lengths (its length reads clear only the top 4 bits), so it must fail
-\ closed rc 80 instead of misreading the dictionary.
-\ Version 3: snapshot DATA includes the owner public/private WID registry.
-\ Older formats cannot prove qualified-call visibility and fail closed.
-create TRL 48 allot
+create TRL 40 allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD
 \ These views expose the raw snapshot source and dictionary/data buffer cells.
@@ -35,7 +20,7 @@ s" STB-CELL@" s" -- ptr n" TRUST
 s" SDB@" s" -- ptr u8" TRUST
 
 : SNAP-SIZE! ( -- )
-   STSZ @ SCL @ + SDL @ + 48 + SNL ! ;   \ +48: 48-byte format-versioned trailer
+   STSZ @ SCL @ + SDL @ + 40 + SNL ! ;
 
 : SNAP-HDR! ( -- snap )
    SNL @ BUILD-SNAP-HDR SFTS ! ;
@@ -221,7 +206,7 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
 \ ---- test-only final-close fault seam ----
 \ snap-lib.f is builder-only: SNAP-RETIRE-GO forgets this whole tail before the
 \ snapshot header is written, so nothing here reaches a shipped image. The seam
-\ lets the owner-WID snapshot suite force the final close to fail and prove
+\ lets the snapshot-writer suite force the final close to fail and prove
 \ SNAP-WRITE-BYTES fails closed (rc 74) instead of accepting a half-written
 \ image. BEFORE defaults to a no-op; only a test source injected ahead of the
 \ snap driver can arm it through INSTALL-TEST, and snap.f undefines that entry on
@@ -249,12 +234,9 @@ public
 ;package
 
 : SNAP-WRITE-BYTES ( -- )
-   \ trailer (48 bytes): magic, CANONICAL text base (0), dict count, region
-   \ length, data length, format version - the region stream below is the
-   \ canonicalized copy. Version at +40 is the last field so the magic/field
-   \ offsets 0..40 stay identical to the legacy 40-byte trailer.
+   \ trailer: magic, canonical text base, dict count, region length, data length
    SNAP-MAGIC TRL !  0 TRL 8 + !  ndict@ TRL 16 + !
-   SCL @ TRL 24 + !  SDL @ TRL 32 + !  SNAP-FORMAT-VERSION TRL 40 + !
+   SCL @ TRL 24 + !  SDL @ TRL 32 + !
    \ stream: header, engine text, region, data, trailer, zero pad
    SNAP-OUT PATH0 1537 493 open SFD !
    SFD @ 0 < IF s" snap: cannot open output" 74 die THEN
@@ -265,7 +247,7 @@ public
    SFD @ STB@ STSZ @ DRV-WALL
    SFD @ SNC-PTR SCL @ DRV-WALL
    SFD @ SND-PTR SDL @ DRV-WALL
-   SFD @ TRL 48 DRV-WALL
+   SFD @ TRL 40 DRV-WALL
    SFD @ extra SNAP-EXTRA-SIZE DRV-WALL
    SFD @ SNAP-CLOSE-SEAM:RUN
    SFD @ close-rc 0 <> IF s" snap: output close failed" 74 die THEN ;

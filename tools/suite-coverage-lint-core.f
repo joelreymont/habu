@@ -218,20 +218,19 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" tools/lint/shadow-lint-test.f" q execute
    \ misc test/-tree suites not mirrored into resident groups
    s" test/load-reject-diag-test.f" q execute
-   s" test/owner-wid-internal.f" q execute
    \ snapshot-writer adversarial suite: builds two full snapshots in child
    \ processes (return-stack zeroing + fail-closed on a failed close), too
    \ costly for the resident fast tier - runs in the standalone stdlib gate.
-   s" test/owner-wid-snapshot.f" q execute
+   s" test/snapshot-writer.f" q execute
    \ flat-lib standalone-load gate: spawns ~50 child engines to bare-load every
    \ flat lib/<module>.f (dot habu-pkg-stdlib-modules-3197dbbc). ~20s of process
    \ spawns, too costly for the resident fast tier - runs in the standalone
-   \ stdlib gate like the snapshot suite above.
+   \ stdlib gate.
    s" test/stdlib-standalone-load.f" q execute
    \ protected-WID boot-integration suite: spawns test/aot-wid-build.f to build a
    \ full variant engine (~12s), too costly for the fast tail-process fork tier
    \ (its 11.1s pool ratchet) - runs in the standalone stdlib gate like the
-   \ snapshot suite above.
+   \ snapshot-writer suite above.
    s" test/aot-wid-suite.f" q execute
    \ framed-diff codec fixtures: a self-contained in-memory round-trip/reject
    \ suite (diff-frame-codec). It runs spawned in the standalone stdlib gate via

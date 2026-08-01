@@ -602,12 +602,8 @@ SUITE verify-prim
    test/verify-prim-test.f
 ;SUITE
 
-SUITE owner-wid-internal
-   test/owner-wid-internal.f
-;SUITE
-
-SUITE owner-wid-snapshot
-   test/owner-wid-snapshot.f
+SUITE snapshot-writer
+   test/snapshot-writer.f
 ;SUITE
 
 SUITE stdlib-standalone-load

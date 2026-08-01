@@ -29,7 +29,7 @@ variable TOFF  variable IMG-TBASE  variable TNDICT  variable TREG  variable TDAT
 variable ROFF  variable SCAN-OFF  variable HAS-SNAP
 variable RUNV  variable BESTO  variable BESTN
 variable SNAP-DIRECT-OFF
-variable IMG-END  variable TVER          \ trailer END file offset; parsed format version
+variable IMG-END                        \ trailer END file offset
 variable HN  variable ISZ
 variable A-N  variable CMP-NAME-LEN-DIFF  variable CMP-OFF-DIFF  variable CMP-IDX
 variable CMP-B0-P  variable CMP-B0-U  variable CMP-B0-S  variable CMP-B0-L
@@ -131,10 +131,7 @@ variable OKV
      1 +
    repeat drop
    OKV @ ;
-\ SNAP-CORE?: validate the 5 legacy core fields (magic..data-len, offsets
-\ 0..40). A version cell at +40 (48-byte format-versioned trailer, item 12 3b)
-\ sits beyond these and is read separately by SNAP-VER@, so the core bound stays
-\ at +40 and validates both the 40- and 48-byte trailer layouts.
+\ Validate the five 8-byte trailer fields.
 : SNAP-CORE? {: o :} ( n -- bool )
    o 40 + IL @ > if IMG-FALSE exit then
    o I@ SNAP-MAGIC = 0= if IMG-FALSE exit then
@@ -161,14 +158,10 @@ variable OKV
    SNAP-DIRECT-OFF @ 0 < if 0 0= 0= exit then
    SNAP-DIRECT-OFF @ SNAP-DIRECT? if SNAP-DIRECT-OFF @ TOFF ! 0 0= exit then
    0 0= 0= ;
-\ FIND-SNAPSHOT: two-probe direct detection (dot habu-snapshot-format-ver). SNL
-\ grows with the trailer, so END-size lands on the same magic cell for both
-\ formats; probe the 48-byte trailer (END-48) first, then the legacy 40-byte
-\ (END-40), then fall back to the magnitude scanner.
+\ Probe the trailer at text-end - 40, then fall back to the magnitude scanner.
 : FIND-SNAPSHOT ( -- bool )
    -1 TOFF !
    IMAGE-TEXT-SIZE-OFF I@ IMAGE-TEXT-TRAILER-ADJ + IMG-END !
-   IMG-END @ 48 - SNAP-TRY-DIRECT if 0 0= exit then
    IMG-END @ 40 - SNAP-TRY-DIRECT if 0 0= exit then
    IL @ 40 - dup 7 and - SCAN-OFF !
    begin SCAN-OFF @ 0 >= while
@@ -176,14 +169,6 @@ variable OKV
       SCAN-OFF @ 8 - SCAN-OFF !
    repeat
    0 0= 0= ;
-\ SNAP-VER@: a 48-byte trailer (END-TOFF = 48) carries its format version at
-\ +40; a legacy 40-byte trailer has none, so version 0. Guard the +40 read.
-: SNAP-VER@ ( -- n )
-   IMG-END @ TOFF @ - 48 =  TOFF @ 48 + IL @ <= and if
-      TOFF @ 40 + I@
-   else
-      0
-   then ;
 : LOAD-SNAPSHOT ( -- )
    FIND-SNAPSHOT 0= if 0 HAS-SNAP ! exit then
    -1 HAS-SNAP !
@@ -191,7 +176,6 @@ variable OKV
    TOFF @ 16 + I@ TNDICT !
    TOFF @ 24 + I@ TREG !
    TOFF @ 32 + I@ TDATA !
-   SNAP-VER@ TVER !
    TOFF @ TDATA @ - TREG @ - ROFF ! ;
 
 : PTR>OFF {: p :} ( n -- n )
@@ -457,13 +441,10 @@ variable OKV
    off 0 < off 8 + TDATA @ > or if s" imgdump: data offset out of range" 74 die then
    TOFF @ TDATA @ - off + I@ . ;
 
-\ SNAP-INFO: print the snapshot trailer's format version and region/data sizes.
-\ Gives the format-version bump a checkable surface: a freshly installed image
-\ reports the current SNAP-FORMAT-VERSION; a legacy 40-byte image reports 0.
+\ Print snapshot dictionary and payload sizes.
 : SNAP-INFO ( -- )
    1 SCRIPT-ARGV$ READ-IMG-PATH LOAD-SNAPSHOT
    HAS-SNAP @ 0= if s" no-snapshot" type cr exit then
-   s" snap version " type TVER @ . cr
    s" ndict " type TNDICT @ . cr
    s" region " type TREG @ h. cr
    s" data " type TDATA @ h. cr ;

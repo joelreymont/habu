@@ -1,10 +1,10 @@
-\ owner-wid-snapshot.f - adversarial proofs for the snapshot image writer.
+\ snapshot-writer.f - adversarial proofs for the snapshot image writer.
 \
 \ Two properties of src/habu/snap-lib.f, each driven through a real snapshot
 \ build in a child process (SNAPGO forgets its definitions and exits, so the
 \ writer path can only be exercised out of process):
 \
-\   1. Return-stack zeroing. test/owner-wid-snapshot-poison.f plants fixed
+\   1. Return-stack zeroing. test/snapshot-writer-poison.f plants fixed
 \      non-zero canaries in the return-stack window of the live DATA region just
 \      before SNAPGO. The build only succeeds if those writes took (the fixture
 \      dies 70 otherwise), so a green build proves the window was non-zero. The
@@ -12,10 +12,14 @@
 \      SND-ZERO-RSTK cleared every stale return-stack frame.
 \
 \   2. Fail-closed on a failed final close.
-\      test/owner-wid-snapshot-close-fail.f arms SNAP-CLOSE-SEAM so the snapshot
+\      test/snapshot-writer-close-fail.f arms SNAP-CLOSE-SEAM so the snapshot
 \      output descriptor is closed early; SNAP-WRITE-BYTES then observes the
 \      failing close-rc and must die 74 "snap: output close failed" rather than
 \      accept the half-written image.
+\
+\   3. Warm startup preserves the protected-WID registry captured in DATA. The
+\      real snapshot must retain more than the two reserved entries, and its
+\      live slot 2 must reject publication on both batch input paths.
 \
 \ The snapshot source is emitted with BF-EMIT-SNAP-RUN-SOURCE-WITH, which inserts
 \ the fixture after the builder tail and before the snap driver. Both fixtures
@@ -40,16 +44,18 @@ require lib/date.f
 require tools/build-fixpoint.f
 require lib/test.f
 
-package OWNER-WID-SNAPSHOT
+package SNAP-WRITER-TEST
 
 $8000 constant CAP
 240000 constant TIMEOUT-MS
 74 constant CLOSE-FAIL-RC
+ENGINE-ERROR:SEAL-PACKAGE constant FORGE-RC
 create OUT CAP allot
 create ERR CAP allot
 variable OUT-U
 variable ERR-U
 variable RC
+variable EXITED
 
 : ENGINE$ ( -- ptr u8 n )
    s" HABU_UNDER_TEST" GETENV dup 0 > if exit then
@@ -67,7 +73,7 @@ variable ROOT-U
    u ROOT-U ! ;
 
 : SETUP-ROOT ( -- )
-   s" habu-owner-wid-snapshot" TMPDIR-MKDIR ROOT!
+   s" habu-snapshot-writer" TMPDIR-MKDIR ROOT!
    ROOT CLEANUP-TREE+
    ROOT BF-TMP! ;
 
@@ -93,7 +99,7 @@ variable NZ
    a u FILE-SIZE {: sz:n :}
    sz MEM-ALLOC-BYTES drop IMGP !
    a u IMG sz READ-ALL IMGU !
-   IMGU @ sz <> if s" owner-WID snapshot short read" 74 die then ;
+   IMGU @ sz <> if s" snapshot writer short read" 74 die then ;
 
 : U32@ ( n -- n ) {: k:n :}
    IMG k + c@
@@ -112,7 +118,7 @@ variable NZ
    IMGU @ 8 - 0 ?do
       i MAGIC-AT? if i TR-LAST ! then
    loop
-   TR-LAST @ dup 0 < if s" owner-WID snapshot trailer magic missing" 74 die then ;
+   TR-LAST @ dup 0 < if s" snapshot writer trailer magic missing" 74 die then ;
 
 : DATA-OFF ( -- n )
    LAST-TRAILER {: tr:n :}
@@ -158,18 +164,70 @@ variable NZ
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
 
+\ ---- warm snapshot probes ----
+: STORE! ( len len outcome -- )
+   MATCH outcome
+     exited OF RC ! 0 0= EXITED ! ENDOF
+     signaled OF RC ! 0 0= 0= EXITED ! ENDOF
+     timeout OF 0 RC ! 0 0= 0= EXITED ! ENDOF
+   ;MATCH
+   LEN>N ERR-U !  LEN>N OUT-U ! ;
+
+: WARM-LOAD ( ptr u8 n -- ) {: s:ptr su:n :}
+   SNAP-SRC$ s su WRITE-ALL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   SNAP-SRC$ >LEN PROC-ARGV+
+   SNAP0$ >LEN  OUT 0 >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+
+: WARM-STDIN ( ptr u8 n -- ) {: s:ptr su:n :}
+   PROC-ARGV-RESET
+   SNAP0$ >LEN  s su >LEN  OUT CAP >LEN  ERR CAP >LEN  TIMEOUT-MS >MS
+   RUN-ARGV-STDIN-CAPTURE-OUTCOME STORE! ;
+
+: PARSE-OUT ( -- n )
+   OUT OUT-U @ TRIM STR>NUMBER? MATCH option
+     some OF ENDOF
+     none OF T-FAIL 0 ENDOF
+   ;MATCH ;
+
+: ASSERT-REJECT ( -- )
+   EXITED @ TTRUE
+   RC @ FORGE-RC T=
+   ERR$ s" hb: cannot publish into protected word" CONTAINS? TTRUE ;
+
+: PROBE-N$ ( -- ptr u8 n )
+   s" data-base PROT-WID-N-CELL + @ . " ;
+
+: FORGE-E2$ ( -- ptr u8 n )
+   s" data-base PROT-WID-OFF + 8 + @ $FFFFFFFF and set-current : FOO ( -- n ) 1 ;" ;
+
+: WARM-CASE ( -- )
+   s" warm snapshot retains protected WIDs" T-LABEL
+   PROBE-N$ WARM-LOAD
+   EXITED @ TTRUE  RC @ 0 T=
+   PARSE-OUT dup 2 > TTRUE
+   s" warm live protected-WID count matches serialized snapshot DATA" T-LABEL
+   DATA-OFF PROT-WID-N-CELL + U32@ T=
+   s" warm protected slot 2 rejects publication (--load)" T-LABEL
+   FORGE-E2$ WARM-LOAD  ASSERT-REJECT
+   s" warm protected slot 2 rejects publication (stdin)" T-LABEL
+   FORGE-E2$ WARM-STDIN  ASSERT-REJECT ;
+
 \ ---- scenarios ----
 : POISON-CASE ( -- )
-   s" test/owner-wid-snapshot-poison.f" BUILD-WITH
+   s" test/snapshot-writer-poison.f" BUILD-WITH
    s" poisoned snapshot builds (canaries planted and proven live)" T-LABEL
    RC @ 0 T=
    SNAP0$ EXISTS? TTRUE
    SNAP0$ LOAD-IMAGE
    s" snapshot zeros the persisted return-stack window" T-LABEL
-   RSTK-NONZERO 0 T= ;
+   RSTK-NONZERO 0 T=
+   WARM-CASE ;
 
 : CLOSE-FAIL-CASE ( -- )
-   s" test/owner-wid-snapshot-close-fail.f" BUILD-WITH
+   s" test/snapshot-writer-close-fail.f" BUILD-WITH
    s" snapshot writer fails closed when the final close fails" T-LABEL
    RC @ CLOSE-FAIL-RC T=
    ERR$ s" snap: output close failed" CONTAINS? TTRUE ;
@@ -188,8 +246,8 @@ public
    CLEANUP-RUN
    code 0 <> if code throw then
    T-REPORT
-   s" owner-wid-snapshot-test: ok" type cr ;
+   s" snapshot-writer-test: ok" type cr ;
 
 ;package
 
-OWNER-WID-SNAPSHOT:RUN
+SNAP-WRITER-TEST:RUN

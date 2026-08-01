@@ -305,10 +305,10 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ only a call to the participant's gate. tools/decl-gen-probe.f, TRUSTED.md,
 \ and the four test files are not part of the assembled
 \ stage2 engine source.
-122592 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
+118428 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
-3808 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-127168 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+3740 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
+123072 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
 \ The whole-file (GB-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
@@ -330,7 +330,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ and dictionary-code +32 (the generator's baked entry) - exactly the
 \ attribution this ratchet exists to give.
 : LINUX-REGION-BUDGETS ( [ ptr u8 n n -- ] -- ) {: q :}   \ typed-local-lint: allow-bare-local - q carries the row effect
-   s" main/startup"            5752 q execute
+   s" main/startup"            4792 q execute
    s" main/comment"             380 q execute
    s" interpret/colon"         752 q execute
    s" interpret/define"       10464 q execute
@@ -347,31 +347,30 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
    s" compile/call"             628 q execute
    s" compile/undef"            924 q execute
    s" compile/die"              200 q execute
-   s" compile/exit"            1724 q execute
+   s" compile/exit"            1868 q execute
    s" compile/eval-recover"     724 q execute
    s" main/underflow"           192 q execute
-   s" primitives/base"        17820 q execute
-   s" primitives/arity"         856 q execute
-   s" primitives/extra"         572 q execute
+   s" primitives/base"        17604 q execute
+   s" primitives/arity"         760 q execute
+   s" primitives/extra"         568 q execute
    s" primitives/prof"          220 q execute
    s" primitives/float"         764 q execute
    s" primitives/cemit"         108 q execute
    s" primitives/cemitbl"       100 q execute
    s" primitives/capture"       156 q execute
    s" primitives/token"         104 q execute
-   s" primitives/protect"       336 q execute
-   s" primitives/protected-wid" 1540 q execute
-   s" primitives/aot-owner"    1416 q execute
+   s" primitives/protect"       304 q execute
+   s" primitives/protected-wid" 120 q execute
    s" primitives/flush"          72 q execute
    s" primitives/find"          952 q execute
    s" primitives/find-used"     520 q execute
    s" primitives/hash-index"    852 q execute
    s" primitives/number"        332 q execute
    s" primitives/top-hook"       68 q execute
-   s" dictionary-code"         4732 q execute
-   s" runtime"                 9508 q execute
-   s" seed-dictionary"         8700 q execute
-   s" aot-seed"               22508 q execute   \ +8: the GENERATED-DECL-CTOR private axiom rows
+   s" dictionary-code"         5000 q execute
+   s" runtime"                 9464 q execute
+   s" seed-dictionary"         8352 q execute
+   s" aot-seed"               22468 q execute
    s" primitives/qualify-def"  2448 q execute
    s" primitives/store-def-name"   388 q execute
    s" baked-source"               0 q execute ;

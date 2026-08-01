@@ -23,13 +23,8 @@ $1000000 constant REGION-OFF
 \ C's direct-BL emission relies on.
 $8000000 constant BL-REACH
 81 constant BL-RANGE-RC
+82 constant AOT-SEED-RC
 $48425350414E5321 constant SNAP-MAGIC
-\ Version 4: the live JIT region moved from a fixed VA to __text base + REGION-OFF
-\ (BL range); region-internal pointers now canonicalize to the RBASE-VA sentinel and
-\ the loader rebases them to the live region base. A pre-4 engine maps the region at
-\ the old fixed VA and cannot relocate a v4 image's region pointers, so it fails
-\ closed rc 80.
-4 constant SNAP-FORMAT-VERSION
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
 \ stack; the code area follows at DBASE+DICT-SIZE inside the REGION.
@@ -48,6 +43,7 @@ $181000 constant DICT-SIZE
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
+$FFFFFFFE constant WID-LIMIT
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time
@@ -319,39 +315,8 @@ PROT-WID-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: registry + 
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
-\ --- sealed-owner WID registry: count plus atomic u32 (public,private) rows.
-\ This registry is distinct from the constructor protected-WID table above: owner
-\ role checks must distinguish callable public WIDs from inaccessible private WIDs,
-\ while constructor protection keeps its existing flat-table ABI. The band starts
-\ immediately after the sixteen evaluator frames ($43C0..$47C0) and ends before
-\ the lowering transaction at $5000. A 256-row table occupies $808 bytes and leaves
-\ $38 bytes of separation, so no runtime scratch range moves and old constructor
-\ offsets remain byte-for-byte stable. PROT-GUARD treats this as its own protected
-\ interval; the hidden mutator stores each aligned pair atomically, then
-\ release-publishes the count consumed by acquire scans. Cold entry clears the
-\ count and every row before any test-only build hook runs. ---
-$47C0 constant OWNER-WID-N-CELL
-$47C8 constant OWNER-WID-OFF
-8 constant OWNER-WID-ROW
-0 constant OWNER-WID-PUB
-4 constant OWNER-WID-PRI
-$FFFFFFFE constant OWNER-WID-LIMIT
-256 constant OWNER-WID-MAX
-OWNER-WID-OFF OWNER-WID-MAX OWNER-WID-ROW * + constant OWNER-WID-END
-OWNER-WID-N-CELL constant OWNER-REG-OFF
-OWNER-WID-END OWNER-REG-OFF - constant OWNER-REG-LEN
-$4F57494450414952 constant AOT-OWNER-MAGIC
-2 constant AOT-OWNER-VERSION
 16 constant AOT-CREC-ROW
 $4000 constant AOT-NAMES-CAP
-32 constant AOT-OWNER-HEADER
-16 constant AOT-OWNER-ROW
-0 constant AOT-OWNER-SOURCE-PUB
-4 constant AOT-OWNER-SOURCE-PRI
-8 constant AOT-OWNER-NAME-OFF
-12 constant AOT-OWNER-NAME-LEN
-$524941504449574F constant AOT-OWNER-END-MAGIC
-82 constant AOT-OWNER-RC
 \ Dict-name hash index: slots stay a power of 2 (LFIND probes with the
 \ HIDX-SLOTS 1 - mask) and 2x DICT-CAP so the load factor stays <= 50%;
 \ bytes = slots * 4 (u32 entries). Grown with DICT-CAP 32768: HIDX-SLOTS $10000

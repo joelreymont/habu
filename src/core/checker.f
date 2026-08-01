@@ -4933,10 +4933,6 @@ PRIM: DRAIN-PRETRUST PRIM;   \ dot habu-engine-pre-trust-77410827: drains the pe
 PRIM: data-base      PE-PTR-A PE-OUT PRIM;
 PRIM: prot-wid-add   PE-N PE-IN PRIM;
 PRIM: prot-wid-room  PE-N PE-OUT PRIM;
-PRIM: owner-wid-preflight? PE-N PE-IN PE-N PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: owner-wid-public?    PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: owner-wid-private?   PE-N PE-IN  PE-F PE-OUT PRIM;
-PRIM: owner-wid?           PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: TFAM-CTOR-WORD? PE-PTR-U8 PE-IN PE-N PE-IN  PE-F PE-OUT PRIM;
 PRIM: wordlist       PE-N PE-OUT PRIM;
 PRIM: get-current    PE-N PE-OUT PRIM;

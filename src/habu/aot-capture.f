@@ -306,23 +306,32 @@ variable ACAP-P
 
 \ --- protected-WID registry capture (TFAM 2b-v): serialize the live friend-arena
 \ registry (PROT-WID-N-CELL count + PROT-WID-OFF u32 table) into AOT-PWID-BUF so
-\ EMIT-AOT-SEED bakes it and EM-AOT-REGISTER-PROT-WIDS restores it at boot. Each
+\ EMIT-AOT-SEED bakes it and EMIT-AOT-PROT-RESTORE restores it at boot. Each
 \ WID is a full u32, so wordlist IDs above 255 round-trip with no u8 truncation.
-\ In the current metabuild no producer populates the registry (item 8 will), so the
-\ live count is 0 and the capture is a clean no-op; ACAP-PWID-SELFTEST proves the
-\ u32 serialize/deserialize round-trip independently, exactly as ACAP-WID-SELFTEST
-\ proves the record path. ---
+\ ACAP-PWID-SELFTEST proves the u32 serialize/deserialize round-trip. ---
 : ACAP-PWID-SLOT ( n -- ptr u8 ) 4 * AOT-PWID-BUF@ + ;         \ slot index -> u32 byte addr
 : ACAP-PWID-PUT ( n n -- ) {: v:n ix:n :}                      \ v=wid ix=slot: store as u32
    v  ix ACAP-PWID-SLOT  AOT-P32! ;
 : ACAP-PWID-GET ( n -- n ) ACAP-PWID-SLOT ACAP-W32@ ;          \ slot -> wid (u32, boot-read model)
 : ACAP-PWID-CAPTURE ( -- )                                     \ live registry -> AOT-PWID-BUF
    AOT-LIVE-DATA PROT-WID-N-CELL + atomic@ {: n:n :}
+   n 0 < if s" aot-capture: protected-WID registry count is negative" 74 die then
    n AOT-PWID-MAX > if s" aot-capture: protected-WID registry overflow" 74 die then
    n AOT-PWID-N !
    n 0 ?do
       AOT-LIVE-DATA PROT-WID-OFF + i 4 * + AOT-A>U8 ACAP-W32@   \ live table[i] (u32)
       i ACAP-PWID-PUT
+   loop ;
+: ACAP-PWID-CHECK ( -- )
+   AOT-PWID-N @ 0 ?do
+      i ACAP-PWID-GET dup 0= swap WID-LIMIT > or if
+         s" aot-capture: protected-WID registry entry invalid" 74 die
+      then
+      i 0 ?do
+         j ACAP-PWID-GET i ACAP-PWID-GET = if
+            s" aot-capture: protected-WID registry entry duplicate" 74 die
+         then
+      loop
    loop ;
 variable ACAP-PWID-MX                                          \ max-WID accumulator
 : ACAP-PWID-MAXWID ( -- n )                                    \ largest WID in AOT-PWID-BUF (0 if empty)
@@ -331,237 +340,6 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
       i ACAP-PWID-GET dup ACAP-PWID-MX @ > if ACAP-PWID-MX ! else drop then
    loop
    ACAP-PWID-MX @ ;
-
-package AOT-OWNER
-
-0 constant OWNER-OK
-1 constant OWNER-BAD-COUNT
-2 constant OWNER-BAD-PUB
-3 constant OWNER-BAD-PRI
-4 constant OWNER-BAD-SAME
-5 constant OWNER-BAD-PUB-PROT
-6 constant OWNER-BAD-PRI-PROT
-7 constant OWNER-BAD-COLLISION
-8 constant OWNER-BAD-PACKAGE-MISSING
-9 constant OWNER-BAD-PACKAGE-DUP
-variable OWNER-BAD-KIND
-variable OWNER-BAD-ROW
-variable OWNER-BAD-OTHER
-
-: WID-VALID? ( n -- bool )
-   dup 0 > swap OWNER-WID-LIMIT <= and ;
-
-: PROT-N@ ( -- n )
-   AOT-LIVE-DATA PROT-WID-N-CELL + atomic@ ;
-
-: PROT@ ( n -- n ) {: idx:n :}
-   AOT-LIVE-DATA PROT-WID-OFF + AOT-A>U8 idx 4 * + ACAP-W32@ ;
-
-: PROT-DUP? ( n n -- bool )
-   PROT@ swap PROT@ = ;
-
-: PROT-VALID? ( -- bool )
-   PROT-N@ {: count:n :}
-   count 0 < if 0 0= 0= exit then
-   count PROT-WID-MAX > if 0 0= 0= exit then
-   count 0 ?do
-      i PROT@ WID-VALID? 0= if 0 0= 0= unloop exit then
-      i 0 ?do
-         j i PROT-DUP? if 0 0= 0= unloop unloop exit then
-      loop
-   loop
-   0 0= ;
-
-: OWNER-N@ ( -- n )
-   AOT-LIVE-DATA OWNER-WID-N-CELL + atomic@ ;
-
-: OWNER-ROW-A ( n -- ptr u8 ) {: idx:n :}
-   AOT-LIVE-DATA OWNER-WID-OFF + AOT-A>U8 idx OWNER-WID-ROW * + ;
-
-: OWNER@ ( n n -- n ) {: idx:n role:n :}
-   idx OWNER-ROW-A role + ACAP-W32@ ;
-
-: OWNER-PAIR@ ( n -- n n )
-   dup OWNER-WID-PUB OWNER@
-   swap OWNER-WID-PRI OWNER@ ;
-
-: PROTECTED? ( n -- bool ) {: wid:n :}
-   PROT-N@ 0 ?do
-      i PROT@ wid = if 0 0= unloop exit then
-   loop
-   0 0= 0= ;
-
-: PAIRS-COLLIDE? ( n n -- bool ) {: left:n right:n :}
-   left OWNER-PAIR@ {: lpub:n lpri:n :}
-   right OWNER-PAIR@ {: rpub:n rpri:n :}
-   lpub rpub = lpub rpri = or
-   lpri rpub = or lpri rpri = or ;
-
-: OWNER-BAD! ( n n n -- bool ) {: kind:n row:n other:n :}
-   kind OWNER-BAD-KIND !
-   row OWNER-BAD-ROW !
-   other OWNER-BAD-OTHER !
-   0 0= 0= ;
-
-: OWNERS-VALID? ( n -- bool ) {: count:n :}
-   OWNER-OK OWNER-BAD-KIND !
-   -1 OWNER-BAD-ROW !
-   -1 OWNER-BAD-OTHER !
-   count 0 < if OWNER-BAD-COUNT -1 -1 OWNER-BAD! exit then
-   count OWNER-WID-MAX > if OWNER-BAD-COUNT -1 -1 OWNER-BAD! exit then
-   count 0 ?do
-      i OWNER-PAIR@ {: pub:n pri:n :}
-      pub WID-VALID? 0= if OWNER-BAD-PUB i -1 OWNER-BAD! unloop exit then
-      pri WID-VALID? 0= if OWNER-BAD-PRI i -1 OWNER-BAD! unloop exit then
-      pub pri = if OWNER-BAD-SAME i -1 OWNER-BAD! unloop exit then
-      pub PROTECTED? if OWNER-BAD-PUB-PROT i -1 OWNER-BAD! unloop exit then
-      pri PROTECTED? if OWNER-BAD-PRI-PROT i -1 OWNER-BAD! unloop exit then
-      i 0 ?do
-         j i PAIRS-COLLIDE? if OWNER-BAD-COLLISION j i OWNER-BAD! unloop unloop exit then
-      loop
-   loop
-   0 0= ;
-
-: OWNER-BAD-DIAG ( -- )
-   s" aot-capture: owner-WID registry corrupt: kind " type OWNER-BAD-KIND @ .
-   s" row " type OWNER-BAD-ROW @ .
-   s" other " type OWNER-BAD-OTHER @ .
-   s" count " type OWNER-N@ .
-   s" protected " type PROT-N@ .
-   OWNER-BAD-ROW @ dup 0 >= swap OWNER-N@ < and if
-      OWNER-BAD-ROW @ OWNER-PAIR@
-      s" pub " type swap . s" pri " type .
-   then
-   cr ;
-
-variable OWNER-PACKAGE-N
-variable OWNER-PACKAGE-K
-
-: OWNER-FOLD-C ( n -- n ) {: c:n :}
-   c $41 >= c $5A <= and if c $20 or exit then
-   c ;
-
-: PACKAGE-NAME= ( ptr a ptr u8 n -- bool ) {: rec:ptr a:ptr u:n :}
-   rec AOT-RNLEN u <> if 0 0= 0= exit then
-   rec AOT-RNPTR {: b:ptr :}
-   u 0 ?do
-      a i + c@ OWNER-FOLD-C
-      b i + c@ OWNER-FOLD-C <> if 0 0= 0= unloop exit then
-   loop
-   0 0= ;
-
-: OWNER-NAME-VALID? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   u 0= u 255 > or if 0 0= 0= exit then
-   u 0 ?do a i + c@ $3A = if 0 0= 0= unloop exit then loop
-   0 0= ;
-
-: PACKAGE-PAIR? ( ptr a n n -- bool ) {: rec:ptr pub:n pri:n :}
-   rec AOT-RWID -1 =
-   rec AOT-RXT pub = and
-   rec AOT-REND pri = and ;
-
-: PACKAGE-RECORD ( n -- ptr a ) {: row:n :}
-   0 OWNER-PACKAGE-N !
-   -1 OWNER-PACKAGE-K !
-   row OWNER-PAIR@ {: pub:n pri:n :}
-   ndict@ 0 ?do
-      i AOT-REC {: rec:ptr :}
-      rec pub pri PACKAGE-PAIR? if
-         OWNER-PACKAGE-N @ 1+ OWNER-PACKAGE-N !
-         i OWNER-PACKAGE-K !
-      then
-   loop
-   OWNER-PACKAGE-N @ 0= if
-      OWNER-BAD-PACKAGE-MISSING row -1 OWNER-BAD! drop
-      OWNER-BAD-DIAG
-      s" aot-capture: owner package sentinel missing" 74 die
-   then
-   OWNER-PACKAGE-N @ 1 <> if
-      OWNER-BAD-PACKAGE-DUP row OWNER-PACKAGE-N @ OWNER-BAD! drop
-      OWNER-BAD-DIAG
-      s" aot-capture: owner package sentinel duplicate" 74 die
-   then
-   OWNER-PACKAGE-K @ AOT-REC dup AOT-RNPTR swap AOT-RNLEN {: name:ptr nameu:n :}
-   name nameu OWNER-NAME-VALID? 0= if
-      OWNER-BAD-PACKAGE-MISSING row -1 OWNER-BAD! drop
-      OWNER-BAD-DIAG
-      s" aot-capture: owner package identity invalid" 74 die
-   then
-   0 OWNER-PACKAGE-N !
-   ndict@ 0 ?do
-      i AOT-REC {: rec:ptr :}
-      rec AOT-RWID -1 = if
-         rec name nameu PACKAGE-NAME= if
-            OWNER-PACKAGE-N @ 1+ OWNER-PACKAGE-N !
-         then
-      then
-   loop
-   OWNER-PACKAGE-N @ 1 <> if
-      OWNER-BAD-PACKAGE-DUP row OWNER-PACKAGE-N @ OWNER-BAD! drop
-      OWNER-BAD-DIAG
-      s" aot-capture: owner package identity ambiguous" 74 die
-   then
-   OWNER-PACKAGE-K @ AOT-REC ;
-
-: OWNER-NAME$ ( n -- ptr u8 n )
-   PACKAGE-RECORD dup AOT-RNPTR swap AOT-RNLEN ;
-
-: FREEZE-ROW ( n -- ) {: row:n :}
-   row ROW@ {: dst:ptr :}
-   row OWNER-PAIR@ {: pub:n pri:n :}
-   pub dst AOT-P32!
-   pri dst AOT-OWNER-SOURCE-PRI + AOT-P32!
-   row OWNER-NAME$ {: name:ptr nameu:n :}
-   name nameu ACAP-POOL-ADD {: off:n :}
-   off dst AOT-OWNER-NAME-OFF + AOT-P32!
-   nameu dst AOT-OWNER-NAME-LEN + AOT-P32! ;
-
-: FROZEN-ROW=LIVE? ( n -- bool ) {: row:n :}
-   row ROW@ {: frozen:ptr :}
-   row OWNER-PAIR@ {: pub:n pri:n :}
-   frozen ACAP-W32@ pub <> if 0 0= 0= exit then
-   frozen AOT-OWNER-SOURCE-PRI + ACAP-W32@ pri <> if 0 0= 0= exit then
-   row OWNER-NAME$ {: name:ptr nameu:n :}
-   name nameu ACAP-POOL-FIND {: off:n :}
-   off 0 < if 0 0= 0= exit then
-   frozen AOT-OWNER-NAME-OFF + ACAP-W32@ off =
-   frozen AOT-OWNER-NAME-LEN + ACAP-W32@ nameu = and ;
-
-: FROZEN=LIVE? ( n -- bool ) {: count:n :}
-   count 0 ?do
-      i FROZEN-ROW=LIVE? 0= if 0 0= 0= unloop exit then
-   loop
-   0 0= ;
-
-public
-
-: CAPTURE ( -- )
-   CAPTURE-BEGIN
-   AOT-LIVE-DATA AOT-DBASE = if
-      s" aot-capture: live DATA aliases dictionary base" 74 die
-   then
-   PROT-VALID? 0= if
-      s" aot-capture: protected-WID registry corrupt" 74 die
-   then
-   OWNER-N@ {: count:n :}
-   count OWNERS-VALID? 0= if
-      OWNER-BAD-DIAG
-      s" aot-capture: owner-WID registry corrupt" 74 die
-   then
-   ACAP-PWID-CAPTURE
-   count 0 ?do i FREEZE-ROW loop
-   OWNER-N@ count <> if
-      s" aot-capture: owner-WID count changed during freeze" 74 die
-   then
-   count FROZEN=LIVE? 0= if
-      s" aot-capture: frozen owner-WID registry mismatch" 74 die
-   then
-   count CAPTURE-COMMIT
-   REQUIRE-FROZEN count <> if
-      s" aot-capture: frozen owner-WID count mismatch" 74 die
-   then ;
-
-;package
 
 \ Capture the words in dict[rec-start, rec-end) compiled contiguously into the host
 \ region [blob-start, blob-end); [d0,d1) is the REPL DATA span (create/variable).
@@ -579,7 +357,8 @@ public
    bstart bend ACAP-SCAN-CODE
    ACAP-COMPACT-RECS                            \ build 16B compact records + add record names to pool
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
-   AOT-OWNER:CAPTURE ;                          \ validate both WID registries before copying either
+   ACAP-PWID-CAPTURE                            \ serialize the protected-WID registry
+   ACAP-PWID-CHECK ;                            \ reject invalid or duplicate WIDs
 
 \ --- host validation dump (bring-up only) ---
 : ACAP-. ( -- )
@@ -625,7 +404,7 @@ ACAP-WID-SELFTEST
 \ Runs in the live metabuild BEFORE stdin.f's real ACAP-CAPTURE, and clears
 \ AOT-PWID-N so the real (empty) capture is unaffected. Fail-closed via die:
 \ ACAP-PWID-PUT is the exact serialize the capture uses; ACAP-PWID-GET is the exact
-\ u32 read EM-AOT-REGISTER-PROT-WIDS runs at boot, so this guards both directions. ---
+\ u32 read EMIT-AOT-PROT-RESTORE uses at boot, so this guards both directions. ---
 : ACAP-PWID-SELFTEST ( -- )
    0 AOT-PWID-N !
    42   0 ACAP-PWID-PUT                              \ entry 0 = 42
@@ -638,39 +417,3 @@ ACAP-WID-SELFTEST
    ACAP-PWID-MAXWID 1000 <> if s" aot-capture: pwid self-test: max-WID for WIDN advance wrong" 74 die then
    0 AOT-PWID-N ! ;                                  \ leave clean for the real capture
 ACAP-PWID-SELFTEST
-
-\ --- build-time regression (dot habu-separate-aot-records): owner freeze rows are
-\ written through AOT-OWNER:ROW@ into the dedicated ROWS buffer and must never reach
-\ AOT-REC-BUF. A shared buffer would let a full OWNER-WID-MAX-row freeze
-\ (OWNER-WID-MAX * AOT-OWNER-ROW = 4096 bytes) overwrite dict records 0..85 -- the
-\ exact prefix clobber this dot separates. This stamps the AOT-REC-BUF record prefix,
-\ writes a distinct sentinel through ROW@ for every row (the precise destination
-\ FREEZE-ROW targets), then proves the record prefix is byte-intact and the freeze
-\ sentinel landed in ROWS. Fail-closed via die; red-first: aliasing ROW@ to
-\ AOT-REC-BUF@ turns the record prefix into the freeze sentinel and this dies. Runs
-\ in the live metabuild BEFORE stdin.f's real ACAP-CAPTURE and re-zeros both regions,
-\ so the real capture is unaffected. Host-only (aot-capture.f is not baked), so
-\ CODELEN is unchanged -- exactly like ACAP-WID-SELFTEST / ACAP-PWID-SELFTEST above.
-package AOT-OWNER
-$A5 constant SEP-REC-MARK                            \ record-prefix sentinel
-$5A constant SEP-ROW-MARK                            \ owner-freeze-row sentinel
-: SEP-SELFTEST ( -- )
-   OWNER-WID-MAX AOT-OWNER-ROW * {: span:n :}                    \ bytes a shared freeze would clobber
-   span 0 ?do  SEP-REC-MARK AOT-REC-BUF@ i + c!  loop            \ stamp record prefix
-   OWNER-WID-MAX 0 ?do
-      i ROW@ {: dst:ptr :}                                       \ exact FREEZE-ROW destination
-      AOT-OWNER-ROW 0 ?do  SEP-ROW-MARK dst i + c!  loop
-   loop
-   span 0 ?do
-      AOT-REC-BUF@ i + c@ SEP-REC-MARK <> if
-         s" aot-capture: owner freeze aliased AOT-REC-BUF (record prefix clobbered)" 74 die
-      then
-   loop
-   OWNER-WID-MAX 0 ?do
-      i ROW@ c@ SEP-ROW-MARK <> if
-         s" aot-capture: owner freeze row missing from ROWS buffer" 74 die
-      then
-   loop
-   span 0 ?do  0 AOT-REC-BUF@ i + c!  0 ROWS i + c!  loop ;      \ leave both regions clean
-SEP-SELFTEST
-;package

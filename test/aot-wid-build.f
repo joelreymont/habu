@@ -107,6 +107,14 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
       s"    " DRV+  v vu DRV+  s"  AOT-DATA-SIZE !" DRV+ DRV-NL
    then ;
 
+\ Optional corrupt-registry forge. The emitted engine validates this baked count
+\ before touching the live protected-WID table, so PROT-WID-MAX+1 must die at
+\ cold startup with the named AOT corruption diagnostic.
+: PWID-CORRUPT-LINE ( -- )
+   s" HABU_AOT_PWID_CORRUPT" GETENV nip 0 > if
+      s"    PROT-WID-MAX 1+ AOT-PWID-N !" DRV+ DRV-NL
+   then ;
+
 \ Append PWID-GO: mirror stdin.f GO, injecting two protected word-list ids
 \ (300, one slot for WID > 255; and 70000, one slot for WID > 65535) into the
 \ capture buffer after CAPTURE-REPL. These two literal ids are the fixture
@@ -116,6 +124,7 @@ create DRV-PATH-BUF FS-PATH-CAP allot   variable DRV-PATH-U
    s" : PWID-GO ( -- )" DRV+ DRV-NL
    s"    CAPTURE-REPL" DRV+ DRV-NL
    s"    300 0 ACAP-PWID-PUT   70000 1 ACAP-PWID-PUT   2 AOT-PWID-N !" DRV+ DRV-NL
+   PWID-CORRUPT-LINE
    SPAN-FORGE-LINE
    s"    0 0= STDIN? !" DRV+ DRV-NL
    s"    HB@ 0 EMIT-FORTH" DRV+ DRV-NL

@@ -1,4 +1,4 @@
-\ owner-wid-snapshot-close-fail.f - arm the test-only snapshot close seam.
+\ snapshot-writer-close-fail.f - arm the test-only snapshot close seam.
 \
 \ Builder-only fixture: the snapshot suite injects this source ahead of the snap
 \ driver (BF-EMIT-SNAP-RUN-SOURCE-WITH). It requires snap-lib.f (live by this
@@ -11,7 +11,7 @@
 
 require src/habu/snap-lib.f
 
-package OWNER-WID-SNAPSHOT-CLOSE-FAIL
+package SNAP-WRITER-CLOSE-FAIL
 
 : CLOSE-EARLY ( n -- )
    close ;

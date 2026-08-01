@@ -7,18 +7,18 @@
 \ could publish a definition into a sealed constructor word-list and the guard
 \ would never fire.
 \
-\ The restore currently runs inside EM-STARTUP-RUNTIME-STATE (src/habu/habu2.f),
-\ via COLD-RESET -> the RESTORE-HOOK installed by EM-AOT-RESTORE-HOOK-INIT
-\ (habu2.f:3628). That single hook line is load-bearing: neutralizing it moves
-\ the restore back past the batch interpret loop and turns every probe below red
-\ (registry empty, WIDN not advanced, forge into a baked wid exits 0 not 84).
+\ Cold startup restores the baked entries immediately after clearing the live
+\ registry, before the cold prefix registers its constructor families and before
+\ any user source runs. Warm snapshot startup skips both the clear and the baked
+\ replay, preserving the registry restored from the snapshot DATA image.
 \
 \ How it is proven: test/aot-wid-build.f is spawned in a child process with a
 \ private HB_TMP; it builds a throwaway `hb-pwid` engine whose AOT registry holds
 \ two baked word-list ids (300 and 70000). This suite then probes hb-pwid on the
 \ real batch paths:
-\   - the two baked ids read back from PROT-WID-OFF slots 0 and 1 (they are
-\     restored FIRST, ahead of the engine's own boot-time constructor families),
+\   - the two baked ids read back from PROT-WID-OFF slots 0 and 1,
+\   - the final count is greater than two and slot 2 rejects publication on both
+\     batch paths, proving cold-prefix registrations append after the baked ids,
 \   - WIDN has advanced past the largest baked id (70000),
 \   - publishing into either baked id exits 84 with the protected-publish
 \     diagnostic, on BOTH stdin and --load,
@@ -26,17 +26,13 @@
 \   - and the shipped engine (control) protects neither id, so the exit-84
 \     behaviour comes from the baked registry, not the engine baseline.
 \
-\ Note on counts: an earlier revision of this test asserted the registry count
-\ was exactly 2 with a plain-engine baseline of 0. The engine now registers
-\ boot-time protected word-lists for its own constructor families (a plain
-\ bin/hb shows six), so the exact-count proxy is stale. Reading the two baked
-\ ids back from slots 0 and 1 is the direct, stable proof that the restore ran
-\ and ran before those boot-time families were added.
+\ The suite also builds a corrupt-count variant and proves validation fails
+\ before publication with the complete newline-terminated boot diagnostic.
 \
 \ Heavy child build (~12 s): registered as `TEST:SUITE aot-wid-restore` in
 \ test/gate-stdlib-cases.f and listed in SC-MANUAL-TABLE (suite-coverage-lint),
 \ so it runs in the standalone stdlib gate (a required master gate), like the
-\ sibling heavy-build suite test/owner-wid-snapshot.f - not the fast tail-process
+\ heavy-build suite, not the fast tail-process
 \ fork tier, whose perf ratchet the build cost would exceed. Run standalone:
 \ bin/hb --load test/aot-wid-suite.f
 
@@ -71,10 +67,14 @@ variable EXITED
 
 create ROOT-BUF FS-PATH-CAP allot    variable ROOT-U
 create HBPWID-BUF FS-PATH-CAP allot   variable HBPWID-U
+create BAD-ROOT-BUF FS-PATH-CAP allot   variable BAD-ROOT-U
+create BAD-HB-BUF FS-PATH-CAP allot     variable BAD-HB-U
 create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
 
 : ROOT$ ( -- ptr u8 n )   ROOT-BUF ROOT-U @ ;
 : HBPWID$ ( -- ptr u8 n ) HBPWID-BUF HBPWID-U @ ;
+: BAD-ROOT$ ( -- ptr u8 n ) BAD-ROOT-BUF BAD-ROOT-U @ ;
+: BAD-HB$ ( -- ptr u8 n )   BAD-HB-BUF BAD-HB-U @ ;
 : FORGE$ ( -- ptr u8 n )  FORGE-BUF FORGE-U @ ;
 : PLAIN$ ( -- ptr u8 n )  s" bin/hb" ;      \ the shipped engine = the engine under test
 : ERR$ ( -- ptr u8 n )    ERR ERR-U @ ;
@@ -85,12 +85,17 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
    a ROOT-BUF u BYTE-COPY  u ROOT-U !
    ROOT$ CLEANUP-TREE+
    ROOT$ s" hb-pwid" HBPWID-BUF JOIN-PATH HBPWID-U !
+   s" habu-aot-wid-corrupt" TMPDIR-MKDIR {: ba:ptr bu:n :}
+   ba BAD-ROOT-BUF bu BYTE-COPY  bu BAD-ROOT-U !
+   BAD-ROOT$ CLEANUP-TREE+
+   BAD-ROOT$ s" hb-pwid" BAD-HB-BUF JOIN-PATH BAD-HB-U !
    ROOT$ s" forge.f" FORGE-BUF JOIN-PATH FORGE-U ! ;
 
 \ --- spawn the variant builder as a child with a private HB_TMP ---
-: BUILD-VARIANT ( -- )
+: BUILD-IN ( ptr u8 n bool -- ) {: root:ptr rootu:n corrupt:bool :}
    PROC-ENV-RESET
-   s" HB_TMP" >LEN ROOT$ >LEN PROC-ENV+
+   s" HB_TMP" >LEN root rootu >LEN PROC-ENV+
+   corrupt if s" HABU_AOT_PWID_CORRUPT" >LEN s" 1" >LEN PROC-ENV+ then
    PROC-ENV-INHERIT-MISSING
    PROC-ARGV-RESET
    s" --load" >LEN PROC-ARGV+
@@ -103,6 +108,12 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
+
+: BUILD-VARIANT ( -- )
+   ROOT$ 0 0= 0= BUILD-IN ;
+
+: BUILD-CORRUPT ( -- )
+   BAD-ROOT$ 0 0= BUILD-IN ;
 
 \ --- forge child spawn + outcome capture (parameterised by engine) ---
 : STORE! ( len len outcome -- )
@@ -152,8 +163,10 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
 : FORGE-300$ ( -- ptr u8 n )   s" 300 set-current : FOO ( -- n ) 1 ;" ;
 : FORGE-70000$ ( -- ptr u8 n ) s" 70000 set-current : FOO ( -- n ) 1 ;" ;
 : FORGE-USER$ ( -- ptr u8 n )  s" wordlist set-current : FOO ( -- n ) 1 ;" ;
+: FORGE-E2$ ( -- ptr u8 n )    s" data-base PROT-WID-OFF + 8 + @ $FFFFFFFF and set-current : FOO ( -- n ) 1 ;" ;
 : PROBE-E0$ ( -- ptr u8 n )    s" data-base PROT-WID-OFF + @ $FFFFFFFF and . " ;
 : PROBE-E1$ ( -- ptr u8 n )    s" data-base PROT-WID-OFF + 4 + @ $FFFFFFFF and . " ;
+: PROBE-N$ ( -- ptr u8 n )     s" data-base PROT-WID-N-CELL + @ . " ;
 : PROBE-WORDLIST$ ( -- ptr u8 n )  s" wordlist . " ;
 
 : PROBE-VARIANT ( -- )
@@ -161,6 +174,12 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
    HBPWID$ PROBE-E0$ READ-N  WID-A T=
    s" baked wid 70000 (> 65535) restored at PROT-WID-OFF slot 1" T-LABEL
    HBPWID$ PROBE-E1$ READ-N  WID-B T=
+   s" cold-prefix protected WIDs append after the two baked entries" T-LABEL
+   HBPWID$ PROBE-N$ READ-N  2 >  TTRUE
+   s" publish into protected slot 2 exits 84 (--load)" T-LABEL
+   HBPWID$ FORGE-E2$ FORGE-LOAD  ASSERT-REJECT
+   s" publish into protected slot 2 exits 84 (stdin)" T-LABEL
+   HBPWID$ FORGE-E2$ FORGE-STDIN  ASSERT-REJECT
    s" WIDN advanced past the largest baked wid before batch input" T-LABEL
    HBPWID$ PROBE-WORDLIST$ READ-N  WID-B >  TTRUE
    s" publish into baked wid 300 exits 84 (--load)" T-LABEL
@@ -181,6 +200,22 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
    PLAIN$ FORGE-70000$ FORGE-LOAD  ASSERT-OK
    s" shipped engine registry does not begin with the baked ids (control)" T-LABEL
    PLAIN$ PROBE-E0$ READ-N  WID-A <>  TTRUE ;
+
+: PROBE-CORRUPT ( -- )
+   BUILD-CORRUPT
+   s" corrupt protected-WID variant builds" T-LABEL
+   RC @ 0 T=
+   RC @ 0 <> if s" aot-wid-suite: corrupt builder stderr:" type cr  ERR$ type cr  RC @ throw then
+   s" corrupt protected-WID variant exists" T-LABEL
+   BAD-HB$ EXISTS? TTRUE
+   BAD-HB$ s" " FORGE-LOAD
+   s" corrupt protected-WID count exits AOT-SEED-RC" T-LABEL
+   EXITED @ TTRUE  RC @ AOT-SEED-RC T=
+   s" corrupt protected-WID count prints the named diagnostic" T-LABEL
+   ERR$ s" hb: AOT protected-WID corrupt" CONTAINS? TTRUE
+   s" corrupt protected-WID diagnostic ends in newline" T-LABEL
+   ERR-U @ 0 > TTRUE
+   ERR-U @ 0 > if ERR ERR-U @ 1- + c@ 10 T= then ;
 
 \ AOT DATA-reserve span guard (dot habu-guard-aot-data-49de2ee6): the sibling
 \ seed-pass forge test/aot-data-span-forge.f builds an oversized-span variant and
@@ -217,6 +252,7 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
    HBPWID$ EXISTS? TTRUE
    PROBE-VARIANT
    PROBE-CONTROL
+   PROBE-CORRUPT
    PROBE-DATA-SPAN ;
 
 public
