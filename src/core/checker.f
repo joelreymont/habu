@@ -466,7 +466,7 @@ defer TFAM-INST-WIDTH-XT ( n -- n )                     \ INSTANTIATED logical w
 defer TFAM-CON-LIN-XT ( n -- bool )                     \ family schemas contain a concrete linear value
 defer CONSTRUCT-FAM-XT ( ptr u8 n -- n bool )           \ item 9 construct family resolve, active package only
 defer CONSTRUCT-STEP-XT ( ptr u8 n n -- bool )          \ item 9 construct variant resolve + step effect
-defer CTOR-STEP-XT ( n -- bool )                        \ layout-cap slice 3: a generated-constructor CALL whose declared output instantiates a family param at a multi-cell layout arg routes through the arg-aware construct step (the fixed 1-cell-per-param stored effect cannot consume/produce the wide bundle); 0/cell/open args fall through to the ordinary word call
+defer CTOR-STEP-XT ( n -- bool )                        \ generated-constructor CALL whose declared output has a direct closed layout arg routes through the bidirectionally seeded construct step; scalar/pointer/open/linear args fall through
 defer MATCH-FAM-XT ( ptr u8 n -- n bool )               \ item 9 MATCH family resolve, signature scope
 defer MATCH-VAR-XT ( ptr u8 n n -- n bool )             \ variant tail -> SUMV id within a family
 defer MATCH-VTAG-XT ( n -- n )                           \ SUMV id -> declaration-order tag (seen-bitset index)
@@ -1117,19 +1117,6 @@ CT-INIT
    \ name in the single shared-counter case, so this rejects nothing that unified.
    t1 ATOM>A t1 ATOM>U t2 ATOM>A t2 ATOM>U CORE-STR= ;
 
-: PARAM-FAM-OK? ( n n -- bool ) {: t1:n t2:n :}
-   t1 PARAM>FAM t2 PARAM>FAM = ;   \ identity by resolved family-id, not folded spelling
-
-: PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
-   t1 PARAM>ARGC t2 PARAM>ARGC <> IF t1 t2 U-FAIL EXIT THEN
-   t1 t2 PARAM-FAM-OK? 0= IF t1 t2 U-FAIL EXIT THEN
-   0 PARAM-I !
-   BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
-      t1 PARAM-I @ PARAM>ARG  t2 PARAM-I @ PARAM>ARG  PAIR
-      PARAM-I @ 1 + PARAM-I !
-   REPEAT ;
-
-
 \ --- fail-closed depth backstop for the recursive term walkers (TY-OCC?,
 \ E-COPY, LIN-TYPE-COUNT). Terms are finite DAGs (the occurs check keeps
 \ bindings acyclic) whose STRUCTURAL depth is small — hundreds at most — so a
@@ -1148,35 +1135,42 @@ variable TWALK-D
    TWALK-MAX-DEPTH > IF s" checker: term walk too deep (cyclic term)" 76 die THEN ;
 : TWALK-SHALLOWER ( -- ) TWALK-D @ 1 - TWALK-D ! ;
 
-\ TY-OCC? ( n n -- bool ) : does tyvar v occur in type/row t, descending
-\ through quotation effect rows and parameter arguments.
-: TY-OCC?* ( n n -- bool ) {: v:n t:n :}
+\ TYPE-VAR?* ( v term-or-row any? -- bool ) : one resolved term/row variable
+\ walk. With any? false, find the named type variable for the occurs check.
+\ With any? true, find any unresolved type OR row variable for closedness.
+\ Descend pointer pointees, all quotation effect rows, and family arguments.
+: TYPE-VAR?* ( n n bool -- bool ) {: v:n t:n any:bool :}
    t R-RES dup TAG S-PUSH = IF
       BEGIN dup TAG S-PUSH = WHILE
-         dup P>TYPE v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         dup P>TYPE v swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          P>REST R-RES
-      REPEAT drop RES-FALSE EXIT
-   THEN drop
+      REPEAT
+      dup ISROW IF drop any ELSE drop RES-FALSE THEN
+      EXIT
+   THEN
+   dup ISROW IF drop any EXIT THEN
+   drop
    t T-RES {: x:n :}
-   x TAG T-VAR = IF x PAY v = EXIT THEN
-   x TAG T-PTR = IF v x PTR>INNER TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
+   x TAG T-VAR = IF any IF RES-TRUE ELSE x PAY v = THEN EXIT THEN
+   x TAG T-PTR = IF v x PTR>INNER any TWALK-DEEPER RECURSE TWALK-SHALLOWER EXIT THEN
    x TAG T-QUOT = IF
-      v x Q>DIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>DOUT TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>RIN TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
-      v x Q>ROUT TWALK-DEEPER RECURSE TWALK-SHALLOWER
+      v x Q>DIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>DOUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>RIN any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF RES-TRUE EXIT THEN
+      v x Q>ROUT any TWALK-DEEPER RECURSE TWALK-SHALLOWER
       EXIT
    THEN
    x TAG T-PARAM = IF
       0 BEGIN dup x PARAM>ARGC < WHILE       \ data-stack index (RECURSE-safe)
          x over PARAM>ARG                    \ ( i arg )
-         v swap TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
+         v swap any TWALK-DEEPER RECURSE TWALK-SHALLOWER IF drop RES-TRUE EXIT THEN
          1 +
       REPEAT drop
       RES-FALSE EXIT
    THEN
    RES-FALSE ;
-: TY-OCC? ( n n -- bool ) TWALK-RESET TY-OCC?* ;
+: TY-OCC? ( n n -- bool ) TWALK-RESET RES-FALSE TYPE-VAR?* ;
+: TYPE-CLOSED? ( n -- bool ) TWALK-RESET 0 swap RES-TRUE TYPE-VAR?* 0= ;
 
 \ --- item 7 (docs/type-families.md §10-11, PLAN item 7, reject-only): a logical
 \ sum/enum/product layout value is ONE T-PARAM cell in a signature and is NOT
@@ -1472,6 +1466,42 @@ variable LBUF-PEND-U   0 LBUF-PEND-U !
 : RAW-BLOCK? ( n n -- bool )   \ binding var `vid` to `term` violates the RAW cell discipline?
    over TVK-RAW? 0= IF 2drop RES-FALSE EXIT THEN     \ ordinary var: never blocks
    nip RAW-OK? 0= ;                                   \ RAW var: `term` must be RAW-admissible
+
+\ A generated constructor's result can ground one of its effect variables before
+\ that same variable meets the payload value. Permit that grounding only inside
+\ equal-family argument pairing and only when the direct logical layout term has
+\ a stable one-cell representation. TYPE-CLOSED? rejects unresolved descendants
+\ under pointers, quotation rows, and nested families; LAYOUT-MAYBE-LINEAR?
+\ rejects possible linear payloads. Pointer-strict pairing, hidden fields, wide
+\ terms, RAW vars, and occurs cycles retain ordinary PAIR and its fail-closed rules.
+: PARAM-BIND-OK? ( n n -- bool ) {: v:n p:n :}
+   v ISVAR 0= IF RES-FALSE EXIT THEN
+   p LAYOUT-PARAM? 0= IF RES-FALSE EXIT THEN
+   p HIDDEN-PARAM? IF RES-FALSE EXIT THEN
+   CUR-STRICT @ 0 <> IF RES-FALSE EXIT THEN
+   v PAY TVK-RAW? IF RES-FALSE EXIT THEN
+   p TYPE-CLOSED? 0= IF RES-FALSE EXIT THEN
+   p LAYOUT-MAYBE-LINEAR? IF RES-FALSE EXIT THEN
+   p T-WIDTH 1 <> IF RES-FALSE EXIT THEN
+   v PAY p TY-OCC? IF RES-FALSE EXIT THEN
+   RES-TRUE ;
+
+: PARAM-PAIR-ARGS ( n n -- ) {: t1:n t2:n :}
+   t1 PARAM>ARGC t2 PARAM>ARGC <> IF t1 t2 U-FAIL EXIT THEN
+   t1 PARAM>FAM t2 PARAM>FAM <> IF t1 t2 U-FAIL EXIT THEN
+   0 PARAM-I !
+   BEGIN PARAM-I @ t1 PARAM>ARGC < WHILE
+      t1 PARAM-I @ PARAM>ARG T-RES {: a:n :}
+      t2 PARAM-I @ PARAM>ARG T-RES {: b:n :}
+      a b PARAM-BIND-OK? IF
+         b a PAY TV!
+      ELSE b a PARAM-BIND-OK? IF
+         a b PAY TV!
+      ELSE
+         a b PAIR
+      THEN THEN
+      PARAM-I @ 1 + PARAM-I !
+   REPEAT ;
 
 : U-TYPE   \ ( t1 t2 -- ) resolve both; bind a var side, or require equal cons
    T-RES swap T-RES swap
@@ -1803,19 +1833,28 @@ variable CDT-ROW
    REPEAT
    0 RES-FALSE ;
 
-\ CONSTRUCT-DECL-MULTICELL? ( fam -- bool ) : does the declared output bind a
-\ param of `fam` to a genuinely MULTI-CELL (T-WIDTH>1) layout arg? This is the
-\ gate for the generated-constructor intercept: only such a call needs the
-\ arg-aware construct step; every cell/open/scalar-arg construction keeps the
-\ ordinary stored-effect word call, so no existing construction changes path.
-: CONSTRUCT-DECL-MULTICELL? ( n -- n ) {: fam:n :}
-   fam TFAM-ARITY* 0= IF 0 EXIT THEN         \ arity-0 families have no TYPE ARGS: a wide arity-0 sum (its width from concrete payload fields) is the existing machinery, never this slice's parametric multi-cell-arg capability
-   fam CONSTRUCT-DECL-TERM 0= IF drop 0 EXIT THEN
-   {: t:n :}                                 \ a resolved hidden field of fam; its args are the instantiation
+\ CONSTRUCT-DECL-LAYOUT ( fam -- term bool ) : should the constructor pre-seed
+\ its fresh args from the declared output? Preserve the existing wide arm first:
+\ any direct argument wider than one cell needs the arg-aware construct path,
+\ including its established open/linear checks downstream. The W1 extension is
+\ narrower: a closed, non-linear declared instantiation with a DIRECT layout-
+\ family arg needs pre-seeding because its hidden input cannot bind an ordinary
+\ payload var. Pointer-wrapped families are not direct args; nominal scalars and
+\ plain con/pointer args stay on the ordinary stored-effect word path.
+: CONSTRUCT-DECL-LAYOUT ( n -- n bool ) {: fam:n :}
+   fam TFAM-ARITY* 0= IF 0 RES-FALSE EXIT THEN
+   fam CONSTRUCT-DECL-TERM 0= IF drop 0 RES-FALSE EXIT THEN
+   {: t:n :}
    0 BEGIN dup t PARAM>ARGC < WHILE
-      t over PARAM>ARG T-WIDTH 1 > IF drop t EXIT THEN
+      t over PARAM>ARG T-WIDTH 1 > IF drop t RES-TRUE EXIT THEN
       1 +
-   REPEAT drop 0 ;
+   REPEAT drop
+   t TYPE-CLOSED? 0= IF 0 RES-FALSE EXIT THEN
+   t LAYOUT-MAYBE-LINEAR? IF 0 RES-FALSE EXIT THEN
+   0 BEGIN dup t PARAM>ARGC < WHILE
+      t over PARAM>ARG LAYOUT-PARAM? IF drop t RES-TRUE EXIT THEN
+      1 +
+   REPEAT drop 0 RES-FALSE ;
 
 : CHECKER-STEP {: din dout :}
    din dout LIN-EXPLICIT? LINEXP !
@@ -3203,8 +3242,7 @@ TRUSTED: USIGS-CELL-AT ( n -- ptr a )
 \ emitter is slice 4. So a REAL definition (CHK-CAND = 0) that would reach codegen
 \ fails closed here rather than emit declared-width pads; a CHECK-CANDIDATE probe
 \ (CHK-CAND ≠ 0) still certifies the type. No new diagnostic code: it renders the
-\ ordinary E-REJECTED, and only fires when the construct is genuinely wide
-\ (CONSTRUCT-DECL-MULTICELL?), so nothing else moves.
+\ ordinary E-REJECTED and remains only a wide-lowering backstop.
 : CONSTRUCT-WIDE-STAGED-REJECT ( -- )
    CHK-CAND @ 0 <> IF EXIT THEN
    0 OK !  -1 FAILSET ! ;
@@ -6814,7 +6852,7 @@ variable WF-I
    a u CHECKER-FIND-ACTIVE-SYM CURSYM !
    FEP-CLEAR
    CURSYM @ CHECKER-FIND-USIG-SYM drop
-   CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ multi-cell generated-constructor call -> arg-aware step (default rejects pre-registry)
+   CURSYM @ CTOR-STEP-XT IF EXIT THEN              \ direct-layout generated-constructor call -> seeded step (default rejects pre-registry)
    FEP-HIT? IF FEP @ EFF-APPLY ELSE
    CURSYM @ TRY-PRIMS IF EXIT THEN
    TSEEN @ 0 <> IF TFA @ E-PTR EFF-APPLY ELSE
