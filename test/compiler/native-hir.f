@@ -65,15 +65,19 @@ private
    b ;
 
 \ ---- the dialect: what registration defines ----------------------------------
-\ The five opcodes, and the count, so "nothing else was defined" is measured
+\ The nine opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b HIR-OPCODE:CONST HIR:OPCODE {: k:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:ADD HIR:OPCODE {: a:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:SUB HIR:OPCODE {: s:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:MUL HIR:OPCODE {: u:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:LT HIR:OPCODE {: l:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:LE HIR:OPCODE {: e:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:BR HIR:OPCODE {: j:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:BRZ HIR:OPCODE {: z:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:RETURN HIR:OPCODE {: t:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
@@ -81,12 +85,16 @@ private
    rv a IR-SCHEMA:FDEFINED?
    rv s IR-SCHEMA:FDEFINED?
    rv u IR-SCHEMA:FDEFINED?
+   rv l IR-SCHEMA:FDEFINED?
+   rv e IR-SCHEMA:FDEFINED?
+   rv j IR-SCHEMA:FDEFINED?
+   rv z IR-SCHEMA:FDEFINED?
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the five straight-line opcodes" T-LABEL
+   s" registration defines exactly the nine opcodes of the subset" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE 5 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 9 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the
 \ version.
@@ -272,18 +280,20 @@ private
    c b p r HIR-WORD:REGISTER-WORDS
    b p r ;
 
-: OPS-BODY ( IR-CTX:ctx -- n bool bool bool )
+: OPS-BODY ( IR-CTX:ctx -- n bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    r HIR-WORD:MODELED
    r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:ADD HIR-OPCODE:EQ
    r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:SUB HIR-OPCODE:EQ
-   r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:MUL HIR-OPCODE:EQ ;
+   r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:MUL HIR-OPCODE:EQ
+   r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LT HIR-OPCODE:EQ
+   r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LE HIR-OPCODE:EQ ;
 
 : OPS-CASE ( -- )
-   s" the three arithmetic words bind to their operations" T-LABEL
+   s" the five operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE 9 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 20 T= ;
 
 \ One rename, folded into three numbers: how many values it consumes, how many
 \ it puts back, and the whole pick list in order as decimal digits, each pick
@@ -349,11 +359,11 @@ private
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 3 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 7 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 13 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 18 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 8 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 19 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" rot" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -874,7 +884,7 @@ private
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 7 0 0 FORGE
+   1 9 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 

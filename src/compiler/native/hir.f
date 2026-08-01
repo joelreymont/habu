@@ -9,11 +9,15 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE STRAIGHT-LINE SUBSET IS. Five opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Nine opcodes, and nothing else:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
 \   hir.mul       integer multiplication
+\   hir.lt        signed less-than, answering a Habu flag
+\   hir.le        signed less-than-or-equal, answering a Habu flag
+\   hir.br        go on to one block, handing it the live values
+\   hir.brz       go on to one of two blocks, on whether a value is zero
 \   hir.return    leave the function with the word's outputs
 \ That is exactly what section 7.2's list needs for a colon body with no
 \ control flow, no calls, no locals, no memory and no strings. Section 7.2 names
@@ -84,7 +88,29 @@ ENUM opcode DERIVE eq
    add
    sub
    mul
+   lt
+   le
+   br
+   brz
    return
+;ENUM
+
+\ What a structured control word does to the blocks a definition is made of.
+\ Each member names one Habu source word, and the pairs are openers and closers
+\ of one structure: `if` closes with `then`, `begin` with `until`, `?do` with
+\ `loop`. `index` is the loop index `i`, which is neither - it reads the
+\ innermost open counted loop's index and stages no operation of its own.
+\ It is an ENUM for the same reason the opcode family is: a table that binds a
+\ source word to a control action cannot name an action this dialect has no
+\ construction for, and every MATCH over it has to answer for all seven.
+ENUM ctrl DERIVE eq
+   open-if
+   close-if
+   open-begin
+   close-until
+   open-do
+   close-loop
+   index
 ;ENUM
 
 \ What a Habu source word, or a source-tape token, means to this dialect.
@@ -99,6 +125,8 @@ ENUM opcode DERIVE eq
 ENUM meaning DERIVE eq
    literal
    op
+   const-op
+   control
    rename
    unmodeled
 ;ENUM
@@ -154,6 +182,10 @@ public
       add    OF s" hir.add"    ENDOF
       sub    OF s" hir.sub"    ENDOF
       mul    OF s" hir.mul"    ENDOF
+      lt     OF s" hir.lt"     ENDOF
+      le     OF s" hir.le"     ENDOF
+      br     OF s" hir.br"     ENDOF
+      brz    OF s" hir.brz"    ENDOF
       return OF s" hir.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -178,6 +210,10 @@ private
       add    OF s" hir.rule.add"    ENDOF
       sub    OF s" hir.rule.sub"    ENDOF
       mul    OF s" hir.rule.mul"    ENDOF
+      lt     OF s" hir.rule.lt"     ENDOF
+      le     OF s" hir.rule.le"     ENDOF
+      br     OF s" hir.rule.br"     ENDOF
+      brz    OF s" hir.rule.brz"    ENDOF
       return OF s" hir.rule.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -188,6 +224,10 @@ private
       add    OF s" hir.render.add"    ENDOF
       sub    OF s" hir.render.sub"    ENDOF
       mul    OF s" hir.render.mul"    ENDOF
+      lt     OF s" hir.render.lt"     ENDOF
+      le     OF s" hir.render.le"     ENDOF
+      br     OF s" hir.render.br"     ENDOF
+      brz    OF s" hir.render.brz"    ENDOF
       return OF s" hir.render.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -223,6 +263,57 @@ private
    c TRAPS? IR-SCHEMA:SET-TRAP
    TARGET
    c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One comparison: two cells in, one cell out, and the answer is a Habu flag -
+\ all bits set or none. A comparison cannot overflow whatever the unit's numeric
+\ policy is, so unlike the three arithmetic opcodes it is total by declaration
+\ and not by policy. The two comparisons of this subset differ only in their
+\ names, so they share this shape.
+: DEF-COMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Going on to one block, handing it the values that are still live. Design lines
+\ 706-708 make a terminator's operands the successor's block arguments and
+\ design line 532 makes the verifier match their count and types against the
+\ destination, so how many there are is a property of the destination and the
+\ list is one variadic tail.
+: DEF-BR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:BR OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND-TAIL
+   true 1 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:BR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Going on to the first successor when the tested value is zero and to the
+\ second when it is not, which is how every structured control word of this
+\ subset asks its question. Its one operand is the value it tests and not a
+\ block argument: with two successors the operation model has no way to say
+\ which operand belongs to which destination, so both successors take no
+\ arguments and an edge that has to carry values goes through a block whose
+\ terminator is the unconditional form above.
+: DEF-BRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:BRZ OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   true 2 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:BRZ NAMED
    c b IR-BUILD:DEFINE-OP ;
 
 \ Leaving the function. Design line 237 makes this a terminator, and design
@@ -285,6 +376,10 @@ public
    c b t HIR-OPCODE:ADD DEF-BINARY
    c b t HIR-OPCODE:SUB DEF-BINARY
    c b t HIR-OPCODE:MUL DEF-BINARY
+   c b t HIR-OPCODE:LT DEF-COMPARE
+   c b t HIR-OPCODE:LE DEF-COMPARE
+   c b t DEF-BR
+   c b t DEF-BRZ
    c b t DEF-RETURN ;
 
 private

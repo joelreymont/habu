@@ -131,12 +131,16 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-5 constant OPCODES-N
+9 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
 3 constant O-MUL
 4 constant O-RETURN
+5 constant O-LT
+6 constant O-LE
+7 constant O-BR
+8 constant O-BRZ
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -186,6 +190,10 @@ create NAMEBUF NAME-CAP allot
       add    OF O-ADD    ENDOF
       sub    OF O-SUB    ENDOF
       mul    OF O-MUL    ENDOF
+      lt     OF O-LT     ENDOF
+      le     OF O-LE     ENDOF
+      br     OF O-BR     ENDOF
+      brz    OF O-BRZ    ENDOF
       return OF O-RETURN ENDOF
    ;MATCH ;
 
@@ -195,6 +203,10 @@ create NAMEBUF NAME-CAP allot
       O-ADD    of HIR-OPCODE:ADD    endof
       O-SUB    of HIR-OPCODE:SUB    endof
       O-MUL    of HIR-OPCODE:MUL    endof
+      O-LT     of HIR-OPCODE:LT     endof
+      O-LE     of HIR-OPCODE:LE     endof
+      O-BR     of HIR-OPCODE:BR     endof
+      O-BRZ    of HIR-OPCODE:BRZ    endof
       O-RETURN of HIR-OPCODE:RETURN endof
       E-A64SEL-OPCODE throw
    endcase ;
@@ -451,6 +463,56 @@ create NAMEBUF NAME-CAP allot
    then
    CTX BLD IR-BUILD:END-OP drop ;
 
+\ ---- selecting a comparison --------------------------------------------------
+\ One source comparison is one machine comparison, under the condition the source
+\ opcode names. The machine form is three instructions and one operation, because
+\ the condition flags the three pass between them are a single architectural
+\ resource with no value of the machine dialect to stand for it; the dialect says
+\ so, and this pass only has to name the condition.
+: EMIT-FLAG ( IR-ID:ir-op-id A64IR:cond -- )
+   {: id:IR-ID:ir-op-id k:A64IR:cond :}
+   id A64IR-OPCODE:FLAG OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CTX BLD  CTX BLD A64IR:KEY-COND  CTX BLD k A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ ---- selecting the branches --------------------------------------------------
+\ A successor is a block of the source module, and this pass rebuilds the blocks
+\ one for one and in order, so block b of the source is block b of the machine
+\ module and the edge is carried across by its ordinal. Nothing is renumbered:
+\ the source module's block order is the order the whole chain agrees on.
+: SUCCESSOR+ ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id i:n :}
+   CTX BLD
+   BLD IR-BUILD:MODULE-KEY  id i SUCC-AT IR-ID:BLOCK-LOCAL  IR-ID:PACK-BLOCK
+   IR-BUILD:ADD-SUCCESSOR ;
+
+\ Going on to one block. The operands are the values the destination takes as its
+\ block arguments, and each one is the value the source operand selected to.
+: EMIT-BR ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:BR OPEN
+   id OPERANDS-OF {: k:n :}
+   k 0 ?do
+      CTX BLD  id i OPERAND  IR-BUILD:ADD-OPERAND
+   loop
+   id 0 SUCCESSOR+
+   CTX BLD IR-BUILD:END-OP drop ;
+
+\ Going on to one of two blocks on whether a value is zero. It hands neither of
+\ them anything, which is what the source form declares too, so the two
+\ successors carry across and nothing else does.
+: EMIT-BRZ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id A64IR-OPCODE:BRZ OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   id 0 SUCCESSOR+
+   id 1 SUCCESSOR+
+   CTX BLD IR-BUILD:END-OP drop ;
+
 \ ---- the selection table -----------------------------------------------------
 \ The whole rule. Every arm names the machine operations one source operation
 \ becomes; nothing else in this file decides which opcode a source operation
@@ -465,6 +527,10 @@ create NAMEBUF NAME-CAP allot
       add    OF id A64IR-OPCODE:ADD EMIT-BINARY ENDOF
       sub    OF id A64IR-OPCODE:SUB EMIT-BINARY ENDOF
       mul    OF id A64IR-OPCODE:MUL EMIT-BINARY ENDOF
+      lt     OF id A64IR-COND:LT EMIT-FLAG ENDOF
+      le     OF id A64IR-COND:LE EMIT-FLAG ENDOF
+      br     OF id EMIT-BR ENDOF
+      brz    OF id EMIT-BRZ ENDOF
       return OF id EMIT-RETURN ENDOF
    ;MATCH ;
 
@@ -532,28 +598,45 @@ create NAMEBUF NAME-CAP allot
       VBIND
    loop ;
 
-: OPEN-BLOCK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+\ Every block keeps its arguments, and only the entry block carries the routine's
+\ interface: the convention says where the CALLER left the arguments, and the
+\ caller reaches the routine at its entry. A later block's arguments are values
+\ the routine handed itself, so they are ordinary block arguments whichever
+\ convention the routine has.
+: OPEN-BLOCK ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id ord:n :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD bk BLOCK-SPAN IR-BUILD:SET-BLOCK-SPAN
-   VCLEAR
-   DSTACK? if bk OPEN-DARGS exit then
+   DSTACK? ord 0= and if bk OPEN-DARGS exit then
    bk OPEN-ARGS ;
 
-\ One function of the source module. The straight-line subset is one block, and a
-\ function with any other shape is refused here rather than selected in part: a
-\ second block means control flow, and control flow has no selection rule yet.
-: WALK-FUN ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT 1 <> if E-A64SEL-SHAPE throw then
-   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   f OPEN-FUN
-   bk OPEN-BLOCK
+\ One block of the source function, selected whole. The value map is NOT cleared
+\ between blocks: a value defined in one block and read in another is ordinary
+\ SSA under dominance - the freeze verifier proved it of the source module and
+\ will prove it again of this one - so the map has to answer across the whole
+\ function.
+: WALK-BLOCK ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id ord:n :}
+   bk ord OPEN-BLOCK
    bk OP-COUNT {: n:n :}
    n 0 ?do
       bk i OP-AT RULE
    loop
-   CTX BLD IR-BUILD:END-BLOCK drop
+   CTX BLD IR-BUILD:END-BLOCK drop ;
+
+\ One function of the source module, block by block in the order the module
+\ records them. That order is the one every later pass reads too, so a successor
+\ ordinal means the same block on both sides of this pass.
+: WALK-FUN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT {: n:n :}
+   n 1 < if E-A64SEL-SHAPE throw then
+   n NFROZEN:BMAX > if E-A64SEL-CAP throw then
+   f OPEN-FUN
+   VCLEAR
+   n 0 ?do
+      f i BLOCK-AT i WALK-BLOCK
+   loop
    CTX BLD IR-BUILD:END-FUN drop ;
 
 \ ---- what one selection run is told ------------------------------------------
@@ -614,6 +697,10 @@ public
    c b HIR-OPCODE:ADD    BIND1
    c b HIR-OPCODE:SUB    BIND1
    c b HIR-OPCODE:MUL    BIND1
+   c b HIR-OPCODE:LT     BIND1
+   c b HIR-OPCODE:LE     BIND1
+   c b HIR-OPCODE:BR     BIND1
+   c b HIR-OPCODE:BRZ    BIND1
    c b HIR-OPCODE:RETURN BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
    BOUND-YES BND-MODE ! ;

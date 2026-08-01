@@ -117,8 +117,8 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 3 constant HDR-CELLS
 0 constant OFF-SYM                   \ the source word's symbol ordinal
 1 constant OFF-MEAN                  \ the stored meaning code
-2 constant OFF-A                     \ op: the opcode code; rename: the pick-list start; unmodeled: the reason ordinal plus one
-3 constant OFF-IN                    \ rename: the number of values consumed; otherwise zero
+2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; unmodeled: the reason ordinal plus one
+3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back; otherwise zero
 5 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
@@ -142,6 +142,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       op        OF 1 ENDOF
       rename    OF 2 ENDOF
       unmodeled OF 3 ENDOF
+      const-op  OF 4 ENDOF
+      control   OF 5 ENDOF
    ;MATCH ;
 
 \ Code zero, `literal`, is deliberately absent: a literal is a token's meaning,
@@ -151,6 +153,8 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       1 of HIR-MEANING:OP endof
       2 of HIR-MEANING:RENAME endof
       3 of HIR-MEANING:UNMODELED endof
+      4 of HIR-MEANING:CONST-OP endof
+      5 of HIR-MEANING:CONTROL endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -161,6 +165,10 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       sub    OF 2 ENDOF
       mul    OF 3 ENDOF
       return OF 4 ENDOF
+      lt     OF 5 ENDOF
+      le     OF 6 ENDOF
+      br     OF 7 ENDOF
+      brz    OF 8 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -170,7 +178,37 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       2 of HIR-OPCODE:SUB endof
       3 of HIR-OPCODE:MUL endof
       4 of HIR-OPCODE:RETURN endof
+      5 of HIR-OPCODE:LT endof
+      6 of HIR-OPCODE:LE endof
+      7 of HIR-OPCODE:BR endof
+      8 of HIR-OPCODE:BRZ endof
       E-HIR-OPCODE throw
+   endcase ;
+
+\ The control actions, under the same discipline: a stable stored code per
+\ member and an exact decoder, so a row written past this package's declarers
+\ cannot decode as some other control word.
+: CTRL-CODE ( HIR:ctrl -- n )
+   MATCH ctrl
+      open-if     OF 0 ENDOF
+      close-if    OF 1 ENDOF
+      open-begin  OF 2 ENDOF
+      close-until OF 3 ENDOF
+      open-do     OF 4 ENDOF
+      close-loop  OF 5 ENDOF
+      index       OF 6 ENDOF
+   ;MATCH ;
+
+: N>CTRL ( n -- HIR:ctrl )
+   case
+      0 of HIR-CTRL:OPEN-IF endof
+      1 of HIR-CTRL:CLOSE-IF endof
+      2 of HIR-CTRL:OPEN-BEGIN endof
+      3 of HIR-CTRL:CLOSE-UNTIL endof
+      4 of HIR-CTRL:OPEN-DO endof
+      5 of HIR-CTRL:CLOSE-LOOP endof
+      6 of HIR-CTRL:INDEX endof
+      E-HIR-CONTROL throw
    endcase ;
 
 \ ---- cell access -------------------------------------------------------------
@@ -330,6 +368,29 @@ private
    UNUSED UNUSED
    ROW-ADD ;
 
+\ The row a constant-and-operation word writes. Some Habu words are one integer
+\ literal followed by one binary operation and nothing else - `1-` is `1` then
+\ `-` - and the honest model of them is that pair rather than a second opcode
+\ that means the same thing. The row therefore carries both: which operation,
+\ and which constant it is applied with.
+: CONST-OP-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:opcode n -- )
+   {: o:HIR:opcode v:n :}
+   HIR-MEANING:CONST-OP MEAN-CODE
+   o OPCODE-CODE
+   v UNUSED
+   ROW-ADD ;
+
+\ The row a structured control word writes. It stages no operation of its own -
+\ what a control word does is decide which blocks a definition has and which
+\ values cross between them - so the only thing a row holds is which control
+\ action it is.
+: CONTROL-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned HIR:ctrl -- )
+   {: k:HIR:ctrl :}
+   HIR-MEANING:CONTROL MEAN-CODE
+   k CTRL-CODE
+   UNUSED UNUSED
+   ROW-ADD ;
+
 \ The same declaration for a module still being built: the builder answers for
 \ its own interner. This is how REGISTER-WORDS declares the subset's vocabulary
 \ into a module whose symbol rows no caller can hold.
@@ -337,6 +398,16 @@ private
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id o:HIR:opcode :}
    c r  c b id BSYM-CK  o OP-ROW ;
+
+: BDECLARE-CONST-OP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:opcode n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id o:HIR:opcode v:n :}
+   c r  c b id BSYM-CK  o v CONST-OP-ROW ;
+
+: BDECLARE-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id HIR:ctrl -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id k:HIR:ctrl :}
+   c r  c b id BSYM-CK  k CONTROL-ROW ;
 
 public
 
@@ -504,6 +575,25 @@ public
    r id HIR-MEANING:OP ROW-AS {: l:n :}
    r l OFF-A RC@ N>OPCODE ;
 
+\ The operation a constant-and-operation word applies, and the constant it
+\ applies it with. Asking one of them about a word of any other meaning is a
+\ category error rather than a missing value, which is ROW-AS's rule.
+: CONST-OPCODE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:opcode )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CONST-OP ROW-AS {: l:n :}
+   r l OFF-A RC@ N>OPCODE ;
+
+: CONST-VALUE@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CONST-OP ROW-AS {: l:n :}
+   r l OFF-IN RC@ ;
+
+\ Which control action a structured control word is.
+: CTRL@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:ctrl )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CONTROL ROW-AS {: l:n :}
+   r l OFF-A RC@ N>CTRL ;
+
 \ How many values a rename consumes off the top of the value vector.
 : INPUTS@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
@@ -569,17 +659,40 @@ public
 \ a guess. The pick cells are the picks the six renames put back, added up:
 \ two for `dup`, none for `drop`, two for `swap`, three for `over`, one for
 \ `nip` and three for `rot`.
-9 constant WORDS
-11 constant PICK-CELLS
+20 constant WORDS
+15 constant PICK-CELLS
 
 private
 
-\ The three words this dialect has operations for.
+\ The five words this dialect has operations for.
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD BDECLARE-OP
    c b r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB BDECLARE-OP
-   c b r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL BDECLARE-OP ;
+   c b r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL BDECLARE-OP
+   c b r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LT BDECLARE-OP
+   c b r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LE BDECLARE-OP ;
+
+\ `1-` ( n -- n ): subtract one. It is one token of source and two operations of
+\ this dialect, and the row says exactly that rather than claiming a decrement
+\ opcode the dialect does not have.
+: DEF-DEC ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" 1-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB 1 BDECLARE-CONST-OP ;
+
+\ The structured control words. Three pairs and the loop index; nothing else of
+\ Habu's control vocabulary is declared, because nothing else has a block
+\ construction in src/compiler/native/elaborate.f yet, and a word declared here
+\ without one would be a promise rather than a model.
+: DEF-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" if" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-IF BDECLARE-CONTROL
+   c b r c b s" then" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-IF BDECLARE-CONTROL
+   c b r c b s" begin" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-BEGIN BDECLARE-CONTROL
+   c b r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-UNTIL BDECLARE-CONTROL
+   c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
+   c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
+   c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL ;
 
 \ dup ( a -- a a ): consume the top value and put it back twice.
 : DEF-DUP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
@@ -619,6 +732,18 @@ private
    0 ADD-PICK
    c b p r c b s" nip" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
+\ 2dup ( a b -- a b a b ): consume two and put both back twice, in order. It is
+\ `over over` written once, and the corpus's two-way branch reads its two
+\ arguments with it.
+: DEF-2DUP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   2 BEGIN-RENAME
+   1 ADD-PICK
+   0 ADD-PICK
+   1 ADD-PICK
+   0 ADD-PICK
+   c b p r c b s" 2dup" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+
 \ rot ( a b c -- b c a ): consume three and put all three back rotated, so the
 \ deepest of them ends on top. Bottom first that is b, then c, then a, whose
 \ depths in the consumed window are 1, 0 and 2 - the derivation at the head of
@@ -640,6 +765,9 @@ public
 : REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b r DEF-ARITH
+   c b r DEF-DEC
+   c b r DEF-CONTROL
+   c b p r DEF-2DUP
    c b p r DEF-DUP
    c b p r DEF-DROP
    c b p r DEF-SWAP
