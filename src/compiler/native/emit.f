@@ -109,14 +109,32 @@
 \ THE BLOCK LAYOUT AND THE FIXUPS ARE ONE PASS AND NOT TWO. A branch has to know
 \ where it is going before it can be encoded, and where it is going is where the
 \ destination block's first instruction lands. So the layout is computed first,
-\ from the instruction count of each form - which is a property of the form, the
-\ same way its operand count is - and every displacement is then known when its
-\ instruction is encoded. That is why there is no relocation list and nothing to
-\ patch afterwards: the label table is the block-start table, a block IS a label,
-\ and its ordinal is its name. Blocks are laid out in the order the module
-\ records them, and no branch is elided because the block it goes to happens to
-\ come next - eliding one is an optimisation, and emitting every branch in full
-\ is what makes the layout order irrelevant to what the routine computes.
+\ from the instruction count of each operation, and every displacement is then
+\ known when its instruction is encoded. That is why there is no relocation list
+\ and nothing to patch afterwards: the label table is the block-start table, a
+\ block IS a label, and its ordinal is its name.
+\
+\ A BRANCH TO THE BLOCK LAID OUT NEXT IS NOT EMITTED, WHICH MAKES A TERMINATOR'S
+\ INSTRUCTION COUNT A PROPERTY OF THE LAYOUT AND NOT ONLY OF ITS FORM. Blocks are
+\ still laid out in the order the module records them and nothing here reorders
+\ them to manufacture a fall-through; but a terminator whose trailing
+\ unconditional branch names the very next block reaches that block by falling
+\ into it, so the branch is left out. That is four bytes and a jump for every one
+\ of them, and the fused compare-and-branch is wired to leave its unconditional
+\ half pointing at the next block precisely so this can delete it. The price is
+\ exact and worth naming: the layout order is now load-bearing. Moving a block
+\ changes what is emitted and not only where it lands, which is the property the
+\ full-branch emission used to buy.
+\
+\ SO THE RULE IS WRITTEN ONCE AND BOTH PASSES ASK IT. FALL-THRU? answers, from an
+\ operation and the ordinal of the block it terminates, whether that trailing
+\ branch is reached by falling through. The layout subtracts its instruction from
+\ the form's count and the emitter leaves out exactly the instruction the layout
+\ did not count - one word, two callers, no second copy to drift from the first.
+\ And because one rule asked twice is still a rule asked twice, WALK holds the
+\ instruction cursor against the layout at the start of every block and at the
+\ end of the routine: a disagreement between what was counted and what was
+\ written is E-A64EMIT-LAYOUT before any caller can read a byte of it.
 \
 \ THE SOURCE MAP IS THE POINT OF THE BYTE OFFSETS. Every emitted instruction gets
 \ one row: the byte offset it was placed at, and the span of the operation it
@@ -127,6 +145,14 @@
 \ diagnostic about emitted code reads, and it is why the bytes are a byte buffer
 \ with a little-endian placement of each word rather than an array of words: the
 \ offsets have to index something a caller can actually look at.
+\
+\ AN ELIDED BRANCH GETS NO ROW, because the map has one row per emitted
+\ instruction and nothing else. That is what the index of a row MEANS here: row k
+\ describes the instruction WORD@ k answers, and the two are read together by
+\ every caller that locates a byte. A row standing for an instruction that was
+\ not emitted would put every row after it against the wrong instruction, which
+\ is a worse answer than the honest one - the terminator's span is on the rows of
+\ the instructions it did emit, and a branch that is not there is not anywhere.
 \
 \ ONE EMISSION AT A TIME. The buffers are fixed package-owned storage rather than
 \ heap objects, so this pass emits one routine at a time - the single-task
@@ -558,17 +584,26 @@ create B-START BMAX cells allot
 \ they were built in. That is a decision and not an accident: it is the one order
 \ every reader of the module already agrees on, so the allocator, the validator
 \ and this pass number the same instruction the same way, and a fixture can
-\ assert exact offsets. Nothing here reorders blocks to make a branch fall
-\ through to the next one - eliding a branch is an optimisation, and every
-\ terminator below emits its branches in full, which is what makes the layout
-\ order irrelevant to what the routine computes and a wrong successor a wrong
-\ answer rather than a lucky one.
+\ assert exact offsets. Nothing here reorders blocks to put a branch's target
+\ next - which blocks fall through to which is whatever the module's own order
+\ made it, and choosing an order that makes more of them is a pass of its own
+\ with its own measurement (dot habu-order-blocks-to-f6d89653).
 \
-\ How many instructions a form is, is a property of the form: one for all but the
+\ Which blocks there are to name. A block of the function being emitted is one
+\ this pass laid out, so an ordinal outside that range is a module this layout
+\ cannot serve rather than a branch to nowhere; and a successor is such an
+\ ordinal. Both are asked during the layout as well as during the emission,
+\ because the layout has to know which block a terminator's trailing branch names
+\ before it can decide whether that branch is emitted at all.
+: BLK-ORD-CK ( n -- n )
+   dup 0 < over N-BLK @ >= or if E-A64EMIT-BLOCK throw then ;
+
+: SUCC-BLOCK ( IR-ID:ir-op-id n -- n )
+   SUCC-AT IR-ID:BLOCK-LOCAL BLK-ORD-CK ;
+
+\ How many instructions a FORM is, is a property of the form: one for all but the
 \ comparison, the division, the call and the compare-and-branch, which are three
-\ each, and the two-way branch, which is two. The layout pass and
-\ the emission pass read the same answer, so the offsets the fixups are computed
-\ against are the offsets the instructions land at.
+\ each, and the two-way branch, which is two.
 : INSNS-OF ( n -- n )
    {: k:n :}
    k O-FLAG = if 3 exit then
@@ -578,18 +613,48 @@ create B-START BMAX cells allot
    k O-BRZ = if 2 exit then
    1 ;
 
-: OP-INSNS ( IR-ID:ir-op-id -- n )
-   SLOT-AT INSNS-OF ;
+\ How many instructions an OPERATION is, is that count less the branch it does
+\ not need, which takes the next three words to say.
+\
+\ Three forms end in an unconditional branch: the one-way branch is nothing else,
+\ and the two-way branch and the compare-and-branch each end in one after their
+\ conditional. This says which successor that trailing branch names, and -1 for
+\ every form that ends in no such branch - the return, and everything that is not
+\ a terminator at all.
+: TAIL-SUCC ( n -- n )
+   {: k:n :}
+   k O-BR = if 0 exit then
+   k O-BRZ = if 1 exit then
+   k O-CMPBR = if 1 exit then
+   -1 ;
 
-: BLOCK-INSNS ( IR-ID:ir-block-id -- n )
-   {: bk:IR-ID:ir-block-id :}
+\ THE RULE, WRITTEN ONCE. An operation's trailing unconditional branch is reached
+\ by falling into it when the block it names is the block laid out immediately
+\ after the one the operation terminates - and then it is not emitted at all.
+\ The layout below subtracts it from the form's count and PUT-BR, PUT-BRZ and
+\ PUT-CMPBR leave out the same instruction by asking this same word, so there is
+\ no second statement of the rule that could come to disagree with the first.
+\
+\ The whole question is answered from block ordinals, which is why it can be
+\ asked during the layout: it needs to know which block comes next and not where
+\ any block starts, so nothing here depends on the offsets it is about to decide.
+: FALL-THRU? ( IR-ID:ir-op-id n -- bool )
+   {: id:IR-ID:ir-op-id home:n :}
+   id SLOT-AT TAIL-SUCC {: s:n :}
+   s 0 < if false exit then
+   id s SUCC-BLOCK  home 1+ = ;
+
+: OP-INSNS ( IR-ID:ir-op-id n -- n )
+   {: id:IR-ID:ir-op-id home:n :}
+   id SLOT-AT INSNS-OF
+   id home FALL-THRU? if 1- then ;
+
+: BLOCK-INSNS ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id home:n :}
    0
    bk OP-COUNT 0 ?do
-      bk i OP-AT OP-INSNS +
+      bk i OP-AT home OP-INSNS +
    loop ;
-
-: BLK-ORD-CK ( n -- n )
-   dup 0 < over N-BLK @ >= or if E-A64EMIT-BLOCK throw then ;
 
 : START-AT ( n -- n )
    BLK-ORD-CK cells B-START + @ ;
@@ -597,6 +662,11 @@ create B-START BMAX cells allot
 \ Where each block's first instruction lands, measured in instructions from the
 \ start of the routine. It is computed before a single byte is written, because a
 \ forward branch has to know where it is going before it can be encoded.
+\
+\ Each block is counted knowing its own ordinal, because that is what its
+\ terminator's fall-through question is asked against. LAY-AT is left holding the
+\ whole routine's instruction count, which is what WALK holds its cursor against
+\ when it has emitted the last block.
 : LAYOUT ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT {: n:n :}
@@ -606,17 +676,10 @@ create B-START BMAX cells allot
    0 LAY-AT !
    n 0 ?do
       LAY-AT @ i cells B-START + !
-      LAY-AT @  f i BLOCK-AT BLOCK-INSNS  +  LAY-AT !
+      LAY-AT @  f i BLOCK-AT i BLOCK-INSNS  +  LAY-AT !
    loop ;
 
 \ ---- the branches ------------------------------------------------------------
-\ Which block a successor names. A successor is a block of this module, and this
-\ pass laid out every block of the one function it emits, so an ordinal outside
-\ that range is a module this layout cannot serve rather than a branch to
-\ nowhere.
-: SUCC-BLOCK ( IR-ID:ir-op-id n -- n )
-   SUCC-AT IR-ID:BLOCK-LOCAL BLK-ORD-CK ;
-
 \ The displacement one branch carries, counted in instructions from the branch
 \ itself, which is what the architecture's PC-relative fields hold.
 : DELTA ( n -- n )
@@ -649,16 +712,25 @@ create B-START BMAX cells allot
 \ registers the destination's block arguments were given - that is the register
 \ allocation's own decision and the validator has agreed with it - so the
 \ operands reach no encoder here and the whole instruction is the jump.
-: PUT-BR ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\
+\ And when the block it goes to is the one laid out next, the jump is the fall
+\ into it and there is no instruction at all. FALL-THRU? is the layout's own
+\ word, asked here with the same two arguments, so the instruction left out is
+\ exactly the instruction the layout did not count.
+: PUT-BR ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
+   id home FALL-THRU? if exit then
    id  id 0 SUCC-BLOCK DELTA B-WORD  APPEND ;
 
 \ The two-way branch: go to the first successor when the tested register is
-\ zero, and to the second when it is not. Both branches are emitted, in that
-\ order, so neither successor depends on where the layout happened to put it.
-: PUT-BRZ ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\ zero, and to the second when it is not. The conditional is always emitted; the
+\ unconditional below it is the one the fall-through rule can delete, and when it
+\ does the second successor is reached by running off the end of this block into
+\ the block laid out next, which is that same successor.
+: PUT-BRZ ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG  id 0 SUCC-BLOCK DELTA  BZ-WORD  APPEND
+   id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
 
 \ The fused compare-and-branch, which is three instructions: compare the two
@@ -668,15 +740,19 @@ create B-START BMAX cells allot
 \ written and no flag is materialised - which is the whole difference from the
 \ pair of operations this replaces.
 \
-\ BOTH BRANCHES ARE EMITTED, in the successor order the operation records, so
-\ neither successor depends on where the layout happened to put it - the same
-\ rule the two-way branch above keeps. The conditional branch's displacement is
-\ measured after the compare has been appended, because a displacement is
-\ counted from the instruction that carries it.
-: PUT-CMPBR ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\ THE UNCONDITIONAL HALF IS THE ONE THAT CAN GO, and this is the form it goes
+\ from most often: src/compiler/native/select.f wires the condition-true arm
+\ first, which leaves the second successor - the arm the condition did not choose
+\ - as the block laid out next. So the usual emission of this operation is two
+\ instructions, the compare and the conditional, and the not-taken path falls
+\ into its own successor. The conditional branch's displacement is measured after
+\ the compare has been appended, because a displacement is counted from the
+\ instruction that carries it.
+: PUT-CMPBR ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
    id  id 0 SUCC-BLOCK DELTA  id COND-OF  BCOND-WORD  APPEND
+   id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
 
 \ One comparison, which is three instructions: compare the two registers, set one
@@ -737,8 +813,13 @@ create B-START BMAX cells allot
 \ The whole encoding table. Every arm names the instructions one machine
 \ operation becomes; nothing else in this file decides which bytes an operation
 \ is.
-: PUT-OP ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\
+\ The block ordinal comes down with the operation because three of the arms need
+\ it: a terminator's trailing branch is emitted or not according to which block
+\ was laid out after the one it terminates, and nothing about the operation
+\ itself says which block that is.
+: PUT-OP ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
    id SLOT-AT SLOT-OPCODE
    MATCH A64IR:opcode
       movz     OF id  id WORD-MOVZ  APPEND ENDOF
@@ -761,9 +842,9 @@ create B-START BMAX cells allot
       abload   OF id  id WORD-ABLOAD  APPEND ENDOF
       abstore  OF id  id WORD-ABSTORE  APPEND ENDOF
       flag     OF id PUT-FLAG ENDOF
-      br       OF id PUT-BR ENDOF
-      brz      OF id PUT-BRZ ENDOF
-      cmpbr    OF id PUT-CMPBR ENDOF
+      br       OF id home PUT-BR ENDOF
+      brz      OF id home PUT-BRZ ENDOF
+      cmpbr    OF id home PUT-CMPBR ENDOF
       call     OF id PUT-CALL ENDOF
       linksave OF id  id WORD-LNKSTR  APPEND ENDOF
       linkload OF id  id WORD-LNKLDR  APPEND ENDOF
@@ -798,17 +879,31 @@ create B-START BMAX cells allot
       f i BLOCK-AT BLOCK-CK
    loop ;
 
-: WALK-BLOCK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+: WALK-BLOCK ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id home:n :}
    bk OP-COUNT 0 ?do
-      bk i OP-AT PUT-OP
+      bk i OP-AT home PUT-OP
    loop ;
+
+\ The cursor against the layout, at the start of every block and once more when
+\ the last one has been written. Where a block's instructions begin is what every
+\ displacement in the routine was computed from, so the writer arriving anywhere
+\ else means the count the layout made and the instructions this pass emitted are
+\ two different routines - which is the one failure the shared fall-through rule
+\ is meant to make unreachable, and therefore the one worth stating out loud
+\ rather than trusting. It costs one comparison per block and it is fail-closed:
+\ nothing is sealed, so no caller can read the bytes of a routine whose layout
+\ and emission disagree.
+: CURSOR-CK ( n -- )
+   START-AT N-INS @ <> if E-A64EMIT-LAYOUT throw then ;
 
 : WALK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT WALK-BLOCK
-   loop ;
+      i CURSOR-CK
+      f i BLOCK-AT i WALK-BLOCK
+   loop
+   N-INS @ LAY-AT @ <> if E-A64EMIT-LAYOUT throw then ;
 
 \ ---- what one emission run is told -------------------------------------------
 \ The binding is taken whatever the outcome, so neither an emission without a

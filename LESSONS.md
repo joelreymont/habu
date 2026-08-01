@@ -4097,3 +4097,27 @@ shift by the prologue the contract's traits declare, and every other data-stack
 touch has to be a whole call site whose two byte counts are exactly the store
 run in front of it and the load run behind it. A capability that cannot be
 stated as a shape the validator re-derives is a capability that is not checked.
+
+## A count that becomes position-dependent needs one word, not one convention
+
+Eliding a branch to the next block turns a terminator's instruction count from a
+property of its FORM into a property of its form and its position, and the
+emitter reads that count twice: once to lay the blocks out and once to write the
+bytes. The tempting shape is to subtract one in the layout and remember to skip
+one in the writer - two statements of the same rule, and the second one is where
+the drift lives. Making it one word both passes call (`FALL-THRU?`, taking the
+operation and the ordinal of the block it terminates) costs nothing, because the
+question is answered from block ordinals alone and so can be asked before a
+single offset exists. What made the design safe rather than merely tidy was
+adding the cheap statement of the invariant the rule is supposed to guarantee:
+`WALK` holds the instruction cursor against the layout at the start of every
+block and at the end of the routine. Both drift directions - writer emits a
+branch the layout did not count, writer elides one it did - die on that check
+with its own error code, and neither can be built as a fixture, because with one
+rule there is no module that produces the disagreement. Mutate the compiler, run
+the gate, revert.
+
+The elision also moves a cost that used to be invisible: with every branch
+emitted, the layout ORDER was irrelevant to what a routine computed. It is
+load-bearing now, so the price has to be written where the order is decided, not
+only where the branch is skipped.

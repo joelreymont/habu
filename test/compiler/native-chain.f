@@ -226,29 +226,41 @@ create TXT TEXT-CAP allot
 \ the false arm reaches the join through, the true arm, and the join that takes
 \ both arms' values as its arguments. What this case adds to the two above is the
 \ layout and the fixups - the block starts are asserted exactly, and so are the
-\ three instructions the entry block ends in, decoded as the numbers the
-\ assembler produces for them.
+\ two branches, decoded as the numbers the assembler produces for them.
 \
-\ THE ENTRY BLOCK ENDS IN THE FUSED COMPARE-AND-BRANCH, WHICH IS WHY IT IS THREE
+\ THE ENTRY BLOCK ENDS IN THE FUSED COMPARE-AND-BRANCH, WHICH IS WHY IT IS TWO
 \ AND NOT FIVE. `2dup <` answers a flag whose only reader is the `if` right
 \ after it, so src/compiler/native/select.f selects the pair as one a64.cmpbr:
-\ compare, branch on the condition, branch. The three instructions land at
-\ indices three, four and five, and the two the old shape spent materialising
-\ the flag as a number - the `cset` and the `neg` - are not emitted at all. That
-\ is the whole of this pass's saving, and it is visible here as an instruction
-\ count of fifteen rather than seventeen and as block one starting at six rather
-\ than eight.
+\ compare, branch on the condition, branch. The first two land at indices three
+\ and four; the two the old shape spent materialising the flag as a number - the
+\ `cset` and the `neg` - are not emitted at all, and neither is the third
+\ instruction of the fused form, for the reason below.
 \
-\ WHY THE THREE WORDS ARE PINNED. A branch is the one instruction whose operand
-\ is not in the module: it is the distance to a block, computed from the layout.
-\ Asserting the emitted word is the only way to say the distance was
-\ computed from the right end - a fixup to the wrong block, or a displacement
-\ measured from the branch's block instead of the branch itself, changes exactly
-\ these two numbers and nothing else the suite can see. The `b.lt` at index 4
-\ carries +5, which lands on block TWO - the arm that swaps; the `b` at index 5
-\ carries +1, which lands on block one, the stub the other arm reaches the join
-\ through and the block laid out immediately after. Swapping the two successors
-\ swaps those two numbers.
+\ AND TWO OF ITS BRANCHES ARE NOT THERE AT ALL, WHICH IS THE ELISION. A
+\ terminator's trailing unconditional branch is left out when the block it names
+\ is the block laid out next, because the machine reaches that block by running
+\ into it (src/compiler/native/emit.f, FALL-THRU?). Two of the four blocks here
+\ are in that position: the entry block's unconditional half goes to block one,
+\ which is laid out immediately after it, and block two - the arm that swaps -
+\ ends in a branch to the join, which is laid out immediately after IT. Both are
+\ gone. That is why this shape is thirteen instructions rather than fifteen, and
+\ why the block starts are 0, 5, 8 and 10 rather than 0, 6, 9 and 12.
+\
+\ WHY THE TWO WORDS ARE PINNED, AND WHY THESE TWO. A branch is the one
+\ instruction whose operand is not in the module: it is the distance to a block,
+\ computed from the layout. Asserting the emitted word is the only way to say the
+\ distance was computed from the right end - a fixup to the wrong block, or a
+\ displacement measured from the branch's block instead of the branch itself,
+\ changes exactly these numbers and nothing else the suite can see. And the two
+\ chosen are the two sides of the elision rule. The `b.lt` at index 4 carries +4,
+\ which lands on block TWO, the arm that swaps: it is a conditional, so the rule
+\ never touches it, and its displacement moved from +5 to +4 exactly because the
+\ layout in front of it lost an instruction. The `b` at index 7 carries +3, which
+\ lands on block THREE, the join: it is an unconditional branch that is emitted
+\ in full, because block one is followed by block two and not by its own
+\ successor. An elision that fired on a target that is not the next block would
+\ delete that branch, and block one would fall into the swapping arm instead of
+\ the join - which is why the execution rows below are what really hold it.
 \
 \ AND WHY THE CONDITION IN IT IS `lt` WITH THE SUCCESSORS THE OTHER WAY ROUND. A
 \ Habu flag is true when the source relation holds, and the source two-way
@@ -258,17 +270,19 @@ create TXT TEXT-CAP allot
 \ source branch's SECOND successor first. The other wiring - negate the
 \ condition, keep the order - computes the same program and is measurably slower
 \ on loops, which is why src/compiler/native/select.f states which one it uses
-\ and why. Getting either half wrong sends `3 4 NCH-MAX` down the arm that does
-\ not swap and answers 3, which is what the two execution rows below catch.
+\ and why; it is also the wiring that leaves the unconditional half pointing at
+\ the next block, so it is what makes the elision above possible at all. Getting
+\ either half wrong sends `3 4 NCH-MAX` down the arm that does not swap and
+\ answers 3, which is what the two execution rows below catch.
 \
-\ The instruction before them is the compare itself, asserted with its two
-\ register fields masked out: which registers the allocator chose is not this
-\ suite's business, but that the fused operation begins with a Cmp and not with
-\ something that writes a register is.
+\ The instruction before the two branches is the compare itself, asserted with
+\ its two register fields masked out: which registers the allocator chose is not
+\ this suite's business, but that the fused operation begins with a Cmp and not
+\ with something that writes a register is.
 $FFE0FC1F constant CMP-SHAPE         \ the Cmp form with its two register fields cleared
 $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
-1409286315 constant BLT-TO-TWO       \ B.lt +5, the fused branch to block two
-335544321 constant B-TO-ONE          \ B +1, the branch to block one
+1409286283 constant BLT-TO-TWO       \ B.lt +4, the fused branch to block two
+335544323 constant B-TO-THREE        \ B +3, block one's branch to the join
 : SRC3 ( -- ptr u8 n )
    s" : NCH-MAX ( n n -- n ) 2dup < if swap then drop ;" ;
 
@@ -300,7 +314,7 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    3 A64EMIT:BLOCK-START@
    3 A64EMIT:WORD@ CMP-SHAPE and
    4 A64EMIT:WORD@
-   5 A64EMIT:WORD@
+   7 A64EMIT:WORD@
    NRUN:PUBLISH {: fn:n :}
    3 4 fn NRUN:ENTER2
    9 -1 fn NRUN:ENTER2
@@ -311,9 +325,9 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    s" a definition with a branch compiles, lays out and runs" T-LABEL
    NFIX:BINDING [: BRANCH-BODY ;] IR-CTX:WITH-CONTEXT
    9 T= 4 T= 9 T= 4 T=
-   B-TO-ONE T= BLT-TO-TWO T= CMP-FORM T=
-   12 T= 9 T= 6 T= 0 T=
-   4 T= 15 T= -1 T= 7 T= ;
+   B-TO-THREE T= BLT-TO-TWO T= CMP-FORM T=
+   10 T= 8 T= 5 T= 0 T=
+   4 T= 13 T= -1 T= 7 T= ;
 
 \ ---- a definition that reads and writes memory -------------------------------
 \ The same run over a body whose whole point is a side effect, and the first one
@@ -711,14 +725,21 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
 \ is needed to give the flag a second reader, and adding anything would only make
 \ the fixture harder to read.
 \
-\ WHAT IT ASSERTS. Fifteen instructions and four blocks, and the instruction at
+\ WHAT IT ASSERTS. Fourteen instructions and four blocks, and the instruction at
 \ index six is a Cbz and not a B.cond - checked by its top byte, because which
 \ register the Cbz tests and how far it jumps are not this case's business. Six
 \ is where the two-way branch lands only when the flag really was materialised:
 \ the pointer down, two loads, then the comparison's three, and the branch after
-\ them. A fusion that ignored the use count would emit thirteen instructions
-\ here, put a B.cond at index four, and leave the value the two edges carry
-\ defined by nothing at all.
+\ them. A fusion that ignored the use count would put a B.cond at index four
+\ instead, and leave the value the two edges carry defined by nothing at all.
+\
+\ AND FOURTEEN RATHER THAN FIFTEEN BECAUSE THE UNFUSED TWO-WAY BRANCH ELIDES
+\ TOO. a64.brz is a Cbz to its first successor and an unconditional branch to its
+\ second, and that second successor is the block laid out immediately after this
+\ one, so the branch is not emitted and the not-taken path falls into it
+\ (src/compiler/native/emit.f, FALL-THRU?). The rule is the terminator's trailing
+\ unconditional branch, whichever terminator carries it - which is why this
+\ shape, with no fusion in it anywhere, is one instruction shorter as well.
 : SRC11 ( -- ptr u8 n )
    s" : NCH-LTKEEP ( n n -- bool ) < dup if then ;" ;
 
@@ -752,7 +773,7 @@ $B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
    s" a comparison that is branched on and kept keeps its flag and runs" T-LABEL
    NFIX:BINDING [: LTKEEP-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= -1 T= 0 T= -1 T=
-   CBZ-KIND T= 4 T= 15 T= ;
+   CBZ-KIND T= 4 T= 14 T= ;
 
 \ ---- the contract and the body have to agree about calling -------------------
 \ Whether a routine calls is the contract's declaration, and the selector builds

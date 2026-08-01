@@ -74,9 +74,20 @@
 \ single architectural register that no value of this dialect stands for and the
 \ allocator may never hand out, so the instructions that write them and the
 \ instruction that reads them have to be inseparable - and the only way an IR can
-\ say "inseparable" is to make them one operation. Everything downstream reads
-\ the count off the opcode, so the layout stays exact: a form's instruction count
-\ is a property of the form, the same way its operand count is.
+\ say "inseparable" is to make them one operation. What a form's count is, is
+\ written down once and read by the layout: how many instructions the operations
+\ of a block are is never guessed at from anything but the opcodes in it.
+\
+\ THE COUNT IS A CEILING FOR THE THREE TERMINATORS AND AN EXACT NUMBER FOR
+\ EVERYTHING ELSE. The one-way branch, the two-way branch and the compare-and-
+\ branch each end in an unconditional branch, and src/compiler/native/emit.f does
+\ not emit that branch when the block it names is the block laid out next - the
+\ machine gets there by falling into it. So those three are one instruction
+\ shorter wherever the layout allows, which makes their count a property of the
+\ operation's POSITION as well as of its form. That is the emitter's own
+\ arithmetic and it is stated there: the rule is one word both its layout pass
+\ and its writing pass ask, and the two are held against each other at every
+\ block boundary. Nothing outside the emitter counts instructions.
 \
 \ THE COMPARE-AND-BRANCH IS WHY THE FLAGS ARGUMENT MATTERS RATHER THAN BEING A
 \ CURIOSITY. A source comparison that only ever answers a branch test does not
