@@ -206,6 +206,63 @@ create TXT
    HIR-OPCODE:ADD x t BINOP RET1
    CLOSE-FUN ;
 
+\ ---- a body that reads and writes memory -------------------------------------
+\ `: BUMP ( n -- n ) A ! A @ 1+ dup A ! ;` with A a fixed address, built by hand
+\ so the two addressed instructions can be read back as the exact words they are.
+\ The address is a small even number and this shape is never EXECUTED here: what
+\ is being proved is which register field each operand lands in, and running it
+\ would only prove that the number is not a real cell. The chain suite runs the
+\ same body against a cell the engine really created.
+$1000 constant BUMP-ADDR
+
+: MEMT ( -- IR-ID:ir-type-id )
+   CC BB HIR:MEM-TYPE ;
+
+\ The memory the definition is entered with: no operand, one order.
+: MEM0 ( -- IR-ID:ir-value-id )
+   HIR-OPCODE:MEM BODY-ST BODY-LN OPEN-OP
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ One store: the value, the address, the order in - and the order out.
+: STORE1 ( IR-ID:ir-value-id IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
+   HIR-OPCODE:STORE BODY-ST BODY-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB a IR-BUILD:ADD-OPERAND
+   CC BB k IR-BUILD:ADD-OPERAND
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ One load: the address and the order in, the loaded cell and the order out. The
+\ order is the second result, so the loaded value is read the way every other
+\ value-producing operation's is.
+: LOAD1 ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id IR-ID:ir-value-id )
+   {: a:IR-ID:ir-value-id k:IR-ID:ir-value-id :}
+   HIR-OPCODE:LOAD BODY-ST BODY-LN OPEN-OP
+   CC BB a IR-BUILD:ADD-OPERAND
+   CC BB k IR-BUILD:ADD-OPERAND
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CC BB MEMT IR-BUILD:ADD-RESULT
+   CC BB IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CC BB id 0 IR-BUILD:OP-RESULT@
+   CC BB id 1 IR-BUILD:OP-RESULT@ ;
+
+: BUILD-BUMP ( -- )
+   s" SQUARE" 1 1 OPEN-FUN
+   ARG+ {: x:IR-ID:ir-value-id :}
+   MEM0 {: k0:IR-ID:ir-value-id :}
+   BUMP-ADDR CONSTOP {: a0:IR-ID:ir-value-id :}
+   x a0 k0 STORE1 {: k1:IR-ID:ir-value-id :}
+   BUMP-ADDR CONSTOP {: a1:IR-ID:ir-value-id :}
+   a1 k1 LOAD1 {: got:IR-ID:ir-value-id k2:IR-ID:ir-value-id :}
+   1 CONSTOP {: one:IR-ID:ir-value-id :}
+   HIR-OPCODE:ADD got one BINOP {: up:IR-ID:ir-value-id :}
+   BUMP-ADDR CONSTOP {: a2:IR-ID:ir-value-id :}
+   up a2 k2 STORE1 drop
+   up RET1
+   CLOSE-FUN ;
+
 \ A literal across two halves: a move-wide, then an overwrite that keeps it.
 : BUILD-WIDE ( -- )
    s" WIDE" 0 1 OPEN-FUN
@@ -224,6 +281,14 @@ create TXT
 : EMITTED-FROM ( n n -- )
    {: base:n n:n :}
    CC BB TXT TXT-N base n NFIX:RUN-FROM ;
+
+\ The same under the convention a Habu word is entered and left through. A body
+\ that touches memory needs it: the generic memory order of a routine begins
+\ where the routine takes the caller's operands, so a routine that takes none is
+\ refused at selection by name.
+: EMITTED-HABU ( n n n -- )
+   {: n:n in:n out:n :}
+   CC BB TXT TXT-N 0 n in out NFIX:RUN-HABU ;
 
 \ ---- reading the emission ----------------------------------------------------
 : BYTE-AT ( n -- n )
@@ -607,6 +672,30 @@ create TXT
    WBND [: PLAIN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE $D65F03C0 T= $D28000E0 T= 2 T= ;
 
+\ ---- the two addressed instructions, as the exact words they are -------------
+\ The whole reason to pin these two words rather than only run the body: an
+\ addressed store takes a value and an address, and the two are both registers,
+\ so a routine that swapped them would write the address into whatever cell the
+\ VALUE happens to name. Running it then fails by dying somewhere else, which
+\ proves nothing about which field is which. The emitted word says it exactly:
+\ the store's transfer field is the value's register and its base field is the
+\ address's, and the load's transfer field is the loaded value's register. Both
+\ offsets are zero, which is `[Xn]`, and a form that grew an offset it should not
+\ have moves these numbers.
+: BUMP-BODY ( IR-CTX:ctx -- n n n n )
+   HIR-MOD
+   BUILD-BUMP
+   6 1 1 EMITTED-HABU
+   A64EMIT:INSNS
+   3 A64EMIT:WORD@                   \ str x0, [x1] - the argument into the cell
+   5 A64EMIT:WORD@                   \ ldr x0, [x0] - and back out of it
+   9 A64EMIT:WORD@ ;                 \ str x0, [x1] - the bumped value in again
+
+: BUMP-CASE ( -- )
+   s" an addressed store and load emit through the registers they name" T-LABEL
+   WBND [: BUMP-BODY ;] IR-CTX:WITH-CONTEXT
+   $F9000020 T= $F9400000 T= $F9000020 T= 13 T= ;
+
 \ ---- a program that does not fit ---------------------------------------------
 \ The whole spill route, ending in bytes that run: allocate the chain, lower the
 \ spill decisions into a module whose stores and loads are operations, allocate
@@ -925,6 +1014,7 @@ public
    REUSE-CASE
    SUM3-HIGH-CASE
    WIDE-CASE
+   BUMP-CASE
    MAP-CASE
    RUN-SQUARE-CASE
    RUN-DIFF-CASE

@@ -142,16 +142,19 @@ create L-AT VMAX cells allot         \ where the module says each value is last 
 create S-AT VMAX cells allot         \ whether the block defines this value at all
 create C-AT VMAX cells allot         \ which class the module gives each value
 create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
+create U-AT VMAX cells allot         \ how many operands of the function name each value
 
 : DEF-AT ( n -- n )                  cells D-AT + @ ;
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
 : SEEN-AT ( n -- n )                 cells S-AT + @ ;
 : CLS-AT ( n -- n )                  cells C-AT + @ ;
+: USES-AT ( n -- n )                 cells U-AT + @ ;
 
 : DEF! ( n n -- )                    {: v:n k:n :} v k cells D-AT + ! ;
 : LAST! ( n n -- )                   {: v:n k:n :} v k cells L-AT + ! ;
 : SEEN! ( n n -- )                   {: v:n k:n :} v k cells S-AT + ! ;
 : CLS! ( n n -- )                    {: v:n k:n :} v k cells C-AT + ! ;
+: USES! ( n n -- )                   {: v:n k:n :} v k cells U-AT + ! ;
 
 : TABLES-CLEAR ( -- )
    VMAX 0 ?do
@@ -307,6 +310,48 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 
 : GPR? ( n -- bool )
    CLS-AT C-GPR = ;
+
+\ ---- the memory order --------------------------------------------------------
+\ Every memory order this module mints is passed on exactly once. An access takes
+\ the order as it stands and answers the order as it now stands, so a chain of
+\ them is a chain of single-use values: the routine's first memory operation mints
+\ one and its last ends it, and every access in between reads exactly the answer
+\ of the access before it.
+\
+\ WHY THIS IS WORTH CHECKING WHEN NOTHING REORDERS YET. A pass that built an
+\ access and forgot to pass its order on leaves a module in which the accesses
+\ after it are not ordered against it - and the instructions would still be
+\ emitted in the printed order, so the routine would compute the right answer and
+\ every execution test would pass. What is broken is the module's claim, not
+\ today's output, and a claim is exactly what a validator is for: the first pass
+\ that is allowed to move an instruction would move it, and the failure would
+\ appear a leaf away from its cause. A token read twice is the mirror image - two
+\ accesses each claiming to follow the same one - and it is refused for the same
+\ reason.
+: COUNT-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT {: k:n :}
+      k USES-AT 1+ k USES!
+   loop ;
+
+: COUNT-BLOCK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT COUNT-OP
+   loop ;
+
+: ORDER-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-VALS @ 0 ?do 0 i USES! loop
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT COUNT-BLOCK
+   loop
+   N-VALS @ 0 ?do
+      i CLS-AT C-TOKEN = if
+         i USES-AT 1 <> if E-A64RAV-ORDER throw then
+      then
+   loop ;
 
 \ Every assigned register is one the routine's contract says it may destroy. The
 \ contract cannot name x18, x30 or register 31 at all - A64EFF refuses them in
@@ -898,6 +943,7 @@ create V-TMP SETC cells allot
    f VMEASURE
    INTERVAL-CK
    CLASS-CK
+   f ORDER-CK
    REGISTER-CK
    OVERLAP-CK
    f VEDGE-CK
@@ -973,6 +1019,7 @@ create V-TMP SETC cells allot
    COVER-CK
    INTERVAL-CK
    CLASS-CK
+   f ORDER-CK
    REGISTER-CK
    OVERLAP-CK
    bk TIE-CK

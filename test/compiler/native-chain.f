@@ -282,6 +282,91 @@ create TXT TEXT-CAP allot
    14 T= 11 T= 8 T= 0 T=
    4 T= 17 T= -1 T= 7 T= ;
 
+\ ---- a definition that reads and writes memory -------------------------------
+\ The same run over a body whose whole point is a side effect, and the first one
+\ whose source names something outside the dialect's vocabulary: a `create`d data
+\ word. Three things make this case the acceptance of the memory leaf rather than
+\ another shape test.
+\
+\ FIRST, THE DATA WORD IS THE ENGINE'S. The cell is created by evaluating
+\ `create NCH-CELL 1 cells allot` through the same front end the definition goes
+\ through, and its address is read back by evaluating its name. Nothing in this
+\ file writes an address down. What the word model is TOLD is that one number,
+\ which is the seam dot habu-resolve-a-data-a1c8067f closes; everything else -
+\ the spelling, the tape, the spans - comes off the engine's own compilation.
+\
+\ SECOND, THE CELL IS POISONED BEFORE EACH CALL. `CELL-BUMP`'s answer is its
+\ argument plus one, which a routine that never touched memory could compute just
+\ as well. So the cell is set to a value that is not the argument first: if the
+\ store were dropped, the load would read the poison and the routine would answer
+\ 100 instead of 42, and if the second store were dropped the cell would still
+\ hold the poison afterwards. Both the answer and the cell are recorded.
+\
+\ THIRD, THE INTERPRETED WORD IS RUN FROM THE SAME POISONED STATE. The engine's
+\ own compilation of the same source is put through the same two steps, so the
+\ two paths are compared on the memory they left as well as on the value they
+\ answered.
+\
+\ AND THE ARGUMENT IS BIGGER THAN A BYTE ON PURPOSE. The dialect has one access
+\ width and the assembler has four encoders; a cell-width load written with the
+\ byte-width encoder would answer the same number for every argument under 256,
+\ so the argument is 4000 and the answer 4001, which the low eight bits cannot
+\ carry.
+: SRC4 ( -- ptr u8 n )
+   s" : NCH-BUMP ( n -- n ) NCH-CELL ! NCH-CELL @ 1+ dup NCH-CELL ! ;" ;
+
+\ The word model this definition needs: the dialect's own vocabulary plus the one
+\ data word the body names, committed to one row more than REGISTER-WORDS writes.
+: MODEL-MEM ( IR-CTX:ctx IR-BUILD:builder n -- IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:n :}
+   c b IR-BUILD:MODULE-KEY HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS HIR-WORD:NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r HIR-WORD:REGISTER-WORDS
+   c b r  c b s" NCH-CELL" IR-BUILD:INTERN-SYMBOL  v HIR-WORD:DECLARE-FIXED
+   p r ;
+
+: RECORD4 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC4 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: ELABORATE4 ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB TAPE p r 1 1 NELAB:COLON drop ;
+
+\ The poison the cell holds before each call, and the argument each call is
+\ made with. All three of the poison, the argument and the answer differ, so no
+\ two of the four recorded numbers can agree by accident, and the argument is
+\ past the reach of a byte.
+: POISON ( -- )
+   s" 99 NCH-CELL !" EV ;
+
+4001 constant BUMPED
+
+: MEM-BODY ( IR-CTX:ctx -- n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   s" create NCH-CELL 1 cells allot" EV
+   CC BB  s" NCH-CELL" EV-N  MODEL-MEM {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD4
+   p r ELABORATE4
+   CC BB TXT TEXT-LEN 0 REGS 1 1 NFIX:RUN-HABU
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   POISON
+   4000 fn NRUN:ENTER1
+   s" NCH-CELL @" EV-N
+   POISON
+   s" 4000 NCH-BUMP" EV-N
+   s" NCH-CELL @" EV-N ;
+
+: MEM-CASE ( -- )
+   s" a definition that stores and loads compiles, runs and leaves the cell" T-LABEL
+   NFIX:BINDING [: MEM-BODY ;] IR-CTX:WITH-CONTEXT
+   BUMPED T= BUMPED T= BUMPED T= BUMPED T= 1 T= ;
+
 public
 
 : RUN ( -- )
@@ -289,6 +374,7 @@ public
    CHAIN-CASE
    HABU-CASE
    BRANCH-CASE
+   MEM-CASE
    T-REPORT ;
 
 ;package
