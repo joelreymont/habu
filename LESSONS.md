@@ -2863,3 +2863,25 @@ fits.
   colon word is callable: the engine can reject it before its range or behavior
   is exercised. Use an existing public observation when one exists; otherwise
   name and inventory the smallest test-metaprogramming wrapper in the contract.
+
+## Verify carried-over claims by experiment before ruling on them (2026-08-01)
+
+During the process-train abandonment decision, I grounded a ruling on "master
+is unbootstrappable" — a claim carried through context compaction that
+actually described the provisional composition, not master. Codex ran the
+bootstrap and the full suite on clean master and disproved it in minutes.
+What worked: adversarial verification of the other orchestrator's premises
+before accepting a program. What didn't: relaying remembered state as a
+ruling ground without re-deriving it. Rule: a factual premise that decides a
+design ruling gets an experiment, not a recollection — bootstrappability,
+greenness, and consumer counts are all cheap to measure.
+
+## Run the ownership census before dispatching a caller wave (2026-08-01)
+
+Seven launched runner-caller lanes (of eight planned; the run-lib lane never
+launched — the thread cap was reached) all hit the same E-PACKAGE-OWNERSHIP
+wall because the write sets included legacy-global gate files. The
+pre-dispatch rule ("prove every planned definition has a package owner; a
+legacy global is not an implicit exception") existed and was skipped. One rg
+census over the write sets would have surfaced the cascade before the
+workers started.
