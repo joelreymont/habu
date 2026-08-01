@@ -3,7 +3,7 @@
 \ MATCH both arms at check time — dropping the error no longer type-checks.
 \ Consumers must `require lib/adt/result.f` before returning or matching one.
 
-SUMTYPE result 2
-  VARIANT ok  a ;VARIANT
-  VARIANT err b ;VARIANT
-;SUMTYPE
+ENUM result 2
+  VARIANT ok  FIELD value a ;VARIANT
+  VARIANT err FIELD error b ;VARIANT
+;ENUM
