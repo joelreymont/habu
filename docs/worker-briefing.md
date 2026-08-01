@@ -21,8 +21,8 @@ the gate files are the source of truth.
   update of every affected row: `test/gate-size-attribution-test.f`
   (LINUX-CODE-TEXT, LINUX-FLOOR-DIST, LINUX-TOTAL, and the per-region
   LINUX-REGION-BUDGETS rows — regions must sum exactly to CODE-TEXT),
-  `test/gate-build-size.f` (GB-SIZE-BASELINE-LINUX), and the STATUS.md census
-  row "Certified (linux-arm64): N".
+  `test/gate-build-size.f` (GB-SIZE-BASELINE-LINUX), and
+  `test/gate-engine-lib.f` (`ENGINE-GATE`'s CENSUS-LINUX).
 - MEASURE then transcribe, never predict: rebuild with
   `HABU_ENGINE_SIZE_MAP=1 ... install --force`, run `tools/size-report.f`,
   copy the measured numbers. Arithmetic predictions have been wrong twice.

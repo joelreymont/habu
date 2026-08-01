@@ -23,10 +23,6 @@ SUITE trust-lint
    tools/trust-lint.f
 ;SUITE
 
-SUITE stale-status-lint
-   tools/stale-status-lint.f
-;SUITE
-
 SUITE host-lint
    tools/host-lint.f
 ;SUITE
@@ -153,7 +149,6 @@ SUITE tool-boundary-check-repair
 
 SUITE tool-boundary-doc-public
    tools/public-signatures-test.f
-   tools/stale-status-lint-test.f
    tools/repair-schema-doc-test.f
    tools/examples-test.f
 ;SUITE

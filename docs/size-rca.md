@@ -77,7 +77,7 @@ same-commit at the byte fixpoint (`HABU_ENGINE_SIZE_MAP=1` →
 asserts the decomposition against the `__text` ceiling — so the budgets can
 never silently diverge from the committed total.
 
-`GE-REGION-RATCHET` (in `GE-BUILD-FIXPOINT`, right after the CODELEN ratchet)
+`GE-REGION-RATCHET` (called from `ENGINE-GATE`'s private `BUILD-FIXPOINT`, right after the CODELEN ratchet)
 holds each candidate region to its budget with the same directional semantics as
 `GB-SIZE` / `CODE-TEXT`, per region and **naming the region**:
 

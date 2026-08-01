@@ -401,7 +401,6 @@ another small word whose entry consumes the bundle.
 - `docs/typed-top-level.md` — what may and may not run at the interpreter.
 - `TRUSTED.md` — the live ledger of every trusted site, its reason, its tests,
   and its owner.
-- `STATUS.md` — what is verified on the current tree, and what is in flight.
 
 The best worked examples in the tree, if you would rather read code:
 `lib/cad-num-types.f` for nominals, `lib/adt/option.f` and `lib/adt/result.f`

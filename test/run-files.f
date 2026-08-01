@@ -57,8 +57,7 @@ TR-FILES: TR-AOT-RUNNER-SUPPORT-FILES
 \ that can change the phase verdict; test/run-result-cache-test.f enforces
 \ that each declared set is closed over require/include lines and existing
 \ s" source literals (src/ members are keyed but not scanned). Phases with
-\ no declared set are never result-cached. Date-sensitive phases (the
-\ stale-status lint slice) must stay undeclared.
+\ no declared set are never result-cached.
 
 TR-FILES: TR-GATE-HARNESS-FILES
    test/run.f test/run-support.f test/run-lib.f test/run-files.f

@@ -531,90 +531,40 @@ GE-FILES: GE-REPAIR-HINTS-RUN-FILES
    SIZE-ATTR:PAGE-CROSS-REPORT
    s" PASS: per-region __text budget ratchet (every region held to its committed budget)" type cr ;
 
-\ --- self-check certification census ratchet (dot habu-census-assert-...) ----
-\ STATUS.md carries one `Certified (<target>): N  Uncheckable: 0  Rejected: 0`
-\ row per build target (the SSOT). This slice re-measures the current target's
-\ assembled stage2 source with the same VERIFY scanner the certify uses
-\ (VERIFY:CENSUS-COUNT) and fails closed if the current target's row drifts. The
-\ other target's `owed` row is not asserted here, mirroring the per-target
-\ CODELEN rows in test/gate-build-size.f.
-variable GE-CEN-P
+\ --- self-check certification census ratchet -------------------------------
+package ENGINE-GATE
+private
 
-\ STATUS.md is a repo file read cwd-relative (the gate runs from the repo root,
-\ same as the cwd-relative src/ reads in BF-STAGE2-SOURCE), not a build artifact
-\ under GT-ROOT.
-: GE-STATUS$ ( -- ptr u8 n )
-   s" STATUS.md" FILE-SIZE MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
-   s" STATUS.md" buf cap READ-ALL {: got:n :}
-   buf got ;
+4194 constant CENSUS-LINUX
+3775 constant CENSUS-MACOS
 
-: GE-CENSUS-KEY$ ( -- ptr u8 n )
-   SB-RESET
-   s" Certified (" SB-APPEND
-   BF-CENSUS-TARGET$ SB-APPEND
-   s" ):" SB-APPEND
-   SB$ ;
+: CENSUS-BASE ( -- n )
+   HB-TARGET-LINUX? if CENSUS-LINUX exit then
+   HB-TARGET-MACOS? if CENSUS-MACOS exit then
+   BF-TARGET-UNKNOWN ;
 
-: GE-CENSUS-MEASURED ( -- n )
+: CENSUS-MEASURED ( -- n )
    s" stage2-src" GE-READ-BUILD-TMP VERIFY:CENSUS-COUNT ;
 
-: GE-CEN-SKIP-SP ( ptr u8 n -- ) {: a:ptr u:n :}
-   begin GE-CEN-P @ u < while
-      a GE-CEN-P @ BYTE@ 32 <> if exit then
-      GE-CEN-P @ 1+ GE-CEN-P !
-   repeat ;
+: CENSUS-DRIFT-FAIL ( n n -- ) {: d:n m:n :}
+   s" census ratchet: " type BF-CENSUS-TARGET$ type
+   s"  baseline is " type d . s" the self-check measured " type m .
+   s" census ratchet: certification count drift - update this target's CENSUS constant" GE-FAIL ;
 
-: GE-CEN-DIGIT-END ( ptr u8 n -- ) {: a:ptr u:n :}
-   begin GE-CEN-P @ u < while
-      a GE-CEN-P @ BYTE@ STR-DIGIT? 0= if exit then
-      GE-CEN-P @ 1+ GE-CEN-P !
-   repeat ;
+: CENSUS-RATCHET ( -- )
+   CENSUS-MEASURED {: m:n :}
+   CENSUS-BASE {: d:n :}
+   d m <> if d m CENSUS-DRIFT-FAIL then
+   s" PASS: certification census ratchet (" type BF-CENSUS-TARGET$ type s" )" type cr ;
 
-: GE-CENSUS-PARSE ( ptr u8 n n -- option<n> ) {: a:ptr u:n keyend:n :}
-   keyend GE-CEN-P !
-   a u GE-CEN-SKIP-SP
-   GE-CEN-P @ {: ds:n :}
-   a u GE-CEN-DIGIT-END
-   GE-CEN-P @ ds - {: du:n :}
-   du 0= if OPTION:NONE exit then
-   a ds BYTE+ du STR-PARSE-POS ;
-
-: GE-CENSUS-DRIFT-FAIL ( n n -- ) {: d:n m:n :}
-   s" census ratchet: STATUS.md Certified (" type BF-CENSUS-TARGET$ type
-   s" ) is " type d . s" the self-check measured " type m .
-   s" census ratchet: certification count drift - update the current-target row in STATUS.md this commit" GE-FAIL ;
-
-: GE-CENSUS-RATCHET ( -- )
-   GE-CENSUS-MEASURED {: m:n :}
-   GE-STATUS$ {: a:ptr u:n :}
-   GE-CENSUS-KEY$ {: k:ptr ku:n :}
-   a u k ku GE-SHAPE-FIND MATCH option
-     none OF
-        s" census ratchet: no Certified (" type BF-CENSUS-TARGET$ type
-        s" ) row in STATUS.md - commit the measured count " type m .
-        s" census ratchet: current-target census row missing or owed" GE-FAIL
-     ENDOF
-     some OF IDX>N ku + {: keyend:n :}
-        a u keyend GE-CENSUS-PARSE MATCH option
-          none OF s" census ratchet: unparseable count on the current-target STATUS.md row" GE-FAIL ENDOF
-          some OF {: d:n :} d m <> if d m GE-CENSUS-DRIFT-FAIL then ENDOF
-        ;MATCH
-     ENDOF
-   ;MATCH
-   a u s" Uncheckable: 0  Rejected: 0" CONTAINS? 0= if
-      s" census ratchet: STATUS.md Uncheckable/Rejected not 0/0" GE-FAIL
-   then
-   s" PASS: certification census ratchet (" type BF-CENSUS-TARGET$ type
-   s"  current target; other target owed)" type cr ;
-
-: GE-BUILD-FIXPOINT ( -- )
+: BUILD-FIXPOINT ( -- )
    s" candidate-build" GS-EVENT
    s" hb-gate-engine" GT-START
    GT-ROOT BF-TMP!
    BF-PREFLIGHT
    BF-STAGE2-SOURCE
    GE-STAGE2-SCRATCH-SHAPE
-   GE-CENSUS-RATCHET
+   CENSUS-RATCHET
    BF-STAGE-FIXPOINT-FROM-SOURCE
    BF-BUILD-STDIN-FROM-STAGE
    GE-BUILD-SOURCE-SHAPE
@@ -625,6 +575,8 @@ variable GE-CEN-P
    GE-EXPECT-CANDIDATE
    GE-CANDIDATE-SIZE-CHECK
    s" PASS: self-rebuild fixpoint" type cr ;
+
+;package
 
 : GE-RUN-STD-FIXTURES ( -- )
    GT-POOL-RESET
@@ -2058,10 +2010,15 @@ public
 : GE-RUNTIME-CHECKS ( -- )
    RUNTIME-CHECKS:ALL ;
 
-: GENG-BUILD-SLICE ( -- )
-   GE-BUILD-FIXPOINT
+package ENGINE-GATE
+private
+
+: BUILD-SLICE ( -- )
+   BUILD-FIXPOINT
    GT-CLEANUP
    s" PASS: native engine build gate slice" type cr ;
+
+;package
 
 : GE-CANDIDATE-VALIDATE ( -- )
    s" candidate-validate" GS-EVENT
@@ -2275,18 +2232,23 @@ public
    GT-CLEANUP
    s" PASS: exact candidate construct parity slice" type cr ;
 
-: GE-MAIN ( -- )
+package ENGINE-GATE
+public
+
+: MAIN ( -- )
    GENG-PARSE-SLICE
-   GENG-SLICE @ GENG-BUILD-ID = if GENG-BUILD-SLICE exit then
+   GENG-SLICE @ GENG-BUILD-ID = if BUILD-SLICE exit then
    GENG-SLICE @ GENG-FIXTURES-ID = if GENG-FIXTURES-SLICE exit then
    GENG-SLICE @ GENG-REPAIR-ID = if GENG-REPAIR-SLICE exit then
    GENG-SLICE @ GENG-RUNTIME-ID = if GENG-RUNTIME-SLICE exit then
    GENG-SLICE @ GENG-RUNTIME-PARITY-ID = if GENG-RUNTIME-PARITY-SLICE exit then
    GENG-SLICE @ GENG-VALIDATE-ID = if GENG-VALIDATE-SLICE exit then
    GENG-SLICE @ GENG-CONSTRUCT-ID = if GENG-CONSTRUCT-PARITY-SLICE exit then
-   GE-BUILD-FIXPOINT
+   BUILD-FIXPOINT
    GE-RUN-EXTRA-FIXTURES
    GE-CANDIDATE-VALIDATE
    RUNTIME-WORKER:SUBJECT
    GT-CLEANUP
    s" PASS: native engine gate phase" type cr ;
+
+;package

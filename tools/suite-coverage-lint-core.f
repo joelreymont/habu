@@ -287,7 +287,6 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
 : SC-SCHED-CLOSURE-CORES ( -- )
    s" tools/repl-lint.f" SC-SCHED+
    s" tools/trust-lint.f" SC-SCHED+
-   s" tools/stale-status-lint.f" SC-SCHED+
    s" tools/dot-dep-lint.f" SC-SCHED+
    s" tools/maki-dep-lint.f" SC-SCHED+
    s" tools/refine-lint.f" SC-SCHED+
