@@ -984,7 +984,7 @@ public
 \ authority's name: a source word the dialect cannot compile is still
 \ E-HIR-UNMODELED, a row read as a meaning it does not carry is E-HIR-CLASS, and
 \ an address operand outside the field it lands in is the assembler's.
--8520 constant E-NELAB-TOKEN    \ an operation whose schema declares more than one memory token among its operands or among its results: the elaborator threads one order and has no rule for two
+-8520 constant E-NELAB-TOKEN    \ the definition's one memory order is wrong for the operation being staged: either the operation's schema declares more than one token among its operands or among its results, which the elaborator has no rule for, or it takes an order in a definition the pre-scan found no memory word in
 -8521 constant E-A64SEL-MEM     \ a memory operation in a routine whose convention names no data-stack place at all: the generic memory order of this dialect begins where the routine takes the caller's operands, and a routine that takes and publishes nothing has no beginning for it
 -8522 constant E-A64RAV-ORDER   \ a memory order the module mints and does not pass on exactly once: a token nothing reads leaves the order after it unstated, and a token two operations read is two orders claiming to be one
 
