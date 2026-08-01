@@ -476,10 +476,10 @@ that source is explicitly certified; they are not stale-checked by the default
 | SNAP>N | `snap -- n` | Runtime identity cast from the nominal snapshot-header phase token back to a generic cell; the checker cannot infer phase-token erasure from an empty body. | `test/gate-engine.f`, `test/run.f` | src/core/roles.f | 2026-06-26 | prim-axiom | habu-primitive-effect-axiom-1119f176 |
 | TTHROWS-RAW | `a n --` | Top-level test assertion boundary around execution-token `catch`; checked colon definitions should use `TTHROWSQ`, but top-level scripts cannot push `[: ;]` quotations. | `lib/test/assert-test.f`, `test/run.f` | lib/test/assert.f | 2026-06-22 | test-metaprog | habu-typed-depth-introspection-18f0efda |
 | P>N | `ptr a -- n` | FFI argument marshalling: reinterpret any pointer as the raw integer cell the AAPCS64 trampoline loads into x0-x7; the checker has no pointer-to-cell coercion. | `lib/ffi-abi-test.f`, `lib/ffi-test.f`, `test/gate-stdlib.f` | lib/ffi-abi.f | 2026-06-27 | stdlib-boundary | habu-typed-defining-words-aa224eb5 |
-| STORAGE>PREMINT | `ptr a -- ptr n n` | Private sealed JSON-reader pre-mint leaf that exposes a cell-state view and numeric address so checked INIT can reject misalignment and initialize the readable state fields before publishing a token. It does not mint ownership. | `lib/json-read-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | habu-add-bounded-host-b40b048f |
-| MINT-READER | `ptr a -- JR:reader` | Private sealed JSON-reader representation leaf that mints the opaque linear token only after checked null, alignment, capacity, source-span preconditions, and readable-state initialization. The caller still promises the raw backing extent, lifetime, and exclusive use until CLOSE. | `lib/json-read-test.f`, `lib/build-cache-test.f`, `tools/hb-build-test.f`, `maki/infer/safetensors-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | habu-add-bounded-host-b40b048f |
-| READER>STATE | `JR:reader -- JR:reader ptr n ptr u8` | Private sealed conserved-access leaf that keeps the opaque linear reader live while exposing cell and byte views of its same caller-owned backing storage to checked parser internals. No public projection or remint word exists. | `lib/json-read-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | habu-add-bounded-host-b40b048f |
-| CONSUME-READER | `JR:reader --` | Private sealed representation leaf used only by CLOSE to consume the opaque linear reader token; it does not free caller-owned storage. | `lib/json-read-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | habu-add-bounded-host-b40b048f |
+| STORAGE>PREMINT | `ptr a -- ptr n n` | Private sealed JSON-reader pre-mint leaf that exposes a cell-state view and numeric address so checked INIT can reject misalignment and initialize the readable state fields before publishing a token. It does not mint ownership. | `lib/json-read-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | cap:raw-pointer-lifetime |
+| MINT-READER | `ptr a -- JR:reader` | Private sealed JSON-reader representation leaf that mints the opaque linear token only after checked null, alignment, capacity, source-span preconditions, and readable-state initialization. The caller still promises the raw backing extent, lifetime, and exclusive use until CLOSE. | `lib/json-read-test.f`, `lib/build-cache-test.f`, `tools/hb-build-test.f`, `maki/infer/safetensors-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | cap:raw-pointer-lifetime |
+| READER>STATE | `JR:reader -- JR:reader ptr n ptr u8` | Private sealed conserved-access leaf that keeps the opaque linear reader live while exposing cell and byte views of its same caller-owned backing storage to checked parser internals. No public projection or remint word exists. | `lib/json-read-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | cap:raw-pointer-lifetime |
+| CONSUME-READER | `JR:reader --` | Private sealed representation leaf used only by CLOSE to consume the opaque linear reader token; it does not free caller-owned storage. | `lib/json-read-test.f` | lib/json-read.f | 2026-07-22 | stdlib-boundary | cap:raw-pointer-lifetime |
 | DLOPEN-RAW | `ptr u8 n -- n` | Private exact `dlopen` boundary: the path is read-only, flags are scalar, and the sealed `FFI` package fixes both directions before the trusted-only bounded call. | `lib/ffi-test.f`, `lib/task-test.f`, `lib/ptx/cuda-driver-test.f`, `test/seal-package.f` | lib/ffi-abi.f | 2026-07-11 | stdlib-boundary | habu-ptx-m1-c-1df1d6e7 |
 | DLSYM-RAW | `n ptr u8 -- n` | Private exact `dlsym` boundary: handle is scalar, symbol is read-only, and the sealed `FFI` package prevents replacement or extension of the call surface. | `lib/ffi-test.f`, `lib/task-test.f`, `lib/ptx/cuda-driver-test.f`, `test/seal-package.f` | lib/ffi-abi.f | 2026-07-11 | stdlib-boundary | habu-ptx-m1-c-1df1d6e7 |
 | FFI-T-STORE-X1 | `-- n` | Test-local fixed code emitter for one x1 store instruction; no address or instruction is caller-selected. | `lib/ffi-abi-test.f` | lib/ffi-abi-test.f | 2026-07-11 | stdlib-boundary | habu-ptx-m1-c-1df1d6e7 |
@@ -1134,6 +1134,7 @@ rendering, so the checker can validate them without a Markdown implementation.
 | <a id="cap-checker-registry-whitebox"></a>`cap:checker-registry-whitebox` | Test-only leaves expose pre-hook checker registry layout metadata, marks, and individual unmodeled mutations so checked orchestration proves growth and exact rollback. | `test/engine-suite.f` |
 | <a id="cap-fetched-adt-validation"></a>`cap:fetched-adt-validation` | Test-only hostile whitebox access constructs malformed fetched ADT layouts and proves growth, guard, product, and width-one rejection. | `test/layout-valid-growth.f`, `test/layout-valid-guard-base.f`, `test/layout-valid-product-bad.f`, `test/layout-valid-w1-bad.f` |
 | <a id="cap-qualified-family-payloads"></a>`cap:qualified-family-payloads` | Test-only nominal payload casts construct and inspect qualified family values after schema resolution. | `test/type-decl-suite.f` |
+| <a id="cap-raw-pointer-lifetime"></a>`cap:raw-pointer-lifetime` | Audited raw-pointer lifetime boundary: linear owners enforce use and explicit disposal; borrowed raw-pointer lifetime and extent deliberately remain caller and review responsibility. Scope is limited to the current JSON-reader representation rows and rigid-region test metaprogramming. | `lib/json-read-test.f`, `test/rigid-region-suite.f` |
 | <a id="cap-sealed-family-pointers"></a>`cap:sealed-family-pointers` | Test-only representation accessor verifies that layout-buffer family pointers remain sealed behind the typed buffer API. | `test/layout-buffer.f` |
 | <a id="cap-wide-memory-lowering"></a>`cap:wide-memory-lowering` | Test-only native bootstrap probes inspect wide PRODUCT representation and raw image memory after lowering. | `test/bootstrap-wide-memory-src.f`, `test/bootstrap-wide-memory.f` |
 
@@ -1142,6 +1143,7 @@ cap:checker-hook-identity TRUSTED.md#cap-checker-hook-identity
 cap:checker-registry-whitebox TRUSTED.md#cap-checker-registry-whitebox
 cap:fetched-adt-validation TRUSTED.md#cap-fetched-adt-validation
 cap:qualified-family-payloads TRUSTED.md#cap-qualified-family-payloads
+cap:raw-pointer-lifetime TRUSTED.md#cap-raw-pointer-lifetime
 cap:sealed-family-pointers TRUSTED.md#cap-sealed-family-pointers
 cap:wide-memory-lowering TRUSTED.md#cap-wide-memory-lowering
 -->
@@ -1189,26 +1191,26 @@ test/lower-cert.f:LCT-MULTI-ERR-BEGIN test-metaprog habu-seal-set-check-b3676b33
 test/lower-cert.f:LCT-MULTI-ERR-END test-metaprog habu-seal-set-check-b3676b33
 test/layout-valid-product-bad.f:RAW test-metaprog cap:fetched-adt-validation
 test/layout-valid-w1-bad.f:RAW test-metaprog cap:fetched-adt-validation
-test/rigid-region-suite.f test-metaprog habu-add-bounded-host-b40b048f 1
-test/rigid-region-suite.f:RR-BOXG test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-BOXM test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-BOXR test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-MK1 test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-OWN test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-SHARE test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-SHARE3 test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-SHM test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-U3R test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-UBOX test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-UEQ test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-UEQ3 test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-UONE test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-XEXT test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-XEXT3 test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-XGEN test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-XGEN3 test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-XRGN test-metaprog habu-add-bounded-host-b40b048f
-test/rigid-region-suite.f:RR-XRGN3 test-metaprog habu-add-bounded-host-b40b048f
+test/rigid-region-suite.f test-metaprog cap:raw-pointer-lifetime 1
+test/rigid-region-suite.f:RR-BOXG test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-BOXM test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-BOXR test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-MK1 test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-OWN test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-SHARE test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-SHARE3 test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-SHM test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-U3R test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-UBOX test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-UEQ test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-UEQ3 test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-UONE test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-XEXT test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-XEXT3 test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-XGEN test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-XGEN3 test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-XRGN test-metaprog cap:raw-pointer-lifetime
+test/rigid-region-suite.f:RR-XRGN3 test-metaprog cap:raw-pointer-lifetime
 test/type-layout-lower-pending.f test-metaprog habu-interpret-wide-gate-1d70acf7 4
 test/type-layout-lower-pending.f:TWX-TFAM-FIND-IN test-metaprog habu-seal-set-check-b3676b33
 test/type-match-suite.f:FREE-MTOK test-metaprog habu-tfam-11b-open-ee9c72c6
