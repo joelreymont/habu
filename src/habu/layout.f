@@ -332,7 +332,7 @@ $3CB0 constant AOT-SEED-ARM-CELL
 \ never collide with the tag. The capture reads the tag, takes the bitmap path on a
 \ match and the legacy table path otherwise, and dies loudly on any third shape, so
 \ the changeover cannot silently misread either lineage. The legacy reader retires
-\ once the seed has rolled past the transition (dot habu-retire-legacy-pwid).
+\ once the seed has rolled past the transition (dot habu-retire-the-legacy-31ad57bc).
 \
 \ The band stays engine-reserved -- no compiled source writes it, the DP heap is
 \ bounded >= DATA-START (above it) and snapshot saves it. [PROT-REG-OFF,

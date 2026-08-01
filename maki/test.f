@@ -6,6 +6,7 @@
 \ run-all inventory and the coverage-lint master: every suite below must land in
 \ exactly one slice (tools/suite-coverage-lint-core.f enforces the partition).
 require maki/test-harness.f
+require tools/prot-wid-probe.f
 
 using TEST
 
@@ -415,5 +416,15 @@ SUITE maki/examples/nanogpt/wtie-train-test.f
 ;GROUP
 
 RUN
+
+\ Protected-wordlist headroom, measured once the whole inventory has run in this
+\ one process (dot habu-guard-maki-suite-070e2221). Every PUBLIC ADT family the
+\ suite declares protects a wordlist for the life of the run, and the run that
+\ exhausts the registry does not fail where it ran out - it fails in whatever file
+\ declares next, which is how this suite's red was blamed on an innocent enum for
+\ two days. Reporting the number here makes the trend visible in every log, and
+\ the floor makes the next approach to the ceiling name itself, one whole doubling
+\ before anything is refused.
+PROT-WID-PROBE:REQUIRE-ROOM
 
 ;using

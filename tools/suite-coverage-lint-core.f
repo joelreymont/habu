@@ -354,10 +354,11 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    \ spawns, too costly for the resident fast tier - runs in the standalone
    \ stdlib gate like the snapshot suite above.
    s" test/stdlib-standalone-load.f" q execute
-   \ protected-WID boot-integration suite: spawns test/aot-wid-build.f to build a
-   \ full variant engine (~12s), too costly for the fast tail-process fork tier
-   \ (its 11.1s pool ratchet) - runs in the standalone stdlib gate like the
-   \ snapshot suite above.
+   \ protected-WID boot-integration suite: spawns test/aot-wid-build.f three times
+   \ (~12s per full variant engine - one baked-fixture build plus the two capture
+   \ refusal builds), far too costly for the fast tail-process fork tier (its 11.1s
+   \ pool ratchet) - runs in the standalone stdlib gate like the snapshot suite
+   \ above.
    s" test/aot-wid-suite.f" q execute
    \ framed-diff codec fixtures: a self-contained in-memory round-trip/reject
    \ suite (diff-frame-codec). It runs spawned in the standalone stdlib gate via

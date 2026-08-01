@@ -317,7 +317,7 @@ variable ACAP-P
 \ below the tag and a table-era engine has no way to write the tag. Any third value
 \ is an unknown lineage and dies rather than being guessed at. The legacy leg
 \ retires once the seed has rolled past the transition (dot
-\ habu-retire-legacy-pwid). ---
+\ habu-retire-the-legacy-31ad57bc). ---
 : ACAP-PWID-IN-RANGE? ( n -- bool ) {: wid:n :}
    wid 0 < 0=  wid PROT-WID-MAX <  and ;
 : ACAP-PWID-BYTE ( n -- ptr u8 ) 3 rshift AOT-PWID-BUF@ + ;

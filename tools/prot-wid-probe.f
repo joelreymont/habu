@@ -12,6 +12,17 @@
 \ primitive: how many more wordlists may still be allocated and protected. That is
 \ the quantity a declaration consumes, and the one whose exhaustion used to surface
 \ as an uncaught 7169 against an unrelated enum.
+\
+\ REPORT and REQUIRE-ROOM are the capacity guard a long-running suite ends with (dot
+\ habu-guard-maki-suite-070e2221). maki/test.f calls REQUIRE-ROOM after its whole
+\ inventory has run, in the ONE process that ran it, so the number it reports is the
+\ headroom the entire suite consumed - not a per-file figure. That is exactly the
+\ measurement whose absence let the registry fill silently until an unrelated enum
+\ took the blame.
+
+require lib/errors.f
+require lib/string.f
+require lib/fmt.f
 
 package PROT-WID-PROBE
 
@@ -44,5 +55,33 @@ public
 \ The bound itself, so a caller can report headroom as a fraction rather than a bare
 \ number that means nothing without it.
 : CAP ( -- n ) PROT-WID-MAX ;
+
+\ The floor a suite must still be above when it finishes. Half the id space, stated
+\ as a fraction of the bound rather than as a measured number: a measured floor would
+\ have to be re-pinned by every lane that adds a public family, which is how the old
+\ 256-row ceiling stayed invisible until it was hit. Half leaves a 2x margin, so a
+\ run that doubles its wordlist appetite names itself here - with the exact numbers -
+\ one whole doubling before anything is refused.
+: ROOM-FLOOR ( -- n ) CAP 2 / ;
+
+\ One line of evidence per run: what the registry holds, what the run consumed, and
+\ what is left, against the bound. Printed whether or not the floor holds, so a run
+\ that is merely approaching the floor still leaves a trend in its log.
+: REPORT ( -- )
+   s" protected-wordlist registry: " type COUNT FMT:.U
+   s"  protected, " type WIDS FMT:.U s"  wordlist ids used, " type
+   ROOM FMT:.U s"  of " type CAP FMT:.U s"  left (floor " type ROOM-FLOOR FMT:.U s" )" type cr ;
+
+\ Fail closed under the floor, naming the registry. A caller reaching this has NOT
+\ hit the ceiling - it has crossed the warning line with a full doubling still in
+\ hand, which is the whole point of the guard. Public so a caller that wants to
+\ catch the guard can name the code rather than match a number.
+-7210 constant E-PROT-ROOM   \ protected-wordlist headroom fell below the floor
+
+: REQUIRE-ROOM ( -- )
+   REPORT
+   ROOM ROOM-FLOOR >= if exit then
+   s" prot-wid-probe: protected-wordlist headroom below the floor" type cr
+   E-PROT-ROOM throw ;
 
 ;package

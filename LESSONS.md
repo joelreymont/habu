@@ -42,10 +42,22 @@ fits.
   refresh.** Copy a working binary into `<ws>/bin/hb`, then
   `bin/hb --load tools/build-fixpoint-refresh.f -- install` (~1 min, ends
   `bin/hb refresh OK: compiler fixpoint`). Habu bootstraps Habu.
-  `tools/bootstrap.sh` is the gforth no-binary RECOVERY route only, and it
-  currently fails on an unrelated stage0 mirror defect
-  (habu-fix-stage0-pre-88a4297e) — reaching for it wastes hours diagnosing a
-  path the project does not use.
+  `tools/bootstrap.sh` is the gforth no-binary RECOVERY route only; it was
+  recorded here as failing on an unrelated stage0 mirror defect
+  (habu-fix-stage0-pre-88a4297e).
+- **A recorded "this gate is currently red" is a measurement with a date, not a
+  standing fact — re-measure before you route around it.** On 2026-08-01, on the
+  protected-WID bitmap tree (macos-arm64), both documented probes of
+  habu-fix-stage0-pre-88a4297e came back GREEN:
+  `HABU_ALLOW_BOOTSTRAP=1 tools/bootstrap.sh` exits 0 with `bootstrap OK: bin/hb`
+  and the recovered binary is byte-identical to the native fixpoint, and the
+  dot's own confirmation probe
+  (`HABU_ALLOW_BOOTSTRAP=1 HABU_BOOTSTRAP_CHECK_ONLY=1`) exits 0 with zero
+  occurrences of its signature line `non-certified definition: install at 'is'`.
+  The bullet above had been read for days as "do not run it", which would have
+  hidden a real result: the no-binary path is a live end-to-end proof again, and
+  it is what proved the stage0 mirror of the protected-WID bitmap correct. Run
+  the failing command yourself, on your tree, before believing a note about it.
 - **Re-prove a frozen contract's package owner against the live tree at
   dispatch (`rg 'package NAME'`).** The S5a "sealed package MODEL" contract
   collided with the CAD typestate stage package `MODEL` (maki/typestate.f);
