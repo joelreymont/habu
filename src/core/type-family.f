@@ -2411,24 +2411,24 @@ TFC-QUOT-ROW-INSTALL
 \ TFC-CONSTRUCT-STEP-VID ( fam vid -- ) : apply the inline generated-constructor
 \ effect for a resolved (family,variant). One fresh checker var per family param,
 \ then — bidirectionally — the concrete args named by the declared output are
-\ recovered over those vars (CONSTRUCT-DECL-TERM), so a NAMED multi-cell layout
+\ recovered over those vars (CONSTRUCT-DECL-LAYOUT), so a DIRECT closed layout
 \ arg makes the payload input and the layout-bundle output PUSH-LOGICAL-expand to
-\ the arg-aware width; cell/open args keep the fresh var and the boundary
-\ coercion, unchanged. Shared by the reserved `construct` token and, for a
-\ multi-cell instantiation, the generated-constructor CALL (TFAM-CTOR-STEP?).
+\ its representation even at width 1. Open/linear/scalar/pointer args keep the
+\ fresh var and ordinary boundary coercion. Shared by the reserved `construct`
+\ token and the generated-constructor CALL (TFAM-CTOR-STEP?).
 : TFC-CONSTRUCT-STEP-VID ( n n -- ) {: fam:n vid:n :}
    fam TFAM-ARITY@ TFC-MINT-VARS
-   fam CONSTRUCT-DECL-MULTICELL? {: dt:n :}           \ multi-cell bundle term, else 0
-   dt 0 <> IF dt TFC-ARGS! THEN                       \ recover concrete args ONLY for a multi-cell instantiation; cell/open stay fresh
+   fam CONSTRUCT-DECL-LAYOUT {: dt:n seeded:bool :}
+   seeded IF dt TFC-ARGS! THEN
    FRESH MK-ROW {: base:n :}
    vid base TFC-PAY-ROW {: din:n :}
    fam TFC-FAM-TERM {: famterm:n :}
-   dt 0 <> IF                                         \ layout-cap slice 4/5: width-aware lowering for a CLOSED (stable-width) instantiation, incl. nested
+   seeded IF                                           \ layout-cap slice 4/5: width-aware lowering for a CLOSED (stable-width) instantiation, incl. nested
       dt TFC-CON-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
    THEN
    famterm base PUSH-LOGICAL {: dout:n :}
    din dout CHECKER-STEP
-   dt 0 <> IF
+   seeded IF
       dt TFC-CON-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open-arg (unstable width): stay staged fail-closed
    THEN ;
 
@@ -2439,11 +2439,10 @@ TFC-QUOT-ROW-INSTALL
    RES-TRUE ;
 
 \ TFAM-CTOR-STEP? ( sym -- bool ) : a generated-constructor CALL whose stored
-\ 1-cell-per-param effect cannot express the instantiation. Reverse the resolved
-\ word symbol to its variant; if the declared output binds this family to a
-\ multi-cell layout arg (CONSTRUCT-DECL-MULTICELL?), apply the arg-aware step and
-\ report handled. Otherwise report unhandled so DO-TOK runs the ordinary word
-\ call — every cell/generic/scalar constructor call is untouched.
+\ var effect cannot absorb a direct logical-layout argument. Reverse the resolved
+\ word symbol to its variant; if CONSTRUCT-DECL-LAYOUT finds an eligible declared
+\ output, apply the bidirectionally seeded step and report handled. Otherwise
+\ report unhandled so DO-TOK runs the ordinary word call.
 : SUMV-FROM-CTOR-SYM ( n -- n bool ) {: sym:n :}   \ constructor word symbol -> variant id
    sym 0 <= IF 0 RES-FALSE EXIT THEN
    0 TF-I !
@@ -2456,7 +2455,7 @@ TFC-QUOT-ROW-INSTALL
    sym SUMV-FROM-CTOR-SYM 0= IF drop RES-FALSE EXIT THEN
    {: vid:n :}
    vid SUMV-FAM@ {: fam:n :}
-   fam CONSTRUCT-DECL-MULTICELL? 0= IF RES-FALSE EXIT THEN   \ not a multi-cell instantiation: fall through to the ordinary word call
+   fam CONSTRUCT-DECL-LAYOUT nip 0= IF RES-FALSE EXIT THEN
    fam vid TFC-CONSTRUCT-STEP-VID
    RES-TRUE ;
 
