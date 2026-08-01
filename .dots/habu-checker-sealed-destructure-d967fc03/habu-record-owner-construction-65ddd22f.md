@@ -1,6 +1,6 @@
 ---
 title: Record owner construction flag
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:53:42.492055+02:00"
@@ -10,4 +10,4 @@ Problem: every public product currently publishes MAKE, so the family registry c
 
 Production red: the protected registry words cannot be called from checked suite definitions, so the real type-family rollback suite cannot name, set, read, or retire DRV-CONSTRUCT-OWNER without the same named test-metaprogramming boundary already used by these suites. Add only eleven thin test wrappers: TF-DERIVE owns ROW@, CELL@, ANY?, EQ!, HASH!, OWNER!, and OWNER? in test/type-family-suite.f; RB-DERIVE owns CELL@, ANY?, OWNER!, and OWNER? in test/type-family-rollback-suite.f. Classify those exact sites in TRUSTED.md. TF-REC and CELL remain directly reachable, so row width stays checked code and gets no wrapper.
 
-Acceptance: a real checker savepoint creates a family, sets and reads the bit, proves TFAM-DERIVE-ANY? remains false without EQ/HASH, then proves rollback retires the row; invalid family identifiers retain the existing TF-REC@ rejection; ordinary unflagged rows stay byte-identical across all TF-REC bytes. Source parsing/replay belongs to parse-owner-construction, not this leaf. Files: src/core/type-family.f, test/type-family-suite.f, test/type-family-rollback-suite.f, and the eleven matching TRUSTED.md rows. Forbidden: any other trusted site, public/owner pair, generic policy setter, side table, owner identifier, version, migration record, runtime state, parser edit, or new error. Smallest owning check: bin/hb < test/type-family-rollback-suite.f, then the type-family suite, strict trusted inventory, trust ratchet, and exact diff gates. Claim: agent=claude-owner-flag workspace=.jj-ws/habu-record-owner-construction-65ddd22f
+Acceptance: a real checker savepoint creates a family, sets and reads the bit, proves TFAM-DERIVE-ANY? remains false without EQ/HASH, then proves rollback retires the row; invalid family identifiers retain the existing TF-REC@ rejection; ordinary unflagged rows stay byte-identical across all TF-REC bytes. Source parsing/replay belongs to parse-owner-construction, not this leaf. Files: src/core/type-family.f, test/type-family-suite.f, test/type-family-rollback-suite.f, and the eleven matching TRUSTED.md rows. Forbidden: any other trusted site, public/owner pair, generic policy setter, side table, owner identifier, version, migration record, runtime state, parser edit, or new error. Smallest owning check: bin/hb < test/type-family-rollback-suite.f, then the type-family suite, strict trusted inventory, trust ratchet, and exact diff gates. Claim: unassigned.
