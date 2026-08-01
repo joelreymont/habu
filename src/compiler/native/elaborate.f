@@ -266,19 +266,40 @@ create LBUF LNAME-CAP allot
 \ so a definition that touches no memory contains no operation for it and the
 \ modules the other corpus words compile to are unchanged.
 \
-\ ONE ORDER PER DEFINITION, AND WHAT THAT COSTS TODAY. The order is minted in
-\ whatever block the first memory word is in, so a definition whose store is in
-\ one arm of a branch and whose load is after the join builds a value that does
-\ not dominate its use - and the freeze verifier refuses it by name. Carrying the
-\ order across an edge the way every other live value is carried, as a block
-\ argument, is dot habu-order-mem-across-115338f5; until it lands a memory word
-\ inside a structure is a refusal at freeze rather than a wrong program.
+\ ONE ORDER PER DEFINITION, AND IT TRAVELS LIKE EVERY OTHER LIVE VALUE. The order
+\ is an SSA value, so the way it reaches a block that control can arrive at twice
+\ is the way every other live value reaches one: as a BLOCK ARGUMENT. TERM-BR
+\ hands it over with the rest of the vector and OPEN-ARGS takes it back, so a
+\ loop body's load reads the order the previous turn left and the block after a
+\ branch reads whichever arm ran. Nothing else in the chain learns a new concept:
+\ the token has a type, a class and an allocation rule already.
+\
+\ WHY IT IS MINTED AT ENTRY AND NOT AT THE FIRST MEMORY WORD. Minting lazily -
+\ where the first memory word happens to be - is what made a memory word inside a
+\ structure impossible: the order would be defined in a block that does not
+\ dominate the loop header the next turn reads it through, and the freeze
+\ verifier refused it by name. A value handed across an edge has to exist BEFORE
+\ the edge, so the order is minted in the entry block, which dominates every
+\ block of the definition. It is still minted only when the definition needs one:
+\ MEM-SCAN below reads the body once and asks the schema table whether any word
+\ of it takes an order, so a definition that touches no memory contains no
+\ operation for it, carries no extra block argument, and compiles to exactly the
+\ module it compiled to before.
+\
+\ WHAT "CONSUMED EXACTLY ONCE" MEANS ONCE THERE ARE EDGES. A two-way branch
+\ carries no values, so both of its successors read the order the block above
+\ them left - two USES of one value. They are not two consumptions: only one of
+\ the two blocks runs. The rule the allocation validator keeps is therefore
+\ per-path rather than per-module, and src/compiler/native/regalloc-verify.f
+\ states and checks it.
 1 TYPED-BUFFER S-TOK IR-ID:ir-value-id
 variable TOK-LIVE                    \ whether an order has been minted yet
+variable TOK-NEED                    \ whether the body has a word that takes one
 variable OPJ                         \ general operands taken so far by the open staging
 
 : TOK-RESET ( -- )
-   0 TOK-LIVE ! ;
+   0 TOK-LIVE !
+   0 TOK-NEED ! ;
 
 : TOK ( -- IR-ID:ir-value-id )
    0 S-TOK @ ;
@@ -421,14 +442,15 @@ variable OPJ                         \ general operands taken so far by the open
    CTX BLD op RESULTS+
    CTX BLD op CLOSE ;
 
-\ Make sure there is an order for a form that takes one. The first memory word of
-\ a definition therefore stages two operations - the order, then itself - and
-\ every one after it stages only itself.
-: TOKEN-READY ( IR-ID:ir-symbol-id n -- )
-   {: op:IR-ID:ir-symbol-id ix:n :}
+\ An operation that takes an order has to find one. It is minted in the entry
+\ block by COLON, before the walk starts, when MEM-SCAN saw that this body needs
+\ one - so reaching a memory word with no order live means the pre-scan and the
+\ walk disagree about what the body contains, and that is refused rather than
+\ patched up by minting one here in whatever block the walk has reached.
+: TOKEN-READY ( IR-ID:ir-symbol-id -- )
+   {: op:IR-ID:ir-symbol-id :}
    CTX BLD op TOKEN-OPERANDS 0= if exit then
-   TOK-LIVE @ 0<> if exit then
-   ix EMIT-MEM ;
+   TOK-LIVE @ 0= if E-NELAB-TOKEN throw then ;
 
 \ One operation of this dialect, staged at the span of the token named. How many
 \ operands it takes off the vector and how many results it puts back is the
@@ -436,7 +458,7 @@ variable OPJ                         \ general operands taken so far by the open
 : EMIT-OPCODE ( n HIR:opcode -- )
    {: ix:n k:HIR:opcode :}
    CTX BLD k HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
-   op ix TOKEN-READY
+   op TOKEN-READY
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
@@ -512,6 +534,14 @@ variable NB                          \ blocks closed so far; also the open block
 \ is handed over by the branch that reached it, so the vector is replaced by the
 \ arguments: a join is the one place where two different definitions of "the
 \ value in this stack slot" meet, and a block argument is what SSA calls that.
+\
+\ The memory order is the LAST argument when the definition has one. It is not on
+\ the value vector - Forth's data stack does not hold it - but it is live across
+\ the edge for exactly the same reason the vector's values are, so it crosses the
+\ same way and by the same mechanism. Putting it last is this file's convention
+\ and the one TERM-BR hands the operands in, so the two always line up; the
+\ verifier matches a terminator's operands against the destination's arguments
+\ position by position and would refuse them if they did not.
 : OPEN-ARGS ( n n -- )
    {: ix:n n:n :}
    CTX BLD IR-BUILD:BEGIN-BLOCK
@@ -519,7 +549,10 @@ variable NB                          \ blocks closed so far; also the open block
    VRESET
    n 0 ?do
       CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG VPUSH
-   loop ;
+   loop
+   TOK-LIVE @ 0<> if
+      CTX BLD  CTX BLD HIR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG TOK!
+   then ;
 
 \ A block that takes no arguments and keeps the vector it inherits. Its only
 \ predecessor is the two-way branch just above it, and a two-way branch hands
@@ -532,7 +565,9 @@ variable NB                          \ blocks closed so far; also the open block
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN ;
 
 \ Hand the whole value vector to one block and end this one. The operands are
-\ the vector bottom first, which is the order the destination's arguments are in.
+\ the vector bottom first, which is the order the destination's arguments are in,
+\ and the memory order last when the definition has one - the position OPEN-ARGS
+\ gives it.
 : TERM-BR ( n n -- )
    {: ix:n t:n :}
    CTX BLD  CTX BLD HIR-OPCODE:BR HIR:OPCODE  IR-BUILD:BEGIN-OP
@@ -540,6 +575,9 @@ variable NB                          \ blocks closed so far; also the open block
    VN @ 0 ?do
       CTX BLD  i VAT  IR-BUILD:ADD-OPERAND
    loop
+   TOK-LIVE @ 0<> if
+      CTX BLD TOK IR-BUILD:ADD-OPERAND
+   then
    CTX BLD  t BLOCK-ORD  IR-BUILD:ADD-SUCCESSOR
    CTX BLD IR-BUILD:END-OP drop
    CLOSE-BLOCK ;
@@ -691,6 +729,44 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
       r i SCAN-STEP
    loop
    LG-FROM @ 0 >=  LG-TO @ 0 <  and if E-NELAB-LOCAL throw then ;
+
+\ ---- does this definition touch memory at all? -------------------------------
+\ One walk of the body, before the blocks are counted, asking the SCHEMA TABLE
+\ whether any word of it stages an operation that takes a memory order. It asks
+\ the table rather than listing the memory words, so a form added to the dialect
+\ is answered here without this file being edited - which is the same rule
+\ OPERANDS+ follows when it decides which operand is the order.
+\
+\ It is deliberately quiet about words it cannot answer for. A row may be a
+\ declared local's name, a mention of one, or a word this dialect does not model
+\ at all; the first two are not words, and the third is refused by
+\ HIR-WORD:ADMIT when the walk reaches it. Answering "no order" for them is
+\ right: this pass decides whether an order is needed, not whether the body is
+\ compilable.
+: WORD-ORDER? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena ix:n :}
+   VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
+   m HIR-MEANING:OP HIR-MEANING:EQ if
+      CTX BLD  CTX BLD  r sy HIR-WORD:OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
+      0<> exit
+   then
+   m HIR-MEANING:CONST-OP HIR-MEANING:EQ if
+      CTX BLD  CTX BLD  r sy HIR-WORD:CONST-OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
+      0<> exit
+   then
+   false ;
+
+: MEM-SCAN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena n:n :}
+   0 TOK-NEED !
+   n 1 ?do
+      i IN-DECL? 0=  i LOCAL-OF 0 <  and if
+         r i WORD-ORDER? if 1 TOK-NEED ! then
+      then
+   loop ;
 
 \ ---- the block skeleton ------------------------------------------------------
 \ A structure's opener has to branch to the block its paths meet in, and that
@@ -1082,9 +1158,11 @@ public
    v NAME-READ
    TOK-RESET
    r n LOCALS-SCAN
+   r n MEM-SCAN
    r n SKELETON
    c b v key in out OPEN-FUN
    c b v key in OPEN-BLOCK
+   TOK-NEED @ 0<> if 0 EMIT-MEM then
    p r n WALK
    CS-N @ 0<> if E-NELAB-CTRL throw then
    c b v key out EMIT-RETURN

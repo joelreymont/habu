@@ -612,8 +612,30 @@ variable MOVED                       \ did any set change this round
    tail i want 1- >= and if want 1- exit then
    i ;
 
+\ WHERE THE SCHEMA IS NOT THE AUTHORITY ON AN OPERAND'S TYPE. Design lines 706 to
+\ 708 make the operands of a terminator with ONE successor the arguments that
+\ successor is entered with, and design line 532 makes the verifier match them
+\ against that block - count and type, position by position, which SUCCARGS-CK
+\ below does. Those two lists are the same list, and the destination is the one
+\ that knows what is in it: an opcode's schema cannot say what type argument
+\ three of some block is, because a branch of one opcode reaches blocks with
+\ different arguments. So for those operands the schema's declared type is not
+\ consulted, and what makes them right is the destination.
+\
+\ NOTHING IS LOST BY THAT. SUCCARGS-CK is the stronger of the two checks - it
+\ ties an operand to the very argument it becomes rather than to a type the
+\ opcode wrote down once - and it runs over every operand of the operation. What
+\ the schema still decides for such a terminator is that the list is variadic at
+\ all, which is the arity rule, and IR-OP keeps that. Every other operation, and
+\ a terminator that names no successor or two of them - a return, a two-way
+\ branch - is checked against its schema exactly as before, because for those the
+\ schema IS the only authority.
+: SUCCARG-OPERANDS? ( IR-ID:ir-op-id -- bool )
+   SUCC-COUNT 1 = ;
+
 : OPERAND-TYPE-CK ( IR-ID:ir-symbol-id IR-ID:ir-op-id n -- )
    {: s:IR-ID:ir-symbol-id o:IR-ID:ir-op-id i:n :}
+   o SUCCARG-OPERANDS? if exit then
    T-SCR T@ s IR-SCHEMA:OPERANDS T-SCR T@ s IR-SCHEMA:OPERAND-TAIL? {: want:n tail:bool :}
    want 0= if exit then
    T-SCP T@ T-SCR T@ K@ s  want i tail LIST-AT  IR-SCHEMA:OPERAND@

@@ -128,6 +128,12 @@ variable A-GEN
 0 A-GEN !
 variable N-VALS
 0 N-VALS !
+variable NB-N                        \ blocks in the function being checked
+0 NB-N !
+
+1 TYPED-BUFFER S-FUN IR-ID:ir-fun-id
+
+: FUN ( -- IR-ID:ir-fun-id )         0 S-FUN @ ;
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
@@ -143,6 +149,9 @@ create S-AT VMAX cells allot         \ whether the block defines this value at a
 create C-AT VMAX cells allot         \ which class the module gives each value
 create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
 create U-AT VMAX cells allot         \ how many operands of the function name each value
+create UB VMAX cells allot           \ which blocks name each value, one bit per block
+create DB VMAX cells allot           \ which block defines each value, or -1
+create RCH BMAX cells allot          \ blocks one reachability question has reached
 
 : DEF-AT ( n -- n )                  cells D-AT + @ ;
 : LAST-AT ( n -- n )                 cells L-AT + @ ;
@@ -312,11 +321,39 @@ create U-AT VMAX cells allot         \ how many operands of the function name ea
    CLS-AT C-GPR = ;
 
 \ ---- the memory order --------------------------------------------------------
-\ Every memory order this module mints is passed on exactly once. An access takes
-\ the order as it stands and answers the order as it now stands, so a chain of
-\ them is a chain of single-use values: the routine's first memory operation mints
-\ one and its last ends it, and every access in between reads exactly the answer
-\ of the access before it.
+\ Every memory order this module mints is passed on exactly once ON EVERY PATH
+\ THROUGH THE ROUTINE. An access takes the order as it stands and answers the
+\ order as it now stands, so along any one run the orders form a chain: the
+\ routine's first memory operation mints one, its last ends it, and every access
+\ in between reads exactly the answer of the access before it.
+\
+\ WHY THE RULE IS PER PATH AND NOT PER MODULE. It used to be simply "used exactly
+\ once", counted over the whole function, which is the same statement for a
+\ routine of one block. It stops being the same statement the moment a routine
+\ branches. A two-way branch of this dialect hands its successors nothing, so
+\ both of them read the order the block above them left - two uses of one value,
+\ and no fork of memory at all, because only one of the two blocks runs. A loop
+\ is the same shape once more: the order the body leaves is read by the latch,
+\ which goes round again, and by the block the loop exits through. Counting uses
+\ over the whole function would refuse both, and refusing them would mean the
+\ order could not cross an edge - which is exactly what a loop with a memory word
+\ in it needs it to do.
+\
+\ WHAT IS CHECKED INSTEAD, AND WHY IT IS NOT WEAKER. Three things, and together
+\ they say "consumed exactly once on every path":
+\   the order is never dropped     - every token value is read at least once;
+\   no block reads one twice       - a block's own straight line is a chain;
+\   no two readers are on one path - for any two blocks that read one order,
+\                                    neither can be reached from the other
+\                                    without passing the block that DEFINES it
+\                                    again, which would give the reader a new
+\                                    order rather than the one it read before.
+\ The third is what the old count really stood for. Two accesses on one path each
+\ claiming to follow the same order is still refused - they would either be in
+\ one block, or in two blocks one of which reaches the other without redefining -
+\ and a token nothing reads is still refused, so nothing the old rule caught gets
+\ through. What it no longer refuses is the honest case: mutually exclusive
+\ readers of one order.
 \
 \ WHY THIS IS WORTH CHECKING WHEN NOTHING REORDERS YET. A pass that built an
 \ access and forgot to pass its order on leaves a module in which the accesses
@@ -325,32 +362,116 @@ create U-AT VMAX cells allot         \ how many operands of the function name ea
 \ every execution test would pass. What is broken is the module's claim, not
 \ today's output, and a claim is exactly what a validator is for: the first pass
 \ that is allowed to move an instruction would move it, and the failure would
-\ appear a leaf away from its cause. A token read twice is the mirror image - two
-\ accesses each claiming to follow the same one - and it is refused for the same
-\ reason.
-: COUNT-OP ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
+\ appear a leaf away from its cause.
+: UB-AT ( n -- n )                   cells UB + @ ;
+: UB! ( n n -- )                     {: v:n k:n :} v k cells UB + ! ;
+: DB-AT ( n -- n )                   cells DB + @ ;
+: DB! ( n n -- )                     {: v:n k:n :} v k cells DB + ! ;
+
+: UB-HAS? ( n n -- bool )
+   {: k:n b:n :}
+   k UB-AT  1 b lshift  and 0<> ;
+
+: UB-ADD ( n n -- )
+   {: k:n b:n :}
+   k UB-AT  1 b lshift or  k UB! ;
+
+\ How many distinct blocks read this value. Held against the total number of
+\ reads, it says whether some block read it twice without a count per block.
+: UB-BLOCKS ( n -- n )
+   {: k:n :}
+   0
+   NB-N @ 0 ?do k i UB-HAS? if 1+ then loop ;
+
+\ ---- reachability between blocks, with one block held out --------------------
+\ The question a path rule asks is "can control get from this reader to that one
+\ WITHOUT passing the operation that defines the order again". Holding the
+\ defining block out of the walk answers exactly that: a route that goes back
+\ through it arrives with a new order, which is not the value being checked.
+: RCH? ( n -- bool )                 cells RCH + @ 0<> ;
+: RCH-MARK ( n -- )                  1 swap cells RCH + ! ;
+
+: RCH-CLEAR ( -- )
+   NB-N @ 0 ?do 0 i cells RCH + ! loop ;
+
+: SUCC-ORD ( IR-ID:ir-op-id n -- n )
+   SUCC-AT IR-ID:BLOCK-LOCAL
+   dup 0 < over NB-N @ >= or if E-A64RAV-SHAPE throw then ;
+
+\ Mark every successor of this block except the one held out, and answer whether
+\ any mark was new.
+: RCH-EXPAND ( n n -- bool )
+   {: b:n d:n :}
+   FUN b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   false
+   t SUCCS-OF 0 ?do
+      t i SUCC-ORD
+      dup d = over RCH? or if drop else RCH-MARK drop true then
+   loop ;
+
+\ Everything control can reach from one block without entering the held-out one.
+: REACH-FILL ( n n -- )
+   {: from:n d:n :}
+   RCH-CLEAR
+   from d RCH-EXPAND drop
+   begin
+      false
+      NB-N @ 0 ?do
+         i RCH? if i d RCH-EXPAND or then
+      loop
+      0=
+   until ;
+
+\ No other block that reads this order is reachable from this one.
+: ORDER-FROM-CK ( n n -- )
+   {: k:n u:n :}
+   u  k DB-AT  REACH-FILL
+   NB-N @ 0 ?do
+      i u <>  k i UB-HAS?  and  i RCH?  and if E-A64RAV-ORDER throw then
+   loop ;
+
+: ORDER-VALUE-CK ( n -- )
+   {: k:n :}
+   k USES-AT 1 < if E-A64RAV-ORDER throw then
+   k USES-AT  k UB-BLOCKS  <> if E-A64RAV-ORDER throw then
+   k DB-AT 0 < if E-A64RAV-ORDER throw then
+   NB-N @ 0 ?do
+      k i UB-HAS? if k i ORDER-FROM-CK then
+   loop ;
+
+\ ---- who reads and who writes each value -------------------------------------
+: COUNT-OP ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id b:n :}
    id OPERANDS-OF 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
       k USES-AT 1+ k USES!
+      k b UB-ADD
+   loop
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT {: k:n :}
+      b k DB!
    loop ;
 
-: COUNT-BLOCK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+: COUNT-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do
+      bk i ARG-AT SLOT {: k:n :}
+      b k DB!
+   loop
    bk OP-COUNT 0 ?do
-      bk i OP-AT COUNT-OP
+      bk i OP-AT b COUNT-OP
    loop ;
 
 : ORDER-CK ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
-   N-VALS @ 0 ?do 0 i USES! loop
-   f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT COUNT-BLOCK
-   loop
+   f 0 S-FUN !
+   f BLOCK-COUNT NB-N !
+   NB-N @ BMAX > if E-A64RAV-SHAPE throw then
+   N-VALS @ 0 ?do 0 i USES! 0 i UB! -1 i DB! loop
+   NB-N @ 0 ?do f i COUNT-BLOCK loop
    N-VALS @ 0 ?do
-      i CLS-AT C-TOKEN = if
-         i USES-AT 1 <> if E-A64RAV-ORDER throw then
-      then
+      i CLS-AT C-TOKEN = if i ORDER-VALUE-CK then
    loop ;
 
 \ Every assigned register is one the routine's contract says it may destroy. The

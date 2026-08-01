@@ -102,4 +102,18 @@ TRUSTED: ENTER1 ( n n -- n )     execute ;
 TRUSTED: ENTER2 ( n n n -- n )   execute ;
 TRUSTED: ENTER3 ( n n n n -- n ) execute ;
 
+\ The same entry for a routine whose arguments are a byte span. A span is two
+\ cells on the data stack exactly as two numbers are, and the routine reads both
+\ out of the slots the caller left them in - so the body is `execute` again and
+\ the only thing that differs is the effect this boundary declares. It is its own
+\ word rather than a cast in front of ENTER2 because the checker's rule is worth
+\ keeping everywhere else: a `ptr u8` is not a number, and the ONE place a
+\ compiled routine's arguments stop being typed values and become the caller's
+\ stack slots is here.
+TRUSTED: ENTER-SPAN ( ptr u8 n n -- n ) execute ;
+
+\ And with one number after the span, which is what a word that scans a span for
+\ a byte takes.
+TRUSTED: ENTER-SPAN1 ( ptr u8 n n n -- n ) execute ;
+
 ;package

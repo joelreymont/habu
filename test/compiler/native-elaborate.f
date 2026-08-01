@@ -236,9 +236,10 @@ using NSRC
 \ against the value it has to be: the block argument, and the constant the data
 \ word became.
 \
-\ THE ORDER ITSELF, LINK BY LINK. `hir.mem` is staged by the first body word that
-\ needs an order and by nothing else, and every access after it takes the order
-\ the access before it answered. The chain is asserted as identities - the
+\ THE ORDER ITSELF, LINK BY LINK. `hir.mem` is the FIRST operation of the entry
+\ block, because a definition that touches memory mints its order where every
+\ block of it can see the value - and every access after it takes the order the
+\ access before it answered. The chain is asserted as identities - the
 \ store's order operand is the mint's result, the load's is the store's result,
 \ the second store's is the load's second result - so an access that took an
 \ older order, or a fresh one, is a different VALUE here rather than a different
@@ -262,8 +263,8 @@ using NSRC
    c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
    c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
    m f F-BLK {: blk:IR-ID:ir-block-id :}
-   m blk 0 F-OP {: a0:IR-ID:ir-op-id :}
-   m blk 1 F-OP {: mem:IR-ID:ir-op-id :}
+   m blk 0 F-OP {: mem:IR-ID:ir-op-id :}
+   m blk 1 F-OP {: a0:IR-ID:ir-op-id :}
    m blk 2 F-OP {: st0:IR-ID:ir-op-id :}
    m blk 3 F-OP {: a1:IR-ID:ir-op-id :}
    m blk 4 F-OP {: ld:IR-ID:ir-op-id :}

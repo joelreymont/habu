@@ -173,6 +173,7 @@ BOUND-NO BND-MODE !
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-VAL IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
@@ -306,6 +307,13 @@ create NAMEBUF NAME-CAP allot
 \ The value one operand of a source operation selected to.
 : OPERAND ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    OPERAND-AT VOF ;
+
+\ Is this value of the source module the memory order rather than a number? The
+\ answer is the TYPE the source module gives it, held against the identity the
+\ source dialect answered at binding time, so this pass never asks which opcode
+\ defined a value or which position it sits in.
+: TOKEN? ( IR-ID:ir-value-id -- bool )
+   VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
 
 \ ---- staging one machine operation -------------------------------------------
 \ Every machine operation carries the span of the source operation it selects
@@ -617,13 +625,31 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    ACC ;
 
 \ Going on to one block. The operands are the values the destination takes as its
-\ block arguments, each one copied into a value of its own first.
+\ block arguments, each one copied into a value of its own first - except the
+\ memory order, which crosses uncopied.
+\
+\ WHY THE ORDER IS EXEMPT, AND WHY THAT IS NOT A SPECIAL CASE. The copy exists
+\ for one reason: an argument and every value handed to it are one physical
+\ register, so handing over a value the program still holds would put two live
+\ values in one register. A memory order holds NO register - the allocator gives
+\ its class none and the validator refuses one that was given one - so there is
+\ no register for two values to collide in and nothing for a copy to break apart.
+\ There is also nothing to copy it WITH: a64.mov moves a general register, and a
+\ form that moved an ordering would be an instruction that moves nothing. So the
+\ exemption is a consequence of the class rather than an exception to the rule,
+\ and the union-find the allocator builds over these edges still puts the order
+\ and the argument it feeds in one class - a class that is given no register.
+: EDGE-VALUE ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
+   {: id:IR-ID:ir-op-id i:n :}
+   id i OPERAND-AT TOKEN? if id i OPERAND exit then
+   id  id i OPERAND  EMIT-COPY ;
+
 : EMIT-BR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
    id OPERANDS-OF {: k:n :}
    k EDGE-MAX > if E-A64SEL-CAP throw then
    k 0 ?do
-      id  id i OPERAND  EMIT-COPY  i EDGE-V !
+      id i EDGE-VALUE  i EDGE-V !
    loop
    id A64IR-OPCODE:BR OPEN
    k 0 ?do
@@ -747,13 +773,28 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ The word's inputs under a register convention: one block argument each, one
 \ virtual register each, and each one is the value the matching source argument
 \ selects to.
+: OPEN-ARG1 ( IR-ID:ir-value-id -- )
+   {: a:IR-ID:ir-value-id :}
+   a TOKEN? if
+      a  CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG
+      dup TOK!  VBIND
+      exit
+   then
+   a  CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND ;
+
+\ A block argument of the memory-order type is the ORDER arriving, and it is the
+\ running order from the top of this block: the accesses of the block thread it
+\ on from there, and the routine's exit stores - which are this pass's own and
+\ are not in the source module at all - take whatever the block they are built
+\ into ends with. Reading it out of the argument rather than carrying the
+\ previous block's value forward is what makes a loop work: the order the second
+\ turn reads is the one the first turn left, and no value of one turn is read in
+\ another.
 : OPEN-ARGS ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk ARG-COUNT {: n:n :}
    n 0 ?do
-      bk i ARG-AT
-      CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG
-      VBIND
+      bk i ARG-AT OPEN-ARG1
    loop ;
 
 \ The same inputs under the data-stack convention: the block takes no argument at
@@ -884,6 +925,7 @@ public
    c b HIR-OPCODE:BSTORE BIND1
    c b HIR-OPCODE:RETURN BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
+   c b HIR:MEM-TYPE 0 BND-MEM !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without selecting against it.
