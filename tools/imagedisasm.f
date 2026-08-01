@@ -44,6 +44,8 @@ variable IMGD-LOWER
    REPEAT drop
    0 IMGD-PATH u + c! ;
 
+\ Checked failure validation refines the raw file mmap result; retire with
+\ habu-builder-trust-rows-c5d41af6 when syscall-result refinement is typed.
 TRUSTED: IMGD-MMAP-PTR ( n -- ptr u8 )
    dup 0 < IF IMGD-FD @ close s" imagedisasm: mmap failed" 74 die THEN ;
 

@@ -51,6 +51,8 @@ create A-LEN DICT-CAP cells allot
 : IB! ( ptr u8 -- )
    IB-FIELD ! ;
 
+\ Checked -1 validation refines the file mmap result; retire with
+\ habu-builder-trust-rows-c5d41af6 when syscall-result refinement is typed.
 TRUSTED: IMG-MMAP-PTR ( n -- ptr u8 )
    dup 0 < IF IFD @ close s" imgdump: mmap failed" 74 die THEN ;
 

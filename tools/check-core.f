@@ -13,10 +13,12 @@
 require tools/dynamic-tail-manifest.f
 require tools/source-discovery.f
 
-\ This tool installs its checker hook before validating generated source
-\ snippets with CHECK!. CHECK! (engine checker entrypoint) is modeled as a
-\ primitive axiom so the hook definition itself compiles checked
-\ (axiom owner: habu-primitive-effect-axiom-1119f176).
+\ These checker axioms retire with habu-primitive-effect-axiom-1119f176.
+\ CHECK! certifies snippets so the fail-closed source hook compiles checked.
+\ TYPE-RESERVED? validates generated dependency type tokens.
+\ CHECKER-DEFLINEAR publishes parsed linearity metadata in the child scope.
+\ CHECKER-DEFRECORD publishes parsed records with their source descriptor.
+\ CHECKER-SCOPE-START/DONE isolate, then roll back, generated dependency effects.
 s" CHECK!" s" ptr u8 n -- n" TRUST
 s" TYPE-RESERVED?" s" ptr u8 n -- bool" TRUST
 s" CHECKER-DEFLINEAR" s" ptr u8 n --" TRUST

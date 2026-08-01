@@ -25,7 +25,9 @@ private
 
 \ Checker-internal multi-error mode control; the checker registry does not
 \ publish these to later checked loads (same boundary class as verify-source's
-\ CHECK-BODY / MULTI-ERR-MODE?).
+\ CHECK-BODY / MULTI-ERR-MODE?). CA-MULTI-BEGIN arms the whole-buffer pass;
+\ CA-MULTI-END reads its reject count and clears it for fail-closed exit.
+\ Retire both with habu-multi-err-checking-42db26f4.
 TRUSTED: CA-MULTI-BEGIN ( -- )
    MULTI-ERR-BEGIN ;
 TRUSTED: CA-MULTI-END ( -- n )

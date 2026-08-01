@@ -15,18 +15,24 @@ require lib/test.f
 
 AST-LOAD-ASM
 
+\ Raw ARM64 fixture effects retire with habu-builder-trust-rows-c5d41af6.
+\ MOVZHW and ENC-ADD/LDR/LDAR/BLR expose their instruction encoders.
 s" MOVZHW" s" n n n -- n" TRUST
 s" ENC-ADD" s" n n n -- n" TRUST
 s" ENC-LDR" s" n n n -- n" TRUST
 s" ENC-LDAR" s" n n -- n" TRUST
 s" ENC-BLR" s" n -- n" TRUST
+\ >LIMM exposes immediate layout; ENC-ANDI the logical-immediate encoder.
 s" >LIMM" s" n -- n" TRUST
 s" ENC-ANDI" s" n n n -- n" TRUST
+\ CW@ exposes code bytes; CODE-BYTE+ preserves byte-pointer arithmetic.
 s" CW@" s" n -- ptr u8" TRUST
 s" CODE-BYTE+" s" ptr u8 n -- ptr u8" TRUST
+\ ARESET resets the buffer; ADD,/LDAR, emit fixture instructions.
 s" ARESET" s" --" TRUST
 s" ADD," s" n n n --" TRUST
 s" LDAR," s" n n --" TRUST
+\ ASM-LEN reads emitted length; LIT64, emits the literal fixture.
 s" ASM-LEN" s" -- n" TRUST
 s" LIT64," s" n n --" TRUST
 

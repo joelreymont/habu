@@ -424,7 +424,9 @@ variable TP-PRIV-WID
 \ Checked catch requires a stack-preserving quotation, but UB-MAPPED-FILE
 \ consumes the linear mapping extent. This private test boundary catches that
 \ exact production helper and checks its state before WITH-BYTES can release
-\ the mapping or any outer cleanup can clear it.
+\ the mapping or any outer cleanup can clear it. It retires when catch can type
+\ a quotation that consumes a linear mapping row; owner
+\ habu-prove-catch-restores-2f368434.
 TRUSTED: TP-MAP-THROW-ACT ( n ptr u8 CAD-NUM:alloc-byte-len -- )
    TP-OUT 1 LINT-OUT-BUFFER!
    [: UB-MAPPED-FILE ;] catch
