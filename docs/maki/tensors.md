@@ -32,7 +32,7 @@ of the `DERIVE eq` SKEY product (`maki/sched-key.f`).
 
 - `DT-SIZE ( dtype -- n )` — element bytes (f32/u32/i32 = 4, f16/bf16 = 2).
 - `SHAPE-ELEMS ( n n -- n )`, `SHAPE-EQUAL? ( n n n n -- bool )`,
-  `TENSOR-BYTES ( n n dtype -- n )`.
+  `SHAPE-BYTES ( n n dtype -- n )`.
 - Broadcast (NumPy rule, dims equal or either 1): `DIM-BCAST? ( n n -- bool )`,
   `SHAPE-BCAST? ( n n n n -- bool )`, result shape via `DIM-MAX` /
   `BCAST-SHAPE ( n n n n -- n n )`.

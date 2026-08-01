@@ -201,7 +201,7 @@ ENUM dtype DERIVE eq
    r1 ROWS-RAW r2 ROWS-RAW BCAST-DIM?
    c1 COLS-RAW c2 COLS-RAW BCAST-DIM? and ;
 
-: TENSOR-BYTES ( CAD-KIND:rows CAD-KIND:cols dtype -- CAD-KIND:dim )
+: SHAPE-BYTES ( CAD-KIND:rows CAD-KIND:cols dtype -- CAD-KIND:dim )
    DT-SIZE {: es:CAD-KIND:dim :}
    SHAPE-ELEMS es DIM* ;
 
