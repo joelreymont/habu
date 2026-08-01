@@ -3957,3 +3957,34 @@ fits.
   locals. Both are the same defect: the state is a property of the new file, and
   every line of the new file is either added or context. Reading context lines for
   the two delimiters (and reporting nothing from them) fixes both.
+
+- **A typed local named `i` silently shadows the loop index.** The selector's
+  multi-block walk took the block ordinal as `{: bk:… i:n :}` and then read its
+  operations with `bk i OP-AT` inside a `?do` loop. The local wins, so every
+  iteration read operation number *bk's ordinal* instead of the loop index: block
+  zero rebuilt its first operation three times and never reached its terminator,
+  and the only sign of it was `E-IR-FUN-TERM` from `END-BLOCK` — a refusal about
+  the block, several layers away from the shadowing. The checker cannot catch it
+  because both names are legitimately in scope and both are cells. Never name a
+  typed local `i`, `j` or `k` in a word that loops; the walks now use `ord`.
+
+- **A forward branch in an append-only IR needs the target ordinal BEFORE the
+  target exists, so compute it instead of patching it.** `IR-BUILD` mints a block
+  ordinal when the block is *closed*, and a terminator names its successors when
+  it is *built*, so the classic Forth backpatch has nowhere to write. The
+  elaborator therefore walks the body twice: a skeleton pass applies the same
+  block-creation rules (`if` makes two blocks, `then` one, `begin` one, `until`
+  two, `?do` three, `loop` three) and records each opener's join ordinal, and the
+  build pass then checks the ordinal it really reached against the one the opener
+  branched to. Two independent derivations of one number that have to agree beat
+  a patch list that nothing checks.
+
+- **Structured Forth control needs block arguments only where two paths meet.**
+  A successor of a two-way branch has exactly one predecessor, so every value the
+  compile-time stack holds is defined in a block that dominates it and can be
+  read by name — no block argument, no copy. Arguments are needed at exactly two
+  places: the join of `if`/`then` and `?do`/`loop`, and a loop header reached
+  from both its entry and its latch. That is why the conditional branch carries
+  no arguments at all and every argument-carrying edge goes through a stub block
+  whose terminator is the unconditional branch: ordinary critical-edge splitting,
+  and it falls out of the shapes rather than being imposed on them.
