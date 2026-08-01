@@ -7,15 +7,20 @@ require lib/ffi.f
 create FFI-T-OUT 1 cells allot
 create FFI-T-KP-CELL 1 cells allot
 
+\ Fixed local stubs and exact test schemas below expose only their stated ABI;
+\ no instruction or address is caller-selected. Retirement owner:
+\ habu-ptx-m1-c-1df1d6e7.
 TRUSTED: FFI-T-STORE-X1 ( -- n ) cp@ {: fn:n :}
    $F9000001 fn patch32
    $D65F03C0 fn $4 + patch32
    fn ;
 
+\ Exact test writer fixes one eight-byte output and one scalar argument.
 TRUSTED: FFI-T-STORE ( ptr a n -- n ) {: out:ptr value:n :}
    FFI:RESET  out 8 0 FFI:WRITABLE!  value 1 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 2 FFI-T-STORE-X1 ffi-call-bounded ;
 
+\ Fixed two-parameter kernel stub.
 TRUSTED: FFI-T-KPARAM-SUM2 ( -- n ) cp@ {: fn:n :}
    $F9400009 fn       patch32
    $F940040A fn $4 +  patch32
@@ -25,17 +30,20 @@ TRUSTED: FFI-T-KPARAM-SUM2 ( -- n ) cp@ {: fn:n :}
    $D65F03C0 fn $14 + patch32
    fn ;
 
+\ Fixed x8-store stub.
 TRUSTED: FFI-T-X8-STORE ( -- n ) cp@ {: fn:n :}
    $F9000100 fn patch32
    $D65F03C0 fn $4 + patch32
    fn ;
 
+\ Fixed stack-argument store stub.
 TRUSTED: FFI-T-STACK-STORE ( -- n ) cp@ {: fn:n :}
    $F94003E9 fn patch32
    $F9000120 fn $4 + patch32
    $D65F03C0 fn $8 + patch32
    fn ;
 
+\ Exact mixed-ABI call fixes x8 as an eight-byte output.
 TRUSTED: FFI-T-X8-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:RESET
    42 0 FFI:VALUE!
@@ -43,6 +51,7 @@ TRUSTED: FFI-T-X8-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    0 FFI-T-X8-STORE ffi-call-abi-bounded ;
 
+\ Exact mixed-ABI call fixes stack slot zero as an eight-byte output.
 TRUSTED: FFI-T-STACK-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:RESET
    77 0 FFI:VALUE!
@@ -50,6 +59,7 @@ TRUSTED: FFI-T-STACK-CALL ( ptr a -- n ) {: out:ptr :}
    FFI:ARGS FFI:FLOATS FFI:STACK FFI:REG-LENS FFI:STACK-LENS
    1 FFI-T-STACK-STORE ffi-call-abi-bounded ;
 
+\ Exact one-argument read-only kernel-parameter fixture.
 TRUSTED: FFI-T-KPARAM-CALL ( ptr a -- n ) {: params:ptr :}
    FFI:RESET
    params 0 FFI:READABLE!

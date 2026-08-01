@@ -270,6 +270,7 @@ create STR-MIN-I64$ 57 c, 50 c, 50 c, 51 c, 51 c, 55 c, 50 c, 48 c, 51 c, 54 c, 
 \ the offset advance (end + 1) is proven through the B5.2 CAD-NUM:ADVANCE-BYTE-OFF
 \ BEFORE the scan, turning an offset-space overflow into an E-STR-BOUNDS throw
 \ instead of a silent wrap.
+\ Retirement owner: habu-epic-model-cad-70b629a9.
 
 package STR
 private

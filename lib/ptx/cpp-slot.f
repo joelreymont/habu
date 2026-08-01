@@ -40,6 +40,8 @@ require lib/ptx/cg-matmul-emit.f
 package CPPSLOT
 public
 
+\ Retirement owner for both checked-ordering state transitions:
+\ habu-ptx-phantom-preserving-3df9db92.
 \ COMMIT: close the current cp.async issue group; the in-flight copies become a
 \ committed group (cpp-pending<p> -> cpp-committed<p>). Wraps the CPP-COMMIT step
 \ emitter; the pending slot's phantom register is the audited coercion boundary

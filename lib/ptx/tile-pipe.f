@@ -58,6 +58,8 @@ require lib/ptx/cg-matmul-emit.f
 
 variable PIPE-XT   \ pipeline compute-slot body xt (set by PIPE-LOOP, run inline in its quotation)
 
+\ Retirement owner for every typed pipeline mint/transition below:
+\ habu-ptx-phantom-preserving-3df9db92.
 \ tile/thread coordinate derivation (ctaid/tid decomposition, shared base) + the
 \ typed A[M,K] * B[K,N] -> C[M,N] contract, consuming the three ABI matrices.
 TRUSTED: PIPE-SETUP ( matrix<space-global,f32,m,k> matrix<space-global,f32,k,q> matrix<space-global,f32,m,q> -- mmctx<m,k,q> )

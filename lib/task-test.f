@@ -112,6 +112,8 @@ variable APP-BAD
 
 TASK-STRLEN-LOAD constant TASK-STRLEN-XT
 
+\ Exact strlen fixture pauses after task-local argument staging to prove tasks
+\ do not share FFI tables. Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: TASK-CSTRLEN ( ptr u8 -- n ) {: cstr:ptr :}
    FFI:RESET
    cstr 0 FFI:READABLE!

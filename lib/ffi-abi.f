@@ -57,6 +57,7 @@ $41C8 constant FFI-SCRATCH-END
 
 \ Pointer <-> cell reinterpret trusted boundary: the checker cannot know a raw
 \ cell is a valid pointer, so we assert it here, once.
+\ Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: P>N ( ptr a -- n ) ;             \ pointer  -> arg cell
 
 \ ---- argument marshalling -------------------------------------------------
@@ -229,6 +230,8 @@ public
 
 private
 
+\ Exact package-private dlopen/dlsym bindings: paths and symbols are read-only, while
+\ handles and flags are scalar. Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: DLOPEN-RAW ( ptr u8 n -- n ) {: path:ptr flags:n :}
    path P>N FFI-DLBUF !
    flags FFI-DLBUF CELL + !

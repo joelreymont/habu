@@ -33,6 +33,7 @@ MEM-MAX-N constant MAX-BYTES              \ largest byte extent (one cell); the 
 \ to size the allocation, and to drive the byte-copy/pointer arithmetic - all of
 \ which still consume a bare `n`. BUF-private, no public export; there is no public
 \ inverse, so a length/offset role cannot round-trip through a raw cell by accident.
+\ Retirement owner: habu-build-exact-modular-44f4c2dc.
 TRUSTED: BLEN>N ( CAD-NUM:byte-len -- n ) ;
 
 \ ---- n -> byte-len: the read/derived cell is provably nonnegative (SET-LEN keeps

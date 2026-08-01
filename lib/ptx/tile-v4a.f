@@ -32,10 +32,12 @@
 \ The register-level codegen is SHARED with tile-v4.f (EMIT-GRID-CTX-V4 / EMIT-LOAD-V4
 \ / EMIT-STORE-V4 / EMIT-*-V4 in cg-vec.f) - only the checker types differ, so a typed
 \ kernel lowers to byte-identical PTX. TRUSTED: because the emit lowers to PTX the
-\ checker cannot infer; the declared effect is the contract (TRUSTED.md). Load after
+\ checker cannot infer; the declared effect is the contract. Load after
 \ lib/ptx/cg.f + lib/ptx/cg-vec.f + lib/ptx/tile.f + lib/ptx/tile-v4.f. The
 \ pointwise ops PRESERVE the vtile phantom, so they are CHECKED callers of the
 \ PTXREP register-emitter combinators (lib/ptx/rep.f).
+\ Retirement owner for every trusted site below:
+\ habu-ptx-phantom-preserving-3df9db92.
 
 require lib/ptx/rep.f
 

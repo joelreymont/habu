@@ -21,8 +21,8 @@
 \
 \ The raw self-path read (apple[] pointer walk / readlink syscall) is the one
 \ boundary the checker cannot express (ptr-NULL tests, indexing the startup image
-\ past envp); it lives in the two TRUSTED helpers below, each with a TRUSTED.md
-\ row. Everything public is checked.
+\ past envp); it lives in the two TRUSTED helpers below. Everything public is
+\ checked.
 
 require lib/errors.f
 require lib/string.f
@@ -47,7 +47,9 @@ create EID-PROC-EXE
 
 : EID-EXE-PREFIX$ ( -- ptr u8 n )  s" executable_path=" ;
 
-\ ---- raw self-path read (TRUSTED: syscall / startup-image pointer boundary) ----
+\ macOS walks startup apple[] pointers; Linux fills EID-PATH with readlink. Raw
+\ NUL pointers and path-buffer refinement are outside checker inference.
+\ Retirement owner: habu-raw-self-path-4514ffd3.
 TRUSTED: ENGINE-SELF-MACOS ( -- n )      \ apple[] executable_path -> EID-PATH; bytes or 0
    ENVP-BASE 0= if 0 exit then
    0 begin dup ENVP 0= 0= while 1+ repeat 1+ EID-I !   \ EID-I = first apple[] index

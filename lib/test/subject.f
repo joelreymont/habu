@@ -53,12 +53,14 @@ PTR-VARIABLE STACK-A
 
 \ `evaluate` is deliberately checker-rejected; this is the single dynamic-source
 \ boundary. The active capability dot is habu-type-isolated-dynamic-244c0e2c.
+\ Retirement owner: habu-batch-candidate-valid-517bfb6f.
 TRUSTED: EVAL ( -- )
    SRC$ evaluate ;
 
 \ `run-in-stack` installs S0 but cannot clear inherited engine recovery state.
 \ The fork child must enter evaluation with no catch or TTY recovery handler.
 \ This raw runtime-cell boundary is tracked by the same active capability dot.
+\ Retirement owner: habu-batch-candidate-valid-517bfb6f.
 TRUSTED: STACK-ARM ( -- )
    STACK@ data-base S0-CELL + !
    0 data-base HND-CELL + !

@@ -171,17 +171,21 @@ public
 private
 
 \ ---- opaque reader representation boundary ------------------------------
-\ These four private leaves are one audited abstraction. Checked INIT owns all
-\ validation and initialization; only the representation refinements themselves
-\ remain trusted until bounded host storage can express extent and lifetime.
+\ STORAGE>PREMINT, READER>STATE, and CONSUME-READER are one audited abstraction.
+\ Checked INIT owns validation and initialization; only those representation
+\ refinements remain trusted until bounded storage can express extent and lifetime.
+\ Retirement owner: cap:raw-pointer-lifetime.
+\ Expose cell-state and numeric-address views for checked pre-mint validation.
 TRUSTED: STORAGE>PREMINT ( ptr a -- ptr n n )
    dup ;
 
 TRUSTED: MINT-READER ( ptr a -- JR:reader ) ;
 
+\ Keep the linear token live while exposing views of its same backing storage.
 TRUSTED: READER>STATE ( JR:reader -- JR:reader ptr n ptr u8 )
    dup dup ;
 
+\ CLOSE consumes the token but never frees caller-owned storage.
 TRUSTED: CONSUME-READER ( JR:reader -- )
    drop ;
 

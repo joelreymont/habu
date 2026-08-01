@@ -98,6 +98,7 @@ variable CG-GRID-IDX   \ flat grid index register last emitted by EMIT-GRID-CTX 
 \ TYPE so the emit driver runs the checked kernel checked (the only unchecked
 \ surface is these thin from-register identity casts - the codegen analogue of
 \ MK-SPAN's from_raw_parts boundary). CG-PARAMS sets x=%rd1, y=%rd2, a=%f1.
+\ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: SPAN-REG ( n -- span<space-global,f32,extent-n> ) ;
 TRUSTED: UNIFORM-REG ( n -- uniform<f32> ) ;
 TRUSTED: PTR-REG ( n -- ptr<space-global,f32> ) ;

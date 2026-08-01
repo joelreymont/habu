@@ -11,6 +11,7 @@
 \ cannot infer; the declared effect is the contract. SAVED-* bodies throw E-PTX-NOIMPL
 \ until the buffer stash/reload lands; NEG already has codegen (EMIT-NEG = neg.f32). Load
 \ after lib/ptx/cg-collective.f (EMIT-NEG) and lib/ptx/collective.f.
+\ Retirement owner: habu-adg-lowering-multi-24043a69.
 
 require lib/ptx/rep.f
 

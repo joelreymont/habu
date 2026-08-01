@@ -37,6 +37,9 @@ variable FRZ-PREV
 variable FRZ-ROW
 variable ADD-B                               \ stashed binding index across the ADD guard
 
+\ NEW/ADD alone mint the transaction token; ADD/FREEZE/ROLLBACK consume it where
+\ the checker cannot express linear discard. Retirement owner:
+\ habu-epic-type-system-b88c9ecc.
 TRUSTED: MK-BUILDER ( -- nom-builder )   0 ;   \ audited linear-token mint
 TRUSTED: BUILDER-DROP ( nom-builder -- )   drop ;   \ audited linear-token consume
 

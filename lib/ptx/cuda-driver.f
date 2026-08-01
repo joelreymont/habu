@@ -80,6 +80,9 @@ public
 : RC0 ( rc -- )
    CUDA-RC0 ;
 
+\ Each trusted word is one exact CUDA FFI schema: its signature, symbol,
+\ READABLE/WRITABLE extent, and VALUE slots fix the unique call contract.
+\ Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: CU-INIT ( n -- rc ) {: flags:n :}
    s" cuInit" SYMBOL {: call:n :}
    FFI:RESET  flags 0 FFI:VALUE!
@@ -151,6 +154,7 @@ TRUSTED: CU-MEMCPY-DTOH ( ptr u8 cuda-devptr len -- rc )
 \ ---- host-memory registration (UMA zero-copy residency; epic habu-epic-gb10-uma-391d12e8).
 \ Register an existing host mapping (e.g. an mmap'd weight file) so a kernel reads
 \ it through the device address space; the host address is passed by value.
+\ Retirement owner for these three bindings: habu-epic-gb10-uma-391d12e8.
 TRUSTED: CU-MEM-HOST-REGISTER ( n len n -- rc )
    {: p:n bytes:len flags:n :}
    s" cuMemHostRegister_v2" SYMBOL {: call:n :}
@@ -169,6 +173,8 @@ TRUSTED: CU-MEM-HOST-UNREGISTER ( n -- rc )
    FFI:RESET  p 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
+\ Remaining exact CUDA schemas retain the package-private FFI rationale above.
+\ Retirement owner: habu-ptx-m1-c-1df1d6e7.
 TRUSTED: CU-FUNC-SET-BLOCK-SHAPE ( cuda-fn n n n -- rc )
    {: fn:cuda-fn x:n y:n z:n :}
    s" cuFuncSetBlockShape" SYMBOL {: call:n :}

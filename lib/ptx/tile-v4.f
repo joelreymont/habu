@@ -12,6 +12,7 @@
 \ into a tile whose type args are all projected from the inputs, so it too is a
 \ CHECKED caller — of the SAME PTXREP:MINT-LOAD the scalar LOAD uses. Only the
 \ fresh-mask GRID-CTX-V4 keeps a TRUSTED: mint boundary.
+\ Retirement owner: habu-ptx-phantom-preserving-3df9db92.
 
 require lib/ptx/rep.f
 

@@ -51,6 +51,8 @@ $1002 constant MEM-MAP-PRIVATE-ANON
    bytes MEM-CHECK-SIZE
    MEM-ADDR-ANY bytes MEM-PROT-RW MEM-MAP-PRIVATE-ANON MEM-ANON-FD MEM-OFF-ZERO mmap ;
 
+\ Refines a validated successful mmap result to a byte pointer; syscall-result
+\ refinement is not expressible. Retirement owner: habu-typed-defining-words-aa224eb5.
 TRUSTED: MEM-ALLOC-PTR ( n -- ptr u8 )
    MEM-MMAP-RC dup 0 < if E-MEM-MAP throw then ;
 
@@ -160,7 +162,9 @@ private
 : 64K-ALLOC-LEN ( -- CAD-NUM:alloc-byte-len )
    64K-LEN CAD-NUM:AS-ALLOC-BYTE-LEN OK-ALLOC-BYTE-LEN ;
 
-\ ---- audited representation projections ----------------------------------------
+\ Private allocation-role erasure for mmap/cells/munmap; no raw value escapes.
+\ Retire when those primitives accept the nominal roles directly.
+\ Retirement owner: habu-epic-model-cad-70b629a9.
 TRUSTED: ALLOC-BYTES>N ( CAD-NUM:alloc-byte-len -- n ) ;
 TRUSTED: ALLOC-CELLS>N ( CAD-NUM:alloc-cell-count -- n ) ;
 TRUSTED: BYTE-LEN>N ( CAD-NUM:byte-len -- n ) ;
@@ -220,6 +224,7 @@ public
 \ The private trusted word parks the body and mapping off-stack because checked
 \ catch cannot carry an arbitrary result row through a fetched execution token.
 \ Release is fatal on failure, so the outer frame is restored only after success.
+\ Retirement owner: habu-epic-type-habu-a34713f0.
 private
 PTR-VARIABLE WB-CUR-BUF
 variable WB-CUR-LEN

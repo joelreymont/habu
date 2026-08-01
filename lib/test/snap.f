@@ -91,6 +91,7 @@ create TS-ACTUAL TS-CAP cells allot
 \ split across extra trusted helpers. Callers must be checked (a quotation is
 \ compile-only), so assertions live inside a checked test word:
 \   : CASES ( -- ) [: 1 2 + ;] [: 3 ;] SNAP= ... ;
+\ Retirement owner: habu-typed-depth-introspection-18f0efda.
 TRUSTED: SNAP= ( [ R -- S ] [ R -- S ] -- )
    swap
    depth 1 - TS-START ! execute

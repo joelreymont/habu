@@ -164,6 +164,8 @@ private
       then
    repeat ;
 
+\ CHECK! cannot recursively certify the definition that invokes it.
+\ Retirement owner: habu-primitive-effect-axiom-1119f176.
 TRUSTED: BUILD-CHECK-RAW ( ptr u8 n -- n )
    CHECK! ;
 
