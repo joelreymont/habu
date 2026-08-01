@@ -31,6 +31,8 @@ require src/compiler/target.f
 require src/compiler/numeric-policy.f
 require src/compiler/binding.f
 require src/compiler/a64-effect.f
+require src/compiler/native/a64ir.f
+require src/compiler/native/frame.f
 
 package NABI
 
@@ -61,35 +63,54 @@ public
    A64EFF:SEQ-NONE
    n 0 ?do i A64EFF:SEQ-WITH-SLOT loop ;
 
-\ A leaf word under that convention. No register is part of the interface -
-\ everything arrives and leaves through the caller's stack - so the pool is
-\ exactly the `n` scratch registers from `base` and the whole of it is declared
-\ destroyed.
+\ How deep a frame a routine of this convention declares: what its prologue owns
+\ plus the slots the register allocator may need, rounded up to the stack
+\ alignment. src/compiler/native/frame.f says which slots are whose, so this is
+\ the one place that turns a count of spill slots into a size and both halves of
+\ the layout come off the same declaration. A routine whose prologue owns nothing
+\ and that needs no slot declares no frame at all.
+: FRAME-FOR ( A64EFF:traits n -- n )
+   {: t:A64EFF:traits spills:n :}
+   t A64FRAME:SPILL-BASE  spills A64IR:SLOT-WIDTH *  + {: want:n :}
+   want 0= if 0 exit then
+   want A64EFF:SP-ALIGN 1- +  A64EFF:SP-ALIGN /  A64EFF:SP-ALIGN * ;
+
+\ A leaf word under that convention, with room in its frame for `spills` values
+\ the register allocator could not keep in registers. No register is part of the
+\ interface - everything arrives and leaves through the caller's stack - so the
+\ pool is exactly the `n` scratch registers from `base` and the whole of it is
+\ declared destroyed.
+: LEAF-FRAMED ( n n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n spills:n :}
+   in SLOT-SEQ  out SLOT-SEQ
+   base n POOL
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
+   A64EFF:TRAITS-NONE
+   A64EFF:TRAITS-NONE spills FRAME-FOR
+   0 A64EFF:ROUTINE ;
+
 : LEAF ( n n n n -- A64EFF:routine )
-   {: base:n n:n in:n out:n :}
+   0 LEAF-FRAMED ;
+
+\ The same convention for a word that calls, with the same room for spills above
+\ the link slot. Two fields change against the leaf and neither is decoration:
+\ the direct-call trait is what the selector builds the frame and the link save
+\ from, and it is also what A64FRAME reads to put the allocator's slots above the
+\ return address. `link preserved` does not change, and that is the point - a
+\ leaf has it for nothing and a caller has to make it true.
+: CALL-FRAMED ( n n n n n -- A64EFF:routine )
+   {: base:n n:n in:n out:n spills:n :}
    in SLOT-SEQ  out SLOT-SEQ
    base n POOL
    A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
+   A64EFF:T-CALL
+   A64EFF:T-CALL spills FRAME-FOR
+   0 A64EFF:ROUTINE ;
 
-\ The frame a calling routine needs: one stack slot for the caller's return
-\ address, rounded up to the stack alignment. It is one slot and not more, so
-\ nothing but the return address is in it.
-A64EFF:SP-ALIGN constant CALL-FRAME
-
-\ The same convention for a word that calls. Two fields change and neither is
-\ decoration: the direct-call trait is what the selector builds the frame and the
-\ link save from, and the frame is where the caller's return address goes.
-\ `link preserved` does not change, and that is the point - a leaf has it for
-\ nothing and a caller has to make it true.
 : CALL ( n n n n -- A64EFF:routine )
-   {: base:n n:n in:n out:n :}
-   in SLOT-SEQ  out SLOT-SEQ
-   base n POOL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
-   A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
-   A64EFF:T-CALL CALL-FRAME 0 A64EFF:ROUTINE ;
+   0 CALL-FRAMED ;
 
 private
 

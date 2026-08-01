@@ -58,7 +58,7 @@
       IR-ARENA:GROW takes a fresh doubled span with IR-CTX:SCRATCH-TAKE and
       abandons the old one (arena.f:217-225).  So an arena that reaches
       capacity C has consumed 8 + 16 + ... + C cells of the context's
-      130944-byte scratch region.  In this model growth is free, so every
+      262016-byte scratch region.  In this model growth is free, so every
       ceiling theorem below is about the ceiling only.  FINDING 3 says what
       that leaves uncovered.
 
@@ -162,17 +162,17 @@
    rollback that could be re-passed.  Nothing in the code enforces that.
 
    FINDING 3.  arena.f:13-15 calls the abandoned-span discipline "bounded by
-   the committed ceiling".  The real bound is the context's single 128K
+   the committed ceiling".  The real bound is the context's single 256K
    mapping, and it bites first.  Reaching capacity C costs 8 + 16 + ... + C
-   cells of a 130944-byte scratch region, so the largest capacity an arena can
-   ever reach — even as the only allocation in its context — is 4096 cells.
+   cells of a 262016-byte scratch region, so the largest capacity an arena can
+   ever reach — even as the only allocation in its context — is 8192 cells.
    A committed ceiling above that cannot be enforced: the arena dies of
    E-IR-CTX-SCRATCH inside IR-ARENA:GROW instead of E-IR-ARENA-FULL, which is
    a different error and, unlike E-IR-ARENA-FULL, is not the one the caller
    was told to expect.  `arena_ceiling_beyond_the_mapping` below is the
    arithmetic.  The atomicity is not affected — the scratch take precedes the
    copy and both field writes, so a refused growth still leaves the arena
-   untouched — but the ceiling a caller commits to above 4096 cells is
+   untouched — but the ceiling a caller commits to above 8192 cells is
    advisory rather than enforced.
    ------------------------------------------------------------------------ *)
 
@@ -191,7 +191,7 @@ Definition seed_cells : nat := 8.            (* IR-ARENA:SEED-CELLS, arena.f:66 
 Definition slot_max : nat := 64.             (* IR-ARENA:SLOT-MAX, arena.f:65 *)
 Definition slot_bytes : nat := 8.            (* CDIGEST:SLOT-BYTES, digest.f:54 *)
 Definition hdr_slots : nat := 16.            (* IR-CTX:HDR-SLOTS, context.f:83 *)
-Definition map_bytes : nat := 131072.        (* IR-CTX:MAP-BYTES, context.f:73 *)
+Definition map_bytes : nat := 262144.        (* IR-CTX:MAP-BYTES, context.f:73 *)
 Definition depth_max : nat := 64.            (* IR-CTX:DEPTH-MAX, context.f:72 *)
 Definition gen_max : nat := 2147483647.      (* IR-CTX:GEN-MAX, context.f:71 *)
 Definition local_bits : nat := 32.           (* IR-ARENA:LOCAL-BITS, arena.f:68 *)
@@ -1585,25 +1585,25 @@ Example ex_scratch_bumps :
   scratch_take 128 5 = Some (128, 136)
   /\ scratch_take 136 16 = Some (136, 152)
   /\ scratch_take 128 0 = None
-  /\ scratch_take 128 130945 = None
-  /\ scratch_take 131072 1 = None.
+  /\ scratch_take 128 262017 = None
+  /\ scratch_take 262144 1 = None.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (* FINDING 3, as arithmetic.  `growth_bytes cap` is what the doubling schedule
    costs to reach `cap`: the spans 8, 16, ... cap are all taken from the
    context and only the last one is used, so the total is 2 * cap - seed_cells
-   cells.  A ceiling of 4096 cells fits the scratch region; the next capacity
-   the doubling would reach does not, so 8192 is unreachable and any ceiling
-   above 4096 cannot be enforced by IR-ARENA:GROW. *)
+   cells.  A ceiling of 8192 cells fits the scratch region; the next capacity
+   the doubling would reach does not, so 16384 is unreachable and any ceiling
+   above 8192 cannot be enforced by IR-ARENA:GROW. *)
 Definition growth_bytes (cap : nat) : nat := (2 * cap - seed_cells) * slot_bytes.
 
 Example arena_ceiling_beyond_the_mapping :
-  Nat.leb (growth_bytes 4096) scratch_cap = true
-  /\ Nat.ltb scratch_cap (growth_bytes 8192) = true.
+  Nat.leb (growth_bytes 8192) scratch_cap = true
+  /\ Nat.ltb scratch_cap (growth_bytes 16384) = true.
 Proof. split; vm_compute; reflexivity. Qed.
 
 Example ex_constants :
-  hdr_bytes = 128 /\ scratch_cap = 130944 /\ seed_cells = 8
+  hdr_bytes = 128 /\ scratch_cap = 262016 /\ seed_cells = 8
   /\ depth_max = 64 /\ slot_max = 64 /\ local_bits = 32.
 Proof. repeat split; vm_compute; reflexivity. Qed.
 

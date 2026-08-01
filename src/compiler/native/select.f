@@ -155,6 +155,7 @@ require src/compiler/ir/build.f
 require src/compiler/a64-effect.f
 require src/compiler/native/hir.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 
 package A64SEL
@@ -493,9 +494,12 @@ create NAMEBUF NAME-CAP allot
 \ ---- the routine's frame, and the return address in it -----------------------
 \ A routine that calls is a routine whose own return address is destroyed by the
 \ first call it makes, so it puts it away before the body and takes it back
-\ before it returns. Where it puts it is slot zero of its own frame, and the
-\ frame is the one its contract declares - the same declaration the register
-\ allocator's validator measures every frame access against.
+\ before it returns. WHERE it puts it is not this pass's decision:
+\ src/compiler/native/frame.f owns the layout of a routine's frame and answers
+\ the link slot from the contract's own trait, so the offset this pass writes and
+\ the offset the register allocator places its own slots above are one statement.
+\ The frame itself is the one the contract declares - the same declaration the
+\ register allocator's validator measures every frame access against.
 \
 \ WHY THE PAIR IS BUILT HERE AND NOT AT EMISSION. It is the same argument that
 \ put the data-stack entry and exit in this pass: an instruction the emitter
@@ -514,8 +518,6 @@ create NAMEBUF NAME-CAP allot
 \ reason the dialect gives: no operation of this dialect can compute an address
 \ inside the frame, so the two orders are independent and stating one would be
 \ claiming something nothing proved.
-0 constant LINK-SLOT                 \ where the caller's return address is kept
-
 : FRAME-ATTR+ ( n -- )
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-FRAME  CTX BLD size A64IR:FRAME-ATTR
@@ -548,7 +550,7 @@ create NAMEBUF NAME-CAP allot
    at o OPEN
    FTOK OPERAND+
    TOKEN+
-   LINK-SLOT A64IR:SLOT-WIDTH * SLOT-ATTR+
+   A64FRAME:LINK-SLOT SLOT-ATTR+
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ FTOK! ;
 

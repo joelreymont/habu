@@ -45,6 +45,10 @@ package NFIX
 
 private
 
+here CELL 1- and CELL swap - CELL 1- and allot
+variable N-SPILLED                   \ slots the first walk of the last run used
+0 N-SPILLED !
+
 \ ---- the routine contract ----------------------------------------------------
 \ The register pool and the two Habu-word contracts belong to the convention
 \ itself, not to this fixture: src/compiler/native/abi.f states them once so the
@@ -95,6 +99,11 @@ private
 \ the selector is where a data-stack place becomes a load or a store. It is the
 \ last argument for the same reason it is everywhere else: twelve cells cannot be
 \ bound to a typed local, so it is presented on top and taken apart there.
+\
+\ THE LOWERING PASS IS BOUND HERE TOO, because a module's symbols are its own
+\ ordinals and this is the only moment the machine dialect can be asked them. A
+\ run whose walk decides no spill gives that binding straight back, which is what
+\ the RELEASE in each of the entry points below is.
 : SELECTED ( IR-CTX:ctx IR-BUILD:builder ptr u8 n A64EFF:routine -- IR-BUILD:module )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
@@ -108,6 +117,7 @@ private
    c ab A64RA:BIND-DIALECT
    c ab A64RAV:BIND-DIALECT
    c ab A64EMIT:BIND-DIALECT
+   c ab A64SPILL:BIND-DIALECT
    c m ab a u
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64SEL:SELECT ;
@@ -157,6 +167,18 @@ public
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE 0 0 A64EFF:ROUTINE ;
 
+\ Build the module the sealed spill decisions are real operations in, over a
+\ builder of its own bound to every pass that will read it. The allocator has to
+\ have run and decided at least one slot before this is reached.
+: LOWER ( IR-CTX:ctx IR-BUILD:module ptr u8 n -- IR-BUILD:module )
+   {: c:IR-CTX:ctx m:IR-BUILD:module a u:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   A64EMIT:RELEASE
+   c A64-BUILDER {: nb:IR-BUILD:builder :}
+   c nb A64RA:BIND-DIALECT
+   c nb A64RAV:BIND-DIALECT
+   c nb A64EMIT:BIND-DIALECT
+   c m nb a u A64SPILL:REWRITE ;
+
 \ ---- the convention a Habu word is entered and left through ------------------
 \ Design section 7.6: an externally callable Habu word takes argument i out of
 \ data-stack slot i of the caller's stack and leaves result j in slot j. Both
@@ -164,13 +186,13 @@ public
 \ src/compiler/native/abi.f, because the publication seam has to build the same
 \ two and a second copy would be a second convention.
 \
-\ THE FRAME OF A CALLING ROUTINE IS ONE SLOT AND NOT MORE, so nothing but the
-\ return address is in it. A routine of more than one block cannot spill at all,
-\ so there is no second claimant on it; a single-block routine that both called
-\ and spilled would have the allocator hand slot zero to a value, and the
-\ validator refuses the second write to one slot by name. Dot
-\ habu-give-the-routine-679de563 gives the frame one owner that reserves the link
-\ slot before the allocator places anything.
+\ THE FRAME OF A CALLING ROUTINE HOLDS THE RETURN ADDRESS AND WHATEVER THE
+\ ALLOCATOR PUTS ABOVE IT. src/compiler/native/frame.f draws the line and both
+\ owners read it there: the link slot is the bottom slot of the frame a contract
+\ declaring the direct-call trait asks for, and the register allocator's own
+\ slots start above it. `CALL-HABU` below declares a frame of exactly one slot,
+\ so a routine under it may not spill; `RUN-HABU-CALL-SPILL` declares room for
+\ more.
 : LEAF-HABU ( n n n n -- A64EFF:routine )
    NABI:LEAF ;
 
@@ -199,6 +221,7 @@ public
 : RUN-FROM ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b a u base n LEAF-FROM SELECTED {: m:IR-BUILD:module :}
+   A64SPILL:RELEASE
    c m base n FINISH ;
 
 \ The same, out of the pool that starts at register zero.
@@ -210,7 +233,8 @@ public
 \ is measuring what the selector produced rather than what the routine runs as.
 : SELECT-HABU ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- IR-BUILD:module )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
-   c b a u base n in out LEAF-HABU SELECTED ;
+   c b a u base n in out LEAF-HABU SELECTED
+   A64SPILL:RELEASE ;
 
 \ Select and finish under the data-stack convention: `in` arguments taken out of
 \ slots 0.. of the caller's stack and `out` results left in slots 0.., with `n`
@@ -219,6 +243,7 @@ public
 : RUN-HABU ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b a u base n in out LEAF-HABU SELECTED {: m:IR-BUILD:module :}
+   A64SPILL:RELEASE
    c m base n in out FINISH-HABU ;
 
 \ Select and finish for a routine that calls itself. The contract is built three
@@ -228,9 +253,60 @@ public
 : RUN-HABU-CALL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b a u  base n in out CALL-HABU  SELECTED {: m:IR-BUILD:module :}
+   A64SPILL:RELEASE
    c m  base n in out CALL-HABU  A64RA:ALLOCATE
    m  base n in out CALL-HABU  A64RAV:ACCEPT
    c m A64EMIT:EMIT ;
+
+\ ---- a routine whose values do not all fit -----------------------------------
+\ The same run over a routine that declares room in its frame for `sp` values the
+\ register allocator could not keep in registers. Four stages instead of three
+\ when the walk decides any: allocate, build the module those decisions are
+\ operations in, allocate THAT, accept and emit. The second walk decides nothing,
+\ because it reads a module whose operations already are the ones the first walk
+\ assumed. The contract is built once per stage, from the same five numbers,
+\ because a routine value cannot be held in a local.
+: RUN-HABU-SPILL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   c b a u  base n in out sp NABI:LEAF-FRAMED  SELECTED {: m:IR-BUILD:module :}
+   c m  base n in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
+   A64RA:SPILLS N-SPILLED !
+   A64RA:SPILLS 0= if
+      A64SPILL:RELEASE
+      m  base n in out sp NABI:LEAF-FRAMED  A64RAV:ACCEPT
+      c m A64EMIT:EMIT
+      exit
+   then
+   c m a u LOWER {: m1:IR-BUILD:module :}
+   c m1  base n in out sp NABI:LEAF-FRAMED  A64RA:ALLOCATE
+   m1  base n in out sp NABI:LEAF-FRAMED  A64RAV:ACCEPT
+   c m1 A64EMIT:EMIT ;
+
+\ The same for a routine that calls itself. Its frame already holds the caller's
+\ return address in the slot src/compiler/native/frame.f names, and the
+\ allocator's own slots go above it - so this is the one run that exercises both
+\ owners of one frame at once.
+: RUN-HABU-CALL-SPILL ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n sp:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   c b a u  base n in out sp NABI:CALL-FRAMED  SELECTED {: m:IR-BUILD:module :}
+   c m  base n in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
+   A64RA:SPILLS N-SPILLED !
+   A64RA:SPILLS 0= if
+      A64SPILL:RELEASE
+      m  base n in out sp NABI:CALL-FRAMED  A64RAV:ACCEPT
+      c m A64EMIT:EMIT
+      exit
+   then
+   c m a u LOWER {: m1:IR-BUILD:module :}
+   c m1  base n in out sp NABI:CALL-FRAMED  A64RA:ALLOCATE
+   m1  base n in out sp NABI:CALL-FRAMED  A64RAV:ACCEPT
+   c m1 A64EMIT:EMIT ;
+
+\ How many values the FIRST walk of the last spilling run put in the frame. A run
+\ that produced the same answer without spilling anything would be measuring
+\ nothing, so a case that is about spilling reads this as well as the answer.
+: SPILLED ( -- n )
+   N-SPILLED @ ;
 
 \ The register the returned value ended up in. The last value the module defines
 \ is the one the return carries in every straight-line shape, and it is read

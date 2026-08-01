@@ -972,7 +972,7 @@ public
 -8506 constant E-A64EMIT-REACH  \ a branch whose displacement does not fit the field its form encodes it in
 -8504 constant E-NELAB-BLOCK    \ more blocks or more open control structures in one definition than the elaborator's tables hold
 -8507 constant E-A64RA-EDGE     \ a block argument and the values handed to it across an edge cannot share one register: two of them are live at the same time, or the edge hands over a different number of values than the destination takes
--8508 constant E-A64RA-SPILL    \ a routine of more than one block needs a value put in a frame slot, and a spill decision cannot yet name the block it belongs in
+-8508 constant E-A64RA-SPILL    \ a routine of more than one block needs a value put in a frame slot and has none this pass may take: every class holding a register there is one an edge or a schema tie made of more than one value, holds a block argument, or reaches the frame from a block that is neither the one the caller enters nor the one control leaves through
 -8509 constant E-A64RAV-EDGE    \ the same edge rule, re-derived: an assignment in which the register holding a terminator's operand is not the register holding the successor's block argument at that position
 
 \ Native ARM64 memory access: -8520..-8539
@@ -1017,6 +1017,7 @@ public
 -8550 constant E-NELAB-CALL     \ a self-call the elaborator has no rule for: fewer values on the compile-time vector than the word declares it takes, more values live across the call than the vector can hold afterwards, or a call reached with no memory order live
 -8551 constant E-A64SEL-CALL    \ a call the selector has no lowering for: a routine whose convention names no data-stack place, a routine contract that does not declare that this routine calls, a contract declaring a call in a module that contains none, a frame too small to hold the saved link register, or a call whose operand and result lists disagree about how many values are live across it
 -8552 constant E-A64RAV-CALL    \ a call site that is not the sequence the dialect lowers a call to: a store run that does not name slots zero upwards in order, a byte count that is not the run it stands for, or a saved link register the module does not restore from the slot it saved it into
+-8553 constant E-A64RAV-OWNER   \ a frame slot given to the wrong owner: a spilled value placed in the slot a calling routine keeps its caller's return address in, or a prologue access naming a slot that is not that one
 
 \ Native publication: -8560..-8579
 \

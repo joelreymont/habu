@@ -93,6 +93,7 @@ require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 require src/compiler/native/regalloc.f
 
@@ -753,21 +754,26 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ address it. The rule is A64EFF's, so a slot outside the declared frame, an
 \ unaligned one, or one past the reach of the offset field is refused under
 \ A64EFF's own name; the contract is rebuilt per access because a value of more
-\ than one cell cannot be held in a local.
-: SLOT-CK ( IR-ID:ir-block-id A64EFF:routine -- )
+\ than one cell cannot be held in a local. It is asked of every block of the
+\ function rather than of one, because a routine that branches reaches its frame
+\ from both ends of itself.
+: SLOT-CK ( IR-ID:ir-fun-id A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE
    {: gi:A64EFF:placeseq gr:A64EFF:placeseq gc:A64EFF:gprs
       fi:A64EFF:fprs fr:A64EFF:fprs fc:A64EFF:fprs
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
-   {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 0 ?do
-      bk i OP-AT SLOT-OF {: off:n :}
-      off NOSLOT <> if
-         off A64IR:SLOT-WIDTH
-         gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
-         A64EFF:CHECK-SLOT
-      then
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk OP-COUNT 0 ?do
+         bk i OP-AT SLOT-OF {: off:n :}
+         off NOSLOT <> if
+            off A64IR:SLOT-WIDTH
+            gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+            A64EFF:CHECK-SLOT
+         then
+      loop
    loop ;
 
 \ ---- re-deriving the allocation of a routine with control flow ---------------
@@ -810,6 +816,10 @@ variable V-CHANGED
 0 V-CHANGED !
 variable V-CALLS                     \ whether the contract says this routine calls
 0 V-CALLS !
+variable V-FRAME                     \ whether the module reaches a frame at all
+0 V-FRAME !
+variable V-BASE                      \ the first frame byte the allocator's slots may use
+0 V-BASE !
 variable VD-AT                       \ the position the data-stack scan stands on
 0 VD-AT !
 
@@ -1024,47 +1034,141 @@ create V-TMP SETC cells allot
    V-BLKS @ 0 ?do f i VEDGE-OF loop ;
 
 \ ---- the frame of a routine with control flow --------------------------------
-\ A routine that does not call may not touch a frame at all: the allocator
-\ refuses to spill in a routine of more than one block, because a spill decision
-\ cannot yet name the block it belongs in, so a module that reserves a frame here
-\ was not produced by that refusal and is not an allocation this file can accept.
+\ A routine of more than one block reaches its frame in exactly TWO blocks: the
+\ one the caller enters and the one control leaves through. That pair is not a
+\ convenience. The frame forms thread a memory order and that order has to be
+\ read exactly once on every run, so two frame-touching blocks where one can be
+\ reached from the other would be two readers of one order on one path; the entry
+\ block dominates every block of the routine and every run that returns passes
+\ through the exit block, so those two - in that order - are the pair that can
+\ never have that problem. It is also what makes "a slot is written before it is
+\ read" decidable across a routine that branches: reading the two blocks in
+\ linear order reads them in the order every run makes them in.
 \
-\ A routine that DOES call has exactly one thing in its frame and it is not a
-\ spill: the caller's return address, which the first call would otherwise
-\ destroy. So the shape is fixed and is checked as a shape - the entry block
-\ takes the frame with its first operation and saves into slot zero with its
-\ second, the block control leaves through reads slot zero back and gives the
-\ frame back with the two operations in front of its terminator, both frame sizes
-\ are the one the contract declares, and no other operation anywhere touches the
-\ frame. A routine that saved its return address and did not restore it, or
-\ restored it from another slot, returns to whatever the frame happened to hold.
+\ THE FRAME HAS ONE LAYOUT AND, WHEN THE ROUTINE CALLS, TWO OWNERS.
+\ src/compiler/native/frame.f draws the line: the caller's return address is the
+\ bottom slot of a calling routine's frame and the register allocator's slots
+\ start above it. Both halves are decided here from the contract's own traits -
+\ the link save and the link restore name the link slot and no other access may,
+\ and every other frame slot named is at or above the base the allocator starts
+\ at. A spill placed on top of a return address fails the second clause under its
+\ own name rather than being found by a routine that returns into its own data.
+\
+\ AND THE FRAME ITSELF IS TAKEN AND GIVEN BACK IN THOSE TWO PLACES. The entry
+\ block takes it with its first operation and the exit block gives it back with
+\ the one in front of its terminator, both naming the frame the contract
+\ declares, and nothing anywhere else moves the stack pointer. A routine that
+\ calls adds the save and the restore inside that bracket; a routine that only
+\ spills has the bracket and nothing else in it.
 : VNO-FRAME ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do
       f i BLOCK-AT FRAMES? if E-A64RAV-FRAME throw then
    loop ;
 
+\ Does this module reach a frame at all? Re-derived from the operations, because
+\ it decides where the data-stack entry and exit sequences stand.
+: VANY-FRAME ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   0 V-FRAME !
+   V-BLKS @ 0 ?do
+      f i BLOCK-AT FRAMES? if 1 V-FRAME ! then
+   loop ;
+
 \ One frame access at this position, moving the link register into or out of the
-\ slot the routine keeps it in.
+\ slot src/compiler/native/frame.f keeps it in.
 : VLINK-AT? ( IR-ID:ir-block-id n bool -- )
    {: bk:IR-ID:ir-block-id at:n store:bool :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id FRAME-OF NOSLOT <> if E-A64RAV-CALL throw then
-   id SLOT-OF 0 <> if E-A64RAV-CALL throw then
+   id SLOT-OF A64FRAME:LINK-SLOT <> if E-A64RAV-CALL throw then
    store if
       id STORES? 0= if E-A64RAV-CALL throw then exit
    then
    id STORES? if E-A64RAV-CALL throw then ;
 
-\ No frame access in this block outside the window the shape allows it in.
-: VFRAME-CLEAN ( IR-ID:ir-block-id n n -- )
-   {: bk:IR-ID:ir-block-id lo:n hi:n :}
-   bk OP-COUNT 0 ?do
-      i lo < i hi >= or if
-         bk i OP-AT FRAME-TOUCH? if E-A64RAV-CALL throw then
+\ Only the two blocks above may reach the frame at all.
+: VFRAME-BLOCKS-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id rb:n :}
+   V-BLKS @ 0 ?do
+      i 0 <> i rb <> and if
+         f i BLOCK-AT FRAMES? if E-A64RAV-FRAME throw then
       then
    loop ;
 
+\ Nothing but the two operations named here carries a frame SIZE: an operation
+\ that moves the stack pointer anywhere else is a second frame inside the first.
+: VNO-SIZE ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id keep:n :}
+   bk OP-COUNT 0 ?do
+      i keep <> if
+         bk i OP-AT FRAME-OF NOSLOT <> if E-A64RAV-FRAME throw then
+      then
+   loop ;
+
+\ Where this block's link access stands, or -1 when it has none. A routine that
+\ does not call has none anywhere, and the two a calling routine has are at fixed
+\ positions of the entry and the exit block.
+: VLINK-POS ( IR-ID:ir-block-id n n -- n )
+   {: bk:IR-ID:ir-block-id b:n rb:n :}
+   V-CALLS @ 0= if -1 exit then
+   b 0 = if 1 exit then
+   b rb = if bk OP-COUNT 3 - exit then
+   -1 ;
+
+\ The partition, one access at a time: the prologue's access names the link slot
+\ and every other access names a slot the allocator was allowed to start at.
+: VOWNER1 ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id at:n link:n :}
+   bk at OP-AT SLOT-OF {: off:n :}
+   off NOSLOT = if exit then
+   at link = if
+      off A64FRAME:LINK-SLOT <> if E-A64RAV-OWNER throw then
+      exit
+   then
+   off V-BASE @ < if E-A64RAV-OWNER throw then ;
+
+: VOWNER-BLOCK ( IR-ID:ir-block-id n -- )
+   {: bk:IR-ID:ir-block-id link:n :}
+   bk OP-COUNT 0 ?do bk i link VOWNER1 loop ;
+
+: VOWNER-CK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id rb:n :}
+   V-BLKS @ 0 ?do
+      f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
+      bk  bk i rb VLINK-POS  VOWNER-BLOCK
+   loop ;
+
+\ The bracket both shapes share: the frame is taken by the entry block's first
+\ operation and given back by the one in front of the exit block's terminator,
+\ both naming the frame the contract declares, and no other block reaches it.
+: VBRACKET-CK ( IR-ID:ir-fun-id n n n -- )
+   {: f:IR-ID:ir-fun-id rb:n want:n bad:n :}
+   rb 0 = if bad throw then
+   f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
+   f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
+   xb OP-COUNT {: n:n :}
+   n 2 < if bad throw then
+   eb 0 want FRAME-AT?
+   xb n 2 - want FRAME-AT?
+   eb 0 VNO-SIZE
+   xb n 2 - VNO-SIZE
+   f rb VFRAME-BLOCKS-CK ;
+
+\ A routine that does not call has nothing in its frame but what the register
+\ allocator put there, and may have no frame at all - a routine whose values all
+\ fit, which is every routine this half saw before it could spill.
+: VSPILL-CK ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id rb:n want:n :}
+   V-FRAME @ 0= if f VNO-FRAME exit then
+   f rb want E-A64RAV-FRAME VBRACKET-CK ;
+
+\ A routine that DOES call keeps its caller's return address in the bottom slot,
+\ because the first call would otherwise destroy it. The save is the entry
+\ block's second operation and the restore stands two in front of the exit
+\ block's terminator, inside the bracket above. A routine that saved its return
+\ address and did not restore it, or restored it from another slot, returns to
+\ whatever the frame happened to hold.
 : VLINK-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n :}
    rb 0 = if E-A64RAV-CALL throw then   \ dot habu-let-a-routine-00e845b9
@@ -1073,20 +1177,14 @@ create V-TMP SETC cells allot
    eb OP-COUNT 2 < if E-A64RAV-CALL throw then
    xb OP-COUNT {: n:n :}
    n 3 < if E-A64RAV-CALL throw then
-   eb 0 want FRAME-AT?
+   f rb want E-A64RAV-CALL VBRACKET-CK
    eb 1 true VLINK-AT?
-   xb n 3 - false VLINK-AT?
-   xb n 2 - want FRAME-AT?
-   eb 0 2 VFRAME-CLEAN
-   xb  n 3 -  n 1-  VFRAME-CLEAN
-   V-BLKS @ 0 ?do
-      i 0 <> i rb <> and if f i BLOCK-AT 0 0 VFRAME-CLEAN then
-   loop ;
+   xb n 3 - false VLINK-AT? ;
 
 : VFRAME-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n :}
-   V-CALLS @ 0= if f VNO-FRAME exit then
-   f rb want VLINK-CK ;
+   V-CALLS @ 0= if f rb want VSPILL-CK else f rb want VLINK-CK then
+   f rb VOWNER-CK ;
 
 \ ---- the data stack, across blocks -------------------------------------------
 \ The entry sequence is at the top of the block the caller enters, the exit
@@ -1106,10 +1204,14 @@ create V-TMP SETC cells allot
 \ calls takes its frame and saves the return address before it reads a single
 \ argument, and restores and gives the frame back after it has published its
 \ results, so both sequences sit two operations further in than they otherwise
-\ would. It is derived from the contract's traits, which is the same declaration
-\ the selector built the pair from.
+\ would. A routine that only spills has the frame without the save, so it costs
+\ one at each end; one that never reaches a frame costs none. The first is the
+\ contract's own declaration and the second is re-derived from the module, for
+\ the same reason every other fact here is.
 : PRO-N ( -- n )
-   V-CALLS @ 0= if 0 exit then 2 ;
+   V-CALLS @ 0<> if 2 exit then
+   V-FRAME @ 0<> if 1 exit then
+   0 ;
 
 : VDEXIT-POS? ( n n n -- bool )
    {: n:n r:n at:n :}
@@ -1224,17 +1326,18 @@ create V-TMP SETC cells allot
 : MB-VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    f VMEASURE
+   f VANY-FRAME
    INTERVAL-CK
    CLASS-CK
    f ORDER-CK
    REGISTER-CK
    OVERLAP-CK
    f VEDGE-CK
+   f rb frame VFRAME-CK
    f VBLOCK-CKS
    f 0 BLOCK-AT args ARG-CK
    f rb BLOCK-AT outs OUT-CK
-   f rb args outs VDSTACK-CK
-   f rb frame VFRAME-CK ;
+   f rb args outs VDSTACK-CK ;
 
 \ ---- what the acceptance is bound to -----------------------------------------
 : STATE-CK ( -- )
@@ -1281,7 +1384,7 @@ create V-TMP SETC cells allot
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
-: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq n -- IR-ID:ir-block-id )
+: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq n -- IR-ID:ir-fun-id )
    {: m:IR-BUILD:module pool:A64EFF:gprs
       args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    ST-NONE ST !
@@ -1295,7 +1398,7 @@ create V-TMP SETC cells allot
    f RET-ORD {: rb:n :}
    f BLOCK-COUNT 1 <> if
       f rb args outs frame MB-VERIFY
-      f rb BLOCK-AT exit
+      f exit
    then
    f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk MEASURE
@@ -1311,7 +1414,7 @@ create V-TMP SETC cells allot
    bk args outs DSTACK-CK
    bk frame FRAME-CK
    bk FLOW-CK
-   bk ;
+   f ;
 
 public
 
@@ -1349,8 +1452,9 @@ public
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
    t A64EFF:T-CALL A64EFF:TRAITS-HAS? if 1 else 0 then V-CALLS !
-   pool gi gr size WALK {: bk:IR-ID:ir-block-id :}
-   bk
+   t A64FRAME:SPILL-BASE V-BASE !
+   pool gi gr size WALK {: f:IR-ID:ir-fun-id :}
+   f
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    SLOT-CK
    A64RA:GEN A-GEN !

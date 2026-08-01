@@ -740,6 +740,103 @@ $EB00001F constant CMP-FORM          \ Subs xzr, rn, rm - what a Cmp is
    NFIX:BINDING [: FACT-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 3628800 T= 1 T= 3628800 T= 0 T= 5 T= ;
 
+\ ---- a definition that does not fit in its registers -------------------------
+\ The same run over a routine of more than one block whose values do not all fit
+\ in the pool it is given. Three locals are read on both sides of a branch and
+\ three registers also have to hold what the body computes, so the allocator puts
+\ the locals in the routine's own frame - and each store it plans belongs in the
+\ block that COMPUTES the value while each load belongs in the block that reads
+\ it back, which is what a plan row naming its block is for. Before that landed
+\ this definition was refused outright, whatever frame it declared.
+\
+\ WHY THE LOCALS ARE THE VALUES THAT SPILL AND THE SUM IS NOT. A value the
+\ compile-time vector holds at an `if` is handed to the join as a block argument,
+\ so the sum and the arm's answer are one class of several values across an edge
+\ - and a class of more than one value would write one frame slot more than once,
+\ which the validator refuses by name. A LOCAL is not on that vector: it is read
+\ in the join by dominance, so it is a class of one and may go into a slot.
+\
+\ WHAT IT PROVES BEYOND COMPILING. The answer is compared with the interpreted
+\ word on two inputs, so a store or a load placed in the wrong block gives a
+\ different number rather than a different instruction count - and the spill
+\ count is asserted too, because a run that produced the right answer without
+\ spilling anything would be measuring nothing at all.
+: SRC12 ( -- ptr u8 n )
+   s" : NCH-SPILL ( n n n -- n ) {: a:n b:n c:n :} a b + c + 0 a < if 1+ then a + b + c + ;" ;
+
+3 constant TIGHT-REGS                \ fewer than the definition below needs
+3 constant TIGHT-SLOTS               \ frame slots declared for the ones that do not fit
+
+: RECORD12 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC12 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: ELABORATE12 ( IR-ARENA:arena IR-ARENA:arena -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   CC BB TAPE p r 3 1 NELAB:COLON drop ;
+
+: SPILL-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD12
+   p r ELABORATE12
+   CC BB TXT TEXT-LEN 0 TIGHT-REGS 3 1 TIGHT-SLOTS NFIX:RUN-HABU-SPILL
+   NFIX:SPILLED
+   NRUN:PUBLISH {: fn:n :}
+   2 3 4 fn NRUN:ENTER3
+   s" 2 3 4 NCH-SPILL" EV-N ;
+
+: SPILL-CASE ( -- )
+   s" a definition whose values do not fit in its registers spills and runs"
+   T-LABEL
+   NFIX:BINDING [: SPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   19 T= 19 T= 3 T= ;
+
+\ ---- a definition that calls itself AND does not fit -------------------------
+\ The one shape that exercises both owners of a routine's frame at once. A
+\ calling routine already keeps its caller's return address in the bottom slot of
+\ its own frame, and here the register allocator has to put a value away as well
+\ - so the two claims are on one frame and the layout in
+\ src/compiler/native/frame.f is what keeps them apart: the link slot first, the
+\ allocator's slots above it, both derived from the contract's own trait. A
+\ spilled value on top of the return address returns to its own data rather than
+\ to its caller, and this case is what would find that.
+: SRC13 ( -- ptr u8 n )
+   s" : NCH-RSPILL ( n -- n ) {: a:n :} a 1 + a 2 + a 3 + a 4 + + + + 1 a < if a 1- RECURSE + then ;" ;
+
+1 constant RSPILL-SLOTS              \ one slot above the link slot
+4 constant RSPILL-REGS               \ fewer than the definition above needs
+
+: RECORD13 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC13 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: RSPILL-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD13
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 RSPILL-REGS 1 1 RSPILL-SLOTS NFIX:RUN-HABU-CALL-SPILL
+   NFIX:SPILLED
+   NRUN:PUBLISH {: fn:n :}
+   1 fn NRUN:ENTER1
+   3 fn NRUN:ENTER1
+   s" 3 NCH-RSPILL" EV-N ;
+
+: RSPILL-CASE ( -- )
+   s" a definition that calls itself and does not fit spills above the link slot"
+   T-LABEL
+   NFIX:BINDING [: RSPILL-BODY ;] IR-CTX:WITH-CONTEXT
+   54 T= 54 T= 14 T= 1 T= ;
+
 \ ---- the two comparisons that must NOT fuse ----------------------------------
 \ Fusing a comparison into the branch below it is only legal when the branch is
 \ the comparison's ONLY reader. These two cases are the other side of that rule,
@@ -901,6 +998,8 @@ public
    FACT-CASE
    ISLT-CASE
    LTKEEP-CASE
+   SPILL-CASE
+   RSPILL-CASE
    AGREE-CASES
    T-REPORT ;
 

@@ -4264,3 +4264,68 @@ is reported as the nested one. When a quotation opener is rejected for no
 visible reason, look for an unbalanced or nested quotation in something already
 loaded, not in the file being read. Factor the inner quotation into a named
 word; nothing else changes.
+
+## A spill in a routine that branches is a whole CLASS, not a value at a point
+
+The straight-line allocator takes one value's register away at one operation and
+leaves the value in its register everywhere before that. Carrying that decision
+across blocks looked like an anchoring problem - give the plan row a block and
+the store goes in the right place - and the anchoring is the smallest part of
+it. A store has to have happened on EVERY path that can reach a load of that
+slot, and "the operation where the register was taken" is a point on one path.
+What makes it right without a dataflow pass is the structure the multi-block
+half already has: a CLASS is what holds a register, so a class is what loses
+one. Every member's own definition stores into the class's one slot and every
+read of a member loads it back, and the class invariant - no two members are
+live at the same instant - is exactly what makes one slot hold the right value
+at every read, for the same reason it makes one register hold it.
+
+The price is that a class of more than one value writes its slot more than once,
+which the validator's "a slot is written once" refuses; so this only spills
+classes of one until that rule is generalised. Writing the restriction down was
+worth more than working around it: the rule it rests on is the rule that makes a
+reload's value decidable from one module.
+
+## The frame is one region and it needs one owner, or two passes agree by luck
+
+The selector wrote the caller's return address into slot zero of a calling
+routine's frame; the register allocator handed out spill slots from offset zero
+upward. Both were right on their own and the collision could not happen only
+because a third rule - a routine of more than one block could not spill at all -
+kept them apart. That is not a design, it is a coincidence with a guard, and the
+validator's "no slot is written twice" was catching it under a name that says
+nothing about ownership.
+
+The fix is one file that answers where things go from the CONTRACT's own trait
+(`src/compiler/native/frame.f`), read by the selector, the allocator and the
+validator. What made it load-bearing rather than tidy was giving the validator a
+clause of its own - the prologue's access names the link slot and no other
+access may, and every other access names a slot at or above the base - and then
+mutating the allocator to start at zero: it now dies as E-A64RAV-OWNER, where
+before it died as a slot-sharing error two layers away from the cause.
+
+## A frame access may not land inside a data-stack run
+
+A routine's entry sequence, its exit sequence and each call site are contiguous
+runs of data-stack operations, and the validator measures each of them as a
+shape - the take at this position, the loads at the next ones, in order. A spill
+store anchored "right after the definition" lands inside the entry run whenever
+the value it stores is an argument the routine just read, and the shape check
+then fails several layers from the anchor that broke it (E-A64RAV-DSTACK about a
+misplaced adjustment). The store therefore goes in front of the first operation
+after the definition that does NOT touch the caller's stack, and a value a
+data-stack operation READS is not spilled at all - which is also why a value
+live across a call stays in a register: the call site already puts it on the
+data stack.
+
+## Compiling a definition that spills holds three modules in one context
+
+The context mapping was sized for two modules of the machine dialect, because
+the spill lowering reads one and builds another. A real compilation adds the
+source module the elaborator filled, which is still live: the whole run is one
+context. A recursive definition that spills does not fit 128K, and the symptom
+is E-IR-CTX-SCRATCH in a fixture that has nothing to do with arenas. Raising the
+mapping moves three pinned literals in test/compiler/ir-storage-schema.f, the
+capacity pin in test/compiler/ir-context.f, and `map_bytes` plus the arena
+ceiling finding in formal/Common/Storage.v - the pinned-capacity row is what
+makes forgetting any of them fail.

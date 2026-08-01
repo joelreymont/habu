@@ -11,17 +11,16 @@
 \ TWO PATHS, AND WHY. A routine of ONE block has one operation order, so a
 \ position is an index into it, a value's live range is the single stretch from
 \ its definition to its last use, and two values interfere exactly when those
-\ stretches overlap. That is the first half of this file, and it can spill. A
-\ routine of MORE than one block has neither: its operations have no order until
-\ one is chosen, and a value can be live down one arm of a branch and dead down
-\ the other. The second half of this file - ALLOCATING ACROSS BLOCKS, below - is
-\ the general rule: a linear block order with global positions, liveness by
-\ backward dataflow over the successor edges, one contiguous hull interval per
-\ value, and one register per block-argument class. It does not spill yet, and
-\ refuses by name rather than allocating wrongly. The two are kept apart on
-\ purpose: a routine that could always be allocated keeps being allocated exactly
-\ as it was, and the day the general path can anchor a spill decision to a block
-\ is the day the first half is retired.
+\ stretches overlap. That is the first half of this file. A routine of MORE than
+\ one block has neither: its operations have no order until one is chosen, and a
+\ value can be live down one arm of a branch and dead down the other. The second
+\ half of this file - ALLOCATING ACROSS BLOCKS, below - is the general rule: a
+\ linear block order with global positions, liveness by backward dataflow over
+\ the successor edges, one contiguous hull interval per value, and one register
+\ per block-argument class. BOTH paths spill now; what a spill decision means is
+\ not the same on the two, and the section below says exactly how. The two are
+\ kept apart on purpose: a routine that could always be allocated keeps being
+\ allocated exactly as it was.
 \
 \ THE READ-THEN-WRITE BOUNDARY. One operation reads its operands and then writes
 \ its results, so a value whose last use is operation i and a value defined by
@@ -88,10 +87,9 @@
 \ this pass revalidates it. A reserved register is out of reach here by
 \ construction rather than by a check that could be forgotten.
 \
-\ RUNNING OUT OF REGISTERS IS A DECISION, NOT A REFUSAL. A straight-line block
-\ can hold more values at once than any register file has - a long chain of
-\ literals proves it - so the bound cannot be proved away and spilling is the
-\ answer. A spill is a store into a slot of the routine's own frame and a load
+\ RUNNING OUT OF REGISTERS IS A DECISION, NOT A REFUSAL. A block can hold more
+\ values at once than any register file has - a long chain of literals proves it
+\ - so the bound cannot be proved away and spilling is the answer. A spill is a store into a slot of the routine's own frame and a load
 \ back out of it, and the A64IR dialect has both, so this pass decides where they
 \ go instead of refusing the program. Two refusals are left, and neither is
 \ register pressure: E-A64RA-PRESSURE is now only the routine's declared frame
@@ -181,6 +179,7 @@ require src/compiler/ir/op.f
 require src/compiler/ir/fun.f
 require src/compiler/ir/build.f
 require src/compiler/native/a64ir.f
+require src/compiler/native/frame.f
 require src/compiler/native/frozen.f
 
 package A64RA
@@ -222,6 +221,15 @@ A64EFF:FILE-SIZE constant REGS-N
 \ The position of a block argument: before every operation of the block.
 -1 constant ENTRY
 
+\ The three attribute keys that say an operation reaches the CALLER's data stack:
+\ a slot of it, how far the pointer moves, and how far a call takes it back. An
+\ operation carrying one of them belongs to a fixed sequence - the routine's own
+\ entry or exit, or a call site - and nothing may be placed inside one.
+3 constant DKEYS-N
+0 constant DK-SLOT
+1 constant DK-BYTES
+2 constant DK-BACK
+
 \ Nothing holds this register.
 -1 constant NOBODY
 
@@ -253,6 +261,8 @@ variable N-SLOTS
 0 N-SLOTS !
 variable FRAME-N
 0 FRAME-N !
+variable BASE-N                      \ the first frame byte this walk may use
+0 BASE-N !
 variable RL-N
 0 RL-N !
 variable ARGS-N
@@ -265,6 +275,7 @@ variable OUTS-N
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
+DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
@@ -282,6 +293,7 @@ create O-REG FIXED-MAX cells allot
 create R-HOLD REGS-N cells allot
 create R-PIN REGS-N cells allot
 create R-RL REGS-N cells allot
+create PL-BLK PLMAX cells allot
 create PL-POS PLMAX cells allot
 create PL-KIND PLMAX cells allot
 create PL-VAL PLMAX cells allot
@@ -345,10 +357,18 @@ create PL-VAL PLMAX cells allot
 \ ---- the spill plan ----------------------------------------------------------
 \ One row per operation the lowering pass has to insert, in the order the walk
 \ decided them, each anchored to the operation it goes in front of.
-: PLAN+ ( n n n -- )
-   {: kind:n pos:n k:n :}
+\
+\ AN ANCHOR IS A BLOCK AND A POSITION INSIDE IT. A routine of one block needs
+\ only the position, because there is one operation order and an index into it
+\ names one operation. With more than one block a position names one operation
+\ per block, so the row has to carry the block as well or the lowering pass puts
+\ the store in whichever block its cursor happened to reach. The straight-line
+\ walk writes block zero into every row, which is the block it allocates.
+: PLAN+ ( n n n n -- )
+   {: blk:n kind:n pos:n k:n :}
    N-PLAN @ {: j:n :}
    j PLMAX >= if E-A64RA-CAP throw then
+   blk j cells PL-BLK + !
    pos j cells PL-POS + !
    kind j cells PL-KIND + !
    k j cells PL-VAL + !
@@ -357,11 +377,12 @@ create PL-VAL PLMAX cells allot
 \ Is this value already being reloaded in front of this operation? One reload
 \ serves every read of one value by one operation, so an operation that reads a
 \ spilled value twice takes one register for it and not two.
-: RELOADED? ( n n -- bool )
-   {: k:n pos:n :}
+: RELOADED? ( n n n -- bool )
+   {: blk:n k:n pos:n :}
    false
    N-PLAN @ 0 ?do
       i cells PL-KIND + @ P-RELOAD =
+      i cells PL-BLK + @ blk = and
       i cells PL-POS + @ pos = and
       i cells PL-VAL + @ k = and
       if drop true leave then
@@ -401,6 +422,24 @@ create PL-VAL PLMAX cells allot
       id i TIE-RESULT-AT rs = if
          drop id i TIE-OPERAND-AT leave
       then
+   loop ;
+
+\ ---- what an operation says about the caller's data stack --------------------
+\ A routine reaches the caller's stack in fixed sequences - the entry run that
+\ reads its arguments, the exit run that publishes its results, and the store and
+\ load runs a call site is made of - and every one of those is checked as a
+\ contiguous shape by src/compiler/native/regalloc-verify.f. So nothing may be
+\ placed INSIDE one, and this walk has to know which operations they are. It asks
+\ the same way that validator does: by the attribute keys the dialect declares
+\ for that region, never by an opcode name.
+: DSTACK-TOUCH? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   false
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT {: key:IR-ID:ir-symbol-id :}
+      DKEYS-N 0 ?do
+         key i BND-DKEY @ SAME-SYM? if drop true leave then
+      loop
    loop ;
 
 \ ---- the two value classes this dialect has ----------------------------------
@@ -656,8 +695,15 @@ create PL-VAL PLMAX cells allot
 \ The next slot of the routine's frame. Slots are handed out in order and never
 \ handed out twice, so no two values ever share one; a frame with no room for the
 \ next slot is what is left of register pressure as a refusal.
+\
+\ THEY START ABOVE WHAT THE PROLOGUE OWNS. A routine that calls keeps its
+\ caller's return address in the bottom slot of its own frame, and
+\ src/compiler/native/frame.f is the one place that says so; this walk asks it
+\ where its own slots may begin rather than assuming the frame is empty. That is
+\ what makes a routine that both calls and spills one frame with one layout
+\ instead of two passes agreeing by luck.
 : NEW-SLOT ( -- n )
-   N-SLOTS @ A64IR:SLOT-WIDTH * {: off:n :}
+   BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + {: off:n :}
    off A64IR:SLOT-WIDTH + FRAME-N @ > if E-A64RA-PRESSURE throw then
    N-SLOTS @ 1+ N-SLOTS !
    off ;
@@ -670,7 +716,7 @@ create PL-VAL PLMAX cells allot
    {: r:n pos:n :}
    r HOLD-AT {: k:n :}
    NEW-SLOT k SLOT!
-   P-STORE pos 0 max k PLAN+
+   0 P-STORE pos 0 max k PLAN+
    NOBODY r HOLD! ;
 
 : GRAB ( n n -- n )
@@ -783,9 +829,9 @@ create PL-VAL PLMAX cells allot
    id OPERANDS-OF {: n:n :}
    n 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
-      k SLOT-AT NOSLOT <> k pos RELOADED? 0= and if
+      k SLOT-AT NOSLOT <>  0 k pos RELOADED? 0=  and if
          pos pos GRAB {: r:n :}
-         P-RELOAD pos k PLAN+
+         0 P-RELOAD pos k PLAN+
          k r HOLD!
          r k REG!
          r PIN!
@@ -818,7 +864,7 @@ create PL-VAL PLMAX cells allot
    OUTS-N @ 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
       k REG-AT  i cells O-REG + @  <> if
-         P-MOVE  N-OPS @ 1-  k  PLAN+
+         0 P-MOVE  N-OPS @ 1-  k  PLAN+
       then
    loop ;
 
@@ -939,22 +985,44 @@ create PL-VAL PLMAX cells allot
 \ compete for the same class, instead of taking them in module order, is dot
 \ habu-choose-between-competing-ecc61e5c.
 \
-\ WHAT THIS PATH DOES NOT DO, AND SAYS SO. It does not spill. A spill decision is
-\ anchored to an operation POSITION, and with more than one block a position has
-\ to name a block as well before the lowering pass can put the store in the right
-\ one. So a routine of more than one block whose classes do not fit the pool is
-\ refused by name with E-A64RA-SPILL rather than given an allocation that is
-\ wrong (dot habu-refuse-or-lower-7d9cbf1f). It does not honour a calling
-\ convention that names REGISTERS either: pre-colouring an argument and planning
-\ a move in front of the return are both anchored to one block, and the Habu word
-\ convention this chain compiles for names data-stack slots on both sides, so a
-\ register place on a routine of more than one block is E-A64RA-FIXED.
+\ SIX. SPILLING A WHOLE CLASS. A class is what holds a register here, so a class
+\ is what loses one: when the pool runs short at a position, one class goes into
+\ a frame slot for the whole of its life, its definition is followed by a store
+\ and every read of it is preceded by a load. That is not the straight-line
+\ path's decision, which takes ONE value's register away at ONE point and leaves
+\ the value in its register before it; the difference is what a class is for -
+\ every member of one class is one register, so it is also one slot. A plan row
+\ carries the BLOCK its operation is in as well as the position, because with
+\ more than one block an index alone names one operation per block and a store
+\ would land in whichever the lowering pass reached first.
 \
-\ WHY THE STRAIGHT-LINE PATH IS STILL HERE. It is the same rule with the liveness
-\ answered by the operation order alone, and it can spill. Retiring it means
-\ giving this path the spill anchoring, which is the dot above; until then the
-\ two are kept apart deliberately, so that a routine that could always be
-\ allocated keeps being allocated exactly as it was.
+\ WHICH CLASS, AND WHAT THIS PATH STILL REFUSES. The class taken is the one whose
+\ next read is furthest away in the global order - the straight-line cost rule,
+\ stated over the whole linear order rather than one block's - among the classes
+\ holding a register that the failing position does not itself touch. Three kinds
+\ of class are not candidates at all and each has its own reason, written where
+\ MB-SPILLABLE? decides it: a class of more than one value would write one slot
+\ more than once, a block argument would mean rewriting a block's interface, and
+\ a value defined or read outside the entry and exit blocks would put a frame
+\ access where the memory order cannot be stated. A position where nothing can be
+\ taken is E-A64RA-SPILL; a position where every register holds something that
+\ position itself needs is E-A64RA-POOL; a frame with no room for the next slot
+\ is E-A64RA-PRESSURE, the same wall the straight-line path hits. This path still
+\ does not honour a calling convention that names REGISTERS: pre-colouring an
+\ argument and planning a move in front of the return are both anchored to one
+\ block, and the Habu word convention this chain compiles for names data-stack
+\ slots on both sides, so a register place on a routine of more than one block is
+\ E-A64RA-FIXED.
+\
+\ WHY THE STRAIGHT-LINE PATH IS STILL HERE. The block anchoring it was waiting
+\ for has landed, and it is still not enough to retire it: that path honours a
+\ convention that names registers, it splits one value's live range at the point
+\ its register is taken instead of putting the whole class away, and it will
+\ spill a value an edge or a schema tie ties to another. Retiring it means giving
+\ this path all three (dots habu-spill-a-class-f712088d and
+\ habu-spill-from-a-4145325c for two of them); until then the two are kept apart
+\ deliberately, so that a routine that could always be allocated keeps being
+\ allocated exactly as it was.
 
 \ ---- the sets ----------------------------------------------------------------
 \ Four bitsets per block over the module's values, in one array so the accessors
@@ -978,6 +1046,10 @@ variable MB-AT
 0 MB-AT !
 variable CHANGED
 0 CHANGED !
+variable SHORT-AT                    \ the position the scan ran short at, or -1
+-1 SHORT-AT !
+variable RET-B                       \ the block control leaves the routine through
+0 RET-B !
 
 create B-ST BMAX cells allot
 create B-EN BMAX cells allot
@@ -986,6 +1058,11 @@ create TMPSET SETC cells allot
 create UF VMAX cells allot
 create CL-LO VMAX cells allot
 create CL-HI VMAX cells allot
+create CL-SLOT VMAX cells allot      \ the frame slot a spilled class went into
+create CL-DEF VMAX cells allot       \ where a spilled class is written
+create CL-ANCH VMAX cells allot      \ where the store that puts it away stands
+create CL-SIZE VMAX cells allot      \ how many values one class holds
+create CL-KEEP VMAX cells allot      \ whether this class must stay in a register
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
 : BIT-MASK ( n -- n )    SET-BITS mod 1 swap lshift ;
@@ -1359,6 +1436,176 @@ create CL-HI VMAX cells allot
       loop
    loop ;
 
+\ ---- which class may be put in the frame --------------------------------------
+\ Everything below decides ONE thing: when the pool runs short, which class goes
+\ into a frame slot. Four things disqualify a class, and each of them is a rule
+\ this pass would otherwise have to break.
+\
+\ A CLASS OF MORE THAN ONE VALUE would write one slot more than once - every
+\ member's own definition would have to store into it - and "a slot is written
+\ once" is how src/compiler/native/regalloc-verify.f decides what a reload reads.
+\ Generalising that rule across a routine that branches is dot
+\ habu-spill-a-class-f712088d; until it lands, one value per slot.
+\
+\ A BLOCK ARGUMENT is handed over by a branch, so taking it out of a register
+\ would mean changing the interface of a block the lowering pass copies as it
+\ stands - and the values feeding it across every edge with it.
+\
+\ A MEMORY TOKEN lives in no register, so there is nothing to take away.
+\
+\ A VALUE A DATA-STACK OPERATION READS. Those operations stand in contiguous runs
+\ - the routine's entry and exit sequences and the two halves of a call site -
+\ and a load in front of one would be an operation inside a run the validator
+\ measures as a shape. The value a routine publishes and every value live across
+\ a call are read that way, so they stay in registers; a value a data-stack
+\ operation DEFINES is fine, because its store is anchored after the run rather
+\ than inside it.
+\
+\ A VALUE DEFINED OR READ OUTSIDE TWO BLOCKS. The frame forms thread a memory
+\ order, and that order has to be read exactly once on every run: two blocks that
+\ both reach the frame, where one can be reached from the other, are two readers
+\ of one order on one path. The pair of blocks that never has that problem is the
+\ one the prologue already uses - the block the caller enters and the block
+\ control leaves through. The first dominates the second, and every run passes
+\ through both in that order, so their frame accesses read in that order are the
+\ order every run makes them in. A store or a load anywhere else is refused
+\ rather than placed where the order cannot be stated (dot
+\ habu-spill-from-a-4145325c).
+: KEEP! ( n -- )
+   UF-FIND {: r:n :}
+   1 r cells CL-KEEP + ! ;
+
+: KEEP? ( n -- bool )
+   cells CL-KEEP + @ 0<> ;
+
+: MB-KIND-CLEAR ( -- )
+   VMAX 0 ?do
+      NOSLOT i cells CL-SLOT + !
+      -1 i cells CL-DEF + !
+      -1 i cells CL-ANCH + !
+      0 i cells CL-SIZE + !
+      0 i cells CL-KEEP + !
+   loop ;
+
+: MB-SIZES ( -- )
+   N-VALS @ 0 ?do
+      i UF-FIND {: r:n :}
+      r cells CL-SIZE + @ 1+  r cells CL-SIZE + !
+   loop ;
+
+: MB-KEEP-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do id i OPERAND-AT SLOT KEEP! loop
+   id RESULTS-OF 0 ?do  id i RESULT-AT  SLOT KEEP! loop ;
+
+: MB-KEEP-READS ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do id i OPERAND-AT SLOT KEEP! loop ;
+
+: MB-KEEP-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do bk i ARG-AT SLOT KEEP! loop
+   b 0= b RET-B @ = or 0= if
+      bk OP-COUNT 0 ?do bk i OP-AT MB-KEEP-OP loop
+      exit
+   then
+   bk OP-COUNT 0 ?do
+      bk i OP-AT {: id:IR-ID:ir-op-id :}
+      id DSTACK-TOUCH? if id MB-KEEP-READS then
+   loop ;
+
+: MB-SPILLABLE? ( n -- bool )
+   {: r:n :}
+   r cells CL-SLOT + @ NOSLOT <> if false exit then
+   r cells CL-SIZE + @ 1 <> if false exit then
+   r KEEP? if false exit then
+   r CLS-AT C-TOKEN = if false exit then
+   true ;
+
+\ ---- reading the linear order backwards --------------------------------------
+\ The layout gave every block one position for its arguments and one per
+\ operation, so a global position names a block and, unless it is the block's
+\ own first position, one operation of it.
+: POS-BLOCK ( n -- n )
+   {: p:n :}
+   -1
+   N-BLKS @ 0 ?do
+      p i cells B-ST + @ >=  p i cells B-EN + @ <=  and if drop i leave then
+   loop
+   dup 0 < if E-A64RA-SHAPE throw then ;
+
+: POS-OP? ( n -- bool )
+   {: p:n :}
+   p POS-BLOCK cells B-ST + @ p <> ;
+
+: POS-OP ( IR-ID:ir-fun-id n -- IR-ID:ir-op-id )
+   {: f:IR-ID:ir-fun-id p:n :}
+   p POS-BLOCK {: b:n :}
+   f b BLOCK-AT  p  b cells B-ST + @ -  1-  OP-AT ;
+
+: MB-READS? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   p POS-OP? 0= if false exit then
+   f p POS-OP {: id:IR-ID:ir-op-id :}
+   false
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT UF-FIND r = if drop true leave then
+   loop ;
+
+: MB-DEFS? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   p POS-OP? 0= if false exit then
+   f p POS-OP {: id:IR-ID:ir-op-id :}
+   false
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT UF-FIND r = if drop true leave then
+   loop ;
+
+: MB-TOUCHES? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   f r p MB-READS? if true exit then
+   f r p MB-DEFS? ;
+
+\ The position of the first operation at or after `from` that reads a member of
+\ this class. A class nothing reads again answers the position past the last one,
+\ so furthest-next-use puts the classes nobody wants last without a second rule
+\ for them - the same statement the straight-line scan makes over one block's
+\ operation order, made here over the whole linear order.
+: MB-NEXT-USE ( IR-ID:ir-fun-id n n -- n )
+   {: f:IR-ID:ir-fun-id r:n from:n :}
+   MB-AT @ {: n:n :}
+   n
+   n from 0 max ?do
+      f r i MB-READS? if drop i leave then
+   loop ;
+
+\ The operation a store for a value written here is anchored to, as a position of
+\ the linear order. It is the first operation after the definition that is not
+\ part of a data-stack run - see the plan section below for why - and it is
+\ computed here as well because the scan has to know how long the register the
+\ definition wrote is still needed.
+: MB-ANCHOR ( IR-ID:ir-block-id n -- n )
+   {: bk:IR-ID:ir-block-id at:n :}
+   bk OP-COUNT {: n:n :}
+   n
+   n at 1+ ?do
+      bk i OP-AT DSTACK-TOUCH? 0= if drop i leave then
+   loop ;
+
+: MB-DEF-POS ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id r:n :}
+   -1
+   MB-AT @ 0 ?do
+      f r i MB-DEFS? if drop i leave then
+   loop ;
+
+: MB-ANCH-POS ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id p:n :}
+   p POS-BLOCK {: b:n :}
+   f b BLOCK-AT  p  b cells B-ST + @ -  1-  MB-ANCHOR {: k:n :}
+   b k OP-POS ;
+
 \ ---- the scan ----------------------------------------------------------------
 : MB-EXPIRE1 ( n n -- )
    {: r:n limit:n :}
@@ -1370,40 +1617,259 @@ create CL-HI VMAX cells allot
    {: limit:n :}
    REGS-N 0 ?do i limit MB-EXPIRE1 loop ;
 
+: MB-FREE-N ( -- n )
+   0
+   REGS-N 0 ?do
+      i POOL-HAS? i HOLD-AT NOBODY = and if 1+ then
+   loop ;
+
+\ Does a class already in the frame need a register at this position? Two ways it
+\ can: an operation that reads it needs the load in front of it, and the register
+\ the operation that DEFINES it wrote is held until the store takes it away -
+\ which is not the next position when the definition is inside a data-stack run,
+\ because a store may not go inside one. Counting that stretch is what makes this
+\ scan a statement about the module the lowering pass will build rather than
+\ about the one it is reading.
+\
+\ THE STRETCH STOPS SHORT OF THE ANCHOR ITSELF. Everything at one anchor is
+\ emitted in one order: the stores the operations before it earned, then the
+\ loads this operation needs, then the operation. So at the anchor the pending
+\ stores have already given their registers back before a load or a result asks
+\ for one, and the instant they are all held at once is the position BEFORE it -
+\ which is inside the stretch and is where this count measures them.
+: MB-BUSY? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   p  r cells CL-DEF + @  >=   p  r cells CL-ANCH + @  <  and if true exit then
+   f r p MB-READS? ;
+
+: MB-TRANS-N ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id p:n :}
+   0
+   N-VALS @ 0 ?do
+      i UF-FIND i =  i cells CL-SLOT + @ NOSLOT <>  and if
+         f i p MB-BUSY? if 1+ then
+      then
+   loop ;
+
+: MB-SHORT! ( n -- )
+   {: p:n :}
+   SHORT-AT @ 0 < if p SHORT-AT ! then ;
+
 : MB-PLACE1 ( n n -- )
    {: r:n pos:n :}
    r cells CL-LO + @ pos <> if exit then
    r CLS-AT C-TOKEN = if exit then
+   r cells CL-SLOT + @ NOSLOT <> if exit then
    FREE-REG {: g:n :}
-   g 0 < if E-A64RA-SPILL throw then
+   g 0 < if pos MB-SHORT! exit then
    r g TAKE ;
 
-: MB-STEP ( n -- )
-   {: pos:n :}
+: MB-STEP ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id pos:n :}
    pos 1+ MB-EXPIRE
    N-VALS @ 0 ?do
       i UF-FIND i = if i pos MB-PLACE1 then
+   loop
+   SHORT-AT @ 0 >= if exit then
+   f pos MB-TRANS-N  MB-FREE-N > if pos MB-SHORT! then ;
+
+: MB-SCAN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   -1 SHORT-AT !
+   REGS-N 0 ?do NOBODY i HOLD! loop
+   MB-AT @ 0 ?do
+      SHORT-AT @ 0 < if f i MB-STEP then
    loop ;
 
-: MB-SCAN ( -- )
-   MB-AT @ 0 ?do i MB-STEP loop ;
+\ ---- taking a class out of the registers -------------------------------------
+: MB-HELD? ( n -- bool )
+   {: r:n :}
+   false
+   REGS-N 0 ?do i HOLD-AT r = if drop true leave then loop ;
 
-\ Every value takes the register its class was given. A memory token is in no
-\ class that holds a register and takes none, exactly as it does on the
-\ straight-line path.
+\ A class the scan could take a register from here. It has to hold one, it has to
+\ be one this pass may put in the frame, and this position must not touch it: a
+\ class the operation here reads would need a load at once, which puts the same
+\ demand back.
+: MB-CANDIDATE? ( IR-ID:ir-fun-id n n -- bool )
+   {: f:IR-ID:ir-fun-id r:n p:n :}
+   r MB-HELD? 0= if false exit then
+   f r p MB-TOUCHES? if false exit then
+   r MB-SPILLABLE? ;
+
+\ How many classes hold a register here that this position does not touch. A
+\ position with none of them is the one register pressure no spill can serve:
+\ every register holds something the operation itself needs.
+: MB-SPARE-N ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id p:n :}
+   0
+   REGS-N 0 ?do
+      i HOLD-AT {: r:n :}
+      r NOBODY <> if
+         f r p MB-TOUCHES? 0= if 1+ then
+      then
+   loop ;
+
+: MB-FURTHEST ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id p:n :}
+   -1
+   REGS-N 0 ?do
+      i HOLD-AT {: r:n :}
+      r NOBODY <> if
+         f r p MB-CANDIDATE? if
+            f r p 1+ MB-NEXT-USE {: c:n :}
+            c over > if drop c then
+         then
+      then
+   loop ;
+
+\ The class that loses its registers: the one whose next read is furthest away,
+\ with the lowest register number breaking a tie, so one program always spills
+\ the same way and a fixture can assert which value went into the frame. When
+\ nothing can be taken the refusal says which of the two walls was hit - every
+\ register needed by this one operation, or nothing here that may go in a frame.
+: MB-VICTIM ( IR-ID:ir-fun-id n -- n )
+   {: f:IR-ID:ir-fun-id p:n :}
+   f p MB-FURTHEST {: want:n :}
+   want 0 < if
+      f p MB-SPARE-N 0= if E-A64RA-POOL throw then
+      E-A64RA-SPILL throw
+   then
+   -1
+   REGS-N 0 ?do
+      i HOLD-AT {: r:n :}
+      r NOBODY <> if
+         f r p MB-CANDIDATE? if
+            f r p 1+ MB-NEXT-USE want = if drop r leave then
+         then
+      then
+   loop
+   dup 0 < if E-A64RA-SPILL throw then ;
+
+: MB-EVICT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id p:n :}
+   f p MB-VICTIM {: r:n :}
+   NEW-SLOT r cells CL-SLOT + !
+   f r MB-DEF-POS {: d:n :}
+   d r cells CL-DEF + !
+   f d MB-ANCH-POS  r cells CL-ANCH + ! ;
+
+\ Scan, and when the pool ran short somewhere, put one class in the frame and
+\ scan again. Putting a class away only ever frees registers, so a later scan
+\ runs short no earlier than the one before it, and every round takes one more
+\ class - so this stops either when the whole routine fits or when there is no
+\ class left to take and the refusal above says why.
+: MB-FIT ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   begin
+      f MB-SCAN
+      SHORT-AT @ 0 <
+      dup 0= if drop f SHORT-AT @ MB-EVICT false then
+   until ;
+
+\ Every value takes the register its class was given, or the slot its class was
+\ given. A memory token is in no class that holds either and takes neither,
+\ exactly as it does on the straight-line path.
 : MB-FINISH ( -- )
    N-VALS @ 0 ?do
       i CLS-AT C-TOKEN = if
          NOBODY i REG!
       else
-         i UF-FIND REG-AT i REG!
+         i UF-FIND {: r:n :}
+         r cells CL-SLOT + @ {: s:n :}
+         s NOSLOT = if
+            r REG-AT i REG!
+         else
+            NOBODY i REG!
+            s i SLOT!
+         then
       then
    loop ;
+
+\ ---- the decisions, anchored to their blocks ---------------------------------
+\ A store goes in front of the first operation after the one that defines the
+\ value that is not part of a data-stack run. As early as that is right on every
+\ run - SSA puts a definition before every read of it, so a store there has
+\ happened before any load of that slot can be reached - and no earlier, because
+\ the entry sequence, the exit sequence and a call site are contiguous shapes the
+\ validator measures and an operation inside one breaks the shape. A load goes in
+\ front of each operation that reads the value, one per operation however many of
+\ its operands name it; the values a data-stack operation reads are not spilled
+\ at all, which is why a load never has to go inside a run. MB-ANCHOR above is
+\ the one statement of where a store goes; the scan reads it too, to know how
+\ long the register the definition wrote is still needed.
+: MB-PLAN-STORES ( IR-ID:ir-block-id n n n -- )
+   {: bk:IR-ID:ir-block-id b:n at:n d:n :}
+   bk d OP-AT {: id:IR-ID:ir-op-id :}
+   id RESULTS-OF 0 ?do
+      id i RESULT-AT SLOT {: k:n :}
+      k SLOT-AT NOSLOT <> if b P-STORE at k PLAN+ then
+   loop ;
+
+: MB-PLAN-LOADS ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id b:n at:n :}
+   bk at OP-AT {: id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do
+      id i OPERAND-AT SLOT {: k:n :}
+      k SLOT-AT NOSLOT <>  b k at RELOADED? 0=  and if
+         b P-RELOAD at k PLAN+
+      then
+   loop ;
+
+\ A value defined by an operation with no anchor behind it inside its own block -
+\ the terminator, or the last of a data-stack run that reaches the terminator -
+\ has nowhere for its store. No terminator of this dialect answers a value and no
+\ data-stack run reaches one, so this is fail-closed rather than reachable.
+: MB-PLAN-TAIL-CK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT {: n:n :}
+   n 0 ?do
+      bk i MB-ANCHOR n = if
+         bk i OP-AT {: id:IR-ID:ir-op-id :}
+         id RESULTS-OF 0 ?do
+            id i RESULT-AT SLOT SLOT-AT NOSLOT <> if E-A64RA-SPILL throw then
+         loop
+      then
+   loop ;
+
+: MB-PLAN-BLOCK ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      i {: at:n :}
+      at 0 ?do
+         bk i MB-ANCHOR at = if bk b at i MB-PLAN-STORES then
+      loop
+      bk b at MB-PLAN-LOADS
+   loop
+   bk MB-PLAN-TAIL-CK ;
+
+\ The rows in the order the lowering pass reads them: blocks in the module's own
+\ order, operations in the block's, and at one operation the store the operation
+\ before it earned in front of the loads this one needs - so the register the
+\ store gives back is free for the load that follows it.
+: MB-PLAN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-BLKS @ 0 ?do f i MB-PLAN-BLOCK loop ;
+
+\ The ordinal of the block control leaves the routine through, which is where
+\ this half's frame accesses may stand beside the block the caller enters.
+: MB-RET-ORD ( IR-ID:ir-fun-id -- n )
+   {: f:IR-ID:ir-fun-id :}
+   -1
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT TERM-AT SUCCS-OF 0= if
+         dup 0 < 0= if E-A64RA-SHAPE throw then
+         drop i
+      then
+   loop
+   dup 0 < if E-A64RA-SHAPE throw then ;
 
 : MB-RUN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    ARGS-N @ 0<> OUTS-N @ 0<> or if E-A64RA-FIXED throw then
    f MB-LAYOUT
+   f MB-RET-ORD RET-B !
    f MB-LIVENESS
    UF-INIT
    f MB-RANGES
@@ -1411,8 +1877,12 @@ create CL-HI VMAX cells allot
    f MB-TIES
    f MB-COALESCE
    MB-CLASSES
-   MB-SCAN
-   MB-FINISH ;
+   MB-KIND-CLEAR
+   MB-SIZES
+   N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
+   f MB-FIT
+   MB-FINISH
+   f MB-PLAN ;
 
 \ ---- what one allocation run is told -----------------------------------------
 \ The straight-line subset is one function of one block; any other shape means
@@ -1455,7 +1925,7 @@ create CL-HI VMAX cells allot
       z:A64EFF:nzcv l:A64EFF:link ct:A64EFF:control t:A64EFF:traits
       size:n delta:n :}
    N-SLOTS @ 0 ?do
-      i A64IR:SLOT-WIDTH *  A64IR:SLOT-WIDTH
+      BASE-N @  i A64IR:SLOT-WIDTH *  +  A64IR:SLOT-WIDTH
       gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
       A64EFF:CHECK-SLOT
    loop ;
@@ -1515,6 +1985,9 @@ public
    c b A64IR:GPR-TYPE 0 BND-TYP !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:KEY-SLOT 0 BND-SLOT !
+   c b A64IR:KEY-DSLOT  DK-SLOT BND-DKEY !
+   c b A64IR:KEY-DBYTES DK-BYTES BND-DKEY !
+   c b A64IR:KEY-DBACK  DK-BACK BND-DKEY !
    c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !
    BOUND-YES BND-MODE ! ;
 
@@ -1528,15 +2001,16 @@ public
 \ routine that may destroy nothing allocates nothing; the walk seals a claim per
 \ value, which src/compiler/native/regalloc-verify.f then has to accept before
 \ anything may act on it.
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq n -- )
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq A64EFF:traits n -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs
-      args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
+      args:A64EFF:placeseq outs:A64EFF:placeseq traits:A64EFF:traits frame:n :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
    c TARGET-CK
    pool 0 S-POOL !
    frame FRAME-N !
+   traits A64FRAME:SPILL-BASE BASE-N !
    m VIEWS!
    m IR-BUILD:FMODULE 0 S-MOD !
    TABLES-CLEAR
@@ -1562,7 +2036,7 @@ public
       t:A64EFF:traits size:n delta:n :}
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
-   pool gi gr size WALK
+   pool gi gr t size WALK
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;
@@ -1594,8 +2068,10 @@ public
 : FRAME ( -- n )
    SEAL-CK FRAME-N @ ;
 
+\ How deep into the frame this walk reached: the prologue's own slots plus the
+\ ones it handed out, which is what a routine would have to declare to hold both.
 : FRAME-USED ( -- n )
-   SEAL-CK N-SLOTS @ A64IR:SLOT-WIDTH * ;
+   SEAL-CK BASE-N @  N-SLOTS @ A64IR:SLOT-WIDTH *  + ;
 
 : VALUES ( -- n )
    SEAL-CK N-VALS @ ;
@@ -1628,6 +2104,12 @@ public
 
 : PLAN-ORD-CK ( n -- n )
    dup 0 < over N-PLAN @ >= or if E-A64RA-CAP throw then ;
+
+\ The block the row's operation is in, and the operation's index inside it. Two
+\ readers rather than one number, because the lowering pass rebuilds one block at
+\ a time and asks both questions in different places.
+: PLAN-BLOCK@ ( n -- n )
+   SEAL-CK PLAN-ORD-CK cells PL-BLK + @ ;
 
 : PLAN-POS@ ( n -- n )
    SEAL-CK PLAN-ORD-CK cells PL-POS + @ ;

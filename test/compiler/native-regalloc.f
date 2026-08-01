@@ -72,10 +72,17 @@
 \ class one register per argument-carrying edge, the schema tie unioned into
 \ those classes, and the copies coalesced into them where the class invariant
 \ survives it. Each fixture asserts the exact register of every value and names,
-\ where it stands, the allocator edit that reddens it. The refusals are the two
-\ things this path does not do - it does not spill and it does not honour a
-\ register place - together with the class the edge rule cannot serve and the one
-\ edge shape only the validator refuses.
+\ where it stands, the allocator edit that reddens it.
+\
+\ AND WHAT A ROUTINE THAT BRANCHES DOES WHEN IT DOES NOT FIT. It spills, the way
+\ a straight-line one does, and the two fixtures for it assert the two halves
+\ separately: the plan - which value goes into the frame, and the BLOCK as well
+\ as the position of the store and of the load, because a row that named the
+\ position alone would put one of them in the wrong block - and the lowered
+\ module, which needs no further spill and is accepted. The refusals left are the
+\ two shapes this path still will not put in a frame, a routine with no frame to
+\ put anything in, a register place it does not honour, the class the edge rule
+\ cannot serve, and the one edge shape only the validator refuses.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so a case that builds a source module and a
@@ -1283,6 +1290,35 @@ create TXT
    ARG+ M-RET
    CLOSE-FUN ;
 
+\ Four literals made before any of them is read, handed on through a branch: all
+\ four are live where the fourth is written and a pool of three cannot hold them,
+\ so one goes into the frame. WHICH one is the cost rule read over the whole
+\ linear order - the first literal is the one read furthest away when the
+\ register runs out - and the value crossing the edge is not a candidate at all,
+\ because a class of more than one value would write one slot twice.
+\
+\ IT IS BUILT SO THE BLOCK COLUMN IS LOAD-BEARING. The store belongs in block
+\ zero at operation one and the load in block one at operation three, and block
+\ zero HAS an operation three. A lowering pass that matched a plan row on its
+\ position alone would therefore consume the load's row while it was still
+\ walking block zero and put the load there - which is why the two positions are
+\ what they are rather than whatever fell out.
+: BUILD-MB-CHAIN ( -- )
+   s" MBCHAIN" 0 1 OPEN-FUN
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $44 M-MOVZ {: d:IR-ID:ir-value-id :}
+   d 1 M-BR1
+   M-BLOCK+
+   ARG+ {: x:IR-ID:ir-value-id :}
+   a b M-ADD {: s1:IR-ID:ir-value-id :}
+   $55 M-MOVZ {: t:IR-ID:ir-value-id :}
+   s1 t M-ADD {: s2:IR-ID:ir-value-id :}
+   s2 c M-ADD {: s3:IR-ID:ir-value-id :}
+   s3 x M-ADD M-RET
+   CLOSE-FUN ;
+
 \ ---- what the multi-block fixtures assert ------------------------------------
 : MB-EDGE-BODY ( IR-CTX:ctx -- n n n n n )
    A64-MOD
@@ -1395,18 +1431,54 @@ create TXT
    WBND [: MB-LIVE-COPY-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 0 T= 1 T= 0 T= 4 T= ;
 
+\ What the walk decided for the branching shape, before anything was lowered: one
+\ value in the frame, two rows, and each row's BLOCK as well as its position - the
+\ store in block zero in front of the fourth literal, the load in block one in
+\ front of the sum that reads it.
+: MB-PLAN-BODY ( IR-CTX:ctx -- n n n n n n n n )
+   A64-MOD
+   BUILD-MB-CHAIN
+   M-FREEZE {: m0:IR-BUILD:module :}
+   CC m0 3 16 LEAF-FRAMED A64RA:ALLOCATE
+   A64RA:SPILLS
+   A64RA:PLAN-N
+   0 A64RA:PLAN-VALUE@
+   0 A64RA:PLAN-BLOCK@
+   0 A64RA:PLAN-POS@
+   1 A64RA:PLAN-VALUE@
+   1 A64RA:PLAN-BLOCK@
+   1 A64RA:PLAN-POS@ ;
+
+: MB-PLAN-CASE ( -- )
+   s" a spill decision in a routine that branches names the block it belongs in"
+   T-LABEL
+   WBND [: MB-PLAN-BODY ;] IR-CTX:WITH-CONTEXT
+   3 T= 1 T= 0 T= 1 T= 0 T= 0 T= 2 T= 1 T= ;
+
 \ ---- the multi-block refusals ------------------------------------------------
 : MB-EDGE-CLASH-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-MB-EDGE-CLASH
    4 M-ALLOCATE drop ;
 
-\ One register cannot hold the two literals the sum reads, and a routine of more
-\ than one block has no spill: a spill decision is anchored to a position and a
-\ position does not yet name its block.
+\ One register cannot hold the two literals the sum reads, so one of them goes
+\ into the frame - and this routine declares none, which is the same wall the
+\ straight-line path hits when its frame runs out of slots. The refusal that used
+\ to stand here was "a routine of more than one block cannot spill at all"; a
+\ plan row names its block now, so what is left is the frame.
 : MB-SPILL-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-MB-EDGE
+   1 M-ALLOCATE drop ;
+
+\ The same pressure over a loop, where every class holding a register is one an
+\ edge forced: the loop-carried accumulator and count each hold three values, so
+\ neither can go into a slot - one value per slot is what makes a reload's value
+\ decidable from the module alone. Nothing here can be put away, and that is the
+\ refusal E-A64RA-SPILL has narrowed to.
+: MB-CARRIED-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-MB-LOOP
    1 M-ALLOCATE drop ;
 
 \ A convention that names a register for the value this routine returns.
@@ -1495,6 +1567,31 @@ create TXT
    s" a block that does not fit is lowered and then allocates" T-LABEL
    WBND [: LOWER-BODY ;] IR-CTX:WITH-CONTEXT
    2 T= TFALSE 2 T= 1 T= 0 T= TFALSE TTRUE 16 T= 0 T= ;
+
+\ The same program through the whole route: lower the store and the load into
+\ operations of the blocks they belong to, allocate the module that holds them,
+\ and have the validator accept it. The second walk decides nothing, because it
+\ reads a module whose operations already are the ones the first walk assumed.
+\ Value zero of the lowered module is the memory order the reserve mints, value
+\ one is the literal that goes into the frame, and value ten is the register the
+\ load brings it back into.
+: MB-LOWER-BODY ( IR-CTX:ctx -- n n bool bool n n )
+   A64-MOD
+   SPILL-BIND
+   BUILD-MB-CHAIN
+   3 16 LOWERED drop
+   A64RA:SPILLS
+   A64RA:VALUES
+   A64RAV:ACCEPTED?
+   0 A64RAV:REGISTERED?
+   1 A64RAV:REG@
+   10 A64RAV:REG@ ;
+
+: MB-LOWER-CASE ( -- )
+   s" a routine that branches and does not fit is lowered and then allocates"
+   T-LABEL
+   WBND [: MB-LOWER-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 0 T= TFALSE TTRUE 14 T= 0 T= ;
 
 \ Which of two equally distant values loses its register. Both are read by the
 \ same operation, so the cost rule cannot separate them and the tie rule does:
@@ -1961,6 +2058,7 @@ create TXT
 : STALE ( -- )            WBND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-EDGE-CLASH ( -- )    WBND [: MB-EDGE-CLASH-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-SPILL ( -- )         WBND [: MB-SPILL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: MB-CARRIED ( -- )       WBND [: MB-CARRIED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-FIXED ( -- )         WBND [: MB-FIXED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-MULTI-ARG ( -- )     WBND [: MB-MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -2018,6 +2116,13 @@ create TXT
    [: UNLOWERED ;] E-A64RA-PLACE TTHROWSQ
    s" a side mixing register places with data-stack places is refused" T-LABEL
    [: MIXED-PLACE ;] E-A64RA-PLACE TTHROWSQ ;
+
+\ Its own group for the reason CROSS-REFUSE-CASE below has one: every refusing
+\ body abandons a context, and the live-arena registry gives those slots back
+\ only when the enclosing context leaves.
+: MB-CARRIED-REFUSE-CASE ( -- )
+   s" a routine whose only held classes are loop-carried is refused" T-LABEL
+   [: MB-CARRIED ;] E-A64RA-SPILL TTHROWSQ ;
 
 \ Its own group: each refusing body above abandons a context, and the live-arena
 \ registry gives those slots back only when the enclosing context leaves.
@@ -2103,8 +2208,8 @@ create TXT
 : MB-REFUSE-CASES ( -- )
    s" two values live at once forced into one class by an edge are refused" T-LABEL
    [: MB-EDGE-CLASH ;] E-A64RA-EDGE TTHROWSQ
-   s" a routine of more than one block that does not fit is refused" T-LABEL
-   [: MB-SPILL ;] E-A64RA-SPILL TTHROWSQ
+   s" a routine of more than one block with no frame to spill into is refused" T-LABEL
+   [: MB-SPILL ;] E-A64RA-PRESSURE TTHROWSQ
    s" a register place on a routine of more than one block is refused" T-LABEL
    [: MB-FIXED ;] E-A64RA-FIXED TTHROWSQ ;
 
@@ -2138,6 +2243,7 @@ create TXT
 : GROUP-ACCEPT ( IR-CTX:ctx -- )    drop ACCEPT-REFUSE-CASES ;
 : GROUP-STATE ( IR-CTX:ctx -- )     drop STATE-REFUSE-CASES ;
 : GROUP-MB ( IR-CTX:ctx -- )        drop MB-REFUSE-CASES ;
+: GROUP-MB-CARRIED ( IR-CTX:ctx -- ) drop MB-CARRIED-REFUSE-CASE ;
 : GROUP-MB-ACCEPT ( IR-CTX:ctx -- ) drop MB-ACCEPT-REFUSE-CASES ;
 
 public
@@ -2172,6 +2278,8 @@ public
    MB-TIE-CASE
    MB-COPY-CASE
    MB-LIVE-COPY-CASE
+   MB-PLAN-CASE
+   MB-LOWER-CASE
    RESERVED-CASES
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
@@ -2192,6 +2300,7 @@ public
    WBND [: GROUP-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-STATE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MB ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-MB-CARRIED ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-MB-ACCEPT ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 

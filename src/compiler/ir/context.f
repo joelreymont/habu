@@ -70,7 +70,7 @@ $7FFFFFFF constant SERIAL-CEILING    \ production per-context module ceiling; th
                                      \ full IR-ID module serial range
 $7FFFFFFF constant GEN-MAX           \ context generation ceiling
 64 constant DEPTH-MAX                \ live + retired registry slots
-$20000 constant MAP-BYTES            \ one 128K mapping per context. It was 64K
+$40000 constant MAP-BYTES            \ one 256K mapping per context. It was 64K
                                      \ while one module of the machine dialect
                                      \ cost about seventeen kilobytes; the
                                      \ dialect's byte-width memory forms tipped
@@ -79,10 +79,14 @@ $20000 constant MAP-BYTES            \ one 128K mapping per context. It was 64K
                                      \ twenty-seven, and the spill lowering
                                      \ holds TWO modules of that dialect in one
                                      \ context - the old module it reads and the
-                                     \ rewritten one it builds. Two of them no
-                                     \ longer fit 64K, and that is a real pass
-                                     \ of the compiler rather than a fixture, so
-                                     \ the mapping is what has to give.
+                                     \ rewritten one it builds. That took it to
+                                     \ 128K. Compiling a real definition that
+                                     \ spills holds THREE: the source module the
+                                     \ elaborator filled is still live when the
+                                     \ machine module is rewritten, because the
+                                     \ whole run is one context. Each time it is
+                                     \ a real pass of the compiler rather than a
+                                     \ fixture, so the mapping is what gives.
 
 \ Header slots inside the mapping, one CDIGEST slot each.
 0 constant HF-MINTED                 \ modules minted by this context
