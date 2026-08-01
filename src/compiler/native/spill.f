@@ -108,7 +108,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-15 constant OPCODES-N
+18 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -123,16 +123,20 @@ private
 11 constant O-DLOAD
 12 constant O-DSTORE
 13 constant O-DPUBLISH
-14 constant O-RET
+14 constant O-FLAG
+15 constant O-BR
+16 constant O-BRZ
+17 constant O-RET
 
 \ One slot per attribute key the dialect declares.
-6 constant KEYS-N
+7 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
 3 constant K-FRAME
 4 constant K-DSLOT
 5 constant K-DBYTES
+6 constant K-COND
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -188,6 +192,9 @@ create NAMEBUF NAME-CAP allot
       dload    OF O-DLOAD    ENDOF
       dstore   OF O-DSTORE   ENDOF
       dpublish OF O-DPUBLISH ENDOF
+      flag     OF O-FLAG     ENDOF
+      br       OF O-BR       ENDOF
+      brz      OF O-BRZ      ENDOF
       ret      OF O-RET      ENDOF
    ;MATCH ;
 
@@ -207,6 +214,9 @@ create NAMEBUF NAME-CAP allot
       O-DLOAD    of A64IR-OPCODE:DLOAD    endof
       O-DSTORE   of A64IR-OPCODE:DSTORE   endof
       O-DPUBLISH of A64IR-OPCODE:DPUBLISH endof
+      O-FLAG     of A64IR-OPCODE:FLAG     endof
+      O-BR       of A64IR-OPCODE:BR       endof
+      O-BRZ      of A64IR-OPCODE:BRZ      endof
       O-RET      of A64IR-OPCODE:RET      endof
       E-A64SPILL-OPCODE throw
    endcase ;
@@ -338,6 +348,14 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR  IR-BUILD:ADD-ATTR ;
 
+\ The condition a comparison was made under. It is decoded back into the
+\ dialect's own vocabulary before it is rebuilt, so a stored code the dialect has
+\ no condition for is refused rather than copied through.
+: COND-ATTR+ ( n -- )
+   {: v:n :}
+   CTX BLD  CTX BLD A64IR:KEY-COND  CTX BLD v A64IR:N>COND A64IR:COND-ATTR
+   IR-BUILD:ADD-ATTR ;
+
 : CLOSE ( -- IR-ID:ir-op-id )
    CTX BLD IR-BUILD:END-OP ;
 
@@ -443,6 +461,19 @@ create NAMEBUF NAME-CAP allot
       k K-FRAME = if v FRAME-ATTR+ then
       k K-DSLOT = if v DSLOT-ATTR+ then
       k K-DBYTES = if v DBYTES-ATTR+ then
+      k K-COND = if v COND-ATTR+ then
+   loop ;
+
+\ The blocks a terminator hands control to. Blocks are copied one for one and in
+\ order, so block b of the old module is block b of the new one and a successor
+\ is carried across by its ordinal.
+: COPY-SUCCS ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id SUCCS-OF {: n:n :}
+   n 0 ?do
+      CTX BLD
+      BLD IR-BUILD:MODULE-KEY  id i SUCC-AT IR-ID:BLOCK-LOCAL  IR-ID:PACK-BLOCK
+      IR-BUILD:ADD-SUCCESSOR
    loop ;
 
 : COPY-OPERANDS ( IR-ID:ir-op-id n -- )
@@ -472,6 +503,7 @@ create NAMEBUF NAME-CAP allot
    id o OPEN
    id pos COPY-OPERANDS
    id COPY-RESULTS
+   id COPY-SUCCS
    id COPY-ATTRS
    id  CLOSE  BIND-RESULTS ;
 
@@ -630,6 +662,9 @@ public
    c b A64IR-OPCODE:DLOAD    BIND1
    c b A64IR-OPCODE:DSTORE   BIND1
    c b A64IR-OPCODE:DPUBLISH BIND1
+   c b A64IR-OPCODE:FLAG     BIND1
+   c b A64IR-OPCODE:BR       BIND1
+   c b A64IR-OPCODE:BRZ      BIND1
    c b A64IR-OPCODE:RET      BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
@@ -637,6 +672,7 @@ public
    c b A64IR:KEY-FRAME  K-FRAME BND-KEY !
    c b A64IR:KEY-DSLOT  K-DSLOT BND-KEY !
    c b A64IR:KEY-DBYTES K-DBYTES BND-KEY !
+   c b A64IR:KEY-COND   K-COND BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    BOUND-YES BND-MODE ! ;

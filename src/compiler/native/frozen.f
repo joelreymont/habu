@@ -61,6 +61,15 @@ public
 \ silently in one pass and not another.
 256 constant VMAX
 
+\ ---- how many blocks one routine of the native chain has ---------------------
+\ Blocks in one function. A colon body's blocks come from its control words, and
+\ sixty-four of them is far past anything hand-written Forth reaches; it is one
+\ ceiling rather than one per pass for the same reason VMAX is - the elaborator,
+\ the selector, the allocator, the validator, the lowering pass and the emitter
+\ all have to agree on it, so a function a pass produced always fits the next
+\ one. A body that wants more is a capability to raise here.
+64 constant BMAX
+
 \ ---- the frozen tables of the module being read ------------------------------
 \ One indexed slot per view keeps every accessor below to a signature a reader
 \ can hold in their head.
@@ -140,6 +149,13 @@ public
    {: bk:IR-ID:ir-block-id i:n :}
    V-BLKR VW V-OPR VW MKEY bk i IR-FUN:FOP@ ;
 
+\ The operation control leaves a block through, read off the block's own row
+\ rather than taken as the last operation: which operation terminates a block is
+\ the block's recorded fact.
+: TERM-AT ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
+   {: bk:IR-ID:ir-block-id :}
+   V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ ;
+
 \ ---- one operation's own rows ------------------------------------------------
 : OPCODE-AT ( IR-ID:ir-op-id -- IR-ID:ir-symbol-id )
    V-OPR VW MKEY rot IR-OP:FOPCODE@ ;
@@ -157,6 +173,17 @@ public
 : RESULT-AT ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
    V-OPP VW V-OPR VW MKEY id i IR-OP:FRESULT@ ;
+
+\ The blocks a terminator hands control to. A non-terminator names none, which is
+\ the schema's rule and not this file's, so the count answers zero for one rather
+\ than refusing: what a caller does with an operation that names no successor is
+\ the caller's judgement.
+: SUCCS-OF ( IR-ID:ir-op-id -- n )
+   V-OPR VW swap IR-OP:FSUCCESSORS ;
+
+: SUCC-AT ( IR-ID:ir-op-id n -- IR-ID:ir-block-id )
+   {: id:IR-ID:ir-op-id i:n :}
+   V-OPP VW V-OPR VW MKEY id i IR-OP:FSUCCESSOR@ ;
 
 : ATTRS-OF ( IR-ID:ir-op-id -- n )
    V-OPR VW swap IR-OP:FATTRS ;

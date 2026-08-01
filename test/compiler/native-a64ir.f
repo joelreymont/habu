@@ -114,8 +114,8 @@ private
 \ The fifteen opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed. The eleven the register conventions use are here; the four
 \ that reach the caller's data stack are checked in DSTACK-SPELL-CASE below, and
-\ the count covers all fifteen.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool )
+\ the count covers all eighteen.
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -128,6 +128,9 @@ private
    c b A64IR-OPCODE:LOAD A64IR:OPCODE {: d:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:RESERVE A64IR:OPCODE {: p:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:RELEASE A64IR:OPCODE {: q:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FLAG A64IR:OPCODE {: g:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:BR A64IR:OPCODE {: j:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:BRZ A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:RET A64IR:OPCODE {: t:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
@@ -141,12 +144,16 @@ private
    rv d IR-SCHEMA:FDEFINED?
    rv p IR-SCHEMA:FDEFINED?
    rv q IR-SCHEMA:FDEFINED?
+   rv g IR-SCHEMA:FDEFINED?
+   rv j IR-SCHEMA:FDEFINED?
+   rv n IR-SCHEMA:FDEFINED?
    rv t IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the fifteen machine opcodes" T-LABEL
+   s" registration defines exactly the eighteen machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 15 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   TTRUE TTRUE TTRUE TTRUE 18 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -398,6 +405,110 @@ private
    s" the copy reads one register, writes one, and ties neither" T-LABEL
    BND [: MOV-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TFALSE TFALSE 0 T= 0 T= 1 T= 1 T= TTRUE ;
+
+\ ---- the comparison and the two branches -------------------------------------
+\ The compare form reads two registers, writes the flag, and carries exactly one
+\ attribute - the condition. The unconditional branch is a terminator with one
+\ successor and a variadic operand tail, which is what makes its operands the
+\ destination's block arguments; the two-way branch is a terminator with two
+\ successors and exactly one fixed operand, which is what makes it hand nothing
+\ over. Both facts are the whole reason an edge that carries values goes through
+\ a block of its own, so they are asserted rather than described.
+: BRANCH-SHAPE-BODY ( IR-CTX:ctx -- bool bool bool n n n n bool n n n n bool n n n n bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:FLAG A64IR:OPCODE {: g:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:BR A64IR:OPCODE {: j:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:BRZ A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-COND {: ck:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv g s" a64.flag" IR-SYM:FEQ?
+   pv yv j s" a64.b" IR-SYM:FEQ?
+   pv yv n s" a64.cbz" IR-SYM:FEQ?
+   rv g IR-SCHEMA:FOPERANDS
+   rv g IR-SCHEMA:FRESULTS
+   rv g IR-SCHEMA:FATTRS
+   rv g IR-SCHEMA:FSUCCESSORS
+   qv rv key g 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL =
+   rv j IR-SCHEMA:FOPERANDS
+   rv j IR-SCHEMA:FRESULTS
+   rv j IR-SCHEMA:FSUCCESSORS
+   rv j IR-SCHEMA:FTIES
+   rv j IR-SCHEMA:FOPERAND-TAIL?
+   rv n IR-SCHEMA:FOPERANDS
+   rv n IR-SCHEMA:FRESULTS
+   rv n IR-SCHEMA:FSUCCESSORS
+   rv n IR-SCHEMA:FATTRS
+   rv n IR-SCHEMA:FOPERAND-TAIL? ;
+
+: BRANCH-SHAPE-CASE ( -- )
+   s" the comparison and the two branches have the shapes their forms have" T-LABEL
+   BND [: BRANCH-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE 0 T= 2 T= 0 T= 1 T=
+   TTRUE 0 T= 1 T= 0 T= 1 T=
+   TTRUE 0 T= 1 T= 1 T= 2 T=
+   TTRUE TTRUE TTRUE ;
+
+\ Every one of the three is a terminator or is not, and none of them traps.
+: BRANCH-TERM-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:FLAG A64IR:OPCODE {: g:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:BR A64IR:OPCODE {: j:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:BRZ A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv g IR-SCHEMA:FTERMINATOR?
+   rv j IR-SCHEMA:FTERMINATOR?
+   rv n IR-SCHEMA:FTERMINATOR?
+   rv g IR-SCHEMA:FTRAPS?
+   rv j IR-SCHEMA:FTRAPS?
+   rv n IR-SCHEMA:FTRAPS? ;
+
+: BRANCH-TERM-CASE ( -- )
+   s" the two branches end a block, the comparison does not, and none traps" T-LABEL
+   BND [: BRANCH-TERM-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TFALSE TFALSE TTRUE TTRUE TFALSE ;
+
+\ ---- the condition field -----------------------------------------------------
+\ The dialect writes the two conditions it compares under as the numbers the
+\ four-bit field holds. Those numbers are the assembler's own, so they are read
+\ back off src/arch/arm64/asm.f rather than restated here - a condition that
+\ moved there reddens this instead of encoding the wrong branch - and the round
+\ trip through the stored code is asserted too.
+: COND-CASE ( -- )
+   s" the conditions are the shipped assembler's, and decode back" T-LABEL
+   A64IR-COND:LT A64IR:COND-CODE C-LT T=
+   A64IR-COND:LE A64IR:COND-CODE C-LE T=
+   A64IR-COND:LT A64IR:COND-CODE A64IR:N>COND A64IR-COND:LT A64IR-COND:EQ TTRUE
+   A64IR-COND:LE A64IR:COND-CODE A64IR:N>COND A64IR-COND:LE A64IR-COND:EQ TTRUE ;
+
+\ A code the vocabulary does not name decodes as nothing at all.
+: COND-REFUSE-CASES ( -- )
+   s" a stored condition outside the vocabulary is refused" T-LABEL
+   [: 0 A64IR:N>COND drop ;] catch E-A64IR-COND T=
+   [: C-LT 1+ A64IR:N>COND drop ;] catch E-A64IR-COND T= ;
+
+\ ---- the reach of each branch --------------------------------------------------
+\ The two displacement fields, at their exact edges. Both encoders mask their
+\ field rather than bounding it, so what the emitter asks here is the only thing
+\ standing between a branch out of reach and a branch somewhere else.
+: REACH-CASE ( -- )
+   s" each branch form answers for the field its displacement lands in" T-LABEL
+   0 A64IR:B-FITS? TTRUE
+   1 25 lshift 1- A64IR:B-FITS? TTRUE
+   1 25 lshift A64IR:B-FITS? TFALSE
+   1 25 lshift negate A64IR:B-FITS? TTRUE
+   1 25 lshift negate 1- A64IR:B-FITS? TFALSE
+   0 A64IR:BZ-FITS? TTRUE
+   1 18 lshift 1- A64IR:BZ-FITS? TTRUE
+   1 18 lshift A64IR:BZ-FITS? TFALSE
+   1 18 lshift negate A64IR:BZ-FITS? TTRUE
+   1 18 lshift negate 1- A64IR:BZ-FITS? TFALSE ;
 
 \ ---- the tied register field -------------------------------------------------
 \ The move-wide overwrite is the one form of this dialect whose result and whose
@@ -731,6 +842,11 @@ private
    drop
    MOV-CASE ;
 
+: GROUP-BRANCH ( IR-CTX:ctx -- )
+   drop
+   BRANCH-SHAPE-CASE
+   BRANCH-TERM-CASE ;
+
 : GROUP-TIE ( IR-CTX:ctx -- )
    drop
    TIE-CASE ;
@@ -760,6 +876,10 @@ public
    s" the deepest frame this dialect can reserve is the add-sub immediate" T-LABEL
    A64IR:FRAME-LIMIT  IMM12-LIM 1- dup A64EFF:SP-ALIGN mod -  T=
    HALVES-CASE
+   COND-CASE
+   COND-REFUSE-CASES
+   REACH-CASE
+   BND [: GROUP-BRANCH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT

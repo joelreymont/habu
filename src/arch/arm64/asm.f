@@ -55,6 +55,16 @@ $FFFFFFFF constant ARM64-W32
 : ?COND ( n -- n )
    dup COND-LIM OUT? IF s" asm: condition code out of range" ASM-EXIT-RC die THEN ;
 
+\ The vocabulary of that four-bit field, in the architecture's own order. It
+\ lives beside the field it fills, so a caller that needs "less than" names the
+\ condition rather than writing 11, and there is one place that says which
+\ number each condition is. src/arch/arm64/mnem.f used to carry a second copy;
+\ it now loads after this file and reads these.
+ 0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
+ 4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
+ 8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
+12 constant C-GT  13 constant C-LE  14 constant C-AL
+
 : ?HW ( n -- n )
    dup HW-LIM OUT? IF s" asm: move-wide half out of range" ASM-EXIT-RC die THEN ;
 
@@ -139,6 +149,12 @@ variable ARM-Z
 \ once here rather than at each caller.
 31 constant ARM-ZERO-REG
 : ENC-MOV ( n n -- n ) ARM-ZERO-REG swap ENC-ORR ;
+
+\ A negation, for the same reason and by the same route: ARM64 has no negate
+\ form either, and `neg xd, xm` IS `sub xd, xzr, xm`. It is the last instruction
+\ of the three a Habu comparison compiles to - compare, set one on the
+\ condition, negate - because a Habu flag is all bits set and not one.
+: ENC-NEG ( n n -- n ) ARM-ZERO-REG swap ENC-SUB ;
 
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
 

@@ -19,10 +19,9 @@
 \ assignment reaches an instruction. It does not decide the bit layout of an
 \ instruction either: every word below comes out of src/arch/arm64/asm.f, which
 \ is the one authority on each form, and no encoding constant is written here.
-\ It does not lay out labels or fixups, because the straight-line subset has one
-\ control transfer and it is the return; a label table with no branch to resolve
-\ would be machinery kept warm for a caller that does not exist yet. When
-\ branches arrive, so does it (dot habu-lay-out-branches-7e04eab2).
+\ It does decide where each block's instructions land, because that is what a
+\ branch's displacement is measured from, and nothing before this pass has any
+\ business knowing it.
 \
 \ WHAT IT REFUSES, AND WHY EACH ONE IS ITS OWN JUDGEMENT.
 \   - an unbound dialect, or a second binding over a live one. A module's symbols
@@ -35,11 +34,18 @@
 \     The stale case answers itself: the emitter probes REG@ before it emits a
 \     byte, so an acceptance a later allocation invalidated is refused by
 \     A64RAV under A64RAV's own name rather than quietly re-read here.
-\   - a shape that is not the straight-line subset, re-derived from the module
-\     rather than taken on trust: one function, one block, and a block whose only
-\     terminator is its last operation. The freeze verifier already forbids a
-\     block with two terminators or one that is not last; this pass measures it
-\     again because it is about to lay the operations out in that order.
+\   - a shape this layout cannot serve, re-derived from the module rather than
+\     taken on trust: one function, at least one block, more blocks than the
+\     layout table holds, and a block whose only terminator is its last
+\     operation. The freeze verifier already forbids a block with two terminators
+\     or one that is not last; this pass measures it again because it is about to
+\     lay the operations out in that order.
+\   - a branch whose successor names no block of the function being emitted, and
+\     a branch whose displacement does not fit the field its form encodes it in.
+\     The second is the reach check: both branch encoders MASK their displacement
+\     field instead of bounding it, so a branch out of reach would quietly become
+\     a branch somewhere else, and the bound is made here against the width the
+\     dialect declares for that form.
 \   - an operation of a form outside the dialect's family. An unmodelled form may
 \     mean something this file does not know, and guessing is how the wrong four
 \     bytes get published.
@@ -60,9 +66,10 @@
 \ operation with no attribute under a declared key (E-A64EMIT-ATTR) cannot reach
 \ this file: the freeze verifier decides an operation's attribute keys against its
 \ schema, so a frozen module always carries exactly one of each. More instructions
-\ than the buffers hold (E-A64EMIT-CAP) cannot either: one instruction per
-\ operation, one value per non-terminator operation, and the allocator refuses a
-\ block with more values than the ceiling above. Both are still written, because a
+\ than the buffers hold (E-A64EMIT-CAP) cannot either: at most three instructions
+\ per operation, one value per operation that defines one, and the allocator
+\ refuses a routine with more values or more blocks than the ceilings above. Both
+\ are still written, because a
 \ search and a buffer need an answer for the case they cannot serve, and neither
 \ is claimed to be tested. What the assembler's own guards catch is a live gap and
 \ not a foreclosed one: a module built by hand can carry a raw out-of-field
@@ -90,9 +97,22 @@
 \ src/compiler/native/select.f, so what reaches this pass is a module that
 \ already contains its own entry and exit, and this file only encodes them.
 \
+\ THE BLOCK LAYOUT AND THE FIXUPS ARE ONE PASS AND NOT TWO. A branch has to know
+\ where it is going before it can be encoded, and where it is going is where the
+\ destination block's first instruction lands. So the layout is computed first,
+\ from the instruction count of each form - which is a property of the form, the
+\ same way its operand count is - and every displacement is then known when its
+\ instruction is encoded. That is why there is no relocation list and nothing to
+\ patch afterwards: the label table is the block-start table, a block IS a label,
+\ and its ordinal is its name. Blocks are laid out in the order the module
+\ records them, and no branch is elided because the block it goes to happens to
+\ come next - eliding one is an optimisation, and emitting every branch in full
+\ is what makes the layout order irrelevant to what the routine computes.
+\
 \ THE SOURCE MAP IS THE POINT OF THE BYTE OFFSETS. Every emitted instruction gets
 \ one row: the byte offset it was placed at, and the span of the operation it
-\ came from. The offset is the cursor at the moment the instruction was appended,
+\ came from. An operation that is more than one instruction gets one row per
+\ instruction, each carrying the span of the operation they all came from. The offset is the cursor at the moment the instruction was appended,
 \ not four times its index, so a run that emitted one instruction too few or too
 \ many is visible in the map and not only in the length. This is what a located
 \ diagnostic about emitted code reads, and it is why the bytes are a byte buffer
@@ -100,7 +120,7 @@
 \ offsets have to index something a caller can actually look at.
 \
 \ ONE EMISSION AT A TIME. The buffers are fixed package-owned storage rather than
-\ heap objects, so this pass emits one block at a time - the single-task
+\ heap objects, so this pass emits one routine at a time - the single-task
 \ compilation discipline the rest of the native chain keeps. A run that refuses
 \ leaves no sealed emission behind, so a reader after a refusal answers nothing
 \ rather than answering about the run before it.
@@ -128,7 +148,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-15 constant OPCODES-N
+18 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -143,16 +163,24 @@ private
 11 constant O-DLOAD
 12 constant O-DSTORE
 13 constant O-DPUBLISH
-14 constant O-RET
+14 constant O-FLAG
+15 constant O-BR
+16 constant O-BRZ
+17 constant O-RET
 
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ ---- how much of one block this pass holds -----------------------------------
-\ One instruction per operation. Two forms define no value - the return and the
-\ release of the frame - and every other operation defines at least one, so a
-\ block that fits the ceiling above emits at most this many.
-VMAX 2 + constant INSN-MAX
+\ ---- how much of one routine this pass holds ----------------------------------
+\ Instructions in one routine. Three forms of the dialect emit more than one
+\ instruction, and none emits more than three, so three per operation is the
+\ ceiling per operation. Operations are bounded by the values they define: every
+\ operation defines at least one value except a block's terminator, the release
+\ of the frame and the data-stack publish, of which there is at most one each per
+\ block. So a routine that fits the two ceilings NFROZEN commits to emits at most
+\ this many.
+3 constant INSN-PER-OP
+INSN-PER-OP VMAX BMAX 3 * + * constant INSN-MAX
 
 \ Every ARM64 instruction is four bytes.
 4 constant INSN-BYTES
@@ -168,6 +196,10 @@ variable ST
 ST-EMPTY ST !
 variable N-INS
 0 N-INS !
+variable N-BLK
+0 N-BLK !
+variable LAY-AT
+0 LAY-AT !
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
@@ -177,6 +209,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DSLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-MAX INSN-BYTES * allot
@@ -184,6 +217,14 @@ create M-OFF INSN-MAX cells allot
 create M-ST INSN-MAX cells allot
 create M-LN INSN-MAX cells allot
 INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
+
+\ Where each block's first instruction lands, in instructions from the start of
+\ the routine. This is the whole label table: a block IS a label, its ordinal is
+\ its name, and a branch is resolved by subtracting the branch's own position
+\ from the entry here. There is no relocation list, because there is nothing to
+\ patch afterwards - the layout is computed before the first byte is written, so
+\ every displacement is known when its instruction is encoded.
+create B-START BMAX cells allot
 
 \ ---- the dialect's operation family ------------------------------------------
 : SLOT-OF ( A64IR:opcode -- n )
@@ -202,6 +243,9 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
       dload    OF O-DLOAD    ENDOF
       dstore   OF O-DSTORE   ENDOF
       dpublish OF O-DPUBLISH ENDOF
+      flag     OF O-FLAG     ENDOF
+      br       OF O-BR       ENDOF
+      brz      OF O-BRZ      ENDOF
       ret      OF O-RET      ENDOF
    ;MATCH ;
 
@@ -221,6 +265,9 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
       O-DLOAD    of A64IR-OPCODE:DLOAD    endof
       O-DSTORE   of A64IR-OPCODE:DSTORE   endof
       O-DPUBLISH of A64IR-OPCODE:DPUBLISH endof
+      O-FLAG     of A64IR-OPCODE:FLAG     endof
+      O-BR       of A64IR-OPCODE:BR       endof
+      O-BRZ      of A64IR-OPCODE:BRZ      endof
       O-RET      of A64IR-OPCODE:RET      endof
       E-A64EMIT-OPCODE throw
    endcase ;
@@ -368,26 +415,9 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    {: id:IR-ID:ir-op-id :}
    id 0 OPERAND-REG  A64EFF:DSTACK-GPR  id DSLOT-OFF  ENC-STR ;
 
-: WORD-OF ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id SLOT-AT SLOT-OPCODE
-   MATCH A64IR:opcode
-      movz     OF id WORD-MOVZ ENDOF
-      movk     OF id WORD-MOVK ENDOF
-      mov      OF id WORD-MOV ENDOF
-      add      OF id TRIPLE ENC-ADD ENDOF
-      sub      OF id TRIPLE ENC-SUB ENDOF
-      mul      OF id TRIPLE ENC-MUL ENDOF
-      store    OF id WORD-STORE ENDOF
-      load     OF id WORD-LOAD ENDOF
-      reserve  OF id WORD-RESERVE ENDOF
-      release  OF id WORD-RELEASE ENDOF
-      dtake    OF id WORD-DTAKE ENDOF
-      dload    OF id WORD-DLOAD ENDOF
-      dstore   OF id WORD-DSTORE ENDOF
-      dpublish OF id WORD-DPUBLISH ENDOF
-      ret      OF ENC-RET ENDOF
-   ;MATCH ;
+\ ---- the condition a comparison is made under --------------------------------
+: COND-OF ( IR-ID:ir-op-id -- n )
+   0 BND-COND @ ATTR-INT ;
 
 \ ---- the buffer and the map --------------------------------------------------
 : BYTE! ( n n -- )
@@ -416,7 +446,10 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    st k cells M-ST + !
    ln k cells M-LN + ! ;
 
-\ Append one instruction at the cursor and record where it landed.
+\ Append one instruction at the cursor and record where it landed. An operation
+\ that is more than one instruction calls this once per instruction, so the map
+\ has a row for each of them and each row carries the span of the operation they
+\ all came from.
 : APPEND ( IR-ID:ir-op-id n -- )
    {: id:IR-ID:ir-op-id w:n :}
    N-INS @ INSN-MAX >= if E-A64EMIT-CAP throw then
@@ -426,22 +459,154 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
    id off k MAP!
    k 1+ N-INS ! ;
 
+\ ---- the block layout --------------------------------------------------------
+\ Blocks are laid out in the order the module records them, which is the order
+\ they were built in. That is a decision and not an accident: it is the one order
+\ every reader of the module already agrees on, so the allocator, the validator
+\ and this pass number the same instruction the same way, and a fixture can
+\ assert exact offsets. Nothing here reorders blocks to make a branch fall
+\ through to the next one - eliding a branch is an optimisation, and every
+\ terminator below emits its branches in full, which is what makes the layout
+\ order irrelevant to what the routine computes and a wrong successor a wrong
+\ answer rather than a lucky one.
+\
+\ How many instructions a form is, is a property of the form: one for all but the
+\ comparison and the two-way branch, which are three and two. The layout pass and
+\ the emission pass read the same answer, so the offsets the fixups are computed
+\ against are the offsets the instructions land at.
+: INSNS-OF ( n -- n )
+   {: k:n :}
+   k O-FLAG = if 3 exit then
+   k O-BRZ = if 2 exit then
+   1 ;
+
+: OP-INSNS ( IR-ID:ir-op-id -- n )
+   SLOT-AT INSNS-OF ;
+
+: BLOCK-INSNS ( IR-ID:ir-block-id -- n )
+   {: bk:IR-ID:ir-block-id :}
+   0
+   bk OP-COUNT 0 ?do
+      bk i OP-AT OP-INSNS +
+   loop ;
+
+: BLK-ORD-CK ( n -- n )
+   dup 0 < over N-BLK @ >= or if E-A64EMIT-BLOCK throw then ;
+
+: START-AT ( n -- n )
+   BLK-ORD-CK cells B-START + @ ;
+
+\ Where each block's first instruction lands, measured in instructions from the
+\ start of the routine. It is computed before a single byte is written, because a
+\ forward branch has to know where it is going before it can be encoded.
+: LAYOUT ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT {: n:n :}
+   n 1 < if E-A64EMIT-SHAPE throw then
+   n BMAX > if E-A64EMIT-CAP throw then
+   n N-BLK !
+   0 LAY-AT !
+   n 0 ?do
+      LAY-AT @ i cells B-START + !
+      LAY-AT @  f i BLOCK-AT BLOCK-INSNS  +  LAY-AT !
+   loop ;
+
+\ ---- the branches ------------------------------------------------------------
+\ Which block a successor names. A successor is a block of this module, and this
+\ pass laid out every block of the one function it emits, so an ordinal outside
+\ that range is a module this layout cannot serve rather than a branch to
+\ nowhere.
+: SUCC-BLOCK ( IR-ID:ir-op-id n -- n )
+   SUCC-AT IR-ID:BLOCK-LOCAL BLK-ORD-CK ;
+
+\ The displacement one branch carries, counted in instructions from the branch
+\ itself, which is what the architecture's PC-relative fields hold.
+: DELTA ( n -- n )
+   START-AT N-INS @ - ;
+
+\ The reach check the branches dot asks for, made before the encoder is called.
+\ Both encoders mask their displacement field rather than bounding it - a branch
+\ out of reach would silently become a branch somewhere else - so the bound is
+\ made here, against the field width the dialect declares for that form.
+: B-WORD ( n -- n )
+   {: d:n :}
+   d A64IR:B-FITS? 0= if E-A64EMIT-REACH throw then
+   d ENC-B ;
+
+: BZ-WORD ( n n -- n )
+   {: rt:n d:n :}
+   d A64IR:BZ-FITS? 0= if E-A64EMIT-REACH throw then
+   rt d ENC-CBZ ;
+
+\ Going to one block, handing it its arguments. The arguments are already in the
+\ registers the destination's block arguments were given - that is the register
+\ allocation's own decision and the validator has agreed with it - so the
+\ operands reach no encoder here and the whole instruction is the jump.
+: EMIT-BR ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 SUCC-BLOCK DELTA B-WORD  APPEND ;
+
+\ The two-way branch: go to the first successor when the tested register is
+\ zero, and to the second when it is not. Both branches are emitted, in that
+\ order, so neither successor depends on where the layout happened to put it.
+: EMIT-BRZ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id 0 OPERAND-REG  id 0 SUCC-BLOCK DELTA  BZ-WORD  APPEND
+   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+
+\ One comparison, which is three instructions: compare the two registers, set one
+\ into the result on the condition, and negate it, because a Habu flag is all
+\ bits set rather than one. This is the sequence the engine's own emitter uses,
+\ so a compiled comparison answers what an interpreted one answers.
+: EMIT-FLAG ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG {: rd:n :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
+   id  rd id COND-OF ENC-CSET  APPEND
+   id  rd rd ENC-NEG  APPEND ;
+
+\ ---- one operation, as the instructions it is --------------------------------
+\ The whole encoding table. Every arm names the instructions one machine
+\ operation becomes; nothing else in this file decides which bytes an operation
+\ is.
+: EMIT-OP ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id SLOT-AT SLOT-OPCODE
+   MATCH A64IR:opcode
+      movz     OF id  id WORD-MOVZ  APPEND ENDOF
+      movk     OF id  id WORD-MOVK  APPEND ENDOF
+      mov      OF id  id WORD-MOV  APPEND ENDOF
+      add      OF id  id TRIPLE ENC-ADD  APPEND ENDOF
+      sub      OF id  id TRIPLE ENC-SUB  APPEND ENDOF
+      mul      OF id  id TRIPLE ENC-MUL  APPEND ENDOF
+      store    OF id  id WORD-STORE  APPEND ENDOF
+      load     OF id  id WORD-LOAD  APPEND ENDOF
+      reserve  OF id  id WORD-RESERVE  APPEND ENDOF
+      release  OF id  id WORD-RELEASE  APPEND ENDOF
+      dtake    OF id  id WORD-DTAKE  APPEND ENDOF
+      dload    OF id  id WORD-DLOAD  APPEND ENDOF
+      dstore   OF id  id WORD-DSTORE  APPEND ENDOF
+      dpublish OF id  id WORD-DPUBLISH  APPEND ENDOF
+      flag     OF id EMIT-FLAG ENDOF
+      br       OF id EMIT-BR ENDOF
+      brz      OF id EMIT-BRZ ENDOF
+      ret      OF id  ENC-RET  APPEND ENDOF
+   ;MATCH ;
+
 \ ---- the shape this leaf emits from ------------------------------------------
-\ One function of one block; any other shape means control flow, and control flow
-\ has no layout rule here yet.
-: BLOCK-OF ( -- IR-ID:ir-block-id )
+\ One function, of one or more blocks, each ending in exactly one terminator.
+: FUN-OF ( -- IR-ID:ir-fun-id )
    FUN-COUNT 1 <> if E-A64EMIT-SHAPE throw then
-   MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT 1 <> if E-A64EMIT-SHAPE throw then
-   f 0 BLOCK-AT ;
+   MKEY 0 IR-ID:PACK-FUN ;
 
 \ The block's operations run in one order and end once. Re-derived rather than
 \ taken from the verifier, because this pass is about to lay them out in exactly
 \ that order.
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
-   OP-AT SLOT-AT O-RET = ;
+   OP-AT SLOT-AT {: k:n :}
+   k O-RET = k O-BR = or k O-BRZ = or ;
 
-: STRAIGHT-CK ( IR-ID:ir-block-id -- )
+: BLOCK-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
    bk OP-COUNT {: n:n :}
    n 1 < if E-A64EMIT-SHAPE throw then
@@ -450,12 +615,22 @@ INSN-MAX TYPED-BUFFER M-SRC IR-ID:ir-source-id
       bk i TERMINATOR? if E-A64EMIT-SHAPE throw then
    loop ;
 
-: WALK ( IR-ID:ir-block-id -- )
+: SHAPE-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT BLOCK-CK
+   loop ;
+
+: WALK-BLOCK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT {: n:n :}
-   n 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id  id WORD-OF  APPEND
+   bk OP-COUNT 0 ?do
+      bk i OP-AT EMIT-OP
+   loop ;
+
+: WALK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT WALK-BLOCK
    loop ;
 
 \ ---- what one emission run is told -------------------------------------------
@@ -540,6 +715,9 @@ public
    c b A64IR-OPCODE:DLOAD    BIND1
    c b A64IR-OPCODE:DSTORE   BIND1
    c b A64IR-OPCODE:DPUBLISH BIND1
+   c b A64IR-OPCODE:FLAG     BIND1
+   c b A64IR-OPCODE:BR       BIND1
+   c b A64IR-OPCODE:BRZ      BIND1
    c b A64IR-OPCODE:RET      BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
@@ -547,6 +725,7 @@ public
    c b A64IR:KEY-FRAME  0 BND-FRAME !
    c b A64IR:KEY-DSLOT  0 BND-DSLOT !
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
+   c b A64IR:KEY-COND   0 BND-COND !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without emitting against it.
@@ -568,10 +747,11 @@ public
    m BND-MODULE-CK
    c TARGET-CK
    m VIEWS!
-   BLOCK-OF {: bk:IR-ID:ir-block-id :}
-   bk STRAIGHT-CK
+   FUN-OF {: f:IR-ID:ir-fun-id :}
+   f SHAPE-CK
+   f LAYOUT
    m ALLOC-CK
-   bk WALK
+   f WALK
    ST-SEALED ST ! ;
 
 \ ---- the sealed emission -----------------------------------------------------
@@ -581,6 +761,16 @@ public
 \ How many instructions were emitted, and how many bytes they occupy.
 : INSNS ( -- n )
    SEAL-CK N-INS @ ;
+
+\ ---- the block layout, read back ---------------------------------------------
+\ How many blocks were laid out, and where each one starts. A caller that wants
+\ to know whether a branch went where the layout said it would reads these and
+\ the instruction at the branch's own position; a fixture asserts both.
+: BLOCKS ( -- n )
+   SEAL-CK N-BLK @ ;
+
+: BLOCK-START@ ( n -- n )
+   SEAL-CK BLK-ORD-CK cells B-START + @ ;
 
 : SIZE ( -- n )
    SEAL-CK N-INS @ INSN-BYTES * ;

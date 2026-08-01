@@ -3,10 +3,9 @@
 \ Needs asm.fs + icode.fs (EMITW). One concern: mnemonic -> encode+emit.
 9 constant T0   10 constant T1   11 constant T2
 19 constant XDS  31 constant SP
- 0 constant C-EQ   1 constant C-NE   2 constant C-CS   3 constant C-CC
- 4 constant C-MI   5 constant C-PL   6 constant C-VS   7 constant C-VC
- 8 constant C-HI   9 constant C-LS  10 constant C-GE  11 constant C-LT
-12 constant C-GT  13 constant C-LE  14 constant C-AL
+\ The condition-code names this layer used to define are asm.fs's now: they are
+\ the vocabulary of the four-bit field ?COND bounds, so they belong beside it,
+\ and this file loads after it.
 
 : MOVZ, ( n n -- )  0 MOVZHW EMITW ;
 

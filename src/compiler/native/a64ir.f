@@ -35,9 +35,26 @@
 \   a64.dload    Ldr rt ds off   - read one of them out of its slot
 \   a64.dstore   Str rt ds off   - write a result into its slot
 \   a64.dpublish Addi ds ds n    - make the results the caller's
+\   a64.flag     Cmp rn rm; Cset rd cc; Sub rd xzr rd
+\                                - leave the Habu flag of one comparison
+\   a64.b        B target        - go to one block, handing it its arguments
+\   a64.cbz      Cbz rt target; B other
+\                                - go to the first block when rt is zero and to
+\                                  the second when it is not
 \   a64.ret      Ret             - return to the address in the link register
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
+\
+\ TWO OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form above
+\ is one instruction, and that is the rule this dialect keeps wherever it can:
+\ one operation, one form, four bytes. The comparison and the two-way branch
+\ break it for the same reason, which is the condition flags. The flags are a
+\ single architectural register that no value of this dialect stands for and the
+\ allocator may never hand out, so the instructions that write them and the
+\ instruction that reads them have to be inseparable - and the only way an IR can
+\ say "inseparable" is to make them one operation. Everything downstream reads
+\ the count off the opcode, so the layout stays exact: a form's instruction count
+\ is a property of the form, the same way its operand count is.
 \
 \ THE FOUR DATA-STACK FORMS ARE THE OTHER CALLING CONVENTION, MADE OF
 \ INSTRUCTIONS. Design section 7.6 gives an externally callable Habu word its
@@ -199,7 +216,19 @@ ENUM opcode DERIVE eq
    dload
    dstore
    dpublish
+   flag
+   br
+   brz
    ret
+;ENUM
+
+\ The conditions a comparison may be made under. Two, because two are what the
+\ corpus's branching words compare with: `<` and `<=`. It is an ENUM so a caller
+\ names the condition instead of writing the number the field holds, and so a
+\ condition this dialect has no comparison for is unwritable rather than checked.
+ENUM cond DERIVE eq
+   lt
+   le
 ;ENUM
 
 private
@@ -236,6 +265,29 @@ XBITS 8 / constant SLOT-BYTES        \ bytes one frame access moves
 12 constant OFF-BITS                 \ the add/sub immediate and the offset field
 1 OFF-BITS lshift 1- constant OFF-MAX
 OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
+
+\ ---- the condition field -----------------------------------------------------
+\ A conditional form selects one of sixteen conditions with a four-bit field, and
+\ the architecture's own numbering says which number each condition is. Both are
+\ written here as the field width and the codes they are, the same way the
+\ move-wide bounds are, and test/compiler/native-a64ir.f reads
+\ src/arch/arm64/asm.f's own COND-LIM, C-LT and C-LE back and asserts them
+\ against these - so a field or a code that moved in the assembler reddens this
+\ dialect instead of silently disagreeing with it.
+4 constant COND-BITS
+1 COND-BITS lshift constant COND-LIM
+11 constant COND-LT                  \ signed less than
+13 constant COND-LE                  \ signed less than or equal
+
+\ ---- the branch fields -------------------------------------------------------
+\ How far each branch form reaches, as the signed word displacement its own
+\ field holds. An unconditional branch carries a 26-bit field and a
+\ compare-and-branch a 19-bit one, both counting instructions rather than bytes.
+\ The emitter asks here before it hands a displacement to the encoder, because
+\ the encoder masks the field rather than bounding it - a branch out of reach
+\ would otherwise become a branch somewhere else.
+26 constant B-BITS
+19 constant BZ-BITS
 
 \ ---- the dialect's own symbols -----------------------------------------------
 \ Every symbol this dialect mints is spelled `a64.`-something, so a dialect
@@ -340,6 +392,23 @@ private
    dup SLOT-BYTES mod 0<> if E-A64IR-DBYTES throw then
    dup OFF-MAX > if E-A64IR-DBYTES throw then ;
 
+\ ---- the checked condition operand -------------------------------------------
+\ A condition the four-bit field can hold. It is private because a caller reaches
+\ the field through the attribute builder below, which takes a condition of this
+\ dialect's own vocabulary, so there is no route to a condition that skipped its
+\ bound - and the bound is still made, because the vocabulary and the field are
+\ two facts and this is where they are held against each other.
+: COND ( n -- n )
+   dup 0 < over COND-LIM >= or if E-A64IR-COND throw then ;
+
+\ ---- the checked branch displacement -----------------------------------------
+\ A signed value that fits a field of `bits` bits, counted in instructions. Both
+\ branch forms ask this and neither carries its own arithmetic.
+: FITS? ( n n -- bool )
+   {: d:n bits:n :}
+   1 bits 1- lshift {: half:n :}
+   d half negate >= d half < and ;
+
 public
 
 \ ---- the type of a virtual register ------------------------------------------
@@ -386,9 +455,41 @@ public
       dload    OF s" a64.dload"    ENDOF
       dstore   OF s" a64.dstore"   ENDOF
       dpublish OF s" a64.dpublish" ENDOF
+      flag     OF s" a64.flag"     ENDOF
+      br       OF s" a64.b"        ENDOF
+      brz      OF s" a64.cbz"      ENDOF
       ret      OF s" a64.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
+
+\ ---- the condition a comparison is made under --------------------------------
+\ The number the four-bit field holds for one condition of this dialect's
+\ vocabulary. It is public because the emitter hands it to the encoder as the
+\ condition operand, and because the suite pins each one against the assembler's
+\ own name for it.
+: COND-CODE ( A64IR:cond -- n )
+   MATCH cond
+      lt OF COND-LT ENDOF
+      le OF COND-LE ENDOF
+   ;MATCH ;
+
+\ The condition one stored code names. It is an exact case, so a code outside
+\ this dialect's vocabulary is refused at first touch instead of decoding as some
+\ other condition. A pass that reads a comparison back off a module and builds it
+\ into another one goes through here.
+: N>COND ( n -- A64IR:cond )
+   case
+      COND-LT of A64IR-COND:LT endof
+      COND-LE of A64IR-COND:LE endof
+      E-A64IR-COND throw
+   endcase ;
+
+\ ---- the reach of each branch form -------------------------------------------
+\ Whether a word displacement fits the field the form encodes it in. The emitter
+\ asks before it encodes, because the encoders mask their displacement fields
+\ rather than bounding them.
+: B-FITS? ( n -- bool )      B-BITS FITS? ;
+: BZ-FITS? ( n -- bool )     BZ-BITS FITS? ;
 
 \ Design line 479: the two attribute keys a move-wide operation requires. The
 \ immediate and the half it goes into are the whole content of a move, so a move
@@ -433,6 +534,18 @@ public
 : KEY-DBYTES ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.dbytes" IR-BUILD:INTERN-SYMBOL ;
 
+\ The attribute key the comparison form requires: which condition it sets its
+\ flag on. The condition is the whole content of a comparison, so a comparison
+\ without it means nothing, and IR-OP refuses one that omits it.
+: KEY-COND ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.cond" IR-BUILD:INTERN-SYMBOL ;
+
+\ The value it carries. It takes a condition of this dialect's vocabulary rather
+\ than a number, so a condition no comparison of this dialect makes cannot be
+\ spelled at all, and the number it becomes is still held against the field.
+: COND-ATTR ( IR-CTX:ctx IR-BUILD:builder A64IR:cond -- IR-ID:ir-attr-id )
+   COND-CODE COND IR-BUILD:INTERN-INT-ATTR ;
+
 : DSLOT-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    DSLOT IR-BUILD:INTERN-INT-ATTR ;
 
@@ -463,6 +576,9 @@ private
       dload    OF s" a64.rule.dload"    ENDOF
       dstore   OF s" a64.rule.dstore"   ENDOF
       dpublish OF s" a64.rule.dpublish" ENDOF
+      flag     OF s" a64.rule.flag"     ENDOF
+      br       OF s" a64.rule.b"        ENDOF
+      brz      OF s" a64.rule.cbz"      ENDOF
       ret      OF s" a64.rule.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -483,6 +599,9 @@ private
       dload    OF s" a64.render.dload"    ENDOF
       dstore   OF s" a64.render.dstore"   ENDOF
       dpublish OF s" a64.render.dpublish" ENDOF
+      flag     OF s" a64.render.flag"     ENDOF
+      br       OF s" a64.render.b"        ENDOF
+      brz      OF s" a64.render.cbz"      ENDOF
       ret      OF s" a64.render.ret"      ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -698,6 +817,70 @@ private
    c b A64IR-OPCODE:DPUBLISH NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the comparison form -----------------------------------------------------
+\ Flag: two registers compared, and the Habu flag that comparison leaves. It is
+\ ONE operation of this dialect and three instructions of the machine - compare,
+\ set one on the condition, negate - because the three are inseparable: the
+\ condition flags they pass between them are a single architectural resource that
+\ no value of this dialect stands for and the register allocator may not hand
+\ out, so an IR in which they were three operations would let any later pass put
+\ something between them and change what the second one reads. Modelling the
+\ flags as a value instead would add a third value class to every pass in the
+\ chain to express a lifetime that is always exactly one instruction long. The
+\ sequence is the one the engine's own emitter uses for `<` today, so a compiled
+\ comparison computes what an interpreted one computes, all bits set or none.
+: DEF-FLAG ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FLAG OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:FLAG NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ ---- the two branch forms ----------------------------------------------------
+\ B: control goes to one block, unconditionally. Its operands are the values it
+\ hands that block as the block's arguments - design lines 706-708 make a
+\ terminator's operands exactly that, and design line 532 makes the verifier
+\ match their count and types against the destination - so how many there are is
+\ a property of the destination rather than of the form, and the list is one
+\ variadic tail.
+: DEF-BR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:BR OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND-TAIL
+   true 1 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:BR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Cbz: control goes to the first successor when the tested register is zero and
+\ to the second when it is not. Its one operand is the register it tests and NOT
+\ a block argument, which is why both of its successors must be blocks that take
+\ no arguments: with two successors the operation model has no way to say which
+\ operand belongs to which destination (src/compiler/ir/verify.f says so where
+\ it checks the single-successor case), so a two-way branch of this dialect hands
+\ nothing over and an edge that has to carry values goes through a block whose
+\ terminator is the unconditional form above. That is ordinary critical-edge
+\ splitting, and src/compiler/native/elaborate.f builds every conditional edge
+\ that way.
+: DEF-BRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:BRZ OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   true 2 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   TOTAL
+   TARGET
+   c b A64IR-OPCODE:BRZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ Ret: the block's one terminator. Design line 237 makes it a terminator and
 \ design lines 706-708 give a terminator no results of its own; the values still
 \ live where control leaves are its operands, and how many there are is a
@@ -765,6 +948,9 @@ public
    c b t k DEF-DLOAD
    c b t k DEF-DSTORE
    c b k DEF-DPUBLISH
+   c b t DEF-FLAG
+   c b t DEF-BR
+   c b t DEF-BRZ
    c b t DEF-RET ;
 
 private

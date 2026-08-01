@@ -536,7 +536,11 @@ public
 \                 allocator (A64RA) and its validator (A64RAV) gained for the
 \                 argument and result registers a routine contract declares,
 \                 when their own blocks were full
-\   -8420..-8439, -8480..-8999  unassigned. The remaining dialect packages
+\   -8500..-8519  native ARM64 control flow: the compare and branch forms the
+\                 machine dialect (A64IR) gained, the control words the
+\                 straight-line source-word model (HIR-WORD) gained, and the
+\                 block construction the elaborator (NELAB) gained with them
+\   -8420..-8439, -8487..-8499, -8520..-8999  unassigned. The remaining dialect packages
 \                 (SIR, LIR, and the GPU stages) and the native and GPU back
 \                 ends take sub-blocks from here, each named above its codes.
 -8000 constant E-COMP-FIRST
@@ -946,3 +950,22 @@ public
 -8484 constant E-A64RA-PLACE    \ a place list the allocation cannot honour: one side mixing register places with data-stack places, or data-stack places declared on a module whose interface is still block arguments or terminator operands
 -8485 constant E-A64RAV-PLACE   \ the same, re-derived: a mixed side, or data-stack places on a module that still carries its interface as block arguments or terminator operands
 -8486 constant E-A64RAV-DSTACK  \ a data-stack entry or exit sequence that is not the one the contract declares: a missing or misplaced adjustment, a wrong byte count, a load or store naming a slot no place declares, or a module that reaches both the data stack and a frame
+
+\ Native ARM64 control flow: -8500..-8519
+\
+\ A colon body with a branch or a loop is more than one basic block, and every
+\ stage of the native chain gained something for it: the machine dialect a
+\ compare form and two branch forms, the source-word model the structured
+\ control words, the elaborator the control stack that turns them into blocks,
+\ and the emitter the block layout and the branch fixups. These are the facts
+\ those owners add. A refusal another authority already owns keeps that
+\ authority's name: a successor naming a block no function defines is still
+\ IR-VERIFY's E-IR-VERIFY-SUCC, and a branch operand outside the field it lands
+\ in is the assembler's.
+-8500 constant E-A64IR-COND     \ a condition code the compare form cannot carry: outside the four-bit field the conditional forms encode it in
+-8501 constant E-HIR-CONTROL    \ a source word read as a control word when its row models something else, or a stored control code outside this dialect's vocabulary
+-8502 constant E-NELAB-CTRL     \ a control structure the elaborator cannot close: a closer with no opener, a closer that does not match the opener it meets, or a body that ends with a structure still open
+-8503 constant E-NELAB-JOIN     \ two paths into one join that do not agree: arms leaving different numbers of values on the compile-time value stack, or a loop body that does not leave the stack as it found it
+-8505 constant E-A64EMIT-BLOCK  \ a branch whose successor names no block of the function this emission laid out
+-8506 constant E-A64EMIT-REACH  \ a branch whose displacement does not fit the field its form encodes it in
+-8504 constant E-NELAB-BLOCK    \ more blocks or more open control structures in one definition than the elaborator's tables hold
