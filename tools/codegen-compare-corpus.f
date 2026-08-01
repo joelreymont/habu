@@ -35,6 +35,13 @@
 \
 \ Arithmetic, a loop word, a memory word and a string (byte-span) word are all
 \ present, which is the coverage the comparison harness was asked for.
+\
+\ CELL-BUMP IS THE ONE WORD WHOSE POINT IS A SIDE EFFECT, so both columns of the
+\ comparison bump the same cell and both record its contents beside the answer.
+\ What the word RETURNS is its argument plus one, which a routine that never
+\ touched memory could compute just as well; what it LEAVES is the only evidence
+\ that the store and the load happened, so the cell is published for reading and
+\ its address for compiling.
 
 require lib/prelude.f
 

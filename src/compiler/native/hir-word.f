@@ -61,7 +61,7 @@
 \ THE OPCODE A WORD MEANS IS A TYPE, NOT A LOOKUP. A row stores the stable code
 \ of a `HIR:opcode`, so binding a word to an operation this dialect does not
 \ have is not a runtime check that can be forgotten - it is unwritable, and a
-\ stored code outside the five is refused by the decoder at first touch.
+\ stored code outside the family is refused by the decoder at first touch.
 \
 \ WHAT A DECLARATION CHECKS. Every symbol a row holds is checked to belong to
 \ this table's module and to have really been interned by that module, no word
@@ -75,8 +75,8 @@
 \ built - and both end in the same IR-SYM refusal.
 \
 \ SPELLINGS ARE BYTES, AND THE LEXER OWNS THEIR CASE. REGISTER-WORDS interns the
-\ nine words of the subset exactly as `docs/forth.md` spells them: built-ins
-\ stay lower case. Symbol interning is byte equality, so a producer that hands
+\ subset's words exactly as `docs/forth.md` spells them: built-ins stay lower
+\ case. Symbol interning is byte equality, so a producer that hands
 \ the tape `DUP` where this table declared `dup` will find no row and be refused
 \ by name. Which spelling the real lexer records is the tape producer's fact and
 \ is tracked by dot habu-feed-the-src-f7ed8733; nothing here guesses at it.
@@ -123,7 +123,7 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 0 constant OFF-SYM                   \ the source word's symbol ordinal
 1 constant OFF-MEAN                  \ the stored meaning code
 2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; unmodeled: the reason ordinal plus one
-3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; otherwise zero
+3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; fixed: the value the word pushes; otherwise zero
 4 constant OFF-N                     \ rename: the number of values put back; otherwise zero
 5 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
@@ -447,10 +447,6 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id v:n :}
    c r  c b id BSYM-CK  v FIXED-ROW ;
-
-private
-
-public
 
 \ Declare that a source word elaborates to one operation of this dialect. The
 \ arena pair is this table's rows and the module's symbol rows: the second is

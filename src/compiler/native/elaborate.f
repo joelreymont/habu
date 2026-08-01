@@ -235,7 +235,10 @@ variable OPJ                         \ general operands taken so far by the open
 \ by TYPE and not by position, so this file assumes nothing about where a
 \ dialect puts its token. One order at a time is this file's own limit and it is
 \ stated as a refusal: a form declaring two of them would need two orders, and
-\ there is no rule here for that.
+\ there is no rule here for that. That refusal is fail-closed rather than
+\ reachable and says so - no schema of this dialect declares two - but a check
+\ that only looks at the shapes it expects to see is not a check, and the walk
+\ below would otherwise hand one order over twice in silence.
 : TOKEN? ( IR-ID:ir-type-id -- bool )
    {: t:IR-ID:ir-type-id :}
    t  CTX BLD HIR:MEM-TYPE  NFROZEN:SAME-TYPE? ;

@@ -8,15 +8,17 @@
 \ "the new column has fewer rows" can only ever mean "these named capabilities
 \ are missing", never "the harness quietly stopped looking".
 \
-\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares twenty source
-\ words - `+ - * < <=`, `1-`, the seven structured control words
-\ `if then begin until ?do loop i`, and the seven renames
-\ `2dup dup drop swap over nip rot` - plus integer literals, and
-\ src/compiler/native/hir.f gives the dialect nine operations. A word of the
-\ corpus is expressible exactly when its body is those words and nothing else.
-\ Six of the eleven are: the empty word, the three-argument sum, the sum of two
-\ squares - which is the one that shows the renames costing nothing at all - the
-\ two-way branch, and both loop forms.
+\ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares twenty-three
+\ source words - `+ - * < <=`, `1-` and `1+`, the two memory words `@` and `!`,
+\ the seven structured control words `if then begin until ?do loop i`, and the
+\ seven renames `2dup dup drop swap over nip rot` - plus integer literals, and
+\ src/compiler/native/hir.f gives the dialect twelve operations. A word of the
+\ corpus is expressible exactly when its body is those words and nothing else,
+\ plus - for a body that names a `create`d data word - the one address the
+\ harness states (dot habu-resolve-a-data-a1c8067f). Seven of the eleven are:
+\ the empty word, the three-argument sum, the sum of two squares - which is the
+\ one that shows the renames costing nothing at all - the two-way branch, both
+\ loop forms, and the cell bump.
 \
 \ THE CAPABILITIES THE OTHER FIVE WAIT FOR are the vocabulary below, and each
 \ gap row names every one it needs rather than the first that stops it - a word
