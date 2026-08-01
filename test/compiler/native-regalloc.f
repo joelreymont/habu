@@ -65,6 +65,18 @@
 \ into its operand's register and the untied one gives it the lowest free
 \ register, so the two exact register lists differ only because the schemas do.
 \
+\ WHAT THE MULTI-BLOCK FIXTURES MEASURE. A routine of more than one block is
+\ allocated by the second half of the allocator, and every rule of it is asserted
+\ here on a module built to state that rule: the linear order and its global
+\ positions, the backward liveness, the hull of a value live across a loop, the
+\ class one register per argument-carrying edge, the schema tie unioned into
+\ those classes, and the copies coalesced into them where the class invariant
+\ survives it. Each fixture asserts the exact register of every value and names,
+\ where it stands, the allocator edit that reddens it. The refusals are the two
+\ things this path does not do - it does not spill and it does not honour a
+\ register place - together with the class the edge rule cannot serve and the one
+\ edge shape only the validator refuses.
+\
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so a case that builds a source module and a
 \ machine module is already close to full. Every case therefore runs in its own
@@ -1031,6 +1043,388 @@ create TXT
    WBND [: PAIR-BODY ;] IR-CTX:WITH-CONTEXT
    0 T= 1 T= 0 T= 1 T= 0 T= 5 T= ;
 
+\ ---- routines of more than one block -----------------------------------------
+\ Everything above is one block. The second half of the allocator is the general
+\ rule - a linear block order with global positions, liveness by backward
+\ dataflow, one hull interval per value, one register per block-argument class,
+\ the schema ties unioned into those classes, and the copies coalesced into them
+\ where that keeps the class invariant - and the fixtures below are that rule,
+\ one clause at a time, each asserting the exact register of every value.
+\
+\ THEY ARE BUILT BY HAND FOR THE REASON THE HOSTILE FIXTURES ARE. What is being
+\ measured is a shape - an edge that carries a value, a back edge, a tie inside
+\ an arm, a copy whose ends interfere and one whose ends do not - and a shape is
+\ what a hand-built module can state and a compiled one can only happen to
+\ contain. Every one of them goes through the real builder, the real freeze
+\ verifier, the real A64RA:ALLOCATE and, when it is meant to be allocatable, the
+\ real A64RAV:ACCEPT; nothing here re-implements a rule it is checking.
+\
+\ WHAT EACH ONE WOULD CATCH is written above it, as the allocator edit that
+\ reddens it. Three of those were made and watched go red before this was
+\ published: dropping the tie union, extending a live-IN value to the end of its
+\ block, and dropping the coalescing step.
+: BLOCK-ID ( n -- IR-ID:ir-block-id )
+   {: k:n :}
+   BB IR-BUILD:MODULE-KEY k IR-ID:PACK-BLOCK ;
+
+: M-BLOCK+ ( -- )
+   CC BB IR-BUILD:END-BLOCK drop
+   CC BB IR-BUILD:BEGIN-BLOCK
+   CC BB  OPEN-ST OPEN-LN SPN  IR-BUILD:SET-BLOCK-SPAN ;
+
+\ The unconditional branch, whose operands are the values it hands its one
+\ successor as that block's arguments.
+: M-BR1 ( IR-ID:ir-value-id n -- )
+   {: v:IR-ID:ir-value-id t:n :}
+   A64IR-OPCODE:BR M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: M-BR2 ( IR-ID:ir-value-id IR-ID:ir-value-id n -- )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id t:n :}
+   A64IR-OPCODE:BR M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB t BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+\ The two-way branch, whose one operand is the register it tests and not a block
+\ argument, so neither destination may take one.
+: M-BRZ ( IR-ID:ir-value-id n n -- )
+   {: v:IR-ID:ir-value-id z:n o:n :}
+   A64IR-OPCODE:BRZ M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB z BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB o BLOCK-ID IR-BUILD:ADD-SUCCESSOR
+   CC BB IR-BUILD:END-OP drop ;
+
+: M-MOV ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id :}
+   A64IR-OPCODE:MOV M-OPEN
+   CC BB v IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CLOSE-VALUE ;
+
+: M-SUB ( IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   A64IR-OPCODE:SUB M-OPEN
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   M-RESULT+
+   CLOSE-VALUE ;
+
+\ Two blocks and one edge that carries a value. The branch moves nothing, so its
+\ operand and the argument it lands in are one class and one register - and the
+\ argument is written at the join's own position, which is one past the branch,
+\ so the class is held across the edge rather than re-placed on the far side.
+\ Reddened by: dropping the edge union in MB-EDGES-OF, which leaves the argument
+\ a class of its own and the validator's VEDGE1 refusing the answer.
+: BUILD-MB-EDGE ( -- )
+   s" MBEDGE" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   a b M-ADD {: s:IR-ID:ir-value-id :}
+   s 1 M-BR1
+   M-BLOCK+
+   ARG+ M-RET
+   CLOSE-FUN ;
+
+\ A loop: an entry that sets the accumulator, the count and the constant one, a
+\ header that takes the two loop-carried values as its arguments and tests the
+\ count, an exit that returns the accumulator, and a body that computes the next
+\ pair and hands them back round the back edge. The exit is laid out BEFORE the
+\ body, which is what the selector's own block order does with a Forth loop, so
+\ the body is the last stretch of the linear order and the back edge runs
+\ backwards over it.
+\
+\ WHAT IT MEASURES, AND WHY IT IS THE SUM-TO SHAPE. Three things at once. The
+\ constant one is live across the whole loop and never re-placed, so its hull
+\ spans it. Each loop-carried value shares one register with the entry value that
+\ starts it and the body value that replaces it - three values, one class, one
+\ register. And the accumulator is live-IN to the body and not live-OUT of it: it
+\ dies at the addition that reads it, which is the very operation that writes its
+\ replacement, so the two do not clash and the class is legal.
+\
+\ Reddened by: extending a live-IN value to the end of its block in MB-EXTEND1
+\ (the over-extension this allocator once had). The accumulator would then reach
+\ the end of the body, overlap the value that replaces it, and the class the back
+\ edge forces would be refused with E-A64RA-EDGE.
+: BUILD-MB-LOOP ( -- )
+   s" MBLOOP" 0 1 OPEN-FUN
+   $0 M-MOVZ {: a0:IR-ID:ir-value-id :}
+   $5 M-MOVZ {: n0:IR-ID:ir-value-id :}
+   $1 M-MOVZ {: one:IR-ID:ir-value-id :}
+   a0 n0 1 M-BR2
+   M-BLOCK+                             \ block one: the header
+   ARG+ {: acc:IR-ID:ir-value-id :}
+   ARG+ {: n:IR-ID:ir-value-id :}
+   n 2 3 M-BRZ
+   M-BLOCK+                             \ block two: the exit
+   acc M-RET
+   M-BLOCK+                             \ block three: the body
+   acc n M-ADD {: acc2:IR-ID:ir-value-id :}
+   n one M-SUB {: n2:IR-ID:ir-value-id :}
+   acc2 n2 1 M-BR2
+   CLOSE-FUN ;
+
+\ A move-wide overwrite inside a branch arm, with the arm arranged so that the
+\ register the tie needs is NOT the lowest free one where the overwrite is
+\ written. Two values reach the arm in the low two registers, the half-built
+\ constant is made while they are still live and therefore lands in the third,
+\ and the addition that reads them both stands between it and the overwrite - so
+\ by the overwrite's own position the low registers are free again and the
+\ overwrite's result would be handed one of them if nothing said it must return
+\ to its operand's.
+\
+\ THIS IS THE REGRESSION TEST FOR THE DEFECT THAT MOTIVATED THIS FILE. The
+\ multi-block walk once left the tie to the scan, and it held only because the
+\ operand of an overwrite dies at the overwrite and the lowest free register
+\ happened to be the one it had just given up. Reddened by: dropping the tie
+\ union - removing MB-TIES from MB-RUN, or the UF-UNION from MB-TIE1 - which
+\ gives the overwrite a register its own operand is not in, and the validator
+\ refuses the routine with E-A64RAV-TIE.
+: BUILD-MB-TIE ( -- )
+   s" MBTIE" 0 1 OPEN-FUN
+   $11 M-MOVZ {: p:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: q:IR-ID:ir-value-id :}
+   $0 M-MOVZ {: t:IR-ID:ir-value-id :}
+   t 1 2 M-BRZ
+   M-BLOCK+                             \ block one: the arm that holds the tie
+   $5678 M-MOVZ {: lo:IR-ID:ir-value-id :}
+   p q M-ADD {: s:IR-ID:ir-value-id :}
+   lo $1234 48 M-MOVK {: hi:IR-ID:ir-value-id :}
+   s hi M-ADD {: r:IR-ID:ir-value-id :}
+   r 3 M-BR1
+   M-BLOCK+                             \ block two: the other arm
+   $99 M-MOVZ {: u:IR-ID:ir-value-id :}
+   u 3 M-BR1
+   M-BLOCK+                             \ block three: the join
+   ARG+ M-RET
+   CLOSE-FUN ;
+
+\ A copy whose two ends are never live at the same instant, with the same
+\ arrangement as the tie above: the value it copies is made while two others hold
+\ the low registers, and by the copy's own position those registers are free. Its
+\ result therefore lands somewhere else unless the two ends are merged - and
+\ merged they are one register, so the copy is a move of a register into itself
+\ and the emitter writes no instruction for it.
+\
+\ Reddened by: dropping the coalescing step - removing MB-COALESCE from MB-RUN,
+\ or the UF-UNION from MB-COALESCE1 - which leaves the copy's two ends in two
+\ registers and a real instruction where a nothing should be.
+: BUILD-MB-COPY ( -- )
+   s" MBCOPY" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   $22 M-MOVZ {: b:IR-ID:ir-value-id :}
+   $33 M-MOVZ {: c:IR-ID:ir-value-id :}
+   a b M-ADD {: s:IR-ID:ir-value-id :}
+   c M-MOV {: c2:IR-ID:ir-value-id :}
+   s c2 1 M-BR2
+   M-BLOCK+
+   ARG+ {: x:IR-ID:ir-value-id :}
+   ARG+ {: y:IR-ID:ir-value-id :}
+   x y M-ADD M-RET
+   CLOSE-FUN ;
+
+\ A copy whose source is read AFTER it - the shape a swap leaves, where the value
+\ being copied out of the way is still wanted. Its two ends are live at the same
+\ instant, so merging them would put two values in one register: the merge is not
+\ made, the two ends keep two registers, and the copy stays a real instruction.
+\
+\ Reddened by: dropping the MB-CLASH? guard from MB-COALESCE1, which merges them
+\ anyway and is caught by the class invariant with E-A64RA-EDGE.
+: BUILD-MB-LIVE-COPY ( -- )
+   s" MBLIVE" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   a M-MOV {: a2:IR-ID:ir-value-id :}
+   a a2 M-ADD {: s:IR-ID:ir-value-id :}
+   s 1 M-BR1
+   M-BLOCK+
+   ARG+ M-RET
+   CLOSE-FUN ;
+
+\ An edge that hands over a value the destination still reads on its own account:
+\ the branch's operand and the argument it lands in are one class by the edge
+\ rule, and they are live at the same instant, so one register would have to hold
+\ two values. The selector never builds it - it copies every value crossing an
+\ argument-carrying edge into a value of its own first - so it is built here.
+\ Reddened by: dropping MB-MEMBER-CK, or the MB-CLASSES loop that calls it, which
+\ lets the class through and hands two live values one register.
+: BUILD-MB-EDGE-CLASH ( -- )
+   s" MBCLASH" 0 1 OPEN-FUN
+   $11 M-MOVZ {: a:IR-ID:ir-value-id :}
+   a 1 M-BR1
+   M-BLOCK+
+   ARG+ {: x:IR-ID:ir-value-id :}
+   a x M-ADD M-RET
+   CLOSE-FUN ;
+
+\ A two-way branch one of whose destinations takes an argument. Nothing hands
+\ that argument a value: a branch with two successors carries no operands but the
+\ register it tests, so the argument arrives in whatever register the allocation
+\ happened to give it. The allocator says nothing about it - its edge rule reads
+\ single-successor terminators only - and the freeze verifier says nothing either,
+\ because its own successor-argument rule is the single-successor one. The
+\ validator is the only reader that refuses it, which is why this is the shape
+\ that reaches VMULTI-CK. Reddened by: dropping VMULTI-CK from VEDGE-OF, which
+\ accepts an argument no edge ever filled.
+: BUILD-MB-MULTI-ARG ( -- )
+   s" MBMULTI" 0 1 OPEN-FUN
+   $0 M-MOVZ {: t:IR-ID:ir-value-id :}
+   t 1 2 M-BRZ
+   M-BLOCK+                             \ block one: takes an argument nobody fills
+   ARG+ {: x:IR-ID:ir-value-id :}
+   x 3 M-BR1
+   M-BLOCK+                             \ block two
+   $22 M-MOVZ {: u:IR-ID:ir-value-id :}
+   u 3 M-BR1
+   M-BLOCK+                             \ block three: the join
+   ARG+ M-RET
+   CLOSE-FUN ;
+
+\ ---- what the multi-block fixtures assert ------------------------------------
+: MB-EDGE-BODY ( IR-CTX:ctx -- n n n n n )
+   A64-MOD
+   BUILD-MB-EDGE
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@ ;
+
+: MB-EDGE-CASE ( -- )
+   s" a branch's operand and the argument it lands in take one register" T-LABEL
+   WBND [: MB-EDGE-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 1 T= 0 T= 4 T= ;
+
+: MB-LOOP-BODY ( IR-CTX:ctx -- n n n n n n n n )
+   A64-MOD
+   BUILD-MB-LOOP
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   5 A64RAV:REG@
+   6 A64RAV:REG@ ;
+
+: MB-LOOP-CASE ( -- )
+   s" a loop-carried value keeps one register from entry to back edge" T-LABEL
+   WBND [: MB-LOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 0 T= 1 T= 0 T= 2 T= 1 T= 0 T= 7 T= ;
+
+\ The constant one is live over the whole loop, so its hull runs from where it is
+\ written to the last position of the last block. Asserting the hull rather than
+\ only the register is what tells a value held across a loop apart from one that
+\ happened to keep a register nobody else wanted.
+: MB-LOOP-HULL-BODY ( IR-CTX:ctx -- n n n n )
+   A64-MOD
+   BUILD-MB-LOOP
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   2 A64RA:DEF@
+   2 A64RA:LAST@
+   3 A64RA:DEF@
+   3 A64RA:LAST@ ;
+
+: MB-LOOP-HULL-CASE ( -- )
+   s" a value live across a loop is held over the whole of it" T-LABEL
+   WBND [: MB-LOOP-HULL-BODY ;] IR-CTX:WITH-CONTEXT
+   10 T= 5 T= 12 T= 3 T= ;
+
+: MB-TIE-BODY ( IR-CTX:ctx -- n n n n n n n n n n )
+   A64-MOD
+   BUILD-MB-TIE
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   5 A64RAV:REG@
+   6 A64RAV:REG@
+   7 A64RAV:REG@
+   8 A64RAV:REG@ ;
+
+: MB-TIE-CASE ( -- )
+   s" a move-wide overwrite in a branch arm shares its operand's register" T-LABEL
+   WBND [: MB-TIE-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 0 T= 2 T= 0 T= 2 T= 2 T= 1 T= 0 T= 9 T= ;
+
+: MB-COPY-BODY ( IR-CTX:ctx -- n n n n n n n n n )
+   A64-MOD
+   BUILD-MB-COPY
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@
+   4 A64RAV:REG@
+   5 A64RAV:REG@
+   6 A64RAV:REG@
+   7 A64RAV:REG@ ;
+
+: MB-COPY-CASE ( -- )
+   s" a copy whose ends never overlap becomes a move into the same register" T-LABEL
+   WBND [: MB-COPY-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 2 T= 0 T= 2 T= 0 T= 2 T= 1 T= 0 T= 8 T= ;
+
+: MB-LIVE-COPY-BODY ( IR-CTX:ctx -- n n n n n )
+   A64-MOD
+   BUILD-MB-LIVE-COPY
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT
+   A64RA:VALUES
+   0 A64RAV:REG@
+   1 A64RAV:REG@
+   2 A64RAV:REG@
+   3 A64RAV:REG@ ;
+
+: MB-LIVE-COPY-CASE ( -- )
+   s" a copy whose source outlives it keeps two registers" T-LABEL
+   WBND [: MB-LIVE-COPY-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 1 T= 0 T= 4 T= ;
+
+\ ---- the multi-block refusals ------------------------------------------------
+: MB-EDGE-CLASH-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-MB-EDGE-CLASH
+   4 M-ALLOCATE drop ;
+
+\ One register cannot hold the two literals the sum reads, and a routine of more
+\ than one block has no spill: a spill decision is anchored to a position and a
+\ position does not yet name its block.
+: MB-SPILL-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-MB-EDGE
+   1 M-ALLOCATE drop ;
+
+\ A convention that names a register for the value this routine returns.
+\ Pre-colouring an argument and planning a move in front of the return are both
+\ anchored to one block, so a register place on a routine of more than one block
+\ is refused rather than half-honoured.
+: MB-FIXED-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-MB-EDGE
+   M-FREEZE {: m:IR-BUILD:module :}
+   CC m  4 POOL-N  A64EFF:SEQ-NONE  0 SQ LEAF-DECL A64RA:ALLOCATE ;
+
+: MB-MULTI-ARG-BODY ( IR-CTX:ctx -- )
+   A64-MOD
+   BUILD-MB-MULTI-ARG
+   4 M-ALLOCATE {: m:IR-BUILD:module :}
+   m 4 LEAF-N A64RAV:ACCEPT ;
+
 \ ---- lowering a spill --------------------------------------------------------
 \ The whole route a program that does not fit takes: allocate it, and if the walk
 \ decided any spill, build the module those decisions are operations in and
@@ -1565,6 +1959,10 @@ create TXT
    WBND [: ACCEPT-WRONG-POOL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : UNCHECKED ( -- )        WBND [: UNCHECKED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : STALE ( -- )            WBND [: STALE-BODY ;] IR-CTX:WITH-CONTEXT ;
+: MB-EDGE-CLASH ( -- )    WBND [: MB-EDGE-CLASH-BODY ;] IR-CTX:WITH-CONTEXT ;
+: MB-SPILL ( -- )         WBND [: MB-SPILL-BODY ;] IR-CTX:WITH-CONTEXT ;
+: MB-FIXED ( -- )         WBND [: MB-FIXED-BODY ;] IR-CTX:WITH-CONTEXT ;
+: MB-MULTI-ARG ( -- )     WBND [: MB-MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : DROP-BINDING ( -- )
    A64RA:RELEASE ;
@@ -1683,6 +2081,37 @@ create TXT
    s" accepting under a different set of registers is refused" T-LABEL
    [: ACCEPT-WRONG-POOL ;] E-A64RAV-CONTRACT TTHROWSQ ;
 
+\ ---- the refusals a routine of more than one block earns ---------------------
+\ The first is the allocator's class invariant, stated over a class the edge rule
+\ forces; the second and third are the two things this path deliberately does not
+\ do. The fourth is the validator's alone: the allocator's edge rule reads
+\ single-successor terminators only, so nothing in it looks at a two-way branch's
+\ destinations at all.
+\
+\ WHAT IS NOT REACHED FROM HERE, AND WHY IT IS STILL WRITTEN. Two clauses of the
+\ validator's edge rule stay fail-closed. An edge whose operand count differs
+\ from the destination's argument count is refused by the freeze verifier before
+\ either the allocator or this file sees it, and the allocator refuses it again
+\ under E-A64RA-EDGE, so VEDGE-OF's own count clause answers for neither.
+\ VEDGE1 - a terminator's operand and the argument it fills given two different
+\ registers - and OVERLAP-CK - two values live at one instant given one register -
+\ are properties the allocator's class rule makes impossible, so only mutating
+\ the allocator reaches them. Both are still written there, and both are what
+\ turned the three mutations named above from wrong code into a red suite; a
+\ fixture that faked them would measure this file's arithmetic and not the
+\ validator's.
+: MB-REFUSE-CASES ( -- )
+   s" two values live at once forced into one class by an edge are refused" T-LABEL
+   [: MB-EDGE-CLASH ;] E-A64RA-EDGE TTHROWSQ
+   s" a routine of more than one block that does not fit is refused" T-LABEL
+   [: MB-SPILL ;] E-A64RA-SPILL TTHROWSQ
+   s" a register place on a routine of more than one block is refused" T-LABEL
+   [: MB-FIXED ;] E-A64RA-FIXED TTHROWSQ ;
+
+: MB-ACCEPT-REFUSE-CASES ( -- )
+   s" a two-way branch into a block that takes an argument is refused" T-LABEL
+   [: MB-MULTI-ARG ;] E-A64RAV-EDGE TTHROWSQ ;
+
 : STATE-REFUSE-CASES ( -- )
    s" a claim no validator has accepted is not an answer" T-LABEL
    [: UNCHECKED ;] E-A64RAV-STATE TTHROWSQ
@@ -1708,6 +2137,8 @@ create TXT
 : GROUP-TARGET ( IR-CTX:ctx -- )    drop TARGET-REFUSE-CASES ;
 : GROUP-ACCEPT ( IR-CTX:ctx -- )    drop ACCEPT-REFUSE-CASES ;
 : GROUP-STATE ( IR-CTX:ctx -- )     drop STATE-REFUSE-CASES ;
+: GROUP-MB ( IR-CTX:ctx -- )        drop MB-REFUSE-CASES ;
+: GROUP-MB-ACCEPT ( IR-CTX:ctx -- ) drop MB-ACCEPT-REFUSE-CASES ;
 
 public
 
@@ -1735,6 +2166,12 @@ public
    TIED-EXTRA-CASE
    UNTIED-EXTRA-CASE
    PAIR-CASE
+   MB-EDGE-CASE
+   MB-LOOP-CASE
+   MB-LOOP-HULL-CASE
+   MB-TIE-CASE
+   MB-COPY-CASE
+   MB-LIVE-COPY-CASE
    RESERVED-CASES
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
@@ -1754,6 +2191,8 @@ public
    WBND [: GROUP-TARGET ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-ACCEPT ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-STATE ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-MB ;] IR-CTX:WITH-CONTEXT
+   WBND [: GROUP-MB-ACCEPT ;] IR-CTX:WITH-CONTEXT
    T-REPORT ;
 
 ;package

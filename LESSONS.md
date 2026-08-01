@@ -4151,11 +4151,13 @@ Two things follow. The first is the fix: a tie is a must-share constraint of
 exactly the same kind as an argument-carrying edge, so it belongs in the same
 union-find, and then it holds by construction rather than by the order
 `FREE-REG` happens to scan in. The second is where the bug had been hiding. The
-multi-block path has no unit tests - `test/compiler/native-regalloc.f` is
-straight-line fixtures only - so the only thing checking it was an end-to-end
+multi-block path had no unit tests at the time - `test/compiler/native-regalloc.f`
+was straight-line fixtures only - so the only thing checking it was an end-to-end
 run that happened to pass, and the validator's own tie clause, which agreed with
 the lucky answer because the lucky answer was right. A check cannot tell you
-that a rule is unenforced when the accident keeps satisfying it.
+that a rule is unenforced when the accident keeps satisfying it. (That gap is
+closed: the same file now carries multi-block fixtures, and the lesson below is
+how one of them is built so the accident cannot save it.)
 
 So: before adding a pass that PICKS registers, list the constraints the existing
 allocator is supposed to enforce and find where each one is stated. Any that is
@@ -4182,3 +4184,33 @@ dies (`E-A64RA-EDGE`): the ends may be disjoint while a member the union-find
 already put in one of their classes is not. A must-share structure changes what
 "do these two interfere" means, and the question has to be asked at the grain
 the structure works at.
+
+## To test a must-share rule, build the shape where the lucky answer is the wrong one
+
+A fixture for "the tied result lands in its operand's register" proves nothing
+while the scan would put it there anyway. The multi-block tie held for years
+because the operand dies at the overwrite, so its register is the lowest free
+one where the result is written, and any straightforward fixture agrees with
+both the rule and the accident.
+
+What separates them is a shape in which a LOWER register is free at the tied
+result's own position. Building it is three moves: put two values in the low
+registers so the half-built constant lands above them, give them a last use at
+an operation that stands between the constant and the overwrite, and let the
+value that operation defines take only one of the two registers it frees. Now
+the lowest free register at the overwrite is not the operand's, so an allocator
+that leaves the tie to the scan produces a different register and the validator
+refuses the routine. The same three moves make the coalescing fixture: a copy
+whose ends would land in two registers unless they are deliberately merged.
+
+The general form: write down the accident that has been satisfying the rule,
+then build the input that breaks the accident while keeping the rule. If you
+cannot describe the accident, the fixture is not yet measuring the rule.
+
+## The suite-coverage lint schedules FILES, not cases
+
+`tools/suite-coverage-lint.f` checks that every test file is registered in a
+suite. It says nothing about whether a `*-CASE` word inside that file is called
+from the file's own `RUN`. Deleting a case from `RUN` leaves the lint green and
+the suite green, and the case simply never runs. Adding cases to an existing
+suite therefore still needs the eye: read `RUN` and count.
