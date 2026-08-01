@@ -1204,6 +1204,7 @@ ENUM rfberr bad worse ;ENUM
 PRODUCT rfbprod 0 FIELD value n ;PRODUCT
 NEWTYPE rfbcell 1
 NEWTYPE rfbpair 2
+PRODUCT rfbwone 1 FIELD value a ;PRODUCT
 
 \ Each constructor arm grounds its own parameter. The conditional forces the
 \ independently checked arms through one joined result, then MATCH proves the
@@ -1287,6 +1288,13 @@ s" : RFB-CON-P ( zpub:rfbprod -- result<zpub:rfbprod,zpub:rfberr> ) construct re
 s" : RFB-CON-RUN ( -- ) ZPUB-RFBTAG:RED RFB-CON-E ZPUB:RFB-VALUE 11 T= 37 ZPUB-RFBPROD:MAKE RFB-CON-P ZPUB:RFB-PROD# 37 T= ;"
    TCE-CATCH 0 T=
 RFB-CON-RUN
+\ Open variables nested below a pointer are not closed family arguments. Both
+\ definitions compile through INCLUDE-EVALUATE; neither constructor may pre-seed
+\ rfbwone<ptr a> into RESULT's fresh payload variable.
+s" : RFB-PTR-GEN-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) RESULT:OK ;"
+   TCE-CATCH 70 T=
+s" : RFB-PTR-CON-BAD ( zpub:rfbwone<ptr a> -- result<zpub:rfbwone<ptr a>,n> ) construct result ok ;"
+   TCE-CATCH 70 T=
 
 \ ---------------------------------------------------------------------------
 \ report: "ok" on success, nonzero exit on any failure.

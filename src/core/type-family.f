@@ -2326,19 +2326,10 @@ TFC-QUOT-ROW-INSTALL
 \ PAYCELLS, famterm T-WIDTH) already recurses through the arg tree — the inner
 \ bundle is constructed with its OWN extra pads at its own site, and the outer
 \ construct/match only adds the outer delta. The one soundness requirement is that
-\ every width be CLOSED (no open type var anywhere in the arg tree): an open inner
-\ var (option<result<n,a>>) has an unstable width and MUST stay fail-closed, so the
-\ recursion rejects it and CONSTRUCT-WIDE-STAGED-REJECT / declared-width match hold.
-\ (Reentrant: locals + RECURSE, no shared TFC-I.)
-: TFC-CON-CLOSED? ( n -- bool ) {: term:n :}   \ recursively width-stable: no open var anywhere in the arg tree
-   term T-RES {: r:n :}
-   r ISVAR IF RES-FALSE EXIT THEN                 \ open var -> width not stable -> stay fail-closed
-   r TAG T-PARAM <> IF RES-TRUE EXIT THEN          \ con/ptr/atom scalar -> width 1, stable
-   0 BEGIN dup r PARAM>ARGC < WHILE                \ layout: every arg recursively closed
-      r over PARAM>ARG RECURSE 0= IF drop RES-FALSE EXIT THEN
-      1 +
-   REPEAT drop RES-TRUE ;
-
+\ every width be CLOSED (no unresolved type/row var below a family, pointer, or
+\ quotation): an open inner var (option<result<n,a>>) has an unstable width and
+\ MUST stay fail-closed, so TYPE-CLOSED? rejects it and CONSTRUCT-WIDE-STAGED-
+\ REJECT / declared-width match hold. The checker owns that one closure authority.
 : TFC-VAR-PAYCELLS ( n -- n ) {: vid:n :}   \ sum of instantiated payload cell widths for a variant
    0
    0 TFC-J !
@@ -2390,7 +2381,7 @@ TFC-QUOT-ROW-INSTALL
 \ here and `rt T-WIDTH 1 -` needs no kind guard.
 : TFAM-MATCH-XPAD-RECORD ( n n -- ) {: vid:n term:n :}   \ record a wide MATCH arm's extra-pad fact, or fail closed on a genuine narrower-than-declared arm
    term T-RES {: rt:n :}
-   rt TFC-CON-CLOSED? 0= IF EXIT THEN           \ open-arg (unstable width): leave declared width, stay fail-closed
+   rt TYPE-CLOSED? 0= IF EXIT THEN               \ open nested term/row: leave declared width, stay fail-closed
    rt T-WIDTH 1 -                                \ instantiated payload slots (MATCH families are always tagged: subtract the one tag cell)
    vid TFC-VAR-PAYCELLS -                        \ - instantiated payload cells = instantiated pads
    vid SUMV-FAM@ TFAM-SLOTS@ vid SUMV-PAYCELLS@ - -   \ - declared pads = extra pads
@@ -2424,12 +2415,12 @@ TFC-QUOT-ROW-INSTALL
    vid base TFC-PAY-ROW {: din:n :}
    fam TFC-FAM-TERM {: famterm:n :}
    seeded IF                                           \ layout-cap slice 4/5: width-aware lowering for a CLOSED (stable-width) instantiation, incl. nested
-      dt TFC-CON-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
+      dt TYPE-CLOSED? IF fam vid famterm TFC-CON-XPAD-RECORD THEN
    THEN
    famterm base PUSH-LOGICAL {: dout:n :}
    din dout CHECKER-STEP
    seeded IF
-      dt TFC-CON-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open-arg (unstable width): stay staged fail-closed
+      dt TYPE-CLOSED? 0= IF CONSTRUCT-WIDE-STAGED-REJECT THEN   \ open nested term/row: stay staged fail-closed
    THEN ;
 
 : TFAM-CONSTRUCT-STEP ( ptr u8 n n -- bool ) {: na:ptr nu:n fam:n :}
