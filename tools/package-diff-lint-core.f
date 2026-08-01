@@ -219,9 +219,8 @@ variable FILE-USED
 : BAD+ ( -- )
    BAD @ 1+ BAD ! ;
 
-: FORTH? ( -- bool )
-   FILE$ s" .f" LINT-ENDS-WITH? if true exit then
-   FILE$ s" .fs" LINT-ENDS-WITH? ;
+: HABU? ( -- bool )
+   FILE$ s" .f" LINT-ENDS-WITH? ;
 
 \ Exact files whose global (unpackaged) definitions implement the core
 \ language/prelude, so a changed global there is not an ownership fault.
@@ -624,12 +623,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
 
 : STEM$ ( -- ptr u8 n )
    0 STEM-START !
-   FILE-U @ STEM-END !
-   FILE$ s" .fs" LINT-ENDS-WITH? if
-      STEM-END @ 3 - STEM-END !
-   else
-      FILE$ s" .f" LINT-ENDS-WITH? if STEM-END @ 2 - STEM-END ! then
-   then
+   FILE-U @ 2 - STEM-END !
    0 begin dup STEM-END @ < while
       FILE-BUF over + c@ SLASH-C = if dup 1+ STEM-START ! then
       1+
@@ -1170,7 +1164,7 @@ s" test/engine-suite.f" ENGINE-SET ROW+
    false SECTION-ACTIVE !
    kind WHOLE-CHANGE? WHOLE-CHANGED !
    newu 0= if exit then
-   FORTH? 0= if exit then
+   HABU? 0= if exit then
    body 0= WHOLE-CHANGED @ 0= and if exit then
    LOAD-SOURCE
    1 SOURCE-LINE !

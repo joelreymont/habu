@@ -28,7 +28,6 @@ $4000 constant TEST-OUT-CAP
 45 constant TEST-MINUS-C
 92 constant TEST-BACKSLASH-C
 96 constant TEST-TICK-C   \ backtick: the report's finding-subject delimiter
-115 constant TEST-S-C     \ the byte that turns a listed `.f` path into `.fs`
 $0B constant TEST-VT-C
 9 constant TEST-PATH#     \ rows in the grammar-fixture path table
 13 constant TEST-OPENER#  \ declaration openers the category knows
@@ -995,7 +994,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 \ ONE row from LINT-STR= to LINT-ENDS-WITH? and only that row starts admitting
 \ test/lib/<name>, while a hostile written against one other path stays green
 \ and reports nothing.  A per-row weakening needs a per-row kill, so every row
-\ gets the subdirectory, case-varied, extension and outside-test/ shapes.
+\ gets the subdirectory, nested, case-varied and outside-test/ shapes.
 
 \ NEWTYPE is on all nine rows, so the deleted-boundary case can use it
 \ everywhere and stay a genuine "admitted opener, boundary removed" case.
@@ -1010,12 +1009,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" -package PDLFIX" TEST-DIFF+ TEST-LF
    s"  NEWTYPE pdlfam 0" TEST-DIFF+ TEST-LF
    s" -;package" TEST-DIFF+ TEST-LF ;
-
-: TEST-ALT-PATH$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
-   u 1+ FS-PATH-CAP > if E-FS-CAPACITY throw then
-   a TEST-ALT-BUF u BYTE-COPY
-   TEST-S-C TEST-ALT-BUF u + c!
-   TEST-ALT-BUF u 1+ ;
 
 \ Every listed path starts `test/`, so the file name is what follows it.
 : TEST-TAIL$ ( ptr u8 n -- ptr u8 n ) {: a:ptr u:n :}
@@ -1061,9 +1054,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DIFF-RESET p TEST-PATH$ TEST-ADD-SOURCE-SECTION
    1 TEST-RUN-EXPECT? ;
 
-: TEST-EXTENSION-ROW? ( n -- bool ) {: p:n :}
-   p TEST-PATH$ TEST-ALT-PATH$ TEST-VARIANT-ROW? ;
-
 \ The listed file name moved into a subdirectory: what a comparison narrowed to
 \ the file name alone, or to a path-segment suffix, would admit.
 : TEST-SUBDIR-ROW? ( n -- bool ) {: p:n :}
@@ -1097,7 +1087,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    p TEST-ORDINARY-ROW? 0= if p s" ordinary globals" TEST-ROW-NOTE 1+ then
    p TEST-STRUCTURE-ROW? 0= if p s" a STRUCTURE declaration" TEST-ROW-NOTE 1+ then
    p TEST-FORGED-ROW? 0= if p s" forged comment and string text" TEST-ROW-NOTE 1+ then
-   p TEST-EXTENSION-ROW? 0= if p s" the .fs path variant" TEST-ROW-NOTE 1+ then
    p TEST-SUBDIR-ROW? 0= if p s" the test/lib/ subdirectory variant" TEST-ROW-NOTE 1+ then
    p TEST-NESTED-ROW? 0= if p s" the nested test/test/ variant" TEST-ROW-NOTE 1+ then
    p TEST-RECASE-ROW? 0= if p s" the case-varied path variant" TEST-ROW-NOTE 1+ then
@@ -1504,16 +1493,16 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" deletion to an empty Forth file stays canonical" T-LABEL
    TEST-EXPECT-CLEAN ;
 
-: TEST-WRITE-GLOBAL-BODY-SOURCE ( -- )
+: TEST-WRITE-GLOBAL-BODY-SOURCE ( ptr u8 n -- ) {: path:ptr pathu:n :}
    TEST-SOURCE-RESET
    s" : LEGACY ( -- n )" TEST-SOURCE-LINE
    s"    1" TEST-SOURCE-LINE
    s"    2 +" TEST-SOURCE-LINE
    s" ;" TEST-SOURCE-LINE
-   s" lib/global-body.f" TEST-WRITE-SOURCE ;
+   path pathu TEST-WRITE-SOURCE ;
 
-: TEST-GLOBAL-BODY-DIFF ( -- )
-   s" lib/global-body.f" TEST-MODIFY-HEAD
+: TEST-GLOBAL-BODY-DIFF ( ptr u8 n -- )
+   TEST-MODIFY-HEAD
    s" @@ -1,3 +1,4 @@" TEST-DIFF+ TEST-LF
    s"  : LEGACY ( -- n )" TEST-DIFF+ TEST-LF
    s"     1" TEST-DIFF+ TEST-LF
@@ -1521,9 +1510,15 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s"  ;" TEST-DIFF+ TEST-LF ;
 
 : TEST-CHANGED-GLOBAL-BODY ( -- )
-   TEST-WRITE-GLOBAL-BODY-SOURCE
-   TEST-DIFF-RESET TEST-GLOBAL-BODY-DIFF
+   s" lib/global-body.f" TEST-WRITE-GLOBAL-BODY-SOURCE
+   TEST-DIFF-RESET s" lib/global-body.f" TEST-GLOBAL-BODY-DIFF
    1 TEST-EXPECT-FINDINGS ;
+
+: TEST-FS-GLOBAL ( -- )
+   s" tools/recovery.fs" TEST-WRITE-GLOBAL-BODY-SOURCE
+   TEST-DIFF-RESET s" tools/recovery.fs" TEST-GLOBAL-BODY-DIFF
+   s" an ordinary changed .fs global is outside Habu package grammar" T-LABEL
+   TEST-EXPECT-CLEAN ;
 
 : TEST-WRITE-COMMENT-CANCEL-SOURCE ( -- )
    TEST-SOURCE-RESET
@@ -1902,6 +1897,7 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    TEST-DELETED-OWNER
    TEST-ZERO-COUNT-OWNER-DELETION
    TEST-DELETION-TO-EMPTY
+   TEST-FS-GLOBAL
    TEST-CHANGED-GLOBAL-BODY
    TEST-MULTILINE-COMMENT-CANCELLATION
    TEST-DELETED-TOKEN-IN-DEFINITION
