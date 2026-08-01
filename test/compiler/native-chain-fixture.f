@@ -211,6 +211,12 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n n:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
    c b a u 0 n RUN-FROM ;
 
+\ Select alone, without allocating or emitting: the step a caller needs when it
+\ is measuring what the selector produced rather than what the routine runs as.
+: SELECT-HABU ( IR-CTX:ctx IR-BUILD:builder ptr u8 n n n n n -- IR-BUILD:module )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder a u:n base:n n:n in:n out:n :} \ typed-local-lint: allow-bare-local - a keeps the ptr u8 byte-span role
+   c b a u base n in out LEAF-HABU SELECTED ;
+
 \ Select and finish under the data-stack convention: `in` arguments taken out of
 \ slots 0.. of the caller's stack and `out` results left in slots 0.., with `n`
 \ scratch registers from `base`. This is the whole of what makes an emitted

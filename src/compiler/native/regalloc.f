@@ -8,16 +8,20 @@
 \ register holds which value. It rewrites no module, chooses no block order and
 \ encodes nothing.
 \
-\ WHY THE INTERVALS ARE TRIVIAL, AND WHY THERE IS NO INTERVAL MACHINERY. The
-\ input is one block with no branches, so the operations have one order and a
-\ position is just an index into it. A value is written once - it is SSA - and
-\ every use is an operation that comes after the write. A value's live range is
-\ therefore the single stretch from its definition to its last use, with no
-\ holes, no pieces and nothing to merge. Two values interfere exactly when those
-\ two stretches overlap. A general allocator needs interval lists because a value
-\ can be live down one arm of a branch and dead down the other; none of that
-\ exists here, so none of it is built here. When control flow arrives, the
-\ interval representation arrives with it.
+\ TWO PATHS, AND WHY. A routine of ONE block has one operation order, so a
+\ position is an index into it, a value's live range is the single stretch from
+\ its definition to its last use, and two values interfere exactly when those
+\ stretches overlap. That is the first half of this file, and it can spill. A
+\ routine of MORE than one block has neither: its operations have no order until
+\ one is chosen, and a value can be live down one arm of a branch and dead down
+\ the other. The second half of this file - ALLOCATING ACROSS BLOCKS, below - is
+\ the general rule: a linear block order with global positions, liveness by
+\ backward dataflow over the successor edges, one contiguous hull interval per
+\ value, and one register per block-argument class. It does not spill yet, and
+\ refuses by name rather than allocating wrongly. The two are kept apart on
+\ purpose: a routine that could always be allocated keeps being allocated exactly
+\ as it was, and the day the general path can anchor a spill decision to a block
+\ is the day the first half is retired.
 \
 \ THE READ-THEN-WRITE BOUNDARY. One operation reads its operands and then writes
 \ its results, so a value whose last use is operation i and a value defined by
@@ -549,10 +553,10 @@ create PL-VAL PLMAX cells allot
 
 \ A convention that names more positions than the routine has arguments, or more
 \ than it returns values, is not this routine's convention.
-: FIXED-ARITY-CK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
+: FIXED-ARITY-CK ( IR-ID:ir-block-id IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id :}
    bk ARG-COUNT ARGS-N @ < if E-A64RA-FIXED throw then
-   bk TERM-OF OPERANDS-OF OUTS-N @ < if E-A64RA-FIXED throw then ;
+   rb TERM-OF OPERANDS-OF OUTS-N @ < if E-A64RA-FIXED throw then ;
 
 \ A side declared in data-stack slots is a side the module no longer carries in
 \ registers at all: the selector turned each place into a load at the top of the
@@ -560,11 +564,18 @@ create PL-VAL PLMAX cells allot
 \ terminator no operand for it. A module that still carries them has not been
 \ through that step, and allocating it would hand the arguments registers no
 \ caller ever wrote to.
-: LOWERED-CK ( IR-ID:ir-block-id A64EFF:placeseq A64EFF:placeseq -- )
-   {: bk:IR-ID:ir-block-id args:A64EFF:placeseq outs:A64EFF:placeseq :}
+\ The two sides are asked of two different blocks, because they are about two
+\ different instants: the arguments arrive where the caller enters, which is the
+\ entry block, and the results leave where control returns, which is the block
+\ whose terminator names no successor. In a straight-line routine they are the
+\ same block; with control flow they are not, and asking the entry block about
+\ the results would read a branch's block arguments as if they were the routine's.
+: LOWERED-CK ( IR-ID:ir-block-id IR-ID:ir-block-id A64EFF:placeseq A64EFF:placeseq -- )
+   {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id
+      args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args A64EFF:SEQ-SLOTS 0<> bk ARG-COUNT 0<> and
    if E-A64RA-PLACE throw then
-   outs A64EFF:SEQ-SLOTS 0<> bk TERM-OF OPERANDS-OF 0<> and
+   outs A64EFF:SEQ-SLOTS 0<> rb TERM-OF OPERANDS-OF 0<> and
    if E-A64RA-PLACE throw then ;
 
 \ Which register each returned value has to be in where control leaves. A value
@@ -826,14 +837,424 @@ create PL-VAL PLMAX cells allot
    k 0 ?do bk i OP-AT i ASSIGN-OP loop
    bk RETURN-CK ;
 
+\ ---- allocating across blocks ------------------------------------------------
+\ Everything above this line allocates ONE straight-line block, where a position
+\ is an index into one operation order and a live range is the single stretch
+\ from a definition to its last use. A routine with control flow has neither: its
+\ operations have no single order until one is chosen, and a value can be live
+\ down one arm of a branch and dead down the other. This section is the general
+\ rule, and it is four steps.
+\
+\ ONE. A LINEAR ORDER AND GLOBAL POSITIONS. Blocks are numbered in the order the
+\ module records them - the order the selector built them in and the order the
+\ emitter lays them out in - so every pass in the chain numbers the same
+\ instruction the same way. Each block gets one position for its arguments and
+\ one per operation, so block b holds positions B-ST[b] (its arguments) through
+\ B-EN[b] (its last operation), and the next block starts one past that.
+\
+\ TWO. LIVENESS BY BACKWARD DATAFLOW. use(b) is every value an operation of b
+\ reads that b did not already define; def(b) is b's block arguments together
+\ with every result of its operations. Then live-out(b) is the union of live-in
+\ over b's successors and live-in(b) is use(b) plus live-out(b) minus def(b),
+\ iterated until nothing changes. The block arguments are what keeps this honest
+\ across an edge: the values a terminator hands over are USES in its own block
+\ and the arguments they land in are DEFS of the destination, so nothing flows
+\ across an edge by accident and a loop-carried value is not confused with the
+\ value it replaces.
+\
+\ THREE. HULL INTERVALS. A value's range is its definition, every use, and the
+\ whole of every block it is live in or out of. That is one contiguous stretch -
+\ no holes and no interval lists - because the shapes a structured Forth control
+\ word builds are reducible: a value live across a back edge is live over the
+\ whole loop, and the loop's blocks are contiguous in the linear order. It is
+\ conservative where a value is live in only part of a block it is live-out of,
+\ and that conservatism costs registers rather than correctness. Splitting the
+\ range there is an optimisation and it is not this leaf.
+\
+\ FOUR. BLOCK-ARGUMENT CLASSES. The branch itself moves nothing, so a block
+\ argument and every value handed to it must be one physical register. They are
+\ therefore one class - a union-find over the edges - and the class, not the
+\ value, is what gets a register, over the hull of its members' ranges. Two
+\ members that are live at the same time would need one register to hold two
+\ values, and that is E-A64RA-EDGE rather than an allocation that is quietly
+\ wrong. It cannot happen for what this chain builds, because
+\ src/compiler/native/select.f copies every value crossing an argument-carrying
+\ edge into a value of its own first, and those copies die at the branch.
+\
+\ WHAT THIS PATH DOES NOT DO, AND SAYS SO. It does not spill. A spill decision is
+\ anchored to an operation POSITION, and with more than one block a position has
+\ to name a block as well before the lowering pass can put the store in the right
+\ one. So a routine of more than one block whose classes do not fit the pool is
+\ refused by name with E-A64RA-SPILL rather than given an allocation that is
+\ wrong (dot habu-refuse-or-lower-7d9cbf1f). It does not honour a calling
+\ convention that names REGISTERS either: pre-colouring an argument and planning
+\ a move in front of the return are both anchored to one block, and the Habu word
+\ convention this chain compiles for names data-stack slots on both sides, so a
+\ register place on a routine of more than one block is E-A64RA-FIXED.
+\
+\ WHY THE STRAIGHT-LINE PATH IS STILL HERE. It is the same rule with the liveness
+\ answered by the operation order alone, and it can spill. Retiring it means
+\ giving this path the spill anchoring, which is the dot above; until then the
+\ two are kept apart deliberately, so that a routine that could always be
+\ allocated keeps being allocated exactly as it was.
+
+\ ---- the sets ----------------------------------------------------------------
+\ Four bitsets per block over the module's values, in one array so the accessors
+\ are three words rather than four copies of them.
+64 constant SET-BITS
+VMAX SET-BITS / constant SETC
+0 constant P-IN
+1 constant P-OUT
+2 constant P-USE
+3 constant P-DEF
+4 constant PLANES
+
+\ A value's range starts no earlier than this, so the first member of a class
+\ always lowers it.
+$3FFFFFFF constant POS-INF
+
+here CELL 1- and CELL swap - CELL 1- and allot
+variable N-BLKS
+0 N-BLKS !
+variable MB-AT
+0 MB-AT !
+variable CHANGED
+0 CHANGED !
+
+create B-ST BMAX cells allot
+create B-EN BMAX cells allot
+create L-SETS PLANES BMAX * SETC * cells allot
+create TMPSET SETC cells allot
+create UF VMAX cells allot
+create CL-LO VMAX cells allot
+create CL-HI VMAX cells allot
+
+: BIT-CELL ( n -- n )    SET-BITS / ;
+: BIT-MASK ( n -- n )    SET-BITS mod 1 swap lshift ;
+
+: LS-IX ( n n n -- n )
+   {: pl:n b:n w:n :}
+   pl BMAX * b + SETC * w + ;
+
+: LS@ ( n n n -- n )     LS-IX cells L-SETS + @ ;
+
+: LS! ( n n n n -- )
+   {: val:n pl:n b:n w:n :}
+   val  pl b w LS-IX cells L-SETS + ! ;
+
+: LS-HAS? ( n n n -- bool )
+   {: pl:n b:n v:n :}
+   pl b v BIT-CELL LS@  v BIT-MASK and 0<> ;
+
+: LS-SET ( n n n -- )
+   {: pl:n b:n v:n :}
+   pl b v BIT-CELL LS@  v BIT-MASK or  pl b v BIT-CELL LS! ;
+
+: TMP-CLEAR ( -- )
+   SETC 0 ?do 0 i cells TMPSET + ! loop ;
+
+: TMP-HAS? ( n -- bool )
+   {: v:n :}
+   v BIT-CELL cells TMPSET + @  v BIT-MASK and 0<> ;
+
+: TMP-SET ( n -- )
+   {: v:n :}
+   v BIT-CELL cells TMPSET + @  v BIT-MASK or
+   v BIT-CELL cells TMPSET + ! ;
+
+: SETS-CLEAR ( -- )
+   PLANES BMAX * SETC * 0 ?do 0 i cells L-SETS + ! loop ;
+
+\ ---- step one: the linear order ----------------------------------------------
+: MB-LAY1 ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   MB-AT @ b cells B-ST + !
+   MB-AT @  f b BLOCK-AT OP-COUNT  + {: e:n :}
+   e b cells B-EN + !
+   e 1+ MB-AT ! ;
+
+: MB-LAYOUT ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT {: n:n :}
+   n BMAX > if E-A64RA-CAP throw then
+   n N-BLKS !
+   0 MB-AT !
+   n 0 ?do f i MB-LAY1 loop ;
+
+: OP-POS ( n n -- n )
+   {: b:n i:n :}
+   b cells B-ST + @ 1+ i + ;
+
+\ ---- step two: liveness ------------------------------------------------------
+: MB-USE1 ( n IR-ID:ir-value-id -- )
+   {: b:n id:IR-ID:ir-value-id :}
+   id SLOT {: v:n :}
+   v TMP-HAS? if exit then
+   P-USE b v LS-SET ;
+
+: MB-DEF1 ( n IR-ID:ir-value-id -- )
+   {: b:n id:IR-ID:ir-value-id :}
+   id SLOT {: v:n :}
+   P-DEF b v LS-SET
+   v TMP-SET ;
+
+: MB-OP-UD ( n IR-ID:ir-op-id -- )
+   {: b:n id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do b  id i OPERAND-AT  MB-USE1 loop
+   id RESULTS-OF 0 ?do  b  id i RESULT-AT   MB-DEF1 loop ;
+
+: MB-BLOCK-UD ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   TMP-CLEAR
+   bk ARG-COUNT 0 ?do b  bk i ARG-AT  MB-DEF1 loop
+   bk OP-COUNT 0 ?do  b  bk i OP-AT   MB-OP-UD loop ;
+
+: SUCC-ORD ( IR-ID:ir-op-id n -- n )
+   SUCC-AT IR-ID:BLOCK-LOCAL
+   dup 0 < over N-BLKS @ >= or if E-A64RA-SHAPE throw then ;
+
+: MB-OUT-ADD ( n n -- )
+   {: b:n s:n :}
+   SETC 0 ?do
+      P-OUT b i LS@  P-IN s i LS@ or  P-OUT b i LS!
+   loop ;
+
+: MB-OUT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   SETC 0 ?do 0 P-OUT b i LS! loop
+   f b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      b  t i SUCC-ORD  MB-OUT-ADD
+   loop ;
+
+: MB-IN1 ( n n -- bool )
+   {: b:n w:n :}
+   P-USE b w LS@   P-OUT b w LS@  P-DEF b w LS@ invert and   or {: nv:n :}
+   nv  P-IN b w LS@ = if false exit then
+   nv P-IN b w LS!
+   true ;
+
+: MB-IN ( n -- bool )
+   {: b:n :}
+   false
+   SETC 0 ?do b i MB-IN1 or loop ;
+
+: MB-PASS1 ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b MB-OUT
+   b MB-IN if 1 CHANGED ! then ;
+
+\ The sets only grow, and there are finitely many values and blocks, so the
+\ iteration terminates. Blocks are visited backwards because that is the order
+\ the answers propagate in and it is what keeps the number of rounds small.
+: MB-LIVENESS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   SETS-CLEAR
+   N-BLKS @ 0 ?do f i MB-BLOCK-UD loop
+   begin
+      0 CHANGED !
+      N-BLKS @ 0 ?do
+         f  N-BLKS @ 1- i -  MB-PASS1
+      loop
+      CHANGED @ 0=
+   until ;
+
+\ ---- step three: the hull intervals ------------------------------------------
+: MB-DEFINE ( IR-ID:ir-value-id n -- )
+   {: id:IR-ID:ir-value-id pos:n :}
+   id CLASS-OF {: cls:n :}
+   id SLOT {: k:n :}
+   k SET-AT 0<> if E-A64RA-SHAPE throw then
+   1 k SET!
+   cls k CLS!
+   pos k DEF!
+   pos k LAST! ;
+
+: MB-USE ( IR-ID:ir-value-id n -- )
+   {: id:IR-ID:ir-value-id pos:n :}
+   id SLOT {: k:n :}
+   k SET-AT 0= if E-A64RA-SHAPE throw then
+   pos k LAST-AT max k LAST! ;
+
+: MB-OP-RANGE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id pos:n :}
+   id OPERANDS-OF 0 ?do id i OPERAND-AT pos MB-USE loop
+   id RESULTS-OF 0 ?do  id i RESULT-AT  pos MB-DEFINE loop ;
+
+: MB-BLOCK-RANGE ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do
+      bk i ARG-AT  b cells B-ST + @  MB-DEFINE
+   loop
+   bk OP-COUNT 0 ?do
+      bk i OP-AT  b i OP-POS  MB-OP-RANGE
+   loop ;
+
+\ Live at a block's entry means the range reaches back to that entry; live at its
+\ exit means the range reaches its last operation. Live-IN alone does NOT reach
+\ the end of the block: a value live-in to a block and not live-out of it dies at
+\ its last use inside, which the use scan already recorded. Extending it to the
+\ end anyway is what would make a loop-carried argument and the copy that hands
+\ it back round the loop look like two values live at once - they are one value
+\ copied into itself, and that is the whole reason they are one class.
+: MB-EXTEND1 ( n n -- )
+   {: b:n k:n :}
+   P-IN b k LS-HAS? if
+      b cells B-ST + @  k DEF-AT min  k DEF!
+   then
+   P-OUT b k LS-HAS? if
+      b cells B-EN + @  k LAST-AT max  k LAST!
+   then ;
+
+: MB-EXTEND-V ( n -- )
+   {: k:n :}
+   N-BLKS @ 0 ?do i k MB-EXTEND1 loop ;
+
+: MB-RANGES ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   N-BLKS @ 0 ?do f i MB-BLOCK-RANGE loop
+   COVER-CK
+   N-VALS @ 0 ?do i MB-EXTEND-V loop ;
+
+\ ---- step four: the block-argument classes -----------------------------------
+: UF-INIT ( -- )
+   VMAX 0 ?do
+      i i cells UF + !
+      POS-INF i cells CL-LO + !
+      -1 i cells CL-HI + !
+   loop ;
+
+: UF-FIND ( n -- n )
+   begin dup cells UF + @ over <> while
+      cells UF + @
+   repeat ;
+
+: UF-UNION ( n n -- )
+   {: a:n b:n :}
+   a UF-FIND {: ra:n :}
+   b UF-FIND {: rb:n :}
+   ra rb = if exit then
+   ra rb min  ra rb max cells UF + ! ;
+
+: MB-EDGES-OF ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 1 <> if exit then
+   f  t 0 SUCC-ORD  BLOCK-AT {: sb:IR-ID:ir-block-id :}
+   t OPERANDS-OF sb ARG-COUNT <> if E-A64RA-EDGE throw then
+   t OPERANDS-OF 0 ?do
+      t i OPERAND-AT SLOT  sb i ARG-AT SLOT  UF-UNION
+   loop ;
+
+\ Two values that would have to share one register, and are live at the same
+\ time. The rule is the one the straight-line scan uses at every operation: one
+\ operation reads its operands and then writes its results, so a value read for
+\ the last time where another is written is not live at the same instant.
+: OVERLAP? ( n n -- bool )
+   {: a:n b:n :}
+   a DEF-AT b DEF-AT = if true exit then
+   a DEF-AT b DEF-AT < if
+      a LAST-AT b DEF-AT > exit
+   then
+   b LAST-AT a DEF-AT > ;
+
+: MB-CLASS1 ( n -- )
+   {: k:n :}
+   k UF-FIND {: r:n :}
+   k DEF-AT   r cells CL-LO + @ min  r cells CL-LO + !
+   k LAST-AT  r cells CL-HI + @ max  r cells CL-HI + ! ;
+
+: MB-MEMBER-CK ( n n -- )
+   {: a:n b:n :}
+   a UF-FIND b UF-FIND <> if exit then
+   a b OVERLAP? if E-A64RA-EDGE throw then ;
+
+: MB-CLASSES ( -- )
+   N-VALS @ 0 ?do i MB-CLASS1 loop
+   N-VALS @ 0 ?do
+      N-VALS @ i 1+ ?do
+         j i MB-MEMBER-CK
+      loop
+   loop ;
+
+\ ---- the scan ----------------------------------------------------------------
+: MB-EXPIRE1 ( n n -- )
+   {: r:n limit:n :}
+   r HOLD-AT {: v:n :}
+   v NOBODY = if exit then
+   v cells CL-HI + @ limit < if NOBODY r HOLD! then ;
+
+: MB-EXPIRE ( n -- )
+   {: limit:n :}
+   REGS-N 0 ?do i limit MB-EXPIRE1 loop ;
+
+: MB-PLACE1 ( n n -- )
+   {: r:n pos:n :}
+   r cells CL-LO + @ pos <> if exit then
+   r CLS-AT C-TOKEN = if exit then
+   FREE-REG {: g:n :}
+   g 0 < if E-A64RA-SPILL throw then
+   r g TAKE ;
+
+: MB-STEP ( n -- )
+   {: pos:n :}
+   pos 1+ MB-EXPIRE
+   N-VALS @ 0 ?do
+      i UF-FIND i = if i pos MB-PLACE1 then
+   loop ;
+
+: MB-SCAN ( -- )
+   MB-AT @ 0 ?do i MB-STEP loop ;
+
+\ Every value takes the register its class was given. A memory token is in no
+\ class that holds a register and takes none, exactly as it does on the
+\ straight-line path.
+: MB-FINISH ( -- )
+   N-VALS @ 0 ?do
+      i CLS-AT C-TOKEN = if
+         NOBODY i REG!
+      else
+         i UF-FIND REG-AT i REG!
+      then
+   loop ;
+
+: MB-RUN ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   ARGS-N @ 0<> OUTS-N @ 0<> or if E-A64RA-FIXED throw then
+   f MB-LAYOUT
+   f MB-LIVENESS
+   UF-INIT
+   f MB-RANGES
+   N-BLKS @ 0 ?do f i MB-EDGES-OF loop
+   MB-CLASSES
+   MB-SCAN
+   MB-FINISH ;
+
 \ ---- what one allocation run is told -----------------------------------------
 \ The straight-line subset is one function of one block; any other shape means
 \ control flow, and control flow has no allocation rule here yet.
-: BLOCK-OF ( -- IR-ID:ir-block-id )
+\ The one function this pass allocates. A module with any other shape is not a
+\ routine at all.
+: FUN-OF ( -- IR-ID:ir-fun-id )
    FUN-COUNT 1 <> if E-A64RA-SHAPE throw then
-   MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT 1 <> if E-A64RA-SHAPE throw then
-   f 0 BLOCK-AT ;
+   MKEY 0 IR-ID:PACK-FUN ;
+
+\ The block control leaves the routine through: the one whose terminator names no
+\ successor. A routine with none never returns and one with two returns twice,
+\ and neither is a shape this pass can decide a convention against.
+: RET-BLOCK ( IR-ID:ir-fun-id -- IR-ID:ir-block-id )
+   {: f:IR-ID:ir-fun-id :}
+   -1
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT TERM-OF SUCCS-OF 0= if
+         dup 0 < 0= if E-A64RA-SHAPE throw then
+         drop i
+      then
+   loop
+   dup 0 < if E-A64RA-SHAPE throw then
+   f swap BLOCK-AT ;
 
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
@@ -935,10 +1356,13 @@ public
    TABLES-CLEAR
    args outs FIXED!
    FIXED-POOL-CK
-   BLOCK-OF {: bk:IR-ID:ir-block-id :}
+   FUN-OF {: f:IR-ID:ir-fun-id :}
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   f RET-BLOCK {: rb:IR-ID:ir-block-id :}
    bk 0 S-BLK !
-   bk FIXED-ARITY-CK
-   bk args outs LOWERED-CK
+   bk rb FIXED-ARITY-CK
+   bk rb args outs LOWERED-CK
+   f BLOCK-COUNT 1 <> if f MB-RUN exit then
    bk SCAN-LIVE
    COVER-CK
    bk WANTS!

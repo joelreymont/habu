@@ -490,14 +490,52 @@ create NAMEBUF NAME-CAP allot
    BLD IR-BUILD:MODULE-KEY  id i SUCC-AT IR-ID:BLOCK-LOCAL  IR-ID:PACK-BLOCK
    IR-BUILD:ADD-SUCCESSOR ;
 
+\ ---- splitting the edges that carry values -----------------------------------
+\ A block argument and every value handed to it across an edge have to end up in
+\ ONE physical register, because the branch itself moves nothing: that is what
+\ makes them one class to the register allocator. Handing the argument a value
+\ the program is still using would force that class to contain two values that
+\ are live at the same time, and no allocation exists for it. `MAX2` is the
+\ smallest example - its two arms hand the join (a, b) and (b, a), so the two
+\ arguments and the two values would collapse into one class holding both a and
+\ b at once.
+\
+\ So every value crossing an argument-carrying edge is copied into a value of its
+\ own first. A copy's result is defined just before the branch and dies at it, so
+\ two copies on different edges can never be live together and neither can be
+\ live with the argument they feed: the class is interference-free by
+\ construction rather than by luck. This is ordinary critical-edge splitting,
+\ done in values rather than in blocks - the elaborator already gave every such
+\ edge a block of its own, and a block split alone does not help, because the
+\ VALUES crossing it are still the long-lived ones.
+\
+\ THE PRICE, STATED. One instruction and one live register per argument per
+\ edge, and a copy whose two ends coalesce into one register comes out as a
+\ register copied into itself - a no-op instruction that is still emitted,
+\ because eliding it is a peephole and this leaf does not do peepholes.
+64 constant EDGE-MAX
+EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
+
+: EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
+   at A64IR-OPCODE:MOV OPEN
+   CTX BLD v IR-BUILD:ADD-OPERAND
+   RESULT+
+   CLOSE-VALUE
+   ACC ;
+
 \ Going on to one block. The operands are the values the destination takes as its
-\ block arguments, and each one is the value the source operand selected to.
+\ block arguments, each one copied into a value of its own first.
 : EMIT-BR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id A64IR-OPCODE:BR OPEN
    id OPERANDS-OF {: k:n :}
+   k EDGE-MAX > if E-A64SEL-CAP throw then
    k 0 ?do
-      CTX BLD  id i OPERAND  IR-BUILD:ADD-OPERAND
+      id  id i OPERAND  EMIT-COPY  i EDGE-V !
+   loop
+   id A64IR-OPCODE:BR OPEN
+   k 0 ?do
+      CTX BLD  i EDGE-V @  IR-BUILD:ADD-OPERAND
    loop
    id 0 SUCCESSOR+
    CTX BLD IR-BUILD:END-OP drop ;

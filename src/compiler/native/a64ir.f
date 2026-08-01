@@ -650,12 +650,16 @@ private
    c b A64IR-OPCODE:MOVK NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Mov: one register read, one written, and no tie - the whole point of this form
-\ is that the two are DIFFERENT registers, which is what makes it able to put a
-\ value where a routine's contract says it has to leave. A copy whose source and
-\ destination came out the same register would be an instruction that does
-\ nothing, and nothing in the chain builds one: the pass that decides a move
-\ decides it only for a value that is not already where it has to be.
+\ Mov: one register read, one written, and no tie - the form exists so that the
+\ two CAN be different registers, which is what makes it able to put a value
+\ where a routine's contract says it has to leave and to hand a block argument
+\ the value an edge carries. A copy whose source and destination came out the
+\ same register is `orr xd, xzr, xd`, an instruction that does nothing, and one
+\ pass does build them: src/compiler/native/select.f splits every
+\ argument-carrying edge into one copy per argument, and a copy whose two ends
+\ coalesce into one register is exactly that no-op. It is emitted rather than
+\ elided because eliding it is a peephole, and the register allocator is what
+\ decides whether it is one - not this dialect, and not the emitter.
 : DEF-MOV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
    c b A64IR-OPCODE:MOV OPCODE IR-SCHEMA:BEGIN-OP

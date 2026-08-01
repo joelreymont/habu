@@ -851,7 +851,7 @@ public
 -8360 constant E-A64SEL-BIND    \ selection attempted before the source dialect's opcode identities were bound, or a second binding over a live one
 -8361 constant E-A64SEL-SOURCE  \ a frozen module that is not the bound one, or source text whose digest is not the one the module recorded
 -8362 constant E-A64SEL-OPCODE  \ an operation whose opcode is none of the source dialect's
--8363 constant E-A64SEL-SHAPE   \ a module or function this leaf cannot select: not exactly one source, or a function that is not exactly one block
+-8363 constant E-A64SEL-SHAPE   \ a module or function this leaf cannot select: not exactly one source, or a function with no block at all
 -8364 constant E-A64SEL-TRAP    \ an operation whose schema says it may trap: trapping arithmetic has no machine lowering in this dialect yet
 -8365 constant E-A64SEL-ATTR    \ a constant whose attribute is not under the source dialect's value key
 -8366 constant E-A64SEL-CAP     \ more values in one function than the selector's value map holds
@@ -969,3 +969,6 @@ public
 -8505 constant E-A64EMIT-BLOCK  \ a branch whose successor names no block of the function this emission laid out
 -8506 constant E-A64EMIT-REACH  \ a branch whose displacement does not fit the field its form encodes it in
 -8504 constant E-NELAB-BLOCK    \ more blocks or more open control structures in one definition than the elaborator's tables hold
+-8507 constant E-A64RA-EDGE     \ a block argument and the values handed to it across an edge cannot share one register: two of them are live at the same time, or the edge hands over a different number of values than the destination takes
+-8508 constant E-A64RA-SPILL    \ a routine of more than one block needs a value put in a frame slot, and a spill decision cannot yet name the block it belongs in
+-8509 constant E-A64RAV-EDGE    \ the same edge rule, re-derived: an assignment in which the register holding a terminator's operand is not the register holding the successor's block argument at that position

@@ -213,11 +213,23 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
 
 \ The straight-line subset, re-derived rather than taken on trust.
-: BLOCK-OF ( -- IR-ID:ir-block-id )
+: FUN-OF ( -- IR-ID:ir-fun-id )
    FUN-COUNT 1 <> if E-A64RAV-SHAPE throw then
-   MKEY 0 IR-ID:PACK-FUN {: f:IR-ID:ir-fun-id :}
-   f BLOCK-COUNT 1 <> if E-A64RAV-SHAPE throw then
-   f 0 BLOCK-AT ;
+   MKEY 0 IR-ID:PACK-FUN ;
+
+\ The block control leaves the routine through: the one whose terminator names
+\ no successor. Exactly one, re-derived here rather than taken as the last block
+\ or as whatever the allocator thought.
+: RET-ORD ( IR-ID:ir-fun-id -- n )
+   {: f:IR-ID:ir-fun-id :}
+   -1
+   f BLOCK-COUNT 0 ?do
+      f i BLOCK-AT TERM-AT SUCCS-OF 0= if
+         dup 0 < 0= if E-A64RAV-SHAPE throw then
+         drop i
+      then
+   loop
+   dup 0 < if E-A64RAV-SHAPE throw then ;
 
 \ ---- what the module says about each value -----------------------------------
 : NOTE-DEF ( IR-ID:ir-value-id n -- )
@@ -556,6 +568,345 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
       then
    loop ;
 
+\ ---- re-deriving the allocation of a routine with control flow ---------------
+\ Everything above measures ONE straight-line block. A routine with control flow
+\ is measured here, and every step is re-derived from the module rather than read
+\ off the allocator: the linear block order, the liveness, the hull interval of
+\ each value, and one clause the straight-line validator has no need for. If this
+\ file asked A64RA which order it chose or which values it thought were live, it
+\ would be checking the allocator's belief against the allocator's belief.
+\
+\ The rule it re-derives is the one src/compiler/native/regalloc.f states, and it
+\ is stated again here in its own terms so the two can disagree: blocks in the
+\ order the module records them, one position for each block's arguments and one
+\ per operation; live-out of a block is the union of live-in over its successors
+\ and live-in is what the block reads before it writes, plus live-out minus what
+\ it defines; a value's range reaches back to the entry of every block it is live
+\ in to and forward to the last operation of every block it is live out of.
+\
+\ THE EDGE CLAUSE IS THIS FILE'S REASON FOR EXISTING ON THIS PATH. A branch moves
+\ nothing: the value a terminator hands over at position i and the argument it
+\ lands in at the destination are one physical register, or the routine computes
+\ with whatever happened to be in the destination's register instead. Checking it
+\ here - against the module's own edges and the accepted registers - is what makes
+\ a swapped successor pair, a mis-wired operand and a block argument left in the
+\ wrong register a refusal rather than a wrong answer at run time.
+64 constant SET-BITS
+VMAX SET-BITS / constant SETC
+0 constant P-IN
+1 constant P-OUT
+2 constant P-USE
+3 constant P-DEF
+4 constant PLANES
+
+here CELL 1- and CELL swap - CELL 1- and allot
+variable V-BLKS
+0 V-BLKS !
+variable V-AT
+0 V-AT !
+variable V-CHANGED
+0 V-CHANGED !
+
+create VB-ST BMAX cells allot
+create VB-EN BMAX cells allot
+create V-SETS PLANES BMAX * SETC * cells allot
+create V-TMP SETC cells allot
+
+: VBIT-CELL ( n -- n )   SET-BITS / ;
+: VBIT-MASK ( n -- n )   SET-BITS mod 1 swap lshift ;
+
+: VS-IX ( n n n -- n )
+   {: pl:n b:n w:n :}
+   pl BMAX * b + SETC * w + ;
+
+: VS@ ( n n n -- n )     VS-IX cells V-SETS + @ ;
+
+: VS! ( n n n n -- )
+   {: val:n pl:n b:n w:n :}
+   val  pl b w VS-IX cells V-SETS + ! ;
+
+: VS-HAS? ( n n n -- bool )
+   {: pl:n b:n v:n :}
+   pl b v VBIT-CELL VS@  v VBIT-MASK and 0<> ;
+
+: VS-SET ( n n n -- )
+   {: pl:n b:n v:n :}
+   pl b v VBIT-CELL VS@  v VBIT-MASK or  pl b v VBIT-CELL VS! ;
+
+: VTMP-CLEAR ( -- )
+   SETC 0 ?do 0 i cells V-TMP + ! loop ;
+
+: VTMP-HAS? ( n -- bool )
+   {: v:n :}
+   v VBIT-CELL cells V-TMP + @  v VBIT-MASK and 0<> ;
+
+: VTMP-SET ( n -- )
+   {: v:n :}
+   v VBIT-CELL cells V-TMP + @  v VBIT-MASK or
+   v VBIT-CELL cells V-TMP + ! ;
+
+: VSETS-CLEAR ( -- )
+   PLANES BMAX * SETC * 0 ?do 0 i cells V-SETS + ! loop ;
+
+\ ---- the linear order --------------------------------------------------------
+: VLAY1 ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   V-AT @ b cells VB-ST + !
+   V-AT @  f b BLOCK-AT OP-COUNT  + {: e:n :}
+   e b cells VB-EN + !
+   e 1+ V-AT ! ;
+
+: VLAYOUT ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   f BLOCK-COUNT {: n:n :}
+   n BMAX > if E-A64RAV-COVER throw then
+   n V-BLKS !
+   0 V-AT !
+   n 0 ?do f i VLAY1 loop ;
+
+: VOP-POS ( n n -- n )
+   {: b:n i:n :}
+   b cells VB-ST + @ 1+ i + ;
+
+\ ---- liveness ----------------------------------------------------------------
+: VUSE1 ( n IR-ID:ir-value-id -- )
+   {: b:n id:IR-ID:ir-value-id :}
+   id SLOT {: v:n :}
+   v VTMP-HAS? if exit then
+   P-USE b v VS-SET ;
+
+: VDEF1 ( n IR-ID:ir-value-id -- )
+   {: b:n id:IR-ID:ir-value-id :}
+   id SLOT {: v:n :}
+   P-DEF b v VS-SET
+   v VTMP-SET ;
+
+: VOP-UD ( n IR-ID:ir-op-id -- )
+   {: b:n id:IR-ID:ir-op-id :}
+   id OPERANDS-OF 0 ?do b  id i OPERAND-AT  VUSE1 loop
+   id RESULTS-OF 0 ?do  b  id i RESULT-AT   VDEF1 loop ;
+
+: VBLOCK-UD ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   VTMP-CLEAR
+   bk ARG-COUNT 0 ?do b  bk i ARG-AT  VDEF1 loop
+   bk OP-COUNT 0 ?do  b  bk i OP-AT   VOP-UD loop ;
+
+: VSUCC-ORD ( IR-ID:ir-op-id n -- n )
+   SUCC-AT IR-ID:BLOCK-LOCAL
+   dup 0 < over V-BLKS @ >= or if E-A64RAV-SHAPE throw then ;
+
+: VOUT-ADD ( n n -- )
+   {: b:n s:n :}
+   SETC 0 ?do
+      P-OUT b i VS@  P-IN s i VS@ or  P-OUT b i VS!
+   loop ;
+
+: VOUT ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   SETC 0 ?do 0 P-OUT b i VS! loop
+   f b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      b  t i VSUCC-ORD  VOUT-ADD
+   loop ;
+
+: VIN1 ( n n -- bool )
+   {: b:n w:n :}
+   P-USE b w VS@   P-OUT b w VS@  P-DEF b w VS@ invert and   or {: nv:n :}
+   nv  P-IN b w VS@ = if false exit then
+   nv P-IN b w VS!
+   true ;
+
+: VIN ( n -- bool )
+   {: b:n :}
+   false
+   SETC 0 ?do b i VIN1 or loop ;
+
+: VPASS1 ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b VOUT
+   b VIN if 1 V-CHANGED ! then ;
+
+: VLIVENESS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   VSETS-CLEAR
+   V-BLKS @ 0 ?do f i VBLOCK-UD loop
+   begin
+      0 V-CHANGED !
+      V-BLKS @ 0 ?do
+         f  V-BLKS @ 1- i -  VPASS1
+      loop
+      V-CHANGED @ 0=
+   until ;
+
+\ ---- the hull ranges ---------------------------------------------------------
+: VOP-RANGE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id pos:n :}
+   id OPERANDS-OF 0 ?do id i OPERAND-AT pos NOTE-USE loop
+   id RESULTS-OF 0 ?do  id i RESULT-AT  pos NOTE-DEF loop ;
+
+: VBLOCK-RANGE ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk ARG-COUNT 0 ?do
+      bk i ARG-AT  b cells VB-ST + @  NOTE-DEF
+   loop
+   bk OP-COUNT 0 ?do
+      bk i OP-AT  b i VOP-POS  VOP-RANGE
+   loop ;
+
+: VEXTEND1 ( n n -- )
+   {: b:n k:n :}
+   P-IN b k VS-HAS? if
+      b cells VB-ST + @  k DEF-AT min  k DEF!
+   then
+   P-OUT b k VS-HAS? if
+      b cells VB-EN + @  k LAST-AT max  k LAST!
+   then ;
+
+: VEXTEND-V ( n -- )
+   {: k:n :}
+   V-BLKS @ 0 ?do i k VEXTEND1 loop ;
+
+: VMEASURE ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   TABLES-CLEAR
+   f VLAYOUT
+   f VLIVENESS
+   V-BLKS @ 0 ?do f i VBLOCK-RANGE loop
+   COVER-CK
+   N-VALS @ 0 ?do i VEXTEND-V loop ;
+
+\ ---- the edge clause ---------------------------------------------------------
+\ A branch moves nothing, so the register holding the value a terminator hands
+\ over at position i has to be the register holding the destination's argument at
+\ that position. Both are read out of the accepted assignment, and the positions
+\ are read out of the module's own operand list and the destination's own
+\ argument list - so a successor named in the wrong order, an operand wired to
+\ the wrong argument, and an argument left in a register nothing wrote all fail
+\ here.
+: VEDGE1 ( IR-ID:ir-op-id IR-ID:ir-block-id n -- )
+   {: t:IR-ID:ir-op-id sb:IR-ID:ir-block-id i:n :}
+   t i OPERAND-AT SLOT A64RA:CLAIM@
+   sb i ARG-AT SLOT A64RA:CLAIM@
+   <> if E-A64RAV-EDGE throw then ;
+
+\ A terminator with more than one successor hands nothing over - its operands are
+\ its own, the register it tests - so every one of those successors has to be a
+\ block that takes no arguments. src/compiler/ir/verify.f cannot state this yet
+\ (dot habu-state-what-a-2f99fb94), so the assignment is where it is decided:
+\ an edge that was supposed to carry values and does not go through a block of
+\ its own would leave those values in whatever registers the destination happened
+\ to be given.
+: VMULTI-CK ( IR-ID:ir-fun-id IR-ID:ir-op-id -- )
+   {: f:IR-ID:ir-fun-id t:IR-ID:ir-op-id :}
+   t SUCCS-OF 0 ?do
+      f  t i VSUCC-ORD  BLOCK-AT ARG-COUNT 0<> if E-A64RAV-EDGE throw then
+   loop ;
+
+: VEDGE-OF ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id b:n :}
+   f b BLOCK-AT TERM-AT {: t:IR-ID:ir-op-id :}
+   t SUCCS-OF 1 <> if f t VMULTI-CK exit then
+   f  t 0 VSUCC-ORD  BLOCK-AT {: sb:IR-ID:ir-block-id :}
+   t OPERANDS-OF sb ARG-COUNT <> if E-A64RAV-EDGE throw then
+   t OPERANDS-OF 0 ?do t sb i VEDGE1 loop ;
+
+: VEDGE-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   V-BLKS @ 0 ?do f i VEDGE-OF loop ;
+
+\ ---- what a routine with control flow may not have ---------------------------
+\ No frame. The allocator refuses to spill in a routine of more than one block
+\ because a spill decision cannot yet name the block it belongs in, so a module
+\ that reserves a frame here was not produced by that refusal and is not an
+\ allocation this file can accept.
+: VFRAME-CK ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   V-BLKS @ 0 ?do
+      f i BLOCK-AT FRAMES? if E-A64RAV-FRAME throw then
+   loop ;
+
+\ ---- the data stack, across blocks -------------------------------------------
+\ The entry sequence is at the top of the block the caller enters, the exit
+\ sequence is in front of the terminator of the block control leaves through, and
+\ nothing anywhere else may touch the caller's stack.
+: VNO-DSTACK ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      bk i OP-AT DSTACK-TOUCH? if E-A64RAV-DSTACK throw then
+   loop ;
+
+: VB-OPS ( n -- n )
+   {: b:n :}
+   b cells VB-EN + @  b cells VB-ST + @ - ;
+
+: VDEXIT-POS? ( n n n -- bool )
+   {: n:n r:n at:n :}
+   at n 2 - = if true exit then
+   at n 2 - r - >= at n 2 - < and ;
+
+: VDPOS? ( n n n n n n -- bool )
+   {: b:n at:n eb:n rb:n a:n r:n :}
+   b eb = at a <= and if true exit then
+   b rb = if rb VB-OPS r at VDEXIT-POS? exit then
+   false ;
+
+: VDCLEAN1 ( IR-ID:ir-fun-id n n n n n -- )
+   {: f:IR-ID:ir-fun-id b:n eb:n rb:n a:n r:n :}
+   f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
+   bk OP-COUNT 0 ?do
+      b i eb rb a r VDPOS? 0= if
+         bk i OP-AT DSTACK-TOUCH? if E-A64RAV-DSTACK throw then
+      then
+   loop ;
+
+: VDSTACK-CK ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   args A64EFF:SEQ-SLOTS {: a:n :}
+   outs A64EFF:SEQ-SLOTS {: r:n :}
+   a 0= r 0= and if
+      V-BLKS @ 0 ?do f i BLOCK-AT VNO-DSTACK loop
+      exit
+   then
+   f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
+   eb OP-COUNT a 1+ < if E-A64RAV-DSTACK throw then
+   eb 0  a A64IR:SLOT-WIDTH *  DTAKE-AT?
+   a 0 ?do
+      eb i 1+  args i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
+   loop
+   f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
+   xb OP-COUNT {: n:n :}
+   n r 2 + < if E-A64RAV-DSTACK throw then
+   xb n 2 -  r A64IR:SLOT-WIDTH *  DTAKE-AT?
+   r 0 ?do
+      xb  n 2 - r - i +  outs i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
+   loop
+   V-BLKS @ 0 ?do f i 0 rb a r VDCLEAN1 loop ;
+
+\ ---- the whole re-derivation -------------------------------------------------
+: VBLOCK-CKS ( IR-ID:ir-fun-id -- )
+   {: f:IR-ID:ir-fun-id :}
+   V-BLKS @ 0 ?do
+      f i BLOCK-AT TIE-CK
+      f i BLOCK-AT FLOW-CK
+   loop ;
+
+: MB-VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq -- )
+   {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq :}
+   f VMEASURE
+   INTERVAL-CK
+   CLASS-CK
+   REGISTER-CK
+   OVERLAP-CK
+   f VEDGE-CK
+   f VBLOCK-CKS
+   f 0 BLOCK-AT args ARG-CK
+   f rb BLOCK-AT outs OUT-CK
+   f rb args outs VDSTACK-CK
+   f VFRAME-CK ;
+
 \ ---- what the acceptance is bound to -----------------------------------------
 : STATE-CK ( -- )
    A64RA:SEALED? 0= if E-A64RAV-STATE throw then ;
@@ -611,7 +962,13 @@ create W-AT SLOTS-MAX cells allot    \ where each slot was written, or -1
    m MODULE-CK
    pool CONTRACT-CK
    m VIEWS!
-   BLOCK-OF {: bk:IR-ID:ir-block-id :}
+   FUN-OF {: f:IR-ID:ir-fun-id :}
+   f RET-ORD {: rb:n :}
+   f BLOCK-COUNT 1 <> if
+      f rb args outs MB-VERIFY
+      f rb BLOCK-AT exit
+   then
+   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
    bk MEASURE
    COVER-CK
    INTERVAL-CK
