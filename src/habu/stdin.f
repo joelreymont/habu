@@ -15,6 +15,8 @@
 : DBG-SRC ( -- ptr u8 n )  s" src/habu/debug.f" ;
 variable HB  variable HL  variable HFD  variable HRD
 $20000 constant HMAX
+\ HB exposes the raw baked-source buffer cell.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : HB@ ( -- ptr u8 ) HB @ ;
 s" HB@" s" -- ptr u8" TRUST
 
@@ -78,6 +80,8 @@ s" HB@" s" -- ptr u8" TRUST
 \ the boot-run list: EM-SEED-AOT LFINDs + calls each after the seed, so the engine
 \ installs the REPL with ZERO baked source. stage2/maker/snap use other drivers,
 \ so their AOT buffers stay empty and EM-SEED-AOT skips.
+\ Dynamic host evaluation is source-dependent and cannot carry a static effect.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: EVAL-HOST ( ptr u8 n -- ) evaluate ;    \ compile a source buffer in the host dict
 variable REPL-B0  variable REPL-R0  variable REPL-D0
 variable REPL-B1  variable REPL-R1  variable REPL-D1

@@ -1,6 +1,8 @@
 \ elf.f -- dynamic Linux/aarch64 ELF executable writer.
 \ Provides the same image-builder surface as the Mach-O writer: MBUF, MLEN@/!,
 \ CODE-OFF, MPAGE, ASM-CODE, BUILD-IMAGE.
+\ Snapshot extras name the staged dynamic/GOT tail and its fixed byte size.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 $7F constant ELF-MAG0
 69 constant ELF-MAG1

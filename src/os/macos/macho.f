@@ -3,6 +3,8 @@
 \ DYLINKER, MAIN, DYLIB libSystem), slack to $1000, code at $1000, and TEXT sized
 \ to content. Canonical UNSIGNED artifact; sign.fs post-pass adds the ad-hoc signature.
 \ The self-rebuild gate proves deterministic output. Code comes from icode's CODE.
+\ Snapshot extras name the staged DATA_CONST/fixups tail and its derived byte size.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 \ Mach-O constants
 $FEEDFACF constant MH-MAGIC64
 $0100000C constant CPU-ARM64

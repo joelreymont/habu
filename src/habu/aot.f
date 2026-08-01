@@ -12,6 +12,7 @@ package AOT-LINK
 \ definition. `evaluate` compiles the generated constructor bodies into the
 \ maker dictionary exactly as the engine does at interpret level. Named boundary:
 \ source-string metaprogramming (`evaluate`) is outside checked inference.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: AOT-CTOR-EVAL ( ptr u8 n -- ) evaluate ;
 : AOT-CTOR-EVAL-INSTALL ( -- ) [: AOT-CTOR-EVAL ;] is TDECL-EVAL-XT ;
 AOT-CTOR-EVAL-INSTALL
@@ -47,6 +48,7 @@ variable AOT-HEXACC
 
 \ Named boundary: installs the user-source checker hook; `set-check` is a
 \ compiler-control op the checker rejects inside a checked body (top-level only).
+\ Retirement: cap:checker-hook-identity.
 TRUSTED: INSTALL-USER-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
    ['] USER-HOOK set-check ;

@@ -41,6 +41,9 @@ variable REQUIRE-SAVE-BASE
 : INCLUDE-TRUE ( -- bool )
    0 0= ;
 
+\ INCLUDE-MMAP-PTR refines the checked file mapping; INCLUDE-EVALUATE executes
+\ its validated mapped bytes. Syscall-result provenance and evaluate are primitive
+\ boundaries. Retirement: habu-primitive-effect-axiom-1119f176.
 TRUSTED: INCLUDE-MMAP-PTR ( n -- ptr u8 ) ;
 
 : INCLUDE-DIE ( ptr u8 n -- )

@@ -92,6 +92,9 @@ variable LKWPLUS  variable LKWMINUS  variable LKWSTAR
 variable LKWAND2  variable LKWOR2   variable LKWXOR2
 variable FESK
 
+\ JIT trust rows dispatch an opaque emitter xt and publish the raw-register
+\ fold/vector entry emitters whose generated behavior is described below.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: JIT-XT-EXECUTE ( n -- )
    execute ;
 

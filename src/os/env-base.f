@@ -1,4 +1,7 @@
 \ env-base.f - shared startup argv/envp access over captured DATA cells.
+\ Trusted rows expose the fixed startup cells, raw C-string/vector operations,
+\ typed empty result, and bounded temporary-path scratch.
+\ Retirement: habu-raw-self-path-4514ffd3.
 
 data-base constant ENV-DATA
 $2D constant ENV-DASH

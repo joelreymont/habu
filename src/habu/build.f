@@ -19,6 +19,8 @@
 
 variable PB  variable PN  variable PFD  variable PRD
 $40000 constant PMAX
+\ PB is the raw standalone-build source-buffer cell.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : BLD-PB@ PB @ ;
 s" BLD-PB@" s" -- ptr u8" TRUST
 

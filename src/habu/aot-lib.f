@@ -17,6 +17,8 @@
 \ pointer inference until the typed dictionary-record schema lands (dot
 \ habu-typed-dictionary-record-c67adddb). The driver installs USER-HOOK below
 \ for user source only.
+\ Retirement: MAP-IN-BLOB under habu-typed-dictionary-record-c67adddb;
+\ the raw AOT source-buffer view under habu-builder-trust-rows-c5d41af6.
 
 package AOT-LINK
 

@@ -3,6 +3,8 @@
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
 \ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
+\ Trusted rows expose the builder-mode cell and the data-driven raw-code emitter.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 variable STDIN?   0 0= 0= STDIN? !
 s" STDIN?" s" -- ptr bool" TRUST
 

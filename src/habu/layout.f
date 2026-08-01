@@ -223,6 +223,8 @@ $3668 constant RRECP-CELL
 $3670 constant ARGC-CELL
 $3678 constant ARGV-CELL
 $3680 constant ENVP-CELL
+\ Fixed startup DATA offsets for the native argc and vector pointers.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 s" ARGC-CELL" s" -- n" TRUST
 s" ARGV-CELL" s" -- n" TRUST
 s" ENVP-CELL" s" -- n" TRUST

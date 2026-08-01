@@ -16,6 +16,7 @@
 \ iteration); typing that needs the multishot-quotation capability
 \ (dot habu-multishot-quotations-typed-8832cace), so these stay audited
 \ TRUSTED: boundaries covered by engine-suite plus the native gate runner.
+\ Retirement: habu-multishot-quotations-typed-8832cace.
 
 TRUSTED: TIMES ( R i64 [ R -- R ] -- R )
    >r 0 ?do r@ execute loop r> drop ;

@@ -25,6 +25,8 @@
 create TRL 48 allot
 variable STB  variable STSZ  variable SDB  variable SCL  variable SDL
 variable SNL  variable SFTS  variable SPAD  variable SFD
+\ These views expose the raw snapshot source and dictionary/data buffer cells.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : STB@ STB @ ;
 s" STB@" s" -- ptr u8" TRUST
 : STB-CELL@ STB @ ;
@@ -87,6 +89,8 @@ variable SNC-N
 
 \ Scratch region view: raw anonymous mmap address held as a cell; the
 \ typed view is the one audited reinterpret (same class as IMGD-MMAP-PTR).
+\ All scratch views, zeroers, and quarantine-table reads retire under
+\ habu-builder-trust-rows-c5d41af6.
 TRUSTED: SNC-PTR ( -- ptr u8 ) SNC-N @ ;
 TRUSTED: SNC-TEXT-N ( -- n ) STB @ ;
 
@@ -279,6 +283,8 @@ public
 
 \ Freeze the verify-on-definition hook into the emitted image: hb is fully
 \ loaded, so a typed def in its REPL is checked against its sig.
+\ Retirement: SNAP-CHECK-HOOK under cap:checker-hook-identity;
+\ SNAP-INSTALL-HOOK under habu-builder-trust-rows-c5d41af6.
 TRUSTED: SNAP-CHECK-HOOK ( ptr u8 n -- n )
    CHECK! dup -1 <> IF 70 throw THEN ;
 TRUSTED: SNAP-INSTALL-HOOK ( -- )

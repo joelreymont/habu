@@ -2,6 +2,11 @@
 3 constant S-ROW   4 constant S-PUSH
 5 constant T-QUOT  6 constant T-ATOM  7 constant T-PARAM
 -1 constant UNBOUND
+\ Trusted checker internals below are confined to raw mmap-result refinements,
+\ typed views/nulls over checker arenas, one raw effect query, and the two engine
+\ primitive models tok-imm?/parse-imm.
+\ Retirement: habu-checker-self-typing-9ff8ba86 for arena/view/query sites;
+\ habu-primitive-effect-axiom-1119f176 for the immediate models.
 \ --- growable checker arenas --------------------------------------------
 \ Shared mmap primitives for the checker's process-local scratch stores. Each
 \ store keeps a baked DATA "boot" buffer (stable address across snapshot) and
@@ -5393,6 +5398,9 @@ CTOR-PROT-DEFAULTS
    CHECKER-PACKAGE-NONE CHECKER-PACKAGE-MODE !
    0 CHECKER-PACKAGE-U ! ;
 
+\ Sole execution-token call for the lowering-certificate producer; its private
+\ slot is single-assignment to the statically known producer.
+\ Retirement: habu-retire-checker-cert-62c2201f.
 TRUSTED: CHECKER-CERT-CALL ( ptr u8 n n n -- )
    {: a:ptr u:n verdict:n xt:n :}
    a u verdict xt execute ;
@@ -8873,7 +8881,7 @@ variable IS-TU
 \ its polymorphic effect. This is sound because the name implies a builtin or
 \ a checked/audited definition: a CHECKED shadow's effect is verified against
 \ its body, which can only move the value it binds; a TRUSTED shadow is
-\ already an audited manifest boundary (TRUSTED.md row) whose declared effect
+\ already a named trusted boundary whose declared effect
 \ is the audit's responsibility.
 : LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN

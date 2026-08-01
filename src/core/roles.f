@@ -72,6 +72,8 @@ variable DTC-SIG-U
 \ them executable at top level (LAYOUT-BUFFER parity, dots
 \ habu-checker-deftype-deflinear-8e9d1dc5,
 \ habu-checker-unsafety-must-d12bc784).
+\ All 34 words are zero-runtime nominal identity casts.
+\ Retirement: habu-multishot-quotations-typed-8832cace.
 
 TRUSTED: >IDX ( n -- idx ) ;
 TRUSTED: IDX>N ( idx -- n ) ;

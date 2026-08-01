@@ -19,6 +19,9 @@ $D4200000 constant BRK0
 : SLOT-OFF ( n -- n )
    32 * BPTAB-OFF + ;
 
+\ These helpers type the four fixed DATA slot fields, a null/code-pointer view,
+\ raw address display, and executable patching.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: BP-SLOT-ADDR ( n -- ptr ptr u8 )
    SLOT-OFF DATAB + ;
 

@@ -6,6 +6,8 @@
 
 8 constant BPW-MAX
 
+\ The table stores DATA pointers; its helpers refine one fixed DATA cell and
+\ print its raw address. Retirement: habu-builder-trust-rows-c5d41af6.
 create BPW-TAB BPW-MAX cells allot
 s" BPW-TAB" s" -- ptr ptr n" TRUST
 variable BPW-IDX

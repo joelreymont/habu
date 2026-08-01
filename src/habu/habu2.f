@@ -209,6 +209,9 @@ create ONESP 32 c,   \ one space, written between usage flag names
 : ZBYTES, ( ptr u8 n -- )
    BYTES, ZBYTE 1 BYTES, ;
 
+\ Breakpoint-handler rows emit ABI-specific mcontext access, register save/print,
+\ watched-cell display, one-shot restore, and instruction emulation.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-TRAP-MCTX>R9 ( -- )
    HB-TARGET-LINUX? IF 9 2 LINUX-UC-MCTX-OFF ADDI, exit THEN
    9 4 MCTX-OFF LDR, ;
@@ -774,6 +777,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ MODE-BUILD is not a user-source entry: build-fixpoint first certifies its
 \ compiler payload, LCOLDPFXB leaves the latch open for that compiler prefix,
 \ and the payload executes SEAL-FRIEND before its driver.
+\ Raw target ioctl emitter for startup TTY detection.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-EMIT-TTY-PROBE ( -- )
    0 0 MOVZ,
    HB-TARGET-LINUX? if 1 $5401 LIT64, else
@@ -1202,6 +1207,8 @@ public
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
 
 \ ---- control-flow JIT helpers ----
+\ Raw-register helper emits a variable-width value-stack drop.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-EMIT-DROP-X12 ( -- )
    LBL {: done:label :}
    12 done CBZ,
@@ -1591,6 +1598,9 @@ here RESTAB-BUF - constant RESTAB-LEN
       0 70 MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
 
+\ Native task guard and dictionary/checker lookup bridge operate on generated
+\ registers and dynamically found checker words.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-TASK-LIVE-GUARD ( -- )
    LBL {: ok:label :}
    9 DATA TASKS-LIVE-CELL LDR,  9 ok CBZ,
@@ -2049,6 +2059,8 @@ s" c-call-checker-defer" s" --" TRUST
    0 2 MOVZ,  1 DATA DEF-TKA-CELL LDR,  2 DATA DEF-TKL-CELL LDR,  NR-WRITE SYS,
    0 $4E MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-dup-def-fail" s" --" TRUST
+\ C-DUP-DEF-FAIL and C-REJECT-DUP-DEF emit duplicate-definition rejection.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 : C-REJECT-DUP-DEF ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: nloop:label nnext:label ncmp:label nmatch:label nend:label ninl:label done:label nlin:label :}
@@ -2152,6 +2164,9 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 \ die path is harmless. W^X: emitted into the RW code region like every other
 \ primitive, flushed RX with the rest of the image; it takes no data-region
 \ store outside the DATA cells its callers already touch.
+\ EMIT-QUALIFY-DEF/C-QUALIFY-DEF and EMIT-STORE-DEF-NAME/C-STORE-DEF-NAME
+\ centralize qualification and raw dictionary-name publication.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : EMIT-QUALIFY-DEF ( -- )
    LQUALIFYDEF LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                       \ save link register across the internal LHIDXADD BL
@@ -2390,6 +2405,9 @@ s" c-store-def-name" s" --" TRUST
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
 s" c-defer-die-token" s" n --" TRUST
+\ This and the following defer rows emit dispatch cells/code/metadata, pending
+\ pre-trust capture, IS retargeting, and capacity and misuse failures.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 : C-DEFER-FIND-UNSET ( -- )
    LBL {: found :}
@@ -3089,6 +3107,9 @@ variable VDESC  variable DRIFT-FAIL
    rd LBL,
    SP SP 32 ADDI, ;
 
+\ Locals rows reject quotation-scoped declarations and emit local-reference loads;
+\ the control dispatcher executes data-driven emitter xts.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-LBRACE-DIE ( -- )   \ B2: locals opener inside a quotation: recoverable inside evaluate (rc $4B), fail-closed exit $4B at top level
    1 LBADLOC LABEL@ ADR,  0 2 MOVZ,  2 $27 MOVZ,  NR-WRITE SYS,
    0 $4B MOVZ,  LCOMPILEDIE LABEL@ B, ;
@@ -3934,6 +3955,8 @@ EM-AOT-RESTORE-HOOK-INIT
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;
 
+\ Convert the target DATA virtual address to an integer for raw instruction fields.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
 
 : EM-MMAP-DATA-REGION ( -- )
@@ -4360,6 +4383,9 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
       notcom LBL,
       9 DATA PEND-CELL LDR,  9 LCOMPILE LABEL@ CBNZ, ;
 
+\ EM-INTERPRET-COLON and the checker-callback rows bridge token dispatch to
+\ dynamically found checker package words.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : EM-INTERPRET-COLON ( label -- ) {: lnotcolon:label :}
    LBL LBL LBL LBL {: cpok ndok kcolon ktry :}
    9 DATA TKL-CELL LDR,  9 1 CMPI,  C-NE ktry BCOND,
@@ -4451,6 +4477,9 @@ s" c-call-checker-end-package" s" --" TRUST
    done LBL, ;
 s" c-call-checker-using" s" --" TRUST
 
+\ C-PACKAGE-FAIL through C-PACKAGE-ENSURE validate names and allocate or reopen
+\ the native package record and its public/private wordlists.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-PACKAGE-FAIL ( n -- ) {: rc:n :}                  \ package keyword misuse ($4A no name / $4B wrong context): recoverable inside evaluate, fail-closed exit rc at top level
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 rc MOVZ,  LCOMPILEDIE LABEL@ B, ;
@@ -4561,6 +4590,9 @@ s" c-package-prot-guard" s" --" TRUST
    ok LBL, ;
 s" c-package-seal-guard" s" --" TRUST
 
+\ C-PACKAGE and the following package/use/export/interpreter rows emit namespace
+\ state transitions, token dispatch, and definition return paths.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : C-PACKAGE ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL {: inactive:label hastok:label :}
@@ -5293,6 +5325,9 @@ public
    13 0 MOVZ,  9 k CMPI,  C-LE scal BCOND,  13 1 MOVZ,
    scal LBL, ;
 
+\ Pass-2 and compiler rows dispatch width-aware emitters, rerun/freeze publication,
+\ and emit the control, literal, operator, call, and reset paths.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 variable P2SK
 : P2W-ENTRY ( label ptr a n n n -- ) {: lmainlbl:label kwvar:ptr kwlen:n k:n ext:n :}
    LBL P2SK !
@@ -6102,6 +6137,9 @@ s" em-reset-compile-state" s" --" TRUST
 \ or the nearest handler (x11, read once because EM-RESET-COMPILE-STATE zeroes the
 \ HND-CELL copy) is inside the current eval frame; then the throw is delivered to
 \ that handler / REPL / process exit exactly as the non-evaluate path does.
+\ Recovery, undefined/exit handling, ADT construction/matching, and main-loop rows
+\ emit raw machine state transitions and diagnostics.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : EM-EVAL-THROW-RECOVER ( -- )
    LEVALREC LABEL@ LBL,
    LBL LEVLL !  LBL LEVLP !  LBL LEVLD !  LBL LEVLN !  LBL LEVLR !
@@ -6768,6 +6806,8 @@ s" emit-main" s" --" TRUST
       1+
    REPEAT drop
    RET, ;
+\ SRCA@ refines the raw source-buffer cell for the final byte copy.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 variable SRCA
 : SRCA@ ( -- ptr u8 )
    SRCA @ ;
@@ -7002,6 +7042,8 @@ public
 
 \ Raw emitter-boundary views (same pattern as SRCA@): expose the build-scratch
 \ buffers as `ptr` for the checked copy/BYTES, sites below.
+\ The blob, record, site, name, relocation, and boot-run accessors refine their
+\ respective scratch buffers.
 : AOT-BLOB-BUF@ ( -- ptr u8 ) AOT-BLOB-BUF ;
 s" AOT-BLOB-BUF@" s" -- ptr u8" TRUST
 : AOT-REC-BUF@ ( -- ptr a ) AOT-REC-BUF ;
@@ -7014,6 +7056,7 @@ s" AOT-NAMES-BUF@" s" -- ptr u8" TRUST
 s" AOT-DSITE-BUF@" s" -- ptr u8" TRUST
 : AOT-BOOTRUN-BUF@ ( -- ptr u8 ) AOT-BOOTRUN-BUF ;
 s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
+\ Retirement for the six accessors above: habu-builder-trust-rows-c5d41af6.
 : AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
 s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 
@@ -7129,6 +7172,8 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 \ and the target tail) and the HABU_ENGINE_SIZE_MAP report are added post-sign by
 \ src/habu/driver-io.f DRV-SIZE-MAP, once the image length is final and the map
 \ can reconcile to the exact file size.
+\ Balanced whole-engine emission boundary.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 : EMIT-FORTH ( ptr u8 n -- )
    ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER

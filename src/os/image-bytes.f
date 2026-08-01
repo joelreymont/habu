@@ -1,4 +1,6 @@
 \ image-bytes.f - shared executable image byte cursor and patch helpers.
+\ MBUF-RC>PTR refines the successful anonymous mapping into the image byte buffer.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 \ MSIZE must cover the largest image any writer can emit: __text up to MPAGE
 \ ($200000, both targets' loud 73-die code-window guard) plus the largest

@@ -8,11 +8,15 @@
 \ checker registry does not publish its own words to later checked loads
 \ (same boundary class as verify-source.f CHECK-BODY), so the two entrypoints
 \ the AOT tail needs are typed here as axioms.
+\ Retirement: habu-primitive-effect-axiom-1119f176.
 s" JSON-DIAGS" s" -- ptr a" TRUST
 s" CHECK!" s" ptr u8 n -- n" TRUST
 
 package AOT-LINK
 
+\ These views expose mixed dictionary fields and the live code/dictionary extent
+\ used to classify stripped-image cells. Retirement:
+\ habu-builder-trust-rows-c5d41af6.
 : AOT-DBASE@ dbase@ ;
 s" AOT-DBASE@" s" -- ptr a" TRUST
 \ Live-extent bounds as integers, for value-domain range tests (CELL-TEXTPTR?):

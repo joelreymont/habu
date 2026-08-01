@@ -1,4 +1,6 @@
 \ bundle-argv.f - standalone bundle script argument convention.
+\ These rows expose the fixed convention: argv[0] is the image, followed by
+\ user C strings. Retirement: habu-raw-self-path-4514ffd3.
 
 : SCRIPT-ARG-START ( -- n )
    1 ;

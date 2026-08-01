@@ -20,6 +20,8 @@
 
 \ --- raw dict/code boundary casts (host build-time only). AOT-DBASE names only
 \ the dictionary record region; live engine registries are under AOT-LIVE-DATA. ---
+\ The casts expose record addresses, byte views, and record cells for reverse lookup.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 TRUSTED: AOT-DBASE ( -- ptr a ) dbase@ ;
 TRUSTED: AOT-A>U8 ( ptr a -- ptr u8 ) ;
 TRUSTED: AOT-N>U8 ( n -- ptr u8 ) ;

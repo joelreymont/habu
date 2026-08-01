@@ -25,6 +25,8 @@ SOURCE-ARENA-CAP constant MK-SOURCE-CAP  \ generated maker source uses the same
 
 : MK-SBUF@ ( -- ptr u8 )
    MK-SBUF @ ;
+\ MK-SBUF is the raw maker source-buffer cell.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 s" MK-SBUF@" s" -- ptr u8" TRUST
 
 : MK-READ-SRC ( -- )

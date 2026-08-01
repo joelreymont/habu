@@ -4,6 +4,8 @@
 \ unsigned stage2 binary to /tmp/stage2-got. The native build-fixpoint driver
 \ asserts stage2 is byte-identical to the previous native stage for the same source.
 \ fixpoint I/O paths — the single knobs; the build-fixpoint driver owns artifacts
+\ These rows expose the fixed path scratch and raw source-buffer cell.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 256 constant S2-PATH-CAP
 s" S2-PATH-CAP" s" -- n" TRUST
 create S2-PATH-BUF S2-PATH-CAP allot

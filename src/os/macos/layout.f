@@ -1,4 +1,7 @@
 \ layout.f -- macos-aarch64 executable/data layout constants.
+\ Trusted rows publish fixed Mach-O image offsets/sizes and refine computed
+\ header/GOT addresses for runtime reads.
+\ Retirement: habu-builder-trust-rows-c5d41af6.
 
 $D8 constant IMAGE-TEXT-SIZE-OFF
 0 constant IMAGE-TEXT-CONTENT-ADJ
