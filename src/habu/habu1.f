@@ -2259,30 +2259,61 @@ SOURCE-INIT
    C A 16 LDR,  C C B ORR,  C A 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
+\ PROT-BITS-ADDR, ( base w a m scratch -- ): emit the bitmap addressing sequence.
+\ xbase holds the region base (DATA live, or a snapshot/AOT image's DATA source) and
+\ xw the WID; xa comes back holding &word-containing-the-bit and xm that bit's mask.
+\ The band is PROT-BITS-BYTES of u64 words, so word index = w>>6 (scaled to a byte
+\ offset by <<3) and bit index = w&63. Callers must have proved w < PROT-WID-MAX
+\ first; that bound is what keeps the computed address inside the band. xscratch is
+\ clobbered; xw is preserved.
+\ PROT-BITS-AT, is the same for a bitmap whose base register already points at bit 0
+\ -- the AOT seed blob and a snapshot image carry the band that way.
+: PROT-BITS-AT, ( n n n n n -- ) {: bits:n w:n a:n m:n scratch:n :}
+   scratch w 6 LSRI,  scratch scratch 3 LSLI,
+   a bits scratch ADD,
+   m w 63 ANDI,
+   scratch 1 MOVZ,  m scratch m LSLV, ;
+
+: PROT-BITS-ADDR, ( n n n n n -- ) {: base:n w:n a:n m:n scratch:n :}
+   a PROT-BITS-OFF MOVZ,  a base a ADD,
+   a w a m scratch PROT-BITS-AT, ;
+
+\ prot-wid-add ( wid -- ): mark wid protected. Idempotent (an already-protected wid
+\ returns untouched), and fail-closed at the WID bound: a wid at or above
+\ PROT-WID-MAX has no bit in the band, so protecting it is impossible rather than
+\ approximate, and the engine names the bound and exits rather than writing outside
+\ the band. That range check is the whole memory-safety argument for a prim that
+\ takes a caller-supplied index -- do not weaken it. Publication is acquire-load /
+\ release-store on the containing word, the same single-writer discipline the
+\ append-and-publish-count sequence had; concurrent adders were never supported.
 : BPROTWIDADD ( -- )
-   LBL LBL LBL {: room:label done:label msg:label :}
+   LBL LBL LBL {: ok:label done:label msg:label :}
    9 G-POP
    LPROTWIDQ LABEL@ BL,
    13 done CBNZ,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
-   14 PROT-WID-MAX CMPI,  C-LT room BCOND,
-      0 2 MOVZ,  1 msg ADR,  2 28 MOVZ,  NR-WRITE SYS,    \ registry full: name the cap on fd 2 before exit 84
+   15 PROT-WID-MAX MOVZ,  9 15 CMP,  C-CC ok BCOND,
+      0 2 MOVZ,  1 msg ADR,  2 36 MOVZ,  NR-WRITE SYS,    \ name the exhausted bound on fd 2 before exit 84
       0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS,
-      msg LBL,  s" hb: protected-WID table full" BYTES,   \ 28 bytes; data reached only via ADR
-   room LBL,
-   15 PROT-WID-OFF MOVZ,  15 DATA 15 ADD,
-   16 14 2 LSLI,  15 15 16 ADD,
-   9 15 0 STRW,                                      \ initialize row before release-publishing count
-   14 14 1 ADDI,
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 STLR,
+      msg LBL,  s" hb: protected-WID id above the bound" BYTES,   \ 36 bytes; data reached only via ADR
+   ok LBL,
+   DATA 9 15 14 16 PROT-BITS-ADDR,                   \ x15 = &word, x14 = mask
+   16 15 LDAR,
+   16 16 14 ORR,
+   16 15 STLR,                                       \ release-publish the set bit
    done LBL, ;
 
+\ prot-wid-room ( -- n ): how many more wordlists may still be allocated AND
+\ protected. Every WID below PROT-WID-MAX has a bit, so the only thing that can run
+\ out is WID ids themselves -- the resource a declaration actually consumes. Clamped
+\ at 0 so a caller's `room 0=` and `need room >` tests stay meaningful if WIDN ever
+\ passes the bound (unprotected wordlists may be allocated beyond it).
 : BPROTWIDROOM ( -- )
-   15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
-   14 15 LDAR,
+   LBL {: pos:label :}
+   14 DATA WIDN-CELL LDR,
    9 PROT-WID-MAX MOVZ,  9 9 14 SUB,
+   14 0 MOVZ,  9 14 CMP,  C-GT pos BCOND,
+      9 0 MOVZ,
+   pos LBL,
    9 G-PUSH ;
 
 : BSWL ( -- )
@@ -2643,26 +2674,28 @@ SOURCE-INIT
 \ init, AOT-REPL restore, snapshot restore); a single membership rule protects
 \ them uniformly and unforgeably. Dynamic package wordlists start at
 \ FIRST-DYNAMIC-WID (3), so the reserved pins never shadow a real allocation.
-\ Beyond the two pins, the sealed system + generated constructor package WIDs are
-\ found by a linear scan of the PROT-WID-N-CELL entries of the u32 PROT-WID-OFF
-\ table (both inside the sealed friend arena). Preserves x5 x6 x7 x9 x14; x13 is
+\ Beyond the two pins, membership is one bit in the PROT-BITS-OFF bitmap (inside the
+\ sealed friend arena): O(1), where the u32 table this replaced cost a linear scan of
+\ up to PROT-WID-LEGACY-MAX entries on EVERY guarded operation. A WID at or above
+\ PROT-WID-MAX has no bit and answers "not protected", which is sound because
+\ prot-wid-add refuses to protect one -- an unprotected wordlist can exist above the
+\ bound, a silently-unprotected one cannot. Preserves x5 x6 x7 x9 x14; x13 is
 \ the result. Called by the sealed-WID guards (record publish, AOT
 \ relocation/bootrun, snap-rebase) and the AOT registry restore's dedup.
 : EMIT-PROTWID ( -- )
-   LBL LBL LBL LBL {: qloop:label qnext:label qdone:label qhit:label :}
+   LBL LBL {: qdone:label qhit:label :}
    LPROTWIDQ LABEL@ LBL,
    SP SP 32 SUBI,
    5 SP 0 STR,  6 SP 8 STR,  7 SP 16 STR,  14 SP 24 STR,
    13 0 MOVZ,                                   \ result = 0 (not protected)
    9 OWNER-API-PUB-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved public API wordlist
    9 OWNER-API-PRI-WID CMPI,  C-EQ qhit BCOND,  \ engine-reserved private wordlist (helper marker)
-   6 DATA PROT-WID-N-CELL LDR,                  \ x6 = registry count
-   7 0 MOVZ,                                    \ x7 = i
-   5 PROT-WID-OFF MOVZ,  5 DATA 5 ADD,          \ x5 = &table[0] (offset > imm12: materialize + add)
-   qloop LBL,  7 6 CMP,  C-GE qdone BCOND,
-      14 5 0 LDRW,  14 9 CMP,  C-NE qnext BCOND, \ table[i] == wid?
-      qhit LBL,  13 1 MOVZ,  qdone B,            \ reserved pin or table hit -> protected
-      qnext LBL,  5 5 4 ADDI,  7 7 1 ADDI,  qloop B,
+   5 PROT-WID-MAX MOVZ,  9 5 CMP,  C-CS qdone BCOND,   \ above the bound: no bit, never protected
+   DATA 9 5 14 6 PROT-BITS-ADDR,                \ x5 = &word, x14 = mask
+   7 5 LDAR,                                    \ acquire-load the containing word
+   7 7 14 AND,
+   7 qdone CBZ,
+   qhit LBL,  13 1 MOVZ,                        \ reserved pin or set bit -> protected
    qdone LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;

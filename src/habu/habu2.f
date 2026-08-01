@@ -3717,29 +3717,49 @@ s" c-local-ref" s" label label --" TRUST
       9 9 AOT-CREC-ROW ADDI,  12 12 1 ADDI,  rloop B,
    rdone LBL, ;
 
-\ Restore the baked protected-WID registry (TFAM 2b-v). Copies the LAOTPWID u32
-\ WIDs into the friend-arena registry table (direct STR into the sealed band, same
-\ as the WIDN advance below -- the AOT seed pass is trusted boot machinery), release-
-\ publishes PROT-WID-N-CELL after the rows, and advances WIDN past each restored WID so
-\ a post-restore wordlist/package allocation cannot reuse a protected WID. Full u32
-\ per entry: a WID above 255 restores without truncation. N (bounded by PROT-WID-MAX
-\ at capture) needs no runtime cap check. Runs after EM-AOT-REGISTER-RECS.
+\ Restore the baked protected-WID bitmap (TFAM 2b-v). Copies the fixed
+\ PROT-BITS-BYTES LAOTPWID blob into the friend-arena band (direct STR into the
+\ sealed band, same as the WIDN advance below -- the AOT seed pass is trusted boot
+\ machinery), advances WIDN past the highest protected WID so a post-restore
+\ wordlist/package allocation cannot reuse one, and release-publishes PROT-REG-TAG
+\ last so nothing observes a half-copied band as a bitmap. The blob is a fixed-size
+\ image of a SET, so the restored bytes do not depend on the order the writing run
+\ protected its WIDs -- which is what lets install --force reach a byte-identical
+\ fixpoint across the table-era/bitmap-era changeover. Runs after EM-AOT-REGISTER-RECS.
 : EM-AOT-REGISTER-PROT-WIDS ( -- )
-   LBL LBL LBL {: ploop:label pdone:label pwok:label :}
-   9 LAOTPWID LABEL@ ADR,                           \ x9 = baked u32 WID src
-   11 LAOTNPWID LABEL@ ADR,  11 11 0 LDR,           \ x11 = restored count N
-   10 PROT-WID-OFF MOVZ,  10 DATA 10 ADD,           \ x10 = &registry[0] (offset > imm12: materialize + add)
-   12 0 MOVZ,                                       \ x12 = i
-   ploop LBL,  12 11 CMP,  C-GE pdone BCOND,
-      3 9 0 LDRW,                                   \ x3 = baked wid (full u32)
-      3 10 0 STRW,                                  \ registry[i] = wid
-      4 3 1 ADDI,  5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LE pwok BCOND,   \ WIDN = max(WIDN, wid+1)
+   LBL LBL LBL LBL LBL LBL LBL LBL
+   {: cloop:label cdone:label sloop:label sdone:label shi:label
+      bloop:label bdone:label tagpub:label :}
+   9 LAOTPWID LABEL@ ADR,                           \ x9  = baked bitmap src
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,          \ x10 = &band[0] (offset > imm12: materialize + add)
+   11 PROT-BITS-BYTES MOVZ,                         \ x11 = bytes left
+   cloop LBL,  11 cdone CBZ,
+      3 9 0 LDR,  3 10 0 STR,
+      9 9 8 ADDI,  10 10 8 ADDI,  11 11 8 SUBI,  cloop B,
+   cdone LBL,
+   \ WIDN = max(WIDN, highest protected WID + 1). Scan words downward for the top
+   \ non-zero one, then shift its bits out to find the highest index within it.
+   10 PROT-BITS-OFF MOVZ,  10 DATA 10 ADD,
+   11 PROT-BITS-BYTES MOVZ,
+   sloop LBL,  11 sdone CBZ,
+      11 11 8 SUBI,
+      3 10 11 ADD,  3 3 0 LDR,
+      3 shi CBNZ,
+      sloop B,
+   sdone LBL,  tagpub B,                            \ nothing protected: leave WIDN alone
+   shi LBL,
+      4 11 3 LSLI,                                  \ x4 = WID of bit 0 of that word
+      5 0 MOVZ,
+      bloop LBL,  3 bdone CBZ,
+         3 3 1 LSRI,  5 5 1 ADDI,  bloop B,
+      bdone LBL,                                    \ x5 = highest set bit index + 1
+      4 4 5 ADD,                                    \ x4 = highest protected WID + 1
+      5 DATA WIDN-CELL LDR,  4 5 CMP,  C-LS tagpub BCOND,
          4 DATA WIDN-CELL STR,
-      pwok LBL,
-      9 9 4 ADDI,  10 10 4 ADDI,  12 12 1 ADDI,  ploop B,
-   pdone LBL,
-   5 PROT-WID-N-CELL MOVZ,  5 DATA 5 ADD,
-   11 5 STLR, ;                                      \ release-publish N after every row
+   tagpub LBL,
+   5 PROT-REG-TAG-CELL MOVZ,  5 DATA 5 ADD,
+   4 PROT-REG-TAG LIT64,
+   4 5 STLR, ;                                       \ release-publish the shape tag last
 
 \ Validate both baked WID registries before either is restored. The owner frame
 \ starts immediately after the bounded protected-WID rows, carries its own shape,

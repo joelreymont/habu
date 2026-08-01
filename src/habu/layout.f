@@ -300,37 +300,65 @@ $3CA8 constant AOT-SEED-DONE-CELL
 $3CB0 constant AOT-SEED-ARM-CELL
 \ --- protected-WID registry (TFAM 2b-v): count cell + u32 table. Records the WIDs of
 \ sealed system / generated constructor packages created in the friend window;
-\ PROT-WID? membership (habu1.f) gates the sealed-WID guards. u32 entries so wordlist
-\ IDs above 255 fit. Each PUBLIC ADT family consumes ONE slot (xref.f PROT-WID-CTOR-ADD
-\ -> prot-wid-add per family constructor wordlist), so the capacity is the number of
-\ public ADT families a session may declare. Raised 16 -> 256 (dot
-\ habu-seal-protwid-cap-6f1c9d2b): 16 overflowed at the 17th public family (silent
-\ exit 84), and a realistic switchover (a public stdlib plus user Option/Result/...
-\ families) declares dozens-to-hundreds. The count cell ($3CB8) and table base ($3CC0)
-\ are DELIBERATELY UNCHANGED: aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild
-\ host registry at these offsets (via data-base) during the self-hosting build, so moving
-\ them would make the transitional build read the old-layout host at a new offset (a
-\ garbage count -> "protected-WID registry overflow"). Instead the 256-slot table
-\ ($3CC0..$40C0) grows UPWARD and UNCGH-CELL/TASK-USER-BASE/DATA-START are bumped above
-\ it; those cells are not read live at build time, so relocating them is safe. It stays
-\ engine-reserved -- no compiled source writes it, the DP heap is bounded >= DATA-START
-\ (above the table) and snapshot saves it. The band [PROT-REG-OFF, +PROT-REG-LEN) is a
-\ SECOND range checked by PROT-GUARD, rejecting user data stores into the count cell,
-\ table, or uncaught-throw hook. The code-emit sinks cp!/ndict! (habu1.f BCPSET/BNDSET)
-\ ARE range-guarded too:
-\ each PROT-GUARDs the address it redirects a write to, so a post-seal cp!/ndict! into
-\ either band fails closed at the sink. ---
-$3CB8 constant PROT-WID-N-CELL          \ protected-WID count (u32); UNCHANGED offset (aot-capture reads it live at build time)
-$3CC0 constant PROT-WID-OFF             \ protected-WID table base (PROT-WID-MAX u32); UNCHANGED offset (aot-capture reads it live)
-256 constant PROT-WID-MAX               \ table capacity (256 u32 = $400, spans $3CC0..$40C0); raised from 16 (dot habu-seal-protwid-cap-6f1c9d2b)
-PROT-WID-OFF PROT-WID-MAX 4 * + constant PROT-WID-END
-PROT-WID-N-CELL constant PROT-REG-OFF   \ second PROT-GUARD band base (= count cell)
-PROT-WID-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: registry + UNCGH-CELL = $3CB8..$40C8
+\ PROT-WID? membership (habu1.f) gates the sealed-WID guards.
+\
+\ SHAPE: a WID-INDEXED BITMAP. Bit w of the $400-byte band at PROT-BITS-OFF is set
+\ exactly when wordlist w is protected, so membership and insertion are O(1) and the
+\ set can hold ANY subset of the WIDs the engine can index. It replaced a flat
+\ 256-entry u32 append-only table (dot habu-replace-the-protected-ca920a8f). That
+\ table's capacity was the number of public ADT families ONE PROCESS may declare --
+\ a quantity unrelated to any resource the program controls -- and it was scanned
+\ linearly by every sealed-WID guard. It filled at 246/256 on master, so the maki
+\ suite's next public family died with an uncaught 7169 that named an innocent enum
+\ in whatever file happened to declare next. Raising the number (16 -> 256 once
+\ already, dot habu-seal-protwid-cap-6f1c9d2b) only moves that cliff.
+\
+\ CAPACITY: PROT-WID-MAX is now a WID BOUND, not a slot count: the highest wordlist
+\ id + 1 that can ever be protected. The band is the SAME $3CC0..$40C0 the 256-slot
+\ table occupied, so nothing above it moves, and $400 bytes of bitmap index 8192 WIDs
+\ against the 700 a full maki suite run allocates. prot-wid-room reports
+\ PROT-WID-MAX - WIDN, i.e. how many more wordlists may still be allocated AND
+\ protected, so a declaration's preflight is exact instead of approximate, and
+\ prot-wid-add names the bound itself when handed a WID at or above it. Growing the
+\ bound later means widening the band upward into the free $40C8..$43C0 gap and
+\ bumping UNCGH-CELL, exactly as the 16 -> 256 raise did.
+\
+\ TRANSITION: the tag cell ($3CB8) and the band base ($3CC0) are DELIBERATELY
+\ UNCHANGED, because aot-capture.f ACAP-PWID-CAPTURE reads the LIVE metabuild host
+\ registry at these offsets (via data-base) during the self-hosting build -- the host
+\ is the PREVIOUS engine, so during the changeover a bitmap-era binary is built by a
+\ table-era one. The cell that held the table's count now holds PROT-REG-TAG when the
+\ band is a bitmap; a table-era engine leaves a count there, which is 0..256 and can
+\ never collide with the tag. The capture reads the tag, takes the bitmap path on a
+\ match and the legacy table path otherwise, and dies loudly on any third shape, so
+\ the changeover cannot silently misread either lineage. The legacy reader retires
+\ once the seed has rolled past the transition (dot habu-retire-legacy-pwid).
+\
+\ The band stays engine-reserved -- no compiled source writes it, the DP heap is
+\ bounded >= DATA-START (above it) and snapshot saves it. [PROT-REG-OFF,
+\ +PROT-REG-LEN) is a SECOND range checked by PROT-GUARD, rejecting user data stores
+\ into the tag cell, the bitmap, or the uncaught-throw hook. The code-emit sinks
+\ cp!/ndict! (habu1.f BCPSET/BNDSET) ARE range-guarded too: each PROT-GUARDs the
+\ address it redirects a write to, so a post-seal cp!/ndict! into either band fails
+\ closed at the sink. ---
+$3CB8 constant PROT-REG-TAG-CELL        \ bitmap-shape tag; UNCHANGED offset (aot-capture reads it live at build time)
+$50574249544D4150 constant PROT-REG-TAG \ "PWBITMAP": written by every path that publishes the band; unreachable as a legacy count
+$3CC0 constant PROT-BITS-OFF            \ protected-WID bitmap base; UNCHANGED offset (aot-capture reads it live)
+8192 constant PROT-WID-MAX              \ WID bound: bits 0..8191 span $3CC0..$40C0, the exact band the 256-slot table held
+PROT-WID-MAX 8 / constant PROT-BITS-BYTES
+PROT-BITS-OFF PROT-BITS-BYTES + constant PROT-BITS-END
+PROT-REG-TAG-CELL constant PROT-REG-OFF \ second PROT-GUARD band base (= tag cell)
+PROT-BITS-END 1 cells + PROT-REG-OFF - constant PROT-REG-LEN  \ $410: tag + bitmap + UNCGH-CELL = $3CB8..$40C8
+\ Legacy aliases: ONLY the transitional capture path may use these, to read a
+\ table-era host's registry. Nothing in the running engine reads the band this way.
+PROT-REG-TAG-CELL constant PROT-WID-LEGACY-N-CELL
+PROT-BITS-OFF constant PROT-WID-LEGACY-OFF
+256 constant PROT-WID-LEGACY-MAX
 \ UNCGH-CELL: runtime address of the uncaught-top-level-throw reporter (LUNCAUGHT,
 \ habu2.f), stored at boot (EM-STARTUP-RUNTIME-STATE) beside RRECP/EVALREC so the leaf
 \ BTHROW primitive (which cannot name a habu2.f label) can branch to it when a throw
 \ reaches THROW-NOREC with no handler and no REPL. Moved $3D00 -> $40C0 (above the grown
-\ 256-slot protected-WID table); not read live at build time so the relocation is safe.
+\ protected-WID band); not read live at build time so the relocation is safe.
 \ Like EVALREC/AOT-SEED it is a fixed engine cell no compiled source writes (the mmap'd
 \ DATA region is zero until boot).
 $40C0 constant UNCGH-CELL
