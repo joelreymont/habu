@@ -26,15 +26,6 @@
 \   - `=` on a grant rejects (an ADT value never laundry-compares through the scalar prim),
 \ so the sole ways to obtain a grant are ROOT and ATTENUATE, and ATTENUATE cannot escalate.
 \
-\ ---- CAPABILITY CODES ARE OPAQUE BIT FLAGS (the vocabulary content is USER-GATED) --------
-\ The capability CODES are held as an opaque u64 BITMASK of closed-vocabulary bits (the plan's
-\ "stable constant like the TARGET:CAP-* bits", plan:3652; the maki/db/action.f D-CAP / DISPATCH
-\ precedent). The vocabulary CONTENT - which capabilities exist and what each bit means - is a
-\ user-gated product decision (owner package CAP, plan:3679 NEEDS-DECISION), NOT invented here:
-\ this file treats the mask purely as opaque bits. SUBSET / AUTHORIZES? are mask operations
-\ (need AND granted == need), identical to ACTION:DISPATCH's capability gate. When CAP lands,
-\ its named bit constructors feed these masks unchanged.
-\
 \ ---- ATTENUATION IS SUBSET ON BOTH AXES (nested actions cannot exceed parent authority) --
 \ A child is admissible iff its requested cap-mask is a SUBSET of the parent's (every requested
 \ bit is granted) AND its requested budget ceiling is <= the parent's for EVERY dimension.

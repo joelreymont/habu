@@ -208,7 +208,7 @@ create D-DET     ACT-CAP cells allot           \ deterministic flag
 create D-CACHE   ACT-CAP cells allot           \ cacheable flag
 create D-PRECOND ACT-CAP cells allot           \ precondition bitmask
 create D-EFFECT  ACT-CAP cells allot           \ effect bitmask
-create D-CAP     ACT-CAP cells allot           \ capability code bitmask (empty until CAP lands)
+create D-CAP     ACT-CAP cells allot           \ capability code bitmask
 create D-BUDGET  ACT-CAP cells allot           \ budget-dimension bitmask
 create D-OBLIG   ACT-CAP cells allot           \ produced-obligation (OBLIG:relation) bitmask
 create D-DIAG    ACT-CAP cells allot           \ emitted-diagnostic (DIAG:class) bitmask
