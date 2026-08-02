@@ -19,7 +19,6 @@ Planned module files:
 - `lib/map.f`
 - `lib/memory.f`
 - `lib/ffi-abi.f`
-- `lib/ffi.f`
 - `lib/fs.f`
 - `lib/fs-root.f`
 - `lib/build-cache.f`
@@ -322,16 +321,15 @@ stack slots. x8 is the AAPCS64 indirect-result register: sret writers must use
 `FFI:X8-WRITABLE!` with the complete result extent. Stack writers use the
 corresponding stack slot and extent; neither table aliases the other.
 
-`lib/ffi.f` is the compatibility entry for the sealed `FFI` package owned by
-`lib/ffi-abi.f`. On Linux/aarch64 the package
+`lib/ffi-abi.f` owns the sealed `FFI` package. On Linux/aarch64 the package
 calls `dlopen` and `dlsym` through loader-resolved dynamic ELF slots
 (`DLOPEN-SLOT`, `DLSYM-SLOT`). On macOS/aarch64 the Mach-O writer emits a
 `__DATA_CONST,__got` page and `LC_DYLD_CHAINED_FIXUPS` imports for libSystem
-`_dlopen` and `_dlsym`; the same checked `DLOPEN`/`DLSYM` words read those
+`_dlopen` and `_dlsym`; the same checked `FFI:DLOPEN`/`FFI:DLSYM` words read those
 resolved slots. The exact package bindings are `FFI:DLOPEN` and `FFI:DLSYM`.
-Legacy global `DLOPEN`/`DLSYM` aliases remain for existing sources; new code
-uses the package words. `FFI`, `CUDA`, and `TASK` seal both wordlists after
-definition, so later source cannot reopen them, add a call, or redirect a symbol.
+No global loader or marshalling aliases exist. `FFI`, `CUDA`, and `TASK` seal
+both wordlists after definition, so later source cannot reopen them, add a call,
+or redirect a symbol.
 
 `FFI:DLSYM` uses a dedicated task-DATA loader block, so it cannot overwrite a
 staged call. Wrappers still resolve before staging to keep the foreign-call
@@ -426,7 +424,7 @@ checked before memory is touched.
 `src/core/bytes.f` provides small checked byte-buffer helpers that are part of
 the native prelude. They are available before stdlib and tool modules so low
 level code does not depend on broad library ordering such as loading
-`lib/string.f` before `lib/ffi.f`.
+`lib/string.f` before `lib/ffi-abi.f`.
 
 ```forth
 BYTE-VIEW       ( ptr a -- ptr u8 )

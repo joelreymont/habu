@@ -17,7 +17,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require maki/eval/eval.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
@@ -65,7 +65,7 @@ variable SM-DI variable SM-DO variable SM-KV
    SM-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
    SM-MOD SM-PATH MKD:CUMODULELOAD CUDA:RC0
    SM-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SOFTMAX_ROWS" SM-KN >CSTR
+   s" SOFTMAX_ROWS" SM-KN FFI:CSTR
    SM-FUNC SM-MOD @ >CUDA-MOD SM-KN MKD:CUMODULEGETFUNCTION CUDA:RC0
    SM-DI 16 >LEN MKD:CUMEMALLOC CUDA:RC0  SM-DI @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    SM-DO 16 >LEN MKD:CUMEMALLOC CUDA:RC0  SM-DO @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
@@ -83,7 +83,7 @@ variable SM-DI variable SM-DO variable SM-KV
 : SM-RUN ( ptr u8 n -- ) {: pa pu :}               \ run softmax cubin, fill SM-OUT
    SM-OUT 16 PTXSENT:FILL                          \ poison readback: a dropped copy-back fails closed
    1 4 256 PTX-ROW-LAUNCH-CHECK
-   pa pu SM-PATH >CSTR
+   pa pu SM-PATH FFI:CSTR
    [: SM-RUN-CORE ;] CUDA-SCOPE:SCOPE ;
 
 : SM-NEAR? ( n n -- bool )  - abs 8 <= ;            \ within 8 ULP (ex2.approx)

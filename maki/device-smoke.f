@@ -1,10 +1,10 @@
 \ device-smoke.f - the maki gate's device-FFI canary (closes habu-add-device-ffi).
 \
 \ Static invariant: before any device tool runs, the running bin/hb MUST provide every
-\ trusted-only bounded FFI-ABI primitive lib/ffi.f needs (`ffi-call-bounded`).
+\ trusted-only bounded FFI-ABI primitive lib/ffi-abi.f needs (`ffi-call-bounded`).
 \ Two legs enforce it:
-\  (a) PRIMITIVE PROOF - the maki gate now loads lib/ffi.f just before this file. A
-\      stale bin/hb (predating those primitives) FAILS TO LOAD lib/ffi.f, so the gate
+\  (a) PRIMITIVE PROOF - the maki gate now loads lib/ffi-abi.f just before this file. A
+\      stale bin/hb (predating those primitives) FAILS TO LOAD lib/ffi-abi.f, so the gate
 \      stops early and points at the FFI layer - not cryptically deep in a device tool
 \      (the exact failure that stayed hidden when the gate was checker-only). Reaching
 \      DEVICE-SMOKE at all already means the primitives are present.
@@ -17,6 +17,8 @@
 require lib/test.f
 require maki/cuda-driver.f
 
+package DEVICE-SMOKE
+
 variable DS-DEV
 
 : DS-RC0 ( rc -- )
@@ -26,7 +28,7 @@ variable DS-DEV
    T-RESET
    \ (a) primitive proof (the load already enforced it; tally it explicitly)
    0 0= TTRUE
-   s" device-FFI: bin/hb has the AAPCS64 FFI-ABI primitives (lib/ffi.f loaded)" type cr
+   s" device-FFI: bin/hb has the AAPCS64 FFI-ABI primitives (lib/ffi-abi.f loaded)" type cr
    \ (b) live device leg
    CUDA:OPEN? 0= if
       s" device-FFI: libcuda.so.1 unavailable -> device leg SKIPPED (off-device; proof stands)" type cr
@@ -38,3 +40,5 @@ variable DS-DEV
    T-REPORT ;
 
 DEVICE-SMOKE
+
+;package

@@ -306,10 +306,10 @@ TV-SEED TV-BOUND !
 $FFFFFFFFFF constant TV-GEN-MAX   \ lowered so TV-GEN-MAX * TV-CAP fits a signed cell
 
 \ ---- alignment measurement ------------------------------------------------
-\ Record the pointer's real base alignment. P>N (lib/ffi-abi.f) is the audited
+\ Record the pointer's real base alignment. FFI:>CELL (lib/ffi-abi.f) is the audited
 \ pointer->cell cast; the low bits are exact, so no data-base assumption is made.
 : TV-ALIGN-CLASS ( ptr a -- align ) {: p:ptr :}
-   p P>N {: a:n :}
+   p FFI:>CELL {: a:n :}
    a 15 and 0= if MAKI-ALIGN:A16  exit then
    a 7  and 0= if MAKI-ALIGN:A8   exit then
    a 3  and 0= if MAKI-ALIGN:A4   exit then

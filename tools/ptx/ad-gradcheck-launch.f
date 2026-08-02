@@ -17,8 +17,10 @@
 \ spellings + local f64-cell helpers keep it loadable on both trees):
 \ ./bin/hb --load lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f
 \   src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f
-\   lib/ffi.f maki/cuda-types.f maki/cuda-driver.f
+\   lib/ffi-abi.f maki/cuda-types.f maki/cuda-driver.f
 \   <scratch>/ad-gradcheck-launch.f -- <scratch>
+
+package AD-GRADCHECK
 
 4 constant AGK                     \ row width k
 16 constant AGBYTES                \ k f32 cells
@@ -106,7 +108,7 @@ variable AG-MISS#
 : AG-PATH! ( ptr u8 n -- ) {: a:ptr u:n :}
    SB-RESET
    AG-DIR AG-DIR-U @ SB-APPEND  s" /" SB-APPEND  a u SB-APPEND
-   SB$ AG-PZ >CSTR ;
+   SB$ AG-PZ FFI:CSTR ;
 
 : AG-INIT ( -- )
    CUDA:OPEN
@@ -134,13 +136,13 @@ variable AG-MISS#
 : AG-FWD-MOD! ( ptr u8 n ptr u8 n -- ) {: f:ptr fu:n kn:ptr knu:n :}
    f fu AG-PATH!
    AG-MF AG-PZ CUDA:CUMODULELOAD CUDA:RC0
-   kn knu AG-KN >CSTR
+   kn knu AG-KN FFI:CSTR
    AG-FWD AG-MF @ >CUDA-MOD AG-KN CUDA:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 : AG-BWD-MOD! ( ptr u8 n ptr u8 n -- ) {: b:ptr bu:n kn:ptr knu:n :}
    b bu AG-PATH!
    AG-MB AG-PZ CUDA:CUMODULELOAD CUDA:RC0
-   kn knu AG-KN >CSTR
+   kn knu AG-KN FFI:CSTR
    AG-BWD AG-MB @ >CUDA-MOD AG-KN CUDA:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 : AG-PAIR! ( ptr u8 n ptr u8 n -- ) {: f:ptr fu:n b:ptr bu:n :}
@@ -646,3 +648,5 @@ variable AG-MISS#
    T-REPORT ;
 
 AG-MAIN
+
+;package

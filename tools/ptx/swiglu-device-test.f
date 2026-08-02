@@ -17,8 +17,8 @@
 \ TOLERANCE (measured on GB10 sm_121a, not defaulted): the forward |device f32 - host f64| is
 \ below 5e-7 (under print resolution) over this fixture, and the FD-vs-analytic gradient gap
 \ is at most 2.4e-4 (central-difference O(eps^2) truncation at eps=2^-12 plus f32 device noise);
-\ SW-NEAR? uses 2e-3, ~8x over the measured worst case. Fully checked Habu via lib/ffi.f.
-\ Load after lib/test.f, lib/ffi.f, lib/ptx/cg.f, maki/array.f, maki/swiglu.f.
+\ SW-NEAR? uses 2e-3, ~8x over the measured worst case. Fully checked Habu via lib/ffi-abi.f.
+\ Load after lib/test.f, lib/ffi-abi.f, lib/ptx/cg.f, maki/array.f, maki/swiglu.f.
 
 require lib/errors.f
 require lib/string.f
@@ -92,10 +92,10 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
    SW-CTX SW-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    SW-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    SW-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ SW-P1 >CSTR
+   PTXTC:CUBIN$ SW-P1 FFI:CSTR
    SW-MF SW-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
    SW-MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SWIGLU_ROWS" SW-KF >CSTR
+   s" SWIGLU_ROWS" SW-KF FFI:CSTR
    SW-FWD SW-MF @ >CUDA-MOD SW-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    SW-dG 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   SW-dG @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    SW-dU 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0   SW-dU @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR

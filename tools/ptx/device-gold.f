@@ -35,7 +35,7 @@ require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/test.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -162,10 +162,10 @@ variable DG-DEV variable DG-CTX variable DG-MOD variable DG-FUNC
    DG-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    DG-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0 ;
 : CU-LOAD ( ptr u8 n -- ) {: na:ptr nu:n :}      \ load PTXTC:CUBIN$, resolve function <name> into DG-FUNC
-   PTXTC:CUBIN$ DG-PATH >CSTR
+   PTXTC:CUBIN$ DG-PATH FFI:CSTR
    DG-MOD DG-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    DG-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   na nu DG-KN >CSTR
+   na nu DG-KN FFI:CSTR
    DG-FUNC DG-MOD @ >CUDA-MOD DG-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 \ ============================ SGEMM (MM) golden ==============================

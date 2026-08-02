@@ -54,7 +54,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/header.f
@@ -216,10 +216,10 @@ variable EVND-DEV variable EVND-CTX variable EVND-MOD variable EVND-FUNC
    EVND-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0 ;
 
 : CU-LOAD ( ptr u8 n -- ) {: na:ptr nu:n :}    \ load CUBIN$ (owned), resolve function <name> into EVND-FUNC
-   MAKI-GRADE:CUBIN$ EVND-PATH >CSTR
+   MAKI-GRADE:CUBIN$ EVND-PATH FFI:CSTR
    EVND-MOD EVND-PATH MKD:CUMODULELOAD CUDA:RC0
    EVND-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   na nu EVND-KN >CSTR
+   na nu EVND-KN FFI:CSTR
    EVND-FUNC EVND-MOD @ >CUDA-MOD EVND-KN MKD:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 \ ---- sumnorm device run: SOFTMAX_ROWS, grid = R blocks, block = 256 ----------

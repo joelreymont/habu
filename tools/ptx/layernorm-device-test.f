@@ -12,8 +12,8 @@
 \ x[j] by +-eps, re-run the SAME device forward, form the central difference
 \ sum_i dy[i]*(y+[i]-y-[i])/(2eps), and assert it matches the device backward dx[j].
 \ BACKWARD PARITY: assert the device dx[j] also matches the maki LN-BWD closed form.
-\ Fully checked Habu via lib/ffi.f. Off-device (no libcuda) it records a SKIP and
-\ still check-loads. Load after lib/test.f, lib/ffi.f, lib/ptx/cg.f, maki/array.f.
+\ Fully checked Habu via lib/ffi-abi.f. Off-device (no libcuda) it records a SKIP and
+\ still check-loads. Load after lib/test.f, lib/ffi-abi.f, lib/ptx/cg.f, maki/array.f.
 \
 \ AFFINE: only PLAIN LayerNorm is proved here - the kernel pair takes no gamma/beta
 \ (tools/ptx/layernorm-cg.f records the affine boundary); the affine parameter grads
@@ -90,11 +90,11 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    RN-DEV 0 >IDX CUDA:CU-DEVICE-GET CUDA:RC0
    RN-CTX RN-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    RN-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ RN-P1 >CSTR
+   PTXTC:CUBIN$ RN-P1 FFI:CSTR
    RN-MF RN-P1 CUDA:CU-MODULE-LOAD CUDA:RC0
-   s" LAYERNORM_ROWS" RN-KF >CSTR
+   s" LAYERNORM_ROWS" RN-KF FFI:CSTR
    RN-FWD RN-MF @ >CUDA-MOD RN-KF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
-   s" LAYERNORM_BWD_ROWS" RN-KB >CSTR
+   s" LAYERNORM_BWD_ROWS" RN-KB FFI:CSTR
    RN-BWD RN-MF @ >CUDA-MOD RN-KB CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    RN-dX 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0
    RN-dDY 16 >LEN CUDA:CU-MEM-ALLOC CUDA:RC0

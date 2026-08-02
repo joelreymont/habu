@@ -1,7 +1,7 @@
 \ cuda-launch.f - CHECKED on-device proof: LAUNCH a checked-emitted scalar SAXPY
 \ kernel on the Orin GPU and verify the result against the CPU golden.
 \
-\ Fully checked Habu via lib/ffi.f (NO 0 set-check; only P>N trusted). The
+\ Fully checked Habu via lib/ffi-abi.f (NO 0 set-check; only FFI:>CELL trusted). The
 \ deprecated <=8-arg launch API (cuFuncSetBlockShape / cuParamSetv / cuLaunchGrid)
 \ avoids cuLaunchKernel's 11 args; the real driver memory entry points are the
 \ _v2 symbols (the earlier INVALID_CONTEXT was symbol versioning). Self-contained:
@@ -25,7 +25,7 @@ require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/kernel-abi.f
 require lib/ptx/cg.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/ptx/toolchain.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
@@ -75,10 +75,10 @@ variable LL-DX variable LL-DY variable LL-ABITS variable LL-NV variable LL-RBUF
    LL-CTX LL-DEV @ >CUDA-DEV CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN CUDA:RC0
    LL-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    LL-CTX @ >CUDA-CTX CUDA:CU-CTX-SET-CURRENT CUDA:RC0
-   PTXTC:CUBIN$ LL-PATH >CSTR
+   PTXTC:CUBIN$ LL-PATH FFI:CSTR
    LL-MOD LL-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    LL-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   KABI:NAME$ LL-KN >CSTR                         \ kernel entry name from the ABI record
+   KABI:NAME$ LL-KN FFI:CSTR                         \ kernel entry name from the ABI record
    LL-FUNC LL-MOD @ >CUDA-MOD LL-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 \ record-driven .param packing: offset and size of one named field

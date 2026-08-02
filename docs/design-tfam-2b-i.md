@@ -262,7 +262,7 @@ calls by real user-source files loaded through `--load`:
 - `lib/task.f` — `data-base TASKS-LIVE-CELL + !`, `dbase@`, `rbase reg RBASE-CELL + !`,
   `ndict@`, `atomic!`, `patch32` (scheduler/TCB runtime; :157,160,193-205,218-219,251,402).
 - `lib/ffi-abi.f:29-47` — `data-base FFI-*-OFF +` (FFI buffer addressing).
-- `lib/ffi.f:124`, `lib/prelude.f:6`, `lib/ptx/header.f:21` — `parse-name`.
+- `lib/prelude.f:6`, `lib/ptx/header.f:21` — `parse-name`.
 - `lib/memory-test.f:82,84,96,99` — `here data-base -`.
 - `test/gate-common-lib.f:443-450,484-487` — `get-current`/`set-current`,
   `ndict@`/`ndict!`, `data-base S0-CELL + !` (swaps the eval stack base).

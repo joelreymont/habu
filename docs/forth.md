@@ -253,7 +253,7 @@ private
   before `B.f` just to run `B-test.f`. If many files need a small primitive
   helper, factor that helper into a narrow `src/core/*.f` prelude file loaded
   before stdlib/tool sources instead of depending on a broad library order such
-  as `lib/string.f` before `lib/ffi.f`.
+  as `lib/string.f` before `lib/ffi-abi.f`.
 - Use include when a file should be self-sufficient or when a top-level entry
   file should assemble a package from submodules:
 

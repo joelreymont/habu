@@ -103,13 +103,13 @@ variable OUT-U
 
 : TEST-SINKS ( -- )
    s" scalar stores cannot enter the active transaction" T-LABEL
-   s"   0 a P>N N-PTR !" REJECTS
+   s"   0 a FFI:>CELL N-PTR !" REJECTS
    s" MAP_FIXED cannot replace the active transaction" T-LABEL
-   s"   a P>N 16 3 $1012 -1 0 mmap drop" REJECTS
+   s"   a FFI:>CELL 16 3 $1012 -1 0 mmap drop" REJECTS
    s" FFI writable extent cannot enter the active transaction" T-LABEL
    s"   a 16 0 FFI:WRITABLE! CALL-FOREIGN" REJECTS
    s" snap-rebase cannot straddle the active transaction" T-LABEL
-   s"   a 8 - P>N a cap + 8 + P>N 0 0 0 0 snap-rebase" REJECTS ;
+   s"   a 8 - FFI:>CELL a cap + 8 + FFI:>CELL 0 0 0 0 snap-rebase" REJECTS ;
 
 public
 

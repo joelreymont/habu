@@ -3,7 +3,7 @@
 \ AXPY over float arrays: y[i] = a*x[i] + y[i], computed on the Orin via the
 \ CHECKED SAXPY kernel (lib/ptx/...), with ARBITRARY float data marshalled through
 \ F64>F32, and verified against the CPU. Fully checked Habu (no 0 set-check) via
-\ the checked FFI (lib/ffi.f) + F64>F32 (lib/ptx/cg.f). maki -> habu only.
+\ the checked FFI (lib/ffi-abi.f) + F64>F32 (lib/ptx/cg.f). maki -> habu only.
 \ Self-contained: SETUP emits the checked SAXPY kernel (tools/ptx/saxpy-cg.f) to a
 \ PRIVATE per-run PTX under a toolchain root, ptxas-assembles it, and loads that
 \ cubin - no shared /tmp/saxpy.cubin that could be stale/missing/wrong.
@@ -97,10 +97,10 @@ create GQ-ERR $1000 allot
    GCTX GDEV @ >CUDA-DEV MKD:CUDEVICEPRIMARYCTXRETAIN CUDA:RC0
    GDEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    GCTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
-   PTXTC:CUBIN$ GPATH >CSTR
+   PTXTC:CUBIN$ GPATH FFI:CSTR
    GMOD GPATH MKD:CUMODULELOAD CUDA:RC0
    GMOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SAXPY" GKN >CSTR
+   s" SAXPY" GKN FFI:CSTR
    GFUNC GMOD @ >CUDA-MOD GKN MKD:CUMODULEGETFUNCTION CUDA:RC0 ;
 
 \ one launch's device buffers live in a per-call SCOPE frame: GDX/GDY are freed on

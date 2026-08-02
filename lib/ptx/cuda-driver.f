@@ -14,7 +14,7 @@
 \ API (cuFuncSetBlockShape / cuParamSetv / cuLaunchGrid) avoids cuLaunchKernel's
 \ 11 args; the real driver memory entry points are the _v2 symbols.
 
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/type/deftype.f         \ DEFTYPE - the CUDA handle families
 
 -5002 constant E-CUDA          \ CUDA Driver call failed: null handle or nonzero CUresult

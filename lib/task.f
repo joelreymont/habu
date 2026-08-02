@@ -2,7 +2,7 @@
 
 s" lib/errors.f" required
 s" lib/memory.f" required
-s" lib/ffi.f" required
+s" lib/ffi-abi.f" required
 
 package TASK
 
@@ -106,7 +106,7 @@ TRUSTED: TASK-N>PTR ( n -- ptr a ) ;
 TRUSTED: TASK-CELL>PTR-SLOT ( ptr a -- ptr ptr a ) ;
 
 : TASK-ALIGN8 ( -- )
-   here P>N 7 and dup 0= if drop exit then
+   here FFI:>CELL 7 and dup 0= if drop exit then
    8 swap - allot ;
 
 : TASK-LIB-PATH ( -- ptr u8 )
@@ -447,7 +447,7 @@ TRUSTED: FACILITY ( -- )
    TASK-FACILITY-MUTEX-OFF + ;
 
 : TASK-OWNER ( -- n )
-   TASK-SELF-N dup 0= if drop data-base P>N then ;
+   TASK-SELF-N dup 0= if drop data-base FFI:>CELL then ;
 
 : FACILITY-OWNER@ ( ptr a -- n )
    FACILITY-OWNER atomic@ ;

@@ -17,7 +17,7 @@ require lib/fs-mutate.f
 require lib/process.f
 require lib/process-argv.f
 require lib/engine-candidate.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/float.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
@@ -78,7 +78,7 @@ $23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
    ED-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0
    ED-MOD ED-PATH MKD:CUMODULELOAD CUDA:RC0
    ED-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   s" SAXPY" ED-KN >CSTR
+   s" SAXPY" ED-KN FFI:CSTR
    ED-FUNC ED-MOD @ >CUDA-MOD ED-KN MKD:CUMODULEGETFUNCTION CUDA:RC0
    ED-DX 16 >LEN MKD:CUMEMALLOC CUDA:RC0  ED-DX @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
    ED-DY 16 >LEN MKD:CUMEMALLOC CUDA:RC0  ED-DY @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR
@@ -97,7 +97,7 @@ $23 constant ED-EXIT-FAULT     \ launch threw (E-CUDA etc.) / crashed
 
 : ED-RUN ( ptr u8 n -- n ) {: pa pu :}          \ cubin path -> f32 result bits
    ED-RBUF 4 PTXSENT:FILL                        \ poison readback: a dropped copy-back fails closed
-   pa pu ED-PATH >CSTR
+   pa pu ED-PATH FFI:CSTR
    [: ED-RUN-CORE ;] CUDA-SCOPE:SCOPE
    ED-RBUF @ $FFFFFFFF and PTXSENT:GUARD ;
 : DEVICE-CORRECT? ( ptr u8 n -- bool )  ED-RUN $40C00000 = ;   \ golden a*x+y = 6.0

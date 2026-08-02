@@ -1376,8 +1376,9 @@ fits.
   R+W segment at a FIXED high vaddr so slot addresses are compile-time constants; BOTH AOT
   (`BUILD-ELF`) and snapshot image paths must go dynamic (the self-host fixpoint is the acceptance
   test). no-crt dlopen works (glibc ld.so initializes libc enough that a no-startfiles binary can
-  dlopen libcuda). Keep FFI ABI separate from loader binding (`lib/ffi-abi.f` portable + gateable;
-  `lib/ffi.f` the loader layer). A mechanical guard on all 8 FFI arg registers is UNSOUND — ffi-call
+  dlopen libcuda). Keep ABI marshalling and loader binding as separate private concerns inside
+  the one sealed `FFI` package (`lib/ffi-abi.f`), not as compatibility files.
+  A mechanical guard on all 8 FFI arg registers is UNSOUND — ffi-call
   loads 8 cells regardless of arity, so slots past the real args hold STALE values; only `ffi-call-n`
   carries x14=nargs (guard `argbuf[0..nargs)`, BEFORE the x20 repurpose), and the CHECKED library
   funnels integer/pointer calls through it.

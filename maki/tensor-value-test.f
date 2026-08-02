@@ -15,8 +15,8 @@ create TVT-BX 4 cells allot
 1.0 TVT-BX 0 T-SET  2.0 TVT-BX 1 T-SET  3.0 TVT-BX 2 T-SET  4.0 TVT-BX 3 T-SET
 
 \ create-space is byte-aligned, so round TVT-BX up to a known 16-byte boundary to
-\ get a deterministic anchor for the alignment tests (P>N measures the low bits).
-: TVT-A16 ( -- ptr a )  TVT-BX  TVT-BX P>N 15 and  16 swap -  15 and  + ;
+\ get a deterministic anchor for the alignment tests (FFI:>CELL measures the low bits).
+: TVT-A16 ( -- ptr a )  TVT-BX  TVT-BX FFI:>CELL 15 and  16 swap -  15 and  + ;
 
 : TVT-SHAPE? ( tensor n n -- bool )
    {: t:tensor rows:n cols:n :}

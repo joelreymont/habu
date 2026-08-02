@@ -27,7 +27,7 @@ require lib/errors.f
 require lib/string.f
 require lib/fmt.f
 require lib/fs.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require tools/ptx/bench.f

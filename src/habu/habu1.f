@@ -1604,7 +1604,7 @@ variable SZA-I
 \ ---- FFI: AAPCS64 trampolines ----
 \ `ffi-call` keeps the old fast path: load 8 cells from argbuf into x0-x7,
 \ BLR fn, push x0. `ffi-call-abi`/`ffi-call-abi-r` add x8, d0-d7, caller-packed
-\ stack spill, and integer/float return variants for the checked lib/ffi.f API.
+\ stack spill, and integer/float return variants for the checked lib/ffi-abi.f API.
 \ argbuf must be a >=8-cell (64-byte) buffer; trailing cells are ignored by a
 \ callee that takes fewer args. XDS (x19) is AAPCS64 callee-saved so the C call
 \ preserves the data stack; x30 is framed by FPRIM (these prims have a BLR).

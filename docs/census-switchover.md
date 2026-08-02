@@ -147,7 +147,6 @@ migration surface, dispatched by `=`/`case`):
 |---|---|---|---|---|
 | Process outcome kind | `lib/process.f:23-25` `PROC-OUTCOME-EXIT/SIGNAL/TIMEOUT` (0/1/2) | 3 | in-process (folded to rc) | `PROC-OUTCOME>RC :87` `=`; `PROC-STATUS>OUTCOME :78` returns (kind code) |
 | Map slot state | `lib/map.f:15-17` `MAP-EMPTY 0 / MAP-DELETED -1 / MAP-OCCUPIED 1` | 3 | in-process | `MAP-EMPTY? :39` etc. via `=` |
-| FFI arg kind | `lib/ffi.f:13-16` `FDEF-N/PTR/NOM/VOID` (0-3) | 4 | in-process | per-arg marshalling |
 | Checker type-term tag | `src/core/checker.f:1` `T-CON..T-PARAM` (0-7) | 8 | **persisted** (AOT image type graph) | core unification |
 | VREC node tag | `checker.f:1249` `VR-CON..VR-PARAM` (0-7) | 8 | **persisted** | `VREC-COPY`/`VREC-INST` |
 | Schema node tag | `SC-CON..SC-LAYOUT`, `type-schema.f` | 7 | **persisted** | schema walk |

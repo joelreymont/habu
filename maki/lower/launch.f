@@ -145,7 +145,7 @@ private
 
 \ RGN>RAW is the one kernel-name render boundary (REGION_<rid>)
 : LLA-FNAME ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}   \ build the REGION_<rid> cstring
-   SB-RESET s" REGION_" SB-APPEND rid RGN>RAW FMT:SB-INT  SB$ LLA-FN >CSTR ;
+   SB-RESET s" REGION_" SB-APPEND rid RGN>RAW FMT:SB-INT  SB$ LLA-FN FFI:CSTR ;
 
 \ launch args staged into globals so the SCOPE body words (LLA-EXEC-*-BODY,
 \ MDL-EXEC-REGION-INNER) close over no locals; obytes is re-derived from LLA-ELEMS.
@@ -168,7 +168,7 @@ variable LLA-GX  variable LLA-GY                    \ single-region launch grid 
    LLA-DEV @ >CUDA-DEV CUDA-SCOPE:OWN-PRIMARY-CTX
    LLA-CTX @ >CUDA-CTX MKD:CUCTXSETCURRENT CUDA:RC0 ;
 : LLA-MOD-OPEN ( ptr u8 n -- )   \ load a cubin at the path (owned); get the REGION_<...> fn (LLA-FN preset)
-   LLA-PATH >CSTR
+   LLA-PATH FFI:CSTR
    LLA-MOD LLA-PATH MKD:CUMODULELOAD CUDA:RC0
    LLA-MOD @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
    LLA-FUNC LLA-MOD @ >CUDA-MOD LLA-FN MKD:CUMODULEGETFUNCTION CUDA:RC0 ;

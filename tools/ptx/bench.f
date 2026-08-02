@@ -2,7 +2,7 @@
 
 require lib/errors.f
 require lib/string.f
-require lib/ffi.f
+require lib/ffi-abi.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require tools/ptx/profile.f
@@ -160,9 +160,9 @@ public
 : LOAD ( -- )
    PATH$ nip 0= if s" ptxbench: cubin path not set" 1 die then
    KERNEL-U @ 0= if s" ptxbench: kernel not set" 1 die then
-   PATH$ PATH-BUF >CSTR
+   PATH$ PATH-BUF FFI:CSTR
    MOD PATH-BUF CUDA:CU-MODULE-LOAD CUDA:RC0
-   KERNEL-BUF KERNEL-U @ KERNEL-BUF >CSTR
+   KERNEL-BUF KERNEL-U @ KERNEL-BUF FFI:CSTR
    FUNC MOD @ >CUDA-MOD KERNEL-BUF CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 
 : UNLOAD ( -- )

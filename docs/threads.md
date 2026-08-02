@@ -7,7 +7,7 @@ Linux/aarch64 in package `TASK`. Load it with:
 require lib/task.f
 ```
 
-The module owns its dependencies (`lib/errors.f`, `lib/memory.f`, `lib/ffi.f`);
+The module owns its dependencies (`lib/errors.f`, `lib/memory.f`, `lib/ffi-abi.f`);
 callers and test suites must not encode that include order.
 
 ## Model

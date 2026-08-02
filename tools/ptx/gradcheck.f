@@ -10,7 +10,7 @@
 \
 \ The primary context is retained ONCE (GC-CTX-INIT) and released ONCE by the run scope
 \ (CUDA-SCOPE); a retained context never released hangs bin/hb at process exit on the Orin (RCA
-\ habu-rca-device-gradcheck). Self-contained, Orin-only. Load after lib/test.f, lib/ffi.f,
+\ habu-rca-device-gradcheck). Self-contained, Orin-only. Load after lib/test.f, lib/ffi-abi.f,
 \ lib/ptx/cg.f (F32>F64/F64>F32), and the fs/process libs.
 
 require lib/ptx/toolchain.f
@@ -18,6 +18,8 @@ require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
 require maki/eval/active-target.f
+
+package GRADCHECK
 
 create GC-PATH 64 allot  create GC-KN 32 allot
 variable GC-DEV variable GC-CTX variable GC-MOD variable GC-FUNC
@@ -65,9 +67,9 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 \ the module is a per-kernel mutable slot (loaded then unloaded for each of the four kernels);
 \ its reload cannot be a single LIFO-owned row, so GC-LOAD/GC-UNLOAD keep managing it explicitly.
 : GC-LOAD ( -- )
-   PTXTC:CUBIN$ GC-PATH >CSTR
+   PTXTC:CUBIN$ GC-PATH FFI:CSTR
    GC-MOD GC-PATH CUDA:CU-MODULE-LOAD CUDA:RC0
-   s" SAXPY" GC-KN >CSTR
+   s" SAXPY" GC-KN FFI:CSTR
    GC-FUNC GC-MOD @ >CUDA-MOD GC-KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0 ;
 : GC-UNLOAD ( -- )  GC-MOD @ >CUDA-MOD CUDA:CU-MODULE-UNLOAD CUDA:RC0 ;
 
@@ -154,3 +156,5 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    T-REPORT ;
 
 GRADCHECK-MAIN
+
+;package

@@ -50,7 +50,7 @@ Two more fact families in `package MAKI`:
   `ALIGN>N ( align -- n )` (sched-key's ordinal min-fold), predicate
   `ALIGN-UNKNOWN?`, and the fail-closed parse boundary `>ALIGN ( n -- align )`
   (`E-TV-ALIGN` on an out-of-domain code). Alignment is **recorded from the
-  real pointer** at construction (`P>N` low bits), never assumed; a descriptor
+  real pointer** at construction (`FFI:>CELL` low bits), never assumed; a descriptor
   with no buffer records `unknown`.
 
 The tensor value itself lives in `package TENSOR`: `NEWTYPE tensor 0` is an

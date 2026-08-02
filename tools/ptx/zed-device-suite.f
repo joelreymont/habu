@@ -28,7 +28,7 @@ $493E0 constant DEV-TIMEOUT-MS   \ 300000 ms: self-emit + ptxas + launch on the 
    CMD-RESET
    s" cd ~/Work/habu && ./bin/hb --load" CMD-TOK
    s" lib/errors.f lib/string.f lib/test.f lib/float.f lib/fmt.f" CMD-TOK
-   s" src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f lib/ffi.f" CMD-TOK ;
+   s" src/arch/ptx/emit.f lib/ptx/cg.f lib/ptx/header.f lib/ptx/launch.f lib/ffi-abi.f" CMD-TOK ;
 
 : PASS. ( ptr u8 n -- )   \ print a PASS line with the launcher's captured report
    s" device golden PASS on Orin: " type type
