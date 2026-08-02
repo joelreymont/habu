@@ -1,9 +1,11 @@
 ---
-title: Use canonical checkpoint dtype
-status: active
+title: Use canonical checkpoint datatype
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:34:14.954473+02:00"
+closed-at: "2026-08-03T00:31:37.203151+02:00"
+close-reason: Canonical SAFET datatype comparison landed as 6e82e3a4; full Maki and native stdlib/PTX passed on the exact tree.
 blocks:
   - habu-delete-unused-model-40bb32df
 ---
