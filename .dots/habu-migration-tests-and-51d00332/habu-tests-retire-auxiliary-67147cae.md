@@ -21,3 +21,13 @@ bootstrap codegen, build fixpoint, run-files, package/typed exact-diff, and the
 owning type/dictionary gates pass. Checkpoint: baseline gates pass and a live
 use census proves the two definers have zero callers. Claim:
 agent=enum_hard_cut workspace=.jj-ws/habu-delete-enum
+
+Checkpoint-discovered gate repair: deleting `LPENUMS` from a source line that
+also defines retained variables exposes a package-diff false positive. Repair
+the existing gate structurally: compare reconstructed old/new definition-token
+identities and enforce ownership only for definitions that are new or changed,
+not unchanged sibling definitions sharing a changed line. A focused fixture
+must accept deletion of one sibling while rejecting a changed or added sibling;
+comments, strings, duplicates, or line reordering cannot satisfy identity.
+Do not add a path exemption, placeholder definition, heuristic, or wider lint
+framework.
