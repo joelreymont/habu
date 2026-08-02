@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-49 constant OPCODES-N
+50 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -177,6 +177,7 @@ private
 46 constant O-FFLAGZ
 47 constant O-FCMPBR
 48 constant O-FCMPBRZ
+49 constant O-FMOVDD
 
 \ One slot per attribute key the dialect declares.
 9 constant KEYS-N
@@ -282,6 +283,7 @@ create NAMEBUF NAME-CAP allot
       fcvtzs   OF O-FCVTZS   ENDOF
       fmovxd   OF O-FMOVXD   ENDOF
       fmovdx   OF O-FMOVDX   ENDOF
+      fmovdd   OF O-FMOVDD   ENDOF
       fflag    OF O-FFLAG    ENDOF
       fflagz   OF O-FFLAGZ   ENDOF
       fcmpbr   OF O-FCMPBR   ENDOF
@@ -335,6 +337,7 @@ create NAMEBUF NAME-CAP allot
       O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
       O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
       O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
+      O-FMOVDD   of A64IR-OPCODE:FMOVDD   endof
       O-FFLAG    of A64IR-OPCODE:FFLAG    endof
       O-FFLAGZ   of A64IR-OPCODE:FFLAGZ   endof
       O-FCMPBR   of A64IR-OPCODE:FCMPBR   endof
@@ -962,6 +965,7 @@ public
    c b A64IR-OPCODE:FCVTZS   BIND1
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
+   c b A64IR-OPCODE:FMOVDD   BIND1
    c b A64IR-OPCODE:FFLAG    BIND1
    c b A64IR-OPCODE:FFLAGZ   BIND1
    c b A64IR-OPCODE:FCMPBR   BIND1

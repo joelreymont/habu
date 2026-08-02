@@ -12,33 +12,25 @@
 \ does not compile at all, and nothing here catches: a body the chain refuses is
 \ a claim this file made and did not keep.
 \
-\ THREE OF THE TEN, AND THE OTHER SEVEN SAY WHY THEY ARE NOT HERE. The scalar
-\ float leaf compiles straight-line float arithmetic over a locals frame, the two
-\ conversions, and float literals; the comparison leaf added the five float
-\ comparisons and the branch a comparison feeds, which is what MAX-F is. What the
-\ chain still cannot do is place a double anywhere but a straight line - across a
-\ block edge, across a call, or into a memory cell - so the three accumulations,
-\ the step, the two-call row, RELU-F and FROUND stay gap rows in
-\ tools/codegen-compare-new3.f and name exactly what each of them is still
-\ waiting for. Nothing is respelled to buy a row.
+\ ALL TEN, AND THE THREE CALLEES THE KERNELS REACH MEMORY THROUGH. The scalar
+\ float leaf compiled straight-line float arithmetic over a locals frame, the two
+\ conversions and float literals; the comparison leaf added the five float
+\ comparisons and the branch a comparison feeds; and this leaf added a double
+\ placed where a straight line does not reach - across a block edge, across a
+\ call, and round a loop's back edge. That is every shape the corpus has, so
+\ tools/codegen-compare-new3.f declares no gap at all. Nothing is respelled to
+\ buy a row.
 \
-\ WHY MAX-F IS HERE AND RELU-F IS NOT, when both are one float compare feeding
-\ one branch. MAX-F's two arms hand over the values `x` and `y`, which arrive in
-\ data-stack cells and are still cells when they cross; RELU-F's arms hand over
-\ `0.0` and `x`, and `0.0` is a DOUBLE. A double may not cross a block edge yet
-\ (src/compiler/native/elaborate.f refuses it by name with E-NELAB-TYPE, measured
-\ at the head of tools/codegen-compare-new3.f), so RELU-F is refused one stage
-\ after its comparison compiled. The two rows differ in what crosses the join and
-\ in nothing else, which is why the gap row says so.
-\
-\ THE THREE BODIES ARE THE CORPUS'S OWN, TO THE BYTE. SGD is
-\ tools/codegen-compare-corpus3.f's SGD with `SGD-N` in place of `SGD`,
-\ SEG-1/SQRT is that file's SEG-1/SQRT with `SEG-1/SQRT-N` in place of
-\ `SEG-1/SQRT`, and MAX-F is its MAX-F with `MAX-F-N` in place of `MAX-F`. No
-\ constant is respelled, no operation is changed, no local is renamed and no
-\ annotation is added or removed - the second corpus needed two substitutions and
-\ its own header lists them; this one needs none, which is the shortest thing
-\ that can be said about a migration and the best.
+\ THE SUBSTITUTIONS, AND THERE ARE ONLY THE TWO KINDS. Every body carries `-N` on
+\ the name it defines, which is the migration's own convention; and the five
+\ kernel rows call `T-GET-N` and `T-SET-N` where the corpus writes `T-GET` and
+\ `T-SET`, and T-REL-L2-N calls `T-DIST2-N` and `T-NORM2-N` where the corpus
+\ writes `T-DIST2` and `T-NORM2`. That is the discipline
+\ tools/codegen-compare-migrated2.f established when it migrated CELL-FIELD for
+\ VEC-COPY-CELLS to call: the new column's word is the new chain's code all the
+\ way down, so a row measures a program of the chain's making rather than a
+\ chain-compiled shell around the engine's loops. No constant is respelled, no
+\ operation is changed, no local is renamed and no annotation is added or removed.
 \
 \ WHY THE FLOAT LITERALS NEED NO SUBSTITUTION, WHICH IS THE POINT OF THE LEAF.
 \ Both bodies carry a float literal - SGD's arguments are doubles the caller
@@ -65,6 +57,14 @@ package CODEGEN-MIGRATED3
 private
 
 8 constant REGS                   \ general registers a straight-line float routine may use
+
+\ Where a published word's code starts, read off its own dictionary record. This
+\ is the same reader tools/codegen-compare-core.f measures a size with, on the
+\ same record, so the address a call site is given and the bytes the table
+\ reports come from one authority.
+: ENTRY ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if E-NPUB-NAME throw then
+   XREF-START ;
 
 \ maki/optim.f:12 through tools/codegen-compare-corpus3.f, verbatim: w' = w - lr*g.
 : SGD ( -- )
@@ -95,15 +95,127 @@ private
    s" : MAX-F-N ( r r -- r ) {: x:r y:r :}  x y f< if y else x then ;"
    2 1 REGS NMIGRATE:DEFINE ;
 
+\ ---- the three words a tensor body reaches an element through -----------------
+\ maki/array.f:9-11 through the corpus, verbatim but for the `-N`. They are not
+\ rows and they are not measured: they are the callees the five kernel rows below
+\ reach memory through, migrated so that the new column's kernels are the new
+\ chain's code all the way down - the discipline tools/codegen-compare-migrated2.f
+\ established when it migrated CELL-FIELD for VEC-COPY-CELLS to call.
+\
+\ AND THIS IS WHERE THE FLOAT CORPUS REALLY TOUCHES MEMORY. `T-GET` reads a
+\ double with `@` and `T-SET` writes one with `!` - the ORDINARY cell load and
+\ the ordinary cell store, not float forms, because a double on a Habu stack IS
+\ one cell of its own bit pattern. So the eight bytes move through a general
+\ register by design, and the kernels that call these words hand a double over as
+\ a cell and read one back as a cell. Nothing in this corpus stores a double from
+\ a floating register, which is why the crossing at `hir.store` is still dot
+\ habu-store-a-double-a31b313e's and no row here waits for it.
+: T-AT ( -- )
+   s" : T-AT-N ( ptr a n -- ptr a ) cells + ;" 2 1 REGS NMIGRATE:DEFINE ;
+
+: T-GET ( -- )
+   s" T-AT-N" s" CODEGEN-CORPUS3:T-AT-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" : T-GET-N ( ptr a n -- r ) T-AT-N @ ;" 2 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: T-SET ( -- )
+   s" T-AT-N" s" CODEGEN-CORPUS3:T-AT-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" : T-SET-N ( r ptr a n -- ) T-AT-N ! ;" 3 0 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ ---- the five kernel rows ----------------------------------------------------
+\ WHAT THEY NEEDED THAT THE THREE ABOVE DID NOT. Every one of them carries a
+\ double round a loop's back edge or across a call, which is where a position's
+\ type has to be stated before the value that reaches it is known. The
+\ accumulator enters the header as a double and comes back to it as one, so the
+\ header's argument is a floating register; and it is live across the load call
+\ every turn, so it goes out through a data-stack slot as the cell it is and
+\ comes back a cell the next Fadd crosses again. Both are the same crossing, and
+\ neither computes anything.
+\
+\ THE BUDGETS. These loops hold more at once than any row of the first two
+\ corpora: the accumulator, the loop's index and limit, two or three locals, and
+\ the call site's own scratch, all live from the header to the latch. The
+\ floating side costs none of it - the routine contract hands out the whole
+\ floating file - so what the number below constrains is the general registers,
+\ exactly as the other two corpora's budgets do. Dot
+\ habu-choose-the-register-a95390ac carries taking it off the routine.
+16 constant LOOP-REGS
+
+\ maki/array.f:16 through the corpus: the plain accumulation.
+: T-SUM ( -- )
+   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" : T-SUM-N ( ptr a n -- r ) {: base len :} 0.0  len 0 ?do  base i T-GET-N f+  loop ;"
+   2 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+\ maki/array.f:20 through the corpus: the in-place step, whose point is the
+\ stores. Both columns step the SAME weight buffer, so the head-to-head check is
+\ about the loads and the stores and not only about the arithmetic between them.
+: T-SGD ( -- )
+   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" T-SET-N" s" CODEGEN-CORPUS3:T-SET-N" ENTRY 3 0 NMIGRATE:CALLEE
+   s" : T-SGD!-N ( r ptr a ptr a n -- ) {: lr wbase gbase len :} len 0 ?do wbase i T-GET-N lr gbase i T-GET-N f* f- wbase i T-SET-N loop ;"
+   4 0 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+\ maki/array.f:32 through the corpus: the two-pointer accumulation.
+: T-DIST2 ( -- )
+   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" : T-DIST2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} 0.0 len 0 ?do abase i T-GET-N bbase i T-GET-N f- dup f* f+ loop ;"
+   3 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+\ maki/array.f:39 through the corpus: the one-pointer square accumulation.
+: T-NORM2 ( -- )
+   s" T-GET-N" s" CODEGEN-CORPUS3:T-GET-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" : T-NORM2-N ( ptr a n -- r ) {: bbase:ptr len:n :} 0.0 len 0 ?do bbase i T-GET-N dup f* f+ loop ;"
+   2 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+\ maki/array.f:46 through the corpus: two accumulations, two square roots and a
+\ division, reached through two calls to two DIFFERENT words. It is the row that
+\ needed the migration to carry a list of callees rather than one.
+: T-REL-L2 ( -- )
+   s" T-DIST2-N" s" CODEGEN-CORPUS3:T-DIST2-N" ENTRY 3 1 NMIGRATE:CALLEE
+   s" T-NORM2-N" s" CODEGEN-CORPUS3:T-NORM2-N" ENTRY 2 1 NMIGRATE:CALLEE
+   s" : T-REL-L2-N ( ptr a ptr a n -- r ) {: abase:ptr bbase:ptr len:n :} abase bbase len T-DIST2-N fsqrt bbase len T-NORM2-N fsqrt f/ ;"
+   3 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+\ ---- the two branch rows whose arms disagree about the class -----------------
+\ maki/autograd.f:23 through the corpus. Its two arms hand the join a DOUBLE and
+\ a CELL - `0.0` is a float literal and `x` is the cell the argument arrived in -
+\ which is exactly the case the join-type rule exists for: the first arm states
+\ the position's type and the second crosses to it. Its pinned inputs include a
+\ NaN, because `f0<` is false on one and the ELSE arm is therefore the one a NaN
+\ takes.
+: RELU-F ( -- )
+   s" : RELU-F-N ( r -- r ) {: x :}   x f0< if 0.0 else x  then ;"
+   1 1 REGS NMIGRATE:DEFINE ;
+
+\ lib/fmath.f:36 through the corpus: round to nearest, written the way a
+\ truncating `f>s` makes necessary. Both of its arms leave a COMPUTED double, so
+\ what crosses its join is two doubles rather than a double and a cell - the
+\ other half of the same rule.
+: FROUND ( -- )
+   s" : FROUND-N ( r -- n )  dup f0< if 0.5 f- else 0.5 f+ then f>s ;"
+   1 1 REGS NMIGRATE:DEFINE ;
+
 public
 
-\ Publish all three. It is one word rather than three top-level lines because a
-\ migration claims code space at the engine's free slot, and the interpreter uses
-\ that slot for the line it is running.
+\ Publish all ten, and the three callees the kernels reach memory through first,
+\ because a call site is given the address its callee's record already carries.
+\ It is one word rather than thirteen top-level lines because a migration claims
+\ code space at the engine's free slot, and the interpreter uses that slot for
+\ the line it is running.
 : RUN ( -- )
    SGD
    SEG
-   MAXF ;
+   MAXF
+   RELU-F
+   FROUND
+   T-AT
+   T-GET
+   T-SET
+   T-SUM
+   T-SGD
+   T-DIST2
+   T-NORM2
+   T-REL-L2 ;
 
 ;package
 

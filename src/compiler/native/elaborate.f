@@ -387,15 +387,14 @@ variable OPJ                         \ general operands taken so far by the open
 : REAL-VALUE? ( IR-ID:ir-value-id -- bool )
    VTYPE-OF REAL-T? ;
 
-\ No double anywhere on the compile-time vector. It is asked at the three seams
-\ this leaf does not place a double across - a block edge, a call, and the values
-\ a call answers - because all three carry a value from one block or one routine
-\ to another through a position whose type is fixed before the value that will
-\ arrive there is known. Typing those positions from the values that really reach
-\ them is the control-flow and call leaf's work (dot
-\ habu-carry-a-double-570d2f5c); until it lands a double reaching one of them is
-\ refused by name rather than handed over as a cell, which would be the same
-\ eight bytes read by the wrong instruction at the other end.
+\ No double anywhere on the compile-time vector. It is asked where a value leaves
+\ this compilation for a sixty-four-bit slot somebody else reads - a call's
+\ operands - AFTER the crossing that puts every double into a cell has run, so
+\ what it states is that the crossing ran: nothing here is meant to be reachable,
+\ and a check that only looks at the shapes it expects to see is not a check.
+\ Reaching it means a double was staged onto the vector between the crossing and
+\ the operation, which would be eight bytes read by the wrong instruction at the
+\ other end.
 : NO-REAL-CK ( -- )
    VN @ 0 ?do
       i VAT REAL-VALUE? if E-NELAB-TYPE throw then
@@ -473,26 +472,49 @@ variable OPJ                         \ general operands taken so far by the open
       then
    loop ;
 
-\ ---- the one crossing between a cell and a double ------------------------------
+\ ---- the two crossings between a cell and a double ----------------------------
 \ A double lives in one unboxed cell holding its own bit pattern, so a program
 \ that keeps doubles in data-stack cells and reads them back with float words is
-\ crossing between two readings of the same eight bytes. The crossing is an
-\ operation - `hir.bits>real` - and it is staged HERE, in front of the operation
-\ that wants the double, because a staged operation cannot be opened inside
-\ another one and because the crossing has to be a value the later operation
-\ reads rather than something the later operation does.
+\ crossing between two readings of the same eight bytes. Each crossing is an
+\ operation - `hir.bits>real` one way and `hir.real>bits` the other - and it is
+\ staged HERE, in front of the operation that wants the other reading, because a
+\ staged operation cannot be opened inside another one and because the crossing
+\ has to be a value the later operation reads rather than something the later
+\ operation does.
 \
-\ IT REPLACES THE VALUE IN PLACE. The crossing consumes one value and answers
-\ one, so the vector's depth does not change and the position an operand comes
-\ from is the position it came from before.
-: CROSS1 ( n n HIR:opcode -- )
-   {: ix:n k:n kop:HIR:opcode :}
+\ NEITHER CROSSING COMPUTES ANYTHING, and that is the fact every use of them
+\ below rests on. FMOV between the two register files moves eight bytes and reads
+\ none of them, so a value that goes across and back is the same value to the
+\ bit - which is what lets a double travel through a data-stack cell at a call,
+\ through a block argument at a join, and back into a caller's slot at a return,
+\ and arrive as the double it was.
+: CROSS-VALUE ( n IR-ID:ir-value-id HIR:opcode -- IR-ID:ir-value-id )
+   {: ix:n v:IR-ID:ir-value-id kop:HIR:opcode :}
    CTX BLD kop HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
-   CTX BLD  k VAT  IR-BUILD:ADD-OPERAND
+   CTX BLD v IR-BUILD:ADD-OPERAND
    CTX BLD  CTX BLD op 0 IR-BUILD:SCHEMA-RESULT@  IR-BUILD:ADD-RESULT
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
-   CTX BLD id 0 IR-BUILD:OP-RESULT@  k VAT! ;
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ ;
+
+\ The same crossing over a value the vector holds. IT REPLACES THE VALUE IN
+\ PLACE: the crossing consumes one value and answers one, so the vector's depth
+\ does not change and the position an operand comes from is the position it came
+\ from before.
+: CROSS1 ( n n HIR:opcode -- )
+   {: ix:n k:n kop:HIR:opcode :}
+   ix  k VAT  kop CROSS-VALUE  k VAT! ;
+
+\ Every one of the bottom `n` vector values as a CELL. It is the crossing a value
+\ takes on its way OUT of this compilation's register files and into a
+\ sixty-four-bit slot somebody else reads: the caller's stack at a return, and
+\ the data stack at a call, which is where the machine stage puts every value a
+\ call site hands over. A cell is already a cell and crosses nothing.
+: CELL-CROSS ( n n -- )
+   {: ix:n n:n :}
+   n 0 ?do
+      i VAT REAL-VALUE? if ix i HIR-OPCODE:REALBITS CROSS1 then
+   loop ;
 
 \ Make the value at one vector position answer to the type the position wants.
 \ ONE difference is a crossing and every other difference is a refusal, and the
@@ -649,10 +671,7 @@ variable OPJ                         \ general operands taken so far by the open
 \ because `hir.return` takes cells and a double handed to it unchanged would be
 \ eight bytes the caller's next instruction reads with the wrong register file.
 : RETURN-CROSS ( n -- )
-   {: out:n :}
-   out 0 ?do
-      i VAT REAL-VALUE? if 0 i HIR-OPCODE:REALBITS CROSS1 then
-   loop ;
+   0 swap CELL-CROSS ;
 
 : EMIT-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
@@ -899,10 +918,13 @@ variable DOK                         \ counted loops the search below has passed
    l CROSS-L <> if E-NELAB-LOCAL throw then
    true ;
 
-\ No crossing local holds a double. A bound local is a name for a value and the
-\ value travels as a block argument like every other, so it meets the same seam
-\ NO-REAL-CK guards and is refused for the same reason - the position it would
-\ arrive at is typed before the value that reaches it is known.
+\ No crossing local holds a double, which DO-CLOSE-LOCALS made true when it bound
+\ them: a local that travels goes through a data-stack slot at a call, and a slot
+\ is a cell, so the cell is where a travelling local lives and the crossing is
+\ done ONCE at the binding rather than at every seam it reaches. Nothing here is
+\ meant to be reachable and it is asked anyway, for the reason NO-REAL-CK is:
+\ reaching it means a local was rebound to a double after the binding, and the
+\ block argument waiting for it holds a register of the other file.
 : NO-REAL-LOCAL-CK ( n -- )
    LOCAL-CK 0= if exit then
    LN @ 0 ?do
@@ -979,6 +1001,89 @@ variable EXIT-PENDING                \ an `exit` closed the arm; only its `then`
    k NFROZEN:BMAX > if E-NELAB-BLOCK throw then
    k NB ! ;
 
+\ ---- what type each block argument has ---------------------------------------
+\ THE SEAM THIS TABLE EXISTS FOR. A block argument's type has to be stated when
+\ the block is OPENED, and the block after an `if` is opened once while the
+\ values that will reach it come from two arms written at two different places in
+\ the body - so the type cannot be read off "the value arriving", because there
+\ are two of them and they arrive at two different moments. Stating CELL for
+\ every position, which is what this file did before, is right for an integer
+\ body and wrong the moment an arm hands over a double: the same eight bytes
+\ would be read out of the wrong register file at the other end.
+\
+\ THE RULE, AND THE ARGUMENT FOR IT. The FIRST edge into a block states the type
+\ of each of its argument positions, and every later edge into that block crosses
+\ its value to the type already stated. The crossing is `hir.bits>real` or
+\ `hir.real>bits`, neither of which computes anything - they are one FMOV between
+\ the two register files, the same eight bytes read the other way - so an edge
+\ that crosses hands over exactly the value it was given, whichever direction it
+\ goes in. That is what makes "first edge wins" a COST question rather than a
+\ correctness one: any assignment of one type per position is bit-exact, and the
+\ one this walk can state in a single pass is the first arriving value's.
+\
+\ WHY NOT "A DOUBLE ANYWHERE MAKES THE SLOT A DOUBLE". It is the rule a reader
+\ expects and it cannot be kept in one pass: `x f0< if x else 0.0 then` hands the
+\ join a cell from the arm built FIRST and a double from the arm built second,
+\ and a module's operations only grow at the end - the first arm's branch is
+\ already built and cannot be reached back into. Keeping that rule would mean a
+\ second walk of the body computing a REAL-ness per slot per join, which is a
+\ second derivation of the value vector's whole stack effect - locals, calls,
+\ loops and all - and the one thing this file does not do is keep two records
+\ that could disagree about the same fact.
+\
+\ AND WHY NEITHER CHOICE CAN GO WRONG QUIETLY. Every operation of this dialect
+\ declares the type of each operand it takes, and IR-OP measures a staged
+\ operation against its schema; the register allocator refuses a class spanning
+\ the two files by name. So a slot typed the way a later reader cannot use is a
+\ REFUSAL - E-NELAB-TYPE where a double reaches an integer operation,
+\ E-IR-VERIFY-OPTYPE where one reaches the module unmediated - and never a wrong
+\ instruction. The one thing that would be wrong quietly is what this table
+\ replaces: a position typed CELL that a double is handed to unchanged.
+\
+\ WHAT TIGHTENS WHEN THE CHECKER'S OWN TYPES REACH A RECORDED UNIT (dot
+\ habu-bind-checker-env-ed4f9f87). The checker types RELU-F `( r -- r )` and
+\ therefore types its join `r`; this file cannot see that yet, so it reads the
+\ join's type off the first arm and crosses the other. With the checker's types
+\ bound, the word's arguments would ARRIVE as doubles, both arms would hand a
+\ double over, and the crossing this table places would not be there to place.
+\ The rule does not change - the first edge still states the type - it is just
+\ that both edges would agree.
+NFROZEN:BMAX VMAX * constant ARG-CAP
+
+here CELL 1- and CELL swap - CELL 1- and allot
+create ARG-N NFROZEN:BMAX cells allot   \ vector positions stated for this block, or -1
+ARG-CAP TYPED-BUFFER ARG-T IR-ID:ir-type-id  \ the type each of those positions has
+VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hands over
+
+: ARG-RESET ( -- )
+   NFROZEN:BMAX 0 ?do  -1 i cells ARG-N + !  loop ;
+
+: ARG-BLOCK-CK ( n -- n )
+   dup 0 < over NFROZEN:BMAX >= or if E-NELAB-BLOCK throw then ;
+
+: ARG-STATED? ( n -- bool )
+   ARG-BLOCK-CK cells ARG-N + @ 0 >= ;
+
+: ARG-WIDTH@ ( n -- n )
+   ARG-BLOCK-CK cells ARG-N + @ ;
+
+: ARG-T@ ( n n -- IR-ID:ir-type-id )
+   {: t:n k:n :}
+   k 0 < k t ARG-WIDTH@ >= or if E-NELAB-JOIN throw then
+   t VMAX * k + ARG-T @ ;
+
+\ The first edge into a block, stating one type per vector position it hands
+\ over. A block whose types were already stated is never restated: the whole
+\ point is that the second edge is held to the first one's answer.
+: ARG-STATE ( n n -- )
+   {: t:n n:n :}
+   t ARG-STATED? if E-NELAB-JOIN throw then
+   n 0 < n VMAX > or if E-NELAB-CAP throw then
+   n 0 ?do
+      i VAT VTYPE-OF  t VMAX * i +  ARG-T !
+   loop
+   n t ARG-BLOCK-CK cells ARG-N + ! ;
+
 \ A block that takes its live values as arguments. Every value the vector held
 \ is handed over by the branch that reached it, so the vector is replaced by the
 \ arguments: a join is the one place where two different definitions of "the
@@ -997,13 +1102,31 @@ variable EXIT-PENDING                \ an `exit` closed the arm; only its `then`
 \ open loops' counters, and how many bound locals. They are CROSS-DO and CROSS-L
 \ for every ordinary block; the seams that enter or leave a loop, and the one
 \ that leaves the definition, name their own range and say why where they stand.
+\
+\ THE VECTOR POSITIONS TAKE THE TYPES THE FIRST EDGE INTO THIS BLOCK STATED, and
+\ that is the whole of the join-type rule as far as this word is concerned: the
+\ table above holds the answer, TERM-BR-H below put it there, and every edge
+\ after the first was already held to it. A block reached with nothing stated is
+\ refused rather than opened at a guess - every seam that opens a block with
+\ arguments branches to it first, so no edge means the walk and its own carriers
+\ disagree about what reaches this block.
+\
+\ THE OTHER THREE GROUPS NEED NO TABLE, and each for its own reason. A counted
+\ loop's index and limit are integers: `?do` subtracts them with `hir.sub`, whose
+\ operands are cells, so a double in either is E-NELAB-TYPE before the loop's
+\ header is ever opened. A bound local that crosses anything is a CELL by
+\ construction - DO-CLOSE-LOCALS puts it in one, because a call carries it
+\ through a data-stack slot and a slot is a cell. And the memory order has its
+\ own type and holds no register at all.
 : OPEN-ARGS-H ( n n n n n -- )
    {: ix:n n:n lo:n h:n l:n :}
+   NB @ ARG-STATED? 0= if E-NELAB-JOIN throw then
+   NB @ ARG-WIDTH@ n <> if E-NELAB-JOIN throw then
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN
    VRESET
    n 0 ?do
-      CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-BLOCK-ARG VPUSH
+      CTX BLD  NB @ i ARG-T@  IR-BUILD:ADD-BLOCK-ARG VPUSH
    loop
    lo h LOOP-ARGS+
    l LOCAL-ARGS+
@@ -1024,17 +1147,60 @@ variable EXIT-PENDING                \ an `exit` closed the arm; only its `then`
    CTX BLD IR-BUILD:BEGIN-BLOCK
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-BLOCK-SPAN ;
 
+\ ---- what one edge really hands over -----------------------------------------
+\ One vector position, as the type the destination's argument has. A value
+\ already of that type is handed over as it is; a cell where the destination
+\ holds a double, and a double where it holds a cell, are the two crossings, and
+\ neither computes anything - the destination receives the same eight bytes
+\ either way. A difference that is neither of those is a type this file has no
+\ crossing for and is refused by name.
+\
+\ IT DOES NOT TOUCH THE VECTOR. The crossings are staged into the block being
+\ closed and their results go into a list of their own, because the vector this
+\ edge reads may still be live on ANOTHER path: the stub a two-way branch is
+\ split with hands over the same values the arm below it goes on to read, and
+\ rewriting the vector there would leave the arm reading a value defined in a
+\ block that does not dominate it.
+: EDGE-VALUE ( n n IR-ID:ir-type-id -- IR-ID:ir-value-id )
+   {: ix:n k:n want:IR-ID:ir-type-id :}
+   k VAT {: v:IR-ID:ir-value-id :}
+   v VTYPE-OF want NFROZEN:SAME-TYPE? if v exit then
+   want REAL-T?  v REAL-VALUE? 0=  and if
+      ix v HIR-OPCODE:BITSREAL CROSS-VALUE exit
+   then
+   want CELL-T?  v REAL-VALUE?  and if
+      ix v HIR-OPCODE:REALBITS CROSS-VALUE exit
+   then
+   E-NELAB-TYPE throw ;
+
+\ The whole vector as this edge hands it over. The first edge into a block states
+\ the types and hands its values on untouched; every later one is held to what
+\ was stated and crosses what differs. The width is checked against the record
+\ too, which is a second derivation of the agreement the closers already check -
+\ two paths into one join carry the same number of values.
+: EDGE-STAGE ( n n -- )
+   {: ix:n t:n :}
+   t ARG-STATED? 0= if
+      t VN @ ARG-STATE
+      VN @ 0 ?do  i VAT  i XV !  loop
+      exit
+   then
+   t ARG-WIDTH@ VN @ <> if E-NELAB-JOIN throw then
+   VN @ 0 ?do
+      ix i  t i ARG-T@  EDGE-VALUE  i XV !
+   loop ;
+
 \ Hand every live value to one block and end this one. The operands are the
 \ vector bottom first, then two per open loop the edge crosses with, then one per
 \ local, then the memory order when the definition has one - the four positions
 \ OPEN-ARGS-H gives them.
 : TERM-BR-H ( n n n n n -- )
    {: ix:n t:n lo:n h:n l:n :}
-   NO-REAL-CK
+   ix t EDGE-STAGE
    CTX BLD  CTX BLD HIR-OPCODE:BR HIR:OPCODE  IR-BUILD:BEGIN-OP
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN
    VN @ 0 ?do
-      CTX BLD  i VAT  IR-BUILD:ADD-OPERAND
+      CTX BLD  i XV @  IR-BUILD:ADD-OPERAND
    loop
    lo h LOOP-OPERANDS+
    l LOCAL-OPERANDS+
@@ -1808,6 +1974,22 @@ create JOIN-TAB TMAX cells allot
 : CALL-CROSS-CK ( -- )
    CALL-NEED @ 0= if E-NELAB-CALL throw then ;
 
+\ Every value this call site hands over goes into a DATA-STACK SLOT: the machine
+\ stage writes each operand into a slot of the caller's own stack below the
+\ callee's argument base and reads it back out of that slot afterwards
+\ (src/compiler/native/select.f, CALL-SAVE and CALL-RESTORE). A slot is
+\ sixty-four bits and nothing else - it has no register file - so a double
+\ crossing a call crosses as the cell it is, exactly as one leaving through
+\ `hir.return` does, and comes back a cell that the next float word crosses
+\ again. That is why CALL-RESULTS+ states CELL for every answer without knowing
+\ anything about what arrives: after this crossing, every one of them IS a cell.
+\
+\ THE CROSSING RUNS BEFORE THE OPERATION IS OPENED, because a staged operation
+\ cannot be opened inside another one - so both call forms cross first and stage
+\ second, and NO-REAL-CK below states that they did.
+: CALL-CROSS ( n -- )
+   VN @ CELL-CROSS ;
+
 : CALL-OPERANDS+ ( -- )
    CALL-CROSS-CK
    NO-REAL-CK
@@ -1876,6 +2058,7 @@ variable LRK                         \ crossing locals the walk below has taken 
 : DO-SELF-CALL ( n -- )
    {: ix:n :}
    IN-N @ OUT-N @ CALL-LIVE  OUT-N @ + {: back:n :}
+   ix CALL-CROSS
    CTX BLD HIR-OPCODE:CALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
@@ -1908,6 +2091,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    r sy HIR-WORD:CALLEE-IN@ {: a:n :}
    r sy HIR-WORD:CALLEE-OUT@ {: o:n :}
    a o CALL-LIVE o + {: back:n :}
+   ix CALL-CROSS
    CTX BLD HIR-OPCODE:WORDCALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD VW MKEY ix op OPEN
    CALL-OPERANDS+
@@ -1958,6 +2142,27 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ is; and no control structure may be open, because a group inside one would
 \ bind names on a path that does not dominate the rest of the body and this
 \ elaborator has no scoping rule for that (dot habu-scope-a-locals-2faa3d7a).
+\ A local that a call can reach is put into a CELL here, once, and stays one. The
+\ reason is where it goes: the machine stage writes every value a call site hands
+\ over into a data-stack slot and reads it back out of that slot, and a slot is
+\ sixty-four bits with no register file attached - so a double naming a
+\ travelling local is a double that has to be in a cell by the time the first
+\ call is reached anyway. Doing it at the binding rather than at each seam means
+\ the name has ONE type for the whole body, which is what lets the block argument
+\ every edge hands it to be minted without asking where the walk has got to.
+\
+\ A local that no call can reach is not crossed and not touched. Its value is
+\ defined in the block the group closed in, which dominates every mention of it,
+\ so it is read where it stands and in whichever file it stands in - a double
+\ stays in the floating file and costs nothing.
+: LOCAL-BIND-CROSS ( n -- )
+   {: ix:n :}
+   LN @ 0 ?do
+      i LCROSS?  i LVAL @ REAL-VALUE?  and if
+         ix  i LVAL @  HIR-OPCODE:REALBITS CROSS-VALUE  i LVAL !
+      then
+   loop ;
+
 : DO-CLOSE-LOCALS ( n -- )
    {: ix:n :}
    ix LG-TO @ <> if E-NELAB-LOCAL throw then
@@ -1970,6 +2175,7 @@ variable LRK                         \ crossing locals the walk below has taken 
       base i + VAT  i LVAL !
    loop
    k VDROP
+   ix LOCAL-BIND-CROSS
    1 LBOUND ! ;
 
 \ A mention of a bound local in the body: the value it names goes back on the
@@ -2087,6 +2293,15 @@ variable IX                          \ the body token the walk stands on
 \ definition as a whole. The arguments enter the value vector in declaration
 \ order, so the first input is the deepest value, exactly as the caller's stack
 \ has them.
+\
+\ THIS IS THE ONE BLOCK WHOSE ARGUMENT TYPES ARE NOT READ OFF AN EDGE, and it is
+\ not an exception: no edge reaches the entry block. Its arguments are the
+\ CALLER's values, and a Habu word's caller leaves each of them in a data-stack
+\ slot, so a cell is what really arrives - a double among them arrives as the
+\ cell it is, and the first float word that reads one crosses it. When the
+\ checker's own types reach a recorded unit (dot habu-bind-checker-env-ed4f9f87)
+\ an argument declared `r` could be stated as a double here and the crossing
+\ would be gone rather than placed.
 : OPEN-BLOCK ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       in:n :}
@@ -2127,6 +2342,7 @@ public
    n 1 < if E-NELAB-SHAPE throw then
    v NAME-READ
    TOK-RESET
+   ARG-RESET
    in IN-N !
    out OUT-N !
    r n LOCALS-SCAN

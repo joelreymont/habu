@@ -131,9 +131,8 @@ variable OLD-LEN
    s" NMG-DBL" GLOBAL-WID NPUB:NEW-START ;
 
 : MIGRATE-USE ( -- )
-   USE-SRC
-   s" NMG-DBL" DBL-ENTRY 1 1
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
+   USE-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : CALL-CASE ( -- )
    MIGRATE-DBL
@@ -177,14 +176,12 @@ variable OLD-LEN
    L3-SRC 1 1 REGS NMIGRATE:DEFINE ;
 
 : MIGRATE-L2 ( -- )
-   L2-SRC
-   s" NMG-L3"  s" NMG-L3" GLOBAL-WID NPUB:NEW-START  1 1
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-L3"  s" NMG-L3" GLOBAL-WID NPUB:NEW-START  1 1 NMIGRATE:CALLEE
+   L2-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : MIGRATE-L1 ( -- )
-   L1-SRC
-   s" NMG-L2"  s" NMG-L2" GLOBAL-WID NPUB:NEW-START  1 1
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-L2"  s" NMG-L2" GLOBAL-WID NPUB:NEW-START  1 1 NMIGRATE:CALLEE
+   L1-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : DEEP-CASE ( -- )
    MIGRATE-L3
@@ -226,9 +223,8 @@ variable OLD-LEN
    s" : NMG-VIA ( n -- n ) dup NMG-ENG + ;" ;
 
 : MIGRATE-VIA ( -- )
-   VIA-SRC
-   s" NMG-ENG"  s" NMG-ENG" REC-START  1 1
-   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-ENG"  s" NMG-ENG" REC-START  1 1 NMIGRATE:CALLEE
+   VIA-SRC 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : INTEROP-CASE ( -- )
    ENG-SRC EV
@@ -286,13 +282,16 @@ variable OLD-LEN
 16 constant LOOP-REGS
 
 : MIGRATE-LC ( -- )
-   LC-SRC  s" NMG-DBL" DBL-ENTRY 1 1  1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
+   LC-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
 : MIGRATE-LF ( -- )
-   LF-SRC  s" NMG-DBL" DBL-ENTRY 1 1  1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
+   LF-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
 : MIGRATE-LN ( -- )
-   LN-SRC  s" NMG-DBL" DBL-ENTRY 1 1  1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
+   LN-SRC 1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
 : LOOP-CALL-CASE ( -- )
    MIGRATE-LC
@@ -350,24 +349,24 @@ variable OLD-LEN
 $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 26-bit field
 
 : MIGRATE-NULL-ENTRY ( -- )
-   s" : NMG-B1 ( n -- n ) NMG-DBL 1+ ;"
-   s" NMG-DBL" 0 1 1  1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" 0 1 1 NMIGRATE:CALLEE
+   s" : NMG-B1 ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : MIGRATE-ODD-ENTRY ( -- )
-   s" : NMG-B2 ( n -- n ) NMG-DBL 1+ ;"
-   s" NMG-DBL" DBL-ENTRY 2 + 1 1  1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" DBL-ENTRY 2 + 1 1 NMIGRATE:CALLEE
+   s" : NMG-B2 ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : MIGRATE-FAR-ENTRY ( -- )
-   s" : NMG-B3 ( n -- n ) NMG-DBL 1+ ;"
-   s" NMG-DBL" DBL-ENTRY FAR-ENOUGH + 1 1  1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" DBL-ENTRY FAR-ENOUGH + 1 1 NMIGRATE:CALLEE
+   s" : NMG-B3 ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 \ A body the checker certifies, whose callee is STATED to take two values where
 \ the compile-time vector holds one. It is the arity half of the same statement:
 \ what a call site publishes is the arity it was told, and a site told to publish
 \ more than the caller holds has nothing to publish.
 : MIGRATE-DEEP-ARITY ( -- )
-   s" : NMG-B4 ( n -- n ) NMG-DBL ;"
-   s" NMG-DBL" DBL-ENTRY 2 1  1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" NMG-DBL" DBL-ENTRY 2 1 NMIGRATE:CALLEE
+   s" : NMG-B4 ( n -- n ) NMG-DBL ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : CALL-REFUSAL-CASES ( -- )
    s" a callee at the null address is refused by the word model" T-LABEL
@@ -395,8 +394,8 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" NMG-B4" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
 
    s" and a migration still runs after every one of those refusals" T-LABEL
-   s" : NMG-AFTER ( n -- n ) NMG-DBL 1+ ;"
-   s" NMG-DBL" DBL-ENTRY 1 1  1 1 REGS NMIGRATE:DEFINE-CALLING
+   s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE
+   s" : NMG-AFTER ( n -- n ) NMG-DBL 1+ ;" 1 1 REGS NMIGRATE:DEFINE-CALLING
    s" 6 NMG-AFTER" EV-N 13 T=
    s" NMG-AFTER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
@@ -821,56 +820,137 @@ public
    s" 0 NMG-SEG" EV-N  s" 1.0 0.0 f/" EV-N T=
    s" -4 NMG-SEG" EV-N  s" 0.0 0.0 f/" EV-N T= ;
 
-\ ---- what a float body may NOT do yet, refused by name -----------------------
-\ A double is a value of a second register class, and this leaf places it in a
-\ straight line only. Two shapes of well typed Habu are therefore refused by the
-\ chain, each with the elaborator's own E-NELAB-TYPE rather than as a wrong
-\ lowering discovered later: a double stored into a memory cell, and a double
-\ carried across a loop edge. Dots habu-store-a-double-a31b313e and
-\ habu-carry-a-double-570d2f5c carry them.
+\ ---- a double where a straight line does not reach ---------------------------
+\ A double is a value of a second register class, and three shapes of well typed
+\ Habu put one somewhere a straight line does not: across a block edge, across a
+\ call, and into a memory cell. The first two are compiled here and checked
+\ against the engine's own answer for the same source; the third is still refused
+\ by name, and dot habu-store-a-double-a31b313e carries it.
 \
-\ THE THIRD SHAPE NEVER REACHES THE CHAIN, AND THAT IS THE RESULT. Handing a
-\ double to an operation that computes with cells - `1.0 f+ 1 +` - is refused by
-\ the CHECKER, before the engine has compiled anything and before a tape exists,
-\ so the elaborator's own refusal for it is fail-closed rather than reachable
-\ from checked source. It is still written, and the case below is what says which
-\ of the two authorities does the refusing: a leaf that assumed the checker would
-\ always be there first would have no answer the day a body reaches the chain
-\ some other way.
+\ WHY THE FIRST TWO ARE ONE STATEMENT AND NOT TWO. Both are a double leaving one
+\ place and arriving in another through a position whose type this pass has to
+\ state before the value reaches it - a block argument at a join, a data-stack
+\ slot at a call - and both are answered by the same crossing, which moves eight
+\ bytes between the two register files and reads none of them. So the thing to
+\ check is the same in both: the compiled word answers the SAME CELL the engine's
+\ own compilation of that source answers. The cell is the whole comparison, so a
+\ double that came back through the wrong file, or an accumulation the loop
+\ carried in the wrong order, is a different number here rather than a near one.
 : FLOAT-STORE ( -- )
    s" : NMG-BAD2 ( r ptr a -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;" 2 0 REGS NMIGRATE:DEFINE ;
 
+\ The loop-carried accumulator: the double enters the header from the block above
+\ it and comes back to it from the latch, so the header's argument is a floating
+\ register and every turn's Fadd feeds the next.
 : FLOAT-EDGE ( -- )
-   s" : NMG-BAD3 ( r n -- r ) 0 ?do 1.0 f+ loop ;" 2 1 REGS NMIGRATE:DEFINE ;
+   s" : NMG-FLOOP ( r n -- r ) 0 ?do 1.0 f+ loop ;" 2 1 LOOP-REGS NMIGRATE:DEFINE ;
 
-\ The callee is migrated first, so both halves would be the chain's code, and the
-\ caller holds a double across the call - which is the same seam a block edge is:
-\ the call's results are typed before the values that reach them are known.
+\ The join of a two-armed branch whose arms hand over values of DIFFERENT
+\ classes: `0.0` is a double and `x` is the cell the argument arrived in. It is
+\ RELU's shape, and it is the case the join-type rule exists for - one arm states
+\ the type and the other crosses to it.
+: FLOAT-JOIN ( -- )
+   s" : NMG-FRELU ( r -- r ) {: x :} x f0< if 0.0 else x then ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+\ The callee is migrated first, so both halves are the chain's code. The caller's
+\ `dup` is what makes this the whole statement about a call: one of the two
+\ doubles is the call's ARGUMENT and the other is live ACROSS it, and the machine
+\ stage puts both into data-stack slots - the argument at the callee's base and
+\ the survivor below it - so a body that got either slot wrong answers a
+\ different number.
 : FLOAT-CALLEE ( -- )
    s" : NMG-FD ( r -- r ) 2.0 f* ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : FLOAT-CALL ( -- )
-   s" : NMG-BAD4 ( r -- r ) 1.0 f+ NMG-FD ;"
-   s" NMG-FD"  s" NMG-FD" GLOBAL-WID NPUB:NEW-START  1 1
+   s" NMG-FD"  s" NMG-FD" GLOBAL-WID NPUB:NEW-START  1 1 NMIGRATE:CALLEE
+   s" : NMG-FCALL ( r -- r ) 1.0 f* dup NMG-FD f+ ;"
    1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
-: FLOAT-REFUSAL-CASES ( -- )
+\ TWO DOUBLES CROSSING ONE JOIN IN SWAPPED ORDER. This is MAX2's shape in the
+\ other register file, and it is the case the edge SPLIT exists for: one arm
+\ hands the join (b, a) and the other hands it (a, b), so the two arguments and
+\ the two values would collapse into one class holding both a and b at once
+\ unless every value crossing the edge is copied into a value of its own first.
+\ The copy is a64.fmovdd, and a body that reached the join without it would
+\ answer `a-b` on one path and `b-a` on the other. The condition is `x f0<`,
+\ which has nothing to do with the two values' order, so BOTH arms are reachable
+\ with the same pair of operands and the two answers differ in the sign - which
+\ is what makes a collapsed pair visible rather than absorbed.
+: FLOAT-SWAP ( -- )
+   s" : NMG-FSWAP ( r r -- r ) {: x:r y:r :} x 1.0 f* y 1.0 f* x f0< if swap then f- ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
+\ The engine's own compilation of the join bodies, spelled exactly as the migrated
+\ ones are. It goes through `evaluate` for the reason MAXF-INTERPRETED does: it
+\ answers a double, and the comparison below reads the whole cell, which is what
+\ `evaluate` hands back.
+: FLOAT-JOIN-INTERPRETED ( -- )
+   s" : NMI-FRELU ( r -- r ) {: x :} x f0< if 0.0 else x then ;" EV
+   s" : NMI-FSWAP ( r r -- r ) {: x:r y:r :} x 1.0 f* y 1.0 f* x f0< if swap then f- ;" EV ;
+
+: FLOAT-PLACE-CASES ( -- )
    FLOAT-CALLEE
+   FLOAT-EDGE
+   FLOAT-JOIN
+   FLOAT-SWAP
+   FLOAT-CALL
+   FLOAT-JOIN-INTERPRETED
+
+   s" a double carried across a loop edge accumulates what the same body accumulates" T-LABEL
+   s" 2.5 3 NMG-FLOOP" EV-N  s" 2.5 1.0 f+ 1.0 f+ 1.0 f+" EV-N T=
+   s" 0.0 0 NMG-FLOOP" EV-N  s" 0.0" EV-N T=
+
+   s" and it is a LEFT fold, so the order the turns add in is the recorded one" T-LABEL
+   s" 9007199254740992.0 2 NMG-FLOOP" EV-N
+   s" 9007199254740992.0 1.0 f+ 1.0 f+" EV-N T=
+   s" 9007199254740992.0 2 NMG-FLOOP" EV-N
+   s" 1.0 1.0 f+ 9007199254740992.0 f+" EV-N T<>
+
+   s" a join whose arms hand over a double and a cell answers the same cell" T-LABEL
+   s" 1.5 NMG-FRELU" EV-N  s" 1.5 NMI-FRELU" EV-N T=
+   s" -1.5 NMG-FRELU" EV-N  s" -1.5 NMI-FRELU" EV-N T=
+
+   s" including the two zeros, which are one number and two cells" T-LABEL
+   s" -0.0 NMG-FRELU" EV-N  s" -0.0 NMI-FRELU" EV-N T=
+   s" -0.0 NMG-FRELU" EV-N  s" -0.0" EV-N T=
+
+   s" and a NaN, which compares false and therefore takes the ELSE arm" T-LABEL
+   s" 0.0 0.0 f/ NMG-FRELU" EV-N  s" 0.0 0.0 f/ NMI-FRELU" EV-N T=
+   s" 0.0 0.0 f/ NMG-FRELU" EV-N  s" 0.0 0.0 f/" EV-N T=
+
+   s" two doubles crossing one join in swapped order keep their places" T-LABEL
+   s" 1.5 2.25 NMG-FSWAP" EV-N  s" 1.5 2.25 NMI-FSWAP" EV-N T=
+   s" -1.5 2.25 NMG-FSWAP" EV-N  s" -1.5 2.25 NMI-FSWAP" EV-N T=
+   s" 2.25 1.5 NMG-FSWAP" EV-N  s" 2.25 1.5 NMI-FSWAP" EV-N T=
+   s" -2.25 1.5 NMG-FSWAP" EV-N  s" -2.25 1.5 NMI-FSWAP" EV-N T=
+
+   s" and the arm that swaps really answers something else, so a collapsed pair shows" T-LABEL
+   s" 1.5 2.25 NMG-FSWAP" EV-N  s" -1.5 2.25 NMG-FSWAP" EV-N T<>
+   s" 1.5 2.25 NMG-FSWAP" EV-N  s" 0.75 fnegate" EV-N T=
+   s" -1.5 2.25 NMG-FSWAP" EV-N  s" 3.75" EV-N T=
+
+   s" a double crossing a call - as its argument and live beside it - comes back the double it was" T-LABEL
+   s" 1.5 NMG-FCALL" EV-N  s" 1.5 1.0 f* dup 2.0 f* f+" EV-N T=
+   s" -0.5 NMG-FCALL" EV-N  s" -0.5 1.0 f* dup 2.0 f* f+" EV-N T=
+
+   s" including a negative zero, which is a different CELL from zero" T-LABEL
+   s" -0.0 NMG-FCALL" EV-N  s" -0.0 1.0 f* dup 2.0 f* f+" EV-N T=
+   s" -0.0 NMG-FCALL" EV-N  s" -0.0" EV-N T=
+   s" -0.0 NMG-FCALL" EV-N  s" 0.0" EV-N T<>
+
+   s" and a NaN, whose payload survives the two slots unchanged" T-LABEL
+   s" 0.0 0.0 f/ NMG-FCALL" EV-N  s" 0.0 0.0 f/ 1.0 f* dup 2.0 f* f+" EV-N T= ;
+
+: FLOAT-REFUSAL-CASES ( -- )
    s" a double stored into a memory cell is refused - the crossing is not placed yet" T-LABEL
    [: FLOAT-STORE ;] E-NELAB-TYPE TTHROWSQ
-   s" a double carried across a loop edge is refused, not handed over as a cell" T-LABEL
-   [: FLOAT-EDGE ;] E-NELAB-TYPE TTHROWSQ
-   s" and a double live across a CALL is refused for the same reason" T-LABEL
-   [: FLOAT-CALL ;] E-NELAB-TYPE TTHROWSQ
 
    s" a double handed to an integer operation never reaches the chain at all" T-LABEL
    s" NMG-BAD1 ( r -- n ) 1.0 f+ 1 +" CHECK-QUIET-CANDIDATE! 0 T=
    s" NMG-OKAY ( r -- r ) 1.0 f+" CHECK-QUIET-CANDIDATE! -1 T=
 
    s" and a body the chain refused keeps the record the engine compiled for it" T-LABEL
-   s" NMG-BAD2" DEFINED? TTRUE
-   s" NMG-BAD3" DEFINED? TTRUE
-   s" 2.5 3 NMG-BAD3" EV-N  s" 2.5 1.0 f+ 1.0 f+ 1.0 f+" EV-N T= ;
+   s" NMG-BAD2" DEFINED? TTRUE ;
 
 : RUN ( -- )
    T-RESET
@@ -889,6 +969,7 @@ public
    FCMP-FUSED-CASE
    MAXF-CASE
    SHAPE-CASE
+   FLOAT-PLACE-CASES
    FLOAT-REFUSAL-CASES
    T-REPORT ;
 

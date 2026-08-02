@@ -182,18 +182,27 @@
 \      corpus depends on it, because every literal pinned here is short and
 \      exactly representable.
 \
-\ (11) WHAT STOPS THE NATIVE CHAIN TODAY, WHICH IS WHY EVERY NEW ROW IS A GAP.
-\ Two refusals, in two different stages, both reached by handing a float body to
-\ the migration the way tools/codegen-compare-migrated2.f hands it an integer
-\ one:
+\ (11) WHAT STOPPED THE NATIVE CHAIN WHEN THIS CORPUS WAS COMMITTED, WHICH IS WHY
+\ EVERY ROW OF IT STARTED AS A GAP. Two refusals, in two different stages, both
+\ reached by handing a float body to the migration the way
+\ tools/codegen-compare-migrated2.f hands it an integer one:
 \
-\     : FADD-N ( r r -- r ) f+ ;      throws -8286  E-HIR-UNMODELED
-\     : FLIT-N ( r -- r ) 1.0 f+ ;    throws -8404  E-NFEED-KIND
+\     : FADD-N ( r r -- r ) f+ ;      threw -8286  E-HIR-UNMODELED
+\     : FLIT-N ( r -- r ) 1.0 f+ ;    threw -8404  E-NFEED-KIND
 \
-\ The tape has no kind for a real literal (src/compiler/native/feed.f:174 says so
-\ in as many words) and the dialect has no model for a float operation. The
-\ `floats` capability the gap rows name covers both, because a row that named
-\ only one of them would read as half a job.
+\ The tape had no kind for a real literal (src/compiler/native/feed.f says so in
+\ as many words) and the dialect had no model for a float operation. The `floats`
+\ capability the gap rows named covered both, because a row that named only one
+\ of them would have read as half a job.
+\
+\ ALL TEN ARE COMPILED NOW, and where the chain stands is recorded in
+\ tools/codegen-compare-new3.f rather than here: this file is the pinned corpus
+\ and the semantics it is measured under, and both of those are facts about the
+\ ENGINE that do not move when the compiler gains a capability. What closed the
+\ ten was three leaves - scalar float arithmetic, the five comparisons, and the
+\ placement of a double across a block edge, a call and a loop's back edge - and
+\ the two refusals above are gone rather than worked around: the same two bodies
+\ compile.
 \
 \ ============================================================================
 \ THE CORPUS

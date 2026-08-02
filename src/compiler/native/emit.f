@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-49 constant OPCODES-N
+50 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -267,6 +267,7 @@ private
 46 constant O-FFLAGZ
 47 constant O-FCMPBR
 48 constant O-FCMPBRZ
+49 constant O-FMOVDD
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -402,6 +403,7 @@ create B-START BMAX cells allot
       fcvtzs   OF O-FCVTZS   ENDOF
       fmovxd   OF O-FMOVXD   ENDOF
       fmovdx   OF O-FMOVDX   ENDOF
+      fmovdd   OF O-FMOVDD   ENDOF
       fflag    OF O-FFLAG    ENDOF
       fflagz   OF O-FFLAGZ   ENDOF
       fcmpbr   OF O-FCMPBR   ENDOF
@@ -455,6 +457,7 @@ create B-START BMAX cells allot
       O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
       O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
       O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
+      O-FMOVDD   of A64IR-OPCODE:FMOVDD   endof
       O-FFLAG    of A64IR-OPCODE:FFLAG    endof
       O-FFLAGZ   of A64IR-OPCODE:FFLAGZ   endof
       O-FCMPBR   of A64IR-OPCODE:FCMPBR   endof
@@ -626,6 +629,14 @@ create B-START BMAX cells allot
 : WORD-FMOVDX ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDX ;
+
+\ The copy of the D file: one register into another, both fields D. It is the
+\ floating twin of a64.mov and it is elided under the same rule - see SELF-MOV?
+\ below, which asks the operation what file its copy is in rather than which
+\ opcode it is.
+: WORD-FMOVDD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDD ;
 
 \ Taking the frame and giving it back are one subtraction and one addition on the
 \ stack pointer, of exactly the size the operation carries.
@@ -834,6 +845,17 @@ create B-START BMAX cells allot
 \ whose ends happened to land in one register for any other reason goes the same
 \ way.
 \
+\ THERE ARE TWO COPIES AND ONE RULE. a64.mov copies a general register and
+\ a64.fmovdd copies a floating one, and the elision is the same statement about
+\ both: same register in, same register out, no instruction. COPY? is what makes
+\ it one statement - a form added to either file has to be named there and
+\ nowhere else, and a second `<>` test beside this one is exactly the copy of the
+\ rule that could come to disagree with it. The register NUMBER is what is
+\ compared, and the two files are separately numbered, which is sound here
+\ because a copy's ends are one class and a class has one file: the allocator
+\ refuses a class spanning the two by name (E-A64RA-FILE), so `d3 = x3` is not a
+\ comparison this word can be asked to make.
+\
 \ IT IS ASKED THROUGH THE SAME DOOR AS EVERY OTHER REGISTER. OPERAND-REG and
 \ RESULT-REG are A64RAV:REG@, the one checked answer in the chain, so a stale or
 \ unaccepted assignment refuses here exactly as it refuses when an instruction is
@@ -841,9 +863,14 @@ create B-START BMAX cells allot
 \ before the assignment has been accepted: how many instructions a copy is, is
 \ now a fact about the allocation. EMIT below therefore probes the assignment
 \ before it lays the blocks out, and says so.
+: COPY? ( IR-ID:ir-op-id -- bool )
+   {: id:IR-ID:ir-op-id :}
+   id SLOT-AT {: k:n :}
+   k O-MOV =  k O-FMOVDD =  or ;
+
 : SELF-MOV? ( IR-ID:ir-op-id -- bool )
    {: id:IR-ID:ir-op-id :}
-   id SLOT-AT O-MOV <> if false exit then
+   id COPY? 0= if false exit then
    id 0 RESULT-REG  id 0 OPERAND-REG  = ;
 
 : OP-INSNS ( IR-ID:ir-op-id n -- n )
@@ -1110,6 +1137,15 @@ create B-START BMAX cells allot
    id SELF-MOV? if exit then
    id  id WORD-MOV  APPEND ;
 
+\ The same, in the other register file. It asks the same word for the same
+\ reason, so a floating copy the allocator coalesced away costs no instruction
+\ either - and the layout, which subtracts SELF-MOV? from every operation's
+\ count, has already left the same one out.
+: PUT-FMOVDD ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id SELF-MOV? if exit then
+   id  id WORD-FMOVDD  APPEND ;
+
 \ ---- one operation, as the instructions it is --------------------------------
 \ The whole encoding table. Every arm names the instructions one machine
 \ operation becomes; nothing else in this file decides which bytes an operation
@@ -1168,6 +1204,7 @@ create B-START BMAX cells allot
       fcvtzs   OF id  id WORD-FCVTZS  APPEND ENDOF
       fmovxd   OF id  id WORD-FMOVXD  APPEND ENDOF
       fmovdx   OF id  id WORD-FMOVDX  APPEND ENDOF
+      fmovdd   OF id PUT-FMOVDD ENDOF
       fflag    OF id PUT-FFLAG ENDOF
       fflagz   OF id PUT-FFLAGZ ENDOF
       fcmpbr   OF id home PUT-FCMPBR ENDOF
@@ -1352,6 +1389,7 @@ public
    c b A64IR-OPCODE:FCVTZS   BIND1
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
+   c b A64IR-OPCODE:FMOVDD   BIND1
    c b A64IR-OPCODE:FFLAG    BIND1
    c b A64IR-OPCODE:FFLAGZ   BIND1
    c b A64IR-OPCODE:FCMPBR   BIND1

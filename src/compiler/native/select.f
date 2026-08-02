@@ -1265,14 +1265,13 @@ create NAMEBUF NAME-CAP allot
 64 constant EDGE-MAX
 EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
-\ The copy is made with the general move, and a double may not reach it. A double
-\ copied by that instruction would be eight bytes taken out of a register that
-\ does not hold them, and the machine dialect has no register move for the D file
-\ yet because nothing reaches one: a double may not cross a block edge at all
-\ (src/compiler/native/elaborate.f refuses it by name), and an edge is the only
-\ place a copy is made. The refusal here is fail-closed and says so - the
-\ elaborator is what a real program meets - and it is what stops the two from
-\ getting out of step.
+\ THE COPY IS MADE IN THE FILE THE VALUE LIVES IN, AND THAT IS THE WHOLE
+\ DIFFERENCE BETWEEN THE TWO ARMS. A cell is copied with a64.mov and a double
+\ with a64.fmovdd, which is the same instruction in the other register file: FMOV
+\ Dd, Dn moves eight bytes from one D register to another and reads none of them
+\ as a number. Copying a double with the general move would be eight bytes taken
+\ out of a register that does not hold them, so the file is not a preference here
+\ - it is what makes the copy the same value at the other end.
 \
 \ WHICH VALUE IS ASKED, AND WHY IT IS NOT THE ONE BEING COPIED. The value handed
 \ over here is a value of the NEW module - what the source operand selected to -
@@ -1282,7 +1281,13 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ belongs: the source dialect is what says whether a value is a double.
 : EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id bool -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id real:bool :}
-   real if E-A64SEL-SHAPE throw then
+   real if
+      at A64IR-OPCODE:FMOVDD OPEN
+      CTX BLD v IR-BUILD:ADD-OPERAND
+      FRESULT+
+      CLOSE-VALUE
+      ACC exit
+   then
    at A64IR-OPCODE:MOV OPEN
    CTX BLD v IR-BUILD:ADD-OPERAND
    RESULT+
@@ -1679,9 +1684,12 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    CTX BLD  V-FUNR VW f IR-FUN:FCONVENTION@  IR-BUILD:SET-CONVENTION
    CTX BLD f FUN-SPAN IR-BUILD:SET-FUN-SPAN ;
 
-\ The word's inputs under a register convention: one block argument each, one
-\ virtual register each, and each one is the value the matching source argument
-\ selects to.
+\ One block argument, at the class the source argument's TYPE says: the memory
+\ order holds no register, a double holds one of the D file, and everything else
+\ holds one of the X file. Nothing here reads which block the argument belongs to
+\ or which opcode handed a value to it - a class is a property of the value, and
+\ the source module is the one authority on it, which is the same door TOKEN? and
+\ REAL? are asked through everywhere else in this pass.
 : OPEN-ARG1 ( IR-ID:ir-value-id -- )
    {: a:IR-ID:ir-value-id :}
    a TOKEN? if
@@ -1689,7 +1697,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       dup TOK!  VBIND
       exit
    then
-   a REAL? if E-A64SEL-SHAPE throw then
+   a REAL? if
+      a  CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND
+      exit
+   then
    a  CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND ;
 
 \ A block argument of the memory-order type is the ORDER arriving, and it is the

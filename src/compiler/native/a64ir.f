@@ -365,6 +365,7 @@ ENUM opcode DERIVE eq
    fcvtzs
    fmovxd
    fmovdx
+   fmovdd
    fflag
    fflagz
    fcmpbr
@@ -738,6 +739,7 @@ public
       fcvtzs   OF s" a64.fcvtzs" ENDOF
       fmovxd   OF s" a64.fmovxd" ENDOF
       fmovdx   OF s" a64.fmovdx" ENDOF
+      fmovdd   OF s" a64.fmovdd" ENDOF
       fflag    OF s" a64.fflag" ENDOF
       fflagz   OF s" a64.fflagz" ENDOF
       fcmpbr   OF s" a64.fcmpbr" ENDOF
@@ -937,6 +939,7 @@ private
       fcvtzs   OF s" a64.rule.fcvtzs" ENDOF
       fmovxd   OF s" a64.rule.fmovxd" ENDOF
       fmovdx   OF s" a64.rule.fmovdx" ENDOF
+      fmovdd   OF s" a64.rule.fmovdd" ENDOF
       fflag    OF s" a64.rule.fflag" ENDOF
       fflagz   OF s" a64.rule.fflagz" ENDOF
       fcmpbr   OF s" a64.rule.fcmpbr" ENDOF
@@ -991,6 +994,7 @@ private
       fcvtzs   OF s" a64.render.fcvtzs" ENDOF
       fmovxd   OF s" a64.render.fmovxd" ENDOF
       fmovdx   OF s" a64.render.fmovdx" ENDOF
+      fmovdd   OF s" a64.render.fmovdd" ENDOF
       fflag    OF s" a64.render.fflag" ENDOF
       fflagz   OF s" a64.render.fflagz" ENDOF
       fcmpbr   OF s" a64.render.fcmpbr" ENDOF
@@ -1599,16 +1603,18 @@ private
 \ engine's own float primitives use to get a data-stack cell into a floating
 \ register and back (src/habu/habu1.f, BF+).
 
-\ THERE IS NO FLOATING FRAME ACCESS AND NO FLOATING COPY HERE, AND THAT IS A
-\ SCOPE STATEMENT RATHER THAN AN OVERSIGHT. A double reaches a frame slot only
-\ when the allocator has to put one away, and a double is copied only across a
-\ block edge - and neither happens in the subset this dialect serves today: a
-\ routine's contract hands out the whole floating file, and a double may not
-\ cross an edge at all (src/compiler/native/elaborate.f). A form with no
-\ lowering that any program reaches is a promise and not a schema, so the STR,
-\ LDR and FMOV-register forms of the D file arrive with the leaf that reaches
-\ them - dot habu-carry-a-double-570d2f5c - and src/compiler/native/spill.f
-\ refuses a double it would have to put away, by name, until then.
+\ THERE IS A FLOATING COPY HERE AND STILL NO FLOATING FRAME ACCESS, AND BOTH
+\ HALVES ARE SCOPE STATEMENTS. A double is copied when it crosses a block edge -
+\ every argument-carrying edge is split in values by
+\ src/compiler/native/select.f - and a double crosses one as soon as an `if` has
+\ a float literal in an arm or a loop carries an accumulator, so a64.fmovdd
+\ below is a form real programs reach and it is defined. A double reaches a FRAME
+\ SLOT only when the allocator has to put one away, which the routine contract's
+\ whole floating file makes rare and which nothing in the float corpus reaches: a
+\ form with no lowering that no program reaches is a promise and not a schema, so
+\ the STR and LDR forms of the D file arrive with the leaf that reaches them -
+\ dot habu-spill-a-double-bbd5583f - and src/compiler/native/spill.f refuses a
+\ double it would have to put away, by name, until then.
 
 \ One floating binary form: two D operands, one D result.
 : DEF-FBINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
@@ -1805,6 +1811,7 @@ public
    c b f t A64IR-OPCODE:FCVTZS DEF-FCROSS
    c b t f A64IR-OPCODE:FMOVXD DEF-FCROSS
    c b f t A64IR-OPCODE:FMOVDX DEF-FCROSS
+   c b f f A64IR-OPCODE:FMOVDD DEF-FCROSS
    c b f t DEF-FFLAG
    c b f t DEF-FFLAGZ
    c b f DEF-FCMPBR

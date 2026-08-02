@@ -1286,10 +1286,102 @@ using NSRC
    s" a locals group inside a control structure is refused" T-LABEL
    [: NESTED ;] E-NELAB-LOCAL TTHROWSQ ;
 
+\ ---- a double crossing a block edge, in both directions -----------------------
+\ THE SEAM THESE TWO CASES ARE ABOUT. A block argument's type has to be stated
+\ when the block is OPENED, and the values that will reach it come from arms
+\ written at different places in the body - so it cannot be read off "the value
+\ arriving", because there are two of them. The rule is that the FIRST edge into
+\ a block states each position's type and every later edge crosses its value to
+\ what was stated, with `hir.bits>real` or `hir.real>bits`, neither of which
+\ computes anything.
+\
+\ WHY THE CROSSING IS READ OFF THE MODULE AND NOT OFF AN ANSWER. Both bodies
+\ below answer the same eight bytes whichever way the join is typed - that is the
+\ whole point of a crossing that computes nothing - so an execution test cannot
+\ tell one from the other. What distinguishes them is WHICH block holds the
+\ crossing, and that is a fact about the module: the arm whose type was stated
+\ carries no crossing, and the arm that had to agree carries exactly one.
+\
+\ `s>f` IS WHERE THE DOUBLE COMES FROM, and it is used rather than a float
+\ literal on purpose: this fixture's lexer reads integers and names, and teaching
+\ it the engine's `int.frac` reader would be a second copy of a reader that
+\ already exists. `hir.int>real` answers a double from a cell, which is all these
+\ cases need.
+
+\ The double arrives FIRST. `dup 0= if s>f else then` states the join's one
+\ position from the arm that converts, so the empty arm - which still holds the
+\ cell the word was entered with - is the one that crosses.
+: JOINR-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   s" JOINR dup 0= if s>f else then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 2 F-BLK-AT {: arm:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: other:IR-ID:ir-block-id :}
+   m f 4 F-BLK-AT {: join:IR-ID:ir-block-id :}
+
+   \ the arm that stated the type converts and hands the double straight over
+   m  m arm 0 F-OP  s" hir.int>real" F-OPC?
+   m  m arm F-TERM  s" hir.br" F-OPC?
+   m  m arm F-TERM 0 F-IN   m  m arm 0 F-OP  0 F-OUT SAME?
+
+   \ the arm that had to agree crosses its cell, and hands the crossing over
+   m other F-OPS 2 =
+   m  m other 0 F-OP  s" hir.bits>real" F-OPC?
+   m  m other 0 F-OP 0 F-IN   m other 0 F-ARG SAME?
+   m  m other F-TERM 0 F-IN   m  m other 0 F-OP  0 F-OUT SAME?
+
+   \ and the join's own argument is a double, which is why leaving the word
+   \ crosses it back into the cell the caller's slot holds
+   m  m join 0 F-OP  s" hir.real>bits" F-OPC?
+   m  m join 0 F-OP 0 F-IN   m join 0 F-ARG SAME?
+   m  m join F-TERM  s" hir.return" F-OPC? ;
+
+: JOINR-CASE ( -- )
+   s" the first edge into a join states its type and the second crosses to it" T-LABEL
+   BND [: JOINR-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE  5 T= ;
+
+\ The cell arrives first. `dup if s>f then` has no `else`, so the edge that
+\ states the join's position is the `if`'s own false stub, which carries the cell
+\ the word was entered with - and the arm that converts is the one that crosses
+\ back.
+: JOINC-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   s" JOINC dup if s>f then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 2 F-BLK-AT {: arm:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: join:IR-ID:ir-block-id :}
+
+   \ the converting arm crosses its double back before it hands it over
+   m arm F-OPS
+   m  m arm 0 F-OP  s" hir.int>real" F-OPC?
+   m  m arm 1 F-OP  s" hir.real>bits" F-OPC?
+   m  m arm 1 F-OP 0 F-IN   m  m arm 0 F-OP  0 F-OUT SAME?
+   m  m arm F-TERM 0 F-IN   m  m arm 1 F-OP  0 F-OUT SAME?
+
+   \ and the join's argument is a cell, so leaving the word crosses nothing
+   m join F-OPS 1 =
+   m  m join F-TERM  s" hir.return" F-OPC? ;
+
+: JOINC-CASE ( -- )
+   s" and where the CELL arrives first the arm that converts is the one that crosses" T-LABEL
+   BND [: JOINC-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE  3 T=  4 T= ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   JOINR-CASE
+   JOINC-CASE
    MAX2-CASE
    LERP-CASE
    BND [: drop TWO-GROUPS-CASE ;] IR-CTX:WITH-CONTEXT

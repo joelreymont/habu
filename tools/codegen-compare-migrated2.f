@@ -130,8 +130,8 @@ private
 \ src/compiler/native/abi.f gives - the first call destroys the return address,
 \ so it has to have somewhere to live.
 : T-RES-WALK ( -- )
+   s" TV-NEXT?-N" s" CODEGEN-CORPUS2:TV-NEXT?-N" ENTRY 1 2 NMIGRATE:CALLEE
    s" : T-RES-WALK-N ( n -- n ) begin TV-NEXT?-N while repeat ;"
-   s" TV-NEXT?-N" s" CODEGEN-CORPUS2:TV-NEXT?-N" ENTRY 1 2
    1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
 \ The copy's callee: a pointer and a cell index in, the address of that cell
@@ -157,8 +157,8 @@ private
 14 constant COPY-REGS
 
 : VEC-COPY-CELLS ( -- )
+   s" CELL-FIELD-N" s" CODEGEN-CORPUS2:CELL-FIELD-N" ENTRY 2 1 NMIGRATE:CALLEE
    s" : VEC-COPY-CELLS-N ( ptr n ptr n n -- ) {: src:ptr dst:ptr len:n :} len 0 ?do src i CELL-FIELD-N @ dst i CELL-FIELD-N ! loop ;"
-   s" CELL-FIELD-N" s" CODEGEN-CORPUS2:CELL-FIELD-N" ENTRY 2 1
    3 0 COPY-REGS NMIGRATE:DEFINE-CALLING ;
 
 public

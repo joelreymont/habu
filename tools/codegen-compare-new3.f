@@ -2,70 +2,52 @@
 \ comparison. One concern: what the new chain can make of the float corpus, and
 \ what it is waiting for where it cannot.
 \
-\ THREE COMPILED AND SEVEN STILL GAPS. The float corpus was measured and
-\ committed BEFORE the chain had a single float capability, so that the day it
-\ gained one there was a table to read the advance against that nobody chose
-\ afterwards. Two rows arrived with the scalar float leaf: SGD and SEG-1/SQRT
-\ are straight-line float arithmetic over a locals frame - the first is one
-\ multiply and one subtract, the second is a conversion, a square root and a
-\ division. MAX-F arrived with the comparison leaf, and it is the first row of
-\ this corpus with control flow in it: a float compare feeding a two-armed
-\ branch, which the chain fuses into one Fcmp and one conditional branch. The
-\ other seven need a loop, a call, a memory access, or a double placed somewhere
-\ a straight line does not reach, and each declares every one of them below.
+\ ELEVEN ROWS, NO GAPS, AND IT TOOK THREE LEAVES. The float corpus was measured
+\ and committed BEFORE the chain had a single float capability, so that the day
+\ it gained one there was a table to read the advance against that nobody chose
+\ afterwards. Every row of it is now a measured row:
 \
-\ WHAT `floats` MEANT, MEASURED RATHER THAN ASSUMED, AND WHAT IT MEANS NOW.
-\ Before the leaf, handing a float body to the migration the way
-\ tools/codegen-compare-migrated2.f hands it an integer one failed in two
-\ different stages:
+\   the scalar leaf     SGD and SEG-1/SQRT - straight-line float arithmetic over
+\                       a locals frame, and the two conversions.
+\   the comparison leaf MAX-F - a float compare feeding a two-armed branch, fused
+\                       into one Fcmp and one conditional branch.
+\   this leaf           the other seven, which are one thing under four names: a
+\                       double placed where a straight line does not reach.
 \
-\     : FADD-N ( r r -- r ) f+ ;      threw -8286  E-HIR-UNMODELED
-\     : FLIT-N ( r -- r ) 1.0 f+ ;    threw -8404  E-NFEED-KIND
-\
-\ The tape had no kind for a real literal and the dialect had no model for a
-\ float operation. One capability covered both, because a row that named only
-\ the tape would have read as half a job and a row that named only the dialect
-\ would have been wrong about where the first refusal happens. Both are gone:
-\ the tape carries a real literal's own cell and the dialect has a double type
-\ with seventeen operations over it, five of them comparisons. No row waits for
-\ `floats` any more.
-\
-\ WHAT THE REMAINING SEVEN WAIT FOR, MEASURED THE SAME WAY. Every one of them
-\ carries a double somewhere a straight line does not reach, and the refusal is
-\ one stage further on than the two above - the elaborator's, when a double
-\ reaches a position whose type was fixed before the value that would arrive
-\ there was known:
+\ WHAT THE SEVEN REALLY NEEDED, MEASURED RATHER THAN GUESSED AT. Before this leaf
+\ the chain refused each of them in the elaborator, at a position whose type had
+\ to be stated before the value that would arrive there was known:
 \
 \     : NMG-BAD3 ( r n -- r ) 0 ?do 1.0 f+ loop ;    threw -8580  E-NELAB-TYPE
 \     : RELU-N ( r -- r ) {: x :} x f0< if 0.0 else x then ;
 \                                                    threw -8580  E-NELAB-TYPE
-\     : NMG-BAD2 ( r ptr a -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;
-\                                                    threw -8580  E-NELAB-TYPE
 \
-\ That is what `float-place` names, and it is why RELU-F and FROUND are still
-\ gaps while MAX-F is a row. All three are one float comparison feeding one
-\ branch, and the comparison compiles in all three; what differs is what crosses
-\ the join. MAX-F's arms hand over `x` and `y`, which arrive in data-stack cells
-\ and cross as cells; RELU-F's hand over `0.0` and `x`, and FROUND's hand over
-\ two computed doubles. Dots habu-carry-a-double-570d2f5c and
-\ habu-store-a-double-a31b313e carry it.
+\ Both compile now, and so does every shape between them: a block argument takes
+\ the type of the first value that reaches it and every later edge crosses to it,
+\ and a value crossing a CALL crosses as the data-stack cell the machine stage
+\ puts it in. Neither crossing computes anything - one FMOV between the register
+\ files, the same eight bytes read the other way - which is why every row's
+\ recorded output is the old column's to the bit.
 \
-\ EVERY GAP NAMES EVERY CAPABILITY ITS ROW NEEDS, not the first that stops it -
-\ tools/codegen-compare-gap.f's rule, and it matters more here than anywhere:
-\ a reader planning the float work should see that the accumulation rows also
-\ want a loop and a locals frame and memory access, and that T-REL-L2 also wants
-\ calls, so that the day a double can be placed nobody is surprised by which
-\ rows still do not move.
+\ ONE ROW COSTS MORE THAN THE ENGINE'S CODE, AND IT IS SAID HERE RATHER THAN LEFT
+\ TO BE NOTICED. T-SGD! is 340 bytes against the engine's 448 and is SLOWER: its
+\ loop body is three calls - two loads and a store - and its four locals, two
+\ counters and accumulator are live across all of them, so each call writes seven
+\ values into data-stack slots and reads them back. Nothing in a Habu word's
+\ convention is callee-saved, so that discipline is correct; it is also paid three
+\ times per turn here. Dot habu-narrow-what-a-5d6a0845 carries narrowing what
+\ a call site saves to what the callee can really reach, and
+\ tools/codegen-compare-test.f pins the row's direction so the day it moves
+\ somebody has to look at it.
 \
 \ WHAT IS NOT DONE HERE. No body is respelled to buy a row, and no float body is
-\ handed to the chain in the hope that some part of it survives: a row that
-\ cannot be compiled is a gap that names the capability, which is a result. The
-\ three bodies that ARE compiled are the corpus's own to the byte - not one
-\ constant is respelled, which is more than either of the first two corpora could
-\ say - and tools/codegen-compare-migrated3.f publishes them. The calibration row
-\ below is the first corpus's empty call, already published by
-\ tools/codegen-compare-migrated.f, measured again in this pass because a cost
-\ is a ratio to a call timed on the same host at the same moment.
+\ handed to the chain in the hope that some part of it survives. The ten bodies
+\ are the corpus's own to the byte - not one constant is respelled, which is more
+\ than either of the first two corpora could say - and
+\ tools/codegen-compare-migrated3.f publishes them. The calibration row below is
+\ the first corpus's empty call, already published by
+\ tools/codegen-compare-migrated.f, measured again in this pass because a cost is
+\ a ratio to a call timed on the same host at the same moment.
 
 require lib/errors.f
 require lib/prelude.f
@@ -94,61 +76,16 @@ private
    CODEGEN-COMPARE:MEASURE-NEW
    CODEGEN-COMPARE:CALIBRATE ;
 
-\ ---- the seven declarations --------------------------------------------------
-\ Each names the corpus word, the capability that stops it, and the rest of what
-\ its body asks for. The capability vocabulary is tools/codegen-compare-gap.f's;
-\ these rows read as a plan for the rest of the float campaign as much as an
-\ account of today.
+\ ---- no declarations left ----------------------------------------------------
+\ The seven rows that were gaps are rows. What they were waiting for was one
+\ thing under four names: a double placed where a straight line does not reach -
+\ across a block edge, across a call, and round a loop's back edge - and it
+\ landed as one rule. There is nothing here to declare, and CODEGEN-GAP:COVERAGE-CK
+\ below is what says so rather than this sentence: a corpus word neither compiled
+\ nor declared is refused, so an empty declaration list only passes when every
+\ one of the eleven was measured.
 
-\ The three accumulations: a counted loop over a locals frame, a load per turn,
-\ and float arithmetic between them.
-: SUM-GAP ( -- )
-   s" CODEGEN-CORPUS3:T-SUM" CODEGEN--GAP-CAP:FLOAT-PLACE CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:CONTROL-FLOW CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:MEMORY CODEGEN-GAP:GAP-ALSO ;
-
-: DIST2-GAP ( -- )
-   s" CODEGEN-CORPUS3:T-DIST2" CODEGEN--GAP-CAP:FLOAT-PLACE CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:CONTROL-FLOW CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:MEMORY CODEGEN-GAP:GAP-ALSO ;
-
-: NORM2-GAP ( -- )
-   s" CODEGEN-CORPUS3:T-NORM2" CODEGEN--GAP-CAP:FLOAT-PLACE CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:CONTROL-FLOW CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:MEMORY CODEGEN-GAP:GAP-ALSO ;
-
-\ The step, which stores as well as loads.
-: SGD-STEP-GAP ( -- )
-   s" CODEGEN-CORPUS3:T-SGD!" CODEGEN--GAP-CAP:FLOAT-PLACE CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:CONTROL-FLOW CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:MEMORY CODEGEN-GAP:GAP-ALSO ;
-
-\ The one that reaches its answers through two calls.
-: REL-L2-GAP ( -- )
-   s" CODEGEN-CORPUS3:T-REL-L2" CODEGEN--GAP-CAP:FLOAT-PLACE CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO
-   CODEGEN--GAP-CAP:CALLS CODEGEN-GAP:GAP-ALSO ;
-
-\ The one branch row that is still a gap, and the reason is the LITERAL in its
-\ first arm. `x f0< if 0.0 else x then` compares and branches exactly as MAX-F
-\ does - both compile - but its two arms hand the join a double and a cell, and
-\ a double may not cross a block edge yet. It needs nothing else: the comparison
-\ and the branch are built.
-: RELU-GAP ( -- )
-   s" CODEGEN-CORPUS3:RELU-F" CODEGEN--GAP-CAP:FLOAT-PLACE CODEGEN-GAP:GAP ;
-
-\ The float-to-integer conversion, in the body that really does it. Its two arms
-\ both leave a computed double, so it waits for the same one thing RELU-F waits
-\ for and for nothing else - the conversion itself and the comparison that
-\ chooses the bias are both built.
-: FROUND-GAP ( -- )
-   s" CODEGEN-CORPUS3:FROUND" CODEGEN--GAP-CAP:FLOAT-PLACE CODEGEN-GAP:GAP ;
-
-\ ---- the three measured rows -------------------------------------------------
+\ ---- the ten measured rows ---------------------------------------------------
 \ The pinned inputs are the old column's, written as the same literals
 \ tools/codegen-compare-cases3.f writes, so the two columns are handed the same
 \ numbers and neither reads the other's. The outputs go to VECTOR-REAL, which
@@ -167,6 +104,12 @@ private
 \ same bits.
 : NAN ( -- r )
    0.0 0.0 f/ ;
+
+\ The infinity, the same way: spelled as the case list spells it, so both
+\ columns divide the same one and FROUND's saturating row is handed the same
+\ bits.
+: INF ( -- r )
+   1.0 0.0 f/ ;
 
 : SGD-CASE ( -- )
    s" CODEGEN-CORPUS3:SGD" s" CODEGEN-CORPUS3:SGD-N"
@@ -206,14 +149,108 @@ private
       1.5 NAN CODEGEN-CORPUS3:MAX-F-N CODEGEN-COMPARE:VECTOR-REAL ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
-: ALL-GAPS ( -- )
-   SUM-GAP
-   DIST2-GAP
-   NORM2-GAP
-   SGD-STEP-GAP
-   REL-L2-GAP
-   RELU-GAP
-   FROUND-GAP ;
+\ ---- the five kernel rows ----------------------------------------------------
+\ Each is handed the same pinned data the old column is - the corpus owns the
+\ buffers and both columns step them - and the same three lengths. What each row
+\ measures on top of the arithmetic is a double round a loop's back edge and
+\ through a data-stack slot at every load, which is what the accumulation shape
+\ IS on this engine.
+
+: T-SUM-CASE ( -- )
+   s" CODEGEN-CORPUS3:T-SUM" s" CODEGEN-CORPUS3:T-SUM-N"
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:VEC-LEN CODEGEN-CORPUS3:T-SUM-N drop ;]
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:VEC-LEN CODEGEN-CORPUS3:T-SUM-N
+      CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:S-VEC CODEGEN-CORPUS3:SUM-LEN CODEGEN-CORPUS3:T-SUM-N
+      CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:A-VEC 0 CODEGEN-CORPUS3:T-SUM-N
+      CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+: T-DIST2-CASE ( -- )
+   s" CODEGEN-CORPUS3:T-DIST2" s" CODEGEN-CORPUS3:T-DIST2-N"
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-DIST2-N drop ;]
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-DIST2-N CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-DIST2-N CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:B-VEC 0
+      CODEGEN-CORPUS3:T-DIST2-N CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+: T-NORM2-CASE ( -- )
+   s" CODEGEN-CORPUS3:T-NORM2" s" CODEGEN-CORPUS3:T-NORM2-N"
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:VEC-LEN CODEGEN-CORPUS3:T-NORM2-N drop ;]
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:VEC-LEN CODEGEN-CORPUS3:T-NORM2-N
+      CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:Z-VEC CODEGEN-CORPUS3:VEC-LEN CODEGEN-CORPUS3:T-NORM2-N
+      CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:A-VEC 0 CODEGEN-CORPUS3:T-NORM2-N
+      CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+\ The step, whose point is a side effect: what it RETURNS is nothing, so the
+\ weight buffer is what is recorded - the four cells it wrote and the fifth,
+\ which it must not have. The recorded call refills the buffer first for the
+\ reason the old column's does: a step is not idempotent, and the timing loop
+\ leaves the weights far from where they started.
+: T-SGD-CASE ( -- )
+   s" CODEGEN-CORPUS3:T-SGD!" s" CODEGEN-CORPUS3:T-SGD!-N"
+   [: CODEGEN-CORPUS3:STEP-LR CODEGEN-CORPUS3:W-VEC CODEGEN-CORPUS3:G-VEC
+      CODEGEN-CORPUS3:VEC-LEN CODEGEN-CORPUS3:T-SGD!-N ;]
+   [: CODEGEN-CORPUS3:W-RESET
+      CODEGEN-CORPUS3:STEP-LR CODEGEN-CORPUS3:W-VEC CODEGEN-CORPUS3:G-VEC
+      CODEGEN-CORPUS3:VEC-LEN CODEGEN-CORPUS3:T-SGD!-N
+      0 CODEGEN-CORPUS3:W-CELL CODEGEN-COMPARE:VECTOR-REAL
+      1 CODEGEN-CORPUS3:W-CELL CODEGEN-COMPARE:VECTOR-REAL
+      2 CODEGEN-CORPUS3:W-CELL CODEGEN-COMPARE:VECTOR-REAL
+      3 CODEGEN-CORPUS3:W-CELL CODEGEN-COMPARE:VECTOR-REAL
+      4 CODEGEN-CORPUS3:W-CELL CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+: T-REL-L2-CASE ( -- )
+   s" CODEGEN-CORPUS3:T-REL-L2" s" CODEGEN-CORPUS3:T-REL-L2-N"
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-REL-L2-N drop ;]
+   [: CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-REL-L2-N CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:B-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-REL-L2-N CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:A-VEC CODEGEN-CORPUS3:Z-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-REL-L2-N CODEGEN-COMPARE:VECTOR-REAL
+      CODEGEN-CORPUS3:Z-VEC CODEGEN-CORPUS3:Z-VEC CODEGEN-CORPUS3:VEC-LEN
+      CODEGEN-CORPUS3:T-REL-L2-N CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+\ ---- the two branch rows whose arms disagree about the class -----------------
+\ RELU-F's arms hand the join a double and a cell and FROUND's hand it two
+\ computed doubles, so between them they measure both halves of the join-type
+\ rule. RELU-F's negative zero separates "answers x" from "answers the literal
+\ 0.0" - two equal numbers in two cells - and its NaN pins which arm an
+\ unordered comparison takes.
+: RELU-CASE ( -- )
+   s" CODEGEN-CORPUS3:RELU-F" s" CODEGEN-CORPUS3:RELU-F-N"
+   [: -2.5 CODEGEN-CORPUS3:RELU-F-N drop ;]
+   [: -2.5 CODEGEN-CORPUS3:RELU-F-N CODEGEN-COMPARE:VECTOR-REAL
+      0.0 CODEGEN-CORPUS3:RELU-F-N CODEGEN-COMPARE:VECTOR-REAL
+      -0.0 CODEGEN-CORPUS3:RELU-F-N CODEGEN-COMPARE:VECTOR-REAL
+      1.5 CODEGEN-CORPUS3:RELU-F-N CODEGEN-COMPARE:VECTOR-REAL
+      NAN CODEGEN-CORPUS3:RELU-F-N CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+\ The one row whose answers are already numbers: FROUND is the way OUT of the
+\ float domain, so its outputs go to VECTOR unchanged.
+: FROUND-CASE ( -- )
+   s" CODEGEN-CORPUS3:FROUND" s" CODEGEN-CORPUS3:FROUND-N"
+   [: 2.5 CODEGEN-CORPUS3:FROUND-N drop ;]
+   [: 2.5 CODEGEN-CORPUS3:FROUND-N CODEGEN-COMPARE:VECTOR
+      -2.5 CODEGEN-CORPUS3:FROUND-N CODEGEN-COMPARE:VECTOR
+      -0.0 CODEGEN-CORPUS3:FROUND-N CODEGEN-COMPARE:VECTOR
+      1.5 CODEGEN-CORPUS3:FROUND-N CODEGEN-COMPARE:VECTOR
+      INF CODEGEN-CORPUS3:FROUND-N CODEGEN-COMPARE:VECTOR
+      NAN CODEGEN-CORPUS3:FROUND-N CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 public
 
@@ -228,7 +265,13 @@ public
    SGD-CASE
    SEG-CASE
    MAX-F-CASE
-   ALL-GAPS
+   RELU-CASE
+   FROUND-CASE
+   T-SUM-CASE
+   T-DIST2-CASE
+   T-NORM2-CASE
+   T-SGD-CASE
+   T-REL-L2-CASE
    CODEGEN-GAP:COVERAGE-CK ;
 
 ;package

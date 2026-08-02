@@ -967,7 +967,7 @@ public
 -8500 constant E-A64IR-COND     \ a condition code the compare form cannot carry: outside the four-bit field the conditional forms encode it in
 -8501 constant E-HIR-CONTROL    \ a source word read as a control word when its row models something else, or a stored control code outside this dialect's vocabulary
 -8502 constant E-NELAB-CTRL     \ a control structure the elaborator cannot close: a closer with no opener, a closer that does not match the opener it meets, a word that stands in the middle of a structure with no such structure open, a second one of those over one structure, a `while` after a word that already left the definition, a loop closed by a word that does not open the block its `while`s branch out to, or a body that ends with a structure still open
--8503 constant E-NELAB-JOIN     \ two paths into one join that do not agree: arms leaving different numbers of values on the compile-time value stack, two `while`s leaving one loop at different depths, or a loop body that does not leave the stack as its header takes it
+-8503 constant E-NELAB-JOIN     \ two paths into one join that do not agree: arms leaving different numbers of values on the compile-time value stack, two `while`s leaving one loop at different depths, a loop body that does not leave the stack as its header takes it, an edge whose width disagrees with the width the first edge into that block stated, or a block opened with arguments that no edge into it stated the types of
 -8505 constant E-A64EMIT-BLOCK  \ a branch whose successor names no block of the function this emission laid out
 -8506 constant E-A64EMIT-REACH  \ a branch whose displacement does not fit the field its form encodes it in
 -8504 constant E-NELAB-BLOCK    \ more blocks or more open control structures in one definition than the elaborator's tables hold
@@ -1065,5 +1065,5 @@ public
 \ machine with no floating unit is IR-TYPE's E-IR-TYPE-TARGET, a float literal
 \ spelling the tape cannot read back is E-NFEED-LITERAL, and a staged operation
 \ whose operand type is not the one its schema declares is IR-OP's.
--8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double carried across a block edge or a call, which this leaf does not yet place
+-8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double stored into a memory cell, which no leaf places yet
 -8581 constant E-A64RA-FILE     \ two values of two different register files joined into one class: an edge or a schema tie whose two ends cannot share a register because no register holds both

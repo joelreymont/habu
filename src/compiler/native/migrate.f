@@ -90,6 +90,42 @@ create NAME-BUF NAME-CAP allot
 variable NAME-U
 variable NAME-WID
 
+\ ---- the words one migrated definition calls ---------------------------------
+\ A body may call several DIFFERENT words - `||a-b|| / ||b||` calls one word for
+\ the distance and another for the norm - so the caller stages one row per callee
+\ and then migrates. Each row is what the word model needs and nothing more: the
+\ spelling the body writes, where the callee's code starts, and the effect it
+\ declares. All three are the caller's statement for the same reason a data
+\ word's address is (dot habu-resolve-a-callee-0340dfde).
+\
+\ THE LIST BELONGS TO ONE MIGRATION AND IS CLEARED BY IT. RUN empties it when the
+\ run ends, whether the run succeeded or threw, so every migration starts with an
+\ empty list and a row staged for a migration that then failed cannot be picked
+\ up by the next one. An entry that takes no list refuses a staged one rather
+\ than running with rows nothing will use.
+4 constant CALLEES-MAX
+
+create CALLEE-BUF CALLEES-MAX NAME-CAP * allot
+here CELL 1- and CELL swap - CELL 1- and allot
+variable CALLEE-N
+create CALLEE-U CALLEES-MAX cells allot
+create CALLEE-ADDR CALLEES-MAX cells allot
+create CALLEE-IN CALLEES-MAX cells allot
+create CALLEE-OUT CALLEES-MAX cells allot
+
+: CALLEE-AT ( n -- n )
+   dup 0 < over CALLEE-N @ >= or if E-NMIGRATE-STATE throw then ;
+
+: CALLEE$ ( n -- ptr u8 n )
+   CALLEE-AT {: k:n :}
+   CALLEE-BUF k NAME-CAP * +  k cells CALLEE-U + @ ;
+
+: CALLEES-CLEAR ( -- )
+   0 CALLEE-N ! ;
+
+: CALLEES-NONE-CK ( -- )
+   CALLEE-N @ 0<> if E-NMIGRATE-STATE throw then ;
+
 here CELL 1- and CELL swap - CELL 1- and allot
 1 TYPED-BUFFER M-CTX IR-CTX:ctx
 1 TYPED-BUFFER M-BLD IR-BUILD:builder
@@ -106,11 +142,6 @@ variable M-IN
 variable M-OUT
 variable M-REGS
 variable M-CALLS
-PTR-VARIABLE M-CALLEE                \ the spelling of the one word this body calls
-variable M-CALLEE-U
-variable M-CALLEE-ADDR
-variable M-CALLEE-IN
-variable M-CALLEE-OUT
 variable M-OPEN                      \ a migration is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
@@ -125,8 +156,6 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 : DATA$ ( -- ptr u8 n )
    M-DATA @ M-DATA-U @ ;
 
-: CALLEE$ ( -- ptr u8 n )
-   M-CALLEE @ M-CALLEE-U @ ;
 
 \ ---- the module the definition is compiled into ------------------------------
 : HIR-MOD ( IR-CTX:ctx -- IR-BUILD:builder )
@@ -143,9 +172,8 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 \ address is stated until the chain can ask the engine what a data word is (dot
 \ habu-resolve-a-data-a1c8067f).
 : EXTRA-ROWS ( -- n )
-   0
-   M-DATA-U @ 0<> if 1+ then
-   M-CALLEE-U @ 0<> if 1+ then ;
+   CALLEE-N @
+   M-DATA-U @ 0<> if 1+ then ;
 
 : MODEL-ROWS ( -- n )
    HIR-WORD:WORDS EXTRA-ROWS + ;
@@ -154,14 +182,17 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
    M-DATA-U @ 0= if exit then
    CC BB r  CC BB DATA$ IR-BUILD:INTERN-SYMBOL  M-DATA-ADDR @ HIR-WORD:DECLARE-FIXED ;
 
-\ The one word this definition calls, as the word model's own row: its spelling
-\ as the body writes it, where its code starts, and its declared effect. All
-\ three are the caller's statement for the same reason a data word's address is
-\ (dot habu-resolve-a-callee-0340dfde).
+\ Every word this definition calls, as the word model's own rows. The list is the
+\ caller's, staged before the migration; this only reads it, one row at a time,
+\ so a body that calls one word and a body that calls four go down the same path.
+: DECLARE-CALLEE1 ( IR-ARENA:arena n -- ) {: r:IR-ARENA:arena k:n :}
+   CC BB r  CC BB k CALLEE$ IR-BUILD:INTERN-SYMBOL
+   k cells CALLEE-ADDR + @
+   k cells CALLEE-IN + @
+   k cells CALLEE-OUT + @  HIR-WORD:DECLARE-CALLABLE ;
+
 : DECLARE-CALLEE ( IR-ARENA:arena -- ) {: r:IR-ARENA:arena :}
-   M-CALLEE-U @ 0= if exit then
-   CC BB r  CC BB CALLEE$ IR-BUILD:INTERN-SYMBOL
-   M-CALLEE-ADDR @ M-CALLEE-IN @ M-CALLEE-OUT @ HIR-WORD:DECLARE-CALLABLE ;
+   CALLEE-N @ 0 ?do  r i DECLARE-CALLEE1  loop ;
 
 : MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
    CC BB IR-BUILD:MODULE-KEY MODEL-ROWS HIR-WORD:PICK-CELLS HIR-WORD:NEW
@@ -336,6 +367,7 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
    0 M-RC !
    IN-CONTEXT
    0 M-OPEN !
+   CALLEES-CLEAR
    M-RC @ {: rc:n :}
    rc 0 <> if rc throw then ;
 
@@ -343,8 +375,7 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
-   0 M-DATA-U ! 0 M-DATA-ADDR ! 0 M-CALLS !
-   0 M-CALLEE-U ! 0 M-CALLEE-ADDR ! 0 M-CALLEE-IN ! 0 M-CALLEE-OUT ! ;
+   0 M-DATA-U ! 0 M-DATA-ADDR ! 0 M-CALLS ! ;
 
 public
 
@@ -352,26 +383,42 @@ public
 \ chain's code. `in` and `out` are its declared arities and `regs` the scratch
 \ registers its routine may use.
 : DEFINE ( ptr u8 n n n n -- )
+   CALLEES-NONE-CK
    STAGE RUN ;
 
 \ The same for a definition that calls itself.
 : DEFINE-CALL ( ptr u8 n n n n -- )
+   CALLEES-NONE-CK
    STAGE
    1 M-CALLS !
    RUN ;
 
-\ The same for a definition that CALLS one other word: its spelling as the
+\ Stage one word the NEXT migration's definition calls: its spelling as the
 \ definition writes it, the address its code starts at, and the effect it
-\ declares. The routine's contract declares the direct call for the same reason
-\ DEFINE-CALL's does - the first call destroys this routine's caller's return
-\ address, so it has to have a frame to keep it in - and it is the SAME
-\ declaration, because a routine that calls itself and a routine that calls
-\ somebody else pay exactly the same thing for it.
-: DEFINE-CALLING ( ptr u8 n ptr u8 n n n n n n n -- )
-   {: sa su:n ca cu:n entry:n cin:n cout:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and ca keep the ptr u8 byte-span role
+\ declares. The spelling is COPIED, because it is a span of the caller's memory
+\ and the migration reads it later, inside the recorded run.
+: CALLEE ( ptr u8 n n n n -- )
+   {: ca cu:n entry:n cin:n cout:n :} \ typed-local-lint: allow-bare-local - ca keeps the ptr u8 byte-span role
+   CALLEE-N @ {: k:n :}
+   k CALLEES-MAX >= if E-NMIGRATE-STATE throw then
+   cu NAME-CAP > if E-NMIGRATE-TEXT throw then
+   ca  CALLEE-BUF k NAME-CAP * +  cu STR-LEN BYTE-COPY-LEN
+   cu k cells CALLEE-U + !
+   entry k cells CALLEE-ADDR + !
+   cin k cells CALLEE-IN + !
+   cout k cells CALLEE-OUT + !
+   k 1+ CALLEE-N ! ;
+
+\ Migrate a definition that CALLS the words staged above it. The routine's
+\ contract declares the direct call for the same reason DEFINE-CALL's does - the
+\ first call destroys this routine's caller's return address, so it has to have a
+\ frame to keep it in - and it is the SAME declaration, because a routine that
+\ calls itself and a routine that calls somebody else pay exactly the same thing
+\ for it. A migration with no callee staged is refused: it would be DEFINE.
+: DEFINE-CALLING ( ptr u8 n n n n -- )
+   {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
+   CALLEE-N @ 0= if E-NMIGRATE-STATE throw then
    sa su in out regs STAGE
-   ca M-CALLEE ! cu M-CALLEE-U !
-   entry M-CALLEE-ADDR ! cin M-CALLEE-IN ! cout M-CALLEE-OUT !
    1 M-CALLS !
    RUN ;
 
@@ -379,6 +426,7 @@ public
 \ the definition writes it, and the address that word pushes.
 : DEFINE-DATA ( ptr u8 n ptr u8 n n n n n -- )
    {: sa su:n da du:n addr:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and da keep the ptr u8 byte-span role
+   CALLEES-NONE-CK
    sa su in out regs STAGE
    da M-DATA ! du M-DATA-U ! addr M-DATA-ADDR !
    RUN ;
