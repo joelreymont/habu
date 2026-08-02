@@ -613,11 +613,25 @@ public
 : FLOAT-EDGE ( -- )
    s" : NMG-BAD3 ( r n -- r ) 0 ?do 1.0 f+ loop ;" 2 1 REGS NMIGRATE:DEFINE ;
 
+\ The callee is migrated first, so both halves would be the chain's code, and the
+\ caller holds a double across the call - which is the same seam a block edge is:
+\ the call's results are typed before the values that reach them are known.
+: FLOAT-CALLEE ( -- )
+   s" : NMG-FD ( r -- r ) 2.0 f* ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: FLOAT-CALL ( -- )
+   s" : NMG-BAD4 ( r -- r ) 1.0 f+ NMG-FD ;"
+   s" NMG-FD"  s" NMG-FD" GLOBAL-WID NPUB:NEW-START  1 1
+   1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
 : FLOAT-REFUSAL-CASES ( -- )
+   FLOAT-CALLEE
    s" a double stored into a memory cell is refused - the crossing is not placed yet" T-LABEL
    [: FLOAT-STORE ;] E-NELAB-TYPE TTHROWSQ
    s" a double carried across a loop edge is refused, not handed over as a cell" T-LABEL
    [: FLOAT-EDGE ;] E-NELAB-TYPE TTHROWSQ
+   s" and a double live across a CALL is refused for the same reason" T-LABEL
+   [: FLOAT-CALL ;] E-NELAB-TYPE TTHROWSQ
 
    s" a double handed to an integer operation never reaches the chain at all" T-LABEL
    s" NMG-BAD1 ( r -- n ) 1.0 f+ 1 +" CHECK-QUIET-CANDIDATE! 0 T=
