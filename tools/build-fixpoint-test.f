@@ -64,8 +64,6 @@ variable BFT-READ-A
 variable BFT-READ-CAP
 variable BFT-BYTES-A
 variable BFT-BYTES-N
-variable BFT-MAG-I
-variable BFT-MAG-LAST
 variable BFT-PROF-I
 variable BFT-REG-I
 variable BFT-JIT-I
@@ -725,11 +723,8 @@ public
 \ former 0 set-check window is now the TRUSTED: SNAP-RETIRE-GO boundary, so
 \ the emitted snap source certifies clean and the `-- snap` route is gated
 \ end-to-end again (dot habu-tfam-12-item-346f03c2 part 1).
-\ Measured facts this fixture encodes (macOS/arm64, 2026-07-09):
-\ - The trailer magic is not at file-size minus trailer-size: SNAP-EXTRA-SIZE padding and the
-\   codesign blob follow it, so the fixture SCANS for the LAST SNAP-MAGIC
-\   occurrence (the trailer is written after both payloads; nothing after it
-\   contains the magic).
+\ The target header's full 64-bit text-size field owns the trailer location;
+\ padding and the codesign blob may follow the trailer.
 \ - A patched image must be re-signed (CODESIGN:FORCE) or macOS SIGKILLs it
 \   before the loader runs.
 \ - EM-SNAPSHOT-RESTORE labels corruption on fd 2 before NR-EXIT-GROUP.
@@ -760,24 +755,6 @@ public
    sz MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop BFT-BYTES-FIELD !
    s" hb-snap0" BF-A$ BFT-BYTES sz READ-ALL BFT-BYTES-N ! ;
 
-: BFT-MAGIC$ ( -- ptr u8 n )
-   s" !SNAPSBH" ;
-
-: BFT-MAGIC-STEP ( -- bool )
-   BFT-BYTES BFT-BYTES-N @ BFT-MAG-I @ BFT-MAGIC$ BFT-FIND-AFTER MATCH option
-     none OF 0 0= 0= exit ENDOF
-     some OF IDX>N ENDOF
-   ;MATCH {: i:n :}
-   i BFT-MAG-LAST !
-   i 1 + BFT-MAG-I !
-   0 0= ;
-
-: BFT-MAGIC-LAST! ( -- )
-   0 BFT-MAG-I !
-   -1 BFT-MAG-LAST !
-   begin BFT-MAGIC-STEP 0= until
-   BFT-MAG-LAST @ 0 >= TTRUE ;
-
 : BFT-BYTE@ ( n -- n ) {: off:n :}
    BFT-BYTES off BYTE+ c@ ;
 
@@ -793,8 +770,11 @@ private
       off i + BFT-BYTE@ i 8 * lshift or
    loop ;
 
+: TRAILER-OFF ( -- n )
+   IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + 40 - ;
+
 : DATA-OFF ( -- n )
-   BFT-MAG-LAST @ dup TRL-DATALEN + U64@ - ;
+   TRAILER-OFF dup TRL-DATALEN + U64@ - ;
 
 : HOOK-OFF ( -- n )
    DATA-OFF ENGINE-SNAP-XT-CELL + ;
@@ -878,7 +858,7 @@ private
 : RAW ( -- )
    HOOK-OFF {: off:n :}
    off 0 >= TTRUE
-   off 8 + BFT-MAG-LAST @ <= TTRUE
+   off 8 + TRAILER-OFF <= TTRUE
    off U64@ 0 T= ;
 
 : STARTUP ( -- )
@@ -942,23 +922,27 @@ public
 
 ;package
 
-: BFT-TEST-SNAP-TRAILER ( -- )
+package BFT-SNAP-HOOK
+private
+
+: TEST-TRAILER ( -- )
    BFT-ROOT BF-TMP!
    BFT-SNAP0-BUILD
    BFT-EMPTY-STDIN!
    s" hb-snap0" BFT-SNAP-RUN 0 T=
    s" hb-snap0" BF-A$ s" lib/prelude.f" BF-RUN-LOAD-STAGE 0 T=
    BFT-BYTES-READ
-   BFT-MAGIC-LAST!
-   BFT-SNAP-HOOK:VERIFY-IMAGE
-   BFT-MAG-LAST @ {: mag:n :}
+   VERIFY-IMAGE
+   TRAILER-OFF {: tr:n :}
    \ +4/+3: a MIDDLE byte of the 8-byte field keeps the value positive but
    \ far above REGION/DICT-CAP (top bytes could go negative or SIGSEGV).
-   mag BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE
+   tr BFT-TRL-REGLEN + 4 + $FF BFT-DOCTORED-CAPTURE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
-   mag BFT-TRL-NDICT + 3 + $FF BFT-DOCTORED-CAPTURE
+   tr BFT-TRL-NDICT + 3 + $FF BFT-DOCTORED-CAPTURE
    79 s" hb: snapshot trailer corrupt" BFT-ASSERT-SNAP-EXIT
    BF-TMP-RESET ;
+
+;package
 
 \ ---- effective source boundary --------------------------------------------
 \ The cold prefix already occupies IBUFSZ and the reader performs an EOF probe,
@@ -1408,7 +1392,10 @@ public
    a u type s" : throw " type rc . cr
    s" build-fixpoint-test: subtest threw" T-EX-FAIL die ;
 
-: BFT-MAIN ( -- )
+package BFT-SNAP-HOOK
+public
+
+: RUN ( -- )
    T-RESET
    BFT-PREPARE
    s" tmp override" [: BFT-TEST-TMP-OVERRIDE ;] BFT-STEP
@@ -1447,7 +1434,7 @@ public
    s" checked regalloc" [: BFT-TEST-CHECKED-REGALLOC ;] BFT-STEP
    s" snap source" [: BFT-TEST-SNAP-SOURCE ;] BFT-STEP
    s" snap missing hook" [: BFT-SNAP-HOOK:MISSING ;] BFT-STEP
-   s" snap trailer" [: BFT-TEST-SNAP-TRAILER ;] BFT-STEP
+   s" snap trailer" [: TEST-TRAILER ;] BFT-STEP
    s" source boundary" [: BFT-CAP:SOURCE-BOUNDARY ;] BFT-STEP
    s" stage2 source cap" [: BFT-CAP:STAGE2 ;] BFT-STEP
    s" maker source cap" [: BFT-CAP:MAKER ;] BFT-STEP
@@ -1456,4 +1443,6 @@ public
    T-REPORT
    s" build-fixpoint-test: ok" type cr ;
 
-BFT-MAIN
+;package
+
+BFT-SNAP-HOOK:RUN

@@ -96,7 +96,6 @@ variable ROOT-U
 \ ---- snapshot image reader ----
 create IMGP 8 allot
 variable IMGU
-variable TR-LAST
 variable NZ
 
 : IMG ( -- ptr u8 )
@@ -114,22 +113,18 @@ variable NZ
    IMG k 2 + + c@ 16 lshift or
    IMG k 3 + + c@ 24 lshift or ;
 
-: MAGIC-AT? ( n -- bool ) {: at:n :}
-   s" !SNAPSBH" {: mp:ptr mu:n :}
-   0 mu 0 ?do
-      IMG at i + + c@ mp i + c@ = if 1+ then
-   loop mu = ;
+: U64@ ( n -- n ) {: k:n :}
+   0
+   8 0 ?do
+      IMG k i + + c@ i 8 * lshift or
+   loop ;
 
-: LAST-TRAILER ( -- n )
-   -1 TR-LAST !
-   IMGU @ 8 - 0 ?do
-      i MAGIC-AT? if i TR-LAST ! then
-   loop
-   TR-LAST @ dup 0 < if s" snapshot writer trailer magic missing" 74 die then ;
+: TRAILER-OFF ( -- n )
+   IMAGE-TEXT-SIZE-OFF U64@ IMAGE-TEXT-TRAILER-ADJ + 40 - ;
 
 : DATA-OFF ( -- n )
-   LAST-TRAILER {: tr:n :}
-   tr tr 32 + U32@ - ;
+   TRAILER-OFF {: tr:n :}
+   tr tr 32 + U64@ - ;
 
 : RSTK-NONZERO ( -- n )
    DATA-OFF {: base:n :}

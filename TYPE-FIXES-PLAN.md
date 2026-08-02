@@ -186,8 +186,8 @@ path sufficient, or hold the lane for a post-conversion landing.
 25. **Seal dies entirely.** [wave 1 — agreed-dead deletes now] Package sealing
     (SEAL-PACKAGE, prot-wid, the exit-84 reopen refusal) is deleted — we
     are Forth; review catches compiler-package reopens. With it go
-    owner-wid-emit-seal.f and the doc's sealed-wordlists section;
-    layout-buffer-seal.f and lower-cert-seal.f get a census first. The
+    the doc's sealed-wordlists section; layout-buffer-seal.f and
+    lower-cert-seal.f get a census first. The
     maki/db proof mints go earlier, in wave 1 with item 6.
 
 26. **Unchecked regions become `NO-TYPE-CHECK … ;NO-TYPE-CHECK`.**
@@ -198,10 +198,8 @@ path sufficient, or hold the lane for a post-conversion landing.
     thing — a primitive operation of the checked language (syscall,
     machine op, retype axiom). `PPRIM:` and `TRUSTED:` fold in; the
     justification and retirement note move to the declaration in a
-    grammar-required shape. The administrative trust ledger is deleted in
-    WAVE 1 (item 38): each justification folds into its declaration-site
-    comment before the ledger machinery goes. The PRIM: grammar unification
-    itself remains wave 2+.
+    grammar-required shape. The PRIM: grammar unification itself remains
+    wave 2+.
 
 28. **No pointer lifetimes, ever.** [decision, recorded] The borrow-system
     dot is deleted. Linear owners carry the safety that matters; borrowed
@@ -501,11 +499,9 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   only-consumer-is-own-test verification and suite-inventory/lint-seed
   retirement. blocked-by: none of the engine leaves (deletions work on
   any engine); ordered before M17 so the census counts them gone.
-- M13c the agreed-dead deletion leaves per item 38: seal (package
-  sealing + owner-wid-emit-seal.f + the two boot-seal files' census),
-  the administrative trust ledger (justifications moved to sites first),
-  dead sched, the OWNER-WID runtime
-  registry. Same discipline and ordering as M13b.
+- M13c the agreed-dead deletion leaves per item 38: package sealing plus
+  the two boot-seal files' census, and dead sched. Same discipline and
+  ordering as M13b.
 - M14a FS: `STRUCTURE path` = `data ptr u8`, `len CAD-NUM:byte-len` —
   borrowed, never retained. Probe: FS:path resolves; path consumers
   load; probe runs at M17. blocked-by the phase-1 engine leaves.
@@ -555,8 +551,7 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   ptx/rep-neg-test.f 1 (live PTX negatives),
   tools/public-signatures-test.f 3 (signature rendering),
   tools/ptx/autotune-sweep.f `census` 1 (live tuning tool). DELETE with
-  their machinery: owner-wid-role-swap.f (OWNER-WID dies in M13c),
-  promotion-authority-test.f (db, item 37), lower-cert.f (tied to the
+  their machinery: promotion-authority-test.f (db, item 37), lower-cert.f (tied to the
   lower-cert-seal census in M13c — lives or dies with its machinery),
   layout-valid-product-bad.f (PRODUCT-specific negative; nothing to
   test once PRODUCT is gone unless the layout rule re-fixtures under
@@ -638,14 +633,10 @@ everything is finished — not during.
 
 38. **Every agreed-dead item from Joel's review deletes in wave 1 — no
     parking.** The pulled-forward set, joining items 35-37: package
-    sealing (25: SEAL-PACKAGE, prot-wid, exit-84, owner-wid-emit-seal.f;
+    sealing (25: SEAL-PACKAGE, prot-wid, exit-84;
     layout-buffer-seal.f and lower-cert-seal.f get their census inside
-    the leaf and whatever fails it dies there too); the administrative
-    trust ledger (from 27, with justifications folded to their sites
-    first); the dead sched
-    type (schedule.f:42 + its four words + schedule-test.f checks); the
-    production-empty OWNER-WID runtime registry (the collapsed campaign's
-    delete-runtime-pkg leaf executes here). Each is its own deletion
+    the leaf and whatever fails it dies there too); the dead sched
+    type (schedule.f:42 + its four words + schedule-test.f checks). Each is its own deletion
     leaf in M13c with the only-consumer/emptiness verification at claim
     time. Improvements stay wave 2+ (PRIM: grammar, NO-TYPE-CHECK block,
     typed catch, typed interpreter, renames/rehomes); deletions do not.

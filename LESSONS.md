@@ -1202,10 +1202,11 @@ fits.
   persisted capacity for the supported workload). Snapshot writers clear mmap-backed image buffer
   pointers/cursors (`MBUF-A` persisted → crashed the next `IMG-M8`) and reset include state
   (`INCLUDE-BUFS-A` pointed at the baker's mmap → "include: read failed"). Snapshot images relocate
-  only engine-text refs (fixed VAs keep dict/data valid); accept a trailer only when
-  `region-len + data-len` ends exactly at the trailer offset (magic also appears in code); locate the
-  trailer by scanning for the LAST `SNAP-MAGIC` (48-byte trailer is NOT at file-end — SNAP-EXTRA-SIZE
-  pad + macOS codesign blob follow); an un-resigned patched image is SIGKILLed (rc -9). Snapshot DATA
+  only engine-text refs (fixed VAs keep dict/data valid). Locate the sole 40-byte
+  trailer at the full 64-bit target header value at `IMAGE-TEXT-SIZE-OFF`, plus
+  `IMAGE-TEXT-TRAILER-ADJ`, minus 40; never scan for `SNAP-MAGIC`. Validate the
+  header-derived trailer fields there and require `region-len + data-len <= trailer
+  offset`, so subtracting them cannot underflow the image prefix. Snapshot DATA
   must exclude invocation-mode hooks (`REPLH-CELL` built under a TTY made a later `--load` enter the
   REPL) — canonicalize to zero and recompute batch-vs-interactive after restore; any hook a
   cold-prefix file arms must be explicitly disarmed in the snapshot-zero path unless its warm-boot
