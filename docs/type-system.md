@@ -164,7 +164,7 @@ several declaring words.
 
 - **`STRUCTURE name arity … FIELD f type … ;STRUCTURE`** declares a record:
   several named fields travelling together as one value. `MDLCFG:mcfg` is a
-  twelve-field example.
+  eleven-field example.
 - **`ENUM name … ;ENUM`** declares a set of alternatives. In its short form the
   body is bare variant names and nothing else, which gives you a plain tag set:
   `MAKI:datatype` (`maki/tensor.f:123`) is five names, `df32` through `di32`, and
@@ -183,8 +183,8 @@ Declaring a family generates a **constructor** (`MAKE`) and a **destructurer**
 (`UNMAKE`), plus `MATCH … ;MATCH` for the alternatives, which the checker
 requires to be exhaustive — every variant needs an arm. The generated names are
 mechanical: the package name, then the family name with internal hyphens
-doubled. `STRUCTURE cfgkey` inside `package MDLCFG` produces
-`MDLCFG-CFGKEY:MAKE`. This spelling rule creates one trap:
+doubled. `STRUCTURE mcfg` inside `package MDLCFG` produces
+`MDLCFG-MCFG:MAKE`. This spelling rule creates one trap:
 `ENUM map-take` inside `package SAFET` produces `SAFET-MAP--TAKE:MOVED`, which
 reads as though it belongs to `package SAFET-MAP` — a real package declared
 earlier in the same file. There is also a readability cap of thirty-two

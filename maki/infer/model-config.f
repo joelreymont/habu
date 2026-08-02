@@ -1,17 +1,15 @@
 \ model-config.f - the validated model configuration value (package MDLCFG).
 \
 \ CONCERN: one immutable, fully validated model configuration record (mcfg)
-\ whose content identity is a 32-byte CONTENT-KEY digest (cfgkey) minted as the
-\ sole constructor's FINAL act after all validation - no partially validated
-\ value ever carries a key, and no second normalized-config authority exists.
+\ built only by the validating constructor - no partially validated value can
+\ carry the private proof, and no second normalized-config authority exists.
 \
 \ STRUCTURE mcfg = the common behavioral fields shared by both arms
 \ (MAKI:datatype - maki/tensor.f:123 is the sole dtype authority - nctx, nvocab,
 \ nlayer, nembd, nhead, tied-embeddings flag, bos-id, eos-id; special tokens
 \ are behavioral: decode stops on eos) + payload ENUM arch =
 \ gpt2(ln-eps, attn-scale) | llama(nkvhead, ffn-dim, rope-theta, rms-eps) -
-\ no meaningless fields on either arm - + the embedded cfgkey + the
-\ private-mint proof token.
+\ no meaningless fields on either arm - + the private-mint proof token.
 \
 \ The proof is an arity-0 NEWTYPE exactly like maki/typestate.f ART:built's
 \ build-proof (and maki/db/promotion.f's five stage proofs): the engine
@@ -20,22 +18,14 @@
 \ ride inside mcfg while staying constructible ONLY through the private
 \ trusted mint - a raw n in the proof slot is a checker reject. Scope of the
 \ guarantee (shared with ART:built and the promotion proofs): a holder of a
-\ REAL mcfg can UNMAKE and re-MAKE with the stale proof and key; closing that
+\ REAL mcfg can UNMAKE and re-MAKE with the stale proof; closing that
 \ needs the sealed-destructure/linear-UNMAKE capability tracked by dot.
 \
 \ mcfg is the CURRENT representation and carries no version cell: an old shape
 \ is not a value this type can hold, so no consumer has an unknown-version case
 \ to answer.
 \
-\ cfgkey preimage: every common behavioral field, then the canonical
-\ serialization of the arch payload (variant tag text + payload
-\ fields), all in declared order. Scalar fields fold as their 8 raw
-\ little-endian cell bytes (floats: exact IEEE-754 bits, no decimal
-\ rendering); the dtype folds as its MAKI:DT-KEY wire text; flags normalize
-\ to 1/0 before folding. Every CONTENT-KEY:TEXT+ row is tag- and
-\ length-delimited by the library, so adjacent fields cannot alias.
-\
-\ Constructor validation, all BEFORE the key mints, each class a named throw:
+\ Constructor validation, all before the proof mints, each class a named throw:
 \ positive extents with overflow-checked composed products (vocab*embed,
 \ ctx*embed, and per-arm embed*ffn); head-dim divisibility;
 \ special-token range; GQA divisibility on the llama arm; positive arm
@@ -44,7 +34,6 @@
 \ maki -> habu only. Owns -5640..-5649.
 
 require lib/prelude.f
-require lib/content-key.f
 require maki/tensor.f
 
 package MDLCFG
@@ -64,11 +53,6 @@ ENUM arch 0
    VARIANT llama FIELD nkvhead n  FIELD ffn-dim n  FIELD rope-theta r  FIELD rms-eps r ;VARIANT
 ;ENUM
 
-\ ---- the 32-byte content identity as four n cells ----------------------------
-STRUCTURE cfgkey 0 DERIVE eq
-   FIELD k0 n  FIELD k1 n  FIELD k2 n  FIELD k3 n
-;STRUCTURE
-
 \ ---- the private-mint proof (see header: arity-0 nominal, ART:built shape) ---
 NEWTYPE cfg-proof 0
 
@@ -83,7 +67,6 @@ STRUCTURE mcfg 0
    FIELD bos n
    FIELD eos n
    FIELD arm arch
-   FIELD key cfgkey
    FIELD tok cfg-proof
 ;STRUCTURE
 
@@ -92,9 +75,6 @@ private
 TRUSTED: MINT-CFG-PROOF ( -- cfg-proof )  0 ;
 
 $7FFFFFFFFFFFFFFF constant MAX-N
-
-create NSCR 8 allot                \ one-cell fold scratch (cell bits -> raw bytes)
-create KBUF 32 allot               \ CONTENT-KEY:FINAL digest landing pad
 
 \ ---- checked validation helpers ----------------------------------------------
 : N-POS ( n -- )
@@ -140,80 +120,37 @@ create KBUF 32 allot               \ CONTENT-KEY:FINAL digest landing pad
       llama OF nh ne V-LLAMA ENDOF
    ;MATCH ;
 
-\ ---- cfgkey preimage folds -----------------------------------------------------
-: FOLD-N ( n -- )
-   NSCR !  NSCR 8 CONTENT-KEY:TEXT+ ;
-
-: FOLD-R ( r -- )
-   NSCR !  NSCR 8 CONTENT-KEY:TEXT+ ;
-
-: FOLD-B ( bool -- )
-   if 1 else 0 then FOLD-N ;
-
-: FOLD-DT ( MAKI:datatype -- )
-   MAKI:DT-KEY CONTENT-KEY:TEXT+ ;
-
-: FOLD-GPT2 ( r bool -- ) {: eps:r sc:bool :}
-   s" gpt2" CONTENT-KEY:TEXT+
-   eps FOLD-R  sc FOLD-B ;
-
-: FOLD-LLAMA ( n n r r -- ) {: nkv:n ffn:n theta:r reps:r :}
-   s" llama" CONTENT-KEY:TEXT+
-   nkv FOLD-N  ffn FOLD-N  theta FOLD-R  reps FOLD-R ;
-
-: FOLD-ARCH ( arch -- )
-   MATCH arch
-      gpt2  OF FOLD-GPT2 ENDOF
-      llama OF FOLD-LLAMA ENDOF
-   ;MATCH ;
-
-: KEY-FINAL ( -- cfgkey )
-   KBUF CONTENT-KEY:FINAL
-   KBUF 0 cells + @  KBUF 1 cells + @  KBUF 2 cells + @  KBUF 3 cells + @
-   MDLCFG-CFGKEY:MAKE ;
-
 public
 
 \ ---- the sole constructor -------------------------------------------------------
 \ Argument order is the mcfg field order with the wide arm first (deepest) so
-\ the nine scalars bind as entry locals. Every rejection throws BEFORE the key
-\ mint; the key mint is the final act after the folds, then the proof and MAKE.
+\ the nine scalars bind as entry locals. Every rejection throws before the
+\ proof mints.
 : BUILD ( arch MAKI:datatype n n n n n bool n n -- mcfg )
    {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    cx vo nl ne nh V-EXTENTS
    ne nh V-HEAD
    bos vo V-TOKEN  eos vo V-TOKEN
    nh ne V-ARCH
-   CONTENT-KEY:RESET
-   dt FOLD-DT
-   cx FOLD-N  vo FOLD-N  nl FOLD-N  ne FOLD-N  nh FOLD-N
-   te FOLD-B  bos FOLD-N  eos FOLD-N
-   dup FOLD-ARCH
    >r  dt cx vo nl ne nh te bos eos  r>
-   KEY-FINAL  MINT-CFG-PROOF
+   MINT-CFG-PROOF
    MDLCFG-MCFG:MAKE ;
 
 private
 
 \ ---- read projections off a duplicated copy -------------------------------------
 \ mcfg is non-linear: accessors dup the value, UNMAKE the copy, bind the proof
-\ local, and drop or extract the wide fields (key, arm) by whole-bundle
+\ local, and drop or extract the wide arm by whole-bundle
 \ transport. Each public accessor is ( mcfg -- mcfg x ).
 : MC-COMMON ( mcfg -- MAKI:datatype n n n n n bool n n )
    MDLCFG-MCFG:UNMAKE {: tok:cfg-proof :}
-   drop drop ;
+   drop ;
 
 : MC-ARM ( mcfg -- arch )
    MDLCFG-MCFG:UNMAKE {: tok:cfg-proof :}
-   drop >r
+   >r
    2drop 2drop 2drop 2drop drop
    r> ;
-
-: MC-KEY ( mcfg -- cfgkey )
-   MDLCFG-MCFG:UNMAKE {: tok:cfg-proof :}
-   >r >r
-   2drop 2drop 2drop 2drop drop
-   r> drop  r> ;
 
 public
 
@@ -257,12 +194,5 @@ public
 \ ---- the architecture arm ---------------------------------------------------------
 : ARCH@ ( mcfg -- mcfg arch )
    dup MC-ARM ;
-
-\ ---- the content identity ---------------------------------------------------------
-: CFGKEY@ ( mcfg -- mcfg cfgkey )
-   dup MC-KEY ;
-
-: CFGKEY= ( cfgkey cfgkey -- bool )
-   MDLCFG-CFGKEY:EQ ;
 
 ;package

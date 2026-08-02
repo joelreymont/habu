@@ -1,4 +1,4 @@
-\ gpt2-tensor-test.f - GPT2TENSOR acceptance (rev-3 S6a + rev-4 identity design).
+\ gpt2-tensor-test.f - GPT2TENSOR acceptance (rev-3 S6a).
 \
 \ Legs, all through the public package surface:
 \   1. HF tensor-name pins at the real 124M geometry via COPY-NAME? into caller
@@ -26,23 +26,15 @@
 \   5. LAYER-ID range rejects (E-LAYER) and boundary accepts;
 \   6. SLOT bijectivity on the tiny geometry: every slot in
 \      [0, COUNT) hit exactly once and TENSOR-ID-FOR-SLOT returns the exact
-\      tensor identity at every slot; one-over rejects E-SLOT and an inverse
-\      identity resolved under another config rejects E-CONFIG;
-\   7. THE IDENTITY FIXTURE (ratified correction 1): two configs with the
-\      SAME nlayer differing in ONE behavioral field (tied); a layer-id minted
-\      against A used with B rejects E-CONFIG even though its slot is in
-\      bounds for B - with equal nlayer a bounds check can never be the
-\      rejector, so the reject is proven to fire before slot arithmetic;
-\      dropping the identity assertion reds this leg;
-\   8. the re-MAKE forgery caveat: a layer-id rebuilt around LAYER-ID with an
-\      out-of-range or negative index rejects E-LAYER at SLOT and at
-\      the negative-index name render;
-\   9. checker negatives: a global tensor-id cannot carry a layer and a layer
+\      tensor identity at every slot; one-over rejects E-SLOT;
+\   7. the re-MAKE forgery caveat: a layer-id rebuilt around LAYER-ID with a
+\      negative or one-over index rejects E-LAYER through SLOT against the
+\      consuming config;
+\   8. checker negatives: a global tensor-id cannot carry a layer and a layer
 \      tensor-id cannot omit one (by constructor arity/types); reordered layer fields
 \      reject, role families do not cross, MDLCFG's proof in the layer-id slot
-\      rejects (and GPT2TENSOR's proof in the mcfg slot), raw cells forge
-\      neither config key nor proof, and the private mint is unresolvable outside
-\      the package.
+\      rejects (and GPT2TENSOR's proof in the mcfg slot), the removed record
+\      arities reject, and the private mint is unresolvable outside the package.
 
 require lib/prelude.f
 require lib/adt/option.f
@@ -116,11 +108,6 @@ variable HIGH
 : CFG-A ( -- MDLCFG:mcfg )
    EPS0 true MDLCFG-ARCH:GPT2
    DT0 8 5 2 4 2 true 4 4 MDLCFG:BUILD ;
-
-\ SAME nlayer as CFG-A, ONE behavioral field flipped (tied): the identity twin.
-: CFG-B ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 8 5 2 4 2 false 4 4 MDLCFG:BUILD ;
 
 \ extreme-but-valid gpt2 geometry: BUILD accepts nembd = MAX-N (nvocab 1,
 \ nctx 1, nhead 1), so the 3*nembd qkv product must be the overflow rejector.
@@ -496,47 +483,16 @@ variable HIT-I
 : REJECT-SLOT-OVER ( -- )
    CFG-A TINY-CENSUS TEST-INDEX GPT2TENSOR:TENSOR-ID-FOR-SLOT drop drop ;
 
-: CFG-A-SLOT-20-ID ( -- GPT2TENSOR:tensor-id )
-   CFG-A 20 TEST-INDEX GPT2TENSOR:TENSOR-ID-FOR-SLOT >r drop r> ;
-
-: REJECT-INVERSE-FOREIGN ( -- )
-   CFG-B CFG-A-SLOT-20-ID GPT2TENSOR:SLOT drop drop ;
-
-: T-INVERSE-REJECTS ( -- )
-   [: REJECT-SLOT-OVER ;] GPT2TENSOR:E-SLOT TTHROWSQ
-   [: REJECT-INVERSE-FOREIGN ;] GPT2TENSOR:E-CONFIG TTHROWSQ ;
-
-\ ---- 7. THE IDENTITY FIXTURE ---------------------------------------------------------
-\ A layer-id minted against config A, resolved against same-nlayer config B.
-: CFG-A-LAYER-ID-1 ( -- GPT2TENSOR:layer-id )
-   CFG-A 1 GPT2TENSOR:LAYER-ID >r drop r> ;
+: T-INVERSE-REJECT ( -- )
+   [: REJECT-SLOT-OVER ;] GPT2TENSOR:E-SLOT TTHROWSQ ;
 
 : CFG-A-LAYER-ID-0 ( -- GPT2TENSOR:layer-id )
    CFG-A 0 GPT2TENSOR:LAYER-ID >r drop r> ;
 
-: REJECT-FOREIGN-MIDDLE ( -- )
-   CFG-B CFG-A-LAYER-ID-1 GPT2TENSOR-LAYER--ROLE:QKV-W GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT
-   drop drop ;
-
-: REJECT-FOREIGN-LOW ( -- )
-   CFG-B CFG-A-LAYER-ID-0 GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT
-   drop drop ;
-
-: T-FOREIGN ( -- )
-   \ both foreign slots (20 and 4) are strictly inside B's census (30), so a
-   \ bounds check can never be the rejector: E-CONFIG fires before slot math.
-   CFG-B GPT2TENSOR:COUNT 30 T= drop
-   [: REJECT-FOREIGN-MIDDLE ;] GPT2TENSOR:E-CONFIG TTHROWSQ
-   [: REJECT-FOREIGN-LOW ;] GPT2TENSOR:E-CONFIG TTHROWSQ
-   \ positive control: the same layer IDs resolve on their OWN config.
-   CFG-A CFG-A-LAYER-ID-1 GPT2TENSOR-LAYER--ROLE:QKV-W GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT 20 SLOT=
-   CFG-A-LAYER-ID-0 GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT 4 SLOT=
-   drop ;
-
-\ ---- 8. the re-MAKE forgery caveat ----------------------------------------------------
+\ ---- 7. the re-MAKE forgery caveat ----------------------------------------------------
 \ UNMAKE hands back the genuine proof, so a holder can rebuild a layer-id with
-\ an arbitrary index around LAYER-ID (the sealed-destructure gap). The rebuilt
-\ identity passes CFGKEY= but its index must reject E-LAYER.
+\ an arbitrary index around LAYER-ID (the sealed-destructure gap). SLOT must
+\ reject it against the consuming config before any slot arithmetic.
 variable FORGE-INDEX
 
 : FORGE-LAYER-ID ( n -- GPT2TENSOR:layer-id )
@@ -544,16 +500,16 @@ variable FORGE-INDEX
    CFG-A-LAYER-ID-0 GPT2TENSOR-LAYER--ID:UNMAKE {: i:n tok:layer-proof :}
    FORGE-INDEX @ tok GPT2TENSOR-LAYER--ID:MAKE ;
 
-: REJECT-FORGED-LARGE ( -- )
-   CFG-A 999 FORGE-LAYER-ID GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT
+: REJECT-FORGED-ONE-OVER ( -- )
+   CFG-A 2 FORGE-LAYER-ID GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT
    drop drop ;
 
 : REJECT-FORGED-NEGATIVE ( -- )
-   -1 FORGE-LAYER-ID GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER
-   NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF drop ;
+   CFG-A -1 FORGE-LAYER-ID GPT2TENSOR-LAYER--ROLE:LN1-G GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT
+   drop drop ;
 
 : T-FORGED ( -- )
-   [: REJECT-FORGED-LARGE ;] GPT2TENSOR:E-LAYER TTHROWSQ
+   [: REJECT-FORGED-ONE-OVER ;] GPT2TENSOR:E-LAYER TTHROWSQ
    [: REJECT-FORGED-NEGATIVE ;] GPT2TENSOR:E-LAYER TTHROWSQ ;
 
 T-RESET
@@ -571,11 +527,10 @@ T-EDGES
 T-LAYER-RANGE
 T-SLOTS
 T-BIJECT
-T-INVERSE-REJECTS
-T-FOREIGN
+T-INVERSE-REJECT
 T-FORGED
 
-\ ---- 9. checker negatives -------------------------------------------------------
+\ ---- 8. checker negatives -------------------------------------------------------
 \ SLOT preserves the nominal index role through the public boundary.
 s" SLOT-OK ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg CAD-NUM:index ) GPT2TENSOR:SLOT" YES
 s" SLOT-RAW ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg n ) GPT2TENSOR:SLOT" NO
@@ -596,14 +551,15 @@ s" LAYER-WRONG-ORDER ( GPT2TENSOR:layer-role GPT2TENSOR:layer-id -- GPT2TENSOR:t
 s" LAYER-WRONG-ROLE ( GPT2TENSOR:layer-id GPT2TENSOR:global-role -- GPT2TENSOR:tensor-id ) GPT2TENSOR-TENSOR--ID:LAYER" NO
 s" GLOBAL-WRONG-ROLE ( GPT2TENSOR:layer-role -- GPT2TENSOR:tensor-id ) GPT2TENSOR-TENSOR--ID:GLOBAL" NO
 \ the layer-id MAKE certifies only with a genuine GPT2TENSOR proof...
-s" LAYER-ID-OK ( MDLCFG:cfgkey n GPT2TENSOR:layer-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" YES
-s" LAYER-ID-RAW-PROOF ( MDLCFG:cfgkey n n -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
+s" LAYER-ID-OK ( n GPT2TENSOR:layer-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" YES
+s" LAYER-ID-RAW-PROOF ( n n -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
 \ ...MDLCFG's proof cannot substitute (cross-package proof domains), nor can
 \ GPT2TENSOR's proof seal an mcfg...
-s" LAYER-ID-WRONG-PROOF ( MDLCFG:cfgkey n MDLCFG:cfg-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
-s" CONFIG-WRONG-PROOF ( n MAKI:datatype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey GPT2TENSOR:layer-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
-\ ...raw cells are not a cfgkey, and the private mint is unresolvable outside.
-s" LAYER-ID-RAW-KEY ( n n n n n GPT2TENSOR:layer-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
+s" LAYER-ID-WRONG-PROOF ( n MDLCFG:cfg-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
+s" CONFIG-WRONG-PROOF ( MAKI:datatype n n n n n bool n n MDLCFG:arch GPT2TENSOR:layer-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
+\ ...the removed generated record cell's old arity rejects, and the private
+\ mint is unresolvable outside.
+s" LAYER-ID-OLD-MAKE ( n n GPT2TENSOR:layer-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
 s" PRIVATE-MINT ( -- GPT2TENSOR:layer-proof ) GPT2TENSOR:MINT-LAYER-PROOF" UNK
 s" BARE-PRIVATE-MINT ( -- GPT2TENSOR:layer-proof ) MINT-LAYER-PROOF" UNK
 \ a tensor-id is nominal: neither an orientation value nor a raw n can stand in the

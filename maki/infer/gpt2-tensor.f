@@ -1,9 +1,8 @@
-\ gpt2-tensor.f - the GPT-2 tensor vocabulary and typed identity (package
-\ GPT2TENSOR; inference design rev 3 S6a, blackboard 20260724-185632.302, as
-\ amended by the rev-4 identity design, 20260724-191041.846).
+\ gpt2-tensor.f - the GPT-2 tensor vocabulary and typed layer index (package
+\ GPT2TENSOR; inference design rev 3 S6a, blackboard 20260724-185632.302).
 \
 \ CONCERN: one typed name for every tensor in a HuggingFace GPT-2 checkpoint,
-\ plus the authenticated layer identity those names ride on. ENUM `global-role` is
+\ plus the nominal layer index those names ride on. ENUM `global-role` is
 \ the four checkpoint-global tensors and ENUM `layer-role` the thirteen per-layer
 \ tensors; `tensor-id` = global(global-role) | layer(layer-id, layer-role), so
 \ BY CONSTRUCTION a global tensor cannot carry a layer and a layer tensor
@@ -49,25 +48,17 @@
 \ exactly as stored. This is a GPT-2 checkpoint convention, not a property
 \ derivable from the data.
 \
-\ AUTHENTICATED LAYER IDENTITY (rev-4 correction 1). STRUCTURE `layer-id`
-\ embeds the minting config's content key: (MDLCFG:cfgkey, index, private
-\ GPT2TENSOR proof). The sole constructor LAYER-ID ( mcfg n -- mcfg layer-id )
-\ validates n against NLAYER@ (E-LAYER) AND captures that mcfg's cfgkey.
-\ SLOT's layer arm asserts CFGKEY= between the layer-id's embedded key and
-\ the consuming mcfg's key BEFORE any slot arithmetic - a layer-id minted
-\ against a different behavioral config throws E-CONFIG even when its
-\ index would be in bounds. By spec the identity assertion lives ONLY in
-\ SLOT: a foreign layer-id passes SHAPE and ORIENTATION (both are
-\ layer-value-independent) and rejects at the table row - fail-closed, but
-\ late by design; do not widen. The proof is an arity-0 NEWTYPE exactly
-\ like MDLCFG's cfg-proof (see model-config.f header for the engine
-\ constraint and the UNMAKE/re-MAKE scope caveat, closed by the
-\ sealed-destructure dot). Because that caveat still lets a holder re-MAKE a
-\ layer-id around LAYER-ID with an arbitrary index, SLOT revalidates the
-\ embedded index against [0, nlayer) and rejects E-LAYER - the same code
-\ LAYER-ID uses, because it is the same violated contract - BEFORE the slot
-\ multiply, so the returned slot is inside [0, COUNT) unconditionally
-\ and a forged index can neither read a wrong row nor wrap the arithmetic.
+\ NOMINAL LAYER INDEX. STRUCTURE `layer-id` holds an index and a private
+\ GPT2TENSOR proof. The sole constructor LAYER-ID ( mcfg n -- mcfg layer-id )
+\ validates n against NLAYER@ (E-LAYER) before minting. The proof is an
+\ arity-0 NEWTYPE exactly like MDLCFG's cfg-proof (see model-config.f header
+\ for the engine constraint and the UNMAKE/re-MAKE scope caveat, closed by
+\ the sealed-destructure dot). Because that caveat still lets a holder re-MAKE
+\ a layer-id around LAYER-ID with an arbitrary index, SLOT revalidates the
+\ embedded index against its consuming mcfg on every lookup and rejects
+\ E-LAYER before slot arithmetic. The returned slot is therefore inside
+\ [0, COUNT) unconditionally, and a forged index can neither select a wrong
+\ row nor wrap the arithmetic.
 \
 \ SHAPE ENCODING. SHAPE ( mcfg tensor-id -- mcfg n n n n n ) returns
 \ rank d0 d1 d2 d3: rank in {1,2,4}, dims exactly as the checkpoint header
@@ -85,7 +76,7 @@
 \ is sized by the static bound in the NAME-CAP comment and never escapes.
 \
 \ ARM SCOPE. Every derivation here reads only the COMMON mcfg fields (nctx,
-\ nvocab, nlayer, nembd) plus cfgkey; which adapter runs against which arch
+\ nvocab, nlayer, nembd); which adapter runs against which arch
 \ arm is the loader's dispatch concern (S6b), not this vocabulary's.
 \
 \ maki -> habu only. Owns -5650..-5659.
@@ -101,7 +92,6 @@ public
 
 \ ---- named rejection codes ----------------------------------------------------
 -5650 constant E-LAYER   \ a layer index outside [0, nlayer), fresh or embedded
--5651 constant E-CONFIG  \ layer-id minted against a different behavioral config
 -5652 constant E-SIZE    \ a composed shape/census product overflows a cell
 -5653 constant E-SLOT    \ a slot outside this config's tensor census
 
@@ -139,9 +129,8 @@ ENUM orientation DERIVE eq
 \ ---- the private-mint proof (arity-0 nominal; MDLCFG cfg-proof shape) -----------
 NEWTYPE layer-proof 0
 
-\ ---- authenticated layer identity: cfgkey copy + index + private proof ----------
+\ ---- nominal layer index: checked index + private proof ------------------------
 STRUCTURE layer-id 0
-   FIELD key MDLCFG:cfgkey
    FIELD idx n
    FIELD tok layer-proof
 ;STRUCTURE
@@ -177,9 +166,8 @@ variable NAME-LEN
    a MAX-N b / > if E-SIZE throw then
    a b * ;
 
-\ shared index range gate: LAYER-ID validates a fresh index, SLOT-LAYER revalidates
-\ the embedded one against the identity-matched config (see header on the
-\ UNMAKE/re-MAKE forgery caveat).
+\ shared index range gate: LAYER-ID validates a fresh index; SLOT-LAYER
+\ revalidates the embedded one against its consuming config.
 : CHECK-LAYER-INDEX ( MDLCFG:mcfg n -- MDLCFG:mcfg n ) {: i:n :}
    i 0 < if E-LAYER throw then
    MDLCFG:NLAYER@ i > 0= if E-LAYER throw then
@@ -190,7 +178,7 @@ public
 \ ---- the sole layer-id constructor -------------------------------------------------
 : LAYER-ID ( MDLCFG:mcfg n -- MDLCFG:mcfg layer-id )
    CHECK-LAYER-INDEX {: i:n :}
-   MDLCFG:CFGKEY@ i MINT-LAYER-PROOF GPT2TENSOR-LAYER--ID:MAKE ;
+   i MINT-LAYER-PROOF GPT2TENSOR-LAYER--ID:MAKE ;
 
 \ ---- census: 4 + 13*nlayer, overflow-checked --------------------------------------
 \ The pre-check bounds nlayer so the multiply AND the add both fit a cell.
@@ -229,7 +217,7 @@ private
 
 : LAYER-INDEX ( layer-id -- n )
    GPT2TENSOR-LAYER--ID:UNMAKE {: i:n tok:layer-proof :}
-   drop i ;
+   i ;
 
 : APPEND-NAME ( ptr u8 n -- )
    dup >r
@@ -355,21 +343,14 @@ private
       mproj-b OF 12 ENDOF
    ;MATCH ;
 
-\ the identity assertion: the layer-id's embedded key must be THIS mcfg's key.
-: ASSERT-OWN ( MDLCFG:mcfg MDLCFG:cfgkey -- MDLCFG:mcfg )
-   >r MDLCFG:CFGKEY@ r> MDLCFG:CFGKEY=
-   0= if E-CONFIG throw then ;
-
 : SLOT-GLOBAL ( MDLCFG:mcfg global-role -- MDLCFG:mcfg n )
    GLOBAL-ORD ;
 
-\ Order: E-CONFIG identity FIRST; then the embedded index revalidates
-\ against the now-proven-same config (E-LAYER, header forgery note);
-\ COUNT then proves 4 + 13*nlayer fits a cell. After those three gates
-\ the multiply cannot wrap and the slot is in [GLOBAL-COUNT, census) always.
+\ The embedded index revalidates against the consuming config on every lookup;
+\ COUNT then proves 4 + 13*nlayer fits a cell. After those gates the multiply
+\ cannot wrap and the slot is in [GLOBAL-COUNT, census) always.
 : SLOT-LAYER ( MDLCFG:mcfg layer-id layer-role -- MDLCFG:mcfg n ) {: br:layer-role :}
-   GPT2TENSOR-LAYER--ID:UNMAKE drop
-   >r ASSERT-OWN r>
+   LAYER-INDEX
    CHECK-LAYER-INDEX
    >r COUNT drop r>
    LAYER-ROLE-COUNT * br LAYER-ORD + GLOBAL-COUNT + ;
@@ -467,8 +448,8 @@ public
    ;MATCH ;
 
 \ ---- dense slot: globals 0..3, then 4 + layer*13 + role ordinal ---------------------
-\ The layer arm asserts identity (E-CONFIG) BEFORE any slot arithmetic,
-\ then revalidates the embedded index (E-LAYER; see header).
+\ The layer arm revalidates the embedded index against its consuming config
+\ before any slot arithmetic (E-LAYER; see header).
 : SLOT ( MDLCFG:mcfg tensor-id -- MDLCFG:mcfg CAD-NUM:index )
    MATCH tensor-id
       global OF SLOT-GLOBAL ENDOF

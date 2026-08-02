@@ -3,15 +3,12 @@
 \ Legs, all through the public package surface:
 \   1. both arms construct (llama constructor-tested from day one), and their
 \      common accessors and payload projections return the built fields;
-\   2. cfgkey sensitivity: byte-identical configs compare equal; flipping any
-\      ONE behavioral field (dtype, each geometry field, the flag, each special
-\      token, each arm payload field, the arm itself) flips the key;
-\   3. constructor rejections per field class, each a named throw raised
-\      BEFORE the key mints;
-\   4. checker negatives: a raw n in the proof slot rejects, the private mint
-\      is unresolvable outside the package, the gpt2 arm rejects a GQA-shaped
-\      field by construction, and a cfgkey is not two raw cells;
-\   5. the version cell is gone for good: the old constructor arity no longer
+\   2. constructor rejections per field class, each a named throw raised
+\      before the proof mints;
+\   3. checker negatives: old generated record arity and a raw n in the proof
+\      slot reject, the private mint is unresolvable outside the package, and
+\      the gpt2 arm rejects a GQA-shaped field by construction;
+\   4. the version cell is gone for good: the old constructor arity no longer
 \      certifies, both public schema words are unresolvable, and the live type
 \      registry holds no `sv` slot in mcfg.
 
@@ -48,24 +45,20 @@ $7FFFFFFFFFFFFFFF constant HUGE
 
 : G-ARM ( -- MDLCFG:arch )  EPS0 true MDLCFG-ARCH:GPT2 ;
 : G-ARM-EPS ( r -- MDLCFG:arch )  true MDLCFG-ARCH:GPT2 ;
-: G-ARM-SC ( bool -- MDLCFG:arch )  EPS0 swap MDLCFG-ARCH:GPT2 ;
 : L-ARM ( -- MDLCFG:arch )  4 11008 THETA0 RMSEPS0 MDLCFG-ARCH:LLAMA ;
 
 \ ---- builders: an arm over the fixed gpt2/llama commons ----------------------
-: KOF ( MDLCFG:mcfg -- MDLCFG:cfgkey )
-   MDLCFG:CFGKEY@ >r drop r> ;
-
 : B-G ( -- MDLCFG:mcfg )
    G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD ;
 
 : B-L ( -- MDLCFG:mcfg )
    L-ARM DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD ;
 
-: BG-WITH ( MDLCFG:arch -- MDLCFG:cfgkey )
-   DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
+: BG-WITH ( MDLCFG:arch -- MDLCFG:mcfg )
+   DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD ;
 
-: BL-WITH ( MDLCFG:arch -- MDLCFG:cfgkey )
-   DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD KOF ;
+: BL-WITH ( MDLCFG:arch -- MDLCFG:mcfg )
+   DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD ;
 
 \ ---- payload projections -----------------------------------------------------
 : GP-EPS ( r bool -- r ) {: eps:r sc:bool :}  eps ;
@@ -143,63 +136,16 @@ $7FFFFFFFFFFFFFFF constant HUGE
    MDLCFG:ARCH@ ARM-REPS RMSEPS0 f= TTRUE
    drop ;
 
-\ ---- 2. cfgkey sensitivity ----------------------------------------------------
-: K-BASE ( -- MDLCFG:cfgkey )  B-G KOF ;
-: K-L ( -- MDLCFG:cfgkey )  B-L KOF ;
-
-: K-DT ( MAKI:datatype -- MDLCFG:cfgkey ) {: v:MAKI:datatype :}
-   G-ARM v CX0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
-: K-CX ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM DT0 v VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
-: K-VO ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM DT0 CX0 v NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
-: K-NL ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM DT0 CX0 VO0 v NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
-: K-NE ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM DT0 CX0 VO0 NL0 v NH0 true BOS0 EOS0 MDLCFG:BUILD KOF ;
-: K-NH ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM DT0 CX0 VO0 NL0 NE0 v true BOS0 EOS0 MDLCFG:BUILD KOF ;
-: K-TE ( bool -- MDLCFG:cfgkey ) {: v:bool :}
-   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 v BOS0 EOS0 MDLCFG:BUILD KOF ;
-: K-BOS ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true v EOS0 MDLCFG:BUILD KOF ;
-: K-EOS ( n -- MDLCFG:cfgkey ) {: v:n :}
-   G-ARM DT0 CX0 VO0 NL0 NE0 NH0 true BOS0 v MDLCFG:BUILD KOF ;
-: K-EPS ( r -- MDLCFG:cfgkey )  G-ARM-EPS BG-WITH ;
-: K-SC ( bool -- MDLCFG:cfgkey )  G-ARM-SC BG-WITH ;
-\ the llama arm over the SAME gpt2 commons: only the arm differs from K-BASE.
-: K-GL ( -- MDLCFG:cfgkey )
-   4 3072 THETA0 RMSEPS0 MDLCFG-ARCH:LLAMA BG-WITH ;
-: KL-NKV ( n -- MDLCFG:cfgkey ) {: v:n :}
+: KL-NKV ( n -- MDLCFG:mcfg ) {: v:n :}
    v 11008 THETA0 RMSEPS0 MDLCFG-ARCH:LLAMA BL-WITH ;
-: KL-FFN ( n -- MDLCFG:cfgkey ) {: v:n :}
+: KL-FFN ( n -- MDLCFG:mcfg ) {: v:n :}
    4 v THETA0 RMSEPS0 MDLCFG-ARCH:LLAMA BL-WITH ;
-: KL-THETA ( r -- MDLCFG:cfgkey ) {: v:r :}
+: KL-THETA ( r -- MDLCFG:mcfg ) {: v:r :}
    4 11008 v RMSEPS0 MDLCFG-ARCH:LLAMA BL-WITH ;
-: KL-REPS ( r -- MDLCFG:cfgkey ) {: v:r :}
+: KL-REPS ( r -- MDLCFG:mcfg ) {: v:r :}
    4 11008 THETA0 v MDLCFG-ARCH:LLAMA BL-WITH ;
 
-: T-KEYS ( -- )
-   K-BASE K-BASE MDLCFG:CFGKEY= TTRUE
-   K-L K-L MDLCFG:CFGKEY= TTRUE
-   K-BASE MAKI-DATATYPE:DF16 K-DT MDLCFG:CFGKEY= TFALSE
-   K-BASE 2048 K-CX MDLCFG:CFGKEY= TFALSE
-   K-BASE 60000 K-VO MDLCFG:CFGKEY= TFALSE
-   K-BASE 24 K-NL MDLCFG:CFGKEY= TFALSE
-   K-BASE 1536 K-NE MDLCFG:CFGKEY= TFALSE
-   K-BASE 8 K-NH MDLCFG:CFGKEY= TFALSE
-   K-BASE false K-TE MDLCFG:CFGKEY= TFALSE
-   K-BASE 0 K-BOS MDLCFG:CFGKEY= TFALSE
-   K-BASE 0 K-EOS MDLCFG:CFGKEY= TFALSE
-   K-BASE 0.000001 K-EPS MDLCFG:CFGKEY= TFALSE
-   K-BASE false K-SC MDLCFG:CFGKEY= TFALSE
-   K-BASE K-GL MDLCFG:CFGKEY= TFALSE
-   K-L 8 KL-NKV MDLCFG:CFGKEY= TFALSE
-   K-L 8192 KL-FFN MDLCFG:CFGKEY= TFALSE
-   K-L 500000.0 KL-THETA MDLCFG:CFGKEY= TFALSE
-   K-L 0.00001 KL-REPS MDLCFG:CFGKEY= TFALSE ;
-
-\ ---- 3. constructor rejections per field class --------------------------------
+\ ---- 2. constructor rejections per field class --------------------------------
 : RJ-CX ( -- )
    G-ARM DT0 0 VO0 NL0 NE0 NH0 true BOS0 EOS0 MDLCFG:BUILD drop ;
 : RJ-VO ( -- )
@@ -258,14 +204,15 @@ T-RESET
 
 T-GPT2
 T-LLAMA
-T-KEYS
 T-REJECTS
 
-\ ---- 4. checker negatives -----------------------------------------------------
+\ ---- 3. checker negatives -----------------------------------------------------
 \ the generated raw MAKE certifies only with a genuine proof value...
-s" MCP-MAKE ( MAKI:datatype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey MDLCFG:cfg-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" YES
+s" MCP-MAKE ( MAKI:datatype n n n n n bool n n MDLCFG:arch MDLCFG:cfg-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" YES
 \ ...a raw n in the proof slot type-rejects...
-s" MCN-PROOF ( MAKI:datatype n n n n n bool n n MDLCFG:arch MDLCFG:cfgkey n -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
+s" MCN-PROOF ( MAKI:datatype n n n n n bool n n MDLCFG:arch n -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
+\ ...and the removed record cell's old generated arity no longer certifies.
+s" MCN-OLD-MAKE ( MAKI:datatype n n n n n bool n n MDLCFG:arch n MDLCFG:cfg-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
 \ ...and the private mint is unresolvable outside package MDLCFG (verdict 1),
 \ qualified or bare, so the proof cannot be produced around BUILD.
 s" MCN-MINT ( -- MDLCFG:cfg-proof ) MDLCFG:MINT-CFG-PROOF" UNK
@@ -276,10 +223,8 @@ s" MCP-G ( r bool -- MDLCFG:arch ) MDLCFG-ARCH:GPT2" YES
 s" MCN-GQA ( n r bool -- MDLCFG:arch ) MDLCFG-ARCH:GPT2" NO
 s" MCN-GQA2 ( n n r r -- MDLCFG:arch ) MDLCFG-ARCH:GPT2" NO
 s" MCP-L ( n n r r -- MDLCFG:arch ) MDLCFG-ARCH:LLAMA" YES
-\ a cfgkey is a nominal value, not raw cells.
-s" MCN-KEYRAW ( n n -- bool ) MDLCFG:CFGKEY=" NO
 
-\ ---- 5. the version cell is unrepresentable, not merely unused ----------------
+\ ---- 4. the version cell is unrepresentable, not merely unused ----------------
 \ The old eleven-input arity no longer certifies, so a caller that still hands
 \ BUILD a version cannot be written at all.
 s" MCN-OLDARITY ( MDLCFG:arch n MAKI:datatype n n n n n bool n n -- MDLCFG:mcfg ) MDLCFG:BUILD" NO
@@ -298,7 +243,7 @@ using REFLECT
    s" mcfg" s" MDLCFG-MCFG" FAMS 1 T=
    s" mcfg" s" MDLCFG-MCFG" s" sv" SLOT -1 T=
    s" mcfg" s" MDLCFG-MCFG" s" dt" SLOT 0 T=
-   s" mcfg" s" MDLCFG-MCFG" FLDS 12 T=
+   s" mcfg" s" MDLCFG-MCFG" FLDS 11 T=
 ;using
 
 T-REPORT
