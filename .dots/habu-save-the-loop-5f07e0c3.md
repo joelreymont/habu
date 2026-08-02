@@ -1,9 +1,11 @@
 ---
 title: Save the loop state across a chain call
-status: open
+status: active
 priority: 1
 issue-type: task
-created-at: "2026-08-02T13:09:48.255433+02:00"
+created-at: "\"2026-08-02T13:09:48.255433+02:00\""
 ---
 
 A chain-compiled routine that CALLS another chain-compiled routine from inside a ?do body computes the wrong answer, and faults when the body stores through addresses the callee returned. Minimal reproducer, on this tree, through the production entry NMIGRATE:DEFINE / DEFINE-CALLING: callee ': DBL-N ( n -- n ) dup + ;' migrated with 1 1 4; caller ': LC-N ( n -- n ) 0 swap 0 ?do i DBL-N + loop ;' migrated with 1 1 12 and DBL-N's record address. '4 LC-N' answers 0; the engine's own code for the same body answers 12. A body with no loop index, ': F ( n -- n ) 0 swap 0 ?do 3 DBL-N + loop ;', answers 36 where 24 is right - the loop ran six turns instead of four, so it is the loop's own counter that is corrupted and not only the carried value. NARROWING: the same call in a 'begin ... until' BODY is right; the same call in a 'begin ... while' TEST is right (tools/codegen-compare-corpus2.f measures exactly that as T-RES-WALK); the same ?do body with NO call is right; and the same ?do body calling an ENGINE-compiled word is right. HYPOTHESIS: src/compiler/native/abi.f gives both caller and callee a register pool based at register 0 and declares the whole callee pool destroyed, and the call site in src/compiler/native/select.f saves the compile-time value vector into data-stack slots but not the ?do loop's index, limit and block-argument registers - so any callee that keeps its declared contract destroys them. An engine-compiled callee survives only because the engine's emitter happens not to touch those registers, which is why the benchmark does NOT use the interop to make the row green. Fix the site (or the loop lowering) so loop state crosses a call by construction, and add an acceptance case in test/compiler/native-migrate.f for a call in a ?do body with a chain-compiled callee. Then retire the gap row for CODEGEN-CORPUS2:VEC-COPY-CELLS in tools/codegen-compare-new2.f and regenerate test/compiler/codegen-compare-baseline2.txt.
+
+Claim: agent=loopfix workspace=.jj-ws/habu-save-the-loop-5f07e0c3
