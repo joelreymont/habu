@@ -4460,3 +4460,59 @@ numbers in different cells, so a pinned `-0.0` input catches a code generator
 that dropped the sign of a zero, and two NaNs are equal cells while being unequal
 numbers, so two rows produced by two different words can be asserted to carry the
 same NaN. Neither test would exist if the harness had recorded a rounded decimal.
+
+## Re-derive the engine's number reader, bug for bug, or the literal is a different program
+
+The source tape has to record a float literal's VALUE, and the engine's own
+parser is not reachable from the compiler - so the value is read back from the
+spelling, exactly as the integer literal already was. The temptation is to use
+the stdlib's `STR>FLOAT`, which is a better parser: it accumulates the
+significand in a double and scales by a power of ten. The engine does something
+else - two integer accumulators and a power of ten, finished with three SCVTFs,
+one FDIV and one FADD - and the two routes do not agree on every spelling. A
+compiled literal one bit from the interpreted literal is a different program, so
+the reader reproduces the engine's route instruction for instruction, wrapping
+accumulator and all. It reads `0.1234567890123456789` as a NEGATIVE cell because
+the engine does, and a test compares it against the engine's own literal on ten
+spellings rather than against a table of expected numbers. When the reader bug is
+repaired the test goes red and points at the file that has to move with it, which
+is what keeps two independently-correct parsers from being two different
+compilers.
+
+## A second register file is a second FILE, not a second flag
+
+d0 and x0 are two registers and both are number zero, so every allocator table
+keyed by a register number has to be keyed by the file and the number together -
+the holder table, the pins, the reload list, the free scan, the eviction scan,
+and the pressure count that decides whether to spill. Making the class a flag
+beside a shared table looks smaller and is wrong in a way nothing catches: a
+routine that ran out of general registers would be "relieved" by a free floating
+one. The mutation that proves the tables are really split is to make the float
+file hand out one register: two live doubles then land in d0 and the validator
+refuses with its own overlap error, which it can only do because it re-derives
+the class from the value's TYPE rather than believing the allocator.
+
+## Ask the module for a value's type; a second record is the one that gets believed
+
+The elaborator needed to know whether a compile-time value is a double. The
+obvious move is a buffer beside the value vector holding one type per slot - and
+it is a second record of something the module already holds, which means it can
+disagree with the module and would be the one every reader here consults. Adding
+one live reader to the builder instead (`IR-BUILD:VALUE-TYPE@`) made the module
+the only authority, and the same discipline caught a real bug one stage down:
+the selector's float predicate reads the SOURCE module's types, and handing it a
+value of the NEW module threw an ownership error from a table that had every
+right to refuse. Two modules, two numbering spaces, one question - ask it of the
+module that minted the value.
+
+## A form no program reaches is a promise, so take it out
+
+The floating frame accesses and the floating register move were written,
+encoded and wired through four files before it became clear that nothing in this
+leaf can reach them: a routine's contract hands out the whole D file, so no
+double can run short of registers, and a double may not cross a block edge, so
+no double is ever copied. Half-tested machinery is worse than absent machinery -
+it looks like coverage and it rots. They came out, `spill.f` refuses a double it
+would have to put away by name, and the dot for the leaf that reaches them says
+where they land. The dialect's own header had already written the rule down:
+an opcode with no lowering and no test is a promise, not a schema.

@@ -401,4 +401,3 @@ variable LIE   variable LIONES
 : ENC-SCVTF ( n n -- n ) DR2 XREG? $9E620000 RR ;
 
 : ENC-FCVTZS ( n n -- n ) DR2 XR2ND $9E780000 RR ;
-
