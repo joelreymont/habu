@@ -209,8 +209,8 @@ create FORGE-BUF FS-PATH-CAP allot    variable FORGE-U
    s" corrupt protected-WID variant exists" T-LABEL
    BAD-HB$ EXISTS? TTRUE
    BAD-HB$ s" " FORGE-LOAD
-   s" corrupt protected-WID count exits AOT-SEED-RC" T-LABEL
-   EXITED @ TTRUE  RC @ AOT-SEED-RC T=
+   s" corrupt protected-WID count exits ENGINE-ERROR:AOT-SEED" T-LABEL
+   EXITED @ TTRUE  RC @ ENGINE-ERROR:AOT-SEED T=
    s" corrupt protected-WID count prints the named diagnostic" T-LABEL
    ERR$ s" hb: AOT protected-WID corrupt" CONTAINS? TTRUE
    s" corrupt protected-WID diagnostic ends in newline" T-LABEL

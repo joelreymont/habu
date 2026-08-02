@@ -74,76 +74,56 @@
 \ text (CODELEN 135252 -> 134860). The direct-BL landing had left the scan a no-op; the
 \ shave crosses back under the 4 KiB floor the munmap primitive had pushed the file over,
 \ so the whole-file total drops one page. Exact rows in test/gate-size-attribution-test.f.
-148855 constant GB-SIZE-BASELINE-MACOS
-123072 constant GB-SIZE-BASELINE-LINUX
+package BUILD-SIZE
 
-0 constant GB-SIZE-OK
-1 constant GB-SIZE-GROWN
-2 constant GB-SIZE-SHRUNK
-3 constant GB-SIZE-MISSING
+148855 constant BASELINE-MACOS
+123072 constant BASELINE-LINUX
 
-: GB-SIZE-BASELINE ( -- n )
-   HB-TARGET-MACOS? if GB-SIZE-BASELINE-MACOS exit then
-   HB-TARGET-LINUX? if GB-SIZE-BASELINE-LINUX exit then
+: BASELINE ( -- n )
+   HB-TARGET-MACOS? if BASELINE-MACOS exit then
+   HB-TARGET-LINUX? if BASELINE-LINUX exit then
    0 ;
 
-: GB-SIZE-CLASS ( n n -- n ) {: sz:n base:n :}
-   base 0= if GB-SIZE-MISSING exit then
-   sz base > if GB-SIZE-GROWN exit then
-   sz base < if GB-SIZE-SHRUNK exit then
-   GB-SIZE-OK ;
-
-: GB-SIZE-PAIR. ( n n -- ) {: sz:n base:n :}
-   s" candidate " type sz .
-   s" baseline " type base . ;
-
-: GB-SIZE-GROWN-FAIL ( n n -- )
-   GB-SIZE-PAIR. cr
+: GROWN-FAIL ( n n -- )
+   ENGINE-GATE:SIZE-PAIR. cr
    s" candidate size ratchet: grew past test/gate-build-size.f baseline" GE-FAIL ;
 
-: GB-SIZE-STALE-FAIL ( n n -- )
+: STALE-FAIL ( n n -- )
    s" STALE-BASELINE " type
-   GB-SIZE-PAIR. cr
+   ENGINE-GATE:SIZE-PAIR. cr
    s" candidate size ratchet: shrank below baseline - lower the test/gate-build-size.f row in this commit" GE-FAIL ;
 
-: GB-SIZE-MISSING-FAIL ( n n -- )
-   GB-SIZE-PAIR. cr
+: MISSING-FAIL ( n n -- )
+   ENGINE-GATE:SIZE-PAIR. cr
    s" candidate size ratchet: no baseline row for this target - commit the measured size to test/gate-build-size.f" GE-FAIL ;
 
-\ Pure class->action mapping so the wiring itself is testable: 0 = pass,
-\ nonzero = the failing class. Every non-OK class must map to itself.
-: GB-SIZE-ACTION ( n -- n ) {: class:n :}
-   class GB-SIZE-OK = if GB-SIZE-OK exit then
-   class ;
-
-: GB-SIZE-ENFORCE ( n n -- ) {: sz:n base:n :}
-   sz base GB-SIZE-CLASS GB-SIZE-ACTION
+: ENFORCE ( n n -- ) {: sz:n base:n :}
+   sz base ENGINE-GATE:SIZE-CLASS ENGINE-GATE:SIZE-ACTION
    case
-      GB-SIZE-GROWN of sz base GB-SIZE-GROWN-FAIL endof
-      GB-SIZE-SHRUNK of sz base GB-SIZE-STALE-FAIL endof
-      GB-SIZE-MISSING of sz base GB-SIZE-MISSING-FAIL endof
+      ENGINE-GATE:SIZE-GROWN of sz base GROWN-FAIL endof
+      ENGINE-GATE:SIZE-SHRUNK of sz base STALE-FAIL endof
+      ENGINE-GATE:SIZE-MISSING of sz base MISSING-FAIL endof
    endcase ;
 
-: GB-SIZE-CLASS-EXPECT ( n n n -- ) {: sz:n base:n want:n :}
-   sz base GB-SIZE-CLASS want <> if
-      s" candidate size ratchet classifier" GE-FAIL
-   then ;
-
-: GB-SIZE-ACTION-EXPECT ( n n -- ) {: class:n want:n :}
-   class GB-SIZE-ACTION want <> if
+: ACTION-EXPECT ( n n -- ) {: class:n want:n :}
+   class ENGINE-GATE:SIZE-ACTION want <> if
       s" candidate size ratchet action wiring" GE-FAIL
    then ;
 
-: GB-SIZE-SELF-CHECK ( -- )
-   7 7 GB-SIZE-OK GB-SIZE-CLASS-EXPECT
-   8 7 GB-SIZE-GROWN GB-SIZE-CLASS-EXPECT
-   6 7 GB-SIZE-SHRUNK GB-SIZE-CLASS-EXPECT
-   7 0 GB-SIZE-MISSING GB-SIZE-CLASS-EXPECT
-   GB-SIZE-OK GB-SIZE-OK GB-SIZE-ACTION-EXPECT
-   GB-SIZE-GROWN GB-SIZE-GROWN GB-SIZE-ACTION-EXPECT
-   GB-SIZE-SHRUNK GB-SIZE-SHRUNK GB-SIZE-ACTION-EXPECT
-   GB-SIZE-MISSING GB-SIZE-MISSING GB-SIZE-ACTION-EXPECT ;
+: SELF-CHECK ( -- )
+   7 7 ENGINE-GATE:SIZE-OK ENGINE-GATE:SIZE-CLASS-EXPECT
+   8 7 ENGINE-GATE:SIZE-GROWN ENGINE-GATE:SIZE-CLASS-EXPECT
+   6 7 ENGINE-GATE:SIZE-SHRUNK ENGINE-GATE:SIZE-CLASS-EXPECT
+   7 0 ENGINE-GATE:SIZE-MISSING ENGINE-GATE:SIZE-CLASS-EXPECT
+   ENGINE-GATE:SIZE-OK ENGINE-GATE:SIZE-OK ACTION-EXPECT
+   ENGINE-GATE:SIZE-GROWN ENGINE-GATE:SIZE-GROWN ACTION-EXPECT
+   ENGINE-GATE:SIZE-SHRUNK ENGINE-GATE:SIZE-SHRUNK ACTION-EXPECT
+   ENGINE-GATE:SIZE-MISSING ENGINE-GATE:SIZE-MISSING ACTION-EXPECT ;
 
-: GB-SIZE-RATCHET ( ptr u8 n -- )
-   GB-SIZE-SELF-CHECK
-   FILE-SIZE GB-SIZE-BASELINE GB-SIZE-ENFORCE ;
+public
+
+: RATCHET ( ptr u8 n -- )
+   SELF-CHECK
+   FILE-SIZE BASELINE ENFORCE ;
+
+;package

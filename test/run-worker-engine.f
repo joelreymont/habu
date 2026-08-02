@@ -31,7 +31,7 @@ variable TRWE-FORK-ID
       5 of GENG-REPAIR-SLICE endof
       9 of GENG-FIXTURES-SLICE endof
       16 of GENG-RUNTIME-SLICE endof
-      20 of GENG-VALIDATE-SLICE endof
+      20 of ENGINE-GATE:VALIDATE-SLICE endof
       E-TBL-BOUNDS throw
    endcase ;
 

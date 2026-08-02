@@ -30,7 +30,7 @@ $181000 constant DICT-SIZE     \ dict + control-flow stack; code area follows (g
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
-$FFFFFFFE constant WID-LIMIT
+$FFFFFFFE constant WID:MAX
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity band, poked by the
 \ native checker/seal pass (src/habu/layout.f, dot
@@ -90,6 +90,7 @@ $3000 constant LOCNAMES   \ 64 records x 24 B ($3000-$3600); was 16 at DATA+32
 $20 constant FRIEND-ARENA               \ arena base offset within the DATA region
 $90 constant FRIEND-ARENA-LEN           \ 18 cells: latch + 16 crown jewels + seal-ndict watermark
 FRIEND-ARENA constant FRIEND-LATCH-CELL \ 0 = friend on/open, FRIEND-ARENA-LEN = sealed
+82 constant ENGINE-ERROR:AOT-SEED
 $A8 constant SEAL-NDICT-CELL            \ seal-time ndict watermark (TFAM 2b-iii); inside the band so a post-seal store traps
 83 constant ENGINE-ERROR:SEAL-VIOLATION \ process exit status for a post-seal protected write
 84 constant ENGINE-ERROR:SEAL-PACKAGE
@@ -4138,7 +4139,7 @@ variable CFSK2
    17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
    prot-loop LBL,  8 11 CMP,  C-GE widn BCOND,
       14 9 0 LDRW,  14 bad CBZ,
-      5 WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      5 WID:MAX LIT64,  14 5 CMP,  C-HI bad BCOND,
       14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
    prot-max LBL,
       4 0 MOVZ,  5 12 0 ADDI,
@@ -6163,7 +6164,7 @@ variable P2SK
 : EMIT-SOURCE-BYTES ( -- )
    LSRC @ LBL,  SRCA @ SRCN @ BYTES, ;
 
-: EMIT-FORTH ( src-a src-u -- )
+: ENGINE-EMIT:FORTH ( src-a src-u -- )
    SRCN !  SRCA !
    EMIT-RESET-BUILDER
    EMIT-LABELS
@@ -6172,12 +6173,12 @@ variable P2SK
 
 \ Build a standalone native Forth that interprets `src`, write it to `outfile`.
 : FORTH-EXE ( src-a src-u out-a out-u -- )
-   2>r  EMIT-FORTH  2r> EMIT-EXE ;
+   2>r  ENGINE-EMIT:FORTH  2r> EMIT-EXE ;
 
 : FORTH-BUILD-EXE ( src-a src-u out-a out-u -- )
    2>r
    BUILD-SOURCE? on
-   ['] EMIT-FORTH catch
+   ['] ENGINE-EMIT:FORTH catch
    BUILD-SOURCE? off
    throw
    2r> EMIT-EXE ;
@@ -6185,5 +6186,5 @@ variable P2SK
 \ Build a standalone native Forth that reads its program from STDIN (batch REPL),
 \ write it to `outfile`:  echo ': SQ DUP * ; 5 SQ .' | ./outfile
 : FORTH-REPL-EXE ( out-a out-u -- )
-   STDIN? on  s" "  ['] EMIT-FORTH catch  STDIN? off  throw  \ restore mode even on error
+   STDIN? on  s" "  ['] ENGINE-EMIT:FORTH catch  STDIN? off  throw  \ restore mode even on error
    EMIT-EXE ;

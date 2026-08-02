@@ -44,7 +44,7 @@ require lib/object-link.f
    OBJIMG-LOAD-TARGET-IMAGE ;
 
 \ driver-io.f's DRV-SIZE-MAP references the ENGINE-SIZE table, so it must load
-\ first. An object image never runs EMIT-FORTH, so the table stays empty and
+\ first. An object image never runs ENGINE-EMIT:FORTH, so the table stays empty and
 \ DRV-SIZE-MAP skips - this only satisfies the compile-time dependency.
 : OBJIMG-LOAD-SIZE ( -- )
    s" ENGINE-SIZE:MARK" OBJIMG-WORD? if exit then

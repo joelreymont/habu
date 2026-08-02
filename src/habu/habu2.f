@@ -1,6 +1,6 @@
 \ habu2.f — engine-builder part 2: the JIT compiler
 \ emitters (literal/call/keywords/locals/strings/do-loop), the outer-interpreter
-\ main loop, and EMIT-FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
+\ main loop, and ENGINE-EMIT:FORTH. Needs habu1.f (part 1). EMIT-MAIN is split into
 \ phase words sharing label VARIABLES (a giant single word would need dozens of
 \ locals); emission order is stable so the self-rebuild reaches a fixpoint.
 \ ---- literal emitters: scalars vs relocatable addresses ---------------------------
@@ -149,8 +149,10 @@ variable LCOMPILEDIE   \ shared recoverable compile-error tail (dot habu-raw-exi
 24 constant MOFMSG-LEN    \ byte length of "hb: match: expected of: " (EM-ADT-MATCH-OF)
 variable LDICTFULL   variable LCODEFULL   \ definer capacity-exit labels (dict-record / code-region full)
 24 constant CAPMSG-LEN    \ byte length of "hb: dictionary full at: " and "hb: code space full at: "
+package ENGINE-EMIT
 variable LSNAPBAD   \ snapshot-loader corrupt-trailer exit message
 29 constant SNAPBAD-MSG-LEN   \ byte length of "hb: snapshot trailer corrupt\n" (LSNAPBAD)
+;package
 variable LSRCFULL   variable LSRCREAD   variable LBADSTR   \ boot source labeled rc-74 exits (prefix overflow / read error / string literal)
 30 constant SRCFULL-MSG-LEN   \ byte length of "hb: source prefix buffer full\n" (LSRCFULL; SRC-SFAIL/SRC-BFAIL IBUFSZ overflow)
 23 constant SRCREAD-MSG-LEN   \ byte length of "hb: cannot read source\n" (LSRCREAD; source read syscall error)
@@ -324,6 +326,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
 \ breakpoint at [BPA-CELL]: print habu-bp, pc, data-stack, and watch cells;
 \ restore the original instruction, clear the bp, sigreturn to re-execute the word.
 \ Any other trap falls through to the crash dump (x2/x4 untouched).
+package ENGINE-EMIT
+
 : EMIT-TRAPH ( -- )
    LTRAPH LABEL@ LBL,
    LBL {: tno :}
@@ -377,6 +381,8 @@ s" c-bp-watch-dump" s" label label --" TRUST
    LMMAPCODE LABEL@ LBL, s" hb: cannot map fixed code region" BYTES,  NL-KW 1 BYTES,            \ MMAPCODE-MSG-LEN bytes incl. newline
    LMMAPDATA LABEL@ LBL, s" hb: cannot map fixed data region" BYTES,  NL-KW 1 BYTES,            \ MMAPDATA-MSG-LEN bytes incl. newline
    LBLRANGE LABEL@ LBL, s" hb: code region out of BL range" BYTES,  NL-KW 1 BYTES, ;            \ BLRANGE-MSG-LEN bytes incl. newline
+
+;package
 
 \ LCEMITBL ( x11 = absolute target ) : emit ONE direct BL imm26 to x11 at CP, then CP += 4.
 \ The single call-emit primitive for every statically known native call — dictionary words
@@ -1138,6 +1144,8 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
 \ source; LCOLDPFXB is the build-only entry used for a statically certified
 \ compiler payload that contains its own SEAL-FRIEND boundary before its
 \ driver. x30 and the entry mode survive the internal LSRCRD/LAPPPROV calls.
+package ENGINE-EMIT
+
 : EMIT-COLD-PREFIX-SHARED ( -- )
    LBL LBL LBL {: skip:label body:label noseal:label :}
    skip B,
@@ -1166,6 +1174,8 @@ variable LCOLDPFX variable LCOLDPFXB variable LAPPPROV
 : EMIT-SOURCE ( -- )
    C-SOURCE-LABELS
    STDIN? @ IF EMIT-COLD-PREFIX-SHARED C-SOURCE-STDIN ELSE C-SOURCE-BAKED THEN ;
+
+;package
 
 \ ---- control-flow JIT helpers ----
 \ Raw-register helper emits a variable-width value-stack drop.
@@ -1283,6 +1293,8 @@ variable LKWCONSTRUCT  variable LKWMATCH  variable LKWSEMIMATCH
 variable LTFLCONFAM  variable LTFLCVAR   \ TFL lowering-surface bridge names (C-FIND-GLOBAL)
 variable LTFLMATCHFAM  variable LTFLNAME \ MATCH bridge names: tfl-match-fam? / tfam-name$
 variable LBADTAGPFX    variable LBADTAGSFX  \ bad-tag die message spans (C-DIE-BAD-TAG)
+package ENGINE-EMIT
+
 variable LRESTAB    \ sealed system-package name table (TFAM 2b-ii)
 \ Sealed system-package names (TFAM 2b-ii). Records are [u8 len][len bytes] in
 \ lowercase (CHECKER-FOLD-C canonical form), terminated by a 0-length record.
@@ -1348,6 +1360,8 @@ here RESTAB-BUF - constant RESTAB-LEN
    s" ' CHECKER-SNAPSHOT-PREPARE data-base ENGINE-SNAP-XT-CELL + !" BYTES,
    NL-KW 1 BYTES,
    PFX-PATH-FILES ;
+
+;package
 
 \ ---- compile-time keyword handlers (append JIT-emitter code at BUILD time) ----
 : C-EMITW ( n -- ) {: w:n :}  9 w LIT64,  LCEMIT LABEL@ BL, ;
@@ -2057,6 +2071,8 @@ s" c-reject-dup-def" s" --" TRUST
 \ (RESTAB above) and the A-Z fold are native, NOT checker words: the guards must
 \ resolve during the sealed self-hosting stage build and checker-boot recompile,
 \ where a checker word is neither reachably kept nor safely callable.
+package ENGINE-EMIT
+
 : C-SEAL-PACKAGE-FAIL ( -- )   \ write the offending package token, exit ENGINE-ERROR:SEAL-PACKAGE
    0 2 MOVZ,  1 DATA TKA-CELL LDR,  2 DATA TKL-CELL LDR,  NR-WRITE SYS,
    0 ENGINE-ERROR:SEAL-PACKAGE MOVZ,  NR-EXIT-GROUP SYS, ;
@@ -2105,6 +2121,8 @@ s" c-seal-match" s" --" TRUST
    ok LBL, ;
 s" c-qualify-seal-guard" s" --" TRUST
 
+;package
+
 variable LQUALIFYDEF      \ shared qualification helper entry (dot habu-emit-one-shared)
 variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 
@@ -2123,6 +2141,8 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
 \ die path is harmless. W^X: emitted into the RW code region like every other
 \ primitive, flushed RX with the rest of the image; it takes no data-region
 \ store outside the DATA cells its callers already touch.
+package ENGINE-EMIT
+
 \ EMIT-QUALIFY-DEF/C-QUALIFY-DEF and EMIT-STORE-DEF-NAME/C-STORE-DEF-NAME
 \ centralize qualification and raw dictionary-name publication.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
@@ -2201,6 +2221,8 @@ variable LSTOREDEFNAME    \ shared guarded-name-publication helper entry
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;              \ restore link register + return
 s" emit-qualify-def" s" --" TRUST
 
+;package
+
 : C-QUALIFY-DEF ( -- )  LQUALIFYDEF LABEL@ BL, ;      \ call the one shared helper
 s" c-qualify-def" s" --" TRUST
 
@@ -2219,6 +2241,8 @@ s" c-qualify-def" s" --" TRUST
 \ branch-with-link; the protected-publish exit is exit_group, so its unbalanced
 \ frame never returns. W^X: no data-region store outside the DATA cells its
 \ callers already touch; emitted RW, flushed RX with the image.
+package ENGINE-EMIT
+
 : EMIT-STORE-DEF-NAME ( -- )
    LSTOREDEFNAME LABEL@ LBL,
    SP SP 16 SUBI,  30 SP 0 STR,                          \ save link register across the internal LPROTWIDQ BL
@@ -2239,6 +2263,8 @@ s" c-qualify-def" s" --" TRUST
    12 DATA DEF-TKL-CELL LDR,  12 DATA TKL-CELL STR,
    30 SP 0 LDR,  SP SP 16 ADDI,  RET, ;                 \ restore link register + return
 s" emit-store-def-name" s" --" TRUST
+
+;package
 
 : C-STORE-DEF-NAME ( -- )  LSTOREDEFNAME LABEL@ BL, ;    \ call the one shared helper
 s" c-store-def-name" s" --" TRUST
@@ -2566,6 +2592,8 @@ s" bdrainpretrust" s" --" TRUST
    10 9 16 LDR,  10 10 DNAME-IMM ORRI,  10 9 16 STR,
    2 5 MOVZ,  LPROT LABEL@ BL, ;
 
+package ENGINE-EMIT
+
 : C-POSTPONE ( -- )
    LBL LBL LBL {: pok pnimm pdone :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `postpone RESERVED:tail` once sealed (TFAM 2b-iii)
@@ -2581,6 +2609,8 @@ s" bdrainpretrust" s" --" TRUST
       9 LKWCOMPC LABEL@ ADR,  10 8 MOVZ,  LFIND LABEL@ BL,
       C-CALL
    pdone LBL, ;
+
+;package
 
 : C-QUOTE-START ( -- )
    12 DATA INP-CELL LDR,  12 12 1 ADDI,  13 12 0 ADDI, ;
@@ -2668,7 +2698,9 @@ s" bdrainpretrust" s" --" TRUST
 variable LESCDEC  variable LESCHEX  variable LESCSCAN  variable LESCCOPY
 variable LSNAPRBD
 variable LAOTWIDGATE   \ AOT boot sealed-WID reject routine (TFAM 2b-v)
+package ENGINE-EMIT
 variable LAOTPROT      \ cold-start baked protected-WID restore
+;package
 
 \ Escape decoder, emitted once by EMIT-ESC-DECODE, BL-called from the scan and
 \ copy loops; entries clobber only x9/x10 (and LR). LESCDEC: x9 escape char ->
@@ -2879,6 +2911,8 @@ variable LTOPHOOK
    LTOK LABEL@ BL,  LBCAP LABEL@ BL,
    11 DATA TKA-CELL LDR,  11 11 0 LDRB,  LVPUSHC LABEL@ BL, ;
 
+package ENGINE-EMIT
+
 : C-TICK ( -- )
    LBL LBL LBL {: tk:label usedtry:label found:label :}
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `' RESERVED:tail` once sealed (TFAM 2b-iii)
@@ -2901,6 +2935,8 @@ variable LTOPHOOK
    LTOK LABEL@ BL,  C-QUALIFY-SEAL-GUARD                 \ reject `['] RESERVED:tail` once sealed (TFAM 2b-iii)
    9 DATA TKA-CELL LDR,  10 DATA TKL-CELL LDR,  LFIND LABEL@ BL,
    13 bk CBZ,  C-CODE-ADDR  bk LBL, ;
+
+;package
 
 \ ---- item 12 slice 3b: pass-2 width-aware recompile, certificate side ------
 \ A definition whose certified check recorded any wider-than-cell width fact is
@@ -3371,6 +3407,8 @@ variable CFSK2
    CLOC-MAIN LABEL@ B, ;
 s" c-local-ref" s" label label --" TRUST
 
+package ENGINE-EMIT
+
 : EM-ENTRY-ARGS ( -- )
    HB-TARGET-LINUX? IF
       13 SP 0 LDR,  14 SP 8 ADDI,
@@ -3508,7 +3546,7 @@ s" c-local-ref" s" label label --" TRUST
    8 0 MOVZ,  10 12 0 ADDI,
    vloop LBL,  8 11 CMP,  C-GE cinit BCOND,
       14 10 0 LDRW,  14 bad CBZ,
-      5 WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      5 WID:MAX LIT64,  14 5 CMP,  C-HI bad BCOND,
       4 0 MOVZ,  5 12 0 ADDI,
       vinner LBL,  4 8 CMP,  C-GE vnext BCOND,
          2 5 0 LDRW,  14 2 CMP,  C-EQ bad BCOND,
@@ -3532,7 +3570,7 @@ s" c-local-ref" s" label label --" TRUST
    RET,
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 30 MOVZ,  NR-WRITE SYS,
-      0 AOT-SEED-RC MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,
       s" hb: AOT protected-WID co" BYTES,
       $00000A7470757272 DCQ, ;                         \ "rrupt\n" + two unwritten pad bytes
@@ -3595,7 +3633,7 @@ s" c-local-ref" s" label label --" TRUST
 \ within headroom; a forged/oversized span (image tampered past its sha / codesign
 \ cover) fails closed with a named boot diagnostic. No eval frame exists at seed
 \ time, so this uses the boot-path die idiom (named fd-2 message + exit
-\ AOT-SEED-RC=82, the AOT seed-pass boot-integrity code), not LCOMPILEDIE. The die
+\ ENGINE-ERROR:AOT-SEED=82, the AOT seed-pass boot-integrity code), not LCOMPILEDIE. The die
 \ is inlined between the check and the reserve; the pass path branches over it (ok)
 \ so this word still falls through to EM-AOT-RELOC-CODE (it is inlined, not a call).
 : EM-AOT-RELOC-DATA ( -- )
@@ -3607,7 +3645,7 @@ s" c-local-ref" s" label label --" TRUST
    7 DATA-SIZE LIT64,  7 DATA 7 ADD,  7 7 3 SUB,    \ x7 = headroom = (data-base + DATA-SIZE) - seed DP
    5 7 CMP,  C-LS ok BCOND,                         \ span <= headroom -> ok; else fall into the boot die
       1 msg ADR,  0 2 MOVZ,  2 31 MOVZ,  NR-WRITE SYS,
-      0 AOT-SEED-RC MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" hb: AOT data span out of range" BYTES,  NL-KW 1 BYTES,
    ok LBL,
    3 3 5 ADD,  3 DATA DP-CELL STR,                  \ reserve: DP += span (bounded; zeroed by anon mmap)
@@ -3704,7 +3742,7 @@ s" c-local-ref" s" label label --" TRUST
    askip B,
    bad LBL,
       1 msg ADR,  0 2 MOVZ,  2 25 MOVZ,  NR-WRITE SYS,
-      0 AOT-SEED-RC MOVZ,  NR-EXIT-GROUP SYS,
+      0 ENGINE-ERROR:AOT-SEED MOVZ,  NR-EXIT-GROUP SYS,
    msg LBL,  s" hb: AOT metadata corrupt" BYTES,  NL-KW 1 BYTES,
    askip LBL, ;
 
@@ -3852,7 +3890,7 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    17 0 MOVZ,  8 0 MOVZ,  9 12 0 ADDI,
    prot-loop LBL,  8 11 CMP,  C-GE widn BCOND,
       14 9 0 LDRW,  14 bad CBZ,
-      5 WID-LIMIT LIT64,  14 5 CMP,  C-HI bad BCOND,
+      5 WID:MAX LIT64,  14 5 CMP,  C-HI bad BCOND,
       14 17 CMP,  C-LS prot-max BCOND,  17 14 0 ADDI,
    prot-max LBL,
       4 0 MOVZ,  5 12 0 ADDI,
@@ -3997,6 +4035,8 @@ TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
    EM-DATA-INIT
    EM-SNAPSHOT-RESTORE
    EM-STARTUP-RUNTIME-STATE ;
+
+;package
 
 \ Checker package-scope resync drain (dot habu-recovery-pkg-scope-e0bd98e2). A
 \ compile-error recovery rolls the ENGINE package scope back to the boundary
@@ -4222,6 +4262,8 @@ s" c-package-record-match" s" label label --" TRUST
    done LBL, ;
 s" c-package-ensure" s" --" TRUST
 
+package ENGINE-EMIT
+
 : C-PACKAGE-PROT-GUARD ( -- )
    LBL LBL LBL LBL {: loop:label miss:label hit:label done:label :}
    5 DBASE 0 ADDI,  6 NDICT 0 ADDI,
@@ -4272,6 +4314,8 @@ s" c-package-seal-guard" s" --" TRUST
    5 DATA PKG-REC-CELL STR,
    12 DATA CUR-CELL STR, ;
 s" c-package" s" --" TRUST
+
+;package
 
 : C-PUBLIC ( -- )
    C-TASK-LIVE-GUARD
@@ -4508,6 +4552,8 @@ s" c-export-tail!" s" --" TRUST
 \ guard). The checker call runs OUTSIDE the RW code window (checked code must
 \ execute RX); the record publish sits inside the 3/5 LPROT window because
 \ C-STORE-NAME spills long names at CP.
+package ENGINE-EMIT
+
 : C-EXPORT ( -- )
    C-TASK-LIVE-GUARD
    LBL LBL LBL LBL LBL {: active:label dnamed:label named:label found:label done:label :}
@@ -4572,6 +4618,8 @@ s" c-export" s" --" TRUST
    s" immediate" KEEP? IF LMAIN LABEL@ LKWIMM    9 ['] C-IMMEDIATE CF-ENTRY THEN ;
 s" em-interpret-define-keywords" s" --" TRUST
 
+;package
+
 : EM-INTERPRET-STRING-KEYWORDS ( -- )
    LMAIN LABEL@ LKWSQ     2 ['] C-ISDQ     CF-ENTRY
    LMAIN LABEL@ LKWCQ     2 ['] C-ICQ      CF-ENTRY
@@ -4610,6 +4658,8 @@ s" em-interpret-number" s" label --" TRUST
       found B, ;                                       \ resolved via a used package: rejoin the normal dispatch
 s" em-interpret-find" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-INTERPRET-WORDS ( -- )
    LBL {: lnotnum :}
    EM-INTERPRET-DEFINE-KEYWORDS s" interpret/define" ENGINE-SIZE:MARK
@@ -4624,6 +4674,8 @@ s" em-interpret-words" s" --" TRUST
    lnotcolon EM-INTERPRET-COLON s" interpret/colon" ENGINE-SIZE:MARK
    EM-INTERPRET-WORDS ;
 s" em-interpret" s" --" TRUST
+
+;package
 
 : EM-COMPILE-DROP-LOCALS ( -- )
    LBL {: done :}
@@ -5618,6 +5670,8 @@ s" em-compile-control-keywords" s" --" TRUST
    LMAIN LABEL@ LKWEDOTQ  3 ['] C-EDOTQ  CF-ENTRY ;
 s" em-compile-string-keywords" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-COMPILE-META-KEYWORDS ( -- )
    s" [']" KEEP? IF LMAIN LABEL@ LKWBTICK  3 ['] C-BTICK  CF-ENTRY THEN
    s" [char]" KEEP? IF LMAIN LABEL@ LKWBCHAR  6 ['] C-BCHAR  CF-ENTRY THEN
@@ -5627,6 +5681,8 @@ s" em-compile-string-keywords" s" --" TRUST
    s" is" KEEP? IF LMAIN LABEL@ LKWIS 2 ['] J-IS CF-ENTRY THEN
    s" ;]" KEEP? IF LMAIN LABEL@ LKWSEMIQ  2 ['] J-SEMIQUOT CF-ENTRY THEN ;
 s" em-compile-meta-keywords" s" --" TRUST
+
+;package
 
 : EM-COMPILE-LOOP-KEYWORDS ( -- )
    s" do" KEEP? IF LMAIN LABEL@ LKWDO     2 ['] J-DO     CF-ENTRY THEN
@@ -5645,6 +5701,8 @@ s" em-compile-meta-keywords" s" --" TRUST
    s" {:" KEEP? IF LMAIN LABEL@ LKWLBRACE 2 ['] C-LBRACE CF-ENTRY THEN ;
 s" em-compile-loop-keywords" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-COMPILE-KEYWORDS ( -- )
    LBCAP LABEL@ BL,
    EM-COMPILE-CONTROL-KEYWORDS
@@ -5652,6 +5710,8 @@ s" em-compile-loop-keywords" s" --" TRUST
    EM-COMPILE-META-KEYWORDS
    EM-COMPILE-LOOP-KEYWORDS ;
 s" em-compile-keywords" s" --" TRUST
+
+;package
 
 : EM-COMPILE-LOCAL ( -- )
    LBL {: notloc :}
@@ -6076,6 +6136,8 @@ s" em-eval-clean-exit" s" --" TRUST
    11 DATA INP-CELL STR,  11 11 10 ADD,  11 DATA INE-CELL STR,  LMAIN LABEL@ B, ;
 s" em-repl-read" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-COMPILE-EXIT ( -- )
    LBL {: aoskip:label :}
    LEXIT LABEL@ LBL,
@@ -6093,6 +6155,8 @@ s" em-repl-read" s" --" TRUST
    LRBYE LABEL@ LBL,
    0 0 MOVZ,  NR-EXIT-GROUP SYS, ;
 s" em-compile-exit" s" --" TRUST
+
+;package
 
 \ Top-level data-stack underflow diagnostic. Reached from the LMAIN depth-floor
 \ guard when the just-interpreted word left XDS below S0 (proven underflow). Print
@@ -6401,6 +6465,8 @@ s" em-adt-match-of" s" --" TRUST
    s5 LBL,  EM-ADT-MATCH-OF
    off LBL, ;
 s" em-compile-adt-mode" s" --" TRUST
+package ENGINE-EMIT
+
 : EM-COMPILE ( -- )
    LBL {: lnotsemi :}
    LCOMPILE LABEL@ LBL,
@@ -6426,6 +6492,8 @@ s" em-compile" s" --" TRUST
    EM-COMPILE
    EM-INTERPRET-UNDERFLOW     s" main/underflow" ENGINE-SIZE:MARK ;
 s" emit-main" s" --" TRUST
+
+;package
 
 \ Pre-execution arity guard (LARITY). A deref/execute/dispatch primitive (@ !
 \ +! c@ c! atomic@ atomic! atomic-add atomic-cas count type execute
@@ -6460,6 +6528,8 @@ s" emit-main" s" --" TRUST
    RET, ;
 \ SRCA@ refines the raw source-buffer cell for the final byte copy.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
+package ENGINE-EMIT
+
 variable SRCA
 : SRCA@ ( -- ptr u8 )
    SRCA @ ;
@@ -6593,6 +6663,8 @@ s" SRCA@" s" -- ptr u8" TRUST
    EMIT-LABEL-OPS
    EMIT-LABEL-P2 ;
 
+;package
+
 \ ---- AOT M2: N-word capture buffers (host-only build scratch; `allot` DATA, NOT
 \ baked into bin/hb). aot-capture.f fills them from the metabuild host's compiled
 \ words; EMIT-AOT-SEED bakes blob + N dict records + a call-site relocation table
@@ -6662,6 +6734,8 @@ s" AOT-BOOTRUN-BUF@" s" -- ptr u8" TRUST
 \ Retirement for the six accessors above: habu-builder-trust-rows-c5d41af6.
 : AOT-PWID-BUF@ ( -- ptr u8 ) AOT-PWID-BUF ;
 s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
+
+package ENGINE-EMIT
 
 \ Bake the AOT section: blob length + blob, record count + N 48-byte dict records
 \ (xt/end blob-relative, inline name), site count + M u32 triples (blob-off,
@@ -6775,13 +6849,17 @@ s" AOT-PWID-BUF@" s" -- ptr u8" TRUST
 \ can reconcile to the exact file size.
 \ Balanced whole-engine emission boundary.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
-: EMIT-FORTH ( ptr u8 n -- )
+public
+
+: FORTH ( ptr u8 n -- )
    ENGINE-SIZE:RESET
    EMIT-RESET-BUILDER
    EMIT-LABELS
    EMIT-CODE-SECTIONS
    EMIT-SOURCE-BYTES          s" baked-source" ENGINE-SIZE:MARK ;
-s" emit-forth" s" ptr u8 n --" TRUST
+s" forth" s" ptr u8 n --" TRUST
+
+;package
 
 package ENGINE-BUILD
 public
@@ -6789,7 +6867,7 @@ public
 \ the process-local build flag is therefore never observed after that edge.
 : BUILD ( ptr u8 n -- )
    ARM
-   EMIT-FORTH
+   ENGINE-EMIT:FORTH
    DISARM
    ;
 ;package
