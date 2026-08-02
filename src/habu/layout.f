@@ -137,8 +137,8 @@ $3000 constant LOCNAMES
 \ write buffers) carry the runtime range check. The old scattered slots were
 \ since reclaimed: $2780..$27A0/$27C0..$27E8 are free again after the pass-2
 \ transaction moved into TXN-STATE-OFF; $27A8 remains CMM-CELL below ($1A0 stays
-\ free). Two more guarded bands (the constructor protected-WID registry and the
-\ sealed-owner WID registry below) are checked by the same PROT-GUARD.
+\ free). One more guarded band, the constructor protected-WID registry below,
+\ is checked by the same PROT-GUARD.
 \ The 18th cell (SEAL-NDICT-CELL, $A8) holds the seal-time ndict watermark (TFAM
 \ 2b-iii). The latch is sealed EARLY (EMIT-SEAL-FRIEND, before the engine's own
 \ checker/xref/stdlib source is even evaluated), so the watermark is captured

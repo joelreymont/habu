@@ -21,6 +21,10 @@
 \      real snapshot must retain more than the two reserved entries, and its
 \      live slot 2 must reject publication on both batch input paths.
 \
+\   4. imgdump locates the real snapshot trailer only from the target header.
+\      Corrupting that one locator in a copy must report no-snapshot even though
+\      the original trailer bytes remain in the file.
+\
 \ The snapshot source is emitted with BF-EMIT-SNAP-RUN-SOURCE-WITH, which inserts
 \ the fixture after the builder tail and before the snap driver. Both fixtures
 \ live above SNAP-TAIL-MARK, so SNAP-RETIRE-GO forgets them before the image is
@@ -83,6 +87,9 @@ variable ROOT-U
 : SNAP-SRC$ ( -- ptr u8 n )
    s" hb-snap-src" BF-B$ ;
 
+: BAD-SNAP$ ( -- ptr u8 n )
+   s" hb-snap-bad" BF-A$ ;
+
 : CLEAN-SNAP0 ( -- )
    SNAP0$ 2dup EXISTS? if REMOVE-FILE else 2drop then ;
 
@@ -144,16 +151,18 @@ variable NZ
    s" --" >LEN PROC-ARGV+
    ROOT >LEN PROC-ARGV+ ;
 
-: BUILD-CAPTURE ( -- )
-   ENGINE$ >LEN
-   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
-   RUN-ARGV-ENV-CAPTURE
+: CAPTURE! ( result<pcap:captured,pcap:failed> -- )
    MATCH result
      ok  OF PCAP-CAPTURED:UNMAKE {: o:len e:len :}
             o LEN>N OUT-U !  e LEN>N ERR-U !  0 RC ! ENDOF
      err OF PCAP-FAILED:UNMAKE {: o:len e:len c:rc :}
             o LEN>N OUT-U !  e LEN>N ERR-U !  c RC>N RC ! ENDOF
    ;MATCH ;
+
+: BUILD-CAPTURE ( -- )
+   ENGINE$ >LEN
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-ENV-CAPTURE CAPTURE! ;
 
 : BUILD-WITH ( ptr u8 n -- ) {: ia:ptr iu:n :}
    CLEAN-SNAP0
@@ -163,6 +172,38 @@ variable NZ
 
 : ERR$ ( -- ptr u8 n )
    ERR ERR-U @ ;
+
+: IMG-ARGV ( ptr u8 n -- ) {: path:ptr pathu:n :}
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" tools/imgdump.f" >LEN PROC-ARGV+
+   s" --" >LEN PROC-ARGV+
+   s" --snap" >LEN PROC-ARGV+
+   path pathu >LEN PROC-ARGV+ ;
+
+: IMG-CAPTURE ( ptr u8 n -- )
+   IMG-ARGV
+   ENGINE$ >LEN
+   OUT CAP >LEN ERR CAP >LEN TIMEOUT-MS >MS
+   RUN-ARGV-CAPTURE CAPTURE! ;
+
+: ASSERT-SNAPSHOT ( ptr u8 n -- )
+   IMG-CAPTURE
+   RC @ 0 T=
+   ERR-U @ 0 T=
+   OUT OUT-U @ s" ndict " CONTAINS? TTRUE ;
+
+: ASSERT-NO-SNAPSHOT ( ptr u8 n -- )
+   IMG-CAPTURE
+   RC @ 0 T=
+   ERR-U @ 0 T=
+   OUT OUT-U @ TRIM s" no-snapshot" STR= TTRUE ;
+
+: WRITE-BAD-SNAPSHOT ( -- )
+   8 0 ?do
+      0 IMG IMAGE-TEXT-SIZE-OFF i + + c!
+   loop
+   BAD-SNAP$ IMG IMGU @ WRITE-ALL ;
 
 \ ---- warm snapshot probes ----
 : STORE! ( len len outcome -- )
@@ -224,7 +265,12 @@ variable NZ
    SNAP0$ LOAD-IMAGE
    s" snapshot zeros the persisted return-stack window" T-LABEL
    RSTK-NONZERO 0 T=
-   WARM-CASE ;
+   WARM-CASE
+   s" imgdump accepts the production snapshot" T-LABEL
+   SNAP0$ ASSERT-SNAPSHOT
+   WRITE-BAD-SNAPSHOT
+   s" imgdump rejects a corrupted header-owned trailer locator" T-LABEL
+   BAD-SNAP$ ASSERT-NO-SNAPSHOT ;
 
 : CLOSE-FAIL-CASE ( -- )
    s" test/snapshot-writer-close-fail.f" BUILD-WITH
