@@ -572,137 +572,6 @@ Acceptance:
 - evidence from one artifact cannot satisfy another artifact;
 - profile can be mandatory-to-record but non-blocking through explicit policy.
 
-### R8. Explicit Capability Effects
-
-> Detailed design: `docs/effects.md` § "R8 capability-effect design" (schema
-> encoding, checker propagation, Maki registration, capability tokens, planner
-> legality, runtime resolver, cache identity, and the acceptance-mapping table).
-
-Use explicit capability tokens and op-schema effect rows for:
-
-- pure;
-- parameter read;
-- state write;
-- random;
-- host IO;
-- device launch;
-- atomic/reduction;
-- collective/barrier;
-- allocation/free;
-- persistent publication.
-
-R8 has two related but deliberately separate representations.
-
-The **static effect row** is package-owned by sealed `CAD-EFFECT`. `PURE` is
-the unique empty row. Every non-pure entry names an atom, a stable site path, a
-slot kind, and a slot index relative to an op schema, word signature, declared
-capability, or quotation capture. Local declarations start with an empty path;
-`CAD-EFFECT:REMAP` prefixes caller/call-site path segments while preserving the
-original resolvable slot. One atom may have several bindings, so weight and bias reads
-do not collapse. Different atoms may bind the same slot, so an atomic state
-write can express both facts. Direct duplicate insertion rejects; canonical
-`CAD-EFFECT:UNION` is associative, commutative, and idempotent. It imposes no
-small semantic composition bound on stored words or quotations. Versioned wire
-counts and checked allocation/resource budgets are explicit protocol and policy
-boundaries, and their overflow or exhaustion returns a typed diagnostic.
-
-The public row value is a one-cell opaque nominal handle backed by a sealed
-immutable layout arena, not a wide by-value `PRODUCT`. Handle numbers, arena
-offsets, pointers, allocation order, and internal hashes are implementation
-references only. Canonical sorted binding contents define equality,
-serialization, diagnostics, replay, AOT, fixpoint bytes, and cache identity.
-Persistent site paths and chunked rows have no small fixed composition or path
-depth bound; a versioned wire count plus checked allocation/resource failures
-provide the protocol boundary. A private linear transactional builder streams
-sorted union/remap results and freezes once, so transitive composition is not
-quadratic. Rollback restores every high-water/index before a handle escapes,
-and published arena spans are permanently immutable and protected from raw
-stores, atomics, FFI/syscall outputs, remapping, and writable reprotection.
-
-Static rows contain no artifact digest, pointer, process-local address, mutable
-generation, RNG position, or authority instance. Stored-word and quotation
-metadata keep bindings relative to declared inputs and captures. At a call or
-quotation boundary the checker must apply capture-avoiding
-`CAD-EFFECT:REMAP` into a stable caller/call-site namespace before union. Raw
-union of two callee-local slot numbers is unsound because both callees may call
-their first resource `slot 0`. Primitive declarations, stored effects,
-quotations, registry rows, replay records, and snapshots validate through the
-sealed owner before any permissive decision.
-
-The **resolved semantic binding set** is execution-specific. One checked
-resolver combines a static row with typed invocation operands, attributes,
-capability tokens, canonical artifact metadata, and a stable semantic site
-derived from revision/node/call structure. It produces sorted entries of the
-form `(atom, site-path, slot-kind, slot-index, semantic-fact)` or a typed
-uncacheable/unresolved reason. Parameter reads resolve immutable payload
-digests; state and random effects bind owner plus generation or sequence; IO,
-device, allocation, atomic, collective, and publication bind the exact
-authority facts permitted by policy. Addresses and insertion order never enter
-the result. Only an exact repeated full tuple is intentionally idempotent. The
-same atom/site/slot resolving to different semantic facts is a conflict, while
-different sites or slots remain distinct even when their local slot numbers or
-payload digests match.
-
-Fusion and recompute legality consume sealed rows plus successfully resolved
-bindings. Only `PURE` and immutable digest-bound parameter reads may duplicate;
-unresolved reads and every mutable or externally observable effect are
-conservative barriers. Schedule, compile, result, replay, evidence, and
-promotion caches do not all depend on the same subset. A sealed versioned
-projection policy derives a domain-specific digest plus completeness evidence
-from the full resolved set. Each owner consumes that projection rather than
-filtering bindings privately. Every omitted fact has an explicit tested
-irrelevance rule; an unknown atom, domain, or unproved omission falls back to
-the full digest or a typed uncacheable result. The policy version participates
-in the key. This R8 model covers
-semantic effects of the generated operation; generated register, flag, frame,
-and control clobbers remain the separate R9 machine-state contract.
-
-Why required:
-
-Rewrite, fusion, recomputation, caching, and pass scheduling are unsound if
-stateful/random/IO operations look pure. A general effect calculus is not
-required; the finite CAD effect vocabulary is.
-
-Acceptance:
-
-- random/stateful ops cannot be duplicated for recompute;
-- writes and atomics cannot cross illegal reorder/fusion boundaries;
-- pure passes run without IO/device authority;
-- analysis-only contexts cannot publish persistent artifacts;
-- two callees or quotations that each bind local slot zero remain distinct after
-  checker remapping, while replaying the same remapped binding is idempotent;
-- weight, bias, mutable generation, RNG position, target/device authority, and
-  publication scope mutations change the exact affected key or make it
-  explicitly uncacheable;
-- each cache key includes every capability-controlled semantic input relevant
-  to its artifact class, every omission has completeness evidence, and no key
-  depends on addresses or traversal order;
-- package sealing, every metadata/registry ingress, snapshot, replay, and
-  fixpoint preserve canonical row authority.
-
-Tracked implementation slices:
-
-- `habu-fix-wide-product-5c81dada` landed the independent checker correction
-  that counts lowered wide PRODUCT cells once instead of quadratically;
-- `habu-protect-dynamic-immutable-eccd0489` owns permanent dynamic protected
-  spans and the complete raw-mutation/remap sink boundary;
-- `habu-add-immutable-nominal-9290a81f` owns opaque handles, canonical immutable
-  row storage, transactional builders, and rollback/snapshot/AOT/replay scale;
-- `habu-define-finite-cad-0bdf52ad` owns static row vocabulary, remap, union,
-  and legality tables;
-- `habu-seal-cad-effect-49cac404` owns the final authority boundary;
-- `habu-persist-cad-semantic-028c0881` owns checker metadata and call-site
-  substitution;
-- `habu-require-maki-op-b14ccc89` owns mandatory static Maki schema rows;
-- `habu-infer-linear-kinds-1f77b4c4` and
-  `habu-add-explicit-cad-58a05453` close polymorphic capability laundering and
-  expose explicit authority tokens;
-- `habu-resolve-runtime-cad-2864336f` owns execution-specific resolution;
-- `habu-enforce-effect-aware-cf9181b8` owns fusion/recompute legality;
-- `habu-census-cad-effect-3240237b` freezes cache dependency domains and splits
-  disjoint owners; `habu-define-complete-cad-90a9945c` owns sealed projection
-  policies before `habu-key-caches-by-fddcea19` integrates the key migration.
-
 ### R9. Generated Machine-State Integrity
 
 The checked host word that emits an instruction and the generated instruction
@@ -917,12 +786,11 @@ R4  dimension/shape constraints
 R5  existential packaging and runtime refinement
 R6  region owner/reference capabilities
 R7  typestate and artifact-indexed evidence
-R8  explicit CAD effect capabilities
 R9  generated instruction, machine-state, and resource effects
 ~~~
 
 R1-R3 unblock the design database. R4-R5 unblock a genuinely typed Model/Tensor
-IR. R6-R8 unblock safe transactions, transformation, caching, and promotion.
+IR. R6-R7 unblock safe transactions, transformation, caching, and promotion.
 R6 and the audited primitive-effect table unblock R9; R9 makes native and
 device code generation independently verifiable.
 
@@ -2778,14 +2646,13 @@ Exit:
 
 ### V2-5: Pass Engine And Typestate
 
-Deliver R7-R8:
+Deliver R7:
 
 - pass/analysis schemas;
 - explicit contexts;
 - dependency recording;
 - result cache;
 - verifier hooks;
-- effect capabilities;
 - typestate/evidence transitions.
 
 Exit:
@@ -3731,9 +3598,7 @@ envelope work inherits them:
 - **`owned-bytes` is realized as a caller-supplied buffer + length
   (`ptr u8 n`), not a first-class value.** ENCODE writes canonical bytes into a
   caller buffer and returns the length; DECODE/VALIDATE read a caller buffer +
-  length. This follows the lib/nominal/codec.f precedent
-  (`CHUNK-ENCODE ( start count buf cap -- len )`,
-  `CHUNK-DECODE ( buf len -- start count )`) and the landed
+  length. The landed
   `ENCODE-WEIGHT ( weight-artifact ptr u8 n -- n )` /
   `DECODE-WEIGHT ( ptr u8 n -- art-result<n> )`. The `content-digest` stays a
   four-word owned multi-cell value consumed straight off the stack (`UNMAKE`),
