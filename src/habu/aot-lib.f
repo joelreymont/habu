@@ -173,7 +173,7 @@ $F0000 constant AOT-DATA-BLOB-MAX          \ keep the blob within ADR ±1MB rang
 \ the selected root is called. A preseeded bad-tag object/AOT entry
 \ (tools/hb-build.f --preseed-entry) pushes a forged bundle (payload slots + an
 \ out-of-range tag) so the matched helper reaches its inline invalid-tag die
-\ (docs/type-families.md; docs/census-tfam-10.md Category 1). SEED-CELLS is
+\ (docs/type-families.md §25.5). SEED-CELLS is
 \ bottom-of-stack first, tag last (top). Empty for a normal MAIN build.
 64 constant SEED-MAX
 create SEED-CELLS SEED-MAX cells allot   variable SEED-N

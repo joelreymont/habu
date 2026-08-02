@@ -20,8 +20,8 @@ AOT-CTOR-EVAL-INSTALL
 
 \ --- preseeded test entry argv (tools/hb-build.f --preseed-entry / --preseed-seed):
 \ argv[3] = selected entry word (default MAIN), argv[4] = seed cells as big-endian
-\ u64 hex, 16 chars per cell, bottom-of-stack first. See src/habu/aot-lib.f EMIT-SEED
-\ and docs/census-tfam-10.md Category 1.
+\ u64 hex, 16 chars per cell, bottom-of-stack first.
+\ src/habu/aot-lib.f EMIT-SEED materializes the cells before entry.
 variable AOT-HEXACC
 : AOT-HEXNIB ( c -- n ) {: c:n :}
    c 48 >= c 58 < and IF c 48 - EXIT THEN

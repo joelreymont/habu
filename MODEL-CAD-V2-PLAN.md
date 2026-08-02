@@ -188,8 +188,8 @@ The implementation dependency chain is:
 12. `habu-type-dsl-prove-93da83c4` — fixpoint, recovery, snapshot/AOT, full gate, and final census proof.
 
 No dependent V2 schema is complete while it uses a removed declaration. The
-exact baseline and file-to-owner routing live in
-`docs/census-type-dsl-cutover.md`.
+authoritative cutover contract lives in
+[`docs/type-families.md`](docs/type-families.md) §2.
 
 ## 4. Architecture
 

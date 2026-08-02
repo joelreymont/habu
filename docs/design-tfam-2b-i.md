@@ -187,11 +187,12 @@ not a syscall.
 
 ### 2d. Sinks that must ALL carry the guard (the "land together" set)
 
-From census cat-3 + cat-5 (`docs/census-tfam-2b.md`): `!` `c!` `+!` `atomic!`
-`atomic-add` `atomic-cas` `patch32` `cp!` `ndict!` `,` `c,` `allot` (extending into
-arena) `snap-rebase`; plus every syscall/FFI writer whose pointer arg can land in
-the arena (`read` `readlink` `stat64` `lstat64` `getdirentries64` `poll` `ioctl`
-`mmap` remap `ffi-call*`). Native sites: `habu1.f:1185,1191,1197,1203,1205,1207,
+Every raw writer that can target the arena must carry the guard: `!` `c!` `+!`
+`atomic!` `atomic-add` `atomic-cas` `patch32` `cp!` `ndict!` `,` `c,` `allot`
+(extending into arena) `snap-rebase`; plus every syscall/FFI writer whose pointer
+arg can land in the arena (`read` `readlink` `stat64` `lstat64`
+`getdirentries64` `poll` `ioctl` `mmap` remap `ffi-call*`). Native sites:
+`habu1.f:1185,1191,1197,1203,1205,1207,
 1250,1266,1270,1274,1548,967,968` + syscall bodies `habu1.f:1307-1541`. Miss any
 one and it becomes the new bypass — this is why the dot says latch + protection
 must land together. Syscall/FFI writers are where B-style provenance *does* help

@@ -416,7 +416,7 @@ public
 \ name, a test mode, and the forged seed cells (big-endian u64 hex, tag last).
 \ Recording it in the object bytes makes a preseeded object distinct from a
 \ normal MAIN object (OBJ:KEY-HEX diverges) and lets the object self-describe its
-\ non-MAIN entry. docs/census-tfam-10.md Category 2.
+\ non-MAIN entry.
 : ENTRY+ ( ptr u8 n n ptr u8 n -- )
    s" entry" LINE3N ;
 

@@ -423,9 +423,6 @@ and a missing arity on `STRUCTURE` or full `ENUM` reject at the exact token.
 The final source lint requires zero occurrences in live executable or generated
 source outside the tombstone table and explicitly allowlisted negative fixtures.
 
-The exact source census and migration owner for every old surface is
-`docs/census-type-dsl-cutover.md`.
-
 ### 2.8 Design position
 
 A real Rust-like `result<t,e>` is not just a parametric type expression.
@@ -2874,8 +2871,8 @@ save/restore paths, or field coercions outside constructors and `MATCH`.
 ## 26. Historical implementation phases
 
 These phases record how the pre-cutover substrate landed. They are superseded
-by the unified hard-cutover dot chain in §2 and
-`docs/census-type-dsl-cutover.md`; none authorizes a compatibility surface.
+by the normative hard-cutover contract in §2; none authorizes a compatibility
+surface.
 
 ### Phase 1: Type-family registry
 

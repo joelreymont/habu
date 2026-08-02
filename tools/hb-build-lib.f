@@ -44,7 +44,7 @@ HBB-LF HBB-LF-BUF c!
 \ Preseeded test entry (--preseed-entry / --preseed-seed): a selected non-MAIN
 \ entry word plus a forged value-stack seed (big-endian u64 hex, tag last) built
 \ into the AOT/object image, so a matched helper reaches its inline invalid-tag
-\ die (docs/census-tfam-10.md). The entry/seed/mode axis is folded into all three
+\ die. The entry/seed/mode axis is folded into all three
 \ cache layers (artifact key, source-index key, object bytes) so a preseeded run
 \ can never restore a stale normal-MAIN artifact.
 64 constant HBB-ENTRY-NAME-CAP
@@ -802,8 +802,7 @@ HBB-INSTALL-CHILD-LINTS
 \ a normal MAIN build (so non-preseed keys and object bytes stay byte-identical),
 \ but for a preseeded run it diverges every cache layer in lockstep: the artifact
 \ key, the source-index key (via HBB-CLOSURE-HEX!), and the object source header.
-\ Without it a preseeded run would restore a stale normal-MAIN artifact
-\ (docs/census-tfam-10.md Categories 2-3, insert-axis summary).
+\ Without it a preseeded run would restore a stale normal-MAIN artifact.
 : HBB-PRESEED-CK+ ( -- )
    HBB-PRESEED? 0= if exit then
    s" preseed-entry-v1" CONTENT-KEY:TEXT+

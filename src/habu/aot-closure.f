@@ -97,8 +97,8 @@ $94000000 constant CALL-OP
    ELSE 0 0= 0= THEN ;
 \ Selected AOT entry word. Defaults to MAIN (the zero-argument process entry);
 \ a preseeded test entry (tools/hb-build.f --preseed-entry) sets it to a matched
-\ helper so the stripped image starts at a non-MAIN root (docs/census-tfam-10.md
-\ Category 1/6: identity is resolved by record here, not carried as a bare name).
+\ helper so the stripped image starts at a non-MAIN root. Identity is resolved by
+\ record here, not carried as a bare name.
 create ENTRY-NAME-BUF 64 allot   variable ENTRY-NAME-U
 : ENTRY-NAME$ ( -- ptr u8 n )
    ENTRY-NAME-BUF ENTRY-NAME-U @ ;
