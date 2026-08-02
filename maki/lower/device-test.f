@@ -31,6 +31,8 @@ require maki/eval/active-target.f
 
 package MAKI
 
+using F32
+
 create LD-OUT $4000 allot  create LD-ERR $1000 allot
 create LD-QO  $1000 allot  create LD-QE  $2000 allot
 
@@ -55,7 +57,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
 : LD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F32:NARROW F32:WIDEN ;   \ narrowed host elem
+: LD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  NARROW WIDEN ;   \ narrowed host elem
 : LD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
@@ -88,6 +90,7 @@ create LD-QO  $1000 allot  create LD-QE  $2000 allot
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
+;using
 ;package
 
 package MAKI

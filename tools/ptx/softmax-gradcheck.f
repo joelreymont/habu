@@ -32,6 +32,8 @@ require maki/eval/active-target.f
 
 package SOFTMAX-GRADCHECK
 
+using F32
+
 private
 
 4 constant GCK
@@ -51,8 +53,8 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i T-GET F32:NARROW  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i F32@ F32:WIDEN  dst i T-SET  loop ;
+: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  GCK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : GC-OUT-GUARD ( -- )  GCK 0 ?do  GC-OUT i F32@ PTXSENT:GUARD drop  loop ;  \ fail closed if the copy-back was dropped
 
 \ device availability (false iff off-device); false means Mac/CI, so the gradcheck skips
@@ -170,4 +172,5 @@ variable GC-FWD variable GC-BWD variable GC-dX variable GC-dDY variable GC-dO va
 
 SOFTMAX-GRADCHECK-MAIN
 
+;using
 ;package

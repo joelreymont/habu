@@ -4,6 +4,8 @@ require lib/float32.f
 
 package F32-BUF
 
+using F32
+
 public
 
 : STORE ( n ptr u8 -- ) {: value:n dst:ptr :}
@@ -20,14 +22,15 @@ public
 
 : PACK ( ptr a n ptr u8 -- ) {: src:ptr count:n dst:ptr :}
    count 0 ?do
-      src i cells + @ F32:NARROW
+      src i cells + @ NARROW
       dst i 4 * + STORE
    loop ;
 
 : UNPACK ( ptr u8 n ptr a -- ) {: src:ptr count:n dst:ptr :}
    count 0 ?do
-      src i 4 * + LOAD F32:WIDEN
+      src i 4 * + LOAD WIDEN
       dst i cells + !
    loop ;
 
+;using
 ;package

@@ -87,6 +87,9 @@ package CAD-NUM public
 -5192 constant E-LRED-REG      \ node / input register-map index out of range
 
 package MAKI
+
+using PTX-ACT
+
 private
 
 4    constant LRED-MAX-IN      \ v1 input cap (documented): >4 region inputs fails closed
@@ -294,7 +297,7 @@ private
    x x EMIT-MUL {: x2:n :}
    x2 EMIT-BLOCK-SUM {: ssq:n :}
    ssq LRED-EMIT-COLS-F EMIT-U/ {: ms:n :}
-   ms RMS-EPS PTX-ACT:EMIT-ADDC {: mse:n :}
+   ms RMS-EPS EMIT-ADDC {: mse:n :}
    mse LRED-EMIT-SQRT {: rr:n :}
    x rr EMIT-B/ ;
 
@@ -304,7 +307,7 @@ private
    x EMIT-BLOCK-SUM fk EMIT-U/ {: mu:n :}
    x mu EMIT-B- {: d:n :}
    d d EMIT-MUL EMIT-BLOCK-SUM fk EMIT-U/ {: var:n :}
-   var LN-EPS PTX-ACT:EMIT-ADDC {: vare:n :}
+   var LN-EPS EMIT-ADDC {: vare:n :}
    vare LRED-EMIT-SQRT {: std:n :}
    d std EMIT-B/ ;
 
@@ -327,8 +330,8 @@ private
 : LRED-EMIT-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       relu            OF nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-RELU     ENDOF
-      gelu            OF nd 0 MIR-INPUT-IDX LRED-OPREG PTX-ACT:EMIT-GELU     ENDOF
-      silu            OF nd 0 MIR-INPUT-IDX LRED-OPREG PTX-ACT:EMIT-SILU     ENDOF
+      gelu            OF nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-GELU     ENDOF
+      silu            OF nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-SILU     ENDOF
       add             OF nd LRED-BINREGS EMIT-ADD      ENDOF
       residual-add    OF nd LRED-BINREGS EMIT-ADD      ENDOF
       bias            OF nd LRED-BINREGS EMIT-ADD      ENDOF
@@ -436,4 +439,5 @@ public
       s" }" PTX-L
    }PTX-MODULE ;
 
+;using
 ;package

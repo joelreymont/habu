@@ -8,8 +8,14 @@
 \ reduce), not an O(B) fold. Each collective applies its own inactive-lane
 \ identity before writing shared memory, so direct sums and backward cotangents
 \ do not inherit ROW-LOAD's max-friendly -inf seed. Param registers (CG-SM-PARAMS):
-\ in=%rd1, out=%rd2, k=%r1. Load after lib/errors.f, lib/string.f, lib/fmt.f,
-\ src/arch/ptx/emit.f, lib/ptx/header.f, and lib/ptx/cg.f. Checked Habu.
+\ in=%rd1, out=%rd2, k=%r1. Checked Habu; dependencies are direct.
+
+require lib/errors.f
+require lib/string.f
+require lib/fmt.f
+require src/arch/ptx/emit.f
+require lib/ptx/header.f
+require lib/ptx/cg.f
 
 : CG-BLOCK ( -- n )
    PTX-BLOCK@ dup PTX-BLOCK-CHECK ;

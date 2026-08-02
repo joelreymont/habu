@@ -41,6 +41,8 @@ require maki/eval/active-target.f
 
 package LAYERNORM-DEVICE-TEST
 
+using F32
+
 private
 
 4 constant RNK
@@ -60,8 +62,8 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  RNK 0 ?do  src i T-GET F32:NARROW  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  RNK 0 ?do  src i F32@ F32:WIDEN  dst i T-SET  loop ;
+: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  RNK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  RNK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : RN-OUT-GUARD ( -- )  RNK 0 ?do  RN-OUT i F32@ PTXSENT:GUARD drop  loop ;   \ fail closed if copy-back dropped
 
 : RN-DEVICE? ( -- bool )  CUDA:OPEN? ;
@@ -185,4 +187,5 @@ variable RN-FWD variable RN-BWD variable RN-dX variable RN-dDY variable RN-dO va
 
 LAYERNORM-DEVICE-MAIN
 
+;using
 ;package

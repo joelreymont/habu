@@ -95,6 +95,9 @@ package CAD-NUM public
 -5200 constant E-LMM-REG       \ node / input register-map index out of range
 
 package MAKI
+
+using PTX-ACT
+
 private
 
 4    constant LMM-MAX-IN       \ contraction arity cap (linear=3, matmul=2, both <=4)
@@ -329,8 +332,8 @@ private
 : LMM-EPI-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       relu OF nd LMM-EPI-OPREG EMIT-RELU ENDOF
-      gelu OF nd LMM-EPI-OPREG PTX-ACT:EMIT-GELU ENDOF
-      silu OF nd LMM-EPI-OPREG PTX-ACT:EMIT-SILU ENDOF
+      gelu OF nd LMM-EPI-OPREG EMIT-GELU ENDOF
+      silu OF nd LMM-EPI-OPREG EMIT-SILU ENDOF
       add OF E-LMM-OP throw ENDOF  mul OF E-LMM-OP throw ENDOF
       scale OF E-LMM-OP throw ENDOF  bias OF E-LMM-OP throw ENDOF
       layernorm OF E-LMM-OP throw ENDOF  rmsnorm OF E-LMM-OP throw ENDOF
@@ -573,4 +576,5 @@ public
       s" }" PTX-L
    }PTX-MODULE ;
 
+;using
 ;package

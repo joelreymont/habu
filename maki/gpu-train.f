@@ -13,6 +13,8 @@ require lib/float32.f
 \ same-package bare; the weight buffer and the pure gradient helper are private.
 package GPU
 
+using F32
+
 private
 create WBUF 4 cells allot                          \ host weights (Habu f64 floats)
 
@@ -30,8 +32,9 @@ public
 : EPOCH ( r -- ) {: lr:r :}
    4 0 ?do  WBUF i T-GET dup GRAD swap i PUT  loop       \ x=grad, y=weight
    lr SGD                                                \ device update
-   4 0 ?do  i RESULT F32:WIDEN  WBUF i T-SET  loop ;       \ read weights back
+   4 0 ?do  i RESULT WIDEN  WBUF i T-SET  loop ;       \ read weights back
 
-: WBITS ( n -- n )  WBUF swap T-GET F32:NARROW ;      \ weight i as f32 bits (for assertions)
+: WBITS ( n -- n )  WBUF swap T-GET NARROW ;      \ weight i as f32 bits (for assertions)
 
+;using
 ;package

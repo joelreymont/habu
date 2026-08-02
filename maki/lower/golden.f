@@ -51,6 +51,8 @@ package CAD-NUM public
 
 package MAKI
 
+using F32
+
 \ ---- reason buffer ---------------------------------------------------------
 128 constant LG-RE-CAP
 create LG-RE LG-RE-CAP allot  variable LG-RE-U
@@ -71,7 +73,7 @@ public
 private
 
 \ ---- tolerance comparison (device f32 vs host rounded to the f32 grid) -------
-: LG-NARROW ( r -- r )  F32:NARROW F32:WIDEN ;      \ round a host f64 onto the f32 grid
+: LG-NARROW ( r -- r )  NARROW WIDEN ;      \ round a host f64 onto the f32 grid
 
 variable LG-BADI                                \ first mismatched element index (-1 = none)
 : LG-WITHIN-LIN? ( r r r r -- bool ) {: dev:r host:r atol:r rtol:r :}
@@ -201,4 +203,5 @@ public
    MDL-ATOL MDL-RTOL LG-COMPARE-LIN
    if MDL-PASS-REASON V-PASS else MDL-FAIL-REASON V-FAIL then ;
 
+;using
 ;package

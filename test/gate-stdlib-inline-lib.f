@@ -542,6 +542,7 @@ public
    s" lib/ptx/cpp-slot-test.f" GSI-INCLUDE
    s" lib/ptx/collective-test.f" GSI-INCLUDE
    s" lib/ptx/cg-collective-test.f" GSI-INCLUDE
+   s" lib/ptx/cg-activation-test.f" GSI-INCLUDE
    s" lib/ptx/autograd-test.f" GSI-INCLUDE
    s" lib/ptx/ir-test.f" GSI-INCLUDE
    s" lib/ptx/opt-ir-test.f" GSI-INCLUDE

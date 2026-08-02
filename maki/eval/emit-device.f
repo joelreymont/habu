@@ -66,6 +66,8 @@ require maki/eval/active-target.f
 
 package EVND
 
+using F32
+
 private
 
 \ ---- device-golden problem sizes (exact-binary-fraction inputs) -------------
@@ -122,7 +124,7 @@ create PA-OUT PA-OUT-CAP allot  create PA-ERR PA-ERR-CAP allot
    buf o 3 + + c@  24 lshift or ;
 
 : F! ( r ptr a n -- ) {: v:r buf:ptr idx:n :}    \ store a Habu float as f32 at element idx
-   v F32:NARROW buf idx F32! ;
+   v NARROW buf idx F32! ;
 
 : MAXF ( r r -- r ) {: a:r b:r :}  a b f> if a else b then ;
 
@@ -314,7 +316,7 @@ variable AT-NV variable AT-DPARAM
    SN-ELEMS 0 ?do  i SN-COLS /mod swap SN-INVAL  SN-IN i F!  loop ;
 : SN-MAXERR ( -- r )
    0.0  SN-ELEMS 0 ?do
-      SN-OUT i F32@ F32:WIDEN   i SN-COLS /mod swap SN-REFVAL  f- fabs  MAXF
+      SN-OUT i F32@ WIDEN   i SN-COLS /mod swap SN-REFVAL  f- fabs  MAXF
    loop ;
 
 \ gemm: A[i][k]=1, B[k][j]=((j&3)+1)*0.25, so C[i][j] = 32*B[0][j] = 8*((j&3)+1).
@@ -327,7 +329,7 @@ variable AT-NV variable AT-DPARAM
 : FILL-GEMM-B ( -- )  GM-B-ELEMS 0 ?do  i GEMM-N mod GEMM-BVAL  GEMM-B i F!  loop ;
 : GEMM-MAXERR ( -- r )
    0.0  GM-C-ELEMS 0 ?do
-      GEMM-C i F32@ F32:WIDEN   i GEMM-N mod GEMM-REFVAL  f- fabs  MAXF
+      GEMM-C i F32@ WIDEN   i GEMM-N mod GEMM-REFVAL  f- fabs  MAXF
    loop ;
 
 \ attention: K rows all equal -> scores equal per query -> softmax uniform, so
@@ -349,7 +351,7 @@ variable AT-NV variable AT-DPARAM
 : FILL-ATTN-V ( -- )  AT-ELEMS 0 ?do  i ATTN-D /mod swap ATTN-VVAL  ATTN-V i F!  loop ;
 : ATTN-MAXERR ( -- r )
    0.0  AT-ELEMS 0 ?do
-      ATTN-O i F32@ F32:WIDEN   i ATTN-D /mod swap ATTN-REFVAL  f- fabs  MAXF
+      ATTN-O i F32@ WIDEN   i ATTN-D /mod swap ATTN-REFVAL  f- fabs  MAXF
    loop ;
 
 \ ---- build + run + compare per task -----------------------------------------
@@ -424,4 +426,5 @@ public
 : ATTN-OV-CAUGHT? ( -- bool )
    ATTN-OV$ ATTN-RUN {: e:r :}  s" attn output-into-V [stores into V ptr]" e REPORT-ERR  e TOL f> ;
 
+;using
 ;package

@@ -40,6 +40,8 @@ require maki/eval/active-target.f
 
 package SWIGLU-DEVICE-TEST
 
+using F32
+
 private
 
 4 constant SWK
@@ -61,8 +63,8 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
    v 16 rshift $FF and buf o 2 + + c!  v 24 rshift $FF and buf o 3 + + c! ;
 : F32@ ( ptr u8 n -- n ) {: buf idx :} idx 4 * {: o :}
    buf o + c@  buf o 1 + + c@ 8 lshift or  buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
-: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i T-GET F32:NARROW  dst i F32!  loop ;
-: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i F32@ F32:WIDEN  dst i T-SET  loop ;
+: PACK4   ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i T-GET NARROW  dst i F32!  loop ;
+: UNPACK4 ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}  SWK 0 ?do  src i F32@ WIDEN  dst i T-SET  loop ;
 : SW-OUT-GUARD ( -- )  SWK 0 ?do  SW-OUT i F32@ PTXSENT:GUARD drop  loop ;   \ fail closed if copy-back dropped
 
 : SW-DEVICE? ( -- bool )  CUDA:OPEN? ;
@@ -175,4 +177,5 @@ variable SW-FWD variable SW-dG variable SW-dU variable SW-dO variable SW-KV
 
 SWIGLU-DEVICE-MAIN
 
+;using
 ;package

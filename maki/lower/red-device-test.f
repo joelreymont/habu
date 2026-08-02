@@ -32,6 +32,8 @@ require maki/eval/active-target.f
 
 package MAKI
 
+using F32
+
 create LRD-OUT $4000 allot  create LRD-ERR $1000 allot
 create LRD-QO  $1000 allot  create LRD-QE  $2000 allot
 
@@ -75,7 +77,7 @@ create LRD-CS $800 allot  variable LRD-CS-U
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
 : LRD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LRD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F32:NARROW F32:WIDEN ;   \ narrowed host elem
+: LRD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  NARROW WIDEN ;   \ narrowed host elem
 : LRD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do
@@ -109,6 +111,7 @@ create LRD-CS $800 allot  variable LRD-CS-U
    PTXTC:CLEAN  MAKI-GRADE:CLEAN
    T-REPORT ;
 
+;using
 ;package
 
 package MAKI

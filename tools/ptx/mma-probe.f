@@ -37,6 +37,8 @@ require tools/ptx/bench.f
 
 package MMAPROBE
 
+using F32-BUF
+
 16 constant MP-M   8 constant MP-N   8 constant MP-K
 MP-M MP-K * constant MP-AE          \ A elems = 128
 MP-K MP-N * constant MP-BE          \ B elems = 64
@@ -313,8 +315,8 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
       MP-AE 4 * MP-DA PTXBENCH:DEVICE-ALLOC  MP-DA PTXBENCH:OWN-DEV
       MP-BE 4 * MP-DB PTXBENCH:DEVICE-ALLOC  MP-DB PTXBENCH:OWN-DEV
       MP-CE 4 * MP-DC PTXBENCH:DEVICE-ALLOC  MP-DC PTXBENCH:OWN-DEV
-      MP-HA MP-AE MP-PA F32-BUF:PACK
-      MP-HB MP-BE MP-PB F32-BUF:PACK
+      MP-HA MP-AE MP-PA PACK
+      MP-HB MP-BE MP-PB PACK
       MP-DA @ MP-PA MP-AE 4 * PTXBENCH:HTOD
       MP-DB @ MP-PB MP-BE 4 * PTXBENCH:HTOD
       32 PTXBENCH:BLOCK!  1 PTXBENCH:BLOCKY!
@@ -326,7 +328,7 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
       16 MP-DC PTXBENCH:PARAM-PTR!
       PTXBENCH:LAUNCH  PTXBENCH:SYNC
       MP-PC MP-DC @ MP-CE 4 * PTXBENCH:DTOH
-      MP-PC MP-CE MP-HC F32-BUF:UNPACK ;] CUDA-SCOPE:SCOPE ;
+      MP-PC MP-CE MP-HC UNPACK ;] CUDA-SCOPE:SCOPE ;
 
 : MP-COMPARE ( -- n )               \ mismatch count; sets MP-BADI, MP-MAXERR
    -1 MP-BADI !  0.0 MP-MAXERR !  0
@@ -383,6 +385,7 @@ public
    MP-COMPARE MP-REPORT
    PTXTC:CLEAN ;
 
+;using
 ;package
 
 MMAPROBE:MP-ALL

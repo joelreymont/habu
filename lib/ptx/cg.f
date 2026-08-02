@@ -5,9 +5,12 @@
 \ result register. Running a checked KERNEL: body in emit mode therefore produces
 \ the kernel's PTX - so the SAME checked kernel that type-checks also emits, and
 \ ptxas assembles it (proven for SAXPY on sm_87). Class is implied by the op
-\ (span/ctx -> rd, tile/uniform -> f). Load after lib/errors.f, lib/string.f,
-\ lib/fmt.f, and src/arch/ptx/emit.f (reuses PTX-L). Checked Habu.
+\ (span/ctx -> rd, tile/uniform -> f). Checked Habu; dependencies are direct.
 
+require lib/errors.f
+require lib/string.f
+require lib/fmt.f
+require src/arch/ptx/emit.f
 require lib/ptx/kernel-abi.f
 require lib/ieee754.f
 

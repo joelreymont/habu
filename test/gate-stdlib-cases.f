@@ -312,6 +312,7 @@ SUITE ptx-stdlib
    lib/ptx/cpp-slot-test.f
    lib/ptx/collective-test.f
    lib/ptx/cg-collective-test.f
+   lib/ptx/cg-activation-test.f
    lib/ptx/autograd-test.f
    lib/ptx/ir-test.f
    lib/ptx/opt-ir-test.f

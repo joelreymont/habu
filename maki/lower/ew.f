@@ -69,6 +69,9 @@ package CAD-NUM public
 -5176 constant E-LEW-CAP      \ driver text buffer capacity exceeded
 
 package MAKI
+
+using PTX-ACT
+
 private
 
 4   constant LEW-MAX-IN       \ v1 input cap (documented): >4 region inputs fails closed
@@ -304,8 +307,8 @@ private
 : LEW-EMIT-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       relu            OF nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-RELU  ENDOF
-      gelu            OF nd 0 MIR-INPUT-IDX LEW-OPREG PTX-ACT:EMIT-GELU  ENDOF
-      silu            OF nd 0 MIR-INPUT-IDX LEW-OPREG PTX-ACT:EMIT-SILU  ENDOF
+      gelu            OF nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-GELU  ENDOF
+      silu            OF nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-SILU  ENDOF
       add             OF nd LEW-BINREGS EMIT-ADD   ENDOF
       residual-add    OF nd LEW-BINREGS EMIT-ADD   ENDOF
       bias            OF nd LEW-BINREGS EMIT-ADD   ENDOF
@@ -410,4 +413,5 @@ public
    {: ma:ptr mu:n rid:CAD-KIND:region pa:ptr pu:n :}
    ma mu  s" require maki/lower/ew.f"  s" LEW-EMIT"  rid  pa pu  LOWER-DRIVER! ;
 
+;using
 ;package
