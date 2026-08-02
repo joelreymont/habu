@@ -791,6 +791,10 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
       CTX BLD  CTX BLD  r sy HIR-WORD:CONST-OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
       0<> exit
    then
+   m HIR-MEANING:CALLABLE HIR-MEANING:EQ if
+      CTX BLD  CTX BLD  HIR-OPCODE:WORDCALL HIR:OPCODE  TOKEN-OPERANDS
+      0<> exit
+   then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
       CTX BLD  CTX BLD  HIR-OPCODE:CALL HIR:OPCODE  TOKEN-OPERANDS 0= if
          false exit
@@ -1061,30 +1065,87 @@ create JOIN-TAB TMAX cells allot
 \ entry block; reaching this with none is the same disagreement between the
 \ pre-scan and the walk that a memory word with no order is, and it is refused
 \ rather than patched up by minting one in whatever block the walk has reached.
-: DO-SELF-CALL ( n -- )
-   {: ix:n :}
-   IN-N @ {: a:n :}
-   OUT-N @ {: r:n :}
+\ How many values are live ACROSS the call, given what the callee takes and
+\ leaves. Both call forms ask this and neither carries its own arithmetic: the
+\ vector has to hold at least the arguments, an order has to be live for the
+\ operation to take, and what is left over plus what the callee returns has to
+\ still fit the vector afterwards.
+: CALL-LIVE ( n n -- n )
+   {: a:n r:n :}
    VN @ a < if E-NELAB-CALL throw then
    TOK-LIVE @ 0= if E-NELAB-CALL throw then
    VN @ a - {: k:n :}
    k r + VMAX > if E-NELAB-CALL throw then
-   CTX BLD HIR-OPCODE:CALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
-   CTX BLD VW MKEY ix op OPEN
+   k ;
+
+\ The operands of either call form: the order, then the WHOLE vector bottom
+\ first, whose top `a` values are the arguments.
+: CALL-OPERANDS+ ( -- )
    CTX BLD TOK IR-BUILD:ADD-OPERAND
    VN @ 0 ?do
       CTX BLD  i VAT  IR-BUILD:ADD-OPERAND
-   loop
+   loop ;
+
+\ Its results: the order again, then one value per survivor and one per output.
+: CALL-RESULTS+ ( n -- )
+   {: n:n :}
    CTX BLD  CTX BLD HIR:MEM-TYPE  IR-BUILD:ADD-RESULT
-   k r + 0 ?do
+   n 0 ?do
       CTX BLD  CTX BLD CELL-TYPE  IR-BUILD:ADD-RESULT
-   loop
+   loop ;
+
+\ Closing either call form: the whole vector it consumed goes, and what it
+\ answered takes its place - the order into the slot, the values onto the vector.
+: CALL-CLOSE ( n -- )
+   {: n:n :}
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    VN @ VDROP
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK!
-   k r + 0 ?do
+   n 0 ?do
       CTX BLD id i 1+ IR-BUILD:OP-RESULT@ VPUSH
    loop ;
+
+: DO-SELF-CALL ( n -- )
+   {: ix:n :}
+   IN-N @ OUT-N @ CALL-LIVE  OUT-N @ + {: back:n :}
+   CTX BLD HIR-OPCODE:CALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CALL-OPERANDS+
+   back CALL-RESULTS+
+   back CALL-CLOSE ;
+
+\ The three fields a call to another word carries: where the callee starts, and
+\ what its declared effect is. Nothing here decides any of them - they are the
+\ word model's row, read once by the caller below and written onto the operation
+\ so that every later stage answers about one callee.
+: WCALL-ATTRS+ ( n n n -- )
+   {: entry:n in:n out:n :}
+   CTX BLD  CTX BLD HIR:KEY-ENTRY
+   CTX BLD entry IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD HIR:KEY-IN
+   CTX BLD in IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR
+   CTX BLD  CTX BLD HIR:KEY-OUT
+   CTX BLD out IR-BUILD:INTERN-INT-ATTR  IR-BUILD:ADD-ATTR ;
+
+\ A word this definition CALLS. It is the same staging as `RECURSE` with one
+\ difference, and the difference is where the arity comes from: a self-call takes
+\ and leaves what the DEFINITION declares, and this takes and leaves what the
+\ CALLEE declares. Everything the caller still holds crosses the operation either
+\ way, for the reason src/compiler/native/hir.f gives - no register survives a
+\ call whatever the callee destroys, so the honest statement is that the call
+\ consumes each live value and answers it again.
+: DO-WORD-CALL ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:CALLEE-IN@ {: a:n :}
+   r sy HIR-WORD:CALLEE-OUT@ {: o:n :}
+   a o CALL-LIVE o + {: back:n :}
+   CTX BLD HIR-OPCODE:WORDCALL HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CALL-OPERANDS+
+   back CALL-RESULTS+
+   r sy HIR-WORD:ENTRY@ a o WCALL-ATTRS+
+   back CALL-CLOSE ;
 
 \ `unloop`: this dialect carries a counted loop's index and limit as block
 \ arguments, so there is no frame to drop and nothing is staged. What it does is
@@ -1191,6 +1252,7 @@ variable IX                          \ the body token the walk stands on
       op           OF r ix EMIT-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF
+      callable     OF r ix DO-WORD-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
       rename       OF p r  VW MKEY ix NTAPE:SPELL@  RENAME ENDOF
       open-locals  OF E-NELAB-LOCAL throw ENDOF

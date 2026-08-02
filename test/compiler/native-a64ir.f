@@ -117,7 +117,7 @@ private
 \ addressed cell forms in ADDR-SHAPE-CASE, the two addressed byte forms in
 \ BYTE-SHAPE-CASE and the fused compare-and-branch in CMPBR-SHAPE-CASE, and the
 \ count covers all twenty-seven.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b A64IR-OPCODE:MOVZ A64IR:OPCODE {: z:IR-ID:ir-symbol-id :}
@@ -139,6 +139,7 @@ private
    c b A64IR-OPCODE:LINKSAVE A64IR:OPCODE {: ls:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:LINKLOAD A64IR:OPCODE {: ll:IR-ID:ir-symbol-id :}
    c b A64IR-OPCODE:CMPBR A64IR:OPCODE {: cb:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:WORDCALL A64IR:OPCODE {: wc:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv z IR-SCHEMA:FDEFINED?
@@ -159,13 +160,14 @@ private
    rv cl IR-SCHEMA:FDEFINED?
    rv ls IR-SCHEMA:FDEFINED?
    rv ll IR-SCHEMA:FDEFINED?
-   rv cb IR-SCHEMA:FDEFINED? ;
+   rv cb IR-SCHEMA:FDEFINED?
+   rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the twenty-seven machine opcodes" T-LABEL
+   s" registration defines exactly the twenty-eight machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 27 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 28 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -846,6 +848,31 @@ private
    s" a data-stack adjustment past its immediate is refused" T-LABEL
    [: DBYTES-HIGH ;] E-A64IR-DBYTES TTHROWSQ ;
 
+\ ---- the callee entry a call to another word carries -------------------------
+\ An address of CODE on this machine: the address of a whole instruction, and
+\ not the null address, where no code lives. How FAR away it is is deliberately
+\ NOT asked here - the distance depends on where the calling routine is written,
+\ which nothing before emission knows - so a legal entry below is one this
+\ dialect accepts and the emitter may still refuse for reach.
+: ENTRY-ODD-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b $4002 A64IR:ENTRY-ATTR drop ;
+
+: ENTRY-NULL-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b 0 A64IR:ENTRY-ATTR drop ;
+
+: ENTRY-ODD ( -- )   BND [: ENTRY-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
+: ENTRY-NULL ( -- )  BND [: ENTRY-NULL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: ENTRY-REFUSE-CASES ( -- )
+   s" a callee address that is no whole instruction is refused" T-LABEL
+   [: ENTRY-ODD ;] E-A64IR-ENTRY TTHROWSQ
+   s" a callee at the null address is refused" T-LABEL
+   [: ENTRY-NULL ;] E-A64IR-ENTRY TTHROWSQ ;
+
 : SLOT-ODD ( -- )
    BND [: SLOT-ODD-BODY ;] IR-CTX:WITH-CONTEXT ;
 
@@ -1016,6 +1043,10 @@ private
    drop
    DBYTES-REFUSE-CASES ;
 
+: GROUP-ENTRY-REFUSE ( IR-CTX:ctx -- )
+   drop
+   ENTRY-REFUSE-CASES ;
+
 : GROUP-MOV ( IR-CTX:ctx -- )
    drop
    MOV-CASE ;
@@ -1079,6 +1110,7 @@ public
    BND [: GROUP-DSLOT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DSLOT-REACH ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-DBYTES-REFUSE ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-ENTRY-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHIFT-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TABLE-REFUSE ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-TARGET-REFUSE ;] IR-CTX:WITH-CONTEXT

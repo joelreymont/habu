@@ -229,6 +229,42 @@ variable SAVED-CP
    s" PUB-KEEP" REC-START OLD-START @ T=
    s" PUB-KEEP" REC-LEN OLD-LEN @ T= ;
 
+\ ---- the slot the emission's branches were measured from ---------------------
+\ A routine whose body calls another word carries a branch measured from the
+\ address the routine itself was going to be written at, so publishing it
+\ anywhere else would leave that branch pointing at the wrong instruction. The
+\ seam is the one authority on where a routine lands, so it holds the address the
+\ emitter was given against the slot it is claiming now.
+\
+\ THE CASE IS BUILT WITH A PLACEMENT THAT IS DELIBERATELY NOT THAT SLOT, which is
+\ what a code pointer that moved between the emission and the publication would
+\ look like from here. Four instructions past the free slot is enough: the seam
+\ compares the two addresses and there is no tolerance in it.
+\
+\ AND THE POSITIVE HALF IS THE RECORD-CASE ABOVE, which publishes an emission
+\ made with no placement at all - a routine with no such branch needs none - so
+\ the two together say the check is on the pair and not on the emission alone.
+16 constant PLACE-SKEW               \ four instructions past the slot the seam will claim
+
+: PLACE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   NPUB:NEXT-SLOT PLACE-SKEW + A64EMIT:PLACE-AT
+   c COMPILE-SQ
+   s" PUB-KEEP" REC-START OLD-START !
+   s" PUB-KEEP" REC-LEN OLD-LEN !
+
+   s" an emission whose placement is not the claimed slot is refused" T-LABEL
+   A64EMIT:PLACED? TTRUE
+   A64EMIT:PLACEMENT  NPUB:NEXT-SLOT PLACE-SKEW +  T=
+   [: s" PUB-KEEP" PUB-WID NPUB:REPUBLISH ;] E-NPUB-PLACE TTHROWSQ
+
+   s" and the record it named is exactly as it was" T-LABEL
+   s" PUB-KEEP" REC-START OLD-START @ T=
+   s" PUB-KEEP" REC-LEN OLD-LEN @ T= ;
+
+: PLACE-CASE ( -- )
+   NFIX:BINDING [: PLACE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 : SEALED-CASES ( -- )
    RECORD-CASE
    UNKNOWN-CASE
@@ -265,6 +301,7 @@ public
    NO-EMISSION-CASE
    NFIX:BINDING [: BODY ;] IR-CTX:WITH-CONTEXT
    CALLER-CASE
+   PLACE-CASE
    T-REPORT ;
 
 ;package

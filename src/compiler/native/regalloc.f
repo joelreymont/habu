@@ -1991,9 +1991,36 @@ public
    c b A64IR-OPCODE:MOV A64IR:OPCODE 0 BND-MOV !
    BOUND-YES BND-MODE ! ;
 
+\ Whether a binding is live, for a caller cleaning up after a refused run. See
+\ src/compiler/native/select.f BOUND? for why each pass answers for itself.
+: BOUND? ( -- bool )
+   BND-MODE @ BOUND-YES = ;
+
 \ Give up a binding without allocating against it.
 : RELEASE ( -- )
    BND-TAKE ;
+
+\ ---- which walk a routine gets -----------------------------------------------
+\ A routine of one block is walked by the straight-line pass, which numbers its
+\ positions within that block; everything else is walked by the pass that lays
+\ the blocks out end to end and numbers them across the whole routine. The two
+\ numberings are different, and src/compiler/native/regalloc-verify.f re-derives
+\ each one, so the two files have to send a routine the same way - which is why
+\ the question is asked of the CONTRACT and the module, both of which they hold.
+\
+\ A ROUTINE THAT CALLS GOES THE LONG WAY WHATEVER ITS SHAPE. It has a frame with
+\ its caller's return address in it, and the straight-line pass has no rule for a
+\ routine that reaches both a frame and the caller's data stack: the frame rule
+\ wants the reserve to be the block's first operation and the data-stack rule
+\ wants the take to be. The pass that lays blocks out has that rule already - the
+\ prologue first, the entry sequence after it - so a calling routine of one
+\ block, which is what `: A ( n -- n ) B 1+ ;` is, is walked by the pass that can
+\ describe it rather than refused by the pass that cannot. Unifying the two
+\ numberings so this question disappears is dot habu-unify-the-two-d4f93e83.
+: CALLS-MB? ( IR-ID:ir-fun-id A64EFF:traits -- bool )
+   {: f:IR-ID:ir-fun-id t:A64EFF:traits :}
+   f BLOCK-COUNT 1 <> if true exit then
+   t A64EFF:T-CALL A64EFF:TRAITS-HAS? ;
 
 \ ---- the pass ----------------------------------------------------------------
 \ Allocate the whole of one frozen machine module against the contract of the
@@ -2022,7 +2049,7 @@ public
    bk 0 S-BLK !
    bk rb FIXED-ARITY-CK
    bk rb args outs LOWERED-CK
-   f BLOCK-COUNT 1 <> if f MB-RUN exit then
+   f traits CALLS-MB? if f MB-RUN exit then
    bk SCAN-LIVE
    COVER-CK
    bk WANTS!

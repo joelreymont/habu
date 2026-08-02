@@ -33,6 +33,9 @@
 \   hir.bstore -> a64.astrb
 \   hir.call   -> one a64.dstore per value crossing the call, then a64.call,
 \                 then one a64.dload per value coming back
+\   hir.wordcall -> the same three runs with a64.wordcall in the middle, and the
+\                 counts read off the callee's declared arity instead of this
+\                 routine's own convention
 \   hir.return -> a64.ret
 \ An operand is not "the same position in the new operation"; it is the value the
 \ source operand's own definition selected to, looked up in the value map. That is
@@ -165,7 +168,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-17 constant OPCODES-N
+18 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -183,6 +186,7 @@ private
 14 constant O-BSTORE
 15 constant O-EQ
 16 constant O-CALL
+17 constant O-WORDCALL
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -199,6 +203,9 @@ BOUND-NO BND-MODE !
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-VAL IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
@@ -258,6 +265,7 @@ create NAMEBUF NAME-CAP allot
       bload  OF O-BLOAD  ENDOF
       bstore OF O-BSTORE ENDOF
       call   OF O-CALL   ENDOF
+      wordcall OF O-WORDCALL ENDOF
       return OF O-RETURN ENDOF
    ;MATCH ;
 
@@ -279,6 +287,7 @@ create NAMEBUF NAME-CAP allot
       O-BLOAD  of HIR-OPCODE:BLOAD  endof
       O-BSTORE of HIR-OPCODE:BSTORE endof
       O-CALL   of HIR-OPCODE:CALL   endof
+      O-WORDCALL of HIR-OPCODE:WORDCALL endof
       O-RETURN of HIR-OPCODE:RETURN endof
       E-A64SEL-OPCODE throw
    endcase ;
@@ -605,10 +614,8 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR
    IR-BUILD:ADD-ATTR ;
 
-: CALL-LIVE ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   ARGS SLOT-POSITIONS {: a:n :}
-   OUTS SLOT-POSITIONS {: r:n :}
+: CALL-LIVE ( IR-ID:ir-op-id n n -- n )
+   {: id:IR-ID:ir-op-id a:n r:n :}
    id OPERANDS-OF 1- a - {: k:n :}
    k 0 < if E-A64SEL-CALL throw then
    id RESULTS-OF 1- r - k <> if E-A64SEL-CALL throw then
@@ -624,29 +631,106 @@ create NAMEBUF NAME-CAP allot
    CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
    CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
 
+\ The same branch to a callee named by its address. The three adjustments are the
+\ same three fields the self-call carries under the same two keys, so every
+\ consumer that finds a call site by its keys finds this one too; the entry is
+\ the third, and it is the only thing about the two forms that differs.
+: EMIT-WBL ( IR-ID:ir-op-id n n n -- )
+   {: at:IR-ID:ir-op-id give:n back:n entry:n :}
+   at A64IR-OPCODE:WORDCALL OPEN
+   TOK OPERAND+
+   TOKEN+
+   give DBYTES-ATTR+
+   back DBACK-ATTR+
+   CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
+   IR-BUILD:ADD-ATTR
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@ TOK! ;
+
 \ Nothing here re-asks whether this routine may call at all. CONTRACT-CK decided
 \ it before the first operation was selected - a contract that declares a call
 \ needs the data-stack convention and a frame for the return address - and
 \ CALLED-CK decides the other half after the last one, by holding the calls this
 \ pass really built against the contract's declaration. A third copy of the
 \ question here would be a check no mutation can reach.
-: EMIT-CALL ( IR-ID:ir-op-id -- )
-   {: id:IR-ID:ir-op-id :}
-   ARGS SLOT-POSITIONS {: a:n :}
-   OUTS SLOT-POSITIONS {: r:n :}
-   id CALL-LIVE {: k:n :}
-   id 0 OPERAND TOK!
-   k a + 0 ?do
+\ The store run in front of the branch, the load run behind it, and the two
+\ pointer moves the branch itself carries. Both call forms are this sequence and
+\ they differ only in the operation in the middle, so the sequence is written
+\ once: a second copy would be a second statement of the caller-save discipline
+\ the whole design turns on.
+: CALL-SAVE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id n:n :}
+   n 0 ?do
       id  id i 1+ OPERAND  i A64IR:SLOT-WIDTH *  EMIT-DSTORE
-   loop
-   id  k a + A64IR:SLOT-WIDTH *  k r + A64IR:SLOT-WIDTH *  EMIT-BL
-   k r + 0 ?do
+   loop ;
+
+: CALL-RESTORE ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id n:n :}
+   n 0 ?do
       id i 1+ RESULT-AT
       id  i A64IR:SLOT-WIDTH *  EMIT-DLOAD
       VBIND
    loop
    id 0 RESULT-AT  TOK  VBIND
    N-CALLS @ 1+ N-CALLS ! ;
+
+: EMIT-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   ARGS SLOT-POSITIONS {: a:n :}
+   OUTS SLOT-POSITIONS {: r:n :}
+   id a r CALL-LIVE {: k:n :}
+   id 0 OPERAND TOK!
+   id k a + CALL-SAVE
+   id  k a + A64IR:SLOT-WIDTH *  k r + A64IR:SLOT-WIDTH *  EMIT-BL
+   id k r + CALL-RESTORE ;
+
+\ ---- selecting a call to another word ----------------------------------------
+\ THE ONE THING THAT DIFFERS FROM A SELF-CALL IS WHOSE ARITY IS READ. A self-call
+\ enters this same routine, so how many values the site publishes and takes back
+\ is the ROUTINE's own convention - which is exactly what makes EMIT-CALL above
+\ read ARGS and OUTS. A call to another word enters a routine with a convention
+\ of its own, and the operation carries it: the source dialect put the callee's
+\ declared effect on the operation because neither list can be counted for it,
+\ both being variadic. Everything else - the store run, the branch, the load run,
+\ the two byte counts and the slots they name - is the same sequence, and it is
+\ the same words below that build it.
+\
+\ AND THE CALLER'S SAVE DISCIPLINE IS UNCHANGED, WHICH IS THE POINT. The site
+\ writes every live value into a slot of the caller's own stack BELOW the
+\ callee's argument base and reads it back out of that slot afterwards, so it
+\ assumes nothing at all about which registers the callee destroys. That is what
+\ makes it correct against a callee this compiler did not produce: a word the
+\ engine's own emitter compiled keeps the same convention - it takes its
+\ arguments out of the caller's slots, leaves its results in them, and never
+\ writes below the base it was entered at - and no register of the caller is
+\ live across the branch for it to clobber.
+\ Which of an operation's attributes stands under this key. The search answers a
+\ POSITION and the value is read from it, so the "no such attribute" answer is an
+\ index no attribute has rather than a number some attribute could carry. The
+\ freeze verifier already proves an operation carries exactly one attribute under
+\ each key its schema declares, so the refusal is fail-closed.
+: ATTR-SLOT-OF ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
+   {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
+   -1
+   id ATTRS-OF 0 ?do
+      id i ATTR-KEY-AT want SAME-SYM? if drop i leave then
+   loop
+   dup 0 < if E-A64SEL-ATTR throw then ;
+
+: ATTR-INT-OF ( IR-ID:ir-op-id IR-ID:ir-symbol-id -- n )
+   {: id:IR-ID:ir-op-id want:IR-ID:ir-symbol-id :}
+   id  id want ATTR-SLOT-OF  ATTR-INT-AT ;
+
+: EMIT-WORD-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 BND-IN @ ATTR-INT-OF {: a:n :}
+   id 0 BND-OUT @ ATTR-INT-OF {: r:n :}
+   id a r CALL-LIVE {: k:n :}
+   id 0 OPERAND TOK!
+   id k a + CALL-SAVE
+   id  k a + A64IR:SLOT-WIDTH *  k r + A64IR:SLOT-WIDTH *
+   id 0 BND-ENTRY @ ATTR-INT-OF  EMIT-WBL
+   id k r + CALL-RESTORE ;
 
 \ ---- selecting a constant ----------------------------------------------------
 \ The literal is the whole content of a source constant, and it rides as the
@@ -961,6 +1045,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       br     OF false ENDOF
       brz    OF false ENDOF
       call   OF true  ENDOF
+      wordcall OF true ENDOF
       return OF false ENDOF
    ;MATCH ;
 
@@ -1137,6 +1222,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       br     OF id EMIT-BR ENDOF
       brz    OF id EMIT-BRANCH ENDOF
       call   OF id EMIT-CALL ENDOF
+      wordcall OF id EMIT-WORD-CALL ENDOF
       return OF id EMIT-RETURN ENDOF
    ;MATCH ;
 
@@ -1342,10 +1428,21 @@ public
    c b HIR-OPCODE:BLOAD  BIND1
    c b HIR-OPCODE:BSTORE BIND1
    c b HIR-OPCODE:CALL   BIND1
+   c b HIR-OPCODE:WORDCALL BIND1
    c b HIR-OPCODE:RETURN BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
+   c b HIR:KEY-ENTRY 0 BND-ENTRY !
+   c b HIR:KEY-IN    0 BND-IN !
+   c b HIR:KEY-OUT   0 BND-OUT !
    c b HIR:MEM-TYPE 0 BND-MEM !
    BOUND-YES BND-MODE ! ;
+
+\ Whether a binding is live. A caller that has to clean up after a refused run
+\ needs to know which of the chain's passes still hold one, and the only honest
+\ answer is each pass's own - a caller tracking it would be a second copy of this
+\ state that a refusal in an unexpected place could put out of step.
+: BOUND? ( -- bool )
+   BND-MODE @ BOUND-YES = ;
 
 \ Give up a binding without selecting against it.
 : RELEASE ( -- )

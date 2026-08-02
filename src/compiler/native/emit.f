@@ -114,6 +114,19 @@
 \ and nothing to patch afterwards: the label table is the block-start table, a
 \ block IS a label, and its ordinal is its name.
 \
+\ AND A CALL TO ANOTHER WORD NEEDS NO RELOCATION EITHER, FOR THE SAME REASON READ
+\ FROM THE OTHER END. Its target is not a block of this function but an address,
+\ so the label table cannot answer it; what it needs instead is where THIS
+\ routine's own bytes will be written, and that is decided by the publication
+\ seam before the emission is made. So the pass is told that address, both ends
+\ of the subtraction are known when the instruction is encoded, and nothing is
+\ patched afterwards here either. The alternative - emit a branch to nowhere and
+\ let the seam fix it up through the source map - would put an instruction
+\ encoder in the seam, and then two files would decide what a Bl is. The seam
+\ instead holds the placement this pass was given against the slot it claims, so
+\ the one authority on where a routine lands is asked twice and measured against
+\ itself.
+\
 \ A BRANCH TO THE BLOCK LAID OUT NEXT IS NOT EMITTED, WHICH MAKES A TERMINATOR'S
 \ INSTRUCTION COUNT A PROPERTY OF THE LAYOUT AND NOT ONLY OF ITS FORM. Blocks are
 \ still laid out in the order the module records them and nothing here reorders
@@ -204,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-27 constant OPCODES-N
+28 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -232,6 +245,7 @@ private
 24 constant O-LINKSAVE
 25 constant O-LINKLOAD
 26 constant O-CMPBR
+27 constant O-WORDCALL
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -268,6 +282,30 @@ variable N-BLK
 variable LAY-AT
 0 LAY-AT !
 
+\ ---- where this routine will be written --------------------------------------
+\ A branch to a block is measured from the layout, so it is the same displacement
+\ wherever the routine lands. A branch to ANOTHER WORD is not: the callee has an
+\ address of its own, so the distance between the two depends on where this
+\ routine's own bytes go. That address is not this pass's to decide - the
+\ publication seam claims the engine's code space and is the one authority on it
+\ - so this pass is TOLD it, and the seam refuses to publish an emission whose
+\ placement is not the slot it is claiming.
+\
+\ IT IS DECLARED AND CONSUMED LIKE THE DIALECT BINDING, for the same reason: an
+\ emission has to be about one placement, and a run that refused must not leave a
+\ placement behind for the next one to measure against. A run that emits no call
+\ to another word needs none, and one that does and was told none is refused.
+0 constant PLACE-NO
+1 constant PLACE-YES
+variable PLACE-MODE
+PLACE-NO PLACE-MODE !
+variable PLACE-AT-N
+0 PLACE-AT-N !
+variable EM-PLACED                   \ whether the sealed emission has a placement
+0 EM-PLACED !
+variable EM-PLACE                    \ and what it is
+0 EM-PLACE !
+
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IMM IR-ID:ir-symbol-id
@@ -278,6 +316,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBYTES IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-COND IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-DBACK IR-ID:ir-symbol-id
+1 TYPED-BUFFER BND-ENTRY IR-ID:ir-symbol-id
 
 \ The emitted bytes, and one source-map row per emitted instruction.
 create CODE INSN-MAX INSN-BYTES * allot
@@ -321,6 +360,7 @@ create B-START BMAX cells allot
       brz      OF O-BRZ      ENDOF
       cmpbr    OF O-CMPBR    ENDOF
       call     OF O-CALL     ENDOF
+      wordcall OF O-WORDCALL ENDOF
       linksave OF O-LINKSAVE ENDOF
       linkload OF O-LINKLOAD ENDOF
       ret      OF O-RET      ENDOF
@@ -353,6 +393,7 @@ create B-START BMAX cells allot
       O-ABLOAD   of A64IR-OPCODE:ABLOAD   endof
       O-ABSTORE  of A64IR-OPCODE:ABSTORE  endof
       O-CALL     of A64IR-OPCODE:CALL     endof
+      O-WORDCALL of A64IR-OPCODE:WORDCALL endof
       O-LINKSAVE of A64IR-OPCODE:LINKSAVE endof
       O-LINKLOAD of A64IR-OPCODE:LINKLOAD endof
       E-A64EMIT-OPCODE throw
@@ -435,10 +476,16 @@ create B-START BMAX cells allot
 : DBYTES-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-DBYTES @ ATTR-INT ;
 
-\ The second adjustment, which only the call form carries: how far the pointer
+\ The second adjustment, which only the call forms carry: how far the pointer
 \ comes back down over what the callee left.
 : DBACK-SIZE ( IR-ID:ir-op-id -- n )
    0 BND-DBACK @ ATTR-INT ;
+
+\ The address a call to another word branches to. It is the callee's own entry
+\ and not a displacement, so this pass does the one subtraction that turns it
+\ into one - which is the whole reason the placement below has to be known here.
+: ENTRY-ADDR ( IR-ID:ir-op-id -- n )
+   0 BND-ENTRY @ ATTR-INT ;
 
 \ ---- one instruction per operation -------------------------------------------
 \ Each of these is exactly the encoder call the form names, with the registers
@@ -630,6 +677,7 @@ create B-START BMAX cells allot
    k O-FLAG = if 3 exit then
    k O-SDIV = if 3 exit then
    k O-CALL = if 3 exit then
+   k O-WORDCALL = if 3 exit then
    k O-CMPBR = if 3 exit then
    k O-BRZ = if 2 exit then
    1 ;
@@ -854,6 +902,43 @@ create B-START BMAX cells allot
    id  CALL-BLOCK DELTA BL-WORD  APPEND
    id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBACK-SIZE  ENC-SUBI  APPEND ;
 
+\ ---- calling another word ----------------------------------------------------
+\ The same three instructions, and only the middle one is computed differently.
+\ A self-call's target is block zero of this routine, so its displacement is the
+\ label table's answer; this one's target is an address, so the displacement is
+\ that address less the address the branch instruction itself will occupy - which
+\ is the placement this pass was told plus the instructions written before it.
+\
+\ WHY THIS NEEDS NO RELOCATION TABLE AND NOTHING TO PATCH. A relocation exists to
+\ carry a displacement across the moment a value it depends on becomes known. Here
+\ nothing becomes known later: the callee is a word already compiled and
+\ published, so its address is fixed before this routine is even selected, and
+\ where this routine lands is decided by the publication seam BEFORE the emission
+\ is made and handed here. So the displacement is exact when the instruction is
+\ encoded, exactly as a block branch's is, and the emitter stays the only writer
+\ of a byte of this routine. The alternative - emit a branch to nowhere and let
+\ the seam patch it through the source map - would make the seam an instruction
+\ encoder, and then two files would decide what a Bl is.
+\
+\ AND BOTH ENDS ARE INSTRUCTION ALIGNED BY CONSTRUCTION, so the subtraction is a
+\ whole number of instructions: src/compiler/native/a64ir.f refuses an entry that
+\ is not, and PLACE-AT below refuses a placement that is not. The reach is asked
+\ against the Bl field the same way every other branch's is, because that encoder
+\ masks its displacement rather than bounding it.
+: PLACEMENT-CK ( -- n )
+   EM-PLACED @ 0= if E-A64EMIT-PLACE throw then
+   EM-PLACE @ ;
+
+: WORD-DELTA ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id ENTRY-ADDR  PLACEMENT-CK -  INSN-BYTES /  N-INS @ - ;
+
+: PUT-WORD-CALL ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBYTES-SIZE  ENC-ADDI  APPEND
+   id  id WORD-DELTA BL-WORD  APPEND
+   id  A64EFF:DSTACK-GPR A64EFF:DSTACK-GPR  id DBACK-SIZE  ENC-SUBI  APPEND ;
+
 \ One copy, which is one instruction unless it is a copy from a register into
 \ itself, and then it is none. SELF-MOV? is the layout's own word, asked here
 \ with the same argument, so the instruction left out is exactly the instruction
@@ -902,6 +987,7 @@ create B-START BMAX cells allot
       brz      OF id home PUT-BRZ ENDOF
       cmpbr    OF id home PUT-CMPBR ENDOF
       call     OF id PUT-CALL ENDOF
+      wordcall OF id PUT-WORD-CALL ENDOF
       linksave OF id  id WORD-LNKSTR  APPEND ENDOF
       linkload OF id  id WORD-LNKLDR  APPEND ENDOF
       ret      OF id  ENC-RET  APPEND ENDOF
@@ -968,6 +1054,16 @@ create B-START BMAX cells allot
    BND-MODE @ {: have:n :}
    BOUND-NO BND-MODE !
    have BOUND-YES <> if E-A64EMIT-BIND throw then ;
+
+\ The declared placement becomes this emission's, and the declaration is spent
+\ whatever the run's outcome - so a refused emission leaves no placement for the
+\ next one to measure a branch against, and a placement declared and never used
+\ cannot survive into a second routine.
+: PLACE-TAKE ( -- )
+   PLACE-MODE @ PLACE-YES = if 1 else 0 then EM-PLACED !
+   PLACE-AT-N @ EM-PLACE !
+   PLACE-NO PLACE-MODE !
+   0 PLACE-AT-N ! ;
 
 : BND-MODULE-CK ( IR-BUILD:module -- )
    IR-BUILD:FMODULE  0 BND-MOD @  IR-ID:MODULE-SAME?
@@ -1054,6 +1150,7 @@ public
    c b A64IR-OPCODE:ABLOAD   BIND1
    c b A64IR-OPCODE:ABSTORE  BIND1
    c b A64IR-OPCODE:CALL      BIND1
+   c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
@@ -1064,11 +1161,52 @@ public
    c b A64IR:KEY-DBYTES 0 BND-DBYTES !
    c b A64IR:KEY-COND   0 BND-COND !
    c b A64IR:KEY-DBACK  0 BND-DBACK !
+   c b A64IR:KEY-ENTRY  0 BND-ENTRY !
    BOUND-YES BND-MODE ! ;
 
-\ Give up a binding without emitting against it.
+\ Whether a binding is live, for a caller cleaning up after a refused run. See
+\ src/compiler/native/select.f BOUND? for why each pass answers for itself.
+: BOUND? ( -- bool )
+   BND-MODE @ BOUND-YES = ;
+
+\ Give up a binding without emitting against it. A placement declared beside it
+\ goes with it, for the same reason: it described a routine that was never
+\ emitted.
 : RELEASE ( -- )
+   PLACE-TAKE
    BND-TAKE ;
+
+\ ---- declaring where this routine will be written ----------------------------
+\ The address the next emission's own first instruction will occupy. Only a
+\ module that calls another word needs it, because only such a call is measured
+\ from anywhere but the block layout; a caller that declares one for a routine
+\ that turns out not to call is not refused, and the seam checks it anyway, which
+\ is one more place a placement that drifted is caught rather than one fewer.
+\
+\ IT IS NOT THIS PASS'S NUMBER AND THIS PASS DOES NOT INVENT ONE. There is no
+\ default and no fallback: an emission that needs a placement and was given none
+\ is refused by name. What is checked here is only that the number could be the
+\ address of an instruction at all, which is the same question A64IR asks of a
+\ callee's entry - both ends of the subtraction have to be instruction addresses
+\ for the displacement to be a whole number of instructions.
+: PLACE-AT ( n -- )
+   {: at:n :}
+   PLACE-MODE @ PLACE-YES = if E-A64EMIT-PLACE throw then
+   at 0 < if E-A64EMIT-PLACE throw then
+   at INSN-BYTES mod 0<> if E-A64EMIT-PLACE throw then
+   at PLACE-AT-N !
+   PLACE-YES PLACE-MODE ! ;
+
+\ Whether the sealed emission was made against a placement, and which one. The
+\ publication seam reads both: an emission that was measured from an address is
+\ only correct where that address is, so the seam holds it against the slot it is
+\ about to claim and refuses the pair rather than writing the routine somewhere
+\ its branches do not point.
+: PLACED? ( -- bool )
+   SEAL-CK EM-PLACED @ 0<> ;
+
+: PLACEMENT ( -- n )
+   SEAL-CK EM-PLACE @ ;
 
 \ ---- the pass ----------------------------------------------------------------
 \ Emit the whole of one frozen machine module, under the register assignment the
@@ -1087,6 +1225,7 @@ public
 : EMIT ( IR-CTX:ctx IR-BUILD:module -- )
    {: c:IR-CTX:ctx m:IR-BUILD:module :}
    BND-TAKE
+   PLACE-TAKE
    ST-EMPTY ST !
    0 N-INS !
    m BND-MODULE-CK

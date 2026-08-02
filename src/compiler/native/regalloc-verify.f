@@ -1096,63 +1096,89 @@ create V-TMP SETC cells allot
       then
    loop ;
 
-\ Nothing but the two operations named here carries a frame SIZE: an operation
-\ that moves the stack pointer anywhere else is a second frame inside the first.
-: VNO-SIZE ( IR-ID:ir-block-id n -- )
-   {: bk:IR-ID:ir-block-id keep:n :}
+\ Nothing but the operations named here carries a frame SIZE: an operation that
+\ moves the stack pointer anywhere else is a second frame inside the first. Two
+\ positions are kept rather than one, because when the routine's entry block is
+\ also the block control leaves through, the reserve and the release are two
+\ positions of THAT ONE block; a caller with only one to keep passes NOPOS for
+\ the other.
+-1 constant NOPOS
+
+: VNO-SIZE ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id keep:n also:n :}
    bk OP-COUNT 0 ?do
-      i keep <> if
+      i keep <> i also <> and if
          bk i OP-AT FRAME-OF NOSLOT <> if E-A64RAV-FRAME throw then
       then
    loop ;
 
-\ Where this block's link access stands, or -1 when it has none. A routine that
-\ does not call has none anywhere, and the two a calling routine has are at fixed
-\ positions of the entry and the exit block.
-: VLINK-POS ( IR-ID:ir-block-id n n -- n )
-   {: bk:IR-ID:ir-block-id b:n rb:n :}
-   V-CALLS @ 0= if -1 exit then
-   b 0 = if 1 exit then
-   b rb = if bk OP-COUNT 3 - exit then
-   -1 ;
+\ Is this position of this block one of the routine's two link accesses? A
+\ routine that does not call has none anywhere; a routine that calls saves the
+\ link register as the entry block's second operation and restores it two in
+\ front of the exit block's terminator. It is a question about a POSITION rather
+\ than a word answering "the" position, because when the entry block and the exit
+\ block are one block both accesses are in it and one answer could not name them
+\ both.
+: VLINK-HERE? ( IR-ID:ir-block-id n n n -- bool )
+   {: bk:IR-ID:ir-block-id b:n rb:n at:n :}
+   V-CALLS @ 0= if false exit then
+   b 0 = at 1 = and if true exit then
+   b rb = at bk OP-COUNT 3 - = and if true exit then
+   false ;
 
-\ The partition, one access at a time: the prologue's access names the link slot
-\ and every other access names a slot the allocator was allowed to start at.
-: VOWNER1 ( IR-ID:ir-block-id n n -- )
-   {: bk:IR-ID:ir-block-id at:n link:n :}
+\ The partition, one access at a time: a link access names the link slot and
+\ every other access names a slot the allocator was allowed to start at.
+: VOWNER1 ( IR-ID:ir-block-id n n n -- )
+   {: bk:IR-ID:ir-block-id b:n rb:n at:n :}
    bk at OP-AT SLOT-OF {: off:n :}
    off NOSLOT = if exit then
-   at link = if
+   bk b rb at VLINK-HERE? if
       off A64FRAME:LINK-SLOT <> if E-A64RAV-OWNER throw then
       exit
    then
    off V-BASE @ < if E-A64RAV-OWNER throw then ;
 
-: VOWNER-BLOCK ( IR-ID:ir-block-id n -- )
-   {: bk:IR-ID:ir-block-id link:n :}
-   bk OP-COUNT 0 ?do bk i link VOWNER1 loop ;
+: VOWNER-BLOCK ( IR-ID:ir-block-id n n -- )
+   {: bk:IR-ID:ir-block-id b:n rb:n :}
+   bk OP-COUNT 0 ?do bk b rb i VOWNER1 loop ;
 
 : VOWNER-CK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id rb:n :}
    V-BLKS @ 0 ?do
       f i BLOCK-AT {: bk:IR-ID:ir-block-id :}
-      bk  bk i rb VLINK-POS  VOWNER-BLOCK
+      bk i rb VOWNER-BLOCK
    loop ;
 
 \ The bracket both shapes share: the frame is taken by the entry block's first
 \ operation and given back by the one in front of the exit block's terminator,
 \ both naming the frame the contract declares, and no other block reaches it.
+\
+\ THE TWO BLOCKS MAY BE ONE, AND THEN IT IS ONE WINDOW RATHER THAN TWO. A routine
+\ with no control flow has a single block, which is both the block its caller
+\ enters and the block control leaves through - `: A ( n -- n ) B 1+ ;` is
+\ exactly that shape and is the commonest call site there is. The rule does not
+\ change: the reserve is still the first operation and the release still stands
+\ in front of the terminator, and the only difference is that both are positions
+\ of one block, so the two are kept from ONE scan instead of one each from two.
+\ They still have to be different positions - a block short enough for the reserve
+\ and the release to be the same operation is not a frame taken and given back -
+\ and that is what the length test below says.
 : VBRACKET-CK ( IR-ID:ir-fun-id n n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n bad:n :}
-   rb 0 = if bad throw then
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    xb OP-COUNT {: n:n :}
    n 2 < if bad throw then
+   rb 0 = n 3 < and if bad throw then
    eb 0 want FRAME-AT?
    xb n 2 - want FRAME-AT?
-   eb 0 VNO-SIZE
-   xb n 2 - VNO-SIZE
+   rb 0 = if
+      eb 0 n 2 - VNO-SIZE
+      f rb VFRAME-BLOCKS-CK
+      exit
+   then
+   eb 0 NOPOS VNO-SIZE
+   xb n 2 - NOPOS VNO-SIZE
    f rb VFRAME-BLOCKS-CK ;
 
 \ A routine that does not call has nothing in its frame but what the register
@@ -1169,14 +1195,24 @@ create V-TMP SETC cells allot
 \ block's terminator, inside the bracket above. A routine that saved its return
 \ address and did not restore it, or restored it from another slot, returns to
 \ whatever the frame happened to hold.
+\
+\ AND THE TWO WINDOWS BECOME ONE WHEN THE ROUTINE HAS ONE BLOCK, which is what a
+\ word that calls another word without branching is: `: A ( n -- n ) B 1+ ;`. The
+\ save is still at position one and the restore still stands two in front of the
+\ terminator; when the entry block and the exit block are the same block those
+\ are two positions of it, and the rule is the same rule read once instead of
+\ twice. They still have to be DIFFERENT positions, so the block has to be long
+\ enough to hold the reserve, the save, the restore, the release and the return -
+\ five operations - or the save and the restore would be one operation claiming
+\ to be both.
 : VLINK-CK ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id rb:n want:n :}
-   rb 0 = if E-A64RAV-CALL throw then   \ dot habu-let-a-routine-00e845b9
    f 0 BLOCK-AT {: eb:IR-ID:ir-block-id :}
    f rb BLOCK-AT {: xb:IR-ID:ir-block-id :}
    eb OP-COUNT 2 < if E-A64RAV-CALL throw then
    xb OP-COUNT {: n:n :}
    n 3 < if E-A64RAV-CALL throw then
+   rb 0 = n 5 < and if E-A64RAV-CALL throw then
    f rb want E-A64RAV-CALL VBRACKET-CK
    eb 1 true VLINK-AT?
    xb n 3 - false VLINK-AT? ;
@@ -1323,6 +1359,27 @@ create V-TMP SETC cells allot
       f i BLOCK-AT FLOW-CK
    loop ;
 
+\ ---- which re-derivation a routine gets --------------------------------------
+\ The same question src/compiler/native/regalloc.f asks, asked from the same two
+\ facts: a routine of more than one block, and a routine that CALLS whatever its
+\ shape. It has to be the same question, because the two passes number a
+\ routine's positions differently - within the block for the straight-line walk,
+\ across the whole routine for the other - and this file re-derives the numbering
+\ the allocator used. A routine sent one way there and the other way here would
+\ be measured in one numbering and checked in another, so the rule is written in
+\ both files from the contract and the module rather than inferred in either.
+\
+\ AND A CALLING ROUTINE OF ONE BLOCK IS WHY THE SECOND HALF IS THERE. It has a
+\ frame holding its caller's return address AND it reaches the caller's data
+\ stack, and the straight-line re-derivation refuses that combination by name
+\ (DSTACK-CK above) because its frame rule and its data-stack rule both want the
+\ block's first operation. The re-derivation below has the rule already: the
+\ prologue first, the entry sequence after it, counted by PRO-N. Unifying the two
+\ numberings so this question disappears is dot habu-unify-the-two-d4f93e83.
+: CALLS-MB? ( IR-ID:ir-fun-id -- bool )
+   BLOCK-COUNT 1 <> if true exit then
+   V-CALLS @ 0<> ;
+
 : MB-VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    f VMEASURE
@@ -1396,7 +1453,7 @@ create V-TMP SETC cells allot
    m VIEWS!
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f RET-ORD {: rb:n :}
-   f BLOCK-COUNT 1 <> if
+   f CALLS-MB? if
       f rb args outs frame MB-VERIFY
       f exit
    then

@@ -9,7 +9,7 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Seventeen opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Eighteen opcodes, and nothing else:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
@@ -29,6 +29,8 @@
 \   hir.brz       go on to one of two blocks, on whether a value is zero
 \   hir.call      call the word being compiled, handing it the values it takes
 \                 and every value the caller still holds
+\   hir.wordcall  call ANOTHER word, at the entry address and under the arity the
+\                 operation carries, handing it the same thing
 \   hir.return    leave the function with the word's outputs
 \ That is exactly what section 7.2's list needs for a colon body with no
 \ control flow, no calls, no locals and no strings. Section 7.2 names many more
@@ -152,6 +154,7 @@ ENUM opcode DERIVE eq
    br
    brz
    call
+   wordcall
    return
 ;ENUM
 
@@ -202,6 +205,11 @@ ENUM ctrl DERIVE eq
 \ the PROGRAM's rather than this dialect's. That is why they are two meanings
 \ and not one: what the opener does is start reading names, and what the closer
 \ does is take one value off the vector per name read, right to left.
+\ `callable` is the meaning of a word that is CALLED: a word already compiled and
+\ published, whose entry address and declared arity the row carries. It is not a
+\ `control` action the way `RECURSE` is, because `RECURSE` needs no name of its
+\ own - it means the definition being compiled - while a callable word is a
+\ different routine for every row, so what it means IS the row's payload.
 ENUM meaning DERIVE eq
    literal
    op
@@ -209,6 +217,7 @@ ENUM meaning DERIVE eq
    control
    rename
    fixed
+   callable
    open-locals
    close-locals
    unmodeled
@@ -277,6 +286,7 @@ public
       br     OF s" hir.br"     ENDOF
       brz    OF s" hir.brz"    ENDOF
       call   OF s" hir.call"   ENDOF
+      wordcall OF s" hir.wordcall" ENDOF
       return OF s" hir.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -286,6 +296,26 @@ public
 \ nothing, and IR-OP refuses one that omits it.
 : KEY-VALUE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" hir.value" IR-BUILD:INTERN-SYMBOL ;
+
+\ The three attribute keys `hir.wordcall` requires. A call to another word means
+\ nothing without all three: where the callee starts, how many values it takes,
+\ and how many it leaves. They are three keys and not one packed number because
+\ a key answers "which fact, in which units", and a reader that had to unpack a
+\ triple could get the fields in the wrong order without any authority noticing.
+\
+\ WHY THE ARITY IS ON THE OPERATION AND NOT DERIVED FROM ITS LISTS. Both of the
+\ operation's lists are variadic - how many values are live across a call is the
+\ call site's fact and how many the callee moves is the routine's - so the two
+\ counts cannot be told apart by counting. The arity is what splits them, and it
+\ has to be carried.
+: KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" hir.entry" IR-BUILD:INTERN-SYMBOL ;
+
+: KEY-IN ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" hir.in" IR-BUILD:INTERN-SYMBOL ;
+
+: KEY-OUT ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" hir.out" IR-BUILD:INTERN-SYMBOL ;
 
 \ ---- the type of the memory order --------------------------------------------
 \ The order of the definition's memory accesses, as a value they pass along. It
@@ -323,6 +353,7 @@ private
       br     OF s" hir.rule.br"     ENDOF
       brz    OF s" hir.rule.brz"    ENDOF
       call   OF s" hir.rule.call"   ENDOF
+      wordcall OF s" hir.rule.wordcall" ENDOF
       return OF s" hir.rule.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -345,6 +376,7 @@ private
       br     OF s" hir.render.br"     ENDOF
       brz    OF s" hir.render.brz"    ENDOF
       call   OF s" hir.render.call"   ENDOF
+      wordcall OF s" hir.render.wordcall" ENDOF
       return OF s" hir.render.return" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
@@ -611,6 +643,45 @@ private
    c b HIR-OPCODE:CALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Calling ANOTHER word. Everything about the shape is `hir.call`'s - the memory
+\ order and every live value in, the order and those values out, both lists
+\ variadic, read-write on generic memory, and may-trap because whatever the
+\ callee can do the call can do. What it adds is the three fields that say WHICH
+\ routine: its entry address and its declared arity.
+\
+\ WHY IT IS A SECOND OPERATION AND NOT A FIELD ON THE FIRST. The two differ in
+\ their TARGET, and the two targets are not the same kind of thing. A self-call
+\ goes to a block of the function being compiled, which is a label: its
+\ displacement is known when the blocks are laid out, exactly as a branch's is,
+\ and no address exists anywhere in the module. A call to another word goes to an
+\ address, which is a number the module has to carry. Making one operation hold
+\ either would mean a field that is sometimes meaningless, and a reader would
+\ have to know which case it was in before it knew what the field meant - the
+\ same argument that made the byte and cell accesses two forms rather than one
+\ form with a width.
+\
+\ AND WHY THE CALLER'S SAVE DISCIPLINE IS UNCHANGED. The operation consumes every
+\ live value and answers it again, exactly as `hir.call` does, so no register
+\ crosses it whatever the callee destroys. That is what makes the discipline
+\ correct against a callee this compiler did not produce: it assumes nothing about
+\ the callee's registers, only that the callee keeps the convention a Habu word is
+\ entered and left through.
+: DEF-WORDCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:WORDCALL OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND-TAIL
+   k IR-SCHEMA:ADD-RESULT
+   t IR-SCHEMA:ADD-RESULT-TAIL
+   c b KEY-ENTRY IR-SCHEMA:ADD-ATTR
+   c b KEY-IN IR-SCHEMA:ADD-ATTR
+   c b KEY-OUT IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ-WRITE GENERIC-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b HIR-OPCODE:WORDCALL NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -668,6 +739,7 @@ public
    c b t DEF-BR
    c b t DEF-BRZ
    c b t k DEF-CALL
+   c b t k DEF-WORDCALL
    c b t DEF-RETURN ;
 
 private

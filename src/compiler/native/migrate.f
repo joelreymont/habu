@@ -50,6 +50,16 @@
 \ habu-bind-checker-env-ed4f9f87; the register count is a budget, and choosing it
 \ from the routine rather than from the caller is dot
 \ habu-choose-the-register-a95390ac.
+\
+\ AND, FOR A DEFINITION THAT CALLS ANOTHER WORD, WHICH WORD IT IS. Its spelling,
+\ the address its code starts at, and its declared effect. All three are already
+\ facts of the running engine - the address is the callee's dictionary record and
+\ the effect is what the checker accepted for it - and reading them off those two
+\ authorities instead of taking them from the caller is dot
+\ habu-resolve-a-callee-0340dfde. Until it lands a caller that states them wrongly
+\ compiles a routine that computes the wrong thing, which is exactly why the dot
+\ exists and why the acceptance suite states them from the same publication the
+\ callee was made by.
 
 require lib/prelude.f
 require lib/errors.f
@@ -96,6 +106,11 @@ variable M-IN
 variable M-OUT
 variable M-REGS
 variable M-CALLS
+PTR-VARIABLE M-CALLEE                \ the spelling of the one word this body calls
+variable M-CALLEE-U
+variable M-CALLEE-ADDR
+variable M-CALLEE-IN
+variable M-CALLEE-OUT
 variable M-OPEN                      \ a migration is running
 variable M-RC                        \ the code the run inside the context reached
 variable M-VERDICT                   \ the verdict the recorded scan reached
@@ -109,6 +124,9 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 
 : DATA$ ( -- ptr u8 n )
    M-DATA @ M-DATA-U @ ;
+
+: CALLEE$ ( -- ptr u8 n )
+   M-CALLEE @ M-CALLEE-U @ ;
 
 \ ---- the module the definition is compiled into ------------------------------
 : HIR-MOD ( IR-CTX:ctx -- IR-BUILD:builder )
@@ -124,19 +142,33 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 \ which data words a program names is the program's and not the dialect's; the
 \ address is stated until the chain can ask the engine what a data word is (dot
 \ habu-resolve-a-data-a1c8067f).
+: EXTRA-ROWS ( -- n )
+   0
+   M-DATA-U @ 0<> if 1+ then
+   M-CALLEE-U @ 0<> if 1+ then ;
+
 : MODEL-ROWS ( -- n )
-   M-DATA-U @ 0= if HIR-WORD:WORDS exit then
-   HIR-WORD:WORDS 1+ ;
+   HIR-WORD:WORDS EXTRA-ROWS + ;
 
 : DECLARE-DATA ( IR-ARENA:arena -- ) {: r:IR-ARENA:arena :}
    M-DATA-U @ 0= if exit then
    CC BB r  CC BB DATA$ IR-BUILD:INTERN-SYMBOL  M-DATA-ADDR @ HIR-WORD:DECLARE-FIXED ;
+
+\ The one word this definition calls, as the word model's own row: its spelling
+\ as the body writes it, where its code starts, and its declared effect. All
+\ three are the caller's statement for the same reason a data word's address is
+\ (dot habu-resolve-a-callee-0340dfde).
+: DECLARE-CALLEE ( IR-ARENA:arena -- ) {: r:IR-ARENA:arena :}
+   M-CALLEE-U @ 0= if exit then
+   CC BB r  CC BB CALLEE$ IR-BUILD:INTERN-SYMBOL
+   M-CALLEE-ADDR @ M-CALLEE-IN @ M-CALLEE-OUT @ HIR-WORD:DECLARE-CALLABLE ;
 
 : MODEL ( -- IR-ARENA:arena IR-ARENA:arena )
    CC BB IR-BUILD:MODULE-KEY MODEL-ROWS HIR-WORD:PICK-CELLS HIR-WORD:NEW
    {: p:IR-ARENA:arena r:IR-ARENA:arena :}
    CC BB p r HIR-WORD:REGISTER-WORDS
    r DECLARE-DATA
+   r DECLARE-CALLEE
    p r ;
 
 \ ---- stage N0: the definition the engine compiles ----------------------------
@@ -227,10 +259,18 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
    CC ab A64EMIT:BIND-DIALECT
    CC m ab TXT len ROUTINE A64SEL:SELECT ;
 
+\ The emission is made against the slot the publication seam is about to claim,
+\ which is what a branch to another word is measured from. It is declared for
+\ EVERY migration and not only for one that calls: a migration always publishes
+\ through that seam at that slot, so stating it once here is one rule rather than
+\ a condition, and the seam holds it against the slot it really claims - which
+\ turns "nothing moved the code pointer between the emission and the
+\ publication" from an assumption into a refusal.
 : EMITTED ( -- )
    SELECTED {: m:IR-BUILD:module :}
    CC m ROUTINE A64RA:ALLOCATE
    m ROUTINE A64RAV:ACCEPT
+   NPUB:NEXT-SLOT A64EMIT:PLACE-AT
    CC m A64EMIT:EMIT ;
 
 \ ---- one migration -----------------------------------------------------------
@@ -252,10 +292,30 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 \ unwound past it would strand every arena the run had built, and the arena
 \ registry - which is small and shared - would run out after a handful of refused
 \ words. Nothing is decided here: the code is rethrown unchanged by RUN.
+\ A refused run gives its bindings back, for the same reason it gives its arenas
+\ back. Each of the chain's passes takes an identity binding over the module it
+\ is about to read, and two of them refuse a second binding over a live one - so
+\ a binding a refusal left behind would make every LATER migration fail for the
+\ state this one left rather than for anything about itself, which is exactly
+\ what RUN below refuses to let happen with the recorder.
+\
+\ EACH PASS IS ASKED ABOUT ITSELF, so this cannot get out of step with how far
+\ the run got. Selection spends its binding first thing, allocation spends its
+\ own, emission spends its own - so which are still live depends on which stage
+\ refused, and no counter kept here could track that without being a second copy
+\ of state the passes already hold. The validator is left out because its own
+\ binding is documented as replaceable: a second one over a live one is not a
+\ refusal there.
+: RETURN-BINDINGS ( -- )
+   A64SEL:BOUND? if A64SEL:RELEASE then
+   A64RA:BOUND? if A64RA:RELEASE then
+   A64EMIT:BOUND? if A64EMIT:RELEASE then ;
+
 : BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
    c 0 M-CTX !
-   [: WORK ;] catch M-RC ! ;
+   [: WORK ;] catch M-RC !
+   M-RC @ 0 <> if RETURN-BINDINGS then ;
 
 \ The whole run, once. A migration inside a migration would record one
 \ definition's tokens onto the other's tape, so the second is refused by name.
@@ -283,7 +343,8 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
    {: sa su:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa keeps the ptr u8 byte-span role
    sa M-SRC ! su M-SRC-U !
    in M-IN ! out M-OUT ! regs M-REGS !
-   0 M-DATA-U ! 0 M-DATA-ADDR ! 0 M-CALLS ! ;
+   0 M-DATA-U ! 0 M-DATA-ADDR ! 0 M-CALLS !
+   0 M-CALLEE-U ! 0 M-CALLEE-ADDR ! 0 M-CALLEE-IN ! 0 M-CALLEE-OUT ! ;
 
 public
 
@@ -296,6 +357,21 @@ public
 \ The same for a definition that calls itself.
 : DEFINE-CALL ( ptr u8 n n n n -- )
    STAGE
+   1 M-CALLS !
+   RUN ;
+
+\ The same for a definition that CALLS one other word: its spelling as the
+\ definition writes it, the address its code starts at, and the effect it
+\ declares. The routine's contract declares the direct call for the same reason
+\ DEFINE-CALL's does - the first call destroys this routine's caller's return
+\ address, so it has to have a frame to keep it in - and it is the SAME
+\ declaration, because a routine that calls itself and a routine that calls
+\ somebody else pay exactly the same thing for it.
+: DEFINE-CALLING ( ptr u8 n ptr u8 n n n n n n n -- )
+   {: sa su:n ca cu:n entry:n cin:n cout:n in:n out:n regs:n :} \ typed-local-lint: allow-bare-local - sa and ca keep the ptr u8 byte-span role
+   sa su in out regs STAGE
+   ca M-CALLEE ! cu M-CALLEE-U !
+   entry M-CALLEE-ADDR ! cin M-CALLEE-IN ! cout M-CALLEE-OUT !
    1 M-CALLS !
    RUN ;
 

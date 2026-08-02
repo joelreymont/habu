@@ -28,6 +28,16 @@
 \ routine nobody compared the map against. An offset outside the emission, or one
 \ that is not instruction aligned, is refused by name here.
 \
+\ AND THE SLOT IS ALSO WHAT THE ROUTINE'S OWN BRANCHES WERE MEASURED FROM. A
+\ routine that calls another word carries a branch whose displacement is the
+\ callee's address less the address of the branch instruction itself, so it is
+\ only correct where the emitter was told the routine would be written. This seam
+\ is what decides that: NEXT-SLOT answers the free code slot before the emission
+\ is made, the emitter records the answer it was given, and REPUBLISH refuses a
+\ pair that no longer agrees. There is exactly one authority on where a routine
+\ lands, it is asked twice, and the second answer is held against the first
+\ before any byte is written.
+\
 \ THE CODE SPACE IS THE ENGINE'S, CLAIMED THE ENGINE'S WAY. `cp@` is the free
 \ slot of the one bump pointer the engine compiles every definition into, and
 \ `cp!` moves it. A routine is written at the free slot and the pointer is moved
@@ -208,6 +218,25 @@ variable LOG-N
    fn size + CODE-CEILING > if E-NPUB-ROOM throw then
    fn ;
 
+\ ---- the routine's branches and the slot it is written at --------------------
+\ A routine whose body calls ANOTHER word carries a branch measured from the
+\ address the routine itself was going to occupy - the emitter cannot compute
+\ such a displacement any other way, and where a routine occupies is THIS seam's
+\ answer and nobody else's. So the emitter is told the slot before it emits, and
+\ the emission answers which address it was told; the check is that it is the
+\ slot being claimed now.
+\
+\ WHY THIS IS ONE AUTHORITY AND NOT TWO. The seam decides where a routine lands,
+\ full stop: NEXT-SLOT below is the same `cp@` ROOM-CK reads, so a caller cannot
+\ present a placement of its own devising and have it believed - it can only
+\ present the answer this file gave it, and if anything moved the code pointer in
+\ between, the two disagree and the publication is refused with the record
+\ untouched. An emission that was made against no placement has no branch that
+\ depends on one, so it publishes wherever it fits, exactly as before.
+: PLACE-CK ( n -- ) {: fn:n :}
+   A64EMIT:PLACED? 0= if exit then
+   A64EMIT:PLACEMENT fn <> if E-NPUB-PLACE throw then ;
+
 \ Write the emission at the claimed slot and move the code pointer past it, so
 \ the next definition the engine compiles begins after this routine.
 : WRITE ( n n -- ) {: fn:n size:n :}
@@ -238,11 +267,20 @@ public
    SIZE-CK {: size:n :}
    a u wid TARGET {: idx:n :}
    size ROOM-CK {: fn:n :}
+   fn PLACE-CK
    idx XREF-REC XREF-START {: os:n :}
    idx XREF-REC XREF-LEN {: ol:n :}
    fn size WRITE
    idx fn size RETARGET
    a u wid os ol fn  size INSN-BYTES -  LOG+ ;
+
+\ The address the next republication will write its first instruction at. It is
+\ the engine's own free code slot, which is what REPUBLISH claims, so a caller
+\ that has to know where a routine will land - because its branches are measured
+\ from there - asks the one file that decides it. Asking is free and changes
+\ nothing: a caller that asks and never publishes has moved no pointer.
+: NEXT-SLOT ( -- n )
+   cp@ ;
 
 \ How many words this process has republished.
 : REPUBLISHED ( -- n )

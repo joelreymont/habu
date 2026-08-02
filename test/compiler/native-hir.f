@@ -67,7 +67,7 @@ private
 \ ---- the dialect: what registration defines ----------------------------------
 \ The sixteen opcodes, and the count, so "nothing else was defined" is measured
 \ rather than assumed.
-: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
+: COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
    c b HIR-OPCODE:CONST HIR:OPCODE {: k:IR-ID:ir-symbol-id :}
@@ -87,6 +87,7 @@ private
    c b HIR-OPCODE:BSTORE HIR:OPCODE {: bw:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:EQUAL HIR:OPCODE {: eqs:IR-ID:ir-symbol-id :}
    c b HIR-OPCODE:CALL HIR:OPCODE {: cl:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:WORDCALL HIR:OPCODE {: wc:IR-ID:ir-symbol-id :}
    b IR-BUILD:SCHEMAS
    c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
    rv k IR-SCHEMA:FDEFINED?
@@ -105,13 +106,14 @@ private
    rv bl IR-SCHEMA:FDEFINED?
    rv bw IR-SCHEMA:FDEFINED?
    rv eqs IR-SCHEMA:FDEFINED?
-   rv cl IR-SCHEMA:FDEFINED? ;
+   rv cl IR-SCHEMA:FDEFINED?
+   rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the seventeen opcodes of the subset" T-LABEL
+   s" registration defines exactly the eighteen opcodes of the subset" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE 17 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 18 T= ;
 
 \ The dialect names its own table: a caller never spells the name or the
 \ version.
@@ -483,6 +485,116 @@ private
 : FIXED-CLASS-CASE ( -- )
    s" a data word asked which operation it is is refused" T-LABEL
    [: FIXED-CLASS ;] E-HIR-CLASS TTHROWSQ ;
+
+\ ---- a word this definition calls --------------------------------------------
+\ A callable row carries three numbers - where the callee's code starts and what
+\ its declared effect is - and they are three separate readers because a call
+\ site publishes as many values as the callee takes and reads back as many as it
+\ leaves, and those two are different questions. The three values below are all
+\ different, so a reader wired to the wrong cell answers one of the others.
+$4000 constant CALLEE-ENTRY          \ an instruction address, four-byte aligned
+2 constant CALLEE-IN
+3 constant CALLEE-OUT
+
+: MODEL-CALL ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-WORD:WORDS 1+ HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r HIR-WORD:REGISTER-WORDS
+   c b r  c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL
+   CALLEE-ENTRY CALLEE-IN CALLEE-OUT HIR-WORD:DECLARE-CALLABLE
+   b p r ;
+
+: CALLABLE-BODY ( IR-CTX:ctx -- n n n bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-CALL {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:ENTRY@
+   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:CALLEE-IN@
+   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:CALLEE-OUT@
+   r c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL HIR-WORD:ADMIT
+      HIR-MEANING:CALLABLE HIR-MEANING:EQ ;
+
+: CALLABLE-CASE ( -- )
+   s" a word this definition calls reads back as declared" T-LABEL
+   BND [: CALLABLE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE CALLEE-OUT T= CALLEE-IN T= CALLEE-ENTRY T= ;
+
+\ ---- what a callable declaration and a callable row refuse -------------------
+\ Four refusals, all measured inside ONE context. Each of them throws, and a
+\ throw that unwound out of a context would strand the arenas that context had
+\ built - the registry is small and shared, so a suite that opened a context per
+\ refusal would run out and the later cases would fail for THAT rather than for
+\ what they are about. So the context is opened once, the four attempts are
+\ caught inside it, and what the case asserts is the four codes.
+\
+\ THE FOUR ARE TWO PAIRS. The first two are category errors - a row read as a
+\ meaning it does not carry, in both directions - and the second two are the two
+\ facts this table owns about a callable declaration: no code lives at the null
+\ address, and a call site cannot publish minus one value. Whether the address is
+\ the address of a whole INSTRUCTION is the machine dialect's field and is
+\ asserted in test/compiler/native-a64ir.f, so it is deliberately not restated
+\ here.
+here CELL 1- and CELL swap - CELL 1- and allot
+1 TYPED-BUFFER BC-CTX IR-CTX:ctx
+1 TYPED-BUFFER BC-BLD IR-BUILD:builder
+1 TYPED-BUFFER BC-ROWS IR-ARENA:arena
+variable BC-ENTRY
+variable BC-IN
+variable BC-OUT
+
+: BC-C ( -- IR-CTX:ctx )         0 BC-CTX @ ;
+: BC-B ( -- IR-BUILD:builder )   0 BC-BLD @ ;
+: BC-R ( -- IR-ARENA:arena )     0 BC-ROWS @ ;
+
+: BC-DECLARE ( -- )
+   BC-C BC-B BC-R  BC-C BC-B s" BAD-W" IR-BUILD:INTERN-SYMBOL
+   BC-ENTRY @ BC-IN @ BC-OUT @ HIR-WORD:DECLARE-CALLABLE ;
+
+: BC-STAGE ( n n n -- )
+   {: entry:n in:n out:n :}
+   entry BC-ENTRY ! in BC-IN ! out BC-OUT ! ;
+
+\ Asking a callable word which operation it is, when its whole meaning is a
+\ routine somewhere else; and asking a data word where its callee starts.
+: BC-AS-OPCODE ( -- )
+   BC-R  BC-C BC-B s" OTHER-W" IR-BUILD:INTERN-SYMBOL  HIR-WORD:OPCODE@ drop ;
+
+: BC-AS-ENTRY ( -- )
+   BC-R  BC-C BC-B s" CELL-A" IR-BUILD:INTERN-SYMBOL  HIR-WORD:ENTRY@ drop ;
+
+\ The model both category errors are asked of: the dialect's vocabulary, one
+\ callable word and one data word, so each reader can be pointed at a row of the
+\ other meaning.
+: MODEL-BOTH ( IR-CTX:ctx -- IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-WORD:WORDS 2 + HIR-WORD:PICK-CELLS WORDS-NEW
+   {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   c b p r HIR-WORD:REGISTER-WORDS
+   c b r  c b s" OTHER-W" IR-BUILD:INTERN-SYMBOL
+   CALLEE-ENTRY CALLEE-IN CALLEE-OUT HIR-WORD:DECLARE-CALLABLE
+   c b r  c b s" CELL-A" IR-BUILD:INTERN-SYMBOL  DATUM HIR-WORD:DECLARE-FIXED
+   b p r ;
+
+: CALLABLE-REFUSE-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 BC-CTX !
+   c MODEL-BOTH {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   b 0 BC-BLD !
+   r 0 BC-ROWS !
+   [: BC-AS-OPCODE ;] catch
+   [: BC-AS-ENTRY ;] catch
+   0 1 1 BC-STAGE
+   [: BC-DECLARE ;] catch
+   CALLEE-ENTRY 1 -1 BC-STAGE
+   [: BC-DECLARE ;] catch ;
+
+: CALLABLE-REFUSAL-CASES ( -- )
+   s" a callable row read as another meaning, and a bad callee, are refused"
+   T-LABEL
+   BND [: CALLABLE-REFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   E-HIR-CALLEE T= E-HIR-CALLEE T= E-HIR-CLASS T= E-HIR-CLASS T= ;
 
 \ One rename, folded into three numbers: how many values it consumes, how many
 \ it puts back, and the whole pick list in order as decimal digits, each pick
@@ -1066,7 +1178,7 @@ private
    BND [: FORGE-LITERAL-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-MEAN-BODY ( IR-CTX:ctx -- )
-   9 0 0 0 FORGE
+   10 0 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:MEANING@ drop ;
 
@@ -1074,7 +1186,7 @@ private
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 17 0 0 FORGE
+   1 18 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 
@@ -1409,6 +1521,7 @@ private
    drop
    OPS-CASE
    MEMWORD-CASE
+   CALLABLE-CASE
    RENAME-CASE
    MEAN-CASE
    LOCALS-MEAN-CASE
@@ -1418,7 +1531,8 @@ private
 
 : GROUP-FIXED-REFUSE ( IR-CTX:ctx -- )
    drop
-   FIXED-CLASS-CASE ;
+   FIXED-CLASS-CASE
+   CALLABLE-REFUSAL-CASES ;
 
 : GROUP-REFUSE ( IR-CTX:ctx -- )
    drop

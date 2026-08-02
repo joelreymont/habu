@@ -4329,3 +4329,33 @@ mapping moves three pinned literals in test/compiler/ir-storage-schema.f, the
 capacity pin in test/compiler/ir-context.f, and `map_bytes` plus the arena
 ceiling finding in formal/Common/Storage.v - the pinned-capacity row is what
 makes forgetting any of them fail.
+
+## The two register-allocation walks number positions differently
+
+The allocator and its validator each have a straight-line walk for a routine of
+one block and a general walk for the rest, and the two number a routine's
+positions differently: within the block (arguments at ENTRY, operation i at i)
+against across the whole routine (block b's arguments at its start, operation i
+one past it). The dispatch is therefore load-bearing in BOTH files and has to
+ask the same question, or a routine is measured in one numbering and checked in
+the other - which surfaces as E-A64RAV-INTERVAL in a case that has nothing to do
+with intervals. Sending every routine down the general walk to simplify this
+does not work for that reason, and the straight-line walk cannot be extended to
+serve a routine with a frame because its frame rule and its data-stack rule both
+want the block's first operation. So a calling routine of one block - which is
+what `: A ( n -- n ) B 1+ ;` is, the commonest call site there is - is sent to
+the general walk from both files, and unifying the numberings is its own dot.
+
+## A refused compilation must give its pass bindings back
+
+Each pass of the native chain takes an identity binding over the module it is
+about to read, and two of them refuse a second binding over a live one. A
+refusal anywhere between taking those bindings and spending them therefore
+leaves them live, and the NEXT compilation fails as E-A64RA-BIND - for the state
+the previous one left rather than for anything about itself. It stayed invisible
+while the only reachable refusals happened before the bindings were taken; the
+first refusal raised inside instruction selection exposed it. The migration
+entry now releases whatever is still bound when a run fails, asking each pass
+about itself rather than counting how far the run got: which bindings are live
+depends on which stage refused, and any counter kept outside the passes would be
+a second copy of state they already hold.

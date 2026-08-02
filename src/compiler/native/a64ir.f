@@ -58,17 +58,24 @@
 \   a64.call     Addi ds ds n; Bl entry; Subi ds ds m
 \                                - hand the caller's data stack to the word being
 \                                  compiled, call it, and take the stack back
+\   a64.wordcall Addi ds ds n; Bl entry; Subi ds ds m
+\                                - the same three instructions to ANOTHER word,
+\                                  whose entry address the operation carries
 \   a64.lnkstr   Str x30 sp off  - put the caller's return address in a frame slot
 \   a64.lnkldr   Ldr x30 sp off  - take it back out again
 \   a64.ret      Ret             - return to the address in the link register
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
 \
-\ FOUR OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form
+\ SIX OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form
 \ above is one instruction, and that is the rule this dialect keeps wherever it
 \ can: one operation, one form, four bytes. The division breaks it because its
 \ zero-divisor guard and the divide it guards are inseparable - the whole point
-\ of the guard is that nothing runs between the test and the divide. The
+\ of the guard is that nothing runs between the test and the divide. The two call
+\ forms break it because between the first of their three instructions and the
+\ last, the data-stack pointer stands above values that are the CALLEE's, so an
+\ access placed in the middle would read the callee's stack through the caller's
+\ offsets. The
 \ comparison, the two-way branch and the compare-and-branch break it for a
 \ related reason, which is the condition flags. The flags are a
 \ single architectural register that no value of this dialect stands for and the
@@ -306,6 +313,7 @@ ENUM opcode DERIVE eq
    brz
    cmpbr
    call
+   wordcall
    linksave
    linkload
    ret
@@ -391,6 +399,13 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 26 constant B-BITS
 19 constant BZ-BITS
 19 constant BCOND-BITS
+
+\ Every instruction of this architecture is four bytes, which is why every
+\ displacement field above counts instructions rather than bytes. It is written
+\ here as the machine fact it is, beside the fields that are measured in it, and
+\ it is what says whether an ADDRESS of code can be the address of an
+\ instruction at all.
+4 constant INSN-BYTES
 
 \ ---- the dialect's own symbols -----------------------------------------------
 \ Every symbol this dialect mints is spelled `a64.`-something, so a dialect
@@ -495,6 +510,14 @@ private
    dup SLOT-BYTES mod 0<> if E-A64IR-DBYTES throw then
    dup OFF-MAX > if E-A64IR-DBYTES throw then ;
 
+\ A callee entry address a Bl could name: the address of a whole instruction, and
+\ not the null address, where no code lives. How far away it is, is not asked
+\ here - the distance depends on where the CALLING routine is written, which
+\ nothing before emission knows - so the reach stays the emitter's.
+: ENTRY ( n -- n )
+   dup 0 <= if E-A64IR-ENTRY throw then
+   dup INSN-BYTES mod 0<> if E-A64IR-ENTRY throw then ;
+
 \ ---- the checked condition operand -------------------------------------------
 \ A condition the four-bit field can hold. It is private because a caller reaches
 \ the field through the attribute builder below, which takes a condition of this
@@ -568,6 +591,7 @@ public
       brz      OF s" a64.cbz"      ENDOF
       cmpbr    OF s" a64.cmpbr"    ENDOF
       call     OF s" a64.call"     ENDOF
+      wordcall OF s" a64.wordcall" ENDOF
       linksave OF s" a64.lnkstr"   ENDOF
       linkload OF s" a64.lnkldr"   ENDOF
       ret      OF s" a64.ret"      ENDOF
@@ -660,6 +684,16 @@ public
 : KEY-DBACK ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
    s" a64.dback" IR-BUILD:INTERN-SYMBOL ;
 
+\ The attribute key the call-another-word form requires: the address its branch
+\ goes to. It is an attribute and not an operand for the reason a frame slot is:
+\ no operation of this dialect computes it, it stands for no register, and two
+\ calls naming one address are not naming one definition. It is not the
+\ displacement either - a displacement depends on where the CALLING routine is
+\ written, which nothing before emission knows - so what the module carries is
+\ the callee's own address and the subtraction is the emitter's.
+: KEY-ENTRY ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-symbol-id )
+   s" a64.entry" IR-BUILD:INTERN-SYMBOL ;
+
 \ The attribute key the comparison form requires: which condition it sets its
 \ flag on. The condition is the whole content of a comparison, so a comparison
 \ without it means nothing, and IR-OP refuses one that omits it.
@@ -682,6 +716,16 @@ public
 \ held against the same bound.
 : DBACK-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
    DBYTES IR-BUILD:INTERN-INT-ATTR ;
+
+\ The address a call-another-word form branches to, held against what an address
+\ of CODE on this machine can be: every instruction is four bytes and every
+\ instruction is at a multiple of four, so an entry that is not is the address of
+\ no instruction and no Bl can be built to it. How FAR it is, is not a question
+\ this dialect can answer - the distance depends on where the calling routine
+\ lands - so the reach is checked by the emitter, which is the one pass that
+\ knows both ends.
+: ENTRY-ATTR ( IR-CTX:ctx IR-BUILD:builder n -- IR-ID:ir-attr-id )
+   ENTRY IR-BUILD:INTERN-INT-ATTR ;
 
 private
 
@@ -717,6 +761,7 @@ private
       brz      OF s" a64.rule.cbz"      ENDOF
       cmpbr    OF s" a64.rule.cmpbr"    ENDOF
       call     OF s" a64.rule.call"     ENDOF
+      wordcall OF s" a64.rule.wordcall" ENDOF
       linksave OF s" a64.rule.lnkstr"   ENDOF
       linkload OF s" a64.rule.lnkldr"   ENDOF
       ret      OF s" a64.rule.ret"      ENDOF
@@ -749,6 +794,7 @@ private
       brz      OF s" a64.render.cbz"      ENDOF
       cmpbr    OF s" a64.render.cmpbr"    ENDOF
       call     OF s" a64.render.call"     ENDOF
+      wordcall OF s" a64.render.wordcall" ENDOF
       linksave OF s" a64.render.lnkstr"   ENDOF
       linkload OF s" a64.render.lnkldr"   ENDOF
       ret      OF s" a64.render.ret"      ENDOF
@@ -1246,6 +1292,42 @@ private
    c b A64IR-OPCODE:CALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Wordcall: the same three instructions to ANOTHER word. Everything a64.call
+\ says about the shape it says about this one - one operation because the machine
+\ is in a state no other operation of this dialect is written for between the
+\ first instruction and the last, the values crossing it moved by ordinary
+\ a64.dstore and a64.dload around it, and the two adjustments as its own
+\ attributes. What it adds is the third attribute: the address the branch goes
+\ to.
+\
+\ THE TARGET IS AN ADDRESS AND NOT A BLOCK, WHICH IS THE WHOLE DIFFERENCE. A
+\ self-call's target is block zero of the function being emitted, so its
+\ displacement falls out of the block layout exactly as a branch's does and no
+\ address appears in the module at all. This one's target is somewhere else
+\ entirely, so the module carries the address and the emitter subtracts the
+\ place the calling instruction lands at. That subtraction needs a fact no
+\ earlier pass has - where this routine will be written - and the emitter is
+\ told it by the seam that decides it.
+\
+\ IT CARRIES THE SAME TWO ADJUSTMENTS UNDER THE SAME TWO KEYS, deliberately: a
+\ consumer that walks a module to find call sites reads the keys and not the
+\ opcodes (src/compiler/native/regalloc-verify.f says so in full), so a form that
+\ named its adjustments differently would be a call site that consumer could not
+\ see, and the caller-save discipline would go unchecked around it.
+: DEF-WORDCALL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:WORDCALL OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-DBYTES IR-SCHEMA:ADD-ATTR
+   c b KEY-DBACK IR-SCHEMA:ADD-ATTR
+   c b KEY-ENTRY IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ-WRITE DSTACK-MEM
+   true IR-SCHEMA:SET-TRAP
+   TARGET
+   c b A64IR-OPCODE:WORDCALL NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ Saving and restoring the caller's return address. They are the same Str and Ldr
 \ the frame forms above are, against the same stack pointer, and they differ in
 \ exactly one thing: the register they move is x30, which is named by the FORM.
@@ -1340,6 +1422,7 @@ public
    c b t DEF-BRZ
    c b t DEF-CMPBR
    c b k DEF-CALL
+   c b k DEF-WORDCALL
    c b k DEF-LNKSTR
    c b k DEF-LNKLDR
    c b t DEF-RET ;

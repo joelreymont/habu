@@ -1012,12 +1012,23 @@ public
 \ allocator hands out. So the values the caller still needs cross the call on the
 \ caller's data stack, and the caller's return address crosses it in the
 \ routine's own frame. These are the facts those owners add; a refusal another
-\ authority already owns keeps that authority's name - a call to ANOTHER word is
-\ still E-HIR-UNMODELED, because no such word is in the dialect's vocabulary.
--8550 constant E-NELAB-CALL     \ a self-call the elaborator has no rule for: fewer values on the compile-time vector than the word declares it takes, more values live across the call than the vector can hold afterwards, or a call reached with no memory order live
+\ authority already owns keeps that authority's name - a word this dialect's
+\ table never declared at all is still E-HIR-UNMODELED.
+\
+\ A CALL TO ANOTHER WORD ADDS THREE FACTS AND NOTHING ELSE. The callee's arity,
+\ which is what the call site publishes and takes back; the callee's entry
+\ address, which is where the branch goes; and the address the CALLING routine
+\ will itself be written at, without which no displacement between the two can
+\ be computed. The first two are the word model's row and the machine dialect's
+\ field, and the third is the publication seam's answer, held by the emitter and
+\ measured against the seam's own claim before a byte is written.
+-8550 constant E-NELAB-CALL     \ a call the elaborator has no rule for: fewer values on the compile-time vector than the callee declares it takes, more values live across the call than the vector can hold afterwards, or a call reached with no memory order live
 -8551 constant E-A64SEL-CALL    \ a call the selector has no lowering for: a routine whose convention names no data-stack place, a routine contract that does not declare that this routine calls, a contract declaring a call in a module that contains none, a frame too small to hold the saved link register, or a call whose operand and result lists disagree about how many values are live across it
 -8552 constant E-A64RAV-CALL    \ a call site that is not the sequence the dialect lowers a call to: a store run that does not name slots zero upwards in order, a byte count that is not the run it stands for, or a saved link register the module does not restore from the slot it saved it into
 -8553 constant E-A64RAV-OWNER   \ a frame slot given to the wrong owner: a spilled value placed in the slot a calling routine keeps its caller's return address in, or a prologue access naming a slot that is not that one
+-8554 constant E-HIR-CALLEE     \ a callable-word declaration this dialect cannot hold: an entry address that is negative or not instruction aligned, or an argument or result count that is negative
+-8555 constant E-A64IR-ENTRY    \ a callee entry address the branch-with-link form cannot name: negative, or not the address of a whole instruction
+-8556 constant E-A64EMIT-PLACE  \ an emission that names a callee and was told no address of its own to measure the branch from, a placement that is negative or not instruction aligned, or a second placement declared over a live one
 
 \ Native publication: -8560..-8579
 \
@@ -1036,6 +1047,7 @@ public
 -8563 constant E-NPUB-OFFSET  \ an instruction whose source-map offset does not lie inside the emission it belongs to, or that is not instruction aligned
 -8564 constant E-NPUB-CAP     \ more republished words than the seam's replacement log holds
 -8565 constant E-NPUB-LOG     \ a replacement asked about a word the log has no row for
+-8566 constant E-NPUB-PLACE   \ an emission whose branches were measured from an address that is not the code slot this seam is claiming for it
 
 -8570 constant E-NMIGRATE-STATE   \ a migration reached while another one is open: the recorder takes one definition at a time
 -8571 constant E-NMIGRATE-TEXT    \ definition source longer than the recorder's text buffer, or a name longer than the log holds

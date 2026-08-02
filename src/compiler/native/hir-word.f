@@ -19,6 +19,11 @@
 \             operation at all;
 \   fixed     it pushes one value and nothing else, which is what a `create`d
 \             data word does, and the row carries that value;
+\   callable  it is another word this definition calls, and the row carries
+\             where that word's code starts and how many values it takes and
+\             leaves. It is not `control` the way `RECURSE` is: `RECURSE` means
+\             the definition being compiled and needs no payload at all, while a
+\             callable word is a different routine per row;
 \   open-locals   it starts a `{: … :}` group, so the names after it are the
 \   close-locals  program's own locals and the closer binds one value to each,
 \                 right to left. Neither stages an operation and neither carries
@@ -128,9 +133,9 @@ $48575231 constant WROW-MAGIC        \ "HWR1": the word-table header format tag
 3 constant HDR-CELLS
 0 constant OFF-SYM                   \ the source word's symbol ordinal
 1 constant OFF-MEAN                  \ the stored meaning code
-2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; unmodeled: the reason ordinal plus one
-3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; fixed: the value the word pushes; otherwise zero
-4 constant OFF-N                     \ rename: the number of values put back; otherwise zero
+2 constant OFF-A                     \ op and const-op: the opcode code; rename: the pick-list start; control: the control code; unmodeled: the reason ordinal plus one; callable: the callee's entry address
+3 constant OFF-IN                    \ rename: the number of values consumed; const-op: the constant; fixed: the value the word pushes; callable: the values the callee takes; otherwise zero
+4 constant OFF-N                     \ rename: the number of values put back; callable: the values the callee leaves; otherwise zero
 5 constant ROW-CELLS
 0 constant UNUSED                    \ a payload cell this meaning does not use
 $FFFFFFFF HDR-CELLS - ROW-CELLS / constant ROW-CAP-MAX
@@ -156,6 +161,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       const-op  OF 4 ENDOF
       control   OF 5 ENDOF
       fixed     OF 6 ENDOF
+      callable  OF 9 ENDOF
       open-locals  OF 7 ENDOF
       close-locals OF 8 ENDOF
    ;MATCH ;
@@ -172,6 +178,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       6 of HIR-MEANING:FIXED endof
       7 of HIR-MEANING:OPEN-LOCALS endof
       8 of HIR-MEANING:CLOSE-LOCALS endof
+      9 of HIR-MEANING:CALLABLE endof
       E-HIR-CLASS throw
    endcase ;
 
@@ -194,6 +201,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       bstore OF 14 ENDOF
       equal  OF 15 ENDOF
       call   OF 16 ENDOF
+      wordcall OF 17 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -215,6 +223,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       14 of HIR-OPCODE:BSTORE endof
       15 of HIR-OPCODE:EQUAL endof
       16 of HIR-OPCODE:CALL endof
+      17 of HIR-OPCODE:WORDCALL endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -432,6 +441,36 @@ private
    v UNUSED
    ROW-ADD ;
 
+\ The row a word that is CALLED writes: where the callee's code starts, and how
+\ many values it takes and leaves. Those three are the whole of what a call site
+\ needs to know about a callee - the entry is where the branch goes, and the
+\ arity is how many values the site publishes for it and takes back afterwards.
+\
+\ WHAT THIS ROW CHECKS AND WHAT IT LEAVES TO THE MACHINE. It checks the two facts
+\ it owns: no code lives at the null address, so an entry of zero or below names
+\ nothing; and a call site cannot publish minus one value, so neither count may be
+\ negative. It does NOT check that the address is the address of a whole
+\ instruction, or that a branch can reach that far - those are facts about the
+\ machine, and src/compiler/native/a64ir.f's own field statement and
+\ src/compiler/native/emit.f's reach check are where they belong. This is the
+\ SOURCE dialect's table and a second copy of a machine bound here could only
+\ drift from the one that decides.
+\
+\ WHAT THIS ROW DOES NOT PROVE. That the address really is the named word's, and
+\ that the arity really is that word's declared effect. Both are the caller's
+\ statement today, exactly as a `create`d data word's address is (FIXED-ROW
+\ above); reading them off the dictionary record and the checker's own accepted
+\ effect is dot habu-resolve-a-callee-0340dfde, and nothing else here changes
+\ when it lands.
+: CALLABLE-ROW ( IR-CTX:ctx IR-ARENA:arena HIR-WORD:interned n n n -- )
+   {: entry:n in:n out:n :}
+   entry 0 <= if E-HIR-CALLEE throw then
+   in 0 < out 0 < or if E-HIR-CALLEE throw then
+   HIR-MEANING:CALLABLE MEAN-CODE
+   entry
+   in out
+   ROW-ADD ;
+
 \ The row a structured control word writes. It stages no operation of its own -
 \ what a control word does is decide which blocks a definition has and which
 \ values cross between them - so the only thing a row holds is which control
@@ -494,6 +533,17 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
       id:IR-ID:ir-symbol-id v:n :}
    c r  c b id BSYM-CK  v FIXED-ROW ;
+
+\ Declare that a source word is another word this definition CALLS: where its
+\ code starts and what its declared effect is. This is how a call to a word that
+\ is not the one being compiled enters the chain, and it is the builder form for
+\ the same reason DECLARE-FIXED is - which words a program calls is a fact about
+\ that program and not about the dialect, so it is known while the program's
+\ module is being built and never afterwards.
+: DECLARE-CALLABLE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ID:ir-symbol-id n n n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena
+      id:IR-ID:ir-symbol-id entry:n in:n out:n :}
+   c r  c b id BSYM-CK  entry in out CALLABLE-ROW ;
 
 \ Declare that a source word elaborates to one operation of this dialect. The
 \ arena pair is this table's rows and the module's symbol rows: the second is
@@ -707,6 +757,24 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
    {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
    r id HIR-MEANING:FIXED ROW-AS {: l:n :}
    r l OFF-IN RC@ ;
+
+\ Where a callable word's code starts, and its declared effect. Each is asked of
+\ a row that carries that meaning, which is ROW-AS's rule: asking a rename for an
+\ entry address is a category error rather than a missing value.
+: ENTRY@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
+   r l OFF-A RC@ ;
+
+: CALLEE-IN@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
+   r l OFF-IN RC@ ;
+
+: CALLEE-OUT@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- n )
+   {: r:IR-ARENA:arena id:IR-ID:ir-symbol-id :}
+   r id HIR-MEANING:CALLABLE ROW-AS {: l:n :}
+   r l OFF-N RC@ ;
 
 \ Which control action a structured control word is.
 : CTRL@ ( IR-ARENA:arena IR-ID:ir-symbol-id -- HIR:ctrl )
@@ -925,9 +993,11 @@ public
 \ halves of a typed locals group, and the stack words that only rename values.
 \ The builder is the module's symbol
 \ interner, so the spellings become identities of the same module the table is
-\ bound to. A `create`d data word is NOT here: which data words exist is a fact
-\ about the program being compiled and not about the dialect, so a caller
-\ declares one with DECLARE-FIXED and commits the table to the extra row.
+\ bound to. A `create`d data word is NOT here, and neither is a word this
+\ definition calls: which data words exist and which words a program calls are
+\ facts about the program being compiled and not about the dialect, so a caller
+\ declares them with DECLARE-FIXED and DECLARE-CALLABLE and commits the table to
+\ the extra rows.
 : REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b r DEF-ARITH

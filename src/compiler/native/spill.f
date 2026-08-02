@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-27 constant OPCODES-N
+28 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -155,9 +155,10 @@ private
 24 constant O-LINKSAVE
 25 constant O-LINKLOAD
 26 constant O-CMPBR
+27 constant O-WORDCALL
 
 \ One slot per attribute key the dialect declares.
-8 constant KEYS-N
+9 constant KEYS-N
 0 constant K-IMM
 1 constant K-SHIFT
 2 constant K-SLOT
@@ -166,6 +167,7 @@ private
 5 constant K-DBYTES
 6 constant K-COND
 7 constant K-DBACK
+8 constant K-ENTRY
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -237,6 +239,7 @@ create NAMEBUF NAME-CAP allot
       brz      OF O-BRZ      ENDOF
       cmpbr    OF O-CMPBR    ENDOF
       call     OF O-CALL     ENDOF
+      wordcall OF O-WORDCALL ENDOF
       linksave OF O-LINKSAVE ENDOF
       linkload OF O-LINKLOAD ENDOF
       ret      OF O-RET      ENDOF
@@ -269,6 +272,7 @@ create NAMEBUF NAME-CAP allot
       O-ABLOAD   of A64IR-OPCODE:ABLOAD   endof
       O-ABSTORE  of A64IR-OPCODE:ABSTORE  endof
       O-CALL     of A64IR-OPCODE:CALL     endof
+      O-WORDCALL of A64IR-OPCODE:WORDCALL endof
       O-LINKSAVE of A64IR-OPCODE:LINKSAVE endof
       O-LINKLOAD of A64IR-OPCODE:LINKLOAD endof
       E-A64SPILL-OPCODE throw
@@ -425,6 +429,14 @@ create NAMEBUF NAME-CAP allot
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBYTES  CTX BLD size A64IR:DBYTES-ATTR  IR-BUILD:ADD-ATTR ;
 
+\ The callee address a call to another word carries. It is copied across
+\ unchanged: this pass moves values into and out of frame slots and decides
+\ nothing about where a call goes.
+: ENTRY-ATTR+ ( n -- )
+   {: entry:n :}
+   CTX BLD  CTX BLD A64IR:KEY-ENTRY  CTX BLD entry A64IR:ENTRY-ATTR
+   IR-BUILD:ADD-ATTR ;
+
 : DBACK-ATTR+ ( n -- )
    {: size:n :}
    CTX BLD  CTX BLD A64IR:KEY-DBACK  CTX BLD size A64IR:DBACK-ATTR  IR-BUILD:ADD-ATTR ;
@@ -552,6 +564,7 @@ create NAMEBUF NAME-CAP allot
       k K-DBYTES = if v DBYTES-ATTR+ then
       k K-COND = if v COND-ATTR+ then
       k K-DBACK = if v DBACK-ATTR+ then
+      k K-ENTRY = if v ENTRY-ATTR+ then
    loop ;
 
 \ The blocks a terminator hands control to. Blocks are copied one for one and in
@@ -837,6 +850,7 @@ public
    c b A64IR-OPCODE:ABLOAD   BIND1
    c b A64IR-OPCODE:ABSTORE  BIND1
    c b A64IR-OPCODE:CALL      BIND1
+   c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
@@ -847,6 +861,7 @@ public
    c b A64IR:KEY-DBYTES K-DBYTES BND-KEY !
    c b A64IR:KEY-COND   K-COND BND-KEY !
    c b A64IR:KEY-DBACK  K-DBACK BND-KEY !
+   c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    BOUND-YES BND-MODE ! ;
