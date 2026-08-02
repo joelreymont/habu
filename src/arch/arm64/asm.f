@@ -142,6 +142,12 @@ variable ARM-Z
 
 : ENC-EOR ( n n n -- n ) XR3 $CA000000 RRR ;
 
+\ Or with the second source inverted. It is the Orr form above with the
+\ shifted-register N bit set, which is bit 21 - the one bit that separates the
+\ four logical forms from their negated partners - so it is written as that base
+\ rather than as a second family.
+: ENC-ORN ( n n n -- n ) XR3 $AA200000 RRR ;
+
 \ A register-to-register move. ARM64 has no move form of its own: `mov xd, xm`
 \ is `orr xd, xzr, xm`, which is what a disassembler prints back and what the
 \ recovery emitter writes too. Operand 31 in a logical form is the zero
@@ -155,6 +161,14 @@ variable ARM-Z
 \ of the three a Habu comparison compiles to - compare, set one on the
 \ condition, negate - because a Habu flag is all bits set and not one.
 : ENC-NEG ( n n -- n ) ARM-ZERO-REG swap ENC-SUB ;
+
+\ A bitwise complement, by the same route again: ARM64 has no complement form of
+\ its own, and `mvn xd, xm` IS `orn xd, xzr, xm`. It is what Habu's `invert`
+\ computes in one instruction. The engine's own `invert` reaches the same answer
+\ in two - it moves all-ones into a register with a Movn and takes the exclusive
+\ or - because a primitive that pops and pushes has a spare register anyway; a
+\ compiled routine has no reason to spend one.
+: ENC-MVN ( n n -- n ) ARM-ZERO-REG swap ENC-ORN ;
 
 : ENC-MUL ( n n n -- n ) XR3 $9B007C00 RRR ;
 

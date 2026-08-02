@@ -115,8 +115,8 @@ private
 \ than assumed. The eighteen the register conventions use are here; the four that
 \ reach the caller's data stack are checked in DSTACK-SPELL-CASE below, the two
 \ addressed cell forms in ADDR-SHAPE-CASE, the two addressed byte forms in
-\ BYTE-SHAPE-CASE and the fused compare-and-branch in CMPBR-SHAPE-CASE, and the
-\ count covers all twenty-seven.
+\ BYTE-SHAPE-CASE, the fused compare-and-branch in CMPBR-SHAPE-CASE and the six
+\ bitwise and shift forms in BITWISE-CASE, and the count covers all thirty-four.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -164,10 +164,40 @@ private
    rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the twenty-eight machine opcodes" T-LABEL
+   s" registration defines exactly the thirty-four machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 28 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 34 T= ;
+
+\ The six forms the bitwise and shift words lower to. Five are the ordinary
+\ two-register three-operand shape and the sixth, the complement, is the one
+\ that reads one register and writes one - which is what the operand count read
+\ back off its own schema says, and what stops a caller staging it as a
+\ two-value operation.
+: BITWISE-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool n n )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:AND A64IR:OPCODE {: an:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:ORR A64IR:OPCODE {: o:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:EOR A64IR:OPCODE {: x:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:LSLV A64IR:OPCODE {: ls:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:LSRV A64IR:OPCODE {: rs:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:MVN A64IR:OPCODE {: mv:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv an IR-SCHEMA:FDEFINED?
+   rv o IR-SCHEMA:FDEFINED?
+   rv x IR-SCHEMA:FDEFINED?
+   rv ls IR-SCHEMA:FDEFINED?
+   rv rs IR-SCHEMA:FDEFINED?
+   rv mv IR-SCHEMA:FDEFINED?
+   rv an IR-SCHEMA:FOPERANDS
+   rv mv IR-SCHEMA:FOPERANDS ;
+
+: BITWISE-CASE ( -- )
+   s" the bitwise forms are three-operand and the complement is unary" T-LABEL
+   BND [: BITWISE-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 2 T=
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ The dialect names its own table: a caller never spells the name or the version.
 : NAMED-BODY ( IR-CTX:ctx -- bool n n )
@@ -647,26 +677,40 @@ private
    TFALSE TTRUE TTRUE 1 T= 2 T= 0 T= 2 T= TTRUE ;
 
 \ ---- the condition field -----------------------------------------------------
-\ The dialect writes the three conditions it compares and branches under as the
+\ The dialect writes the six conditions its comparisons are made under as the
 \ numbers the four-bit field holds. Those numbers are the assembler's own, so
 \ they are read back off src/arch/arm64/asm.f rather than restated here - a
 \ condition that moved there reddens this instead of encoding the wrong branch -
 \ and the round trip through the stored code is asserted too.
+\
+\ THE THREE COMPLEMENTS ARE HELD AGAINST THEIR OWN NAMES AND NOT AGAINST EACH
+\ OTHER. `gt` is C-GT and not "C-LE with something turned round": a lowering
+\ that reached greater-than by swapping the compare's operands would still pass
+\ a check written the second way, and would encode a different instruction.
 : COND-CASE ( -- )
    s" the conditions are the shipped assembler's, and decode back" T-LABEL
    A64IR-COND:LT A64IR:COND-CODE C-LT T=
    A64IR-COND:LE A64IR:COND-CODE C-LE T=
+   A64IR-COND:GT A64IR:COND-CODE C-GT T=
+   A64IR-COND:GE A64IR:COND-CODE C-GE T=
    A64IR-COND:LT A64IR:COND-CODE A64IR:N>COND A64IR-COND:LT A64IR-COND:EQ TTRUE
    A64IR-COND:LE A64IR:COND-CODE A64IR:N>COND A64IR-COND:LE A64IR-COND:EQ TTRUE
+   A64IR-COND:GT A64IR:COND-CODE A64IR:N>COND A64IR-COND:GT A64IR-COND:EQ TTRUE
+   A64IR-COND:GE A64IR:COND-CODE A64IR:N>COND A64IR-COND:GE A64IR-COND:EQ TTRUE
+   A64IR-COND:NE A64IR:COND-CODE C-NE T=
+   A64IR-COND:NE A64IR:COND-CODE A64IR:N>COND A64IR-COND:NE A64IR-COND:EQ TTRUE
    A64IR-COND:EQUAL A64IR:COND-CODE C-EQ T=
    A64IR-COND:EQUAL A64IR:COND-CODE A64IR:N>COND A64IR-COND:EQUAL A64IR-COND:EQ
    TTRUE ;
 
-\ A code the vocabulary does not name decodes as nothing at all.
+\ A code the vocabulary does not name decodes as nothing at all. The two chosen
+\ are conditions the machine really has - carry set, and always - so what is
+\ being refused is a code outside this DIALECT's vocabulary rather than a number
+\ outside the field.
 : COND-REFUSE-CASES ( -- )
    s" a stored condition outside the vocabulary is refused" T-LABEL
-   [: C-NE A64IR:N>COND drop ;] catch E-A64IR-COND T=
-   [: C-LT 1+ A64IR:N>COND drop ;] catch E-A64IR-COND T= ;
+   [: C-CS A64IR:N>COND drop ;] catch E-A64IR-COND T=
+   [: C-AL A64IR:N>COND drop ;] catch E-A64IR-COND T= ;
 
 \ ---- the reach of each branch --------------------------------------------------
 \ The two displacement fields, at their exact edges. Both encoders mask their
@@ -1003,6 +1047,7 @@ private
 : GROUP-REGISTER ( IR-CTX:ctx -- )
    drop
    COUNT-CASE
+   BITWISE-CASE
    NAMED-CASE
    SPELL-CASE ;
 

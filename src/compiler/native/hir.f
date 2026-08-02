@@ -9,7 +9,7 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Eighteen opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Twenty-seven opcodes, and nothing else:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
@@ -17,9 +17,18 @@
 \   hir.div       signed integer division, truncating toward zero
 \   hir.lt        signed less-than, answering a Habu flag
 \   hir.le        signed less-than-or-equal, answering a Habu flag
+\   hir.gt        signed greater-than, answering a Habu flag
+\   hir.ge        signed greater-than-or-equal, answering a Habu flag
 \   hir.eq        equality, answering a Habu flag - the opcode family spells
 \                 this member `equal`, because an ENUM that derives a comparison
 \                 word has already taken the name `eq`
+\   hir.ne        inequality, answering a Habu flag
+\   hir.and       bitwise and
+\   hir.or        bitwise or
+\   hir.xor       bitwise exclusive or
+\   hir.lshift    logical shift left by a count the program computed
+\   hir.rshift    logical shift right by a count the program computed
+\   hir.invert    bitwise complement, the one unary operation of the subset
 \   hir.mem       the memory the definition is entered with
 \   hir.load      read one cell from an address the program computed
 \   hir.store     write one cell to an address the program computed
@@ -38,6 +47,38 @@
 \ them is a later leaf of the same chain. An opcode with no elaborator, no
 \ lowering and no test would be a promise, not a schema, so none is declared
 \ here.
+\
+\ WHY SIX COMPARISONS AND NOT THREE WITH THE OPERANDS TURNED ROUND. `a > b` is
+\ `b < a` and `a >= b` is `b <= a`, so the greater-than pair could have been the
+\ less-than pair read backwards, and a source word could have been modelled as
+\ "this opcode, with its operands swapped". It is not, for two reasons. The word
+\ model of src/compiler/native/hir-word.f binds a source word to ONE opcode and
+\ nothing else, so an operand order would have to become a second field on every
+\ row and a second thing every reader has to consult before it knows what a row
+\ means. And `<>` cannot be reached by swapping at all - it is `=` inverted, and
+\ inverting a flag is an operation, not an argument order - so a scheme that
+\ turned operands round would still need a member for it and would then have two
+\ ways of saying the same kind of thing. Six opcodes for six source relations is
+\ one rule: a comparison names its relation, and every stage below reads that
+\ name.
+\
+\ WHY A SHIFT TAKES ITS COUNT AS AN OPERAND. Habu's `lshift` and `rshift` take
+\ the count off the stack, so the count is whatever the program computed and not
+\ a field of the instruction - which is why they are ordinary binary operations
+\ here and lower to the machine's shift-BY-REGISTER forms. What that makes them
+\ agree with is the engine: the register forms take the count modulo the register
+\ width, so `1 64 lshift` is 1 and not 0, and the engine's own `lshift` answers
+\ the same because it is the same instruction. A dialect that declared a count
+\ ceiling here would be inventing a rule the interpreted word does not keep.
+\
+\ AND WHY THE COMPLEMENT IS AN OPERATION RATHER THAN AN EXCLUSIVE OR WITH ALL
+\ ONES. `invert` is `-1 xor` and the engine computes it that way, by moving all
+\ ones into a register first. In a compiled routine that literal is a value like
+\ any other: it is materialised by a move-wide chain, which for all-ones is four
+\ instructions, and it occupies a register the allocator then has to place. The
+\ machine has a one-instruction complement, so modelling `invert` as its own
+\ operation is what lets the chain reach it - and the unary shape is the honest
+\ one anyway, because `invert` reads one value and answers one.
 \
 \ WHY MEMORY NEEDS THREE OPCODES AND NOT TWO. A load and a store say what a
 \ program does to memory; they do not say in which order it does it, and the
@@ -145,7 +186,16 @@ ENUM opcode DERIVE eq
    div
    lt
    le
+   gt
+   ge
    equal
+   ne
+   and
+   or
+   xor
+   lshift
+   rshift
+   invert
    mem
    load
    store
@@ -277,7 +327,16 @@ public
       div    OF s" hir.div"    ENDOF
       lt     OF s" hir.lt"     ENDOF
       le     OF s" hir.le"     ENDOF
+      gt     OF s" hir.gt"     ENDOF
+      ge     OF s" hir.ge"     ENDOF
       equal  OF s" hir.eq"     ENDOF
+      ne     OF s" hir.ne"     ENDOF
+      and    OF s" hir.and"    ENDOF
+      or     OF s" hir.or"     ENDOF
+      xor    OF s" hir.xor"    ENDOF
+      lshift OF s" hir.lshift" ENDOF
+      rshift OF s" hir.rshift" ENDOF
+      invert OF s" hir.invert" ENDOF
       mem    OF s" hir.mem"    ENDOF
       load   OF s" hir.load"   ENDOF
       store  OF s" hir.store"  ENDOF
@@ -344,7 +403,16 @@ private
       div    OF s" hir.rule.div"    ENDOF
       lt     OF s" hir.rule.lt"     ENDOF
       le     OF s" hir.rule.le"     ENDOF
+      gt     OF s" hir.rule.gt"     ENDOF
+      ge     OF s" hir.rule.ge"     ENDOF
       equal  OF s" hir.rule.eq"     ENDOF
+      ne     OF s" hir.rule.ne"     ENDOF
+      and    OF s" hir.rule.and"    ENDOF
+      or     OF s" hir.rule.or"     ENDOF
+      xor    OF s" hir.rule.xor"    ENDOF
+      lshift OF s" hir.rule.lshift" ENDOF
+      rshift OF s" hir.rule.rshift" ENDOF
+      invert OF s" hir.rule.invert" ENDOF
       mem    OF s" hir.rule.mem"    ENDOF
       load   OF s" hir.rule.load"   ENDOF
       store  OF s" hir.rule.store"  ENDOF
@@ -367,7 +435,16 @@ private
       div    OF s" hir.render.div"    ENDOF
       lt     OF s" hir.render.lt"     ENDOF
       le     OF s" hir.render.le"     ENDOF
+      gt     OF s" hir.render.gt"     ENDOF
+      ge     OF s" hir.render.ge"     ENDOF
       equal  OF s" hir.render.eq"     ENDOF
+      ne     OF s" hir.render.ne"     ENDOF
+      and    OF s" hir.render.and"    ENDOF
+      or     OF s" hir.render.or"     ENDOF
+      xor    OF s" hir.render.xor"    ENDOF
+      lshift OF s" hir.render.lshift" ENDOF
+      rshift OF s" hir.render.rshift" ENDOF
+      invert OF s" hir.render.invert" ENDOF
       mem    OF s" hir.render.mem"    ENDOF
       load   OF s" hir.render.load"   ENDOF
       store  OF s" hir.render.store"  ENDOF
@@ -437,12 +514,46 @@ private
 \ One comparison: two cells in, one cell out, and the answer is a Habu flag -
 \ all bits set or none. A comparison cannot overflow whatever the unit's numeric
 \ policy is, so unlike the three arithmetic opcodes it is total by declaration
-\ and not by policy. The three comparisons of this subset differ only in their
+\ and not by policy. The six comparisons of this subset differ only in their
 \ names, so they share this shape.
 : DEF-COMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One bitwise or shift operation: two cells in, one cell out, and total. It is
+\ the arithmetic shape with the may-trap flag declared rather than read off the
+\ unit's policy, and that difference is the whole reason it is a definer of its
+\ own: the policy is about OVERFLOW, and neither a bitwise combination nor a
+\ shift by a count taken modulo the register width can overflow. Declaring these
+\ five through DEF-BINARY would make them trapping under a trapping unit and
+\ oblige the machine stage to reproduce a trap that cannot happen.
+: DEF-BITS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ The one unary operation of this subset: one cell in, one cell out, and total.
+\ `invert` reads one value and answers its complement, and the schema says so -
+\ which is what stops a caller staging it with the two operands every other
+\ computing operation here takes.
+: DEF-UNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
@@ -730,7 +841,16 @@ public
    c b t DEF-DIV
    c b t HIR-OPCODE:LT DEF-COMPARE
    c b t HIR-OPCODE:LE DEF-COMPARE
+   c b t HIR-OPCODE:GT DEF-COMPARE
+   c b t HIR-OPCODE:GE DEF-COMPARE
    c b t HIR-OPCODE:EQUAL DEF-COMPARE
+   c b t HIR-OPCODE:NE DEF-COMPARE
+   c b t HIR-OPCODE:AND DEF-BITS
+   c b t HIR-OPCODE:OR DEF-BITS
+   c b t HIR-OPCODE:XOR DEF-BITS
+   c b t HIR-OPCODE:LSHIFT DEF-BITS
+   c b t HIR-OPCODE:RSHIFT DEF-BITS
+   c b t HIR-OPCODE:INVERT DEF-UNARY
    c b k DEF-MEM
    c b t k DEF-LOAD
    c b t k DEF-STORE

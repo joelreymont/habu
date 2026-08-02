@@ -65,8 +65,12 @@ private
    b ;
 
 \ ---- the dialect: what registration defines ----------------------------------
-\ The sixteen opcodes, and the count, so "nothing else was defined" is measured
-\ rather than assumed.
+\ The opcodes, and the count, so "nothing else was defined" is measured rather
+\ than assumed. The family outgrew one case's worth of locals when the
+\ comparison and bitwise vocabulary landed, so it is asked in two: the
+\ eighteen the straight-line subset started with, and the nine that complete
+\ the comparison and bitwise words. The COUNT is asserted once, on the first,
+\ and it is what says the second did not quietly define something else too.
 : COUNT-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c DIALECT-NEW {: b:IR-BUILD:builder :}
@@ -110,10 +114,42 @@ private
    rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the eighteen opcodes of the subset" T-LABEL
+   s" registration defines the eighteen opcodes the subset started with" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 18 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 27 T= ;
+
+\ The nine that complete the comparison and bitwise vocabulary. `invert` is the
+\ one unary operation of the subset and is asked for beside the eight binary
+\ ones, because a schema with the wrong number of operands is what would let a
+\ caller stage it as a two-value word.
+: NEWOPS-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-OPCODE:GT HIR:OPCODE {: g:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:GE HIR:OPCODE {: ge:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:NE HIR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:AND HIR:OPCODE {: an:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:OR HIR:OPCODE {: o:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:XOR HIR:OPCODE {: x:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:LSHIFT HIR:OPCODE {: ls:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:RSHIFT HIR:OPCODE {: rs:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:INVERT HIR:OPCODE {: iv:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv g IR-SCHEMA:FDEFINED?
+   rv ge IR-SCHEMA:FDEFINED?
+   rv n IR-SCHEMA:FDEFINED?
+   rv an IR-SCHEMA:FDEFINED?
+   rv o IR-SCHEMA:FDEFINED?
+   rv x IR-SCHEMA:FDEFINED?
+   rv ls IR-SCHEMA:FDEFINED?
+   rv rs IR-SCHEMA:FDEFINED?
+   rv iv IR-SCHEMA:FDEFINED? ;
+
+: NEWOPS-CASE ( -- )
+   s" registration defines the comparison and bitwise opcodes too" T-LABEL
+   BND [: NEWOPS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ The dialect names its own table: a caller never spells the name or the
 \ version.
@@ -380,7 +416,62 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 32 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 44 T= ;
+
+\ The nine words the comparison and bitwise vocabulary added, each read back off
+\ a real model. `>` binds to hir.gt and NOT to hir.lt: the row says which
+\ relation the word is, and a model that reached `>` by turning `<`'s operands
+\ round would answer hir.lt here.
+: OPS2-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" >" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:GT HIR-OPCODE:EQ
+   r c b s" >=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:GE HIR-OPCODE:EQ
+   r c b s" <>" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:NE HIR-OPCODE:EQ
+   r c b s" and" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:AND HIR-OPCODE:EQ
+   r c b s" or" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:OR HIR-OPCODE:EQ
+   r c b s" xor" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:XOR HIR-OPCODE:EQ
+   r c b s" lshift" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LSHIFT HIR-OPCODE:EQ
+   r c b s" rshift" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:RSHIFT HIR-OPCODE:EQ
+   r c b s" invert" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:INVERT HIR-OPCODE:EQ ;
+
+: OPS2-CASE ( -- )
+   s" the comparison and bitwise words bind to their own relations" T-LABEL
+   BND [: OPS2-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ `0=` and `cells` are a literal and an operation, exactly as `1-` is, and the
+\ constant each carries is what makes it the word it is: `0=` is an equality
+\ against ZERO and `cells` is a multiplication by EIGHT. Both halves of both
+\ rows are read back, because a row carrying the right opcode with the wrong
+\ constant compiles to a word that computes something else.
+: STEP2-BODY ( IR-CTX:ctx -- bool n bool n )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" 0=" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-OPCODE@
+      HIR-OPCODE:EQUAL HIR-OPCODE:EQ
+   r c b s" 0=" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-VALUE@
+   r c b s" cells" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-OPCODE@
+      HIR-OPCODE:MUL HIR-OPCODE:EQ
+   r c b s" cells" IR-BUILD:INTERN-SYMBOL HIR-WORD:CONST-VALUE@ ;
+
+: STEP2-CASE ( -- )
+   s" 0= is an equality against zero and cells a multiplication by eight" T-LABEL
+   BND [: STEP2-BODY ;] IR-CTX:WITH-CONTEXT
+   8 T= TTRUE 0 T= TTRUE ;
+
+\ `2drop` consumes two values and puts neither back, which is the whole of what
+\ the row says: a pick count of zero over an input count of two.
+: DROP2-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" 2drop" IR-BUILD:INTERN-SYMBOL HIR-WORD:INPUTS@
+   r c b s" 2drop" IR-BUILD:INTERN-SYMBOL HIR-WORD:PICKS ;
+
+: DROP2-CASE ( -- )
+   s" 2drop consumes two values and puts neither back" T-LABEL
+   BND [: DROP2-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 2 T= ;
 
 \ ---- the two halves of a typed locals group ----------------------------------
 \ Neither stages an operation, so what the word model has to say about them is
@@ -651,27 +742,29 @@ variable BC-OUT
    BND [: MEAN-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE ;
 
-\ Declaration order is observable, which is what an inventory walks: the six
-\ arithmetic and comparison words are declared first, then the two step words, the four memory
-\ words, the nine control words and the two halves of a locals group, with the
-\ renames at the end of the walk.
-: AT-BODY ( IR-CTX:ctx -- bool bool bool bool )
+\ Declaration order is observable, which is what an inventory walks: the four
+\ arithmetic words are declared first, then the six comparisons, the six bitwise
+\ words, the four step words, the four memory words, the ten control words and
+\ the two halves of a locals group, with the renames at the end of the walk.
+: AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
    r key 0 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 25 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 36 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 30 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 41 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 31 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" rot" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
+   r key 43 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
    s" declared words walk in declaration order" T-LABEL
    BND [: AT-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ ---- a word model without a module builder -----------------------------------
 \ Every refusal below is measured against a light model: a plain module of the
@@ -1186,7 +1279,7 @@ variable BC-OUT
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 18 0 0 FORGE
+   1 27 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 
@@ -1498,6 +1591,7 @@ variable BC-OUT
 : GROUP-DIALECT ( IR-CTX:ctx -- )
    drop
    COUNT-CASE
+   NEWOPS-CASE
    NAMED-CASE ;
 
 : GROUP-SHAPE ( IR-CTX:ctx -- )
@@ -1520,6 +1614,9 @@ variable BC-OUT
 : GROUP-MODEL ( IR-CTX:ctx -- )
    drop
    OPS-CASE
+   OPS2-CASE
+   STEP2-CASE
+   DROP2-CASE
    MEMWORD-CASE
    CALLABLE-CASE
    RENAME-CASE

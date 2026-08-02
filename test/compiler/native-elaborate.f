@@ -464,7 +464,7 @@ using NSRC
 \ here.
 : UNDEC-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
-   s" BAD xor" TEXT!
+   s" BAD negate" TEXT!
    c SEALED
    {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
    c b v p r 1 1 NELAB:COLON drop ;

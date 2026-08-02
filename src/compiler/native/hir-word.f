@@ -18,7 +18,8 @@
 \   rename    it only rearranges the compile-time value vector and produces no
 \             operation at all;
 \   fixed     it pushes one value and nothing else, which is what a `create`d
-\             data word does, and the row carries that value;
+\             data word and a `constant` both do, and the row carries that
+\             value;
 \   callable  it is another word this definition calls, and the row carries
 \             where that word's code starts and how many values it takes and
 \             leaves. It is not `control` the way `RECURSE` is: `RECURSE` means
@@ -52,9 +53,11 @@
 \   over ( a b -- a b a )    consumes 2, puts back 1 0 1
 \   nip  ( a b -- b )        consumes 2, puts back 0
 \   rot  ( a b c -- b c a )  consumes 3, puts back 1 0 2
+\   2drop ( a b -- )         consumes 2, puts back nothing
 \ Picks are listed bottom first, which is the order they are pushed. A rename
-\ may repeat an input, as `DUP` and `OVER` do, and may drop one, as `DROP` and
-\ `NIP` do; the one rule is that it can only put back an input it consumed.
+\ may repeat an input, as `DUP` and `OVER` do, and may drop one, as `DROP`,
+\ `NIP` and `2DROP` do; the one rule is that it can only put back an input it
+\ consumed.
 \
 \ HOW `ROT`'S PICK LIST IS DERIVED. Reading a pick list off a stack comment is
 \ mechanical, and `rot` is the one where getting it wrong is easy, so here is the
@@ -192,6 +195,15 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       return OF 4 ENDOF
       lt     OF 5 ENDOF
       le     OF 6 ENDOF
+      gt     OF 18 ENDOF
+      ge     OF 19 ENDOF
+      ne     OF 20 ENDOF
+      and    OF 21 ENDOF
+      or     OF 22 ENDOF
+      xor    OF 23 ENDOF
+      lshift OF 24 ENDOF
+      rshift OF 25 ENDOF
+      invert OF 26 ENDOF
       br     OF 7 ENDOF
       brz    OF 8 ENDOF
       mem    OF 9 ENDOF
@@ -224,6 +236,15 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       15 of HIR-OPCODE:EQUAL endof
       16 of HIR-OPCODE:CALL endof
       17 of HIR-OPCODE:WORDCALL endof
+      18 of HIR-OPCODE:GT endof
+      19 of HIR-OPCODE:GE endof
+      20 of HIR-OPCODE:NE endof
+      21 of HIR-OPCODE:AND endof
+      22 of HIR-OPCODE:OR endof
+      23 of HIR-OPCODE:XOR endof
+      24 of HIR-OPCODE:LSHIFT endof
+      25 of HIR-OPCODE:RSHIFT endof
+      26 of HIR-OPCODE:INVERT endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -844,35 +865,69 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ ---- the subset's vocabulary -------------------------------------------------
 \ The words the straight-line subset models, and the exact ceilings they need,
 \ so a caller commits a table to what this registration writes and not to a
-\ guess. The pick cells are the picks the seven renames put back, added up:
+\ guess. The pick cells are the picks the eight renames put back, added up:
 \ four for `2dup`, two for `dup`, none for `drop`, two for `swap`, three for
-\ `over`, one for `nip` and three for `rot`. A `{: … :}` group adds two words
-\ and no picks: its halves stage nothing and the names between them are the
-\ program's, so they never become rows of this table.
-32 constant WORDS
+\ `over`, one for `nip`, three for `rot` and none for `2drop`. A `{: … :}` group
+\ adds two words and no picks: its halves stage nothing and the names between
+\ them are the program's, so they never become rows of this table.
+44 constant WORDS
 15 constant PICK-CELLS
 
 private
 
-\ The seven words this dialect has operations for.
+\ The four arithmetic words this dialect has operations for.
 : DEF-ARITH ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" +" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD BDECLARE-OP
    c b r c b s" -" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB BDECLARE-OP
    c b r c b s" *" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL BDECLARE-OP
-   c b r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:DIV BDECLARE-OP
+   c b r c b s" /" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:DIV BDECLARE-OP ;
+
+\ The six comparisons, each bound to the opcode that names its own relation.
+\ `>` is not `<` with the operands turned round and `<>` is not `=` inverted:
+\ a row says which opcode a word means and nothing else, so a relation the
+\ dialect has no opcode for could not be written down here at all.
+: DEF-COMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LT BDECLARE-OP
    c b r c b s" <=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LE BDECLARE-OP
-   c b r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:EQUAL BDECLARE-OP ;
+   c b r c b s" >" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:GT BDECLARE-OP
+   c b r c b s" >=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:GE BDECLARE-OP
+   c b r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:EQUAL BDECLARE-OP
+   c b r c b s" <>" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:NE BDECLARE-OP ;
+
+\ The bitwise words. `and`, `or` and `xor` combine two values bit for bit;
+\ `lshift` and `rshift` move one value by a count the program computed, which is
+\ why they are two-operand words here and not a value and a field; `invert` is
+\ the one unary operation of the subset.
+: DEF-BITWISE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" and" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:AND BDECLARE-OP
+   c b r c b s" or" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:OR BDECLARE-OP
+   c b r c b s" xor" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:XOR BDECLARE-OP
+   c b r c b s" lshift" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:LSHIFT BDECLARE-OP
+   c b r c b s" rshift" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:RSHIFT BDECLARE-OP
+   c b r c b s" invert" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:INVERT BDECLARE-OP ;
 
 \ `1-` ( n -- n ) and `1+` ( n -- n ): subtract or add one. Each is one token of
 \ source and two operations of this dialect, and the row says exactly that
 \ rather than claiming an increment or decrement opcode the dialect does not
 \ have.
+\
+\ `0=` ( n -- bool ) and `cells` ( n -- n ) are the same shape with other
+\ numbers. `0=` is `0` then `=`: the engine's own `0=` compares its argument
+\ against zero and answers a Habu flag, so it answers false for EVERY nonzero
+\ value and not only for a flag - which is exactly what an equality against the
+\ literal zero computes, and is why this is a constant-and-operation row rather
+\ than a complement. `cells` is `8` then `*`, one cell being eight bytes; the
+\ engine shifts left by three, and multiplying by eight is the same function of
+\ the same argument on every bit pattern.
 : DEF-STEP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" 1-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:SUB 1 BDECLARE-CONST-OP
-   c b r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD 1 BDECLARE-CONST-OP ;
+   c b r c b s" 1+" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:ADD 1 BDECLARE-CONST-OP
+   c b r c b s" 0=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:EQUAL 0 BDECLARE-CONST-OP
+   c b r c b s" cells" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:MUL 8 BDECLARE-CONST-OP ;
 
 \ The four memory words, two per width. `@` ( ptr -- n ) reads the cell an
 \ address names and `!` ( n ptr -- ) writes one; `c@` ( ptr -- n ) reads the
@@ -973,6 +1028,14 @@ private
    0 ADD-PICK
    c b p r c b s" 2dup" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
 
+\ 2drop ( a b -- ): consume two and put neither back. It is `drop drop` written
+\ once, and it is a rename for the same reason `drop` is - the two values simply
+\ leave the compile-time vector and no instruction is needed to make them go.
+: DEF-2DROP ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   2 BEGIN-RENAME
+   c b p r c b s" 2drop" IR-BUILD:INTERN-SYMBOL BDECLARE-RENAME ;
+
 \ rot ( a b c -- b c a ): consume three and put all three back rotated, so the
 \ deepest of them ends on top. Bottom first that is b, then c, then a, whose
 \ depths in the consumed window are 1, 0 and 2 - the derivation at the head of
@@ -988,9 +1051,10 @@ private
 public
 
 \ Declare the whole straight-line source vocabulary into one word model: the
-\ words this dialect has operations for, the two step words that are a literal
-\ and an operation, the four memory words, the structured control words, the two
-\ halves of a typed locals group, and the stack words that only rename values.
+\ arithmetic, comparison and bitwise words this dialect has operations for, the
+\ four step words that are a literal and an operation, the four memory words,
+\ the structured control words, the two halves of a typed locals group, and the
+\ stack words that only rename values.
 \ The builder is the module's symbol
 \ interner, so the spellings become identities of the same module the table is
 \ bound to. A `create`d data word is NOT here, and neither is a word this
@@ -1001,6 +1065,8 @@ public
 : REGISTER-WORDS ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
    c b r DEF-ARITH
+   c b r DEF-COMPARE
+   c b r DEF-BITWISE
    c b r DEF-STEP
    c b r DEF-MEMORY
    c b r DEF-CONTROL
@@ -1011,7 +1077,8 @@ public
    c b p r DEF-SWAP
    c b p r DEF-OVER
    c b p r DEF-NIP
-   c b p r DEF-ROT ;
+   c b p r DEF-ROT
+   c b p r DEF-2DROP ;
 
 private
 get-current prot-wid-add

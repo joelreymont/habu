@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-28 constant OPCODES-N
+34 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -246,6 +246,12 @@ private
 25 constant O-LINKLOAD
 26 constant O-CMPBR
 27 constant O-WORDCALL
+28 constant O-AND
+29 constant O-ORR
+30 constant O-EOR
+31 constant O-LSLV
+32 constant O-LSRV
+33 constant O-MVN
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -343,6 +349,12 @@ create B-START BMAX cells allot
       sub     OF O-SUB     ENDOF
       mul     OF O-MUL     ENDOF
       sdiv    OF O-SDIV    ENDOF
+      and     OF O-AND     ENDOF
+      orr     OF O-ORR     ENDOF
+      eor     OF O-EOR     ENDOF
+      lslv    OF O-LSLV    ENDOF
+      lsrv    OF O-LSRV    ENDOF
+      mvn     OF O-MVN     ENDOF
       store    OF O-STORE    ENDOF
       load     OF O-LOAD     ENDOF
       reserve  OF O-RESERVE  ENDOF
@@ -375,6 +387,12 @@ create B-START BMAX cells allot
       O-SUB     of A64IR-OPCODE:SUB     endof
       O-MUL     of A64IR-OPCODE:MUL     endof
       O-SDIV    of A64IR-OPCODE:SDIV    endof
+      O-AND     of A64IR-OPCODE:AND     endof
+      O-ORR     of A64IR-OPCODE:ORR     endof
+      O-EOR     of A64IR-OPCODE:EOR     endof
+      O-LSLV    of A64IR-OPCODE:LSLV    endof
+      O-LSRV    of A64IR-OPCODE:LSRV    endof
+      O-MVN     of A64IR-OPCODE:MVN     endof
       O-STORE   of A64IR-OPCODE:STORE   endof
       O-LOAD    of A64IR-OPCODE:LOAD    endof
       O-RESERVE  of A64IR-OPCODE:RESERVE  endof
@@ -504,6 +522,13 @@ create B-START BMAX cells allot
 : WORD-MOV ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-MOV ;
+
+\ The bitwise complement, which reads the same one register and writes the same
+\ one. ENC-MVN is the assembler's own name for the Orn-with-zero-register form,
+\ exactly as ENC-MOV is for the Orr one.
+: WORD-MVN ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-MVN ;
 
 \ The shifted-register three-operand forms differ only in which encoder they end
 \ in, so they share the operand reading.
@@ -970,6 +995,12 @@ create B-START BMAX cells allot
       sub      OF id  id TRIPLE ENC-SUB  APPEND ENDOF
       mul      OF id  id TRIPLE ENC-MUL  APPEND ENDOF
       sdiv     OF id PUT-SDIV ENDOF
+      and      OF id  id TRIPLE ENC-AND  APPEND ENDOF
+      orr      OF id  id TRIPLE ENC-ORR  APPEND ENDOF
+      eor      OF id  id TRIPLE ENC-EOR  APPEND ENDOF
+      lslv     OF id  id TRIPLE ENC-LSLV  APPEND ENDOF
+      lsrv     OF id  id TRIPLE ENC-LSRV  APPEND ENDOF
+      mvn      OF id  id WORD-MVN  APPEND ENDOF
       store    OF id  id WORD-STORE  APPEND ENDOF
       load     OF id  id WORD-LOAD  APPEND ENDOF
       reserve  OF id  id WORD-RESERVE  APPEND ENDOF

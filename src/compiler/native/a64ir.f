@@ -287,7 +287,7 @@ public
 \ The whole operation family of the straight-line integer subset. It is an ENUM
 \ so design line 229's closed world is a property of the type: a selection rule
 \ cannot name a machine operation this dialect does not have, and every MATCH
-\ over it has to answer for all ten.
+\ over it has to answer for every member.
 ENUM opcode DERIVE eq
    movz
    movk
@@ -296,6 +296,12 @@ ENUM opcode DERIVE eq
    sub
    mul
    sdiv
+   and
+   orr
+   eor
+   lslv
+   lsrv
+   mvn
    store
    load
    reserve
@@ -319,21 +325,34 @@ ENUM opcode DERIVE eq
    ret
 ;ENUM
 
-\ The conditions a comparison may be made under. Three, because three are what
-\ the corpus's branching words compare with: `<`, `<=` and `=`. There is no
-\ member for their opposites, and there deliberately is not: a form that has to
-\ branch on the FALSITY of one of them names the same condition and puts the
-\ two successors the other way round, so the complements would be a vocabulary
-\ nothing produces. The equality
-\ member is spelled `equal` and not `eq`, because `eq` is the name the ENUM
-\ derives for its own comparison word and a member cannot take it. It is an ENUM
-\ so a caller names the condition instead of writing the number the field holds,
-\ and so a condition this dialect has no form for is unwritable rather than
-\ checked.
+\ The conditions a comparison may be made under: one per relation the SOURCE
+\ dialect has a comparison for, and no others. Six, because six are what Habu's
+\ comparison words compare with - `<`, `<=`, `>`, `>=`, `=` and `<>`. The
+\ equality member is spelled `equal` and not `eq`, because `eq` is the name the
+\ ENUM derives for its own comparison word and a member cannot take it. It is an
+\ ENUM so a caller names the condition instead of writing the number the field
+\ holds, and so a condition this dialect has no form for is unwritable rather
+\ than checked.
+\
+\ THREE OF THEM ARE THE COMPLEMENTS OF THE OTHER THREE, AND THAT IS NOT A
+\ REDUNDANCY. A form that has to BRANCH on the falsity of a relation names the
+\ relation and puts its two successors the other way round, so branch polarity
+\ still needs no complement and src/compiler/native/select.f never asks for one.
+\ What does need them is the form that MATERIALISES a flag: a comparison that
+\ answers a number has no successors to swap, so `<>` can only be reached by a
+\ condition of its own. `>` and `>=` could have been `<` and `<=` with the
+\ operands turned round instead - it is the same relation - but then a lowering
+\ would be an operand order in one place and a condition in another, and two
+\ tables that have to agree are two tables that can disagree. One condition per
+\ source relation keeps it one table, and it also keeps every emitted comparison
+\ byte-identical to the sequence the engine's own primitive emits for that word.
 ENUM cond DERIVE eq
    lt
    le
+   gt
+   ge
    equal
+   ne
 ;ENUM
 
 private
@@ -383,7 +402,10 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 1 COND-BITS lshift constant COND-LIM
 11 constant COND-LT                  \ signed less than
 13 constant COND-LE                  \ signed less than or equal
+12 constant COND-GT                  \ signed greater than
+10 constant COND-GE                  \ signed greater than or equal
 0 constant COND-EQ                   \ equal
+1 constant COND-NE                   \ not equal
 
 \ ---- the branch fields -------------------------------------------------------
 \ How far each branch form reaches, as the signed word displacement its own
@@ -574,6 +596,12 @@ public
       sub     OF s" a64.sub"     ENDOF
       mul     OF s" a64.mul"     ENDOF
       sdiv    OF s" a64.sdiv"    ENDOF
+      and     OF s" a64.and"     ENDOF
+      orr     OF s" a64.orr"     ENDOF
+      eor     OF s" a64.eor"     ENDOF
+      lslv    OF s" a64.lslv"    ENDOF
+      lsrv    OF s" a64.lsrv"    ENDOF
+      mvn     OF s" a64.mvn"     ENDOF
       store    OF s" a64.str"      ENDOF
       load     OF s" a64.ldr"      ENDOF
       reserve  OF s" a64.reserve"  ENDOF
@@ -607,7 +635,10 @@ public
    MATCH cond
       lt    OF COND-LT ENDOF
       le    OF COND-LE ENDOF
+      gt    OF COND-GT ENDOF
+      ge    OF COND-GE ENDOF
       equal OF COND-EQ ENDOF
+      ne    OF COND-NE ENDOF
    ;MATCH ;
 
 \ The condition one stored code names. It is an exact case, so a code outside
@@ -618,7 +649,10 @@ public
    case
       COND-LT of A64IR-COND:LT endof
       COND-LE of A64IR-COND:LE endof
+      COND-GT of A64IR-COND:GT endof
+      COND-GE of A64IR-COND:GE endof
       COND-EQ of A64IR-COND:EQUAL endof
+      COND-NE of A64IR-COND:NE endof
       E-A64IR-COND throw
    endcase ;
 
@@ -744,6 +778,12 @@ private
       sub     OF s" a64.rule.sub"     ENDOF
       mul     OF s" a64.rule.mul"     ENDOF
       sdiv    OF s" a64.rule.sdiv"    ENDOF
+      and     OF s" a64.rule.and"     ENDOF
+      orr     OF s" a64.rule.orr"     ENDOF
+      eor     OF s" a64.rule.eor"     ENDOF
+      lslv    OF s" a64.rule.lslv"    ENDOF
+      lsrv    OF s" a64.rule.lsrv"    ENDOF
+      mvn     OF s" a64.rule.mvn"     ENDOF
       store    OF s" a64.rule.str"      ENDOF
       load     OF s" a64.rule.ldr"      ENDOF
       reserve  OF s" a64.rule.reserve"  ENDOF
@@ -777,6 +817,12 @@ private
       sub     OF s" a64.render.sub"     ENDOF
       mul     OF s" a64.render.mul"     ENDOF
       sdiv    OF s" a64.render.sdiv"    ENDOF
+      and     OF s" a64.render.and"     ENDOF
+      orr     OF s" a64.render.orr"     ENDOF
+      eor     OF s" a64.render.eor"     ENDOF
+      lslv    OF s" a64.render.lslv"    ENDOF
+      lsrv    OF s" a64.render.lsrv"    ENDOF
+      mvn     OF s" a64.render.mvn"     ENDOF
       store    OF s" a64.render.str"      ENDOF
       load     OF s" a64.render.ldr"      ENDOF
       reserve  OF s" a64.render.reserve"  ENDOF
@@ -845,29 +891,42 @@ private
    c b A64IR-OPCODE:MOVK NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ Mov: one register read, one written, and no tie - the form exists so that the
-\ two CAN be different registers, which is what makes it able to put a value
-\ where a routine's contract says it has to leave and to hand a block argument
-\ the value an edge carries. A copy whose source and destination came out the
-\ same register is `orr xd, xzr, xd`, an instruction that does nothing, and one
-\ pass does build them: src/compiler/native/select.f splits every
-\ argument-carrying edge into one copy per argument, and a copy whose two ends
-\ coalesce into one register is exactly that no-op. It is emitted rather than
-\ elided because eliding it is a peephole, and the register allocator is what
-\ decides whether it is one - not this dialect, and not the emitter.
-: DEF-MOV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:MOV OPCODE IR-SCHEMA:BEGIN-OP
+\ One register read, one written, and no tie: the two register fields are
+\ independent, so the form can put a value somewhere else. The two forms of this
+\ dialect with that shape share it.
+: DEF-UNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
    t IR-SCHEMA:ADD-RESULT
    PURE-VALUE
    TOTAL
    TARGET
-   c b A64IR-OPCODE:MOV NAMED
+   c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One shifted-register three-operand form: two registers read, one written. The
-\ three arithmetic opcodes differ only in their names, so they share this shape.
+\ Mov: the form exists so that the two registers CAN be different, which is what
+\ makes it able to put a value where a routine's contract says it has to leave
+\ and to hand a block argument the value an edge carries. A copy whose source and
+\ destination came out the same register is `orr xd, xzr, xd`, an instruction
+\ that does nothing, and one pass does build them:
+\ src/compiler/native/select.f splits every argument-carrying edge into one copy
+\ per argument, and a copy whose two ends coalesce into one register is exactly
+\ that no-op. It is emitted rather than elided because eliding it is a peephole,
+\ and the register allocator is what decides whether it is one - not this
+\ dialect, and not the emitter.
+: DEF-MOV ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   A64IR-OPCODE:MOV DEF-UNARY ;
+
+\ Mvn: the bitwise complement, which is `orn xd, xzr, xm` exactly as the copy
+\ above is `orr xd, xzr, xm`. It is the whole of what Habu's `invert` compiles
+\ to, in one instruction and one register.
+: DEF-MVN ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   A64IR-OPCODE:MVN DEF-UNARY ;
+
+\ One shifted-register or two-source three-operand form: two registers read, one
+\ written. The arithmetic, bitwise and shift opcodes differ only in their names,
+\ so they share this shape.
 : DEF-BINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:A64IR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
@@ -1405,6 +1464,12 @@ public
    c b t A64IR-OPCODE:SUB DEF-BINARY
    c b t A64IR-OPCODE:MUL DEF-BINARY
    c b t DEF-SDIV
+   c b t A64IR-OPCODE:AND DEF-BINARY
+   c b t A64IR-OPCODE:ORR DEF-BINARY
+   c b t A64IR-OPCODE:EOR DEF-BINARY
+   c b t A64IR-OPCODE:LSLV DEF-BINARY
+   c b t A64IR-OPCODE:LSRV DEF-BINARY
+   c b t DEF-MVN
    c b t k DEF-STR
    c b t k DEF-LDR
    c b k DEF-RESERVE

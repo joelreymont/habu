@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-28 constant OPCODES-N
+34 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -156,6 +156,12 @@ private
 25 constant O-LINKLOAD
 26 constant O-CMPBR
 27 constant O-WORDCALL
+28 constant O-AND
+29 constant O-ORR
+30 constant O-EOR
+31 constant O-LSLV
+32 constant O-LSRV
+33 constant O-MVN
 
 \ One slot per attribute key the dialect declares.
 9 constant KEYS-N
@@ -222,6 +228,12 @@ create NAMEBUF NAME-CAP allot
       sub     OF O-SUB     ENDOF
       mul     OF O-MUL     ENDOF
       sdiv    OF O-SDIV    ENDOF
+      and     OF O-AND     ENDOF
+      orr     OF O-ORR     ENDOF
+      eor     OF O-EOR     ENDOF
+      lslv    OF O-LSLV    ENDOF
+      lsrv    OF O-LSRV    ENDOF
+      mvn     OF O-MVN     ENDOF
       store    OF O-STORE    ENDOF
       load     OF O-LOAD     ENDOF
       reserve  OF O-RESERVE  ENDOF
@@ -254,6 +266,12 @@ create NAMEBUF NAME-CAP allot
       O-SUB     of A64IR-OPCODE:SUB     endof
       O-MUL     of A64IR-OPCODE:MUL     endof
       O-SDIV    of A64IR-OPCODE:SDIV    endof
+      O-AND     of A64IR-OPCODE:AND     endof
+      O-ORR     of A64IR-OPCODE:ORR     endof
+      O-EOR     of A64IR-OPCODE:EOR     endof
+      O-LSLV    of A64IR-OPCODE:LSLV    endof
+      O-LSRV    of A64IR-OPCODE:LSRV    endof
+      O-MVN     of A64IR-OPCODE:MVN     endof
       O-STORE   of A64IR-OPCODE:STORE   endof
       O-LOAD    of A64IR-OPCODE:LOAD    endof
       O-RESERVE  of A64IR-OPCODE:RESERVE  endof

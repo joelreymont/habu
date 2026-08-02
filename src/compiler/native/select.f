@@ -25,7 +25,17 @@
 \   hir.div    -> a64.sdiv
 \   hir.lt     -> a64.flag, under the signed less-than condition
 \   hir.le     -> a64.flag, under the signed less-than-or-equal condition
+\   hir.gt     -> a64.flag, under the signed greater-than condition
+\   hir.ge     -> a64.flag, under the signed greater-than-or-equal condition
 \   hir.eq     -> a64.flag, under the equal condition
+\   hir.ne     -> a64.flag, under the not-equal condition
+\   hir.and    -> a64.and
+\   hir.or     -> a64.orr
+\   hir.xor    -> a64.eor
+\   hir.lshift -> a64.lslv, the shift-by-register form, because Habu's shift
+\                 takes its count off the stack
+\   hir.rshift -> a64.lsrv, the logical one, which is what Habu's `rshift` is
+\   hir.invert -> a64.mvn
 \   hir.mem    -> no instruction: the order binds to the one a64.dtake minted
 \   hir.load   -> a64.aldr
 \   hir.store  -> a64.astr
@@ -168,7 +178,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module all six were learned from.
-18 constant OPCODES-N
+27 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -187,6 +197,15 @@ private
 15 constant O-EQ
 16 constant O-CALL
 17 constant O-WORDCALL
+18 constant O-GT
+19 constant O-GE
+20 constant O-NE
+21 constant O-AND
+22 constant O-OR
+23 constant O-XOR
+24 constant O-LSHIFT
+25 constant O-RSHIFT
+26 constant O-INVERT
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -256,7 +275,16 @@ create NAMEBUF NAME-CAP allot
       div    OF O-DIV    ENDOF
       lt     OF O-LT     ENDOF
       le     OF O-LE     ENDOF
+      gt     OF O-GT     ENDOF
+      ge     OF O-GE     ENDOF
       equal  OF O-EQ     ENDOF
+      ne     OF O-NE     ENDOF
+      and    OF O-AND    ENDOF
+      or     OF O-OR     ENDOF
+      xor    OF O-XOR    ENDOF
+      lshift OF O-LSHIFT ENDOF
+      rshift OF O-RSHIFT ENDOF
+      invert OF O-INVERT ENDOF
       br     OF O-BR     ENDOF
       brz    OF O-BRZ    ENDOF
       mem    OF O-MEM    ENDOF
@@ -278,7 +306,16 @@ create NAMEBUF NAME-CAP allot
       O-DIV    of HIR-OPCODE:DIV    endof
       O-LT     of HIR-OPCODE:LT     endof
       O-LE     of HIR-OPCODE:LE     endof
+      O-GT     of HIR-OPCODE:GT     endof
+      O-GE     of HIR-OPCODE:GE     endof
       O-EQ     of HIR-OPCODE:EQUAL endof
+      O-NE     of HIR-OPCODE:NE     endof
+      O-AND    of HIR-OPCODE:AND    endof
+      O-OR     of HIR-OPCODE:OR     endof
+      O-XOR    of HIR-OPCODE:XOR    endof
+      O-LSHIFT of HIR-OPCODE:LSHIFT endof
+      O-RSHIFT of HIR-OPCODE:RSHIFT endof
+      O-INVERT of HIR-OPCODE:INVERT endof
       O-BR     of HIR-OPCODE:BR     endof
       O-BRZ    of HIR-OPCODE:BRZ    endof
       O-MEM    of HIR-OPCODE:MEM    endof
@@ -775,12 +812,24 @@ create NAMEBUF NAME-CAP allot
 \ ---- selecting the arithmetic ------------------------------------------------
 \ Two values in, one out. The operands are the values the source operands
 \ selected to, in the source order, so a subtraction keeps subtracting the same
-\ side.
+\ side - and so does a shift, whose first operand is the value moved and whose
+\ second is the count.
 : EMIT-BINARY ( IR-ID:ir-op-id A64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:A64IR:opcode :}
    id o OPEN
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   RESULT+
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ One value in, one out, which is what `invert` is. It is the shape above with
+\ one operand rather than a second rule: the machine form takes one register and
+\ writes one, and the source operation declares exactly that.
+: EMIT-UNARY ( IR-ID:ir-op-id A64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:A64IR:opcode :}
+   id o OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    RESULT+
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
@@ -883,20 +932,23 @@ create NAMEBUF NAME-CAP allot
 \ compare-and-branch below ask here, so the pairing of a source relation to a
 \ machine condition is written once: a comparison lowered under the wrong
 \ condition is one wrong line of this table rather than two lines that can
-\ disagree with each other. An operation that is not one of the three is refused
+\ disagree with each other. An operation that is not one of the six is refused
 \ by name, because a caller asking this of anything else has already gone wrong.
 : COMPARE-COND ( IR-ID:ir-op-id -- A64IR:cond )
    OPCODE-AT OPCODE-SLOT
    case
       O-LT of A64IR-COND:LT    endof
       O-LE of A64IR-COND:LE    endof
+      O-GT of A64IR-COND:GT    endof
+      O-GE of A64IR-COND:GE    endof
       O-EQ of A64IR-COND:EQUAL endof
+      O-NE of A64IR-COND:NE    endof
       E-A64SEL-OPCODE throw
    endcase ;
 
 : COMPARE-SLOT? ( n -- bool )
    {: k:n :}
-   k O-LT = k O-LE = or k O-EQ = or ;
+   k O-LT = k O-LE = or k O-GT = or k O-GE = or k O-EQ = or k O-NE = or ;
 
 \ One source comparison is one machine comparison, under the condition the source
 \ opcode names. The machine form is three instructions and one operation, because
@@ -1036,7 +1088,16 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       div    OF true  ENDOF
       lt     OF false ENDOF
       le     OF false ENDOF
+      gt     OF false ENDOF
+      ge     OF false ENDOF
       equal  OF false ENDOF
+      ne     OF false ENDOF
+      and    OF false ENDOF
+      or     OF false ENDOF
+      xor    OF false ENDOF
+      lshift OF false ENDOF
+      rshift OF false ENDOF
+      invert OF false ENDOF
       mem    OF false ENDOF
       load   OF false ENDOF
       store  OF false ENDOF
@@ -1213,7 +1274,16 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       div    OF id A64IR-OPCODE:SDIV EMIT-BINARY ENDOF
       lt     OF id EMIT-FLAG ENDOF
       le     OF id EMIT-FLAG ENDOF
+      gt     OF id EMIT-FLAG ENDOF
+      ge     OF id EMIT-FLAG ENDOF
       equal  OF id EMIT-FLAG ENDOF
+      ne     OF id EMIT-FLAG ENDOF
+      and    OF id A64IR-OPCODE:AND EMIT-BINARY ENDOF
+      or     OF id A64IR-OPCODE:ORR EMIT-BINARY ENDOF
+      xor    OF id A64IR-OPCODE:EOR EMIT-BINARY ENDOF
+      lshift OF id A64IR-OPCODE:LSLV EMIT-BINARY ENDOF
+      rshift OF id A64IR-OPCODE:LSRV EMIT-BINARY ENDOF
+      invert OF id A64IR-OPCODE:MVN EMIT-UNARY ENDOF
       mem    OF id EMIT-MEM ENDOF
       load   OF id A64IR-OPCODE:ALOAD EMIT-ALOAD ENDOF
       store  OF id A64IR-OPCODE:ASTORE EMIT-ASTORE ENDOF

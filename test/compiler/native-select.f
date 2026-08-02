@@ -325,11 +325,14 @@ $1000 constant BUMP-ADDR
    HIR-OPCODE:LT x y BINOP RET1
    CLOSE-FUN ;
 
-\ An operation of a sixth opcode, defined into the same dialect's table. Nothing
-\ in the substrate forbids it and the module verifies, so the pass has to refuse
-\ it by name rather than by never meeting it.
+\ An operation of an opcode the source dialect does not have, defined into the
+\ same dialect's table. Nothing in the substrate forbids it and the module
+\ verifies, so the pass has to refuse it by name rather than by never meeting
+\ it. `hir.negate` is chosen because Habu really has a `negate` and this dialect
+\ really has no opcode for it, so the row is the shape a capability that has not
+\ landed yet would arrive in.
 : EXTRA-SCHEMA ( -- IR-ID:ir-symbol-id )
-   CC BB s" hir.xor" IR-BUILD:INTERN-SYMBOL {: op:IR-ID:ir-symbol-id :}
+   CC BB s" hir.negate" IR-BUILD:INTERN-SYMBOL {: op:IR-ID:ir-symbol-id :}
    op IR-SCHEMA:BEGIN-OP
    CELLT IR-SCHEMA:ADD-OPERAND
    CELLT IR-SCHEMA:ADD-OPERAND
@@ -338,8 +341,8 @@ $1000 constant BUMP-ADDR
    IR-SCHEMA:SET-PURE
    false IR-SCHEMA:SET-TRAP
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET
-   CC BB s" hir.rule.xor" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RULE
-   CC BB s" hir.render.xor" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RENDERER
+   CC BB s" hir.rule.negate" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RULE
+   CC BB s" hir.render.negate" IR-BUILD:INTERN-SYMBOL IR-SCHEMA:SET-RENDERER
    CC BB IR-BUILD:DEFINE-OP
    op ;
 

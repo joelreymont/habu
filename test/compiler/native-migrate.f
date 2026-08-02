@@ -324,52 +324,52 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" NMG-AFTER" GLOBAL-WID NPUB:REPUBLISHED? TTRUE ;
 
 \ ---- a word the chain cannot compile ------------------------------------------
-\ `rshift` is not one of the source words the dialect models, so the elaborator
+\ `mod` is not one of the source words the dialect models, so the elaborator
 \ refuses the body by that dialect's own name. The engine has already published
 \ the word at that point, which is exactly the state a refusal has to leave
 \ working.
-: SHIFT-SRC ( -- ptr u8 n )
-   s" : NMG-SHIFT ( n -- n ) dup 2 rshift + ;" ;
+: MOD-SRC ( -- ptr u8 n )
+   s" : NMG-MOD ( n -- n ) dup 5 mod + ;" ;
 
-: MIGRATE-SHIFT ( -- )
-   SHIFT-SRC 1 1 REGS NMIGRATE:DEFINE ;
+: MIGRATE-MOD ( -- )
+   MOD-SRC 1 1 REGS NMIGRATE:DEFINE ;
 
 : REFUSED-CASE ( -- )
    s" a body outside the dialect is refused with the dialect's own code" T-LABEL
-   [: MIGRATE-SHIFT ;] E-HIR-UNMODELED TTHROWSQ
+   [: MIGRATE-MOD ;] E-HIR-UNMODELED TTHROWSQ
 
    s" the word the engine published is still there and still runs" T-LABEL
-   s" 12 NMG-SHIFT" EV-N 15 T=
-   s" 40 NMG-SHIFT" EV-N 50 T=
+   s" 12 NMG-MOD" EV-N 14 T=
+   s" 40 NMG-MOD" EV-N 40 T=
 
    s" and the publication seam never logged it" T-LABEL
-   s" NMG-SHIFT" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
+   s" NMG-MOD" GLOBAL-WID NPUB:REPUBLISHED? TFALSE ;
 
 \ The record of the refused word, read before the migration is attempted and
 \ again after it, so "untouched" is a measurement rather than an inference. The
 \ definition is made here and migrated in the case above, which is why the two
 \ halves are separate words: the record has to be read between them.
-: SHIFT-BEFORE ( -- )
-   s" : NMG-SHIFT2 ( n -- n ) dup 2 rshift + ;" EV
-   s" NMG-SHIFT2" REC-START OLD-START !
-   s" NMG-SHIFT2" REC-LEN OLD-LEN ! ;
+: MOD-BEFORE ( -- )
+   s" : NMG-MOD2 ( n -- n ) dup 5 mod + ;" EV
+   s" NMG-MOD2" REC-START OLD-START !
+   s" NMG-MOD2" REC-LEN OLD-LEN ! ;
 
-: MIGRATE-SHIFT2 ( -- )
-   s" : NMG-SHIFT3 ( n -- n ) dup 2 rshift + ;" 1 1 REGS NMIGRATE:DEFINE ;
+: MIGRATE-MOD2 ( -- )
+   s" : NMG-MOD3 ( n -- n ) dup 5 mod + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 : UNTOUCHED-CASE ( -- )
-   SHIFT-BEFORE
-   [: MIGRATE-SHIFT2 ;] E-HIR-UNMODELED TTHROWSQ
+   MOD-BEFORE
+   [: MIGRATE-MOD2 ;] E-HIR-UNMODELED TTHROWSQ
 
    s" a refusal leaves the record of the word it was given exactly as it was" T-LABEL
-   s" NMG-SHIFT3" REC-START  s" NMG-SHIFT3" REC-LEN  {: st:n ln:n :}
-   s" NMG-SHIFT2" REC-LEN OLD-LEN @ T=
-   s" NMG-SHIFT2" REC-START OLD-START @ T=
+   s" NMG-MOD3" REC-START  s" NMG-MOD3" REC-LEN  {: st:n ln:n :}
+   s" NMG-MOD2" REC-LEN OLD-LEN @ T=
+   s" NMG-MOD2" REC-START OLD-START @ T=
 
    s" and the word it refused still runs the code the engine compiled for it" T-LABEL
-   ln s" NMG-SHIFT2" REC-LEN T=
+   ln s" NMG-MOD2" REC-LEN T=
    st 0 T<>
-   s" 12 NMG-SHIFT3" EV-N 15 T= ;
+   s" 12 NMG-MOD3" EV-N 14 T= ;
 
 \ ---- what the entry itself refuses --------------------------------------------
 \ A source that publishes no definition never opens a scan, so the recorder's own
