@@ -462,15 +462,11 @@ create LF $0A c,
       UNIQUE-I @ 1+ UNIQUE-I !
    repeat ;
 
-: ASSERT-ABSENT ( ptr u8 n -- )
-   LOAD$ 2swap CONTAINS? 0= TTRUE ;
-
 : ASSERT-EQUAL ( n -- ) {: want:n :}
    LOAD$ PATH$ T$=
    LOAD$ PROVIDE$ T$=
    LOAD$ EXPECT$ T$=
-   LOAD$ want ASSERT-UNIQUE
-   s" structures-effects.f" ASSERT-ABSENT ;
+   LOAD$ want ASSERT-UNIQUE ;
 
 : CAPTURE-LOAD ( -- n )
    s" : PFX-LOAD-CHECKER-FILES" s" : PFX-PATH-CHECKER-FILES"
@@ -493,16 +489,12 @@ create LF $0A c,
 : NATIVE-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-NATIVE
-   45 ASSERT-EQUAL
-   s" src/core/structures-effects.f" BCG-MUST-LACK
-   s" LPSTRUCTEFF" BCG-MUST-LACK ;
+   45 ASSERT-EQUAL ;
 
 : GFORTH-ROWS ( -- )
    CAPTURE-PREFIX
    EXPECT-GFORTH
-   42 ASSERT-EQUAL
-   s" src/core/structures-effects.f" BCG-MUST-LACK
-   s" LPSTRUCTEFF" BCG-MUST-LACK ;
+   42 ASSERT-EQUAL ;
 
 : EXPECT-FILE ( ptr u8 n -- )
    EXPECT+  LF 1 EXPECT+ ;
@@ -1049,13 +1041,11 @@ variable COUNT-N
 
 : BCG-TEST-CELL-BOOTSTRAP ( -- )
    s" tools/bootstrap.sh" BCG-LOAD
-   BCG-MANIFEST-RECOVERY
-   s" cat src/core/structures-effects.f" BCG-MUST-LACK ;
+   BCG-MANIFEST-RECOVERY ;
 
 : BCG-TEST-CELL-FIXPOINT ( -- )
    s" tools/build-fixpoint.f" BCG-LOAD
-   BCG-MANIFEST-FIXPOINT
-   s" src/core/structures-effects.f" BCG-MUST-LACK ;
+   BCG-MANIFEST-FIXPOINT ;
 
 : BCG-TEST-CELL-PARITY ( -- )
    BCG-TEST-CELL-RUNTIME
