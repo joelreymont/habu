@@ -1,9 +1,11 @@
 ---
 title: Hard-cut global F32 conversion aliases
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-21T22:01:19.351961+02:00"
+closed-at: "2026-08-02T22:06:59.257800+02:00"
+close-reason: "Landed on origin/master at 6df493c76fcd: global F32 conversions and buffer helpers hard-cut to F32/F32-BUF/PTX-ACT; full test/run.f, Maki, device, PTX/lint-libs, and exact correction gates green; independent review ACCEPT."
 ---
 
 The bit-exact IEEE-754 implementation and exhaustive class tests now live in

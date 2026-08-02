@@ -1,9 +1,11 @@
 ---
 title: Delete Maki CUDA shims
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T23:22:19.484052+02:00"
+closed-at: "2026-08-02T22:06:59.264045+02:00"
+close-reason: "Landed on origin/master at 6df493c76fcd: Maki CUDA shims deleted and all callers use canonical CUDA owner; full test/run.f, Maki/device, PTX/lint-libs, and exact ownership gates green; independent review ACCEPT."
 ---
 
 Why: `maki/cuda-types.f` and `maki/cuda-driver.f` only forward the canonical
