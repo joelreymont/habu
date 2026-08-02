@@ -1,9 +1,11 @@
 ---
 title: Delete unused config identity
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T21:49:05.610490+02:00"
+closed-at: "2026-08-03T00:03:06.851118+02:00"
+close-reason: "Landed at 03669570: removed cfgkey/content hashing and layer-id key payload; SLOT range-checks consuming config. Root, fresh destruction, and Claude reviews accepted; Maki and native stdlib/PTX gates passed."
 blocks:
   - habu-own-gpt-2-14415dcd
   - habu-delete-model-semantic-deac6398
