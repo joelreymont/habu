@@ -4,12 +4,11 @@
 \ built only by the validating constructor - no partially validated value can
 \ carry the private proof, and no second normalized-config authority exists.
 \
-\ STRUCTURE mcfg = the common behavioral fields shared by both arms
+\ STRUCTURE mcfg = the behavioral fields
 \ (MAKI:datatype - maki/tensor.f:123 is the sole dtype authority - nctx, nvocab,
 \ nlayer, nembd, nhead, tied-embeddings flag, bos-id, eos-id; special tokens
-\ are behavioral: decode stops on eos) + payload ENUM arch =
-\ gpt2(ln-eps, attn-scale) | llama(nkvhead, ffn-dim, rope-theta, rms-eps) -
-\ no meaningless fields on either arm - + the private-mint proof token.
+\ are behavioral: decode stops on eos) + payload ENUM arch = gpt2(ln-eps,
+\ attn-scale) + the private-mint proof token.
 \
 \ The proof is an arity-0 NEWTYPE exactly like maki/typestate.f ART:built's
 \ build-proof (and maki/db/promotion.f's five stage proofs): the engine
@@ -26,10 +25,8 @@
 \ to answer.
 \
 \ Constructor validation, all before the proof mints, each class a named throw:
-\ positive extents with overflow-checked composed products (vocab*embed,
-\ ctx*embed, and per-arm embed*ffn); head-dim divisibility;
-\ special-token range; GQA divisibility on the llama arm; positive arm
-\ epsilons/theta.
+\ positive extents with overflow-checked composed products (vocab*embed and
+\ ctx*embed); head-dim divisibility; special-token range; positive arm epsilon.
 \
 \ maki -> habu only. Owns -5640..-5649.
 
@@ -44,13 +41,11 @@ public
 -5641 constant E-EXTENT     \ a geometry extent nonpositive, or a composed product overflows
 -5642 constant E-HEAD       \ nembd not divisible by nhead
 -5643 constant E-TOKEN      \ bos-id/eos-id outside [0, nvocab)
--5644 constant E-GQA        \ llama nhead not divisible by nkvhead, or nkvhead > nhead
--5645 constant E-ARM        \ a nonpositive arch-arm epsilon/theta
+-5644 constant E-ARM        \ a nonpositive arch-arm epsilon
 
 \ ---- the architecture payload (consumers MATCH on the arm) -------------------
 ENUM arch 0
    VARIANT gpt2  FIELD ln-eps r  FIELD attn-scale f ;VARIANT
-   VARIANT llama FIELD nkvhead n  FIELD ffn-dim n  FIELD rope-theta r  FIELD rms-eps r ;VARIANT
 ;ENUM
 
 \ ---- the private-mint proof (see header: arity-0 nominal, ART:built shape) ---
@@ -107,17 +102,9 @@ $7FFFFFFFFFFFFFFF constant MAX-N
    eps F-POS
    eps sc MDLCFG-ARCH:GPT2 ;
 
-: V-LLAMA ( n n r r n n -- arch ) {: nkv:n ffn:n theta:r reps:r nh:n ne:n :}
-   nkv N-POS  ffn N-POS
-   theta F-POS  reps F-POS
-   nh nkv mod 0<>  nkv nh >  or if E-GQA throw then
-   ne ffn XMUL drop
-   nkv ffn theta reps MDLCFG-ARCH:LLAMA ;
-
-: V-ARCH ( arch n n -- arch ) {: nh:n ne:n :}
+: V-ARCH ( arch -- arch )
    MATCH arch
       gpt2  OF V-GPT2 ENDOF
-      llama OF nh ne V-LLAMA ENDOF
    ;MATCH ;
 
 public
@@ -131,7 +118,7 @@ public
    cx vo nl ne nh V-EXTENTS
    ne nh V-HEAD
    bos vo V-TOKEN  eos vo V-TOKEN
-   nh ne V-ARCH
+   V-ARCH
    >r  dt cx vo nl ne nh te bos eos  r>
    MINT-CFG-PROOF
    MDLCFG-MCFG:MAKE ;
