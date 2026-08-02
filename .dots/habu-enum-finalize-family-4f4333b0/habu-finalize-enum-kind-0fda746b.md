@@ -29,11 +29,12 @@ persistence state.
 
 Declaration-event owner: capture those operations through exactly
 `DEV-FAM-ENUM-LIKE? ( n -- bool )` and
-`DEV-FAM-FINALIZE-ENUM-KIND ( n bool -- n )`, with matching `TRUSTED.md`
-inventory rows. Widen only the transient `DEVTX` frame with one false
-finalization latch. Add `E-DEV-ENUM-FINAL` 7176 and `E-DEV-ENUM-FORM` 7177.
-Public `FINALIZE-ENUM ( token family -- kind )` requires the exact open top
-token, its bound family, and a false latch.
+`DEV-FAM-FINALIZE-ENUM-KIND ( n bool -- n )`. Each bridge has a source-local
+rationale, names this dot as retirement owner, and is exercised through the
+focused production-path test. Widen only the transient `DEVTX` frame with one
+false finalization latch. Add `E-DEV-ENUM-FINAL` 7176 and
+`E-DEV-ENUM-FORM` 7177. Public `FINALIZE-ENUM ( token family -- kind )`
+requires the exact open top token, its bound family, and a false latch.
 
 The grammar scan considers only rows owned by that frame; foreign-owner rows
 from valid nested declarations are ignored. The owned stream must contain one
@@ -71,8 +72,7 @@ field classification, mutation freeze, either chosen kind, or capability
 retirement makes an owning-path regression fail.
 
 Exact files: `src/core/type-family.f`, `src/core/decl-event.f`,
-`src/core/generated-declaration-protection.f`, `test/decl-event-suite.f`, and
-`TRUSTED.md`.
+`src/core/generated-declaration-protection.f`, and `test/decl-event-suite.f`.
 
 Forbidden: `DEV-PREPARE` enforcement, an ENUM frontend edit, persisted latch,
 second family list or count, restore hook, public raw setter, event-record
