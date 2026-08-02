@@ -34,7 +34,7 @@
 \ copy reading a producer buffer both run without the slots-only cap. Per-region cubins are
 \ registered by MDL-CUBIN! (the device tool assembles REGION_<rid> per region). rows*cols above the
 \ launch arena fails closed (E-LLA-CAP). Fully checked Habu via the typed CUDA bindings
-\ (maki/cuda-driver.f). maki -> habu only; lower-launch owns -5180..-5184.
+\ (lib/ptx/cuda-driver.f). maki -> habu only; lower-launch owns -5180..-5184.
 
 require lib/errors.f
 require lib/string.f
@@ -46,7 +46,7 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/sentinel.f
 require maki/array.f
-require maki/cuda-driver.f
+require lib/ptx/cuda-driver.f
 require maki/cuda-run.f
 require maki/golden-artifact.f
 require maki/move-view.f
@@ -184,25 +184,25 @@ variable LLA-GX  variable LLA-GY                    \ single-region launch grid 
    LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR CUDA-SCOPE:OWN-DEVPTR ;
 
 : LLA-BIND-PARAMS ( -- )                          \ K input ptrs, output ptr, then the u32 param
-   LLA-FUNC @ >CUDA-FN LLA-BLOCK 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 12 + >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN LLA-BLOCK 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 12 + >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
    LLA-NIN @ 0 ?do
-      LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
+      LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
    loop
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX      LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8 + >IDX  LLA-NVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0 ;
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX      LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8 + >IDX  LLA-NVAR 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 \ sentinel-poison the readback, copy the output back, GUARD every cell, unpack to f64.
 \ Shared by all shapes (the launch grid + param binding is the only per-shape difference).
 : LLA-READBACK ( n -- ) {: obytes:n :}
    LLA-HRB obytes PTXSENT:FILL
-   LLA-HRB  LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR  obytes >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
+   LLA-HRB  LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR  obytes >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0
    LLA-ELEMS @ 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop ;
 
 : LLA-LAUNCH ( n n -- ) {: grid:n obytes:n :}     \ launch the staged grid, copy back, unpack (guarded)
    LLA-BIND-PARAMS
-   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
 \ ---- shared execute over the staged region (upload + launch grid + readback) ----
@@ -260,20 +260,20 @@ variable LLA-GX  variable LLA-GY                    \ single-region launch grid 
 
 \ ---- matmul upload/bind/launch (heterogeneous input buffers + 3 u32 params + 2D grid) --
 : LLA-BIND-PARAMS-MM ( -- )                       \ K input ptrs, output ptr, then M,N,K as u32
-   LLA-FUNC @ >CUDA-FN LLA-MM-TILE LLA-MM-TILE 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 20 + >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN LLA-MM-TILE LLA-MM-TILE 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 20 + >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
    LLA-NIN @ 0 ?do
-      LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
+      LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
    loop
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX       LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8  + >IDX  LLA-PM 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 12 + >IDX  LLA-PN 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 16 + >IDX  LLA-PK 4 >LEN CUDA:CUPARAMSETV CUDA:RC0 ;
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX       LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8  + >IDX  LLA-PM 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 12 + >IDX  LLA-PN 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 16 + >IDX  LLA-PK 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 : LLA-LAUNCH-MM ( n n n -- ) {: gx:n gy:n obytes:n :}   \ 2D launch, copy back, unpack (guarded)
    LLA-BIND-PARAMS-MM
-   LLA-FUNC @ >CUDA-FN gx gy CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN gx gy CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
 : LLA-EXEC-MM-BODY ( -- )
@@ -287,20 +287,20 @@ variable LLA-GX  variable LLA-GY                    \ single-region launch grid 
 
 \ ---- movement copy-kernel launch (1-2 buffers + p_a/p_b/p_n u32 + 1D grid) ------
 : LLA-BIND-PARAMS-MV ( -- )                       \ K input ptrs, output ptr, then a,b,n as u32
-   LLA-FUNC @ >CUDA-FN LLA-BLOCK 1 1 CUDA:CUFUNCSETBLOCKSHAPE CUDA:RC0
-   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 20 + >LEN CUDA:CUPARAMSETSIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN LLA-BLOCK 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN LLA-NIN @ 8 * 20 + >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
    LLA-NIN @ 0 ?do
-      LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
+      LLA-FUNC @ >CUDA-FN  i 8 * >IDX  i LLA-DBUF-I 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
    loop
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX       LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8  + >IDX  LLA-CPA 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 12 + >IDX  LLA-CPB 4 >LEN CUDA:CUPARAMSETV CUDA:RC0
-   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 16 + >IDX  LLA-NVAR 4 >LEN CUDA:CUPARAMSETV CUDA:RC0 ;
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * >IDX       LLA-NIN @ LLA-DBUF-I 8 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 8  + >IDX  LLA-CPA 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 12 + >IDX  LLA-CPB 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0
+   LLA-FUNC @ >CUDA-FN  LLA-NIN @ 8 * 16 + >IDX  LLA-NVAR 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 : LLA-LAUNCH-MV ( n n -- ) {: grid:n obytes:n :}  \ 1D launch, copy back, unpack (guarded)
    LLA-BIND-PARAMS-MV
-   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    obytes LLA-READBACK ;
 
 : LLA-EXEC-MV-BODY ( -- )
@@ -416,11 +416,11 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
    LLA-NIN @ 0 ?do  i LLA-IN-ELEMS-I LLA-NCAP > if E-LLA-CAP throw then  loop ;
 
 : MDL-LAUNCH-1D ( n -- ) {: grid:n :}
-   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0 ;
+   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0 ;
 : MDL-LAUNCH-2D ( n n -- ) {: gx:n gy:n :}
-   LLA-FUNC @ >CUDA-FN gx gy CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0 ;
+   LLA-FUNC @ >CUDA-FN gx gy CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0 ;
 
 \ stage a region by class (analysis + per-input operand resolution into launch staging)
 : MDL-STAGE ( CAD-KIND:region -- ) {: rid:CAD-KIND:region :}
@@ -464,7 +464,7 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
    dp 0= if E-MDL-NOOUT throw then
    e 4 * {: ob:n :}
    LLA-HRB ob PTXSENT:FILL
-   LLA-HRB  dp >CUDA-DEVPTR  ob >LEN CUDA:CUMEMCPYDTOH CUDA:RC0
+   LLA-HRB  dp >CUDA-DEVPTR  ob >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0
    e 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop
    out LLA-OUT-NODE! e LLA-ELEMS ! ;
 

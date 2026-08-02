@@ -110,8 +110,8 @@ create ABL-QO  $1000 allot  create ABL-QE $2000 allot
    LLA-SETUP
    obytes LLA-ALLOC-UPLOAD
    LLA-BIND-PARAMS
-   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CULAUNCHGRID CUDA:RC0
-   CUDA:CUCTXSYNCHRONIZE CUDA:RC0
+   LLA-FUNC @ >CUDA-FN grid 1 CUDA:CU-LAUNCH-GRID CUDA:RC0
+   CUDA:CU-CTX-SYNCHRONIZE CUDA:RC0
    LLA-HRB obytes PTXSENT:FILL                      \ readback poisoned (as LLA-READBACK pre-fills)...
    \ ---- DELIBERATELY OMIT the cuMemcpyDtoH copy-back (obytes LLA-READBACK) ----
    [: LLA-HRB SF-LD PTXSENT:GUARD drop ;] catch {: rc:n :}

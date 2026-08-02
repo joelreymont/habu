@@ -287,10 +287,6 @@ SUITE maki/competitive-evidence-test.f
 ;SUITE
 SUITE maki/competitive-evidence-store-test.f
 ;SUITE
-SUITE maki/cuda-types-test.f
-;SUITE
-SUITE maki/cuda-driver-test.f
-;SUITE
 SUITE maki/device-artifacts-test.f
 ;SUITE
 SUITE maki/maki-test.f

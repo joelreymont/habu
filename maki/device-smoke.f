@@ -15,7 +15,7 @@
 \ Verbatim ED-SYM idiom from maki/eval/device.f.
 
 require lib/test.f
-require maki/cuda-driver.f
+require lib/ptx/cuda-driver.f
 
 package DEVICE-SMOKE
 
@@ -33,8 +33,8 @@ variable DS-DEV
    CUDA:OPEN? 0= if
       s" device-FFI: libcuda.so.1 unavailable -> device leg SKIPPED (off-device; proof stands)" type cr
    else
-      0 CUDA:CUINIT DS-RC0
-      DS-DEV 0 >IDX CUDA:CUDEVICEGET DS-RC0
+      0 CUDA:CU-INIT DS-RC0
+      DS-DEV 0 >IDX CUDA:CU-DEVICE-GET DS-RC0
       s" device-FFI: cuInit + cuDeviceGet OK on the Orin" type cr
    then
    T-REPORT ;

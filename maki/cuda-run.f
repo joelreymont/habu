@@ -25,16 +25,16 @@ package MKD
 
 \ ---- real-driver wrappers (the default arming target for each defer) ---------
 : R-OPEN        ( -- )                        CUDA:OPEN ;
-: R-CUINIT      ( n -- rc )                   CUDA:CUINIT ;
-: R-DEVGET      ( ptr a idx -- rc )           CUDA:CUDEVICEGET ;
-: R-CTXRETAIN   ( ptr a cuda-dev -- rc )      CUDA:CUDEVICEPRIMARYCTXRETAIN ;
-: R-CTXSET      ( cuda-ctx -- rc )            CUDA:CUCTXSETCURRENT ;
-: R-MODLOAD     ( ptr a ptr u8 -- rc )        CUDA:CUMODULELOAD ;
-: R-MODFUNC     ( ptr a cuda-mod ptr u8 -- rc ) CUDA:CUMODULEGETFUNCTION ;
-: R-MEMALLOC    ( ptr a len -- rc )           CUDA:CUMEMALLOC ;
-: R-MEMSET      ( cuda-devptr n count -- rc ) CUDA:CUMEMSETD32 ;
-: R-HTOD        ( cuda-devptr ptr u8 len -- rc ) CUDA:CUMEMCPYHTOD ;
-: R-DTOH        ( ptr u8 cuda-devptr len -- rc ) CUDA:CUMEMCPYDTOH ;
+: R-CUINIT      ( n -- rc )                   CUDA:CU-INIT ;
+: R-DEVGET      ( ptr a idx -- rc )           CUDA:CU-DEVICE-GET ;
+: R-CTXRETAIN   ( ptr a cuda-dev -- rc )      CUDA:CU-DEVICE-PRIMARY-CTX-RETAIN ;
+: R-CTXSET      ( cuda-ctx -- rc )            CUDA:CU-CTX-SET-CURRENT ;
+: R-MODLOAD     ( ptr a ptr u8 -- rc )        CUDA:CU-MODULE-LOAD ;
+: R-MODFUNC     ( ptr a cuda-mod ptr u8 -- rc ) CUDA:CU-MODULE-GET-FUNCTION ;
+: R-MEMALLOC    ( ptr a len -- rc )           CUDA:CU-MEM-ALLOC ;
+: R-MEMSET      ( cuda-devptr n count -- rc ) CUDA:CU-MEMSET-D32 ;
+: R-HTOD        ( cuda-devptr ptr u8 len -- rc ) CUDA:CU-MEMCPY-HTOD ;
+: R-DTOH        ( ptr u8 cuda-devptr len -- rc ) CUDA:CU-MEMCPY-DTOH ;
 
 public
 

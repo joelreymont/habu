@@ -28,15 +28,6 @@ DEFTYPE CUDA-FN
 DEFTYPE CUDA-DEVPTR
 DEFTYPE CUDA-EVENT
 
-\ Fail-closed guards, global so historical maki call sites (CUDA-HANDLE0 /
-\ CUDA-RC0) resolve unqualified.
-: CUDA-HANDLE0 ( n -- n )
-   dup 0= if E-CUDA throw then ;
-
-: CUDA-RC0 ( rc -- )
-   RC>N dup 0 <> if E-CUDA throw then
-   drop ;
-
 package CUDA
 
 create CD-LIB 16 allot
@@ -75,10 +66,11 @@ public
    CD-H @ ;
 
 : HANDLE0 ( n -- n )
-   CUDA-HANDLE0 ;
+   dup 0= if E-CUDA throw then ;
 
 : RC0 ( rc -- )
-   CUDA-RC0 ;
+   RC>N dup 0 <> if E-CUDA throw then
+   drop ;
 
 \ Each trusted word is one exact CUDA FFI schema: its signature, symbol,
 \ READABLE/WRITABLE extent, and VALUE slots fix the unique call contract.
@@ -251,28 +243,6 @@ TRUSTED: CU-EVENT-ELAPSED-TIME ( ptr a cuda-event cuda-event -- rc )
    s" cuEventElapsedTime" SYMBOL {: call:n :}
    FFI:RESET  out 4 0 FFI:WRITABLE!  start 1 FFI:VALUE!  stop 2 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 3 call ffi-call-bounded ;
-
-\ Historical CUDA C spellings remain package methods.  The package is sealed
-\ below, so no later source can redirect them or add competing bindings.
-: CUINIT ( n -- rc ) CU-INIT ;
-: CUDEVICEGET ( ptr a idx -- rc ) CU-DEVICE-GET ;
-: CUDEVICEGETATTRIBUTE ( ptr a n cuda-dev -- rc ) CU-DEVICE-GET-ATTRIBUTE ;
-: CUDEVICEPRIMARYCTXRETAIN ( ptr a cuda-dev -- rc ) CU-DEVICE-PRIMARY-CTX-RETAIN ;
-: CUCTXSETCURRENT ( cuda-ctx -- rc ) CU-CTX-SET-CURRENT ;
-: CUMODULELOAD ( ptr a ptr u8 -- rc ) CU-MODULE-LOAD ;
-: CUMODULEGETFUNCTION ( ptr a cuda-mod ptr u8 -- rc ) CU-MODULE-GET-FUNCTION ;
-: CUMEMALLOC ( ptr a len -- rc ) CU-MEM-ALLOC ;
-: CUMEMFREE ( cuda-devptr -- rc ) CU-MEM-FREE ;
-: CUMEMSETD32 ( cuda-devptr n count -- rc ) CU-MEMSET-D32 ;
-: CUMEMCPYHTOD ( cuda-devptr ptr u8 len -- rc ) CU-MEMCPY-HTOD ;
-: CUMEMCPYDTOH ( ptr u8 cuda-devptr len -- rc ) CU-MEMCPY-DTOH ;
-: CUFUNCSETBLOCKSHAPE ( cuda-fn n n n -- rc ) CU-FUNC-SET-BLOCK-SHAPE ;
-: CUPARAMSETSIZE ( cuda-fn len -- rc ) CU-PARAM-SET-SIZE ;
-: CUPARAMSETV ( cuda-fn idx ptr u8 len -- rc ) CU-PARAM-SET-V ;
-: CULAUNCHGRID ( cuda-fn n n -- rc ) CU-LAUNCH-GRID ;
-: CUCTXSYNCHRONIZE ( -- rc ) CU-CTX-SYNCHRONIZE ;
-: CUMODULEUNLOAD ( cuda-mod -- rc ) CU-MODULE-UNLOAD ;
-: CUDEVICEPRIMARYCTXRELEASE ( cuda-dev -- rc ) CU-DEVICE-PRIMARY-CTX-RELEASE ;
 
 \ ---- typed convenience helpers (named throws via HANDLE0 / RC0) -------------
 
