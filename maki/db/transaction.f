@@ -26,11 +26,8 @@
 \   - dependency edges : CAD-KIND:artifact-id input objects the outputs depend on.
 \       Every edge object MUST appear in the read set, else VALIDATE rejects
 \       (omitted-read) - "you cannot depend on what you did not read".
-\   - capability set : closed-vocabulary capability CODES (n). CONSERVATIVE READING:
-\       CAD-KIND:capability-id's owner package CAP is a product decision out of this
-\       dot's scope (§ 23.9 capability-id row), so a capability is held as its stable
-\       vocabulary code (the plan's capability WIRE form) until CAP lands; migrate to
-\       the nominal when it does.
+\   - capability set : opaque capability codes (n), stored canonically for the
+\       CAPTOK authorization mechanism.
 \   - budget ledger  : (dimension code, amount) entries, one per dimension.
 \   - obligations    : CAD-KIND:obligation-id (the interned proof-obligation identity;
 \       maki/db/obligation.f OBLIG:INTERN owns the model subject/relation/domain/policy/

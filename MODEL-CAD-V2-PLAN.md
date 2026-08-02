@@ -3338,7 +3338,7 @@ Artifact<Kind> = {
   producer-id, producer-version,
   source-revisions[], dependencies[],
   target/config/numeric-policy facts,
-  capabilities-used[], created-event
+  created-event
 }
 ~~~
 
@@ -3380,7 +3380,6 @@ role can never unify with another:
 | producer-id | `CAD-KIND:producer-id` | producing component identity |
 | config facts | `CAD-KIND:config-id` | build/config identity |
 | numeric-policy | `CAD-KIND:numeric-policy-id` | numeric-domain policy identity |
-| capabilities-used[] | `CAD-KIND:capability-id` | capability identity |
 | created-event | `CAD-KIND:audit-event-id` | persistent append-only audit-record link |
 | dependencies[] | `CAD-KIND:artifact-id` | ordered dependency identities |
 | source-revisions[] | `CAD-KIND:rev-id` | ordered source-revision identities |
@@ -3401,8 +3400,9 @@ or as flat per-kind families (the stage-family precedent under "Stage families"
 in the R7 addendum), and the checker enforces separation either way.
 
 Non-unification is proven by verdict-pinned checker fixtures in
-`maki/cad-kinds-test.f`: adjacent envelope roles reject
-(`CK-XA1`..`CK-XA8`), `artifact-kind` versus `artifact-id`
+`maki/cad-kinds-test.f`: envelope roles reject across adjacent and existing
+identity boundaries (`CK-XA1`..`CK-XA3`, `CK-XA6`..`CK-XA8`),
+`artifact-kind` versus `artifact-id`
 (`CK-XA6`/`CK-XA7`), `audit-event-id` versus `ADAG:event-id`
 (`CK-EV-X1`/`CK-EV-X2`), `artifact<weight-kind>` versus `artifact<kernel-kind>`
 (`CK-ART-XK`), and `artifact-id` versus the 256-bit digest
@@ -3452,7 +3452,7 @@ diagnostic. Consumers updated with the rename: maki/artifact-test.f.
 - Unknown REQUIRED field: reject (`unknown-required`). Unknown OPTIONAL field:
   retained OPAQUELY and re-emitted byte-for-byte, so a forward-compatible
   reader neither drops nor reinterprets it.
-- Dependency and capability SETS are canonically ordered (ascending by their
+- Dependency and source-revision SETS are canonically ordered (ascending by their
   nominal identity) and duplicate-free; unordered or duplicated sets are
   `noncanonical`.
 - Every length and count is bounds-checked before use (`bounds`); truncated or
@@ -3489,11 +3489,11 @@ envelope and `DIGEST` are total.
 
 ##### Foreign identity constructors and wire codecs
 
-The envelope binds eleven nominal identity fields (the table above), but only
+The envelope binds ten nominal identity fields (the table above), but only
 `CAD-KIND:artifact-id` has an owner-published producer and — via reopening
 `package ARTIFACT` — a wire path today (maki/artifact.f `ARTIFACT:REGISTER` plus
 its private `RAW>ARTIFACT-ID` / `ARTIFACT-ID>RAW`). The other identity families
-— `schema-id`, `producer-id`, `config-id`, `numeric-policy-id`, `capability-id`,
+— `schema-id`, `producer-id`, `config-id`, `numeric-policy-id`,
 `audit-event-id`, `rev-id`, and `target-id` — have NO caller-reachable
 constructor or wire codec, so nothing can obtain a value and the "no new trust
 boundary" rule forbids the envelope codec from minting or raw-casting a foreign
@@ -3534,7 +3534,6 @@ guarantee. The wire form per origin class is:
 | Origin class | Families | Canonical wire form | Width |
 |---|---|---|---|
 | content-addressed registry intern | schema-id, producer-id, config-id, numeric-policy-id, rev-id, target-id | the owner's canonical descriptor content key (SHA-256), fixed little-endian | 32 bytes |
-| closed vocabulary | capability-id | the shared vocabulary code (a stable constant like the `TARGET:CAP-*` bits), fixed little-endian | 8 bytes |
 | append-only sequence | audit-event-id | the journal-assigned monotonic sequence number, fixed little-endian (digest-excluded) | 8 bytes |
 
 The first-slice artifact-id and dependency wire form stores the registry RAW
@@ -3561,10 +3560,8 @@ fixed for every family.
 | `producer-id` | new `PRODUCER` (the machine-facing action/component registry, §23.9) | `PRODUCER:REGISTER` interns a producing component's stable identity (version-independent — `producer-version` is a separate envelope field); content-addressed. | what uniquely identifies a producer (name only? name + class?) — NEEDS-DECISION |
 | `config-id` | new `CONFIG` | `CONFIG:REGISTER` interns the canonical build/config facts; content-addressed. | which build/config facts are canonical / digest-covered — NEEDS-DECISION |
 | `numeric-policy-id` | `NPOL` (maki/numpolicy.f, reopened) | `NPOL:REGISTER` interns a numeric policy; content-addressed. `NPOL:DOM>N` / `N>DOM` is the existing minimal wire precedent if a policy is a single `dom`. | numeric-policy descriptor scope (single `dom` vs a per-region / tolerance bundle) — NEEDS-DECISION |
-| `capability-id` | new `CAP` | closed vocabulary: named capability constructors over a shared registry (like `NPOL:dom` / `TARGET:CAP-*`); wire = the stable vocabulary code. | the initial capability vocabulary content (which capabilities exist) — NEEDS-DECISION (product) |
 
-Only `capability-id`'s vocabulary content is a product decision; `schema-id`,
-`producer-id`, `config-id`, and `numeric-policy-id` descriptor contents are
+`schema-id`, `producer-id`, `config-id`, and `numeric-policy-id` descriptor contents are
 engineering contracts resolvable within their per-family dot, and `target-id`,
 `audit-event-id`, and `rev-id` need no new decision.
 

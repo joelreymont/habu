@@ -64,9 +64,7 @@
 \ second-slice foreign ids (schema/producer/config/numeric-policy/target) and the
 \ first-slice fields (kind, producer-version, artifact-id identity,
 \ the artifact-id dependency set, and the content digest) the envelope now binds every
-\ semantic identity the plan names EXCEPT the one still out of the checker's reach:
-\ capabilities-used[] (CAD-KIND:capability-id, a user-gated closed vocabulary - owner
-\ CAP, a product decision).
+\ semantic identity the plan names.
 \
 \ VALIDATE (§ 23.9 ARTIFACT:VALIDATE, the bare tail freed by the maki/artifact.f
 \ VALIDATE-ID rename) is the kind-AGNOSTIC leg: it checks owned bytes structurally

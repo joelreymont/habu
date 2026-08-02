@@ -877,7 +877,7 @@ arity-0 nominals, and it owns the identities the canonical artifact envelope
 binds (MODEL-CAD-V2-PLAN.md § 23.9 Canonical typed artifacts; dot
 `habu-freeze-canonical-artifact-3b6b7087`). The envelope-provenance roles are
 `CAD-KIND:artifact-kind`, `producer-id`, `config-id`, `numeric-policy-id`,
-`capability-id`, and `audit-event-id`, alongside the pre-existing
+and `audit-event-id`, alongside the pre-existing
 `artifact-id`, `schema-id`, `rev-id`, and `target-id`. Each is a distinct
 family id, so no id-shaped scalar of one role unifies with another — the
 type-family mechanism, not a runtime tag check, is the confusion barrier.

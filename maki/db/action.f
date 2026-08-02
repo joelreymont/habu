@@ -35,14 +35,10 @@
 \ preconditions / effects / budget-dims / invalidation : ACTION-owned closed ENUMs (the
 \                       registry's own concern) held as a u64 BITMASK (1<<ordinal),
 \                       canonical by construction (order-independent, duplicate-free).
-\ capabilities        : held as the closed-vocabulary CODES the transaction model uses
-\                       (plan:3652 "a stable constant like the TARGET:CAP-* BITS"), OR'd
-\                       into a u64 mask. The vocabulary CONTENT is user-gated
-\                       (habu-user-gated-cap-edccf572, owner package CAP) and NOT yet
-\                       landed, so this file does NOT invent it: every seeded action
-\                       declares an EMPTY capability set; the field and its authorization
-\                       mechanism exist and are exercised with abstract bit codes in the
-\                       test. When CAP lands, CAP+ takes a CAD-KIND:capability-id.
+\ capabilities        : opaque codes from the transaction model, OR'd into a u64 mask.
+\                       Every seeded action declares an EMPTY capability set; the field
+\                       and authorization mechanism are exercised with abstract bit codes
+\                       in the test.
 \ obligations (produced) : reuse the LANDED OBLIG:relation vocabulary (the relation an
 \                       obligation asserts, maki/db/obligation.f) as a bitmask - no
 \                       competing vocabulary.
