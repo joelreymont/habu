@@ -11,10 +11,9 @@
 \ does not compile at all, and nothing here catches: a body the chain refuses is
 \ a claim this file made and did not keep.
 \
-\ SIX OF THE SEVEN ARE HERE. VEC-COPY-CELLS is not, and
-\ tools/codegen-compare-new2.f declares it a gap with the capabilities it is
-\ waiting for and the dot that lands it. Its absence is therefore stated in the
-\ table rather than left to a reader counting rows.
+\ ALL SEVEN ARE HERE. VEC-COPY-CELLS was the odd one out while a call inside a
+\ counted loop miscompiled; dot habu-save-the-loop-5f07e0c3 closed that, so the
+\ table has no gap row left and tools/codegen-compare-new2.f declares none.
 \
 \ TWO BODIES DIFFER FROM THE CORPUS'S IN THE SPELLING OF A CONSTANT, AND IN
 \ NOTHING ELSE. This is the one liberty this file takes and it is listed in full
@@ -135,12 +134,39 @@ private
    s" TV-NEXT?-N" s" CODEGEN-CORPUS2:TV-NEXT?-N" ENTRY 1 2
    1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
 
+\ The copy's callee: a pointer and a cell index in, the address of that cell
+\ out. A `ptr n` is one cell of the caller's stack, so its convention is two
+\ values in and one out, which is what the declaration below says.
+: CELL-FIELD ( -- )
+   s" : CELL-FIELD-N ( ptr n n -- ptr n ) cells + ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
+\ The copy itself: a counted loop with TWO calls in its body, one working out
+\ the address it reads and one the address it writes, and three locals live
+\ across both of them. It is the shape that made dot habu-save-the-loop-5f07e0c3
+\ - the loop's counters and the caller's locals crossed the call in registers the
+\ callee's contract declares destroyed, so the loop miscounted and the store went
+\ through a clobbered address.
+\
+\ WHY ITS BUDGET IS THE WIDEST OF THE SIX. Two of its locals and the loop's index
+\ and limit are all live across both calls, so each holds a register from the
+\ header to the latch, and the call sites need their own on top of that. It is
+\ refused with E-A64RA-SPILL at twelve registers and accepted at fourteen; the
+\ budget is a budget, and dot habu-choose-the-register-a95390ac carries taking
+\ the number off the routine rather than off a line here.
+14 constant COPY-REGS
+
+: VEC-COPY-CELLS ( -- )
+   s" : VEC-COPY-CELLS-N ( ptr n ptr n n -- ) {: src:ptr dst:ptr len:n :} len 0 ?do src i CELL-FIELD-N @ dst i CELL-FIELD-N ! loop ;"
+   s" CELL-FIELD-N" s" CODEGEN-CORPUS2:CELL-FIELD-N" ENTRY 2 1
+   3 0 COPY-REGS NMIGRATE:DEFINE-CALLING ;
+
 public
 
-\ Publish all six. It is one word rather than six top-level lines because a
-\ migration claims code space at the engine's free slot, and the interpreter
-\ uses that slot for the line it is running. The callee is published before the
-\ caller that names it.
+\ Publish all seven and the two callees. It is one word rather than nine
+\ top-level lines because a migration claims code space at the engine's free
+\ slot, and the interpreter uses that slot for the line it is running. Each
+\ callee is published before the caller that names it.
 : RUN ( -- )
    TAG
    WS?
@@ -148,7 +174,9 @@ public
    MAX-DIM
    COUNT-CHAR
    TV-NEXT?
-   T-RES-WALK ;
+   T-RES-WALK
+   CELL-FIELD
+   VEC-COPY-CELLS ;
 
 ;package
 

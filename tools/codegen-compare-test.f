@@ -562,6 +562,11 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    b 0 < if false exit then
    k CODEGEN-COMPARE:SIZE b CODEGEN-COMPARE:SIZE < ;
 
+\ Did the new column measure a row for this word at all? A gap that was closed
+\ has to show up as a measured row, not merely as an absent declaration.
+: MEASURED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CODEGEN-COMPARE:PATH-NEW a u CODEGEN-COMPARE:FIND-ROW 0 >= ;
+
 : NAMED-GAP-AMONG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    false
    CODEGEN-GAP:GAPS 0 ?do
@@ -597,24 +602,23 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" and every word the new chain compiled is fewer bytes of machine code" T-LABEL
    NOT-SMALLER 0 T= ;
 
-\ The second corpus, whose account is not all wins and says so. Two of its seven
-\ words are gaps and one of the five it does compile takes MORE bytes than the
-\ engine's code for the same body - T-RES-WALK, whose own record is three
-\ instructions of loop around a call in the old emitter's code and a frame, a
-\ saved return address and a saved loop value in the chain's. The number is
-\ pinned here so that the day it changes, in either direction, somebody has to
-\ look at it.
+\ The second corpus, whose account is not all wins and says so. All seven of its
+\ words are compiled now - VEC-COPY-CELLS was a gap until dot
+\ habu-save-the-loop-5f07e0c3 made a call inside a counted loop save the loop's
+\ own state - and one of the seven takes MORE bytes than the engine's code for
+\ the same body: T-RES-WALK, whose own record is three instructions of loop
+\ around a call in the old emitter's code and a frame, a saved return address and
+\ a saved loop value in the chain's. Both numbers are pinned here so that the day
+\ either changes, in either direction, somebody has to look at it.
 : REAL-RUN-CASES2 ( -- )
    8 ACCOUNT-CASES
 
-   s" the second corpus declares exactly one gap" T-LABEL
-   CODEGEN-GAP:GAPS 1 T=
+   s" the second corpus declares no gap at all" T-LABEL
+   CODEGEN-GAP:GAPS 0 T=
 
-   s" and it is the word the head of codegen-compare-new2.f names" T-LABEL
-   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" NAMED-GAP-AMONG? TTRUE
-
-   s" which names both capabilities it waits for, not just the first" T-LABEL
-   0 CODEGEN-GAP:GAP-CAPS@ 2 T=
+   s" and the word that was one is compiled and measured" T-LABEL
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" MEASURED? TTRUE
 
    s" exactly one compiled word is not fewer bytes than the engine's" T-LABEL
    NOT-SMALLER 1 T=
@@ -627,7 +631,8 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" CODEGEN-CORPUS2:WS?" SMALLER? TTRUE
    s" CODEGEN-CORPUS2:SYM-FOLD-C" SMALLER? TTRUE
    s" CODEGEN-CORPUS2:MAX-DIM" SMALLER? TTRUE
-   s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE ;
+   s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" SMALLER? TTRUE ;
 
 \ ---- the claim the second corpus's two respelled rows rest on ----------------
 \ tools/codegen-compare-migrated2.f compiles two of the second corpus's bodies

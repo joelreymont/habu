@@ -2,12 +2,11 @@
 \ comparison. One concern: which word of the second corpus the new chain
 \ compiles, and what it costs.
 \
-\ SIX ROWS AND ONE GAP. Six of the seven surveyed words are compiled by the
-\ chain and measured beside the old emitter's code for the same body; one is
-\ declared a gap that names the capabilities it is waiting for and the dot that
-\ lands them. The account is tools/codegen-compare-gap.f's, shared with the first
-\ corpus, and its coverage check refuses a pass in which any corpus word is
-\ neither compiled nor declared - so six plus one is a statement about all seven.
+\ SEVEN ROWS AND NO GAP. All seven surveyed words are compiled by the chain and
+\ measured beside the old emitter's code for the same body. The account is
+\ tools/codegen-compare-gap.f's, shared with the first corpus, and its coverage
+\ check refuses a pass in which any corpus word is neither compiled nor declared
+\ - so seven and nothing declared is a statement about all seven.
 \
 \ TWO OF THE SIX ARE COMPILED FROM A RESPELLED CONSTANT, AND THE SUBSTITUTIONS
 \ ARE LISTED IN FULL at the head of tools/codegen-compare-migrated2.f with the
@@ -18,34 +17,27 @@
 \ from the same program - but a reader of this table should know which two rows
 \ carry a substitution and why, and that is what this paragraph is for.
 \
-\ WHAT THE GAP IS, IN FULL, BECAUSE A GAP IS A RESULT.
+\ WHAT THE LAST ROW COST, BECAUSE A CLOSED GAP IS ALSO A RESULT.
 \
-\   CODEGEN-CORPUS2:VEC-COPY-CELLS - calls, control flow.
-\   It is worse than "not yet": the chain ACCEPTS a
-\   `?do` body containing a call and emits a routine that computes the wrong
-\   answer. Measured on this tree, with a chain-compiled callee:
+\   CODEGEN-CORPUS2:VEC-COPY-CELLS was a gap here until dot
+\   habu-save-the-loop-5f07e0c3, and it was worse than "not yet": the chain
+\   ACCEPTED a `?do` body containing a call and emitted a routine that computed
+\   the wrong answer, and faulted outright when the body stored through an
+\   address the callee returned. What the chain did not do was save the loop's
+\   own index and limit, or the caller's locals, across the branch: those live in
+\   registers of a pool that starts at the same register the callee's pool starts
+\   at, and a callee that keeps its declared contract destroys all of them. The
+\   elaborator now hands every one of them to the call operation and to every
+\   edge that a rename has to reach, so the machine stage writes them to the
+\   caller's own stack like every other live value.
 \
-\     : DBL-N ( n -- n ) dup + ;
-\     : LC-N  ( n -- n ) 0 swap 0 ?do i DBL-N + loop ;
-\     4 LC-N   answers 0; the engine's own code for the same body answers 12.
-\
-\   and with a body that stores through the addresses the callee returns - which
-\   is what VEC-COPY-CELLS does - the routine faults. The same call in a
-\   `begin … until` body is right, the same call in a `begin … while` TEST is
-\   right (T-RES-WALK below measures exactly that), and the same `?do` body
-\   calling an ENGINE-compiled word is right. So what is broken is a chain
-\   routine's call from inside a counted loop: the loop's carried state lives in
-\   registers of a pool that starts at the same register the callee's pool
-\   starts at, and the site does not save it across a call to a routine that
-\   declares it destroys them. Dot habu-save-the-loop-5f07e0c3.
-\
-\   THE ENGINE-COMPILED CALLEE IS NOT USED TO MAKE THIS ROW GREEN. It would
-\   compile and it would answer correctly, and it would be a measurement resting
-\   on a lucky fact - that the engine's own code for CELL-FIELD happens not to
-\   touch the registers the loop is carrying - rather than on anything the two
-\   routines' contracts promise each other. A row bought that way would go red
-\   the first time the engine's emitter changed a register, for no reason a
-\   reader could see. So the row is a gap, and it says why.
+\   THE ENGINE-COMPILED CALLEE WAS NOT USED TO MAKE THIS ROW GREEN, then or now.
+\   It would have compiled and answered correctly, and it would have been a
+\   measurement resting on a lucky fact - that the engine's own code for
+\   CELL-FIELD happens to use x9 and x10 and so happens not to touch the
+\   registers the loop is carrying - rather than on anything the two routines'
+\   contracts promise each other. The row is measured with a chain-compiled
+\   callee, which is the shape the contract covers.
 \
 \ HOW A COVERED ROW IS CHECKED. The word the chain compiled is CALLED on the
 \ same pinned inputs the old column used, and its answers are recorded as that
@@ -199,6 +191,26 @@ private
       CODEGEN-CORPUS2:UNBOUND-VAR CODEGEN-CORPUS2:T-RES-WALK-N CODEGEN-COMPARE:VECTOR ;]
    CODEGEN-COMPARE:MEASURE-NEW ;
 
+\ THE OTHER ROW THIS CORPUS EXISTS FOR: a counted loop with TWO calls in its
+\ body, one working out the address it reads and one the address it writes, over
+\ three locals that are live across both. What it RETURNS is nothing at all, so
+\ the destination buffer is what is recorded - the four cells the copy moved and
+\ the fifth, which it must not have. Both columns write the SAME buffer, so the
+\ check is a statement about the stores, and the fifth cell is what would catch a
+\ loop that ran a turn too many because its counter came back from a call wrong.
+: VEC-COPY-CASE ( -- )
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" s" CODEGEN-CORPUS2:VEC-COPY-CELLS-N"
+   [: CODEGEN-CORPUS2:COPY-FROM CODEGEN-CORPUS2:COPY-TO CODEGEN-CORPUS2:COPY-LEN
+      CODEGEN-CORPUS2:VEC-COPY-CELLS-N ;]
+   [: CODEGEN-CORPUS2:COPY-FROM CODEGEN-CORPUS2:COPY-TO CODEGEN-CORPUS2:COPY-LEN
+      CODEGEN-CORPUS2:VEC-COPY-CELLS-N
+      0 CODEGEN-CORPUS2:COPY-DST@ CODEGEN-COMPARE:VECTOR
+      1 CODEGEN-CORPUS2:COPY-DST@ CODEGEN-COMPARE:VECTOR
+      2 CODEGEN-CORPUS2:COPY-DST@ CODEGEN-COMPARE:VECTOR
+      3 CODEGEN-CORPUS2:COPY-DST@ CODEGEN-COMPARE:VECTOR
+      4 CODEGEN-CORPUS2:COPY-DST@ CODEGEN-COMPARE:VECTOR ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
 : COVERED-CASES ( -- )
    NOOP-CASE
    TAG-CASE
@@ -206,24 +218,19 @@ private
    SYM-FOLD-CASE
    MAX-DIM-CASE
    COUNT-CHAR-CASE
-   T-RES-WALK-CASE ;
-
-\ ---- the word the chain cannot compile yet -----------------------------------
-\ It names every capability it is waiting for rather than the first that stops
-\ it, and the head of this file says in full what it is and which dot lands it.
-: GAP-CASES ( -- )
-   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" CODEGEN--GAP-CAP:CALLS CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:CONTROL-FLOW CODEGEN-GAP:GAP-ALSO ;
+   T-RES-WALK-CASE
+   VEC-COPY-CASE ;
 
 public
 
 \ Compile every corpus word the chain can express, declare the rest, and check
-\ that between them they account for all of it. Runs after the old column, whose
-\ rows the names are checked against.
+\ that between them they account for all of it. Nothing is declared today, and
+\ the check is what makes that a statement rather than a hope: a word neither
+\ compiled nor declared is refused. Runs after the old column, whose rows the
+\ names are checked against.
 : RUN ( -- )
    CODEGEN-GAP:RESET
    COVERED-CASES
-   GAP-CASES
    CODEGEN-GAP:COVERAGE-CK ;
 
 ;package

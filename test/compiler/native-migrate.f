@@ -246,6 +246,82 @@ variable OLD-LEN
    s" 0 NMG-VIA" EV-N 7 T=
    s" -2 NMG-VIA" EV-N 1 T= ;
 
+\ ---- a call from inside a counted loop ---------------------------------------
+\ THE SHAPE THAT MISCOMPILED, AND WHY AN ANSWER TEST FINDS IT. A counted loop
+\ carries its index and its limit in registers, and a chain-compiled callee's
+\ contract declares the whole register pool destroyed - both pools starting at
+\ the same register. The call site used to publish only the values the compile
+\ time vector held, so the callee came back having overwritten the loop's own
+\ counter: `4 NMG-LC` answered 0 where 12 is right, and the variant that never
+\ reads the index answered 36 where 24 is right, because the LIMIT was the value
+\ the callee had trampled and the loop ran six turns instead of four. Dot
+\ habu-save-the-loop-5f07e0c3.
+\
+\ THE TWO BODIES SEPARATE THE TWO HALVES OF THE STATE. NMG-LC reads `i` in its
+\ body, so a wrong index shows up in the sum; NMG-LF never mentions `i`, so
+\ nothing but the TURN COUNT can be wrong, and 24 against 36 is exactly the
+\ measurement of "the limit survived the call". A third body nests one loop
+\ inside another, where the outer loop's counters have to cross the inner loop's
+\ edges as well as the call.
+\
+\ AND THE CALLEE IS CHAIN-COMPILED ON PURPOSE. An engine-compiled callee answers
+\ correctly here whatever the site saves, because the engine's emitter happens to
+\ use registers the loop is not carrying - INTEROP-CASE above measures that, and
+\ it is not evidence about this. NMG-DBL is migrated first, so both halves of the
+\ program are the chain's code and the callee's declared contract is what the
+\ caller has to survive.
+: LC-SRC ( -- ptr u8 n )
+   s" : NMG-LC ( n -- n ) 0 swap 0 ?do i NMG-DBL + loop ;" ;
+
+: LF-SRC ( -- ptr u8 n )
+   s" : NMG-LF ( n -- n ) 0 swap 0 ?do 3 NMG-DBL + loop ;" ;
+
+: LN-SRC ( -- ptr u8 n )
+   s" : NMG-LN ( n -- n ) 0 swap 0 ?do 4 0 ?do i NMG-DBL + loop loop ;" ;
+
+\ A loop carries its two counters and each call site publishes them beside the
+\ vector, so this budget is wider than a leaf's. It is a budget: dot
+\ habu-choose-the-register-a95390ac carries taking the number off the routine.
+16 constant LOOP-REGS
+
+: MIGRATE-LC ( -- )
+   LC-SRC  s" NMG-DBL" DBL-ENTRY 1 1  1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-LF ( -- )
+   LF-SRC  s" NMG-DBL" DBL-ENTRY 1 1  1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-LN ( -- )
+   LN-SRC  s" NMG-DBL" DBL-ENTRY 1 1  1 1 LOOP-REGS NMIGRATE:DEFINE-CALLING ;
+
+: LOOP-CALL-CASE ( -- )
+   MIGRATE-LC
+   MIGRATE-LF
+   MIGRATE-LN
+
+   s" all three loops and their callee are the chain's code" T-LABEL
+   s" NMG-DBL" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" NMG-LC" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" NMG-LF" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" NMG-LN" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+
+   s" a chain-compiled callee in a ?do body leaves the loop's index alone"
+   T-LABEL
+   s" 4 NMG-LC" EV-N 12 T=
+   s" 1 NMG-LC" EV-N 0 T=
+   s" 0 NMG-LC" EV-N 0 T=
+   s" 5 NMG-LC" EV-N 20 T=
+
+   s" and leaves its LIMIT alone, which is the turn count" T-LABEL
+   s" 4 NMG-LF" EV-N 24 T=
+   s" 1 NMG-LF" EV-N 6 T=
+   s" 0 NMG-LF" EV-N 0 T=
+   s" 6 NMG-LF" EV-N 36 T=
+
+   s" and a loop inside a loop keeps both of its counters" T-LABEL
+   s" 4 NMG-LN" EV-N 48 T=
+   s" 1 NMG-LN" EV-N 12 T=
+   s" 0 NMG-LN" EV-N 0 T= ;
+
 \ ---- what a call to another word refuses -------------------------------------
 \ Each of these is a callee statement the chain cannot turn into a branch, and
 \ each is refused by the authority that owns the fact - not one code for "the
@@ -419,6 +495,7 @@ public
    CALL-CASE
    DEEP-CASE
    INTEROP-CASE
+   LOOP-CALL-CASE
    CALL-REFUSAL-CASES
    REFUSED-CASE
    UNTOUCHED-CASE
