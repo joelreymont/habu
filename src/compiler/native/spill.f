@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-34 constant OPCODES-N
+48 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -162,6 +162,20 @@ private
 31 constant O-LSLV
 32 constant O-LSRV
 33 constant O-MVN
+34 constant O-FADD
+35 constant O-FSUB
+36 constant O-FMUL
+37 constant O-FDIV
+38 constant O-FNEG
+39 constant O-FABS
+40 constant O-FSQRT
+41 constant O-SCVTF
+42 constant O-FCVTZS
+43 constant O-FMOVXD
+44 constant O-FMOVDX
+45 constant O-FMOVDD
+46 constant O-FSTR
+47 constant O-FLDR
 
 \ One slot per attribute key the dialect declares.
 9 constant KEYS-N
@@ -200,6 +214,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 KEYS-N TYPED-BUFFER BND-KEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
+1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
@@ -255,6 +270,20 @@ create NAMEBUF NAME-CAP allot
       linksave OF O-LINKSAVE ENDOF
       linkload OF O-LINKLOAD ENDOF
       ret      OF O-RET      ENDOF
+      fadd     OF O-FADD     ENDOF
+      fsub     OF O-FSUB     ENDOF
+      fmul     OF O-FMUL     ENDOF
+      fdiv     OF O-FDIV     ENDOF
+      fneg     OF O-FNEG     ENDOF
+      fabs     OF O-FABS     ENDOF
+      fsqrt    OF O-FSQRT    ENDOF
+      scvtf    OF O-SCVTF    ENDOF
+      fcvtzs   OF O-FCVTZS   ENDOF
+      fmovxd   OF O-FMOVXD   ENDOF
+      fmovdx   OF O-FMOVDX   ENDOF
+      fmovdd   OF O-FMOVDD   ENDOF
+      fstr     OF O-FSTR     ENDOF
+      fldr     OF O-FLDR     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -293,6 +322,20 @@ create NAMEBUF NAME-CAP allot
       O-WORDCALL of A64IR-OPCODE:WORDCALL endof
       O-LINKSAVE of A64IR-OPCODE:LINKSAVE endof
       O-LINKLOAD of A64IR-OPCODE:LINKLOAD endof
+      O-FADD     of A64IR-OPCODE:FADD     endof
+      O-FSUB     of A64IR-OPCODE:FSUB     endof
+      O-FMUL     of A64IR-OPCODE:FMUL     endof
+      O-FDIV     of A64IR-OPCODE:FDIV     endof
+      O-FNEG     of A64IR-OPCODE:FNEG     endof
+      O-FABS     of A64IR-OPCODE:FABS     endof
+      O-FSQRT    of A64IR-OPCODE:FSQRT    endof
+      O-SCVTF    of A64IR-OPCODE:SCVTF    endof
+      O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
+      O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
+      O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
+      O-FMOVDD   of A64IR-OPCODE:FMOVDD   endof
+      O-FSTR     of A64IR-OPCODE:FSTR     endof
+      O-FLDR     of A64IR-OPCODE:FLDR     endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -409,8 +452,20 @@ create NAMEBUF NAME-CAP allot
    {: id:IR-ID:ir-value-id :}
    id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
    t 0 BND-GPR @ SAME-TYPE? if CTX BLD A64IR:GPR-TYPE exit then
+   t 0 BND-FPR @ SAME-TYPE? if CTX BLD A64IR:FPR-TYPE exit then
    t 0 BND-MEM @ SAME-TYPE? if CTX BLD A64IR:MEM-TYPE exit then
    E-A64SPILL-SHAPE throw ;
+
+\ Is this value of the old module one of the floating file's? Every insert below
+\ asks, because a value put away and brought back has to travel through the file
+\ it lives in: the same eight bytes stored by the general form come back in a
+\ general register, which is not where the operation that reads them looks.
+: FPR-VALUE? ( IR-ID:ir-value-id -- bool )
+   VALUE-TYPE-AT 0 BND-FPR @ SAME-TYPE? ;
+
+: FPR-SLOT? ( n -- bool )
+   {: k:n :}
+   MKEY k IR-ID:PACK-VALUE FPR-VALUE? ;
 
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
@@ -423,6 +478,9 @@ create NAMEBUF NAME-CAP allot
 
 : GPR-RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
+
+: FPR-RESULT+ ( -- )
+   CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
 
 : MEM-RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
@@ -492,7 +550,7 @@ create NAMEBUF NAME-CAP allot
 \ as a register value; everything after this reads it out of the slot.
 : EMIT-STORE ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id k:n :}
-   at A64IR-OPCODE:STORE OPEN
+   at  k FPR-SLOT? if A64IR-OPCODE:FSTR else A64IR-OPCODE:STORE then  OPEN
    MKEY k IR-ID:PACK-VALUE VOF OPERAND+
    TOK OPERAND+
    MEM-RESULT+
@@ -504,9 +562,9 @@ create NAMEBUF NAME-CAP allot
 \ revive one - so the operation below it reads this value and not the old one.
 : EMIT-LOAD ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
-   at A64IR-OPCODE:LOAD OPEN
+   at  k FPR-SLOT? if A64IR-OPCODE:FLDR else A64IR-OPCODE:LOAD then  OPEN
    TOK OPERAND+
-   GPR-RESULT+
+   k FPR-SLOT? if FPR-RESULT+ else GPR-RESULT+ then
    MEM-RESULT+
    k A64RA:SLOT@ SLOT-ATTR+
    CLOSE {: id:IR-ID:ir-op-id :}
@@ -522,9 +580,9 @@ create NAMEBUF NAME-CAP allot
 \ declaration off the same contract.
 : EMIT-MOVE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
-   at A64IR-OPCODE:MOV OPEN
+   at  k FPR-SLOT? if A64IR-OPCODE:FMOVDD else A64IR-OPCODE:MOV then  OPEN
    MKEY k IR-ID:PACK-VALUE pos READ-AS OPERAND+
-   GPR-RESULT+
+   k FPR-SLOT? if FPR-RESULT+ else GPR-RESULT+ then
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
 
@@ -877,6 +935,20 @@ public
    c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
+   c b A64IR-OPCODE:FADD     BIND1
+   c b A64IR-OPCODE:FSUB     BIND1
+   c b A64IR-OPCODE:FMUL     BIND1
+   c b A64IR-OPCODE:FDIV     BIND1
+   c b A64IR-OPCODE:FNEG     BIND1
+   c b A64IR-OPCODE:FABS     BIND1
+   c b A64IR-OPCODE:FSQRT    BIND1
+   c b A64IR-OPCODE:SCVTF    BIND1
+   c b A64IR-OPCODE:FCVTZS   BIND1
+   c b A64IR-OPCODE:FMOVXD   BIND1
+   c b A64IR-OPCODE:FMOVDX   BIND1
+   c b A64IR-OPCODE:FMOVDD   BIND1
+   c b A64IR-OPCODE:FSTR     BIND1
+   c b A64IR-OPCODE:FLDR     BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !
@@ -888,6 +960,7 @@ public
    c b A64IR:KEY-ENTRY  K-ENTRY BND-KEY !
    c b A64IR:GPR-TYPE 0 BND-GPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
+   c b A64IR:FPR-TYPE 0 BND-FPR !
    BOUND-YES BND-MODE ! ;
 
 \ Give up a binding without rewriting against it.

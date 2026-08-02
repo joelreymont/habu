@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-34 constant OPCODES-N
+48 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -252,6 +252,20 @@ private
 31 constant O-LSLV
 32 constant O-LSRV
 33 constant O-MVN
+34 constant O-FADD
+35 constant O-FSUB
+36 constant O-FMUL
+37 constant O-FDIV
+38 constant O-FNEG
+39 constant O-FABS
+40 constant O-FSQRT
+41 constant O-SCVTF
+42 constant O-FCVTZS
+43 constant O-FMOVXD
+44 constant O-FMOVDX
+45 constant O-FMOVDD
+46 constant O-FSTR
+47 constant O-FLDR
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -376,6 +390,20 @@ create B-START BMAX cells allot
       linksave OF O-LINKSAVE ENDOF
       linkload OF O-LINKLOAD ENDOF
       ret      OF O-RET      ENDOF
+      fadd     OF O-FADD     ENDOF
+      fsub     OF O-FSUB     ENDOF
+      fmul     OF O-FMUL     ENDOF
+      fdiv     OF O-FDIV     ENDOF
+      fneg     OF O-FNEG     ENDOF
+      fabs     OF O-FABS     ENDOF
+      fsqrt    OF O-FSQRT    ENDOF
+      scvtf    OF O-SCVTF    ENDOF
+      fcvtzs   OF O-FCVTZS   ENDOF
+      fmovxd   OF O-FMOVXD   ENDOF
+      fmovdx   OF O-FMOVDX   ENDOF
+      fmovdd   OF O-FMOVDD   ENDOF
+      fstr     OF O-FSTR     ENDOF
+      fldr     OF O-FLDR     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -414,6 +442,20 @@ create B-START BMAX cells allot
       O-WORDCALL of A64IR-OPCODE:WORDCALL endof
       O-LINKSAVE of A64IR-OPCODE:LINKSAVE endof
       O-LINKLOAD of A64IR-OPCODE:LINKLOAD endof
+      O-FADD     of A64IR-OPCODE:FADD     endof
+      O-FSUB     of A64IR-OPCODE:FSUB     endof
+      O-FMUL     of A64IR-OPCODE:FMUL     endof
+      O-FDIV     of A64IR-OPCODE:FDIV     endof
+      O-FNEG     of A64IR-OPCODE:FNEG     endof
+      O-FABS     of A64IR-OPCODE:FABS     endof
+      O-FSQRT    of A64IR-OPCODE:FSQRT    endof
+      O-SCVTF    of A64IR-OPCODE:SCVTF    endof
+      O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
+      O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
+      O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
+      O-FMOVDD   of A64IR-OPCODE:FMOVDD   endof
+      O-FSTR     of A64IR-OPCODE:FSTR     endof
+      O-FLDR     of A64IR-OPCODE:FLDR     endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -547,6 +589,57 @@ create B-START BMAX cells allot
 : WORD-LOAD ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
+
+\ The same two frame accesses for a value of the floating file. A slot is eight
+\ bytes whichever file its value belongs to, so the base, the offset and the
+\ layout are the general forms' - what differs is the register field, and it
+\ differs in the instruction, which is exactly why these are two more forms and
+\ not an attribute on the two above.
+: WORD-FSTR ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 OPERAND-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-FSTR ;
+
+: WORD-FLDR ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-FLDR ;
+
+\ The floating forms. Every one of them is a register-to-register instruction of
+\ the shape its schema declares, so they read their operands and their result the
+\ way every other form here does and end in the assembler's own encoder. The two
+\ conversions and the two crossings name registers of two different files in the
+\ two fields, which the encoders know: ENC-SCVTF and ENC-FMOVXD take a D
+\ destination and an X source, ENC-FCVTZS and ENC-FMOVDX the other way round.
+: WORD-FMOVDD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDD ;
+
+: WORD-FNEG ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FNEG ;
+
+: WORD-FABS ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FABS ;
+
+: WORD-FSQRT ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FSQRT ;
+
+: WORD-SCVTF ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-SCVTF ;
+
+: WORD-FCVTZS ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FCVTZS ;
+
+: WORD-FMOVXD ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVXD ;
+
+: WORD-FMOVDX ( IR-ID:ir-op-id -- n )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDX ;
 
 \ Taking the frame and giving it back are one subtraction and one addition on the
 \ stack pointer, of exactly the size the operation carries.
@@ -1022,6 +1115,20 @@ create B-START BMAX cells allot
       linksave OF id  id WORD-LNKSTR  APPEND ENDOF
       linkload OF id  id WORD-LNKLDR  APPEND ENDOF
       ret      OF id  ENC-RET  APPEND ENDOF
+      fadd     OF id  id TRIPLE ENC-FADD  APPEND ENDOF
+      fsub     OF id  id TRIPLE ENC-FSUB  APPEND ENDOF
+      fmul     OF id  id TRIPLE ENC-FMUL  APPEND ENDOF
+      fdiv     OF id  id TRIPLE ENC-FDIV  APPEND ENDOF
+      fneg     OF id  id WORD-FNEG    APPEND ENDOF
+      fabs     OF id  id WORD-FABS    APPEND ENDOF
+      fsqrt    OF id  id WORD-FSQRT   APPEND ENDOF
+      scvtf    OF id  id WORD-SCVTF   APPEND ENDOF
+      fcvtzs   OF id  id WORD-FCVTZS  APPEND ENDOF
+      fmovxd   OF id  id WORD-FMOVXD  APPEND ENDOF
+      fmovdx   OF id  id WORD-FMOVDX  APPEND ENDOF
+      fmovdd   OF id  id WORD-FMOVDD  APPEND ENDOF
+      fstr     OF id  id WORD-FSTR    APPEND ENDOF
+      fldr     OF id  id WORD-FLDR    APPEND ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -1190,6 +1297,20 @@ public
    c b A64IR-OPCODE:WORDCALL  BIND1
    c b A64IR-OPCODE:LINKSAVE  BIND1
    c b A64IR-OPCODE:LINKLOAD  BIND1
+   c b A64IR-OPCODE:FADD     BIND1
+   c b A64IR-OPCODE:FSUB     BIND1
+   c b A64IR-OPCODE:FMUL     BIND1
+   c b A64IR-OPCODE:FDIV     BIND1
+   c b A64IR-OPCODE:FNEG     BIND1
+   c b A64IR-OPCODE:FABS     BIND1
+   c b A64IR-OPCODE:FSQRT    BIND1
+   c b A64IR-OPCODE:SCVTF    BIND1
+   c b A64IR-OPCODE:FCVTZS   BIND1
+   c b A64IR-OPCODE:FMOVXD   BIND1
+   c b A64IR-OPCODE:FMOVDX   BIND1
+   c b A64IR-OPCODE:FMOVDD   BIND1
+   c b A64IR-OPCODE:FSTR     BIND1
+   c b A64IR-OPCODE:FLDR     BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !

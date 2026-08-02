@@ -178,7 +178,7 @@ private
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module they were all learned from.
-27 constant OPCODES-N
+39 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -206,6 +206,18 @@ private
 24 constant O-LSHIFT
 25 constant O-RSHIFT
 26 constant O-INVERT
+27 constant O-FCONST
+28 constant O-FADD
+29 constant O-FSUB
+30 constant O-FMUL
+31 constant O-FDIV
+32 constant O-FNEG
+33 constant O-FABS
+34 constant O-FSQRT
+35 constant O-INTREAL
+36 constant O-REALINT
+37 constant O-BITSREAL
+38 constant O-REALBITS
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -226,6 +238,7 @@ OPCODES-N TYPED-BUFFER BND-OP IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-IN IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-OUT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
+1 TYPED-BUFFER BND-REAL IR-ID:ir-type-id
 
 1 TYPED-BUFFER S-CTX IR-CTX:ctx
 1 TYPED-BUFFER S-BLD IR-BUILD:builder
@@ -295,6 +308,18 @@ create NAMEBUF NAME-CAP allot
       call   OF O-CALL   ENDOF
       wordcall OF O-WORDCALL ENDOF
       return OF O-RETURN ENDOF
+      fconst   OF O-FCONST   ENDOF
+      fadd     OF O-FADD     ENDOF
+      fsub     OF O-FSUB     ENDOF
+      fmul     OF O-FMUL     ENDOF
+      fdiv     OF O-FDIV     ENDOF
+      fneg     OF O-FNEG     ENDOF
+      fabs     OF O-FABS     ENDOF
+      fsqrt    OF O-FSQRT    ENDOF
+      intreal  OF O-INTREAL  ENDOF
+      realint  OF O-REALINT  ENDOF
+      bitsreal OF O-BITSREAL ENDOF
+      realbits OF O-REALBITS ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- HIR:opcode )
@@ -326,6 +351,18 @@ create NAMEBUF NAME-CAP allot
       O-CALL   of HIR-OPCODE:CALL   endof
       O-WORDCALL of HIR-OPCODE:WORDCALL endof
       O-RETURN of HIR-OPCODE:RETURN endof
+      O-FCONST   of HIR-OPCODE:FCONST   endof
+      O-FADD     of HIR-OPCODE:FADD     endof
+      O-FSUB     of HIR-OPCODE:FSUB     endof
+      O-FMUL     of HIR-OPCODE:FMUL     endof
+      O-FDIV     of HIR-OPCODE:FDIV     endof
+      O-FNEG     of HIR-OPCODE:FNEG     endof
+      O-FABS     of HIR-OPCODE:FABS     endof
+      O-FSQRT    of HIR-OPCODE:FSQRT    endof
+      O-INTREAL  of HIR-OPCODE:INTREAL  endof
+      O-REALINT  of HIR-OPCODE:REALINT  endof
+      O-BITSREAL of HIR-OPCODE:BITSREAL endof
+      O-REALBITS of HIR-OPCODE:REALBITS endof
       E-A64SEL-OPCODE throw
    endcase ;
 
@@ -404,6 +441,14 @@ create NAMEBUF NAME-CAP allot
 : TOKEN? ( IR-ID:ir-value-id -- bool )
    VALUE-TYPE-AT  0 BND-MEM @  SAME-TYPE? ;
 
+\ Is this value of the source module a double rather than a cell? Asked exactly
+\ as TOKEN? is - the TYPE the source module gives it, against the identity the
+\ source dialect answered at binding time - so this pass never reads a class off
+\ an opcode's name. What the answer decides is which register file the machine
+\ value it selects to belongs in.
+: REAL? ( IR-ID:ir-value-id -- bool )
+   VALUE-TYPE-AT  0 BND-REAL @  SAME-TYPE? ;
+
 \ ---- staging one machine operation -------------------------------------------
 \ Every machine operation carries the span of the source operation it selects
 \ from, so a diagnostic about a register still points at the source the
@@ -415,6 +460,13 @@ create NAMEBUF NAME-CAP allot
 
 : RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
+
+\ A result in the floating file. It is a second word and not a flag on the first
+\ because which file a machine operation writes is a fact about that operation,
+\ fixed by its own schema - and the schema is what refuses the pair if a caller
+\ states the wrong one.
+: FRESULT+ ( -- )
+   CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
 
 : TOKEN+ ( -- )
    CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
@@ -809,6 +861,38 @@ create NAMEBUF NAME-CAP allot
    id  id CONST-VALUE  MATERIALISE
    id 0 RESULT-AT  ACC  VBIND ;
 
+\ A double literal, which is the same materialisation and one instruction more.
+\
+\ WHY IT IS THE MOVE-WIDE CHAIN AND A MOVE ACROSS, AND NOT THE FLOATING
+\ IMMEDIATE. AArch64 has an FMOV with an eight-bit immediate, and it reaches
+\ exactly the doubles whose exponent fits three bits and whose significand fits
+\ four - 256 values in all. Every other double, which is every literal a real
+\ program is likely to write, needs the bit pattern built somewhere else first.
+\ So a compiler that used the immediate form would need BOTH paths and a rule
+\ that decides between them, and would still reach the general path for most
+\ literals. This chain builds the pattern in a general register with the move-wide
+\ chain it already has and moves it across in one FMOV - which is the same route
+\ the ENGINE takes at exactly this point: src/habu/habu1.f gets a data-stack cell
+\ into a floating register with `0 A FMOVXD,` and never uses the immediate form
+\ at all. Matching it means a compiled literal and an interpreted literal are the
+\ same bits by construction and not by a second argument.
+\
+\ WHAT IT COSTS AND WHAT IT WOULD TAKE TO BEAT IT. One to four move-wide
+\ instructions plus one FMOV, against one FMOV for the 256 immediate-reachable
+\ doubles and a literal-pool load - one ADR and one LDR, plus a constant pool the
+\ emission does not have - for the rest. Adding either is a measurable change to
+\ make against the committed table rather than a guess, and dot
+\ habu-materialise-a-double-8a4c5f21 carries it. The pinned outputs are bit-exact
+\ either way; what would move is the byte count and the cost.
+: EMIT-FCONST ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id  id CONST-VALUE  MATERIALISE
+   id A64IR-OPCODE:FMOVXD OPEN
+   CTX BLD ACC IR-BUILD:ADD-OPERAND
+   FRESULT+
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
 \ ---- selecting the arithmetic ------------------------------------------------
 \ Two values in, one out. The operands are the values the source operands
 \ selected to, in the source order, so a subtraction keeps subtracting the same
@@ -820,6 +904,33 @@ create NAMEBUF NAME-CAP allot
    CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
    CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
    RESULT+
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ The same two-in one-out shape in the floating file. It is a second word rather
+\ than an argument to the first because the two differ in the file their result
+\ belongs to, and that is what a machine operation's schema declares - so the
+\ pair is checked when the operation is closed rather than assumed here.
+: EMIT-FBINARY ( IR-ID:ir-op-id A64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:A64IR:opcode :}
+   id o OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   FRESULT+
+   CLOSE-VALUE
+   id 0 RESULT-AT  ACC  VBIND ;
+
+\ One value in, one out, answering in the floating file. Six source operations
+\ take this shape and they are not all the same kind of thing, which is the
+\ point: the three unary float words answer a double from a double, `s>f` rounds
+\ a cell into one, and the reinterpretation moves a cell's bits across without
+\ rounding. What they share is where the ANSWER goes, and that is all this word
+\ decides; which instruction runs is the caller's opcode.
+: EMIT-FUNARY ( IR-ID:ir-op-id A64IR:opcode -- )
+   {: id:IR-ID:ir-op-id o:A64IR:opcode :}
+   id o OPEN
+   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
+   FRESULT+
    CLOSE-VALUE
    id 0 RESULT-AT  ACC  VBIND ;
 
@@ -1008,8 +1119,26 @@ create NAMEBUF NAME-CAP allot
 64 constant EDGE-MAX
 EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
-: EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
-   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id :}
+\ The copy is made in the file the value belongs to. A double copied by the
+\ general move would be eight bytes taken out of a register that does not hold
+\ them, so which instruction copies a value is decided by the value and not by
+\ the edge.
+\
+\ WHICH VALUE IS ASKED, AND WHY IT IS NOT THE ONE BEING COPIED. The value handed
+\ over here is a value of the NEW module - what the source operand selected to -
+\ and REAL? reads the type the SOURCE module gives a value, so asking it about
+\ this one would be presenting one module's identity to another module's table.
+\ The class comes from the source operand instead, which is where the question
+\ belongs: the source dialect is what says whether a value is a double.
+: EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id bool -- IR-ID:ir-value-id )
+   {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id real:bool :}
+   real if
+      at A64IR-OPCODE:FMOVDD OPEN
+      CTX BLD v IR-BUILD:ADD-OPERAND
+      FRESULT+
+      CLOSE-VALUE
+      ACC exit
+   then
    at A64IR-OPCODE:MOV OPEN
    CTX BLD v IR-BUILD:ADD-OPERAND
    RESULT+
@@ -1034,7 +1163,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 : EDGE-VALUE ( IR-ID:ir-op-id n -- IR-ID:ir-value-id )
    {: id:IR-ID:ir-op-id i:n :}
    id i OPERAND-AT TOKEN? if id i OPERAND exit then
-   id  id i OPERAND  EMIT-COPY ;
+   id  id i OPERAND  id i OPERAND-AT REAL?  EMIT-COPY ;
 
 : EMIT-BR ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1070,6 +1199,13 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ than a flag read off the operation, because whether a trap survives is a
 \ property of the rule below and of nothing else - a member added to
 \ HIR:opcode has to answer it before it can be selected at all.
+\
+\ EVERY FLOAT OPERATION ANSWERS FALSE AND NONE OF THEM NEEDS TO ANSWER
+\ OTHERWISE: the source dialect declares them all total, because IEEE754
+\ arithmetic answers an infinity or the default NaN where integer arithmetic
+\ would trap, so there is no trap for the lowering to lose. The two sides agree
+\ rather than one of them being relaxed - if HIR ever declared a float operation
+\ trapping, TRAP-CK would refuse it here until this table said how it survives.
 \
 \ Division is the only one that survives today, and it survives because a64.sdiv
 \ IS the guard and the divide: the machine form branches over a `brk` when the
@@ -1108,6 +1244,18 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       call   OF true  ENDOF
       wordcall OF true ENDOF
       return OF false ENDOF
+      fconst   OF false ENDOF
+      fadd     OF false ENDOF
+      fsub     OF false ENDOF
+      fmul     OF false ENDOF
+      fdiv     OF false ENDOF
+      fneg     OF false ENDOF
+      fabs     OF false ENDOF
+      fsqrt    OF false ENDOF
+      intreal  OF false ENDOF
+      realint  OF false ENDOF
+      bitsreal OF false ENDOF
+      realbits OF false ENDOF
    ;MATCH ;
 
 : TRAP-CK ( HIR:opcode IR-ID:ir-symbol-id -- HIR:opcode )
@@ -1294,6 +1442,18 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       call   OF id EMIT-CALL ENDOF
       wordcall OF id EMIT-WORD-CALL ENDOF
       return OF id EMIT-RETURN ENDOF
+      fconst   OF id EMIT-FCONST ENDOF
+      fadd     OF id A64IR-OPCODE:FADD EMIT-FBINARY ENDOF
+      fsub     OF id A64IR-OPCODE:FSUB EMIT-FBINARY ENDOF
+      fmul     OF id A64IR-OPCODE:FMUL EMIT-FBINARY ENDOF
+      fdiv     OF id A64IR-OPCODE:FDIV EMIT-FBINARY ENDOF
+      fneg     OF id A64IR-OPCODE:FNEG EMIT-FUNARY ENDOF
+      fabs     OF id A64IR-OPCODE:FABS EMIT-FUNARY ENDOF
+      fsqrt    OF id A64IR-OPCODE:FSQRT EMIT-FUNARY ENDOF
+      intreal  OF id A64IR-OPCODE:SCVTF EMIT-FUNARY ENDOF
+      realint  OF id A64IR-OPCODE:FCVTZS EMIT-UNARY ENDOF
+      bitsreal OF id A64IR-OPCODE:FMOVXD EMIT-FUNARY ENDOF
+      realbits OF id A64IR-OPCODE:FMOVDX EMIT-UNARY ENDOF
    ;MATCH ;
 
 \ ---- opening the selected function -------------------------------------------
@@ -1339,6 +1499,10 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
    a TOKEN? if
       a  CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-BLOCK-ARG
       dup TOK!  VBIND
+      exit
+   then
+   a REAL? if
+      a  CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND
       exit
    then
    a  CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND ;
@@ -1509,11 +1673,24 @@ public
    c b HIR-OPCODE:CALL   BIND1
    c b HIR-OPCODE:WORDCALL BIND1
    c b HIR-OPCODE:RETURN BIND1
+   c b HIR-OPCODE:FCONST   BIND1
+   c b HIR-OPCODE:FADD     BIND1
+   c b HIR-OPCODE:FSUB     BIND1
+   c b HIR-OPCODE:FMUL     BIND1
+   c b HIR-OPCODE:FDIV     BIND1
+   c b HIR-OPCODE:FNEG     BIND1
+   c b HIR-OPCODE:FABS     BIND1
+   c b HIR-OPCODE:FSQRT    BIND1
+   c b HIR-OPCODE:INTREAL  BIND1
+   c b HIR-OPCODE:REALINT  BIND1
+   c b HIR-OPCODE:BITSREAL BIND1
+   c b HIR-OPCODE:REALBITS BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
    c b HIR:KEY-ENTRY 0 BND-ENTRY !
    c b HIR:KEY-IN    0 BND-IN !
    c b HIR:KEY-OUT   0 BND-OUT !
    c b HIR:MEM-TYPE 0 BND-MEM !
+   c b HIR:REAL-TYPE 0 BND-REAL !
    BOUND-YES BND-MODE ! ;
 
 \ Whether a binding is live. A caller that has to clean up after a refused run
