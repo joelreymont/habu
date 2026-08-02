@@ -20,8 +20,8 @@ Owned result: package `ENUM-DECL` registers both compact and full modes
 provisionally as `TK-SUM`. `ED-CLOSE` first validates at least one variant and
 binds the exact variant range, field range, and widest payload slots, then
 calls `DECL-EVENT:FINALIZE-ENUM` with its current token and family. Remove the
-mode-based family-kind rationale, the now-unused `TK-ENUM-K` trusted bridge,
-and its exact inventory row. No decision may use syntax mode, arity, width,
+mode-based family-kind rationale and the now-unused `TK-ENUM-K` trusted
+bridge. No decision may use syntax mode, arity, width,
 policy, maximum slots, or the first variant; the event owner's field evidence
 is sole authority.
 
@@ -39,8 +39,7 @@ finalization but before generated-declaration publication leaves no family,
 variant, field, event, or latch residue. Mutations that select kind by mode,
 arity, slots, width, or first variant fail through the production frontend.
 
-Exact files: `src/core/enum-decl.f`, `test/enum-decl-suite.f`, and
-`TRUSTED.md`.
+Exact files: `src/core/enum-decl.f` and `test/enum-decl-suite.f`.
 
 Forbidden: `DEV-PREPARE` enforcement, a new trust site, raw mutator, legacy
 definer edit, constructor generation, reflection change, global `ENUM`

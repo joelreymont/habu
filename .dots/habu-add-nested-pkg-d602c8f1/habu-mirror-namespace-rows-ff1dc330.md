@@ -6,4 +6,33 @@ issue-type: task
 created-at: "2026-07-31T06:35:00.747855+02:00"
 ---
 
-Source dependencies: exact reviewed native E1 namespace-row source and the HB package hard cut; this stop-the-world branch keeps E1 active until M17, so exact code ancestry enforces ordering. Owner: Gforth recovery engine under the existing HB-EMIT vocabulary. Mirror E1's namespace kind constants, 48-byte namespace rows, exact LNSFIND, absolute prefix creation/reopen, public/private pair allocation, shared OWNER-WID-LIMIT pair and one-WID ceilings, strict snapshot/AOT row validation, owner colon-path validation, and full-prefix storage. C-STORE-DEF-NAME is the one shared publication choke: it rejects publication into a protected WID with the same friend exemption and register preservation as native. One parametric compile-failure tail handles package, qualification, name-capacity, dictionary-capacity, and WID-capacity failures so caught evaluation restores CP and NDICT while WIDN remains monotonic; snapshot corruption and protected-WID publication remain hard failures. Keep the current first-colon qualified lookup in this leaf; recovery last-colon behavior is a separate leaf. No new package owner, parent link, side table, compatibility, schema/version, compact EXT expansion, native source change, source-matching parser, or new lint. Write set: bootstrap/cg/forth.fs and only necessary removals or current manifest spelling updates in tools/bootstrap-codegen-test.f. Delete added substring/range checks that claim behavioral proof. Pre-M17 proof is exact source ancestry and independent hunk review only. M17 acceptance runs the real no-binary Gforth recovery image and proves protected-publication, caught rollback, namespace-row, snapshot, and failure parity with native. Claim: agent=recovery_e1_impl workspace=.jj-ws/habu-mirror-namespace-rows-ff1dc330.
+Source dependencies: the exact reviewed native E1 namespace-row source and the
+HB package hard cut. Owner: the Gforth recovery emitter in
+`bootstrap/cg/forth.fs` under its existing engine-emission package.
+
+Mirror the native namespace kind constants, 48-byte namespace rows, exact
+`LNSFIND`, absolute prefix creation and reopen, public/private package pair
+allocation, type rows with a protected public WID and zero private role,
+full-prefix inline/EXT storage, and strict snapshot and compact-AOT row
+validation. Namespace roles are zero or dynamic WIDs below `WID:MAX`; pair and
+single-WID allocation preflight the same `WID:MAX` bounds as native before any
+publication. `C-STORE-DEF-NAME` is the shared publication choke and rejects
+publication into a protected WID with native-equivalent friend handling and
+register preservation.
+
+One parametric compile-failure tail handles package, qualification,
+name-capacity, dictionary-capacity, and WID-capacity failures so caught
+evaluation restores CP and NDICT while WIDN remains monotonic. Snapshot
+corruption, malformed namespace rows, compact AOT marker rows, and
+protected-WID publication remain hard failures. Keep first-colon qualified
+lookup here; last-colon behavior belongs to the separate resolution leaf.
+
+Write set: `bootstrap/cg/forth.fs` and the existing behavioral rows in
+`tools/bootstrap-codegen-test.f`. Do not add a package owner, parent link, side
+table, schema, version, compatibility path, native source change, source-copy
+parser, or lint. Acceptance runs the real no-binary recovery image and proves
+namespace kinds, absolute prefix creation/reopen, `WID:MAX` boundaries,
+protected publication, caught rollback, snapshot and compact-AOT validation,
+and failure parity with native.
+
+Claim: agent=recovery_e1_impl workspace=.jj-ws/habu-mirror-namespace-rows-ff1dc330.

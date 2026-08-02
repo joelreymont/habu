@@ -1,9 +1,11 @@
 ---
 title: Separate current status from design history
-status: open
+status: closed
 priority: 3
 issue-type: task
 created-at: "2026-07-21T22:04:23.228179+02:00"
+closed-at: "2026-08-02T15:53:49.850393+02:00"
+close-reason: "Obsolete: STATUS.md is deleted and no generated status replacement is wanted."
 ---
 
 Current capability pages, future plans, architecture decisions, experiment journals, and worker transcripts are interleaved in the same long documents. A search result therefore cannot tell whether a claim is proposed, landed, superseded, or historical. Define three document classes with validated frontmatter: immutable decision records, generated current capability/status views, and archived experiment journals. Every live plan/design page must declare status, effective date, owning dot or landed revision, and superseded-by identity; every live source path is validated. Move operational journals and worker scratch evidence to archives without rewriting history, split unrelated GPU material out of type-family design, and generate current critical-path and capability pages from code/dot registries. MODEL-CAD and inference plans remain architecture inputs, not mutable execution journals. Add missing/invalid status, stale owner/revision, broken path, contradictory current entries, and archived-as-current mutations. Do not solve this with more disclaimer prose. Files: document schema/lint/renderer and staged doc migrations. Verify generated identity, link/path lints, host/filemap/dot lints, and full native gate.

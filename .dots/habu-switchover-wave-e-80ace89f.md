@@ -6,7 +6,7 @@ issue-type: task
 created-at: "2026-07-04T22:18:57.015932+02:00"
 ---
 
-docs/census-switchover.md sections 1a/1c/4+5 wave E, LAST and bootstrap-sensitive. (1) type-family.f find/resolve family (TFAM-FIND-IN :248, TFAM-RESOLVE :280, SUMV-FIND :370, PF-FIND :432, LAY-FIND :489, TFAM-QUAL/SIG-RESOLVE :696/:704) from '-- id true | false' to option<id>/result<id,ambig>; TFAM-SIG-RESOLVE catch-on-E-TFAM-AMBIG throw-as-signal removed. Fixpoint-sensitive: the registry migrating onto itself — prove each step through the full fixpoint + bootstrap check. (2) Persisted checker tags (T-*/VR-*/SC-*/TK-*/TL-*) migrate ONLY if AOT-image encoding change proven fixpoint-safe; else record as explicit self-hosting boundary with rationale. (3) Trust-row discharges, one dot each when reached: BP-NULL, TASK-NULL, c-defer-find-unset/c-defer-cell, NULL$/ENV-FALSE (census section 4 list) — the campaign itself adds zero trust rows. DEPENDS: waves A-D landed and stable.
+Wave E is the last bootstrap-sensitive switchover. (1) Migrate the type-family.f find/resolve family (TFAM-FIND-IN, TFAM-RESOLVE, SUMV-FIND, PF-FIND, LAY-FIND, TFAM-QUAL/SIG-RESOLVE) from '-- id true | false' to option<id>/result<id,ambig> and remove TFAM-SIG-RESOLVE's catch-on-E-TFAM-AMBIG throw-as-signal. The registry migrates onto itself, so prove each step through full fixpoint and bootstrap checks. (2) Migrate persisted checker tags (T-*/VR-*/SC-*/TK-*/TL-*) only when the AOT-image encoding change is proven fixpoint-safe; otherwise retain an explicit source-local self-hosting rationale, retirement owner, and focused production test. (3) Retire BP-NULL, TASK-NULL, c-defer-find-unset/c-defer-cell, and NULL$/ENV-FALSE source TRUST boundaries one dot at a time; each surviving boundary keeps only source-local rationale, a retirement owner, and focused production proof. DEPENDS: waves A-D landed and stable.
 
 ## AUDIT (2026-07-11) — item (1) resolver migration: BLOCKED, self-hosting boundary
 
@@ -54,9 +54,11 @@ B. BOOTSTRAP-MIRROR TRIPWIRE (enforced red gate). tools/bootstrap-mirror-lint.f
   processing calls them.
 
 ### What wave E actually still contains (the plan)
-- E-1 ACTIONABLE NOW (tools/lib layer, unaffected by the blockers): the census
-  section-4 trust-row discharges — BP-NULL, TASK-NULL, c-defer-find-unset /
-  c-defer-cell, NULL$/ENV-FALSE — one dot each when reached.
+- E-1 ACTIONABLE NOW (tools/lib layer, unaffected by the blockers): the
+  remaining source TRUST discharges — BP-NULL, TASK-NULL, c-defer-find-unset /
+  c-defer-cell, NULL$/ENV-FALSE — one dot each when reached. Until retired,
+  each keeps only source-local rationale, a retirement owner, and a focused
+  production-path test.
 - E-2 CLOSED AS BOUNDARY (this audit): resolver option/result migration. The
   value+flag convention in type-family.f is the floor the ADT tower stands on;
   it stays sentinel WITH THIS DOCUMENTED REASON. Reopen conditions (both
@@ -73,17 +75,17 @@ B. BOOTSTRAP-MIRROR TRIPWIRE (enforced red gate). tools/bootstrap-mirror-lint.f
   documented boundary.
 
 NOTE 2026-07-17 (wave-A closure 6040c0ec): this wave also owns
-ACAP-POOL-FIND (src/habu/aot-capture.f:97, -1 sentinel, 2 in-file
-callers with mechanical MATCH shapes). Blocker is bootstrap: option.f
+ACAP-POOL-FIND (src/habu/aot-capture.f:110, -1 sentinel, one direct caller
+at :119 with a mechanical MATCH shape). Blocker is bootstrap: option.f
 must enter the AOT-capture metabuild/stdin closure (load-order change)
-and the full engine battery is owed (fixpoint x2, old-binary boot,
-run.f perf verdict, seal/pin/PEINV). Census section-5 assigns
-bootstrap-sensitive items here.
+and the real source-load self-test/bootstrap recovery owning path, fixpoint x2,
+run.f verdict, and touched current gates are owed. Bootstrap-sensitive items
+stay in this wave.
 
 NOTE 2026-07-18 (from wave-B closure): the bare-n raw scan kernel
 SPLIT-NEXT (lib/string.f:185) is deliberately retained under the typed
 STR:SPLIT-NEXT layer (wave-B batch 2 record in the closed
 habu-switchover-wave-b-08482d5b). Its retirement/typed-view discharge is
-TVK-RAW-class trust-discharge work owned by this wave when its remaining
+TVK-RAW-class source-boundary discharge work owned by this wave when its remaining
 direct readers (gate-stats.f, bootstrap-codegen-test.f, string-test
 kernel test) are resolved.

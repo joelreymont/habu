@@ -8,8 +8,24 @@ blocks:
   - habu-cast-v2-family-741e7bae
 ---
 
-Invariant: an empty same-cell conversion that only changes a checker-known nominal role uses CAST, not TRUSTED; TRUSTED remains only where the operation mints authority, changes representation class, moves linear ownership, or crosses another proved unexpressible boundary. The checked CAST primitive is landed and the refinement-lint coupling blocker is closed, yet the frozen Maki census still contains 68 eligible empty TRUSTED converters. A repository-wide syntax census finds 161 empty one-cell TRUSTED declarations that still require semantic classification.
+Invariant: an empty same-cell conversion that changes only a checker-known
+nominal role uses `CAST`, not `TRUSTED:`. A retained trusted conversion must
+mint authority, change representation class, move linear ownership, or cross a
+boundary the checker demonstrably cannot express.
 
-Convert all 68 already-proved Maki sites to CAST, remove their trust inventory rows, and preserve package confinement. Then classify every remaining syntactically empty one-cell TRUSTED declaration by semantic role. Migrate every CAST-legal site; for each retained boundary, record the exact invariant CAST cannot express and assign it to an existing capability owner or create one precise leaf. Do not treat matching cell width as sufficient evidence, and do not convert linear mints, representation-changing class reinterpretations, or provenance grants without checker proof. Coordinate family ownership with habu-cast-v2-family-741e7bae.
+Result: classify every syntactically empty one-cell `TRUSTED:` declaration in
+the current source by semantic role and migrate every `CAST`-legal site while
+preserving package confinement. Matching cell width is not evidence. Do not
+convert a linear mint, representation-changing reinterpretation, or provenance
+grant without checker proof. Each retained source boundary carries only its
+source-local rationale, retirement owner, and focused production-path test.
+Coordinate type-family behavior with `habu-cast-v2-family-741e7bae`.
 
-Prove the frozen 68-site census reaches zero, the repository classification has no unowned residual, wrong source family, wrong destination family, cross-package, constructor-forgery, linearity, and raw-cell negatives still reject, and public effects and runtime bytes remain unchanged. Verify CAST suites, refinement lint, trust inventory and ratchet, typed-local and package gates, every touched exact load, Maki, fixpoint, and full native gates. Measure TRUSTED rows, definitions, JIT, DATA, CODELEN, certification time, and image identity before and after; require a material trust reduction without added runtime code.
+Acceptance: a fresh source census contains no `CAST`-legal empty trusted
+conversion and no unowned retained boundary; wrong source family, wrong
+destination family, cross-package, constructor-forgery, linearity, and raw-cell
+negatives reject; public effects and runtime bytes remain unchanged. Run the
+CAST focused suites, every touched exact load, typed-local and package diff
+gates, Maki, fixpoint, and the full native gate. Measure definitions, JIT,
+DATA, CODELEN, certification time, and image identity before and after; require
+a material source-trust reduction without added runtime code.

@@ -1,9 +1,11 @@
 ---
 title: Make owned release uncatchably fatal
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:16:26.896717+02:00"
+closed-at: "2026-08-02T16:00:56.223770+02:00"
+close-reason: Landed as 9c659329c0a345083d1d7faa9f4c1dafe8628a1f.
 ---
 
 Why: a failed kernel unmap violates memory ownership. Today
