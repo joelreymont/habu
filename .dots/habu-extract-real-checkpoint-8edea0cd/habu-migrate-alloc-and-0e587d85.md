@@ -1,9 +1,11 @@
 ---
 title: Migrate alloc and payload suites to provider
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T22:41:19.107065+02:00"
+closed-at: "2026-08-02T16:43:02.283931+02:00"
+close-reason: authoritative ancestor 5b0ebb070a5b8ef7c04e2d28772421f796b686c6 deleted the unused GPT2LOAD/GPT2TX/WSTORE/MODELPROV host architecture and suites; retaining the task would resurrect deleted architecture.
 blocks:
   - habu-create-gpt2-fixture-63b55c1c
 ---
