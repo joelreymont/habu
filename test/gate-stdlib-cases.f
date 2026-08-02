@@ -283,8 +283,10 @@ SUITE compiler-native-immediate
 ;SUITE
 
 \ The code generator comparison harness, and what a gate can honestly ask of it.
-\ Its member checks the exact half of BOTH pinned corpora - the original eleven
-\ shapes and the seven surveyed hot words of tools/codegen-compare-corpus2.f -
+\ Its member checks the exact half of ALL THREE pinned corpora - the original
+\ eleven shapes, the seven surveyed hot words of
+\ tools/codegen-compare-corpus2.f, and the ten float words of
+\ tools/codegen-compare-corpus3.f, whose whole new column is a gap today -
 \ in one run: machine-code bytes, the values each compiled word computes, the
 \ head-to-head agreement of the two code generators, and the structure of each
 \ committed table. The timing column is deliberately left out

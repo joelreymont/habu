@@ -2,23 +2,25 @@
 \ One concern: reading the command line and choosing the run.
 \
 \   bin/hb --load tools/codegen-compare.f
-\       Measure both pinned corpora, print a report for each, and compare each
+\       Measure every pinned corpus, print a report for each, and compare each
 \       measurement with its own committed baseline table. Exits non-zero,
-\       after naming every disagreement, if either comparison finds anything.
+\       after naming every disagreement, if any comparison finds anything.
 \
 \   bin/hb --load tools/codegen-compare.f -- --update
-\       Measure and print as above, then rewrite both committed baseline tables
+\       Measure and print as above, then rewrite every committed baseline table
 \       from this measurement. Use it when a deliberate compiler change has
 \       moved the numbers, and read the resulting diff before committing it.
 \
-\ TWO CORPORA, TWO TABLES, ONE RUN. tools/codegen-compare-corpus.f is the
+\ THREE CORPORA, THREE TABLES, ONE RUN. tools/codegen-compare-corpus.f is the
 \ original eleven words - one smallest honest example of each shape a code
-\ generator has to handle - and tools/codegen-compare-corpus2.f is seven words
-\ taken from the places this system really spends its time. They are separate
-\ files with separate committed tables because the first table is a pinned
-\ yardstick: adding a row to it would be a change to the artifact every compiler
-\ change is read against. The runner measures them one after the other, in one
-\ pass each, and adds the findings up.
+\ generator has to handle - tools/codegen-compare-corpus2.f is seven words taken
+\ from the places this system really spends its time, and
+\ tools/codegen-compare-corpus3.f is ten float words, measured before the chain
+\ has a single float capability so that the float campaign has a yardstick it
+\ did not choose afterwards. They are separate files with separate committed
+\ tables because each table is a pinned yardstick: adding a row to one would be
+\ a change to the artifact every compiler change is read against. The runner
+\ measures them one after the other, in one pass each, and adds the findings up.
 \
 \ THIS ENTRY IS THE TIMED CHECK, AND IT IS RUN BY HAND. It compares the cost
 \ column with the committed table; no gate does. A cost is a measurement, and a

@@ -22,8 +22,9 @@
 \ value is invented, and they prove the thing a comparison harness must never get
 \ wrong - reporting a wrong answer as a match.
 \
-\ The coverage claim is then checked on the real runs - BOTH of them, because
-\ there are two pinned corpora and each is measured in a pass of its own. Every
+\ The coverage claim is then checked on the real runs - ALL THREE of them,
+\ because there are three pinned corpora and each is measured in a pass of its
+\ own. Every
 \ corpus word is either compiled by the new chain or named as a gap with the
 \ capabilities it waits for, never both and never neither, and no new row
 \ disagrees with its old row. What the two corpora do NOT share is the byte
@@ -39,6 +40,17 @@
 \ instruction, on an ordinary row and on a GAP row, a wrong output value, and a
 \ missing row. A comparison that read the second table against the first
 \ corpus's rows would pass every earlier case in this file and fail those.
+\
+\ The third corpus is the float benchmark, and its account is all gaps: ten
+\ corpus words, ten declarations naming the float capability, and a new column
+\ that is nothing but the calibration call. Its table is attacked the same way,
+\ with two cases the other two tables cannot ask for - a NaN recorded one bit
+\ out and a negative zero written as a positive one - because a float row's
+\ outputs are the CELLS the words left and that is the equality the harness
+\ compares. Three of its assertions are about the corpus rather than the
+\ comparison: that the pinned sum distinguishes one evaluation order from
+\ another, that the two zeros stay two values, and that the NaN two different
+\ words produce is one cell.
 \
 \ At the end the file runs CODEGEN-COMPARE-CLI:CHECK-EXACT against the committed
 \ baselines in the repository: the same measurement passes, the same reports,
@@ -78,6 +90,7 @@ require tools/codegen-compare-cli.f
 require tools/codegen-compare-gap.f
 require tools/codegen-compare-cases.f
 require tools/codegen-compare-cases2.f
+require tools/codegen-compare-cases3.f
 require tools/codegen-compare-report.f
 
 package CODEGEN-COMPARE-TEST
@@ -634,6 +647,62 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE
    s" CODEGEN-CORPUS2:VEC-COPY-CELLS" SMALLER? TTRUE ;
 
+\ The third corpus, whose account is all gaps and says so. It is the float
+\ benchmark, measured and committed before the chain has a single float
+\ capability, so the whole of its new column is the calibration row: ten corpus
+\ words, ten declarations, nothing compiled. The assertions below are about that
+\ account and about the three float facts the table rests on - that a recorded
+\ output is the whole cell, that the sign of a zero survives the recording, and
+\ that the pinned sum distinguishes one evaluation order from another.
+: FLOAT-GAP? ( n -- bool ) {: k:n :}
+   false
+   k CODEGEN-GAP:GAP-CAPS@ 0 ?do
+      k i CODEGEN-GAP:GAP-CAP@ CODEGEN--GAP-CAP:FLOATS CODEGEN--GAP-CAP:EQ if
+         drop true leave
+      then
+   loop ;
+
+: FLOAT-GAPS ( -- n )
+   0
+   CODEGEN-GAP:GAPS 0 ?do
+      i FLOAT-GAP? if 1+ then
+   loop ;
+
+\ One recorded output of an old row, by the row's name.
+: OLD-OUTPUT ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
+   CODEGEN-COMPARE:PATH-OLD a u CODEGEN-COMPARE:FIND-ROW {: k:n :}
+   k 0 < if E-CODEGEN-COMPARE-CORPUS throw then
+   k j CODEGEN-COMPARE:OUTPUT ;
+
+: REAL-RUN-CASES3 ( -- )
+   11 ACCOUNT-CASES
+
+   s" the third corpus compiles nothing and declares every word a gap" T-LABEL
+   CODEGEN-GAP:GAPS 10 T=
+   NEW-ROWS 1 T=
+
+   s" and the one new row is the calibration call, not a float word" T-LABEL
+   s" CODEGEN-CORPUS:NOOP" MEASURED? TTRUE
+   s" CODEGEN-CORPUS3:T-SUM" MEASURED? TFALSE
+   s" CODEGEN-CORPUS3:T-SUM" NAMED-GAP-AMONG? TTRUE
+   s" CODEGEN-CORPUS3:FROUND" NAMED-GAP-AMONG? TTRUE
+
+   s" every one of the ten waits for the float capability by name" T-LABEL
+   FLOAT-GAPS 10 T=
+
+   s" the sum row's pinned input distinguishes one evaluation order from another" T-LABEL
+   CODEGEN-CORPUS3:SUM-REVERSED CODEGEN-COMPARE:REAL-BITS
+   s" CODEGEN-CORPUS3:T-SUM" 1 OLD-OUTPUT T<>
+
+   s" a recorded float keeps the sign of a zero, so the two zeros are two rows" T-LABEL
+   s" CODEGEN-CORPUS3:RELU-F" 1 OLD-OUTPUT
+   s" CODEGEN-CORPUS3:RELU-F" 2 OLD-OUTPUT T<>
+   s" CODEGEN-CORPUS3:RELU-F" 1 OLD-OUTPUT 0 T=
+
+   s" and the NaN two different words produce is the same cell" T-LABEL
+   s" CODEGEN-CORPUS3:RELU-F" 4 OLD-OUTPUT
+   s" CODEGEN-CORPUS3:T-REL-L2" 3 OLD-OUTPUT T= ;
+
 \ ---- the claim the second corpus's two respelled rows rest on ----------------
 \ tools/codegen-compare-migrated2.f compiles two of the second corpus's bodies
 \ with a constant written as the number behind it: WS?'s four named byte
@@ -769,6 +838,54 @@ private
    loop
    FIX-FINDINGS 1 T= ;
 
+\ ---- the third corpus's committed table, on fixtures built to fool it --------
+\ The same attack as the second corpus's, over the whole of the float table -
+\ eleven old rows, every one of them a gap in the new column - and then broken
+\ in one place at a time. Two of the cases are about float outputs in
+\ particular: a NaN whose recorded cell is moved by one bit has to be reported
+\ like any other wrong answer, because a NaN with another payload is another
+\ value, and a table missing a float row has to be reported rather than passing
+\ because the remaining rows all matched.
+\
+\ The measurement they read is whatever pass the caller ran last, so MAIN runs
+\ the third corpus immediately before calling them.
+: CORPUS3-TABLE-CASES ( -- )
+   s" the third corpus's own table, written honestly, reports nothing" T-LABEL
+   -1 0 WHOLE-OLD-COLUMN
+   FIX-FINDINGS 0 T=
+
+   s" one instruction added to a float row's byte count is reported" T-LABEL
+   s" CODEGEN-CORPUS3:T-SGD!" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T=
+
+   s" and so is one taken off the row that reaches its answer through calls" T-LABEL
+   s" CODEGEN-CORPUS3:T-REL-L2" OLD-ROW ONE-INSN negate WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T=
+
+   s" a NaN recorded one bit out is reported" T-LABEL
+   FIX-RESET
+   OLD-ROWS FIX-DECLARED
+   s" CODEGEN-CORPUS3:T-REL-L2" OLD-ROW BAD-ROW ! 3 BAD-OUTPUT !
+   -1 0 FIX-OLD-ROWS
+   FIX-FINDINGS 1 T=
+
+   s" and so is a negative zero written as a positive one" T-LABEL
+   FIX-RESET
+   OLD-ROWS FIX-DECLARED
+   s" CODEGEN-CORPUS3:RELU-F" OLD-ROW BAD-ROW ! 2 BAD-OUTPUT !
+   -1 0 FIX-OLD-ROWS
+   FIX-FINDINGS 1 T=
+
+   s" a third table missing a row is reported" T-LABEL
+   FIX-RESET
+   OLD-ROWS 1- FIX-DECLARED
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i s" CODEGEN-CORPUS3:MAX-F" OLD-ROW <> if i FIX-TRUE-ROW then
+      then
+   loop
+   FIX-FINDINGS 1 T= ;
+
 : SETUP ( -- )
    CLEANUP-RESET
    s" habu-codegen-compare" TMPDIR-MKDIR
@@ -795,6 +912,9 @@ private
    REAL-RUN-CASES2
    SPELLING-CASES
    CORPUS2-TABLE-CASES
+   CODEGEN-CASES3:RUN
+   REAL-RUN-CASES3
+   CORPUS3-TABLE-CASES
    CLEANUP-RUN
    CODEGEN-BASELINE:LOUD!
    CODEGEN-COMPARE-CLI:CHECK-EXACT

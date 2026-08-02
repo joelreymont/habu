@@ -4427,3 +4427,36 @@ case fold. The substitution then went into the file with the dot that removes
 it, and the byte equality went into the suite, so the claim is a test rather
 than a sentence. The row that could NOT be bought that way - a call in a counted
 loop, which the interop would have made green by luck - stayed a gap.
+
+## Survey the engine's float behaviour by RUNNING it, not by knowing IEEE754
+
+Writing the float benchmark meant writing down what the engine does with
+doubles, and the parts worth writing down were the parts no amount of standards
+knowledge would have supplied. The engine's own source answered the easy half:
+one unboxed cell per double, fifteen float words each built on one AArch64
+instruction, four of them inlined by the compile-state dispatch and the rest
+compiled as calls. Execution answered the half that decides a compiler's
+correctness: every comparison is FALSE when either operand is NaN, so
+`x f0< if A else B then` takes the else arm for a NaN and a lowering written as
+"not (x >= 0)" is a different program; the NaN this engine produces is one
+deterministic bit pattern, which is what makes a NaN row pinnable at all; and
+`f>s` truncates, saturates and answers zero for a NaN, which is why the library
+has a rounding word wrapped around it. Two probes went into the corpus header
+because they are surprising rather than because they are hard: the float literal
+reader computes int + frac/10^k with three roundings, so a seventeen-digit
+literal can land one ulp off the nearest double, and past eighteen fractional
+digits its integer accumulator wraps and the literal is silently read as a
+NEGATIVE number. A benchmark that pins only short exactly-representable literals
+sidesteps both; a compiler that materialises constants cannot.
+
+## Record a float output as the CELL, and the harness gains two free tests
+
+The codegen comparison stores a row's outputs as numbers, so a float row needs
+one projection from `r` to `n` - and the honest one is the identity on the cell,
+declared with `CAST:` in the one place both columns call, exactly as the flag
+projection already was. Bit equality is finer than float equality in precisely
+two places, and both turned into checks worth having: +0.0 and -0.0 are equal
+numbers in different cells, so a pinned `-0.0` input catches a code generator
+that dropped the sign of a zero, and two NaNs are equal cells while being unequal
+numbers, so two rows produced by two different words can be asserted to carry the
+same NaN. Neither test would exist if the harness had recorded a rounded decimal.

@@ -214,6 +214,31 @@ public
 : VECTOR-FLAG ( bool -- )
    if 1 else 0 then VECTOR ;
 
+\ A double, as the cell it already is. The engine keeps a double unboxed in one
+\ data-stack cell as its raw IEEE754 bit pattern - the survey at the head of
+\ tools/codegen-compare-corpus3.f establishes that from the engine's own source
+\ and from what it prints - so this is a retype and not a conversion, and it is
+\ the CAST: form, which the checker certifies, rather than a trusted boundary.
+\ It is public because a caller that wants to compare a float of its own with a
+\ value a row recorded has to reach it by this route and not by a second one.
+CAST: REAL-BITS ( r -- n ) ;
+
+\ Record one float the subject word left on the stack. It goes through the one
+\ projection above for the reason VECTOR-FLAG gives: two columns crossing from a
+\ float to a recorded cell by two routes of their own would let a difference in
+\ the routes read as a difference in the compiled code.
+\
+\ WHAT THIS MAKES THE COMPARISON MEAN. The recorded value is the whole cell, so
+\ two rows agree only if every bit agrees. That is the strictest comparison
+\ available and the honest one for doubles: two cells that differ by a bit are
+\ two different numbers. It is finer than float equality in exactly two places,
+\ both deliberate - +0.0 and -0.0 are equal numbers in different cells, and a
+\ NaN is equal to nothing at all while two NaNs of one payload are one cell. A
+\ code generator that lost the sign of a zero, or that produced a NaN with
+\ another payload, is reported here rather than absorbed.
+: VECTOR-REAL ( r -- )
+   REAL-BITS VECTOR ;
+
 : RESET ( -- )
    0 ROW-N !
    0 OUT-N !

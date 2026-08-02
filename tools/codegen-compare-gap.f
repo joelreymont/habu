@@ -19,10 +19,11 @@
 \ A word that needs a branch and a comparison is not unblocked by branches alone,
 \ and a reader planning the next capability should see that.
 \
-\ THIS FILE IS SHARED BY BOTH CORPORA AND HOLDS ONE STORE. A measurement pass
-\ holds one corpus at a time - tools/codegen-compare-cases.f measures the first
-\ and tools/codegen-compare-cases2.f the second, each opening with a RESET - so
-\ one store serves both and the report renders whichever pass just ran without
+\ THIS FILE IS SHARED BY ALL THREE CORPORA AND HOLDS ONE STORE. A measurement
+\ pass holds one corpus at a time - tools/codegen-compare-cases.f measures the
+\ first, tools/codegen-compare-cases2.f the second and
+\ tools/codegen-compare-cases3.f the third, each opening with a RESET - so one
+\ store serves them all and the report renders whichever pass just ran without
 \ knowing which corpus it was.
 
 require lib/errors.f
@@ -39,7 +40,16 @@ public
 \ and the report renders every one of them the same way. In order: a branch, a
 \ loop, or an exit from the middle of one; a typed locals frame; calling another
 \ word, recursion included; a load or a store; an ordering or equality
-\ operation; integer division.
+\ operation; integer division; float arithmetic.
+\
+\ WHAT `floats` COVERS, because one word has to stand for two refusals. A float
+\ body is stopped twice over: the tape has no kind for a real literal
+\ (E-NFEED-KIND, src/compiler/native/feed.f:174) and the dialect has no model
+\ for a float operation (E-HIR-UNMODELED). Both are measured at the head of
+\ tools/codegen-compare-new3.f. They are one capability here because neither is
+\ any use without the other - a chain that read the literal and could not add,
+\ or that could add and could not read the literal, compiles no float body at
+\ all.
 ENUM cap DERIVE eq
    control-flow
    locals
@@ -47,12 +57,16 @@ ENUM cap DERIVE eq
    memory
    comparison
    division
+   floats
 ;ENUM
 
 private
 
 16 constant GAP-MAX
-6 constant CAP-MAX
+
+\ How many capabilities one gap row may name. It is the size of the vocabulary
+\ above, so a row that genuinely waits for everything can say so.
+7 constant CAP-MAX
 
 GAP-MAX CODEGEN-COMPARE:NAME-MAX * BUFFER: GAP-NAMES
 create GAP-LENS GAP-MAX cells allot
@@ -81,6 +95,7 @@ variable GAP-N
       memory       OF 3 ENDOF
       comparison   OF 4 ENDOF
       division     OF 5 ENDOF
+      floats       OF 6 ENDOF
    ;MATCH ;
 
 : N>CAP ( n -- CODEGEN-GAP:cap )
@@ -91,6 +106,7 @@ variable GAP-N
       3 of CODEGEN--GAP-CAP:MEMORY endof
       4 of CODEGEN--GAP-CAP:COMPARISON endof
       5 of CODEGEN--GAP-CAP:DIVISION endof
+      6 of CODEGEN--GAP-CAP:FLOATS endof
       E-CODEGEN-COMPARE-ROW throw
    endcase ;
 
@@ -148,6 +164,7 @@ public
       memory       OF s" memory access" ENDOF
       comparison   OF s" comparison" ENDOF
       division     OF s" division" ENDOF
+      floats       OF s" floats" ENDOF
    ;MATCH ;
 
 : RESET ( -- )
