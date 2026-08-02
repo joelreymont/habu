@@ -37,6 +37,8 @@ public
 undefine INSTALL-TEST
 ;package
 
+package SNAPSHOT
+
 $4A constant E-SNAP-HOOK
 
 TRUSTED: SNAP-RETIRE-GO ( -- )
@@ -47,4 +49,12 @@ TRUSTED: SNAP-RETIRE-GO ( -- )
    CHECKER-SNAPSHOT-PREPARE
    INCLUDE-SNAPSHOT-PREPARE
    SNAPGO ;
-SNAP-RETIRE-GO
+
+: ACTION ( -- [ -- ] )
+   [: SNAP-RETIRE-GO ;] ;
+
+ACTION
+
+;package
+
+execute

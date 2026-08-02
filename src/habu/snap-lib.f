@@ -4,6 +4,8 @@
 \ `SNAP-EXTRA-PTR`, `SNAP-EXTRA-SIZE`) and driver I/O. Entry files decide when
 \ to prepare checker/include state and call SNAPGO.
 
+package SNAPSHOT
+
 \ output path — the single knob; build-fixpoint owns/moves the artifact
 : SNAP-OUT s" hb-snap0" TMP-PATH ;
 
@@ -203,6 +205,8 @@ TRUSTED: SND-QUARANTINE@ ( n -- n ) cells SND-QUARANTINE + @ ;
    SNC-COPY
    SNC-CANON ;
 
+;package
+
 \ ---- test-only final-close fault seam ----
 \ snap-lib.f is builder-only: SNAP-RETIRE-GO forgets this whole tail before the
 \ snapshot header is written, so nothing here reaches a shipped image. The seam
@@ -232,6 +236,8 @@ public
    BEFORE ;
 
 ;package
+
+package SNAPSHOT
 
 : SNAP-WRITE-BYTES ( -- )
    \ trailer: magic, canonical text base, dict count, region length, data length
@@ -272,3 +278,5 @@ TRUSTED: SNAP-CHECK-HOOK ( ptr u8 n -- n )
 TRUSTED: SNAP-INSTALL-HOOK ( -- )
    LOWER-CERT-HOOK:INSTALL
    ['] SNAP-CHECK-HOOK set-check ;
+
+;package
