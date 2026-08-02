@@ -5,7 +5,7 @@ priority: 1
 issue-type: task
 created-at: "2026-07-27T19:24:10.296426+02:00"
 closed-at: "2026-08-02T15:33:29.184564+02:00"
-close-reason: "Obsolete. Reviewed product commit 5b0ebb070a5b8ef7c04e2d28772421f796b686c6 intentionally deleted the unused duplicate-authority host-resident GPT2LOAD/GPT2TX/WSTORE/MODELPROV path and its tests. The current hard-cut tree contains none of those files. Restoring the claimed workspace's old state machine would violate the direct device-serving design and the latest frozen owners SAFET:file, GPT2:config, GPT2:tensor-id, FS:path, HF:CFG, generic result<GPT2:config,n>, and future GPT2:OPEN-CHECKPOINT. Historical body and claim preserved as closed evidence; no rewrite, source/docs/other dots/new machinery."
+close-reason: "Obsolete. Authoritative ancestor 5b0ebb070a5b8ef7c04e2d28772421f796b686c6 deleted the unused GPT2LOAD loader/path and its suites. Retaining this rename task would resurrect deleted architecture. Historical body and claim preserved as closed evidence; no rewrite, source/docs/other dots/new machinery."
 ---
 
 Why: gpt2-bind.f loads and validates a checkpoint, but its file, package GPT2TX, tests, comments, and rejection codes use invented transaction or binding names. The operation is checkpoint loading.
