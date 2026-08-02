@@ -294,19 +294,19 @@ plus two `bar.sync`s. The constants are named in `lib/ptx/ad.f`:
 | `AD-COST-ALU` | 1 | one elementwise f32 op (`*.`, `EXP.`, `PTX:B-`, …) |
 | `AD-COST-COLLECTIVE` | 32 | one block reduce/broadcast (SMEM + 2 barriers) |
 
-**Save cost** (`AD-SAVE-COST`): a value that is the forward's **materialized
+**Save cost** (`PTX-AD:AD-SAVE-COST`): a value that is the forward's **materialized
 output** already sits in global memory — saving costs one reload
 (`AD-COST-MEM`). Any other value must be stored by the forward and reloaded by
 the backward (`2 × AD-COST-MEM`).
 
-**Recompute cost** (`AD-SLICE-COST`): sum the recomputed forward slice's
+**Recompute cost** (`PTX-AD:AD-SLICE-COST`): sum the recomputed forward slice's
 tokens — loads at `AD-COST-MEM`, collectives at `AD-COST-COLLECTIVE`,
 elementwise ops at `AD-COST-ALU`; the slice's store is dropped by the lowering
 and register renames (`DUP`/`SWAP`/`ROT`/`OVER`) cost 0. Costing an unknown
 token fails closed (`E-PTX-AD-UNKNOWN`).
 
-**Decision** (`AD-SAVE?` over `AD-RECOMPUTE?`): recompute iff its slice cost is
-strictly cheaper than the save cost.
+**Decision** (`PTX-AD:AD-SAVE?` over `PTX-AD:AD-RECOMPUTE?`): recompute
+iff its slice cost is strictly cheaper than the save cost.
 
 Worked acceptance cases (asserted in `lib/ptx/ad-test.f`):
 
@@ -320,7 +320,7 @@ Worked acceptance cases (asserted in `lib/ptx/ad-test.f`):
   re-runs `exp(x)` (the recompute path).
 
 The generated-kernel lowering (`lib/ptx/ad-gen.f` `ADG-LOWER-BWD`) consults
-`AD-SAVE?` per saved value: recompute proceeds row-locally; a SAVE choice
+`PTX-AD:AD-SAVE?` per saved value: recompute proceeds row-locally; a SAVE choice
 fail-closes there because the save route is the materialized-output/closed-form
 kernel path. Save and recompute must agree numerically — the device equivalence
 fixture runs the same gradient both ways and compares within tolerance.

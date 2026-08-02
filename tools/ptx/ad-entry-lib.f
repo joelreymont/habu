@@ -31,6 +31,8 @@ require lib/ptx/ad-dag.f
 require lib/ptx/ad.f
 require lib/ptx/ad-gen.f
 
+using PTX-AD
+
 256 %BLOCK
 
 create ADE-EXP-OPS 1 cells allot
@@ -440,3 +442,5 @@ variable ADE2-DZ
    [: ADE-EXPGEN-FWD$ ADE-GEN-BWD ;] catch {: rc:n :}
    AD-POLICY-AUTO AD-POLICY!
    rc 0 <> if rc throw then ;
+
+;using

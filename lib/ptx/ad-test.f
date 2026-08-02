@@ -2,110 +2,158 @@
 
 require lib/ptx/test-prelude.f
 
-T-RESET
+package PTX-AD-TEST
 
-\ VJP table: LOAD uses conservative scatter-add; STORE's adjoint is a load
-s" LOAD"      VJP-ADJOINT s" SCATTER-ADD" STR= TTRUE
-s" STORE"     VJP-ADJOINT s" LOAD"      STR= TTRUE
-s" LOAD-ONCE" VJP-ADJOINT s" STORE-ONCE" STR= TTRUE
-s" STORE-ONCE" VJP-ADJOINT s" LOAD-ONCE" STR= TTRUE
-s" DUP"       VJP-ADJOINT s" +."        STR= TTRUE
-s" +."        VJP-ADJOINT s" DUP"       STR= TTRUE
-s" BLOCK-SUM" VJP-ADJOINT s" BROADCAST" STR= TTRUE
-s" BROADCAST" VJP-ADJOINT s" BLOCK-SUM" STR= TTRUE
+using PTX-AD
 
-\ the reverse pass: forward body -> backward body (reverse order + VJP substitution)
-\ forward  LOAD DUP BLOCK-SUM   =>   VJP[BLOCK-SUM] VJP[DUP] VJP[LOAD]
-s" LOAD DUP BLOCK-SUM" AD-REVERSE s" BROADCAST +. SCATTER-ADD" STR= TTRUE
-\ single word
-s" +." AD-REVERSE s" DUP" STR= TTRUE
-\ a longer linear pipeline
-s" LOAD LOAD +. STORE" AD-REVERSE s" LOAD DUP SCATTER-ADD SCATTER-ADD" STR= TTRUE
-\ row pipeline (ROW-LOAD uses row scatter-add; ROW-STORE's adjoint is row load)
-s" ROW-LOAD" VJP-ADJOINT s" ROW-SCATTER-ADD" STR= TTRUE
-s" ROW-LOAD-ONCE" VJP-ADJOINT s" ROW-STORE-ONCE" STR= TTRUE
-s" ROW-STORE-ONCE" VJP-ADJOINT s" ROW-LOAD-ONCE" STR= TTRUE
-s" NEG" VJP-ADJOINT s" NEG" STR= TTRUE
-s" ROW-LOAD BLOCK-SUM BROADCAST ROW-STORE" AD-REVERSE
-   s" ROW-LOAD BLOCK-SUM BROADCAST ROW-SCATTER-ADD" STR= TTRUE
-s" LOAD-ONCE DUP STORE-ONCE" AD-REVERSE
-   s" LOAD-ONCE +. STORE-ONCE" STR= TTRUE
-s" ROW-LOAD-ONCE ROW-STORE-ONCE" AD-REVERSE
-   s" ROW-LOAD-ONCE ROW-STORE-ONCE" STR= TTRUE
+: VJP-MEMORY ( -- )
+   s" LOAD" VJP-EXPAND s" SCATTER-ADD" STR= TTRUE
+   s" STORE" VJP-EXPAND s" LOAD" STR= TTRUE
+   s" LOAD-ONCE" VJP-EXPAND s" STORE-ONCE" STR= TTRUE
+   s" STORE-ONCE" VJP-EXPAND s" LOAD-ONCE" STR= TTRUE ;
 
-\ a forward word with no registered adjoint fails closed
-: BAD-VJP ( -- )  s" NO-SUCH-OP" VJP-ADJOINT 2drop ;
-' BAD-VJP E-PTX-NOVJP TTHROWS
+: VJP-STACK ( -- )
+   s" DUP" VJP-EXPAND s" +." STR= TTRUE
+   s" +." VJP-EXPAND s" DUP" STR= TTRUE
+   s" NEG" VJP-EXPAND s" NEG" STR= TTRUE ;
 
-\ SCALE and -. resolve from the vjp.f table (they had no v0 ladder entry)
-s" SCALE" VJP-ADJOINT s" DUP SAVED-A SCALE SWAP SAVED-X *. BLOCK-SUM" STR= TTRUE
-s" -." VJP-ADJOINT s" DUP NEG" STR= TTRUE
+: VJP-COLLECTIVE ( -- )
+   s" BLOCK-SUM" VJP-EXPAND s" BROADCAST" STR= TTRUE
+   s" BROADCAST" VJP-EXPAND s" BLOCK-SUM" STR= TTRUE ;
 
-\ control flow is a named straight-line-boundary reject, not a generic missing VJP
+: VJP-ROW ( -- )
+   s" ROW-LOAD" VJP-EXPAND s" ROW-SCATTER-ADD" STR= TTRUE
+   s" ROW-LOAD-ONCE" VJP-EXPAND s" ROW-STORE-ONCE" STR= TTRUE
+   s" ROW-STORE-ONCE" VJP-EXPAND s" ROW-LOAD-ONCE" STR= TTRUE ;
+
+: REVERSE-LINEAR ( -- )
+   s" LOAD DUP BLOCK-SUM" AD-REVERSE
+      s" BROADCAST +. SCATTER-ADD" STR= TTRUE
+   s" +." AD-REVERSE s" DUP" STR= TTRUE
+   s" LOAD LOAD +. STORE" AD-REVERSE
+      s" LOAD DUP SCATTER-ADD SCATTER-ADD" STR= TTRUE ;
+
+: REVERSE-ROW ( -- )
+   s" ROW-LOAD BLOCK-SUM BROADCAST ROW-STORE" AD-REVERSE
+      s" ROW-LOAD BLOCK-SUM BROADCAST ROW-SCATTER-ADD" STR= TTRUE
+   s" LOAD-ONCE DUP STORE-ONCE" AD-REVERSE
+      s" LOAD-ONCE +. STORE-ONCE" STR= TTRUE
+   s" ROW-LOAD-ONCE ROW-STORE-ONCE" AD-REVERSE
+      s" ROW-LOAD-ONCE ROW-STORE-ONCE" STR= TTRUE ;
+
+: BAD-VJP ( -- )
+   s" NO-SUCH-OP" VJP-EXPAND 2drop ;
+
 : BAD-AD-CONTROL ( -- )
    s" LOAD if STORE then" AD-REVERSE 2drop ;
-' BAD-AD-CONTROL E-PTX-AD-CONTROL TTHROWS
 
-\ save-vs-recompute: nonlinear ops save primals/outputs, linear ones save nothing
-s" EXP."      VJP-SAVES 1 T=
-s" *."        VJP-SAVES 2 T=
-s" BLOCK-MAX" VJP-SAVES 2 T=
-s" +."        VJP-SAVES 0 T=
-s" LOAD"      VJP-SAVES 0 T=
-s" EXP." VJP-NONLINEAR? TTRUE
-s" +."   VJP-NONLINEAR? TFALSE
-\ recompute chosen only when cheaper than the save round-trip
-10 3  AD-RECOMPUTE? TTRUE      \ recompute(3) < save(10)
-3 10  AD-RECOMPUTE? TFALSE     \ recompute(10) !< save(3)
+: FAILS-CLOSED ( -- )
+   [: BAD-VJP ;] E-PTX-NOVJP TTHROWSQ
+   [: BAD-AD-CONTROL ;] E-PTX-AD-CONTROL TTHROWSQ ;
 
-\ the EXPLICIT cost model (docs/autograd.md "Checkpointing"): unit = 1/8 of a
-\ global-memory transaction per element. MEM 8, ALU 1, COLLECTIVE 32; stores
-\ and register moves cost 0 in a recomputed slice (the store is dropped).
-s" ROW-LOAD EXP. ROW-STORE" AD-SLICE-COST 9 T=
-s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" AD-SLICE-COST 75 T=
-0 0= AD-SAVE-COST 8 T=            \ materialized forward output: reload only
-0 0= 0= AD-SAVE-COST 16 T=        \ unmaterialized value: store + reload
-\ softmax picks SAVE for its small per-row state: y is the materialized output
-\ and recomputing it costs two block collectives
-s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" 0 0= AD-SAVE? TTRUE
-\ the fused elementwise path picks RECOMPUTE: cheap FLOPs beat the round trip
-s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE
-\ costing an unknown token fails closed
-: BAD-COST ( -- )  s" ROW-LOAD FROB ROW-STORE" AD-SLICE-COST drop ;
-' BAD-COST E-PTX-AD-UNKNOWN TTHROWS
+: VJP-NONLINEAR ( -- )
+   s" SCALE" VJP-EXPAND
+      s" DUP SAVED-A SCALE SWAP SAVED-X *. BLOCK-SUM" STR= TTRUE
+   s" -." VJP-EXPAND s" DUP NEG" STR= TTRUE ;
 
-\ the policy override pins the choice WITHOUT touching the cost table (the
-\ equivalence fixture drives both paths through it)
-AD-POLICY-SAVE AD-POLICY!
-s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TTRUE
-AD-POLICY-RECOMPUTE AD-POLICY!
-s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" 0 0= AD-SAVE? TFALSE
-AD-POLICY-AUTO AD-POLICY!
-s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE
-: BAD-POLICY ( -- )  3 AD-POLICY! ;
-' BAD-POLICY E-PTX-SYNTAX TTHROWS
+: SAVE-COUNTS ( -- )
+   s" EXP." VJP-SAVES 1 T=
+   s" *." VJP-SAVES 2 T=
+   s" BLOCK-MAX" VJP-SAVES 2 T=
+   s" +." VJP-SAVES 0 T=
+   s" LOAD" VJP-SAVES 0 T= ;
 
-\ nonlinear automation: a unary nonlinear op auto-derives its adjoint EXPANSION
-\ (with saved-value references) inside the reversed backward
-s" LOAD EXP. STORE" AD-REVERSE  s" LOAD SAVED-Y *. SCATTER-ADD" STR= TTRUE
-s" ROW-LOAD BLOCK-MAX ROW-STORE" AD-REVERSE
-   s" ROW-LOAD SAVED-X SAVED-MX BLOCK-MAX-SELECT ROW-SCATTER-ADD" STR= TTRUE
-\ binary nonlinear ops: 2-output adjoints expand with stack-threaded cotangents
-s" LOAD *. STORE" AD-REVERSE
-   s" LOAD DUP SAVED-Y *. SWAP SAVED-X *. SCATTER-ADD" STR= TTRUE
-s" LOAD PTX:B- STORE" AD-REVERSE
-   s" LOAD DUP BLOCK-SUM NEG SCATTER-ADD" STR= TTRUE
-\ PTX:B/ (z=x/s): dx=dz/s, ds=-Sum(dz*z)/s - the last softmax op's 2-output adjoint
-s" LOAD PTX:B/ STORE" AD-REVERSE
-   s" LOAD DUP SAVED-S PTX:B/ SWAP SAVED-Z *. BLOCK-SUM NEG SAVED-S PTX:U/ SCATTER-ADD" STR= TTRUE
-\ the FULL softmax forward now derives a complete backward (every op covered, incl. PTX:B/) -
-\ AD-REVERSE does not throw E-PTX-NOVJP and produces a non-empty backward body
-s" LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/" AD-REVERSE nip 0 > TTRUE
+: NONLINEAR? ( -- )
+   s" EXP." VJP-NONLINEAR? TTRUE
+   s" +." VJP-NONLINEAR? TFALSE ;
 
-\ algebraic-simplify: adjacent NEG NEG cancels (double negation = identity)
-s" NEG NEG"          AD-SIMPLIFY s" "       STR= TTRUE
-s" DUP NEG NEG +."   AD-SIMPLIFY s" DUP +." STR= TTRUE
-s" NEG"              AD-SIMPLIFY s" NEG"     STR= TTRUE
-s" +. STORE"         AD-SIMPLIFY s" +. STORE" STR= TTRUE
+: RECOMPUTE? ( -- )
+   10 3 AD-RECOMPUTE? TTRUE
+   3 10 AD-RECOMPUTE? TFALSE ;
 
-T-REPORT
+: SLICE-COSTS ( -- )
+   s" ROW-LOAD EXP. ROW-STORE" AD-SLICE-COST 9 T=
+   s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE"
+      AD-SLICE-COST 75 T=
+   0 0= AD-SAVE-COST 8 T=
+   0 0= 0= AD-SAVE-COST 16 T= ;
+
+: SAVE-CHOICES ( -- )
+   s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE"
+      0 0= AD-SAVE? TTRUE
+   s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE ;
+
+: BAD-COST ( -- )
+   s" ROW-LOAD FROB ROW-STORE" AD-SLICE-COST drop ;
+
+: BAD-POLICY ( -- )
+   3 AD-POLICY! ;
+
+: COST-FAILS-CLOSED ( -- )
+   [: BAD-COST ;] E-PTX-AD-UNKNOWN TTHROWSQ
+   [: BAD-POLICY ;] E-PTX-SYNTAX TTHROWSQ ;
+
+: FORCE-SAVE ( -- )
+   AD-POLICY-SAVE AD-POLICY!
+   s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TTRUE ;
+
+: FORCE-RECOMPUTE ( -- )
+   AD-POLICY-RECOMPUTE AD-POLICY!
+   s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE"
+      0 0= AD-SAVE? TFALSE ;
+
+: POLICY-OVERRIDES ( -- )
+   FORCE-SAVE FORCE-RECOMPUTE
+   AD-POLICY-AUTO AD-POLICY!
+   s" ROW-LOAD EXP. ROW-STORE" 0 0= 0= AD-SAVE? TFALSE ;
+
+: REVERSE-NONLINEAR-UNARY ( -- )
+   s" LOAD EXP. STORE" AD-REVERSE
+      s" LOAD SAVED-Y *. SCATTER-ADD" STR= TTRUE
+   s" ROW-LOAD BLOCK-MAX ROW-STORE" AD-REVERSE
+      s" ROW-LOAD SAVED-X SAVED-MX BLOCK-MAX-SELECT ROW-SCATTER-ADD" STR= TTRUE ;
+
+: REVERSE-NONLINEAR-BINARY ( -- )
+   s" LOAD *. STORE" AD-REVERSE
+      s" LOAD DUP SAVED-Y *. SWAP SAVED-X *. SCATTER-ADD" STR= TTRUE
+   s" LOAD PTX:B- STORE" AD-REVERSE
+      s" LOAD DUP BLOCK-SUM NEG SCATTER-ADD" STR= TTRUE ;
+
+: REVERSE-DIV ( -- )
+   s" LOAD PTX:B/ STORE" AD-REVERSE
+      s" LOAD DUP SAVED-S PTX:B/ SWAP SAVED-Z *. BLOCK-SUM NEG SAVED-S PTX:U/ SCATTER-ADD"
+      STR= TTRUE
+   s" LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/"
+      AD-REVERSE nip 0 > TTRUE ;
+
+: SIMPLIFIES ( -- )
+   s" NEG NEG" AD-SIMPLIFY s" " STR= TTRUE
+   s" DUP NEG NEG +." AD-SIMPLIFY s" DUP +." STR= TTRUE
+   s" NEG" AD-SIMPLIFY s" NEG" STR= TTRUE
+   s" +. STORE" AD-SIMPLIFY s" +. STORE" STR= TTRUE ;
+
+: VJP-TESTS ( -- )
+   VJP-MEMORY VJP-STACK VJP-COLLECTIVE VJP-ROW
+   VJP-NONLINEAR SAVE-COUNTS NONLINEAR? ;
+
+: REVERSE-TESTS ( -- )
+   REVERSE-LINEAR REVERSE-ROW FAILS-CLOSED
+   REVERSE-NONLINEAR-UNARY REVERSE-NONLINEAR-BINARY REVERSE-DIV ;
+
+: COST-TESTS ( -- )
+   RECOMPUTE? SLICE-COSTS SAVE-CHOICES
+   COST-FAILS-CLOSED POLICY-OVERRIDES ;
+
+public
+
+: RUN ( -- )
+   T-RESET
+   VJP-TESTS REVERSE-TESTS COST-TESTS
+   SIMPLIFIES
+   T-REPORT ;
+
+;using
+
+;package
+
+PTX-AD-TEST:RUN

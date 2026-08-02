@@ -12,6 +12,8 @@
 require lib/ptx/test-prelude.f
 require lib/ptx/ad-gen.f
 
+using PTX-AD
+
 T-RESET
 
 \ ---- the composed pass: generated backward text ----------------------------------
@@ -72,3 +74,5 @@ s" ROW-LOAD DUP BLOCK-MAX PTX:B- EXP. DUP BLOCK-SUM PTX:B/ ROW-STORE" ADG-SAVES-
 ' ADGT-SAVE-CHOSEN E-PTX-NOIMPL TTHROWS
 
 T-REPORT
+
+;using

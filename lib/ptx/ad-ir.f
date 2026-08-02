@@ -6,6 +6,10 @@
 \ PTX emit registers. Load after lib/ptx/ad.f, lib/ptx/ir.f, lib/ptx/ad-dag.f,
 \ and lib/ptx/cg-collective.f. Checked Habu.
 
+require lib/ptx/ad.f
+
+using PTX-AD
+
 7 constant ADIR-SOFTMAX-LEN
 create ADIR-OPS ADIR-SOFTMAX-LEN cells allot
 variable ADIR-OP-N
@@ -76,3 +80,5 @@ variable ADIR-OP-N
 : ADIR-EMIT-SOFTMAX-BWD-FROM ( ptr a n n n -- n ) {: ops:ptr len:n y:n dy:n :}
    ops len ADIR-SOFTMAX-OPS-CHECK
    y dy ADIR-EMIT-SOFTMAX-BWD ;
+
+;using
