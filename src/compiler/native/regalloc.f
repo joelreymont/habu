@@ -208,9 +208,27 @@ private
 1 constant P-RELOAD
 2 constant P-MOVE                    \ a returned value put where it has to leave
 
-\ The two value classes this dialect has.
+\ The three value classes this dialect has: a general register, a floating
+\ register, and the memory token the frame forms thread. Two of them are held in
+\ registers and the third is held nowhere.
 0 constant C-GPR
 1 constant C-TOKEN
+2 constant C-FPR
+
+\ The two register FILES, which is what the two register-holding classes index.
+\ A register number names a register of ONE file - d0 and x0 are two registers
+\ and both are number zero - so every table below that is keyed by a register is
+\ keyed by the file and the number together, and a class that lives in no file
+\ has no row at all rather than a row nothing writes.
+2 constant FILES-N
+0 constant F-GPR
+1 constant F-FPR
+
+: FILE-OF ( n -- n )
+   {: cls:n :}
+   cls C-GPR = if F-GPR exit then
+   cls C-FPR = if F-FPR exit then
+   E-A64RA-CLASS throw ;
 
 \ This value is in no slot.
 -1 constant NOSLOT
@@ -273,6 +291,7 @@ variable OUTS-N
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-TYP IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
+1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-MOV IR-ID:ir-symbol-id
 DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
@@ -280,6 +299,7 @@ DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
 1 TYPED-BUFFER S-POOL A64EFF:gprs
+1 TYPED-BUFFER S-FPOOL A64EFF:fprs
 
 create V-DEF VMAX cells allot
 create V-LAST VMAX cells allot
@@ -290,9 +310,10 @@ create V-SLOT VMAX cells allot
 create V-WANT VMAX cells allot
 create A-REG FIXED-MAX cells allot
 create O-REG FIXED-MAX cells allot
-create R-HOLD REGS-N cells allot
-create R-PIN REGS-N cells allot
-create R-RL REGS-N cells allot
+create R-HOLD FILES-N REGS-N * cells allot
+create R-PIN FILES-N REGS-N * cells allot
+create R-RL FILES-N REGS-N * cells allot
+create R-RLC FILES-N REGS-N * cells allot   \ the file each held reload belongs to
 create PL-BLK PLMAX cells allot
 create PL-POS PLMAX cells allot
 create PL-KIND PLMAX cells allot
@@ -300,7 +321,13 @@ create PL-VAL PLMAX cells allot
 
 \ ---- the slots, read back ----------------------------------------------------
 : BLK ( -- IR-ID:ir-block-id )       0 S-BLK @ ;
-: POOL-BITS ( -- n )                 0 S-POOL @ A64EFF:GPRS-N ;
+\ The registers of one file this routine may hand out. Two pools, asked the same
+\ way of two contract fields, because a shortage in one file is not relieved by a
+\ free register in the other.
+: POOL-BITS ( n -- n )
+   {: cls:n :}
+   cls C-FPR = if 0 S-FPOOL @ A64EFF:FPRS-N exit then
+   0 S-POOL @ A64EFF:GPRS-N ;
 
 \ ---- the per-value tables ----------------------------------------------------
 \ Every table is keyed by the value's own module-local ordinal, so a value of
@@ -326,17 +353,19 @@ create PL-VAL PLMAX cells allot
 : SLOT! ( n n -- )                   {: v:n k:n :} v k cells V-SLOT + ! ;
 : WANT! ( n n -- )                   {: v:n k:n :} v k cells V-WANT + ! ;
 
-: HOLD-AT ( n -- n )                 cells R-HOLD + @ ;
-: HOLD! ( n n -- )                   {: v:n r:n :} v r cells R-HOLD + ! ;
+: RIX ( n n -- n )                   {: cls:n r:n :} cls FILE-OF REGS-N * r + ;
+
+: HOLD-AT ( n n -- n )               RIX cells R-HOLD + @ ;
+: HOLD! ( n n n -- )                 {: v:n cls:n r:n :} v cls r RIX cells R-HOLD + ! ;
 
 \ A register a reload or a result of the operation being allocated has just been
 \ given cannot be taken away again by the same operation: that operation needs
 \ what is in it now. The pins are cleared before each operation.
-: PINNED? ( n -- bool )              cells R-PIN + @ 0<> ;
-: PIN! ( n -- )                      1 swap cells R-PIN + ! ;
+: PINNED? ( n n -- bool )            RIX cells R-PIN + @ 0<> ;
+: PIN! ( n n -- )                    RIX 1 swap cells R-PIN + ! ;
 
 : PINS-CLEAR ( -- )
-   REGS-N 0 ?do 0 i cells R-PIN + ! loop
+   FILES-N REGS-N * 0 ?do 0 i cells R-PIN + ! loop
    0 RL-N ! ;
 
 : TABLES-CLEAR ( -- )
@@ -349,7 +378,8 @@ create PL-VAL PLMAX cells allot
       NOSLOT i SLOT!
       NOBODY i WANT!
    loop
-   REGS-N 0 ?do NOBODY i HOLD! loop
+   REGS-N 0 ?do NOBODY C-GPR i HOLD! loop
+   REGS-N 0 ?do NOBODY C-FPR i HOLD! loop
    PINS-CLEAR
    0 N-PLAN !
    0 N-SLOTS ! ;
@@ -451,6 +481,7 @@ create PL-VAL PLMAX cells allot
    {: id:IR-ID:ir-value-id :}
    id VALUE-TYPE-AT {: t:IR-ID:ir-type-id :}
    t 0 BND-TYP @ SAME-TYPE? if C-GPR exit then
+   t 0 BND-FPR @ SAME-TYPE? if C-FPR exit then
    t 0 BND-MEM @ SAME-TYPE? if C-TOKEN exit then
    E-A64RA-CLASS throw ;
 
@@ -514,26 +545,33 @@ create PL-VAL PLMAX cells allot
 \ Free every register whose value is dead before this position. Called with the
 \ position just after the operation being allocated, so a value read by that
 \ operation releases its register to the value the same operation writes.
-: EXPIRE ( n -- )
-   {: limit:n :}
+: EXPIRE1 ( n n -- )
+   {: cls:n limit:n :}
    REGS-N 0 ?do
-      i HOLD-AT {: v:n :}
+      cls i HOLD-AT {: v:n :}
       v NOBODY <> if
-         v LAST-AT limit < if NOBODY i HOLD! then
+         v LAST-AT limit < if NOBODY cls i HOLD! then
       then
    loop ;
 
-: POOL-HAS? ( n -- bool )
-   {: r:n :}
-   POOL-BITS 1 r lshift and 0<> ;
+\ Both files, because a value of either dies at the same position.
+: EXPIRE ( n -- )
+   {: limit:n :}
+   C-GPR limit EXPIRE1
+   C-FPR limit EXPIRE1 ;
 
-\ The lowest-numbered register of the pool that holds nothing, or -1 when every
-\ one of them is taken. Lowest rather than next-around, so the same block always
-\ allocates the same way.
-: FREE-REG ( -- n )
+: POOL-HAS? ( n n -- bool )
+   {: cls:n r:n :}
+   cls POOL-BITS 1 r lshift and 0<> ;
+
+\ The lowest-numbered register of one file's pool that holds nothing, or -1 when
+\ every one of them is taken. Lowest rather than next-around, so the same block
+\ always allocates the same way.
+: FREE-REG ( n -- n )
+   {: cls:n :}
    -1
    REGS-N 0 ?do
-      i POOL-HAS? i HOLD-AT NOBODY = and if drop i leave then
+      cls i POOL-HAS? cls i HOLD-AT NOBODY = and if drop i leave then
    loop ;
 
 \ Nothing below hands out a register that is not the routine's: FREE-REG only
@@ -543,9 +581,10 @@ create PL-VAL PLMAX cells allot
 \ that must fail closed rather than be argued about.
 : TAKE ( n n -- )
    {: k:n r:n :}
-   r POOL-HAS? 0= if E-A64RA-POOL throw then
+   k CLS-AT {: cls:n :}
+   cls r POOL-HAS? 0= if E-A64RA-POOL throw then
    r k REG!
-   k r HOLD! ;
+   k cls r HOLD! ;
 
 \ ---- the routine's own fixed registers ---------------------------------------
 \ The contract's two ordered lists, read once into tables this walk can index by
@@ -585,10 +624,10 @@ create PL-VAL PLMAX cells allot
 \ only answer for a caller that drives WALK with a pool of its own.
 : FIXED-POOL-CK ( -- )
    ARGS-N @ 0 ?do
-      i cells A-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
+      C-GPR i cells A-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
    loop
    OUTS-N @ 0 ?do
-      i cells O-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
+      C-GPR i cells O-REG + @ POOL-HAS? 0= if E-A64RA-FIXED throw then
    loop ;
 
 \ A convention that names more positions than the routine has arguments, or more
@@ -657,20 +696,20 @@ create PL-VAL PLMAX cells allot
 \ being allocated has already been given it, and not if the operation named by
 \ `spare` is about to read it - taking it then would destroy the value before the
 \ instruction that needs it runs. ENTRY spares no operation.
-: EVICTABLE? ( n n -- bool )
-   {: r:n spare:n :}
-   r HOLD-AT {: v:n :}
+: EVICTABLE? ( n n n -- bool )
+   {: cls:n r:n spare:n :}
+   cls r HOLD-AT {: v:n :}
    v NOBODY = if false exit then
-   r PINNED? if false exit then
+   cls r PINNED? if false exit then
    spare ENTRY = if true exit then
    BLK spare OP-AT v READS? 0= ;
 
-: FURTHEST ( n n -- n )
-   {: spare:n pos:n :}
+: FURTHEST ( n n n -- n )
+   {: cls:n spare:n pos:n :}
    -1
    REGS-N 0 ?do
-      i spare EVICTABLE? if
-         i HOLD-AT pos 1+ 0 max NEXT-USE {: c:n :}
+      cls i spare EVICTABLE? if
+         cls i HOLD-AT pos 1+ 0 max NEXT-USE {: c:n :}
          c over > if drop c then
       then
    loop ;
@@ -679,14 +718,14 @@ create PL-VAL PLMAX cells allot
 \ otherwise the one whose value is read furthest away, with the lowest register
 \ number breaking a tie. A shape where nothing can be taken is the one register
 \ pressure no spill can serve.
-: VICTIM ( n n -- n )
-   {: spare:n pos:n :}
-   spare pos FURTHEST {: want:n :}
+: VICTIM ( n n n -- n )
+   {: cls:n spare:n pos:n :}
+   cls spare pos FURTHEST {: want:n :}
    want 0 < if E-A64RA-POOL throw then
    -1
    REGS-N 0 ?do
-      i spare EVICTABLE? if
-         i HOLD-AT pos 1+ 0 max NEXT-USE want = if drop i leave then
+      cls i spare EVICTABLE? if
+         cls i HOLD-AT pos 1+ 0 max NEXT-USE want = if drop i leave then
       then
    loop
    dup 0 < if E-A64RA-POOL throw then ;
@@ -712,19 +751,22 @@ create PL-VAL PLMAX cells allot
 \ store reads the register, so the value is still there for an operation at `pos`
 \ that reads it; from `pos` on, the register is free and every later read of the
 \ value is a reload.
-: EVICT ( n n -- )
-   {: r:n pos:n :}
-   r HOLD-AT {: k:n :}
+: EVICT ( n n n -- )
+   {: cls:n r:n pos:n :}
+   cls r HOLD-AT {: k:n :}
    NEW-SLOT k SLOT!
    0 P-STORE pos 0 max k PLAN+
-   NOBODY r HOLD! ;
+   NOBODY cls r HOLD! ;
 
-: GRAB ( n n -- n )
-   {: spare:n pos:n :}
-   FREE-REG {: r:n :}
+\ A register of the file the value belongs to. Which file is the value's class,
+\ so a double never takes a general register and an integer never takes a
+\ floating one, and running out of one file is answered from that file alone.
+: GRAB ( n n n -- n )
+   {: cls:n spare:n pos:n :}
+   cls FREE-REG {: r:n :}
    r 0 >= if r exit then
-   spare pos VICTIM {: v:n :}
-   v pos EVICT
+   cls spare pos VICTIM {: v:n :}
+   cls v pos EVICT
    v ;
 
 \ Where a value goes when it is written. A value the contract says leaves in a
@@ -740,13 +782,14 @@ create PL-VAL PLMAX cells allot
 \ value wants anything.
 : PLACE ( n n -- n )
    {: k:n pos:n :}
+   k CLS-AT {: cls:n :}
    k WANT-AT {: want:n :}
    want NOBODY <> if
-      want HOLD-AT {: held:n :}
+      cls want HOLD-AT {: held:n :}
       held NOBODY = if want exit then
       held WANT-AT NOBODY <> if E-A64RA-FIXED throw then
    then
-   ENTRY pos GRAB ;
+   cls ENTRY pos GRAB ;
 
 : ASSIGN ( IR-ID:ir-value-id n -- )
    {: id:IR-ID:ir-value-id pos:n :}
@@ -754,7 +797,7 @@ create PL-VAL PLMAX cells allot
    k CLS-AT C-TOKEN = if exit then
    k pos PLACE {: r:n :}
    k r TAKE
-   pos ENTRY <> if r PIN! then ;
+   pos ENTRY <> if k CLS-AT r PIN! then ;
 
 \ A block argument the contract gives a register arrives in exactly that one. It
 \ is taken before the scan hands anything out, so nothing can be holding it: the
@@ -767,7 +810,7 @@ create PL-VAL PLMAX cells allot
    {: id:IR-ID:ir-value-id r:n :}
    id SLOT {: k:n :}
    k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
-   r HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
+   k CLS-AT r HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
    k r TAKE ;
 
 \ A tied result lands in the register field its operand already occupies, so that
@@ -791,11 +834,14 @@ create PL-VAL PLMAX cells allot
 \ reading the holder table at a negative index is not how we would find out.
 : TIE ( IR-ID:ir-op-id n n -- )
    {: id:IR-ID:ir-op-id rs:n op:n :}
-   id op OPERAND-AT SLOT REG-AT {: r:n :}
+   id op OPERAND-AT SLOT {: ok:n :}
+   id rs RESULT-AT SLOT {: rk:n :}
+   ok CLS-AT rk CLS-AT <> if E-A64RA-FILE throw then
+   ok REG-AT {: r:n :}
    r 0 < r REGS-N >= or if E-A64RA-TIE throw then
-   r HOLD-AT NOBODY <> if E-A64RA-TIE throw then
-   id rs RESULT-AT SLOT  r  TAKE
-   r PIN! ;
+   rk CLS-AT r HOLD-AT NOBODY <> if E-A64RA-TIE throw then
+   rk r TAKE
+   rk CLS-AT r PIN! ;
 
 : ASSIGN-RESULT ( IR-ID:ir-op-id n n -- )
    {: id:IR-ID:ir-op-id rs:n pos:n :}
@@ -811,16 +857,17 @@ create PL-VAL PLMAX cells allot
 \ in has to survive until the operation reads it, so nothing this operation reads
 \ may be taken to make room - that is what `pos` as the spared operation says -
 \ and it is given back the moment the operation has read it.
-: RELOAD-REG ( n -- )
-   {: r:n :}
+: RELOAD-REG ( n n -- )
+   {: cls:n r:n :}
    RL-N @ {: j:n :}
-   j REGS-N >= if E-A64RA-CAP throw then
+   j FILES-N REGS-N * >= if E-A64RA-CAP throw then
    r j cells R-RL + !
+   cls j cells R-RLC + !
    j 1+ RL-N ! ;
 
 : RELOADS-FREE ( -- )
    RL-N @ 0 ?do
-      NOBODY i cells R-RL + @ HOLD!
+      NOBODY  i cells R-RLC + @  i cells R-RL + @  HOLD!
    loop
    0 RL-N ! ;
 
@@ -830,12 +877,13 @@ create PL-VAL PLMAX cells allot
    n 0 ?do
       id i OPERAND-AT SLOT {: k:n :}
       k SLOT-AT NOSLOT <>  0 k pos RELOADED? 0=  and if
-         pos pos GRAB {: r:n :}
+         k CLS-AT {: cls:n :}
+         cls pos pos GRAB {: r:n :}
          0 P-RELOAD pos k PLAN+
-         k r HOLD!
+         k cls r HOLD!
          r k REG!
-         r PIN!
-         r RELOAD-REG
+         cls r PIN!
+         cls r RELOAD-REG
       then
    loop ;
 
@@ -1048,6 +1096,8 @@ variable CHANGED
 0 CHANGED !
 variable SHORT-AT                    \ the position the scan ran short at, or -1
 -1 SHORT-AT !
+variable SHORT-CLS                   \ and which register file it ran short of
+0 SHORT-CLS !
 variable RET-B                       \ the block control leaves the routine through
 0 RET-B !
 
@@ -1266,8 +1316,16 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
       cells UF + @
    repeat ;
 
+\ Two values joined into one class have to be able to share one register, and
+\ two values of two different register files never can: the same eight bytes in a
+\ general register and in a floating one are not the same place, and no
+\ instruction reads both fields. So a union across the files is refused by name
+\ rather than made and then discovered, which is what would happen otherwise -
+\ the class would be given a register of one file and half its members would be
+\ read out of the other.
 : UF-UNION ( n n -- )
    {: a:n b:n :}
+   a CLS-AT b CLS-AT <> if E-A64RA-FILE throw then
    a UF-FIND {: ra:n :}
    b UF-FIND {: rb:n :}
    ra rb = if exit then
@@ -1607,20 +1665,25 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    b k OP-POS ;
 
 \ ---- the scan ----------------------------------------------------------------
-: MB-EXPIRE1 ( n n -- )
-   {: r:n limit:n :}
-   r HOLD-AT {: v:n :}
+: MB-EXPIRE1 ( n n n -- )
+   {: cls:n r:n limit:n :}
+   cls r HOLD-AT {: v:n :}
    v NOBODY = if exit then
-   v cells CL-HI + @ limit < if NOBODY r HOLD! then ;
+   v cells CL-HI + @ limit < if NOBODY cls r HOLD! then ;
 
 : MB-EXPIRE ( n -- )
    {: limit:n :}
-   REGS-N 0 ?do i limit MB-EXPIRE1 loop ;
+   REGS-N 0 ?do C-GPR i limit MB-EXPIRE1 loop
+   REGS-N 0 ?do C-FPR i limit MB-EXPIRE1 loop ;
 
-: MB-FREE-N ( -- n )
+\ How many registers of ONE file are free here. It is per file because a class
+\ that wants a floating register is not served by a free general one, so the two
+\ counts are two facts and the pressure test below asks both.
+: MB-FREE-N ( n -- n )
+   {: cls:n :}
    0
    REGS-N 0 ?do
-      i POOL-HAS? i HOLD-AT NOBODY = and if 1+ then
+      cls i POOL-HAS? cls i HOLD-AT NOBODY = and if 1+ then
    loop ;
 
 \ Does a class already in the frame need a register at this position? Two ways it
@@ -1642,27 +1705,36 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    p  r cells CL-DEF + @  >=   p  r cells CL-ANCH + @  <  and if true exit then
    f r p MB-READS? ;
 
-: MB-TRANS-N ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id p:n :}
+: MB-TRANS-N ( IR-ID:ir-fun-id n n -- n )
+   {: f:IR-ID:ir-fun-id p:n cls:n :}
    0
    N-VALS @ 0 ?do
-      i UF-FIND i =  i cells CL-SLOT + @ NOSLOT <>  and if
+      i UF-FIND i =  i CLS-AT cls =  and
+      i cells CL-SLOT + @ NOSLOT <>  and if
          f i p MB-BUSY? if 1+ then
       then
    loop ;
 
-: MB-SHORT! ( n -- )
-   {: p:n :}
-   SHORT-AT @ 0 < if p SHORT-AT ! then ;
+\ Where the pool ran short, and in WHICH file. The file is recorded beside the
+\ position because the class that has to go in the frame has to be one of that
+\ file: putting a double away frees a floating register and does nothing at all
+\ for a routine that ran out of general ones.
+: MB-SHORT! ( n n -- )
+   {: p:n cls:n :}
+   SHORT-AT @ 0 < if p SHORT-AT !  cls SHORT-CLS ! then ;
 
 : MB-PLACE1 ( n n -- )
    {: r:n pos:n :}
    r cells CL-LO + @ pos <> if exit then
    r CLS-AT C-TOKEN = if exit then
    r cells CL-SLOT + @ NOSLOT <> if exit then
-   FREE-REG {: g:n :}
-   g 0 < if pos MB-SHORT! exit then
+   r CLS-AT FREE-REG {: g:n :}
+   g 0 < if pos r CLS-AT MB-SHORT! exit then
    r g TAKE ;
+
+: MB-PRESSURE ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id pos:n cls:n :}
+   f pos cls MB-TRANS-N  cls MB-FREE-N > if pos cls MB-SHORT! then ;
 
 : MB-STEP ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
@@ -1671,12 +1743,16 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
       i UF-FIND i = if i pos MB-PLACE1 then
    loop
    SHORT-AT @ 0 >= if exit then
-   f pos MB-TRANS-N  MB-FREE-N > if pos MB-SHORT! then ;
+   f pos C-GPR MB-PRESSURE
+   SHORT-AT @ 0 >= if exit then
+   f pos C-FPR MB-PRESSURE ;
 
 : MB-SCAN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
    -1 SHORT-AT !
-   REGS-N 0 ?do NOBODY i HOLD! loop
+   C-GPR SHORT-CLS !
+   REGS-N 0 ?do NOBODY C-GPR i HOLD! loop
+   REGS-N 0 ?do NOBODY C-FPR i HOLD! loop
    MB-AT @ 0 ?do
       SHORT-AT @ 0 < if f i MB-STEP then
    loop ;
@@ -1684,8 +1760,9 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 \ ---- taking a class out of the registers -------------------------------------
 : MB-HELD? ( n -- bool )
    {: r:n :}
+   r CLS-AT {: cls:n :}
    false
-   REGS-N 0 ?do i HOLD-AT r = if drop true leave then loop ;
+   REGS-N 0 ?do cls i HOLD-AT r = if drop true leave then loop ;
 
 \ A class the scan could take a register from here. It has to hold one, it has to
 \ be one this pass may put in the frame, and this position must not touch it: a
@@ -1700,21 +1777,21 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 \ How many classes hold a register here that this position does not touch. A
 \ position with none of them is the one register pressure no spill can serve:
 \ every register holds something the operation itself needs.
-: MB-SPARE-N ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id p:n :}
+: MB-SPARE-N ( IR-ID:ir-fun-id n n -- n )
+   {: f:IR-ID:ir-fun-id p:n cls:n :}
    0
    REGS-N 0 ?do
-      i HOLD-AT {: r:n :}
+      cls i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-TOUCHES? 0= if 1+ then
       then
    loop ;
 
-: MB-FURTHEST ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id p:n :}
+: MB-FURTHEST ( IR-ID:ir-fun-id n n -- n )
+   {: f:IR-ID:ir-fun-id p:n cls:n :}
    -1
    REGS-N 0 ?do
-      i HOLD-AT {: r:n :}
+      cls i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-CANDIDATE? if
             f r p 1+ MB-NEXT-USE {: c:n :}
@@ -1728,16 +1805,16 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 \ the same way and a fixture can assert which value went into the frame. When
 \ nothing can be taken the refusal says which of the two walls was hit - every
 \ register needed by this one operation, or nothing here that may go in a frame.
-: MB-VICTIM ( IR-ID:ir-fun-id n -- n )
-   {: f:IR-ID:ir-fun-id p:n :}
-   f p MB-FURTHEST {: want:n :}
+: MB-VICTIM ( IR-ID:ir-fun-id n n -- n )
+   {: f:IR-ID:ir-fun-id p:n cls:n :}
+   f p cls MB-FURTHEST {: want:n :}
    want 0 < if
-      f p MB-SPARE-N 0= if E-A64RA-POOL throw then
+      f p cls MB-SPARE-N 0= if E-A64RA-POOL throw then
       E-A64RA-SPILL throw
    then
    -1
    REGS-N 0 ?do
-      i HOLD-AT {: r:n :}
+      cls i HOLD-AT {: r:n :}
       r NOBODY <> if
          f r p MB-CANDIDATE? if
             f r p 1+ MB-NEXT-USE want = if drop r leave then
@@ -1746,9 +1823,9 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    loop
    dup 0 < if E-A64RA-SPILL throw then ;
 
-: MB-EVICT ( IR-ID:ir-fun-id n -- )
-   {: f:IR-ID:ir-fun-id p:n :}
-   f p MB-VICTIM {: r:n :}
+: MB-EVICT ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id p:n cls:n :}
+   f p cls MB-VICTIM {: r:n :}
    NEW-SLOT r cells CL-SLOT + !
    f r MB-DEF-POS {: d:n :}
    d r cells CL-DEF + !
@@ -1764,7 +1841,7 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    begin
       f MB-SCAN
       SHORT-AT @ 0 <
-      dup 0= if drop f SHORT-AT @ MB-EVICT false then
+      dup 0= if drop f SHORT-AT @ SHORT-CLS @ MB-EVICT false then
    until ;
 
 \ Every value takes the register its class was given, or the slot its class was
@@ -1983,6 +2060,7 @@ public
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b A64IR:GPR-TYPE 0 BND-TYP !
+   c b A64IR:FPR-TYPE 0 BND-FPR !
    c b A64IR:MEM-TYPE 0 BND-MEM !
    c b A64IR:KEY-SLOT 0 BND-SLOT !
    c b A64IR:KEY-DSLOT  DK-SLOT BND-DKEY !
@@ -2028,14 +2106,15 @@ public
 \ routine that may destroy nothing allocates nothing; the walk seals a claim per
 \ value, which src/compiler/native/regalloc-verify.f then has to accept before
 \ anything may act on it.
-: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq A64EFF:traits n -- )
-   {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs
+: WALK ( IR-CTX:ctx IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq A64EFF:traits n -- )
+   {: c:IR-CTX:ctx m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
       args:A64EFF:placeseq outs:A64EFF:placeseq traits:A64EFF:traits frame:n :}
    BND-TAKE
    ST-EMPTY ST !
    m BND-MODULE-CK
    c TARGET-CK
    pool 0 S-POOL !
+   fpool 0 S-FPOOL !
    frame FRAME-N !
    traits A64FRAME:SPILL-BASE BASE-N !
    m VIEWS!
@@ -2063,7 +2142,9 @@ public
       t:A64EFF:traits size:n delta:n :}
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
-   pool gi gr t size WALK
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
+   pool fpool gi gr t size WALK
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE SLOTS-CK
    GEN-N @ 1+ GEN-N !
    ST-SEALED ST ! ;
@@ -2086,6 +2167,12 @@ public
 
 : POOL ( -- A64EFF:gprs )
    SEAL-CK 0 S-POOL @ ;
+
+\ The other file's pool, answered separately for the same reason it is held
+\ separately: the validator compares each one against the contract field it came
+\ from, and one answer covering both could not.
+: FPOOL ( -- A64EFF:fprs )
+   SEAL-CK 0 S-FPOOL @ ;
 
 \ The frame this walk allocated under, and how much of it the spills used. The
 \ first is the contract's declaration and the second is what the program proved

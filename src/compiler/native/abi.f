@@ -20,6 +20,19 @@
 \ of them to the allocator cannot be built at all - the refusal is A64EFF's and
 \ this file adds no check of its own.
 \
+\ AND THE FLOATING FILE IS ENTIRELY SCRATCH, WHICH IS A FACT ABOUT THE ENGINE
+\ RATHER THAN A CONVENIENCE. Every float primitive the engine publishes is
+\ self-contained: it pops its arguments off the data stack as cells, moves them
+\ into d0 and d1, computes, moves the answer back into a general register and
+\ pushes it (src/habu/habu1.f, BF+ through BF>S, and the decimal printer, which
+\ uses d0 to d3 the same way). So nothing of the engine's lives in a floating
+\ register across the branch that enters a word, and a word that destroys all
+\ thirty-two destroys nothing anybody was keeping. That is why the pool is
+\ declared here as the whole file rather than as a budget the caller states: the
+\ general pool is a budget because the engine really does keep state in general
+\ registers, and the floating pool is not because it does not. A64EFF's own
+\ FPR-MASK already says no member of that file is reserved.
+\
 \ TWO CONTRACTS, AND THE DIFFERENCE IS ONE CAPABILITY. A leaf declares that it
 \ preserves the link register and gets that for free. A routine that CALLS has to
 \ make it true, so it declares the direct-call trait and a frame of one slot for
@@ -84,7 +97,7 @@ public
    {: base:n n:n in:n out:n spills:n :}
    in SLOT-SEQ  out SLOT-SEQ
    base n POOL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:TRAITS-NONE
    A64EFF:TRAITS-NONE spills FRAME-FOR
@@ -103,7 +116,7 @@ public
    {: base:n n:n in:n out:n spills:n :}
    in SLOT-SEQ  out SLOT-SEQ
    base n POOL
-   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-NONE
+   A64EFF:FPR-NONE A64EFF:FPR-NONE A64EFF:FPR-ALL
    A64EFF-NZCV:UNTOUCHED A64EFF-LINK:PRESERVED A64EFF-CONTROL:RETURNS
    A64EFF:T-CALL
    A64EFF:T-CALL spills FRAME-FOR

@@ -110,9 +110,15 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ The two value classes this dialect has.
+\ The three value classes this dialect has, spelled exactly as the allocator
+\ spells them: a general register, a floating register, and the memory token the
+\ frame forms thread. The two register classes are two FILES, and a register
+\ number names a register of one of them - d0 and x0 are two registers and both
+\ are number zero - so every question below about a register is asked of the file
+\ its value belongs to.
 0 constant C-GPR
 1 constant C-TOKEN
+2 constant C-FPR
 
 \ This operation names no slot.
 -1 constant NOSLOT
@@ -138,6 +144,7 @@ variable NB-N                        \ blocks in the function being checked
 
 1 TYPED-BUFFER BND-MOD IR-ID:ir-module-id
 1 TYPED-BUFFER BND-GPR IR-ID:ir-type-id
+1 TYPED-BUFFER BND-FPR IR-ID:ir-type-id
 1 TYPED-BUFFER BND-MEM IR-ID:ir-type-id
 1 TYPED-BUFFER BND-SLOT IR-ID:ir-symbol-id
 1 TYPED-BUFFER BND-FRAME IR-ID:ir-symbol-id
@@ -313,22 +320,34 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       i LAST-AT i A64RA:LAST@ <> if E-A64RAV-INTERVAL throw then
    loop ;
 
-\ Two register classes: every value of this dialect is a general register or the
-\ memory token the frame forms thread, and the class is decided by the type the
-\ module gives the value against the two the dialect answered. A value of any
-\ third type has been given a register that cannot hold it.
+\ Three register classes: every value of this dialect is a general register, a
+\ floating register, or the memory token the frame forms thread, and the class is
+\ decided by the type the module gives the value against the three the dialect
+\ answered. A value of any fourth type has been given a register that cannot hold
+\ it. The class is RE-DERIVED here, from the module rather than from the
+\ allocator's tables, which is what makes an allocation that gave a double a
+\ general register a refusal rather than an agreement.
 : CLASS-CK ( -- )
    N-VALS @ 0 ?do
       MKEY i IR-ID:PACK-VALUE VALUE-TYPE-AT
       {: t:IR-ID:ir-type-id :}
       t 0 BND-GPR @ SAME-TYPE? if C-GPR i CLS! then
+      t 0 BND-FPR @ SAME-TYPE? if C-FPR i CLS! then
       t 0 BND-MEM @ SAME-TYPE? if C-TOKEN i CLS! then
-      t 0 BND-GPR @ SAME-TYPE? t 0 BND-MEM @ SAME-TYPE? or
+      t 0 BND-GPR @ SAME-TYPE?  t 0 BND-FPR @ SAME-TYPE? or
+      t 0 BND-MEM @ SAME-TYPE? or
       0= if E-A64RAV-CLASS throw then
    loop ;
 
 : GPR? ( n -- bool )
    CLS-AT C-GPR = ;
+
+: FPR? ( n -- bool )
+   CLS-AT C-FPR = ;
+
+\ Does this value live in a register at all - in either file?
+: REGGED? ( n -- bool )
+   dup GPR? swap FPR? or ;
 
 \ ---- the memory order --------------------------------------------------------
 \ Every memory order this module mints is passed on exactly once ON EVERY PATH
@@ -512,13 +531,15 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 \ reaches it.
 : REGISTER-CK ( -- )
    A64RA:POOL A64EFF:GPRS-N {: pool:n :}
+   A64RA:FPOOL A64EFF:FPRS-N {: fpool:n :}
    N-VALS @ 0 ?do
       i A64RA:CLAIM@ {: r:n :}
-      i GPR? 0= if
+      i REGGED? 0= if
          r 0 >= r A64EFF:FILE-SIZE < and if E-A64RAV-CLASS throw then
       else
          r 0 < r A64EFF:FILE-SIZE >= or if E-A64RAV-REGISTER throw then
-         pool 1 r lshift and 0= if E-A64RAV-REGISTER throw then
+         i FPR? if fpool else pool then
+         1 r lshift and 0= if E-A64RAV-REGISTER throw then
       then
    loop ;
 
@@ -550,7 +571,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    N-VALS @ {: n:n :}
    n 0 ?do
       n i 1+ ?do
-         j GPR? i GPR? and  j i CLASH? and if
+         j CLS-AT i CLS-AT =  j REGGED? and  j i CLASH? and if
             j A64RA:CLAIM@ i A64RA:CLAIM@ = if E-A64RAV-OVERLAP throw then
          then
       loop
@@ -1404,12 +1425,16 @@ create V-TMP SETC cells allot
    IR-BUILD:FMODULE A64RA:MODULE@ IR-ID:MODULE-SAME?
    0= if E-A64RAV-MODULE throw then ;
 
-\ The allocation depends on one fact of the contract: which general registers the
-\ routine may write, which is what it destroys together with what it returns a
-\ value in. A contract that names a different set is a different allocation
-\ problem, and this one is not an answer to it.
-: CONTRACT-CK ( A64EFF:gprs -- )
-   A64RA:POOL A64EFF-GPRS:EQ 0= if E-A64RAV-CONTRACT throw then ;
+\ The allocation depends on two facts of the contract: which registers of each
+\ file the routine may write, which in both cases is what it destroys together
+\ with what it returns a value in. A contract that names a different set is a
+\ different allocation problem, and this one is not an answer to it. Both are
+\ checked, because an allocation made against one pool and accepted against
+\ another would hand out registers the routine promised to keep.
+: CONTRACT-CK ( A64EFF:gprs A64EFF:fprs -- )
+   {: pool:A64EFF:gprs fpool:A64EFF:fprs :}
+   pool A64RA:POOL A64EFF-GPRS:EQ 0= if E-A64RAV-CONTRACT throw then
+   fpool A64RA:FPOOL A64EFF-FPRS:EQ 0= if E-A64RAV-CONTRACT throw then ;
 
 \ An accepted answer is about one sealed walk. A later walk raises the
 \ allocator's generation, so the acceptance stops answering rather than answering
@@ -1441,15 +1466,15 @@ create V-TMP SETC cells allot
    c b IR-BUILD:SCHEMA-MAJOR@ A64IR:MAJOR <> if E-A64RAV-MODULE throw then
    c b IR-BUILD:SCHEMA-MINOR@ A64IR:MINOR <> if E-A64RAV-MODULE throw then ;
 
-: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:placeseq A64EFF:placeseq n -- IR-ID:ir-fun-id )
-   {: m:IR-BUILD:module pool:A64EFF:gprs
+: WALK ( IR-BUILD:module A64EFF:gprs A64EFF:fprs A64EFF:placeseq A64EFF:placeseq n -- IR-ID:ir-fun-id )
+   {: m:IR-BUILD:module pool:A64EFF:gprs fpool:A64EFF:fprs
       args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    ST-NONE ST !
    BND-TAKE
    m BND-MODULE-CK
    STATE-CK
    m MODULE-CK
-   pool CONTRACT-CK
+   pool fpool CONTRACT-CK
    m VIEWS!
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f RET-ORD {: rb:n :}
@@ -1489,6 +1514,7 @@ public
    c b DIALECT-CK
    b IR-BUILD:MODULE@ 0 BND-MOD !
    c b A64IR:GPR-TYPE  0 BND-GPR !
+   c b A64IR:FPR-TYPE  0 BND-FPR !
    c b A64IR:MEM-TYPE  0 BND-MEM !
    c b A64IR:KEY-SLOT   0 BND-SLOT !
    c b A64IR:KEY-FRAME  0 BND-FRAME !
@@ -1508,9 +1534,11 @@ public
       t:A64EFF:traits size:n delta:n :}
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    A64EFF:GPR-WRITABLE {: pool:A64EFF:gprs :}
+   gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
+   A64EFF:FPR-WRITABLE {: fpool:A64EFF:fprs :}
    t A64EFF:T-CALL A64EFF:TRAITS-HAS? if 1 else 0 then V-CALLS !
    t A64FRAME:SPILL-BASE V-BASE !
-   pool gi gr size WALK {: f:IR-ID:ir-fun-id :}
+   pool fpool gi gr size WALK {: f:IR-ID:ir-fun-id :}
    f
    gi gr gc fi fr fc z l ct t size delta A64EFF-ROUTINE:MAKE
    SLOT-CK
@@ -1528,7 +1556,7 @@ public
 : REG@ ( n -- n )
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
-   dup GPR? 0= if E-A64RAV-CLASS throw then
+   dup REGGED? 0= if E-A64RAV-CLASS throw then
    A64RA:CLAIM@ ;
 
 \ Is this value one that lives in a register at all? The emitter asks before it
@@ -1537,7 +1565,7 @@ public
 : REGISTERED? ( n -- bool )
    FRESH-CK
    dup 0 < over N-VALS @ >= or if E-A64RAV-COVER throw then
-   GPR? ;
+   REGGED? ;
 
 private
 get-current prot-wid-add
