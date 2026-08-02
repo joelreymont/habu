@@ -9934,18 +9934,10 @@ TYPES-DEFAULTS
    leaked POP-ORDINARY
    RESTORE-TOP ;
 
-\ RELEASE runs last, after every other participant has already published, so it
-\ must not be able to reject.  It therefore drops its own frame instead of going
-\ through the ordinary CHECKER-SCOPE-FINALIZE, whose one rejecting condition is a
-\ product-field transaction depth that no longer matches the frame.  Today that
-\ mismatch is impossible to reach from a declaration body: the only way to shift
-\ the field depth across this point is to leave a declaration-event frame open,
-\ and src/core/decl-event.f rejects exactly that at the participant's PREPARE
-\ (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE), with the depths restored.  Keep the
-\ delegation anyway — this private word is reachable only through the sealed
-\ declaration participant after PREPARE and every COMMIT have succeeded.  It
-\ invokes the installed type-frame release and drops the one prepared checker
-\ frame; no public caller can drive either operation independently.
+\ RELEASE is private and reachable through the sealed declaration participant.
+\ The participant calls it only after PREPARE and all COMMIT callbacks succeed.
+\ It invokes the installed type-frame release and drops the one prepared checker
+\ frame.  No public caller can drive either operation independently.
 : RELEASE ( -- )
    TYPES-RELEASE-XT
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;
