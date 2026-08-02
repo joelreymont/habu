@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-48 constant OPCODES-N
+45 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -263,9 +263,6 @@ private
 42 constant O-FCVTZS
 43 constant O-FMOVXD
 44 constant O-FMOVDX
-45 constant O-FMOVDD
-46 constant O-FSTR
-47 constant O-FLDR
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -401,9 +398,6 @@ create B-START BMAX cells allot
       fcvtzs   OF O-FCVTZS   ENDOF
       fmovxd   OF O-FMOVXD   ENDOF
       fmovdx   OF O-FMOVDX   ENDOF
-      fmovdd   OF O-FMOVDD   ENDOF
-      fstr     OF O-FSTR     ENDOF
-      fldr     OF O-FLDR     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -453,9 +447,6 @@ create B-START BMAX cells allot
       O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
       O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
       O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
-      O-FMOVDD   of A64IR-OPCODE:FMOVDD   endof
-      O-FSTR     of A64IR-OPCODE:FSTR     endof
-      O-FLDR     of A64IR-OPCODE:FLDR     endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -590,29 +581,12 @@ create B-START BMAX cells allot
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-LDR ;
 
-\ The same two frame accesses for a value of the floating file. A slot is eight
-\ bytes whichever file its value belongs to, so the base, the offset and the
-\ layout are the general forms' - what differs is the register field, and it
-\ differs in the instruction, which is exactly why these are two more forms and
-\ not an attribute on the two above.
-: WORD-FSTR ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id 0 OPERAND-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-FSTR ;
-
-: WORD-FLDR ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  A64EFF:SP-GPR  id SLOT-OFF  ENC-FLDR ;
-
 \ The floating forms. Every one of them is a register-to-register instruction of
 \ the shape its schema declares, so they read their operands and their result the
 \ way every other form here does and end in the assembler's own encoder. The two
 \ conversions and the two crossings name registers of two different files in the
 \ two fields, which the encoders know: ENC-SCVTF and ENC-FMOVXD take a D
 \ destination and an X source, ENC-FCVTZS and ENC-FMOVDX the other way round.
-: WORD-FMOVDD ( IR-ID:ir-op-id -- n )
-   {: id:IR-ID:ir-op-id :}
-   id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FMOVDD ;
-
 : WORD-FNEG ( IR-ID:ir-op-id -- n )
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG  id 0 OPERAND-REG  ENC-FNEG ;
@@ -1126,9 +1100,6 @@ create B-START BMAX cells allot
       fcvtzs   OF id  id WORD-FCVTZS  APPEND ENDOF
       fmovxd   OF id  id WORD-FMOVXD  APPEND ENDOF
       fmovdx   OF id  id WORD-FMOVDX  APPEND ENDOF
-      fmovdd   OF id  id WORD-FMOVDD  APPEND ENDOF
-      fstr     OF id  id WORD-FSTR    APPEND ENDOF
-      fldr     OF id  id WORD-FLDR    APPEND ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -1308,9 +1279,6 @@ public
    c b A64IR-OPCODE:FCVTZS   BIND1
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
-   c b A64IR-OPCODE:FMOVDD   BIND1
-   c b A64IR-OPCODE:FSTR     BIND1
-   c b A64IR-OPCODE:FLDR     BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !

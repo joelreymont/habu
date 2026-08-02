@@ -127,7 +127,7 @@ private
 \ One slot per member of the machine operation family, so the family stays
 \ exhaustive: a member added to A64IR:opcode makes this fail to compile until it
 \ has a slot and a rule for rebuilding it.
-48 constant OPCODES-N
+45 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -173,9 +173,6 @@ private
 42 constant O-FCVTZS
 43 constant O-FMOVXD
 44 constant O-FMOVDX
-45 constant O-FMOVDD
-46 constant O-FSTR
-47 constant O-FLDR
 
 \ One slot per attribute key the dialect declares.
 9 constant KEYS-N
@@ -281,9 +278,6 @@ create NAMEBUF NAME-CAP allot
       fcvtzs   OF O-FCVTZS   ENDOF
       fmovxd   OF O-FMOVXD   ENDOF
       fmovdx   OF O-FMOVDX   ENDOF
-      fmovdd   OF O-FMOVDD   ENDOF
-      fstr     OF O-FSTR     ENDOF
-      fldr     OF O-FLDR     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -333,9 +327,6 @@ create NAMEBUF NAME-CAP allot
       O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
       O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
       O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
-      O-FMOVDD   of A64IR-OPCODE:FMOVDD   endof
-      O-FSTR     of A64IR-OPCODE:FSTR     endof
-      O-FLDR     of A64IR-OPCODE:FLDR     endof
       E-A64SPILL-OPCODE throw
    endcase ;
 
@@ -467,6 +458,18 @@ create NAMEBUF NAME-CAP allot
    {: k:n :}
    MKEY k IR-ID:PACK-VALUE FPR-VALUE? ;
 
+\ A double the allocator decided to put away. This pass cannot lower one: the
+\ machine dialect has no STR, LDR or register move for the D file, because
+\ nothing in the subset it serves reaches them - a routine's contract hands out
+\ the whole floating file, so a double can only run short of registers in a body
+\ that holds more than the file has. Refusing it by name is what keeps a double
+\ from being put away by the GENERAL store and brought back in a general
+\ register, which is the same eight bytes read by the wrong instruction. The
+\ forms and this refusal go together, and dot habu-carry-a-double-570d2f5c is
+\ where they land.
+: FPR-CK ( n -- )
+   FPR-SLOT? if E-A64SPILL-SHAPE throw then ;
+
 \ ---- staging one operation in the new module ---------------------------------
 : OPEN ( IR-ID:ir-op-id A64IR:opcode -- )
    {: id:IR-ID:ir-op-id o:A64IR:opcode :}
@@ -479,8 +482,6 @@ create NAMEBUF NAME-CAP allot
 : GPR-RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-RESULT ;
 
-: FPR-RESULT+ ( -- )
-   CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-RESULT ;
 
 : MEM-RESULT+ ( -- )
    CTX BLD  CTX BLD A64IR:MEM-TYPE  IR-BUILD:ADD-RESULT ;
@@ -550,7 +551,8 @@ create NAMEBUF NAME-CAP allot
 \ as a register value; everything after this reads it out of the slot.
 : EMIT-STORE ( IR-ID:ir-op-id n -- )
    {: at:IR-ID:ir-op-id k:n :}
-   at  k FPR-SLOT? if A64IR-OPCODE:FSTR else A64IR-OPCODE:STORE then  OPEN
+   k FPR-CK
+   at A64IR-OPCODE:STORE OPEN
    MKEY k IR-ID:PACK-VALUE VOF OPERAND+
    TOK OPERAND+
    MEM-RESULT+
@@ -562,9 +564,10 @@ create NAMEBUF NAME-CAP allot
 \ revive one - so the operation below it reads this value and not the old one.
 : EMIT-LOAD ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
-   at  k FPR-SLOT? if A64IR-OPCODE:FLDR else A64IR-OPCODE:LOAD then  OPEN
+   k FPR-CK
+   at A64IR-OPCODE:LOAD OPEN
    TOK OPERAND+
-   k FPR-SLOT? if FPR-RESULT+ else GPR-RESULT+ then
+   GPR-RESULT+
    MEM-RESULT+
    k A64RA:SLOT@ SLOT-ATTR+
    CLOSE {: id:IR-ID:ir-op-id :}
@@ -580,9 +583,10 @@ create NAMEBUF NAME-CAP allot
 \ declaration off the same contract.
 : EMIT-MOVE ( IR-ID:ir-op-id n n -- )
    {: at:IR-ID:ir-op-id k:n pos:n :}
-   at  k FPR-SLOT? if A64IR-OPCODE:FMOVDD else A64IR-OPCODE:MOV then  OPEN
+   k FPR-CK
+   at A64IR-OPCODE:MOV OPEN
    MKEY k IR-ID:PACK-VALUE pos READ-AS OPERAND+
-   k FPR-SLOT? if FPR-RESULT+ else GPR-RESULT+ then
+   GPR-RESULT+
    CLOSE {: id:IR-ID:ir-op-id :}
    k pos  id 0 RESULT@  RBIND ;
 
@@ -946,9 +950,6 @@ public
    c b A64IR-OPCODE:FCVTZS   BIND1
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
-   c b A64IR-OPCODE:FMOVDD   BIND1
-   c b A64IR-OPCODE:FSTR     BIND1
-   c b A64IR-OPCODE:FLDR     BIND1
    c b A64IR:KEY-IMM    K-IMM BND-KEY !
    c b A64IR:KEY-SHIFT  K-SHIFT BND-KEY !
    c b A64IR:KEY-SLOT   K-SLOT BND-KEY !

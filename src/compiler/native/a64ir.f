@@ -345,9 +345,6 @@ ENUM opcode DERIVE eq
    fcvtzs
    fmovxd
    fmovdx
-   fmovdd
-   fstr
-   fldr
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -678,9 +675,6 @@ public
       fcvtzs   OF s" a64.fcvtzs" ENDOF
       fmovxd   OF s" a64.fmovxd" ENDOF
       fmovdx   OF s" a64.fmovdx" ENDOF
-      fmovdd   OF s" a64.fmovdd" ENDOF
-      fstr     OF s" a64.fstr" ENDOF
-      fldr     OF s" a64.fldr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -874,9 +868,6 @@ private
       fcvtzs   OF s" a64.rule.fcvtzs" ENDOF
       fmovxd   OF s" a64.rule.fmovxd" ENDOF
       fmovdx   OF s" a64.rule.fmovdx" ENDOF
-      fmovdd   OF s" a64.rule.fmovdd" ENDOF
-      fstr     OF s" a64.rule.fstr" ENDOF
-      fldr     OF s" a64.rule.fldr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -927,9 +918,6 @@ private
       fcvtzs   OF s" a64.render.fcvtzs" ENDOF
       fmovxd   OF s" a64.render.fmovxd" ENDOF
       fmovdx   OF s" a64.render.fmovdx" ENDOF
-      fmovdd   OF s" a64.render.fmovdd" ENDOF
-      fstr     OF s" a64.render.fstr" ENDOF
-      fldr     OF s" a64.render.fldr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1528,44 +1516,22 @@ private
 \ wrong direction is a type error in the module rather than a wrong instruction
 \ nobody sees.
 
-\ The three moves, which compute nothing and only change which file the same
-\ eight bytes are in - or move them inside one file. FMOV Dd,Xn and FMOV Xd,Dn
-\ are the two crossings the source dialect's reinterpretations lower to, and they
-\ are the same instructions the engine's own float primitives use to get a
-\ data-stack cell into a floating register and back (src/habu/habu1.f, BF+).
-\ FMOV Dd,Dn is a copy inside the floating file, which is what a value put back
-\ needs.
+\ The two moves, which compute nothing and only change which file the same eight
+\ bytes are in. FMOV Dd,Xn and FMOV Xd,Dn are the two crossings the source
+\ dialect's reinterpretations lower to, and they are the same instructions the
+\ engine's own float primitives use to get a data-stack cell into a floating
+\ register and back (src/habu/habu1.f, BF+).
 
-\ And the two frame accesses for a floating value, which are the STR and LDR
-\ forms against a D register. A frame slot is eight bytes whichever file its
-\ value belongs to, so the slot layout is unchanged and only the register field
-\ differs - but it differs in the INSTRUCTION, so a double put away by the
-\ general store would come back through the wrong file.
-: DEF-FSTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:FSTR OPCODE IR-SCHEMA:BEGIN-OP
-   f IR-SCHEMA:ADD-OPERAND
-   k IR-SCHEMA:ADD-OPERAND
-   k IR-SCHEMA:ADD-RESULT
-   c b KEY-SLOT IR-SCHEMA:ADD-ATTR
-   IR--SCHEMA-EFFECT:WRITE FRAME-MEM
-   TOTAL
-   FP-TARGET
-   c b A64IR-OPCODE:FSTR NAMED
-   c b IR-BUILD:DEFINE-OP ;
-
-: DEF-FLDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
-   c b A64IR-OPCODE:FLDR OPCODE IR-SCHEMA:BEGIN-OP
-   k IR-SCHEMA:ADD-OPERAND
-   f IR-SCHEMA:ADD-RESULT
-   k IR-SCHEMA:ADD-RESULT
-   c b KEY-SLOT IR-SCHEMA:ADD-ATTR
-   IR--SCHEMA-EFFECT:READ FRAME-MEM
-   TOTAL
-   FP-TARGET
-   c b A64IR-OPCODE:FLDR NAMED
-   c b IR-BUILD:DEFINE-OP ;
+\ THERE IS NO FLOATING FRAME ACCESS AND NO FLOATING COPY HERE, AND THAT IS A
+\ SCOPE STATEMENT RATHER THAN AN OVERSIGHT. A double reaches a frame slot only
+\ when the allocator has to put one away, and a double is copied only across a
+\ block edge - and neither happens in the subset this dialect serves today: a
+\ routine's contract hands out the whole floating file, and a double may not
+\ cross an edge at all (src/compiler/native/elaborate.f). A form with no
+\ lowering that any program reaches is a promise and not a schema, so the STR,
+\ LDR and FMOV-register forms of the D file arrive with the leaf that reaches
+\ them - dot habu-carry-a-double-570d2f5c - and src/compiler/native/spill.f
+\ refuses a double it would have to put away, by name, until then.
 
 \ One floating binary form: two D operands, one D result.
 : DEF-FBINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
@@ -1676,13 +1642,10 @@ public
    c b f f A64IR-OPCODE:FNEG DEF-FCROSS
    c b f f A64IR-OPCODE:FABS DEF-FCROSS
    c b f f A64IR-OPCODE:FSQRT DEF-FCROSS
-   c b f f A64IR-OPCODE:FMOVDD DEF-FCROSS
    c b t f A64IR-OPCODE:SCVTF DEF-FCROSS
    c b f t A64IR-OPCODE:FCVTZS DEF-FCROSS
    c b t f A64IR-OPCODE:FMOVXD DEF-FCROSS
-   c b f t A64IR-OPCODE:FMOVDX DEF-FCROSS
-   c b f k DEF-FSTR
-   c b f k DEF-FLDR ;
+   c b f t A64IR-OPCODE:FMOVDX DEF-FCROSS ;
 
 private
 get-current prot-wid-add

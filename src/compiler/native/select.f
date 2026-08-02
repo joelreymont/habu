@@ -882,7 +882,7 @@ create NAMEBUF NAME-CAP allot
 \ doubles and a literal-pool load - one ADR and one LDR, plus a constant pool the
 \ emission does not have - for the rest. Adding either is a measurable change to
 \ make against the committed table rather than a guess, and dot
-\ habu-materialise-a-double-8a4c5f21 carries it. The pinned outputs are bit-exact
+\ habu-materialise-a-double-4cf2b9a3 carries it. The pinned outputs are bit-exact
 \ either way; what would move is the byte count and the cost.
 : EMIT-FCONST ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
@@ -1119,10 +1119,14 @@ create NAMEBUF NAME-CAP allot
 64 constant EDGE-MAX
 EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 
-\ The copy is made in the file the value belongs to. A double copied by the
-\ general move would be eight bytes taken out of a register that does not hold
-\ them, so which instruction copies a value is decided by the value and not by
-\ the edge.
+\ The copy is made with the general move, and a double may not reach it. A double
+\ copied by that instruction would be eight bytes taken out of a register that
+\ does not hold them, and the machine dialect has no register move for the D file
+\ yet because nothing reaches one: a double may not cross a block edge at all
+\ (src/compiler/native/elaborate.f refuses it by name), and an edge is the only
+\ place a copy is made. The refusal here is fail-closed and says so - the
+\ elaborator is what a real program meets - and it is what stops the two from
+\ getting out of step.
 \
 \ WHICH VALUE IS ASKED, AND WHY IT IS NOT THE ONE BEING COPIED. The value handed
 \ over here is a value of the NEW module - what the source operand selected to -
@@ -1132,13 +1136,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ belongs: the source dialect is what says whether a value is a double.
 : EMIT-COPY ( IR-ID:ir-op-id IR-ID:ir-value-id bool -- IR-ID:ir-value-id )
    {: at:IR-ID:ir-op-id v:IR-ID:ir-value-id real:bool :}
-   real if
-      at A64IR-OPCODE:FMOVDD OPEN
-      CTX BLD v IR-BUILD:ADD-OPERAND
-      FRESULT+
-      CLOSE-VALUE
-      ACC exit
-   then
+   real if E-A64SEL-SHAPE throw then
    at A64IR-OPCODE:MOV OPEN
    CTX BLD v IR-BUILD:ADD-OPERAND
    RESULT+
@@ -1501,10 +1499,7 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       dup TOK!  VBIND
       exit
    then
-   a REAL? if
-      a  CTX BLD  CTX BLD A64IR:FPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND
-      exit
-   then
+   a REAL? if E-A64SEL-SHAPE throw then
    a  CTX BLD  CTX BLD A64IR:GPR-TYPE  IR-BUILD:ADD-BLOCK-ARG  VBIND ;
 
 \ A block argument of the memory-order type is the ORDER arriving, and it is the

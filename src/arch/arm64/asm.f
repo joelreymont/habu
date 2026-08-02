@@ -402,13 +402,3 @@ variable LIE   variable LIONES
 
 : ENC-FCVTZS ( n n -- n ) DR2 XR2ND $9E780000 RR ;
 
-\ The double-width load and store, unsigned scaled offset. The two register
-\ operands belong to two different files - the transferred register is a D and
-\ the base address is an X - so neither XRDI nor DR3 states the bound: the
-\ transferred field takes the plain field bound and the base takes the reserved
-\ register refusal as well.
-: DRDI ( n n n -- n n n )  rot ?REG rot XREG? rot ;
-
-: ENC-FLDR ( n n n -- n ) DRDI 8 SCALE/ ?IMM12 $FD400000 RRI ;
-
-: ENC-FSTR ( n n n -- n ) DRDI 8 SCALE/ ?IMM12 $FD000000 RRI ;

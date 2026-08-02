@@ -596,8 +596,8 @@ public
 \ straight line only. Two shapes of well typed Habu are therefore refused by the
 \ chain, each with the elaborator's own E-NELAB-TYPE rather than as a wrong
 \ lowering discovered later: a double stored into a memory cell, and a double
-\ carried across a loop edge. Dots habu-store-a-double-6f2b90ae and
-\ habu-carry-a-double-3d6e7a1c carry them.
+\ carried across a loop edge. Dots habu-store-a-double-a31b313e and
+\ habu-carry-a-double-570d2f5c carry them.
 \
 \ THE THIRD SHAPE NEVER REACHES THE CHAIN, AND THAT IS THE RESULT. Handing a
 \ double to an operation that computes with cells - `1.0 f+ 1 +` - is refused by

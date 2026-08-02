@@ -393,7 +393,7 @@ variable OPJ                         \ general operands taken so far by the open
 \ to another through a position whose type is fixed before the value that will
 \ arrive there is known. Typing those positions from the values that really reach
 \ them is the control-flow and call leaf's work (dot
-\ habu-carry-a-double-3d6e7a1c); until it lands a double reaching one of them is
+\ habu-carry-a-double-570d2f5c); until it lands a double reaching one of them is
 \ refused by name rather than handed over as a cell, which would be the same
 \ eight bytes read by the wrong instruction at the other end.
 : NO-REAL-CK ( -- )
@@ -511,7 +511,7 @@ variable OPJ                         \ general operands taken so far by the open
 \   put a double back into a cell is the definition's outputs, and EMIT-RETURN
 \   crosses there by name; putting one into MEMORY is the same crossing at
 \   `hir.store` and belongs with the leaf that compiles a float body with memory
-\   in it (dot habu-store-a-double-6f2b90ae).
+\   in it (dot habu-store-a-double-a31b313e).
 \
 \ WHEN THE CHECKER'S OWN TYPES REACH A RECORDED UNIT (dot
 \ habu-bind-checker-env-ed4f9f87) the first half tightens too: an argument
