@@ -1,9 +1,11 @@
 ---
 title: Deduplicate filemap existence check
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-27T09:38:47.215580+02:00"
+closed-at: "2026-08-02T16:55:10.947184+02:00"
+close-reason: "Obsolete in exact ancestry: 85a9646fd6b97e5d2cbb86d637bcf8d8ab2aece8 deleted the sole filemap-lint subject."
 blocks:
   - habu-pkg-filemap-lint-5d7baf5c
 ---

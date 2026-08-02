@@ -47,11 +47,11 @@ letters/digits, non-BMP letters/numbers, every White_Space range, combining
 marks, punctuation, malformed bytes, and multilingual mixtures. Mutations to
 one chunk, token id, descriptor count, row order, production caller, compact
 merge, or full-table load fail. All old public fixture and matcher names reject.
-Files: focused split/parity/full-vocabulary tests, suite manifests, requires,
-and `FILEMAP.md`. Smallest owning-path check: one production corpus scan returns
+Files: focused split/parity/full-vocabulary tests, suite manifests, and requires.
+Smallest owning-path check: one production corpus scan returns
 zero, then a one-token mutation returns exactly one. Verify focused BPE,
 tokenizer, full-vocabulary, and owning Maki tests plus exact typed-local,
-package, host, file-map, and dot checks.
+package, host, and dot checks.
 
 Claim: unassigned. Rejected evidence remains at `7ba07d495513`,
 `ee013a7e`, and `6d62573c78e0`; do not recover those revisions wholesale.
