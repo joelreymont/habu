@@ -66,7 +66,7 @@
 \ the artifact-id dependency set, and the content digest) the envelope now binds every
 \ semantic identity the plan names EXCEPT the one still out of the checker's reach:
 \ capabilities-used[] (CAD-KIND:capability-id, a user-gated closed vocabulary - owner
-\ CAP, a product decision; its ascending tag stays reserved, see TAG-CAP-RESERVED).
+\ CAP, a product decision).
 \
 \ VALIDATE (§ 23.9 ARTIFACT:VALIDATE, the bare tail freed by the maki/artifact.f
 \ VALIDATE-ID rename) is the kind-AGNOSTIC leg: it checks owned bytes structurally
@@ -174,13 +174,6 @@ private
 11 constant TAG-DIGEST                 \ stored content digest (excluded from digest)
 12 constant TAG-EVENT                  \ created-event: CAD-KIND:audit-event-id (JOURNAL, excluded)
 12 constant TAG-KNOWN-MAX
-\ Tag reserved for the one digest-covered identity the checker cannot yet reach so a
-\ future landing keeps ascending order without renumbering: capabilities-used[]
-\ (CAD-KIND:capability-id, closed vocabulary, owner CAP - a user-gated product
-\ decision). It stays ABOVE TAG-KNOWN-MAX (an as-yet-unhandled reserved tag routes to
-\ the unknown-extension path, never a silent no-op in KNOWN-BODY); its digest-coverage
-\ placement is deferred to the CAP landing dot. Documented, not yet wired here.
-13 constant TAG-CAP-RESERVED          \ capabilities-used[] (reserved; not decoded here)
 1 constant FLAG-REQUIRED              \ flags bit 0: an unknown field flagged required rejects
 8 constant U64W                       \ fixed little-endian scalar width
 4 constant U32W                       \ fixed little-endian length width
@@ -467,7 +460,7 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
    s E-SREVS-FIELD ;
 
 \ ---- SHA-256 content digest over the semantic prefix --------------------------
-: HASH-SEMANTIC ( n -- )                       \ slot -> EBUF holds fields 1..11, DGBUF = 32 digest bytes
+: HASH-SEMANTIC ( n -- )                       \ slot -> EBUF holds fields 1..10, DGBUF = 32 digest bytes
    EMIT-SEMANTIC
    EBUF EO @ DGBUF SHA256 ;
 
@@ -485,7 +478,7 @@ create DEC-PREVSREV CKW allot                  \ previous source-rev content key
    TAG-DIGEST FLAG-REQUIRED E-HEAD
    DIGEST-BYTES U32W E-LE
    DGBUF DIGEST-BYTES E-BYTES
-   s E-EVENT-FIELD                             \ excluded audit-event-id (tag 13)
+   s E-EVENT-FIELD                             \ excluded audit-event-id (tag 12)
    s RLEN@ 0 > if                              \ retained opaque optionals (tags > TAG-KNOWN-MAX)
       ROPAQUE s ROFF@ +  s RLEN@  E-BYTES
    then ;

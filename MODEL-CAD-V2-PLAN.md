@@ -2027,7 +2027,7 @@ Every stored object is addressed by a digest over:
 
 ~~~text
 object kind
-schema version
+canonical schema identity
 canonical payload
 ordered child hashes
 producer/pass version when derived
@@ -2099,7 +2099,7 @@ objects and rejects incomplete manifests.
 
 Requirements:
 
-- explicit schema version;
+- canonical schema identity;
 - fixed endianness and widths;
 - length-delimited strings/vectors;
 - deterministic map/set ordering;
