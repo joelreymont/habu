@@ -1,11 +1,9 @@
 ---
 title: Primitive-effect axiom table + difftests
-status: closed
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-01T22:54:40.831796+02:00"
-closed-at: "2026-08-02T15:17:47.135105+02:00"
-close-reason: "Superseded by the a8c716c5 hard cut: primitive inventory/AXR metadata was deleted; real behavior remains covered by ordinary PRIM-PROP tests at test/prop-test-core.f:509-513."
 blocks:
   - habu-link-arm64-contracts-8cca6cc1
 ---
