@@ -1,9 +1,11 @@
 ---
 title: Delete model semantic enums
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T00:55:49.541809+02:00"
+closed-at: "2026-08-02T23:18:57.743850+02:00"
+close-reason: "Landed at 105d2355: deleted unused model semantic enums and MDLCFG derived semantic accessors; exact full Maki and native stdlib/PTX gates passed."
 blocks:
   - habu-match-gpt-2-ea837d37
   - habu-delete-unused-model-40bb32df

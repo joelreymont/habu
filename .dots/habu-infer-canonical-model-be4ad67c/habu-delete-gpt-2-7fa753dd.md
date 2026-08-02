@@ -1,9 +1,11 @@
 ---
 title: Delete GPT-2 format identity
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T00:55:49.657617+02:00"
+closed-at: "2026-08-02T23:18:57.737928+02:00"
+close-reason: "Landed at b7dad074 and 105d2355: deleted FORMAT-ID and routed digest authority to GPT2PIN; exact full Maki and native stdlib/PTX gates passed."
 blocks:
   - habu-pin-gpt-2-cdb5cfe0
 ---
