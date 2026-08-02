@@ -3333,7 +3333,7 @@ Every stored value uses a canonical envelope:
 
 ~~~text
 Artifact<Kind> = {
-  schema-id, schema-version, kind,
+  schema-id, kind,
   content-digest, canonical-payload,
   producer-id, producer-version,
   source-revisions[], dependencies[],
@@ -3345,7 +3345,7 @@ Artifact<Kind> = {
 The digest covers every semantic field and dependency version. Provenance and
 evidence are first-class linked artifacts, never comments attached to a mutable
 row. Decoders reject non-canonical representations, unknown required fields,
-kind/schema disagreement, digest mismatch, and unsupported migrations.
+kind disagreement, unresolved schema identity, and digest mismatch.
 
 The rest of this subsection is the FROZEN package/type/wire contract for that
 envelope (dot `habu-freeze-canonical-artifact-3b6b7087`). It fixes identities,
@@ -3445,8 +3445,8 @@ diagnostic. Consumers updated with the rename: maki/artifact-test.f.
 
 - Fixed little-endian widths for every scalar; no host-endianness or
   variable-width scalar encoding.
-- Versioned, length-delimited fields: each field carries its tag and byte
-  length; the envelope carries `schema-id` + `schema-version`.
+- Length-delimited fields: each field carries its tag and byte length; the
+  envelope carries the canonical `schema-id` identity directly.
 - Ascending field tags; a decoder that sees a non-ascending or repeated tag
   rejects (canonical order is total, duplicates are `duplicate`).
 - Unknown REQUIRED field: reject (`unknown-required`). Unknown OPTIONAL field:
@@ -3455,10 +3455,6 @@ diagnostic. Consumers updated with the rename: maki/artifact-test.f.
 - Dependency and capability SETS are canonically ordered (ascending by their
   nominal identity) and duplicate-free; unordered or duplicated sets are
   `noncanonical`.
-- Version handling is EXACT match or a registered deterministic migration from
-  the stored `schema-version` to the reader's; any other version is
-  `unsupported-migration`. A migration is a pure registered function, never
-  ad-hoc reinterpretation.
 - Every length and count is bounds-checked before use (`bounds`); truncated or
   over-long input is `malformed`.
 
@@ -3484,8 +3480,7 @@ Decode/validate outcomes are explicit typed `diag-set` variants, never silent:
 | `bounds` | a length or count outside its declared/representable range |
 | `duplicate` | a repeated field tag or set element |
 | `unknown-required` | an unknown field flagged REQUIRED |
-| `kind/schema mismatch` | `kind`/`schema-id`/`schema-version` disagree with the decoded shape |
-| `unsupported-migration` | stored version has no registered deterministic migration to the reader's |
+| `kind-mismatch` | `kind` disagrees with the decoder's requested artifact kind |
 | `digest-mismatch` | recomputed `content-digest` differs from the stored digest |
 
 Malformed, noncanonical, and digest-mismatch are thus explicit typed results of
@@ -3589,8 +3584,8 @@ envelope work inherits them:
   SINGLE-CELL payload (an index or arity-0 handle — a multi-cell PRODUCT can be
   neither a sum payload nor a typed local) and whose error members are baked-in
   nullary variants. The landed `art-result` (malformed / noncanonical / bounds /
-  duplicate / unknown-required / kind-mismatch / unsupported-migration /
-  digest-mismatch) is exactly this, and each family's `WIRE>ID` result uses the
+  duplicate / unknown-required / kind-mismatch / digest-mismatch) is exactly
+  this, and each family's `WIRE>ID` result uses the
   same idiom. The `result<...,diag-set>` in "Conceptual checked signatures"
   therefore DENOTES this per-package sum family; it is not the polymorphic
   lib/adt/result.f type.

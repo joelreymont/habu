@@ -1,10 +1,10 @@
 \ maki/db/keywire-xproc-env-child.f - the FRESH-PROCESS decode side of the cross-process
 \ ENVELOPE + TRANSACTION identity test (dot habu-wire-content-key-e5efaa74, § 23.9;
 \ the "encode in one process image, decode in a fresh one" requirement applied to the
-\ composite v2 codecs, not just the per-family KEY>WIRE surfaces).
+\ composite codecs, not just the per-family KEY>WIRE surfaces).
 \
 \ CONCERN: the decode-in-a-fresh-process half of the DECISIVE composite proof. The parent
-\ (maki/db/keywire-xproc-env-test.f) BUILDs a v2 artifact envelope (self artifact-id +
+\ (maki/db/keywire-xproc-env-test.f) BUILDs an artifact envelope (self artifact-id +
 \ dependency set + the four 32-byte foreign ids + a source-revision + the 8-byte event) and
 \ a transaction (base revision + write/read/dep), ENCODEs both to a fixed-layout file, and
 \ spawns a FRESH bin/hb that loads THIS file and calls RESOLVE-ENV on it. Package KWXPC-ENV.
@@ -13,7 +13,7 @@
 \ process DECODEs correctly in a fresh process even though the fresh process assigns
 \ DIFFERENT registry raw indices. SHIFT registers decoys FIRST so every real content-key id
 \ (schema/producer/config/rev/artifact) gets a raw that does NOT match the parent's; were
-\ the wire form the pre-migration process-local raw, DECODE would resolve the wrong id or go
+\ the wire form a process-local raw, DECODE would resolve the wrong id or go
 \ out of range and fail. With the 32-byte content key every field resolves BY CONTENT, so
 \ envelope identity (and the transaction Merkle base) survives process death.
 \
@@ -118,7 +118,6 @@ variable OKF
       duplicate OF false ENDOF
       unknown-required OF false ENDOF
       kind-mismatch OF false ENDOF
-      unsupported-migration OF false ENDOF
       digest-mismatch OF false ENDOF
    ;MATCH ;
 

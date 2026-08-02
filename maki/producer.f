@@ -16,9 +16,8 @@
 \ machine-facing component identifier - and NOTHING else. Grounding:
 \   1. The envelope splits producer-id from producer-version (§ 23.9 Canonical typed
 \      artifacts: `producer-id, producer-version`; § 9.1 "producer/pass version when
-\      derived"), exactly as schema-id splits from schema-version. The identity is
-\      therefore VERSION-INDEPENDENT: the version is a separate digest-covered field,
-\      never folded into the id.
+\      derived"). The identity is therefore VERSION-INDEPENDENT: the version is a
+\      separate digest-covered field, never folded into the id.
 \   2. A producer is a "producing component" / callable action in the machine-facing
 \      registry (§ 23.9); the replaceable agents and passes (search, rewrite, repair,
 \      ranking) operate through the kernel. What DISTINGUISHES two producers is the
