@@ -2,28 +2,34 @@
 \ comparison. One concern: what the new chain can make of the float corpus, and
 \ what it is waiting for where it cannot.
 \
-\ TEN GAPS AND NOTHING COMPILED, AND THAT IS THE RESULT THIS LEAF WAS ASKED FOR.
-\ The float corpus is measured and committed BEFORE the chain has a single float
-\ capability, so that the day it gains one there is a table to read the advance
-\ against that nobody chose afterwards. Every one of the ten corpus words is
-\ therefore declared a gap here, naming `floats` and everything else it also
-\ needs. The account in tools/codegen-compare-gap.f refuses a pass in which some
-\ corpus word is neither compiled nor declared, so "ten declared and none
-\ compiled" is a statement about all ten rather than a harness that stopped
-\ looking.
+\ TWO COMPILED AND EIGHT STILL GAPS, WHICH IS WHAT THE SCALAR FLOAT LEAF WAS
+\ ASKED FOR. The float corpus was measured and committed BEFORE the chain had a
+\ single float capability, so that the day it gained one there was a table to
+\ read the advance against that nobody chose afterwards. That day is this one:
+\ SGD and SEG-1/SQRT are straight-line float arithmetic over a locals frame -
+\ the first is one multiply and one subtract, the second is a conversion, a
+\ square root and a division - and both now compile through the production
+\ entry. The other eight need a loop, a branch, a call or a memory access as
+\ well as floats, and each declares every one of them below.
 \
-\ WHAT `floats` MEANS, MEASURED RATHER THAN ASSUMED. Handing a float body to the
-\ migration the way tools/codegen-compare-migrated2.f hands it an integer one
-\ fails in two different stages:
+\ WHAT `floats` MEANT, MEASURED RATHER THAN ASSUMED, AND WHAT IT MEANS NOW.
+\ Before the leaf, handing a float body to the migration the way
+\ tools/codegen-compare-migrated2.f hands it an integer one failed in two
+\ different stages:
 \
-\     : FADD-N ( r r -- r ) f+ ;      throws -8286  E-HIR-UNMODELED
-\     : FLIT-N ( r -- r ) 1.0 f+ ;    throws -8404  E-NFEED-KIND
+\     : FADD-N ( r r -- r ) f+ ;      threw -8286  E-HIR-UNMODELED
+\     : FLIT-N ( r -- r ) 1.0 f+ ;    threw -8404  E-NFEED-KIND
 \
-\ The tape has no kind for a real literal - src/compiler/native/feed.f:174 says
-\ so in as many words - and the dialect has no model for a float operation. One
-\ capability covers both, because a row that named only the tape would read as
-\ half a job and a row that named only the dialect would be wrong about where
-\ the first refusal happens.
+\ The tape had no kind for a real literal and the dialect had no model for a
+\ float operation. One capability covered both, because a row that named only
+\ the tape would have read as half a job and a row that named only the dialect
+\ would have been wrong about where the first refusal happens. Both are gone:
+\ the tape carries a real literal's own cell and the dialect has a double type
+\ with twelve operations over it. The eight rows that still name `floats` name
+\ it because they need a float capability this leaf did not build - a float
+\ COMPARISON for the branch rows, and a double that crosses a loop edge or a
+\ memory cell for the accumulations - and each of them names the rest of what it
+\ waits for beside it.
 \
 \ EVERY GAP NAMES EVERY CAPABILITY ITS ROW NEEDS, not the first that stops it -
 \ tools/codegen-compare-gap.f's rule, and it matters more here than anywhere:
@@ -35,7 +41,10 @@
 \ WHAT IS NOT DONE HERE. No body is respelled to buy a row, and no float body is
 \ handed to the chain in the hope that some part of it survives: a row that
 \ cannot be compiled is a gap that names the capability, which is a result. The
-\ calibration row below is the first corpus's empty call, already published by
+\ two bodies that ARE compiled are the corpus's own to the byte - not one
+\ constant is respelled, which is more than either of the first two corpora could
+\ say - and tools/codegen-compare-migrated3.f publishes them. The calibration row
+\ below is the first corpus's empty call, already published by
 \ tools/codegen-compare-migrated.f, measured again in this pass because a cost
 \ is a ratio to a call timed on the same host at the same moment.
 
@@ -47,6 +56,7 @@ require tools/codegen-compare-gap.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-corpus3.f
 require tools/codegen-compare-migrated.f
+require tools/codegen-compare-migrated3.f
 
 package CODEGEN-NEW3
 
@@ -65,7 +75,7 @@ private
    CODEGEN-COMPARE:MEASURE-NEW
    CODEGEN-COMPARE:CALIBRATE ;
 
-\ ---- the ten declarations ----------------------------------------------------
+\ ---- the eight declarations --------------------------------------------------
 \ Each names the corpus word, the float capability, and the rest of what its
 \ body asks for. The capability vocabulary is tools/codegen-compare-gap.f's;
 \ these rows read as a plan for the float campaign as much as an account of
@@ -118,22 +128,45 @@ private
    CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO
    CODEGEN--GAP-CAP:COMPARISON CODEGEN-GAP:GAP-ALSO ;
 
-\ Straight-line float arithmetic over a locals frame: the smallest row of this
-\ corpus, and the one the float campaign should be able to close first.
-: SGD-GAP ( -- )
-   s" CODEGEN-CORPUS3:SGD" CODEGEN--GAP-CAP:FLOATS CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO ;
-
-\ The two conversions. Both are straight-line over one local, and both need the
-\ float division or the float compare that surrounds the conversion itself.
-: SEG-GAP ( -- )
-   s" CODEGEN-CORPUS3:SEG-1/SQRT" CODEGEN--GAP-CAP:FLOATS CODEGEN-GAP:GAP
-   CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP-ALSO ;
-
+\ The float-to-integer conversion is a gap and the integer-to-float one is a row,
+\ which is exactly the shape of what this leaf built: FROUND needs the conversion
+\ AND a branch on a float comparison, and only the conversion is here.
 : FROUND-GAP ( -- )
    s" CODEGEN-CORPUS3:FROUND" CODEGEN--GAP-CAP:FLOATS CODEGEN-GAP:GAP
    CODEGEN--GAP-CAP:CONTROL-FLOW CODEGEN-GAP:GAP-ALSO
    CODEGEN--GAP-CAP:COMPARISON CODEGEN-GAP:GAP-ALSO ;
+
+\ ---- the two measured rows ---------------------------------------------------
+\ The pinned inputs are the old column's, written as the same literals
+\ tools/codegen-compare-cases3.f writes, so the two columns are handed the same
+\ numbers and neither reads the other's. The outputs go to VECTOR-REAL, which
+\ records the whole cell - so the comparison is bit for bit, and a sign of a
+\ zero, a NaN payload or a rounding that differed would be reported rather than
+\ absorbed.
+\
+\ 2^53+1, the smallest integer a double cannot hold, is written here as the same
+\ literal the case list writes it as.
+9007199254740993 constant WIDE-INT
+
+: SGD-CASE ( -- )
+   s" CODEGEN-CORPUS3:SGD" s" CODEGEN-CORPUS3:SGD-N"
+   [: 1.0 0.5 0.25 CODEGEN-CORPUS3:SGD-N drop ;]
+   [: 1.0 0.5 0.25 CODEGEN-CORPUS3:SGD-N CODEGEN-COMPARE:VECTOR-REAL
+      -2.0 -0.5 0.25 CODEGEN-CORPUS3:SGD-N CODEGEN-COMPARE:VECTOR-REAL
+      0.0 0.0 1.0 CODEGEN-CORPUS3:SGD-N CODEGEN-COMPARE:VECTOR-REAL
+      -0.0 0.0 1.0 CODEGEN-CORPUS3:SGD-N CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
+
+: SEG-CASE ( -- )
+   s" CODEGEN-CORPUS3:SEG-1/SQRT" s" CODEGEN-CORPUS3:SEG-1/SQRT-N"
+   [: 4 CODEGEN-CORPUS3:SEG-1/SQRT-N drop ;]
+   [: 4 CODEGEN-CORPUS3:SEG-1/SQRT-N CODEGEN-COMPARE:VECTOR-REAL
+      1 CODEGEN-CORPUS3:SEG-1/SQRT-N CODEGEN-COMPARE:VECTOR-REAL
+      2 CODEGEN-CORPUS3:SEG-1/SQRT-N CODEGEN-COMPARE:VECTOR-REAL
+      0 CODEGEN-CORPUS3:SEG-1/SQRT-N CODEGEN-COMPARE:VECTOR-REAL
+      -4 CODEGEN-CORPUS3:SEG-1/SQRT-N CODEGEN-COMPARE:VECTOR-REAL
+      WIDE-INT CODEGEN-CORPUS3:SEG-1/SQRT-N CODEGEN-COMPARE:VECTOR-REAL ;]
+   CODEGEN-COMPARE:MEASURE-NEW ;
 
 : ALL-GAPS ( -- )
    SUM-GAP
@@ -143,8 +176,6 @@ private
    REL-L2-GAP
    RELU-GAP
    MAX-F-GAP
-   SGD-GAP
-   SEG-GAP
    FROUND-GAP ;
 
 public
@@ -157,6 +188,8 @@ public
 : RUN ( -- )
    CODEGEN-GAP:RESET
    NOOP-CASE
+   SGD-CASE
+   SEG-CASE
    ALL-GAPS
    CODEGEN-GAP:COVERAGE-CK ;
 

@@ -18,6 +18,20 @@ AST-LOAD-ASM
 s" MOVZHW" s" n n n -- n" TRUST
 s" ENC-ADD" s" n n n -- n" TRUST
 s" ENC-LDR" s" n n n -- n" TRUST
+s" ENC-FADD" s" n n n -- n" TRUST
+s" ENC-FSUB" s" n n n -- n" TRUST
+s" ENC-FMUL" s" n n n -- n" TRUST
+s" ENC-FDIV" s" n n n -- n" TRUST
+s" ENC-FNEG" s" n n -- n" TRUST
+s" ENC-FABS" s" n n -- n" TRUST
+s" ENC-FSQRT" s" n n -- n" TRUST
+s" ENC-SCVTF" s" n n -- n" TRUST
+s" ENC-FCVTZS" s" n n -- n" TRUST
+s" ENC-FMOVXD" s" n n -- n" TRUST
+s" ENC-FMOVDX" s" n n -- n" TRUST
+s" ENC-FMOVDD" s" n n -- n" TRUST
+s" ENC-FLDR" s" n n n -- n" TRUST
+s" ENC-FSTR" s" n n n -- n" TRUST
 s" ENC-LDAR" s" n n -- n" TRUST
 s" ENC-BLR" s" n -- n" TRUST
 s" >LIMM" s" n -- n" TRUST
@@ -47,6 +61,29 @@ $2000000000000000 constant AST-DNAME-EXT
    11 5 ENC-STLR $C89FFCAB T=
    7 ENC-BLR $D63F00E0 T= ;
 
+\ The floating-point set, against the values the system assembler produces for
+\ the same instructions. Every one of these is an instruction the native chain
+\ now emits for a float body, and the two frame accesses are the ones a spilled
+\ double travels through - which no acceptance row reaches, because the routine
+\ contract hands out the whole D file, so this is where they are checked at all.
+: AST-TEST-FP ( -- )
+   1 2 3 ENC-FADD $1E632841 T=
+   1 2 3 ENC-FSUB $1E633841 T=
+   1 2 3 ENC-FMUL $1E630841 T=
+   1 2 3 ENC-FDIV $1E631841 T=
+   5 6 ENC-FNEG $1E6140C5 T=
+   5 6 ENC-FABS $1E60C0C5 T=
+   5 6 ENC-FSQRT $1E61C0C5 T=
+   7 9 ENC-SCVTF $9E620127 T=
+   7 9 ENC-FCVTZS $9E780127 T=
+   4 11 ENC-FMOVXD $9E670164 T=
+   4 11 ENC-FMOVDX $9E660164 T=
+   2 13 ENC-FMOVDD $1E6041A2 T=
+   3 31 24 ENC-FLDR $FD400FE3 T=
+   3 31 24 ENC-FSTR $FD000FE3 T=
+   31 1 32760 ENC-FLDR $FD7FFC3F T=
+   0 19 0 ENC-FSTR $FD000260 T= ;
+
 : AST-TEST-LIMM ( -- )
    1 >LIMM $1000 T=
    $FF >LIMM $1007 T=
@@ -71,6 +108,7 @@ $2000000000000000 constant AST-DNAME-EXT
 : AST-MAIN ( -- )
    T-RESET
    AST-TEST-CORE
+   AST-TEST-FP
    AST-TEST-LIMM
    AST-TEST-ICODE
    T-REPORT

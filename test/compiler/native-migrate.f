@@ -27,6 +27,7 @@
 \ the word the checker accepted cannot be two different programs.
 
 require lib/test.f
+require test/checker-assert.f
 require src/compiler/native/migrate.f
 
 package NMIGRATE-TEST
@@ -489,6 +490,144 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
 
 public
 
+\ ---- the scalar float vocabulary, end to end ---------------------------------
+\ Every float word the dialect models, migrated through the production entry and
+\ compared with the INTERPRETED word on the same input. Nothing here states an
+\ expected number: a table of them would be a second opinion about IEEE754, and
+\ what has to be true is that the compiled word and the engine's own primitive
+\ answer the same cell. The cell is the whole comparison - two doubles that
+\ differ in one bit are two different numbers - so the sign of a zero, a NaN
+\ payload and a rounding are all inside it.
+\
+\ THE INPUTS ARE THE ONES A FLOAT CODE GENERATOR CAN GET WRONG WHILE EVERY
+\ ORDINARY INPUT STILL LOOKS RIGHT: a division by zero, which answers an infinity
+\ rather than trapping; zero over zero and the square root of a negative, which
+\ answer the default NaN; a negative zero, which is a different cell from zero and
+\ the same number; 2^53+1, which does not fit a double and pins `s>f`'s
+\ round-to-nearest; and a truncating `f>s` on both signs and on a NaN. They are
+\ the facts the survey at the head of tools/codegen-compare-corpus3.f establishes
+\ about this engine.
+: FLOAT-MIGRATIONS ( -- )
+   s" : NMG-FADD ( r r -- r ) f+ ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FSUB ( r r -- r ) f- ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FMUL ( r r -- r ) f* ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FDIV ( r r -- r ) f/ ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FNEG ( r -- r ) fnegate ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FABS ( r -- r ) fabs ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FSQRT ( r -- r ) fsqrt ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-SF ( n -- r ) s>f ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FS ( r -- n ) f>s ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FLIT ( r -- r ) 0.25 f+ ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: FLOAT-CASE ( -- )
+   FLOAT-MIGRATIONS
+
+   s" the four float operations answer what the engine's own primitives answer" T-LABEL
+   s" 1.5 2.25 NMG-FADD" EV-N  s" 1.5 2.25 f+" EV-N T=
+   s" 1.5 2.25 NMG-FSUB" EV-N  s" 1.5 2.25 f-" EV-N T=
+   s" 1.5 2.25 NMG-FMUL" EV-N  s" 1.5 2.25 f*" EV-N T=
+   s" 1.5 2.25 NMG-FDIV" EV-N  s" 1.5 2.25 f/" EV-N T=
+
+   s" and the subtraction and the division keep the side they take from" T-LABEL
+   s" 1.5 2.25 NMG-FSUB" EV-N  s" 2.25 1.5 f-" EV-N T<>
+   s" 1.5 2.25 NMG-FDIV" EV-N  s" 2.25 1.5 f/" EV-N T<>
+
+   s" a division by zero answers an infinity and does not trap" T-LABEL
+   s" 1.0 0.0 NMG-FDIV" EV-N  s" 1.0 0.0 f/" EV-N T=
+   s" -1.0 0.0 NMG-FDIV" EV-N  s" -1.0 0.0 f/" EV-N T=
+
+   s" and zero over zero and the root of a negative answer the same NaN" T-LABEL
+   s" 0.0 0.0 NMG-FDIV" EV-N  s" 0.0 0.0 f/" EV-N T=
+   s" -1.0 NMG-FSQRT" EV-N  s" -1.0 fsqrt" EV-N T=
+   s" 0.0 0.0 NMG-FDIV" EV-N  s" -1.0 NMG-FSQRT" EV-N T=
+
+   s" the three unary operations answer what their primitives answer" T-LABEL
+   s" -2.5 NMG-FNEG" EV-N  s" -2.5 fnegate" EV-N T=
+   s" -2.5 NMG-FABS" EV-N  s" -2.5 fabs" EV-N T=
+   s" 2.0 NMG-FSQRT" EV-N  s" 2.0 fsqrt" EV-N T=
+
+   s" and negating a zero answers the OTHER zero, which is another cell" T-LABEL
+   s" 0.0 NMG-FNEG" EV-N  s" 0.0 fnegate" EV-N T=
+   s" 0.0 NMG-FNEG" EV-N  s" 0.0" EV-N T<>
+
+   s" the two conversions round the two different ways their instructions do" T-LABEL
+   s" 9007199254740993 NMG-SF" EV-N  s" 9007199254740993 s>f" EV-N T=
+   s" 2.7 NMG-FS" EV-N  2 T=
+   s" -2.7 NMG-FS" EV-N  -2 T=
+   s" -0.5 NMG-FS" EV-N  0 T=
+   s" 0.0 0.0 f/ NMG-FS" EV-N  0 T=
+
+   s" a float literal in a compiled body is the double the interpreter pushes" T-LABEL
+   s" 1.5 NMG-FLIT" EV-N  s" 1.5 0.25 f+" EV-N T=
+   s" -0.25 NMG-FLIT" EV-N  s" 0.0" EV-N T= ;
+
+\ ---- the two straight-line shapes the third corpus is measured on ------------
+\ A locals frame with float arithmetic over it, and the conversion body. They are
+\ tools/codegen-compare-corpus3.f's SGD and SEG-1/SQRT, and they are here as well
+\ as there because the comparison harness is not a gate for the cost column while
+\ this is: what this asserts is that the compiled word and the interpreted word
+\ agree, on the inputs that separate one lowering from another.
+: SHAPE-MIGRATIONS ( -- )
+   s" : NMG-SGD ( r r r -- r ) {: w g lr :} w  lr g f* f- ;" 3 1 REGS NMIGRATE:DEFINE
+   s" : NMG-SEG ( n -- r ) {: d:n :} 1.0 d s>f fsqrt f/ ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: SHAPE-CASE ( -- )
+   SHAPE-MIGRATIONS
+
+   s" float arithmetic over a locals frame answers what the same body answers" T-LABEL
+   s" 1.0 0.5 0.25 NMG-SGD" EV-N  s" 1.0 0.5 0.25 f* f-" EV-N T=
+   s" -2.0 -0.5 0.25 NMG-SGD" EV-N  s" -2.0 -0.5 0.25 f* f-" EV-N T=
+   s" -0.0 0.0 1.0 NMG-SGD" EV-N  s" -0.0 0.0 1.0 f* f-" EV-N T=
+
+   s" and a step from a negative zero stays a negative zero" T-LABEL
+   s" -0.0 0.0 1.0 NMG-SGD" EV-N  s" 0.0" EV-N T<>
+
+   s" the conversion body answers what the same body answers" T-LABEL
+   s" 4 NMG-SEG" EV-N  s" 1.0 4 s>f fsqrt f/" EV-N T=
+   s" 2 NMG-SEG" EV-N  s" 1.0 2 s>f fsqrt f/" EV-N T=
+   s" 9007199254740993 NMG-SEG" EV-N  s" 1.0 9007199254740993 s>f fsqrt f/" EV-N T=
+
+   s" including the degenerate lengths, which do not trap" T-LABEL
+   s" 0 NMG-SEG" EV-N  s" 1.0 0.0 f/" EV-N T=
+   s" -4 NMG-SEG" EV-N  s" 0.0 0.0 f/" EV-N T= ;
+
+\ ---- what a float body may NOT do yet, refused by name -----------------------
+\ A double is a value of a second register class, and this leaf places it in a
+\ straight line only. Two shapes of well typed Habu are therefore refused by the
+\ chain, each with the elaborator's own E-NELAB-TYPE rather than as a wrong
+\ lowering discovered later: a double stored into a memory cell, and a double
+\ carried across a loop edge. Dots habu-store-a-double-6f2b90ae and
+\ habu-carry-a-double-3d6e7a1c carry them.
+\
+\ THE THIRD SHAPE NEVER REACHES THE CHAIN, AND THAT IS THE RESULT. Handing a
+\ double to an operation that computes with cells - `1.0 f+ 1 +` - is refused by
+\ the CHECKER, before the engine has compiled anything and before a tape exists,
+\ so the elaborator's own refusal for it is fail-closed rather than reachable
+\ from checked source. It is still written, and the case below is what says which
+\ of the two authorities does the refusing: a leaf that assumed the checker would
+\ always be there first would have no answer the day a body reaches the chain
+\ some other way.
+: FLOAT-STORE ( -- )
+   s" : NMG-BAD2 ( r ptr a -- ) {: v:r b:ptr :} v 1.0 f+ b ! ;" 2 0 REGS NMIGRATE:DEFINE ;
+
+: FLOAT-EDGE ( -- )
+   s" : NMG-BAD3 ( r n -- r ) 0 ?do 1.0 f+ loop ;" 2 1 REGS NMIGRATE:DEFINE ;
+
+: FLOAT-REFUSAL-CASES ( -- )
+   s" a double stored into a memory cell is refused - the crossing is not placed yet" T-LABEL
+   [: FLOAT-STORE ;] E-NELAB-TYPE TTHROWSQ
+   s" a double carried across a loop edge is refused, not handed over as a cell" T-LABEL
+   [: FLOAT-EDGE ;] E-NELAB-TYPE TTHROWSQ
+
+   s" a double handed to an integer operation never reaches the chain at all" T-LABEL
+   s" NMG-BAD1 ( r -- n ) 1.0 f+ 1 +" CHECK-QUIET-CANDIDATE! 0 T=
+   s" NMG-OKAY ( r -- r ) 1.0 f+" CHECK-QUIET-CANDIDATE! -1 T=
+
+   s" and a body the chain refused keeps the record the engine compiled for it" T-LABEL
+   s" NMG-BAD2" DEFINED? TTRUE
+   s" NMG-BAD3" DEFINED? TTRUE
+   s" 2.5 3 NMG-BAD3" EV-N  s" 2.5 1.0 f+ 1.0 f+ 1.0 f+" EV-N T= ;
+
 : RUN ( -- )
    T-RESET
    MIGRATED-CASE
@@ -500,6 +639,9 @@ public
    REFUSED-CASE
    UNTOUCHED-CASE
    ENTRY-CASES
+   FLOAT-CASE
+   SHAPE-CASE
+   FLOAT-REFUSAL-CASES
    T-REPORT ;
 
 ;package
