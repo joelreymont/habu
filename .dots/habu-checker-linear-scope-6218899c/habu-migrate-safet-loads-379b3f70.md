@@ -8,4 +8,18 @@ blocks:
   - habu-implement-generic-linear-6bf72a41
 ---
 
-Problem: SAFET:LOAD and LOAD-SPAN manually use stack-preserving catch, CLOSE, and rethrow after OPEN; this duplicates the owner-scope protocol and is the production example the capability exists to replace. Required result: use LINEAR-SCOPE:WITH for the session from OPEN through MAP-FILE or ADOPT and PARSE. On success the body returns the session for DETACH; on any catchable failure CLOSE consumes it exactly once and the original error escapes. Remove only the obsolete manual-catch caveat and helpers that become unused; do not change census, mapping, parsing, or pointer-lifetime contracts. Owner: maki/infer/safetensors.f and its existing tests/docs. Dependency: habu-implement-generic-linear-6bf72a41. Acceptance: real missing-file, malformed-header, malformed-payload, adopted-span failure, and success paths run through LOAD/LOAD-SPAN; live session/mapping counters return to baseline after every case; the real artifact leg remains unchanged when available; safetensors, package, typed-local, signature, and trust gates pass.
+Problem: `SAFET:LOAD` and `LOAD-SPAN` manually use stack-preserving catch,
+`CLOSE`, and rethrow after `OPEN`; this duplicates the owner-scope protocol.
+Result: use `LINEAR-SCOPE:WITH` for the session from `OPEN` through `MAP-FILE`
+or `ADOPT` and `PARSE`. On success the body returns the session for `DETACH`;
+on any catchable failure `CLOSE` consumes it exactly once and the original
+error escapes. Remove only obsolete manual-catch helpers; preserve census,
+mapping, parsing, and pointer-lifetime behavior. Owner:
+`maki/infer/safetensors.f` and its focused tests. Dependency:
+`habu-implement-generic-linear-6bf72a41`.
+
+Acceptance: real missing-file, malformed-header, malformed-payload,
+adopted-span failure, and success paths run through `LOAD` or `LOAD-SPAN`;
+live session and mapping counters return to baseline after every case; the
+real artifact leg remains unchanged when available. Run the safetensors
+focused suites plus package, typed-local, and signature gates.

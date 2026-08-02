@@ -6,4 +6,36 @@ issue-type: task
 created-at: "2026-07-31T06:34:59.946328+02:00"
 ---
 
-Source dependencies: exact reviewed E1 namespace-row source and the HB package hard cut; this stop-the-world branch keeps E1 active until M17, so exact code ancestry, not an independently publishable intermediate engine, enforces the dependency. Owner: HB-EMIT. Emit one private LQCLASS classifier used by LFIND, qualified definition, and EXPORT. Input x9/x10 is the full token. Output x17 is x10 for unqualified input, the last colon index for a valid qualified input, or -1 for leading, trailing, or doubled separators. It preserves x9 and x10 and uses no second scanner. Reopen HB-EMIT around EMIT-FIND so the private classifier and E1 LNSFIND resolve without a global definition or forwarding word. LFIND saves the full length and split across LNSFIND, whose frozen ABI clobbers x12-x17, then resolves the full prefix and accepts package or type rows. One emitted full-prefix ensure walker reuses E1 LNSFIND and package-row creation for every exact prefix. Qualified definition creates missing package prefixes, accepts an existing package row, and rejects an existing type row. EXPORT uses the same classifier and publishes only the tail after the last colon, so A:B:C:WORD creates an alias named WORD that resolves and calls through the real lookup path. Preserve E1 record shape and rollback; no parent link, side table, compatibility spelling, version, second scanner, ancestor lookup, using semantics, nested package blocks, or recovery edits. Write set: src/habu/habu1.f, src/habu/habu2.f, test/gate-dictionary-lib.f, test/type-export-suite.f, and only necessary current TRUSTED.md rows. Pre-M17 proof is source census and hunk review only. M17 acceptance: deep lookup, definition, and EXPORT at arbitrary supported depth; malformed paths publish nothing; package and type lookup work; defining into a type rejects; and shallow behavior remains exact. Claim: agent=e2a_native_impl workspace=.jj-ws/habu-resolve-native-full-52296eac.
+Source dependencies: exact reviewed E1 namespace rows and the HB package hard
+cut. Owner: `ENGINE-EMIT`.
+
+Emit one private `LQCLASS` classifier shared by `LFIND`, qualified definition,
+and `EXPORT`. Input x9/x10 is the full token. Output x17 is x10 for an
+unqualified token, the last-colon index for a valid qualified token, or -1 for
+leading, trailing, or doubled separators. Preserve x9/x10 and use no second
+scanner. Reopen `ENGINE-EMIT` around `EMIT-FIND` so the classifier and E1
+`LNSFIND` remain private without forwarding words.
+
+`LFIND` saves full length and split across the frozen `LNSFIND` clobber set,
+resolves the full prefix, and accepts package or type rows. One emitted
+full-prefix ensure walker reuses `LNSFIND` and package-row creation for every
+prefix. Qualified definition creates missing package prefixes, accepts an
+existing package row, and rejects an existing type row. `EXPORT` publishes
+only the tail after the last colon, so `A:B:C:WORD` creates alias `WORD` and
+resolves through the production lookup path. Preserve E1 row shape and
+rollback.
+
+Write set: `src/habu/habu1.f`, `src/habu/habu2.f`,
+`test/gate-dictionary-lib.f`, and `test/type-export-suite.f`. Any surviving
+source `TRUST` keeps only its source-local rationale, retirement owner, and
+focused production test. Do not add a parent link, side table, schema, version,
+compatibility spelling, second scanner, ancestor lookup, using change, nested
+package blocks, recovery edit, or lint.
+
+Acceptance: deep lookup, definition, and `EXPORT` work at every supported
+depth; malformed paths publish nothing; package and type lookup work; defining
+into a type rejects; shallow behavior remains exact. Run the focused dictionary
+and export suites, package and typed-local gates, native fixpoint, and full
+native gate.
+
+Claim: agent=e2a_native_impl workspace=.jj-ws/habu-resolve-native-full-52296eac.

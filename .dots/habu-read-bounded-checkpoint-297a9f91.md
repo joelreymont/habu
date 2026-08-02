@@ -1,9 +1,11 @@
 ---
 title: Read bounded checkpoint F32
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-27T19:03:12.621200+02:00"
+closed-at: "2026-08-02T16:00:48.764136+02:00"
+close-reason: Superseded by commit 5b0ebb, which deleted the WSTORE/GPT2LOAD path; retaining this task would resurrect the removed design.
 blocks:
   - habu-add-model-owned-7423a1e3
 ---

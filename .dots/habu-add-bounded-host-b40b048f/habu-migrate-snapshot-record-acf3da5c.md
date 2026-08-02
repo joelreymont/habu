@@ -1,9 +1,11 @@
 ---
 title: Migrate snapshot record to frozen MEM bytes
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-13T16:45:22.114815+02:00"
+closed-at: "2026-08-02T16:00:35.790010+02:00"
+close-reason: "Invalid and underspecified: the task names no record, path, owner, or production defect, so it has no implementable scope."
 blocks:
   - habu-freeze-transient-mem-1a69322a
 ---
