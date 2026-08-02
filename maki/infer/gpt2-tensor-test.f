@@ -25,8 +25,9 @@
 \      the MAX-N extremes, all E-SIZE;
 \   5. LAYER-ID range rejects (E-LAYER) and boundary accepts;
 \   6. SLOT bijectivity on the tiny geometry: every slot in
-\      [0, COUNT) hit exactly once, so the catalog's slot numbering is a
-\      complete permutation; an off-by-one slot formula reds here;
+\      [0, COUNT) hit exactly once and TENSOR-ID-FOR-SLOT returns the exact
+\      tensor identity at every slot; one-over rejects E-SLOT and an inverse
+\      identity resolved under another config rejects E-CONFIG;
 \   7. THE IDENTITY FIXTURE (ratified correction 1): two configs with the
 \      SAME nlayer differing in ONE behavioral field (tied); a layer-id minted
 \      against A used with B rejects E-CONFIG even though its slot is in
@@ -136,19 +137,20 @@ variable HIGH
    EPS0 true MDLCFG-ARCH:GPT2
    DT0 1 1 1 MAX-EMBD 1 + 1 true 0 0 MDLCFG:BUILD ;
 
-\ the llama arm never validated the gpt2 census bound, so COUNT's own
-\ pre-check must reject; the MAX-N extreme, then the exact boundary pair.
+\ MDLCFG owns model geometry, not this product census. These GPT-2 configs
+\ therefore build through the production constructor; COUNT owns the overflow
+\ rejection and its exact boundary pair.
 : CFG-DEEP ( -- MDLCFG:mcfg )
-   2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
-   DT0 8 32 MAXN 4 2 false 1 2 MDLCFG:BUILD ;
+   EPS0 true MDLCFG-ARCH:GPT2
+   DT0 1 1 MAXN 1 1 true 0 0 MDLCFG:BUILD ;
 
 : CFG-DEEP-MAX ( -- MDLCFG:mcfg )
-   2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
-   DT0 8 32 MAX-LAYERS 4 2 false 1 2 MDLCFG:BUILD ;
+   EPS0 true MDLCFG-ARCH:GPT2
+   DT0 1 1 MAX-LAYERS 1 1 true 0 0 MDLCFG:BUILD ;
 
 : CFG-DEEP-OVER ( -- MDLCFG:mcfg )
-   2 8 10000.0 0.000001 MDLCFG-ARCH:LLAMA
-   DT0 8 32 MAX-LAYERS 1 + 4 2 false 1 2 MDLCFG:BUILD ;
+   EPS0 true MDLCFG-ARCH:GPT2
+   DT0 1 1 MAX-LAYERS 1 + 1 1 true 0 0 MDLCFG:BUILD ;
 
 \ gpt2 arm with everything minimal but nctx, for the mask element product.
 : CFG-CTX ( n -- MDLCFG:mcfg ) {: cx:n :}
@@ -219,6 +221,21 @@ using CAD-NUM
    TEST-INDEX INDEX= TTRUE ;
 
 ;using
+
+variable EXPECT-LEN
+
+: EXPECT-GLOBAL ( GPT2TENSOR:global-role -- )
+   GPT2TENSOR-TENSOR--ID:GLOBAL
+   NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF EXPECT-LEN ! ;
+
+: EXPECT-LAYER ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg )
+   {: br:GPT2TENSOR:layer-role :}
+   GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER
+   NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF EXPECT-LEN ! ;
+
+: ACTUAL-NAME= ( GPT2TENSOR:tensor-id -- )
+   NAME-BUF-2 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF {: n:n :}
+   NAME-BUF-1 EXPECT-LEN @ NAME-BUF-2 n T$= ;
 
 : GLOBAL-ORIENTATION ( GPT2TENSOR:global-role -- GPT2TENSOR:orientation )
    GPT2TENSOR-TENSOR--ID:GLOBAL GPT2TENSOR:ORIENTATION ;
@@ -424,10 +441,16 @@ variable HIT-I
    HIT-I @ TINY-CENSUS T= ;
 
 : MARK-GLOBAL ( MDLCFG:mcfg GPT2TENSOR:global-role -- MDLCFG:mcfg )
-   GLOBAL-SLOT MARK ;
+   {: br:GPT2TENSOR:global-role :}
+   br EXPECT-GLOBAL
+   br GLOBAL-SLOT dup MARK
+   GPT2TENSOR:TENSOR-ID-FOR-SLOT ACTUAL-NAME= ;
 
 : MARK-ROLE ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg )
-   LAYER-SLOT MARK ;
+   {: l:n br:GPT2TENSOR:layer-role :}
+   l br EXPECT-LAYER
+   l br LAYER-SLOT dup MARK
+   GPT2TENSOR:TENSOR-ID-FOR-SLOT ACTUAL-NAME= ;
 
 : MARK-LAYER ( MDLCFG:mcfg n -- MDLCFG:mcfg ) {: l:n :}
    l GPT2TENSOR-LAYER--ROLE:LN1-G MARK-ROLE
@@ -469,6 +492,19 @@ variable HIT-I
    GPT2TENSOR:COUNT TINY-CENSUS T=
    drop
    SLOTS-COMPLETE ;
+
+: REJECT-SLOT-OVER ( -- )
+   CFG-A TINY-CENSUS TEST-INDEX GPT2TENSOR:TENSOR-ID-FOR-SLOT drop drop ;
+
+: CFG-A-SLOT-20-ID ( -- GPT2TENSOR:tensor-id )
+   CFG-A 20 TEST-INDEX GPT2TENSOR:TENSOR-ID-FOR-SLOT >r drop r> ;
+
+: REJECT-INVERSE-FOREIGN ( -- )
+   CFG-B CFG-A-SLOT-20-ID GPT2TENSOR:SLOT drop drop ;
+
+: T-INVERSE-REJECTS ( -- )
+   [: REJECT-SLOT-OVER ;] GPT2TENSOR:E-SLOT TTHROWSQ
+   [: REJECT-INVERSE-FOREIGN ;] GPT2TENSOR:E-CONFIG TTHROWSQ ;
 
 \ ---- 7. THE IDENTITY FIXTURE ---------------------------------------------------------
 \ A layer-id minted against config A, resolved against same-nlayer config B.
@@ -535,6 +571,7 @@ T-EDGES
 T-LAYER-RANGE
 T-SLOTS
 T-BIJECT
+T-INVERSE-REJECTS
 T-FOREIGN
 T-FORGED
 
@@ -542,6 +579,12 @@ T-FORGED
 \ SLOT preserves the nominal index role through the public boundary.
 s" SLOT-OK ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg CAD-NUM:index ) GPT2TENSOR:SLOT" YES
 s" SLOT-RAW ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg n ) GPT2TENSOR:SLOT" NO
+\ the inverse accepts and returns only nominal boundary types; its cast stays private.
+s" INVERSE-OK ( MDLCFG:mcfg CAD-NUM:index -- MDLCFG:mcfg GPT2TENSOR:tensor-id ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" YES
+s" INVERSE-RAW-IN ( MDLCFG:mcfg n -- MDLCFG:mcfg GPT2TENSOR:tensor-id ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" NO
+s" INVERSE-RAW-OUT ( MDLCFG:mcfg CAD-NUM:index -- MDLCFG:mcfg n ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" NO
+s" PRIVATE-SLOT-CAST ( CAD-NUM:index -- n ) GPT2TENSOR:SLOT>N" UNK
+s" GPT2TENSOR:SLOT>N" XREF-FIND XREF-FOUND? TFALSE
 \ a global tensor-id takes exactly a global-role; a layer cannot ride along...
 s" GLOBAL-OK ( GPT2TENSOR:global-role -- GPT2TENSOR:tensor-id ) GPT2TENSOR-TENSOR--ID:GLOBAL" YES
 s" GLOBAL-WITH-LAYER ( GPT2TENSOR:layer-id GPT2TENSOR:global-role -- GPT2TENSOR:tensor-id ) GPT2TENSOR-TENSOR--ID:GLOBAL" NO

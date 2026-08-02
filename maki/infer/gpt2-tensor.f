@@ -30,7 +30,8 @@
 \   fc-b    h.<n>.mlp.c_fc.bias        [4*nembd]
 \   mproj-w h.<n>.mlp.c_proj.weight    [4*nembd,nembd]  Conv1D
 \   mproj-b h.<n>.mlp.c_proj.bias      [nembd]
-\ Declaration order IS the slot ordinal consumed by SLOT. The 13-role
+\ Declaration order IS the slot ordinal consumed by SLOT and its checked
+\ inverse TENSOR-ID-FOR-SLOT. The 13-role
 \ census INCLUDING attn.bias is pinned to this specific checkpoint export: HF
 \ treats attn.bias as a non-persistent buffer, so other exports of the same
 \ weights may omit it, and loading such an artifact is a census mismatch by
@@ -102,6 +103,7 @@ public
 -5650 constant E-LAYER   \ a layer index outside [0, nlayer), fresh or embedded
 -5651 constant E-CONFIG  \ layer-id minted against a different behavioral config
 -5652 constant E-SIZE    \ a composed shape/census product overflows a cell
+-5653 constant E-SLOT    \ a slot outside this config's tensor census
 
 \ ---- the four checkpoint-global tensor roles ------------------------------------
 ENUM global-role
@@ -191,9 +193,7 @@ public
    MDLCFG:CFGKEY@ i MINT-LAYER-PROOF GPT2TENSOR-LAYER--ID:MAKE ;
 
 \ ---- census: 4 + 13*nlayer, overflow-checked --------------------------------------
-\ The pre-check bounds nlayer so the multiply AND the add both fit a cell (the
-\ MDLCFG V-CENSUS shape; the gpt2 BUILD arm enforces the same bound, the llama
-\ arm does not, so this word carries its own).
+\ The pre-check bounds nlayer so the multiply AND the add both fit a cell.
 : COUNT ( MDLCFG:mcfg -- MDLCFG:mcfg n )
    MDLCFG:NLAYER@
    dup MAX-N GLOBAL-COUNT - LAYER-ROLE-COUNT / > if E-SIZE throw then
@@ -383,6 +383,43 @@ private
       misaligned OF E-SIZE throw ENDOF
    ;MATCH ;
 
+CAST: SLOT>N ( CAD-NUM:index -- n ) ;
+
+: ORD>GLOBAL ( n -- global-role )
+   case
+      0 of GPT2TENSOR-GLOBAL--ROLE:WTE endof
+      1 of GPT2TENSOR-GLOBAL--ROLE:WPE endof
+      2 of GPT2TENSOR-GLOBAL--ROLE:LNF-G endof
+      3 of GPT2TENSOR-GLOBAL--ROLE:LNF-B endof
+      E-SLOT throw
+   endcase ;
+
+: ORD>LAYER ( n -- layer-role )
+   case
+      0 of GPT2TENSOR-LAYER--ROLE:LN1-G endof
+      1 of GPT2TENSOR-LAYER--ROLE:LN1-B endof
+      2 of GPT2TENSOR-LAYER--ROLE:MASK endof
+      3 of GPT2TENSOR-LAYER--ROLE:QKV-W endof
+      4 of GPT2TENSOR-LAYER--ROLE:QKV-B endof
+      5 of GPT2TENSOR-LAYER--ROLE:APROJ-W endof
+      6 of GPT2TENSOR-LAYER--ROLE:APROJ-B endof
+      7 of GPT2TENSOR-LAYER--ROLE:LN2-G endof
+      8 of GPT2TENSOR-LAYER--ROLE:LN2-B endof
+      9 of GPT2TENSOR-LAYER--ROLE:FC-W endof
+      10 of GPT2TENSOR-LAYER--ROLE:FC-B endof
+      11 of GPT2TENSOR-LAYER--ROLE:MPROJ-W endof
+      12 of GPT2TENSOR-LAYER--ROLE:MPROJ-B endof
+      E-SLOT throw
+   endcase ;
+
+: GLOBAL-FOR-SLOT ( MDLCFG:mcfg n -- MDLCFG:mcfg tensor-id )
+   ORD>GLOBAL GPT2TENSOR-TENSOR--ID:GLOBAL ;
+
+: LAYER-FOR-SLOT ( MDLCFG:mcfg n -- MDLCFG:mcfg tensor-id )
+   GLOBAL-COUNT -
+   LAYER-ROLE-COUNT /mod {: br:n l:n :}
+   l LAYER-ID br ORD>LAYER GPT2TENSOR-TENSOR--ID:LAYER ;
+
 : LAYER-ORIENTATION ( layer-id layer-role -- orientation ) {: br:layer-role :}
    drop br
    MATCH layer-role
@@ -438,5 +475,17 @@ public
       layer  OF SLOT-LAYER ENDOF
    ;MATCH
    SLOT-INDEX ;
+
+\ ---- checked inverse: consuming config census defines the valid slot set -----------
+: TENSOR-ID-FOR-SLOT
+   ( MDLCFG:mcfg CAD-NUM:index -- MDLCFG:mcfg tensor-id )
+   SLOT>N {: s:n :}
+   COUNT {: census:n :}
+   s 0 <  s census >=  or if E-SLOT throw then
+   s GLOBAL-COUNT < if
+      s GLOBAL-FOR-SLOT
+   else
+      s LAYER-FOR-SLOT
+   then ;
 
 ;package

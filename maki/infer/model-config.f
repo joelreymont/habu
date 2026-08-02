@@ -39,7 +39,7 @@
 \ positive extents with overflow-checked composed products (vocab*embed,
 \ ctx*embed, and per-arm embed*ffn); head-dim divisibility;
 \ special-token range; GQA divisibility on the llama arm; positive arm
-\ epsilons/theta; and the gpt2 tensor-census bound 4 + 13*nlayer.
+\ epsilons/theta.
 \
 \ maki -> habu only. Owns -5640..-5649.
 
@@ -57,7 +57,6 @@ public
 -5643 constant E-TOKEN      \ bos-id/eos-id outside [0, nvocab)
 -5644 constant E-GQA        \ llama nhead not divisible by nkvhead, or nkvhead > nhead
 -5645 constant E-ARM        \ a nonpositive arch-arm epsilon/theta
--5646 constant E-CENSUS     \ the gpt2 tensor census 4 + 13*nlayer overflows a cell
 
 \ ---- the architecture payload (consumers MATCH on the arm) -------------------
 ENUM arch 0
@@ -93,8 +92,6 @@ private
 TRUSTED: MINT-CFG-PROOF ( -- cfg-proof )  0 ;
 
 $7FFFFFFFFFFFFFFF constant MAX-N
-4 constant G-FIXED-T               \ gpt2 top-level tensors: wte, wpe, ln_f.g, ln_f.b
-13 constant G-LAYER-T              \ gpt2 per-layer tensors: 12 block params + attn.bias mask
 
 create NSCR 8 allot                \ one-cell fold scratch (cell bits -> raw bytes)
 create KBUF 32 allot               \ CONTENT-KEY:FINAL digest landing pad
@@ -125,14 +122,9 @@ create KBUF 32 allot               \ CONTENT-KEY:FINAL digest landing pad
 : V-TOKEN ( n n -- ) {: id:n vo:n :}
    id 0 <  id vo < 0=  or if E-TOKEN throw then ;
 
-\ nlayer: the gpt2 tensor census 4 + 13*nlayer must fit a cell.
-: V-CENSUS ( n -- )
-   MAX-N G-FIXED-T - G-LAYER-T /  > if E-CENSUS throw then ;
-
 \ arm validators consume the MATCH payload at their entry and rebuild the arm.
-: V-GPT2 ( r bool n -- arch ) {: eps:r sc:bool nl:n :}
+: V-GPT2 ( r bool -- arch ) {: eps:r sc:bool :}
    eps F-POS
-   nl V-CENSUS
    eps sc MDLCFG-ARCH:GPT2 ;
 
 : V-LLAMA ( n n r r n n -- arch ) {: nkv:n ffn:n theta:r reps:r nh:n ne:n :}
@@ -142,9 +134,9 @@ create KBUF 32 allot               \ CONTENT-KEY:FINAL digest landing pad
    ne ffn XMUL drop
    nkv ffn theta reps MDLCFG-ARCH:LLAMA ;
 
-: V-ARCH ( arch n n n -- arch ) {: nl:n nh:n ne:n :}
+: V-ARCH ( arch n n -- arch ) {: nh:n ne:n :}
    MATCH arch
-      gpt2  OF nl V-GPT2 ENDOF
+      gpt2  OF V-GPT2 ENDOF
       llama OF nh ne V-LLAMA ENDOF
    ;MATCH ;
 
@@ -191,7 +183,7 @@ public
    cx vo nl ne nh V-EXTENTS
    ne nh V-HEAD
    bos vo V-TOKEN  eos vo V-TOKEN
-   nl nh ne V-ARCH
+   nh ne V-ARCH
    CONTENT-KEY:RESET
    dt FOLD-DT
    cx FOLD-N  vo FOLD-N  nl FOLD-N  ne FOLD-N  nh FOLD-N
