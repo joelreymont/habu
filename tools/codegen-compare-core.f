@@ -206,6 +206,14 @@ public
    value OUT-VALUES ROW-N @ OUTPUT-MAX * OUT-N @ + SLOT !
    OUT-N @ 1+ OUT-N ! ;
 
+\ Record one flag the subject word left on the stack. A row holds numbers and a
+\ Habu flag is not one, so a flag has to become a number somewhere; it becomes
+\ one HERE, in the word both columns call, because two columns turning a flag
+\ into a number by two routes of their own would let a difference in the routes
+\ read as a difference in the compiled code.
+: VECTOR-FLAG ( bool -- )
+   if 1 else 0 then VECTOR ;
+
 : RESET ( -- )
    0 ROW-N !
    0 OUT-N !
@@ -376,6 +384,32 @@ public
    true
    k OUTPUTS 0 ?do
       k i OUTPUT  j i OUTPUT  <> if drop false leave then
+   loop ;
+
+\ ---- the head-to-head pairing ------------------------------------------------
+\ A new row and the old row it is the partner of are two rows of this store with
+\ one name, so pairing them is store navigation and lives here beside the search
+\ that finds them. Which corpus is being measured makes no difference to any of
+\ it: a pass holds one corpus at a time and these three read whatever is there.
+
+\ The old row this new row is the head-to-head partner of, or -1.
+: PARTNER ( n -- n ) {: k:n :}
+   PATH-OLD k NAME$ FIND-ROW ;
+
+\ Did the routine the new chain emitted compute what the old word computes? This
+\ is the equality the whole comparison turns on.
+: ROW-MATCH? ( n -- bool ) {: k:n :}
+   k PARTNER {: b:n :}
+   b 0 < if false exit then
+   k b SAME-OUTPUTS? ;
+
+\ How many rows of the new column disagree with their partners.
+: MISMATCHES ( -- n )
+   0
+   ROW-N @ 0 ?do
+      i PATH@ PATH-NEW = if
+         i ROW-MATCH? 0= if 1+ then
+      then
    loop ;
 
 ;package

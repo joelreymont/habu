@@ -1,17 +1,16 @@
-\ codegen-compare-new.f - the new code generator's column of the comparison.
-\ One concern: which corpus word the new chain can compile, and what it costs.
+\ codegen-compare-new.f - the new code generator's column of the FIRST
+\ comparison. One concern: which word of the pinned eleven the new chain
+\ compiles, and what it costs.
 \
 \ EVERY CORPUS WORD IS ACCOUNTED FOR. A word is either compiled - the real chain
 \ runs on it and it gets a row of its own - or declared a gap that names the
-\ capability the straight-line subset still lacks. Nothing is skipped: the
-\ coverage check below refuses a pass in which some corpus word is neither, so
-\ "the new column has fewer rows" can only ever mean "these named capabilities
-\ are missing", never "the harness quietly stopped looking".
+\ capability the chain still lacks. The account itself lives in
+\ tools/codegen-compare-gap.f, which is shared with the second corpus's column;
+\ this file only says which of these eleven words is which.
 \
 \ THE GAP LIST IS EMPTY. All eleven corpus words are compiled by the chain, which
 \ is what makes the table a comparison of two code generators over one corpus
-\ rather than over the part of it one of them can express. The gap vocabulary
-\ below stays, because the next capability the chain lacks has to be nameable.
+\ rather than over the part of it one of them can express.
 \
 \ WHAT THE SUBSET IS TODAY. src/compiler/native/hir-word.f declares thirty-two
 \ source words - `+ - * / < <= =`, `1-` and `1+`, the four memory words `@`, `!`,
@@ -26,11 +25,6 @@
 \ shows the renames costing nothing at all - the two-way branch, the typed
 \ locals frame, both loop forms, the recursion, the cell bump, the byte sum and
 \ the byte scan.
-\
-\ WHAT A GAP ROW WOULD SAY. There is none today, and when there is one again its
-\ row names every capability it needs rather than the first that stops it - a
-\ word that needs a branch and a comparison is not unblocked by branches alone,
-\ and a reader planning the next capability should see that.
 \
 \ HOW A COVERED ROW IS CHECKED. The word the chain compiled is CALLED on the same
 \ pinned inputs the old column used, and its answers are recorded as that row's
@@ -55,129 +49,11 @@ require lib/errors.f
 require lib/prelude.f
 require lib/string.f
 require tools/codegen-compare-core.f
+require tools/codegen-compare-gap.f
 require tools/codegen-compare-corpus.f
 require tools/codegen-compare-migrated.f
 
 package CODEGEN-NEW
-
-public
-
-\ What a corpus word needs that the straight-line subset has not got. A gap row
-\ stores these rather than a sentence, so a row that names no capability at all
-\ is unwritable and the report renders every one of them the same way. In order:
-\ a branch, a loop, or an exit from the middle of one; a typed locals frame;
-\ calling another word, recursion included; a load or a store; an ordering or
-\ equality operation; integer division.
-ENUM cap DERIVE eq
-   control-flow
-   locals
-   calls
-   memory
-   comparison
-   division
-;ENUM
-
-private
-
-16 constant GAP-MAX
-6 constant CAP-MAX
-
-GAP-MAX CODEGEN-COMPARE:NAME-MAX * BUFFER: GAP-NAMES
-create GAP-LENS GAP-MAX cells allot
-create GAP-CAP-N GAP-MAX cells allot
-create GAP-CAPS GAP-MAX CAP-MAX * cells allot
-
-variable GAP-N
-
-: SLOT ( ptr a n -- ptr a )
-   cells + ;
-
-: GAP-OK ( n -- n )
-   dup 0 < over GAP-N @ >= or if E-CODEGEN-COMPARE-ROW throw then ;
-
-: GAP-NAME-AT ( n -- ptr u8 )
-   CODEGEN-COMPARE:NAME-MAX * GAP-NAMES + ;
-
-\ A stored row is cells, so a capability crosses to a number here and back
-\ there. The decoder is exhaustive and refuses a code outside the vocabulary at
-\ first touch, so a corrupted row cannot decode as some other capability.
-: CAP-CODE ( CODEGEN-NEW:cap -- n )
-   MATCH cap
-      control-flow OF 0 ENDOF
-      locals       OF 1 ENDOF
-      calls        OF 2 ENDOF
-      memory       OF 3 ENDOF
-      comparison   OF 4 ENDOF
-      division     OF 5 ENDOF
-   ;MATCH ;
-
-: N>CAP ( n -- CODEGEN-NEW:cap )
-   case
-      0 of CODEGEN--NEW-CAP:CONTROL-FLOW endof
-      1 of CODEGEN--NEW-CAP:LOCALS endof
-      2 of CODEGEN--NEW-CAP:CALLS endof
-      3 of CODEGEN--NEW-CAP:MEMORY endof
-      4 of CODEGEN--NEW-CAP:COMPARISON endof
-      5 of CODEGEN--NEW-CAP:DIVISION endof
-      E-CODEGEN-COMPARE-ROW throw
-   endcase ;
-
-\ Every name this file writes down has to be a corpus word the old column really
-\ measured. A misspelling would otherwise become a gap for a word that does not
-\ exist, or leave a real word accounted for by nothing.
-: CORPUS-CK ( ptr u8 n -- ) {: a:ptr u:n :}
-   CODEGEN-COMPARE:PATH-OLD a u CODEGEN-COMPARE:FIND-ROW 0 < if
-      E-CODEGEN-COMPARE-CORPUS throw
-   then ;
-
-public
-
-\ Declare a corpus word the straight-line subset cannot express yet, and the
-\ first capability it is waiting for. There is no way to declare one without a
-\ capability.
-: GAP ( ptr u8 n CODEGEN-NEW:cap -- ) {: a:ptr u:n c:CODEGEN-NEW:cap :}
-   GAP-N @ GAP-MAX >= if E-CODEGEN-COMPARE-CAP throw then
-   u CODEGEN-COMPARE:NAME-MAX > if E-CODEGEN-COMPARE-CAP throw then
-   a u CORPUS-CK
-   a  GAP-N @ GAP-NAME-AT  u STR-LEN BYTE-COPY-LEN
-   u GAP-LENS GAP-N @ SLOT !
-   c CAP-CODE GAP-CAPS GAP-N @ CAP-MAX * SLOT !
-   1 GAP-CAP-N GAP-N @ SLOT !
-   GAP-N @ 1+ GAP-N ! ;
-
-\ Another capability the gap just declared is also waiting for.
-: GAP-ALSO ( CODEGEN-NEW:cap -- ) {: c:CODEGEN-NEW:cap :}
-   GAP-N @ 1- GAP-OK {: k:n :}
-   GAP-CAP-N k SLOT @ {: j:n :}
-   j CAP-MAX >= if E-CODEGEN-COMPARE-CAP throw then
-   c CAP-CODE GAP-CAPS k CAP-MAX * j + SLOT !
-   j 1+ GAP-CAP-N k SLOT ! ;
-
-: GAPS ( -- n )
-   GAP-N @ ;
-
-: GAP-NAME$ ( n -- ptr u8 n ) {: k:n :}
-   k GAP-OK GAP-NAME-AT
-   GAP-LENS k SLOT @ ;
-
-: GAP-CAPS@ ( n -- n ) {: k:n :}
-   GAP-CAP-N k GAP-OK SLOT @ ;
-
-: GAP-CAP@ ( n n -- CODEGEN-NEW:cap ) {: k:n j:n :}
-   k GAP-OK drop
-   j 0 < j k GAP-CAPS@ >= or if E-CODEGEN-COMPARE-ROW throw then
-   GAP-CAPS k CAP-MAX * j + SLOT @ N>CAP ;
-
-\ How a capability reads in the report. The one place a capability becomes text.
-: CAP$ ( CODEGEN-NEW:cap -- ptr u8 n ) {: c:CODEGEN-NEW:cap :}
-   c MATCH cap
-      control-flow OF s" control flow" ENDOF
-      locals       OF s" locals" ENDOF
-      calls        OF s" calls" ENDOF
-      memory       OF s" memory access" ENDOF
-      comparison   OF s" comparison" ENDOF
-      division     OF s" division" ENDOF
-   ;MATCH ;
 
 private
 
@@ -349,69 +225,21 @@ private
    FACT-CASE ;
 
 \ ---- the words the subset cannot express yet ---------------------------------
-\ None. Every word of the corpus is compiled by the chain, so the gap list is
-\ empty and COVERAGE-CK below is what says so - it refuses a pass in which any
-\ corpus word is neither compiled nor declared a gap, so an empty list is a
+\ None. Every word of this corpus is compiled by the chain, so the gap list is
+\ empty and CODEGEN-GAP:COVERAGE-CK is what says so - it refuses a pass in which
+\ any corpus word is neither compiled nor declared a gap, so an empty list is a
 \ statement about all eleven rather than the absence of one.
-\
-\ THE MACHINERY STAYS. A gap row is how the next capability that is missing gets
-\ named, and deleting the vocabulary would mean the next word this chain cannot
-\ express is a shorter table instead of a named capability.
 : GAP-CASES ( -- ) ;
 
-\ ---- accounting --------------------------------------------------------------
-: GAP-FOR? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   false
-   GAP-N @ 0 ?do
-      i GAP-NAME$ a u STR= if drop true leave then
-   loop ;
-
-\ Every corpus word is compiled or declared a gap. A word that is neither would
-\ leave the new column quietly shorter than the old one, which is the one failure
-\ a comparison harness must never have.
-: COVERAGE-CK ( -- )
-   CODEGEN-COMPARE:ROWS 0 ?do
-      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
-         CODEGEN-COMPARE:PATH-NEW i CODEGEN-COMPARE:NAME$
-         CODEGEN-COMPARE:FIND-ROW 0 < if
-            i CODEGEN-COMPARE:NAME$ GAP-FOR? 0= if
-               E-CODEGEN-COMPARE-CORPUS throw
-            then
-         then
-      then
-   loop ;
-
 public
-
-: RESET ( -- )
-   0 GAP-N ! ;
 
 \ Compile every corpus word the subset can express, declare the rest, and check
 \ that between them they account for all of it. Runs after the old column, whose
 \ rows the names are checked against.
 : RUN ( -- )
-   RESET
+   CODEGEN-GAP:RESET
    COVERED-CASES
    GAP-CASES
-   COVERAGE-CK ;
-
-\ The old row this new row is the head-to-head partner of.
-: PARTNER ( n -- n ) {: k:n :}
-   CODEGEN-COMPARE:PATH-OLD k CODEGEN-COMPARE:NAME$ CODEGEN-COMPARE:FIND-ROW ;
-
-\ Did the routine the new chain emitted compute what the old word computes? This
-\ is the equality the whole comparison turns on.
-: ROW-MATCH? ( n -- bool ) {: k:n :}
-   k PARTNER {: b:n :}
-   b 0 < if false exit then
-   k b CODEGEN-COMPARE:SAME-OUTPUTS? ;
-
-: MISMATCHES ( -- n )
-   0
-   CODEGEN-COMPARE:ROWS 0 ?do
-      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW = if
-         i ROW-MATCH? 0= if 1+ then
-      then
-   loop ;
+   CODEGEN-GAP:COVERAGE-CK ;
 
 ;package

@@ -17,9 +17,11 @@ require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require tools/codegen-compare-cases.f
+require tools/codegen-compare-cases2.f
 require tools/codegen-compare-report.f
 require tools/codegen-compare-baseline.f
 require tools/codegen-compare-new.f
+require tools/codegen-compare-new2.f
 
 package CODEGEN-COMPARE-CLI
 
@@ -40,13 +42,27 @@ private
    CODEGEN-BASELINE:COSTS-CHECKED? 0= if 0 exit then
    CODEGEN-REPORT:SAY-FLOOR-GAP ;
 
-: RUN-CHECK ( -- n )
-   CODEGEN-CASES:RUN
+\ One measured pass reported and compared with its own committed table. The
+\ caller runs the pass; this reads whatever the pass left in the store, which is
+\ why the two corpora need no second copy of any of it.
+: TABLE-FINDINGS ( ptr u8 n -- n ) {: a:ptr u:n :}
    CODEGEN-REPORT:PRINT
-   CODEGEN-BASELINE:PATH$ CODEGEN-BASELINE:LOAD
+   a u CODEGEN-BASELINE:LOAD
    CODEGEN-BASELINE:COMPARE
    CODEGEN-REPORT:SAY-MISMATCHES +
    FLOOR-FINDINGS + ;
+
+\ BOTH TABLES, IN ORDER, AND THE FINDINGS ADDED UP. Each corpus is measured in a
+\ pass of its own - the store holds one corpus at a time, so the second pass
+\ resets it - and each is compared with its own committed table. A run that
+\ stopped after the first table would leave the second corpus unchecked while
+\ still printing "0 finding(s)", so the two are added and neither can hide the
+\ other.
+: RUN-CHECK ( -- n )
+   CODEGEN-CASES:RUN
+   CODEGEN-CASES:BASELINE-PATH$ TABLE-FINDINGS
+   CODEGEN-CASES2:RUN
+   CODEGEN-CASES2:BASELINE-PATH$ TABLE-FINDINGS + ;
 
 : VERDICT ( n -- ) {: findings:n :}
    cr
@@ -78,12 +94,19 @@ public
    CODEGEN-BASELINE:COSTS-UNCHECKED!
    RUN-CHECK VERDICT ;
 
-\ Measure, print, and rewrite the committed baseline from this measurement.
+\ Measure, print, and rewrite one committed table from this measurement. The
+\ caller runs the pass, as with TABLE-FINDINGS.
+: WRITE-TABLE ( ptr u8 n ptr u8 n -- ) {: ba:ptr bu:n ca:ptr cu:n :}
+   CODEGEN-REPORT:PRINT
+   ba bu  ca cu CODEGEN-REPORT:BASELINE$  ATOMIC-WRITE-FILE
+   cr s" codegen-compare: baseline rewritten: " type
+   ba bu type cr ;
+
+\ Measure, print, and rewrite both committed tables from this measurement.
 : UPDATE ( -- )
    CODEGEN-CASES:RUN
-   CODEGEN-REPORT:PRINT
-   CODEGEN-BASELINE:PATH$ CODEGEN-REPORT:BASELINE$ ATOMIC-WRITE-FILE
-   cr s" codegen-compare: baseline rewritten: " type
-   CODEGEN-BASELINE:PATH$ type cr ;
+   CODEGEN-CASES:BASELINE-PATH$ CODEGEN-CASES:CORPUS-PATH$ WRITE-TABLE
+   CODEGEN-CASES2:RUN
+   CODEGEN-CASES2:BASELINE-PATH$ CODEGEN-CASES2:CORPUS-PATH$ WRITE-TABLE ;
 
 ;package

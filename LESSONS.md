@@ -4390,3 +4390,40 @@ shift-by-register form does), and `-3 cells` is -24. Every one of those became a
 row of the acceptance fixture, and three of them are rows a plausible wrong
 lowering passes without: a complement-based `0=` agrees on 0 and on -1 and
 differs only on 5.
+
+## A benchmark corpus is the fastest bug-finder the compiler has
+
+Widening the codegen comparison from eleven synthetic shapes to seven words
+taken out of the running system found more in a morning than the acceptance
+suites had: hexadecimal literals cannot cross the tape, a migrated body may name
+only one constant, one loop needs ten registers where every earlier loop needed
+eight, and - the real one - a chain-compiled routine that CALLS another
+chain-compiled routine from inside a `?do` body answers the wrong number and
+faults when the body stores. Every one of those is a shape a hand-written
+fixture had no reason to reach, because a fixture is written by somebody who
+already knows what the compiler does. Real code is not.
+
+## Narrow a miscompile by varying ONE thing at a time, and the diagnosis falls out
+
+`4 LC-N` answering 0 where 12 was right could have been anything. Five one-line
+variants settled it in minutes: the same call in a `begin … until` BODY is
+right, the same call in a `begin … while` TEST is right, the same `?do` body
+with NO call is right, and the same `?do` body calling an ENGINE-compiled word
+is right. What is left is one sentence - a chain callee destroys registers the
+`?do` loop is carrying, and the call site saves the value vector but not the
+loop's own state - and the variant that answered 36 instead of 24 says which
+register: the trip count, because the loop ran six turns instead of four. Write
+the variants before writing the dot; the dot is then a diagnosis rather than a
+report.
+
+## "It compiles if I respell it" is a fork in the road, and it needs a measurement
+
+Two of the seven bodies were refused for their SPELLING - four named constants,
+three hexadecimal literals - and the tempting move is to write the numbers out
+and take the green row. That is only honest if the two spellings are the same
+program, and the way to know is to compile both with the engine and compare the
+records: 428 bytes either way for the whitespace test, 144 either way for the
+case fold. The substitution then went into the file with the dot that removes
+it, and the byte equality went into the suite, so the claim is a test rather
+than a sentence. The row that could NOT be bought that way - a call in a counted
+loop, which the interop would have made green by luck - stayed a gap.

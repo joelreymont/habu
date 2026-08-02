@@ -137,6 +137,15 @@ private
 
 public
 
+\ Where this corpus's committed table lives, and which source file it is the
+\ measurement of. Both are stated here, beside the cases, so that the runner
+\ names a corpus once and everything about that corpus follows.
+: BASELINE-PATH$ ( -- ptr u8 n )
+   s" test/compiler/codegen-compare-baseline.txt" ;
+
+: CORPUS-PATH$ ( -- ptr u8 n )
+   s" tools/codegen-compare-corpus.f" ;
+
 \ The old column first, then the new one: tools/codegen-compare-new.f checks
 \ every name it writes down against a row the old column measured, so the old
 \ rows have to be there before it runs.

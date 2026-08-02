@@ -283,9 +283,11 @@ SUITE compiler-native-immediate
 ;SUITE
 
 \ The code generator comparison harness, and what a gate can honestly ask of it.
-\ Its member checks the exact half: machine-code bytes, the values each compiled
-\ word computes, the head-to-head agreement of the two code generators, and the
-\ structure of the committed table. The timing column is deliberately left out
+\ Its member checks the exact half of BOTH pinned corpora - the original eleven
+\ shapes and the seven surveyed hot words of tools/codegen-compare-corpus2.f -
+\ in one run: machine-code bytes, the values each compiled word computes, the
+\ head-to-head agreement of the two code generators, and the structure of each
+\ committed table. The timing column is deliberately left out
 \ of every gate, here and in the resident group below. A cost is a measurement
 \ compared with a number recorded on an idle machine, and a loaded host reaches
 \ the tolerance band on its own - eight competing processes per core left two

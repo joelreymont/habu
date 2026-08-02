@@ -3,7 +3,9 @@
 \
 \ Two renderings, because they answer different questions:
 \
-\   BASELINE$  the committed table. It carries only the OLD code generator's
+\   BASELINE$  a committed table - there is one per pinned corpus, and which one
+\              is being written is the corpus source path the caller hands over.
+\              It carries only the OLD code generator's
 \              rows, and only the numbers that are stable across runs and
 \              machines - the compiled size, the outputs, and the cost expressed
 \              as a multiple of an empty call - so the file in the repository
@@ -41,7 +43,7 @@ require lib/prelude.f
 require lib/string.f
 require lib/fmt.f
 require tools/codegen-compare-core.f
-require tools/codegen-compare-new.f
+require tools/codegen-compare-gap.f
 
 package CODEGEN-REPORT
 
@@ -105,11 +107,16 @@ variable TEXT-U
    s" =========================================" LINE
    NL ;
 
-: WHAT-IT-IS ( -- )
+\ Which corpus this table is of. The measurement is the same for both, so the
+\ text is one text and the corpus file's path is what tells a reader which table
+\ is in front of them. It is a parameter rather than a constant because a second
+\ corpus was always going to arrive, and two copies of this prose would be two
+\ places to fix.
+: WHAT-IT-IS ( ptr u8 n -- ) {: a:ptr u:n :}
    s" What this file is" LINE
    s" -----------------" LINE
    s" This is the recorded measurement of the code generator bin/hb uses today," LINE
-   s" over the pinned word corpus in tools/codegen-compare-corpus.f. The harness" LINE
+   s" over the pinned word corpus in " APPEND a u APPEND s" . The harness" LINE
    s" recreates this table on every run and compares it with this committed copy," LINE
    s" field by field. Nothing here is written by hand; regenerate it with" LINE
    NL
@@ -189,7 +196,10 @@ variable TEXT-U
 
 public
 
-: BASELINE$ ( -- ptr u8 n )
+\ The committed table for the corpus whose source file is named. Nothing else
+\ about the two corpora differs here: both are measured the same way, both are
+\ read back the same way, and the path is what a reader identifies the file by.
+: BASELINE$ ( ptr u8 n -- ptr u8 n )
    0 TEXT-U !
    TITLE
    WHAT-IT-IS
@@ -225,7 +235,7 @@ private
    GAP-COL PAD
    j CODEGEN-COMPARE:COST WIDE-COL PAD-LEFT
    GAP-COL PAD
-   j CODEGEN-NEW:ROW-MATCH? if s" same" VERDICT else s" DIFFERS" VERDICT then ;
+   j CODEGEN-COMPARE:ROW-MATCH? if s" same" VERDICT else s" DIFFERS" VERDICT then ;
 
 : UNCOVERED-PAIR ( n -- ) {: k:n :}
    k CODEGEN-COMPARE:SIZE WIDE-COL PAD-LEFT
@@ -252,24 +262,24 @@ private
    repeat drop ;
 
 : GAP-CAP-LIST ( n -- ) {: k:n :}
-   0 begin dup k CODEGEN-NEW:GAP-CAPS@ < while
+   0 begin dup k CODEGEN-GAP:GAP-CAPS@ < while
       dup 0 > if s" , " APPEND then
-      dup k swap CODEGEN-NEW:GAP-CAP@ CODEGEN-NEW:CAP$ APPEND
+      dup k swap CODEGEN-GAP:GAP-CAP@ CODEGEN-GAP:CAP$ APPEND
       1+
    repeat drop ;
 
 : GAP-ROW ( n -- ) {: k:n :}
    s"   " APPEND
-   k CODEGEN-NEW:GAP-NAME$ NAME-COL PAD-RIGHT
+   k CODEGEN-GAP:GAP-NAME$ NAME-COL PAD-RIGHT
    GAP-COL PAD
    k GAP-CAP-LIST
    NL ;
 
 : GAP-LIST ( -- )
-   CODEGEN-NEW:GAPS 0= if exit then
+   CODEGEN-GAP:GAPS 0= if exit then
    NL
    s" not yet compiled by the new chain, and what each is waiting for:" LINE
-   0 begin dup CODEGEN-NEW:GAPS < while
+   0 begin dup CODEGEN-GAP:GAPS < while
       dup GAP-ROW
       1+
    repeat drop ;
@@ -280,7 +290,7 @@ private
    s" , compiled by the new chain: " APPEND
    CODEGEN-COMPARE:PATH-NEW CODEGEN-COMPARE:ROWS-OF NUM
    s" , not yet: " APPEND
-   CODEGEN-NEW:GAPS NUM
+   CODEGEN-GAP:GAPS NUM
    NL ;
 
 : PAIRS$ ( -- ptr u8 n )
@@ -418,7 +428,7 @@ private
    j CODEGEN-COMPARE:NAME$ type
    s"  compiled by the new chain produces" type j SAY-OUTPUTS
    s" , the old emitter produces" type
-   j CODEGEN-NEW:PARTNER {: k:n :}
+   j CODEGEN-COMPARE:PARTNER {: k:n :}
    k 0 < if s"  no row at all" type else k SAY-OUTPUTS then
    cr ;
 
@@ -430,7 +440,7 @@ public
    0
    CODEGEN-COMPARE:ROWS 0 ?do
       i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW = if
-         i CODEGEN-NEW:ROW-MATCH? 0= if i SAY-MISMATCH 1+ then
+         i CODEGEN-COMPARE:ROW-MATCH? 0= if i SAY-MISMATCH 1+ then
       then
    loop ;
 

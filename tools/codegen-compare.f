@@ -2,14 +2,23 @@
 \ One concern: reading the command line and choosing the run.
 \
 \   bin/hb --load tools/codegen-compare.f
-\       Measure the pinned corpus, print the report, and compare the
-\       measurement with the committed baseline table. Exits non-zero, after
-\       naming every disagreement, if the comparison finds anything.
+\       Measure both pinned corpora, print a report for each, and compare each
+\       measurement with its own committed baseline table. Exits non-zero,
+\       after naming every disagreement, if either comparison finds anything.
 \
 \   bin/hb --load tools/codegen-compare.f -- --update
-\       Measure and print as above, then rewrite the committed baseline table
+\       Measure and print as above, then rewrite both committed baseline tables
 \       from this measurement. Use it when a deliberate compiler change has
 \       moved the numbers, and read the resulting diff before committing it.
+\
+\ TWO CORPORA, TWO TABLES, ONE RUN. tools/codegen-compare-corpus.f is the
+\ original eleven words - one smallest honest example of each shape a code
+\ generator has to handle - and tools/codegen-compare-corpus2.f is seven words
+\ taken from the places this system really spends its time. They are separate
+\ files with separate committed tables because the first table is a pinned
+\ yardstick: adding a row to it would be a change to the artifact every compiler
+\ change is read against. The runner measures them one after the other, in one
+\ pass each, and adds the findings up.
 \
 \ THIS ENTRY IS THE TIMED CHECK, AND IT IS RUN BY HAND. It compares the cost
 \ column with the committed table; no gate does. A cost is a measurement, and a

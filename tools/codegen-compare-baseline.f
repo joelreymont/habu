@@ -288,8 +288,10 @@ public
 : COSTS-CHECKED? ( -- bool )
    COSTS? @ 0<> ;
 
-: PATH$ ( -- ptr u8 n )
-   s" test/compiler/codegen-compare-baseline.txt" ;
+\ Where a committed table lives is a fact about the corpus it is the measurement
+\ of, so each corpus states its own path beside its cases - CODEGEN-CASES and
+\ CODEGEN-CASES2 - and this reader is handed one. It reads whichever it is
+\ given, which is what lets one reader serve both tables.
 
 \ Read and parse the committed table. Resets the finding count: a malformed or
 \ missing file is itself a finding, and COMPARE adds to the same count.

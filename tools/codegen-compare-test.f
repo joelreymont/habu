@@ -22,20 +22,31 @@
 \ value is invented, and they prove the thing a comparison harness must never get
 \ wrong - reporting a wrong answer as a match.
 \
-\ The coverage claim is then checked on the real run: every corpus word is either
-\ compiled by the new chain or named as a gap with the capabilities it waits for,
-\ never both and never neither, no new row disagrees with its old row, and every
-\ word the chain did compile came out smaller than the old emitter made it. Those
-\ are assertions about the store the real pass left behind, computed here from
-\ the public readers rather than by calling the harness's own check.
+\ The coverage claim is then checked on the real runs - BOTH of them, because
+\ there are two pinned corpora and each is measured in a pass of its own. Every
+\ corpus word is either compiled by the new chain or named as a gap with the
+\ capabilities it waits for, never both and never neither, and no new row
+\ disagrees with its old row. What the two corpora do NOT share is the byte
+\ result: every word of the first that the chain compiled came out smaller than
+\ the old emitter made it, and one word of the second - T-RES-WALK, the loop
+\ whose test is a call - came out LARGER. That number is pinned here by name, so
+\ a change in either direction has to be looked at rather than absorbed. These
+\ are assertions about the store a pass left behind, computed here from the
+\ public readers rather than by calling the harness's own check.
 \
-\ Between the two, the file runs CODEGEN-COMPARE-CLI:CHECK-EXACT against the
-\ committed baseline in the repository: the same measurement pass, the same
-\ report, the same baseline load and the same verdict that
+\ The second corpus's committed table is then attacked the way the first one is,
+\ on fixtures built from the whole of its old column: a byte count moved by one
+\ instruction, on an ordinary row and on a GAP row, a wrong output value, and a
+\ missing row. A comparison that read the second table against the first
+\ corpus's rows would pass every earlier case in this file and fail those.
+\
+\ At the end the file runs CODEGEN-COMPARE-CLI:CHECK-EXACT against the committed
+\ baselines in the repository: the same measurement passes, the same reports,
+\ the same baseline loads and the same verdict that
 \ `bin/hb --load tools/codegen-compare.f` runs, over the same shared body, with
 \ the cost column and the pass budget left out. It ends the process with a
-\ non-zero status if the committed table and the live compiler disagree, or if
-\ the two code generators do.
+\ non-zero status if a committed table and the live compiler disagree, or if the
+\ two code generators do.
 \
 \ WHY THIS FILE LEAVES THE TIMINGS OUT, AND WHERE THEY ARE STILL CHECKED. This
 \ file is scheduled: it runs in the resident stdlib/tail-pure fork group and in
@@ -64,7 +75,9 @@ require lib/fmt.f
 require lib/fs.f
 require lib/fs-mutate.f
 require tools/codegen-compare-cli.f
-require tools/codegen-compare-new.f
+require tools/codegen-compare-gap.f
+require tools/codegen-compare-cases.f
+require tools/codegen-compare-cases2.f
 require tools/codegen-compare-report.f
 
 package CODEGEN-COMPARE-TEST
@@ -88,7 +101,8 @@ PATH-CAP BUFFER: PATH-BUF
 variable PATH-U
 PATH-CAP BUFFER: DIR-BUF
 variable DIR-U
-variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
+variable BAD-ROW                  \ which measured row to write wrongly, -1 for none
+variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for none
 
 \ ---- the deliberately slowed word ------------------------------------------
 
@@ -127,6 +141,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
 
 : FIX-RESET ( -- )
    0 FIX-U !
+   -1 BAD-ROW !
    -1 BAD-OUTPUT ! ;
 
 : FIX-DECLARED ( n -- )
@@ -135,7 +150,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
 : FIX-OUTPUT ( n n -- ) {: k:n j:n :}
    FIX-SP
    k j CODEGEN-COMPARE:OUTPUT
-   j BAD-OUTPUT @ = if 1+ then
+   k BAD-ROW @ =  j BAD-OUTPUT @ =  and if 1+ then
    FIX-NUM ;
 
 : FIX-OUTPUTS ( n -- ) {: k:n :}
@@ -256,7 +271,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    FIX-RESET
    2 FIX-DECLARED
    0 FIX-TRUE-ROW
-   1 BAD-OUTPUT !
+   1 BAD-ROW ! 1 BAD-OUTPUT !
    1 FIX-TRUE-ROW
    FIX-FINDINGS 1 T=
 
@@ -383,7 +398,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    FIX-RESET
    2 FIX-DECLARED
    0 FIX-TRUE-ROW
-   1 BAD-OUTPUT !
+   1 BAD-ROW ! 1 BAD-OUTPUT !
    1 WILD-COST-ROW
    FIX-FINDINGS 1 T=
 
@@ -440,7 +455,7 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
 \ typed-local-lint: allow-bare-local - build is the case body being measured.
 : MEASURE-WITH ( [ -- ] -- ) {: build :}
    CODEGEN-COMPARE:RESET
-   CODEGEN-NEW:RESET
+   CODEGEN-GAP:RESET
    CODEGEN-COMPARE:PASS-BEGIN
    CALIBRATION-CASE
    HONEST-ADD3-CASE
@@ -454,28 +469,28 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    CODEGEN-COMPARE:ROWS 1- ;
 
 : UNKNOWN-GAP ( -- )
-   s" CODEGEN-CORPUS:NOT-A-WORD" CODEGEN--NEW-CAP:LOCALS CODEGEN-NEW:GAP ;
+   s" CODEGEN-CORPUS:NOT-A-WORD" CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP ;
 
 : NEW-COLUMN-CASES ( -- )
    s" a new row that answers what the old row answered reads as agreement" T-LABEL
    [: NEW-HONEST-CASE ;] MEASURE-WITH
-   LAST-ROW CODEGEN-NEW:ROW-MATCH? TTRUE
-   CODEGEN-NEW:MISMATCHES 0 T=
+   LAST-ROW CODEGEN-COMPARE:ROW-MATCH? TTRUE
+   CODEGEN-COMPARE:MISMATCHES 0 T=
    CODEGEN-REPORT:SAY-MISMATCHES 0 T=
 
    s" one answer moved by one is reported as a disagreement" T-LABEL
    [: NEW-WRONG-CASE ;] MEASURE-WITH
-   LAST-ROW CODEGEN-NEW:ROW-MATCH? TFALSE
-   CODEGEN-NEW:MISMATCHES 1 T=
+   LAST-ROW CODEGEN-COMPARE:ROW-MATCH? TFALSE
+   CODEGEN-COMPARE:MISMATCHES 1 T=
 
    s" a new row one answer short is reported too" T-LABEL
    [: NEW-SHORT-CASE ;] MEASURE-WITH
-   LAST-ROW CODEGEN-NEW:ROW-MATCH? TFALSE
-   CODEGEN-NEW:MISMATCHES 1 T=
+   LAST-ROW CODEGEN-COMPARE:ROW-MATCH? TFALSE
+   CODEGEN-COMPARE:MISMATCHES 1 T=
 
    s" a new row is compared with the old row of the same name, not with itself" T-LABEL
    [: NEW-WRONG-CASE ;] MEASURE-WITH
-   LAST-ROW CODEGEN-NEW:PARTNER OLD-ADD3-ROW T=
+   LAST-ROW CODEGEN-COMPARE:PARTNER OLD-ADD3-ROW T=
 
    s" naming a gap for a word the old column never measured is refused" T-LABEL
    [: UNKNOWN-GAP ;] E-CODEGEN-COMPARE-CORPUS TTHROWSQ ;
@@ -495,8 +510,8 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
 
 : NAMED-GAP? ( n -- bool ) {: k:n :}
    false
-   CODEGEN-NEW:GAPS 0 ?do
-      i CODEGEN-NEW:GAP-NAME$ k CODEGEN-COMPARE:NAME$ STR= if drop true leave then
+   CODEGEN-GAP:GAPS 0 ?do
+      i CODEGEN-GAP:GAP-NAME$ k CODEGEN-COMPARE:NAME$ STR= if drop true leave then
    loop ;
 
 \ How many corpus words are accounted for by neither column - the one number
@@ -520,8 +535,8 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
 
 : CAPLESS-GAPS ( -- n )
    0
-   CODEGEN-NEW:GAPS 0 ?do
-      i CODEGEN-NEW:GAP-CAPS@ 0= if 1+ then
+   CODEGEN-GAP:GAPS 0 ?do
+      i CODEGEN-GAP:GAP-CAPS@ 0= if 1+ then
    loop ;
 
 \ Every word the new chain compiled, compared byte for byte with the old
@@ -530,16 +545,33 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    0
    CODEGEN-COMPARE:ROWS 0 ?do
       i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW = if
-         i CODEGEN-NEW:PARTNER {: b:n :}
+         i CODEGEN-COMPARE:PARTNER {: b:n :}
          b 0 < if 1+ else
             i CODEGEN-COMPARE:SIZE b CODEGEN-COMPARE:SIZE < 0= if 1+ then
          then
       then
    loop ;
 
-: REAL-RUN-CASES ( -- )
+\ Is the chain's code for this corpus word fewer bytes than the engine's? Asked
+\ by name, because a count alone cannot say WHICH row lost and a corpus with a
+\ losing row has to name it.
+: SMALLER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CODEGEN-COMPARE:PATH-NEW a u CODEGEN-COMPARE:FIND-ROW {: k:n :}
+   k 0 < if false exit then
+   k CODEGEN-COMPARE:PARTNER {: b:n :}
+   b 0 < if false exit then
+   k CODEGEN-COMPARE:SIZE b CODEGEN-COMPARE:SIZE < ;
+
+: NAMED-GAP-AMONG? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   false
+   CODEGEN-GAP:GAPS 0 ?do
+      i CODEGEN-GAP:GAP-NAME$ a u STR= if drop true leave then
+   loop ;
+
+\ The account every measured pass has to keep, whichever corpus it measured.
+: ACCOUNT-CASES ( n -- ) {: rows:n :}
    s" the real run measured the whole pinned corpus" T-LABEL
-   OLD-ROWS 11 T=
+   OLD-ROWS rows T=
 
    s" every corpus word is compiled by the new chain or named a gap" T-LABEL
    UNACCOUNTED 0 T=
@@ -548,16 +580,189 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    DOUBLE-COUNTED 0 T=
 
    s" the two accounts together are the whole corpus" T-LABEL
-   NEW-ROWS CODEGEN-NEW:GAPS + OLD-ROWS T=
+   NEW-ROWS CODEGEN-GAP:GAPS + OLD-ROWS T=
 
    s" every gap names at least one capability it is waiting for" T-LABEL
    CAPLESS-GAPS 0 T=
 
    s" every word the new chain compiled computes what the old emitter computes" T-LABEL
-   CODEGEN-NEW:MISMATCHES 0 T=
+   CODEGEN-COMPARE:MISMATCHES 0 T= ;
 
-   s" and every one of them is fewer bytes of machine code" T-LABEL
+: REAL-RUN-CASES ( -- )
+   11 ACCOUNT-CASES
+
+   s" the first corpus has no gaps at all" T-LABEL
+   CODEGEN-GAP:GAPS 0 T=
+
+   s" and every word the new chain compiled is fewer bytes of machine code" T-LABEL
    NOT-SMALLER 0 T= ;
+
+\ The second corpus, whose account is not all wins and says so. Two of its seven
+\ words are gaps and one of the five it does compile takes MORE bytes than the
+\ engine's code for the same body - T-RES-WALK, whose own record is three
+\ instructions of loop around a call in the old emitter's code and a frame, a
+\ saved return address and a saved loop value in the chain's. The number is
+\ pinned here so that the day it changes, in either direction, somebody has to
+\ look at it.
+: REAL-RUN-CASES2 ( -- )
+   8 ACCOUNT-CASES
+
+   s" the second corpus declares exactly one gap" T-LABEL
+   CODEGEN-GAP:GAPS 1 T=
+
+   s" and it is the word the head of codegen-compare-new2.f names" T-LABEL
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" NAMED-GAP-AMONG? TTRUE
+
+   s" which names both capabilities it waits for, not just the first" T-LABEL
+   0 CODEGEN-GAP:GAP-CAPS@ 2 T=
+
+   s" exactly one compiled word is not fewer bytes than the engine's" T-LABEL
+   NOT-SMALLER 1 T=
+
+   s" and it is the loop whose test is a call" T-LABEL
+   s" CODEGEN-CORPUS2:T-RES-WALK" SMALLER? TFALSE
+
+   s" every other compiled word of it is fewer bytes" T-LABEL
+   s" CODEGEN-CORPUS2:TAG" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:WS?" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:SYM-FOLD-C" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:MAX-DIM" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE ;
+
+\ ---- the claim the second corpus's two respelled rows rest on ----------------
+\ tools/codegen-compare-migrated2.f compiles two of the second corpus's bodies
+\ with a constant written as the number behind it: WS?'s four named byte
+\ constants, because a migrated body may name at most one word outside the
+\ dialect (dot habu-let-a-migrated-77d34d82), and SYM-FOLD-C's three hexadecimal
+\ literals, because the tape cannot read a hexadecimal spelling back (dot
+\ habu-record-the-engine-79c570ed). Both files say so in prose. This is the
+\ measurement behind the prose.
+\
+\ The twins below are the corpus bodies with the substitution applied, compiled
+\ by the ENGINE - the same emitter that compiled the corpus words - so the
+\ comparison is between two spellings of one program under one compiler. If they
+\ are the same size and answer the same on every pinned input, the substitution
+\ is a spelling; if a future engine ever compiled a named constant or a
+\ hexadecimal literal into anything else, these red and the note in
+\ tools/codegen-compare-migrated2.f is what they point at.
+
+\ The twins are PUBLIC because their sizes are read the way every other size in
+\ this harness is read - off the dictionary record, by name - and a private word
+\ has no name the dictionary answers to. Nothing outside this file calls them.
+public
+
+: WS-SPELLED-OUT ( n -- bool )
+   dup 32 = over 9 = or over 10 = or swap 13 = or ;
+
+: FOLD-SPELLED-OUT ( n -- n ) {: c:n :}
+   c 65 < if c exit then
+   c 90 > if c exit then
+   c 32 or ;
+
+private
+
+\ A flag as the number the assertion vocabulary compares. `T=` takes two
+\ numbers, and two flags are not two numbers.
+: FLAG# ( bool -- n )
+   if 1 else 0 then ;
+
+: WORD-BYTES ( ptr u8 n -- n )
+   XREF-FIND dup XREF-FOUND? 0= if E-CODEGEN-COMPARE-SUBJECT throw then
+   XREF-LEN ;
+
+: SPELLING-CASES ( -- )
+   s" a named constant compiles to the same code as the number behind it" T-LABEL
+   s" CODEGEN-COMPARE-TEST:WS-SPELLED-OUT" WORD-BYTES
+   s" CODEGEN-CORPUS2:WS?" WORD-BYTES T=
+
+   s" and answers the same on every pinned input" T-LABEL
+   32 WS-SPELLED-OUT FLAG#  32 CODEGEN-CORPUS2:WS? FLAG# T=
+   9 WS-SPELLED-OUT FLAG#  9 CODEGEN-CORPUS2:WS? FLAG# T=
+   10 WS-SPELLED-OUT FLAG#  10 CODEGEN-CORPUS2:WS? FLAG# T=
+   13 WS-SPELLED-OUT FLAG#  13 CODEGEN-CORPUS2:WS? FLAG# T=
+   97 WS-SPELLED-OUT FLAG#  97 CODEGEN-CORPUS2:WS? FLAG# T=
+
+   s" a hexadecimal literal compiles to the same code as its decimal spelling" T-LABEL
+   s" CODEGEN-COMPARE-TEST:FOLD-SPELLED-OUT" WORD-BYTES
+   s" CODEGEN-CORPUS2:SYM-FOLD-C" WORD-BYTES T=
+
+   s" and answers the same on every pinned input" T-LABEL
+   64 FOLD-SPELLED-OUT 64 CODEGEN-CORPUS2:SYM-FOLD-C T=
+   65 FOLD-SPELLED-OUT 65 CODEGEN-CORPUS2:SYM-FOLD-C T=
+   90 FOLD-SPELLED-OUT 90 CODEGEN-CORPUS2:SYM-FOLD-C T=
+   91 FOLD-SPELLED-OUT 91 CODEGEN-CORPUS2:SYM-FOLD-C T=
+   97 FOLD-SPELLED-OUT 97 CODEGEN-CORPUS2:SYM-FOLD-C T= ;
+
+\ ---- the second corpus's committed table, on fixtures built to fool it -------
+\ The cases near the top of this file build their fixtures from a two-row
+\ measurement of the FIRST corpus. These build one from the whole of the SECOND
+\ corpus's old column - eight rows, five of which the chain also compiles and two
+\ of which are gaps - and then break it in one place at a time. A comparison that
+\ read the second table against the first corpus's rows, or that stopped after
+\ the rows it recognised, passes every case above and fails these.
+\
+\ The measurement they read is whatever pass the caller ran last, so MAIN runs
+\ the second corpus immediately before calling them.
+
+: OLD-ROW ( ptr u8 n -- n ) {: a:ptr u:n :}
+   CODEGEN-COMPARE:PATH-OLD a u CODEGEN-COMPARE:FIND-ROW ;
+
+\ Every old row of the measured pass, with the named row's byte count moved by
+\ `delta`. A delta of zero writes the table the harness itself would write.
+: FIX-OLD-ROWS ( n n -- ) {: bad:n delta:n :}
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i bad = if
+            i  i CODEGEN-COMPARE:SIZE delta +  i CODEGEN-COMPARE:COST FIX-ROW
+         else
+            i FIX-TRUE-ROW
+         then
+      then
+   loop ;
+
+: WHOLE-OLD-COLUMN ( n n -- ) {: bad:n delta:n :}
+   FIX-RESET
+   OLD-ROWS FIX-DECLARED
+   bad delta FIX-OLD-ROWS ;
+
+\ Four bytes is one AArch64 instruction, which is the smallest a compiled word's
+\ size can move by, so a check that catches this catches any real regression.
+4 constant ONE-INSN
+
+: CORPUS2-TABLE-CASES ( -- )
+   s" the second corpus's own table, written honestly, reports nothing" T-LABEL
+   -1 0 WHOLE-OLD-COLUMN
+   FIX-FINDINGS 0 T=
+
+   s" one instruction added to one row's byte count is reported" T-LABEL
+   s" CODEGEN-CORPUS2:COUNT-CHAR" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T=
+
+   s" and so is one taken off a different row" T-LABEL
+   s" CODEGEN-CORPUS2:T-RES-WALK" OLD-ROW ONE-INSN negate WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T=
+
+   s" a byte regression on a GAP row's old column is reported too" T-LABEL
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" OLD-ROW ONE-INSN WHOLE-OLD-COLUMN
+   FIX-FINDINGS 1 T=
+
+   s" one wrong output value in the second table is reported" T-LABEL
+   -1 0 WHOLE-OLD-COLUMN
+   FIX-RESET
+   OLD-ROWS FIX-DECLARED
+   s" CODEGEN-CORPUS2:WS?" OLD-ROW BAD-ROW ! 4 BAD-OUTPUT !
+   -1 0 FIX-OLD-ROWS
+   FIX-FINDINGS 1 T=
+
+   s" a second table missing a row is reported" T-LABEL
+   FIX-RESET
+   OLD-ROWS 1- FIX-DECLARED
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         i s" CODEGEN-CORPUS2:MAX-DIM" OLD-ROW <> if i FIX-TRUE-ROW then
+      then
+   loop
+   FIX-FINDINGS 1 T= ;
 
 : SETUP ( -- )
    CLEANUP-RESET
@@ -575,10 +780,19 @@ variable BAD-OUTPUT               \ index of the output to corrupt, -1 for none
    SLOWDOWN-CASES
    COST-MODE-CASES
    NEW-COLUMN-CASES
+   \ Each account and each fixture is read off a pass this file runs BY NAME.
+   \ Reading whatever the previous run happened to leave in the store would make
+   \ every assertion below depend on the order of the file rather than on the
+   \ corpus it names.
+   CODEGEN-CASES:RUN
+   REAL-RUN-CASES
+   CODEGEN-CASES2:RUN
+   REAL-RUN-CASES2
+   SPELLING-CASES
+   CORPUS2-TABLE-CASES
    CLEANUP-RUN
    CODEGEN-BASELINE:LOUD!
    CODEGEN-COMPARE-CLI:CHECK-EXACT
-   REAL-RUN-CASES
    T-REPORT ;
 
 MAIN
