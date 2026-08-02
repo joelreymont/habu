@@ -10,8 +10,8 @@
 \ cannot omit one.
 \
 \ ROLE TABLE DERIVATION (pinned against the real checkpoint). The real
-\ openai-community/gpt2 model.safetensors (SHA-256 pinned in
-\ maki/infer/gpt2-reference-data.f) publishes a census of 160 tensors
+\ openai-community/gpt2 model.safetensors (SHA-256 pinned by
+\ GPT2PIN:MODEL-SHA256$ in maki/infer/gpt2-pin.f) publishes a census of 160 tensors
 \ (maki/infer/safetensors-test.f real-artifact leg): 4 globals (wte.weight,
 \ wpe.weight, ln_f.weight, ln_f.bias) + 12 layers x 13. The thirteen, in HF
 \ GPT2Block state-dict order (ln_1, then the attention module's causal-mask
@@ -45,8 +45,8 @@
 \ four *.weight tensor names of Conv1D modules - qkv-w, aproj-w, fc-w, mproj-w -
 \ including the SQUARE aproj-w [nembd,nembd], where shape could never decide;
 \ every other role (embeddings, norms, biases, the mask) is plain: consumed
-\ exactly as stored. This is an adapter-owned convention of MODEL-ADAPTER:
-\ HF-GPT2 (FORMAT-ID), not a property derivable from the data.
+\ exactly as stored. This is a GPT-2 checkpoint convention, not a property
+\ derivable from the data.
 \
 \ AUTHENTICATED LAYER IDENTITY (rev-4 correction 1). STRUCTURE `layer-id`
 \ embeds the minting config's content key: (MDLCFG:cfgkey, index, private
@@ -199,10 +199,6 @@ public
    MDLCFG:NLAYER@
    dup MAX-N GLOBAL-COUNT - LAYER-ROLE-COUNT / > if E-SIZE throw then
    LAYER-ROLE-COUNT * GLOBAL-COUNT + ;
-
-\ ---- the adapter identity provenance consumes (rev-4 correction 4) ----------------
-: FORMAT-ID ( -- MODEL:adapter )
-   MODEL-ADAPTER:HF-GPT2 ;
 
 private
 

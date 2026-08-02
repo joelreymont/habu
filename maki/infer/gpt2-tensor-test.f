@@ -15,7 +15,7 @@
 \      distinct-non-square geometry;
 \   3. declared orientation: conv1d on exactly the four Conv1D weights
 \      (including the square aproj-w, where shape could never decide), plain
-\      everywhere else; FORMAT-ID is MODEL's hf-gpt2 adapter under adapter EQ;
+\      everywhere else;
 \   4. checked arithmetic at its exact boundaries, every bound derived from
 \      MAX-N and this suite's own role-table constants: the largest nlayer
 \      COUNT accepts and that plus one rejecting; the largest nembd
@@ -324,7 +324,7 @@ using CAD-NUM
    GPT2TENSOR:COUNT 30 T=
    drop ;
 
-\ ---- 3. declared orientation + the typed adapter identity -------------------------
+\ ---- 3. declared orientation -------------------------------------------------------
 : T-ORIENT ( -- )
    GPT2TENSOR-GLOBAL--ROLE:WTE GLOBAL-ORIENTATION PLAIN?
    GPT2TENSOR-GLOBAL--ROLE:WPE GLOBAL-ORIENTATION PLAIN?
@@ -345,9 +345,6 @@ using CAD-NUM
    GPT2TENSOR-LAYER--ROLE:FC-B LAYER-ORIENTATION PLAIN?
    GPT2TENSOR-LAYER--ROLE:MPROJ-B LAYER-ORIENTATION PLAIN?
    drop ;
-
-: T-FORMAT ( -- )
-   GPT2TENSOR:FORMAT-ID MODEL-ADAPTER:HF-GPT2 MODEL-ADAPTER:EQ TTRUE ;
 
 \ ---- 4. checked arithmetic at its exact boundaries ---------------------------------
 : REJECT-SHAPE-OVERFLOW ( -- )
@@ -533,7 +530,6 @@ T-INTERLEAVE
 T-SHAPES-R
 T-SHAPES-TINY
 T-ORIENT
-T-FORMAT
 T-EXTENT
 T-EDGES
 T-LAYER-RANGE

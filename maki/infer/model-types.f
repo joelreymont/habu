@@ -3,10 +3,9 @@
 \ CONCERN: the five closed payload-free enum families shared by normalized
 \ configuration and the compiled-pack manifest, so both ends name ONE authority
 \ instead of translating tags (dot habu-add-shared-inference-0dad1107; inference
-\ design rev 4, blackboard 20260724-191041.846). `adapter` is the typed
-\ FORMAT-ID surface consumed by provenance PIN (rev-4 correction 4); the
-\ adapter's tensor names and orientation convention stay GPT2TENSOR-owned semantics of
-\ the variant. There is deliberately NO dtype family here: MAKI:datatype
+\ design rev 4, blackboard 20260724-191041.846). Adapter tensor names and
+\ orientation conventions stay GPT2TENSOR-owned semantics of the variant.
+\ There is deliberately NO dtype family here: MAKI:datatype
 \ (maki/tensor.f:123, package MAKI public) is the sole dtype authority.
 \ No parser, storage, JSON, or target identity belongs in this package.
 \
@@ -43,8 +42,7 @@ ENUM activation DERIVE eq
    silu
 ;ENUM
 
-\ weight-format adapter identity: the typed FORMAT-ID a provenance pin consumes
-\ (never text, never a bare number).
+\ weight-format adapter vocabulary (never text, never a bare number).
 ENUM adapter DERIVE eq
    hf-gpt2
 ;ENUM
