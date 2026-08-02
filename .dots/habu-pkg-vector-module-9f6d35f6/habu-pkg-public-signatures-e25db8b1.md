@@ -43,7 +43,7 @@ Exact write set: `tools/public-signatures-core.f`,
 resolver that PUBSIG's public wordlist is exactly `MAIN`; every retired
 `PS-*` and test `PST-*` global is unresolved; representative private tails
 are unresolved outside PUBSIG; the CLI fixture and both pinned good-file modes
-pass; the standalone, diagnostics, standard-library-manifest, host, file-map,
+pass; the standalone, diagnostics, standard-library-manifest, host,
 typed-local, and package gates pass. The long-term solution is package
 ownership with one command boundary, not a namespace veneer.
 
