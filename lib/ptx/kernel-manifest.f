@@ -1,11 +1,11 @@
-\ kernel-manifest.f - habu-kernel-manifest v1 JSON renderer.
+\ kernel-manifest.f - habu-kernel-manifest JSON renderer.
 \
-\ Renders the versioned manifest for one kernel from the SAME sources the
+\ Renders the manifest for one kernel from the SAME sources the
 \ emitter uses: the active KABI record (name, block, grid derivation, ordered
 \ logical params, derived flat .param layout with dedup) plus the
 \ module-target accessors (PTX-SM-TARGET$ / PTX-VERSION$ / PTX-ADDRESS-SIZE$)
-\ and the PTX text, which is HASHED, never parsed. Schema
-\ "habu-kernel-manifest" version 1; the field contract lives in
+\ and the PTX text, which is HASHED, never parsed. Schema identity is
+\ "habu-kernel-manifest"; the field contract lives in
 \ docs/ptx-sketch.md ("Kernel ABI contract"). All JSON goes through
 \ lib/json-write.f (escaped, never hand-concatenated) in a FIXED field order,
 \ so identical inputs render byte-identical manifests.
@@ -143,7 +143,7 @@ create MAN-HEX HEX-LEN 8 + allot
    loop drop
    JSON-WRITE:ARRAY-END ;
 
-: BLOCK-OBJ ( -- )                     \ v1 records block.x; y/z are fixed 1
+: BLOCK-OBJ ( -- )                     \ records block.x; y/z are fixed 1
    s" block" JSON-WRITE:KEY
    JSON-WRITE:OBJECT-START
    s" x" KABI:BLOCK@ JSON-WRITE:FIELD-U JSON-WRITE:COMMA
@@ -168,7 +168,6 @@ public
    JSON-WRITE:RESET
    JSON-WRITE:OBJECT-START
    s" schema" s" habu-kernel-manifest" JSON-WRITE:FIELD-S JSON-WRITE:COMMA
-   s" version" 1 JSON-WRITE:FIELD-U JSON-WRITE:COMMA
    s" name" KABI:NAME$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" target" PTX-SM-TARGET$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA
    s" ptx_version" PTX-VERSION$ JSON-WRITE:FIELD-S JSON-WRITE:COMMA

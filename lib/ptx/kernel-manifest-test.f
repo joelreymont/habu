@@ -1,4 +1,4 @@
-\ kernel-manifest-test.f - focused tests for the habu-kernel-manifest v1 renderer.
+\ kernel-manifest-test.f - focused tests for the habu-kernel-manifest renderer.
 
 require lib/errors.f
 require lib/string.f
@@ -70,7 +70,7 @@ T-RESET
 \ --- SAXPY manifest: pinned schema, per-kind lowering, dedup, slots, hashes ---
 SAXPY-ABI!
 MANIFEST-COPY!
-COPY$ S\" {\"schema\":\"habu-kernel-manifest\",\"version\":1,\"name\":\"SAXPY\"," CONTAINS? TTRUE
+COPY$ S\" {\"schema\":\"habu-kernel-manifest\",\"name\":\"SAXPY\"," CONTAINS? TTRUE
 COPY$ S\" \"target\":\"sm_87\",\"ptx_version\":\"8.3\",\"address_size\":64," CONTAINS? TTRUE
 COPY$ S\" \"block\":{\"x\":256,\"y\":1,\"z\":1}" CONTAINS? TTRUE
 COPY$ S\" \"grid_derivation\":\"ceil-n-256\"" CONTAINS? TTRUE

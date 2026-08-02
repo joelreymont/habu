@@ -71,7 +71,7 @@ variable DIR-B-U
    xa 12 s" .version 8.3" T$=
    xa xu s" .visible .entry SAXPY(.param .u64 p_x, .param .u64 p_y, .param .f32 p_a, .param .u32 p_n)" CONTAINS? TTRUE
    DIR-A$ s" SAXPY.manifest.json" ART-2 ART-READ {: ma:ptr mu:n :}
-   ma mu S\" \"schema\":\"habu-kernel-manifest\",\"version\":1,\"name\":\"SAXPY\"" CONTAINS? TTRUE
+   ma mu S\" \"schema\":\"habu-kernel-manifest\",\"name\":\"SAXPY\"" CONTAINS? TTRUE
    ma mu S\" \"grid_derivation\":\"ceil-n-256\"" CONTAINS? TTRUE
    ma mu S\" \"param_bytes\":24" CONTAINS? TTRUE
    ma mu S\" \"param\":\"p_n\",\"offset\":20,\"size\":4,\"ptx_type\":\".u32\",\"role\":\"len\"" CONTAINS? TTRUE ;

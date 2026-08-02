@@ -367,15 +367,15 @@ tracked by `.dots/habu-eval-matrix-live-f2b70f81.md`.
    The structured record for this lowering is `lib/ptx/kernel-abi.f`
    (`package KABI`): `CG-ENTRY`/`CG-PARAMS` render the entry and param loads
    from it and `tools/ptx/cuda-launch.f` packs its launch offsets from the
-   same record. The exported, versioned form of this contract is the
-   **Kernel ABI contract (habu-kernel-manifest v1)** section below.
+   same record. The exported form of this contract is the
+   **Kernel ABI contract (habu-kernel-manifest)** section below.
 4. **No overload resolution yet:** v0 should use **distinct** grid/row words
    (e.g. `LOAD`/`ROW-LOAD`) rather than overloading `LOAD` on ctx kind.
 
-## Kernel ABI contract (habu-kernel-manifest v1)
+## Kernel ABI contract (habu-kernel-manifest)
 
 `bin/hb --load tools/ptx/kernel-export.f -- KERNEL-NAME OUT-DIR` writes the
-versioned artifact pair an external build embeds: `<NAME>.ptx` (the exact PTX
+artifact pair an external build embeds: `<NAME>.ptx` (the exact PTX
 text the checked emitter produced) and `<NAME>.manifest.json`. Both derive
 from the same `package KABI` record that renders the kernel's entry and param
 loads, so the manifest can never drift from the PTX by construction. The
@@ -383,21 +383,18 @@ export is deterministic — the same source tree writes byte-identical
 artifacts — and host-only, so it runs as a build step with no CUDA present.
 Renderer: `lib/ptx/kernel-manifest.f`.
 
-**Versioning.** `schema` is always `"habu-kernel-manifest"`; `version` is an
-integer, currently `1`. Any change to field meaning, lowering, or hashing
-bumps `version`; consumers must reject an unknown schema or a version they do
-not support.
+**Schema identity.** `schema` is always `"habu-kernel-manifest"`.
 
 **Manifest fields (fixed emission order):**
 
 | Field | Meaning / driver-API mapping |
 | ----- | ---------------------------- |
-| `schema`, `version` | contract identity: `"habu-kernel-manifest"`, `1` |
+| `schema` | contract identity: `"habu-kernel-manifest"` |
 | `name` | kernel entry name → `cuModuleGetFunction(&fn, mod, name)` after `cuModuleLoadData(&mod, ptx)` |
 | `target` | PTX `.target` (e.g. `"sm_87"`); must be launchable on the device's architecture |
 | `ptx_version` | PTX ISA `.version` (e.g. `"8.3"`); driver must support it |
 | `address_size` | PTX `.address_size` (64) |
-| `block` | `{x,y,z}` → `cuLaunchKernel` blockDim; v1 records `x`, `y`/`z` fixed 1 |
+| `block` | `{x,y,z}` → `cuLaunchKernel` blockDim; records `x`, `y`/`z` fixed 1 |
 | `grid_derivation` | how gridDim.x is derived at launch: `ceil-n-<B>` ⇒ `ceil(N/B)` over the runtime extent `N`; `extent-<t>` ⇒ gridDim.x equals the runtime value of extent `t` (one block per row); `once` ⇒ 1 |
 | `param_bytes` | total `.param` byte size (legacy `cuParamSetSize`; not needed for `kernelParams`) |
 | `params` | ordered LOGICAL params with per-kind lowering (below) |
@@ -416,7 +413,7 @@ not support.
 - `matrix` → `base` slot (`.u64`) + `cols` slot (`.u32`, dedup'd like `len`).
   `rows` is `source:"launch-derived"` — NOT a `.param`: the launch ABI proves
   `gridDim.x == rows` for row kernels (`grid_derivation` `extent-<t>`).
-  `stride` is `source:"dense-derived"` — v1 matrices are dense row-major, so
+  `stride` is `source:"dense-derived"` — matrices are dense row-major, so
   the row stride `equals` the cols extent; no slot.
 - `uniform` → one `scalar` slot (`.f32`), uniform across the block by the
   scalar-param rule above.
