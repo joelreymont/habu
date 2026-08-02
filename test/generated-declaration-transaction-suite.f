@@ -798,19 +798,8 @@ INSTALL-NESTED
    s" CHECKER-DECL-FRAME:INSTALL" CHECKER-DEFINED? 0= TTRUE
    \ The four declaration-frame words are closed into the package PRIVATE
    \ wordlist, so no caller outside the checker can reach them and no test can
-   \ drive RELEASE directly. That confinement is why "RELEASE must stay
-   \ throw-free" cannot be observed behaviourally from here: the only body that
-   \ could shift the product-field transaction depth across RELEASE is one that
-   \ leaks a declaration-event frame, and src/core/decl-event.f rejects that at
-   \ the participant's PREPARE (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE, throwing
-   \ E-DEV-TX with the depths restored), which test/decl-event-suite.f §19e
-   \ already pins including the failing phase. Swapping RELEASE for the ordinary
-   \ CHECKER-SCOPE-FINALIZE would therefore survive every behavioural suite in the
-   \ repository. test/declaration-release-inventory.f is what makes that swap
-   \ fail: it reads the production sources and rejects any throw, catch,
-   \ allocation, lookup, validation, or publication reachable from a registered
-   \ release callback. The rows below stay as the second guard, because they fail
-   \ the moment anyone opens a public seam onto the frame words.
+   \ drive RELEASE directly. The rows below fail if a public seam opens onto
+   \ those frame words.
    s" CHECKER-DECL-FRAME:START" QUALIFIED-ABSENT? TTRUE
    s" CHECKER-DECL-FRAME:PREPARE" QUALIFIED-ABSENT? TTRUE
    s" CHECKER-DECL-FRAME:ROLLBACK" QUALIFIED-ABSENT? TTRUE

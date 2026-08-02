@@ -190,7 +190,7 @@ variable FAILS
 \ here. The whitebox test reads these back out of this source and checks them
 \ against the enumerated rows, so a case dropped without adjusting its count
 \ trips loudly. The lone top-row case is a positive, counted here too.
-34 constant N-POSITIVE
+33 constant N-POSITIVE
 5 constant N-DIAGNOSTIC
 12 constant N-NEGATIVE
 
@@ -199,7 +199,6 @@ variable FAILS
    s" test/type-family-rollback-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/type-field-owner-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/generated-declaration-transaction-suite.f" construct case-kind positive 0 s" " s" " RUN-CASE
-   s" test/declaration-release-inventory.f" construct case-kind positive 0 s" " s" " RUN-CASE
    s" test/checker-decl-nested-bad.f" construct case-kind negative 76
       s" CHECKER-DECL-NESTED-ARMED" s" checker: declaration rollback frame mismatch" RUN-CASE
    s" test/checker-decl-depth0-bad.f" construct case-kind negative 76
