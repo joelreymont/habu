@@ -334,6 +334,20 @@ ENUM opcode DERIVE eq
    linksave
    linkload
    ret
+   fadd
+   fsub
+   fmul
+   fdiv
+   fneg
+   fabs
+   fsqrt
+   scvtf
+   fcvtzs
+   fmovxd
+   fmovdx
+   fmovdd
+   fstr
+   fldr
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -447,6 +461,12 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 : TARGET ( -- )
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET ;
 
+\ The forms that need a floating unit declare one. A machine without it cannot
+\ hold these schemas at all, which is the refusal a target contract exists for.
+: FP-TARGET ( -- )
+   CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
+   IR-SCHEMA:SET-TARGET ;
+
 \ Design lines 236-238: a value-producing machine operation ends no block, names
 \ no successor, holds no region, and carries no effect token. None of the six
 \ forms touches memory, so none of them takes a memory effect either.
@@ -464,10 +484,13 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
-\ Version 0.1: the integer subset is not the whole machine, and the major version
-\ stays at zero until it is.
+\ Version 0.2: the integer subset and the scalar floating forms. The major
+\ version stays at zero until the dialect is the whole machine; the minor version
+\ moved when the floating register class arrived, because a schema table with
+\ these forms in it and one without are two different tables and every consumer
+\ compares the version exactly.
 0 constant MAJOR
-1 constant MINOR
+2 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -584,6 +607,16 @@ public
 : MEM-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-DOMAIN:DATA-MEM IR-BUILD:INTERN-TOKEN ;
 
+\ The third value class: a 64-bit floating register. It is the seam the header
+\ above names, arriving exactly as it said it would - a reader beside the other
+\ two, never a type interned at a use site - and everything downstream reads the
+\ class off the value's type against these three identities. The machine really
+\ does have two register files, so this is not a label on a cell: an instruction
+\ that names a D register cannot name an X register in the same field, and a
+\ value in the wrong file is a wrong program rather than a wrong number.
+: FPR-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
+   IR--TYPE-FMT:DOUBLE IR-BUILD:INTERN-FLT ;
+
 \ ---- the bytes one frame access moves ----------------------------------------
 \ A consumer that places slots asks for the width rather than assuming it, and
 \ takes the reach that goes with it from A64EFF.
@@ -634,6 +667,20 @@ public
       linksave OF s" a64.lnkstr"   ENDOF
       linkload OF s" a64.lnkldr"   ENDOF
       ret      OF s" a64.ret"      ENDOF
+      fadd     OF s" a64.fadd" ENDOF
+      fsub     OF s" a64.fsub" ENDOF
+      fmul     OF s" a64.fmul" ENDOF
+      fdiv     OF s" a64.fdiv" ENDOF
+      fneg     OF s" a64.fneg" ENDOF
+      fabs     OF s" a64.fabs" ENDOF
+      fsqrt    OF s" a64.fsqrt" ENDOF
+      scvtf    OF s" a64.scvtf" ENDOF
+      fcvtzs   OF s" a64.fcvtzs" ENDOF
+      fmovxd   OF s" a64.fmovxd" ENDOF
+      fmovdx   OF s" a64.fmovdx" ENDOF
+      fmovdd   OF s" a64.fmovdd" ENDOF
+      fstr     OF s" a64.fstr" ENDOF
+      fldr     OF s" a64.fldr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -816,6 +863,20 @@ private
       linksave OF s" a64.rule.lnkstr"   ENDOF
       linkload OF s" a64.rule.lnkldr"   ENDOF
       ret      OF s" a64.rule.ret"      ENDOF
+      fadd     OF s" a64.rule.fadd" ENDOF
+      fsub     OF s" a64.rule.fsub" ENDOF
+      fmul     OF s" a64.rule.fmul" ENDOF
+      fdiv     OF s" a64.rule.fdiv" ENDOF
+      fneg     OF s" a64.rule.fneg" ENDOF
+      fabs     OF s" a64.rule.fabs" ENDOF
+      fsqrt    OF s" a64.rule.fsqrt" ENDOF
+      scvtf    OF s" a64.rule.scvtf" ENDOF
+      fcvtzs   OF s" a64.rule.fcvtzs" ENDOF
+      fmovxd   OF s" a64.rule.fmovxd" ENDOF
+      fmovdx   OF s" a64.rule.fmovdx" ENDOF
+      fmovdd   OF s" a64.rule.fmovdd" ENDOF
+      fstr     OF s" a64.rule.fstr" ENDOF
+      fldr     OF s" a64.rule.fldr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -855,6 +916,20 @@ private
       linksave OF s" a64.render.lnkstr"   ENDOF
       linkload OF s" a64.render.lnkldr"   ENDOF
       ret      OF s" a64.render.ret"      ENDOF
+      fadd     OF s" a64.render.fadd" ENDOF
+      fsub     OF s" a64.render.fsub" ENDOF
+      fmul     OF s" a64.render.fmul" ENDOF
+      fdiv     OF s" a64.render.fdiv" ENDOF
+      fneg     OF s" a64.render.fneg" ENDOF
+      fabs     OF s" a64.render.fabs" ENDOF
+      fsqrt    OF s" a64.render.fsqrt" ENDOF
+      scvtf    OF s" a64.render.scvtf" ENDOF
+      fcvtzs   OF s" a64.render.fcvtzs" ENDOF
+      fmovxd   OF s" a64.render.fmovxd" ENDOF
+      fmovdx   OF s" a64.render.fmovdx" ENDOF
+      fmovdd   OF s" a64.render.fmovdd" ENDOF
+      fstr     OF s" a64.render.fstr" ENDOF
+      fldr     OF s" a64.render.fldr" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1431,6 +1506,97 @@ private
    c b A64IR-OPCODE:LINKLOAD NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the floating forms ------------------------------------------------------
+\ Seven arithmetic forms, one instruction each, exactly as the engine's own
+\ float primitives are: FADD, FSUB, FMUL, FDIV, FNEG, FABS and FSQRT over the
+\ D-register file. They are the generic value shapes with the floating type
+\ passed in, because a two-source three-operand form and a two-operand form are
+\ the same statement whichever file they name - which is what makes the file a
+\ property of the TYPE rather than of the shape.
+\
+\ NONE OF THEM MAY TRAP, and that is a fact about IEEE754 rather than about this
+\ dialect: dividing by zero answers an infinity, zero by zero and the square root
+\ of a negative answer the default NaN, and nothing raises. The source dialect
+\ declares the same thing, so the trap rule the selector applies is satisfied by
+\ the two agreeing rather than by either being relaxed.
+
+\ The two rounding conversions, each one instruction and each between the two
+\ files: SCVTF reads a general register and writes a floating one, rounding to
+\ nearest with ties to even; FCVTZS reads a floating register and writes a
+\ general one, truncating toward zero and saturating at the ends. The operand
+\ and result types are the two register classes, so a lowering that named the
+\ wrong direction is a type error in the module rather than a wrong instruction
+\ nobody sees.
+
+\ The three moves, which compute nothing and only change which file the same
+\ eight bytes are in - or move them inside one file. FMOV Dd,Xn and FMOV Xd,Dn
+\ are the two crossings the source dialect's reinterpretations lower to, and they
+\ are the same instructions the engine's own float primitives use to get a
+\ data-stack cell into a floating register and back (src/habu/habu1.f, BF+).
+\ FMOV Dd,Dn is a copy inside the floating file, which is what a value put back
+\ needs.
+
+\ And the two frame accesses for a floating value, which are the STR and LDR
+\ forms against a D register. A frame slot is eight bytes whichever file its
+\ value belongs to, so the slot layout is unchanged and only the register field
+\ differs - but it differs in the INSTRUCTION, so a double put away by the
+\ general store would come back through the wrong file.
+: DEF-FSTR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FSTR OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-OPERAND
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-SLOT IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:WRITE FRAME-MEM
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FSTR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+: DEF-FLDR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id k:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FLDR OPCODE IR-SCHEMA:BEGIN-OP
+   k IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   k IR-SCHEMA:ADD-RESULT
+   c b KEY-SLOT IR-SCHEMA:ADD-ATTR
+   IR--SCHEMA-EFFECT:READ FRAME-MEM
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FLDR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One floating binary form: two D operands, one D result.
+: DEF-FBINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One form with one operand and one result, at two types that may be the same
+\ one. The floating unary forms and the copy take a D and answer a D; the two
+\ conversions and the two crossings take one file and answer the other. One
+\ definer serves all of them because the statement is the same statement with
+\ different types in it, which is exactly what a type-parameterised schema is for.
+: DEF-FCROSS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id A64IR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder ti:IR-ID:ir-type-id to:IR-ID:ir-type-id
+      o:A64IR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   ti IR-SCHEMA:ADD-OPERAND
+   to IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -1501,7 +1667,22 @@ public
    c b k DEF-WORDCALL
    c b k DEF-LNKSTR
    c b k DEF-LNKLDR
-   c b t DEF-RET ;
+   c b t DEF-RET
+   c b FPR-TYPE {: f:IR-ID:ir-type-id :}
+   c b f A64IR-OPCODE:FADD DEF-FBINARY
+   c b f A64IR-OPCODE:FSUB DEF-FBINARY
+   c b f A64IR-OPCODE:FMUL DEF-FBINARY
+   c b f A64IR-OPCODE:FDIV DEF-FBINARY
+   c b f f A64IR-OPCODE:FNEG DEF-FCROSS
+   c b f f A64IR-OPCODE:FABS DEF-FCROSS
+   c b f f A64IR-OPCODE:FSQRT DEF-FCROSS
+   c b f f A64IR-OPCODE:FMOVDD DEF-FCROSS
+   c b t f A64IR-OPCODE:SCVTF DEF-FCROSS
+   c b f t A64IR-OPCODE:FCVTZS DEF-FCROSS
+   c b t f A64IR-OPCODE:FMOVXD DEF-FCROSS
+   c b f t A64IR-OPCODE:FMOVDX DEF-FCROSS
+   c b f k DEF-FSTR
+   c b f k DEF-FLDR ;
 
 private
 get-current prot-wid-add

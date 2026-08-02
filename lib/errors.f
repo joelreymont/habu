@@ -1053,3 +1053,17 @@ public
 -8571 constant E-NMIGRATE-TEXT    \ definition source longer than the recorder's text buffer, or a name longer than the log holds
 -8572 constant E-NMIGRATE-VERDICT \ the engine's own check did not certify the definition, so there is no checked word to migrate
 -8573 constant E-NMIGRATE-NAME    \ the definition the source published is not the name the caller asked to migrate: the newest dictionary record carries another name
+
+\ The float subset: -8580..-8589
+\
+\ A double lives in one unboxed cell, so nothing about a value's SIZE separates
+\ it from an integer and the separation has to be its type. These are the
+\ refusals that make the separation real, one per stage that carries the type: a
+\ compile-time value of the wrong type for the position it is handed to, and a
+\ value whose type no register file of the machine dialect can hold. A refusal
+\ another authority already owns keeps that authority's name - a double type on a
+\ machine with no floating unit is IR-TYPE's E-IR-TYPE-TARGET, a float literal
+\ spelling the tape cannot read back is E-NFEED-LITERAL, and a staged operation
+\ whose operand type is not the one its schema declares is IR-OP's.
+-8580 constant E-NELAB-TYPE     \ a compile-time value whose type is not the one the position wants and is not a crossing this dialect performs: a double handed to an operation that computes with cells, or a double carried across a block edge or a call, which this leaf does not yet place
+-8581 constant E-A64RA-FILE     \ two values of two different register files joined into one class: an edge or a schema tie whose two ends cannot share a register because no register holds both

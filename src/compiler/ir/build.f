@@ -1135,6 +1135,16 @@ public
    c b USE {: slot:n :}
    slot T-OP TAB@  slot T-OR TAB@  slot KEY@ id i IR-OP:RESULT@ ;
 
+\ The type a value already has, in a module still being built. An elaborator that
+\ holds a value and has to decide whether it may go into an operand position asks
+\ the module what the value IS, rather than keeping a second record of the types
+\ it minted - which could disagree with the module and would then be believed
+\ over it. The module is the authority; this is the door to it while it is open.
+: VALUE-TYPE@ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-value-id -- IR-ID:ir-type-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ID:ir-value-id :}
+   c b USE {: slot:n :}
+   slot T-OV TAB@  slot KEY@ v IR-OP:VALUE-TYPE@ ;
+
 private
 
 \ ---- freeze validation -------------------------------------------------------

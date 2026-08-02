@@ -158,6 +158,16 @@ VMAX TYPED-BUFFER VWIN IR-ID:ir-value-id
    k 0 < k VN @ > or if E-NELAB-UNDER throw then
    VN @ k - VN ! ;
 
+\ Put another value in the place one already on the vector holds. The one writer
+\ is the crossing below, which replaces a value with the same value read as the
+\ other type - so the vector's DEPTH never changes here, and a caller that has
+\ already worked out which position an operand comes from does not have to work
+\ it out again.
+: VAT! ( IR-ID:ir-value-id n -- )
+   {: val:IR-ID:ir-value-id i:n :}
+   i 0 < i VN @ >= or if E-NELAB-UNDER throw then
+   val i VSTK ! ;
+
 \ ---- compile-time stack renames ----------------------------------------------
 \ The consumed window is copied aside before the vector is shortened, because a
 \ rename may put a value back below where it read it from: `swap` writes its
@@ -357,6 +367,40 @@ variable OPJ                         \ general operands taken so far by the open
 : TOKEN-CK ( n -- n )
    dup 1 > if E-NELAB-TOKEN throw then ;
 
+\ ---- the two value types, asked of the one authority --------------------------
+\ A value's type is a fact the MODULE holds - IR-OP recorded it when the value
+\ was minted - so this file asks the module rather than keeping a second record
+\ beside the compile-time vector. A second record is what could disagree, and it
+\ would be the one believed, because the vector is what every reader here walks.
+: VTYPE-OF ( IR-ID:ir-value-id -- IR-ID:ir-type-id )
+   {: val:IR-ID:ir-value-id :}
+   CTX BLD val IR-BUILD:VALUE-TYPE@ ;
+
+: REAL-T? ( IR-ID:ir-type-id -- bool )
+   {: t:IR-ID:ir-type-id :}
+   t  CTX BLD HIR:REAL-TYPE  NFROZEN:SAME-TYPE? ;
+
+: CELL-T? ( IR-ID:ir-type-id -- bool )
+   {: t:IR-ID:ir-type-id :}
+   t  CTX BLD CELL-TYPE  NFROZEN:SAME-TYPE? ;
+
+: REAL-VALUE? ( IR-ID:ir-value-id -- bool )
+   VTYPE-OF REAL-T? ;
+
+\ No double anywhere on the compile-time vector. It is asked at the three seams
+\ this leaf does not place a double across - a block edge, a call, and the values
+\ a call answers - because all three carry a value from one block or one routine
+\ to another through a position whose type is fixed before the value that will
+\ arrive there is known. Typing those positions from the values that really reach
+\ them is the control-flow and call leaf's work (dot
+\ habu-carry-a-double-3d6e7a1c); until it lands a double reaching one of them is
+\ refused by name rather than handed over as a cell, which would be the same
+\ eight bytes read by the wrong instruction at the other end.
+: NO-REAL-CK ( -- )
+   VN @ 0 ?do
+      i VAT REAL-VALUE? if E-NELAB-TYPE throw then
+   loop ;
+
 : TOKEN-OPERANDS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- n )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
    c b op IR-BUILD:SCHEMA-OPERANDS {: k:n :}
@@ -400,16 +444,17 @@ variable OPJ                         \ general operands taken so far by the open
    loop
    v VDROP ;
 
+\ The results the opcode's schema declares, at the types it declares them. The
+\ type is READ off the schema rather than restated here, which is the one
+\ authority rule this file follows everywhere else: an operation that answers a
+\ double and one that answers a cell differ in exactly this, and a stage that
+\ wrote the type down itself would have to know which opcodes are which.
 : RESULTS+ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id :}
    c b op TOKEN-RESULTS drop
    c b op IR-BUILD:SCHEMA-RESULTS {: k:n :}
    k 0 ?do
-      c b op i IR-BUILD:SCHEMA-RESULT@ TOKEN? if
-         c b  c b HIR:MEM-TYPE  IR-BUILD:ADD-RESULT
-      else
-         c b  c b CELL-TYPE  IR-BUILD:ADD-RESULT
-      then
+      c b  c b op i IR-BUILD:SCHEMA-RESULT@  IR-BUILD:ADD-RESULT
    loop ;
 
 \ Close the operation and keep what it defined: a general value goes on the
@@ -425,6 +470,75 @@ variable OPJ                         \ general operands taken so far by the open
          c b id i IR-BUILD:OP-RESULT@ TOK!
       else
          c b id i IR-BUILD:OP-RESULT@ VPUSH
+      then
+   loop ;
+
+\ ---- the one crossing between a cell and a double ------------------------------
+\ A double lives in one unboxed cell holding its own bit pattern, so a program
+\ that keeps doubles in data-stack cells and reads them back with float words is
+\ crossing between two readings of the same eight bytes. The crossing is an
+\ operation - `hir.bits>real` - and it is staged HERE, in front of the operation
+\ that wants the double, because a staged operation cannot be opened inside
+\ another one and because the crossing has to be a value the later operation
+\ reads rather than something the later operation does.
+\
+\ IT REPLACES THE VALUE IN PLACE. The crossing consumes one value and answers
+\ one, so the vector's depth does not change and the position an operand comes
+\ from is the position it came from before.
+: CROSS1 ( n n HIR:opcode -- )
+   {: ix:n k:n kop:HIR:opcode :}
+   CTX BLD kop HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD VW MKEY ix op OPEN
+   CTX BLD  k VAT  IR-BUILD:ADD-OPERAND
+   CTX BLD  CTX BLD op 0 IR-BUILD:SCHEMA-RESULT@  IR-BUILD:ADD-RESULT
+   CTX BLD IR-BUILD:END-OP {: id:IR-ID:ir-op-id :}
+   CTX BLD id 0 IR-BUILD:OP-RESULT@  k VAT! ;
+
+\ Make the value at one vector position answer to the type the position wants.
+\ ONE difference is a crossing and every other difference is a refusal, and the
+\ asymmetry is the source language's rather than a convenience:
+\
+\   a CELL where a DOUBLE is wanted is crossed. The only cells a checked body can
+\   hand to a float word are cells that hold doubles - the word's own arguments,
+\   which arrive in data-stack cells, a cell read out of memory, and a local
+\   naming one of those - because the checker has already refused every body that
+\   hands a genuine integer to `f+`. So the crossing states what the program
+\   already means.
+\
+\   a DOUBLE where a CELL is wanted is REFUSED. Nothing in this dialect computes
+\   with a double read as an integer, so a double reaching `hir.add` is a wrong
+\   program and not a conversion to invent. The one place the source really does
+\   put a double back into a cell is the definition's outputs, and EMIT-RETURN
+\   crosses there by name; putting one into MEMORY is the same crossing at
+\   `hir.store` and belongs with the leaf that compiles a float body with memory
+\   in it (dot habu-store-a-double-6f2b90ae).
+\
+\ WHEN THE CHECKER'S OWN TYPES REACH A RECORDED UNIT (dot
+\ habu-bind-checker-env-ed4f9f87) the first half tightens too: an argument
+\ declared `r` would arrive as a double and the crossing would be gone rather
+\ than assumed.
+: COERCE1 ( n n IR-ID:ir-type-id -- )
+   {: ix:n k:n want:IR-ID:ir-type-id :}
+   k VAT VTYPE-OF {: have:IR-ID:ir-type-id :}
+   have want NFROZEN:SAME-TYPE? if exit then
+   want REAL-T? have CELL-T? and 0= if E-NELAB-TYPE throw then
+   ix k HIR-OPCODE:BITSREAL CROSS1 ;
+
+\ Every general operand position of the operation about to be staged, against the
+\ value that will fill it. The walk is the one OPERANDS+ makes, in the same
+\ order and off the same schema, so the position a value is checked at is the
+\ position it is handed over at.
+: COERCE-OPERANDS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-symbol-id n -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder op:IR-ID:ir-symbol-id ix:n :}
+   c b op IR-BUILD:SCHEMA-OPERANDS {: k:n :}
+   k  c b op TOKEN-OPERANDS  - {: v:n :}
+   v VN @ > if E-NELAB-UNDER throw then
+   VN @ v - {: base:n :}
+   0 OPJ !
+   k 0 ?do
+      c b op i IR-BUILD:SCHEMA-OPERAND@ TOKEN? 0= if
+         ix  base OPJ @ +  c b op i IR-BUILD:SCHEMA-OPERAND@  COERCE1
+         OPJ @ 1+ OPJ !
       then
    loop ;
 
@@ -471,6 +585,7 @@ variable OPJ                         \ general operands taken so far by the open
    {: ix:n k:HIR:opcode :}
    CTX BLD k HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    op TOKEN-READY
+   CTX BLD op ix COERCE-OPERANDS
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
@@ -480,6 +595,22 @@ variable OPJ                         \ general operands taken so far by the open
 : EMIT-CONST ( n -- )
    {: ix:n :}
    ix  VW ix NTAPE:LIT@  EMIT-LIT ;
+
+\ One double literal, staged at the span of the token named. The value the tape
+\ carries is the cell the double IS, so it rides in the same integer attribute an
+\ integer literal's value rides in - a double's bit pattern is a number and there
+\ is nothing else to carry. What makes it a double is the opcode, whose schema
+\ answers a double, and not the shape of the attribute.
+: EMIT-FCONST ( n -- )
+   {: ix:n :}
+   CTX BLD HIR-OPCODE:FCONST HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
+   CTX BLD op ix COERCE-OPERANDS
+   CTX BLD VW MKEY ix op OPEN
+   CTX BLD op OPERANDS+
+   CTX BLD op RESULTS+
+   CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD  VW ix NTAPE:LIT@  IR-BUILD:INTERN-INT-ATTR
+   IR-BUILD:ADD-ATTR
+   CTX BLD op CLOSE ;
 
 \ A word the dialect has an operation for. Which operation is the word model's
 \ answer.
@@ -511,10 +642,23 @@ variable OPJ                         \ general operands taken so far by the open
 \ return has no token of its own on a produced tape - the `;` that used to carry
 \ it was consumed before the checker read anything - so it answers for the span
 \ of the definition's name, which is the definition itself.
+\ A double the word leaves goes back into a data-stack cell, which is where the
+\ caller will find it: a Habu word leaves result j in slot j of the caller's
+\ stack and a slot is a cell. So this is the second half of the crossing the
+\ arguments took on the way in, and it is stated here rather than assumed,
+\ because `hir.return` takes cells and a double handed to it unchanged would be
+\ eight bytes the caller's next instruction reads with the wrong register file.
+: RETURN-CROSS ( n -- )
+   {: out:n :}
+   out 0 ?do
+      i VAT REAL-VALUE? if 0 i HIR-OPCODE:REALBITS CROSS1 then
+   loop ;
+
 : EMIT-RETURN ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:view IR-ID:ir-module-key n -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder v:IR-ARENA:view key:IR-ID:ir-module-key
       out:n :}
    VN @ out <> if E-NELAB-ARITY throw then
+   out RETURN-CROSS
    c b HIR-OPCODE:RETURN HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    c b v key 0 op OPEN
    out 0 ?do
@@ -755,7 +899,20 @@ variable DOK                         \ counted loops the search below has passed
    l CROSS-L <> if E-NELAB-LOCAL throw then
    true ;
 
+\ No crossing local holds a double. A bound local is a name for a value and the
+\ value travels as a block argument like every other, so it meets the same seam
+\ NO-REAL-CK guards and is refused for the same reason - the position it would
+\ arrive at is typed before the value that reaches it is known.
+: NO-REAL-LOCAL-CK ( n -- )
+   LOCAL-CK 0= if exit then
+   LN @ 0 ?do
+      i LCROSS? if
+         i LVAL @ REAL-VALUE? if E-NELAB-TYPE throw then
+      then
+   loop ;
+
 : LOCAL-OPERANDS+ ( n -- )
+   dup NO-REAL-LOCAL-CK
    LOCAL-CK 0= if exit then
    LN @ 0 ?do
       i LCROSS? if CTX BLD  i LVAL @  IR-BUILD:ADD-OPERAND then
@@ -873,6 +1030,7 @@ variable EXIT-PENDING                \ an `exit` closed the arm; only its `then`
 \ OPEN-ARGS-H gives them.
 : TERM-BR-H ( n n n n n -- )
    {: ix:n t:n lo:n h:n l:n :}
+   NO-REAL-CK
    CTX BLD  CTX BLD HIR-OPCODE:BR HIR:OPCODE  IR-BUILD:BEGIN-OP
    CTX BLD  VW MKEY ix NTAPE:SPAN@  IR-BUILD:SET-OP-SPAN
    VN @ 0 ?do
@@ -1652,6 +1810,7 @@ create JOIN-TAB TMAX cells allot
 
 : CALL-OPERANDS+ ( -- )
    CALL-CROSS-CK
+   NO-REAL-CK
    CTX BLD TOK IR-BUILD:ADD-OPERAND
    CROSS-DO LOOP-OPERANDS+
    CROSS-L LOCAL-OPERANDS+
@@ -1868,6 +2027,7 @@ variable IX                          \ the body token the walk stands on
    VW MKEY r ix HIR-WORD:ADMIT-TOKEN
    MATCH HIR:meaning
       literal      OF ix EMIT-CONST ENDOF
+      real-literal OF ix EMIT-FCONST ENDOF
       op           OF r ix EMIT-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF

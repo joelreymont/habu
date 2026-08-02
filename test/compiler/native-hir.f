@@ -179,7 +179,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 0 T= TTRUE ;
+   2 T= 0 T= TTRUE ;
 
 \ Every field the arithmetic schema declares, read back off the frozen table.
 : ARITH-BODY ( IR-CTX:ctx -- n bool n bool n n n bool bool bool bool bool bool )

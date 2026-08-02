@@ -376,10 +376,13 @@ public
 : NAME ( -- ptr u8 n )
    s" hir" ;
 
-\ Version 0.1: the straight-line subset is not the whole of section 7.2, and the
-\ major version stays at zero until it is.
+\ Version 0.2: the straight-line subset with doubles in it. The major version
+\ stays at zero until the dialect is the whole of section 7.2; the minor version
+\ moved when the double type and its twelve operations arrived, because a table
+\ with them and one without are two different tables and every consumer compares
+\ the version exactly.
 0 constant MAJOR
-1 constant MINOR
+2 constant MINOR
 
 \ ---- the opcode names --------------------------------------------------------
 \ This module's interned symbol for one opcode. Interning deduplicates, so
