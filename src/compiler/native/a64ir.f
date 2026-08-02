@@ -19,8 +19,13 @@
 \ operations exist and what shape each one has.
 \
 \ THE VOCABULARY IS THE MODELLED ONE, NOT A SECOND ONE. Every opcode below names
-\ one form of the 48-form instruction vocabulary that formal/Common/Insn.v models
-\ and src/arch/arm64/asm.f encodes, and it carries only operands that form has:
+\ one form of the instruction vocabulary src/arch/arm64/asm.f encodes, and it
+\ carries only operands that form has. All but one of them is also a form of the
+\ 48-form vocabulary formal/Common/Insn.v models; the exception is `a64.mvn`,
+\ whose Orn base was added to the assembler with this dialect's complement and is
+\ not in that model yet - dot habu-model-orn-in-39435de5 is the row, and
+\ until it lands the encoder is held by test/compiler/native-a64ir.f's own
+\ assertion against the shipped assembler instead:
 \   a64.movz     Movz rd imm hw  - write a 16-bit half into a cleared register
 \   a64.movk     Movk rd imm sh  - overwrite one 16-bit half, keeping the rest
 \   a64.mov      Orr rd xzr rm   - copy one register into another
@@ -30,6 +35,12 @@
 \   a64.sdiv     Cbnz rm +2; Brk; Sdiv rd rn rm
 \                                - 64-bit signed division, trapping on a zero
 \                                  divisor exactly as the engine's own `/` does
+\   a64.and      And rd rn rm    - 64-bit register bitwise and
+\   a64.orr      Orr rd rn rm    - 64-bit register bitwise or
+\   a64.eor      Eor rd rn rm    - 64-bit register bitwise exclusive or
+\   a64.lslv     Lslv rd rn rm   - shift left by a register's low six bits
+\   a64.lsrv     Lsrv rd rn rm   - logical shift right by the same
+\   a64.mvn      Orn rd xzr rm   - the bitwise complement of one register
 \   a64.str      Str rt sp off   - store a register into a frame slot
 \   a64.ldr      Ldr rt sp off   - load a register back out of a frame slot
 \   a64.astr     Str rt rn 0     - store a register through an address register

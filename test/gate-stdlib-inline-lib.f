@@ -480,6 +480,7 @@ public
    s" test/compiler/native-publish.f" GSI-FORK-INCLUDE
    s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed
    \ values, the two generators head to head, the committed table's structure.
    \ The timing column is left out here because this group runs its members in

@@ -676,6 +676,28 @@ private
    BND [: CMPBR-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE TTRUE 1 T= 2 T= 0 T= 2 T= TTRUE ;
 
+\ ---- the one encoder this dialect brought with it ----------------------------
+\ Every other machine form of this dialect encodes through a word the instruction
+\ parity gate already pins against formal/Common/Insn.v. `a64.mvn` does not: its
+\ Orn base was added to src/arch/arm64/asm.f with this dialect's complement and
+\ is not in that model yet (dot habu-model-orn-in-39435de5). So the encoding is
+\ held here, three ways, until the model row lands.
+\
+\ THE ABSOLUTE WORD is what says the bits are right at all: `mvn x1, x3` is
+\ 0xAA2303E1 and nothing else. THE RELATION TO Orr is what says WHICH bit makes
+\ it a complement - the shifted-register N bit, at 21 - and it is asserted
+\ against ENC-ORR's own output rather than against a second constant, so a base
+\ that moved reddens here instead of encoding some other instruction. AND THE
+\ ZERO-REGISTER IDENTITY is what says the complement really is the Orn form with
+\ the zero register as its first source, which is the whole of what ENC-MVN
+\ claims to be - the same shape ENC-MOV has over ENC-ORR.
+: ORN-CASE ( -- )
+   s" the complement encoder is Orn with the zero register" T-LABEL
+   1 3 ENC-MVN $AA2303E1 T=
+   1 2 3 ENC-ORN  1 2 3 ENC-ORR  1 21 lshift or  T=
+   1 3 ENC-MVN  1 31 3 ENC-ORN  T=
+   1 3 ENC-MOV  1 31 3 ENC-ORR  T= ;
+
 \ ---- the condition field -----------------------------------------------------
 \ The dialect writes the six conditions its comparisons are made under as the
 \ numbers the four-bit field holds. Those numbers are the assembler's own, so
@@ -1048,6 +1070,7 @@ private
    drop
    COUNT-CASE
    BITWISE-CASE
+   ORN-CASE
    NAMED-CASE
    SPELL-CASE ;
 

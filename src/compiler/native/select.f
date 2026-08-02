@@ -90,7 +90,7 @@
 \ authority or a restatement of its spellings. Restating them would be a second
 \ authority that drifts, so this pass asks HIR itself: BIND-SOURCE takes the HIR
 \ module while it is still being built, asks HIR:OPCODE for each member of HIR's
-\ own opcode family, and keeps the five identities it answers. Every spelling
+\ own opcode family, and keeps every identity it answers. Every spelling
 \ stays HIR's; the pairing of an opcode to its machine operations is this file's,
 \ and no caller can get it wrong because no caller supplies it. The binding
 \ records which module it learned from, and SELECT refuses a frozen module that is
@@ -1489,7 +1489,16 @@ public
    c b HIR-OPCODE:DIV    BIND1
    c b HIR-OPCODE:LT     BIND1
    c b HIR-OPCODE:LE     BIND1
+   c b HIR-OPCODE:GT     BIND1
+   c b HIR-OPCODE:GE     BIND1
    c b HIR-OPCODE:EQUAL  BIND1
+   c b HIR-OPCODE:NE     BIND1
+   c b HIR-OPCODE:AND    BIND1
+   c b HIR-OPCODE:OR     BIND1
+   c b HIR-OPCODE:XOR    BIND1
+   c b HIR-OPCODE:LSHIFT BIND1
+   c b HIR-OPCODE:RSHIFT BIND1
+   c b HIR-OPCODE:INVERT BIND1
    c b HIR-OPCODE:BR     BIND1
    c b HIR-OPCODE:BRZ    BIND1
    c b HIR-OPCODE:MEM    BIND1

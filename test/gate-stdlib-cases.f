@@ -348,6 +348,13 @@ SUITE compiler-native-chain
    test/compiler/native-chain.f
 ;SUITE
 
+\ The same end-to-end run over the comparison and bitwise vocabulary, word by
+\ word, each answer compared with the interpreted word's. It runs beside the
+\ chain suite because it is the same path with a wider source vocabulary.
+SUITE compiler-native-vocab
+   test/compiler/native-vocab.f
+;SUITE
+
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
 \ and spawns child engines, so it runs here in the standalone stdlib gate and is
 \ documented manual-gate in tools/suite-coverage-lint-core.f, not mirrored into
