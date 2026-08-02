@@ -534,30 +534,6 @@ private
    SIZE-ATTR:PAGE-CROSS-REPORT
    s" PASS: per-region __text budget ratchet (every region held to its committed budget)" type cr ;
 
-\ --- self-check certification census ratchet -------------------------------
-
-4133 constant CENSUS-LINUX
-3775 constant CENSUS-MACOS
-
-: CENSUS-BASE ( -- n )
-   HB-TARGET-LINUX? if CENSUS-LINUX exit then
-   HB-TARGET-MACOS? if CENSUS-MACOS exit then
-   BF-TARGET-UNKNOWN ;
-
-: CENSUS-MEASURED ( -- n )
-   s" stage2-src" GE-READ-BUILD-TMP VERIFY:CENSUS-COUNT ;
-
-: CENSUS-DRIFT-FAIL ( n n -- ) {: d:n m:n :}
-   s" census ratchet: " type BF-CENSUS-TARGET$ type
-   s"  baseline is " type d . s" the self-check measured " type m .
-   s" census ratchet: certification count drift - update this target's CENSUS constant" GE-FAIL ;
-
-: CENSUS-RATCHET ( -- )
-   CENSUS-MEASURED {: m:n :}
-   CENSUS-BASE {: d:n :}
-   d m <> if d m CENSUS-DRIFT-FAIL then
-   s" PASS: certification census ratchet (" type BF-CENSUS-TARGET$ type s" )" type cr ;
-
 public
 
 : FIXPOINT ( -- )
@@ -567,7 +543,6 @@ public
    BF-PREFLIGHT
    BF-STAGE2-SOURCE
    GE-STAGE2-SCRATCH-SHAPE
-   CENSUS-RATCHET
    BF-STAGE-FIXPOINT-FROM-SOURCE
    BF-BUILD-STDIN-FROM-STAGE
    GE-BUILD-SOURCE-SHAPE

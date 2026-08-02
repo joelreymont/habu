@@ -756,7 +756,7 @@ fits.
   output AND exit 0, since 0.7.3 reports the error yet continues). Native port gates prove
   `bin/hb`/target-source/syscalls/ELF-AOT/checker/lints/self-refresh/REPL — do not install
   JS/Python/Rust to prove a native port; external Python baselines live as fenced
-  ```python``` in docs (`host-lint` `1 throw`s on any `.py` path).
+  ```python``` in docs.
 - **`Habu-under-test` is the SMALL engine, not a snapshot; candidate size is
   RATCHETED.** Promoting `hb-new` (snapshot trailer bakes MBs of live DATA → 22MB
   candidates that jump into zeroed code on Linux) is wrong; promote `hb-stdin`, enforce a

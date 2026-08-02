@@ -222,9 +222,8 @@ training loop (`get_batch`, loader); **COST** = blast radius / files.
   `maki/cad.f:634-716`), `cad.f` (`PARSE-SHAPE`, `SHP-LEGAL?`, all move re-prop),
   `backward.f`, `executor.f`, plus `golden-syntax`/`SPEC:`. Touches ~every file
   in maki's model stack and taxes the class-(i)/(iii) ops (§0) that gain nothing.
-  Phase-0 explicitly says flagship code waits for the type-family surface
-  (`docs/nanogpt-inventory.md:124-137`); a bespoke 3rd extent duplicates the
-  extent-role machinery Foundation A is already building.
+  Flagship code waits for the type-family surface; a bespoke 3rd extent
+  duplicates the extent-role machinery Foundation A is already building.
 
 ### Option C — executor-level batch loop
 
@@ -297,7 +296,7 @@ training loop (`get_batch`, loader); **COST** = blast radius / files.
 - **COST**: attention subsystem + extent roles — NOT the whole stack — but *not
   free*. It rides Foundation A / candidate B
   (`habu-foundation-a1-declarable-98aebe7b`, `habu-extent-typed-tensor-bde435dc`),
-  which the epic sequences anyway (`docs/nanogpt-inventory.md:129-137`), AND it
+  which the epic sequences anyway, AND it
   adds **new checker capability beyond A1**: A1 delivers only *flat* nominal roles
   with same/other/generic-int unification
   (`.dots/habu-foundation-a1-declarable-98aebe7b.md`, "flat" per
@@ -324,7 +323,7 @@ training loop (`get_batch`, loader); **COST** = blast radius / files.
   cell host arena and gradchecks. It does not care about extent roles or planner
   visibility. Its happiest path is **Option C** (host batch loop + grad
   accumulation): correct, cheap, and it de-risks the numerics before `SPEC:`
-  lands (the epic's stated order, `docs/nanogpt-inventory.md:138-147`). The host
+  lands (the epic's stated order). The host
   arena *cannot* hold GPT-2-scale `(B,T,C)` regardless (Option B buys nothing
   here).
 - **The Triton-reimpl / GB10 planner** wants the batch/sequence/head structure

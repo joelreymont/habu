@@ -7,8 +7,8 @@ side-by-side matrix against the Habu-PTX column produced by our own tools.
 
 Triton is the external system under comparison; it is Python because Triton is
 Python. It is **not** repo automation and nothing in the gate runs it — the
-reproduction scripts below are the canonical reference (kept out of the tree so
-`host-lint` stays green; the Habu-side reducers `tools/ptx/bandwidth.f`,
+reproduction scripts below are the canonical reference (kept out of the tree;
+the Habu-side reducers `tools/ptx/bandwidth.f`,
 `maki/eval/compare.f`, `maki/eval/device.f` are the live Habu column).
 
 ## Installing Triton on the Orin (no reflash)
@@ -868,7 +868,7 @@ buffers exceed half the 100 KB smem/SM and force 1 block/SM. See "Round 2 — th
   run-to-run spread 0–6 % on the tuned tf32 configs). A = B = 1.0, C = 0 (values
   immaterial to timing).
 - **Triton column:** `/tmp/gemm-triton-gb10.py` (verbatim below, out-of-tree per
-  this doc's convention — the repo's host-lint rejects committed `.py`), the
+  this doc's convention), the
   standard grouped-ordering `tl.dot` matmul, **manual max-autotune** (a 45-config grid
   timed with CUDA events, best kept; failing configs caught and counted, so the
   referee's ceiling is honest not flattered). No `torch.compile`/inductor, so the
@@ -1155,9 +1155,8 @@ bin/hb --load tools/ptx/gemm-bench.f          # GB-GB10: FP32 roof + 8-warp swee
 
 ### Triton referee script (`/tmp/gemm-triton-gb10.py`, verbatim)
 
-Out-of-tree per this doc's convention (the repo's `tools/host-lint.f` rejects a
-committed `.py`), the same way the Orin step-1 `/tmp/triton_matmul.py` is quoted
-verbatim above.
+Out-of-tree per this doc's convention, the same way the Orin step-1
+`/tmp/triton_matmul.py` is quoted verbatim above.
 
 ```python
 import torch, triton, triton.language as tl

@@ -8,7 +8,7 @@ blocks:
   - habu-proof-run-type-a106a19c
 ---
 
-Run host-lint, package and typed-local diff gates, Maki, PTX standard-library,
+Run package and typed-local diff gates, Maki, PTX standard-library,
 and the full native suite on the exact rebased candidate. Require green
 performance budgets, zero unexpected spans, and the focused type-DSL acceptance
 suites before publication.

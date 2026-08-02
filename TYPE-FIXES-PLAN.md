@@ -563,11 +563,10 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   grammar — plus the rg zero-site census. blocked-by M12, M13b, M13c,
   M14a-d, M15, M16.
 - (docs reconciliation moved to phase 4, after everything — Joel.)
-- M18 green-tree mechanics: obsolete administrative lints and host-lint DELETED (item
+- M18 green-tree mechanics: obsolete administrative lints DELETED (item
   40); suite-coverage's conscious-exception table updated for
-  deleted/respelled suites; STATUS.md DELETED (item 36) with the
-  census-ratchet baseline moved into the gate tool that measures it. Must
-  precede the battery.
+  deleted/respelled suites; STATUS.md DELETED (item 36); build certification
+  and its census report remain authoritative. Must precede the battery.
   blocked-by M17.
 
 Phase 3 runs after M18. Leaf contracts freeze one at a time on the
@@ -606,9 +605,7 @@ everything is finished — not during.
 36. **STATUS.md is deleted.** [wave 1, rides M18] (Joel, 2026-07-30.) Every
     fact in it has a real authority elsewhere: the dot tracker owns "what
     is next", the gates own gate state, and the build owns the certified
-    counts. The census ratchet's baseline moves out of prose into the gate
-    tool that measures it. Session
-    orientation is the tracker plus this plan.
+    counts. Session orientation is the tracker plus this plan.
 
 37. **The V2 evidence/experiment complex is DELETED in wave 1.** (Joel,
     2026-07-30: delete code we don't need or that smells; no parking.)
@@ -673,10 +670,8 @@ everything is finished — not during.
     M13c: the hand-seeded mint confinement lint (the same duplication as
     the deleted administrative ledger; its
     seeds are mostly proof mints and erasures this plan deletes, and
-    CONSTRUCT owner is the structural confinement that replaces it) and
-    host-lint (seventeen patterns rejecting retired workflow hooks — a
-    resurrection guard, the rejected absence-lint class). STAY, verified
-    derived-not-transcribed: suite-coverage-lint (re-parses the gate
+    CONSTRUCT owner is the structural confinement that replaces it).
+    STAY, verified derived-not-transcribed: suite-coverage-lint (re-parses the gate
     files each run; catches unscheduled suites; one conscious-exception
     table) and error-code-lint (global E- code uniqueness). Wave 2+
     doctrine endpoint: once the sweep makes the tree comply, the

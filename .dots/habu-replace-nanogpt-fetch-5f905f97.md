@@ -20,9 +20,9 @@ owner, and focused production test.
 
 Acceptance: both pinned artifacts fetch successfully; a local fixture proves
 the normal, network-failure, and corrupted-download paths; no partial or
-digest-mismatched file publishes; host-lint needs no allowlist for these files.
+digest-mismatched file publishes.
 Files: the checked fetch tool, focused fixtures, and the two existing shell
-paths. Run the local fixture, an authorized pinned-URL smoke, host-lint, and the
+paths. Run the local fixture, an authorized pinned-URL smoke, and the
 unchanged Maki gate. Ownership: nanogpt fetch path.
 
 Claim: agent=claude workspace=.jj-ws/habu-replace-nanogpt-fetch-5f905f97.

@@ -26,7 +26,7 @@ Acceptance and smallest owning check: before the change, one negative regression
 
 Verify: `tools/check-test.f`, `tools/check-all-errors-test.f`, the checker suite
 covering scope push and pop, typed-local and package diff gates on the exact
-diff, and host-lint.
+diff.
 
 Files: `src/core/checker.f`, `tools/check-core.f`,
 `tools/check-all-errors-core.f`, and the owning test files for the three new

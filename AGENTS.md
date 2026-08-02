@@ -93,7 +93,7 @@ system builds itself through `bin/hb`. Open work is tracked in dots.
   whose gates haven't passed. Work on your own branch and push there freely;
   fast-forward `master` only after, on the exact tree being merged, all of
   these are green: the maki suite (`bin/hb --load maki/test.f`), the
-  ptx-stdlib slice plus any native slices you touched, and `host-lint`.
+  ptx-stdlib slice plus any native slices you touched.
   Red, skipped, or unrun means no merge. A red master is a stop-everything
   incident, and nobody commits to `master` directly.
 - Forth commit gate (BLOCKING): `docs/forth.md` § Commit gate.

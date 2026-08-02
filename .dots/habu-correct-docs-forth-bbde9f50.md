@@ -16,6 +16,6 @@ Do not describe behaviour that was not run. Every claim about what a declaration
 
 Acceptance and smallest owning check: for each concrete claim the rewritten section makes, a command run through bin/hb on the same tree produces the stated result, and the specific false claims measured above no longer appear anywhere in docs/forth.md. The examples in the section load green.
 
-Verify: run the section's examples through bin/hb, then host-lint.
+Verify: run the section's examples through bin/hb.
 
 Files: docs/forth.md only, unless a run proves an engine diagnostic is genuinely wrong, in which case stop and raise that as its own dot rather than documenting around it. Claim: unassigned.

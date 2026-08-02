@@ -19,10 +19,6 @@ SUITE repl-lint
    tools/repl-lint.f
 ;SUITE
 
-SUITE host-lint
-   tools/host-lint.f
-;SUITE
-
 SUITE ptx-emitter-lint
    tools/lint/ptx-emitter-lint.f
    tools/lint/ptx-emitter-lint-test.f
@@ -42,14 +38,6 @@ SUITE dot-dep-lint
 
 SUITE dot-dep-lint-fixtures
    tools/dot-dep-lint-test.f
-;SUITE
-
-SUITE nanogpt-inventory-lint
-   tools/nanogpt-inventory-lint.f
-;SUITE
-
-SUITE nanogpt-inventory-lint-fixtures
-   tools/nanogpt-inventory-lint-test.f
 ;SUITE
 
 SUITE maki-dep-lint
@@ -99,10 +87,6 @@ SUITE diff-parser
 
 SUITE diff-frame-codec
    tools/lint/diff-frame-test.f
-;SUITE
-
-SUITE host-lint-fixtures
-   tools/host-lint-test.f
 ;SUITE
 
 SUITE json-file-cursor

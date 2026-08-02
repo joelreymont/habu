@@ -231,7 +231,6 @@ create LF-BYTE 10 c,
    LINT-FALSE CORE-SETUP
    s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/json-file.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/host-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/signature-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/signature-lint.f" CHECKED-BOUNDARY-LINT:FILE

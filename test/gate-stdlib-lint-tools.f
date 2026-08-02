@@ -51,7 +51,6 @@ REQUIRE-HARNESS
    \ and redefine PE-FB-CAP in the shared image. This matches CLOBBER above.
    s" tools/lint/ptx-emitter-lint.f" GSI-REQUIRE
    s" tools/lint/ptx-emitter-lint-test.f" GSI-INCLUDE
-   s" tools/host-lint.f" GSI-REQUIRE
    s" tools/process-primitive-lint.f" GSI-INCLUDE
    s" tools/process-primitive-lint-test.f" GSI-INCLUDE
    s" tools/stdin-closure-lint.f" GSI-REQUIRE ;
@@ -62,7 +61,7 @@ REQUIRE-HARNESS
 
 \ One fork per sub-suite so GT-POOL-FAIL's `FAIL: <label>` line names the
 \ failing sub-suite directly. The old lint-tools/dot-maki bundled dot, maki,
-\ maki-ns, host, and unrelated inventory tests in a single fork; a test file's
+\ maki-ns, and unrelated tests in a single fork; a test file's
 \ T-REPORT `die` exits the fork and bypasses GSI-INCLUDE's per-file FAIL line,
 \ so an inventory failure surfaced only under the misleading
 \ dot-maki label. Setup is loaded once in the parent and inherited copy-on-
@@ -70,10 +69,6 @@ REQUIRE-HARNESS
 : DOT ( -- )
    s" dot-dep-lint" [: DOT-DEP-LINT ;] GSI-RUN
    s" tools/dot-dep-lint-test.f" GSI-INCLUDE ;
-
-: NANOGPT ( -- )
-   s" nanogpt-inventory-lint" [: NANOGPT-INVENTORY-LINT ;] GSI-RUN
-   s" tools/nanogpt-inventory-lint-test.f" GSI-INCLUDE ;
 
 : MAKI ( -- )
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
@@ -94,9 +89,6 @@ REQUIRE-HARNESS
    s" error-code-lint" [: ERROR-CODE-LINT-STRICT ;] GSI-RUN
    s" tools/error-code-lint-test.f" GSI-INCLUDE ;
 
-: HOST ( -- )
-   s" tools/host-lint-test.f" GSI-INCLUDE ;
-
 : BOOTSTRAP-MIRROR ( -- )
    s" tools/bootstrap-mirror-lint-test.f" GSI-INCLUDE ;
 
@@ -115,13 +107,11 @@ public
    s" lint-tools/repo" GSI-FORK-TIMEOUT-MS [: REPOSITORY ;] GT-POOL-START-FORK
    s" lint-tools/repl" GSI-FORK-TIMEOUT-MS [: REPL-GROUP ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
-   s" lint-tools/nanogpt" GSI-FORK-TIMEOUT-MS [: NANOGPT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
    s" lint-tools/suite-coverage" GSI-FORK-TIMEOUT-MS [: SUITE-COVERAGE ;] GT-POOL-START-FORK
    s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
    s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK
    s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: ERROR-CODE ;] GT-POOL-START-FORK
-   s" lint-tools/host" GSI-FORK-TIMEOUT-MS [: HOST ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-mirror" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-MIRROR ;] GT-POOL-START-FORK
    s" lint-tools/bootstrap-refresh" GSI-FORK-TIMEOUT-MS [: BOOTSTRAP-REFRESH ;] GT-POOL-START-FORK
    GSI-FORK-DRAIN ;

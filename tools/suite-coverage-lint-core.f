@@ -289,8 +289,7 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
    s" tools/maki-dep-lint.f" SC-SCHED+
    s" tools/suite-coverage-lint.f" SC-SCHED+
    s" tools/namespace-lint.f" SC-SCHED+
-   s" tools/error-code-lint.f" SC-SCHED+
-   s" tools/nanogpt-inventory-lint.f" SC-SCHED+ ;
+   s" tools/error-code-lint.f" SC-SCHED+ ;
 
 \ ---- table membership ------------------------------------------------------
 : SC-QF! ( ptr u8 n -- ) {: a:ptr u:n :}
