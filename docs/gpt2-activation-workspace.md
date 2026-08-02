@@ -82,7 +82,7 @@ called at exactly one site, after the header is complete.
 ## Construction and release
 
 ```
-: WORKSPACE-NEW     ( MDLCFG:mcfg n -- MDLCFG:mcfg workspace )   \ n = max tokens
+: WORKSPACE-NEW     ( GPT2:config n -- GPT2:config workspace )   \ n = max tokens
 : WORKSPACE-RELEASE ( workspace -- )                             \ TOTAL
 ```
 
@@ -251,7 +251,7 @@ numbering, and its dependencies are otherwise unchanged.
 
 | # | leaf | owned result | depends |
 |---|---|---|---|
-| 8a | pure checked layout | the private typed `layout` value; the pure functions from `(T,E,H,V)` to every region size, every offset, the header size, and the total, on the overflow-checked CAD operations, with `logits` as [1,V]; the two private `numeric-result` extractors and the size pipeline. No allocation, no owner, no address. Tests: zero and negative extents, H not dividing E, T above context length, product overflow, maximum accepted total and maximum-plus-one, and one test per non-`ok` arm reaching the named size error | MDLCFG accessors |
+| 8a | pure checked layout | the private typed `layout` value; the pure functions from `(T,E,H,V)` to every region size, every offset, the header size, and the total, on the overflow-checked CAD operations, with `logits` as [1,V]; the two private `numeric-result` extractors and the size pipeline. No allocation, no owner, no address. Tests: zero and negative extents, H not dividing E, T above context length, product overflow, maximum accepted total and maximum-plus-one, and one test per non-`ok` arm reaching the named size error | GPT2 config accessors |
 | 8b | one allocation, header, linear mint and release | `DEFLINEAR workspace`; the 27-cell header; the three private crossings with `MINT-WORKSPACE` erasing the typed `layout` exactly once; `WORKSPACE-NEW` with the throw-ordered failure sequence; total `WORKSPACE-RELEASE` reading the stored exact length | 8a; `habu-make-owned-release-79de2b5c` |
 | 8c | private bounded views | `region-id`, `VIEW`, the per-head pane derivation, and the private row loops that consume them | 8b |
 

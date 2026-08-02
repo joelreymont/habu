@@ -138,7 +138,7 @@ This is a workaround, not architecture — construction control faked with a
 magic field because generated constructors are always public — and it is
 scheduled to be deleted: the `CONSTRUCT owner` flag (TYPE-FIXES-PLAN.md)
 controls construction directly and every proof token evaporates with it.
-`MDLCFG:cfg-proof` in `maki/infer/model-config.f` and `GPT2TENSOR:layer-proof`
+`GPT2:cfg-proof` in `maki/infer/gpt2-config.f` and `GPT2TENSOR:layer-proof`
 in `maki/infer/gpt2-tensor.f` are the two live examples. Both files are honest
 in their own headers about the limit of that evidence, and § 9 explains it.
 
@@ -163,8 +163,8 @@ families, and the nominal wrappers of § 4 are families too — one substrate,
 several declaring words.
 
 - **`STRUCTURE name arity … FIELD f type … ;STRUCTURE`** declares a record:
-  several named fields travelling together as one value. `MDLCFG:mcfg` is a
-  eleven-field example.
+  several named fields travelling together as one value. `GPT2:config` carries
+  eleven semantic fields plus its temporary construction proof.
 - **`ENUM name … ;ENUM`** declares a set of alternatives. In its short form the
   body is bare variant names and nothing else, which gives you a plain tag set:
   `MAKI:datatype` (`maki/tensor.f:123`) is five names, `df32` through `di32`, and
@@ -183,8 +183,8 @@ Declaring a family generates a **constructor** (`MAKE`) and a **destructurer**
 (`UNMAKE`), plus `MATCH … ;MATCH` for the alternatives, which the checker
 requires to be exhaustive — every variant needs an arm. The generated names are
 mechanical: the package name, then the family name with internal hyphens
-doubled. `STRUCTURE mcfg` inside `package MDLCFG` produces
-`MDLCFG-MCFG:MAKE`. This spelling rule creates one trap:
+doubled. `STRUCTURE config` inside `package GPT2` produces
+`GPT2-CONFIG:MAKE`. This spelling rule creates one trap:
 `ENUM map-take` inside `package SAFET` produces `SAFET-MAP--TAKE:MOVED`, which
 reads as though it belongs to `package SAFET-MAP` — a real package declared
 earlier in the same file. There is also a readability cap of thirty-two
@@ -202,7 +202,7 @@ rules follow from that:
   'p:pair' in signature`, exit 70. Consume it straight off the stack with
   `UNMAKE` or `MATCH` instead, deepest field first. Single-cell families are
   fine in locals — `{: tok:cfg-proof :}` and `{: dt:MAKI:datatype :}` both appear
-  throughout `maki/infer/model-config.f`.
+  throughout `maki/infer/gpt2-config.f`.
 - A word that returns a multi-cell value **cannot be called at the interpreter
   prompt**. The interpreter would shuffle one physical cell of a multi-cell
   bundle without knowing it, so such words are marked at definition time and
@@ -401,7 +401,7 @@ another small word whose entry consumes the bundle.
 The best worked examples in the tree, if you would rather read code:
 `lib/cad-num-types.f` for nominals, `lib/adt/option.f` and `lib/adt/result.f`
 for generics, `maki/infer/safetensors.f` for linear owners and transition
-chains, `maki/infer/model-config.f` for a validating constructor and a proof
+chains, `maki/infer/gpt2-config.f` for a validating constructor and a proof
 token, and `maki/infer/gpt2-pin.f` for the smallest possible authority — a
 package of constants and three typed facts that a configuration file leaves
 unsaid.

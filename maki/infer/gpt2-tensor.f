@@ -49,18 +49,18 @@
 \ derivable from the data.
 \
 \ NOMINAL LAYER INDEX. STRUCTURE `layer-id` holds an index and a private
-\ GPT2TENSOR proof. The sole constructor LAYER-ID ( mcfg n -- mcfg layer-id )
+\ GPT2TENSOR proof. The sole constructor LAYER-ID ( config n -- config layer-id )
 \ validates n against NLAYER@ (E-LAYER) before minting. The proof is an
-\ arity-0 NEWTYPE exactly like MDLCFG's cfg-proof (see model-config.f header
+\ arity-0 NEWTYPE exactly like GPT2's cfg-proof (see gpt2-config.f header
 \ for the engine constraint and the UNMAKE/re-MAKE scope caveat, closed by
 \ the sealed-destructure dot). Because that caveat still lets a holder re-MAKE
 \ a layer-id around LAYER-ID with an arbitrary index, SLOT revalidates the
-\ embedded index against its consuming mcfg on every lookup and rejects
+\ embedded index against its consuming config on every lookup and rejects
 \ E-LAYER before slot arithmetic. The returned slot is therefore inside
 \ [0, COUNT) unconditionally, and a forged index can neither select a wrong
 \ row nor wrap the arithmetic.
 \
-\ SHAPE ENCODING. SHAPE ( mcfg tensor-id -- mcfg n n n n n ) returns
+\ SHAPE ENCODING. SHAPE ( config tensor-id -- config n n n n n ) returns
 \ rank d0 d1 d2 d3: rank in {1,2,4}, dims exactly as the checkpoint header
 \ lists them (row-major), unused trailing slots hold 1 so d0*d1*d2*d3 is
 \ always the element count. Every composed dim AND the full element product
@@ -75,18 +75,18 @@
 \ touches the shared lib/string builder. The private render scratch NAME-BUF
 \ is sized by the static bound in the NAME-CAP comment and never escapes.
 \
-\ ARM SCOPE. Every derivation here reads only the COMMON mcfg fields (nctx,
-\ nvocab, nlayer, nembd); which adapter runs against which arch
-\ arm is the loader's dispatch concern (S6b), not this vocabulary's.
+\ Every derivation here reads the canonical GPT-2 geometry directly.
 \
 \ maki -> habu only. Owns -5650..-5659.
 
 require lib/prelude.f
 require lib/adt/option.f
 require lib/cad-num-types.f
-require maki/infer/model-config.f
+require maki/infer/gpt2-config.f
 
 package GPT2TENSOR
+
+using GPT2
 
 public
 
@@ -126,7 +126,7 @@ ENUM orientation DERIVE eq
    conv1d
 ;ENUM
 
-\ ---- the private-mint proof (arity-0 nominal; MDLCFG cfg-proof shape) -----------
+\ ---- the private-mint proof (arity-0 nominal; GPT2 cfg-proof shape) -------------
 NEWTYPE layer-proof 0
 
 \ ---- nominal layer index: checked index + private proof ------------------------
@@ -168,22 +168,22 @@ variable NAME-LEN
 
 \ shared index range gate: LAYER-ID validates a fresh index; SLOT-LAYER
 \ revalidates the embedded one against its consuming config.
-: CHECK-LAYER-INDEX ( MDLCFG:mcfg n -- MDLCFG:mcfg n ) {: i:n :}
+: CHECK-LAYER-INDEX ( GPT2:config n -- GPT2:config n ) {: i:n :}
    i 0 < if E-LAYER throw then
-   MDLCFG:NLAYER@ i > 0= if E-LAYER throw then
+   NLAYER@ i > 0= if E-LAYER throw then
    i ;
 
 public
 
 \ ---- the sole layer-id constructor -------------------------------------------------
-: LAYER-ID ( MDLCFG:mcfg n -- MDLCFG:mcfg layer-id )
+: LAYER-ID ( GPT2:config n -- GPT2:config layer-id )
    CHECK-LAYER-INDEX {: i:n :}
    i MINT-LAYER-PROOF GPT2TENSOR-LAYER--ID:MAKE ;
 
 \ ---- census: 4 + 13*nlayer, overflow-checked --------------------------------------
 \ The pre-check bounds nlayer so the multiply AND the add both fit a cell.
-: COUNT ( MDLCFG:mcfg -- MDLCFG:mcfg n )
-   MDLCFG:NLAYER@
+: COUNT ( GPT2:config -- GPT2:config n )
+   NLAYER@
    dup MAX-N GLOBAL-COUNT - LAYER-ROLE-COUNT / > if E-SIZE throw then
    LAYER-ROLE-COUNT * GLOBAL-COUNT + ;
 
@@ -253,8 +253,8 @@ private
    ;MATCH ;
 
 \ ---- shapes from the common geometry (each ( nctx nvocab nembd -- rank d0..d3 )) ----
-: GEOMETRY ( MDLCFG:mcfg -- MDLCFG:mcfg n n n )
-   MDLCFG:NEMBD@ >r MDLCFG:NVOCAB@ >r MDLCFG:NCTX@ r> r> ;
+: GEOMETRY ( GPT2:config -- GPT2:config n n n )
+   NEMBD@ >r NVOCAB@ >r NCTX@ r> r> ;
 
 : WTE-SHAPE ( n n n -- n n n n n ) {: cx:n vo:n ne:n :}
    2 vo ne 1 1 ;
@@ -309,11 +309,11 @@ private
    d0 d1 CHECKED-MUL d2 CHECKED-MUL d3 CHECKED-MUL drop
    r d0 d1 d2 d3 ;
 
-: SHAPE-GLOBAL ( MDLCFG:mcfg global-role -- MDLCFG:mcfg n n n n n )
+: SHAPE-GLOBAL ( GPT2:config global-role -- GPT2:config n n n n n )
    >r GEOMETRY r> SHAPE-GLOBAL-ROLE CHECK-SHAPE ;
 
 \ shape is layer-independent: the layer-id is dropped unread.
-: SHAPE-LAYER ( MDLCFG:mcfg layer-id layer-role -- MDLCFG:mcfg n n n n n ) {: br:layer-role :}
+: SHAPE-LAYER ( GPT2:config layer-id layer-role -- GPT2:config n n n n n ) {: br:layer-role :}
    drop
    GEOMETRY br SHAPE-LAYER-ROLE CHECK-SHAPE ;
 
@@ -343,13 +343,13 @@ private
       mproj-b OF 12 ENDOF
    ;MATCH ;
 
-: SLOT-GLOBAL ( MDLCFG:mcfg global-role -- MDLCFG:mcfg n )
+: SLOT-GLOBAL ( GPT2:config global-role -- GPT2:config n )
    GLOBAL-ORD ;
 
 \ The embedded index revalidates against the consuming config on every lookup;
 \ COUNT then proves 4 + 13*nlayer fits a cell. After those gates the multiply
 \ cannot wrap and the slot is in [GLOBAL-COUNT, census) always.
-: SLOT-LAYER ( MDLCFG:mcfg layer-id layer-role -- MDLCFG:mcfg n ) {: br:layer-role :}
+: SLOT-LAYER ( GPT2:config layer-id layer-role -- GPT2:config n ) {: br:layer-role :}
    LAYER-INDEX
    CHECK-LAYER-INDEX
    >r COUNT drop r>
@@ -393,10 +393,10 @@ CAST: SLOT>N ( CAD-NUM:index -- n ) ;
       E-SLOT throw
    endcase ;
 
-: GLOBAL-FOR-SLOT ( MDLCFG:mcfg n -- MDLCFG:mcfg tensor-id )
+: GLOBAL-FOR-SLOT ( GPT2:config n -- GPT2:config tensor-id )
    ORD>GLOBAL GPT2TENSOR-TENSOR--ID:GLOBAL ;
 
-: LAYER-FOR-SLOT ( MDLCFG:mcfg n -- MDLCFG:mcfg tensor-id )
+: LAYER-FOR-SLOT ( GPT2:config n -- GPT2:config tensor-id )
    GLOBAL-COUNT -
    LAYER-ROLE-COUNT /mod {: br:n l:n :}
    l LAYER-ID br ORD>LAYER GPT2TENSOR-TENSOR--ID:LAYER ;
@@ -434,7 +434,7 @@ public
    r> OPTION:SOME ;
 
 \ ---- expected shape: rank d0 d1 d2 d3, 1-padded (see header) ------------------------
-: SHAPE ( MDLCFG:mcfg tensor-id -- MDLCFG:mcfg n n n n n )
+: SHAPE ( GPT2:config tensor-id -- GPT2:config n n n n n )
    MATCH tensor-id
       global OF SHAPE-GLOBAL ENDOF
       layer  OF SHAPE-LAYER ENDOF
@@ -450,7 +450,7 @@ public
 \ ---- dense slot: globals 0..3, then 4 + layer*13 + role ordinal ---------------------
 \ The layer arm revalidates the embedded index against its consuming config
 \ before any slot arithmetic (E-LAYER; see header).
-: SLOT ( MDLCFG:mcfg tensor-id -- MDLCFG:mcfg CAD-NUM:index )
+: SLOT ( GPT2:config tensor-id -- GPT2:config CAD-NUM:index )
    MATCH tensor-id
       global OF SLOT-GLOBAL ENDOF
       layer  OF SLOT-LAYER ENDOF
@@ -459,7 +459,7 @@ public
 
 \ ---- checked inverse: consuming config census defines the valid slot set -----------
 : TENSOR-ID-FOR-SLOT
-   ( MDLCFG:mcfg CAD-NUM:index -- MDLCFG:mcfg tensor-id )
+   ( GPT2:config CAD-NUM:index -- GPT2:config tensor-id )
    SLOT>N {: s:n :}
    COUNT {: census:n :}
    s 0 <  s census >=  or if E-SLOT throw then
@@ -468,5 +468,7 @@ public
    else
       s LAYER-FOR-SLOT
    then ;
+
+;using
 
 ;package

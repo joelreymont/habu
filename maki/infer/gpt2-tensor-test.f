@@ -32,8 +32,8 @@
 \      consuming config;
 \   8. checker negatives: a global tensor-id cannot carry a layer and a layer
 \      tensor-id cannot omit one (by constructor arity/types); reordered layer fields
-\      reject, role families do not cross, MDLCFG's proof in the layer-id slot
-\      rejects (and GPT2TENSOR's proof in the mcfg slot), the removed record
+\      reject, role families do not cross, GPT2's proof in the layer-id slot
+\      rejects (and GPT2TENSOR's proof in the config slot), the removed record
 \      arities reject, and the private mint is unresolvable outside the package.
 
 require lib/prelude.f
@@ -94,65 +94,54 @@ variable HIGH
    repeat
    LOW @ ;
 
-\ ---- fixture configs (all through the sole MDLCFG constructor) ----------------
+\ ---- fixture configs (all through the sole GPT2 constructor) ------------------
 : DT0 ( -- MAKI:datatype )  MAKI-DATATYPE:DF32 ;
 : EPS0 ( -- r )  0.00001 ;
 
 \ the real GPT-2 124M geometry.
-: CFG-REAL ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1024 50257 12 768 12 true 50256 50256 MDLCFG:BUILD ;
+: CFG-REAL ( -- GPT2:config )
+   DT0 1024 50257 12 768 12 true 50256 50256 EPS0 true GPT2:BUILD ;
 
 \ tiny geometry: nlayer 2, nembd 4, nhead 2, nctx 8, nvocab 5 - every 2-d
 \ shape distinct and non-square, so a transposed or swapped dim cannot pass.
-: CFG-A ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 8 5 2 4 2 true 4 4 MDLCFG:BUILD ;
+: CFG-A ( -- GPT2:config )
+   DT0 8 5 2 4 2 true 4 4 EPS0 true GPT2:BUILD ;
 
 \ extreme-but-valid gpt2 geometry: BUILD accepts nembd = MAX-N (nvocab 1,
 \ nctx 1, nhead 1), so the 3*nembd qkv product must be the overflow rejector.
-: CFG-WIDE ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1 1 1 MAXN 1 true 0 0 MDLCFG:BUILD ;
+: CFG-WIDE ( -- GPT2:config )
+   DT0 1 1 1 MAXN 1 true 0 0 EPS0 true GPT2:BUILD ;
 
 \ the same shape at the exact 4*nembd boundary and one past it.
-: CFG-WIDE-MAX ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1 1 1 MAX-EMBD 1 true 0 0 MDLCFG:BUILD ;
+: CFG-WIDE-MAX ( -- GPT2:config )
+   DT0 1 1 1 MAX-EMBD 1 true 0 0 EPS0 true GPT2:BUILD ;
 
-: CFG-WIDE-OVER ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1 1 1 MAX-EMBD 1 + 1 true 0 0 MDLCFG:BUILD ;
+: CFG-WIDE-OVER ( -- GPT2:config )
+   DT0 1 1 1 MAX-EMBD 1 + 1 true 0 0 EPS0 true GPT2:BUILD ;
 
-\ MDLCFG owns model geometry, not this product census. These GPT-2 configs
+\ GPT2 owns model geometry, not this product census. These configs
 \ therefore build through the production constructor; COUNT owns the overflow
 \ rejection and its exact boundary pair.
-: CFG-DEEP ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1 1 MAXN 1 1 true 0 0 MDLCFG:BUILD ;
+: CFG-DEEP ( -- GPT2:config )
+   DT0 1 1 MAXN 1 1 true 0 0 EPS0 true GPT2:BUILD ;
 
-: CFG-DEEP-MAX ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1 1 MAX-LAYERS 1 1 true 0 0 MDLCFG:BUILD ;
+: CFG-DEEP-MAX ( -- GPT2:config )
+   DT0 1 1 MAX-LAYERS 1 1 true 0 0 EPS0 true GPT2:BUILD ;
 
-: CFG-DEEP-OVER ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1 1 MAX-LAYERS 1 + 1 1 true 0 0 MDLCFG:BUILD ;
+: CFG-DEEP-OVER ( -- GPT2:config )
+   DT0 1 1 MAX-LAYERS 1 + 1 1 true 0 0 EPS0 true GPT2:BUILD ;
 
 \ gpt2 arm with everything minimal but nctx, for the mask element product.
-: CFG-CTX ( n -- MDLCFG:mcfg ) {: cx:n :}
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 cx 1 1 1 1 true 0 0 MDLCFG:BUILD ;
+: CFG-CTX ( n -- GPT2:config ) {: cx:n :}
+   DT0 cx 1 1 1 1 true 0 0 EPS0 true GPT2:BUILD ;
 
 \ the two measured full-product escapes: every per-dim product fits, the
 \ pair product does not.
-: CFG-MASK4E9 ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 4000000000 5 1 768 12 true 4 4 MDLCFG:BUILD ;
+: CFG-MASK4E9 ( -- GPT2:config )
+   DT0 4000000000 5 1 768 12 true 4 4 EPS0 true GPT2:BUILD ;
 
-: CFG-NE40 ( -- MDLCFG:mcfg )
-   EPS0 true MDLCFG-ARCH:GPT2
-   DT0 1 1 1 $10000000000 1 true 0 0 MDLCFG:BUILD ;
+: CFG-NE40 ( -- GPT2:config )
+   DT0 1 1 1 $10000000000 1 true 0 0 EPS0 true GPT2:BUILD ;
 
 \ ---- typed probes over the public surface -------------------------------------
 64 constant NAME-CAP
@@ -163,13 +152,13 @@ create NAME-BUF-2 NAME-CAP allot
    GPT2TENSOR-TENSOR--ID:GLOBAL NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF
    NAME-BUF-1 swap ;
 
-: CHECK-LAYER-NAME ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg ptr u8 n )
+: CHECK-LAYER-NAME ( GPT2:config n GPT2TENSOR:layer-role -- GPT2:config ptr u8 n )
    {: br:GPT2TENSOR:layer-role :}
    GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER
    NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF
    NAME-BUF-1 swap ;
 
-: COPY-LAYER-NAME ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg n )
+: COPY-LAYER-NAME ( GPT2:config n GPT2TENSOR:layer-role -- GPT2:config n )
    {: br:GPT2TENSOR:layer-role :}
    GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER
    NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF ;
@@ -178,17 +167,17 @@ create NAME-BUF-2 NAME-CAP allot
    GPT2TENSOR-TENSOR--ID:GLOBAL NAME-BUF-2 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF
    NAME-BUF-2 swap ;
 
-: GLOBAL-SHAPE ( MDLCFG:mcfg GPT2TENSOR:global-role -- MDLCFG:mcfg n n n n n )
+: GLOBAL-SHAPE ( GPT2:config GPT2TENSOR:global-role -- GPT2:config n n n n n )
    GPT2TENSOR-TENSOR--ID:GLOBAL GPT2TENSOR:SHAPE ;
 
-: LAYER-SHAPE ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg n n n n n )
+: LAYER-SHAPE ( GPT2:config n GPT2TENSOR:layer-role -- GPT2:config n n n n n )
    {: br:GPT2TENSOR:layer-role :}
    GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SHAPE ;
 
-: GLOBAL-SLOT ( MDLCFG:mcfg GPT2TENSOR:global-role -- MDLCFG:mcfg CAD-NUM:index )
+: GLOBAL-SLOT ( GPT2:config GPT2TENSOR:global-role -- GPT2:config CAD-NUM:index )
    GPT2TENSOR-TENSOR--ID:GLOBAL GPT2TENSOR:SLOT ;
 
-: LAYER-SLOT ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg CAD-NUM:index )
+: LAYER-SLOT ( GPT2:config n GPT2TENSOR:layer-role -- GPT2:config CAD-NUM:index )
    {: br:GPT2TENSOR:layer-role :}
    GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:SLOT ;
 
@@ -215,7 +204,7 @@ variable EXPECT-LEN
    GPT2TENSOR-TENSOR--ID:GLOBAL
    NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF EXPECT-LEN ! ;
 
-: EXPECT-LAYER ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg )
+: EXPECT-LAYER ( GPT2:config n GPT2TENSOR:layer-role -- GPT2:config )
    {: br:GPT2TENSOR:layer-role :}
    GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER
    NAME-BUF-1 NAME-CAP GPT2TENSOR:COPY-NAME? LEN-OF EXPECT-LEN ! ;
@@ -228,7 +217,7 @@ variable EXPECT-LEN
    GPT2TENSOR-TENSOR--ID:GLOBAL GPT2TENSOR:ORIENTATION ;
 
 : LAYER-ORIENTATION
-   ( MDLCFG:mcfg GPT2TENSOR:layer-role -- MDLCFG:mcfg GPT2TENSOR:orientation )
+   ( GPT2:config GPT2TENSOR:layer-role -- GPT2:config GPT2TENSOR:orientation )
    {: br:GPT2TENSOR:layer-role :}
    0 GPT2TENSOR:LAYER-ID br GPT2TENSOR-TENSOR--ID:LAYER GPT2TENSOR:ORIENTATION ;
 
@@ -427,19 +416,19 @@ variable HIT-I
 : SLOTS-COMPLETE ( -- )
    HIT-I @ TINY-CENSUS T= ;
 
-: MARK-GLOBAL ( MDLCFG:mcfg GPT2TENSOR:global-role -- MDLCFG:mcfg )
+: MARK-GLOBAL ( GPT2:config GPT2TENSOR:global-role -- GPT2:config )
    {: br:GPT2TENSOR:global-role :}
    br EXPECT-GLOBAL
    br GLOBAL-SLOT dup MARK
    GPT2TENSOR:TENSOR-ID-FOR-SLOT ACTUAL-NAME= ;
 
-: MARK-ROLE ( MDLCFG:mcfg n GPT2TENSOR:layer-role -- MDLCFG:mcfg )
+: MARK-ROLE ( GPT2:config n GPT2TENSOR:layer-role -- GPT2:config )
    {: l:n br:GPT2TENSOR:layer-role :}
    l br EXPECT-LAYER
    l br LAYER-SLOT dup MARK
    GPT2TENSOR:TENSOR-ID-FOR-SLOT ACTUAL-NAME= ;
 
-: MARK-LAYER ( MDLCFG:mcfg n -- MDLCFG:mcfg ) {: l:n :}
+: MARK-LAYER ( GPT2:config n -- GPT2:config ) {: l:n :}
    l GPT2TENSOR-LAYER--ROLE:LN1-G MARK-ROLE
    l GPT2TENSOR-LAYER--ROLE:LN1-B MARK-ROLE
    l GPT2TENSOR-LAYER--ROLE:MASK MARK-ROLE
@@ -532,12 +521,12 @@ T-FORGED
 
 \ ---- 8. checker negatives -------------------------------------------------------
 \ SLOT preserves the nominal index role through the public boundary.
-s" SLOT-OK ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg CAD-NUM:index ) GPT2TENSOR:SLOT" YES
-s" SLOT-RAW ( MDLCFG:mcfg GPT2TENSOR:tensor-id -- MDLCFG:mcfg n ) GPT2TENSOR:SLOT" NO
+s" SLOT-OK ( GPT2:config GPT2TENSOR:tensor-id -- GPT2:config CAD-NUM:index ) GPT2TENSOR:SLOT" YES
+s" SLOT-RAW ( GPT2:config GPT2TENSOR:tensor-id -- GPT2:config n ) GPT2TENSOR:SLOT" NO
 \ the inverse accepts and returns only nominal boundary types; its cast stays private.
-s" INVERSE-OK ( MDLCFG:mcfg CAD-NUM:index -- MDLCFG:mcfg GPT2TENSOR:tensor-id ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" YES
-s" INVERSE-RAW-IN ( MDLCFG:mcfg n -- MDLCFG:mcfg GPT2TENSOR:tensor-id ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" NO
-s" INVERSE-RAW-OUT ( MDLCFG:mcfg CAD-NUM:index -- MDLCFG:mcfg n ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" NO
+s" INVERSE-OK ( GPT2:config CAD-NUM:index -- GPT2:config GPT2TENSOR:tensor-id ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" YES
+s" INVERSE-RAW-IN ( GPT2:config n -- GPT2:config GPT2TENSOR:tensor-id ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" NO
+s" INVERSE-RAW-OUT ( GPT2:config CAD-NUM:index -- GPT2:config n ) GPT2TENSOR:TENSOR-ID-FOR-SLOT" NO
 s" PRIVATE-SLOT-CAST ( CAD-NUM:index -- n ) GPT2TENSOR:SLOT>N" UNK
 s" GPT2TENSOR:SLOT>N" XREF-FIND XREF-FOUND? TFALSE
 \ a global tensor-id takes exactly a global-role; a layer cannot ride along...
@@ -553,10 +542,10 @@ s" GLOBAL-WRONG-ROLE ( GPT2TENSOR:layer-role -- GPT2TENSOR:tensor-id ) GPT2TENSO
 \ the layer-id MAKE certifies only with a genuine GPT2TENSOR proof...
 s" LAYER-ID-OK ( n GPT2TENSOR:layer-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" YES
 s" LAYER-ID-RAW-PROOF ( n n -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
-\ ...MDLCFG's proof cannot substitute (cross-package proof domains), nor can
-\ GPT2TENSOR's proof seal an mcfg...
-s" LAYER-ID-WRONG-PROOF ( n MDLCFG:cfg-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
-s" CONFIG-WRONG-PROOF ( MAKI:datatype n n n n n bool n n MDLCFG:arch GPT2TENSOR:layer-proof -- MDLCFG:mcfg ) MDLCFG-MCFG:MAKE" NO
+\ ...GPT2's proof cannot substitute (cross-package proof domains), nor can
+\ GPT2TENSOR's proof seal a config...
+s" LAYER-ID-WRONG-PROOF ( n GPT2:cfg-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO
+s" CONFIG-WRONG-PROOF ( MAKI:datatype n n n n n bool n n r bool GPT2TENSOR:layer-proof -- GPT2:config ) GPT2-CONFIG:MAKE" NO
 \ ...the removed generated record cell's old arity rejects, and the private
 \ mint is unresolvable outside.
 s" LAYER-ID-OLD-MAKE ( n n GPT2TENSOR:layer-proof -- GPT2TENSOR:layer-id ) GPT2TENSOR-LAYER--ID:MAKE" NO

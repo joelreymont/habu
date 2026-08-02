@@ -259,7 +259,7 @@ SUITE maki/infer/gpt2-reference-data-test.f
 ;SUITE
 SUITE maki/infer/gpt2-pin-test.f
 ;SUITE
-SUITE maki/infer/model-config-test.f
+SUITE maki/infer/gpt2-config-test.f
 ;SUITE
 SUITE maki/infer/gpt2-tensor-test.f
 ;SUITE
