@@ -18,3 +18,13 @@ device-independent numerical goldens, Maki, typed/package exact-diff, and full
 native gates pass. Forbidden: alias, shim, compatibility import, removed-name
 assertion, tombstone, lint, ledger, versioning, fallback, or unrelated numeric
 refactor. Claim: agent=f32_hard_cut workspace=.jj-ws/habu-delete-f32-aliases
+
+Checkpoint-discovered ownership migration: move the byte-identical `SF-ST`,
+`SF-LD`, `F32-PACK`, and `F32-UNPACK` implementation out of the legacy-global
+PTX module into `lib/float32-buffer.f`, package `F32-BUF`, with the exact public
+surface `STORE`, `LOAD`, `PACK`, and `UNPACK`; migrate its live callers and
+delete all four globals. Package `lib/ptx/cg-activation.f` under its real owner
+`PTX-ACT`, publish only the emitters proven by its live external-caller census,
+and qualify those callers. These are the complete owner migrations exposed by
+the exact package gate; no generic compatibility owner or wider CG packaging is
+in scope.
