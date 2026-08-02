@@ -19,6 +19,9 @@ require lib/adt/option.f                 \ option<n> for the number parsers (swi
    then ;
 
 IMG-LOAD-TARGET-LAYOUT
+undefine IMG-LOAD-TARGET-LAYOUT
+
+package IMAGE-DUMP
 
 variable IB   variable IL                    \ image buffer, length
 variable IFD
@@ -460,3 +463,5 @@ variable OKV
 : RUN-MAIN? ( -- )
    SCRIPT-ARGC 0 > if MAIN then ;
 RUN-MAIN?
+
+;package
