@@ -36,11 +36,11 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 136540 -> 136568). Re-measuring the live macOS byte-fixpoint on this tree gives
 \ CODELEN 127860 (floor 884). The previous row (127420, floor 444) had drifted
 \ BELOW the true feae4380 fixpoint (127832): page-absorbed engine growth from the
-\ merges since the row was last set, invisible to the whole-file GB-SIZE ratchet
+\ merges since the row was last set, invisible to the whole-file BUILD-SIZE ratchet
 \ (exactly the drift the exact-CODELEN ratchet exists to close). So this row jumps
 \ 127420 -> 127860 = +412 stale-drift correction + my +28. Header+code still fits
 \ nine 16 KiB __TEXT pages, so the code signature and whole-file total are
-\ unchanged. Keep MACOS-TOTAL equal to GB-SIZE-BASELINE-MACOS in
+\ unchanged. Keep MACOS-TOTAL equal to BUILD-SIZE:BASELINE-MACOS in
 \ test/gate-build-size.f.
 \ Lowered again on 2026-07-19 after the DP out-of-range die rework landed from
 \ the Linux side (commit cffe4d44): that engine change shrinks macOS __text by
@@ -120,7 +120,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ ad-hoc code signature loses four 4 KiB code-directory hash slots (1423 -> 1295 =
 \ -128). Whole file 165367 -> 148855 (-16384 page - 128 signature = -16512).
 \ MACOS-DATA-CONST and MACOS-LINKEDIT are unchanged. Keep MACOS-TOTAL equal to
-\ GB-SIZE-BASELINE-MACOS in test/gate-build-size.f.
+\ BUILD-SIZE:BASELINE-MACOS in test/gate-build-size.f.
 \ 2026-07-21 second owed re-measure: the FINDPTR primitive retirement (linux
 \ commit 017524d8, spark cannot measure macOS) shrank baked __text by 392 bytes
 \ within the same 16 KiB page, so only CODE-TEXT and the floor distance move;
@@ -156,7 +156,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 114484 constant MACOS-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 1295 constant MACOS-SIGNATURE     \ ad-hoc code signature SuperBlob (grows with CODELEN)
 3892 constant MACOS-FLOOR-DIST     \ code above the 16 KiB floor: the page-recovery shave
-148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-MACOS
+148855 constant MACOS-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-MACOS
 
 \ Linux committed attribution, measured at the byte-fixpoint on 2026-07-19 (DGX
 \ Spark, linux-arm64) after the shared PROT-GUARD:CALL span-guard fold (CODELEN
@@ -166,7 +166,7 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 \ 404 bytes, CODELEN 136136 -> 136540 (floor 968 -> 1372), confirming the +28
 \ prediction; all 432 bytes since the fold fit inside the same 4 KiB page
 \ padding (LINUX-TOTAL unchanged). Keep LINUX-TOTAL equal to
-\ GB-SIZE-BASELINE-LINUX in test/gate-build-size.f.
+\ BUILD-SIZE:BASELINE-LINUX in test/gate-build-size.f.
 \ 2026-07-19 re-measured live at the merged linux-arm64 fixpoint (spark): MATCH
 \ dispatch B.cond slimming adds +28 of compiler text (136540 -> 136568, matching
 \ the macOS-measured delta) and the DP out-of-range named-die fix shaves -256
@@ -308,10 +308,10 @@ $4000 constant MACOS-DATA-CONST  \ __DATA_CONST page (__got + zero fill)
 118428 constant LINUX-CODE-TEXT   \ CODELEN: every emitter-phase row (baked-source incl.)
 192 constant LINUX-RW             \ ELF read-write segment tail: DYNAMIC + GOT (ELF-RW-SZ)
 3740 constant LINUX-FLOOR-DIST     \ code above the 4 KiB floor: the page-recovery shave
-123072 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = GB-SIZE-BASELINE-LINUX
+123072 constant LINUX-TOTAL       \ = FILE-SIZE bin/hb = BUILD-SIZE:BASELINE-LINUX
 
 \ --- Per-region __text budgets (dot habu-enforce-native-region-1003651b) -------
-\ The whole-file (GB-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
+\ The whole-file (BUILD-SIZE) and __text-total (CODE-TEXT / SUM-TEXT) ratchets catch
 \ aggregate growth, but a region that grows while a sibling shrinks nets zero at
 \ the total and hides which emitter moved, and a lone region regression only
 \ surfaces once it crosses a page. These committed rows decompose CODE-TEXT into

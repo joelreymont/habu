@@ -13,6 +13,8 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/lint/source-lex.f
 
+package BCG-SUITE
+
 \ habu2.f is 262,867 bytes on the ENGINE-ERROR cutover tree; 25% headroom is
 \ 328,584 bytes, so the next power-of-two arena is $80000.
 $80000 constant BCG-CAP
@@ -35,12 +37,17 @@ variable BCG-LEN
 : BCG-MUST-LACK ( ptr u8 n -- )
    BCG-HAS? 0= TTRUE ;
 
+;package
+
 \ typed STR:FIND-SUB boundary: route byte-lengths through the STR: role surface,
 \ project the option<CAD-NUM:index> result back to the switchover option<idx>.
 package CAD-NUM
 public
 : BCG-IX>N ( CAD-NUM:index -- n ) INDEX>N ;
 ;package
+
+package BCG-SUITE
+
 : BCG-FIND ( ptr u8 n ptr u8 n -- option<idx> ) {: a:ptr u:n b:ptr v:n :}
    a u STR:LENGTH b v STR:LENGTH STR:FIND-SUB MATCH option
      none OF OPTION:NONE ENDOF
@@ -55,8 +62,6 @@ public
      none OF STR-FALSE TTRUE -1 ENDOF
      some OF STR-TRUE TTRUE IDX>N ENDOF
    ;MATCH ;
-
-package BCG-CAP
 
 32 constant TOK-CAP
 
@@ -125,9 +130,7 @@ variable DEF-N
    s" SOURCE-ARENA-CAP" DEF-SCAN DEF-N @ 1 T=
    s" IBUFSZ" DEF-SCAN DEF-N @ 1 T= ;
 
-public
-
-: TEST ( -- )
+: BCG-CAP-TEST ( -- )
    SOURCE-HEADROOM-PCT 25 T=
    SOURCE-ARENA-CAP IBUFSZ T=
    s" src/habu/layout.f" BCG-LOAD
@@ -140,8 +143,6 @@ public
    s" S2-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$=
    s" src/habu/maker.f" BCG-LOAD
    s" MK-SOURCE-CAP" DEF-VALUE s" SOURCE-ARENA-CAP" T$= ;
-
-;package
 
 : BCG-MUST-BEFORE ( ptr u8 n ptr u8 n -- ) {: earlier:ptr earlieru later:ptr lateru :}
    earlier earlieru BCG-POS-FOUND
@@ -176,8 +177,6 @@ public
      none OF STR-FALSE TTRUE ENDOF
      some OF STR-TRUE TTRUE IDX>N end < TTRUE ENDOF
    ;MATCH ;
-
-package BCG-MANIFEST
 
 $4000 constant CAP
 0 constant MODE-FORTH
@@ -277,8 +276,7 @@ create LF $0A c,
    SN# @ 6 = if 5 S@ s" ;" STR= exit then
    STR-FALSE ;
 
-\ typed-local-lint: allow-bare-local - q preserves its byte-span callback effect.
-: EMIT-FORTH-ROW ( [ ptr u8 n -- ] -- ) {: q :}
+: FORTH-ROW ( [ ptr u8 n -- ] -- ) {: q :} \ typed-local-lint: allow-bare-local - q preserves its byte-span callback effect.
    0 S@ q execute  SEP 1 q execute
    1 S@ q execute  SEP 1 q execute
    3 S@ QPATH$ q execute  LF 1 q execute ;
@@ -291,7 +289,7 @@ create LF $0A c,
    4 S@ op opu STR= 0= if STR-FALSE exit then
    2 S@ S\" s\"" T$=
    3 S@ QPATH$ 2drop
-   q EMIT-FORTH-ROW
+   q FORTH-ROW
    STR-TRUE ;
 
 \ typed-local-lint: allow-bare-local - q preserves its byte-span callback effect.
@@ -881,19 +879,17 @@ variable COUNT-N
    s" : BF-APPEND-TARGET-IMAGE" s" : BF-APPEND-ROLES"
       s" src/os/macos/macho.f" s" src/os/macos/sign2.f" SCOPE-BEFORE ;
 
-public
-
-: NATIVE ( -- )
+: BCG-MANIFEST-NATIVE ( -- )
    NATIVE-ROWS
    PREFIX-CALLS
    NATIVE-OUTER-CALLS ;
 
-: GFORTH ( -- )
+: BCG-MANIFEST-GFORTH ( -- )
    GFORTH-ROWS
    PREFIX-CALLS
    GFORTH-OUTER-CALLS ;
 
-: RECOVERY ( -- )
+: BCG-MANIFEST-RECOVERY ( -- )
    0 RECOVERY-U !
    s" emit_src() {" s"   local f" MODE-CAT s" cat"
    [: RECOVERY+ ;] CAPTURE 20 T=
@@ -917,7 +913,7 @@ public
    RECOVERY$ 33 ASSERT-UNIQUE
    RECOVERY-TARGETS ;
 
-: FIXPOINT ( -- )
+: BCG-MANIFEST-FIXPOINT ( -- )
    0 FIXPOINT-U !
    s" : BF-APPEND-CHECKER-BOOT" s" : BF-APPEND-CORE-BYTES"
    MODE-SOURCE s" BF-APPEND-SOURCE" [: FIXPOINT+ ;] CAPTURE 24 T=
@@ -947,8 +943,6 @@ public
    FIXPOINT$ EXPECT$ T$=
    FIXPOINT$ 34 ASSERT-UNIQUE
    FIXPOINT-TARGETS ;
-
-;package
 
 : BCG-TEST-INSTALL-FAIL-CLOSED ( -- )
    s" bootstrap/cg/install.fs" BCG-LOAD
@@ -980,14 +974,14 @@ public
 : BCG-TEST-PREFIX-LIST-BOOTSTRAP ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
    BCG-TEST-PREFIX-LIST-COMMON
-   BCG-MANIFEST:GFORTH
+   BCG-MANIFEST-GFORTH
    s" LSRCRD @ BL," BCG-MUST-HAVE
    s" LSRCRD LABEL@ BL," BCG-MUST-LACK ;
 
 : BCG-TEST-PREFIX-LIST-NATIVE ( -- )
    s" src/habu/habu2.f" BCG-LOAD
    BCG-TEST-PREFIX-LIST-COMMON
-   BCG-MANIFEST:NATIVE
+   BCG-MANIFEST-NATIVE
    s" LSRCRD LABEL@ BL," BCG-MUST-HAVE ;
 
 : BCG-TEST-PREFIX-LIST ( -- )
@@ -1055,12 +1049,12 @@ public
 
 : BCG-TEST-CELL-BOOTSTRAP ( -- )
    s" tools/bootstrap.sh" BCG-LOAD
-   BCG-MANIFEST:RECOVERY
+   BCG-MANIFEST-RECOVERY
    s" cat src/core/structures-effects.f" BCG-MUST-LACK ;
 
 : BCG-TEST-CELL-FIXPOINT ( -- )
    s" tools/build-fixpoint.f" BCG-LOAD
-   BCG-MANIFEST:FIXPOINT
+   BCG-MANIFEST-FIXPOINT
    s" src/core/structures-effects.f" BCG-MUST-LACK ;
 
 : BCG-TEST-CELL-PARITY ( -- )
@@ -1237,21 +1231,33 @@ public
 \ body itself stays pinned by the substring assertions above. hide.f is baked
 \ into the engine prelude and truncated away after use, so `require` would be
 \ skipped as already provided; include reloads the BFR-* words here.
+;package
+
 include src/habu/hide.f
 
+package BCG-SUITE
+
 variable BCGH-MID                            \ ndict watermark between the duplicate fixture records
+
+;package
 
 package BCGH-EARLY
 public
 : BCGH-DUP-MARK ( -- ) ;
 ;package
 
+package BCG-SUITE
+
 ndict@ BCGH-MID !
+
+;package
 
 package BCGH-LATE
 public
 : BCGH-DUP-MARK ( -- ) ;
 ;package
+
+package BCG-SUITE
 
 : BCGH-FIND ( ptr u8 n -- n )
    BFR-FIND-FIRST-INDEX ;
@@ -1305,7 +1311,7 @@ public
    s" 1 constant OWNER-API-PUB-WID" BCG-MUST-HAVE
    s" 2 constant OWNER-API-PRI-WID" BCG-MUST-HAVE
    s" 3 constant FIRST-DYNAMIC-WID" BCG-MUST-HAVE
-   s" $FFFFFFFE constant WID-LIMIT" BCG-MUST-HAVE
+   s" $FFFFFFFE constant WID:MAX" BCG-MUST-HAVE
    s" 256 constant RSTK-CELLS" BCG-MUST-HAVE
    s" create PWID PRIM-CAP cells allot" BCG-MUST-HAVE
    s" LNCOUNT @ LBL,  #PL @ DCQ," BCG-MUST-HAVE
@@ -1366,8 +1372,6 @@ public
    mdstart mdend s" hb: cannot map fixed data region" BCG-MUST-FIND-BEFORE
    mdstart mdend s" C-EXIT-DIAG" BCG-MUST-FIND-BEFORE ;
 
-package BCG-PREFLIGHT
-
 : RECOVERY ( -- )
    s" bootstrap/cg/forth.fs" BCG-LOAD
    s" 35 constant PREFMISSMSG-LEN" BCG-MUST-HAVE
@@ -1390,18 +1394,16 @@ package BCG-PREFLIGHT
    s" 9 DATA COMPILE-PREFLIGHT-CELL LDR,  9 LPREFMISS LABEL@ CBZ" BCG-MUST-HAVE
    s" 2 PREFMISSMSG-LEN MOVZ" BCG-MUST-HAVE ;
 
-public
-
-: TEST ( -- )
+: BCG-PREFLIGHT-TEST ( -- )
    RECOVERY
    NATIVE ;
 
-;package
+public
 
-: BCG-MAIN ( -- )
+: RUN ( -- )
    T-RESET
    BCG-TEST-MMAP-DIAG
-   BCG-PREFLIGHT:TEST
+   BCG-PREFLIGHT-TEST
    BCG-TEST-INSTALL-FAIL-CLOSED
    BCG-TEST-FORTH-SDQ-COMMENT
    BCG-TEST-PREFIX-LIST
@@ -1409,7 +1411,7 @@ public
    BCG-TEST-PROTWID-LEAFNESS
    BCG-TEST-ENGINE-ERROR
    BCG-TEST-CELL-PARITY
-   BCG-CAP:TEST
+   BCG-CAP-TEST
    BCG-TEST-BAKED-SOURCE-PREFIX
    BCG-TEST-TRUST-CALLS
    BCG-TEST-IMAGE-BUFFER
@@ -1432,4 +1434,6 @@ public
    T-REPORT
    s" bootstrap-codegen-test: ok" type cr ;
 
-BCG-MAIN
+;package
+
+BCG-SUITE:RUN
