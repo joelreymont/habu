@@ -41,6 +41,17 @@ private
    CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
    CBIND:BIND ;
 
+\ The same machine WITHOUT a floating-point unit. The integer subset needs
+\ nothing more than the base feature set, so it registers; the float subset
+\ declares the floating feature and must not.
+: NOFP-BND ( -- CBIND:binding )
+   CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
+   CTARGET-PTR--WIDTH:BITS64
+   CTARGET:F-BASE CTARGET:CONTRACT
+   CNUM-OVERFLOW:TRAP CNUM-FLOAT--MODEL:IEEE754 CNUM-CONTRACTION:FORBIDDEN
+   CNUM-FAST--MATH:BIT-EXACT CNUM-COMPARE:IEEE754-UNORDERED CNUM:POLICY
+   CBIND:BIND ;
+
 \ A GPU kernel contract: this dialect is the native pipeline's, so it must not
 \ register here at all.
 : PBND ( -- CBIND:binding )
@@ -117,7 +128,7 @@ private
    s" registration defines the eighteen opcodes the subset started with" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 27 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 39 T= ;
 
 \ The nine that complete the comparison and bitwise vocabulary. `invert` is the
 \ one unary operation of the subset and is asked for beside the eight binary
@@ -365,12 +376,99 @@ private
    WBND [: DIV-TRAP-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE ;
 
+\ ---- the float schemas -------------------------------------------------------
+\ The shapes the float subset rests on, read back off the frozen table. What is
+\ asserted is the TYPE at each position, because that is what makes a double a
+\ second value class rather than a cell with a different opcode over it: `f+`
+\ takes two doubles and answers one, `s>f` takes a cell and answers a double,
+\ `f>s` takes a double and answers a cell, and the reinterpretation crosses the
+\ same way with no rounding in it. A schema that named the cell type at any of
+\ these positions would let a double reach a general register with nothing
+\ refusing it.
+: FSHAPE-BODY ( IR-CTX:ctx -- n n bool bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b HIR-OPCODE:FADD HIR:OPCODE {: fa:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FSQRT HIR:OPCODE {: fq:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:INTREAL HIR:OPCODE {: ir:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:REALINT HIR:OPCODE {: ri:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:BITSREAL HIR:OPCODE {: br:IR-ID:ir-symbol-id :}
+   c b IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT
+   {: t:IR-ID:ir-type-id :}
+   c b HIR:REAL-TYPE {: f:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv fa IR-SCHEMA:FOPERANDS
+   rv fa IR-SCHEMA:FRESULTS
+   qv rv key fa 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key fa 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key fa 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key fq 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key ir 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key ir 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key ri 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key ri 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key br 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   rv fa IR-SCHEMA:FFEATURES@ CTARGET:F-FP CTARGET:HAS? ;
+
+: FSHAPE-CASE ( -- )
+   s" the float opcodes carry the double type at every position, and need the unit" T-LABEL
+   BND [: FSHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   1 T= 2 T= ;
+
+\ The double type is NOT the cell type. Everything above rests on that: if the
+\ two interned to one identity, every assertion in FSHAPE-BODY would still pass
+\ and nothing anywhere would separate a double from an integer.
+: FTYPE-BODY ( IR-CTX:ctx -- bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT
+   {: t:IR-ID:ir-type-id :}
+   c b HIR:REAL-TYPE {: f:IR-ID:ir-type-id :}
+   t IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL = ;
+
+: FTYPE-CASE ( -- )
+   s" the double type and the cell type are two identities" T-LABEL
+   BND [: FTYPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE ;
+
+\ Float division does not trap under either policy, which is where this dialect's
+\ float rules and its integer rules part company on purpose: dividing by zero
+\ answers an infinity and zero by zero answers the default NaN, both measured on
+\ this engine in the survey at the head of tools/codegen-compare-corpus3.f. A
+\ schema that copied `hir.div`'s flag would oblige the machine stage to
+\ reproduce a trap the hardware does not raise.
+: FDIV-TRAP-BODY ( IR-CTX:ctx -- bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-OPCODE:FDIV HIR:OPCODE {: fv:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FSQRT HIR:OPCODE {: fq:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FADD HIR:OPCODE {: fa:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv fv IR-SCHEMA:FTRAPS?
+   rv fq IR-SCHEMA:FTRAPS?
+   rv fa IR-SCHEMA:FTRAPS? ;
+
+: FDIV-TRAP-CASES ( -- )
+   s" float division is total under a trapping policy, unlike integer division" T-LABEL
+   BND [: FDIV-TRAP-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TFALSE TFALSE
+   s" and under a wrapping one too" T-LABEL
+   WBND [: FDIV-TRAP-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TFALSE TFALSE ;
+
 \ ---- registration refusals ---------------------------------------------------
 : PTX-BODY ( IR-CTX:ctx -- )
    DIALECT-NEW drop ;
 
 : PTX-REG ( -- )
    PBND [: PTX-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: NOFP-REG ( -- )
+   NOFP-BND [: PTX-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : TWICE-BODY ( IR-CTX:ctx -- )
    {: c:IR-CTX:ctx :}
@@ -383,6 +481,8 @@ private
 : REG-REFUSE-CASES ( -- )
    s" the native dialect refuses to register against a GPU target" T-LABEL
    [: PTX-REG ;] E-IR-SCHEMA-TARGET TTHROWSQ
+   s" and on a machine with no floating unit the double type cannot be interned" T-LABEL
+   [: NOFP-REG ;] E-IR-TYPE-TARGET TTHROWSQ
    s" registering the dialect twice into one module is refused" T-LABEL
    [: TWICE ;] E-IR-SCHEMA-DUP TTHROWSQ ;
 
@@ -416,7 +516,28 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 47 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 56 T= ;
+
+\ The nine float words, each read back off a real model. `f-` binds to hir.fsub
+\ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
+\ that named one for the other would compile a body that rounds the wrong way.
+: FLOAT-OPS-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" f+" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FADD HIR-OPCODE:EQ
+   r c b s" f-" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FSUB HIR-OPCODE:EQ
+   r c b s" f*" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FMUL HIR-OPCODE:EQ
+   r c b s" f/" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FDIV HIR-OPCODE:EQ
+   r c b s" fnegate" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FNEG HIR-OPCODE:EQ
+   r c b s" fabs" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FABS HIR-OPCODE:EQ
+   r c b s" fsqrt" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FSQRT HIR-OPCODE:EQ
+   r c b s" s>f" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:INTREAL HIR-OPCODE:EQ
+   r c b s" f>s" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:REALINT HIR-OPCODE:EQ ;
+
+: FLOAT-OPS-CASE ( -- )
+   s" the nine float words bind to their own operations" T-LABEL
+   BND [: FLOAT-OPS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ The nine words the comparison and bitwise vocabulary added, each read back off
 \ a real model. `>` binds to hir.gt and NOT to hir.lt: the row says which
@@ -776,8 +897,9 @@ variable BC-OUT
 
 \ Declaration order is observable, which is what an inventory walks: the four
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
-\ words, the four step words, the four memory words, the thirteen control words
-\ and the two halves of a locals group, with the renames at the end of the walk.
+\ words, the four step words, the four memory words, the nine float words, the
+\ thirteen control words and the two halves of a locals group, with the renames
+\ at the end of the walk.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -786,11 +908,11 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 39 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 48 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 44 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 53 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 46 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 55 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1311,7 +1433,7 @@ variable BC-OUT
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 27 0 0 FORGE
+   1 39 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 
@@ -1637,7 +1759,10 @@ variable BC-OUT
 : GROUP-POLICY ( IR-CTX:ctx -- )
    drop
    TRAP-CASES
-   DIV-TRAP-CASES ;
+   DIV-TRAP-CASES
+   FSHAPE-CASE
+   FTYPE-CASE
+   FDIV-TRAP-CASES ;
 
 : GROUP-REG-REFUSE ( IR-CTX:ctx -- )
    drop
@@ -1646,6 +1771,7 @@ variable BC-OUT
 : GROUP-MODEL ( IR-CTX:ctx -- )
    drop
    OPS-CASE
+   FLOAT-OPS-CASE
    OPS2-CASE
    CTRL-CASE
    STEP2-CASE

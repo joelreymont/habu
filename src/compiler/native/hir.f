@@ -9,7 +9,8 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Twenty-seven opcodes, and nothing else:
+\ WHAT THE SUBSET IS. Thirty-nine opcodes, and nothing else. Twenty-seven of them
+\ compute with cells:
 \   hir.const     an integer literal
 \   hir.add       integer addition
 \   hir.sub       integer subtraction
@@ -41,6 +42,33 @@
 \   hir.wordcall  call ANOTHER word, at the entry address and under the arity the
 \                 operation carries, handing it the same thing
 \   hir.return    leave the function with the word's outputs
+\ and twelve compute with doubles:
+\   hir.fconst    a double literal, carrying the cell the double is
+\   hir.fadd      double addition
+\   hir.fsub      double subtraction
+\   hir.fmul      double multiplication
+\   hir.fdiv      double division, which does not trap - it answers an infinity
+\                 or the default NaN
+\   hir.fneg      negation, the sign bit turned over
+\   hir.fabs      absolute value
+\   hir.fsqrt     square root
+\   hir.int>real  a signed cell rounded to the nearest double
+\   hir.real>int  a double truncated toward zero into a signed cell
+\   hir.bits>real a data-stack cell read as the double it holds
+\   hir.real>bits a double read as the cell it is
+\
+\ WHY A DOUBLE IS A SECOND TYPE AND NOT A SECOND SET OF OPERATIONS ON CELLS. A
+\ Habu stack holds a double unboxed, in one cell, as its own bit pattern, so
+\ nothing about its SIZE distinguishes it from an integer. What distinguishes it
+\ is that no operation reads one as the other: adding two doubles is not adding
+\ two cells and the machine has two register files to prove it. So the difference
+\ is carried by the value's type - REAL-TYPE below - which is what makes handing
+\ a double to `hir.add` a statement the module cannot hold rather than a mistake
+\ some later pass might notice. The two crossings are the last two opcodes, they
+\ compute nothing, and they exist because the source language really does cross
+\ there: a word's arguments arrive in data-stack cells and `@` answers the cell a
+\ double was stored in.
+\
 \ That is exactly what section 7.2's list needs for a colon body with no
 \ control flow, no calls, no locals and no strings. Section 7.2 names many more
 \ operations - `quotation`, `execute`, `catch` and the rest - and every one of
@@ -206,6 +234,18 @@ ENUM opcode DERIVE eq
    call
    wordcall
    return
+   fconst
+   fadd
+   fsub
+   fmul
+   fdiv
+   fneg
+   fabs
+   fsqrt
+   intreal
+   realint
+   bitsreal
+   realbits
 ;ENUM
 
 \ What a structured control word does to the blocks a definition is made of.
@@ -272,8 +312,15 @@ ENUM ctrl DERIVE eq
 \ `control` action the way `RECURSE` is, because `RECURSE` needs no name of its
 \ own - it means the definition being compiled - while a callable word is a
 \ different routine for every row, so what it means IS the row's payload.
+\ `real-literal` is the second token meaning, and it is a meaning of its own
+\ rather than `literal` with a type beside it for the same reason `hir.fconst` is
+\ an opcode of its own: what a token MEANS is what the elaborator stages for it,
+\ and the two stage two different operations leaving values of two different
+\ types. The tape's own token kind is what makes a token one or the other, and
+\ neither is ever a word's meaning.
 ENUM meaning DERIVE eq
    literal
+   real-literal
    op
    const-op
    control
@@ -308,6 +355,14 @@ private
 \ set, because integer arithmetic needs nothing more.
 : TARGET ( -- )
    CTARGET-ARCH:AARCH64 CTARGET:F-BASE IR-SCHEMA:SET-TARGET ;
+
+\ Design line 241 again, for the operations that need a floating unit. It is a
+\ different requirement and it is declared as one: a binding whose target
+\ contract has no floating-point feature is refused by IR-SCHEMA at the first
+\ float schema rather than compiling a body it cannot execute.
+: FP-TARGET ( -- )
+   CTARGET-ARCH:AARCH64 CTARGET:F-BASE CTARGET:F-FP CTARGET:WITH
+   IR-SCHEMA:SET-TARGET ;
 
 \ Design lines 236-238: a value-producing straight-line operation ends no block,
 \ names no successor, holds no region, and carries no effect token.
@@ -359,6 +414,18 @@ public
       call   OF s" hir.call"   ENDOF
       wordcall OF s" hir.wordcall" ENDOF
       return OF s" hir.return" ENDOF
+      fconst   OF s" hir.fconst"    ENDOF
+      fadd     OF s" hir.fadd"      ENDOF
+      fsub     OF s" hir.fsub"      ENDOF
+      fmul     OF s" hir.fmul"      ENDOF
+      fdiv     OF s" hir.fdiv"      ENDOF
+      fneg     OF s" hir.fneg"      ENDOF
+      fabs     OF s" hir.fabs"      ENDOF
+      fsqrt    OF s" hir.fsqrt"     ENDOF
+      intreal  OF s" hir.int>real"  ENDOF
+      realint  OF s" hir.real>int"  ENDOF
+      bitsreal OF s" hir.bits>real" ENDOF
+      realbits OF s" hir.real>bits" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -398,6 +465,25 @@ public
 : MEM-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
    IR--TYPE-DOMAIN:DATA-MEM IR-BUILD:INTERN-TOKEN ;
 
+\ ---- the type of a double ----------------------------------------------------
+\ The second value type of this dialect. A Habu stack holds a double in one
+\ unboxed cell as its own bit pattern, so a double and a cell are the same eight
+\ bytes and the same slot - but they are NOT the same value: no arithmetic of
+\ this dialect reads one as the other, and which of the two a value is decides
+\ which register file can hold it and which instruction may compute with it. So
+\ the difference is a TYPE and not a convention, and this reader is the one place
+\ that says it, exactly as MEM-TYPE is for the memory order.
+\
+\ WHY THE TWO ARE BRIDGED BY OPERATIONS RATHER THAN BY A CONVERSION. `hir.bits>real`
+\ and `hir.real>bits` below are the two crossings, and they compute nothing: they
+\ are the same eight bytes read as the other type. They exist because the SOURCE
+\ language crosses there - `@` answers the cell a double was stored in, `!` puts
+\ one back, and a word's arguments and results reach it through data-stack cells -
+\ so the crossing is a real event of a real program and a dialect that hid it
+\ would be claiming the machine moves nothing.
+: REAL-TYPE ( IR-CTX:ctx IR-BUILD:builder -- IR-ID:ir-type-id )
+   IR--TYPE-FMT:DOUBLE IR-BUILD:INTERN-FLT ;
+
 private
 
 \ ---- the schema definitions --------------------------------------------------
@@ -435,6 +521,18 @@ private
       call   OF s" hir.rule.call"   ENDOF
       wordcall OF s" hir.rule.wordcall" ENDOF
       return OF s" hir.rule.return" ENDOF
+      fconst   OF s" hir.rule.fconst"    ENDOF
+      fadd     OF s" hir.rule.fadd"      ENDOF
+      fsub     OF s" hir.rule.fsub"      ENDOF
+      fmul     OF s" hir.rule.fmul"      ENDOF
+      fdiv     OF s" hir.rule.fdiv"      ENDOF
+      fneg     OF s" hir.rule.fneg"      ENDOF
+      fabs     OF s" hir.rule.fabs"      ENDOF
+      fsqrt    OF s" hir.rule.fsqrt"     ENDOF
+      intreal  OF s" hir.rule.int>real"  ENDOF
+      realint  OF s" hir.rule.real>int"  ENDOF
+      bitsreal OF s" hir.rule.bits>real" ENDOF
+      realbits OF s" hir.rule.real>bits" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -467,6 +565,18 @@ private
       call   OF s" hir.render.call"   ENDOF
       wordcall OF s" hir.render.wordcall" ENDOF
       return OF s" hir.render.return" ENDOF
+      fconst   OF s" hir.render.fconst"    ENDOF
+      fadd     OF s" hir.render.fadd"      ENDOF
+      fsub     OF s" hir.render.fsub"      ENDOF
+      fmul     OF s" hir.render.fmul"      ENDOF
+      fdiv     OF s" hir.render.fdiv"      ENDOF
+      fneg     OF s" hir.render.fneg"      ENDOF
+      fabs     OF s" hir.render.fabs"      ENDOF
+      fsqrt    OF s" hir.render.fsqrt"     ENDOF
+      intreal  OF s" hir.render.int>real"  ENDOF
+      realint  OF s" hir.render.real>int"  ENDOF
+      bitsreal OF s" hir.render.bits>real" ENDOF
+      realbits OF s" hir.render.real>bits" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -795,6 +905,82 @@ private
    c b HIR-OPCODE:WORDCALL NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the float forms ---------------------------------------------------------
+\ A double literal: no operands, one double of result, and the value it holds -
+\ which is the literal's own bit pattern, because the cell IS the double. It is a
+\ second opcode rather than `hir.const` with a float result for the reason the
+\ byte and cell accesses are two forms: a schema is what says what an operation
+\ IS, and one schema standing for two operations that leave values of two
+\ different types would leave every reader consulting the result type before it
+\ knew what it was looking at.
+: DEF-FCONST ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
+   c b HIR-OPCODE:FCONST OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-RESULT
+   c b KEY-VALUE IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   FP-TARGET
+   c b HIR-OPCODE:FCONST NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Two doubles in, one double out. The four arithmetic words share this shape, and
+\ ALL FOUR ARE TOTAL - including the division, which is the one place this
+\ dialect's float rules and its integer rules disagree on purpose. An integer
+\ division by zero traps, and `hir.div` declares it; a float division by zero
+\ answers an infinity and a zero over a zero answers the default NaN, neither of
+\ which is a trap (survey (5) and (6) at the head of
+\ tools/codegen-compare-corpus3.f, measured on this engine). A float operation
+\ that declared itself trapping would oblige the machine stage to reproduce a
+\ trap the hardware does not raise.
+: DEF-FBINARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   FP-TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One double in, one double out: negate, absolute value and square root. The
+\ square root of a negative is the default NaN rather than a raise, so it is
+\ total with the rest of them.
+: DEF-FUNARY ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   FP-TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One value of one type in, one value of the other out. Four operations have this
+\ shape and they are FOUR and not two, because two of them compute and two do
+\ not. `hir.int>real` rounds a signed cell to the nearest double and
+\ `hir.real>int` truncates a double toward zero, saturating at the ends and
+\ answering zero for a NaN - two different roundings, which is why the corpus
+\ pins them in two rows (survey (8)). `hir.bits>real` and `hir.real>bits` round
+\ nothing at all: they are the same eight bytes read as the other type, which is
+\ what crossing between a data-stack cell and a double IS on this machine.
+\ Modelling a rounding conversion and a reinterpretation as one operation with a
+\ flag would let a wrong lowering read as a right one.
+: DEF-CROSS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder ti:IR-ID:ir-type-id to:IR-ID:ir-type-id
+      o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   ti IR-SCHEMA:ADD-OPERAND
+   to IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   FP-TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -862,7 +1048,20 @@ public
    c b t DEF-BRZ
    c b t k DEF-CALL
    c b t k DEF-WORDCALL
-   c b t DEF-RETURN ;
+   c b t DEF-RETURN
+   c b REAL-TYPE {: f:IR-ID:ir-type-id :}
+   c b f DEF-FCONST
+   c b f HIR-OPCODE:FADD DEF-FBINARY
+   c b f HIR-OPCODE:FSUB DEF-FBINARY
+   c b f HIR-OPCODE:FMUL DEF-FBINARY
+   c b f HIR-OPCODE:FDIV DEF-FBINARY
+   c b f HIR-OPCODE:FNEG DEF-FUNARY
+   c b f HIR-OPCODE:FABS DEF-FUNARY
+   c b f HIR-OPCODE:FSQRT DEF-FUNARY
+   c b t f HIR-OPCODE:INTREAL DEF-CROSS
+   c b f t HIR-OPCODE:REALINT DEF-CROSS
+   c b t f HIR-OPCODE:BITSREAL DEF-CROSS
+   c b f t HIR-OPCODE:REALBITS DEF-CROSS ;
 
 private
 get-current prot-wid-add

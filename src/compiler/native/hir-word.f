@@ -158,6 +158,7 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 : MEAN-CODE ( HIR:meaning -- n )
    MATCH HIR:meaning
       literal   OF 0 ENDOF
+      real-literal OF 10 ENDOF
       op        OF 1 ENDOF
       rename    OF 2 ENDOF
       unmodeled OF 3 ENDOF
@@ -169,8 +170,9 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       close-locals OF 8 ENDOF
    ;MATCH ;
 
-\ Code zero, `literal`, is deliberately absent: a literal is a token's meaning,
-\ so a row that claims it is corrupt rather than unusual.
+\ Codes zero and ten, `literal` and `real-literal`, are deliberately absent:
+\ both are a TOKEN's meaning, so a row that claims either is corrupt rather than
+\ unusual.
 : N>MEAN ( n -- HIR:meaning )
    case
       1 of HIR-MEANING:OP endof
@@ -214,6 +216,18 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       equal  OF 15 ENDOF
       call   OF 16 ENDOF
       wordcall OF 17 ENDOF
+      fconst   OF 27 ENDOF
+      fadd     OF 28 ENDOF
+      fsub     OF 29 ENDOF
+      fmul     OF 30 ENDOF
+      fdiv     OF 31 ENDOF
+      fneg     OF 32 ENDOF
+      fabs     OF 33 ENDOF
+      fsqrt    OF 34 ENDOF
+      intreal  OF 35 ENDOF
+      realint  OF 36 ENDOF
+      bitsreal OF 37 ENDOF
+      realbits OF 38 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -245,6 +259,18 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       24 of HIR-OPCODE:LSHIFT endof
       25 of HIR-OPCODE:RSHIFT endof
       26 of HIR-OPCODE:INVERT endof
+      27 of HIR-OPCODE:FCONST endof
+      28 of HIR-OPCODE:FADD endof
+      29 of HIR-OPCODE:FSUB endof
+      30 of HIR-OPCODE:FMUL endof
+      31 of HIR-OPCODE:FDIV endof
+      32 of HIR-OPCODE:FNEG endof
+      33 of HIR-OPCODE:FABS endof
+      34 of HIR-OPCODE:FSQRT endof
+      35 of HIR-OPCODE:INTREAL endof
+      36 of HIR-OPCODE:REALINT endof
+      37 of HIR-OPCODE:BITSREAL endof
+      38 of HIR-OPCODE:REALBITS endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -857,14 +883,17 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 
 \ ---- the tape join -----------------------------------------------------------
 \ The elaborator walks a sealed source tape and asks, token by token, what this
-\ dialect makes of it. An integer literal is a literal whatever any table says,
-\ because its kind is what makes it one. A name is looked up by its spelling. A
-\ character or string literal is a kind the straight-line subset does not model
-\ at all, and is refused as such rather than resolved as a name.
+\ dialect makes of it. A literal is a literal whatever any table says, because
+\ its kind is what makes it one, and the tape has two literal kinds this dialect
+\ models - an integer and a double - which are two meanings because they stage
+\ two different operations. A name is looked up by its spelling. A character or
+\ string literal is a kind the straight-line subset does not model at all, and is
+\ refused as such rather than resolved as a name.
 : ADMIT-TOKEN ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena n -- HIR:meaning )
    {: v:IR-ARENA:view key:IR-ID:ir-module-key r:IR-ARENA:arena i:n :}
    v i NTAPE:KIND@ {: k:NTAPE:kind :}
    k NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if HIR-MEANING:LITERAL exit then
+   k NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if HIR-MEANING:REAL-LITERAL exit then
    k NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if E-HIR-KIND throw then
    r v key i NTAPE:SPELL@ ADMIT ;
 
@@ -876,7 +905,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ `over`, one for `nip`, three for `rot` and none for `2drop`. A `{: … :}` group
 \ adds two words and no picks: its halves stage nothing and the names between
 \ them are the program's, so they never become rows of this table.
-47 constant WORDS
+56 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -948,6 +977,31 @@ private
    c b r c b s" !" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:STORE BDECLARE-OP
    c b r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BLOAD BDECLARE-OP
    c b r c b s" c!" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BSTORE BDECLARE-OP ;
+
+\ The nine float words of the engine's vocabulary that compute rather than
+\ compare. src/habu/habu1.f EMIT-FP-PRIMS publishes fifteen; f. is a decimal
+\ printer and no part of the arithmetic, and the five comparisons answer a flag
+\ that a branch then reads, which is the next leaf. These nine are one operation
+\ each and one row each.
+\
+\ THE TWO CONVERSIONS ARE TWO ROWS BECAUSE THEY ARE TWO ROUNDINGS. `s>f` rounds
+\ to nearest with ties to even and is exact up to 2^53; `f>s` truncates toward
+\ zero, saturates at the ends rather than wrapping, and answers zero for a NaN.
+\ The survey at the head of tools/codegen-compare-corpus3.f measures both on this
+\ engine, and the machine forms the dialect lowers them to are the instructions
+\ that behave that way, so the rounding is the hardware's and not a rule stated
+\ here.
+: DEF-FLOAT ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" f+" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FADD BDECLARE-OP
+   c b r c b s" f-" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FSUB BDECLARE-OP
+   c b r c b s" f*" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FMUL BDECLARE-OP
+   c b r c b s" f/" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FDIV BDECLARE-OP
+   c b r c b s" fnegate" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FNEG BDECLARE-OP
+   c b r c b s" fabs" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FABS BDECLARE-OP
+   c b r c b s" fsqrt" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FSQRT BDECLARE-OP
+   c b r c b s" s>f" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:INTREAL BDECLARE-OP
+   c b r c b s" f>s" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:REALINT BDECLARE-OP ;
 
 \ The structured control words. Three structures, the two words that stand in
 \ the middle of one, the loop index, the two words that leave a structure, and
@@ -1085,6 +1139,7 @@ public
    c b r DEF-BITWISE
    c b r DEF-STEP
    c b r DEF-MEMORY
+   c b r DEF-FLOAT
    c b r DEF-CONTROL
    c b r DEF-LOCALS
    c b p r DEF-2DUP
