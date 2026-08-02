@@ -13,7 +13,7 @@
 \ .version/.target header. Kernel ABI (named REGION_<rid>): one `.param .u64` per
 \ region input buffer, then `.param .u64 p_out`, then `.param .u32 p_n`; param
 \ registers %rd1..%rd<K> (inputs), %rd<K+1> (output), %r1 (n). GELU/SILU mirror the
-\ host references op-for-op so the device f32 output matches F64>F32(host) under the
+\ host references op-for-op so the device f32 output matches F32:NARROW(host) under the
 \ section 11 tolerance (proven by maki/lower/golden.f LOWER-GOLDEN).
 \
 \ BROADCAST operands (bias/scale): a region input whose shape is a legal broadcast of the
@@ -304,8 +304,8 @@ private
 : LEW-EMIT-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       relu            OF nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-RELU  ENDOF
-      gelu            OF nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-GELU  ENDOF
-      silu            OF nd 0 MIR-INPUT-IDX LEW-OPREG EMIT-SILU  ENDOF
+      gelu            OF nd 0 MIR-INPUT-IDX LEW-OPREG PTX-ACT:EMIT-GELU  ENDOF
+      silu            OF nd 0 MIR-INPUT-IDX LEW-OPREG PTX-ACT:EMIT-SILU  ENDOF
       add             OF nd LEW-BINREGS EMIT-ADD   ENDOF
       residual-add    OF nd LEW-BINREGS EMIT-ADD   ENDOF
       bias            OF nd LEW-BINREGS EMIT-ADD   ENDOF

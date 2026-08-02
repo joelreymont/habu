@@ -14,7 +14,7 @@
 \ EMIT-BLOCK-SUM / EMIT-BLOCK-MAX), and the region output row is masked-stored (ROW-STORE).
 \
 \ Reduction bodies MIRROR the host references op-for-op so the device f32 output matches
-\ F64>F32(host) under the section 11 reduction tolerance (maki/lower/golden.f):
+\ F32:NARROW(host) under the section 11 reduction tolerance (maki/lower/golden.f):
 \   RMSNORM   (maki/rmsnorm.f RMS-FWD): y = x / sqrt(mean(x^2)+eps)    - one BLOCK-SUM.
 \   LAYERNORM (maki/layernorm.f LN-FWD): y = (x-mu)/sqrt(var+eps)      - two BLOCK-SUMs.
 \   SOFTMAX-ROW (maki/softmax.f SM-FWD): y = exp(x-max)/sum            - BLOCK-MAX + BLOCK-SUM.
@@ -294,7 +294,7 @@ private
    x x EMIT-MUL {: x2:n :}
    x2 EMIT-BLOCK-SUM {: ssq:n :}
    ssq LRED-EMIT-COLS-F EMIT-U/ {: ms:n :}
-   ms RMS-EPS EMIT-ADDC {: mse:n :}
+   ms RMS-EPS PTX-ACT:EMIT-ADDC {: mse:n :}
    mse LRED-EMIT-SQRT {: rr:n :}
    x rr EMIT-B/ ;
 
@@ -304,7 +304,7 @@ private
    x EMIT-BLOCK-SUM fk EMIT-U/ {: mu:n :}
    x mu EMIT-B- {: d:n :}
    d d EMIT-MUL EMIT-BLOCK-SUM fk EMIT-U/ {: var:n :}
-   var LN-EPS EMIT-ADDC {: vare:n :}
+   var LN-EPS PTX-ACT:EMIT-ADDC {: vare:n :}
    vare LRED-EMIT-SQRT {: std:n :}
    d std EMIT-B/ ;
 
@@ -327,8 +327,8 @@ private
 : LRED-EMIT-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       relu            OF nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-RELU     ENDOF
-      gelu            OF nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-GELU     ENDOF
-      silu            OF nd 0 MIR-INPUT-IDX LRED-OPREG EMIT-SILU     ENDOF
+      gelu            OF nd 0 MIR-INPUT-IDX LRED-OPREG PTX-ACT:EMIT-GELU     ENDOF
+      silu            OF nd 0 MIR-INPUT-IDX LRED-OPREG PTX-ACT:EMIT-SILU     ENDOF
       add             OF nd LRED-BINREGS EMIT-ADD      ENDOF
       residual-add    OF nd LRED-BINREGS EMIT-ADD      ENDOF
       bias            OF nd LRED-BINREGS EMIT-ADD      ENDOF

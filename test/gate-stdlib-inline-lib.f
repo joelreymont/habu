@@ -498,6 +498,10 @@ public
 
 ;package
 
+package STDLIB-INLINE
+
+public
+
 : GSI-LINT-LIBS-CORE ( -- )
    s" stdlib/lint-libs/core" GSI-GROUP-PAR GSI-GROUP-HEADER
    GSI-TEST-SETUP
@@ -507,6 +511,7 @@ public
    s" lib/ffi-abi-test.f" GSI-FORK-INCLUDE
    s" lib/ieee754-test.f" GSI-FORK-INCLUDE
    s" lib/float32-test.f" GSI-FORK-INCLUDE
+   s" lib/float32-buffer-test.f" GSI-FORK-INCLUDE
    s" lib/array-test.f" GSI-FORK-INCLUDE
    s" lib/table-test.f" GSI-FORK-INCLUDE
    s" lib/codegen-test.f" GSI-FORK-INCLUDE
@@ -604,6 +609,8 @@ public
    s" test/golden-test.f" GSI-INCLUDE
    s" tools/diagnose-hb-test.f" GSI-INCLUDE
    s" lib/object-test.f" GSI-INCLUDE ;
+
+;package
 
 package CHECK-CLI-GATE
 public

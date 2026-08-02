@@ -415,9 +415,11 @@ payload, and quiet/signaling state. Higher input bits do not participate in the
 binary32 pattern. Neither conversion throws for an IEEE-754 input.
 
 Both packages are deliberately scalar-only. They expose no pointer, byte-load,
-byte-store, packing, or unpacking surface. Byte marshalling belongs to the
-bounded `MEM` span and subspan APIs, where capacity and access width can be
-checked before memory is touched.
+byte-store, packing, or unpacking surface. `lib/float32-buffer.f` owns the raw
+little-endian bridge as `F32-BUF:STORE`, `F32-BUF:LOAD`, `F32-BUF:PACK`, and
+`F32-BUF:UNPACK`; callers own the buffer capacity required by each operation.
+Bounded marshalling belongs to the `MEM` span and subspan APIs, where capacity
+and access width can be checked before memory is touched.
 
 ## Core Bytes
 

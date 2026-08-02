@@ -38,8 +38,8 @@
 \
 \ Emit-mode discipline mirrors lower-red.f: the fixed GEMM prologue/K-loop/store use
 \ explicit registers (%f1 = accumulator, %r/%rd address math); the epilogue reuses the
-\ cg-activation.f EMIT-RELU/EMIT-GELU/EMIT-SILU emitters (each returns a fresh %f via
-\ CG-NEXT-F) op-for-op with the host references, so the device f32 matches F64>F32(host)
+\ cg-activation.f EMIT-RELU/PTX-ACT:EMIT-GELU/PTX-ACT:EMIT-SILU emitters (each returns a fresh %f via
+\ CG-NEXT-F) op-for-op with the host references, so the device f32 matches F32:NARROW(host)
 \ under the section 11 matmul tolerance (maki/lower/golden.f). Kernel ABI (REGION_<rid>):
 \ one `.param .u64 p_in<i>` per contraction operand (A, B, [bias]), then `.param .u64
 \ p_out`, then `.param .u32 p_m, p_n, p_k`.
@@ -329,8 +329,8 @@ private
 : LMM-EPI-NODE ( CAD-KIND:node-id -- ) {: nd:CAD-KIND:node-id :}
    nd MIR-OP@ MATCH opkind
       relu OF nd LMM-EPI-OPREG EMIT-RELU ENDOF
-      gelu OF nd LMM-EPI-OPREG EMIT-GELU ENDOF
-      silu OF nd LMM-EPI-OPREG EMIT-SILU ENDOF
+      gelu OF nd LMM-EPI-OPREG PTX-ACT:EMIT-GELU ENDOF
+      silu OF nd LMM-EPI-OPREG PTX-ACT:EMIT-SILU ENDOF
       add OF E-LMM-OP throw ENDOF  mul OF E-LMM-OP throw ENDOF
       scale OF E-LMM-OP throw ENDOF  bias OF E-LMM-OP throw ENDOF
       layernorm OF E-LMM-OP throw ENDOF  rmsnorm OF E-LMM-OP throw ENDOF

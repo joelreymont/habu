@@ -224,6 +224,7 @@ SUITE float-parse
 SUITE ieee-float32
    lib/ieee754-test.f
    lib/float32-test.f
+   lib/float32-buffer-test.f
 ;SUITE
 
 SUITE fmt-numbers

@@ -1504,7 +1504,7 @@ fits.
   timing called a GPU profile. `.f` emit-driver signatures use checker type tokens (`n`/`ptr`/`bool`),
   never descriptive names (`node`/`rid`).
 - **Device-vs-host GOLDEN compares device f32 against the f32-NARROWED host, not the raw f64.** The
-  host runs f64, the device f32 — round the host elem onto the f32 grid first (`F64>F32 F32>F64`) then
+  host runs f64, the device f32 — round the host elem onto the f32 grid first (`F32:NARROW F32:WIDEN`) then
   `|dev - host_f32| ≤ atol + rtol*|host_f32|`, else the dtype step folds into the error budget and blows
   the tol. Since no onnxruntime exists for a composed Gemm, the committed host-executor result (validated
   ==ort at 1e-5 on the pure-matmul fixture) is the oracle — device-vs-host discipline, ort leg a

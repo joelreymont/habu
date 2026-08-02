@@ -3,7 +3,7 @@
 \
 \ The body is a CERTIFIED KERNEL: (the tile DSL, lib/ptx/collective-test.f precedent):
 \ per row, load the gate and up tiles, apply silu to the gate tile, multiply by the up
-\ tile, and masked-store the row. silu(gate) reuses the register-level EMIT-SILU
+\ tile, and masked-store the row. silu(gate) reuses the register-level PTX-ACT:EMIT-SILU
 \ (lib/ptx/cg-activation.f: x*sigmoid(x), the same f32 formula OP-SILU lowers) wrapped as
 \ a phantom-preserving pointwise tile op (SILU., the RELU / ROPE-ROT precedent); the
 \ multiply is the base tile *. . A PTX MODULE is one header then the `.visible .entry`, so
@@ -20,16 +20,20 @@ require src/arch/ptx/emit.f
 require lib/ptx/cg.f
 require lib/ptx/header.f
 require lib/ptx/cg-collective.f
-require lib/ptx/cg-activation.f       \ EMIT-SILU: the f32 silu register emitter
+require lib/ptx/cg-activation.f       \ PTX-ACT:EMIT-SILU register emitter
 require lib/ptx/tile.f
 require lib/ptx/collective.f
 
+package PTX-SWIGLU-CG
+
+private
+
 256 %BLOCK
 
-\ silu as a phantom-preserving pointwise tile op: EMIT-SILU wrapped by PTXREP:REP1, exactly
+\ silu as a phantom-preserving pointwise tile op: PTX-ACT:EMIT-SILU wrapped by PTXREP:REP1, exactly
 \ as tile.f's RELU wraps EMIT-RELU. Local to this producer (the ROPE-ROT precedent keeps a
 \ domain-specific tile op next to its one use rather than in the base tile vocabulary).
-: SILU. ( tile<f32,b,m> -- tile<f32,b,m> )  [: EMIT-SILU ;] PTXREP:REP1 ;
+: SILU. ( tile<f32,b,m> -- tile<f32,b,m> )  [: PTX-ACT:EMIT-SILU ;] PTXREP:REP1 ;
 
 KERNEL: SWIGLU-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c>  matrix<space-global,f32,extent-r,extent-c> -- )  GRID: extent-r  WHERE extent-c <= block-256
    {: gate up out :}
@@ -57,3 +61,5 @@ KERNEL: SWIGLU-ROWS ( matrix<space-global,f32,extent-r,extent-c>  matrix<space-g
    CG-SM-RET CG-SM-CLOSE ;
 
 EMIT-SWIGLU
+
+;package

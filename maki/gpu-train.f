@@ -7,6 +7,8 @@
 \ weight converges to 1, with the exact halving trajectory w' = 0.5*w + 0.5.
 \ Load after maki/gpu.f and maki/array.f.
 
+require lib/float32.f
+
 \ gpu-train reopens package GPU: the device training loop. SGD/PUT/RESULT are
 \ same-package bare; the weight buffer and the pure gradient helper are private.
 package GPU
@@ -28,8 +30,8 @@ public
 : EPOCH ( r -- ) {: lr:r :}
    4 0 ?do  WBUF i T-GET dup GRAD swap i PUT  loop       \ x=grad, y=weight
    lr SGD                                                \ device update
-   4 0 ?do  i RESULT F32>F64  WBUF i T-SET  loop ;       \ read weights back
+   4 0 ?do  i RESULT F32:WIDEN  WBUF i T-SET  loop ;       \ read weights back
 
-: WBITS ( n -- n )  WBUF swap T-GET F64>F32 ;      \ weight i as f32 bits (for assertions)
+: WBITS ( n -- n )  WBUF swap T-GET F32:NARROW ;      \ weight i as f32 bits (for assertions)
 
 ;package

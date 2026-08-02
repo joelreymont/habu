@@ -11,9 +11,10 @@
 \ The primary context is retained ONCE (GC-CTX-INIT) and released ONCE by the run scope
 \ (CUDA-SCOPE); a retained context never released hangs bin/hb at process exit on the Orin (RCA
 \ habu-rca-device-gradcheck). Self-contained, Orin-only. Load after lib/test.f, lib/ffi-abi.f,
-\ lib/ptx/cg.f (F32>F64/F64>F32), and the fs/process libs.
+\ lib/float32.f (F32:WIDEN/F32:NARROW), and the fs/process libs.
 
 require lib/ptx/toolchain.f
+require lib/float32.f
 require lib/ptx/sentinel.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
@@ -109,8 +110,8 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
 
 \ central difference of the loaded kernel w.r.t. x at x0, step h -> a Habu float
 : GC-CENTRAL ( r r -- r ) {: x0 h :}
-   x0 h f+ F64>F32 GC-AT F32>F64 {: zp :}
-   x0 h f- F64>F32 GC-AT F32>F64 {: zm :}
+   x0 h f+ F32:NARROW GC-AT F32:WIDEN {: zp:r :}
+   x0 h f- F32:NARROW GC-AT F32:WIDEN {: zm:r :}
    zp zm f-  h 2.0 f* f/ ;
 
 : GC-NEAR? ( r r -- bool ) {: a b :}  a b f- {: d :}  d 0.0 f< if 0.0 d f- else d then  0.05 f< ;
@@ -132,11 +133,11 @@ create GC-QOUT $1000 allot create GC-QERR $1000 allot
    \ --- EXP (transcendental): d exp(x)/dx = exp(x) = the forward value (non-constant) ---
    GC-EMIT-EXP drop    GC-PTXAS 0 T=  GC-LOAD
    1.0 0.001 GC-CENTRAL {: ge :}                       \ numeric d exp/dx at x=1
-   1.0 F64>F32 GC-AT F32>F64 {: ey :}                  \ exp(1) = the analytic gradient
+   1.0 F32:NARROW GC-AT F32:WIDEN {: ey:r :}                  \ exp(1) = the analytic gradient
    GC-UNLOAD
    \ --- EXP BACKWARD KERNEL (resolved SAVED-Y): dx = dz * savedy, run on device ---
    GC-EMIT-EXPBWD drop GC-PTXAS 0 T=  GC-LOAD
-   $3F800000 ey F64>F32 GC-AT-2IN F32>F64 {: gb :}     \ backward(dz=1.0, savedy=exp(1)) = exp(1)
+   $3F800000 ey F32:NARROW GC-AT-2IN F32:WIDEN {: gb:r :}     \ backward(dz=1.0, savedy=exp(1)) = exp(1)
    GC-UNLOAD
    gs 3.0 GC-NEAR? TTRUE                               \ SAXPY: correct dx=a=3 -> PASS
    gs 2.0 GC-NEAR? TFALSE                              \ SAXPY: wrong dx=2 -> REJECTED

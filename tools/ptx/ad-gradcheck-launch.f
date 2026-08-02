@@ -19,6 +19,8 @@
 \   lib/ffi-abi.f lib/ptx/cuda-driver.f
 \   <scratch>/ad-gradcheck-launch.f -- <scratch>
 
+require lib/float32.f
+
 package AD-GRADCHECK
 
 4 constant AGK                     \ row width k
@@ -84,10 +86,10 @@ variable AG-MISS#
    buf o 2 + + c@ 16 lshift or  buf o 3 + + c@ 24 lshift or ;
 
 : AG-PACK ( ptr a ptr u8 -- ) {: src:ptr dst:ptr :}
-   AGK 0 ?do  src i AG-F@ F64>F32  dst i AG-F32!  loop ;
+   AGK 0 ?do  src i AG-F@ F32:NARROW  dst i AG-F32!  loop ;
 
 : AG-UNPACK ( ptr u8 ptr a -- ) {: src:ptr dst:ptr :}
-   AGK 0 ?do  src i AG-F32@ F32>F64  dst i AG-F!  loop ;
+   AGK 0 ?do  src i AG-F32@ F32:WIDEN  dst i AG-F!  loop ;
 
 \ ---- poisoned readback: a dropped copy-back fails closed ----------------------
 
@@ -491,11 +493,11 @@ variable AG-MISS#
 
 : AG-A! ( r -- )
    AG-AH 0 AG-F!
-   AG-AH 0 AG-F@ F64>F32 AG-AB ! ;
+   AG-AH 0 AG-F@ F32:NARROW AG-AB ! ;
 
 : AGS-FWD-RUN ( ptr a -- ) {: dst:ptr :}     \ ADS_FWD(x, out, a, k)
    1 AGK AGBLOCK PTX-ROW-LAUNCH-CHECK
-   AG-AH 0 AG-F@ F64>F32 AG-AB !
+   AG-AH 0 AG-F@ F32:NARROW AG-AB !
    AG-X AG-IN AG-PACK
    AG-dX @ >CUDA-DEVPTR AG-IN AGBYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    AG-FWD @ >CUDA-FN AGBLOCK 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
@@ -510,7 +512,7 @@ variable AG-MISS#
 
 : AGS-BWD-RUN ( -- )                         \ ADS_BWD(x, dz, dxo, dao, a, k)
    1 AGK AGBLOCK PTX-ROW-LAUNCH-CHECK
-   AG-AH 0 AG-F@ F64>F32 AG-AB !
+   AG-AH 0 AG-F@ F32:NARROW AG-AB !
    AG-X AG-IN AG-PACK   AG-DY AG-DYB AG-PACK
    AG-dX @ >CUDA-DEVPTR AG-IN AGBYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    AG-dDY @ >CUDA-DEVPTR AG-DYB AGBYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
@@ -557,7 +559,7 @@ variable AG-MISS#
 
 : AGF-FWD-RUN ( ptr a -- ) {: dst:ptr :}     \ ADF_FWD(x, y, out, a, k)
    1 AGK AGBLOCK PTX-ROW-LAUNCH-CHECK
-   AG-AH 0 AG-F@ F64>F32 AG-AB !
+   AG-AH 0 AG-F@ F32:NARROW AG-AB !
    AG2-UPLOAD-XY
    AG-FWD @ >CUDA-FN AGBLOCK 1 1 CUDA:CU-FUNC-SET-BLOCK-SHAPE CUDA:RC0
    AG-FWD @ >CUDA-FN 32 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
@@ -572,7 +574,7 @@ variable AG-MISS#
 
 : AGF-BWD-RUN ( -- )                         \ ADF_BWD(x, dz, dxo, dyo, dao, a, k)
    1 AGK AGBLOCK PTX-ROW-LAUNCH-CHECK
-   AG-AH 0 AG-F@ F64>F32 AG-AB !
+   AG-AH 0 AG-F@ F32:NARROW AG-AB !
    AG-X AG-IN AG-PACK   AG-DY AG-DYB AG-PACK
    AG-dX @ >CUDA-DEVPTR AG-IN AGBYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0
    AG-dDY @ >CUDA-DEVPTR AG-DYB AGBYTES >LEN CUDA:CU-MEMCPY-HTOD CUDA:RC0

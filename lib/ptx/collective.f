@@ -104,7 +104,7 @@ public
 
 \ RMS scale building blocks (the "rsqrt+scale" half of the RMSNorm row kernel).
 \ USQRT is the block-uniform square root; RMS-EPS+ adds the LLaMA RMSNorm epsilon
-\ (0f3727C5AC = F64>F32(1e-5), matching maki/rmsnorm.f RMS-EPS) BEFORE the sqrt, so
+\ (0f3727C5AC = F32:NARROW(1e-5), matching maki/rmsnorm.f RMS-EPS) BEFORE the sqrt, so
 \ the row scale is r = sqrt(mean(x^2) + eps) with the eps placement pinned in the
 \ body. Both PRESERVE the uniform phantom -> CHECKED REP1 callers, like EXP.
 : USQRT ( uniform<f32> -- uniform<f32> )

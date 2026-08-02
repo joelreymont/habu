@@ -23,6 +23,7 @@ require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/device-artifacts.f
@@ -57,7 +58,7 @@ create LMD-QO  $1000 allot  create LMD-QE  $2000 allot
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
 : LMD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LMD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;   \ narrowed host elem
+: LMD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F32:NARROW F32:WIDEN ;   \ narrowed host elem
 : LMD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do

@@ -9,6 +9,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require src/arch/ptx/emit.f
@@ -68,10 +69,10 @@ variable RS-DIN variable RS-DOUT variable RS-KV
 \   row0 = [1,2,3,4] -> sum 10.0 (0x41200000)
 \   row1 = [2,3,4,5] -> sum 14.0 (14 = 1.75*2^3: exp 130=0x82, mant .75=0x600000 -> 0x41600000)
 : RS-PUT ( -- )
-   1.0 F64>F32 RS-HIN 0 RS-F32!  2.0 F64>F32 RS-HIN 1 RS-F32!
-   3.0 F64>F32 RS-HIN 2 RS-F32!  4.0 F64>F32 RS-HIN 3 RS-F32!
-   2.0 F64>F32 RS-HIN 4 RS-F32!  3.0 F64>F32 RS-HIN 5 RS-F32!
-   4.0 F64>F32 RS-HIN 6 RS-F32!  5.0 F64>F32 RS-HIN 7 RS-F32! ;
+   1.0 F32:NARROW RS-HIN 0 RS-F32!  2.0 F32:NARROW RS-HIN 1 RS-F32!
+   3.0 F32:NARROW RS-HIN 2 RS-F32!  4.0 F32:NARROW RS-HIN 3 RS-F32!
+   2.0 F32:NARROW RS-HIN 4 RS-F32!  3.0 F32:NARROW RS-HIN 5 RS-F32!
+   4.0 F32:NARROW RS-HIN 6 RS-F32!  5.0 F32:NARROW RS-HIN 7 RS-F32! ;
 
 : RS-SETUP ( -- )
    CUDA:OPEN

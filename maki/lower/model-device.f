@@ -42,6 +42,7 @@ require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/device-artifacts.f
@@ -110,7 +111,7 @@ create LMDM-RP   FS-PATH-CAP allot  variable LMDM-RP-U
 
 \ ---- per-element evidence (final model output: device value | host value rounded to f32) -----
 : LMDM-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LMDM-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;
+: LMDM-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F32:NARROW F32:WIDEN ;
 : LMDM-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do

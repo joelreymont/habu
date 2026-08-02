@@ -9,7 +9,7 @@
 \ lib/fmt.f, and src/arch/ptx/emit.f (reuses PTX-L). Checked Habu.
 
 require lib/ptx/kernel-abi.f
-require lib/float32.f
+require lib/ieee754.f
 
 \ Default kernel-ABI record: the SAXPY shape this scaffolding historically
 \ hardcoded. The relu/exp/acc/... producers reuse the same entry name and
@@ -109,34 +109,12 @@ TRUSTED: DATA-SPAN-REG ( n -- span<space-global,f32,extent-d> ) ;
 TRUSTED: MATRIX-REG ( n -- matrix<space-global,f32,extent-r,extent-c> ) ;
 TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> ) ;
 
-\ --- legacy global spelling over the package-owned scalar F32 codec --------
-: F64>F32 ( r -- n )  F32:NARROW ;
-: F32>F64 ( n -- r )  F32:WIDEN ;
-
-\ PTX marshalling remains under its existing owner until the common bounded
-\ MEM span and subspan chain can replace this raw compatibility boundary
-\ (`habu-add-unique-bounded-527e05ca`, then `habu-add-checked-mem-ebd95492`).
-: SF-ST ( n ptr u8 -- ) {: v:n p:ptr :}            \ store low 32 bits of v LE at p
-   v           $FF and  p     c!
-   v 8 rshift  $FF and  p 1 + c!
-   v 16 rshift $FF and  p 2 + c!
-   v 24 rshift $FF and  p 3 + c! ;
-: SF-LD ( ptr u8 -- n ) {: p:ptr :}                \ load a LE 32-bit word at p
-   p     c@
-   p 1 + c@ 8  lshift or
-   p 2 + c@ 16 lshift or
-   p 3 + c@ 24 lshift or ;
-: F32-PACK ( ptr a n ptr u8 -- ) {: src:ptr cnt:n dst:ptr :}   \ n f64 cells -> f32
-   cnt 0 ?do  src i cells + @ F64>F32  dst i 4 * +  SF-ST  loop ;
-: F32-UNPACK ( ptr u8 n ptr a -- ) {: src:ptr cnt:n dst:ptr :} \ f32 -> n f64 cells
-   cnt 0 ?do  src i 4 * +  SF-LD  F32>F64  dst i cells + !  loop ;
-
 \ --- f16 (IEEE half) narrowing for the fp16 mma tile (dot habu-fp16-mma-tile). F64>F16 mirrors
-\ F64>F32 (round-to-nearest-even; +/-0, subnormal, overflow->inf, NaN handled); the subnormal
+\ F32:NARROW (round-to-nearest-even; +/-0, subnormal, overflow->inf, NaN handled); the subnormal
 \ rounding reuses IEEE754:ROUND-SHIFT-EVEN (it rounds the 53-bit f64 significand right by an
 \ arbitrary shift and applies the sign, independent of the target width). f16 fields: sign bit15,
 \ 5-bit exp (bias 15), 10-bit mantissa. SF-ST16 stores the low 16 bits little-endian; F16-PACK
-\ narrows each f64 host cell to a packed f16 device buffer. Device C stays f32 (F32-UNPACK reads it
+\ narrows each f64 host cell to a packed f16 device buffer. Device C stays f32 (F32-BUF:UNPACK reads it
 \ back), so no F16-UNPACK is needed. ---
 : F64>F16 ( r -- n ) {: fr:r :}
    fr IEEE754:F64>BITS {: b:n :}
@@ -170,17 +148,17 @@ TRUSTED: MATRIX-ONCE-REG ( n -- matrix<space-global-once,f32,extent-r,extent-c> 
 \ --- bf16 (brain float) narrowing for the bf16 mma tile (dot habu-bf16-m16n8k16-tile). bf16 is
 \ sign(1) + exp(8, bias 127) + mantissa(7): its exponent field is IDENTICAL to f32's (same bias and
 \ range), so a bf16 is exactly an f32 with the low 16 mantissa bits removed. F64>BF16 therefore
-\ mirrors F64>F32, NOT F64>F16: the target exponent is x = e-896 (the f32/f64 offset, NOT f16's
+\ mirrors F32:NARROW, NOT F64>F16: the target exponent is x = e-896 (the f32/f64 offset, NOT f16's
 \ e-1008), and the overflow bound (x>254) and subnormal boundary (x<1) are f32's, not f16's much
 \ smaller range - only the stored mantissa width (7 vs 23) and the 16-bit store differ. This is what
 \ "round via the f32-representable value" means: bf16 inherits f32's exponent field, so its range
-\ handling is F64>F32's. Rounding is round-to-nearest-even done in ONE step directly on the 52-bit
+\ handling is F32:NARROW's. Rounding is round-to-nearest-even done in ONE step directly on the 52-bit
 \ f64 mantissa (keep the top 7 bits, RNE the 45 dropped bits) = the correctly-rounded nearest bf16.
 \ It is deliberately NOT f64->f32->bf16 (drop 29 then 16 bits): that double rounding can mis-round a
 \ value sitting exactly on an f32 rounding boundary, so a single rounding to the final 7-bit width is
 \ the correct pack. Truncation is NOT used. The subnormal shift 46-x = 53-7-x reuses the width-agnostic
 \ RNE shift (a carry out of the 7 mantissa bits lands on 0x0080, the smallest bf16 normal).
-\ SF-ST16 stores the low 16 bits little-endian; device C stays f32 (F32-UNPACK on readback), so no
+\ SF-ST16 stores the low 16 bits little-endian; device C stays f32 (F32-BUF:UNPACK on readback), so no
 \ BF16-UNPACK is needed. For the mma-gemm-check integer fills (<=256, exact in bf16's 8-bit
 \ significand) no rounding fires and the pack returns the exact integer. ---
 : F64>BF16 ( r -- n ) {: fr:r :}

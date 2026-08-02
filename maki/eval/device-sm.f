@@ -12,6 +12,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/process.f
@@ -48,8 +49,8 @@ variable SM-DI variable SM-DO variable SM-KV
 : SM-F32@ ( n -- n ) {: idx :} idx 4 * {: o :}
    SM-OUT o + c@  SM-OUT o 1 + + c@ 8 lshift or  SM-OUT o 2 + + c@ 16 lshift or  SM-OUT o 3 + + c@ 24 lshift or ;
 : SM-INIT ( -- )                                   \ input [1,2,3,4] + golden softmax bits
-   1.0 F64>F32 SM-IN 0 SM-F32!  2.0 F64>F32 SM-IN 1 SM-F32!
-   3.0 F64>F32 SM-IN 2 SM-F32!  4.0 F64>F32 SM-IN 3 SM-F32!
+   1.0 F32:NARROW SM-IN 0 SM-F32!  2.0 F32:NARROW SM-IN 1 SM-F32!
+   3.0 F32:NARROW SM-IN 2 SM-F32!  4.0 F32:NARROW SM-IN 3 SM-F32!
    1023627234 SMG 0 cells + !  1035106489 SMG 1 cells + !
    1047695721 SMG 2 cells + !  1059379089 SMG 3 cells + ! ;
 

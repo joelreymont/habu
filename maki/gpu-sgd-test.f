@@ -5,6 +5,8 @@
 \ and weight as y, then GPU:SGD lr. Values chosen f32-exact so the device result
 \ equals the CPU golden bit-for-bit. Load after maki/gpu.f.
 
+require lib/float32.f
+
 T-RESET
 
 \ w = [2,4,6,8], g = [1,1,1,1], lr = 0.5  =>  w' = w - 0.5*g = [1.5,3.5,5.5,7.5]
@@ -18,9 +20,9 @@ GPU:SETUP
 GPU:RELEASE
 
 \ each updated weight matches the CPU SGD step (as f32 bits)
-0 GPU:RESULT  1.5 F64>F32 T=
-1 GPU:RESULT  3.5 F64>F32 T=
-2 GPU:RESULT  5.5 F64>F32 T=
-3 GPU:RESULT  7.5 F64>F32 T=
+0 GPU:RESULT  1.5 F32:NARROW T=
+1 GPU:RESULT  3.5 F32:NARROW T=
+2 GPU:RESULT  5.5 F32:NARROW T=
+3 GPU:RESULT  7.5 F32:NARROW T=
 
 T-REPORT

@@ -49,6 +49,8 @@
 require lib/prelude.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
+require lib/float32-buffer.f
 require lib/fmt.f
 require lib/fs.f
 require lib/memory.f
@@ -179,7 +181,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
    iz OGI-ROWS@ iz OGI-COLS@ * {: e:n :}
    IMP-ARENA  iz cells IMP-AOFF + @  T-AT {: dst:ptr :}
    e 0 ?do
-      a off i 4 * + +  SF-LD F32>F64  dst i T-SET
+      a off i 4 * + +  F32-BUF:LOAD F32:WIDEN  dst i T-SET
    loop ;
 
 : IMP-MATERIALIZE ( ptr u8 n -- ) {: a:ptr u:n :}
@@ -357,7 +359,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
    rc IMP-REF-ROWS 1 MAKI:ROWS-IS? 0=
    rc IMP-REF-COLS acc IMP-REF-COLS MAKI:COLS-EQUAL? 0= or if E-ONNX-SHAPE throw then
    j OND-BETA@ F32-ONE <> if
-      rc j OND-BETA@ F32>F64 GEMM-SCALE
+      rc j OND-BETA@ F32:WIDEN GEMM-SCALE
    else
       rc
    then {: rc2:MIR:operand-ref :}
@@ -374,7 +376,7 @@ TRUSTED: IMP-COLS-N ( CAD-KIND:cols -- n ) ;
    MAKI-OPKIND:MATMUL MAKI:MIR-OP-BEGIN  ra MAKI:MIR-IN+  rb MAKI:MIR-IN+
    m nc MK-COMPUTE {: acc:MIR:operand-ref :}
    j OND-ALPHA@ F32-ONE <> if
-      acc j OND-ALPHA@ F32>F64 GEMM-SCALE
+      acc j OND-ALPHA@ F32:WIDEN GEMM-SCALE
    else
       acc
    then {: acc2:MIR:operand-ref :}

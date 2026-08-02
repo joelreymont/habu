@@ -13,6 +13,10 @@ require lib/ptx/cg-mma.f
 require lib/ptx/opt-ir.f
 require lib/ptx/opt.f
 
+package PTX-OPT-TEST
+
+private
+
 $20000 constant OPTT-CAP
 create OPTT-SAVE OPTT-CAP allot
 variable OPTT-SAVE-U
@@ -79,14 +83,14 @@ T-RESET
    SB-RESET s" st.global.f32 [%rd1], " CG-S r CG-F s" ;" CG-S CG-LINE ;
 
 : OPTT-GELU1 ( -- )                                        \ one gelu forward: no redundancy
-   PTX-CAPTURE-ON CG-RESET 1 EMIT-GELU OPTT-PUT PTX-CAPTURE-OFF PTX-CAPTURE$ {: a:ptr u:n :}
+   PTX-CAPTURE-ON CG-RESET 1 PTX-ACT:EMIT-GELU OPTT-PUT PTX-CAPTURE-OFF PTX-CAPTURE$ {: a:ptr u:n :}
    a u PTX-PARSE PTX-INSN-COUNT {: b:n :}
    a u OPT-PTX {: oa:ptr ou:n :}
    PTX-INSN-COUNT b T=
    oa ou s" ex2.approx.f32" CONTAINS? TTRUE ;              \ activation core survives
 
 : OPTT-GELU2 ( -- )                                        \ gelu(x) recomputed twice -> CSE removes the redundant recompute
-   PTX-CAPTURE-ON CG-RESET 1 EMIT-GELU OPTT-PUT 1 EMIT-GELU OPTT-PUT PTX-CAPTURE-OFF PTX-CAPTURE$ {: a:ptr u:n :}
+   PTX-CAPTURE-ON CG-RESET 1 PTX-ACT:EMIT-GELU OPTT-PUT 1 PTX-ACT:EMIT-GELU OPTT-PUT PTX-CAPTURE-OFF PTX-CAPTURE$ {: a:ptr u:n :}
    a u PTX-PARSE PTX-INSN-COUNT {: b:n :}
    a u OPT-PTX 2drop PTX-INSN-COUNT {: c:n :}
    b c - 0 > TTRUE ;                                       \ strictly fewer instructions
@@ -114,3 +118,5 @@ OPTT-GELU2
 OPTT-MMA
 
 T-REPORT
+
+;package

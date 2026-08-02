@@ -16,7 +16,7 @@
 \
 \ EPS: LayerNorm's eps and RMSNorm's eps are the SAME normalization constant -
 \ maki/layernorm.f LN-EPS = maki/rmsnorm.f RMS-EPS = 1e-5 - so the device eps-add is
-\ the shared RMS-EPS+ collective op (bit-identical F64>F32(1e-5) = 0f3727C5AC). No
+\ the shared RMS-EPS+ collective op (bit-identical F32:NARROW(1e-5) = 0f3727C5AC). No
 \ separate LN-EPS+ op is minted: that would duplicate one instruction and couple a
 \ shared lib to this kernel. (A neutral rename of RMS-EPS+ is an owed clarity-only
 \ cleanup, its own dot - it changes no bits.)

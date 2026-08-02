@@ -2,8 +2,8 @@
 \
 \ AXPY over float arrays: y[i] = a*x[i] + y[i], computed on the Orin via the
 \ CHECKED SAXPY kernel (lib/ptx/...), with ARBITRARY float data marshalled through
-\ F64>F32, and verified against the CPU. Fully checked Habu (no 0 set-check) via
-\ the checked FFI (lib/ffi-abi.f) + F64>F32 (lib/ptx/cg.f). maki -> habu only.
+\ F32:NARROW, and verified against the CPU. Fully checked Habu (no 0 set-check) via
+\ the checked FFI (lib/ffi-abi.f) + F32:NARROW (lib/float32.f). maki -> habu only.
 \ Self-contained: SETUP emits the checked SAXPY kernel (tools/ptx/saxpy-cg.f) to a
 \ PRIVATE per-run PTX under a toolchain root, ptxas-assembles it, and loads that
 \ cubin - no shared /tmp/saxpy.cubin that could be stale/missing/wrong.
@@ -11,6 +11,7 @@
 require lib/ptx/cuda-driver.f
 require maki/cuda-run.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -139,11 +140,11 @@ public
 
 \ load element i of x and y from Habu floats into the host f32 buffers
 : PUT ( r r n -- ) {: xv:r yv:r ix:n :}
-   xv F64>F32 GHX ix F32!
-   yv F64>F32 GHY ix F32! ;
+   xv F32:NARROW GHX ix F32!
+   yv F32:NARROW GHY ix F32! ;
 
 : LAUNCH ( r -- )  {: a:r :}                        \ a = scalar; x,y already in GHX/GHY
-   a F64>F32 GABITS !  GN GNVAR !                          \ stash into globals for the scope body
+   a F32:NARROW GABITS !  GN GNVAR !                          \ stash into globals for the scope body
    [: LAUNCH-CORE ;] CUDA-SCOPE:SCOPE ;                    \ GDX/GDY owned + freed within this launch
 
 : RELEASE ( -- )

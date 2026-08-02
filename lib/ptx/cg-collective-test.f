@@ -65,7 +65,7 @@ s" cvt.rn.f32.u32"      CGCT-IN         \ mean denominator n = %r1 as f32
 s" , %r1;"              CGCT-IN
 CG-SM-RESET  PTX-CAPTURE-ON  1 EMIT-RMS-EPS+ drop  PTX-CAPTURE-OFF  PTX-CAPTURE$ CGCT-SAVE
 s" add.f32"             CGCT-IN         \ eps added BEFORE the sqrt
-s" 0f3727C5AC"          CGCT-IN         \ eps = F64>F32(1e-5) = maki RMS-EPS
+s" 0f3727C5AC"          CGCT-IN         \ eps = F32:NARROW(1e-5) = maki RMS-EPS
 CG-SM-RESET  PTX-CAPTURE-ON  1 EMIT-USQRT drop  PTX-CAPTURE-OFF  PTX-CAPTURE$ CGCT-SAVE
 s" sqrt.rn.f32"         CGCT-IN
 

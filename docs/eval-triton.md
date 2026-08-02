@@ -1590,7 +1590,7 @@ mma lines, nothing else.
 
 **Host pack (the one real numeric addition): `F64>BF16`, round-to-nearest-even** (`lib/ptx/cg.f`),
 **not truncation.** bf16's exponent field is identical to f32's (8 bits, bias 127), so bf16 is an
-f32 with the low 16 mantissa bits removed; `F64>BF16` therefore mirrors `F64>F32` (target exponent
+f32 with the low 16 mantissa bits removed; `F64>BF16` therefore mirrors `F32:NARROW` (target exponent
 `e−896`, f32's overflow/subnormal bounds) — **not** `F64>F16` (whose `e−1008` bias and tiny range
 would be wrong for bf16). The rounding is done in **one** step directly on the 52-bit f64 mantissa
 (keep 7 bits, RNE the 45 dropped), the correctly-rounded nearest bf16; it is deliberately **not**

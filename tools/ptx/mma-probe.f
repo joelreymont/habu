@@ -24,6 +24,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32-buffer.f
 require lib/fmt.f
 require maki/array.f
 require lib/fs.f
@@ -312,8 +313,8 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
       MP-AE 4 * MP-DA PTXBENCH:DEVICE-ALLOC  MP-DA PTXBENCH:OWN-DEV
       MP-BE 4 * MP-DB PTXBENCH:DEVICE-ALLOC  MP-DB PTXBENCH:OWN-DEV
       MP-CE 4 * MP-DC PTXBENCH:DEVICE-ALLOC  MP-DC PTXBENCH:OWN-DEV
-      MP-HA MP-AE MP-PA F32-PACK
-      MP-HB MP-BE MP-PB F32-PACK
+      MP-HA MP-AE MP-PA F32-BUF:PACK
+      MP-HB MP-BE MP-PB F32-BUF:PACK
       MP-DA @ MP-PA MP-AE 4 * PTXBENCH:HTOD
       MP-DB @ MP-PB MP-BE 4 * PTXBENCH:HTOD
       32 PTXBENCH:BLOCK!  1 PTXBENCH:BLOCKY!
@@ -325,7 +326,7 @@ create MP-MAXERR 1 cells allot      \ holds one f64 max abs error
       16 MP-DC PTXBENCH:PARAM-PTR!
       PTXBENCH:LAUNCH  PTXBENCH:SYNC
       MP-PC MP-DC @ MP-CE 4 * PTXBENCH:DTOH
-      MP-PC MP-CE MP-HC F32-UNPACK ;] CUDA-SCOPE:SCOPE ;
+      MP-PC MP-CE MP-HC F32-BUF:UNPACK ;] CUDA-SCOPE:SCOPE ;
 
 : MP-COMPARE ( -- n )               \ mismatch count; sets MP-BADI, MP-MAXERR
    -1 MP-BADI !  0.0 MP-MAXERR !  0

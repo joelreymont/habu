@@ -22,6 +22,7 @@ require lib/engine-candidate.f
 require lib/fs.f
 require lib/fs-mutate.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/ptx/toolchain.f
 require maki/device-artifacts.f
@@ -74,7 +75,7 @@ create LRD-CS $800 allot  variable LRD-CS-U
 
 \ ---- per-element evidence (device value | host value rounded to f32) --------
 : LRD-FP ( r -- )  SB-RESET 6 FMT:SB-FIX SB$ type ;
-: LRD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F64>F32 F32>F64 ;   \ narrowed host elem
+: LRD-HOST@ ( n -- r )  LLA-OUT-NODE@ EX-OUT@ swap T-GET  F32:NARROW F32:WIDEN ;   \ narrowed host elem
 : LRD-EVIDENCE ( -- )
    s" elem   device        host_f32" type cr
    LLA-ELEMS@ 0 ?do

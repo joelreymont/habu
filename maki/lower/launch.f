@@ -39,6 +39,8 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
+require lib/float32-buffer.f
 require lib/fmt.f
 require lib/ptx/header.f
 require lib/ptx/launch.f
@@ -129,7 +131,7 @@ private
 
 \ pack slot i's synthetic host f64 buffer (executor-bound) into LLA-HIN[i] as f32
 : LLA-PACK-INPUT ( n -- ) {: i:n :}
-   i LLA-SLOT GA-IN-PTR  i LLA-IN-ELEMS-I  i LLA-HIN-I  F32-PACK ;
+   i LLA-SLOT GA-IN-PTR  i LLA-IN-ELEMS-I  i LLA-HIN-I  F32-BUF:PACK ;
 
 \ resolve one region operand ref (a movement node folds to its source slot) into staging
 : LLA-REF-ELEMS ( MIR:operand-ref -- n ) {: ref:MIR:operand-ref :}
@@ -197,7 +199,7 @@ variable LLA-GX  variable LLA-GY                    \ single-region launch grid 
 : LLA-READBACK ( n -- ) {: obytes:n :}
    LLA-HRB obytes PTXSENT:FILL
    LLA-HRB  LLA-NIN @ LLA-DBUF-I @ >CUDA-DEVPTR  obytes >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0
-   LLA-ELEMS @ 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop ;
+   LLA-ELEMS @ 0 ?do  LLA-HRB i 4 * + F32-BUF:LOAD PTXSENT:GUARD F32:WIDEN  LLA-HOUT i T-SET  loop ;
 
 : LLA-LAUNCH ( n n -- ) {: grid:n obytes:n :}     \ launch the staged grid, copy back, unpack (guarded)
    LLA-BIND-PARAMS
@@ -465,7 +467,7 @@ variable MDL-NEW  variable MDL-NRED  variable MDL-NMM  variable MDL-NMV  variabl
    e 4 * {: ob:n :}
    LLA-HRB ob PTXSENT:FILL
    LLA-HRB  dp >CUDA-DEVPTR  ob >LEN CUDA:CU-MEMCPY-DTOH CUDA:RC0
-   e 0 ?do  LLA-HRB i 4 * + SF-LD PTXSENT:GUARD F32>F64  LLA-HOUT i T-SET  loop
+   e 0 ?do  LLA-HRB i 4 * + F32-BUF:LOAD PTXSENT:GUARD F32:WIDEN  LLA-HOUT i T-SET  loop
    out LLA-OUT-NODE! e LLA-ELEMS ! ;
 
 public

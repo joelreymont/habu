@@ -17,6 +17,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require lib/test.f
 require src/arch/ptx/emit.f
@@ -72,10 +73,10 @@ variable SL-DIN variable SL-DOUT variable SL-KV
    SL-QO $1000 >LEN SL-QE $1000 >LEN PTXTC:ASSEMBLE ;
 
 : SL-PUT ( -- )                                       \ in = [1,2,3,4, 1,1,1,1]
-   1.0 F64>F32 SL-HIN 0 SL-F32!  2.0 F64>F32 SL-HIN 1 SL-F32!
-   3.0 F64>F32 SL-HIN 2 SL-F32!  4.0 F64>F32 SL-HIN 3 SL-F32!
-   1.0 F64>F32 SL-HIN 4 SL-F32!  1.0 F64>F32 SL-HIN 5 SL-F32!
-   1.0 F64>F32 SL-HIN 6 SL-F32!  1.0 F64>F32 SL-HIN 7 SL-F32! ;
+   1.0 F32:NARROW SL-HIN 0 SL-F32!  2.0 F32:NARROW SL-HIN 1 SL-F32!
+   3.0 F32:NARROW SL-HIN 2 SL-F32!  4.0 F32:NARROW SL-HIN 3 SL-F32!
+   1.0 F32:NARROW SL-HIN 4 SL-F32!  1.0 F32:NARROW SL-HIN 5 SL-F32!
+   1.0 F32:NARROW SL-HIN 6 SL-F32!  1.0 F32:NARROW SL-HIN 7 SL-F32! ;
 
 : SL-SETUP ( -- )
    CUDA:OPEN

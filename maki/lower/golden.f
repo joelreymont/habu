@@ -8,7 +8,7 @@
 \   row-reduce (+ EW) -> LRED-RUN (block-per-row), reduction tolerance.
 \
 \ Comparison semantics (the host computes f64, the device computes f32): the device value
-\ is compared against the host value ROUNDED TO THE f32 GRID (F64>F32 then back to f64),
+\ is compared against the host value ROUNDED TO THE f32 GRID (F32:NARROW then back to f64),
 \ under the section 11 tolerance |dev - host_f32| <= atol + rtol*|host_f32|. Rounding the
 \ host to f32 first removes the double-vs-single representation gap so the tolerance measures
 \ real kernel error, not the dtype step.
@@ -28,6 +28,7 @@
 require lib/errors.f
 require lib/string.f
 require lib/float.f
+require lib/float32.f
 require lib/fmt.f
 require src/arch/ptx/emit.f
 require lib/ptx/cg.f
@@ -70,7 +71,7 @@ public
 private
 
 \ ---- tolerance comparison (device f32 vs host rounded to the f32 grid) -------
-: LG-NARROW ( r -- r )  F64>F32 F32>F64 ;      \ round a host f64 onto the f32 grid
+: LG-NARROW ( r -- r )  F32:NARROW F32:WIDEN ;      \ round a host f64 onto the f32 grid
 
 variable LG-BADI                                \ first mismatched element index (-1 = none)
 : LG-WITHIN-LIN? ( r r r r -- bool ) {: dev:r host:r atol:r rtol:r :}
