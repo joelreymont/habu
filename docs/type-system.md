@@ -235,17 +235,18 @@ declares three owners and a chain of transitions between them:
 
 - **`SAFET:session`** — one open, unpublished load transaction. `OPEN` creates
   it, `MAP-FILE` or `ADOPT` gives it an image, `PARSE` validates the header.
-- **`SAFET:census`** — one published, immutable tensor index. `DETACH` consumes
+- **`SAFET:file`** — one published, validated safetensors file owner with an
+  immutable tensor index. `DETACH` consumes
   a validated session and produces it. `CLOSE` consumes a session that will
   never be published.
-- **`SAFET:mapping`** — the file mapping, moved out of a census so the bytes
+- **`SAFET:mapping`** — the file mapping, moved out of a file owner so the bytes
   can outlive the description of them. `DETACH-MAPPING` performs that move and
   returns `map-take`: `moved` the first time, `empty` ever after, so a second
   attempt cannot fabricate a second owner.
 
 Because these are linear, the ordering rules are enforced by the type system
 rather than by a runtime flag. A session cannot be both closed and published, a
-census cannot be released twice, and a mapping cannot be read after it was
+file owner cannot be released twice, and a mapping cannot be read after it was
 unmapped, because in each case the token that named it is gone.
 
 Linearity composes with everything above. An alternative whose payload is a

@@ -146,7 +146,7 @@ variable SEEN-MAP-LEN
 
 : >BOFF ( n -- CAD-NUM:byte-off )   CAD-NUM:BYTE-OFF FIX-BOFF ;
 
-: ID-OF ( SAFET:census ptr u8 n -- SAFET:census n )
+: ID-OF ( SAFET:file ptr u8 n -- SAFET:file n )
    SAFET:FIND OPT-VAL ;
 
 \ Extracts the first detach's moved payload. Empty on a fresh validated census is
@@ -240,12 +240,12 @@ variable SEEN-MAP-LEN
 
 : CLEANUP ( -- )  SYNTH-PATH FS-PATHZ unlink drop ;
 
-: SEE-TENSOR ( SAFET:census ptr u8 n -- SAFET:census )   \ scoped zero-copy body
+: SEE-TENSOR ( SAFET:file ptr u8 n -- SAFET:file )   \ scoped zero-copy body
    {: a:ptr u:n :}
    u SEEN-LEN !
    a c@ SEEN-B0 ! ;
 
-: CHECK-VALID ( SAFET:census -- SAFET:census )
+: CHECK-VALID ( SAFET:file -- SAFET:file )
    SAFET:COUNT 2 T=                             \ __metadata__ not counted
    s" a" ID-OF {: ia:n :}
    ia 0 < 0= TTRUE
@@ -316,7 +316,7 @@ variable SEEN-MAP-LEN
    CLEANUP ;
 
 \ ---- interleaved sessions --------------------------------------------------
-: CHECK-ALPHA ( SAFET:census -- SAFET:census )
+: CHECK-ALPHA ( SAFET:file -- SAFET:file )
    SAFET:COUNT 1 T=
    s" alpha" ID-OF {: ia:n :}
    ia 0 < 0= TTRUE
@@ -326,7 +326,7 @@ variable SEEN-MAP-LEN
    ia 0 SAFET:DIM? 2 OPT=
    s" beta" SAFET:FIND OPT-NONE ;
 
-: CHECK-BETA ( SAFET:census -- SAFET:census )
+: CHECK-BETA ( SAFET:file -- SAFET:file )
    SAFET:COUNT 1 T=
    s" beta" ID-OF {: ib:n :}
    ib 0 < 0= TTRUE
@@ -580,7 +580,7 @@ variable BIG-LEN
    [: SEE-MAPPING ;] SAFET:WITH-MAPPING LEN-A @ T=
    MAP-BUF c@ ;
 
-: CHECK-MAP-OFFSETS ( SAFET:census -- SAFET:census )
+: CHECK-MAP-OFFSETS ( SAFET:file -- SAFET:file )
    SAFET:HDR-LEN SYNTH-HDR T=
    s" a" ID-OF {: ia:n :}
    s" b" ID-OF {: ib:n :}
@@ -597,7 +597,7 @@ variable BIG-LEN
 \ Everything a census must still answer once its mapping has left, and
 \ everything it must refuse. The poison assertions prove the scoped body is not
 \ run at all, rather than run over a stale address.
-: CHECK-DETACHED-CENSUS ( SAFET:census -- SAFET:census )
+: CHECK-DETACHED-CENSUS ( SAFET:file -- SAFET:file )
    SAFET:COUNT 2 T=
    s" a" ID-OF {: ia:n :}
    s" b" ID-OF {: ib:n :}
@@ -907,21 +907,21 @@ private
    s" STT-BAD-SESSION-DROP ( SAFET:session -- ) drop" REJECTED
    s" STT-BAD-SESSION-STORE ( SAFET:session ptr n -- ) !" REJECTED
    s" a census cannot be duplicated, dropped, or stored" T-LABEL
-   s" STT-BAD-CENSUS-DUP ( SAFET:census -- SAFET:census SAFET:census ) dup" REJECTED
-   s" STT-BAD-CENSUS-DROP ( SAFET:census -- ) drop" REJECTED
-   s" STT-BAD-CENSUS-STORE ( SAFET:census ptr n -- ) !" REJECTED
+   s" STT-BAD-CENSUS-DUP ( SAFET:file -- SAFET:file SAFET:file ) dup" REJECTED
+   s" STT-BAD-CENSUS-DROP ( SAFET:file -- ) drop" REJECTED
+   s" STT-BAD-CENSUS-STORE ( SAFET:file ptr n -- ) !" REJECTED
    s" detach, close and release consume their owner" T-LABEL
-   s" STT-BAD-DETACH-KEEPS ( SAFET:session -- SAFET:session SAFET:census ) SAFET:DETACH" REJECTED
+   s" STT-BAD-DETACH-KEEPS ( SAFET:session -- SAFET:session SAFET:file ) SAFET:DETACH" REJECTED
    s" STT-BAD-CLOSE-KEEPS ( SAFET:session -- SAFET:session ) SAFET:CLOSE" REJECTED
-   s" STT-BAD-RELEASE-KEEPS ( SAFET:census -- SAFET:census ) SAFET:RELEASE" REJECTED
+   s" STT-BAD-RELEASE-KEEPS ( SAFET:file -- SAFET:file ) SAFET:RELEASE" REJECTED
    s" detach and close are exactly once" T-LABEL
-   s" STT-BAD-DOUBLE-DETACH ( SAFET:session -- SAFET:census SAFET:census ) SAFET:DETACH SAFET:DETACH" REJECTED
+   s" STT-BAD-DOUBLE-DETACH ( SAFET:session -- SAFET:file SAFET:file ) SAFET:DETACH SAFET:DETACH" REJECTED
    s" STT-BAD-DOUBLE-CLOSE ( SAFET:session -- ) SAFET:CLOSE SAFET:CLOSE" REJECTED
-   s" STT-BAD-DETACH-AFTER-CLOSE ( SAFET:session -- SAFET:census ) SAFET:CLOSE SAFET:DETACH" REJECTED
-   s" STT-BAD-CLOSE-AFTER-DETACH ( SAFET:session -- SAFET:census ) SAFET:DETACH SAFET:CLOSE" REJECTED
+   s" STT-BAD-DETACH-AFTER-CLOSE ( SAFET:session -- SAFET:file ) SAFET:CLOSE SAFET:DETACH" REJECTED
+   s" STT-BAD-CLOSE-AFTER-DETACH ( SAFET:session -- SAFET:file ) SAFET:DETACH SAFET:CLOSE" REJECTED
    s" a census is released exactly once and never unmapped twice" T-LABEL
-   s" STT-BAD-DOUBLE-RELEASE ( SAFET:census -- ) SAFET:RELEASE SAFET:RELEASE" REJECTED
-   s" STT-BAD-RELEASE-THEN-READ ( SAFET:census -- n ) SAFET:RELEASE SAFET:COUNT" REJECTED ;
+   s" STT-BAD-DOUBLE-RELEASE ( SAFET:file -- ) SAFET:RELEASE SAFET:RELEASE" REJECTED
+   s" STT-BAD-RELEASE-THEN-READ ( SAFET:file -- n ) SAFET:RELEASE SAFET:COUNT" REJECTED ;
 
 : TEST-MAPPING-OWNERSHIP ( -- )
    s" a mapping cannot be duplicated, dropped, or stored" T-LABEL
@@ -933,7 +933,7 @@ private
    s" STT-OK-TAKE-MOVED ( SAFET:mapping -- SAFET:map-take ) SAFET-MAP--TAKE:MOVED" ACCEPTED
    s" STT-OK-TAKE-EMPTY ( -- SAFET:map-take ) SAFET-MAP--TAKE:EMPTY" ACCEPTED
    s" a detach keeps its census and an unmap consumes its mapping" T-LABEL
-   s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:census -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
+   s" STT-BAD-DETACH-EATS-CENSUS ( SAFET:file -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" STT-BAD-UNMAP-KEEPS ( SAFET:mapping -- SAFET:mapping result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-DOUBLE-UNMAP ( SAFET:mapping -- result<n,n> result<n,n> ) SAFET:UNMAP-MAPPING SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-UNMAP-THEN-READ ( SAFET:mapping -- result<n,n> SAFET:mapping n ) SAFET:UNMAP-MAPPING SAFET:WITH-MAPPING" REJECTED
@@ -941,7 +941,7 @@ private
    s" the three owner tokens are not interchangeable" T-LABEL
    s" STT-BAD-MAPPING-RELEASE ( SAFET:mapping -- ) SAFET:RELEASE" REJECTED
    s" STT-BAD-MAPPING-CLOSE ( SAFET:mapping -- ) SAFET:CLOSE" REJECTED
-   s" STT-BAD-CENSUS-UNMAP ( SAFET:census -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
+   s" STT-BAD-CENSUS-UNMAP ( SAFET:file -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-SESSION-DETACH-MAP ( SAFET:session -- SAFET:session SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" STT-BAD-MAPPING-COUNT ( SAFET:mapping -- SAFET:mapping n ) SAFET:COUNT" REJECTED
    s" a cleanup result cannot be dropped or read as a bare number" T-LABEL
@@ -952,20 +952,20 @@ private
    s" STT-BAD-AMBIENT-UNMAP ( -- result<n,n> ) SAFET:UNMAP-MAPPING" REJECTED
    s" STT-BAD-AMBIENT-DETACH ( -- SAFET:map-take ) SAFET:DETACH-MAPPING" REJECTED
    s" the mapping surface really does resolve (control)" T-LABEL
-   s" STT-OK-DETACH ( SAFET:census -- SAFET:census SAFET:map-take ) SAFET:DETACH-MAPPING" ACCEPTED
+   s" STT-OK-DETACH ( SAFET:file -- SAFET:file SAFET:map-take ) SAFET:DETACH-MAPPING" ACCEPTED
    s" STT-OK-UNMAP ( SAFET:mapping -- result<n,n> ) SAFET:UNMAP-MAPPING" ACCEPTED
-   s" STT-OK-MAP-OFFSET ( SAFET:census n -- SAFET:census option<n> ) SAFET:MAP-OFFSET?" ACCEPTED
+   s" STT-OK-MAP-OFFSET ( SAFET:file n -- SAFET:file option<n> ) SAFET:MAP-OFFSET?" ACCEPTED
    s" the mapping record and the no-image state stay private" T-LABEL
    s" STT-BAD-MINT-MAPPING ( ptr u8 -- SAFET:mapping ) SAFET:MINT-MAPPING" UNRESOLVED
    s" STT-BAD-MAPPING-REC ( SAFET:mapping -- SAFET:mapping ptr n ) SAFET:MAPPING>REC" UNRESOLVED
    s" STT-BAD-TAKE-MAPPING ( SAFET:mapping -- ptr n ) SAFET:TAKE-MAPPING" UNRESOLVED
-   s" STT-BAD-HAS-IMG ( SAFET:census -- SAFET:census bool ) SAFET:HAS-IMG?" UNRESOLVED
-   s" STT-BAD-BYTES-OK ( SAFET:census n -- SAFET:census bool ) SAFET:BYTES-OK?" UNRESOLVED
+   s" STT-BAD-HAS-IMG ( SAFET:file -- SAFET:file bool ) SAFET:HAS-IMG?" UNRESOLVED
+   s" STT-BAD-BYTES-OK ( SAFET:file n -- SAFET:file bool ) SAFET:BYTES-OK?" UNRESOLVED
    s" no mapping word hands back a raw pointer" T-LABEL
    s" STT-BAD-MAP-BASE ( SAFET:mapping -- SAFET:mapping ptr u8 ) SAFET:MAP-BASE" UNRESOLVED
    s" an offset reader returns option, never a -1 sentinel" T-LABEL
-   s" STT-BAD-MAP-OFFSET-RAW ( SAFET:census n -- SAFET:census n ) SAFET:MAP-OFFSET?" REJECTED
-   s" STT-BAD-MAP-OFFSET-SENTINEL ( SAFET:census n -- SAFET:census bool ) SAFET:MAP-OFFSET? -1 =" REJECTED ;
+   s" STT-BAD-MAP-OFFSET-RAW ( SAFET:file n -- SAFET:file n ) SAFET:MAP-OFFSET?" REJECTED
+   s" STT-BAD-MAP-OFFSET-SENTINEL ( SAFET:file n -- SAFET:file bool ) SAFET:MAP-OFFSET? -1 =" REJECTED ;
 
 : TEST-U32-TYPING ( -- )
    s" the bounded read resolves, and only at its own offset role" T-LABEL
@@ -981,36 +981,36 @@ private
    s" STT-BAD-AMBIENT-DIM ( n n -- n ) SAFET:DIM?" REJECTED
    s" a session is not a census and a census is not a session" T-LABEL
    s" STT-BAD-SESSION-READ ( SAFET:session -- SAFET:session n ) SAFET:COUNT" REJECTED
-   s" STT-BAD-CENSUS-PARSE ( SAFET:census -- SAFET:census ) SAFET:PARSE" REJECTED
-   s" STT-BAD-CENSUS-CLOSE ( SAFET:census -- ) SAFET:CLOSE" REJECTED
+   s" STT-BAD-CENSUS-PARSE ( SAFET:file -- SAFET:file ) SAFET:PARSE" REJECTED
+   s" STT-BAD-CENSUS-CLOSE ( SAFET:file -- ) SAFET:CLOSE" REJECTED
    s" STT-BAD-SESSION-RELEASE ( SAFET:session -- ) SAFET:RELEASE" REJECTED ;
 
 : TEST-SEALED-REPRESENTATION ( -- )
    s" the public surface really does resolve (control)" T-LABEL
-   s" STT-OK-COUNT ( SAFET:census -- SAFET:census n ) SAFET:COUNT" ACCEPTED
-   s" STT-OK-WITH ( SAFET:census n -- SAFET:census option<n> ) SAFET:NBYTES?" ACCEPTED
+   s" STT-OK-COUNT ( SAFET:file -- SAFET:file n ) SAFET:COUNT" ACCEPTED
+   s" STT-OK-WITH ( SAFET:file n -- SAFET:file option<n> ) SAFET:NBYTES?" ACCEPTED
    s" the block and token representation stays private" T-LABEL
    s" STT-BAD-MINT ( ptr u8 -- SAFET:session ) SAFET:MINT-SESSION" UNRESOLVED
    s" STT-BAD-BLOCK ( SAFET:session -- SAFET:session ptr n ) SAFET:SESSION>BLOCK" UNRESOLVED
    s" STT-BAD-TAKE ( SAFET:session -- ptr n ) SAFET:TAKE-SESSION" UNRESOLVED
-   s" STT-BAD-RETYPE ( SAFET:session -- SAFET:census ) SAFET:SESSION>CENSUS" UNRESOLVED
-   s" STT-BAD-CENSUS-BLOCK ( SAFET:census -- SAFET:census ptr n ) SAFET:CENSUS>BLOCK" UNRESOLVED
+   s" STT-BAD-RETYPE ( SAFET:session -- SAFET:file ) SAFET:SESSION>CENSUS" UNRESOLVED
+   s" STT-BAD-CENSUS-BLOCK ( SAFET:file -- SAFET:file ptr n ) SAFET:CENSUS>BLOCK" UNRESOLVED
    s" STT-BAD-BYTES ( ptr n -- ptr u8 ) SAFET:BLOCK>BYTES" UNRESOLVED
    s" STT-BAD-MAP-N>PTR ( n -- ptr u8 ) SAFET-MAP:N>PTR" UNRESOLVED
    s" no public word hands back a raw pointer" T-LABEL
-   s" STT-BAD-RAW-DATA ( SAFET:census n -- SAFET:census ptr u8 ) SAFET:DATA-PTR" UNRESOLVED
-   s" STT-BAD-RAW-BASE ( SAFET:census -- SAFET:census ptr u8 ) SAFET:BASE" UNRESOLVED ;
+   s" STT-BAD-RAW-DATA ( SAFET:file n -- SAFET:file ptr u8 ) SAFET:DATA-PTR" UNRESOLVED
+   s" STT-BAD-RAW-BASE ( SAFET:file -- SAFET:file ptr u8 ) SAFET:BASE" UNRESOLVED ;
 
 : TEST-OPTION-DISCIPLINE ( -- )
    s" an id-addressed reader returns option, never a -1 sentinel" T-LABEL
-   s" STT-BAD-FIND-SENTINEL ( SAFET:census ptr u8 n -- SAFET:census bool ) SAFET:FIND -1 =" REJECTED
-   s" STT-BAD-DTYPE-RAW ( SAFET:census n -- SAFET:census n ) SAFET:DTYPE? 1 +" REJECTED
-   s" STT-BAD-RANK-RAW ( SAFET:census n -- SAFET:census n ) SAFET:RANK?" REJECTED ;
+   s" STT-BAD-FIND-SENTINEL ( SAFET:file ptr u8 n -- SAFET:file bool ) SAFET:FIND -1 =" REJECTED
+   s" STT-BAD-DTYPE-RAW ( SAFET:file n -- SAFET:file n ) SAFET:DTYPE? 1 +" REJECTED
+   s" STT-BAD-RANK-RAW ( SAFET:file n -- SAFET:file n ) SAFET:RANK?" REJECTED ;
 
 \ ---- presence-gated real artifact (HF gpt2 model.safetensors) --------------
 : REAL-PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
 
-: CHECK-REAL ( SAFET:census -- SAFET:census )
+: CHECK-REAL ( SAFET:file -- SAFET:file )
    s" real gpt2 tensors=" type SAFET:COUNT dup . cr
    160 T=
    s" wte.weight" ID-OF {: w:n :}

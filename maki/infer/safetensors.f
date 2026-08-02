@@ -6,7 +6,7 @@
 \ SESSION and hands back a linear `SAFET:session` token. Every later step takes
 \ that token explicitly: MAP-FILE or ADOPT gives the session its image, PARSE
 \ reads and validates the header into that session's own staging area, DETACH
-\ consumes a fully validated session and returns one immutable `SAFET:census`
+\ consumes a fully validated session and returns one immutable `SAFET:file`
 \ that owns the mapping, and CLOSE consumes a session that will never be
 \ published. No public word reads "the current load", so two sessions can be
 \ parsed interleaved without cross-talk and a session that fails leaves every
@@ -226,7 +226,7 @@ public
 
 \ ---- the three owner tokens ------------------------------------------------
 DEFLINEAR SAFET:session        \ one open, unpublished load transaction
-DEFLINEAR SAFET:census         \ one published, immutable tensor census
+DEFLINEAR SAFET:file         \ one published, immutable tensor census
 DEFLINEAR SAFET:mapping        \ one file mapping detached out of a census
 
 \ A detach is total: the first call moves the reserved mapping record; later
@@ -329,12 +329,12 @@ TRUSTED: SESSION>BLOCK ( SAFET:session -- SAFET:session ptr n )
 
 TRUSTED: TAKE-SESSION ( SAFET:session -- ptr n ) ;
 
-TRUSTED: SESSION>CENSUS ( SAFET:session -- SAFET:census ) ;
+TRUSTED: SESSION>CENSUS ( SAFET:session -- SAFET:file ) ;
 
-TRUSTED: CENSUS>BLOCK ( SAFET:census -- SAFET:census ptr n )
+TRUSTED: CENSUS>BLOCK ( SAFET:file -- SAFET:file ptr n )
    dup ;
 
-TRUSTED: TAKE-CENSUS ( SAFET:census -- ptr n ) ;
+TRUSTED: TAKE-CENSUS ( SAFET:file -- ptr n ) ;
 
 TRUSTED: MINT-MAPPING ( ptr u8 -- SAFET:mapping ) ;
 
@@ -721,7 +721,7 @@ using CAD-NUM
 
 \ Shared by every id-addressed scalar reader: one column of one row, or NONE
 \ when the id is not a tensor of this census.
-: COL? ( SAFET:census n n -- SAFET:census option<n> ) {: id:n col:n :}
+: COL? ( SAFET:file n n -- SAFET:file option<n> ) {: id:n col:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
    st id col ROW@ OPTION:SOME ;
@@ -750,7 +750,7 @@ public
 : PARSE ( SAFET:session -- SAFET:session )     \ read + validate this session's header
    SESSION>BLOCK PARSE-INTO ;
 
-: DETACH ( SAFET:session -- SAFET:census )     \ consume a validated session, publish it
+: DETACH ( SAFET:session -- SAFET:file )     \ consume a validated session, publish it
    SESSION>BLOCK PUBLISH
    SESSION>CENSUS ;
 
@@ -774,14 +774,14 @@ public
 \ length to the new owner. RELEASE's contract - consume the census, free
 \ everything the census still owns, never unmap what it does not - is already
 \ final and does not change when that state arrives.
-: RELEASE ( SAFET:census -- )
+: RELEASE ( SAFET:file -- )
    TAKE-CENSUS DISPOSE ;
 
 \ ---- mapped residency: moving the file mapping out of a census -------------
 \ The first call moves the record PARSE reserved and clears the census image.
 \ Every step is total. A later call finds no reservation, changes nothing, and
 \ returns empty; it cannot allocate or fabricate an owner.
-: DETACH-MAPPING ( SAFET:census -- SAFET:census SAFET:map-take )
+: DETACH-MAPPING ( SAFET:file -- SAFET:file SAFET:map-take )
    CENSUS>BLOCK {: st:ptr :}
    st MR-REC-IDX ptr-field @ 0= if SAFET-MAP--TAKE:EMPTY exit then
    st MR-REC-IDX ptr-field @ {: mr:ptr :}
@@ -865,7 +865,7 @@ public
    ia ilen ADOPT PARSE
    ia ilen ;
 
-: LOAD ( ptr u8 n -- SAFET:census )            \ map + parse + publish, closing on any fault
+: LOAD ( ptr u8 n -- SAFET:file )            \ map + parse + publish, closing on any fault
    {: pa:ptr pu:n :}
    OPEN pa pu
    [: TAKE-FILE+PARSE ;] catch {: code:n :}
@@ -873,7 +873,7 @@ public
    code 0 <> if CLOSE code throw then
    DETACH ;
 
-: LOAD-SPAN ( ptr u8 n -- SAFET:census )       \ the same over a caller-owned image
+: LOAD-SPAN ( ptr u8 n -- SAFET:file )       \ the same over a caller-owned image
    {: ia:ptr ilen:n :}
    OPEN ia ilen
    [: TAKE-SPAN+PARSE ;] catch {: code:n :}
@@ -900,33 +900,33 @@ public
    LIVE-N @ ;
 
 \ ---- census readers (every one takes its census; none reads ambient state) --
-: COUNT ( SAFET:census -- SAFET:census n )
+: COUNT ( SAFET:file -- SAFET:file n )
    CENSUS>BLOCK N-OFF + @ ;
 
-: MAP-LEN ( SAFET:census -- SAFET:census n )   \ 0 once DETACH-MAPPING took the image
+: MAP-LEN ( SAFET:file -- SAFET:file n )   \ 0 once DETACH-MAPPING took the image
    CENSUS>BLOCK MAP-LEN-OFF + @ ;
 
-: HDR-LEN ( SAFET:census -- SAFET:census n )
+: HDR-LEN ( SAFET:file -- SAFET:file n )
    CENSUS>BLOCK HDR-LEN-OFF + @ ;
 
-: FIND ( SAFET:census ptr u8 n -- SAFET:census option<n> )   \ tensor id by name
+: FIND ( SAFET:file ptr u8 n -- SAFET:file option<n> )   \ tensor id by name
    {: qa:ptr qu:n :}
    CENSUS>BLOCK {: st:ptr :}
    st qa qu FIND-ID ID? ;
 
-: DTYPE? ( SAFET:census n -- SAFET:census option<n> )
+: DTYPE? ( SAFET:file n -- SAFET:file option<n> )
    C-DTY COL? ;
 
-: RANK? ( SAFET:census n -- SAFET:census option<n> )
+: RANK? ( SAFET:file n -- SAFET:file option<n> )
    C-RANK COL? ;
 
-: NBYTES? ( SAFET:census n -- SAFET:census option<n> )
+: NBYTES? ( SAFET:file n -- SAFET:file option<n> )
    C-NB COL? ;
 
-: BEGIN? ( SAFET:census n -- SAFET:census option<n> )   \ data-section relative
+: BEGIN? ( SAFET:file n -- SAFET:file option<n> )   \ data-section relative
    C-BEG COL? ;
 
-: END? ( SAFET:census n -- SAFET:census option<n> )     \ data-section relative
+: END? ( SAFET:file n -- SAFET:file option<n> )     \ data-section relative
    C-END COL? ;
 
 \ MAPPING-BASE relative, NOT data-section relative: the byte distance from the
@@ -937,20 +937,20 @@ public
 \ plus the JSON header. Reading a mapping at a BEGIN? offset lands inside the
 \ header. It keeps answering after DETACH-MAPPING: the frame is arithmetic on
 \ the header geometry the census still holds, not access to any bytes.
-: MAP-OFFSET? ( SAFET:census n -- SAFET:census option<n> )   \ mapping-base relative
+: MAP-OFFSET? ( SAFET:file n -- SAFET:file option<n> )   \ mapping-base relative
    {: id:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
    8 st HDR-LEN-OFF + @ +  st id C-BEG ROW@ +  OPTION:SOME ;
 
-: DIM? ( SAFET:census n n -- SAFET:census option<n> )
+: DIM? ( SAFET:file n n -- SAFET:file option<n> )
    {: id:n axis:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
    axis 0 < axis st id C-RANK ROW@ >= or if OPTION:NONE exit then
    st id axis DIMS@ OPTION:SOME ;
 
-: COPY-NAME? ( SAFET:census n ptr u8 n -- SAFET:census option<n> )   \ SOME copied length
+: COPY-NAME? ( SAFET:file n ptr u8 n -- SAFET:file option<n> )   \ SOME copied length
    {: id:n da:ptr dcap:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id ID-OK? 0= if OPTION:NONE exit then
@@ -961,7 +961,7 @@ public
 
 \ NONE when the id is not a tensor of this census OR when this census no longer
 \ holds the image - a census whose mapping was detached copies out no bytes.
-: COPY-DATA? ( SAFET:census n ptr u8 n -- SAFET:census option<n> )   \ SOME copied length
+: COPY-DATA? ( SAFET:file n ptr u8 n -- SAFET:file option<n> )   \ SOME copied length
    {: id:n da:ptr dcap:n :}
    CENSUS>BLOCK {: st:ptr :}
    st id BYTES-OK? 0= if OPTION:NONE exit then
@@ -980,8 +980,8 @@ public
 \ pointer-lifetime / region-type note in this file's header for the capability
 \ that will make it enforced.
 \ typed-local-lint: allow-bare-local - `body` carries the quotation effect
-\ [ SAFET:census ptr u8 n -- SAFET:census ], which a local annotation cannot express.
-: WITH-TENSOR ( SAFET:census n [ SAFET:census ptr u8 n -- SAFET:census ] -- SAFET:census option<n> )
+\ [ SAFET:file ptr u8 n -- SAFET:file ], which a local annotation cannot express.
+: WITH-TENSOR ( SAFET:file n [ SAFET:file ptr u8 n -- SAFET:file ] -- SAFET:file option<n> )
    {: id:n body :}
    CENSUS>BLOCK {: st:ptr :}
    st id BYTES-OK? 0= if OPTION:NONE exit then
