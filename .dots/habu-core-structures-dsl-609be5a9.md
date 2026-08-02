@@ -12,8 +12,8 @@ DECISION 2026-07-04 (user): RENAME APPROVED, and generalized into a repo
 convention - scope pairs are FOO terminated by ;FOO. For this dot:
 BEGIN-STRUCTURE ... END-STRUCTURE becomes STRUCTURE ... ;STRUCTURE (closer
 mirrors the opener's case with a ; prefix). Scope: src/core/structures.f
-definitions, structures-effects.f TRUST rows, every use site tree-wide,
-TRUSTED.md pinned rows, docs/forth.md examples. SEQUENCING: structures.f and
+definitions, structures-effects.f TRUST rows, every use site tree-wide, and
+docs/forth.md examples. SEQUENCING: structures.f and
 structures-effects.f are dirty in the TFAM campaign's tree - execute this
 rename immediately AFTER their current work lands (or hand it to that
 session); a fable-side rename now would conflict across every TFAM commit.
