@@ -1,9 +1,8 @@
 \ model-config-test.f - MDLCFG acceptance.
 \
 \ Legs, all through the public package surface:
-\   1. both arms construct (llama constructor-tested from day one) and every
-\      common accessor, payload projection, and DERIVED semantic accessor
-\      returns the built value - derived accessors match the arm on BOTH arms;
+\   1. both arms construct (llama constructor-tested from day one), and their
+\      common accessors and payload projections return the built fields;
 \   2. cfgkey sensitivity: byte-identical configs compare equal; flipping any
 \      ONE behavioral field (dtype, each geometry field, the flag, each special
 \      token, each arm payload field, the arm itself) flips the key;
@@ -11,8 +10,7 @@
 \      BEFORE the key mints;
 \   4. checker negatives: a raw n in the proof slot rejects, the private mint
 \      is unresolvable outside the package, the gpt2 arm rejects a GQA-shaped
-\      field by construction, a cfgkey is not two raw cells, and a MODEL
-\      family value cannot ride in the dtype slot;
+\      field by construction, and a cfgkey is not two raw cells;
 \   5. the version cell is gone for good: the old constructor arity no longer
 \      certifies, both public schema words are unresolvable, and the live type
 \      registry holds no `sv` slot in mcfg.
@@ -69,7 +67,7 @@ $7FFFFFFFFFFFFFFF constant HUGE
 : BL-WITH ( MDLCFG:arch -- MDLCFG:cfgkey )
    DT0 4096 32000 32 4096 32 false 1 2 MDLCFG:BUILD KOF ;
 
-\ ---- payload projections (arm asserted via FAMILY@ before these run) ---------
+\ ---- payload projections -----------------------------------------------------
 : GP-EPS ( r bool -- r ) {: eps:r sc:bool :}  eps ;
 : GP-SC ( r bool -- bool ) {: eps:r sc:bool :}  sc ;
 : LP-NKV ( n n r r -- n ) {: nkv:n ffn:n theta:r reps:r :}  nkv ;
@@ -113,7 +111,7 @@ $7FFFFFFFFFFFFFFF constant HUGE
       llama OF LP-REPS ENDOF
    ;MATCH ;
 
-\ ---- 1. construction + accessors + derived semantics, both arms --------------
+\ ---- 1. construction + accessors, both arms ----------------------------------
 : T-GPT2 ( -- )
    B-G
    MDLCFG:DTYPE@ DT0 MAKI-DATATYPE:EQ TTRUE
@@ -125,10 +123,6 @@ $7FFFFFFFFFFFFFFF constant HUGE
    MDLCFG:TIED@ TTRUE
    MDLCFG:BOS@ BOS0 T=
    MDLCFG:EOS@ EOS0 T=
-   MDLCFG:FAMILY@ MODEL-FAMILY:GPT2 MODEL-FAMILY:EQ TTRUE
-   MDLCFG:POSITION@ MODEL-POSITION:LEARNED MODEL-POSITION:EQ TTRUE
-   MDLCFG:NORM@ MODEL-NORMALIZATION:LAYER-NORM MODEL-NORMALIZATION:EQ TTRUE
-   MDLCFG:ACT@ MODEL-ACTIVATION:GELU-NEW MODEL-ACTIVATION:EQ TTRUE
    MDLCFG:ARCH@ ARM-EPS EPS0 f= TTRUE
    MDLCFG:ARCH@ ARM-SC TTRUE
    drop ;
@@ -143,10 +137,6 @@ $7FFFFFFFFFFFFFFF constant HUGE
    MDLCFG:TIED@ TFALSE
    MDLCFG:BOS@ 1 T=
    MDLCFG:EOS@ 2 T=
-   MDLCFG:FAMILY@ MODEL-FAMILY:LLAMA MODEL-FAMILY:EQ TTRUE
-   MDLCFG:POSITION@ MODEL-POSITION:ROPE MODEL-POSITION:EQ TTRUE
-   MDLCFG:NORM@ MODEL-NORMALIZATION:RMS-NORM MODEL-NORMALIZATION:EQ TTRUE
-   MDLCFG:ACT@ MODEL-ACTIVATION:SILU MODEL-ACTIVATION:EQ TTRUE
    MDLCFG:ARCH@ ARM-NKV 4 T=
    MDLCFG:ARCH@ ARM-FFN 11008 T=
    MDLCFG:ARCH@ ARM-THETA THETA0 f= TTRUE
@@ -291,8 +281,6 @@ s" MCN-GQA2 ( n n r r -- MDLCFG:arch ) MDLCFG-ARCH:GPT2" NO
 s" MCP-L ( n n r r -- MDLCFG:arch ) MDLCFG-ARCH:LLAMA" YES
 \ a cfgkey is a nominal value, not raw cells.
 s" MCN-KEYRAW ( n n -- bool ) MDLCFG:CFGKEY=" NO
-\ a MODEL family value cannot ride in the dtype slot (single authority).
-s" MCN-DTSWAP ( MDLCFG:arch MODEL:family n n n n n bool n n -- MDLCFG:mcfg ) MDLCFG:BUILD" NO
 
 \ ---- 5. the version cell is unrepresentable, not merely unused ----------------
 \ The old eleven-input arity no longer certifies, so a caller that still hands

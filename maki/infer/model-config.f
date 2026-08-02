@@ -23,11 +23,6 @@
 \ REAL mcfg can UNMAKE and re-MAKE with the stale proof and key; closing that
 \ needs the sealed-destructure/linear-UNMAKE capability tracked by dot.
 \
-\ The four semantic MODEL values are DERIVED, never stored: FAMILY@/POSITION@/
-\ NORM@/ACT@ are pure functions of the arch arm (gpt2 -> gpt2/learned/
-\ layer-norm/gelu-new; llama -> llama/rope/rms-norm/silu). A stored copy could
-\ drift from the arm and is forbidden (single-authority rule).
-\
 \ mcfg is the CURRENT representation and carries no version cell: an old shape
 \ is not a value this type can hold, so no consumer has an unknown-version case
 \ to answer.
@@ -51,7 +46,6 @@
 require lib/prelude.f
 require lib/content-key.f
 require maki/tensor.f
-require maki/infer/model-types.f
 
 package MDLCFG
 
@@ -229,31 +223,6 @@ private
    2drop 2drop 2drop 2drop drop
    r> drop  r> ;
 
-\ arm -> derived MODEL semantics (the only authority; nothing is stored).
-: ARM>FAM ( arch -- MODEL:family )
-   MATCH arch
-      gpt2  OF 2drop MODEL-FAMILY:GPT2 ENDOF
-      llama OF 2drop 2drop MODEL-FAMILY:LLAMA ENDOF
-   ;MATCH ;
-
-: ARM>POS ( arch -- MODEL:position )
-   MATCH arch
-      gpt2  OF 2drop MODEL-POSITION:LEARNED ENDOF
-      llama OF 2drop 2drop MODEL-POSITION:ROPE ENDOF
-   ;MATCH ;
-
-: ARM>NORM ( arch -- MODEL:normalization )
-   MATCH arch
-      gpt2  OF 2drop MODEL-NORMALIZATION:LAYER-NORM ENDOF
-      llama OF 2drop 2drop MODEL-NORMALIZATION:RMS-NORM ENDOF
-   ;MATCH ;
-
-: ARM>ACT ( arch -- MODEL:activation )
-   MATCH arch
-      gpt2  OF 2drop MODEL-ACTIVATION:GELU-NEW ENDOF
-      llama OF 2drop 2drop MODEL-ACTIVATION:SILU ENDOF
-   ;MATCH ;
-
 public
 
 \ ---- common behavioral field accessors -------------------------------------------
@@ -293,21 +262,9 @@ public
    dup MC-COMMON {: dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n te:bool bos:n eos:n :}
    eos ;
 
-\ ---- the arch arm and the derived MODEL semantics --------------------------------
+\ ---- the architecture arm ---------------------------------------------------------
 : ARCH@ ( mcfg -- mcfg arch )
    dup MC-ARM ;
-
-: FAMILY@ ( mcfg -- mcfg MODEL:family )
-   dup MC-ARM ARM>FAM ;
-
-: POSITION@ ( mcfg -- mcfg MODEL:position )
-   dup MC-ARM ARM>POS ;
-
-: NORM@ ( mcfg -- mcfg MODEL:normalization )
-   dup MC-ARM ARM>NORM ;
-
-: ACT@ ( mcfg -- mcfg MODEL:activation )
-   dup MC-ARM ARM>ACT ;
 
 \ ---- the content identity ---------------------------------------------------------
 : CFGKEY@ ( mcfg -- mcfg cfgkey )

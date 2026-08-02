@@ -92,7 +92,6 @@
 require lib/prelude.f
 require lib/adt/option.f
 require lib/cad-num-types.f
-require maki/infer/model-types.f
 require maki/infer/model-config.f
 
 package GPT2TENSOR

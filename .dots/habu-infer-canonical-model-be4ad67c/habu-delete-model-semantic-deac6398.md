@@ -1,6 +1,6 @@
 ---
 title: Delete model semantic enums
-status: open
+status: active
 priority: 1
 issue-type: task
 created-at: "2026-07-30T00:55:49.541809+02:00"
@@ -10,3 +10,5 @@ blocks:
 ---
 
 Why: MODEL family/position/normalization/activation/adapter enums and derived MDLCFG accessors have no product consumer after direct architecture matching. Result: delete model-types.f, its tests/suite entry, all five enum families, and derived FAMILY@/POSITION@/NORM@/ACT@ accessors. Owner: unused MODEL semantic types only. Production red: package-qualified XREF finds no remaining consumer. Acceptance: no removed symbol resolves; exact GPT-2 and Qwen MDLCFG arms still parse; Maki/native/package gates pass. Forbidden: replacement enum, adapter, registry, schema, version, compatibility record, or lint. Smallest owning check: model-config and full package XREF tests.
+
+Claim: agent=codex workspace=.jj-ws/model-semantic-cut
