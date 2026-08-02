@@ -1,6 +1,6 @@
 ---
 title: Package co-loaded PTX device tests
-status: active
+status: open
 priority: 1
 issue-type: bug
 created-at: "\"2026-07-21T23:00:00+02:00\""
@@ -29,12 +29,12 @@ unchanged.
 
 Verify: reproduce the current exit 78 on the exact spawned `ptx-toolchain`
 path; prove each changed module still passes alone; prove the complete
-co-loaded suite passes in one fresh process; run package, typed-local, host,
-and suite-coverage gates; then rerun the required `maki/test.f` and PTX
-standard-library gates on the exact integration tree.
+co-loaded suite passes in one fresh process; run package, typed-local, and host
+gates; then rerun the co-loaded `ptx-toolchain` suite plus the required
+`maki/test.f` and PTX standard-library gates on the exact integration tree.
 
 Dependencies: none. This is an existing master-gate blocker discovered while
 publishing the minimal control wave. It does not change the enum,
 generated-declaration, or Unicode implementation contracts.
 
-Claim: agent=publication_integrator workspace=.jj-ws/habu-package-ptx-device-tests-8f2d4a61 machine=spark
+Claim: unassigned.
