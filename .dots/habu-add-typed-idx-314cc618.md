@@ -46,11 +46,9 @@ other change to the type slice.
 
 Files: `lib/cad-num-arithmetic.f`, `lib/cad-num-arithmetic-test.f`,
 `lib/cad-num-types.f`, `lib/cad-num-types-test.f`,
-`test/gate-stdlib-cases.f`,
-`tools/suite-coverage-lint-core.f`, and `MODEL-CAD-V2-PLAN.md` only.
+`test/gate-stdlib-cases.f`, and `MODEL-CAD-V2-PLAN.md` only.
 
-Acceptance: focused arithmetic suite, exact owning load, typed-local, package,
-suite-coverage, owning standard-library gates, and an exact
+Acceptance: focused arithmetic suite registered in test/gate-stdlib-cases.f and executed by test/gate-stdlib.f, exact owning load, typed-local, package, owning standard-library gates, and an exact
 source/plan interface census pass. The standard-library gate
 must execute the focused suite, whose checked F32 composition certifies without
 a cast. The final tree must contain no false no-production-loader or sole-

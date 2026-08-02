@@ -1,6 +1,6 @@
 ---
 title: Add compiler IR IDs
-status: active
+status: open
 priority: 1
 issue-type: task
 created-at: "2026-07-26T22:54:38.085129+02:00"
@@ -52,4 +52,4 @@ source, builder, codec, dialect schema, operation, or shared structural lint
 source. Before integration or push, root coordinates fetch/rebase, reconciles
 active lanes, verifies ownership, and runs combined publication gates.
 
-Claim: agent=ir0 workspace=.jj-ws/habu-add-compiler-ir-21e976fc branch=ir0
+Claim: unassigned.
