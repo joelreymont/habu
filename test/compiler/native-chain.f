@@ -943,6 +943,345 @@ $B4000000 constant CBZ-KIND          \ Cbz - the unfused two-way branch
    0 T= -1 T= 0 T= -1 T=
    CBZ-KIND T= 4 T= 14 T= ;
 
+\ ---- the loop the corpus actually writes -------------------------------------
+\ `begin … while … repeat` outnumbers `begin … until` nine to one in real Habu,
+\ and lib/string.f's COUNT-CHAR is the shape it is usually written in: a byte
+\ scan carrying an accumulator and an index round the loop, with an `if` inside
+\ the body that adds to the accumulator without changing how deep the stack is.
+\ It is compiled here from the same source text the library holds, with the
+\ locals annotated, and run against the interpreted word on the same span.
+\
+\ THE FOUR ARGUMENTS ARE THE FOUR THINGS A LOOP LIKE THIS CAN GET WRONG. Five
+\ bytes with three matches says the accumulator survives every turn and is added
+\ to only on a match; a length of ZERO says the loop runs no turns at all, which
+\ is a `while` whose test fails the first time it is asked and is the boundary an
+\ `until` loop cannot even express; a length of ONE says the single turn runs and
+\ the back edge is taken exactly once; and a byte that is in no position says the
+\ loop runs every turn with the body's `if` never taken. A polarity that is the
+\ wrong way round cannot answer the first and the third the same way the
+\ interpreted word does - it either runs no turns and answers zero, or never
+\ leaves at all.
+: SRC15 ( -- ptr u8 n )
+   s" : NCH-COUNT-CHAR ( ptr u8 n n -- n ) {: a:ptr u:n c:n :} 0 0 begin dup u < while dup a + c@ c = if swap 1+ swap then 1+ repeat drop ;" ;
+
+\ `aabca`: five bytes with the letter a in three of the five positions and no
+\ two neighbouring positions alike after the first pair, so a scan that read one
+\ position twice or stopped one short answers something other than three.
+97 constant LETTER-A
+
+\ This scan carries more at once than the counted-loop scans above it: three
+\ locals that live to the end, the accumulator and the index round the loop, and
+\ the byte and the flag inside the body. The pool is stated large enough for all
+\ of them, because what this case is about is the loop's shape and not how
+\ tightly it packs registers - the routine that does have to spill is
+\ SPILL-CASE, which asks for a frame on purpose.
+12 constant SCAN-REGS
+
+: BUFFER-MAKE2 ( -- )
+   s" 5 BUFFER: NCH-BUF2" EV
+   s" 97 NCH-BUF2 c!" EV
+   s" 97 NCH-BUF2 1 + c!" EV
+   s" 98 NCH-BUF2 2 + c!" EV
+   s" 99 NCH-BUF2 3 + c!" EV
+   s" 97 NCH-BUF2 4 + c!" EV ;
+
+: RECORD15 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC15 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: COUNTCHAR-BODY ( IR-CTX:ctx -- n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD15
+   p r ELABORATE7
+   CC BB TXT TEXT-LEN 0 SCAN-REGS 3 1 NFIX:RUN-HABU
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   s" NCH-BUF2" EV-N {: buf:n :}
+   buf 5 LETTER-A fn NRUN:ENTER3
+   buf 0 LETTER-A fn NRUN:ENTER3
+   buf 1 LETTER-A fn NRUN:ENTER3
+   buf 5 LETTER-Z fn NRUN:ENTER3
+   s" NCH-BUF2 5 97 NCH-COUNT-CHAR" EV-N ;
+
+\ Eight blocks: the entry, the loop header, the stub the `while` leaves through,
+\ the body up to the `if`, the stub that `if` skips its arm through, the arm, the
+\ arm's join - which is also the latch, because the `1+` after the `then` is the
+\ last of the body and the back edge leaves from there - and the block after the
+\ loop.
+: COUNTCHAR-CASE ( -- )
+   s" the corpus's while-repeat byte scan compiles and runs" T-LABEL
+   NFIX:BINDING [: COUNTCHAR-BODY ;] IR-CTX:WITH-CONTEXT
+   3 T= 0 T= 1 T= 0 T= 3 T= 8 T= ;
+
+\ ---- a while's test is a comparison, and it fuses ----------------------------
+\ The test of a `while` is a comparison standing immediately above the two-way
+\ branch that reads it, with no other reader - which is exactly the shape
+\ src/compiler/native/select.f fuses into one compare-and-branch. Nothing was
+\ added there for `while`: the rule is stated over the block's last two
+\ operations and the value's use count, so a loop test meets it for the same
+\ reason an `if`'s test does. This case is what says the rule really does reach
+\ the new construction rather than being assumed to.
+\
+\ IT IS COUNTED BY FORM RATHER THAN AT AN INDEX. This loop has exactly one
+\ conditional branch in it. Fused, that branch is a B.cond after a Cmp; unfused,
+\ the comparison would be materialised into a register and the branch would be a
+\ Cbz over it. So one B.cond and no Cbz is the fusion, and a fusion that stopped
+\ reaching a `while` reverses both numbers - while the answers below stay
+\ correct either way, which is why the counts are asserted at all.
+: SRC18 ( -- ptr u8 n )
+   s" : NCH-WDOWN ( n -- n ) begin dup 0 > while 1- repeat ;" ;
+
+$54000000 constant BCOND-KIND        \ B.cond - the conditional half of a fused compare-and-branch
+
+: FORM-COUNT ( n -- n )
+   {: want:n :}
+   0
+   A64EMIT:INSNS 0 ?do
+      i A64EMIT:WORD@ BRANCH-KIND and want = if 1+ then
+   loop ;
+
+: RECORD18 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC18 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: WFUSE-BODY ( IR-CTX:ctx -- n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD18
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 1 1 NFIX:RUN-HABU
+   BCOND-KIND FORM-COUNT
+   CBZ-KIND FORM-COUNT
+   NRUN:PUBLISH {: fn:n :}
+   5 fn NRUN:ENTER1
+   0 fn NRUN:ENTER1
+   s" 5 NCH-WDOWN" EV-N ;
+
+: WFUSE-CASE ( -- )
+   s" a while's comparison fuses into the branch that tests it" T-LABEL
+   NFIX:BINDING [: WFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 0 T= 0 T= 1 T= ;
+
+\ ---- the smallest `else` there is, and one with two values in each arm --------
+\ maki's MAX-DIM is `a b > if a else b then` and nothing else, which is the whole
+\ of what an `else` adds: the false path runs a second arm instead of falling
+\ into the join, and BOTH arms leave a value where the structure opened with
+\ none. The four arguments run each arm at least once and take the equal case,
+\ which is the one a `>` written as a `>=` would answer differently.
+: SRC16 ( -- ptr u8 n )
+   s" : NCH-MAX-DIM ( n n -- n ) {: a:n b:n :} a b > if a else b then ;" ;
+
+: RECORD16 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC16 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: MAXDIM-BODY ( IR-CTX:ctx -- n n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD16
+   p r ELABORATE10
+   CC BB TXT TEXT-LEN 0 REGS 2 1 NFIX:RUN-HABU
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   3 7 fn NRUN:ENTER2
+   7 3 fn NRUN:ENTER2
+   5 5 fn NRUN:ENTER2
+   -4 -9 fn NRUN:ENTER2
+   s" 3 7 NCH-MAX-DIM" EV-N ;
+
+: MAXDIM-CASE ( -- )
+   s" the minimal else compiles and runs both arms" T-LABEL
+   NFIX:BINDING [: MAXDIM-BODY ;] IR-CTX:WITH-CONTEXT
+   7 T= -4 T= 5 T= 7 T= 7 T= 5 T= ;
+
+\ The same structure with two values in each arm and different work in each, so
+\ the join is two wide and neither arm can be mistaken for the other. `swap`
+\ leaves the two the caller gave in the other order and `nip dup` leaves the
+\ second one twice, and the sum after the join tells the two apart: the larger
+\ pair adds to the same total either way ONLY if the arms were confused.
+: SRC17 ( -- ptr u8 n )
+   s" : NCH-SUMMAX ( n n -- n ) 2dup > if swap else nip dup then + ;" ;
+
+: RECORD17 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC17 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: SUMMAX-BODY ( IR-CTX:ctx -- n n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD17
+   p r ELABORATE10
+   CC BB TXT TEXT-LEN 0 REGS 2 1 NFIX:RUN-HABU
+   A64EMIT:BLOCKS
+   NRUN:PUBLISH {: fn:n :}
+   9 2 fn NRUN:ENTER2
+   3 7 fn NRUN:ENTER2
+   s" 9 2 NCH-SUMMAX" EV-N
+   s" 3 7 NCH-SUMMAX" EV-N ;
+
+: SUMMAX-CASE ( -- )
+   s" an else whose arms both leave two values compiles and runs" T-LABEL
+   NFIX:BINDING [: SUMMAX-BODY ;] IR-CTX:WITH-CONTEXT
+   14 T= 11 T= 14 T= 11 T= 5 T= ;
+
+\ ---- two structures one after the other, in one definition -------------------
+\ A control frame is a slot the walk reuses: the second structure of a body sits
+\ at the same depth the first one did, so it reads the same frame. What each of
+\ these two definitions proves is that it does NOT read what the first structure
+\ left there.
+\
+\ THE FIRST IS A `while` LOOP FOLLOWED BY AN `until` LOOP. A loop that a `while`
+\ left may not be closed by `until` - the values the `while` handed over would
+\ arrive nowhere - so the second loop is refused outright if the first loop's
+\ count of `while`s is still in the frame. The two arguments run the first loop
+\ round and skip it entirely, and the second loop answers differently either way.
+: SRC19 ( -- ptr u8 n )
+   s" : NCH-TWOLOOP ( n -- n ) begin dup 0 > while 1- repeat begin 1+ dup 0 >= until ;" ;
+
+: RECORD19 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC19 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: TWOLOOP-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD19
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 1 1 NFIX:RUN-HABU
+   NRUN:PUBLISH {: fn:n :}
+   5 fn NRUN:ENTER1
+   -2 fn NRUN:ENTER1
+   s" 5 NCH-TWOLOOP" EV-N
+   s" -2 NCH-TWOLOOP" EV-N ;
+
+: TWOLOOP-CASE ( -- )
+   s" a while loop and an until loop in one definition compile and run" T-LABEL
+   NFIX:BINDING [: TWOLOOP-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 1 T= 0 T= 1 T= ;
+
+\ THE SECOND IS AN `if` WITH AN `else` FOLLOWED BY AN `if` WITHOUT ONE. The join
+\ of a two-armed structure is as wide as its arms left the stack and the join of
+\ a one-armed structure is as wide as the structure opened; a frame still holding
+\ the first structure's arm leaves the second one measuring itself against the
+\ wrong number, which the join-width rule then refuses. The three arguments run
+\ the first structure's two arms and the second structure's one.
+: SRC20 ( -- ptr u8 n )
+   s" : NCH-TWOIF ( n n -- n ) 2dup > if drop else nip then dup 0 < if 0 swap - then ;" ;
+
+: RECORD20 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC20 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: TWOIF-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD20
+   p r ELABORATE10
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 2 1 NFIX:RUN-HABU
+   NRUN:PUBLISH {: fn:n :}
+   9 2 fn NRUN:ENTER2
+   3 7 fn NRUN:ENTER2
+   -8 -3 fn NRUN:ENTER2
+   s" -8 -3 NCH-TWOIF" EV-N ;
+
+: TWOIF-CASE ( -- )
+   s" a two-armed if and a one-armed if in one definition compile and run" T-LABEL
+   NFIX:BINDING [: TWOIF-BODY ;] IR-CTX:WITH-CONTEXT
+   3 T= 3 T= 7 T= 9 T= ;
+
+\ ---- one structure inside another --------------------------------------------
+\ A `while` loop inside a `while` loop, which is two frames of the control stack
+\ open at once with a `while` in each. The inner loop burns a copy of the outer
+\ counter down and the outer one counts itself down, so the answer says the two
+\ loops each went round their own number of times and each left through its own
+\ block: an inner loop that left through the OUTER loop's exit would leave the
+\ word after one turn.
+: SRC21 ( -- ptr u8 n )
+   s" : NCH-NESTW ( n -- n ) begin dup 0 > while dup begin dup 0 > while 1- repeat drop 1- repeat ;" ;
+
+: RECORD21 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC21 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: NESTW-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD21
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 1 1 NFIX:RUN-HABU
+   NRUN:PUBLISH {: fn:n :}
+   3 fn NRUN:ENTER1
+   -2 fn NRUN:ENTER1
+   s" 3 NCH-NESTW" EV-N
+   s" -2 NCH-NESTW" EV-N ;
+
+: NESTW-CASE ( -- )
+   s" a while loop inside a while loop compiles and runs" T-LABEL
+   NFIX:BINDING [: NESTW-BODY ;] IR-CTX:WITH-CONTEXT
+   -2 T= 0 T= -2 T= 0 T= ;
+
+\ An `else` arm that leaves the word from inside itself. The join then has ONE
+\ path into it - the first arm's - and its width is the one that arm left, which
+\ is the rule an `else` records rather than a special case for `exit`. The other
+\ order, an `exit` in the FIRST arm with an `else` after it, is refused by name
+\ and carried by dot habu-let-exit-stand-d74f14ec.
+: SRC22 ( -- ptr u8 n )
+   s" : NCH-ELSEXIT ( n -- n ) dup 0 < if drop 0 else drop 7 exit then ;" ;
+
+: RECORD22 ( -- )
+   CC BB IR-BUILD:MODULE-KEY TAPE-CAP NTAPE:NEW {: tp:IR-ARENA:arena :}
+   CC BB tp TXT TEXT-CAP NFEED:BEGIN-UNIT
+   SRC22 EV
+   NFEED:END-UNIT  R-VERDICT !  0 R-TAPE ! ;
+
+: ELSEXIT-BODY ( IR-CTX:ctx -- n n n n )
+   {: c:IR-CTX:ctx :}
+   c 0 R-CTX !
+   c HIR-MOD 0 R-BLD !
+   CC BB MODEL {: p:IR-ARENA:arena r:IR-ARENA:arena :}
+   RECORD22
+   p r ELABORATE
+   CC BB TXT TEXT-LEN 0 LOOP-REGS 1 1 NFIX:RUN-HABU
+   NRUN:PUBLISH {: fn:n :}
+   -3 fn NRUN:ENTER1
+   5 fn NRUN:ENTER1
+   s" -3 NCH-ELSEXIT" EV-N
+   s" 5 NCH-ELSEXIT" EV-N ;
+
+: ELSEXIT-CASE ( -- )
+   s" an else arm that leaves the word compiles and runs" T-LABEL
+   NFIX:BINDING [: ELSEXIT-BODY ;] IR-CTX:WITH-CONTEXT
+   7 T= 0 T= 7 T= 0 T= ;
+
 \ ---- the contract and the body have to agree about calling -------------------
 \ Whether a routine calls is the contract's declaration, and the selector builds
 \ the frame and the link save from it. Two ways for that declaration to be wrong,
@@ -993,8 +1332,17 @@ public
    MEM-CASE
    LOCALS-CASE
    BUFFER-MAKE
+   BUFFER-MAKE2
    BSUM-CASE
    BFIND-CASE
+   COUNTCHAR-CASE
+   WFUSE-CASE
+   MAXDIM-CASE
+   SUMMAX-CASE
+   TWOLOOP-CASE
+   TWOIF-CASE
+   NESTW-CASE
+   ELSEXIT-CASE
    FACT-CASE
    ISLT-CASE
    LTKEEP-CASE
