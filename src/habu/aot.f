@@ -61,8 +61,8 @@ public
    READ-PROG
    SENTSET
    INSTALL-USER-HOOK
-   AOT-PB@ DATA-VA INP-CELL + !
-   AOT-PB@ PN @ + DATA-VA INE-CELL + ! ;
+   AOT-PB@ data-base INP-CELL + !
+   AOT-PB@ PN @ + data-base INE-CELL + ! ;
 
 ;package
 

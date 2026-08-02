@@ -41,7 +41,7 @@ TRUSTED: LINUX-VA>PTR ( va -- ptr n ) ;
 s" IMAGE-TEXT-SIZE-OFF" s" -- n" TRUST
 s" IMAGE-TEXT-CONTENT-ADJ" s" -- n" TRUST
 s" IMAGE-TEXT-TRAILER-ADJ" s" -- n" TRUST
-s" DATA-VA" s" -- ptr a" TRUST
+s" DATA-VA" s" -- va" TRUST
 s" DATA-SIZE" s" -- n" TRUST
 s" CODE-OFF" s" -- n" TRUST
 s" LINUX-DLOPEN-SLOT-OFF" s" -- n" TRUST

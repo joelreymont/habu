@@ -3773,15 +3773,11 @@ package ENGINE-EMIT
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;
 
-\ Convert the target DATA virtual address to an integer for raw instruction fields.
-\ Retirement: habu-builder-trust-rows-c5d41af6.
-TRUSTED: EM-DATA-VA>N ( -- n ) DATA-VA ;
-
 : EM-MMAP-DATA-REGION ( -- )
    LBL {: dvok :}
-   0 EM-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 DATA-VA VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 EM-DATA-VA>N LIT64,  0 5 CMP,
+   5 DATA-VA VA>N LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       1 LMMAPDATA LABEL@ ADR,  0 2 MOVZ,  2 MMAPDATA-MSG-LEN MOVZ,  NR-WRITE SYS,   \ name the fault on fd 2 (bytes in loaded __text) before exit; code region is already mapped, argc/argv/envp in x13/x14/x15 untouched
       0 78 MOVZ,  NR-EXIT-GROUP SYS,

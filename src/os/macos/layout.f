@@ -37,7 +37,7 @@ TRUSTED: MACHO>N-PTR ( n -- ptr n ) ;
 s" IMAGE-TEXT-SIZE-OFF" s" -- n" TRUST
 s" IMAGE-TEXT-CONTENT-ADJ" s" -- n" TRUST
 s" IMAGE-TEXT-TRAILER-ADJ" s" -- n" TRUST
-s" DATA-VA" s" -- ptr a" TRUST
+s" DATA-VA" s" -- va" TRUST
 s" DATA-SIZE" s" -- n" TRUST
 s" CODE-OFF" s" -- n" TRUST
 s" DLOPEN-SLOT" s" -- ptr n" TRUST

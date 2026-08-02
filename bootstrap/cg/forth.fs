@@ -4045,13 +4045,11 @@ variable CFSK2
       9 9 DREC ADDI,  10 10 DREC ADDI,  12 12 1 SUBI,  scopy B,
    scdone LBL, ;
 
-: EMIT-DATA-VA>N ( -- n ) DATA-VA ;
-
 : EMIT-MMAP-DATA-REGION ( -- )
    LBL {: dvok :}
-   0 EMIT-DATA-VA>N LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
+   0 DATA-VA LIT64,  1 DATA-SIZE LIT64,  2 3 MOVZ,  3 MAP-ANON-PRIVATE-FIXED LIT64,  4 0 MOVN,  5 0 MOVZ,
    NR-MMAP SYS,
-   5 EMIT-DATA-VA>N LIT64,  0 5 CMP,
+   5 DATA-VA LIT64,  0 5 CMP,
    C-EQ dvok BCOND,
       s" hb: cannot map fixed data region" 78 C-EXIT-DIAG   \ name the fault on fd 2 (C-EXIT-DIAG inlines the bytes in __text, ADRs them locally) before exit
    dvok LBL, ;

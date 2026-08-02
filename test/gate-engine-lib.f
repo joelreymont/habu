@@ -571,7 +571,7 @@ private
 
 \ --- self-check certification census ratchet -------------------------------
 
-4137 constant CENSUS-LINUX
+4133 constant CENSUS-LINUX
 3775 constant CENSUS-MACOS
 
 : CENSUS-BASE ( -- n )
