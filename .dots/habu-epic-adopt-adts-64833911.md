@@ -30,10 +30,12 @@ So the TYPE foundation already supports waves A (option), B (result multi-cell),
 C (enums, item 14), and D (product, item 15). The gating issues are NOT type
 capabilities — they are the WID cap and the public-API surface.
 
-First wave = A (option<scalar>/option<idx> over sentinels). Supported today.
-~80 sites (lib/string,date,float,map,process-env + tools/{imgdump,imagedisasm,
-date,json}); FIND-SUB/INDEX-OF have the widest caller radius
-(migrate LAST). census-switchover §5.
+The live migration invariant is semantic, not census-driven: conditionally
+valid payload-plus-flag and sentinel returns become the shared `option` or
+`result` families, in-process finite domains become `ENUM`/`SUMTYPE`, and
+record bundles become `PRODUCT`; raw ABI sentinels remain only at audited
+boundaries. `docs/forth.md` § Structures And Enums is authoritative for the
+shipped declaration and `MATCH` surface; live leaves own the remaining sites.
 
 BLOCKERS:
 1. Protected-WID cap = EXACTLY 16 public families/session (probed: fam1..fam16
