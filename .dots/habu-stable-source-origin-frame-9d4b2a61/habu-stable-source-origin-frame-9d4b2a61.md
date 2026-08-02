@@ -53,8 +53,8 @@ declaration. Verify the exact prefix and recovery load paths.
 
 Verify: direct and nested source-origin fixtures, checker candidate rollback,
 include/evaluate recovery, diagnostic JSON/text spans, snapshot, ahead-of-time,
-replay, recovery, fixpoint, and full native gates; typed-local, trust, package,
-host, filemap, and dot lints.
+replay, recovery, fixpoint, and full native gates; typed-local, package, host,
+and dot-dep lints.
 
 Dependencies: `habu-authenticated-source-frame-7c4e1a90`. Ownership: immutable
 typed provenance capture, persistence, and reflection over the sole
