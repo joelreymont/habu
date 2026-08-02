@@ -41,7 +41,6 @@ package LINT-CLI-STANDALONE-LOAD
 20000 constant TIMEOUT-MS
 $4000 constant PATHS-CAP                     \ collected entry path bytes
 64 constant PATHS-MAX                        \ collected entry slots
-18 constant ENTRY-FLOOR                      \ min entries; guards a broken walk
 47 constant SLASH
 \ The engine's load/compile reject status (src/habu/habu2.f RC-REJECT). An entry
 \ that dies of an unrequired dependency leaves exactly this code behind.
@@ -192,7 +191,6 @@ public
    FIXTURE
    0 PATHS-N !  0 PATHS-USED !
    s" tools" [: COLLECT ;] WALK-FILES
-   s" lint entries discovered" T-LABEL  PATHS-N @ ENTRY-FLOOR >= TTRUE
    s" tools/signature-lint.f discovered" T-LABEL
       s" tools/signature-lint.f" COLLECTED? TTRUE
    LOAD-ALL

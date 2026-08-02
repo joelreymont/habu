@@ -321,8 +321,8 @@ In order:
    their slices are in scope by the touch rule).
 5. both exact-diff gates on the final combined diff — the ownership
    check on every migrated definition, run once.
-6. the cheap lints, seconds each: suite-coverage-lint, error-code-lint,
-   maki-dep-lint, dot-dep-lint. The former separate "native dot gate" entry
+6. the cheap lints, seconds each: error-code-lint, maki-dep-lint,
+   dot-dep-lint. The separate "native dot gate" entry
    is deleted as a duplicate of dot-dep-lint.
 Deliberately absent: a
 performance gate — declaration-time machinery changed, not runtime hot
@@ -564,8 +564,7 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   M14a-d, M15, M16.
 - (docs reconciliation moved to phase 4, after everything — Joel.)
 - M18 green-tree mechanics: obsolete administrative lints DELETED (item
-  40); suite-coverage's conscious-exception table updated for
-  deleted/respelled suites; STATUS.md DELETED (item 36); build certification
+  40); STATUS.md DELETED (item 36); build certification
   and its census report remain authoritative. Must precede the battery.
   blocked-by M17.
 
@@ -671,9 +670,7 @@ everything is finished — not during.
     the deleted administrative ledger; its
     seeds are mostly proof mints and erasures this plan deletes, and
     CONSTRUCT owner is the structural confinement that replaces it).
-    STAY, verified derived-not-transcribed: suite-coverage-lint (re-parses the gate
-    files each run; catches unscheduled suites; one conscious-exception
-    table) and error-code-lint (global E- code uniqueness). Wave 2+
+    STAY: error-code-lint (global E- code uniqueness). Wave 2+
     doctrine endpoint: once the sweep makes the tree comply, the
     typed-local and package-ownership rules flip into hard checker load
     errors and both diff lints delete; error-code uniqueness is

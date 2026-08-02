@@ -3,8 +3,7 @@
 
 \ The per-file timed RUN-FILE harness lives in maki/test-harness.f, shared with
 \ the parallel gate slices (maki/test-<slice>.f). This file is the full standalone
-\ run-all inventory and the coverage-lint master: every suite below must land in
-\ exactly one slice (tools/suite-coverage-lint-core.f enforces the partition).
+\ run-all inventory; every suite below must land in exactly one slice.
 require maki/test-harness.f
 
 using TEST

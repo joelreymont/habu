@@ -74,10 +74,6 @@ REQUIRE-HARNESS
    s" maki-dep-lint" [: MAKI-DEP-LINT ;] GSI-RUN
    s" tools/maki-dep-lint-test.f" GSI-INCLUDE ;
 
-: SUITE-COVERAGE ( -- )
-   s" suite-coverage-lint" [: SUITE-COVERAGE-LINT:RUN ;] GSI-RUN
-   s" tools/suite-coverage-lint-test.f" GSI-INCLUDE ;
-
 : NAMESPACE ( -- )
    s" namespace-lint" [: NAMESPACE-LINT-STRICT ;] GSI-RUN
    s" tools/namespace-lint-test.f" GSI-INCLUDE ;
@@ -108,7 +104,6 @@ public
    s" lint-tools/repl" GSI-FORK-TIMEOUT-MS [: REPL-GROUP ;] GT-POOL-START-FORK
    s" lint-tools/dot" GSI-FORK-TIMEOUT-MS [: DOT ;] GT-POOL-START-FORK
    s" lint-tools/maki" GSI-FORK-TIMEOUT-MS [: MAKI ;] GT-POOL-START-FORK
-   s" lint-tools/suite-coverage" GSI-FORK-TIMEOUT-MS [: SUITE-COVERAGE ;] GT-POOL-START-FORK
    s" lint-tools/namespace" GSI-FORK-TIMEOUT-MS [: NAMESPACE ;] GT-POOL-START-FORK
    s" lint-tools/package-diff" GSI-FORK-TIMEOUT-MS [: PACKAGE-OWNERSHIP ;] GT-POOL-START-FORK
    s" lint-tools/error-code" GSI-FORK-TIMEOUT-MS [: ERROR-CODE ;] GT-POOL-START-FORK

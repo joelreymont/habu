@@ -48,9 +48,7 @@ the gate files are the source of truth.
 
 ## Test registration
 
-- Register new tests in `test/gate-stdlib-cases.f` and
-  `test/gate-stdlib-inline-lib.f`. Confirm with the suite-coverage lint, reading
-  the findings lines, not exit codes (same for `tools/dot-dep-lint.f`).
+- Register new tests in `test/gate-stdlib-cases.f`.
 
 ## Forth policy
 

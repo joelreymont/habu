@@ -30,8 +30,8 @@
 \ before publication with the complete newline-terminated boot diagnostic.
 \
 \ Heavy child build (~12 s): registered as `TEST:SUITE aot-wid-restore` in
-\ test/gate-stdlib-cases.f and listed in SC-MANUAL-TABLE (suite-coverage-lint),
-\ so it runs in the standalone stdlib gate (a required master gate), like the
+\ test/gate-stdlib-cases.f, so it runs in the standalone stdlib gate (a required
+\ master gate), like the
 \ heavy-build suite, not the fast tail-process
 \ fork tier, whose perf ratchet the build cost would exceed. Run standalone:
 \ bin/hb --load test/aot-wid-suite.f

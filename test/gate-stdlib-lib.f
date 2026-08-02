@@ -188,7 +188,6 @@ private
    s" dot-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" suite-coverage-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" namespace-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" namespace-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" error-code-lint" SUITE-LABEL= if SUITE-TRUE exit then

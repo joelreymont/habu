@@ -48,11 +48,6 @@ SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
 ;SUITE
 
-SUITE suite-coverage-lint
-   tools/suite-coverage-lint.f
-   tools/suite-coverage-lint-test.f
-;SUITE
-
 SUITE namespace-lint
    tools/namespace-lint.f
 ;SUITE

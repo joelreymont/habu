@@ -370,7 +370,7 @@ Acceptance:
 - every cast is checker-certified and confined by package ownership;
 - `bin/hb --load test/compiler/ir-id.f` passes;
 - the `compiler-ir-id` suite is declared and scheduled by the inline stdlib
-  dispatcher, and error, package, typed-local, and suite coverage gates pass.
+  dispatcher, and error, package, and typed-local gates pass.
 
 ## Dot and worker rules
 

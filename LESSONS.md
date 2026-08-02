@@ -814,11 +814,8 @@ fits.
   a `SUITE-*-LABEL?` slice selects the label AND someone invokes that slice; the resident
   `test/run.f` runs the in-process GSI groups + a few spawned slices, NOT the full TEST:SUITE
   inventory — the two lists are hand-synced and drift silently (four checker-invariant suites
-  ran in NO automatic gate). `suite-coverage-lint.f` now derives all three lists each run and
-  forces every member into scheduled / manual-documented / spawn-only-documented; wire a new
-  lint into BOTH the cases suite + the scheduled lint-tools GSI fork (prove each path red with
-  a transient drift). The standalone `-- lint-tools` slice and the gate's resident phase 17
-  are DIFFERENT code paths.
+  ran in NO automatic gate). The standalone slices and the gate's resident groups are
+  different execution paths; register a test in the path that must execute it.
 - **Gate slices see different lints — the integrator runs the slice that OWNS each touched
   file class.** maki-dep-lint (dependency direction) and error-code-lint live in the
   lint-tools slice; a lane validating only lint-libs + maki/test can land a maki/ reference or
@@ -901,8 +898,7 @@ fits.
   battery, so master carried a red manual-tier suite for a day. Rule: a merge that
   touches `src/core/checker.f` (or any file a manual/heavy suite OWNS but the fast
   tier never forks) must run that owning suite at merge time — a green fast `run.f`
-  tier is not proof for suites documented as manual/slow members
-  (`tools/suite-coverage-lint-core.f` SC-MANUAL-TABLE, run via `test/gate-stdlib.f`).
+  tier is not proof for suites run only by `test/gate-stdlib.f`.
 - **The tail-ratchet asserts EXACT child-process counts AND elapsed ≤ budget
   (`PROCESS-NOMINAL-MS` 10000 × PERF-MS).** An elapsed-only overshoot with no
   child-count delta (e.g. 10099/10000) is machine-load noise, not your change —
@@ -1833,7 +1829,7 @@ fits.
 - **Test paths are owned resources.** Predictable shared `/tmp` names race, leak, falsify absence tests, and permit symlink truncation; use unique private roots and exception-safe cleanup.
 - **Never copy a performance bound across targets.** A Spark-derived cold budget was lower than a directly observed macOS suite long pole; keep the last measured target bound until repeated exact-target runs prove a replacement.
 - **Compile-once helpers must not become permanent dictionary residents.** If a generated checked word exists only to capture one value, use a checked anonymous or transactionally reclaimed compilation boundary and prove every compiler registry rolls back.
-- **One suite needs one canonical inventory.** Repeating membership across a full loader, slices, runner dispatch, and coverage lint creates more reconciliation code than the split saves and lets each copy drift independently.
+- **One suite needs one canonical inventory.** Repeating membership across a full loader, slices, and runner dispatch creates more reconciliation code than the split saves and lets each copy drift independently.
 - **A frame must bind its declared identity to the parsed payload.** Validating path syntax and body syntax independently still accepts path substitution, presence/status contradictions, and several raw files under one declared section.
 - **A test outside every owning gate is not regression proof.** Discover test modules, require one registered owner and cache key, and make an intentional failing test prove the full gate executes it.
 - **Post-change state cannot prove replacement monotonicity.** An added row can mask the deleted predecessor it replaced; compare an authenticated pre-change baseline or reconstruct deletions before accepting a version increment.
@@ -2093,11 +2089,6 @@ fits.
   returning a checked quotation from a private helper, close the package, then
   execute that quotation immediately; raw execution tokens, exported aliases,
   and storage cells weaken the boundary.
-- **Suite coverage currently proves path membership, not scheduler roles.** It
-  catches an orphaned case member, but a different scheduling verb, group,
-  duplicate, or order can still satisfy the set. Freeze those facts in the dot
-  and prove the real production group; do not claim mutations the lint cannot
-  observe.
 - **A linear wrapper is not opaque when its generated representation API is
   public.** A public product can preserve its linear owner while replacing raw
   state fields through `UNMAKE` and `MAKE`. Use an opaque linear token and keep
@@ -2529,8 +2520,7 @@ fits.
 - **A new Maki suite needs two registrations: the master list and one slice.**
   Add it to `maki/test.f` and to exactly one of `maki/test-core.f`,
   `maki/test-db.f`, `maki/test-eval.f`, or `maki/test-eval-emit.f`;
-  suite-coverage's “exactly once” rule applies among slices, not across both
-  levels.
+  it appears exactly once among the slices.
 - **Destructive cleanup requires a validated target.** An unsupported
   `jj diff --check` left a temporary-path variable empty, so unconditional
   `gio trash "$candidate_file"` trashed the current directory. Stop when target
