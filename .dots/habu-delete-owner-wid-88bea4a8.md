@@ -1,9 +1,11 @@
 ---
 title: Delete OWNER-WID persistence
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-30T06:09:57.350910+02:00"
+closed-at: "2026-08-02T15:01:24.107349+02:00"
+close-reason: "Completed by reviewed hard-cut ancestor a8c716c53cda322729f8e7d5c92a406f095dc094: OWNER-WID persistence, trailer payload, readers, writers, bootstrap wiring, and inventories were deleted together."
 blocks:
   - habu-retire-owner-wid-8552fe4f
 ---

@@ -1,9 +1,11 @@
 ---
 title: Fix snapshot trailer corruption
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-27T18:16:53.142846+02:00"
+closed-at: "2026-08-02T15:01:22.921601+02:00"
+close-reason: "Completed by reviewed hard-cut ancestor a8c716c53cda322729f8e7d5c92a406f095dc094: header-owned fixed trailer replaced the corrupt scanned-trailer path, and the obsolete OWNER-WID restore fixtures are deleted."
 ---
 
 Problem: exact master c2339043 deterministically fails the standalone `owner-wid-internal` suite because the freshly generated snapshot exits 79 before restore. GDB proves the writer's trailer is internally consistent and its out-of-line dictionary-name pointers are correctly canonicalized to `RBASE-VA`; `EM-SNAPSHOT-VALIDATE-WIDS` in `src/habu/habu2.f` wrongly interprets those two pointer roles relative to live `DBASE`, rebases them outside the snapshot dictionary source, and reports `hb: snapshot trailer corrupt`.
