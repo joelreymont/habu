@@ -9942,10 +9942,10 @@ TYPES-DEFAULTS
 \ the field depth across this point is to leave a declaration-event frame open,
 \ and src/core/decl-event.f rejects exactly that at the participant's PREPARE
 \ (DEV-PART-PROVE -> DEV-TX-OPEN-REQUIRE), with the depths restored.  Keep the
-\ delegation anyway — throw-freeness here is a contract of the total-release
-\ protocol, not a consequence of that upstream guard, and the upstream guard is
-\ free to move.  Dot habu-make-txn-release-c9892c89 owns the structural inventory
-\ that will make a rejecting release fail closed.
+\ delegation anyway — this private word is reachable only through the sealed
+\ declaration participant after PREPARE and every COMMIT have succeeded.  It
+\ invokes the installed type-frame release and drops the one prepared checker
+\ frame; no public caller can drive either operation independently.
 : RELEASE ( -- )
    TYPES-RELEASE-XT
    RBF-DEPTH @ 1 - RBF-DEPTH ! ;

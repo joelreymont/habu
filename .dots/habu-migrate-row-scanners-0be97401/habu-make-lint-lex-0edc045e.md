@@ -1,6 +1,6 @@
 ---
 title: Make LINT-LEX fail closed
-status: active
+status: open
 priority: 2
 issue-type: task
 created-at: "2026-07-27T17:28:09.294220+02:00"
