@@ -511,31 +511,21 @@ private
    c b HIR-OPCODE:DIV NAMED
    c b IR-BUILD:DEFINE-OP ;
 
-\ One comparison: two cells in, one cell out, and the answer is a Habu flag -
-\ all bits set or none. A comparison cannot overflow whatever the unit's numeric
-\ policy is, so unlike the three arithmetic opcodes it is total by declaration
-\ and not by policy. The six comparisons of this subset differ only in their
-\ names, so they share this shape.
-: DEF-COMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
-   {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
-   c b o OPCODE IR-SCHEMA:BEGIN-OP
-   t IR-SCHEMA:ADD-OPERAND
-   t IR-SCHEMA:ADD-OPERAND
-   t IR-SCHEMA:ADD-RESULT
-   PURE-VALUE
-   false IR-SCHEMA:SET-TRAP
-   TARGET
-   c b o NAMED
-   c b IR-BUILD:DEFINE-OP ;
-
-\ One bitwise or shift operation: two cells in, one cell out, and total. It is
-\ the arithmetic shape with the may-trap flag declared rather than read off the
-\ unit's policy, and that difference is the whole reason it is a definer of its
-\ own: the policy is about OVERFLOW, and neither a bitwise combination nor a
-\ shift by a count taken modulo the register width can overflow. Declaring these
-\ five through DEF-BINARY would make them trapping under a trapping unit and
-\ oblige the machine stage to reproduce a trap that cannot happen.
-: DEF-BITS ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
+\ One binary operation that cannot raise: two cells in, one cell out, and the
+\ may-trap flag declared false rather than read off the unit's numeric policy.
+\ Eleven opcodes have this shape - the six comparisons, whose answer is a Habu
+\ flag of all bits set or none, and the three bitwise combinations and two
+\ shifts. They are one definer and not two because the schema of a comparison and
+\ the schema of a bitwise combination are the same statement: two cells in, one
+\ cell out, pure, total.
+\
+\ AND WHAT MAKES THEM TOTAL IS THE SAME FACT IN BOTH CASES. The unit's policy is
+\ about OVERFLOW, and none of these eleven can overflow - a comparison answers
+\ one of two values, a bitwise combination answers a function of its arguments'
+\ bits, and a shift takes its count modulo the register width. Declaring them
+\ through DEF-BINARY would make them trapping under a trapping unit and oblige
+\ the machine stage to reproduce a trap that cannot happen.
+: DEF-TOTAL ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id HIR:opcode -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder t:IR-ID:ir-type-id o:HIR:opcode :}
    c b o OPCODE IR-SCHEMA:BEGIN-OP
    t IR-SCHEMA:ADD-OPERAND
@@ -839,17 +829,17 @@ public
    c b t HIR-OPCODE:SUB DEF-BINARY
    c b t HIR-OPCODE:MUL DEF-BINARY
    c b t DEF-DIV
-   c b t HIR-OPCODE:LT DEF-COMPARE
-   c b t HIR-OPCODE:LE DEF-COMPARE
-   c b t HIR-OPCODE:GT DEF-COMPARE
-   c b t HIR-OPCODE:GE DEF-COMPARE
-   c b t HIR-OPCODE:EQUAL DEF-COMPARE
-   c b t HIR-OPCODE:NE DEF-COMPARE
-   c b t HIR-OPCODE:AND DEF-BITS
-   c b t HIR-OPCODE:OR DEF-BITS
-   c b t HIR-OPCODE:XOR DEF-BITS
-   c b t HIR-OPCODE:LSHIFT DEF-BITS
-   c b t HIR-OPCODE:RSHIFT DEF-BITS
+   c b t HIR-OPCODE:LT DEF-TOTAL
+   c b t HIR-OPCODE:LE DEF-TOTAL
+   c b t HIR-OPCODE:GT DEF-TOTAL
+   c b t HIR-OPCODE:GE DEF-TOTAL
+   c b t HIR-OPCODE:EQUAL DEF-TOTAL
+   c b t HIR-OPCODE:NE DEF-TOTAL
+   c b t HIR-OPCODE:AND DEF-TOTAL
+   c b t HIR-OPCODE:OR DEF-TOTAL
+   c b t HIR-OPCODE:XOR DEF-TOTAL
+   c b t HIR-OPCODE:LSHIFT DEF-TOTAL
+   c b t HIR-OPCODE:RSHIFT DEF-TOTAL
    c b t HIR-OPCODE:INVERT DEF-UNARY
    c b k DEF-MEM
    c b t k DEF-LOAD

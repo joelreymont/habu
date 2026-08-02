@@ -90,8 +90,8 @@
 \ authority or a restatement of its spellings. Restating them would be a second
 \ authority that drifts, so this pass asks HIR itself: BIND-SOURCE takes the HIR
 \ module while it is still being built, asks HIR:OPCODE for each member of HIR's
-\ own opcode family, and keeps every identity it answers. Every spelling
-\ stays HIR's; the pairing of an opcode to its machine operations is this file's,
+\ own opcode family, and keeps every identity it answers. Every spelling stays
+\ HIR's; the pairing of an opcode to its machine operations is this file's,
 \ and no caller can get it wrong because no caller supplies it. The binding
 \ records which module it learned from, and SELECT refuses a frozen module that is
 \ not that one, so "bind the module you are about to select" is a check rather
@@ -177,7 +177,7 @@ private
 
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
-\ key its constant carries and the module all six were learned from.
+\ key its constant carries and the module they were all learned from.
 27 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD

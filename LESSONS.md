@@ -4359,3 +4359,34 @@ entry now releases whatever is still bound when a run fails, asking each pass
 about itself rather than counting how far the run got: which bindings are live
 depends on which stage refused, and any counter kept outside the passes would be
 a second copy of state they already hold.
+
+## A flag has no successors to swap, and that is what decides a condition vocabulary
+
+The machine dialect carried three conditions and a note saying the complements
+were "a vocabulary nothing produces": a branch on the falsity of a relation
+names the relation and puts its two successors the other way round, so `not lt`
+never had to be spellable. Adding `>`, `>=` and `<>` looked like the same
+argument one more time - `a > b` IS `b < a`, so turn the operands round - until
+the FLAG path was written down beside the branch path. A comparison that answers
+a number has no successors, so `<>` cannot be reached from `=` at all, and once
+one complement has to be a member the operand-swapping scheme costs more than it
+saves: a lowering would then be a condition in one table and an operand order in
+another, and two tables that have to agree are two tables that can disagree. One
+condition per source relation left the fusion wiring untouched - the polarity
+rule is about the flag's meaning and not about which relation it is, so three new
+conditions fused for free - and left every emitted comparison byte-identical to
+the engine's own primitive for that word, which is the thing the whole chain is
+judged against.
+
+## An engine primitive is the specification, and it is cheaper to run than to read
+
+Four of this leaf's words had a semantics question that no amount of reading
+settled: what `0=` does to a value that is neither zero nor a flag, what a shift
+by 64 does, what `invert` does to -1, what `cells` does to a negative number.
+Ten lines evaluated through `bin/hb` answered all four in one run - `5 0=` is 0
+(so `0=` is an equality against zero and never a complement), `1 64 lshift` is 1
+(so the shift takes its count modulo the register width, because the machine's
+shift-by-register form does), and `-3 cells` is -24. Every one of those became a
+row of the acceptance fixture, and three of them are rows a plausible wrong
+lowering passes without: a complement-based `0=` agrees on 0 and on -1 and
+differs only on 5.
