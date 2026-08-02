@@ -25,7 +25,7 @@ interfere with the independent Spark vLLM-replacement work.
 `CORE` — Replace both direct-emission pipelines with immutable validated stages:
 
 ```text
-source tape -> HIR -> SIR -> LIR -> A64IR -> allocation/layout -> HBOBJ 2
+source tape -> HIR -> SIR -> LIR -> A64IR -> allocation/layout -> HBOBJ
 model IR -> RIR -> KIR -> GIR -> PTXIR2 -> PTX
 ```
 
@@ -246,7 +246,7 @@ Existing native dots are reconciled before new native leaves:
 - Formal synchronization and gates: sections 10-12 and 16.6.
 
 The decisive exits are structured control, calls/exceptions, defining semantics,
-wide `ENUM`/`STRUCTURE` values, `HBOBJ 2` AOT, and self-host cutover for native;
+wide `ENUM`/`STRUCTURE` values, `HBOBJ` AOT, and self-host cutover for native;
 SAXPY PTXIR2, elementwise KIR, softmax, MMA, and planner/tuner cutover for GPU.
 Each stable schema ships its manifest/digest, valid and hostile canonical
 fixtures, witness vectors, and the assumptions report for any covered theorem.

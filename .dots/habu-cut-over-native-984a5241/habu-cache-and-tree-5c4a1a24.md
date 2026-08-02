@@ -1,5 +1,5 @@
 ---
-title: Cache and tree-shake HBOBJ 2
+title: Cache and tree-shake HBOBJ
 status: open
 priority: 1
 issue-type: task

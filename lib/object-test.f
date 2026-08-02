@@ -31,7 +31,7 @@ create DATA-BYTES 1 c, 2 c, 16 c,
 
 : EXPECTED$ ( -- ptr u8 n )
    SB-RESET
-   s" HBOBJ" FIELD+ s" 1" LINE
+   s" HBOBJ" LINE
    s" source" FIELD+ HASH$ LINE
    s" target" FIELD+ s" macos-aarch64" LINE
    s" checker" FIELD+ s" checker-effect-v1" LINE
@@ -183,7 +183,7 @@ variable ENTRY-SCRATCH-U
    s" not-a-hash" OBJ:SOURCE! ;
 
 : BAD-RELOC ( -- )
-   s" HBOBJ	1
+   s" HBOBJ
 source	0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 target	macos-aarch64
 checker	checker-effect-v1
@@ -192,7 +192,7 @@ reloc	abs64	nope	PRINT
 " OBJ:LOAD ;
 
 : BAD-SECTION ( -- )
-   s" HBOBJ	1
+   s" HBOBJ
 source	0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 target	macos-aarch64
 checker	checker-effect-v1
@@ -201,7 +201,7 @@ text	00x
 " OBJ:LOAD ;
 
 : BAD-DEF ( -- )
-   s" HBOBJ	1
+   s" HBOBJ
 source	0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 target	macos-aarch64
 checker	checker-effect-v1
@@ -213,11 +213,11 @@ def	WORD	nope	n -- n
    s" " OBJ:LOAD ;
 
 : ONE-LINE-INPUT ( -- )
-   s" HBOBJ	1
+   s" HBOBJ
 " OBJ:LOAD ;
 
 : BAD-MAGIC ( -- )
-   s" BADOBJ	1
+   s" BADOBJ
 " OBJ:LOAD ;
 
 : MISSING-HEADER ( -- )

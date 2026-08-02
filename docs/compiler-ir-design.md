@@ -1009,7 +1009,7 @@ compiler and checker digests
 proof/witness references
 ```
 
-Introduce canonical `HBOBJ 2`. Its proof-critical representation is structured data and canonical bytes. A separate renderer provides readable text. Do not make a textual object parser part of code generation.
+Introduce canonical `HBOBJ`. Its proof-critical representation is structured data and canonical bytes. A separate renderer provides readable text. Do not make a textual object parser part of code generation.
 
 The ELF and Mach-O writers consume this object. AOT capture no longer decodes `BL` instructions or literal stencils.
 
@@ -2099,7 +2099,7 @@ Acceptance:
 Add:
 
 ```text
-HBOBJ 2
+HBOBJ
 symbols
 relocations
 source map

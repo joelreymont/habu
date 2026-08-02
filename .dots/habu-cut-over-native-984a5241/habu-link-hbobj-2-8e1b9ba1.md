@@ -1,5 +1,5 @@
 ---
-title: Link HBOBJ 2 targets
+title: Link HBOBJ targets
 status: open
 priority: 1
 issue-type: task
@@ -8,4 +8,4 @@ blocks:
   - habu-define-canonical-hbobj-c2cd2186
 ---
 
-Full context: Wave 7 requires Mach-O and ELF consumers of validated HBOBJ 2 with explicit code/data addresses and relocations. Acceptance: target legality, relocation ranges/kinds, symbol visibility, source maps, executable protection, and malformed-object negatives pass on macOS/Linux AArch64 fixtures; no instruction decoding.
+Full context: Wave 7 requires Mach-O and ELF consumers of validated HBOBJ with explicit code/data addresses and relocations. Acceptance: target legality, relocation ranges/kinds, symbol visibility, source maps, executable protection, and malformed-object negatives pass on macOS/Linux AArch64 fixtures; no instruction decoding.
