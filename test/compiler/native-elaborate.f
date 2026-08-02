@@ -820,6 +820,115 @@ using NSRC
    BND [: SUMTO-BODY ;] IR-CTX:WITH-CONTEXT
    1 T= 6 T= 3 T= 3 T= 3 T= 6 T= 2 T= 1 T= 7 T= ;
 
+\ `WCOUNT begin dup 0 > while 1- repeat`. Five blocks: the entry, the loop
+\ header, the stub the `while` leaves through, the body, and the block after the
+\ loop. THE POLARITY IS THE WHOLE OF WHAT THIS CASE MEASURES, and it is the
+\ opposite of `until`'s: `while` stays in the loop while its flag is TRUE, so the
+\ ZERO successor is the stub out and the other is the body. Turning the two round
+\ compiles a loop that runs exactly when it should not, and the two ordinals here
+\ say which way they are wired. The stub carries the loop's one live value to the
+\ block after the loop, which takes it as an argument, and the body branches back
+\ to the header carrying the value the next turn reads.
+: WCOUNT-BODY ( IR-CTX:ctx -- n n n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" WCOUNT begin dup 0 > while 1- repeat" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: st:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: bd:IR-ID:ir-block-id :}
+   m f 4 F-BLK-AT {: xt:IR-ID:ir-block-id :}
+   m  m e F-TERM  0 F-SUCC
+   m hd F-ARGS
+   m  m hd F-TERM  F-SUCCS
+   m  m hd F-TERM  0 F-SUCC
+   m  m hd F-TERM  1 F-SUCC
+   m  m st F-TERM  0 F-SUCC
+   m  m st F-TERM  F-INS
+   m  m bd F-TERM  0 F-SUCC
+   m xt F-ARGS ;
+
+: WCOUNT-CASE ( -- )
+   s" a begin-while-repeat loop leaves through the while and goes round through the repeat" T-LABEL
+   BND [: WCOUNT-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 1 T= 1 T= 4 T= 3 T= 2 T= 2 T= 1 T= 1 T= 5 T= ;
+
+\ `PICK2 2dup > if drop else nip then`. Five blocks: the entry, the stub the
+\ `if`'s false path leaves through, the first arm, the second arm, and the join.
+\ THE STUB LANDS IN THE SECOND ARM AND NOT IN THE JOIN, which is the one thing an
+\ `else` changes about the shape an `if` builds, and the ordinal says so.
+\
+\ AND THE JOIN IS ONE VALUE WIDE WHERE THE STRUCTURE OPENED TWO DEEP. With one
+\ arm the join is also reached by the `if`'s own false stub, so an arm has to
+\ leave the stack as it found it; with two, both edges into the join come from
+\ arms, so a structure whose arms each CONSUME a value and leave one - which is
+\ every `max` ever written - is an ordinary structure. The second arm takes the
+\ two values the stub handed it and the join takes the one both arms left.
+: PICK2-BODY ( IR-CTX:ctx -- n n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" PICK2 2dup > if drop else nip then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 2 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 0 F-BLK-AT {: e:IR-ID:ir-block-id :}
+   m f 1 F-BLK-AT {: st:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: a1:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: a2:IR-ID:ir-block-id :}
+   m f 4 F-BLK-AT {: jn:IR-ID:ir-block-id :}
+   m  m e F-TERM  0 F-SUCC
+   m  m e F-TERM  1 F-SUCC
+   m  m st F-TERM  0 F-SUCC
+   m  m st F-TERM  F-INS
+   m a2 F-ARGS
+   m  m a1 F-TERM  0 F-SUCC
+   m  m a2 F-TERM  0 F-SUCC
+   m jn F-ARGS ;
+
+: PICK2-CASE ( -- )
+   s" an else sends the false path into a second arm and both arms into one join" T-LABEL
+   BND [: PICK2-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 4 T= 4 T= 2 T= 2 T= 3 T= 2 T= 1 T= 5 T= ;
+
+\ `TWOW begin dup 0 > while dup 7 <> while 1- repeat`. TWO `while`s in one loop,
+\ which is ordinary Forth and the reason the block after the loop is named
+\ against the `begin` rather than against a `while`: both of them read the one
+\ answer and both of their stubs branch to it, so the block after the loop has
+\ two paths into it and still takes one set of arguments. Seven blocks: the
+\ entry, the header, the first stub, the block between the two tests, the second
+\ stub, the body, and the block after the loop.
+: TWOW-BODY ( IR-CTX:ctx -- n n n n n n n n )
+   {: c:IR-CTX:ctx :}
+   s" TWOW begin dup 0 > while dup 7 <> while 1- repeat" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON {: f:IR-ID:ir-fun-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m f F-BLKS
+   m f 1 F-BLK-AT {: hd:IR-ID:ir-block-id :}
+   m f 2 F-BLK-AT {: s1:IR-ID:ir-block-id :}
+   m f 3 F-BLK-AT {: mid:IR-ID:ir-block-id :}
+   m f 4 F-BLK-AT {: s2:IR-ID:ir-block-id :}
+   m f 5 F-BLK-AT {: bd:IR-ID:ir-block-id :}
+   m f 6 F-BLK-AT {: xt:IR-ID:ir-block-id :}
+   m  m hd F-TERM  0 F-SUCC
+   m  m mid F-TERM  0 F-SUCC
+   m  m mid F-TERM  1 F-SUCC
+   m  m s1 F-TERM  0 F-SUCC
+   m  m s2 F-TERM  0 F-SUCC
+   m  m bd F-TERM  0 F-SUCC
+   m xt F-ARGS ;
+
+: TWOW-CASE ( -- )
+   s" two whiles in one loop leave through one block after it" T-LABEL
+   BND [: TWOW-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 1 T= 6 T= 6 T= 5 T= 4 T= 2 T= 7 T= ;
+
 \ ---- what a broken control structure is refused as ---------------------------
 \ A closer with no opener, a closer that does not match the opener it meets, an
 \ opener left open at the end of the body, and an arm that leaves the stack a
@@ -876,6 +985,114 @@ using NSRC
 : STRAY-INDEX ( -- )
    BND [: STRAY-INDEX-BODY ;] IR-CTX:WITH-CONTEXT ;
 
+\ The seven ways the two mid-structure words can be written wrong. Each one is a
+\ program a Forth compiler would happily assemble into something, and each one is
+\ a different broken invariant of the block construction: a `while` outside any
+\ loop has no exit to name, a `repeat` over a loop no `while` left opens a block
+\ nothing branches to, an `until` over a loop a `while` DID leave strands the
+\ values that `while` handed over, a loop body that does not leave the stack as
+\ the header takes it hands the back edge the wrong number, two `while`s that
+\ disagree about how deep they left hand one block two different widths, an
+\ `else` outside any `if` has no first arm to end, and two `else`s over one `if`
+\ would open the second arm twice.
+: STRAYW-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" STRAYW dup while drop" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: STRAYW ( -- )
+   BND [: STRAYW-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: NOWHILE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" NOWHILE begin 1- repeat" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: NOWHILE ( -- )
+   BND [: NOWHILE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: WUNTIL-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" WUNTIL begin dup 0 > while dup 0 <= until" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: WUNTIL ( -- )
+   BND [: WUNTIL-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: WDRIFT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" WDRIFT begin dup 0 > while 1- 7 repeat" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: WDRIFT ( -- )
+   BND [: WDRIFT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: WWIDTH-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" WWIDTH begin dup 0 > while 7 over 0 <> while drop 1- repeat" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: WWIDTH ( -- )
+   BND [: WWIDTH-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: STRAYE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" STRAYE 1 else 2 then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 0 1 NELAB:COLON drop ;
+
+: STRAYE ( -- )
+   BND [: STRAYE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: TWOE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" TWOE dup if 1 else 2 else 3 then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: TWOE ( -- )
+   BND [: TWOE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ Two arms that leave different depths hand the same join different numbers of
+\ values, which is the same refusal a one-armed `if` gets for changing the depth
+\ at all - and it is the check that says the join's width is derived from the
+\ first arm and then ENFORCED on the second, rather than taken from whichever
+\ arm happened to close last.
+: ELOPSIDED-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" ELOPSIDED dup if 1 else 2 3 then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: ELOPSIDED ( -- )
+   BND [: ELOPSIDED-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+\ `exit` ends the block it stands in, so an `else` after one would close a block
+\ that is not open. It is refused by name; dot habu-let-exit-stand-d74f14ec
+\ carries the capability.
+: EXITELSE-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   s" EXITELSE dup if drop 1 exit else 2 then" TEXT!
+   c SEALED
+   {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena v:IR-ARENA:view :}
+   c b v p r 1 1 NELAB:COLON drop ;
+
+: EXITELSE ( -- )
+   BND [: EXITELSE-BODY ;] IR-CTX:WITH-CONTEXT ;
+
 \ A refused elaboration leaves its context standing, so each of these gets an
 \ enclosing context of its own in RUN, one case at a time, exactly as every
 \ other refusal in this suite does.
@@ -898,6 +1115,42 @@ using NSRC
 : STRAY-INDEX-CASE ( -- )
    s" a loop index outside any counted loop is refused" T-LABEL
    [: STRAY-INDEX ;] E-NELAB-CTRL TTHROWSQ ;
+
+: STRAYW-CASE ( -- )
+   s" a while outside any loop is refused" T-LABEL
+   [: STRAYW ;] E-NELAB-CTRL TTHROWSQ ;
+
+: NOWHILE-CASE ( -- )
+   s" a repeat closing a loop no while left is refused" T-LABEL
+   [: NOWHILE ;] E-NELAB-CTRL TTHROWSQ ;
+
+: WUNTIL-CASE ( -- )
+   s" an until closing a loop a while left is refused" T-LABEL
+   [: WUNTIL ;] E-NELAB-CTRL TTHROWSQ ;
+
+: WDRIFT-CASE ( -- )
+   s" a while loop whose body does not leave the stack as it found it is refused" T-LABEL
+   [: WDRIFT ;] E-NELAB-JOIN TTHROWSQ ;
+
+: WWIDTH-CASE ( -- )
+   s" two whiles that leave one loop at different depths are refused" T-LABEL
+   [: WWIDTH ;] E-NELAB-JOIN TTHROWSQ ;
+
+: STRAYE-CASE ( -- )
+   s" an else outside any if is refused" T-LABEL
+   [: STRAYE ;] E-NELAB-CTRL TTHROWSQ ;
+
+: TWOE-CASE ( -- )
+   s" a second else over one if is refused" T-LABEL
+   [: TWOE ;] E-NELAB-CTRL TTHROWSQ ;
+
+: ELOPSIDED-CASE ( -- )
+   s" two arms that leave different depths are refused" T-LABEL
+   [: ELOPSIDED ;] E-NELAB-JOIN TTHROWSQ ;
+
+: EXITELSE-CASE ( -- )
+   s" an else after an exit is refused" T-LABEL
+   [: EXITELSE ;] E-NELAB-CTRL TTHROWSQ ;
 
 \ ---- a typed locals frame ----------------------------------------------------
 \ The corpus's LERP, written as the tape carries it: `{:`, one `name:type` token
@@ -1046,11 +1299,23 @@ public
    BND [: drop NESTED-CASE ;] IR-CTX:WITH-CONTEXT
    COUNTDOWN-CASE
    SUMTO-CASE
+   WCOUNT-CASE
+   PICK2-CASE
+   TWOW-CASE
    BND [: drop ORPHAN-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop CROSSED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop UNCLOSED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop LOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
    BND [: drop STRAY-INDEX-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop STRAYW-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop NOWHILE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop WUNTIL-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop WDRIFT-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop WWIDTH-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop STRAYE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop TWOE-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop ELOPSIDED-CASE ;] IR-CTX:WITH-CONTEXT
+   BND [: drop EXITELSE-CASE ;] IR-CTX:WITH-CONTEXT
    SQUARE-CASE
    INC-CASE
    BUMP-CASE

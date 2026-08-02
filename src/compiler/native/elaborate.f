@@ -647,6 +647,20 @@ variable EXIT-PENDING                \ an `exit` closed the arm; only its `then`
 \ header they go back to; `head` is the counted loop's header; and the index and
 \ the limit are the counted loop's own two values, which live here rather than on
 \ the value vector because Forth's loop parameters are not on the data stack.
+\
+\ FOUR MORE FIELDS, ALL FOR THE WORDS THAT STAND IN THE MIDDLE OF A STRUCTURE.
+\ `arm` is what an `else` recorded, `-1` before one is met; `nw` is how many
+\ `while`s the open loop has met; `xd` is how deep the vector was when the first
+\ of them left the loop, which is what its exit block takes; and `exit` is the
+\ ordinal of that exit block. They are frame fields rather than single variables
+\ because a structure nests inside another one and each has its own answer.
+\
+\ TWO OF THEM ANSWER DIFFERENTLY IN THE TWO WALKS, WHICH IS THE CONVENTION `join`
+\ ALREADY KEEPS. During the skeleton `join` holds the opener's TOKEN index, and
+\ `arm` holds the `else`'s token index, because a token index is what a forward
+\ ordinal has to be written against; during the build both hold block ordinals
+\ and `arm` holds the depth the first arm left. Either way each field means "what
+\ this walk has to remember about that word", and `-1` means it has not met one.
 32 constant CMAX
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -655,6 +669,10 @@ CMAX TYPED-BUFFER CS-KIND HIR:ctrl
 create CS-DEPTH CMAX cells allot
 create CS-JOIN CMAX cells allot
 create CS-HEAD CMAX cells allot
+create CS-ARM CMAX cells allot
+create CS-NW CMAX cells allot
+create CS-XD CMAX cells allot
+create CS-EXIT CMAX cells allot
 CMAX TYPED-BUFFER CS-IDX IR-ID:ir-value-id
 CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 
@@ -667,6 +685,11 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-TOP ( -- n )
    CS-N @ 1- CS-AT ;
 
+\ Opening a structure clears every field the words inside it may write, so a
+\ frame never answers with what the structure that stood at this depth before it
+\ left behind. `head`, the index and the limit are not cleared here because
+\ `?do` writes all three before its own frame is read, and clearing them would
+\ need a value id this file has no way to mint.
 : CS-PUSH ( HIR:ctrl n n -- )
    {: k:HIR:ctrl d:n j:n :}
    CS-N @ CMAX >= if E-NELAB-BLOCK throw then
@@ -674,6 +697,10 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
    k t CS-KIND !
    d t cells CS-DEPTH + !
    j t cells CS-JOIN + !
+   -1 t cells CS-ARM + !
+   0 t cells CS-NW + !
+   -1 t cells CS-XD + !
+   -1 t cells CS-EXIT + !
    t 1+ CS-N ! ;
 
 : CS-POP ( -- )
@@ -691,6 +718,33 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 : CS-DEPTH@ ( n -- n )    cells CS-DEPTH + @ ;
 : CS-JOIN@ ( n -- n )     cells CS-JOIN + @ ;
 : CS-HEAD@ ( n -- n )     cells CS-HEAD + @ ;
+: CS-ARM@ ( n -- n )      cells CS-ARM + @ ;
+: CS-NW@ ( n -- n )       cells CS-NW + @ ;
+: CS-XD@ ( n -- n )       cells CS-XD + @ ;
+: CS-EXIT@ ( n -- n )     cells CS-EXIT + @ ;
+
+: CS-JOIN! ( n n -- )     cells CS-JOIN + ! ;
+: CS-ARM! ( n n -- )      cells CS-ARM + ! ;
+: CS-XD! ( n n -- )       cells CS-XD + ! ;
+: CS-EXIT! ( n n -- )     cells CS-EXIT + ! ;
+
+\ One more `while` has been met by the loop this frame is.
+: CS-WHILE+ ( n -- )
+   {: t:n :}
+   t CS-NW@ 1+  t cells CS-NW + ! ;
+
+\ Whether an `else` has been met, which is the one question both walks ask of
+\ `arm` whatever each of them stores in it.
+: CS-ELSE? ( n -- bool )
+   CS-ARM@ 0 >= ;
+
+\ What `then` still owes an answer for. `else` answered the `if`'s forward
+\ branch when it opened the second arm, so what is left unanswered is the branch
+\ the `else` itself made; with no `else` it is still the `if`'s.
+: CS-PENDING ( n -- n )
+   {: t:n :}
+   t CS-ELSE? if t CS-ARM@ exit then
+   t CS-JOIN@ ;
 
 \ ---- reading the definition frame --------------------------------------------
 : NAME-CK ( IR-ARENA:view n -- )
@@ -823,11 +877,22 @@ CMAX TYPED-BUFFER CS-LIM IR-ID:ir-value-id
 \ per opener: the ordinal of the block its forward branch goes to.
 \
 \ THE RULES IT COUNTS WITH ARE THE ONES BELOW, AND THEY ARE CHECKED. `if` makes
-\ two blocks, `then` one, `begin` one, `until` two, `?do` three and `loop` three;
-\ everything else makes none. Getting one of them wrong here would put a branch
-\ somewhere else, so every closer compares the ordinal the build really reached
-\ against the one the opener branched to, and a disagreement is refused by name.
-\ Two derivations of one number, and they have to agree.
+\ two blocks, `else` one, `then` one, `begin` one, `while` two, `until` two,
+\ `repeat` one, `?do` three and `loop` three; everything else makes none. Getting
+\ one of them wrong here would put a branch somewhere else, so every closer
+\ compares the ordinal the build really reached against the one the opener
+\ branched to, and a disagreement is refused by name. Two derivations of one
+\ number, and they have to agree.
+\
+\ AND ONE OPENER MAY NEED ITS ANSWER WRITTEN BY A WORD THAT IS NOT ITS CLOSER.
+\ The forward branch `if` makes goes to the block its false path lands in, and
+\ that is the join only when there is no `else`: with one, it is the else arm,
+\ which `else` opens. So the answer for the `if` is written by whichever of the
+\ two the walk meets first, and `then` then writes the join against the `else`'s
+\ own token. A loop is the same shape read the other way round: `while` branches
+\ forward to the block after the loop, which `repeat` opens, so the answer is
+\ written against the `begin`'s token and every `while` of that loop reads the
+\ one row - which is what lets a loop have more than one of them.
 256 constant TMAX                    \ body tokens one definition may have
 
 here CELL 1- and CELL swap - CELL 1- and allot
@@ -836,8 +901,23 @@ create JOIN-TAB TMAX cells allot
 : TOK-CK ( n -- n )
    dup 0 < over TMAX >= or if E-NELAB-BLOCK throw then ;
 
+\ Every row starts as "no answer", so a token the skeleton wrote nothing against
+\ reads back as one rather than as whatever the definition before this one left
+\ in the same row. `begin` reads its row without knowing yet whether a `repeat`
+\ will write one, and that is exactly the question the sentinel answers.
+: JOIN-RESET ( -- )
+   TMAX 0 ?do
+      -1 i cells JOIN-TAB + !
+   loop ;
+
 : JOIN-OF ( n -- n )
    TOK-CK cells JOIN-TAB + @ ;
+
+\ The forward ordinal a branch is about to name. A token the skeleton recorded
+\ no answer for is the two walks disagreeing about what the body contains, and
+\ it is refused rather than branched to.
+: JOIN-CK ( n -- n )
+   dup 0 < if E-NELAB-CTRL throw then ;
 
 : JOIN! ( n n -- )
    {: ix:n j:n :}
@@ -850,6 +930,66 @@ create JOIN-TAB TMAX cells allot
    {: k:HIR:ctrl ix:n :}
    k 0 ix CS-PUSH ;
 
+\ `else`: the true arm ends here and the else arm starts, so one block closes and
+\ the block that opens is the one the `if`'s false path was branching to. Its
+\ ordinal is therefore the answer for the `if`'s token, and the join's answer is
+\ left for `then` to write against this token.
+\
+\ AN ARM THAT ALREADY LEFT THE WORD HAS NOTHING TO CLOSE HERE, AND IS REFUSED.
+\ `exit` ends the block it is in, so `if … exit else` would have `else` close a
+\ block that is not open. It is the same rule this file already refuses an `exit`
+\ anywhere but the last position of an arm for, and dot
+\ habu-let-exit-stand-d74f14ec carries the capability.
+: SK-ELSE ( n -- )
+   {: ix:n :}
+   HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
+   t CS-ELSE? if E-NELAB-CTRL throw then
+   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
+   NB @ 1+ NB !
+   t CS-JOIN@ NB @ JOIN!
+   ix t CS-ARM! ;
+
+\ `then`: the arm the walk is in ends at the join, and the join opens. Which
+\ token the answer is written against is the one whose forward branch is still
+\ unanswered - the `else`'s when there is one, and the `if`'s when there is not.
+: SK-CLOSE-IF ( -- )
+   HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
+   t CS-PENDING {: key:n :}
+   EXIT-PENDING @ 0= if NB @ 1+ NB ! then
+   0 EXIT-PENDING !
+   key NB @ JOIN!
+   CS-POP ;
+
+\ `while`: the test block ends here, its false edge leaves the loop through a
+\ stub, and the body opens - the same two blocks `if` makes, for the same reason.
+\ The loop it leaves is recorded, because that is what tells `until` it is the
+\ wrong closer for this loop and `repeat` that it is the right one.
+: SK-WHILE ( -- )
+   HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   EXIT-PENDING @ 0<> if E-NELAB-CTRL throw then
+   t CS-WHILE+
+   NB @ 2 + NB ! ;
+
+\ `repeat`: the body ends with the branch back to the header, and the block that
+\ opens after it is the one every `while` of this loop left to. Its ordinal is
+\ the answer for the `begin`'s token. A loop no `while` ever left cannot be
+\ closed this way: the block after it would have no path into it at all.
+: SK-REPEAT ( -- )
+   HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   t CS-NW@ 0= if E-NELAB-CTRL throw then
+   NB @ 1+ NB !
+   t CS-JOIN@ NB @ JOIN!
+   CS-POP ;
+
+\ `until`: the latch and the exit, as before - and only for a loop that no
+\ `while` has left, because the block a `while` branched to is opened by
+\ `repeat` and `until` opens no such block.
+: SK-UNTIL ( -- )
+   HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   t CS-NW@ 0<> if E-NELAB-CTRL throw then
+   NB @ 2 + NB !
+   CS-POP ;
+
 : SK-STEP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE-MODE:COMPILING MODE-CK
@@ -859,21 +999,20 @@ create JOIN-TAB TMAX cells allot
    HIR-MEANING:CONTROL HIR-MEANING:EQ 0= if exit then
    r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
    MATCH HIR:ctrl
-      open-if     OF HIR-CTRL:OPEN-IF ix SK-PUSH  NB @ 2 + NB ! ENDOF
-      close-if    OF HIR-CTRL:OPEN-IF CS-OPENER-CK CS-JOIN@
-                     EXIT-PENDING @ 0= if NB @ 1+ NB ! then
-                     0 EXIT-PENDING !
-                     NB @ JOIN!  CS-POP ENDOF
-      open-begin  OF HIR-CTRL:OPEN-BEGIN ix SK-PUSH  NB @ 1+ NB ! ENDOF
-      close-until OF HIR-CTRL:OPEN-BEGIN CS-OPENER-CK drop
-                     NB @ 2 + NB !  CS-POP ENDOF
-      open-do     OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 3 + NB ! ENDOF
-      close-loop  OF HIR-CTRL:OPEN-DO CS-OPENER-CK CS-JOIN@
-                     NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
-      index       OF ENDOF
-      drop-loop   OF ENDOF
-      early-exit  OF NB @ 1+ NB !  1 EXIT-USED !  1 EXIT-PENDING ! ENDOF
-      self-call   OF ENDOF
+      open-if      OF HIR-CTRL:OPEN-IF ix SK-PUSH  NB @ 2 + NB ! ENDOF
+      mid-else     OF ix SK-ELSE ENDOF
+      close-if     OF SK-CLOSE-IF ENDOF
+      open-begin   OF HIR-CTRL:OPEN-BEGIN ix SK-PUSH  NB @ 1+ NB ! ENDOF
+      mid-while    OF SK-WHILE ENDOF
+      close-until  OF SK-UNTIL ENDOF
+      close-repeat OF SK-REPEAT ENDOF
+      open-do      OF HIR-CTRL:OPEN-DO ix SK-PUSH  NB @ 3 + NB ! ENDOF
+      close-loop   OF HIR-CTRL:OPEN-DO CS-OPENER-CK CS-JOIN@
+                      NB @ 3 + NB !  NB @ JOIN!  CS-POP ENDOF
+      index        OF ENDOF
+      drop-loop    OF ENDOF
+      early-exit   OF NB @ 1+ NB !  1 EXIT-USED !  1 EXIT-PENDING ! ENDOF
+      self-call    OF ENDOF
    ;MATCH ;
 
 \ Walk the body once, counting. A structure left open at the end of the body is
@@ -883,6 +1022,7 @@ create JOIN-TAB TMAX cells allot
    {: r:IR-ARENA:arena n:n :}
    n TMAX > if E-NELAB-BLOCK throw then
    0 NB !
+   JOIN-RESET
    CS-RESET
    EXIT-RESET
    n 1 ?do
@@ -897,7 +1037,7 @@ create JOIN-TAB TMAX cells allot
    CS-RESET ;
 
 \ ---- what each structured control word builds --------------------------------
-\ Each of the six below is one block construction, written out once. They share
+\ Each of the nine below is one block construction, written out once. They share
 \ three shapes: a two-way branch whose successors carry nothing, a stub block
 \ that hands the live values on, and a join block that takes them as arguments.
 \ Nothing here decides what the program computes; it decides which blocks the
@@ -913,52 +1053,147 @@ create JOIN-TAB TMAX cells allot
 
 \ `if` ( flag -- ): the flag decides which of two paths runs, and both of them
 \ end at the join. The false path is a stub, because the two-way branch carries
-\ no values and the join needs them.
+\ no values and the block it lands in needs them. Where it lands is the join when
+\ the structure has one arm and the second arm when it has two; the skeleton
+\ decided which, so this reads one ordinal either way.
 : DO-OPEN-IF ( n -- )
    {: ix:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
    NB @ {: c:n :}
-   ix JOIN-OF {: j:n :}
+   ix JOIN-OF JOIN-CK {: j:n :}
    HIR-CTRL:OPEN-IF  VN @ 1-  j  CS-PUSH
    ix  c 1+  c 2 +  TERM-BRZ
    ix j STUB
    ix OPEN-PLAIN ;
 
-\ `then`: the true path reaches the join too, and the join takes as many
-\ arguments as the vector was deep when the structure opened. An arm that left
-\ the stack a different depth is refused here: the two paths would be handing the
-\ same block different numbers of values.
+\ `else`: the first arm is over and the second one starts. The block that opens
+\ is the one the `if`'s false stub already branched to, and it takes the values
+\ the stub handed it - the vector as the `if` left it, which is what the frame's
+\ depth records. The first arm ends by branching to the join, so from here on the
+\ frame's join is that block and not the second arm.
+\
+\ WHAT THE JOIN'S WIDTH IS ONCE THERE ARE TWO REAL ARMS. With one arm the join is
+\ also reached by the `if`'s own false stub, so the arm has to leave the vector
+\ exactly as the `if` found it. With two, no edge into the join comes from the
+\ `if` at all: both come from arms, so they only have to agree with EACH OTHER,
+\ and `a b > if a else b then` - which leaves one value where the `if` found none
+\ - is an ordinary structure rather than a refusal. The width is therefore what
+\ the first arm left, recorded here for `then` to hold the second arm to.
+: DO-ELSE ( n -- )
+   {: ix:n :}
+   HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
+   t CS-ELSE? if E-NELAB-CTRL throw then
+   t CS-DEPTH@ {: d:n :}
+   t CS-JOIN@ {: e:n :}
+   ix JOIN-OF JOIN-CK {: j:n :}
+   VN @ t CS-ARM!
+   ix j TERM-BR
+   NB @ e <> if E-NELAB-CTRL throw then
+   j t CS-JOIN!
+   ix d OPEN-ARGS ;
+
+\ `then`: the arm the walk is in reaches the join too, and the join takes as many
+\ arguments as every edge into it carries. An arm that left the stack a different
+\ depth is refused here: the two paths would be handing the same block different
+\ numbers of values.
+: DO-JOIN-WIDTH ( n -- n )
+   {: t:n :}
+   t CS-ELSE? if t CS-ARM@ exit then
+   t CS-DEPTH@ ;
+
 : DO-CLOSE-IF ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-IF CS-OPENER-CK {: t:n :}
-   t CS-DEPTH@ {: d:n :}
+   t DO-JOIN-WIDTH {: w:n :}
    t CS-JOIN@ {: j:n :}
    EXIT-PENDING @ 0<> if
       0 EXIT-PENDING !
    else
-      VN @ d <> if E-NELAB-JOIN throw then
+      VN @ w <> if E-NELAB-JOIN throw then
       ix j TERM-BR
    then
    NB @ j <> if E-NELAB-CTRL throw then
-   ix d OPEN-ARGS
+   ix w OPEN-ARGS
    CS-POP ;
 
 \ `begin`: the loop header is a block of its own, because control reaches it
 \ twice - once from here and once from the latch - and the values it holds are
 \ different each time. That is exactly what a block argument is for.
+\
+\ THE BLOCK AFTER THE LOOP IS READ HERE BECAUSE A `while` INSIDE IT HAS TO BRANCH
+\ TO ONE. The skeleton wrote its ordinal against this token when a `repeat`
+\ closed the loop, and nothing at all when an `until` did - so the frame carries
+\ either a real ordinal or the sentinel that says this loop has no such block,
+\ and a `while` that met the sentinel is refused rather than pointed anywhere.
 : DO-OPEN-BEGIN ( n -- )
    {: ix:n :}
    NB @ 1+ {: h:n :}
    VN @ {: d:n :}
    HIR-CTRL:OPEN-BEGIN d h CS-PUSH
+   ix JOIN-OF CS-TOP CS-EXIT!
    ix h TERM-BR
    ix d OPEN-ARGS ;
 
+\ `while` ( flag -- ): stay in the loop while the flag is true and leave it when
+\ it is false. That is one two-way branch and the two blocks `if` builds for the
+\ same shape: the false edge goes through a stub to the block after the loop,
+\ because a two-way branch carries no values and that block takes them, and the
+\ true edge falls into the rest of the body.
+\
+\ THE POLARITY IS THE ONE THING THIS WORD HAS TO GET RIGHT, AND IT IS THE
+\ OPPOSITE OF `until`'s. TERM-BRZ goes to its FIRST successor when the flag is
+\ ZERO. `while` LEAVES on zero, so the first successor is the stub out of the
+\ loop and the second is the body; `until` leaves on true, so its first successor
+\ is the latch back to the header. Turning these two round compiles a loop that
+\ runs exactly when it should not.
+\
+\ EVERY `while` OF ONE LOOP LEAVES THROUGH THE SAME BLOCK, so they all have to
+\ hand it the same number of values. The first one to run states the width and
+\ the rest are held to it - the same rule two arms of an `if` meet at their join,
+\ for the same reason.
+: DO-WHILE ( n -- )
+   {: ix:n :}
+   HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   t CS-EXIT@ JOIN-CK {: j:n :}
+   VN @ 1 < if E-NELAB-UNDER throw then
+   t CS-NW@ 0<> if
+      VN @ 1- t CS-XD@ <> if E-NELAB-JOIN throw then
+   then
+   NB @ {: c:n :}
+   ix  c 1+  c 2 +  TERM-BRZ
+   VN @ t CS-XD!
+   t CS-WHILE+
+   ix j STUB
+   ix OPEN-PLAIN ;
+
+\ `repeat`: the body ends by branching back to the header, and the block that
+\ opens after it is the one every `while` of this loop left to - so it takes the
+\ values they handed it. The back edge carries the loop's own live values, which
+\ have to be the ones the header takes, and a body that left the vector some
+\ other depth is refused here.
+: DO-CLOSE-REPEAT ( n -- )
+   {: ix:n :}
+   HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   t CS-NW@ 0= if E-NELAB-CTRL throw then
+   t CS-DEPTH@ {: d:n :}
+   t CS-JOIN@ {: h:n :}
+   t CS-EXIT@ JOIN-CK {: j:n :}
+   t CS-XD@ {: xd:n :}
+   VN @ d <> if E-NELAB-JOIN throw then
+   ix h TERM-BR
+   NB @ j <> if E-NELAB-CTRL throw then
+   ix xd OPEN-ARGS
+   CS-POP ;
+
 \ `until` ( flag -- ): leave when the flag is true, go round when it is false.
-\ The latch is a stub, for the same reason the false arm of `if` is one.
+\ The latch is a stub, for the same reason the false arm of `if` is one. It
+\ closes a loop no `while` ever left: the block a `while` branches out to is one
+\ `repeat` opens, and this word opens no such block, so the values that `while`
+\ handed over would arrive nowhere.
 : DO-CLOSE-UNTIL ( n -- )
    {: ix:n :}
    HIR-CTRL:OPEN-BEGIN CS-OPENER-CK {: t:n :}
+   t CS-NW@ 0<> if E-NELAB-CTRL throw then
    t CS-DEPTH@ {: d:n :}
    t CS-JOIN@ {: h:n :}
    VN @ 1 < if E-NELAB-UNDER throw then
@@ -983,7 +1218,7 @@ create JOIN-TAB TMAX cells allot
    ix HIR-OPCODE:SUB EMIT-OPCODE
    VN @ 1- {: d:n :}
    NB @ {: c:n :}
-   ix JOIN-OF {: j:n :}
+   ix JOIN-OF JOIN-CK {: j:n :}
    HIR-CTRL:OPEN-DO d j CS-PUSH
    c 3 + CS-TOP cells CS-HEAD + !
    st CS-TOP CS-IDX !
@@ -1214,16 +1449,19 @@ create JOIN-TAB TMAX cells allot
    {: r:IR-ARENA:arena ix:n :}
    r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:CTRL@
    MATCH HIR:ctrl
-      open-if     OF ix DO-OPEN-IF ENDOF
-      close-if    OF ix DO-CLOSE-IF ENDOF
-      open-begin  OF ix DO-OPEN-BEGIN ENDOF
-      close-until OF ix DO-CLOSE-UNTIL ENDOF
-      open-do     OF ix DO-OPEN-DO ENDOF
-      close-loop  OF ix DO-CLOSE-LOOP ENDOF
-      index       OF DO-INDEX ENDOF
-      drop-loop   OF DO-UNLOOP ENDOF
-      early-exit  OF ix DO-EXIT ENDOF
-      self-call   OF ix DO-SELF-CALL ENDOF
+      open-if      OF ix DO-OPEN-IF ENDOF
+      mid-else     OF ix DO-ELSE ENDOF
+      close-if     OF ix DO-CLOSE-IF ENDOF
+      open-begin   OF ix DO-OPEN-BEGIN ENDOF
+      mid-while    OF ix DO-WHILE ENDOF
+      close-until  OF ix DO-CLOSE-UNTIL ENDOF
+      close-repeat OF ix DO-CLOSE-REPEAT ENDOF
+      open-do      OF ix DO-OPEN-DO ENDOF
+      close-loop   OF ix DO-CLOSE-LOOP ENDOF
+      index        OF DO-INDEX ENDOF
+      drop-loop    OF DO-UNLOOP ENDOF
+      early-exit   OF ix DO-EXIT ENDOF
+      self-call    OF ix DO-SELF-CALL ENDOF
    ;MATCH ;
 
 \ ---- the walk ----------------------------------------------------------------

@@ -966,8 +966,8 @@ public
 \ in is the assembler's.
 -8500 constant E-A64IR-COND     \ a condition code the compare form cannot carry: outside the four-bit field the conditional forms encode it in
 -8501 constant E-HIR-CONTROL    \ a source word read as a control word when its row models something else, or a stored control code outside this dialect's vocabulary
--8502 constant E-NELAB-CTRL     \ a control structure the elaborator cannot close: a closer with no opener, a closer that does not match the opener it meets, or a body that ends with a structure still open
--8503 constant E-NELAB-JOIN     \ two paths into one join that do not agree: arms leaving different numbers of values on the compile-time value stack, or a loop body that does not leave the stack as it found it
+-8502 constant E-NELAB-CTRL     \ a control structure the elaborator cannot close: a closer with no opener, a closer that does not match the opener it meets, a word that stands in the middle of a structure with no such structure open, a second one of those over one structure, a `while` after a word that already left the definition, a loop closed by a word that does not open the block its `while`s branch out to, or a body that ends with a structure still open
+-8503 constant E-NELAB-JOIN     \ two paths into one join that do not agree: arms leaving different numbers of values on the compile-time value stack, two `while`s leaving one loop at different depths, or a loop body that does not leave the stack as its header takes it
 -8505 constant E-A64EMIT-BLOCK  \ a branch whose successor names no block of the function this emission laid out
 -8506 constant E-A64EMIT-REACH  \ a branch whose displacement does not fit the field its form encodes it in
 -8504 constant E-NELAB-BLOCK    \ more blocks or more open control structures in one definition than the elaborator's tables hold

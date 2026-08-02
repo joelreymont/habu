@@ -253,16 +253,19 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
 \ cannot decode as some other control word.
 : CTRL-CODE ( HIR:ctrl -- n )
    MATCH ctrl
-      open-if     OF 0 ENDOF
-      close-if    OF 1 ENDOF
-      open-begin  OF 2 ENDOF
-      close-until OF 3 ENDOF
-      open-do     OF 4 ENDOF
-      close-loop  OF 5 ENDOF
-      index       OF 6 ENDOF
-      drop-loop   OF 7 ENDOF
-      early-exit  OF 8 ENDOF
-      self-call   OF 9 ENDOF
+      open-if      OF 0 ENDOF
+      close-if     OF 1 ENDOF
+      open-begin   OF 2 ENDOF
+      close-until  OF 3 ENDOF
+      open-do      OF 4 ENDOF
+      close-loop   OF 5 ENDOF
+      index        OF 6 ENDOF
+      drop-loop    OF 7 ENDOF
+      early-exit   OF 8 ENDOF
+      self-call    OF 9 ENDOF
+      mid-while    OF 10 ENDOF
+      close-repeat OF 11 ENDOF
+      mid-else     OF 12 ENDOF
    ;MATCH ;
 
 : N>CTRL ( n -- HIR:ctrl )
@@ -277,6 +280,9 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       7 of HIR-CTRL:DROP-LOOP endof
       8 of HIR-CTRL:EARLY-EXIT endof
       9 of HIR-CTRL:SELF-CALL endof
+      10 of HIR-CTRL:MID-WHILE endof
+      11 of HIR-CTRL:CLOSE-REPEAT endof
+      12 of HIR-CTRL:MID-ELSE endof
       E-HIR-CONTROL throw
    endcase ;
 
@@ -870,7 +876,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ `over`, one for `nip`, three for `rot` and none for `2drop`. A `{: … :}` group
 \ adds two words and no picks: its halves stage nothing and the names between
 \ them are the program's, so they never become rows of this table.
-44 constant WORDS
+47 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -943,11 +949,18 @@ private
    c b r c b s" c@" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BLOAD BDECLARE-OP
    c b r c b s" c!" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:BSTORE BDECLARE-OP ;
 
-\ The structured control words. Three pairs, the loop index, the two words that
-\ leave a structure, and `RECURSE`; nothing else of Habu's control vocabulary is
-\ declared, because nothing else has a block construction in
-\ src/compiler/native/elaborate.f yet, and a word declared here without one would
-\ be a promise rather than a model.
+\ The structured control words. Three structures, the two words that stand in
+\ the middle of one, the loop index, the two words that leave a structure, and
+\ `RECURSE`; nothing else of Habu's control vocabulary is declared, because
+\ nothing else has a block construction in src/compiler/native/elaborate.f yet,
+\ and a word declared here without one would be a promise rather than a model.
+\
+\ `begin` HAS TWO CLOSERS, WHICH IS THE SOURCE LANGUAGE'S SHAPE AND NOT A
+\ CHOICE MADE HERE. `begin … until` goes round while its test is false and
+\ `begin … while … repeat` goes round while its test is true and leaves through
+\ the `while`; both open with the same word, so the row for `begin` says only
+\ that a loop opens and the elaborator's control stack learns which closer it
+\ met. `else` is the same kind of fact for `if`.
 \
 \ `RECURSE` IS SPELLED IN UPPER CASE, WHICH IS NOT AN EXCEPTION TO THE RULE ABOVE.
 \ The rule is that this table interns each word exactly as `docs/forth.md` spells
@@ -958,9 +971,12 @@ private
 : DEF-CONTROL ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
    {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
    c b r c b s" if" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-IF BDECLARE-CONTROL
+   c b r c b s" else" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MID-ELSE BDECLARE-CONTROL
    c b r c b s" then" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-IF BDECLARE-CONTROL
    c b r c b s" begin" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-BEGIN BDECLARE-CONTROL
+   c b r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-CTRL:MID-WHILE BDECLARE-CONTROL
    c b r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-UNTIL BDECLARE-CONTROL
+   c b r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-REPEAT BDECLARE-CONTROL
    c b r c b s" ?do" IR-BUILD:INTERN-SYMBOL HIR-CTRL:OPEN-DO BDECLARE-CONTROL
    c b r c b s" loop" IR-BUILD:INTERN-SYMBOL HIR-CTRL:CLOSE-LOOP BDECLARE-CONTROL
    c b r c b s" i" IR-BUILD:INTERN-SYMBOL HIR-CTRL:INDEX BDECLARE-CONTROL

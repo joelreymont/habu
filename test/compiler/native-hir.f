@@ -416,7 +416,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 44 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 47 T= ;
 
 \ The nine words the comparison and bitwise vocabulary added, each read back off
 \ a real model. `>` binds to hir.gt and NOT to hir.lt: the row says which
@@ -439,6 +439,38 @@ private
    s" the comparison and bitwise words bind to their own relations" T-LABEL
    BND [: OPS2-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ The three control words the `while`/`repeat` and `else` vocabulary added, read
+\ back off a real model beside the two they stand next to. Each one has a
+\ neighbour it could plausibly have been declared as, and the row is what tells
+\ them apart: `while` is the middle of a loop and NOT the closer `until` is,
+\ `repeat` is a second closer for `begin` and NOT a second opener, and `else` is
+\ the middle of an `if` and NOT the closer `then` is. A registration that bound
+\ any of the three to its neighbour reads back here as that neighbour.
+: CTRL-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
+      HIR-CTRL:MID-WHILE HIR-CTRL:EQ
+   r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
+      HIR-CTRL:CLOSE-REPEAT HIR-CTRL:EQ
+   r c b s" else" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
+      HIR-CTRL:MID-ELSE HIR-CTRL:EQ
+   r c b s" until" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
+      HIR-CTRL:CLOSE-UNTIL HIR-CTRL:EQ
+   r c b s" begin" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
+      HIR-CTRL:OPEN-BEGIN HIR-CTRL:EQ
+   r c b s" then" IR-BUILD:INTERN-SYMBOL HIR-WORD:CTRL@
+      HIR-CTRL:CLOSE-IF HIR-CTRL:EQ
+   r c b s" while" IR-BUILD:INTERN-SYMBOL HIR-WORD:MEANING@
+      HIR-MEANING:CONTROL HIR-MEANING:EQ
+   r c b s" repeat" IR-BUILD:INTERN-SYMBOL HIR-WORD:MEANING@
+      HIR-MEANING:CONTROL HIR-MEANING:EQ ;
+
+: CTRL-CASE ( -- )
+   s" while, repeat and else bind to their own control actions" T-LABEL
+   BND [: CTRL-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
 
 \ `0=` and `cells` are a literal and an operation, exactly as `1-` is, and the
 \ constant each carries is what makes it the word it is: `0=` is an equality
@@ -744,8 +776,8 @@ variable BC-OUT
 
 \ Declaration order is observable, which is what an inventory walks: the four
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
-\ words, the four step words, the four memory words, the ten control words and
-\ the two halves of a locals group, with the renames at the end of the walk.
+\ words, the four step words, the four memory words, the thirteen control words
+\ and the two halves of a locals group, with the renames at the end of the walk.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -754,11 +786,11 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 36 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 39 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 41 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 44 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 43 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 46 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1615,6 +1647,7 @@ variable BC-OUT
    drop
    OPS-CASE
    OPS2-CASE
+   CTRL-CASE
    STEP2-CASE
    DROP2-CASE
    MEMWORD-CASE

@@ -210,21 +210,33 @@ ENUM opcode DERIVE eq
 
 \ What a structured control word does to the blocks a definition is made of.
 \ Each member names one Habu source word, and the pairs are openers and closers
-\ of one structure: `if` closes with `then`, `begin` with `until`, `?do` with
-\ `loop`. `index` is the loop index `i`, which is neither - it reads the
-\ innermost open counted loop's index and stages no operation of its own.
-\ `self-call` is `RECURSE`: it calls the word being compiled. It is a control
-\ action rather than an operation word because how many values it takes and
-\ leaves is the DEFINITION's arity, which no schema-driven staging can read off
-\ an opcode - the elaborator stages it by hand, exactly as it stages the return.
-\ It is an ENUM for the same reason the opcode family is: a table that binds a
-\ source word to a control action cannot name an action this dialect has no
-\ construction for, and every MATCH over it has to answer for all of them.
+\ of one structure: `if` closes with `then`, `begin` with either `until` or
+\ `repeat`, `?do` with `loop`. `index` is the loop index `i`, which is neither -
+\ it reads the innermost open counted loop's index and stages no operation of
+\ its own. `self-call` is `RECURSE`: it calls the word being compiled. It is a
+\ control action rather than an operation word because how many values it takes
+\ and leaves is the DEFINITION's arity, which no schema-driven staging can read
+\ off an opcode - the elaborator stages it by hand, exactly as it stages the
+\ return. It is an ENUM for the same reason the opcode family is: a table that
+\ binds a source word to a control action cannot name an action this dialect has
+\ no construction for, and every MATCH over it has to answer for all of them.
+\
+\ TWO MEMBERS ARE NEITHER AN OPENER NOR A CLOSER, AND THEY ARE SPELLED `mid-`.
+\ `mid-while` is `while`, which stands inside an open `begin` loop and leaves it
+\ when its test is false; `mid-else` is `else`, which stands inside an open `if`
+\ and starts its second arm. Both END the block they stand in and start another
+\ one without touching the control stack's depth, which is exactly what makes
+\ them a third kind rather than a badly-named opener: a structure that has met
+\ one of them is still open and still has to be closed by the closer it began
+\ with.
 ENUM ctrl DERIVE eq
    open-if
+   mid-else
    close-if
    open-begin
+   mid-while
    close-until
+   close-repeat
    open-do
    close-loop
    index
