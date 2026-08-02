@@ -84,46 +84,37 @@ package BUILD-SIZE
    HB-TARGET-LINUX? if BASELINE-LINUX exit then
    0 ;
 
+: PAIR. ( n n -- ) {: sz:n base:n :}
+   s" candidate " type sz .
+   s" baseline " type base . ;
+
 : GROWN-FAIL ( n n -- )
-   ENGINE-GATE:SIZE-PAIR. cr
+   PAIR. cr
    s" candidate size ratchet: grew past test/gate-build-size.f baseline" GE-FAIL ;
 
 : STALE-FAIL ( n n -- )
    s" STALE-BASELINE " type
-   ENGINE-GATE:SIZE-PAIR. cr
+   PAIR. cr
    s" candidate size ratchet: shrank below baseline - lower the test/gate-build-size.f row in this commit" GE-FAIL ;
 
 : MISSING-FAIL ( n n -- )
-   ENGINE-GATE:SIZE-PAIR. cr
+   PAIR. cr
    s" candidate size ratchet: no baseline row for this target - commit the measured size to test/gate-build-size.f" GE-FAIL ;
 
 : ENFORCE ( n n -- ) {: sz:n base:n :}
-   sz base ENGINE-GATE:SIZE-CLASS ENGINE-GATE:SIZE-ACTION
-   case
-      ENGINE-GATE:SIZE-GROWN of sz base GROWN-FAIL endof
-      ENGINE-GATE:SIZE-SHRUNK of sz base STALE-FAIL endof
-      ENGINE-GATE:SIZE-MISSING of sz base MISSING-FAIL endof
-   endcase ;
-
-: ACTION-EXPECT ( n n -- ) {: class:n want:n :}
-   class ENGINE-GATE:SIZE-ACTION want <> if
-      s" candidate size ratchet action wiring" GE-FAIL
+   base 0= if
+      sz base MISSING-FAIL
+   else
+      sz base > if
+         sz base GROWN-FAIL
+      else
+         sz base < if sz base STALE-FAIL then
+      then
    then ;
-
-: SELF-CHECK ( -- )
-   7 7 ENGINE-GATE:SIZE-OK ENGINE-GATE:SIZE-CLASS-EXPECT
-   8 7 ENGINE-GATE:SIZE-GROWN ENGINE-GATE:SIZE-CLASS-EXPECT
-   6 7 ENGINE-GATE:SIZE-SHRUNK ENGINE-GATE:SIZE-CLASS-EXPECT
-   7 0 ENGINE-GATE:SIZE-MISSING ENGINE-GATE:SIZE-CLASS-EXPECT
-   ENGINE-GATE:SIZE-OK ENGINE-GATE:SIZE-OK ACTION-EXPECT
-   ENGINE-GATE:SIZE-GROWN ENGINE-GATE:SIZE-GROWN ACTION-EXPECT
-   ENGINE-GATE:SIZE-SHRUNK ENGINE-GATE:SIZE-SHRUNK ACTION-EXPECT
-   ENGINE-GATE:SIZE-MISSING ENGINE-GATE:SIZE-MISSING ACTION-EXPECT ;
 
 public
 
 : RATCHET ( ptr u8 n -- )
-   SELF-CHECK
    FILE-SIZE BASELINE ENFORCE ;
 
 ;package

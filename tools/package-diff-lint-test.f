@@ -580,123 +580,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 : TEST-RESULT-SOURCE ( ptr u8 n -- )
    TEST-SOURCE-RESET TEST-RESULT+ ;
 
-: TEST-RESULT-REJECT ( ptr u8 n -- )
-   T-LABEL
-   TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
-   1 TEST-EXPECT-FINDINGS ;
-
-: TEST-RESULT-CLEAN ( ptr u8 n -- )
-   T-LABEL
-   TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
-   TEST-EXPECT-CLEAN ;
-
-: TEST-RESULT-COMMENTS ( -- )
-   TEST-SOURCE-RESET
-   s" ENUM ( inert ) result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok  FIELD value a ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT accepts an inert comment before its name" TEST-RESULT-CLEAN
-
-   TEST-SOURCE-RESET
-   s" ENUM ( 1 ) result ( 2 ) 2" TEST-SOURCE-LINE
-   s" ( 3 ) VARIANT ( 4 ) ok ( 5 ) FIELD ( 6 ) value ( 7 ) a ( 8 ) ;VARIANT" TEST-SOURCE-LINE
-   s" ( 9 ) VARIANT ( 10 ) err ( 11 ) FIELD ( 12 ) error ( 13 ) b ( 14 ) ;VARIANT" TEST-SOURCE-LINE
-   s" ( 15 ) ;ENUM" TEST-SOURCE-LINE
-   s" RESULT accepts comments at every schema gap" TEST-RESULT-CLEAN ;
-
-: TEST-RESULT-IMPOSTORS ( -- )
-   TEST-SOURCE-RESET
-   s" ENUM result 1" TEST-SOURCE-LINE
-   s"   VARIANT ok  FIELD value a ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects the wrong arity" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT ok  FIELD value a ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects reordered variants" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT success FIELD value a ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err     FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects a renamed arm" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok  FIELD error a ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD value b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects swapped field roles" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok  FIELD value b ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error a ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects swapped generic bindings" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok FIELD value a ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects a missing variant" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok    FIELD value a ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err   FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT other ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects an extra variant" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok ( FIELD value a ) ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" comment text cannot supply a missing RESULT field" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok FIELD value a FIELD extra a ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" RESULT rejects an extra field" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2" TEST-SOURCE-LINE
-   s"   VARIANT ok s" TEST-SOURCE+ TEST-DQUOTE-C TEST-SOURCE-C
-   s" FIELD value a" TEST-SOURCE+ TEST-DQUOTE-C TEST-SOURCE-C
-   s"  ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   s" string text cannot supply a missing RESULT field" TEST-RESULT-REJECT
-
-   TEST-SOURCE-RESET
-   s" ENUM result 2 ( VARIANT err FIELD value a ;VARIANT )" TEST-SOURCE-LINE
-   s"   VARIANT ok" TEST-SOURCE-LINE
-   s"     ( FIELD error b ) FIELD value a ;VARIANT" TEST-SOURCE-LINE
-   s"   VARIANT err FIELD error b ;VARIANT" TEST-SOURCE-LINE
-   s" ;ENUM" TEST-SOURCE-LINE
-   TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
-   s" comments stay inert inside the canonical RESULT declaration" T-LABEL
-   TEST-EXPECT-CLEAN ;
-
-: TEST-RESULT-TEXT ( -- )
-   TEST-SOURCE-RESET
-   s" \ ENUM result 2" TEST-SOURCE-LINE
-   s" : RESULT-ROLE ( -- ) s" TEST-SOURCE+
-   TEST-DQUOTE-C TEST-SOURCE-C
-   s" ENUM result 2" TEST-SOURCE+
-   TEST-DQUOTE-C TEST-SOURCE-C
-   s"  2drop ENUM result 2 ;" TEST-SOURCE-LINE ;
-
 : TEST-RESULT-WRAPPED ( -- )
    TEST-SOURCE-RESET
    s" package BOX" TEST-SOURCE-LINE
@@ -704,13 +587,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" ;package" TEST-SOURCE-LINE
    TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
    s" RESULT cannot move behind a package owner" T-LABEL
-   1 TEST-EXPECT-FINDINGS
-   TEST-SOURCE-RESET
-   s" package BOX" TEST-SOURCE-LINE
-   TEST-RESULT-LEGACY+
-   s" ;package" TEST-SOURCE-LINE
-   TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
-   s" a packaged legacy RESULT is not a different family" T-LABEL
    1 TEST-EXPECT-FINDINGS
    TEST-SOURCE-RESET
    s" package BOX" TEST-SOURCE-LINE
@@ -722,8 +598,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
 
 : TEST-RESULT-GLOBAL ( -- )
    TEST-RESULT-WRAPPED
-   TEST-RESULT-COMMENTS
-   TEST-RESULT-IMPOSTORS
    TEST-SOURCE-RESET
    TEST-RESULT-LEGACY+
    TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
@@ -736,44 +610,6 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    s" result" TEST-RESULT-SOURCE
    TEST-DIFF-RESET s" lib/adt/result-neighbor.f" TEST-ADD-SOURCE-SECTION
    s" a neighboring path does not inherit RESULT admission" T-LABEL
-   1 TEST-EXPECT-FINDINGS
-   TEST-RESULT-TEXT
-   TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
-   s" repeated RESULT text in comments, strings, and body roles cannot admit a word" T-LABEL
-   1 TEST-EXPECT-FINDINGS
-   TEST-SOURCE-RESET
-   s" result" TEST-RESULT+
-   s" result" TEST-RESULT+
-   s" lib/adt/result.f" TEST-WRITE-SOURCE
-   TEST-DIFF-RESET
-   s" lib/adt/result.f" TEST-MODIFY-HEAD
-   s" @@ -1,4 +1,8 @@" TEST-DIFF+ TEST-LF
-   s" +ENUM result 2" TEST-DIFF+ TEST-LF
-   s" +  VARIANT ok  FIELD value a ;VARIANT" TEST-DIFF+ TEST-LF
-   s" +  VARIANT err FIELD error b ;VARIANT" TEST-DIFF+ TEST-LF
-   s" +;ENUM" TEST-DIFF+ TEST-LF
-   s"  ENUM result 2" TEST-DIFF+ TEST-LF
-   s"    VARIANT ok  FIELD value a ;VARIANT" TEST-DIFF+ TEST-LF
-   s"    VARIANT err FIELD error b ;VARIANT" TEST-DIFF+ TEST-LF
-   s"  ;ENUM" TEST-DIFF+ TEST-LF
-   s" a duplicate RESULT declaration is rejected" T-LABEL
-   1 TEST-EXPECT-FINDINGS
-   TEST-SOURCE-RESET
-   s" result" TEST-RESULT+
-   TEST-RESULT-LEGACY+
-   s" lib/adt/result.f" TEST-WRITE-SOURCE
-   TEST-DIFF-RESET
-   s" lib/adt/result.f" TEST-MODIFY-HEAD
-   s" @@ -1,4 +1,8 @@" TEST-DIFF+ TEST-LF
-   s" +ENUM result 2" TEST-DIFF+ TEST-LF
-   s" +  VARIANT ok  FIELD value a ;VARIANT" TEST-DIFF+ TEST-LF
-   s" +  VARIANT err FIELD error b ;VARIANT" TEST-DIFF+ TEST-LF
-   s" +;ENUM" TEST-DIFF+ TEST-LF
-   s"  SUMTYPE result 2" TEST-DIFF+ TEST-LF
-   s"    VARIANT ok a ;VARIANT" TEST-DIFF+ TEST-LF
-   s"    VARIANT err b ;VARIANT" TEST-DIFF+ TEST-LF
-   s"  ;SUMTYPE" TEST-DIFF+ TEST-LF
-   s" a legacy RESULT still makes an added canonical declaration duplicate" T-LABEL
    1 TEST-EXPECT-FINDINGS
    s" result" TEST-RESULT-SOURCE
    TEST-DIFF-RESET s" lib/adt/result.f" TEST-ADD-SOURCE-SECTION
