@@ -31,8 +31,9 @@ rejects `E-DEV-FAMILY-SCOPE` 7173 without changing kind or event publication.
 It then declares and publishes a new payload ENUM as `TK-SUM`.
 
 Checkpoint: on the exact enforcement parent, normal payloadless and payload
-ENUM cases pass and the existing unmodified snapshot path builds. Stop if any
-production snapshot, build, type-family, or finalizer interface must change.
+ENUM cases pass, the existing unmodified snapshot path builds, and the
+representative new test packages pass ownership gates. Stop if any production
+snapshot, build, type-family, or finalizer interface must change.
 
 Acceptance: cold source observes `snapkind` as `TK-ENUM`; real `hb-new` exits
 zero and reports the restored kind, exact 7173 rejection with unchanged family
