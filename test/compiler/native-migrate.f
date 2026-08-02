@@ -561,6 +561,236 @@ public
    s" 1.5 NMG-FLIT" EV-N  s" 1.5 0.25 f+" EV-N T=
    s" -0.25 NMG-FLIT" EV-N  s" 0.0" EV-N T= ;
 
+\ ---- the five float comparisons, both ways they can be lowered ---------------
+\ Each of the five is migrated twice: once as a body whose whole content is the
+\ comparison, which materialises the Habu flag, and once as the comparison
+\ feeding an `if`, which the selector fuses into a compare-and-branch. Both
+\ shapes have to answer what the interpreted body answers, and they are two
+\ different lowerings of the same source word - so a table that got one right and
+\ the other wrong is caught here rather than in whichever corpus row happened to
+\ use the other shape.
+\
+\ WHY THE INTERPRETED SIDE OF THE FUSED CASES IS A WORD AND NOT AN EXPRESSION.
+\ `if` may not stand at the top level, so the engine's own answer for the branch
+\ shapes is a definition beside the compiled one, spelled exactly the same way.
+\ It is the ENGINE's compilation of that source, which is what the compiled word
+\ has to agree with.
+\
+\ THE INPUTS ARE THE ONES A LOWERING CAN GET WRONG WHILE EVERY ORDINARY PAIR
+\ STILL LOOKS RIGHT, and there are three families of them.
+\
+\   A NaN IN EACH OPERAND POSITION. Every float comparison this engine has
+\   answers FALSE when either operand is a NaN (the survey at the head of
+\   tools/codegen-compare-corpus3.f measured it), because an Fcmp raises the
+\   unordered condition and the three conditions the engine names - MI, GT and
+\   EQ - are all false under it. Under `lt`, `le` or `ne` the same flags read
+\   TRUE, so a lowering that took a float comparison's condition from its
+\   relation's NAME answers the opposite here, and the fused cases take the
+\   opposite ARM. Both operand positions are asked because a lowering could be
+\   wrong on one side only.
+\
+\   BOTH ARGUMENT ORDERS. `f<` and `f>` are the same instruction under two
+\   conditions, so a swapped operand pair computes the other relation and is
+\   invisible on any input where the two agree. The ordered pairs below disagree.
+\
+\   THE TWO ZEROS. A negative zero is a different cell from zero and the same
+\   number, so `-0.0 f0=` is true and `-0.0 f0<` is false; a comparison done on
+\   bits rather than on numbers answers the other way for both.
+: FCMP-MIGRATIONS ( -- )
+   s" : NMG-FLT ( r r -- bool ) f< ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FGT ( r r -- bool ) f> ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FEQ ( r r -- bool ) f= ;" 2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FLTZ ( r -- bool ) f0< ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-FEQZ ( r -- bool ) f0= ;" 1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-BLT ( r r -- n ) {: x:r y:r :} x y f< if 1 else 2 then ;"
+      2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-BGT ( r r -- n ) {: x:r y:r :} x y f> if 1 else 2 then ;"
+      2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-BEQ ( r r -- n ) {: x:r y:r :} x y f= if 1 else 2 then ;"
+      2 1 REGS NMIGRATE:DEFINE
+   s" : NMG-BLTZ ( r -- n ) {: x:r :} x f0< if 1 else 2 then ;"
+      1 1 REGS NMIGRATE:DEFINE
+   s" : NMG-BEQZ ( r -- n ) {: x:r :} x f0= if 1 else 2 then ;"
+      1 1 REGS NMIGRATE:DEFINE ;
+
+: FCMP-FLAG-CASE ( -- )
+   s" the five comparisons answer what the engine's own primitives answer" T-LABEL
+   s" 1.5 2.25 NMG-FLT" EV-N   s" 1.5 2.25 f<" EV-N T=
+   s" 2.25 1.5 NMG-FLT" EV-N   s" 2.25 1.5 f<" EV-N T=
+   s" 2.25 1.5 NMG-FGT" EV-N   s" 2.25 1.5 f>" EV-N T=
+   s" 1.5 2.25 NMG-FGT" EV-N   s" 1.5 2.25 f>" EV-N T=
+   s" 1.5 1.5 NMG-FEQ" EV-N    s" 1.5 1.5 f=" EV-N T=
+   s" 1.5 2.25 NMG-FEQ" EV-N   s" 1.5 2.25 f=" EV-N T=
+   s" -1.5 NMG-FLTZ" EV-N      s" -1.5 f0<" EV-N T=
+   s" 1.5 NMG-FLTZ" EV-N       s" 1.5 f0<" EV-N T=
+   s" 0.0 NMG-FEQZ" EV-N       s" 0.0 f0=" EV-N T=
+   s" 1.5 NMG-FEQZ" EV-N       s" 1.5 f0=" EV-N T=
+
+   s" a comparison answers a Habu flag: all bits set or none, never one" T-LABEL
+   s" 1.5 2.25 NMG-FLT" EV-N  -1 T=
+   s" 2.25 1.5 NMG-FLT" EV-N  0 T=
+   s" -1.5 NMG-FLTZ" EV-N  -1 T=
+   s" 0.0 NMG-FEQZ" EV-N  -1 T=
+   s" 1.5 2.25 NMG-FLT" EV-N  1 T<>
+
+   s" every one of them is asked on all three orderings of its operands" T-LABEL
+   s" 1.5 1.5 NMG-FLT" EV-N    0 T=
+   s" 1.5 1.5 NMG-FGT" EV-N    0 T=
+   s" 2.25 1.5 NMG-FEQ" EV-N   0 T=
+   s" 1.5 1.5 NMG-FLT" EV-N    s" 1.5 1.5 f<" EV-N T=
+   s" 1.5 1.5 NMG-FGT" EV-N    s" 1.5 1.5 f>" EV-N T=
+   s" 2.25 1.5 NMG-FEQ" EV-N   s" 2.25 1.5 f=" EV-N T=
+   s" 0.0 NMG-FLTZ" EV-N       0 T=
+   s" -1.5 NMG-FEQZ" EV-N      0 T=
+   s" 0.0 NMG-FLTZ" EV-N       s" 0.0 f0<" EV-N T=
+   s" -1.5 NMG-FEQZ" EV-N      s" -1.5 f0=" EV-N T=
+
+   s" and the two-operand ones compare the sides they are handed" T-LABEL
+   s" 1.5 2.25 NMG-FLT" EV-N  s" 2.25 1.5 NMG-FLT" EV-N T<>
+   s" 1.5 2.25 NMG-FLT" EV-N  s" 1.5 2.25 NMG-FGT" EV-N T<>
+   s" 1.5 2.25 NMG-FLT" EV-N  s" 2.25 1.5 NMG-FGT" EV-N T=
+
+   s" a NaN in either position answers false, for every one of the five" T-LABEL
+   s" 0.0 0.0 f/ 1.5 NMG-FLT" EV-N   0 T=
+   s" 1.5 0.0 0.0 f/ NMG-FLT" EV-N   0 T=
+   s" 0.0 0.0 f/ 0.0 0.0 f/ NMG-FLT" EV-N  0 T=
+   s" 0.0 0.0 f/ 1.5 NMG-FGT" EV-N   0 T=
+   s" 1.5 0.0 0.0 f/ NMG-FGT" EV-N   0 T=
+   s" 0.0 0.0 f/ 1.5 NMG-FEQ" EV-N   0 T=
+   s" 1.5 0.0 0.0 f/ NMG-FEQ" EV-N   0 T=
+   s" 0.0 0.0 f/ 0.0 0.0 f/ NMG-FEQ" EV-N  0 T=
+   s" 0.0 0.0 f/ NMG-FLTZ" EV-N      0 T=
+   s" 0.0 0.0 f/ NMG-FEQZ" EV-N      0 T=
+
+   s" which is what the engine's own primitives answer for the same NaN" T-LABEL
+   s" 0.0 0.0 f/ 1.5 NMG-FLT" EV-N   s" 0.0 0.0 f/ 1.5 f<" EV-N T=
+   s" 1.5 0.0 0.0 f/ NMG-FGT" EV-N   s" 1.5 0.0 0.0 f/ f>" EV-N T=
+   s" 0.0 0.0 f/ 0.0 0.0 f/ NMG-FEQ" EV-N  s" 0.0 0.0 f/ 0.0 0.0 f/ f=" EV-N T=
+   s" 0.0 0.0 f/ NMG-FLTZ" EV-N      s" 0.0 0.0 f/ f0<" EV-N T=
+   s" 0.0 0.0 f/ NMG-FEQZ" EV-N      s" 0.0 0.0 f/ f0=" EV-N T=
+
+   s" the two zeros are equal numbers in different cells, and compare as numbers" T-LABEL
+   s" -0.0 NMG-FEQZ" EV-N    -1 T=
+   s" -0.0 NMG-FLTZ" EV-N    0 T=
+   s" -0.0 0.0 NMG-FEQ" EV-N -1 T=
+   s" -0.0 0.0 NMG-FLT" EV-N 0 T=
+   s" -0.0 NMG-FEQZ" EV-N    s" -0.0 f0=" EV-N T=
+   s" -0.0 NMG-FLTZ" EV-N    s" -0.0 f0<" EV-N T= ;
+
+\ The interpreted twins of the five branch bodies, spelled exactly as the
+\ migrated sources above are. They are what the fused lowering has to agree with.
+: NMI-BLT ( r r -- n ) {: x:r y:r :} x y f< if 1 else 2 then ;
+: NMI-BGT ( r r -- n ) {: x:r y:r :} x y f> if 1 else 2 then ;
+: NMI-BEQ ( r r -- n ) {: x:r y:r :} x y f= if 1 else 2 then ;
+: NMI-BLTZ ( r -- n ) {: x:r :} x f0< if 1 else 2 then ;
+: NMI-BEQZ ( r -- n ) {: x:r :} x f0= if 1 else 2 then ;
+
+: NMI-NAN ( -- r ) 0.0 0.0 f/ ;
+
+\ Which arm the branch bodies above take for a given flag. It is here so that the
+\ two lowerings of one source word can be held against EACH OTHER as well as
+\ against the engine: the branch bodies answer 1 where the flag is set and 2
+\ where it is clear, which is what `if ... else ... then` over a Habu flag means.
+: FLAG-ARM ( n -- n )
+   0<> if 1 else 2 then ;
+
+: FCMP-FUSED-CASE ( -- )
+   s" the fused branch takes the arm the interpreted body takes" T-LABEL
+   s" 1.5 2.25 NMG-BLT" EV-N    1.5 2.25 NMI-BLT T=
+   s" 2.25 1.5 NMG-BLT" EV-N    2.25 1.5 NMI-BLT T=
+   s" 2.25 1.5 NMG-BGT" EV-N    2.25 1.5 NMI-BGT T=
+   s" 1.5 2.25 NMG-BGT" EV-N    1.5 2.25 NMI-BGT T=
+   s" 1.5 1.5 NMG-BEQ" EV-N     1.5 1.5 NMI-BEQ T=
+   s" 1.5 2.25 NMG-BEQ" EV-N    1.5 2.25 NMI-BEQ T=
+   s" -1.5 NMG-BLTZ" EV-N       -1.5 NMI-BLTZ T=
+   s" 1.5 NMG-BLTZ" EV-N        1.5 NMI-BLTZ T=
+   s" 0.0 NMG-BEQZ" EV-N        0.0 NMI-BEQZ T=
+   s" 1.5 NMG-BEQZ" EV-N        1.5 NMI-BEQZ T=
+
+   s" on all three orderings, which is what separates one condition from its neighbours" T-LABEL
+   s" 1.5 1.5 NMG-BLT" EV-N    2 T=
+   s" 1.5 1.5 NMG-BGT" EV-N    2 T=
+   s" 2.25 1.5 NMG-BEQ" EV-N   2 T=
+   s" 1.5 1.5 NMG-BLT" EV-N    1.5 1.5 NMI-BLT T=
+   s" 1.5 1.5 NMG-BGT" EV-N    1.5 1.5 NMI-BGT T=
+   s" 2.25 1.5 NMG-BEQ" EV-N   2.25 1.5 NMI-BEQ T=
+   s" 0.0 NMG-BLTZ" EV-N       2 T=
+   s" -1.5 NMG-BEQZ" EV-N      2 T=
+   s" 0.0 NMG-BLTZ" EV-N       0.0 NMI-BLTZ T=
+   s" -1.5 NMG-BEQZ" EV-N      -1.5 NMI-BEQZ T=
+
+   s" and a NaN in either position takes the arm the comparison did NOT choose" T-LABEL
+   s" 0.0 0.0 f/ 1.5 NMG-BLT" EV-N   2 T=
+   s" 1.5 0.0 0.0 f/ NMG-BLT" EV-N   2 T=
+   s" 0.0 0.0 f/ 0.0 0.0 f/ NMG-BLT" EV-N  2 T=
+   s" 0.0 0.0 f/ 1.5 NMG-BGT" EV-N   2 T=
+   s" 1.5 0.0 0.0 f/ NMG-BGT" EV-N   2 T=
+   s" 0.0 0.0 f/ 1.5 NMG-BEQ" EV-N   2 T=
+   s" 1.5 0.0 0.0 f/ NMG-BEQ" EV-N   2 T=
+   s" 0.0 0.0 f/ 0.0 0.0 f/ NMG-BEQ" EV-N  2 T=
+   s" 0.0 0.0 f/ NMG-BLTZ" EV-N      2 T=
+   s" 0.0 0.0 f/ NMG-BEQZ" EV-N      2 T=
+
+   s" which is the arm the interpreted body takes for the same NaN" T-LABEL
+   s" 0.0 0.0 f/ 1.5 NMG-BLT" EV-N   NMI-NAN 1.5 NMI-BLT T=
+   s" 1.5 0.0 0.0 f/ NMG-BLT" EV-N   1.5 NMI-NAN NMI-BLT T=
+   s" 0.0 0.0 f/ 1.5 NMG-BGT" EV-N   NMI-NAN 1.5 NMI-BGT T=
+   s" 1.5 0.0 0.0 f/ NMG-BGT" EV-N   1.5 NMI-NAN NMI-BGT T=
+   s" 0.0 0.0 f/ 0.0 0.0 f/ NMG-BEQ" EV-N  NMI-NAN NMI-NAN NMI-BEQ T=
+   s" 0.0 0.0 f/ NMG-BLTZ" EV-N      NMI-NAN NMI-BLTZ T=
+   s" 0.0 0.0 f/ NMG-BEQZ" EV-N      NMI-NAN NMI-BEQZ T=
+
+   s" the fused branch and the materialised flag agree on every input" T-LABEL
+   s" 1.5 2.25 NMG-BLT" EV-N   s" 1.5 2.25 NMG-FLT" EV-N FLAG-ARM T=
+   s" 0.0 0.0 f/ 1.5 NMG-BLT" EV-N
+      s" 0.0 0.0 f/ 1.5 NMG-FLT" EV-N FLAG-ARM T=
+   s" -0.0 NMG-BLTZ" EV-N      s" -0.0 NMG-FLTZ" EV-N FLAG-ARM T=
+   s" -0.0 NMG-BEQZ" EV-N      s" -0.0 NMG-FEQZ" EV-N FLAG-ARM T=
+
+   s" and the two zeros take the arms their numbers choose" T-LABEL
+   s" -0.0 NMG-BLTZ" EV-N      -0.0 NMI-BLTZ T=
+   s" -0.0 NMG-BEQZ" EV-N      -0.0 NMI-BEQZ T=
+   s" -0.0 0.0 NMG-BEQ" EV-N   -0.0 0.0 NMI-BEQ T=
+   s" -0.0 0.0 NMG-BLT" EV-N   -0.0 0.0 NMI-BLT T= ;
+
+\ maki/autograd.f:48 verbatim, which is the third corpus's MAX-F: the shape
+\ where the fused branch's arms carry the compared values themselves. What it
+\ adds to the cases above is that the value the branch ANSWERS is one of the two
+\ operands, so an arm taken the wrong way is visible as the wrong number rather
+\ than only as the wrong flag - and on a NaN it answers `x` in both operand
+\ positions, which is the whole content of the NaN rule for this body.
+: MAXF-MIGRATION ( -- )
+   s" : NMG-MAXF ( r r -- r ) {: x:r y:r :} x y f< if y else x then ;"
+      2 1 REGS NMIGRATE:DEFINE ;
+
+\ The interpreted twin, compiled by the ENGINE from the same source the migration
+\ is handed. It is defined through `evaluate` rather than written here as an
+\ ordinary definition because it answers a double, and the comparison below reads
+\ the whole cell - which is what `evaluate` hands back.
+: MAXF-INTERPRETED ( -- )
+   s" : NMI-MAXF ( r r -- r ) {: x:r y:r :} x y f< if y else x then ;" EV ;
+
+: MAXF-CASE ( -- )
+   MAXF-MIGRATION
+   MAXF-INTERPRETED
+
+   s" the branch row answers what the same body answers, on both orders" T-LABEL
+   s" 1.5 -2.5 NMG-MAXF" EV-N   s" 1.5 -2.5 NMI-MAXF" EV-N T=
+   s" -2.5 1.5 NMG-MAXF" EV-N   s" -2.5 1.5 NMI-MAXF" EV-N T=
+   s" 1.5 -2.5 NMG-MAXF" EV-N   s" -2.5 1.5 NMG-MAXF" EV-N T=
+
+   s" on a NaN in either position it answers the first argument, as the body does" T-LABEL
+   s" 0.0 0.0 f/ 1.5 NMG-MAXF" EV-N   s" 0.0 0.0 f/ 1.5 NMI-MAXF" EV-N T=
+   s" 1.5 0.0 0.0 f/ NMG-MAXF" EV-N   s" 1.5 0.0 0.0 f/ NMI-MAXF" EV-N T=
+   s" 0.0 0.0 f/ 1.5 NMG-MAXF" EV-N   s" 0.0 0.0 f/" EV-N T=
+   s" 1.5 0.0 0.0 f/ NMG-MAXF" EV-N   s" 1.5" EV-N T=
+
+   s" and the sign of a zero survives, which a compare of numbers alone cannot see" T-LABEL
+   s" 0.0 -0.0 NMG-MAXF" EV-N   s" 0.0 -0.0 NMI-MAXF" EV-N T=
+   s" -0.0 0.0 NMG-MAXF" EV-N   s" -0.0 0.0 NMI-MAXF" EV-N T=
+   s" -0.0 0.0 NMG-MAXF" EV-N   s" -0.0" EV-N T=
+   s" -0.0 0.0 NMG-MAXF" EV-N   s" 0.0" EV-N T<> ;
+
 \ ---- the two straight-line shapes the third corpus is measured on ------------
 \ A locals frame with float arithmetic over it, and the conversion body. They are
 \ tools/codegen-compare-corpus3.f's SGD and SEG-1/SQRT, and they are here as well
@@ -654,6 +884,10 @@ public
    UNTOUCHED-CASE
    ENTRY-CASES
    FLOAT-CASE
+   FCMP-MIGRATIONS
+   FCMP-FLAG-CASE
+   FCMP-FUSED-CASE
+   MAXF-CASE
    SHAPE-CASE
    FLOAT-REFUSAL-CASES
    T-REPORT ;

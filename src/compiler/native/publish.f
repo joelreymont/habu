@@ -84,7 +84,19 @@ $4000 constant CODE-RESERVE
 
 4 constant INSN-BYTES
 
-32 constant LOG-MAX
+\ How many republications this seam can remember in one process. The log is
+\ evidence and not a cache - it is the only thing that still knows what the old
+\ emitter produced for a name once the record has been rewritten - so a row can
+\ never be dropped to make space and the ceiling is a real refusal, E-NPUB-CAP,
+\ rather than an eviction.
+\
+\ THE NUMBER IS WHAT THE SYSTEM ACTUALLY MIGRATES, and it moves when that does.
+\ It is a fixed table because this seam runs while the engine is compiling and
+\ has nowhere to allocate from; at 64 bytes of name and six cells a row, this
+\ ceiling is about fourteen kilobytes, which is small beside the code arena it
+\ writes into. Dot habu-grow-the-republication-52ef5df0 carries making it grow
+\ with the program, which is what a whole-system migration will need.
+128 constant LOG-MAX
 64 constant NAME-MAX
 
 \ ---- the one primitive that writes ------------------------------------------

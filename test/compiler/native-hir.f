@@ -128,7 +128,7 @@ private
    s" registration defines the eighteen opcodes the subset started with" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE 39 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE 44 T= ;
 
 \ The nine that complete the comparison and bitwise vocabulary. `invert` is the
 \ one unary operation of the subset and is asked for beside the eight binary
@@ -419,6 +419,66 @@ private
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
    1 T= 2 T= ;
 
+\ The five float comparisons, read back off the frozen table. Two things are
+\ asserted and both are the shape of a comparison rather than a detail of one:
+\ the operands are DOUBLES and the result is a CELL - a comparison answers a Habu
+\ flag, which is a number, and a schema that answered a double would put the flag
+\ in a register file no branch of this machine reads - and the two comparisons
+\ against zero take ONE operand, because the instruction they stand for compares
+\ against an immediate the form carries. A schema with two operands there would
+\ oblige every lowering to materialise a zero the instruction does not use.
+: FCMP-SHAPE-BODY ( IR-CTX:ctx -- n n n bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b HIR-OPCODE:FLT HIR:OPCODE {: fl:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FGT HIR:OPCODE {: fg:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FEQ HIR:OPCODE {: fe:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FLTZ HIR:OPCODE {: fz:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FEQZ HIR:OPCODE {: ez:IR-ID:ir-symbol-id :}
+   c b IR--TYPE-WIDTH:W64 IR--TYPE-SIGN:SIGNED IR-BUILD:INTERN-INT
+   {: t:IR-ID:ir-type-id :}
+   c b HIR:REAL-TYPE {: f:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv fl IR-SCHEMA:FOPERANDS
+   rv fz IR-SCHEMA:FOPERANDS
+   rv fl IR-SCHEMA:FRESULTS
+   qv rv key fl 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key fl 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key fl 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key fg 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key fe 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key fz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key ez 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL = ;
+
+: FCMP-SHAPE-CASE ( -- )
+   s" a float comparison takes doubles and answers a CELL, which is what a flag is" T-LABEL
+   BND [: FCMP-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   1 T= 1 T= 2 T= ;
+
+\ And they are total and need the floating unit, exactly as the arithmetic is: a
+\ comparison against a NaN answers false rather than raising, so a schema that
+\ declared one trapping would oblige the machine stage to reproduce a trap the
+\ hardware does not take.
+: FCMP-TRAP-BODY ( IR-CTX:ctx -- bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b HIR-OPCODE:FLT HIR:OPCODE {: fl:IR-ID:ir-symbol-id :}
+   c b HIR-OPCODE:FLTZ HIR:OPCODE {: fz:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv fl IR-SCHEMA:FTRAPS?
+   rv fz IR-SCHEMA:FTRAPS?
+   rv fl IR-SCHEMA:FFEATURES@ CTARGET:F-FP CTARGET:HAS?
+   rv fz IR-SCHEMA:FFEATURES@ CTARGET:F-FP CTARGET:HAS? ;
+
+: FCMP-TRAP-CASE ( -- )
+   s" a float comparison is total and needs the floating unit" T-LABEL
+   BND [: FCMP-TRAP-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TFALSE TFALSE ;
+
 \ The double type is NOT the cell type. Everything above rests on that: if the
 \ two interned to one identity, every assertion in FSHAPE-BODY would still pass
 \ and nothing anywhere would separate a double from an integer.
@@ -516,7 +576,7 @@ private
 : OPS-CASE ( -- )
    s" the seven operation words bind to their operations" T-LABEL
    BND [: OPS-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 56 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 61 T= ;
 
 \ The nine float words, each read back off a real model. `f-` binds to hir.fsub
 \ and not to hir.sub, and `s>f` and `f>s` bind to two different crossings: a row
@@ -538,6 +598,52 @@ private
    s" the nine float words bind to their own operations" T-LABEL
    BND [: FLOAT-OPS-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ The five float comparisons, read back off a real model. Two rows do the work
+\ that a careless table would get wrong. `f>` binds to hir.fgt and NOT to hir.flt:
+\ the row says which relation the word is, and a model that reached `f>` by
+\ turning `f<`'s operands round would answer hir.flt here. And `f0<` binds to
+\ hir.fltz and NOT to hir.flt: the comparison against zero is its own operation
+\ with its own operand count, and a row that pointed it at the two-operand form
+\ would stage an operation with an operand nothing computed.
+\
+\ The four integer rows beside them are the falsification: `f<` and `<` are two
+\ different words with two different opcodes, so a model that resolved a float
+\ word to its integer namesake - or that had let one row's spelling shadow the
+\ other's - shows up here rather than as a wrong condition four stages later.
+: FCMP-OPS-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" f<" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FLT HIR-OPCODE:EQ
+   r c b s" f>" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FGT HIR-OPCODE:EQ
+   r c b s" f=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FEQ HIR-OPCODE:EQ
+   r c b s" f0<" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FLTZ HIR-OPCODE:EQ
+   r c b s" f0=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FEQZ HIR-OPCODE:EQ
+   r c b s" f0<" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FLT HIR-OPCODE:EQ 0=
+   r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:LT HIR-OPCODE:EQ
+   r c b s" <" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FLT HIR-OPCODE:EQ 0=
+   r c b s" =" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ HIR-OPCODE:FEQ HIR-OPCODE:EQ 0= ;
+
+: FCMP-OPS-CASE ( -- )
+   s" the five float comparisons bind to their own operations, not to the integer ones" T-LABEL
+   BND [: FCMP-OPS-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE ;
+
+\ And the vocabulary has no float relation the engine does not have. `f<=`, `f>=`
+\ and `f<>` are not words of this system (src/habu/habu1.f EMIT-FP-PRIMS), so a
+\ model row for one would be a promise: the lookup refuses them as names it does
+\ not know, exactly as it refuses any other undeclared word.
+: FCMP-ABSENT-BODY ( IR-CTX:ctx -- )
+   {: c:IR-CTX:ctx :}
+   c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
+   r c b s" f<=" IR-BUILD:INTERN-SYMBOL HIR-WORD:OPCODE@ drop ;
+
+: FCMP-ABSENT ( -- )
+   BND [: FCMP-ABSENT-BODY ;] IR-CTX:WITH-CONTEXT ;
+
+: FCMP-ABSENT-CASE ( -- )
+   s" and a float relation the engine has no word for is not in the model" T-LABEL
+   [: FCMP-ABSENT ;] E-HIR-UNMODELED TTHROWSQ ;
 
 \ The nine words the comparison and bitwise vocabulary added, each read back off
 \ a real model. `>` binds to hir.gt and NOT to hir.lt: the row says which
@@ -898,8 +1004,8 @@ variable BC-OUT
 \ Declaration order is observable, which is what an inventory walks: the four
 \ arithmetic words are declared first, then the six comparisons, the six bitwise
 \ words, the four step words, the four memory words, the nine float words, the
-\ thirteen control words and the two halves of a locals group, with the renames
-\ at the end of the walk.
+\ five float comparisons, the thirteen control words and the two halves of a
+\ locals group, with the renames at the end of the walk.
 : AT-BODY ( IR-CTX:ctx -- bool bool bool bool bool )
    {: c:IR-CTX:ctx :}
    c MODEL-NEW {: b:IR-BUILD:builder p:IR-ARENA:arena r:IR-ARENA:arena :}
@@ -908,11 +1014,11 @@ variable BC-OUT
       c b s" +" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 9 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" <>" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 48 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
-      c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
    r key 53 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+      c b s" 2dup" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
+   r key 58 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" nip" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL =
-   r key 55 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
+   r key 60 HIR-WORD:AT IR-ID:SYMBOL-LOCAL
       c b s" 2drop" IR-BUILD:INTERN-SYMBOL IR-ID:SYMBOL-LOCAL = ;
 
 : AT-CASE ( -- )
@@ -1433,7 +1539,7 @@ variable BC-OUT
    BND [: FORGE-MEAN-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : FORGE-OPCODE-BODY ( IR-CTX:ctx -- )
-   1 39 0 0 FORGE
+   1 44 0 0 FORGE
    {: p:IR-ARENA:arena r:IR-ARENA:arena w:IR-ID:ir-symbol-id key:IR-ID:ir-module-key :}
    r w HIR-WORD:OPCODE@ drop ;
 
@@ -1761,6 +1867,8 @@ variable BC-OUT
    TRAP-CASES
    DIV-TRAP-CASES
    FSHAPE-CASE
+   FCMP-SHAPE-CASE
+   FCMP-TRAP-CASE
    FTYPE-CASE
    FDIV-TRAP-CASES ;
 
@@ -1772,6 +1880,8 @@ variable BC-OUT
    drop
    OPS-CASE
    FLOAT-OPS-CASE
+   FCMP-OPS-CASE
+   FCMP-ABSENT-CASE
    OPS2-CASE
    CTRL-CASE
    STEP2-CASE

@@ -228,6 +228,11 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       realint  OF 36 ENDOF
       bitsreal OF 37 ENDOF
       realbits OF 38 ENDOF
+      flt      OF 39 ENDOF
+      fgt      OF 40 ENDOF
+      feq      OF 41 ENDOF
+      fltz     OF 42 ENDOF
+      feqz     OF 43 ENDOF
    ;MATCH ;
 
 : N>OPCODE ( n -- HIR:opcode )
@@ -271,6 +276,11 @@ $FFFFFFFF HDR-CELLS - constant POOL-CAP-MAX
       36 of HIR-OPCODE:REALINT endof
       37 of HIR-OPCODE:BITSREAL endof
       38 of HIR-OPCODE:REALBITS endof
+      39 of HIR-OPCODE:FLT endof
+      40 of HIR-OPCODE:FGT endof
+      41 of HIR-OPCODE:FEQ endof
+      42 of HIR-OPCODE:FLTZ endof
+      43 of HIR-OPCODE:FEQZ endof
       E-HIR-OPCODE throw
    endcase ;
 
@@ -905,7 +915,7 @@ $3A constant ANN-C                   \ the `:` that separates a local from its t
 \ `over`, one for `nip`, three for `rot` and none for `2drop`. A `{: … :}` group
 \ adds two words and no picks: its halves stage nothing and the names between
 \ them are the program's, so they never become rows of this table.
-56 constant WORDS
+61 constant WORDS
 15 constant PICK-CELLS
 
 private
@@ -980,9 +990,9 @@ private
 
 \ The nine float words of the engine's vocabulary that compute rather than
 \ compare. src/habu/habu1.f EMIT-FP-PRIMS publishes fifteen; f. is a decimal
-\ printer and no part of the arithmetic, and the five comparisons answer a flag
-\ that a branch then reads, which is the next leaf. These nine are one operation
-\ each and one row each.
+\ printer and no part of the arithmetic, and the five comparisons are declared
+\ beside these in DEF-FCOMPARE below. These nine are one operation each and one
+\ row each.
 \
 \ THE TWO CONVERSIONS ARE TWO ROWS BECAUSE THEY ARE TWO ROUNDINGS. `s>f` rounds
 \ to nearest with ties to even and is exact up to 2^53; `f>s` truncates toward
@@ -1002,6 +1012,25 @@ private
    c b r c b s" fsqrt" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FSQRT BDECLARE-OP
    c b r c b s" s>f" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:INTREAL BDECLARE-OP
    c b r c b s" f>s" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:REALINT BDECLARE-OP ;
+
+\ The five float comparisons, which are the whole of what the engine has: three
+\ that take two doubles and two that take one and compare it against zero. There
+\ is no `f<=`, no `f>=` and no float inequality in the engine's vocabulary, so
+\ there is no row for one - a row here is a source word a program can write, and
+\ a row for a word that does not exist would be a promise.
+\
+\ THE TWO AGAINST ZERO ARE TWO ROWS AND NOT `f<` WITH A LITERAL, because they are
+\ two OPERATIONS: FCMP against the immediate zero is one instruction and takes no
+\ second register, which is what the engine's own `f0<` and `f0=` emit. A row
+\ that pointed `f0<` at `hir.flt` would need a materialised zero the instruction
+\ does not use.
+: DEF-FCOMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ARENA:arena -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder r:IR-ARENA:arena :}
+   c b r c b s" f<" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FLT BDECLARE-OP
+   c b r c b s" f>" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FGT BDECLARE-OP
+   c b r c b s" f=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FEQ BDECLARE-OP
+   c b r c b s" f0<" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FLTZ BDECLARE-OP
+   c b r c b s" f0=" IR-BUILD:INTERN-SYMBOL HIR-OPCODE:FEQZ BDECLARE-OP ;
 
 \ The structured control words. Three structures, the two words that stand in
 \ the middle of one, the loop index, the two words that leave a structure, and
@@ -1140,6 +1169,7 @@ public
    c b r DEF-STEP
    c b r DEF-MEMORY
    c b r DEF-FLOAT
+   c b r DEF-FCOMPARE
    c b r DEF-CONTROL
    c b r DEF-LOCALS
    c b p r DEF-2DUP

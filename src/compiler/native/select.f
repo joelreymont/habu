@@ -173,12 +173,34 @@ require src/compiler/native/frozen.f
 
 package A64SEL
 using NFROZEN
+public
+
+\ WHICH SHAPE OF MACHINE COMPARISON A SOURCE OPERATION BECOMES. It is one table
+\ and not three because the three questions the passes below ask - is this
+\ fusable, which machine form does it become, and how many operands does it
+\ have - are one question about the operation, and three tables over eleven
+\ opcodes are three tables that can come to disagree. `none` is the answer for
+\ everything that is not a comparison, which is what makes the fusion's own test
+\ a reading of this table rather than a second list of opcode names. COMPARE-KIND
+\ below is the table; this is its vocabulary, and it is an ENUM so that a member
+\ added here has to be answered for everywhere it is read.
+\   none   not a comparison at all
+\   gpr    two general registers compared
+\   freg   two floating registers compared
+\   fzero  one floating register compared against the instruction's own zero
+ENUM cmpkind DERIVE eq
+   none
+   gpr
+   freg
+   fzero
+;ENUM
+
 private
 
 \ ---- the bound source dialect ------------------------------------------------
 \ One slot per member of the source dialect's opcode family, plus the attribute
 \ key its constant carries and the module they were all learned from.
-39 constant OPCODES-N
+44 constant OPCODES-N
 0 constant O-CONST
 1 constant O-ADD
 2 constant O-SUB
@@ -218,6 +240,11 @@ private
 36 constant O-REALINT
 37 constant O-BITSREAL
 38 constant O-REALBITS
+39 constant O-FLT
+40 constant O-FGT
+41 constant O-FEQ
+42 constant O-FLTZ
+43 constant O-FEQZ
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -320,6 +347,11 @@ create NAMEBUF NAME-CAP allot
       realint  OF O-REALINT  ENDOF
       bitsreal OF O-BITSREAL ENDOF
       realbits OF O-REALBITS ENDOF
+      flt      OF O-FLT      ENDOF
+      fgt      OF O-FGT      ENDOF
+      feq      OF O-FEQ      ENDOF
+      fltz     OF O-FLTZ     ENDOF
+      feqz     OF O-FEQZ     ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- HIR:opcode )
@@ -363,6 +395,11 @@ create NAMEBUF NAME-CAP allot
       O-REALINT  of HIR-OPCODE:REALINT  endof
       O-BITSREAL of HIR-OPCODE:BITSREAL endof
       O-REALBITS of HIR-OPCODE:REALBITS endof
+      O-FLT      of HIR-OPCODE:FLT      endof
+      O-FGT      of HIR-OPCODE:FGT      endof
+      O-FEQ      of HIR-OPCODE:FEQ      endof
+      O-FLTZ     of HIR-OPCODE:FLTZ     endof
+      O-FEQZ     of HIR-OPCODE:FEQZ     endof
       E-A64SEL-OPCODE throw
    endcase ;
 
@@ -1039,12 +1076,23 @@ create NAMEBUF NAME-CAP allot
 
 \ ---- selecting a comparison --------------------------------------------------
 \ Which condition one source comparison is made under, read off the operation's
-\ own opcode. Both the comparison that answers a Habu flag and the fused
-\ compare-and-branch below ask here, so the pairing of a source relation to a
+\ own opcode. Every form below asks here - the two that answer a Habu flag and
+\ the two fused compare-and-branches - so the pairing of a source relation to a
 \ machine condition is written once: a comparison lowered under the wrong
 \ condition is one wrong line of this table rather than two lines that can
-\ disagree with each other. An operation that is not one of the six is refused
+\ disagree with each other. An operation that is not one of the eleven is refused
 \ by name, because a caller asking this of anything else has already gone wrong.
+\
+\ THE FIVE FLOAT ROWS ARE NOT THE INTEGER ROWS REPEATED, and this is the one
+\ table in the chain where reading a condition off a relation's name would be
+\ wrong. `<` is lowered under `lt` and `f<` is lowered under `mi`, because the
+\ flags a compare of two DOUBLES leaves are not the flags a compare of two cells
+\ leaves: an Fcmp raises the unordered condition for a NaN, and under it `lt`
+\ holds while `mi` does not. The engine's own `f<` uses `mi` for exactly that
+\ reason and this table follows it; src/compiler/native/a64ir.f carries the flag
+\ table the claim rests on. There is no float row for `<=`, `>=` or `<>` because
+\ the engine has no such word - the three float relations it has are these three,
+\ twice over, once against another double and once against zero.
 : COMPARE-COND ( IR-ID:ir-op-id -- A64IR:cond )
    OPCODE-AT OPCODE-SLOT
    case
@@ -1054,23 +1102,121 @@ create NAMEBUF NAME-CAP allot
       O-GE of A64IR-COND:GE    endof
       O-EQ of A64IR-COND:EQUAL endof
       O-NE of A64IR-COND:NE    endof
+      O-FLT  of A64IR-COND:MI    endof
+      O-FGT  of A64IR-COND:GT    endof
+      O-FEQ  of A64IR-COND:EQUAL endof
+      O-FLTZ of A64IR-COND:MI    endof
+      O-FEQZ of A64IR-COND:EQUAL endof
       E-A64SEL-OPCODE throw
    endcase ;
 
+\ The kind table itself, answered for every member of the source family, over the
+\ vocabulary declared at the head of this file.
+: COMPARE-KIND ( HIR:opcode -- A64SEL:cmpkind )
+   MATCH HIR:opcode
+      const  OF A64SEL-CMPKIND:NONE ENDOF
+      add    OF A64SEL-CMPKIND:NONE ENDOF
+      sub    OF A64SEL-CMPKIND:NONE ENDOF
+      mul    OF A64SEL-CMPKIND:NONE ENDOF
+      div    OF A64SEL-CMPKIND:NONE ENDOF
+      lt     OF A64SEL-CMPKIND:GPR  ENDOF
+      le     OF A64SEL-CMPKIND:GPR  ENDOF
+      gt     OF A64SEL-CMPKIND:GPR  ENDOF
+      ge     OF A64SEL-CMPKIND:GPR  ENDOF
+      equal  OF A64SEL-CMPKIND:GPR  ENDOF
+      ne     OF A64SEL-CMPKIND:GPR  ENDOF
+      and    OF A64SEL-CMPKIND:NONE ENDOF
+      or     OF A64SEL-CMPKIND:NONE ENDOF
+      xor    OF A64SEL-CMPKIND:NONE ENDOF
+      lshift OF A64SEL-CMPKIND:NONE ENDOF
+      rshift OF A64SEL-CMPKIND:NONE ENDOF
+      invert OF A64SEL-CMPKIND:NONE ENDOF
+      mem    OF A64SEL-CMPKIND:NONE ENDOF
+      load   OF A64SEL-CMPKIND:NONE ENDOF
+      store  OF A64SEL-CMPKIND:NONE ENDOF
+      bload  OF A64SEL-CMPKIND:NONE ENDOF
+      bstore OF A64SEL-CMPKIND:NONE ENDOF
+      br     OF A64SEL-CMPKIND:NONE ENDOF
+      brz    OF A64SEL-CMPKIND:NONE ENDOF
+      call   OF A64SEL-CMPKIND:NONE ENDOF
+      wordcall OF A64SEL-CMPKIND:NONE ENDOF
+      return OF A64SEL-CMPKIND:NONE ENDOF
+      fconst   OF A64SEL-CMPKIND:NONE ENDOF
+      fadd     OF A64SEL-CMPKIND:NONE ENDOF
+      fsub     OF A64SEL-CMPKIND:NONE ENDOF
+      fmul     OF A64SEL-CMPKIND:NONE ENDOF
+      fdiv     OF A64SEL-CMPKIND:NONE ENDOF
+      fneg     OF A64SEL-CMPKIND:NONE ENDOF
+      fabs     OF A64SEL-CMPKIND:NONE ENDOF
+      fsqrt    OF A64SEL-CMPKIND:NONE ENDOF
+      flt      OF A64SEL-CMPKIND:FREG  ENDOF
+      fgt      OF A64SEL-CMPKIND:FREG  ENDOF
+      feq      OF A64SEL-CMPKIND:FREG  ENDOF
+      fltz     OF A64SEL-CMPKIND:FZERO ENDOF
+      feqz     OF A64SEL-CMPKIND:FZERO ENDOF
+      intreal  OF A64SEL-CMPKIND:NONE ENDOF
+      realint  OF A64SEL-CMPKIND:NONE ENDOF
+      bitsreal OF A64SEL-CMPKIND:NONE ENDOF
+      realbits OF A64SEL-CMPKIND:NONE ENDOF
+   ;MATCH ;
+
+: SLOT-KIND ( n -- A64SEL:cmpkind )
+   SLOT-OPCODE COMPARE-KIND ;
+
 : COMPARE-SLOT? ( n -- bool )
-   {: k:n :}
-   k O-LT = k O-LE = or k O-GT = or k O-GE = or k O-EQ = or k O-NE = or ;
+   SLOT-KIND A64SEL-CMPKIND:NONE A64SEL-CMPKIND:EQ 0= ;
+
+\ How many values a comparison of this shape reads. The zero comparisons read
+\ one, because the instruction compares against an immediate the form carries and
+\ not against a register anything computed. It is read off the kind rather than
+\ off the schema so that the one authority over what a shape IS stays the table
+\ above; the schema still refuses an operation staged with the wrong count.
+: KIND-OPERANDS ( A64SEL:cmpkind -- n )
+   MATCH A64SEL:cmpkind
+      none  OF E-A64SEL-OPCODE throw ENDOF
+      gpr   OF 2 ENDOF
+      freg  OF 2 ENDOF
+      fzero OF 1 ENDOF
+   ;MATCH ;
+
+: KIND-FLAG-OPCODE ( A64SEL:cmpkind -- A64IR:opcode )
+   MATCH A64SEL:cmpkind
+      none  OF E-A64SEL-OPCODE throw ENDOF
+      gpr   OF A64IR-OPCODE:FLAG   ENDOF
+      freg  OF A64IR-OPCODE:FFLAG  ENDOF
+      fzero OF A64IR-OPCODE:FFLAGZ ENDOF
+   ;MATCH ;
+
+: KIND-FUSED-OPCODE ( A64SEL:cmpkind -- A64IR:opcode )
+   MATCH A64SEL:cmpkind
+      none  OF E-A64SEL-OPCODE throw ENDOF
+      gpr   OF A64IR-OPCODE:CMPBR   ENDOF
+      freg  OF A64IR-OPCODE:FCMPBR  ENDOF
+      fzero OF A64IR-OPCODE:FCMPBRZ ENDOF
+   ;MATCH ;
+
+: OP-KIND ( IR-ID:ir-op-id -- A64SEL:cmpkind )
+   OPCODE-AT OPCODE-SLOT SLOT-KIND ;
 
 \ One source comparison is one machine comparison, under the condition the source
 \ opcode names. The machine form is three instructions and one operation, because
 \ the condition flags the three pass between them are a single architectural
 \ resource with no value of the machine dialect to stand for it; the dialect says
 \ so, and this pass only has to name the condition.
+\
+\ ONE WORD SERVES ALL ELEVEN, and the two things that differ between them - which
+\ instruction compares, and how many registers it reads - both come off the kind.
+\ The RESULT is the same in every case: a Habu flag is a number, so it goes in a
+\ general register whichever file the values compared came out of, and a
+\ comparison that answered into the floating file would be a flag no branch of
+\ this machine could test.
 : EMIT-FLAG ( IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id :}
-   id A64IR-OPCODE:FLAG OPEN
-   CTX BLD  id 0 OPERAND  IR-BUILD:ADD-OPERAND
-   CTX BLD  id 1 OPERAND  IR-BUILD:ADD-OPERAND
+   id OP-KIND {: k:A64SEL:cmpkind :}
+   id k KIND-FLAG-OPCODE OPEN
+   k KIND-OPERANDS 0 ?do
+      CTX BLD  id i OPERAND  IR-BUILD:ADD-OPERAND
+   loop
    RESULT+
    CTX BLD  CTX BLD A64IR:KEY-COND
    CTX BLD  id COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
@@ -1254,6 +1400,11 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       realint  OF false ENDOF
       bitsreal OF false ENDOF
       realbits OF false ENDOF
+      flt      OF false ENDOF
+      fgt      OF false ENDOF
+      feq      OF false ENDOF
+      fltz     OF false ENDOF
+      feqz     OF false ENDOF
    ;MATCH ;
 
 : TRAP-CK ( HIR:opcode IR-ID:ir-symbol-id -- HIR:opcode )
@@ -1299,7 +1450,8 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \
 \ WHAT THE FUSION REQUIRES, ALL THREE STRUCTURAL.
 \   - The block's last operation is hir.brz, and the operation before it is one
-\     of the three comparisons. Adjacency is the whole of the scheduling
+\     of the eleven comparisons - six over cells and five over doubles, which the
+\     kind table above is the one authority for. Adjacency is the whole of the scheduling
 \     question: the two operations become one where they already stand, so
 \     nothing is moved, no live range is stretched, and no operation ends up
 \     between the compare and the branch that reads its flags.
@@ -1368,6 +1520,29 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \   so cmpbr succ 0 := brz succ 1, cmpbr succ 1 := brz succ 0, condition `lt`
 \   and the same for `<=` under `le` and `=` under `equal`
 \
+\ AND THE SAME WIRING CARRIES THE NaN RULE THROUGH A FUSED FLOAT BRANCH, which is
+\ the one thing this leaf had to get right. Work it through for `f<`, whose
+\ condition is `mi`:
+\
+\   x y f<   answers 0 when x is a NaN (measured; survey (4))
+\   so the INTERPRETED `if` takes hir.brz succ 0 - the arm the relation did not
+\      choose, which is the source's `else`
+\   the FUSED branch is Fcmp x,y under `mi`. A NaN raises the unordered
+\      condition, N is clear, `mi` does not hold
+\   so control goes to a64.fcmpbr succ 1, which this wiring set to brz succ 0
+\   - the same arm the interpreted word takes
+\
+\ The step that does the work is the second: `mi` is false on unordered. It holds
+\ identically for `f>` under `gt` and `f=` under `equal`, and for the two zero
+\ comparisons under the same two conditions, because those three conditions are
+\ exactly the ones that are false when the unordered flag is set - which is why
+\ the engine chose them and why src/compiler/native/a64ir.f names them. Under
+\ `lt`, which is what a table that read the condition off the relation's NAME
+\ would have chosen for `f<`, the unordered flag makes the condition HOLD, and
+\ the fused branch would take the arm the interpreted word does not. Nothing
+\ about the successor wiring changes between the two, which is why the wiring is
+\ not where the NaN rule lives.
+\
 \ THE OTHER WAY ROUND WOULD ALSO BE CORRECT AND IS MEASURABLY SLOWER. Negating
 \ the condition and keeping the source successor order computes exactly the same
 \ program. It puts the arm the relation did not choose behind the TAKEN
@@ -1380,19 +1555,29 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
 \ pointing at the block laid out next, which is what a later elision pass can
 \ delete (dot habu-elide-a-branch-74966a02).
 \
-\ The operands are the comparison's, in the comparison's order: a64.cmpbr
-\ compares its first operand against its second exactly as a64.flag does, so
-\ `a b <` fuses to a compare of a against b under `lt` and a swapped pair would
-\ be a wrong program rather than a different spelling.
+\ The operands are the comparison's, in the comparison's order: every fused form
+\ compares its first operand against its second exactly as the matching flag form
+\ does, so `a b <` fuses to a compare of a against b under `lt`, `a b f<` to a
+\ compare of a against b under `mi`, and a swapped pair would be a wrong program
+\ rather than a different spelling. That matters most for the pair whose relation
+\ is not symmetric under a swap: turning the operands of `f<` round computes `f>`
+\ and answers the other arm for every pair of distinct numbers.
+\
+\ WHICH MACHINE FORM IT IS comes off the comparison's kind, exactly as the flag
+\ form's does, and so does how many operands to carry over: the two comparisons
+\ against zero carry one, because the instruction's second operand is the
+\ immediate zero the form itself holds.
 \
 \ The span is the BRANCH's. The operation is the block's terminator - what it
 \ is, is a two-way branch - and the span every reader of a terminator expects is
 \ the control word the programmer wrote.
 : EMIT-CMPBR ( IR-ID:ir-op-id IR-ID:ir-op-id -- )
    {: id:IR-ID:ir-op-id cm:IR-ID:ir-op-id :}
-   id A64IR-OPCODE:CMPBR OPEN
-   CTX BLD  cm 0 OPERAND  IR-BUILD:ADD-OPERAND
-   CTX BLD  cm 1 OPERAND  IR-BUILD:ADD-OPERAND
+   cm OP-KIND {: k:A64SEL:cmpkind :}
+   id k KIND-FUSED-OPCODE OPEN
+   k KIND-OPERANDS 0 ?do
+      CTX BLD  cm i OPERAND  IR-BUILD:ADD-OPERAND
+   loop
    CTX BLD  CTX BLD A64IR:KEY-COND
    CTX BLD  cm COMPARE-COND  A64IR:COND-ATTR  IR-BUILD:ADD-ATTR
    id 1 SUCCESSOR+
@@ -1448,6 +1633,11 @@ EDGE-MAX TYPED-BUFFER EDGE-V IR-ID:ir-value-id
       fneg     OF id A64IR-OPCODE:FNEG EMIT-FUNARY ENDOF
       fabs     OF id A64IR-OPCODE:FABS EMIT-FUNARY ENDOF
       fsqrt    OF id A64IR-OPCODE:FSQRT EMIT-FUNARY ENDOF
+      flt      OF id EMIT-FLAG ENDOF
+      fgt      OF id EMIT-FLAG ENDOF
+      feq      OF id EMIT-FLAG ENDOF
+      fltz     OF id EMIT-FLAG ENDOF
+      feqz     OF id EMIT-FLAG ENDOF
       intreal  OF id A64IR-OPCODE:SCVTF EMIT-FUNARY ENDOF
       realint  OF id A64IR-OPCODE:FCVTZS EMIT-UNARY ENDOF
       bitsreal OF id A64IR-OPCODE:FMOVXD EMIT-FUNARY ENDOF
@@ -1680,6 +1870,11 @@ public
    c b HIR-OPCODE:REALINT  BIND1
    c b HIR-OPCODE:BITSREAL BIND1
    c b HIR-OPCODE:REALBITS BIND1
+   c b HIR-OPCODE:FLT      BIND1
+   c b HIR-OPCODE:FGT      BIND1
+   c b HIR-OPCODE:FEQ      BIND1
+   c b HIR-OPCODE:FLTZ     BIND1
+   c b HIR-OPCODE:FEQZ     BIND1
    c b HIR:KEY-VALUE 0 BND-VAL !
    c b HIR:KEY-ENTRY 0 BND-ENTRY !
    c b HIR:KEY-IN    0 BND-IN !

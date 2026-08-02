@@ -12,21 +12,33 @@
 \ does not compile at all, and nothing here catches: a body the chain refuses is
 \ a claim this file made and did not keep.
 \
-\ TWO OF THE TEN, AND THE OTHER EIGHT SAY WHY THEY ARE NOT HERE. The scalar float
-\ leaf compiles straight-line float arithmetic over a locals frame, the two
-\ conversions, and float literals. It does not compile a loop, a branch, a call,
-\ or a memory access, so the three accumulations, the step, the two branch rows,
-\ the two-call row and FROUND stay gap rows in tools/codegen-compare-new3.f and
-\ name exactly what each of them is still waiting for. Nothing is respelled to
-\ buy a row.
+\ THREE OF THE TEN, AND THE OTHER SEVEN SAY WHY THEY ARE NOT HERE. The scalar
+\ float leaf compiles straight-line float arithmetic over a locals frame, the two
+\ conversions, and float literals; the comparison leaf added the five float
+\ comparisons and the branch a comparison feeds, which is what MAX-F is. What the
+\ chain still cannot do is place a double anywhere but a straight line - across a
+\ block edge, across a call, or into a memory cell - so the three accumulations,
+\ the step, the two-call row, RELU-F and FROUND stay gap rows in
+\ tools/codegen-compare-new3.f and name exactly what each of them is still
+\ waiting for. Nothing is respelled to buy a row.
 \
-\ THE TWO BODIES ARE THE CORPUS'S OWN, TO THE BYTE. SGD is
-\ tools/codegen-compare-corpus3.f's SGD with `SGD-N` in place of `SGD`, and
+\ WHY MAX-F IS HERE AND RELU-F IS NOT, when both are one float compare feeding
+\ one branch. MAX-F's two arms hand over the values `x` and `y`, which arrive in
+\ data-stack cells and are still cells when they cross; RELU-F's arms hand over
+\ `0.0` and `x`, and `0.0` is a DOUBLE. A double may not cross a block edge yet
+\ (src/compiler/native/elaborate.f refuses it by name with E-NELAB-TYPE, measured
+\ at the head of tools/codegen-compare-new3.f), so RELU-F is refused one stage
+\ after its comparison compiled. The two rows differ in what crosses the join and
+\ in nothing else, which is why the gap row says so.
+\
+\ THE THREE BODIES ARE THE CORPUS'S OWN, TO THE BYTE. SGD is
+\ tools/codegen-compare-corpus3.f's SGD with `SGD-N` in place of `SGD`,
 \ SEG-1/SQRT is that file's SEG-1/SQRT with `SEG-1/SQRT-N` in place of
-\ `SEG-1/SQRT`. No constant is respelled, no operation is changed, no local is
-\ renamed and no annotation is added or removed - the second corpus needed two
-\ substitutions and its own header lists them; this one needs none, which is the
-\ shortest thing that can be said about a migration and the best.
+\ `SEG-1/SQRT`, and MAX-F is its MAX-F with `MAX-F-N` in place of `MAX-F`. No
+\ constant is respelled, no operation is changed, no local is renamed and no
+\ annotation is added or removed - the second corpus needed two substitutions and
+\ its own header lists them; this one needs none, which is the shortest thing
+\ that can be said about a migration and the best.
 \
 \ WHY THE FLOAT LITERALS NEED NO SUBSTITUTION, WHICH IS THE POINT OF THE LEAF.
 \ Both bodies carry a float literal - SGD's arguments are doubles the caller
@@ -65,14 +77,33 @@ private
    s" : SEG-1/SQRT-N ( n -- r ) {: d:n :}  1.0 d s>f fsqrt f/ ;"
    1 1 REGS NMIGRATE:DEFINE ;
 
+\ maki/autograd.f:48 through the same corpus, verbatim: the two-armed branch on
+\ a two-operand float compare. It is the first row of this corpus with control
+\ flow in it, and what it measures is the fused float compare-and-branch: the
+\ comparison's answer is read by the `if` above it and by nothing else, so the
+\ chain emits one Fcmp and one conditional branch where the engine emits an
+\ Fcmp, a Cset, a negation and a test-and-branch.
+\
+\ ITS PINNED INPUTS ARE WHY IT IS WORTH A ROW RATHER THAN A TEST. Both argument
+\ orders, both zeros in both orders, and a NaN in each position: the two orders
+\ catch a branch taken the wrong way, the two zeros catch a comparison of bits
+\ rather than of numbers, and the two NaN positions catch a condition that is
+\ TRUE on unordered - which is what a float less-than lowered under `lt` instead
+\ of `mi` would be. The recorded output is the whole cell, so a negative zero
+\ that came back positive is a reported disagreement rather than an equal number.
+: MAXF ( -- )
+   s" : MAX-F-N ( r r -- r ) {: x:r y:r :}  x y f< if y else x then ;"
+   2 1 REGS NMIGRATE:DEFINE ;
+
 public
 
-\ Publish both. It is one word rather than two top-level lines because a
+\ Publish all three. It is one word rather than three top-level lines because a
 \ migration claims code space at the engine's free slot, and the interpreter uses
 \ that slot for the line it is running.
 : RUN ( -- )
    SGD
-   SEG ;
+   SEG
+   MAXF ;
 
 ;package
 

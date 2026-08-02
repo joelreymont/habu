@@ -647,27 +647,36 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE
    s" CODEGEN-CORPUS2:VEC-COPY-CELLS" SMALLER? TTRUE ;
 
-\ The third corpus, whose account is two compiled rows and eight gaps. It is the
-\ float benchmark, measured and committed before the chain had a single float
+\ The third corpus, whose account is three compiled rows and seven gaps. It is
+\ the float benchmark, measured and committed before the chain had a single float
 \ capability; the scalar float leaf closed the two rows that are straight-line
-\ float arithmetic over a locals frame, and the other eight need a loop, a
-\ branch, a call or a memory access as well. The assertions below are about that
-\ account, about the three float facts the table rests on - that a recorded
-\ output is the whole cell, that the sign of a zero survives the recording, and
-\ that the pinned sum distinguishes one evaluation order from another - and about
-\ the two compiled rows agreeing with the old column on every pinned input.
-: FLOAT-GAP? ( n -- bool ) {: k:n :}
+\ float arithmetic over a locals frame, and the comparison leaf closed MAX-F -
+\ the one branch row whose arms carry nothing but cells. The other seven all
+\ carry a double somewhere a straight line does not reach, and every one of them
+\ says so by name. The assertions below are about that account, about the three
+\ float facts the table rests on - that a recorded output is the whole cell, that
+\ the sign of a zero survives the recording, and that the pinned sum
+\ distinguishes one evaluation order from another - and about the compiled rows
+\ agreeing with the old column on every pinned input.
+\
+\ NO ROW WAITS FOR `floats` ANY MORE, and that is asserted as well as counted:
+\ the capability every remaining gap names is `float-place`, and a row still
+\ naming `floats` would mean the account had not been brought forward with the
+\ chain. Counting the rows that name it is not enough on its own - eight rows
+\ naming the wrong capability would count the same as eight naming the right
+\ one - so both are asked.
+: GAP-WANTS? ( n CODEGEN-GAP:cap -- bool ) {: k:n c:CODEGEN-GAP:cap :}
    false
    k CODEGEN-GAP:GAP-CAPS@ 0 ?do
-      k i CODEGEN-GAP:GAP-CAP@ CODEGEN--GAP-CAP:FLOATS CODEGEN--GAP-CAP:EQ if
+      k i CODEGEN-GAP:GAP-CAP@ c CODEGEN--GAP-CAP:EQ if
          drop true leave
       then
    loop ;
 
-: FLOAT-GAPS ( -- n )
+: GAPS-WANTING ( CODEGEN-GAP:cap -- n ) {: c:CODEGEN-GAP:cap :}
    0
    CODEGEN-GAP:GAPS 0 ?do
-      i FLOAT-GAP? if 1+ then
+      i c GAP-WANTS? if 1+ then
    loop ;
 
 \ One recorded output of an old row, by the row's name.
@@ -679,26 +688,34 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 : REAL-RUN-CASES3 ( -- )
    11 ACCOUNT-CASES
 
-   s" the third corpus compiles its two straight-line float rows and declares the rest" T-LABEL
-   CODEGEN-GAP:GAPS 8 T=
-   NEW-ROWS 3 T=
+   s" the third corpus compiles three float rows and declares the rest" T-LABEL
+   CODEGEN-GAP:GAPS 7 T=
+   NEW-ROWS 4 T=
 
-   s" the two compiled rows are the straight-line ones, and the rest are gaps" T-LABEL
+   s" the compiled rows are the two straight-line ones and the branch row" T-LABEL
    s" CODEGEN-CORPUS:NOOP" MEASURED? TTRUE
    s" CODEGEN-CORPUS3:SGD" MEASURED? TTRUE
    s" CODEGEN-CORPUS3:SEG-1/SQRT" MEASURED? TTRUE
+   s" CODEGEN-CORPUS3:MAX-F" MEASURED? TTRUE
    s" CODEGEN-CORPUS3:T-SUM" MEASURED? TFALSE
    s" CODEGEN-CORPUS3:T-SUM" NAMED-GAP-AMONG? TTRUE
    s" CODEGEN-CORPUS3:FROUND" NAMED-GAP-AMONG? TTRUE
+   s" CODEGEN-CORPUS3:RELU-F" NAMED-GAP-AMONG? TTRUE
    s" CODEGEN-CORPUS3:SGD" NAMED-GAP-AMONG? TFALSE
    s" CODEGEN-CORPUS3:SEG-1/SQRT" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS3:MAX-F" NAMED-GAP-AMONG? TFALSE
 
-   s" every one of the eight that is left waits for the float capability by name" T-LABEL
-   FLOAT-GAPS 8 T=
+   s" every one of the seven that is left waits for a double it cannot place" T-LABEL
+   CODEGEN--GAP-CAP:FLOAT-PLACE GAPS-WANTING 7 T=
 
-   s" and the two compiled rows are smaller than the code the old emitter wrote" T-LABEL
+   s" and none of them waits for the float capability the two leaves built" T-LABEL
+   CODEGEN--GAP-CAP:FLOATS GAPS-WANTING 0 T=
+   CODEGEN--GAP-CAP:COMPARISON GAPS-WANTING 0 T=
+
+   s" and the three compiled rows are smaller than the code the old emitter wrote" T-LABEL
    s" CODEGEN-CORPUS3:SGD" SMALLER? TTRUE
    s" CODEGEN-CORPUS3:SEG-1/SQRT" SMALLER? TTRUE
+   s" CODEGEN-CORPUS3:MAX-F" SMALLER? TTRUE
 
    s" the sum row's pinned input distinguishes one evaluation order from another" T-LABEL
    CODEGEN-CORPUS3:SUM-REVERSED CODEGEN-COMPARE:REAL-BITS

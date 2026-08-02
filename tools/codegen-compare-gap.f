@@ -40,7 +40,8 @@ public
 \ and the report renders every one of them the same way. In order: a branch, a
 \ loop, or an exit from the middle of one; a typed locals frame; calling another
 \ word, recursion included; a load or a store; an ordering or equality
-\ operation; integer division; float arithmetic.
+\ operation; integer division; float arithmetic; placing a double anywhere but a
+\ straight line.
 \
 \ WHAT `floats` COVERS, because one word has to stand for two refusals. A float
 \ body is stopped twice over: the tape has no kind for a real literal
@@ -50,6 +51,18 @@ public
 \ any use without the other - a chain that read the literal and could not add,
 \ or that could add and could not read the literal, compiles no float body at
 \ all.
+\
+\ AND WHY `float-place` IS A CAPABILITY OF ITS OWN RATHER THAN PART OF `floats`.
+\ The two are not two halves of one thing the way the literal and the operation
+\ are: a chain that has `floats` compiles every straight-line float body there
+\ is, and several of this corpus's rows are exactly that. What `float-place`
+\ names is the SECOND question - where a double may live between operations -
+\ and it is a different refusal in a different stage, E-NELAB-TYPE from
+\ src/compiler/native/elaborate.f, reached only by a body that carries a double
+\ across a block edge, across a call, or into a memory cell. Keeping them one
+\ word would have made every gap row that waits for either read as waiting for
+\ both, which is the opposite of what this account is for. Dots
+\ habu-carry-a-double-570d2f5c and habu-store-a-double-a31b313e carry it.
 ENUM cap DERIVE eq
    control-flow
    locals
@@ -58,6 +71,7 @@ ENUM cap DERIVE eq
    comparison
    division
    floats
+   float-place
 ;ENUM
 
 private
@@ -66,7 +80,7 @@ private
 
 \ How many capabilities one gap row may name. It is the size of the vocabulary
 \ above, so a row that genuinely waits for everything can say so.
-7 constant CAP-MAX
+8 constant CAP-MAX
 
 GAP-MAX CODEGEN-COMPARE:NAME-MAX * BUFFER: GAP-NAMES
 create GAP-LENS GAP-MAX cells allot
@@ -96,6 +110,7 @@ variable GAP-N
       comparison   OF 4 ENDOF
       division     OF 5 ENDOF
       floats       OF 6 ENDOF
+      float-place  OF 7 ENDOF
    ;MATCH ;
 
 : N>CAP ( n -- CODEGEN-GAP:cap )
@@ -107,6 +122,7 @@ variable GAP-N
       4 of CODEGEN--GAP-CAP:COMPARISON endof
       5 of CODEGEN--GAP-CAP:DIVISION endof
       6 of CODEGEN--GAP-CAP:FLOATS endof
+      7 of CODEGEN--GAP-CAP:FLOAT-PLACE endof
       E-CODEGEN-COMPARE-ROW throw
    endcase ;
 
@@ -165,6 +181,7 @@ public
       comparison   OF s" comparison" ENDOF
       division     OF s" division" ENDOF
       floats       OF s" floats" ENDOF
+      float-place  OF s" placing a double" ENDOF
    ;MATCH ;
 
 : RESET ( -- )

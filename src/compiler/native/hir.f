@@ -9,7 +9,7 @@
 \ It defines no storage of its own and it does not repeat a single check
 \ IR-SCHEMA already makes.
 \
-\ WHAT THE SUBSET IS. Thirty-nine opcodes, and nothing else. Twenty-seven of them
+\ WHAT THE SUBSET IS. Forty-four opcodes, and nothing else. Twenty-seven of them
 \ compute with cells:
 \   hir.const     an integer literal
 \   hir.add       integer addition
@@ -42,7 +42,7 @@
 \   hir.wordcall  call ANOTHER word, at the entry address and under the arity the
 \                 operation carries, handing it the same thing
 \   hir.return    leave the function with the word's outputs
-\ and twelve compute with doubles:
+\ and seventeen compute with doubles:
 \   hir.fconst    a double literal, carrying the cell the double is
 \   hir.fadd      double addition
 \   hir.fsub      double subtraction
@@ -52,6 +52,11 @@
 \   hir.fneg      negation, the sign bit turned over
 \   hir.fabs      absolute value
 \   hir.fsqrt     square root
+\   hir.flt       double less-than, answering a Habu flag
+\   hir.fgt       double greater-than, answering a Habu flag
+\   hir.feq       double equality, answering a Habu flag
+\   hir.fltz      the same less-than against zero, which is one operand
+\   hir.feqz      the same equality against zero, which is one operand
 \   hir.int>real  a signed cell rounded to the nearest double
 \   hir.real>int  a double truncated toward zero into a signed cell
 \   hir.bits>real a data-stack cell read as the double it holds
@@ -89,6 +94,39 @@
 \ ways of saying the same kind of thing. Six opcodes for six source relations is
 \ one rule: a comparison names its relation, and every stage below reads that
 \ name.
+\
+\ AND WHY THE FLOAT COMPARISONS ARE FIVE RATHER THAN SIX. The engine's whole
+\ float comparison vocabulary is five words - `f<`, `f>`, `f=`, `f0<` and `f0=`
+\ (src/habu/habu1.f EMIT-FP-PRIMS, and the survey at the head of
+\ tools/codegen-compare-corpus3.f lists them) - and this dialect models the
+\ vocabulary that exists rather than the one an integer reader would expect.
+\ There is no `f<=`, no `f>=` and no float inequality to model, so declaring
+\ opcodes for them would be declaring operations no source word can reach. The
+\ same rule as above decides that `f>` is its own opcode and not `f<` read
+\ backwards.
+\
+\ WHY A COMPARISON AGAINST ZERO IS ITS OWN OPERATION AND NOT A COMPARISON WITH A
+\ ZERO LITERAL. `f0<` is not `0.0 f<` with the operands turned round: it is one
+\ instruction of this machine, FCMP against the immediate zero, and the engine's
+\ own `f0<` emits exactly that (habu1.f (FCMP0)). Modelling it as a comparison
+\ against a materialised zero would cost the literal's move-wide chain and a move
+\ across the register files for a value the instruction does not need - and it
+\ would put a second lowering in the chain for a source word that has one. So the
+\ operand count is the difference, and it is a difference the SCHEMA states: a
+\ two-operand form and a one-operand form are two schemas, and a caller staging
+\ either with the other's operands is refused when the operation is closed.
+\
+\ WHAT A FLOAT COMPARISON ANSWERS, AND THE ONE FACT EVERY STAGE BELOW HAS TO
+\ KEEP. It answers a Habu flag - all bits set or none - exactly as an integer
+\ comparison does, so its result is a CELL and not a double. What is not the same
+\ is what happens when an operand is a NaN: on this machine every one of the five
+\ answers FALSE, both ways round, which the survey measured on this engine. That
+\ is a fact about CONTROL FLOW and not about arithmetic - `x f0< if A else B
+\ then` takes the ELSE arm when x is a NaN - and it is why the machine dialect
+\ chooses the conditions it does rather than the ones an integer reader would
+\ pick. This dialect states the fact by declaring five relations and nothing
+\ about how they are tested; src/compiler/native/a64ir.f is where the conditions
+\ that keep it are named, and it says why.
 \
 \ WHY A SHIFT TAKES ITS COUNT AS AN OPERAND. Habu's `lshift` and `rshift` take
 \ the count off the stack, so the count is whatever the program computed and not
@@ -242,6 +280,11 @@ ENUM opcode DERIVE eq
    fneg
    fabs
    fsqrt
+   flt
+   fgt
+   feq
+   fltz
+   feqz
    intreal
    realint
    bitsreal
@@ -425,6 +468,11 @@ public
       fneg     OF s" hir.fneg"      ENDOF
       fabs     OF s" hir.fabs"      ENDOF
       fsqrt    OF s" hir.fsqrt"     ENDOF
+      flt      OF s" hir.flt"       ENDOF
+      fgt      OF s" hir.fgt"       ENDOF
+      feq      OF s" hir.feq"       ENDOF
+      fltz     OF s" hir.fltz"      ENDOF
+      feqz     OF s" hir.feqz"      ENDOF
       intreal  OF s" hir.int>real"  ENDOF
       realint  OF s" hir.real>int"  ENDOF
       bitsreal OF s" hir.bits>real" ENDOF
@@ -532,6 +580,11 @@ private
       fneg     OF s" hir.rule.fneg"      ENDOF
       fabs     OF s" hir.rule.fabs"      ENDOF
       fsqrt    OF s" hir.rule.fsqrt"     ENDOF
+      flt      OF s" hir.rule.flt"       ENDOF
+      fgt      OF s" hir.rule.fgt"       ENDOF
+      feq      OF s" hir.rule.feq"       ENDOF
+      fltz     OF s" hir.rule.fltz"      ENDOF
+      feqz     OF s" hir.rule.feqz"      ENDOF
       intreal  OF s" hir.rule.int>real"  ENDOF
       realint  OF s" hir.rule.real>int"  ENDOF
       bitsreal OF s" hir.rule.bits>real" ENDOF
@@ -576,6 +629,11 @@ private
       fneg     OF s" hir.render.fneg"      ENDOF
       fabs     OF s" hir.render.fabs"      ENDOF
       fsqrt    OF s" hir.render.fsqrt"     ENDOF
+      flt      OF s" hir.render.flt"       ENDOF
+      fgt      OF s" hir.render.fgt"       ENDOF
+      feq      OF s" hir.render.feq"       ENDOF
+      fltz     OF s" hir.render.fltz"      ENDOF
+      feqz     OF s" hir.render.feqz"      ENDOF
       intreal  OF s" hir.render.int>real"  ENDOF
       realint  OF s" hir.render.real>int"  ENDOF
       bitsreal OF s" hir.render.bits>real" ENDOF
@@ -962,6 +1020,47 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ Two doubles in, a CELL out: the three float comparisons that take two operands.
+\ The result type is the cell type and not the double type, which is the whole
+\ shape of a comparison - it answers a Habu flag, all bits set or none, and a
+\ flag is a number a branch tests and an integer operation may combine. A schema
+\ that answered a double here would put the flag in the floating register file,
+\ where no branch of this machine can read it.
+\
+\ THEY ARE TOTAL, and that is the same IEEE754 fact the arithmetic rests on: a
+\ comparison against a NaN does not raise, it answers false. Declaring one
+\ trapping would oblige the machine stage to reproduce a trap the hardware does
+\ not take.
+: DEF-FCOMPARE ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id
+      o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   FP-TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ One double in, a cell out: the two comparisons against zero. The zero is not an
+\ operand because the INSTRUCTION does not take one - FCMP has a form whose second
+\ operand is the immediate zero, and the engine's own `f0<` and `f0=` use it - so
+\ a schema with two operands here would be describing a different instruction and
+\ would cost a materialised literal to fill the operand it declared.
+: DEF-FCOMPARE0 ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id HIR:opcode -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id
+      o:HIR:opcode :}
+   c b o OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   PURE-VALUE
+   false IR-SCHEMA:SET-TRAP
+   FP-TARGET
+   c b o NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ One value of one type in, one value of the other out. Four operations have this
 \ shape and they are FOUR and not two, because two of them compute and two do
 \ not. `hir.int>real` rounds a signed cell to the nearest double and
@@ -1061,6 +1160,11 @@ public
    c b f HIR-OPCODE:FNEG DEF-FUNARY
    c b f HIR-OPCODE:FABS DEF-FUNARY
    c b f HIR-OPCODE:FSQRT DEF-FUNARY
+   c b f t HIR-OPCODE:FLT DEF-FCOMPARE
+   c b f t HIR-OPCODE:FGT DEF-FCOMPARE
+   c b f t HIR-OPCODE:FEQ DEF-FCOMPARE
+   c b f t HIR-OPCODE:FLTZ DEF-FCOMPARE0
+   c b f t HIR-OPCODE:FEQZ DEF-FCOMPARE0
    c b t f HIR-OPCODE:INTREAL DEF-CROSS
    c b f t HIR-OPCODE:REALINT DEF-CROSS
    c b t f HIR-OPCODE:BITSREAL DEF-CROSS

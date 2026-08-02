@@ -164,10 +164,10 @@ private
    rv wc IR-SCHEMA:FDEFINED? ;
 
 : COUNT-CASE ( -- )
-   s" registration defines exactly the forty-five machine opcodes" T-LABEL
+   s" registration defines exactly the forty-nine machine opcodes" T-LABEL
    BND [: COUNT-BODY ;] IR-CTX:WITH-CONTEXT
    TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
-   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 45 T= ;
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE 49 T= ;
 
 \ The six forms the bitwise and shift words lower to. Five are the ordinary
 \ two-register three-operand shape and the sixth, the complement, is the one
@@ -215,7 +215,7 @@ private
 : NAMED-CASE ( -- )
    s" the schema table carries the dialect's own name and version" T-LABEL
    BND [: NAMED-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 0 T= TTRUE ;
+   3 T= 0 T= TTRUE ;
 
 \ The spellings themselves, because every reference this dialect stores is a
 \ symbol and a renamed opcode would still read back through the same accessor.
@@ -676,6 +676,130 @@ private
    BND [: CMPBR-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE TTRUE 1 T= 2 T= 0 T= 2 T= TTRUE ;
 
+\ ---- the four float comparison forms -----------------------------------------
+\ Their shapes, and the one thing that is genuinely new in them: the two register
+\ classes meet inside one operation. A materialising float comparison reads
+\ DOUBLES and writes a CELL, because a Habu flag is a number and lives in the
+\ general file whichever file the values compared came out of - a form that
+\ answered a double would leave the flag where no branch of this machine can read
+\ it. The fused pair answers nothing at all, which is the saving, and each of
+\ them carries the condition under the same key the integer forms use.
+\
+\ AND THE ZERO FORMS TAKE ONE OPERAND, which is the other thing asserted here.
+\ FCMP against the immediate zero is a real form of the instruction and the
+\ engine's own `f0<` uses it, so the operand list is one long; a schema with two
+\ would oblige every lowering to materialise a zero the instruction never reads.
+: FCMP-SHAPE-BODY ( IR-CTX:ctx -- bool bool bool bool n n n n n n n n bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   b IR-BUILD:MODULE-KEY {: key:IR-ID:ir-module-key :}
+   c b A64IR-OPCODE:FFLAG A64IR:OPCODE {: g:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FFLAGZ A64IR:OPCODE {: gz:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPBR A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPBRZ A64IR:OPCODE {: nz:IR-ID:ir-symbol-id :}
+   c b A64IR:KEY-COND {: ck:IR-ID:ir-symbol-id :}
+   c b A64IR:GPR-TYPE {: t:IR-ID:ir-type-id :}
+   c b A64IR:FPR-TYPE {: f:IR-ID:ir-type-id :}
+   c b IR-BUILD:FREEZE {: m:IR-BUILD:module :}
+   m IR-BUILD:FSYM-POOL {: pv:IR-ARENA:view :}
+   m IR-BUILD:FSYM-ROWS {: yv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-POOL {: qv:IR-ARENA:view :}
+   m IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   pv yv g s" a64.fflag" IR-SYM:FEQ?
+   pv yv gz s" a64.fflagz" IR-SYM:FEQ?
+   pv yv n s" a64.fcmpbr" IR-SYM:FEQ?
+   pv yv nz s" a64.fcmpbrz" IR-SYM:FEQ?
+   rv g IR-SCHEMA:FOPERANDS
+   rv g IR-SCHEMA:FRESULTS
+   rv gz IR-SCHEMA:FOPERANDS
+   rv gz IR-SCHEMA:FRESULTS
+   rv n IR-SCHEMA:FOPERANDS
+   rv n IR-SCHEMA:FRESULTS
+   rv nz IR-SCHEMA:FOPERANDS
+   rv nz IR-SCHEMA:FRESULTS
+   qv rv key g 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key g 1 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key g 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key gz 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key gz 0 IR-SCHEMA:FRESULT@ IR-ID:TYPE-LOCAL t IR-ID:TYPE-LOCAL =
+   qv rv key n 0 IR-SCHEMA:FOPERAND@ IR-ID:TYPE-LOCAL f IR-ID:TYPE-LOCAL =
+   qv rv key n 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL =
+   qv rv key nz 0 IR-SCHEMA:FATTR@ IR-ID:SYMBOL-LOCAL ck IR-ID:SYMBOL-LOCAL = ;
+
+: FCMP-SHAPE-CASE ( -- )
+   s" the float comparisons read doubles, answer a cell, and the zero forms take one" T-LABEL
+   BND [: FCMP-SHAPE-BODY ;] IR-CTX:WITH-CONTEXT
+   TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE TTRUE
+   0 T= 1 T= 0 T= 2 T=
+   1 T= 1 T= 1 T= 2 T=
+   TTRUE TTRUE TTRUE TTRUE ;
+
+\ Which of them ends a block, and that none of them traps. A comparison against a
+\ NaN answers false rather than raising, so the trap flag is false everywhere -
+\ and the two fused forms are terminators while the two materialising ones are
+\ not, which is what stops a fused branch from standing anywhere but last.
+: FCMP-TERM-BODY ( IR-CTX:ctx -- bool bool bool bool bool bool bool bool )
+   {: c:IR-CTX:ctx :}
+   c DIALECT-NEW {: b:IR-BUILD:builder :}
+   c b A64IR-OPCODE:FFLAG A64IR:OPCODE {: g:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FFLAGZ A64IR:OPCODE {: gz:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPBR A64IR:OPCODE {: n:IR-ID:ir-symbol-id :}
+   c b A64IR-OPCODE:FCMPBRZ A64IR:OPCODE {: nz:IR-ID:ir-symbol-id :}
+   c b IR-BUILD:FREEZE IR-BUILD:FSCHEMA-ROWS {: rv:IR-ARENA:view :}
+   rv g IR-SCHEMA:FTERMINATOR?
+   rv gz IR-SCHEMA:FTERMINATOR?
+   rv n IR-SCHEMA:FTERMINATOR?
+   rv nz IR-SCHEMA:FTERMINATOR?
+   rv g IR-SCHEMA:FTRAPS?
+   rv gz IR-SCHEMA:FTRAPS?
+   rv n IR-SCHEMA:FTRAPS?
+   rv nz IR-SCHEMA:FTRAPS? ;
+
+: FCMP-TERM-CASE ( -- )
+   s" the two fused forms end a block, the two materialising ones do not, none traps" T-LABEL
+   BND [: FCMP-TERM-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TFALSE TFALSE TFALSE TTRUE TTRUE TFALSE TFALSE ;
+
+\ ---- the condition a float comparison is made under --------------------------
+\ THE ONE FACT THIS WHOLE LEAF RESTS ON, held as a number rather than described.
+\ `mi` is C-MI, the assembler's own code for it, and it is NOT `lt`. The
+\ difference decides what a compiled float comparison answers for a NaN: an Fcmp
+\ raises the unordered condition (N=0 Z=0 C=1 V=1), under which `lt` - whose test
+\ is N != V - HOLDS, while `mi` - whose test is N = 1 - does not. The engine's
+\ own `f<` uses C-MI (src/habu/habu1.f BF<), which is why the compiled word can
+\ agree with the interpreted one at all.
+\
+\ The three conditions the float words reach are asserted to be exactly the three
+\ the engine's primitives name, read off the ENGINE'S constants rather than
+\ restated: if habu1.f ever compiled `f<` under another condition, this reddens.
+\ The three that are NOT reachable from a float word - `lt`, `le` and `ne` - are
+\ asserted to differ from all three, which is the falsification: a table that had
+\ quietly lowered `f<` under `lt` would make the first of those equalities hold.
+: FCOND-CASE ( -- )
+   s" the float conditions are the engine's own, and `mi` is not `lt`" T-LABEL
+   A64IR-COND:MI A64IR:COND-CODE C-MI T=
+   A64IR-COND:MI A64IR:COND-CODE A64IR:N>COND A64IR-COND:MI A64IR-COND:EQ TTRUE
+   A64IR-COND:MI A64IR:COND-CODE  A64IR-COND:LT A64IR:COND-CODE  = TFALSE
+   A64IR-COND:MI A64IR:COND-CODE  A64IR-COND:LE A64IR:COND-CODE  = TFALSE
+   A64IR-COND:GT A64IR:COND-CODE  A64IR-COND:NE A64IR:COND-CODE  = TFALSE
+   A64IR-COND:EQUAL A64IR:COND-CODE  A64IR-COND:NE A64IR:COND-CODE  = TFALSE ;
+
+\ ---- the two float compare encoders ------------------------------------------
+\ Both are forms of Fcmp that the instruction parity gate's 48-form vocabulary
+\ does not model, exactly as `a64.mvn` is not modelled, so their bits are held
+\ here against the shipped assembler until a model row lands. What is asserted is
+\ the absolute word - `fcmp d1, d3` is 0x1E632020 and `fcmp d1, #0.0` is
+\ 0x1E602028 - and the ONE bit that separates them, which is bit 3: the
+\ compare-with-zero form is the register form with that bit set and its second
+\ register field empty. Asserting the relation as well as the words is what says
+\ the zero form really is the zero form rather than a compare against d0.
+: FCMP-ENC-CASE ( -- )
+   s" the two Fcmp forms encode the words they are, and differ in the zero bit" T-LABEL
+   1 3 ENC-FCMP $1E632020 T=
+   1 ENC-FCMP0 $1E602028 T=
+   1 ENC-FCMP0  1 0 ENC-FCMP 8 or  T=
+   1 0 ENC-FCMP  1 ENC-FCMP0  = TFALSE ;
+
 \ ---- the one encoder this dialect brought with it ----------------------------
 \ Every other machine form of this dialect encodes through a word the instruction
 \ parity gate already pins against formal/Common/Insn.v. `a64.mvn` does not: its
@@ -1131,6 +1255,11 @@ private
    BRANCH-TERM-CASE
    CMPBR-SHAPE-CASE ;
 
+: GROUP-FCMP ( IR-CTX:ctx -- )
+   drop
+   FCMP-SHAPE-CASE
+   FCMP-TERM-CASE ;
+
 : GROUP-TIE ( IR-CTX:ctx -- )
    drop
    TIE-CASE ;
@@ -1161,9 +1290,12 @@ public
    A64IR:FRAME-LIMIT  IMM12-LIM 1- dup A64EFF:SP-ALIGN mod -  T=
    HALVES-CASE
    COND-CASE
+   FCOND-CASE
+   FCMP-ENC-CASE
    COND-REFUSE-CASES
    REACH-CASE
    BND [: GROUP-BRANCH ;] IR-CTX:WITH-CONTEXT
+   BND [: GROUP-FCMP ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-REGISTER ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-FRAME-SPELL ;] IR-CTX:WITH-CONTEXT
    BND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT

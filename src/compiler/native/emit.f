@@ -217,7 +217,7 @@ private
 \ One slot per member of the operation family, so the family stays exhaustive: a
 \ member added to A64IR:opcode makes this fail to compile until it has a slot and
 \ an encoding.
-45 constant OPCODES-N
+49 constant OPCODES-N
 0 constant O-MOVZ
 1 constant O-MOVK
 2 constant O-MOV
@@ -263,6 +263,10 @@ private
 42 constant O-FCVTZS
 43 constant O-FMOVXD
 44 constant O-FMOVDX
+45 constant O-FFLAG
+46 constant O-FFLAGZ
+47 constant O-FCMPBR
+48 constant O-FCMPBRZ
 
 0 constant BOUND-NO
 1 constant BOUND-YES
@@ -398,6 +402,10 @@ create B-START BMAX cells allot
       fcvtzs   OF O-FCVTZS   ENDOF
       fmovxd   OF O-FMOVXD   ENDOF
       fmovdx   OF O-FMOVDX   ENDOF
+      fflag    OF O-FFLAG    ENDOF
+      fflagz   OF O-FFLAGZ   ENDOF
+      fcmpbr   OF O-FCMPBR   ENDOF
+      fcmpbrz  OF O-FCMPBRZ  ENDOF
    ;MATCH ;
 
 : SLOT-OPCODE ( n -- A64IR:opcode )
@@ -447,6 +455,10 @@ create B-START BMAX cells allot
       O-FCVTZS   of A64IR-OPCODE:FCVTZS   endof
       O-FMOVXD   of A64IR-OPCODE:FMOVXD   endof
       O-FMOVDX   of A64IR-OPCODE:FMOVDX   endof
+      O-FFLAG    of A64IR-OPCODE:FFLAG    endof
+      O-FFLAGZ   of A64IR-OPCODE:FFLAGZ   endof
+      O-FCMPBR   of A64IR-OPCODE:FCMPBR   endof
+      O-FCMPBRZ  of A64IR-OPCODE:FCMPBRZ  endof
       E-A64EMIT-OPCODE throw
    endcase ;
 
@@ -762,15 +774,19 @@ create B-START BMAX cells allot
    SUCC-AT IR-ID:BLOCK-LOCAL BLK-ORD-CK ;
 
 \ How many instructions a FORM is, is a property of the form: one for all but the
-\ comparison, the division, the call and the compare-and-branch, which are three
-\ each, and the two-way branch, which is two.
+\ four comparisons, the division, the call and the three compare-and-branches,
+\ which are three each, and the two-way branch, which is two.
 : INSNS-OF ( n -- n )
    {: k:n :}
    k O-FLAG = if 3 exit then
+   k O-FFLAG = if 3 exit then
+   k O-FFLAGZ = if 3 exit then
    k O-SDIV = if 3 exit then
    k O-CALL = if 3 exit then
    k O-WORDCALL = if 3 exit then
    k O-CMPBR = if 3 exit then
+   k O-FCMPBR = if 3 exit then
+   k O-FCMPBRZ = if 3 exit then
    k O-BRZ = if 2 exit then
    1 ;
 
@@ -788,6 +804,8 @@ create B-START BMAX cells allot
    k O-BR = if 0 exit then
    k O-BRZ = if 1 exit then
    k O-CMPBR = if 1 exit then
+   k O-FCMPBR = if 1 exit then
+   k O-FCMPBRZ = if 1 exit then
    -1 ;
 
 \ THE RULE, WRITTEN ONCE. An operation's trailing unconditional branch is reached
@@ -940,6 +958,36 @@ create B-START BMAX cells allot
    id home FALL-THRU? if exit then
    id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
 
+\ The two fused FLOAT compare-and-branches, which are the same three instructions
+\ with an Fcmp in front instead of a Cmp - the two-register form for the three
+\ comparisons that take two doubles, and the compare-against-zero form for the
+\ two that take one. Everything after the first instruction is identical to the
+\ integer form's, deliberately: the conditional branch reads the flags the same
+\ way whichever instruction wrote them, and the trailing unconditional half goes
+\ under exactly the same fall-through rule.
+\
+\ WHAT THE Fcmp DOES THAT THE Cmp DOES NOT is raise the unordered condition when
+\ either operand is a NaN, and that is the whole of how a compiled float branch
+\ keeps the interpreted word's answer for a NaN. The conditions
+\ src/compiler/native/select.f names - MI, GT and EQ - are all false under it, so
+\ the conditional below is NOT taken and control reaches the second successor,
+\ which the selection wired to the arm the source's `if` takes when its flag is
+\ zero. No check is written here because there is nothing to check: the rule is
+\ the instruction's and the condition's.
+: PUT-FCMPBR ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
+   id  id 0 SUCC-BLOCK DELTA  id COND-OF  BCOND-WORD  APPEND
+   id home FALL-THRU? if exit then
+   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+
+: PUT-FCMPBRZ ( IR-ID:ir-op-id n -- )
+   {: id:IR-ID:ir-op-id home:n :}
+   id  id 0 OPERAND-REG ENC-FCMP0  APPEND
+   id  id 0 SUCC-BLOCK DELTA  id COND-OF  BCOND-WORD  APPEND
+   id home FALL-THRU? if exit then
+   id  id 1 SUCC-BLOCK DELTA B-WORD  APPEND ;
+
 \ One comparison, which is three instructions: compare the two registers, set one
 \ into the result on the condition, and negate it, because a Habu flag is all
 \ bits set rather than one. This is the sequence the engine's own emitter uses,
@@ -948,6 +996,26 @@ create B-START BMAX cells allot
    {: id:IR-ID:ir-op-id :}
    id 0 RESULT-REG {: rd:n :}
    id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-CMP  APPEND
+   id  rd id COND-OF ENC-CSET  APPEND
+   id  rd rd ENC-NEG  APPEND ;
+
+\ The two float comparisons that answer a number, which are the same three
+\ instructions with an Fcmp in front. The Cset and the negation are the general
+\ file's, because a Habu flag is a number and lives there whichever file the
+\ values compared came out of; this is the sequence the engine's own (FCMP) and
+\ (FCMP0) emit, so a compiled float comparison answers what an interpreted one
+\ answers - all bits set or none, and none for a NaN.
+: PUT-FFLAG ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG {: rd:n :}
+   id  id 0 OPERAND-REG id 1 OPERAND-REG ENC-FCMP  APPEND
+   id  rd id COND-OF ENC-CSET  APPEND
+   id  rd rd ENC-NEG  APPEND ;
+
+: PUT-FFLAGZ ( IR-ID:ir-op-id -- )
+   {: id:IR-ID:ir-op-id :}
+   id 0 RESULT-REG {: rd:n :}
+   id  id 0 OPERAND-REG ENC-FCMP0  APPEND
    id  rd id COND-OF ENC-CSET  APPEND
    id  rd rd ENC-NEG  APPEND ;
 
@@ -1100,6 +1168,10 @@ create B-START BMAX cells allot
       fcvtzs   OF id  id WORD-FCVTZS  APPEND ENDOF
       fmovxd   OF id  id WORD-FMOVXD  APPEND ENDOF
       fmovdx   OF id  id WORD-FMOVDX  APPEND ENDOF
+      fflag    OF id PUT-FFLAG ENDOF
+      fflagz   OF id PUT-FFLAGZ ENDOF
+      fcmpbr   OF id home PUT-FCMPBR ENDOF
+      fcmpbrz  OF id home PUT-FCMPBRZ ENDOF
    ;MATCH ;
 
 \ ---- the shape this leaf emits from ------------------------------------------
@@ -1113,7 +1185,8 @@ create B-START BMAX cells allot
 \ that order.
 : TERMINATOR? ( IR-ID:ir-block-id n -- bool )
    OP-AT SLOT-AT {: k:n :}
-   k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or ;
+   k O-RET = k O-BR = or k O-BRZ = or k O-CMPBR = or
+   k O-FCMPBR = or k O-FCMPBRZ = or ;
 
 : BLOCK-CK ( IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id :}
@@ -1279,6 +1352,10 @@ public
    c b A64IR-OPCODE:FCVTZS   BIND1
    c b A64IR-OPCODE:FMOVXD   BIND1
    c b A64IR-OPCODE:FMOVDX   BIND1
+   c b A64IR-OPCODE:FFLAG    BIND1
+   c b A64IR-OPCODE:FFLAGZ   BIND1
+   c b A64IR-OPCODE:FCMPBR   BIND1
+   c b A64IR-OPCODE:FCMPBRZ  BIND1
    c b A64IR:KEY-IMM    0 BND-IMM !
    c b A64IR:KEY-SHIFT  0 BND-SH !
    c b A64IR:KEY-SLOT   0 BND-SLOT !

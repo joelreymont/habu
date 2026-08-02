@@ -66,6 +66,15 @@
 \                                  block when the condition holds and to the
 \                                  second when it does not, without ever
 \                                  materialising the flag as a number
+\   a64.fflag    Fcmp dn dm; Cset rd cc; Sub rd xzr rd
+\                                - leave the Habu flag of one float comparison
+\   a64.fflagz   Fcmp dn #0.0; Cset rd cc; Sub rd xzr rd
+\                                - the same against the immediate zero, which is
+\                                  a form of the instruction and not an operand
+\   a64.fcmpbr   Fcmp dn dm; B.cc target; B other
+\                                - the fused float compare-and-branch
+\   a64.fcmpbrz  Fcmp dn #0.0; B.cc target; B other
+\                                - the same against the immediate zero
 \   a64.call     Addi ds ds n; Bl entry; Subi ds ds m
 \                                - hand the caller's data stack to the word being
 \                                  compiled, call it, and take the stack back
@@ -77,6 +86,17 @@
 \   a64.ret      Ret             - return to the address in the link register
 \ There is no opcode here for a form no pass in the chain produces yet. An opcode
 \ with no selection rule and no emission would be a promise, not a schema.
+\
+\ THE FOUR FLOAT COMPARISON FORMS ARE FOUR AND NOT TWO, and both splits are
+\ instruction forms rather than tastes. The flag-materialising pair and the fused
+\ pair differ in exactly what the integer pair differ in - one writes a number
+\ into a register and one reads the flags with a branch - and the two-operand and
+\ zero-operand halves of each pair differ because FCMP really does have two
+\ forms: one comparing two D registers and one comparing a D register against the
+\ immediate zero. The engine reaches both (src/habu/habu1.f (FCMP) and (FCMP0)),
+\ so modelling the zero comparison as a comparison against a materialised 0.0
+\ would emit a longer sequence than the interpreted word for the same source
+\ word, and an operation whose operand list does not match its instruction's.
 \
 \ SIX OF THEM ARE MORE THAN ONE INSTRUCTION, AND SAY WHY. Every other form
 \ above is one instruction, and that is the rule this dialect keeps wherever it
@@ -273,13 +293,13 @@
 \ of its own, and why the data-stack forms' aliasing is now unrestricted while
 \ the frame's stays unaliased.
 \
-\ TWO VALUE CLASSES, DELIBERATELY NAMED. A value of this dialect is either a
-\ 64-bit general register or the memory token the frame forms thread, and
-\ GPR-TYPE and MEM-TYPE are the single places that say which is which. The
-\ floating and SIMD register files, labels and fixups are further records of the
-\ same dialect and are not here yet; the seam where they arrive is these two
-\ readers, which is why they exist instead of each schema interning its own type
-\ inline.
+\ THREE VALUE CLASSES, DELIBERATELY NAMED. A value of this dialect is a 64-bit
+\ general register, a 64-bit floating register, or the memory token the frame
+\ forms thread, and GPR-TYPE, FPR-TYPE and MEM-TYPE are the single places that
+\ say which is which. The SIMD register file, labels and fixups are further
+\ records of the same dialect and are not here yet; the seam where they arrive is
+\ these three readers, which is why they exist instead of each schema interning
+\ its own type inline.
 
 require lib/prelude.f
 require lib/errors.f
@@ -345,6 +365,10 @@ ENUM opcode DERIVE eq
    fcvtzs
    fmovxd
    fmovdx
+   fflag
+   fflagz
+   fcmpbr
+   fcmpbrz
 ;ENUM
 
 \ The conditions a comparison may be made under: one per relation the SOURCE
@@ -368,6 +392,43 @@ ENUM opcode DERIVE eq
 \ tables that have to agree are two tables that can disagree. One condition per
 \ source relation keeps it one table, and it also keeps every emitted comparison
 \ byte-identical to the sequence the engine's own primitive emits for that word.
+\
+\ AND THE SEVENTH IS `mi`, WHICH THE FLOAT COMPARISONS NEED AND NO INTEGER
+\ COMPARISON DOES. This is the one place in the chain where a condition cannot be
+\ read off the relation's NAME, and the reason is the unordered flag.
+\
+\ A condition is four bits of an instruction, and what those bits MEAN depends on
+\ which instruction wrote the flags. After a Subs, `lt` is "signed less than".
+\ After an Fcmp it is not: Fcmp raises the unordered condition when either
+\ operand is a NaN, and it does so by setting N=0 Z=0 C=1 V=1. Read the six
+\ integer conditions against those four bits:
+\
+\   condition  code  the test        on unordered (N=0 Z=0 C=1 V=1)
+\   lt         11    N != V          0 != 1 - TRUE
+\   le         13    Z=1 or N != V   TRUE
+\   ne          1    Z = 0           TRUE
+\   ge         10    N  = V          false
+\   gt         12    Z=0 and N = V   false
+\   equal       0    Z = 1           false
+\   mi          4    N = 1           false
+\
+\ So `lt` after an Fcmp answers TRUE for a NaN, and the engine's `f<` answers
+\ false for one (survey (4) at the head of tools/codegen-compare-corpus3.f,
+\ measured). A float less-than lowered under `lt` would therefore take the other
+\ arm of a branch than the interpreted word takes, on exactly the input the
+\ difference matters for. `mi` is the condition that means less-than after an
+\ Fcmp and is false on unordered, which is why the engine's own `f<` uses it, and
+\ it is why this member exists rather than the float words borrowing `lt`.
+\
+\ `gt` and `equal` are NOT borrowed either - they are the same four bits for both
+\ kinds of comparison because the architecture says so, and the members are one
+\ each because a condition is a machine condition and two names for one field
+\ value would be two things that can drift apart. What differs between an integer
+\ `>` and a float `f>` is not the condition; it is the instruction that set the
+\ flags, and that is the OPCODE's business. The three conditions the float
+\ comparisons reach - `mi`, `gt` and `equal` - are exactly the three that are
+\ false on unordered, and that is not a coincidence: it is the whole of why every
+\ float comparison this engine has answers false for a NaN.
 ENUM cond DERIVE eq
    lt
    le
@@ -375,6 +436,7 @@ ENUM cond DERIVE eq
    ge
    equal
    ne
+   mi
 ;ENUM
 
 private
@@ -428,6 +490,7 @@ OFF-MAX dup A64EFF:SP-ALIGN mod - constant FRAME-LIM
 10 constant COND-GE                  \ signed greater than or equal
 0 constant COND-EQ                   \ equal
 1 constant COND-NE                   \ not equal
+4 constant COND-MI                   \ negative - less than, after an Fcmp
 
 \ ---- the branch fields -------------------------------------------------------
 \ How far each branch form reaches, as the signed word displacement its own
@@ -481,13 +544,13 @@ public
 : NAME ( -- ptr u8 n )
    s" a64" ;
 
-\ Version 0.2: the integer subset and the scalar floating forms. The major
-\ version stays at zero until the dialect is the whole machine; the minor version
-\ moved when the floating register class arrived, because a schema table with
-\ these forms in it and one without are two different tables and every consumer
-\ compares the version exactly.
+\ Version 0.3: the integer subset, the scalar floating forms, and the four float
+\ comparison forms. The major version stays at zero until the dialect is the
+\ whole machine; the minor version moves whenever the schema table gains a form,
+\ because a table with these forms in it and one without are two different tables
+\ and every consumer compares the version exactly.
 0 constant MAJOR
-2 constant MINOR
+3 constant MINOR
 
 \ ---- the machine bounds, for a consumer that has to agree with them -----------
 \ A pass that materialises a constant walks the halves of a register, and it asks
@@ -675,6 +738,10 @@ public
       fcvtzs   OF s" a64.fcvtzs" ENDOF
       fmovxd   OF s" a64.fmovxd" ENDOF
       fmovdx   OF s" a64.fmovdx" ENDOF
+      fflag    OF s" a64.fflag" ENDOF
+      fflagz   OF s" a64.fflagz" ENDOF
+      fcmpbr   OF s" a64.fcmpbr" ENDOF
+      fcmpbrz  OF s" a64.fcmpbrz" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -691,6 +758,7 @@ public
       ge    OF COND-GE ENDOF
       equal OF COND-EQ ENDOF
       ne    OF COND-NE ENDOF
+      mi    OF COND-MI ENDOF
    ;MATCH ;
 
 \ The condition one stored code names. It is an exact case, so a code outside
@@ -705,6 +773,7 @@ public
       COND-GE of A64IR-COND:GE endof
       COND-EQ of A64IR-COND:EQUAL endof
       COND-NE of A64IR-COND:NE endof
+      COND-MI of A64IR-COND:MI endof
       E-A64IR-COND throw
    endcase ;
 
@@ -868,6 +937,10 @@ private
       fcvtzs   OF s" a64.rule.fcvtzs" ENDOF
       fmovxd   OF s" a64.rule.fmovxd" ENDOF
       fmovdx   OF s" a64.rule.fmovdx" ENDOF
+      fflag    OF s" a64.rule.fflag" ENDOF
+      fflagz   OF s" a64.rule.fflagz" ENDOF
+      fcmpbr   OF s" a64.rule.fcmpbr" ENDOF
+      fcmpbrz  OF s" a64.rule.fcmpbrz" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -918,6 +991,10 @@ private
       fcvtzs   OF s" a64.render.fcvtzs" ENDOF
       fmovxd   OF s" a64.render.fmovxd" ENDOF
       fmovdx   OF s" a64.render.fmovdx" ENDOF
+      fflag    OF s" a64.render.fflag" ENDOF
+      fflagz   OF s" a64.render.fflagz" ENDOF
+      fcmpbr   OF s" a64.render.fcmpbr" ENDOF
+      fcmpbrz  OF s" a64.render.fcmpbrz" ENDOF
    ;MATCH
    IR-BUILD:INTERN-SYMBOL ;
 
@@ -1563,6 +1640,88 @@ private
    c b o NAMED
    c b IR-BUILD:DEFINE-OP ;
 
+\ ---- the four float comparison forms -----------------------------------------
+\ The floating mirror of a64.flag and a64.cmpbr, and the same argument holds them
+\ together: an Fcmp writes only the condition flags, and the instruction that
+\ reads them - a Cset or a B.cc - has to be inseparable from it, because the
+\ flags are a single architectural resource no value of this dialect stands for
+\ and the register allocator may never hand out. So each of these is ONE
+\ operation and three instructions of the machine.
+\
+\ WHAT IS NEW HERE AND WHAT IS NOT. The register file is: the values compared are
+\ D registers and the flag a materialising form answers is an X register, so the
+\ operand types and the result type are two different classes in one operation.
+\ The condition is not new: it rides as the same attribute under the same key,
+\ and which condition each source word becomes is src/compiler/native/select.f's
+\ answer against the table at the head of this file. What these forms say is that
+\ the flags were written by an Fcmp - which is exactly the fact that decides what
+\ a condition means for a NaN.
+
+\ Fflag: two D registers compared, and the Habu flag that comparison leaves.
+: DEF-FFLAG ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FFLAG OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FFLAG NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Fflagz: the same against the immediate zero, which the instruction carries and
+\ the operation therefore does not. One operand, because the form has one.
+: DEF-FFLAGZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id t:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FFLAGZ OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   t IR-SCHEMA:ADD-RESULT
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   PURE-VALUE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FFLAGZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Fcmpbr: control goes to the first successor when the two D registers stand in
+\ the named relation and to the second when they do not - and when either of them
+\ is a NaN the relation does NOT hold, whichever of the three conditions is
+\ named, so control goes to the SECOND. That is the whole of how this dialect
+\ keeps the engine's NaN rule through a fused branch: the rule is not a check
+\ anyone wrote, it is the unordered flag and the choice of conditions above.
+\
+\ The first successor is the condition-holds one, exactly as it is for the
+\ integer form and for the same measured reason; the pass that wires them is
+\ src/compiler/native/select.f and it says which way round it puts them. It
+\ defines no value, which is the whole saving.
+: DEF-FCMPBR ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FCMPBR OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   f IR-SCHEMA:ADD-OPERAND
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   true 2 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FCMPBR NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
+\ Fcmpbrz: the same fused branch against the immediate zero.
+: DEF-FCMPBRZ ( IR-CTX:ctx IR-BUILD:builder IR-ID:ir-type-id -- )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-ID:ir-type-id :}
+   c b A64IR-OPCODE:FCMPBRZ OPCODE IR-SCHEMA:BEGIN-OP
+   f IR-SCHEMA:ADD-OPERAND
+   c b KEY-COND IR-SCHEMA:ADD-ATTR
+   true 2 0 IR-SCHEMA:SET-CONTROL
+   IR-SCHEMA:SET-PURE
+   TOTAL
+   FP-TARGET
+   c b A64IR-OPCODE:FCMPBRZ NAMED
+   c b IR-BUILD:DEFINE-OP ;
+
 \ ---- the table this dialect may fill -----------------------------------------
 \ Design line 229's closed world is per dialect, so an operation family may only
 \ be defined into the schema table of the dialect it belongs to. The table's
@@ -1645,7 +1804,11 @@ public
    c b t f A64IR-OPCODE:SCVTF DEF-FCROSS
    c b f t A64IR-OPCODE:FCVTZS DEF-FCROSS
    c b t f A64IR-OPCODE:FMOVXD DEF-FCROSS
-   c b f t A64IR-OPCODE:FMOVDX DEF-FCROSS ;
+   c b f t A64IR-OPCODE:FMOVDX DEF-FCROSS
+   c b f t DEF-FFLAG
+   c b f t DEF-FFLAGZ
+   c b f DEF-FCMPBR
+   c b f DEF-FCMPBRZ ;
 
 private
 get-current prot-wid-add

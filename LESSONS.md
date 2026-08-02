@@ -4516,3 +4516,55 @@ it looks like coverage and it rots. They came out, `spill.f` refuses a double it
 would have to put away by name, and the dot for the leaf that reaches them says
 where they land. The dialect's own header had already written the rule down:
 an opcode with no lowering and no test is a promise, not a schema.
+
+## A condition code means whatever the instruction that set the flags meant
+
+The float comparison leaf had one real decision in it and it was invisible from
+the source language. AArch64's condition field is four bits, and `lt` after a
+`Subs` is signed less-than; after an `Fcmp` it is not. `Fcmp` raises the
+unordered condition for a NaN - N=0 Z=0 C=1 V=1 - under which `lt` (N != V)
+HOLDS while `mi` (N = 1) does not, and the engine's own `f<` uses `mi` for
+exactly that reason. A lowering table that read a float comparison's condition
+off its relation's NAME would compile a `f<` that answers TRUE for a NaN and a
+fused branch that takes the arm the interpreted word does not, and every
+ordinary pair of numbers would still look right. The rule that falls out: a
+condition belongs to the instruction that wrote the flags, not to the relation
+the source word spells, and the only inputs that separate the two are the ones
+that raise the unordered flag. Every float comparison test here asks a NaN in
+each operand position, and the mutation that flips `mi` to `lt` is killed by
+those cases and by nothing else.
+
+## The NaN rule needed no code, which is how you know it was modelled right
+
+`x f0< if A else B then` takes the else arm when x is a NaN, and nothing in the
+compiler checks for one. The compare-and-branch is wired condition-true-first,
+so a condition that is false sends control to the second successor, which is the
+arm the source's `if` takes when its flag is zero - and the three conditions the
+engine names (MI, GT, EQ) are exactly the three that are false on unordered.
+Both halves were already there for integers; the leaf's whole job was to pick
+conditions that keep the property. A guard, a check or a special case anywhere
+in that path would have been a sign the model was wrong, not a safety net. Write
+the truth table before the code and the code turns out to be a table entry.
+
+## One kind table, three readers - not three tables over eleven opcodes
+
+The float comparisons made the selector ask three questions about a source
+comparison: is it fusable, which machine form does it become, and how many
+operands does it read. Written as three lists of opcode names those are three
+things that can drift, and the drift is silent - a comparison missing from the
+fusion list is just slower, and one missing from the operand-count list stages
+an operation with an operand nothing computed. One exhaustive table answering a
+four-member kind, with the three readers matching over the kind, makes a new
+opcode answer once and makes a wrong answer break all three at the same time.
+The mutation that proves it: make the table say a float comparison is not a
+comparison, and the FLAG path throws before the fusion path is even reached.
+
+## A test that only ever compares unequal operands cannot see `gt` from `ge`
+
+The first mutation run had every float comparison lowered under a wrong
+condition and killed - except `f>` under `ge`, which survived. The two differ
+only when the operands are EQUAL, and every pinned input was an ordered pair or
+a NaN. Three orderings per relation is the minimum: less, greater and equal,
+because the six conditions of this machine partition exactly on those three plus
+unordered. A comparison suite that omits the equal case is testing five
+conditions and reporting six.

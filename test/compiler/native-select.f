@@ -315,6 +315,107 @@ $1000 constant BUMP-ADDR
    ARG+ RET1
    CLOSE-FUN ;
 
+\ ---- the same shape over doubles ---------------------------------------------
+\ The float comparisons reach the fusion by exactly the route the integer ones
+\ do - a comparison whose one reader is the branch below it - so the fixture is
+\ the same fixture with two things changed: the values compared are DOUBLES, and
+\ the comparison is one of the five float opcodes.
+\
+\ WHY THE DOUBLES ARE CROSSED FROM CELL ARGUMENTS RATHER THAN BEING BLOCK
+\ ARGUMENTS. That is what a real body does. A word's arguments arrive in
+\ data-stack cells, and `hir.bits>real` is the operation that reads one as the
+\ double it holds; the elaborator stages exactly that in front of any float
+\ operation whose operand is a cell. Making them float-typed block arguments
+\ instead would build a module this pass refuses anyway, because a double may
+\ not cross a block edge yet.
+\
+\ AND WHY THE ARMS HAND ON THE CELLS. For the same reason: the join's arguments
+\ are cells, so what crosses the edge is `xc` and `yc` and not the doubles - the
+\ shape MAX-F has, and the reason MAX-F compiles today while RELU-F does not.
+: REALT ( -- IR-ID:ir-type-id )
+   CC BB HIR:REAL-TYPE ;
+
+: CROSS ( IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: v:IR-ID:ir-value-id :}
+   HIR-OPCODE:BITSREAL BODY-ST BODY-LN OPEN-OP
+   CC BB v IR-BUILD:ADD-OPERAND
+   CC BB REALT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ A float comparison of two doubles, answering a cell - which is what a Habu
+\ flag is.
+: FCMP2 ( HIR:opcode IR-ID:ir-value-id IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id y:IR-ID:ir-value-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB y IR-BUILD:ADD-OPERAND
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ And one against the instruction's own zero, which takes one operand.
+: FCMP1 ( HIR:opcode IR-ID:ir-value-id -- IR-ID:ir-value-id )
+   {: o:HIR:opcode x:IR-ID:ir-value-id :}
+   o BODY-ST BODY-LN OPEN-OP
+   CC BB x IR-BUILD:ADD-OPERAND
+   CC BB CELLT IR-BUILD:ADD-RESULT
+   CLOSE-VALUE ;
+
+\ `: MAX-F ( r r -- r ) {: x:r y:r :} x y f< if y else x then ;` in the shape the
+\ elaborator leaves it, with the comparison a parameter and the value the arms
+\ hand on a parameter - the same two knobs the integer fixture has, so the fused
+\ case and the multi-use fall-back are one shape with one thing changed.
+: BUILD-FBRANCH ( HIR:opcode bool -- )
+   {: o:HIR:opcode carry:bool :}
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   yc CROSS {: y:IR-ID:ir-value-id :}
+   o x y FCMP2 {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   carry if f 3 BR1 else xc 3 BR1 then
+   BLOCK+
+   carry if f 3 BR1 else yc 3 BR1 then
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ `: RELU-ISH ( r -- n ) {: x:r :} x f0< if 1 else 2 then ;` reduced to what this
+\ pass can see: one argument, one crossing, one comparison against zero, and the
+\ branch that reads it.
+: BUILD-FZBRANCH ( HIR:opcode -- )
+   {: o:HIR:opcode :}
+   1 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   xc CROSS {: x:IR-ID:ir-value-id :}
+   o x FCMP1 {: f:IR-ID:ir-value-id :}
+   f 1 2 BRZ2
+   BLOCK+
+   xc 3 BR1
+   BLOCK+
+   xc 3 BR1
+   BLOCK+
+   ARG+ RET1
+   CLOSE-FUN ;
+
+\ And the flag-materialising shape: the comparison IS what the word leaves, so
+\ there is no branch to fuse into.
+: BUILD-FFLAG-VALUE ( HIR:opcode -- )
+   {: o:HIR:opcode :}
+   2 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   ARG+ {: yc:IR-ID:ir-value-id :}
+   o  xc CROSS  yc CROSS  FCMP2 RET1
+   CLOSE-FUN ;
+
+: BUILD-FZFLAG-VALUE ( HIR:opcode -- )
+   {: o:HIR:opcode :}
+   1 1 OPEN-FUN
+   ARG+ {: xc:IR-ID:ir-value-id :}
+   o  xc CROSS  FCMP1 RET1
+   CLOSE-FUN ;
+
 \ `: ISLT ( n n -- bool ) < ;` - a comparison whose answer IS what the word
 \ leaves. There is no branch below it at all, so there is nothing to fuse into
 \ and the flag has to be materialised.
@@ -449,6 +550,13 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    R-SYMP RV R-SYMR RV
    R-OPP RV R-OPR RV RK i OP@ k IR-OP:FATTR-KEY@
    p u IR-SYM:FEQ? ;
+
+\ How many values one operation of the entry block reads. It is what separates a
+\ comparison against the instruction's own zero from one against a register: the
+\ zero forms take one operand and the register forms take two.
+: OPERANDS ( n -- n )
+   {: i:n :}
+   R-OPR RV i OP@ IR-OP:FOPERANDS ;
 
 \ Which block a terminator of the entry block hands control to, as its ordinal.
 : SUCC@ ( n n -- n )
@@ -627,6 +735,151 @@ R-VIEWS TYPED-BUFFER R-VIEW IR-ARENA:view
    s" a comparison whose answer is the word's result keeps its flag" T-LABEL
    WBND [: FLAG-VALUE-BODY ;] IR-CTX:WITH-CONTEXT
    TFALSE TTRUE TTRUE 2 T= ;
+
+\ ---- the fused FLOAT compare-and-branch --------------------------------------
+\ The same three assertions the integer fusion gets, over the five float words:
+\ the entry block holds ONE operation and it is the fused form, the operands are
+\ the values the comparison was given in the comparison's order, and the
+\ successors are the source branch's the other way round. What is added is which
+\ machine form each shape becomes - the two-register Fcmp for a comparison of two
+\ doubles and the compare-with-zero form for a comparison against zero - and the
+\ condition each source word is made under.
+\
+\ THE CONDITIONS ARE THE POINT OF THIS CASE. A float less-than is lowered under
+\ `mi` and NOT under `lt`, which is what makes a compiled `f<` answer false for a
+\ NaN the way the interpreted one does: an Fcmp raises the unordered condition
+\ and `lt` holds under it while `mi` does not. They are asserted against the
+\ dialect's own codes rather than against numbers, because
+\ test/compiler/native-a64ir.f is what holds those codes against the assembler,
+\ and each one is also asserted to DIFFER from the condition a table that read
+\ the relation's name would have picked.
+: FFUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool bool bool n n n )
+   HIR-MOD
+   HIR-OPCODE:FLT false BUILD-FBRANCH
+   SELECTED READ!
+   OPS
+   2 s" a64.fcmpbr" OPCODE-IS?
+   2 s" a64.cmpbr" OPCODE-IS?
+   2 s" a64.fflag" OPCODE-IS?
+   2 0 OPERAND@ 0 0 RESULT@ SAME-VALUE?
+   2 1 OPERAND@ 1 0 RESULT@ SAME-VALUE?
+   2 0 s" a64.cond" ATTR-KEY-IS?
+   2 0 ATTR-INT
+   2 0 SUCC@
+   2 1 SUCC@ ;
+
+: FFUSE-CASE ( -- )
+   s" a single-use float comparison and its branch select to one float compare-and-branch"
+   T-LABEL
+   WBND [: FFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= 2 T=
+   A64IR-COND:MI A64IR:COND-CODE T=
+   TTRUE TTRUE TTRUE TFALSE TFALSE TTRUE 3 T= ;
+
+\ The other four, each read back as the machine form it becomes and the
+\ condition it is made under. The two against zero become the compare-with-zero
+\ form and carry ONE operand, which is what says the zero is the instruction's
+\ and not a value something had to compute.
+: FFUSE-GT-BODY ( IR-CTX:ctx -- bool n )
+   HIR-MOD
+   HIR-OPCODE:FGT false BUILD-FBRANCH
+   SELECTED READ!
+   2 s" a64.fcmpbr" OPCODE-IS?
+   2 0 ATTR-INT ;
+
+: FFUSE-EQ-BODY ( IR-CTX:ctx -- bool n )
+   HIR-MOD
+   HIR-OPCODE:FEQ false BUILD-FBRANCH
+   SELECTED READ!
+   2 s" a64.fcmpbr" OPCODE-IS?
+   2 0 ATTR-INT ;
+
+: FFUSE-LTZ-BODY ( IR-CTX:ctx -- bool bool n n )
+   HIR-MOD
+   HIR-OPCODE:FLTZ BUILD-FZBRANCH
+   SELECTED READ!
+   1 s" a64.fcmpbrz" OPCODE-IS?
+   1 s" a64.fcmpbr" OPCODE-IS?
+   1 OPERANDS
+   1 0 ATTR-INT ;
+
+: FFUSE-EQZ-BODY ( IR-CTX:ctx -- bool n n )
+   HIR-MOD
+   HIR-OPCODE:FEQZ BUILD-FZBRANCH
+   SELECTED READ!
+   1 s" a64.fcmpbrz" OPCODE-IS?
+   1 OPERANDS
+   1 0 ATTR-INT ;
+
+: FFUSE-REST-CASE ( -- )
+   s" a fused float greater-than branches on greater-than" T-LABEL
+   WBND [: FFUSE-GT-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:GT A64IR:COND-CODE T= TTRUE
+
+   s" a fused float equality branches on equal" T-LABEL
+   WBND [: FFUSE-EQ-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:EQUAL A64IR:COND-CODE T= TTRUE
+
+   s" a fused comparison against zero takes one operand and branches on `mi`" T-LABEL
+   WBND [: FFUSE-LTZ-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:MI A64IR:COND-CODE T= 1 T= TFALSE TTRUE
+
+   s" and the equality against zero is the same form under `equal`" T-LABEL
+   WBND [: FFUSE-EQZ-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:EQUAL A64IR:COND-CODE T= 1 T= TTRUE
+
+   s" none of the five is lowered under the condition its relation's NAME suggests" T-LABEL
+   A64IR-COND:MI A64IR:COND-CODE  A64IR-COND:LT A64IR:COND-CODE  = TFALSE
+   A64IR-COND:MI A64IR:COND-CODE  A64IR-COND:LE A64IR:COND-CODE  = TFALSE ;
+
+\ A float comparison read a second time keeps its flag and its branch, exactly as
+\ an integer one does - and the flag form is the FLOAT one, so a value of the
+\ floating file never reaches the integer compare.
+: FNOFUSE-BODY ( IR-CTX:ctx -- n bool bool bool bool n )
+   HIR-MOD
+   HIR-OPCODE:FLT true BUILD-FBRANCH
+   SELECTED READ!
+   OPS
+   2 s" a64.fflag" OPCODE-IS?
+   3 s" a64.cbz" OPCODE-IS?
+   2 s" a64.fcmpbr" OPCODE-IS?
+   3 0 OPERAND@ 2 0 RESULT@ SAME-VALUE?
+   2 0 ATTR-INT ;
+
+: FNOFUSE-CASE ( -- )
+   s" a float comparison read a second time keeps its flag and its branch" T-LABEL
+   WBND [: FNOFUSE-BODY ;] IR-CTX:WITH-CONTEXT
+   A64IR-COND:MI A64IR:COND-CODE T=
+   TTRUE TFALSE TTRUE TTRUE 4 T= ;
+
+\ And a float comparison with no branch under it at all: its answer is what the
+\ word leaves, so it is materialised - in the general register file, because a
+\ Habu flag is a number.
+: FFLAG-VALUE-BODY ( IR-CTX:ctx -- n bool bool bool )
+   HIR-MOD
+   HIR-OPCODE:FEQ BUILD-FFLAG-VALUE
+   SELECTED READ!
+   OPS
+   2 s" a64.fflag" OPCODE-IS?
+   3 s" a64.ret" OPCODE-IS?
+   2 s" a64.fcmpbr" OPCODE-IS? ;
+
+: FZFLAG-VALUE-BODY ( IR-CTX:ctx -- n bool n )
+   HIR-MOD
+   HIR-OPCODE:FEQZ BUILD-FZFLAG-VALUE
+   SELECTED READ!
+   OPS
+   1 s" a64.fflagz" OPCODE-IS?
+   1 OPERANDS ;
+
+: FFLAG-VALUE-CASE ( -- )
+   s" a float comparison whose answer is the word's result keeps its flag" T-LABEL
+   WBND [: FFLAG-VALUE-BODY ;] IR-CTX:WITH-CONTEXT
+   TFALSE TTRUE TTRUE 4 T=
+
+   s" and the comparison against zero materialises through the zero form" T-LABEL
+   WBND [: FZFLAG-VALUE-BODY ;] IR-CTX:WITH-CONTEXT
+   1 T= TTRUE 3 T= ;
 
 \ ---- the move-wide chain -----------------------------------------------------
 : SMALL-BODY ( IR-CTX:ctx -- n bool n n bool bool bool )
@@ -999,6 +1252,10 @@ public
    FUSE-EQ-CASE
    NOFUSE-CASE
    FLAG-VALUE-CASE
+   FFUSE-CASE
+   FFUSE-REST-CASE
+   FNOFUSE-CASE
+   FFLAG-VALUE-CASE
    SMALL-CASE
    WIDE-CASE
    FUN-CASE
