@@ -35,21 +35,20 @@ yet committed — it is tracked by the zed-gated dot
 
 ## The durable pass@k harness: transcripts -> matrix
 A generation run is recorded as a plain-text **transcript** file and replayed from the
-committed tree — no `/tmp` scripts, no ad hoc subagent logs. Formats v1 and v1.1
-(line-oriented, LF; blank lines and `\ ...` comments ignored; one transcript = one
+committed tree — no `/tmp` scripts, no ad hoc subagent logs. The grammar is
+line-oriented (LF; blank lines and `\ ...` comments ignored; one transcript = one
 target arm):
 
 ```
-habu-eval-transcript v1      header; `habu-eval-transcript v1.1` enables `tokens`
+habu-eval-transcript         header, first significant line
 target habu-ptx              once, before any task
 task saxpy                   opens/rejoins the task's tally row
 sample s1                    one generation sample
 candidate <kernel source>    one authoring round: draft, then repairs, in order
-tokens 137                   v1.1 only, optional per TRANSCRIPT not per candidate:
-                             generator-reported model-token count for the candidate
-                             line above (e.g. the claude CLI JSON `usage` tokens);
-                             replaces that candidate's whitespace source-token
-                             proxy in tokens-to-green. A transcript that uses
+tokens 137                   optional generator-reported model-token count for the
+                             candidate line above (e.g. the claude CLI JSON `usage`
+                             tokens); replaces that candidate's whitespace source-
+                             token proxy in tokens-to-green. A transcript that uses
                              `tokens` at all must carry one on EVERY candidate,
                              including ignored post-green rounds (E-TS-TOKENS)
 result green|fail            recorded verdict for an EXTERNALLY graded sample
@@ -61,7 +60,7 @@ A `tokens` directive belongs to the candidate line directly above it (at most on
 silently mixed: within one transcript either every candidate carries `tokens` or none
 does — a mixed file is rejected (`E-TS-TOKENS`), so every tokens-to-green sum is
 unit-pure. The matrix marks the unit per row in the `tok-src` column: `model`
-(generator-reported), `proxy` (whitespace source tokens; all v1 transcripts), or `-`
+(generator-reported), `proxy` (whitespace source tokens; no `tokens` directives), or `-`
 (no replayed token data, e.g. recorded-only arms).
 
 Every replayed row additionally carries `tok-est`: the deterministic model-token
@@ -69,7 +68,7 @@ ESTIMATE (`maki/eval/tokest.f` `EVAL:GEN-TOK-EST` — one token per alphanumeric
 plus one per non-whitespace punctuation byte, a dependency-free BPE approximation).
 It is always computed from the candidate source at replay time, independent of the
 `tok-src` unit, so a row records the raw source-token proxy AND the estimate side by
-side, and a future generator-reported count (v1.1 `tokens`) can be compared against
+side, and a generator-reported `tokens` count can be compared against
 both. `tok-est` is never a claim of exact model usage.
 
 `maki/eval/transcript.f` replays every `candidate` line through the shared repair
@@ -138,8 +137,8 @@ recorded as a SKIP by the suites (device-FFI SKIP pattern). Prompt specs live at
 The `/tmp` graders are retired into committed checked-Habu tools, and sampled pass@k
 rounds now replay from committed transcript files (`habu-eval-matrix-live`).
 Tokens-to-green is recorded in two units per row — the whitespace source-token
-proxy plus the `GEN-TOK-EST` estimate (`tok-est`) — and format v1.1 `tokens`
-directives can slot in real generator-reported counts. Remaining: the live-model
+proxy plus the `GEN-TOK-EST` estimate (`tok-est`) — and `tokens` directives can
+carry real generator-reported counts. Remaining: the live-model
 generation arm stays external/user-gated (record each run as a transcript file;
 an Agent-tool round cannot see `usage` counts, so a real model-token round needs
 the `claude` CLI recording path), and the device goldens for the sumnorm/gemm/

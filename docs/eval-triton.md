@@ -810,9 +810,9 @@ bin/hb --load maki/eval/matrix-main.f -- maki/transcripts/live-habu-ptx-2026-07-
 - **Token units:** `tokens-to-green` is the whitespace source-token proxy;
   `tok-est` is the `GEN-TOK-EST` model-token estimate (alnum runs + punctuation
   bytes) from the same committed candidates. Generator-reported counts are not
-  exposed by the Agent tool, so the transcript stays format v1; a future round
-  recorded through the `claude` CLI can carry real `usage` counts as v1.1
-  `tokens` directives and the matrix will mark that row `model`.
+  exposed by the Agent tool, so the transcript omits `tokens`; a future round
+  recorded through the `claude` CLI can carry real `usage` counts in `tokens`
+  directives and the matrix will mark that row `model`.
 - Honest scope: host-only round (GB/s + device columns `not-run`; the sumnorm/
   gemm/attention device goldens are tracked Orin work). Phase-word tasks (gemm,
   attention) measure *composition* authoring — the phase implementations are

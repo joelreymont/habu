@@ -1,6 +1,6 @@
 \ maki/eval/matrix-main.f - the durable eval-matrix entry point.
 \
-\ Replays generation-transcript files (docs/maki/eval.md format v1) through the
+\ Replays generation-transcript files (docs/maki/eval.md) through the
 \ committed checker judge and prints the eval matrix (superset of the docs/eval-triton.md recorded table):
 \
 \   bin/hb --load maki/eval/matrix-main.f -- run1.txt run2.txt ...

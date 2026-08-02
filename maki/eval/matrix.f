@@ -9,8 +9,8 @@
 \ `not-run` and only carry values when an on-device run (tools/ptx/bandwidth.f
 \ for GB/s; MAKI:GRADE-AUTHOR device goldens - Orin only) sets them through
 \ MATRIX-GBS! / MATRIX-DEVICE!. Nothing on the host path fakes a device number.
-\ The tok-src column marks the tokens-to-green unit per row: `model` (v1.1
-\ generator-reported `tokens` directives), `proxy` (whitespace source-token
+\ The tok-src column marks the tokens-to-green unit per row: `model`
+\ (generator-reported `tokens` directives), `proxy` (whitespace source-token
 \ proxy), or `-` (no replayed token data) - never a silent mix (E-TS-TOKENS).
 \ Duplicate (task,target) rows and out-of-range writes fail closed.
 

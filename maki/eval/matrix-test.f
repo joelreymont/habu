@@ -45,7 +45,7 @@ variable TEST-MISS-U
 
 : TEST-UNKNOWN-TASK ( -- )
    TS-RESET
-   s" habu-eval-transcript v1" TS-LINE
+   s" habu-eval-transcript" TS-LINE
    s" target habu-ptx" TS-LINE
    s" task future-kernel" TS-LINE
    TS-END
@@ -131,7 +131,7 @@ variable MXVA  variable MXVU
    s" | saxpy | habu-ptx | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 156 | 321 | not-run |" MXHAS
    s" | softmax | habu-ptx | 5 | 3 | 600 | 900 | 1000 | 2 | 3 | 460 | 1010 | not-run |" MXHAS
    s" | softmax | triton | 5 | 5 | 1000 | 1000 | 1000 | 0 | 0 | 0 | 0 | not-run | not-run | recorded |" MXHAS
-   s" | not-run | not-run | checker | proxy |" MXHAS    \ v1 replay: proxy-marked tokens
+   s" | not-run | not-run | checker | proxy |" MXHAS    \ proxy-marked tokens
    s" | not-run | not-run | recorded | - |" MXHAS       \ recorded arm: no token data
    s" | mixed |" MXHASNT
 
@@ -147,7 +147,7 @@ variable MXVA  variable MXVU
    \ --- an empty-task row renders `-` pass cells instead of a fake number ---
    EVAL:MATRIX-RESET
    EVAL:TS-RESET
-   s" habu-eval-transcript v1" EVAL:TS-LINE
+   s" habu-eval-transcript" EVAL:TS-LINE
    s" target habu-ptx" EVAL:TS-LINE
    s" task gemm" EVAL:TS-LINE
    EVAL:TS-END
@@ -156,10 +156,10 @@ variable MXVA  variable MXVU
    s" | gemm | habu-ptx | 0 | 0 | - | - | - | " MXHAS
    s" | not-run | not-run | - | - |" MXHAS
 
-   \ --- a v1.1 model-token transcript renders the honest `model` marker ---
+   \ --- a model-token transcript renders the honest `model` marker ---
    EVAL:MATRIX-RESET
    EVAL:TS-RESET
-   s" habu-eval-transcript v1.1" EVAL:TS-LINE
+   s" habu-eval-transcript" EVAL:TS-LINE
    s" target habu-ptx" EVAL:TS-LINE
    s" task saxpy" EVAL:TS-LINE
    s" sample m1" EVAL:TS-LINE

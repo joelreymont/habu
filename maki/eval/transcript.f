@@ -3,18 +3,18 @@
 \ The durable pass@k harness: a generation run (model samples + repair rounds)
 \ is recorded as a plain-text TRANSCRIPT file, and this module replays it
 \ through the committed checker judge - no /tmp scripts, no ad hoc subagent
-\ logs (dot habu-eval-matrix-live). Formats v1 and v1.1, line-oriented, one
+\ logs (dot habu-eval-matrix-live). The format is line-oriented, with one
 \ transcript = one target arm (see docs/maki/eval.md):
 \
-\   habu-eval-transcript v1        header, first significant line (or `v1.1`)
+\   habu-eval-transcript           header, first significant line
 \   target habu-ptx                the target arm, once, before any task
 \   task saxpy                     opens/rejoins the tally row for a task
 \   sample s1                      starts one generation sample
 \   candidate <kernel source>      one authoring round (draft, then repairs)
-\   tokens 137                     v1.1 only, OPTIONAL: generator-reported
-\                                  model-token count for the candidate line
-\                                  above; replaces that candidate's whitespace
-\                                  proxy count in the tokens-to-green tally
+\   tokens 137                     OPTIONAL generator-reported model-token
+\                                  count for the candidate line above; replaces
+\                                  that candidate's whitespace proxy count in
+\                                  the tokens-to-green tally
 \   result green|fail              recorded verdict for an EXTERNALLY graded
 \                                  sample (e.g. the Triton arm) - a sample is
 \                                  either replayed candidates OR one result
@@ -71,8 +71,6 @@ private
 8 constant TS-TASK-MAX
 64 constant TS-NAME-CAP
 $40000 constant TS-FILE-CAP
-1 constant TSV-1          \ header `habu-eval-transcript v1`
-2 constant TSV-11         \ header `habu-eval-transcript v1.1` (adds `tokens N`)
 
 \ ---- per-task tally table ----------------------------------------------------
 create TS-NAMES TS-TASK-MAX TS-NAME-CAP * allot
@@ -98,7 +96,6 @@ variable TS-CAND#     \ candidates fed to the open sample
 variable TS-REC       \ open-sample recorded verdict: 0 none / 1 green / 2 fail
 variable TS-POS       \ line-split cursor
 variable TS-BUF-A     \ lazy file buffer
-variable TS-VER       \ header format version (TSV-1 / TSV-11)
 variable TS-TOKMODE   \ settled token unit for this transcript (TS-TOK-*)
 variable TS-PEND?     \ the last candidate may still take a tokens directive
 variable TS-CNT?      \ ...and was engine-counted (fed before the sample went green)
@@ -214,8 +211,8 @@ variable TS-ADJ       \ open sample: model tokens minus proxy over counted candi
    -1 TS-PEND? !
    TS-CAND# @ 1+ TS-CAND# ! ;
 
-\ v1.1: the generator-reported model-token count for the candidate line above
-\ replaces that candidate's whitespace proxy in the sample's tokens-to-green
+\ The generator-reported model-token count for the candidate line above
+\ replaces that candidate's whitespace proxy in the sample's tokens-to-green.
 : TS-D-TOKENS ( ptr u8 n -- ) {: a:ptr u:n :}
    TS-PEND? @ 0= if E-TS-ORDER throw then
    a u STR-DIGITS? 0= if E-TS-LINE throw then
@@ -236,18 +233,16 @@ variable TS-ADJ       \ open sample: model tokens minus proxy over counted candi
    a u s" fail"  STR= if 2 TS-REC ! exit then
    E-TS-LINE throw ;
 
-\ header line -> format version, 0 when the line is not a header
-: TS-HDR-VER ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u s" habu-eval-transcript v1"   STR= if TSV-1  exit then
-   a u s" habu-eval-transcript v1.1" STR= if TSV-11 exit then
-   0 ;
+\ exact header line
+: TS-HEADER? ( ptr u8 n -- bool )
+   s" habu-eval-transcript" STR= ;
 
 public
 
 : TS-RESET ( -- )
    0 TS-TARGET-U !  0 TS-TASK# !  -1 TS-CUR !
    0 TS-HDR? !  0 TS-OPEN? !  0 TS-CAND# !  0 TS-REC !
-   TSV-1 TS-VER !  TS-TOK-NONE TS-TOKMODE !
+   TS-TOK-NONE TS-TOKMODE !
    0 TS-PEND? !  0 TS-CNT? !  0 TS-PROXY !  0 TS-ADJ ! ;
 
 \ one transcript line (trailing whitespace tolerated; CR for foreign editors)
@@ -256,18 +251,16 @@ public
    u 0= if exit then
    a u s" \" STARTS-WITH? if exit then
    TS-HDR? @ 0= if
-      a u TS-HDR-VER dup 0= if E-TS-HEADER throw then
-      TS-VER !  -1 TS-HDR? !  exit
+      a u TS-HEADER? 0= if E-TS-HEADER throw then
+      -1 TS-HDR? !  exit
    then
-   a u TS-HDR-VER 0 <> if E-TS-HEADER throw then
+   a u TS-HEADER? if E-TS-HEADER throw then
    a u s" target "    STARTS-WITH? if a u s" target "    TS-REST TS-D-TARGET    exit then
    a u s" task "      STARTS-WITH? if a u s" task "      TS-REST TS-D-TASK      exit then
    a u s" sample "    STARTS-WITH? if a u s" sample "    TS-REST TS-D-SAMPLE    exit then
    a u s" candidate " STARTS-WITH? if a u s" candidate " TS-REST TS-D-CANDIDATE exit then
    a u s" result "    STARTS-WITH? if a u s" result "    TS-REST TS-D-RESULT    exit then
-   TS-VER @ TSV-11 = if
-      a u s" tokens "  STARTS-WITH? if a u s" tokens "   TS-REST TS-D-TOKENS    exit then
-   then
+   a u s" tokens "     STARTS-WITH? if a u s" tokens "     TS-REST TS-D-TOKENS    exit then
    E-TS-LINE throw ;
 
 : TS-END ( -- )

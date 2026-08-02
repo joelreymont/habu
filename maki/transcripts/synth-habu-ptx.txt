@@ -1,4 +1,4 @@
-habu-eval-transcript v1
+habu-eval-transcript
 \ Synthetic generation transcript mirroring the 2026-06-27 model-driven round
 \ (docs/eval-triton.md): SAXPY 5/5 first-try green; softmax 3/5 first-try with
 \ the two author-rejected samples repaired to green in 1 and 2 rounds. The

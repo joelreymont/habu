@@ -1,4 +1,4 @@
-habu-eval-transcript v1
+habu-eval-transcript
 \ LIVE model-generated pass@k round, 2026-07-12 (dot habu-eval-matrix-live).
 \ Generator: independent claude-opus-4-8 subagents (claude CLI -p, --tools ""
 \ --safe-mode, one fresh blind session per sample; n=5 per task), each given
