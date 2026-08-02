@@ -1,9 +1,11 @@
 ---
 title: Migrate OPTION to unified ENUM
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-13T17:16:48.654673+02:00"
+closed-at: "2026-08-02T16:54:45.189627+02:00"
+close-reason: landed at bf61e776601225484ea4d75b8450e68e7198a1d2; current lib/adt/option.f is the exact requested unified ENUM declaration
 ---
 
 Replace the shared global arity-one legacy `SUMTYPE option` with:

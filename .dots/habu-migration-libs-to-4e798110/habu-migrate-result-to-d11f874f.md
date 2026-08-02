@@ -1,9 +1,11 @@
 ---
 title: Migrate RESULT to unified ENUM
-status: open
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T05:04:26.432169+02:00"
+closed-at: "2026-08-02T16:54:45.205890+02:00"
+close-reason: landed at 80b8be9206a840fcbe69848db2e0c88b4dabfd85; current lib/adt/result.f is the exact requested unified ENUM declaration
 blocks:
   - habu-libs-migrate-option-510a7e40
 ---
