@@ -45,6 +45,16 @@ variable VERD                     \ last verdict, set by the check hook
 TRUSTED: ERR@  ( -- n )
    data-base EVALERR-CELL + @ ; \ EVALERR-CELL: 0 = clean, 1 = recovered from an error
 
+package PROP-MEAS
+public
+
+$4D3C2B1A constant CANARY
+
+: VERIFY ( n n -- n ) {: guard:n measured:n :}
+   guard CANARY = if measured else -1 then ;
+
+;package
+
 \ ---- seeded PRNG (LCG) ----
 500 constant DEFAULT-COUNT
 
@@ -495,474 +505,245 @@ variable ARG-N  variable ARG-I  variable ARG-L
    repeat  ARG-N @ 0 0= ;
 : USAGE ( -- )  s" prop-test: usage: bin/hb [seed count] < test/prop-test.f" 64 die ;
 : ARG-U ( n -- n )  ARGV ARG>U? 0= IF drop USAGE THEN ;
-\ ============================================================================
-\ Primitive-effect axiom differential census (dot habu-primitive-effect-axiom).
-\ The PES table in src/core/checker.f is the single, minimal typing trust root:
-\ every checked primitive's stack effect is one axiom row. This walks the LIVE
-\ table and requires that each row own exactly one audited proof recipe in the
-\ ledger at the end of this file. Each recipe restates the row's identity
-\ (defining package, primitive name, and per-slot typed operands) and one proof
-\ kind. For an executable row the census first compiles a checked candidate from
-\ the recipe's exact typed operands, then runs the primitive in-process guarded
-\ by a value-provenance canary below its operands, and asserts the measured
-\ out-arity equals the declared dout — so a primitive that reaches below its
-\ declared inputs fails even when its final depth happens to match. A
-\ non-executable row (syscall, control, parser literal, defining word,
-\ engine/checker introspection, emitter, atomic, FFI) carries an explicit
-\ fail-closed noexec recipe instead; its arity is pinned by the native
-\ self-rebuild + behavioral gate. A missing, duplicate, or stale recipe, or an
-\ identity/arity/type mutation, fails the census with the row identity, so no
-\ axiom can land or drift without an audited recipe. See docs/effects.md
-\ "Primitive axiom set".
-\ ============================================================================
 
-\ ---- trusted leaves: read the live PES axiom table + evaluate a runner -------
-TRUSTED: AX-COUNT ( -- n )  #PE @ ;
-TRUSTED: AX-NAME$ ( n -- ptr u8 n ptr u8 n )
-   PE-SYM@ dup SYM-PKG$ rot SYM-NAME$ ;
-TRUSTED: AX-STK ( n -- n )   \ node offset -> count of EN-PUSH nodes down to the base row
-   0 swap
-   begin dup E-PTR EN.TAG @ EN-PUSH = while swap 1+ swap E-PTR EN.B @ repeat drop ;
-TRUSTED: AX-ARITY ( n -- n n )   \ pe-idx -> declared ( din dout )
-   PE-EFF@ E-PTR dup ER.DIN @ AX-STK swap ER.DOUT @ AX-STK ;
-TRUSTED: AXEVAL ( -- n )  PBUF PBUF-U @ evaluate ;
-
-\ ---- census state ------------------------------------------------------------
-variable AX-DIN-V   variable AX-DOUT-V
-variable AX-N-EXEC  variable AX-N-NOEXEC  variable AX-BAD  variable AX-UNCLASS
-variable AX-I
-64 constant AXNAME-CAP
-create AXNAME-BUF AXNAME-CAP allot   variable AXNAME-U
-64 constant AXBUF-CAP
-create AXBUF AXBUF-CAP allot
-
-\ ---- small checked string helpers -------------------------------------------
-: AX-STR= ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v <> if 0 0= 0= exit then
-   0 begin dup u < while
-      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
-      1+
-   repeat drop 0 0= ;
-
-: AX-STARTS? ( ptr u8 n ptr u8 n -- bool ) {: a:ptr u:n b:ptr v:n :}
-   u v < if 0 0= 0= exit then
-   0 begin dup v < while
-      dup a + c@ over b + c@ <> if drop 0 0= 0= exit then
-      1+
-   repeat drop 0 0= ;
-
-\ ---- proof recipes replace the old classification lists (folded lowercase) --
-\ Every row's proof kind now comes from its audited recipe in the ledger at the
-\ end of this file, cross-checked against the live table by the AXR package
-\ below. The former AX-CAT name/prefix allowlists are gone: a new primitive is
-\ classified only by adding its recipe, never by falling through a substring
-\ heuristic.
-\ ---- name buffer -------------------------------------------------------------
-: AX-NAME-SAVE ( ptr u8 n -- ) {: a:ptr u:n :}
-   u AXNAME-U !
-   0 begin dup u < while
-      dup a + c@ over AXNAME-BUF + c!
-      1+
-   repeat drop ;
-package AXIOM-NAME
+\ Primitive semantic properties compile typed candidates through the production
+\ checker, execute the real operations on valid operands, and compare runtime
+\ output depth while preserving a guard below the declared inputs. Cases are
+\ ordinary tests grouped by operand domain; they assert no registry metadata.
+package PRIM-PROP
 public
 
-: SAVE-SYMBOL ( ptr u8 n ptr u8 n -- ) {: pkg:ptr pkgu:n name:ptr nameu:n :}
-   pkgu nameu + pkgu 0 > if 1 + then
-   AXNAME-CAP > if s" prim-axiom: qualified name too long" 76 die then
-   0 AXNAME-U !
-   pkgu 0 > if
-      pkg pkgu AX-NAME-SAVE
-      58 AXNAME-BUF AXNAME-U @ + c!
-      AXNAME-U @ 1 + AXNAME-U !
-   then
-   0 begin dup nameu < while
-      dup name + c@ AXNAME-BUF AXNAME-U @ + c!
-      AXNAME-U @ 1 + AXNAME-U !
-      1+
-   repeat drop ;
-
-;package
-: AXNAME$ ( -- ptr u8 n )  AXNAME-BUF AXNAME-U @ ;
-
-\ ---- audited per-row proof recipes ------------------------------------------
-\ One recipe per live PES row lives in the `\ AXR ...` ledger at the end of this
-\ file (data, not code). The AXR package parses that ledger from this source,
-\ binds each recipe to its live row by slot index, cross-checks identity + arity
-\ against the live table, and — for an executable row — compiles a checked
-\ candidate from the recipe's exact typed operands. A missing, duplicate, or
-\ stale recipe, or an identity/arity/type mutation, fails the census naming the
-\ row. CANARY / CANARY-VERIFY are the runtime value-provenance guard the runner
-\ builders (below) plant beneath every operand row.
-package AXR
-public
-
-0 constant NOEXEC   1 constant GEN   2 constant MEM   3 constant FLOAT
-$4D3C2B1A constant CANARY            \ provenance guard planted below the operands
-
-\ Runner tail: the runner leaves ( guard measured ); if the primitive left the
-\ guard intact the measured out-depth stands, otherwise it reads -1 (a trap the
-\ census reports), so reaching below the declared inputs is caught.
-: CANARY-VERIFY ( n n -- n ) {: guard:n measured:n :}
-   guard CANARY = if measured else -1 then ;
+create BUF 64 allot
 
 private
 
-384 constant MAX                     \ live rows (315) + headroom
-64 constant TOKEN-MAX                \ widest recipe line's token count
-$40000 constant SRC-CAP              \ >= this source file, ledger included
-9 constant CH-TAB   10 constant CH-LF   13 constant CH-CR   32 constant CH-SP
-65 constant NOEXEC-PROBE             \ a known noexec slot for the stale-noexec teeth test
+variable DOUT
 
-create SRC SRC-CAP allot   variable SRC-U
-create OFF MAX cells allot   create LEN MAX cells allot
-create KIND MAX cells allot  create DIN MAX cells allot  create DOUT MAX cells allot
-create SEEN MAX allot
-create TOK-O TOKEN-MAX cells allot   create TOK-U TOKEN-MAX cells allot
-variable TOK-N   variable ROWS
-variable POS   variable TPOS   variable START   variable IDX   variable TS
+\ Dynamic `evaluate` has source-dependent effects that the checker cannot
+\ express. Retire this boundary with habu-type-isolated-dynamic-244c0e2c when
+\ typed isolated evaluation can return the measurement result directly.
+TRUSTED: EVAL-RUNNER ( -- n )
+   PBUF PBUF-U @ evaluate ;
 
-: CELL-AT ( n ptr a -- ptr a ) {: i:n a:ptr :}  i cells a + ;
-: BYTE-AT ( n ptr u8 -- ptr u8 ) {: i:n a:ptr :}  i a + ;
-: OFF@ ( n -- n )   OFF CELL-AT @ ;
-: LEN@ ( n -- n )   LEN CELL-AT @ ;
-: K@ ( n -- n )     KIND CELL-AT @ ;
-: DIN@ ( n -- n )   DIN CELL-AT @ ;
-: DOUT@ ( n -- n )  DOUT CELL-AT @ ;
-: SEEN@ ( n -- n )  SEEN BYTE-AT c@ ;
-: SEEN! ( n n -- ) {: value:n i:n :}  value i SEEN BYTE-AT c! ;
-: ROW$ ( n -- ptr u8 n ) {: i:n :}  SRC i OFF@ + i LEN@ ;
-
-: BAD ( -- )  s" prim-recipe: malformed recipe row" 1 die ;
-: DUP-BAD ( n -- )   \ ( slot ) duplicate or out-of-range recipe slot
-   s" prim-recipe: duplicate or out-of-range recipe slot " type . cr
-   s" prim-recipe: proof failed" 1 die ;
-: WS? ( n -- bool )
-   dup CH-SP = if drop 0 0= exit then
-   dup CH-TAB = if drop 0 0= exit then
-   CH-CR = ;
-
-\ ---- tokenizer over one recipe line -----------------------------------------
-: T@ ( n -- ptr u8 n ) {: i:n :}
-   i TOK-N @ >= if BAD then
-   SRC i TOK-O CELL-AT @ + i TOK-U CELL-AT @ ;
-: TOKEN+ ( ptr u8 n -- ) {: a:ptr u:n :}
-   TOK-N @ TOKEN-MAX >= if BAD then
-   a SRC - TOK-N @ TOK-O CELL-AT !
-   u TOK-N @ TOK-U CELL-AT !
-   TOK-N @ 1+ TOK-N ! ;
-: SPLIT ( ptr u8 n -- ) {: a:ptr u:n :}
-   0 TOK-N !  0 TPOS !
-   begin TPOS @ u < while
-      begin TPOS @ u < a TPOS @ + c@ WS? and while TPOS @ 1+ TPOS ! repeat
-      TPOS @ TS !
-      begin TPOS @ u < a TPOS @ + c@ WS? 0= and while TPOS @ 1+ TPOS ! repeat
-      TPOS @ TS @ > if a TS @ + TPOS @ TS @ - TOKEN+ then
-   repeat ;
-
-: TOKEN-N ( n -- n )   \ ledger token index -> its decimal value (BAD if not numeric)
-   T@ STR>NUMBER? MATCH option
-     none OF BAD ENDOF
-     some OF ENDOF
-   ;MATCH ;
-: VALID-KIND? ( n -- bool )
-   dup NOEXEC < if drop 0 0= 0= exit then  FLOAT <= ;
-: CLAIM? ( n -- bool ) {: i:n :}   \ mark slot i seen; false if out of range or already claimed
-   i 0 < i MAX >= or if 0 0= 0= exit then
-   i SEEN@ 0= 0= if 0 0= 0= exit then
-   -1 i SEEN!  0 0= ;
-
-\ ---- ledger ingest ----------------------------------------------------------
-: ADD-LINE ( ptr u8 n -- ) {: a:ptr u:n :}
-   a u SPLIT
-   TOK-N @ 11 < if BAD then
-   0 T@ s" \" AX-STR= 0= if BAD then
-   1 T@ s" AXR" AX-STR= 0= if BAD then
-   2 TOKEN-N {: i:n :}
-   i CLAIM? 0= if i DUP-BAD then
-   3 TOKEN-N dup VALID-KIND? 0= if BAD then i KIND CELL-AT !
-   4 TOKEN-N i DIN CELL-AT !
-   5 TOKEN-N i DOUT CELL-AT !
-   6 T@ {: id:ptr idu:n :}
-   id SRC - i OFF CELL-AT !
-   a u + id - i LEN CELL-AT !
-   ROWS @ 1+ ROWS ! ;
-: RECIPE-LINE? ( ptr u8 n -- bool )  s" \ AXR " AX-STARTS? ;
-: MAYBE-ADD ( ptr u8 n -- )
-   2dup RECIPE-LINE? if ADD-LINE else 2drop then ;
-: RESET ( -- )
-   0 ROWS !
-   0 begin dup MAX < while
-      0 over SEEN!  0 over OFF CELL-AT !  0 over LEN CELL-AT !
-      1+
-   repeat drop ;
-: LOAD-SOURCE ( -- )
-   RESET
-   s" test/prop-test-core.f" SRC SRC-CAP READ-ALL SRC-U !
-   0 START !  0 POS !
-   begin POS @ SRC-U @ < while
-      SRC POS @ + c@ CH-LF = if
-         SRC START @ + POS @ START @ - MAYBE-ADD
-         POS @ 1+ START !
-      then
-      POS @ 1+ POS !
-   repeat
-   START @ SRC-U @ < if SRC START @ + SRC-U @ START @ - MAYBE-ADD then ;
-
-\ ---- identity + arity cross-check against the live row ----------------------
-: PKG-OK? ( ptr u8 n ptr u8 n -- bool ) {: exp:ptr eu:n live:ptr lu:n :}
-   exp eu s" -" AX-STR= if lu 0= exit then  exp eu live lu AX-STR= ;
-: ID-ARITY ( n -- n n ) {: i:n :}   \ count pe-in / pe-out tokens in row i's identity span
-   0 0
-   4 IDX !
-   begin IDX @ 1+ TOK-N @ < while
-      IDX @ 1+ T@ s" pe-in" AX-STR= if swap 1+ swap
-      else IDX @ 1+ T@ s" pe-out" AX-STR= if 1+
-      else 2drop BAD then then
-      IDX @ 2 + IDX !
-   repeat ;
-: ROW-OK? ( n -- bool ) {: i:n :}
-   i ROW$ SPLIT
-   TOK-N @ 4 < if 0 0= 0= exit then
-   0 T@ s" prim" AX-STR= 0= 0 T@ s" pprim" AX-STR= 0= and if 0 0= 0= exit then
-   i AX-NAME$ {: lp:ptr lpu:n ln:ptr lnu:n :}
-   1 T@ lp lpu PKG-OK? 0= if 0 0= 0= exit then
-   2 T@ ln lnu AX-STR= 0= if 0 0= 0= exit then
-   i ID-ARITY {: din:n dout:n :}
-   din i DIN@ <> dout i DOUT@ <> or if 0 0= 0= exit then
-   i AX-ARITY {: ldin:n ldout:n :}
-   ldin din = ldout dout = and ;
-: COVERED? ( -- bool )   \ every live row claimed exactly once and identity-sound
-   ROWS @ AX-COUNT <> if 0 0= 0= exit then
-   0 begin dup AX-COUNT < while
-      dup SEEN@ 0= if drop 0 0= 0= exit then
-      dup ROW-OK? 0= if drop 0 0= 0= exit then
-      1+
-   repeat drop 0 0= ;
-: REPORT-RECIPE ( n -- ) {: i:n :}   \ echo row i's full ledger recipe line
-   s" prim-recipe: recipe " type  i ROW$ type cr ;
-
-\ ---- executable candidate: compile the recipe's exact typed operands ---------
-: TYPE+ ( ptr u8 n -- )   \ append the checked type token for one pe-* slot type
-   2dup s" pe-a" AX-STR= if 2drop s" a " P+ exit then
-   2dup s" pe-b" AX-STR= if 2drop s" b " P+ exit then
-   2dup s" pe-c" AX-STR= if 2drop s" c " P+ exit then
-   2dup s" pe-d" AX-STR= if 2drop s" d " P+ exit then
-   2dup s" pe-f" AX-STR= if 2drop s" bool " P+ exit then
-   2dup s" pe-n" AX-STR= if 2drop s" n " P+ exit then
-   2dup s" pe-r" AX-STR= if 2drop s" r " P+ exit then
-   2dup s" pe-u8" AX-STR= if 2drop s" u8 " P+ exit then
-   2dup s" pe-ptr-a" AX-STR= if 2drop s" ptr a " P+ exit then
-   2dup s" pe-ptr-a-raw" AX-STR= if 2drop s" ptr a " P+ exit then
-   2dup s" pe-ptr-b" AX-STR= if 2drop s" ptr b " P+ exit then
-   2dup s" pe-ptr-c" AX-STR= if 2drop s" ptr c " P+ exit then
-   2dup s" pe-ptr-d" AX-STR= if 2drop s" ptr d " P+ exit then
-   2dup s" pe-ptr-e" AX-STR= if 2drop s" ptr e " P+ exit then
-   2dup s" pe-ptr-n" AX-STR= if 2drop s" ptr n " P+ exit then
-   2dup s" pe-ptr-u8" AX-STR= if 2drop s" ptr u8 " P+ exit then
-   2dup s" pe-ptr-ptr-b" AX-STR= if 2drop s" ptr ptr b " P+ exit then
-   2drop BAD ;
-: SIDE+ ( ptr u8 n -- ) {: dir:ptr du:n :}   \ emit the types of slots on side dir
-   4 IDX !
-   begin IDX @ 1+ TOK-N @ < while
-      IDX @ 1+ T@ dir du AX-STR= if IDX @ T@ TYPE+ then
-      IDX @ 2 + IDX !
-   repeat ;
-: BUILD-CANDIDATE ( n -- )   \ PBUF := ": C ( <in-types> -- <out-types> ) <name> ;"
-   ROW$ SPLIT
-   0 PBUF-U !
-   s" : AX-RECIPE-CANDIDATE ( " P+
-   s" pe-in" SIDE+
-   s" -- " P+
-   s" pe-out" SIDE+
-   s" ) " P+
-   AXNAME$ P+
-   s"  ;" P+ ;
-: CHECK-EXEC? ( n -- bool )   \ does the recipe's typed candidate certify?
-   SMARK  BUILD-CANDIDATE  PBUF PBUF-U @ CHK  VERD @ -1 =  SFORGET ;
-
-\ ---- naming failure path: name the row (reason + live + ledger identity) ----
-: FAIL ( n ptr u8 n -- ) {: i:n a:ptr u:n :}   \ ( row-i reason ) name reason, live + ledger identity, die
-   s" prim-recipe: " type a u type
-   s"  at live row " type i .  s" name " type AXNAME$ type cr
-   i SEEN@ 0= 0= if i REPORT-RECIPE then
-   s" prim-recipe: proof failed" 1 die ;
-: VERIFY-COVERAGE ( -- )   \ name the first live row lacking a sound recipe (count / missing / identity / arity)
-   ROWS @ AX-COUNT <> if
-      s" prim-recipe: recipe count " type ROWS @ .  s" does not match live axiom count " type AX-COUNT . cr
-      s" prim-recipe: proof failed" 1 die
-   then
-   0 begin dup AX-COUNT < while
-      dup AX-NAME$ AXIOM-NAME:SAVE-SYMBOL
-      dup SEEN@ 0= if dup s" no proof recipe for this live row" FAIL then
-      dup ROW-OK? 0= if dup s" recipe identity or arity mutation" FAIL then
-      1+
-   repeat drop ;
-
-\ ---- teeth: prove missing / duplicate / mutation / stale-noexec all reject ---
-: STALE-NOEXEC-REJECTS? ( -- bool )   \ point a noexec recipe at another row's identity; must reject
-   NOEXEC-PROBE K@ NOEXEC <> if 0 0= 0= exit then
-   NOEXEC-PROBE OFF@ NOEXEC-PROBE LEN@ {: saved-o:n saved-u:n :}
-   0 OFF@ NOEXEC-PROBE OFF CELL-AT !
-   0 LEN@ NOEXEC-PROBE LEN CELL-AT !
-   NOEXEC-PROBE ROW-OK? 0= {: rejected:bool :}
-   saved-o NOEXEC-PROBE OFF CELL-AT !
-   saved-u NOEXEC-PROBE LEN CELL-AT !
-   rejected ;
-: SELFTEST ( -- )
-   VERIFY-COVERAGE                       \ names the offending row if the real ledger is broken
-   0 CLAIM? if s" prim-recipe: duplicate slot accepted" 1 die then
-   0 0 SEEN!
-   COVERED? if s" prim-recipe: missing slot accepted" 1 die then
-   -1 0 SEEN!
-   0 DIN@ 1+ 0 DIN CELL-AT !
-   0 ROW-OK? if s" prim-recipe: arity mutation accepted" 1 die then
-   0 DIN@ 1- 0 DIN CELL-AT !
-   STALE-NOEXEC-REJECTS? 0= if s" prim-recipe: stale noexec identity accepted" 1 die then
-   COVERED? 0= if s" prim-recipe: self-test did not restore ledger" 1 die then ;
-
-public
-
-: LOAD ( -- )   \ parse the ledger + verify coverage + run the teeth self-test
-   LOAD-SOURCE  SELFTEST ;
-: PROOF-KIND ( n -- n )  K@ ;
-: PROVE ( n -- ) {: i:n :}   \ per live row: recipe present, identity/arity sound, typed candidate certifies
-   i SEEN@ 0= if i s" no proof recipe for this live row" FAIL then
-   i ROW-OK? 0= if i s" recipe identity or arity mutation" FAIL then
-   i K@ NOEXEC <> if
-      i CHECK-EXEC? 0= if i s" typed operand/effect recipe rejected" FAIL then
-   then ;
-
-;package
-
-\ ---- MEM operand recipes (real AXBUF; LDR/STR tolerate the buffer) -----------
-: AX-MEM-OPS ( ptr u8 n -- ptr u8 n )
-   2dup s" @" AX-STR= if 2drop s" AXBUF " exit then
-   2dup s" c@" AX-STR= if 2drop s" AXBUF " exit then
-   2dup s" count" AX-STR= if 2drop s" AXBUF " exit then
-   2dup s" rd32" AX-STR= if 2drop s" AXBUF " exit then
-   2dup s" !" AX-STR= if 2drop s" 7 AXBUF " exit then
-   2dup s" +!" AX-STR= if 2drop s" 7 AXBUF " exit then
-   2dup s" c!" AX-STR= if 2drop s" 7 AXBUF " exit then
-   2dup s" ptr-field" AX-STR= if 2drop s" AXBUF 0 " exit then
-   2dup s" type" AX-STR= if 2drop s" AXBUF 0 " exit then
-   2dup s" core-str=" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
-   2dup s" core-str=ci" AX-STR= if 2drop s" AXBUF 3 AXBUF 3 " exit then
-   2dup s" tfam-ctor-word?" AX-STR= if 2drop s" AXBUF 3 " exit then
-   2drop s"  " ;
-
-\ ---- runner builders: plant AXR:CANARY beneath the operand row, then measure
-\ the produced depth. The trailing AXR:CANARY-VERIFY reads -1 (a trap) when the
-\ primitive reached below its declared inputs and clobbered the guard, so a
-\ value-provenance violation fails even when the final depth happens to match.
-\ PBUF := "AXR:CANARY depth BASE ! <ops> <name> depth BASE @ - CLEAR-MEAS AXR:CANARY-VERIFY"
-: AX-BUILD ( ptr u8 n ptr u8 n -- )   \ ( name-a name-u ops-a ops-u )
-   0 PBUF-U !
-   s" AXR:CANARY depth BASE ! " P+
-   P+                       \ ops (top pair)
-   s"  " P+
-   P+                       \ name (remaining pair)
-   s"  depth BASE @ - CLEAR-MEAS AXR:CANARY-VERIFY" P+ ;
-
-: AX-BUILD-REP ( ptr u8 n n -- )   \ ( name-a name-u din ); repeat "7 " din times
-   {: din:n :}
-   0 PBUF-U !
-   s" AXR:CANARY depth BASE ! " P+
-   0 begin dup din < while s" 7 " P+ 1+ repeat drop
-   P+                       \ name
-   s"  depth BASE @ - CLEAR-MEAS AXR:CANARY-VERIFY" P+ ;
-
-: AX-BUILD-FREP ( ptr u8 n n -- )   \ ( name-a name-u din ); repeat "1 s>f " din times
-   {: din:n :}
-   0 PBUF-U !
-   s" AXR:CANARY depth BASE ! " P+
-   0 begin dup din < while s" 1 s>f " P+ 1+ repeat drop
-   P+
-   s"  depth BASE @ - CLEAR-MEAS AXR:CANARY-VERIFY" P+ ;
-
-\ ---- measure (eval PBUF; set LAST-MEAS/LAST-TRAP) ----------------------------
-: AX-MEASURE ( -- )
+: MEASURE-RUNNER ( -- )
    0 LAST-TRAP !
-   AXEVAL
+   EVAL-RUNNER
    ERR@ 0 = if
       dup 0 < if drop -1 LAST-TRAP ! else LAST-MEAS ! then
    else drop -1 LAST-TRAP ! then ;
 
-: AX-BAD-REPORT ( -- )
-   s" prim-axiom: MISMATCH " type AXNAME$ type
-   s"  declared-dout " type AX-DOUT-V @ .
-   LAST-TRAP @ if s" measured-trap" type else s" measured " type LAST-MEAS @ . then cr ;
-
-: AX-CHECK ( -- )   \ PBUF built; run + compare measured to AX-DOUT-V; bump counters
-   AX-MEASURE
-   AX-N-EXEC @ 1+ AX-N-EXEC !
-   LAST-TRAP @ if AX-BAD-REPORT AX-BAD @ 1+ AX-BAD ! exit then
-   LAST-MEAS @ AX-DOUT-V @ <> if AX-BAD-REPORT AX-BAD @ 1+ AX-BAD ! then ;
-
-: AX-RUN-MEM ( ptr u8 n -- )
-   2dup AX-MEM-OPS AX-BUILD AX-CHECK ;
-
-: AX-DISPATCH ( ptr u8 n n -- ) {: kind:n :}
-   kind AXR:GEN = if AX-DIN-V @ AX-BUILD-REP AX-CHECK exit then
-   kind AXR:FLOAT = if AX-DIN-V @ AX-BUILD-FREP AX-CHECK exit then
-   kind AXR:MEM = if AX-RUN-MEM exit then
-   kind AXR:NOEXEC = if 2drop AX-N-NOEXEC @ 1+ AX-N-NOEXEC ! exit then
-   s" prim-axiom: UNCLASSIFIED " type type cr
-   AX-UNCLASS @ 1+ AX-UNCLASS ! ;
-
-: AX-ROW ( n -- ) {: i:n :}
-   i AX-ARITY AX-DOUT-V ! AX-DIN-V !
-   i AX-NAME$ AXIOM-NAME:SAVE-SYMBOL
-   i AXR:PROVE
-   AXNAME$ i AXR:PROOF-KIND AX-DISPATCH ;
-
-: AX-CENSUS ( -- )
-   0 AX-N-EXEC ! 0 AX-N-NOEXEC ! 0 AX-BAD ! 0 AX-UNCLASS !
-   AXR:LOAD
-   s" prim-axiom: recipe self-test OK (missing, duplicate, arity mutation, and stale noexec reject)" type cr
-   0 AX-I !
-   begin AX-I @ AX-COUNT < while AX-I @ AX-ROW AX-I @ 1+ AX-I ! repeat
-   s" prim-axiom: " type AX-COUNT . s" axioms (" type
-   AX-N-EXEC @ . s" difftested, " type AX-N-NOEXEC @ . s" noexec); " type
-   AX-UNCLASS @ . s" unclassified, " type AX-BAD @ . s" mismatch(es)" type cr
-   AX-UNCLASS @ AX-BAD @ + 0 > if s" prim-axiom: AXIOM CENSUS FAILED" 1 die then
-   s" prim-axiom: census OK (one proof recipe per PES row; executable rows typed and difftested)" type cr ;
-
-\ self-test with teeth: a fabricated wrong declared-dout must be detected
-: AX-SELFTEST ( -- )
-   1 AX-DIN-V !  5 AX-DOUT-V !  0 AX-BAD !
-   s" dup" AX-NAME-SAVE
-   AXNAME$ AX-DIN-V @ AX-BUILD-REP AX-CHECK
-   AX-BAD @ 0 = if s" prim-axiom: self-test BROKEN (lying axiom not detected)" 1 die then
-   s" prim-axiom: self-test OK (difftest detects a lying axiom)" type cr ;
-
-\ canary self-test with teeth: the value-provenance guard AXR:CANARY-VERIFY is a
-\ rejection path with no other coverage, so exercise it directly. A fabricated
-\ runner reaches one cell below its single declared operand and clobbers the
-\ guard, yet keeps the final depth right (`nip` drops the operand AND the guard,
-\ then a replacement is pushed) — the census must read that as a trap. A second
-\ honest runner (`1+` over one operand) must NOT trap, so the guard cannot pass
-\ by always failing. If AXR:CANARY-VERIFY ever regressed to always-pass, the
-\ clobber leg dies here.
-: AX-SELFTEST-CANARY ( -- )
+: SELFTEST-GUARD ( -- )
    0 PBUF-U !
-   s" AXR:CANARY depth BASE ! 7 nip 7 depth BASE @ - CLEAR-MEAS AXR:CANARY-VERIFY" P+
-   AX-MEASURE
-   LAST-TRAP @ 0= if s" prim-axiom: canary self-test BROKEN (below-input clobber not trapped)" 1 die then
+   s" PROP-MEAS:CANARY depth BASE ! 7 nip 7 depth BASE @ - CLEAR-MEAS PROP-MEAS:VERIFY" P+
+   MEASURE-RUNNER
+   LAST-TRAP @ 0= if s" prop-test: below-input guard self-test did not detect a clobber" 1 die then
    0 PBUF-U !
-   s" AXR:CANARY depth BASE ! 7 1+ depth BASE @ - CLEAR-MEAS AXR:CANARY-VERIFY" P+
-   AX-MEASURE
-   LAST-TRAP @ if s" prim-axiom: canary self-test BROKEN (honest runner falsely trapped)" 1 die then
-   s" prim-axiom: canary self-test OK (below-input clobber trapped, honest run clean)" type cr ;
+   s" PROP-MEAS:CANARY depth BASE ! 7 1+ depth BASE @ - CLEAR-MEAS PROP-MEAS:VERIFY" P+
+   MEASURE-RUNNER
+   LAST-TRAP @ LAST-MEAS @ 1 <> or if
+      s" prop-test: below-input guard self-test rejected an intact guard" 1 die
+   then ;
+
+: OUT-OK? ( -- bool )
+   LAST-TRAP @ 0= LAST-MEAS @ DOUT @ = and ;
+
+: SELFTEST-DEPTH ( -- )
+   0 PBUF-U !
+   s" PROP-MEAS:CANARY depth BASE ! 7 dup depth BASE @ - CLEAR-MEAS PROP-MEAS:VERIFY" P+
+   MEASURE-RUNNER
+   5 DOUT ! OUT-OK? if s" prop-test: output-depth self-test accepted a mismatch" 1 die then
+   2 DOUT ! OUT-OK? 0= if s" prop-test: output-depth self-test rejected an exact match" 1 die then ;
+
+: BUILD-CHECK-CASE-RUNNER ( ptr u8 n -- ) {: ops:ptr opsu:n :}
+   0 PBUF-U !
+   s" PROP-MEAS:CANARY depth BASE ! " P+
+   ops opsu P+
+   s" PROP-PC depth BASE @ - CLEAR-MEAS PROP-MEAS:VERIFY" P+ ;
+
+: CHECK-CASE ( ptr u8 n ptr u8 n n -- )
+   {: def:ptr defu:n ops:ptr opsu:n expected:n :}
+   MARK
+   def defu CHK
+   VERD @ -1 <> if
+      s" prop-test: primitive candidate rejected: " type def defu type cr
+      s" prop-test: primitive semantic case failed" 1 die
+   then
+   expected DOUT !
+   ops opsu BUILD-CHECK-CASE-RUNNER
+   MEASURE-RUNNER
+   OUT-OK? 0= if
+      s" prop-test: primitive runtime mismatch: " type def defu type cr
+      LAST-TRAP @ if s" prop-test: primitive reached below its declared inputs" 1 die then
+      s" prop-test: primitive runtime output depth differs from its typed candidate" 1 die
+   then
+   FORGET ;
+
+: GENERIC-CASES ( -- )
+   s" : PROP-PC ( a -- a a ) dup ; " s" 7 " 2 CHECK-CASE
+   s" : PROP-PC ( a -- ) drop ; " s" 7 " 0 CHECK-CASE
+   s" : PROP-PC ( a b -- b a ) swap ; " s" 7 7 " 2 CHECK-CASE
+   s" : PROP-PC ( a b -- a b a ) over ; " s" 7 7 " 3 CHECK-CASE
+   s" : PROP-PC ( a b -- b ) nip ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( a b -- b a b ) tuck ; " s" 7 7 " 3 CHECK-CASE
+   s" : PROP-PC ( a b c -- b c a ) rot ; " s" 7 7 7 " 3 CHECK-CASE
+   s" : PROP-PC ( a b c -- c a b ) -rot ; " s" 7 7 7 " 3 CHECK-CASE
+   s" : PROP-PC ( a b -- a b a b ) 2dup ; " s" 7 7 " 4 CHECK-CASE
+   s" : PROP-PC ( a b -- ) 2drop ; " s" 7 7 " 0 CHECK-CASE
+   s" : PROP-PC ( a b c d -- c d a b ) 2swap ; " s" 7 7 7 7 " 4 CHECK-CASE
+   s" : PROP-PC ( a b c d -- a b c d a b ) 2over ; " s" 7 7 7 7 " 6 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) + ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a n -- ptr a ) + ; " s" PRIM-PROP:BUF 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n ptr a -- ptr a ) + ; " s" 7 PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) - ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a n -- ptr a ) - ; " s" PRIM-PROP:BUF 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a ptr a -- n ) - ; " s" PRIM-PROP:BUF PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) * ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) and ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( bool bool -- bool ) and ; " s" 0 0 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) or ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( bool bool -- bool ) or ; " s" 0 0 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) xor ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( bool bool -- bool ) xor ; " s" 0 0 " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) 1+ ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a -- ptr a ) 1+ ; " s" PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) 1- ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a -- ptr a ) 1- ; " s" PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) negate ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) invert ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( a -- bool ) 0= ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n -- bool ) 0< ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- bool ) = ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a ptr a -- bool ) = ; " s" PRIM-PROP:BUF PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- bool ) < ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a ptr a -- bool ) < ; " s" PRIM-PROP:BUF PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- bool ) > ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a ptr a -- bool ) > ; " s" PRIM-PROP:BUF PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- bool ) <> ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a ptr a -- bool ) <> ; " s" PRIM-PROP:BUF PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- bool ) <= ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a ptr a -- bool ) <= ; " s" PRIM-PROP:BUF PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- bool ) >= ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a ptr a -- bool ) >= ; " s" PRIM-PROP:BUF PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) / ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) mod ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n n ) /mod ; " s" 7 7 " 2 CHECK-CASE
+   s" : PROP-PC ( n -- n ) abs ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) min ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) max ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) lshift ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) rshift ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) cells ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a -- ptr a ) cell+ ; " s" PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) cell+ ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) chars ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr a -- ptr a ) char+ ; " s" PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n ) char+ ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n -- ) . ; " s" 7 " 0 CHECK-CASE
+   s" : PROP-PC ( -- n ) depth ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- ptr a ) here ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) script-argc ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) epoch-seconds ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) mono-ns ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) rbase ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) cp@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) dbase@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) check@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) ndict@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- ptr a ) data-base ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) prot-wid-room ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) get-current ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) checker-scope-depth ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tfam-decl-param-count ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( n -- n bool ) tfam-decl-param>char ; " s" 7 " 2 CHECK-CASE
+   s" : PROP-PC ( n -- n bool ) tfam-decl-char>param ; " s" 7 " 2 CHECK-CASE
+   s" : PROP-PC ( -- n ) type-field:tx-depth ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) wf-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- bool ) wf-wide? ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- bool ) wf-needs-p2? ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( n n -- n ) wf-w-at ; " s" 7 7 " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) locw-hw-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:magic ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:version ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:header-cells ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:magic-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:version-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:total-bytes-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:needs-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:wf-count-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:bind-count-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:fetch-count-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:fetch-data-cells-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:wf-cells ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:fetch-cells ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:check-cells ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:guard-cells ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:fetch-flag ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:store-flag ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:xpad-flag ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:body-len-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:body-hash-cell ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:fnv-offset ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:fnv-prime ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lower-cert:cell-count ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) sumv-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tf-str-u@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) tf-pk-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) lay-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) schema-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( -- n ) schema-root-n@ ; " s" " 1 CHECK-CASE
+   s" : PROP-PC ( n -- r ) s>f ; " s" 7 " 1 CHECK-CASE
+   s" : PROP-PC ( n -- ) emit ; " s" 7 " 0 CHECK-CASE
+   s" : PROP-PC ( -- ) cr ; " s" " 0 CHECK-CASE
+   s" : PROP-PC ( -- ) space ; " s" " 0 CHECK-CASE
+   s" : PROP-PC ( n -- ) u. ; " s" 7 " 0 CHECK-CASE ;
+
+: MEMORY-CASES ( -- )
+   s" : PROP-PC ( ptr a -- a ) @ ; " s" PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( a ptr a -- ) ! ; " s" 7 PRIM-PROP:BUF " 0 CHECK-CASE
+   s" : PROP-PC ( ptr a n -- ptr ptr b ) ptr-field ; " s" PRIM-PROP:BUF 0 " 1 CHECK-CASE
+   s" : PROP-PC ( n ptr n -- ) +! ; " s" 7 PRIM-PROP:BUF " 0 CHECK-CASE
+   s" : PROP-PC ( ptr u8 -- u8 ) c@ ; " s" PRIM-PROP:BUF " 1 CHECK-CASE
+   s" : PROP-PC ( u8 ptr u8 -- ) c! ; " s" 7 PRIM-PROP:BUF " 0 CHECK-CASE
+   s" : PROP-PC ( ptr u8 -- ptr u8 n ) count ; " s" PRIM-PROP:BUF " 2 CHECK-CASE
+   s" : PROP-PC ( ptr u8 n -- ) type ; " s" PRIM-PROP:BUF 0 " 0 CHECK-CASE
+   s" : PROP-PC ( ptr u8 n -- bool ) tfam-ctor-word? ; " s" PRIM-PROP:BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr u8 n ptr u8 n -- bool ) core-str= ; " s" PRIM-PROP:BUF 3 PRIM-PROP:BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr u8 n ptr u8 n -- bool ) core-str=ci ; " s" PRIM-PROP:BUF 3 PRIM-PROP:BUF 3 " 1 CHECK-CASE
+   s" : PROP-PC ( ptr u8 -- n ) rd32 ; " s" PRIM-PROP:BUF " 1 CHECK-CASE ;
+
+: FLOAT-CASES ( -- )
+   s" : PROP-PC ( r r -- r ) f+ ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r r -- r ) f- ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r r -- r ) f* ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r r -- r ) f/ ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r -- r ) fnegate ; " s" 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r -- r ) fabs ; " s" 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r -- r ) fsqrt ; " s" 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r r -- bool ) f< ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r r -- bool ) f> ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r r -- bool ) f= ; " s" 1 s>f 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r -- bool ) f0< ; " s" 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r -- bool ) f0= ; " s" 1 s>f " 1 CHECK-CASE
+   s" : PROP-PC ( r -- n ) f>s ; " s" 1 s>f " 1 CHECK-CASE ;
+
+public
+
+: RUN ( -- )
+   SELFTEST-GUARD
+   SELFTEST-DEPTH
+   GENERIC-CASES
+   MEMORY-CASES
+   FLOAT-CASES
+   s" prop-test: primitive semantics OK (typed candidates, runtime depth, below-input guard); canary self-test OK" type cr ;
+
+;package
 
 : PROP-RUN ( n n -- )
    SELFTEST
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
-   AX-SELFTEST
-   AX-SELFTEST-CANARY
-   AX-CENSUS
    RUN
    FINISH ;
 
@@ -1071,468 +852,27 @@ variable SS-I  variable SS-J  variable SS-BAD
       s" prop-test: sweep-red self-test FAILED (a red shard did not fail the sweep)" 1 die THEN
    s" prop-test: sweep-red OK (one red shard fails the sweep)" type cr ;
 
-: PROP-RUN-DEFAULT ( -- )   \ sharded sweep: self-tests + axiom census once, then N slots
+package PROP-TEST
+private
+
+: RUN-DEFAULT ( -- )   \ sharded sweep: self-tests once, then N slots
    SELFTEST
    SELFTEST-SHRINK
    BAITS
    SELFTEST-ALPHABET
+   PRIM-PROP:RUN
    SELFTEST-SHARD-SEEDS
    SELFTEST-SWEEP-RED
-   AX-SELFTEST
-   AX-SELFTEST-CANARY
-   AX-CENSUS
    FRESH-SEED SWEEP ;
 
-: PROP-MAIN ( -- )
-   ARGC 1 = IF  PROP-RUN-DEFAULT
-   ELSE ARGC 3 = IF  1 ARG-U  2 ARG-U  PROP-RUN
+: MAIN ( -- )
+   ARGC 1 = IF  RUN-DEFAULT
+   ELSE ARGC 3 = IF  PRIM-PROP:RUN  1 ARG-U  2 ARG-U  PROP-RUN
    ELSE  USAGE  THEN THEN ;
 
-\ ---- audited primitive proof recipe ledger (one row per live PES axiom) ------
-\ Data, not code. The AXR package above parses these lines from this source. One
-\ line per live PES slot, in live-table order:
-\   "\ AXR <slot> <kind> <din> <dout> <identity>"
-\ where <kind> is 0 noexec / 1 gen / 2 mem / 3 float and <identity> is the
-\ canonical PEINV row identity: "<prim|pprim> <package-or-dash> <name>
-\ <flags-or-dash> <pe-TYPE pe-in ...  pe-TYPE pe-out ...>". Regenerate the
-\ identity + order from:
-\   bin/hb --load tools/primitive-effect-inventory.f -- manifest
-\ and set each row's <kind> to its proof class. The census cross-checks every
-\ recipe against the live table and fails, naming the row, on any drift.
-\
-\ ---- why the hard rows carry the kind they do (audit for kind assignment) ----
-\ Most noexec (kind 0) rows are self-evident syscalls, control words, parser
-\ literals, or defining words. The rows below are the subtle ones a future
-\ reviewer will second-guess, so the reasoning that used to live beside the old
-\ name-lists is recorded here.
-\ Checker-substrate introspection cannot take dummy operands, and the seal
-\ watermark capture rewrites live seal state. The indexed accessors fail closed
-\ with `76 die` on an out-of-range index (WF-ROW@ in checker.f, TF-REC@ in
-\ type-family.f), so a dummy `7` would kill the census process whenever the live
-\ table is shorter; seal-capture (native BSEALCAP) rewrites the sealed
-\ friend-band ndict watermark, mutating live seal state mid-process like
-\ cp!/ndict!. Their arity is pinned instead by the native self-rebuild fixpoint
-\ plus the behavioral gate, so they carry a noexec (kind 0) recipe.
-\ The zero-arg state readers (wf-n@, tfam-n@, sumv-n@, tf-str-u@, tf-pk-n@,
-\ lay-n@, schema-n@, schema-root-n@, checker-scope-depth, and
-\ TYPE-FIELD:TX-DEPTH) are pure variable reads and STAY difftested as generic
-\ (kind 1) rows, matching ndict@/cp@. prot-wid-room is likewise a read-only
-\ capacity calculation over the protected-WID count. wf-wide? and
-\ wf-needs-p2? (zero-arg scans) and wf-w-at (indexed with a total 1-default that
-\ never dies) are likewise generic (kind 1). locw-hw@ fails closed with a 76-die
-\ index guard of its own (a dummy sequence past LOCSEQ dies), so it stays noexec,
-\ and the pass-2 live-table words (p2-carve-w, p2-live-w@, p2-live-cum@,
-\ p2-locseq-reset in checker.f) read or mutate live pass-2 compile scratch
-\ (P2SEQ/P2LW), so all of those are noexec.
-\ wide-mark stamps DNAME-WIDE on the newest published dict record inside an
-\ mprotect bracket (a live dictionary mutation, seal-capture class), and
-\ rec-wide-publish consumes the checker's RECW latch and may call it — neither
-\ can run under census dummies. rec-min-in@ drains the checker's RECMI publish
-\ latch the same way (dot habu-habu-certified-words-84e84eaf): a census
-\ execution would desync the latch the engine publish tail consumes for the
-\ DNAME-MIN-IN record poke. prot-wid-add mutates the sealed friend-band
-\ protected-WID registry (a seal-capture-class live seal mutation) and its
-\ overflow path exits the process (NR-EXIT-GROUP rc 84), so it can never take a
-\ dummy operand. drain-pretrust (dot habu-engine-pre-trust-77410827) replays the
-\ pending pre-trust defer registrations into the LIVE checker registry (a trust
-\ usig row plus a checker-defer row per pending slot) — a checker-substrate
-\ mutation of the trust/seal-capture class; a census execution would re-drain an
-\ already-empty table at best and inject duplicate registry rows at worst.
-\ checker-scope-finalize releases the live top rollback frame and finalizes every
-\ extension registry; executing it at census depth zero would underflow and
-\ mutate the checker transaction substrate, so its identity and arity are pinned
-\ as noexec.
-\ The four CHECKER-DECL-FRAME rows (start, prepare, rollback, release) carry the
-\ `private` flag because they are closed with CLOSE-PRIVATE, which interns them
-\ into the package PRIVATE wordlist. A private row can only ever be noexec: the
-\ census names an executable candidate as `package:name`, and qualified lookup
-\ resolves the package PUBLIC wordlist only, so `CHECKER-DECL-FRAME:START` does
-\ not resolve at all. Their behaviour also forbids a dummy execution — start
-\ pushes a live rollback frame, release pops one (underflowing at census depth
-\ zero), and rollback fails closed with `76 die` when no matching declaration
-\ frame is present. They are pinned by the generated-declaration transaction
-\ suite and the two negative frame fixtures instead.
-\ tfam-ctor-word? is a pure registry-read predicate and STAYS difftested as an
-\ owned-memory (kind 2) row (empty census registry -> false, one flag out).
-\ trust records a live checker signature from its string operands (a checker
-\ substrate mutation; UNSAFE-TOK? bans it inside checked bodies anyway);
-\ check/check! spawn a full checker run over their string operand (a dummy
-\ pointer would be lexed); newtype/sumtype/product are top-level parser
-\ words that consume their own block tokens up to the ;NAME closer, so a census
-\ runner has no input to feed them. `enum` had a row here of exactly that class
-\ until the global ENUM keyword moved to the unified front end: it is an ordinary
-\ checked ( -- ) definition over ENUM-DECL:ED-RUN now, like STRUCTURE, so the
-\ checker knows its effect without an axiom and it is neither a primitive nor a
-\ census row. The metadata-only checker-defenum entry went with it (its callers
-\ register through ENUM-DECL:ED-REPLAY), which is why this ledger holds two rows
-\ fewer than it did. layout-buffer likewise parses its own name +
-\ type tokens after its count operand, and typed-buffer/typed-variable/
-\ defer-layout-buffer are the same generative definer class (they parse their own
-\ name + type after an optional count operand; UNSAFE-TOK? bans them inside
-\ checked bodies). ldefer-bind is the deferred column's shared runtime binder: it
-\ allots + writes cells at caller-supplied data-base offsets, so a census run over
-\ random operands would store through arbitrary addresses - not soundly executable.
-\ Their axioms keep them checker-known so the seal-time internal-word marking
-\ pass leaves them top-level executable (dot habu-hb-crash-bare-c5be6634).
-\ ptx-barrier! is the same class as trust: it resolves its string operand to a
-\ symbol and mutates that word's control flags (a checker-registry side effect a
-\ census execution over random operands cannot exercise soundly); UNSAFE-TOK?
-\ bans it inside checked bodies, and its axiom keeps it top-level executable so
-\ library source can declare an explicit barrier. cast-pend! arms the checker's
-\ one-shot cast-certification window with a name (ptr,len) that a later
-\ CORE-STR=CI reads: a census execution over a random operand would arm the
-\ window with a garbage pointer + length and leave the checker mid-armed — a
-\ checker-substrate mutation of the same class as trust.
-\ Every TYPE-FIELD-OWNER lifecycle row (open/add/prepare/commit/finalize/
-\ rollback/tx-schema-for/tx-cells-for) is noexec (kind 0), unlike the sibling
-\ read-only TYPE-FIELD accessors. Two independent reasons, either sufficient.
-\ First, they mutate the live product-field transaction substrate: open advances
-\ PF-TX-SERIAL and PF-TX-DEPTH and leaves a frame open for the rest of the
-\ process, add appends a field row and interns its name into the shared string
-\ pool, and commit/finalize/rollback move the provisional and published
-\ watermarks — the same live-registry class as prot-wid-add and seal capture.
-\ Second, every phase after open starts from TX-TOP, which throws E-PF-TX at
-\ census depth zero, so a dummy operand cannot reach the body at all.
-\ TYPE-FIELD:TX-DEPTH stays kind 1 because it is a plain variable read that
-\ neither opens nor requires a frame. These arities are pinned instead by the
-\ native self-rebuild fixpoint plus test/type-field-owner-suite.f, which drives
-\ all eight through the real public API.
-\ ----------------------------------------------------------------------------
-\ AXR 0 1 1 2 prim - dup - pe-a pe-in pe-a pe-out pe-a pe-out
-\ AXR 1 1 1 0 prim - drop - pe-a pe-in
-\ AXR 2 1 2 2 prim - swap - pe-a pe-in pe-b pe-in pe-b pe-out pe-a pe-out
-\ AXR 3 1 2 3 prim - over - pe-a pe-in pe-b pe-in pe-a pe-out pe-b pe-out pe-a pe-out
-\ AXR 4 1 2 1 prim - nip - pe-a pe-in pe-b pe-in pe-b pe-out
-\ AXR 5 1 2 3 prim - tuck - pe-a pe-in pe-b pe-in pe-b pe-out pe-a pe-out pe-b pe-out
-\ AXR 6 1 3 3 prim - rot - pe-a pe-in pe-b pe-in pe-c pe-in pe-b pe-out pe-c pe-out pe-a pe-out
-\ AXR 7 1 3 3 prim - -rot - pe-a pe-in pe-b pe-in pe-c pe-in pe-c pe-out pe-a pe-out pe-b pe-out
-\ AXR 8 1 2 4 prim - 2dup - pe-a pe-in pe-b pe-in pe-a pe-out pe-b pe-out pe-a pe-out pe-b pe-out
-\ AXR 9 1 2 0 prim - 2drop - pe-a pe-in pe-b pe-in
-\ AXR 10 1 4 4 prim - 2swap - pe-a pe-in pe-b pe-in pe-c pe-in pe-d pe-in pe-c pe-out pe-d pe-out pe-a pe-out pe-b pe-out
-\ AXR 11 1 4 6 prim - 2over - pe-a pe-in pe-b pe-in pe-c pe-in pe-d pe-in pe-a pe-out pe-b pe-out pe-c pe-out pe-d pe-out pe-a pe-out pe-b pe-out
-\ AXR 12 1 2 1 prim - + - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 13 1 2 1 prim - + - pe-ptr-a pe-in pe-n pe-in pe-ptr-a pe-out
-\ AXR 14 1 2 1 prim - + - pe-n pe-in pe-ptr-a pe-in pe-ptr-a pe-out
-\ AXR 15 1 2 1 prim - - - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 16 1 2 1 prim - - - pe-ptr-a pe-in pe-n pe-in pe-ptr-a pe-out
-\ AXR 17 1 2 1 prim - - - pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
-\ AXR 18 1 2 1 prim - * - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 19 1 2 1 prim - and - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 20 1 2 1 prim - and - pe-f pe-in pe-f pe-in pe-f pe-out
-\ AXR 21 1 2 1 prim - or - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 22 1 2 1 prim - or - pe-f pe-in pe-f pe-in pe-f pe-out
-\ AXR 23 1 2 1 prim - xor - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 24 1 2 1 prim - xor - pe-f pe-in pe-f pe-in pe-f pe-out
-\ AXR 25 1 1 1 prim - 1+ - pe-n pe-in pe-n pe-out
-\ AXR 26 1 1 1 prim - 1+ - pe-ptr-a pe-in pe-ptr-a pe-out
-\ AXR 27 1 1 1 prim - 1- - pe-n pe-in pe-n pe-out
-\ AXR 28 1 1 1 prim - 1- - pe-ptr-a pe-in pe-ptr-a pe-out
-\ AXR 29 1 1 1 prim - negate - pe-n pe-in pe-n pe-out
-\ AXR 30 1 1 1 prim - invert - pe-n pe-in pe-n pe-out
-\ AXR 31 1 1 1 prim - 0= - pe-a pe-in pe-f pe-out
-\ AXR 32 1 1 1 prim - 0< - pe-n pe-in pe-f pe-out
-\ AXR 33 1 2 1 prim - = - pe-n pe-in pe-n pe-in pe-f pe-out
-\ AXR 34 1 2 1 prim - = - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
-\ AXR 35 1 2 1 prim - < - pe-n pe-in pe-n pe-in pe-f pe-out
-\ AXR 36 1 2 1 prim - < - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
-\ AXR 37 1 2 1 prim - > - pe-n pe-in pe-n pe-in pe-f pe-out
-\ AXR 38 1 2 1 prim - > - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
-\ AXR 39 1 2 1 prim - <> - pe-n pe-in pe-n pe-in pe-f pe-out
-\ AXR 40 1 2 1 prim - <> - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
-\ AXR 41 1 2 1 prim - <= - pe-n pe-in pe-n pe-in pe-f pe-out
-\ AXR 42 1 2 1 prim - <= - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
-\ AXR 43 1 2 1 prim - >= - pe-n pe-in pe-n pe-in pe-f pe-out
-\ AXR 44 1 2 1 prim - >= - pe-ptr-a pe-in pe-ptr-a pe-in pe-f pe-out
-\ AXR 45 1 2 1 prim - / - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 46 1 2 1 prim - mod - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 47 1 2 2 prim - /mod - pe-n pe-in pe-n pe-in pe-n pe-out pe-n pe-out
-\ AXR 48 1 1 1 prim - abs - pe-n pe-in pe-n pe-out
-\ AXR 49 1 2 1 prim - min - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 50 1 2 1 prim - max - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 51 1 2 1 prim - lshift - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 52 1 2 1 prim - rshift - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 53 1 1 1 prim - cells - pe-n pe-in pe-n pe-out
-\ AXR 54 1 1 1 prim - cell+ - pe-ptr-a pe-in pe-ptr-a pe-out
-\ AXR 55 1 1 1 prim - cell+ - pe-n pe-in pe-n pe-out
-\ AXR 56 1 1 1 prim - chars - pe-n pe-in pe-n pe-out
-\ AXR 57 1 1 1 prim - char+ - pe-ptr-a pe-in pe-ptr-a pe-out
-\ AXR 58 1 1 1 prim - char+ - pe-n pe-in pe-n pe-out
-\ AXR 59 2 1 1 prim - @ - pe-ptr-a pe-in pe-a pe-out
-\ AXR 60 2 2 0 prim - ! - pe-a pe-in pe-ptr-a pe-in
-\ AXR 61 2 2 1 prim - ptr-field - pe-ptr-a pe-in pe-n pe-in pe-ptr-ptr-b pe-out
-\ AXR 62 2 2 0 prim - +! - pe-n pe-in pe-ptr-n pe-in
-\ AXR 63 2 1 1 prim - c@ - pe-ptr-u8 pe-in pe-u8 pe-out
-\ AXR 64 2 2 0 prim - c! - pe-u8 pe-in pe-ptr-u8 pe-in
-\ AXR 65 0 1 1 prim - atomic@ - pe-ptr-a pe-in pe-a pe-out
-\ AXR 66 0 2 0 prim - atomic! - pe-a pe-in pe-ptr-a pe-in
-\ AXR 67 0 2 1 prim - atomic-add - pe-n pe-in pe-ptr-n pe-in pe-n pe-out
-\ AXR 68 0 3 1 prim - atomic-cas - pe-a pe-in pe-a pe-in pe-ptr-a pe-in pe-a pe-out
-\ AXR 69 0 0 0 prim - fence - -
-\ AXR 70 0 3 0 prim - run-in-stack - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 71 2 1 2 prim - count - pe-ptr-u8 pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 72 1 1 0 prim - . - pe-n pe-in
-\ AXR 73 0 0 0 prim - .s - -
-\ AXR 74 1 0 1 prim - depth - pe-n pe-out
-\ AXR 75 1 0 1 prim - here - pe-ptr-a-raw pe-out
-\ AXR 76 0 1 0 prim - allot - pe-n pe-in
-\ AXR 77 0 1 0 prim - , - pe-n pe-in
-\ AXR 78 0 1 0 prim - c, - pe-n pe-in
-\ AXR 79 2 2 0 prim - type - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 80 1 0 1 prim - script-argc - pe-n pe-out
-\ AXR 81 0 1 2 prim - script-argv$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 82 0 1 0 prim - throw - pe-n pe-in
-\ AXR 83 0 3 0 prim - die - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
-\ AXR 84 0 3 1 prim - open - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 85 0 3 1 prim - read - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 86 0 3 1 prim - ioctl - pe-n pe-in pe-n pe-in pe-ptr-a pe-in pe-n pe-out
-\ AXR 87 0 6 1 prim - mmap - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 88 0 2 1 prim - path0 - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-out
-\ AXR 89 0 1 1 prim - open-rd - pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 90 0 2 1 prim - access - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 91 0 1 1 prim - unlink - pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 92 0 2 1 prim - rename - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 93 0 2 1 prim - chmod - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 94 0 2 1 prim - symlink - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 95 0 3 1 prim - readlink - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 96 0 2 1 prim - mkdir - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 97 0 1 1 prim - rmdir - pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 98 0 2 1 prim - stat64 - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 99 0 2 1 prim - lstat64 - pe-ptr-u8 pe-in pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 100 0 4 1 prim - getdirentries64 - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-ptr-n pe-in pe-n pe-out
-\ AXR 101 0 0 3 prim - pipe - pe-n pe-out pe-n pe-out pe-n pe-out
-\ AXR 102 0 2 1 prim - dup2 - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 103 0 3 1 prim - fcntl - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 104 0 3 1 prim - poll - pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 105 0 2 1 prim - kill - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 106 0 2 1 prim - setpgid - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 107 0 4 1 prim - spawn-io - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 108 0 5 1 prim - spawn-argv-io - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 109 0 6 1 prim - spawn-argv-env-io - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 110 0 7 1 prim - spawn-argv-env-cwd-io - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 111 0 0 1 prim - fork - pe-n pe-out
-\ AXR 112 0 1 1 prim - wait-rc - pe-n pe-in pe-n pe-out
-\ AXR 113 0 1 1 prim - wait-status - pe-n pe-in pe-n pe-out
-\ AXR 114 0 2 0 prim - patch32 trusted-only pe-n pe-in pe-n pe-in
-\ AXR 115 0 6 0 prim - snap-rebase - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 116 0 3 1 prim - write - pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 117 0 1 0 prim - close - pe-n pe-in
-\ AXR 118 0 1 1 prim - close-rc - pe-n pe-in pe-n pe-out
-\ AXR 119 1 0 1 prim - epoch-seconds - pe-n pe-out
-\ AXR 120 1 0 1 prim - mono-ns - pe-n pe-out
-\ AXR 121 0 1 0 prim - prof-on - pe-n pe-in
-\ AXR 122 0 0 0 prim - prof-report - -
-\ AXR 123 1 0 1 prim - rbase - pe-n pe-out
-\ AXR 124 1 0 1 prim - cp@ - pe-n pe-out
-\ AXR 125 0 1 0 prim - cp! - pe-n pe-in
-\ AXR 126 1 0 1 prim - dbase@ - pe-n pe-out
-\ AXR 127 1 0 1 prim - check@ - pe-n pe-out
-\ AXR 128 1 0 1 prim - ndict@ - pe-n pe-out
-\ AXR 129 0 1 0 prim - ndict! - pe-n pe-in
-\ AXR 130 0 0 0 prim - seal-capture - -
-\ AXR 131 0 0 0 prim - seal-friend - -
-\ AXR 132 0 0 0 prim - drain-pretrust - -
-\ AXR 133 1 0 1 prim - data-base - pe-ptr-a pe-out
-\ AXR 134 0 1 0 prim - prot-wid-add - pe-n pe-in
-\ AXR 135 1 0 1 prim - prot-wid-room - pe-n pe-out
-\ AXR 136 2 2 1 prim - tfam-ctor-word? - pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
-\ AXR 137 0 0 1 prim - wordlist - pe-n pe-out
-\ AXR 138 1 0 1 prim - get-current - pe-n pe-out
-\ AXR 139 0 1 0 prim - set-current - pe-n pe-in
-\ AXR 140 0 3 1 prim - search-wl - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 141 0 0 2 prim - parse-name - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 142 2 4 1 prim - core-str= - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
-\ AXR 143 2 4 1 prim - core-str=ci - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
-\ AXR 144 0 3 0 prim - pathz - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in
-\ AXR 145 0 2 1 prim - path0 - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-out
-\ AXR 146 2 1 1 prim - rd32 - pe-ptr-u8 pe-in pe-n pe-out
-\ AXR 147 0 2 0 prim - diag-file! - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 148 0 3 0 prim - diag-origin! - pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 149 0 1 0 prim - diag-json! - pe-f pe-in
-\ AXR 150 0 2 0 prim - diag-buffer! - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 151 0 0 0 prim - diag-buffer-off - -
-\ AXR 152 0 0 2 prim - diag-buffer$ - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 153 0 0 0 prim - checker-scope-start - -
-\ AXR 154 0 0 0 prim - checker-scope-finalize - -
-\ AXR 155 0 0 0 prim - checker-scope-done - -
-\ AXR 156 1 0 1 prim - checker-scope-depth - pe-n pe-out
-\ AXR 157 0 2 1 prim - check-candidate! - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 158 0 2 1 prim - check - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 159 0 2 1 prim - check! - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 160 0 0 0 prim - checker-candidate-scope-start - -
-\ AXR 161 0 0 0 prim - checker-candidate-scope-done - -
-\ AXR 162 0 2 0 prim - checker-usigs-truncate-from - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 163 0 2 0 prim - checker-usigs-truncate-from-raw - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 164 0 2 0 prim - checker-undefine - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 165 0 2 0 prim - checker-undefine-guard - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 166 0 2 0 prim - checker-export - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 167 0 0 1 prim - checker-package-active? - pe-f pe-out
-\ AXR 168 0 2 0 prim - checker-deflinear - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 169 0 4 0 prim - checker-defrecord - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 170 0 4 0 prim - checker-deffamily - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 171 0 4 0 prim - checker-defsum - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 172 0 4 0 prim - checker-defsum-noend - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 173 0 4 0 prim - checker-defproduct - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 174 0 2 3 prim - checker-layout-info - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-n pe-out pe-f pe-out
-\ AXR 175 0 2 2 prim - checker-storage-info - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out
-\ AXR 176 0 6 0 prim - checker-deflayout-buffer - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 177 0 6 0 prim - checker-deftyped-buffer - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 178 0 4 0 prim - checker-deftyped-variable - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 179 0 2 0 prim - checker-lbuf-name-guard - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 180 0 2 1 prim - checker-defined? - pe-ptr-u8 pe-in pe-n pe-in pe-f pe-out
-\ AXR 181 0 2 0 prim - cast-pend! - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 182 0 4 0 prim - trust - pe-ptr-u8 pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 183 0 2 0 prim - ptx-barrier! - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 184 1 0 1 prim - tfam-n@ - pe-n pe-out
-\ AXR 185 0 1 1 prim - tfam-width@ - pe-n pe-in pe-n pe-out
-\ AXR 186 0 1 2 prim - tfam-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 187 0 1 1 prim - tfam-arity@ - pe-n pe-in pe-n pe-out
-\ AXR 188 1 0 1 prim - tfam-decl-param-count - pe-n pe-out
-\ AXR 189 1 1 2 prim - tfam-decl-param>char - pe-n pe-in pe-n pe-out pe-f pe-out
-\ AXR 190 1 1 2 prim - tfam-decl-char>param - pe-n pe-in pe-n pe-out pe-f pe-out
-\ AXR 191 0 1 1 prim - tfam-kind@ - pe-n pe-in pe-n pe-out
-\ AXR 192 0 1 1 prim - tfam-public? - pe-n pe-in pe-f pe-out
-\ AXR 193 0 1 1 prim - tfam-derive-eq? - pe-n pe-in pe-f pe-out
-\ AXR 194 0 1 1 prim - tfam-derive-hash? - pe-n pe-in pe-f pe-out
-\ AXR 195 0 1 1 prim - tfam-var-start@ - pe-n pe-in pe-n pe-out
-\ AXR 196 0 1 1 prim - tfam-var-count@ - pe-n pe-in pe-n pe-out
-\ AXR 197 0 1 2 prim - sumv-name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 198 0 1 2 prim - sumv-ctor-pkg$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 199 0 0 1 pprim type-field count - pe-n pe-out
-\ AXR 200 1 0 1 pprim type-field tx-depth - pe-n pe-out
-\ AXR 201 0 0 1 pprim type-field no-variant - pe-n pe-out
-\ AXR 202 0 4 2 pprim type-field find - pe-n pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out pe-f pe-out
-\ AXR 203 0 3 2 pprim type-field each - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out pe-f pe-out
-\ AXR 204 0 1 1 pprim type-field family@ - pe-n pe-in pe-n pe-out
-\ AXR 205 0 1 1 pprim type-field variant@ - pe-n pe-in pe-n pe-out
-\ AXR 206 0 1 2 pprim type-field name$ - pe-n pe-in pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 207 0 1 1 pprim type-field schema@ - pe-n pe-in pe-n pe-out
-\ AXR 208 0 1 1 pprim type-field slot@ - pe-n pe-in pe-n pe-out
-\ AXR 209 0 1 1 pprim type-field cells@ - pe-n pe-in pe-n pe-out
-\ AXR 210 0 1 1 pprim type-field byte-off@ - pe-n pe-in pe-n pe-out
-\ AXR 211 0 1 1 pprim type-field bytes@ - pe-n pe-in pe-n pe-out
-\ AXR 212 0 1 1 pprim type-field align@ - pe-n pe-in pe-n pe-out
-\ AXR 213 0 1 1 pprim type-field flags@ - pe-n pe-in pe-n pe-out
-\ AXR 214 0 0 1 pprim type-field-owner open - pe-n pe-out
-\ AXR 215 0 12 1 pprim type-field-owner add - pe-n pe-in pe-n pe-in pe-n pe-in pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 216 0 1 1 pprim type-field-owner prepare - pe-n pe-in pe-n pe-out
-\ AXR 217 0 1 0 pprim type-field-owner commit - pe-n pe-in
-\ AXR 218 0 1 0 pprim type-field-owner finalize - pe-n pe-in
-\ AXR 219 0 1 0 pprim type-field-owner rollback - pe-n pe-in
-\ AXR 220 0 3 1 pprim type-field-owner tx-schema-for - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 221 0 3 1 pprim type-field-owner tx-cells-for - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 222 1 0 1 prim - wf-n@ - pe-n pe-out
-\ AXR 223 0 1 1 prim - wf-off@ - pe-n pe-in pe-n pe-out
-\ AXR 224 0 1 1 prim - wf-pos@ - pe-n pe-in pe-n pe-out
-\ AXR 225 0 1 1 prim - wf-fam@ - pe-n pe-in pe-n pe-out
-\ AXR 226 0 1 1 prim - wf-width@ - pe-n pe-in pe-n pe-out
-\ AXR 227 0 1 1 prim - wf-term@ - pe-n pe-in pe-n pe-out
-\ AXR 228 0 1 1 prim - wf-flags@ - pe-n pe-in pe-n pe-out
-\ AXR 229 1 0 1 prim - wf-wide? - pe-f pe-out
-\ AXR 230 1 0 1 prim - wf-needs-p2? - pe-f pe-out
-\ AXR 231 1 2 1 prim - wf-w-at - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 232 0 0 0 prim - wide-mark - -
-\ AXR 233 0 0 0 prim - rec-wide-publish - -
-\ AXR 234 0 0 1 prim - rec-min-in@ - pe-n pe-out
-\ AXR 235 0 1 1 prim - locw-hw@ - pe-n pe-in pe-n pe-out
-\ AXR 236 1 0 1 prim - locw-hw-n@ - pe-n pe-out
-\ AXR 237 1 0 1 pprim lower-cert magic - pe-n pe-out
-\ AXR 238 1 0 1 pprim lower-cert version - pe-n pe-out
-\ AXR 239 1 0 1 pprim lower-cert header-cells - pe-n pe-out
-\ AXR 240 1 0 1 pprim lower-cert magic-cell - pe-n pe-out
-\ AXR 241 1 0 1 pprim lower-cert version-cell - pe-n pe-out
-\ AXR 242 1 0 1 pprim lower-cert total-bytes-cell - pe-n pe-out
-\ AXR 243 1 0 1 pprim lower-cert needs-cell - pe-n pe-out
-\ AXR 244 1 0 1 pprim lower-cert wf-count-cell - pe-n pe-out
-\ AXR 245 1 0 1 pprim lower-cert bind-count-cell - pe-n pe-out
-\ AXR 246 1 0 1 pprim lower-cert fetch-count-cell - pe-n pe-out
-\ AXR 247 1 0 1 pprim lower-cert fetch-data-cells-cell - pe-n pe-out
-\ AXR 248 1 0 1 pprim lower-cert wf-cells - pe-n pe-out
-\ AXR 249 1 0 1 pprim lower-cert fetch-cells - pe-n pe-out
-\ AXR 250 1 0 1 pprim lower-cert check-cells - pe-n pe-out
-\ AXR 251 1 0 1 pprim lower-cert guard-cells - pe-n pe-out
-\ AXR 252 1 0 1 pprim lower-cert fetch-flag - pe-n pe-out
-\ AXR 253 1 0 1 pprim lower-cert store-flag - pe-n pe-out
-\ AXR 254 1 0 1 pprim lower-cert xpad-flag - pe-n pe-out
-\ AXR 255 1 0 1 pprim lower-cert body-len-cell - pe-n pe-out
-\ AXR 256 1 0 1 pprim lower-cert body-hash-cell - pe-n pe-out
-\ AXR 257 1 0 1 pprim lower-cert fnv-offset - pe-n pe-out
-\ AXR 258 1 0 1 pprim lower-cert fnv-prime - pe-n pe-out
-\ AXR 259 1 0 1 pprim lower-cert cell-count - pe-n pe-out
-\ AXR 260 0 1 1 pprim lower-cert cell@ - pe-n pe-in pe-n pe-out
-\ AXR 261 0 0 2 pprim lower-cert bytes trusted-only pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 262 0 2 1 pprim lower-cert-hook hook - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 263 0 1 0 pprim checker-cert install - pe-n pe-in
-\ AXR 264 0 3 0 pprim checker-cert produce - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
-\ AXR 265 0 0 0 prim - p2-locseq-reset - -
-\ AXR 266 0 1 1 prim - p2-carve-w - pe-n pe-in pe-n pe-out
-\ AXR 267 0 1 1 prim - p2-live-w@ - pe-n pe-in pe-n pe-out
-\ AXR 268 0 1 1 prim - p2-live-cum@ - pe-n pe-in pe-n pe-out
-\ AXR 269 1 0 1 prim - sumv-n@ - pe-n pe-out
-\ AXR 270 1 0 1 prim - tf-str-u@ - pe-n pe-out
-\ AXR 271 1 0 1 prim - tf-pk-n@ - pe-n pe-out
-\ AXR 272 1 0 1 prim - lay-n@ - pe-n pe-out
-\ AXR 273 1 0 1 prim - schema-n@ - pe-n pe-out
-\ AXR 274 1 0 1 prim - schema-root-n@ - pe-n pe-out
-\ AXR 275 0 2 0 prim - checker-defer - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 276 0 2 0 prim - checker-package - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 277 0 2 0 prim - checker-using - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 278 0 0 0 prim - checker-public - -
-\ AXR 279 0 0 0 prim - checker-private - -
-\ AXR 280 0 0 0 prim - checker-end-package - -
-\ AXR 281 0 3 1 prim - ffi-call trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 282 0 3 1 prim - ffi-call-n trusted-only pe-ptr-a pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 283 0 4 1 prim - ffi-call-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 284 0 7 1 prim - ffi-call-abi-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 285 0 7 1 prim - ffi-call-abi-r-bounded trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-ptr-d pe-in pe-ptr-e pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-\ AXR 286 0 7 1 prim - ffi-call-abi trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 287 0 7 1 prim - ffi-call-abi-r trusted-only pe-ptr-a pe-in pe-ptr-b pe-in pe-ptr-c pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-r pe-out
-\ AXR 288 3 2 1 prim - f+ - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 289 3 2 1 prim - f- - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 290 3 2 1 prim - f* - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 291 3 2 1 prim - f/ - pe-r pe-in pe-r pe-in pe-r pe-out
-\ AXR 292 3 1 1 prim - fnegate - pe-r pe-in pe-r pe-out
-\ AXR 293 3 1 1 prim - fabs - pe-r pe-in pe-r pe-out
-\ AXR 294 3 1 1 prim - fsqrt - pe-r pe-in pe-r pe-out
-\ AXR 295 3 2 1 prim - f< - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 296 3 2 1 prim - f> - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 297 3 2 1 prim - f= - pe-r pe-in pe-r pe-in pe-f pe-out
-\ AXR 298 3 1 1 prim - f0< - pe-r pe-in pe-f pe-out
-\ AXR 299 3 1 1 prim - f0= - pe-r pe-in pe-f pe-out
-\ AXR 300 1 1 1 prim - s>f - pe-n pe-in pe-r pe-out
-\ AXR 301 3 1 1 prim - f>s - pe-r pe-in pe-n pe-out
-\ AXR 302 0 1 0 prim - f. - pe-r pe-in
-\ AXR 303 0 0 2 prim - s" - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 304 0 0 1 prim - c" - pe-ptr-u8 pe-out
-\ AXR 305 0 0 0 prim - ." - -
-\ AXR 306 0 0 2 prim - s\" - pe-ptr-u8 pe-out pe-n pe-out
-\ AXR 307 0 0 1 prim - c\" - pe-ptr-u8 pe-out
-\ AXR 308 0 0 0 prim - .\" - -
-\ AXR 309 0 0 1 prim - ['] - pe-n pe-out
-\ AXR 310 0 0 1 prim - char - pe-n pe-out
-\ AXR 311 0 0 1 prim - [char] - pe-n pe-out
-\ AXR 312 1 1 0 prim - emit - pe-n pe-in
-\ AXR 313 1 0 0 prim - cr - -
-\ AXR 314 1 0 0 prim - space - -
-\ AXR 315 1 1 0 prim - u. - pe-n pe-in
-\ AXR 316 0 0 1 prim - create - pe-ptr-a pe-out
-\ AXR 317 0 0 1 prim - variable - pe-ptr-a pe-out
-\ AXR 318 0 0 1 prim - constant - pe-a pe-out
-\ AXR 319 0 0 1 prim - getpid - pe-n pe-out
-\ AXR 320 0 1 1 prim - proc-watch-open - pe-n pe-in pe-n pe-out
-\ AXR 321 0 2 1 prim - kill-errno - pe-n pe-in pe-n pe-in pe-n pe-out
-\ AXR 322 0 3 1 prim - execve - pe-ptr-u8 pe-in pe-ptr-a pe-in pe-ptr-a pe-in pe-n pe-out
-\ AXR 323 0 2 1 prim - munmap - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-\ AXR 324 0 2 0 prim - ext-mark-free-tail - pe-ptr-u8 pe-in pe-n pe-in
-\ AXR 325 0 1 0 pprim checker-decl-frame start private pe-n pe-in
-\ AXR 326 0 1 1 pprim checker-decl-frame prepare private pe-n pe-in pe-f pe-out
-\ AXR 327 0 1 0 pprim checker-decl-frame rollback private pe-n pe-in
-\ AXR 328 0 0 0 pprim checker-decl-frame release private -
-\ AXR 329 0 0 0 prim - newtype - -
-\ AXR 330 0 0 0 prim - sumtype - -
-\ AXR 331 0 0 0 prim - product - -
-\ AXR 332 0 1 0 prim - layout-buffer - pe-n pe-in
-\ AXR 333 0 5 0 prim - ldefer-bind - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 334 0 5 0 prim - ldefer-grow - pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in pe-n pe-in
-\ AXR 335 0 0 0 prim - defer-layout-buffer - -
-\ AXR 336 0 1 0 prim - typed-buffer - pe-n pe-in
-\ AXR 337 0 0 0 prim - typed-variable - -
+public
+
+: RUN ( -- )
+   MAIN ;
+
+;package

@@ -656,8 +656,8 @@ variable STG-START
    nameu 0= IF s" verify-source: missing EXPORT name" 74 die THEN
    CHECKER-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
-\ A package primitive row has two closers, and this verifier models them exactly
-\ as the ratchet parser does (tools/primitive-effect-inventory.f PRIVATE-CLOSE?):
+\ A package primitive row has two closers, and this verifier models their source
+\ syntax exactly:
 \ `PPRIM;` interns the axiom into the package public wordlist and `CLOSE-PRIVATE`
 \ interns it into the package private one. Visibility is part of the row, not a
 \ different row shape, so either token ends a `PPRIM:` row. A bare `PRIM:` row has

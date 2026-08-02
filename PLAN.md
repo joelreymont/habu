@@ -67,12 +67,12 @@ an owner.
   package `IR-RAW`, whose private checked `CAST:` mint/projection words cannot
   be reached by reopening the public type owner or the later `IR` facade.
 - Only `id.f`, `arena.f`, the focused ID test, and the codec projection owner may
-  open `IR-RAW`; package/refine lints enforce that closed list.
+  open `IR-RAW`; package ownership checks enforce that closed list.
 - Other substrate concerns use `IR-SOURCE`, `IR-TYPE`, `IR-ATTR`, `IR-SCHEMA`,
   `IR-BUILD`, `IR-VERIFY`, `IR-CODEC`, and `IR-PASS`.
 - `src/compiler/ir.f` may reopen `IR` only to publish semantic facade words over
   public substrate operations. The facade has no `IR-RAW` authority.
-- `refine-lint` inventories and confines every mint. The complete assembly
+- Package ownership checks confine every mint. The complete assembly
   protects package wordlists only after a closed schema has passed through the
   real builder/freeze path without reopening `IR`.
 - Dialects are separate closed packages: `HIR`, `SIR`, `LIR`, `A64IR`,
@@ -281,7 +281,7 @@ GPU work does not edit `maki/infer/` while the Spark agents are active.
 | 16 | structural, correctness, performance, and formal gates attached to their owning leaves |
 | 17 | every dot's frozen interface, mutation test, destruction review, and green integration proof |
 | 18-20 | IR-0/NATIVE-1 leaves plus native/GPU lowering fixtures |
-| 21 | final native, GPU, and trust campaign exits |
+| 21 | final native, GPU, and unchecked-boundary campaign exits |
 
 ## First implementation leaf: IR-0.1
 
@@ -294,8 +294,6 @@ Files:
 src/compiler/ir/id.f
 test/compiler/ir-id.f
 lib/errors.f
-tools/refine-lint-core.f
-tools/refine-lint-test.f
 test/gate-stdlib-cases.f
 test/gate-stdlib-inline-lib.f
 ```
@@ -305,8 +303,8 @@ It declares public `NEWTYPE` identities in package `IR-ID` with exact tails
 `ir-operation-id`, `ir-value-id`, `ir-type-id`, `ir-attribute-id`,
 `ir-symbol-id`, `ir-span-id`, `ir-pool-offset`, and `ir-count`. Private checked
 `CAST:` words in package `IR-RAW` implement three separate contracts: module
-serials, packed referential IDs, and scalar count/offset roles. No new
-`TRUSTED:` declaration or `TRUSTED.md` row is permitted.
+serials, packed referential IDs, and scalar count/offset roles. No new unchecked
+declaration is permitted.
 
 The frozen representation contract is:
 
@@ -344,8 +342,8 @@ PACK-{KIND}        ( IR-ID:ir-module-id n -- IR-ID:ir-{kind}-id )
 `{KIND}` expands exactly to `SOURCE`, `FUNCTION`, `BLOCK`, `OPERATION`, `VALUE`,
 `TYPE`, `ATTRIBUTE`, `SYMBOL`, and `SPAN`. The later arena/builder is the only
 semantic caller of `PACK-*`; the codec is the only semantic caller of `*-LOCAL`.
-`refine-lint` confines these private words to `id.f`, `arena.f`, their focused
-test, and the later codec owner.
+Package ownership confines these private words to `id.f`, `arena.f`, their
+focused test, and the later codec owner.
 
 The exact block and named errors reserved in `lib/errors.f` are:
 
@@ -369,11 +367,10 @@ Acceptance:
 - checker fixtures reject wrong-family substitutions;
 - canonical local projection excludes the runtime owner;
 - no public raw converter or dialect-specific cast resolves;
-- every cast is checker-certified and confined by `refine-lint`;
+- every cast is checker-certified and confined by package ownership;
 - `bin/hb --load test/compiler/ir-id.f` passes;
 - the `compiler-ir-id` suite is declared and scheduled by the inline stdlib
-  dispatcher, and error, trust, refine, package, typed-local, and suite
-  coverage gates pass.
+  dispatcher, and error, package, typed-local, and suite coverage gates pass.
 
 ## Dot and worker rules
 

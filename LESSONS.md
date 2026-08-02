@@ -219,11 +219,9 @@ fits.
   collectives live), because `EM-COMPILE-PUBLISH-TRUSTED` branches past
   `EM-P2-CHECK-DEFINER`. Both `:` and `TRUSTED:` funnel through
   `USIG-ADD → E-ADD-EFFECT`; detect there (via a forward xt hook installed after
-  NORET-ADD). Adding a new WF-cert flag ripples through FIVE places
-  (`lower-cert-base.f` constant, `PPRIM: LOWER-CERT` model, the `VALIDATE-WF` flag
-  mask — was hardcoded `& 3` — plus its width accounting, the TRUSTED.md
-  `primitive-effect-inventory` manifest, and the `prop-test-core.f` AX-CENSUS
-  list). The cert VALIDATOR bites first: the first symptom of a missing validator
+  NORET-ADD). Adding a new WF-cert flag updates the `lower-cert-base.f` constant,
+  the `PPRIM: LOWER-CERT` model, the `VALIDATE-WF` flag mask, and its width
+  accounting. The cert VALIDATOR bites first: the first symptom of a missing validator
   branch is `hb: malformed lowering certificate`, not a checker miss — verify a new
   flag actually FIRES on a TRUSTED subject before trusting the finalize path.
 - **The native publish path re-records every SIGNED definition through `TRUST`.**
@@ -533,29 +531,6 @@ fits.
   storage does NOT retain a nominal pointee between definitions (each use instantiates
   the generic pointer independently, both certify) — keep raw storage private, expose
   typed accessors.
-- **A new content-addressed CAD-KIND owner (`TRUSTED: RAW>X`/`X>RAW`) needs FOUR
-  coordinated edits or a gate goes red** — trusted-inventory strict and refine-lint
-  read DIFFERENT registries: (1) `TYPEFAMILY x-id` in `maki/cad-kinds.f`; (2) human
-  TRUSTED.md rows for BOTH `RAW>X` and `X>RAW`; (3) the machine `file:RAW>X prim-axiom
-  <epic>` classification block row for both (strict fails "unclassified site(s)" on the
-  BLOCK, not the human table); (4) the `RFL-SEED-NAME$`/`RFL-SEED-OWNER$` case + bumped
-  `RFL-SEED#` in `refine-lint-core.f` for the MINT direction only (else `NEW-MINT`).
-  Only `n -- CAD-KIND:x` is shape-scanned; the projection is seed-exempt. Nullary
-  proof-token mints (`( -- proof )`) aren't mint-shaped to refine-lint but STILL seed
-  them (the seed list is the CONFINEMENT set). The POOL refine-lint phase is stricter
-  than standalone — a mint clean standalone can red the gate.
-- **A new TRUSTED: word needs rows in BOTH TRUSTED.md sections (effect table AND
-  site-registry `file:name class owner`), owned by a LIVE dot — never the implementing
-  dot (it closes).** trust-lint checks the markdown; `trusted-inventory-test` checks
-  the site-registry — DIFFERENT corpora, a diff passing one can fail the other, so gate
-  TRUSTED-touching diffs on BOTH. Reuse a sibling `stdlib-boundary` placeholder owner.
-  A file-level fold (`builder-emit` in habu2.f) needs its count bumped in the
-  `trusted-inventory-classes` block too. A computed-argument `set-check`
-  (`check@ set-check`, not literal `0` or a ticked name) is a trusted-inventory site
-  (file-level count row), separate from `checked-boundary-lint`. A near-full fixed
-  arena is a latent capacity bug a downstream lane inherits (the class arena `CSTR-CAP`
-  sat at 65528/65536 → a bare `class arena overflow` die on +4 rows) — budget the
-  scratch arena when growing a ratcheted manifest, not just the count.
 - **A product TYPE PARAMETER binds only cell-tier types (n or nominal `TYPEFAMILY`);
   a sum/enum/product family cannot instantiate it.** So a generic `comparison<a>` over
   a metric unit needs nominal-cell unit witnesses; prefer concrete per-variant families
@@ -891,8 +866,8 @@ fits.
 - **The dot ledger DRIFTS from head — audit before assigning, and `rc 0` is NOT proof.** A
   sweep of 129 open dots found 6 fully landed, 10 with stale premises, 3 TRUSTED.md rows owned by
   archived dots (`trusted-inventory --strict` red on DOT-EXISTS?, invisible because the gate runs
-  FIXTURES not live strict). Verify a dot's claim against head; `dot off` only after
-  `rg <id> TRUSTED.md` + reassigning rows; engine-suite standalone exits 0 after checker errors
+  FIXTURES not live strict). Verify a dot's claim against head and reconcile current blocker
+  references before `dot off`; engine-suite standalone exits 0 after checker errors
   (drop-to-REPL masks) — the last-line `ok` marker or the full gate is the signal. Reproduce
   engine-suite changes through `bin/hb --repl < test/engine-suite.f` (a `cp@ patch32` proof
   passes via `--load` yet SIGILLs via the stdin REPL). Hot-cache full-gate passes do not prove
@@ -1143,12 +1118,9 @@ fits.
 - **`dot on` at DISPATCH is the cross-lane claim; `dot off` only at landing, and closing a dot
   is not done until its file deletion is COMMITTED.** An unpushed active bit is not a claim; parked
   dots go back to `open` so `active` never lies. `dot off` archives the file (gitignored) and
-  orphans every TRUSTED.md row + every `blocks:` edge naming it — in the SAME commit re-point rows
-  to a live successor owner (prim-axioms to the axiom dot, program rows to the live epic's
-  self-named file) and sweep `blocks:` lists (remove an emptied `blocks:` header too), then gate
-  that exact tree with dot-dep-lint. trusted-inventory --strict resolves owners only at
-  `.dots/<id>.md` or `.dots/<id>/<id>.md`; a child dot under another parent's dir is invisible as an
-  owner. Never leave closures in the working copy across a merge window — `jj new <tip>` orphans
+  orphans every `blocks:` edge naming it — sweep those lists in the same commit, remove an emptied
+  `blocks:` header, then gate that exact tree with dot-dep-lint. Never leave closures in the working
+  copy across a merge window — `jj new <tip>` orphans
   them (archive copy persists, tracked open copy returns → Ambiguous ID); every `dot off` is
   immediately followed by dot-dep-lint + `jj commit`.
 - **Use only documented `dot` subcommands — an unknown form is QUICK-ADD and creates a stray
@@ -1175,15 +1147,6 @@ fits.
   replacements (`$200000` beside `$400000` → `$200000400000`) — inspect source or `jj diff --git`;
   never `jj diff --check`. History filters must include JJ refs (`refs/jj/keep`, `.jjconflict-*`);
   ignore generated output by SHAPE, not run name.
-- **STATUS/trust/audit DATES follow the gate's UTC day, not the operator's local calendar.**
-  `stale-status-lint`/`trust-lint` use native `DATE-NOW` UTC; rolling "Last verified" to a local
-  date after midnight makes pushed master red until UTC catches up — `date -u +%F` before any date
-  roll and pass that UTC day to manual invocations. Diff gates must scan LOCALS (`tools/typed-local-diff-lint.f`,
-  not `rg`); run it against the exact integration diff (a squashed stack can hide an earlier untyped
-  local), stream large patches (keep a fixture above the old 1024-line limit). Repo edits go through
-  patches/Edit even for one-liners; commit is a gate (scan diffs for defs/unchecked boundaries,
-  check exact owning `bin/hb --load` paths, boundary tests exist), never "commit now, fix later".
-
 ## Code Quality
 
 - **No repository caller does not make a public REPL word dead.** The operator is the caller for
@@ -1617,15 +1580,13 @@ fits.
   stayed green because inconsistencies were "(logged, non-fatal)" and shards mute output — a property
   tester that prints findings and exits 0 is error masking; make the counters FATAL at the summary, and
   a 100% failure rate on a metamorphic leg means the CONTRACT is broken (probe the contract word directly
-  before shrinking N "different" cases). Stateful scanners split at cursor phases (`STALE-STATUS-LINT`s private `COUNT-LINE?`
-  delegating advance/digit-run/ratio/keyword to typed helpers) with fixtures around the boundary. Report
+  before shrinking N "different" cases). Stateful scanners split at cursor phases, delegating
+  advance/digit-run/ratio/keyword to typed helpers, with fixtures around the boundary. Report
   reducers use DEDICATED scratch cells (`RR-I/J/K` get clobbered by nested helpers; a `RR-RATIO.` stack
   leak truncated a table) — add row-count regressions and `cmp` regenerated reports. Doc-contract
   fixtures need stable anchors (line wrapping hides a `grep -F` phrase — assert a shorter contiguous
   substring). Dogfood benchmark hot paths (per-call glue is Habu-native; host parsers hide missing Habu
-  primitives) and match LLM helper surfaces to validator surfaces exactly. Subtree status docs use lint
-  FENCES not wording games (keep root self-check counts fenced to root `STATUS.md`, skip extracted
-  subtrees in `stale-status-lint`).
+  primitives) and match LLM helper surfaces to validator surfaces exactly.
 
 ## Generated-Code Verification & Signal/Async Effects
 
@@ -1900,7 +1861,9 @@ fits.
   script, generated file, or committed consumer that calls two or more publics
   from one package uses one bounded `using NAME ... ;using` block and bare
   tails. A one-off call may stay qualified.
-- **Adding a `PRIM:`/`TRUST` site or a validation-suite case ripples into committed inventories.** A new prim bumps the prop-test axiom ledger count and its per-index `\ AXR` rows, a new TRUST site bumps `TRUSTED.md` rows and its per-file class ceiling, engine growth trips the exact-CODELEN ratchet, and a new candidate-validation case bumps its declared kind tally — each is a committed ratchet that fails loudly and must move in the same commit. Insert each axiom recipe at its exact live slot and shift every later slot; keep read-only zero-argument state readers executable, while state-consuming transaction finalizers need an explicit no-exec rationale.
+- **Engine size and candidate-validation coverage move with their owning changes.** Engine growth
+  updates the exact-CODELEN baseline, and a new candidate-validation case updates its declared kind
+  tally in the same commit.
 
 - **Fix review gate: re-derive the invariant, never accept the fix's own label.**
   The USING seed-boot repair first shipped as a value-range clamp ("depth 0..16

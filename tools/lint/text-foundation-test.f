@@ -769,29 +769,17 @@ variable REG-I
    REG-COUNT 8 ASSERT=
    11 LINT-LEX:TOKEN s" ;" ASSERT$ ;
 
-\ End-to-end acceptance on the two real axiom sources. The row counts are a
-\ ratchet on the live primitive-effect table: src/core/checker.f holds 278 lines
-\ opening `PRIM: ` plus 55 opening `PPRIM: `, and src/core/sumtype.f holds 3. A
-\ new primitive changes these numbers, and the number is meant to be updated
-\ deliberately with the axiom that caused it. The two counts move independently,
-\ one per file. In src/core/checker.f the eight `TYPE-FIELD-OWNER` package axioms
-\ moved its count from 322 to 330 and the four `CHECKER-DECL-FRAME` rows — the
-\ ones closed with `CLOSE-PRIVATE` — moved it to 334; deleting the
-\ `checker-defenum` row took one away, leaving 333. In src/core/sumtype.f the
-\ four block openers were `NEWTYPE`, `SUMTYPE`, `ENUM` and `PRODUCT`; deleting
-\ the `ENUM` row leaves 3. Both deletions have the same cause: the global ENUM
-\ keyword is an ordinary checked ( -- ) definition over ENUM-DECL:ED-RUN now, so
-\ it needs no axiom of its own, and the metadata-only `checker-defenum` entry it
-\ used went with it.
+\ End-to-end structural acceptance on the real axiom sources. Both must scan
+\ without error; checker.f's quoted primitive name must remain one registry token
+\ ending at its own closer rather than opening a string.
 : TEST-REAL-REGISTRY-FILES ( -- )
    s" src/core/checker.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
    LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   REG-COUNT 333 ASSERT=
-   \ Line 5116's `PRIM: s"` row is the one that broke the old lexer: its name is a
-   \ live string opener, so the word path consumed source through the quote in the
-   \ next row. Name that row and pin that it is one token ending at its own closer.
+   \ The `PRIM: s"` row is the one that broke the old lexer: its name is a live
+   \ string opener, so the word path consumed source through the quote in the next
+   \ row. Name that row and pin that it is one token ending at its own closer.
    ROW-RESET  s" PRIM: s" ROW+  ROW-Q
    ROW$ REG-FIND {: q:n :}
    q 0 >= ASSERT
@@ -801,8 +789,7 @@ variable REG-I
    s" src/core/sumtype.f" LINT-SOURCE:LOAD
    LINT-SOURCE:TEXT LINT-LEX:SOURCE
    LINT-LEX:ERROR? 0= ASSERT
-   LINT-LEX:ERROR-KIND@ 0 ASSERT=
-   REG-COUNT 3 ASSERT= ;
+   LINT-LEX:ERROR-KIND@ 0 ASSERT= ;
 
 : TEST-TOKENIZER  ( -- )
    LINT-TRUE PARENS? !

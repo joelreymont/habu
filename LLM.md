@@ -33,7 +33,7 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
   An accepted def is silently added; a rejected one is dropped. For interactive
   **verify mode** (body vs declared sig), prepend `' CHECK! set-check`.
 - For repair loops, run the native checker script:
-  `bin/hb --load lib/date.f lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f tools/json-only-core.f tools/signature-lint-core.f tools/checked-boundary-lint-core.f tools/trust-lint-core.f tools/check-all-errors-core.f lib/argv.f tools/check.f -- --json-errors --all-errors file.f`.
+  `bin/hb --load lib/date.f lib/errors.f lib/string.f lib/memory.f lib/vector.f lib/fs.f lib/fs-mutate.f lib/process.f lib/process-argv.f lib/source.f tools/lint/text.f tools/lint/token.f tools/lint/lib.f tools/lint/json-writer.f tools/lint/source-lex.f tools/diag-origin-core.f tools/json.f tools/json-only-core.f tools/signature-lint-core.f tools/checked-boundary-lint-core.f tools/check-all-errors-core.f lib/argv.f tools/check.f -- --json-errors --all-errors file.f`.
   It exits nonzero on checker failure and emits one schema-versioned JSON object
   per failed top-level definition with file/line/column/byte spans. Use
   `docs/repair-diagnostics.md` as the Repair diagnostic schema, and use
@@ -55,10 +55,9 @@ prove your stack discipline. This file is the protocol. Follow it exactly.
 ## 5. TRUST is the last resort (audited)
 - `TRUST` declares an effect without checking the body (FFI, metaprogramming,
   `create…does>`): `s" MYWORD" s" n -- n" trust`. Callers are still checked.
-- **Never use TRUST without:** (a) a `TRUSTED.md` audit entry — word, asserted
-  effect, why it can't be inferred, who verified it; and (b) a `T{ … -> … }T`
-  test proving the runtime behavior matches the asserted effect.
-  `tools/trust-lint.f` enforces this.
+- **Never use TRUST without:** (a) source-local rationale stating the asserted
+  effect, why it cannot be inferred, and the retirement owner; and (b) a focused
+  production-path test proving the runtime behavior matches the asserted effect.
 
 ## 6. Test every word
 - Add a `T{ … -> … }T` for each word as you write it — happy path plus each

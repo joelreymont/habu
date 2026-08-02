@@ -112,7 +112,7 @@ MAX-CELL-N 1 cells / constant MAX-ALLOC-CELLS      \ a count above this overflow
 
 \ ---- audited representation mints: validated raw cell -> nominal role ---------
 \ No-op identity casts; the checker cannot infer that a predicate-checked n has
-\ become the arity-zero family. Private and confined by tools/refine-lint.f.
+\ become the arity-zero family. Private to the owning package and directly tested.
 TRUSTED: MINT-BYTE-LEN ( n -- byte-len ) ;
 TRUSTED: MINT-ITEM-COUNT ( n -- item-count ) ;
 TRUSTED: MINT-CELL-COUNT ( n -- cell-count ) ;

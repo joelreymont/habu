@@ -153,7 +153,7 @@ variable ARG-I
 
 : DISPATCH-ID ( n -- )
    case
-      ID-TOOL of GSI-TOOL-TRUST endof
+      ID-TOOL of AOT-CALL-GATE:RUN endof
       ID-TOOL-REPAIR of GSI-TOOL-REPAIR endof
       ID-TOOL-REPAIR-CHECK of GSI-TOOL-REPAIR-CHECK endof
       ID-TOOL-REPAIR-PACKET of GSI-TOOL-REPAIR-PACKET endof

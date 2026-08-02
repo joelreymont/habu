@@ -10,8 +10,8 @@ require maki/model-ir.f
 \ ---- white-box CAD-NUM role reader (mirrors lib/vector-test.f's VECT-IC>RAW) --
 \ Reopen the CAD-NUM package to project a validated item-count's raw cell for the
 \ scalar count assertions below. A plain checked word over the already-audited
-\ CAD-NUM:ITEM-COUNT>N projection - not a new boundary (refine-lint does not
-\ confine the *>N projections, only the MINT-*/RAW>* refinements).
+\ CAD-NUM:ITEM-COUNT>N projection, not a new boundary: the public projection
+\ reads an already validated role and exposes no inverse refinement.
 package CAD-NUM
 public
 : MT-IC>RAW ( CAD-NUM:item-count -- n ) ITEM-COUNT>N ;

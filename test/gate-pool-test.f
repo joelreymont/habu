@@ -343,9 +343,8 @@ private
    GPT-SPAN-RC @ 0 <> if GPT-SPAN-RC @ throw then ;
 
 \ Pin the other real-fork shape: a worker that emits SEVERAL sibling completion
-\ spans, none of which is its own slot label. This is the REPL-TRUST pattern
-\ (three GSI-RUN/GSI-INCLUDE spans - repl-lint, trust-lint,
-\ gate-stats-test.f - none equal to the "lint-tools/repl-trust"
+\ spans, none of which is its own slot label. The lint-tools/repl group has
+\ multiple GSI-RUN/GSI-INCLUDE spans, none equal to the "lint-tools/repl"
 \ pool label). The parent pass-hook is the ONLY emitter of the slot label; the
 \ child never emits it, so GS-CHILD-OWNED? suppresses nothing and nothing is
 \ double-counted. Because these sub-spans sit at the same fork depth as the

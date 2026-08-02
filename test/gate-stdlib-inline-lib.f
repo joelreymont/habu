@@ -2,8 +2,6 @@
 \
 \ Load after test/gate-stdlib-lib.f in the resident test runner.
 
-require lib/memory.f
-
 variable GSI-TIMINGS
 variable GSI-PATH-A
 variable GSI-PATH-U
@@ -13,38 +11,7 @@ variable GSI-SETUP
 variable GSI-TEST-READY
 variable GSI-TOOL-BASE-READY
 
-\ Trust-lint scratch: the file buffer must hold the largest scanned source
-\ (src/core/checker.f outgrew the old $20000 cap); runtime-sized buffers are
-\ lib/memory allocations, not dictionary allot, and grow by constant only.
-\ Reads through the buffer stay fail-closed: READ-FILE dies on overflow, so
-\ outgrowing the cap is a loud gate failure, never truncation.
-$80000 constant GSI-TL-STR-CAP
-$80000 constant GSI-TL-FILE-CAP   \ checker.f grew past $40000 (EXPORT alias, 2026-07-10)
 600000 constant GSI-FORK-TIMEOUT-MS
-
-variable GSI-TL-READY
-variable GSI-TL-STR-A
-variable GSI-TL-FILE-A
-
-: GSI-TL-STR-A-FIELD ( -- ptr ptr u8 )
-   GSI-TL-STR-A 0 ptr-field ;
-
-: GSI-TL-FILE-A-FIELD ( -- ptr ptr u8 )
-   GSI-TL-FILE-A 0 ptr-field ;
-
-: GSI-TL-ALLOC ( -- )
-   GSI-TL-READY @ 0 <> if exit then
-   GSI-TL-STR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop GSI-TL-STR-A-FIELD !
-   GSI-TL-FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop GSI-TL-FILE-A-FIELD !
-   -1 GSI-TL-READY ! ;
-
-: GSI-TL-STR-BUF ( -- ptr u8 )
-   GSI-TL-ALLOC
-   GSI-TL-STR-A-FIELD @ ;
-
-: GSI-TL-FILE-BUF ( -- ptr u8 )
-   GSI-TL-ALLOC
-   GSI-TL-FILE-A-FIELD @ ;
 
 0 constant GSI-GROUP-SEQ
 1 constant GSI-GROUP-PAR
@@ -195,7 +162,6 @@ variable GSI-TL-FILE-A
    s" tools/signature-lint-core.f" GSI-REQUIRE
    s" tools/checked-boundary-lint-core.f" GSI-REQUIRE
    s" tools/reserved-name-lint-core.f" GSI-REQUIRE
-   s" tools/trust-lint-core.f" GSI-REQUIRE
    s" tools/duplicate-definition-lint-core.f" GSI-REQUIRE
    s" tools/bundle-lib-core.f" GSI-REQUIRE
    GSI-TOOL-BASE-READY! ;
@@ -215,11 +181,15 @@ variable GSI-TL-FILE-A
    GSI-TOOL-SETUP
    s" tools/check-all-errors-test.f" GSI-INCLUDE ;
 
-: GSI-TOOL-TRUST ( -- )
-   s" stdlib/tool-trust" GSI-GROUP-SEQ GSI-GROUP-HEADER
+package AOT-CALL-GATE
+public
+
+: RUN ( -- )
+   s" stdlib/tool-aot-call" GSI-GROUP-SEQ GSI-GROUP-HEADER
    GSI-TOOL-SETUP
-   s" tools/trust-lint-test.f" GSI-INCLUDE
    s" tools/aot-call-report-test.f" GSI-INCLUDE ;
+
+;package
 
 package CHECK-CLI-GATE
 
@@ -378,10 +348,8 @@ public
    GSI-SETUP!
    GSI-TOOL-BASE
    s" tools/repl-lint-core.f" GSI-REQUIRE
-   s" tools/trust-lint-core.f" GSI-REQUIRE
    s" tools/dot-dep-lint-core.f" GSI-REQUIRE
    s" tools/maki-dep-lint-core.f" GSI-REQUIRE
-   s" tools/refine-lint-core.f" GSI-REQUIRE
    s" tools/suite-coverage-lint-core.f" GSI-REQUIRE
    s" tools/namespace-lint-core.f" GSI-REQUIRE
    s" tools/error-code-lint-core.f" GSI-REQUIRE

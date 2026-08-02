@@ -284,8 +284,7 @@ private
 : UB-SET-TOP-CHECK-INSTALL? ( -- bool )
    s" set-top-check" UB-TOK=CI UB-TICK-PREV2? and ;
 
-\ Audited checker hooks: the names installed at the ratcheted HOOK-INSTALL sites
-\ (TRUSTED.md trusted-inventory baseline). Any other installed name neuters
+\ Checker hooks installed by the production source paths. Any other name neuters
 \ verification and is a finding.
 : UB-HOOK-ALLOWED? ( -- bool )
    s" HOOK" UB-PREV=CI

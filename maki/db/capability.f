@@ -19,7 +19,7 @@
 \ authority ORIGIN - the trusted upstream contract boundary, plan:3203-3211) and ATTENUATE (a
 \ subset-only derivation). The private representation refinements RAW>GRANT / GRANT>RAW are
 \ owner-only TRUSTED: rows (the maki/db/action.f RAW>ACTION-ID / maki/db/obligation.f
-\ RAW>OBLIGATION-ID precedent), confined to this file by tools/refine-lint-core.f + TRUSTED.md.
+\ RAW>OBLIGATION-ID precedent), private to this owning package.
 \ Consequences, each proven by a static checker fixture in the test:
 \   - a raw `n` CANNOT stand where a `CAPTOK:grant` is required (nominal safety; verdict 0);
 \   - `RAW>GRANT` is unresolvable outside this file (sealed mint; verdict 1);
@@ -71,7 +71,7 @@ ENUM attenuate-result 1
 
 private
 
-\ ---- private representation refinement (owner-only, TRUSTED:, refine-lint-confined) ------
+\ ---- private representation refinement (owner-only, TRUSTED:) -----------------------------
 \ ROOT / ATTENUATE are the ONLY public mints, each bound to a real slot allocation, so a raw n
 \ cannot forge a grant. GRANT>RAW is the owner-only projection used for pooled slot access.
 TRUSTED: RAW>GRANT ( n -- CAPTOK:grant ) ;

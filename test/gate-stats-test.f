@@ -229,9 +229,8 @@ variable GST-GEN-SAVE-U
 
 \ Pin the fork-child suppression's label selectivity: a child whose slot label
 \ is "slot label" emits three SIBLING completion spans, none of which carries
-\ that slot label - the shape GATE-LINT-TOOLS:REPL-TRUST produces (repl-lint /
-\ trust-lint / gate-stats-test.f, none equal to its "lint-tools/repl-trust"
-\ pool label). GS-CHILD-OWNED? keys on the
+\ that slot label - the shape of a multi-span lint-tools group, where no member
+\ equals its pool slot label. GS-CHILD-OWNED? keys on the
 \ qualified slot identity, so it suppresses NONE of them; all three are counted
 \ (same generation, different label bytes). A label-free
 \ redesign that dropped "the child's first/outermost span" instead would wrongly

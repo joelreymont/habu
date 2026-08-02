@@ -19,10 +19,6 @@ SUITE repl-lint
    tools/repl-lint.f
 ;SUITE
 
-SUITE trust-lint
-   tools/trust-lint.f
-;SUITE
-
 SUITE host-lint
    tools/host-lint.f
 ;SUITE
@@ -62,14 +58,6 @@ SUITE maki-dep-lint
 
 SUITE maki-dep-lint-fixtures
    tools/maki-dep-lint-test.f
-;SUITE
-
-SUITE refine-lint
-   tools/refine-lint.f
-;SUITE
-
-SUITE refine-lint-fixtures
-   tools/refine-lint-test.f
 ;SUITE
 
 SUITE suite-coverage-lint
@@ -117,14 +105,6 @@ SUITE host-lint-fixtures
    tools/host-lint-test.f
 ;SUITE
 
-SUITE trusted-inventory
-   tools/trusted-inventory-test.f
-;SUITE
-
-SUITE primitive-effect-inventory
-   tools/primitive-effect-inventory-test.f
-;SUITE
-
 SUITE json-file-cursor
    tools/json-file-test.f
 ;SUITE
@@ -137,8 +117,7 @@ SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE
 
-SUITE tool-boundary-trust
-   tools/trust-lint-test.f
+SUITE tool-boundary-aot-call
    tools/aot-call-report-test.f
 ;SUITE
 

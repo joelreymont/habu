@@ -240,7 +240,7 @@ Current commands live in `skills/habu-host-profiles/SKILL.md`.
    Acceptance: semantic tool tests run as independent resident-runner tests; CLI
    tests remain explicit boundary tests.
    Status: implemented for repair, doc/schema, split lint, typed-local,
-   diagnostic SARIF/public-signature/trust-lint, and JIT dump semantics.
+   diagnostic SARIF/public-signature and JIT dump semantics.
    Current macOS proof after removing top snapshot launchers, replacing the
    monolithic parent support load with explicit suite setup, moving the
    check-tool file-label smoke to the in-process checker core, splitting AOT

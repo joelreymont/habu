@@ -285,10 +285,8 @@ variable SC-USE-TEST#                         \ count of currently-open usings t
 \ not GSI-INCLUDEd). Count them scheduled.
 : SC-SCHED-CLOSURE-CORES ( -- )
    s" tools/repl-lint.f" SC-SCHED+
-   s" tools/trust-lint.f" SC-SCHED+
    s" tools/dot-dep-lint.f" SC-SCHED+
    s" tools/maki-dep-lint.f" SC-SCHED+
-   s" tools/refine-lint.f" SC-SCHED+
    s" tools/suite-coverage-lint.f" SC-SCHED+
    s" tools/namespace-lint.f" SC-SCHED+
    s" tools/error-code-lint.f" SC-SCHED+

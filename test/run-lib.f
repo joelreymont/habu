@@ -1009,7 +1009,7 @@ public
    idx IDX>N case
       0 of s" unused legacy phase 0" endof
       1 of s" unused legacy phase 1" endof
-      2 of s" native stdlib trust tool slice" endof
+      2 of s" native stdlib aot-call tool slice" endof
       3 of s" native stdlib check-cli slice" endof
       4 of s" native stdlib tail slice" endof
       5 of s" native engine repair slice" endof
@@ -1055,7 +1055,7 @@ private
    idx IDX>N case
       0 of s" gate-unused-0" endof
       1 of s" gate-unused-1" endof
-      2 of s" gate-stdlib-tool-trust" endof
+      2 of s" gate-stdlib-tool-aot-call" endof
       3 of s" gate-stdlib-check-cli" endof
       4 of s" gate-stdlib-tail" endof
       5 of s" gate-engine-repair" endof

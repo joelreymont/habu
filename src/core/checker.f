@@ -5187,8 +5187,8 @@ PRIM: execve   PE-PTR-U8 PE-IN PE-PTR-A PE-IN PE-PTR-A PE-IN  PE-N PE-OUT PRIM; 
 PRIM: munmap   PE-PTR-U8 PE-IN PE-N PE-IN  PE-N PE-OUT PRIM;   \ ( addr len -- 0|-1 ) release a mapping; consumed by MEM:RELEASE-BYTES
 \ BTC-7: EXTPROD: (maki/extent.f) marks a product's free factor via this axiom. The
 \ effect keeps it checker-known so the seal-time internal-word marking pass leaves it
-\ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Placed
-\ last in the checker prim table so it appends to the ordered manifests. Last checker.f axiom.
+\ callable from the candidate-B surface (like CHECKER-DEFFAMILY for EXTENT:). Its
+\ unique name makes row order immaterial; it only must be registered before PTABLE-END.
 PRIM: EXT-MARK-FREE-TAIL PE-PTR-U8 PE-IN PE-N PE-IN PRIM;
 
 PTABLE-END

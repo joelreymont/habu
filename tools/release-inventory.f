@@ -248,8 +248,7 @@ private
 public
 
 \ Source root prefix for READ+, so the same inventory can run against a checkout
-\ other than the working tree. Empty means paths are used as given. Same shape
-\ as TRUST-LINT-ROOT!.
+\ other than the working tree. Empty means paths are used as given.
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a u NAMES+ ROOT-A !
    u ROOT-U ! ;

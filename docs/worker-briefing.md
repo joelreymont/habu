@@ -28,10 +28,10 @@ the gate files are the source of truth.
   copy the measured numbers. Arithmetic predictions have been wrong twice.
 - macOS rows are OWED, never guessed. Update linux-arm64 rows only.
 
-## TRUSTED.md
+## Trusted boundaries
 
-- Any row you add cites a STANDING long-term dot as owner — never your own
-  lane's dot, which closes at merge and reds the strict lint on the next gate.
+- Every `TRUST` or `TRUSTED:` site needs source-local rationale, a retirement
+  owner, and a focused production-path test.
 
 ## Gates and evidence
 

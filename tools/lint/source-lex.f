@@ -332,8 +332,8 @@ private
 : PRIVATE-CLOSE? ( ptr u8 n -- bool )
    s" CLOSE-PRIVATE" LINT-STR=CI ;
 
-\ Closer roles follow tools/primitive-effect-inventory.f: `PRIM;` closes a bare
-\ row; a package row closes with `PPRIM;` (public wordlist) or `CLOSE-PRIVATE`
+\ `PRIM;` closes a bare row; a package row closes with `PPRIM;` (public wordlist)
+\ or `CLOSE-PRIVATE`
 \ (package private wordlist). A bare row has no package wordlist, so
 \ `CLOSE-PRIVATE` there is an ordinary effect field, not a closer.
 : ROW-CLOSE? ( ptr u8 n -- bool )
@@ -428,8 +428,7 @@ private
    COUNT 0= if LINT-FALSE exit then
    COUNT 1- KIND@ WORD = ;
 
-\ The same name-position set tools/primitive-effect-inventory.f uses: after one
-\ of these the engine consumes the next word as a parsed name and never executes
+\ After one of these tokens the engine consumes the next word as a parsed name and never executes
 \ it, so `: PRIM: ( -- ) parse-name PE-OPEN ;` in src/core/checker.f declares the
 \ opener rather than opening a row.
 : NAME-POS? ( -- bool )

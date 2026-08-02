@@ -176,7 +176,8 @@ The redesign must achieve all of the following.
   - dependent on a proved validator that checks a pass-specific witness.
 - Bind every witness to input digest, output digest, target contract, numeric policy, schema version, and pass identity.
 - Eliminate hidden mutable configuration from proof-critical behavior.
-- Make every remaining external assumption visible in the final theorem and in the live trust manifest.
+- Make every remaining external assumption visible in the final theorem and at
+  its source boundary.
 - Support a CompCert-like composition theorem from concrete Habu source to AArch64 bytes, and a separate model-to-PTX theorem.
 
 ---
@@ -2665,7 +2666,7 @@ The campaign is complete only when all of these are true.
 ### Trust
 
 - No new unowned trust surface was introduced.
-- Retired direct-emission boundaries lower the trust ratchets in the same commits.
+- Retired direct-emission boundaries remove their source-local unchecked declarations in the same commits.
 - Every remaining production assumption is either proved, validated by a proved checker, or named as an external axiom.
 
 ---

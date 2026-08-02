@@ -213,7 +213,7 @@ consumers migrate.
 `habu-type-dsl-enforce-19a93c1a` adds the zero-occurrence lint and error-only
 retired-token table. Removed tokens are not executable words and never dispatch
 to compatibility code. `habu-type-dsl-prove-93da83c4` owns native fixpoint,
-bootstrap recovery, snapshot/AOT parity, exact diagnostics, trust lints,
+bootstrap recovery, snapshot/AOT parity, exact diagnostics, focused unchecked-boundary tests,
 the full native gate, and the final census assertion.
 
 Completion requires zero live executable or generated-source occurrences,

@@ -1104,8 +1104,8 @@ zero returns `zero`, and the first count whose `cells` conversion would exceed
 `MAX-N` returns `overflow` before an allocation primitive is reachable.
 
 Every mint and any unavoidable role-to-`n` primitive adapter receives a
-`TRUSTED.md` row, a trusted-inventory classification, a focused validation test,
-and a removal condition. No public unchecked raw mint or conversion exists. A
+source-local justification, a focused validation test, and a removal condition.
+No public unchecked raw mint or conversion exists. A
 role-specific refined-to-`n` projection may exist only in private owner code
 where an existing primitive cannot consume the role directly. It is explicit
 proof erasure, never paired with a public inverse, and must not appear in a V2
@@ -1355,7 +1355,7 @@ The implementation is split into these disjoint core owners:
    B5.2 table. They depend on slice 1 and add no roles or overloads.
 3. The open `habu-seal-cad-num-36dbeec6` dot owns `lib/cad-num.f` and
    `lib/cad-num-seal-test.f`: final assembly, permanent sealing,
-   trusted-inventory integration, and hostile reopen/qualified-publication
+   source-local boundary validation, and hostile reopen/qualified-publication
    probes only. It depends on slices 1-2, the unified declaration migration, the
    landed gate-path TVK-RAW seal, the native/REPL registration follow-up, and
    package sealing; it is the first production authority.
@@ -1371,7 +1371,7 @@ workspace.
 | Vector | `lib/vector.f`, `lib/vector-test.f` | Add packaged `VEC:INIT`, `VEC:CLEAR`, `VEC:LEN@`, `VEC:CAP@`, `VEC:RESIZE`, `VEC:ENSURE`, `VEC:@`, `VEC:!`, `VEC:PUSH`, and `VEC:EACH`. Length/capacity are `item-count`, access/push uses `index`, and only the private one-cell-per-item adapter produces `cell-count` then `alloc-cell-count`. Assigned direct callers are exactly `maki/sched-key.f`, `tools/lint/intern.f`, and `tools/lint/source-lex.f`; the first is one combined sched-key vector/Model-IR caller commit, and the latter pair belong to the combined memory/vector tool caller commit described below. | `bin/hb --load lib/vector-test.f`, then `bin/hb --load maki/sched-key-test.f` and `bin/hb --load tools/lint/text-foundation-test.f`; zero length remains valid, zero capacity allocation rejects, growth overflow and index/count swaps reject | sealed CAD-NUM; packaged MEM API; bounded-host owns relational bounds/generations, not this row |
 | Model IR | `maki/model-ir.f`, `maki/model-ir-test.f` | Reopen package `MIR` for `MIR:NODE-COUNT@`, `MIR:SLOT-COUNT@`, `MIR:OPERAND-COUNT@`, and `MIR:MATERIALIZED-COUNT`, all returning `item-count`. Keep `MIR:input-index`, `MIR:ref-pos`, and `MIR:operand-ref`; never replace them with scalar `index`. Operand-count callers are exactly `maki/backward-test.f`, `maki/backward.f`, `maki/cad.f`, `maki/checkpoint.f`, `maki/fusion-plan.f`, `maki/lower/ew.f`, `maki/lower/mm.f`, `maki/lower/move.f`, `maki/lower/red.f`, `maki/mem-plan.f`, `maki/saved.f`, `maki/sched-key.f`, and `maki/traffic.f`. Count accessors are added first; those caller files move in separately owned commits, and the old MAKI-prefixed count accessors are removed only after the listed set is empty. | `bin/hb --load maki/model-ir-test.f`, then `bin/hb --load maki/test.f`; zero-node/zero-operand state, maximum capacities, count-versus-index checker negatives, rollback counts | sealed CAD-NUM; existing MIR nominal handles; no typed-storage-definer dependency and no ownership of MI-* storage migration |
 | Shape census | Read-only census of `maki/tensor.f`, `maki/tensor-value.f`, `maki/cad.f`, `maki/executor.f`, `maki/golden-artifact.f`, `maki/gradcheck.f`, `maki/lower/ew.f`, `maki/lower/launch.f`, `maki/lower/mm.f`, `maki/lower/move.f`, `maki/lower/red.f`, `maki/move-view.f`, `maki/plan-ops.f`, `maki/saved.f`, and `maki/traffic.f`; only the census result is added to this plan | Classify every current product as already owned by `MAKI:DIM*`, `MAKI:SHAPE-ELEMS`, or `MAKI:TENSOR-BYTES`, or name an exact residual file/word for a new dot. This row edits no Maki source and adds no CAD-NUM multiplication. | `bin/hb --load maki/tensor-test.f` and `bin/hb --load maki/tensor-value-test.f`; the census records zero/overflow semantics of each owner | read-only after B5.2; any residual becomes a separate owner dot |
-| Final integration | `src/habu/habu2.f`, `TRUSTED.md`, `MODEL-CAD-V2-PLAN.md`, `STATUS.md`, and `tools/public-signatures-test.f` only | Load the sealed `lib/cad-num.f`, audit trusted mints and packaged public signatures, and prove the V2 production entry point uses no legacy global numeric cast or allocation boundary. It does not migrate consumers or change arithmetic. | exact public-signature/trust/status gates, native fixpoint, then the full owning gates on the rebased tree | every dispatched owner/caller dot above green and integrated |
+| Final integration | `src/habu/habu2.f`, `MODEL-CAD-V2-PLAN.md`, and `tools/public-signatures-test.f` only | Load the sealed `lib/cad-num.f`, audit unchecked mints and packaged public signatures, and prove the V2 production entry point uses no legacy global numeric cast or allocation boundary. It does not migrate consumers or change arithmetic. | exact public-signature and focused boundary tests, native fixpoint, then the full owning gates on the rebased tree | every dispatched owner/caller dot above green and integrated |
 
 The memory owner contains exactly two private representation projections:
 
@@ -1390,8 +1390,8 @@ render them as `MEM:ALLOC-BYTES>N` and `MEM:ALLOC-CELLS>N` only to identify the
 owner. `ALLOC-BYTES>N` appears solely at the `mmap` size operand, and
 `ALLOC-CELLS>N` solely before the `cells` primitive used by the cell-allocation
 sink. They are never public conversions or general arithmetic adapters. Each
-has a `TRUSTED.md` row, refine-lint classification, trust-inventory ownership,
-and focused tests proving qualified lookup/export is unavailable and byte/cell
+has a source-local justification and focused tests proving qualified
+lookup/export is unavailable and byte/cell
 roles cannot swap. Their removal condition is that the corresponding primitive
 accepts the nominal allocation role directly.
 
@@ -1481,11 +1481,9 @@ wave, `MEM-ALLOC-BYTES`, is split into disjoint caller dots:
   `tools/diag-origin-core.f`, `tools/diagnose-hb-test.f`,
   `tools/examples-test.f`, `tools/hb-build-lib.f`,
   `tools/json-only-test-lib.f`, `tools/json-only.f`, `tools/lint/intern.f`,
-  `tools/lint/text-foundation-test.f`, `tools/refine-lint-core.f`,
+  `tools/lint/text-foundation-test.f`,
   `tools/repair-packet-core.f`, `tools/repair-packet-test.f`,
-  `tools/repair-schema-doc-test.f`, `tools/signature-lint-core.f`,
-  `tools/trust-lint.f`, and
-  `tools/trusted-inventory.f`.
+  `tools/repair-schema-doc-test.f`, and `tools/signature-lint-core.f`.
 
 Each caller dot owns its listed files plus their already-associated focused
 tests, converts a raw size through `CAD-NUM:BYTE-LEN` and
@@ -1599,7 +1597,6 @@ and therefore blocks on D0.
   `tools/lint/text.f` (BUF-RESET, BUF-APPEND),
   `tools/lint/text-foundation-test.f` (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C `(C)`),
   `tools/public-signatures-core.f` (BUF-APPEND),
-  `tools/stale-status-lint-core.f` (BUF-APPEND),
   `tools/suite-coverage-lint-test.f` (BUF-RESET, BUF-APPEND, BUF-APPEND-C `(C)`),
   `tools/typed-local-diff-lint-test.f` (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C `(C)`).
   Blocks on D0.
@@ -1631,7 +1628,7 @@ dot add "Migrate Maki string callers to STR:" -d "Full context: MODEL-CAD-V2-PLA
 
 dot add "Migrate test string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, test lane. Migrate every raw STR call to the typed STR: surface in: test/boot-pin-test.f (FIND-SUB), test/gate-engine-lib.f (FIND-SUB), test/owner-wid-doctor.f (FIND-SUB), test/gate-pool-test.f (FIND-SUB, INDEX-OF), test/seal-absence.f (FIND-SUB, SPLIT-NEXT), test/run-lib.f (SPLIT-NEXT, BUF-RESET, BUF-APPEND, BUF-APPEND-C), test/run-rerun-failed-test.f (BUF-RESET). test/run-lib.f uses BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: test/gate-engine-lib.f and test/seal-absence.f were touched by the landed MEM test wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/gate slice green. Files: the 7 listed test files plus their focused tests. Verify: bin/hb --load the owned focused tests / gate slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 7 listed test files. Claim: unassigned."
 
-dot add "Migrate tool string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, tool lane. Migrate every raw STR call to the typed STR: surface in: tools/codegen-role.f (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C), tools/codegen-role-test.f (FIND-SUB, BUF-APPEND), tools/hb-build-lib.f (INDEX-OF), tools/bootstrap-codegen-test.f (FIND-SUB), tools/build-fixpoint.f (FIND-SUB), tools/build-fixpoint-test.f (FIND-SUB), tools/ptx/saxpy-test.f (FIND-SUB), tools/ptx/perf-registry.f (SPLIT-NEXT), tools/lint/text.f (BUF-RESET, BUF-APPEND), tools/lint/text-foundation-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C), tools/public-signatures-core.f (BUF-APPEND), tools/stale-status-lint-core.f (BUF-APPEND), tools/suite-coverage-lint-test.f (BUF-RESET, BUF-APPEND, BUF-APPEND-C), tools/typed-local-diff-lint-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C). Four files use BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: build-fixpoint(.f/-test.f), codegen-role(.f/-test.f), hb-build-lib.f, lint/text-foundation-test.f were touched by the landed MEM/VEC tool wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/lint slice green. Files: the 14 listed tool files plus their focused tests. Verify: bin/hb --load the owned focused tests / lint slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 14 listed tool files. Claim: unassigned."
+dot add "Migrate tool string callers to STR:" -d "Full context: MODEL-CAD-V2-PLAN.md B5.5a legacy-STR census, tool lane. Migrate every raw STR call to the typed STR: surface in: tools/codegen-role.f (FIND-SUB, INDEX-OF, BUF-APPEND, BUF-APPEND-C), tools/codegen-role-test.f (FIND-SUB, BUF-APPEND), tools/hb-build-lib.f (INDEX-OF), tools/bootstrap-codegen-test.f (FIND-SUB), tools/build-fixpoint.f (FIND-SUB), tools/build-fixpoint-test.f (FIND-SUB), tools/ptx/saxpy-test.f (FIND-SUB), tools/ptx/perf-registry.f (SPLIT-NEXT), tools/lint/text.f (BUF-RESET, BUF-APPEND), tools/lint/text-foundation-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C), tools/public-signatures-core.f (BUF-APPEND), tools/suite-coverage-lint-test.f (BUF-RESET, BUF-APPEND, BUF-APPEND-C), tools/typed-local-diff-lint-test.f (BUF-RESET, BUF-LEN@, BUF-APPEND, BUF-APPEND-C). Four files use BUF-APPEND-C so this leaf blocks on the D0 STR:BUF-APPEND-C owner extension. Overlap note: build-fixpoint(.f/-test.f), codegen-role(.f/-test.f), hb-build-lib.f, lint/text-foundation-test.f were touched by the landed MEM/VEC tool wave (sequential). Acceptance: fresh rg census empty in these files; each focused test/lint slice green. Files: the 13 listed tool files plus their focused tests. Verify: bin/hb --load the owned focused tests / lint slices. Depends: landed STR owner; D0 (STR:BUF-APPEND-C). Ownership: the 13 listed tool files. Claim: unassigned."
 ~~~
 
 **`habu-integrate-sealed-cad-ba510e2e` amendment.** Before it closes, its
@@ -1860,8 +1857,8 @@ Sealing decision: the generated `PLAN-COMPLETE:MAKE` is public
 only producer of a `complete-proof` cell is a private
 `TRUSTED: MINT-COMPLETE-PROOF ( -- complete-proof )` inside the owning
 package, invoked by the transition word after its independent verifier
-succeeds — the maki/target/target.f:54 pattern, with a TRUSTED.md row and a
-focused test per mint. Outside code cannot produce the token, so it cannot
+succeeds — the maki/target/target.f:54 pattern, with a source-local justification
+and a focused test per mint. Outside code cannot produce the token, so it cannot
 forge the staged product even though `MAKE` resolves. Private products were
 considered and rejected: they have no construction surface at all (docs §9.4),
 including for the owner. Staged values are NOT linear: revisions are immutable
@@ -2092,11 +2089,10 @@ Bounded decomposition (children of §21 `v2-type-typestate`,
    no type distinguishes a drafted from a verified object.
    Acceptance: stage proof-token families and staged products declared per
    this addendum for MODEL/TIR/RIR/PLAN/KIR/CAND/ART; private mints with
-   TRUSTED.md rows; positive/negative candidate matrix TS-OK1/2,
+   source-local justifications; positive/negative candidate matrix TS-OK1/2,
    TS-BAD-ORDER, TS-BAD-PLAN green; wrong-stage diagnostics name qualified
    families.
-   Files: maki/ir/*/stage.f (new, one per level), maki/typestate-test.f (new),
-   TRUSTED.md.
+   Files: maki/ir/*/stage.f (new, one per level), maki/typestate-test.f (new).
    Verify: `HB_TMP=<tmp> bin/hb --load maki/typestate-test.f`;
    `bin/hb --load maki/test.f`.
 2. Title: v2-evidence-schema-products.

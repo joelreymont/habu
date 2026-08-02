@@ -420,91 +420,10 @@ inference from them. Overloaded primitives (`+`, `-`, `cell+`, `char+`,
 comparisons, `and`/`or`/`xor`) contribute one axiom row per pointer/integer/bool
 variant.
 
-The axiom set is audited two ways:
-
-- **Per-row proof recipes** — `test/prop-test-core.f` (`AX-CENSUS`, run by the
-  prop/debug gate phase) carries an audited recipe ledger at the end of the file,
-  with exactly one `\ AXR …` line per live `PES` slot. Each recipe restates the
-  row's identity — defining package, primitive name, declared arity, and the
-  per-slot typed operands — and one proof kind: executable generic, owned-memory,
-  floating-point, or fail-closed `noexec`. At census time the `AXR` package parses
-  the ledger from this source, binds each recipe to its live row by slot index,
-  and cross-checks package, name, and both arities against the live table. A
-  missing, duplicate, or stale recipe, or an identity/arity mutation, fails the
-  census naming the exact row, so a new axiom cannot land or drift without an
-  audited recipe. A self-test with teeth proves those rejections fire by mutating
-  a slot, an arity, and a `noexec` row's identity in turn.
-  For each *executable* row — stack shuffles, integer/bitwise/comparison
-  arithmetic, cell/char pointer stepping, non-atomic memory access on an owned
-  buffer, engine-state reads, and floating point — the census first compiles a
-  checked candidate from the recipe's exact typed operands and result types (so
-  the recipe's declared types must agree with the axiom the checker enforces),
-  then executes the primitive in-process. A distinctive value-provenance canary is
-  planted below the operand row; the runner reports a trap if the primitive
-  reaches below its declared inputs and clobbers the canary. The census asserts
-  the measured out-arity equals the arity the axiom *declares*, so a lying axiom
-  (declared arity ≠ runtime behaviour) or a primitive that consumes an undeclared
-  cell fails even when the final depth happens to match; the `AX-SELFTEST`
-  fabricated-declaration check proves the arity comparison has teeth.
-- **Non-executable axioms** — syscalls, process/control words (`throw`, `die`,
-  `fork`, `spawn-*`), parser literals (`s"`, `char`, `[']`), defining words
-  (`create`, `variable`, `constant`), engine/checker introspection (`checker-*`,
-  `diag-*`, `parse-name`), fail-closed checker-substrate table accessors that
-  `76 die` on an out-of-range dummy index (`wf-tokix@`/`wf-pos@`/`wf-fam@`/
-  `wf-width@` via `WF-ROW@`, `tfam-width@` via `TF-REC@`), the seal watermark
-  capture (`seal-capture` rewrites live seal state, like `cp!`/`ndict!`),
-  image/FFI, and atomic RMW ops cannot be run in-process with dummy operands.
-  Their declared arity is pinned instead by the native self-rebuild fixpoint
-  (the engine is rebuilt from source through these primitives) and the
-  behavioral gate (the rebuilt engine runs real programs). Their recipe is an
-  explicit fail-closed `noexec` row bound to that exact slot rather than a
-  name/prefix allowlist, so an identity change must update that row and a stale
-  classification cannot be inherited by an adjacent or same-spelled overload;
-  exact source/live identity stays independently ratcheted by `PEINV` below. The
-  substrate's zero-arg high-water readers (`wf-n@`,
-  `tfam-n@`, `sumv-n@`, `tf-str-u@`, `tf-pk-n@`, `schema-n@`,
-  `schema-root-n@`) are pure variable reads and ARE difftested, matching
-  `ndict@`/`cp@`.
-
-Axiom-set size is tracked separately from discharged `TRUSTED`: the census
-prints the live `PES` row count (`prim-axiom: N axioms (D difftested, X
-noexec)`), and the trusted-inventory `prim-axiom` class (`TRUSTED.md`) counts the
-checker's axiom-model trust sites (nominal role casts, structure/record effects,
-and the census readers) apart from the general `TRUSTED`/`TRUST` ratchet.
-
-### Inventory ratchet (`tools/primitive-effect-inventory.f`)
-
-The census proves each live axiom's arity is honest and classified, and the
-trusted-inventory `prim-axiom` class counts the *trust sites* that read the table.
-Neither ratchets the authoritative rows themselves, so an axiom could be added,
-deleted, duplicated, or reordered with no audited migration. `PEINV` closes that
-gap. It streams the three `PRIM:`/`PPRIM:`-bearing boot-prefix sources
-(`src/core/checker.f`, `src/core/sumtype.f`, `src/core/layout-buffer.f`, in
-`tools/boot-pin.f` `BP-EACH` load order — which is the live table order) and gives
-each row a **stable identity**: the canonical tuple
-`<kind> <defining-package> <word-spelling> <flags> <normalized-effect-tokens>`
-(`kind` `prim`|`pprim`; package `-` for a bare `PRIM:`; spelling and effect tokens
-folded lowercase; flags `trusted-only` when `PRIM-TRUSTED-ONLY!` marks the row).
-Identity never depends on a path, line, ordinal, or `PES` address, so
-case/whitespace/comment-only edits preserve it.
-
-- **`baseline TRUSTED.md`** compares the parsed rows against the committed
-  `primitive-effect-inventory-manifest` block (an ordered list — *not* sorted, so
-  a pure reorder is detectable and the exact row can be named). Comparison is
-  occurrence-aware (multiset): an identical axiom may repeat legitimately
-  (`path0`/`PATH0` — the same case-insensitive symbol with an identical effect is
-  declared in two `checker.f` sections), and the manifest records the repeat, so
-  the ratchet fails only on an occurrence beyond the committed multiplicity (an
-  added or duplicated row), a shortfall (a deleted row), or a reordered position.
-- **`strict`** additionally cross-checks the parsed rows against the live `#PE`
-  registry — package/name, declared in/out arity, and the `PE-TRUSTED-ONLY` flag —
-  row-for-row, proving the source parse is faithful to the in-image table.
-- **`manifest`** emits the canonical block; regenerating it is the explicit
-  migration a legitimate axiom-set change must commit.
-
-This count of authoritative axiom rows stays distinct from the trust-site classes,
-so permanent trust owners and the primitive rows they read remain separate
-quantities.
+The native fixpoint rebuild compiles the engine from these rows and the
+behavioral gates exercise the rebuilt primitives through real programs.
+Trusted readers or representation casts around the table carry source-local
+rationale, a retirement owner, and focused production-path tests.
 
 ### ARM64 contract link (`PRIM-LINK`, `src/core/checker.f`)
 

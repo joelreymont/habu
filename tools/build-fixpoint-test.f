@@ -690,7 +690,7 @@ public
    BFT-READ-BUF u s" S2-SOURCE-CAP allot" CONTAINS? TFALSE
    BFT-READ-BUF u s" stage2: source mmap failed" CONTAINS? TTRUE ;
 
-\ The snap tail's SNAP-RETIRE-GO is a named TRUSTED: boundary (TRUSTED.md),
+\ The snap tail's SNAP-RETIRE-GO is a named TRUSTED: boundary,
 \ not a `0 set-check` window: the emitted snap source must carry NO raw
 \ check-off line so BF-AUDIT-BOUNDARY can pin the refresh prelude's
 \ BFR-CHECK-OFF as the only checking-disabled span.

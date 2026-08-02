@@ -352,8 +352,8 @@ TRUSTED: WRITE-ONE ( ptr a n -- n ) {: out:ptr value:n :}
 ```
 
 The wrapper's checked callers cannot reclassify `out` or change its eight-byte
-extent. The `TRUSTED.md` row owns the symbol contract; focused tests cover the
-writer guard and the checked public effect.
+extent. Source-local rationale owns the symbol contract; focused tests cover
+the writer guard and the checked public effect.
 
 ```forth
 FFI:RESET         ( -- )

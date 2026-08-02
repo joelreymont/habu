@@ -16,7 +16,6 @@ require tools/json-only-core.f
 require tools/signature-lint-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
-require tools/trust-lint-core.f
 require tools/public-signatures-core.f
 require tools/check-all-errors-core.f
 require lib/argv.f

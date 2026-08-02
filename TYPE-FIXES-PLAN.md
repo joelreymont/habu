@@ -198,11 +198,10 @@ path sufficient, or hold the lane for a post-conversion landing.
     thing — a primitive operation of the checked language (syscall,
     machine op, retype axiom). `PPRIM:` and `TRUSTED:` fold in; the
     justification and retirement note move to the declaration in a
-    grammar-required shape. The LEDGER machinery — TRUSTED.md,
-    trust-lint.f, the trusted-inventory ratchets — is agreed-dead and
-    deletes in WAVE 1 (item 38): each row's justification folds into its
-    site's comment as part of the deletion leaf, then file, lint, and
-    ratchets go. The PRIM: grammar unification itself remains wave 2+.
+    grammar-required shape. The administrative trust ledger is deleted in
+    WAVE 1 (item 38): each justification folds into its declaration-site
+    comment before the ledger machinery goes. The PRIM: grammar unification
+    itself remains wave 2+.
 
 28. **No pointer lifetimes, ever.** [decision, recorded] The borrow-system
     dot is deleted. Linear owners carry the safety that matters; borrowed
@@ -325,11 +324,9 @@ In order:
 5. both exact-diff gates on the final combined diff — the ownership
    check on every migrated definition, run once.
 6. the cheap lints, seconds each: suite-coverage-lint, error-code-lint,
-   maki-dep-lint, dot-dep-lint. (host-lint, refine-lint, and
-   stale-status-lint no longer exist by battery time — items 36/40.) (The former separate "native dot gate" entry is deleted
-   as a duplicate of dot-dep-lint.)
-(STATUS.md and stale-status-lint no longer exist by battery time —
-item 36 — so no STATUS special case remains.) Deliberately absent: a
+   maki-dep-lint, dot-dep-lint. The former separate "native dot gate" entry
+   is deleted as a duplicate of dot-dep-lint.
+Deliberately absent: a
 performance gate — declaration-time machinery changed, not runtime hot
 paths; boot-time shifts surface in the fixpoint run.
 Fix reds in place, each with its cause named. When green: one
@@ -506,8 +503,8 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   any engine); ordered before M17 so the census counts them gone.
 - M13c the agreed-dead deletion leaves per item 38: seal (package
   sealing + owner-wid-emit-seal.f + the two boot-seal files' census),
-  the trust ledger (justifications to sites, then TRUSTED.md +
-  trust-lint.f + inventory ratchets), dead sched, the OWNER-WID runtime
+  the administrative trust ledger (justifications moved to sites first),
+  dead sched, the OWNER-WID runtime
   registry. Same discipline and ordering as M13b.
 - M14a FS: `STRUCTURE path` = `data ptr u8`, `len CAD-NUM:byte-len` —
   borrowed, never retained. Probe: FS:path resolves; path consumers
@@ -571,11 +568,11 @@ commit plus the named probe. Blocked-by the phase-1 engine leaves (E1-E10) unles
   grammar — plus the rg zero-site census. blocked-by M12, M13b, M13c,
   M14a-d, M15, M16.
 - (docs reconciliation moved to phase 4, after everything — Joel.)
-- M18 green-tree mechanics: refine-lint and host-lint DELETED (item
+- M18 green-tree mechanics: obsolete administrative lints and host-lint DELETED (item
   40); suite-coverage's conscious-exception table updated for
   deleted/respelled suites; STATUS.md DELETED (item 36) with the
-  census-ratchet baseline moved into the gate tool that measures it and
-  stale-status-lint deleted with the file. Must precede the battery.
+  census-ratchet baseline moved into the gate tool that measures it. Must
+  precede the battery.
   blocked-by M17.
 
 Phase 3 runs after M18. Leaf contracts freeze one at a time on the
@@ -615,7 +612,7 @@ everything is finished — not during.
     fact in it has a real authority elsewhere: the dot tracker owns "what
     is next", the gates own gate state, and the build owns the certified
     counts. The census ratchet's baseline moves out of prose into the gate
-    tool that measures it; stale-status-lint dies with the file. Session
+    tool that measures it. Session
     orientation is the tracker plus this plan.
 
 37. **The V2 evidence/experiment complex is DELETED in wave 1.** (Joel,
@@ -643,9 +640,9 @@ everything is finished — not during.
     parking.** The pulled-forward set, joining items 35-37: package
     sealing (25: SEAL-PACKAGE, prot-wid, exit-84, owner-wid-emit-seal.f;
     layout-buffer-seal.f and lower-cert-seal.f get their census inside
-    the leaf and whatever fails it dies there too); the trust ledger
-    (from 27: TRUSTED.md, trust-lint.f, trusted-inventory ratchets, with
-    per-row justifications folded to their sites first); the dead sched
+    the leaf and whatever fails it dies there too); the administrative
+    trust ledger (from 27, with justifications folded to their sites
+    first); the dead sched
     type (schedule.f:42 + its four words + schedule-test.f checks); the
     production-empty OWNER-WID runtime registry (the collapsed campaign's
     delete-runtime-pkg leaf executes here). Each is its own deletion
@@ -682,7 +679,8 @@ everything is finished — not during.
     respell-closure in the sweep, no aliases.
 
 40. **Lint adjudication (Joel, 2026-07-30).** DELETED in wave 1, joining
-    M13c: refine-lint (hand seed table = the TRUSTED.md disease; its
+    M13c: the hand-seeded mint confinement lint (the same duplication as
+    the deleted administrative ledger; its
     seeds are mostly proof mints and erasures this plan deletes, and
     CONSTRUCT owner is the structural confinement that replaces it) and
     host-lint (seventeen patterns rejecting retired workflow hooks — a

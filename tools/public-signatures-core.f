@@ -526,8 +526,8 @@ variable PS-DEF-SIG-U
    PS-TOK-A@ PS-TOK-U @ LINT-NORMAL-STRING-OPENER? IF PS-SKIP-QUOTE THEN THEN ;
 
 \ `(` opens a comment only as a STANDALONE token (next byte is whitespace or
-\ EOF); a paren-initial word name like `(CMP)` lexes as a WORD. Mirrors the
-\ trusted-inventory PAREN-STANDALONE? rule so both lexers agree.
+\ EOF); a paren-initial word name like `(CMP)` lexes as a WORD. This is the
+\ canonical source-token rule shared with the repository lints.
 : PS-PAREN-STANDALONE? ( -- bool )
    PS-X @ 1+ PS-SRC-U @ >= IF PS-TRUE exit THEN
    PS-SRC-A@ PS-X @ 1+ + c@ PS-WS? ;

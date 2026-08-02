@@ -182,7 +182,6 @@ private
    s" clobber-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" clobber-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" repl-lint" SUITE-LABEL= if SUITE-TRUE exit then
-   s" trust-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" stdin-closure-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" gate-stats" SUITE-LABEL= if SUITE-TRUE exit then
@@ -192,15 +191,12 @@ private
    s" nanogpt-inventory-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" maki-dep-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" refine-lint" SUITE-LABEL= if SUITE-TRUE exit then
-   s" refine-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" suite-coverage-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" namespace-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" namespace-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" error-code-lint" SUITE-LABEL= if SUITE-TRUE exit then
    s" error-code-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
    s" host-lint-fixtures" SUITE-LABEL= if SUITE-TRUE exit then
-   s" trusted-inventory" SUITE-LABEL= if SUITE-TRUE exit then
    SUITE-FALSE ;
 
 : SUITE-LINT-ARTIFACTS-LABEL? ( -- bool )
@@ -244,7 +240,7 @@ private
 
 : SUITE-TOOL? ( -- bool )
    SUITE-SLICE @ SUITE-TOOL-ID <> if SUITE-FALSE exit then
-   s" tool-boundary-trust" SUITE-LABEL= if SUITE-TRUE exit then
+   s" tool-boundary-aot-call" SUITE-LABEL= if SUITE-TRUE exit then
    s" tool-boundary-check-repair" SUITE-LABEL= if
       SUITE-SKIP-TOOL-REPAIR @ 0= if SUITE-TRUE exit then
       SUITE-FALSE exit

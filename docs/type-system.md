@@ -304,11 +304,9 @@ them are deliberately loud.
   engine primitive, which turns what would otherwise be a trusted call site
   into an ordinary checked call.
 
-Every trusted site is a debt with a ledger. `TRUSTED.md` is that ledger: a
-table with one row per trusted word giving its effect, the reason it cannot be
-inferred, the tests that pin it, its file, the date a human last confirmed the
-row matches the body, and the dot that owns retiring it. `tools/trust-lint.f`
-enforces the manifest, and every row must cite a test.
+Every trusted site is explicit debt. Its source-local comment states why the
+effect cannot be inferred and names the retirement owner; a focused test pins
+the asserted behavior through its production path.
 
 The trust surface only shrinks deliberately, and the pattern that keeps it
 small is visible in the history: before adding trust, try a checked factoring.
@@ -399,9 +397,6 @@ another small word whose entry consumes the bundle.
   and PTX code.
 - `docs/effects.md` — the effect language itself.
 - `docs/typed-top-level.md` — what may and may not run at the interpreter.
-- `TRUSTED.md` — the live ledger of every trusted site, its reason, its tests,
-  and its owner.
-
 The best worked examples in the tree, if you would rather read code:
 `lib/cad-num-types.f` for nominals, `lib/adt/option.f` and `lib/adt/result.f`
 for generics, `maki/infer/safetensors.f` for linear owners and transition
