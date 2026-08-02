@@ -77,6 +77,7 @@ require src/compiler/ir/source.f
 require src/compiler/ir/symbol.f
 require src/compiler/ir/build.f
 require src/compiler/native/tape.f
+require src/compiler/native/real-lit.f
 
 package NFEED
 private
@@ -154,6 +155,19 @@ variable F-VERDICT
       some OF ENDOF
    ;MATCH ;
 
+\ The cell a real-literal token carries, which is the double's own bit pattern.
+\ It is read back from the spelling the way the integer value above is, and by
+\ the same authority argument: the engine's parser is not reachable from here, so
+\ the value is re-derived - and src/compiler/native/real-lit.f re-derives it
+\ along the engine's own route rather than a better one, so a compiled literal
+\ and an interpreted literal are the same double to the bit. A spelling that
+\ reader declines is refused here rather than recorded as some other number.
+: REAL-VALUE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NREAL:READ MATCH option
+      none OF E-NFEED-LITERAL throw ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
 \ Append the row. The span is built from the offset the reader reported and the
 \ spelling is interned from the bytes it handed over, both against the module
 \ the tape was created for: a tape and a builder of two different modules are
@@ -171,12 +185,21 @@ variable F-VERDICT
    BLD SID off u IR-BUILD:ADD-SPAN  sym  first MODE  v  NTAPE:INT-TOKEN
    NTAPE:PUSH-INTO ;
 
-\ Which append this token's class takes. A real literal this stage has no tape
-\ kind for - a float today - is refused: recording it as a name would say the
-\ elaborator may resolve it, which is false.
+: APPEND-REAL ( ptr u8 n n n -- n ) {: a:ptr u:n off:n first:n :}
+   CTX BLD a u IR-BUILD:INTERN-SYMBOL {: sym:IR-ID:ir-symbol-id :}
+   a u REAL-VALUE {: v:n :}
+   CTX BLD TAPE
+   BLD SID off u IR-BUILD:ADD-SPAN  sym  first MODE  v  NTAPE:REAL-TOKEN
+   NTAPE:PUSH-INTO ;
+
+\ Which append this token's class takes. A literal class this stage has no tape
+\ kind for is refused: recording it as a name would say the elaborator may
+\ resolve it, which is false. The reader has three classes and the tape now has a
+\ kind for all three.
 : APPEND ( ptr u8 n n n n -- n ) {: a:ptr u:n off:n kind:n first:n :}
    kind CHECKER-TAPE:K-NAME = if a u off first APPEND-NAME exit then
    kind CHECKER-TAPE:K-INT = if a u off first APPEND-INT exit then
+   kind CHECKER-TAPE:K-REAL = if a u off first APPEND-REAL exit then
    E-NFEED-KIND throw ;
 
 \ The ordinal an append answers is the count this producer expects. They differ

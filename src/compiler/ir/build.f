@@ -696,6 +696,10 @@ public
    {: c:IR-CTX:ctx b:IR-BUILD:builder w:IR-TYPE:width s:IR-TYPE:sign :}
    c b TYPE-USE w s IR-TYPE:INT ;
 
+: INTERN-FLT ( IR-CTX:ctx IR-BUILD:builder IR-TYPE:fmt -- IR-ID:ir-type-id )
+   {: c:IR-CTX:ctx b:IR-BUILD:builder f:IR-TYPE:fmt :}
+   c b TYPE-USE f IR-TYPE:FLT ;
+
 : INTERN-POINTER ( IR-CTX:ctx IR-BUILD:builder IR-TYPE:space IR-ID:ir-type-id -- IR-ID:ir-type-id )
    {: c:IR-CTX:ctx b:IR-BUILD:builder sp:IR-TYPE:space t:IR-ID:ir-type-id :}
    c b TYPE-USE sp t IR-TYPE:POINTER ;

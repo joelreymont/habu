@@ -84,11 +84,18 @@ public
 \ `name` is a name to be resolved later - the tape never resolves it.
 \ `int-literal` carries its value, `char-literal` its code point, and
 \ `string-literal`'s spelling is the body, not the quoting syntax around it.
+\ `real-literal` carries the CELL the double is. A double on a Habu stack is one
+\ unboxed cell holding its own IEEE754 bit pattern, so the value a real literal
+\ carries is a bit pattern and not a second representation of it - which is why
+\ it rides in the same literal field the integer kinds use rather than in a field
+\ of its own, and why its rule below is the signed one: the sign bit of a
+\ negative double is the sign bit of that cell.
 ENUM kind DERIVE eq
    name
    int-literal
    char-literal
    string-literal
+   real-literal
 ;ENUM
 
 \ The parser mode in force when the token was consumed. Forth has exactly two,
@@ -150,6 +157,7 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       int-literal    OF 1 ENDOF
       char-literal   OF 2 ENDOF
       string-literal OF 3 ENDOF
+      real-literal   OF 4 ENDOF
    ;MATCH ;
 
 : N>KIND ( n -- NTAPE:kind )
@@ -158,6 +166,7 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       1 of NTAPE-KIND:INT-LITERAL endof
       2 of NTAPE-KIND:CHAR-LITERAL endof
       3 of NTAPE-KIND:STRING-LITERAL endof
+      4 of NTAPE-KIND:REAL-LITERAL endof
       E-NTAPE-KIND throw
    endcase ;
 
@@ -185,6 +194,7 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       int-literal    OF true ENDOF
       char-literal   OF true ENDOF
       string-literal OF false ENDOF
+      real-literal   OF true ENDOF
    ;MATCH ;
 
 : SIGNED-KIND? ( NTAPE:kind -- bool )
@@ -193,6 +203,7 @@ $FFFFFFFF HDR-CELLS - ROW-CELLS / constant CAP-MAX
       int-literal    OF true ENDOF
       char-literal   OF false ENDOF
       string-literal OF false ENDOF
+      real-literal   OF true ENDOF
    ;MATCH ;
 
 : LIT-CK ( NTAPE:kind n -- )
@@ -309,7 +320,7 @@ public
    a ;
 
 \ ---- minting tokens ----------------------------------------------------------
-\ Four constructors, one per kind, so the literal rule is structural: there is
+\ Five constructors, one per kind, so the literal rule is structural: there is
 \ no way to ask for a name token that carries a value, and no way to ask for an
 \ integer literal without one.
 private
@@ -337,6 +348,13 @@ public
 : CHAR-TOKEN ( IR-SOURCE:span IR-ID:ir-symbol-id NTAPE:mode n -- NTAPE:token )
    {: sy:IR-ID:ir-symbol-id m:NTAPE:mode v:n :}
    NTAPE-KIND:CHAR-LITERAL m sy v MK ;
+
+\ A double, as the cell it is. The value is the literal's bit pattern, so this
+\ constructor states no format and performs no conversion: whatever produced the
+\ bits owns that question, and the tape records what it produced.
+: REAL-TOKEN ( IR-SOURCE:span IR-ID:ir-symbol-id NTAPE:mode n -- NTAPE:token )
+   {: sy:IR-ID:ir-symbol-id m:NTAPE:mode v:n :}
+   NTAPE-KIND:REAL-LITERAL m sy v MK ;
 
 \ ---- appending ---------------------------------------------------------------
 private

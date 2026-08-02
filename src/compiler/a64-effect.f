@@ -801,6 +801,18 @@ public
    drop drop drop                  \ the general interface lists and destroyed set
    FPR-MASK fr F-BITS invert and fc F-BITS invert and MK-F ;
 
+\ The floating file's writable set, derived exactly as the general file's is:
+\ what the routine destroys plus what it returns a value in. A register
+\ allocator with a second file asks this question of the second file in the same
+\ words it asks it of the first, so the two pools come from one rule rather than
+\ from one rule and one special case.
+: FPR-WRITABLE ( A64EFF:routine -- A64EFF:fprs )
+   VALIDATE A64EFF-ROUTINE:UNMAKE
+   drop drop drop drop drop drop   \ delta, frame, traits, control, link, nzcv
+   {: fi:fprs fr:fprs fc:fprs :}
+   drop drop drop                  \ the general interface lists and destroyed set
+   fr F-BITS fc F-BITS or MK-F ;
+
 : RETURNS? ( A64EFF:routine -- bool )
    VALIDATE CONTROL@ RETURNING? ;
 

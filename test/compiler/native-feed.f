@@ -22,6 +22,11 @@ require src/compiler/native/feed.f
 package NFEED-TEST
 private
 
+\ A double is one unboxed cell holding its own IEEE754 bits, so a test that
+\ wants to compare a recorded literal with the engine's own literal retypes the
+\ engine's and compares cells. It is the CAST: form the checker certifies.
+CAST: REAL-CELL ( r -- n ) ;
+
 \ ---- fixtures ----------------------------------------------------------------
 : BND ( -- CBIND:binding )
    CTARGET-ARCH:AARCH64 CTARGET-ABI:AAPCS64-DARWIN CTARGET-ENDIAN:LITTLE
@@ -475,14 +480,85 @@ create UTXT-TINY TINY-CAP allot
 : HEX ( -- )
    BND [: HEX-BODY ;] IR-CTX:WITH-CONTEXT throw ;
 
-: REAL-BODY ( IR-CTX:ctx -- n )
-   OPEN-SCRATCH
-   s" : NF-REAL ( -- r ) 1.5 ;" EV-CATCH {: rc:n :}
-   NFEED:ABANDON-UNIT
-   rc ;
+\ A float literal records the CELL the engine's own reader would have pushed for
+\ that spelling. The row's kind says a real literal and its value is that cell,
+\ so the comparison below is against the engine's literal and not against a
+\ number this test worked out for itself.
+: REAL-BODY ( IR-CTX:ctx -- bool bool n )
+   {: c:IR-CTX:ctx :}
+   c s" : NF-REAL ( -- r ) 1.5 ;" 0 REC
+   0 1 NTAPE-KIND:REAL-LITERAL KIND-IS?
+   0 1 s" 1.5" SPELL-IS?
+   0 1 LIT ;
 
-: REAL ( -- )
-   BND [: REAL-BODY ;] IR-CTX:WITH-CONTEXT throw ;
+: REAL-CASE ( -- )
+   s" a float literal is recorded as the cell the engine reads it as" T-LABEL
+   BND [: REAL-BODY ;] IR-CTX:WITH-CONTEXT
+   1.5 REAL-CELL T=
+   TTRUE TTRUE ;
+
+\ The sign of a zero is a bit of the cell, and a recorded literal keeps it: -0.0
+\ and 0.0 are equal numbers in two different cells, so a reader that folded one
+\ into the other would record the same row for both.
+: NEG-ZERO-BODY ( IR-CTX:ctx -- n n )
+   {: c:IR-CTX:ctx :}
+   c s" : NF-NZERO ( -- r ) -0.0 ;" 0 REC
+   c s" : NF-PZERO ( -- r ) 0.0 ;" 1 REC
+   0 1 LIT
+   1 1 LIT ;
+
+: NEG-ZERO-CASE ( -- )
+   s" a recorded float literal keeps the sign of a zero" T-LABEL
+   BND [: NEG-ZERO-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= -0.0 REAL-CELL T= ;
+
+\ The three spellings the survey at the head of tools/codegen-compare-corpus3.f
+\ measures as the engine's own answers, including the two where the engine's
+\ route lands one bit off the nearest double and the one where the fractional
+\ accumulator wraps into a negative cell. A reader that used the stdlib's float
+\ parser instead would agree on ordinary literals and disagree on exactly these,
+\ so this is the case that says the two routes are one route.
+: AWKWARD-BODY ( IR-CTX:ctx -- n n n )
+   {: c:IR-CTX:ctx :}
+   c s" : NF-R1 ( -- r ) 1.9482199351819093 ;" 0 REC
+   0 1 LIT
+   c s" : NF-R2 ( -- r ) 0.11471049746507529 ;" 1 REC
+   1 1 LIT
+   c s" : NF-R3 ( -- r ) 0.1234567890123456789 ;" 0 REC
+   0 1 LIT ;
+
+: AWKWARD-CASE ( -- )
+   s" a float literal the engine reads inexactly is recorded as the engine reads it" T-LABEL
+   BND [: AWKWARD-BODY ;] IR-CTX:WITH-CONTEXT
+   0.1234567890123456789 REAL-CELL T=
+   0.11471049746507529 REAL-CELL T=
+   1.9482199351819093 REAL-CELL T= ;
+
+\ What the reader behind the recording refuses. Every one of these is a spelling
+\ the engine's own float path cannot read either, so a tape that accepted one
+\ would carry a value no interpreted literal has.
+: READ-NONE? ( ptr u8 n -- bool )
+   NREAL:READ MATCH option
+      none OF true ENDOF
+      some OF drop false ENDOF
+   ;MATCH ;
+
+: READ-SOME ( ptr u8 n -- n )
+   NREAL:READ MATCH option
+      none OF 0 ENDOF
+      some OF ENDOF
+   ;MATCH ;
+
+: READER-CASE ( -- )
+   s" the literal reader declines every spelling the engine declines" T-LABEL
+   s" 5." READ-NONE? TTRUE
+   s" 12" READ-NONE? TTRUE
+   s" 1.2.3" READ-NONE? TTRUE
+   s" 1.5e3" READ-NONE? TTRUE
+   s" " READ-NONE? TTRUE
+   s" a dot-leading spelling is a float literal, as the engine has it" T-LABEL
+   s" .5" READ-SOME .5 REAL-CELL T=
+   s" -.5" READ-SOME -.5 REAL-CELL T= ;
 
 \ A definition whose reconstructed text does not fit the buffer the unit was
 \ opened with. The producer refuses the scan rather than recording spans into
@@ -557,8 +633,6 @@ TRUSTED: FAKE-TOKEN ( ptr u8 n n n -- ) CHECKER-TAPE:TOKEN ;
    [: TWO-UNITS ;] E-NFEED-STATE TTHROWSQ
    s" a hexadecimal literal is refused, never recorded as zero" T-LABEL
    [: HEX ;] E-NFEED-LITERAL TTHROWSQ
-   s" a float literal is refused: this stage has no kind for it" T-LABEL
-   [: REAL ;] E-NFEED-KIND TTHROWSQ
    s" a definition longer than the unit's text buffer is refused" T-LABEL
    [: BIGTEXT ;] E-NFEED-TEXT TTHROWSQ
    s" a token event that lies about its offset is refused" T-LABEL
@@ -583,6 +657,10 @@ public
    NAMEBYTE-CASE
    COMMENTBYTE-CASE
    SHAPEBYTE-CASE
+   REAL-CASE
+   NEG-ZERO-CASE
+   AWKWARD-CASE
+   READER-CASE
    REFUSE-CASES
    RECOVER-CASE
    T-REPORT ;
