@@ -1,9 +1,11 @@
 ---
 title: Own GPT-2 tensor catalog
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T23:22:19.378350+02:00"
+closed-at: "2026-08-02T23:28:37.469271+02:00"
+close-reason: "Landed at 3adec4ed: GPT2TENSOR owns COUNT and checked slot inverse; deleted MDLCFG census duplication. Fresh destruction review, real-checkpoint Maki, Orin, and native stdlib/PTX passed."
 blocks:
   - habu-publish-owner-product-32b3f03c
 ---
