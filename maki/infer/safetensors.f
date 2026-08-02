@@ -131,6 +131,7 @@ require lib/cad-num-arithmetic.f          \ CAD-NUM: the byte-offset/extent alge
 require lib/adt/option.f                  \ option<n> for every id-addressed reader
 require lib/adt/result.f                  \ result<n,n> for UNMAP-MAPPING's cleanup outcome
 require lib/json-read.f                   \ JR: streaming JSON pull reader
+require maki/tensor.f                     \ canonical MAKI:datatype consumed by DATATYPE=
 
 \ ---------------------------------------------------------------------------
 \ package SAFET-MAP - the host file-mapping seam.
@@ -215,15 +216,6 @@ public
 -7607 constant E-CAP       \ too many tensors, or name arena exhausted
 -7608 constant E-ORDER     \ session step taken out of order (image twice, parse first, detach unparsed)
 
-\ ---- dtype codes (numerically match maki/tensor.f MAKI:DT-* for the intersecting
-\ set, so the forward dot maps SAFET:DTYPE? -> MAKI dtype by value; the loader is
-\ the authority on the safetensors wire dtype and may support a superset) --------
-0 constant DT-F32
-1 constant DT-F16
-2 constant DT-BF16
-3 constant DT-U32
-4 constant DT-I32
-
 \ ---- the three owner tokens ------------------------------------------------
 DEFLINEAR SAFET:session        \ one open, unpublished load transaction
 DEFLINEAR SAFET:file         \ one published, immutable tensor census
@@ -237,6 +229,28 @@ ENUM map-take 0
 ;ENUM
 
 private
+
+\ Private wire tags stored in tensor rows. MAKI:datatype is the sole semantic
+\ datatype outside the parser.
+0 constant WIRE-F32
+1 constant WIRE-F16
+2 constant WIRE-BF16
+3 constant WIRE-U32
+4 constant WIRE-I32
+
+using MAKI-DATATYPE
+
+: WIRE>TYPE ( n -- MAKI:datatype )
+   case
+      WIRE-F32  of DF32  endof
+      WIRE-F16  of DF16  endof
+      WIRE-BF16 of DBF16 endof
+      WIRE-I32  of DI32  endof
+      WIRE-U32  of DU32  endof
+      E-DTYPE throw
+   endcase ;
+
+;using
 
 \ ---- capacities ------------------------------------------------------------
 8    constant MAX-RANK         \ max tensor rank a census records
@@ -297,7 +311,7 @@ MR-REC-OFF 1 cells + constant BLOCK-BYTES
 \ ---- tensor row columns ----------------------------------------------------
 0 constant C-NMOFF             \ name offset into the arena
 1 constant C-NMLEN             \ name length
-2 constant C-DTY               \ dtype code (DT-*)
+2 constant C-DTY               \ private wire datatype tag
 3 constant C-RANK
 4 constant C-NB                \ tensor byte length
 5 constant C-BEG               \ data_offsets begin (data-section relative)
@@ -527,11 +541,11 @@ using CAD-NUM
 
 \ ---- dtype wire decode: set the current dtype code + element size ----------
 : DECODE-DTYPE ( ptr u8 n ptr n -- ) {: st:ptr :}
-   2dup s" F32"  STR= if 2drop DT-F32  st DT-OFF + ! 4 st ES-OFF + ! exit then
-   2dup s" F16"  STR= if 2drop DT-F16  st DT-OFF + ! 2 st ES-OFF + ! exit then
-   2dup s" BF16" STR= if 2drop DT-BF16 st DT-OFF + ! 2 st ES-OFF + ! exit then
-   2dup s" I32"  STR= if 2drop DT-I32  st DT-OFF + ! 4 st ES-OFF + ! exit then
-   2dup s" U32"  STR= if 2drop DT-U32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" F32"  STR= if 2drop WIRE-F32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" F16"  STR= if 2drop WIRE-F16  st DT-OFF + ! 2 st ES-OFF + ! exit then
+   2dup s" BF16" STR= if 2drop WIRE-BF16 st DT-OFF + ! 2 st ES-OFF + ! exit then
+   2dup s" I32"  STR= if 2drop WIRE-I32  st DT-OFF + ! 4 st ES-OFF + ! exit then
+   2dup s" U32"  STR= if 2drop WIRE-U32  st DT-OFF + ! 4 st ES-OFF + ! exit then
    2drop E-DTYPE throw ;
 
 : KEY= ( ptr u8 n ptr n -- bool ) {: st:ptr :}   \ literal vs the stashed member key
@@ -914,8 +928,11 @@ public
    CENSUS>BLOCK {: st:ptr :}
    st qa qu FIND-ID ID? ;
 
-: DTYPE? ( SAFET:file n -- SAFET:file option<n> )
-   C-DTY COL? ;
+: DATATYPE= ( SAFET:file n MAKI:datatype -- SAFET:file bool )
+   {: id:n want:MAKI:datatype :}
+   CENSUS>BLOCK {: st:ptr :}
+   st id ID-OK? dup 0= if exit then drop
+   st id C-DTY ROW@ WIRE>TYPE want MAKI-DATATYPE:EQ ;
 
 : RANK? ( SAFET:file n -- SAFET:file option<n> )
    C-RANK COL? ;

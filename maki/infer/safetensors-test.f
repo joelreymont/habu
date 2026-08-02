@@ -29,6 +29,9 @@ require lib/test.f
 require test/checker-assert.f
 require lib/test/outcome.f
 require lib/test/subject.f
+require lib/process-argv.f
+require lib/engine-candidate.f
+require src/habu/xref.f
 require lib/cad-num-arithmetic.f                \ CAD-NUM:BYTE-OFF, called directly below
 require maki/infer/safetensors.f
 
@@ -185,6 +188,9 @@ variable SEEN-MAP-LEN
 : J-BETA ( -- ptr u8 n )                        \ model B: one BF16 [4] named beta
    s" {`beta`:{`dtype`:`BF16`,`shape`:[4],`data_offsets`:[0,8]}}" ;
 
+: J-DTYPES ( -- ptr u8 n )                      \ types absent from J-VALID
+   s" {`f16`:{`dtype`:`F16`,`shape`:[1],`data_offsets`:[0,2]},`i32`:{`dtype`:`I32`,`shape`:[1],`data_offsets`:[4,8]},`u32`:{`dtype`:`U32`,`shape`:[1],`data_offsets`:[8,12]}}" ;
+
 : J-BADJSON ( -- ptr u8 n )   s" { bad" ;
 
 \ ---- malformed images: each rejected with its named code -------------------
@@ -252,19 +258,19 @@ variable SEEN-MAP-LEN
    ia SAFET:RANK? 2 OPT=
    ia 0 SAFET:DIM? 2 OPT=   ia 1 SAFET:DIM? 2 OPT=
    ia 2 SAFET:DIM? OPT-NONE                     \ axis past the rank
-   ia SAFET:DTYPE? SAFET:DT-F32 OPT=
+   ia MAKI-DATATYPE:DF32 SAFET:DATATYPE= TTRUE
    ia SAFET:NBYTES? 16 OPT=
    ia SAFET:BEGIN? 0 OPT=
    ia SAFET:END? 16 OPT=
    s" b" ID-OF {: ib:n :}
    ib 0 < 0= TTRUE
-   ib SAFET:DTYPE? SAFET:DT-BF16 OPT=
+   ib MAKI-DATATYPE:DBF16 SAFET:DATATYPE= TTRUE
    ib SAFET:RANK? 1 OPT=
    ib 0 SAFET:DIM? 4 OPT=
    ib SAFET:NBYTES? 8 OPT=
    ib SAFET:BEGIN? 16 OPT=
    s" absent" SAFET:FIND OPT-NONE               \ unknown name -> NONE, never -1
-   99 SAFET:DTYPE? OPT-NONE                     \ id past the census -> NONE
+   99 MAKI-DATATYPE:DF32 SAFET:DATATYPE= TFALSE \ id past the census -> false
    -1 SAFET:NBYTES? OPT-NONE
    ia [: SEE-TENSOR ;] SAFET:WITH-TENSOR 16 OPT=
    SEEN-LEN @ 16 T=  SEEN-B0 @ 0 T=             \ a's data starts at data byte 0
@@ -315,12 +321,25 @@ variable SEEN-MAP-LEN
    NO-LEAK
    CLEANUP ;
 
+using MAKI-DATATYPE
+
+: CHECK-DTYPES ( SAFET:file -- SAFET:file )
+   s" f16"  ID-OF DF16  SAFET:DATATYPE= TTRUE
+   s" i32"  ID-OF DI32  SAFET:DATATYPE= TTRUE
+   s" u32"  ID-OF DU32  SAFET:DATATYPE= TTRUE
+   s" f16"  ID-OF DF32  SAFET:DATATYPE= TFALSE ;
+
+;using
+
+: TEST-DTYPES ( -- )
+   J-DTYPES 12 BUILD-A
+   A$ SAFET:LOAD-SPAN CHECK-DTYPES SAFET:RELEASE ;
+
 \ ---- interleaved sessions --------------------------------------------------
 : CHECK-ALPHA ( SAFET:file -- SAFET:file )
    SAFET:COUNT 1 T=
    s" alpha" ID-OF {: ia:n :}
    ia 0 < 0= TTRUE
-   ia SAFET:DTYPE? SAFET:DT-F32 OPT=
    ia SAFET:NBYTES? 16 OPT=
    ia SAFET:RANK? 2 OPT=
    ia 0 SAFET:DIM? 2 OPT=
@@ -330,7 +349,6 @@ variable SEEN-MAP-LEN
    SAFET:COUNT 1 T=
    s" beta" ID-OF {: ib:n :}
    ib 0 < 0= TTRUE
-   ib SAFET:DTYPE? SAFET:DT-BF16 OPT=
    ib SAFET:NBYTES? 8 OPT=
    ib SAFET:RANK? 1 OPT=
    ib 0 SAFET:DIM? 4 OPT=
@@ -601,8 +619,6 @@ variable BIG-LEN
    SAFET:COUNT 2 T=
    s" a" ID-OF {: ia:n :}
    s" b" ID-OF {: ib:n :}
-   ia SAFET:DTYPE? SAFET:DT-F32 OPT=
-   ib SAFET:DTYPE? SAFET:DT-BF16 OPT=
    ia SAFET:RANK? 2 OPT=
    ia 0 SAFET:DIM? 2 OPT=   ia 1 SAFET:DIM? 2 OPT=
    ia SAFET:NBYTES? 16 OPT=  ib SAFET:NBYTES? 8 OPT=
@@ -976,7 +992,7 @@ private
    s" no census reader answers without its census" T-LABEL
    s" STT-BAD-AMBIENT-COUNT ( -- n ) SAFET:COUNT" REJECTED
    s" STT-BAD-AMBIENT-FIND ( ptr u8 n -- n ) SAFET:FIND" REJECTED
-   s" STT-BAD-AMBIENT-DTYPE ( n -- n ) SAFET:DTYPE?" REJECTED
+   s" STT-BAD-AMBIENT-DATATYPE ( n MAKI:datatype -- bool ) SAFET:DATATYPE=" REJECTED
    s" STT-BAD-AMBIENT-NBYTES ( n -- n ) SAFET:NBYTES?" REJECTED
    s" STT-BAD-AMBIENT-DIM ( n n -- n ) SAFET:DIM?" REJECTED
    s" a session is not a census and a census is not a session" T-LABEL
@@ -1004,8 +1020,47 @@ private
 : TEST-OPTION-DISCIPLINE ( -- )
    s" an id-addressed reader returns option, never a -1 sentinel" T-LABEL
    s" STT-BAD-FIND-SENTINEL ( SAFET:file ptr u8 n -- SAFET:file bool ) SAFET:FIND -1 =" REJECTED
-   s" STT-BAD-DTYPE-RAW ( SAFET:file n -- SAFET:file n ) SAFET:DTYPE? 1 +" REJECTED
    s" STT-BAD-RANK-RAW ( SAFET:file n -- SAFET:file n ) SAFET:RANK?" REJECTED ;
+
+: ABSENT-BOTH ( ptr u8 n n -- ) {: wid:n :}
+   2dup 0 search-wl 0= TTRUE
+   wid search-wl 0= TTRUE ;
+
+: TEST-DATATYPE-TYPING ( -- )
+   s" datatype comparison consumes only the canonical MAKI enum" T-LABEL
+   s" STT-OK-DATATYPE ( SAFET:file n MAKI:datatype -- SAFET:file bool ) SAFET:DATATYPE=" ACCEPTED
+   s" STT-BAD-DATATYPE-N ( SAFET:file n n -- SAFET:file bool ) SAFET:DATATYPE=" REJECTED
+   s" STT-OK-ID-ERROR ( CAD-KIND:id-error -- CAD-KIND:id-error )" ACCEPTED
+   s" STT-BAD-DATATYPE-FOREIGN ( SAFET:file n CAD-KIND:id-error -- SAFET:file bool ) SAFET:DATATYPE=" REJECTED
+   s" retired and private datatype words are absent from the runtime dictionary" T-LABEL
+   s" SAFET:DATATYPE=" XREF-FIND dup XREF-FOUND? TTRUE XREF-WORDLIST {: wid:n :}
+   s" dup" 0 search-wl 0= TFALSE
+   s" DATATYPE=" wid search-wl 0= TFALSE
+   s" DTYPE?" wid ABSENT-BOTH
+   s" DTYPE=" wid ABSENT-BOTH
+   s" DT-F32" wid ABSENT-BOTH
+   s" DT-F16" wid ABSENT-BOTH
+   s" DT-BF16" wid ABSENT-BOTH
+   s" DT-I32" wid ABSENT-BOTH
+   s" DT-U32" wid ABSENT-BOTH
+   s" WIRE-F32" wid ABSENT-BOTH
+   s" WIRE-F16" wid ABSENT-BOTH
+   s" WIRE-BF16" wid ABSENT-BOTH
+   s" WIRE-I32" wid ABSENT-BOTH
+   s" WIRE-U32" wid ABSENT-BOTH
+   s" WIRE>TYPE" wid ABSENT-BOTH ;
+
+: TEST-STANDALONE-LOAD ( -- )
+   s" the SAFET module owns every standalone dependency" T-LABEL
+   PROC-ARGV-RESET
+   s" --load" >LEN PROC-ARGV+
+   s" maki/infer/safetensors.f" >LEN PROC-ARGV+
+   ENGINE-CANDIDATE:PATH$ >LEN
+   SUBJ-OUT 0 >LEN
+   SUBJ-OUT SUBJ-CAP >LEN
+   SUBJ-ERR SUBJ-CAP >LEN
+   CHILD-MS >MS RUN-ARGV-STDIN-CAPTURE-OUTCOME
+   0 T-OUTCOME-EXITED= 2drop ;
 
 \ ---- presence-gated real artifact (HF gpt2 model.safetensors) --------------
 : REAL-PATH ( -- ptr u8 n )  s" gpt2-model/model.safetensors" ;
@@ -1018,7 +1073,7 @@ private
    w SAFET:RANK? 2 OPT=
    w 0 SAFET:DIM? 50257 OPT=
    w 1 SAFET:DIM? 768 OPT=
-   w SAFET:DTYPE? SAFET:DT-F32 OPT=
+   w MAKI-DATATYPE:DF32 SAFET:DATATYPE= TTRUE
    w SAFET:NBYTES? 154389504 OPT=               \ 50257*768*4
    s" wpe.weight" ID-OF {: p:n :}
    p 0 SAFET:DIM? 1024 OPT=   p 1 SAFET:DIM? 768 OPT=
@@ -1045,6 +1100,7 @@ public
    TEST-MALFORMED         NO-LEAK
    TEST-LOAD-FAULTS       NO-LEAK
    TEST-VALID-FILE        NO-LEAK
+   TEST-DTYPES            NO-LEAK
    TEST-INTERLEAVED       NO-LEAK
    TEST-FAILED-ISOLATION  NO-LEAK
    TEST-NESTED-CATCH      NO-LEAK
@@ -1067,6 +1123,8 @@ public
    TEST-NO-AMBIENT-STATE
    TEST-SEALED-REPRESENTATION
    TEST-OPTION-DISCIPLINE
+   TEST-DATATYPE-TYPING
+   TEST-STANDALONE-LOAD
    TEST-REAL
    s" the whole suite released every mapping it took" T-LABEL
    NO-LEAK
