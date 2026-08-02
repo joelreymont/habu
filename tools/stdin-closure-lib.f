@@ -11,8 +11,8 @@
 \ Role flags (why each file participates where it does):
 \   SDC-HOST  - compiled INTO the stdin metabuild host, so both stdin source
 \               builders (build-fixpoint stdin emit + bootstrap emit_src stdin)
-\               must include it: aot-capture.f (its ACAP-CAPTURE runs in stdin.f
-\               GO) and the driver stdin.f itself. include.f is NOT host-needed:
+\               must include it: aot-capture.f (its AOT-CAPTURE:CAPTURE runs in
+\               STDIN-DRIVER:RUN) and the driver stdin.f itself. include.f is NOT host-needed:
 \               habu2.f EMIT-COLD-PREFIX bakes its source (read from disk) into
 \               every engine, so `require`/`include` exist at runtime without
 \               host compilation.

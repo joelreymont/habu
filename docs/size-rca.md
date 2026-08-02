@@ -121,7 +121,7 @@ metacompiler's own emit cursor, not disassembly or delta-correlation.
 The engine `__text` is the ARM64 assembler's `CODE` buffer
 (`src/arch/arm64/icode.f`). `ASM-LEN` (`ASM-CP @ * 4`) is the exact byte
 cursor into that buffer; the whole buffer becomes `__text` verbatim
-(`DRV-EMIT-IMAGE`). `EMIT-FORTH` (`src/habu/habu2.f`) lays the buffer out in a
+(`DRV-EMIT-IMAGE`). `ENGINE-EMIT:FORTH` (`src/habu/habu2.f`) lays the buffer out in a
 fixed order (`EMIT-CODE-SECTIONS` then `EMIT-SOURCE-BYTES`).
 
 To map it, a temporary `SZ ( ptr u8 n -- )` probe printing `ASM-LEN` after
@@ -133,7 +133,7 @@ proves the instrumentation did not perturb the measurement. The probes were
 then reverted; the numbers are recorded here.
 
 Region size = (cursor after a section) − (cursor before it). The stdin engine
-is the one whose baked source `SRCN = 11899` (the other three `EMIT-FORTH`
+is the one whose baked source `SRCN = 11899` (the other three `ENGINE-EMIT:FORTH`
 calls in a build are stage2 self-rebuild generations, `SRCN ≈ 517 KB`).
 
 ## Mach-O container (148855 bytes)

@@ -23,7 +23,6 @@ $1000000 constant REGION-OFF
 \ C's direct-BL emission relies on.
 $8000000 constant BL-REACH
 81 constant BL-RANGE-RC
-82 constant AOT-SEED-RC
 $48425350414E5321 constant SNAP-MAGIC
 
 \ DICT-SIZE = CFSTK-OFF (= DICT-CAP * DREC record slots) + $1000 control-flow
@@ -43,7 +42,10 @@ $181000 constant DICT-SIZE
 1 constant OWNER-API-PUB-WID
 2 constant OWNER-API-PRI-WID
 3 constant FIRST-DYNAMIC-WID
-$FFFFFFFE constant WID-LIMIT
+package WID
+public
+$FFFFFFFE constant MAX
+;package
 $000FFFFFFFFFFFFF constant DNAME-LEN-MASK
 \ DNAME-MIN-IN (bits 52-59): certified minimum input arity in cells, poked at
 \ certification time (checker RECMI latch -> publish tails / seal-time

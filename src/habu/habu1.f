@@ -2,7 +2,7 @@
 \ primitives, helper routines, and seed dictionary. Needs asm.fs +
 \ icode.fs + mnem.fs + rt.fs (g-push/g-pop/g-print9) + crash.fs + macho.fs.
 \ Part 1: prims + tok/find/num/prot/flush/cemit + dict. The interpreter main
-\ loop, keyword JIT and EMIT-FORTH follow in part 2 (habu2.f).
+\ loop, keyword JIT and ENGINE-EMIT:FORTH follow in part 2 (habu2.f).
 \ Trusted rows expose the builder-mode cell and the data-driven raw-code emitter.
 \ Retirement: habu-builder-trust-rows-c5d41af6.
 variable STDIN?   0 0= 0= STDIN? !
@@ -213,12 +213,6 @@ variable LKWUSING variable LKWSEMIUSING variable LCHKUSING variable LFINDUSED
    EREG DREG CMP,  C-HI trap BCOND,             \ checked end > protected start
    skip LBL, ;
 
-: GUARD-ADDR-BAND ( n n n label -- ) {: addr:n off:n len:n trap:label :}
-   DREG addr DATA SUB,
-   EREG off LIT64,  EREG DREG EREG SUB,
-   DREG len LIT64,
-   EREG DREG CMP,  C-CC trap BCOND, ;
-
 package GUARD
 
 : BLOB-SPAN ( n label -- ) {: addr:n trap:label :}
@@ -231,19 +225,9 @@ package GUARD
    addr DREG CMP,  C-CC trap BCOND,
    skip LBL, ;
 
-: BLOB-ADDR ( n label -- ) {: addr:n trap:label :}
-   LBL {: skip:label :}
-   DREG DATA TXN-BLOB-A-CELL LDR,
-   DREG skip CBZ,
-   EREG addr DREG SUB,
-   DREG DATA TXN-BLOB-CAP-CELL LDR,
-   EREG DREG CMP,  C-CC trap BCOND,
-   skip LBL, ;
-
 public
 
 : SPAN ( n label -- ) BLOB-SPAN ;
-: ADDR ( n label -- ) BLOB-ADDR ;
 
 ;package
 
@@ -252,6 +236,8 @@ public
 \ tests, then every protected half-open interval is checked for intersection.
 \ The guard is inactive only while the canonical cold prefix owns the open
 \ friend latch. x12/x13 are the only clobbers.
+package ENGINE-EMIT
+
 : GUARD-SPAN ( n n -- ) {: addr:n len:n :}
    LBL LBL {: ok:label trap:label :}
    DREG DATA FRIEND-LATCH-CELL LDR,
@@ -268,6 +254,8 @@ public
    ok B,
    trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
    ok LBL, ;
+
+;package
 
 package PROT-GUARD
 
@@ -297,21 +285,6 @@ public
    LPROTSPAN LABEL@ BL, ;
 
 ;package
-
-: PROT-GUARD ( n -- )
-   {: addr:n :}
-   LBL LBL {: ok:label trap:label :}
-   DREG DATA FRIEND-LATCH-CELL LDR,
-   DREG ok CBZ,
-   addr FRIEND-ARENA FRIEND-ARENA-LEN trap GUARD-ADDR-BAND
-   addr PROT-REG-OFF PROT-REG-LEN trap GUARD-ADDR-BAND
-   addr ENGINE-HOOK-OFF ENGINE-HOOK-LEN trap GUARD-ADDR-BAND
-   addr BODYBUF-OFF BODYBUF-CAP 2 + trap GUARD-ADDR-BAND
-   addr TXN-STATE-OFF TXN-STATE-LEN trap GUARD-ADDR-BAND
-   addr trap GUARD:ADDR
-   ok B,
-   trap LBL,  0 ENGINE-ERROR:SEAL-VIOLATION MOVZ,  NR-EXIT-GROUP SYS,
-   ok LBL, ;
 
 \ A code emission target owns one aligned instruction inside the writable code
 \ interval [DBASE+DICT-SIZE, DBASE+REGION). This invariant is independent of
@@ -2159,6 +2132,8 @@ variable SZA-I
 \ non-empty table means DRAIN-PRETRUST never ran; name each undrained defer
 \ on fd 2 and exit 73. Loop state stays off the write-clobbered x0-x2/x9 and
 \ re-derives the band base each iteration.
+package ENGINE-EMIT
+
 : BSEALCAP ( -- )
    LBL LBL LBL {: pdok pdloop pdexit :}   \ typed-local-lint: allow-bare-local
    9 PD-TABLE-OFF LIT64,  9 DATA 9 ADD,  10 9 0 LDR,  10 pdok CBZ,   \ x10 = pending count; 0 -> drained
@@ -2174,6 +2149,8 @@ variable SZA-I
       pdexit LBL,  0 73 MOVZ,  NR-EXIT-GROUP SYS,
    pdok LBL,
    NDICT DATA SEAL-NDICT-CELL STR, ;
+
+;package
 
 : BSEALFRIEND ( -- )
    9 FRIEND-ARENA-LEN MOVZ,  9 DATA FRIEND-LATCH-CELL STR, ;
@@ -2224,6 +2201,8 @@ variable SZA-I
    C A 16 LDR,  C C B ORR,  C A 16 STR,
    2 5 MOVZ,  LPROTREC LABEL@ BL, ;
 
+package ENGINE-EMIT
+
 : BPROTWIDADD ( -- )
    LBL LBL LBL {: room:label done:label msg:label :}
    9 G-POP
@@ -2243,6 +2222,8 @@ variable SZA-I
    15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
    14 15 STLR,
    done LBL, ;
+
+;package
 
 : BPROTWIDROOM ( -- )
    15 PROT-WID-N-CELL MOVZ,  15 DATA 15 ADD,
@@ -2367,6 +2348,8 @@ variable SZA-I
    s" wait-rc" ['] BWAITRC FPRIM-L
    s" wait-status" ['] BWAITSTATUS FPRIM-L ;
 
+package ENGINE-EMIT
+
 : EMIT-ENGINE-PRIMS ( -- )
    s" cp@" ['] BCPFETCH FPRIM-L   s" dbase@" ['] BDBASEFETCH FPRIM-L
    s" data-base" ['] BDATAFETCH FPRIM-L
@@ -2382,6 +2365,8 @@ variable SZA-I
    s" epoch-seconds" ['] BEPOCHSECONDS FPRIM-L
    s" mono-ns" ['] BMONONS FPRIM-L
    s" die"  ['] BDIE   FPRIM-L ;
+
+;package
 
 : EMIT-FS-PRIMS ( -- )
    s" open" ['] BOPEN FPRIM-L   s" write" ['] BWRITE FPRIM-L   s" read" ['] BREAD FPRIM   s" ioctl" ['] BIOCTL FPRIM
@@ -2414,11 +2399,15 @@ variable SZA-I
    s" set-preflight" ['] BSETPREFLIGHT 1 GDEREF-L
    s" set-top-check" ['] BSETTOPCHECK 1 GDEREF-L   s" top-check@" ['] BTOPCHECKFETCH FPRIM-L ;
 
+package ENGINE-EMIT
+
 : EMIT-PRIMS ( -- )
    EMIT-ARITH-PRIMS  EMIT-COMPARE-PRIMS  EMIT-STACK-PRIMS
    EMIT-MEMORY-PRIMS  EMIT-OUTPUT-PRIMS  EMIT-DICT-PRIMS
    EMIT-PROCESS-PRIMS  EMIT-ENGINE-PRIMS  EMIT-FS-PRIMS
    EMIT-CHECKER-PRIMS ;
+
+;package
 
 \ FP: doubles as raw IEEE754 bit-cells on the data stack; FMOV through D0/D1.
 \ Compare conds per FP flag semantics: < MI, > GT, = EQ (NaN compares false).
@@ -2572,6 +2561,8 @@ variable SZA-I
 \ reaches it by a direct branch is carried into an ahead-of-time image and
 \ relocated. The label is reserved in EMIT-LABEL-CORE so the record spans exactly
 \ [start, end).
+package ENGINE-EMIT
+
 : EMIT-PROT-SPAN ( -- )
    LPROTSPAN LABEL@ {: start:label :}
    LBL {: end:label :}
@@ -2598,6 +2589,8 @@ variable SZA-I
    0 9 14 LSRI,  0 0 14 LSLI,  1 $8000 MOVZ,  NR-MPROTECT SYS,  RET,
    EMIT-PROT-SPAN ;
 
+;package
+
 \ Protected-WID membership (TFAM 2b-v). BL routine: x9 = wid on entry, x13 = 1 if
 \ wid is a protected wordlist, else 0. The two engine-reserved OWNER-API
 \ wordlists (public=1, private=2) are ALWAYS protected: they are the sealed
@@ -2613,6 +2606,8 @@ variable SZA-I
 \ table (both inside the sealed friend arena). Preserves x5 x6 x7 x9 x14; x13 is
 \ the result. Called by the sealed-WID guards (record publish, AOT
 \ relocation/bootrun, snap-rebase) and the AOT registry restore's dedup.
+package ENGINE-EMIT
+
 : EMIT-PROTWID ( -- )
    LBL LBL LBL LBL {: qloop:label qnext:label qdone:label qhit:label :}
    LPROTWIDQ LABEL@ LBL,
@@ -2631,6 +2626,8 @@ variable SZA-I
    qdone LBL,
    5 SP 0 LDR,  6 SP 8 LDR,  7 SP 16 LDR,  14 SP 24 LDR,
    SP SP 32 ADDI,  RET, ;
+
+;package
 
 : EMIT-FLUSH ( -- )
    LFLUSH LABEL@ LBL,
@@ -3035,6 +3032,8 @@ variable FIND-HMATCH
    NUM-LINT LABEL@ LBL,  C-NUM-INT-FINISH
    NUM-DONE LABEL@ LBL,  RET, ;
 
+package ENGINE-EMIT
+
 : EMIT-DICT ( -- )
    0 BEGIN dup #PL @ < WHILE
       dup cells PLEN + @ DNAME-INL > IF
@@ -3061,3 +3060,5 @@ variable FIND-HMATCH
       THEN
       dup cells PWID + @ DCQ,
       1 + REPEAT drop ;
+
+;package

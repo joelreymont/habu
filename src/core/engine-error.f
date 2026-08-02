@@ -2,6 +2,7 @@
 
 package ENGINE-ERROR
 public
+82 constant AOT-SEED
 83 constant SEAL-VIOLATION
 84 constant SEAL-PACKAGE
 85 constant BAD-TAG

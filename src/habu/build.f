@@ -51,6 +51,8 @@ s" BLD-PB@" s" -- ptr u8" TRUST
 : READ-CHECK  BLD-CHK READ-PATH ;
 : READ-PROG   BLD-IN  READ-PATH ;
 
+package BUILD-DRIVER
+
 : GO ( -- )
    BLD-RUNTIME-ARGS
    READ-CHECK
@@ -58,15 +60,19 @@ s" BLD-PB@" s" -- ptr u8" TRUST
    READ-PROG
    BLD-PB@ SHK-A !  PN @ SHK-U !  0 SHAKE? !
    0 0= 0= STDIN? !
-   BLD-PB@ PN @ EMIT-FORTH
+   BLD-PB@ PN @ ENGINE-EMIT:FORTH
    s" hb-prog" BLD-OUT DRV-EMIT-IMAGE ;
 
 \ Process boundary: report uncaught throws instead of exiting silently
 \ (driver-io.f DRV-FAIL; exit code stays the throw code when representable,
 \ else die maps it to UNCAUGHT-RC).
-: BLD-RUN ( -- )
+public
+
+: RUN ( -- )
    [: GO ;] catch
    dup 0 = IF drop EXIT THEN
    DRV-FAIL ;
 
-BLD-RUN
+;package
+
+BUILD-DRIVER:RUN

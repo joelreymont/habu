@@ -55,7 +55,7 @@ variable DRV-WALL-U
 
 74 constant DRV-SIZE-RC
 
-\ Size attribution tail. EMIT-FORTH records one row per emitter phase, but those
+\ Size attribution tail. ENGINE-EMIT:FORTH records one row per emitter phase, but those
 \ rows only cover the assembled __text; the built and signed image also holds the
 \ header/load commands padded to CODE-OFF, the zero fill to the __TEXT page
 \ boundary, and the target tail (Mach-O: __DATA_CONST + __LINKEDIT + code
@@ -86,7 +86,7 @@ variable DRV-WALL-U
       s" driver: size map does not reconcile to image length" DRV-SIZE-RC die
    then ;
 
-\ Runs only for a full engine emission - EMIT-FORTH left the phase rows in the
+\ Runs only for a full engine emission - ENGINE-EMIT:FORTH left the phase rows in the
 \ table; object images leave it empty and are skipped. Must run after CODESIG2 so
 \ the signature row (SB-SIZE) and MLEN@ are final. HABU_ENGINE_SIZE_MAP prints the
 \ reconciled rows for capture by tools/size-report.f.

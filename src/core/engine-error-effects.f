@@ -2,6 +2,7 @@
 
 package ENGINE-ERROR
 public
+s" AOT-SEED" s" -- n" TRUST
 s" SEAL-VIOLATION" s" -- n" TRUST
 s" SEAL-PACKAGE" s" -- n" TRUST
 \ The four surviving values are immutable early-engine constants loaded before

@@ -18,6 +18,8 @@
 \ boundary is confined to the TRUSTED:/TRUST casts below (no `0 set-check` span, so
 \ the checked build stays fail-closed through the image writer).
 
+package AOT-CAPTURE
+
 \ --- raw dict/code boundary casts (host build-time only). AOT-DBASE names only
 \ the dictionary record region; live engine registries are under AOT-LIVE-DATA. ---
 \ The casts expose record addresses, byte views, and record cells for reverse lookup.
@@ -295,7 +297,9 @@ variable ACAP-P
 \ --- boot-run list: append a top-level entry-word NAME to the 0-terminated
 \ [len][name] list EM-AOT-BOOTRUN walks (LFIND + blr) after the seed installs the
 \ REPL. Keeps a live trailing 0 terminator (uncounted) so the bake needs no pad. ---
-: ACAP-BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
+public
+
+: BOOTRUN+ ( ptr u8 n -- ) {: a:ptr u:n :}
    u 255 > if s" aot-capture: boot-run name too long" 74 die then
    AOT-BOOTRUN-LEN @ u + 2 + AOT-BOOTRUN-CAP > if s" aot-capture: boot-run overflow" 74 die then
    AOT-BOOTRUN-LEN @ {: off:n :}
@@ -304,13 +308,15 @@ variable ACAP-P
    off u + 1+ AOT-BOOTRUN-LEN !
    0 AOT-BOOTRUN-BUF@ AOT-BOOTRUN-LEN @ + c! ;      \ live terminator (uncounted)
 
+private
+
 \ --- protected-WID registry capture (TFAM 2b-v): serialize the live friend-arena
 \ registry (PROT-WID-N-CELL count + PROT-WID-OFF u32 table) into AOT-PWID-BUF so
 \ EMIT-AOT-SEED bakes it and EMIT-AOT-PROT-RESTORE restores it at boot. Each
 \ WID is a full u32, so wordlist IDs above 255 round-trip with no u8 truncation.
 \ ACAP-PWID-SELFTEST proves the u32 serialize/deserialize round-trip. ---
 : ACAP-PWID-SLOT ( n -- ptr u8 ) 4 * AOT-PWID-BUF@ + ;         \ slot index -> u32 byte addr
-: ACAP-PWID-PUT ( n n -- ) {: v:n ix:n :}                      \ v=wid ix=slot: store as u32
+: PWID-PUT ( n n -- ) {: v:n ix:n :}                           \ v=wid ix=slot: store as u32
    v  ix ACAP-PWID-SLOT  AOT-P32! ;
 : ACAP-PWID-GET ( n -- n ) ACAP-PWID-SLOT ACAP-W32@ ;          \ slot -> wid (u32, boot-read model)
 : ACAP-PWID-CAPTURE ( -- )                                     \ live registry -> AOT-PWID-BUF
@@ -320,11 +326,11 @@ variable ACAP-P
    n AOT-PWID-N !
    n 0 ?do
       AOT-LIVE-DATA PROT-WID-OFF + i 4 * + AOT-A>U8 ACAP-W32@   \ live table[i] (u32)
-      i ACAP-PWID-PUT
+      i PWID-PUT
    loop ;
 : ACAP-PWID-CHECK ( -- )
    AOT-PWID-N @ 0 ?do
-      i ACAP-PWID-GET dup 0= swap WID-LIMIT > or if
+      i ACAP-PWID-GET dup 0= swap WID:MAX > or if
          s" aot-capture: protected-WID registry entry invalid" 74 die
       then
       i 0 ?do
@@ -348,7 +354,9 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    0 AOT-EXT-N !  0 AOT-UNRES-N !  0 AOT-DSITE-N !  0 AOT-DATA-D0 !  0 AOT-DATA-SIZE !
    0 AOT-CSITE-N !  0 AOT-CODE-B0 !  0 AOT-PWID-N !
    0 AOT-BOOTRUN-LEN !  0 AOT-BOOTRUN-BUF@ c! ;
-: ACAP-CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
+public
+
+: CAPTURE ( n n n n n n -- ) {: bstart:n bend:n rstart:n rend:n d0:n d1:n :}
    ACAP-RESET
    bstart bend ACAP-COPY-BLOB
    rend rstart ?do i bstart ACAP-ADD-REC loop
@@ -359,6 +367,8 @@ variable ACAP-PWID-MX                                          \ max-WID accumul
    ACAP-PROVE-RECS                              \ fail-closed inverse proof
    ACAP-PWID-CAPTURE                            \ serialize the protected-WID registry
    ACAP-PWID-CHECK ;                            \ reject invalid or duplicate WIDs
+
+private
 
 \ --- host validation dump (bring-up only) ---
 : ACAP-. ( -- )
@@ -401,15 +411,15 @@ ACAP-WID-SELFTEST
 \ --- build-time regression (TFAM 2b-v): a protected-WID registry entry above 255
 \ must round-trip through the u32 AOT serialize/deserialize with no truncation, and
 \ the max-WID (used at boot to advance WIDN past every restored WID) must be exact.
-\ Runs in the live metabuild BEFORE stdin.f's real ACAP-CAPTURE, and clears
+\ Runs in the live metabuild before stdin.f's real AOT-CAPTURE:CAPTURE, and clears
 \ AOT-PWID-N so the real (empty) capture is unaffected. Fail-closed via die:
-\ ACAP-PWID-PUT is the exact serialize the capture uses; ACAP-PWID-GET is the exact
+\ PWID-PUT is the exact serialize the capture uses; ACAP-PWID-GET is the exact
 \ u32 read EMIT-AOT-PROT-RESTORE uses at boot, so this guards both directions. ---
 : ACAP-PWID-SELFTEST ( -- )
    0 AOT-PWID-N !
-   42   0 ACAP-PWID-PUT                              \ entry 0 = 42
-   1000 1 ACAP-PWID-PUT                              \ entry 1 = 1000  ( > 255 )
-   300  2 ACAP-PWID-PUT                              \ entry 2 = 300   ( > 255 )
+   42   0 PWID-PUT                                   \ entry 0 = 42
+   1000 1 PWID-PUT                                   \ entry 1 = 1000  ( > 255 )
+   300  2 PWID-PUT                                   \ entry 2 = 300   ( > 255 )
    3 AOT-PWID-N !
    0 ACAP-PWID-GET 42   <> if s" aot-capture: pwid self-test: entry 0 corrupted" 74 die then
    1 ACAP-PWID-GET 1000 <> if s" aot-capture: pwid self-test: wid 1000 (>255) truncated" 74 die then
@@ -417,3 +427,5 @@ ACAP-WID-SELFTEST
    ACAP-PWID-MAXWID 1000 <> if s" aot-capture: pwid self-test: max-WID for WIDN advance wrong" 74 die then
    0 AOT-PWID-N ! ;                                  \ leave clean for the real capture
 ACAP-PWID-SELFTEST
+
+;package
