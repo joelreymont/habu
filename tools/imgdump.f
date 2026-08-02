@@ -29,10 +29,8 @@ variable IFD
 create IPATH IPATH-CAP 1 + allot
 create ISTAT 144 allot
 variable TOFF  variable IMG-TBASE  variable TNDICT  variable TREG  variable TDATA
-variable ROFF  variable SCAN-OFF  variable HAS-SNAP
+variable ROFF  variable HAS-SNAP
 variable RUNV  variable BESTO  variable BESTN
-variable SNAP-DIRECT-OFF
-variable IMG-END                        \ trailer END file offset
 variable HN  variable ISZ
 variable A-N  variable CMP-NAME-LEN-DIFF  variable CMP-OFF-DIFF  variable CMP-IDX
 variable CMP-B0-P  variable CMP-B0-U  variable CMP-B0-S  variable CMP-B0-L
@@ -149,29 +147,16 @@ variable OKV
 
 : SNAP? {: o :} ( n -- bool )
    o SNAP-CORE? 0= if IMG-FALSE exit then
-   o 24 + I@ o 32 + I@ +  o <> if IMG-FALSE exit then
-   0 0= ;
-
-: SNAP-DIRECT? {: o :} ( n -- bool )
-   o SNAP-CORE? 0= if IMG-FALSE exit then
    o 24 + I@ o 32 + I@ +  o > if IMG-FALSE exit then
    0 0= ;
-: SNAP-TRY-DIRECT ( n -- bool )    \ candidate trailer offset -> found & recorded?
-   SNAP-DIRECT-OFF !
-   SNAP-DIRECT-OFF @ 0 < if 0 0= 0= exit then
-   SNAP-DIRECT-OFF @ SNAP-DIRECT? if SNAP-DIRECT-OFF @ TOFF ! 0 0= exit then
-   0 0= 0= ;
-\ Probe the trailer at text-end - 40, then fall back to the magnitude scanner.
+
 : FIND-SNAPSHOT ( -- bool )
    -1 TOFF !
-   IMAGE-TEXT-SIZE-OFF I@ IMAGE-TEXT-TRAILER-ADJ + IMG-END !
-   IMG-END @ 40 - SNAP-TRY-DIRECT if 0 0= exit then
-   IL @ 40 - dup 7 and - SCAN-OFF !
-   begin SCAN-OFF @ 0 >= while
-      SCAN-OFF @ SNAP? if SCAN-OFF @ TOFF ! 0 0= exit then
-      SCAN-OFF @ 8 - SCAN-OFF !
-   repeat
-   0 0= 0= ;
+   IMAGE-TEXT-SIZE-OFF I@ IMAGE-TEXT-TRAILER-ADJ + 40 - {: off:n :}
+   off 0 < if IMG-FALSE exit then
+   off SNAP? 0= if IMG-FALSE exit then
+   off TOFF !
+   0 0= ;
 : LOAD-SNAPSHOT ( -- )
    FIND-SNAPSHOT 0= if 0 HAS-SNAP ! exit then
    -1 HAS-SNAP !
