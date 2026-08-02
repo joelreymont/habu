@@ -1,9 +1,11 @@
 ---
 title: Carry validated plan rows in the prep block
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T15:46:55.071549+02:00"
+closed-at: "2026-08-02T15:42:53.269918+02:00"
+close-reason: "Ancestor 5b0ebb070a5b deleted the unused GPT2LOAD/GPT2TX/WSTORE/MODELPROV host path and suites; retaining this task would resurrect deleted architecture."
 ---
 
 Prerequisite for S6b2, from its checkpoint stop (measured: V-ROW computes each census id, spends it on CLAIM/dtype/shape checks, then discards it - ROW! persists offset and extent only into the STATIC scratch, and the sealed WSTORE table has no public row reader by design; so COMMIT-ALLOCATED cannot reach its plan except through the static the contract forbids, the exact corruption reviewer finding 3 measured). Behavior, in package GPT2TX (maki/infer/gpt2-bind.f): the prep block grows from 9 fixed cells to 9 + 3*count - per validated slot it carries (mapping offset, extent, census id), written during the PLAN walk; P-CELLS becomes a function of count; PREP-ALLOC sizes from count on the allocation path; FREE-BLOCK reads P-CNT off the block before releasing so its signature is unchanged and ABORT, ABORT-CHECKED, and COMMIT-MAPPED stay source-identical (prove by diff inspection: their bodies unchanged); CHECK re-mints from the same block pointer, transparent to the growth. Package-private per-row readers (PREP-ROW-OFF/LEN/ID or one triple reader) for the commit leaves. The ROWS static demotes to pure within-PREPARE staging with its comment saying so. count is bounded by the census cap and refused above ROW-CAP; the block allocation stays guarded by the existing BLOCK-STEP. Tests: the two-live-preps fixture extended - a refused second PREPARE must leave the FIRST prep's per-row cells byte-identical (the static-corruption kill, now testable at row granularity); block-size arithmetic boundary (count at cap accepts, the growth product overflow-checked); all existing GPT2TX and WSTORE suites green unchanged; real-artifact leg re-run (160-row block = 489 cells). Acceptance: focused suites + maki/test.f + both diff lints + refine-lint (no new mints expected - the readers read, they do not retype) + error-code-lint. Owner: package GPT2TX. Claim: agent=s6b2 workspace=.jj-ws/habu-s6b2-alloc (first commit of the resumed S6b2 lane; CHECK-ALLOC + COMMIT-ALLOCATED follow as the second).

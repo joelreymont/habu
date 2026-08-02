@@ -12,6 +12,17 @@ Result: retain the reviewed first slice. Reopen ENGINE-EMIT in src/habu/habu1.f 
 
 The retained first slice hard-cuts global EMIT-FORTH, publishes BUILD-DRIVER:RUN and STDIN-DRIVER:RUN, updates AOT-WID-BUILD, and renames the single trust identity. This completion makes no package rename. The user-directed HB naming cutover is a separate hard-cut concern whose exact sequence remains pending; it may consume the completed owner but cannot expand this ownership leaf or delay the package wall.
 
-Owner and files: this completion owns only src/habu/habu1.f and src/habu/habu2.f; the retained first slice already owns src/habu/build.f, src/habu/stdin.f, test/aot-wid-build.f, and TRUSTED.md. Production defect: an exact representative deletion through the real native emitter produces package findings for BPROTWIDADD and C-POSTPONE before this completion. Acceptance before M17: the rooted exact-diff package gate reports no finding for the complete transitive closure; typed-local and trust source gates pass; ENGINE-EMIT still publishes only FORTH; ENGINE-BUILD still publishes only BUILD and BUILDING?; no global definition named in the Result remains; and the focused AOT-WID production build passes. E1 and the native package-wall deletion rebase onto the completed commit.
+Owner and files: this completion owns only `src/habu/habu1.f` and
+`src/habu/habu2.f`; the retained first slice owns `src/habu/build.f`,
+`src/habu/stdin.f`, and `test/aot-wid-build.f`. Existing source `TRUST` rows
+stay beside their boundary with only source-local rationale, retirement owner,
+and focused production-path test. Production defect: an exact representative
+deletion through the real native emitter produces package findings for
+`BPROTWIDADD` and `C-POSTPONE` before this completion. Acceptance: the rooted
+exact-diff package gate reports no finding for the complete transitive closure;
+the typed-local gate passes; `ENGINE-EMIT` still publishes only `FORTH`;
+`ENGINE-BUILD` still publishes only `BUILD` and `BUILDING?`; no global
+definition named in the Result remains; and the focused AOT-WID production
+build passes. E1 and the native package-wall deletion consume this commit.
 
 Forbidden: package renames, caller rewrites, behavior changes, namespace semantics, compatibility aliases, forwarding shims, new gates or exemptions, bootstrap edits, whole-driver packaging, helper-owner dots, and unrelated emitter refactors. Claim: agent=engine_emitter_impl workspace=.jj-ws/habu-own-engine-emitter-42db38aa.

@@ -1,9 +1,11 @@
 ---
 title: Retire the calendar check in the stale-status lint
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-29T09:49:04.044633+02:00"
+closed-at: "2026-08-02T16:55:10.961737+02:00"
+close-reason: "Obsolete in exact ancestry: 3b6186ae69bdf689923015c81c77cafee8ad011b deleted STATUS.md and all stale-status machinery."
 ---
 
 Why: `tools/stale-status-lint-core.f` bundles two unrelated invariants, and only

@@ -1,9 +1,11 @@
 ---
 title: Add bounded U32 store read
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-28T17:50:23.641645+02:00"
+closed-at: "2026-08-02T16:00:35.780081+02:00"
+close-reason: Superseded by commit 5b0ebb, which deleted the WSTORE/GPT2LOAD path; retaining this task would resurrect the removed design.
 blocks:
   - habu-return-typed-idx-6811f99f
 ---

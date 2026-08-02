@@ -29,9 +29,9 @@ unchanged.
 
 Verify: reproduce the current exit 78 on the exact spawned `ptx-toolchain`
 path; prove each changed module still passes alone; prove the complete
-co-loaded suite passes in one fresh process; run package-first, typed-local,
-trust, host, filemap, and suite-coverage lints; then rerun the required
-`maki/test.f` and PTX standard-library gates on the exact integration tree.
+co-loaded suite passes in one fresh process; run package, typed-local, host,
+and suite-coverage gates; then rerun the required `maki/test.f` and PTX
+standard-library gates on the exact integration tree.
 
 Dependencies: none. This is an existing master-gate blocker discovered while
 publishing the minimal control wave. It does not change the enum,

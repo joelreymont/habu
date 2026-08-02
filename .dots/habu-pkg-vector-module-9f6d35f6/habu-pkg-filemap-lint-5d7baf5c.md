@@ -1,9 +1,11 @@
 ---
 title: Package filemap lint tool
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "\"2026-07-27T08:57:58.808184+02:00\""
+closed-at: "2026-08-02T16:54:45.213422+02:00"
+close-reason: superseded by 85a9646fd6b97e5d2cbb86d637bcf8d8ab2aece8; its sole owned filemap lint and fixture were deleted
 blocks:
   - habu-own-nominal-linear-491d11e4
 ---

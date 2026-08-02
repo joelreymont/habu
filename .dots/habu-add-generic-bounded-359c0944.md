@@ -39,10 +39,10 @@ sentinel-filled destination remains byte-identical on refusal. Reopening COPY,
 publishing COPY:FORGE, and calling private/generated raw construction reject.
 lib/adt/copy-test.f is enrolled in the canonical type-linear gate, and a
 mutation that removes its suite entry fails suite coverage. Typed-local,
-package, type-linear, suite-coverage, host, and file-map gates pass.
+package, type-linear, suite-coverage, and host gates pass.
 
 Files: lib/adt/copy.f, lib/adt/copy-test.f, the canonical type-linear suite
-inventory, and FILEMAP.md. Smallest real check: the enrolled type-linear slice
+inventory. Smallest real check: the enrolled type-linear slice
 running COPY:TO against a real destination buffer. Depends:
 habu-type-dsl-prove-93da83c4 and habu-checker-sealed-destructure-d967fc03. Owned result:
 generic copied/required outcome and

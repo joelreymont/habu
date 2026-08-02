@@ -10,6 +10,24 @@ Problem: the shared native literal path accepts -0.0085031157383406233, but C-NU
 
 Required investigation: prove the exact interpreted and checked/compiled bin/hb command paths are fail-closed for a separate known-bad checked definition, then capture exit status, stdout/stderr, parsed bits, and source site for the 18-digit boundary case and the 19-digit reproducer. Classify whether checker syntax acceptance, runtime LNUM conversion, emitted literal bytes, and lib/float parsing disagree. The minimal fixture must show the wrong 19-digit value is currently accepted without diagnostics.
 
-Acceptance: replace the unchecked signed-cell numerator/scale recurrence with one shared decimal-to-IEEE-754 binary64 contract. Either implement exact correctly-rounded scaling for every admitted spelling or reject before evaluation when exact conversion support or an accumulator bound is exceeded; silent wrapping, digit truncation, and lucky precision caps are forbidden. The interpreter, checked compiler, AOT path, and reusable string parser must produce identical binary64 bits or the same named rejection for the same token. Add positive and negative regression matrices around 18/19 digits, leading-dot and signed forms, halfway rounding cases, subnormal/normal/overflow boundaries, long zero tails, and values whose numerator or power of ten crosses a cell. A generated/reference oracle must be independent of the implementation. The bad checked program must fail before runtime if the selected policy rejects it. Update diagnostics, documentation, TRUSTED inventory, source mirrors, and certification census as required.
+Acceptance: replace the unchecked signed-cell numerator/scale recurrence with
+one shared decimal-to-IEEE-754 binary64 contract. Either implement exact
+correctly-rounded scaling for every admitted spelling or reject before
+evaluation when exact conversion support or an accumulator bound is exceeded;
+silent wrapping, digit truncation, and lucky precision caps are forbidden. The
+interpreter, checked compiler, AOT path, and reusable string parser produce
+identical binary64 bits or the same named rejection for the same token.
 
-Files likely owned: src/habu/habu1.f LNUM/C-NUM-FRAC-STEP, src/core/checker.f literal admission, lib/float.f shared parser, exact engine/checker/AOT fixtures, source mirrors and documentation. No local data-rounding workaround closes this dot.
+Add positive and negative matrices around 18/19 digits, leading-dot and signed
+forms, halfway rounding, subnormal/normal/overflow boundaries, long zero tails,
+and values whose numerator or power of ten crosses a cell. The reference oracle
+must be independent. If policy rejects the spelling, the bad checked program
+fails before runtime. Update the owning diagnostics, `docs/forth.md` literal
+contract, and native/recovery source mirrors. Any surviving source `TRUST`
+keeps only its source-local rationale, retirement owner, and focused production
+test.
+
+Files owned: `src/habu/habu1.f` literal conversion,
+`src/core/checker.f` literal admission, `lib/float.f` shared parser, the recovery
+mirror, exact engine/checker/AOT fixtures, and the literal documentation. No
+local data-rounding workaround closes this dot.

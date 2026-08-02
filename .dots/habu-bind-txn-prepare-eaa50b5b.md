@@ -1,9 +1,11 @@
 ---
 title: Bind transaction PREPARE with prepared-bind capability
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-26T10:41:27.683140+02:00"
+closed-at: "2026-08-02T15:42:53.255128+02:00"
+close-reason: "Ancestor 5b0ebb070a5b deleted the unused GPT2LOAD/GPT2TX/WSTORE/MODELPROV host path and suites; retaining this task would resurrect deleted architecture."
 blocks:
   - habu-add-wstore-public-db6c70fe
 ---
