@@ -1,9 +1,11 @@
 ---
 title: Parse GPT-2 model config
-status: active
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-29T20:34:25.639867+02:00"
+closed-at: "2026-08-03T02:12:59.240767+02:00"
+close-reason: "Landed HF:OPEN-GPT2 at e2a6630a22f0; exact full Maki and lint-libs/ptx gates green; master@origin verified."
 blocks:
   - habu-pin-omitted-gpt-6b395d6c
 ---
