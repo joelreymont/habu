@@ -93,6 +93,10 @@ create REAL-IDS 64 cells allot
 13 REAL-IDS 60 cells + ! 314 REAL-IDS 61 cells + ! 1101 REAL-IDS 62 cells + !
 407 REAL-IDS 63 cells + !
 
+\ Exact pinned-merges decode of REAL-IDS.
+: REAL-BYTES ( -- ptr u8 n )
+   s" , I'm sorry, but I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not sure if you're aware of this. I'm not" ;
+
 create REAL-PROBES 42 cells allot
 -0.087471479550004005 REAL-PROBES 0 cells + !
 -3.773832254446460865 REAL-PROBES 1 cells + !
@@ -179,6 +183,8 @@ public
    TINY-LOGIT-COUNT REF-INDEX cells TINY-LOGITS + @ ;
 : REAL-ID ( n -- n )
    REAL-ID-COUNT REF-INDEX cells REAL-IDS + @ ;
+: REAL-BYTES$ ( -- ptr u8 n )
+   REAL-BYTES ;
 : REAL-PROBE ( n n -- r ) {: boundary:n component:n :}
    boundary REAL-BOUNDARY-COUNT REF-INDEX
    PROBE-COMPONENT-COUNT *
