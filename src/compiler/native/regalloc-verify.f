@@ -101,8 +101,10 @@ package A64RAV
 using NFROZEN
 private
 
-\ The position of a block argument: before every operation of the block.
--1 constant ENTRY
+\ No position at all: what the tables hold for a value this check has not
+\ measured yet. Every position a measured value carries is one of the linear
+\ order re-derived below, which starts at zero.
+-1 constant NOPOS
 
 0 constant ST-NONE
 1 constant ST-ACCEPTED
@@ -180,8 +182,8 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
 : TABLES-CLEAR ( -- )
    VMAX 0 ?do
       0 i SEEN!
-      ENTRY i DEF!
-      ENTRY i LAST!
+      NOPOS i DEF!
+      NOPOS i LAST!
       C-GPR i CLS!
    loop
    SLOTS-MAX 0 ?do -1 i cells W-AT + ! loop ;
@@ -244,7 +246,7 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    V-SCHR VW id OPCODE-AT IR-SCHEMA:FEFFECT@
    IR--SCHEMA-EFFECT:WRITE IR--SCHEMA-EFFECT:EQ ;
 
-\ The straight-line subset, re-derived rather than taken on trust.
+\ The one function this check measures, re-derived rather than taken on trust.
 : FUN-OF ( -- IR-ID:ir-fun-id )
    FUN-COUNT 1 <> if E-A64RAV-SHAPE throw then
    MKEY 0 IR-ID:PACK-FUN ;
@@ -278,36 +280,8 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    k SEEN-AT 0= if E-A64RAV-COVER throw then
    pos k LAST! ;
 
-: DEFS-OF-OP ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
-   id RESULTS-OF {: n:n :}
-   n 0 ?do id i RESULT-AT pos NOTE-DEF loop ;
-
-: USES-OF-OP ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
-   id OPERANDS-OF {: n:n :}
-   n 0 ?do id i OPERAND-AT pos NOTE-USE loop ;
-
-: MEASURE-ARGS ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   bk ARG-COUNT {: n:n :}
-   n 0 ?do
-      bk i ARG-AT ENTRY NOTE-DEF
-   loop ;
-
-: MEASURE ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   TABLES-CLEAR
-   bk MEASURE-ARGS
-   bk OP-COUNT {: n:n :}
-   n 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id i USES-OF-OP
-      id i DEFS-OF-OP
-   loop ;
-
 \ ---- the checks --------------------------------------------------------------
-\ Every value of the module is a value of this block, the allocation covers
+\ Every value of the module is a value of this function, the allocation covers
 \ exactly those values, and the interval it recorded for each one is the interval
 \ the module gives.
 : COVER-CK ( -- )
@@ -590,14 +564,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       then
    loop ;
 
-\ Every call of one straight-line block, at its own operation index, which is
-\ what a live range of that block is measured in.
-: CLOB-CK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   bk OP-COUNT 0 ?do
-      bk i OP-AT i CLOB-AT
-   loop ;
-
 \ Are these two values ever live at the same instant? See the header: values
 \ written at the same position always are, and otherwise the earlier one has to
 \ be read for the last time at or before the later one is written.
@@ -725,40 +691,21 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    id SLOT-OF NOSLOT <> if E-A64RAV-FRAME throw then
    id FRAME-OF want <> if E-A64RAV-FRAME throw then ;
 
-: FRAME-CK ( IR-ID:ir-block-id n -- )
-   {: bk:IR-ID:ir-block-id want:n :}
-   bk FRAMES? 0= if exit then
-   bk OP-COUNT {: n:n :}
-   n 3 < if E-A64RAV-FRAME throw then
-   bk 0 want FRAME-AT?
-   bk n 2 - want FRAME-AT?
-   n 0 ?do
-      i 0 <> i n 2 - <> and if
-         bk i OP-AT FRAME-OF NOSLOT <> if E-A64RAV-FRAME throw then
-      then
-   loop ;
-
 \ ---- the data stack ----------------------------------------------------------
 \ A routine whose convention names data-stack slots reaches the caller's stack
 \ with a fixed sequence, and this is where the module is measured against the
 \ declaration that sequence came from. Four facts are decidable from one module
-\ and one contract, and all four are checked: the pointer is moved down over
-\ exactly the arguments the contract declares and up over exactly the results;
-\ each load names the slot the argument place at its position names, in that
-\ order; each store names the slot the result place at its position names, in
-\ that order; and nothing else in the block touches the data stack.
+\ and one contract, and all four are checked by VDSTACK-CK below: the pointer is
+\ moved down over exactly the arguments the contract declares and up over exactly
+\ the results; each load names the slot the argument place at its position names,
+\ in that order; each store names the slot the result place at its position
+\ names, in that order; and nothing anywhere else touches the data stack.
 \
 \ WHAT IS NOT DECIDABLE HERE, and its owner. Whether the value a store publishes
 \ is the value the program computed for that result is a statement about the
 \ module the selector read, and this file is handed one module - the same gap the
 \ spill lowering has (dot habu-prove-the-spill-0294e0e8), with the same owner
 \ (dot habu-prove-a-data-df458151).
-\
-\ THE TWO REGIONS DO NOT MEET YET. A routine that both reaches the caller's data
-\ stack and reserves a frame would need one operation at position zero to be both
-\ the frame reserve and the data-stack take, and there is no rule here for
-\ nesting them. It is refused by name rather than checked half-way, and no pass
-\ in the chain builds one (dot habu-let-a-data-edb3ba26).
 : DTAKE-AT? ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id at:n want:n :}
    bk at OP-AT {: id:IR-ID:ir-op-id :}
@@ -770,41 +717,6 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
    bk at OP-AT {: id:IR-ID:ir-op-id :}
    id DBYTES-OF NOSLOT <> if E-A64RAV-DSTACK throw then
    id DSLOT-OF want <> if E-A64RAV-DSTACK throw then ;
-
-\ Every position of the block that is allowed to touch the data stack: the take
-\ at the top, the loads after it, the stores in front of the publish, and the
-\ publish itself.
-: DSTACK-POS? ( n n n n -- bool )
-   {: n:n a:n r:n at:n :}
-   at 0 = if true exit then
-   at a <= if true exit then
-   at n 2 - = if true exit then
-   at n 2 - r - >= at n 2 - < and ;
-
-: DSTACK-CK ( IR-ID:ir-block-id A64EFF:placeseq A64EFF:placeseq -- )
-   {: bk:IR-ID:ir-block-id args:A64EFF:placeseq outs:A64EFF:placeseq :}
-   args A64EFF:SEQ-SLOTS {: a:n :}
-   outs A64EFF:SEQ-SLOTS {: r:n :}
-   bk OP-COUNT {: n:n :}
-   a 0= r 0= and if
-      n 0 ?do bk i OP-AT DSTACK-TOUCH? if E-A64RAV-DSTACK throw then loop
-      exit
-   then
-   bk FRAMES? if E-A64RAV-DSTACK throw then
-   n a r + 3 + < if E-A64RAV-DSTACK throw then
-   bk 0  a A64IR:SLOT-WIDTH *  DTAKE-AT?
-   a 0 ?do
-      bk i 1+  args i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
-   loop
-   bk n 2 -  r A64IR:SLOT-WIDTH *  DTAKE-AT?
-   r 0 ?do
-      bk  n 2 - r - i +  outs i A64EFF:SEQ-SLOT@ A64IR:SLOT-WIDTH *  DSLOT-AT?
-   loop
-   n 0 ?do
-      n a r i DSTACK-POS? 0= if
-         bk i OP-AT DSTACK-TOUCH? if E-A64RAV-DSTACK throw then
-      then
-   loop ;
 
 \ Every slot the module names is written before it is read, and no slot is
 \ written twice. See the header for why the second rule is the decidable form of
@@ -852,13 +764,13 @@ create RCH BMAX cells allot          \ blocks one reachability question has reac
       loop
    loop ;
 
-\ ---- re-deriving the allocation of a routine with control flow ---------------
-\ Everything above measures ONE straight-line block. A routine with control flow
-\ is measured here, and every step is re-derived from the module rather than read
-\ off the allocator: the linear block order, the liveness, the hull interval of
-\ each value, and one clause the straight-line validator has no need for. If this
-\ file asked A64RA which order it chose or which values it thought were live, it
-\ would be checking the allocator's belief against the allocator's belief.
+\ ---- re-deriving the allocation ----------------------------------------------
+\ Everything above judges one operation, one slot or one pair of values. The
+\ routine as a whole is measured here, and every step is re-derived from the
+\ module rather than read off the allocator: the linear block order, the
+\ liveness, the hull interval of each value, and the edge clause. If this file
+\ asked A64RA which order it chose or which values it thought were live, it would
+\ be checking the allocator's belief against the allocator's belief.
 \
 \ The rule it re-derives is the one src/compiler/native/regalloc.f states, and it
 \ is stated again here in its own terms so the two can disagree: blocks in the
@@ -1177,8 +1089,7 @@ create V-TMP SETC cells allot
 \ positions are kept rather than one, because when the routine's entry block is
 \ also the block control leaves through, the reserve and the release are two
 \ positions of THAT ONE block; a caller with only one to keep passes NOPOS for
-\ the other.
--1 constant NOPOS
+\ the other, which is the same "no position at all" the tables above start from.
 
 : VNO-SIZE ( IR-ID:ir-block-id n n -- )
    {: bk:IR-ID:ir-block-id keep:n also:n :}
@@ -1435,30 +1346,9 @@ create V-TMP SETC cells allot
       f i BLOCK-AT FLOW-CK
    loop ;
 
-\ ---- which re-derivation a routine gets --------------------------------------
-\ The same question src/compiler/native/regalloc.f asks, asked from the same two
-\ facts: a routine of more than one block, and a routine that CALLS whatever its
-\ shape. It has to be the same question, because the two passes number a
-\ routine's positions differently - within the block for the straight-line walk,
-\ across the whole routine for the other - and this file re-derives the numbering
-\ the allocator used. A routine sent one way there and the other way here would
-\ be measured in one numbering and checked in another, so the rule is written in
-\ both files from the contract and the module rather than inferred in either.
-\
-\ AND A CALLING ROUTINE OF ONE BLOCK IS WHY THE SECOND HALF IS THERE. It has a
-\ frame holding its caller's return address AND it reaches the caller's data
-\ stack, and the straight-line re-derivation refuses that combination by name
-\ (DSTACK-CK above) because its frame rule and its data-stack rule both want the
-\ block's first operation. The re-derivation below has the rule already: the
-\ prologue first, the entry sequence after it, counted by PRO-N. Unifying the two
-\ numberings so this question disappears is dot habu-unify-the-two-d4f93e83.
-: CALLS-MB? ( IR-ID:ir-fun-id -- bool )
-   BLOCK-COUNT 1 <> if true exit then
-   V-CALLS @ 0<> ;
-
-\ The same call rule over the whole linear order, for a routine of more than one
-\ block. A live range there is measured in global positions, so the operation
-\ index inside its block is turned into one before the rule is asked.
+\ The call rule over the whole linear order. A live range is measured in global
+\ positions, so the operation index inside its block is turned into one before
+\ the rule is asked.
 : VCLOB-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -1470,7 +1360,7 @@ create V-TMP SETC cells allot
    {: f:IR-ID:ir-fun-id :}
    V-BLKS @ 0 ?do f i VCLOB-BLOCK loop ;
 
-: MB-VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n -- )
+: VERIFY ( IR-ID:ir-fun-id n A64EFF:placeseq A64EFF:placeseq n -- )
    {: f:IR-ID:ir-fun-id rb:n args:A64EFF:placeseq outs:A64EFF:placeseq frame:n :}
    f VMEASURE
    f VANY-FRAME
@@ -1550,25 +1440,7 @@ create V-TMP SETC cells allot
    m VIEWS!
    FUN-OF {: f:IR-ID:ir-fun-id :}
    f RET-ORD {: rb:n :}
-   f CALLS-MB? if
-      f rb args outs frame MB-VERIFY
-      f exit
-   then
-   f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   bk MEASURE
-   COVER-CK
-   INTERVAL-CK
-   CLASS-CK
-   f ORDER-CK
-   REGISTER-CK
-   OVERLAP-CK
-   bk TIE-CK
-   bk args ARG-CK
-   bk outs OUT-CK
-   bk args outs DSTACK-CK
-   bk frame FRAME-CK
-   bk FLOW-CK
-   bk CLOB-CK
+   f rb args outs frame VERIFY
    f ;
 
 public

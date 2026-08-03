@@ -1,5 +1,5 @@
-\ regalloc.f - give every virtual register of one straight-line machine block a
-\ real ARM64 general register, by linear scan.
+\ regalloc.f - give every virtual register of one machine routine a real ARM64
+\ general register, by linear scan over the routine's blocks.
 \
 \ docs/compiler-ir-design.md section 7.9 ("start with linear scan") over the
 \ dialect src/compiler/native/a64ir.f defines and src/compiler/native/select.f
@@ -8,19 +8,16 @@
 \ register holds which value. It rewrites no module, chooses no block order and
 \ encodes nothing.
 \
-\ TWO PATHS, AND WHY. A routine of ONE block has one operation order, so a
-\ position is an index into it, a value's live range is the single stretch from
-\ its definition to its last use, and two values interfere exactly when those
-\ stretches overlap. That is the first half of this file. A routine of MORE than
-\ one block has neither: its operations have no order until one is chosen, and a
-\ value can be live down one arm of a branch and dead down the other. The second
-\ half of this file - ALLOCATING ACROSS BLOCKS, below - is the general rule: a
-\ linear block order with global positions, liveness by backward dataflow over
-\ the successor edges, one contiguous hull interval per value, and one register
-\ per block-argument class. BOTH paths spill now; what a spill decision means is
-\ not the same on the two, and the section below says exactly how. The two are
-\ kept apart on purpose: a routine that could always be allocated keeps being
-\ allocated exactly as it was.
+\ ONE PATH, AND WHY IT USED TO BE TWO. A routine of ONE block has one operation
+\ order, so a position could be an index into it and two values could be said to
+\ interfere exactly when their definition-to-last-use stretches overlap. That was
+\ once a second allocator in this file, kept because the general rule could not
+\ yet anchor a spill decision to a block. It can: a plan row carries its block,
+\ so the general rule below covers a routine of one block as the case N=1 and the
+\ separate scan is gone. What is left is one statement of the linear order, one
+\ liveness, one interval rule, one class rule, one victim rule and one plan - so
+\ a routine that branches and a routine that does not are allocated by the same
+\ words, and a fixture about either measures the same code.
 \
 \ THE READ-THEN-WRITE BOUNDARY. One operation reads its operands and then writes
 \ its results, so a value whose last use is operation i and a value defined by
@@ -62,19 +59,27 @@
 \ about which routine they are in. Reading it here is reading it from the same
 \ value the independent validator is handed, so neither is repeating the other.
 \
-\ WHAT PRE-COLOURING DOES, AND WHEN A MOVE IS UNAVOIDABLE. A block argument whose
-\ position the contract names is given exactly that register before the scan
-\ starts, and the scan then cannot hand it out while the argument is live,
-\ because it is held like any other assignment. A returned value is different:
-\ what the contract says about it is where it has to be when control LEAVES, so
-\ the walk gives it the declared register at its definition when that register is
-\ free - which costs nothing and is why an ordinary routine emits no extra
-\ instruction - and when it is not free, or when the value is an argument already
-\ pinned somewhere else, or when its register is a tied field, the value is
-\ placed like any other and the walk plans a register-to-register move in front
-\ of the return. A move is a decision the same way a spill is: this pass
-\ publishes it and src/compiler/native/spill.f builds the module in which it is
-\ an operation.
+\ WHAT PRE-COLOURING DOES, AND WHEN A MOVE IS UNAVOIDABLE. A block argument of
+\ the entry block whose position the contract names is given exactly that
+\ register, before any register is handed out at that position, and the scan then
+\ cannot hand it out while the argument is live because it is held like any other
+\ assignment. A returned value is different: what the contract says about it is
+\ where it has to be when control LEAVES, so the walk gives it the declared
+\ register at its definition when that register is free - which costs nothing and
+\ is why an ordinary routine emits no extra instruction - and when it is not
+\ free, or when the value is an argument already pinned somewhere else, or when
+\ it spent part of its life in a frame slot, the value is placed like any other
+\ and the walk plans a register-to-register move in front of the return. A move
+\ is a decision the same way a spill is: this pass publishes it and
+\ src/compiler/native/spill.f builds the module in which it is an operation.
+\
+\ AND BOTH ARE STATED ABOUT A CLASS, NOT A VALUE. What holds a register here is a
+\ class - the values an edge or a schema tie says are one register - so a
+\ declared register is a constraint on the class its value belongs to, and the
+\ move is planned when the class did not end up in the declared register. For a
+\ routine of one block every class is usually one value and the two readings
+\ coincide; for a routine that branches, giving one member the register and not
+\ the others would not be an answer at all.
 \
 \ WHICH REGISTERS MAY BE USED, AND WHY THERE IS NO LIST OF THEM HERE. The
 \ routine's own contract says which general registers it may write - the ones it
@@ -89,25 +94,29 @@
 \
 \ RUNNING OUT OF REGISTERS IS A DECISION, NOT A REFUSAL. A block can hold more
 \ values at once than any register file has - a long chain of literals proves it
-\ - so the bound cannot be proved away and spilling is the answer. A spill is a store into a slot of the routine's own frame and a load
+\ - so the bound cannot be proved away and spilling is the answer. A spill is a
+\ store into a slot of the routine's own frame and a load
 \ back out of it, and the A64IR dialect has both, so this pass decides where they
-\ go instead of refusing the program. Two refusals are left, and neither is
-\ register pressure: E-A64RA-PRESSURE is now only the routine's declared frame
-\ running out of slots, and E-A64RA-POOL is the one shape no spill can serve - an
-\ operation that needs more registers at a single instant than the routine may
-\ destroy, with every register already holding a value that same operation reads.
-\ A routine that may destroy nothing is the smallest example.
+\ go instead of refusing the program. Three refusals are left, and none of them
+\ is register pressure by itself: E-A64RA-PRESSURE is the routine's declared
+\ frame running out of slots, E-A64RA-POOL is the one shape no spill can serve -
+\ an operation that needs more registers at a single instant than the routine may
+\ destroy, with every register already holding a value that same operation reads
+\ - and E-A64RA-SPILL is a position where every class holding a register is one
+\ this pass may not put in the frame. A routine that may destroy nothing is the
+\ smallest example of the second.
 \
 \ THE COST RULE, AND WHY IT IS STATED RATHER THAN TUNED. When a register has to
-\ be taken from a value, the value taken is the one whose next read is furthest
-\ away: a store bought now then buys the most operations before a reload is
-\ needed, which is the classic furthest-next-use rule. Two values whose next
-\ reads are equally far - two values never read again, for instance - are
-\ separated by the lower register number, so one program always allocates one
-\ way and a fixture can assert the exact registers. A value is stored once, when
-\ its register is taken, and reloaded once before each operation that reads it
-\ afterwards; a use before that point still reads the register, because the
-\ register still holds the value there.
+\ be taken, the class taken is the one whose next read is furthest away: a store
+\ bought now then buys the most operations before a reload is needed, which is
+\ the classic furthest-next-use rule. Two classes whose next reads are equally
+\ far - two values never read again, for instance - are separated by the lower
+\ register number, so one program always allocates one way and a fixture can
+\ assert the exact registers. A class that loses its register loses it for the
+\ whole of its life: its definition is followed by a store and every read of it
+\ is preceded by a load. That is what a class IS - every member is one register,
+\ so it is also one slot - and it is why a slot is written exactly once, which is
+\ how src/compiler/native/regalloc-verify.f decides what a reload reads.
 \
 \ THE PASS DECIDES SPILLS; IT STILL REWRITES NOTHING. A spill decision is a pair
 \ of instructions, and instructions live in a module, and a frozen module cannot
@@ -121,6 +130,12 @@
 \ "allocate, lower the spills, allocate the result" the only way to reach an
 \ accepted answer rather than a convention. The second walk decides no spill: it
 \ reads a module whose operations already are the ones the first walk assumed.
+\
+\ AN ANCHOR IS A BLOCK AND A POSITION INSIDE IT. A routine of one block would
+\ need only the position, because there is one operation order and an index into
+\ it names one operation. With more than one block a position names one operation
+\ per block, so every row carries the block as well or the lowering pass puts the
+\ store in whichever block its cursor happened to reach.
 \
 \ TWO VALUE CLASSES. A value of the machine dialect is a general register or the
 \ memory token the frame forms thread, and this pass reads which by type, from
@@ -162,7 +177,7 @@
 \ that certified its own output would be checking its belief against itself.
 \
 \ ONE ALLOCATION AT A TIME. The tables are fixed package-owned slots rather than
-\ heap objects, so this pass allocates one block at a time - the single-task
+\ heap objects, so this pass allocates one routine at a time - the single-task
 \ compilation discipline the rest of the native chain keeps. Each walk raises a
 \ generation counter, so an acceptance of an earlier walk cannot be read as an
 \ acceptance of this one.
@@ -196,12 +211,12 @@ private
 0 constant BOUND-NO
 1 constant BOUND-YES
 
-\ ---- how much of one block this pass holds -----------------------------------
-\ Spill decisions in one block. Each one is an operation the lowering pass will
+\ ---- how much of one routine this pass holds ---------------------------------
+\ Spill decisions in one routine. Each one is an operation the lowering pass will
 \ insert: one store per value that loses its register, one load before each
-\ operation that reads it afterwards. A block of VMAX values has fewer than VMAX
-\ reads per value, but a ceiling that says so exactly would be a product of two
-\ ceilings; this is the flat one both this pass and the lowering pass carry.
+\ operation that reads it afterwards. A routine of VMAX values has fewer than
+\ VMAX reads per value, but a ceiling that says so exactly would be a product of
+\ two ceilings; this is the flat one both this pass and the lowering pass carry.
 1024 constant PLMAX
 
 \ The three kinds of decision.
@@ -237,8 +252,10 @@ private
 \ The register file, taken from the schema that owns the machine facts.
 A64EFF:FILE-SIZE constant REGS-N
 
-\ The position of a block argument: before every operation of the block.
--1 constant ENTRY
+\ No position at all: what the tables hold for a value the walk has not measured
+\ yet. Every position a measured value carries is one of the linear order below,
+\ which starts at zero.
+-1 constant NOPOS
 
 \ The three attribute keys that say an operation reaches the CALLER's data stack:
 \ a slot of it, how far the pointer moves, and how far a call takes it back. An
@@ -255,12 +272,18 @@ A64EFF:FILE-SIZE constant REGS-N
 \ The operation carries no attribute under this key.
 -1 constant NOATTR
 
-\ This result shares its register field with no operand.
--1 constant UNTIED
-
 \ Positions one side of a calling convention can name, which is the contract's
 \ own bound rather than a second one.
 A64EFF:SEQ-LIMIT constant FIXED-MAX
+
+\ The two ways a routine's contract can name a register for one of its values,
+\ which is one table of two planes because everything that reads one reads the
+\ other the same way: D-FIX is where an argument place says the caller has PUT
+\ the value, D-WANT is where a result place says it has to BE when control
+\ leaves.
+2 constant DECLS-N
+0 constant D-FIX
+1 constant D-WANT
 
 \ ---- allocation state --------------------------------------------------------
 0 constant ST-EMPTY
@@ -275,8 +298,6 @@ variable GEN-N
 0 GEN-N !
 variable N-VALS
 0 N-VALS !
-variable N-OPS
-0 N-OPS !
 variable N-PLAN
 0 N-PLAN !
 variable N-SLOTS
@@ -285,8 +306,6 @@ variable FRAME-N
 0 FRAME-N !
 variable BASE-N                      \ the first frame byte this walk may use
 0 BASE-N !
-variable RL-N
-0 RL-N !
 variable ARGS-N
 0 ARGS-N !
 variable OUTS-N
@@ -302,7 +321,6 @@ variable OUTS-N
 DKEYS-N TYPED-BUFFER BND-DKEY IR-ID:ir-symbol-id
 
 1 TYPED-BUFFER S-MOD IR-ID:ir-module-id
-1 TYPED-BUFFER S-BLK IR-ID:ir-block-id
 1 TYPED-BUFFER S-POOL A64EFF:gprs
 1 TYPED-BUFFER S-FPOOL A64EFF:fprs
 
@@ -312,20 +330,16 @@ create V-REG VMAX cells allot
 create V-SET VMAX cells allot
 create V-CLS VMAX cells allot
 create V-SLOT VMAX cells allot
-create V-WANT VMAX cells allot
+create V-DECL DECLS-N VMAX * cells allot
 create A-REG FIXED-MAX cells allot
 create O-REG FIXED-MAX cells allot
 create R-HOLD FILES-N REGS-N * cells allot
-create R-PIN FILES-N REGS-N * cells allot
-create R-RL FILES-N REGS-N * cells allot
-create R-RLC FILES-N REGS-N * cells allot   \ the file each held reload belongs to
 create PL-BLK PLMAX cells allot
 create PL-POS PLMAX cells allot
 create PL-KIND PLMAX cells allot
 create PL-VAL PLMAX cells allot
 
 \ ---- the slots, read back ----------------------------------------------------
-: BLK ( -- IR-ID:ir-block-id )       0 S-BLK @ ;
 \ The registers of one file this routine may hand out. Two pools, asked the same
 \ way of two contract fields, because a shortage in one file is not relieved by a
 \ free register in the other.
@@ -348,7 +362,10 @@ create PL-VAL PLMAX cells allot
 : SET-AT ( n -- n )                  cells V-SET + @ ;
 : CLS-AT ( n -- n )                  cells V-CLS + @ ;
 : SLOT-AT ( n -- n )                 cells V-SLOT + @ ;
-: WANT-AT ( n -- n )                 cells V-WANT + @ ;
+
+: DECL-IX ( n n -- n )               {: d:n k:n :} d VMAX * k + ;
+: DECL-AT ( n n -- n )               DECL-IX cells V-DECL + @ ;
+: DECL! ( n n n -- )                 {: v:n d:n k:n :} v d k DECL-IX cells V-DECL + ! ;
 
 : DEF! ( n n -- )                    {: v:n k:n :} v k cells V-DEF + ! ;
 : LAST! ( n n -- )                   {: v:n k:n :} v k cells V-LAST + ! ;
@@ -356,49 +373,32 @@ create PL-VAL PLMAX cells allot
 : SET! ( n n -- )                    {: v:n k:n :} v k cells V-SET + ! ;
 : CLS! ( n n -- )                    {: v:n k:n :} v k cells V-CLS + ! ;
 : SLOT! ( n n -- )                   {: v:n k:n :} v k cells V-SLOT + ! ;
-: WANT! ( n n -- )                   {: v:n k:n :} v k cells V-WANT + ! ;
 
 : RIX ( n n -- n )                   {: cls:n r:n :} cls FILE-OF REGS-N * r + ;
 
 : HOLD-AT ( n n -- n )               RIX cells R-HOLD + @ ;
 : HOLD! ( n n n -- )                 {: v:n cls:n r:n :} v cls r RIX cells R-HOLD + ! ;
 
-\ A register a reload or a result of the operation being allocated has just been
-\ given cannot be taken away again by the same operation: that operation needs
-\ what is in it now. The pins are cleared before each operation.
-: PINNED? ( n n -- bool )            RIX cells R-PIN + @ 0<> ;
-: PIN! ( n n -- )                    RIX 1 swap cells R-PIN + ! ;
-
-: PINS-CLEAR ( -- )
-   FILES-N REGS-N * 0 ?do 0 i cells R-PIN + ! loop
-   0 RL-N ! ;
-
 : TABLES-CLEAR ( -- )
    VMAX 0 ?do
       0 i SET!
-      ENTRY i DEF!
-      ENTRY i LAST!
+      NOPOS i DEF!
+      NOPOS i LAST!
       NOBODY i REG!
       C-GPR i CLS!
       NOSLOT i SLOT!
-      NOBODY i WANT!
+      DECLS-N 0 ?do NOBODY i j DECL! loop
    loop
    REGS-N 0 ?do NOBODY C-GPR i HOLD! loop
    REGS-N 0 ?do NOBODY C-FPR i HOLD! loop
-   PINS-CLEAR
    0 N-PLAN !
    0 N-SLOTS ! ;
 
 \ ---- the spill plan ----------------------------------------------------------
 \ One row per operation the lowering pass has to insert, in the order the walk
-\ decided them, each anchored to the operation it goes in front of.
-\
-\ AN ANCHOR IS A BLOCK AND A POSITION INSIDE IT. A routine of one block needs
-\ only the position, because there is one operation order and an index into it
-\ names one operation. With more than one block a position names one operation
-\ per block, so the row has to carry the block as well or the lowering pass puts
-\ the store in whichever block its cursor happened to reach. The straight-line
-\ walk writes block zero into every row, which is the block it allocates.
+\ decided them, each anchored to the block it belongs in and the index inside
+\ that block of the operation it goes in front of. See the header for why the
+\ block is carried and not only the index.
 : PLAN+ ( n n n n -- )
    {: blk:n kind:n pos:n k:n :}
    N-PLAN @ {: j:n :}
@@ -423,15 +423,6 @@ create PL-VAL PLMAX cells allot
       if drop true leave then
    loop ;
 
-\ ---- reading the frozen module -----------------------------------------------
-\ The operation control leaves the block through. Its operands are the values the
-\ routine returns, so it is where the contract's result declaration is decided.
-\ It is read off the block's own row rather than taken as the last operation:
-\ which operation terminates a block is the block's recorded fact.
-: TERM-OF ( IR-ID:ir-block-id -- IR-ID:ir-op-id )
-   {: bk:IR-ID:ir-block-id :}
-   V-BLKR VW V-OPR VW MKEY bk IR-FUN:FTERMINATOR@ ;
-
 \ ---- the register constraints this operation's form declares -----------------
 \ The schema table of the module being allocated is the authority on the shape of
 \ every form in it, ties included, so these three readers are the whole of what
@@ -447,17 +438,6 @@ create PL-VAL PLMAX cells allot
 : TIE-OPERAND-AT ( IR-ID:ir-op-id n -- n )
    {: id:IR-ID:ir-op-id i:n :}
    V-SCHP VW V-SCHR VW id OPCODE-AT i IR-SCHEMA:FTIE-OPERAND@ ;
-
-\ Which operand this result shares a register field with, or UNTIED when the form
-\ ties it to none.
-: TIED-TO ( IR-ID:ir-op-id n -- n )
-   {: id:IR-ID:ir-op-id rs:n :}
-   UNTIED
-   id TIES-AT 0 ?do
-      id i TIE-RESULT-AT rs = if
-         drop id i TIE-OPERAND-AT leave
-      then
-   loop ;
 
 \ ---- what an operation says about the caller's data stack --------------------
 \ A routine reaches the caller's stack in fixed sequences - the entry run that
@@ -538,80 +518,13 @@ create PL-VAL PLMAX cells allot
    t 0 BND-MEM @ SAME-TYPE? if C-TOKEN exit then
    E-A64RA-CLASS throw ;
 
-\ ---- pass one: where each value is written, and where it is last read ---------
-\ A definition is recorded once - a second one means the walk is not reading an
-\ SSA module - and a use is recorded as the position of the operation that makes
-\ it, which is monotonic because the walk runs forwards.
-: DEFINE ( IR-ID:ir-value-id n -- )
-   {: id:IR-ID:ir-value-id pos:n :}
-   id CLASS-OF {: cls:n :}
-   id SLOT {: k:n :}
-   k SET-AT 0<> if E-A64RA-SHAPE throw then
-   1 k SET!
-   cls k CLS!
-   pos k DEF!
-   pos k LAST! ;
-
-: USE ( IR-ID:ir-value-id n -- )
-   {: id:IR-ID:ir-value-id pos:n :}
-   id SLOT {: k:n :}
-   k SET-AT 0= if E-A64RA-SHAPE throw then
-   pos k LAST! ;
-
-: DEFS-OF-OP ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
-   id RESULTS-OF {: n:n :}
-   n 0 ?do id i RESULT-AT pos DEFINE loop ;
-
-: USES-OF-OP ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
-   id OPERANDS-OF {: n:n :}
-   n 0 ?do id i OPERAND-AT pos USE loop ;
-
-: SCAN-ARGS ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   bk ARG-COUNT {: n:n :}
-   n 0 ?do
-      bk i ARG-AT ENTRY DEFINE
-   loop ;
-
-: SCAN-LIVE ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   bk SCAN-ARGS
-   bk OP-COUNT {: n:n :}
-   n N-OPS !
-   n 0 ?do
-      bk i OP-AT {: id:IR-ID:ir-op-id :}
-      id i USES-OF-OP
-      id i DEFS-OF-OP
-   loop ;
-
-\ Every value the module holds has to be a value of this one block, or the walk
-\ has read only part of the program it is allocating for.
+\ Every value the module holds has to be a value the walk measured, or it has
+\ read only part of the program it is allocating for.
 : COVER-CK ( -- )
    V-VALR VW IR-OP:FVALUES {: n:n :}
    n VMAX > if E-A64RA-CAP throw then
    n 0 ?do i SET-AT 0= if E-A64RA-SHAPE throw then loop
    n N-VALS ! ;
-
-\ ---- pass two: the scan ------------------------------------------------------
-\ Free every register whose value is dead before this position. Called with the
-\ position just after the operation being allocated, so a value read by that
-\ operation releases its register to the value the same operation writes.
-: EXPIRE1 ( n n -- )
-   {: cls:n limit:n :}
-   REGS-N 0 ?do
-      cls i HOLD-AT {: v:n :}
-      v NOBODY <> if
-         v LAST-AT limit < if NOBODY cls i HOLD! then
-      then
-   loop ;
-
-\ Both files, because a value of either dies at the same position.
-: EXPIRE ( n -- )
-   {: limit:n :}
-   C-GPR limit EXPIRE1
-   C-FPR limit EXPIRE1 ;
 
 : POOL-HAS? ( n n -- bool )
    {: cls:n r:n :}
@@ -693,7 +606,7 @@ create PL-VAL PLMAX cells allot
 : FIXED-ARITY-CK ( IR-ID:ir-block-id IR-ID:ir-block-id -- )
    {: bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id :}
    bk ARG-COUNT ARGS-N @ < if E-A64RA-FIXED throw then
-   rb TERM-OF OPERANDS-OF OUTS-N @ < if E-A64RA-FIXED throw then ;
+   rb TERM-AT OPERANDS-OF OUTS-N @ < if E-A64RA-FIXED throw then ;
 
 \ A side declared in data-stack slots is a side the module no longer carries in
 \ registers at all: the selector turned each place into a load at the top of the
@@ -704,7 +617,7 @@ create PL-VAL PLMAX cells allot
 \ The two sides are asked of two different blocks, because they are about two
 \ different instants: the arguments arrive where the caller enters, which is the
 \ entry block, and the results leave where control returns, which is the block
-\ whose terminator names no successor. In a straight-line routine they are the
+\ whose terminator names no successor. In a routine of one block they are the
 \ same block; with control flow they are not, and asking the entry block about
 \ the results would read a branch's block arguments as if they were the routine's.
 : LOWERED-CK ( IR-ID:ir-block-id IR-ID:ir-block-id A64EFF:placeseq A64EFF:placeseq -- )
@@ -712,110 +625,8 @@ create PL-VAL PLMAX cells allot
       args:A64EFF:placeseq outs:A64EFF:placeseq :}
    args A64EFF:SEQ-SLOTS 0<> bk ARG-COUNT 0<> and
    if E-A64RA-PLACE throw then
-   outs A64EFF:SEQ-SLOTS 0<> rb TERM-OF OPERANDS-OF 0<> and
+   outs A64EFF:SEQ-SLOTS 0<> rb TERM-AT OPERANDS-OF 0<> and
    if E-A64RA-PLACE throw then ;
-
-\ Which register each returned value has to be in where control leaves. A value
-\ returned at two declared positions would have to be in two registers at once,
-\ and copying it into the second is a lowering this pass does not have (dot
-\ habu-lower-parallel-copies-cdf9720e), so it is refused rather than half-served.
-: WANTS! ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   bk TERM-OF {: id:IR-ID:ir-op-id :}
-   OUTS-N @ 0 ?do
-      id i OPERAND-AT SLOT {: k:n :}
-      k WANT-AT NOBODY <> if E-A64RA-FIXED throw then
-      k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
-      i cells O-REG + @  k WANT!
-   loop ;
-
-\ ---- which registers one value may not have ----------------------------------
-\ The registers destroyed by the calls this value's live range crosses. A value
-\ defined at the call itself, or last read by it, does not cross it: the store
-\ run in front of a call and the load run behind it are ordinary operations of
-\ this module and the values they move are dead, or not yet alive, at the branch.
-\ So the range is open at both ends.
-\
-\ IT IS ASKED PER VALUE AND NOT ONCE PER ROUTINE because two values of one
-\ routine cross different calls: in a body that calls two different words, a
-\ value live across only the first is barred from what the first destroys and
-\ nothing else. A routine that calls nothing answers no bits for every value,
-\ which is what makes this change invisible to every routine that does not call.
-: SB-FORBID ( n -- n )
-   {: k:n :}
-   k CLS-AT {: cls:n :}
-   k DEF-AT {: lo:n :}
-   k LAST-AT {: hi:n :}
-   0
-   N-OPS @ 0 ?do
-      i lo >  i hi <  and if
-         BLK i OP-AT CALL-AT? if
-            BLK i OP-AT cls CALL-BITS or
-         then
-      then
-   loop ;
-
-\ ---- the cost rule -----------------------------------------------------------
-\ Does this operation read this value?
-: READS? ( IR-ID:ir-op-id n -- bool )
-   {: id:IR-ID:ir-op-id k:n :}
-   false
-   id OPERANDS-OF 0 ?do
-      id i OPERAND-AT SLOT k = if drop true leave then
-   loop ;
-
-\ The position of the first operation at or after `from` that reads this value. A
-\ value nothing reads again answers the operation count, which is past every
-\ position, so "furthest next use" puts the values nobody wants last without a
-\ second rule for them.
-: NEXT-USE ( n n -- n )
-   {: k:n from:n :}
-   N-OPS @ {: n:n :}
-   n
-   n from 0 max ?do
-      BLK i OP-AT k READS? if drop i leave then
-   loop ;
-
-\ May this register be taken away? Not if it holds nothing, not if the operation
-\ being allocated has already been given it, and not if the operation named by
-\ `spare` is about to read it - taking it then would destroy the value before the
-\ instruction that needs it runs. ENTRY spares no operation.
-: EVICTABLE? ( n n n -- bool )
-   {: cls:n r:n spare:n :}
-   cls r HOLD-AT {: v:n :}
-   v NOBODY = if false exit then
-   cls r PINNED? if false exit then
-   spare ENTRY = if true exit then
-   BLK spare OP-AT v READS? 0= ;
-
-\ A register the value being placed may not have is not a candidate to take
-\ away either: taking it would put the evicted value in a frame slot and still
-\ leave the placed value in a register a call destroys.
-: FURTHEST ( n n n n -- n )
-   {: cls:n spare:n pos:n forbid:n :}
-   -1
-   REGS-N 0 ?do
-      cls i spare EVICTABLE?  forbid i FORBIDDEN? 0= and if
-         cls i HOLD-AT pos 1+ 0 max NEXT-USE {: c:n :}
-         c over > if drop c then
-      then
-   loop ;
-
-\ The register the next value takes. The lowest free one if there is one;
-\ otherwise the one whose value is read furthest away, with the lowest register
-\ number breaking a tie. A shape where nothing can be taken is the one register
-\ pressure no spill can serve.
-: VICTIM ( n n n n -- n )
-   {: cls:n spare:n pos:n forbid:n :}
-   cls spare pos forbid FURTHEST {: want:n :}
-   want 0 < if E-A64RA-POOL throw then
-   -1
-   REGS-N 0 ?do
-      cls i spare EVICTABLE?  forbid i FORBIDDEN? 0= and if
-         cls i HOLD-AT pos 1+ 0 max NEXT-USE want = if drop i leave then
-      then
-   loop
-   dup 0 < if E-A64RA-POOL throw then ;
 
 \ ---- taking a register away --------------------------------------------------
 \ The next slot of the routine's frame. Slots are handed out in order and never
@@ -834,200 +645,9 @@ create PL-VAL PLMAX cells allot
    N-SLOTS @ 1+ N-SLOTS !
    off ;
 
-\ Put the value in this register away, in front of the operation at `pos`. The
-\ store reads the register, so the value is still there for an operation at `pos`
-\ that reads it; from `pos` on, the register is free and every later read of the
-\ value is a reload.
-: EVICT ( n n n -- )
-   {: cls:n r:n pos:n :}
-   cls r HOLD-AT {: k:n :}
-   NEW-SLOT k SLOT!
-   0 P-STORE pos 0 max k PLAN+
-   NOBODY cls r HOLD! ;
-
-\ A register of the file the value belongs to. Which file is the value's class,
-\ so a double never takes a general register and an integer never takes a
-\ floating one, and running out of one file is answered from that file alone.
-: GRAB ( n n n n -- n )
-   {: cls:n spare:n pos:n forbid:n :}
-   cls forbid FREE-REG {: r:n :}
-   r 0 >= if r exit then
-   cls spare pos forbid VICTIM {: v:n :}
-   cls v pos EVICT
-   v ;
-
-\ Where a value goes when it is written. A value the contract says leaves in a
-\ named register takes that register when nothing holds it, which is what makes
-\ an ordinary return cost no instruction at all; when something does hold it, the
-\ value is placed like any other and the walk plans a move at the return.
-\
-\ The one shape refused here is a register held by ANOTHER value the same return
-\ has to deliver. Moving that one out of the way first is a parallel copy, and
-\ two moves that each need the other's register need a temporary or an exchange -
-\ neither of which this pass has (dot habu-lower-parallel-copies-cdf9720e). It
-\ cannot arise while a convention names one returned value, because then only one
-\ value wants anything.
-: PLACE ( n n -- n )
-   {: k:n pos:n :}
-   k CLS-AT {: cls:n :}
-   k WANT-AT {: want:n :}
-   k SB-FORBID {: forbid:n :}
-   want NOBODY <> forbid want FORBIDDEN? 0= and if
-      cls want HOLD-AT {: held:n :}
-      held NOBODY = if want exit then
-      held WANT-AT NOBODY <> if E-A64RA-FIXED throw then
-   then
-   cls ENTRY pos forbid GRAB ;
-
-: ASSIGN ( IR-ID:ir-value-id n -- )
-   {: id:IR-ID:ir-value-id pos:n :}
-   id SLOT {: k:n :}
-   k CLS-AT C-TOKEN = if exit then
-   k pos PLACE {: r:n :}
-   k r TAKE
-   pos ENTRY <> if k CLS-AT r PIN! then ;
-
-\ A block argument the contract gives a register arrives in exactly that one. It
-\ is taken before the scan hands anything out, so nothing can be holding it: the
-\ arguments are the first values placed and one register is one position, so the
-\ second refusal below is fail-closed rather than reachable. The first is not:
-\ the memory token the frame forms thread lives in no register, and a module that
-\ made one a block argument would be declaring a convention for something a
-\ caller cannot put anywhere.
-: PIN-ARG ( IR-ID:ir-value-id n -- )
-   {: id:IR-ID:ir-value-id r:n :}
-   id SLOT {: k:n :}
-   k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
-   k CLS-AT r HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
-   k SB-FORBID r FORBIDDEN? if E-A64RA-FIXED throw then
-   k r TAKE ;
-
-\ A tied result lands in the register field its operand already occupies, so that
-\ field has to be free the moment this operation writes. Everything that dies
-\ here has just been released, so a field that is still held means one of exactly
-\ two things, and neither can be given registers: the kept value is read again
-\ after the operation that overwrites it, or another tie of this same operation
-\ has already taken the field, which is what happens when a form is handed one
-\ value as two of its tied operands. Both are refused by the same name, because
-\ both say one register field would have to hold two values at once.
-\
-\ An operand that was spilled lends the register its reload landed in, because
-\ that is the register the instruction really names: the reload is a value of its
-\ own in the module this walk is planning, it dies at this operation, and the
-\ tied result takes its place. So a tie over a value that has to survive is
-\ legal once that value is in a slot, and it is refused only when the value is
-\ still in the register.
-\
-\ An operand holding no register cannot lend one. SSA puts every definition
-\ before its uses, so the walk has already given it one and this cannot happen;
-\ reading the holder table at a negative index is not how we would find out.
-: TIE ( IR-ID:ir-op-id n n -- )
-   {: id:IR-ID:ir-op-id rs:n op:n :}
-   id op OPERAND-AT SLOT {: ok:n :}
-   id rs RESULT-AT SLOT {: rk:n :}
-   ok CLS-AT rk CLS-AT <> if E-A64RA-FILE throw then
-   ok REG-AT {: r:n :}
-   r 0 < r REGS-N >= or if E-A64RA-TIE throw then
-   rk CLS-AT r HOLD-AT NOBODY <> if E-A64RA-TIE throw then
-   rk r TAKE
-   rk CLS-AT r PIN! ;
-
-: ASSIGN-RESULT ( IR-ID:ir-op-id n n -- )
-   {: id:IR-ID:ir-op-id rs:n pos:n :}
-   id rs TIED-TO {: op:n :}
-   op UNTIED = if
-      id rs RESULT-AT pos ASSIGN exit
-   then
-   id rs op TIE ;
-
-\ ---- the reloads one operation needs -----------------------------------------
-\ A value that lost its register is read out of its slot again, once for this
-\ operation however many of its operands name it. The register the reload lands
-\ in has to survive until the operation reads it, so nothing this operation reads
-\ may be taken to make room - that is what `pos` as the spared operation says -
-\ and it is given back the moment the operation has read it.
-: RELOAD-REG ( n n -- )
-   {: cls:n r:n :}
-   RL-N @ {: j:n :}
-   j FILES-N REGS-N * >= if E-A64RA-CAP throw then
-   r j cells R-RL + !
-   cls j cells R-RLC + !
-   j 1+ RL-N ! ;
-
-: RELOADS-FREE ( -- )
-   RL-N @ 0 ?do
-      NOBODY  i cells R-RLC + @  i cells R-RL + @  HOLD!
-   loop
-   0 RL-N ! ;
-
-: OP-RELOADS ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
-   id OPERANDS-OF {: n:n :}
-   n 0 ?do
-      id i OPERAND-AT SLOT {: k:n :}
-      k SLOT-AT NOSLOT <>  0 k pos RELOADED? 0=  and if
-         k CLS-AT {: cls:n :}
-         cls pos pos 0 GRAB {: r:n :}
-         0 P-RELOAD pos k PLAN+
-         k cls r HOLD!
-         r k REG!
-         cls r PIN!
-         cls r RELOAD-REG
-      then
-   loop ;
-
-\ One operation, in the order the machine runs it: the values it reads are put
-\ where it can read them, then everything that dies here gives its register back,
-\ then the values it writes are given registers - which is what lets a result
-\ land in a register its own operand has just vacated.
-: ASSIGN-OP ( IR-ID:ir-op-id n -- )
-   {: id:IR-ID:ir-op-id pos:n :}
-   PINS-CLEAR
-   id pos OP-RELOADS
-   RELOADS-FREE
-   pos 1+ EXPIRE
-   id RESULTS-OF {: n:n :}
-   n 0 ?do id i pos ASSIGN-RESULT loop ;
-
-\ Every returned value the contract named a register for is in it where control
-\ leaves, or the walk plans the move that puts it there. This is decided after
-\ the whole scan, because it is a statement about where the values ARE at the
-\ return - a value that was spilled and read back is in the register its reload
-\ landed in, not the one it was computed in, and only the finished scan knows
-\ which that is.
-: RETURN-CK ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   bk TERM-OF {: id:IR-ID:ir-op-id :}
-   OUTS-N @ 0 ?do
-      id i OPERAND-AT SLOT {: k:n :}
-      k REG-AT  i cells O-REG + @  <> if
-         0 P-MOVE  N-OPS @ 1-  k  PLAN+
-      then
-   loop ;
-
-: SCAN-ASSIGN ( IR-ID:ir-block-id -- )
-   {: bk:IR-ID:ir-block-id :}
-   PINS-CLEAR
-   bk ARG-COUNT {: n:n :}
-   n 0 ?do
-      bk i ARG-AT {: a:IR-ID:ir-value-id :}
-      i ARGS-N @ < if
-         a  i cells A-REG + @  PIN-ARG
-      else
-         a ENTRY ASSIGN
-      then
-   loop
-   bk OP-COUNT {: k:n :}
-   k 0 ?do bk i OP-AT i ASSIGN-OP loop
-   bk RETURN-CK ;
-
-\ ---- allocating across blocks ------------------------------------------------
-\ Everything above this line allocates ONE straight-line block, where a position
-\ is an index into one operation order and a live range is the single stretch
-\ from a definition to its last use. A routine with control flow has neither: its
-\ operations have no single order until one is chosen, and a value can be live
-\ down one arm of a branch and dead down the other. This section is the general
-\ rule, and it is five steps.
+\ ---- the linear order, and everything decided over it ------------------------
+\ Everything above this line reads one declaration or one operation. What follows
+\ is the allocation itself, and it is six steps.
 \
 \ ONE. A LINEAR ORDER AND GLOBAL POSITIONS. Blocks are numbered in the order the
 \ module records them - the order the selector built them in and the order the
@@ -1125,41 +745,25 @@ create PL-VAL PLMAX cells allot
 \ SIX. SPILLING A WHOLE CLASS. A class is what holds a register here, so a class
 \ is what loses one: when the pool runs short at a position, one class goes into
 \ a frame slot for the whole of its life, its definition is followed by a store
-\ and every read of it is preceded by a load. That is not the straight-line
-\ path's decision, which takes ONE value's register away at ONE point and leaves
-\ the value in its register before it; the difference is what a class is for -
-\ every member of one class is one register, so it is also one slot. A plan row
-\ carries the BLOCK its operation is in as well as the position, because with
-\ more than one block an index alone names one operation per block and a store
-\ would land in whichever the lowering pass reached first.
+\ and every read of it is preceded by a load. Putting the whole class away rather
+\ than splitting one member's range at the point its register is taken is what a
+\ class is for - every member of one class is one register, so it is also one
+\ slot, and a slot written once is what makes a reload's value decidable from the
+\ module alone.
 \
-\ WHICH CLASS, AND WHAT THIS PATH STILL REFUSES. The class taken is the one whose
-\ next read is furthest away in the global order - the straight-line cost rule,
-\ stated over the whole linear order rather than one block's - among the classes
-\ holding a register that the failing position does not itself touch. Three kinds
-\ of class are not candidates at all and each has its own reason, written where
-\ MB-SPILLABLE? decides it: a class of more than one value would write one slot
-\ more than once, a block argument would mean rewriting a block's interface, and
-\ a value defined or read outside the entry and exit blocks would put a frame
-\ access where the memory order cannot be stated. A position where nothing can be
-\ taken is E-A64RA-SPILL; a position where every register holds something that
-\ position itself needs is E-A64RA-POOL; a frame with no room for the next slot
-\ is E-A64RA-PRESSURE, the same wall the straight-line path hits. This path still
-\ does not honour a calling convention that names REGISTERS: pre-colouring an
-\ argument and planning a move in front of the return are both anchored to one
-\ block, and the Habu word convention this chain compiles for names data-stack
-\ slots on both sides, so a register place on a routine of more than one block is
-\ E-A64RA-FIXED.
-\
-\ WHY THE STRAIGHT-LINE PATH IS STILL HERE. The block anchoring it was waiting
-\ for has landed, and it is still not enough to retire it: that path honours a
-\ convention that names registers, it splits one value's live range at the point
-\ its register is taken instead of putting the whole class away, and it will
-\ spill a value an edge or a schema tie ties to another. Retiring it means giving
-\ this path all three (dots habu-spill-a-class-f712088d and
-\ habu-spill-from-a-4145325c for two of them); until then the two are kept apart
-\ deliberately, so that a routine that could always be allocated keeps being
-\ allocated exactly as it was.
+\ WHICH CLASS, AND WHAT THIS PASS STILL REFUSES. The class taken is the one whose
+\ next read is furthest away in the linear order, among the classes holding a
+\ register that the failing position does not itself touch. Five kinds of class
+\ are not candidates at all and each has its own reason, written where
+\ MB-SPILLABLE? and MB-KEEP-BLOCK decide them: a class of more than one value
+\ would write one slot more than once, a block argument would mean rewriting a
+\ block's interface, a memory token lives in no register, a value a data-stack
+\ operation reads would need a load inside a run the validator measures as a
+\ shape, and a value defined or read outside the entry and exit blocks would put
+\ a frame access where the memory order cannot be stated. A position where
+\ nothing can be taken is E-A64RA-SPILL; a position where every register holds
+\ something that position itself needs is E-A64RA-POOL; a frame with no room for
+\ the next slot is E-A64RA-PRESSURE.
 
 \ ---- the sets ----------------------------------------------------------------
 \ Four bitsets per block over the module's values, in one array so the accessors
@@ -1202,6 +806,8 @@ create CL-DEF VMAX cells allot       \ where a spilled class is written
 create CL-ANCH VMAX cells allot      \ where the store that puts it away stands
 create CL-SIZE VMAX cells allot      \ how many values one class holds
 create CL-KEEP VMAX cells allot      \ whether this class must stay in a register
+create CL-FIX VMAX cells allot       \ the register the contract pins this class to
+create CL-WANT VMAX cells allot      \ the register the contract wants it to leave in
 
 : BIT-CELL ( n -- n )    SET-BITS / ;
 : BIT-MASK ( n -- n )    SET-BITS mod 1 swap lshift ;
@@ -1431,7 +1037,8 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    loop ;
 
 \ Two values that would have to share one register, and are live at the same
-\ time. The rule is the one the straight-line scan uses at every operation: one
+\ time. The rule is the read-then-write boundary, stated once for the whole
+\ routine: one
 \ operation reads its operands and then writes its results, so a value read for
 \ the last time where another is written is not live at the same instant.
 : OVERLAP? ( n n -- bool )
@@ -1441,6 +1048,71 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
       a LAST-AT b DEF-AT > exit
    then
    b LAST-AT a DEF-AT > ;
+
+\ ---- the registers the routine's own contract names --------------------------
+\ A declared place is a fact about one VALUE - the argument the caller puts in a
+\ register, the value the return has to leave in one - and it is recorded that
+\ way, before a single class exists. What holds a register here is a class, so
+\ the class reading is derived from the members below; recording it on the class
+\ instead would mean recording it after the unions and losing which member said
+\ it. Both lists refuse a memory token: the frame's ordering value lives in no
+\ register, so a convention naming one is naming a place no caller can fill.
+: MB-FIX! ( IR-ID:ir-block-id -- )
+   {: bk:IR-ID:ir-block-id :}
+   ARGS-N @ 0 ?do
+      bk i ARG-AT SLOT {: k:n :}
+      k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
+      i cells A-REG + @  D-FIX k DECL!
+   loop ;
+
+: MB-WANT! ( IR-ID:ir-block-id -- )
+   {: rb:IR-ID:ir-block-id :}
+   rb TERM-AT {: id:IR-ID:ir-op-id :}
+   OUTS-N @ 0 ?do
+      id i OPERAND-AT SLOT {: k:n :}
+      k CLS-AT C-TOKEN = if E-A64RA-FIXED throw then
+      i cells O-REG + @  D-WANT k DECL!
+   loop ;
+
+\ The one register a class is declared into on one of the two planes, read off
+\ its members. Two members declared into two different registers cannot be one
+\ register at all, and that is refused rather than resolved: a class joined by an
+\ edge or a schema tie IS one register, and copying it into a second place is the
+\ parallel copy this pass does not have (dot
+\ habu-lower-parallel-copies-cdf9720e). It is also the statement the old "one
+\ value returned at two declared positions" was making, said where registers are
+\ actually decided.
+: MB-ONE-DECL ( n n -- n )
+   {: so-far:n x:n :}
+   x NOBODY = if so-far exit then
+   so-far NOBODY <> so-far x <> and if E-A64RA-FIXED throw then
+   x ;
+
+: MB-DECL-KIND ( n n -- n )
+   {: r:n d:n :}
+   NOBODY
+   N-VALS @ 0 ?do
+      i UF-FIND r = if d i DECL-AT MB-ONE-DECL then
+   loop ;
+
+\ The register the contract declares this class into: where an argument place
+\ pins it if one does, and otherwise where a result place says it leaves. The pin
+\ comes first because the caller has already put the value there - the walk can
+\ only obey it - while the result place is a preference the return can pay a copy
+\ for.
+: MB-DECL-OF ( n -- n )
+   {: r:n :}
+   r D-FIX MB-DECL-KIND {: f:n :}
+   f NOBODY <> if f exit then
+   r D-WANT MB-DECL-KIND ;
+
+: MB-DECLS! ( -- )
+   N-VALS @ 0 ?do
+      i UF-FIND i = if
+         i D-FIX MB-DECL-KIND   i cells CL-FIX + !
+         i D-WANT MB-DECL-KIND  i cells CL-WANT + !
+      then
+   loop ;
 
 \ ---- the same question, asked of two whole classes ---------------------------
 \ Is this value live at the same instant as any member of that class? The
@@ -1492,8 +1164,8 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 \ by construction: the two ends are one class and a class is one register.
 \
 \ ENDS THAT ARE LIVE AT THE SAME INSTANT CANNOT BE ONE REGISTER AT ALL, and that
-\ is E-A64RA-TIE - the same refusal the straight-line path makes when the
-\ register a tie needs is still holding something, under the same name. It cannot
+\ is E-A64RA-TIE - the register a tie needs is holding something else, which is
+\ what that name has always said. It cannot
 \ happen for what this chain builds: the overwrite is the only tied form and its
 \ operand is the half-built constant, whose only reader is the overwrite itself.
 : MB-TIE1 ( IR-ID:ir-op-id n -- )
@@ -1528,12 +1200,26 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    OPCODE-AT 0 BND-MOV @ SAME-SYM? ;
 
 \ One candidate. Ends already in one class need nothing; ends whose classes hold
-\ an interfering pair keep their copy.
+\ an interfering pair keep their copy; and ends the contract declares into two
+\ different registers keep it too.
+\
+\ THE DECLARATION CLAUSE IS NOT CAUTION, IT IS WHAT THE COPY IS FOR. Merging is a
+\ preference, and merging two ends the contract sends to two different registers
+\ would throw the preference away and cost the very copy this step exists to
+\ remove: the merged class can sit in ONE register, so one of the two
+\ declarations would have to be paid for at the return anyway. The commonest
+\ shape is exactly the one the spill lowering builds - a copy from an argument
+\ pinned where the caller put it into the value the return has to leave elsewhere
+\ - and merging it would put the result back in the argument's register and earn
+\ a second copy for the same value.
 : MB-COALESCE1 ( n n -- )
    {: s:n d:n :}
    s UF-FIND {: ra:n :}
    d UF-FIND {: rb:n :}
    ra rb = if exit then
+   ra MB-DECL-OF {: da:n :}
+   rb MB-DECL-OF {: db:n :}
+   da NOBODY <> db NOBODY <> and  da db <> and if exit then
    ra rb MB-CLASH? if exit then
    s d UF-UNION ;
 
@@ -1585,7 +1271,7 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 
 \ ---- which class may be put in the frame --------------------------------------
 \ Everything below decides ONE thing: when the pool runs short, which class goes
-\ into a frame slot. Four things disqualify a class, and each of them is a rule
+\ into a frame slot. Five things disqualify a class, and each of them is a rule
 \ this pass would otherwise have to break.
 \
 \ A CLASS OF MORE THAN ONE VALUE would write one slot more than once - every
@@ -1628,10 +1314,12 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 : MB-KIND-CLEAR ( -- )
    VMAX 0 ?do
       NOSLOT i cells CL-SLOT + !
-      -1 i cells CL-DEF + !
-      -1 i cells CL-ANCH + !
+      NOPOS i cells CL-DEF + !
+      NOPOS i cells CL-ANCH + !
       0 i cells CL-SIZE + !
       0 i cells CL-KEEP + !
+      NOBODY i cells CL-FIX + !
+      NOBODY i cells CL-WANT + !
    loop ;
 
 : MB-SIZES ( -- )
@@ -1717,8 +1405,7 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 \ The position of the first operation at or after `from` that reads a member of
 \ this class. A class nothing reads again answers the position past the last one,
 \ so furthest-next-use puts the classes nobody wants last without a second rule
-\ for them - the same statement the straight-line scan makes over one block's
-\ operation order, made here over the whole linear order.
+\ for them.
 : MB-NEXT-USE ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id r:n from:n :}
    MB-AT @ {: n:n :}
@@ -1775,32 +1462,62 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
       cls i POOL-HAS? cls i HOLD-AT NOBODY = and if 1+ then
    loop ;
 
-\ Does a class already in the frame need a register at this position? Two ways it
-\ can: an operation that reads it needs the load in front of it, and the register
-\ the operation that DEFINES it wrote is held until the store takes it away -
-\ which is not the next position when the definition is inside a data-stack run,
-\ because a store may not go inside one. Counting that stretch is what makes this
-\ scan a statement about the module the lowering pass will build rather than
-\ about the one it is reading.
+\ ---- what a class already in the frame still costs in registers ---------------
+\ A class in a frame slot has left the scan's holder table, and it still needs
+\ real registers at some positions: one for the load in front of every operation
+\ that reads it, and one for the stretch between the operation that WRITES it and
+\ the store that takes it away. Counting them is what makes this scan a statement
+\ about the module the lowering pass will build rather than about the one it is
+\ reading.
 \
-\ THE STRETCH STOPS SHORT OF THE ANCHOR ITSELF. Everything at one anchor is
-\ emitted in one order: the stores the operations before it earned, then the
-\ loads this operation needs, then the operation. So at the anchor the pending
-\ stores have already given their registers back before a load or a result asks
-\ for one, and the instant they are all held at once is the position BEFORE it -
-\ which is inside the stretch and is where this count measures them.
-: MB-BUSY? ( IR-ID:ir-fun-id n n -- bool )
-   {: f:IR-ID:ir-fun-id r:n p:n :}
-   p  r cells CL-DEF + @  >=   p  r cells CL-ANCH + @  <  and if true exit then
-   f r p MB-READS? ;
+\ ONE POSITION IS TWO INSTANTS, AND THEY ARE COUNTED APART. Everything at one
+\ position is emitted in one order: the stores the operations before it earned,
+\ then the loads this operation needs, then the operation itself, which reads and
+\ then writes. So a load standing in front of an operation has been read and its
+\ register given back before that operation's own results are written, and a load
+\ and a definition at one position may therefore be ONE register. Adding the two
+\ together would refuse a routine that fits - a chain that reloads a value into
+\ the register its own result is about to take is the commonest shape there is -
+\ so the two instants are counted separately and each is held against the
+\ registers free at that instant.
+\
+\ THE STRETCH STOPS SHORT OF THE ANCHOR ITSELF, and starts at the definition. At
+\ the anchor the pending stores have already given their registers back before a
+\ load or a result asks for one. At the definition the register is written, so it
+\ belongs to the writing instant; strictly between the two it is held across the
+\ whole position and belongs to both.
+: MB-ACROSS? ( n n -- bool )
+   {: r:n p:n :}
+   p  r cells CL-DEF + @  >   p  r cells CL-ANCH + @  <  and ;
 
-: MB-TRANS-N ( IR-ID:ir-fun-id n n -- n )
+: MB-WRITTEN? ( n n -- bool )
+   {: r:n p:n :}
+   p  r cells CL-DEF + @  = ;
+
+: MB-FRAMED? ( n n -- bool )
+   {: r:n cls:n :}
+   r UF-FIND r =  r CLS-AT cls =  and
+   r cells CL-SLOT + @ NOSLOT <>  and ;
+
+\ What the frame's classes need while this position READS: every load in front of
+\ it, plus every class held across it.
+: MB-LOAD-N ( IR-ID:ir-fun-id n n -- n )
    {: f:IR-ID:ir-fun-id p:n cls:n :}
    0
    N-VALS @ 0 ?do
-      i UF-FIND i =  i CLS-AT cls =  and
-      i cells CL-SLOT + @ NOSLOT <>  and if
-         f i p MB-BUSY? if 1+ then
+      i cls MB-FRAMED? if
+         i p MB-ACROSS?  f i p MB-READS? or if 1+ then
+      then
+   loop ;
+
+\ And what they need while it WRITES: every class this position puts in a
+\ register, plus the same held-across ones.
+: MB-STORE-N ( n n -- n )
+   {: p:n cls:n :}
+   0
+   N-VALS @ 0 ?do
+      i cls MB-FRAMED? if
+         i p MB-ACROSS?  i p MB-WRITTEN? or if 1+ then
       then
    loop ;
 
@@ -1813,10 +1530,14 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    SHORT-AT @ 0 < if p SHORT-AT !  cls SHORT-CLS ! then ;
 
 \ ---- which registers one class may not have ----------------------------------
-\ The same statement SB-FORBID makes about one value of one block, over the
-\ whole routine's linear order: a class live from before a loop to after it
+\ The registers destroyed by the calls this class's live range crosses. A value
+\ defined at the call itself, or last read by it, does not cross it: the store
+\ run in front of a call and the load run behind it are ordinary operations of
+\ this module and the values they move are dead, or not yet alive, at the branch.
+\ So the range is open at both ends. A class live from before a loop to after it
 \ crosses every call inside that loop, which is exactly the shape a local read
-\ after a loop of calls has.
+\ after a loop of calls has, and a routine that calls nothing answers no bits for
+\ any class at all.
 \
 \ AND IT IS ASKED OF THE MEMBERS AND NOT OF THE CLASS'S OWN HULL. A class holds
 \ one register for the whole stretch from its first definition to its last read,
@@ -1824,11 +1545,10 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
 \ and the values it reads back afterwards are joined into one class by the edges
 \ around the call, so the CLASS spans every call while no MEMBER of it does. A
 \ register barred by the class's hull would be barred for a value that is in a
-\ data-stack slot at the branch, which would refuse programs that allocated
-\ before any of this existed. What really loses a register at a call is a member
-\ whose own definition is before the branch and whose own last read is after it,
-\ so that is the question, asked of each member exactly as SB-FORBID asks it of
-\ a value of one block.
+\ data-stack slot at the branch, which would refuse programs that fit before any
+\ of this existed. What really loses a register at a call is a member whose own
+\ definition is before the branch and whose own last read is after it, so that is
+\ the question, asked of each member.
 : MB-CROSSES? ( n n -- bool )
    {: r:n p:n :}
    false
@@ -1852,29 +1572,106 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
       then
    loop ;
 
+\ Is this class one the scan still has to place here? Its hull has to start at
+\ this position - a class is given one register once, over the whole hull - it has
+\ to be one that lives in a register at all, and it has to be one the walk has not
+\ already put in a frame slot.
+: MB-DUE? ( n n -- bool )
+   {: r:n pos:n :}
+   r cells CL-LO + @ pos <> if false exit then
+   r CLS-AT C-TOKEN = if false exit then
+   r cells CL-SLOT + @ NOSLOT = ;
+
+\ A class the contract pins to one register arrives in exactly that one, and
+\ three things make that impossible rather than merely awkward: a register the
+\ routine may not write, one a call inside the class's own range destroys, and one
+\ already held. The first is unreachable here because FIXED-POOL-CK refused it
+\ before a value was placed, and it is still asked because TAKE would answer it
+\ under E-A64RA-POOL, which is a different statement. The third is fail-closed:
+\ every pinned class is an argument of the entry block, they are placed before
+\ anything else at that position, and one register is one convention position.
+: MB-PIN ( IR-ID:ir-fun-id n n -- )
+   {: f:IR-ID:ir-fun-id r:n want:n :}
+   r CLS-AT {: cls:n :}
+   cls want POOL-HAS? 0= if E-A64RA-FIXED throw then
+   f r MB-FORBID want FORBIDDEN? if E-A64RA-FIXED throw then
+   cls want HOLD-AT NOBODY <> if E-A64RA-FIXED throw then
+   r want TAKE ;
+
+\ The register the contract says a returned class leaves in, when the walk can
+\ give it that one for nothing: it has to be free where the class is written and
+\ not destroyed by a call the class crosses. That is what makes an ordinary
+\ declared return emit no instruction at all. When it is not free the class is
+\ placed like any other and MB-RETURN-CK plans the copy - unless what holds it is
+\ ANOTHER class the same return has to deliver, which is a parallel copy this pass
+\ does not have (dot habu-lower-parallel-copies-cdf9720e) and is refused.
+: MB-WANTED ( IR-ID:ir-fun-id n n -- n )
+   {: f:IR-ID:ir-fun-id r:n forbid:n :}
+   r cells CL-WANT + @ {: want:n :}
+   want NOBODY = if -1 exit then
+   forbid want FORBIDDEN? if -1 exit then
+   r CLS-AT want HOLD-AT {: held:n :}
+   held NOBODY = if want exit then
+   held cells CL-WANT + @ NOBODY <> if E-A64RA-FIXED throw then
+   -1 ;
+
 : MB-PLACE1 ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id r:n pos:n :}
-   r cells CL-LO + @ pos <> if exit then
-   r CLS-AT C-TOKEN = if exit then
-   r cells CL-SLOT + @ NOSLOT <> if exit then
-   r CLS-AT  f r MB-FORBID  FREE-REG {: g:n :}
+   r pos MB-DUE? 0= if exit then
+   r cells CL-FIX + @ {: fix:n :}
+   fix NOBODY <> if f r fix MB-PIN exit then
+   f r MB-FORBID {: forbid:n :}
+   f r forbid MB-WANTED {: w:n :}
+   w 0 >= if r w TAKE exit then
+   r CLS-AT forbid FREE-REG {: g:n :}
    g 0 < if pos r CLS-AT MB-SHORT! exit then
    r g TAKE ;
 
-: MB-PRESSURE ( IR-ID:ir-fun-id n n -- )
+: MB-READ-PRESSURE ( IR-ID:ir-fun-id n n -- )
    {: f:IR-ID:ir-fun-id pos:n cls:n :}
-   f pos cls MB-TRANS-N  cls MB-FREE-N > if pos cls MB-SHORT! then ;
+   f pos cls MB-LOAD-N  cls MB-FREE-N > if pos cls MB-SHORT! then ;
 
+: MB-WRITE-PRESSURE ( n n -- )
+   {: pos:n cls:n :}
+   pos cls MB-STORE-N  cls MB-FREE-N > if pos cls MB-SHORT! then ;
+
+\ The classes due here, pinned ones first. The order matters for exactly one
+\ shape and it is the commonest one there is: the entry block's arguments are all
+\ written at the same position, so a class with no constraint would otherwise be
+\ handed the lowest free register and a pinned class named that same register
+\ would find it taken. Placing the pinned ones first is the statement "the caller
+\ decided these" rather than a numbering that happens to work.
+: MB-PLACE-PINNED ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id pos:n :}
+   N-VALS @ 0 ?do
+      i UF-FIND i =  i cells CL-FIX + @ NOBODY <> and if f i pos MB-PLACE1 then
+   loop ;
+
+: MB-PLACE-REST ( IR-ID:ir-fun-id n -- )
+   {: f:IR-ID:ir-fun-id pos:n :}
+   N-VALS @ 0 ?do
+      i UF-FIND i =  i cells CL-FIX + @ NOBODY = and if f i pos MB-PLACE1 then
+   loop ;
+
+\ One position, in the order the machine runs it. A class whose last read is HERE
+\ still holds its register while this operation reads, so the reading instant is
+\ measured before it is expired and the writing instant after - which is the same
+\ read-then-write boundary that lets a result land in a register its own operand
+\ has just vacated.
 : MB-STEP ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id pos:n :}
+   pos MB-EXPIRE
+   f pos C-GPR MB-READ-PRESSURE
+   SHORT-AT @ 0 >= if exit then
+   f pos C-FPR MB-READ-PRESSURE
+   SHORT-AT @ 0 >= if exit then
    pos 1+ MB-EXPIRE
-   N-VALS @ 0 ?do
-      i UF-FIND i = if f i pos MB-PLACE1 then
-   loop
+   f pos MB-PLACE-PINNED
+   f pos MB-PLACE-REST
    SHORT-AT @ 0 >= if exit then
-   f pos C-GPR MB-PRESSURE
+   pos C-GPR MB-WRITE-PRESSURE
    SHORT-AT @ 0 >= if exit then
-   f pos C-FPR MB-PRESSURE ;
+   pos C-FPR MB-WRITE-PRESSURE ;
 
 : MB-SCAN ( IR-ID:ir-fun-id -- )
    {: f:IR-ID:ir-fun-id :}
@@ -1974,8 +1771,7 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    until ;
 
 \ Every value takes the register its class was given, or the slot its class was
-\ given. A memory token is in no class that holds either and takes neither,
-\ exactly as it does on the straight-line path.
+\ given. A memory token is in no class that holds either and takes neither.
 : MB-FINISH ( -- )
    N-VALS @ 0 ?do
       i CLS-AT C-TOKEN = if
@@ -2038,6 +1834,28 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
       then
    loop ;
 
+\ Every returned value the contract named a register for is in it where control
+\ leaves, or the walk plans the move that puts it there. It is decided after the
+\ whole scan, because it is a statement about where the values ARE at the return:
+\ a class that spent its life in a frame slot is in the register its load landed
+\ in, not one it was ever computed in, and only the finished scan knows which
+\ classes those are.
+\
+\ THE ROWS GO IN LAST AND THAT IS WHERE THEY BELONG. Everything at one anchor is
+\ emitted in the order the plan records it, so a copy planned after the loads of
+\ the same operation reads the value as the loads left it - which is the whole
+\ reason a spilled returned value composes with a declared register at all.
+: MB-PLAN-MOVES ( IR-ID:ir-block-id -- )
+   {: rb:IR-ID:ir-block-id :}
+   rb TERM-AT {: id:IR-ID:ir-op-id :}
+   rb OP-COUNT 1- {: at:n :}
+   OUTS-N @ 0 ?do
+      id i OPERAND-AT SLOT {: k:n :}
+      k REG-AT  i cells O-REG + @  <> if
+         RET-B @ P-MOVE at k PLAN+
+      then
+   loop ;
+
 : MB-PLAN-BLOCK ( IR-ID:ir-fun-id n -- )
    {: f:IR-ID:ir-fun-id b:n :}
    f b BLOCK-AT {: bk:IR-ID:ir-block-id :}
@@ -2048,7 +1866,8 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
       loop
       bk b at MB-PLAN-LOADS
    loop
-   bk MB-PLAN-TAIL-CK ;
+   bk MB-PLAN-TAIL-CK
+   b RET-B @ = if bk MB-PLAN-MOVES then ;
 
 \ The rows in the order the lowering pass reads them: blocks in the module's own
 \ order, operations in the block's, and at one operation the store the operation
@@ -2058,8 +1877,11 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    {: f:IR-ID:ir-fun-id :}
    N-BLKS @ 0 ?do f i MB-PLAN-BLOCK loop ;
 
-\ The ordinal of the block control leaves the routine through, which is where
-\ this half's frame accesses may stand beside the block the caller enters.
+\ The ordinal of the block control leaves the routine through: the one whose
+\ terminator names no successor. A routine with none never returns and one with
+\ two returns twice, and neither is a shape this pass can decide a convention
+\ against. It is also where the frame accesses may stand beside the block the
+\ caller enters.
 : MB-RET-ORD ( IR-ID:ir-fun-id -- n )
    {: f:IR-ID:ir-fun-id :}
    -1
@@ -2071,48 +1893,32 @@ create CL-KEEP VMAX cells allot      \ whether this class must stay in a registe
    loop
    dup 0 < if E-A64RA-SHAPE throw then ;
 
-: MB-RUN ( IR-ID:ir-fun-id -- )
-   {: f:IR-ID:ir-fun-id :}
-   ARGS-N @ 0<> OUTS-N @ 0<> or if E-A64RA-FIXED throw then
+: MB-RUN ( IR-ID:ir-fun-id IR-ID:ir-block-id IR-ID:ir-block-id -- )
+   {: f:IR-ID:ir-fun-id bk:IR-ID:ir-block-id rb:IR-ID:ir-block-id :}
    f MB-LAYOUT
-   f MB-RET-ORD RET-B !
    f MB-LIVENESS
    UF-INIT
    f MB-RANGES
+   bk MB-FIX!
+   rb MB-WANT!
    N-BLKS @ 0 ?do f i MB-EDGES-OF loop
    f MB-TIES
    f MB-COALESCE
    MB-CLASSES
    MB-KIND-CLEAR
    MB-SIZES
+   MB-DECLS!
    N-BLKS @ 0 ?do f i MB-KEEP-BLOCK loop
    f MB-FIT
    MB-FINISH
    f MB-PLAN ;
 
 \ ---- what one allocation run is told -----------------------------------------
-\ The straight-line subset is one function of one block; any other shape means
-\ control flow, and control flow has no allocation rule here yet.
 \ The one function this pass allocates. A module with any other shape is not a
 \ routine at all.
 : FUN-OF ( -- IR-ID:ir-fun-id )
    FUN-COUNT 1 <> if E-A64RA-SHAPE throw then
    MKEY 0 IR-ID:PACK-FUN ;
-
-\ The block control leaves the routine through: the one whose terminator names no
-\ successor. A routine with none never returns and one with two returns twice,
-\ and neither is a shape this pass can decide a convention against.
-: RET-BLOCK ( IR-ID:ir-fun-id -- IR-ID:ir-block-id )
-   {: f:IR-ID:ir-fun-id :}
-   -1
-   f BLOCK-COUNT 0 ?do
-      f i BLOCK-AT TERM-OF SUCCS-OF 0= if
-         dup 0 < 0= if E-A64RA-SHAPE throw then
-         drop i
-      then
-   loop
-   dup 0 < if E-A64RA-SHAPE throw then
-   f swap BLOCK-AT ;
 
 \ ---- the contract, read once -------------------------------------------------
 \ A contract is a twelve-field value and a value of more than one cell cannot be
@@ -2208,28 +2014,6 @@ public
 : RELEASE ( -- )
    BND-TAKE ;
 
-\ ---- which walk a routine gets -----------------------------------------------
-\ A routine of one block is walked by the straight-line pass, which numbers its
-\ positions within that block; everything else is walked by the pass that lays
-\ the blocks out end to end and numbers them across the whole routine. The two
-\ numberings are different, and src/compiler/native/regalloc-verify.f re-derives
-\ each one, so the two files have to send a routine the same way - which is why
-\ the question is asked of the CONTRACT and the module, both of which they hold.
-\
-\ A ROUTINE THAT CALLS GOES THE LONG WAY WHATEVER ITS SHAPE. It has a frame with
-\ its caller's return address in it, and the straight-line pass has no rule for a
-\ routine that reaches both a frame and the caller's data stack: the frame rule
-\ wants the reserve to be the block's first operation and the data-stack rule
-\ wants the take to be. The pass that lays blocks out has that rule already - the
-\ prologue first, the entry sequence after it - so a calling routine of one
-\ block, which is what `: A ( n -- n ) B 1+ ;` is, is walked by the pass that can
-\ describe it rather than refused by the pass that cannot. Unifying the two
-\ numberings so this question disappears is dot habu-unify-the-two-d4f93e83.
-: CALLS-MB? ( IR-ID:ir-fun-id A64EFF:traits -- bool )
-   {: f:IR-ID:ir-fun-id t:A64EFF:traits :}
-   f BLOCK-COUNT 1 <> if true exit then
-   t A64EFF:T-CALL A64EFF:TRAITS-HAS? ;
-
 \ ---- the pass ----------------------------------------------------------------
 \ Allocate the whole of one frozen machine module against the contract of the
 \ routine it is being emitted as. The contract's destroyed set is the pool, so a
@@ -2253,16 +2037,12 @@ public
    args outs FIXED!
    FIXED-POOL-CK
    FUN-OF {: f:IR-ID:ir-fun-id :}
+   f MB-RET-ORD RET-B !
    f 0 BLOCK-AT {: bk:IR-ID:ir-block-id :}
-   f RET-BLOCK {: rb:IR-ID:ir-block-id :}
-   bk 0 S-BLK !
+   f RET-B @ BLOCK-AT {: rb:IR-ID:ir-block-id :}
    bk rb FIXED-ARITY-CK
    bk rb args outs LOWERED-CK
-   f traits CALLS-MB? if f MB-RUN exit then
-   bk SCAN-LIVE
-   COVER-CK
-   bk WANTS!
-   bk SCAN-ASSIGN ;
+   f bk rb MB-RUN ;
 
 : ALLOCATE ( IR-CTX:ctx IR-BUILD:module A64EFF:routine -- )
    A64EFF:VALIDATE A64EFF-ROUTINE:UNMAKE

@@ -1,7 +1,7 @@
 \ native-regalloc.f - checked register-allocation tests.
 \
 \ Proves the contract of src/compiler/native/regalloc.f and its validator
-\ src/compiler/native/regalloc-verify.f: a frozen straight-line A64IR module gets
+\ src/compiler/native/regalloc-verify.f: a frozen A64IR module gets
 \ one real general register per value, taken only from the set the routine's own
 \ contract says it may destroy, with the move-wide overwrite's tied register
 \ honoured; the assignment is then accepted only after the validator has
@@ -65,24 +65,26 @@
 \ into its operand's register and the untied one gives it the lowest free
 \ register, so the two exact register lists differ only because the schemas do.
 \
-\ WHAT THE MULTI-BLOCK FIXTURES MEASURE. A routine of more than one block is
-\ allocated by the second half of the allocator, and every rule of it is asserted
-\ here on a module built to state that rule: the linear order and its global
-\ positions, the backward liveness, the hull of a value live across a loop, the
-\ class one register per argument-carrying edge, the schema tie unioned into
-\ those classes, and the copies coalesced into them where the class invariant
-\ survives it. Each fixture asserts the exact register of every value and names,
-\ where it stands, the allocator edit that reddens it.
+\ WHAT THE MULTI-BLOCK FIXTURES MEASURE. There is ONE allocation path and a
+\ routine of one block is the case N=1 of it, so the fixtures above and the ones
+\ below exercise the same words; what the multi-block ones add is the rules only
+\ a routine that branches can state, each asserted on a module built to state it:
+\ the linear order and its global positions, the backward liveness, the hull of a
+\ value live across a loop, the class one register per argument-carrying edge, the
+\ schema tie unioned into those classes, and the copies coalesced into them where
+\ the class invariant survives it. Each fixture asserts the exact register of
+\ every value and names, where it stands, the allocator edit that reddens it.
 \
-\ AND WHAT A ROUTINE THAT BRANCHES DOES WHEN IT DOES NOT FIT. It spills, the way
-\ a straight-line one does, and the two fixtures for it assert the two halves
-\ separately: the plan - which value goes into the frame, and the BLOCK as well
-\ as the position of the store and of the load, because a row that named the
-\ position alone would put one of them in the wrong block - and the lowered
-\ module, which needs no further spill and is accepted. The refusals left are the
-\ two shapes this path still will not put in a frame, a routine with no frame to
-\ put anything in, a register place it does not honour, the class the edge rule
-\ cannot serve, and the one edge shape only the validator refuses.
+\ AND WHAT A ROUTINE THAT BRANCHES DOES WHEN IT DOES NOT FIT. It spills, by the
+\ same rule a routine of one block does, and the two fixtures for it assert the
+\ two halves separately: the plan - which value goes into the frame, and the
+\ BLOCK as well as the position of the store and of the load, because a row that
+\ named the position alone would put one of them in the wrong block - and the
+\ lowered module, which needs no further spill and is accepted. A declared result
+\ register is delivered here too, which is the capability that let the second
+\ allocator be retired. The refusals left are the two shapes this pass will not
+\ put in a frame, a routine with no frame to put anything in, the class the edge
+\ rule cannot serve, and the one edge shape only the validator refuses.
 \
 \ ONE FIXTURE PER CONTEXT. A module holds about seventeen arenas and the live
 \ arena registry holds sixty-four, so a case that builds a source module and a
@@ -394,7 +396,7 @@ create TXT
 : SQUARE-CASE ( -- )
    s" a multiply reuses its own argument's register for its result" T-LABEL
    WBND [: SQUARE-BODY ;] IR-CTX:WITH-CONTEXT
-   TTRUE 0 T= 0 T= 0 T= 2 T= ;
+   TTRUE 1 T= 0 T= 0 T= 2 T= ;
 
 : DIFF-BODY ( IR-CTX:ctx -- n n n n )
    HIR-MOD
@@ -454,7 +456,7 @@ create TXT
 : WIDE-CASE ( -- )
    s" a move-wide overwrite lands in the register it keeps" T-LABEL
    WBND [: WIDE-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 1 T= 0 T= 0 T= 0 T= 2 T= ;
+   2 T= 2 T= 1 T= 0 T= 0 T= 2 T= ;
 
 : REUSE-BODY ( IR-CTX:ctx -- n n n n n )
    HIR-MOD
@@ -503,7 +505,7 @@ create TXT
 : UNUSED-CASE ( -- )
    s" an argument nobody reads still gets a register of its own" T-LABEL
    WBND [: UNUSED-BODY ;] IR-CTX:WITH-CONTEXT
-   -1 T= -1 T= 1 T= 0 T= 2 T= ;
+   0 T= 0 T= 1 T= 0 T= 2 T= ;
 
 \ ---- the registers a routine's contract declares -----------------------------
 \ The whole point of the declaration is that the scan follows it instead of the
@@ -987,7 +989,7 @@ create TXT
 : PLAIN-CASE ( -- )
    s" a hand-built machine module allocates and is accepted" T-LABEL
    WBND [: PLAIN-BODY ;] IR-CTX:WITH-CONTEXT
-   1 T= 0 T= 1 T= ;
+   2 T= 0 T= 1 T= ;
 
 : INTERLEAVED-BODY ( IR-CTX:ctx -- n n n n n n n )
    A64-MOD
@@ -1051,12 +1053,12 @@ create TXT
    0 T= 1 T= 0 T= 1 T= 0 T= 5 T= ;
 
 \ ---- routines of more than one block -----------------------------------------
-\ Everything above is one block. The second half of the allocator is the general
-\ rule - a linear block order with global positions, liveness by backward
-\ dataflow, one hull interval per value, one register per block-argument class,
-\ the schema ties unioned into those classes, and the copies coalesced into them
-\ where that keeps the class invariant - and the fixtures below are that rule,
-\ one clause at a time, each asserting the exact register of every value.
+\ Everything above is one block, which the allocator's one rule covers as the
+\ case N=1. That rule - a linear block order with global positions, liveness by
+\ backward dataflow, one hull interval per value, one register per block-argument
+\ class, the schema ties unioned into those classes, and the copies coalesced
+\ into them where that keeps the class invariant - is what the fixtures below
+\ state clause by clause, each asserting the exact register of every value.
 \
 \ THEY ARE BUILT BY HAND FOR THE REASON THE HOSTILE FIXTURES ARE. What is being
 \ measured is a shape - an edge that carries a value, a back edge, a tie inside
@@ -1462,10 +1464,10 @@ create TXT
    4 M-ALLOCATE drop ;
 
 \ One register cannot hold the two literals the sum reads, so one of them goes
-\ into the frame - and this routine declares none, which is the same wall the
-\ straight-line path hits when its frame runs out of slots. The refusal that used
-\ to stand here was "a routine of more than one block cannot spill at all"; a
-\ plan row names its block now, so what is left is the frame.
+\ into the frame - and this routine declares none, so there is nowhere to put it.
+\ The refusal that used to stand here was "a routine of more than one block
+\ cannot spill at all"; a plan row names its block now, so what is left is the
+\ frame itself running out.
 : MB-SPILL-BODY ( IR-CTX:ctx -- )
    A64-MOD
    BUILD-MB-EDGE
@@ -1481,15 +1483,39 @@ create TXT
    BUILD-MB-LOOP
    1 M-ALLOCATE drop ;
 
-\ A convention that names a register for the value this routine returns.
-\ Pre-colouring an argument and planning a move in front of the return are both
-\ anchored to one block, so a register place on a routine of more than one block
-\ is refused rather than half-honoured.
-: MB-FIXED-BODY ( IR-CTX:ctx -- )
+\ A convention that names a register for the value this routine returns, on a
+\ routine that branches. It used to be refused, because pre-colouring an argument
+\ and planning a move in front of the return were both written against one block;
+\ there is one allocation path now and both are stated about a CLASS, so the
+\ declaration is honoured here exactly as it is on a routine of one block.
+\
+\ WHAT MAKES IT MORE THAN "IT DID NOT THROW". The value the return carries is the
+\ join block's own argument, which the edge rule has already joined into one class
+\ with the sum that feeds it - so honouring the declaration means giving that
+\ whole class x0, and the validator's OUT-CK reads the register off the accepted
+\ assignment at the terminator. A walk that pre-coloured only the member the
+\ return names would hand the successor's argument one register and the operand
+\ feeding it another, and A64RAV:VEDGE1 would refuse it. And it costs no copy:
+\ MOVES is zero because the class was free to take x0 where it was written.
+: MB-FIXED-CONTRACT ( -- A64EFF:routine )
+   4 POOL-N  A64EFF:SEQ-NONE  0 SQ LEAF-DECL ;
+
+: MB-FIXED-BODY ( IR-CTX:ctx -- n n n n n )
    A64-MOD
    BUILD-MB-EDGE
    M-FREEZE {: m:IR-BUILD:module :}
-   CC m  4 POOL-N  A64EFF:SEQ-NONE  0 SQ LEAF-DECL A64RA:ALLOCATE ;
+   CC m MB-FIXED-CONTRACT A64RA:ALLOCATE
+   m MB-FIXED-CONTRACT A64RAV:ACCEPT
+   A64RA:MOVES
+   A64RA:SPILLS
+   A64RA:VALUES
+   2 A64RAV:REG@
+   3 A64RAV:REG@ ;
+
+: MB-FIXED-CASE ( -- )
+   s" a declared result register is delivered by a routine that branches" T-LABEL
+   WBND [: MB-FIXED-BODY ;] IR-CTX:WITH-CONTEXT
+   0 T= 0 T= 4 T= 0 T= 0 T= ;
 
 : MB-MULTI-ARG-BODY ( IR-CTX:ctx -- )
    A64-MOD
@@ -1596,6 +1622,12 @@ create TXT
 \ Which of two equally distant values loses its register. Both are read by the
 \ same operation, so the cost rule cannot separate them and the tie rule does:
 \ the first plan row names the value in the lower register.
+\
+\ AND THE STORE STANDS WHERE THE VALUE IS WRITTEN, not where the register runs
+\ out. A class that loses its register loses it for the whole of its life, so the
+\ store is anchored to the operation after the one that made the value - index
+\ one, the second move-wide - rather than to the third, which is where the pool
+\ happened to run short.
 : TIE-SPILL-BODY ( IR-CTX:ctx -- n n n )
    A64-MOD
    BUILD-TIE
@@ -1608,7 +1640,7 @@ create TXT
 : TIE-SPILL-CASE ( -- )
    s" a tie between two equally distant values goes to the lower register" T-LABEL
    WBND [: TIE-SPILL-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 0 T= 2 T= ;
+   1 T= 0 T= 2 T= ;
 
 \ One reload serves every read of one value by one operation. A reload per read
 \ would need a second register at that operation, and taking one means spilling
@@ -1626,7 +1658,7 @@ create TXT
 : DOUBLE-CASE ( -- )
    s" one reload serves both reads of a value by one operation" T-LABEL
    WBND [: DOUBLE-BODY ;] IR-CTX:WITH-CONTEXT
-   2 T= 0 T= 2 T= 1 T= ;
+   1 T= 0 T= 2 T= 1 T= ;
 
 \ ---- a returned value that has to be moved -----------------------------------
 \ The value the return carries is an argument, pinned where the caller put it, and
@@ -1812,9 +1844,12 @@ create TXT
    CC m  4 POOL-N  0 DSLOT-Q 1 A64EFF:SEQ-WITH  A64EFF:SEQ-NONE
    LEAF-DECL A64RA:ALLOCATE ;
 
-\ Two registers cannot hold three arguments at once, and the routine declares no
-\ frame, so there is nowhere to put the third: the pressure refusal that is left
-\ is the frame running out of slots.
+\ Two registers cannot hold three arguments at once, and a block argument is one
+\ of the things this pass may not put in a frame: the values feeding it across
+\ every edge would have to move with it, and the caller has already put it where
+\ it is. So the refusal is not the frame at all - the routine declares none, and
+\ the walk never gets as far as asking for a slot - but "nothing here may be
+\ taken", which is E-A64RA-SPILL. The frame's own wall is SMALL-FRAME below.
 : PRESSURE-BODY ( IR-CTX:ctx -- )
    HIR-MOD
    BUILD-SUM3
@@ -2059,7 +2094,6 @@ create TXT
 : MB-EDGE-CLASH ( -- )    WBND [: MB-EDGE-CLASH-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-SPILL ( -- )         WBND [: MB-SPILL-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-CARRIED ( -- )       WBND [: MB-CARRIED-BODY ;] IR-CTX:WITH-CONTEXT ;
-: MB-FIXED ( -- )         WBND [: MB-FIXED-BODY ;] IR-CTX:WITH-CONTEXT ;
 : MB-MULTI-ARG ( -- )     WBND [: MB-MULTI-ARG-BODY ;] IR-CTX:WITH-CONTEXT ;
 
 : DROP-BINDING ( -- )
@@ -2080,8 +2114,8 @@ create TXT
    [: PAIR-SHARED ;] E-A64RA-TIE TTHROWSQ ;
 
 : PRESSURE-REFUSE-CASES ( -- )
-   s" more values live at once than a routine with no frame can put away" T-LABEL
-   [: PRESSURE ;] E-A64RA-PRESSURE TTHROWSQ
+   s" more arguments live at once than the pool holds, and none may be put away" T-LABEL
+   [: PRESSURE ;] E-A64RA-SPILL TTHROWSQ
    s" a frame one slot short of what the spills need is refused" T-LABEL
    [: SMALL-FRAME ;] E-A64RA-PRESSURE TTHROWSQ
    \ The refusal just above left no sealed walk, so there is no claim to read.
@@ -2188,10 +2222,9 @@ create TXT
 
 \ ---- the refusals a routine of more than one block earns ---------------------
 \ The first is the allocator's class invariant, stated over a class the edge rule
-\ forces; the second and third are the two things this path deliberately does not
-\ do. The fourth is the validator's alone: the allocator's edge rule reads
-\ single-successor terminators only, so nothing in it looks at a two-way branch's
-\ destinations at all.
+\ forces; the second is the frame it was given nothing of. The third is the
+\ validator's alone: the allocator's edge rule reads single-successor terminators
+\ only, so nothing in it looks at a two-way branch's destinations at all.
 \
 \ WHAT IS NOT REACHED FROM HERE, AND WHY IT IS STILL WRITTEN. Two clauses of the
 \ validator's edge rule stay fail-closed. An edge whose operand count differs
@@ -2209,9 +2242,7 @@ create TXT
    s" two values live at once forced into one class by an edge are refused" T-LABEL
    [: MB-EDGE-CLASH ;] E-A64RA-EDGE TTHROWSQ
    s" a routine of more than one block with no frame to spill into is refused" T-LABEL
-   [: MB-SPILL ;] E-A64RA-PRESSURE TTHROWSQ
-   s" a register place on a routine of more than one block is refused" T-LABEL
-   [: MB-FIXED ;] E-A64RA-FIXED TTHROWSQ ;
+   [: MB-SPILL ;] E-A64RA-PRESSURE TTHROWSQ ;
 
 : MB-ACCEPT-REFUSE-CASES ( -- )
    s" a two-way branch into a block that takes an argument is refused" T-LABEL
@@ -2280,6 +2311,7 @@ public
    MB-LIVE-COPY-CASE
    MB-PLAN-CASE
    MB-LOWER-CASE
+   MB-FIXED-CASE
    RESERVED-CASES
    WBND [: GROUP-SHAPE ;] IR-CTX:WITH-CONTEXT
    WBND [: GROUP-TIE ;] IR-CTX:WITH-CONTEXT
