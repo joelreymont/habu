@@ -6,6 +6,8 @@ require test/golden.f
 
 package GATE-DIAGNOSTICS
 
+using PS
+
 64 constant USAGE-RC
 
 create PATH-BUF FS-PATH-CAP allot

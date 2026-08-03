@@ -18,6 +18,8 @@ require tools/lint/token.f
 require tools/lint/lib.f
 require tools/public-signatures-core.f
 
+using PS
+
 \ A public ENUM registered here exercises the metadata-synthesized constructor
 \ signatures (item 13): each variant publishes a nullary `PKG:VARIANT ( -- fam )`
 \ in the manifest, drawn from TFAM/SUMV registry metadata (never a hidden field).
@@ -528,3 +530,5 @@ variable PST-NUM-U
    s" public-signatures-test: ok" type cr ;
 
 PST-MAIN
+
+;using

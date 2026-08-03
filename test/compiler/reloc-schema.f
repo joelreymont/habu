@@ -89,8 +89,11 @@ public
 : WRITER-FILE$ ( -- ptr u8 n )
    s" src/habu/snap-lib.f" ;
 
-: MNEM-FILE$ ( -- ptr u8 n )
-   s" src/arch/arm64/mnem.f" ;
+\ The condition-code names live beside the four-bit field `?COND` bounds, in the
+\ encoder itself. src/arch/arm64/mnem.f carried a second copy until the compare
+\ and branch forms landed; it reads the encoder's now, and so does this gate.
+: COND-FILE$ ( -- ptr u8 n )
+   s" src/arch/arm64/asm.f" ;
 
 \ The chain's four scaffold words are declared in the first emitter file, not
 \ the second, so the pinned-constant rows below have to read both.

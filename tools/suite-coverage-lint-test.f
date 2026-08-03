@@ -345,6 +345,73 @@ variable SCT-GX-U
    \ documented host-gated but not a file under test/ -> a second finding
    SC-FIND @ 2 T= ;
 
+\ (f) landing-gate roster: every declared suite is a cases member under the same
+\ label. The fixture pair is built with the same buffers as the parser fixtures
+\ above, so both sides go through SC-CASES-SCAN$ - the landing gate is read with
+\ the cases parser, never searched as text.
+: SCT-LANDING-CASES ( -- )
+   SCT-QUIET SC-RESET
+   SCT-CASE-RESET
+   s" TEST:SUITE alpha" SCT-CASE-LINE
+   s" test/alpha.f" SCT-CASE-LINE
+   s" TEST:;SUITE" SCT-CASE-LINE
+   s" TEST:SUITE beta" SCT-CASE-LINE
+   s" test/beta.f" SCT-CASE-LINE
+   s" TEST:;SUITE" SCT-CASE-LINE
+   SCT-CASE$ SC-CASES-SCAN$
+   SC-CASE# @ 2 T= ;
+
+\ A landing gate naming the same label and the same path is clean, and its rows
+\ are dropped again: SC-CASE# is back to the two cases rows afterwards.
+: SCT-LANDING-CLEAN ( -- )
+   SCT-LANDING-CASES
+   SCT-GX-RESET
+   s" TEST:SUITE alpha" SCT-GX-LINE
+   s" test/alpha.f" SCT-GX-LINE
+   s" TEST:;SUITE" SCT-GX-LINE
+   SCT-GX$ SC-CHECK-LANDING$
+   SC-FIND @ 0 T=
+   SC-CASE# @ 2 T= ;
+
+\ A label the cases file does not carry, under a path it does.
+: SCT-LANDING-UNKNOWN-LABEL ( -- )
+   SCT-LANDING-CASES
+   SCT-GX-RESET
+   s" TEST:SUITE gamma" SCT-GX-LINE
+   s" test/alpha.f" SCT-GX-LINE
+   s" TEST:;SUITE" SCT-GX-LINE
+   SCT-GX$ SC-CHECK-LANDING$
+   SC-FIND @ 1 T= ;
+
+\ The right label, the wrong file: alpha does not carry test/beta.f.
+: SCT-LANDING-UNKNOWN-FILE ( -- )
+   SCT-LANDING-CASES
+   SCT-GX-RESET
+   s" TEST:SUITE alpha" SCT-GX-LINE
+   s" test/beta.f" SCT-GX-LINE
+   s" TEST:;SUITE" SCT-GX-LINE
+   SCT-GX$ SC-CHECK-LANDING$
+   SC-FIND @ 1 T= ;
+
+\ Hostile: the unknown pair appears only in a comment and mid-line, never as a
+\ member. A text search would find both spellings; the parser finds neither, so
+\ the roster is clean.
+: SCT-LANDING-FAKE-MEMBERS ( -- )
+   SCT-LANDING-CASES
+   SCT-GX-RESET
+   s" TEST:SUITE alpha" SCT-GX-LINE
+   s" test/alpha.f -- --out test/nowhere.f --literal" SCT-GX-LINE
+   s" \ test/nowhere.f" SCT-GX-LINE
+   s" TEST:;SUITE" SCT-GX-LINE
+   SCT-GX$ SC-CHECK-LANDING$
+   SC-FIND @ 0 T= ;
+
+\ A missing landing gate is a finding, not a silent pass.
+: SCT-LANDING-ABSENT ( -- )
+   SCT-LANDING-CASES
+   s" tools/no-such-landing-gate.f" SC-LG-ABSENT
+   SC-FIND @ 1 T= ;
+
 : SCT-MAIN ( -- )
    T-RESET
    SCT-LIVE-GREEN
@@ -367,6 +434,11 @@ variable SCT-GX-U
    SCT-ROUTE-SELF
    SCT-ROUTE-MANIFEST
    SCT-HOST-GATED-STALE
+   SCT-LANDING-CLEAN
+   SCT-LANDING-UNKNOWN-LABEL
+   SCT-LANDING-UNKNOWN-FILE
+   SCT-LANDING-FAKE-MEMBERS
+   SCT-LANDING-ABSENT
    T-REPORT ;
 
 SCT-MAIN

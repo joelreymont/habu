@@ -102,51 +102,84 @@ variable RPATH-U
    RFD @ close
    buf RLEN @ ;
 
-\ Runtime-sized whole-source storage shared by linters whose authoritative
-\ inputs grow over time. One live buffer is sufficient because TOKENIZE callers
-\ consume each file before loading the next one; a larger later file may replace
-\ the backing region, while smaller files reuse it.
-package LINT-SOURCE
+\ Runtime-sized whole-file storage for a tool whose authoritative input grows
+\ over time. A fixed `create ... allot` buffer is the wrong shape for such an
+\ input: the day the file crosses the constant the tool dies mid-run and every
+\ answer it was going to give looks like the file's fault. A slab is three cells
+\ the CALLER owns - the backing pointer, the capacity behind it, and the length
+\ last read - so a tool that has to hold two files live at once declares two
+\ slabs instead of contending for one shared buffer.
+package LINT-SLAB
 
 $1000000 constant MAX-BYTES
 
-variable BUF-A
-variable CAP
-variable LEN
+: BUF-FIELD ( ptr a -- ptr ptr u8 )
+   0 ptr-field ;
 
-: BUF-FIELD ( -- ptr ptr u8 )
-   BUF-A 0 ptr-field ;
-
-: BUF@ ( -- ptr u8 )
+: BUF@ ( ptr a -- ptr u8 )
    BUF-FIELD @ ;
 
-: BUF! ( ptr u8 -- )
+: BUF! ( ptr u8 ptr a -- )
    BUF-FIELD ! ;
+
+: CAP@ ( ptr a -- n ) {: s:ptr :}
+   s 1 cells + @ ;
+
+: CAP! ( n ptr a -- ) {: v:n s:ptr :}
+   v s 1 cells + ! ;
+
+: LEN@ ( ptr a -- n ) {: s:ptr :}
+   s 2 cells + @ ;
+
+: LEN! ( n ptr a -- ) {: v:n s:ptr :}
+   v s 2 cells + ! ;
 
 : ALLOC-NEED ( n -- n )
    dup 0 <= IF drop 1 THEN ;
 
-: ALLOC ( n -- )
-   ALLOC-NEED MEM-ALLOC-64K-SPAN CAP ! BUF! ;
+: ALLOC ( n ptr a -- ) {: size:n s:ptr :}
+   size ALLOC-NEED MEM-ALLOC-64K-SPAN {: buf:ptr cap:n :}
+   cap s CAP!
+   buf s BUF! ;
 
 : TOO-LARGE ( ptr u8 n n -- ) {: path:ptr pathu:n size:n :}
-   s" lint-source: file exceeds maximum: " type path pathu type cr
-   s" lint-source: bytes=" type size .
+   s" lint-slab: file exceeds maximum: " type path pathu type cr
+   s" lint-slab: bytes=" type size .
    E-FS-CAPACITY throw ;
 
-: ENSURE-CAPACITY ( ptr u8 n n -- ) {: path:ptr pathu:n size:n :}
+: ENSURE-CAPACITY ( ptr u8 n n ptr a -- ) {: path:ptr pathu:n size:n s:ptr :}
    size MAX-BYTES > IF path pathu size TOO-LARGE THEN
-   BUF@ 0= size CAP @ > or IF size ALLOC THEN ;
+   s BUF@ 0= size s CAP@ > or IF size s ALLOC THEN ;
 
 public
 
-: LOAD ( ptr u8 n -- ) {: path:ptr pathu:n :}
+\ Cells a caller must reserve for one slab: `create MY-SLAB LINT-SLAB:CELLS cells allot`.
+3 constant CELLS
+
+: LOAD ( ptr u8 n ptr a -- ) {: path:ptr pathu:n s:ptr :}
    path pathu FILE-SIZE {: size:n :}
-   path pathu size ENSURE-CAPACITY
-   path pathu BUF@ CAP @ READ-ALL LEN ! ;
+   path pathu size s ENSURE-CAPACITY
+   path pathu s BUF@ s CAP@ READ-ALL s LEN! ;
+
+: TEXT ( ptr a -- ptr u8 n ) {: s:ptr :}
+   s BUF@ s LEN@ ;
+
+;package
+
+\ The one shared slab, for the many linters that hold a single source live:
+\ TOKENIZE callers consume each file before loading the next one, so a larger
+\ later file may replace the backing region while smaller files reuse it.
+package LINT-SOURCE
+
+create SLAB LINT-SLAB:CELLS cells allot
+
+public
+
+: LOAD ( ptr u8 n -- )
+   SLAB LINT-SLAB:LOAD ;
 
 : TEXT ( -- ptr u8 n )
-   BUF@ LEN @ ;
+   SLAB LINT-SLAB:TEXT ;
 
 ;package
 

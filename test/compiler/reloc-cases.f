@@ -246,7 +246,7 @@ create SCAF CHAIN-WORDS cells allot   \ the four scaffold words, read out of hab
    a u a u COMPILER-ID-SRC:CONST@ RELOC-VM:SYM+ ;
 
 : LOAD-COND-SYMS ( -- )
-   MNEM-FILE$ COMPILER-ID-SRC:SCAN-FILE
+   COND-FILE$ COMPILER-ID-SRC:SCAN-FILE
    s" C-EQ" COND-SYM
    s" C-NE" COND-SYM
    s" C-GE" COND-SYM

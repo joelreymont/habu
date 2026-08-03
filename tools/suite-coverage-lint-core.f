@@ -19,6 +19,9 @@
 \   (c) the documented MANUAL-GATE and SPAWN-ONLY sets live in ONE checked table
 \       here, cross-checked for staleness, so adding a suite/file forces a
 \       conscious decision (a new unrouted member goes red).
+\   (f) every suite tools/landing-gate.f declares is a cases member under the
+\       same label, so the merge gate's pin phase cannot run a file the gate does
+\       not, or name a label a rename took away.
 \
 \ Checks (a)-(c) all read the registry in ONE direction: they start from a name a
 \ gate file already wrote down and ask whether something runs it. That direction
@@ -959,6 +962,61 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
 : SC-CHECK-MAKI ( -- )
    0 begin dup SC-MK# @ < while dup SC-CHECK-MAKI-I 1+ repeat drop ;
 
+\ ============================================================================
+\ (f) landing-gate roster: no label or path the gate itself does not carry
+\ ----------------------------------------------------------------------------
+\ tools/landing-gate.f re-declares the committed-pin suites so one command runs
+\ all of them on the exact tree of a landing. WHICH suites belong there is a
+\ judgement and its header states the rule; but a label or path the cases file
+\ does not carry is a mistake a machine catches - it means the landing gate runs
+\ a file the gate does not, or runs it under a label that has been renamed away.
+\ Its rows are parsed with the SAME parser as the cases file, so a member hidden
+\ in a comment or a string is no more a member here than it is there, and each
+\ row has to match a cases row on label AND path.
+: SC-LANDING$ ( -- ptr u8 n )
+   s" tools/landing-gate.f" ;
+
+: SC-LG-ABSENT ( ptr u8 n -- ) {: fp:ptr fu:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: LANDING-GATE-MISSING " type fp fu type
+      s"  does not exist; the landing gate is the merge gate's pin phase" type SC-NL
+   then SC-FIND+ ;
+
+: SC-LG-UNKNOWN ( ptr u8 n ptr u8 n -- ) {: lp:ptr lu:n fp:ptr fu:n :}
+   SC-REPORT? @ if
+      s" suite-coverage: LANDING-GATE-UNKNOWN " type lp lu type
+      s"  member " type fp fu type
+      s"  is not a test/gate-stdlib-cases.f member under that label" type SC-NL
+   then SC-FIND+ ;
+
+: SC-LG-COVERED? ( n n -- bool ) {: k:n base:n :}
+   k SC-CASE-LABEL$ {: lp:ptr lu:n :}
+   k SC-CASE-FILE$ {: fp:ptr fu:n :}
+   0 begin dup base < while
+      dup SC-CASE-LABEL$ lp lu LINT-STR= if
+         dup SC-CASE-FILE$ fp fu LINT-STR= if drop LINT-TRUE exit then
+      then
+      1+
+   repeat drop LINT-FALSE ;
+
+\ Scan landing-gate-shaped TEXT after the cases rows, judge the rows it added,
+\ then drop them again: the landing gate is not itself a cases manifest, so no
+\ other check may see its rows.
+: SC-CHECK-LANDING$ ( ptr u8 n -- ) {: a:ptr u:n :}
+   SC-CASE# @ {: base:n :}
+   SC-SUITE# @ {: suites:n :}
+   a u SC-CASES-SCAN$
+   SC-CASE# @ {: top:n :}
+   top base ?do
+      i base SC-LG-COVERED? 0= if i SC-CASE-LABEL$ i SC-CASE-FILE$ SC-LG-UNKNOWN then
+   loop
+   base SC-CASE# !
+   suites SC-SUITE# ! ;
+
+: SC-CHECK-LANDING ( -- )
+   SC-LANDING$ FILE? 0= if SC-LANDING$ SC-LG-ABSENT exit then
+   SC-LANDING$ SC-SCAN-BUF SC-SCAN-CAP SC-READ SC-CHECK-LANDING$ ;
+
 \ ---- state + report --------------------------------------------------------
 : SC-RESET ( -- )
    0 SC-CASE# !  0 SC-SUITE# !  0 SC-PTX# !  0 SC-PTX-USED !
@@ -975,7 +1033,8 @@ variable SC-MK-AFTER-SUITE                   \ previous token was TEST:SUITE
    SC-CHECK-LINT-REG
    SC-CHECK-MAKI
    SC-CHECK-TEST-ROUTE
-   SC-CHECK-HOST-GATED ;
+   SC-CHECK-HOST-GATED
+   SC-CHECK-LANDING ;
 
 : SC-SUMMARY ( -- )
    s" suite-coverage-lint: " type SC-SUITE# @ SC-U.

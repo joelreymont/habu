@@ -1000,6 +1000,33 @@ T-REPORT
   the right reason, update checker semantics, compiler metadata, primitive
   effects, or boundary typing, then repair any downstream code.
 
+## Commit gate (BLOCKING)
+
+Run on the exact tree that is being landed, from the repository root. Red,
+skipped, or unrun means the bookmark does not move.
+
+1. The suites the change touched, plus `bin/hb --load maki/test.f` and
+   `bin/hb --load tools/host-lint.f`.
+2. **The landing gate: `bin/hb --load tools/landing-gate.f`.** It runs every
+   committed-pin suite — the manifests, inventories, row counts, frozen
+   compiler identities and Rocq parity gates — in one command, one child engine
+   per file, and exits nonzero naming the first red. Its header states which
+   suites belong to it and why the timing and engine-build fixtures do not.
+
+   This step exists because a touched-suite gate cannot see a pin suite: a
+   ratchet goes red because of a landing that never went near it — a library
+   grows past a tool's buffer, a primitive joins the checker's axiom table, a
+   constant moves to a neighbouring file, a dot that owned a trust row is
+   closed. Skip it and the red is found later by whoever runs the full gate,
+   with several landings sharing the blame. It has cost the project three of
+   these already.
+
+   Do not run it in place of the full gate, and do not treat a suite it does
+   not carry as covered: it is the pin phase, not the whole gate.
+3. The two checked diff linters over one Jujutsu artifact
+   (`docs/forth.md` § Packages), plus `tools/suite-coverage-lint.f`,
+   `tools/error-code-lint.f` and the dot lint.
+
 ## Comments & hygiene
 
 - `\` line comments, terse. No restating what the code obviously does.

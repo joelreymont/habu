@@ -67,7 +67,7 @@ that source is explicitly certified; they are not stale-checked by the default
 | XREF-PATCH32 | `n ptr a --` | Explicit `undefine` retires dictionary records by patching raw wordlist/status cells inside the live dictionary; the record layout is outside checked pointer inference. | `tools/xref-test.f`, `test/gate-dictionary.f`, `test/run.f` | src/habu/xref.f | 2026-06-30 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | SEAL-LATCH@ | `-- n` | Reads the friend-arena seal latch from the sealed DATA band by raw `data-base` offset; a raw state cell (0 open / sealed) outside checked pointer/role inference. Used by the FORGET/HIDE truncation guard. | `test/seal.f`, `test/run.f` | src/habu/xref.f | 2026-07-05 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | SEAL-NDICT@ | `-- n` | Reads the seal-time ndict truncation watermark from the sealed DATA band by raw `data-base` offset; a raw state cell outside checked inference. Used by the FORGET/HIDE truncation guard. | `test/seal.f`, `test/run.f` | src/habu/xref.f | 2026-07-05 | builder-emit | habu-builder-trust-rows-c5d41af6 |
-| WATCH-AT | `n -- ptr [ n -- ]` | Code-reclamation watcher-table slot cast: the table cell holds a callback token whose address is a run-time index into a `create`d table, so `defer`/`is` cannot name it and the fetch has no other way to recover the declared `( n -- )` effect. The store is `xt!`, which also declares the cell to the engine's address table. | `test/compiler/native-clobber.f`, `test/compiler/native-inline.f`, `test/gate-stdlib-cases.f` | src/habu/xref.f | 2026-08-03 | stdlib-boundary | habu-tie-native-rows-2103f90f |
+| WATCH-AT | `n -- ptr [ n -- ]` | Code-reclamation watcher-table slot cast: the table cell holds a callback token whose address is a run-time index into a `create`d table, so `defer`/`is` cannot name it and the fetch has no other way to recover the declared `( n -- )` effect. The store is `xt!`, which also declares the cell to the engine's address table. The boundary narrows when a prim row can demand a quotation operand of any effect. | `test/compiler/native-clobber.f`, `test/compiler/native-inline.f`, `test/gate-stdlib-cases.f` | src/habu/xref.f | 2026-08-03 | stdlib-boundary | habu-add-a-quotation-1610f30c |
 | c-crash-entry | `--` | Target signal entry register shuffle is raw ABI-specific ARM64; it only mutates generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | c-crash-mctx>r21 | `--` | Target ucontext-to-mcontext addressing is ABI-specific raw register code. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 | builder-emit | habu-builder-trust-rows-c5d41af6 |
 | c-crash-xreg>r9 | `--` | Crash dump register extraction walks target mcontext layout in generated registers. | `test/gate-debug.f`, `test/run.f` | src/habu/crash.f | 2026-06-30 | builder-emit | habu-builder-trust-rows-c5d41af6 |
@@ -512,8 +512,8 @@ that source is explicitly certified; they are not stale-checked by the default
 | FFI-T-SQRT-CALL | `r -- r` | Test-only exact libm square-root binding returns one floating result. | `lib/ffi-test.f` | lib/ffi-test.f | 2026-07-11 | stdlib-boundary | habu-ptx-m1-c-1df1d6e7 |
 | TASK-N>PTR | `n -- ptr a` | Reinterpret task-control-block cell storage as a pointer when loading the current task pointer. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 | stdlib-boundary | habu-typed-defining-words-aa224eb5 |
 | TASK-PATCH | `n n --` | Code-emission boundary: emits JIT task-trampoline instructions via `patch32`, a TRUSTED-only capability primitive (machine-code sink, rejected from CHECKED code as E-CAP-TRUSTED). | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-07-09 | stdlib-boundary | habu-checker-capability-gate-14022ba9 |
-| POKE | `n ptr a --` | Code-emission boundary: writes one 32-bit word into the engine's code arena or into a dictionary record through `patch32`, the TRUSTED-only capability primitive that flips the region writable, stores, restores execute permission and syncs the instruction cache. Neither the value nor the address is chosen here: both are computed by the checked words that read the sealed emission and resolve the record. | `test/compiler/native-publish.f`, `test/compiler/native-migrate.f` | src/compiler/native/publish.f | 2026-08-01 | stdlib-boundary | habu-migrate-the-first-fe78ec52 |
-| EV | `ptr u8 n --` | Metaprogramming boundary: hands one definition's source to `evaluate` so the engine compiles and publishes it through its ordinary interpret path while the tape recorder is armed. The checker does not model `evaluate`, and no checked construction can put a definition through the engine's own compile path. | `test/compiler/native-migrate.f` | src/compiler/native/migrate.f | 2026-08-01 | stdlib-boundary | habu-migrate-the-first-fe78ec52 |
+| POKE | `n ptr a --` | Code-emission boundary: writes one 32-bit word into the engine's code arena or into a dictionary record through `patch32`, the TRUSTED-only capability primitive that flips the region writable, stores, restores execute permission and syncs the instruction cache. Neither the value nor the address is chosen here: both are computed by the checked words that read the sealed emission and resolve the record. | `test/compiler/native-publish.f`, `test/compiler/native-migrate.f` | src/compiler/native/publish.f | 2026-08-01 | stdlib-boundary | habu-checker-capability-gate-14022ba9 |
+| EV | `ptr u8 n --` | Metaprogramming boundary: hands one definition's source to `evaluate` so the engine compiles and publishes it through its ordinary interpret path while the tape recorder is armed. The checker does not model `evaluate`, and no checked construction can put a definition through the engine's own compile path. | `test/compiler/native-migrate.f` | src/compiler/native/migrate.f | 2026-08-01 | stdlib-boundary | habu-parse-a-migrated-b38a83d9 |
 | EV | `ptr u8 n --` | Metaprogramming boundary: hands one definition's source to `evaluate` so the engine compiles and publishes it exactly as a definition typed at top level is. The end-to-end workload measurement needs this to compile ONE driver body twice, once on each side of a migration, under two different search orders: a name lives in a dictionary record, so two arms of one workload cannot be two top-level definitions of one name, and nothing checked can put a definition through the engine's own compile path. Public so the acceptance suite publishes its inline-rule fixtures through the same single boundary rather than opening a second one. | `tools/codegen-workload-test.f` | tools/codegen-workload-hot.f | 2026-08-03 | test-metaprog | habu-parse-a-migrated-b38a83d9 |
 | TASK-CELL>PTR-SLOT | `ptr a -- ptr ptr a` | Reinterpret a data-region cell address as a pointer-valued slot; the checker cannot infer the slot payload type from the offset. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 | stdlib-boundary | habu-typed-defining-words-aa224eb5 |
 | TASK | `n --` | Defining word that allocates a task control-block record and returns it through DOES>; CREATE/DOES> effect is outside checker inference. | `lib/task-test.f`, `test/gate-stdlib.f` | lib/task.f | 2026-06-30 | stdlib-boundary | habu-typed-defining-words-aa224eb5 |
@@ -1749,6 +1749,97 @@ src/habu/snap-lib.f:CHECK-HOOK builder-emit cap:checker-hook-identity
 test/engine-suite.f:ES-VERDICT-HOOK test-metaprog cap:checker-hook-identity
 test/prop-test-core.f:PROP-CHECK-HOOK test-metaprog cap:checker-hook-identity
 tools/codegen-role.f:CGR-HOOK test-metaprog cap:checker-hook-identity
+test/compiler/checker-model-cases.f:MK-REGION test-metaprog habu-model-t-atom-8110cc18
+test/compiler/checker-model-cases.f:MK-GEN test-metaprog habu-model-t-atom-8110cc18
+test/compiler/checker-model-cases.f:MK-REGION-PAIR test-metaprog habu-model-t-atom-8110cc18
+test/compiler/checker-model-cases.f:SAME-ID test-metaprog habu-model-t-atom-8110cc18
+test/compiler/insn-schema.f:ASM-INIT test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:CW@ test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:CODE-BYTE+ test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ASM-LEN test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LBL test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LBL, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:MOVZHW test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:MOVNHW test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:EMITW test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:MOVZ, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:MOVN, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:MOVK, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ADD, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:SUB, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:AND, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ORR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:EOR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:MUL, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:SDIV, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:UDIV, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LSLV, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LSRV, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ADDI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:SUBI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ANDI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ORRI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:EORI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LSLI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LSRI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ASRI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LDR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:STR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LDRB, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:STRB, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LDRW, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:STRW, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:LDAR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:STLR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:CMP, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:CMPI, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:CSET, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:B, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:BL, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:BCOND, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:CBZ, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:CBNZ, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ADR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:SVC, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:RET, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:BRK, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:NOP, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:DSB-ISH, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ISB, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:BLR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:BR, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:ICIVAU, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:DCCVAU, test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/insn-schema.f:>LIMM test-metaprog habu-give-the-standalone-8cc02435
+test/compiler/native-chain.f:EV test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-chain.f:EV-N test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-clobber.f:EV test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-clobber.f:EV-N test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-feed.f:EV test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-feed.f:EV-N test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-feed.f:EV-CATCH test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-feed.f:FAKE-SCAN test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-feed.f:FAKE-TOKEN test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-inline.f:EV test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-inline.f:EV-N test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-migrate.f:EV test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-migrate.f:EV-N test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-publish.f:EV test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-publish.f:EV-N test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-publish.f:CODE-A test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:POKE test-metaprog habu-checker-capability-gate-14022ba9
+test/compiler/native-run-fixture.f:EXEC0 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:EXEC1 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:EXEC2 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:EXEC3 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:ENTER0 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:ENTER1 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:ENTER2 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:ENTER3 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:ENTER-SPAN test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-run-fixture.f:ENTER-SPAN1 test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-vocab.f:EV test-metaprog habu-discharge-the-native-7666552f
+test/compiler/native-vocab.f:EV-N test-metaprog habu-discharge-the-native-7666552f
 -->
 
 ## Primitive-effect inventory
@@ -1843,6 +1934,7 @@ prim - char+ - pe-ptr-a pe-in pe-ptr-a pe-out
 prim - char+ - pe-n pe-in pe-n pe-out
 prim - @ - pe-ptr-a pe-in pe-a pe-out
 prim - ! - pe-a pe-in pe-ptr-a pe-in
+prim - xt! - pe-a pe-in pe-ptr-a pe-in
 prim - ptr-field - pe-ptr-a pe-in pe-n pe-in pe-ptr-ptr-b pe-out
 prim - +! - pe-n pe-in pe-ptr-n pe-in
 prim - c@ - pe-ptr-u8 pe-in pe-u8 pe-out
@@ -2054,8 +2146,14 @@ pprim lower-cert cell-count - pe-n pe-out
 pprim lower-cert cell@ - pe-n pe-in pe-n pe-out
 pprim lower-cert bytes trusted-only pe-ptr-u8 pe-out pe-n pe-out
 pprim lower-cert-hook hook - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-out
-pprim checker-cert install - pe-n pe-in
+pprim checker-cert install - pe-q pe-ptr-u8 pe-qin pe-n pe-qin pe-n pe-qin ;pe-q pe-in
 pprim checker-cert produce - pe-ptr-u8 pe-in pe-n pe-in pe-n pe-in
+pprim checker-tape install - pe-q pe-ptr-u8 pe-qin pe-n pe-qin ;pe-q pe-in pe-q pe-ptr-u8 pe-qin pe-n pe-qin pe-n pe-qin pe-n pe-qin pe-n pe-qin ;pe-q pe-in pe-q pe-ptr-u8 pe-qin pe-n pe-qin pe-n pe-qin ;pe-q pe-in
+pprim checker-tape arm - -
+pprim checker-tape disarm - -
+pprim checker-tape k-name - pe-n pe-out
+pprim checker-tape k-int - pe-n pe-out
+pprim checker-tape k-real - pe-n pe-out
 prim - p2-locseq-reset - -
 prim - p2-carve-w - pe-n pe-in pe-n pe-out
 prim - p2-live-w@ - pe-n pe-in pe-n pe-out
