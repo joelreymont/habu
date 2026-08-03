@@ -300,7 +300,6 @@ create LF-BYTE 10 c,
    LINT-FALSE CORE-SETUP
    s" tools/checked-boundary-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/json-file.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/host-lint.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/checked-boundary-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/hook-sites.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/signature-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
@@ -310,8 +309,6 @@ create LF-BYTE 10 c,
    s" tools/typed-local-diff-lint-test.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/stale-status-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
    s" tools/stale-status-lint.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/trust-lint-core.f" CHECKED-BOUNDARY-LINT:FILE
-   s" tools/trust-lint.f" CHECKED-BOUNDARY-LINT:FILE
    CORE-FINISH ;
 
 : RUN-CORE-FILE ( ptr u8 n bool -- n n outcome ) {: path:ptr pathu:n strict:bool :}
@@ -463,8 +460,8 @@ create LF-BYTE 10 c,
    OUT outu s" UNAUDITED-TOP-HOOK" CONTAINS? TFALSE ;
 
 \ Registry paths are the committed repo-relative spellings and are matched
-\ exactly, the same rule the trusted-inventory census enforces. A `./`-prefixed
-\ spelling of a real site is therefore unaudited, not silently normalized.
+\ exactly. A `./`-prefixed spelling of a real site is therefore unaudited, not
+\ silently normalized.
 : TEST-DOT-SITES ( -- )
    RUN-DOT-SITES 1 EXPECT-EXIT {: outu:n erru:n :}
    erru 0 T=

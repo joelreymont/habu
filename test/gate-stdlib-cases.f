@@ -19,16 +19,8 @@ SUITE repl-lint
    tools/repl-lint.f
 ;SUITE
 
-SUITE trust-lint
-   tools/trust-lint.f
-;SUITE
-
 SUITE stale-status-lint
    tools/stale-status-lint.f
-;SUITE
-
-SUITE host-lint
-   tools/host-lint.f
 ;SUITE
 
 SUITE ptx-emitter-lint
@@ -76,11 +68,6 @@ SUITE refine-lint-fixtures
    tools/refine-lint-test.f
 ;SUITE
 
-SUITE suite-coverage-lint
-   tools/suite-coverage-lint.f
-   tools/suite-coverage-lint-test.f
-;SUITE
-
 SUITE namespace-lint
    tools/namespace-lint.f
 ;SUITE
@@ -121,22 +108,6 @@ SUITE diff-frame-codec
    tools/lint/diff-frame-test.f
 ;SUITE
 
-SUITE stdlib-manifest
-   tools/stdlib-manifest-test.f
-;SUITE
-
-SUITE host-lint-fixtures
-   tools/host-lint-test.f
-;SUITE
-
-SUITE trusted-inventory
-   tools/trusted-inventory-test.f
-;SUITE
-
-SUITE primitive-effect-inventory
-   tools/primitive-effect-inventory-test.f
-;SUITE
-
 SUITE json-file-cursor
    tools/json-file-test.f
 ;SUITE
@@ -149,8 +120,7 @@ SUITE imagedisasm-tool
    tools/imagedisasm-test.f
 ;SUITE
 
-SUITE tool-boundary-trust
-   tools/trust-lint-test.f
+SUITE tool-boundary-aot-call
    tools/aot-call-report-test.f
 ;SUITE
 
@@ -299,9 +269,8 @@ SUITE compiler-native-immediate
 \ The scheduled run prints one line naming the comparison it did not make, and
 \ the timed check is bin/hb --load tools/codegen-compare.f, run by hand before a
 \ change that is meant to move the numbers. The member is mirrored into the
-\ resident stdlib/tail-pure fork group, so it is scheduled rather than
-\ manual-gate, and nothing is entered for it in the manual-gate table of
-\ tools/suite-coverage-lint-core.f.
+\ resident stdlib/tail-pure fork group, so it is scheduled rather than run by
+\ hand.
 \
 \ NO ASSERTION THE MEMBER RUNS READS A CLOCK, and that is deliberate rather than
 \ incidental: a cost-direction assertion on the third corpus's T-SUM row failed
@@ -342,8 +311,7 @@ SUITE codegen-compare
 \ in tools/codegen-workload-timed-test.f, run by hand beside that entry and
 \ listed in no suite, exactly as tools/codegen-compare-timed-test.f is. The
 \ member is mirrored into the resident stdlib/tail-pure fork group, so it is
-\ scheduled rather than manual-gate, and nothing is entered for it in the
-\ manual-gate table of tools/suite-coverage-lint-core.f.
+\ scheduled rather than run by hand.
 SUITE codegen-workload
    tools/codegen-workload-test.f
 ;SUITE
@@ -418,44 +386,41 @@ SUITE compiler-native-vocab
 
 \ The identity parity gate compiles formal/Common with the Rocq proof assistant
 \ and spawns child engines, so it runs here in the standalone stdlib gate and is
-\ documented manual-gate in tools/suite-coverage-lint-core.f, not mirrored into
-\ the resident fast tier.
+\ not mirrored into the resident fast tier.
 SUITE compiler-ir-id-proof
    test/compiler/ir-id-proof.f
 ;SUITE
 
 \ The interning parity gate compiles formal/Common/Interning.v with the Rocq
-\ proof assistant for the same reason, so it runs here and is documented
-\ manual-gate in tools/suite-coverage-lint-core.f alongside its sibling.
+\ proof assistant for the same reason, so it runs here alongside its sibling.
 SUITE compiler-ir-intern-proof
    test/compiler/ir-intern-proof.f
 ;SUITE
 
 \ The structure parity gate compiles formal/Common/Structure.v with the Rocq
-\ proof assistant for the same reason, so it runs here and is documented
-\ manual-gate in tools/suite-coverage-lint-core.f alongside its two siblings.
+\ proof assistant for the same reason, so it runs here alongside its two
+\ siblings.
 SUITE compiler-ir-structure-proof
    test/compiler/ir-structure-proof.f
 ;SUITE
 
 \ The storage and lifetime parity gate compiles formal/Common/Storage.v with the
-\ Rocq proof assistant for the same reason, so it runs here and is documented
-\ manual-gate in tools/suite-coverage-lint-core.f alongside its two siblings.
+\ Rocq proof assistant for the same reason, so it runs here alongside its two
+\ siblings.
 SUITE compiler-ir-storage-proof
    test/compiler/ir-storage-proof.f
 ;SUITE
 
 \ The checker model parity gate compiles formal/Common/Effects.v and
 \ formal/Common/Control.v with the Rocq proof assistant for the same reason, so
-\ it runs here and is documented manual-gate in tools/suite-coverage-lint-core.f
-\ alongside its three siblings.
+\ it runs here alongside its three siblings.
 SUITE checker-model-proof
    test/compiler/checker-model-proof.f
 ;SUITE
 
 \ The snapshot relocation parity gate compiles formal/Common/Reloc.v with the
-\ Rocq proof assistant for the same reason, so it runs here and is documented
-\ manual-gate in tools/suite-coverage-lint-core.f alongside its siblings.
+\ Rocq proof assistant for the same reason, so it runs here alongside its
+\ siblings.
 SUITE compiler-reloc-proof
    test/compiler/reloc-proof.f
 ;SUITE
@@ -463,8 +428,7 @@ SUITE compiler-reloc-proof
 \ The instruction-encoding parity gate compiles formal/Common/Insn.v with the
 \ Rocq proof assistant and spawns child engines for the encodings the shipped
 \ assembler refuses by ending the process, so it runs here in the standalone
-\ stdlib gate and is documented manual-gate in tools/suite-coverage-lint-core.f
-\ alongside its four siblings.
+\ stdlib gate alongside its four siblings.
 SUITE compiler-insn-proof
    test/compiler/insn-proof.f
 ;SUITE

@@ -9,7 +9,7 @@
 \
 \ These are PTX PRIMITIVES: the checker cannot infer a body that lowers to PTX, so
 \ the phantom-MINTING contexts and loads are TRUSTED: boundaries whose declared
-\ effect is the contract (see TRUSTED.md). The phantom-CONSUMING stores return
+\ effect is the contract. The phantom-CONSUMING stores return
 \ nothing, so they are CHECKED callers of the PTXREP:SINK* combinators
 \ (lib/ptx/rep.f) — the operand registers flow through the ( n … -- ) emitter and
 \ no phantom is minted. Kernels are CHECKED here, not run.

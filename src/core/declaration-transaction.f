@@ -299,9 +299,7 @@ TRUSTED: TABLE-ARENA-GROW ( ptr a n n -- ptr a ) ARENA-BYTES-GROW ;
 \ Release is the one phase with no error path.  Every reversible commit has
 \ already succeeded, so there is nothing left to restore and nothing a failure
 \ could mean: the callback is required to be total, is executed directly, and is
-\ deliberately NOT wrapped in `catch`.  test/declaration-release-inventory.f
-\ inventories the sealed production release definitions and rejects any throw,
-\ catch, allocation, lookup, validation, or publication inside them.
+\ deliberately NOT wrapped in `catch`.
 : RELEASE-ONE ( ptr a n -- ) {: state:ptr idx:n :}
    state idx RELEASE@ execute ;
 

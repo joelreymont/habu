@@ -15,7 +15,6 @@ require lib/fs-mutate.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/trust-lint-core.f
 require tools/refine-lint-core.f
 
 package RFL-TEST
@@ -28,17 +27,14 @@ package RFL-TEST
 
 variable ROOT-U
 variable FILE-U
-variable MAN-U
 
 create ROOT-BUF FS-PATH-CAP allot
 create FILE-BUF FS-PATH-CAP allot
-create MAN-BUF FS-PATH-CAP allot
 create OUT-BUF OUT-CAP allot
 create RAW-NAME-BUF 64 allot
 
 : ROOT$ ( -- ptr u8 n ) ROOT-BUF ROOT-U @ ;
 : FILE$ ( -- ptr u8 n ) FILE-BUF FILE-U @ ;
-: MAN$ ( -- ptr u8 n ) MAN-BUF MAN-U @ ;
 
 : ROOT! ( ptr u8 n -- ) {: a:ptr u:n :}
    a ROOT-BUF u BYTE-COPY
@@ -48,22 +44,9 @@ create RAW-NAME-BUF 64 allot
 : IR-NL ( -- ) 10 SB-APPEND-C ;
 
 : SETUP ( -- )
-   RFL:BUFFERS
    RFL:RESET
-   RFL:INVENTORY
-   RFL:FINDINGS 0 T= ;                             \ seed/manifest cross-check is clean
-
-: SHAPE ( -- )
-   s" n -- CAD-KIND:rows" RFL:MINT-SHAPE? TTRUE
-   s" n -- MIR:input-slot" RFL:MINT-SHAPE? TTRUE
-   s" ptr n -- ptr CAD-KIND:dim" RFL:MINT-SHAPE? TTRUE
-   s" CAD-KIND:rows -- n" RFL:MINT-SHAPE? TFALSE       \ projection direction stays per-site policy
-   s" n -- tensor" RFL:MINT-SHAPE? TFALSE              \ bare-nominal mints are seed-only
-   s" n n -- matrix<space-global,f32,m,q>" RFL:MINT-SHAPE? TFALSE
-   s" ptr u8 n -- bool" RFL:MINT-SHAPE? TFALSE
-   s" -- CAD-KIND:dim" RFL:MINT-SHAPE? TFALSE          \ no raw input to refine
-   s" n -- rows:" RFL:MINT-SHAPE? TFALSE               \ edge colons are not family tokens
-   s" n -- :rows" RFL:MINT-SHAPE? TFALSE ;
+   RFL:LIVENESS
+   RFL:FINDINGS 0 T= ;                             \ every seed is still declared by its owner
 
 : DETECT ( -- )
    s" 7 ROWS-REFINE drop" RFL:COUNT-STR 1 T=
@@ -527,7 +510,7 @@ create RAW-NAME-BUF 64 allot
 : CONFINE-POLICY ( -- )
    \ owner file is allowed
    s" maki/tensor.f" s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 0 T=
-   \ a file cited by the mint's TRUSTED.md Tests cell is allowed
+   \ the mint owner's own module test is allowed
    s" maki/model-ir-test.f" s" 0 RAW>SLOT drop" RFL:COUNT-STR-AT 0 T=
    s" maki/async-dag.f" s" 0 RAW>ANODE drop" RFL:COUNT-STR-AT 0 T=
    s" maki/async-dag-test.f" s" 0 RAW>ASTREAM drop" RFL:COUNT-STR-AT 0 T=
@@ -545,7 +528,7 @@ create RAW-NAME-BUF 64 allot
    s" maki/eval/eval.f" s" 1 COLS-REFINE drop" RFL:COUNT-STR-AT 1 T=
    \ reset clears the allowlist
    RFL:RESET
-   RFL:INVENTORY
+   RFL:LIVENESS
    s" maki/eval/eval.f" s" 1 ROWS-REFINE drop" RFL:COUNT-STR-AT 1 T= ;
 
 : RED-PREPARE ( -- )
@@ -554,9 +537,7 @@ create RAW-NAME-BUF 64 allot
    ROOT$ CLEANUP-DIR+
    ROOT$ s" mint.f" FILE-BUF JOIN-PATH FILE-U !
    FILE$ CLEANUP+
-   FILE$ s" : FORGE ( n -- n ) ROWS-REFINE ROWS-RAW ;" WRITE-ALL
-   ROOT$ s" TRUSTED.md" MAN-BUF JOIN-PATH MAN-U !
-   MAN$ CLEANUP+ ;
+   FILE$ s" : FORGE ( n -- n ) ROWS-REFINE ROWS-RAW ;" WRITE-ALL ;
 
 : RED-SCAN ( -- ptr u8 n )                 \ captured finding output; RFL:FINDINGS holds count
    RFL:CLEAR-FINDINGS
@@ -573,34 +554,6 @@ create RAW-NAME-BUF 64 allot
    oa ou s" ROWS-REFINE" LINT-CONTAINS? TTRUE
    oa ou s" ` referenced outside owner maki/tensor.f" LINT-CONTAINS? TTRUE
    RFL:CLEAR-FINDINGS ;
-
-\ ---- synthetic-manifest coverage for the anti-rot ratchet -------------------
-
-: LF ( -- ) 10 SB-APPEND-C ;
-
-: MAN-HEADER ( -- )
-   s" | Word | Effect | Reason | Tests | Site | Last audited |" SB-APPEND LF
-   s" |------|--------|--------|-------|------|--------------|" SB-APPEND LF ;
-
-: SHAPE-MAN$ ( -- ptr u8 n )
-   SB-RESET MAN-HEADER
-   s" | FAKE-MINT | `n -- CAD-KIND:fake` | test | `maki/fake-test.f` | maki/fake.f | 2026-07-13 |" SB-APPEND LF
-   SB$ ;
-
-: MAN-LOAD ( ptr u8 n -- ) {: a:ptr u:n :}
-   MAN$ a u WRITE-ALL
-   ROOT$ TRUST-LINT-ROOT!
-   TRUST-LINT-RESET
-   TL-SCAN-MANIFEST ;
-
-: NEW-MINT-RED ( -- )
-   SHAPE-MAN$ MAN-LOAD
-   RFL:REPORT-OFF
-   RFL:CLEAR-FINDINGS
-   RFL:SHAPE-SCAN
-   RFL:FINDINGS 1 T=                               \ an unseeded mint-shaped row is a finding
-   RFL:CLEAR-FINDINGS
-   RFL:REPORT-ON ;
 
 \ ---- source-derived anti-rot ratchet ----------------------------------------
 \ Seed 1 is ROWS-REFINE (owner maki/tensor.f). STALE-SEED liveness now comes from
@@ -628,16 +581,15 @@ create RAW-NAME-BUF 64 allot
    \ both declarer forms keep it live and confined (REFINE-CONFINE red-first each):
    s" TRUSTED: ROWS-REFINE ( n -- CAD-KIND:rows ) ;" FORM-CONFINED
    s" CAST: ROWS-REFINE ( n -- CAD-KIND:rows ) ;"    FORM-CONFINED
-   \ the manifest Tests cell is no longer consulted: MINT-PATH's old row cited
-   \ lib/nominal/nominal-test.f, which is not <owner-stem>-test.f, so absent an
-   \ RFL:ALLOW+ entry it is now a finding - the semantics genuinely changed.
+   \ MINT-PATH is exercised from lib/nominal/nominal-test.f, which is not
+   \ <owner-stem>-test.f, so absent an RFL:ALLOW+ entry it is a finding.
    s" lib/nominal/nominal-test.f" s" 1 MINT-PATH drop" RFL:COUNT-STR-AT 1 T=
    RFL:CLEAR-FINDINGS
    RFL:REPORT-ON ;
 
 : RESTORE ( -- )
    RFL:RESET
-   RFL:INVENTORY                                \ back to the real TRUSTED.md
+   RFL:LIVENESS
    RFL:FINDINGS 0 T=
    CLEANUP-RUN ;
 
@@ -650,7 +602,6 @@ public
 : MAIN ( -- )
    T-RESET
    SETUP
-   SHAPE
    DETECT
    NO-FALSE-POSITIVE
    RAW-TABLE-COVERAGE
@@ -664,7 +615,6 @@ public
    ALLOWLIST
    RED-PREPARE
    RED
-   NEW-MINT-RED
    DRIFT-RED
    RESTORE
    LIVE

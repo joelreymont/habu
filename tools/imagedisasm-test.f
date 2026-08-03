@@ -16,7 +16,6 @@ require tools/imagedisasm.f
 
 $4000 constant IMDT-CAP
 10000 constant IMDT-TIMEOUT-MS
-30000 constant IMDT-TRUST-TIMEOUT-MS
 
 create IMDT-OUT IMDT-CAP allot
 create IMDT-ERR IMDT-CAP allot
@@ -78,15 +77,6 @@ variable IMDT-LDRB-U
    s" tools/imagedisasm.f" IMDT-ARG+
    s" --" IMDT-ARG+ ;
 
-: IMDT-TRUST-ARGV ( -- )
-   PROC-ARGV-RESET
-   s" --load" IMDT-ARG+
-   s" tools/trust-lint.f" IMDT-ARG+
-   s" --" IMDT-ARG+
-   s" source-only" IMDT-ARG+
-   s" tools/imagedisasm.f" IMDT-ARG+
-   s" ." IMDT-ARG+ ;
-
 : IMDT-RUN ( ptr u8 n ptr u8 n ptr u8 n -- len len outcome )
    {: path:ptr pathu off:ptr offu count:ptr countu :}
    IMDT-ARGV-BASE
@@ -95,11 +85,6 @@ variable IMDT-LDRB-U
    count countu IMDT-ARG+
    s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
    IMDT-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
-
-: IMDT-RUN-TRUST ( -- len len outcome )
-   IMDT-TRUST-ARGV
-   s" bin/hb" >LEN IMDT-OUT IMDT-CAP >LEN IMDT-ERR IMDT-CAP >LEN
-   IMDT-TRUST-TIMEOUT-MS >MS RUN-ARGV-CAPTURE-OUTCOME ;
 
 : IMDT-EXPECT-EXIT ( len len outcome n -- n n ) {: expect:n :}
    expect T-OUTCOME-EXITED=
@@ -124,11 +109,6 @@ variable IMDT-LDRB-U
    IMDT-RET$ s" 4" s" 1" IMDT-RUN 74 IMDT-EXPECT-EXIT {: outu erru :}
    outu 0 T=
    IMDT-ERR erru s" imagedisasm: range outside image" CONTAINS? TTRUE ;
-
-: IMDT-TEST-TRUST ( -- )
-   IMDT-RUN-TRUST 0 IMDT-EXPECT-EXIT {: outu erru :}
-   erru 0 T=
-   IMDT-OUT outu s" TRUST site(s), " CONTAINS? TTRUE ;
 
 \ switchover wave A: the imagedisasm number parsers return option<n> (SOME
 \ parsed value, else NONE). Both branches through IMGD>NUMBER? ($hex, decimal,
@@ -158,7 +138,6 @@ variable IMDT-LDRB-U
    IMDT-TEST-HEX-OFFSET
    IMDT-TEST-LDRB
    IMDT-TEST-RANGE
-   IMDT-TEST-TRUST
    CLEANUP-RUN
    T-REPORT
    s" imagedisasm-test: ok" type cr ;

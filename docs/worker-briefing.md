@@ -28,11 +28,6 @@ the gate files are the source of truth.
   copy the measured numbers. Arithmetic predictions have been wrong twice.
 - macOS rows are OWED, never guessed. Update linux-arm64 rows only.
 
-## TRUSTED.md
-
-- Any row you add cites a STANDING long-term dot as owner — never your own
-  lane's dot, which closes at merge and reds the strict lint on the next gate.
-
 ## Gates and evidence
 
 - Run gates as `... > /tmp/<name>.log 2>&1; echo $?` then
@@ -50,8 +45,8 @@ the gate files are the source of truth.
 ## Test registration
 
 - Register new tests in `test/gate-stdlib-cases.f` and
-  `test/gate-stdlib-inline-lib.f`. Confirm with the suite-coverage lint, reading
-  the findings lines, not exit codes (same for `tools/dot-dep-lint.f`).
+  `test/gate-stdlib-inline-lib.f`. Read the findings lines, not exit codes
+  (same for `tools/dot-dep-lint.f`).
 
 ## Forth policy
 

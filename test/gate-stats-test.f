@@ -230,7 +230,7 @@ variable GST-GEN-SAVE-U
 \ Pin the fork-child suppression's label selectivity: a child whose slot label
 \ is "slot label" emits three SIBLING completion spans, none of which carries
 \ that slot label - the shape a real fork worker like GSI-LINT-TOOLS-STATUS
-\ produces (repl-lint / trust-lint / stale-status-lint / gate-stats-test.f, none
+\ produces (repl-lint / stale-status-lint / gate-stats-test.f, none
 \ equal to its "lint-tools/status" pool label). GS-CHILD-OWNED? keys on the
 \ qualified slot identity, so it suppresses NONE of them; all three are counted
 \ (same generation, different label bytes). A label-free

@@ -19,7 +19,7 @@
 \ These words consume `coopctx`, not the elementwise `gridctx`: every block lane must
 \ reach `bar.sync`, so bounds are not allowed to branch lanes out before staging.
 \ STAGE / SLOAD MINT a phantom (shared span / register tile), so they stay TRUSTED:
-\ boundaries whose declared effect is the contract (TRUSTED.md); the phantom-CONSUMING
+\ boundaries whose declared effect is the contract; the phantom-CONSUMING
 \ SSTORE returns nothing, so it is a CHECKED caller of PTXREP:SINK3 (lib/ptx/rep.f).
 \ The emit lowers to PTX cp.async/ld.shared/st.shared + barriers the checker cannot
 \ infer. Load after lib/ptx/tile.f.

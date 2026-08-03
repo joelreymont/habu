@@ -14,12 +14,8 @@
 \ The mint set is a seed list of (name, owner) pairs. Its liveness is
 \ source-derived: each seed must be declared in its owner file via CAST: or
 \ TRUSTED:, else STALE-SEED fires (the declaration was retired or moved - retire
-\ or update the seed). A signature-shape scan over TRUSTED.md flags NEW
-\ mint-shaped manifest rows (a raw `n` input producing a colon-qualified
-\ nominal-family output) that are missing from the seed list (NEW-MINT), so the
-\ seed list cannot silently rot as TRUSTED: mints are added. Bare-nominal mints
-\ such as RAW>TENSOR (`n -- tensor`) and the importer projections are seed-only:
-\ the shape scan covers the qualified CAD-KIND:/MIR: family namespace.
+\ or update the seed). A new mint is added to the seed list by the dot that
+\ declares it; nothing here reads a repository-wide manifest.
 \
 \ INTERIM enforcement only: the principled endpoint is the TVK-RAW checker
 \ capability (dot habu-nominal-storage-raw-a3430ef2), which closes the mint
@@ -35,12 +31,11 @@
 \ comments and strings cannot forge or hide package/public state. Matching is
 \ case-insensitive (the dictionary is case-insensitive) and also catches
 \ qualified `PKG:NAME` references. Scanned roots: maki/ lib/ src/ tools/ test/.
-\ Owner liveness reads the owner source; NEW-MINT rows are read through
-\ tools/trust-lint-core.f (TL-M-*).
+\ Owner liveness reads the owner source.
 \
 \ Load after lib/date.f, lib/errors.f, lib/string.f, lib/memory.f, lib/fs.f,
-\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f,
-\ tools/lint/source-lex.f, and tools/trust-lint-core.f.
+\ tools/lint/text.f, tools/lint/token.f, tools/lint/lib.f, and
+\ tools/lint/source-lex.f.
 
 require lib/vector.f
 require tools/lint/source-lex.f
@@ -50,7 +45,6 @@ package RFL
 
 private
 
-$40000 constant STR-CAP     \ trust-lint manifest string store
 $80000 constant FILE-CAP    \ largest scanned source watermark (checker.f class)
 69 constant TOKEN-SEED#
 95 constant SEED#
@@ -91,7 +85,6 @@ create ALW-NU ALLOW-MAX cells allot
 create ALW-PO ALLOW-MAX cells allot
 create ALW-PU ALLOW-MAX cells allot
 
-variable STR-A
 variable FILE-A
 variable BAD
 variable ALLOW#
@@ -109,7 +102,6 @@ variable DEF-OPEN
 variable DEF-KIND
 variable DEF-LINE
 
-: STR-A-FIELD ( -- ptr ptr u8 ) STR-A 0 ptr-field ;
 : FILE-A-FIELD ( -- ptr ptr u8 ) FILE-A 0 ptr-field ;
 : CUR-A-FIELD ( -- ptr ptr u8 ) CUR-A 0 ptr-field ;
 : ALW-NO-FIELD ( n -- ptr ptr u8 ) cells ALW-NO + 0 ptr-field ;
@@ -120,25 +112,11 @@ variable DEF-LINE
 
 : FAIL ( ptr u8 n -- ) 76 die ;
 
-: STR-BUF ( -- ptr u8 )
-   STR-A @ 0= if
-      STR-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop STR-A-FIELD !
-   then
-   STR-A-FIELD @ ;
-
 : FILE-BUF ( -- ptr u8 )
    FILE-A @ 0= if
       FILE-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop FILE-A-FIELD !
    then
    FILE-A-FIELD @ ;
-
-public
-
-: BUFFERS ( -- )
-   STR-BUF STR-CAP
-   FILE-BUF FILE-CAP
-   TRUST-LINT-BUFFERS! ;
-private
 
 
 \ ---- output ----------------------------------------------------------------
@@ -246,10 +224,10 @@ private
       54 of s" RAW>OBLIGATION-ID" endof   \ content-addressed by the canonical obligation encoding
       55 of s" RAW>EVIDENCE-ID" endof     \ content-addressed evidence descriptor
       \ § 23.9 machine-facing action registry (dot habu-v2-machine-action-a7357409); the
-      \ RAW>OBLIGATION-ID shape. Seeded here to close the NEW-MINT gap its TRUSTED.md row left.
+      \ RAW>OBLIGATION-ID shape.
       56 of s" RAW>ACTION-ID" endof       \ content-addressed by the canonical action name
       \ § 23 capability + budget enforcement (dot habu-v2-capability-and-0970a96d). A package-local
-      \ CAPTOK:grant nominal (not CAD-KIND), so seed-only - the shape scan covers CAD-KIND:/MIR: only.
+      \ CAPTOK:grant nominal (not CAD-KIND), so it is package-local rather than a CAD-KIND family.
       57 of s" RAW>GRANT" endof           \ append-only capability authority-slot refinement
       \ § 23.4 experiment registry (dot habu-v2-experiment-run-7c1d1906); the
       \ RAW>ARTIFACT-ID shape - content-addressed by the canonical run-key digest.
@@ -425,12 +403,6 @@ private
       E-TBL-BOUNDS throw
    endcase ;
 
-: SEEDED? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   0 begin dup SEED# < while
-      dup SEED-NAME$ a u LINT-STR=CI if drop LINT-TRUE exit then
-      1+
-   repeat drop LINT-FALSE ;
-
 \ ---- allowlist: documented (mint, caller file) exceptions --------------------
 \ Empty today. Entries must cite the review that documented the exception.
 \ Caller-supplied strings must stay live for the run (s" literals are).
@@ -462,57 +434,13 @@ private
       1+
    repeat drop LINT-FALSE ;
 
-\ ---- inventory: manifest cross-check + mint-shape scan ----------------------
-
-: FAMILY-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   a u COLON LINT-INDEX-OF MATCH option
-     none OF LINT-FALSE ENDOF
-     some OF {: i:n :} i 0 >  i u 1- <  and ENDOF
-   ;MATCH ;
-
-: EFF-DASH-IDX ( -- n )
-   0 begin dup SN# @ < while
-      dup S@ s" --" LINT-STR= if exit then
-      1+
-   repeat drop -1 ;
-
-: EFF-RAW-IN? ( n -- bool ) {: dash:n :}
-   0 begin dup dash < while
-      dup S@ s" n" LINT-STR= if drop LINT-TRUE exit then
-      1+
-   repeat drop LINT-FALSE ;
-
-: EFF-FAMILY-OUT? ( n -- bool ) {: dash:n :}
-   dash 1+ begin dup SN# @ < while
-      dup S@ FAMILY-TOK? if drop LINT-TRUE exit then
-      1+
-   repeat drop LINT-FALSE ;
-
-public
-
-: MINT-SHAPE? ( ptr u8 n -- bool )
-   SPLIT-WHITESPACE
-   EFF-DASH-IDX dup 0 < if drop LINT-FALSE exit then
-   {: dash:n :}
-   dash EFF-RAW-IN? 0= if LINT-FALSE exit then
-   dash EFF-FAMILY-OUT? ;
-
-private
+\ ---- seed liveness ---------------------------------------------------------
 
 : STALE-SEED ( n -- ) {: k:n :}
    REPORT? @ if
       s" STALE-SEED refine-lint: `" OUT k SEED-NAME$ OUT
       s" ` is not declared (CAST:/TRUSTED:) in owner " OUT k SEED-OWNER$ OUT
       s" ; retire or update the seed list" OUT NL
-   then
-   BAD+ ;
-
-: NEW-MINT ( n -- ) {: m:n :}
-   REPORT? @ if
-      s" NEW-MINT TRUSTED.md " OUT m TL-M-KEY-PATH$ OUT
-      s" : `" OUT m TL-M-NAME$ OUT
-      s" ` `" OUT m TL-M-EFF$ OUT
-      s" ` is mint-shaped but not in the refine-lint seed list" OUT NL
    then
    BAD+ ;
 
@@ -559,22 +487,8 @@ private
 
 public
 
-: SHAPE-SCAN ( -- )
-   0 begin dup TL-M# @ < while
-      dup TL-M-EFF$ MINT-SHAPE? if
-         dup TL-M-NAME$ SEEDED? 0= if dup NEW-MINT then
-      then
-      1+
-   repeat drop ;
-
-public
-
-: INVENTORY ( -- )
-   s" ." TRUST-LINT-ROOT!
-   TRUST-LINT-RESET
-   TL-SCAN-MANIFEST
-   SELECT
-   SHAPE-SCAN ;
+: LIVENESS ( -- )
+   SELECT ;
 
 \ ---- compiler IR raw authority ----------------------------------------------
 
@@ -1048,10 +962,9 @@ private
 public
 
 : RUN ( -- )
-   BUFFERS
    RESET
    ALLOW-SEED
-   INVENTORY
+   LIVENESS
    s" maki" SCAN-ROOT
    s" lib" SCAN-ROOT
    s" src" SCAN-ROOT

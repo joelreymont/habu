@@ -54,8 +54,8 @@ public
       14 of s" test/run-worker-dict.f" TRW-LOAD endof
       16 of s" test/run-worker-engine.f" TRW-LOAD endof
       17 of s" test/run-worker-stdlib.f" TRW-LOAD endof
-      18 of s" test/run-worker-stdlib.f" TRW-LOAD endof
-      21 of s" test/run-worker-engine.f" TRW-LOAD endof
+      20 of s" test/run-worker-engine.f" TRW-LOAD endof
+      21 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       22 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       23 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       24 of s" test/run-worker-stdlib.f" TRW-LOAD endof
@@ -63,7 +63,7 @@ public
       26 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       27 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       28 of s" test/run-worker-stdlib.f" TRW-LOAD endof
-      29 of s" test/run-worker-stdlib.f" TRW-LOAD endof
+      30 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       31 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       32 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       33 of s" test/run-worker-stdlib.f" TRW-LOAD endof
@@ -73,7 +73,6 @@ public
       37 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       38 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       39 of s" test/run-worker-stdlib.f" TRW-LOAD endof
-      40 of s" test/run-worker-stdlib.f" TRW-LOAD endof
       E-TBL-BOUNDS throw
    endcase ;
 

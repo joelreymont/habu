@@ -1,9 +1,11 @@
 ---
 title: Generate manifest columns from scanner
-status: open
+status: closed
 priority: 2
 issue-type: task
 created-at: "2026-07-27T10:33:57.118380+02:00"
+closed-at: "2026-08-04T00:22:52.671083+02:00"
+close-reason: ledger retired with the governance mirror
 blocks:
   - habu-pkg-public-signatures-e25db8b1
 ---

@@ -654,7 +654,7 @@ variable STG-START
    CHECKER-AUTH-PACKAGE-ACTIVE? IF name nameu CHECKER-EXPORT THEN ;
 
 \ A package primitive row has two closers, and this verifier models them exactly
-\ as the ratchet parser does (tools/primitive-effect-inventory.f PRIVATE-CLOSE?):
+\ as the source lexer does:
 \ `PPRIM;` interns the axiom into the package public wordlist and `CLOSE-PRIVATE`
 \ interns it into the package private one. Visibility is part of the row, not a
 \ different row shape, so either token ends a `PPRIM:` row. A bare `PRIM:` row has

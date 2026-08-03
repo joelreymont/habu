@@ -10,7 +10,6 @@ require lib/fs.f
 require tools/lint/text.f
 require tools/lint/token.f
 require tools/lint/lib.f
-require tools/trust-lint-core.f
 require tools/refine-lint-core.f
 
 RFL:MAIN

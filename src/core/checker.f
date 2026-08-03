@@ -9161,8 +9161,8 @@ variable IS-TU
 \ its polymorphic effect. This is sound because the name implies a builtin or
 \ a checked/audited definition: a CHECKED shadow's effect is verified against
 \ its body, which can only move the value it binds; a TRUSTED shadow is
-\ already an audited manifest boundary (TRUSTED.md row) whose declared effect
-\ is the audit's responsibility.
+\ already an audited boundary whose declared effect is the audit's
+\ responsibility.
 : LAYOUT-XPORT-TOK? ( ptr u8 n -- bool ) {: a:ptr u:n :}
    a u s" dup"   CORE-STR= IF RES-TRUE EXIT THEN
    a u s" drop"  CORE-STR= IF RES-TRUE EXIT THEN

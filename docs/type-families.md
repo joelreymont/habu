@@ -1527,7 +1527,7 @@ a 1
 ```
 
 The generated constructor body is checked code. The generator must not emit
-`TRUST`, `TRUSTED:`, `set-check`, or require a `TRUSTED.md` manifest row,
+`TRUST`, `TRUSTED:`, or `set-check`,
 including inside generated strings later passed to `evaluate`.
 
 Publication is declaration-wide, not word-wide. The generator first renders
@@ -2837,8 +2837,8 @@ Rejected branch join:
 Use a checked test-only object/AOT entry that enters the generated `MATCH` test
 with raw physical stack cells. The test-entry support must seed payload cells
 and call the generated helper in checked Habu using only the existing
-image-writer trust rows. Do not introduce any new ADT `TRUST`, `TRUSTED:`,
-`set-check`, or `TRUSTED.md` row to forge payload slots plus an invalid tag:
+image-writer trust boundaries. Do not introduce any new ADT `TRUST`,
+`TRUSTED:`, or `set-check` to forge payload slots plus an invalid tag:
 
 ```text
 payload-slot0 ... payload-slotN invalid-tag

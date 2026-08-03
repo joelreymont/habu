@@ -267,11 +267,9 @@ fits.
   collectives live), because `EM-COMPILE-PUBLISH-TRUSTED` branches past
   `EM-P2-CHECK-DEFINER`. Both `:` and `TRUSTED:` funnel through
   `USIG-ADD → E-ADD-EFFECT`; detect there (via a forward xt hook installed after
-  NORET-ADD). Adding a new WF-cert flag ripples through FIVE places
-  (`lower-cert-base.f` constant, `PPRIM: LOWER-CERT` model, the `VALIDATE-WF` flag
-  mask — was hardcoded `& 3` — plus its width accounting, the TRUSTED.md
-  `primitive-effect-inventory` manifest, and the `prop-test-core.f` AX-CENSUS
-  list). The cert VALIDATOR bites first: the first symptom of a missing validator
+  NORET-ADD). Adding a new WF-cert flag updates the `lower-cert-base.f` constant,
+  the `PPRIM: LOWER-CERT` model, the `VALIDATE-WF` flag mask, and its width
+  accounting. The cert VALIDATOR bites first: the first symptom of a missing validator
   branch is `hb: malformed lowering certificate`, not a checker miss — verify a new
   flag actually FIRES on a TRUSTED subject before trusting the finalize path.
 - **The native publish path re-records every SIGNED definition through `TRUST`.**
@@ -581,29 +579,6 @@ fits.
   storage does NOT retain a nominal pointee between definitions (each use instantiates
   the generic pointer independently, both certify) — keep raw storage private, expose
   typed accessors.
-- **A new content-addressed CAD-KIND owner (`TRUSTED: RAW>X`/`X>RAW`) needs FOUR
-  coordinated edits or a gate goes red** — trusted-inventory strict and refine-lint
-  read DIFFERENT registries: (1) `TYPEFAMILY x-id` in `maki/cad-kinds.f`; (2) human
-  TRUSTED.md rows for BOTH `RAW>X` and `X>RAW`; (3) the machine `file:RAW>X prim-axiom
-  <epic>` classification block row for both (strict fails "unclassified site(s)" on the
-  BLOCK, not the human table); (4) the `RFL-SEED-NAME$`/`RFL-SEED-OWNER$` case + bumped
-  `RFL-SEED#` in `refine-lint-core.f` for the MINT direction only (else `NEW-MINT`).
-  Only `n -- CAD-KIND:x` is shape-scanned; the projection is seed-exempt. Nullary
-  proof-token mints (`( -- proof )`) aren't mint-shaped to refine-lint but STILL seed
-  them (the seed list is the CONFINEMENT set). The POOL refine-lint phase is stricter
-  than standalone — a mint clean standalone can red the gate.
-- **A new TRUSTED: word needs rows in BOTH TRUSTED.md sections (effect table AND
-  site-registry `file:name class owner`), owned by a LIVE dot — never the implementing
-  dot (it closes).** trust-lint checks the markdown; `trusted-inventory-test` checks
-  the site-registry — DIFFERENT corpora, a diff passing one can fail the other, so gate
-  TRUSTED-touching diffs on BOTH. Reuse a sibling `stdlib-boundary` placeholder owner.
-  A file-level fold (`builder-emit` in habu2.f) needs its count bumped in the
-  `trusted-inventory-classes` block too. A computed-argument `set-check`
-  (`check@ set-check`, not literal `0` or a ticked name) is a trusted-inventory site
-  (file-level count row), separate from `checked-boundary-lint`. A near-full fixed
-  arena is a latent capacity bug a downstream lane inherits (the class arena `CSTR-CAP`
-  sat at 65528/65536 → a bare `class arena overflow` die on +4 rows) — budget the
-  scratch arena when growing a ratcheted manifest, not just the count.
 - **A product TYPE PARAMETER binds only cell-tier types (n or nominal `TYPEFAMILY`);
   a sum/enum/product family cannot instantiate it.** So a generic `comparison<a>` over
   a metric unit needs nominal-cell unit witnesses; prefer concrete per-variant families
@@ -703,17 +678,15 @@ fits.
   is explicitly disjoint.
 - **Repo lints, the lint tokenizer, and whole-source readers all carry a
   largest-file capacity watermark, and an uncaught positive throw dies SILENT.**
-  Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint, trust-lint, trusted-inventory,
-  maki-dep-lint, error-code-lint) and the tokenizer `TMAX` ($6000→$8000) all trip
+  Fixed `$20000`/`$40000`/`$80000` file buffers (shadow-lint, maki-dep-lint,
+  error-code-lint) and the tokenizer `TMAX` ($6000→$8000) all trip
   "file exceeds buffer" as `checker.f` grows (it is the largest). Rules:
   size caps from the real corpus with the driver NAMED in a comment; sweep EVERY READ-FILE
   cap in one pass when a named file trips one; route lint CLIs through `LINT-MAIN` (catch,
   print `tool: threw <code> (<name>)`, re-throw); the shared `LINT-READ-DIE` prints the
   offending path; never read `$?` after a pipeline.
-- **`stdlib-manifest-test` counts every distinct flat library file in the public-signature
-  closure, not only manifest module rows.** A new shared dependency can therefore trip
-  `SMT-LIB-MAX` even when the number of modules stays below the old limit; size that loud
-  wall from the complete flat `lib/*.f` corpus and keep the capacity failure.
+- **Source and real consumers are authority.** Hand-maintained ledgers without a
+  production consumer drift and must not gate changes.
 - **A capacity exit must ATTRIBUTE itself everywhere — a lone token byte or a bare rc
   is unattributable.** Engine dict-full = `hb: dictionary full at: <token>` (77), code
   space (76), and each store labels its own die. Distinguish the two engine arms:
@@ -750,18 +723,6 @@ fits.
   MAIN-CHECKOUT-ONLY latent red workers never see (their trees contain no `.jj-ws`). Fixed
   at the root (`lib/fs.f` skip list); add new conventional untracked dirs there when
   introduced.
-- **Stdlib files need their source file and a `lib/std.manifest` row, plus
-  `TEST:SUITE` + `TRUSTED.md` for any `TRUSTED:`.** Match
-  `tools/public-signatures.f` output EXACTLY (`TRUSTED:`/constants get no row; effect must
-  sit immediately after the word name, before `{: :}` locals, or it is invisible). Keep an
-  unavoidable trusted seam private behind an ordinary checked public wrapper so the general
-  signature drift gate owns the public manifest row and `TRUSTED.md` owns only the raw seam.
-  Miss the manifest and the direct manifest gate fails. The lint-manifest
-  slice is the OWNING gate a new-lib lane must run (host/trust/coverage do NOT cover
-  it). `lib/` subdirs (`lib/ptx/`) are research sub-libraries: gate `SMT-COLLECT-LIB-FILE`
-  on `SMT-LIB-FILE?` (flat `lib/<module>.f` only) so coverage tracks flat modules; nested
-  dirs stay trust-audited + `-test.f` + gate-covered but out of the curated manifest
-  (mirrors top-level `maki/`).
 - **Stdlib leaves hide missing requires for months — bare-load them to prove it.** A
   module consuming another's words with no `require` line is masked by gate load order and
   surfaces only as a consumer "workaround" require. Proof and regression are the same
@@ -780,16 +741,6 @@ fits.
   by dropping the require: emit `s" lib/<mod>.f" provided` for every bundled module
   before its source (`BL-EMIT-PROVIDED-ALL`), mirroring how the native engine marks
   baked prefix files provided so a later `require` short-circuits.
-- **Packaging a stdlib module for the manifest: put the public API in a `public`
-  SECTION, not `EXPORT`-from-private.** `tools/public-signatures.f` `PS-PUBLIC?` checks
-  `PS-IN-PKG` BEFORE `PS-EXPORTED?`, so a word defined in a package's `private` section
-  and later `EXPORT`ed emits NO manifest row (the code still runs and resolves as
-  `PKG:WORD`, but the stdlib-manifest gate never sees it). When definition order forbids
-  one trailing public section (a public accessor is used by an earlier private word,
-  e.g. `JR:SPAN$` used by `JR-READ-NUMBER`), use several `public`/`private` toggles so
-  each public word is declared in a `public` section at its natural position. Constants
-  get no manifest row even when public, so exported token-kind constants
-  (`JR:T-OBJ` ..) never appear in `lib/std.manifest`.
 - **Repo-scale source lints must STREAM, not vectorize.** Building a per-token vector costs 8
   `VEC-PUSH`es/token plus growth copies, so `LINT-LEX:SOURCE` took 9.2s on one file and a 141k fill
   63.9s; `lib/vector.f` element access is itself constant-time (`VEC-CELL-FIELD` is
@@ -853,7 +804,7 @@ fits.
   output AND exit 0, since 0.7.3 reports the error yet continues). Native port gates prove
   `bin/hb`/target-source/syscalls/ELF-AOT/checker/lints/self-refresh/REPL — do not install
   JS/Python/Rust to prove a native port; external Python baselines live as fenced
-  ```python``` in docs (`host-lint` `1 throw`s on any `.py` path).
+  ```python``` in docs.
 - **`Habu-under-test` is the SMALL engine, not a snapshot; candidate size is
   RATCHETED.** Promoting `hb-new` (snapshot trailer bakes MBs of live DATA → 22MB
   candidates that jump into zeroed code on Linux) is wrong; promote `hb-stdin`, enforce a
@@ -911,11 +862,8 @@ fits.
   a `SUITE-*-LABEL?` slice selects the label AND someone invokes that slice; the resident
   `test/run.f` runs the in-process GSI groups + a few spawned slices, NOT the full TEST:SUITE
   inventory — the two lists are hand-synced and drift silently (four checker-invariant suites
-  ran in NO automatic gate). `suite-coverage-lint.f` now derives all three lists each run and
-  forces every member into scheduled / manual-documented / spawn-only-documented; wire a new
-  lint into BOTH the cases suite + the scheduled lint-tools GSI fork (prove each path red with
-  a transient drift). The standalone `-- lint-tools` slice and the gate's resident phase 17
-  are DIFFERENT code paths.
+  ran in NO automatic gate). The standalone slices and the gate's resident groups are
+  different execution paths; register a test in the path that must execute it.
 - **Gate slices see different lints — the integrator runs the slice that OWNS each touched
   file class.** maki-dep-lint (dependency direction) and error-code-lint live in the
   lint-tools slice; a lane validating only lint-libs + maki/test can land a maki/ reference or
@@ -961,10 +909,10 @@ fits.
   boundary) — bake the core into the warm image when it fits + load a no-include `*-main.f`, or
   pass core+entry explicitly.
 - **The dot ledger DRIFTS from head — audit before assigning, and `rc 0` is NOT proof.** A
-  sweep of 129 open dots found 6 fully landed, 10 with stale premises, 3 TRUSTED.md rows owned by
-  archived dots (`trusted-inventory --strict` red on DOT-EXISTS?, invisible because the gate runs
-  FIXTURES not live strict). Verify a dot's claim against head; `dot off` only after
-  `rg <id> TRUSTED.md` + reassigning rows; engine-suite standalone exits 0 after checker errors
+  sweep of 129 open dots found 6 fully landed, 10 with stale premises, and 3 ledger rows owned by
+  archived dots, invisible because the gate ran FIXTURES not live strict.
+  Verify a dot's claim against head and reconcile current blocker
+  references before `dot off`; engine-suite standalone exits 0 after checker errors
   (drop-to-REPL masks) — the last-line `ok` marker or the full gate is the signal. Reproduce
   engine-suite changes through `bin/hb --repl < test/engine-suite.f` (a `cp@ patch32` proof
   passes via `--load` yet SIGILLs via the stdin REPL). Hot-cache full-gate passes do not prove
@@ -1008,21 +956,9 @@ fits.
   expected SEAL-PACKAGE 84); close the package and call `PKG:RUN` from top level
   (the json-read-test arrangement).
 
-- **A new file / TRUSTED word / candidate case each trips a specific manifest the
-  focused suite never shows — only `test/run.f` does.** (1) A **flat `lib/*.f`**
-  must have a `lib/std.manifest` module row (`stdlib-manifest-test`: "missing
-  module row"); a **subdir** `lib/<sub>/*.f` is outside the flat-stdlib walk
-  (`SMT-FLAT-LIB-FILE?` = exactly one `/`), so type-surface libs like extents and
-  value nominals live in a subdir (`lib/type/…`) to avoid the word-row/doc/drift
-  contract, matching maki/ precedent. (2) A new **`TRUSTED:`** word needs BOTH a
-  `TRUSTED.md` markdown table row (`trust-lint`: "UNMANIFESTED … no TRUSTED.md
-  row") AND a per-site line in the `<!-- trusted-inventory-classes -->` block
-  (`trusted-inventory` ratchet) — mirror the nearest sibling's class/dot
-  (`prim-axiom …`). (3) New **`test/candidate-validation.f`** cases must bump the
-  whitebox counts in `test/candidate-validation-test.f` (`s" test/` total, and the
-  `construct case-kind positive|negative` counts) and add PATH-PIN + DIRECT-PIN
-  rows. Run `test/run.f` before claiming green; a clean focused suite hides all
-  three.
+- **Add no new `TRUSTED:` sites.** Use a properly owned `PRIM:` axiom or wait
+  for checker capability; existing `TRUSTED:` sites are migration inventory,
+  not precedent.
 - **A property test pinning a TRANSITIONAL invariant must be revisited the moment
   the capability it anticipates starts being used for real.** `test/pre-trust-defer.f`
   COMPAT-MISS-CASE asserted that an engine lacking the DRAIN-PRETRUST prim BOOTS
@@ -1034,8 +970,7 @@ fits.
   battery, so master carried a red manual-tier suite for a day. Rule: a merge that
   touches `src/core/checker.f` (or any file a manual/heavy suite OWNS but the fast
   tier never forks) must run that owning suite at merge time — a green fast `run.f`
-  tier is not proof for suites documented as manual/slow members
-  (`tools/suite-coverage-lint-core.f` SC-MANUAL-TABLE, run via `test/gate-stdlib.f`).
+  tier is not proof for suites run only by `test/gate-stdlib.f`.
 - **The tail-ratchet asserts EXACT child-process counts AND elapsed ≤ budget
   (`PROCESS-NOMINAL-MS` 10000 × PERF-MS).** An elapsed-only overshoot with no
   child-count delta (e.g. 10099/10000) is machine-load noise, not your change —
@@ -1282,12 +1217,9 @@ fits.
 - **`dot on` at DISPATCH is the cross-lane claim; `dot off` only at landing, and closing a dot
   is not done until its file deletion is COMMITTED.** An unpushed active bit is not a claim; parked
   dots go back to `open` so `active` never lies. `dot off` archives the file (gitignored) and
-  orphans every TRUSTED.md row + every `blocks:` edge naming it — in the SAME commit re-point rows
-  to a live successor owner (prim-axioms to the axiom dot, program rows to the live epic's
-  self-named file) and sweep `blocks:` lists (remove an emptied `blocks:` header too), then gate
-  that exact tree with dot-dep-lint. trusted-inventory --strict resolves owners only at
-  `.dots/<id>.md` or `.dots/<id>/<id>.md`; a child dot under another parent's dir is invisible as an
-  owner. Never leave closures in the working copy across a merge window — `jj new <tip>` orphans
+  orphans every `blocks:` edge naming it — sweep those lists in the same commit, remove an emptied
+  `blocks:` header, then gate that exact tree with dot-dep-lint. Never leave closures in the working
+  copy across a merge window — `jj new <tip>` orphans
   them (archive copy persists, tracked open copy returns → Ambiguous ID); every `dot off` is
   immediately followed by dot-dep-lint + `jj commit`.
 - **Use only documented `dot` subcommands — an unknown form is QUICK-ADD and creates a stray
@@ -1314,15 +1246,6 @@ fits.
   replacements (`$200000` beside `$400000` → `$200000400000`) — inspect source or `jj diff --git`;
   never `jj diff --check`. History filters must include JJ refs (`refs/jj/keep`, `.jjconflict-*`);
   ignore generated output by SHAPE, not run name.
-- **STATUS/trust/audit DATES follow the gate's UTC day, not the operator's local calendar.**
-  `stale-status-lint`/`trust-lint` use native `DATE-NOW` UTC; rolling "Last verified" to a local
-  date after midnight makes pushed master red until UTC catches up — `date -u +%F` before any date
-  roll and pass that UTC day to manual invocations. Diff gates must scan LOCALS (`tools/typed-local-diff-lint.f`,
-  not `rg`); run it against the exact integration diff (a squashed stack can hide an earlier untyped
-  local), stream large patches (keep a fixture above the old 1024-line limit). Repo edits go through
-  patches/Edit even for one-liners; commit is a gate (scan diffs for defs/unchecked boundaries,
-  check exact owning `bin/hb --load` paths, boundary tests exist), never "commit now, fix later".
-
 ## Code Quality
 
 - **No repository caller does not make a public REPL word dead.** The operator is the caller for
@@ -1898,15 +1821,13 @@ fits.
   stayed green because inconsistencies were "(logged, non-fatal)" and shards mute output — a property
   tester that prints findings and exits 0 is error masking; make the counters FATAL at the summary, and
   a 100% failure rate on a metamorphic leg means the CONTRACT is broken (probe the contract word directly
-  before shrinking N "different" cases). Stateful scanners split at cursor phases (`STALE-STATUS-LINT`s private `COUNT-LINE?`
-  delegating advance/digit-run/ratio/keyword to typed helpers) with fixtures around the boundary. Report
+  before shrinking N "different" cases). Stateful scanners split at cursor phases, delegating
+  advance/digit-run/ratio/keyword to typed helpers, with fixtures around the boundary. Report
   reducers use DEDICATED scratch cells (`RR-I/J/K` get clobbered by nested helpers; a `RR-RATIO.` stack
   leak truncated a table) — add row-count regressions and `cmp` regenerated reports. Doc-contract
   fixtures need stable anchors (line wrapping hides a `grep -F` phrase — assert a shorter contiguous
   substring). Dogfood benchmark hot paths (per-call glue is Habu-native; host parsers hide missing Habu
-  primitives) and match LLM helper surfaces to validator surfaces exactly. Subtree status docs use lint
-  FENCES not wording games (keep root self-check counts fenced to root `STATUS.md`, skip extracted
-  subtrees in `stale-status-lint`).
+  primitives) and match LLM helper surfaces to validator surfaces exactly.
 
 ## Generated-Code Verification & Signal/Async Effects
 
@@ -2061,8 +1982,8 @@ fits.
   the gate workspace.
 - Never chain gate commands through a pipe inside an `&&` guard: `bin/hb --load
   gate.f | tail -1 && jj git push` pushes on TAIL's exit code, not the gate's.
-  This exact pattern pushed a red master (maki spec-test + trusted-inventory
-  both failing) because two red gates printed their tails and the push ran
+  This exact pattern pushed a red master (two suites failing at once)
+  because two red gates printed their tails and the push ran
   anyway. Run gates bare and check `$?`, or `set -o pipefail` before any
   gate-then-push chain; the merge command must be structurally unable to run
   when a gate is red.
@@ -2151,7 +2072,7 @@ fits.
 - **Test paths are owned resources.** Predictable shared `/tmp` names race, leak, falsify absence tests, and permit symlink truncation; use unique private roots and exception-safe cleanup.
 - **Never copy a performance bound across targets.** A Spark-derived cold budget was lower than a directly observed macOS suite long pole; keep the last measured target bound until repeated exact-target runs prove a replacement.
 - **Compile-once helpers must not become permanent dictionary residents.** If a generated checked word exists only to capture one value, use a checked anonymous or transactionally reclaimed compilation boundary and prove every compiler registry rolls back.
-- **One suite needs one canonical inventory.** Repeating membership across a full loader, slices, runner dispatch, and coverage lint creates more reconciliation code than the split saves and lets each copy drift independently.
+- **One suite needs one canonical inventory.** Repeating membership across a full loader, slices, and runner dispatch creates more reconciliation code than the split saves and lets each copy drift independently.
 - **A frame must bind its declared identity to the parsed payload.** Validating path syntax and body syntax independently still accepts path substitution, presence/status contradictions, and several raw files under one declared section.
 - **A test outside every owning gate is not regression proof.** Discover test modules, require one registered owner and cache key, and make an intentional failing test prove the full gate executes it.
 - **Post-change state cannot prove replacement monotonicity.** An added row can mask the deleted predecessor it replaced; compare an authenticated pre-change baseline or reconstruct deletions before accepting a version increment.
@@ -2181,7 +2102,9 @@ fits.
   script, generated file, or committed consumer that calls two or more publics
   from one package uses one bounded `using NAME ... ;using` block and bare
   tails. A one-off call may stay qualified.
-- **Adding a `PRIM:`/`TRUST` site or a validation-suite case ripples into committed inventories.** A new prim bumps the prop-test axiom ledger count and its per-index `\ AXR` rows, a new TRUST site bumps `TRUSTED.md` rows and its per-file class ceiling, engine growth trips the exact-CODELEN ratchet, and a new candidate-validation case bumps its declared kind tally — each is a committed ratchet that fails loudly and must move in the same commit. Insert each axiom recipe at its exact live slot and shift every later slot; keep read-only zero-argument state readers executable, while state-consuming transaction finalizers need an explicit no-exec rationale.
+- **Engine size and candidate-validation coverage move with their owning changes.** Engine growth
+  updates the exact-CODELEN baseline, and a new candidate-validation case updates its declared kind
+  tally in the same commit.
 
 - **Fix review gate: re-derive the invariant, never accept the fix's own label.**
   The USING seed-boot repair first shipped as a value-range clamp ("depth 0..16
@@ -2406,11 +2329,6 @@ fits.
   returning a checked quotation from a private helper, close the package, then
   execute that quotation immediately; raw execution tokens, exported aliases,
   and storage cells weaken the boundary.
-- **Suite coverage currently proves path membership, not scheduler roles.** It
-  catches an orphaned case member, but a different scheduling verb, group,
-  duplicate, or order can still satisfy the set. Freeze those facts in the dot
-  and prove the real production group; do not claim mutations the lint cannot
-  observe.
 - **A linear wrapper is not opaque when its generated representation API is
   public.** A public product can preserve its linear owner while replacing raw
   state fields through `UNMAKE` and `MAKE`. Use an opaque linear token and keep
@@ -2652,21 +2570,6 @@ fits.
   is actually present, and read the dot's own text for atomicity clauses: two
   of the remaining dots said in their contracts that neither could close without
   the other, which the list did not mention.
-- **A property with no behavioural witness needs a source-level regression, and
-  the regression has to be measured against the code it is meant to reject.**
-  The declaration transaction's release phase runs only after every reversible
-  commit has published, so no declaration a test can write reaches a release
-  callback in a state where it would want to reject. Swapping a total release
-  word for a validating one therefore passed every suite in the repository. The
-  workable witness reads the production sources: find each participant
-  registration, take the word in its release slot, close over everything those
-  words reach through calls and deferred vectors, and require every reached word
-  to be a definition in those sources or a member of a small allowlist of total
-  words. An allowlist rather than a list of banned words is what makes it fail
-  closed - a newly introduced helper is red because it is unrecognised, not
-  because someone remembered to ban it. Prove such an inventory by running it
-  against the parent tree first: this one reported ten reachable `throw` sites
-  there and zero after the change.
 - **A cold-cache native gate run on this box overruns the performance band while
   correctness stays green.** `bin/hb --load test/run.f` with a fresh `HB_TMP`
   reports `performance=hard-fail correctness=t` at roughly 33s against a 25s
@@ -2681,16 +2584,6 @@ fits.
   your own mutants either way - the verdict's *findings* were all three real, and
   a fourth of the same shape was next to them. Diff or hash any handed-over
   artifact before treating it as evidence.
-- **A source-scanning gate has to fail closed on the shapes it does not
-  understand, not skip them.** The release inventory followed deferred words only
-  through `[: WORD ;] is VECTOR`. Three sibling holes came from the same habit:
-  a root marked reachable instead of resolved (so a deferred root was never
-  followed), zero bindings treated as nothing-to-do, and `['] WORD is VECTOR`
-  dropped silently. Each was green on the real production sources under a mutation
-  that should have been red. The rule that fixes all of them at once is: record
-  every occurrence of the construct, resolve roots by the same path as interior
-  references, and report an unrecognised or absent target rather than passing
-  over it.
 - **Launch every gate and worker `bin/hb` with stdin redirected from /dev/null;
   an inherited terminal or pipe is an undefined input, not a neutral one.** The
   week of "box contention" gate reds was one mechanism: a bare-argv `bin/hb`
@@ -2735,7 +2628,7 @@ fits.
   quoted frontmatter scalars (cumulative and silent), and `dot off` moved two
   closed dots into `.dots/archive/` when the repository's canonical form is
   closed-in-place (302 precedents). The archive defect orphaned five
-  TRUSTED.md owner rows and surfaced as a distant trusted-inventory red at
+  ledger owner rows and surfaced as a distant gate red at
   landing time, not as a tracker error at mutation time. Both shapes now have
   fail-closed gate dots (habu-reject-re-quoted-e908ece5,
   habu-reject-archived-dots-db3cbf63); the general rule is that any tool
@@ -2838,8 +2731,7 @@ fits.
 - **A new Maki suite needs two registrations: the master list and one slice.**
   Add it to `maki/test.f` and to exactly one of `maki/test-core.f`,
   `maki/test-db.f`, `maki/test-eval.f`, or `maki/test-eval-emit.f`;
-  suite-coverage's “exactly once” rule applies among slices, not across both
-  levels.
+  it appears exactly once among the slices.
 - **Destructive cleanup requires a validated target.** An unsupported
   `jj diff --check` left a temporary-path variable empty, so unconditional
   `gio trash "$candidate_file"` trashed the current directory. Stop when target
@@ -2879,9 +2771,9 @@ fits.
   exit 0 — but twelve of those test files are listed in no suite in
   `test/gate-stdlib-cases.f`, so they never execute in a full run. Six
   modules and the raw-storage seal regression landed unprotected: passing by
-  hand, invisible to the gate. `suite-coverage-lint` did not catch it because
-  it only checks that suite members exist, never that a test file is
-  scheduled. When accepting a lane that adds a test file, verify the file
+  hand, invisible to the gate. Nothing catches this: registration is what
+  schedules a file, and nothing else proves a file is scheduled.
+  When accepting a lane that adds a test file, verify the file
   appears in a suite AND that a full run executes it — "I ran it and it
   passed" is evidence about the code, not about the gate.
 
@@ -2967,7 +2859,7 @@ fits.
 - **A review answers the question it was given.** An implementation was
   accepted against "does this preserve the accepted behavior" while being
   simultaneously unmergeable, because its stack had drifted from master and
-  dropped manifest rows master had gained. Both verdicts were right about
+  dropped changes master had gained. Both verdicts were right about
   different axes. Any review that could precede a merge must also check base
   currency, since master-always-green is a property of the exact rebased tree.
 - **Freeze an interface only after a checked candidate compiles and runs
@@ -4207,13 +4099,12 @@ The general form: write down the accident that has been satisfying the rule,
 then build the input that breaks the accident while keeping the rule. If you
 cannot describe the accident, the fixture is not yet measuring the rule.
 
-## The suite-coverage lint schedules FILES, not cases
+## Suite registration schedules FILES, not cases
 
-`tools/suite-coverage-lint.f` checks that every test file is registered in a
-suite. It says nothing about whether a `*-CASE` word inside that file is called
-from the file's own `RUN`. Deleting a case from `RUN` leaves the lint green and
-the suite green, and the case simply never runs. Adding cases to an existing
-suite therefore still needs the eye: read `RUN` and count.
+Registering a test file in a suite says nothing about whether a `*-CASE` word
+inside that file is called from the file's own `RUN`. Deleting a case from `RUN`
+leaves the suite green, and the case simply never runs. Adding cases to an
+existing suite therefore still needs the eye: read `RUN` and count.
 
 ## An engine that bakes call targets makes publication an ordering fact
 

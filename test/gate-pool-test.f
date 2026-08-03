@@ -344,8 +344,8 @@ private
 
 \ Pin the other real-fork shape: a worker that emits SEVERAL sibling completion
 \ spans, none of which is its own slot label. This is the GSI-LINT-TOOLS-STATUS
-\ pattern (four GSI-RUN/GSI-INCLUDE spans - repl-lint, trust-lint,
-\ stale-status-lint, gate-stats-test.f - none equal to the "lint-tools/status"
+\ pattern (three GSI-RUN/GSI-INCLUDE spans - repl-lint, stale-status-lint,
+\ gate-stats-test.f - none equal to the "lint-tools/status"
 \ pool label). The parent pass-hook is the ONLY emitter of the slot label; the
 \ child never emits it, so GS-CHILD-OWNED? suppresses nothing and nothing is
 \ double-counted. Because these sub-spans sit at the same fork depth as the

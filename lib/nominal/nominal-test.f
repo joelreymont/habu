@@ -4,7 +4,7 @@
 \
 \ Direct-loaded gate home (the substrate has no production consumer yet; CAD-EFFECT
 \ consumes it later), following the lib/cad-num-types-test.f precedent - it is not
-\ in test/gate-stdlib-cases.f, so suite-coverage-lint has nothing to schedule.
+\ in test/gate-stdlib-cases.f, so no gate slice schedules it.
 \ Reopens package NOM so the forgery / protected-span / internal-inspection cases
 \ can reach the private mints and arena words the public API never exposes.
 

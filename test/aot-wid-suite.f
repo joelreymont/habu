@@ -54,8 +54,8 @@
 \ stable proof, and it is what a bitmap makes cheap.
 \
 \ Cost: three child engine builds (~12 s each). It is registered as
-\ `TEST:SUITE aot-wid-restore` in test/gate-stdlib-cases.f and listed in
-\ SC-MANUAL-TABLE (suite-coverage-lint), so it runs in the standalone stdlib gate
+\ `TEST:SUITE aot-wid-restore` in test/gate-stdlib-cases.f, so it runs in the
+\ standalone stdlib gate
 \ (a required master gate), like the sibling heavy-build suite
 \ test/owner-wid-snapshot.f - not the fast tail-process fork tier, whose perf
 \ ratchet the build cost would exceed. Run standalone:

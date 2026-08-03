@@ -672,45 +672,8 @@ The axiom set is audited two ways:
   `schema-root-n@`) are pure variable reads and ARE difftested, matching
   `ndict@`/`cp@`.
 
-Axiom-set size is tracked separately from discharged `TRUSTED`: the census
-prints the live `PES` row count (`prim-axiom: N axioms (D difftested, X
-noexec)`), and the trusted-inventory `prim-axiom` class (`TRUSTED.md`) counts the
-checker's axiom-model trust sites (nominal role casts, structure/record effects,
-and the census readers) apart from the general `TRUSTED`/`TRUST` ratchet.
-
-### Inventory ratchet (`tools/primitive-effect-inventory.f`)
-
-The census proves each live axiom's arity is honest and classified, and the
-trusted-inventory `prim-axiom` class counts the *trust sites* that read the table.
-Neither ratchets the authoritative rows themselves, so an axiom could be added,
-deleted, duplicated, or reordered with no audited migration. `PEINV` closes that
-gap. It streams the three `PRIM:`/`PPRIM:`-bearing boot-prefix sources
-(`src/core/checker.f`, `src/core/sumtype.f`, `src/core/layout-buffer.f`, in
-`tools/boot-pin.f` `BP-EACH` load order — which is the live table order) and gives
-each row a **stable identity**: the canonical tuple
-`<kind> <defining-package> <word-spelling> <flags> <normalized-effect-tokens>`
-(`kind` `prim`|`pprim`; package `-` for a bare `PRIM:`; spelling and effect tokens
-folded lowercase; flags `trusted-only` when `PRIM-TRUSTED-ONLY!` marks the row).
-Identity never depends on a path, line, ordinal, or `PES` address, so
-case/whitespace/comment-only edits preserve it.
-
-- **`baseline TRUSTED.md`** compares the parsed rows against the committed
-  `primitive-effect-inventory-manifest` block (an ordered list — *not* sorted, so
-  a pure reorder is detectable and the exact row can be named). Comparison is
-  occurrence-aware (multiset): an identical axiom may repeat legitimately
-  (`path0`/`PATH0` — the same case-insensitive symbol with an identical effect is
-  declared in two `checker.f` sections), and the manifest records the repeat, so
-  the ratchet fails only on an occurrence beyond the committed multiplicity (an
-  added or duplicated row), a shortfall (a deleted row), or a reordered position.
-- **`strict`** additionally cross-checks the parsed rows against the live `#PE`
-  registry — package/name, declared in/out arity, and the `PE-TRUSTED-ONLY` flag —
-  row-for-row, proving the source parse is faithful to the in-image table.
-- **`manifest`** emits the canonical block; regenerating it is the explicit
-  migration a legitimate axiom-set change must commit.
-
-This count of authoritative axiom rows stays distinct from the trust-site classes,
-so permanent trust owners and the primitive rows they read remain separate
-quantities.
+Axiom-set size is reported by the census, which prints the live `PES` row count
+(`prim-axiom: N axioms (D difftested, X noexec)`).
 
 ### ARM64 contract link (`PRIM-LINK`, `src/core/checker.f`)
 

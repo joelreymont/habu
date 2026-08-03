@@ -334,7 +334,6 @@ test/type-export-suite.f
 tools/check-core.f
 tools/refine-lint-core.f
 tools/refine-lint-test.f
-TRUSTED.md
 docs/forth.md
 ```
 

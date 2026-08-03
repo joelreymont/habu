@@ -419,7 +419,6 @@ variable GE-EVAL-SRC-U
    s" tools/signature-lint-core.f" GE-ARG+
    s" tools/checked-boundary-lint-core.f" GE-ARG+
    s" tools/reserved-name-lint-core.f" GE-ARG+
-   s" tools/trust-lint-core.f" GE-ARG+
    s" tools/check-all-errors-core.f" GE-ARG+
    s" lib/argv.f" GE-ARG+
    s" tools/check-core.f" GE-ARG+ ;

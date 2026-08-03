@@ -1075,10 +1075,9 @@ variable SS-I  variable SS-J  variable SS-BAD
 \   "\ AXR <slot> <kind> <din> <dout> <identity>"
 \ where <kind> is 0 noexec / 1 gen / 2 mem / 3 float and <identity> is the
 \ canonical PEINV row identity: "<prim|pprim> <package-or-dash> <name>
-\ <flags-or-dash> <pe-TYPE pe-in ...  pe-TYPE pe-out ...>". Regenerate the
-\ identity + order from:
-\   bin/hb --load tools/primitive-effect-inventory.f -- manifest
-\ and set each row's <kind> to its proof class. The census cross-checks every
+\ <flags-or-dash> <pe-TYPE pe-in ...  pe-TYPE pe-out ...>". Read the identity
+\ and order off the live primitive-effect table and set each row's <kind> to its
+\ proof class. The census cross-checks every
 \ recipe against the live table and fails, naming the row, on any drift.
 \
 \ ---- why the hard rows carry the kind they do (audit for kind assignment) ----

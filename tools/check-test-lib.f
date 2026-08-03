@@ -7,7 +7,7 @@
 \ tools/diag-origin-core.f tools/json.f tools/json-only-core.f
 \ tools/signature-lint-core.f tools/checked-boundary-lint-core.f
 \ tools/reserved-name-lint-core.f
-\ tools/trust-lint-core.f tools/check-all-errors-core.f lib/argv.f
+\ tools/check-all-errors-core.f lib/argv.f
 \ tools/check-core.f tools/check-test.f
 
 require lib/date.f
@@ -34,7 +34,6 @@ require tools/json-only-core.f
 require tools/signature-lint-core.f
 require tools/checked-boundary-lint-core.f
 require tools/reserved-name-lint-core.f
-require tools/trust-lint-core.f
 require tools/check-all-errors-core.f
 require lib/argv.f
 require tools/check-core.f

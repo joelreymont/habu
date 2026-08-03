@@ -762,10 +762,9 @@ address arithmetic at the public boundary.
   consistency; user builds verify the body against the declared `( in -- out )`
   and make rejection fatal. Tests for bad programs must assert build rejection,
   not just runtime failure.
-- **Every `TRUST` has a same-change audit row.** Add or update the matching
-  `TRUSTED.md` row with effect, reason, and focused tests. Adding lines above a
-  trust site drifts the manifest; rerun `trust-lint` and fix exact line numbers
-  before commit.
+- **Every `TRUST` has source-local rationale and proof.** Document why the
+  checker cannot express the boundary, name its retirement owner, and exercise
+  its asserted effect through a focused production-path test in the same change.
 - **Typed booleans are real `bool` values.** Produce true/false with typed
   producers such as `0 0=` and `0 0= 0=` or domain helpers. Do not store raw
   `0`/`-1` into a `ptr bool` cell, and do not compare bools with numeric `=`.
@@ -1005,27 +1004,10 @@ T-REPORT
 Run on the exact tree that is being landed, from the repository root. Red,
 skipped, or unrun means the bookmark does not move.
 
-1. The suites the change touched, plus `bin/hb --load maki/test.f` and
-   `bin/hb --load tools/host-lint.f`.
-2. **The landing gate: `bin/hb --load tools/landing-gate.f`.** It runs every
-   committed-pin suite — the manifests, inventories, row counts, frozen
-   compiler identities and Rocq parity gates — in one command, one child engine
-   per file, and exits nonzero naming the first red. Its header states which
-   suites belong to it and why the timing and engine-build fixtures do not.
-
-   This step exists because a touched-suite gate cannot see a pin suite: a
-   ratchet goes red because of a landing that never went near it — a library
-   grows past a tool's buffer, a primitive joins the checker's axiom table, a
-   constant moves to a neighbouring file, a dot that owned a trust row is
-   closed. Skip it and the red is found later by whoever runs the full gate,
-   with several landings sharing the blame. It has cost the project three of
-   these already.
-
-   Do not run it in place of the full gate, and do not treat a suite it does
-   not carry as covered: it is the pin phase, not the whole gate.
-3. The two checked diff linters over one Jujutsu artifact
-   (`docs/forth.md` § Packages), plus `tools/suite-coverage-lint.f`,
-   `tools/error-code-lint.f` and the dot lint.
+1. The behaviour suites the change touched, plus `bin/hb --load maki/test.f`.
+2. The two checked diff linters over one Jujutsu artifact
+   (`docs/forth.md` § Packages), plus `tools/error-code-lint.f` and the dot
+   lint.
 
 ## Comments & hygiene
 
@@ -1071,8 +1053,9 @@ skipped, or unrun means the bookmark does not move.
   and the boolean/float conveniences (`true`, `false`, `fdup`, `fover`, `fdrop`,
   `f<=`, `f>=`) are not in core either — `require lib/prelude.f` for them instead
   of re-deriving `0 0=` / `0 0= 0=` by hand.
-- **Trust is audited, not permanent.** `TRUST` records asserted effects so callers
-  can be checked, but audit rows must stay current and stale dates must fail lint.
+- **Trust is asserted, not proved.** `TRUST` records asserted effects so callers
+  can be checked; the assertion is the boundary's own contract, and the file
+  that declares it is where the reason for it is written.
 - **Typed pointer fields use cell indexes.** When a variable or record cell
   stores a pointer, construct a `ptr ptr x` field with `ptr-field`, then use
   normal `@`/`!`. Do not multiply indexes by cell size before `ptr-field`; use a

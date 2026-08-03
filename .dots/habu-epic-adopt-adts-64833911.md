@@ -32,7 +32,7 @@ capabilities — they are the WID cap and the public-API surface.
 
 First wave = A (option<scalar>/option<idx> over sentinels). Supported today.
 ~80 sites (lib/string,date,float,map,process-env + tools/{imgdump,imagedisasm,
-date,json,trusted-inventory}); FIND-SUB/INDEX-OF have the widest caller radius
+date,json}); FIND-SUB/INDEX-OF have the widest caller radius
 (migrate LAST). census-switchover §5.
 
 BLOCKERS:

@@ -281,8 +281,7 @@ calls by real user-source files loaded through `--load`:
   `tools/duplicate-definition-lint-core.f`, `tools/duplicate-definition-lint-test-lib.f`,
   `tools/image-bytes-test.f`, `tools/imgdump.f`, `tools/jitdump-core.f`,
   `tools/object-image.f`, `tools/reserved-name-lint-core.f`,
-  `tools/reserved-name-lint-test-lib.f`, `tools/trusted-inventory.f`,
-  `tools/xref-test.f` (+ `tools/bootstrap.sh`, the exempt recovery launcher).
+  `tools/reserved-name-lint-test-lib.f`, `tools/xref-test.f` (+ `tools/bootstrap.sh`, the exempt recovery launcher).
 
 So A can only ever be applied to the *pure mutators with zero tool use*
 (`CHECKER-DEFTYPE/DEFLINEAR/DEFRECORD`, registry truncate/undefine hooks,

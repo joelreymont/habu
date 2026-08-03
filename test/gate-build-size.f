@@ -1,6 +1,6 @@
 \ gate-build-size.f - committed size ratchet for the Habu-under-test candidate.
 \
-\ Machine-readable baseline manifest, mirroring the TRUSTED.md pattern: the
+\ Machine-readable baseline manifest: the
 \ committed rows below are the contract, and the owning gate validates the
 \ fresh artifact against them. One row per build target. The candidate build
 \ and validate slices (test/gate-engine-lib.f) fail on any candidate larger

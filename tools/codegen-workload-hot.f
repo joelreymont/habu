@@ -105,7 +105,7 @@ public
 \ It is PUBLIC because the acceptance suite has definitions of its own to publish
 \ through the engine's compile path - fixtures for the inline rule - and a second
 \ `evaluate` wrapper over there would be a second unchecked surface for one need.
-\ One boundary, one row in TRUSTED.md, both callers named in it.
+\ One boundary, both callers named here.
 TRUSTED: EV ( ptr u8 n -- )
    evaluate ;
 
