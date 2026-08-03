@@ -1,9 +1,11 @@
 ---
 title: Run GPT-2 CLI for 64 tokens
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-22T09:41:52.417979+02:00"
+closed-at: "2026-08-03T19:03:54.083912+02:00"
+close-reason: "Landed e14eded40ed8 on origin/master. Exact two-pass DGX proof: test: ok, rc 0, 64 pinned IDs and 214-byte d55f67f7 continuation; full Maki, PTX/native stdlib, diff/signature/error/dependency gates green; fresh destruction review accepted."
 ---
 
 Why: `GPT2:GREEDY` now advances the real persistent model, but no production command turns prompt bytes into generated text. Result: add one direct CLI, `bin/hb --load tools/gpt2.f -- <model-root> <prompt>`, plus its focused real-device proof. In one process it joins `<model-root>` with `GPT2PIN:MERGES-NAME$`, verifies that file against `GPT2PIN:MERGES-SHA256$`, calls the existing in-place `BPF-LOAD` exactly once, encodes the nonempty prompt through `BPR-ENCODE`, opens `GPT2:model`, feeds every prompt identifier through `GPT2:GREEDY`, then feeds selected identifiers until exactly 64 continuation identifiers are staged. It closes the model before decoding once through `BPR-DECODE`, and writes only the decoded bytes to stdout. Any failure emits no text, closes a live model exactly once, and exits nonzero. `GPT2-REFERENCE` remains test-only comparison data; add the exact decoded-byte reference needed by the proof.
