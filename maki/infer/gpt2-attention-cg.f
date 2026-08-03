@@ -13,6 +13,7 @@ package GPT2-ATTN
 private
 
 $FFFFFFFF constant U32-MAX
+$7FFFFFFFFFFFFFFF constant CELL-MAX
 4 constant F32-BYTES
 8 constant ROLE-BITS
 $FF constant ROLE-MASK
@@ -22,6 +23,10 @@ $FF constant ROLE-MASK
 
 : POS-U32? ( n -- bool )
    dup U32? swap 0 > and ;
+
+: SIZE* ( n n n -- n ) {: a:n b:n max:n :}
+   a max b / > if E-PTX-BLOCK throw then
+   a b * ;
 
 : PACK ( n n n n n n -- n ) {: q:n k:n v:n kc:n vc:n out:n :}
    q
@@ -235,34 +240,41 @@ $FF constant ROLE-MASK
    s" bra $OUT_DIM;" PTX-L
    ;
 
+\ Register-to-row is the irreducible target cast; phantom minting retires under habu-ptx-phantom-preserving-3df9db92.
 TRUSTED: ROW-REG ( n -- matrix<space-global,f32,extent-h,extent-d> ) ;
-TRUSTED: CACHE-REG ( n -- matrix<space-global,f32,extent-c,extent-d> ) ;
+\ Register-to-flat-KV minting and extent-kv=cap*heads retire under habu-ptx-phantom-preserving-3df9db92 and habu-extent-bound-loop-a70a49b3.
+TRUSTED: CACHE-REG ( n -- matrix<space-global,f32,extent-kv,extent-d> ) ;
 
-TRUSTED: STATE ( matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,c,d> matrix<space-global,f32,c,d> matrix<space-global,f32,h,d> -- attnctx<h,d,attn-stage-q> attnacc<f32,block-128,mask-live> )
+\ STATE only packs six ordered PTX register ids; phantom preservation retires under habu-ptx-phantom-preserving-3df9db92.
+TRUSTED: STATE ( matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,extent-kv,d> matrix<space-global,f32,extent-kv,d> matrix<space-global,f32,h,d> -- attnctx<h,d,attn-stage-q> attnacc<f32,block-128,mask-live> )
    PACK 0 ;
 
+\ APPEND writes ((pos*heads+head)*width+dim)*4; checked loop bounds retire under habu-extent-bound-loop-a70a49b3.
 TRUSTED: APPEND ( attnctx<h,d,attn-stage-q> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-score> attnacc<f32,b,m> )
    over APPEND-EMIT ;
 
+\ SCORE reads ((token*heads+head)*width+dim)*4 for token<=pos; checked bounds retire under habu-extent-bound-loop-a70a49b3.
 TRUSTED: SCORE ( attnctx<h,d,attn-stage-score> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-softmax> attnacc<f32,b,m> )
    over SCORE-EMIT ;
 
+\ SOFTMAX owns shared scores [0,pos] and sum[cap]; checked bounds retire under habu-extent-bound-loop-a70a49b3.
 TRUSTED: SOFTMAX ( attnctx<h,d,attn-stage-softmax> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-output> attnacc<f32,b,m> )
    SOFTMAX-EMIT ;
 
+\ OUTPUT reads flat V at token*heads*width+head*width+dim; checked bounds retire under habu-extent-bound-loop-a70a49b3.
 TRUSTED: OUTPUT ( attnctx<h,d,attn-stage-output> attnacc<f32,b,m> -- attnctx<h,d,attn-stage-done> attnacc<f32,b,m> )
    over OUTPUT-EMIT ;
 
-: START ( matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,c,d> matrix<space-global,f32,c,d> matrix<space-global,f32,h,d> -- attnctx<h,d,attn-stage-q> attnacc<f32,block-128,mask-live> )
+: START ( matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,h,d> matrix<space-global,f32,extent-kv,d> matrix<space-global,f32,extent-kv,d> matrix<space-global,f32,h,d> -- attnctx<h,d,attn-stage-q> attnacc<f32,block-128,mask-live> )
    PARAMS SETUP-EMIT STATE ;
 
 : FINISH ( attnctx<h,d,attn-stage-done> attnacc<f32,b,m> -- )
    2drop ;
 
-KERNEL: CHECKED ( matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-c,extent-d> matrix<space-global,f32,extent-c,extent-d> matrix<space-global,f32,extent-h,extent-d> -- ) GRID: extent-h
+KERNEL: CHECKED ( matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-kv,extent-d> matrix<space-global,f32,extent-kv,extent-d> matrix<space-global,f32,extent-h,extent-d> -- ) GRID: extent-h
    START APPEND SCORE SOFTMAX OUTPUT FINISH ;
 
-: AUTHOR-OPEN ( -- matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-c,extent-d> matrix<space-global,f32,extent-c,extent-d> matrix<space-global,f32,extent-h,extent-d> )
+: AUTHOR-OPEN ( -- matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-h,extent-d> matrix<space-global,f32,extent-kv,extent-d> matrix<space-global,f32,extent-kv,extent-d> matrix<space-global,f32,extent-h,extent-d> )
    PTX-HEADER PTX-NL
    s" .extern .shared .align 4 .b8 GPT2_ATTN_SM[];" PTX-L
    ENTRY REGS
@@ -275,13 +287,18 @@ KERNEL: CHECKED ( matrix<space-global,f32,extent-h,extent-d> matrix<space-global
 
 public
 
-: LAUNCH-CHECK ( n n n n -- n ) {: pos:n heads:n width:n cap:n :}
+: LAUNCH-CHECK ( n n n n -- n n n ) {: pos:n heads:n width:n cap:n :}
    pos U32? 0= if E-PTX-BLOCK throw then
    heads POS-U32? 0= if E-PTX-BLOCK throw then
    width POS-U32? 0= if E-PTX-BLOCK throw then
    cap POS-U32? 0= if E-PTX-BLOCK throw then
    pos cap >= if E-PTX-BLOCK throw then
-   cap 1+ F32-BYTES * ;
+   cap U32-MAX >= if E-PTX-BLOCK throw then
+   \ row=heads*width*4 and cache=cap*row bound every u64 byte address; shared=(cap+1)*4 stays u32.
+   heads width CELL-MAX SIZE* F32-BYTES CELL-MAX SIZE* {: row:n :}
+   cap row CELL-MAX SIZE* {: cache:n :}
+   cap 1+ F32-BYTES U32-MAX SIZE* {: shared:n :}
+   row cache shared ;
 
 : EMIT ( -- )
    AUTHOR-OPEN CHECKED AUTHOR-CLOSE ;
