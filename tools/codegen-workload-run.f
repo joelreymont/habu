@@ -1,5 +1,5 @@
 \ codegen-workload-run.f - the choreography: put one program into the dictionary
-\ twice, once on each side of a migration, and leave both halves runnable. One
+\ several times, on both sides of a migration, and leave every copy runnable. One
 \ concern: the ORDER, which is the whole experiment.
 \
 \ WHAT HAS TO HAPPEN, AND WHY IT HAS TO HAPPEN IN THIS ORDER. The engine decides
@@ -11,16 +11,19 @@
 \ load-order that does it:
 \
 \   1  the data is generated.
-\   2  the subjects are published twice by the engine: into HOT-ENGINE, which
-\      the migration will replace, and into HOT-FIXED, which it will not.
-\   3  the before-arm drivers are compiled - the three workloads against
-\      HOT-ENGINE, and the three controls against HOT-FIXED.
-\   4  the compile-shaped workload's before-arm is measured. It has to be here:
-\      its arms are separated by the migration itself.
-\   5  the subjects are published a third time, by the native chain, into
+\   2  the subjects are published six times by the engine: into HOT-ENGINE,
+\      which the migration will replace, into HOT-FIXED, which it will not, and
+\      into HOT-F1..HOT-F4, which it will not either.
+\   3  the before-arm drivers are compiled - one per workload against
+\      HOT-ENGINE, one against HOT-FIXED for the control, and one against each
+\      of the four extra publications.
+\   4  the compile-shaped workload's null draws are measured, and then its
+\      before-arm. They have to be here: its arms are separated by the migration
+\      itself.
+\   5  the subjects are published a seventh time, by the native chain, into
 \      HOT-CHAIN.
-\   6  the after-arm drivers are compiled - the same three bodies against
-\      HOT-CHAIN, and the same three controls against HOT-FIXED again.
+\   6  the after-arm drivers are compiled - the same bodies against HOT-CHAIN,
+\      and the same control bodies against HOT-FIXED again.
 \   7  the compile-shaped workload's after-arm is measured and its row closed.
 \
 \ Steps 3 and 6 compile the same text under a different search order, which is
@@ -30,11 +33,27 @@
 \ by a few hundred bytes, every later definition sits at a different address, the
 \ caches hold different things - lands on the control rows in full.
 \
-\ THE MEASUREMENT IS NOT HERE. This file publishes and it measures the one row
-\ that cannot be measured anywhere else; MEASURE below runs the other six, and
-\ nothing calls it. tools/codegen-workload.f calls it and prints the report;
-\ tools/codegen-workload-test.f does not call it at all, because a scheduled
-\ suite must not contain a number that a busy host can move.
+\ WHY FOUR EXTRA PUBLICATIONS. A control row answers "what does crossing the
+\ migration do to a driver that should not care?", and one floor row used to
+\ answer "what does reaching a DIFFERENT publication of the same subject do?".
+\ One row is one sample, and the second question does not have a small symmetric
+\ answer: two byte-identical publications of the same body have measured
+\ thirty-five per cent apart on the scan shape, and the same pair has measured
+\ two per cent apart on another run. A bar built from one draw of that is a
+\ coin toss, and it produced three consecutive runs in which a workload was
+\ reported as a REAL LOSS against a two per cent bar. With five publications in
+\ hand, each workload's placement row times all five against each other and
+\ reports the widest gap any two of them showed; that gap is the bar, and a
+\ delta has to clear THAT.
+\
+\ THE MEASUREMENT IS NOT HERE. This file publishes and it measures the rows that
+\ cannot be measured anywhere else; tools/codegen-workload-rows.f holds the
+\ timed rows of the five compute workloads, and nothing here calls them.
+\ tools/codegen-workload.f runs them and prints the report;
+\ tools/codegen-workload-test.f does not, because a scheduled suite must not
+\ contain a number that a busy host can move - what it checks about the rows
+\ measured HERE is the fact their delta would be meaningless without: that both
+\ arms compiled the same amount.
 
 require lib/errors.f
 require lib/prelude.f
@@ -49,14 +68,16 @@ package CODEGEN-RUN
 public
 
 \ ---- how much work a measured round does ------------------------------------
-\ Each of the three compute workloads is sized so that one timed run takes a
+\ Each of the compute workloads is sized so that one timed run takes a
 \ millisecond or two: long enough that the clock's own resolution is nothing next
 \ to it, short enough that the fastest-run rule has a real chance of finding a
-\ window with no interference in it. The counts differ because the three bodies
-\ cost very different amounts per unit of data.
+\ window with no interference in it. The counts differ because the bodies cost
+\ very different amounts per unit of data - a mix run makes three passes over the
+\ buffer where a count run makes one, so it is given a third of the repetitions.
 100 constant SCAN-REPS
 60 constant COUNT-REPS
 80 constant TERM-REPS
+20 constant MIX-REPS
 1 constant COUNT-INNER          \ passes over the buffer inside one COUNT driver call
 31 constant ROUNDS
 
@@ -72,17 +93,19 @@ public
 private
 
 variable CHECK-ROUND
+variable CHECK-ARM
+variable ARM-NEXT               \ the next unused batch-arm letter
 variable REC0
 
 : NDICT ( -- n )
    ndict@ ;
 
 \ One round of the compile-shaped workload: the next batch of the current arm.
-\ The round number is kept here rather than passed, because a timing body is a
-\ quotation and a quotation cannot read the enclosing word's locals - the shape
-\ src/compiler/native/migrate.f uses for the same reason.
-: CHECK-STEP ( n -- ) {: arm:n :}
-   arm CHECK-ROUND @ CODEGEN-HOT:CHECK-BATCH
+\ The arm and the round number are kept here rather than passed, because a timing
+\ body is a quotation and a quotation cannot read the enclosing word's locals -
+\ the shape src/compiler/native/migrate.f uses for the same reason.
+: CHECK-STEP ( -- )
+   CHECK-ARM @ CHECK-ROUND @ CODEGEN-HOT:CHECK-BATCH
    CHECK-ROUND @ 1+ CHECK-ROUND ! ;
 
 \ How many dictionary records an arm published. This is the compile-shaped
@@ -92,49 +115,85 @@ variable REC0
 \ means nothing.
 variable REC-BEFORE
 
-: ARM-BEGIN ( -- )
-   0 CHECK-ROUND !
-   NDICT REC0 ! ;
-
 : PUBLISHED ( -- n )
    NDICT REC0 @ - ;
 
-: STEP-BEFORE ( -- )
-   CODEGEN-HOT:ARM-BEFORE CHECK-STEP ;
+\ Start one arm: its own letter, so its generated package names collide with
+\ nothing, its round counter back to zero, and one untimed batch.
+: ARM-BEGIN ( n -- ) {: arm:n :}
+   arm CHECK-ARM !
+   0 CHECK-ROUND !
+   NDICT REC0 !
+   CHECK-STEP ;
 
-: STEP-AFTER ( -- )
-   CODEGEN-HOT:ARM-AFTER CHECK-STEP ;
+: TAKE-ARM ( -- n )
+   ARM-NEXT @
+   ARM-NEXT @ 1+ ARM-NEXT ! ;
+
+: CHECK-OLD ( n -- )
+   ARM-BEGIN
+   CHECK-REPS CHECK-ROUNDS [: CHECK-STEP ;] CODEGEN-CLOCK:ARM-OLD
+   PUBLISHED REC-BEFORE ! ;
+
+: CHECK-NEW ( n -- )
+   ARM-BEGIN
+   CHECK-REPS CHECK-ROUNDS [: CHECK-STEP ;] CODEGEN-CLOCK:ARM-NEW ;
+
+: CHECK-CLOSE ( -- )
+   REC-BEFORE @ PUBLISHED CODEGEN-CLOCK:ANSWERS
+   CODEGEN-CLOCK:CLOSE ;
+
+\ One null draw for the compile-shaped workload: two batch sequences, one after
+\ the other, both compiled by the engine with nothing at all in between. Its
+\ delta is therefore entirely what compiling a few hundred definitions does to
+\ the compilation of the few hundred after them - the dictionary is longer, and
+\ every name in the next sequence is looked up in it. That is the same gap the
+\ real row's two arms are separated by, plus the migration, so it is the honest
+\ bar for the real row and the reason the compile-shaped row can be judged at
+\ all. The draws run BEFORE the real row: the growth per sequence is a larger
+\ fraction of a smaller total, so a bar taken here is if anything the
+\ conservative one.
+: DRIFT-ROW ( ptr u8 n -- ) {: a:ptr u:n :}
+   a u s" check" CODEGEN-CLOCK:OPEN-NULL
+   TAKE-ARM CHECK-OLD
+   TAKE-ARM CHECK-NEW
+   CHECK-CLOSE ;
 
 public
 
-\ The compile-shaped workload's two halves, as two words the load order calls at
-\ the two moments they belong at. They are words rather than top-level lines
-\ because a timing body is a quotation and a quotation is a compile-time
+\ The compile-shaped workload's null draws and its two halves, as words the load
+\ order calls at the moments they belong at. They are words rather than top-level
+\ lines because a timing body is a quotation and a quotation is a compile-time
 \ construction: the interpreter has no `[:` to give.
-: CHECK-BEFORE ( -- )
+\
+\ FOUR DRAWS, for the reason the file header gives: one draw of a confound this
+\ size is a coin toss, and the report's bar is the largest of them.
+: CHECK-DRIFT ( -- )
    CODEGEN-CLOCK:RESET
-   s" check-batch" CODEGEN-CLOCK:OPEN
-   ARM-BEGIN
-   STEP-BEFORE
-   CHECK-REPS CHECK-ROUNDS [: STEP-BEFORE ;] CODEGEN-CLOCK:ARM-OLD
-   PUBLISHED REC-BEFORE ! ;
+   CODEGEN-HOT:ARM-AFTER 1+ ARM-NEXT !
+   s" check-drift-1" DRIFT-ROW
+   s" check-drift-2" DRIFT-ROW
+   s" check-drift-3" DRIFT-ROW
+   s" check-drift-4" DRIFT-ROW ;
+
+: CHECK-BEFORE ( -- )
+   s" check-batch" s" check" CODEGEN-CLOCK:OPEN-REAL
+   CODEGEN-HOT:ARM-BEFORE CHECK-OLD ;
 
 : CHECK-AFTER ( -- )
-   ARM-BEGIN
-   STEP-AFTER
-   CHECK-REPS CHECK-ROUNDS [: STEP-AFTER ;] CODEGEN-CLOCK:ARM-NEW
-   REC-BEFORE @ PUBLISHED CODEGEN-CLOCK:ANSWERS
-   CODEGEN-CLOCK:CLOSE ;
+   CODEGEN-HOT:ARM-AFTER CHECK-NEW
+   CHECK-CLOSE ;
 
 ;package
 
 \ ---- 1. the data ------------------------------------------------------------
 CODEGEN-HOT:FILL-DATA
 
-\ ---- 2. the subjects, twice, as the engine compiles them --------------------
-\ HOT-ENGINE is what the migration replaces. HOT-FIXED is the same four strings
-\ compiled by the same engine at the same moment, and nothing ever replaces it:
-\ it is the control's subject.
+\ ---- 2. the subjects, six times, as the engine compiles them ----------------
+\ HOT-ENGINE is what the migration replaces. The other five are the same four
+\ strings compiled by the same engine at the same moment, and nothing ever
+\ replaces any of them: HOT-FIXED is the control's subject, and HOT-F1..HOT-F4
+\ are the four the placement row sweeps - identical code at four other addresses.
 package HOT-ENGINE
 public
 CODEGEN-HOT:PUBLISH-ENGINE
@@ -145,9 +204,31 @@ public
 CODEGEN-HOT:PUBLISH-ENGINE
 ;package
 
+package HOT-F1
+public
+CODEGEN-HOT:PUBLISH-ENGINE
+;package
+
+package HOT-F2
+public
+CODEGEN-HOT:PUBLISH-ENGINE
+;package
+
+package HOT-F3
+public
+CODEGEN-HOT:PUBLISH-ENGINE
+;package
+
+package HOT-F4
+public
+CODEGEN-HOT:PUBLISH-ENGINE
+;package
+
 \ ---- 3. the before-arm drivers ----------------------------------------------
-\ Compiled from CODEGEN-HOT's three body strings, under a search order in which a
-\ bare subject name resolves to the engine's code.
+\ Compiled from CODEGEN-HOT's body strings, each group under a search order in
+\ which a bare subject name resolves to one publication's code. The two mix
+\ bodies also name HOT-FIXED's subject outright, for the passes the migration is
+\ not meant to reach; that name is the same in every group.
 package WORKLOAD
 public
 
@@ -155,17 +236,54 @@ using HOT-ENGINE
 s" SCAN-OLD"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
 s" COUNT-OLD" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
 s" TERM-OLD"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-OLD" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-OLD" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
 ;using
 
 using HOT-FIXED
 s" SCAN-CTL-A"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
 s" COUNT-CTL-A" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
 s" TERM-CTL-A"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-CTL-A" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-CTL-A" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
+;using
+
+using HOT-F1
+s" SCAN-F1"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
+s" COUNT-F1" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
+s" TERM-F1"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-F1" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-F1" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
+;using
+
+using HOT-F2
+s" SCAN-F2"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
+s" COUNT-F2" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
+s" TERM-F2"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-F2" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-F2" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
+;using
+
+using HOT-F3
+s" SCAN-F3"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
+s" COUNT-F3" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
+s" TERM-F3"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-F3" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-F3" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
+;using
+
+using HOT-F4
+s" SCAN-F4"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
+s" COUNT-F4" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
+s" TERM-F4"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-F4" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-F4" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
 ;using
 
 ;package
 
-\ ---- 4. the compile-shaped workload's before-arm ----------------------------
+\ ---- 4. the compile-shaped workload's null draws and before-arm -------------
+CODEGEN-RUN:CHECK-DRIFT
 CODEGEN-RUN:CHECK-BEFORE
 
 \ ---- 5. the migration -------------------------------------------------------
@@ -175,8 +293,8 @@ CODEGEN-HOT:PUBLISH-CHAIN
 ;package
 
 \ ---- 6. the after-arm drivers -----------------------------------------------
-\ The same three strings, and the same three control strings, under a search
-\ order in which a bare subject name resolves to the chain's code.
+\ The same strings, and the same control strings, under a search order in which a
+\ bare subject name resolves to the chain's code.
 package WORKLOAD
 public
 
@@ -184,12 +302,16 @@ using HOT-CHAIN
 s" SCAN-NEW"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
 s" COUNT-NEW" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
 s" TERM-NEW"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-NEW" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-NEW" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
 ;using
 
 using HOT-FIXED
 s" SCAN-CTL-B"  CODEGEN-HOT:SCAN-BODY$  CODEGEN-HOT:DEFINE-AS
 s" COUNT-CTL-B" CODEGEN-HOT:COUNT-BODY$ CODEGEN-HOT:DEFINE-AS
 s" TERM-CTL-B"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
+s" MIX66-CTL-B" CODEGEN-HOT:MIX66-BODY$ CODEGEN-HOT:DEFINE-AS
+s" MIX33-CTL-B" CODEGEN-HOT:MIX33-BODY$ CODEGEN-HOT:DEFINE-AS
 ;using
 
 ;package
@@ -197,97 +319,4 @@ s" TERM-CTL-B"  CODEGEN-HOT:TERM-BODY$  CODEGEN-HOT:DEFINE-AS
 \ ---- 7. the compile-shaped workload's after-arm -----------------------------
 CODEGEN-RUN:CHECK-AFTER
 
-\ ---- the six compute rows, and the words that run them ----------------------
-\ Everything below is compiled after the drivers exist, so it can name them. The
-\ answers are taken once, outside the timing, and the timing bodies drop them:
-\ a timed run must do the workload and nothing else.
-package CODEGEN-RUN
-public
-
-: SCAN-OLD-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-OLD ;
-
-: SCAN-NEW-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-NEW ;
-
-: COUNT-OLD-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-OLD ;
-
-: COUNT-NEW-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-NEW ;
-
-: TERM-OLD-SUM ( -- n )
-   CODEGEN-HOT:TERMS$ WORKLOAD:TERM-OLD ;
-
-: TERM-NEW-SUM ( -- n )
-   CODEGEN-HOT:TERMS$ WORKLOAD:TERM-NEW ;
-
-: SCAN-CTL-A-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-CTL-A ;
-
-: SCAN-CTL-B-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-CTL-B ;
-
-: COUNT-CTL-A-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-CTL-A ;
-
-: COUNT-CTL-B-SUM ( -- n )
-   CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-CTL-B ;
-
-: TERM-CTL-A-SUM ( -- n )
-   CODEGEN-HOT:TERMS$ WORKLOAD:TERM-CTL-A ;
-
-: TERM-CTL-B-SUM ( -- n )
-   CODEGEN-HOT:TERMS$ WORKLOAD:TERM-CTL-B ;
-
-\ ---- the floor rows ---------------------------------------------------------
-\ A row that compares OLD CODE WITH OLD CODE. Its two arms run the same body,
-\ compiled by the same code generator, over the same data - and reach it through
-\ two different PUBLICATIONS of the subject: HOT-ENGINE for one arm and HOT-FIXED
-\ for the other, which are the same four strings compiled by the same engine, one
-\ after the other, and differ only in the addresses they landed at.
-\
-\ WHY A REPORT NEEDS THIS. The first run of this harness measured the scan
-\ workload's two arms three per cent apart and its control five per cent apart,
-\ and both looked like noise around zero. They were not: a floor row for the same
-\ workload came out THIRTY per cent, which says that for a body whose inner loop
-\ calls a small word millions of times, WHERE the callee was published moves the
-\ workload by ten times more than the code generator does. A delta smaller than
-\ its own floor row is not a small effect; it is an effect this measurement
-\ cannot see, and the report says so instead of printing a number and a hedge.
-\ The control row and the floor row measure different confounds - the control
-\ isolates the DRIVER's side of the migration, the floor isolates the CALLEE's
-\ address - so both are printed and a workload delta has to clear both.
-: MEASURE-FLOOR ( -- )
-   s" scan-floor"  SCAN-REPS ROUNDS  SCAN-OLD-SUM SCAN-CTL-A-SUM
-      [: CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-OLD drop ;]
-      [: CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-CTL-A drop ;] CODEGEN-CLOCK:PAIR
-   s" count-floor" COUNT-REPS ROUNDS  COUNT-OLD-SUM COUNT-CTL-A-SUM
-      [: CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-OLD drop ;]
-      [: CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-CTL-A drop ;] CODEGEN-CLOCK:PAIR
-   s" term-floor"  TERM-REPS ROUNDS  TERM-OLD-SUM TERM-CTL-A-SUM
-      [: CODEGEN-HOT:TERMS$ WORKLOAD:TERM-OLD drop ;]
-      [: CODEGEN-HOT:TERMS$ WORKLOAD:TERM-CTL-A drop ;] CODEGEN-CLOCK:PAIR ;
-
-: MEASURE ( -- )
-   s" scan"         SCAN-REPS ROUNDS  SCAN-OLD-SUM SCAN-NEW-SUM
-      [: CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-OLD drop ;]
-      [: CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-NEW drop ;] CODEGEN-CLOCK:PAIR
-   s" scan-control" SCAN-REPS ROUNDS  SCAN-CTL-A-SUM SCAN-CTL-B-SUM
-      [: CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-CTL-A drop ;]
-      [: CODEGEN-HOT:BYTES$ WORKLOAD:SCAN-CTL-B drop ;] CODEGEN-CLOCK:PAIR
-   s" count"         COUNT-REPS ROUNDS  COUNT-OLD-SUM COUNT-NEW-SUM
-      [: CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-OLD drop ;]
-      [: CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-NEW drop ;] CODEGEN-CLOCK:PAIR
-   s" count-control" COUNT-REPS ROUNDS  COUNT-CTL-A-SUM COUNT-CTL-B-SUM
-      [: CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-CTL-A drop ;]
-      [: CODEGEN-HOT:BYTES$ COUNT-INNER WORKLOAD:COUNT-CTL-B drop ;] CODEGEN-CLOCK:PAIR
-   s" term"         TERM-REPS ROUNDS  TERM-OLD-SUM TERM-NEW-SUM
-      [: CODEGEN-HOT:TERMS$ WORKLOAD:TERM-OLD drop ;]
-      [: CODEGEN-HOT:TERMS$ WORKLOAD:TERM-NEW drop ;] CODEGEN-CLOCK:PAIR
-   s" term-control" TERM-REPS ROUNDS  TERM-CTL-A-SUM TERM-CTL-B-SUM
-      [: CODEGEN-HOT:TERMS$ WORKLOAD:TERM-CTL-A drop ;]
-      [: CODEGEN-HOT:TERMS$ WORKLOAD:TERM-CTL-B drop ;] CODEGEN-CLOCK:PAIR
-   MEASURE-FLOOR ;
-
-;package
+require tools/codegen-workload-rows.f

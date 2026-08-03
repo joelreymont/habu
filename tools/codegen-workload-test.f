@@ -288,6 +288,157 @@ using CODEGEN-SCAN
    [: s" CODEGEN-WORKLOAD-TEST:NO-SUCH-WORD" CODEGEN-SCAN:WORD-BYTES drop ;]
       CODEGEN-SCAN:E-WLSCAN-SUBJECT TTHROWSQ ;
 
+using CODEGEN-SCAN
+
+\ ---- the placement sweep's arms ---------------------------------------------
+\ The bar every verdict is held against comes out of five drivers over identical
+\ code that reach five different publications of one subject. If two of them
+\ entered the same record the sweep would be timing a body against itself, the
+\ widest gap it found would be too small, and every verdict beside it would be
+\ too generous. So each arm is checked to enter ITS OWN publication and no other.
+: PLACE-WIRING-CASES ( -- )
+   s" each placement arm enters its own publication" T-LABEL
+   s" WORKLOAD:SCAN-F1" s" HOT-F1:FOLD-C" CALLS? TTRUE
+   s" WORKLOAD:SCAN-F2" s" HOT-F2:FOLD-C" CALLS? TTRUE
+   s" WORKLOAD:SCAN-F3" s" HOT-F3:FOLD-C" CALLS? TTRUE
+   s" WORKLOAD:SCAN-F4" s" HOT-F4:FOLD-C" CALLS? TTRUE
+   s" WORKLOAD:COUNT-F1" s" HOT-F1:COUNT-CH" CALLS? TTRUE
+   s" WORKLOAD:COUNT-F4" s" HOT-F4:COUNT-CH" CALLS? TTRUE
+
+   s" and no other publication, the reference one included" T-LABEL
+   s" WORKLOAD:SCAN-F1" s" HOT-ENGINE:FOLD-C" CALLS? TFALSE
+   s" WORKLOAD:SCAN-F1" s" HOT-F2:FOLD-C" CALLS? TFALSE
+   s" WORKLOAD:SCAN-F2" s" HOT-F1:FOLD-C" CALLS? TFALSE
+   s" WORKLOAD:SCAN-F4" s" HOT-CHAIN:FOLD-C" CALLS? TFALSE
+   s" WORKLOAD:COUNT-F1" s" HOT-ENGINE:COUNT-CH" CALLS? TFALSE
+   s" WORKLOAD:COUNT-F4" s" HOT-CHAIN:COUNT-CH" CALLS? TFALSE
+
+   s" a placement arm holds exactly the one call its subject needs" T-LABEL
+   s" WORKLOAD:SCAN-F1" BLS-IN 1 T=
+   s" WORKLOAD:SCAN-F4" BLS-IN 1 T=
+   s" WORKLOAD:COUNT-F1" BLS-IN 1 T=
+
+   s" and the five arms of one sweep are the same code size" T-LABEL
+   s" WORKLOAD:SCAN-F1" WORD-BYTES s" WORKLOAD:SCAN-OLD" WORD-BYTES T=
+   s" WORKLOAD:SCAN-F2" WORD-BYTES s" WORKLOAD:SCAN-OLD" WORD-BYTES T=
+   s" WORKLOAD:SCAN-F3" WORD-BYTES s" WORKLOAD:SCAN-OLD" WORD-BYTES T=
+   s" WORKLOAD:SCAN-F4" WORD-BYTES s" WORKLOAD:SCAN-OLD" WORD-BYTES T= ;
+
+\ ---- the mixed-coverage workloads -------------------------------------------
+\ These two rows are the middle of the coverage curve, and what makes them that
+\ is a COUNT of call instructions: mix66 reaches the migrated subject twice per
+\ pass and the unmigrated one once, mix33 the other way round. Read off the
+\ compiled code, because the claim is about what the arm executes and not about
+\ what its source says - a compiler that folded the two identical calls into one
+\ would leave the source untouched and the coverage wrong.
+: MIX-CASES ( -- )
+   s" the mixed arms reach both the migrated subject and the fixed one" T-LABEL
+   s" WORKLOAD:MIX66-OLD" s" HOT-ENGINE:COUNT-CH" CALLS? TTRUE
+   s" WORKLOAD:MIX66-OLD" s" HOT-FIXED:COUNT-CH" CALLS? TTRUE
+   s" WORKLOAD:MIX66-NEW" s" HOT-CHAIN:COUNT-CH" CALLS? TTRUE
+   s" WORKLOAD:MIX66-NEW" s" HOT-FIXED:COUNT-CH" CALLS? TTRUE
+   s" WORKLOAD:MIX33-OLD" s" HOT-ENGINE:COUNT-CH" CALLS? TTRUE
+   s" WORKLOAD:MIX33-NEW" s" HOT-CHAIN:COUNT-CH" CALLS? TTRUE
+
+   s" and no mixed arm enters the other column's subject" T-LABEL
+   s" WORKLOAD:MIX66-OLD" s" HOT-CHAIN:COUNT-CH" CALLS? TFALSE
+   s" WORKLOAD:MIX66-NEW" s" HOT-ENGINE:COUNT-CH" CALLS? TFALSE
+   s" WORKLOAD:MIX33-OLD" s" HOT-CHAIN:COUNT-CH" CALLS? TFALSE
+   s" WORKLOAD:MIX33-NEW" s" HOT-ENGINE:COUNT-CH" CALLS? TFALSE
+
+   s" the coverage is two of three passes and one of three, in the code" T-LABEL
+   s" WORKLOAD:MIX66-OLD" s" HOT-ENGINE:COUNT-CH" CALLS-IN 2 T=
+   s" WORKLOAD:MIX66-OLD" s" HOT-FIXED:COUNT-CH" CALLS-IN 1 T=
+   s" WORKLOAD:MIX66-NEW" s" HOT-CHAIN:COUNT-CH" CALLS-IN 2 T=
+   s" WORKLOAD:MIX66-NEW" s" HOT-FIXED:COUNT-CH" CALLS-IN 1 T=
+   s" WORKLOAD:MIX33-OLD" s" HOT-ENGINE:COUNT-CH" CALLS-IN 1 T=
+   s" WORKLOAD:MIX33-OLD" s" HOT-FIXED:COUNT-CH" CALLS-IN 2 T=
+   s" WORKLOAD:MIX33-NEW" s" HOT-CHAIN:COUNT-CH" CALLS-IN 1 T=
+   s" WORKLOAD:MIX33-NEW" s" HOT-FIXED:COUNT-CH" CALLS-IN 2 T=
+
+   s" so every mixed arm holds three calls and not one folded together" T-LABEL
+   s" WORKLOAD:MIX66-OLD" BLS-IN 3 T=
+   s" WORKLOAD:MIX66-NEW" BLS-IN 3 T=
+   s" WORKLOAD:MIX33-OLD" BLS-IN 3 T=
+   s" WORKLOAD:MIX33-NEW" BLS-IN 3 T= ;
+
+;using
+
+\ ---- the answers the new rows compute ---------------------------------------
+\ Three passes over the buffer, so three times the count row's answer, whichever
+\ publications the passes went through.
+: MIX-ANSWER-CASES ( -- )
+   s" the two arms of each mixed workload compute the same answer" T-LABEL
+   CODEGEN-RUN:MIX66-OLD-SUM CODEGEN-RUN:MIX66-NEW-SUM T=
+   CODEGEN-RUN:MIX33-OLD-SUM CODEGEN-RUN:MIX33-NEW-SUM T=
+
+   s" and it is three passes' worth of the count row's pinned answer" T-LABEL
+   CODEGEN-RUN:MIX66-OLD-SUM 141 T=
+   CODEGEN-RUN:MIX33-OLD-SUM 141 T=
+
+   s" every publication in a placement sweep computes its family's answer" T-LABEL
+   CODEGEN-RUN:SCAN-F1-SUM CODEGEN-RUN:SCAN-OLD-SUM T=
+   CODEGEN-RUN:SCAN-F2-SUM CODEGEN-RUN:SCAN-OLD-SUM T=
+   CODEGEN-RUN:SCAN-F3-SUM CODEGEN-RUN:SCAN-OLD-SUM T=
+   CODEGEN-RUN:SCAN-F4-SUM CODEGEN-RUN:SCAN-OLD-SUM T=
+   CODEGEN-RUN:COUNT-F1-SUM CODEGEN-RUN:COUNT-OLD-SUM T=
+   CODEGEN-RUN:COUNT-F4-SUM CODEGEN-RUN:COUNT-OLD-SUM T=
+   CODEGEN-RUN:TERM-F1-SUM CODEGEN-RUN:TERM-OLD-SUM T=
+   CODEGEN-RUN:TERM-F4-SUM CODEGEN-RUN:TERM-OLD-SUM T=
+   CODEGEN-RUN:MIX66-F1-SUM CODEGEN-RUN:MIX66-OLD-SUM T=
+   CODEGEN-RUN:MIX33-F4-SUM CODEGEN-RUN:MIX33-OLD-SUM T= ;
+
+\ ---- the bar behind a verdict ------------------------------------------------
+\ A verdict is a delta held against the largest delta this harness produced when
+\ nothing changed, and the rows that measure that are the family's null rows.
+\ Before this, the report named those rows by hand and a name that matched no row
+\ scored as a bar of nothing: renaming one row made every verdict read REAL and
+\ the run still exited zero. The bar now comes out of the recorded rows, and a
+\ family with none of them throws.
+\
+\ None of this reads a clock. Whether a bar is large or small is a timing; that
+\ every judged row HAS one, and that no null row exceeds the bar its own family's
+\ null rows set, are facts about the store.
+: BAR-CASES ( -- )
+   s" a family with no null row has no bar, and asking for one throws" T-LABEL
+   s" CODEGEN-WORKLOAD-TEST:NO-SUCH-FAMILY" CODEGEN-CLOCK:NULLS 0 T=
+   [: s" CODEGEN-WORKLOAD-TEST:NO-SUCH-FAMILY" CODEGEN-CLOCK:BAR-PERMILLE drop ;]
+      CODEGEN-CLOCK:E-WLTIME-BAR TTHROWSQ
+
+   s" the compile-shaped row's own family carries four null draws" T-LABEL
+   s" check" CODEGEN-CLOCK:NULLS 4 T=
+
+   s" every row the report judges has null rows behind its bar" T-LABEL
+   CODEGEN-CLOCK:ROWS 0 ?do
+      i CODEGEN-CLOCK:REAL? if
+         i CODEGEN-CLOCK:FAM$ CODEGEN-CLOCK:NULLS 0 > TTRUE
+      then
+   loop
+
+   s" and no null row clears the bar its own family's draws set" T-LABEL
+   CODEGEN-CLOCK:ROWS 0 ?do
+      i CODEGEN-CLOCK:NULL? if
+         i CODEGEN-CLOCK:OVER-BAR? TFALSE
+      then
+   loop ;
+
+\ ---- the compile-shaped family, real row and null draws alike ----------------
+\ Every one of them compiles the same generated text the same number of times, so
+\ every one of them must publish the same number of records on both arms. A draw
+\ whose two sequences compiled different amounts is not a null draw and its delta
+\ is not a bar.
+: DRIFT-ROW-CASES ( -- )
+   CODEGEN-HOT:BATCH-DEFS 1+ CODEGEN-RUN:CHECK-ROUNDS 1+ * {: want:n :}
+   s" each null draw compiled the same amount in both of its sequences" T-LABEL
+   CODEGEN-CLOCK:ROWS 0 ?do
+      i CODEGEN-CLOCK:FAM$ s" check" STR= if
+         i CODEGEN-CLOCK:SAME-ANSWER? TTRUE
+         i CODEGEN-CLOCK:OLD-SUM want T=
+         i CODEGEN-CLOCK:NEW-SUM want T=
+         i CODEGEN-CLOCK:INTERLEAVED? TFALSE
+      then
+   loop ;
+
 public
 
 : MAIN ( -- )
@@ -296,9 +447,14 @@ public
    SURVEY-CASES
    SUBJECT-CASES
    WIRING-CASES
+   PLACE-WIRING-CASES
+   MIX-CASES
    BODY-CASES
    ANSWER-CASES
+   MIX-ANSWER-CASES
    CHECK-ROW-CASES
+   DRIFT-ROW-CASES
+   BAR-CASES
    STORE-CASES
    T-REPORT
    s" codegen-workload-test: ok" type cr ;

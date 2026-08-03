@@ -36,6 +36,29 @@
 \ the same answer. A row whose two answers disagree is a miscompilation, and the
 \ report names it as one rather than timing it and folding it into a claim.
 \
+\ A ROW ALSO SAYS WHAT IT IS FOR, AND THAT IS WHAT MAKES A VERDICT POSSIBLE. Every
+\ row carries a FAMILY - the workload it belongs to - and a KIND. A KIND-REAL row
+\ is a comparison someone wants an answer about; a KIND-NULL row ran the same
+\ program on both arms, so whatever delta it produced is a delta this harness
+\ manufactures out of nothing. The bar for a real row is therefore not a number
+\ chosen by a reader, and not a row named by hand somewhere else: it is the
+\ largest magnitude any of ITS OWN family's null rows produced, and BAR-PERMILLE
+\ computes it from the recorded rows. A family with no null row in it has no bar,
+\ and asking for one throws rather than returning a zero that would let every
+\ delta look real. That refusal is the whole reason the field exists: the report
+\ used to name its bar rows by hand and silently scored a missing name as a bar
+\ of nothing.
+\
+\ ONE DRAW IS NOT A BAR. The confound a null row measures is not a small
+\ symmetric wobble around zero. Two byte-identical publications of one body, both
+\ compiled by the same generator, have been measured thirty-five per cent apart
+\ on a workload whose inner loop calls a small word millions of times: where the
+\ callee landed matters more than what the code generator did. A single pair
+\ drawn from that says nothing about the next pair, so SWEEP below times a whole
+\ set of identical publications against each other in one row and keeps the two
+\ extremes: its delta is the widest gap the set contains, which is the largest
+\ delta this harness can produce for a body nobody changed.
+\
 \ THE DELTA IS REPORTED, NEVER ASSERTED HERE. Nothing in this file compares a
 \ measurement with a committed number or throws because a row was slower than
 \ expected: a timing that can fail is a timing that fails for host load, and the
@@ -55,8 +78,9 @@ public
 -7222 constant E-WLTIME-ROW     \ a row index outside the recorded count
 -7223 constant E-WLTIME-CLOCK   \ the monotonic clock reported no elapsed time across a whole run
 -7224 constant E-WLTIME-STATE   \ an arm measured with no row open, or a row closed with an arm missing
+-7226 constant E-WLTIME-BAR     \ a bar was asked of a family with no null row to build one from
 
-16 constant ROW-MAX
+48 constant ROW-MAX
 32 constant NAME-MAX
 1000 constant PERMILLE          \ the unit a spread and a delta are reported in
 
@@ -64,8 +88,20 @@ private
 
 $7FFFFFFFFFFFFFFF constant NS-MAX
 
+\ How many publications of one body a placement sweep times against each other.
+5 constant SWEEP-ARMS
+
+\ What a row is for. A real row is a comparison to be judged; a null row ran the
+\ same program on both arms and is one draw of what this harness invents when
+\ nothing changed. There are two openers and no way to write a third value in.
+0 constant KIND-REAL
+1 constant KIND-NULL
+
 ROW-MAX NAME-MAX * BUFFER: NAME-BYTES
 create NAME-LENS ROW-MAX cells allot
+ROW-MAX NAME-MAX * BUFFER: FAM-BYTES
+create FAM-LENS ROW-MAX cells allot
+create KIND-A ROW-MAX cells allot
 create OLD-NS-A ROW-MAX cells allot
 create NEW-NS-A ROW-MAX cells allot
 create OLD-SPREAD-A ROW-MAX cells allot
@@ -75,6 +111,9 @@ create NEW-SUM-A ROW-MAX cells allot
 create REPS-A ROW-MAX cells allot
 create ROUNDS-A ROW-MAX cells allot
 create WOVEN-A ROW-MAX cells allot
+
+create SW-FAST SWEEP-ARMS cells allot
+create SW-SLOW SWEEP-ARMS cells allot
 
 variable ROW-N
 variable OPEN?                  \ a row is being measured
@@ -97,8 +136,17 @@ variable ROUNDS-V
 : ROW-OK ( n -- n )
    dup 0 < over ROW-N @ >= or if E-WLTIME-ROW throw then ;
 
+\ Where row k's slice of a string table starts. The base stays on the stack
+\ rather than in a local: a `ptr` local would drop the element type the copy and
+\ the comparison both need.
+: STR-AT ( ptr u8 n -- ptr u8 )
+   NAME-MAX * + ;
+
 : NAME-AT ( n -- ptr u8 )
-   NAME-MAX * NAME-BYTES + ;
+   NAME-BYTES swap STR-AT ;
+
+: FAM-AT ( n -- ptr u8 )
+   FAM-BYTES swap STR-AT ;
 
 \ ---- one timed run ----------------------------------------------------------
 \ typed-local-lint: allow-bare-local - q is the timing body; its effect is in the
@@ -120,15 +168,58 @@ variable ROUNDS-V
    fast 0= if E-WLTIME-CLOCK throw then
    slow fast - PERMILLE * fast / ;
 
-: NAME! ( ptr u8 n -- ) {: a:ptr u:n :}
-   u NAME-MAX > if E-WLTIME-CAP throw then
-   a  ROW-N @ NAME-AT  u STR-LEN BYTE-COPY-LEN
-   u NAME-LENS ROW-N @ SLOT ! ;
+\ How big a delta is, with the direction dropped. A bar is a size, and a loss of
+\ three per cent is as far from zero as a gain of three.
+: MAG ( n -- n ) {: v:n :}
+   v 0 < if 0 v - exit then
+   v ;
+
+: BIGGER ( n n -- n ) {: x:n y:n :}
+   x y > if x exit then
+   y ;
+
+: STR-CP ( ptr u8 n ptr u8 -- )
+   swap STR-LEN BYTE-COPY-LEN ;
+
+: CAP-CK ( ptr u8 n -- ptr u8 n )
+   dup NAME-MAX > if E-WLTIME-CAP throw then ;
+
+: NAME! ( ptr u8 n -- )
+   CAP-CK
+   dup NAME-LENS ROW-N @ SLOT !
+   ROW-N @ NAME-AT STR-CP ;
+
+: FAM! ( ptr u8 n -- )
+   CAP-CK
+   dup FAM-LENS ROW-N @ SLOT !
+   ROW-N @ FAM-AT STR-CP ;
 
 : OPEN-CK ( -- )
    OPEN? @ 0= if E-WLTIME-STATE throw then ;
 
+\ ---- opening a row ----------------------------------------------------------
+\ A row is opened with its whole identity: what it is called, which workload
+\ family it belongs to, and whether it is a comparison to be judged or a null
+\ draw that helps judge one. Everything after this only measures.
+: OPEN ( ptr u8 n ptr u8 n n -- ) {: a:ptr u:n fa:ptr fu:n kind:n :}
+   OPEN? @ 0<> if E-WLTIME-STATE throw then
+   ROW-N @ ROW-MAX >= if E-WLTIME-CAP throw then
+   a u NAME!
+   fa fu FAM!
+   kind KIND-A ROW-N @ SLOT !
+   NS-MAX OLD-FAST !  0 OLD-SLOW !
+   NS-MAX NEW-FAST !  0 NEW-SLOW !
+   0 HAVE-OLD !  0 HAVE-NEW !  0 HAVE-SUMS !  0 WOVEN !
+   0 REPS-V !  0 ROUNDS-V !
+   -1 OPEN? ! ;
+
 public
+
+: OPEN-REAL ( ptr u8 n ptr u8 n -- )
+   KIND-REAL OPEN ;
+
+: OPEN-NULL ( ptr u8 n ptr u8 n -- )
+   KIND-NULL OPEN ;
 
 : RESET ( -- )
    0 ROW-N !  0 OPEN? ! ;
@@ -137,19 +228,10 @@ public
    ROW-N @ ;
 
 \ ---- a row measured in two separate phases ----------------------------------
-\ The three steps a compile-shaped workload needs, because its arms cannot be
-\ threaded through each other. A row opened and never closed records nothing,
-\ and a row closed with an arm missing is refused rather than reported with half
-\ a measurement in it.
-: OPEN ( ptr u8 n -- ) {: a:ptr u:n :}
-   OPEN? @ 0<> if E-WLTIME-STATE throw then
-   ROW-N @ ROW-MAX >= if E-WLTIME-CAP throw then
-   a u NAME!
-   NS-MAX OLD-FAST !  0 OLD-SLOW !
-   NS-MAX NEW-FAST !  0 NEW-SLOW !
-   0 HAVE-OLD !  0 HAVE-NEW !  0 HAVE-SUMS !  0 WOVEN !
-   0 REPS-V !  0 ROUNDS-V !
-   -1 OPEN? ! ;
+\ The steps a compile-shaped workload needs, because its arms cannot be threaded
+\ through each other. A row opened and never closed records nothing, and a row
+\ closed with an arm missing is refused rather than reported with half a
+\ measurement in it.
 
 \ typed-local-lint: allow-bare-local - q is the arm's body, and a local
 \ annotation cannot carry a quotation effect.
@@ -195,12 +277,13 @@ public
 \ ---- a row whose two arms are threaded through each other -------------------
 \ The ordinary case: both arms are runnable at the same moment, so a round
 \ measures one of each and the host's behaviour during the measurement lands on
-\ both columns.
+\ both columns. The row is opened first, by the caller, with the identity it is
+\ to be reported and judged under; this word only measures and closes.
 \ typed-local-lint: allow-bare-local - old and new are the two arms' bodies, and
 \ a local annotation cannot carry a quotation effect.
-: PAIR ( ptr u8 n n n n n [ -- ] [ -- ] -- )
-   {: a:ptr u:n reps:n rounds:n oldsum:n newsum:n old new :}
-   a u OPEN
+: PAIR ( n n n n [ -- ] [ -- ] -- )
+   {: reps:n rounds:n oldsum:n newsum:n old new :}
+   OPEN-CK
    rounds 0 ?do
       reps old RUN-ONCE SAMPLE-OLD
       reps new RUN-ONCE SAMPLE-NEW
@@ -210,11 +293,105 @@ public
    -1 HAVE-OLD !  -1 HAVE-NEW !  -1 WOVEN !
    CLOSE ;
 
+\ ---- a row that times one body at several addresses -------------------------
+\ A PLACEMENT SWEEP. Its arms are SWEEP-ARMS drivers over identical code that
+\ reach identical copies of one subject, published one after another and
+\ differing in nothing but the addresses they landed at. A round runs every arm
+\ once, so the rounds thread all of them through each other exactly as PAIR
+\ threads two, and each arm's fastest run comes out of the same sequence of
+\ windows as every other arm's.
+\
+\ WHAT IT RECORDS, AND WHY IT FITS A TWO-ARM ROW. The row keeps the FASTEST of
+\ the publications in the old column and the SLOWEST in the new one, with each of
+\ those two arms' own spread. The row's delta is then the widest gap between any
+\ two of the publications - which is precisely the largest delta this harness can
+\ report for a body nobody changed, and is the bar its family's real row has to
+\ clear. Recording the two extremes rather than every arm is not a summary that
+\ loses the question: the question IS the widest gap, and a pair drawn from
+\ anywhere inside the sweep is smaller than it by definition.
+\
+\ WHY THE EXTREMES AND NOT A CHOSEN PAIR. An earlier form of this measured a
+\ fixed reference publication against each of the others. That misses the widest
+\ gap whenever the reference sits in the middle of the spread, and the effect is
+\ not a wobble around a centre: on the scan shape the publications fall into a
+\ fast group and a slow group forty per cent apart, so which pair you happened to
+\ name decided the bar.
+private
+
+: SW-INIT ( -- )
+   SWEEP-ARMS 0 ?do
+      NS-MAX SW-FAST i SLOT !
+      0 SW-SLOW i SLOT !
+   loop ;
+
+\ typed-local-lint: allow-bare-local - q is the arm's body, as in ARM-OLD.
+: SW-RUN ( n n [ -- ] -- ) {: arm:n reps:n q :}
+   reps q RUN-ONCE {: ns:n :}
+   ns SW-FAST arm SLOT @ < if ns SW-FAST arm SLOT ! then
+   ns SW-SLOW arm SLOT @ > if ns SW-SLOW arm SLOT ! then ;
+
+\ The arm with the smallest fastest run, and the arm with the largest.
+: SW-BEST ( -- n )
+   0
+   SWEEP-ARMS 0 ?do
+      SW-FAST i SLOT @  over SW-FAST swap SLOT @  < if drop i then
+   loop ;
+
+: SW-WORST ( -- n )
+   0
+   SWEEP-ARMS 0 ?do
+      SW-FAST i SLOT @  over SW-FAST swap SLOT @  > if drop i then
+   loop ;
+
+: SW-EXTREMES ( -- )
+   SW-BEST {: b:n :}
+   SW-WORST {: w:n :}
+   SW-FAST b SLOT @ OLD-FAST !  SW-SLOW b SLOT @ OLD-SLOW !
+   SW-FAST w SLOT @ NEW-FAST !  SW-SLOW w SLOT @ NEW-SLOW ! ;
+
+public
+
+\ typed-local-lint: allow-bare-local - q1..q5 are the arms' bodies, and a local
+\ annotation cannot carry a quotation effect.
+: SWEEP ( n n n [ -- ] [ -- ] [ -- ] [ -- ] [ -- ] -- )
+   {: reps:n rounds:n sum:n q1 q2 q3 q4 q5 :}
+   OPEN-CK
+   SW-INIT
+   rounds 0 ?do
+      0 reps q1 SW-RUN
+      1 reps q2 SW-RUN
+      2 reps q3 SW-RUN
+      3 reps q4 SW-RUN
+      4 reps q5 SW-RUN
+   loop
+   SW-EXTREMES
+   sum sum ANSWERS
+   reps REPS-V !  rounds ROUNDS-V !
+   -1 HAVE-OLD !  -1 HAVE-NEW !  -1 WOVEN !
+   CLOSE ;
+
 \ ---- reading a row back -----------------------------------------------------
 
 : NAME$ ( n -- ptr u8 n ) {: k:n :}
    k ROW-OK NAME-AT
    NAME-LENS k SLOT @ ;
+
+: FAM$ ( n -- ptr u8 n ) {: k:n :}
+   k ROW-OK FAM-AT
+   FAM-LENS k SLOT @ ;
+
+private
+
+: KIND ( n -- n ) {: k:n :}
+   KIND-A k ROW-OK SLOT @ ;
+
+public
+
+: NULL? ( n -- bool ) {: k:n :}
+   k KIND KIND-NULL = ;
+
+: REAL? ( n -- bool ) {: k:n :}
+   k KIND KIND-REAL = ;
 
 : OLD-NS ( n -- n ) {: k:n :}
    OLD-NS-A k ROW-OK SLOT @ ;
@@ -255,25 +432,37 @@ public
    o 0= if E-WLTIME-CLOCK throw then
    o k NEW-NS - PERMILLE * o / ;
 
-\ The larger of the two arms' spreads: the noise floor a reader has to hold this
-\ row's delta against.
-: NOISE-PERMILLE ( n -- n ) {: k:n :}
-   k OLD-SPREAD {: o:n :}
-   k NEW-SPREAD {: v:n :}
-   o v > if o exit then
-   v ;
-
-\ Is this row's delta larger than the noise the run itself measured? A reader's
-\ aid, printed beside every row; nothing in any scheduled suite turns on it.
-: OVER-NOISE? ( n -- bool ) {: k:n :}
-   k DELTA-PERMILLE {: d:n :}
-   d 0 < if 0 d - else d then
-   k NOISE-PERMILLE > ;
-
 : ROW-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
    0 begin dup ROW-N @ < while
       dup NAME$ a u STR= if exit then
       1+
    repeat drop -1 ;
+
+\ ---- the bar a family's real rows are judged against ------------------------
+\ How many null draws a family has, and the largest delta any of them produced.
+\ A null row ran the same program on both arms, so its delta is entirely this
+\ harness's own doing; the largest of several draws is the size of artifact the
+\ harness has been SEEN to manufacture for that workload's shape, and a real
+\ delta smaller than that is a delta this measurement cannot see.
+: NULLS ( ptr u8 n -- n ) {: a:ptr u:n :}
+   0
+   ROW-N @ 0 ?do
+      i NULL? i FAM$ a u STR= and if 1+ then
+   loop ;
+
+: BAR-PERMILLE ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u NULLS 0= if E-WLTIME-BAR throw then
+   0
+   ROW-N @ 0 ?do
+      i NULL? i FAM$ a u STR= and if
+         i DELTA-PERMILLE MAG BIGGER
+      then
+   loop ;
+
+\ Did this row's delta clear the bar its own family's null draws set? This is the
+\ verdict, and it is the only place a delta is compared with anything.
+: OVER-BAR? ( n -- bool ) {: k:n :}
+   k DELTA-PERMILLE MAG
+   k FAM$ BAR-PERMILLE > ;
 
 ;package

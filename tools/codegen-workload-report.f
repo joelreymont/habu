@@ -14,16 +14,24 @@
 \      after-arm whose driver still calls the before-arm's word would report a
 \      delta of nothing and look perfectly healthy, so the report shows which
 \      record each arm's call instruction actually enters.
-\   4  THE WORKLOADS: each one's two arms, its delta, and the two rows that say
-\      whether the delta is readable - the control and the floor.
+\   4  THE WORKLOADS: each one's two arms, its delta, and beneath it the null
+\      rows of its own family - the rows that ran the same program on both arms
+\      and so measure what this harness invents when nothing changed.
 \   5  THE VERDICT PER WORKLOAD, in one line each, with no hedging: a delta that
-\      does not clear its own control and floor is reported as not measurable
-\      rather than as a small improvement.
+\      does not clear the largest of its family's null rows is reported as not
+\      measurable rather than as a small improvement.
 \
-\ NOTHING HERE THROWS ON A NUMBER. A report that failed when a row came out slow
-\ would be a gate, and a gate on a timing fails for host load; the gate this work
-\ carries is tools/codegen-workload-test.f, and every assertion in it is a fact
-\ about compiled code.
+\ NOTHING HERE THROWS ON A NUMBER, AND EXACTLY ONE THING HERE THROWS. A report
+\ that failed when a row came out slow would be a gate, and a gate on a timing
+\ fails for host load; the gate this work carries is
+\ tools/codegen-workload-test.f, and every assertion in it is a fact about
+\ compiled code. What this file does refuse is a verdict with no bar behind it.
+\ The bar used to be assembled from row names written out by hand here, and a
+\ name that matched no row scored as a bar of nothing - renaming one row made
+\ every verdict in the table read REAL, and the run still exited zero. So the
+\ bar is no longer named here at all: each row records which family it belongs
+\ to and whether it is a real comparison or a null draw, and a family with no
+\ null draw throws E-WLTIME-BAR instead of being judged against zero.
 
 require lib/errors.f
 require lib/prelude.f
@@ -163,6 +171,60 @@ private
    then
    cr ;
 
+: SCAN-ARMS ( -- )
+   s" WORKLOAD:SCAN-OLD"    s" HOT-ENGINE:FOLD-C" ARM-ROW
+   s" WORKLOAD:SCAN-NEW"    s" HOT-CHAIN:FOLD-C" ARM-ROW
+   s" WORKLOAD:SCAN-CTL-A"  s" HOT-FIXED:FOLD-C" ARM-ROW
+   s" WORKLOAD:SCAN-CTL-B"  s" HOT-FIXED:FOLD-C" ARM-ROW
+   s" WORKLOAD:SCAN-F1"     s" HOT-F1:FOLD-C" ARM-ROW
+   s" WORKLOAD:SCAN-F2"     s" HOT-F2:FOLD-C" ARM-ROW
+   s" WORKLOAD:SCAN-F3"     s" HOT-F3:FOLD-C" ARM-ROW
+   s" WORKLOAD:SCAN-F4"     s" HOT-F4:FOLD-C" ARM-ROW ;
+
+: COUNT-ARMS ( -- )
+   s" WORKLOAD:COUNT-OLD"   s" HOT-ENGINE:COUNT-CH" ARM-ROW
+   s" WORKLOAD:COUNT-NEW"   s" HOT-CHAIN:COUNT-CH" ARM-ROW
+   s" WORKLOAD:COUNT-CTL-A" s" HOT-FIXED:COUNT-CH" ARM-ROW
+   s" WORKLOAD:COUNT-CTL-B" s" HOT-FIXED:COUNT-CH" ARM-ROW
+   s" WORKLOAD:COUNT-F1"    s" HOT-F1:COUNT-CH" ARM-ROW
+   s" WORKLOAD:COUNT-F2"    s" HOT-F2:COUNT-CH" ARM-ROW
+   s" WORKLOAD:COUNT-F3"    s" HOT-F3:COUNT-CH" ARM-ROW
+   s" WORKLOAD:COUNT-F4"    s" HOT-F4:COUNT-CH" ARM-ROW ;
+
+\ The mixed-coverage drivers each hold THREE calls: the passes the migration is
+\ meant to reach, named bare and resolved by the arm's search order, and the
+\ passes it is not, which name HOT-FIXED outright. The row below names the leg
+\ the migration is supposed to reach; the call count beside it is 3 in every arm,
+\ which is what says the three passes are three real calls and not one call the
+\ compiler folded together.
+: MIX-ARMS ( -- )
+   s" WORKLOAD:MIX66-OLD"   s" HOT-ENGINE:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX66-NEW"   s" HOT-CHAIN:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX66-CTL-A" s" HOT-FIXED:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX66-CTL-B" s" HOT-FIXED:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX66-F1"    s" HOT-F1:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX66-F2"    s" HOT-F2:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX66-F3"    s" HOT-F3:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX66-F4"    s" HOT-F4:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-OLD"   s" HOT-ENGINE:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-NEW"   s" HOT-CHAIN:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-CTL-A" s" HOT-FIXED:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-CTL-B" s" HOT-FIXED:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-F1"    s" HOT-F1:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-F2"    s" HOT-F2:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-F3"    s" HOT-F3:COUNT-CH" ARM-ROW
+   s" WORKLOAD:MIX33-F4"    s" HOT-F4:COUNT-CH" ARM-ROW ;
+
+: TERM-ARMS ( -- )
+   s" WORKLOAD:TERM-OLD"    s" HOT-ENGINE:TERM-TAG" ARM-ROW
+   s" WORKLOAD:TERM-NEW"    s" HOT-CHAIN:TERM-TAG" ARM-ROW
+   s" WORKLOAD:TERM-CTL-A"  s" HOT-FIXED:TERM-TAG" ARM-ROW
+   s" WORKLOAD:TERM-CTL-B"  s" HOT-FIXED:TERM-TAG" ARM-ROW
+   s" WORKLOAD:TERM-F1"     s" HOT-F1:TERM-TAG" ARM-ROW
+   s" WORKLOAD:TERM-F2"     s" HOT-F2:TERM-TAG" ARM-ROW
+   s" WORKLOAD:TERM-F3"     s" HOT-F3:TERM-TAG" ARM-ROW
+   s" WORKLOAD:TERM-F4"     s" HOT-F4:TERM-TAG" ARM-ROW ;
+
 public
 
 : ARM-TABLE ( -- )
@@ -170,21 +232,16 @@ public
    RULE
    s" Read off the arm's own compiled code. Every arm has to reach ITS OWN" type cr
    s" column's word: an after-arm still entering the before-arm's record would" type cr
-   s" measure one code generator twice and report a delta of nothing." type cr
+   s" measure one code generator twice and report a delta of nothing. The four" type cr
+   s" F arms of each workload belong to its placement row, and each has to reach" type cr
+   s" its OWN publication: two of them entering one record would measure a body" type cr
+   s" against itself and hand the verdict a bar that is too small." type cr
    cr
    s" driver" 22 T. s" bytes" 7 TR. s" calls" 7 TR. s"    reaches" type cr
-   s" WORKLOAD:SCAN-OLD"    s" HOT-ENGINE:FOLD-C" ARM-ROW
-   s" WORKLOAD:SCAN-NEW"    s" HOT-CHAIN:FOLD-C" ARM-ROW
-   s" WORKLOAD:SCAN-CTL-A"  s" HOT-FIXED:FOLD-C" ARM-ROW
-   s" WORKLOAD:SCAN-CTL-B"  s" HOT-FIXED:FOLD-C" ARM-ROW
-   s" WORKLOAD:COUNT-OLD"   s" HOT-ENGINE:COUNT-CH" ARM-ROW
-   s" WORKLOAD:COUNT-NEW"   s" HOT-CHAIN:COUNT-CH" ARM-ROW
-   s" WORKLOAD:COUNT-CTL-A" s" HOT-FIXED:COUNT-CH" ARM-ROW
-   s" WORKLOAD:COUNT-CTL-B" s" HOT-FIXED:COUNT-CH" ARM-ROW
-   s" WORKLOAD:TERM-OLD"    s" HOT-ENGINE:TERM-TAG" ARM-ROW
-   s" WORKLOAD:TERM-NEW"    s" HOT-CHAIN:TERM-TAG" ARM-ROW
-   s" WORKLOAD:TERM-CTL-A"  s" HOT-FIXED:TERM-TAG" ARM-ROW
-   s" WORKLOAD:TERM-CTL-B"  s" HOT-FIXED:TERM-TAG" ARM-ROW
+   SCAN-ARMS
+   COUNT-ARMS
+   MIX-ARMS
+   TERM-ARMS
    cr ;
 
 private
@@ -200,6 +257,8 @@ private
    k CODEGEN-CLOCK:INTERLEAVED? s" woven" s" split" YESNO
    s"   " type
    k CODEGEN-CLOCK:SAME-ANSWER? s" agree" s" DISAGREE" YESNO
+   s"   " type
+   k CODEGEN-CLOCK:REAL? s" judged" s" null" YESNO
    cr ;
 
 public
@@ -211,68 +270,73 @@ public
    s" generator saved. `spread` is how far apart that arm's fastest and slowest" type cr
    s" runs were. `woven` means the two arms' runs were threaded through each" type cr
    s" other; `split` means the workload compiles something and its arms had to" type cr
-   s" be measured on either side of the migration." type cr
+   s" be measured on either side of the migration. A `null` row ran the SAME" type cr
+   s" program on both arms, so its delta is what this harness manufactures when" type cr
+   s" nothing changed; a `judged` row is one the next section rules on. On a" type cr
+   s" `-placement` row the two columns are not two arms but the FASTEST and the" type cr
+   s" SLOWEST of five publications of one identical body, so its delta is the" type cr
+   s" widest gap between any two of them." type cr
+   cr
+   s" WHAT COUNT IS, AND WHY THE MIX ROWS ARE BESIDE IT. The count driver makes" type cr
+   s" one call per repetition into a word that scans the whole buffer itself, so" type cr
+   s" essentially ALL of its time is inside the word the migration replaced. Its" type cr
+   s" delta is therefore that word's own speed-up and not what a migration is" type cr
+   s" worth to a program: it is the endpoint of a curve. The mix rows are two" type cr
+   s" points inside that curve. Each makes three passes over the same buffer;" type cr
+   s" mix66 sends two of the three through the migrated word and mix33 sends one," type cr
+   s" and the passes they do not send go through a publication nothing migrates." type cr
+   s" So the migration reaches exactly two thirds and one third of the old arm's" type cr
+   s" work, and each row's delta should come out at that fraction of the count" type cr
+   s" row's - which is the arithmetic every claim about this work rests on." type cr
+   s" Note also what the migrated word is: lib/string.f's COUNT-CHAR has no" type cr
+   s" caller under src/ at all. Its callers are tests and the codegen corpora. It" type cr
+   s" is measured here for its SHAPE - the whole loop inside the callee - and not" type cr
+   s" because the system spends its time in it." type cr
    cr
    s" row" 16 T. s" old ns" 12 TR. s" new ns" 12 TR.
-   s" delta" 9 TR. s" old sprd" 9 TR. s" new sprd" 9 TR. s"   order   answers" type cr
+   s" delta" 9 TR. s" old sprd" 9 TR. s" new sprd" 9 TR.
+   s"   order   answers   role" type cr
    CODEGEN-CLOCK:ROWS 0 ?do i ROW. loop
    cr ;
 
 private
 
 \ ---- 5. the verdict ---------------------------------------------------------
-: MAG ( n -- n ) {: v:n :}
-   v 0 < if 0 v - exit then
-   v ;
-
-\ How big a delta this harness produces when NOTHING changed. A control row and
-\ a floor row each run old code against old code, under the same fastest-of-N
-\ rule as the workload row, so the size of their delta is this measurement's own
-\ false-positive size and is the honest bar for the workload row beside them.
+\ The bar comes out of the recorded rows and is not named here. Each row carries
+\ the family it belongs to and whether it is a real comparison or a null draw,
+\ and the bar for a real row is the largest magnitude its own family's null draws
+\ produced. Two things follow, and both are the point:
 \
-\ The within-arm SPREAD is deliberately not part of the bar. A spread says how
-\ far apart that arm's own runs were, which is what the fastest-run rule exists
-\ to cut through: the scan rows here routinely spread by sixty per cent while
-\ their fastest runs repeat to within a few, and building the bar out of spreads
-\ made a workload with a control delta of two parts in a thousand fail to clear
-\ it. The spreads are printed in the row table for the reader to judge; the bar
-\ is made of the artifact deltas that were actually measured.
-: ARTIFACT-OF ( ptr u8 n -- n ) {: a:ptr u:n :}
-   a u CODEGEN-CLOCK:ROW-OF {: k:n :}
-   k 0 < if 0 exit then
-   k CODEGEN-CLOCK:DELTA-PERMILLE MAG ;
-
-: VERDICT ( ptr u8 n ptr u8 n ptr u8 n -- )
-   {: wa:ptr wu:n ca:ptr cu:n fa:ptr fu:n :}
-   wa wu 16 T.
-   wa wu CODEGEN-CLOCK:ROW-OF {: k:n :}
-   k 0 < if s" not measured" type cr exit then
-   k CODEGEN-CLOCK:DELTA-PERMILLE {: d:n :}
-   ca cu ARTIFACT-OF {: cf:n :}
-   fa fu ARTIFACT-OF {: ff:n :}
-   cf ff > if cf else ff then {: bar:n :}
-   d PCT. s"  saved, against a " type bar PCT. s"  bar" type
-   d MAG bar > if
-      d 0 > if s"   - REAL" type else s"   - REAL LOSS" type then
-   else
-      s"   - NOT MEASURABLE" type
-   then
-   cr ;
-
-\ A row with no control and no floor beside it. The compile-shaped workload is
-\ the only one: its arms straddle the migration, so there is no way to compile a
-\ second pair of them that differs in nothing. All it has to hold its delta
-\ against is how far apart its own runs were, which is a weaker bar and is
-\ labelled as one.
-: VERDICT-SOLO ( ptr u8 n -- ) {: wa:ptr wu:n :}
-   wa wu 16 T.
-   wa wu CODEGEN-CLOCK:ROW-OF {: k:n :}
-   k 0 < if s" not measured" type cr exit then
-   k CODEGEN-CLOCK:DELTA-PERMILLE {: d:n :}
-   k CODEGEN-CLOCK:NOISE-PERMILLE {: bar:n :}
-   d PCT. s"  saved, no control row, own spread " type bar PCT.
-   d MAG bar > if
-      d 0 > if s"   - REAL" type else s"   - REAL LOSS" type then
+\ A BAR IS A MAXIMUM OVER SEVERAL DRAWS, NOT ONE MEASUREMENT. The confound the
+\ null rows measure is not a small symmetric wobble: two byte-identical
+\ publications of one body have come out two per cent apart on one run and
+\ thirty-five per cent apart on another. A bar taken from a single draw of that
+\ landed under a scan delta three runs in a row and printed REAL LOSS each time,
+\ which is an artifact of the draw and not a finding about the code.
+\
+\ A MISSING BAR IS AN ERROR, NOT A ZERO. This section used to name its bar rows
+\ by hand; a name that matched no row scored zero and every verdict beside it
+\ read REAL. BAR-PERMILLE throws on a family with no null draw instead.
+\
+\ The within-arm SPREAD is deliberately not a bar. A spread says how far apart
+\ one arm's own runs were, which is exactly what the fastest-run rule exists to
+\ cut through: the scan rows here routinely spread by sixty per cent while their
+\ fastest runs repeat to within a few. The spreads are printed in the row table
+\ for a reader to judge the host by; they are not evidence about a delta.
+: VERDICT ( n -- ) {: k:n :}
+   k CODEGEN-CLOCK:NAME$ 16 T.
+   k CODEGEN-CLOCK:DELTA-PERMILLE PCT.
+   s"  saved, against a " type
+   k CODEGEN-CLOCK:FAM$ CODEGEN-CLOCK:BAR-PERMILLE PCT.
+   s"  bar - the largest of " type
+   k CODEGEN-CLOCK:FAM$ CODEGEN-CLOCK:NULLS FMT:.INT
+   s"  null rows" type
+   k CODEGEN-CLOCK:OVER-BAR? if
+      k CODEGEN-CLOCK:DELTA-PERMILLE 0 > if
+         s"   - REAL" type
+      else
+         s"   - REAL LOSS" type
+      then
    else
       s"   - NOT MEASURABLE" type
    then
@@ -283,16 +347,26 @@ public
 : VERDICT-TABLE ( -- )
    s" 5. WHAT EACH WORKLOAD'S NUMBER MEANS" type cr
    RULE
-   s" The bar a delta has to clear is the larger of the two deltas this harness" type cr
-   s" produced when NOTHING changed: the control row, whose two arms are old code" type cr
-   s" compiled either side of the migration, and the floor row, whose two arms are" type cr
-   s" old code reaching two different publications of the same subject. A delta" type cr
-   s" under that bar is not a small win; it is a win this measurement cannot see." type cr
+   s" The bar a delta has to clear is the LARGEST delta this harness produced on" type cr
+   s" the same workload when nothing changed at all: its control row, whose two" type cr
+   s" arms are old code compiled either side of the migration, and its placement" type cr
+   s" row, which times five publications of the identical subject against each" type cr
+   s" other and reports the widest gap between any two of them. Five and not two," type cr
+   s" because that confound is not a wobble around a centre: the publications of" type cr
+   s" one body fall into a fast group and a slow group tens of per cent apart, so" type cr
+   s" a bar taken from one named pair depends on which pair was named - and a bar" type cr
+   s" taken that way reported a workload as a REAL LOSS three runs running with" type cr
+   s" nothing whatever having slowed it down. A delta under the bar is not a" type cr
+   s" small win; it is a win this measurement cannot see." type cr
    cr
-   s" scan"  s" scan-control"  s" scan-floor"  VERDICT
-   s" count" s" count-control" s" count-floor" VERDICT
-   s" term"  s" term-control"  s" term-floor"  VERDICT
-   s" check-batch" VERDICT-SOLO
+   s" The compile-shaped row is judged the same way. Its arms straddle the" type cr
+   s" migration and cannot be woven, so its null draws are pairs of consecutive" type cr
+   s" batch sequences compiled before it, with nothing between them but the" type cr
+   s" dictionary they grew - which is the confound its two arms are separated by." type cr
+   cr
+   CODEGEN-CLOCK:ROWS 0 ?do
+      i CODEGEN-CLOCK:REAL? if i VERDICT then
+   loop
    cr ;
 
 : TITLE ( -- )

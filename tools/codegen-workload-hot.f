@@ -63,7 +63,10 @@
 \             byte span. Also a real call in both arms, and the whole scan is
 \             INSIDE it - so a workload that calls it once per buffer spends
 \             almost all of its time in migrated code, which is the opposite
-\             extreme from FOLD-C.
+\             extreme from FOLD-C. Nothing under src/ calls COUNT-CHAR: its
+\             callers are lib/string-test.f, lib/build-cache-test.f and the
+\             codegen corpora. It is here because of its SHAPE - the whole loop
+\             inside the callee - and not because the system spends time in it.
 \   TERM-TAG  src/core/checker.f:152's TAG, and
 \   TERM-PAY  its sibling PAY. One mask and one shift, no branches, small enough
 \             that the engine copies the body into every caller it compiles and
@@ -270,6 +273,34 @@ public
 : COUNT-BODY$ ( -- ptr u8 n )
    s"  ( ptr u8 n n -- n ) {: a:ptr u:n r:n :} 0 r 0 ?do a u 101 COUNT-CH + loop ;" ;
 
+\ ---- the same workload at less than total coverage --------------------------
+\ COUNT-BODY$ above spends essentially ALL of its time inside the migrated word,
+\ so the delta it reports is the migrated word's own speed-up and nothing else.
+\ That is one END of a curve, not a figure for what a migration is worth to a
+\ program, because no real program is one call in a loop. These two bodies are
+\ the middle of the curve, and they get there without a fudge factor: each does
+\ the same buffer pass THREE times, and the only thing that changes between them
+\ is how many of the three passes go through the subject the migration replaces.
+\ The rest go through HOT-FIXED's copy - the same four strings, compiled by the
+\ same engine, that the control rows use, and which no migration touches.
+\
+\ So the fraction of the old arm's work that the migration can reach is exactly
+\ two thirds in the first and one third in the second, by construction rather
+\ than by calibration: the three passes cost the same as each other in the old
+\ arm, because in the old arm all three are the engine's code over the same
+\ bytes. Amdahl then says the delta must come out at that fraction of the
+\ all-coverage row's delta, and a reader can check the arithmetic against the
+\ count row in the same table.
+\
+\ The unmigrated passes name HOT-FIXED's word OUTRIGHT, while the migrated ones
+\ name the subject bare and are resolved by the search order the arm is compiled
+\ under, exactly as every other driver here is.
+: MIX66-BODY$ ( -- ptr u8 n )
+   s"  ( ptr u8 n n -- n ) {: a:ptr u:n r:n :} 0 r 0 ?do a u 101 COUNT-CH + a u 101 COUNT-CH + a u 101 HOT-FIXED:COUNT-CH + loop ;" ;
+
+: MIX33-BODY$ ( -- ptr u8 n )
+   s"  ( ptr u8 n n -- n ) {: a:ptr u:n r:n :} 0 r 0 ?do a u 101 COUNT-CH + a u 101 HOT-FIXED:COUNT-CH + a u 101 HOT-FIXED:COUNT-CH + loop ;" ;
+
 \ Every cell of the term buffer split into its tag and its payload. Both
 \ subjects are small enough and straight-line enough that the engine copies them
 \ into whichever driver it is compiling, so neither arm contains a call - and
@@ -344,9 +375,10 @@ create D2 2 allot
 public
 
 \ One batch's source, in a package named by the arm's letter and the round.
-\ `arm` is 0 for the before-arm and 1 for the after-arm, which become the letters
-\ A and B; every generated package name is therefore six characters and every
-\ batch's source is the same number of bytes.
+\ An arm index becomes a letter from A up, so every generated package name is six
+\ characters and every batch's source is the same number of bytes whichever arm
+\ compiled it. The run file hands out the indices: 0 and 1 are the two arms of
+\ the real row, and the pairs above them are its null draws.
 0 constant ARM-BEFORE
 1 constant ARM-AFTER
 

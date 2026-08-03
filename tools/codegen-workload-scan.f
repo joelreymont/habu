@@ -278,28 +278,36 @@ public
 
 private
 
-variable FOUND
+variable HITS
 variable WANT
 
 : CALL-SITE? ( n n -- ) {: pc:n w:n :}
    w BL? 0= if exit then
    pc w BL-TARGET WANT @ <> if exit then
-   true FOUND ! ;
+   HITS @ 1+ HITS ! ;
 
 public
 
-\ Does the caller's own code hold a call instruction that enters the callee?
-\ This is the question a two-arm measurement has to answer about each of its
-\ arms: an arm whose driver calls the OTHER arm's word is measuring the same
-\ code twice and would report a delta of nothing while looking healthy.
-: CALLS? ( ptr u8 n ptr u8 n -- bool ) {: ca:ptr cu:n ta:ptr tu:n :}
-   false FOUND !
+\ How many call instructions in the caller's own code enter the callee. A driver
+\ that reaches one subject twice and another once is a driver whose work is split
+\ two to one between them, and that ratio is read off here rather than assumed:
+\ the mixed-coverage workloads state a coverage fraction, and this is the fact
+\ that fraction is made of.
+: CALLS-IN ( ptr u8 n ptr u8 n -- n ) {: ca:ptr cu:n ta:ptr tu:n :}
+   0 HITS !
    ta tu WORD-ENTRY WANT !
    ca cu WORD-ENTRY {: s:n :}
    ca cu WORD-BYTES {: len:n :}
    len INSN-BYTES / 0 ?do
       s i INSN-BYTES * +  dup INSN@  CALL-SITE?
    loop
-   FOUND @ ;
+   HITS @ ;
+
+\ Does the caller's own code hold a call instruction that enters the callee?
+\ This is the question a two-arm measurement has to answer about each of its
+\ arms: an arm whose driver calls the OTHER arm's word is measuring the same
+\ code twice and would report a delta of nothing while looking healthy.
+: CALLS? ( ptr u8 n ptr u8 n -- bool )
+   CALLS-IN 0 > ;
 
 ;package
