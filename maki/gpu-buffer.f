@@ -189,6 +189,22 @@ public
    GB-MINT swap GS-MINT swap
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 
+\ Kernel argument marshalling must receive a cuda-devptr, while the session and
+\ buffer remain the lifetime owners. The checker cannot bind that borrowed
+\ address to those owners yet; retirement owner:
+\ habu-checker-ptr-lifetime-f59d1e9d.
+: SPAN
+   ( GPU:session GPU:buffer CAD-NUM:byte-off CAD-NUM:byte-len -- GPU:session GPU:buffer result<cuda-devptr,n> )
+   {: off:CAD-NUM:byte-off len:CAD-NUM:byte-len :}
+   GB-TAKE swap GS-TAKE swap {: st:ptr buf:ptr :}
+   buf off len GB-RANGE? 0= if
+      st GS-MINT buf GB-MINT E-BUF-BOUNDS RESULT:ERR exit
+   then
+   st buf 0 GB-BIND-STEP {: code:n :} 2drop
+   st GS-MINT buf GB-MINT
+   code 0 <> if code RESULT:ERR exit then
+   buf GB-DEV off GB-DEVPTR+ RESULT:OK ;
+
 : FREE ( GPU:session GPU:buffer -- GPU:session result<n,n> )
    GB-TAKE swap GS-TAKE swap GB-FREE-RAW {: code:n :}
    GS-MINT
