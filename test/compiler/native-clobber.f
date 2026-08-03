@@ -30,6 +30,15 @@
 \ the Str and Ldr forms whose base register is the one the running engine keeps
 \ its data-stack pointer in. A change that made the code smaller some other way
 \ would not move these numbers, and a change that stopped narrowing would.
+\
+\ AND WHY THE CALLEE IS DELIBERATELY NOT A TINY ONE. A callee small enough that
+\ copying its body into a caller costs no more than the call did is not called at
+\ all - src/compiler/native/inline.f records such a body and the elaborator
+\ splices it - and a caller with no call in it saves nothing, so it would measure
+\ this record's narrowing at zero against zero. The callee below is therefore
+\ sized past that rule on purpose: what this suite is about is what a CALL that
+\ really happens costs, and the copying is measured where it belongs, in
+\ test/compiler/native-inline.f.
 
 require lib/test.f
 require src/compiler/native/migrate.f
@@ -165,31 +174,35 @@ $F9400000 constant LDR-OP
 
 \ ---- what a real publication records -----------------------------------------
 \ The callee both loss cases below call. It is migrated, so the chain compiled it
-\ and the seam recorded what it destroys.
+\ and the seam recorded what it destroys. Its body is six additions rather than
+\ one because a one-addition body is one the chain COPIES into its caller instead
+\ of calling: the head of this file says why that would leave nothing to measure.
 : MIGRATE-CALLEE ( -- )
-   s" : NCLOB-ADD1 ( n -- n ) 1 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+   s" : NCLOB-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 REGS NMIGRATE:DEFINE ;
 
 \ The same body, compiled by the ENGINE and never migrated. Nothing knows what it
 \ destroys and nothing ever will, so a call site that reaches it saves
 \ everything - and that is the whole difference between the two callers below.
 \ It is defined through the interpret path so that it lands beside the migrated
-\ words, in the wordlist a plain name resolves in.
+\ words, in the wordlist a plain name resolves in. It is the same body as the
+\ migrated one, so the two callers below differ in nothing but which callee they
+\ reach.
 : DEFINE-ENGINE-CALLEE ( -- )
-   s" : NCLOB-ENGINE-ADD1 ( n -- n ) 1 + ;" EV ;
+   s" : NCLOB-ENGINE-STEP ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" EV ;
 
 : PUBLISHED-CASES ( -- )
    s" a migration records a row for the address it published at" T-LABEL
-   s" NCLOB-ADD1" ENTRY-OF NCLOB:KNOWN? FLAG# 1 T=
+   s" NCLOB-STEP" ENTRY-OF NCLOB:KNOWN? FLAG# 1 T=
 
    s" and the row is narrower than the whole register file" T-LABEL
-   s" NCLOB-ADD1" ENTRY-OF GPR-AT  A64EFF:GPR-ALL A64EFF:GPRS-N T<>
+   s" NCLOB-STEP" ENTRY-OF GPR-AT  A64EFF:GPR-ALL A64EFF:GPRS-N T<>
 
    s" and it names no register outside the pool the routine was given" T-LABEL
-   s" NCLOB-ADD1" ENTRY-OF GPR-AT
+   s" NCLOB-STEP" ENTRY-OF GPR-AT
    1 REGS lshift 1 -  invert and  0 T=
 
    s" a word the engine compiled has no row and never will" T-LABEL
-   s" NCLOB-ENGINE-ADD1" ENTRY-OF NCLOB:KNOWN? FLAG# 0 T= ;
+   s" NCLOB-ENGINE-STEP" ENTRY-OF NCLOB:KNOWN? FLAG# 0 T= ;
 
 \ ---- the narrowing, measured -------------------------------------------------
 \ Two callers of one shape. Two values are live across every call in both - the
@@ -202,19 +215,19 @@ $F9400000 constant LDR-OP
 1 constant CALL-OUT
 
 : MIGRATE-NARROW ( -- )
-   s" NCLOB-ADD1" s" NCLOB-ADD1" ENTRY-OF 1 1 NMIGRATE:CALLEE
-   s" : NCLOB-NARROW ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-ADD1 NCLOB-ADD1 loop ;"
+   s" NCLOB-STEP" s" NCLOB-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-NARROW ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-STEP NCLOB-STEP loop ;"
    CALL-IN CALL-OUT REGS NMIGRATE:DEFINE-CALLING ;
 
 : MIGRATE-WIDE ( -- )
-   s" NCLOB-ENGINE-ADD1"  s" NCLOB-ENGINE-ADD1" ENTRY-OF  1 1 NMIGRATE:CALLEE
-   s" : NCLOB-WIDE ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-ENGINE-ADD1 NCLOB-ENGINE-ADD1 loop ;"
+   s" NCLOB-ENGINE-STEP"  s" NCLOB-ENGINE-STEP" ENTRY-OF  1 1 NMIGRATE:CALLEE
+   s" : NCLOB-WIDE ( n n -- n ) {: seed:n len:n :} seed len 0 ?do NCLOB-ENGINE-STEP NCLOB-ENGINE-STEP loop ;"
    CALL-IN CALL-OUT REGS NMIGRATE:DEFINE-CALLING ;
 
 : NARROW-CASES ( -- )
    s" both callers answer what their body says, on the same inputs" T-LABEL
-   s" 0 4 NCLOB-NARROW" EV-N 8 T=
-   s" 0 4 NCLOB-WIDE" EV-N 8 T=
+   s" 0 4 NCLOB-NARROW" EV-N 168 T=
+   s" 0 4 NCLOB-WIDE" EV-N 168 T=
    s" 5 0 NCLOB-NARROW" EV-N 5 T=
    s" 5 0 NCLOB-WIDE" EV-N 5 T=
 

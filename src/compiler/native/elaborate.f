@@ -103,6 +103,7 @@ require src/compiler/ir/build.f
 require src/compiler/native/tape.f
 require src/compiler/native/hir.f
 require src/compiler/native/hir-word.f
+require src/compiler/native/inline.f
 require src/compiler/native/frozen.f
 
 package NELAB
@@ -623,38 +624,62 @@ variable OPJ                         \ general operands taken so far by the open
 \ integer literal's value rides in - a double's bit pattern is a number and there
 \ is nothing else to carry. What makes it a double is the opcode, whose schema
 \ answers a double, and not the shape of the attribute.
-: EMIT-FCONST ( n -- )
-   {: ix:n :}
+: EMIT-FLIT ( n n -- )
+   {: ix:n val:n :}
    CTX BLD HIR-OPCODE:FCONST HIR:OPCODE {: op:IR-ID:ir-symbol-id :}
    CTX BLD op ix COERCE-OPERANDS
    CTX BLD VW MKEY ix op OPEN
    CTX BLD op OPERANDS+
    CTX BLD op RESULTS+
-   CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD  VW ix NTAPE:LIT@  IR-BUILD:INTERN-INT-ATTR
+   CTX BLD  CTX BLD HIR:KEY-VALUE  CTX BLD val IR-BUILD:INTERN-INT-ATTR
    IR-BUILD:ADD-ATTR
    CTX BLD op CLOSE ;
 
+: EMIT-FCONST ( n -- )
+   {: ix:n :}
+   ix  VW ix NTAPE:LIT@  EMIT-FLIT ;
+
+\ ---- a word named by its spelling rather than by a tape row ------------------
+\ THE THREE WORD FORMS BELOW COME IN PAIRS, AND THE PAIR IS WHAT LETS A COPIED
+\ BODY REACH THEM. The token a body word is written on says two things: WHICH
+\ word it is, and WHERE in the source it stands. For a token of the tape being
+\ walked those are one row; for a token of a callee's body copied into this
+\ definition they are not - the word is the callee's and the place is the CALL
+\ SITE, which is the token this definition really wrote. So each form takes the
+\ symbol and the span's token separately, and the tape-reading half is the one
+\ that says they are the same row.
 \ A word the dialect has an operation for. Which operation is the word model's
 \ answer.
+: EMIT-OP-SYM ( IR-ARENA:arena n IR-ID:ir-symbol-id -- )
+   {: r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
+   ix  r sy HIR-WORD:OPCODE@  EMIT-OPCODE ;
+
 : EMIT-OP ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix  r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:OPCODE@  EMIT-OPCODE ;
+   r ix  VW MKEY ix NTAPE:SPELL@  EMIT-OP-SYM ;
 
 \ A word that pushes one fixed value - the address a `create`d data word names.
 \ The value is the word model's, so this stages the same operation an integer
 \ literal in the source would.
+: EMIT-FIXED-SYM ( IR-ARENA:arena n IR-ID:ir-symbol-id -- )
+   {: r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
+   ix  r sy HIR-WORD:FIXED-VALUE@  EMIT-LIT ;
+
 : EMIT-FIXED ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena ix:n :}
-   ix  r  VW MKEY ix NTAPE:SPELL@  HIR-WORD:FIXED-VALUE@  EMIT-LIT ;
+   r ix  VW MKEY ix NTAPE:SPELL@  EMIT-FIXED-SYM ;
 
 \ A word that is one constant and one operation - `1-` is `1` then `-`. Both
 \ halves come off the word model's row, so a second opcode meaning the same
 \ thing is not needed and the source stays one token.
-: EMIT-CONST-OP ( IR-ARENA:arena n -- )
-   {: r:IR-ARENA:arena ix:n :}
-   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+: EMIT-CONST-OP-SYM ( IR-ARENA:arena n IR-ID:ir-symbol-id -- )
+   {: r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
    ix  r sy HIR-WORD:CONST-VALUE@  EMIT-LIT
    ix  r sy HIR-WORD:CONST-OPCODE@  EMIT-OPCODE ;
+
+: EMIT-CONST-OP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix  VW MKEY ix NTAPE:SPELL@  EMIT-CONST-OP-SYM ;
 
 \ Leaving the word. The outputs are the whole vector, bottom first, and the
 \ vector has to hold exactly as many as the word declares - one too few or one
@@ -1313,6 +1338,184 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    loop
    LG-FROM @ 0 >=  LG-TO @ 0 <  and if E-NELAB-LOCAL throw then ;
 
+\ ---- how far a body token may be from the definition's first ------------------
+\ The ceiling every table keyed by a BODY TOKEN shares - the skeleton's forward
+\ joins and the inline decision below - so the two cannot disagree about which
+\ token indices exist. A body that wants more is a capability to raise here, not
+\ a ceiling to widen silently.
+256 constant TMAX                    \ body tokens one definition may have
+
+: TOK-CK ( n -- n )
+   dup 0 < over TMAX >= or if E-NELAB-BLOCK throw then ;
+
+\ ---- which calls are COPIED instead of made ----------------------------------
+\ THE DECISION, IN ONE SENTENCE. A call to a word whose body the chain recorded
+\ when it published it (src/compiler/native/inline.f), and whose every recorded
+\ token THIS definition's own word model admits with a meaning the copy has a
+\ rule for, is not compiled as a call at all: the callee's body is elaborated
+\ here, at the call site, out of the caller's own values.
+\
+\ WHY THE COPY IS MADE HERE AND NOT FURTHER DOWN THE CHAIN. Because here it needs
+\ no new concept anywhere. The callee's arguments are values this walk is already
+\ holding on the compile-time vector, so handing them over costs no instruction
+\ and no data-stack slot; its results go back on that vector; and the operations
+\ it stages are ordinary operations of this module, selected, allocated,
+\ validated and emitted exactly as the caller's own. A copy made at any later
+\ stage would be a copy of machine words into a module whose dialect has no form
+\ for them, and the register allocator and its validator would have nothing to
+\ re-derive them from.
+\
+\ WHAT A COPY REMOVES, WHICH IS WHY IT IS WORTH MAKING. The whole interface: the
+\ site's stores of the arguments, its branch, its loads of the results, and the
+\ callee's own pointer moves, loads, stores and return - and, because the site is
+\ no longer a call, everything the CALLER was doing on account of one. A body
+\ whose only calls are copied has nothing that destroys a register, so its loop
+\ counters and its locals stop travelling across every edge (CROSS-SCAN below),
+\ its routine stops declaring the direct-call trait, and its frame and link save
+\ are not built at all.
+\
+\ THE DECISION IS MADE ONCE, BEFORE ANY OTHER WALK, AND EVERY LATER WALK READS
+\ THAT ONE ANSWER. Three of them turn on it - whether the body needs a memory
+\ order, whether anything in it renames a counter or a local, and what the walk
+\ itself stages - and three walks each deciding it for themselves is three
+\ answers that can disagree. So it is a table keyed by the body token, filled
+\ here, and read everywhere else.
+\
+\ WHAT MAKES THE COPY TERMINATE. A body that calls anything is not recorded at
+\ all (src/compiler/native/inline.f), so nothing that is copied can contain a
+\ call to copy in its turn, and a definition cannot reach itself: `RECURSE` is a
+\ control word, which is not a meaning a recorded body may hold. The copying is
+\ therefore one level deep by construction rather than by a depth counter.
+\
+\ AND THE ARITY IS HELD BETWEEN TWO AUTHORITIES. The caller states what effect it
+\ believes a callee has (src/compiler/native/migrate.f stages it), and the
+\ callee's own migration recorded what it really declared. A disagreement means
+\ the caller is compiling against some other routine than the one at that
+\ address - the call it would emit instead would be just as wrong - so it is
+\ refused by name rather than resolved in either direction.
+here CELL 1- and CELL swap - CELL 1- and allot
+create INL-TAB TMAX cells allot      \ whether the call on this body token is copied
+
+: INL-RESET ( -- )
+   TMAX 0 ?do
+      0 i cells INL-TAB + !
+   loop ;
+
+: INL-AT? ( n -- bool )
+   TOK-CK cells INL-TAB + @ 0<> ;
+
+: INL+ ( n -- )
+   1 swap TOK-CK cells INL-TAB + ! ;
+
+\ The symbol one recorded token's spelling is in THIS module. A recorded body
+\ carries spellings as bytes, because the module its tokens were read into died
+\ with the migration that compiled it; interning them here is what turns them
+\ back into identities this module's word model can be asked about.
+: INL-SYM ( n n -- IR-ID:ir-symbol-id )
+   {: entry:n k:n :}
+   CTX BLD  entry k NINL:SPELL$  IR-BUILD:INTERN-SYMBOL ;
+
+\ Which meanings a copied body may hold. Everything else makes the callee one
+\ this site CALLS rather than copies: a control word would build blocks this
+\ walk's skeleton never counted, a call would copy a call, and either half of a
+\ locals group would bind names in the caller's scope. The two literal meanings
+\ belong to a token rather than to a word and no row ever stores one; they are
+\ answered here so that a meaning added to the dialect has to answer for itself.
+: SPLICE-MEANING? ( HIR:meaning -- bool )
+   MATCH HIR:meaning
+      literal      OF true ENDOF
+      real-literal OF true ENDOF
+      op           OF true ENDOF
+      const-op     OF true ENDOF
+      fixed        OF true ENDOF
+      rename       OF true ENDOF
+      callable     OF false ENDOF
+      control      OF false ENDOF
+      open-locals  OF false ENDOF
+      close-locals OF false ENDOF
+      unmodeled    OF false ENDOF
+   ;MATCH ;
+
+: REC-NAME? ( n n -- bool )
+   {: entry:n k:n :}
+   entry k NINL:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ ;
+
+\ One recorded token, against THIS definition's own word model. A literal is a
+\ literal whatever any table says, because its kind is what makes it one; a name
+\ has to be modeled here, and modeled as something the copy can stage.
+: REC-TOKEN? ( IR-ARENA:arena n n -- bool )
+   {: r:IR-ARENA:arena entry:n k:n :}
+   entry k NINL:KIND@ {: kd:NTAPE:kind :}
+   kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if true exit then
+   kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if true exit then
+   kd NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   entry k INL-SYM {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ SPLICE-MEANING? ;
+
+: REC-BODY? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena entry:n :}
+   true
+   entry NINL:TOKENS 0 ?do
+      r entry i REC-TOKEN? 0= if drop false leave then
+   loop ;
+
+\ Does this word stage an operation that takes the definition's memory order?
+\ Asked of the SCHEMA TABLE and not of a list of memory words, so a form added to
+\ the dialect is answered without this file being edited. A word of any other
+\ meaning answers no: the two callers below ask their own question about a call.
+: SYM-ORDER? ( IR-ARENA:arena IR-ID:ir-symbol-id -- bool )
+   {: r:IR-ARENA:arena sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:MODELS? 0= if false exit then
+   r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
+   m HIR-MEANING:OP HIR-MEANING:EQ if
+      CTX BLD  CTX BLD  r sy HIR-WORD:OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
+      0<> exit
+   then
+   m HIR-MEANING:CONST-OP HIR-MEANING:EQ if
+      CTX BLD  CTX BLD  r sy HIR-WORD:CONST-OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
+      0<> exit
+   then
+   false ;
+
+: REC-TOKEN-ORDER? ( IR-ARENA:arena n n -- bool )
+   {: r:IR-ARENA:arena entry:n k:n :}
+   entry k REC-NAME? 0= if false exit then
+   r  entry k INL-SYM  SYM-ORDER? ;
+
+\ Does a copied body need the definition's memory order? A copy's loads and
+\ stores thread the CALLER's order - there is one order per definition and the
+\ copy is part of this one - so a caller that copies a body with a memory word in
+\ it is a caller that touches memory, and the pre-scan below has to say so.
+: REC-BODY-ORDER? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena entry:n :}
+   false
+   entry NINL:TOKENS 0 ?do
+      r entry i REC-TOKEN-ORDER? or
+   loop ;
+
+\ The callee named on this token, and whether its body may be copied here.
+: CALLEE-COPY? ( IR-ARENA:arena n -- bool )
+   {: r:IR-ARENA:arena ix:n :}
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:ENTRY@ {: entry:n :}
+   entry NINL:KNOWN? 0= if false exit then
+   entry NINL:IN@  r sy HIR-WORD:CALLEE-IN@  <> if E-NELAB-INLINE throw then
+   entry NINL:OUT@ r sy HIR-WORD:CALLEE-OUT@ <> if E-NELAB-INLINE throw then
+   r entry REC-BODY? ;
+
+: INL-STEP ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   r ix HIR-MEANING:CALLABLE MODELED-AS? 0= if exit then
+   r ix CALLEE-COPY? if ix INL+ then ;
+
+: INLINE-SCAN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena n:n :}
+   INL-RESET
+   n 1 ?do
+      i IN-DECL? 0=  i LOCAL-OF 0 <  and if r i INL-STEP then
+   loop ;
+
 \ ---- does this definition touch memory at all? -------------------------------
 \ One walk of the body, before the blocks are counted, asking the SCHEMA TABLE
 \ whether any word of it stages an operation that takes a memory order. It asks
@@ -1326,21 +1529,19 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ HIR-WORD:ADMIT when the walk reaches it. Answering "no order" for them is
 \ right: this pass decides whether an order is needed, not whether the body is
 \ compilable.
+\ A CALL THAT IS COPIED ANSWERS FOR THE BODY THAT REPLACES IT. The call operation
+\ takes an order and the copy does not stage one, so a caller whose only memory
+\ word was inside a copied body still needs an order and a caller that copies a
+\ body with none does not - which is the same question asked of the body that
+\ will really be there.
 : WORD-ORDER? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    VW ix NTAPE:KIND@ NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
    VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
-   m HIR-MEANING:OP HIR-MEANING:EQ if
-      CTX BLD  CTX BLD  r sy HIR-WORD:OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
-      0<> exit
-   then
-   m HIR-MEANING:CONST-OP HIR-MEANING:EQ if
-      CTX BLD  CTX BLD  r sy HIR-WORD:CONST-OPCODE@  HIR:OPCODE  TOKEN-OPERANDS
-      0<> exit
-   then
    m HIR-MEANING:CALLABLE HIR-MEANING:EQ if
+      ix INL-AT? if r  r sy HIR-WORD:ENTRY@  REC-BODY-ORDER? exit then
       CTX BLD  CTX BLD  HIR-OPCODE:WORDCALL HIR:OPCODE  TOKEN-OPERANDS
       0<> exit
    then
@@ -1350,7 +1551,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
       then
       r sy HIR-WORD:CTRL@ HIR-CTRL:SELF-CALL HIR-CTRL:EQ exit
    then
-   false ;
+   r sy SYM-ORDER? ;
 
 : MEM-SCAN ( IR-ARENA:arena n -- )
    {: r:IR-ARENA:arena n:n :}
@@ -1368,6 +1569,12 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ compiles to exactly the module it compiled to before. Both call forms count -
 \ `RECURSE` and a call to another word - because both destroy the same registers.
 \
+\ AND A CALL THE DECISION ABOVE MARKED FOR COPYING IS NOT ONE. What stands there
+\ is the callee's body, staged out of the caller's own values, and no operation of
+\ it destroys anything - so a body whose every call is copied renames no counter
+\ and no local, and compiles to exactly the module it would have compiled to with
+\ no call written in it at all.
+\
 \ It is as quiet as WORD-ORDER? about rows it cannot answer for, and for the same
 \ reason: this pass decides what has to travel, not whether the body compiles.
 : WORD-CALL? ( IR-ARENA:arena n -- bool )
@@ -1376,7 +1583,7 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
    VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:MODELS? 0= if false exit then
    r sy HIR-WORD:MEANING@ {: m:HIR:meaning :}
-   m HIR-MEANING:CALLABLE HIR-MEANING:EQ if true exit then
+   m HIR-MEANING:CALLABLE HIR-MEANING:EQ if ix INL-AT? 0= exit then
    m HIR-MEANING:CONTROL HIR-MEANING:EQ if
       r sy HIR-WORD:CTRL@ HIR-CTRL:SELF-CALL HIR-CTRL:EQ exit
    then
@@ -1504,13 +1711,12 @@ create LS-PEND LSMAX cells allot     \ locals mentioned in it before any call wa
 \ forward to the block after the loop, which `repeat` opens, so the answer is
 \ written against the `begin`'s token and every `while` of that loop reads the
 \ one row - which is what lets a loop have more than one of them.
-256 constant TMAX                    \ body tokens one definition may have
-
+\
+\ THE CEILING AND ITS BOUND CHECK ARE TMAX AND TOK-CK ABOVE, shared with the
+\ inline decision, because both tables are keyed by the same body token and two
+\ ceilings over one key are two answers about which tokens exist.
 here CELL 1- and CELL swap - CELL 1- and allot
 create JOIN-TAB TMAX cells allot
-
-: TOK-CK ( n -- n )
-   dup 0 < over TMAX >= or if E-NELAB-BLOCK throw then ;
 
 \ Every row starts as "no answer", so a token the skeleton wrote nothing against
 \ reads back as one rather than as whatever the definition before this one left
@@ -2099,6 +2305,84 @@ variable LRK                         \ crossing locals the walk below has taken 
    r sy HIR-WORD:ENTRY@ a o WCALL-ATTRS+
    back CALL-CLOSE ;
 
+\ ---- copying a callee's body in instead of calling it ------------------------
+\ WHAT A COPIED CALL IS. The callee's recorded tokens, staged one at a time by
+\ the very words that stage this definition's own tokens. Nothing else happens:
+\ there is no operation for the call, no store run, no branch, no load run, and
+\ the callee's own entry and exit are not there to be paid either.
+\
+\ THE ARGUMENTS ARE ALREADY WHERE THE BODY WANTS THEM. A Habu word's arguments
+\ are the top of the data stack, and the top of the compile-time value vector is
+\ exactly that - so the copied body reads its arguments off the vector by
+\ standing where it stands, and leaves its results there. That is why a copy
+\ costs no data-stack traffic at all where the call cost one slot per argument
+\ and one per result.
+\
+\ EVERY OPERATION ANSWERS FOR THE CALL SITE'S SPAN, which is the token this
+\ definition really wrote. The callee's own source belongs to a module that died
+\ with the migration that compiled it, and a span of this module is what every
+\ later stage can carry; a diagnostic about a copied instruction therefore points
+\ at the call the programmer wrote, which is the line they can do something
+\ about.
+\
+\ WHAT IS CHECKED WHILE THE COPY RUNS, AND NEITHER CHECK IS DECORATION. The body
+\ may not reach BELOW the values its caller was holding - a checked body cannot,
+\ because the checker proved it against its own declared effect, but the vector
+\ is this file's and a floor it can state is a floor it should state - and it has
+\ to leave the vector exactly as the callee's declared effect says. The second is
+\ what holds the recorded body and the recorded arity together: a body that
+\ consumed or left a different number of values than the row says is refused by
+\ name rather than compiled into a definition whose stack is one value out.
+: INLINE-NAME ( IR-ARENA:arena IR-ARENA:arena n IR-ID:ir-symbol-id -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:ADMIT
+   MATCH HIR:meaning
+      literal      OF E-NELAB-INLINE throw ENDOF
+      real-literal OF E-NELAB-INLINE throw ENDOF
+      op           OF r ix sy EMIT-OP-SYM ENDOF
+      const-op     OF r ix sy EMIT-CONST-OP-SYM ENDOF
+      fixed        OF r ix sy EMIT-FIXED-SYM ENDOF
+      rename       OF p r sy RENAME ENDOF
+      callable     OF E-NELAB-INLINE throw ENDOF
+      control      OF E-NELAB-INLINE throw ENDOF
+      open-locals  OF E-NELAB-INLINE throw ENDOF
+      close-locals OF E-NELAB-INLINE throw ENDOF
+      unmodeled    OF E-HIR-UNMODELED throw ENDOF
+   ;MATCH ;
+
+: INLINE-TOKEN ( IR-ARENA:arena IR-ARENA:arena n n n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n entry:n k:n :}
+   entry k NINL:KIND@
+   MATCH NTAPE:kind
+      name           OF p r ix  entry k INL-SYM  INLINE-NAME ENDOF
+      int-literal    OF ix  entry k NINL:LIT@  EMIT-LIT ENDOF
+      real-literal   OF ix  entry k NINL:LIT@  EMIT-FLIT ENDOF
+      char-literal   OF E-NELAB-INLINE throw ENDOF
+      string-literal OF E-NELAB-INLINE throw ENDOF
+   ;MATCH ;
+
+: DO-INLINE ( IR-ARENA:arena IR-ARENA:arena n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
+   VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
+   r sy HIR-WORD:ENTRY@ {: entry:n :}
+   entry NINL:IN@ {: a:n :}
+   entry NINL:OUT@ {: o:n :}
+   VN @ a < if E-NELAB-UNDER throw then
+   VN @ a - {: base:n :}
+   base o + VMAX > if E-NELAB-CAP throw then
+   entry NINL:TOKENS 0 ?do
+      p r ix entry i INLINE-TOKEN
+      VN @ base < if E-NELAB-INLINE throw then
+   loop
+   VN @ base o + <> if E-NELAB-INLINE throw then ;
+
+\ Either way of reaching another word's body. Which one this token is was decided
+\ once, before any walk started, and is read here rather than asked again.
+: DO-CALL ( IR-ARENA:arena IR-ARENA:arena n -- )
+   {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n :}
+   ix INL-AT? if p r ix DO-INLINE exit then
+   r ix DO-WORD-CALL ;
+
 \ `unloop`: this dialect carries a counted loop's index and limit as block
 \ arguments, so there is no frame to drop and nothing is staged. What it does is
 \ insist that a counted loop IS open, which is the one thing the word means that
@@ -2237,7 +2521,7 @@ variable IX                          \ the body token the walk stands on
       op           OF r ix EMIT-OP ENDOF
       const-op     OF r ix EMIT-CONST-OP ENDOF
       fixed        OF r ix EMIT-FIXED ENDOF
-      callable     OF r ix DO-WORD-CALL ENDOF
+      callable     OF p r ix DO-CALL ENDOF
       control      OF r ix DO-CONTROL ENDOF
       rename       OF p r  VW MKEY ix NTAPE:SPELL@  RENAME ENDOF
       open-locals  OF E-NELAB-LOCAL throw ENDOF
@@ -2323,6 +2607,30 @@ variable IX                          \ the body token the walk stands on
 
 public
 
+\ Could a body copied into a caller hold this tape token? It is the rule the
+\ decision above applies to a RECORDED token, asked of a token still on a tape -
+\ which is where src/compiler/native/migrate.f asks it, of a definition it has
+\ just compiled, to decide whether that definition's body is one worth recording
+\ at all. One rule, asked at both ends: the definition that is recorded has to
+\ pass it against its own word model, and every caller that copies it has to pass
+\ it again against the caller's.
+: SPLICEABLE? ( IR-ARENA:view IR-ID:ir-module-key IR-ARENA:arena n -- bool )
+   {: v:IR-ARENA:view key:IR-ID:ir-module-key r:IR-ARENA:arena ix:n :}
+   v ix NTAPE:KIND@ {: kd:NTAPE:kind :}
+   kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if true exit then
+   kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if true exit then
+   kd NTAPE-KIND:NAME NTAPE-KIND:EQ 0= if false exit then
+   r  v key ix NTAPE:SPELL@  HIR-WORD:MODELS? 0= if false exit then
+   r  v key ix NTAPE:SPELL@  HIR-WORD:MEANING@ SPLICE-MEANING? ;
+
+\ Does the definition this pass last elaborated CALL anything? It is the pre-scan
+\ answer above, published because the routine contract the later stages are told
+\ turns on it: a definition whose every call was copied into it destroys nothing,
+\ needs no frame and saves no return address, and the module the selector reads
+\ has to be described by the contract it is selected under.
+: CALLED? ( -- bool )
+   CALL-NEED @ 0<> ;
+
 \ Elaborate the one colon definition this sealed tape holds, and answer the
 \ function it became. The arenas are, in order, the tape's sealed view, the word
 \ model's pick pool and the word model's rows; the two counts are the values the
@@ -2346,6 +2654,7 @@ public
    in IN-N !
    out OUT-N !
    r n LOCALS-SCAN
+   r n INLINE-SCAN
    r n MEM-SCAN
    r n CROSS-SCAN
    r n SKELETON

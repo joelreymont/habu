@@ -1031,6 +1031,7 @@ public
 -8556 constant E-A64EMIT-PLACE  \ an emission that names a callee and was told no address of its own to measure the branch from, a placement that is negative or not instruction aligned, or a second placement declared over a live one
 -8557 constant E-A64RAV-CLOBBER \ a value the caller keeps in a register across a call to a routine that destroys that register: an assignment the callee's recorded clobber set says the call site cannot make
 -8558 constant E-A64EMIT-CLOBBER \ an emission that writes a general or floating register the accepted allocation claimed for no value, so what the routine destroys cannot be published from the allocation
+-8559 constant E-NELAB-INLINE   \ a callee's recorded body the elaborator cannot splice into its caller: a recorded arity that is not the effect the caller declared for that callee, a token the caller's own word model admits with a meaning the splice has no rule for, a spliced body that reaches below the values its caller was holding, or one that does not leave the vector as the callee's declared effect says
 
 \ Native publication: -8560..-8579
 \
@@ -1054,7 +1055,12 @@ public
 -8568 constant E-NCLOB-CAP    \ more published routines than the clobber record's table holds
 -8569 constant E-NPUB-CLOBBER \ an emission that branches to a routine destroying a register the set about to be published for it does not name: what a routine destroys has to cover what everything it calls destroys
 
--8570 constant E-NMIGRATE-STATE   \ a migration reached while another one is open: the recorder takes one definition at a time
+-8574 constant E-NINL-STATE    \ the recorded-body staging used out of order: a body staged while another one is open, a token staged with none open, or a commit with nothing staged
+-8575 constant E-NINL-CAP      \ more recorded bodies than the inline record's table holds, more tokens in one body than a row holds, or a spelling longer than a token slot holds
+-8576 constant E-NINL-DUP      \ a second recorded body for one code address: the code at an address is written once and a caller compiled against the first body would have been given another one
+-8577 constant E-NINL-BOUND    \ a recorded body asked about an address it has no row for, or about a token outside the body that row holds
+
+-8570 constant E-NMIGRATE-STATE   \ a migration reached while another one is open, a migration entered as one that calls nothing whose body staged a call, or a staged callee list left behind by a refused run: the recorder takes one definition at a time
 -8571 constant E-NMIGRATE-TEXT    \ definition source longer than the recorder's text buffer, or a name longer than the log holds
 -8572 constant E-NMIGRATE-VERDICT \ the engine's own check did not certify the definition, so there is no checked word to migrate
 -8573 constant E-NMIGRATE-NAME    \ the definition the source published is not the name the caller asked to migrate: the newest dictionary record carries another name

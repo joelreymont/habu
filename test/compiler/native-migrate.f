@@ -364,9 +364,30 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
 \ the compile-time vector holds one. It is the arity half of the same statement:
 \ what a call site publishes is the arity it was told, and a site told to publish
 \ more than the caller holds has nothing to publish.
+\
+\ THE CALLEE IS ONE THE ENGINE COMPILED, and that is what this case is about
+\ rather than an accident of which word was handy. The chain recorded no body for
+\ it and never will, so the caller's statement stands as made and the refusal is
+\ the elaborator's own: the vector cannot hand over a value it does not hold. The
+\ same lie about a callee the CHAIN compiled is caught earlier and by a different
+\ name, because the callee's own migration recorded what it really declares, and
+\ the case below measures that.
+: DEFINE-ENGINE-DBL ( -- )
+   s" : NMG-EDBL ( n -- n ) dup + ;" EV ;
+
 : MIGRATE-DEEP-ARITY ( -- )
+   s" NMG-EDBL" s" NMG-EDBL" REC-START 2 1 NMIGRATE:CALLEE
+   s" : NMG-B4 ( n -- n ) NMG-EDBL ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ The same lie about a callee whose body the chain DID record, with enough on the
+\ vector that nothing underflows: the caller says the callee takes two values and
+\ the callee's own migration recorded that it takes one. Two authorities about
+\ one routine, and they are held against each other rather than one of them being
+\ believed - a caller compiled against the wrong effect would publish its
+\ arguments at the wrong slots whether the body was copied in or branched to.
+: MIGRATE-WRONG-ARITY ( -- )
    s" NMG-DBL" DBL-ENTRY 2 1 NMIGRATE:CALLEE
-   s" : NMG-B4 ( n -- n ) NMG-DBL ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+   s" : NMG-B5 ( n n -- n ) NMG-DBL + ;" 2 1 REGS NMIGRATE:DEFINE-CALLING ;
 
 : CALL-REFUSAL-CASES ( -- )
    s" a callee at the null address is refused by the word model" T-LABEL
@@ -379,7 +400,11 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    [: MIGRATE-FAR-ENTRY ;] E-A64EMIT-REACH TTHROWSQ
 
    s" a call site told to publish more than the caller holds is refused" T-LABEL
+   DEFINE-ENGINE-DBL
    [: MIGRATE-DEEP-ARITY ;] E-NELAB-CALL TTHROWSQ
+
+   s" and an effect that is not the one the callee recorded is refused" T-LABEL
+   [: MIGRATE-WRONG-ARITY ;] E-NELAB-INLINE TTHROWSQ
 
    s" a callee the word model refuses is refused before the engine compiles"
    T-LABEL
@@ -389,9 +414,11 @@ $10000000 constant FAR-ENOUGH         \ 256 MiB: well past the reach of a Bl's 2
    s" 5 NMG-B2" EV-N 11 T=
    s" 5 NMG-B3" EV-N 11 T=
    s" 5 NMG-B4" EV-N 10 T=
+   s" 3 5 NMG-B5" EV-N 13 T=
    s" NMG-B2" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
    s" NMG-B3" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
    s" NMG-B4" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
+   s" NMG-B5" GLOBAL-WID NPUB:REPUBLISHED? TFALSE
 
    s" and a migration still runs after every one of those refusals" T-LABEL
    s" NMG-DBL" DBL-ENTRY 1 1 NMIGRATE:CALLEE

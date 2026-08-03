@@ -352,6 +352,14 @@ SUITE compiler-native-clobber
    test/compiler/native-clobber.f
 ;SUITE
 
+\ The body of a small routine, recorded when it is published and copied into
+\ every later caller instead of being called. It runs after the migration entry
+\ for the reason the clobber suite does: what it measures is the code of words
+\ the migration published.
+SUITE compiler-native-inline
+   test/compiler/native-inline.f
+;SUITE
+
 \ The native chain's end-to-end run: source text through the real compile path
 \ to executed machine code. It runs after the leaves it composes, so a red here
 \ with green leaves means the leaves disagree with each other.

@@ -67,6 +67,7 @@ require lib/string.f
 require src/compiler/native/abi.f
 require src/compiler/native/feed.f
 require src/compiler/native/elaborate.f
+require src/compiler/native/inline.f
 require src/compiler/native/select.f
 require src/compiler/native/emit.f
 require src/compiler/native/publish.f
@@ -149,6 +150,7 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 : CC ( -- IR-CTX:ctx )           0 M-CTX @ ;
 : BB ( -- IR-BUILD:builder )     0 M-BLD @ ;
 : TAPE ( -- IR-ARENA:view )      0 M-TAPE @ ;
+: MKEY ( -- IR-ID:ir-module-key ) BB IR-BUILD:MODULE-KEY ;
 
 : SRC$ ( -- ptr u8 n )
    M-SRC @ M-SRC-U @ ;
@@ -231,7 +233,7 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 \ length of the text the recorded rows span into, read off the live builder
 \ because selection takes its binding before the module freezes.
 : TEXT-LEN ( -- n )
-   CC BB  TAPE BB IR-BUILD:MODULE-KEY 0 NTAPE:SPAN@ IR-SOURCE:SPAN-SRC
+   CC BB  TAPE MKEY 0 NTAPE:SPAN@ IR-SOURCE:SPAN-SRC
    IR-BUILD:SOURCE-LEN ;
 
 \ ---- which word the source published -----------------------------------------
@@ -263,15 +265,109 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 : RESOLVES-TO-LATEST ( ptr u8 n n -- ) {: a:ptr u:n wid:n :}
    a u wid XREF-FIND-WL-INDEX ndict@ 1- <> if E-NMIGRATE-NAME throw then ;
 
+\ ---- recording this definition's body for its callers ------------------------
+\ WHY A MIGRATION RECORDS ANYTHING. A definition small enough that copying its
+\ body into a call site costs no more instructions than the call did is one every
+\ later caller should copy rather than call, and the only moment its body can be
+\ kept is while it is being compiled: the tokens live in a module that dies with
+\ this run, and their spellings can only be asked of that module's own interner.
+\ src/compiler/native/inline.f is the record and carries the argument for why an
+\ address is the right key and what the size rule is.
+\
+\ WHICH BODY QUALIFIES IS NOT DECIDED HERE. Whether a token could stand in a
+\ copied body is the ELABORATOR's rule - it is the pass that would have to stage
+\ it - and it is asked here, token by token, through NELAB:SPLICEABLE?. This file
+\ decides nothing about the body; it copies the tokens out and states the arity
+\ the caller declared for the definition.
+\
+\ AND THE TOKENS ARE STAGED BEFORE THE ADDRESS IS KNOWN, WHICH IS WHY THE RECORD
+\ HAS TWO STEPS. The spellings have to be read while the module is still being
+\ built; the address is not the definition's until the publication seam has
+\ written the routine there, and between the two a refusal is possible. A row
+\ keyed to a slot no publication claimed would be a body waiting for whatever
+\ word is published there next, so the staging is committed only after the seam
+\ has answered - and thrown away by RUN if the run never got that far.
+64 constant SPELL-CAP                \ the longest spelling one staged token may have
+
+create SPELL-BUF SPELL-CAP allot
+
+here CELL 1- and CELL swap - CELL 1- and allot
+variable REC-OK                      \ the body staged so far is still one worth keeping
+
+\ One body token, copied into the staging area. A token the elaborator could not
+\ stage inside a copied body, and one whose spelling is longer than a record
+\ holds, both end the recording: this definition is one its callers will call.
+: REC-TOKEN ( IR-ARENA:arena n -- )
+   {: r:IR-ARENA:arena ix:n :}
+   REC-OK @ 0= if exit then
+   TAPE MKEY r ix NELAB:SPLICEABLE? 0= if 0 REC-OK ! exit then
+   TAPE ix NTAPE:KIND@ {: kd:NTAPE:kind :}
+   kd NTAPE-KIND:INT-LITERAL NTAPE-KIND:EQ if
+      TAPE ix NTAPE:LIT@ NINL:STAGE-INT exit
+   then
+   kd NTAPE-KIND:REAL-LITERAL NTAPE-KIND:EQ if
+      TAPE ix NTAPE:LIT@ NINL:STAGE-REAL exit
+   then
+   CC BB  TAPE MKEY ix NTAPE:SPELL@  SPELL-BUF SPELL-CAP IR-BUILD:SYMBOL-COPY
+   {: u:n :}
+   u NINL:SPELL-FITS? 0= if 0 REC-OK ! exit then
+   SPELL-BUF u NINL:STAGE-NAME ;
+
+\ The whole body, or nothing. It runs while the module is still being built,
+\ which is why it stands between the elaboration and the emission.
+: STAGE-BODY ( IR-ARENA:arena -- )
+   {: r:IR-ARENA:arena :}
+   TAPE NTAPE:TOKENS {: n:n :}
+   n 1- NINL:FITS? 0= if exit then
+   M-IN @ M-OUT @ NINL:STAGE-BEGIN
+   1 REC-OK !
+   n 1 ?do
+      r i REC-TOKEN
+   loop
+   REC-OK @ 0= if NINL:STAGE-CLEAR then ;
+
+\ The size rule, asked of the emission the validator accepted. It is the last
+\ thing that can disqualify a body, and it is asked here because this is the
+\ first moment the definition's own instruction count exists.
+: SIZE-CK ( -- )
+   NINL:STAGED? 0= if exit then
+   M-IN @ M-OUT @ A64EMIT:INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
+
+: ROOM-CK ( -- )
+   NINL:STAGED? 0= if exit then
+   NINL:ROOM-CK ;
+
+\ Key the staged body to the address the seam really wrote the routine at. The
+\ emitter's own recorded placement is that address: the seam refuses to publish
+\ an emission whose placement is not the slot it is claiming, so the two are one
+\ answer by the time this runs.
+: KEEP-BODY ( -- )
+   NINL:STAGED? 0= if exit then
+   A64EMIT:PLACEMENT NINL:COMMIT ;
+
 \ ---- the chain ---------------------------------------------------------------
 \ Select, allocate, have the allocation accepted and emit, under the convention a
 \ Habu word is entered through. The contract is built more than once from the
 \ same four numbers because a routine value cannot be held in a local; every one
 \ of them is the same declaration, so the selector, the allocator and the
 \ validator are answering about one routine.
+\
+\ WHETHER THIS ROUTINE CALLS IS THE ELABORATOR'S ANSWER AND NOT THE CALLER'S. It
+\ was the caller's while every call written in a body became a call in the
+\ module, and it stopped being so when a small callee started being copied into
+\ its caller instead: a definition can now be written with four calls in it and
+\ contain none. The module is what the contract has to describe - the selector
+\ holds the two against each other and refuses a frame reserved for a call that
+\ is not there - so the contract is read off the pass that built the module.
+\ CALLS-CK below keeps the other direction, which is still the caller's to get
+\ wrong: a migration entered as one that calls nothing may not have staged one.
 : ROUTINE ( -- A64EFF:routine )
-   M-CALLS @ 0<> if 0 M-REGS @ M-IN @ M-OUT @ NABI:CALL exit then
+   NELAB:CALLED? if 0 M-REGS @ M-IN @ M-OUT @ NABI:CALL exit then
    0 M-REGS @ M-IN @ M-OUT @ NABI:LEAF ;
+
+: CALLS-CK ( -- )
+   M-CALLS @ 0<> if exit then
+   NELAB:CALLED? if E-NMIGRATE-STATE throw then ;
 
 : A64-BUILDER ( -- IR-BUILD:builder )
    IR-BUILD:PLAN-DEFAULT
@@ -315,8 +411,13 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
    KEEP-NAME
    wid NAME-WID !
    CC BB TAPE p r M-IN @ M-OUT @ NELAB:COLON drop
+   CALLS-CK
+   r STAGE-BODY
    EMITTED
-   NAME-BUF NAME-U @ wid NPUB:REPUBLISH ;
+   SIZE-CK
+   ROOM-CK
+   NAME-BUF NAME-U @ wid NPUB:REPUBLISH
+   KEEP-BODY ;
 
 \ The failure is caught INSIDE the context and carried out as a code, so the
 \ context always leaves the ordinary way and gives its arenas back. A throw that
@@ -368,6 +469,7 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
    IN-CONTEXT
    0 M-OPEN !
    CALLEES-CLEAR
+   NINL:STAGED? if NINL:STAGE-CLEAR then
    M-RC @ {: rc:n :}
    rc 0 <> if rc throw then ;
 

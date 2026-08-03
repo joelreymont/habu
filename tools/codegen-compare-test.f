@@ -1011,33 +1011,40 @@ private
 \ REFUSAL-CASES below hands the corpus's own text to the real migration entry and
 \ checks that the refusal is E-A64RA-SPILL and not some other code.
 \
-\ WHICH ROWS COST MORE, AND WHICH ARE PINNED. ONE of the nine costs more than the
-\ engine's code for the same body - TINY-CALLEE, whose loop body contains nothing
-\ but calls and whose callee the engine copies rather than calls - and it is
-\ pinned here by name. CALL-LOOP-3 was the second and is a draw now: narrowing
-\ what a call site saves took it from about 1.33x to level, and level is not
-\ something a wall clock can assert. Three more are DRAWS and are deliberately
-\ not pinned in either direction: CALL-FAN and LADDER measured within a twentieth
-\ of each other, and over five passes on an idle host each of them came out ahead
-\ of the other at least once, so an assertion either way would be a gate that
-\ fails for host noise. The head of this file says why that is worse than no
-\ assertion at all. The four rows the chain wins by more than a factor of two are
-\ pinned, because a margin that large cannot be crossed by scheduling.
+\ WHICH ROWS COST MORE, AND WHICH ARE PINNED. NONE of the nine does any more.
+\ TINY-CALLEE was the last one that did - its loop body is nothing but calls, and
+\ the engine copied the callee where the chain branched to it - and the chain now
+\ copies the same body for the same reason (src/compiler/native/inline.f), which
+\ took it from about 1.20x slower to about eight times faster. CALL-LOOP-3 and
+\ CALL-FAN went the same way. All three are pinned as wins here, and pinning them
+\ is honest for the reason the four below are: a margin of eight cannot be
+\ crossed by scheduling. LADDER remains a DRAW and is deliberately not pinned in
+\ either direction - the two columns measured within a twentieth of each other
+\ and each came out ahead at least once over five passes - and the head of this
+\ file says why an assertion that fails for host noise is worse than none.
 \
 \ WHAT IS PINNED INSTEAD, FOR THE ROWS THAT TURN ON A CALL, is the traffic
 \ itself: how many stores and loads against the caller's own data-stack pointer
-\ each emitted word contains. Those numbers are exact, they are what the
-\ narrowing removes, and they do not move for host load - so a change that
-\ stopped narrowing fails a gate here rather than being absorbed into a timing.
+\ each emitted word contains. Those numbers are exact and they do not move for
+\ host load. They now say something stronger than the narrowing did: each of the
+\ three call rows contains exactly its own arguments and its own result and
+\ nothing else, because there is no call left in it to publish anything for. A
+\ change that stopped copying puts the callee's arguments, results and every live
+\ value back into those counts and fails a gate here rather than being absorbed
+\ into a timing.
 \
 \ EVERY COMPILED ROW IS STILL FEWER BYTES, which is itself the shape of the
 \ finding: what the chain spends at a call is data-stack traffic in the caller's
 \ own frame, and that is cheap in bytes and dear in cycles.
 
-\ ---- the engine's inlining rule, read off the emitted machine code ------------
-\ The call rows of the fourth corpus rest on one claim: the engine COPIES a small
-\ callee into its caller and emits no call instruction, while the chain emits a
-\ Bl. A byte count could be explained away; the instruction cannot. This counts
+\ ---- who copies a small callee, read off the emitted machine code -------------
+\ The call rows of the fourth corpus rested on one claim: the engine COPIES a
+\ small callee into its caller and emits no call instruction, while the chain
+\ emitted a Bl per call site. The first half is unchanged and the second half is
+\ what this leaf's work removed - both columns now carry no call instruction at
+\ all for these three bodies, each under its own rule, and the counts below say
+\ so on both sides. A byte count could be explained away; the instruction cannot.
+\ This counts
 \ the Bl instructions in a word's own compiled code - top six bits 100101, which
 \ is AArch64's branch-with-link, the same encoding src/habu/habu2.f names
 \ `$94000000 constant C-CALL-BL-IMM` and scans for when it decides whether a span
@@ -1100,18 +1107,20 @@ $94000000 constant BL-OP
    s" CODEGEN-CORPUS4:TINY-CALLEE" SMALLER? TTRUE
    s" CODEGEN-CORPUS4:LADDER" SMALLER? TTRUE
 
-   s" the row whose loop body is nothing but calls still COSTS more" T-LABEL
-   s" CODEGEN-CORPUS4:TINY-CALLEE" COSTLIER? TTRUE
+   s" the row whose loop body is nothing but calls no longer COSTS more" T-LABEL
+   s" CODEGEN-CORPUS4:TINY-CALLEE" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:CALL-LOOP-3" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:CALL-FAN" COSTLIER? TFALSE
 
-   s" and what a call site saves is what the callee's own record says it must" T-LABEL
-   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-STORES 4 T=
-   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-LOADS 8 T=
-   s" CODEGEN-CORPUS4:TINY-CALLEE-N" DS-STORES 5 T=
-   s" CODEGEN-CORPUS4:TINY-CALLEE-N" DS-LOADS 6 T=
+   s" and the data-stack traffic in a call row is its own arguments and result" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-LOADS 5 T=
+   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-STORES 1 T=
+   s" CODEGEN-CORPUS4:TINY-CALLEE-N" DS-LOADS 2 T=
+   s" CODEGEN-CORPUS4:TINY-CALLEE-N" DS-STORES 1 T=
 
-   s" the row with nothing live across its calls saves nothing either way" T-LABEL
-   s" CODEGEN-CORPUS4:CALL-FAN-N" DS-STORES 6 T=
-   s" CODEGEN-CORPUS4:CALL-FAN-N" DS-LOADS 6 T=
+   s" and the row with five call sites in a straight line the same" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-N" DS-LOADS 1 T=
+   s" CODEGEN-CORPUS4:CALL-FAN-N" DS-STORES 1 T=
 
    s" and the four the chain wins by more than a factor of two do not" T-LABEL
    s" CODEGEN-CORPUS4:BIG-CONSTS" COSTLIER? TFALSE
@@ -1130,10 +1139,16 @@ $94000000 constant BL-OP
    s" CODEGEN-CORPUS4:CALL-LOOP-3" BL-COUNT 0 T=
    s" CODEGEN-CORPUS4:TINY-CALLEE" BL-COUNT 0 T=
 
-   s" and the chain's code for the same three bodies is one call per call site" T-LABEL
-   s" CODEGEN-CORPUS4:CALL-FAN-N" BL-COUNT 5 T=
-   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" BL-COUNT 3 T=
-   s" CODEGEN-CORPUS4:TINY-CALLEE-N" BL-COUNT 4 T=
+   s" and the chain's code for the same three bodies carries none either" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS4:CALL-LOOP-3-N" BL-COUNT 0 T=
+   s" CODEGEN-CORPUS4:TINY-CALLEE-N" BL-COUNT 0 T=
+
+   s" and it reaches that with a fraction of the engine's bytes" T-LABEL
+   s" CODEGEN-CORPUS4:CALL-FAN-N" WORD-BYTES
+   s" CODEGEN-CORPUS4:CALL-FAN" WORD-BYTES 2 /  < TTRUE
+   s" CODEGEN-CORPUS4:TINY-CALLEE-N" WORD-BYTES
+   s" CODEGEN-CORPUS4:TINY-CALLEE" WORD-BYTES 2 /  < TTRUE
 
    s" the five copied bodies are the whole of the five-call row's code" T-LABEL
    s" CODEGEN-CORPUS4:CALL-FAN" WORD-BYTES  INL-MAX 5 * FRAME-BYTES + T=

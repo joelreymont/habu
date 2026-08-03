@@ -480,6 +480,7 @@ public
    s" test/compiler/native-publish.f" GSI-FORK-INCLUDE
    s" test/compiler/native-migrate.f" GSI-FORK-INCLUDE
    s" test/compiler/native-clobber.f" GSI-FORK-INCLUDE
+   s" test/compiler/native-inline.f" GSI-FORK-INCLUDE
    s" test/compiler/native-chain.f" GSI-FORK-INCLUDE
    s" test/compiler/native-vocab.f" GSI-FORK-INCLUDE
    \ Runs the exact half of the code generator comparison - bytes, computed

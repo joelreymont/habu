@@ -39,6 +39,15 @@
 \   contracts promise each other. The row is measured with a chain-compiled
 \   callee, which is the shape the contract covers.
 \
+\   AND THAT CHAIN-COMPILED CALLEE IS NOW COPIED INTO THE LOOP RATHER THAN CALLED.
+\   CELL-FIELD-N is a small routine, so its body is recorded when it is published
+\   and elaborated at the call site (src/compiler/native/inline.f), and this row
+\   went from 152 bytes and about 11.4 ns to 96 bytes and about 3.4 ns against the
+\   engine's 320 bytes and 26.4. Nothing about the paragraph above is retired by
+\   that: what the elaborator hands to a call operation is what a call site still
+\   saves, and the rows of the fourth corpus are where a call that really happens
+\   is measured.
+\
 \ HOW A COVERED ROW IS CHECKED. The word the chain compiled is CALLED on the
 \ same pinned inputs the old column used, and its answers are recorded as that
 \ row's outputs. The head-to-head check is then an exact comparison of the two

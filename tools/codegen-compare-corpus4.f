@@ -69,11 +69,25 @@
 \ copied. Add a fifth instruction to a callee and it is 68 bytes, the body is 52,
 \ and the call site emits a Bl instead.
 \
-\ WHAT THE NEW CHAIN DOES INSTEAD. It emits a Bl for every call, at every size,
-\ always. There is no inliner in src/compiler/native/. That is the advantage the
-\ call rows of this corpus are built to hand the engine, and the rows are sized
-\ so that it is the call and not the arithmetic that is being measured: every
-\ callee here is one the engine copies.
+\ WHAT THE NEW CHAIN DID INSTEAD, WHEN THIS CORPUS WAS WRITTEN. It emitted a Bl
+\ for every call, at every size, always; there was no inliner in
+\ src/compiler/native/ at all. That was the advantage the call rows of this
+\ corpus were built to hand the engine, and the rows are sized so that it is the
+\ call and not the arithmetic that is being measured: every callee here is one
+\ the engine copies.
+\
+\ AND WHAT IT DOES NOW, WHICH IS THIS CORPUS'S FINDING ACTED ON. It copies a
+\ small callee too, under a rule derived from its own calling convention rather
+\ than from any emitter's byte count: a call to a routine of arity (in -> out)
+\ costs `in + out + 3` instructions at the site and the same again inside the
+\ routine, so a routine whose whole emission is within twice that has a body no
+\ longer than the call site's own half and copying it in cannot make the site
+\ bigger. src/compiler/native/inline.f is the record and carries the argument;
+\ every callee this corpus publishes qualifies under both rules, and neither
+\ column emits a call instruction for the three call rows any more. The rows are
+\ NOT retired by that: what they measure now is whether the two rules stay in
+\ step, and tools/codegen-compare-test.f counts the branch-with-link instructions
+\ on both sides to say so.
 \
 \ ============================================================================
 \ THE TEN ROWS AND THE WEAKNESS EACH ONE IS LOOKING FOR

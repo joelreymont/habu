@@ -30,85 +30,94 @@
 \ paragraph above is a measurement rather than a claim.
 \
 \ ============================================================================
-\ WHERE THE CHAIN LOSES, WHICH IS WHY THIS CORPUS EXISTS
+\ WHERE THE CHAIN LOST, WHICH IS WHY THIS CORPUS EXISTS, AND WHAT CLOSED IT
 \ ============================================================================
-\ ONE of the nine compiled rows COSTS MORE than the code the engine's emitter
-\ wrote for the same body: TINY-CALLEE, a counted loop whose body contains
-\ NOTHING BUT CALLS. It is named here rather than left to be noticed, and
-\ tools/codegen-compare-test.f pins it so the day it moves somebody has to look
-\ at it. Measured on an idle twelve-core Apple Silicon host with the entry cost
-\ taken off, over five passes:
+\ NONE of the nine compiled rows costs more than the code the engine's emitter
+\ wrote for the same body. That was not true when this corpus was written: it was
+\ built to find the shapes the chain handles worse, it found two, and both of them
+\ turned on the same thing.
 \
-\     TINY-CALLEE     old 58.6 - 60.8 ns     new 72.6 - 73.4 ns     about 1.21x
+\ THE TWO ROWS, AND THE THREE STAGES THEY WENT THROUGH. Measured on an idle
+\ twelve-core Apple Silicon host with the entry cost taken off, over five passes:
 \
-\ CALL-LOOP-3 WAS THE SECOND ONE AND IS NOT ANY MORE, which is the finding this
-\ corpus was built to make possible. It measured old 45.9 - 48.8 against new 61.4
-\ - 65.5, about 1.33x, and it now measures old 46.7 - 52.1 against new 48.5 -
-\ 48.8. What moved it is the second half below.
+\                      when the corpus was written  after the call-save          after a small callee is
+\                                                   narrowing                    copied into its caller
+\     TINY-CALLEE      old 58.6-60.8  new 72.6-73.4  old 56.0  new 70.7           old 59.1-61.4  new 5.49-5.80
+\     CALL-LOOP-3      old 45.9-48.8  new 61.4-65.5  old 46.7-52.1  new 48.5-48.8 old 49.4-52.1  new 5.79-5.97
+\     CALL-FAN         old 4.96-5.53  new 5.26-6.00  unchanged                    old 5.23-5.45  new 0.36-0.38
 \
-\ THE FIRST HALF IS THE INLINER THE CHAIN HAS NOT GOT, and it is the whole of
-\ what is left. The rule the engine applies is written out at the head of
-\ tools/codegen-compare-corpus4.f: a callee of forty bytes of body or less, with
-\ no branch in it, is copied into its caller verbatim and no call instruction is
-\ emitted at all. Every callee this corpus has is exactly forty bytes of body.
-\ Counted on the emitted machine code by tools/codegen-compare-test.f: the
-\ engine's TINY-CALLEE contains ZERO Bl instructions and the chain's contains
-\ four; the engine's CALL-LOOP-3 contains zero and the chain's three. Dot
-\ habu-inline-a-small-83c310af carries it.
+\ WHAT THE FIRST STAGE WAS. Nothing in a Habu word's convention is callee-saved,
+\ so a call site used to put every live value out to a data-stack slot and read it
+\ back. It now puts out only the ones the callee can really reach: a routine the
+\ chain publishes records which registers its accepted allocation writes
+\ (src/compiler/native/clobber.f), the allocator keeps a value that crosses a call
+\ out of those registers, and the site saves the rest. That took CALL-LOOP-3 from
+\ about 1.33x slower to level and left TINY-CALLEE at about 1.20x.
 \
-\ THE SECOND HALF WAS WHAT A CALL COSTS WHEN IT IS EMITTED, and it has been
-\ narrowed. Nothing in a Habu word's convention is callee-saved, so a call site
-\ used to put every live value out to a data-stack slot and read it back. It now
-\ puts out only the ones the callee can really reach: a routine the chain
-\ publishes records which registers its accepted allocation writes
-\ (src/compiler/native/clobber.f), the allocator keeps a value that crosses a
-\ call out of those registers, and the site saves the rest. Counted on the
-\ emitted code, before and after:
+\ AND WHAT THE SECOND WAS: THE CHAIN COPIES A SMALL CALLEE TOO, UNDER A RULE OF
+\ ITS OWN. The rule the ENGINE applies is written out at the head of
+\ tools/codegen-compare-corpus4.f - a callee of forty bytes of body or less, with
+\ no branch in it, is copied into its caller verbatim - and forty bytes is a fact
+\ about that emitter. The chain's rule is derived from its own calling convention
+\ instead: a call to a routine of arity (in -> out) costs `in + out + 3`
+\ instructions at the site and the same again inside the routine, so a routine
+\ whose whole emission is no longer than both halves together has a body no longer
+\ than the call site's own half - and copying it in cannot make the site bigger.
+\ Such a body is recorded when the routine is published
+\ (src/compiler/native/inline.f) and elaborated at the call site out of the
+\ caller's own values (src/compiler/native/elaborate.f). Every callee this corpus
+\ has qualifies under both rules.
 \
-\     CALL-LOOP-3-N   316 bytes, 19 stores and 23 loads  ->  196 bytes, 4 and 8
-\     TINY-CALLEE-N   232 bytes, 13 stores and 14 loads  ->  168 bytes, 5 and 6
+\ WHAT IT REMOVES, COUNTED ON THE EMITTED CODE. Not just the branch: the whole
+\ interface on both sides, and with it everything the CALLER was doing on account
+\ of having a call in it at all - no frame, no saved link register, and no loop
+\ counter or local travelling across every edge.
 \
-\ CALL-FAN-N DID NOT MOVE, and that is the right answer for it: its five calls
-\ are a chain, each one's result being the next one's argument, so nothing at all
-\ is live across them. It is 132 bytes with six stores and six loads either way,
-\ and those are its own entry and exit and the argument and result of each call -
-\ the FLOOR of what a call costs, which is not zero even when nothing needs
-\ saving. Four of the instructions at each of its call boundaries are
+\     CALL-LOOP-3-N   316 bytes, 19 stores and 23 loads  ->  120 bytes, 1 and 5
+\     TINY-CALLEE-N   232 bytes, 13 stores and 14 loads  ->  104 bytes, 1 and 2
+\     CALL-FAN-N      132 bytes,  6 stores and  6 loads  ->   56 bytes, 1 and 1
+\
+\ The counts left are each word's own entry and exit and nothing else - one load
+\ per declared argument and one store per declared result - which is the floor for
+\ a word the engine's callers enter through the data stack. Counted by
+\ tools/codegen-compare-test.f, whose Bl scan now reports ZERO branch-with-link
+\ instructions in both columns for all three bodies.
+\
+\ THE DEAD QUARTET IS GONE WITH IT. A call site used to publish a value into a
+\ slot the callee immediately read back out of the same slot:
 \
 \     sub x19, x19, #8      the data-stack pointer steps back over the value
 \     ldr x0, [x19]         the value is read out of the slot
 \     str x0, [x19]         and written straight back into the SAME slot
 \     add x19, x19, #8      and the pointer steps forward again
 \
-\ whose net effect on the machine is nothing: the value the callee wants is
-\ already in the slot the callee reads. Dot habu-fuse-a-call-36c0286e carries
-\ fusing a reload with the store that puts the same value straight back in the
-\ same place, and it is now the only thing between CALL-FAN-N and the floor.
+\ Four instructions whose net effect on the machine was nothing, five times over
+\ in CALL-FAN-N. Dot habu-fuse-a-call-36c0286e carries fusing such a pair where a
+\ call really is emitted, and it is still open: what removed them HERE is that
+\ there is no call at these sites any more.
 \
 \ ============================================================================
 \ WHERE THE SUSPECTED WEAKNESS DID NOT BITE, AND WHY
 \ ============================================================================
-\ Seven rows were designed to be losses and are not. Two of them are DRAWS and
-\ five are wins, and in every one of the five the same thing happens: the engine's
+\ Seven rows were designed to be losses and are not. ONE of them is a DRAW and
+\ six are wins, and in every one of the wins the same thing happens: the engine's
 \ emitter is a stack machine and moves every intermediate through memory, so a row
 \ whose body does real work pays the engine far more than the shape the row was
 \ built to punish costs the chain.
 \
-\   CALL-FAN      A DRAW, and the most interesting answer in the corpus. It is
-\                 five calls the engine does not make at all against five the
-\                 chain makes, plus the twenty-four dead instructions above - and
-\                 it measures old 4.96-5.53 ns against new 5.26-6.00 ns, with the
-\                 chain ahead in one pass out of five. The dead quartet is nearly
-\                 free in TIME: it is a store and a load to one address that the
-\                 core forwards, over and over, while the engine's inlined copies
-\                 are fifty real instructions. So the missing inliner costs SIZE
-\                 here and not cycles - CALL-FAN-N is 132 bytes against 216 - and
-\                 what turns it into a cost loss in the two rows above is the
-\                 loop, whose carried state makes the boundary twelve instructions
-\                 instead of four. Neither direction is asserted in the scheduled
-\                 test, because a gate that turns on a twentieth of a nanosecond
-\                 is a gate that fails for host load.
-\   LADDER        also a draw: eight compares and eight branches are eight compares
+\   CALL-FAN      A WIN NOW, and the row whose answer moved furthest. It was a
+\                 DRAW for as long as the chain emitted five calls where the
+\                 engine emitted none: old 4.96-5.53 ns against new 5.26-6.00 ns,
+\                 with the chain ahead in one pass out of five, because the dead
+\                 quartet at each boundary was nearly free in TIME - a store and a
+\                 load to one address that the core forwards - while the engine's
+\                 five copied bodies were fifty real instructions. What the chain
+\                 was really paying there was SIZE, 132 bytes against 216. Copying
+\                 the same five bodies takes it to 56 bytes and 0.36-0.38 ns
+\                 against the engine's 5.23-5.45: the five copies are twelve
+\                 instructions in all, because the caller's own registers are
+\                 where each result already is.
+\   LADDER        a draw: eight compares and eight branches are eight compares
 \                 and eight branches, and the chain's are in registers while the
 \                 engine's go through the data stack, which buys back about what
 \                 the eight extra basic blocks cost. LADDER-N is one load, eight
@@ -135,9 +144,12 @@
 \                 and it is the same chain; what differs is the address arithmetic
 \                 and the loop, both of which the chain keeps in registers.
 \
-\ AND THE ONE SENTENCE THE WHOLE CORPUS COMES TO. The new chain loses where a call
-\ is made and there is nothing else in the body to hide it, and nowhere else; every
-\ row whose body computes anything it wins, and it wins every row on size.
+\ AND THE ONE SENTENCE THE WHOLE CORPUS COMES TO. The new chain used to lose where
+\ a call was made and there was nothing else in the body to hide it, and nowhere
+\ else. That was the corpus's finding, it was acted on twice - once by narrowing
+\ what a call site saves and once by not making the call at all - and there is no
+\ row of the four corpora left where the chain costs more. It still wins every row
+\ on size.
 
 require lib/errors.f
 require lib/prelude.f

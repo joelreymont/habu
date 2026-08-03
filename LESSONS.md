@@ -4605,3 +4605,48 @@ replaced it is a count of the instructions the change actually removes - the
 stores and loads against the caller's data-stack pointer, read off the emitted
 word. It is exact, it moves for one reason, and it fails when somebody stops
 narrowing instead of failing when somebody else's build is running.
+
+## The size rule an inliner needs was already in the calling convention
+
+The engine copies a callee of forty bytes or less into its caller, and forty is a
+fact about that emitter's code, not about anything the chain does. Picking a
+number for the chain would have been a value heuristic - the kind of thing a
+review is supposed to send back - and the number was not needed. A call to a
+routine of arity (in -> out) costs `in + out + 3` instructions on each side: the
+site's stores, its branch and two pointer moves, its loads, and the routine's own
+mirror of them. So a routine whose whole emission is within twice that has a body
+no longer than the call site's own half, and copying it in cannot make the site
+bigger. The rule states itself, it scales with arity without being told to, and
+the test that pins it is two callees one instruction apart.
+
+## Copy the tokens, not the instructions
+
+The obvious way to inline is to copy the callee's machine code into the caller -
+it is what the engine does and the bytes are right there. It cannot be done
+honestly in a chain that validates its own allocation: instructions copied into a
+module the dialect has no form for are instructions the register allocator cannot
+say anything about, so the independent validator would have nothing to re-derive
+them from. Copying the callee's SOURCE TOKENS instead puts the splice at the top
+of the chain, where the arguments are already values on the compile-time vector
+and everything downstream sees one ordinary module. Nothing after the elaborator
+learned a new concept, and the whole change is three files.
+
+## What a copy removes is not the branch
+
+Counting the branch is counting the smallest part. A call site that stops being a
+call stops publishing its arguments and reading its results back, the callee's own
+entry and exit are not paid at all, and - because the definition now contains no
+call - it reserves no frame, saves no return address, and stops carrying its loop
+counters and its locals across every edge. TINY-CALLEE went from 1.20x slower
+than the engine to about eight times faster, and only one instruction of that
+margin is the Bl.
+
+## A record of an optimisation is keyed by the address, not the name
+
+The clobber record made the argument first: a call site branches to an ADDRESS,
+and the code at an address is written once because the publication seam claims
+every code slot exactly once. The recorded body follows it, and gets a check the
+clobber record could not: the caller states what effect it believes a callee has,
+the callee's own migration recorded what it really declares, and the two are held
+against each other. A caller compiled against the wrong effect used to compile
+silently and compute the wrong thing; it is now refused by name.
