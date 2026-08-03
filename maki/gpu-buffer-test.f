@@ -12,6 +12,7 @@ using MKD
 10 constant BT-ALLOC
 11 constant BT-UPLOAD
 12 constant BT-FREE
+13 constant BT-DOWNLOAD
 
 variable BT-ALLOC-RC
 variable BT-ALLOC-X
@@ -21,15 +22,23 @@ variable BT-UPLOAD-X
 variable BT-UPLOAD-DST
 variable BT-UPLOAD-LEN
 variable BT-UPLOAD-SRC?
+variable BT-DOWNLOAD-RC
+variable BT-DOWNLOAD-X
+variable BT-DOWNLOAD-SRC
+variable BT-DOWNLOAD-LEN
+variable BT-DOWNLOAD-DST?
 variable BT-FREE-RC
 variable BT-FREE-X
 PTR-VARIABLE BT-BUF-P
+PTR-VARIABLE BT-OWN-ST
+PTR-VARIABLE BT-OWN-BUF
 
 301 constant BT-BUF0
 16 constant BT-BUF-LEN
 $7FFFFFFFFFFFFFFF constant BT-MAX-N
 
 create BT-SRC BT-BUF-LEN allot
+create BT-DST BT-BUF-LEN allot
 
 : BT-RESET ( -- )
    FT-RESET
@@ -41,9 +50,14 @@ create BT-SRC BT-BUF-LEN allot
    0 BT-UPLOAD-DST !
    0 BT-UPLOAD-LEN !
    0 BT-UPLOAD-SRC? !
+   0 BT-DOWNLOAD-RC !
+   0 BT-DOWNLOAD-X !
+   0 BT-DOWNLOAD-SRC !
+   0 BT-DOWNLOAD-LEN !
+   0 BT-DOWNLOAD-DST? !
    0 BT-FREE-RC !
    0 BT-FREE-X !
-   NULL$ drop BT-BUF-P ! ;
+   NULL$ drop dup BT-BUF-P ! dup BT-OWN-ST ! BT-OWN-BUF ! ;
 
 : BT-FALLOC ( ptr a len -- rc ) {: out:ptr len:len :}
    BT-ALLOC len LEN>N FT-LOG
@@ -61,6 +75,15 @@ create BT-SRC BT-BUF-LEN allot
    BT-UPLOAD-X @ FT-X
    BT-UPLOAD-RC @ >RC ;
 
+: BT-FDOWNLOAD ( ptr u8 cuda-devptr len -- rc )
+   {: dst:ptr dev:cuda-devptr len:len :}
+   BT-DOWNLOAD dev CUDA-DEVPTR>N FT-LOG
+   dev CUDA-DEVPTR>N BT-DOWNLOAD-SRC !
+   len LEN>N BT-DOWNLOAD-LEN !
+   dst BT-DST = BT-DOWNLOAD-DST? !
+   BT-DOWNLOAD-X @ FT-X
+   BT-DOWNLOAD-RC @ >RC ;
+
 : BT-FFREE ( cuda-devptr -- rc ) {: dev:cuda-devptr :}
    BT-FREE dev CUDA-DEVPTR>N FT-LOG
    BT-FREE-X @ FT-X
@@ -70,6 +93,7 @@ create BT-SRC BT-BUF-LEN allot
    FT-ON
    [: BT-FALLOC ;] CUMEMALLOC!
    [: BT-FUPLOAD ;] HTOD!
+   [: BT-FDOWNLOAD ;] DTOH!
    [: BT-FFREE ;] CUMEMFREE! ;
 
 : BT-OFF ( -- )
@@ -103,6 +127,14 @@ create BT-SRC BT-BUF-LEN allot
       err OF ENDOF
    ;MATCH ;
 
+: BT-SAVE-OWNERS ( GPU:session GPU:buffer -- GPU:session GPU:buffer )
+   GB-TAKE dup BT-OWN-BUF ! GB-MINT
+   swap GS-TAKE dup BT-OWN-ST ! GS-MINT swap ;
+
+: BT-CHECK-OWNERS ( GPU:session GPU:buffer -- GPU:session GPU:buffer )
+   GB-TAKE dup BT-OWN-BUF @ = TTRUE GB-MINT
+   swap GS-TAKE dup BT-OWN-ST @ = TTRUE GS-MINT swap ;
+
 : BT-MUST-ALLOC ( GPU:session -- GPU:session GPU:buffer )
    BT-BUF-LEN MEM:BYTES-ALLOC-LEN ALLOC MATCH result
       ok OF ENDOF
@@ -112,6 +144,20 @@ create BT-SRC BT-BUF-LEN allot
 : BT-MUST-UPLOAD
    ( GPU:session GPU:buffer CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len -- GPU:session GPU:buffer )
    UPLOAD BT-CODE 0 T= ;
+
+: BT-MUST-DOWNLOAD
+   ( GPU:session GPU:buffer CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len -- GPU:session GPU:buffer )
+   {: off:CAD-NUM:byte-off dst:ptr len:CAD-NUM:byte-len :}
+   BT-SAVE-OWNERS
+   off dst len DOWNLOAD BT-CODE {: code:n :}
+   BT-CHECK-OWNERS code 0 T= ;
+
+: BT-DOWNLOAD-ERR
+   ( GPU:session GPU:buffer CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len n -- GPU:session GPU:buffer )
+   {: off:CAD-NUM:byte-off dst:ptr len:CAD-NUM:byte-len want:n :}
+   BT-SAVE-OWNERS
+   off dst len DOWNLOAD BT-CODE {: code:n :}
+   BT-CHECK-OWNERS code want T= ;
 
 : BT-UPLOAD-ERR
    ( GPU:session GPU:buffer CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len n -- GPU:session GPU:buffer )
@@ -271,6 +317,73 @@ create BT-SRC BT-BUF-LEN allot
    BT-UPLOAD-BIND-RC
    BT-UPLOAD-BIND-X ;
 
+: BT-DOWNLOAD-LOG ( n n -- ) {: off:n len:n :}
+   FT-N @ 2 T=
+   0 FT-OP@ FT-SET T=
+   1 FT-OP@ BT-DOWNLOAD T=
+   BT-DOWNLOAD-SRC @ BT-BUF0 off + T=
+   BT-DOWNLOAD-LEN @ len T=
+   BT-DOWNLOAD-DST? @ TTRUE ;
+
+: BT-DOWNLOAD-RC-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   107 BT-DOWNLOAD-RC !
+   5 BT-BYTE-OFF BT-DST 7 BT-BYTE-LEN 107 BT-DOWNLOAD-ERR
+   5 7 BT-DOWNLOAD-LOG
+   0 BT-DOWNLOAD-RC !
+   0 BT-BYTE-OFF BT-DST BT-BUF-LEN BT-BYTE-LEN BT-MUST-DOWNLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-DOWNLOAD-X-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   108 BT-DOWNLOAD-X !
+   6 BT-BYTE-OFF BT-DST 4 BT-BYTE-LEN 108 BT-DOWNLOAD-ERR
+   6 4 BT-DOWNLOAD-LOG
+   0 BT-DOWNLOAD-X !
+   12 BT-BYTE-OFF BT-DST 4 BT-BYTE-LEN BT-MUST-DOWNLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-DOWNLOAD-BIND-RC ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 109 FT-SET-RC !
+   0 BT-BYTE-OFF BT-DST 1 BT-BYTE-LEN 109 BT-DOWNLOAD-ERR
+   FT-N @ 1 T=
+   0 FT-OP@ FT-SET T=
+   0 FT-SET-RC ! -1 FT-SET-I !
+   0 BT-BYTE-OFF BT-DST 1 BT-BYTE-LEN BT-MUST-DOWNLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-DOWNLOAD-BIND-X ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 110 FT-SET-X !
+   0 BT-BYTE-OFF BT-DST 1 BT-BYTE-LEN 110 BT-DOWNLOAD-ERR
+   FT-N @ 1 T=
+   0 FT-OP@ FT-SET T=
+   0 FT-SET-X ! -1 FT-SET-I !
+   0 BT-BYTE-OFF BT-DST 1 BT-BYTE-LEN BT-MUST-DOWNLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-BUF-DOWNLOAD-ERRORS ( -- )
+   BT-DOWNLOAD-RC-CASE
+   BT-DOWNLOAD-X-CASE
+   BT-DOWNLOAD-BIND-RC
+   BT-DOWNLOAD-BIND-X ;
+
+: BT-DOWNLOAD-BOUNDS ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   13 BT-BYTE-OFF BT-DST 4 BT-BYTE-LEN E-BUF-BOUNDS BT-DOWNLOAD-ERR
+   FT-N @ 0 T=
+   BT-MAX-N BT-BYTE-OFF BT-DST 1 BT-BYTE-LEN E-BUF-BOUNDS BT-DOWNLOAD-ERR
+   FT-N @ 0 T=
+   BT-BUF-LEN 1+ BT-BYTE-OFF BT-DST 0 BT-BYTE-LEN E-BUF-BOUNDS BT-DOWNLOAD-ERR
+   FT-N @ 0 T=
+   0 BT-BYTE-OFF BT-DST 0 BT-BYTE-LEN BT-MUST-DOWNLOAD
+   0 0 BT-DOWNLOAD-LOG
+   FT-LOG-RESET
+   BT-BUF-LEN BT-BYTE-OFF BT-DST 0 BT-BYTE-LEN BT-MUST-DOWNLOAD
+   BT-BUF-LEN 0 BT-DOWNLOAD-LOG
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
 : BT-BUF-BOUNDS ( -- )
    BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
    13 BT-BYTE-OFF BT-SRC 4 BT-BYTE-LEN E-BUF-BOUNDS BT-UPLOAD-ERR
@@ -330,9 +443,23 @@ create BT-SRC BT-BUF-LEN allot
    BT-FREE-RC-CASE
    BT-FREE-X-CASE ;
 
+: BT-REAL-FILL ( -- )
+   BT-BUF-LEN 0 ?do
+      i 17 * 3 + 255 and BT-SRC i + c!
+      0 BT-DST i + c!
+   loop ;
+
+: BT-REAL-EQUAL ( -- )
+   BT-BUF-LEN 0 ?do
+      BT-SRC i + c@ BT-DST i + c@ T=
+   loop ;
+
 : BT-REAL-BUF ( GPU:session -- GPU:session )
+   BT-REAL-FILL
    BT-MUST-ALLOC
    0 BT-BYTE-OFF BT-SRC BT-BUF-LEN BT-BYTE-LEN BT-MUST-UPLOAD
+   0 BT-BYTE-OFF BT-DST BT-BUF-LEN BT-BYTE-LEN BT-MUST-DOWNLOAD
+   BT-REAL-EQUAL
    BT-MUST-FREE ;
 
 : BT-REAL-TWO ( -- )
@@ -350,6 +477,8 @@ create BT-SRC BT-BUF-LEN allot
    BT-BUF-ALLOC-ERRORS
    BT-BUF-UPLOAD-ERRORS
    BT-BUF-BOUNDS
+   BT-BUF-DOWNLOAD-ERRORS
+   BT-DOWNLOAD-BOUNDS
    BT-BUF-FREE-ERRORS
    BT-REAL-TWO
    T-REPORT ;

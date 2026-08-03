@@ -134,6 +134,27 @@ TRUSTED: GB-DEVPTR+ ( cuda-devptr CAD-NUM:byte-off -- cuda-devptr ) + ;
    2drop 2drop drop
    st buf copy-code ;
 
+: GB-DOWNLOAD-BODY
+   ( ptr u8 cuda-devptr CAD-NUM:byte-len n -- ptr u8 cuda-devptr CAD-NUM:byte-len n )
+   {: dst:ptr src:cuda-devptr len:CAD-NUM:byte-len first:n :}
+   dst src len
+   first dst src len GB-BYTE-LEN>N >LEN CUMEMCPYDTOH RC>N GS-FIRST ;
+
+: GB-DOWNLOAD-CALL
+   ( ptr u8 cuda-devptr CAD-NUM:byte-len n -- ptr u8 cuda-devptr CAD-NUM:byte-len n )
+   [: GB-DOWNLOAD-BODY ;] catch GS-FIRST ;
+
+: GB-DOWNLOAD-RAW
+   ( ptr n ptr n CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len -- ptr n ptr n n )
+   {: st:ptr buf:ptr off:CAD-NUM:byte-off dst:ptr len:CAD-NUM:byte-len :}
+   buf off len GB-RANGE? 0= if st buf E-BUF-BOUNDS exit then
+   st buf 0 GB-BIND-STEP {: code:n :}
+   drop drop
+   code 0 <> if st buf code exit then
+   st buf dst buf GB-DEV off GB-DEVPTR+ len 0 GB-DOWNLOAD-CALL {: copy-code:n :}
+   2drop 2drop drop
+   st buf copy-code ;
+
 : GB-FREE-RAW ( ptr n ptr n -- ptr n n )
    0 GB-BIND-STEP GB-FREE-CALL {: code:n :}
    dup GB-FREE-HOST drop
@@ -157,6 +178,14 @@ public
    {: off:CAD-NUM:byte-off src:ptr len:CAD-NUM:byte-len :}
    GB-TAKE swap GS-TAKE swap
    off src len GB-UPLOAD-RAW {: code:n :}
+   GB-MINT swap GS-MINT swap
+   code 0= if 0 RESULT:OK else code RESULT:ERR then ;
+
+: DOWNLOAD
+   ( GPU:session GPU:buffer CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len -- GPU:session GPU:buffer result<n,n> )
+   {: off:CAD-NUM:byte-off dst:ptr len:CAD-NUM:byte-len :}
+   GB-TAKE swap GS-TAKE swap
+   off dst len GB-DOWNLOAD-RAW {: code:n :}
    GB-MINT swap GS-MINT swap
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 
