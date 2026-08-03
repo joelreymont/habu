@@ -189,9 +189,11 @@ variable E0   variable E1   variable E2
    loop
    3 NH * CHECK-TAIL ;
 
-: LN-CASE ( n n -- ) {: rows:n cols:n :}
-   rows cols * 0 ?do  i 7 mod 3 - s>f A0 i A! loop
-   cols 0 ?do  1.0 A1 i A!  0.0 A2 i A! loop
+: LN-RUN ( n n -- ) {: rows:n cols:n :}
+   cols 0 ?do
+      i 7 mod 1+ s>f 4.0 f/ A1 i A!
+      i 5 mod 2 - s>f 8.0 f/ A2 i A!
+   loop
    rows 0 ?do
       A0 i cols * cells +  A3 i cols * cells +  A1 A2 cols MAKI:LN-AFFINE-FWD
    loop
@@ -204,6 +206,14 @@ variable E0   variable E1   variable E2
    D3 @ rows cols * COPY
    A3 rows cols * CHECK-A
    rows cols * CHECK-TAIL ;
+
+: LN-CASE ( n n -- ) {: rows:n cols:n :}
+   rows cols * 0 ?do  i 7 mod 3 - s>f A0 i A! loop
+   rows cols LN-RUN ;
+
+: LN-EPS ( -- )
+   NH 0 ?do 2.0 A0 i A! loop
+   1 NH LN-RUN ;
 
 : TEST-LINEAR-SMALL ( -- )
    10 0 ?do i 5 mod 2 - s>f A0 i A! loop
@@ -283,7 +293,7 @@ variable E0   variable E1   variable E2
 
 : RUN ( -- )
    TEST-EMBED
-   2 5 LN-CASE  1 NH LN-CASE
+   2 5 LN-CASE  1 NH LN-CASE  LN-EPS
    TEST-LINEAR-SMALL  TEST-LINEAR-LARGE
    TEST-UNEMBED-SMALL  TEST-UNEMBED-LARGE
    TEST-GELU  TEST-RESIDUAL ;
