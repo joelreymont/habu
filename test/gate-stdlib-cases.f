@@ -302,6 +302,15 @@ SUITE compiler-native-immediate
 \ resident stdlib/tail-pure fork group, so it is scheduled rather than
 \ manual-gate, and nothing is entered for it in the manual-gate table of
 \ tools/suite-coverage-lint-core.f.
+\
+\ NO ASSERTION THE MEMBER RUNS READS A CLOCK, and that is deliberate rather than
+\ incidental: a cost-direction assertion on the third corpus's T-SUM row failed
+\ one scheduled run in ten (dot habu-retire-the-flaky-25a37a74). The claims that
+\ are about a cost live in tools/codegen-compare-timed-test.f, which is run by
+\ hand on a quiet machine beside the entry above and is listed in no suite for
+\ the same reason that entry is not: scheduling it would schedule a flake. What
+\ the member pins in their place is the data-stack traffic each column's
+\ emitted code makes, row by row, which is exact and moves for one reason.
 SUITE codegen-compare
    tools/codegen-compare-test.f
 ;SUITE

@@ -106,7 +106,8 @@ public
 \ still can; normalising against the calibration therefore does not cancel
 \ sustained load. Eight keeps a margin of two and a half over that worst
 \ measurement, and still reports the deliberately slowed word in
-\ tools/codegen-compare-test.f, which comes out about eighteen times slower.
+\ tools/codegen-compare-timed-test.f, which comes out about eighteen times
+\ slower.
 \
 \ Be honest about what this buys: the timing column catches a code generator
 \ that became catastrophically slower, not one that lost a fifth of its speed.

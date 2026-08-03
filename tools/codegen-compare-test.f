@@ -72,14 +72,25 @@
 \ hand with `bin/hb --load tools/codegen-compare.f`, and the run says out loud
 \ which comparison it did not make.
 \
-\ The timing column is still exercised here, and where the answer cannot turn on
-\ host load: the deliberately slowed word below is measured and compared against
-\ a baseline written from another measurement in the same pass, so both sides of
-\ that comparison meet the same busy machine. Those cases prove the cost column
-\ reports a real slowdown and reports nothing at normal speed. The cases after
-\ them prove that leaving the cost column unchecked drops that comparison and
-\ nothing else: a wrong size, a wrong output value and a missing row are all
-\ still reported with the timings left out.
+\ NO ASSERTION THIS FILE SCHEDULES READS ONE MEASUREMENT AGAINST ANOTHER, and
+\ that is what makes it safe to schedule. The cost column's arithmetic is still
+\ checked here, on cases of two kinds, neither of which can flip on host load.
+\ Either the fixture carries the row's OWN recorded cost, so the two sides of
+\ the comparison are one number; or it carries a STATED number - one, or a row's
+\ byte count - which a measured cost would have to come within a factor of eight
+\ of to pass, and cannot: a cost is a ratio to the empty call timed beside it in
+\ the same pass, 1000 meaning "as expensive as that call", so a row at cost 8
+\ would be a hundred and twenty-fifth of the price of calling an empty word.
+\ Between them those pin both directions of the tolerance band.
+\
+\ What used to sit beside them was a genuinely slower word measured against a
+\ genuinely honest one, and that comparison has both feet on a wall clock. It is
+\ in tools/codegen-compare-timed-test.f now, with the cost-direction assertions
+\ that used to be in the corpus sections below (dot
+\ habu-sweep-timing-assertions-2282630b). The cases that remain prove that
+\ leaving the cost column unchecked drops that comparison and nothing else: a
+\ wrong size, a wrong output value and a missing row are all still reported with
+\ the timings left out.
 
 require lib/test.f
 require lib/string.f
@@ -344,6 +355,19 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 \ The falsification the dot asks for: make one word genuinely slower and check
 \ that the timing column moves far enough to be reported, then measure the same
 \ word honestly again against the same baseline and check that it does not.
+\
+\ BOTH SIDES OF THIS ARE MEASUREMENTS, so it belongs to the timed run and not to
+\ a gate. The slowed word comes out about twenty times its honest cost against a
+\ band of eight, and the honest re-measurement about once its own; a host that
+\ moved either by the worst factor recorded at the head of
+\ tools/codegen-compare-baseline.f - 3.04 - crosses neither margin, but nothing
+\ about the comparison makes that a fact rather than a hope. What the gate keeps
+\ instead is the same comparison on stated numbers, where the answer cannot turn
+\ on a clock: COST-MODE-CASES writes a cost of one against a measured row, which
+\ no row can be within eight times of, and TWO-ROW-CASES writes a row's own cost
+\ back at it. Those two pin both directions of the band arithmetic. What only
+\ this can add is the link between a word that really got slower and a column
+\ that really moved, and that link is a fact about a clock.
 : SLOWDOWN-CASES ( -- )
    MEASURE-HONEST
    HONEST-FIXTURE
@@ -467,6 +491,24 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
 : UNKNOWN-GAP ( -- )
    s" CODEGEN-CORPUS:NOT-A-WORD" CODEGEN--GAP-CAP:LOCALS CODEGEN-GAP:GAP ;
 
+\ A new column that measured the calibration row and then simply stopped, with
+\ the corpus word the old column measured neither compiled nor declared a gap.
+\ CODEGEN-GAP:COVERAGE-CK is what turns that into a refusal rather than a column
+\ that is quietly one row shorter, and CODEGEN-GAP:ACCOUNT is what makes a new
+\ column unable to reach the end of its pass without it. Both are exercised by
+\ the real words, through the real pass machinery, on a column built to be one
+\ row short.
+: SHORT-COLUMN-CASES ( -- )
+   NEW-CALIBRATION-CASE ;
+
+: SHORT-COLUMN-NEW ( -- )
+   [: SHORT-COLUMN-CASES ;] CODEGEN-GAP:ACCOUNT ;
+
+: SHORT-COLUMN-PASS ( -- )
+   [: CODEGEN-CALIBRATE:OLD HONEST-ADD3-CASE ;]
+   [: SHORT-COLUMN-NEW ;]
+   CODEGEN-COMPARE:PASS ;
+
 : NEW-COLUMN-CASES ( -- )
    s" a new row that answers what the old row answered reads as agreement" T-LABEL
    [: NEW-HONEST-CASE ;] MEASURE-WITH
@@ -489,7 +531,10 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
    LAST-ROW CODEGEN-COMPARE:PARTNER OLD-ADD3-ROW T=
 
    s" naming a gap for a word the old column never measured is refused" T-LABEL
-   [: UNKNOWN-GAP ;] E-CODEGEN-COMPARE-CORPUS TTHROWSQ ;
+   [: UNKNOWN-GAP ;] E-CODEGEN-COMPARE-CORPUS TTHROWSQ
+
+   s" and so is a new column that left a corpus word out without declaring it" T-LABEL
+   [: SHORT-COLUMN-PASS ;] E-CODEGEN-COMPARE-CORPUS TTHROWSQ ;
 
 \ ---- the register the drivers walk ------------------------------------------
 \ Every driver in tools/codegen-compare-cli.f reads which corpora exist, and
@@ -633,128 +678,6 @@ variable BAD-OUTPUT               \ index of the output to corrupt in it, -1 for
       i CODEGEN-GAP:GAP-NAME$ a u STR= if drop true leave then
    loop ;
 
-\ The account every measured pass has to keep, whichever corpus it measured.
-: ACCOUNT-CASES ( n -- ) {: rows:n :}
-   s" the real run measured the whole pinned corpus" T-LABEL
-   OLD-ROWS rows T=
-
-   s" every corpus word is compiled by the new chain or named a gap" T-LABEL
-   UNACCOUNTED 0 T=
-
-   s" and no corpus word is claimed by both accounts" T-LABEL
-   DOUBLE-COUNTED 0 T=
-
-   s" the two accounts together are the whole corpus" T-LABEL
-   NEW-ROWS CODEGEN-GAP:GAPS + OLD-ROWS T=
-
-   s" every gap names at least one capability it is waiting for" T-LABEL
-   CAPLESS-GAPS 0 T=
-
-   s" every word the new chain compiled computes what the old emitter computes" T-LABEL
-   CODEGEN-COMPARE:MISMATCHES 0 T= ;
-
-: REAL-RUN-CASES ( -- )
-   11 ACCOUNT-CASES
-
-   s" the first corpus has no gaps at all" T-LABEL
-   CODEGEN-GAP:GAPS 0 T=
-
-   s" and every word the new chain compiled is fewer bytes of machine code" T-LABEL
-   NOT-SMALLER 0 T= ;
-
-\ The second corpus, whose account is not all wins and says so. All seven of its
-\ words are compiled now - VEC-COPY-CELLS was a gap until dot
-\ habu-save-the-loop-5f07e0c3 made a call inside a counted loop save the loop's
-\ own state - and one of the seven takes MORE bytes than the engine's code for
-\ the same body: T-RES-WALK, whose own record is three instructions of loop
-\ around a call in the old emitter's code and a frame, a saved return address and
-\ a saved loop value in the chain's. Both numbers are pinned here so that the day
-\ either changes, in either direction, somebody has to look at it.
-: REAL-RUN-CASES2 ( -- )
-   8 ACCOUNT-CASES
-
-   s" the second corpus declares no gap at all" T-LABEL
-   CODEGEN-GAP:GAPS 0 T=
-
-   s" and the word that was one is compiled and measured" T-LABEL
-   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" NAMED-GAP-AMONG? TFALSE
-   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" MEASURED? TTRUE
-
-   s" exactly one compiled word is not fewer bytes than the engine's" T-LABEL
-   NOT-SMALLER 1 T=
-
-   s" and it is the loop whose test is a call" T-LABEL
-   s" CODEGEN-CORPUS2:T-RES-WALK" SMALLER? TFALSE
-
-   s" every other compiled word of it is fewer bytes" T-LABEL
-   s" CODEGEN-CORPUS2:TAG" SMALLER? TTRUE
-   s" CODEGEN-CORPUS2:WS?" SMALLER? TTRUE
-   s" CODEGEN-CORPUS2:SYM-FOLD-C" SMALLER? TTRUE
-   s" CODEGEN-CORPUS2:MAX-DIM" SMALLER? TTRUE
-   s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE
-   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" SMALLER? TTRUE ;
-
-\ The third corpus, whose account is now eleven compiled rows and no gap at all.
-\ It is the float benchmark, measured and committed before the chain had a single
-\ float capability, and it took three leaves to close: scalar float arithmetic
-\ over a locals frame, the five comparisons and the branch they feed, and the
-\ placement of a double where a straight line does not reach - across a block
-\ edge, across a call, and round a loop's back edge. The assertions below are
-\ about that account, about the three float facts the table rests on - that a
-\ recorded output is the whole cell, that the sign of a zero survives the
-\ recording, and that the pinned sum distinguishes one evaluation order from
-\ another - and about every compiled row agreeing with the old column on every
-\ pinned input.
-\
-\ NO GAP NAMES ANY CAPABILITY, and each of the three the float campaign used is
-\ asked for by name rather than only counted: a row still naming `floats`,
-\ `comparison` or `float-place` would mean the account had not been brought
-\ forward with the chain, and counting alone cannot tell one wrong name from
-\ another.
-\
-\ NO ROW OF THIS CORPUS COSTS MORE THAN THE ENGINE'S CODE ANY MORE, and what
-\ used to is pinned here by something a wall clock cannot blur. T-SGD!'s loop
-\ body is THREE calls - two loads and a store - and its four locals, two counters
-\ and accumulator are live across all of them; every one of those values used to
-\ go out through a data-stack slot and come back at every call, because nothing
-\ in a Habu word's convention is callee-saved. That is still the rule for a
-\ callee nobody knows anything about, and it is no longer the rule for one the
-\ chain published: such a routine records which registers its own allocation
-\ writes, and the site saves only the live values that set can reach. So what is
-\ pinned is the traffic itself - how many stores and loads against the caller's
-\ data-stack pointer the emitted word contains - which is exact, moves for one
-\ reason, and does not turn on host load. The row was 340 bytes with 24 stores
-\ and 23 loads and is 204 with seven and six.
-: GAP-WANTS? ( n CODEGEN-GAP:cap -- bool ) {: k:n c:CODEGEN-GAP:cap :}
-   false
-   k CODEGEN-GAP:GAP-CAPS@ 0 ?do
-      k i CODEGEN-GAP:GAP-CAP@ c CODEGEN--GAP-CAP:EQ if
-         drop true leave
-      then
-   loop ;
-
-: GAPS-WANTING ( CODEGEN-GAP:cap -- n ) {: c:CODEGEN-GAP:cap :}
-   0
-   CODEGEN-GAP:GAPS 0 ?do
-      i c GAP-WANTS? if 1+ then
-   loop ;
-
-\ One recorded output of an old row, by the row's name.
-: OLD-OUTPUT ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
-   CODEGEN-COMPARE:PATH-OLD a u CODEGEN-COMPARE:FIND-ROW {: k:n :}
-   k 0 < if E-CODEGEN-COMPARE-CORPUS throw then
-   k j CODEGEN-COMPARE:OUTPUT ;
-
-\ Whether the new column's row for this word costs more than the old column's for
-\ the same word. Cost is the harness's own measure, taken in the same pass on the
-\ same host, so the two numbers are comparable in the one way a wall clock is.
-: COSTLIER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
-   CODEGEN-COMPARE:PATH-NEW a u CODEGEN-COMPARE:FIND-ROW {: k:n :}
-   k 0 < if false exit then
-   k CODEGEN-COMPARE:PARTNER {: b:n :}
-   b 0 < if false exit then
-   k CODEGEN-COMPARE:COST  b CODEGEN-COMPARE:COST  > ;
-
 variable CODE-AT
 
 : CODE-PTR ( -- ptr u8 )
@@ -796,6 +719,185 @@ $F9400000 constant LDR-OP
 
 : DS-LOADS ( ptr u8 n -- n )
    LDR-OP DS-COUNT ;
+
+\ ---- what each column spends on the caller's own data stack ------------------
+\ A COST is a measurement; a count of instructions is not. What the timing rows
+\ of this harness were really about is the traffic each column makes with the
+\ caller's own data stack: the engine moves every intermediate through a stack
+\ slot in memory, and the chain holds it in a register and touches the slot only
+\ at the edges of the routine. That difference is what the timings showed, and
+\ unlike a timing it is exact, moves for one reason, and does not turn on host
+\ load. It is what the assertions below pin.
+\
+\ BE CLEAR ABOUT WHAT THAT IS NOT. It is not the cost claim restated: a chain
+\ that made the same number of accesses and took twice as long would pass every
+\ one of them. The cost claim itself is an assertion in
+\ tools/codegen-compare-timed-test.f, run by hand on a quiet machine, and the
+\ two columns' nanoseconds are printed side by side in every report the timed
+\ entry writes.
+
+\ The word that carries the new chain's code for a corpus word. The migration
+\ publishes each body under its own name with `-N` on the end, which is the one
+\ place that spelling is derived rather than written out again.
+: NEW-WORD$ ( ptr u8 n -- ptr u8 n )
+   SB-RESET SB-APPEND s" -N" SB-APPEND SB$ ;
+
+: DS-TRAFFIC ( ptr u8 n -- n ) {: a:ptr u:n :}
+   a u DS-STORES a u DS-LOADS + ;
+
+\ Does the chain's code for this corpus word touch the caller's data stack more
+\ often than the engine's code for the same body?
+: DS-HEAVIER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   a u NEW-WORD$ DS-TRAFFIC
+   a u DS-TRAFFIC > ;
+
+\ How many rows of the new column do. Over every compiled row of the pass, so
+\ this is a statement about the whole corpus rather than about the rows somebody
+\ thought to name.
+: DS-HEAVIER-ROWS ( -- n )
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-NEW = if
+         i CODEGEN-COMPARE:NAME$ DS-HEAVIER? if 1+ then
+      then
+   loop ;
+
+
+\ The account every measured pass has to keep, whichever corpus it measured.
+: ACCOUNT-CASES ( n -- ) {: rows:n :}
+   s" the real run measured the whole pinned corpus" T-LABEL
+   OLD-ROWS rows T=
+
+   s" every corpus word is compiled by the new chain or named a gap" T-LABEL
+   UNACCOUNTED 0 T=
+
+   s" and no corpus word is claimed by both accounts" T-LABEL
+   DOUBLE-COUNTED 0 T=
+
+   s" the two accounts together are the whole corpus" T-LABEL
+   NEW-ROWS CODEGEN-GAP:GAPS + OLD-ROWS T=
+
+   s" every gap names at least one capability it is waiting for" T-LABEL
+   CAPLESS-GAPS 0 T=
+
+   s" every word the new chain compiled computes what the old emitter computes" T-LABEL
+   CODEGEN-COMPARE:MISMATCHES 0 T= ;
+
+: REAL-RUN-CASES ( -- )
+   11 ACCOUNT-CASES
+
+   s" the first corpus has no gaps at all" T-LABEL
+   CODEGEN-GAP:GAPS 0 T=
+
+   s" and every word the new chain compiled is fewer bytes of machine code" T-LABEL
+   NOT-SMALLER 0 T=
+
+   s" and no row of it touches the caller's data stack more often" T-LABEL
+   DS-HEAVIER-ROWS 0 T= ;
+
+\ The second corpus, whose account is not all wins and says so. All seven of its
+\ words are compiled now - VEC-COPY-CELLS was a gap until dot
+\ habu-save-the-loop-5f07e0c3 made a call inside a counted loop save the loop's
+\ own state - and one of the seven takes MORE bytes than the engine's code for
+\ the same body: T-RES-WALK, whose own record is three instructions of loop
+\ around a call in the old emitter's code and a frame, a saved return address and
+\ a saved loop value in the chain's. Both numbers are pinned here so that the day
+\ either changes, in either direction, somebody has to look at it.
+: REAL-RUN-CASES2 ( -- )
+   8 ACCOUNT-CASES
+
+   s" the second corpus declares no gap at all" T-LABEL
+   CODEGEN-GAP:GAPS 0 T=
+
+   s" and the word that was one is compiled and measured" T-LABEL
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" NAMED-GAP-AMONG? TFALSE
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" MEASURED? TTRUE
+
+   s" exactly one compiled word is not fewer bytes than the engine's" T-LABEL
+   NOT-SMALLER 1 T=
+
+   s" and it is the loop whose test is a call" T-LABEL
+   s" CODEGEN-CORPUS2:T-RES-WALK" SMALLER? TFALSE
+
+   s" every other compiled word of it is fewer bytes" T-LABEL
+   s" CODEGEN-CORPUS2:TAG" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:WS?" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:SYM-FOLD-C" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:MAX-DIM" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:COUNT-CHAR" SMALLER? TTRUE
+   s" CODEGEN-CORPUS2:VEC-COPY-CELLS" SMALLER? TTRUE
+
+   s" exactly one row also touches the caller's data stack more often" T-LABEL
+   DS-HEAVIER-ROWS 1 T=
+
+   s" and it is the same row - the loop whose test is a call" T-LABEL
+   s" CODEGEN-CORPUS2:T-RES-WALK" DS-HEAVIER? TTRUE
+   s" CODEGEN-CORPUS2:COUNT-CHAR" DS-HEAVIER? TFALSE ;
+
+\ The third corpus, whose account is now eleven compiled rows and no gap at all.
+\ It is the float benchmark, measured and committed before the chain had a single
+\ float capability, and it took three leaves to close: scalar float arithmetic
+\ over a locals frame, the five comparisons and the branch they feed, and the
+\ placement of a double where a straight line does not reach - across a block
+\ edge, across a call, and round a loop's back edge. The assertions below are
+\ about that account, about the three float facts the table rests on - that a
+\ recorded output is the whole cell, that the sign of a zero survives the
+\ recording, and that the pinned sum distinguishes one evaluation order from
+\ another - and about every compiled row agreeing with the old column on every
+\ pinned input.
+\
+\ NO GAP NAMES ANY CAPABILITY, and each of the three the float campaign used is
+\ asked for by name rather than only counted: a row still naming `floats`,
+\ `comparison` or `float-place` would mean the account had not been brought
+\ forward with the chain, and counting alone cannot tell one wrong name from
+\ another.
+\
+\ NO ROW OF THIS CORPUS COSTS MORE THAN THE ENGINE'S CODE ANY MORE. That is a
+\ statement about a clock, so it is asserted in
+\ tools/codegen-compare-timed-test.f and run by hand; what is pinned HERE is the
+\ thing behind it, which a wall clock cannot blur. T-SGD!'s loop
+\ body is THREE calls - two loads and a store - and its four locals, two counters
+\ and accumulator are live across all of them; every one of those values used to
+\ go out through a data-stack slot and come back at every call, because nothing
+\ in a Habu word's convention is callee-saved. That is still the rule for a
+\ callee nobody knows anything about, and it is no longer the rule for one the
+\ chain published: such a routine records which registers its own allocation
+\ writes, and the site saves only the live values that set can reach. So what is
+\ pinned is the traffic itself - how many stores and loads against the caller's
+\ data-stack pointer the emitted word contains - which is exact, moves for one
+\ reason, and does not turn on host load. The row was 340 bytes with 24 stores
+\ and 23 loads and is 204 with seven and six.
+: GAP-WANTS? ( n CODEGEN-GAP:cap -- bool ) {: k:n c:CODEGEN-GAP:cap :}
+   false
+   k CODEGEN-GAP:GAP-CAPS@ 0 ?do
+      k i CODEGEN-GAP:GAP-CAP@ c CODEGEN--GAP-CAP:EQ if
+         drop true leave
+      then
+   loop ;
+
+: GAPS-WANTING ( CODEGEN-GAP:cap -- n ) {: c:CODEGEN-GAP:cap :}
+   0
+   CODEGEN-GAP:GAPS 0 ?do
+      i c GAP-WANTS? if 1+ then
+   loop ;
+
+\ One recorded output of an old row, by the row's name.
+: OLD-OUTPUT ( ptr u8 n n -- n ) {: a:ptr u:n j:n :}
+   CODEGEN-COMPARE:PATH-OLD a u CODEGEN-COMPARE:FIND-ROW {: k:n :}
+   k 0 < if E-CODEGEN-COMPARE-CORPUS throw then
+   k j CODEGEN-COMPARE:OUTPUT ;
+
+\ Whether the new column's row for this word costs more than the old column's for
+\ the same word. Cost is the harness's own measure, taken in the same pass on the
+\ same host, so the two numbers are comparable in the one way a wall clock is -
+\ and only in that way, which is why every caller of this is inside TIMED and
+\ TIMED is reached only from tools/codegen-compare-timed-test.f.
+: COSTLIER? ( ptr u8 n -- bool ) {: a:ptr u:n :}
+   CODEGEN-COMPARE:PATH-NEW a u CODEGEN-COMPARE:FIND-ROW {: k:n :}
+   k 0 < if false exit then
+   k CODEGEN-COMPARE:PARTNER {: b:n :}
+   b 0 < if false exit then
+   k CODEGEN-COMPARE:COST  b CODEGEN-COMPARE:COST  > ;
 
 : REAL-RUN-CASES3 ( -- )
    11 ACCOUNT-CASES
@@ -839,12 +941,25 @@ $F9400000 constant LDR-OP
    s" CODEGEN-CORPUS3:T-SGD!-N" DS-STORES 7 T=
    s" CODEGEN-CORPUS3:T-SGD!-N" DS-LOADS 6 T=
 
-   s" and no row of this corpus COSTS more than the engine's code" T-LABEL
-   s" CODEGEN-CORPUS3:T-SUM" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS3:T-DIST2" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS3:T-NORM2" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS3:T-REL-L2" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS3:RELU-F" COSTLIER? TFALSE
+   s" exactly one row of this corpus touches the caller's data stack more often" T-LABEL
+   DS-HEAVIER-ROWS 1 T=
+
+   s" and it is the smallest float body, by the one store the chain makes" T-LABEL
+   s" CODEGEN-CORPUS3:SGD" DS-HEAVIER? TTRUE
+   s" CODEGEN-CORPUS3:SGD" DS-STORES 0 T=
+   s" CODEGEN-CORPUS3:SGD" DS-LOADS 3 T=
+   s" CODEGEN-CORPUS3:SGD-N" DS-STORES 1 T=
+   s" CODEGEN-CORPUS3:SGD-N" DS-LOADS 3 T=
+
+   s" and the loop rows, which the timings were about, spend half what the engine does" T-LABEL
+   s" CODEGEN-CORPUS3:T-SUM" DS-STORES 6 T=
+   s" CODEGEN-CORPUS3:T-SUM-N" DS-STORES 3 T=
+   s" CODEGEN-CORPUS3:T-SUM" DS-LOADS 6 T=
+   s" CODEGEN-CORPUS3:T-SUM-N" DS-LOADS 3 T=
+   s" CODEGEN-CORPUS3:T-DIST2" DS-HEAVIER? TFALSE
+   s" CODEGEN-CORPUS3:T-NORM2" DS-HEAVIER? TFALSE
+   s" CODEGEN-CORPUS3:T-REL-L2" DS-HEAVIER? TFALSE
+   s" CODEGEN-CORPUS3:RELU-F" DS-HEAVIER? TFALSE
 
    s" the sum row's pinned input distinguishes one evaluation order from another" T-LABEL
    CODEGEN-CORPUS3:SUM-REVERSED CODEGEN-COMPARE:REAL-BITS
@@ -1067,19 +1182,18 @@ private
 \ REFUSAL-CASES below hands the corpus's own text to the real migration entry and
 \ checks that the refusal is E-A64RA-SPILL and not some other code.
 \
-\ WHICH ROWS COST MORE, AND WHICH ARE PINNED. NONE of the nine does any more.
-\ TINY-CALLEE was the last one that did - its loop body is nothing but calls, and
-\ the engine copied the callee where the chain branched to it - and the chain now
-\ copies the same body for the same reason (src/compiler/native/inline.f), which
-\ took it from about 1.20x slower to about eight times faster. CALL-LOOP-3 and
-\ CALL-FAN went the same way. All three are pinned as wins here, and pinning them
-\ is honest for the reason the four below are: a margin of eight cannot be
-\ crossed by scheduling. LADDER remains a DRAW and is deliberately not pinned in
-\ either direction - the two columns measured within a twentieth of each other
-\ and each came out ahead at least once over five passes - and the head of this
-\ file says why an assertion that fails for host noise is worse than none.
+\ WHICH ROWS COST MORE. NONE of the nine does any more. TINY-CALLEE was the last
+\ one that did - its loop body is nothing but calls, and the engine copied the
+\ callee where the chain branched to it - and the chain now copies the same body
+\ for the same reason (src/compiler/native/inline.f), which took it from about
+\ 1.20x slower to about eight times faster. CALL-LOOP-3 and CALL-FAN went the
+\ same way. That is a claim about a clock, so it is asserted in
+\ tools/codegen-compare-timed-test.f and run by hand; LADDER is left out of it
+\ even there, because the two columns measured within a twentieth of each other
+\ and each came out ahead at least once over five passes, and an assertion that
+\ fails for host noise is worse than none.
 \
-\ WHAT IS PINNED INSTEAD, FOR THE ROWS THAT TURN ON A CALL, is the traffic
+\ WHAT IS PINNED HERE INSTEAD, FOR THE ROWS THAT TURN ON A CALL, is the traffic
 \ itself: how many stores and loads against the caller's own data-stack pointer
 \ each emitted word contains. Those numbers are exact and they do not move for
 \ host load. They now say something stronger than the narrowing did: each of the
@@ -1087,7 +1201,8 @@ private
 \ nothing else, because there is no call left in it to publish anything for. A
 \ change that stopped copying puts the callee's arguments, results and every live
 \ value back into those counts and fails a gate here rather than being absorbed
-\ into a timing.
+\ into a timing. Being exact, they are also stricter than a direction: a row that
+\ kept its speed by some other route would still have to make the same accesses.
 \
 \ EVERY COMPILED ROW IS STILL FEWER BYTES, which is itself the shape of the
 \ finding: what the chain spends at a call is data-stack traffic in the caller's
@@ -1163,10 +1278,8 @@ $94000000 constant BL-OP
    s" CODEGEN-CORPUS4:TINY-CALLEE" SMALLER? TTRUE
    s" CODEGEN-CORPUS4:LADDER" SMALLER? TTRUE
 
-   s" the row whose loop body is nothing but calls no longer COSTS more" T-LABEL
-   s" CODEGEN-CORPUS4:TINY-CALLEE" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS4:CALL-LOOP-3" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS4:CALL-FAN" COSTLIER? TFALSE
+   s" no row of this corpus touches the caller's data stack more often" T-LABEL
+   DS-HEAVIER-ROWS 0 T=
 
    s" and the data-stack traffic in a call row is its own arguments and result" T-LABEL
    s" CODEGEN-CORPUS4:CALL-LOOP-3-N" DS-LOADS 5 T=
@@ -1178,11 +1291,13 @@ $94000000 constant BL-OP
    s" CODEGEN-CORPUS4:CALL-FAN-N" DS-LOADS 1 T=
    s" CODEGEN-CORPUS4:CALL-FAN-N" DS-STORES 1 T=
 
-   s" and the four the chain wins by more than a factor of two do not" T-LABEL
-   s" CODEGEN-CORPUS4:BIG-CONSTS" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS4:MANY-LOCALS" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS4:FLOAT-MIX" COSTLIER? TFALSE
-   s" CODEGEN-CORPUS4:STORE-LOAD" COSTLIER? TFALSE
+   s" and the four rows with no call in them spend one access on their whole body" T-LABEL
+   s" CODEGEN-CORPUS4:BIG-CONSTS-N" DS-STORES 1 T=
+   s" CODEGEN-CORPUS4:BIG-CONSTS" DS-STORES 19 T=
+   s" CODEGEN-CORPUS4:MANY-LOCALS-N" DS-STORES 1 T=
+   s" CODEGEN-CORPUS4:MANY-LOCALS" DS-STORES 19 T=
+   s" CODEGEN-CORPUS4:FLOAT-MIX-N" DS-STORES 1 T=
+   s" CODEGEN-CORPUS4:STORE-LOAD-N" DS-STORES 1 T=
 
    s" each of the four callees is one the engine copies rather than calls" T-LABEL
    s" CODEGEN-CORPUS4:C-ADD1" WORD-BYTES INL-MAX FRAME-BYTES + T=
@@ -1337,6 +1452,33 @@ variable TRY-REGS
    s" and the four the refusal left staged make a definition that compiles" T-LABEL
    SPEND-RC 0 T= ;
 
+\ ---- the cost assertions, which are not scheduled ----------------------------
+\ Everything below turns on a wall clock, so nothing below is reached from MAIN.
+\ These are reached only through TIMED, and TIMED only from
+\ tools/codegen-compare-timed-test.f, whose head gives the measurements behind
+\ the decision and what the gate keeps in their place.
+
+: COST-DIRECTION-CASES3 ( -- )
+   s" no row of the third corpus costs more than the engine's code" T-LABEL
+   s" CODEGEN-CORPUS3:T-SUM" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS3:T-DIST2" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS3:T-NORM2" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS3:T-REL-L2" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS3:RELU-F" COSTLIER? TFALSE ;
+
+\ LADDER is deliberately absent: the two columns measured within a twentieth of
+\ each other and each came out ahead at least once over five passes, so it is a
+\ draw and pinning it in either direction would be inventing a result.
+: COST-DIRECTION-CASES4 ( -- )
+   s" no row of the fourth corpus costs more than the engine's code" T-LABEL
+   s" CODEGEN-CORPUS4:TINY-CALLEE" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:CALL-LOOP-3" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:CALL-FAN" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:BIG-CONSTS" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:MANY-LOCALS" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:FLOAT-MIX" COSTLIER? TFALSE
+   s" CODEGEN-CORPUS4:STORE-LOAD" COSTLIER? TFALSE ;
+
 : SETUP ( -- )
    CLEANUP-RESET
    s" habu-codegen-compare" TMPDIR-MKDIR
@@ -1350,7 +1492,6 @@ variable TRY-REGS
    MEASURE-HONEST
    TWO-ROW-CASES
    STRUCTURE-CASES
-   SLOWDOWN-CASES
    COST-MODE-CASES
    NEW-COLUMN-CASES
    REGISTER-CASES
@@ -1377,5 +1518,27 @@ variable TRY-REGS
    T-REPORT ;
 
 MAIN
+
+public
+
+\ The assertions that turn on a clock, run on a quiet machine by
+\ bin/hb --load tools/codegen-compare-timed-test.f. Public so that exactly one
+\ caller can reach them and no gate does; the scheduled MAIN above does not
+\ call it.
+: TIMED ( -- )
+   T-RESET
+   SETUP
+   \ The scheduled MAIN above ends in CHECK-EXACT, which leaves the cost column
+   \ declared unchecked. Everything below is about that column, so it is turned
+   \ back on here rather than assumed.
+   CODEGEN-BASELINE:COSTS-CHECKED!
+   SLOWDOWN-CASES
+   CODEGEN-CASES3:RUN
+   COST-DIRECTION-CASES3
+   CODEGEN-CASES4:RUN
+   COST-DIRECTION-CASES4
+   CLEANUP-RUN
+   CODEGEN-BASELINE:LOUD!
+   T-REPORT ;
 
 ;package

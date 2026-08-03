@@ -45,6 +45,7 @@ require lib/fmt.f
 require tools/codegen-compare-core.f
 require tools/codegen-compare-corpora.f
 require tools/codegen-compare-gap.f
+require tools/codegen-compare-baseline.f
 
 package CODEGEN-REPORT
 
@@ -364,6 +365,36 @@ private
    s"  ns   new " type j BODY-NS
    s"  ns" type cr ;
 
+\ ---- which rows the new column costs more on ---------------------------------
+\ The one line a reader of a timed run is really after, printed rather than left
+\ to be worked out from a column of eleven pairs. It is printed ONLY when the
+\ cost column is being compared - that is, by the hand-run timed entry and not
+\ by a gate - because on a loaded host the direction of a nine-per-cent gap is
+\ host noise and printing it would invite somebody to read it as a result. Dot
+\ habu-sweep-timing-assertions-2282630b moved the assertions that used to state
+\ this out of the scheduled suite for the same reason.
+
+: COSTLIER-ROW? ( n n -- bool ) {: k:n j:n :}
+   j CODEGEN-COMPARE:COST  k CODEGEN-COMPARE:COST  > ;
+
+: SAY-COSTLIER ( -- )
+   CODEGEN-BASELINE:COSTS-CHECKED? 0= if exit then
+   0
+   CODEGEN-COMPARE:ROWS 0 ?do
+      i CODEGEN-COMPARE:PATH@ CODEGEN-COMPARE:PATH-OLD = if
+         CODEGEN-COMPARE:PATH-NEW i CODEGEN-COMPARE:NAME$
+         CODEGEN-COMPARE:FIND-ROW {: j:n :}
+         j 0 >= if
+            i j COSTLIER-ROW? if
+               dup 0= if s" rows the new column costs MORE on:" type cr then
+               s"   " type i CODEGEN-COMPARE:NAME$ type cr
+               1+
+            then
+         then
+      then
+   loop
+   0= if s" rows the new column costs more on: none" type cr then ;
+
 : BODIES ( -- )
    s" Cost of the emitted code, with the entry taken off. Both columns are entered" type cr
    s" the way the engine enters any word, so each path's own empty call is the same" type cr
@@ -377,7 +408,8 @@ private
          CODEGEN-COMPARE:FIND-ROW {: j:n :}
          j 0 >= if i j BODY-ROW then
       then
-   loop ;
+   loop
+   SAY-COSTLIER ;
 
 \ ---- do the two floors still measure the same call? --------------------------
 \ The comparison's two ratio columns are only comparable with each other while
