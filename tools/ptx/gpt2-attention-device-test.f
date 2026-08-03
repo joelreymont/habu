@@ -228,6 +228,9 @@ variable SHARED-N
    FUNC @ >CUDA-FN 60 >IDX CAP-V 4 >LEN CUDA:CU-PARAM-SET-V CUDA:RC0 ;
 
 : DEVICE-LAUNCH ( n n n n -- ) {: pos:n heads:n width:n cap:n :}
+   heads HEADS <> if E-PTX-BLOCK throw then
+   width HD <> if E-PTX-BLOCK throw then
+   cap CAP <> if E-PTX-BLOCK throw then
    pos heads width cap GPT2-ATTN:LAUNCH-CHECK {: row:n cache:n shared:n :}
    row ROW-N @ <> if E-PTX-BLOCK throw then
    cache CACHE-N @ <> if E-PTX-BLOCK throw then
@@ -273,6 +276,7 @@ variable SHARED-N
 : BAD-MORE-HEADS ( -- ) 0 HEADS 1+ HD CAP DEVICE-LAUNCH ;
 : BAD-MORE-HD ( -- ) 0 HEADS HD 1+ CAP DEVICE-LAUNCH ;
 : BAD-MORE-CAP ( -- ) 0 HEADS HD CAP 1+ DEVICE-LAUNCH ;
+: BAD-SHAPE ( -- ) 0 HEADS 2 / HD 2 * CAP DEVICE-LAUNCH ;
 
 : BOUND-OK ( n n n n -- )
    GPT2-ATTN:LAUNCH-CHECK drop drop drop ;
@@ -312,6 +316,7 @@ variable SHARED-N
    [: BAD-MORE-HEADS ;] E-PTX-BLOCK TTHROWSQ
    [: BAD-MORE-HD ;] E-PTX-BLOCK TTHROWSQ
    [: BAD-MORE-CAP ;] E-PTX-BLOCK TTHROWSQ
+   [: BAD-SHAPE ;] E-PTX-BLOCK TTHROWSQ
    LAUNCH-N @ before T= ;
 
 : DEVICE-RUN ( -- )
