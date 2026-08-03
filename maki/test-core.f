@@ -295,7 +295,7 @@ SUITE maki/gpu-emit-test.f
 ;SUITE
 SUITE maki/gpu-leak-test.f
 ;SUITE
-SUITE maki/gpu-session-test.f
+SUITE maki/gpu-buffer-test.f
 ;SUITE
 SUITE maki/device-smoke.f
 ;SUITE

@@ -15,8 +15,9 @@
 \ Production behaviour is identical to calling CUDA: directly: each defer is armed
 \ to a one-word wrapper over the sealed entry point, a single indirect call. The
 \ word names mirror the CUDA spellings so a caller swaps CUDA: -> MKD: with
-\ nothing else changed. Existing scoped releases still flow through CUDA-SCOPE;
-\ the session owns its primary-context release and stream operations here.
+\ nothing else changed. Existing scoped releases still flow through CUDA-SCOPE.
+\ Persistent GPU:session owns primary-context and stream release here;
+\ persistent GPU:buffer owns device-allocation release here.
 
 require lib/ptx/cuda-scope.f          \ CUDA-SCOPE + (transitively) package CUDA + E-CUDA
 
@@ -35,6 +36,7 @@ package MKD
 : R-MODLOAD     ( ptr a ptr u8 -- rc )        CUDA:CU-MODULE-LOAD ;
 : R-MODFUNC     ( ptr a cuda-mod ptr u8 -- rc ) CUDA:CU-MODULE-GET-FUNCTION ;
 : R-MEMALLOC    ( ptr a len -- rc )           CUDA:CU-MEM-ALLOC ;
+: R-MEMFREE     ( cuda-devptr -- rc )          CUDA:CU-MEM-FREE ;
 : R-MEMSET      ( cuda-devptr n count -- rc ) CUDA:CU-MEMSET-D32 ;
 : R-HTOD        ( cuda-devptr ptr u8 len -- rc ) CUDA:CU-MEMCPY-HTOD ;
 : R-DTOH        ( ptr u8 cuda-devptr len -- rc ) CUDA:CU-MEMCPY-DTOH ;
@@ -54,6 +56,7 @@ defer CUSTREAMDESTROY          ( CUDA:stream -- rc )
 defer CUMODULELOAD             ( ptr a ptr u8 -- rc )
 defer CUMODULEGETFUNCTION      ( ptr a cuda-mod ptr u8 -- rc )
 defer CUMEMALLOC               ( ptr a len -- rc )
+defer CUMEMFREE                ( cuda-devptr -- rc )
 defer CUMEMSETD32              ( cuda-devptr n count -- rc )
 defer CUMEMCPYHTOD             ( cuda-devptr ptr u8 len -- rc )
 defer CUMEMCPYDTOH             ( ptr u8 cuda-devptr len -- rc )
@@ -71,6 +74,7 @@ defer CUMEMCPYDTOH             ( ptr u8 cuda-devptr len -- rc )
    [: R-MODLOAD   ;] is CUMODULELOAD
    [: R-MODFUNC   ;] is CUMODULEGETFUNCTION
    [: R-MEMALLOC  ;] is CUMEMALLOC
+   [: R-MEMFREE   ;] is CUMEMFREE
    [: R-MEMSET    ;] is CUMEMSETD32
    [: R-HTOD      ;] is CUMEMCPYHTOD
    [: R-DTOH      ;] is CUMEMCPYDTOH ;
@@ -88,6 +92,7 @@ defer CUMEMCPYDTOH             ( ptr u8 cuda-devptr len -- rc )
 : MODLOAD!     ( [ ptr a ptr u8 -- rc ] -- )        is CUMODULELOAD ;
 : MODFUNC!     ( [ ptr a cuda-mod ptr u8 -- rc ] -- ) is CUMODULEGETFUNCTION ;
 : CUMEMALLOC!  ( [ ptr a len -- rc ] -- )           is CUMEMALLOC ;
+: CUMEMFREE!   ( [ cuda-devptr -- rc ] -- )          is CUMEMFREE ;
 : CUMEMSETD32! ( [ cuda-devptr n count -- rc ] -- ) is CUMEMSETD32 ;
 : HTOD!        ( [ cuda-devptr ptr u8 len -- rc ] -- ) is CUMEMCPYHTOD ;
 : DTOH!        ( [ ptr u8 cuda-devptr len -- rc ] -- ) is CUMEMCPYDTOH ;

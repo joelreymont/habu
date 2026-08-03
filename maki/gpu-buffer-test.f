@@ -1,0 +1,363 @@
+\ gpu-buffer-test.f - persistent GPU buffer lifetime.
+
+require maki/gpu-session-test.f
+require maki/gpu-buffer.f
+
+package GPU
+private
+
+using CAD-NUM
+using MKD
+
+10 constant BT-ALLOC
+11 constant BT-UPLOAD
+12 constant BT-FREE
+
+variable BT-ALLOC-RC
+variable BT-ALLOC-X
+variable BT-ALLOC-H
+variable BT-UPLOAD-RC
+variable BT-UPLOAD-X
+variable BT-UPLOAD-DST
+variable BT-UPLOAD-LEN
+variable BT-UPLOAD-SRC?
+variable BT-FREE-RC
+variable BT-FREE-X
+PTR-VARIABLE BT-BUF-P
+
+301 constant BT-BUF0
+16 constant BT-BUF-LEN
+$7FFFFFFFFFFFFFFF constant BT-MAX-N
+
+create BT-SRC BT-BUF-LEN allot
+
+: BT-RESET ( -- )
+   FT-RESET
+   0 BT-ALLOC-RC !
+   0 BT-ALLOC-X !
+   BT-BUF0 BT-ALLOC-H !
+   0 BT-UPLOAD-RC !
+   0 BT-UPLOAD-X !
+   0 BT-UPLOAD-DST !
+   0 BT-UPLOAD-LEN !
+   0 BT-UPLOAD-SRC? !
+   0 BT-FREE-RC !
+   0 BT-FREE-X !
+   NULL$ drop BT-BUF-P ! ;
+
+: BT-FALLOC ( ptr a len -- rc ) {: out:ptr len:len :}
+   BT-ALLOC len LEN>N FT-LOG
+   out BT-BUF-P !
+   BT-ALLOC-H @ out !
+   BT-ALLOC-X @ FT-X
+   BT-ALLOC-RC @ >RC ;
+
+: BT-FUPLOAD ( cuda-devptr ptr u8 len -- rc )
+   {: dev:cuda-devptr src:ptr len:len :}
+   BT-UPLOAD dev CUDA-DEVPTR>N FT-LOG
+   dev CUDA-DEVPTR>N BT-UPLOAD-DST !
+   len LEN>N BT-UPLOAD-LEN !
+   src BT-SRC = BT-UPLOAD-SRC? !
+   BT-UPLOAD-X @ FT-X
+   BT-UPLOAD-RC @ >RC ;
+
+: BT-FFREE ( cuda-devptr -- rc ) {: dev:cuda-devptr :}
+   BT-FREE dev CUDA-DEVPTR>N FT-LOG
+   BT-FREE-X @ FT-X
+   BT-FREE-RC @ >RC ;
+
+: BT-ON ( -- )
+   FT-ON
+   [: BT-FALLOC ;] CUMEMALLOC!
+   [: BT-FUPLOAD ;] HTOD!
+   [: BT-FFREE ;] CUMEMFREE! ;
+
+: BT-OFF ( -- )
+   FT-OFF ;
+
+: BT-BYTE-LEN ( n -- CAD-NUM:byte-len )
+   BYTE-LEN MATCH CAD-NUM:numeric-result
+      ok OF ENDOF
+      negative OF E-CADNUM-NEGATIVE throw ENDOF
+      zero OF E-CADNUM-ZERO throw ENDOF
+      overflow OF E-CADNUM-OVERFLOW throw ENDOF
+      underflow OF E-CADNUM-UNDERFLOW throw ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT throw ENDOF
+      misaligned OF E-CADNUM-MISALIGNED throw ENDOF
+   ;MATCH ;
+
+: BT-BYTE-OFF ( n -- CAD-NUM:byte-off )
+   BYTE-OFF MATCH CAD-NUM:numeric-result
+      ok OF ENDOF
+      negative OF E-CADNUM-NEGATIVE throw ENDOF
+      zero OF E-CADNUM-ZERO throw ENDOF
+      overflow OF E-CADNUM-OVERFLOW throw ENDOF
+      underflow OF E-CADNUM-UNDERFLOW throw ENDOF
+      bad-alignment OF E-CADNUM-BAD-ALIGNMENT throw ENDOF
+      misaligned OF E-CADNUM-MISALIGNED throw ENDOF
+   ;MATCH ;
+
+: BT-CODE ( result<n,n> -- n )
+   MATCH result
+      ok OF drop 0 ENDOF
+      err OF ENDOF
+   ;MATCH ;
+
+: BT-MUST-ALLOC ( GPU:session -- GPU:session GPU:buffer )
+   BT-BUF-LEN MEM:BYTES-ALLOC-LEN ALLOC MATCH result
+      ok OF ENDOF
+      err OF throw ENDOF
+   ;MATCH ;
+
+: BT-MUST-UPLOAD
+   ( GPU:session GPU:buffer CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len -- GPU:session GPU:buffer )
+   UPLOAD BT-CODE 0 T= ;
+
+: BT-UPLOAD-ERR
+   ( GPU:session GPU:buffer CAD-NUM:byte-off ptr u8 CAD-NUM:byte-len n -- GPU:session GPU:buffer )
+   {: want:n :}
+   UPLOAD BT-CODE want T= ;
+
+: BT-MUST-FREE ( GPU:session GPU:buffer -- GPU:session )
+   FREE BT-CODE 0 T= ;
+
+: BT-FREE-ERR ( GPU:session GPU:buffer n -- GPU:session )
+   {: want:n :}
+   FREE BT-CODE want T= ;
+
+: BT-ALLOC-ERR ( GPU:session n -- GPU:session )
+   {: want:n :}
+   BT-BUF-LEN MEM:BYTES-ALLOC-LEN ALLOC MATCH result
+      ok OF BT-MUST-FREE 0 1 T= ENDOF
+      err OF want T= ENDOF
+   ;MATCH ;
+
+: BT-BUF-CHILD ( -- )
+   GPU-SESSION-TEST:CLOSE-STDERR
+   BT-BUF-P @ @ drop
+   s" " 0 die ;
+
+: BT-WAIT-BUF-FAULT ( -- )
+   PROC-FORK:CHECKED {: pid:pid :}
+   pid PID>N 0= if BT-BUF-CHILD then
+   pid PROC-WAIT-OUTCOME MATCH outcome
+      exited OF FT-FAULT T= ENDOF
+      signaled OF drop 0 1 T= ENDOF
+      timeout OF 0 1 T= ENDOF
+   ;MATCH ;
+
+: BT-SAVE-BUF ( GPU:buffer -- GPU:buffer )
+   GB-TAKE dup BT-BUF-P ! GB-MINT ;
+
+: BT-ALLOC-REUSE ( GPU:session -- )
+   0 BT-ALLOC-RC !
+   0 BT-ALLOC-X !
+   BT-BUF0 BT-ALLOC-H !
+   0 BT-FREE-RC !
+   0 BT-FREE-X !
+   BT-MUST-ALLOC BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-ALLOC-LOG ( -- )
+   FT-N @ 3 T=
+   0 FT-OP@ FT-SET T=
+   1 FT-OP@ BT-ALLOC T=
+   1 FT-ARG@ BT-BUF-LEN T=
+   2 FT-OP@ BT-FREE T=
+   2 FT-ARG@ BT-BUF0 T= ;
+
+: BT-ALLOC-RC-CASE ( -- )
+   BT-RESET FT-MUST-OPEN FT-LOG-RESET
+   91 BT-ALLOC-RC !
+   91 BT-ALLOC-ERR
+   BT-ALLOC-LOG
+   BT-WAIT-BUF-FAULT
+   BT-ALLOC-REUSE ;
+
+: BT-ALLOC-X-CASE ( -- )
+   BT-RESET FT-MUST-OPEN FT-LOG-RESET
+   92 BT-ALLOC-X !
+   93 BT-FREE-X !
+   92 BT-ALLOC-ERR
+   BT-ALLOC-LOG
+   BT-WAIT-BUF-FAULT
+   BT-ALLOC-REUSE ;
+
+: BT-ALLOC-ZERO-CASE ( -- )
+   BT-RESET FT-MUST-OPEN FT-LOG-RESET
+   0 BT-ALLOC-H !
+   E-CUDA BT-ALLOC-ERR
+   FT-N @ 2 T=
+   0 FT-OP@ FT-SET T=
+   1 FT-OP@ BT-ALLOC T=
+   BT-WAIT-BUF-FAULT
+   BT-ALLOC-REUSE ;
+
+: BT-ALLOC-BIND-RC ( -- )
+   BT-RESET FT-MUST-OPEN FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 103 FT-SET-RC !
+   103 BT-ALLOC-ERR
+   FT-N @ 1 T=
+   0 FT-OP@ FT-SET T=
+   BT-BUF-P @ NULL$ drop = TTRUE
+   0 FT-SET-RC ! -1 FT-SET-I !
+   BT-ALLOC-REUSE ;
+
+: BT-ALLOC-BIND-X ( -- )
+   BT-RESET FT-MUST-OPEN FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 104 FT-SET-X !
+   104 BT-ALLOC-ERR
+   FT-N @ 1 T=
+   0 FT-OP@ FT-SET T=
+   BT-BUF-P @ NULL$ drop = TTRUE
+   0 FT-SET-X ! -1 FT-SET-I !
+   BT-ALLOC-REUSE ;
+
+: BT-BUF-ALLOC-ERRORS ( -- )
+   BT-ALLOC-RC-CASE
+   BT-ALLOC-X-CASE
+   BT-ALLOC-ZERO-CASE
+   BT-ALLOC-BIND-RC
+   BT-ALLOC-BIND-X ;
+
+: BT-UPLOAD-LOG ( n n -- ) {: off:n len:n :}
+   FT-N @ 2 T=
+   0 FT-OP@ FT-SET T=
+   1 FT-OP@ BT-UPLOAD T=
+   BT-UPLOAD-DST @ BT-BUF0 off + T=
+   BT-UPLOAD-LEN @ len T=
+   BT-UPLOAD-SRC? @ TTRUE ;
+
+: BT-UPLOAD-RC-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   94 BT-UPLOAD-RC !
+   5 BT-BYTE-OFF BT-SRC 7 BT-BYTE-LEN 94 BT-UPLOAD-ERR
+   5 7 BT-UPLOAD-LOG
+   0 BT-UPLOAD-RC !
+   0 BT-BYTE-OFF BT-SRC BT-BUF-LEN BT-BYTE-LEN BT-MUST-UPLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-UPLOAD-X-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   95 BT-UPLOAD-X !
+   6 BT-BYTE-OFF BT-SRC 4 BT-BYTE-LEN 95 BT-UPLOAD-ERR
+   6 4 BT-UPLOAD-LOG
+   0 BT-UPLOAD-X !
+   12 BT-BYTE-OFF BT-SRC 4 BT-BYTE-LEN BT-MUST-UPLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-UPLOAD-BIND-RC ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 105 FT-SET-RC !
+   0 BT-BYTE-OFF BT-SRC 1 BT-BYTE-LEN 105 BT-UPLOAD-ERR
+   FT-N @ 1 T=
+   0 FT-OP@ FT-SET T=
+   0 FT-SET-RC ! -1 FT-SET-I !
+   0 BT-BYTE-OFF BT-SRC 1 BT-BYTE-LEN BT-MUST-UPLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-UPLOAD-BIND-X ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I ! 106 FT-SET-X !
+   0 BT-BYTE-OFF BT-SRC 1 BT-BYTE-LEN 106 BT-UPLOAD-ERR
+   FT-N @ 1 T=
+   0 FT-OP@ FT-SET T=
+   0 FT-SET-X ! -1 FT-SET-I !
+   0 BT-BYTE-OFF BT-SRC 1 BT-BYTE-LEN BT-MUST-UPLOAD
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-BUF-UPLOAD-ERRORS ( -- )
+   BT-UPLOAD-RC-CASE
+   BT-UPLOAD-X-CASE
+   BT-UPLOAD-BIND-RC
+   BT-UPLOAD-BIND-X ;
+
+: BT-BUF-BOUNDS ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC FT-LOG-RESET
+   13 BT-BYTE-OFF BT-SRC 4 BT-BYTE-LEN E-BUF-BOUNDS BT-UPLOAD-ERR
+   FT-N @ 0 T=
+   BT-MAX-N BT-BYTE-OFF BT-SRC 1 BT-BYTE-LEN E-BUF-BOUNDS BT-UPLOAD-ERR
+   FT-N @ 0 T=
+   BT-BUF-LEN BT-BYTE-OFF BT-SRC 0 BT-BYTE-LEN BT-MUST-UPLOAD
+   BT-BUF-LEN 0 BT-UPLOAD-LOG
+   BT-UPLOAD-DST @ BT-BUF0 BT-BUF-LEN + T=
+   BT-MUST-FREE FT-MUST-CLOSE ;
+
+: BT-FREE-LOG ( -- )
+   FT-N @ 2 T=
+   0 FT-OP@ FT-SET T=
+   1 FT-OP@ BT-FREE T=
+   1 FT-ARG@ BT-BUF0 T= ;
+
+: BT-FREE-FIRST-RC ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC BT-SAVE-BUF FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I !
+   96 FT-SET-RC ! 97 BT-FREE-RC !
+   96 BT-FREE-ERR
+   BT-FREE-LOG
+   BT-WAIT-BUF-FAULT
+   0 FT-SET-RC ! -1 FT-SET-I !
+   BT-ALLOC-REUSE ;
+
+: BT-FREE-FIRST-X ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC BT-SAVE-BUF FT-LOG-RESET
+   0 FT-SET-N ! 0 FT-SET-I !
+   98 FT-SET-X ! 99 BT-FREE-X !
+   98 BT-FREE-ERR
+   BT-FREE-LOG
+   BT-WAIT-BUF-FAULT
+   0 FT-SET-X ! -1 FT-SET-I !
+   BT-ALLOC-REUSE ;
+
+: BT-FREE-RC-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC BT-SAVE-BUF FT-LOG-RESET
+   100 BT-FREE-RC !
+   100 BT-FREE-ERR
+   BT-FREE-LOG
+   BT-WAIT-BUF-FAULT
+   BT-ALLOC-REUSE ;
+
+: BT-FREE-X-CASE ( -- )
+   BT-RESET FT-MUST-OPEN BT-MUST-ALLOC BT-SAVE-BUF FT-LOG-RESET
+   102 BT-FREE-X !
+   102 BT-FREE-ERR
+   BT-FREE-LOG
+   BT-WAIT-BUF-FAULT
+   BT-ALLOC-REUSE ;
+
+: BT-BUF-FREE-ERRORS ( -- )
+   BT-FREE-FIRST-RC
+   BT-FREE-FIRST-X
+   BT-FREE-RC-CASE
+   BT-FREE-X-CASE ;
+
+: BT-REAL-BUF ( GPU:session -- GPU:session )
+   BT-MUST-ALLOC
+   0 BT-BYTE-OFF BT-SRC BT-BUF-LEN BT-BYTE-LEN BT-MUST-UPLOAD
+   BT-MUST-FREE ;
+
+: BT-REAL-TWO ( -- )
+   BT-OFF
+   FT-MUST-OPEN FT-MUST-OPEN
+   BT-REAL-BUF swap BT-REAL-BUF swap
+   FT-MUST-CLOSE FT-MUST-CLOSE
+   FT-MUST-OPEN FT-MUST-OPEN
+   BT-REAL-BUF swap BT-REAL-BUF
+   FT-MUST-CLOSE FT-MUST-CLOSE ;
+
+: BT-RUN ( -- )
+   T-RESET
+   BT-ON
+   BT-BUF-ALLOC-ERRORS
+   BT-BUF-UPLOAD-ERRORS
+   BT-BUF-BOUNDS
+   BT-BUF-FREE-ERRORS
+   BT-REAL-TWO
+   T-REPORT ;
+
+BT-RUN
+
+;using
+;using
+
+;package
+s" gpu-buffer-test: ok" type cr

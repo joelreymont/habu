@@ -23,17 +23,16 @@ private
 : GS-LEN ( -- CAD-NUM:alloc-byte-len )
    GS-BYTES MEM:BYTES-ALLOC-LEN ;
 
-\ The checker cannot bind the opaque DEFLINEAR token and ptr n/ptr u8 views to
-\ the same live allocated block. These four identity casts are its private
-\ representation boundary; retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
-\ OPEN and CLOSE are the only lifecycle API.
+\ The checker cannot bind opaque linear owners and ptr n/ptr u8 views to one
+\ live block. This shared private boundary is owned for retirement by
+\ habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: GS-MINT ( ptr n -- GPU:session ) ;
 
 TRUSTED: GS-TAKE ( GPU:session -- ptr n ) ;
 
-TRUSTED: GS-BLOCK ( ptr u8 -- ptr n ) ;
+TRUSTED: HOST-BLOCK ( ptr u8 -- ptr n ) ;
 
-TRUSTED: GS-BYTES> ( ptr n -- ptr u8 ) ;
+TRUSTED: HOST-BYTES> ( ptr n -- ptr u8 ) ;
 
 : GS@ ( ptr n n -- n )
    + @ ;
@@ -60,10 +59,10 @@ TRUSTED: GS-BYTES> ( ptr n -- ptr u8 ) ;
    drop GS-LEN MEM:ALLOC-BYTES drop ;
 
 : GS-NEW ( ptr u8 -- ptr n )
-   GS-BLOCK dup GS-INIT ;
+   HOST-BLOCK dup GS-INIT ;
 
 : GS-FREE ( ptr n -- )
-   GS-BYTES> GS-LEN MEM:RELEASE-BYTES ;
+   HOST-BYTES> GS-LEN MEM:RELEASE-BYTES ;
 
 : GS-OPEN-DRIVER ( ptr n -- ptr n n )
    [: MKD:OPEN ;] catch ;
