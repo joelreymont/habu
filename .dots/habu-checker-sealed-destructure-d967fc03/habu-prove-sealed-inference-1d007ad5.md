@@ -13,18 +13,18 @@ blocks:
 
 Problem: isolated migration tests cannot prove the complete declaration,
 package, compiler, and inference boundary after hard cutover. The production
-defect is that `MDLCFG` and `GPT2TENSOR` require construction ceremony while a
+defect is that the `GPT2` config and tensor declarations require construction ceremony while a
 foreign caller can reconstruct their products.
 
-Result: one production-path acceptance loads the retained `MDLCFG` and
-`GPT2TENSOR` declarations from source, replays them, rebuilds native `hb` to a
-fixpoint, parses the pinned GPT-2 config through `HFCFG`, and exercises tensor
+Result: one production-path acceptance loads the retained `GPT2` config and
+tensor declarations from source, replays them, rebuilds native `hb` to a
+fixpoint, parses the pinned GPT-2 config through `HF:OPEN-GPT2`, and exercises tensor
 layer creation and lookup. Drive the real `CONSTRUCT` behavior: owner-side
 construction succeeds, `UNMAKE` remains available where specified, and a
 foreign attempt to call or recreate the generated `MAKE` surface rejects
 before lowering or mutation with the named diagnostic.
 
-Dependencies are the retained MDLCFG/GPT2TENSOR migrations and the declaration
+Dependencies are the retained GPT2 migrations and the declaration
 and evaluate-rollback owners they use. Owner: focused acceptance fixtures and
 exact public-symbol assertions only; no runtime repair. Do not add a proof
 field, trusted mint, owner marker, persistence payload, copied WID role, schema

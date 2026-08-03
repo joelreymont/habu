@@ -15,7 +15,7 @@ Why this exists:
 the GPT-2 device executor needs one fail-closed contract for target, F32 dtype, head count, head dimension, page tokens, context length, and batch-one launch bounds before attention launches.
 
 Required result:
-package DECODEGEOM owns one typed geometry derived only from validated MDLCFG, the canonical checkpoint dtype, KV page geometry, and the probed GB10 target. Derive every stride, byte extent, mask bound, grid dimension, and launch extent with checked arithmetic. Do not add generic MHA/GQA/MQA selection; the later modern-model adapter extends this owner when its exact row is pinned.
+package DECODEGEOM owns one typed geometry derived only from the validated GPT2:config, the canonical checkpoint dtype, KV page geometry, and the probed GB10 target. Derive every stride, byte extent, mask bound, grid dimension, and launch extent with checked arithmetic. Do not add generic MHA/GQA/MQA selection; the later modern-model adapter extends this owner when its exact row is pinned.
 
 Done when:
 the real GPT-2 row passes; wrong family, non-F32 dtype, non-divisible heads, zero or oversized page/context, wrong target, and arithmetic overflow reject before emitter or launch.
