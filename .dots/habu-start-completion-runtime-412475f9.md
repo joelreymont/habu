@@ -1,9 +1,11 @@
 ---
 title: Factor persistent GPT-2 generation
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T07:31:05.414453+02:00"
+closed-at: "2026-08-03T21:54:59.357926+02:00"
+close-reason: "Landed efc07e04e5a25fd09634b0aebc6bc33d0c47d7f0 on master and origin. GPT2-GEN now preserves one authenticated GPT2:model across generation calls; the CLI delegates to that single body. Exact full Maki, ptx-stdlib/toolchain, typed-local/package, dot-dep, GPT2-GEN device, and CLI child-boundary device gates passed."
 ---
 
 Why: the measured production command spends 146.468 seconds in authenticated `GPT2:OPEN` but only 0.818 seconds generating 64 tokens. A persistent process therefore needs the existing prompt-to-text path factored so one `GPT2:model` survives many requests instead of reopening per request.
