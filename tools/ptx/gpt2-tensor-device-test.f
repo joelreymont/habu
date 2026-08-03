@@ -28,7 +28,7 @@ private
 50257 constant NV
 NV NH * 4 * constant WB
 NV 4 * constant OB
-$42F70000 constant TAIL-BITS
+$C0E80000 constant TAIL-BITS
 
 create P0 OB allot  create P1 OB allot
 create P2 OB allot  create P3 OB 4 + allot
@@ -189,6 +189,16 @@ variable E0   variable E1   variable E2
    loop
    3 NH * CHECK-TAIL ;
 
+: EMBED-TAIL ( -- )
+   D0 @ 0.0 256 MEMSET
+   D1 @ 2.0 1 MEMSET
+   D2 @ 3.0 257 MEMSET
+   D3 @ 1 POISON  D3 @ 1 GUARD
+   1 1 1 LAUNCH-EMBED
+   D3 @ 1 COPY
+   5.0 1 CHECK-C
+   1 CHECK-TAIL ;
+
 : LN-RUN ( n n -- ) {: rows:n cols:n :}
    cols 0 ?do
       i 7 mod 1+ s>f 4.0 f/ A1 i A!
@@ -267,36 +277,37 @@ variable E0   variable E1   variable E2
    768.0 NV CHECK-C
    NV CHECK-TAIL ;
 
-: TEST-GELU ( -- )
-   NF 0 ?do i 11 mod 5 - s>f 2.0 f/ dup A0 i A! MAKI:GELU-F A1 i A! loop
-   A0 P0 NF PACK
-   D0 @ >CUDA-DEVPTR P0 NF 4 * >LEN CUDA:HTOD
-   D0 @ NF GUARD
-   NF LAUNCH-GELU
-   D0 @ NF COPY
-   A1 NF CHECK-A
-   NF CHECK-TAIL ;
+: GELU-CASE ( n -- ) {: n:n :}
+   n 0 ?do i 11 mod 5 - s>f 2.0 f/ dup A0 i A! MAKI:GELU-F A1 i A! loop
+   A0 P0 n PACK
+   D0 @ >CUDA-DEVPTR P0 n 4 * >LEN CUDA:HTOD
+   D0 @ n GUARD
+   n LAUNCH-GELU
+   D0 @ n COPY
+   A1 n CHECK-A
+   n CHECK-TAIL ;
 
-: TEST-RESIDUAL ( -- )
-   NH 0 ?do
+: RESIDUAL-CASE ( n -- ) {: n:n :}
+   n 0 ?do
       i 17 mod 8 - s>f 4.0 f/ dup A0 i A!
       i 7 mod 3 - s>f 8.0 f/ dup A1 i A! f+ A2 i A!
    loop
-   A0 P0 NH PACK  A1 P1 NH PACK
-   D0 @ >CUDA-DEVPTR P0 NH 4 * >LEN CUDA:HTOD
-   D1 @ >CUDA-DEVPTR P1 NH 4 * >LEN CUDA:HTOD
-   D3 @ NH POISON  D3 @ NH GUARD
-   NH LAUNCH-RESIDUAL
-   D3 @ NH COPY
-   A2 NH CHECK-A
-   NH CHECK-TAIL ;
+   A0 P0 n PACK  A1 P1 n PACK
+   D0 @ >CUDA-DEVPTR P0 n 4 * >LEN CUDA:HTOD
+   D1 @ >CUDA-DEVPTR P1 n 4 * >LEN CUDA:HTOD
+   D3 @ n POISON  D3 @ n GUARD
+   n LAUNCH-RESIDUAL
+   D3 @ n COPY
+   A2 n CHECK-A
+   n CHECK-TAIL ;
 
 : RUN ( -- )
-   TEST-EMBED
+   TEST-EMBED  EMBED-TAIL
    2 5 LN-CASE  1 NH LN-CASE  LN-EPS
    TEST-LINEAR-SMALL  TEST-LINEAR-LARGE
    TEST-UNEMBED-SMALL  TEST-UNEMBED-LARGE
-   TEST-GELU  TEST-RESIDUAL ;
+   NF GELU-CASE  1 GELU-CASE
+   NH RESIDUAL-CASE  1 RESIDUAL-CASE ;
 
 : MAIN ( -- )
    T-RESET
