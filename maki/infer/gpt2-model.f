@@ -5,13 +5,20 @@ require lib/adt/result.f
 require lib/cad-num-arithmetic.f
 require lib/fs.f
 require lib/fs-path.f
+require lib/ffi-abi.f
 require lib/memory.f
+require lib/ptx/cuda-driver.f
+require lib/ptx/toolchain.f
 require lib/string.f
+require src/arch/ptx/emit.f
 require maki/gpu-buffer.f
+require maki/eval/active-target.f
 require maki/infer/gpt2-pin.f
 require maki/infer/hf-config.f
 require maki/infer/safetensors.f
 require maki/infer/gpt2-tensor.f
+require maki/infer/gpt2-tensor-cg.f
+require maki/infer/gpt2-attention-cg.f
 
 package GPT2
 
@@ -27,6 +34,23 @@ private
 32 constant M-DIGEST-LEN
 64 constant M-HEX-LEN
 64 constant M-NAME-CAP
+$1000 constant M-ASM-CAP
+32 constant M-KNAME-CAP
+
+create M-ASM-OUT M-ASM-CAP allot
+create M-ASM-ERR M-ASM-CAP allot
+create M-CUBIN FS-PATH-CAP 1+ allot
+create M-KNAME M-KNAME-CAP allot
+
+variable M-TMOD-H
+variable M-AMOD-H
+variable M-EMBED-H
+variable M-LN-H
+variable M-LINEAR-H
+variable M-UNEMBED-H
+variable M-GELU-H
+variable M-RESIDUAL-H
+variable M-ATTN-H
 
 0 constant R-GPU
 1 cells constant R-BUF
@@ -42,7 +66,33 @@ private
 11 cells constant R-EPS
 12 cells constant R-SCALE
 13 cells constant R-PROOF
-14 cells constant R-BYTES
+14 cells constant R-X
+15 cells constant R-A
+16 cells constant R-B
+17 cells constant R-LOGITS
+18 cells constant R-TOKEN
+19 cells constant R-K
+20 cells constant R-V
+21 cells constant R-POS
+22 cells constant R-TMOD
+23 cells constant R-AMOD
+24 cells constant R-EMBED
+25 cells constant R-LN
+26 cells constant R-LINEAR
+27 cells constant R-UNEMBED
+28 cells constant R-GELU
+29 cells constant R-RESIDUAL
+30 cells constant R-ATTN
+31 cells constant R-BYTES
+
+\ One GPU:buffer is laid out as weights | x | a | b | logits | token | K | V;
+\ the private offsets below are the sole authority for that allocation.
+\ Cubins are transient build provenance: only two modules and seven functions
+\ persist, and CLOSE unloads attention then tensor before buffer and session.
+\ GPT2:model is the second production CUDA consumer after GPU and adds no runtime.
+\ The checker cannot tie raw CUDA module/function cells to the model lifetime;
+\ they stay private and are valid only while their owning module is loaded.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 
 : M-REC-LEN ( -- CAD-NUM:alloc-byte-len )
    R-BYTES MEM:BYTES-ALLOC-LEN ;
@@ -58,10 +108,11 @@ private
 
 \ The checker cannot tie the opaque owner to its private host record.
 \ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
-TRUSTED: M-SAVE ( GPU:session GPU:buffer config ptr u8 -- GPT2:model )
-   {: g:GPU:session b:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof rec:ptr :}
+TRUSTED: M-SAVE
+   ( GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr u8 -- GPT2:model )
+   {: g:GPU:session buf:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof x:n a:n b:n logits:n token:n k:n v:n pos:n tmod:n amod:n embed:n ln:n linear:n unembed:n gelu:n residual:n attn:n rec:ptr :}
    g rec R-GPU + !
-   b rec R-BUF + !
+   buf rec R-BUF + !
    dt rec R-DT + !
    cx rec R-CX + !
    vo rec R-VO + !
@@ -74,9 +125,27 @@ TRUSTED: M-SAVE ( GPU:session GPU:buffer config ptr u8 -- GPT2:model )
    eps rec R-EPS + !
    scale rec R-SCALE + !
    proof rec R-PROOF + !
+   x rec R-X + !
+   a rec R-A + !
+   b rec R-B + !
+   logits rec R-LOGITS + !
+   token rec R-TOKEN + !
+   k rec R-K + !
+   v rec R-V + !
+   pos rec R-POS + !
+   tmod rec R-TMOD + !
+   amod rec R-AMOD + !
+   embed rec R-EMBED + !
+   ln rec R-LN + !
+   linear rec R-LINEAR + !
+   unembed rec R-UNEMBED + !
+   gelu rec R-GELU + !
+   residual rec R-RESIDUAL + !
+   attn rec R-ATTN + !
    rec ;
 
-TRUSTED: M-TAKE ( GPT2:model -- GPU:session GPU:buffer config ptr u8 )
+TRUSTED: M-TAKE
+   ( GPT2:model -- GPU:session GPU:buffer config n n n n n n n n n n n n n n n n n ptr u8 )
    {: rec:ptr :}
    rec R-GPU + @
    rec R-BUF + @
@@ -93,6 +162,23 @@ TRUSTED: M-TAKE ( GPT2:model -- GPU:session GPU:buffer config ptr u8 )
    rec R-SCALE + @
    rec R-PROOF + @
    GPT2-CONFIG:MAKE
+   rec R-X + @
+   rec R-A + @
+   rec R-B + @
+   rec R-LOGITS + @
+   rec R-TOKEN + @
+   rec R-K + @
+   rec R-V + @
+   rec R-POS + @
+   rec R-TMOD + @
+   rec R-AMOD + @
+   rec R-EMBED + @
+   rec R-LN + @
+   rec R-LINEAR + @
+   rec R-UNEMBED + @
+   rec R-GELU + @
+   rec R-RESIDUAL + @
+   rec R-ATTN + @
    rec ;
 
 : M-ADD ( n n -- n ) {: a:n b:n :}
@@ -185,16 +271,18 @@ TRUSTED: M-TAKE ( GPT2:model -- GPU:session GPU:buffer config ptr u8 )
       misaligned OF E-SIZE throw ENDOF
    ;MATCH ;
 
-: M-TOTAL-LEN ( config -- config CAD-NUM:byte-len )
+: M-WEIGHT-BYTES ( config -- config n )
    NLAYER@ {: nl:n :}
    M-GLOBAL-ELEMS {: globals:n :}
    M-LAYER-ELEMS {: layer:n :}
    DATATYPE@ M-DTYPE-BYTES {: bytes:n :}
-   globals layer nl CHECKED-MUL M-ADD bytes CHECKED-MUL
-   M-BYTE-LEN ;
+   globals layer nl CHECKED-MUL M-ADD bytes CHECKED-MUL ;
 
-: M-ALLOC-LEN ( config -- config CAD-NUM:alloc-byte-len )
-   M-TOTAL-LEN CAD-NUM:AS-ALLOC-BYTE-LEN
+: M-TOTAL-LEN ( config -- config CAD-NUM:byte-len )
+   M-WEIGHT-BYTES M-BYTE-LEN ;
+
+: M-ALLOC-N ( n -- CAD-NUM:alloc-byte-len )
+   M-BYTE-LEN CAD-NUM:AS-ALLOC-BYTE-LEN
    MATCH CAD-NUM:numeric-result
       ok OF ENDOF
       negative OF E-SIZE throw ENDOF
@@ -204,6 +292,23 @@ TRUSTED: M-TAKE ( GPT2:model -- GPU:session GPU:buffer config ptr u8 )
       bad-alignment OF E-SIZE throw ENDOF
       misaligned OF E-SIZE throw ENDOF
    ;MATCH ;
+
+: M-LAYOUT
+   ( config -- config n n n n n n n CAD-NUM:alloc-byte-len )
+   M-WEIGHT-BYTES {: x:n :}
+   NEMBD@ 4 CHECKED-MUL {: row:n :}
+   NVOCAB@ 4 CHECKED-MUL {: logits-len:n :}
+   NCTX@ {: cx:n :}
+   NLAYER@ {: nl:n :}
+   cx row CHECKED-MUL nl CHECKED-MUL {: kv-len:n :}
+   x row M-ADD {: a:n :}
+   a row M-ADD {: b:n :}
+   b row M-ADD {: logits:n :}
+   logits logits-len M-ADD {: token:n :}
+   token 4 M-ADD {: k:n :}
+   k kv-len M-ADD {: v:n :}
+   x a b logits token k v
+   v kv-len M-ADD M-ALLOC-N ;
 
 : M-SLOT-INDEX ( n -- CAD-NUM:index )
    CAD-NUM:INDEX MATCH CAD-NUM:numeric-result
@@ -238,7 +343,7 @@ TRUSTED: M-TAKE ( GPT2:model -- GPU:session GPU:buffer config ptr u8 )
    DATATYPE@ {: dt:MAKI:datatype :}
    drop dt ;
 
-\ M-ALLOC-LEN runs before SAFET:LOAD and proves the pinned geometry products;
+\ M-LAYOUT runs before SAFET:LOAD and proves the pinned geometry products;
 \ the loops below only derive tensor ids from slots inside that same census.
 : M-FIND-SLOT
    ( SAFET:file config n ptr u8 -- SAFET:file config n n )
@@ -345,6 +450,134 @@ private
 
 : M-MODEL-ERR ( n -- result<GPT2:model,n> )
    RESULT:ERR ;
+
+: M-CODE-RESET ( -- )
+   0 M-TMOD-H !
+   0 M-AMOD-H !
+   0 M-EMBED-H !
+   0 M-LN-H !
+   0 M-LINEAR-H !
+   0 M-UNEMBED-H !
+   0 M-GELU-H !
+   0 M-RESIDUAL-H !
+   0 M-ATTN-H ! ;
+
+: M-PTX-PREP ( ptr u8 n -- )
+   PTXTC:PREPARE
+   ATGT:LABEL$ PTX-ARCH!
+   ATGT:VER$ PTX-VER!
+   ATGT:LABEL$ PTXTC:TC-ARCH! ;
+
+: M-CAP-TENSOR ( -- )
+   PTX-CAPTURE-ON
+   [: GPT2-PTX:EMIT ;] catch {: code:n :}
+   PTX-CAPTURE-OFF
+   code 0<> if code throw then
+   PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL ;
+
+: M-CAP-ATTN ( -- )
+   PTX-CAPTURE-ON
+   [: GPT2-ATTN:EMIT ;] catch {: code:n :}
+   PTX-CAPTURE-OFF
+   code 0<> if code throw then
+   PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL ;
+
+: M-ASSEMBLE ( -- )
+   M-ASM-OUT M-ASM-CAP >LEN M-ASM-ERR M-ASM-CAP >LEN PTXTC:ASSEMBLE
+   PTXTC:ASM-REPORT dup 0<> if throw then
+   drop ;
+
+: M-MOD-LOAD ( ptr a -- ) {: out:ptr :}
+   PTXTC:CUBIN$ M-CUBIN FFI:CSTR
+   0 out !
+   out M-CUBIN MKD:CUMODULELOAD RC>N dup 0<> if
+      0 out !
+      throw
+   then
+   drop
+   out @ CUDA:HANDLE0 drop ;
+
+: M-FN-LOAD ( n ptr a ptr u8 n -- )
+   {: mod:n out:ptr name:ptr nameu:n :}
+   name nameu M-KNAME FFI:CSTR
+   0 out !
+   out mod >CUDA-MOD M-KNAME MKD:CUMODULEGETFUNCTION RC>N dup 0<> if
+      0 out !
+      throw
+   then
+   drop
+   out @ CUDA:HANDLE0 drop ;
+
+: M-TENSOR-BUILD ( -- )
+   s" habu-gpt2-tensor-model" M-PTX-PREP
+   M-CAP-TENSOR
+   M-ASSEMBLE
+   M-TMOD-H M-MOD-LOAD
+   M-TMOD-H @ M-EMBED-H s" GPT2_EMBED" M-FN-LOAD
+   M-TMOD-H @ M-LN-H s" GPT2_LAYERNORM" M-FN-LOAD
+   M-TMOD-H @ M-LINEAR-H s" GPT2_LINEAR" M-FN-LOAD
+   M-TMOD-H @ M-UNEMBED-H s" GPT2_UNEMBED" M-FN-LOAD
+   M-TMOD-H @ M-GELU-H s" GPT2_GELU" M-FN-LOAD
+   M-TMOD-H @ M-RESIDUAL-H s" GPT2_RESIDUAL" M-FN-LOAD ;
+
+: M-ATTN-BUILD ( -- )
+   s" habu-gpt2-attention-model" M-PTX-PREP
+   M-CAP-ATTN
+   M-ASSEMBLE
+   M-AMOD-H M-MOD-LOAD
+   M-AMOD-H @ M-ATTN-H s" GPT2_ATTN" M-FN-LOAD ;
+
+: M-TC-DONE ( n -- n )
+   [: PTXTC:CLEAN ;] catch M-FIRST ;
+
+: M-TENSOR-TRY ( -- n )
+   [: M-TENSOR-BUILD ;] catch M-TC-DONE ;
+
+: M-ATTN-TRY ( -- n )
+   [: M-ATTN-BUILD ;] catch M-TC-DONE ;
+
+: M-UNLOAD-BODY ( n n -- n n ) {: mod:n first:n :}
+   mod
+   first mod >CUDA-MOD CUDA:CU-MODULE-UNLOAD RC>N M-FIRST ;
+
+: M-UNLOAD ( n n -- n )
+   over 0= if nip exit then
+   [: M-UNLOAD-BODY ;] catch M-FIRST nip ;
+
+: M-H-UNLOAD ( ptr a n -- n ) {: hp:ptr first:n :}
+   hp @ first M-UNLOAD {: code:n :}
+   0 hp !
+   code ;
+
+: M-CODE-CLEAN ( n -- n )
+   M-AMOD-H swap M-H-UNLOAD
+   M-TMOD-H swap M-H-UNLOAD {: code:n :}
+   0 M-EMBED-H !
+   0 M-LN-H !
+   0 M-LINEAR-H !
+   0 M-UNEMBED-H !
+   0 M-GELU-H !
+   0 M-RESIDUAL-H !
+   0 M-ATTN-H !
+   code ;
+
+: M-BUILD-CODE ( -- n )
+   M-CODE-RESET
+   M-TENSOR-TRY {: first:n :}
+   first
+   first 0= if M-ATTN-TRY M-FIRST then
+   dup 0<> if M-CODE-CLEAN then ;
+
+: M-CODE@ ( -- n n n n n n n n n )
+   M-TMOD-H @
+   M-AMOD-H @
+   M-EMBED-H @
+   M-LN-H @
+   M-LINEAR-H @
+   M-UNEMBED-H @
+   M-GELU-H @
+   M-RESIDUAL-H @
+   M-ATTN-H @ ;
 
 : M-UPLOAD-ONE
    ( GPU:session GPU:buffer SAFET:file config ptr u8 ptr u8 n -- GPU:session GPU:buffer SAFET:file config ptr u8 n )
@@ -459,7 +692,21 @@ private
       rec drop M-MODEL-ERR
       exit
    then
-   c rec M-SAVE RESULT:OK ;
+   M-BUILD-CODE {: build:n :}
+   build 0<> if
+      c M-DROP-CFG
+      build M-GPU-CLEAN
+      rec drop M-MODEL-ERR
+      exit
+   then
+   c M-LAYOUT
+   {: x:n a:n b:n logits:n token:n k:n v:n alloc:CAD-NUM:alloc-byte-len :}
+   alloc drop
+   x a b logits token k v 0
+   M-CODE@
+   rec M-SAVE
+   M-CODE-RESET
+   RESULT:OK ;
 
 : M-GPU-FAIL
    ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr u8 n -- result<GPT2:model,n> )
@@ -581,8 +828,10 @@ private
       E-FS-CAPACITY M-MODEL-ERR
       exit
    then
-   c M-ALLOC-LEN {: alloc:CAD-NUM:alloc-byte-len :}
-   drop
+   c M-LAYOUT >r
+   2drop 2drop 2drop drop
+   M-DROP-CFG
+   r> {: alloc:CAD-NUM:alloc-byte-len :}
    NULL$ drop [: M-ALLOC-REC ;] catch {: rec-code:n :}
    rec-code 0<> if
       drop c M-DROP-CFG
@@ -618,9 +867,20 @@ public
 
 : CLOSE ( GPT2:model -- result<n,n> )
    M-TAKE {: rec:ptr :}
-   rec M-FREE-REC
+   2drop 2drop 2drop drop
+   {: tmod:n amod:n :}
+   2drop 2drop 2drop 2drop
    M-DROP-CFG
-   0 M-GPU-CLEAN {: code:n :}
+   0 M-BYTE-OFF 4 M-BYTE-LEN GPU:SPAN
+   MATCH result
+      ok OF drop 0 ENDOF
+      err OF ENDOF
+   ;MATCH
+   {: bind:n :}
+   amod bind M-UNLOAD
+   tmod swap M-UNLOAD
+   M-GPU-CLEAN {: code:n :}
+   rec M-FREE-REC
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;
 
 ;package
