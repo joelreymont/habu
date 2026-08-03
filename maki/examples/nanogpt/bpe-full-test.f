@@ -10,6 +10,7 @@ require lib/test.f
 require lib/prelude.f
 require lib/time.f
 require maki/examples/nanogpt/bpe-full-data.f
+require maki/infer/gpt2-pin.f
 
 package MAKI
 
@@ -52,9 +53,9 @@ variable BPFT-M
 : BPFT-THROUGHPUT ( -- )
    BPFD-CORPUS {: ca:ptr cu:n :}
    ca cu BPFT-IDS BPFT-CAP BPR-ENCODE BPFT-M !
-   TIME-MONO-NS {: t0:n :}
+   TIME:MONO-NS {: t0:n :}
    BPFT-REPS 0 ?do  ca cu BPFT-IDS BPFT-CAP BPR-ENCODE drop  loop
-   TIME-MONO-NS t0 - {: dt:n :}
+   TIME:MONO-NS t0 - {: dt:n :}
    s" throughput: reps=" type BPFT-REPS .  s"  bytes/enc=" type cu .
    s"  tokens/enc=" type BPFT-M @ .  s"  total-ns=" type dt . cr
    s" tokens/sec=" type BPFT-M @ BPFT-REPS *  1000000000 *  dt /  .
@@ -64,8 +65,8 @@ variable BPFT-M
    BPFT-PATH BPF-PRESENT? 0= if
       s" bpe-full: gpt2-vocab/vocab.bpe absent -> full-load leg SKIPPED (run maki/examples/nanogpt/fetch-gpt2-vocab.sh)" type cr
       0 0= TTRUE  exit then
-   BPFT-PATH BPF-LOAD {: n:n :}
-   s" full vocab loaded: merges=" type n . cr
+   BPFT-PATH GPT2PIN:MERGES-SHA256$ BPF-LOAD
+   s" full vocab loaded: merges=" type BPR-MERGES . cr
    BPFT-STRUCT?  TTRUE
    BPFT-PARITY?  TTRUE
    BPFD-RT-S BPFT-RT?  TTRUE

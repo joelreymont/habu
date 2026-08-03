@@ -22,10 +22,13 @@
 \ resolved merges pass through BPR-INSTALL, which fully re-validates (ids in range, injective)
 \ and only then commits - a corrupt vocab.bpe (a child referenced before it is defined, a
 \ duplicate token, an over-capacity table) throws a named E-code before any state is committed,
-\ leaving a previously loaded vocab intact. maki -> habu only. bpe-full owns -5307..-5309.
+\ leaving a previously loaded vocab intact. maki -> habu only. bpe-full owns
+\ -5307..-5309 and -5664.
 
 require lib/fs.f
 require lib/hashmap.f
+require lib/string.f
+require src/core/sha256.f
 require maki/examples/nanogpt/bpe-real-data.f
 
 -5307 constant E-BPF-CAP     \ a table/arena/string-map bound exceeded (vocab larger than provisioned)
@@ -33,6 +36,11 @@ require maki/examples/nanogpt/bpe-real-data.f
 -5309 constant E-BPF-IO      \ vocab.bpe absent or unreadable at the given path
 
 package MAKI
+
+public
+
+-5664 constant E-BPF-DIGEST  \ captured vocab.bpe bytes do not match the caller's pinned digest
+
 private
 
 256    constant BPF-BYTE-N       \ base byte tokens (internal ids 0..255); mid = BPF-BYTE-N + rank
@@ -40,6 +48,9 @@ private
 524288 constant BPF-BUF-CAP       \ vocab.bpe read buffer (file is ~446 KB)
 400000 constant BPF-ARENA-CAP     \ token-string arena (256 byte tokens + 50000 merged strings, ~360 KB)
 131072 constant BPF-SCAP          \ string-map slots: power of two > 1.4 * (256+50000)
+32     constant BPF-DIGEST-LEN
+64     constant BPF-HEX-LEN
+BPF-DIGEST-LEN BPF-HEX-LEN + constant BPF-DIGEST-CAP
 
 $CBF29CE484222325 constant BPF-FNV-OFF   \ FNV-1a 64-bit offset basis
 $100000001B3       constant BPF-FNV-PRIME \ FNV-1a 64-bit prime
@@ -53,6 +64,7 @@ create BPF-SUSED BPF-SCAP cells allot          \ string-map slot used flag (0 = 
 create BPF-SOFF  BPF-SCAP cells allot          \ string-map slot -> arena offset
 create BPF-SLEN  BPF-SCAP cells allot          \ string-map slot -> string length
 create BPF-SVAL  BPF-SCAP cells allot          \ string-map slot -> internal id
+create BPF-DIGEST BPF-DIGEST-CAP allot         \ raw digest followed by lowercase hex
 
 variable BPF-U      \ vocab.bpe length in bytes
 variable BPF-P      \ parse cursor into BPF-BUF
@@ -165,21 +177,30 @@ variable BPF-DONE   \ string-map probe loop control
       le 1+ BPF-P !
    repeat ;
 
+: BPF-AUTH ( ptr u8 n -- ) {: want:ptr wantu:n :}
+   wantu BPF-HEX-LEN <> if E-BPF-DIGEST throw then
+   BPF-BUF BPF-U @ BPF-DIGEST SHA256
+   BPF-DIGEST BPF-DIGEST BPF-DIGEST-LEN + SHA256>HEX
+   BPF-DIGEST BPF-DIGEST-LEN + BPF-HEX-LEN want wantu STR=
+   0= if E-BPF-DIGEST throw then ;
+
 public
 
 \ true iff a readable vocab.bpe exists at the path (the full-load test presence-gates on this)
 : BPF-PRESENT? ( ptr u8 n -- bool )  {: pa:ptr pu:n :}
    pa pu EXISTS? 0= if BPF-FALSE exit then  pa pu FILE? ;
 
-\ Read + parse vocab.bpe at the path and install the full merge table through BPR-INSTALL
-\ (which re-validates and commits). Returns the merge count loaded (50000 for the real file).
-: BPF-LOAD ( ptr u8 n -- n )  {: pa:ptr pu:n :}
+\ Read vocab.bpe once, authenticate the captured bytes, require the complete
+\ table, and install through BPR-INSTALL (which re-validates and commits).
+: BPF-LOAD ( ptr u8 n ptr u8 n -- )
+   {: pa:ptr pu:n want:ptr wantu:n :}
    pa pu BPF-PRESENT? 0= if E-BPF-IO throw then
    pa pu BPF-BUF BPF-BUF-CAP READ-ALL BPF-U !
+   want wantu BPF-AUTH
    BPF-SUSED BPF-SCAP HM:CLEAR
    BPF-SEED
    BPF-PARSE
-   BPR-D-BYTEID  BPF-MA BPF-MB BPF-MID  BPF-RN @  BPR-INSTALL
-   BPF-RN @ ;
+   BPF-RN @ BPF-MERGE-CAP <> if E-BPF-VOCAB throw then
+   BPR-D-BYTEID BPF-MA BPF-MB BPF-MID BPF-RN @ BPR-INSTALL ;
 
 ;package
