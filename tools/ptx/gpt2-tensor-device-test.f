@@ -28,9 +28,10 @@ private
 50257 constant NV
 NV NH * 4 * constant WB
 NV 4 * constant OB
+$42F70000 constant TAIL-BITS
 
 create P0 OB allot  create P1 OB allot
-create P2 OB allot  create P3 OB allot
+create P2 OB allot  create P3 OB 4 + allot
 create A0 4096 cells allot  create A1 4096 cells allot
 create A2 4096 cells allot  create A3 4096 cells allot
 create PATH 128 allot  create KN 64 allot
@@ -78,7 +79,13 @@ variable E0   variable E1   variable E2
 : GRID ( n -- n ) 255 + 256 / ;
 
 : COPY ( n n -- ) {: d:n n:n :}
-   P3 d >CUDA-DEVPTR n 4 * >LEN CUDA:DTOH ;
+   P3 d >CUDA-DEVPTR n 1+ 4 * >LEN CUDA:DTOH ;
+
+: GUARD ( n n -- ) {: d:n n:n :}
+   d n 4 * + >CUDA-DEVPTR TAIL-BITS 1 >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0 ;
+
+: CHECK-TAIL ( n -- )
+   P3 swap U32@ TAIL-BITS = TTRUE ;
 
 : POISON ( n n -- ) {: d:n n:n :}
    d >CUDA-DEVPTR PTXSENT:POISON n >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0 ;
@@ -86,11 +93,12 @@ variable E0   variable E1   variable E2
 : MEMSET ( n r n -- ) {: d:n x:r n:n :}
    d >CUDA-DEVPTR x NARROW n >COUNT CUDA:CU-MEMSET-D32 CUDA:RC0 ;
 
-: LAUNCH-EMBED ( n n -- ) E1 ! E0 !
+: LAUNCH-EMBED ( n n n -- ) E2 ! E1 ! E0 !
    FE @ >CUDA-FN {: fn:cuda-fn :}
-   fn 40 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
+   fn 44 >LEN CUDA:CU-PARAM-SET-SIZE CUDA:RC0
    fn 0 D0 8 PSET  fn 8 D1 8 PSET  fn 16 D2 8 PSET  fn 24 D3 8 PSET
    fn 32 E0 4 PSET  fn 36 E1 4 PSET
+   fn 40 E2 4 PSET
    fn E0 @ E1 @ * GRID GO ;
 
 : LAUNCH-LN ( n n -- ) E1 ! E0 !
@@ -133,7 +141,9 @@ variable E0   variable E1   variable E2
 : BUILD ( -- )
    s" habu-gpt2-tensor" PTXTC:PREPARE
    ATGT:LABEL$ PTX-ARCH!  ATGT:VER$ PTX-VER!
+   32 %BLOCK
    PTX-CAPTURE-ON GPT2-PTX:EMIT PTX-CAPTURE-OFF
+   PTX-BLOCK@ 256 T=
    PTXTC:PTX$ PTX-CAPTURE$ WRITE-ALL
    ATGT:LABEL$ PTXTC:TC-ARCH!
    QO $1000 >LEN QE $1000 >LEN PTXTC:ASSEMBLE PTXTC:ASM-REPORT 0 T= ;
@@ -148,7 +158,7 @@ variable E0   variable E1   variable E2
    PTXTC:CUBIN$ PATH FFI:CSTR
    MF PATH CUDA:CU-MODULE-LOAD CUDA:RC0
    MF @ >CUDA-MOD CUDA-SCOPE:OWN-MODULE
-   D0 16384 ALLOC  D1 WB ALLOC  D2 OB ALLOC  D3 OB ALLOC
+   D0 16384 ALLOC  D1 WB ALLOC  D2 OB ALLOC  D3 OB 4 + ALLOC
    s" GPT2_EMBED" KN FFI:CSTR
    FE MF @ >CUDA-MOD KN CUDA:CU-MODULE-GET-FUNCTION CUDA:RC0
    s" GPT2_LAYERNORM" KN FFI:CSTR
@@ -164,18 +174,20 @@ variable E0   variable E1   variable E2
 
 : TEST-EMBED ( -- )
    2 P0 0 U32!  0 P0 1 U32!  3 P0 2 U32!
-   20 5 * 0 ?do  i 5 / 16 * i 5 mod + s>f NARROW P1 i U32! loop
-   3 5 * 0 ?do  i 5 / 8 * i 5 mod + s>f NARROW P2 i U32! loop
+   4 NH * 0 ?do  i NH / 16 * i NH mod 31 mod + s>f NARROW P1 i U32! loop
+   8 NH * 0 ?do  i NH / 8 * i NH mod 7 mod + s>f NARROW P2 i U32! loop
    D0 @ >CUDA-DEVPTR P0 12 >LEN CUDA:HTOD
-   D1 @ >CUDA-DEVPTR P1 400 >LEN CUDA:HTOD
-   D2 @ >CUDA-DEVPTR P2 60 >LEN CUDA:HTOD
-   D3 @ 15 POISON
-   3 5 LAUNCH-EMBED
-   D3 @ 15 COPY
-   15 0 ?do
-      P0 i 5 / U32@ 16 * i 5 mod +  i 5 / 8 * i 5 mod + + s>f
+   D1 @ >CUDA-DEVPTR P1 4 NH * 4 * >LEN CUDA:HTOD
+   D2 @ >CUDA-DEVPTR P2 8 NH * 4 * >LEN CUDA:HTOD
+   D3 @ 3 NH * POISON  D3 @ 3 NH * GUARD
+   3 NH 5 LAUNCH-EMBED
+   D3 @ 3 NH * COPY
+   3 NH * 0 ?do
+      P0 i NH / U32@ 16 * i NH mod 31 mod +
+      i NH / 5 + 8 * i NH mod 7 mod + + s>f
       P3 i U32@ WIDEN swap NEAR? TTRUE
-   loop ;
+   loop
+   3 NH * CHECK-TAIL ;
 
 : LN-CASE ( n n -- ) {: rows:n cols:n :}
    rows cols * 0 ?do  i 7 mod 3 - s>f A0 i A! loop
@@ -187,10 +199,11 @@ variable E0   variable E1   variable E2
    D0 @ >CUDA-DEVPTR P0 rows cols * 4 * >LEN CUDA:HTOD
    D1 @ >CUDA-DEVPTR P1 cols 4 * >LEN CUDA:HTOD
    D2 @ >CUDA-DEVPTR P2 cols 4 * >LEN CUDA:HTOD
-   D3 @ rows cols * POISON
+   D3 @ rows cols * POISON  D3 @ rows cols * GUARD
    rows cols LAUNCH-LN
    D3 @ rows cols * COPY
-   A3 rows cols * CHECK-A ;
+   A3 rows cols * CHECK-A
+   rows cols * CHECK-TAIL ;
 
 : TEST-LINEAR-SMALL ( -- )
    10 0 ?do i 5 mod 2 - s>f A0 i A! loop
@@ -201,22 +214,24 @@ variable E0   variable E1   variable E2
    D0 @ >CUDA-DEVPTR P0 40 >LEN CUDA:HTOD
    D1 @ >CUDA-DEVPTR P1 140 >LEN CUDA:HTOD
    D2 @ >CUDA-DEVPTR P2 28 >LEN CUDA:HTOD
-   D3 @ 14 POISON
+   D3 @ 14 POISON  D3 @ 14 GUARD
    2 5 7 LAUNCH-LINEAR
    D3 @ 14 COPY
-   A3 14 CHECK-A ;
+   A3 14 CHECK-A
+   14 CHECK-TAIL ;
 
-: LINEAR-LARGE ( n -- ) {: cols:n :}
-   D3 @ cols POISON
-   1 NH cols LAUNCH-LINEAR
+: LINEAR-LARGE ( n n -- ) {: inner:n cols:n :}
+   D3 @ cols POISON  D3 @ cols GUARD
+   1 inner cols LAUNCH-LINEAR
    D3 @ cols COPY
-   769.0 cols CHECK-C ;
+   inner s>f 1.0 f+ cols CHECK-C
+   cols CHECK-TAIL ;
 
 : TEST-LINEAR-LARGE ( -- )
-   D0 @ 1.0 NH MEMSET
+   D0 @ 1.0 NF MEMSET
    D1 @ 1.0 NH NF * MEMSET
    D2 @ 1.0 NF MEMSET
-   NQ LINEAR-LARGE  NF LINEAR-LARGE ;
+   NH NQ LINEAR-LARGE  NH NF LINEAR-LARGE  NF NH LINEAR-LARGE ;
 
 : TEST-UNEMBED-SMALL ( -- )
    5 0 ?do i 1+ s>f 4.0 f/ A0 i A! loop
@@ -227,39 +242,44 @@ variable E0   variable E1   variable E2
    A0 P0 5 PACK  A1 P1 1295 PACK
    D0 @ >CUDA-DEVPTR P0 20 >LEN CUDA:HTOD
    D1 @ >CUDA-DEVPTR P1 5180 >LEN CUDA:HTOD
-   D3 @ 259 POISON
+   D3 @ 259 POISON  D3 @ 259 GUARD
    5 259 LAUNCH-UNEMBED
    D3 @ 259 COPY
-   A2 259 CHECK-A ;
+   A2 259 CHECK-A
+   259 CHECK-TAIL ;
 
 : TEST-UNEMBED-LARGE ( -- )
    D0 @ 1.0 NH MEMSET
    D1 @ 1.0 NV NH * MEMSET
-   D3 @ NV POISON
+   D3 @ NV POISON  D3 @ NV GUARD
    NH NV LAUNCH-UNEMBED
    D3 @ NV COPY
-   768.0 NV CHECK-C ;
+   768.0 NV CHECK-C
+   NV CHECK-TAIL ;
 
 : TEST-GELU ( -- )
-   259 0 ?do i 11 mod 5 - s>f 2.0 f/ dup A0 i A! MAKI:GELU-F A1 i A! loop
-   A0 P0 259 PACK
-   D0 @ >CUDA-DEVPTR P0 1036 >LEN CUDA:HTOD
-   259 LAUNCH-GELU
-   D0 @ 259 COPY
-   A1 259 CHECK-A ;
+   NF 0 ?do i 11 mod 5 - s>f 2.0 f/ dup A0 i A! MAKI:GELU-F A1 i A! loop
+   A0 P0 NF PACK
+   D0 @ >CUDA-DEVPTR P0 NF 4 * >LEN CUDA:HTOD
+   D0 @ NF GUARD
+   NF LAUNCH-GELU
+   D0 @ NF COPY
+   A1 NF CHECK-A
+   NF CHECK-TAIL ;
 
 : TEST-RESIDUAL ( -- )
-   259 0 ?do
+   NH 0 ?do
       i 17 mod 8 - s>f 4.0 f/ dup A0 i A!
       i 7 mod 3 - s>f 8.0 f/ dup A1 i A! f+ A2 i A!
    loop
-   A0 P0 259 PACK  A1 P1 259 PACK
-   D0 @ >CUDA-DEVPTR P0 1036 >LEN CUDA:HTOD
-   D1 @ >CUDA-DEVPTR P1 1036 >LEN CUDA:HTOD
-   D3 @ 259 POISON
-   259 LAUNCH-RESIDUAL
-   D3 @ 259 COPY
-   A2 259 CHECK-A ;
+   A0 P0 NH PACK  A1 P1 NH PACK
+   D0 @ >CUDA-DEVPTR P0 NH 4 * >LEN CUDA:HTOD
+   D1 @ >CUDA-DEVPTR P1 NH 4 * >LEN CUDA:HTOD
+   D3 @ NH POISON  D3 @ NH GUARD
+   NH LAUNCH-RESIDUAL
+   D3 @ NH COPY
+   A2 NH CHECK-A
+   NH CHECK-TAIL ;
 
 : RUN ( -- )
    TEST-EMBED

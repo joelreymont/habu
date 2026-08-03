@@ -11,8 +11,6 @@ package GPT2-PTX
 
 private
 
-256 %BLOCK
-
 : OPEN ( -- )
    s" {" PTX-L
    s" .reg .pred %p<64>;" PTX-L
@@ -108,7 +106,7 @@ private
    SB-RESET s" @" CG-S p CG-P s"  bra DONE;" CG-S CG-LINE ;
 
 \ Fixed ABI mints: the entry parameters carry these exact shape relations.
-TRUSTED: EMBED-ABI ( -- span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<space-global,f32,t,h> matrix<space-global,f32,t,h> ) 1 2 3 4 ;
+TRUSTED: EMBED-ABI ( -- span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<space-global,f32,p,h> matrix<space-global,f32,t,h> ) 1 2 3 4 ;
 TRUSTED: LN-ABI ( -- matrix<space-global,f32,r,c> span<space-global,f32,c> span<space-global,f32,c> matrix<space-global,f32,r,c> ) 1 2 3 4 ;
 TRUSTED: LINEAR-ABI ( -- matrix<space-global,f32,r,k> matrix<space-global,f32,k,c> span<space-global,f32,c> matrix<space-global,f32,r,c> ) 1 2 3 4 ;
 TRUSTED: UNEMBED-ABI ( -- span<space-global,f32,h> matrix<space-global,f32,v,h> span<space-global,f32,v> ) 1 2 3 ;
@@ -121,15 +119,16 @@ TRUSTED: UNEMBED-ABI ( -- span<space-global,f32,h> matrix<space-global,f32,v,h> 
    i 2 R-REM {: col:n :}
    ids row OFF LD-U32 {: tok:n :}
    tok 2 col R-MAD OFF {: toff:n :}
+   row 3 R-ADD!
    row 2 col R-MAD OFF {: poff:n :}
    wte toff EMIT-LOAD  wpe poff EMIT-LOAD  EMIT-ADD
    out i OFF EMIT-STORE ;
 
-: EMBED. ( span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<space-global,f32,t,h> matrix<space-global,f32,t,h> -- )
-   [: EMIT-EMBED ;] PTXREP:SINK4 ;
-
-KERNEL: EMBED-K ( span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<space-global,f32,t,h> matrix<space-global,f32,t,h> -- ) GRID: ceil-n-256
-   EMBED. ;
+\ out[t,h] = wte[ids[t],h] + wpe[base_pos+t,h]. Indexed row gather and
+\ runtime t*h induction are not expressible in the checked PTX vocabulary.
+\ Retirement owners: habu-extent-bound-loop-a70a49b3, habu-ptx-phantom-preserving-3df9db92.
+TRUSTED: EMBED-COMP ( span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<space-global,f32,p,h> matrix<space-global,f32,t,h> -- )
+   EMIT-EMBED ;
 
 : EMIT-LN ( n n n n -- ) {: x:n gamma:n beta:n out:n :}
    EMIT-ROW {: row:n :}
@@ -168,11 +167,11 @@ KERNEL: EMBED-K ( span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<s
    col3 step R-ADD!  l3 BRA
    e3 CG-LDEF ;
 
-: LN. ( matrix<space-global,f32,r,c> span<space-global,f32,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
-   [: EMIT-LN ;] PTXREP:SINK4 ;
-
-KERNEL: LN-K ( matrix<space-global,f32,r,c> span<space-global,f32,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- ) GRID: extent-r
-   LN. ;
+\ out[r,c] = gamma[c]*(x[r,c]-mean[r])/sqrt(var[r]+1e-5)+beta[c].
+\ Runtime strided c loops, including c>block, are not expressible by ROW-SPAN.
+\ Retirement owners: habu-extent-bound-loop-a70a49b3, habu-ptx-phantom-preserving-3df9db92.
+TRUSTED: LN-COMP ( matrix<space-global,f32,r,c> span<space-global,f32,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
+   EMIT-LN ;
 
 : EMIT-LINEAR ( n n n n -- ) {: x:n w:n bias:n out:n :}
    TID {: i:n :}
@@ -193,11 +192,11 @@ KERNEL: LN-K ( matrix<space-global,f32,r,c> span<space-global,f32,c> span<space-
    done CG-LDEF
    acc out i OFF EMIT-STORE ;
 
-: LINEAR. ( matrix<space-global,f32,r,k> matrix<space-global,f32,k,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
-   [: EMIT-LINEAR ;] PTXREP:SINK4 ;
-
-KERNEL: LINEAR-K ( matrix<space-global,f32,r,k> matrix<space-global,f32,k,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- ) GRID: ceil-n-256
-   LINEAR. ;
+\ out[r,c] = bias[c] + sum_k x[r,k]*w[k,c].
+\ Runtime-k accumulation is not expressible in the checked PTX vocabulary.
+\ Retirement owners: habu-extent-bound-loop-a70a49b3, habu-ptx-phantom-preserving-3df9db92.
+TRUSTED: LINEAR-COMP ( matrix<space-global,f32,r,k> matrix<space-global,f32,k,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
+   EMIT-LINEAR ;
 
 : EMIT-UNEMBED ( n n n -- ) {: x:n wte:n out:n :}
    TID {: row:n :}
@@ -215,11 +214,11 @@ KERNEL: LINEAR-K ( matrix<space-global,f32,r,k> matrix<space-global,f32,k,c> spa
    done CG-LDEF
    acc out row OFF EMIT-STORE ;
 
-: UNEMBED. ( span<space-global,f32,h> matrix<space-global,f32,v,h> span<space-global,f32,v> -- )
-   [: EMIT-UNEMBED ;] PTXREP:SINK3 ;
-
-KERNEL: UNEMBED-K ( span<space-global,f32,h> matrix<space-global,f32,v,h> span<space-global,f32,v> -- ) GRID: ceil-n-256
-   UNEMBED. ;
+\ logits[v] = sum_h x[h]*wte[v,h].
+\ Runtime-h accumulation is not expressible in the checked PTX vocabulary.
+\ Retirement owners: habu-extent-bound-loop-a70a49b3, habu-ptx-phantom-preserving-3df9db92.
+TRUSTED: UNEMBED-COMP ( span<space-global,f32,h> matrix<space-global,f32,v,h> span<space-global,f32,v> -- )
+   EMIT-UNEMBED ;
 
 : GELU. ( tile<f32,b,m> -- tile<f32,b,m> )
    [: PTX-ACT:EMIT-GELU ;] PTXREP:REP1 ;
@@ -235,13 +234,14 @@ KERNEL: RESIDUAL-K ( span<space-global,f32,e> span<space-global,f32,e> span<spac
    x c LOAD  res c LOAD  +.  out c STORE ;
 
 : EMBED ( -- )
-   s" .visible .entry GPT2_EMBED(.param .u64 p_ids, .param .u64 p_wte, .param .u64 p_wpe, .param .u64 p_out, .param .u32 p_tokens, .param .u32 p_hidden)" PTX-L
+   s" .visible .entry GPT2_EMBED(.param .u64 p_ids, .param .u64 p_wte, .param .u64 p_wpe, .param .u64 p_out, .param .u32 p_tokens, .param .u32 p_hidden, .param .u32 p_base_pos)" PTX-L
    OPEN
    s" ld.param.u64 %rd1, [p_ids];" PTX-L  s" ld.param.u64 %rd2, [p_wte];" PTX-L
    s" ld.param.u64 %rd3, [p_wpe];" PTX-L  s" ld.param.u64 %rd4, [p_out];" PTX-L
    s" ld.param.u32 %r1, [p_tokens];" PTX-L  s" ld.param.u32 %r2, [p_hidden];" PTX-L
-   1 CG-NF !  5 CG-NRD !  3 CG-NR !  1 CG-NP !  0 CG-NL !
-   EMBED-ABI EMBED-K
+   s" ld.param.u32 %r3, [p_base_pos];" PTX-L
+   1 CG-NF !  5 CG-NRD !  4 CG-NR !  1 CG-NP !  0 CG-NL !
+   EMBED-ABI EMBED-COMP
    CLOSE ;
 
 : LAYERNORM ( -- )
@@ -251,7 +251,7 @@ KERNEL: RESIDUAL-K ( span<space-global,f32,e> span<space-global,f32,e> span<spac
    s" ld.param.u64 %rd1, [p_x];" PTX-L  s" ld.param.u64 %rd2, [p_gamma];" PTX-L
    s" ld.param.u64 %rd3, [p_beta];" PTX-L  s" ld.param.u64 %rd4, [p_out];" PTX-L
    s" ld.param.u32 %r2, [p_rows];" PTX-L  s" ld.param.u32 %r1, [p_cols];" PTX-L
-   LN-ABI LN-K
+   LN-ABI LN-COMP
    CLOSE ;
 
 : LINEAR ( -- )
@@ -261,7 +261,7 @@ KERNEL: RESIDUAL-K ( span<space-global,f32,e> span<space-global,f32,e> span<spac
    s" ld.param.u64 %rd3, [p_bias];" PTX-L  s" ld.param.u64 %rd4, [p_out];" PTX-L
    s" ld.param.u32 %r1, [p_rows];" PTX-L  s" ld.param.u32 %r2, [p_in];" PTX-L  s" ld.param.u32 %r3, [p_out_cols];" PTX-L
    1 CG-NF !  5 CG-NRD !  4 CG-NR !  1 CG-NP !  0 CG-NL !
-   LINEAR-ABI LINEAR-K
+   LINEAR-ABI LINEAR-COMP
    CLOSE ;
 
 : UNEMBED ( -- )
@@ -270,7 +270,7 @@ KERNEL: RESIDUAL-K ( span<space-global,f32,e> span<space-global,f32,e> span<spac
    s" ld.param.u64 %rd1, [p_x];" PTX-L  s" ld.param.u64 %rd2, [p_wte];" PTX-L
    s" ld.param.u64 %rd3, [p_logits];" PTX-L  s" ld.param.u32 %r1, [p_hidden];" PTX-L  s" ld.param.u32 %r2, [p_vocab];" PTX-L
    1 CG-NF !  4 CG-NRD !  3 CG-NR !  1 CG-NP !  0 CG-NL !
-   UNEMBED-ABI UNEMBED-K
+   UNEMBED-ABI UNEMBED-COMP
    CLOSE ;
 
 : GELU ( -- )
@@ -293,6 +293,7 @@ KERNEL: RESIDUAL-K ( span<space-global,f32,e> span<space-global,f32,e> span<spac
 public
 
 : EMIT ( -- )
+   256 %BLOCK
    CG-HEADER
    EMBED LAYERNORM LINEAR UNEMBED GELU RESIDUAL ;
 
