@@ -1582,6 +1582,31 @@ variable TEST-ROW-BAD     \ per-path rejection checks that behaved wrongly
    \ guards: they are NOT engine trunk and must keep reporting.
    s" lib/layout.f" TEST-ENGINE-BODY-CASE
    s" lib/layout.f basename collision still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ The third engine-trunk row, src/habu/xref.f, is pinned by the same fixtures
+   \ in both directions.  The positive is its measured probe: adding the
+   \ code-reclamation notice to the last line of the existing global
+   \ FORGET-DEFS-FROM reported E-PACKAGE-OWNERSHIP before this row, so the
+   \ dictionary-truncation path could not be changed at all.
+   s" src/habu/xref.f" TEST-ENGINE-BODY-CASE
+   s" xref exempts a comment-only global body change" T-LABEL
+   TEST-EXPECT-CLEAN
+   \ Negative: a new unpackaged word in xref.f is still reported.  The file
+   \ already opens PKG-AUTH, GENERATED-DECL-NAME-PREFLIGHT and CODE-RECLAIM, so a
+   \ new dictionary word has an owner it can join -- which is what keeps this row
+   \ from becoming a licence to grow the file's global surface.
+   s" src/habu/xref.f" TEST-ENGINE-NEW-GLOBAL-CASE
+   s" new global in xref still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: a sibling carrying the row's path as a prefix is not an exact
+   \ match, so its body edit still fails.
+   s" src/habu/xref-extra.f" TEST-ENGINE-BODY-CASE
+   s" sibling src/habu/xref-extra.f still fails ownership" T-LABEL
+   1 TEST-EXPECT-FINDINGS
+   \ Negative: the same basename in another directory carries the row's path as a
+   \ suffix but is not exact, so it still fails.
+   s" lib/xref.f" TEST-ENGINE-BODY-CASE
+   s" lib/xref.f basename collision still fails ownership" T-LABEL
    1 TEST-EXPECT-FINDINGS ;
 
 \ ---- bootstrap/cg/forth.fs: the Gforth recovery mirror ------------------------

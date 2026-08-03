@@ -228,7 +228,7 @@ variable SAVED-CP
    s" an emission that does not fit under the arena's end reserve is refused" T-LABEL
    cp@ SAVED-CP !
    [: ROOM-BODY ;] catch {: rc:n :}
-   SAVED-CP @ cp!
+   SAVED-CP @ CODE-RECLAIM:TRUNCATE
    rc 0 <> if rc throw then ;
 
 : UNTOUCHED-CASE ( -- )

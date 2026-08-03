@@ -47,6 +47,21 @@
 \ still below the end reserve, and this seam refuses by name at the same line
 \ rather than letting `patch32` walk past it.
 \
+\ AND THE SLOT IT CLAIMS IS HELD AGAINST THE LAST ONE IT CLAIMED. "No two
+\ publications ever claim one slot" is the sentence everything keyed to a code
+\ address rests on - src/compiler/native/clobber.f and
+\ src/compiler/native/inline.f both cite it - and it is not a property of this
+\ file alone: the pointer goes BACK when code space is reclaimed
+\ (src/habu/xref.f FORGET-DEFS-FROM,
+\ src/core/generated-declaration-dictionary.f ROLLBACK). Both reclamations go
+\ through CODE-RECLAIM, which tells this seam the floor and tells the two
+\ records to drop what they hold above it, so re-using a slot after a
+\ reclamation is exactly as sound as using a fresh one. What must not happen is
+\ re-using one WITHOUT that notice, and SLOT-CK below is where that fails
+\ closed: the seam remembers where its last routine ended, a claim below that
+\ line is E-NPUB-SLOT, and a rewind nobody announced becomes a refusal at the
+\ next publication instead of a caller compiled against another routine's row.
+\
 \ WHY THE RECORDED LENGTH IS THE EMISSION MINUS ONE INSTRUCTION. The engine
 \ stores a word's code length EXCLUDING its trailing return (src/habu/habu2.f
 \ EM-COMPILE-FLUSH-PEND writes `CP - entry - 4`), because that is the span its
@@ -244,6 +259,27 @@ variable LOG-N
    fn size + CODE-CEILING > if E-NPUB-ROOM throw then
    fn ;
 
+\ ---- the slot is above every slot this seam has already claimed ---------------
+\ Where the routine published last ends. Everything keyed to a code address is
+\ keyed on the strength of this line never being crossed downwards without a
+\ reclamation saying so, so the line is kept rather than assumed: CLAIMED is
+\ raised by each publication and lowered only by the reclamation notice below.
+variable CLAIMED
+0 CLAIMED !
+
+: SLOT-CK ( n -- ) {: fn:n :}
+   fn CLAIMED @ < if E-NPUB-SLOT throw then ;
+
+: CLAIM ( n n -- ) {: fn:n size:n :}
+   fn size + CLAIMED ! ;
+
+\ The floor of a code reclamation. The bytes above it are the engine's again, so
+\ the slots this seam claimed up there are claimable again too - and a routine
+\ that starts below the floor is untouched, which is why this lowers the line to
+\ the floor rather than to nothing.
+: RECLAIMED ( n -- ) {: floor:n :}
+   floor CLAIMED @ < if floor CLAIMED ! then ;
+
 \ ---- the routine's branches and the slot it is written at --------------------
 \ A routine whose body calls ANOTHER word carries a branch measured from the
 \ address the routine itself was going to occupy - the emitter cannot compute
@@ -346,13 +382,15 @@ public
    a u wid TARGET {: idx:n :}
    size ROOM-CK {: fn:n :}
    fn PLACE-CK
-   fn NCLOB:ROOM-CK
+   fn SLOT-CK
+   fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD-CK
    fn size BRANCH-CK
    idx XREF-REC XREF-START {: os:n :}
    idx XREF-REC XREF-LEN {: ol:n :}
    fn size WRITE
    idx fn size RETARGET
    fn  A64EMIT:GPR-CLOBBER  A64EMIT:FPR-CLOBBER  NCLOB:RECORD
+   fn size CLAIM
    a u wid os ol fn  size INSN-BYTES -  LOG+ ;
 
 \ The address the next republication will write its first instruction at. It is
@@ -386,6 +424,14 @@ public
    LOG-NEW-LEN  a u wid LOG-OK SLOT @ ;
 
 private
+
+\ Hear about every reclamation of code space, for as long as this file is
+\ loaded, so that the line a claimed slot is held against follows the pointer
+\ down when the space above it is really given back.
+: WATCH-INSTALL ( -- )
+   [: RECLAIMED ;] CODE-RECLAIM:WATCH ;
+
+WATCH-INSTALL
 
 get-current prot-wid-add
 

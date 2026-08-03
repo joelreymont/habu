@@ -3,8 +3,8 @@
 \ src/compiler/native/inline.f and the splice src/compiler/native/elaborate.f
 \ makes out of it.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Twelve things, and the last ten are the ones a
-\ change to the rule would break.
+\ WHAT THIS SUITE HAS TO SHOW. Thirteen things, and the last eleven are the ones
+\ a change to the rule would break.
 \
 \   1. That the record answers about an ADDRESS, keeps the tokens, the arity and
 \      the NAME it was told, refuses a second body for one address, refuses a
@@ -61,6 +61,19 @@
 \      a real row of the same arity; a caller that names one recorded word at
 \      another's address is refused by name, and one that names the same word in
 \      the other case is not refused at all.
+\  13. That a row DIES WITH THE ROUTINE it was copied out of. A FORGET hands the
+\      bytes above the code pointer back to the engine and the next definition is
+\      compiled over them, so a row left behind is a body a later caller would
+\      splice in place of the routine it meant to call - and the name check in 12
+\      cannot see it either, because the reclaimed routine and its replacement
+\      are two different words at ONE address. A small migrated word is therefore
+\      forgotten through the engine's own FORGET-DEFS-FROM, a LARGER
+\      engine-compiled word takes the freed slot, and its caller must emit a call
+\      and reach the larger word's answer; it reached the forgotten word's answer
+\      before rows were given back. The rows below the cut are untouched, name
+\      and all, the freed row taken again carries the new routine's name, a mark
+\      the cut fell below is refused rather than re-interpreted, and a claim
+\      outstanding over a reclamation is given up so no row can follow it.
 \
 \ WHAT THIS SUITE LEAVES BEHIND, WHICH IS NOTHING. Every row it writes - the ones
 \ it keys to addresses no code occupies, and the sixty-odd it stacks up to reach
@@ -113,6 +126,7 @@ TRUSTED: EV-N ( ptr u8 n -- n )
 $20000 constant A1
 $20004 constant A2
 $20008 constant A3
+$2000C constant A4
 
 \ A name one byte past what a row can hold, measured from the record's own
 \ ceiling rather than written down here: a change that widened the ceiling would
@@ -256,7 +270,26 @@ $41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
    T-LABEL
    1 1 NINL:STAGE-BEGIN
    [: NINL:ROWS NINL:RELEASE ;] E-NINL-STATE TTHROWSQ
-   NINL:STAGE-CLEAR ;
+   NINL:STAGE-CLEAR
+
+   \ A reclamation of code space reaches this table too, and a claim is the one
+   \ piece of state it can arrive in the middle of. A claim holds the slot a
+   \ routine is about to be published at, which is the free code slot itself, so
+   \ every reclamation floor is at or below it: any reclamation invalidates any
+   \ live claim, and the rule needs no comparison. The floor used here is the
+   \ free slot, so it takes no row away and this case measures the claim alone.
+   s" a code reclamation gives a live claim up, so no row can follow it" T-LABEL
+   1 1 NINL:STAGE-BEGIN
+   5 NINL:STAGE-INT
+   s" NINL-ROW-A4" A4 NINL:CLAIM
+   NINL:CLAIMED? FLAG# 1 T=
+   NINL:ROWS {: before:n :}
+   cp@ CODE-RECLAIM:TRUNCATE
+   NINL:CLAIMED? FLAG# 0 T=
+   NINL:STAGED? FLAG# 0 T=
+   NINL:ROWS before T=
+   [: NINL:COMMIT ;] E-NINL-STATE TTHROWSQ
+   A4 NINL:KNOWN? FLAG# 0 T= ;
 
 \ ---- the size rule, which is derived and not chosen ---------------------------
 \ One side of a call to a routine of arity (in -> out) is its stores, its three
@@ -1025,6 +1058,96 @@ variable DECLINED-BEFORE
    NINL:CLAIMED? FLAG# 0 T=
    NINL:STAGE-CLEAR ;
 
+\ ---- a row dies with the routine it was copied out of ------------------------
+\ The engine compiles every definition into one bump pointer, and
+\ FORGET-DEFS-FROM moves that pointer BACK to the start of the record it
+\ forgets. A migrated word's record starts at the address the publication seam
+\ wrote its routine at, so forgetting a migrated word puts the free code slot
+\ exactly there and the next definition the engine compiles is written over that
+\ routine. Nothing below arranges that collision - it is what the engine does -
+\ and the collision is ASSERTED rather than assumed, so a change that stopped
+\ reusing the slot turns these cases red instead of quietly measuring nothing.
+variable RECLAIM-ROWS
+variable RECLAIM-ENTRY
+
+\ A one-addition body: small enough to be recorded, and far enough from the
+\ six-addition word that takes its slot that splicing the wrong one is visible
+\ in the answer rather than in a count.
+: MIGRATE-RECLAIMED ( -- )
+   NINL:ROWS RECLAIM-ROWS !
+   s" : NINL-GONE ( n -- n ) 1 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" NINL-GONE" ENTRY-OF RECLAIM-ENTRY ! ;
+
+: MIGRATE-RECLAIM-CALLER ( -- )
+   s" NINL-RECYCLED" s" NINL-RECYCLED" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-RECYCLED-CALLER ( n -- n ) NINL-RECYCLED ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ The freed row taken again, by a body small enough to be recorded. Its row is
+\ the index the reclamation gave back, which is what makes the name question
+\ below the sharp one: a table that gave the index back without giving the NAME
+\ column back would answer this row with the forgotten routine's name.
+: MIGRATE-REUSER ( -- )
+   s" : NINL-REUSER ( n -- n ) 2 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: RECLAIM-CASES ( -- )
+   s" a small migrated body is recorded and answers its own arithmetic" T-LABEL
+   RECLAIM-ENTRY @ NINL:KNOWN? FLAG# 1 T=
+   NINL:ROWS RECLAIM-ROWS @ 1 + T=
+   s" 5 NINL-GONE" EV-N 6 T=
+
+   s" forgetting it puts the free code slot back at that address" T-LABEL
+   s" NINL-GONE" FORGET-DEFS-FROM
+   cp@ RECLAIM-ENTRY @ T=
+
+   s" and the body went with the code, giving its table slot back" T-LABEL
+   RECLAIM-ENTRY @ NINL:KNOWN? FLAG# 0 T=
+   NINL:ROWS RECLAIM-ROWS @ T=
+
+   s" while every row below the cut is untouched, name and all" T-LABEL
+   A1 NINL:KNOWN? FLAG# 1 T=
+   s" NINL-EDGE-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-EDGE-IN" ENTRY-OF s" NINL-EDGE-IN" NINL:NAMED? TTRUE
+
+   \ A mark is a prefix count, so a reclamation leaves one in exactly two states:
+   \ the table still reaches it, or the cut fell below it. The second is refused
+   \ rather than raising the count back over rows whose code is gone.
+   s" a mark the cut fell below is refused, not re-interpreted" T-LABEL
+   [: RECLAIM-ROWS @ 1 + NINL:RELEASE ;] E-NINL-BOUND TTHROWSQ
+
+   s" and one it left standing still means exactly what it meant" T-LABEL
+   RECLAIM-ROWS @ NINL:RELEASE
+   NINL:ROWS RECLAIM-ROWS @ T=
+   s" NINL-EDGE-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+
+   s" the next definition the engine compiles takes that exact slot" T-LABEL
+   s" : NINL-RECYCLED ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" EV
+   s" NINL-RECYCLED" ENTRY-OF RECLAIM-ENTRY @ T=
+   s" NINL-RECYCLED" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+   s" 5 NINL-RECYCLED" EV-N 26 T= ;
+
+: RECLAIM-CALLER-CASES ( -- )
+   s" a caller of the word at a reclaimed slot calls it rather than splicing"
+   T-LABEL
+   s" NINL-RECYCLED-CALLER" BL-COUNT 1 T=
+
+   s" and answers what that word computes, not what the forgotten one did"
+   T-LABEL
+   s" 5 NINL-RECYCLED-CALLER" EV-N 26 T=
+   s" 0 NINL-RECYCLED-CALLER" EV-N 21 T= ;
+
+: REUSER-CASES ( -- )
+   s" the freed row, taken again, is the row the reclamation gave back" T-LABEL
+   NINL:ROWS RECLAIM-ROWS @ 1 + T=
+   s" NINL-REUSER" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+
+   s" and it carries the new routine's name and not the forgotten one's" T-LABEL
+   s" NINL-REUSER" ENTRY-OF s" NINL-REUSER" NINL:NAMED? TTRUE
+   s" NINL-REUSER" ENTRY-OF s" NINL-GONE" NINL:NAMED? FLAG# 0 T=
+
+   s" and a caller of it copies the body it really holds" T-LABEL
+   s" 5 NINL-REUSER" EV-N 7 T= ;
+
 : CAP-PHASE ( -- )
    NINL:MARK FILL-MARK !
    FILL-TABLE
@@ -1097,6 +1220,12 @@ public
    MIGRATE-FPUT-BIG
    MIGRATE-FUSE
    RESULT-CASES
+   MIGRATE-RECLAIMED
+   RECLAIM-CASES
+   MIGRATE-RECLAIM-CALLER
+   RECLAIM-CALLER-CASES
+   MIGRATE-REUSER
+   REUSER-CASES
    CAP-PHASE
    RETIRE
    T-REPORT ;

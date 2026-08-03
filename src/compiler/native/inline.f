@@ -28,12 +28,33 @@
 \
 \ THE KEY IS THE ADDRESS AND NOT THE NAME, for the reason
 \ src/compiler/native/clobber.f gives in full: a call site branches to an
-\ ADDRESS, and the code at an address is written once, because
-\ src/compiler/native/publish.f writes every emission at the engine's free code
-\ slot and moves the pointer past it. A name can be redefined; a slot cannot be
-\ claimed twice. So a row written here is never contradicted, and a second row
-\ for one address is refused by name rather than replacing a body some caller has
-\ already copied.
+\ ADDRESS, and the code at an address is written once BETWEEN RECLAMATIONS,
+\ because src/compiler/native/publish.f writes every emission at the engine's
+\ free code slot and moves the pointer past it. A name can be redefined; a slot
+\ cannot be claimed twice while the pointer only goes forward. So a row written
+\ here is never contradicted, and a second row for one address is refused by
+\ name rather than replacing a body some caller has already copied.
+\
+\ AND THE POINTER DOES GO BACK, SO A ROW DIES WITH ITS ROUTINE. A FORGET
+\ (src/habu/xref.f) and a declaration rollback
+\ (src/core/generated-declaration-dictionary.f) both hand the bytes above the
+\ code pointer back to the engine, and the next definition is compiled over
+\ them. A row left behind then holds the body of a routine that is gone, and
+\ that is worse here than next door: a caller does not merely mis-save around
+\ such a row, it SPLICES it, so the caller computes what the reclaimed routine
+\ computed. It was reproduced end to end - a caller of a six-addition word
+\ inherited a one-addition row at the same address, passed the arity
+\ cross-check because both are one in and one out, and answered 6 where 26 was
+\ right. So this file registers with src/habu/xref.f's CODE-RECLAIM, the one
+\ word every checked reclamation of code space goes through, and gives up every
+\ row at or above the floor before the bytes are released.
+\
+\ WHICH IS NOT THE EVICTION THE CEILING BELOW DECLINES TO MAKE. Turning a new
+\ body away keeps every row a caller may have been compiled against; giving back
+\ the rows of code that no longer exists takes away only rows whose callers went
+\ with them. The first would make which words are inlined depend on migration
+\ order, and the second is what stops it depending on migration HISTORY - on how
+\ many times a program forgot and re-migrated before this one.
 \
 \ AND THE NAME IS RECORDED BESIDE IT, BECAUSE THE KEY IS A CLAIM AND NOT A
 \ LOOKUP. A call site does not search for its row: it STATES an address, taken
@@ -186,7 +207,10 @@ private
 \ the ceiling turns a body away rather than evicting one that callers may already
 \ have been compiled against, and it turns it away by declining the ROW and not
 \ the routine. What dropping one silently would cost is stated at the head of
-\ this file, and DECLINED below is what is kept instead of the silence.
+\ this file, and DECLINED below is what is kept instead of the silence. The rows
+\ this file DOES give back are the ones whose code was reclaimed, which is the
+\ opposite case: their callers went with them, so the ceiling is a ceiling on
+\ LIVE bodies rather than on how many times a process may recompile a word.
 64 constant ROWS-MAX
 
 \ The capacity of one row, and the argument for the number is above: it is not
@@ -312,6 +336,45 @@ variable S-NLEN
 
 : R-NAME-AT ( n -- ptr u8 )
    NAME-MAX * R-NAME + ;
+
+\ ---- giving back the rows of code that was reclaimed --------------------------
+\ The first row at or above this address, or the end of the table. What makes
+\ this one number the whole answer is that the live table is in publication
+\ order and a publication's slot is above every slot claimed before it -
+\ src/compiler/native/publish.f holds that as a REFUSAL (E-NPUB-SLOT) rather
+\ than an assumption - so the rows a reclamation takes away are a SUFFIX.
+: FLOOR-ROW ( n -- n )
+   {: floor:n :}
+   ROWS-N @
+   ROWS-N @ 0 ?do
+      i cells R-ENTRY + @ floor >= if drop i leave then
+   loop ;
+
+\ ...and that the rest of the table really is above the floor. A row below it
+\ after the cut would mean the table is not the sequence the cut rests on, which
+\ is a defect in this file rather than anything a program can ask for: there is
+\ no correct answer to give and no caller to give it to, so it dies here. A
+\ watcher may not throw - the reclamation it is answering is already half done -
+\ and this is the shape src/core/decl-event.f uses for the same class.
+: ORDER-CK ( n n -- )
+   {: floor:n k:n :}
+   ROWS-N @ k ?do
+      i cells R-ENTRY + @ floor < if
+         s" ninl: recorded bodies out of publication order" 76 die
+      then
+   loop ;
+
+\ Give back every body whose routine starts at or above this address. Dropping a
+\ suffix is what keeps a MARK meaning what it meant - a mark is a prefix count,
+\ and a prefix of a prefix is the same prefix - and it is why no column has to be
+\ carried anywhere: the rows below the cut are untouched, and COMMIT writes every
+\ column of the row it fills, the name among them, so a reused slot cannot show
+\ a previous body's name.
+: DROP-FROM ( n -- )
+   {: floor:n :}
+   floor FLOOR-ROW {: k:n :}
+   floor k ORDER-CK
+   k ROWS-N ! ;
 
 public
 
@@ -576,10 +639,20 @@ EXPORT NAME-MAX
 \ IT IS ONLY EVER SAFE IN ONE DIRECTION. Losing a row costs a caller a call and
 \ nothing else, which is the same thing a full table costs; what may never happen
 \ is a row surviving that describes something nobody published, so this drops
-\ rows and never adds one, and the addresses it forgets cannot come back - the
-\ publication seam writes each emission at a fresh code slot. A release with a
-\ body staged is refused, because a claim already holds the row index it was
-\ given and a table moved under it would key that body to somebody else's row.
+\ rows and never adds one. An address it forgets can only come back if the code
+\ space was reclaimed, and a reclamation is exactly what takes that row away
+\ first. A release with a body staged is refused, because a claim already holds
+\ the row index it was given and a table moved under it would key that body to
+\ somebody else's row.
+\
+\ AND A RECLAMATION MOVES THE TABLE UNDER A MARK SOMEBODY IS HOLDING, which is
+\ the one interplay worth writing down. RECLAIM below drops a SUFFIX, so a mark
+\ is left in one of two states and there is no third. Either the table still
+\ reaches the mark, and the rows below it are untouched - a prefix of a prefix is
+\ the same prefix - so releasing to it means exactly what it meant. Or the
+\ reclamation cut below the mark, and the mark now names rows that no longer
+\ exist: the bound check above refuses it by name rather than raising ROWS-N back
+\ over rows whose code is gone. A mark is never silently re-interpreted.
 : MARK ( -- n )
    ROWS ;
 
@@ -590,6 +663,46 @@ EXPORT NAME-MAX
    k ROWS-N ! ;
 
 private
+
+\ ---- what a code reclamation does to this file --------------------------------
+\ Two things, and the second is why this is a word of its own rather than the
+\ drop above handed straight to the registration.
+\
+\ THE ROWS OF THE RECLAIMED CODE GO. That is DROP-FROM, and the head of this file
+\ argues it.
+\
+\ AND A CLAIM OUTSTANDING OVER THAT RECLAMATION IS GIVEN UP. A claim holds the
+\ address a routine is ABOUT to be published at and the row index that address is
+\ about to occupy; the address is the free code slot at the moment the emission
+\ was placed, so EVERY reclamation floor is at or below it and every reclamation
+\ therefore invalidates every live claim. The staging goes with it, so the commit
+\ on the far side of the publication cannot write a row for a slot that was taken
+\ away - it finds no claim and refuses by name.
+\
+\ WHETHER ANY REAL PATH CAN GET HERE MID-MIGRATION, AND THE ANSWER IS NO. Between
+\ the claim and the commit stands exactly one step, NPUB:REPUBLISH, and it moves
+\ the code pointer only forward, evaluates nothing, and opens no declaration - so
+\ the two words that lower the pointer (src/habu/xref.f FORGET-DEFS-FROM,
+\ src/core/generated-declaration-dictionary.f ROLLBACK) are not reachable from
+\ inside it. A migration's own `evaluate`, which is what a declaration rollback
+\ would unwind, has already happened: it is stage N0, many steps before the claim.
+\ The guard is kept anyway because it is one comparison and because the invariant
+\ it rests on belongs to another file: if REPUBLISH ever grew a step that could
+\ reclaim, this file would give the row up instead of writing it against a slot
+\ that had moved. The seam refuses that publication too - the emission's recorded
+\ placement would no longer be the slot being claimed, which is E-NPUB-PLACE - so
+\ the two are independent and neither is the other's excuse.
+: RECLAIM ( n -- )
+   {: floor:n :}
+   floor DROP-FROM
+   S-CLAIM @ 0<> if STAGE-CLEAR then ;
+
+\ One registration, and no way to undo it: a row that outlived its code is a body
+\ a caller would splice in place of the routine it meant to call.
+: WATCH-INSTALL ( -- )
+   [: RECLAIM ;] CODE-RECLAIM:WATCH ;
+
+WATCH-INSTALL
 
 get-current prot-wid-add
 

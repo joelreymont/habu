@@ -1117,11 +1117,31 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ a name this file never had, so it is reported, while the departing one's
 \ deletion is the packaging dot's business rather than this entry's.
 \
+\ Why src/habu/xref.f is the third member.  Same kind of file and same rule: it
+\ is the live-dictionary surface of the cold prefix - the record readers, the
+\ lookup helpers, the retirement and truncation entries - and every one of those
+\ names is resolved bare by later prefix sources and by the REPL.  Its packaging
+\ census is already written down (dot habu-pkg-dictionary-cross-73f449d9: 88
+\ unowned definitions, to be split into a read package and a lifecycle package),
+\ so like habu2.f and layout.f it is a body of existing code waiting to be
+\ packaged rather than a growing language surface.  Measured 2026-08-03: adding
+\ the code-reclamation notice to the last line of the existing global
+\ FORGET-DEFS-FROM - one call, publishing no new name - reported
+\ `E-PACKAGE-OWNERSHIP src/habu/xref.f:504:3`, so as configured the gate rejected
+\ every possible change to the dictionary-truncation path, including the repair
+\ of the stale-row miscompiles that found this.  The asymmetry is earned here for
+\ the same structural reason it is earned for habu2.f: xref.f already opens real
+\ packages (PKG-AUTH, GENERATED-DECL-NAME-PREFLIGHT, CODE-RECLAIM), so a
+\ genuinely new word in it has an owner it can join and must join one - and the
+\ notice's own package is exactly that shape.
+\
 \ Retirement condition.  The habu2.f half is removed when the continuing habu2
 \ packaging work (dot habu-cont-habu2-emitter-493363e7) extends those seams over
-\ the remaining global surface, and the layout.f half when dot
-\ habu-give-layout-f-315df2ca finishes packaging that file, exactly as the checker
-\ and render entries are removed by their own sealing dots.  FINISH-DEFINITION
+\ the remaining global surface, the layout.f half when dot
+\ habu-give-layout-f-315df2ca finishes packaging that file, and the xref.f half
+\ when dot habu-pkg-dictionary-cross-73f449d9 splits that file into its read and
+\ lifecycle packages - exactly as the checker and render entries are removed by
+\ their own sealing dots.  FINISH-DEFINITION
 \ checks SCOPE-DELTA before it consults this admission, so adding or deleting a
 \ package boundary around an engine word is still reported here like anywhere
 \ else.  A rename or copy that makes some other file arrive AT one of these paths
@@ -1129,15 +1149,16 @@ s" test/bootstrap-using-checker-hook-src.f" STAGE0-ROW+
 \ here even though no line of it is marked added -- so WHOLE-CHANGED closes that
 \ hole and reports the whole file.
 \
-\ The two paths are rows reached through ONE comparison site, for the reason the
+\ The three paths are rows reached through ONE comparison site, for the reason the
 \ fixture row table below gives: a weakening -- a suffix match, a case fold, a
-\ prefix test -- then has exactly one place to live and changes both rows at once,
-\ so the hostile fixtures kill it on both.
-2 constant ENGINE-TRUNK-N
+\ prefix test -- then has exactly one place to live and changes every row at once,
+\ so the hostile fixtures kill it on all of them.
+3 constant ENGINE-TRUNK-N
 
 : ENGINE-TRUNK-AT ( n -- ptr u8 n ) {: row:n :}
    row 0= if s" src/habu/habu2.f" exit then
-   s" src/habu/layout.f" ;
+   row 1 = if s" src/habu/layout.f" exit then
+   s" src/habu/xref.f" ;
 
 : ENGINE-TRUNK-PATH? ( -- bool )
    0 TRUNK-HIT !

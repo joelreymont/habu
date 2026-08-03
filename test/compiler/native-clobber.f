@@ -2,7 +2,7 @@
 \ with the answer. One concern: src/compiler/native/clobber.f and the narrowing
 \ every stage of the chain hangs off it.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Four things, and the last two are the ones the
+\ WHAT THIS SUITE HAS TO SHOW. Seven things, and the last four are the ones the
 \ record exists for.
 \
 \   1. That the record answers about an ADDRESS, keeps what it was told, and
@@ -23,6 +23,30 @@
 \      and the first has fewer. That is the measurement the whole change is for,
 \      and the second is the proof that a callee nobody knows anything about
 \      still gets the full caller-save discipline.
+\   5. That the narrowing is measured UNDER PRESSURE. A caller with fewer live
+\      values than the row leaves free registers spills nothing whatever the row
+\      says, so a suite that only measures such a caller passes with a register
+\      deleted from the record. The pressure pair below holds more values live
+\      across the call than the row leaves room for, so every register in the
+\      row moves one store and one load.
+\   6. That a ROW DIES WITH ITS CODE. A FORGET hands the bytes above the code
+\      pointer back to the engine, and the next definition is compiled over
+\      them; a row left behind would tell a later caller that the routine it is
+\      about to branch to destroys the registers of a routine that no longer
+\      exists. So a migrated word is forgotten through the engine's own
+\      FORGET-DEFS-FROM, the freed slot is taken by an ENGINE-compiled word of
+\      the same shape, and a caller of THAT word is migrated: it must find no
+\      row, keep the whole discipline, and compute the right answer. It computed
+\      the wrong one before rows were dropped. The row's slot has to come back
+\      too, or a forget-and-re-migrate cycle would burn the table.
+\   7. That a refusal from this record reaches the publication seam BEFORE the
+\      seam writes a byte. The widen refusal used to be raised after the routine
+\      was in the arena and its dictionary record retargeted, which left a live
+\      word described by a row belonging to something else - and the next caller
+\      compiled against that row computed the wrong answer. The case below seeds
+\      a narrow row at the exact slot a replayed migration will claim and
+\      requires the refusal to leave the word's record pointing at the code the
+\      engine compiled.
 \
 \ WHY THE COUNT IS OF INSTRUCTIONS AND NOT OF BYTES. A byte count moves for any
 \ reason at all. What the narrowing removes is exactly the traffic between a
@@ -243,6 +267,154 @@ $F9400000 constant LDR-OP
    s" NCLOB-WIDE" DS-STORES 7 T=
    s" NCLOB-WIDE" DS-LOADS 8 T= ;
 
+\ ---- the narrowing, measured where it can actually be lost -------------------
+\ The pair above holds two values live across each call while the callee's row
+\ leaves six registers free, so the row has slack: delete a register from it and
+\ both callers still spill nothing extra and every count stays where it was.
+\ This pair holds EIGHT values live across one call - seven named sums and the
+\ accumulator - which is more than the row leaves room for, so the caller spills
+\ the excess and the number it spills is (live - room). Every register the row
+\ names therefore moves exactly one store and one load, in both directions: a
+\ record that named one register fewer would take these counts to two, and the
+\ engine-compiled twin, whose room is nothing at all, spills all eight.
+: MIGRATE-PRESSURE-NARROW ( -- )
+   s" NCLOB-STEP" s" NCLOB-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-PN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s NCLOB-STEP + + + + + + + ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-PRESSURE-WIDE ( -- )
+   s" NCLOB-ENGINE-STEP" s" NCLOB-ENGINE-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-PW ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s NCLOB-ENGINE-STEP + + + + + + + ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: PRESSURE-CASES ( -- )
+   s" both pressure callers answer what their body says" T-LABEL
+   s" 0 NCLOB-PN" EV-N 49 T=
+   s" 0 NCLOB-PW" EV-N 49 T=
+
+   s" a caller with more live values than the row leaves room for spills the excess" T-LABEL
+   s" NCLOB-PN" DS-STORES 3 T=
+   s" NCLOB-PN" DS-LOADS 3 T=
+
+   s" while its engine-callee twin, with no room at all, spills every one" T-LABEL
+   s" NCLOB-PW" DS-STORES 9 T=
+   s" NCLOB-PW" DS-LOADS 9 T= ;
+
+\ ---- a row dies with the code it describes ------------------------------------
+\ The engine compiles every definition into one bump pointer and FORGET-DEFS-FROM
+\ moves that pointer BACK to the start of the record it forgets. A migrated
+\ word's record starts at the address the publication seam wrote its routine at,
+\ so forgetting the migrated word puts the free code slot exactly there and the
+\ next definition the engine compiles is written over that routine. Everything
+\ below therefore drives the engine's own FORGET, and the collision is ASSERTED
+\ rather than assumed - if the engine ever stopped reusing the slot the case
+\ would go red instead of quietly measuring nothing.
+variable ROWS-BEFORE
+variable GONE-ENTRY
+
+: BUILD-RECLAIMED ( -- )
+   NCLOB:ROWS ROWS-BEFORE !
+   s" : NCLOB-GONE ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 REGS NMIGRATE:DEFINE
+   s" NCLOB-GONE" ENTRY-OF GONE-ENTRY ! ;
+
+\ The word that takes the freed slot is compiled by the ENGINE, so nothing knows
+\ what it destroys and a caller of it must save everything it holds. That is the
+\ shape the stale row broke: the caller used to be told the forgotten routine's
+\ two registers and skipped saving the two the engine's emitter really writes.
+: RECLAIM-CASES ( -- )
+   s" a migration is recorded at the address it published at" T-LABEL
+   GONE-ENTRY @ NCLOB:KNOWN? FLAG# 1 T=
+   NCLOB:ROWS ROWS-BEFORE @ 1+ T=
+
+   s" forgetting it puts the free code slot back at that address" T-LABEL
+   s" NCLOB-GONE" FORGET-DEFS-FROM
+   cp@ GONE-ENTRY @ T=
+
+   s" and the row went with the code, giving its table slot back" T-LABEL
+   GONE-ENTRY @ NCLOB:KNOWN? FLAG# 0 T=
+   NCLOB:ROWS ROWS-BEFORE @ T=
+
+   s" the next definition the engine compiles takes that exact slot" T-LABEL
+   s" : NCLOB-RECYCLED ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" EV
+   s" NCLOB-RECYCLED" ENTRY-OF GONE-ENTRY @ T=
+
+   s" and nothing claims to know what the word now living there destroys" T-LABEL
+   s" NCLOB-RECYCLED" ENTRY-OF NCLOB:KNOWN? FLAG# 0 T=
+   s" NCLOB-RECYCLED" ENTRY-OF GPR-AT  A64EFF:GPR-ALL A64EFF:GPRS-N T=
+
+   s" and a floor above the free slot reclaims nothing and is refused" T-LABEL
+   [: cp@ INSN-BYTES + CODE-RECLAIM:TRUNCATE ;] CODE-RECLAIM:E-FLOOR TTHROWSQ
+
+   s" three files asked to be told, which is why any of this happened" T-LABEL
+   CODE-RECLAIM:WATCHERS 3 T= ;
+
+\ A caller of the word at the recycled slot, migrated with ten values live across
+\ the call so that skipping the save of even one of them shows up in the answer:
+\ 55 from the ten sums plus 21 from the callee is 76, and the stale row made this
+\ caller answer 86. Its twin is the identical body against the engine-compiled
+\ callee that has never had a row, so the two counts are the same measurement of
+\ the same discipline and the comparison needs no number written down here.
+14 constant RECLAIM-REGS
+
+: MIGRATE-RECLAIM-CALLER ( -- )
+   s" NCLOB-RECYCLED" s" NCLOB-RECYCLED" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-RECYCLED-CALLER ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s NCLOB-RECYCLED + + + + + + + + + + ;"
+   1 1 RECLAIM-REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-RECLAIM-TWIN ( -- )
+   s" NCLOB-ENGINE-STEP" s" NCLOB-ENGINE-STEP" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NCLOB-RECYCLED-TWIN ( n -- n ) {: s:n :} s 1 + s 2 + s 3 + s 4 + s 5 + s 6 + s 7 + s 8 + s 9 + s 10 + s NCLOB-ENGINE-STEP + + + + + + + + + + ;"
+   1 1 RECLAIM-REGS NMIGRATE:DEFINE-CALLING ;
+
+: RECLAIM-CALLER-CASES ( -- )
+   s" a caller of the word at a reclaimed slot computes what its body says" T-LABEL
+   s" 0 NCLOB-RECYCLED-CALLER" EV-N 76 T=
+   s" 0 NCLOB-RECYCLED-TWIN" EV-N 76 T=
+
+   s" and it keeps exactly the discipline a never-recorded callee earns" T-LABEL
+   s" NCLOB-RECYCLED-CALLER" DS-STORES  s" NCLOB-RECYCLED-TWIN" DS-STORES T=
+   s" NCLOB-RECYCLED-CALLER" DS-LOADS  s" NCLOB-RECYCLED-TWIN" DS-LOADS T=
+
+   s" which is more than a caller of a word that still has its row keeps" T-LABEL
+   s" NCLOB-PN" DS-STORES  s" NCLOB-RECYCLED-CALLER" DS-STORES  < TTRUE ;
+
+\ ---- a refusal from this record costs nothing ---------------------------------
+\ The widen refusal has to be raised BEFORE the seam writes a byte, because the
+\ seam's own contract is that a refused publication leaves the word running the
+\ code it was running. Reaching it needs a row already sitting at the slot the
+\ seam is about to claim, and the slot is learnt the only honest way: the same
+\ source is migrated once, forgotten back to the same anchor, and migrated again
+\ - the engine compiles the identical text from the identical free slot, so the
+\ second run claims the address the first one did. The refusal itself proves the
+\ collision: without it the second migration would simply succeed.
+variable ANCHOR-ENTRY
+
+: ORDER-ANCHOR ( -- )
+   s" : NCLOB-ANCHOR ( -- ) ;" EV ;
+
+: ORDER-MIGRATE ( -- )
+   s" : NCLOB-REPLAY ( n -- n ) 1 + 2 + 3 + 4 + 5 + 6 + ;" 1 1 REGS NMIGRATE:DEFINE ;
+
+: ORDER-CASES ( -- )
+   ORDER-ANCHOR
+   ORDER-MIGRATE
+   s" NCLOB-REPLAY" ENTRY-OF ANCHOR-ENTRY !
+
+   s" NCLOB-ANCHOR" FORGET-DEFS-FROM
+   ANCHOR-ENTRY @  $1 GPRS  $0 FPRS  NCLOB:RECORD
+
+   s" a publication whose row would widen an existing one is refused" T-LABEL
+   ORDER-ANCHOR
+   [: ORDER-MIGRATE ;] E-NCLOB-WIDEN TTHROWSQ
+
+   s" and the refusal leaves the word running the code the engine compiled" T-LABEL
+   s" NCLOB-REPLAY" ENTRY-OF ANCHOR-ENTRY @ T<>
+   s" NCLOB-REPLAY" ENTRY-OF NCLOB:KNOWN? FLAG# 0 T=
+   s" 0 NCLOB-REPLAY" EV-N 21 T=
+
+   s" with the seeded row exactly as the refusal found it" T-LABEL
+   ANCHOR-ENTRY @ GPR-AT $1 T= ;
+
 public
 
 : RUN ( -- )
@@ -255,6 +427,15 @@ public
    MIGRATE-NARROW
    MIGRATE-WIDE
    NARROW-CASES
+   MIGRATE-PRESSURE-NARROW
+   MIGRATE-PRESSURE-WIDE
+   PRESSURE-CASES
+   BUILD-RECLAIMED
+   RECLAIM-CASES
+   MIGRATE-RECLAIM-CALLER
+   MIGRATE-RECLAIM-TWIN
+   RECLAIM-CALLER-CASES
+   ORDER-CASES
    T-REPORT ;
 
 ;package

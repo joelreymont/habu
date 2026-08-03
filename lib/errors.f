@@ -1054,6 +1054,7 @@ public
 -8567 constant E-NCLOB-WIDEN  \ a second record of what the routine at one code address destroys that names a register the first record did not: every call site compiled against the first one skipped saving exactly that register
 -8568 constant E-NCLOB-CAP    \ more published routines than the clobber record's table holds
 -8569 constant E-NPUB-CLOBBER \ an emission that branches to a routine destroying a register the set about to be published for it does not name: what a routine destroys has to cover what everything it calls destroys
+-8578 constant E-NPUB-SLOT    \ the code slot this publication is claiming lies below the end of the routine the seam published last: code space was reclaimed without the notice everything keyed to a code address is dropped by, so a slot would be claimed twice
 
 -8574 constant E-NINL-STATE    \ the recorded-body staging used out of order: a body staged while another one is open, a token staged with none open, or a commit with nothing staged
 -8575 constant E-NINL-CAP      \ more tokens in one recorded body than a row holds, or a spelling longer than a token slot holds: a table with no room for another body declines the row instead, because a full table is no reason to refuse a word the chain compiled
