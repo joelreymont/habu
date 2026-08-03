@@ -121,6 +121,48 @@ TMOVK-LITS $FFFFFFFF0000FFFF T= $123456789ABCDEF0 T= -1 T= 0 T=
 7 2 mod 1 T=
 7 2 /mod 3 T= 1 T=
 $10 4 lshift $100 T=
+
+package ENGINE-SUITE
+
+: SH-CF ( -- n n )
+   1 64 lshift  -1 63 rshift ;
+
+: SH-LI ( n -- n )
+   {: x:n :} x 7 lshift ;
+
+: SH-RI ( n -- n )
+   {: x:n :} x 7 rshift ;
+
+: SH-LR ( n n -- n )
+   {: x:n s:n :} x s lshift ;
+
+: SH-RR ( n n -- n )
+   {: x:n s:n :} x s rshift ;
+
+: SH-LLIVE ( n n n n -- n )
+   {: a:n b:n x:n s:n :} a b x s lshift + + ;
+
+: SH-RLIVE ( n n n n -- n )
+   {: a:n b:n x:n s:n :} a b x s rshift + + ;
+
+SH-CF 1 T= 1 T=
+3 SH-LI 384 T=
+$FF00 SH-RI $1FE T=
+3 0 SH-LR 3 T=
+1 63 SH-LR $8000000000000000 T=
+3 64 SH-LR 3 T=
+3 65 SH-LR 6 T=
+1 -1 SH-LR $8000000000000000 T=
+-1 0 SH-RR -1 T=
+-1 63 SH-RR 1 T=
+-1 64 SH-RR -1 T=
+-1 65 SH-RR $7FFFFFFFFFFFFFFF T=
+-1 -1 SH-RR 1 T=
+10 20 3 5 SH-LLIVE 126 T=
+10 20 256 4 SH-RLIVE 46 T=
+
+;package
+
 5 3 > -1 T=
 5 3 <= 0 T=
 -7 abs 7 T=

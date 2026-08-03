@@ -5726,14 +5726,20 @@ s" em-compile-local" s" --" TRUST
    lcnotnum LBL, ;
 s" em-compile-literal" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-COMPILE-ARITH-OPS ( -- )
-   s" +" KEEP? IF LMAIN LABEL@ LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ VOPI-ENTRY THEN
-   s" -" KEEP? IF LMAIN LABEL@ LKWMINUS 1 ['] VF- ['] E- ['] EI- VOPI-ENTRY THEN
+   s" +" KEEP? IF LMAIN LABEL@ LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ 4095 VOPI-ENTRY THEN
+   s" -" KEEP? IF LMAIN LABEL@ LKWMINUS 1 ['] VF- ['] E- ['] EI- 4095 VOPI-ENTRY THEN
    s" *" KEEP? IF LMAIN LABEL@ LKWSTAR  1 ['] VF* ['] E* VOP-ENTRY THEN
    s" and" KEEP? IF LMAIN LABEL@ LKWAND2  3 ['] FAND ['] EAND VOP-ENTRY THEN
    s" or" KEEP? IF LMAIN LABEL@ LKWOR2   2 ['] FOR2 ['] EOR2 VOP-ENTRY THEN
-   s" xor" KEEP? IF LMAIN LABEL@ LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY THEN ;
+   s" xor" KEEP? IF LMAIN LABEL@ LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY THEN
+   s" lshift" KEEP? IF LMAIN LABEL@ LKWLSH 6 ['] FLSH ['] ELSH ['] EILSH 63 VOPI-ENTRY THEN
+   s" rshift" KEEP? IF LMAIN LABEL@ LKWRSH 6 ['] FRSH ['] ERSH ['] EIRSH 63 VOPI-ENTRY THEN ;
 s" em-compile-arith-ops" s" --" TRUST
+
+;package
 
 : EM-COMPILE-SHUFFLE-OPS ( -- )
    s" dup" KEEP? IF LMAIN LABEL@ LKWDUP2  3 1 ['] XDUP  VSHUF-ENTRY THEN
@@ -5768,6 +5774,8 @@ s" em-compile-unary-ops" s" --" TRUST
    s" f/" KEEP? IF LMAIN LABEL@ LKWFSLASH 2 $1E601800 FOP-ENTRY THEN ;
 s" em-compile-float-ops" s" --" TRUST
 
+package ENGINE-EMIT
+
 : EM-COMPILE-OPS ( -- )
    EM-COMPILE-ARITH-OPS
    EM-COMPILE-SHUFFLE-OPS
@@ -5775,6 +5783,8 @@ s" em-compile-float-ops" s" --" TRUST
    EM-COMPILE-UNARY-OPS
    EM-COMPILE-FLOAT-OPS ;
 s" em-compile-ops" s" --" TRUST
+
+;package
 
 : EM-COMPILE-CALL ( -- )
    LBL LBL LBL LBL LBL LBL LBL LBL {: notimm:label depthok:label callimm:label noxc:label ploop:label pdone:label usedtry:label found:label :}
@@ -6630,7 +6640,7 @@ s" SRCA@" s" -- ptr u8" TRUST
 
 : EMIT-LABEL-OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
-   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
+   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !  LBL LKWLSH !  LBL LKWRSH !
    LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
    LBL LKWOVER2 !  LBL LKWNIP2 !
    LBL LKWEQ2 !  LBL LKWNE2 !  LBL LKWLT2 !

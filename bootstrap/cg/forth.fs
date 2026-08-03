@@ -5533,12 +5533,14 @@ variable P2SK
    lcnotnum LBL, ;
 
 : EMIT-COMPILE-ARITH-OPS ( n -- ) {: lmain :}
-   lmain LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ VOPI-ENTRY
-   lmain LKWMINUS 1 ['] VF- ['] E- ['] EI- VOPI-ENTRY
+   lmain LKWPLUS  1 ['] VF+ ['] E+ ['] EI+ 4095 VOPI-ENTRY
+   lmain LKWMINUS 1 ['] VF- ['] E- ['] EI- 4095 VOPI-ENTRY
    lmain LKWSTAR  1 ['] VF* ['] E* VOP-ENTRY
    lmain LKWAND2  3 ['] FAND ['] EAND VOP-ENTRY
    lmain LKWOR2   2 ['] FOR2 ['] EOR2 VOP-ENTRY
-   lmain LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY ;
+   lmain LKWXOR2  3 ['] FXOR2 ['] EXOR VOP-ENTRY
+   lmain LKWLSH 6 ['] FLSH ['] ELSH ['] EILSH 63 VOPI-ENTRY
+   lmain LKWRSH 6 ['] FRSH ['] ERSH ['] EIRSH 63 VOPI-ENTRY ;
 
 : EMIT-COMPILE-SHUFFLE-OPS ( n -- ) {: lmain :}
    lmain LKWDUP2  3 1 ['] XDUP  VSHUF-ENTRY
@@ -6079,7 +6081,7 @@ variable P2SK
 
 : EMIT-LABEL-OPS ( -- )
    LBL LKWPLUS !  LBL LKWMINUS !  LBL LKWSTAR !
-   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !
+   LBL LKWAND2 !  LBL LKWOR2 !  LBL LKWXOR2 !  LBL LKWLSH !  LBL LKWRSH !
    LBL LKWDUP2 !  LBL LKWDROP2 !  LBL LKWSWAP2 !
    LBL LKWOVER2 !  LBL LKWNIP2 !
    LBL LKWEQ2 !  LBL LKWNE2 !  LBL LKWLT2 !
