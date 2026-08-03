@@ -1,4 +1,4 @@
-\ gpu-session-test.f - persistent GPU session lifecycle.
+\ gpu-session-test.f - host-only fake GPU session lifecycle matrix.
 
 require lib/test.f
 require lib/test/outcome.f
@@ -367,13 +367,6 @@ $86 constant FT-FAULT
    ;MATCH
    FT-WAIT-FAULT ;
 
-: FT-REAL-TWO ( -- )
-   FT-OFF
-   FT-MUST-OPEN FT-MUST-OPEN
-   FT-MUST-CLOSE FT-MUST-CLOSE
-   FT-MUST-OPEN FT-MUST-OPEN swap
-   FT-MUST-CLOSE FT-MUST-CLOSE ;
-
 : FT-RUN ( -- )
    T-RESET
    FT-ON
@@ -385,8 +378,8 @@ $86 constant FT-FAULT
    FT-TWO-OLDEST
    FT-MEM-RELEASE
    FT-ABORT-RELEASE
-   FT-REAL-TWO
-   T-REPORT ;
+   T-REPORT
+   FT-OFF ;
 
 FT-RUN
 

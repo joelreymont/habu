@@ -23,15 +23,20 @@ private
 : GS-LEN ( -- CAD-NUM:alloc-byte-len )
    GS-BYTES MEM:BYTES-ALLOC-LEN ;
 
-\ The checker cannot bind opaque linear owners and ptr n/ptr u8 views to one
-\ live block. This shared private boundary is owned for retirement by
-\ habu-checker-ptr-lifetime-f59d1e9d.
+\ The checker cannot bind a ptr n backing block to an opaque linear owner.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: GS-MINT ( ptr n -- GPU:session ) ;
 
+\ The checker cannot recover a linear owner's ptr n backing block.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: GS-TAKE ( GPU:session -- ptr n ) ;
 
+\ The checker cannot retype an allocated byte span as a cell block.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: HOST-BLOCK ( ptr u8 -- ptr n ) ;
 
+\ The checker cannot retype a cell block as its allocated byte span.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
 TRUSTED: HOST-BYTES> ( ptr n -- ptr u8 ) ;
 
 : GS@ ( ptr n n -- n )
