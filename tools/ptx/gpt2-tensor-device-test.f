@@ -222,7 +222,7 @@ variable E0   variable E1   variable E2
    rows cols LN-RUN ;
 
 : LN-EPS ( -- )
-   NH 0 ?do 2.0 A0 i A! loop
+   NH 0 ?do  i 1 and 0<> if 2.00390625 else 1.99609375 then A0 i A! loop
    1 NH LN-RUN ;
 
 : TEST-LINEAR-SMALL ( -- )

@@ -127,9 +127,9 @@ TRUSTED: UNEMBED-ABI ( -- span<space-global,f32,h> matrix<space-global,f32,v,h> 
 
 \ out[t,h] = wte[ids[t],h] + wpe[base_pos+t,h]. Indexed row gather and
 \ runtime t*h induction are not expressible in the checked PTX vocabulary.
-\ Retirement owners: habu-type-emitted-ptx-8ed6f4b3, habu-ptx-phantom-preserving-3df9db92.
-TRUSTED: EMBED-COMP ( span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<space-global,f32,p,h> matrix<space-global,f32,t,h> -- )
-   EMIT-EMBED ;
+\ Raw-loop verification owner: habu-type-emitted-ptx-8ed6f4b3.
+: EMBED-COMP ( span<space-global,u32,t> matrix<space-global,f32,v,h> matrix<space-global,f32,p,h> matrix<space-global,f32,t,h> -- )
+   [: EMIT-EMBED ;] PTXREP:SINK4 ;
 
 : EMIT-LN ( n n n n -- ) {: x:n gamma:n beta:n out:n :}
    EMIT-ROW {: row:n :}
@@ -170,9 +170,9 @@ TRUSTED: EMBED-COMP ( span<space-global,u32,t> matrix<space-global,f32,v,h> matr
 
 \ out[r,c] = gamma[c]*(x[r,c]-mean[r])/sqrt(var[r]+1e-5)+beta[c].
 \ Runtime strided c loops, including c>block, are not expressible by ROW-SPAN.
-\ Retirement owners: habu-type-emitted-ptx-8ed6f4b3, habu-ptx-phantom-preserving-3df9db92.
-TRUSTED: LN-COMP ( matrix<space-global,f32,r,c> span<space-global,f32,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
-   EMIT-LN ;
+\ Raw-loop verification owner: habu-type-emitted-ptx-8ed6f4b3.
+: LN-COMP ( matrix<space-global,f32,r,c> span<space-global,f32,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
+   [: EMIT-LN ;] PTXREP:SINK4 ;
 
 : EMIT-LINEAR ( n n n n -- ) {: x:n w:n bias:n out:n :}
    TID {: i:n :}
@@ -195,9 +195,9 @@ TRUSTED: LN-COMP ( matrix<space-global,f32,r,c> span<space-global,f32,c> span<sp
 
 \ out[r,c] = bias[c] + sum_k x[r,k]*w[k,c].
 \ Runtime-k accumulation is not expressible in the checked PTX vocabulary.
-\ Retirement owners: habu-type-emitted-ptx-8ed6f4b3, habu-ptx-phantom-preserving-3df9db92.
-TRUSTED: LINEAR-COMP ( matrix<space-global,f32,r,k> matrix<space-global,f32,k,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
-   EMIT-LINEAR ;
+\ Raw-loop verification owner: habu-type-emitted-ptx-8ed6f4b3.
+: LINEAR-COMP ( matrix<space-global,f32,r,k> matrix<space-global,f32,k,c> span<space-global,f32,c> matrix<space-global,f32,r,c> -- )
+   [: EMIT-LINEAR ;] PTXREP:SINK4 ;
 
 : EMIT-UNEMBED ( n n n -- ) {: x:n wte:n out:n :}
    TID {: row:n :}
@@ -217,9 +217,9 @@ TRUSTED: LINEAR-COMP ( matrix<space-global,f32,r,k> matrix<space-global,f32,k,c>
 
 \ logits[v] = sum_h x[h]*wte[v,h].
 \ Runtime-h accumulation is not expressible in the checked PTX vocabulary.
-\ Retirement owners: habu-type-emitted-ptx-8ed6f4b3, habu-ptx-phantom-preserving-3df9db92.
-TRUSTED: UNEMBED-COMP ( span<space-global,f32,h> matrix<space-global,f32,v,h> span<space-global,f32,v> -- )
-   EMIT-UNEMBED ;
+\ Raw-loop verification owner: habu-type-emitted-ptx-8ed6f4b3.
+: UNEMBED-COMP ( span<space-global,f32,h> matrix<space-global,f32,v,h> span<space-global,f32,v> -- )
+   [: EMIT-UNEMBED ;] PTXREP:SINK3 ;
 
 : GELU. ( tile<f32,b,m> -- tile<f32,b,m> )
    [: PTX-ACT:EMIT-GELU ;] PTXREP:REP1 ;
