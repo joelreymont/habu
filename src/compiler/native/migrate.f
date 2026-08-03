@@ -290,13 +290,16 @@ variable M-VERDICT                   \ the verdict the recorded scan reached
 \ call. src/compiler/native/inline.f carries the argument for why a flattened row
 \ is the honest one and why the recording still terminates.
 \
-\ AND THE TOKENS ARE STAGED BEFORE THE ADDRESS IS KNOWN, WHICH IS WHY THE RECORD
-\ HAS TWO STEPS. The spellings have to be read while the module is still being
-\ built; the address is not the definition's until the publication seam has
-\ written the routine there, and between the two a refusal is possible. A row
+\ AND THE TOKENS ARE STAGED BEFORE THE ROW EXISTS, WHICH IS WHY THE RECORD HAS
+\ THREE STEPS. The spellings have to be read while the module is still being
+\ built. The address the routine will occupy is settled once the emission has
+\ been placed against a slot, but it is not the definition's yet, because a
+\ refusal is still possible between the placement and the publication - and a row
 \ keyed to a slot no publication claimed would be a body waiting for whatever
-\ word is published there next, so the staging is committed only after the seam
-\ has answered - and thrown away by RUN if the run never got that far.
+\ word is published there next. So the staging is CLAIMED while a refusal still
+\ costs nothing, which is where every refusal the record can make is asked, and
+\ committed only after the seam has written the routine at the address the claim
+\ named. A run that never got that far throws its staging away in RUN.
 64 constant SPELL-CAP                \ the longest spelling one staged token may have
 
 create SPELL-BUF SPELL-CAP allot
@@ -366,17 +369,29 @@ variable REC-OK                      \ the body staged so far is still one worth
    NINL:STAGED? 0= if exit then
    M-IN @ M-OUT @ A64EMIT:INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
 
-: ROOM-CK ( -- )
+\ Claim the row for the staged body, at the address the routine is about to be
+\ published at. The emitter's own recorded placement is that address before the
+\ publication as much as after it: the seam refuses to publish an emission whose
+\ placement is not the slot it is claiming, so a publication that returns wrote
+\ the routine at exactly the address this asked about.
+\
+\ IT IS ASKED HERE BECAUSE THIS IS THE LAST MOMENT A REFUSAL IS FREE. Everything
+\ the record can refuse - an address that is not one, an address that already has
+\ a row - is refused with the word still running the code the engine compiled for
+\ it, which is what every other refusal in this chain leaves behind. And a record
+\ with no room for another body refuses nothing at all: it declines the row, the
+\ word publishes, and its callers call it, exactly as they call a body the size
+\ rule turned down.
+: CLAIM-ROW ( -- )
    NINL:STAGED? 0= if exit then
-   NINL:ROOM-CK ;
+   A64EMIT:PLACEMENT NINL:CLAIM ;
 
-\ Key the staged body to the address the seam really wrote the routine at. The
-\ emitter's own recorded placement is that address: the seam refuses to publish
-\ an emission whose placement is not the slot it is claiming, so the two are one
-\ answer by the time this runs.
+\ Write the row the claim reserved, now that the seam has published the routine
+\ at the address it was claimed for. A staging that was declined a row left no
+\ claim behind, so this is the same question as "is there still a body to keep".
 : KEEP-BODY ( -- )
-   NINL:STAGED? 0= if exit then
-   A64EMIT:PLACEMENT NINL:COMMIT ;
+   NINL:CLAIMED? 0= if exit then
+   NINL:COMMIT ;
 
 \ ---- the chain ---------------------------------------------------------------
 \ Select, allocate, have the allocation accepted and emit, under the convention a
@@ -448,7 +463,7 @@ variable REC-OK                      \ the body staged so far is still one worth
    r STAGE-BODY
    EMITTED
    SIZE-CK
-   ROOM-CK
+   CLAIM-ROW
    NAME-BUF NAME-U @ wid NPUB:REPUBLISH
    KEEP-BODY ;
 

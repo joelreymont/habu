@@ -4709,3 +4709,39 @@ Second, an optimisation's regression test needs the unoptimised half as a
 CONTROL in the same file: here, the same caller source against a callee padded
 one step past the size rule. The bug is not that the two answers differ; it is
 that one of them stops compiling, which only a side-by-side pair shows.
+
+## A ceiling on an optional record must refuse the record, not the operation
+
+`src/compiler/native/inline.f` holds at most 64 recorded bodies, and its ceiling
+threw. Because the migration asked about it, the 65th small word did not lose its
+row - it failed to compile at all, permanently, with every later small word after
+it, while large words kept migrating. The file's own prose justified refusing to
+RECORD a body and said nothing about refusing the compilation, and the two other
+ceilings in the same file already fell back to emitting a call. The rule this
+taught: when a table is an optimisation whose absence costs a caller nothing but
+speed, a full table declines the ENTRY and the operation succeeds. What is not
+allowed is the silent drop the old comment feared, so the decline is counted and
+queryable (`NINL:DECLINED`) - that is what makes "the table filled up" a fact a
+test can assert instead of a behaviour change nobody can see.
+
+## Move every refusal to the side of the publication where it is still free
+
+The same file's COMMIT could throw AFTER the word had been republished, leaving a
+word running new code while the migration reported that it had failed. Every one
+of its questions - is that an address, does it already have a row, is there room
+- was answerable before the publication and unchanged by it, so they all moved
+into a CLAIM step that runs first, and COMMIT now only asks whether the claim it
+completes was made. The general shape: when a sequence has one irreversible step,
+every decision belongs before it, and what is left after it should be the
+protocol's own fail-closed guard and nothing that can depend on data.
+
+## A suite that writes into a production table needs a mark and a fence
+
+`test/compiler/native-inline.f` wrote rows into the real record and published real
+words, so a second run in one process threw on the first duplicate - which meant
+"the suite leaves nothing behind" could never be asserted. Giving the suite its
+own table would have tested a copy. What worked is two marks over the real state:
+`NINL:MARK`/`NINL:RELEASE` for the row table (append-only, so a mark is a prefix)
+and a fence word plus `HIDE-DEFS-FROM` for the dictionary. Running the suite twice
+in one process is then the assertion itself, and removing either half turns it red
+- the row half with E-NINL-DUP, the dictionary half with a duplicate definition.

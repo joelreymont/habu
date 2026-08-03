@@ -3,7 +3,7 @@
 \ src/compiler/native/inline.f and the splice src/compiler/native/elaborate.f
 \ makes out of it.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Nine things, and the last seven are the ones a
+\ WHAT THIS SUITE HAS TO SHOW. Ten things, and the last eight are the ones a
 \ change to the rule would break.
 \
 \   1. That the record answers about an ADDRESS, keeps the tokens and the arity
@@ -44,6 +44,22 @@
 \      reaches first - the size rule or the row's capacity - and a routine
 \      refused at either ceiling is CALLED by its callers and still answers
 \      correctly.
+\  10. That the ceiling on HOW MANY bodies the record holds is a ceiling on rows
+\      and never on migrations. A routine that arrives when the table is full is
+\      compiled, published and run exactly as it would have been; the size rule
+\      says yes about that same routine, so what it lost is the row and not the
+\      migration; its callers pay for that with a call; and the record COUNTS the
+\      decline, because a body quietly not recorded is what would make which
+\      words are inlined depend on the order they were migrated in.
+\
+\ WHAT THIS SUITE LEAVES BEHIND, WHICH IS NOTHING. Every row it writes - the ones
+\ it keys to addresses no code occupies, and the sixty-odd it stacks up to reach
+\ the ceiling - is written into the real record, because a suite with a table of
+\ its own would be testing a copy. So it takes a mark before it starts and
+\ releases back to it at the end, and it retires the words it published the same
+\ way, from a fence it defines first. What that buys is a suite that can be run
+\ twice in one process and say the same thing both times, which is the only way
+\ "it left nothing behind" can be asserted rather than asserted about.
 \
 \ WHY THE COUNTS ARE OF INSTRUCTIONS AND NOT OF BYTES. A byte count moves for any
 \ reason at all. What copying a body removes is exactly the branch-with-link, the
@@ -97,7 +113,9 @@ $20008 constant A3
    7 NINL:STAGE-INT
    s" +" NINL:STAGE-NAME
    NINL:STAGED-TOKENS 2 T=
-   A1 NINL:COMMIT
+   A1 NINL:CLAIM
+   NINL:CLAIMED? FLAG# 1 T=
+   NINL:COMMIT
    A1 NINL:KNOWN? FLAG# 1 T=
    A1 NINL:IN@ 1 T=
    A1 NINL:OUT@ 2 T=
@@ -110,17 +128,41 @@ $20008 constant A3
    [: A1 1 NINL:LIT@ drop ;] E-NINL-BOUND TTHROWSQ
    [: A1 2 NINL:KIND@ drop ;] E-NINL-BOUND TTHROWSQ
 
-   s" a commit consumes the staging, so a second one has nothing to key" T-LABEL
+   s" a commit consumes the staging and the claim with it" T-LABEL
    NINL:STAGED? FLAG# 0 T=
-   [: A2 NINL:COMMIT ;] E-NINL-STATE TTHROWSQ
+   NINL:CLAIMED? FLAG# 0 T=
+   [: NINL:COMMIT ;] E-NINL-STATE TTHROWSQ
+   [: A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
 
-   s" a second body for one address is refused, and leaves the first" T-LABEL
+   s" a second body for one address is refused while the claim is still free"
+   T-LABEL
    1 1 NINL:STAGE-BEGIN
    9 NINL:STAGE-INT
-   [: A1 NINL:COMMIT ;] E-NINL-DUP TTHROWSQ
+   [: A1 NINL:CLAIM ;] E-NINL-DUP TTHROWSQ
+   NINL:CLAIMED? FLAG# 0 T=
    NINL:STAGE-CLEAR
    A1 NINL:TOKENS 2 T=
    A1 0 NINL:LIT@ 7 T=
+
+   s" and so is an address no routine could have been published at" T-LABEL
+   1 1 NINL:STAGE-BEGIN
+   9 NINL:STAGE-INT
+   [: 0 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: -4 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   NINL:STAGE-CLEAR
+
+   s" a claim holds one body, so nothing can be staged between it and the commit"
+   T-LABEL
+   1 1 NINL:STAGE-BEGIN
+   9 NINL:STAGE-INT
+   A2 NINL:CLAIM
+   [: 1 1 NINL:STAGE-BEGIN ;] E-NINL-STATE TTHROWSQ
+
+   s" and a claim given up keys nothing" T-LABEL
+   NINL:STAGE-CLEAR
+   NINL:CLAIMED? FLAG# 0 T=
+   A2 NINL:KNOWN? FLAG# 0 T=
+   [: NINL:COMMIT ;] E-NINL-STATE TTHROWSQ
 
    s" a second staging over a live one is refused" T-LABEL
    1 1 NINL:STAGE-BEGIN
@@ -129,6 +171,35 @@ $20008 constant A3
 
    s" and a token staged with nothing open is refused" T-LABEL
    [: 3 NINL:STAGE-INT ;] E-NINL-STATE TTHROWSQ ;
+
+\ ---- rows given back ---------------------------------------------------------
+\ The table is a sequence written at its end, so a mark taken from it is a prefix
+\ and releasing to that mark forgets exactly the rows written since. It is what
+\ lets this suite use the real record: everything below is written into the table
+\ every migration in this process shares, and given back before the suite ends.
+: MARK-CASES ( -- )
+   s" releasing to a mark forgets every row written since, and no other" T-LABEL
+   NINL:MARK {: k:n :}
+   1 1 NINL:STAGE-BEGIN
+   5 NINL:STAGE-INT
+   A3 NINL:CLAIM
+   NINL:COMMIT
+   A3 NINL:KNOWN? FLAG# 1 T=
+   NINL:ROWS k 1 + T=
+   k NINL:RELEASE
+   NINL:ROWS k T=
+   A3 NINL:KNOWN? FLAG# 0 T=
+   A1 NINL:KNOWN? FLAG# 1 T=
+
+   s" a mark the table never reached is refused, either way past its end" T-LABEL
+   [: NINL:ROWS 1 + NINL:RELEASE ;] E-NINL-BOUND TTHROWSQ
+   [: -1 NINL:RELEASE ;] E-NINL-BOUND TTHROWSQ
+
+   s" and so is a release with a body staged, which a claim may already hold"
+   T-LABEL
+   1 1 NINL:STAGE-BEGIN
+   [: NINL:ROWS NINL:RELEASE ;] E-NINL-STATE TTHROWSQ
+   NINL:STAGE-CLEAR ;
 
 \ ---- the size rule, which is derived and not chosen ---------------------------
 \ One side of a call to a routine of arity (in -> out) is its stores, its three
@@ -689,11 +760,112 @@ variable ROWS-BEFORE
    s" 1.5 2.25 NINL-FUSE" EV-N  s" 1.5 2.25 f+ 1.0 f*" EV-N T=
    s" -7.5 0.25 NINL-FUSE" EV-N  s" -7.5 0.25 f+ 1.0 f*" EV-N T= ;
 
+\ ---- the table's own ceiling ---------------------------------------------------
+\ How many bodies the record holds at once is a capacity and not a rule, exactly
+\ as the row's sixteen tokens are, and what a body arriving at a full table gets
+\ is therefore the same answer a body past the size rule gets: no row. The
+\ migration itself is untouched - the routine is compiled, published and run -
+\ and its callers call it.
+\
+\ THE CASE HAS TO SAY BOTH HALVES OR IT SAYS NOTHING. That the routine still runs
+\ is what makes this a ceiling on rows; that the SIZE RULE says yes about that
+\ same routine is what makes the missing row the table's doing and not the rule's.
+\ A change that turned the ceiling back into a refusal of the migration would
+\ break the first half, and one that widened the rule would break the second.
+\
+\ AND THE DECLINE IS COUNTED. A row not written is invisible in the finished code
+\ - a call looks the same whether the body was too big or the table was full - so
+\ the record keeps the count, and this is the case that holds it to it.
+\
+\ THE FILL GOES THROUGH THE RECORD'S OWN WORDS at addresses no code occupies, and
+\ stops when the table says it is full rather than at a number written here. It
+\ is given back at the end: a case that left the table full would decide what
+\ every later migration in this process compiles to.
+$21000 constant FILL-BASE
+
+variable FILL-MARK
+variable FULL-ROWS
+variable DECLINED-BEFORE
+
+: FILL-ONE ( n -- )
+   {: entry:n :}
+   1 1 NINL:STAGE-BEGIN
+   1 NINL:STAGE-INT
+   entry NINL:CLAIM
+   NINL:COMMIT ;
+
+: FILL-TABLE ( -- )
+   begin NINL:ROOM? while
+      FILL-BASE  NINL:ROWS INSN-BYTES *  +  FILL-ONE
+   repeat ;
+
+\ The same body as NINL-EDGE-IN, which is exactly as large as the size rule
+\ admits, so this routine is one the record would hold if it had anywhere to put
+\ it.
+: MIGRATE-FULL ( -- )
+   s" : NINL-FULL ( n -- n ) dup + dup + dup + dup + dup + ;"
+   1 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-CALL-FULL ( -- )
+   s" NINL-FULL" s" NINL-FULL" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-CALL-FULL ( n -- n ) NINL-FULL ;" 1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: CAP-CASES ( -- )
+   s" the table is full, and it is the table that says so" T-LABEL
+   NINL:ROOM? TFALSE
+
+   s" a small routine migrated into a full table is published and runs" T-LABEL
+   s" NINL-FULL" GLOBAL-WID NPUB:REPUBLISHED? TTRUE
+   s" 3 NINL-FULL" EV-N 96 T=
+   s" -7 NINL-FULL" EV-N  s" -7 NINL-ENGINE-COPIES" EV-N T=
+
+   s" and the size rule says yes about it, so what it lost is the ROW" T-LABEL
+   s" NINL-FULL" WORD-INSNS 10 T=
+   1 1 s" NINL-FULL" WORD-INSNS NINL:SMALL? TTRUE
+   s" NINL-FULL" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+   NINL:ROWS FULL-ROWS @ T=
+
+   s" the decline is counted rather than dropped in silence" T-LABEL
+   NINL:DECLINED DECLINED-BEFORE @ 1 + T=
+
+   s" and a caller of it calls it, with a frame to call from, and runs" T-LABEL
+   s" NINL-CALL-FULL" BL-COUNT 1 T=
+   s" NINL-CALL-FULL" FRAME-COUNT 1 T=
+   s" 3 NINL-CALL-FULL" EV-N 96 T= ;
+
+: CAP-PHASE ( -- )
+   NINL:MARK FILL-MARK !
+   FILL-TABLE
+   NINL:ROWS FULL-ROWS !
+   NINL:DECLINED DECLINED-BEFORE !
+   MIGRATE-FULL
+   MIGRATE-CALL-FULL
+   CAP-CASES
+   FILL-MARK @ NINL:RELEASE ;
+
+\ ---- what the suite gives back -------------------------------------------------
+\ The rows it wrote and the words it published, so that running it twice in one
+\ process is running it twice and not running it once and then running whatever
+\ the first run left. The fence is an ordinary word defined before the first
+\ fixture; retiring the dictionary from it retires every fixture with it,
+\ including the fence, so the next run defines its own.
+variable ROW-MARK
+
+: FENCE ( -- )
+   s" : NINL-FENCE ( -- ) ;" EV ;
+
+: RETIRE ( -- )
+   s" NINL-FENCE" HIDE-DEFS-FROM
+   ROW-MARK @ NINL:RELEASE ;
+
 public
 
 : RUN ( -- )
    T-RESET
+   NINL:MARK ROW-MARK !
+   FENCE
    TABLE-CASES
+   MARK-CASES
    RULE-CASES
    DEFINE-ENGINE-TWINS
    NINL:ROWS ROWS-BEFORE !
@@ -730,6 +902,8 @@ public
    MIGRATE-FPUT-BIG
    MIGRATE-FUSE
    RESULT-CASES
+   CAP-PHASE
+   RETIRE
    T-REPORT ;
 
 ;package

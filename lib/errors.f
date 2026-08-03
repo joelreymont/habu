@@ -1056,7 +1056,7 @@ public
 -8569 constant E-NPUB-CLOBBER \ an emission that branches to a routine destroying a register the set about to be published for it does not name: what a routine destroys has to cover what everything it calls destroys
 
 -8574 constant E-NINL-STATE    \ the recorded-body staging used out of order: a body staged while another one is open, a token staged with none open, or a commit with nothing staged
--8575 constant E-NINL-CAP      \ more recorded bodies than the inline record's table holds, more tokens in one body than a row holds, or a spelling longer than a token slot holds
+-8575 constant E-NINL-CAP      \ more tokens in one recorded body than a row holds, or a spelling longer than a token slot holds: a table with no room for another body declines the row instead, because a full table is no reason to refuse a word the chain compiled
 -8576 constant E-NINL-DUP      \ a second recorded body for one code address: the code at an address is written once and a caller compiled against the first body would have been given another one
 -8577 constant E-NINL-BOUND    \ a recorded body asked about an address it has no row for, or about a token outside the body that row holds
 

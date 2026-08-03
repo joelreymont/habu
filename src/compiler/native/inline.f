@@ -128,6 +128,29 @@
 \ a body waiting for whatever word is published there next. So the tokens are
 \ staged first and keyed second, and a run that ends without committing throws
 \ its staging away.
+\
+\ AND THE ROW IS CLAIMED BEFORE IT IS WRITTEN, WHICH IS THAT SAME RULE ONE STEP
+\ FURTHER. A publication stands between the staging and the row, and it is the
+\ one step in a migration that cannot be taken back. Every question this file
+\ could answer with a refusal - is that an address at all, does it already have a
+\ row, is there room for one more - can be asked BEFORE that publication, and
+\ none of the three answers changes across it: the address a routine will occupy
+\ is the slot the emission was measured from, and no row can be written between
+\ the two because a row is written only by the commit that completes a claim and
+\ only one body is ever staged at a time. So all three are asked by CLAIM, while
+\ a refusal still costs nothing but a compilation nobody has committed to, and
+\ COMMIT asks only whether the claim it is completing was made. A refusal on the
+\ far side of the publication would leave a word running new code while the
+\ migration that published it reported that it had failed.
+\
+\ AND A FULL TABLE IS NOT A REFUSAL OF THE MIGRATION. Of those three questions
+\ only two are about this definition; the third is about this file, and this file
+\ having no room for another body is not a reason to refuse a word the chain
+\ compiled. So the row is DECLINED - the staging is given up, the word publishes,
+\ and its callers call it, exactly as they call a body past the size rule or past
+\ BODY-MAX - and the decline is counted rather than dropped in silence, because
+\ silence is what would make which words are inlined depend on the order they
+\ were migrated in.
 
 require lib/prelude.f
 require lib/errors.f
@@ -141,9 +164,11 @@ private
 \ How many published routines this file can remember in one process, for the
 \ reason src/compiler/native/clobber.f's table is fixed: this runs while the
 \ engine is compiling and has nowhere to allocate from. A row can be dropped
-\ without making anything wrong - a caller that finds no row emits a call - but
-\ dropping one silently would make which words are inlined depend on the order
-\ they were migrated in, so the ceiling is a refusal and not an eviction.
+\ without making anything wrong - a caller that finds no row emits a call - so
+\ the ceiling turns a body away rather than evicting one that callers may already
+\ have been compiled against, and it turns it away by declining the ROW and not
+\ the routine. What dropping one silently would cost is stated at the head of
+\ this file, and DECLINED below is what is kept instead of the silence.
 64 constant ROWS-MAX
 
 \ The capacity of one row, and the argument for the number is above: it is not
@@ -173,6 +198,12 @@ here CELL 1- and CELL swap - CELL 1- and allot
 variable ROWS-N
 0 ROWS-N !
 
+\ How many bodies this file had no room for. It is an event count and not a piece
+\ of state: nothing reads it to decide anything, and giving rows back does not
+\ un-decline a body that was already turned away.
+variable DECLINED-N
+0 DECLINED-N !
+
 \ ---- the staging area --------------------------------------------------------
 \ One body, filled while the definition that owns it is still being compiled and
 \ keyed to an address only after that definition has been published.
@@ -186,10 +217,23 @@ variable S-OPEN
 variable S-N
 variable S-IN
 variable S-OUT
+
+\ The claim: the address this staging is to be keyed to, and the row that will
+\ hold it. Both are answered by CLAIM, before the routine is published, so that
+\ the commit which runs after the publication has nothing left to decide.
+variable S-CLAIM
+variable S-ENTRY
+variable S-ROW
 0 S-OPEN !
+0 S-CLAIM !
 
 : S-OPEN-CK ( -- )
    S-OPEN @ 0= if E-NINL-STATE throw then ;
+
+\ A claim is only ever made over an open staging and is given up with it, so this
+\ answers the open question too.
+: CLAIM-CK ( -- )
+   S-CLAIM @ 0= if E-NINL-STATE throw then ;
 
 : S-SPELL-AT ( n -- ptr u8 )
    SPELL-MAX * S-SPELL + ;
@@ -280,6 +324,7 @@ public
    S-OPEN @ 0<> if E-NINL-STATE throw then
    in 0 < out 0 < or if E-NINL-STATE throw then
    1 S-OPEN !
+   0 S-CLAIM !
    0 S-N !
    in S-IN !
    out S-OUT ! ;
@@ -327,10 +372,14 @@ public
       S-PUT
    loop ;
 
-\ Give the staging up without keying it to anything. A run that refused, and a
-\ definition whose body turned out not to qualify, both end here.
+\ Give the staging up without keying it to anything. A run that refused, a
+\ definition whose body turned out not to qualify, and a body this file had no
+\ room for all end here, and so does the commit that consumed one. A claim goes
+\ with the staging it was made over: an address kept past the body it was
+\ answered for would be a row waiting for the next definition's tokens.
 : STAGE-CLEAR ( -- )
    0 S-OPEN !
+   0 S-CLAIM !
    0 S-N ! ;
 
 : STAGED? ( -- bool )
@@ -340,26 +389,56 @@ public
    S-OPEN-CK
    S-N @ ;
 
-\ Is there room for a row this file does not have yet? The migration asks before
-\ the routine is published, because a refusal afterwards would leave a published
-\ word whose body was staged and thrown away for a reason nothing recorded.
-: ROOM-CK ( -- )
-   S-OPEN-CK
-   ROWS-N @ ROWS-MAX >= if E-NINL-CAP throw then ;
+\ Is there room for a row this file does not have yet? Asking is free and decides
+\ nothing: a body that meets a full table is declined by CLAIM below, and this is
+\ how a caller - or a test walking the table up to its ceiling - can see the
+\ ceiling coming rather than infer it from a count it would have to know.
+: ROOM? ( -- bool )
+   ROWS-N @ ROWS-MAX < ;
 
-\ Key the staged body to the address the routine was published at. A second row
-\ for one address is refused rather than replacing a body a caller has already
-\ copied; it cannot be reached through the publication seam, which never claims a
-\ code slot twice, and it is held here because that is a property of another file
-\ and a rule callers rest on should fail closed where it is used.
-: COMMIT ( n -- )
+\ Claim the row this staging is to become, at the address the routine is about to
+\ be published at. Everything that can refuse refuses here, before the
+\ publication, and the head of this file argues why all three questions belong on
+\ this side of it.
+\
+\ TWO OF THEM ARE REFUSALS AND THE THIRD IS A DECLINE. An address that is not one
+\ is this file's caller getting the protocol wrong, and a second row for one
+\ address is refused rather than replacing a body some caller has already copied
+\ - it cannot be reached through the publication seam, which never claims a code
+\ slot twice, and it is held here because that is a property of another file and
+\ a rule callers rest on should fail closed where it is used. A full table is
+\ neither: the migration is sound, the word will publish, and only the row is
+\ given up.
+: CLAIM ( n -- )
    {: entry:n :}
    S-OPEN-CK
    entry 0 <= if E-NINL-STATE throw then
    entry ROW-OF 0 >= if E-NINL-DUP throw then
-   ROWS-N @ {: l:n :}
-   l ROWS-MAX >= if E-NINL-CAP throw then
-   entry l cells R-ENTRY + !
+   ROOM? 0= if
+      1 DECLINED-N +!
+      STAGE-CLEAR exit
+   then
+   entry S-ENTRY !
+   ROWS-N @ S-ROW !
+   1 S-CLAIM ! ;
+
+\ Is there a row waiting to be written? This is what a caller asks after the
+\ claim: a claim that declined answers no, and the caller publishes its word and
+\ never commits.
+: CLAIMED? ( -- bool )
+   S-CLAIM @ 0<> ;
+
+\ Write the row the claim reserved. This runs on the far side of the publication,
+\ where a refusal cannot be acted on, so it decides nothing: the address and the
+\ row are the claim's answers, and neither can have changed since - the table
+\ grows only here, and a commit is only reached through a claim, of which one
+\ staging admits exactly one. What is left is the protocol itself, which fails
+\ closed: a commit with no claim behind it is refused rather than writing a row
+\ nobody asked for.
+: COMMIT ( -- )
+   CLAIM-CK
+   S-ROW @ {: l:n :}
+   S-ENTRY @ l cells R-ENTRY + !
    S-IN @ l cells R-IN + !
    S-OUT @ l cells R-OUT + !
    S-N @ l cells R-N + !
@@ -414,6 +493,36 @@ public
 \ publication against.
 : ROWS ( -- n )
    ROWS-N @ ;
+
+\ How many bodies this file had no room for. A process whose table filled up
+\ compiles correct code and slower code, and this is the difference between the
+\ two: nothing else in the system distinguishes a word that was called because
+\ its body did not qualify from one that was called because the table was full.
+: DECLINED ( -- n )
+   DECLINED-N @ ;
+
+\ ---- giving a run's rows back ------------------------------------------------
+\ The table is written at its end and read by a scan over its whole length, so
+\ what it holds is a SEQUENCE and a mark taken from it is a prefix. A run that
+\ recorded bodies and wants them gone again - a suite that walks the table up to
+\ its ceiling, a stage whose publications are being thrown away - releases back
+\ to its mark, and every row written since is forgotten in one step.
+\
+\ IT IS ONLY EVER SAFE IN ONE DIRECTION. Losing a row costs a caller a call and
+\ nothing else, which is the same thing a full table costs; what may never happen
+\ is a row surviving that describes something nobody published, so this drops
+\ rows and never adds one, and the addresses it forgets cannot come back - the
+\ publication seam writes each emission at a fresh code slot. A release with a
+\ body staged is refused, because a claim already holds the row index it was
+\ given and a table moved under it would key that body to somebody else's row.
+: MARK ( -- n )
+   ROWS ;
+
+: RELEASE ( n -- )
+   {: k:n :}
+   S-OPEN @ 0<> if E-NINL-STATE throw then
+   k 0 < k ROWS-N @ > or if E-NINL-BOUND throw then
+   k ROWS-N ! ;
 
 private
 
