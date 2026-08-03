@@ -1,9 +1,11 @@
 ---
 title: Own persistent GPU session
-status: active
+status: closed
 priority: 1
 issue-type: task
 created-at: "2026-07-30T00:55:48.211793+02:00"
+closed-at: "2026-08-03T04:31:04.464691+02:00"
+close-reason: "Landed e096ddbb2d5f on master: one linear fixed-block GPU session, exact stream bindings, returned/throw first-error cleanup, Spark two-session proof."
 blocks:
   - habu-delete-maki-cuda-22ba9ede
 ---
