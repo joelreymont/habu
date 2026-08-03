@@ -4688,3 +4688,24 @@ machine code before timing anything: TAG and PAY are 56 bytes and have zero call
 sites in the entire live dictionary, which is why migrating them cannot move the
 checker by one nanosecond, and why the compile-shaped workload's honest answer is
 a measured zero rather than a failure.
+
+## An inline record holds a routine's operations, not the whole routine
+
+The native inliner records a small callee's body as a row of tokens and splices
+that row into every later caller. But a routine is more than the operations it
+was written from: it reads its arguments out of data-stack cells and it writes
+its results back into them, and neither crossing is a token. The argument end was
+reproduced; the result end was not, because the callee's own compilation did it
+in EMIT-RETURN and nothing in the row remembered that. So a recorded callee that
+left a double left a DOUBLE on the caller's vector where the same call left a
+cell, and a caller that stored the result was refused with E-NELAB-TYPE while the
+identical source calling an unrecorded callee compiled and ran. Acceptance
+depended on whether the optimisation fired.
+
+Two things generalise. First, when an optimisation replays a recorded unit, ask
+what that unit's own compilation did OUTSIDE the recording - prologue, epilogue,
+calling convention - because those are exactly the parts with no token to copy.
+Second, an optimisation's regression test needs the unoptimised half as a
+CONTROL in the same file: here, the same caller source against a callee padded
+one step past the size rule. The bug is not that the two answers differ; it is
+that one of them stops compiling, which only a side-by-side pair shows.

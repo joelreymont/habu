@@ -2359,6 +2359,20 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ copy no longer pays is the crossing of everything ELSE that is live: only the
 \ arguments go, because only the arguments are what the body reads.
 \
+\ AND THE RESULTS LEAVE AS CELLS, FOR THE MIRROR REASON. The row holds the
+\ routine's straight-line OPERATIONS, and a routine is more than its operations at
+\ both ends: it takes its arguments out of data-stack cells and it puts its
+\ results back into them. The second half has no token either - the callee's own
+\ compilation ended in EMIT-RETURN, whose RETURN-CROSS puts every double it leaves
+\ back into the cell the caller's slot is - so a splice that reproduced only the
+\ tokens would leave a DOUBLE where the call it replaces left a CELL, and a caller
+\ that stored the result would be refused though the same source calling the same
+\ word compiles and runs. Acceptance would then depend on whether the optimisation
+\ fired, which is the one thing an optimisation may never decide. So the outputs
+\ are crossed after the tokens, by the same run that crossed the inputs before
+\ them, and for the reason RETURN-CROSS states: a Habu word leaves result j in
+\ slot j of the caller's stack and a slot is a cell.
+\
 \ WHAT IS CHECKED WHILE THE COPY RUNS, AND NEITHER CHECK IS DECORATION. The body
 \ may not reach BELOW the values its caller was holding - a checked body cannot,
 \ because the checker proved it against its own declared effect, but the vector
@@ -2409,7 +2423,8 @@ variable LRK                         \ crossing locals the walk below has taken 
       p r ix entry i INLINE-TOKEN
       VN @ base < if E-NELAB-INLINE throw then
    loop
-   VN @ base o + <> if E-NELAB-INLINE throw then ;
+   VN @ base o + <> if E-NELAB-INLINE throw then
+   ix base o CELL-CROSS-RUN ;
 
 \ Either way of reaching another word's body. Which one this token is was decided
 \ once, before any walk started, and is read here rather than asked again.

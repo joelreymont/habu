@@ -59,15 +59,26 @@
 \   token staged for a call the elaborator COPIED is not the call at all: it is
 \   the callee's own row, spliced in whole by STAGE-RECORD below.
 \
-\   THE ROW THEREFORE DESCRIBES THE ROUTINE AT ITS ADDRESS RATHER THAN THE TEXT
-\   THAT WAS WRITTEN, and that is the honest way round. A row is keyed by an
-\   address and read by a caller that is about to reproduce what lives there; a
-\   row saying "call T-AT-N" about a routine with no call in it would describe
-\   something nobody published. The flattened row is the same operations in the
-\   same order, so it elaborates to the instructions the emitter really wrote -
-\   and the no-call invariant above is then kept BY INDUCTION rather than by
-\   refusing the source: the row spliced in has no call in it, so neither has the
-\   row built out of it, and there is no depth to bound and no counter to keep.
+\   THE ROW THEREFORE DESCRIBES THE ROUTINE'S OPERATIONS AT ITS ADDRESS RATHER
+\   THAN THE TEXT THAT WAS WRITTEN, and that is the honest way round. A row is
+\   keyed by an address and read by a caller that is about to reproduce what
+\   lives there; a row saying "call T-AT-N" about a routine with no call in it
+\   would describe something nobody published. The flattened row is the same
+\   operations in the same order, so it elaborates to the instructions the
+\   emitter really wrote - and the no-call invariant above is then kept BY
+\   INDUCTION rather than by refusing the source: the row spliced in has no call
+\   in it, so neither has the row built out of it, and there is no depth to bound
+\   and no counter to keep.
+\
+\   WHAT A ROW DOES NOT HOLD IS THE ROUTINE'S TWO CROSSINGS, and the splice owes
+\   both. A routine reads its arguments out of data-stack cells and writes its
+\   results back into them, and neither end is a token: the entry block's cell
+\   arguments are the shape the recorded tokens were elaborated against, and the
+\   exit crossing belonged to the EMIT-RETURN the callee's own compilation ended
+\   in. So the caller reproducing what lives at that address crosses the argument
+\   positions to cells before the tokens and the result positions to cells after
+\   them (DO-INLINE in src/compiler/native/elaborate.f). A splice of the tokens
+\   alone would be a splice of the routine's middle only.
 \
 \   AND THE SIZE RULE STAYS ONE MEASUREMENT RATHER THAN A SUM OVER A CHAIN.
 \   Because a row is flattened while its routine is being compiled, the emission

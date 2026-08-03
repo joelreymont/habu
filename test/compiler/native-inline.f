@@ -3,7 +3,7 @@
 \ src/compiler/native/inline.f and the splice src/compiler/native/elaborate.f
 \ makes out of it.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Eight things, and the last six are the ones a
+\ WHAT THIS SUITE HAS TO SHOW. Nine things, and the last seven are the ones a
 \ change to the rule would break.
 \
 \   1. That the record answers about an ADDRESS, keeps the tokens and the arity
@@ -34,7 +34,11 @@
 \      took them as, so a caller holding a computed double where the record has
 \      a cell store compiles, and the eight bytes that reach memory are the
 \      double's own.
-\   8. That a routine whose OWN calls were copied is itself recorded, as the
+\   8. That a copied body hands its RESULTS back as the cells the call it
+\      replaces handed back, so the same caller source compiles and answers the
+\      same eight bytes whether its callee was copied or called - which is what
+\      stops acceptance from depending on whether the optimisation fired.
+\   9. That a routine whose OWN calls were copied is itself recorded, as the
 \      tokens that replaced them: the row is flat, the literals inside it survive
 \      each further copy to the bit, the chain stops at whichever ceiling it
 \      reaches first - the size rule or the row's capacity - and a routine
@@ -608,6 +612,83 @@ variable ROWS-BEFORE
    s" -1.5 NINL-CELL ! NINL-CELL @" EV-N T=
    s" 0.0 NINL-CELL NINL-PUT NINL-CELL @" EV-N 0 T= ;
 
+\ ---- the results a copied body hands back --------------------------------
+\ A routine puts its results back into data-stack cells, because that is where
+\ its caller reads them: a Habu word leaves result j in slot j of the caller's
+\ stack and a slot is a cell. The callee's own compilation did that in
+\ EMIT-RETURN, whose crossing has no token of its own - so it is not in the row,
+\ and a splice that reproduced only the row's tokens would leave a DOUBLE where
+\ the call it replaces left a cell.
+\
+\ THE CASE IS TWO CALLERS OF THE SAME SOURCE. Both add two doubles through a
+\ callee and store the sum, and the only difference between them is which callee
+\ they name: one is small enough to copy and the other is one pad past the size
+\ rule and is therefore CALLED. The called one is the control - it is the answer
+\ the language already gives - so a splice that dropped the result crossing does
+\ not make this pair differ by a number, it makes the copied half stop compiling
+\ at all while the called half compiles and runs. That is the failure worth
+\ pinning: acceptance would depend on whether the optimisation fired.
+\
+\ THE PAD IS A MULTIPLICATION BY ONE, which moves no bit of a finite double, so
+\ the two callees are the same arithmetic and the stored eight bytes can be held
+\ against each other and against the literal sum.
+: MIGRATE-FSUM ( -- )
+   s" : NINL-FSUM ( r r -- r ) f+ ;" 2 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-FSUM-BIG ( -- )
+   s" : NINL-FSUM-BIG ( r r -- r ) f+ 1.0 f* ;" 2 1 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-FPUT ( -- )
+   s" NINL-FSUM" s" NINL-FSUM" ENTRY-OF 2 1 NMIGRATE:CALLEE
+   s" : NINL-FPUT ( r r ptr a -- ) {: x:r y:r b:ptr :} x y NINL-FSUM b ! ;"
+   3 0 REGS NMIGRATE:DEFINE-CALLING ;
+
+: MIGRATE-FPUT-BIG ( -- )
+   s" NINL-FSUM-BIG" s" NINL-FSUM-BIG" ENTRY-OF 2 1 NMIGRATE:CALLEE
+   s" : NINL-FPUT-BIG ( r r ptr a -- ) {: x:r y:r b:ptr :} x y NINL-FSUM-BIG b ! ;"
+   3 0 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ And the result crossing computes nothing, which this second caller is what
+\ says: it copies the same body and goes on computing with the sum as a double.
+\ The value therefore leaves the copied body as a cell and is read back as a
+\ double in the next operation, so a crossing that converted rather than
+\ reinterpreted answers a different number here.
+: MIGRATE-FUSE ( -- )
+   s" NINL-FSUM" s" NINL-FSUM" ENTRY-OF 2 1 NMIGRATE:CALLEE
+   s" : NINL-FUSE ( r r -- r ) NINL-FSUM 1.0 f* ;"
+   2 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: RESULT-CASES ( -- )
+   s" the small float callee is recorded and the padded one is not" T-LABEL
+   s" NINL-FSUM" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-FSUM" ENTRY-OF NINL:TOKENS 1 T=
+   s" NINL-FSUM" ENTRY-OF 0 NINL:SPELL$ s" f+" STR= TTRUE
+   s" NINL-FSUM-BIG" ENTRY-OF NINL:KNOWN? FLAG# 0 T=
+   2 1 s" NINL-FSUM" WORD-INSNS NINL:SMALL? TTRUE
+   2 1 s" NINL-FSUM-BIG" WORD-INSNS NINL:SMALL? TFALSE
+
+   s" so one caller copies the body and the other really calls it" T-LABEL
+   s" NINL-FPUT" BL-COUNT 0 T=
+   s" NINL-FPUT" FRAME-COUNT 0 T=
+   s" NINL-FPUT-BIG" BL-COUNT 1 T=
+   s" NINL-FPUT-BIG" FRAME-COUNT 1 T=
+
+   s" and both store the same eight bytes, which are the sum's own" T-LABEL
+   s" 64.0 64.0 NINL-CELL NINL-FPUT NINL-CELL @" EV-N
+   s" 64.0 64.0 NINL-CELL NINL-FPUT-BIG NINL-CELL @" EV-N T=
+   s" 64.0 64.0 NINL-CELL NINL-FPUT NINL-CELL @" EV-N
+   s" 128.0 NINL-CELL ! NINL-CELL @" EV-N T=
+   s" -2.5 -1.25 NINL-CELL NINL-FPUT NINL-CELL @" EV-N
+   s" -3.75 NINL-CELL ! NINL-CELL @" EV-N T=
+   s" -2.5 -1.25 NINL-CELL NINL-FPUT-BIG NINL-CELL @" EV-N
+   s" -3.75 NINL-CELL ! NINL-CELL @" EV-N T=
+   s" 0.0 0.0 NINL-CELL NINL-FPUT NINL-CELL @" EV-N 0 T=
+
+   s" and a copied result read back as a double is the double it was" T-LABEL
+   s" NINL-FUSE" BL-COUNT 0 T=
+   s" 1.5 2.25 NINL-FUSE" EV-N  s" 1.5 2.25 f+ 1.0 f*" EV-N T=
+   s" -7.5 0.25 NINL-FUSE" EV-N  s" -7.5 0.25 f+ 1.0 f*" EV-N T= ;
+
 public
 
 : RUN ( -- )
@@ -643,6 +724,12 @@ public
    MIGRATE-STORE
    MIGRATE-PUT
    ARG-CASES
+   MIGRATE-FSUM
+   MIGRATE-FSUM-BIG
+   MIGRATE-FPUT
+   MIGRATE-FPUT-BIG
+   MIGRATE-FUSE
+   RESULT-CASES
    T-REPORT ;
 
 ;package
