@@ -8,8 +8,6 @@ blocks:
   - habu-own-completion-srv-2cffaf4b
   - habu-infer-engine-owned-99a98d17
   - habu-infer-scheduler-req-1ac1dac6
-  - habu-frame-bounded-http-d677ca95
-  - habu-frame-completion-http-b2039e63
   - habu-render-completion-json-9fff2d34
 ---
 

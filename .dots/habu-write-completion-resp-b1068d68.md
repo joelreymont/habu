@@ -6,7 +6,6 @@ issue-type: task
 created-at: "2026-07-30T07:03:54.542376+02:00"
 blocks:
   - habu-apply-completion-result-021d8f78
-  - habu-frame-completion-http-b2039e63
   - habu-close-completion-conn-7b2fdd67
 ---
 

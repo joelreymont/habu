@@ -6,8 +6,6 @@ issue-type: task
 created-at: "2026-07-30T07:03:53.810497+02:00"
 blocks:
   - habu-own-checked-ipv4-44f29beb
-  - habu-frame-bounded-http-d677ca95
-  - habu-frame-completion-http-b2039e63
   - habu-infer-scheduler-req-1ac1dac6
   - habu-integrate-reentrant-json-34850f2f
 ---
