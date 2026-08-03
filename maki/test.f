@@ -381,6 +381,8 @@ SUITE maki/gpu-emit-test.f
 ;SUITE
 SUITE maki/gpu-leak-test.f
 ;SUITE
+SUITE maki/gpu-session-test.f
+;SUITE
 SUITE maki/device-smoke.f
 ;SUITE
 SUITE maki/examples/nanogpt/tokenizer-test.f

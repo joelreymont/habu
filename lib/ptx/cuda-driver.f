@@ -53,6 +53,8 @@ variable CD-H
 
 public
 
+DEFTYPE STREAM
+
 : OPEN? ( -- bool )
    CD-H @ NONZERO? if TRUE exit then
    s" libcuda.so.1" CD-LIB FFI:CSTR
@@ -102,6 +104,21 @@ TRUSTED: CU-DEVICE-PRIMARY-CTX-RETAIN ( ptr a cuda-dev -- rc )
 TRUSTED: CU-CTX-SET-CURRENT ( cuda-ctx -- rc ) {: ctx:cuda-ctx :}
    s" cuCtxSetCurrent" SYMBOL {: call:n :}
    FFI:RESET  ctx 0 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
+
+TRUSTED: CU-STREAM-CREATE ( ptr a n -- rc ) {: out:ptr flags:n :}
+   s" cuStreamCreate" SYMBOL {: call:n :}
+   FFI:RESET  out 8 0 FFI:WRITABLE!  flags 1 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 2 call ffi-call-bounded ;
+
+TRUSTED: CU-STREAM-SYNCHRONIZE ( stream -- rc ) {: stream:stream :}
+   s" cuStreamSynchronize" SYMBOL {: call:n :}
+   FFI:RESET  stream 0 FFI:VALUE!
+   FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
+
+TRUSTED: CU-STREAM-DESTROY ( stream -- rc ) {: stream:stream :}
+   s" cuStreamDestroy_v2" SYMBOL {: call:n :}
+   FFI:RESET  stream 0 FFI:VALUE!
    FFI:ARGS FFI:REG-LENS 1 call ffi-call-bounded ;
 
 TRUSTED: CU-MODULE-LOAD ( ptr a ptr u8 -- rc ) {: out:ptr path:ptr :}
