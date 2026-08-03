@@ -138,7 +138,7 @@ This is a workaround, not architecture — construction control faked with a
 magic field because generated constructors are always public — and it is
 scheduled to be deleted: the `CONSTRUCT owner` flag (TYPE-FIXES-PLAN.md)
 controls construction directly and every proof token evaporates with it.
-`GPT2:cfg-proof` in `maki/infer/gpt2-config.f` and `GPT2TENSOR:layer-proof`
+`GPT2:cfg-proof` in `maki/infer/gpt2-config.f` and `GPT2:layer-proof`
 in `maki/infer/gpt2-tensor.f` are the two live examples. Both files are honest
 in their own headers about the limit of that evidence, and § 9 explains it.
 

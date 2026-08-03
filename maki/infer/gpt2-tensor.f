@@ -1,5 +1,5 @@
 \ gpt2-tensor.f - the GPT-2 tensor vocabulary and typed layer index (package
-\ GPT2TENSOR; inference design rev 3 S6a, blackboard 20260724-185632.302).
+\ GPT2; inference design rev 3 S6a, blackboard 20260724-185632.302).
 \
 \ CONCERN: one typed name for every tensor in a HuggingFace GPT-2 checkpoint,
 \ plus the nominal layer index those names ride on. ENUM `global-role` is
@@ -49,7 +49,7 @@
 \ derivable from the data.
 \
 \ NOMINAL LAYER INDEX. STRUCTURE `layer-id` holds an index and a private
-\ GPT2TENSOR proof. The sole constructor LAYER-ID ( config n -- config layer-id )
+\ layer-proof. The sole constructor LAYER-ID ( config n -- config layer-id )
 \ validates n against NLAYER@ (E-LAYER) before minting. The proof is an
 \ arity-0 NEWTYPE exactly like GPT2's cfg-proof (see gpt2-config.f header
 \ for the engine constraint and the UNMAKE/re-MAKE scope caveat, closed by
@@ -70,7 +70,7 @@
 \
 \ TENSOR NAME ACCESS. COPY-NAME? copies the exact HF tensor name into a CALLER buffer
 \ and answers option<n> - NONE when the capacity is too small, SOME holding
-\ the copied length - the SAFET:COPY-NAME? contract. No public GPT2TENSOR word
+\ the copied length - the SAFET:COPY-NAME? contract. No public word in this file
 \ returns a pointer into package or global statics, and no public word
 \ touches the shared lib/string builder. The private render scratch NAME-BUF
 \ is sized by the static bound in the NAME-CAP comment and never escapes.
@@ -84,9 +84,7 @@ require lib/adt/option.f
 require lib/cad-num-types.f
 require maki/infer/gpt2-config.f
 
-package GPT2TENSOR
-
-using GPT2
+package GPT2
 
 public
 
@@ -152,7 +150,6 @@ TRUSTED: MINT-LAYER-PROOF ( -- layer-proof )  0 ;
 
 4 constant GLOBAL-COUNT          \ |global-role|: checkpoint-global tensors
 13 constant LAYER-ROLE-COUNT     \ |layer-role|: tensors per transformer block
-$7FFFFFFFFFFFFFFF constant MAX-N
 \ static render bound: "h." (2) + at most 19 index digits + "." (1) + the
 \ longest role path "attn.c_attn.weight" (18) = 40; every append below is one
 \ of those pieces, so 64 can never be reached.
@@ -178,7 +175,7 @@ public
 \ ---- the sole layer-id constructor -------------------------------------------------
 : LAYER-ID ( GPT2:config n -- GPT2:config layer-id )
    CHECK-LAYER-INDEX {: i:n :}
-   i MINT-LAYER-PROOF GPT2TENSOR-LAYER--ID:MAKE ;
+   i MINT-LAYER-PROOF GPT2-LAYER--ID:MAKE ;
 
 \ ---- census: 4 + 13*nlayer, overflow-checked --------------------------------------
 \ The pre-check bounds nlayer so the multiply AND the add both fit a cell.
@@ -216,7 +213,7 @@ private
    ;MATCH ;
 
 : LAYER-INDEX ( layer-id -- n )
-   GPT2TENSOR-LAYER--ID:UNMAKE {: i:n tok:layer-proof :}
+   GPT2-LAYER--ID:UNMAKE {: i:n tok:layer-proof :}
    i ;
 
 : APPEND-NAME ( ptr u8 n -- )
@@ -368,55 +365,55 @@ CAST: SLOT>N ( CAD-NUM:index -- n ) ;
 
 : ORD>GLOBAL ( n -- global-role )
    case
-      0 of GPT2TENSOR-GLOBAL--ROLE:WTE endof
-      1 of GPT2TENSOR-GLOBAL--ROLE:WPE endof
-      2 of GPT2TENSOR-GLOBAL--ROLE:LNF-G endof
-      3 of GPT2TENSOR-GLOBAL--ROLE:LNF-B endof
+      0 of GPT2-GLOBAL--ROLE:WTE endof
+      1 of GPT2-GLOBAL--ROLE:WPE endof
+      2 of GPT2-GLOBAL--ROLE:LNF-G endof
+      3 of GPT2-GLOBAL--ROLE:LNF-B endof
       E-SLOT throw
    endcase ;
 
 : ORD>LAYER ( n -- layer-role )
    case
-      0 of GPT2TENSOR-LAYER--ROLE:LN1-G endof
-      1 of GPT2TENSOR-LAYER--ROLE:LN1-B endof
-      2 of GPT2TENSOR-LAYER--ROLE:MASK endof
-      3 of GPT2TENSOR-LAYER--ROLE:QKV-W endof
-      4 of GPT2TENSOR-LAYER--ROLE:QKV-B endof
-      5 of GPT2TENSOR-LAYER--ROLE:APROJ-W endof
-      6 of GPT2TENSOR-LAYER--ROLE:APROJ-B endof
-      7 of GPT2TENSOR-LAYER--ROLE:LN2-G endof
-      8 of GPT2TENSOR-LAYER--ROLE:LN2-B endof
-      9 of GPT2TENSOR-LAYER--ROLE:FC-W endof
-      10 of GPT2TENSOR-LAYER--ROLE:FC-B endof
-      11 of GPT2TENSOR-LAYER--ROLE:MPROJ-W endof
-      12 of GPT2TENSOR-LAYER--ROLE:MPROJ-B endof
+      0 of GPT2-LAYER--ROLE:LN1-G endof
+      1 of GPT2-LAYER--ROLE:LN1-B endof
+      2 of GPT2-LAYER--ROLE:MASK endof
+      3 of GPT2-LAYER--ROLE:QKV-W endof
+      4 of GPT2-LAYER--ROLE:QKV-B endof
+      5 of GPT2-LAYER--ROLE:APROJ-W endof
+      6 of GPT2-LAYER--ROLE:APROJ-B endof
+      7 of GPT2-LAYER--ROLE:LN2-G endof
+      8 of GPT2-LAYER--ROLE:LN2-B endof
+      9 of GPT2-LAYER--ROLE:FC-W endof
+      10 of GPT2-LAYER--ROLE:FC-B endof
+      11 of GPT2-LAYER--ROLE:MPROJ-W endof
+      12 of GPT2-LAYER--ROLE:MPROJ-B endof
       E-SLOT throw
    endcase ;
 
 : GLOBAL-FOR-SLOT ( GPT2:config n -- GPT2:config tensor-id )
-   ORD>GLOBAL GPT2TENSOR-TENSOR--ID:GLOBAL ;
+   ORD>GLOBAL GPT2-TENSOR--ID:GLOBAL ;
 
 : LAYER-FOR-SLOT ( GPT2:config n -- GPT2:config tensor-id )
    GLOBAL-COUNT -
    LAYER-ROLE-COUNT /mod {: br:n l:n :}
-   l LAYER-ID br ORD>LAYER GPT2TENSOR-TENSOR--ID:LAYER ;
+   l LAYER-ID br ORD>LAYER GPT2-TENSOR--ID:LAYER ;
 
 : LAYER-ORIENTATION ( layer-id layer-role -- orientation ) {: br:layer-role :}
    drop br
    MATCH layer-role
-      ln1-g   OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      ln1-b   OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      mask    OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      qkv-w   OF GPT2TENSOR-ORIENTATION:CONV1D ENDOF
-      qkv-b   OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      aproj-w OF GPT2TENSOR-ORIENTATION:CONV1D ENDOF
-      aproj-b OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      ln2-g   OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      ln2-b   OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      fc-w    OF GPT2TENSOR-ORIENTATION:CONV1D ENDOF
-      fc-b    OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
-      mproj-w OF GPT2TENSOR-ORIENTATION:CONV1D ENDOF
-      mproj-b OF GPT2TENSOR-ORIENTATION:PLAIN ENDOF
+      ln1-g   OF GPT2-ORIENTATION:PLAIN ENDOF
+      ln1-b   OF GPT2-ORIENTATION:PLAIN ENDOF
+      mask    OF GPT2-ORIENTATION:PLAIN ENDOF
+      qkv-w   OF GPT2-ORIENTATION:CONV1D ENDOF
+      qkv-b   OF GPT2-ORIENTATION:PLAIN ENDOF
+      aproj-w OF GPT2-ORIENTATION:CONV1D ENDOF
+      aproj-b OF GPT2-ORIENTATION:PLAIN ENDOF
+      ln2-g   OF GPT2-ORIENTATION:PLAIN ENDOF
+      ln2-b   OF GPT2-ORIENTATION:PLAIN ENDOF
+      fc-w    OF GPT2-ORIENTATION:CONV1D ENDOF
+      fc-b    OF GPT2-ORIENTATION:PLAIN ENDOF
+      mproj-w OF GPT2-ORIENTATION:CONV1D ENDOF
+      mproj-b OF GPT2-ORIENTATION:PLAIN ENDOF
    ;MATCH ;
 
 public
@@ -443,7 +440,7 @@ public
 \ ---- declared storage orientation (adapter convention; see header) ------------------
 : ORIENTATION ( tensor-id -- orientation )
    MATCH tensor-id
-      global OF drop GPT2TENSOR-ORIENTATION:PLAIN ENDOF
+      global OF drop GPT2-ORIENTATION:PLAIN ENDOF
       layer  OF LAYER-ORIENTATION ENDOF
    ;MATCH ;
 
@@ -468,7 +465,5 @@ public
    else
       s LAYER-FOR-SLOT
    then ;
-
-;using
 
 ;package
