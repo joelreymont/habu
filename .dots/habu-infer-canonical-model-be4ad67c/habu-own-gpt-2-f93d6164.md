@@ -1,0 +1,9 @@
+---
+title: Own GPT-2 tensor types
+status: open
+priority: 1
+issue-type: task
+created-at: "2026-08-03T02:19:04.984316+02:00"
+---
+
+Problem: the settled GPT2:tensor-id still ships as a separate GPT2TENSOR package even though GPT2 owns all model-specific types; the source has no consumer outside its focused test. Result: hard-cut maki/infer/gpt2-tensor.f to reopen package GPT2 and publish the existing global-role, layer-role, orientation, layer-id, tensor-id, errors, catalog, shape, slot, name, and orientation words under GPT2; delete the self-import and the tensor file's duplicate private MAX-N while reusing GPT2's existing private MAX-N; preserve the distinct CHECKED-MUL helper; respell every generated constructor package and the focused test; rename only the test package to GPT2-TENSOR-TEST. Preserve every field, ordinal, shape, name, check, error code, proof boundary, file path, and suite row. Production red: GPT2:tensor-id is undefined while GPT2TENSOR:tensor-id resolves only in its own source/test; an exact representative GPT2 reopen with config plus tensor-id certifies, and a duplicate-private probe rejects. Owner: maki/infer/gpt2-tensor.f and maki/infer/gpt2-tensor-test.f only. Acceptance: GPT2:config and GPT2:tensor-id compose in one foreign checked caller; every existing tensor catalog test passes unchanged; GPT2TENSOR plus GPT2TENSOR-TENSOR--ID, GPT2TENSOR-LAYER--ID, GPT2TENSOR-GLOBAL--ROLE, and GPT2TENSOR-LAYER--ROLE have zero live source/test/docs references; config, HF opener, tensor, package, typed-local, Maki dependency, error-code, full Maki, and stdlib/PTX gates pass. Forbidden: alias, forwarding word, compatibility package, device/runtime work, owner-seal work, proof deletion, new type, file rename, manifest, lint, framework, version, schema, or unrelated edit. Smallest owning check: bin/hb --load maki/infer/gpt2-tensor-test.f. Claim: unassigned.
