@@ -1,4 +1,4 @@
-\ gpt2-tensor.f - six fixed F32 tensor kernels used by GPT-2 decode.
+\ gpt2-tensor-cg.f - six fixed F32 tensor kernels used by GPT-2 decode.
 
 require lib/ptx/cg.f
 require lib/ptx/header.f

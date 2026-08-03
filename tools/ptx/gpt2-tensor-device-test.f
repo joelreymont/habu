@@ -5,7 +5,7 @@ require lib/float.f
 require lib/float32.f
 require lib/fs.f
 require lib/test.f
-require lib/ptx/gpt2-tensor.f
+require maki/infer/gpt2-tensor-cg.f
 require lib/ptx/toolchain.f
 require lib/ptx/cuda-driver.f
 require lib/ptx/cuda-scope.f
