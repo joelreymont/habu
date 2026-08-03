@@ -1,9 +1,11 @@
 ---
 title: Speed up scalar SHA-256
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-08-04T00:02:12.271533+02:00"
 ---
 
 Why: the real authenticated GPT-2 open hashes 548,105,171 bytes through src/core/sha256.f at a measured 3.57 MiB/s, spending 146.5 seconds of a 149-second cold start in SHA-256; every device gate and larger model pays the same full-byte cost. Result: keep every existing global SHA256 word name, stack signature, digest, file/error behavior, and standalone-bootstrap portability, but replace the per-round small-word/ambient-variable compression hot path in src/core/sha256.f with one checked portable word-at-a-time scalar core. Hash every source byte exactly once; no caller changes or second SHA implementation. Owner: src/core/sha256.f compression internals and existing SHA tests only. Mandatory checkpoint before substantive edits: measure the current SHA256-FILE path on gpt2-model/model.safetensors, match GPT2PIN:MODEL-SHA256$, retain the elapsed/throughput red, and prove a representative compression refactor passes the cheapest bootstrap/ownership gate. Acceptance: FIPS empty, one-block, multi-block, 55/56/63/64/65-byte boundaries, chunked UPDATE equivalence, file errors, pinned merges, and the full pinned model digest remain byte-exact through existing production words; the real GPT2-GEN:OPEN and 64-token device result remain exact; an idle-device median-of-3 full-model SHA256-FILE measurement is at least 10x the recorded 3.57 MiB/s baseline and the new numbers are reported. Preserve the standalone instruction subset and stage-0 recovery. Forbidden: package/API/type/caller change, FFI or external process/library, architecture-specific branch, new TRUSTED, generated large source artifact, digest cache, mmap/caller rewrite, partial verification, background hash, skip, ABI/version, compatibility, manifest, lint, suite, or permanent benchmark framework.
+
+Claim: agent=codex workspace=.jj-ws/habu-speed-up-scalar-8f5563d2
