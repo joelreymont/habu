@@ -3,12 +3,13 @@
 \ src/compiler/native/inline.f and the splice src/compiler/native/elaborate.f
 \ makes out of it.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Ten things, and the last eight are the ones a
+\ WHAT THIS SUITE HAS TO SHOW. Twelve things, and the last ten are the ones a
 \ change to the rule would break.
 \
-\   1. That the record answers about an ADDRESS, keeps the tokens and the arity
-\      it was told, refuses a second body for one address, and refuses to be read
-\      about an address it has no row for or a token a row does not hold.
+\   1. That the record answers about an ADDRESS, keeps the tokens, the arity and
+\      the NAME it was told, refuses a second body for one address, refuses a
+\      claim carrying no name at all, and refuses to be read about an address it
+\      has no row for or a token a row does not hold.
 \   2. That the size rule is DERIVED and not chosen: what one side of a call to a
 \      routine of a given arity costs in instructions, and a routine admitted
 \      exactly when its whole emission is within twice that.
@@ -51,6 +52,15 @@
 \      migration; its callers pay for that with a call; and the record COUNTS the
 \      decline, because a body quietly not recorded is what would make which
 \      words are inlined depend on the order they were migrated in.
+\  11. That which meanings a copied body may hold is ONE table, asserted over the
+\      whole of the dialect's vocabulary. The pre-scan that decides which calls
+\      are copied and the splice that copies them both read it, so neither can
+\      hold an answer the other contradicts.
+\  12. That the row a call site splices is the routine the site NAMED. The key is
+\      an address the caller stated, so a stated address one routine out lands on
+\      a real row of the same arity; a caller that names one recorded word at
+\      another's address is refused by name, and one that names the same word in
+\      the other case is not refused at all.
 \
 \ WHAT THIS SUITE LEAVES BEHIND, WHICH IS NOTHING. Every row it writes - the ones
 \ it keys to addresses no code occupies, and the sixty-odd it stacks up to reach
@@ -69,6 +79,9 @@
 \ these numbers, and a change that stopped copying would move all three.
 
 require lib/test.f
+require lib/fmt.f
+require src/compiler/native/hir.f
+require src/compiler/native/elaborate.f
 require src/compiler/native/migrate.f
 require src/compiler/native/inline.f
 
@@ -101,6 +114,21 @@ $20000 constant A1
 $20004 constant A2
 $20008 constant A3
 
+\ A name one byte past what a row can hold, measured from the record's own
+\ ceiling rather than written down here: a change that widened the ceiling would
+\ otherwise leave this case passing for a reason that had stopped being true.
+NINL:NAME-MAX 1+ constant LONG-NAME-U
+create LONG-NAME LONG-NAME-U allot
+here CELL 1- and CELL swap - CELL 1- and allot
+
+$41 constant NAME-BYTE               \ `A`, so the over-long name is a real name
+
+: LONG-NAME-FILL ( -- )
+   LONG-NAME-U 0 ?do  NAME-BYTE  LONG-NAME i + c!  loop ;
+
+: LONG-NAME$ ( -- ptr u8 n )
+   LONG-NAME LONG-NAME-U ;
+
 \ ---- the table, on its own -----------------------------------------------------
 : TABLE-CASES ( -- )
    s" an address with no row is unknown and cannot be read" T-LABEL
@@ -113,7 +141,7 @@ $20008 constant A3
    7 NINL:STAGE-INT
    s" +" NINL:STAGE-NAME
    NINL:STAGED-TOKENS 2 T=
-   A1 NINL:CLAIM
+   s" NINL-ROW-A1" A1 NINL:CLAIM
    NINL:CLAIMED? FLAG# 1 T=
    NINL:COMMIT
    A1 NINL:KNOWN? FLAG# 1 T=
@@ -122,6 +150,18 @@ $20008 constant A3
    A1 NINL:TOKENS 2 T=
    A1 0 NINL:LIT@ 7 T=
    A1 1 NINL:SPELL$ s" +" STR= TTRUE
+
+   s" and it remembers the name the routine was published under" T-LABEL
+   A1 s" NINL-ROW-A1" NINL:NAMED? TTRUE
+
+   s" which is a dictionary name, so either case is the same name" T-LABEL
+   A1 s" ninl-row-a1" NINL:NAMED? TTRUE
+
+   s" and any other name is a different word, however close" T-LABEL
+   A1 s" NINL-ROW-A2" NINL:NAMED? TFALSE
+   A1 s" NINL-ROW-A" NINL:NAMED? TFALSE
+   A1 s" NINL-ROW-A1X" NINL:NAMED? TFALSE
+   [: A3 s" NINL-ROW-A1" NINL:NAMED? drop ;] E-NINL-BOUND TTHROWSQ
 
    s" and a token answers only for the kind it is" T-LABEL
    [: A1 0 NINL:SPELL$ drop drop ;] E-NINL-BOUND TTHROWSQ
@@ -132,30 +172,40 @@ $20008 constant A3
    NINL:STAGED? FLAG# 0 T=
    NINL:CLAIMED? FLAG# 0 T=
    [: NINL:COMMIT ;] E-NINL-STATE TTHROWSQ
-   [: A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: s" NINL-ROW-A2" A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
 
    s" a second body for one address is refused while the claim is still free"
    T-LABEL
    1 1 NINL:STAGE-BEGIN
    9 NINL:STAGE-INT
-   [: A1 NINL:CLAIM ;] E-NINL-DUP TTHROWSQ
+   [: s" NINL-ROW-A1B" A1 NINL:CLAIM ;] E-NINL-DUP TTHROWSQ
    NINL:CLAIMED? FLAG# 0 T=
    NINL:STAGE-CLEAR
    A1 NINL:TOKENS 2 T=
    A1 0 NINL:LIT@ 7 T=
+   A1 s" NINL-ROW-A1" NINL:NAMED? TTRUE
 
    s" and so is an address no routine could have been published at" T-LABEL
    1 1 NINL:STAGE-BEGIN
    9 NINL:STAGE-INT
-   [: 0 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
-   [: -4 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: s" NINL-ROW-A2" 0 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: s" NINL-ROW-A2" -4 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   NINL:STAGE-CLEAR
+
+   s" and so is a claim carrying no name, or one longer than a row holds" T-LABEL
+   1 1 NINL:STAGE-BEGIN
+   9 NINL:STAGE-INT
+   [: s" " A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: LONG-NAME$ A2 NINL:CLAIM ;] E-NINL-CAP TTHROWSQ
+   NINL:CLAIMED? FLAG# 0 T=
+   A2 NINL:KNOWN? FLAG# 0 T=
    NINL:STAGE-CLEAR
 
    s" a claim holds one body, so nothing can be staged between it and the commit"
    T-LABEL
    1 1 NINL:STAGE-BEGIN
    9 NINL:STAGE-INT
-   A2 NINL:CLAIM
+   s" NINL-ROW-A2" A2 NINL:CLAIM
    [: 1 1 NINL:STAGE-BEGIN ;] E-NINL-STATE TTHROWSQ
 
    s" and a claim given up keys nothing" T-LABEL
@@ -170,7 +220,14 @@ $20008 constant A3
    NINL:STAGE-CLEAR
 
    s" and a token staged with nothing open is refused" T-LABEL
-   [: 3 NINL:STAGE-INT ;] E-NINL-STATE TTHROWSQ ;
+   [: 3 NINL:STAGE-INT ;] E-NINL-STATE TTHROWSQ
+
+   s" and a name token with no spelling is refused rather than staged empty"
+   T-LABEL
+   1 1 NINL:STAGE-BEGIN
+   [: s" " NINL:STAGE-NAME ;] E-NINL-STATE TTHROWSQ
+   NINL:STAGED-TOKENS 0 T=
+   NINL:STAGE-CLEAR ;
 
 \ ---- rows given back ---------------------------------------------------------
 \ The table is a sequence written at its end, so a mark taken from it is a prefix
@@ -182,7 +239,7 @@ $20008 constant A3
    NINL:MARK {: k:n :}
    1 1 NINL:STAGE-BEGIN
    5 NINL:STAGE-INT
-   A3 NINL:CLAIM
+   s" NINL-ROW-A3" A3 NINL:CLAIM
    NINL:COMMIT
    A3 NINL:KNOWN? FLAG# 1 T=
    NINL:ROWS k 1 + T=
@@ -229,6 +286,65 @@ $20008 constant A3
    1 NINL:SPELL-FITS? TTRUE
    0 NINL:SPELL-FITS? TFALSE
    64 NINL:SPELL-FITS? TFALSE ;
+
+\ ---- the one table that says what a copy stages for a meaning -----------------
+\ Three readers ask about this table and none of them keeps a second copy: the
+\ pre-scan that decides which calls are copied, the splice that copies them, and
+\ the public SPLICEABLE? the recorder asks about a token still on a tape. A
+\ second list over the same vocabulary is a second answer, and two answers drift
+\ apart in a way nothing loud notices - a `yes` from one and a throw from the
+\ other aborts a migration where every other refusal falls back quietly to a
+\ call. So the table itself is asserted, meaning by meaning, over the whole of
+\ the dialect's vocabulary; the migrations further down are where each `call` is
+\ shown to really BE a call rather than a refusal.
+\
+\ AND THE PREDICATE IS ASSERTED AS THE TABLE'S OWN ANSWER. A meaning is one a
+\ copy may hold exactly when the copy has something to stage for it, so the two
+\ cases below are one fact read twice; a predicate that stopped agreeing with the
+\ table it is derived from is the whole of what went wrong here before.
+\
+\ THE TWO LITERAL MEANINGS ARE THE ONES THIS PINS HARDEST. Both belong to a
+\ token and never to a word - hir-word.f's decoder refuses their stored codes,
+\ so no row can hold one - and a literal token is answered by its KIND long
+\ before this table is asked. The honest answer for a meaning no row may hold is
+\ that nothing is staged for it and the site calls.
+: STAGES ( HIR:meaning NELAB:staging -- bool )
+   {: want:NELAB:staging :}
+   NELAB:SPLICE-STAGING want NELAB-STAGING:EQ ;
+
+: MEANING-CASES ( -- )
+   s" what a copy stages for each meaning it can hold" T-LABEL
+   HIR-MEANING:OP NELAB-STAGING:OP STAGES TTRUE
+   HIR-MEANING:CONST-OP NELAB-STAGING:CONST-OP STAGES TTRUE
+   HIR-MEANING:FIXED NELAB-STAGING:FIXED STAGES TTRUE
+   HIR-MEANING:RENAME NELAB-STAGING:RENAME STAGES TTRUE
+
+   s" and the meanings it stages nothing for, which leave the site calling"
+   T-LABEL
+   HIR-MEANING:CALLABLE NELAB-STAGING:CALL STAGES TTRUE
+   HIR-MEANING:CONTROL NELAB-STAGING:CALL STAGES TTRUE
+   HIR-MEANING:OPEN-LOCALS NELAB-STAGING:CALL STAGES TTRUE
+   HIR-MEANING:CLOSE-LOCALS NELAB-STAGING:CALL STAGES TTRUE
+   HIR-MEANING:UNMODELED NELAB-STAGING:CALL STAGES TTRUE
+
+   s" including the two that belong to a token, which no word row may hold"
+   T-LABEL
+   HIR-MEANING:LITERAL NELAB-STAGING:CALL STAGES TTRUE
+   HIR-MEANING:REAL-LITERAL NELAB-STAGING:CALL STAGES TTRUE
+
+   s" and the copyable meanings are exactly the ones the table stages for"
+   T-LABEL
+   HIR-MEANING:OP NELAB:SPLICE-MEANING? TTRUE
+   HIR-MEANING:CONST-OP NELAB:SPLICE-MEANING? TTRUE
+   HIR-MEANING:FIXED NELAB:SPLICE-MEANING? TTRUE
+   HIR-MEANING:RENAME NELAB:SPLICE-MEANING? TTRUE
+   HIR-MEANING:CALLABLE NELAB:SPLICE-MEANING? TFALSE
+   HIR-MEANING:CONTROL NELAB:SPLICE-MEANING? TFALSE
+   HIR-MEANING:OPEN-LOCALS NELAB:SPLICE-MEANING? TFALSE
+   HIR-MEANING:CLOSE-LOCALS NELAB:SPLICE-MEANING? TFALSE
+   HIR-MEANING:UNMODELED NELAB:SPLICE-MEANING? TFALSE
+   HIR-MEANING:LITERAL NELAB:SPLICE-MEANING? TFALSE
+   HIR-MEANING:REAL-LITERAL NELAB:SPLICE-MEANING? TFALSE ;
 
 \ ---- reading a live word's own machine code ----------------------------------
 \ The code start and the code length come off the word's own dictionary record,
@@ -460,6 +576,61 @@ variable ROWS-BEFORE
    s" 3 NINL-SELF" EV-N 0 T=
    s" 4 NINL-CTRL" EV-N 4 T=
    s" -4 NINL-CTRL" EV-N 0 T= ;
+
+\ ---- whose body the row at a stated address is ---------------------------------
+\ A call site does not FIND its row: it states an address, taken from what its own
+\ migration declared about the callee, and reads whatever is keyed there. So the
+\ key is a claim, and the only other thing ever held against it was the arity -
+\ which agrees by coincidence all the time, because `( n -- n )` helpers are
+\ everywhere. NINL-LIT and NINL-EDGE-IN are both recorded, both `( n -- n )`, and
+\ answer entirely different arithmetic; the caller below declares NINL-LIT at
+\ NINL-EDGE-IN's address, so nothing but the NAME can tell the claim from the
+\ truth.
+\
+\ THE REFUSAL IS LOUD AND THAT IS DELIBERATE. Everything else this file refuses -
+\ a body with a control structure, one too large, one that fills a row, one that
+\ met a full table - is the record declining to hold a body, and the answer is the
+\ call the site always made. This is not that: the caller's declaration and the
+\ publication disagree about which word lives at an address, and the CALL that
+\ would be emitted instead branches to that same wrong address. Neither answer is
+\ usable, so it is refused by name, exactly as a disagreement about the arity
+\ already was.
+: MIGRATE-WRONG-NAME ( -- )
+   s" NINL-LIT" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-WRONG-NAME ( n -- n ) NINL-LIT ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+\ The same declaration written in the other case. A dictionary name is the same
+\ name in either case, so this names the SAME word and the body is still copied -
+\ which is what stops the check above from being a byte comparison that refuses
+\ legal Habu.
+: MIGRATE-CASE-NAME ( -- )
+   s" ninl-edge-in" s" NINL-EDGE-IN" ENTRY-OF 1 1 NMIGRATE:CALLEE
+   s" : NINL-CASE-NAME ( n -- n ) ninl-edge-in ;"
+   1 1 REGS NMIGRATE:DEFINE-CALLING ;
+
+: KEY-CASES ( -- )
+   s" the two callees are both recorded and have the same arity" T-LABEL
+   s" NINL-LIT" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-EDGE-IN" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-LIT" ENTRY-OF NINL:IN@  s" NINL-EDGE-IN" ENTRY-OF NINL:IN@ T=
+   s" NINL-LIT" ENTRY-OF NINL:OUT@ s" NINL-EDGE-IN" ENTRY-OF NINL:OUT@ T=
+
+   s" and each row says which routine it is, so they are told apart" T-LABEL
+   s" NINL-LIT" ENTRY-OF s" NINL-LIT" NINL:NAMED? TTRUE
+   s" NINL-LIT" ENTRY-OF s" NINL-EDGE-IN" NINL:NAMED? TFALSE
+   s" NINL-EDGE-IN" ENTRY-OF s" NINL-EDGE-IN" NINL:NAMED? TTRUE
+   s" NINL-EDGE-IN" ENTRY-OF s" NINL-LIT" NINL:NAMED? TFALSE
+
+   s" a caller naming one word at the other's address is refused, not spliced"
+   T-LABEL
+   [: MIGRATE-WRONG-NAME ;] E-NELAB-INLINE TTHROWSQ
+
+   s" and the refusal left nothing behind: the next migration still runs"
+   T-LABEL
+   MIGRATE-CASE-NAME
+   s" NINL-CASE-NAME" BL-COUNT 0 T=
+   s" 3 NINL-CASE-NAME" EV-N 96 T= ;
 
 \ ---- what a copied body brings with it -----------------------------------------
 \ A copied body's loads and stores thread the CALLER's memory order, because
@@ -787,11 +958,21 @@ variable FILL-MARK
 variable FULL-ROWS
 variable DECLINED-BEFORE
 
+\ Every filler row carries a name of its own, derived from the address it is
+\ keyed to, so the fill cannot accidentally satisfy a name check anything else in
+\ this suite makes.
+: FILL-NAME$ ( n -- ptr u8 n )
+   {: entry:n :}
+   SB-RESET
+   s" NINL-FILL-" SB-APPEND
+   entry FMT:SB-U
+   SB$ ;
+
 : FILL-ONE ( n -- )
    {: entry:n :}
    1 1 NINL:STAGE-BEGIN
    1 NINL:STAGE-INT
-   entry NINL:CLAIM
+   entry FILL-NAME$ entry NINL:CLAIM
    NINL:COMMIT ;
 
 : FILL-TABLE ( -- )
@@ -831,7 +1012,18 @@ variable DECLINED-BEFORE
    s" and a caller of it calls it, with a frame to call from, and runs" T-LABEL
    s" NINL-CALL-FULL" BL-COUNT 1 T=
    s" NINL-CALL-FULL" FRAME-COUNT 1 T=
-   s" 3 NINL-CALL-FULL" EV-N 96 T= ;
+   s" 3 NINL-CALL-FULL" EV-N 96 T=
+
+   s" a malformed claim is still refused with the table full, and not declined"
+   T-LABEL
+   NINL:DECLINED {: d:n :}
+   1 1 NINL:STAGE-BEGIN
+   1 NINL:STAGE-INT
+   [: s" " A2 NINL:CLAIM ;] E-NINL-STATE TTHROWSQ
+   [: LONG-NAME$ A2 NINL:CLAIM ;] E-NINL-CAP TTHROWSQ
+   NINL:DECLINED d T=
+   NINL:CLAIMED? FLAG# 0 T=
+   NINL:STAGE-CLEAR ;
 
 : CAP-PHASE ( -- )
    NINL:MARK FILL-MARK !
@@ -864,9 +1056,11 @@ public
    T-RESET
    NINL:MARK ROW-MARK !
    FENCE
+   LONG-NAME-FILL
    TABLE-CASES
    MARK-CASES
    RULE-CASES
+   MEANING-CASES
    DEFINE-ENGINE-TWINS
    NINL:ROWS ROWS-BEFORE !
    MIGRATE-SMALL
@@ -881,6 +1075,7 @@ public
    MIGRATE-CALLER-CALLEE
    MIGRATE-SELF
    BODY-REFUSAL-CASES
+   KEY-CASES
    DEFINE-CELL
    MIGRATE-LOAD
    MIGRATE-USE-LOAD

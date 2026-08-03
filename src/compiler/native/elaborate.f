@@ -1405,14 +1405,19 @@ VMAX TYPED-BUFFER XV IR-ID:ir-value-id  \ what the edge being staged really hand
 \ its own body instead of branching. The recursion happens once, while the callee
 \ is compiled, where the emitter's instruction count can be held against it.
 \
-\ AND THE ARITY IS HELD BETWEEN TWO AUTHORITIES. The caller states what effect it
-\ believes a callee has (src/compiler/native/migrate.f stages it), and the
-\ callee's own migration recorded what it really declared. A disagreement means
-\ the caller is compiling against some other routine than the one at that
-\ address - the call it would emit instead would be just as wrong - so it is
-\ refused by name rather than resolved in either direction.
+\ AND WHOSE BODY IT IS, IS HELD BETWEEN TWO AUTHORITIES. The caller states which
+\ word it believes lives at an address and what effect it believes that word has
+\ (src/compiler/native/migrate.f stages both), and the callee's own migration
+\ recorded the name it was published under and the effect it really declared. The
+\ key is the caller's claim rather than a lookup, so a stated address one routine
+\ out lands on a real row: the arity agrees by coincidence all the time, and the
+\ NAME is what tells the two apart. A disagreement of either kind means the
+\ caller is compiling against some other routine than the one at that address -
+\ the call it would emit instead would be just as wrong - so it is refused by
+\ name rather than resolved in either direction.
 here CELL 1- and CELL swap - CELL 1- and allot
 create INL-TAB TMAX cells allot      \ whether the call on this body token is copied
+create INL-NAME NINL:NAME-MAX allot  \ a call site's own spelling of its callee
 
 : INL-RESET ( -- )
    TMAX 0 ?do
@@ -1433,26 +1438,68 @@ create INL-TAB TMAX cells allot      \ whether the call on this body token is co
    {: entry:n k:n :}
    CTX BLD  entry k NINL:SPELL$  IR-BUILD:INTERN-SYMBOL ;
 
-\ Which meanings a copied body may hold. Everything else makes the callee one
-\ this site CALLS rather than copies: a control word would build blocks this
-\ walk's skeleton never counted, a call would copy a call, and either half of a
-\ locals group would bind names in the caller's scope. The two literal meanings
-\ belong to a token rather than to a word and no row ever stores one; they are
-\ answered here so that a meaning added to the dialect has to answer for itself.
-: SPLICE-MEANING? ( HIR:meaning -- bool )
+public
+
+\ WHAT A COPY STAGES FOR A TOKEN OF ONE MEANING. It is a value rather than a
+\ branch because two different questions are asked about it and they have to be
+\ ONE answer: whether a body holding such a token may be copied at all, which the
+\ pre-scan below and src/compiler/native/migrate.f's recorder ask, and what the
+\ splice stages when it gets there. A boolean answer and a staging ladder are two
+\ tables over the same vocabulary, and two tables can drift - which is exactly
+\ what had happened here: one of them said a meaning could be spliced and the
+\ other threw on it, so a body ever holding that meaning would have aborted a
+\ migration where every other refusal in this pass falls back quietly to a call.
+\
+\ `call` IS THE ANSWER FOR EVERY MEANING A COPY CANNOT HOLD, and it names the
+\ behaviour rather than the refusal: the site calls the callee, which is what it
+\ did before any of this existed and what every ceiling and every shape rule here
+\ falls back to.
+ENUM staging DERIVE eq
+   call
+   op
+   const-op
+   fixed
+   rename
+;ENUM
+
+private
+
+\ The one table. Every meaning of the dialect is answered here and nowhere else,
+\ so a meaning added to it has to answer for itself once - and answering it
+\ decides both questions at once, because both readers below are derived from
+\ this and neither restates it.
+\
+\ WHY EACH `call` IS A `call`. A control word would build blocks this walk's
+\ skeleton never counted; a callable would copy a call into a body that must hold
+\ none; either half of a locals group would bind names in the caller's own scope.
+\
+\ AND THE TWO LITERAL MEANINGS ANSWER `call`, WHICH IS HONEST RATHER THAN ABSENT.
+\ Both belong to a TOKEN and never to a word: src/compiler/native/hir-word.f's
+\ N>MEAN refuses their stored codes outright, so MEANING@ - the only way a
+\ meaning reaches this table - cannot answer either of them, and a token that
+\ really is a literal is answered by its KIND long before this is asked. A row
+\ claiming one would be a corrupt row, and what a corrupt row earns is not a copy.
+: SPLICE-STAGING ( HIR:meaning -- staging )
    MATCH HIR:meaning
-      literal      OF true ENDOF
-      real-literal OF true ENDOF
-      op           OF true ENDOF
-      const-op     OF true ENDOF
-      fixed        OF true ENDOF
-      rename       OF true ENDOF
-      callable     OF false ENDOF
-      control      OF false ENDOF
-      open-locals  OF false ENDOF
-      close-locals OF false ENDOF
-      unmodeled    OF false ENDOF
+      literal      OF NELAB-STAGING:CALL ENDOF
+      real-literal OF NELAB-STAGING:CALL ENDOF
+      op           OF NELAB-STAGING:OP ENDOF
+      const-op     OF NELAB-STAGING:CONST-OP ENDOF
+      fixed        OF NELAB-STAGING:FIXED ENDOF
+      rename       OF NELAB-STAGING:RENAME ENDOF
+      callable     OF NELAB-STAGING:CALL ENDOF
+      control      OF NELAB-STAGING:CALL ENDOF
+      open-locals  OF NELAB-STAGING:CALL ENDOF
+      close-locals OF NELAB-STAGING:CALL ENDOF
+      unmodeled    OF NELAB-STAGING:CALL ENDOF
    ;MATCH ;
+
+\ May a copied body hold a token of this meaning? Read off the table above rather
+\ than listed again: a meaning is one a copy may hold exactly when the copy has
+\ something to stage for it. Nothing here can say yes to a meaning the splice
+\ cannot stage, because there is no second list to say it in.
+: SPLICE-MEANING? ( HIR:meaning -- bool )
+   SPLICE-STAGING NELAB-STAGING:CALL NELAB-STAGING:EQ 0= ;
 
 : REC-NAME? ( n n -- bool )
    {: entry:n k:n :}
@@ -1512,12 +1559,40 @@ create INL-TAB TMAX cells allot      \ whether the call on this body token is co
       r entry i REC-TOKEN-ORDER? or
    loop ;
 
+\ The spelling this call site wrote for its callee, as bytes. The row it is about
+\ to be held against carries bytes, and this module's own interner is where the
+\ token's are.
+\
+\ THE BUFFER IS A ROW'S NAME CAPACITY AND THAT IS NOT A GUESS AT A LENGTH. A
+\ token only reaches here once the word model answered `callable` for it, and a
+\ callable row is declared from nothing but a name src/compiler/native/migrate.f
+\ staged - which that file caps at NINL:NAME-MAX, the same constant, for the same
+\ reason. So the copy cannot be the thing that refuses a spelling.
+: TOK-NAME$ ( n -- ptr u8 n )
+   {: ix:n :}
+   CTX BLD  VW MKEY ix NTAPE:SPELL@  INL-NAME NINL:NAME-MAX
+   IR-BUILD:SYMBOL-COPY {: u:n :}
+   INL-NAME u ;
+
 \ The callee named on this token, and whether its body may be copied here.
+\
+\ THE ROW IS FOUND BY AN ADDRESS THE CALLER STATED, so the first thing asked of
+\ it is whether it is the right routine's. Two records are held against the
+\ caller's declaration and neither is decoration: the NAME, because a stated
+\ address one routine out lands on a real row and splices a body nobody wrote a
+\ call to, and the ARITY, because a row of the right name and the wrong effect
+\ leaves the caller's stack a value out. Both disagreements are the same event -
+\ the caller's declaration and the publication disagree about what lives at that
+\ address, and the CALL the site would emit instead branches to the same wrong
+\ address - so both are refused by name rather than resolved in either direction.
+\ An address with NO row is not a disagreement at all: nothing was ever recorded
+\ there, and the site calls, which is what it always did.
 : CALLEE-COPY? ( IR-ARENA:arena n -- bool )
    {: r:IR-ARENA:arena ix:n :}
    VW MKEY ix NTAPE:SPELL@ {: sy:IR-ID:ir-symbol-id :}
    r sy HIR-WORD:ENTRY@ {: entry:n :}
    entry NINL:KNOWN? 0= if false exit then
+   entry  ix TOK-NAME$  NINL:NAMED? 0= if E-NELAB-INLINE throw then
    entry NINL:IN@  r sy HIR-WORD:CALLEE-IN@  <> if E-NELAB-INLINE throw then
    entry NINL:OUT@ r sy HIR-WORD:CALLEE-OUT@ <> if E-NELAB-INLINE throw then
    r entry REC-BODY? ;
@@ -2381,21 +2456,29 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ what holds the recorded body and the recorded arity together: a body that
 \ consumed or left a different number of values than the row says is refused by
 \ name rather than compiled into a definition whose stack is one value out.
+\
+\ AND WHICH MEANINGS MAY BE HERE AT ALL IS NOT DECIDED HERE. This dispatches on
+\ SPLICE-STAGING - the one table - and not on the meaning, so it cannot hold an
+\ opinion about which meanings are copyable that the pre-scan could contradict.
+\ It used to: this was a second list over the same vocabulary, and it threw on
+\ two meanings the other list said were fine. What is written here now is only
+\ how each staging is staged, and the table decides which stagings exist.
+\
+\ THE `call` ARM IS UNREACHABLE AND IS STILL A THROW. It is unreachable because
+\ the pre-scan read the same table over the same token and would not have marked
+\ the call for copying; and it is a throw rather than a fall back to a call
+\ because there is no way back from the middle of a splice - the vector already
+\ holds the callee's arguments crossed to cells and part of its body staged. A
+\ quiet answer there would leave a definition compiled out of half a body.
 : INLINE-NAME ( IR-ARENA:arena IR-ARENA:arena n IR-ID:ir-symbol-id -- )
    {: p:IR-ARENA:arena r:IR-ARENA:arena ix:n sy:IR-ID:ir-symbol-id :}
-   r sy HIR-WORD:ADMIT
-   MATCH HIR:meaning
-      literal      OF E-NELAB-INLINE throw ENDOF
-      real-literal OF E-NELAB-INLINE throw ENDOF
-      op           OF r ix sy EMIT-OP-SYM ENDOF
-      const-op     OF r ix sy EMIT-CONST-OP-SYM ENDOF
-      fixed        OF r ix sy EMIT-FIXED-SYM ENDOF
-      rename       OF p r sy RENAME ENDOF
-      callable     OF E-NELAB-INLINE throw ENDOF
-      control      OF E-NELAB-INLINE throw ENDOF
-      open-locals  OF E-NELAB-INLINE throw ENDOF
-      close-locals OF E-NELAB-INLINE throw ENDOF
-      unmodeled    OF E-HIR-UNMODELED throw ENDOF
+   r sy HIR-WORD:ADMIT SPLICE-STAGING
+   MATCH staging
+      call     OF E-NELAB-INLINE throw ENDOF
+      op       OF r ix sy EMIT-OP-SYM ENDOF
+      const-op OF r ix sy EMIT-CONST-OP-SYM ENDOF
+      fixed    OF r ix sy EMIT-FIXED-SYM ENDOF
+      rename   OF p r sy RENAME ENDOF
    ;MATCH ;
 
 : INLINE-TOKEN ( IR-ARENA:arena IR-ARENA:arena n n n -- )
@@ -2656,6 +2739,15 @@ variable IX                          \ the body token the walk stands on
    v 0 NTAPE-MODE:INTERPRETING MODE-CK ;
 
 public
+
+\ The one table, and the question derived from it. Every reader of the rule - the
+\ pre-scan that decides which calls are copied, the splice that copies them, and
+\ SPLICEABLE? below - reads these and keeps no second copy of either, so they
+\ cannot answer one question two ways. Both are published because that is what
+\ makes the claim checkable from outside: a suite can hold the table's own answer
+\ for each meaning of the dialect against what the chain then does with it.
+EXPORT SPLICE-STAGING
+EXPORT SPLICE-MEANING?
 
 \ Could a body copied into a caller hold this tape token? It is the rule the
 \ decision above applies to a RECORDED token, asked of a token still on a tape -

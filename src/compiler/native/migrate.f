@@ -84,7 +84,10 @@ TRUSTED: EV ( ptr u8 n -- )
 
 512 constant TEXT-CAP                \ the longest definition a unit may record
 128 constant TAPE-CAP                \ the most tokens one definition may hold
-64 constant NAME-CAP                 \ the longest name a migration answers about
+\ The longest name a migration answers about, taken from the record that has to
+\ hold it: a name this file kept but src/compiler/native/inline.f could only
+\ store the front of would be a row claiming another word.
+NINL:NAME-MAX constant NAME-CAP
 
 create TXT TEXT-CAP allot
 create NAME-BUF NAME-CAP allot
@@ -369,22 +372,27 @@ variable REC-OK                      \ the body staged so far is still one worth
    NINL:STAGED? 0= if exit then
    M-IN @ M-OUT @ A64EMIT:INSNS NINL:SMALL? 0= if NINL:STAGE-CLEAR then ;
 
-\ Claim the row for the staged body, at the address the routine is about to be
-\ published at. The emitter's own recorded placement is that address before the
-\ publication as much as after it: the seam refuses to publish an emission whose
-\ placement is not the slot it is claiming, so a publication that returns wrote
-\ the routine at exactly the address this asked about.
+\ Claim the row for the staged body: the address the routine is about to be
+\ published at, and the name it is about to be published under. The emitter's own
+\ recorded placement is that address before the publication as much as after it -
+\ the seam refuses to publish an emission whose placement is not the slot it is
+\ claiming, so a publication that returns wrote the routine at exactly the
+\ address this asked about - and the name is the one RESOLVES-TO-LATEST already
+\ proved the evaluation published, which is the same name the republication two
+\ lines below is handed. So the row states whose body it holds rather than only
+\ where it lives, and states it from the same two facts the publication itself
+\ runs on.
 \
 \ IT IS ASKED HERE BECAUSE THIS IS THE LAST MOMENT A REFUSAL IS FREE. Everything
-\ the record can refuse - an address that is not one, an address that already has
-\ a row - is refused with the word still running the code the engine compiled for
-\ it, which is what every other refusal in this chain leaves behind. And a record
-\ with no room for another body refuses nothing at all: it declines the row, the
-\ word publishes, and its callers call it, exactly as they call a body the size
-\ rule turned down.
+\ the record can refuse - an address that is not one, a name that is not one, an
+\ address that already has a row - is refused with the word still running the
+\ code the engine compiled for it, which is what every other refusal in this
+\ chain leaves behind. And a record with no room for another body refuses nothing
+\ at all: it declines the row, the word publishes, and its callers call it,
+\ exactly as they call a body the size rule turned down.
 : CLAIM-ROW ( -- )
    NINL:STAGED? 0= if exit then
-   A64EMIT:PLACEMENT NINL:CLAIM ;
+   NAME-BUF NAME-U @ A64EMIT:PLACEMENT NINL:CLAIM ;
 
 \ Write the row the claim reserved, now that the seam has published the routine
 \ at the address it was claimed for. A staging that was declined a row left no
