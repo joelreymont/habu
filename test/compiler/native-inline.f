@@ -3,7 +3,7 @@
 \ src/compiler/native/inline.f and the splice src/compiler/native/elaborate.f
 \ makes out of it.
 \
-\ WHAT THIS SUITE HAS TO SHOW. Six things, and the last four are the ones a
+\ WHAT THIS SUITE HAS TO SHOW. Seven things, and the last five are the ones a
 \ change to the rule would break.
 \
 \   1. That the record answers about an ADDRESS, keeps the tokens and the arity
@@ -30,6 +30,10 @@
 \      caller with no memory word of its own compiles and answers correctly when
 \      the body it copies has one, and a caller that copies a division carries
 \      the division's zero-divisor guard in its own instructions.
+\   7. That a copied body is handed its arguments as the CELLS its own routine
+\      took them as, so a caller holding a computed double where the record has
+\      a cell store compiles, and the eight bytes that reach memory are the
+\      double's own.
 \
 \ WHY THE COUNTS ARE OF INSTRUCTIONS AND NOT OF BYTES. A byte count moves for any
 \ reason at all. What copying a body removes is exactly the branch-with-link, the
@@ -426,6 +430,40 @@ variable ROWS-BEFORE
    s" NINL-DIV-BIG" BRK-COUNT 1 T=
    s" 20 4 NINL-CALL-DIV" EV-N 11 T= ;
 
+\ ---- the arguments a copied body is handed --------------------------------
+\ A routine reads its arguments out of data-stack slots, so its entry block takes
+\ CELLS and the recorded tokens were elaborated with cells in those positions.
+\ The caller below has just COMPUTED a double where the callee's own compilation
+\ had a cell, which is the one place the difference shows: `!` stores a cell, and
+\ a double reaching it is refused by name. So the splice crosses the arguments
+\ first, exactly as the call it replaces crossed everything live, and the case is
+\ the bits that reach memory - a crossing that computed anything, or one that was
+\ not made, changes them.
+: MIGRATE-STORE ( -- )
+   s" : NINL-STORE ( r ptr a -- ) ! ;" 2 0 REGS NMIGRATE:DEFINE ;
+
+: MIGRATE-PUT ( -- )
+   s" NINL-STORE" s" NINL-STORE" ENTRY-OF 2 0 NMIGRATE:CALLEE
+   s" : NINL-PUT ( r ptr a -- ) {: v:r b:ptr :} v v f+ b NINL-STORE ;"
+   2 0 REGS NMIGRATE:DEFINE-CALLING ;
+
+: ARG-CASES ( -- )
+   s" a body that stores its argument is recorded as the store it is" T-LABEL
+   s" NINL-STORE" ENTRY-OF NINL:KNOWN? FLAG# 1 T=
+   s" NINL-STORE" ENTRY-OF NINL:TOKENS 1 T=
+   s" NINL-STORE" ENTRY-OF 0 NINL:SPELL$ s" !" STR= TTRUE
+
+   s" and a caller that copies it with a COMPUTED double makes no call" T-LABEL
+   s" NINL-PUT" BL-COUNT 0 T=
+   s" NINL-PUT" FRAME-COUNT 0 T=
+
+   s" and the eight bytes that reach memory are the double, to the bit" T-LABEL
+   s" 2.5 NINL-CELL NINL-PUT NINL-CELL @" EV-N
+   s" 5.0 NINL-CELL ! NINL-CELL @" EV-N T=
+   s" -0.75 NINL-CELL NINL-PUT NINL-CELL @" EV-N
+   s" -1.5 NINL-CELL ! NINL-CELL @" EV-N T=
+   s" 0.0 NINL-CELL NINL-PUT NINL-CELL @" EV-N 0 T= ;
+
 public
 
 : RUN ( -- )
@@ -454,6 +492,9 @@ public
    MIGRATE-DIV-BIG
    MIGRATE-CALL-DIV
    CARRIED-CASES
+   MIGRATE-STORE
+   MIGRATE-PUT
+   ARG-CASES
    T-REPORT ;
 
 ;package

@@ -506,16 +506,24 @@ variable OPJ                         \ general operands taken so far by the open
    {: ix:n k:n kop:HIR:opcode :}
    ix  k VAT  kop CROSS-VALUE  k VAT! ;
 
-\ Every one of the bottom `n` vector values as a CELL. It is the crossing a value
-\ takes on its way OUT of this compilation's register files and into a
-\ sixty-four-bit slot somebody else reads: the caller's stack at a return, and
-\ the data stack at a call, which is where the machine stage puts every value a
-\ call site hands over. A cell is already a cell and crosses nothing.
+\ A RUN of vector positions as CELLS. It is the crossing a value takes on its way
+\ OUT of this compilation's register files and into a sixty-four-bit slot
+\ somebody else reads: the caller's stack at a return, the data stack at a call,
+\ which is where the machine stage puts every value a call site hands over, and
+\ the argument positions of a body copied in from a record, which was compiled
+\ against the cells a routine's own entry block takes. A cell is already a cell
+\ and crosses nothing.
+: CELL-CROSS-RUN ( n n n -- )
+   {: ix:n base:n k:n :}
+   k 0 ?do
+      base i + VAT REAL-VALUE? if ix base i + HIR-OPCODE:REALBITS CROSS1 then
+   loop ;
+
+\ Every one of the bottom `n` vector values as a cell, which is what a return and
+\ a call want: both of them hand over everything that is live.
 : CELL-CROSS ( n n -- )
    {: ix:n n:n :}
-   n 0 ?do
-      i VAT REAL-VALUE? if ix i HIR-OPCODE:REALBITS CROSS1 then
-   loop ;
+   ix 0 n CELL-CROSS-RUN ;
 
 \ Make the value at one vector position answer to the type the position wants.
 \ ONE difference is a crossing and every other difference is a refusal, and the
@@ -2325,6 +2333,22 @@ variable LRK                         \ crossing locals the walk below has taken 
 \ at the call the programmer wrote, which is the line they can do something
 \ about.
 \
+\ THE ARGUMENTS ARRIVE AS CELLS, BECAUSE THAT IS WHAT THE RECORD WAS COMPILED
+\ AGAINST. A routine takes its arguments out of data-stack slots, so its entry
+\ block's arguments are cells (OPEN-BLOCK says so), and the recorded tokens were
+\ elaborated with cells in those positions - a body that stores its first
+\ argument staged a cell store, because a cell is what it had. A caller holding a
+\ DOUBLE there is holding the same eight bytes read the other way, so handing it
+\ over unchanged would splice the row against types it was never compiled for:
+\ `: T-SET-N ( r ptr a n -- ) T-AT-N ! ;` copied into a body that has just
+\ computed a double would reach a cell store with a double in it and be refused,
+\ though the call it replaces compiles and runs. So the argument positions are
+\ crossed to cells first, which is EXACTLY what the call did - CALL-CROSS above
+\ crosses everything live for the same reason - and the crossing computes
+\ nothing, so the copy still answers to the bit what the call answered. What the
+\ copy no longer pays is the crossing of everything ELSE that is live: only the
+\ arguments go, because only the arguments are what the body reads.
+\
 \ WHAT IS CHECKED WHILE THE COPY RUNS, AND NEITHER CHECK IS DECORATION. The body
 \ may not reach BELOW the values its caller was holding - a checked body cannot,
 \ because the checker proved it against its own declared effect, but the vector
@@ -2370,6 +2394,7 @@ variable LRK                         \ crossing locals the walk below has taken 
    VN @ a < if E-NELAB-UNDER throw then
    VN @ a - {: base:n :}
    base o + VMAX > if E-NELAB-CAP throw then
+   ix base a CELL-CROSS-RUN
    entry NINL:TOKENS 0 ?do
       p r ix entry i INLINE-TOKEN
       VN @ base < if E-NELAB-INLINE throw then
