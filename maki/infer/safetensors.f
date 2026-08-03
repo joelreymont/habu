@@ -428,10 +428,17 @@ variable LIVE-N
    0 st PARSED-OFF + !
    NULL$ drop st MR-REC-IDX ptr-field ! ;
 
+: UNMAP-BODY ( ptr u8 n -- ptr u8 n ) {: base:ptr len:n :}
+   base len SAFET-MAP:UNMAP
+   base len ;
+
+: FIRST-CODE ( n n -- n ) {: first:n code:n :}
+   first 0= code 0 <> and if code else first then ;
+
 \ The single disposal path behind both CLOSE and RELEASE. It reads the mapping
 \ decision out of the block BEFORE freeing the block, so neither outcome can
 \ touch released memory and a failing munmap still cannot leak the metadata.
-: DISPOSE ( ptr n -- ) {: st:ptr :}
+: DISPOSE-CODE ( ptr n n -- n ) {: st:ptr first:n :}
    st OWNS-MAP-OFF + @ {: owns:n :}
    st IMG {: base:ptr :}
    st MAP-LEN-OFF + @ {: len:n :}
@@ -440,7 +447,25 @@ variable LIVE-N
    then
    st BLOCK>BYTES BLOCK-LEN MEM:RELEASE-BYTES
    -1 LIVE-N +!
-   owns 0 <> if base len SAFET-MAP:UNMAP then ;
+   owns 0= if first exit then
+   base len [: UNMAP-BODY ;] catch {: code:n :}
+   2drop
+   first code FIRST-CODE ;
+
+: DISPOSE ( ptr n -- )
+   0 DISPOSE-CODE {: code:n :}
+   code 0 <> if code throw then ;
+
+: ALLOC-BLOCK ( ptr u8 -- ptr u8 )
+   drop BLOCK-LEN MEM:ALLOC-BYTES drop ;
+
+: START-BLOCK ( ptr u8 -- SAFET:session )
+   MINT-SESSION
+   1 LIVE-N +!
+   SESSION>BLOCK INIT-BLOCK ;
+
+: CLOSE-CODE ( SAFET:session n -- n ) {: first:n :}
+   TAKE-SESSION first DISPOSE-CODE ;
 
 \ ---- mapping records -------------------------------------------------------
 : MR-FILL ( ptr n ptr n -- ) {: mr:ptr st:ptr :}   \ copy a block's image cells into a record
@@ -468,10 +493,6 @@ variable LIVE-N
    0 st MAP-LEN-OFF + !
    0 st OWNS-MAP-OFF + !
    0 st HAS-IMG-OFF + ! ;
-
-: UNMAP-BODY ( ptr u8 n -- ptr u8 n ) {: base:ptr len:n :}   \ stack-preserving, so `catch` accepts it
-   base len SAFET-MAP:UNMAP
-   base len ;
 
 \ ---- bounded fixed-width reads over a mapping ------------------------------
 \ The bound is the length the RECORD carries, not the census's copy: CLEAR-IMG
@@ -744,9 +765,7 @@ public
 
 \ ---- session lifecycle -----------------------------------------------------
 : OPEN ( -- SAFET:session )                    \ begin one isolated load transaction
-   BLOCK-LEN MEM:ALLOC-BYTES drop MINT-SESSION
-   1 LIVE-N +!
-   SESSION>BLOCK INIT-BLOCK ;
+   NULL$ drop ALLOC-BLOCK START-BLOCK ;
 
 : MAP-FILE ( SAFET:session ptr u8 n -- SAFET:session )   \ give the session a mapped file
    {: pa:ptr pu:n :}
@@ -881,10 +900,12 @@ public
 
 : LOAD ( ptr u8 n -- result<SAFET:file,n> )  \ map + parse + publish, closing on any fault
    {: pa:ptr pu:n :}
-   OPEN pa pu
+   NULL$ drop [: ALLOC-BLOCK ;] catch {: alloc-code:n :}
+   alloc-code 0 <> if drop alloc-code RESULT:ERR exit then
+   START-BLOCK pa pu
    [: TAKE-FILE+PARSE ;] catch {: code:n :}
    2drop
-   code 0 <> if CLOSE code RESULT:ERR exit then
+   code 0 <> if code CLOSE-CODE RESULT:ERR exit then
    DETACH RESULT:OK ;
 
 : LOAD-SPAN ( ptr u8 n -- SAFET:file )       \ the same over a caller-owned image

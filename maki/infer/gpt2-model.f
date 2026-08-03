@@ -17,11 +17,7 @@ package GPT2
 
 public
 
-STRUCTURE model 0
-   FIELD gpu GPU:session
-   FIELD buf GPU:buffer
-   FIELD cfg config
-;STRUCTURE
+DEFLINEAR GPT2:model
 
 private
 
@@ -31,6 +27,73 @@ private
 32 constant M-DIGEST-LEN
 64 constant M-HEX-LEN
 64 constant M-NAME-CAP
+
+0 constant R-GPU
+1 cells constant R-BUF
+2 cells constant R-DT
+3 cells constant R-CX
+4 cells constant R-VO
+5 cells constant R-NL
+6 cells constant R-NE
+7 cells constant R-NH
+8 cells constant R-TIED
+9 cells constant R-BOS
+10 cells constant R-EOS
+11 cells constant R-EPS
+12 cells constant R-SCALE
+13 cells constant R-PROOF
+14 cells constant R-BYTES
+
+: M-REC-LEN ( -- CAD-NUM:alloc-byte-len )
+   R-BYTES MEM:BYTES-ALLOC-LEN ;
+
+: M-ALLOC-REC ( ptr u8 -- ptr u8 )
+   drop M-REC-LEN MEM:ALLOC-BYTES drop ;
+
+: M-ALLOC-PATH ( ptr u8 -- ptr u8 )
+   drop FS-PATH-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES drop ;
+
+: M-FREE-REC ( ptr u8 -- )
+   M-REC-LEN MEM:RELEASE-BYTES ;
+
+\ The checker cannot tie the opaque owner to its private host record.
+\ Retirement owner: habu-checker-ptr-lifetime-f59d1e9d.
+TRUSTED: M-SAVE ( GPU:session GPU:buffer config ptr u8 -- GPT2:model )
+   {: g:GPU:session b:GPU:buffer dt:MAKI:datatype cx:n vo:n nl:n ne:n nh:n tied:bool bos:n eos:n eps:r scale:bool proof:cfg-proof rec:ptr :}
+   g rec R-GPU + !
+   b rec R-BUF + !
+   dt rec R-DT + !
+   cx rec R-CX + !
+   vo rec R-VO + !
+   nl rec R-NL + !
+   ne rec R-NE + !
+   nh rec R-NH + !
+   tied rec R-TIED + !
+   bos rec R-BOS + !
+   eos rec R-EOS + !
+   eps rec R-EPS + !
+   scale rec R-SCALE + !
+   proof rec R-PROOF + !
+   rec ;
+
+TRUSTED: M-TAKE ( GPT2:model -- GPU:session GPU:buffer config ptr u8 )
+   {: rec:ptr :}
+   rec R-GPU + @
+   rec R-BUF + @
+   rec R-DT + @
+   rec R-CX + @
+   rec R-VO + @
+   rec R-NL + @
+   rec R-NE + @
+   rec R-NH + @
+   rec R-TIED + @
+   rec R-BOS + @
+   rec R-EOS + @
+   rec R-EPS + @
+   rec R-SCALE + @
+   rec R-PROOF + @
+   GPT2-CONFIG:MAKE
+   rec ;
 
 : M-ADD ( n n -- n ) {: a:n b:n :}
    a MAX-N b - > if E-SIZE throw then
@@ -122,13 +185,16 @@ private
       misaligned OF E-SIZE throw ENDOF
    ;MATCH ;
 
-: M-ALLOC-LEN ( config -- config CAD-NUM:alloc-byte-len )
+: M-TOTAL-LEN ( config -- config CAD-NUM:byte-len )
    NLAYER@ {: nl:n :}
    M-GLOBAL-ELEMS {: globals:n :}
    M-LAYER-ELEMS {: layer:n :}
    DATATYPE@ M-DTYPE-BYTES {: bytes:n :}
    globals layer nl CHECKED-MUL M-ADD bytes CHECKED-MUL
-   M-BYTE-LEN CAD-NUM:AS-ALLOC-BYTE-LEN
+   M-BYTE-LEN ;
+
+: M-ALLOC-LEN ( config -- config CAD-NUM:alloc-byte-len )
+   M-TOTAL-LEN CAD-NUM:AS-ALLOC-BYTE-LEN
    MATCH CAD-NUM:numeric-result
       ok OF ENDOF
       negative OF E-SIZE throw ENDOF
@@ -277,6 +343,9 @@ private
 : M-FIRST ( n n -- n ) {: first:n code:n :}
    first 0= code 0<> and if code else first then ;
 
+: M-MODEL-ERR ( n -- result<GPT2:model,n> )
+   RESULT:ERR ;
+
 : M-UPLOAD-ONE
    ( GPU:session GPU:buffer SAFET:file config ptr u8 ptr u8 n -- GPU:session GPU:buffer SAFET:file config ptr u8 n )
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
@@ -377,7 +446,8 @@ private
    first2 M-GPU-CLEAN ;
 
 : M-FINISH
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping -- result<model,n> )
+   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr u8 -- result<GPT2:model,n> )
+   {: rec:ptr :}
    SAFET:UNMAP-MAPPING M-RESULT-CODE {: code:n :}
    drop
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
@@ -385,24 +455,32 @@ private
    SAFET:RELEASE
    code 0<> if
       c M-DROP-CFG
-      code M-GPU-CLEAN RESULT:ERR
+      code M-GPU-CLEAN
+      rec drop M-MODEL-ERR
       exit
    then
-   c GPT2-MODEL:MAKE RESULT:OK ;
+   c rec M-SAVE RESULT:OK ;
+
+: M-GPU-FAIL
+   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr u8 n -- result<GPT2:model,n> )
+   {: code:n :}
+   drop
+   code M-ALL-CLEAN M-MODEL-ERR ;
 
 : M-GPU-FLOW
-   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping -- result<model,n> )
+   ( GPU:session GPU:buffer SAFET:file config ptr u8 SAFET:mapping ptr u8 -- result<GPT2:model,n> )
+   >r
    M-UPLOAD-FRAME
    >r {: code:n :}
    code 0<> if
-      r> code M-ALL-CLEAN RESULT:ERR
+      r> r> code M-GPU-FAIL
    else
-      r> M-FINISH
+      r> r> M-FINISH
    then ;
 
 : M-GPU
-   ( config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len -- result<model,n> )
-   {: alloc:CAD-NUM:alloc-byte-len :}
+   ( config ptr u8 SAFET:file SAFET:mapping CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
+   {: alloc:CAD-NUM:alloc-byte-len rec:ptr :}
    >r >r
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: c scratch:ptr :}
@@ -410,7 +488,8 @@ private
    MATCH result
       err OF
          {: code:n :}
-         c scratch r> r> code M-SOURCE-CLEAN RESULT:ERR
+         c scratch r> r> code M-SOURCE-CLEAN
+         rec drop M-MODEL-ERR
       ENDOF
       ok OF
          alloc GPU:ALLOC
@@ -418,40 +497,42 @@ private
             err OF
                {: code:n :}
                code M-SESSION-CLEAN {: first:n :}
-               c scratch r> r> first M-SOURCE-CLEAN RESULT:ERR
+               c scratch r> r> first M-SOURCE-CLEAN
+               rec drop M-MODEL-ERR
             ENDOF
             ok OF
                r> r> >r c scratch r>
-               M-GPU-FLOW
+               rec M-GPU-FLOW
             ENDOF
          ;MATCH
       ENDOF
    ;MATCH ;
 
 : M-FILE
-   ( config ptr u8 SAFET:file CAD-NUM:alloc-byte-len -- result<model,n> )
-   {: alloc:CAD-NUM:alloc-byte-len :}
+   ( config ptr u8 SAFET:file CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
+   {: alloc:CAD-NUM:alloc-byte-len rec:ptr :}
    SAFET:DETACH-MAPPING
    MATCH SAFET:map-take
       empty OF
          SAFET:RELEASE
          drop M-DROP-CFG
-         E-CATALOG RESULT:ERR
+         rec drop E-CATALOG M-MODEL-ERR
       ENDOF
       moved OF
+         \ Parse rejects hostile structure before the digest gates GPU work.
          M-CATALOG-ORDER M-PIN-ORDER {: code:n :}
          code 0<> if
-            code M-SOURCE-CLEAN RESULT:ERR
+            code M-SOURCE-CLEAN
+            rec drop M-MODEL-ERR
          else
-            alloc M-GPU
+            alloc rec M-GPU
          then
       ENDOF
    ;MATCH ;
 
 : M-BODY
-   ( ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:alloc-byte-len -- result<model,n> )
-   \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
-   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:alloc-byte-len :}
+   ( ptr u8 n config CAD-NUM:alloc-byte-len ptr u8 CAD-NUM:alloc-byte-len ptr u8 -- result<GPT2:model,n> )
+   {: root:ptr rootu:n c alloc:CAD-NUM:alloc-byte-len scratch:ptr scratchu:CAD-NUM:alloc-byte-len rec:ptr :} \ typed-local-lint: allow-bare-local
    scratchu drop
    c scratch
    root rootu GPT2PIN:MODEL-NAME$ scratch JOIN-PATH {: pathu:n :}
@@ -460,10 +541,10 @@ private
       err OF
          {: code:n :}
          drop M-DROP-CFG
-         code RESULT:ERR
+         rec drop code M-MODEL-ERR
       ENDOF
       ok OF
-         alloc M-FILE
+         alloc rec M-FILE
       ENDOF
    ;MATCH ;
 
@@ -475,47 +556,59 @@ private
    then ;
 
 : M-SCOPE-FINISH
-   ( ptr u8 CAD-NUM:alloc-byte-len result<model,n> -- result<model,n> )
+   ( ptr u8 ptr u8 CAD-NUM:alloc-byte-len result<GPT2:model,n> -- result<GPT2:model,n> )
    MATCH result
       err OF
          {: code:n :}
          MEM:RELEASE-BYTES
-         code RESULT:ERR
+         M-FREE-REC
+         code M-MODEL-ERR
       ENDOF
       ok OF
-         GPT2-MODEL:UNMAKE
-         \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
-         {: c :}
-         >r >r
+         >r
          MEM:RELEASE-BYTES
-         r> r> c GPT2-MODEL:MAKE RESULT:OK
+         drop
+         r> RESULT:OK
       ENDOF
    ;MATCH ;
 
-: M-OPEN-CFG ( ptr u8 n config -- result<model,n> )
+: M-OPEN-CFG ( ptr u8 n config -- result<GPT2:model,n> )
    \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
    {: root:ptr rootu:n c :}
    root rootu GPT2PIN:MODEL-NAME$ nip M-JOIN-LEN
    FS-PATH-CAP > if
       c M-DROP-CFG
-      E-FS-CAPACITY RESULT:ERR
+      E-FS-CAPACITY M-MODEL-ERR
       exit
    then
    c M-ALLOC-LEN {: alloc:CAD-NUM:alloc-byte-len :}
    drop
-   FS-PATH-CAP MEM:BYTES-ALLOC-LEN MEM:ALLOC-BYTES
-   {: scratch:ptr scratchu:CAD-NUM:alloc-byte-len :}
-   scratch scratchu
-   root rootu c alloc scratch scratchu M-BODY
+   NULL$ drop [: M-ALLOC-REC ;] catch {: rec-code:n :}
+   rec-code 0<> if
+      drop c M-DROP-CFG
+      rec-code M-MODEL-ERR
+      exit
+   then
+   {: rec:ptr :}
+   NULL$ drop [: M-ALLOC-PATH ;] catch {: path-code:n :}
+   path-code 0<> if
+      drop rec M-FREE-REC
+      c M-DROP-CFG
+      path-code M-MODEL-ERR
+      exit
+   then
+   {: scratch:ptr :}
+   rec scratch FS-PATH-CAP MEM:BYTES-ALLOC-LEN
+   root rootu c alloc scratch FS-PATH-CAP MEM:BYTES-ALLOC-LEN rec M-BODY
    M-SCOPE-FINISH ;
 
 public
 
-: OPEN ( FS:path -- result<model,n> )
+: OPEN ( FS:path -- result<GPT2:model,n> )
    FS-PATH:UNMAKE {: root:ptr rootu:n :}
    root rootu FS-PATH:MAKE HF:OPEN-GPT2
    MATCH result
-      err OF RESULT:ERR ENDOF
+      err OF M-MODEL-ERR ENDOF
       ok OF
          \ typed-local-lint: allow-bare-local - config is a multi-cell structure.
          {: c :}
@@ -523,8 +616,9 @@ public
       ENDOF
    ;MATCH ;
 
-: CLOSE ( model -- result<n,n> )
-   GPT2-MODEL:UNMAKE
+: CLOSE ( GPT2:model -- result<n,n> )
+   M-TAKE {: rec:ptr :}
+   rec M-FREE-REC
    M-DROP-CFG
    0 M-GPU-CLEAN {: code:n :}
    code 0= if 0 RESULT:OK else code RESULT:ERR then ;

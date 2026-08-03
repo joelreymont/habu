@@ -299,20 +299,24 @@ variable SEEN-MAP-LEN
 : SHORT-PATH ( -- ptr u8 n )  s" /tmp/hb-st-short.safetensors" ;
 : ABSENT-PATH ( -- ptr u8 n ) s" /tmp/hb-st-does-not-exist.safetensors" ;
 
-: LOAD-ABSENT ( -- )
-   ABSENT-PATH MUST-LOAD SAFET:RELEASE ;
+: LOAD-CODE ( ptr u8 n -- n )
+   SAFET:LOAD
+   MATCH result
+      err OF ENDOF
+      ok OF SAFET:RELEASE 0 ENDOF
+   ;MATCH ;
 
-: LOAD-SHORT ( -- )                             \ a real file with only 4 bytes in it
+: LOAD-SHORT-CODE ( -- n )                      \ a real file with only 4 bytes in it
    0 IMG-A 0 + c!  1 IMG-A 1 + c!  2 IMG-A 2 + c!  3 IMG-A 3 + c!
    SHORT-PATH IMG-A 4 WRITE-ALL
-   SHORT-PATH MUST-LOAD SAFET:RELEASE ;
+   SHORT-PATH LOAD-CODE ;
 
 : TEST-LOAD-FAULTS ( -- )
-   s" LOAD on a missing path throws and closes its session" T-LABEL
-   [: LOAD-ABSENT ;] E-FS-STAT TTHROWSQ
+   s" LOAD returns the original missing-path error and closes its session" T-LABEL
+   ABSENT-PATH LOAD-CODE E-FS-STAT T=
    NO-LEAK
-   s" LOAD on a file under 8 bytes throws and closes its session" T-LABEL
-   [: LOAD-SHORT ;] SAFET:E-HEADER TTHROWSQ
+   s" LOAD returns the original short-file error and closes its session" T-LABEL
+   LOAD-SHORT-CODE SAFET:E-HEADER T=
    NO-LEAK
    SHORT-PATH FS-PATHZ unlink drop ;
 
